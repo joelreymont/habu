@@ -1416,7 +1416,8 @@ $27A8 constant CMM-CELL
 \ preflight hook. The
 \ checker installs it before arming HOOK-CELL; the compiler calls it before
 \ every source-defined immediate in a checked body, and 0 is an invalid armed
-\ state. It persists through snapshots like HOOK-CELL.
+\ state. It persists through snapshots like HOOK-CELL. `0 set-check` parks it
+\ in the SUSP-HOOK band below.
 $27E8 constant COMPILE-PREFLIGHT-CELL
 \ The retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
 \ TOP-HOOK-CELL: top-row token hook xt (dot habu-typed-top-engine-2b2e88aa,
@@ -1437,6 +1438,23 @@ $27F0 constant TOP-HOOK-CELL
 \ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
+\ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
+\ suspends until `set-check` of the same hook resumes it (the rule is
+\ docs/forth.md's "`0 set-check` suspends the armed hook"). Boot zeroes both;
+\ after the seal the set-check prims (habu1.f BSETCHECK, kernel-x64.f
+\ SET-CHECK-BODY) are their only writers. The pair is a PROT-GUARD band of its
+\ own: a resume copies SUSP-PREFLIGHT-CELL
+\ into COMPILE-PREFLIGHT-CELL without set-preflight's window check, so a raw
+\ post-seal store here would be a second, unchecked preflight installer. Both
+\ cells hold xts and persist through snapshots like HOOK-CELL, so they are
+\ declared address cells (habu2.f RELOC-EMIT:MARK-CELL) with a
+\ tools/native-layout.f row each. $2D80 and $2D88 sit in the $2800..$3000 free
+\ header band, swept for a claimant across src lib tools test bootstrap docs,
+\ below $7FF8 for the `DATA <off> LDR/STR` form and below DATA-START.
+$2D80 constant SUSP-HOOK-CELL
+$2D88 constant SUSP-PREFLIGHT-CELL
+SUSP-HOOK-CELL constant SUSP-HOOK-OFF
+2 cells constant SUSP-HOOK-LEN
 \ REFUSAL-ABI:CODE-CELL: the code of the last refusal whose diagnostic the checker
 \ rendered before throwing it (src/core/checker.f CHECKER-REFUSE, which spells
 \ this offset because this file loads after it), 0 until one is. The uncaught
@@ -2298,13 +2316,14 @@ USE-WIDS USE-MAX cells + constant END
 \ zero-length row ends every walk: no count sits beside the table to fall out
 \ of step with its rows. src/habu/data-bands.f checks every row against its
 \ DATA-CLAIMS claim when an engine is built. bootstrap/cg/forth.fs mirrors the
-\ five bands its stage0 engine owns.
+\ six bands its stage0 engine owns.
 package DATA-BANDS
 
 create TAB
    FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
    PROT-REG-OFF ,                 PROT-REG-LEN ,
    ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
+   SUSP-HOOK-OFF ,                SUSP-HOOK-LEN ,
    NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
    NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
    TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,

@@ -341,6 +341,30 @@ create TRH-EMPTY 1 allot
    s" ;package" TRH-LINE
    SB$ ;
 
+: WINDOW-RESUME$ ( -- ptr u8 n )
+   SB-RESET
+   s" check@ 0 set-check" TRH-LINE
+   s" 1 drop" TRH-LINE
+   s" set-check" TRH-LINE
+   s" : TRH-WIN-I ( -- ) parse-name 2drop ; immediate" TRH-LINE
+   S\" s\" TRH-WIN-I\" 1 parse-imm" TRH-LINE
+   s" : TRH-WIN-RUN ( -- n ) TRH-WIN-I beta 7 ;" TRH-LINE
+   s" TRH-WIN-RUN . cr" TRH-LINE
+   SB$ ;
+
+: NESTED-WINDOW$ ( -- ptr u8 n )
+   SB-RESET
+   s" check@ 0 set-check" TRH-LINE
+   s" check@ 0 set-check" TRH-LINE
+   s" 1 drop" TRH-LINE
+   s" set-check" TRH-LINE
+   s" set-check" TRH-LINE
+   s" : TRH-NEST-I ( -- ) parse-name 2drop ; immediate" TRH-LINE
+   S\" s\" TRH-NEST-I\" 1 parse-imm" TRH-LINE
+   s" : TRH-NEST-RUN ( -- n ) TRH-NEST-I beta 7 ;" TRH-LINE
+   s" TRH-NEST-RUN . cr" TRH-LINE
+   SB$ ;
+
 : PREFLIGHT-LIFECYCLE ( -- )
    s" armed checker without preflight emits exact LF-terminated diagnostic" T-LABEL
    MISSING-HOOK$ TRH-RUN-LOAD
@@ -354,7 +378,15 @@ create TRH-EMPTY 1 allot
    TRH-RC @ TRH-REJECT-RC T=
    TRH-OUT-U @ 0 T=
    TRH-ERR$ s" E-UNMODELED-IMMEDIATE" CONTAINS? TTRUE
-   TRH-ERR$ s" include" CONTAINS? TTRUE ;
+   TRH-ERR$ s" include" CONTAINS? TTRUE
+   s" check@ 0 set-check window resumes the hook with its preflight" T-LABEL
+   WINDOW-RESUME$ TRH-RUN-LOAD
+   TRH-ASSERT-OK
+   s" 7" TRH-ASSERT-OUT
+   s" nested check@ 0 set-check windows resume the outer pair" T-LABEL
+   NESTED-WINDOW$ TRH-RUN-LOAD
+   TRH-ASSERT-OK
+   s" 7" TRH-ASSERT-OUT ;
 
 : TRH-BELOW-FORGE$ ( -- ptr u8 n )  \ one cell below the band stays writable
    SB-RESET

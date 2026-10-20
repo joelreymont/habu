@@ -1021,8 +1021,10 @@ path. No runtime stack-depth calculation is needed.
 
 - **Turning checking off and on again.** `0 set-check` disables the check hook
   for the rest of the load, so `:` becomes the plain native colon — this is how
-  infrastructure that isn't checkable habu gets loaded. Re-enable it by
-  reinstalling the hook with `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`).
+  infrastructure that isn't checkable habu gets loaded. `check@ 0 set-check …
+  set-check` resumes the saved hook together with its compile preflight;
+  `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`) installs the checker
+  afresh.
   There is no `CHECKING-ON?` word; naming it is `E-UNDEFINED`.
 - A body that reaches a word the checker cannot model (`evaluate` and the other
   metaprogramming words) fails the definition; the structured verdict is

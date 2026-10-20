@@ -3883,8 +3883,12 @@ public
    A G-POP  A DATA CUR-CELL STR, ;
 
 \ set-check ( xt -- ): install the checker hook, fail-closed at install. 0
-\ disables checking (the audited `0 set-check` boundary). A non-zero argument
-\ must be a live JIT code entry: DBASE <= xt < CP (x26/x28). Every real hook —
+\ disables checking (the audited `0 set-check` boundary) and parks an armed
+\ hook with its preflight in the SUSP-HOOK pair; arming the parked hook while
+\ the preflight cell is empty brings that preflight back, and every arm clears
+\ the pair (the rule is docs/forth.md's "`0 set-check` suspends the armed
+\ hook"). A non-zero
+\ argument must be a live JIT code entry: DBASE <= xt < CP (x26/x28). Every real hook —
 \ ' HOOK, SNAP-CHECK-HOOK, USER-HOOK, ES-VERDICT-HOOK — is a source-loaded
 \ colon/TRUSTED: word JIT-compiled into [DBASE, CP), so this never rejects a
 \ valid install; while garbage (1, a DATA-region address, a baked-primitive xt,
@@ -3894,16 +3898,26 @@ public
 \ (mid-instruction, a dict record), so it catches wild installs — the crash class
 \ — not a well-formed pointer that already lands inside live code.
 : BSETCHECK ( -- )
-   LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
+   LBL LBL LBL LBL LBL LBL {: bad:label disarm:label kept:label armed:label done:label msg:label :}
    S\" set-check: invalid checker xt\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = candidate xt
-   9 ok CBZ,                             \ 0 -> checking off, install as-is
+   9 disarm CBZ,                         \ 0 -> checking off
       9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
       9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
-   ok LBL,
       A DATA HOOK-CELL STR,
-      A done CBNZ,
-      A DATA COMPILE-PREFLIGHT-CELL STR,
+      \ The parked hook brings its preflight back; any other arm starts bare.
+      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 armed CBNZ,
+      11 DATA SUSP-HOOK-CELL LDR,  9 11 CMP,  C-NE armed BCOND,
+      11 DATA SUSP-PREFLIGHT-CELL LDR,  11 DATA COMPILE-PREFLIGHT-CELL STR,
+   armed LBL,
+      10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR,
+      done B,
+   disarm LBL,
+      10 DATA HOOK-CELL LDR,  10 kept CBZ,   \ already off: the parked pair stands
+      10 DATA SUSP-HOOK-CELL STR,
+      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 DATA SUSP-PREFLIGHT-CELL STR,
+   kept LBL,
+      A DATA HOOK-CELL STR,  A DATA COMPILE-PREFLIGHT-CELL STR,
       done B,
    bad LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
@@ -4025,10 +4039,11 @@ public
    done LBL, ;
 
 \ set-preflight ( xt -- ): single-assignment installer for the
-\ checker-owned immediate preflight. `0 set-check` clears the paired protected
-\ cell while reloading the canonical prefix; the checker may then install one live
-\ JIT entry, and an identical reinstall is inert. While checking stays armed,
-\ even a TRUSTED: caller cannot replace the hook.
+\ checker-owned immediate preflight. `0 set-check` suspends the paired
+\ protected cell with the armed hook and empties it, and `set-check` of that
+\ same hook resumes it (BSETCHECK); while it is empty the checker may install
+\ one live JIT entry, and an identical reinstall is inert. While checking stays
+\ armed, even a TRUSTED: caller cannot replace the hook.
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL
    {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}

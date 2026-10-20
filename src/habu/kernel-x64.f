@@ -2516,23 +2516,39 @@ private
    RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
    RAX CP-REG ASM-SINK ENC-CMP-RR  C-AE bad JCC, ;
 
-\ set-check ( xt -- ): 0 turns checking off and empties the preflight hook
-\ too; any other xt must lie in the window.
+\ set-check ( xt -- ): 0 turns checking off: an armed hook is parked with its
+\ preflight in the SUSP-HOOK pair, and both cells empty; while already off the
+\ parked pair stands. Any other xt must lie in the window; arming the parked
+\ hook with the preflight cell empty brings its preflight back, and every arm
+\ ends the suspension. The rule is habu1.f BSETCHECK's.
 : SET-CHECK-BODY ( -- )
-   LBL LBL LBL {: bad:label ok:label done:label :}
+   LBL LBL LBL LBL LBL {: bad:label disarm:label kept:label armed:label done:label :}
    RAX POP,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E ok JCC,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E disarm JCC,
    bad WINDOW,
-   ok LBL,
    RAX HOOK-CELL CELL!,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
-   RAX COMPILE-PREFLIGHT-CELL CELL!,
+   RCX COMPILE-PREFLIGHT-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE armed JCC,
+   RCX SUSP-HOOK-CELL CELL@,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-NE armed JCC,
+   RCX SUSP-PREFLIGHT-CELL CELL@,  RCX COMPILE-PREFLIGHT-CELL CELL!,
+   armed LBL,
+   RCX ZERO-REG,  RCX SUSP-HOOK-CELL CELL!,  RCX SUSP-PREFLIGHT-CELL CELL!,
+   done JMP,
+   disarm LBL,
+   RCX HOOK-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E kept JCC,
+   RCX SUSP-HOOK-CELL CELL!,
+   RCX COMPILE-PREFLIGHT-CELL CELL@,  RCX SUSP-PREFLIGHT-CELL CELL!,
+   kept LBL,
+   RAX HOOK-CELL CELL!,  RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
    bad LBL,  S\" set-check: invalid checker xt\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
-\ inert and any other refused; with it empty, the xt must lie in the window.
+\ inert and any other refused; with it empty, as `0 set-check` leaves it, the
+\ xt must lie in the window.
 : SET-PREFLIGHT-BODY ( -- )
    LBL LBL LBL {: invalid:label empty:label done:label :}
    RAX POP,
@@ -2560,8 +2576,8 @@ private
    bad LBL,  S\" set-top-check: invalid top-row hook xt\n" HOOK-BAD-RC STDERR-EXIT,
    done LBL, ;
 
-\ The checker's hooks live in sealed DATA cells, so a direct store from the
-\ row is their only writer once the engine is sealed.
+\ The checker's hooks and the suspended pair live in sealed DATA cells, so a
+\ direct store from the row is their only writer once the engine is sealed.
 : HOOKS, ( -- )
    s" set-check" [: SET-CHECK-BODY ;] PRIM
    s" check@" [: RAX HOOK-CELL CELL@,  RAX PUSH, ;] PRIM

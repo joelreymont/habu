@@ -305,6 +305,10 @@ $390 constant DECL-DECLARED-ROW-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
+$2D80 constant SUSP-HOOK-CELL       \ the hook `0 set-check` parked; mirrors src/habu/layout.f
+$2D88 constant SUSP-PREFLIGHT-CELL  \ the preflight parked with it
+SUSP-HOOK-CELL constant SUSP-HOOK-OFF
+2 cells constant SUSP-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 \ The process-exit vector, at the offset src/habu/layout.f gives it: an xt the
 \ seed calls once, with the cell cleared first, before the exit_group of each
@@ -885,13 +889,14 @@ require data-claims.fs  \ build-time refusal of overlapping DATA cells and bands
 \ GUARD-SPAN reads it twice - once for the hull [BAND-LO, BAND-HI) its bounding
 \ test compares against, once for the per-band interval tests - and PROT-GUARD
 \ reads the same rows for its address tests, so stage0 has one list where it
-\ had two. The zero-length row ends every walk. Stage0 owns five bands; the
-\ native engine's table carries three more, and each side's hull is its own
+\ had two. The zero-length row ends every walk. Stage0 owns six bands; the
+\ native engine's table carries more, and each side's hull is its own
 \ table's min and max rather than a constant written out beside it.
 create BAND-TAB
    FRIEND-ARENA ,    FRIEND-ARENA-LEN ,
    PROT-REG-OFF ,    PROT-REG-LEN ,
    ENGINE-HOOK-OFF , ENGINE-HOOK-LEN ,
+   SUSP-HOOK-OFF ,   SUSP-HOOK-LEN ,
    BODYBUF-OFF ,     BODYBUF-LEN ,
    TXN-STATE-OFF ,   TXN-STATE-LEN ,
    0 ,               0 ,
@@ -2101,12 +2106,23 @@ HB-TARGET-LINUX? [IF]
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 
 : BSETCHECK ( -- )
-   LBL {: done :}
+   LBL LBL LBL LBL {: disarm kept armed done :}
    A G-POP
-   A DATA HOOK-CELL STR,
-   A done CBNZ,
-   A DATA COMPILE-PREFLIGHT-CELL STR,
-   done LBL, ;                                      \ ( xt -- ): install check hook; 0 clears its paired preflight
+   A disarm CBZ,
+      A DATA HOOK-CELL STR,
+      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 armed CBNZ,
+      11 DATA SUSP-HOOK-CELL LDR,  A 11 CMP,  C-NE armed BCOND,
+      11 DATA SUSP-PREFLIGHT-CELL LDR,  11 DATA COMPILE-PREFLIGHT-CELL STR,
+   armed LBL,
+      10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR,
+      done B,
+   disarm LBL,
+      10 DATA HOOK-CELL LDR,  10 kept CBZ,
+      10 DATA SUSP-HOOK-CELL STR,
+      11 DATA COMPILE-PREFLIGHT-CELL LDR,  11 DATA SUSP-PREFLIGHT-CELL STR,
+   kept LBL,
+      A DATA HOOK-CELL STR,  A DATA COMPILE-PREFLIGHT-CELL STR,
+   done LBL, ;   \ ( xt -- ): install check hook; 0 parks the armed hook with its preflight, re-arming that hook resumes both (src/habu/habu1.f BSETCHECK)
 
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: bad invalid empty emit done msg invalid-msg :}
@@ -3845,6 +3861,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ before their first require.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
+   16 DATA SUSP-HOOK-CELL STR,  16 DATA SUSP-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
    \ habu2.f EMIT-HOST-LOAD-PREFIX opens the registry here, between the base
@@ -6458,6 +6475,7 @@ variable CFSK2
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
+   9 DATA SUSP-HOOK-CELL STR,  9 DATA SUSP-PREFLIGHT-CELL STR,
    10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
    11 PROT-BITS-BYTES MOVZ,
    pwclr LBL,  11 pwclrd CBZ,

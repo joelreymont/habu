@@ -12,8 +12,9 @@
 \ declared extent. A band is one row, and the cells laid out inside it are not
 \ rows of their own: FRIEND-ARENA (the latch, CUR..DEF-WL, the TRUSTED and
 \ CREATE signature cells, PKG-*, DEFER-*, SEAL-NDICT), ENGINE-HOOK
-\ (COMPILE-PREFLIGHT), PROT-REG (its tag and bitmap), TXN-STATE (P2-* and
-\ TXN-*) and USE-BAND (the depth, the saved depth and the wids). Two names
+\ (COMPILE-PREFLIGHT), SUSP-HOOK (the suspended hook pair), PROT-REG (its tag
+\ and bitmap), TXN-STATE (P2-* and TXN-*) and USE-BAND (the depth, the saved
+\ depth and the wids). Two names
 \ share a cell on purpose and are one row: S0-CELL is STACK-ABI:BASE-CELL, and
 \ DEF-TKA/DEF-TKL sit in VVAL, live only while the definition name is the
 \ token and the virtual stack is empty (native makes the same trade).
@@ -112,6 +113,7 @@ CELL-CLAIM DOESB-CELL
 CELL-CLAIM TRUSTED-CELL
 CELL-CLAIM PKGRESYNC-CELL
 ENGINE-HOOK-LEN BAND-CLAIM ENGINE-HOOK-OFF
+SUSP-HOOK-LEN BAND-CLAIM SUSP-HOOK-OFF
 $27F8 1 cells CLAIM src:checker.f:CHECKER-REFUSAL-CELL
 $2800 1 cells CLAIM src:include.f:INCLUDE-SRCLOC-PATH-CELL
 $2808 1 cells CLAIM src:include.f:INCLUDE-SRCLOC-PATHLEN-CELL

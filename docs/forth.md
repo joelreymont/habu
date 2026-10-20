@@ -1844,7 +1844,14 @@ sections above.
   a conflicting enum variant throws 7110. A grammar keyword such as
   `policy` and a value-record name already registered as `vr` similarly
   cannot name a family (`STRUCTURE vr` throws 7110).
-- **`0 set-check` also disables compile preflight.** Use a `PRIM: … PRIM;`
+- **`0 set-check` suspends the armed hook with its compile preflight.** It
+  empties both cells; `set-check` of that same hook resumes both, so
+  `check@ 0 set-check … set-check` restores checking whole. Arming any
+  other hook discards the suspension and starts without a preflight until
+  `set-preflight` (or `LOWER-CERT-HOOK:INSTALL`) installs one; an armed
+  checker without one refuses the first source-defined immediate with
+  `hb: compile preflight hook missing` (rc 70). `0 set-check` while already
+  off keeps the suspension, so windows nest. Use a `PRIM: … PRIM;`
   axiom for a genuine missing primitive model so later definitions remain
   checked. A `defer` before `: TRUST` in `src/core/checker.f` consumes one
   pre-trust slot; overflowing `PD-CAP` exits 72 at boot. Place new selectors

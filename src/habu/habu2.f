@@ -1845,6 +1845,7 @@ public
 \ proof and is outside it.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
+   16 DATA SUSP-HOOK-CELL STR,  16 DATA SUSP-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
    EMIT-REQUIRE-BOOT-OPEN-TOKEN
@@ -8915,6 +8916,7 @@ ardone LBL,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
+   9 DATA SUSP-HOOK-CELL STR,  9 DATA SUSP-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
@@ -8938,13 +8940,16 @@ ardone LBL,
    9 ADDRESS-CELLS:BOOT-OFF LIT64, 9 10 ADDRESS-CELLS:BASE-FIELD STR,
    9 ADDRESS-CELLS:BOOT-CAP LIT64, 9 10 ADDRESS-CELLS:CAP-FIELD STR,
    9 0 MOVZ, 9 10 ADDRESS-CELLS:MODE-FIELD STR,
-   \ The four hooks and the compiler-dispatch cell hold execution tokens once something installs
-   \ them, so they are address cells like a deferred word's dispatch cell. They are
+   \ The four hooks, the suspended hook pair and the compiler-dispatch cell hold
+   \ execution tokens once something installs them, so they are address cells like
+   \ a deferred word's dispatch cell. They are
    \ declared here, by name, on the cold path only: a restored image already
    \ carries the declarations the writing run made, and re-declaring is not the
    \ same thing as declaring twice only because the table refuses duplicates.
    HOOK-CELL RELOC-EMIT:MARK-CELL
    COMPILE-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
+   SUSP-HOOK-CELL RELOC-EMIT:MARK-CELL
+   SUSP-PREFLIGHT-CELL RELOC-EMIT:MARK-CELL
    TOP-HOOK-CELL RELOC-EMIT:MARK-CELL
    EXIT-HOOK-CELL RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:PUBLISHED RELOC-EMIT:MARK-CELL

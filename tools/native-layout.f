@@ -30,6 +30,9 @@ create SLOTS
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,   0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
    NATIVE-HOST-CELLS:FACTS ,            0 ,
+   \ The capture host's baked layout has no names for the suspended hook pair.
+   $2D80 ,                             0 ,   \ SUSP-HOOK-CELL
+   $2D88 ,                             0 ,   \ SUSP-PREFLIGHT-CELL
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

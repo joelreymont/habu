@@ -34,7 +34,8 @@
 \ - hb-x64-kernel-genio sends output through a device row whose routine
 \   brackets the span in [ ], and past it on each path that writes fd 1;
 \ - hb-x64-kernel-hooks installs, reads and clears the three hooks at the
-\   code window's edges and exits 0;
+\   code window's edges, suspends and resumes the checker hook with its
+\   preflight, and exits 0;
 \ - hb-x64-kernel-hooks-check, -top, -replaced and -empty each end in one
 \   hook row's fd-2 refusal and exit 70.
 \
@@ -257,7 +258,10 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 
 \ The code window is [DBASE, CP), and the boot's CP is DICT-SIZE past DBASE.
 \ The preflight hook installs once; the same xt again is inert, and
-\ `0 set-check` empties it so another installs.
+\ `0 set-check` suspends the armed hook with its preflight and empties both,
+\ so another preflight installs. `0 set-check` while off keeps the parked
+\ pair (the inner disarm of a nested window); re-arming the parked hook
+\ resumes its preflight, and any other hook starts without one.
 : BUILD-HOOKS ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    0 CHECK-HOOK!
@@ -270,6 +274,12 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    128 PREFLIGHT!
    0 X64HARNESS:PUSH,  s" set-top-check" ROW
    s" top-check@" ROW  0 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:PUSH,  s" set-check" ROW
+   0 CHECK-HOOK!
+   COMPILE-PREFLIGHT-CELL X64HARNESS:PUSH-DATA-CELL,  64 X64HARNESS:EXPECT-POP-REGION,
+   0 X64HARNESS:PUSH,  s" set-check" ROW
+   DICT-SIZE 1- CHECK-HOOK!
+   0 COMPILE-PREFLIGHT-CELL X64HARNESS:EXPECT-CELL,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 

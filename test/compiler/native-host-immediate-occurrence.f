@@ -37,9 +37,9 @@ s" NATIVE-HOST-IMMEDIATE:RETIRED" 0 parse-imm
 T-RESET
 s" immediate preserves occurrence across preflight" T-LABEL
 PRIOR!
-0 set-check PRIOR-HOOK @ set-check ' RETIRE set-preflight
+0 set-check ' RETIRE set-preflight PRIOR-HOOK @ set-check
 ' TRIGGER catch CODE !
-0 set-check PRIOR-HOOK @ set-check PRIOR @ set-preflight
+0 set-check PRIOR @ set-preflight PRIOR-HOOK @ set-check
 CODE @ DEF-OCC:E-STALE T=
 RAN @ 0 T=
 T-REPORT
