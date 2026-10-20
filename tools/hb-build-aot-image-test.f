@@ -9,8 +9,6 @@ require src/lib/process-cwd.f
 
 package HB-BUILD-CLI
 
-create HBT-MAKER-IMAGE FS-PATH-CAP allot
-variable HBT-MAKER-IMAGE-U
 create HBT-MAKER-HB FS-PATH-CAP allot
 create HBT-MAKER-TOOL FS-PATH-CAP allot
 create HBT-MAKER-SHADOW FS-PATH-CAP allot
@@ -21,9 +19,6 @@ variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
 variable HBT-MAKER-OLD-U
 variable HBT-MAKER-DIRECT-OUT-U
-
-: HBT-MAKER-IMAGE$ ( -- ptr u8 n )
-   HBT-MAKER-IMAGE HBT-MAKER-IMAGE-U @ ;
 
 : HBT-MAKER-HB$ ( -- ptr u8 n )
    HBT-MAKER-HB HBT-MAKER-HB-U @ ;
@@ -62,26 +57,6 @@ variable HBT-MAKER-DIRECT-OUT-U
       {: outn:n errn:n rc:n :}
    rc 0<> if HBB-OUT-BUF outn type HBB-ERR-BUF errn type rc throw then
    outn 0<> errn 0<> or if E-BUILD-PATH throw then
-   s" hb-aot-got" BUILD-FIXPOINT:BF-A$ EXECUTABLE? 0= if E-BUILD-PATH throw then ;
-
-: HBT-MAKER-COUNT-CHILD ( -- )
-   HBT-MAKER-CHILD-SETUP
-   HBB-SELECT-MAKER
-   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @
-      HBT-MAKER-IMAGE HBT-MAKER-IMAGE-U HBT-COPY!
-   HBB-CMD-RESET
-   s" --" >LEN PROC-ARGV+
-   HBB-SRC$ >LEN PROC-ARGV+
-   s" 0" >LEN PROC-ARGV+
-   s" 1" >LEN PROC-ARGV+
-   HBT-MAKER-IMAGE$ >LEN
-   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" >LEN
-   HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-MAKER-DEFAULT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-      HBT-MAKER-CAPTURE>N {: outn:n errn:n rc:n :}
-   rc 0<> if HBB-OUT-BUF outn type HBB-ERR-BUF errn type rc throw then
-   errn 0<> if E-BUILD-PATH throw then
-   HBB-OUT-BUF outn s" definition hits" CONTAINS? 0= if E-BUILD-PATH throw then
    s" hb-aot-got" BUILD-FIXPOINT:BF-A$ EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
 : HBT-MAKER-CHILD? ( -- bool )
@@ -165,8 +140,7 @@ variable HBT-MAKER-DIRECT-OUT-U
       HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
       RUN-CAPTURE HBT-CAPTURE>N {: runn:n rune:n runrc:n :}
    runrc 0 T= rune 0 T=
-   HBT-RUN-OUT runn s" rooted" CONTAINS? TTRUE
-   s" counts" HBT-MAKER-ROOTED-ON ;
+   HBT-RUN-OUT runn s" rooted" CONTAINS? TTRUE ;
 
 \ The maker producer loads process support before the application, then the
 \ linker loads its own process support after the application. Temporary support
@@ -237,12 +211,12 @@ variable HBT-MAKER-DIRECT-OUT-U
 : HBT-MAKER-USER-BAND ( -- )
    HBT-AOT-SRC S\" require src/lib/task.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   true HBT-MAKER-REPORT-BUILD
+   false HBT-MAKER-REPORT-BUILD
    S\" user-ok\n" HBT-MAKER-USER-RUN
    S\" user-ok\n" HBT-MAKER-DIRECT-RUN
    HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
+   true HBT-MAKER-REPORT-BUILD
    S\" zip-ok\n" HBT-MAKER-USER-RUN
    S\" zip-ok\n" HBT-MAKER-DIRECT-RUN ;
 
@@ -252,17 +226,13 @@ public
    HBT-MAKER-CHILD? if HBT-MAKER-PATH-CHILD exit then
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" run" STR= if HBT-MAKER-RUN-CHILD exit then
-      0 SCRIPT-ARGV$ s" counts" STR= if HBT-MAKER-COUNT-CHILD exit then
    then
    T-RESET
    s" " s" " HBT-KEYED!
    HBT-PREPARE
    BUILD-FIXPOINT:BF-ENGINE-RESET
-   false HBT-MAKER-REPORT-BUILD
-   HBT-MAKER-CACHE-PATH
-   HBT-AOT-OUT EXECUTABLE? TTRUE
-   HBT-RUN-AOT
    HBT-MAKER-USER-BAND
+   HBT-MAKER-CACHE-PATH
    HBT-MAKER-ROOT-EDIT
    HBT-MAKER-ROOTED-BUILD
    CLEANUP-RUN
