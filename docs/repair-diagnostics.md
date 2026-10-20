@@ -630,7 +630,7 @@ process.
 | `verified` | Nothing in the closure or the subject is refused. | 0 |
 | `refused` | The subject, a file of its closure, or the closure itself is refused. | 70 |
 | `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
-| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`), so it cannot be verified there. | 69 |
+| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`, `tools/check-verify-child-lib.f`), so it cannot be verified there. | 69 |
 | `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
 | `deferred` | Nothing is refused, but the source pre-pass left a stretch of top-level source or a definition in the closure or the subject to the run: a `W-CHECK-DEFERRED` packet locates each, and its tokens are not verified. | 0 |
 

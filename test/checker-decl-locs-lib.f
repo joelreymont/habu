@@ -65,7 +65,7 @@ public
    na nu a u VISIT AT-START AT-END queries PLACED-REPLAY ;
 
 \ Run XT in a neutral checker scope, the rollback frame a verifier child checks
-\ its whole composition in (tools/check-verify-child.f SCOPED): its rewind
+\ its whole composition in (tools/check-verify-child-lib.f SCOPED): its rewind
 \ takes back every row XT's checks retained.
 : IN-NEUTRAL ( [ -- ] -- )
    CHECKER-SCOPE-START-NEUTRAL

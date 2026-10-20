@@ -46,6 +46,7 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
    s" src/habu" PROJECT-PATH MAKE-DIRS
    s" src/core/util.f" PROJECT-PATH s" " WRITE-ALL
    s" tools/lsp-core.f" POISON
+   s" tools/check-verify-child-lib.f" POISON
    s" src/habu/verify-source.f" POISON
    s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" WRITE-ALL
    s" subject.f" PROJECT-PATH {: p:ptr pu:n :}

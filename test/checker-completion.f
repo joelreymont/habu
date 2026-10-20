@@ -843,7 +843,7 @@ variable REW-ROW
 
 \ A replay's names bind only while a scope holds the checker's overlay open, so
 \ the fixture and every case run in one neutral checker scope, as a verifier
-\ child runs its composition (tools/check-verify-child.f SCOPED).
+\ child runs its composition (tools/check-verify-child-lib.f SCOPED).
 : MAIN ( -- )
    T-RESET
    [: CASES ;] IN-NEUTRAL

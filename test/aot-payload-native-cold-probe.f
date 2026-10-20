@@ -1,4 +1,4 @@
-\ The verifier dependency is loaded exactly as check-verify-child.f loads it.
+\ The verifier dependency is loaded exactly as check-verify-child-lib.f loads it.
 \ This fresh process witnesses its symbol state; the real child tests completion.
 tick-order@
 package PAYLOAD-NATIVE-COLD-PROBE

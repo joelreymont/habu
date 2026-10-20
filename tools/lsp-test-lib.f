@@ -2350,8 +2350,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    A-PATH s" not checked: exit 76" SAID
    A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
 
-\ The verifier's own image holds tools/check-verify-child.f.
-: HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child.f" IN-TREE ;
+\ The verifier's own image holds tools/check-verify-child-lib.f.
+: HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child-lib.f" IN-TREE ;
 
 : HELD-TURNS ( -- )
    SESSION-INITIALIZE

@@ -38,10 +38,11 @@ public
 \ that loads the file and FAULT-TARGET$ naming the file as it was resolved.
 7201 constant E-SOURCE-READ
 
-\ Captured by the fresh child before it loads verifier tooling. A direct
-\ caller that does not supply an entry observation retains checking order.
+\ Captured by the fresh child before it loads verifier tooling, and survives
+\ the saved verifier image. A direct caller that does not supply an entry
+\ observation retains checking order.
 variable ENTRY-TICK-ORDER
-PTR-VARIABLE ENTRY-TICK-OWNER
+PERSISTED-PTR-VARIABLE ENTRY-TICK-OWNER
 
 : ENTRY-TICK-ORDER! ( n ptr u8 -- )
    ENTRY-TICK-OWNER !  ENTRY-TICK-ORDER ! ;
