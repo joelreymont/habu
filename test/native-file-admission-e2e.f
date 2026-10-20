@@ -40,6 +40,11 @@ package NATIVE-FILE-ADMISSION-TEST
    s" app.f" S\" require lifecycle.f\n: MAIN ( -- ) ADMIT-LIFE:SAFE? if s\" life-ok\" type cr then ;\n" PUT
    s" lifecycle.f"
       S\" require src/lib/memory.f\nrequire src/lib/image-lifecycle.f\npackage ADMIT-LIFE\nPERSISTED-PTR-VARIABLE PBUF\n: CLEAN ( -- ) PBUF @ BYTE-VIEW 65536 munmap 0<> if E-MEM-UNMAP throw then NULL-PTR PBUF ! ;\n: ARM ( -- ) MEM-ALLOC-64K {: p:ptr bytes:n :} p PBUF ! bytes drop ['] CLEAN IMAGE-LIFECYCLE:REGISTER ;\nARM\npublic\n: SAFE? ( -- bool ) PBUF @ NULL-PTR = ;\n;package\ns\" life-source-ran\" type cr\n" PUT ;
+: STRICT-STATE ( -- )
+   s" app.f" S\" require scalars.f\nrequire defer.f\n: MAIN ( -- ) SHORT-ID @ LONG-ID @ + . ADMIT-DEFER:VALUE@ . ;\n" PUT
+   s" scalars.f" S\" variable SHORT-ID variable LONG-ID\n2 SHORT-ID ! 3 LONG-ID !\n" PUT
+   s" defer.f"
+      S\" package ADMIT-DEFER\nSTRUCTURE item DERIVE addr FIELD value n ;STRUCTURE\nDEFER-LAYOUT-BUFFER ROWS item\n2 ROWS-BIND\n456 ITEM-MAKE 0 ROWS !\n4 ROWS-GROW\npublic\n: VALUE@ ( -- n ) 0 ROWS ITEM-VALUE @ ;\n;package\ns\" strict-source-ran\" type cr\n" PUT ;
 : RUN-IMAGE ( -- n )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING s" hb-aot-got" AT s" " CAPTURE ;
 : SAID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -119,6 +124,18 @@ public
    OUT$ s" life-source-ran" CONTAINS? TTRUE
    RUN-IMAGE 0 T=
    OUT$ s" life-ok" CONTAINS? TTRUE
+   s" adjacent scalars and deferred layout growth survive warm reuse" T-LABEL
+   STRICT-STATE
+   BUILD 0 T=
+   OUT$ s" strict-source-ran" CONTAINS? TTRUE
+   RUN-IMAGE 0 T=
+   OUT$ S\" 5\n456\n" CONTAINS? TTRUE
+   BUILD 0 T=
+   OUT$ s" strict-source-ran" CONTAINS? TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   RUN-IMAGE 0 T=
+   OUT$ S\" 5\n456\n" CONTAINS? TTRUE
    s" adjacent scalar variables survive FILE replay" T-LABEL
    STRICT-SCALARS
    EXPORT 0 T=

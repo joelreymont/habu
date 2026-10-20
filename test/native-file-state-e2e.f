@@ -1,5 +1,6 @@
-\ DATA, prior writes, typed cells, literals, reopened packages and created
-\ words survive cold compilation and warm definition reuse in small applications.
+\ DATA, prior writes, typed cells, literals, reopened packages, created words,
+\ TASK slots and foreign functions survive cold compilation and warm definition
+\ reuse in small applications.
 \ bin/hb --load test/native-file-state-e2e.f
 
 require src/lib/test.f
@@ -80,6 +81,12 @@ variable CODE-B-O  variable CODE-B-U
    AT s" " CAPTURE SUCCESS
    OUT$ S\" 111\n222\n" CONTAINS? TTRUE ;
 
+: GROWN-PREFIX ( -- )
+   s" prefix.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-STATE-PREFIX\npublic\nTASK:#USER CELL TASK:+USER PREFIX-SLOT drop\nTASK:#USER CELL TASK:+USER PREFIX-SLOT-2 drop\n;package\n" PUT
+   s" app.f"
+   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\n: MAIN ( -- ) -1 FILE-TASK-STATE-PREFIX:PREFIX-SLOT-2 ! FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . ;\n" PUT ;
+
 : TASK-STATE-CASE ( -- )
    s" a consumer-only edit reuses the leaf TASK reservation" T-LABEL
    s" native-file-task-state" TREE
@@ -92,7 +99,43 @@ variable CODE-B-O  variable CODE-B-U
    s" task-warm-hb" BUILD SUCCESS
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
-   s" task-warm-hb" RUN-TASK-STATE ;
+   s" task-warm-hb" RUN-TASK-STATE
+   s" a grown prefix reservation moves the cached leaf slot" T-LABEL
+   GROWN-PREFIX
+   s" task-grown-hb" BUILD SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
+   s" task-grown-hb" RUN-TASK-STATE ;
+
+: FFI-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" child.f"
+   S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: BEFORE getpid ( -- i32 ) ;FUNCTION\n" PUT
+   s" unit.f"
+   S\" require child.f\npackage FILE-FFI\npublic\n: PID-OK ( -- n ) BEFORE 0 > if 1 else 0 then ;\n;package\ns\" ffi-unit-source-ran\" type cr\n" PUT
+   s" downstream.f"
+   S\" require unit.f\npackage FILE-FFI-CLIENT\npublic\n: RESULT ( -- n ) FILE-FFI:PID-OK BEFORE 0 > if 1 else 0 then + ;\n;package\n" PUT
+   s" app.f" S\" require downstream.f\n: MAIN ( -- ) FILE-FFI-CLIENT:RESULT . ;\n" PUT ;
+
+: RUN-FFI ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE SUCCESS
+   OUT$ S\" 2\n" CONTAINS? TTRUE ;
+
+: FFI-CASE ( -- )
+   s" cached definitions keep calling foreign functions from required files" T-LABEL
+   s" native-file-ffi" TREE
+   FFI-FILES
+   s" ffi-cold-hb" BUILD SUCCESS
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ s" ffi-unit-source-ran" CONTAINS? TTRUE
+   s" ffi-cold-hb" RUN-FFI
+   s" ffi-warm-hb" BUILD SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" ffi-unit-source-ran" CONTAINS? TTRUE
+   s" ffi-warm-hb" RUN-FFI ;
 
 : PAIR-PATHS ( -- )
    s" cold-hb" AT {: a:ptr u:n :}
@@ -151,6 +194,7 @@ public
    s" fresh-hb" AT RUN-STATE
    REJECT-TYPED-CLIENT
    TASK-STATE-CASE
+   FFI-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

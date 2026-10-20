@@ -41,7 +41,11 @@ package NATIVE-FILE-RETIRED-TEST
    s" failed.f"
       S\" require src/habu/xref.f\npackage FILE-FAILED-OWNER\npublic\n: TRACK ( n -- ) drop ;\n;package\n' FILE-FAILED-OWNER:TRACK CODE-RECLAIM:INVALIDATE!\n7277 throw\n" PUT
    s" failed-app.f"
-      S\" require failed.f\n: MAIN ( -- ) ;\n" PUT ;
+      S\" require failed.f\n: MAIN ( -- ) ;\n" PUT
+   s" failed-origin.f"
+      S\" require src/habu/xref.f\npackage FAILED-ORIGIN\npublic\nvariable OLD-XT\n: VANISH ( -- n ) 9 ;\ns\" FAILED-ORIGIN:VANISH\" XREF-FIND XREF-START OLD-XT !\ns\" FAILED-ORIGIN:VANISH\" FORGET-DEFS-FROM\n: REUSED ( -- n ) 4 ;\n: CHECK-REUSE ( -- ) s\" FAILED-ORIGIN:REUSED\" XREF-FIND XREF-START OLD-XT @ <> if 70 throw then 0 OLD-XT ! ;\nCHECK-REUSE\n: MAKE ( n -- ) create , does> ( -- ptr n ) ;\n: CHECK-FAILURE ( -- ) [: s\" : FAILED ( n -- ) MAKE does> ( -- ptr n ) [: 1 ;] drop ;\" evaluate-closed ;] catch E-NELAB-QUOT <> if 70 throw then ;\nCHECK-FAILURE\n: AFTER ( -- n ) 5 ;\n;package\ns\" failed-origin-ran\" type cr\n" PUT
+   s" failed-origin-app.f"
+      S\" require failed-origin.f\n: MAIN ( -- ) FAILED-ORIGIN:REUSED . FAILED-ORIGIN:AFTER . ;\n" PUT ;
 
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n :}
@@ -104,6 +108,15 @@ public
    s" failed-app.f" s" failed-hb" BUILD 0<> TTRUE
    ERR$ s" 7277" CONTAINS? TTRUE
    ERR$ s" 7243" CONTAINS? 0= TTRUE
+   s" a reused slot and a failed definition keep their own origins on warm import" T-LABEL
+   s" failed-origin-app.f" s" failed-origin-cold-hb" BUILD SUCCESS
+   OUT$ s" failed-origin-ran" CONTAINS? TTRUE
+   s" failed-origin-app.f" s" failed-origin-warm-hb" BUILD SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" failed-origin-ran" CONTAINS? TTRUE
+   s" failed-origin-cold-hb" S\" 4\n5\n" RUN-PRODUCT
+   s" failed-origin-warm-hb" S\" 4\n5\n" RUN-PRODUCT
    T-REPORT
    s" native file retired artifacts: " type ROOT$ type cr ;
 ;package
