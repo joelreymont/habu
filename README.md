@@ -91,3 +91,13 @@ documents native scoped-root loading against Habu's shared libraries.
 - [`docs/stdlib.md`](docs/stdlib.md) — standard library reference.
 - [`docs/gate.md`](docs/gate.md) — the native test suite and what it demands of a test file.
 - [`docs/font.md`](docs/font.md) — native HarfBuzz shaping and SVG outline runs.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option. The Unicode data in
+[`data/unicode/`](data/unicode/16.0.0/LICENSE.txt) keeps its own licence.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in Habu by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
