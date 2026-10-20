@@ -268,7 +268,7 @@ GRAPH-ROUNDTRIP:DECLARE-WIDE
 : PAYLOAD-ZERO-ARG-USE ( payload-option<payload-empty> -- payload-option<payload-empty> ) ;
 tier@ check@ 0 set-check 1 TIER:SELECT
 : PAYLOAD-ABI ( n -- n ) ;
-LOWER-CERT-HOOK:INSTALL set-check TIER:SELECT
+set-check TIER:SELECT
 \ Outside GRAPH-ROUNDTRIP, whose wordlist predates the window: the capture takes
 \ a record only from the global wordlist or one the window created
 \ (aot-capture.f ACAP-WID-IN?).

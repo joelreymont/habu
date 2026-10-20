@@ -116,10 +116,13 @@ create LF-BYTE 10 c,
    LF-BYTE 1 APPEND-FILE ;
 
 \ These fixtures live under a temporary directory, which is never a registry
-\ hook site, so they re-arm the checker with `check@ set-check` (reinstall the
-\ live hook - the shape src/core/top-row.f and test/engine-suite.f use). A
-\ `' NAME set-check` install here would be an unaudited hook by construction and
-\ is exercised on purpose by NAMEONLY$ below.
+\ hook site, so GOOD$ arms the checker without naming a hook: it re-arms with
+\ `LOWER-CERT-HOOK:INSTALL` (after which `check@ set-check` reinstalls the live
+\ hook, a no-op - the shape test/engine-suite.f uses), and it resumes a
+\ suspended hook with `check@ 0 set-check ... set-check`, which re-arms the hook
+\ saved on the stack together with its preflight. A `' NAME set-check` install
+\ here is an unaudited hook by construction and is exercised on purpose by
+\ NOPREF$ and NAMEONLY$ below.
 : GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" 0 set-check" SB-APPEND LF
@@ -128,6 +131,10 @@ create LF-BYTE 10 c,
    s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
    s" check@ set-check" SB-APPEND LF
    s" : GOOD ( n -- n ) dup ;" SB-APPEND LF
+   s" check@ 0 set-check" SB-APPEND LF
+   s" variable RESUME-RAW" SB-APPEND LF
+   s" set-check" SB-APPEND LF
+   s" : RESUMED ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
 : NOPREF$ ( -- ptr u8 n )
@@ -152,6 +159,9 @@ create LF-BYTE 10 c,
    s" :noname ( -- ) LOWER-CERT-HOOK:INSTALL ; drop" SB-APPEND LF
    s" check@ set-check" SB-APPEND LF
    s" : ANON-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" ' LINT-OTHER-HOOK set-check" SB-APPEND LF
+   s" : TICK-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
    s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
    s" TRUSTED: NEVER-RUN ( -- ) 0 set-check ;" SB-APPEND LF
    s" : BODY-DISABLE-NO-EFFECT ( n -- n ) dup ;" SB-APPEND LF
@@ -391,11 +401,14 @@ create LF-BYTE 10 c,
    RUN-CORE-NOPREF 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    OUT outu s" MISSING-PREFLIGHT-REARM" CONTAINS? TTRUE
+   \ The first `check@ set-check` (line 3) runs while off and changes nothing.
+   OUT outu s" no-preflight.f:3:8:" CONTAINS? TFALSE
    OUT outu s" SHOULD-STAY-UNCHECKED" CONTAINS? TTRUE
    OUT outu s" KERNEL-STAY-UNCHECKED" CONTAINS? TTRUE
    OUT outu s" CHECKED-STAY-UNCHECKED" CONTAINS? TTRUE
    OUT outu s" PLUS-STAY-UNCHECKED" CONTAINS? TTRUE
    OUT outu s" ANON-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" TICK-STAY-UNCHECKED" CONTAINS? TTRUE
    OUT outu s" BODY-DISABLE-NO-EFFECT" CONTAINS? TFALSE ;
 
 : TEST-CROSS ( -- )

@@ -258,12 +258,6 @@ private
    UB-TOK$ SOURCE:NORMAL-STRING-OPENER? if UB-SKIP-STRING then then
    UB-TRUE ;
 
-: UB-SET-CHECK-OFF? ( -- bool )
-   s" set-check" UB-TOK=CI s" 0" UB-PREV=CI and ;
-
-: UB-SET-CHECK-ON? ( -- bool )
-   s" set-check" UB-TOK=CI s" 0" UB-PREV=CI UB-NOT and ;
-
 : UB-PREFLIGHT-INSTALL? ( -- bool )
    s" LOWER-CERT-HOOK:INSTALL" UB-TOK=CI ;
 
@@ -440,9 +434,23 @@ private
    UB-HOOK-ALLOWED? if exit then
    UB-REPORT-ROGUE-HOOK ;
 
-: UB-HANDLE-CHECK-ON ( -- )
-   UB-SET-CHECK-ON? UB-NOT if exit then
-   UB-CHECK-OFF @ if UB-REPORT-PREFLIGHT then ;
+\ A top-level `set-check`, by the tokens before it, under the rule docs/forth.md
+\ states as "`0 set-check` suspends the armed hook with its compile preflight":
+\ `0 set-check` suspends checking. `check@ set-check` reinstalls the live hook,
+\ which is 0 while suspended, so it changes nothing. `' NAME set-check` while
+\ suspended is reported: the engine arms NAME without a preflight unless NAME
+\ is the parked hook, which a token scan cannot tell, so the scan keeps its
+\ off state there. Any other operand is the hook saved from the stack, as in
+\ `check@ 0 set-check ... set-check`, and resumes the hook with its preflight.
+: UB-HANDLE-SET-CHECK ( -- )
+   s" set-check" UB-TOK=CI UB-NOT if exit then
+   s" 0" UB-PREV=CI if UB-TRUE UB-CHECK-OFF! exit then
+   s" check@" UB-PREV=CI if exit then
+   UB-TICK-PREV2? if
+      UB-CHECK-OFF @ if UB-REPORT-PREFLIGHT then
+      exit
+   then
+   UB-FALSE UB-CHECK-OFF! ;
 
 : UB-HANDLE-TOP-INSTALL ( -- )
    UB-SET-TOP-CHECK-INSTALL? UB-NOT if exit then
@@ -505,13 +513,12 @@ private
       UB-STRICT-BOUNDARY @ if
          UB-CHECKER-MUTATION? UB-TRUSTED @ UB-NOT and if UB-REPORT-MUTATION then
       then
-      UB-SET-CHECK-OFF? UB-TOP? and if UB-TRUE UB-CHECK-OFF! then
       UB-DEF-OPEN? if
          UB-COLON? if UB-HANDLE-COLON then
          UB-TRUE UB-IN-DEF !
       then
       UB-PREFLIGHT-INSTALL? UB-TOP? and if UB-FALSE UB-CHECK-OFF! then
-      UB-TOP? if UB-HANDLE-CHECK-ON then
+      UB-TOP? if UB-HANDLE-SET-CHECK then
       UB-HANDLE-INSTALL
       UB-HANDLE-TOP-INSTALL
       UB-SEMI? if
