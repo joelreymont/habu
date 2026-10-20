@@ -81,6 +81,12 @@ SUITE native-gate-aot-positive-preseed
    test/gate-aot-positive-preseed.f
 ;SUITE
 
+\ This long row waits for the whitebox image. Queue it early so it runs
+\ beside other rows after that image settles, rather than alone at the tail.
+SUITE aot-payload-graph
+   test/aot-payload-graph.f
+;SUITE
+
 \ The fixpoint fixtures reuse the suite's whitebox compiler image and the
 \ fixture writer and cold host. This row waits for those images to settle.
 \ The stripped-entry row waits for the saved AOT builder image.
@@ -2211,10 +2217,6 @@ SUITE aot-cell-values
 
 SUITE aot-registry-identity
    test/aot-registry-identity.f
-;SUITE
-
-SUITE aot-payload-graph
-   test/aot-payload-graph.f
 ;SUITE
 
 SUITE checker-graph-domains
