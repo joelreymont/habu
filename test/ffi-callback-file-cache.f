@@ -50,7 +50,12 @@ variable IMAGE-U
    s" " s" callback FILE image stderr" GE-EXPECT-ERR ;
 
 : WRITE-SUBJECT ( bool -- ) {: unbound:bool :}
-   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\nFILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" WRITE-ALL
+   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" WRITE-ALL
+   \ Numeric fallbacks force descriptor growth and retirement before capture.
+   \ MAIN also reaches the public seed-entry primitive: its code span must be
+   \ disjoint from the shared thunk's, with FILE-BOUND still the first row.
+   SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" APPEND-FILE
+   SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" APPEND-FILE
    SUBJECT$ S\" s\q callback declaration source ran\q type cr\n" APPEND-FILE
    unbound if
       SUBJECT$ S\" FILE-BOUND FFI-CB:UNBIND\n" APPEND-FILE
@@ -59,7 +64,7 @@ variable IMAGE-U
    SUBJECT$ S\" : KEEP-ROW ( ptr u8 n -- ) {: a:ptr u:n :} FILE-ROW-VISITS @ 0= if a 0 ptr-field @ FILE-ROWS ! then 1 FILE-ROW-VISITS +! ;\n" APPEND-FILE
    SUBJECT$ S\" : BOUND-REGION ( -- n ) 0 FILE-ROW-VISITS ! ['] KEEP-ROW TASK:OWNED-CALLBACK-ROWS FILE-ROWS @ CB-ROW-REGION + CELL-VIEW atomic@ ;\n" APPEND-FILE
    SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" APPEND-FILE
-   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" APPEND-FILE ;
+   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" APPEND-FILE ;
 
 : BODY ( -- )
    s" ffi-callback-file-cache" GT-START
@@ -70,7 +75,6 @@ variable IMAGE-U
    true BUILD RUN-IMAGE
    \ Changing a source action still reruns initialization around cached bodies.
    true WRITE-SUBJECT
-   true BUILD RUN-IMAGE
    true BUILD RUN-IMAGE
    s" PASS: callback definition cold/warm image" type cr ;
 

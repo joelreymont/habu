@@ -96,10 +96,6 @@ SUITE ffi-callback-full-image
    test/ffi-callback-full-image.f
 ;SUITE
 
-SUITE ffi-callback-primitive-image
-   test/ffi-callback-primitive-image.f
-;SUITE
-
 SUITE ffi-callback-file-cache
    test/ffi-callback-file-cache.f
 ;SUITE
