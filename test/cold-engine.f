@@ -1,4 +1,5 @@
-\ cold-engine.f - the cold fixture engine, emitted once per tree and shared.
+\ cold-engine.f - the cold fixture engine, emitted once per gate run
+\ (standalone, in the user's cache) and shared.
 \
 \ Every partial-capture fixture needs the empty cold host that
 \ test/native-fixture-write.f emits from one output argument. That emission is a

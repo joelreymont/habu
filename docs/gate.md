@@ -166,8 +166,14 @@ child's environment itself — a value other than the pool process's own, which
 `PROC-ENV-INHERIT-MISSING` copies — is the caller's scratch to own and reap:
 the pool leaves the row and gives that slot no directory.
 
-A keyed image's build (below) works in a directory of the build cache instead,
-beside the keyed path, so its publish is one rename within the cache
+Keyed images live in the build cache (`src/lib/build-cache.f`), and under the
+gate that cache is the run's own: every row and build row gets
+`HABU_BUILD_CACHE=<gate root>/build-cache` (`test/gate-stdlib-lib.f`
+`SUITE-ENV`), so a keyed image is built once per gate run under the gate root
+and goes with it, and a gate run as a row of another gate builds in its own
+cache. A row run on its own uses the user's cache. A keyed image's build
+(below) works in a directory of the build cache instead of `HB_TMP`, beside
+the keyed path, so its publish is one rename within the cache
 (`BUILD-CACHE:WORK-OPEN`). The build holds that directory by a lock on it,
 which the kernel drops only once the build and every child that inherited the
 lock have exited, and before it makes its own it removes every such directory
@@ -281,7 +287,10 @@ at its deadline.
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
 - The gate settles nine image families, each once per run in a pool row of its
-  own started beside the first rows (`test/gate-images.f`). The compiler bundle
+  own started beside the first rows (`test/gate-images.f`). The keyed families
+  (every one but the compiler bundle) land in the run's build cache under the
+  gate root; a row run on its own settles them in the user's cache. The
+  compiler bundle
   (`test/compiler-images.f`; `compiler-images-build`) uses the real
   `test/compiler-images-build.f` entry and writes its rooted, ordinary and
   whitebox outputs under the gate root. It starts before the independent early

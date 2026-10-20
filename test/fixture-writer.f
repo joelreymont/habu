@@ -1,5 +1,5 @@
 \ fixture-writer.f - the native fixture writer as a keyed application image,
-\ built once per tree and run in place.
+\ built once per gate run (standalone, in the user's cache) and run in place.
 \
 \ Every partial-capture fixture runs test/native-fixture-write.f: once to emit
 \ the empty cold host test/cold-engine.f shares, and once for each partial image
