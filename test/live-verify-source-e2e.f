@@ -10,6 +10,10 @@ require src/habu/verify-source.f
 require src/lib/verify-diagnostics.f
 require src/lib/task.f
 require src/lib/ffi-abi.f
+require src/lib/process-fork.f
+require tools/check-verify-core.f
+require src/lib/json-read.f
+require src/lib/jsonl.f
 
 package LIVE-VERIFY-SOURCE-TEST
 
@@ -22,6 +26,11 @@ create NESTED FS-PATH-CAP allot variable NESTED-U
 create NESTED-DESIGN FS-PATH-CAP allot variable NESTED-DESIGN-U
 create DUP-DEP FS-PATH-CAP allot variable DUP-DEP-U
 create DUP-MADE FS-PATH-CAP allot variable DUP-MADE-U
+create STREAM FS-PATH-CAP allot variable STREAM-U
+create STREAM-PARENT FS-PATH-CAP allot variable STREAM-PARENT-U
+
+PROCESS-SYMBOLS
+FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
 
 public
 variable ACTUAL
@@ -40,6 +49,8 @@ private
 : NESTED-DESIGN$ ( -- ptr u8 n ) NESTED-DESIGN NESTED-DESIGN-U @ ;
 : DUP-DEP$ ( -- ptr u8 n ) DUP-DEP DUP-DEP-U @ ;
 : DUP-MADE$ ( -- ptr u8 n ) DUP-MADE DUP-MADE-U @ ;
+: STREAM$ ( -- ptr u8 n ) STREAM STREAM-U @ ;
+: STREAM-PARENT$ ( -- ptr u8 n ) STREAM-PARENT STREAM-PARENT-U @ ;
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n dst:ptr len:ptr :}
@@ -81,6 +92,136 @@ private
    DUP-DEP$ S\" \\ dep\n: ZQX-B ( -- n ) 1 ;\n: ZQX-B ( -- n ) 2 ;\n" WRITE-ALL
    ROOT$ s" dup-made.f" SOURCE-ROOT:JOIN DUP-MADE DUP-MADE-U COPY!
    DUP-MADE$ S\" DYNAMIC-BUFFER LV-GD u8\n" WRITE-ALL ;
+
+\ Failure cases: quiet acquisition refuses a readable FIFO; it reuses a prior
+\ regular file's stamp for the stream; the incremental verifier accepts disk
+\ bytes without a stamp. A writer process is necessary because opening a FIFO
+\ waits for its reader. Always kill/reap it when an old reader refuses to open.
+: STREAM-SRC$ ( -- ptr u8 n )
+   S\" package LV-STREAM public : VALUE ( -- n ) 41 ; ;package\n" ;
+
+: STREAM-WRITER ( -- )
+   STREAM$ FS-PATHZ FS-O-WRONLY 384 open {: fd:n :}
+   fd 0 < if s" FIFO writer open failed" 74 die then
+   STREAM-SRC$ {: a:ptr u:n :}
+   fd a u write {: wrote:n :}
+   fd close
+   wrote u <> if s" FIFO writer write failed" 74 die then
+   s" " 0 die ;
+
+: WITH-WRITER ( [ -- ] -- )
+   {: q :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if STREAM-WRITER then
+   q catch {: rc:n :}
+   pid SIGKILL PROC-KILL-RAW drop
+   pid PROC-WAIT-STATUS drop
+   rc 0<> if rc throw then ;
+
+variable STREAM-SEEN
+variable REGULAR-SEEN
+
+: STREAM-FILE ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n src:ptr srcu:n :}
+   VERIFY:FILE$ path pathu T$=
+   path pathu STREAM$ STR= if
+      src srcu STREAM-SRC$ T$=
+      path pathu VERIFY:QUIET-READ-META {: valid:bool :} 2drop 2drop drop
+      valid TFALSE
+      1 STREAM-SEEN +!
+   else
+      path pathu DESIGN$ STR= if exit then
+      path pathu VERIFY:QUIET-READ-META {: valid:bool :} 2drop 2drop
+      srcu T= valid TTRUE
+      1 REGULAR-SEEN +!
+   then ;
+
+: FILE-SILENT ( ptr u8 n ptr u8 n -- ) 2drop 2drop ;
+
+: OBSERVER-FAIL ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n src:ptr srcu:n :}
+   path pathu STREAM-PARENT$ STR= if
+      VERIFY:FILE$ path pathu T$=
+      E-FS-STAT throw
+   then ;
+
+: VERIFY-STREAM ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
+   [: S\" include regular.f\nrequire stream.f\nLV-STREAM:VALUE drop\n" DESIGN$
+      VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   CHECKER-SCOPE-DONE
+   0 T= ;
+
+create JSON-READER JR:STORAGE-BYTES allot
+
+: JSON-LINES ( ptr u8 n -- )
+   {: src:ptr u:n :}
+   0 begin dup u < while
+      src u rot JSONL:SPLIT-LINE drop {: a:ptr len:n next:n :}
+      JSON-READER JR:STORAGE-BYTES a len JR:INIT JR:FINISH
+      next
+   repeat drop ;
+
+: CHECK-STREAM ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n loader:ptr loaderu:n :}
+   src srcu DESIGN$ [: drop ;] 60000 >MS CHECK:VERIFY-BYTES
+   MATCH CHECK:verdict
+      refused OF ENDOF
+      verified OF false TTRUE ENDOF
+      deferred OF false TTRUE ENDOF
+      engine-provided OF false TTRUE ENDOF
+      held OF false TTRUE ENDOF
+      incomplete OF drop false TTRUE ENDOF
+   ;MATCH
+   CHECK:VERIFY-STOP VERIFY:E-SOURCE-READ T=
+   CHECK:VERIFY-UNREAD$ STREAM$ T$=
+   \ The FIFO has no file record; every earlier subject/regular record is whole.
+   CHECK:VERIFY-FILES$ JSON-LINES
+   CHECK:VERIFY-FILES$ DESIGN$ CONTAINS? TTRUE
+   CHECK:VERIFY-FILES$ STREAM$ CONTAINS? TFALSE
+   CHECK:VERIFY-OUT$ nip 0 > TTRUE
+   JSON-READER JR:STORAGE-BYTES CHECK:VERIFY-OUT$ JR:INIT JR:FINISH
+   CHECK:VERIFY-OUT$ s\" \"code\":\"E-UNREADABLE-SOURCE\"" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s\" \"token\":\"require\"" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ loader loaderu CONTAINS? TTRUE ;
+
+: CHECK-SUBJECT-STREAM ( -- )
+   S\" require stream.f\n" DESIGN$ CHECK-STREAM ;
+
+: CHECK-NESTED-STREAM ( -- )
+   S\" require stream-parent.f\n" STREAM-PARENT$ CHECK-STREAM
+   CHECK:VERIFY-FILES$ STREAM-PARENT$ CONTAINS? TTRUE
+   CHECK:VERIFY-FILES$ s\" \"source\":\"disk\"" CONTAINS? TTRUE
+   CHECK:VERIFY-OUT$ s\" \"line\":2,\"column\":1" CONTAINS? TTRUE ;
+
+: STREAM-LOAD ( -- )
+   ENTRY$ s" regular.f" SOURCE-ROOT:JOIN S\" \\ regular source\n" WRITE-ALL
+   ENTRY$ s" stream.f" SOURCE-ROOT:JOIN STREAM STREAM-U COPY!
+   ENTRY$ s" stream-parent.f" SOURCE-ROOT:JOIN
+      STREAM-PARENT STREAM-PARENT-U COPY!
+   STREAM-PARENT$ S\" \\ parent\nrequire stream.f\n" WRITE-ALL
+   STREAM$ FS-PATHZ 384 MKFIFO-CALL 0 T=
+   0 STREAM-SEEN ! 0 REGULAR-SEEN !
+   ['] STREAM-FILE is VERIFY:ON-FILE
+   ENTRY$ [: [: VERIFY-STREAM ;] WITH-WRITER ;] SOURCE-ROOT:WITH
+   ['] FILE-SILENT is VERIFY:ON-FILE
+   STREAM-SEEN @ 1 T= REGULAR-SEEN @ 1 T=
+   \ Other observer failures still belong to the file whose visit failed.
+   \ The parent observer refuses before its FIFO load, so no writer is needed.
+   ['] OBSERVER-FAIL is VERIFY:ON-FILE
+   ENTRY$ [:
+      CHECKER-SCOPE-START-NEUTRAL
+      [: S\" require stream-parent.f\n" DESIGN$
+         VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+      CHECKER-SCOPE-DONE E-FS-STAT T=
+   ;] SOURCE-ROOT:WITH
+   VERIFY:SOURCE-COMPOSE-STOPPED$ STREAM-PARENT$ T$=
+   ['] FILE-SILENT is VERIFY:ON-FILE
+   ENTRY$ [: [: CHECK-SUBJECT-STREAM ;] WITH-WRITER ;] SOURCE-ROOT:WITH
+   \ A separate read checks attribution after a regular dependency's frame opens.
+   ENTRY$ [: [: CHECK-NESTED-STREAM ;] WITH-WRITER ;] SOURCE-ROOT:WITH
+   [: STREAM$ required ;] WITH-WRITER
+   s" LV-STREAM:VALUE" TEST-EVAL:N 41 T= ;
 
 : VERIFY-DESIGN ( -- n )
    CHECKER-SCOPE-START-NEUTRAL
@@ -311,6 +452,8 @@ public
    PREP
    s" composition and load use the root that found the entry" T-LABEL
    ROOT-COLLISION
+   s" readable stream composes without an incremental disk stamp" T-LABEL
+   STREAM-LOAD
    s" loader fault has a public canonical diagnostic" T-LABEL
    MISSING-LOAD
    s" nested fault reports scanned bytes after frame closes" T-LABEL

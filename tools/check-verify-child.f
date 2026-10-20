@@ -579,18 +579,20 @@ variable OF-U                           \ 0 for the other forms
 \ comes from the quiet reader, never from a stat after verification.
 : FILE-LINE ( ptr u8 n ptr u8 n -- )
    {: f:ptr fu:n a:ptr u:n :}
+   f fu SUBJECT-PATH$ CORE-STR= {: subject:bool :}
+   f fu OPEN-TEXT {: open:bool :} 2drop
+   f fu VERIFY:QUIET-READ-META
+   {: size:n msec:n mns:n csec:n cns:n valid:bool :}
+   \ Refuse unstamped disk bytes before publishing any part of their record.
+   subject open or 0= valid 0= and if f fu VERIFY:REFUSE-SOURCE-READ then
    OUT-FD s\" check-verify: file {\"file\":" WRITE
    f fu JSON-STR
-   f fu SUBJECT-PATH$ CORE-STR= if
+   subject if
       OUT-FD s\" ,\"source\":\"subject\"" WRITE
    else
-      f fu OPEN-TEXT {: open:bool :} 2drop
       open if
          OUT-FD s\" ,\"source\":\"document\"" WRITE
       else
-         f fu VERIFY:QUIET-READ-META
-         {: size:n msec:n mns:n csec:n cns:n valid:bool :}
-         valid 0= if VERIFY:E-SOURCE-READ throw then
          OUT-FD s\" ,\"source\":\"disk\",\"size\":" WRITE
          OUT-FD size FD-N
          OUT-FD s\" ,\"mtime_sec\":" WRITE OUT-FD msec FD-N

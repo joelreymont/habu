@@ -4095,11 +4095,16 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    diag diagu DIAG-FILE!
    path pathu VISIT-OPEN
    VISIT-CUR @ VISIT-FIRST @ = CSR-SUBJ !
-   [: FILE$ SOURCE@ SOURCE-U @ ON-FILE VERIFY-SOURCE ;] catch {: rc:n :}
+   [: FILE$ SOURCE@ SOURCE-U @ ON-FILE ;] catch
+   dup 0= IF drop [: VERIFY-SOURCE ;] catch true ELSE false THEN
+   {: rc:n scanned:bool :}
    DISARM
    oldvisit VISIT-CUR !
    oldsubj CSR-SUBJ !
-   rc 0<> COMPOSE-STOP-U @ 0= and IF
+   \ A reader policy may refuse the acquired bytes in ON-FILE. Its loader
+   \ owns that read fault; this unscanned frame has no faulting source token.
+   rc 0<> COMPOSE-STOP-U @ 0= and
+   scanned rc E-SOURCE-READ <> or and IF
       diag COMPOSE-STOP-PATH diagu BYTE-COPY
       diagu COMPOSE-STOP-U !
       path pathu COMPOSE-SUBJ? COMPOSE-STOP-SUBJ !
@@ -4213,16 +4218,13 @@ variable READ-META-VALID
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
 
-: QUIET-FILE-META ( ptr u8 n -- n n n n n )
-   {: path:ptr pathu:n :}
-   path pathu FS-TRY-STAT 0= IF
-      path pathu FAULT-TARGET!  E-SOURCE-READ throw
-   THEN
-   FS-STAT-MODE@ S-IFMT and S-IFREG <> IF
-      path pathu FAULT-TARGET!  E-SOURCE-READ throw
-   THEN
+\ A readable stream has no reusable disk stamp. Acquisition still opens and
+\ reads it; only regular files participate in the before/after stamp check.
+: QUIET-FILE-META ( ptr u8 n -- n n n n n bool )
+   FS-TRY-STAT 0= IF 0 0 0 0 0 false EXIT THEN
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> IF 0 0 0 0 0 false EXIT THEN
    FS-STAT-SIZE@ FS-STAT-MTIME-SEC@ FS-STAT-MTIME-NS@
-   FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ ;
+   FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ true ;
 
 : READ-FILL ( -- )
    0 READ-U !
@@ -4242,7 +4244,7 @@ variable READ-META-VALID
    0 READ-PATHZ pathu + c!
    pathu READ-PATH-U !
    path pathu QUIET-FILE-META
-   {: size:n msec:n mns:n csec:n cns:n :}
+   {: size:n msec:n mns:n csec:n cns:n valid:bool :}
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FAULT-TARGET!  E-SOURCE-READ throw THEN
    fd READ-FD !
@@ -4250,22 +4252,31 @@ variable READ-META-VALID
    fd close
    rc E-SOURCE-READ = IF path pathu FAULT-TARGET! THEN
    rc 0<> IF rc throw THEN
-   path pathu QUIET-FILE-META
-   {: after:n amsec:n amns:n acsec:n acns:n :}
-   size after = msec amsec = and mns amns = and
-   csec acsec = and cns acns = and 0= IF
-      path pathu FAULT-TARGET!
-      E-SOURCE-READ throw
+   valid IF
+      path pathu QUIET-FILE-META
+      {: after:n amsec:n amns:n acsec:n acns:n still:bool :}
+      size after = msec amsec = and mns amns = and
+      csec acsec = and cns acns = and still and 0= IF
+         path pathu FAULT-TARGET!
+         E-SOURCE-READ throw
+      THEN
+      size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
+      csec READ-CSEC ! cns READ-CNS !
+      true READ-META-VALID !
    THEN
-   size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
-   csec READ-CSEC ! cns READ-CNS !
-   true READ-META-VALID !
    0 READ-BUF READ-U @ ;
 
 public
 
+\ An ON-FILE consumer that requires a regular-file stamp refuses its source
+\ through the same loader fault boundary as an acquisition failure.
+: REFUSE-SOURCE-READ ( ptr u8 n -- )
+   FAULT-TARGET!
+   E-SOURCE-READ throw ;
+
 \ The stamp of the disk bytes the quiet reader just handed to SOURCE-INPUT.
-\ ON-FILE runs before another acquisition can replace it.
+\ ON-FILE runs before another acquisition can replace it. Readable streams
+\ have no regular-file stamp and return false.
 : QUIET-READ-META ( ptr u8 n -- n n n n n bool )
    {: path:ptr pathu:n :}
    READ-META-VALID @ 0<> pathu READ-PATH-U @ = and

@@ -972,7 +972,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 \ keeps discovery's code.
 : VFY-FAULT-CLASS ( n -- n ) {: rc:n :}
    rc VERIFY:E-SOURCE-READ <> if rc exit then
-   VFY-TARGET$ FILE? if CHK-E-IOERR exit then
+   VFY-TARGET$ EXISTS? if CHK-E-IOERR exit then
    CHK-E-NOINPUT ;
 
 
