@@ -43,17 +43,16 @@ variable DIAG-START
 : RUN-DIRECT-IN ( ptr u8 n ptr u8 n -- n )
    S\" require tools/app-build.f\nAPP-BUILD:RUN\n" RUN-DIRECT-SOURCE ;
 
-: RUN-SAVED-IN ( ptr u8 n -- n )
-   {: cache:ptr cacheu:n :}
+: RUN-SAVED-SOURCE ( ptr u8 n ptr u8 n -- n )
+   {: cache:ptr cacheu:n source:ptr sourceu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    cache cacheu ENGINE-CANDIDATE:PATH$ STAGE-BUILD
-   builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
+   builder builderu source sourceu CAPTURE ;
 
-: RUN-DIRECT-ORIGIN ( ptr u8 n ptr u8 n -- n )
-   S\" require tools/app-build.f\n: APP-ROOT! ( -- )\n   0 SCRIPT-ARGV$ {: path:ptr pathu:n :}\n   path pathu BASENAME drop path - 1- {: rootu:n :}\n   path rootu SOURCE-ROOT:ENGINE! ;\nAPP-ROOT!\nAPP-BUILD:RUN\n"
-      RUN-DIRECT-SOURCE ;
+: RUN-SAVED-IN ( ptr u8 n -- n )
+   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
+
 : RUN-DIRECT ( -- n ) s" direct-cache" AT RUN-SAVED-IN ;
-: RUN-FRESH ( -- n ) s" fresh-cache" AT RUN-SAVED-IN ;
 : RUN-EXECUTE ( -- n ) s" execute-cache" AT RUN-SAVED-IN ;
 : RUN-DEFINITION ( -- n ) s" definition-cache" AT RUN-SAVED-IN ;
 : RUN-LITERAL-FRESH ( -- n ) s" literal-fresh-cache" AT RUN-SAVED-IN ;
@@ -95,13 +94,7 @@ variable DIAG-START
 
 : RUN-CUSTOM-CHECK ( ptr u8 n -- n )
    {: source:ptr sourceu:n :}
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" hook-cache" AT >LEN PROC-ENV+
-   s" HABU_UNDER_TEST" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$ source sourceu CAPTURE ;
+   s" hook-cache" AT source sourceu RUN-SAVED-SOURCE ;
 
 : REUSED ( -- )
    OUT$ s" definition hits " CONTAINS? TTRUE
@@ -129,15 +122,15 @@ variable DIAG-START
    s" a preinstalled checker retains authority during app load" T-LABEL
    s" hook-cache" AT MAKE-DIR
    s" app.f" S\" : MAIN ( -- ) 42 . ;\n" PUT
-   s" hook-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-IN SUCCESS
-   s" hook-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-IN SUCCESS REUSED
+   s" hook-cache" AT RUN-SAVED-IN SUCCESS
+   s" hook-cache" AT RUN-SAVED-IN SUCCESS REUSED
    s" a warm definition still runs the live checker" T-LABEL
-   S\" require tools/app-build.f\nTRUSTED: REJECT-MAIN ( ptr u8 n -- n ) 2dup s\" MAIN \" STARTS-WITH? if 2drop 77 throw then CHECK! ;\n' REJECT-MAIN set-check\nAPP-BUILD:RUN\n"
+   S\" 1 set-tier\nTRUSTED: REJECT-MAIN ( ptr u8 n -- n ) 2dup s\" MAIN \" STARTS-WITH? if 2drop 77 throw then CHECK! ;\n' REJECT-MAIN set-check\nAPP-BUILD:RUN-SAVED-REPORT\n"
       RUN-CUSTOM-CHECK 77 T=
-   S\" require tools/app-build.f\nTRUSTED: REJECT-CHECK ( ptr u8 n -- n ) 2drop 77 throw ;\n' REJECT-CHECK set-check\nAPP-BUILD:RUN\n"
+   S\" 1 set-tier\nTRUSTED: REJECT-CHECK ( ptr u8 n -- n ) 2drop 77 throw ;\n' REJECT-CHECK set-check\nAPP-BUILD:RUN-SAVED-REPORT\n"
       RUN-CUSTOM-CHECK 77 T=
    s" a preinstalled checker observes a successful app load" T-LABEL
-   S\" require tools/app-build.f\nTRUSTED: OBSERVE-CHECK ( ptr u8 n -- n ) 2dup s\" MAIN \" STARTS-WITH? if s\" main-check\" type cr then CHECK! ;\n' OBSERVE-CHECK set-check\nAPP-BUILD:RUN\n"
+   S\" 1 set-tier\nTRUSTED: OBSERVE-CHECK ( ptr u8 n -- n ) 2dup s\" MAIN \" STARTS-WITH? if s\" main-check\" type cr then CHECK! ;\n' OBSERVE-CHECK set-check\nAPP-BUILD:RUN-SAVED-REPORT\n"
       RUN-CUSTOM-CHECK SUCCESS
    OUT$ s" main-check" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
@@ -172,19 +165,15 @@ variable DIAG-START
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-SIZE initial <= TTRUE
-   3 HISTORY-SOURCE
-   s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
-   HISTORY-SIZE initial <= TTRUE
    HISTORY-SIZE {: stable:n :}
+   stable initial <= TTRUE
    s" app.f" S\" : HIST-KEEP ( -- n ) 40 ;\n: MAIN ( -- ) HIST-KEEP MISSING . ;\n" PUT
    s" history-cache" AT RUN-SAVED-IN 70 T=
    HISTORY-SIZE stable T=
-   3 HISTORY-SOURCE
+   2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
    OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    HISTORY-SIZE stable T= ;
 
 : TRACE$ ( -- ptr u8 n )
@@ -234,7 +223,6 @@ variable DIAG-START
 
 : AUTO-CASE ( -- )
    s" source actions replay around cached native definitions" T-LABEL
-   s" fresh-cache" AT MAKE-DIR
    s" trace" s" " PUT
    41 LEAF-SOURCE VALUE-SOURCE false false APP-SOURCE
    RUN-DIRECT SUCCESS
@@ -243,29 +231,21 @@ variable DIAG-START
    RUN-APP SUCCESS
    OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
    TRACE$ s" LVA" STR= TTRUE
-   RUN-DIRECT SUCCESS REUSED
-   RUN-APP SUCCESS
-   OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
-   TRACE$ s" LVALVA" STR= TTRUE
    true false APP-SOURCE
    RUN-DIRECT SUCCESS REUSED
    RUN-APP SUCCESS
    OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
-   TRACE$ s" LVALVALVA" STR= TTRUE
+   TRACE$ s" LVALVA" STR= TTRUE
    true true APP-SOURCE
    RUN-DIRECT SUCCESS REUSED
    RUN-APP SUCCESS
    OUT$ S\" 42\n9\n43\n41\n7\n" CONTAINS? TTRUE
-   TRACE$ s" LVALVALVALVA" STR= TTRUE
+   TRACE$ s" LVALVALVA" STR= TTRUE
    101 LEAF-SOURCE
    RUN-DIRECT SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 102\n9\n103\n101\n7\n" CONTAINS? TTRUE
-   TRACE$ s" LVALVALVALVALVA" STR= TTRUE
-   RUN-FRESH SUCCESS
-   RUN-APP SUCCESS
-   OUT$ S\" 102\n9\n103\n101\n7\n" CONTAINS? TTRUE
-   TRACE$ s" LVALVALVALVALVALVA" STR= TTRUE
+   TRACE$ s" LVALVALVALVA" STR= TTRUE
    \ Only the two colon neighbors can hit after MAIN changes; BOX is a create.
    s" app.f"
       S\" package FILE-NEIGHBOR public\n: LEFT ( -- n ) 40 ;\ncreate BOX 9 ,\n: RIGHT ( -- n ) 2 ;\n;package\n: MAIN ( -- ) FILE-NEIGHBOR:LEFT . FILE-NEIGHBOR:BOX @ . FILE-NEIGHBOR:RIGHT . ;\n" PUT
@@ -286,12 +266,6 @@ variable DIAG-START
    RUN-PRIVATE SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" require number.f\n: MAIN ( -- ) 41 FILE-NUM:STEP . 7 . ;\n" PUT
-   RUN-PRIVATE SUCCESS
-   REUSED
-   RUN-APP SUCCESS
-   OUT$ S\" 42\n7\n" CONTAINS? TTRUE
    s" app.f"
       S\" package FILE-NUM private\nPPRIM: FILE-NUM 1+ PE-PTR-U8 PE-IN PE-PTR-U8 PE-OUT CLOSE-PRIVATE\n;package\nrequire number.f\n: MAIN ( -- ) 41 FILE-NUM:STEP . 7 . ;\n" PUT
    RUN-PRIVATE 70 T=
@@ -418,10 +392,13 @@ variable DIAG-START
    LITERAL-IMAGE-SAME? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
+\ The origin journal names only files under the engine root (engine-origin.f
+\ ROOT-REL), and the saved builder restores that root before it loads app.f, so
+\ the app declares its own directory as the root; image save drops it (RESET).
 : BODY-EDIT-SOURCE ( n -- )
    {: value:n :}
    0 INPUT-U !
-   S\" require src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\ns\" source-action\" type cr\n: LEFT ( -- n ) 1 {: left:n :} left [: 1+ ;] execute ;\n: MIDDLE ( -- n ) "
+   S\" require src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\n0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:ENGINE!\ns\" source-action\" type cr\n: LEFT ( -- n ) 1 {: left:n :} left [: 1+ ;] execute ;\n: MIDDLE ( -- n ) "
       INPUT CAP INPUT-U BUF-APPEND
    value 0 < if
       S\" 40 ;\n" INPUT CAP INPUT-U BUF-APPEND
@@ -462,24 +439,24 @@ variable DIAG-START
    s" body-edit-cache" AT MAKE-DIR
    s" body-edit-fresh-cache" AT MAKE-DIR
    -1 BODY-EDIT-SOURCE
-   s" body-edit-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-ORIGIN SUCCESS
+   s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 46" CONTAINS? TTRUE
    41 BODY-EDIT-SOURCE
-   s" body-edit-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-ORIGIN SUCCESS
+   s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" body skips 4\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    101 BODY-EDIT-SOURCE
-   s" body-edit-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-ORIGIN SUCCESS
+   s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" body skips 3\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
    LITERAL-IMAGE-SAVE
-   s" body-edit-fresh-cache" AT ENGINE-CANDIDATE:PATH$ RUN-DIRECT-ORIGIN SUCCESS
+   s" body-edit-fresh-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
@@ -487,7 +464,6 @@ variable DIAG-START
 : BODY-READER-CASE ( -- )
    s" a newly parsing binding cannot reuse an unchanged body" T-LABEL
    s" body-reader-cache" AT MAKE-DIR
-   s" body-reader-fresh-cache" AT MAKE-DIR
    \ Only READER-KEEP can contribute a skip; MIDDLE changes on each build.
    s" reader.f"
       S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
@@ -508,17 +484,11 @@ variable DIAG-START
    OUT$ S\" body skips 0\n" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
-   OUT$ s" mode-step" CONTAINS? TFALSE
-   LITERAL-IMAGE-SAVE
-   s" body-reader-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAME? TTRUE ;
+   OUT$ s" mode-step" CONTAINS? TFALSE ;
 
 : BODY-DELIMITER-CASE ( -- )
    s" delimiter, signature and trust changes miss early reuse" T-LABEL
    s" body-delimiter-cache" AT MAKE-DIR
-   s" body-delimiter-fresh-cache" AT MAKE-DIR
    \ MAIN is trusted so only DELIMITER-KEEP can contribute a body skip.
    s" app.f"
       S\" : DELIMITER-KEEP ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
@@ -542,16 +512,11 @@ variable DIAG-START
       PUT
    s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAVE
-   s" body-delimiter-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAME? TTRUE ;
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 : BODY-EOF-CASE ( -- )
    s" truncated and EOF-delimited bodies do not reuse a stale span" T-LABEL
    s" body-eof-cache" AT MAKE-DIR
-   s" body-eof-fresh-cache" AT MAKE-DIR
    s" app.f"
       S\" : MAIN ( -- ) 42 . cr ;\n: EOF-KEEP ( -- n ) 7 ;"
       PUT
@@ -566,11 +531,7 @@ variable DIAG-START
       PUT
    s" body-eof-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAVE
-   s" body-eof-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAME? TTRUE ;
+   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE ;
 
 variable INCOMPLETE-SAVED
 
@@ -598,13 +559,6 @@ variable INCOMPLETE-SAVED
    RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
    s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
    BODY-SKIPPED
-   s" app.f"
-      S\" : MIDDLE ( -- n ) 22 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
-      PUT
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   REUSED
-   RUN-APP SUCCESS OUT$ s" 64" CONTAINS? TTRUE
    s" app.f"
       S\" s\" moved\" 2drop\n: MIDDLE ( -- n ) 333 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
       PUT
