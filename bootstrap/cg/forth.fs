@@ -2955,21 +2955,51 @@ HB-TARGET-LINUX? [IF]
    next LBL,
    14 14 1 ADDI,  lloop B, ;
 
-: C-NUM-FLOAT-FINISH ( n n -- ) {: ldone fpos :}
+: C-NUM-FLOAT-FINISH ( n -- ) {: ldone :}
    3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
    17 16 0 ADDI,  17 ldone CBNZ,                                \ a complete decimal owns its range refusal
-   0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
-   1 1 2 FDIV,  0 0 1 FADD,
-   13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
-   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
+   LBL LBL LBL LBL LBL LBL LBL
+   {: left right shift ready round pack sign :}
+   \ Mirror habu1.f: normalize exact integer/remainder, then round once.
+   5 11 4 ORR,  5 sign CBZ,
+   6 52 MOVZ,
+   5 $20000000000000 LIT64,  11 5 CMP,  C-LT left BCOND,
+   4 0 CMPI,  8 C-NE CSET,  7 0 MOVZ,
+   right LBL,
+      8 8 7 ORR,  7 11 1 ANDI,  11 11 1 LSRI,  6 6 1 ADDI,
+      11 5 CMP,  C-GE right BCOND,
+   round B,
+   left LBL,
+   5 $10000000000000 LIT64,
+   shift LBL,
+      11 5 CMP,  C-GE ready BCOND,
+      11 11 1 LSLI,  4 4 1 LSLI,
+      4 3 CMP,  14 C-GE CSET,
+      11 11 14 ADD,  15 14 3 MUL,  4 4 15 SUB,
+      6 6 1 SUBI,  shift B,
+   ready LBL,
+   4 4 1 LSLI,  4 3 CMP,  7 C-GE CSET,
+   14 7 3 MUL,  4 4 14 SUB,  4 0 CMPI,  8 C-NE CSET,
+   round LBL,
+   7 pack CBZ,
+   14 11 1 ANDI,  14 14 8 ORR,  14 pack CBZ,
+   11 11 1 ADDI,
+   5 $20000000000000 LIT64,  11 5 CMP,  C-NE pack BCOND,
+      11 11 1 LSRI,  6 6 1 ADDI,
+   pack LBL,
+   6 6 1023 ADDI,  6 6 52 LSLI,
+   11 11 $FFFFFFFFFFFFF ANDI,  11 11 6 ORR,
+   sign LBL,
+   13 13 63 LSRI,  13 13 63 LSLI,  11 11 13 ORR,
+   12 1 MOVZ,  RET, ;
 
 : C-NUM-INT-FINISH ( -- )
    11 11 13 MUL,  12 1 MOVZ, ;
 
 : EMIT-NUM ( -- )
    LNUM @ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint :}
    C-NUM-INIT-REGS
    ldone ndoll C-NUM-SIGN
    ldone nohex C-NUM-BASE
@@ -2985,7 +3015,7 @@ HB-TARGET-LINUX? [IF]
    lloop C-NUM-FRAC-STEP
    lok LBL,
    2 lint CBZ,
-   ldone fpos C-NUM-FLOAT-FINISH
+   ldone C-NUM-FLOAT-FINISH
    lint LBL,  C-NUM-INT-FINISH
    ldone LBL,  RET, ;
 

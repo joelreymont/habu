@@ -609,7 +609,6 @@ variable NUM-NDOT
 variable NUM-ISFRAC
 variable NUM-FRAC-NEXT
 variable NUM-LINT
-variable NUM-FPOS
 
 : LINUX-SPAWN-FAIL-N ( n -- )
    0 swap 0 ADDI,
@@ -6004,12 +6003,43 @@ variable FIND-HMATCH
 : C-NUM-FLOAT-FINISH ( -- )
    \ x15 is the last consumed character; overflow can leave the scale at one.
    15 46 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                     \ "1." (no frac digits) -> ordinary word
-   5 $7FFFFFFFFFFFFFFF LIT64,  11 5 CMP,  5 C-HI CSET,          \ SCVTF needs a signed integer magnitude
+   5 $7FFFFFFFFFFFFFFF LIT64,  11 5 CMP,  5 C-HI CSET,
    17 16 5 ORR,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
-   0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
-   1 1 2 FDIV,  0 0 1 FADD,
-   13 0 CMPI,  C-GE NUM-FPOS LABEL@ BCOND,  0 0 FNEG,
-   NUM-FPOS LABEL@ LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
+   LBL LBL LBL LBL LBL LBL LBL
+   {: left:label right:label shift:label ready:label round:label pack:label sign:label :}
+   \ x11 significand, x4 exact remainder, x3 scale; x6 exponent,
+   \ x7 guard and x8 sticky. The remainder is below 10^18 throughout.
+   5 11 4 ORR,  5 sign CBZ,                                    \ preserve signed zero
+   6 52 MOVZ,
+   5 $20000000000000 LIT64,  11 5 CMP,  C-LT left BCOND,
+   4 0 CMPI,  8 C-NE CSET,  7 0 MOVZ,
+   right LBL,
+      8 8 7 ORR,  7 11 1 ANDI,  11 11 1 LSRI,  6 6 1 ADDI,
+      11 5 CMP,  C-GE right BCOND,
+   round B,
+   left LBL,
+   5 $10000000000000 LIT64,
+   shift LBL,
+      11 5 CMP,  C-GE ready BCOND,
+      11 11 1 LSLI,  4 4 1 LSLI,
+      4 3 CMP,  14 C-GE CSET,
+      11 11 14 ADD,  15 14 3 MUL,  4 4 15 SUB,
+      6 6 1 SUBI,  shift B,
+   ready LBL,
+   4 4 1 LSLI,  4 3 CMP,  7 C-GE CSET,
+   14 7 3 MUL,  4 4 14 SUB,  4 0 CMPI,  8 C-NE CSET,
+   round LBL,
+   7 pack CBZ,
+   14 11 1 ANDI,  14 14 8 ORR,  14 pack CBZ,                  \ ties retain an even low bit
+   11 11 1 ADDI,
+   5 $20000000000000 LIT64,  11 5 CMP,  C-NE pack BCOND,
+      11 11 1 LSRI,  6 6 1 ADDI,                              \ rounding carried out of 53 bits
+   pack LBL,
+   6 6 1023 ADDI,  6 6 52 LSLI,
+   11 11 $FFFFFFFFFFFFF ANDI,  11 11 6 ORR,
+   sign LBL,
+   13 13 63 LSRI,  13 13 63 LSLI,  11 11 13 ORR,
+   12 1 MOVZ,  RET, ;
 
 : C-NUM-INT-FINISH ( -- )
    LBL {: bounded:label :}
@@ -6029,8 +6059,8 @@ variable FIND-HMATCH
 \ the linker has no name for the target and refuses the image. Here the
 \ registration also CARRIES it, which is the opposite of (MARK) (habu2.f): the
 \ reader does the work `num-parse` needs at run time, and its body reaches
-\ nothing outside [start, end) - every branch targets a NUM-* label in it, the
-\ radix is an immediate, the float finish is inline SCVTF/FDIV/FADD, and the
+\ nothing outside [start, end) - every branch targets a label inside it, the
+\ radix is an immediate, the float finish is inline integer rounding, and the
 \ only memory it touches is the caller's bytes - so the closure copies the body
 \ and rewrites its internal branches with no further claim.
 : EMIT-NUM ( -- )
@@ -6049,7 +6079,6 @@ variable FIND-HMATCH
    LBL NUM-ISFRAC !
    LBL NUM-FRAC-NEXT !
    LBL NUM-LINT !
-   LBL NUM-FPOS !
    C-NUM-INIT-REGS
    C-NUM-SIGN
    C-NUM-BASE

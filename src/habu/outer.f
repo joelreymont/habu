@@ -2,7 +2,6 @@
 \ search, then the readers src/habu/interpret.f's loop reads a buffer with.
 
 require src/lib/prelude.f
-require src/lib/ieee754.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/habu/xref.f
@@ -122,14 +121,50 @@ $8000000000000000 constant MIN-N
    int neg if negate then false true false ;
 
 
-\ The integer part converts as a signed cell, so it is at most MAX-N. The
-\ value is int + frac / scale, negated last, in the engine's order.
+\ Normalize the exact integer plus fractional remainder to 53 retained bits.
+\ frac < scale <= 10^18, so doubling the remainder always fits a cell.
+\ Every admitted nonzero value is at least 10^-18: none is subnormal.
+: FLOAT-LEFT-STEP ( n n n n -- n n n n )
+   {: sig:n rem:n scale:n exp:n :}
+   rem 2 * {: twice:n :}
+   twice scale >= if
+      sig 2 * 1+ twice scale - scale exp 1-
+   else
+      sig 2 * twice scale exp 1-
+   then ;
+
+: FLOAT-RIGHT-STEP ( n n n bool -- n n n bool )
+   {: sig:n exp:n guard:n sticky:bool :}
+   sig 1 rshift exp 1+ sig 1 and sticky guard 0<> or ;
+
+: FLOAT-ROUND ( n n n bool -- n )
+   {: sig:n exp:n guard:n sticky:bool :}
+   sig guard 0<> sticky sig 1 and 0<> or and if 1+ then
+   dup $20000000000000 = if 1 rshift exp 1+ else exp then
+   1023 + 52 lshift swap $FFFFFFFFFFFFF and or ;
+
+: FLOAT-BITS ( n n n -- n )
+   {: int:n frac:n scale:n :}
+   int frac or 0= if 0 exit then
+   int $20000000000000 >= if
+      int 52 0 frac 0<>
+      begin 2over drop $20000000000000 >= while FLOAT-RIGHT-STEP repeat
+      FLOAT-ROUND exit
+   then
+   int frac scale 52
+   begin 2over drop $10000000000000 < while FLOAT-LEFT-STEP repeat
+   {: sig:n rem:n denom:n exp:n :}
+   rem 2 * {: twice:n :}
+   twice denom >= if sig exp 1 twice denom <> else sig exp 0 twice 0<> then
+   FLOAT-ROUND ;
+
+\ The admitted decimal magnitude is bounded before conversion. Round its
+\ exact value once to nearest, ties to even; apply the sign even to zero.
 : FLOAT-FINISH ( n n n bool bool -- n bool bool bool )
    {: int:n frac:n scale:n wrapped:bool neg:bool :}
    wrapped int MAX-N U> or if OUT-OF-RANGE exit then
-   int s>f  frac s>f scale s>f f/  f+
-   neg if fnegate then
-   IEEE754:F64>BITS true true false ;
+   int frac scale FLOAT-BITS
+   neg if MIN-N or then true true false ;
 
 
 \ An optional `-`, then an optional `$` for radix 16: the index after them,
