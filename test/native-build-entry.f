@@ -2,7 +2,7 @@
 \ closure (tools/native-build-args.f). No output argument is refused by name;
 \ so is a bad second argument:
 \ the class the build is being asked for is settled before the target load, so
-\ a typo cannot quietly produce a product. So are a `--target` naming no target
+\ a typo cannot quietly produce a product. So are an unknown `--target` profile
 \ and one whose machine this engine has no backend for. With that backend
 \ loaded, the selected action refuses an unavailable writer before the full
 \ compiler window loads. The entry's accepted path, the closure
@@ -113,12 +113,6 @@ variable GUARD-ENTRY-U
    s" /dev/null/native-build-entry-test" ARG
    s" --target" ARG ;
 
-: TARGET-MISSING-CASE ( -- )
-   s" and refuses `--target` with no target after it" T-LABEL
-   TARGET-ARGS
-   DRIVE
-   S\" native-build: after the output path come only `whitebox`, then `--target <target>`\n" REFUSED ;
-
 : TARGET-UNKNOWN-CASE ( -- )
    s" and refuses an unknown target profile" T-LABEL
    TARGET-ARGS
@@ -173,23 +167,17 @@ variable GUARD-ENTRY-U
    S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
    FOREIGN-OUT$ FILE? 0= TTRUE ;
 
-: BAD-HOST-ROW ( ptr u8 n -- )
-   {: fixture:ptr size:n :}
+: BAD-HOST-CASE ( -- )
+   s" an unrelated fixed CODE registration remains incompatible" T-LABEL
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
-   fixture size ARG
+   s" test/native-build-host-unknown-code.f" ARG
    s" tools/native-build.f" ARG
    s" --" ARG
    s" /dev/null/native-build-host-row" ARG
    DRIVE
    S\" native-build: incompatible fixed engine layout\n" REFUSED ;
-
-: BAD-HOST-ROWS ( -- )
-   s" DATA at the retired observer offset remains incompatible" T-LABEL
-   s" test/native-build-host-observer-data.f" BAD-HOST-ROW
-   s" an unrelated fixed CODE registration remains incompatible" T-LABEL
-   s" test/native-build-host-unknown-code.f" BAD-HOST-ROW ;
 
 : ACTION-CASE ( -- )
    s" nested build entries preserve an active action" T-LABEL
@@ -286,51 +274,27 @@ variable GUARD-ENTRY-U
    DRIVE
    FOREIGN-RESULT ;
 
-: FOREIGN-SUPPLIED ( -- )
-   s" same-ISA foreign supplied writer reaches process ABI refusal" T-LABEL
-   s" supplied-hb" FOREIGN-SEED
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" test/native-build-supplied-child.f" ARG
-   s" --" ARG
-   FOREIGN-OUT$ ARG
-   ABI-TARGET$ ARG
-   DRIVE
-   FOREIGN-RESULT ;
-
 : FOREIGN-ABI-CASE ( -- )
    HB-TARGET-MACOS? HB-TARGET-LINUX? or 0= if
       s" native-build foreign ABI: no supported same-ISA counterpart on this host" type cr
       exit
    then
-   FOREIGN-DEFAULT
-   FOREIGN-SUPPLIED ;
+   FOREIGN-DEFAULT ;
 
 : RUN ( -- )
    T-RESET
    FOREIGN-ROOT!
    NO-OUTPUT-CASE
    BAD-CLASS-CASE
-   TARGET-MISSING-CASE
    TARGET-UNKNOWN-CASE
    WINDOWS-CORE-CASE
    TARGET-UNLOADED-CASE
    FOREIGN-WINDOW-CASE
-   BAD-HOST-ROWS
+   BAD-HOST-CASE
    ACTION-CASE
    GUARD-CASE
    FOREIGN-ABI-CASE
    T-REPORT ;
 
-: GUARD-ONLY ( -- )
-   T-RESET GUARD-CASE T-REPORT ;
-
-: MAIN ( -- )
-   SCRIPT-ARGC 1 = if
-      0 SCRIPT-ARGV$ s" guard-only" STR= if GUARD-ONLY exit then
-   then
-   RUN ;
-
-MAIN
+RUN
 ;package

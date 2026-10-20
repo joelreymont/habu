@@ -188,9 +188,6 @@ CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
 \ Before the fresh include.f creates another SOURCE-INPUT, observe the real
 \ buffers through the retained loader. The FILE reader then carries the same
 \ observation across the handoff and through cached child validation.
-variable PREFIX-OBSERVING
-variable PREFIX-FILE-CACHE
-
 : PREFIX-NOOP ( -- ) ;
 
 : PREFIX-INPUT ( ptr u8 n ptr u8 n ptr u8 n -- )
@@ -199,13 +196,7 @@ variable PREFIX-FILE-CACHE
 : PREFIX-START ( -- )
    BUILD-PRODUCER:START
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ BUILD-PRODUCER:OPTION
-   PREFIX-FILE-CACHE @ 0= if
-      ['] BUILD-PRODUCER:OBSERVE ['] PREFIX-NOOP
-         SOURCE-INPUT:USE-OBSERVER
-   else
-      ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
-   then
-   1 PREFIX-OBSERVING ! ;
+   ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER ;
 
 : ROLE-PTR ( ptr u8 n bool -- ptr u8 )
    {: digest:ptr size:n known:bool :}
@@ -343,7 +334,6 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
 
 \ The ordinary loader's completed child is the selected source boundary.
 \ Keep a custom source policy's loader inside the completion callback.
-TYPED-VARIABLE PREFIX-PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE HOST-UNIT-PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 variable HOST-UNIT-BOUND
 
@@ -382,27 +372,6 @@ variable HOST-UNIT-BOUND
    ['] HOST-UNIT-ORDINARY HOST-UNIT-PRIOR !
    0 HOST-UNIT-BOUND ! ;
 
-: PREFIX-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
-   path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE
-   path pathu root rootu source sourceu q PREFIX-PRIOR @ execute
-   path pathu root rootu BUILD-PRODUCER:COMPILER-DONE ;
-
-: PREFIX-ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
-   0 sourceu q execute ;
-
-CAST: PREFIX-UNIT-CURRENT-XT
-   ( n -- [ -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ] )
-CAST: PREFIX-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ] )
-
-: BIND-PREFIX-UNIT ( -- )
-   s" SOURCE-UNIT:CURRENT" OPEN-TARGET-XT
-      PREFIX-UNIT-CURRENT-XT execute PREFIX-PRIOR !
-   ['] PREFIX-UNIT
-      s" SOURCE-UNIT:USE" OPEN-TARGET-XT PREFIX-UNIT-USE-XT execute
-   1 TARGET-SOURCE-BOUND ! ;
-
 : BIND-SEED-PRODUCERS ( -- )
    \ The seed ends at this frontier; later FILEs bind their own source role.
    0 HOST-PREFIX-FIRST @ HOST-PREFIX-FIRST @
@@ -418,9 +387,6 @@ CAST: PREFIX-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -
    TARGET-SOURCE-BOUND @ if
       s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
       s" SOURCE-UNIT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
-      \ The driver cell belongs to the retired host heap. Drop its target XT
-      \ after detaching the wrapper and before capture sees it.
-      ['] PREFIX-ORDINARY PREFIX-PRIOR !
       0 TARGET-SOURCE-BOUND !
    then ;
 
@@ -617,11 +583,9 @@ variable PRE-ROWS-N
          NFILE-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
 
 : LOAD-TARGET ( -- )
-   PREFIX-FILE-CACHE @ if
-      BIND-SEED-PRODUCERS
-   then
+   BIND-SEED-PRODUCERS
    CHECKED-PREFIX
-   PREFIX-OBSERVING @ if BUILD-PRODUCER:FREEZE-CHECKER then
+   BUILD-PRODUCER:FREEZE-CHECKER
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
    s" src/core/declaration-transaction.f" included
@@ -643,30 +607,17 @@ variable PRE-ROWS-N
    s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    TARGET-ENGINE-ROOT
    SOURCE-BIND @ execute
-   PREFIX-FILE-CACHE @ if
-      NFILE-CACHE:REBIND
-      1 TARGET-SOURCE-BOUND !
-   else
-      PREFIX-OBSERVING @ if BIND-PREFIX-UNIT then
-   then
+   NFILE-CACHE:REBIND
+   1 TARGET-SOURCE-BOUND !
    s" src/habu/native-runtime.f"
       s" included" OPEN-TARGET-XT SOURCE-INCLUDED-XT execute
-   PREFIX-OBSERVING @ if
-      PREFIX-COMPILER-FINISH
-      NFILE-CACHE:REBIND
-   then
+   PREFIX-COMPILER-FINISH
+   NFILE-CACHE:REBIND
    SOURCE-TAIL @ execute ;
 
-: OPEN-AND-COMPILE ( -- )
+: OPEN-FILE-AND-COMPILE ( -- )
    \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
    \ The captured window starts on the cell grid used by address relocation.
-   align
-   AOT-ARM:WINDOW-OPEN-PERSISTENT
-   NSTR:WINDOW-OPEN
-   [: LOAD-TARGET ;] SOURCE-ROOT:WITH-CWD
-   AOT-ARM:WINDOW-CLOSE ;
-
-: OPEN-FILE-AND-COMPILE ( -- )
    align
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
@@ -986,7 +937,6 @@ variable BUILD-INPUTS-PATH-U
 : READ-WRITER ( -- )
    \ Snapshot preparation cleared the target root from the captured image.
    TARGET-ENGINE-ROOT
-   PREFIX-FILE-CACHE @ 0= if READ-SOURCE-WRITER exit then
    s" engine"
       [: NFILE-CACHE:REBIND
          WRITER-INPUTS
@@ -1002,23 +952,14 @@ variable WRITER-TIER
    [: HB-TARGET-LINUX-X86-64? if 1 else 0 then TIER:SELECT READ-WRITER ;]
       [: WRITER-TIER @ TIER:SELECT ;] finally ;
 
-CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+: WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
+   LOAD-SOURCE-WRITER
+   dup NATIVE-LAYOUT:CURRENT TEMP$ SOURCE-WRITER-DISPATCH ;
 
-: WRITE-TARGET ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: writer :}
-   NATIVE-LAYOUT:CURRENT TEMP$ writer execute ;
-
-: WRITE-OWNED ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
-   {: writer :}
-   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
-      LOAD-SOURCE-WRITER
-   then
-   dup writer WRITE-TARGET writer ;
-
-: EMIT-TEMP ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: owned:AOT-OWNED:capture writer :}
-   owned writer ['] WRITE-OWNED catch {: rc:n :}
-   drop drop
+: EMIT-TEMP ( AOT-OWNED:capture -- )
+   {: owned:AOT-OWNED:capture :}
+   owned ['] WRITE-OWNED catch {: rc:n :}
+   drop
    owned AOT-OWNED:CLOSE
    rc 0<> if rc throw then
    TEMP$ CHMOD-X ;
@@ -1308,7 +1249,6 @@ variable SEALED-NAMES-U
 : FILE-LOAD ( -- )
    \ The manifest destination is driver transport, read before source recording.
    s" HABU_ENGINE_INPUTS" GETENV BUILD-INPUTS-PATH-U ! BUILD-INPUTS-PATH !
-   1 PREFIX-FILE-CACHE !
    NFILE-INPUTS:MARK BUILD-INPUTS-MARK !
    ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
    CHECKER-OWNER LOGICAL-RESET
@@ -1391,68 +1331,17 @@ variable SEALED-NAMES-U
    PROMOTE
    WRITE-NAMES ;
 
-: IMAGE-FINISH ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: query bootstrap:bool writer :}
-   query bootstrap ['] IMAGE-CAPTURE EXECUTABLE-BUILD:WITH
-   writer EMIT-TEMP
+: IMAGE-FINISH ( [ n n -- n ] bool -- )
+   ['] IMAGE-CAPTURE EXECUTABLE-BUILD:WITH
+   EMIT-TEMP
    IMAGE-INSTALL ;
 
-: READY-CAPTURE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
-   {: query bootstrap:bool writer :}
-   0 PREFIX-FILE-CACHE !
-   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
-      supported OF drop ENDOF
-      unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
-   ;MATCH
-   CHECK-HOST-LAYOUT
-   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
-      WRITER-MACHINE-CK
-   else
-      OUTPUT-LAUNCH-CK
-   then
-   CHECKER-OWNER LOGICAL-RESET
-   BIND-HOST-UNIT
-   PREFIX-START
-   OPEN-AND-COMPILE
-   query bootstrap IMAGE-CAPTURE writer ;
-
-: DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
-   {: query bootstrap:bool writer :}
-   query bootstrap writer ['] READY-CAPTURE EXECUTABLE-BUILD:WITH
-   EMIT-TEMP IMAGE-INSTALL
-   query bootstrap writer ;
-
-\ The build proper, to an explicit output path, returning its result code.
-\
-\ RUN is this plus the argv convention and the exit. A driver that wants to do
-\ anything AFTER the build needs one that returns, and `die` never does: it is
-\ an unconditional exit_group, so `include tools/native-build.f` has no code
-\ path back to its caller. tools/build-profile.f prints the profiler's report
-\ after the build and is that driver.
 \ A failed load reaches its policy close without passing IMAGE-CAPTURE.
 : CLEANUP-SOURCE ( -- )
    [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] EXECUTABLE-BUILD:WITH ;
 
-: RUN-READY-INNER ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
-   {: query bootstrap:bool writer :}
-   0 PREFIX-OBSERVING !
-   CLEANUP-RESET
-   0 TARGET-SOURCE-BOUND !
-   REMOVE-STALE-TEMP
-   TEMP$ CLEANUP+
-   SMOKE-DIR!
-   query bootstrap writer [: DRIVE ;] catch {: rc:n :}
-   drop 2drop
-   RESTORE-HOST-UNIT
-   CLEANUP-SOURCE
-   CLEANUP-RUN
-   rc 0<> if s" native-build: uncaught throw code " type rc . cr then
-   rc ;
-
 TYPED-VARIABLE READY-QUERY [ n n -- n ]
 variable READY-BOOTSTRAP
-TYPED-VARIABLE READY-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
-variable READY-RC
 
 : FILE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1460,15 +1349,11 @@ variable READY-RC
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
-   READY-WRITER @ WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
-      WRITER-MACHINE-CK
-   else
-      OUTPUT-LAUNCH-CK
-   then
+   WRITER-MACHINE-CK
    RETAIN-HOST-PRODUCERS ;
 
 : FILE-FINISH ( -- )
-   READY-QUERY @ READY-BOOTSTRAP @ 0<> READY-WRITER @ IMAGE-FINISH
+   READY-QUERY @ READY-BOOTSTRAP @ 0<> IMAGE-FINISH
    BUILD-INPUTS-U @ 0 > if
       BUILD-INPUTS-PATH @ BUILD-INPUTS-PATH-U @
          0 BUILD-INPUTS BUILD-INPUTS-U @ ATOMIC-WRITE-FILE
@@ -1488,27 +1373,11 @@ variable READY-RC
       [: ['] FILE-LOAD EXECUTABLE-BUILD:WITH ;] ['] FILE-FINISH
       BUILD-CORE:WITH {: rc:n :}
    RESTORE-HOST-UNIT
-   0 PREFIX-OBSERVING !
    CLEANUP-SOURCE
    CLEANUP-RUN
    BUILD-INPUTS-RELEASE
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
    rc ;
-
-: READY-ACTION ( RTARGET:build-action -- )
-   drop
-   READY-QUERY @ READY-BOOTSTRAP @ 0<> READY-WRITER @
-      ['] RUN-READY-INNER WITH-TARGET-ROOT READY-RC ! ;
-
-: RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
-   {: query bootstrap:bool writer :}
-   BUILD-TARGET:IDLE-CK
-   query READY-QUERY !
-   bootstrap READY-BOOTSTRAP !
-   writer READY-WRITER !
-   RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      [: READY-ACTION ;] BUILD-TARGET:WITH
-   READY-RC @ ;
 
 public
 
@@ -1533,6 +1402,13 @@ public
    DEFAULT-SOURCE-POLICY
    RUN-BUNDLE-READY ;
 
+\ The build proper, to an explicit output path, returning its result code.
+\
+\ RUN is this plus the argv convention and the exit. A driver that wants to do
+\ anything AFTER the build needs one that returns, and `die` never does: it is
+\ an unconditional exit_group, so `include tools/native-build.f` has no code
+\ path back to its caller. tools/build-profile.f prints the profiler's report
+\ after the build and is that driver.
 : RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
    {: out:ptr outu:n query bootstrap:bool :}
    BUILD-TARGET:IDLE-CK
@@ -1540,13 +1416,12 @@ public
    out outu OUTPUT!
    query READY-QUERY !
    bootstrap READY-BOOTSTRAP !
-   ['] SOURCE-WRITER-DISPATCH READY-WRITER !
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
 
 \ The exit status of a finished build, for every driver that ends the process
-\ with one (RUN, RUN-UNIT and tools/build-profile.f): 0,
+\ with one (RUN and tools/build-profile.f): 0,
 \ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC for any
-\ other failure. RUN-READY-RC has already printed the throw code itself.
+\ other failure. RUN-FILE-INNER has already printed the throw code itself.
 : EXIT-RC ( n -- n )
    BUILD-RC PROC-EXIT-RC ;
 

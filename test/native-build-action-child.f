@@ -27,13 +27,10 @@ CAST: XT>N ( [ -- ] -- n )
 
 : NESTED-PATH ( -- )
    s" /tmp/habu-action-nested" ['] QUERY false RUN-PATH-RC drop ;
-: NESTED-DIRECT ( -- ) ['] QUERY false ['] SOURCE-WRITER-DISPATCH RUN-READY-RC drop ;
 
 : ACTIVE-CASE ( RTARGET:build-action -- )
    drop
    [: NESTED-PATH ;] RTARGET:E-ACTIVE TTHROWSQ
-   INTACT
-   [: NESTED-DIRECT ;] RTARGET:E-ACTIVE TTHROWSQ
    INTACT ;
 
 : ACTIVE-THROW ( RTARGET:build-action -- )
