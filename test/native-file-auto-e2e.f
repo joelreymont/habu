@@ -16,6 +16,7 @@ package NATIVE-FILE-AUTO-TEST
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
 create TRACE CAP allot
+create BUILDER FS-PATH-CAP allot  variable BUILDER-U
 variable HISTORY-BYTES
 DYNAMIC-BUFFER LITERAL-IMAGE u8
 DYNAMIC-BUFFER LITERAL-COLD u8
@@ -45,9 +46,8 @@ variable DIAG-START
 
 : RUN-SAVED-SOURCE ( ptr u8 n ptr u8 n -- n )
    {: cache:ptr cacheu:n source:ptr sourceu:n :}
-   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    cache cacheu ENGINE-CANDIDATE:PATH$ STAGE-BUILD
-   builder builderu source sourceu CAPTURE ;
+   BUILDER BUILDER-U @ source sourceu CAPTURE ;
 
 : RUN-SAVED-IN ( ptr u8 n -- n )
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
@@ -103,20 +103,6 @@ variable DIAG-START
 : BODY-SKIPPED ( -- )
    OUT$ s" body skips " CONTAINS? TTRUE
    OUT$ S\" body skips 0\n" CONTAINS? TFALSE ;
-
-: BODY-CASES ( -- )
-   s" the reader resumes after quoted semicolons and nested quotations" T-LABEL
-   s" body-cache" AT MAKE-DIR
-   s" app.f"
-      S\" s\" source-action\" type\n: FIRST ( -- n ) s\" a;b\" nip 3 + [: s\" q;r\" nip ;] execute + ; \\ ; in a comment\n: SECOND ( -- n ) 40 ;\n: MAIN ( -- ) FIRST SECOND + . ;\n"
-      PUT
-   s" body-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ s" source-action" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 49" CONTAINS? TTRUE
-   s" body-cache" AT RUN-SAVED-IN SUCCESS
-   BODY-SKIPPED
-   OUT$ s" source-action" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 49" CONTAINS? TTRUE ;
 
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
@@ -407,7 +393,7 @@ variable DIAG-START
          S\" 41 ;\n" INPUT CAP INPUT-U BUF-APPEND
       else S\" 101 ;\n" INPUT CAP INPUT-U BUF-APPEND then
    then
-   S\" : RIGHT ( -- n ) true if s\" a;b\" nip [: 1+ ;] execute else 0 then ;\n: MAIN ( -- ) LEFT MIDDLE RIGHT + + . cr ;\n"
+   S\" : RIGHT ( -- n ) true if s\" a;b\" nip [: s\" q;r\" 2drop [: 1+ ;] execute ;] execute else 0 then ; \\ ; in a comment\n: MAIN ( -- ) LEFT MIDDLE RIGHT + + . cr ;\n"
       INPUT CAP INPUT-U BUF-APPEND
    INPUT INPUT-U @ s" : RIGHT " FIND-SUB MATCH option
       none OF E-FS-IO throw ENDOF
@@ -655,6 +641,9 @@ variable INCOMPLETE-SAVED
 public
 : MAIN ( -- )
    T-RESET
+   \ These cases edit private app fixtures; the builder support and host stay fixed.
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
+   builder BUILDER builderu BYTE-COPY builderu BUILDER-U !
    s" native-file-auto" TREE
    s" direct-cache" AT MAKE-DIR
    s" execute-cache" AT MAKE-DIR
@@ -708,7 +697,6 @@ public
          exit
       then
       0 SCRIPT-ARGV$ s" body" STR= if
-         BODY-CASES
          BODY-EDIT-CASE
          BODY-READER-CASE
          BODY-DELIMITER-CASE
@@ -758,7 +746,6 @@ public
    LITERAL-LOOP-CASE
    SEGMENT-EVENT-CASE
    HISTORY-CASE
-   BODY-CASES
    BODY-EDIT-CASE
    BODY-READER-CASE
    BODY-DELIMITER-CASE
