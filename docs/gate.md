@@ -166,12 +166,13 @@ child's environment itself — a value other than the pool process's own, which
 `PROC-ENV-INHERIT-MISSING` copies — is the caller's scratch to own and reap:
 the pool leaves the row and gives that slot no directory.
 
-Keyed images live in the build cache (`src/lib/build-cache.f`), and under the
-gate that cache is the run's own: every row and build row gets
-`HABU_BUILD_CACHE=<gate root>/build-cache` (`test/gate-stdlib-lib.f`
-`SUITE-ENV`), so a keyed image is built once per gate run under the gate root
-and goes with it, and a gate run as a row of another gate builds in its own
-cache. A row run on its own uses the user's cache. A keyed image's build
+Keyed images live in the selected build cache (`src/lib/build-cache.f`). Every
+row and build row gets its normalized `BUILD-CACHE:ROOT$` as `HABU_BUILD_CACHE`
+(`test/gate-stdlib-lib.f` `SUITE-ENV`), so children and nested gates reuse the
+same keyed products across runs. Normal build-cache retention removes products
+unused for a day. Select a fresh `HABU_BUILD_CACHE` for a cold run. Compiler
+bundles, grants, private whitebox copies and mutable fixtures remain run-local.
+A keyed image's build
 (below) works in a directory of the build cache instead of `HB_TMP`, beside
 the keyed path, so its publish is one rename within the cache
 (`BUILD-CACHE:WORK-OPEN`). The build holds that directory by a lock on it,
@@ -288,8 +289,8 @@ at its deadline.
   wait for the build row.
 - The gate settles nine image families, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`). The keyed families
-  (every one but the compiler bundle) land in the run's build cache under the
-  gate root; a row run on its own settles them in the user's cache. The
+  (every one but the compiler bundle) land in the selected build cache and can
+  be reused across runs. The
   compiler bundle
   (`test/compiler-images.f`; `compiler-images-build`) uses the real
   `test/compiler-images-build.f` entry and writes its rooted, ordinary and

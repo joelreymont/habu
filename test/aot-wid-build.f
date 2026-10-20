@@ -543,7 +543,8 @@ variable WINDOW-ENDED
    rc 0<> if s" aot-wid-build: child failed" rc die then ;
 
 \ The cold host depends on nothing this builder varies, so every mode - and
-\ every other fixture - takes the one test/cold-engine.f emits per gate run.
+\ every other fixture - takes the one test/cold-engine.f shares through the
+\ selected cache, emitting it only on a miss.
 : BUILD-COLD ( -- )
    COLD$ COLD-ENGINE:PROVIDE ;
 

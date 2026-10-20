@@ -1,5 +1,5 @@
-\ preloaded-engine.f - the engine with the AOT linker loaded, built once per
-\ gate run (standalone, in the user's cache) and run in place.
+\ preloaded-engine.f - the engine with the AOT linker loaded, settled once per
+\ gate run, built on a selected-cache miss and run in place across runs.
 \
 \ A row that links a stripped image used to compile the linker -
 \ tools/aot-build.f and every src/habu/aot-*.f it loads - in each child: about

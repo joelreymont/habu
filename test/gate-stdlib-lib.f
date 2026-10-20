@@ -6,6 +6,7 @@ require src/lib/test/runner.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fs.f
+require src/lib/build-cache.f
 require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
@@ -56,28 +57,18 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s" HABU_UNDER_TEST" >LEN eng engu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+ ;
 
-\ ONE BUILD CACHE PER GATE RUN. Every row and build row is handed one cache
-\ root under the gate root: each family's image, and the maker, app builder,
-\ artifacts, objects and native FILE objects of every child that names no root
-\ of its own, land there, so a row finds the image its family's build row made
-\ and the whole cache goes with the run (src/lib/build-cache.f creates it on
-\ first use). SUITE-SETUP fills it once GT-START has made the root.
-create GATE-CACHE-BUF FS-PATH-CAP allot
-variable GATE-CACHE-U
-
-: GATE-CACHE$ ( -- ptr u8 n )
-   GATE-CACHE-BUF GATE-CACHE-U @ ;
-
 \ The grant names the keyed images the gate settled for this row
 \ (test/image-grant.f), and goes in before the inherit for the same reason: a
-\ gate run as a row of another gate grants its own rows, never its parent's,
-\ and its rows build in its own cache, never its parent's.
+\ gate run as a row of another gate grants its own rows, never its parent's.
+\ Publish the selected, normalized build-cache root explicitly so every child,
+\ including a nested gate, reuses it even if its own default resolver differs.
+\ BUILD-CACHE owns retention; the gate root holds only run-local products.
 : SUITE-ENV ( ptr u8 n ptr u8 n -- ) {: eng:ptr engu:n grant:ptr grantu:n :}
    PROC-ENV-RESET
    eng engu SUITE-ENGINE-ENV
    IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
    s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GATE-CACHE$ >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE:ROOT$ SOURCE-ROOT:CANONICAL drop >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The product engine, spelled twice for two different readers. The SPAWN is
@@ -196,7 +187,6 @@ variable GATE-CACHE-U
    ENTRY-GUARD:CHECK
    GT-POOL-CATCH-SIGNALS
    s" habu-native-suite" GT-START
-   s" build-cache" GATE-CACHE-BUF GT-PATH GATE-CACHE-U !
    GT-POOL-RESET
    [: SUITE-BUILD-RUN ;] GATE-IMAGES:START ;
 
