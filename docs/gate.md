@@ -297,10 +297,13 @@ at its deadline.
   what those import, or launch as a `.f` source through a path literal a known
   load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
   Nothing is declared; a cold host needs the writer and the linker needs the
-  saver image because their modules load those modules. A row whose images are
-  not settled holds the registry until they are, while the rows before it keep
-  running. A failed build row is red with the builder's exit status and
-  output, and an image built on the failed one is not built: every row that
+  saver image because their modules load those modules. A row that needs an
+  image not yet settled waits aside, out of the pool: the rows after it keep
+  starting, and it starts at the first start after its images settle, ahead of
+  every later row not yet started (`src/lib/test/suite.f` `PENDING`). Before a
+  sequential group and at the end of the run every wanted image settles and
+  every waiting row starts before the pool drains. A failed build row is red
+  with the builder's exit status and output, and an image built on the failed one is not built: every row that
   needs either is red with a line naming the failed build row, and every other
   row runs. Each row's environment names its images in `HABU_GATE_IMAGES`
   (`test/image-grant.f`): a process under the gate that settles an image its

@@ -3302,13 +3302,18 @@ quotation syntax is unavailable.
 
 `TEST:*` defines reusable suite/group/test orchestration. Project adapters
 install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
-`TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:RUNNER!`, and
-`TEST:STDIN-RUNNER!`; test files declare named groups with
+`TEST:SETTLE!`, `TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:RUNNER!`,
+`TEST:WHITEBOX-RUNNER!` and `TEST:STDIN-RUNNER!`; test files declare named groups with
 `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
 mandatory positional token before the group name), define `TEST:SUITE` or
 `TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
-with `TEST:;GROUP`, and execute once with `TEST:RUN`. `TEST:RUN` starts entries
-in registration order and calls the drain hook on entry to a `SEQ` group,
+with `TEST:;GROUP`, and execute once with `TEST:RUN`. `TEST:RUN` offers entries
+to their runner in registration order. A runner returns TRUE when the entry
+started and FALSE when it cannot start yet: that entry waits aside and is
+offered again, ahead of every later entry, before each later start. Before
+every drain the settle hook runs and then every waiting entry starts; one that
+a runner still declines is refused by name — `test: row <name> not started
+after settle`, `E-SUITE-ROW`. The drain hook runs on entry to a `SEQ` group,
 before and after each of its entries, and once at the end; `PARA` entries,
 `TEST:SUITE-STDIN` ones included, start without waiting for each other, so an
 entry that needs an idle pool belongs in a `SEQ` group. An entry ends at

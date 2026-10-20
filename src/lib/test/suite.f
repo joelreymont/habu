@@ -47,18 +47,27 @@ variable DEF-ID
 variable DEF-SCRIPT
 variable DEF-ENTRIES
 variable LAST-GROUP
+\ Rows a runner declined, in registry order: item ids waiting to start.
+create PENDING ITEM-MAX cells allot
+variable PENDING-N
+variable PEND-SCAN
+variable PEND-KEEP
 
 defer SETUP ( -- )
 defer TEARDOWN ( n -- )
 defer DRAIN ( -- )
 defer ARGS-BEGIN ( -- )
 defer ARG+ ( ptr u8 n -- )
-defer RUNNER ( ptr u8 n -- )
-defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
+\ A runner answers whether the row started: FALSE leaves it pending, offered
+\ again before every later start and at every drain. SETTLE runs before each
+\ drain and makes every pending row startable: after it no runner declines.
+defer RUNNER ( ptr u8 n -- bool )
+defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- bool )
 \ A whitebox item names the same kind of file as an ordinary one and differs in
 \ ONE thing: the engine it is handed to. The adapter owns that engine, so the
 \ kind picks a second runner here rather than carrying a path through the table.
-defer WHITEBOX-RUNNER ( ptr u8 n -- )
+defer WHITEBOX-RUNNER ( ptr u8 n -- bool )
+defer SETTLE ( -- )
 
 : TRUE ( -- bool )
    0 0= ;
@@ -69,10 +78,10 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
 : ARG-DROP ( ptr u8 n -- )
    2drop ;
 
-: RUN-MISSING ( ptr u8 n -- )
+: RUN-MISSING ( ptr u8 n -- bool )
    2drop E-FS-OPEN throw ;
 
-: STDIN-RUN-MISSING ( ptr u8 n ptr u8 n -- )
+: STDIN-RUN-MISSING ( ptr u8 n ptr u8 n -- bool )
    2drop 2drop E-FS-OPEN throw ;
 
 : CAP-CHECK ( n n -- ) {: u:n cap:n :}
@@ -295,18 +304,6 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
    id ITEM-ARGS-BEGIN
    id PARSE-ARGS ;
 
-: GROUP-HEADER? ( n -- bool ) {: gid:n :}
-   gid LAST-GROUP @ <> ;
-
-: GROUP-HEADER ( n -- ) {: gid:n :}
-   gid GROUP-HEADER? if
-      gid GROUP-MODE@ GROUP-SEQUENTIAL = if DRAIN then
-      s" GROUP: " type gid GROUP-NAME$ type
-      gid GROUP-MODE@ GROUP-SEQUENTIAL = if s"  (sequential)" else s"  (parallel)" then
-      type cr
-      gid LAST-GROUP !
-   then ;
-
 : SEQUENTIAL? ( n -- bool )
    ITEM-GROUP@ GROUP-MODE@ GROUP-SEQUENTIAL = ;
 
@@ -318,42 +315,99 @@ defer WHITEBOX-RUNNER ( ptr u8 n -- )
       ARG-SCAN @ cell + u + ARG-SCAN !
    loop ;
 
-: ITEM-RUN-FILE ( n -- ) {: id:n :}
+: ITEM-RUN-FILE ( n -- bool ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
    id ITEM-NAME$ RUNNER ;
 
 \ The whitebox engine is a second binary, not a second argument list: the item
 \ builds its argv exactly as a file item does and only the spawn differs.
-: ITEM-RUN-WHITEBOX ( n -- ) {: id:n :}
+: ITEM-RUN-WHITEBOX ( n -- bool ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
    id ITEM-NAME$ WHITEBOX-RUNNER ;
 
-: ITEM-RUN-STDIN ( n -- ) {: id:n :}
+: ITEM-RUN-STDIN ( n -- bool ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
    id ITEM-STDIN$ id ITEM-NAME$ STDIN-RUNNER ;
 
-: ITEM-RUN ( n -- ) {: id:n :}
-   id ITEM-GROUP@ GROUP-HEADER
-   id SEQUENTIAL? if DRAIN then
+: ITEM-DISPATCH ( n -- bool ) {: id:n :}
    id ITEM-KIND@
    case
       ITEM-FILE of id ITEM-RUN-FILE endof
       ITEM-STDIN of id ITEM-RUN-STDIN endof
       ITEM-WHITEBOX of id ITEM-RUN-WHITEBOX endof
       E-TBL-FIELD throw
-   endcase
-   id SEQUENTIAL? if DRAIN then
-   ITEM-RAN @ 1+ ITEM-RAN ! ;
+   endcase ;
 
+\ Offer the row to its runner; TRUE when it started, counted once.
+: ITEM-START ( n -- bool )
+   ITEM-DISPATCH {: ok:bool :}
+   ok if ITEM-RAN @ 1+ ITEM-RAN ! then
+   ok ;
+
+: PEND ( n -- ) {: id:n :}
+   id PENDING PENDING-N @ ITEM-CELL !
+   PENDING-N @ 1+ PENDING-N ! ;
+
+\ Offer every pending row in registry order, keeping the declined ones in
+\ place. Index cells, not a loop frame: a runner may catch and throw.
+: PENDING-RETRY ( -- )
+   0 PEND-KEEP !
+   0 PEND-SCAN !
+   begin PEND-SCAN @ PENDING-N @ < while
+      PENDING PEND-SCAN @ ITEM-CELL @ {: id:n :}
+      id ITEM-START 0= if
+         id PENDING PEND-KEEP @ ITEM-CELL !
+         PEND-KEEP @ 1+ PEND-KEEP !
+      then
+      PEND-SCAN @ 1+ PEND-SCAN !
+   repeat
+   PEND-KEEP @ PENDING-N ! ;
+
+\ After SETTLE every pending row must start: a decline then breaks the
+\ adapter's contract and is refused by name.
+: PENDING-FLUSH ( -- )
+   SETTLE
+   PENDING-RETRY
+   PENDING-N @ 0= if exit then
+   PENDING 0 ITEM-CELL @ {: id:n :}
+   s" test: row " type id ITEM-NAME$ type s"  not started after settle" type cr
+   E-SUITE-ROW throw ;
+
+: DRAIN-ALL ( -- )
+   PENDING-FLUSH
+   DRAIN ;
+
+: GROUP-HEADER? ( n -- bool ) {: gid:n :}
+   gid LAST-GROUP @ <> ;
+
+: GROUP-HEADER ( n -- ) {: gid:n :}
+   gid GROUP-HEADER? if
+      gid GROUP-MODE@ GROUP-SEQUENTIAL = if DRAIN-ALL then
+      s" GROUP: " type gid GROUP-NAME$ type
+      gid GROUP-MODE@ GROUP-SEQUENTIAL = if s"  (sequential)" else s"  (parallel)" then
+      type cr
+      gid LAST-GROUP !
+   then ;
+
+: ITEM-RUN ( n -- ) {: id:n :}
+   id ITEM-GROUP@ GROUP-HEADER
+   id SEQUENTIAL? if DRAIN-ALL then
+   id ITEM-START 0= if id PEND then
+   id SEQUENTIAL? if DRAIN-ALL then ;
+
+\ A pending row starts at the first start after its runner accepts it, ahead
+\ of every later row not yet started.
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
+   0 PENDING-N !
    ITEM-N @ 0 ?do
+      PENDING-RETRY
       i ITEM-RUN
    loop
-   DRAIN ;
+   DRAIN-ALL ;
 
 : RUN-ACT ( -- )
    SETUP
@@ -381,14 +435,17 @@ EXPORT ITEM-NAME$
 : ARG+! ( [ ptr u8 n -- ] -- )
    is ARG+ ;
 
-: RUNNER! ( [ ptr u8 n -- ] -- )
+: RUNNER! ( [ ptr u8 n -- bool ] -- )
    is RUNNER ;
 
-: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
+: STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- bool ] -- )
    is STDIN-RUNNER ;
 
-: WHITEBOX-RUNNER! ( [ ptr u8 n -- ] -- )
+: WHITEBOX-RUNNER! ( [ ptr u8 n -- bool ] -- )
    is WHITEBOX-RUNNER ;
+
+: SETTLE! ( [ -- ] -- )
+   is SETTLE ;
 
 : ITEMS-REGISTERED ( -- n )
    ITEM-N @ ;
@@ -428,7 +485,8 @@ EXPORT ITEM-NAME$
    [: ARG-DROP ;] ARG+!
    [: RUN-MISSING ;] RUNNER!
    [: STDIN-RUN-MISSING ;] STDIN-RUNNER!
-   [: RUN-MISSING ;] WHITEBOX-RUNNER! ;
+   [: RUN-MISSING ;] WHITEBOX-RUNNER!
+   [: NOOP ;] SETTLE! ;
 
 : RESET ( -- )
    0 ITEM-N !

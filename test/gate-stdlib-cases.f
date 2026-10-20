@@ -2,10 +2,13 @@ STDLIB-GATE:MAIN
 
 using TEST
 
-\ Registry order is start order: the compiler-images build starts in the pool
-\ before these rows, and independent early rows run beside it. Each row waits
-\ for a free slot or the images its load closure needs. Long rows lead so they
-\ do not start late and alone set the gate's tail.
+\ Registry order is start order among ready rows: the compiler-images build
+\ starts in the pool before these rows, and independent rows run beside it.
+\ Each row waits for a free slot. A row whose load closure needs an image not
+\ yet settled waits aside, out of the pool: the rows after it keep starting,
+\ and it starts at the first start after its images settle, ahead of every
+\ later row not yet started (src/lib/test/suite.f PENDING). Long rows lead so
+\ they do not start late and alone set the gate's tail.
 
 \ The CPU budget bounds runaway work; it is not a target for growing a row.
 \ Measure wall and user+system time with `/usr/bin/time bin/hb --load <file>`.
@@ -14,8 +17,8 @@ using TEST
 \ duplicated builds or process setup (test/suite-budget.f keeps the limits).
 
 \ These long rows need no keyed image, including their child load paths.
-\ Start them before the first image-dependent row holds the registry, so
-\ they keep the pool busy while the compiler bundle builds.
+\ They lead so they start at once and keep the pool busy while the compiler
+\ bundle builds.
 SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
@@ -65,7 +68,7 @@ SUITE native-build-entry
 ;SUITE
 
 \ The positive hb-build AOT checks are two rows of about 28 s each that share no
-\ state and need no keyed image, so they also run before the first image wait.
+\ state and need no keyed image, so they also start while the images build.
 SUITE native-gate-aot-positive-bundle
    test/gate-aot-positive-bundle.f
 ;SUITE
@@ -1003,9 +1006,8 @@ SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
 ;SUITE
 
-\ These three rows run on the linker image (test/preloaded-engine.f). The first
-\ row that needs it holds the registry until app-image-build and linker-build
-\ pass, so the others add no hold of their own.
+\ These three rows run on the linker image (test/preloaded-engine.f): each
+\ waits aside until app-image-build and linker-build pass.
 SUITE stripped-address
    test/stripped-address.f
 ;SUITE

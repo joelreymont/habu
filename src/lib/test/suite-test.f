@@ -64,10 +64,11 @@ variable MARK-N
    MARK-N @ 4 = if a u s" --" T$= exit then
    a u s" ENTRIES" T$= ;
 
-: RUNNER ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: RUNNER ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
    1 RUN-N +!
-   label labelu s" alpha" STR= if 1 ALPHA-N +! exit then
-   label labelu s" beta" STR= if 1 BETA-N +! exit then ;
+   label labelu s" alpha" STR= if 1 ALPHA-N +! true exit then
+   label labelu s" beta" STR= if 1 BETA-N +! true exit then
+   true ;
 
 : THROWER ( -- )
    E-STR-BOUNDS throw ;
@@ -75,25 +76,27 @@ variable MARK-N
 : THROW-CAUGHT ( -- )
    [: THROWER ;] E-STR-BOUNDS TTHROWSQ ;
 
-: THROW-RUNNER ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: THROW-RUNNER ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
    label labelu s" throw-caught" STR= if
       THROW-CAUGHT
       1 THROW-N +!
-      exit
+      true exit
    then
    label labelu s" throw-late" STR= if
       1 THROW-LATE-N +!
-      exit
-   then ;
+      true exit
+   then
+   true ;
 
-: FAIL-RUNNER ( ptr u8 n -- )
+: FAIL-RUNNER ( ptr u8 n -- bool )
    2drop
    E-STR-BOUNDS throw ;
 
-: STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
+: STDIN-RUNNER ( ptr u8 n ptr u8 n -- bool )
    {: in:ptr inu:n label:ptr labelu:n :}
    1 STDIN-N +!
-   label labelu s" stdin-case" STR= if 1 STDIN-LABEL-N +! then ;
+   label labelu s" stdin-case" STR= if 1 STDIN-LABEL-N +! then
+   true ;
 
 : INSTALL ( -- )
    [: SETUP ;] TEST:SETUP!

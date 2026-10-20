@@ -1,9 +1,11 @@
-\ The real gate adapter schedules a compiler supplier beside an independent
-\ row. A private source tree replaces only the compiler builder at the normal
-\ child process boundary. The builder cannot finish until that row releases
-\ it, so a synchronous setup ends at the builder's bounded wait, which this
-\ test reports as a timeout rather than a failure. Keep each registry,
-\ builder, consumer copy and transcript for replay.
+\ The real gate adapter schedules a compiler supplier beside independent
+\ rows. A private source tree replaces only the compiler builder at the normal
+\ child process boundary. The builder cannot finish until the release row
+\ before the consumer and the later row after it have run, so a synchronous
+\ setup, or a consumer that holds the registry while it waits for the bundle,
+\ ends at the builder's bounded wait, which this test reports as a timeout
+\ rather than a failure. Keep each registry, builder, consumer copy and
+\ transcript for replay.
 \ Run: bin/hb --load test/gate-images-test.f
 require src/lib/test.f
 require src/lib/string.f
@@ -136,7 +138,7 @@ public
    false RUN-GATE
    s" success.out" s" success.err" LOG
    TIMED-OUT
-   s" the independent row releases the bundle before dependent consumers" T-LABEL
+   s" the release and later rows run beside the bundle a consumer waits for" T-LABEL
    CHECK-SUCCESS
    s" success artifacts: " type ROOT$ type cr
    s" gate-images-orch-failure" SETUP

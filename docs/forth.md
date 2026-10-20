@@ -1314,9 +1314,10 @@ package FEATURE-TEST
 
 variable RUN-N
 
-: RUNNER ( ptr u8 n -- )
+: RUNNER ( ptr u8 n -- bool )
    2drop
-   1 RUN-N +! ;
+   1 RUN-N +!
+   true ;
 
 : INSTALL ( -- )
    [: RUNNER ;] TEST:RUNNER! ;
@@ -1339,8 +1340,9 @@ T-REPORT
 ```
 
   `src/lib/test.f` exposes `T*` assertions; `TEST:SETUP!`,
-  `TEST:TEARDOWN!`, `TEST:DRAIN!`, `TEST:ARGS-BEGIN!`, `TEST:ARG+!`,
-  `TEST:RUNNER!`, `TEST:STDIN-RUNNER!` install typed hooks; `TEST:GROUP SEQ|PARA
+  `TEST:TEARDOWN!`, `TEST:DRAIN!`, `TEST:SETTLE!`, `TEST:ARGS-BEGIN!`,
+  `TEST:ARG+!`, `TEST:RUNNER!`, `TEST:STDIN-RUNNER!` install typed hooks (a
+  runner returns TRUE once its row started); `TEST:GROUP SEQ|PARA
   name` opens a group (the mode token is mandatory, before the name);
   `TEST:;GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:;SUITE` and `TEST:RUN`
   define and run. No helper globals such as `FOO-TEST-SETUP-N`.

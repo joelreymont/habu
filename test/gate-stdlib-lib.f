@@ -81,10 +81,9 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    ENGINE-ID:PATH$ ;
 
 \ A ROW'S ARGV WAITS WITH IT. The row's files name the keyed images it needs
-\ (test/gate-images.f), and a row whose images are not settled yet holds the
-\ registry while build rows start - each staging its own argv in the same
-\ process-wide table. So the tokens are kept here as they arrive and staged
-\ only once the row is ready to spawn.
+\ (test/gate-images.f), and the readiness probe may start a build row, which
+\ stages its own argv in the same process-wide table. So the tokens are kept
+\ here as they arrive and staged only once the row is ready to spawn.
 : ROW-BEGIN ( -- )
    0 ROW-ARGS-U !
    0 ROW-ARG-N !
@@ -116,10 +115,11 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
       ROW-SCAN @ cell + u + ROW-SCAN !
    loop ;
 
-\ TRUE once every keyed image the row needs is settled, with its argv staged;
+\ TRUE once every keyed image the row needs passed, with its argv staged;
 \ else the row is started as its own red row naming the failed build row.
+\ Asked only once ROW-SETTLED? answered TRUE.
 : SUITE-READY? ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
-   GATE-IMAGES:ROW-READY? if ROW-ARGV! 0 0= exit then
+   GATE-IMAGES:ROW-PASSED? if ROW-ARGV! 0 0= exit then
    label labelu GATE-IMAGES:ROW-RED
    0 0<> ;
 
@@ -129,26 +129,35 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 : ROW-BUDGET! ( -- )
    SUITE-BUDGET:CPU-MS GT-POOL-SEQ @ GT-POOL-CPU-BUDGET! ;
 
-: SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu SUITE-READY? 0= if exit then
+\ Each runner answers FALSE, starting nothing, while the row's images are not
+\ settled: the registry keeps the row pending (src/lib/test/suite.f). Once
+\ settled it starts, or its red row does, and answers TRUE.
+: SUITE-HB-RUN ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
+   GATE-IMAGES:ROW-SETTLED? 0= if false exit then
+   label labelu SUITE-READY? 0= if true exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
-   ROW-BUDGET! ;
+   ROW-BUDGET!
+   true ;
 
 \ A WHITEBOX-SUITE row runs on the gate's private copy of the unsealed engine,
 \ which the whitebox-engine build row puts in place.
-: SUITE-WB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: SUITE-WB-RUN ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
    GATE-IMAGES:ROW-WHITEBOX
-   label labelu SUITE-READY? 0= if exit then
+   GATE-IMAGES:ROW-SETTLED? 0= if false exit then
+   label labelu SUITE-READY? 0= if true exit then
    GATE-IMAGES:WHITEBOX$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    GATE-IMAGES:WHITEBOX$ label labelu SUITE-BUDGET:ROW-MS GT-POOL-START
-   ROW-BUDGET! ;
+   ROW-BUDGET!
+   true ;
 
-: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
-   label labelu SUITE-READY? 0= if exit then
+: SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- bool ) {: in:ptr inu:n label:ptr labelu:n :}
+   GATE-IMAGES:ROW-SETTLED? 0= if false exit then
+   label labelu SUITE-READY? 0= if true exit then
    PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu SUITE-BUDGET:ROW-MS GT-POOL-START-STDIN
-   ROW-BUDGET! ;
+   ROW-BUDGET!
+   true ;
 
 \ A keyed image's build row: the product engine, handed its program on stdin
 \ with no arguments, granted the family it settles and that family's
@@ -163,9 +172,10 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 \ before anything starts: this hook runs outside the catch around the rows. The
 \ keyed images the registry's rows load - the compiler bundle, fixture writer,
 \ cold host, saver and linker images, unsealed engine - settle in the pool,
-\ one build row per image beside the rows, and each row starts once its own
-\ images are (test/gate-images.f): a broken image closure fails its build row
-\ and the rows that load it, and every other row runs.
+\ one build row per image beside the rows; a row whose images are not settled
+\ waits aside and starts at the first start after they are (test/gate-images.f):
+\ a broken image closure fails its build row and the rows that load it, and
+\ every other row runs.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    GATE-IMAGES:DERIVE
@@ -175,10 +185,12 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    GT-POOL-RESET
    [: SUITE-BUILD-RUN ;] GATE-IMAGES:START ;
 
-\ A sequential group runs alone: every build row has retired before the pool
-\ drains for it.
+\ Before every drain the registry settles: every build row retires and every
+\ waiting row starts, so a sequential group runs alone.
+: SUITE-SETTLE ( -- )
+   GATE-IMAGES:SETTLE-ALL ;
+
 : SUITE-DRAIN ( -- )
-   GATE-IMAGES:SETTLE-ALL
    GT-POOL-DRAIN-SOFT ;
 
 4096 constant COMPILER-CHUNK-CAP
@@ -235,6 +247,7 @@ variable COMPILER-OFF
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
    [: SUITE-FINISH ;] TEST:TEARDOWN!
+   [: SUITE-SETTLE ;] TEST:SETTLE!
    [: SUITE-DRAIN ;] TEST:DRAIN!
    [: ROW-BEGIN ;] TEST:ARGS-BEGIN!
    [: ROW-ARG+ ;] TEST:ARG+!

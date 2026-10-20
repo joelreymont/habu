@@ -1,8 +1,10 @@
-\ Controlled compiler bundle builder for gate-images-test.f. The release
-\ row must run while this builder is live. A serial gate never releases it, so
-\ its bounded wait expires: the builder names the wait and exits
-\ PROC-TIMEOUT-RC, which the gate reports as a timeout rather than hanging the
-\ focused test or counting a failure.
+\ Controlled compiler bundle builder for gate-images-test.f. The release and
+\ later rows must both run while this builder is live: later is registered
+\ after consumer, which waits for this bundle, so later runs only when a row
+\ waiting on images steps aside. A serial gate, or one that holds the registry
+\ on consumer, never releases it, so its bounded wait expires: the builder
+\ names the wait and exits PROC-TIMEOUT-RC, which the gate reports as a
+\ timeout rather than hanging the focused test or counting a failure.
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -21,8 +23,15 @@ create NOISE 1024 allot
 : AT ( ptr u8 n -- ptr u8 n )
    0 SCRIPT-ARGV$ 2swap PATH JOIN-PATH PATH swap ;
 
+: EVIDENCE ( ptr u8 n -- ptr u8 n )
+   s" HABU_GATE_ORCH_EVIDENCE" GETENV 2swap PATH JOIN-PATH PATH swap ;
+
+: RELEASE-SEEN? ( -- bool )
+   s" release" AT FILE?
+   s" later" EVIDENCE FILE? and ;
+
 : WAIT-RELEASE ( -- )
-   [: s" release" AT FILE? ;] mono-ns RELEASE-NS +
+   [: RELEASE-SEEN? ;] mono-ns RELEASE-NS +
    s" gate-images-orch-builder WAIT-RELEASE" TEST-WAIT:POLL ;
 
 \ A throw code does not cross the process boundary: the expired wait leaves as
@@ -30,7 +39,7 @@ create NOISE 1024 allot
 : RELEASED ( -- )
    [: WAIT-RELEASE ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
-      s" gate orchestration: independent row never released builder"
+      s" gate orchestration: independent rows never released builder"
       PROC-TIMEOUT-RC die
    then
    code 0<> if code throw then ;
@@ -63,8 +72,7 @@ public
    s" hb-ordinary.map" AT s" names" WRITE-ALL
    s" hb-whitebox-source" AT s" whitebox" WRITE-ALL
    s" hb-whitebox-source" AT CHMOD-X
-   s" HABU_GATE_ORCH_EVIDENCE" GETENV s" builder-released" PATH JOIN-PATH
-      PATH swap s" builder saw release" WRITE-ALL ;
+   s" builder-released" EVIDENCE s" builder saw release" WRITE-ALL ;
 ;package
 
 GATE-ORCH-BUILDER:RUN

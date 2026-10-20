@@ -18,9 +18,13 @@
 \ <module>` and the family's settle word on stdin, on the product engine like
 \ any row. A family whose prerequisite is still building starts once that one
 \ passed, and never if it failed. A row that needs an image not yet settled
-\ holds the registry until it is, while the rows before it keep running. A row
-\ that needs a failed image is its own red pool row, naming the build row that
-\ failed, and every row that needs none of the failed images runs as usual.
+\ waits aside, out of the pool: the rows after it keep starting, and it starts
+\ at the first start after its images settle, ahead of every later row not yet
+\ started (src/lib/test/suite.f PENDING). Before a sequential group and at the
+\ end of the run every wanted image settles and every waiting row starts before
+\ the pool drains. A row that needs a failed image is its own red pool row,
+\ naming the build row that failed, and every row that needs none of the
+\ failed images runs as usual.
 \
 \ GRANTED, NOT RACED. Each row is told the images settled for it
 \ (test/image-grant.f), so its own settle only finds and dates them; a settle
@@ -484,10 +488,15 @@ public
 : ROW-WHITEBOX ( -- )
    WHITEBOX MODULE$ ROW-FILE ;
 
-\ Settle every image the row needs, holding the registry until each build row
-\ retired. TRUE when all passed; else start ROW-RED for the row.
-: ROW-READY? ( -- bool )
-   ROW-MASK @ AWAIT
+\ Retire finished build rows, start the wanted ones whose prerequisites
+\ passed, and answer whether every image the row needs is settled. Never
+\ waits for a build row: a start waits only for a free slot.
+: ROW-SETTLED? ( -- bool )
+   PUMP
+   ROW-MASK @ SETTLED? ;
+
+\ TRUE when every image the row needs passed; valid once ROW-SETTLED?.
+: ROW-PASSED? ( -- bool )
    ROW-MASK @ FAILED-IN 0 < ;
 
 : ROW-RED ( ptr u8 n -- ) {: label:ptr labelu:n :}
