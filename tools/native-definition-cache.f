@@ -123,8 +123,6 @@ PTR-VARIABLE OPEN-PATH
 variable OPEN-PATH-U
 PTR-VARIABLE OPEN-ROOT
 variable OPEN-ROOT-U
-variable INPUTS-PATH-U
-PTR-VARIABLE INPUTS-PATH
 create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
 create SOURCE-RAW 32 allot
@@ -180,7 +178,6 @@ CAST: N>Q ( n -- [ n n -- ] )
 TYPED-VARIABLE PRIOR-UNIT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE HOST-PRIOR-UNIT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE OUTER-BODY [ -- ]
-TYPED-VARIABLE DEFINITION-BODY [ ptr u8 n -- ]
 PTR-VARIABLE APP-PATH
 variable APP-PATH-U
 PTR-VARIABLE REQUEST-PATH
@@ -1340,8 +1337,7 @@ variable PENDING-KEY-U
    SEEDED @ if exit then
    NFILE-REF:BIND-SEED
    1 SEEDED !
-   ['] OWNER NATIVE? @ if AOT-ARM:B0 @ else 0 then
-      NUNIT-ORIGIN:BIND
+   NATIVE? @ if AOT-ARM:B0 @ else 0 then NUNIT-ORIGIN:BIND
    BIND-OWNER ;
 
 : PRINT-COUNTS ( -- )
@@ -1361,7 +1357,6 @@ variable PENDING-KEY-U
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
    NULL-PTR OPEN-PATH ! 0 OPEN-PATH-U !
    NULL-PTR OPEN-ROOT ! 0 OPEN-ROOT-U !
-   NULL-PTR INPUTS-PATH ! 0 INPUTS-PATH-U !
    NULL-PTR APP-PATH ! 0 APP-PATH-U !
    NULL-PTR REQUEST-PATH ! 0 REQUEST-PATH-U !
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
@@ -1385,7 +1380,6 @@ variable PENDING-KEY-U
    NULL-PTR BODY-RECORD !
    0 PUBLICATION-CLEAR-XT !
    0 TFAM-RESET-XT ! 0 CON-RESET-XT !
-   NULL-PTR INPUTS-PATH ! 0 INPUTS-PATH-U !
    0 HOST-SOURCE-BOUND ! 0 TARGET-SOURCE-BOUND !
    0 HOST-SOURCE-READY ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-INPUT-RESET !
@@ -1464,16 +1458,6 @@ public
 
 : ARM-NATIVE-ACCEPT ( [ ptr u8 n -- ] -- bool ) ARM-NATIVE ;
 
-: BIND-EXPLICIT-FACTS ( -- )
-   OWNER-READY? 0= if BAD then
-   BIND-OWNER-FACTS
-   BIND-NOMINALS
-   PIN-COMPILER
-   ['] COMPILER-ROLE$ NUNIT-DEP:USE-COMPILER-ROLE
-   PIN-HOST-CHECKER ;
-
-: CLEAR-EXPLICIT-FACTS ( -- ) CLEAR-NOMINALS ;
-
 : WITH ( ptr u8 n [ -- ] -- )
    {: mode:ptr modeu:n body :}
    mode modeu s" engine" STR= NATIVE? !
@@ -1532,7 +1516,6 @@ public
 : APP-LOAD ( ptr u8 n ptr u8 n bool -- )
    {: path:ptr pathu:n manifest:ptr manifestu:n report:bool :}
    report REPORT? !
-   manifest INPUTS-PATH ! manifestu INPUTS-PATH-U !
    SEED BIND-HOST-SOURCE BIND-OWNER
    REFRESH-CANONICAL-ORIGIN
    BIND-DISPATCH
@@ -1559,11 +1542,5 @@ public
    path REQUEST-PATH ! pathu REQUEST-PATH-U !
    manifest REQUEST-MANIFEST ! manifestu REQUEST-MANIFEST-U !
    mode modeu ['] REQUEST-RUN WITH ;
-
-: LOAD-WITH-INPUTS-QUIET ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n mode:ptr modeu:n manifest:ptr manifestu:n :}
-   path REQUEST-PATH ! pathu REQUEST-PATH-U !
-   manifest REQUEST-MANIFEST ! manifestu REQUEST-MANIFEST-U !
-   mode modeu ['] REQUEST-RUN WITH-QUIET ;
 
 ;package
