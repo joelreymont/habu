@@ -780,8 +780,8 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `trust`, and `TRUST-RAW` parses the effect in raw-definer mode so every type
   variable in it is minted `TVK-RAW`. That covers all three publication sites in
   `src/habu/habu2.f`: `-- ptr a` for `create` and `variable`
-  (`C-CALL-TRUST-LASTC-PTR-A`), `-- a` for `constant` (`C-CALL-TRUST-LASTC-A`),
-  and the `does>`-declared created-word effect (`C-CALL-TRUST-LASTC`), which is
+  (`LASTC-TRUST:PUBLISH-PTR-A`), `-- a` for `constant` (`LASTC-TRUST:PUBLISH-A`),
+  and the `does>`-declared created-word effect (`LASTC-TRUST:PUBLISH`), which is
   what seals `PTR-VARIABLE` and every user-written `create ... does>` definer.
   So `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` over a `variable V` rejects
   under `bin/hb --load` with `expected: cad-kind:region actual: a`, and so

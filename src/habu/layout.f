@@ -333,7 +333,7 @@ $4000000000000000 constant DNAME-WIDE
 \ trusted signature and no primitive axiom). Set by the seal-time marking pass
 \ (src/core/internal-mark.f) so the executable top-level name universe equals
 \ the checker's; data records (create/variable/constant, does>-instances) are
-\ exempt - push-only bodies, auto-trusted by C-CALL-TRUST-LASTC-* whenever a
+\ exempt - push-only bodies, auto-trusted by LASTC-TRUST:PUBLISH* whenever a
 \ hook is installed. LFIND folds the bit into x13 bit 4; EM-INTERPRET-FIND and
 \ interpret ' fail closed on it with `hb: internal engine word: <token>` +
 \ rc 70 (dot habu-hb-crash-bare-c5be6634). Compile-mode references (explicitly
