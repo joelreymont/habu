@@ -152,7 +152,7 @@ DYNAMIC-BUFFER D-OUT-BUF n
 : D-OUT ( -- ptr n ) 0 D-OUT-BUF ;
 DYNAMIC-BUFFER D-NEED-BUF n
 : D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create D-CUR DSLOT-MAX cells allot   \ the running answer inside one block
 create D-MEET DSLOT-MAX cells allot  \ the meet of one block's predecessors
 variable D-MOVED                     \ a fixpoint round changed something
@@ -218,7 +218,7 @@ HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
 3 constant TRAP-CELLS                \ the address, the length and the exit code
 64 constant EDGE-MAX                 \ operands one edge may carry
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable BND-MODE
 BOUND-NO BND-MODE !
 
@@ -796,21 +796,23 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id kk m r CALL-RESTORE ;
 
 \ ---- leaving through the callee ----------------------------------------------
-\ A tail call is not a call site with the end cut off: the pointer must already
-\ stand at the callee's entry base, and the branch carries no adjustment.
-: TAIL-CK ( n n -- )
-   {: a:n r:n :}
-   a ARGS SLOT-POSITIONS <> if E-X64SEL-TAIL throw then
-   r OUTS SLOT-POSITIONS <> if E-X64SEL-TAIL throw then
-   a X64IR:SLOT-WIDTH * DPLACED 0<> if E-X64SEL-TAIL throw then
-   r X64IR:SLOT-WIDTH * DPLACED 0<> if E-X64SEL-TAIL throw then ;
+\ The callee writes this routine's declared result row. Its input row may have
+\ another width, so the branch publishes the callee's own arguments.
+: TAIL-CK ( n -- )
+   {: r:n :}
+   r OUTS SLOT-POSITIONS <> if E-X64SEL-TAIL throw then ;
 
-: EMIT-TAIL-BR ( IR-ID:ir-op-id n -- )
-   {: at:IR-ID:ir-op-id entry:n :}
+: EMIT-TAIL-BR ( IR-ID:ir-op-id n n n n -- )
+   {: at:IR-ID:ir-op-id entry:n a:n r:n move:n :}
    at X64IR-OPCODE:TAILCALL OPEN
    TOK OPERAND+
    CTX BLD  CTX BLD X64IR:KEY-ENTRY  CTX BLD entry X64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD X64IR:KEY-TAIL-IN  CTX BLD a IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD X64IR:KEY-TAIL-OUT  CTX BLD r IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   move DBYTES-AT+
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ The epilogue stands in FRONT of the branch and not after it.
@@ -818,11 +820,12 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-CALL throw then
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
-   a r TAIL-CK
+   r TAIL-CK
    id 0 OPERAND TOK!
    id kk m a mask CALL-SAVE
    id EPILOGUE
-   id  id WORD-ENTRY  EMIT-TAIL-BR
+   id  id WORD-ENTRY  a r  a X64IR:SLOT-WIDTH * DPLACED
+   EMIT-TAIL-BR
    N-TAILS @ 1+ N-TAILS ! ;
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
@@ -2253,8 +2256,9 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
       if E-X64SEL-SHAPE throw then
    loop ;
 
-\ The entry base, except in a routine that leaves through its callee: there the
-\ tail branch carries no adjustment, so the pointer never moves at all.
+\ Ordinary routines stand at the entry base. A routine leaving through its
+\ callee stands at its own input top until the final branch publishes that
+\ callee's input width.
 : DPLACE ( -- )
    0 D-POS !
    DSTACK? 0= if exit then

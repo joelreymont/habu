@@ -6,7 +6,7 @@
 \ structural and the append revalidates a constructor-forged token against the
 \ module's own source registry and symbol store; expansion origins must already
 \ be appended, so cycles cannot be built and walks terminate; a sealed tape is
-\ read-only and answers one digest that every stage can bind to; and a holder
+\ read-only; and a holder
 \ who bypasses the package and appends raw cells is caught by CHECK, one named
 \ error per corrupted field.
 \ Tier-neutral by design: the tape is minted, sealed and read through its own
@@ -625,160 +625,6 @@ private
    s" a stored origin that is not below its own row is refused" T-LABEL
    [: RUN-ORG ;] E-NTAPE-STATE TTHROWSQ ;
 
-\ ---- the shared digest -------------------------------------------------------
-\ A three-token tape, built to order, so a caller can vary exactly one field.
-\ mode2 and lit2 belong to the second token; ord decides whether the second and
-\ third tokens are appended in order or swapped.
-: BUILD ( IR-CTX:ctx NTAPE:mode n n n -- IR-ARENA:view )
-   {: c:IR-CTX:ctx m2:NTAPE:mode l2:n st3:n ord:n :}
-   c 8 MOD-NEW
-   {: key:IR-ID:ir-module-key sr:IR-ARENA:arena
-      sp:IR-ARENA:arena sy:IR-ARENA:arena tp:IR-ARENA:arena :}
-   c sr key SRC {: s0:IR-ID:ir-source-id :}
-   c sp sy key s" SQUARE" IR-SYM:INTERN {: n0:IR-ID:ir-symbol-id :}
-   c sp sy key s" DUP" IR-SYM:INTERN {: n1:IR-ID:ir-symbol-id :}
-   c tp sr sy
-      sr s0 0 1 IR-SOURCE:SPAN n0 NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
-      NTAPE:PUSH drop
-   ord 0 = if
-      c tp sr sy
-         sr s0 2 3 IR-SOURCE:SPAN n1 m2 l2 NTAPE:INT-TOKEN
-         NTAPE:PUSH drop
-      c tp sr sy
-         sr s0 st3 2 IR-SOURCE:SPAN n0 NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
-         NTAPE:PUSH drop
-   else
-      c tp sr sy
-         sr s0 st3 2 IR-SOURCE:SPAN n0 NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
-         NTAPE:PUSH drop
-      c tp sr sy
-         sr s0 2 3 IR-SOURCE:SPAN n1 m2 l2 NTAPE:INT-TOKEN
-         NTAPE:PUSH drop
-   then
-   tp NTAPE:SEAL ;
-
-: BASE ( IR-CTX:ctx -- CDIGEST:digest )
-   NTAPE-MODE:COMPILING 7 5 0 BUILD NTAPE:DIGEST ;
-
-\ The same three tokens again, with the knobs BUILD does not have: the third
-\ token's kind, spelling, expansion origin, source, and span length. Every
-\ selector at zero builds exactly BUILD's base tape, which is one of the
-\ clauses below - so a preimage slot that stopped being read would show up as
-\ two tapes that differ agreeing, not as a fixture drifting apart.
-: BUILD-B ( IR-CTX:ctx n n n n n -- IR-ARENA:view )
-   {: c:IR-CTX:ctx k3:n p3:n o3:n r3:n l3:n :}
-   c 8 MOD-NEW
-   {: key:IR-ID:ir-module-key sr:IR-ARENA:arena
-      sp:IR-ARENA:arena sy:IR-ARENA:arena tp:IR-ARENA:arena :}
-   c sr key SRC {: s0:IR-ID:ir-source-id :}
-   c sr key TEXT IR-SOURCE:REGISTER {: s1:IR-ID:ir-source-id :}
-   c sp sy key s" SQUARE" IR-SYM:INTERN {: n0:IR-ID:ir-symbol-id :}
-   c sp sy key s" DUP" IR-SYM:INTERN {: n1:IR-ID:ir-symbol-id :}
-   c tp sr sy
-      sr s0 0 1 IR-SOURCE:SPAN n0 NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
-      NTAPE:PUSH drop
-   c tp sr sy
-      sr s0 2 3 IR-SOURCE:SPAN n1 NTAPE-MODE:COMPILING 7 NTAPE:INT-TOKEN
-      NTAPE:PUSH drop
-   r3 0 = if s0 else s1 then {: src:IR-ID:ir-source-id :}
-   p3 0 = if n0 else n1 then {: spl:IR-ID:ir-symbol-id :}
-   l3 0 = if 2 else 3 then {: ln:n :}
-   \ name and string-literal carry the same spelling, span and empty literal,
-   \ so this knob moves the stored kind and nothing else
-   c tp sr sy
-   k3 0 = if
-      sr src 5 ln IR-SOURCE:SPAN spl NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
-   else
-      sr src 5 ln IR-SOURCE:SPAN spl NTAPE-MODE:COMPILING NTAPE:STRING-TOKEN
-   then
-   o3 0 = if NTAPE:PUSH else 0 NTAPE:PUSH-FROM then
-   drop
-   tp NTAPE:SEAL ;
-
-\ Two structurally identical tapes, in two different modules of one context,
-\ digest identically: the module serial is allocated per process and is
-\ deliberately outside the preimage, or no cached result could outlive a run.
-: DG-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c BASE {: want:CDIGEST:digest :}
-   c BASE  want CDIGEST-DIGEST:EQ
-   c NTAPE-MODE:INTERPRETING 7 5 0 BUILD NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c NTAPE-MODE:COMPILING 8 5 0 BUILD NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c NTAPE-MODE:COMPILING 7 6 0 BUILD NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c NTAPE-MODE:COMPILING 7 5 1 BUILD NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c BASE  want CDIGEST-DIGEST:EQ ;
-
-: DG-CASE ( -- )
-   s" the digest is the tape and only the tape" T-LABEL
-   BND [: DG-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TFALSE TFALSE TFALSE TFALSE TTRUE ;
-
-\ The remaining preimage fields, one clause each: the third token's kind,
-\ spelling, expansion origin, source, and span length all move the digest, and
-\ the all-zero build is the same tape BUILD's base is.
-: DGB-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c 0 0 0 0 0 BUILD-B NTAPE:DIGEST {: want:CDIGEST:digest :}
-   c BASE  want CDIGEST-DIGEST:EQ
-   c 1 0 0 0 0 BUILD-B NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c 0 1 0 0 0 BUILD-B NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c 0 0 1 0 0 BUILD-B NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c 0 0 0 1 0 BUILD-B NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c 0 0 0 0 1 BUILD-B NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ ;
-
-: DGB-CASE ( -- )
-   s" kind, spelling, origin, source and length each move the digest" T-LABEL
-   BND [: DGB-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE TFALSE TFALSE TFALSE TFALSE TTRUE ;
-
-\ An empty tape still has a digest, and it is not any non-empty tape's.
-: DGE-BODY ( IR-CTX:ctx -- bool bool )
-   {: c:IR-CTX:ctx :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key 4 NTAPE:NEW NTAPE:SEAL NTAPE:DIGEST {: want:CDIGEST:digest :}
-   c IR-CTX:NEW-MODULE drop {: k2:IR-ID:ir-module-key :}
-   c k2 4 NTAPE:NEW NTAPE:SEAL NTAPE:DIGEST
-      want CDIGEST-DIGEST:EQ
-   c BASE  want CDIGEST-DIGEST:EQ ;
-
-: DGE-CASE ( -- )
-   s" an empty tape has its own stable digest" T-LABEL
-   BND [: DGE-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE TTRUE ;
-
-\ VERIFY is the contract the stages share: a stage records the digest of the
-\ tape it read and hands it back. The tape it was given must be that tape.
-: VF-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c NTAPE-MODE:COMPILING 7 5 0 BUILD {: v:IR-ARENA:view :}
-   v v NTAPE:DIGEST NTAPE:VERIFY ;
-
-: VF-CASE ( -- )
-   s" a stage that hands back the digest it recorded is accepted" T-LABEL
-   BND [: VF-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: VFX-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c BASE {: other:CDIGEST:digest :}
-   c NTAPE-MODE:INTERPRETING 7 5 0 BUILD
-   other NTAPE:VERIFY ;
-
-: VFX ( -- )
-   BND [: VFX-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: VFX-CASE ( -- )
-   s" a digest from another tape is refused" T-LABEL
-   [: VFX ;] E-NTAPE-DIGEST TTHROWSQ ;
-
 \ ---- a tape of a module that is still being built -----------------------------
 \ src/compiler/ir/build.f holds a module's source registry and symbol interner
 \ privately, so a tape of such a module cannot be handed them. It asks the
@@ -791,7 +637,7 @@ private
    IR-BUILD:PLAN-BEGIN
    16 256 IR-BUILD:PLAN-SYMBOLS
    8 64 IR-BUILD:PLAN-TYPES
-   8 64 IR-BUILD:PLAN-ATTRS
+   8 IR-BUILD:PLAN-ATTRS
    4 IR-BUILD:PLAN-SOURCES
    8 64 IR-BUILD:PLAN-SCHEMAS
    8 8 64 IR-BUILD:PLAN-OPS
@@ -995,20 +841,6 @@ private
    drop
    CHECK-CASES ;
 
-: GROUP-DIGEST ( IR-CTX:ctx -- )
-   drop
-   DG-CASE
-   DGE-CASE ;
-
-: GROUP-DIGEST-FIELDS ( IR-CTX:ctx -- )
-   drop
-   DGB-CASE ;
-
-: GROUP-VERIFY ( IR-CTX:ctx -- )
-   drop
-   VF-CASE
-   VFX-CASE ;
-
 : GROUP-BUILT ( IR-CTX:ctx -- )
    drop
    BJ-CASE ;
@@ -1029,9 +861,6 @@ public
    BND [: GROUP-OWNER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-LIFECYCLE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-CHECK ;] IR-CTX:WITH-CONTEXT
-   BND [: GROUP-DIGEST ;] IR-CTX:WITH-CONTEXT
-   BND [: GROUP-DIGEST-FIELDS ;] IR-CTX:WITH-CONTEXT
-   BND [: GROUP-VERIFY ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT-REFUSE-A ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT-REFUSE-B ;] IR-CTX:WITH-CONTEXT

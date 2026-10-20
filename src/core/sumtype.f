@@ -745,14 +745,17 @@ create TDV-BADLETTER 1 allot
 \ a private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
 \ declaring package's private wordlist instead, and a private SUM or ENUM still
 \ publishes no word at all and constructs through item 9's `construct` form.
-\ The derived name is interned AFTER the escaped/hashed spelling is built, so the
+\ The derived name is interned AFTER the escaped spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
 
 public
 
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-GEN-PUBLIC? 0= IF EXIT THEN
+   TDN-A @ TDN-U @ TDECL-TOK!
+   s" constructor package name exceeds 255 bytes" TDECL-WHY!
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
+   s" declaration failed" TDECL-WHY!
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 
@@ -1171,10 +1174,6 @@ public
 \ every provisional checker row, and rewinds the queue. Only that fully
 \ accepted plan crosses the closed INCLUDE-EVALUATE boundary once. The generated
 \ text never contains TRUST, TRUSTED:, or set-check.
-\ The one complete-plan evaluate crossing rides the closed boundary
-\ (include.f), reached through this friend xt installed by type-family-sha.f
-\ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
-\ adds no unchecked code.
 \ Generated-plan eval crossing and protected-wordlist recorder, reached
 \ through `defer` hooks so the call is statically effect-known (no execute of a
 \ raw stored xt). include.f binds TDECL-EVAL-XT; xref.f binds
@@ -1685,9 +1684,6 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    -1 TDPV-FAM !
    0 TDPV-VARS !
    0 TDPV-NODES !
-   WFS-BOOT WFS-P !
-   WF-INIT WF-CAP !
-   0 WF-N !
    NULL-PTR TDK-A !  0 TDK-U !
    NULL-PTR TDN-A !  0 TDN-U !
    NULL-PTR TDB-A !  0 TDB-U !

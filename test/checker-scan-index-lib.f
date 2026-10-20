@@ -48,10 +48,9 @@ TYPED-VARIABLE SCX-NU n
 : SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 
 \ the two scans the dot names, read directly: SCAN-USIGS-SYM leaves its answer
-\ in FEP/FMEND and NORET-SCAN-SYM in NORET-CTL, and the memoizing entry points
-\ above them can hide a wrong answer behind a cache hit.
+\ in FEP and returns the record end; NORET-SCAN-SYM leaves it in NORET-CTL.
+\ The memoizing entry points above them can hide a wrong answer behind a hit.
 : SCX-FEP-MINI ( -- n ) FEP @ E-MINI@ ;
-: SCX-FMEND ( -- n ) FMEND @ ;
 create SCX-WIRE EFF-WIRE allot
 : SCX-WIRE-NEXT ( n -- n )
    USIG-NEWEST 1- E-PTR SCX-WIRE E-WIRE-COPY

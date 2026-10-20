@@ -14,6 +14,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/test/subject.f
 require test/suite-budget.f
+require test/pcap-result.f
 
 package GATE-IMAGES-ORCH-E2E
 private
@@ -67,12 +68,7 @@ variable PARENT-U
       SOURCE swap [: TEST-FILE ;] WALK-FILES ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
+   PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
 : LOG ( ptr u8 n ptr u8 n -- )
    {: outname:ptr outu:n errname:ptr erru:n :}
@@ -107,6 +103,7 @@ variable PARENT-U
    s" pair/hb-root" AT EXECUTABLE? TTRUE
    s" pair/hb-ordinary" AT FILE? TTRUE
    s" pair/hb-root.map" AT FILE? TTRUE
+   s" pair/hb-ordinary.map" AT FILE? TTRUE
    s" consumer-started" AT FILE? TTRUE
    s" consumer" AT FILE? TTRUE
    s" later" AT FILE? TTRUE

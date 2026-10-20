@@ -4,6 +4,8 @@ require src/habu/regalloc-abi.f
 require src/habu/address-cells.f
 require src/habu/prof-abi.f
 require src/habu/native-observer-cells.f
+require src/habu/native-observer-extension.f
+require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 
 \ --- DATA claim map and the layout-time overlap assertion ----------------------
@@ -138,6 +140,8 @@ variable NAMES-U
    s" SRCLOC-PATH" NAME,
    s" SRCLOC-PATHLEN" NAME,
    s" SRCLOC-INB" NAME,
+   s" SRCLOC-OWNED" NAME,
+   s" SRCLOC-OWNEDLEN" NAME,
    s" TOKBODY-CELL" NAME,
    s" TOKLOCN-CELL" NAME,
    s" TOKCP-CELL" NAME,
@@ -163,9 +167,12 @@ variable NAMES-U
    s" NATIVE-OBS-CELLS:PUBLISHED" NAME,
    s" NATIVE-OBS-CELLS:INVALIDATE" NAME,
    s" NATIVE-OBS-CELLS:HOST-INVALIDATE" NAME,
+   s" NATIVE-OBS-EXT:CAPTURE-INVALIDATE" NAME,
    s" NATIVE-HOST-CELLS:SELECT" NAME,
    s" NATIVE-HOST-CELLS:SCALAR-PRIM" NAME,
    s" NATIVE-HOST-CELLS:FACTS" NAME,
+   s" NATIVE-HOST-CELLS:DIVISION-PRIM" NAME,
+   s" PEND-OPAQUE-CELL" NAME,
    s" DEF-OCC:PTR-CELL" NAME,
    s" LOCNAMES" NAME,
    s" VRTAB" NAME,
@@ -200,6 +207,11 @@ variable NAMES-U
    s" ENGINE-MAIN-XT-CELL" NAME,
    s" NCOMP-DISPATCH:CALLBACK-STUB-CELL" NAME,
    s" NCOMP-DISPATCH:CALLBACK-ENTRY-CELL" NAME,
+   s" NATIVE-OBS-EXT:BODY-REUSE" NAME,
+   s" NATIVE-OBS-EXT:ORIGIN-HOOK" NAME,
+   s" NATIVE-OBS-EXT:ORIGIN-TAKE" NAME,
+   s" NATIVE-OBS-EXT:PENDING-TAKE" NAME,
+   s" NATIVE-OBS-EXT:READER" NAME,
    s" FFI-BUFFERS" NAME,
    s" TASK-TCB-CELL" NAME,
    s" TASKS-LIVE-CELL" NAME,
@@ -304,6 +316,8 @@ create TAB
    SRCLOC:PATH-CELL               ,  1 cells ,
    SRCLOC:PATHLEN-CELL            ,  1 cells ,
    SRCLOC:INB-CELL                ,  1 cells ,
+   SRCLOC:OWNED-CELL              ,  1 cells ,
+   SRCLOC:OWNEDLEN-CELL           ,  1 cells ,
    TOKBODY-CELL                   ,  1 cells ,
    TOKLOCN-CELL                   ,  1 cells ,
    TOKCP-CELL                     ,  1 cells ,
@@ -329,9 +343,12 @@ create TAB
    NATIVE-OBS-CELLS:PUBLISHED     ,  1 cells ,
    NATIVE-OBS-CELLS:INVALIDATE    ,  1 cells ,
    NATIVE-OBS-CELLS:HOST-INVALIDATE ,  1 cells ,
+   NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 1 cells ,
    NATIVE-HOST-CELLS:SELECT        ,  1 cells ,
    NATIVE-HOST-CELLS:SCALAR-PRIM   ,  1 cells ,
    NATIVE-HOST-CELLS:FACTS         ,  1 cells ,
+   NATIVE-HOST-CELLS:DIVISION-PRIM ,  1 cells ,
+   PEND-OPAQUE-CELL               ,  1 cells ,
    DEF-OCC:PTR-CELL               ,  1 cells ,
    LOCNAMES                       ,  LOC-RECS LOC-REC * ,
    REGALLOC-ABI:VRTAB-OFF         ,  REGALLOC-ABI:VRTAB-BYTES ,
@@ -366,6 +383,11 @@ create TAB
    ENGINE-MAIN:XT-CELL            ,  1 cells ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  1 cells ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 1 cells ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + , 1 cells ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + , 1 cells ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + , 1 cells ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + , 1 cells ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + , 1 cells ,
    $3A00                          ,  $288 ,
    TASK-TCB-CELL                  ,  1 cells ,
    TASKS-LIVE-CELL                ,  1 cells ,

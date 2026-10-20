@@ -3,7 +3,7 @@ title: Bound the remaining CPU-heavy child deadlines by CPU
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T13:07:23.483940+02:00\""
+created-at: "2026-10-03T13:07:23.483940+02:00"
 closed-at: "2026-10-14T19:48:36.916422+03:00"
 close-reason: "42d9f46c moves heavy child deadlines to SUITE-BUDGET:CHILD-MS, deduplicates row constants, measures retained guards and verifies rows under throttling and 64 CPU hogs."
 ---

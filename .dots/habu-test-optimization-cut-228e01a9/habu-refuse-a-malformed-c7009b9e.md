@@ -3,7 +3,7 @@ title: Refuse a malformed qualified name in CHECKER-DEFER
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T13:57:08.473840+02:00\""
+created-at: "2026-10-02T13:57:08.473840+02:00"
 closed-at: "2026-10-14T19:46:59.197628+03:00"
 close-reason: c75ff6d0 adds CHECKER-RECORD-NAME-AT before symbol writers; current CHECKER-DEFER calls it and name-length-test.f tests malformed names with no row publication.
 ---

@@ -80,7 +80,15 @@ $38 constant OWNER-BYTES
 
 : OWNER-SIZE ( n -- n ) cells 2 * OWNER-BYTES + ;
 
+: CLEAR-CELLS ( ptr u8 n -- )
+   {: buf:ptr bytes:n :}
+   bytes CELL / 0 ?do 0 buf i cells + CELL-VIEW ! loop ;
+
 : OWNER-INIT ( ptr u8 ptr u8 n n -- ) {: owner:ptr arena:ptr cap:n role:n :}
+   \ Allot leaves old bytes intact. Unused rows and arena capacity belong to
+   \ this new owner too, and must not retain the build host's scratch values.
+   owner cap OWNER-SIZE CLEAR-CELLS
+   role ROLE-IMPORTED <> if arena ARENA-CAP CELL + CLEAR-CELLS then
    0 owner NEXT-FIELD !
    arena owner ARENA-FIELD LINK!
    cap owner CAP-FIELD !
@@ -108,6 +116,13 @@ BOOT-OWNER FIRST-P !  BOOT-OWNER ACTIVE-P !  BOOT-OWNER WRITE-P !
 create SLOT SLOTS cells allot       \ the last segment's hash slots: row index plus one
 variable PROBE
 variable HV
+
+\ Definition capture records each successful call, including pool hits and
+\ results the emitter later discards. The pool owns the immutable body bytes.
+DYNAMIC-BUFFER SOURCE-ADDR n
+DYNAMIC-BUFFER SOURCE-LEN n
+variable SOURCE-N
+variable SOURCE-ON
 
 : BASE ( -- n )
    ARENA PTR>N ;
@@ -289,9 +304,35 @@ variable HV
       MORE@  dup 0= if E-NSTR-BODY throw then
    loop ;
 
+: SOURCE-RECORD ( n n -- n ) {: address:n size:n :}
+   SOURCE-ON @ if
+      SOURCE-N @ 1+ SOURCE-ADDR-RESERVE
+      SOURCE-N @ 1+ SOURCE-LEN-RESERVE
+      address SOURCE-N @ SOURCE-ADDR !
+      size SOURCE-N @ SOURCE-LEN !
+      1 SOURCE-N +!
+   then
+   address ;
+
 public
 
 : ACTIVE ( -- ptr u8 ) ACTIVE-P @ ;
+
+: SOURCE-BEGIN ( -- )
+   0 SOURCE-N ! -1 SOURCE-ON ! ;
+
+: SOURCE-END ( -- )
+   0 SOURCE-ON ! 0 SOURCE-N ! ;
+
+: SOURCE-COUNT ( -- n ) SOURCE-N @ ;
+
+: SOURCE@ ( n -- ptr u8 n ) {: row:n :}
+   row 0 < row SOURCE-N @ >= or if E-NSTR-BODY throw then
+   row SOURCE-ADDR @ NULL-PTR BYTE-VIEW + row SOURCE-LEN @ ;
+
+: SOURCE-CLOSE ( -- )
+   SOURCE-END
+   SOURCE-ADDR-RELEASE SOURCE-LEN-RELEASE ;
 
 : SWITCH ( ptr u8 -- ) {: owner:ptr :}
    owner OWNER? 0= if E-NSTR-BODY throw then
@@ -327,9 +368,13 @@ public
 : INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    a u FIND {: k:n :}
-   k 0 >= if BASE k ROW-OFF + exit then
+   k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
    a u ADD {: row:n :}
-   BASE row ROW-OFF + ;
+   BASE row ROW-OFF + u SOURCE-RECORD ;
+
+: INTERN-SOURCE ( ptr u8 n -- n n )
+   INTERN
+   SOURCE-ON @ if SOURCE-N @ negate 1- else -1 then ;
 
 private
 

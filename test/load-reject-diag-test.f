@@ -10,7 +10,7 @@
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\   tools/json.f tools/gate-json-assert-core.f src/lib/argv.f
+\   tools/gate-json-assert-core.f src/lib/argv.f
 \   tools/repair-packet-core.f test/load-reject-diag-test.f
 
 require src/lib/errors.f
@@ -21,7 +21,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require tools/json.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
@@ -265,7 +264,7 @@ LOWER-CERT-HOOK:INSTALL
 
 : ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
    {: word:ptr wordu:n token:ptr tokenu:n :}
-   ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root GJA-DIAG-CONTRACT-ROW
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
    root s" repair_class" GJA-REQ s" model_compile_immediate" GJA-ASSERT-STR
@@ -274,7 +273,7 @@ LOWER-CERT-HOOK:INSTALL
    ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
    {: pa:ptr pu:n :}
    pa OUT pu BYTE-COPY
-   OUT pu JSON-PARSE dup GJA-OBJ {: packet:n :}
+   OUT pu GJA-PARSE dup GJA-OBJ {: packet:SPAN:span<u8> :}
    packet s" model_compile_immediate" GJA-REPAIR-HEAD
    packet GJA-REPAIR-DEF ;
 
@@ -383,7 +382,7 @@ LOWER-CERT-HOOK:INSTALL
    SIGLESS$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG
-   ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
    root s" token_index" 1 GJA-ASSERT-INT-FIELD
    root s" byte_start" 31 GJA-ASSERT-INT-FIELD
    root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;

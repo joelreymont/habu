@@ -75,16 +75,13 @@
 \   one                                                                   definitions-refused
 \   a name defined again after undefine loses a line                      definitions-undefine
 \   a dependency's definitions are dropped, or named by the subject       definitions-dependency
-\   a file a check read has no file line, or several for the same bytes,
-\   or one it did not read has one; a file line's digest is other than
-\   the SHA-256 of the bytes the check read of the file                   files
-\   the subject's file line states its copy on disk, not the bytes        identity-subject
+\   a file visit a check read has no file line, or one it did not read has
+\   one; a line misstates its source
+\   as subject, document or disk                                           files
+\   a subject reached again through a loader gets a disk file line        identity-subject
 \   two paths that hold the same bytes share one file line                identity-paths
 \   a dependency rewritten between two checks keeps its file line's
-\   digest, though a span in it names another word in each                identity-swap
-\   a file line is keyed by its path alone, by its digest alone, by the
-\   path's last bytes alone, or by a path or bytes its caller reuses; the
-\   pre-pass writes one                                                   file-line-keys
+\   path or source kind, though a span in it names another word in each   identity-swap
 \   a top-level loader of the subject that reached its file has no load
 \   line, a span other than its operand's (the token after include or
 \   require, a string loader's literal as written, escapes and all), a
@@ -221,7 +218,8 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/cold-engine.f
-require tools/json.f
+require src/lib/jsonl.f
+require tools/gate-json-assert-core.f
 require tools/check-verify-core.f
 
 package CHECK-VERIFY-TEST
@@ -355,51 +353,96 @@ variable CLI-OUT-U
       deferred OF false ENDOF
    ;MATCH ;
 
+\ A packet is a borrowed source span. An empty span means no packet; a JSON
+\ object always occupies bytes, so the sentinel cannot be a real packet.
+TYPED-VARIABLE CV-SRC ptr u8
+variable CV-LEN
+variable CV-POS
+variable CV-STRICT
+TYPED-VARIABLE CV-ROW SPAN:span<u8>
+TYPED-VARIABLE CV-ROW-A ptr u8
+variable CV-ROW-U
 
-\ The value under KEY in packet NODE when it is of KIND, else -1.
-: VALUE ( n ptr u8 n n -- n ) {: node:n key:ptr keyu:n kind:n :}
-   node 0 < if -1 exit then
-   node key keyu JSON-GET {: v:n :}
-   v 0 < if -1 exit then
-   v JSON-KIND kind = if v exit then
-   -1 ;
+: CV-NONE ( -- SPAN:span<u8> )
+   CV-SRC @ 0 SPAN:MAKE ;
 
+: CV-START ( ptr u8 n -- )
+   CV-LEN ! CV-SRC ! 0 CV-POS ! false CV-STRICT ! ;
 
-: STRING$ ( n ptr u8 n -- ptr u8 n )
-   J-STR VALUE dup 0 < if drop s" " exit then
-   JSON-STRING$ ;
+: CV-START-STRICT ( ptr u8 n -- )
+   CV-START true CV-STRICT ! ;
 
+: CV-PARSE ( -- )
+   CV-ROW-A @ CV-ROW-U @ GJA-PARSE CV-ROW ! ;
 
-: NUMBER$ ( n ptr u8 n -- ptr u8 n )
-   J-NUM VALUE dup 0 < if drop s" " exit then
-   JSON-NUMBER$ ;
+: CV-TRY ( ptr u8 n -- n )
+   CV-ROW-U ! CV-ROW-A !
+   [: CV-PARSE ;] catch ;
 
+: CV-SYNTAX? ( n -- bool ) {: code:n :}
+   code E-JR-MALFORMED = code E-JR-STRING = or
+   code E-JR-ESCAPE = or code E-JR-SURROGATE = or
+   code E-JR-TRAILING = or code E-JR-NUMBER = or
+   code E-JR-EOF = or code E-JR-COLON = or code E-JR-COMMA = or ;
 
-\ The first packet in LINES whose string KEY is VALUE, or -1.
-: PACKET ( ptr u8 n ptr u8 n ptr u8 n -- n ) {: lines:ptr linesu:n key:ptr keyu:n val:ptr valu:n :}
-   lines linesu JSONL-START
-   begin
-      JSONL-NEXT-OBJECT
-      dup 0 < if exit then
-      dup key keyu STRING$ val valu STR= 0=
-   while
+: CV-BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
+      0= if false unloop exit then
+   loop true ;
+
+\ Skip mode discards blank, malformed and non-object lines. Strict mode skips
+\ blank lines but refuses malformed or non-object lines. Depth is capacity.
+: CV-NEXT ( -- SPAN:span<u8> )
+   begin CV-POS @ CV-LEN @ < while
+      CV-SRC @ CV-LEN @ CV-POS @ JSONL:SPLIT-LINE
+      drop {: line:ptr lu:n next:n :}
+      next CV-POS !
+      line lu CV-BLANK? 0= if
+         line lu CV-TRY {: code:n :}
+         code 0= if
+            CV-ROW @ dup GJA-KIND JR:T-OBJ = if exit then
+            drop CV-STRICT @ if E-JR-STATE throw then
+         else
+            code CV-SYNTAX? 0= CV-STRICT @ or if code throw then
+         then
+      then
+   repeat CV-NONE ;
+
+: VALUE ( SPAN:span<u8> ptr u8 n n -- SPAN:span<u8> )
+   {: node:SPAN:span<u8> key:ptr keyu:n kind:n :}
+   node SPAN:LEN 0= if CV-NONE exit then
+   node key keyu GJA-FIELD? 0= if drop CV-NONE exit then
+   dup GJA-KIND kind = if exit then
+   drop CV-NONE ;
+
+: STRING$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
+   JR:T-STR VALUE dup SPAN:LEN 0= if drop s" " exit then
+   GJA-STRING$ ;
+
+: NUMBER$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
+   {: node:SPAN:span<u8> key:ptr keyu:n :}
+   node key keyu GJA-FIELD? 0= if drop s" " exit then
+   dup GJA-KIND dup JR:T-INT = swap JR:T-FLOAT = or 0= if drop s" " exit then
+   SPAN:$ ;
+
+: PACKET ( ptr u8 n ptr u8 n ptr u8 n -- SPAN:span<u8> )
+   {: lines:ptr linesu:n key:ptr keyu:n val:ptr valu:n :}
+   lines linesu CV-START
+   begin CV-NEXT dup SPAN:LEN 0<> while
+      dup key keyu STRING$ val valu STR= if exit then
       drop
    repeat ;
 
-
-\ How many JSON objects LINES holds.
 : OBJECTS ( ptr u8 n -- n )
-   JSONL-START 0
-   begin JSONL-NEXT-OBJECT 0 >= while 1+ repeat ;
+   CV-START 0
+   begin CV-NEXT SPAN:LEN 0<> while 1+ repeat ;
 
-
-\ Every line is a JSON object: the strict reader refuses a line that is not
-\ JSON, E-JSON-SYNTAX, or not an object, E-JSON-TYPE.
 : ALL-JSON? ( ptr u8 n -- bool )
-   JSONL-START-STRICT
-   [: begin JSONL-NEXT-OBJECT 0 < until ;] catch {: rc:n :}
+   CV-START-STRICT
+   [: begin CV-NEXT SPAN:LEN 0= until ;] catch {: rc:n :}
    rc 0= if true exit then
-   rc E-JSON-SYNTAX = rc E-JSON-TYPE = or if false exit then
+   rc CV-SYNTAX? rc E-JR-STATE = or if false exit then
    rc throw ;
 
 
@@ -541,12 +584,12 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" two-in-turn: the first" EXPECT-KIND
    s\" : CVT-TWO ( -- n ) CVT-ONE ;\n" s" two.f" GUARD-MS CHECK-AS
    1 s" two-in-turn: the second" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CVT-ONE" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" s" CVT-ONE" PACKET {: p:SPAN:span<u8> :}
    s" two-in-turn: CVT-ONE is undefined" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
    s" two-in-turn: in the second" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s\" : CVT-OWN ( -- ptr u8 n ) CHECK:VERIFY-OUT$ ;\n" s" own.f" GUARD-MS CHECK-AS
    1 s" two-in-turn: a word of this process" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CHECK:VERIFY-OUT$" PACKET {: q:n :}
+   CHECK:VERIFY-OUT$ s" token" s" CHECK:VERIFY-OUT$" PACKET {: q:SPAN:span<u8> :}
    s" two-in-turn: it is undefined" T-LABEL q s" code" STRING$ s" E-UNDEFINED" T$= ;
 
 
@@ -576,7 +619,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : BUFFER-NOT-DISK ( -- )
    s\" \n\n\n: CVT-POS ( n -- n ) drop ;\n" s" pos.f" GUARD-MS CHECK-AS
    1 s" buffer-not-disk: the bytes are checked" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
    s" buffer-not-disk: the packet names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" buffer-not-disk: line in the bytes" T-LABEL p s" line" NUMBER$ s" 4" T$=
    s" buffer-not-disk: byte in the bytes" T-LABEL p s" byte_start" NUMBER$ s" 24" T$= ;
@@ -601,12 +644,12 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : FAILING-DEPENDENCY ( -- )
    s\" require bad-dep.f\n: CVT-USE8 ( -- n ) CVT-EIGHT ;\n" s" use8.f" GUARD-MS CHECK-AS
    1 s" failing-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-broken" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-broken" PACKET {: p:SPAN:span<u8> :}
    s" failing-dependency: the packet names the dependency" T-LABEL
    p s" file" STRING$ s" bad-dep.f" AT$ T$=
    s" failing-dependency: at its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
    s" failing-dependency: none names the subject" T-LABEL
-   CHECK:VERIFY-OUT$ s" file" SUBJ$ PACKET 0 < TTRUE ;
+   CHECK:VERIFY-OUT$ s" file" SUBJ$ PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ Bytes no loader would accept, as the engine's own src/lib/string.f.
@@ -639,7 +682,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
    s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
-   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
    s" open-stop: its record names the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" open-stop: with the code" T-LABEL p s" throw_code" NUMBER$ s" 7155" T$=
    s" open-stop: at the opener's line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -679,8 +722,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
       s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
    STOP-LINE
    s" disc-stop: the packet made first is kept" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-disc-bad" PACKET 0 >= TTRUE
-   CHECK:VERIFY-OUT$ s" code" s" E-UNTERMINATED-STRING" PACKET {: r:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-disc-bad" PACKET SPAN:LEN 0<> TTRUE
+   CHECK:VERIFY-OUT$ s" code" s" E-UNTERMINATED-STRING" PACKET {: r:SPAN:span<u8> :}
    s" disc-stop: the stop's record in the subject" T-LABEL r s" file" STRING$ SUBJ$ T$=
    s" disc-stop: at the opener's line" T-LABEL r s" line" NUMBER$ s" 2" T$=
    s\" require loop.f\n" s" disc-dep.f"
@@ -726,7 +769,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" no-result: the child's exit" T-LABEL v OVER-USING$SRC STATUS 76 T=
    s" no-result: the child's words" T-LABEL
    CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
-   CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:SPAN:span<u8> :}
    s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
@@ -742,7 +785,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : STOP-AFTER-PACKET ( -- )
    s\" require open-dep.f\n: CVT-OPEN-USE ( -- n ) 1 ;\n" s" open-use.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" stop-after-packet: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:SPAN:span<u8> :}
    s" stop-after-packet: the dependency's packet" T-LABEL
    p s" file" STRING$ s" open-dep.f" AT$ T$=
    s" stop-after-packet: in the dependency" T-LABEL
@@ -753,7 +796,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" {: own:ptr ownu:n :}
    own ownu s" open-own.f" GUARD-MS CHECK-AS {: w :}
    w 1 s" stop-after-packet: the subject's, refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:SPAN:span<u8> :}
    s" stop-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$=
    s" stop-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" stop-after-packet: at the subject's opener" T-LABEL
@@ -765,7 +808,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : MISSING-DEPENDENCY ( -- )
    s\" \\ lost\nrequire cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
    1 s" missing-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" missing-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" missing-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" missing-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
@@ -793,7 +836,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ LINE and COLUMN.
 : AT-TOKEN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n code:ptr codeu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" code" code codeu PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" code codeu PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" token" STRING$ tok toku T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -843,7 +886,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" dyn-dep.f" s\" \\ dyn\nPATH$ included\n" FIXTURE
    s\" require dyn-dep.f\n" s" dyn-use.f" GUARD-MS CHECK-AS
    1 s" loader-form: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
    s" loader-form: in the dependency" T-LABEL p s" file" STRING$ s" dyn-dep.f" AT$ T$=
    s" loader-form: at the loader word" T-LABEL p s" token" STRING$ s" included" T$=
    s" loader-form: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
@@ -865,7 +908,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" commented-literal: verified" EXPECT-KIND
    s\" s\" cvt-lit-gone.f\" ( kept ) required\n" s" lit-gone.f" GUARD-MS CHECK-AS
    1 s" commented-literal: a missing one refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" commented-literal: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" commented-literal: at the loader word" T-LABEL p s" token" STRING$ s" required" T$=
    s" commented-literal: its line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -879,7 +922,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" locked-dep.f" AT$ 0 CHMOD-MODE
    s\" \\ unread\nrequire locked-dep.f\n" s" unread.f" GUARD-MS CHECK-AS
    1 s" unreadable-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" unreadable-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" unreadable-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
@@ -894,7 +937,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" absent.f\n" GEN+
    0 GEN GEN-U @ s" long.f" GUARD-MS CHECK-AS
    1 s" long-resolved: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
    s" long-resolved: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" long-resolved: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" long-resolved: its line" T-LABEL p s" line" NUMBER$ s" 1" T$= ;
@@ -927,14 +970,25 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" whole-output: each complete" T-LABEL out outu ALL-JSON? TTRUE
    s" whole-output: every packet" T-LABEL out outu OBJECTS BIG-DEFS T=
    s" whole-output: the last" T-LABEL
-   out outu s" word" s" cvt-b9999" PACKET 0 >= TTRUE
+   out outu s" word" s" cvt-b9999" PACKET SPAN:LEN 0<> TTRUE
    \ Indexing retains a valid declaration after the same large refusal stream.
    BIG$SRC 2drop
    s\" : CVT-INDEX-SURVIVOR ( -- n ) 1 ;\n" GEN+
+   s\" : CVT-INDEX-MK ( n -- ) create , does> ( -- n ) @ ;\n" GEN+
+   s\" : CVT-INDEX-BAD ( n -- n ) create , does> ( -- n ) @ ;\n" GEN+
+   s\" TRUSTED: CVT-INDEX-TRUSTED ( -- n ) 1 ;\n" GEN+
+   s\" TRUSTED: CVT-INDEX-REFUSED ( -- zzz-unknown ) ;\n" GEN+
    0 GEN GEN-U @ s" big.f" AT$ GUARD-MS >MS CHECK:INDEX-BYTES
    1 s" whole-output: index refused" EXPECT-KIND
    s" whole-output: index survivor" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET 0 >= TTRUE ;
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET SPAN:LEN 0<> TTRUE
+   s" whole-output: certified definer" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-mk" PACKET SPAN:LEN 0<> TTRUE
+   \ A certified clause cannot rescue its refused parent's kept signature.
+   s" whole-output: refused definer" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-bad" PACKET SPAN:LEN 0= TTRUE
+   s" whole-output: completed trusted declaration" T-LABEL
+   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-trusted" PACKET SPAN:LEN 0<> TTRUE ;
 
 
 \ ---- loader calls ------------------------------------------------------------
@@ -957,9 +1011,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-INC ( -- ) s\" files-inc.f\" included ;\ns\" dep.f\" required\n: CVT-USE-INC ( -- n ) CVT-SEVEN ;\n"
    s" body-files.f" VERIFIED
    s" body-uncalled: the body's file is not read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET 0 < TTRUE
+   CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET SPAN:LEN 0= TTRUE
    s" body-uncalled: the top level's is" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET 0 >= TTRUE
+   CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET SPAN:LEN 0<> TTRUE
    s\" : CVT-ARGV-LOAD ( -- ) 0 SCRIPT-ARGV$ included ;\n" s" body-argv.f" VERIFIED
    s\" : CVT-ENTRY ( ptr u8 n -- ) {: entry:ptr eu:n :} entry eu included ;\n"
    s" body-entry.f" VERIFIED
@@ -993,7 +1047,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-IMM-LOADS ( -- n ) include imm.f 1 ;\n: CVT-IMM-USE ( -- n ) CVT-IMM ;\n"
    s" imm-loads.f" GUARD-MS CHECK-AS 1 s" body-immediate: refused for the immediate" EXPECT-KIND
    s" body-immediate: the file's word is there" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET 0 < TTRUE ;
+   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ A loader word's name is a name like any other. A definition, storage, a
@@ -1076,7 +1130,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-FAP-BAD ( -- n n ) 8 ;\nrequire nosuch.f\n" s" fap-missing.f" GUARD-MS CHECK-AS
    1 s" fault-after-packet: refused" EXPECT-KIND
    s" fault-after-packet: the packet made first" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-fap-bad" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-fap-bad" PACKET SPAN:LEN 0<> TTRUE
    s" fault-after-packet: the fault" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN
    s" fault-after-packet: the fault last" T-LABEL LAST-LINE s" E-MISSING-SOURCE" CONTAINS? TTRUE
    s" fault-after-packet: only packets" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
@@ -1084,7 +1138,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-FAP ( -- n n ) 8 ;\n: CVT-FAP-PATH ( -- ptr u8 n ) s\" x.f\" ;\nCVT-FAP-PATH included\n"
    s" fap-dynamic.f" GUARD-MS CHECK-AS 1 s" fault-after-packet: a dynamic path" EXPECT-KIND
    s" fault-after-packet: its packet made first" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-fap" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" word" s" cvt-fap" PACKET SPAN:LEN 0<> TTRUE
    s" fault-after-packet: the form" s" E-LOADER-FORM" s" included" s" 3" s" 14" AT-TOKEN
    s" fault-after-packet: the child's code" T-LABEL CHECK:VERIFY-STOP E-DISC-DYNAMIC T=
    s" fault-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
@@ -1121,9 +1175,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-ESC ( -- ) s\\\" a\\k\" included ;\n" s" bad-escape.f" GUARD-MS CHECK-AS
    1 s" bad-escape: refused" EXPECT-KIND
    s" bad-escape: no loader form" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET 0 < TTRUE
+   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET SPAN:LEN 0= TTRUE
    s" bad-escape: no missing source" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET 0 < TTRUE ;
+   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ ---- the command line ------------------------------------------------------
@@ -1168,7 +1222,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" " CLI {: erru2:n rc2:n :}
    s" cli-file: refused" T-LABEL rc2 70 T=
    s" cli-file: only packets on stderr" T-LABEL 0 ERR erru2 ALL-JSON? TTRUE
-   0 ERR erru2 s" code" s" E-MISMATCH" PACKET {: p:n :}
+   0 ERR erru2 s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
    s" cli-file: named as the operation names it" T-LABEL p s" file" STRING$ s" pos.f" AT$ T$=
    s" pos.f" POS$DISK FIXTURE ;
 
@@ -1183,7 +1237,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" require dep.f\n: CVT-NEW ( -- n ) CVT-SEVEN drop ;\n" CLI {: erru2:n rc2:n :}
    s" cli-stdin: refused" T-LABEL rc2 70 T=
    s" cli-stdin: only packets on stderr" T-LABEL 0 ERR erru2 ALL-JSON? TTRUE
-   0 ERR erru2 s" code" s" E-MISMATCH" PACKET {: p:n :}
+   0 ERR erru2 s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
    s" cli-stdin: named by the path" T-LABEL p s" file" STRING$ s" new.f" AT$ T$= ;
 
 
@@ -1255,7 +1309,7 @@ $180000 constant LARGE-STDIN-LEN
    0 GEN LARGE-STDIN-LEN CLI {: erru:n rc:n :}
    s" cli-large-stdin: refused at its end" T-LABEL rc 70 T=
    s" cli-large-stdin: only packets on stderr" T-LABEL 0 ERR erru ALL-JSON? TTRUE
-   0 ERR erru s" code" s" E-MISMATCH" PACKET {: p:n :}
+   0 ERR erru s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
    s" cli-large-stdin: named by the path" T-LABEL
    p s" file" STRING$ s" new.f" AT$ T$= ;
 
@@ -1436,12 +1490,12 @@ $180000 constant LARGE-STDIN-LEN
    s" " CLI {: erru:n rc:n :}
    s" duplicate-after-packet: original exit" T-LABEL rc 78 T=
    s" duplicate-after-packet: JSON packets only" T-LABEL 0 ERR erru ALL-JSON? TTRUE
-   0 ERR erru JSONL-START-STRICT
+   0 ERR erru CV-START-STRICT
    s" duplicate-after-packet: earlier rejection first" T-LABEL
-   JSONL-NEXT-OBJECT s" word" STRING$ s" cvt-order-bad" T$=
+   CV-NEXT s" word" STRING$ s" cvt-order-bad" T$=
    s" duplicate-after-packet: duplicate second" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" duplicate-after-packet: both packets retained" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" duplicate-after-packet: both packets retained" T-LABEL CV-NEXT SPAN:LEN 0 T= ;
 
 
 \ ---- a duplicate ------------------------------------------------------------
@@ -1455,7 +1509,7 @@ $180000 constant LARGE-STDIN-LEN
 : DUPLICATE-IN-DEPENDENCY ( -- )
    s\" include order-dep.f\ninclude order-dep.f\n" s" double.f" GUARD-MS CHECK-AS
    1 s" duplicate-in-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-in-dependency: names the dependency" T-LABEL
    p s" file" STRING$ s" order-dep.f" AT$ T$=
    s" duplicate-in-dependency: the word" T-LABEL p s" word" STRING$ s" VALUE" T$=
@@ -1472,7 +1526,7 @@ $180000 constant LARGE-STDIN-LEN
 : DUPLICATE-MADE ( -- )
    MADE$SRC s" made.f" GUARD-MS CHECK-AS
    1 s" duplicate-made: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-made: the placeholder" T-LABEL
    p s" word" STRING$ s" duplicate-definition" T$=
    s" duplicate-made: names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
@@ -1488,7 +1542,7 @@ $180000 constant LARGE-STDIN-LEN
    s" duplicate-then-stops: the open definition" T-LABEL CHECK:VERIFY-STOP 7155 T=
    s" duplicate-then-stops: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" duplicate-then-stops: the subject path" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-then-stops: the duplicate's record" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
 
 
@@ -1519,7 +1573,7 @@ $180000 constant LARGE-STDIN-LEN
    BAD-DEP$SRC s" unclean-refused.f" GUARD-MS CHECK-AS {: refused :}
    refused 4 s" unclean-answer: refused frame is incomplete" EXPECT-KIND
    s" unclean-answer: refused packet remains" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET SPAN:LEN 0<> TTRUE
    s" unclean-answer: refused frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
    s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
    [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES {: held :}
@@ -1531,22 +1585,22 @@ $180000 constant LARGE-STDIN-LEN
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n\\"
    s" unclean-dup-open.f" GUARD-MS CHECK-AS {: dup-open :}
    dup-open 4 s" unclean-answer: duplicate and stop are incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: genuine duplicate before 7155" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" unclean-answer: terminal 7155 adds no packet" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: terminal 7155 adds no packet" T-LABEL CV-NEXT SPAN:LEN 0 T=
    MADE$SRC s" unclean-made.f" GUARD-MS CHECK-AS {: dup-stop :}
    dup-stop 4 s" unclean-answer: duplicate stop is incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: genuine duplicate before stop 78" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" unclean-answer: terminal 78 adds no packet" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: terminal 78 adds no packet" T-LABEL CV-NEXT SPAN:LEN 0 T=
    DUP$SRC s" unclean-first-dup.f" GUARD-MS CHECK-AS {: first-dup :}
    first-dup 4 s" unclean-answer: packet before death is incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: sole code-78 packet survives" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" unclean-answer: sole code-78 packet is last" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: sole code-78 packet is last" T-LABEL CV-NEXT SPAN:LEN 0 T=
    s\" include order-dep.f\ninclude order-dep.f\ninclude order-dep.f\n"
    s" unclean-two-dups.f" GUARD-MS CHECK-AS {: two-dups :}
    two-dups 4 s" unclean-answer: two real duplicates are incomplete" EXPECT-KIND
@@ -1555,12 +1609,12 @@ $180000 constant LARGE-STDIN-LEN
    s" unclean-answer: first duplicate has a line" T-LABEL found TTRUE
    s" unclean-answer: duplicate records are byte-identical" T-LABEL
    first firstu packets packetu 10 next SPLIT-NEXT 2drop STR= TTRUE
-   CHECK:VERIFY-OUT$ JSONL-START-STRICT
+   CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: first identical duplicate survives" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: second identical duplicate survives" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" unclean-answer: only two duplicate packets" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" unclean-answer: only two duplicate packets" T-LABEL CV-NEXT SPAN:LEN 0 T=
    s" unclean-pre.f" AT$ SUBJ SUBJ-U COPY!
    s" unclean-answer: preverify remains incomplete" T-LABEL
    DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
@@ -1590,7 +1644,7 @@ $180000 constant LARGE-STDIN-LEN
    s" cli-duplicate: refused" T-LABEL rc 70 T=
    s" cli-duplicate: the record --all-errors writes" T-LABEL
    0 ERR erru 0 ALL-ERR allu T$=
-   0 ERR erru s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:n :}
+   0 ERR erru s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" cli-duplicate: line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
    s" cli-duplicate: column 3" T-LABEL p s" column" NUMBER$ s" 3" T$=
    s" cli-duplicate: byte 20" T-LABEL p s" byte_start" NUMBER$ s" 20" T$=
@@ -1604,19 +1658,19 @@ $180000 constant LARGE-STDIN-LEN
    CLI-START s" --all-errors" ARG+ s" --verify-only" ARG+ s" dup-late.f" AT$ ARG+
    s" " CLI {: erru:n rc:n :}
    s" cli-duplicate-goes-on: refused" T-LABEL rc 70 T=
-   0 ERR erru JSONL-START-STRICT
+   0 ERR erru CV-START-STRICT
    s" cli-duplicate-goes-on: the duplicate first" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" cli-duplicate-goes-on: LATE's refusal next" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-MISMATCH" T$=
-   s" cli-duplicate-goes-on: nothing else" T-LABEL JSONL-NEXT-OBJECT -1 T=
+   CV-NEXT s" code" STRING$ s" E-MISMATCH" T$=
+   s" cli-duplicate-goes-on: nothing else" T-LABEL CV-NEXT SPAN:LEN 0 T=
    CLI-START s" --json-errors" ARG+ s" --all-errors" ARG+ s" dup-late.f" AT$ ARG+
    s" " CLI {: erru2:n rc2:n :}
    s" cli-duplicate-goes-on: --all-errors exits as the load" T-LABEL rc2 78 T=
-   0 ERR erru2 JSONL-START-STRICT
+   0 ERR erru2 CV-START-STRICT
    s" cli-duplicate-goes-on: --all-errors reports the duplicate" T-LABEL
-   JSONL-NEXT-OBJECT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
-   s" cli-duplicate-goes-on: and stops there" T-LABEL JSONL-NEXT-OBJECT -1 T= ;
+   CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
+   s" cli-duplicate-goes-on: and stops there" T-LABEL CV-NEXT SPAN:LEN 0 T= ;
 
 
 \ ---- top-level tokens -------------------------------------------------------
@@ -1626,20 +1680,20 @@ $180000 constant LARGE-STDIN-LEN
 
 \ How many packets LINES holds.
 : PACKETS ( ptr u8 n -- n )
-   JSONL-START
+   CV-START
    0 begin
-      JSONL-NEXT-OBJECT 0 >=
+      CV-NEXT SPAN:LEN 0<>
    while
       1+
    repeat ;
 
 
 \ The packet at INDEX in LINES, counted from 0, or -1.
-: NTH-PACKET ( ptr u8 n n -- n )
+: NTH-PACKET ( ptr u8 n n -- SPAN:span<u8> )
    {: lines:ptr linesu:n idx:n :}
-   lines linesu JSONL-START
-   idx 0 ?do JSONL-NEXT-OBJECT drop loop
-   JSONL-NEXT-OBJECT ;
+   lines linesu CV-START
+   idx 0 ?do CV-NEXT drop loop
+   CV-NEXT ;
 
 
 : TOP-CHECK ( ptr u8 n -- CHECK:verdict )
@@ -1648,14 +1702,14 @@ $180000 constant LARGE-STDIN-LEN
 
 \ The packet for TOKEN: a record of CODE in the subject on LINE at COLUMN,
 \ with no definition's name. LABEL stays set for the caller's next assertion.
-: TOP-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n )
+: TOP-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- SPAN:span<u8> )
    {: label:ptr labelu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ code codeu T$=
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
    label labelu T-LABEL p s" column" NUMBER$ col colu T$=
-   label labelu T-LABEL p s" word" J-STR VALUE 0 < TTRUE
+   label labelu T-LABEL p s" word" JR:T-STR VALUE SPAN:LEN 0= TTRUE
    label labelu T-LABEL
    p ;
 
@@ -1674,7 +1728,7 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-UNDEFINED ( -- )
    s\" 1 NOSUCHWORD drop\n: CVT-AFTER ( -- n ) 1 ;\n" TOP-CHECK
    s" top-undefined" s" NOSUCHWORD" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 3" REFUSED-AT
-   CHECK:VERIFY-OUT$ s" token" s" NOSUCHWORD" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" s" NOSUCHWORD" PACKET {: p:SPAN:span<u8> :}
    s" top-undefined: its first byte" T-LABEL p s" byte_start" NUMBER$ s" 2" T$=
    s" top-undefined: past its last" T-LABEL p s" byte_end" NUMBER$ s" 12" T$=
    s\" 1 NOSUCHWORD drop\n: CVT-SHORT ( -- n n ) 8 ;\n" TOP-CHECK
@@ -1802,7 +1856,7 @@ $180000 constant LARGE-STDIN-LEN
    name nameu T-LABEL name nameu AT$ NATIVE-RC 78 T=
    src srcu name nameu GUARD-MS CHECK-AS 1 name nameu EXPECT-KIND
    name nameu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ 0 NTH-PACKET {: p:SPAN:span<u8> :}
    name nameu T-LABEL p s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    name nameu T-LABEL p s" token" STRING$ s" IR-ID:COUNT" T$=
    name nameu T-LABEL p s" file" STRING$ SUBJ$ T$=
@@ -2009,7 +2063,7 @@ $180000 constant LARGE-STDIN-LEN
    1 s" top-deferred: refused past the operand" EXPECT-KIND
    s" top-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-deferred: nothing names the operand" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET 0 < TTRUE
+   CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET SPAN:LEN 0= TTRUE
    s" top-deferred: the call" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s" top-deferred: past the operand" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" TOP-PACKET
@@ -2039,7 +2093,7 @@ $180000 constant LARGE-STDIN-LEN
    1 s" top-nested-deferred: refused" EXPECT-KIND
    s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-nested-deferred: dependency warning" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET {: p:SPAN:span<u8> :}
    p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" top-nested-deferred: dependency path" T-LABEL
    p s" file" STRING$ s" nested-dep.f" AT$ T$=
@@ -2062,7 +2116,7 @@ $180000 constant LARGE-STDIN-LEN
 \ The deferred stretch packet IDX holds, counted from 0: TOKEN on LINE at COLUMN.
 : DEFERRED-NTH ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n idx:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" token" STRING$ tok toku T$=
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -2077,7 +2131,7 @@ $180000 constant LARGE-STDIN-LEN
    v 1 label labelu EXPECT-KIND
    label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    label labelu tok toku s" W-CHECK-DEFERRED" line lineu s" 1" TOP-PACKET drop
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" word" STRING$ word wordu T$=
    label labelu T-LABEL p s" code" STRING$ code codeu T$= ;
 
@@ -2189,7 +2243,7 @@ $180000 constant LARGE-STDIN-LEN
    {: v label:ptr labelu:n tok:ptr toku:n dep:ptr depu:n line:ptr lineu:n :}
    v 5 label labelu EXPECT-KIND
    label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" file" STRING$ dep depu AT$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$= ;
@@ -2396,7 +2450,7 @@ $180000 constant LARGE-STDIN-LEN
 : TRUSTED-TICK-ORDER ( -- )
    s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n" TOP-CHECK
    1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:SPAN:span<u8> :}
    s" trusted-tick-order: gate code" T-LABEL p s" code" STRING$ s" E-CAP-TRUSTED" T$=
    s" trusted-tick-order: target token" T-LABEL p s" token" STRING$ s" patch32" T$=
    s" trusted-tick-order: target line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -2405,7 +2459,7 @@ $180000 constant LARGE-STDIN-LEN
    p s" verdict" STRING$ s" rejected" T$=
    s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" TOP-CHECK
    5 s" trusted-tick-order: dynamic tier is deferred" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:n :}
+   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:SPAN:span<u8> :}
    s" trusted-tick-order: warning code" T-LABEL
    warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" trusted-tick-order: warning line" T-LABEL
@@ -2425,7 +2479,7 @@ $180000 constant LARGE-STDIN-LEN
    s" trusted-tick-order: single live run exits at the checker" T-LABEL rc 70 T=
    s" trusted-tick-order: live stderr is packets" T-LABEL
    0 ERR erru ALL-JSON? TTRUE
-   0 ERR erru s" token" s" drop" PACKET {: live:n :}
+   0 ERR erru s" token" s" drop" PACKET {: live:SPAN:span<u8> :}
    s" trusted-tick-order: live tier 1 underflow" T-LABEL
    live s" code" STRING$ s" E-INPUT-UNDERFLOW" T$=
    s" trusted-tick-order: live source line" T-LABEL
@@ -2466,7 +2520,7 @@ $180000 constant LARGE-STDIN-LEN
    s" W-CHECK-DEFERRED" T$=
    S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate : CVT-DOES ( -- ) create does> ( -- ) drop CVT-GENERATED ;" TOP-CHECK
    5 s" trusted-tick-order: clause warning retains its pin after parent scan" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:n :}
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:SPAN:span<u8> :}
    s" trusted-tick-order: clause warning span" T-LABEL
    clause-warning s" line" NUMBER$ s" 1" T$=
    clause-warning s" column" NUMBER$ s" 82" T$=
@@ -2476,7 +2530,7 @@ $180000 constant LARGE-STDIN-LEN
    5 s" trusted-tick-order: parent and clause both defer" EXPECT-KIND
    s" trusted-tick-order: one warning for the definition, one for the renderer" T-LABEL
    CHECK:VERIFY-OUT$ PACKETS 2 T=
-   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:n :}
+   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:SPAN:span<u8> :}
    s" trusted-tick-order: parent warning wins" T-LABEL
    parent-warning s" line" NUMBER$ s" 2" T$=
    parent-warning s" column" NUMBER$ s" 19" T$=
@@ -2544,7 +2598,7 @@ $180000 constant LARGE-STDIN-LEN
 
 : TYPE-DEFERRED-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -2716,11 +2770,11 @@ $180000 constant LARGE-STDIN-LEN
    s" type-deferred: trusted has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: trusted signature type" s" cbx" s" 2" s" 18" TYPE-DEFERRED-PACKET
    s" type-deferred: trusted parent absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET 0 < TTRUE
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET SPAN:LEN 0= TTRUE
    s" type-deferred: trusted clause absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET 0 < TTRUE
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET SPAN:LEN 0= TTRUE
    s" type-deferred: following declaration present" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET 0 >= TTRUE ;
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET SPAN:LEN 0<> TTRUE ;
 
 : TYPE-DEFERRED-DIRECT ( -- )
    s\" s\" cbx\" CHECKER-DEFLINEAR\n: CVT-KEEP ( cbx -- cbx ) ;\n"
@@ -2771,17 +2825,17 @@ $180000 constant LARGE-STDIN-LEN
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( n n -- cbx )\n" TOP-CHECK
    1 s" type-deferred: cast known row shape refuses" EXPECT-KIND
    s" type-deferred: cast known row shape stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
 
    s\" s\" NEWTYPE cbx\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( R n -- S cbx )\n" TOP-CHECK
    1 s" type-deferred: cast known tail mismatch refuses" EXPECT-KIND
    s" type-deferred: cast known tail mismatch stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n0 TYPED-BUFFER CVT-BAD cbx\n" TOP-CHECK
    1 s" type-deferred: buffer known bad count refuses" EXPECT-KIND
    s" type-deferred: buffer known bad count stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET 0 >= TTRUE ;
+   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE ;
 
 \ A reached renderer makes the type at load time. TRUST changes a seen word's
 \ effect, and a view cast depends on that type too: the quiet scan must not
@@ -2809,7 +2863,7 @@ $180000 constant LARGE-STDIN-LEN
    5 s" type-deferred: view cast defers" EXPECT-KIND
    s" type-deferred: renderer, view cast and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: unresolved view cast is absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET 0 < TTRUE
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET SPAN:LEN 0= TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
    1 s" type-deferred: invalid assertion grammar refuses" EXPECT-KIND
@@ -2822,7 +2876,7 @@ $180000 constant LARGE-STDIN-LEN
    5 s" type-deferred: known assertion restores checking" EXPECT-KIND
    s" type-deferred: restored assertion has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: restored caller is recorded" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET 0 >= TTRUE
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET SPAN:LEN 0<> TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-BAD ( -- bool ) CVT-K ;\n"
    TOP-CHECK
@@ -2848,7 +2902,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
    5 s" type-deferred: parser still owns its operands" EXPECT-KIND
    s" type-deferred: parser payload is not a declaration" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET 0 < TTRUE
+   CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET SPAN:LEN 0= TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ns\" patch32\" s\" n n -- cvt-nom\" TRUST\n: CVT-BAD ( n n -- ) patch32 ;\n" TOP-CHECK
    1 s" type-deferred: trusted-only call still refuses" EXPECT-KIND
@@ -2905,7 +2959,7 @@ $180000 constant LARGE-STDIN-LEN
    s" top-create: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-create: the call" s" CVT-MKS" s" 3" s" 3" DEFERRED-AT
    s" top-create: its product next" s" CVT-Q" s" 4" s" 1" DEFERRED-AT
-   CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:n :}
+   CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:SPAN:span<u8> :}
    s" top-create: its product after it" T-LABEL p s" token" STRING$ s" CVT-Q" T$=
    s" top-create: its product after it" T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" top-create: its product after it" T-LABEL p s" line" NUMBER$ s" 6" T$=
@@ -3121,7 +3175,7 @@ $180000 constant LARGE-STDIN-LEN
    s" top-defer-word: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-defer-word: the call" s" CVT-D" s" 5" s" 1" DEFERRED-AT
    s" top-defer-word: the name after it" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET 0 < TTRUE ;
+   CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ A deferred word may read whatever follows it, a comment among them, so it is
@@ -3170,7 +3224,7 @@ $180000 constant LARGE-STDIN-LEN
 
 PTR-VARIABLE DEFS-SRC-A                 \ the bytes a definitions case checked
 variable DEFS-SRC-U
-variable DEF-NODE                       \ the definition line DEF found
+TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition line DEF found
 
 
 : DEFS-SRC$ ( -- ptr u8 n )
@@ -3221,7 +3275,7 @@ variable DEF-NODE                       \ the definition line DEF found
 \ The line DEF found: declared by KIND, recorded in PKG with visibility VIS.
 : DEF-WHO ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n kind:ptr kindu:n pkg:ptr pkgu:n vis:ptr visu:n :}
-   label labelu T-LABEL DEF-NODE @ 0 >= TTRUE
+   label labelu T-LABEL DEF-NODE @ SPAN:LEN 0<> TTRUE
    label labelu s" kind" kind kindu DEF-STR
    label labelu s" package" pkg pkgu DEF-STR
    label labelu s" visibility" vis visu DEF-STR ;
@@ -3231,7 +3285,7 @@ variable DEF-NODE                       \ the definition line DEF found
 : DEF-EFF ( ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n eff:ptr effu:n :}
    effu 0= if
-      label labelu T-LABEL DEF-NODE @ s" effect" J-STR VALUE 0 < TTRUE
+      label labelu T-LABEL DEF-NODE @ s" effect" JR:T-STR VALUE SPAN:LEN 0= TTRUE
       exit
    then
    label labelu s" effect" eff effu DEF-STR ;
@@ -3325,9 +3379,9 @@ variable DEF-NODE                       \ the definition line DEF found
    s" definitions: dynamic buffer" s" " DEF-EFF
    s" definitions: dynamic buffer" s" DYNAMIC-BUFFER CVT-DB" 6 s" defs.f" DEF-SPAN
    s" CVT-DB-RESERVE" DEF
-   s" definitions: no generated reserve yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" definitions: no generated reserve yet" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
    s" CVT-DB-RELEASE" DEF
-   s" definitions: no generated release yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" definitions: no generated release yet" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
    s" >CVT-T" DEF
    s" definitions: deftype in" s" DEFTYPE" s" " s" global" DEF-WHO
    s" definitions: deftype in" s" class" s" word" DEF-STR
@@ -3351,7 +3405,7 @@ variable DEF-NODE                       \ the definition line DEF found
    \ A family name has no recording symbol: its line waits on the checker
    \ reporting each name a registrar publishes, the Habu owner's Q1 lane.
    s" cvt-nt" DEF
-   s" definitions: no family line yet" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" definitions: no family line yet" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
    s" definitions: one line each" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 15 T=
    s" definitions: packets unchanged" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
 
@@ -3369,7 +3423,7 @@ variable DEF-NODE                       \ the definition line DEF found
    s" definitions-refused: signature kept" s" -- n n" DEF-EFF
    s" definitions-refused: signature kept" s" : CVT-BAD" 7 s" defs-refused.f" DEF-SPAN
    s" CVT-NOSIG" DEF
-   s" definitions-refused: no signature, no line" T-LABEL DEF-NODE @ 0 < TTRUE
+   s" definitions-refused: no signature, no line" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
    s" CVT-USEQ" DEF
    s" definitions-refused: deferred" s" :" s" " s" global" DEF-WHO
    s" definitions-refused: deferred" s" -- n" DEF-EFF
@@ -3380,7 +3434,7 @@ variable DEF-NODE                       \ the definition line DEF found
    s" CVT-MKS" DEF
    s" definitions-refused: before the stop" s" n --" DEF-EFF
    s" CVT-USEQ" DEF
-   s" definitions-refused: after the stop, no line" T-LABEL DEF-NODE @ 0 < TTRUE ;
+   s" definitions-refused: after the stop, no line" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE ;
 
 
 \ A name defined again after undefine has both lines, in order.
@@ -3405,7 +3459,7 @@ variable DEF-NODE                       \ the definition line DEF found
    s\" require dep.f\n: CVT-USE7 ( -- n ) CVT-SEVEN ;\n" GEN+
    s" defs-dep.f" DEFS-CHECK 0 s" definitions-dependency: verified" EXPECT-KIND
    s" definitions-dependency: the dependency's first" T-LABEL
-   CHECK:VERIFY-DEFS$ JSONL-START JSONL-NEXT-OBJECT s" word" STRING$ s" CVT-SEVEN" T$=
+   CHECK:VERIFY-DEFS$ CV-START CV-NEXT s" word" STRING$ s" CVT-SEVEN" T$=
    s" CVT-SEVEN" DEF
    s" definitions-dependency: the dependency's" s" :" s" " s" global" DEF-WHO
    s" definitions-dependency: the dependency's" s" -- n" DEF-EFF
@@ -3417,136 +3471,72 @@ variable DEF-NODE                       \ the definition line DEF found
    s" definitions-dependency: the subject's" s" : CVT-USE7" 8 s" defs-dep.f" DEF-SPAN ;
 
 
-32 constant DIGEST-U                    \ a SHA-256 digest's bytes
-64 constant HEX-U                       \ the digest as a file line states it
-create SHA-CTX SHA256-CTX-BYTES allot
-create DIGEST DIGEST-U allot
-create DIGEST-HEX HEX-U allot
-
-
-\ The SHA-256 of the bytes, as a file line states it.
-: SHA$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   SHA-CTX a u DIGEST SHA256-IN
-   DIGEST DIGEST-HEX SHA256>HEX
-   DIGEST-HEX HEX-U ;
-
-
-\ SHA$ of the bytes on disk of the fixture NAME.
-: DISK-SHA$ ( ptr u8 n -- ptr u8 n )
-   AT$ TREE-BYTES SHA$ ;
-
-
-\ The next file line names the fixture NAME and states the digest SHA.
+\ The next file line names the fixture NAME and the source of its bytes.
 : NEXT-FILE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: label:ptr labelu:n name:ptr nameu:n sha:ptr shau:n :}
-   JSONL-NEXT-OBJECT {: node:n :}
+   {: label:ptr labelu:n name:ptr nameu:n source:ptr sourceu:n :}
+   CV-NEXT {: node:SPAN:span<u8> :}
    label labelu T-LABEL node s" file" STRING$ name nameu AT$ T$=
-   label labelu T-LABEL node s" sha256" STRING$ sha shau T$= ;
+   label labelu T-LABEL node s" source" STRING$ source sourceu T$=
+   source sourceu s" disk" STR= if
+      label labelu T-LABEL node s" size" NUMBER$ nip 0 > TTRUE
+      label labelu T-LABEL node s" mtime_sec" NUMBER$ nip 0 > TTRUE
+      label labelu T-LABEL node s" mtime_ns" NUMBER$ nip 0 > TTRUE
+      label labelu T-LABEL node s" ctime_sec" NUMBER$ nip 0 > TTRUE
+      label labelu T-LABEL node s" ctime_ns" NUMBER$ nip 0 > TTRUE
+   then ;
 
 
-\ Each file a check read has one file line, in the order it started them: the
-\ subject, a file it requires, the file that one requires, and a file it
-\ includes twice and so reads twice, the same bytes each time. Each line states
-\ the SHA-256 of the bytes the check read, the subject's the bytes checked. A
-\ file required again, one the image holds and one only a comment names have
-\ none.
+\ Each file visit a check read has one file line, in the order it started them:
+\ the subject, a file it requires, the file that one requires, and a file it
+\ includes twice and so reads twice. The subject's line identifies the supplied
+\ text; dependencies are disk reads. A file required again, one the image holds
+\ and one only a comment names have none.
 : FILES ( -- )
    0 GEN-U !
    s\" require files-mid.f\nrequire files-mid.f\ninclude files-inc.f\ninclude files-inc.f\n" GEN+
    s\" require src/habu/verify-source.f\n\\ files-unread.f\n: CVT-FILES ( -- n ) 1 ;\n" GEN+
    s" files.f" DEFS-CHECK 0 s" files: verified" EXPECT-KIND
-   s" files: four lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 4 T=
-   CHECK:VERIFY-FILES$ JSONL-START
-   s" files: the subject" s" files.f" DEFS-SRC$ SHA$ NEXT-FILE
-   s" files: the required file" s" files-mid.f" 2dup DISK-SHA$ NEXT-FILE
-   s" files: the file it requires" s" files-nested.f" 2dup DISK-SHA$ NEXT-FILE
-   s" files: the included file" s" files-inc.f" 2dup DISK-SHA$ NEXT-FILE ;
+   s" files: five visits" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 5 T=
+   CHECK:VERIFY-FILES$ CV-START
+   s" files: the subject" s" files.f" s" subject" NEXT-FILE
+   s" files: the required file" s" files-mid.f" s" disk" NEXT-FILE
+   s" files: the file it requires" s" files-nested.f" s" disk" NEXT-FILE
+   s" files: the included file" s" files-inc.f" s" disk" NEXT-FILE
+   s" files: included again" s" files-inc.f" s" disk" NEXT-FILE ;
 
 
-\ loop.f's copy on disk is a string never closed: the subject's file line
-\ states the bytes checked as loop.f, and back.f's require of it reads nothing.
+\ The subject reached again through a loader is still supplied text. The
+\ loader's dependency has a disk visit.
 : IDENTITY-SUBJECT ( -- )
    0 GEN-U !
    s\" require back.f\n: CVT-LOOP ( -- n ) CVT-BACK ;\n" GEN+
    s" loop.f" DEFS-CHECK 0 s" identity-subject: verified" EXPECT-KIND
    s" identity-subject: two lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 2 T=
-   CHECK:VERIFY-FILES$ JSONL-START
-   s" identity-subject: the bytes checked" s" loop.f" DEFS-SRC$ SHA$ NEXT-FILE ;
+   CHECK:VERIFY-FILES$ CV-START
+   s" identity-subject: supplied" s" loop.f" s" subject" NEXT-FILE
+   s" identity-subject: loaded" s" back.f" s" disk" NEXT-FILE ;
 
 
-\ same-a.f and same-b.f hold the same bytes: after the subject's, each has its
-\ own file line, with the same digest.
+\ Equal text in separate paths still has separate disk visits.
 : IDENTITY-PATHS ( -- )
    0 GEN-U !
    s\" require same-a.f\nrequire same-b.f\n: CVT-SAME ( -- n ) 1 ;\n" GEN+
    s" same.f" DEFS-CHECK 0 s" identity-paths: verified" EXPECT-KIND
-   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
-   s" identity-paths: one path" s" same-a.f" SAME$SRC SHA$ NEXT-FILE
-   s" identity-paths: the other" s" same-b.f" SAME$SRC SHA$ NEXT-FILE ;
-
-
-\ file-line-keys.f, loaded into the child after its pre-pass, gives the child's
-\ own FILE-LINE five reads through one path buffer and one bytes buffer: P
-\ alpha, P alpha, P bravo, P alpha, Q alpha.
-: KEYS$SRC ( -- ptr u8 n )
-   0 GEN-U !
-   s\" package CHECK-VERIFY-CHILD\ncreate KEY-PATH 8 allot\ncreate KEY-BYTES 5 allot\n" GEN+
-   s\" : KEY-READ ( ptr u8 n ptr u8 n -- )\n   {: f:ptr fu:n a:ptr u:n :}\n" GEN+
-   s\"    f KEY-PATH fu BYTE-COPY\n   a KEY-BYTES u BYTE-COPY\n   KEY-PATH fu KEY-BYTES u FILE-LINE ;\n" GEN+
-   s\" : KEY-READS ( -- )\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n" GEN+
-   s\"    s\" /cvt/p.f\" s\" bravo\" KEY-READ\n   s\" /cvt/p.f\" s\" alpha\" KEY-READ\n" GEN+
-   s\"    s\" /cvt/q.f\" s\" alpha\" KEY-READ ;\nKEY-READS\n;package\n" GEN+
-   0 GEN GEN-U @ ;
-
-
-\ The file line FILE-LINE writes for the path F read as the bytes A, onto SB.
-: KEY-LINE+ ( ptr u8 n ptr u8 n -- )
-   {: f:ptr fu:n a:ptr u:n :}
-   s\" check-verify: file {\"file\":\"" SB-APPEND
-   f fu SB-APPEND
-   s\" \",\"sha256\":\"" SB-APPEND
-   a u SHA$ SB-APPEND
-   s\" \"}\n" SB-APPEND ;
-
-
-\ Exactly P alpha, P bravo and Q alpha have file lines, in that order, after
-\ the pre-pass's result, which comes with none: a key of the path alone, of
-\ the digest alone or of the path's last bytes alone, or one that keeps the
-\ caller's buffers in place of their bytes, writes other lines. Two reads of
-\ one file in one check give it different bytes only when a disk write comes
-\ between them, which nothing here can schedule: that is untested.
-: FILE-LINE-KEYS ( -- )
-   s" file-line-keys.f" KEYS$SRC FIXTURE
-   PROC-ARGV-ENV-RESET
-   s" --load" ARG+
-   s" tools/check-verify-child.f" TREE$ ARG+
-   s" file-line-keys.f" AT$ ARG+
-   s" --" ARG+
-   s" file-line-subject.f" AT$ ARG+
-   s" file-line-keys" ARG+
-   PROC-ENV-INHERIT-MISSING
-   s\" \n" CLI nip
-   s" file-line-keys: loaded" T-LABEL 0 T=
-   SB-RESET
-   s\" check-verify: verified\n" SB-APPEND
-   s" /cvt/p.f" s" alpha" KEY-LINE+
-   s" /cvt/p.f" s" bravo" KEY-LINE+
-   s" /cvt/q.f" s" alpha" KEY-LINE+
-   s" file-line-keys: a line per path and bytes" T-LABEL
-   0 OUT CLI-OUT-U @ SB$ T$= ;
+   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   s" identity-paths: one path" s" same-a.f" s" disk" NEXT-FILE
+   s" identity-paths: the other" s" same-b.f" s" disk" NEXT-FILE ;
 
 
 \ ---- the loads --------------------------------------------------------------
 
-\ The next load line of CHECK:VERIFY-LOADS$, once JSONL-START has started it:
+\ The next load line of CHECK:VERIFY-LOADS$, once CV-START has started it:
 \ the load of PATH whose operand is the U bytes the first LEAD in the checked
 \ bytes ends with, and what became of it, OUTCOME.
 : LOAD-NEXT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n lead:ptr leadu:n u:n path:ptr pathu:n out:ptr outu:n :}
-   JSONL-NEXT-OBJECT  lead leadu LEAD-END
-   {: node:n end:n :}
-   label labelu T-LABEL node 0 >= TTRUE
+   CV-NEXT  lead leadu LEAD-END
+   {: node:SPAN:span<u8> end:n :}
+   label labelu T-LABEL node SPAN:LEN 0<> TTRUE
    label labelu T-LABEL node s" byte_start" NUMBER$
    SB-RESET end u - FMT:SB-INT SB$ T$=
    label labelu T-LABEL node s" byte_end" NUMBER$
@@ -3590,8 +3580,8 @@ create DIGEST-HEX HEX-U allot
    s" loads: ten lines" 10 LOAD-COUNT
    s" loads: each a JSON object" T-LABEL CHECK:VERIFY-LOADS$ ALL-JSON? TTRUE
    s" loads: the dependency's file read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET 0 >= TTRUE
-   CHECK:VERIFY-LOADS$ JSONL-START
+   CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET SPAN:LEN 0<> TTRUE
+   CHECK:VERIFY-LOADS$ CV-START
    s" loads: require" s" require ld-dep.f" 8 s" ld-dep.f" AT$ s" read" LOAD-NEXT
    s" loads: include" s\" include\n   ld-inc.f" 8 s" ld-inc.f" AT$ s" read" LOAD-NEXT
    s" loads: included" s" ld-str-inc.f" 12 s" ld-str-inc.f" AT$ s" read" LOAD-NEXT
@@ -3623,7 +3613,7 @@ create DIGEST-HEX HEX-U allot
    s\" require ld-open.f\n" GEN+
    s" loads-open.f" DEFS-CHECK 1 s" loads-scan-fail: refused" EXPECT-KIND
    s" loads-scan-fail: one line" 1 LOAD-COUNT
-   CHECK:VERIFY-LOADS$ JSONL-START
+   CHECK:VERIFY-LOADS$ CV-START
    s" loads-scan-fail: read" s" require ld-open.f" 9 s" ld-open.f" AT$ s" read" LOAD-NEXT
    s" loads-scan-fail: the stop is the file's" T-LABEL
    CHECK:VERIFY-STOPPED$ s" ld-open.f" AT$ T$= ;
@@ -3638,7 +3628,7 @@ create DIGEST-HEX HEX-U allot
    s\" DYNAMIC-BUFFER CVT-LDSELF u8\nundefine CVT-LDSELF\ninclude loads-self.f\n" GEN+
    s" loads-self.f" DEFS-CHECK 1 s" loads-supplied: refused" EXPECT-KIND
    s" loads-supplied: one line" 1 LOAD-COUNT
-   CHECK:VERIFY-LOADS$ JSONL-START
+   CHECK:VERIFY-LOADS$ CV-START
    s" loads-supplied: read" s" include loads-self.f" 12 SUBJ$ s" read" LOAD-NEXT ;
 
 
@@ -3651,7 +3641,7 @@ create DIGEST-HEX HEX-U allot
    s" loads-body.f" GUARD-MS CHECK-AS 1 s" loads-none: body, refused" EXPECT-KIND
    s" loads-none: body, no line" 0 LOAD-COUNT
    s" loads-none: body, its file read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET 0 >= TTRUE
+   CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET SPAN:LEN 0<> TTRUE
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB x\nrequire ld-dep.f\n"
    s" loads-opaque.f" GUARD-MS CHECK-AS 5 s" loads-none: opaque, deferred" EXPECT-KIND
    s" loads-none: opaque, no line" 0 LOAD-COUNT ;
@@ -3679,16 +3669,16 @@ create DIGEST-HEX HEX-U allot
 
 \ ---- the uses ---------------------------------------------------------------
 
-variable USE-NODE                       \ the use line USE-FROM found
+TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-FROM found
 
 
 \ The first use line of the last check whose use starts at AT; -1 for none.
 : USE-FROM ( n -- )
    {: at:n :}
-   CHECK:VERIFY-USES$ JSONL-START
+   CHECK:VERIFY-USES$ CV-START
    begin
-      JSONL-NEXT-OBJECT
-      dup 0 < if USE-NODE ! exit then
+      CV-NEXT
+      dup SPAN:LEN 0= if USE-NODE ! exit then
       dup s" byte_start" NUMBER$ SB-RESET at FMT:SB-INT SB$ STR= 0=
    while
       drop
@@ -3708,7 +3698,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    lead leadu LEAD-END
    {: end:n :}
    end u - USE-FROM
-   label labelu T-LABEL USE-NODE @ 0 >= TTRUE
+   label labelu T-LABEL USE-NODE @ SPAN:LEN 0<> TTRUE
    label labelu s" byte_end" end USE-NUM ;
 
 
@@ -3717,7 +3707,7 @@ variable USE-NODE                       \ the use line USE-FROM found
 : NO-USE ( ptr u8 n ptr u8 n n -- )
    {: label:ptr labelu:n lead:ptr leadu:n u:n :}
    lead leadu LEAD-END u - USE-FROM
-   label labelu T-LABEL USE-NODE @ 0 < TTRUE ;
+   label labelu T-LABEL USE-NODE @ SPAN:LEN 0= TTRUE ;
 
 
 \ The declaration the use line USE found names: the U bytes the first LEAD in
@@ -3842,10 +3832,10 @@ variable USE-NODE                       \ the use line USE-FROM found
 \ whose use starts at AT; -1 for none.
 : USE-IN-FROM ( n ptr u8 n -- )
    {: at:n in:ptr inu:n :}
-   CHECK:VERIFY-USES$ JSONL-START
+   CHECK:VERIFY-USES$ CV-START
    begin
-      JSONL-NEXT-OBJECT
-      dup 0 < if USE-NODE ! exit then
+      CV-NEXT
+      dup SPAN:LEN 0= if USE-NODE ! exit then
       dup s" in" STRING$ in inu STR=
       over s" byte_start" NUMBER$ SB-RESET at FMT:SB-INT SB$ STR= and 0=
    while
@@ -3861,7 +3851,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    text textu lead leadu END-IN
    {: end:n :}
    end u - in inu USE-IN-FROM
-   label labelu T-LABEL USE-NODE @ 0 >= TTRUE
+   label labelu T-LABEL USE-NODE @ SPAN:LEN 0<> TTRUE
    label labelu s" byte_end" end USE-NUM ;
 
 
@@ -3870,7 +3860,7 @@ variable USE-NODE                       \ the use line USE-FROM found
 : NO-USE-IN ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n in:ptr inu:n :}
    text textu lead leadu END-IN u - in inu USE-IN-FROM
-   label labelu T-LABEL USE-NODE @ 0 < TTRUE ;
+   label labelu T-LABEL USE-NODE @ SPAN:LEN 0= TTRUE ;
 
 
 \ What uses-loaded.f requires and includes: each uses the word the subject
@@ -3908,7 +3898,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-loaded: the subject's" LD-OWN
    s" uses-loaded: none in the dependency" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ NO-USE-IN
    s" uses-loaded: none in the fragment" LD-FRAG$SRC s" CVT-LDROOT" 10 s" uses-ld-frag.f" AT$ NO-USE-IN
-   s" uses-loaded: the subject's alone" 5 USE-COUNT
+   s" uses-loaded: the subject's, including both loaders" 7 USE-COUNT
    DEFS-SRC$ SUBJ$ s" cvt-ldroot" [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-OF
    0 s" uses-loaded: of a tail, verified" EXPECT-KIND
    s" uses-loaded: of a tail, the subject's" LD-OWN
@@ -3919,7 +3909,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-loaded: of a tail, the fragment's" DEFS-SRC$ s" : CVT-LDROOT" 10 s" uses-loaded.f" USE-TARGET
    s" uses-loaded: of a tail, not the dependency's own word" LD-DEP$SRC s" CVT-LDROOT CVT-LDOWN" 9 s" uses-ld-dep.f" AT$ NO-USE-IN
    s" uses-loaded: of a tail, not another of the subject's" LD-DEP$SRC s" + CVT-LDOTHER" 11 s" uses-ld-dep.f" AT$ NO-USE-IN
-   s" uses-loaded: of a tail, seven lines" 7 USE-COUNT ;
+   s" uses-loaded: of a tail, nine lines" 9 USE-COUNT ;
 
 
 \ A string literal just before a call of a word a names: row declares binds
@@ -3985,7 +3975,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s\" : K ( -- n ) 1 ;\n" ;
 
 \ Missing or nonnumeric visit is not a declaration identity.
-: DECL-VISIT ( n -- n )
+: DECL-VISIT ( SPAN:span<u8> -- n )
    s" decl_visit" NUMBER$ STR>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
@@ -4022,10 +4012,10 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-visit: Q source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
    s" uses-visit: Q span" s" byte_start" 2 DEF-NUM
    s" uses-visit: Q span" s" byte_end" 3 DEF-NUM
-   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:n :}
+   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:SPAN:span<u8> :}
    s" uses-visit: P canonical tail" T-LABEL pd s" decl_name" STRING$ s" k" T$=
    pd DECL-VISIT {: pv:n :}
-   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:n :}
+   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:SPAN:span<u8> :}
    s" uses-visit: Q canonical tail" T-LABEL qd s" decl_name" STRING$ s" k" T$=
    qd DECL-VISIT {: qv:n :}
    s" uses-visit: P visit" T-LABEL pv 0 > TTRUE
@@ -4063,7 +4053,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-visit: converter out name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-id-t>n" T$=
    s" uses-visit: converter out package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
    s" uses-visit: converter out visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
-   s" uses-visit: seven calls" 7 USE-COUNT ;
+   s" uses-visit: ten calls, including three loaders" 10 USE-COUNT ;
 
 
 \ Exporting a private K creates a public K in the same package. The operand
@@ -4076,12 +4066,12 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-visibility: native loads" T-LABEL
    s" uses-visibility.f" AT$ NATIVE-RC 0 T=
    s" uses-visibility.f" DEFS-CHECK 0 s" uses-visibility: verified" EXPECT-KIND
-   CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:n :}
+   CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:SPAN:span<u8> :}
    s" uses-visibility: private declaration" T-LABEL pd s" decl_name" STRING$ s" k" T$=
    pd s" package" STRING$ s" cvt-twin" T$=
    pd s" visibility" STRING$ s" private" T$=
    pd DECL-VISIT {: pv:n :}
-   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:n :}
+   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:SPAN:span<u8> :}
    s" uses-visibility: public declaration" T-LABEL ed s" decl_name" STRING$ s" k" T$=
    ed s" package" STRING$ s" cvt-twin" T$=
    ed s" visibility" STRING$ s" public" T$=
@@ -4119,11 +4109,11 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-lifetime.f" DEFS-CHECK
    0 s" uses-lifetime: verified" EXPECT-KIND
    s" uses-lifetime: declarations" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 5 T=
-   CHECK:VERIFY-DEFS$ JSONL-START
-   JSONL-NEXT-OBJECT DECL-VISIT {: first:n :}
-   JSONL-NEXT-OBJECT drop
-   JSONL-NEXT-OBJECT drop
-   JSONL-NEXT-OBJECT DECL-VISIT {: later:n :}
+   CHECK:VERIFY-DEFS$ CV-START
+   CV-NEXT DECL-VISIT {: first:n :}
+   CV-NEXT drop
+   CV-NEXT drop
+   CV-NEXT DECL-VISIT {: later:n :}
    s" uses-lifetime: first visit" T-LABEL first 0 > TTRUE
    s" uses-lifetime: later visit" T-LABEL later 0 > TTRUE
    s" uses-lifetime: reinclude changes visit" T-LABEL first later T<>
@@ -4134,7 +4124,7 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" uses-lifetime: replacement visit" s" REPLACED ( -- n ) K" 1 USE
    s" uses-lifetime: replacement visit" T-LABEL USE-NODE @ DECL-VISIT later T=
    s" uses-lifetime: source-backed undefine" s" undefine" 8 USE
-   s" uses-lifetime: four uses" 4 USE-COUNT ;
+   s" uses-lifetime: seven uses, including both includes and TRUST" 7 USE-COUNT ;
 
 
 \ A name the checker refuses binds nothing: one two usings both export, one a
@@ -4259,8 +4249,8 @@ variable USE-NODE                       \ the use line USE-FROM found
 
 \ swap-dep.f rewritten between two checks of the same subject, its two
 \ definitions swapped: the second check's use of DEF-DEPB names the span the
-\ first check's use of DEF-DEPA named, bytes 2 to 10 of swap-dep.f, and only
-\ the digests on swap-dep.f's file lines tell the two declarations apart.
+\ first check's use of DEF-DEPA named, bytes 2 to 10 of swap-dep.f. The
+\ consumer must use the later file revision for that location.
 : IDENTITY-SWAP ( -- )
    s" swap-dep.f" SWAP-A$SRC FIXTURE
    0 GEN-U !
@@ -4268,19 +4258,19 @@ variable USE-NODE                       \ the use line USE-FROM found
    s" swap.f" DEFS-CHECK 0 s" identity-swap: the first check" EXPECT-KIND
    s" identity-swap: DEF-DEPA" s" ) DEF-DEPA" 8 USE
    s" identity-swap: DEF-DEPA" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
-   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
-   s" identity-swap: the first bytes" s" swap-dep.f" SWAP-A$SRC SHA$ NEXT-FILE
+   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   s" identity-swap: the first file" s" swap-dep.f" s" disk" NEXT-FILE
    s" swap-dep.f" SWAP-B$SRC FIXTURE
    s" swap.f" DEFS-CHECK 0 s" identity-swap: the second check" EXPECT-KIND
    s" identity-swap: DEF-DEPB" s" ) DEF-DEPB" 8 USE
    s" identity-swap: DEF-DEPB at DEF-DEPA's span" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
-   CHECK:VERIFY-FILES$ JSONL-START JSONL-NEXT-OBJECT drop
-   s" identity-swap: the second bytes" s" swap-dep.f" SWAP-B$SRC SHA$ NEXT-FILE ;
+   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   s" identity-swap: the second file" s" swap-dep.f" s" disk" NEXT-FILE ;
 
 
 \ ---- the candidates ---------------------------------------------------------
 
-variable CAND-NODE                      \ the candidate line CAND found
+TYPED-VARIABLE CAND-NODE SPAN:span<u8>                      \ the candidate line CAND found
 DYNAMIC-BUFFER SEEN u8                  \ an unarmed check's outputs, then an armed one's
 variable SEEN-U
 
@@ -4319,7 +4309,7 @@ variable SEEN-U
    {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
    text textu lead leadu END-IN
    {: end:n :}
-   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
+   label labelu T-LABEL CAND-NODE @ SPAN:LEN 0<> TTRUE
    label labelu T-LABEL CAND-NODE @ s" file" STRING$ file fileu AT$ T$=
    label labelu s" target_start" end u - CAND-NUM
    label labelu s" target_end" end CAND-NUM ;
@@ -4329,15 +4319,15 @@ variable SEEN-U
 \ no target.
 : CAND-BARE ( ptr u8 n -- )
    {: label:ptr labelu:n :}
-   label labelu T-LABEL CAND-NODE @ 0 >= TTRUE
-   label labelu T-LABEL CAND-NODE @ s" file" J-STR VALUE 0 < TTRUE
-   label labelu T-LABEL CAND-NODE @ s" target_start" J-NUM VALUE 0 < TTRUE ;
+   label labelu T-LABEL CAND-NODE @ SPAN:LEN 0<> TTRUE
+   label labelu T-LABEL CAND-NODE @ s" file" JR:T-STR VALUE SPAN:LEN 0= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" target_start" JR:T-INT VALUE SPAN:LEN 0= TTRUE ;
 
 
 \ CAND found no line.
 : NO-CAND ( ptr u8 n -- )
    {: label:ptr labelu:n :}
-   label labelu T-LABEL CAND-NODE @ 0 < TTRUE ;
+   label labelu T-LABEL CAND-NODE @ SPAN:LEN 0= TTRUE ;
 
 
 : CAND-COUNT ( ptr u8 n n -- )
@@ -4659,7 +4649,6 @@ public
    s" identity-subject" [: IDENTITY-SUBJECT ;] RUN-CASE
    s" identity-paths" [: IDENTITY-PATHS ;] RUN-CASE
    s" identity-swap" [: IDENTITY-SWAP ;] RUN-CASE
-   s" file-line-keys" [: FILE-LINE-KEYS ;] RUN-CASE
    s" loads" [: LOADS ;] RUN-CASE
    s" loads-unread" [: LOADS-UNREAD ;] RUN-CASE
    s" loads-scan-fail" [: LOADS-SCAN-FAIL ;] RUN-CASE

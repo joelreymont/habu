@@ -330,9 +330,8 @@ variable RC     variable EXITED
 \ of its type hold it. The last three hold the name more than once, so the
 \ pending definition runs at 1000 and the ENUM forms at LN-TAIL-MAX, the longest
 \ family or variant name a declaration takes, still past every 128-byte buffer.
-\ A long family's constructors take the digest spelling
-\ (src/core/type-family.f TF-CTOR-PKG$), which no program writes, so that
-\ program compiles them, its MATCH and its local, and stops. A refused long name
+\ A long family's constructors use its family name as their package name, so
+\ that program compiles them, its MATCH and its local, and stops. A refused long name
 \ is reported whole up to its newline, and a refused TRUSTED: one retracts its
 \ signature, which leaves the refusal's own code uncaught. A refusal at a
 \ 7900-byte body token names that token whole: a TRUSTED: body skips the
@@ -737,9 +736,9 @@ variable OR-U
 
 : OR-GUARD-SOURCE$ ( bool -- ptr u8 n ) {: last?:bool :}
    TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ 2drop
-   S\" data-base TIER-PROV:MAP-CELL + @" OR+
+   S\" TRUSTED: OR-TARGET ( -- ptr n ) data-base TIER-PROV:MAP-CELL + @" OR+
    last? if S\"  data-base TIER-PROV:MAP-CAP-CELL + @ TIER-PROV:SPAN-BYTES * + 8 -" OR+ then
-   S\"  0 swap !\n" OR+
+   S\"  ;\n1 set-tier\n: OR-GUARD ( -- n ) 0 OR-TARGET ! 1 ;\n0 set-tier\nOR-GUARD drop\n" OR+
    OR-BUF OR-U @ ;
 
 : OR-IMAGE-SOURCE$ ( -- ptr u8 n )

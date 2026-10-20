@@ -46,7 +46,18 @@ $2D constant ENV-DASH
 : NULL$ ( -- ptr u8 n )
    NULL-PTR 0 ;
 
-: GETENV ( ptr u8 n -- ptr u8 n )
+\ Source loaders observe environment reads alongside their filesystem inputs.
+\ The optional callback starts empty in each process, including saved images.
+package ENV-INPUT
+private
+
+variable OBSERVER
+CAST: OBSERVER-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: OBSERVER-N ( [ ptr u8 n ptr u8 n -- ] -- n )
+
+public
+
+: CURRENT$ ( ptr u8 n -- ptr u8 n )
    {: query:ptr queryu:n :}
    ENVP-BASE 0= if NULL$ exit then
    0 begin dup ENVP 0= 0= while
@@ -54,6 +65,24 @@ $2D constant ENV-DASH
       1 +
    repeat
    drop NULL$ ;
+
+: USE ( [ ptr u8 n ptr u8 n -- ] -- ) OBSERVER-N OBSERVER xt! ;
+
+: RESET ( -- ) 0 OBSERVER ! ;
+
+: OBSERVE ( ptr u8 n ptr u8 n -- )
+   OBSERVER @ dup 0= if drop 2drop 2drop exit then OBSERVER-XT execute ;
+
+: OWNED-CELLS ( [ ptr u8 -- ] -- )
+   OBSERVER BYTE-VIEW swap execute ;
+
+;package
+
+: GETENV ( ptr u8 n -- ptr u8 n )
+   {: query:ptr queryu:n :}
+   query queryu ENV-INPUT:CURRENT$ {: value:ptr valueu:n :}
+   query queryu value valueu ENV-INPUT:OBSERVE
+   value valueu ;
 
 \ TMP-PATH's answer is a path of at most PATH-CAP bytes (src/core/util.f) with
 \ no NUL: a caller that opens it hands it to PATH0 or PATHZ, which add one in
@@ -94,4 +123,5 @@ variable TPU
 
 \ Clear transient path cursors before capturing an image.
 : ENV-SNAPSHOT-PREPARE ( -- )
+   ENV-INPUT:RESET
    NULL$ drop TPP !  0 TPQ !  NULL$ drop TPS!  0 TPU ! ;

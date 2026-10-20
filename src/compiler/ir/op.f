@@ -530,7 +530,7 @@ variable FROW-LOCAL
 3 constant L-AT                      \ attribute ordinals
 4 constant L-AK                      \ attribute key symbol ordinals
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE STG-MODE n
 0 CWORK-VARIABLE STG-OPC n
 0 CWORK-VARIABLE STG-OPCO n

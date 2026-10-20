@@ -94,6 +94,8 @@ variable JOT-ERR-A
    s" prose before json" SB-APPEND JOT-LF
    s"   " SB-APPEND JOT-OBJ-A s"   " SB-APPEND JOT-LF
    s" {bad" SB-APPEND JOT-LF
+   s" {" SB-APPEND JOT-DQ s" a" SB-APPEND JOT-DQ
+   s" :[1,]}" SB-APPEND JOT-LF
    s" [1]" SB-APPEND JOT-LF
    JOT-OBJ-B JOT-LF
    SB$ ;
@@ -140,7 +142,6 @@ variable JOT-ERR-A
    s" src/lib/errors.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/argv.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;
 
@@ -190,6 +191,23 @@ variable JOT-ERR-A
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 
+\ An object-shaped row with a malformed tail must not pass the filter. Reader
+\ depth is a capacity refusal and cannot be treated as prose.
+: JOT-DEEP$ ( -- ptr u8 n )
+   SB-RESET
+   65 0 ?do 91 SB-APPEND-C loop
+   s" 0" SB-APPEND
+   65 0 ?do 93 SB-APPEND-C loop
+   JOT-LF SB$ ;
+
+: JOT-DEEP-RUN ( -- )
+   JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
+   JOT-DEEP$ JSON-ONLY-FILTER ;
+
+: JOT-DEEP-CASE ( -- )
+   [: JOT-DEEP-RUN ;] E-JR-DEPTH TTHROWSQ
+   JSON-ONLY-BUFFERS-OFF ;
+
 \ The buffers are the caller's and cannot grow, so a buffered filter refuses
 \ what does not fit by name. A line goes in with its line feed or not at all:
 \ the second line below fits the 15-byte JSON buffer only without its line
@@ -232,6 +250,7 @@ variable JOT-ERR-A
    JOT-ARRAY-CASE
    JOT-PROSE-CASE
    JOT-ZERO-CASE
+   JOT-DEEP-CASE
    JOT-FULL-CASE
    JOT-NOARG
    CLEANUP-RUN

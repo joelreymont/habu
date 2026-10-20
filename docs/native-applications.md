@@ -71,7 +71,7 @@ The native REPL build compiles the source on its first run and when a recorded
 input changes. A plain repeat build checks the application and builder inputs
 and keeps the existing image if they are current. The builder records loaded
 files and path resolution queries, so a new nearer copy of a previously loaded
-file also triggers a rebuild. It does not use the AOT maker or artifact caches.
+file also triggers a rebuild. It does not use the AOT builder or artifact caches.
 The existing build report therefore records no cache source and no cache hits
 for `--repl`.
 
@@ -83,30 +83,44 @@ record with an available builder image skips support discovery; a changed
 producer, a new nearer file, or a missing image selects support again. The
 application's own input sidecar is still checked before this lookup.
 
-REPL and stripped builds load application source through the native FILE cache
-in `HABU_BUILD_CACHE`. An unchanged file imports its compiled definitions,
-checker declarations and stored state without executing its source again.
-Editing a file recompiles it and the files that depend on its changed inputs.
+REPL and stripped rebuilds use the ordinary source loader with the native
+definition cache in `HABU_BUILD_CACHE`. File-level initialization runs in order,
+including in unchanged files. Individual definitions reuse native emission and
+checker facts only while their construction dependencies still match; other
+definitions compile normally.
 
 Source that embeds a non-source file declares its absolute path with
 `BUILD-INPUT:FILE ( ptr u8 n -- )` before reading it
 (`require src/lib/build-input.f`). `BROWSER-HOST` declares its three page files
-this way. `hb-build --repl` records these files in its existing input rows, so
-an edited or missing asset invalidates the image and its cached FILE unit.
-The declaration is a no-op during ordinary source loading. Stripped builds'
-outer artifact and object caches still use the static source closure; these
-declarations alone do not provide asset freshness for that build mode.
+this way. `hb-build` records these files in its existing input rows, so an
+edited or missing asset invalidates the image; rebuilding reruns file-level
+initialization, including the asset reads. The declaration is a no-op during
+ordinary source loading.
 
-For stripped builds, `hb-build` selects a saved maker image by engine, source
-root and maker support closure, so repeated builds reuse its compiled opener.
+`HB_BUILD_TIMEOUT_MS` sets the child builder's elapsed-time deadline in
+milliseconds, from 1 through 2147483647; the default is 600000 (10 minutes).
+For a heavily preempted build, prefix the command with
+`HB_BUILD_TIMEOUT_MS=2400000` to allow 40 minutes. This includes time when the
+child is not scheduled; it is not a CPU budget. The setting applies when a new
+builder invocation starts and cannot extend one already running.
+
+For stripped builds, `hb-build` selects a saved builder image by engine, source
+root and builder support closure, so repeated builds reuse its compiled opener.
 Its producer support is retired before the application opens its DATA window,
-so the application loads its own library copies. A warm
-build imports unchanged file units; editing one source recompiles that unit
-while retaining its unchanged dependencies. `test/native-file-stripped-path-e2e.f`
+so the application loads its own library copies. A warm rebuild reuses
+unchanged definitions, including those in an edited file.
+`test/native-file-stripped-path-e2e.f`
 checks the cold and warm counts and runs the resulting stripped image. The
-internal AOT maker takes source and JSON diagnostic flag, with optional entry
+internal AOT builder takes source and JSON diagnostic flag, with optional entry
 and seed arguments. It keeps FILE counts quiet for those normal calls. Direct
 diagnostic runs may pass `1` as a third argument to print the FILE counts.
+
+Before reusing a stripped executable or stored object, `hb-build` checks the
+files, path resolutions and environment queries the builder actually used.
+Those recorded inputs also select the cache keys, so changing a dynamic
+loader's source root cannot restore an image built from its previous root.
+Environment inputs distinguish an absent value from an empty value. Runtime
+`GETENV` reads remain ordinary process environment queries.
 
 A `--repl` image stores no cell that only the building process can read. The
 cells a process fills at startup are stored as zero, region addresses such as
@@ -186,15 +200,15 @@ emitter may only `ADR,` a label its own definition binds.
 
 ### What the window contains
 
-The maker child opens the capture window with **only the application's own
+The builder child opens the capture window with **only the application's own
 library copies visible to `require`**, so its require closure supplies the
-library content inside the restored span. `tools/aot-maker.f` loads the
+library content inside the restored span. `tools/aot-builder.f` loads the
 lib-free latch, then loads FILE producer and image-save support in a checker
-scope. It captures that support in a keyed maker image, retiring its
+scope. It captures that support in a keyed builder image, retiring its
 dictionary, checker and require history before the application window opens.
 Each build loads the application through the retained FILE continuation and
 latches the span. `tools/aot-build-open.f` is the compatibility entry for
-two-stage maker callers. `tools/aot-build-core.f` then brings in the
+two-stage builder callers. `tools/aot-build-core.f` then brings in the
 linker, `src/habu/app-image.f` and the eight `lib` modules it pulls in, which all
 land above the span. A module the application has already loaded is shared in the
 harmless direction: the linker uses the application's copy, at build time only.
@@ -216,14 +230,14 @@ up to a whole segment's, opening a fresh one inside the span when it has less,
 and the pool opens no segment afterwards. A link that copies in more than that
 room is refused, `E-NSTR-CAP`.
 The pool is the application's only while the application loads: latching the
-span hands the maker back the pool it compiled into before, so nothing the
-maker compiles afterwards (`tools/aot-build.f`, the linker) adds a byte to the
+span hands the builder back the pool it compiled into before, so nothing the
+builder compiles afterwards (`tools/aot-build.f`, the linker) adds a byte to the
 image, and the link selects the application's pool again to copy each literal
 the closure reaches into the window.
 
 The application therefore sees **only what it requires itself**. Nothing is
 preloaded on its behalf any more, so a program that used a `lib` word without
-requiring its module — which the maker's own eight modules used to supply — now
+requiring its module — which the builder's own eight modules used to supply — now
 fails to compile, naming the undefined word.
 
 The invariant matters because a library loaded *before* the window is the copy
@@ -232,7 +246,7 @@ the span, and the linker refuses the image with *address refers to data outside
 the restored span*. That refusal is correct — such a cell would read as zero in
 the image — so the fix is to load nothing early, not to relax the check.
 
-Cells the **engine itself** bakes are below the window whatever the maker does.
+Cells the **engine itself** bakes are below the window whatever the builder does.
 Some of them are not persisted data at all: they are runtime inputs, the way
 argv is, or state that starts empty in every runtime instance. The stripped
 entry owns those exactly as it already owns `x20`, `S0-CELL` and `DP-CELL`, and
@@ -276,7 +290,7 @@ loads does not survive the capture that makes an engine**: the prefix compiles
 into the building host's DATA, millions of bytes above that host's base, and the
 image keeps only the captured span. A code-spelled address is relocated by the
 capture, a number in a raw cell is not. The offsets therefore have to be
-taken from the live cells in the process that links, which is the maker. Where
+taken from the live cells in the process that links, which is the builder. Where
 the declaring package's cells are private — `dynamic-storage.f`, `memory.f` —
 that package exports one claim applier (`OWNED-CELLS ( [ ptr u8 -- ] -- )`) that
 hands the list its own cells and nothing else, because a private word of a baked

@@ -43,8 +43,9 @@ REG-PROTECT
 \ This is why the forms below live here rather than beside TYPED-VARIABLE. The
 \ general parsed form (`TYPED-VARIABLE NAME ptr t`, src/core/layout-buffer.f)
 \ computes its accessor's signature, so it needs the generative armed window and
-\ throws E-LAYOUT-BUFFER until src/core/include.f arms TDECL-EVAL-ARMED - later
-\ than checker.f, layout-buffer.f, env-base.f and include.f's own head. A clause
+\ throws E-LAYOUT-BUFFER until src/core/include.f arms TDECL-EVAL-ARMED - after
+\ checker.f, layout-buffer.f and env-base.f. Include.f arms the evaluator before
+\ its first typed cell. A clause
 \ is compiled, not computed, so it asks nothing of the checker and works in the
 \ boot prefix, which is where the checker's own pointer tables are declared.
 \ Naming a definer per pointee is the price of that: add one when the prefix

@@ -428,10 +428,11 @@ Generate well-typed Habu programs for differential execution against the pinned 
 
 The current path emits a Habu-generated module through the existing legacy owner
 adapter ([portability.md](portability.md) §7.4). The symbolic target-data
-builder in that design is a possible later replacement. The build driver keeps
-its entry xt across `prefix-rewind.f`, opens a Wasm shadow binding, and reloads
-the canonical portable library sources inside that capture window before the
-application. It reseals their packages before loading application source.
+builder in that design is a possible later replacement. The build driver enters
+its checked body before running `prefix-rewind.f`, opens a Wasm shadow binding,
+and reloads the canonical portable library sources inside that capture window
+before the application. It reseals their packages before loading application
+source.
 `NCOMP`
 compiles each definition for it from the module `NBACK:FREEZE` froze for the
 engine's own selector (§2). The Wasm backend's `EMIT-UNPLACED` row writes a

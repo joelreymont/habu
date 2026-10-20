@@ -32,7 +32,7 @@
 
 package WASM-DYNAMIC
 public
-ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
 require src/lib/string.f

@@ -75,6 +75,35 @@ public
    WRITE-BODY
    FD @ close ;
 
+\ Change the bytes of a real captured artifact after its header has committed
+\ to their digest, or change the physical length without changing that header.
+\ Mode 3 flips bit 0 of its DATA-base scalar, which would make MERGE refuse
+\ alignment if it interpreted the scalar before checking the payload digest.
+: ROW-TEST-DAMAGED ( ptr u8 ptr u8 n n -- )
+   {: prod path pathu:n mode:n :}
+   STAGE BUILD-TABLE BASES-ALONE PAYLOAD-DIGEST
+   DERIVED AOT-IDENT:CHAIN-DIGEST
+   prod BUILD-HEADER
+   mode 0= if S-BLOB SEC-PTR dup c@ 1 xor swap c! then
+   mode 3 = if S-SCALARS SEC-PTR dup c@ 1 xor swap c! then
+   path pathu PATH0 1537 493 open FD !
+   FD @ 0 < if s" artifact-row-test: cannot write damaged file" DIE then
+   mode 1 = if
+      SHA-CTX SHA256-BEGIN
+      HDR HDR-BYTES PUT
+      TBL SEC-N ROW-BYTES * PUT
+      SEC-N 0 ?do
+         i SEC-LEN 0 > if
+            i SEC-PTR i BASE@ +
+            i S-CLOSURE = if i SEC-LEN 1- else i SEC-LEN then PUT
+         then
+      loop
+   else
+      WRITE-BODY
+   then
+   mode 2 = if FD @ HDR 1 FDIO:WALL then
+   FD @ close ;
+
 ;package
 
 package AOT-ROW-TEST
@@ -363,6 +392,20 @@ variable CHAIN-VALUE
    s" closure-max" CASE? if -1 1 rshift CLOSURE-READ true exit then
    false ;
 
+: DAMAGE-ARTIFACT ( n -- ) {: mode:n :}
+   AOTRT:KEY ART$ mode ROW-TEST-DAMAGED
+   CASE$ s" merge-" CONTAINS? if HOST! AOTRT:KEY ART$ MERGE exit then
+   READ-ARTIFACT ;
+
+: FORGE-DAMAGE ( -- bool )
+   s" bad-digest" CASE? if 0 DAMAGE-ARTIFACT true exit then
+   s" merge-bad-digest" CASE? if 3 DAMAGE-ARTIFACT true exit then
+   s" truncated" CASE? if 1 DAMAGE-ARTIFACT true exit then
+   s" merge-truncated" CASE? if 1 DAMAGE-ARTIFACT true exit then
+   s" trailing" CASE? if 2 DAMAGE-ARTIFACT true exit then
+   s" merge-trailing" CASE? if 2 DAMAGE-ARTIFACT true exit then
+   false ;
+
 
 public
 
@@ -378,6 +421,7 @@ public
       AOTRT:KEY ART$ true ROW-TEST-WRITE READ-ARTIFACT exit
    then
    FORGE-CLOSURE if exit then
+   FORGE-DAMAGE if exit then
    FORGE-SITE if
       WRITE-ARTIFACT HOST!
       AOTRT:KEY ART$ MERGE exit

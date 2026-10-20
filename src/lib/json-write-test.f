@@ -40,7 +40,7 @@ $40 constant JWT-RT-MAX-N
 JWT-RT-CAP BUFFER: JWT-RT-OUT
 JWT-RT-CAP BUFFER: JWT-RT-DECODE
 TYPED-VARIABLE JWT-RT-W writer
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create JWT-RT-READER JR:STORAGE-BYTES allot
 
 create JWT-ESC-IN

@@ -97,9 +97,9 @@ private
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
    c key 16 64 IR-TYPE:NEW ;
 
-: ATT-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena IR-ARENA:arena )
+: ATT-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
-   c key 16 64 IR-ATTR:NEW ;
+   c key 16 IR-ATTR:NEW ;
 
 : SRC-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
@@ -156,18 +156,18 @@ private
 \ registry, a schema table holding both opcodes, an operation store, and a
 \ function and block store with the requested ceilings. Every fixture starts
 \ here, so a fixture body differs only in what it then asks the store to do.
-: RIG ( IR-CTX:ctx n n n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
+: RIG ( IR-CTX:ctx n n n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx fcap:n bcap:n pcap:n :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
    c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
    c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c key ATT-NEW {: ap:IR-ARENA:arena ar:IR-ARENA:arena :}
+   c key ATT-NEW {: ar:IR-ARENA:arena :}
    c key SRC-NEW {: sa:IR-ARENA:arena :}
    c sp sr key SCH-NEW {: qp:IR-ARENA:arena qr:IR-ARENA:arena :}
    c key 32 32 256 IR-OP:NEW {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c key fcap bcap pcap IR-FUN:NEW {: fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c sp sr tp tr key qp qr SCH-ALL
-   key sp sr tp tr ap ar sa qr p v r fp fr br ;
+   key sp sr tp tr ar sa qr p v r fp fr br ;
 
 \ ---- appending one operation -------------------------------------------------
 : OP+ ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-op-id )
@@ -231,10 +231,10 @@ private
 : READ-BODY ( IR-CTX:ctx -- n n n n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-EXPORT C-HABU FUN-DECL
-   c ap ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
+   c ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    r IR-FUN:BEGIN-BLOCK
    c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
    c key sa v r qr fr br BLK-CLOSE drop
@@ -262,7 +262,7 @@ private
 : BLOCK-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -290,7 +290,7 @@ private
 : ARGVAL-BODY ( IR-CTX:ctx -- n bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -313,7 +313,7 @@ private
 : IMPORT-BODY ( IR-CTX:ctx -- n n bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-EXT FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-C FUN-DECL
    c key sa fp fr br sr tr ar FUN-CLOSE {: f0:IR-ID:ir-fun-id :}
@@ -331,7 +331,7 @@ private
 : TWO-BODY ( IR-CTX:ctx -- n n bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -452,7 +452,7 @@ private
 : NEG-BODY ( n IR-CTX:ctx -- )
    {: s:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    s S-BLK-NO-FUN = if
       r IR-FUN:BEGIN-BLOCK
       c key sp sr tp tr ar sa qr p v r K-RET OP+ drop
@@ -567,7 +567,7 @@ private
 
 : TERM-COUNT-BODY ( n IR-CTX:ctx -- ) {: kind:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -592,7 +592,7 @@ private
 
 : WINDOW-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -651,7 +651,7 @@ private
 : IDX-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    key 0 IR-ID:PACK-FUN {: f0:IR-ID:ir-fun-id :}
    key 0 IR-ID:PACK-BLOCK {: b0:IR-ID:ir-block-id :}
@@ -694,13 +694,13 @@ private
 : SWAP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    br IR-FUN:FUNS drop ;
 
 : SHAPE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c fr 7 IR-ARENA:PUSH drop
    fr IR-FUN:FUNS drop ;
 
@@ -747,7 +747,7 @@ private
 : FORGE-BODY ( n n n IR-CTX:ctx -- )
    {: off:n val:n k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    fr IR-FUN:FUNS {: l:n :}
    c fr br IR-FUN:BLOCKS fp IR-FUN:ATTR-CELLS off val FORGE-FROW
@@ -787,7 +787,7 @@ private
 : CROSS-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    br IR-FUN:BLOCKS {: bl:n :}
    fr IR-FUN:FUNS {: fl:n :}
@@ -803,7 +803,7 @@ private
 : CROSS-BUILD-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    c br r IR-OP:OPS B-PAR 9 FORGE-BROW
@@ -825,7 +825,7 @@ private
 : BFORGE-BODY ( n n n IR-CTX:ctx -- )
    {: off:n val:n k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    br IR-FUN:BLOCKS {: bl:n :}
    c br r IR-OP:OPS off val FORGE-BROW
@@ -849,7 +849,7 @@ private
 : FKEY-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
    k 1 = if fr other  key 0 IR-ID:PACK-FUN  IR-FUN:SYMBOL@ drop then
@@ -870,7 +870,7 @@ private
 : FTAB-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
    k 1 = if
       c other SYM-NEW {: sp2:IR-ARENA:arena sr2:IR-ARENA:arena :}
@@ -888,8 +888,8 @@ private
    k 3 = if
       c key sp sr br N-MAIN FUN-OPEN
       c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
-      c other ATT-NEW {: ap2:IR-ARENA:arena ar2:IR-ARENA:arena :}
-      c ap2 ar2 other 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
+      c other ATT-NEW {: ar2:IR-ARENA:arena :}
+      c ar2 other 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    then
    k 4 = if
       c key sp sr br N-MAIN FUN-OPEN
@@ -910,7 +910,7 @@ private
 : FCTX-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    BND [: FCTX-KEY ;] IR-CTX:WITH-CONTEXT {: other:IR-ID:ir-module-key :}
    fr other  key 0 IR-ID:PACK-FUN  IR-FUN:SYMBOL@ drop ;
@@ -975,7 +975,7 @@ private
 : OVF-BODY ( IR-CTX:ctx -- n n n )
    {: c:IR-CTX:ctx :}
    c 1 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    c key sp sr br N-HELP FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
@@ -992,7 +992,7 @@ private
 : OVF-BLK-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 1 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-MAIN FUN-OPEN
    c tp tr key L-DEF V-HIDDEN C-HABU FUN-DECL
    r IR-FUN:BEGIN-BLOCK
@@ -1005,11 +1005,11 @@ private
 : OVF-ATT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 1 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-EXT FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
-   c ap ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
-   c ap ar key 43 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
+   c ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
+   c ar key 43 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    c key sa fp fr br sr tr ar FUN-CLOSE drop ;
 
 \ ---- arena growth preserves committed functions -------------------------------
@@ -1018,7 +1018,7 @@ private
 : GROW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    c key sp sr br N-HELP FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
@@ -1058,7 +1058,7 @@ private
 : FZ-BODY ( IR-CTX:ctx -- n n n n bool bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    key 0 IR-ID:PACK-FUN {: f0:IR-ID:ir-fun-id :}
    key 0 IR-ID:PACK-BLOCK {: b0:IR-ID:ir-block-id :}
@@ -1083,12 +1083,12 @@ private
 : FZ2-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr br N-EXT FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-C FUN-DECL
-   c ap ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
+   c ar key 42 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    c key sa fp fr br sr tr ar FUN-CLOSE {: f0:IR-ID:ir-fun-id :}
-   c ap ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL {: at:n :}
+   c ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL {: at:n :}
    c sp sr key N-EXT FN-SYM IR-ID:SYMBOL-LOCAL {: sy:n :}
    c tp tr key SIGT IR-ID:TYPE-LOCAL {: ty:n :}
    fp IR-ARENA:FREEZE {: fpv:IR-ARENA:view :}
@@ -1109,7 +1109,7 @@ private
 : FZ3-BODY ( IR-CTX:ctx -- n bool bool bool )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    key 0 IR-ID:PACK-FUN {: f0:IR-ID:ir-fun-id :}
    key 0 IR-ID:PACK-BLOCK {: b0:IR-ID:ir-block-id :}
@@ -1132,7 +1132,7 @@ private
 : FZ-RETIRED-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
    fp IR-ARENA:FREEZE drop
    fr IR-ARENA:FREEZE drop
@@ -1147,7 +1147,7 @@ private
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    fr ;
 
 : TD-READ ( -- )
@@ -1162,7 +1162,7 @@ private
 : TD-FESC-BODY ( IR-CTX:ctx -- IR-ARENA:view )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
    fr IR-ARENA:FREEZE ;
 
 : TD-FREAD ( -- )

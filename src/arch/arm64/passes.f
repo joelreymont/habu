@@ -3,7 +3,7 @@
 \ WHAT IT IS FOR. src/compiler/native/compiler.f drives a compilation without
 \ naming a backend: each stage goes through the row that the definition's own
 \ target contract resolves to. This file is that row for ARM64. Every stage is
-\ the sequence the driver used to run by name, wrapping A64SEL, A64PRUNE, A64RA,
+\ the sequence the driver used to run by name, wrapping A64SEL, A64RA,
 \ A64RAV, A64SPILL and A64EMIT; none of their state moved here. The emission row
 \ also states the sealed emission as NEMIT's rows. The driver copies them
 \ into NART before publication, and the RETIRE row clears them.
@@ -35,7 +35,6 @@ require src/compiler/native/abi.f
 require src/compiler/native/frame.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/select.f
-require src/compiler/native/prune.f
 require src/compiler/native/spill.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
@@ -118,34 +117,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c ab  c ab A64IR:VOCABULARY  A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab  c ab A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
-   c ab A64PRUNE:BIND-DIALECT
    c m ab ROUTINE A64SEL:SELECT ;
-
-\ ---- pruning -----------------------------------------------------------------
-\ A module with no such load is handed back UNTOUCHED: rebuilding renumbers
-\ values and the allocator breaks ties on those numbers, so a routine that
-\ gained nothing would still come out with other bytes. Nothing in the corpus
-\ reaches the rebuild; the shapes that do are named in prune.f.
-: PRUNE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
-   {: c:IR-CTX:ctx m:IR-BUILD:module :}
-   NPROF-PHASE:PRUNE NPROF:START
-   m A64PRUNE:REWRITES {: n:n :}
-   n 0= if
-      A64PRUNE:RELEASE  NPROF-PHASE:PRUNE NPROF:STOP  m exit
-   then
-   A64RA:RELEASE
-   A64EMIT:RELEASE
-   A64SPILL:RELEASE
-   c A64-BUILDER {: nb:IR-BUILD:builder :}
-   c nb A64IR:MACHINE  c nb A64IR:VOCABULARY  A64RA:BIND-DIALECT
-   c nb  c nb A64IR:VOCABULARY  A64RAV:BIND-DIALECT
-   c nb A64EMIT:BIND-DIALECT
-   c nb  c nb A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
-   c m nb A64PRUNE:REWRITE {: m1:IR-BUILD:module :}
-   A64PRUNE:REWRITTEN n <> if E-A64PRUNE-SHAPE throw then
-   m IR-BUILD:RETIRE
-   NPROF-PHASE:PRUNE NPROF:STOP
-   m1 ;
 
 \ ---- lowering ----------------------------------------------------------------
 \ The reserve is sized from A64RA:FRAME, the same count ROUTINE declares from,
@@ -255,6 +227,7 @@ NBR:INSN-BYTES constant INSN-BYTES
 : ADDR-ROWS ( -- )
    A64EMIT:ADDR-SITES 0 ?do
       i A64EMIT:ADDR-SITE@ INSN-BYTES *  i A64EMIT:ADDR-SITE-KIND@
+      i A64EMIT:ADDR-SITE-ORIGIN@
       NEMIT:ADDR-SITE+
    loop ;
 
@@ -296,7 +269,6 @@ NBR:INSN-BYTES constant INSN-BYTES
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
-   A64PRUNE:BOUND? if A64PRUNE:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
 \ Dynamic storage releases pass buffers after the emission has proved idle.
@@ -313,7 +285,7 @@ public
 : INSTALL ( -- )
    A64BACK:ID ARCH [: A64BACK:SERVES? ;] [: A64BACK:SERVES? ;]
       CTARGET-BACKEND:MAKE
-   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: DECLARE ;] [: SELECT ;] [: FIXPOINT ;]
    [: EMIT ;] [: UNPLACED-UNSUPPORTED ;] [: RELEASE ;] [: RETIRE ;]
    [: A64IR:PROTOTYPE ;] [: A64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
       NBACK-PASS:MAKE

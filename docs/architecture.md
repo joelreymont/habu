@@ -139,8 +139,8 @@ sealed package's private wordlist empty, so no later source can name its
 words. A word's code and body stay in the image only while a kept word reaches
 them through a row or a reference cell. An application image keeps no header
 at all.
-**Now:** a primitive is kept when its name appears as a whitespace-separated
-token in the program's text (`src/habu/treeshake.f:1-7`).
+**Now:** the native builders emit every specified primitive. Image capture
+then follows references from the program's roots to retain reachable code.
 
 ## Interpreter
 
@@ -191,13 +191,13 @@ events and clears the pending state. Its emission was never placed, so code
 space is untouched. `INTERPRET` restores the source, package scope and used
 packages it saved on entry, then rethrows.
 
-**At top level, a word's type guards the stack.** Before running a typed word
-outside a definition, the interpreter compares the stack depth with the word's
-input count and refuses an underflow. It has no other guard.
-**Now:** the guard reads `DNAME-MIN-IN` from the record's flags, and the
-prompt also checks `DNAME-WIDE`, `DNAME-INT` and a policy seal
-(`src/habu/habu2.f:10120-10166`). A top-level row tracker
-(`src/core/top-row.f`) reports warnings only.
+**At top level, a word's type guards the stack.** The interpreter supplies the
+exact selected dictionary record to the checker-owned typed row. The checker
+applies that word's input and output effects and refuses a mismatch before the
+call, including a pointer or execution token stored in a numeric cell. Native
+`DNAME-MIN-IN`, `DNAME-WIDE`, `DNAME-INT` and policy checks remain in force.
+`src/core/top-row.f` connects the token hook to this row; nested evaluators own
+separate row state. See [typed-top-level.md](typed-top-level.md).
 
 **The REPL is `INTERPRET` per line.** When standard input is a terminal, it
 reads a line, interprets it under `catch` and answers `ok` or the error. A

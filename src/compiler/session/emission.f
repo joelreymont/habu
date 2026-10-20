@@ -49,7 +49,7 @@ CAST: ARTIFACT-PTR ( ptr u8 -- ptr artifact )
 6 constant H-ADDRS
 7 constant HDR-CELLS
 5 constant CALL-CELLS
-2 constant ADDR-CELLS
+3 constant ADDR-CELLS
 
 : RECORD@ ( NART:emission -- artifact )
    VIEW IR-ARENA:OPEN IR-ARENA:SIDE-FIELD @ ARTIFACT-PTR @ ;
@@ -94,6 +94,7 @@ CAST: ARTIFACT-PTR ( ptr u8 -- ptr artifact )
    NEMIT:ADDR-SITES 0 ?do
       c a i NEMIT:ADDR-SITE@ CELL,
       c a i NEMIT:ADDR-SITE-KIND@ CELL,
+      c a i NEMIT:ADDR-SITE-ORIGIN@ CELL,
    loop ;
 
 : ROW-CK ( n n -- n )
@@ -188,6 +189,8 @@ public
 
 : ADDR-SITE@ ( NART:emission n -- n ) 0 ADDR@ ;
 : ADDR-SITE-KIND@ ( NART:emission n -- n ) 1 ADDR@ ;
+
+: ADDR-SITE-ORIGIN@ ( NART:emission n -- n ) 2 ADDR@ ;
 
 : RELEASE ( NART:emission -- )
    VIEW IR-ARENA:RETIRE ;

@@ -13,6 +13,8 @@ create PATH FS-PATH-CAP allot variable PATH-U
 create KEY 64 allot
 create REC 48 allot
 create LITS 16 allot
+create REFS 32 allot
+create DEPS 16 allot
 
 : ART$ ( -- ptr u8 n ) PATH PATH-U @ ;
 : PUBLISH ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
@@ -28,7 +30,12 @@ public
    ROOT ROOT-U @ s" malformed.unit" PATH JOIN-PATH PATH-U !
    NUNIT-CAPTURE:START-PREFIX
    NUNIT-FILE:RESET
-   13 0 ?do i KEY 0 NUNIT-FILE:SECTION! loop
+   17 0 ?do i KEY 0 NUNIT-FILE:SECTION! loop
+   32 0 ?do 0 REFS i + c! loop
+   13 REFS 32 NUNIT-FILE:SECTION!
+   s" HBFDEP02" drop DEPS 8 BYTE-COPY
+   0 DEPS 8 + LE:U64!
+   14 DEPS 16 NUNIT-FILE:SECTION!
    -1 REC LE:U64!
    -1 REC 8 + LE:U64!
    3 REC 16 + LE:U64!

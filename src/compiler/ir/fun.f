@@ -513,7 +513,7 @@ private
 1 constant MODE-OPEN
 -1 constant UNSET
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE FSTG-MODE n
 0 CWORK-VARIABLE FSTG-SYM n
 0 CWORK-VARIABLE FSTG-SYMO n

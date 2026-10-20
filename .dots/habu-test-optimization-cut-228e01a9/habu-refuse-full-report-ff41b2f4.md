@@ -3,7 +3,7 @@ title: Refuse full report buffers by name in json-only and aot-call-report
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T14:28:09.653625+02:00\""
+created-at: "2026-10-02T14:28:09.653625+02:00"
 closed-at: "2026-10-14T19:34:45.581597+03:00"
 close-reason: "Implemented in b8d6584a: json-only and aot-call-report full buffers throw named capacity codes with prior complete output retained; check-core already streams discovery records. Red/green capacity cases and affected suites passed."
 ---

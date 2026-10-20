@@ -17,6 +17,22 @@ PTR-VARIABLE M-A
 PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
+\ A stripped linker may keep immutable payload bytes outside __text. The image
+\ writer receives the code/payload boundary once; other emitters leave it empty.
+PTR-VARIABLE IMG-PAYLOAD-A
+variable IMG-PAYLOAD-N
+variable IMG-CODE-N
+\ The target writer supplies the byte prefix between __TEXT and its payload.
+\ It is fixed for a writer, while IMG-PAYLOAD-CLEAR resets per-image state.
+variable IMG-PAYLOAD-PREFIX
+
+: IMG-PAYLOAD-CLEAR ( -- )
+   0 IMG-PAYLOAD-N !  0 IMG-CODE-N ! ;
+
+: IMG-PAYLOAD! ( n ptr u8 n -- ) {: code:n payload:ptr bytes:n :}
+   code 0 < bytes 0 <= or code ASM-LEN > or if
+      s" image: invalid code/payload boundary" 73 die then
+   code IMG-CODE-N !  payload IMG-PAYLOAD-A !  bytes IMG-PAYLOAD-N ! ;
 
 : M-ALLOC-BUF ( -- ptr u8 )
    MSIZE map-anon 0 <> if drop s" image-bytes: mmap failed" 74 die then ;

@@ -31,6 +31,10 @@ require test/native-window-owner-adapter.f
 require test/native-window-owner-payload.f
 require test/native-window-tape-detach.f
 
+\ Production binds typed storage's quotation cells before capture. This
+\ reduced window needs the same address registry walker for its fresh owner.
+require src/core/layout-buffer-address.f
+
 CHECKER-OWNER:CAPTURE-PREPARE
 
 package OWNER-ADAPTER-CHECK

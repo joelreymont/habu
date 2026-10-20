@@ -43,6 +43,7 @@ $4A constant BUILD-RC
 0 constant CLASS-SEALED
 1 constant CLASS-WHITEBOX
 variable CLASS-WANTED
+variable TARGET-EXPLICIT
 
 : WHITEBOX-ARG$ ( -- ptr u8 n ) s" whitebox" ;
 
@@ -91,15 +92,20 @@ variable CLASS-WANTED
 \ The argument after `--target` names the target; anything after that is refused.
 : TARGET-ARG! ( n -- ) {: at:n :}
    BUILD-TARGET:HOST!
+   0 TARGET-EXPLICIT !
    SCRIPT-ARGC at = if exit then
    SCRIPT-ARGC at 2 + <> if ARGS-REFUSE then
    at SCRIPT-ARGV$ TARGET-FLAG$ STR= 0= if ARGS-REFUSE then
    at 1+ SCRIPT-ARGV$ BUILD-TARGET:SELECT? 0= if
       s" native-build: unknown --target profile" BUILD-RC die
    then
+   -1 TARGET-EXPLICIT !
    CORE-CK BACKEND-CK ;
 
 public
+
+: WHITEBOX? ( -- bool ) CLASS-WANTED @ CLASS-WHITEBOX = ;
+: EXPLICIT-TARGET? ( -- bool ) TARGET-EXPLICIT @ 0<> ;
 
 : BUILD-ARGS! ( -- )
    BUILD-TARGET:IDLE-CK

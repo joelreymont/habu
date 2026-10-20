@@ -1,14 +1,15 @@
 \ Checked transient allocation behind DYNAMIC-BUFFER declarations.
-\ A private control record holds mapping, byte capacity and registry slot + 1.
+\ A control record holds mapping, exact byte capacity and registry slot + 1.
+\ Generated buffers append immutable live stride and complete-element bound.
 \ Membership follows live allocation, including a precompiled reserve after
 \ restore. Release zeroes the record; no process address survives capture.
 \ THE RECORD HEAD IS A DECLARED POINTER CELL (dot habu-refuse-a-ptr-5ad2734e):
 \ a raw storage cell never holds an address, so the mapping lives in the
 \ PTR-VARIABLE the definer generates and the record arrives here as `ptr ptr a`,
 \ a pointer to that cell. `a` stays a quantifier of these words, so a buffer
-\ whose cells hold pointers moves them as pointers. The two count cells behind
-\ the head hold numbers, so they are reached through an explicit cell view of
-\ the head (CTL) rather than through its pointer type.
+\ whose cells hold pointers moves them as pointers. The numeric cells behind
+\ the head are reached through an explicit cell view of the head (CTL) rather
+\ than through its pointer type.
 \ This runtime belongs below the core-prefix mark: generated declarations in
 \ a rewound build source already call it, before src/lib/errors.f is available.
 package DYNAMIC-STORAGE
@@ -27,20 +28,19 @@ E-LAYOUT-BOUNDS constant E-BOUNDS
 
 $40 constant REG-INIT
 1 constant REG-HEAD
-3 cells constant CONTROL-BYTES
+3 constant GENERIC-CELLS
+5 constant FIXED-CELLS
+3 cells constant STRIDE-OFF
+4 cells constant BOUND-OFF
 
 : EXTENT ( n n -- n ) {: count:n width:n :}
    count 0 < width 0 <= or if E-SIZE throw then
    count MAX-BYTES width / > if E-SIZE throw then
    count width * ;
 
-\ EVERY CAPACITY IS A WHOLE NUMBER OF CELLS, and this is where that is made
-\ true. COPY moves a capacity cell by cell, so a capacity that is not a cell
-\ multiple loses its tail: a byte element reserving 100 bytes would map 100 and
-\ the next growth would copy 100 CELL / = 12 cells and drop the last four.
-\ Rounding up costs nothing - the mapping is page-granular - and the accessor
-\ bounds by CAP / width, so the rounded capacity is the bound, which is the
-\ documented rule (bounds by capacity, not by the requested count).
+\ Keep the existing cell-rounded capacity contract: 100 byte elements reserve
+\ 104 addressable bytes. The fixed accessor caches capacity / width, including
+\ only complete elements; COPY below preserves every capacity byte.
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
@@ -52,12 +52,10 @@ $40 constant REG-INIT
    old MAX-BYTES 2 / > if need CELL-CEIL exit then
    need old 2 * 64 max max CELL-CEIL ;
 
-\ Both regions hold the same element type — an abandoned mapping and its
-\ replacement, or the old and new registry — so the copy stays parametric in it
-\ and a buffer of pointers moves its cells as pointers. The byte count is a
-\ whole number of cells: CAPACITY rounds every capacity up to one.
+\ The old and fresh mappings do not overlap. Preserve the entire exact byte
+\ capacity, including a fractional element's tail.
 : COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
-   bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
+   src byte-view dst byte-view bytes BYTE-COPY ;
 
 \ One registry per runtime instance. Empty capacity is retained until capture,
 \ so the pointer itself is the authority on whether the mapping is live. The
@@ -72,17 +70,19 @@ variable MUTEX
 
 : REG@ ( -- ptr n ) REG @ ;
 : REG-CAP ( -- n ) REG@ @ ;
-: REG-BYTES ( n -- n ) REG-HEAD + CELL EXTENT ;
-\ A registry entry holds one control record's head, so the entry's own type is
-\ a pointer to that declared pointer cell.
-: REG-AT ( n -- ptr ptr ptr a ) REG-HEAD + REG@ swap ptr-field ;
+: REG-BYTES ( n -- n ) 2 * REG-HEAD + CELL EXTENT ;
+\ A registry row holds a declared control head and its explicit cell extent.
+: REG-AT ( n -- ptr ptr ptr a ) 2 * REG-HEAD + REG@ swap ptr-field ;
 : REG-ENTRY ( n -- ptr ptr a ) REG-AT @ ;
+: REG-LEN ( n -- ptr n ) REG-AT byte-view CELL + cell-view ;
 
 \ The count cells sit behind the declared head: view the record's bytes as cells
 \ and address them by offset, which keeps the head's pointer type off the counts.
 : CTL ( ptr ptr a n -- ptr n ) {: cb:ptr off:n :} cb byte-view off + cell-view ;
 : CAP ( ptr ptr a -- ptr n ) CELL CTL ;
 : SLOT ( ptr ptr a -- ptr n ) 2 cells CTL ;
+: STRIDE ( ptr ptr a -- ptr n ) STRIDE-OFF CTL ;
+: BOUND ( ptr ptr a -- ptr n ) BOUND-OFF CTL ;
 
 : REG-MAP ( n -- ptr n )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
@@ -103,7 +103,7 @@ variable MUTEX
    then
    REG-U @ REG-CAP < if exit then
    REG-CAP {: old:n :}
-   old MAX-BYTES CELL / 1- 2 / > if E-SIZE throw then
+   old MAX-BYTES CELL / REG-HEAD - 2 / > if E-SIZE throw then
    old 2 * {: cap:n :}
    cap REG-MAP {: fresh:ptr :}
    REG@ fresh old REG-BYTES COPY
@@ -113,8 +113,9 @@ variable MUTEX
    then
    fresh REG ! ;
 
-: REGISTER ( ptr ptr a -- ) {: cb:ptr :}
+: REGISTER ( ptr ptr a n -- ) {: cb:ptr len:n :}
    cb REG-U @ REG-AT !
+   len REG-U @ REG-LEN !
    REG-U @ 1+ dup cb SLOT ! REG-U ! ;
 
 \ Swap removal is bounded and repairs the moved record's private handle.
@@ -124,9 +125,11 @@ variable MUTEX
    at last <> if
       last REG-ENTRY {: moved:ptr :}
       moved at REG-AT !
+      last REG-LEN @ at REG-LEN !
       at 1+ moved SLOT !
    then
    NULL-PTR last REG-AT !
+   0 last REG-LEN !
    last REG-U !
    0 cb SLOT ! ;
 
@@ -137,17 +140,40 @@ public
    idx count >= if E-BOUNDS throw then
    idx ;
 
-\ Reject a negative index before touching the control record. The generated
-\ accessor keeps the declared head and fetches its current mapping itself.
+\ Reject a negative index before touching the control record.
 : OFFSET ( n ptr ptr a n -- n ) {: idx:n cb:ptr width:n :}
    idx 0 < if E-BOUNDS throw then
    idx cb CAP @ width / >= if E-BOUNDS throw then
    idx width * ;
 
-: RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
-   count width EXTENT {: need:n :}
-   cb CAP @ {: old:n :}
-   need old <= if exit then
+\ The checked offset and current mapping are one address operation. Growth can
+\ replace the mapping, so every access fetches the head after checking capacity.
+: ADDRESS ( n ptr ptr a n -- ptr a )
+   {: idx:n cb:ptr width:n :}
+   idx cb width OFFSET
+   cb @ swap + ;
+
+\ Generated accessors bake their width at declaration. Read the cached
+\ complete-element bound after the negative guard and multiply only once.
+: ADDRESS-FIXED ( n ptr ptr a -- ptr a )
+   {: idx:n cb:ptr :}
+   idx 0 < if E-BOUNDS throw then
+   idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
+   cb @ idx cb byte-view STRIDE-OFF + cell-view @ * + ;
+
+: PUBLISH ( ptr a n ptr ptr a n n -- )
+   {: fresh:ptr cap:n cb:ptr len:n width:n :}
+   fresh cb !
+   cap cb CAP !
+   len FIXED-CELLS = if
+      width cb STRIDE !
+      cap width / cb BOUND !
+   then ;
+
+\ Mapping, copy and old unmap are shared by both control layouts. Nothing in
+\ the control changes until every fallible operation has succeeded.
+: GROW ( n ptr ptr a n n n -- )
+   {: need:n cb:ptr old:n len:n width:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0= if
@@ -158,22 +184,31 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cb !
-      cap cb CAP !
-      cb REGISTER
+      fresh cap cb len width PUBLISH
+      cb len REGISTER
       UNLOCK
       exit
    then
-   old 0 > if
-      cb @ fresh old COPY
-      cb @ old munmap 0< if
-         fresh cap munmap drop E-UNMAP throw
-      then
+   cb @ fresh old COPY
+   cb @ old munmap 0< if
+      fresh cap munmap drop E-UNMAP throw
    then
-   fresh cb !
-   cap cb CAP ! ;
+   fresh cap cb len width PUBLISH ;
 
-: RELEASE ( ptr ptr a -- ) {: cb:ptr :}
+: RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
+   count width EXTENT {: need:n :}
+   cb CAP @ {: old:n :}
+   need old <= if exit then
+   need cb old GENERIC-CELLS width GROW ;
+
+: RESERVE-FIXED ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
+   count width EXTENT {: need:n :}
+   cb CAP @ {: old:n :}
+   old 0 > if width cb STRIDE @ <> if E-SIZE throw then then
+   need old <= if exit then
+   need cb old FIXED-CELLS width GROW ;
+
+: RELEASE-RECORD ( ptr ptr a n -- ) {: cb:ptr len:n :}
    cb CAP @ {: cap:n :}
    cap 0= if exit then
    cb @ cap munmap 0< if E-UNMAP throw then
@@ -181,7 +216,14 @@ public
    cb UNREGISTER
    NULL-PTR cb !
    0 cb CAP !
+   len FIXED-CELLS = if
+      0 cb STRIDE !
+      0 cb BOUND !
+   then
    UNLOCK ;
+
+: RELEASE ( ptr ptr a -- ) GENERIC-CELLS RELEASE-RECORD ;
+: RELEASE-FIXED ( ptr ptr a -- ) FIXED-CELLS RELEASE-RECORD ;
 
 \ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A growth
 \ unmaps the old registry before it publishes the new one, and a membership
@@ -212,17 +254,18 @@ public
 
 private
 
-\ Refuse a cut through a live control record before releasing any member.
+\ Refuse a cut through any live control record before releasing a member.
 : RANGE-CHECK ( ptr u8 n -- ) {: start:ptr size:n :}
    size 0 < if E-SIZE throw then
    size 0= if exit then
    REG-U @ 0 ?do
       i REG-ENTRY byte-view start - {: off:n :}
+      i REG-LEN @ cells {: extent:n :}
       off 0 < if
-         off CONTROL-BYTES + 0 > if E-SIZE throw then
+         off extent + 0 > if E-SIZE throw then
       else
          off size < if
-            CONTROL-BYTES size off - > if E-SIZE throw then
+            extent size off - > if E-SIZE throw then
          then
       then
    loop ;
@@ -235,7 +278,9 @@ public
 \ walks need no second lock. Concurrent mutation of one buffer remains its
 \ caller's responsibility; the lock protects membership of distinct controls.
 : RELEASE-ALL ( -- )
-   begin REG-U @ 0 > while REG-U @ 1- REG-ENTRY RELEASE repeat
+   begin REG-U @ 0 > while
+      REG-U @ 1- dup REG-ENTRY swap REG-LEN @ RELEASE-RECORD
+   repeat
    REG-CLOSE ;
 
 \ A retained runtime can own both capture-window and writer buffers. Only
@@ -246,7 +291,7 @@ public
    begin dup 0 > while
       1- dup REG-ENTRY {: cb:ptr :}
       cb byte-view start - {: off:n :}
-      off 0 >= off size < and if cb RELEASE then
+      off 0 >= off size < and if cb over REG-LEN @ RELEASE-RECORD then
    repeat drop
    REG-U @ 0= if REG-CLOSE then ;
 

@@ -3,7 +3,7 @@ title: If-convert diamonds in the x86 selector
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T18:17:44.368186+03:00\""
+created-at: "2026-10-01T18:17:44.368186+03:00"
 closed-at: "2026-10-14T19:16:22.757772+03:00"
 close-reason: "Superseded by the one-pass checked-event codegen in docs/architecture.md: this task targeted the old x86 selector, which is to be deleted; optimize the replacement only against current measurements."
 ---

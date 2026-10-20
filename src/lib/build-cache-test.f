@@ -43,7 +43,7 @@ create ERR CAP allot
 create REPORT-BYTES
    65 c, 32 c, 9 c, 34 c, 92 c, 10 c, 66 c,
 create REPORT-OUT FS-PATH-CAP allot
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create REPORT-JSON-STATE JR:STORAGE-BYTES allot
 create MAX-ROOT MAX-ROOT-U allot
 create OVER-ROOT OVER-ROOT-U allot

@@ -11,7 +11,6 @@ require src/lib/test/outcome.f
 require src/lib/process-argv.f
 require src/lib/argv.f
 require tools/cli-run.f
-require tools/json.f
 require tools/json-only-core.f
 
 require tools/json-only-test-lib.f

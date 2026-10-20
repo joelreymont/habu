@@ -3,7 +3,7 @@ title: Refuse a diagnostic record past the render buffer by name
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T14:28:09.638799+02:00\""
+created-at: "2026-10-02T14:28:09.638799+02:00"
 closed-at: "2026-10-14T19:34:45.523181+03:00"
 close-reason: "Implemented in 4f850e19: render buffer overflow throws E-DIAG-CAPACITY, leaves rendering state reusable and check.f emits a structured refusal; failing-before wide record/effect cases and convergence passed."
 ---

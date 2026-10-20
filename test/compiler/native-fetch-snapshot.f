@@ -37,7 +37,7 @@ private
 
 
 : SAVED ( n -- n )
-   AT {: address:n bytes:n width:n :}
+   AT drop {: address:n bytes:n width:n :}
    width 1 T= bytes 4 cells T=
    address NSTR:OWNER-ROW TTRUE {: data:ptr size:n :}
    size bytes T=

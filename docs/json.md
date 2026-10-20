@@ -1,124 +1,33 @@
-# JSON Tooling
+# JSON tooling
 
-`tools/json.f` is a bounded Habu-native JSON foundation for tools that run with
-`bin/hb`.
+Tools use the same JSON libraries as Habu programs:
 
-Load it before the tool that uses it:
+- [json-read.f](../src/lib/json-read.f) is a caller-owned pull reader. Allocate
+  JR:STORAGE-BYTES at a cell-aligned address, call JR:INIT with the source
+  span and advance with JR:NEXT. JR:FINISH validates the rest of a document
+  and consumes its reader; JR:CLOSE abandons it without reading further.
+  JR:FIND-KEY finds the first matching member of the current object.
+  Reopen a reader on a retained row span when fields are needed out of order.
+  JR:STR decodes a string into the caller's byte buffer; JR:SPAN$ retains
+  the original number lexeme. JR:FINISH validates the complete document,
+  including fields the tool does not use. Reader failures have named
+  E-JR-* codes; E-JR-DEPTH is a capacity failure.
+- [jsonl.f](../src/lib/jsonl.f) frames physical lines. JSONL:SPLIT-LINE
+  operates on an in-memory span, including a final line without LF.
+  JSONL:OPEN, JSONL:NEXT and JSONL:READER stream a file with a line limit.
+  Consume its live reader with JR:CLOSE or JR:FINISH before another reader,
+  JSONL:NEXT or JSONL:CLOSE.
+  Each tool decides whether blank, malformed or non-object rows are errors or
+  skipped rows.
+- [json-write.f](../src/lib/json-write.f) emits compact JSON into a
+  caller-owned fixed buffer or growable BUF. It escapes strings and checks
+  capacity; callers decide object shape and field order.
+- [json-copy.f](../src/lib/json-copy.f) copies the reader's current value into
+  an existing writer. JSON-COPY:VALUE takes a JR:reader, a writer and caller-owned
+  decode scratch at least as long as the source value. It returns the reader
+  at the end of that value and the writer. It emits compact JSON, retaining
+  member order and numeric lexemes.
 
-```sh
-bin/hb --load src/lib/errors.f src/lib/memory.f tools/json.f my-tool.f -- args...
-```
-
-## Parser
-
-`JSON-PARSE ( ptr u8 u -- node )` parses one complete JSON value and throws named
-errors on failure:
-
-- `E-JSON-SYNTAX`
-- `E-JSON-CAPACITY`
-- `E-JSON-TYPE`
-
-`JSON-ERROR$ ( -- ptr u8 u )` and `JSON-ERR-POS @` expose the last parser error
-message and byte offset.
-
-`JSON-PARSE-TRY ( ptr u8 u -- node kind code )` runs the same parser through a
-checked stack-preserving recovery path. On success it returns
-`node JSON-PARSE-OK 0`; on failure it returns `-1 JSON-PARSE-THROW code` while
-leaving `JSON-ERROR$` and `JSON-ERR-POS @` set for diagnostics.
-
-The parser accepts objects, arrays, strings, numbers, `true`, `false`, and
-`null`. Strings are decoded into UTF-8, including `\uXXXX` escapes and surrogate
-pairs. Numbers are validated with the JSON grammar and stored as their original
-lexeme.
-
-Core accessors:
-
-- `JSON-KIND ( node -- kind )`
-- `JSON-COUNT ( node -- u )`
-- `JSON-STRING$ ( node -- ptr u8 u )`
-- `JSON-NUMBER$ ( node -- ptr u8 u )`
-- `JSON-BOOL@ ( node -- bool )`
-- `JSON-NULL? ( node -- bool )`
-- `JSON-ARR@ ( arr-node idx -- node )`
-- `JSON-OBJ@ ( obj-node idx -- key-ptr key-u value-node )`
-- `JSON-GET ( obj-node key-ptr key-u -- node|-1 )`
-
-## JSONL
-
-`src/lib/jsonl.f` owns JSONL framing; docs/stdlib.md **JSON Lines** states the
-contract. `JSONL:SPLIT-LINE` frames memory statelessly: it returns every
-physical line, empty ones included, and the position after it. A file
-`JSONL:cursor` skips empty lines: `JSONL:NEXT` returns true with the next line
-and false at the end of input, by which point the cursor has closed itself, and
-`JSONL:READER` opens a `JR:reader` on the current line. Only one reader may be
-live per cursor; call `JR:CLOSE` or `JR:FINISH` before another reader,
-`JSONL:NEXT` or `JSONL:CLOSE`.
-
-`tools/json.f` uses `JSONL:SPLIT-LINE` for its DOM object iterator. It trims
-JSON whitespace and applies the following parser policy to each framed line:
-
-`JSONL-START-STRICT ( ptr u8 u -- )` initializes strict iteration over
-newline-separated input. `JSONL-NEXT-OBJECT ( -- node|-1 )` returns the next
-object row, skips blank rows, throws parser errors for invalid JSON/prose rows,
-and throws `E-JSON-TYPE` for valid non-object rows.
-
-`JSONL-START-SKIP ( ptr u8 u -- )` initializes skip-invalid/prose iteration.
-`JSONL-NEXT-OBJECT` returns the next valid object line, skipping blank lines,
-prose, invalid JSON syntax, and valid non-object JSON values. `JSONL-START`
-remains a compatibility alias for `JSONL-START-SKIP`.
-
-Skip mode only recovers syntax/prose rows. Capacity and type failures remain
-hard parser errors and are rethrown by `JSONL-NEXT-OBJECT`.
-
-Skipped rows are part of the iterator contract and can be inspected with
-`JSONL-SKIPPED ( -- u )`.
-
-`JSONL-NEXT-ROW ( -- node kind code found? )` exposes the lower-level cursor
-outcome. `kind` is `JSONL-ROW-JSON`, `JSONL-ROW-BLANK`, `JSONL-ROW-ERROR`, or
-`JSONL-ROW-EOF`; `code` is the parser throw code for `JSONL-ROW-ERROR` and `0`
-otherwise. `JSONL-LINE# ( -- u )` reports the physical row number for the
-current row, including final partial rows without a trailing newline, and
-`JSONL-LINE$ ( -- ptr u8 u )` reports the trimmed current row bytes.
-
-Returned nodes are valid until the next `JSONL-NEXT-OBJECT` or
-`JSONL-NEXT-ROW` call, because each line parse reuses the parser DOM tables and
-string arena.
-
-## JSONL files
-
-Use `JSONL:OPEN`, `JSONL:NEXT` and `JSONL:READER` from `src/lib/jsonl.f` to
-frame file input. Pass an inclusive byte limit for each physical line. The
-cursor reads 8192-byte blocks and grows the current line as needed; a final
-partial line is returned once. The cursor closes its descriptor and frees its
-storage when `JSONL:NEXT` returns false or throws; call `JSONL:CLOSE` only to
-abandon a cursor before the end of input.
-
-## Writer
-
-The separate checked `JSON-WRITE:` vocabulary supports caller-owned fixed or
-growable `BUF` output; see [stdlib.md](stdlib.md#json-write).
-
-`JSON-WRITE ( node -- ptr u8 u )` emits compact JSON for a parsed node. It escapes
-control bytes, quotes, and backslashes; non-ASCII UTF-8 bytes are emitted as
-UTF-8.
-
-Manual writer helpers share the same output buffer:
-
-- `JSONW-RESET`
-- `JSONW-RAW`
-- `JSONW-STRING`
-- `JSONW-KEY`
-- `JSONW-OBJECT-START`, `JSONW-OBJECT-END`
-- `JSONW-ARRAY-START`, `JSONW-ARRAY-END`
-- `JSONW-COMMA`
-
-## Bounds
-
-The parser string arena starts at `JSON-STR-BOOT-CAP` and grows in
-`JSON-STR-GRAIN` OS-backed spans as needed. This lets large JSONL benchmark rows
-carry long prompts, responses, and bundles without a fixed string cap.
-
-The DOM and writer structures remain explicitly bounded by `JSON-MAX-NODES`,
-`JSON-MAX-ITEMS`, `JSON-MAX-PAIRS`, `JSON-OUT-CAP`, and `JSON-MAX-DEPTH` in
-`tools/json.f`. Exceeding any fixed table cap, overflow guard, or OS allocation
-throws `E-JSON-CAPACITY`.
+For example, repair-packet skips blank, malformed and non-object diagnostic
+rows, but propagates reader depth failures. diag-to-sarif requires each
+nonblank row to be an object and validates it before using any field.

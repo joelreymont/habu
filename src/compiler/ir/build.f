@@ -10,18 +10,18 @@
 \ and repeats no table logic; every append here is a delegation to the module
 \ that owns the table being appended to.
 \
-\ WHY THE BUILDER HOLDS THE TABLES. A module under construction is fifteen
+\ WHY THE BUILDER HOLDS THE TABLES. A module under construction is sixteen
 \ arenas: the symbol interner's byte pool and rows, the type table's pool and
-\ rows, the attribute table's pool and rows, the source registry, the dialect
+\ rows, the attribute table's rows, the source registry, the dialect
 \ schema table's pool and rows, the operation store's cell pool, value rows and
 \ operation rows, and the function store's attribute pool, function rows and
-\ block rows. Before this file, a caller assembled those fifteen handles itself
+\ block rows. Before this file, a caller assembled those sixteen handles itself
 \ and passed the right subset to every append; nothing stopped it from keeping
-\ one and writing through it after the module was finished. Here the fifteen
+\ one and writing through it after the module was finished. Here the sixteen
 \ handles are created by NEW-BUILDER and never leave this package while the
 \ builder is live, so the builder handle is the only way to reach them and
 \ therefore the single mutation authority. FREEZE turns each of them into an
-\ IR-ARENA read-only view and publishes the views; ABORT retires all fifteen
+\ IR-ARENA read-only view and publishes the views; ABORT retires all sixteen
 \ and publishes nothing. The live readers further down ask those tables
 \ questions before a freeze - was this symbol interned, does this span lie in
 \ its source, which dialect is this schema table for - and answer with a scalar,
@@ -32,7 +32,7 @@
 \ handle it becomes are the same nonzero, monotonic, never-reused generation
 \ serial from this package's atomic counter, exactly like IR-CTX and IR-ARENA.
 \ A bounded registry keeps one slot per generation with the owning context's
-\ serial, the slot's state, the committed ceilings, and the fifteen handles.
+\ serial, the slot's state, the committed ceilings, and the sixteen handles.
 \ The handles are stored in typed storage (TYPED-BUFFER over IR-ARENA:arena,
 \ IR-ARENA:view and the IR-ID identity families), so this package never re-mints
 \ a raw cell into a sealed nominal and adds no forging power to the substrate.
@@ -62,7 +62,7 @@
 \ FREEZE IS ALL OR NOTHING. Every check runs before the first arena is frozen:
 \ the builder must be live and presented with its own context, must own no open
 \ stage (design line 544's "no builder-only placeholder"), every table must hold
-\ no more records than the ceiling this builder committed to, and all fifteen
+\ no more records than the ceiling this builder committed to, and all sixteen
 \ arenas must still be live. Only then are the arenas frozen, the slot marked
 \ frozen and the module handle minted. A refusal therefore leaves the context,
 \ the tables and the builder exactly as they were, and the caller may fix the
@@ -85,7 +85,6 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -120,46 +119,44 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 4 constant ST-RETIRED
 0 constant STG-FREE                  \ no builder holds this stage
 
-\ ---- the fifteen tables a module is made of ----------------------------------
+\ ---- the sixteen tables a module is made of ----------------------------------
 0 constant T-SP                      \ symbol interner byte pool
 1 constant T-SR                      \ symbol interner rows
 2 constant T-TP                      \ type table pool
 3 constant T-TR                      \ type table rows
-4 constant T-AP                      \ attribute table pool
-5 constant T-AR                      \ attribute table rows
-6 constant T-SA                      \ source registry rows
-7 constant T-QP                      \ dialect schema pool
-8 constant T-QR                      \ dialect schema rows
-9 constant T-OP                      \ operation cell pool
-10 constant T-OV                     \ value rows
-11 constant T-OR                     \ operation rows
-12 constant T-FP                     \ function attribute pool
-13 constant T-FR                     \ function rows
-14 constant T-BR                     \ block rows
-15 constant T-EP                     \ derived predecessor pool
-16 constant T-ER                     \ derived block-edge rows
-17 constant TABLES#
+4 constant T-AR                      \ attribute table rows
+5 constant T-SA                      \ source registry rows
+6 constant T-QP                      \ dialect schema pool
+7 constant T-QR                      \ dialect schema rows
+8 constant T-OP                      \ operation cell pool
+9 constant T-OV                      \ value rows
+10 constant T-OR                     \ operation rows
+11 constant T-FP                     \ function attribute pool
+12 constant T-FR                     \ function rows
+13 constant T-BR                     \ block rows
+14 constant T-EP                     \ derived predecessor pool
+15 constant T-ER                     \ derived block-edge rows
+16 constant TABLES#
 
 \ ---- the committed ceiling plan ----------------------------------------------
-\ One field per number the fifteen tables are created with. A plan is staged by
-\ name before NEW-BUILDER so no caller has to remember fifteen positional
+\ One field per number the sixteen tables are created with. A plan is staged by
+\ name before NEW-BUILDER so no caller has to remember sixteen positional
 \ numbers, and NEW-BUILDER consumes it.
 0 constant P-SYMS                    \ symbol rows
 1 constant P-SBYTES                  \ symbol pool bytes
 2 constant P-TYPES
 3 constant P-TPOOL
 4 constant P-ATTRS
-5 constant P-APOOL
-6 constant P-SRCS
-7 constant P-SCHEMAS
-8 constant P-QPOOL
-9 constant P-OPS
-10 constant P-VALS
-11 constant P-OPOOL
-12 constant P-FUNS
-13 constant P-BLKS
-14 constant P-FPOOL
-15 constant PLAN#
+5 constant P-SRCS
+6 constant P-SCHEMAS
+7 constant P-QPOOL
+8 constant P-OPS
+9 constant P-VALS
+10 constant P-OPOOL
+11 constant P-FUNS
+12 constant P-BLKS
+13 constant P-FPOOL
+14 constant PLAN#
 -1 constant UNSET
 
 \ Default ceilings are the table formats' representable ranges. Arenas grow
@@ -169,7 +166,6 @@ IR-SYM:BYTE-MAX constant D-SBYTES
 IR-TYPE:CAP-MAX constant D-TYPES
 IR-TYPE:LIST-MAX constant D-TPOOL
 IR-ATTR:CAP-MAX constant D-ATTRS
-IR-ATTR:POOL-MAX constant D-APOOL
 IR-SOURCE:CAP-MAX constant D-SRCS
 IR-SCHEMA:CAP-MAX constant D-SCHEMAS
 IR-SCHEMA:POOL-MAX constant D-QPOOL
@@ -181,7 +177,7 @@ IR-FUN:BLK-CAP-MAX constant D-BLKS
 IR-FUN:POOL-CAP-MAX constant D-FPOOL
 
 \ ---- registry storage --------------------------------------------------------
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable BGEN-CELL
 0 BGEN-CELL !
 SLOT-MAX CWORK-SPAN BGENS n
@@ -233,10 +229,10 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
    CEIL-IDX cells BCEILS + ! ;
 
 \ ---- the table transaction ----------------------------------------------------
-\ Creating a builder is seventeen arena allocations followed by one publication,
+\ Creating a builder is sixteen arena allocations followed by one publication,
 \ and it has to be all of them or none. NOTHING GIVES THE ARENAS BACK, because
 \ there is nothing to give back: an arena is a record and a span in the owning
-\ context's region, so the seventeen a failed creation took die with that
+\ context's region, so the sixteen a failed creation took die with that
 \ context's mark exactly as a successful one's do. What a partial creation costs
 \ is region bytes a bump cursor will not reclaim before the mark - the price
 \ growth by copy already pays - and no shared resource at all.
@@ -250,7 +246,7 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
 \ same state is how a rollback ends up running against state somebody else
 \ already moved (src/core/type-family.f, TFAM-REWIND).
 \
-\ THE COUNT IS ALSO THE NEXT INDEX. The seventeen tables are created in
+\ THE COUNT IS ALSO THE NEXT INDEX. The sixteen tables are created in
 \ ascending index order - T-SP first, T-ER last - so a write whose index is not
 \ the current count is a caller that reordered, repeated or skipped one, and it
 \ is refused by name here rather than letting a module carry a table left over
@@ -315,7 +311,7 @@ private
    slot TABLES# * k + BTAB !
    k 1+ TX-N ! ;
 
-\ Publishing is allowed only when every table exists. A count short of seventeen
+\ Publishing is allowed only when every table exists. A count short of sixteen
 \ means a table-building word returned without writing its table down, and the
 \ module would then carry whatever arena the previous holder of this slot left
 \ in that entry.
@@ -578,10 +574,8 @@ public
    rows P-TYPES PLAN-SET
    pool P-TPOOL PLAN-SET ;
 
-: PLAN-ATTRS ( n n -- )
-   {: rows:n pool:n :}
-   rows P-ATTRS PLAN-SET
-   pool P-APOOL PLAN-SET ;
+: PLAN-ATTRS ( n -- )
+   P-ATTRS PLAN-SET ;
 
 : PLAN-SOURCES ( n -- )
    P-SRCS PLAN-SET ;
@@ -609,7 +603,7 @@ public
    PLAN-BEGIN
    D-SYMS D-SBYTES PLAN-SYMBOLS
    D-TYPES D-TPOOL PLAN-TYPES
-   D-ATTRS D-APOOL PLAN-ATTRS
+   D-ATTRS PLAN-ATTRS
    D-SRCS PLAN-SOURCES
    D-SCHEMAS D-QPOOL PLAN-SCHEMAS
    D-OPS D-VALS D-OPOOL PLAN-OPS
@@ -686,10 +680,7 @@ private
 
 : ATTR-TABLES ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
-   c slot KEY@ slot P-ATTRS BCEIL@ slot P-APOOL BCEIL@ IR-ATTR:NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   p slot T-AP TAB!
-   r slot T-AR TAB! ;
+   c slot KEY@ slot P-ATTRS BCEIL@ IR-ATTR:NEW slot T-AR TAB! ;
 
 : SRC-TABLE ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
@@ -733,7 +724,7 @@ private
    p slot T-EP TAB!
    r slot T-ER TAB! ;
 
-\ Build all fifteen tables into the open transaction's slot. The symbol interner
+\ Build all sixteen tables into the open transaction's slot. The symbol interner
 \ comes first because the dialect name is a symbol of this module, and the
 \ schema table cannot be created without it. It takes nothing from the stack:
 \ its inputs are the transaction's, so the caller below can run it under a
@@ -919,10 +910,10 @@ public
 \ ---- interning: attributes (design line 519) ---------------------------------
 private
 
-: ATTR-USE ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
+: ATTR-USE ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}
-   c  slot T-AP TAB@  slot T-AR TAB@  slot KEY@ ;
+   c  slot T-AR TAB@  slot KEY@ ;
 
 public
 
@@ -930,71 +921,10 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:n :}
    c b ATTR-USE v IR-ATTR:INT ;
 
-: INTERN-BOOL-ATTR ( IR-CTX:ctx IR-BUILD:builder bool -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:bool :}
-   c b ATTR-USE v IR-ATTR:BOOLEAN ;
-
-: INTERN-TEXT-ATTR ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
-   c b ATTR-USE p u IR-ATTR:TEXT ;
-
 : INTERN-SYMBOL-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- IR-ID:ir-attr-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder s:IR-ID:ir-symbol-id :}
    c b USE {: slot:n :}
-   c  slot T-AP TAB@  slot T-AR TAB@  slot KEY@  slot T-SR TAB@ s IR-ATTR:SYMBOL ;
-
-: INTERN-TYPE-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
-   c b USE {: slot:n :}
-   c  slot T-AP TAB@  slot T-AR TAB@  slot KEY@  slot T-TR TAB@ t IR-ATTR:TYPE-REF ;
-
-: INTERN-DIGEST-ATTR ( IR-CTX:ctx IR-BUILD:builder CDIGEST:digest -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder digest:CDIGEST:digest :}
-   c b ATTR-USE digest IR-ATTR:DIGEST ;
-
-: INTERN-OVERFLOW-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:overflow -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:overflow :}
-   c b ATTR-USE v IR-ATTR:OVERFLOW ;
-
-: INTERN-FLOAT-MODEL-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:float-model -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:float-model :}
-   c b ATTR-USE v IR-ATTR:FLOAT-MODEL ;
-
-: INTERN-FAST-MATH-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:fast-math -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:fast-math :}
-   c b ATTR-USE v IR-ATTR:FAST-MATH ;
-
-: INTERN-CONTRACTION-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:contraction -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:contraction :}
-   c b ATTR-USE v IR-ATTR:CONTRACTION ;
-
-: INTERN-COMPARE-ATTR ( IR-CTX:ctx IR-BUILD:builder CNUM:compare -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CNUM:compare :}
-   c b ATTR-USE v IR-ATTR:COMPARE ;
-
-: INTERN-ARCH-ATTR ( IR-CTX:ctx IR-BUILD:builder CTARGET:arch -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CTARGET:arch :}
-   c b ATTR-USE v IR-ATTR:ARCH ;
-
-: INTERN-ABI-ATTR ( IR-CTX:ctx IR-BUILD:builder CTARGET:abi -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CTARGET:abi :}
-   c b ATTR-USE v IR-ATTR:ABI ;
-
-: INTERN-ENDIAN-ATTR ( IR-CTX:ctx IR-BUILD:builder CTARGET:endian -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CTARGET:endian :}
-   c b ATTR-USE v IR-ATTR:ENDIAN ;
-
-: INTERN-PTR-WIDTH-ATTR ( IR-CTX:ctx IR-BUILD:builder CTARGET:ptr-width -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:CTARGET:ptr-width :}
-   c b ATTR-USE v IR-ATTR:PTR-WIDTH ;
-
-: INTERN-INT-LIST-ATTR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-attr-id )
-   ATTR-USE IR-ATTR:INT-LIST ;
-
-: INTERN-RECORD-ATTR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b USE {: slot:n :}
-   c  slot T-AP TAB@  slot T-AR TAB@  slot KEY@  slot T-SR TAB@ IR-ATTR:RECORD ;
+   c  slot T-AR TAB@  slot KEY@  slot T-SR TAB@ s IR-ATTR:SYMBOL ;
 
 \ ---- the dialect schema table ------------------------------------------------
 \ The staged opcode schema is closed against this builder's own tables. The
@@ -1407,7 +1337,7 @@ private
    slot TABLES-LIVE-CK
    slot ;
 
-\ Turn the checked builder into the published module. After this the fifteen
+\ Turn the checked builder into the published module. After this the sixteen
 \ tables are read-only views owned by the context and the slot is no longer a
 \ builder.
 : PUBLISH-M ( n -- IR-BUILD:module )
@@ -1448,7 +1378,7 @@ public
 \ Publish the module. Every refusal arm runs before the first table is frozen,
 \ so a refused freeze changes nothing at all: the context keeps its scratch and
 \ its module count, the tables keep their contents, and the builder stays live
-\ and can be corrected and frozen again. On success the fifteen tables become
+\ and can be corrected and frozen again. On success the sixteen tables become
 \ read-only views owned by the context, the slot stops being a builder, and
 \ every mutation word rejects the old handle with E-IR-BUILD-FROZEN.
 \
@@ -1498,7 +1428,7 @@ public
    slot PUBLISH-M ;
 
 \ Give the module up. Every stage this builder holds goes back to its authority,
-\ all fifteen tables are retired at once - which releases their registry slots
+\ all sixteen tables are retired at once - which releases their registry slots
 \ and makes every index and mark they minted stale - and the slot records that
 \ it was aborted, so a later use of the handle is named rather than merely
 \ unknown. The abandoned spans die with the owning context's mapping, which is
@@ -1510,7 +1440,7 @@ public
    ST-ABORTED slot BSTATE! ;
 
 \ Give a PUBLISHED module up. It is ABORT's counterpart on the other side of the
-\ freeze: all seventeen tables are retired at once, which makes every view,
+\ freeze: all sixteen tables are retired at once, which makes every view,
 \ reader and index they minted stale, and the slot records that it was retired
 \ so a later use of the module handle is named rather than merely refused.
 \
@@ -1559,9 +1489,6 @@ public
 
 : FTYPE-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-TR VIEW@ ;
-
-: FATTR-POOL ( IR-BUILD:module -- IR-ARENA:view )
-   FROZEN-SLOT T-AP VIEW@ ;
 
 : FATTR-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-AR VIEW@ ;

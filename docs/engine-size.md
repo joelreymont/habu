@@ -1207,6 +1207,22 @@ restored DATA window: 660144 bytes from 477 carried in 95 cells; 659667 bytes do
   relocation rows 1, declared address cells this image rebinds at startup
 ```
 
+The `retained code attribution` section below a stripped image's size report
+uses the build's adjacent `<image>.map`. It charges each retained linker member
+once, plus startup and crash/runtime code, and requires those ranges to tile
+`app/code` exactly. Rows distinguish baked engine code, code loaded with the
+application, generated runtime code, and unresolved origin. Package names come
+from namespace rows; source paths come only from definitions whose accepted
+source was recorded before the native engine stripped its checker symbols.
+Source tokens percent-escape whitespace and `%`. An absent source is `-`.
+
+The map records the image's SHA-256. A missing map, an older map without this
+binding, or a map copied beside different image bytes gives unavailable code
+attribution rather than a guessed label. The file-class table above still
+measures the image itself, and older `habu-names 1` maps can still supply names
+to the engine's reachability report. Artifact and object cache entries carry
+their matching maps for restored and relinked stripped outputs.
+
 **A stripped image carries no zero byte of its DATA at all.** Its window is
 encoded as present cells (`src/habu/aot-lib.f BUILD-SPARSE-DATA`), the same
 encoding the engine's `aot/data-cell-*` sections use, which is why the
@@ -1222,6 +1238,35 @@ segment rounds up to 64 KB and this program needs 3.4 KB of it. A saving smaller
 than the pad does not change the file's length at all — the same warning the
 engine's own pad carries, in a much louder form.
 
+On macOS, a stripped image stores the sparse DATA bitmap, values and declared
+xt relocation rows after the two GOT cells in `__DATA_CONST`. The startup's
+label still addresses that payload through its text base; the linker binds the
+label at the writer's rounded `__TEXT` end plus the GOT prefix. The object
+record keeps code and payload in separate sections, so a cached relink writes
+the same image as a fresh build. `image-size` charges the text pad, GOT, DATA
+pad, chained fixups and signature to their own file spans.
+
+One same-source Dots build illustrates the page effect. Both products use
+`/Users/joel/Work/dots/main.f` with SHA-256
+`ae5c3c7d38709fc55f43e7d79c03419e2de0af916c109a243e966bdec114827f`,
+the same engine with SHA-256
+`3f13e9191f05c888bb3d9f774e1426351c7a4196f4feb64c2dc0f3d7b514e070`,
+and Habu source based on `48f15050`. The first build uses that source unchanged;
+the second has the DATA placement change.
+
+| Dots stripped Mach-O | Before | After |
+| --- | ---: | ---: |
+| Code bytes | 142,720 | 142,720 |
+| Sparse DATA value bytes | 9,918 | 9,918 |
+| `__TEXT` segment bytes | 163,840 | 147,456 |
+| `__DATA_CONST` segment bytes | 16,384 | 16,384 |
+| Code signature bytes | 1,556 | 1,428 |
+| Complete signed file bytes | 181,884 | 165,372 |
+
+The file saves 16,512 bytes: one 16 KiB text page and 128 signature bytes.
+Both signatures pass `codesign --verify --strict`, and the latter image runs
+`--help` successfully. These are measured artifacts, not fixed size limits.
+
 ### What frames the two classes
 
 A snapshot says so at a fixed offset: the 48-byte trailer is the last thing
@@ -1234,10 +1279,11 @@ searched for and the walk cannot land in the wrong place.
 A stripped image frames nothing, so the walk takes the emitter's own two
 statements about it:
 
-- **the blob** is named by the startup's single `ADR x9`
-  (`src/habu/aot-lib.f EMIT-DATA-COPY`; `test/gate-aot-image.f` already admits
-  exactly one), and then frames itself — a u32 of encoded row bytes, those rows,
-  and the bytes they describe;
+- **the blob** is named by the startup's single `TEXT-ADR,` sequence loading x9
+  (`src/habu/aot-lib.f EMIT-DATA-COPY`; `test/gate-aot-image.f` admits exactly
+  one). Its address is in `__TEXT` on ELF and after the GOT cells in
+  `__DATA_CONST` on macOS. It then frames itself — two u32 fields for the
+  grouped presence bitmap, followed by the bitmap and encoded values;
 - **the relocation row count** is the `MOVZ`/`MOVK` chain `EMIT-XT-CELLS` loads
   into x11, found behind the three-instruction idiom that rounds the byte cursor
   up to the rows' four-byte boundary and confirmed by the `ADR x12` after it,

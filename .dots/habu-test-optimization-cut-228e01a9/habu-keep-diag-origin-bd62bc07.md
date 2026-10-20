@@ -3,7 +3,7 @@ title: Keep diag-origin markers off definer names
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T17:24:37.424769+02:00\""
+created-at: "2026-10-01T17:24:37.424769+02:00"
 closed-at: "2026-10-14T19:34:45.560213+03:00"
 close-reason: "Implemented in e44a2485: origin markers precede the whole token run so a definer may name a colon, while later real definitions retain markers; failing-before definer and check.f probes passed."
 ---

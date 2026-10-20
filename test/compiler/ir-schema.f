@@ -8,9 +8,7 @@
 \ schema that never declared one of its required fields rejects, one fixture
 \ per field; illegal arities, illegal effect combinations, illegal terminator
 \ shapes, and illegal target combinations each reject with their own named
-\ code; the record and table digests are deterministic, a presented digest that
-\ does not match rejects, and varying exactly one field of a schema - or the
-\ dialect its table belongs to - moves its digest; cross-owner keys, symbols,
+\ code; cross-owner keys, symbols,
 \ types, and identities from another context reject named; capacities reject at
 \ the committed ceilings; a frozen module serves every reader through the arena
 \ views while the retired builders reject; context teardown releases everything;
@@ -104,7 +102,6 @@ private
 13 constant V-DOM
 14 constant V-SPC
 15 constant V-ALI
-16 constant V-TRAP
 17 constant V-ARCH
 18 constant V-FEAT
 19 constant V-RULE
@@ -209,7 +206,7 @@ private
    v STAGE-TIES
    v STAGE-CONTROL
    v STAGE-EFFECT
-   v V-TRAP = IR-SCHEMA:SET-TRAP
+   false IR-SCHEMA:SET-TRAP
    v STAGE-TARGET
    c sp sr key v RULE-SYM IR-SCHEMA:SET-RULE
    c sp sr key v REND-SYM IR-SCHEMA:SET-RENDERER ;
@@ -217,39 +214,6 @@ private
 : TAB-NEW ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena key:IR-ID:ir-module-key v:n :}
    c sr key  c sp sr key v DIA-SYM  1 0 8 64 IR-SCHEMA:NEW ;
-
-\ ---- one variation, built and digested ---------------------------------------
-: DIG ( IR-CTX:ctx n -- CDIGEST:digest )
-   {: c:IR-CTX:ctx v:n :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
-   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c sp sr key v TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c sp sr tp tr key v STAGE
-   c a r key sr tr IR-SCHEMA:DEFINE
-   a r  c sp sr key v OP-SYM  IR-SCHEMA:DIGEST ;
-
-: DIG1 ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- CDIGEST:digest )
-   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key v:n :}
-   c sp sr key v TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c sp sr tp tr key v STAGE
-   c a r key sr tr IR-SCHEMA:DEFINE
-   a r  c sp sr key v OP-SYM  IR-SCHEMA:DIGEST ;
-
-\ A table holding the base schema, and optionally one more opcode.
-: TAB-DIG ( n IR-CTX:ctx -- CDIGEST:digest )
-   {: extra:n c:IR-CTX:ctx :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
-   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c sp sr tp tr key V-BASE STAGE
-   c a r key sr tr IR-SCHEMA:DEFINE
-   extra 0<> if
-      c sp sr tp tr key V-NAME STAGE
-      c a r key sr tr IR-SCHEMA:DEFINE
-   then
-   a r IR-SCHEMA:TABLE-DIGEST ;
 
 \ ---- reading one defined schema back -----------------------------------------
 : READ-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool n n )
@@ -950,107 +914,6 @@ private
    s" a requirement the bound contract satisfies defines" T-LABEL
    4 TGT-RUN ;
 
-\ ---- digests -----------------------------------------------------------------
-\ Both variants share one module, so a changed symbol or type reference really
-\ is a changed module-local ordinal; two separate modules would hand the two
-\ different strings the same insertion ordinal and hide the change.
-: SAME-DIG? ( n n IR-CTX:ctx -- bool )
-   {: x:n y:n c:IR-CTX:ctx :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
-   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c sp sr tp tr key x DIG1
-   c sp sr tp tr key y DIG1
-   CDIGEST-DIGEST:EQ ;
-
-: DIG-MOVES ( n -- )
-   V-BASE swap BND [: SAME-DIG? ;] IR-CTX:WITH-CONTEXT TFALSE ;
-
-: CDIG-MOVES ( n -- )
-   V-BASE-C swap BND [: SAME-DIG? ;] IR-CTX:WITH-CONTEXT TFALSE ;
-
-\ The architecture field is measured across bindings, because a schema may only
-\ require the architecture its context is bound to; the digest is a pure
-\ function of the record, so the two halves compare across contexts.
-: ARCH-DIG-CASE ( -- )
-   s" the required architecture participates in the digest" T-LABEL
-   BND [: V-BASE DIG ;] IR-CTX:WITH-CONTEXT
-   PBND [: V-ARCH DIG ;] IR-CTX:WITH-CONTEXT
-   CDIGEST-DIGEST:EQ TFALSE ;
-
-: STABLE-CASE ( -- )
-   s" the same schema digests to the same value twice" T-LABEL
-   V-BASE V-BASE BND [: SAME-DIG? ;] IR-CTX:WITH-CONTEXT TTRUE ;
-
-: TABLE-STABLE-BODY ( IR-CTX:ctx -- bool )
-   dup 0 swap TAB-DIG  swap 0 swap TAB-DIG  CDIGEST-DIGEST:EQ ;
-
-: TABLE-MOVES-BODY ( IR-CTX:ctx -- bool )
-   dup 0 swap TAB-DIG  swap 1 swap TAB-DIG  CDIGEST-DIGEST:EQ ;
-
-: TABLE-STABLE-CASE ( -- )
-   s" the same table digests to the same value twice" T-LABEL
-   BND [: TABLE-STABLE-BODY ;] IR-CTX:WITH-CONTEXT TTRUE ;
-
-: TABLE-MOVES-CASE ( -- )
-   s" a table with one more schema digests differently" T-LABEL
-   BND [: TABLE-MOVES-BODY ;] IR-CTX:WITH-CONTEXT TFALSE ;
-
-: VERIFY-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
-   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c sp sr tp tr key V-BASE STAGE
-   c a r key sr tr IR-SCHEMA:DEFINE
-   a r  a r IR-SCHEMA:TABLE-DIGEST  IR-SCHEMA:VERIFY ;
-
-: VERIFY-BAD-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
-   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
-   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c sp sr tp tr key V-BASE STAGE
-   c a r key sr tr IR-SCHEMA:DEFINE
-   a r  1 2 3 4 CDIGEST-DIGEST:MAKE  IR-SCHEMA:VERIFY ;
-
-: VERIFY-BAD-RUN ( -- )  BND [: VERIFY-BAD-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ Every varying field, one fixture each: the digest must move.
-: DIG-CASES ( -- )
-   STABLE-CASE
-   TABLE-STABLE-CASE
-   TABLE-MOVES-CASE
-   s" the opcode name participates in the digest" T-LABEL       V-NAME DIG-MOVES
-   s" an operand type participates in the digest" T-LABEL       V-OPTYPE DIG-MOVES
-   s" the operand count participates in the digest" T-LABEL     V-OPN DIG-MOVES
-   s" the operand tail flag participates in the digest" T-LABEL V-OPTAIL DIG-MOVES
-   s" a result type participates in the digest" T-LABEL         V-RSTYPE DIG-MOVES
-   s" the result count participates in the digest" T-LABEL      V-RSN DIG-MOVES
-   s" the result tail flag participates in the digest" T-LABEL  V-RSTAIL DIG-MOVES
-   s" the region count participates in the digest" T-LABEL      V-REGN DIG-MOVES
-   s" a required attribute key participates in the digest" T-LABEL V-ATTR DIG-MOVES
-   s" the attribute count participates in the digest" T-LABEL   V-ATN DIG-MOVES
-   s" the extension flag participates in the digest" T-LABEL    V-ATEXT DIG-MOVES
-   s" the effect class participates in the digest" T-LABEL      V-EFF DIG-MOVES
-   s" the effect domain participates in the digest" T-LABEL     V-DOM DIG-MOVES
-   s" the memory space participates in the digest" T-LABEL      V-SPC DIG-MOVES
-   s" the alias behaviour participates in the digest" T-LABEL   V-ALI DIG-MOVES
-   s" the required features participate in the digest" T-LABEL  V-FEAT DIG-MOVES
-   s" the semantic rule participates in the digest" T-LABEL     V-RULE DIG-MOVES
-   s" the renderer participates in the digest" T-LABEL          V-REND DIG-MOVES
-   s" the owning dialect participates in the digest" T-LABEL    V-DIALECT DIG-MOVES
-   s" a declared tie participates in the digest" T-LABEL        V-TIE DIG-MOVES
-   s" the successor count participates in the digest" T-LABEL   V-SUCC CDIG-MOVES
-   s" the terminator flag participates in the digest" T-LABEL   V-TERM CDIG-MOVES
-   ARCH-DIG-CASE
-   s" a table verifies against its own recomputed digest" T-LABEL
-   BND [: VERIFY-BODY ;] IR-CTX:WITH-CONTEXT
-   s" a digest that does not match the table rejects" T-LABEL
-   [: VERIFY-BAD-RUN ;] E-IR-SCHEMA-DIGEST TTHROWSQ ;
-
 \ ---- trap flag ---------------------------------------------------------------
 : TRAP-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
@@ -1070,9 +933,7 @@ private
 
 : TRAP-CASE ( -- )
    s" the may-trap flag reads back as declared" T-LABEL
-   BND [: TRAP-BODY ;] IR-CTX:WITH-CONTEXT TTRUE
-   s" the trap flag participates in the digest" T-LABEL
-   V-TRAP DIG-MOVES ;
+   BND [: TRAP-BODY ;] IR-CTX:WITH-CONTEXT TTRUE ;
 
 \ ---- cross-owner references --------------------------------------------------
 : FKEY-BODY ( IR-CTX:ctx -- )
@@ -1352,7 +1213,7 @@ private
    [: F-TIN 4 13 FORGE-RUN ;] E-IR-SCHEMA-STATE TTHROWSQ ;
 
 \ ---- frozen modules ----------------------------------------------------------
-: FZ-BODY ( IR-CTX:ctx -- n bool n n bool bool )
+: FZ-BODY ( IR-CTX:ctx -- n bool n n )
    {: c:IR-CTX:ctx :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
    c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
@@ -1361,23 +1222,17 @@ private
    c sp sr tp tr key V-BASE STAGE
    c a r key sr tr IR-SCHEMA:DEFINE
    c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
-   a r op IR-SCHEMA:DIGEST {: digest:CDIGEST:digest :}
-   a r IR-SCHEMA:TABLE-DIGEST {: table:CDIGEST:digest :}
-   a IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
+   a IR-ARENA:FREEZE drop
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
    rv IR-SCHEMA:FSCHEMAS
    rv op IR-SCHEMA:FDEFINED?
    rv op IR-SCHEMA:FOPERANDS
-   rv IR-SCHEMA:FMAJOR@
-   pv rv op IR-SCHEMA:FDIGEST
-      digest CDIGEST-DIGEST:EQ
-   pv rv IR-SCHEMA:FTABLE-DIGEST
-      table CDIGEST-DIGEST:EQ ;
+   rv IR-SCHEMA:FMAJOR@ ;
 
 : FZ-CASE ( -- )
    s" a frozen module serves the schema readers through the views" T-LABEL
    BND [: FZ-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 1 T= 1 T= TTRUE 1 T= ;
+   1 T= 1 T= TTRUE 1 T= ;
 
 : FZ2-BODY ( IR-CTX:ctx -- bool bool bool bool )
    {: c:IR-CTX:ctx :}
@@ -1388,9 +1243,8 @@ private
    c sp sr tp tr key V-BASE STAGE
    c a r key sr tr IR-SCHEMA:DEFINE
    c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
-   a IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
+   a IR-ARENA:FREEZE drop
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
-   pv rv  pv rv IR-SCHEMA:FTABLE-DIGEST  IR-SCHEMA:FVERIFY
    rv op IR-SCHEMA:FTERMINATOR?
    rv op IR-SCHEMA:FTRAPS?
    rv op IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
@@ -1398,7 +1252,7 @@ private
       c sp sr key V-BASE RULE-SYM IR-ID:SYMBOL-LOCAL = ;
 
 : FZ2-CASE ( -- )
-   s" the frozen table verifies and every frozen field reader answers" T-LABEL
+   s" every frozen field reader answers" T-LABEL
    BND [: FZ2-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TFALSE TFALSE ;
 
@@ -1567,12 +1421,9 @@ private
    c a r key sr tr IR-SCHEMA:DEFINE
    c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
    r op IR-SCHEMA:ARCH@ arch CTARGET-ARCH:EQ TTRUE
-   a r op IR-SCHEMA:DIGEST {: digest:CDIGEST:digest :}
-   a IR-ARENA:FREEZE {: av:IR-ARENA:view :}
+   a IR-ARENA:FREEZE drop
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
-   rv op IR-SCHEMA:FARCH@ arch CTARGET-ARCH:EQ TTRUE
-   av rv op IR-SCHEMA:FDIGEST
-      digest CDIGEST-DIGEST:EQ TTRUE ;
+   rv op IR-SCHEMA:FARCH@ arch CTARGET-ARCH:EQ TTRUE ;
 
 : EMBED-CASE ( CTARGET:arch CTARGET:abi -- )
    EMBED-BND [: EMBED-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1602,7 +1453,6 @@ public
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-STATE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-FROZEN ;] IR-CTX:WITH-CONTEXT
-   DIG-CASES
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;

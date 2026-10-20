@@ -3,7 +3,7 @@ title: Report an unterminated string as a JSON record
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:36:34.823352+02:00\""
+created-at: "2026-10-01T11:36:34.823352+02:00"
 closed-at: "2026-10-14T19:56:27.492912+03:00"
 close-reason: fe4c1001 emits located close_string JSON records for unterminated file strings in default, all-errors, and source-list modes; check, diagnostic-contract, repair-packet and focused gate cases passed.
 ---

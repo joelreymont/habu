@@ -223,6 +223,14 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" closure-negative" s" the closure list ends inside a path" ROW-REFUSED
    s" closure-max" s" the closure list ends inside a path" ROW-REFUSED ;
 
+: PROBE-PAYLOAD ( -- )
+   s" bad-digest" s" the artifact's payload does not match its payload digest" ROW-REFUSED
+   s" merge-bad-digest" s" the artifact's payload does not match its payload digest" ROW-REFUSED
+   s" truncated" s" the artifact ends before its header says it should" ROW-REFUSED
+   s" merge-truncated" s" the artifact ends before its header says it should" ROW-REFUSED
+   s" trailing" s" the artifact carries bytes past the end of its payload" ROW-REFUSED
+   s" merge-trailing" s" the artifact carries bytes past the end of its payload" ROW-REFUSED ;
+
 : SPAN-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    a u s" file" RUN-DATA-SITES want ROW-RC
    a u s" owned" RUN-DATA-SITES want ROW-RC ;
@@ -270,6 +278,7 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    PROBE-CAPTURE-TOOL
    PROBE-ADDRESS-ROWS
    PROBE-CLOSURE
+   PROBE-PAYLOAD
    s" owned" RUN-OWNED-CAPTURE
    0 ROW-RC
    s" owned-capture: restored after source release" SAID?

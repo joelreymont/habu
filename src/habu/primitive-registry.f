@@ -10,7 +10,6 @@ require src/core/bytes.f
 require src/core/roles.f
 require src/habu/layout.f               \ OWNER-API-PRI-WID, DNAME-INT
 require src/habu/prims.f                \ PRIM-SPEC, the specification table
-require src/habu/treeshake.f            \ KEEP?
 
 package ENGINE-PRIMS
 
@@ -28,6 +27,7 @@ DYNAMIC-BUFFER NAMES n
 variable USED
 variable NAME-BYTES
 variable SCALAR-ROW
+variable DIVISION-ROW
 
 : ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
    row 0 < row USED @ >= or if E-INDEX throw then
@@ -47,7 +47,7 @@ variable SCALAR-ROW
 public
 
 : COUNT ( -- n ) USED @ ;
-: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! ;
+: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! ;
 : RELEASE ( -- ) RESET ROWS-RELEASE NAMES-RELEASE ;
 
 : ADD ( ptr u8 n label label -- n ) {: name:ptr size:n first:label last:label :}
@@ -89,13 +89,29 @@ public
 
 : SCALAR-ROW@ ( -- n ) SCALAR-ROW @ ;
 
+\ The division emitter owns the guarded body and its terminal refusal helper.
+\ This gate checks the declared shape only; the emitter supplies the behavior.
+: MARK-DIVISION ( n -- ) {: row:n :}
+   DIVISION-ROW @ 0<> if E-INDEX throw then
+   row NAME$ PRIM-SPEC:FIND {: spec:n :}
+   spec 0 < if E-INDEX throw then
+   spec PRIM-SPEC:CODE-LEN@ 6 <> if E-INDEX throw then
+   spec 0 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
+   spec 1 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
+   spec 2 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
+   spec 3 PRIM-SPEC:CODE@ PRIM-SPEC:A-IN <> if E-INDEX throw then
+   spec 4 PRIM-SPEC:CODE@ PRIM-SPEC:A-NUM <> if E-INDEX throw then
+   spec 5 PRIM-SPEC:CODE@ PRIM-SPEC:A-OUT <> if E-INDEX throw then
+   row 1+ DIVISION-ROW ! ;
+
+: DIVISION-ROW@ ( -- n ) DIVISION-ROW @ ;
+
 \ THE TABLE IS WHICH PRIMITIVES EXIST. Every body registers under a name that
 \ src/habu/prims.f already specifies - the row states the effect, the body
 \ states the machine code, and neither restates the other. A body whose name has
 \ no row is a second primitive list starting, so SPEC-CHECK refuses it; the
 \ other half of the pair - a row that no body answers - is COMPLETE below. A
-\ builder checks each body before KEEP?, so a subset build cannot hide an
-\ unspecified primitive.
+\ builder checks every body, so it cannot hide an unspecified primitive.
 : SPEC-CHECK ( ptr u8 n -- ) {: name:ptr size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
 
@@ -167,9 +183,7 @@ public
 \ for the name - which is the same fork the table exists to close, read from the
 \ other end.
 \
-\ IT ASKS KEEP?, because a subset build drops bodies on purpose (the builder asks
-\ KEEP? before it emits a body). A row the treeshaker drops is not a missing
-\ body; a row it keeps and no body registered is. Run it after the last body.
+\ Run it after the last body.
 private
 
 : BODY? ( ptr u8 n -- bool ) {: name:ptr size:n :}
@@ -184,9 +198,7 @@ private
 
 : CHECK-ROW ( n -- )
    PRIM-SPEC:NAME$
-   2dup KEEP? if
-      2dup BODY? 0= if NO-BODY else 2drop then
-   else 2drop then ;
+   2dup BODY? 0= if NO-BODY else 2drop then ;
 
 public
 

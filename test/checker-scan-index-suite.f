@@ -84,23 +84,21 @@ s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ 0 <> TTRUE
 IX @ USIG-NEWEST 1- 0 > TTRUE                  \ the record is at a nonzero offset
 IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
-IX @ SCAN-USIGS-SYM
+IX @ SCAN-USIGS-SYM REC-END @ T=             \ absolute completed end, not a span
 FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=                              \ the scan reports the newest record's arity
-SCX-FMEND REC-END @ T=                        \ absolute completed end, not a span
 IX @ SCX-WIRE-NEXT REC-END @ T=               \ owner wire preserves that same end
 
 \ ... and with the newest record a DELETION, the scan reports no record at all
 \ rather than the live one it shadows.
 ' SCX-UNDEF catch TC !  TC @ 0 T=
 SCX-UEND REC-END !
-IX @ SCAN-USIGS-SYM
+IX @ SCAN-USIGS-SYM REC-END @ T=              \ deletion still depends on its completed end
 FEP-HIT? TFALSE
-SCX-FMEND REC-END @ T=                         \ deletion still depends on its completed end
 IX @ SCX-WIRE-NEXT REC-END @ T=
 s" SCXA" SCX-SIG-MIN-IN -1 T=
 ' SCX-DEF4 catch TC !   TC @ 0 T=
-IX @ SCAN-USIGS-SYM
+IX @ SCAN-USIGS-SYM drop
 FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=
 
@@ -186,12 +184,13 @@ s" SCXA" SCX-SIG-MIN-IN 3 T=
 CHECK-CANDIDATE-START
    s" n n n n -- n" s" SCXA" CHECKER-USIG-ADD        \ TWO records for the one symbol, so
    s" n n n n n -- n" s" SCXA" CHECKER-USIG-ADD      \ the repair has to reach past both
+   HIDX-EPOCH+                                       \ force a miss that records the frame end
    s" SCXA" SCX-SIG-MIN-IN 5 T=
 0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
-IX @ SCAN-USIGS-SYM
+IX @ SCAN-USIGS-SYM drop
 FEP-HIT? TTRUE
 SCX-FEP-MINI 3 T=                                    \ the record below the frame answers
 s" SCXA" SCX-SIG-MIN-IN 3 T=

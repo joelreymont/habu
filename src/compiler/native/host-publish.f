@@ -2,8 +2,10 @@
 \ expose them only after native publication succeeds.
 
 require src/compiler/native/host.f
+require src/compiler/native/abi.f
 require src/compiler/session/emission.f
 require src/compiler/binding.f
+require src/lib/le.f
 
 package NHOST
 private
@@ -79,6 +81,27 @@ private
 
 public
 
+\ The publisher's observer reads these while TAKE owns the emission.  A
+\ A negative constructor count means unknown; zero is a known empty contract.
+: TAKEN-FUNCTIONS ( -- n ) TAKEN-FUNS @ ;
+
+: TAKEN-FACTS ( n -- n n n n n n )
+   {: ordinal:n :}
+   ordinal 0 < ordinal TAKEN-FUNS @ >= or if E-STATE throw then
+   TAKEN-BASE @ ordinal + {: row:n :}
+   row IMPL-LEN @ row IMPL-IN @ row IMPL-OUT @
+   row IMPL-REASON @ row IMPL-LOC @
+   row IMPL-TYPE-FIRST @ 0< if -1 else
+      row IMPL-IN @ row IMPL-OUT @ + then ;
+
+: TAKEN-TYPE@ ( n n -- n )
+   {: ordinal:n idx:n :}
+   ordinal 0 < ordinal TAKEN-FUNS @ >= or if E-STATE throw then
+   TAKEN-BASE @ ordinal + {: row:n :}
+   row IMPL-TYPE-FIRST @ 0< if E-STATE throw then
+   idx 0 < idx row IMPL-IN @ row IMPL-OUT @ + >= or if E-STATE throw then
+   row IMPL-TYPE-FIRST @ idx + IMPL-TYPES @ ;
+
 : ABANDON-TAKEN ( -- )
    TAKEN-FUNS @ 0= if exit then
    TAKEN-BASE @ IMPL-N !
@@ -99,6 +122,130 @@ public
    at TAKEN-AT !
    [: TAKE-BODY ;] catch {: rc:n :}
    0 TAKEN-AT !
+   rc 0<> if ABANDON-TAKEN rc throw then ;
+
+\ Function rows are seven little-endian cells followed by the scalar
+\ constructor cells.  The call rows are five cells: site, kind, reference,
+\ source location and whether the emitting implementation was known.  The
+\ caller resolves and patches references before invoking this preparation.
+0 CWORK-VARIABLE IMPORT-BASE n
+0 CWORK-VARIABLE IMPORT-SIZE n
+0 CWORK-VARIABLE IMPORT-END n
+0 CWORK-VARIABLE IMPORT-FUNS n
+0 CWORK-VARIABLE IMPORT-FUNCTION-P ptr u8
+0 CWORK-VARIABLE IMPORT-FUNCTION-U n
+0 CWORK-VARIABLE IMPORT-CALL-P ptr u8
+0 CWORK-VARIABLE IMPORT-CALL-U n
+0 CWORK-VARIABLE IMPORT-CURSOR n
+DYNAMIC-BUFFER IMPORT-ROWS n
+
+: IMPORT-ROOM ( n -- )
+   {: bytes:n :}
+   bytes 0 < bytes IMPORT-FUNCTION-U @ IMPORT-CURSOR @ - > or
+      if E-STATE throw then ;
+
+: IMPORT-TYPES ( ptr u8 n n -- )
+   {: row:ptr id:n count:n :}
+   id 1- {: target:n :}
+   IMPL-TYPE-N @ count + IMPL-TYPES-RESERVE
+   IMPL-TYPE-N @ target IMPL-TYPE-FIRST !
+   count 0 ?do
+      row i cells + LE:U64@ IMPL-TYPE-N @ i + IMPL-TYPES !
+   loop
+   IMPL-TYPE-N @ count + IMPL-TYPE-N ! ;
+
+: IMPORT-EDGE-TARGET ( n n -- n )
+   {: target:n known:n :}
+   IMPORT-FUNS @ 0 ?do
+      IMPORT-FUNCTION-P @ i IMPORT-ROWS @ + LE:U64@
+         IMPORT-BASE @ + target = if
+         TAKEN-BASE @ i + 1+ unloop exit
+      then
+   loop
+   target IMPORT-BASE @ >=
+   target IMPORT-BASE @ - IMPORT-SIZE @ < and
+      if E-STATE throw then
+   known 0= if 0 exit then
+   target ID-OF ;
+
+: CHECK-IMPORT-ONE ( n -- )
+   {: ordinal:n :}
+   7 cells IMPORT-ROOM
+   IMPORT-CURSOR @ ordinal IMPORT-ROWS !
+   IMPORT-FUNCTION-P @ IMPORT-CURSOR @ + {: row:ptr :}
+   row LE:U64@ {: off:n :}
+   row 8 + LE:U64@ {: len:n :}
+   row 48 + LE:U64@ {: types:n :}
+   types -1 <
+   types IMPORT-FUNCTION-U @ IMPORT-CURSOR @ - 7 cells - CELL / > or
+      if E-STATE throw then
+   off IMPORT-END @ <> len 0 <= or
+   len IMPORT-SIZE @ off - > or if E-STATE throw then
+   off len + IMPORT-END !
+   7 cells types 0 max cells + IMPORT-CURSOR +! ;
+
+: CHECK-IMPORT-TABLE ( -- )
+   IMPORT-FUNS @ IMPORT-ROWS-RESERVE
+   IMPORT-FUNS @ 0 ?do i CHECK-IMPORT-ONE loop
+   IMPORT-CURSOR @ IMPORT-FUNCTION-U @ <> if E-STATE throw then
+   IMPORT-END @ IMPORT-SIZE @ <> if E-STATE throw then ;
+
+: IMPORT-EDGES ( n n -- )
+   {: id:n off:n :}
+   id 1- IMPL-LEN @ {: len:n :}
+   IMPORT-CALL-U @ 5 cells / 0 ?do
+      IMPORT-CALL-P @ i 5 cells * + {: call:ptr :}
+      call LE:U64@ {: site:n :}
+      site 0 < site IMPORT-SIZE @ >= or if E-STATE throw then
+      site off >= site off len + < and if
+         call 16 + LE:U64@ call 32 + LE:U64@
+            IMPORT-EDGE-TARGET {: to:n :}
+         id to site off - call 8 + LE:U64@
+            call 24 + LE:U64@ EDGE+
+      then
+   loop ;
+
+: IMPORT-ONE ( ptr u8 n -- )
+   {: row:ptr ordinal:n :}
+   row LE:U64@ {: off:n :}
+   row 8 + LE:U64@ {: len:n :}
+   row 16 + LE:U64@ {: din:n :}
+   row 24 + LE:U64@ {: dout:n :}
+   row 32 + LE:U64@ {: reason:n :}
+   row 40 + LE:U64@ {: loc:n :}
+   row 48 + LE:U64@ {: types:n :}
+   IMPORT-BASE @ off + len NABI:BINDING CBIND:TARGET@
+      din dout reason loc PREPARE {: id:n :}
+   types -1 > if
+      types din dout + <> if E-STATE throw then
+      row 7 cells + id types IMPORT-TYPES
+   then
+   id TAKEN-BASE @ ordinal + 1+ <> if E-STATE throw then
+   id off IMPORT-EDGES ;
+
+: IMPORT-BODY ( -- )
+   CHECK-IMPORT-TABLE
+   IMPORT-FUNS @ 0 ?do
+      IMPORT-FUNCTION-P @ i IMPORT-ROWS @ + i IMPORT-ONE
+   loop ;
+
+: PREPARE-IMPORT ( n n ptr u8 n ptr u8 n -- )
+   {: base:n size:n funcs:ptr funcu:n calls:ptr callu:n :}
+   TAKEN-FUNS @ 0<> if E-STATE throw then
+   size 0 <= funcu 8 < or
+   callu 0 < or callu 5 cells mod 0<> or if E-STATE throw then
+   funcs LE:U64@ {: count:n :}
+   count 0 <= count funcu 8 - 7 cells / > or if E-STATE throw then
+   IMPL-N @ TAKEN-BASE !
+   EDGE-N @ TAKEN-EDGES !
+   IMPL-TYPE-N @ TAKEN-TYPES !
+   count TAKEN-FUNS !
+   base IMPORT-BASE ! size IMPORT-SIZE ! 0 IMPORT-END !
+   count IMPORT-FUNS !
+   funcs IMPORT-FUNCTION-P ! funcu IMPORT-FUNCTION-U !
+   calls IMPORT-CALL-P ! callu IMPORT-CALL-U !
+   8 IMPORT-CURSOR !
+   ['] IMPORT-BODY catch {: rc:n :}
    rc 0<> if ABANDON-TAKEN rc throw then ;
 
 \ PREPARE wrote all cells; the code publisher only flips liveness now.

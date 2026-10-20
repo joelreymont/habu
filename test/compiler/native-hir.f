@@ -168,7 +168,7 @@ private
 
 \ The constant carries the one attribute key that gives it its content, and the
 \ return is a terminator that takes the word's outputs and has no results.
-: SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool n n bool bool )
+: SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool n n bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
@@ -176,6 +176,7 @@ private
    c b HIR-OPCODE:RETURN HIR:OPCODE {: r:IR-ID:ir-symbol-id :}
    c b HIR:KEY-VALUE {: vk:IR-ID:ir-symbol-id :}
    c b HIR:KEY-ADDR {: ak:IR-ID:ir-symbol-id :}
+   c b HIR:KEY-ORIGIN {: ok:IR-ID:ir-symbol-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
    m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
@@ -184,19 +185,21 @@ private
    rv k IR-SCHEMA:FATTRS
    qv rv key k 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL vk IR-ID:SYMBOL-LOCAL =
    qv rv key k 1 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ak IR-ID:SYMBOL-LOCAL =
+   qv rv key k 2 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ok IR-ID:SYMBOL-LOCAL =
    rv r IR-SCHEMA:FOPERANDS
    rv r IR-SCHEMA:FRESULTS
    rv r IR-SCHEMA:FOPERAND-TAIL?
    rv r IR-SCHEMA:FTERMINATOR? ;
 
-\ The constant's TWO attribute keys, in the order the schema declares them: the
-\ number, then what the number is. Both ordinals are pinned, because a reader
+\ The constant's attribute keys, in the order the schema declares them: the
+\ number, its address class, then its DATA origin. The ordinals are pinned because
+\ a reader
 \ that took the value off ordinal 1 and the kind off ordinal 0 would materialise
 \ the kind as the literal and record the literal as a relocation class.
 : SHAPE-CASE ( -- )
    s" the constant and the return have the shapes section 7.2 gives them" T-LABEL
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 0 T= 1 T= TTRUE TTRUE 2 T= 1 T= 0 T= ;
+   TTRUE TTRUE 0 T= 1 T= TTRUE TTRUE TTRUE 3 T= 1 T= 0 T= ;
 
 \ The three memory schemas, read back off the frozen table. What is asserted is
 \ the shape the ordering rests on: the mint takes nothing and answers one order,
@@ -735,7 +738,7 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
 \ the address of a whole INSTRUCTION is the machine dialect's field and is
 \ asserted in test/compiler/native-a64ir.f, so it is deliberately not restated
 \ here.
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 1 TYPED-BUFFER BC-CTX IR-CTX:ctx
 1 TYPED-BUFFER BC-BLD IR-BUILD:builder
 1 TYPED-BUFFER BC-ROWS IR-ARENA:arena

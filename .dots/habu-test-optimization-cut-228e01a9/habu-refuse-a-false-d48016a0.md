@@ -3,7 +3,7 @@ title: Refuse a false name length at every checker entry
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T12:47:48.128909+02:00\""
+created-at: "2026-10-01T12:47:48.128909+02:00"
 closed-at: "2026-10-14T19:43:43.920904+03:00"
 close-reason: False checker name lengths refused at entry in 0f3639a9; current CK-NAME-SPAN? and name-length-test.f cover boundary cases.
 ---

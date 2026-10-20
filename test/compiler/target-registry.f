@@ -41,7 +41,7 @@ variable SAW
 
 : FAKE-PASS ( [ n n NBACK:linkage -- ] -- NBACK:pass )
    {: decl :}
-   decl [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-REWRITE ;]
+   decl [: NO-REWRITE ;] [: NO-REWRITE ;]
    [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;]
    [: NO-PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE ;
 : BACK ( n CTARGET:arch [ CTARGET:contract -- bool ] [ CTARGET:contract -- bool ] -- CTARGET:backend )

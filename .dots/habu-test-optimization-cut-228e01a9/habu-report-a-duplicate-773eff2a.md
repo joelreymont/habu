@@ -3,7 +3,7 @@ title: Report a duplicate definition under --json-errors
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:36:34.855241+02:00\""
+created-at: "2026-10-01T11:36:34.855241+02:00"
 closed-at: "2026-10-14T19:46:58.930150+03:00"
 close-reason: Current CHK-PREVERIFY-DUP renders a duplicate in selected mode; check-test-lib.f asserts JSON and prose with required file and line. Integrated in a5103329 and related duplicate diagnostics commits.
 ---

@@ -3,7 +3,7 @@ title: Give every check.f JSON record one contract
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T10:49:09.864925+02:00\""
+created-at: "2026-10-01T10:49:09.864925+02:00"
 closed-at: "2026-10-14T19:58:38.969299+03:00"
 close-reason: 84a40fbd gives check.f record kinds distinct codes and contract shapes, documents and validates them, teaches repair-packet to handle them, and consolidates signed integer writing; focused contract and repair tests passed.
 ---

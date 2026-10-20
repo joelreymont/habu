@@ -89,6 +89,27 @@ private
    $F2802468 8 EST-W32! 0 CHAIN? TFALSE
    $F2802469 8 EST-W32! 11 ILEN ! 0 CHAIN? TFALSE ;
 
+\ A prior stripped Mach-O placed its sparse blob at the end of __text. The
+\ candidate must fit that section; a new image starts it after the GOT. Test
+\ both declared bounds with a minimal valid sparse header. This catches an
+\ old blob being rejected, a header crossing __text, and a DATA interior
+\ pointer being accepted. The build tests exercise the full new image path.
+: EST-MACHO-BLOB-PLACE ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   s" bin/hb" MEASURE
+   MACHO-READ:TEXT-END 8 - {: old:n :}
+   0 old EST-W32!  0 old 4 + EST-W32!
+   s" the prior Mach-O text payload is bounded by its text section" T-LABEL
+   old BLOB-AT? TTRUE
+   BLOB-LIMIT MACHO-READ:TEXT-END T=
+   old 4 + BLOB-AT? TFALSE
+   MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + {: now:n :}
+   0 now EST-W32!  0 now 4 + EST-W32!
+   s" the current Mach-O payload starts immediately after the GOT" T-LABEL
+   now BLOB-AT? TTRUE
+   BLOB-LIMIT MACHO-READ:DATA-OFF MACHO-READ:DATA-BYTES + T=
+   now 4 + BLOB-AT? TFALSE ;
+
 \ Three one-instruction bodies: call/jump to the third, return, return.
 \ A BL returns into the second body; the same displacement in B does not.
 : EST-FALLTHROUGH ( -- )
@@ -185,6 +206,7 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 : EST-MAIN ( -- )
    T-RESET
    EST-DATA-CARRIER
+   EST-MACHO-BLOB-PLACE
    EST-WID-FORM
    EST-TILING
    EST-METADATA

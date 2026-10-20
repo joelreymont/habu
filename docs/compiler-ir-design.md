@@ -486,7 +486,12 @@ HIR should snapshot the checker's semantic type graph into this table. It must n
 
 #### Attribute table
 
-Attributes are canonical immutable values:
+The current attribute table interns integers and module symbols. Its rows are
+owned by the module context and remain readable after freeze. Other attribute
+forms below describe possible future dialect needs; they have no constructors
+or storage in the current compiler.
+
+The intended broader attribute vocabulary is:
 
 ```text
 integer
@@ -635,7 +640,12 @@ The alternative reading, in which canonicalization re-materializes a second modu
 
 A canonical table is a resource with a committed ceiling of **eight canonical tables per live context**, released explicitly or reclaimed when the context tears down; a ninth is a named refusal rather than a silent allocation. A frame is not a resource but a value, so the encoder writes into a byte span the caller already owns, tells the caller the exact length beforehand, and holds no registry of its own — encoding a module can never be the thing that exhausts a context.
 
-One field named above cannot appear in a canonical frame. A dialect's schema-table digest folds each schema record's stored operand, result and attribute-key lists, and those hold module-local insertion ordinals, so two equivalent modules built along two intern orders have two different schema-table digests. The frame therefore states the dialect's canonical name ordinal and its schema major and minor version — the "dialect/schema versions" of the list above — and the schema digest belongs to the witness header of section 6.7, which binds one pass over one module in one process and may use a non-canonical digest. A canonical schema-table digest is a missing capability; it is owned by the schema table or by a canonicalized schema section, never recomputed inside the encoder.
+The schema table stores module-local insertion ordinals in its operand, result
+and attribute-key lists. A digest over those rows would differ for equivalent
+modules built in different intern orders, so the current table publishes no
+digest. The proposed frame states the dialect's canonical name ordinal and
+schema major and minor version. Any future canonical schema identity belongs
+with canonicalized schema content, not a digest of the live table's ordinals.
 
 ### 6.7 Pass result and witness header
 
@@ -687,7 +697,8 @@ origin
 
 The source tape is not a full syntax tree. It exists to guarantee that checking, elaboration, diagnostics, and compilation refer to the same bytes.
 
-During migration, the existing checker may continue to run over source text, but its result and lowering certificate must bind to the source-tape digest. Long term, the checker and HIR elaborator consume the same tape.
+During migration, the checker may continue to run over source text. The checker
+and HIR elaborator consume the same sealed tape.
 
 Compile-time immediate words divide into three classes:
 
@@ -724,14 +735,9 @@ first, and there are four minting words rather than one, so a name token that
 carries a value cannot be asked for. Reading a literal from a kind that has
 none is refused rather than answered with the zero the row stores.
 
-**The digest excludes the module serial.** Module serials are allocated per
-process. A tape digest that moved between runs could not key a cache or bind a
-certificate, so two structurally identical tapes digest identically, and the
-per-token record digests are chained the way `IR-SCHEMA` chains its schema
-table so no buffer grows with the tape. The digest covers the cells the tape
-owns; the bytes behind a span and behind a spelling are the source registry's
-and the interner's own content digests, and a stage that needs content
-identity binds both.
+**Sealing fixes the token stream.** Later stages hold and read the same frozen
+tape that the producer filled. No stage consumes a tape digest or a certificate
+derived from it.
 
 The three classes above have no implementation in the tree.
 `src/compiler/native/immediate.f` (package `NIMM`) recorded them for a month
@@ -753,12 +759,9 @@ a class has to hold before it can mean anything.
 engine already runs over every checked definition, and answers the sealed tape
 and the verdict the scan reached.
 
-**The producer hangs on the checker's reader, not on a second lexer.** The
-migration sentence above allows the checker to keep running over source text as
-long as its result binds the tape digest. If a different reader filled the tape,
-that binding would be a convention between two lexers that happen to agree; the
-tape is filled by `src/core/checker.f` `CHECK-SCAN` itself, as it consumes each
-token, so the verdict belongs to the token stream the checker actually read. The
+**The producer hangs on the checker's reader, not on a second lexer.** The tape
+is filled by `src/core/checker.f` `CHECK-SCAN` itself, as it consumes each token,
+so the verdict belongs to the token stream the checker actually read. The
 seam is package `CHECKER-TAPE` in that file: three events - the text a scan
 opens with, each token as it is consumed, and the verdict it ends with - reached
 through declared dispatch cells and disarmed by default, so an unarmed checker
@@ -772,16 +775,11 @@ of an immediate - so an open unit accepts exactly one scan and refuses a second
 by name. "One row per token, exactly once, in order" is then a property of the
 state machine rather than of the caller's care.
 
-**A unit answers the sealed tape and the verdict, and nothing else.** Identity
-implies content inside one process: a stage holding the tape handle the unit
-sealed is holding the tape the checker filled, so there is no certificate value
-to carry a digest of it. The tape digest deliberately cannot see spellings - a
-module numbers its own symbols, so two definitions differing only inside a name
-digest identically - and the authority on the bytes is the source registry's
-per-source content digest, which instruction selection already checks in
-production (`A64SEL:SOURCE!`); `test/compiler/native-feed.f` pins which one-byte
-edits each of the two digests can and cannot see. A cross-process consumer would
-need a value that binds both, and none exists today.
+**A unit answers the sealed tape and the verdict, and nothing else.** A stage
+holding the tape handle the unit sealed reads the tape the checker filled.
+The source registry records length and origin; the producer retains the
+reconstructed text for stages that need its bytes. No cross-process content
+identity is published by this path.
 
 **What the reader hands over is the reconstructed definition.** The engine gives
 the check hook the definition it rebuilt - name, declared signature, body - with
@@ -2634,7 +2632,7 @@ Add source-file IDs and byte spans.
 Acceptance:
 
 - invalid range rejected;
-- stable source digest;
+- source length retained across registration and freeze;
 - origin-parent cycle rejected.
 
 #### IR-0.3 — symbol interning

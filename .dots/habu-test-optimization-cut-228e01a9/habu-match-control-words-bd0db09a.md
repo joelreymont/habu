@@ -3,7 +3,7 @@ title: Match control words ignoring case in the pre-pass
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T04:30:31.268839+02:00\""
+created-at: "2026-10-03T04:30:31.268839+02:00"
 closed-at: "2026-10-14T19:33:10.247861+03:00"
 close-reason: "Implemented in e77533f3: source pre-pass control tokens compare case-insensitively, with failing-before uppercase EXIT target fixture, definer wrapper case and focused check suites passing."
 ---

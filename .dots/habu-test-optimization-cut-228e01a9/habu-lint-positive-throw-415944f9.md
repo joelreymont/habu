@@ -3,7 +3,7 @@ title: Lint positive throw codes for collisions
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T12:20:51.613744+02:00\""
+created-at: "2026-10-02T12:20:51.613744+02:00"
 closed-at: "2026-10-14T19:30:30.919394+03:00"
 close-reason: "Implemented in 63f2812c: the error-code lint checks positive throw codes above exit statuses for global collisions and reservations; reported collisions were resolved and lint, focused suites and rebuild convergence passed."
 ---

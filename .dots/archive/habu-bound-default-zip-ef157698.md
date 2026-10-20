@@ -3,7 +3,7 @@ title: Bound default ZIP archive storage
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-10-15T04:02:32.884178+03:00\\\"\""
+created-at: "2026-10-15T04:02:32.884178+03:00"
 closed-at: "2026-10-15T07:28:15.695939+03:00"
 close-reason: Default OPEN/EDIT and FILE aliases now share the existing bounded private snapshot/file-output implementation; obsolete whole-archive input/output allocation paths are removed. SOURCE$ remains a lazy immutable borrow with documented close/commit lifetime, and failure/ZIP64/byte-preservation contracts pass. Full ZIP source suite including concurrent Tasks, lifecycle, offsets, source/native/REPL ZIP-XML and source/native unusable-TMPDIR refusal pass on qualified public e6208777 engine d3791473/map81f13346. Independent Astra review, focused GETENV finding closure and lead review are clear. The source-only prefix is qualified with identical baseline engine/map/XML; whole-workbook memory acceptance remains under the Kaizen memory task.
 ---

@@ -3,7 +3,7 @@ title: "Check the verifier's owner bridges"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T04:59:27.153280+02:00\""
+created-at: "2026-10-02T04:59:27.153280+02:00"
 closed-at: "2026-10-14T19:33:10.289591+03:00"
 close-reason: "Implemented in cea5538c: verifier owner offsets bind at top level and six bridges are checked bodies, while action casts remain TRUSTED:; cold/from-source build path, check.f and convergence passed."
 ---

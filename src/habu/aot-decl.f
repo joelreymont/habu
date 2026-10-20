@@ -61,13 +61,12 @@ variable AOT-BLOB-LEN
 \ test/aot-capture-bound.f lowers this bound in a private copy; AOT-SIG-MAX
 \ shares it, so checked words can reach the signature bound first.
 32768 constant AOT-REC-MAX
-\ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
+\ AOT-REC-BUF holds two regions (both viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
 \   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
-\   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
 DYNAMIC-BUFFER REC-STORAGE n
 : AOT-REC-BUF ( -- ptr u8 )
-   AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + CELL / REC-STORAGE-RESERVE
+   AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + CELL / REC-STORAGE-RESERVE
    0 REC-STORAGE BYTE-VIEW ;
 variable AOT-REC-N
 \ A compact row's wid word on a package row, whose first two words are then its
@@ -289,13 +288,9 @@ variable CBM-STORED                  \ bytes of stored groups, GROUP-BYTES each
       s" aot: the window bitmap exceeds the AOT group map" 74 die then
    bm len CBM-BUF CELL-GRID:COMPACT CBM-STORED ! CBM-GROUPS ! ;
 
-\ A present cell costs its own varint and no more, so this cap answers to the
-\ content: the release engine's window encodes its 300,575 present cells in
-\ 834,153 value bytes, 2.8 bytes a cell, and the arithmetic worst case for that
-\ many cells is VMAX each. $400000 leaves 5x over the measured figure and covers
-\ a window of 419,430 pointer-valued cells, which is 3.3 MB of live cells.
-\ Overflow is refused by name.
-$400000 constant VAL-CAP
+\ Every cell in an admitted window may be present and use VMAX bytes.
+\ Reserve that bound; the dynamic buffer only touches the encoded values.
+SPAN-CAP CELL-BYTES / VMAX * constant VAL-CAP
 DYNAMIC-BUFFER VAL-STORAGE n
 : VAL-BUF ( -- ptr u8 )
    VAL-CAP CELL / VAL-STORAGE-RESERVE

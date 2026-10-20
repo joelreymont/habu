@@ -3,7 +3,7 @@ title: "Cover check.f's statement-throw JSON in the diagnostic contract"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T12:03:31.916095+02:00\""
+created-at: "2026-10-01T12:03:31.916095+02:00"
 closed-at: "2026-10-14T19:58:39.085001+03:00"
 close-reason: 0a708a1d makes diag-contract reject wrong class, verdict and input rows through real malformed-record fixtures; gate-diagnostics, check and repair-packet tests passed.
 ---

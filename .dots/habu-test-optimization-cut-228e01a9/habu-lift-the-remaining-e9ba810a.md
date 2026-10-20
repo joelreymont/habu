@@ -3,7 +3,7 @@ title: Lift the remaining 64-byte native name caps
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T11:04:22.787369+02:00\""
+created-at: "2026-10-03T11:04:22.787369+02:00"
 closed-at: "2026-10-14T19:38:01.469404+03:00"
 close-reason: "Implemented in d3f3a6f8: native refusal tokens use the definition capture bound, unit names borrow the source span or refuse the format limit by name, and preseed names refuse their maker limit; real-entry cases and convergence passed."
 ---

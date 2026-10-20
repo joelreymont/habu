@@ -171,7 +171,7 @@ DESC-CELLS cells constant DESC-BYTES
 \ tier-1 definition's samples. The clause declares and computes nothing now, so
 \ a mention of this word folds to the same address literal the bare cell folded
 \ to (src/core/pointer-storage.f, test/does-empty-clause.f).
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create DEAD-DESC DESC-BYTES allot
 PERSISTED-PTR-VARIABLE RBASE
 variable RMASK
@@ -328,7 +328,7 @@ INSTALL-RETIRE
 \ The descriptor itself is NOT canonical storage: it is this package's own
 \ bookkeeping, written and read through one native cell accessor, exactly as the
 \ registry arrays it replaced were.
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create NATIVE-PROBE CDIGEST:SLOT-BYTES allot
 $0123456789ABCDEF NATIVE-PROBE 0 CDIGEST:SLOT!
 NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?

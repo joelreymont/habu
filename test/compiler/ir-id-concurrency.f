@@ -16,7 +16,7 @@ $4C constant OVERLAP-RC
 CAST: MODULE>SERIAL ( IR-ID:ir-module-id -- n )
 
 create SERIALS ID# cells allot
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable DONE
 variable READY
 variable GO

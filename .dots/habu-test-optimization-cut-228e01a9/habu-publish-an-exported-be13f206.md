@@ -3,7 +3,7 @@ title: "Publish an exported definer's does> clause"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T17:17:49.760468+02:00\""
+created-at: "2026-10-01T17:17:49.760468+02:00"
 closed-at: "2026-10-14T19:26:18.237772+03:00"
 close-reason: "Implemented in b8fa125e: EXPORT publishes the companion does> clause record; AOT capture and undefine cases cover the public alias, with native and image checks recorded."
 ---

@@ -29,36 +29,46 @@ create ERR CAP allot
 : ACCEPTS ( ptr u8 n -- )
    0 EXPECT ;
 
+\ Deliberate raw machine values need an unchecked window to reach the runtime
+\ guards. SUBJECT:RUN confines each window to its isolated child.
 : TEST-SCALAR ( -- )
    s" 0 data-base TXN-STATE-OFF 1 + + c!" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + !" REJECTS
    s" 1 data-base TXN-STATE-OFF 1- + +!" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + atomic!" REJECTS
-   s" 0 data-base TXN-STATE-OFF 1- + patch32" REJECTS
-   s" 0 -4 !" REJECTS ;
+   s" 0 set-check 0 data-base TXN-STATE-OFF 1- + patch32" REJECTS
+   s" 0 set-check 0 -4 !" REJECTS ;
+
+\ Exercise source stores compiled at tier 1, where the guard belongs to the
+\ lowered operation rather than the interpreted store primitive.
+: TEST-NATIVE-STORE ( -- )
+   s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) data-base TXN-STATE-OFF 1- + ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
+   s" 1 set-tier TRUSTED: PST-P ( -- ptr u8 ) data-base TXN-STATE-OFF 1+ + byte-view ; : PST-S ( -- n ) 0 PST-P c! 1 ; PST-S drop" REJECTS
+   s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) -4 ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
+   s" 1 set-tier variable PST-C : PST-S ( -- n ) 19 PST-C ! PST-C @ ; : PST-CHECK ( -- ) PST-S 19 <> if 1 throw then ; PST-CHECK" ACCEPTS ;
 
 : TEST-CODE ( -- )
-   s" data-base TXN-STATE-OFF 1- + cp!" REJECTS
+   s" 0 set-check data-base TXN-STATE-OFF 1- + cp!" REJECTS
    s" dbase@ DICT-SIZE + cp!" ACCEPTS
    s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp!" ACCEPTS
    s" dbase@ REGION + 4 - cp! create PST-END" REJECTS
    s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
    s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
-   s" data-base TXN-STATE-OFF 1 cells - + cp! : PST-CROSS ( -- n ) 1 ;" REJECTS ;
+   s" 0 set-check data-base TXN-STATE-OFF 1 cells - + cp! : PST-CROSS ( -- n ) 1 ;" REJECTS ;
 
 : TEST-SYSCALL ( -- )
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 read drop" REJECTS
-   s" 0 data-base TXN-STATE-OFF 1 cells - + 16 readlink drop" REJECTS
-   s" 0 data-base TXN-STATE-OFF 1- + stat64 drop" REJECTS
-   s" 0 data-base TXN-STATE-OFF 1- + lstat64 drop" REJECTS
+   s" 0 set-check 0 data-base TXN-STATE-OFF 1 cells - + 16 readlink drop" REJECTS
+   s" 0 set-check 0 data-base TXN-STATE-OFF 1- + stat64 drop" REJECTS
+   s" 0 set-check 0 data-base TXN-STATE-OFF 1- + lstat64 drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 data-base TXN-STATE-OFF $100 - + getdirentries64 drop" REJECTS
    s" 0 data-base TXN-STATE-OFF $100 - + 8 data-base TXN-STATE-OFF 1- + getdirentries64 drop" REJECTS
    s" data-base TXN-STATE-OFF 1 cells - + 2 0 poll drop" REJECTS
-   s" data-base TXN-STATE-OFF 1 cells - + 16 3 $1012 -1 0 mmap drop" REJECTS
+   s" 0 set-check data-base TXN-STATE-OFF 1 cells - + 16 3 $1012 -1 0 mmap drop" REJECTS
    s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 PST-OUT data-base TXN-STATE-OFF 1 cells - + ioctl drop" REJECTS
-   s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 PST-OUT -4 ioctl drop" REJECTS
-   s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 PST-IN -1 ioctl drop" ACCEPTS ;
+   s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 set-check 0 PST-OUT -4 ioctl drop" REJECTS
+   s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 set-check 0 PST-IN -1 ioctl drop" ACCEPTS ;
 
 : TEST-FFI ( -- )
    s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS
@@ -127,13 +137,14 @@ create ERR CAP allot
 
 : TEST-SNAP-REBASE ( -- )
    s" snap-rebase whole-band straddle is rejected" T-LABEL
-   s" data-base TXN-STATE-OFF 8 - + data-base DATA-START 8 + + 0 0 0 0 snap-rebase" REJECTS ;
+   s" 0 set-check data-base TXN-STATE-OFF 8 - + data-base DATA-START 8 + + 0 0 0 0 snap-rebase" REJECTS ;
 
 public
 
 : RUN ( -- )
    T-RESET
    TEST-SCALAR
+   TEST-NATIVE-STORE
    TEST-CODE
    TEST-SYSCALL
    TEST-FFI

@@ -42,6 +42,7 @@
 \ what it produces does not depend on how this file was compiled.
 
 require src/lib/test.f
+require src/compiler/native/abi.f
 require src/compiler/native/select.f
 require src/arch/arm64/machine.f
 
@@ -141,6 +142,20 @@ create TXT
    IR-BUILD:ADD-ATTR
    CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN  CC BB -1 IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
+: DATA-CONSTOP ( n -- IR-ID:ir-value-id )
+   {: origin:n :}
+   HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE
+      CC BB DATA-VA VA>N IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ADDR
+      CC BB HIR:ADDR-DATA HIR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN
+      CC BB origin IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : RET1 ( IR-ID:ir-value-id -- )
@@ -347,6 +362,12 @@ $1000 constant BUMP-ADDR
    {: v:IR-ID:ir-value-id t:n :}
    HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
    CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR0 ( n -- )
+   {: t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
@@ -818,6 +839,40 @@ $1000 constant BUMP-ADDR
    ARG+ RET1
    CLOSE-FUN ;
 
+\ A constant used only by BITSREAL is still born in the general file. Each
+\ crossing in the arms needs its own move, and the flag needs its entry load.
+: BUILD-CONST-CROSS ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: flag:IR-ID:ir-value-id :}
+   7 CONSTOP {: x:IR-ID:ir-value-id :}
+   flag 1 2 BRZ2
+   BLOCK+
+   x CROSS 3 BR1
+   BLOCK+
+   x CROSS 3 BR1
+   BLOCK+
+   FARG+ UNCROSS RET1
+   CLOSE-FUN ;
+
+\ Both crossings refer to one value loaded at entry. The branch is in the next
+\ block, so its identity must survive beyond the converted region's head.
+: BUILD-PRIOR-CROSS ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: flag:IR-ID:ir-value-id :}
+   x CROSS {: a:IR-ID:ir-value-id :}
+   x CROSS {: b:IR-ID:ir-value-id :}
+   1 BR0
+   BLOCK+
+   flag 2 3 BRZ2
+   BLOCK+
+   a 4 BR1
+   BLOCK+
+   b 4 BR1
+   BLOCK+
+   FARG+ UNCROSS RET1
+   CLOSE-FUN ;
+
 : BUILD-FSELZ-REAL ( -- )
    2 1 OPEN-FUN
    ARG+ {: xc:IR-ID:ir-value-id :}
@@ -950,6 +1005,32 @@ $3FE0000000000000 constant HALF-BITS       \ 0.5
    HIR-OPCODE:MUL 9 x y SELECT-SHARED-ARM
    BLOCK+
    HIR-OPCODE:ADD  shared if 9 else 10 then  x y SELECT-SHARED-ARM
+   BLOCK+
+   ARG+ drop
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ Equal DATA addresses from distinct declarations are not one constant. The
+\ same region shape as BUILD-SELECT-SHARED exposes both the register accounting
+\ decision and the materialised relocation carriers after conversion.
+: SELECT-DATA-ARM ( HIR:opcode n IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: o:HIR:opcode origin:n x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   origin DATA-CONSTOP {: c:IR-ID:ir-value-id :}
+   o x c BINOP {: u:IR-ID:ir-value-id :}
+   o y c BINOP {: v:IR-ID:ir-value-id :}
+   u v 3 BR2 ;
+
+: BUILD-SELECT-DATA-ORIGINS ( n n -- )
+   {: first:n second:n :}
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   HIR-OPCODE:MUL first x y SELECT-DATA-ARM
+   BLOCK+
+   HIR-OPCODE:ADD second x y SELECT-DATA-ARM
    BLOCK+
    ARG+ drop
    ARG+ RET1
@@ -1162,6 +1243,18 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : BLOCKS ( -- n )
    RF  RK 0 IR-ID:PACK-FUN  IR-FUN:FBLOCK-COUNT ;
 
+: COUNT-OPCODE ( ptr u8 n -- n )
+   {: name:ptr len:n :}
+   0
+   BLOCKS 0 ?do
+      RF R-BLKR RV RK  RK 0 IR-ID:PACK-FUN i IR-FUN:FBLOCK@ {: bk:IR-ID:ir-block-id :}
+      R-BLKR RV bk IR-FUN:FOP-COUNT 0 ?do
+         R-BLKR RV R-OPR RV RK bk i IR-FUN:FOP@ {: op:IR-ID:ir-op-id :}
+         R-SYMP RV R-SYMR RV R-OPR RV RK op IR-OP:FOPCODE@
+            name len IR-SYM:FEQ? if 1+ then
+      loop
+   loop ;
+
 : ATTR-INT ( n n -- n )
    {: i:n k:n :}
    R-ATTR RV  R-OPP RV R-OPR RV RK i OP@ k IR-OP:FATTR@  IR-ATTR:FINT@ ;
@@ -1250,6 +1343,50 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" an addition selects to an addition and not to its neighbour" T-LABEL
    WBND [: ADD-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE ;
+
+\ Both declarations must have carriers in the converted region, and the
+\ arithmetic from the two arms must read different materialised addresses.
+: DATA-ORIGIN-SEEN? ( n -- bool )
+   {: origin:n :}
+   false
+   OPS 0 ?do
+      i s" a64.dataaddr" OPCODE-IS? if
+         i 1 ATTR-INT origin = if drop true leave then
+      then
+   loop ;
+
+: DATA-ORIGINS-BODY ( IR-CTX:ctx -- n n bool bool )
+   HIR-MOD
+   0 1 BUILD-SELECT-DATA-ORIGINS
+   SELECTED-POOL READ!
+   BLOCKS {: blocks:n :}
+   0 OPS 0 ?do
+      i s" a64.dataaddr" OPCODE-IS? if 1+ then
+   loop {: count:n :}
+   blocks count
+   blocks 2 = count 2 = and if
+      0 DATA-ORIGIN-SEEN?  1 DATA-ORIGIN-SEEN? and
+      s" a64.mul" FIND-OP {: mul:n :}
+      s" a64.add" FIND-OP {: add:n :}
+      mul 0 >= add 0 >= and if
+         mul 1 OPERAND@  add 1 OPERAND@  SAME-VALUE? 0=
+      else false then
+   else false false then ;
+
+: DATA-ORIGINS-CASE ( -- )
+   s" equal DATA addresses keep distinct relocation declarations" T-LABEL
+   WBND [: DATA-ORIGINS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 2 T= 2 T= ;
+
+: DATA-LITERAL-BODY ( IR-CTX:ctx -- n )
+   HIR-MOD
+   -2 -3 BUILD-SELECT-DATA-ORIGINS
+   SELECTED-POOL READ!
+   BLOCKS ;
+
+: DATA-LITERAL-CASE ( -- )
+   s" negative DATA event origins still share the same numeric address" T-LABEL
+   WBND [: DATA-LITERAL-BODY ;] IR-CTX:WITH-CONTEXT 4 T= ;
 
 \ ---- the producers that are written into the instruction that reads them -----
 \ Each fixture below is one source pair and the machine operation it must become,
@@ -2416,6 +2553,32 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    m A64SEL:BIND-SOURCE
    CC m A64-BUILDER in out POOLED-SLOTS A64SEL:SELECT ;
 
+: CONST-CROSS-BODY ( IR-CTX:ctx -- n n n )
+   HIR-MOD
+   BUILD-CONST-CROSS
+   1 1 SELECTED-POOL-SLOTS READ!
+   s" a64.dload" COUNT-OPCODE
+   s" a64.selzd" COUNT-OPCODE
+   s" a64.fmovxd" COUNT-OPCODE ;
+
+: CONST-CROSS-CASE ( -- )
+   s" a constant's crossings need two moves and the branch flag" T-LABEL
+   WBND [: CONST-CROSS-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 1 T= 1 T= ;
+
+: PRIOR-CROSS-BODY ( IR-CTX:ctx -- n n n )
+   HIR-MOD
+   BUILD-PRIOR-CROSS
+   2 1 SELECTED-POOL-SLOTS READ!
+   s" a64.dload" COUNT-OPCODE
+   s" a64.selzd" COUNT-OPCODE
+   s" a64.fmovxd" COUNT-OPCODE ;
+
+: PRIOR-CROSS-CASE ( -- )
+   s" crossings before a region keep one machine identity" T-LABEL
+   WBND [: PRIOR-CROSS-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 0 T= ;
+
 \ ---- two functions, two arities ----------------------------------------------
 \ THE SHAPE A QUOTATION MAKES. An emission holds the definition's own routine and
 \ a routine per quotation its body makes, and those routines have their own
@@ -2924,6 +3087,56 @@ $400 constant CALLEE-ENTRY            \ an address; nothing here branches to it
    CALLEE-ENTRY 1 1 WCALL-ATTRS
    CC BB IR-BUILD:END-OP ;
 
+\ A checked primitive store carries the original value, address and memory
+\ order. The four-register pool below can pass them to the ordinary callee but
+\ has no register left for the selected guarded store's value operand.
+: WCALL-STORE ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: tok:IR-ID:ir-value-id val:IR-ID:ir-value-id addr:IR-ID:ir-value-id :}
+   HIR-OPCODE:WORDCALL BODY-ST BODY-LN OPEN-OP
+   CC BB tok IR-BUILD:ADD-OPERAND
+   CC BB val IR-BUILD:ADD-OPERAND
+   CC BB addr IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   s" !" 0 search-wl 2 0 WCALL-ATTRS
+   CC BB IR-BUILD:END-OP drop ;
+
+: BUILD-WCALL-STORE ( -- )
+   2 0 OPEN-FUN
+   ARG+ {: val:IR-ID:ir-value-id :}
+   ARG+ {: addr:IR-ID:ir-value-id :}
+   MEMOP val addr WCALL-STORE
+   RET0
+   CLOSE-FUN ;
+
+: STORE-POOL-BODY ( IR-CTX:ctx -- n n )
+   HIR-MOD
+   BUILD-WCALL-STORE
+   CC BB HIR:ENSURE-VOCABULARY
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m A64SEL:BIND-SOURCE
+   CC m A64-BUILDER 10 4 NABI:POOL 2 0 NABI:CALL A64SEL:SELECT READ!
+   s" a64.wordcall" COUNT-OPCODE
+   s" a64.pstore" COUNT-OPCODE ;
+
+: STORE-POOL-CASE ( -- )
+   s" a store with only x10..x13 available remains an ordinary call" T-LABEL
+   WBND [: STORE-POOL-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= ;
+
+: AMBIG-SELECT-BODY ( IR-CTX:ctx -- n )
+   HIR-MOD
+   BUILD-SQUARE
+   SELECTED-POOL READ!
+   s" a64.mul" COUNT-OPCODE ;
+
+public
+: AMBIG-STORE-SCOPE ( -- )
+   T-RESET
+   s" ambiguous c! imports do not affect a body that never calls c!" T-LABEL
+   WBND [: AMBIG-SELECT-BODY ;] IR-CTX:WITH-CONTEXT 1 T=
+   T-REPORT ;
+private
+
 \ A contract that declares control leaves through a callee. It declares no call
 \ trait and no frame, which is what a routine whose ONLY call is the one it
 \ leaves through really has: nothing is saved, so there is no epilogue and no
@@ -3035,6 +3248,8 @@ public
    DIFF-CASE
    DIV-CASE
    ADD-CASE
+   DATA-ORIGINS-CASE
+   DATA-LITERAL-CASE
    IMM-ADD-CASE
    IMM-SUB-CASE
    IMM-SUB-LEFT-CASE
@@ -3060,6 +3275,8 @@ public
    FSEL-CELL-CASE
    FSELZ-REAL-CASE
    FSELZ-CELL-CASE
+   CONST-CROSS-CASE
+   PRIOR-CROSS-CASE
    FSEL-REAL-POOL-CASE
    FSEL-CELL-REFUSE-CASE
    SELECT-LOCALS-CASE
@@ -3086,6 +3303,7 @@ public
    FPLACE-ADDED-CASE
    FPLACE-ADDRESS-CASE
    TAIL-DEAD-CASE
+   STORE-POOL-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT
@@ -3102,3 +3320,20 @@ public
 ;package
 
 A64SEL-TEST:RUN
+
+\ Resolve stores while two imported packages expose the same name. No source
+\ operation in the selected square mentions either imported byte store.
+undefine c!
+package A64SEL-LEFT
+public
+: c! ( u8 ptr u8 -- ) 2drop ;
+;package
+package A64SEL-RIGHT
+public
+: c! ( u8 ptr u8 -- ) 2drop ;
+;package
+using A64SEL-LEFT
+using A64SEL-RIGHT
+A64SEL-TEST:AMBIG-STORE-SCOPE
+;using
+;using

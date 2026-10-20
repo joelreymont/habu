@@ -36,7 +36,7 @@ package PROF
 public
 variable LPROFH   variable LPROFDUMP   variable LPROFFIND   variable LPROFEDGE
 variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
-variable LPROFQUAL   variable LPROFSYNC   variable LPROFROW
+variable LPROFSYNC   variable LPROFROW
 private
 
 \ ---- the target this file's signal frame belongs to --------------------------
@@ -306,55 +306,11 @@ public
    9 SP 8 LDR,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ LPROFNAME ( x5 = record ): the record's own name bytes.
-\ The record's flags cell carries the name length in its low bits and the
-\ fields above it: DNAME-OWNED (49), DKIND (50-51), DNAME-MIN-IN (52-59) and the
-\ IMM/EXT/WIDE/INT nibble (60-63). Clearing the DNAME-FLAG-BITS above the
-\ length is what leaves the length alone - src/habu/layout.f states the band. A
-\ narrower clear leaves a flag in the count and hands `write` a length of at
-\ least 2^49 bytes, which writes nothing and loses the row's name.
+\ LPROFNAME ( x5 = profile row ): the complete copied qualified name.
 : EMIT-PROFNAME ( -- )
    LPROFNAME LABEL@ LBL,
-   LBL {: pinl :}
-   0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,
-   9 2 DNAME-EXT ANDI,  9 pinl CBZ,
-      1 5 24 LDR,
-   pinl LBL,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,  NR-WRITE SYS,
+   0 1 MOVZ,  1 5 RID-NAME LDR,  2 5 RID-LEN LDR,  NR-WRITE SYS,
    RET, ;
-
-\ LPROFQUAL ( x5 = record, x19 = arena ): the package qualifier, "PKG:", when the
-\ record's wordlist cell is some package's public or private wid - which is the
-\ whole of the ambiguity the bare name leaves, because two packages may each
-\ have a private word of the same name. A package row carries DICT-WL:NAMESPACE
-\ in its wordlist cell, its public wid in [0] and its private wid in [8]
-\ (habu2.f C-PACKAGE-NEW-RECORD), so the rows themselves answer this and no
-\ second table can fall out of step with the dictionary. Preserves x5.
-: EMIT-PROFQUAL ( -- )
-   LPROFQUAL LABEL@ LBL,
-   LBL LBL LBL LBL {: ql qnext qhit qdone :}
-   LBL {: qfound :}
-   SP SP 16 SUBI,  30 SP 0 STR,
-   9 5 DICT-WL-OFF LDR,
-   9 qdone CBZ,                                    \ the global wordlist has no qualifier
-   10 PROF-BAND-VA LIT64,  11 10 PROF-DBASE LDR,
-   12 19 ARN-NDICT LDR,
-   13 0 MOVZ,
-   ql LBL,
-      13 12 CMP,  C-CS qdone BCOND,
-      14 11 DICT-WL-OFF LDR,  14 14 1 ADDI,  14 qhit CBZ,
-      qnext LBL,  11 11 DREC ADDI,  13 13 1 ADDI,  ql B,
-   qhit LBL,
-      14 11 0 LDR,  9 14 CMP,  C-EQ qfound BCOND,
-      14 11 8 LDR,  9 14 CMP,  C-NE qnext BCOND,
-   qfound LBL,
-      5 SP 8 STR,
-      5 11 0 ADDI,  LPROFNAME LABEL@ BL,
-      SP SP 16 SUBI,  13 $3A MOVZ,  13 SP 0 STRB,
-      0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      SP SP 16 ADDI,
-      5 SP 8 LDR,
-   qdone LBL,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ ---- the report ---------------------------------------------------------------
 \ LPROFDUMP / LPROFJSON ( -- ): the same walk, printed two ways.
@@ -395,7 +351,7 @@ public
    LBL LBL LBL LBL LBL {: wl wd wnext cl cd :}
    4 0 MOVZ,  3 0 MOVZ,
    11 PROF-CNT-VA LIT64,
-   12 19 ARN-NDICT LDR,
+   12 19 ARN-IDS LDR,
    cl LBL,
       12 cd CBZ,
       10 11 0 LDR,  4 4 10 ADD,
@@ -452,10 +408,11 @@ public
    9 9 3 LSLI,  9 10 9 ADD,  9 9 0 LDR,
    10 21 ENT-INCL LDR,  9 9 10 ADD, ;
 
-\ x5 = the record behind the current row, x17 = its record index.
+\ x5 = the owned profile row behind the current index entry.
 : C-PROF-REP-ROW-REC ( -- )
    17 21 ENT-IDX LDR,
-   5 20 PROF-DBASE LDR,  10 DREC MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
+   5 ARN-RECS LIT64,  5 19 5 ADD,
+   10 PROF-ID-ENT MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
 
 \ x11 = what the current entry (x12) is ranked on: its exclusive count, or the
 \ inclusive one a phase word is only ever visible by. Clobbers x10.
@@ -477,7 +434,7 @@ public
    C-PROF-ROW-INCL  10 22 0 ADDI,  LPROFPCT LABEL@ BL,
    s"   " C-PROF-SAY
    C-PROF-REP-ROW-REC
-   LPROFQUAL LABEL@ BL,  LPROFNAME LABEL@ BL,
+   LPROFNAME LABEL@ BL,
    C-PROF-NL ;
 
 \ x5 = the record behind a caller index in x9, or 0 for PROF-CALLER-NONE, which
@@ -485,7 +442,8 @@ public
 : C-PROF-CALLER-REC ( -- )
    LBL LBL {: none done :}
    11 PROF-CALLER-NONE LIT64,  9 11 CMP,  C-EQ none BCOND,
-   5 20 PROF-DBASE LDR,  11 DREC MOVZ,  11 9 11 MUL,  5 5 11 ADD,
+   5 ARN-RECS LIT64,  5 19 5 ADD,
+   11 PROF-ID-ENT MOVZ,  11 9 11 MUL,  5 5 11 ADD,
    done B,
    none LBL,  5 0 MOVZ,
    done LBL, ;
@@ -493,7 +451,7 @@ public
 : C-PROF-CALLER-NAME ( -- )
    LBL LBL {: none done :}
    5 none CBZ,
-   LPROFQUAL LABEL@ BL,  LPROFNAME LABEL@ BL,
+   LPROFNAME LABEL@ BL,
    done B,
    none LBL,  s" (unknown)" C-PROF-SAY
    done LBL, ;
@@ -613,7 +571,7 @@ public
       jcomma LBL,  25 1 MOVZ,
       s\" {\"word\":\"" C-PROF-SAY
       C-PROF-REP-ROW-REC
-      LPROFQUAL LABEL@ BL,  LPROFNAME LABEL@ BL,
+      LPROFNAME LABEL@ BL,
       C-PROF-DQ  s\" ,\"excl\":" C-PROF-SAY
       9 7 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
       s\" ,\"incl\":" C-PROF-SAY
@@ -826,30 +784,209 @@ private
       7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA STR,
    have LBL, ;
 
-\ One index entry per live record with code of its own, in dictionary order.
-\ x0 = arena; leaves x11 = the entry count and fills the header's lo/hi marks.
-\ A record whose wordlist cell is DICT-WL:NAMESPACE (-1) or DICT-WL:RETIRED (-2)
-\ owns no code, and neither does one whose code span is empty; the +2 test names
-\ both of those wordlists at once.
+\ A profiler resource refusal is named before the process exits.
+: C-PROF-DIE ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL {: msg :}
+   0 2 MOVZ,  1 msg ADR,  2 u LIT64,  NR-WRITE SYS,
+   0 PROF-MAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  a u BYTES, ;
+
+\ x5 = dictionary record; x1/x2 = raw name pointer/length. The external
+\ pointer is read while the record is live, then its exact bytes are copied.
+: C-PROF-RAW-NAME ( -- )
+   LBL {: inl :}
+   1 5 24 ADDI,  2 5 16 LDR,
+   0 2 DNAME-EXT ANDI,  0 inl CBZ,
+   1 5 24 LDR,
+   inl LBL,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI, ;
+
+\ x1 = destination, x2 = source, x3 = byte count. Advance the destination.
+: C-PROF-COPY-NAME ( -- )
+   LBL LBL {: cp done :}
+   cp LBL,  3 done CBZ,
+      0 2 0 LDRB,  0 1 0 STRB,
+      1 1 1 ADDI,  2 2 1 ADDI,  3 3 1 SUBI,  cp B,
+   done LBL, ;
+
+\ x17 = arena, x6 = the first new ordinal. Build WID -> namespace row in
+\ the sort scratch before copying names; keep x6 and x17. A namespace has
+\ at most two WIDs, so the cell table remains at most half full.
+: C-PROF-QUAL-INDEX ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL {: clear cleared recs next insert probe store keydone :}
+   LBL {: done :}
+   13 ARN-SCR LIT64,  13 17 13 ADD,
+   14 13 0 ADDI,  15 ARN-IDX-BYTES LIT64,  15 13 15 ADD,
+   0 0 MOVZ,
+   clear LBL,
+      14 15 CMP,  C-CS cleared BCOND,
+      0 14 0 STR,  14 14 CELL ADDI,  clear B,
+   cleared LBL,
+   4 0 MOVZ,  5 DBASE 0 ADDI,
+   recs LBL,
+      4 NDICT CMP,  C-CS done BCOND,
+      0 5 DICT-WL-OFF LDR,  0 0 1 ADDI,  0 next CBNZ,
+      0 5 0 LDR,  7 5 CELL LDR,
+      insert LBL,
+         0 keydone CBZ,
+         9 PROF-HASH LIT64,  9 0 9 MUL,  9 9 PROF-QUAL-MASK ANDI,
+      probe LBL,
+         10 9 3 LSLI,  10 13 10 ADD,
+         11 10 0 LDR,  11 store CBZ,
+         12 11 $FFFFFFFF ANDI,  12 0 CMP,  C-EQ keydone BCOND,
+         9 9 1 ADDI,  9 9 PROF-QUAL-MASK ANDI,  probe B,
+      store LBL,
+         11 4 1 ADDI,  11 11 PROF-QUAL-BITS LSLI,  11 11 0 ORR,
+         11 10 0 STR,
+      keydone LBL,
+         0 7 0 ADDI,  7 0 MOVZ,  0 insert CBNZ,
+   next LBL,  4 4 1 ADDI,  5 5 DREC ADDI,  recs B,
+   done LBL, ;
+
+\ x0 = arena. Assign a stable ID to each newly live ordinal and copy its
+\ complete qualified name into session-owned mmap chunks. The live map is -1
+\ for an unassigned ordinal. Prepare namespace lookup only when new IDs need
+\ names; the later merge sort reuses its scratch. Reports keep copied names.
+: C-PROF-SNAPSHOT ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: recs next qscan qfound qdone usechunk newchunk :}
+   LBL LBL LBL LBL LBL LBL LBL {: idok sized mapok qready owncopy copydone done :}
+   LBL LBL {: pending prepare :}
+   17 0 0 ADDI,  6 0 MOVZ,
+   pending LBL,
+      6 NDICT CMP,  C-CS done BCOND,
+      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
+      0 15 0 LDR,  1 0 MOVN,  0 1 CMP,  C-EQ prepare BCOND,
+      6 6 1 ADDI,  pending B,
+   prepare LBL,
+   C-PROF-QUAL-INDEX
+   recs LBL,
+      6 NDICT CMP,  C-CS done BCOND,
+      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
+      0 15 0 LDR,  1 0 MOVN,  0 1 CMP,  C-NE next BCOND,
+      10 17 ARN-IDS LDR,
+      0 DICT-CAP LIT64,  10 0 CMP,  C-CC idok BCOND,
+      PROFIDMSG$ C-PROF-DIE
+      idok LBL,
+      7 ARN-RECS LIT64,  7 17 7 ADD,
+      0 PROF-ID-ENT MOVZ,  0 10 0 MUL,  7 7 0 ADD,
+      5 DREC MOVZ,  5 6 5 MUL,  5 DBASE 5 ADD,
+      14 0 MOVZ,                                  \ no qualifier yet
+      0 5 DICT-WL-OFF LDR,
+      0 0 CMPI,  C-LE qdone BCOND,
+      13 ARN-SCR LIT64,  13 17 13 ADD,
+      15 PROF-HASH LIT64,  15 0 15 MUL,  15 15 PROF-QUAL-MASK ANDI,
+      qscan LBL,
+         1 15 3 LSLI,  1 13 1 ADD,  1 1 0 LDR,  1 qdone CBZ,
+         2 1 $FFFFFFFF ANDI,  0 2 CMP,  C-EQ qfound BCOND,
+         15 15 1 ADDI,  15 15 PROF-QUAL-MASK ANDI,  qscan B,
+      qfound LBL,
+         14 1 PROF-QUAL-BITS LSRI,  14 14 1 SUBI,
+         1 DREC MOVZ,  14 14 1 MUL,  14 DBASE 14 ADD,
+      qdone LBL,
+      C-PROF-RAW-NAME  9 1 0 ADDI,  10 2 0 ADDI,  \ own source and length
+      11 0 MOVZ,  12 0 MOVZ,
+      14 qready CBZ,
+      5 14 0 ADDI,  C-PROF-RAW-NAME
+      11 1 0 ADDI,  12 2 1 ADDI,                    \ qualifier plus ':'
+      qready LBL,
+      13 10 12 ADD,                               \ total exact name bytes
+      14 17 ARN-CHUNKS LDR,
+      14 newchunk CBZ,
+      15 14 CHUNK-USED LDR,  0 15 13 ADD,
+      1 14 CHUNK-LEN LDR,  0 1 CMP,  C-LS usechunk BCOND,
+      newchunk LBL,
+         1 13 CHUNK-DATA ADDI,
+         15 PROF-NAME-CHUNK LIT64,  1 15 CMP,  C-CS sized BCOND,
+         1 15 0 ADDI,
+      sized LBL,
+         15 1 0 ADDI,                              \ Darwin mmap clears x1; x15 keeps the requested extent
+         0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
+         4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
+         C-CC mapok BCOND,
+         PROFNAMEMSG$ C-PROF-DIE
+      mapok LBL,
+         14 0 0 ADDI,
+         0 17 ARN-CHUNKS LDR,  0 14 CHUNK-NEXT STR,
+         15 14 CHUNK-LEN STR,
+         15 13 CHUNK-DATA ADDI,  15 14 CHUNK-USED STR,
+         14 17 ARN-CHUNKS STR,
+         4 14 CHUNK-DATA ADDI,  owncopy B,
+      usechunk LBL,
+         4 14 15 ADD,  15 15 13 ADD,  15 14 CHUNK-USED STR,
+      owncopy LBL,
+      6 7 RID-OWNER STR,  4 7 RID-NAME STR,  13 7 RID-LEN STR,
+      0 0 MOVZ,  0 7 RID-START STR,  0 7 RID-END STR,
+      1 4 0 ADDI,
+      11 copydone CBZ,
+      2 11 0 ADDI,  3 12 1 SUBI,  C-PROF-COPY-NAME
+      0 $3A MOVZ,  0 1 0 STRB,  1 1 1 ADDI,
+      copydone LBL,
+      2 9 0 ADDI,  3 10 0 ADDI,  C-PROF-COPY-NAME
+      15 ARN-LIVE LIT64,  15 17 15 ADD,  0 6 3 LSLI,  15 15 0 ADD,
+      0 17 ARN-IDS LDR,  0 15 0 STR,
+      0 0 1 ADDI,  0 17 ARN-IDS STR,
+   next LBL,  6 6 1 ADDI,  recs B,
+   done LBL,  0 17 0 ADDI, ;
+
+\ A new prof-on starts a new identity session. Release old copied names and
+\ clear every ordinal map entry before assigning IDs from the live dictionary.
+: C-PROF-SESSION-START ( -- )
+   LBL LBL LBL {: chunks clear done :}
+   17 0 0 ADDI,
+   9 17 ARN-CHUNKS LDR,
+   chunks LBL,
+      9 clear CBZ,
+      10 9 CHUNK-NEXT LDR,
+      0 9 0 ADDI,  1 9 CHUNK-LEN LDR,  NR-MUNMAP SYS,
+      C-CC done BCOND,
+      PROFNAMEFREEMSG$ C-PROF-DIE
+      done LBL,
+      9 10 0 ADDI,  chunks B,
+   clear LBL,
+   9 0 MOVZ,  9 17 ARN-CHUNKS STR,  9 17 ARN-IDS STR,
+   10 ARN-LIVE LIT64,  10 17 10 ADD,
+   11 DICT-CAP LIT64,  11 11 3 LSLI,  11 10 11 ADD,
+   9 0 MOVN,
+   LBL LBL {: zeroed turn :}
+   turn LBL,
+      10 11 CMP,  C-CS zeroed BCOND,
+      9 10 0 STR,  10 10 8 ADDI,  turn B,
+   zeroed LBL,  0 17 0 ADDI, ;
+
+\ One index entry per profile ID with code of its own. A live ID takes its
+\ current dictionary span; a seed-retired ID takes its stored span. Ordinary
+\ retired rows have no entry. The old index's inclusive counts are folded first.
 : C-PROF-INDEX-BUILD ( -- )
-   LBL LBL LBL LBL LBL {: bl bnext bdone blo bhi :}
+   LBL LBL LBL LBL LBL LBL LBL {: bl bnext bdone blo bhi retained span :}
    9 ARN-IDX LIT64,  9 0 9 ADD,
-   11 0 MOVZ,  6 0 MOVZ,  5 DBASE 0 ADDI,
+   11 0 MOVZ,  6 0 MOVZ,
    1 0 MOVN,  2 0 MOVZ,                              \ lo = all ones, hi = 0
    bl LBL,
-      6 NDICT CMP,  C-CS bdone BCOND,
-      12 5 DICT-WL-OFF LDR,  12 12 2 ADDI,  12 2 CMPI,  C-CC bnext BCOND,
-      13 5 8 LDR,  C-PROF-SPAN-BYTES  13 bnext CBZ,
-      12 5 0 LDR,  12 bnext CBZ,
+      12 0 ARN-IDS LDR,  6 12 CMP,  C-CS bdone BCOND,
+      5 ARN-RECS LIT64,  5 0 5 ADD,
+      12 PROF-ID-ENT MOVZ,  12 6 12 MUL,  5 5 12 ADD,
+      12 5 RID-OWNER LDR,  12 0 CMPI,  C-LT retained BCOND,
+      15 0 MOVZ,  15 5 RID-START STR,  15 5 RID-END STR,
+      13 DREC MOVZ,  13 12 13 MUL,  13 DBASE 13 ADD,
+      14 13 DICT-WL-OFF LDR,  14 14 2 ADDI,  14 2 CMPI,  C-CC bnext BCOND,
+      13 13 8 LDR,  C-PROF-SPAN-BYTES  13 bnext CBZ,
+      12 5 RID-OWNER LDR,  15 DREC MOVZ,  12 12 15 MUL,
+      12 DBASE 12 ADD,  12 12 0 LDR,  12 bnext CBZ,
+      14 12 13 ADD,
+      12 5 RID-START STR,  14 5 RID-END STR,  span B,
+      retained LBL,
+      12 5 RID-START LDR,  14 5 RID-END LDR,
+      12 bnext CBZ,
+      12 14 CMP,  C-CS bnext BCOND,
+      span LBL,
       12 9 ENT-START STR,
-      14 12 13 ADD,  14 9 ENT-END STR,
+      14 9 ENT-END STR,
       6 9 ENT-IDX STR,
       15 0 MOVZ,  15 9 ENT-INCL STR,
       9 9 PROF-ENT ADDI,  11 11 1 ADDI,
       12 1 CMP,  C-CS blo BCOND,  1 12 0 ADDI,
       blo LBL,  14 2 CMP,  C-LS bhi BCOND,  2 14 0 ADDI,
       bhi LBL,
-   bnext LBL,  5 5 DREC ADDI,  6 6 1 ADDI,  bl B,
+   bnext LBL,  6 6 1 ADDI,  bl B,
    bdone LBL,
    11 0 ARN-COUNT STR,  1 0 ARN-LO STR,  2 0 ARN-HI STR,
    NDICT 0 ARN-NDICT STR, ;
@@ -1045,6 +1182,7 @@ private
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,  0 nosync CBZ,
    9 0 ARN-HI LDR,  9 0 ARN-OLDHI STR,
    C-PROF-INCL-FOLD
+   C-PROF-SNAPSHOT
    C-PROF-INDEX-BUILD
    C-PROF-SORT
    C-PROF-REPLAY
@@ -1064,11 +1202,13 @@ private
    A G-POP  A 7 PROF-LIM STR,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
    DBASE 7 PROF-DBASE STR,
-   14 PROF-CNT-VA LIT64,  8 NDICT 0 ADDI,
+   14 PROF-CNT-VA LIT64,  8 DICT-CAP LIT64,
    zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
    zd LBL,
    C-PROF-ARENA-MAP
    7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,
+   C-PROF-SESSION-START
+   C-PROF-SNAPSHOT
    C-PROF-INDEX-BUILD
    C-PROF-SORT
    C-PROF-COUNTERS-CLEAR
@@ -1111,6 +1251,34 @@ private
    C-PROF-TIMER-DONE
    off LBL, ;
 
+\ seed-ndict! calls this before lowering NDICT, with the new count in x6.
+\ The final sync names deferred donor PCs while their records still exist;
+\ clearing only the retired ordinals' live slots leaves their IDs, names and
+\ code spans owned by this session for later reports and stack samples.
+: EMIT-PROFREWIND ( -- )
+   LPROFREWIND LABEL@ LBL,
+   LBL LBL LBL LBL {: absent turn next done :}
+   SP SP 32 SUBI,  30 SP 0 STR,  6 SP 8 STR,
+   7 PROF-BAND-VA LIT64,  0 7 PROF-ARENA LDR,  0 absent CBZ,
+   9 0 ARN-IDS LDR,  9 absent CBZ,             \ prof-rate alone has no session
+   C-PROF-CLOCK-HOLD
+   LPROFSYNC LABEL@ BL,
+   6 SP 8 LDR,
+   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
+   turn LBL,
+      6 NDICT CMP,  C-CS done BCOND,
+      9 ARN-LIVE LIT64,  9 8 9 ADD,
+      10 6 3 LSLI,  9 9 10 ADD,
+      10 9 0 LDR,  10 0 CMPI,  C-LT next BCOND,
+      11 ARN-RECS LIT64,  11 8 11 ADD,
+      12 PROF-ID-ENT MOVZ,  12 10 12 MUL,  11 11 12 ADD,
+      12 0 MOVN,  12 11 RID-OWNER STR,  12 9 0 STR,
+   next LBL,  6 6 1 ADDI,  turn B,
+   done LBL,
+   C-PROF-CLOCK-RESUME
+   absent LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
 \ A REPORT NEVER SAMPLES ITSELF. It reads PROF-TOT once and then walks every
 \ counter; a tick in between would leave the header's own identity - words +
 \ other + new + foreign == samples - false by one. The report also owns x20, so
@@ -1146,7 +1314,7 @@ private
    C-PROF-CLOCK-HOLD
    7 PROF-BAND-VA LIT64,
    9 0 MOVZ,  9 7 PROF-TOT STR,  9 7 PROF-OTHER STR,  9 7 PROF-FOREIGN STR,
-   14 PROF-CNT-VA LIT64,  8 NDICT 0 ADDI,
+   14 PROF-CNT-VA LIT64,  8 DICT-CAP LIT64,
    zl LBL,  8 zd CBZ,  9 0 MOVZ,  9 14 0 STR,  14 14 8 ADDI,  8 8 1 SUBI,  zl B,
    zd LBL,
    0 7 PROF-ARENA LDR,  0 noarena CBZ,
@@ -1162,11 +1330,20 @@ private
 \ prof-row ( n -- ): the row for dictionary record n, whatever its rank. The
 \ name lookup stays in the caller, where XREF already answers it.
 : BPROF-ROW ( -- )
+   LBL LBL {: bad ready :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 G-POP  6 SP 8 STR,
    C-PROF-CLOCK-HOLD
    LPROFSYNC LABEL@ BL,
    6 SP 8 LDR,
+   6 0 CMPI,  C-LT bad BCOND,
+   6 NDICT CMP,  C-CS bad BCOND,
+   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 bad CBZ,
+   9 ARN-LIVE LIT64,  9 8 9 ADD,
+   10 6 3 LSLI,  9 9 10 ADD,  6 9 0 LDR,
+   ready B,
+   bad LBL,  6 0 MOVN,
+   ready LBL,
    LPROFROW LABEL@ BL,
    C-PROF-CLOCK-RESUME
    30 SP 0 LDR,  SP SP 16 ADDI, ;
@@ -1198,7 +1375,10 @@ private
    7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 miss CBZ,
    LPROFFIND LABEL@ BL,
    6 miss CBZ,
-   9 6 ENT-IDX LDR,  out B,
+   10 6 ENT-IDX LDR,
+   9 ARN-RECS LIT64,  9 8 9 ADD,
+   11 PROF-ID-ENT MOVZ,  11 10 11 MUL,  9 9 11 ADD,
+   9 9 RID-OWNER LDR,  out B,
    miss LBL,  9 0 MOVN,
    out LBL,  9 G-PUSH
    30 SP 0 LDR,  SP SP 16 ADDI, ;
@@ -1213,7 +1393,8 @@ public
    s" prof-pc>rec" ['] BPROF-PCREC FPRIM-L ;
 
 : EMIT-PROF-REPORTS ( -- )
-   EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFQUAL  EMIT-PROFSYNC
+   EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFSYNC
+   EMIT-PROFREWIND
    false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 
 ;package

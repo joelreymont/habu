@@ -1,8 +1,7 @@
 \ internal-word-gate.f - engine-internal word execution gate regressions (dot
 \ habu-hb-crash-bare-c5be6634).
 \
-\ The seal marks unchecked engine words DNAME-INT. Capture removes their names
-\ unless a declared XT or another explicit root retains one. A removed name is
+\ The seal marks unchecked engine words DNAME-INT. A removed name is
 \ E-UNDEFINED in interpret mode; a retained marked name rejects with
 \ `hb: internal engine word: <token>` and rc 70. A tick of an absent name is
 \ E-UNDEFINED too; a tick of a retained marked name is refused.
@@ -174,21 +173,24 @@ create EMPTY 1 allot            \ zero-length stdin
    a u TOKEN$ RUN-SUBJECT
    a u ASSERT-UNDEF ;
 
-\ --- negatives: sealed checker bodies have no callable product name ---
+\ --- negatives: sealed checker bodies reject execution ---
 
 : NEG-BARE ( -- )
    s" bare U-TYPE fails closed (was SIGSEGV)" T-LABEL
-   s" U-TYPE" NEG-ABSENT
+   s" U-TYPE" NEG
    s" bare T-RES fails closed" T-LABEL
-   s" T-RES" NEG-ABSENT
+   s" T-RES" NEG
    s" bare PAIR fails closed" T-LABEL
-   s" PAIR" NEG-ABSENT
+   s" PAIR" NEG
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
-   s" CHECKER-FIND-ACTIVE-SIG" NEG-ABSENT
+   s" CHECKER-FIND-ACTIVE-SIG" NEG
    s" bare E-INST fails closed" T-LABEL
-   s" E-INST" NEG-ABSENT
+   s" E-INST" NEG
    s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
-   s" CT-LIVE?" NEG-ABSENT
+   s" CT-LIVE?" NEG
+   s" checked source cannot call internal checker bodies" T-LABEL
+   s" : IWG-CHECKED ( n n -- n ) U-TYPE ;" RUN-SUBJECT
+   s" U-TYPE" ASSERT-UNDEF
    s" the prefix cursor reader has no product name" T-LABEL
    s" CHECKER-BOUND:CURSORS" NEG-ABSENT ;
 
@@ -210,10 +212,10 @@ create EMPTY 1 allot            \ zero-length stdin
 : NEG-SHAPES ( -- )
    s" 1 2 U-TYPE (satisfied depth) still fails closed" T-LABEL
    ARGS-FORGE$ RUN-SUBJECT
-   s" U-TYPE" ASSERT-UNDEF
-   s" ' U-TYPE finds no stripped name" T-LABEL
+   s" U-TYPE" ASSERT-INTERNAL
+   s" a tick of U-TYPE rejects before exposing its xt" T-LABEL
    TICK-FORGE$ RUN-SUBJECT
-   s" U-TYPE" ASSERT-UNDEF
+   s" U-TYPE" ASSERT-INTERNAL
    s" 0 int-mark: the marking prim is itself internal" T-LABEL
    PRIM-FORGE$ RUN-SUBJECT
    s" int-mark" ASSERT-INTERNAL
@@ -254,12 +256,12 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : NULL-PTR-CELL-CASES ( -- )
-   s" a bare NULL-PTR-CELL store has no product name" T-LABEL
+   s" a bare NULL-PTR-CELL store rejects the internal cell" T-LABEL
    NULL-PTR-BARE$ RUN-SUBJECT
-   s" NULL-PTR-CELL" ASSERT-UNDEF
-   s" a tick of stripped NULL-PTR-CELL leaves no address to store" T-LABEL
+   s" NULL-PTR-CELL" ASSERT-INTERNAL
+   s" a tick of NULL-PTR-CELL leaves no address to store" T-LABEL
    NULL-PTR-TICK$ RUN-SUBJECT
-   s" NULL-PTR-CELL" ASSERT-UNDEF
+   s" NULL-PTR-CELL" ASSERT-INTERNAL
    s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
    NULL-PTR-SEARCH$ RUN-SUBJECT
    ASSERT-OK
@@ -854,10 +856,10 @@ create QNAME QNAME-CAP allot
 : CTLIVE-CASES ( -- )
    s" CT-LIVE? field-liveness query fails closed on --load" T-LABEL
    s" CT-LIVE?" TOKEN$ RUN-LOAD
-   s" CT-LIVE?" ASSERT-UNDEF
+   s" CT-LIVE?" ASSERT-INTERNAL
    s" CT-LIVE? field-liveness query fails closed on stdin" T-LABEL
    s" CT-LIVE?" TOKEN$ RUN-STDIN
-   s" CT-LIVE?" ASSERT-UNDEF ;
+   s" CT-LIVE?" ASSERT-INTERNAL ;
 
 \ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). This
 \ group proves the package-public/private answer for a file that BECAME a package:
@@ -974,11 +976,11 @@ create QNAME QNAME-CAP allot
 \   public and carries the REG-PROTECT its siblings already had; TF-RBF-DEPTH (dot
 \   habu-tf-rbf-depth-614c88e0) is the other cell that gained one.
 \
-\ SIX NAMES STAY GLOBAL AND ARE PINNED HERE, because the ENGINE resolves them by
+\ FIVE NAMES STAY GLOBAL AND ARE PINNED HERE, because the ENGINE resolves them by
 \ bare spelling and no package spelling can reach that lookup: TFAM-NAME$,
 \ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are read by habu2.f C-FIND-GLOBAL for
 \ `construct`/`match`/`;match` (and mirrored byte for byte in bootstrap/cg/forth.fs),
-\ while TF-SHA16-XT and TFAM-CTOR-WORD? are named by AOT-captured engine call sites
+\ while TFAM-CTOR-WORD? is named by an AOT-captured engine call site
 \ that the boot seed re-resolves. The negative leg below is what keeps that surface
 \ from growing: an ordinary public must NOT answer bare. ----
 
@@ -1081,8 +1083,6 @@ create QNAME QNAME-CAP allot
    s" TFL-CVAR?" TSEAL-BRIDGE-MARKED
    s" TFAM-CTOR-WORD? stays global: an AOT call site names it" T-LABEL
    s" TFAM-CTOR-WORD?" TSEAL-BRIDGE-AXIOM
-   s" TF-SHA16-XT stays global: an AOT call site names it" T-LABEL
-   s" TF-SHA16-XT" TSEAL-BRIDGE-AXIOM
    s" and the global surface stopped there: TFL-VAR? is package-only" T-LABEL
    s" TFL-VAR?" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TFL-VAR?" ASSERT-DIAG
@@ -1130,16 +1130,15 @@ create QNAME QNAME-CAP allot
    s" undefined word 'IWGBCA'" ASSERT-DIAG
    s" MARK keeps the seal: only lower-cert-seal.f may take the boundary" T-LABEL
    s" CHECKER-BOUND:MARK" NEG-ABSENT
-   s" USIGS keeps it as well: no reset names it any more (RECOVERY-RESET below)" T-LABEL
-   s" USIGS" NEG-ABSENT ;
+   s" USIGS still rejects execution (RECOVERY-RESET below)" T-LABEL
+   s" USIGS" NEG ;
 
 \ --- the recovery launcher's prologue (dot habu-route-the-recovery-4ef43bd9).
 \ tools/bootstrap.sh feeds ONE boot-hide prologue to the gforth stage0 and to
 \ every sealed native stage after it, and its checker half used to be a hand
 \ rewind: `0 UEND !` and the store's terminator, written from a TRUSTED: body
 \ spelling `USIGS`. That is a fourth instance of the shape above - the seal
-\ marks `USIGS` DNAME-INT, so its record survived in a stage image only because
-\ that one body spelled it, and a stage stripped to the names the checker knows
+\ marks `USIGS` DNAME-INT; a stage stripped to the names the checker knows
 \ could not compile the prelude the whole recovery starts from.
 \
 \ IT GOT A ROW OF ITS OWN, unlike the third site, because the reset really is
@@ -1178,8 +1177,8 @@ create QNAME QNAME-CAP allot
    s" USIGS is outside the checker's universe, so checked source cannot name it" T-LABEL
    RRR-USIGS$ RUN-SUBJECT
    s" E-UNDEFINED: USIGS" ASSERT-DIAG
-   s" the seam under the row keeps the seal: no offset of the caller's choosing" T-LABEL
-   s" USIGS-RESTORE-END" NEG-ABSENT ;
+   s" the internal restore seam refuses a caller-selected offset" T-LABEL
+   s" USIGS-RESTORE-END" NEG ;
 
 \ --- the sealed declaration grammar (dot habu-tfam-2b-sealed-1b77662c, third of
 \ three). src/core/sumtype.f defined 316 globals and now defines 45 publics and
@@ -1440,18 +1439,18 @@ create QNAME QNAME-CAP allot
 
 : PARITY-NEG-LOAD ( ptr u8 n -- )
    2dup RUN-LOAD
-   s" U-TYPE" ASSERT-UNDEF
+   s" U-TYPE" ASSERT-INTERNAL
    PARITY-RESULT TAIL-PARITY:SNAPSHOT
    RUN-SUBJECT
-   s" U-TYPE" ASSERT-UNDEF
+   s" U-TYPE" ASSERT-INTERNAL
    PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-NEG-STDIN ( ptr u8 n -- )
    2dup RUN-STDIN
-   s" U-TYPE" ASSERT-UNDEF
+   s" U-TYPE" ASSERT-INTERNAL
    PARITY-RESULT TAIL-PARITY:SNAPSHOT
    RUN-SUBJECT
-   s" U-TYPE" ASSERT-UNDEF
+   s" U-TYPE" ASSERT-INTERNAL
    PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-POS-LOAD ( ptr u8 n -- )
@@ -1461,9 +1460,9 @@ create QNAME QNAME-CAP allot
    PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-TEST ( -- )
-   s" direct --load and subject preserve missing-name results" T-LABEL
+   s" direct --load and subject preserve internal-word refusal" T-LABEL
    s" U-TYPE" TOKEN$ PARITY-NEG-LOAD
-   s" direct stdin and subject preserve missing-name results" T-LABEL
+   s" direct stdin and subject preserve internal-word refusal" T-LABEL
    s" U-TYPE" TOKEN$ PARITY-NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    RAW-FORGE$ PARITY-POS-LOAD ;

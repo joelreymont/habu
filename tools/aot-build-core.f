@@ -1,6 +1,5 @@
-\ The application and linker run in one native executable-build scope, and this
-\ file is the LINKER half of it. tools/aot-build-open.f is the other half and runs
-\ first: it retires FILE support, opens the capture window, loads the
+\ This file is the LINKER half of the stripped build. tools/aot-build-open.f
+\ runs first: it retires temporary support, opens the capture window, loads the
 \ application and latches the span. No library visible to the application's
 \ `require` is loaded when that window opens. Everything below therefore lands
 \ ABOVE the span - the linker,
@@ -13,6 +12,7 @@ require src/os/script-argv.f
 require src/habu/aot-decl.f
 require src/habu/aot-closure.f
 require src/habu/aot-lib.f
+require tools/aot-code-map.f
 
 package AOT-LINK
 private
@@ -42,7 +42,9 @@ private
 \ The options phase one did not take, now that the words that consume them exist.
 \ The argument count was checked there, before anything was loaded on its behalf.
 : LINK-OPTIONS ( -- )
-   SCRIPT-ARGC 4 = if
+   SCRIPT-ARGC 6 =
+   SCRIPT-ARGC 4 = if 2 SCRIPT-ARGV$ s" --donor" STR= 0= else false then
+   or if
       2 SCRIPT-ARGV$ ENTRY-NAME!
       3 SCRIPT-ARGV$ NATIVE-SEED
    then ;
@@ -77,7 +79,7 @@ private
    IMAGE-LIFECYCLE:PREPARE
    BLOB-SRC @ AOT-OWNED:COLLECT
    CHECKER-STORAGE-PREPARE
-   [: LINK ;] [: FFI:IMAGE-UNPIN ;] finally ;
+   [: LINK MAP-WRITE ;] [: FFI:IMAGE-UNPIN ;] finally ;
 
 public
 

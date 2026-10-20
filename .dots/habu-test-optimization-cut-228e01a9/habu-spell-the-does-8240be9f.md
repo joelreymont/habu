@@ -3,7 +3,7 @@ title: Spell the ;does suffix once
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T13:40:59.040298+02:00\""
+created-at: "2026-10-02T13:40:59.040298+02:00"
 closed-at: "2026-10-14T19:30:30.902604+03:00"
 close-reason: "Implemented in 26006b2d: Habu users share DOES-CLAUSE:SUFFIX$, while the earlier emitter and seed cite it; two-generation fixpoint and does-clause suites passed."
 ---

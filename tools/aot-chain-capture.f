@@ -67,7 +67,7 @@
 
 package AOT-CHAIN
 public
-ndict@ here REQUIRE-N @ REQUIRE-BOOT-N @
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - REQUIRE-N @ REQUIRE-BOOT-N @
 variable PRE-R  variable PRE-D  variable PRE-REQ  variable BOOT-REQ
 BOOT-REQ !  PRE-REQ !  PRE-D !  PRE-R !
 ;package
@@ -207,6 +207,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
    s" NCOMP:INSTALL" 0 DECLARE
+   s" NDICT:RETAIN-FIXED-INSTALL" 1 DECLARE
    \ CAPTURE-PREPARE clears NHOST's callback before this audit; boot reinstalls it.
    s" NHOST:INSTALL" 0 DECLARE
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE ; \ its cell is in the window: see ?XTOFF
@@ -433,8 +434,7 @@ variable NAME-COUNT
 \ suite proves about THIS file is that it loads in a booted engine and refuses by
 \ name there.
 \
-\ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN, and it is the same
-\ comparison the fixpoint loop promotes across generations: write A, destroy the
+\ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN: write A, destroy the
 \ live buffers, read A back into them, write B from what came back, and require
 \ sha256(A) = sha256(B). A reader that drops a section, reads a length short, or
 \ fills the wrong buffer cannot survive it, and the writer's own digest of the

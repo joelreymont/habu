@@ -3,7 +3,7 @@ title: Leave no partial image when a snap write fails
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T17:17:49.821777+02:00\""
+created-at: "2026-10-01T17:17:49.821777+02:00"
 closed-at: "2026-10-14T19:29:05.571642+03:00"
 close-reason: "Implemented in 3ad91bad: snap output is staged in a same-directory sibling and published only after write, close and signing; failure cleanup preserves absent or previous target. Snapshot-writer red/green and fixpoint checks recorded in the commit."
 ---

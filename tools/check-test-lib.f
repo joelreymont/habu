@@ -3,8 +3,8 @@
 \ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \ src/lib/process-env.f src/lib/process-cwd.f src/lib/fmt.f src/lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f src/lib/source-lex.f
-\ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
+\ src/lib/source-lex.f
+\ tools/diag-origin-core.f tools/gate-json-assert-core.f tools/json-only-core.f
 \ tools/checked-boundary-lint-core.f
 \ tools/check-all-errors-core.f src/lib/argv.f
 \ tools/check-core.f tools/check-test.f
@@ -28,10 +28,10 @@ require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
 require src/lib/source-lex.f
 require tools/diag-origin-core.f
-require tools/json.f
+require tools/gate-json-assert-core.f
+require src/lib/jsonl.f
 require tools/json-only-core.f
 require tools/checked-boundary-lint-core.f
 require tools/check-all-errors-core.f
@@ -1401,10 +1401,7 @@ variable LONG-J
 \ A clause the pre-pass refuses is reported as a refused body is: by the name of
 \ the record it would publish, the definer's with `;does`, the code, the token
 \ and the place, in every output mode, whether the definer's own body certified
-\ or was left to the run, and whether the created word is used or not. Each
-\ check is a child process, as the command line runs it: a second in-process
-\ check of the same refused source that renders a package's words reports
-\ them undefined instead of leaving them to the run.
+\ or was left to the run, and whether the created word is used or not.
 : CLAUSE-PLAIN$ ( -- ptr u8 n )
    s" : CKR-DEFR ( n -- ) create , does> ( -- n ) @ dup ; 5 CKR-DEFR CKR-X : CKR-U ( -- n ) CKR-X ;" ;
 
@@ -1437,18 +1434,20 @@ variable LONG-J
    CAP-ERR erru s" habu: in ckr-defr;does: at 'dup'" CONTAINS? TTRUE
    CAP-ERR erru s" preverify failed" CONTAINS? TFALSE ;
 
-: EXPECT-CLAUSE-REFUSED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n at:ptr atu:n :}
-   src srcu CLI-STDIN 70 T= {: outd:n errd:n :}
+\ Render a fresh source for each mode: the in-process check uses SB too.
+: EXPECT-CLAUSE-REFUSED ( [ -- ptr u8 n ] ptr u8 n -- )
+   {: src at:ptr atu:n :}
+   src execute DIRECT-STDIN 70 T= {: outd:n errd:n :}
    outd errd at atu EXPECT-CLAUSE-JSON
    CAP-ERR errd s" preverify failed" CONTAINS? TTRUE
-   src srcu s" --json-errors" CLI-FLAG-STDIN 70 T= {: outj:n errj:n :}
+   src execute DIRECT-JSON-STDIN 70 T= {: outj:n errj:n :}
    outj errj at atu EXPECT-CLAUSE-JSON
-   src srcu s" --all-errors" CLI-FLAG-STDIN EXPECT-CLAUSE-PROSE ;
+   src execute DIRECT-ALL-STDIN EXPECT-CLAUSE-PROSE ;
 
 : TEST-REFUSED-CLAUSE ( -- )
-   CLAUSE-PLAIN$ CLAUSE-PLAIN-AT$ EXPECT-CLAUSE-REFUSED
-   CLAUSE-RENDERED-USED$ CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED
-   CLAUSE-RENDERED-UNUSED$ CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED ;
+   [: CLAUSE-PLAIN$ ;] CLAUSE-PLAIN-AT$ EXPECT-CLAUSE-REFUSED
+   [: CLAUSE-RENDERED-USED$ ;] CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED
+   [: CLAUSE-RENDERED-UNUSED$ ;] CLAUSE-RENDERED-AT$ EXPECT-CLAUSE-REFUSED ;
 
 \ A named buffer count certifies by the effect of the word the load would run:
 \ it takes nothing and leaves one `n`. Its value is the definer's to bound. A
@@ -3540,24 +3539,38 @@ create BIG $2000 allot   variable BIG-U
 \ may be named `\`, and its family then renders as `\:tail` in the effects, the
 \ expected row and the family pin; a source label may hold a control byte. The
 \ packet must parse and give back exactly those bytes.
-: ESC-ROOT ( n -- n )
-   CAP-ERR swap JSON-PARSE-TRY MATCH result
-     ok  OF ENDOF
-     err OF s" the JSON packet parses" T-LABEL 0 T= -1 ENDOF
-   ;MATCH ;
+TYPED-VARIABLE CT-SOURCE ptr u8
+variable CT-SOURCE-U
+TYPED-VARIABLE CT-ROW SPAN:span<u8>
 
-: ESC-STR= ( n ptr u8 n ptr u8 n -- ) {: root:n k:ptr ku:n w:ptr wu:n :}
-   root -1 = IF EXIT THEN
-   root k ku JSON-GET {: node:n :}
-   node -1 <> TTRUE
-   node -1 = IF EXIT THEN
-   node JSON-STRING$ w wu STR= TTRUE ;
+: CT-PARSE ( -- )
+   CT-SOURCE @ CT-SOURCE-U @ GJA-PARSE CT-ROW ! ;
+
+: CT-TRY ( ptr u8 n -- n )
+   CT-SOURCE-U ! CT-SOURCE !
+   [: CT-PARSE ;] catch ;
+
+: CT-NONE ( -- SPAN:span<u8> )
+   CAP-ERR 0 SPAN:MAKE ;
+
+: ESC-ROOT ( n -- SPAN:span<u8> )
+   CAP-ERR swap CT-TRY dup 0= if drop CT-ROW @ exit then
+   dup E-JR-DEPTH = if throw then
+   s" the JSON packet parses" T-LABEL 0 T= CT-NONE ;
+
+: ESC-STR= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )
+   {: root:SPAN:span<u8> k:ptr ku:n w:ptr wu:n :}
+   root SPAN:LEN 0= IF EXIT THEN
+   root k ku GJA-FIELD? {: node:SPAN:span<u8> found:bool :}
+   found TTRUE
+   found 0= IF EXIT THEN
+   node w wu GJA-STR= TTRUE ;
 
 : FAM-ESC-TEST ( -- )
    FAM-ESC$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   erru ESC-ROOT {: root:n :}
+   erru ESC-ROOT {: root:SPAN:span<u8> :}
    root s" declared_effect" s" n -- \:ckfefam " ESC-STR=
    root s" expected" s" \:ckfefam " ESC-STR=
    root s" family" s" \:ckfefam" ESC-STR= ;
@@ -6231,33 +6244,46 @@ variable LC-OTHER-U
 \ A case reads the packets it asserts on from the parsed stderr stream, so its
 \ expectation states the contract: which file a packet names, at which line.
 
-\ The value under KEY in packet NODE when it has KIND, else -1.
-: LC-VALUE ( n ptr u8 n n -- n ) {: node:n key:ptr keyu:n kind:n :}
-   node 0 < if -1 exit then
-   node key keyu JSON-GET {: v:n :}
-   v 0 < if -1 exit then
-   v JSON-KIND kind = if v exit then
-   -1 ;
+\ Missing fields and packets are empty source spans. A JSON object cannot be
+\ empty as a source value, so the sentinel is distinct from every packet.
+: LC-STRING$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
+   GJA-FIELD? 0= if drop s" " exit then
+   dup GJA-KIND JR:T-STR <> if drop s" " exit then
+   GJA-STRING$ ;
 
-: LC-STRING$ ( n ptr u8 n -- ptr u8 n )
-   J-STR LC-VALUE dup 0 < if drop s" " exit then
-   JSON-STRING$ ;
+: LC-NUMBER$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
+   GJA-FIELD? 0= if drop s" " exit then
+   dup GJA-KIND dup JR:T-INT = swap JR:T-FLOAT = or 0= if drop s" " exit then
+   SPAN:$ ;
 
-: LC-NUMBER$ ( n ptr u8 n -- ptr u8 n )
-   J-NUM LC-VALUE dup 0 < if drop s" " exit then
-   JSON-NUMBER$ ;
+: CT-SYNTAX? ( n -- bool ) {: code:n :}
+   code E-JR-MALFORMED = code E-JR-STRING = or
+   code E-JR-ESCAPE = or code E-JR-SURROGATE = or
+   code E-JR-TRAILING = or code E-JR-NUMBER = or
+   code E-JR-EOF = or code E-JR-COLON = or code E-JR-COMMA = or ;
 
-\ The first packet on the captured stderr whose string KEY is VALUE, or -1.
-\ Its fields stay readable until the next parse.
-: LC-PACKET ( n ptr u8 n ptr u8 n -- n ) {: erru:n key:ptr keyu:n val:ptr valu:n :}
-   CAP-ERR erru JSONL-START
-   begin
-      JSONL-NEXT-OBJECT
-      dup 0 < if exit then
-      dup key keyu LC-STRING$ val valu LINT-STR= 0=
-   while
-      drop
-   repeat ;
+variable LC-POS
+
+\ The first object packet on captured stderr whose KEY has VALUE. Prose and
+\ malformed rows are skipped, while parser capacity faults remain failures.
+: LC-PACKET ( n ptr u8 n ptr u8 n -- SPAN:span<u8> )
+   {: erru:n key:ptr keyu:n val:ptr valu:n :}
+   0 LC-POS !
+   begin LC-POS @ erru < while
+      CAP-ERR erru LC-POS @ JSONL:SPLIT-LINE
+      drop {: line:ptr lu:n next:n :}
+      next LC-POS !
+      lu 0 > if
+         line lu CT-TRY {: code:n :}
+         code 0= if
+            CT-ROW @ dup GJA-KIND JR:T-OBJ = if
+               dup key keyu LC-STRING$ val valu LINT-STR= if exit then
+            then drop
+         else
+            code CT-SYNTAX? 0= if code throw then
+         then
+      then
+   repeat CT-NONE ;
 
 create LC-CANON FS-PATH-CAP allot
 variable LC-CANON-U
@@ -6584,7 +6610,7 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s\" \"token\":\"CKT-LC-SEVEN\"" CONTAINS? TFALSE
-   erru s" code" s" E-UNDEFINED" LC-PACKET {: p:n :}
+   erru s" code" s" E-UNDEFINED" LC-PACKET {: p:SPAN:span<u8> :}
    p s" token" LC-STRING$ s" CKT-LC-NOPE" T$=
    p s" file" LC-STRING$ s" lc-undef.f" LC-AT s" load-context: undefined word, file" LC-EXPECT-FILE
    p s" line" LC-NUMBER$ s" 3" T$= ;
@@ -6602,7 +6628,7 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    s" load-context: rejection inside a dependency" T-LABEL 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   erru s" word" s" ckt-lc-broken" LC-PACKET {: p:n :}
+   erru s" word" s" ckt-lc-broken" LC-PACKET {: p:SPAN:span<u8> :}
    p s" file" LC-STRING$ s" lc-bad-dep.f" LC-AT s" load-context: dependency rejection, file" LC-EXPECT-FILE
    p s" line" LC-NUMBER$ s" 2" T$= ;
 
@@ -6862,14 +6888,14 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : USH$ ( -- ptr u8 n )  s" ckt-ush.f" REQ$ ;
 
-\ tools/check.f run on the fixture as the command line runs it, after the
-\ options CHECK-ARG+ added: its stderr length and exit status.
+\ Run CHECK on the fixture with the selected options: stderr length and the
+\ same exit status as the command line.
 : REFUSAL-RUN ( ptr u8 n -- n n )
-   CHECK-ARG+
-   CHECK-CAPTURE rot drop ;
+   FILE
+   [: RUN-ACT ;] IN-PROC rot drop ;
 
-: UAMB-NUM ( n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: p:n key:ptr keyu:n want:ptr wantu:n label:ptr labelu:n :}
+: UAMB-NUM ( SPAN:span<u8> ptr u8 n ptr u8 n ptr u8 n -- )
+   {: p:SPAN:span<u8> key:ptr keyu:n want:ptr wantu:n label:ptr labelu:n :}
    label labelu T-LABEL p key keyu LC-NUMBER$ want wantu T$= ;
 
 \ What the run reports after the refused definition, named by EXTRA and CALL as
@@ -6887,8 +6913,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ The checker's packet.
 : UAMB-PACKET ( n ptr u8 n -- )
    {: erru:n label:ptr labelu:n :}
-   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:n :}
-   label labelu T-LABEL p 0 >= TTRUE
+   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET {: p:SPAN:span<u8> :}
+   label labelu T-LABEL p SPAN:LEN 0<> TTRUE
    label labelu T-LABEL
    p s" repair_class" LC-STRING$ s" disambiguate_using_ambiguous" T$=
    label labelu T-LABEL p s" token" LC-STRING$ s" CKT-UAMB-W" T$=
@@ -6938,12 +6964,12 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : TEST-USING-AMBIGUOUS ( -- )
    SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
-   CHECK-ARGV-START UAMB$ REFUSAL-RUN 70 false s" using-ambiguous: plain" UAMB-JSON-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   RESET UAMB$ REFUSAL-RUN 70 false s" using-ambiguous: plain" UAMB-JSON-CASE
+   RESET s" json-errors" OPT
    UAMB$ REFUSAL-RUN 70 false s" using-ambiguous: --json-errors" UAMB-JSON-CASE
-   CHECK-ARGV-START s" --verify-only" CHECK-ARG+
+   RESET s" verify-only" OPT
    UAMB$ REFUSAL-RUN 70 true s" using-ambiguous: --verify-only" UAMB-JSON-CASE
-   CHECK-ARGV-START s" --all-errors" CHECK-ARG+
+   RESET s" all-errors" OPT
    UAMB$ REFUSAL-RUN {: erru:n rc:n :}
    s" using-ambiguous: --all-errors" T-LABEL rc 70 T=
    s" using-ambiguous: --all-errors" T-LABEL
@@ -6958,8 +6984,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ used from.
 : USH-PACKET ( n ptr u8 n -- )
    {: erru:n label:ptr labelu:n :}
-   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET {: p:n :}
-   label labelu T-LABEL p 0 >= TTRUE
+   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET {: p:SPAN:span<u8> :}
+   label labelu T-LABEL p SPAN:LEN 0<> TTRUE
    label labelu T-LABEL p s" token" LC-STRING$ s" CKT-USH-W" T$=
    p s" file" LC-STRING$ USH$ label labelu LC-EXPECT-FILE
    p s" line" s" 9" label labelu UAMB-NUM
@@ -6975,11 +7001,11 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : TEST-USING-SHADOW ( -- )
    SB-RESET USH-LINES s" ckt-ush.f" REQ-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   RESET s" json-errors" OPT
    USH$ REFUSAL-RUN 70 false s" using-shadow: --json-errors" USH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    USH$ REFUSAL-RUN 70 true s" using-shadow: --verify-only" USH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    USH$ REFUSAL-RUN 70 true s" using-shadow: --all-errors" USH-CASE ;
 
 \ A public its package's private word shadows at another width
@@ -6999,16 +7025,16 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : SBA-CASE ( n n n bool ptr u8 n -- )
    {: erru:n rc:n want:n more:bool label:ptr labelu:n :}
    label labelu T-LABEL rc want T=
-   label labelu T-LABEL erru s" code" s" E-SHADOWED-ARITY" LC-PACKET 0 >= TTRUE
+   label labelu T-LABEL erru s" code" s" E-SHADOWED-ARITY" LC-PACKET SPAN:LEN 0<> TTRUE
    erru more s" ckt-sba-extra" s" ckt-sba-call" label labelu REFUSAL-REST ;
 
 : TEST-SHADOWED-ARITY ( -- )
    SB-RESET SBA-LINES s" ckt-sba.f" REQ-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   RESET s" json-errors" OPT
    SBA$ REFUSAL-RUN 70 false s" shadowed-arity: --json-errors" SBA-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    SBA$ REFUSAL-RUN 70 true s" shadowed-arity: --verify-only" SBA-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    SBA$ REFUSAL-RUN 70 true s" shadowed-arity: --all-errors" SBA-CASE ;
 
 \ The using refusals in does> clauses: a definer's clause is inside its
@@ -7044,9 +7070,9 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    {: erru:n rc:n more:bool extra:ptr extrau:n label:ptr labelu:n :}
    label labelu T-LABEL rc 70 T=
    label labelu T-LABEL
-   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET 0 >= TTRUE
+   erru s" code" s" E-USING-SHADOW-GLOBAL" LC-PACKET SPAN:LEN 0<> TTRUE
    label labelu T-LABEL
-   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET 0 >=
+   erru s" code" s" E-USING-AMBIGUOUS" LC-PACKET SPAN:LEN 0<>
    more IF TTRUE ELSE TFALSE THEN
    label labelu T-LABEL CAP-ERR erru extra extrau CONTAINS?
    more IF TTRUE ELSE TFALSE THEN
@@ -7054,11 +7080,11 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : TEST-USING-CLAUSE ( -- )
    SB-RESET DUSE-LINES s" ckt-duse.f" REQ-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   RESET s" json-errors" OPT
    DUSE$ REFUSAL-RUN false s" ckt-duse-extra" s" using-clause: --json-errors" USING-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    DUSE$ REFUSAL-RUN true s" ckt-duse-extra" s" using-clause: --verify-only" USING-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    DUSE$ REFUSAL-RUN true s" ckt-duse-extra" s" using-clause: --all-errors" USING-PATH-CASE ;
 
 \ The using refusals of top-level tokens: each refuses at its token as one in a
@@ -7088,11 +7114,11 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : TEST-USING-TOP-LEVEL ( -- )
    SB-RESET UTOP-LINES s" ckt-utop.f" REQ-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+
+   RESET s" json-errors" OPT
    UTOP$ REFUSAL-RUN false s" ckt-utop-extra" s" using-top-level: --json-errors" USING-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    UTOP$ REFUSAL-RUN true s" ckt-utop-extra" s" using-top-level: --verify-only" USING-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    UTOP$ REFUSAL-RUN true s" ckt-utop-extra" s" using-top-level: --all-errors" USING-PATH-CASE ;
 
 \ A renderer `using` refuses at top level runs no word, so it defines none:
@@ -7130,17 +7156,17 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : TEST-USING-RENDERER ( -- )
    false s" ckt-uren-shadow.f" UREN-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    s" ckt-uren-shadow.f" REQ$ REFUSAL-RUN s" E-USING-SHADOW-GLOBAL"
    s" using-renderer: shadow, --verify-only" RENDERER-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    s" ckt-uren-shadow.f" REQ$ REFUSAL-RUN s" E-USING-SHADOW-GLOBAL"
    s" using-renderer: shadow, --all-errors" RENDERER-PATH-CASE
    true s" ckt-uren-amb.f" UREN-WRITE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --verify-only" CHECK-ARG+
+   RESET s" json-errors" OPT s" verify-only" OPT
    s" ckt-uren-amb.f" REQ$ REFUSAL-RUN s" E-USING-AMBIGUOUS"
    s" using-renderer: ambiguity, --verify-only" RENDERER-PATH-CASE
-   CHECK-ARGV-START s" --json-errors" CHECK-ARG+ s" --all-errors" CHECK-ARG+
+   RESET s" json-errors" OPT s" all-errors" OPT
    s" ckt-uren-amb.f" REQ$ REFUSAL-RUN s" E-USING-AMBIGUOUS"
    s" using-renderer: ambiguity, --all-errors" RENDERER-PATH-CASE ;
 

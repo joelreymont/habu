@@ -106,6 +106,21 @@ TRUSTED: REWRITE-FIRST ( n -- )
    s" NATIVE-HOST-SOURCE:PATCH-HOST" REFUSES
    s" NATIVE-HOST-SOURCE:PATCH-NEIGHBOR" SELECTED-N 33 T= ;
 
+: HELPER-CASE ( -- )
+   s" division's sealed refusal helper belongs to its seed lifetime" T-LABEL
+   s" /" XREF-FIND XREF-START NHOST:ID-OF 0 > TTRUE
+   \ Engine text is immutable, so retire its exact instruction span through
+   \ the owner boundary. PATCH-CASE exercises writes to mutable source code.
+   s" (DIV-ZERO)" NDICT:HELPER-TARGET dup 4 + NHOST:INVALIDATE
+   s" /" XREF-FIND XREF-START NHOST:ID-OF 0 T=
+   s" NATIVE-HOST-SOURCE:PATCH-NEIGHBOR" SELECTED-N 33 T=
+   NHOST:CAPTURE-PREPARE NHOST:INSTALL
+   s" /" XREF-FIND XREF-START NHOST:ID-OF 0 T=
+   s" abs" XREF-FIND XREF-START NHOST:ID-OF 0 T=
+   s" package NATIVE-HOST-SOURCE public : AFTER-RESET ( -- n ) 34 ; ;package"
+      evaluate-closed
+   s" NATIVE-HOST-SOURCE:AFTER-RESET" SELECTED-N 34 T= ;
+
 : CONTRACT-MISMATCH ( -- )
    s" NATIVE-HOST-SOURCE:BOOL-TARGET" HANDLE
    s" NATIVE-HOST-SOURCE:HOST42" HANDLE NHOST:ASSOCIATE ;
@@ -233,6 +248,7 @@ TRUSTED: REWRITE-FIRST ( n -- )
    ONE42-COUNT 1 T=
    s" instruction writes retire only affected implementation facts" T-LABEL
    PATCH-CASE
+   HELPER-CASE
    s" foreign process ABI refuses the output after source construction" T-LABEL
    ['] OUTPUT-LAUNCH-CK BUILD-RC TTHROWS
    T-REPORT ;

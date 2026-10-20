@@ -3,7 +3,7 @@ title: Refuse a capture with a definition open
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T00:07:43.856293+02:00\""
+created-at: "2026-10-02T00:07:43.856293+02:00"
 closed-at: "2026-10-14T19:30:56.919006+03:00"
 close-reason: "Implemented in cf76a60d: snapshot quiescence checks pending definitions and quotation state and refuses an active capture by name; three failing-before cases and a quiescent capture pass."
 ---

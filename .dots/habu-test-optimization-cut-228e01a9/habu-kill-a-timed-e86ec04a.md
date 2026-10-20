@@ -3,7 +3,7 @@ title: "Kill a timed-out capture's whole process tree"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T09:40:27.259949+02:00\""
+created-at: "2026-10-02T09:40:27.259949+02:00"
 closed-at: "2026-10-14T19:34:45.606086+03:00"
 close-reason: "Implemented in e92fa897: all early capture ends kill and reap the child process tree through one path, retaining timeout and capture results; five failing-before sleeper cases and focused suites passed. Walk failures retain the capture outcome under 9866db1e."
 ---

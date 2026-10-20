@@ -489,8 +489,8 @@ $4398 constant DECLARED-LOG-ADDR-CELL
 24 constant DECLARED-LOG-SIG-U-OFF
 32 constant DECLARED-LOG-SLOT
 8  constant DECLARED-LOG-SLOTS-REL
-\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A88
-\ is USER-BAND (src/lib/task.f TASK:+USER), $6A88..$7690 FS-MUT-ABI, $7690..$7BC0
+\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$6A80
+\ is USER-BAND (src/lib/task.f TASK:+USER), $6A80..$7688 FS-MUT-ABI, $7688..$7BC0
 \ FS-ABI, $7BC0..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
 \ libraries is in this seed's emitted prefix (PFX-LOAD-STDLIB-FILES loads only
 \ src/lib/prelude.f and src/lib/errors.f from src/lib/). The stage2 build loads src/lib/fmt.f
@@ -2363,9 +2363,8 @@ HB-TARGET-LINUX? [IF]
 \ declares the cell to the snapshot address-cell table (src/habu/habu2.f
 \ BXTSTORE). This recovery seed has no address-cell table and no relocating
 \ snapshot format of its own -- it carries SNAP-FORMAT-VERSION 3 and each build
-\ path relocates its own format -- so here the word is exactly the store, which
-\ is what src/core/declaration-transaction.f needs from it while the seed
-\ compiles the sources that build the real bin/hb.
+\ path relocates its own format -- so here the word is exactly the store while
+\ the seed compiles the sources that build bin/hb.
 \ ptr-cell-mark ( ptr a -- ) is the declaration half of xt! on its own: in the
 \ native engine it registers a persisted DATA cell as holding a DATA pointer in
 \ the snapshot address table (src/habu/habu2.f RELOC-EMIT:BPTRCELLMARK, the
@@ -3154,16 +3153,18 @@ variable LPLINUXLAYOUT  variable LPMACOSLAYOUT  variable LPX64LAYOUT
 variable LPLINUXLAYOUTCONST  variable LPX64LAYOUTCONST
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
-variable LPBYTES        variable LPFETCHABI     variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
+variable LPBYTES        variable LPFETCHABI     variable LPOWNEREXT     variable LPOWNERABI
+variable LPCHECKER      variable LPRENDER
 variable LPPRIMS       variable LPDOESCLAUSE
 variable LPLOWERCERTBASE
+variable LPNATIVEBODYABI variable LPNATIVEBODY
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF
 variable LPSTACKABI     variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable LPSTRUCTMAKE
 variable LPSTRUCTDECL  variable LPENUMDECL
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPSOURCEPRODUCER variable LPTFAMSHA
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPSOURCEPRODUCER
 variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECLDICT
 variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
@@ -3450,12 +3451,14 @@ create ZBYTE 0 c,
       PFX-COMMON LPENGINEERROR s" src/core/engine-error.f" row execute
       PFX-COMMON LPEXECVECTOR s" src/core/exec-vector.f" row execute
       PFX-COMMON LPFETCHABI s" src/core/checker-fetch-abi.f" row execute
+      PFX-COMMON LPOWNEREXT s" src/core/checker-owner-extension.f" row execute
       PFX-COMMON LPOWNERABI s" src/core/checker-owner-abi.f" row execute
       PFX-COMMON LPPRIMS s" src/habu/prims.f" row execute
       PFX-COMMON LPDOESCLAUSE s" src/core/does-clause.f" row execute
       PFX-COMMON LPCHECKER s" src/core/checker.f" row execute
       PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" row execute
       PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" row execute
+      PFX-COMMON LPNATIVEBODYABI s" src/habu/native-body-abi.f" row execute
       PFX-COMMON LPTYPESCHEMA s" src/core/type-schema.f" row execute
       PFX-COMMON LPTYPEFAM s" src/core/type-family.f" row execute
       PFX-COMMON LPRENDER s" src/core/render.f" row execute
@@ -3463,6 +3466,7 @@ create ZBYTE 0 c,
       PFX-COMMON LPLAYOUTBUF s" src/core/layout-buffer.f" row execute
       PFX-COMMON LPLAYOUTVALID s" src/core/layout-valid.f" row execute
       PFX-COMMON LPHOOK s" src/core/check-hook.f" row execute
+      PFX-COMMON LPNATIVEBODY s" src/habu/native-body.f" row execute
       PFX-COMMON LPCELLEFF s" src/core/cell-effects.f" row execute
       PFX-COMMON LPDECLTXN s" src/core/declaration-transaction.f" row execute
       PFX-COMMON LPGENDECL s" src/core/generated-declaration.f" row execute
@@ -3497,7 +3501,6 @@ create ZBYTE 0 c,
       PFX-COMMON LPENUMS s" src/core/enums.f" row execute
       PFX-COMMON LPSHA256 s" src/core/sha256.f" row execute
       PFX-COMMON LPSOURCEPRODUCER s" src/core/source-producer.f" row execute
-      PFX-COMMON LPTFAMSHA s" src/core/type-family-sha.f" row execute
       PFX-COMMON LPCOMBINATORS s" src/core/combinators.f" row execute
       PFX-COMMON LPCODESPAN s" src/habu/code-span.f" row execute
       PFX-COMMON LPXREF s" src/habu/xref.f" row execute
@@ -5046,6 +5049,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    declared LBL,
+   \ The patched body is now executable. Reissue its occurrence before the
+   \ checker publishes the created word's contract through trust-raw.
+   9 SP 24 LDR,  10 DATA LASTC-CELL LDR,  LOCC-AFTER @ BL,
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
       C-PUBLISH
       \ Replacing a clause replaces its guard facts, including zero/scalar.
@@ -5056,7 +5062,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       EM-REC-WIDE-PUBLISH                               \ a wide clause effect marks the created record (mirror of habu2.f DOESPATCH:EMIT)
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
-   9 SP 24 LDR,  10 DATA LASTC-CELL LDR,  LOCC-AFTER @ BL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ CREATE/VARIABLE (interpret-mode defining words): make a dict word whose body
@@ -8658,14 +8663,15 @@ variable P2SK
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !  LBL LPX64LAYOUT !
    LBL LPLINUXLAYOUTCONST !  LBL LPX64LAYOUTCONST !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPFETCHABI !  LBL LPOWNEREXT !  LBL LPOWNERABI !  LBL LPPRIMS !  LBL LPDOESCLAUSE !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
+   LBL LPNATIVEBODYABI !  LBL LPNATIVEBODY !
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPSTACKABI !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPSOURCEPRODUCER !  LBL LPTFAMSHA !
+   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPSOURCEPRODUCER !
    LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPGENDECLDICT !
    LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !

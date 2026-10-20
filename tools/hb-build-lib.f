@@ -2,6 +2,7 @@
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -9,10 +10,13 @@ require src/lib/le.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/engine-id.f
+require src/os/env-base.f
 require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/content-key.f
+require src/core/sha256.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/object-resolve.f
@@ -21,10 +25,13 @@ require src/lib/json-write.f
 require tools/native-file-inputs.f
 require tools/build-support.f
 require tools/app-build-image.f
-require tools/aot-maker-image.f
+require tools/aot-builder-image.f
 require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
+require tools/image-names.f
+require tools/native-build-image.f
+require tools/build-target.f
 
 \ The hb-build command's implementation lives in package HB-BUILD-CLI.
 \ Everything below is private to it; the export block at the end of the file
@@ -48,11 +55,15 @@ $7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
 72 constant HBB-REPL-DEPS-HEADER-U
 80 constant HBB-REPL-SUPPORT-HEADER-U
+80 constant HBB-MAKER-SUPPORT-HEADER-U
 
 create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-CLOSURE-HEX 80 allot
+create HBB-SRC-STATIC-HEX 80 allot
+create HBB-INPUTS-SHA SHA256-CTX-BYTES allot
+create HBB-INPUTS-DIGEST 32 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
 create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
@@ -60,16 +71,30 @@ create HBB-STAGE-DIR-BUF FS-PATH-CAP allot
 create HBB-STAGE-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
+create HBB-AOT-INPUTS-PATH FS-PATH-CAP allot
+create HBB-MAP-SRC FS-PATH-CAP allot
+create HBB-MAP-DST FS-PATH-CAP allot
+create HBB-PAIR-STAGE FS-PATH-CAP allot
+create HBB-PAIR-BACKUP FS-PATH-CAP allot
+create HBB-OBJ-KEY 64 allot
 create HBB-REPL-DEPS-PATH FS-PATH-CAP allot
-create HBB-REPL-MAKER-INPUTS-PATH FS-PATH-CAP allot
+create HBB-MAKER-INPUTS-PATH FS-PATH-CAP allot
 create HBB-REPL-SUPPORT-PATH FS-PATH-CAP allot
 create HBB-REPL-SUPPORT-KEY 64 allot
 create HBB-REPL-RUNNING-ROOT FS-PATH-CAP allot
 create HBB-REPL-SELECTED-ROOT FS-PATH-CAP allot
 create HBB-MAKER-RUNNING-ROOT FS-PATH-CAP allot
 create HBB-MAKER-SELECTED-ROOT FS-PATH-CAP allot
+create HBB-MAKER-SUPPORT-PATH FS-PATH-CAP allot
+create HBB-MAKER-SUPPORT-KEY 64 allot
 create HBB-REPL-ENGINE-DIGEST 32 allot
 create HBB-REPL-ENGINE-SHA SHA256-FILE-CTX-BYTES allot
+create HBB-ENGINE-SELECT-KEY 64 allot
+create HBB-ENGINE-ROW-SHA SHA256-CTX-BYTES allot
+create HBB-ENGINE-ROW-DIGEST 32 allot
+create HBB-ENGINE-SELECT-PATH FS-PATH-CAP allot
+create HBB-ENGINE-INPUT-PATH FS-PATH-CAP allot
+create HBB-ENGINE-IMAGE-PATH FS-PATH-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
@@ -85,18 +110,28 @@ HBB-LF HBB-LF-BUF c!
 create HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-CAP allot
 create HBB-SEED-HEX-BUF HBB-SEED-HEX-CAP allot
 
-variable HBB-OUT-BUF-A
-variable HBB-ERR-BUF-A
+DYNAMIC-BUFFER HBB-OUT-CAPTURE u8
+DYNAMIC-BUFFER HBB-ERR-CAPTURE u8
 variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-CHECKER-ABI-U
 variable HBB-COMPILER-ABI-U
 variable HBB-ARTIFACT-U
+variable HBB-AOT-INPUTS-U
+variable HBB-MAP-SRC-U
+variable HBB-MAP-DST-U
+variable HBB-PAIR-STAGE-U
+variable HBB-PAIR-BACKUP-U
+variable HBB-PAIR-HAD-MAP
+variable HBB-PAIR-MOVED
+variable HBB-PAIR-COMMITTED
+variable HBB-PAIR-KEEP-BACKUP
 variable HBB-REPL-DEPS-U
-variable HBB-REPL-MAKER-INPUTS-U
+variable HBB-MAKER-INPUTS-U
 variable HBB-REPL-SUPPORT-U
 variable HBB-MAKER-RUNNING-ROOT-U
 variable HBB-MAKER-SELECTED-ROOT-U
+variable HBB-MAKER-SUPPORT-U
 variable HBB-REPL-RUNNING-ROOT-U
 variable HBB-REPL-SELECTED-ROOT-U
 variable HBB-REPL-PRODUCER-U
@@ -105,17 +140,22 @@ variable HBB-STAGE-DIR-U
 variable HBB-STAGE-U
 variable HBB-ARTIFACT-NAME-U
 variable HBB-ARTIFACT-RC
+variable HBB-ARTIFACT-READY
 variable HBB-ARTIFACT-CACHE
 variable HBB-I
 variable HBB-KEY-I
 variable HBB-REPL
+variable HBB-ENGINE
+variable HBB-ENGINE-COMPAT
+variable HBB-WHITEBOX
+variable HBB-ENGINE-TARGET
 variable HBB-JSON
 variable HBB-REPORT-JSON
 variable HBB-SIZE-REPORT
 \ Keep the artifact maker report separate from the saved opener image cache.
 variable HBB-MAKER-HIT
-TYPED-VARIABLE HBB-AOT-MAKER-A ptr u8
-variable HBB-AOT-MAKER-U
+TYPED-VARIABLE HBB-AOT-BUILDER-A ptr u8
+variable HBB-AOT-BUILDER-U
 variable HBB-MAKER-BUILD
 variable HBB-MAKER-RUN
 variable HBB-ARTIFACT-HIT
@@ -130,33 +170,32 @@ variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
 variable HBB-MAKER-TIMEOUT-MS
-DYNAMIC-BUFFER HBB-REPL-INPUTS u8
+variable HBB-ENGINE-SELECT-U
+variable HBB-ENGINE-INPUT-U
+variable HBB-ENGINE-IMAGE-U
+variable HBB-ENGINE-SELECT-READY
+variable HBB-ENGINE-SUPPORT-FRESH
+TYPED-VARIABLE HBB-ENGINE-CHECK-A ptr u8
+variable HBB-ENGINE-CHECK-U
+DYNAMIC-BUFFER HBB-ENGINE-RECORD u8
+DYNAMIC-BUFFER HBB-INPUTS u8
 DYNAMIC-BUFFER HBB-REPL-SIDECAR u8
 DYNAMIC-BUFFER HBB-REPL-PRODUCER u8
+DYNAMIC-BUFFER HBB-MAKER-SUPPORT u8
 TYPED-VARIABLE HBB-APP-BUILDER-A ptr u8
 variable HBB-APP-BUILDER-U
 
-: HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
-   0 ptr-field ;
+: HBB-OUT-ROOM ( n -- ptr u8 )
+   HBB-OUT-CAPTURE-RESERVE 0 HBB-OUT-CAPTURE ;
 
-: HBB-PTR-U8@ ( ptr a -- ptr u8 )
-   HBB-PTR-U8-FIELD @ ;
-
-: HBB-PTR-U8! ( ptr u8 ptr a -- )
-   HBB-PTR-U8-FIELD ! ;
-
-: HBB-ALLOC-BUF ( n -- ptr u8 )
-   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
-
-: HBB-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
-   slot @ 0= if cap HBB-ALLOC-BUF slot HBB-PTR-U8! then
-   slot HBB-PTR-U8@ ;
+: HBB-ERR-ROOM ( n -- ptr u8 )
+   HBB-ERR-CAPTURE-RESERVE 0 HBB-ERR-CAPTURE ;
 
 : HBB-OUT-BUF ( -- ptr u8 )
-   HBB-OUT-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
+   HBB-CAPTURE-CAP HBB-OUT-ROOM ;
 
 : HBB-ERR-BUF ( -- ptr u8 )
-   HBB-ERR-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
+   HBB-CAPTURE-CAP HBB-ERR-ROOM ;
 
 : HBB-TRUE ( -- bool )
    0 0= ;
@@ -168,7 +207,7 @@ variable HBB-APP-BUILDER-U
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--size-report] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--engine [--whitebox] [--target TARGET] | --repl | --json-errors] [options] [source.f] -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -215,6 +254,29 @@ variable HBB-APP-BUILDER-U
 
 : HBB-OUT$ ( -- ptr u8 n )
    HBB-OUT-PATH HBB-OUT-U @ ;
+
+: HBB-MAP-PATH! ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n dst:ptr :}
+   u 4 + FS-PATH-CAP > if E-BUILD-PATH throw then
+   a dst u BYTE-COPY
+   s" .map" drop dst u + 4 BYTE-COPY
+   u 4 + ;
+
+: HBB-MAP-SRC! ( ptr u8 n -- ) HBB-MAP-SRC HBB-MAP-PATH! HBB-MAP-SRC-U ! ;
+: HBB-MAP-DST! ( ptr u8 n -- ) HBB-MAP-DST HBB-MAP-PATH! HBB-MAP-DST-U ! ;
+: HBB-MAP-SRC$ ( -- ptr u8 n ) HBB-MAP-SRC HBB-MAP-SRC-U @ ;
+: HBB-MAP-DST$ ( -- ptr u8 n ) HBB-MAP-DST HBB-MAP-DST-U @ ;
+
+: HBB-MAP-FILL ( ptr u8 n -- ) HBB-MAP-SRC$ 2swap COPY-FILE-STREAM ;
+: HBB-MAP-COPY ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n dst:ptr dstu:n :}
+   src srcu HBB-MAP-SRC!
+   dst dstu HBB-MAP-DST!
+   HBB-MAP-SRC$ FILE? 0= if E-BUILD-PATH throw then
+   HBB-MAP-DST$ [: HBB-MAP-FILL ;] REPLACE-STAGED ;
+
+: HBB-MAP-REMOVE? ( ptr u8 n -- )
+   HBB-MAP-SRC!
+   HBB-MAP-SRC$ FILE? if HBB-MAP-SRC$ REMOVE-FILE then ;
 
 : HBB-REPL-DEPS$ ( -- ptr u8 n )
    HBB-REPL-DEPS-PATH HBB-REPL-DEPS-U @ ;
@@ -303,6 +365,10 @@ variable HBB-APP-BUILDER-U
 
 : HBB-RESET-OPTIONS ( -- )
    0 HBB-REPL !
+   0 HBB-ENGINE !
+   0 HBB-ENGINE-COMPAT !
+   0 HBB-WHITEBOX !
+   0 HBB-ENGINE-TARGET !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
    0 HBB-SIZE-REPORT !
@@ -373,6 +439,13 @@ variable HBB-APP-BUILDER-U
 : HBB-PARSE-OPTION? ( -- bool )
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --engine" HBB-ARG= if -1 HBB-ENGINE ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --whitebox" HBB-ARG= if -1 HBB-WHITEBOX ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --target" HBB-ARG= if
+      HBB-OPT-VALUE$ BUILD-TARGET:SELECT? 0= if
+         s" hb-build: unknown --target profile" HBB-USAGE-RC die
+      then
+      -1 HBB-ENGINE-TARGET ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
@@ -385,6 +458,7 @@ variable HBB-APP-BUILDER-U
       ;MATCH
       HBB-PRESEED-MODE! HBB-INC-I HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
+   HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if HBB-FALSE exit then then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
    HBB-FALSE ;
 
@@ -393,8 +467,18 @@ variable HBB-APP-BUILDER-U
 
 : HBB-PARSE ( -- )
    HBB-RESET-OPTIONS
+   BUILD-TARGET:HOST!
    0 HBB-I !
    HBB-PARSE-OPTIONS
+   HBB-ENGINE @ if
+      HBB-REPL @ 0<> HBB-PRESEED? or HBB-JSON @ 0<> or if HBB-USAGE then
+      SCRIPT-ARGC HBB-I @ - 2 <> if HBB-USAGE then
+      HBB-I @ s" -o" HBB-ARG= 0= if HBB-USAGE then
+      HBB-I @ 1+ HBB-ARG$ HBB-OUT-ARG!
+      s" src/habu/habu2.f" HBB-SRC!
+      exit
+   then
+   HBB-WHITEBOX @ 0<> HBB-ENGINE-TARGET @ 0<> or if HBB-USAGE then
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then
    HBB-I @ HBB-ARG$ HBB-SRC-ARG!
    HBB-I @ 1+ s" -o" HBB-ARG= 0= if HBB-USAGE then
@@ -431,6 +515,9 @@ variable HBB-APP-BUILDER-U
 
 : HBB-CLEANUP ( -- )
    CLEANUP-RUN
+   HBB-ENGINE-RECORD-RELEASE
+   HBB-OUT-CAPTURE-RELEASE
+   HBB-ERR-CAPTURE-RELEASE
    BF-TMP-RESET ;
 
 : HBB-BAD-MAKER-TIMEOUT ( -- )
@@ -454,16 +541,25 @@ variable HBB-APP-BUILDER-U
    PROC-ENV-INHERIT-MISSING ;
 
 : HBB-GOT-NAME$ ( -- ptr u8 n )
+   HBB-ENGINE @ if s" hb-engine-got" exit then
    HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
 
-: HBB-REPL-MAKER-INPUTS$ ( -- ptr u8 n )
+: HBB-MAKER-INPUTS$ ( -- ptr u8 n )
    HBB-GOT-NAME$ BF-A$ {: a:ptr u:n :}
    s" .inputs" {: suffix:ptr suffixu:n :}
    u suffixu + FS-PATH-CAP > if E-BUILD-PATH throw then
-   a HBB-REPL-MAKER-INPUTS-PATH u BYTE-COPY
-   suffix HBB-REPL-MAKER-INPUTS-PATH u + suffixu BYTE-COPY
-   u suffixu + HBB-REPL-MAKER-INPUTS-U !
-   HBB-REPL-MAKER-INPUTS-PATH HBB-REPL-MAKER-INPUTS-U @ ;
+   a HBB-MAKER-INPUTS-PATH u BYTE-COPY
+   suffix HBB-MAKER-INPUTS-PATH u + suffixu BYTE-COPY
+   u suffixu + HBB-MAKER-INPUTS-U !
+   HBB-MAKER-INPUTS-PATH HBB-MAKER-INPUTS-U @ ;
+
+: HBB-INPUTS-READ ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   size 0 <= if E-NUNIT-PROFILE throw then
+   size HBB-INPUTS-RESERVE
+   path pathu 0 HBB-INPUTS size READ-ALL size <> if E-FS-IO throw then
+   0 HBB-INPUTS size ;
 
 : HBB-OBJ-NAME$ ( -- ptr u8 n )
    s" hb-aot-obj" ;
@@ -485,21 +581,120 @@ variable HBB-APP-BUILDER-U
       HBB-KEY-I @ 1+ HBB-KEY-I !
    repeat ;
 
+: HBB-MAKER-CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+   {: a:ptr u:n :}
+   a u SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$
+   EC:BUILD-IN
+   0 HBB-KEY-I !
+   begin HBB-KEY-I @ EC:COUNT < while
+      HBB-KEY-I @ EC:PATH$ {: path:ptr pathu:n :}
+      path pathu s" " NFILE-INPUTS:ADD-CONTENT
+      path pathu CONTENT-KEY:FILE+
+      HBB-KEY-I @ 1+ HBB-KEY-I !
+   repeat ;
+
 : HBB-KEY-TARGET+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HB-TARGET-LINUX? if s" target:linux-aarch64" CONTENT-KEY:TEXT+ exit then
    HB-TARGET-MACOS? if s" target:macos-aarch64" CONTENT-KEY:TEXT+ exit then
    HB-TARGET-LINUX-X86-64? if s" target:linux-x86-64" CONTENT-KEY:TEXT+ exit then
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
-: HBB-MAKER-KEY-IN-ROOT ( -- )
+\ The selected engine's sidecar supplies baked source attribution. Its
+\ absence is an input too: restoring the matching map must select a fresh
+\ artifact instead of replaying unknown-origin rows from a no-map build.
+: HBB-KEY-DONOR-MAP+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   HBB-REPL @ if exit then
+   BF-ENGINE$ HBB-MAP-SRC!
+   HBB-MAP-SRC$ FILE? if
+      s" donor-map:present" CONTENT-KEY:TEXT+
+      HBB-MAP-SRC$ CONTENT-KEY:FILE+
+   else
+      s" donor-map:missing" CONTENT-KEY:TEXT+
+   then ;
+
+: HBB-MAKER-KEY-COLD ( -- )
    CONTENT-KEY:OPEN
    s" hb-build-native-producer-v3" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
+   HBB-KEY-DONOR-MAP+
    HBB-KEY-TARGET+
-   s" tools/hb-build.f" HBB-KEY-CLOSURE+
-   s" tools/aot-maker.f" HBB-KEY-CLOSURE+
-   s" tools/aot-build.f" HBB-KEY-CLOSURE+
+   s" tools/hb-build.f" HBB-MAKER-CLOSURE+
+   s" tools/aot-builder.f" HBB-MAKER-CLOSURE+
+   s" tools/aot-build.f" HBB-MAKER-CLOSURE+
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
+: HBB-MAKER-CANON ( ptr u8 n -- ptr u8 n bool )
+   {: path:ptr pathu:n :}
+   path pathu SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n exists:bool :}
+   path pathu answer answeru exists NFILE-INPUTS:ADD-CANON-ONCE
+   answer answeru exists ;
+
+: HBB-MAKER-SUPPORT-PATH$ ( -- ptr u8 n )
+   HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U @ ;
+
+\ The selector depends only on fixed support identity. The source and path
+\ queries are validated in the record it selects.
+: HBB-MAKER-SUPPORT-SELECT ( -- )
+   CONTENT-KEY:OPEN
+   s" hb-maker-support-v1" CONTENT-KEY:TEXT+
+   BF-ENGINE$ CONTENT-KEY:FILE+
+   HBB-KEY-DONOR-MAP+
+   HBB-KEY-TARGET+
+   SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
+   HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
+   HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
+   HBB-MAKER-SUPPORT-KEY s" maker-support"
+      HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
+
+: HBB-MAKER-SUPPORT-CHECK ( -- )
+   HBB-MAKER-SUPPORT-PATH$ FILE-SIZE {: size:n :}
+   size HBB-MAKER-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
+   size HBB-MAKER-SUPPORT-RESERVE
+   HBB-MAKER-SUPPORT-PATH$ 0 HBB-MAKER-SUPPORT size READ-ALL size <>
+      if E-NUNIT-PROFILE throw then
+   0 HBB-MAKER-SUPPORT {: rec:ptr :}
+   rec 8 s" HBMSEL1!" STR= 0= if E-NUNIT-PROFILE throw then
+   rec 72 + LE:U64@ size HBB-MAKER-SUPPORT-HEADER-U - <>
+      if E-NUNIT-PROFILE throw then
+   rec HBB-MAKER-SUPPORT-HEADER-U +
+      size HBB-MAKER-SUPPORT-HEADER-U - NFILE-INPUTS:CHECK
+   rec 8 + HBB-MAKER-KEY-HEX 64 BYTE-COPY ;
+
+: HBB-MAKER-SUPPORT-FRESH? ( -- bool )
+   HBB-MAKER-SUPPORT-PATH$ FILE? 0= if HBB-FALSE exit then
+   [: HBB-MAKER-SUPPORT-CHECK ;] catch {: rc:n :}
+   HBB-MAKER-SUPPORT-RELEASE
+   rc 0= if
+      HBB-MAKER-SUPPORT-PATH$ BUILD-CACHE:USED if HBB-TRUE exit then
+      HBB-FALSE exit
+   then
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
+   rc throw ;
+
+: HBB-MAKER-SUPPORT-WRITE ( -- )
+   NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
+   HBB-MAKER-SUPPORT-HEADER-U rowsu + HBB-MAKER-SUPPORT-RESERVE
+   0 HBB-MAKER-SUPPORT {: rec:ptr :}
+   s" HBMSEL1!" drop rec 8 BYTE-COPY
+   HBB-MAKER-KEY-HEX rec 8 + 64 BYTE-COPY
+   rowsu rec 72 + LE:U64!
+   rows rec HBB-MAKER-SUPPORT-HEADER-U + rowsu BYTE-COPY
+   HBB-MAKER-SUPPORT-PATH$ rec HBB-MAKER-SUPPORT-HEADER-U rowsu +
+      ATOMIC-WRITE-FILE
+   s" hb-maker-support-" s" " s" " HBB-MAKER-SUPPORT-PATH$ BUILD-CACHE:PRUNE ;
+
+: HBB-MAKER-KEY-IN-ROOT ( -- )
+   HBB-MAKER-SUPPORT-SELECT
+   HBB-MAKER-SUPPORT-FRESH? if exit then
+   NFILE-INPUTS:MARK {: end:n :}
+   end NFILE-INPUTS:BYTES$ nip - {: first:n :}
+   end NFILE-INPUTS:FROM
+   [: [: HBB-MAKER-CANON ;] [: SOURCE-ROOT:READ-OS ;]
+      [: HBB-MAKER-KEY-COLD HBB-MAKER-SUPPORT-WRITE ;]
+      SOURCE-INPUT:WITH ;] catch {: rc:n :}
+   end NFILE-INPUTS:TRUNCATE
+   first NFILE-INPUTS:FROM
+   rc 0<> if rc throw then ;
 
 \ The maker resolves support from this invocation's CWD, falling back to the
 \ selected engine's root. Hash the same resolved closure for artifact/object
@@ -523,21 +718,31 @@ variable HBB-APP-BUILDER-U
 
 : HBB-RUN-MAKER-ARGS ( -- )
    HBB-CMD-RESET
+   s" HABU_AOT_INPUTS" >LEN HBB-MAKER-INPUTS$ >LEN PROC-ENV-SET
    s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
    HBB-JSON-FLAG$ >LEN PROC-ARGV+
    HBB-PRESEED? if
       HBB-ENTRY-NAME$ >LEN PROC-ARGV+
       HBB-SEED-HEX$ >LEN PROC-ARGV+
-   then ;
+   then
+   s" --donor" >LEN PROC-ARGV+
+   BF-ENGINE$ >LEN PROC-ARGV+ ;
 
 : HBB-FINISH-MAKER-RC ( n n n -- ) {: outu erru rc :}
-   rc 0= if exit then
+   rc 0= if
+      HBB-ENGINE @ if
+         HBB-REPORT-JSON @ 0= if HBB-OUT-BUF outu type then
+         erru HBB-WERR-ERR
+      then
+      exit
+   then
    outu HBB-WOUT-ERR
    HBB-JSON @ if erru HBB-WERR-JSON-ONLY else erru HBB-WERR-ERR then
    rc HBB-EXIT ;
 
 : HBB-MAKER-KIND$ ( -- ptr u8 n )
+   HBB-ENGINE @ if s" engine" exit then
    HBB-REPL @ if s" repl" else s" aot" then ;
 
 : HBB-MAKER-TIMED-OUT ( n n -- ) {: outu:n erru:n :}
@@ -554,7 +759,7 @@ variable HBB-APP-BUILDER-U
    then
    E-PROC-TIMEOUT throw ;
 
-: HBB-AOT-MAKER-TIMED-OUT ( -- )
+: HBB-AOT-BUILDER-TIMED-OUT ( -- )
    KEYED-IMAGE:CAPTURE-OUT$ {: out:ptr outu:n :}
    KEYED-IMAGE:CAPTURE-ERR$ {: err:ptr erru:n :}
    out HBB-OUT-BUF outu BYTE-COPY
@@ -562,9 +767,9 @@ variable HBB-APP-BUILDER-U
    outu erru HBB-MAKER-TIMED-OUT ;
 
 : HBB-SELECT-MAKER ( -- )
-   HBB-MAKER-TIMEOUT-MS @ AOT-MAKER-IMAGE:SELECT$
+   HBB-MAKER-TIMEOUT-MS @ AOT-BUILDER-IMAGE:SELECT$
    {: image:ptr imageu:n hit:bool :}
-   image HBB-AOT-MAKER-A ! imageu HBB-AOT-MAKER-U !
+   image HBB-AOT-BUILDER-A ! imageu HBB-AOT-BUILDER-U !
    hit HBB-MAKER-HIT !
    hit 0= HBB-MAKER-BUILD ! ;
 
@@ -574,11 +779,11 @@ variable HBB-APP-BUILDER-U
 : HBB-RUN-MAKER-CMD ( -- len len outcome )
    KEYED-IMAGE:CAPTURE-RESET
    ['] HBB-SELECT-MAKER catch {: rc:n :}
-   rc E-PROC-TIMEOUT = if HBB-AOT-MAKER-TIMED-OUT then
+   rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
    rc 0<> if rc throw then
    HBB-RUN-MAKER-ARGS
-   HBB-AOT-MAKER-A @ HBB-AOT-MAKER-U @ >LEN
-   S\" 1 set-tier\nAOT-MAKER:OPEN\nAOT-MAKER:RUN\n" >LEN
+   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ >LEN
+   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
    HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
@@ -619,6 +824,129 @@ variable HBB-FILLING
    rc E-FS-OPEN = rc E-FS-IO = or if E-BUILD-INSTALL throw then
    rc throw ;
 
+\ The executable's REPLACE-STAGED fill publishes the already staged map only
+\ after its executable copy and chmod have completed. The outer rename is the
+\ last step; a refusal there puts the prior map back from its sibling.
+defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
+
+: HBB-PAIR-STAGE$ ( -- ptr u8 n )
+   HBB-PAIR-STAGE HBB-PAIR-STAGE-U @ ;
+
+: HBB-PAIR-BACKUP$ ( -- ptr u8 n )
+   HBB-PAIR-BACKUP HBB-PAIR-BACKUP-U @ ;
+
+: HBB-PAIR-RESERVE ( ptr u8 ptr n -- )
+   {: dst:ptr up:ptr :}
+   HBB-MAP-DST$ RESERVE-SIBLING {: a:ptr u:n fd:n :}
+   a u dst up HBB-COPY-PATH!
+   fd FS-ATOMIC:CLOSE-FD 0<> if E-FS-IO throw then
+   dst up @ CLEANUP+ ;
+
+: HBB-PAIR-STAGE-RESERVE ( -- )
+   HBB-PAIR-STAGE HBB-PAIR-STAGE-U HBB-PAIR-RESERVE ;
+
+: HBB-PAIR-BACKUP-RESERVE ( -- )
+   HBB-PAIR-BACKUP HBB-PAIR-BACKUP-U HBB-PAIR-RESERVE ;
+
+: HBB-PAIR-RESERVE-CODE ( n -- )
+   {: code:n :}
+   code 0= if exit then
+   code E-FS-OPEN = code E-FS-IO = or if E-BUILD-INSTALL throw then
+   code throw ;
+
+: HBB-PAIR-STAGE-MAP ( -- )
+   HBB-MAP-SRC$ FILE? 0= if E-BUILD-PATH throw then
+   [: HBB-PAIR-STAGE-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
+   HBB-MAP-SRC$ HBB-PAIR-STAGE$ COPY-FILE-STREAM
+   HBB-MAP-DST$ FS-TRY-LSTAT if
+      [: HBB-PAIR-BACKUP-RESERVE ;] catch HBB-PAIR-RESERVE-CODE
+      -1 HBB-PAIR-HAD-MAP !
+   then ;
+
+: HBB-PAIR-FILL ( ptr u8 n -- )
+   2dup HBB-PAIR-EXE-FILL
+   2drop
+   HBB-PAIR-HAD-MAP @ if
+      HBB-MAP-DST$ HBB-PAIR-BACKUP$ RENAME-FILE
+      -1 HBB-PAIR-MOVED !
+   then
+   HBB-PAIR-STAGE$ HBB-MAP-DST$ RENAME-FILE
+   -1 HBB-PAIR-COMMITTED ! ;
+
+: HBB-PAIR-ROLLBACK ( -- )
+   HBB-PAIR-MOVED @ if
+      HBB-PAIR-BACKUP$ HBB-MAP-DST$ RENAME-FILE
+   else
+      HBB-PAIR-COMMITTED @ if HBB-MAP-DST$ REMOVE-FILE then
+   then ;
+
+: HBB-PAIR-CLEAN-ONE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   a u FS-MUT-ATOMIC-CLEAN-TEMP
+   a u CLEANUP-FORGET ;
+
+: HBB-PAIR-CLEAN-BACKUP ( -- )
+   HBB-PAIR-KEEP-BACKUP @ if
+      HBB-PAIR-BACKUP$ CLEANUP-FORGET
+   else
+      HBB-PAIR-BACKUP$ HBB-PAIR-CLEAN-ONE
+   then ;
+
+: HBB-PAIR-CLEAN ( -- n n )
+   [: HBB-PAIR-CLEAN-BACKUP ;] catch
+   [: HBB-PAIR-STAGE$ HBB-PAIR-CLEAN-ONE ;] catch ;
+
+: HBB-PAIR-REPORT ( ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n code:n path:ptr pathu:n :}
+   SB-RESET
+   s" hb-build: " SB-APPEND
+   label labelu SB-APPEND
+   s"  (code " SB-APPEND
+   code FMT:SB-INT
+   s" ) at " SB-APPEND
+   \ A report must not replace the failure it describes, including when stderr
+   \ is closed. The path can exceed the string builder's 1 KiB capacity.
+   2 SB$ write drop
+   2 path pathu write drop
+   2 HBB-LF-BUF 1 write drop ;
+
+: HBB-PAIR-REPORT-ROLLBACK ( n -- )
+   {: code:n :}
+   HBB-PAIR-MOVED @ if
+      s" map rollback failed; prior map retained" code HBB-PAIR-BACKUP$ HBB-PAIR-REPORT
+   else
+      s" map rollback failed; new map retained" code HBB-MAP-DST$ HBB-PAIR-REPORT
+   then ;
+
+: HBB-PAIR-REPORT-CLEAN ( n n -- )
+   {: backup:n stage:n :}
+   backup 0<> if
+      s" cannot clean map backup" backup HBB-PAIR-BACKUP$ HBB-PAIR-REPORT
+   then
+   stage 0<> if
+      s" cannot clean staged map" stage HBB-PAIR-STAGE$ HBB-PAIR-REPORT
+   then ;
+
+: HBB-PAIR-RUN ( [ ptr u8 n -- ] -- )
+   is HBB-PAIR-EXE-FILL
+   0 HBB-PAIR-STAGE-U ! 0 HBB-PAIR-BACKUP-U !
+   0 HBB-PAIR-HAD-MAP ! 0 HBB-PAIR-MOVED ! 0 HBB-PAIR-COMMITTED !
+   0 HBB-PAIR-KEEP-BACKUP !
+   [: HBB-PAIR-STAGE-MAP [: HBB-PAIR-FILL ;] HBB-REPLACE-OUT ;] catch {: code:n :}
+   code 0<> if
+      [: HBB-PAIR-ROLLBACK ;] catch {: recover:n :}
+      recover 0<> HBB-PAIR-MOVED @ 0<> and HBB-PAIR-KEEP-BACKUP !
+      HBB-PAIR-CLEAN {: backup:n stage:n :}
+      recover 0<> if recover HBB-PAIR-REPORT-ROLLBACK then
+      backup stage HBB-PAIR-REPORT-CLEAN
+      code throw
+   then
+   HBB-PAIR-CLEAN {: backup:n stage:n :}
+   backup stage HBB-PAIR-REPORT-CLEAN
+   backup 0<> if backup throw then
+   stage 0<> if stage throw then ;
+
 \ The engine the child wrote under HB_TMP may be on another filesystem; it is
 \ copied.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
@@ -628,7 +956,15 @@ variable HBB-FILLING
 
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   [: HBB-INSTALL-FILL ;] HBB-REPLACE-OUT
+   HBB-REPL @ if
+      [: HBB-INSTALL-FILL ;] HBB-REPLACE-OUT
+      HBB-OUT$ HBB-MAP-REMOVE?
+   else
+      HBB-GOT-NAME$ BF-A$ HBB-MAP-SRC!
+      HBB-OUT$ HBB-MAP-DST!
+      [: HBB-INSTALL-FILL ;] HBB-PAIR-RUN
+   then
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
    HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
@@ -643,18 +979,18 @@ variable HBB-FILLING
 \ The artifact cache's family in the build cache: hb-build-out-<key>, staged in
 \ hb-build-out-<seed>-<attempt> work directories.
 : HBB-ARTIFACT-STEM$ ( -- ptr u8 n )
+   HBB-ENGINE @ if s" hb-build-engine" exit then
    s" hb-build-out" ;
 
 : HBB-ARTIFACT-PREFIX$ ( -- ptr u8 n )
+   HBB-ENGINE @ if s" hb-build-engine-" exit then
    s" hb-build-out-" ;
 
 : HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
 
-\ The user program's behaviour depends on every file its require/include closure
-\ actually loads, so the cache keys fold the whole ordered closure content, not
-\ only the top-level source. Discovery rejects fail-closed, so a closure that
-\ cannot be reproduced cannot be keyed.
+\ Static discovery folds the ordered literal source closure. Observed inputs
+\ select the final source key after the maker load or a fresh index lookup.
 \ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
@@ -675,9 +1011,52 @@ variable HBB-FILLING
    dst CONTENT-KEY:FINAL-HEX ;
 
 : HBB-SRC-CLOSURE-HEX! ( -- )
-   HBB-SRC$ HBB-SRC-CLOSURE-HEX HBB-CLOSURE-HEX! ;
+   HBB-SRC$ HBB-SRC-STATIC-HEX HBB-CLOSURE-HEX!
+   HBB-SRC-STATIC-HEX HBB-SRC-CLOSURE-HEX 64 BYTE-COPY ;
 
-\ HBB-ARTIFACT-KEY! selects this build's producer before the maker runs.
+: HBB-AOT-INPUTS$ ( -- ptr u8 n )
+   HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U @ ;
+
+\ This index only selects a previous observed load. Its rows must still match
+\ this invocation before they can select either an artifact or an object.
+\ The rows join both result keys, so replacing the index cannot pair one load's
+\ inputs with another load's cached image.
+: HBB-AOT-INPUTS-PATH! ( -- )
+   CONTENT-KEY:OPEN
+   s" hb-build-actual-inputs-v1" CONTENT-KEY:TEXT+
+   HBB-SRC-STATIC-HEX 64 CONTENT-KEY:TEXT+
+   HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
+   HBB-SRC$ CONTENT-KEY:TEXT+
+   BF-ENGINE$ CONTENT-KEY:TEXT+
+   SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
+   HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
+   HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX
+   HBB-ARTIFACT-KEY-HEX s" build-inputs"
+      HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U KEYED-IMAGE:PATH! ;
+
+: HBB-AOT-INPUTS-KEY! ( ptr u8 n -- )
+   {: rows:ptr rowsu:n :}
+   HBB-INPUTS-SHA rows rowsu HBB-INPUTS-DIGEST SHA256-IN
+   CONTENT-KEY:OPEN
+   s" user-source-inputs-v1" CONTENT-KEY:TEXT+
+   HBB-SRC-STATIC-HEX 64 CONTENT-KEY:TEXT+
+   HBB-INPUTS-DIGEST CONTENT-KEY:DIGEST+
+   HBB-SRC-CLOSURE-HEX CONTENT-KEY:FINAL-HEX ;
+
+: HBB-AOT-INPUTS-CHECK ( -- )
+   HBB-AOT-INPUTS$ HBB-INPUTS-READ
+   2dup NFILE-INPUTS:CHECK HBB-AOT-INPUTS-KEY! ;
+
+: HBB-AOT-INPUTS-FRESH? ( -- bool )
+   HBB-AOT-INPUTS$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
+   [: HBB-AOT-INPUTS-CHECK ;] catch {: rc:n :}
+   HBB-INPUTS-RELEASE
+   rc 0= if HBB-TRUE exit then
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
+   HBB-AOT-INPUTS$ FS-TRY-LSTAT 0= if HBB-FALSE exit then
+   rc throw ;
+
+\ HBB-PREPARE-ARTIFACT-CACHE selects the producer before the maker runs.
 \ ABI headers must keep that key when producer files change during the maker.
 : HBB-ABI! ( ptr u8 n ptr u8 ptr n -- )
    {: sem:ptr semu:n dst:ptr up:ptr :}
@@ -702,7 +1081,6 @@ variable HBB-FILLING
    HBB-TARGET-UNKNOWN ;
 
 : HBB-ARTIFACT-KEY! ( -- )
-   HBB-MAKER-KEY!
    CONTENT-KEY:OPEN
    s" hb-build-artifact-cache-v3" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
@@ -727,8 +1105,10 @@ variable HBB-FILLING
    \ Keep the source identity selected before lookup through the maker store.
    \ An edit after the maker reads A belongs to the next build, not A's key.
    HBB-SRC-CLOSURE-HEX!
-   HBB-ARTIFACT-PATHS
-   -1 HBB-ARTIFACT-CACHE ! ;
+   HBB-MAKER-KEY!
+   HBB-AOT-INPUTS-PATH!
+   HBB-AOT-INPUTS-FRESH? HBB-ARTIFACT-CACHE !
+   HBB-ARTIFACT-PATHS ;
 
 : HBB-RESTORE-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
@@ -736,7 +1116,40 @@ variable HBB-FILLING
    tmp tmpu CHMOD-X ;
 
 : HBB-RESTORE-OUT ( -- )
-   [: HBB-RESTORE-FILL ;] HBB-REPLACE-OUT ;
+   [: HBB-RESTORE-FILL ;] HBB-PAIR-RUN ;
+
+: HBB-RESTORE-PAIR ( -- )
+   HBB-ARTIFACT$ HBB-MAP-SRC!
+   HBB-OUT$ HBB-MAP-DST!
+   HBB-RESTORE-OUT ;
+
+\ A stopped publisher can leave both cache paths present but from different
+\ attempts. The map's image digest is the required pair identity.
+: HBB-ARTIFACT-READY-CHECK ( -- bool )
+   HBB-ARTIFACT$ EXECUTABLE? 0= if HBB-FALSE exit then
+   HBB-ARTIFACT$ HBB-MAP-SRC!
+   HBB-MAP-SRC$ FILE? 0= if HBB-FALSE exit then
+   HBB-ARTIFACT$ IMAGE-NAMES:LOAD-BOUND
+   IMAGE-NAMES:BOUND? ;
+
+: HBB-ARTIFACT-FILES? ( -- bool )
+   HBB-ARTIFACT$ FS-TRY-LSTAT
+   HBB-ARTIFACT$ HBB-MAP-SRC!
+   HBB-MAP-SRC$ FS-TRY-LSTAT and ;
+
+: HBB-ARTIFACT-READY-RUN ( -- )
+   HBB-ARTIFACT-READY-CHECK HBB-ARTIFACT-READY ! ;
+
+: HBB-ARTIFACT-READY? ( -- bool )
+   [: HBB-ARTIFACT-READY-RUN ;] catch {: code:n :}
+   code 0<> if
+      code E-FS-OPEN <> code E-FS-IO <> and
+      code E-FS-STAT <> and
+      code SHA-E-OPEN <> and code SHA-E-READ <> and if code throw then
+      HBB-ARTIFACT-FILES? if code throw then
+      HBB-FALSE exit
+   then
+   HBB-ARTIFACT-READY @ 0<> ;
 
 \ An artifact found in the cache is dated as used (src/lib/build-cache.f), and one a
 \ prune took after the check is built again. So is one a prune takes after USED
@@ -745,11 +1158,14 @@ variable HBB-FILLING
 \ it reads the whole artifact whatever happens to its name.
 : HBB-RESTORE-ARTIFACT? ( -- bool )
    HBB-ARTIFACT-CACHE @ 0= if HBB-FALSE exit then
-   HBB-ARTIFACT$ EXECUTABLE? 0= if HBB-FALSE exit then
+   HBB-ARTIFACT-READY? 0= if HBB-FALSE exit then
    HBB-ARTIFACT$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
-   [: HBB-RESTORE-OUT ;] catch {: code:n :}
+   HBB-MAP-SRC$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
+   [: HBB-RESTORE-PAIR ;] catch {: code:n :}
    code 0<> if
-      HBB-ARTIFACT$ FS-TRY-LSTAT if code throw then
+      code E-BUILD-PATH <> code E-FS-OPEN <> and
+      code E-FS-IO <> and code E-FS-STAT <> and if code throw then
+      HBB-ARTIFACT-FILES? if code throw then
       HBB-FALSE exit
    then
    -1 HBB-ARTIFACT-HIT !
@@ -762,43 +1178,96 @@ variable HBB-FILLING
 : HBB-OBJ$ ( -- ptr u8 n )
    HBB-OBJ-NAME$ BF-A$ ;
 
-: HBB-READ-OBJECT-TEXT ( -- n )
+: HBB-READ-OBJECT ( -- n n )
    HBB-OBJ$ BF-READ-SOURCE
-   BF-SOURCE-LEN @ dup 0 <= if E-OBJ-SCHEMA throw then ;
+   BF-SOURCE-LEN @ 8 < if E-OBJ-SCHEMA throw then
+   BF-SOURCE-BUF LE:U32@ {: code:n :}
+   BF-SOURCE-BUF 4 + LE:U32@ {: data:n :}
+   code 0 <= code BF-SOURCE-LEN @ 8 - > or if E-OBJ-SCHEMA throw then
+   data BF-SOURCE-LEN @ 8 - code - <> if E-OBJ-SCHEMA throw then
+   code data ;
 
-: HBB-BUILD-OBJECT-RECORD ( n -- ) {: textu:n :}
+: HBB-BUILD-OBJECT-RECORD ( n n -- ) {: code:n data:n :}
    OBJ:RESET
    HBB-SRC-CLOSURE-HEX 64 OBJ:SOURCE!
    HBB-TARGET-ABI$ OBJ:TARGET!
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
-   BF-SOURCE-BUF textu OBJ:TEXT+
+   BF-SOURCE-BUF 8 + code OBJ:TEXT+
+   data 0 > if BF-SOURCE-BUF 8 + code + data OBJ:DATA+ then
    HBB-ENTRY-NAME$ s" --" OBJ:EXPORT+
    HBB-ENTRY-NAME$ 0 s" --" OBJ:DEF+
    HBB-PRESEED? if
       HBB-ENTRY-NAME$ HBB-PRESEED-MODE @ HBB-SEED-HEX$ OBJ:ENTRY+
    then ;
 
+: HBB-AOT-SAVE-INPUTS-RUN ( -- )
+   HBB-MAKER-INPUTS$ HBB-INPUTS-READ {: rows:ptr rowsu:n :}
+   rows rowsu NFILE-INPUTS:FORMAT
+   rows rowsu HBB-AOT-INPUTS-KEY!
+   HBB-AOT-INPUTS$ rows rowsu ATOMIC-WRITE-FILE ;
+
 : HBB-STORE-OBJECT ( -- )
+   ['] HBB-AOT-SAVE-INPUTS-RUN ['] HBB-INPUTS-RELEASE finally
+   s" hb-build-inputs-" s" " s" " HBB-AOT-INPUTS$ BUILD-CACHE:PRUNE
+   HBB-ARTIFACT-PATHS
+   -1 HBB-ARTIFACT-CACHE !
    BUILD-CACHE:ROOT$ OBJRES:ROOT!
-   HBB-READ-OBJECT-TEXT HBB-BUILD-OBJECT-RECORD
-   OBJRES:STORE 2drop
+   HBB-READ-OBJECT HBB-BUILD-OBJECT-RECORD
+   OBJRES:STORE OBJSTORE:PATH$ {: obj:ptr obju:n :}
+   HBB-GOT-NAME$ BF-A$ obj obju HBB-MAP-COPY
+   s" " s" .hbo.map" s" " HBB-MAP-DST$ BUILD-CACHE:PRUNE
    -1 HBB-OBJECT-STORE ! ;
+
+: HBB-OBJECT-PATH$ ( -- ptr u8 n )
+   HBB-OBJ-KEY OBJ:KEY-HEX
+   HBB-OBJ-KEY 64 OBJSTORE:PATH$ ;
+
+: HBB-STAGE-OPEN ( -- )
+   BUILD-CACHE:ROOT$ HBB-ARTIFACT-STEM$ MAKE-TEMP-DIR {: a:ptr u:n :}
+   a HBB-STAGE-DIR-BUF u BYTE-COPY
+   u HBB-STAGE-DIR-U ! ;
 
 : HBB-OBJECT-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
-   tmp tmpu OBJIMG:WRITE
+   HBB-STAGE$ tmp tmpu COPY-FILE-STREAM
    tmp tmpu CHMOD-X ;
 
-: HBB-WRITE-OBJECT ( -- )
+\ The cached sidecar must name the bytes this relink actually produced. An
+\ unbound map misses the object before either output path is published.
+: HBB-OBJECT-STAGE ( -- )
    OBJIMG:LOAD
-   [: HBB-OBJECT-FILL ;] HBB-REPLACE-OUT
+   HBB-STAGE-DIR$ s" object" HBB-STAGE-BUF JOIN-PATH HBB-STAGE-U !
+   HBB-STAGE$ OBJIMG:WRITE
+   HBB-OBJECT-PATH$ HBB-STAGE$ HBB-MAP-COPY
+   HBB-STAGE$ IMAGE-NAMES:LOAD-BOUND
+   IMAGE-NAMES:BOUND? 0= if exit then
+   HBB-STAGE$ HBB-MAP-SRC!
+   HBB-OUT$ HBB-MAP-DST!
+   [: HBB-OBJECT-FILL ;] HBB-PAIR-RUN
    -1 HBB-OBJECT-HIT ! ;
 
+: HBB-WRITE-OBJECT? ( -- bool )
+   HBB-STAGE-OPEN
+   [: HBB-OBJECT-STAGE ;] catch {: code:n :}
+   HBB-STAGE-DIR$ REMOVE-TREE
+   code 0<> if
+      code E-BUILD-PATH <> code E-FS-OPEN <> and
+      code E-FS-IO <> and code E-FS-STAT <> and if code throw then
+      HBB-OBJECT-PATH$ FS-TRY-LSTAT
+      HBB-OBJECT-PATH$ HBB-MAP-SRC!
+      HBB-MAP-SRC$ FS-TRY-LSTAT and if code throw then
+      HBB-FALSE exit
+   then
+   HBB-OBJECT-HIT @ 0<> ;
+
 : HBB-OBJECT-HIT? ( -- bool )
+   HBB-ARTIFACT-CACHE @ 0= if HBB-FALSE exit then
    HBB-OBJECT-LOAD? 0= if HBB-FALSE exit then
-   HBB-WRITE-OBJECT
-   HBB-TRUE ;
+   HBB-OBJECT-PATH$ HBB-MAP-SRC!
+   HBB-MAP-SRC$ FILE? 0= if HBB-FALSE exit then
+   HBB-MAP-SRC$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
+   HBB-WRITE-OBJECT? ;
 
 \ The artifact is copied into a work directory of its own in the cache and
 \ published by rename, so a half-written artifact is never visible under its
@@ -808,39 +1277,45 @@ variable HBB-FILLING
 : HBB-STAGE-ARTIFACT ( -- )
    HBB-STAGE-DIR$ HBB-ARTIFACT-STEM$ HBB-STAGE-BUF JOIN-PATH HBB-STAGE-U !
    HBB-OUT$ HBB-STAGE$ COPY-FILE-STREAM
+   HBB-OUT$ HBB-STAGE$ HBB-MAP-COPY
    HBB-STAGE$ CHMOD-X
+   HBB-STAGE$ HBB-MAP-SRC!
+   HBB-ARTIFACT$ HBB-MAP-DST!
+   HBB-MAP-SRC$ HBB-MAP-DST$ RENAME-FILE
    HBB-STAGE$ HBB-ARTIFACT$ RENAME-FILE ;
-
-: HBB-STAGE-OPEN ( -- )
-   BUILD-CACHE:ROOT$ HBB-ARTIFACT-STEM$ MAKE-TEMP-DIR {: a:ptr u:n :}
-   a HBB-STAGE-DIR-BUF u BYTE-COPY
-   u HBB-STAGE-DIR-U ! ;
 
 \ A published artifact prunes its family, which reports its own failures and
 \ never fails the build.
 : HBB-INSTALL-ARTIFACT ( -- )
    HBB-ARTIFACT-CACHE @ 0= if exit then
-   HBB-ARTIFACT$ EXECUTABLE? if exit then
+   HBB-ARTIFACT-READY? if exit then
    HBB-STAGE-OPEN
    [: HBB-STAGE-ARTIFACT ;] catch HBB-ARTIFACT-RC !
    HBB-STAGE-DIR$ REMOVE-TREE
    HBB-ARTIFACT-RC @ 0 <> if HBB-ARTIFACT-RC @ throw then
-   HBB-ARTIFACT-PREFIX$ s" " HBB-ARTIFACT-STEM$ HBB-ARTIFACT$ BUILD-CACHE:PRUNE ;
+   HBB-ARTIFACT-PREFIX$ s" " HBB-ARTIFACT-STEM$ HBB-ARTIFACT$ BUILD-CACHE:PRUNE
+   HBB-ARTIFACT$ HBB-MAP-DST!
+   HBB-ARTIFACT-PREFIX$ s" .map" HBB-ARTIFACT-STEM$ HBB-MAP-DST$ BUILD-CACHE:PRUNE ;
 
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
    HBB-GOT-NAME$ BF-REMOVE-TMP
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
    HBB-OBJ-NAME$ BF-REMOVE-TMP
    HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
 
 : HBB-SUCCESS ( -- )
-   s" hb-build OK: " type
+   HBB-ENGINE-COMPAT @ if s" native-build OK: " else s" hb-build OK: " then type
    HBB-OUT$ type
-   HBB-REPL @ if
+   HBB-ENGINE-COMPAT @ if
+      HBB-WHITEBOX @ if s"  (whitebox image)" else s"  (product image)" then
+   else HBB-ENGINE @ if
+      HBB-WHITEBOX @ if s"  (whitebox engine)" else s"  (engine)" then
+   else HBB-REPL @ if
       s"  (native application + REPL)"
    else
       s"  (AOT, engine stripped)"
-   then type
+   then then then type
    cr ;
 
 defer HBB-REPORT-HOOK ( -- )
@@ -870,6 +1345,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-BUILD-BEGIN ( -- )
    mono-ns HBB-START-NS !
+   BF-ENGINE-SELECTED? 0= if ENGINE-ID:PATH$ BF-ENGINE! then
    HB-BUILD:RESET
    HBB-RESET-TRACE
    HBB-READ-MAKER-TIMEOUT ;
@@ -883,13 +1359,228 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-INSTALL-ARTIFACT
    HBB-FINISH ;
 
-: HBB-REPL-INPUTS-READ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
+\ The selector records separate support and product input spans. Its name is
+\ stable context; the support image and artifact use the actual child reads.
+: HBB-ENGINE-SELECT$ ( -- ptr u8 n )
+   HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U @ ;
+
+: HBB-ENGINE-SELECT-KEY! ( -- )
+   CONTENT-KEY:OPEN
+   s" hb-engine-selection-v2" CONTENT-KEY:TEXT+
+   NATIVE-BUILD-IMAGE:DONOR$ CONTENT-KEY:TEXT+
+   NATIVE-BUILD-IMAGE:ROOT$ CONTENT-KEY:TEXT+
+   SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
+   BUILD-TARGET:CURRENT RTARGET:PROFILE$ CONTENT-KEY:TEXT+
+   NATIVE-BUILD-IMAGE:PROGRAM-BYTES$ CONTENT-KEY:TEXT+
+   HBB-WHITEBOX @ if s" whitebox" else s" product" then CONTENT-KEY:TEXT+
+   HBB-ENGINE-SELECT-KEY CONTENT-KEY:FINAL-HEX
+   HBB-ENGINE-SELECT-KEY s" engine-selection"
+      HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U KEYED-IMAGE:PATH! ;
+
+: HBB-ENGINE-ARTIFACT-PATHS ( -- )
+   HBB-ARTIFACT-NAME!
+   BUILD-CACHE:ROOT$ HBB-ARTIFACT-NAME$ HBB-ARTIFACT-PATH JOIN-PATH
+      HBB-ARTIFACT-U ! ;
+
+: HBB-ENGINE-SELECT-READ ( -- )
+   HBB-ENGINE-SELECT$ FILE-SIZE {: size:n :}
+   size 152 <= if E-NUNIT-PROFILE throw then
+   size HBB-ENGINE-RECORD-RESERVE
+   HBB-ENGINE-SELECT$ 0 HBB-ENGINE-RECORD size READ-ALL size <>
+      if E-FS-IO throw then
+   0 HBB-ENGINE-RECORD {: rec:ptr :}
+   rec 8 s" HBENGIN2" STR= 0= if E-NUNIT-PROFILE throw then
+   rec 136 + LE:U64@ {: supportu:n :}
+   rec 144 + LE:U64@ {: productu:n :}
+   supportu 0 <= supportu size 152 - > or if E-NUNIT-PROFILE throw then
+   productu 0 < productu size 152 supportu + - <> or
+      if E-NUNIT-PROFILE throw then
+   128 0 ?do
+      rec 8 + i + c@ {: c:n :}
+      c 48 >= c 57 <= and
+      c 97 >= c 102 <= and or 0= if E-NUNIT-PROFILE throw then
+   loop
+   rec 152 + supportu NFILE-INPUTS:FORMAT
+   productu 0<> if
+      rec 152 + supportu + productu NFILE-INPUTS:FORMAT
+   then ;
+
+: HBB-ENGINE-CHECK-ROWS ( -- )
+   HBB-ENGINE-CHECK-A @ HBB-ENGINE-CHECK-U @ NFILE-INPUTS:CHECK ;
+
+: HBB-ENGINE-ENV$ ( ptr u8 n -- ptr u8 n ) {: query:ptr queryu:n :}
+   0 begin dup PROC-ENV-N @ COUNT>N < while
+      dup >IDX PROC-ENV-SLOT @ {: z:ptr :}
+      z query queryu ENV=? if
+         drop z queryu 1+ + dup ZLEN exit
+      then
+      1+
+   repeat drop NULL-PTR 0 ;
+
+: HBB-ENGINE-CHECK-PRODUCT ( -- )
+   HBB-ENGINE-CHECK-A @ HBB-ENGINE-CHECK-U @
+      ['] HBB-ENGINE-ENV$ NFILE-INPUTS:CHECK-WITH ;
+
+: HBB-ENGINE-ROWS-FRESH? ( ptr u8 n [ -- ] -- bool ) {: check :}
+   HBB-ENGINE-CHECK-U ! HBB-ENGINE-CHECK-A !
+   check catch {: rc:n :}
+   rc 0= if HBB-TRUE exit then
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
+   rc throw ;
+
+: HBB-ENGINE-SUPPORT-ROWS$ ( -- ptr u8 n )
+   0 HBB-ENGINE-RECORD {: rec:ptr :}
+   rec 152 + rec 136 + LE:U64@ ;
+
+: HBB-ENGINE-PRODUCT-ROWS$ ( -- ptr u8 n )
+   HBB-ENGINE-SUPPORT-ROWS$ {: rows:ptr supportu:n :}
+   0 HBB-ENGINE-RECORD 144 + LE:U64@ {: productu:n :}
+   rows supportu + productu ;
+
+: HBB-ENGINE-INPUT$ ( -- ptr u8 n )
+   HBB-ENGINE-INPUT-PATH HBB-ENGINE-INPUT-U @ ;
+
+: HBB-ENGINE-INPUT! ( -- )
+   s" hb-engine.inputs" BF-A$ HBB-ENGINE-INPUT-PATH HBB-ENGINE-INPUT-U
+      HBB-COPY-PATH! ;
+
+: HBB-ENGINE-PRODUCT-ENV ( -- )
+   HBB-CMD-RESET
+   s" HABU_ENGINE_INPUTS" >LEN HBB-ENGINE-INPUT$ >LEN PROC-ENV-SET
+   s" HABU_WHITEBOX_IMAGE" >LEN
+   HBB-WHITEBOX @ if s" 1" else s" " drop 0 then >LEN PROC-ENV-SET ;
+
+: HBB-ENGINE-SELECT-FRESH? ( -- bool )
+   0 HBB-ENGINE-SELECT-READY !
+   0 HBB-ENGINE-SUPPORT-FRESH !
+   HBB-ENGINE-SELECT$ FILE? 0= if HBB-FALSE exit then
+   [: HBB-ENGINE-SELECT-READ ;] catch {: rc:n :}
+   rc 0<> if
+      rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
+      rc throw
+   then
+   -1 HBB-ENGINE-SELECT-READY !
+   HBB-ENGINE-SUPPORT-ROWS$ ['] HBB-ENGINE-CHECK-ROWS HBB-ENGINE-ROWS-FRESH?
+      HBB-ENGINE-SUPPORT-FRESH !
+   HBB-ENGINE-SUPPORT-FRESH @ 0= if HBB-FALSE exit then
+   0 HBB-ENGINE-RECORD 144 + LE:U64@ 0= if HBB-FALSE exit then
+   HBB-ENGINE-PRODUCT-ENV
+   HBB-ENGINE-PRODUCT-ROWS$ ['] HBB-ENGINE-CHECK-PRODUCT
+      HBB-ENGINE-ROWS-FRESH? 0= if HBB-FALSE exit then
+   HBB-ENGINE-SELECT$ BUILD-CACHE:USED 0= if HBB-FALSE exit then
+   0 HBB-ENGINE-RECORD 8 + HBB-ARTIFACT-KEY-HEX 64 BYTE-COPY
+   HBB-ENGINE-ARTIFACT-PATHS
+   HBB-TRUE ;
+
+: HBB-ENGINE-IMAGE! ( -- )
+   KEYED-IMAGE:CAPTURE-RESET
+   0 HBB-MAKER-HIT !
+   HBB-ENGINE-SELECT-READY @ HBB-ENGINE-SUPPORT-FRESH @ and 0<> if
+      0 HBB-ENGINE-RECORD 72 + 64
+      HBB-ENGINE-SUPPORT-ROWS$ NATIVE-BUILD-IMAGE:ADOPT
+      NATIVE-BUILD-IMAGE:REUSE? HBB-MAKER-HIT !
+   then
+   HBB-MAKER-HIT @ 0<> if NATIVE-BUILD-IMAGE:PATH$
+   else HBB-REPORT-JSON @ 0<> NATIVE-BUILD-IMAGE:BUILD$ then
+      {: image:ptr imageu:n :}
+   image imageu HBB-ENGINE-IMAGE-PATH HBB-ENGINE-IMAGE-U HBB-COPY-PATH!
+   HBB-MAKER-HIT @ 0= HBB-MAKER-BUILD !
+   HBB-ENGINE-COMPAT @ HBB-REPORT-JSON @ 0= and if
+      s" native-build: support image " type
+      HBB-MAKER-HIT @ 0<> if s" hit" else s" built" then type cr
+   then ;
+
+: HBB-ENGINE-SELECT-WRITE ( -- )
+   0 HBB-ENGINE-RECORD 136 + LE:U64@
+   0 HBB-ENGINE-RECORD 144 + LE:U64@ + 152 + {: size:n :}
+   HBB-ENGINE-SELECT$ 0 HBB-ENGINE-RECORD size ATOMIC-WRITE-FILE ;
+
+\ The support child has finished, so its key and rows describe the bytes it
+\ actually read. Record that success before a product child can fail.
+: HBB-ENGINE-SUPPORT-SELECT! ( -- )
+   HBB-ENGINE-SELECT-KEY!
+   HBB-ENGINE-SELECT-READY @ 0<> if
+      0 HBB-ENGINE-RECORD 72 + 64 NATIVE-BUILD-IMAGE:KEY$ STR=
+         if exit then
+   then
+   NATIVE-BUILD-IMAGE:ROWS$ {: rows:ptr size:n :}
+   size 152 + HBB-ENGINE-RECORD-RESERVE
+   0 HBB-ENGINE-RECORD {: rec:ptr :}
+   s" HBENGIN2" drop rec 8 BYTE-COPY
+   64 0 ?do 48 rec 8 + i + c! loop
+   NATIVE-BUILD-IMAGE:KEY$ drop rec 72 + 64 BYTE-COPY
+   size rec 136 + LE:U64!
+   0 rec 144 + LE:U64!
+   rows rec 152 + size BYTE-COPY
+   HBB-ENGINE-SELECT-WRITE ;
+
+: HBB-ENGINE-CMD ( -- len len outcome )
+   ['] HBB-ENGINE-IMAGE! catch {: rc:n :}
+   rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
+   rc 0<> if rc throw then
+   HBB-ENGINE-SUPPORT-SELECT!
+   HBB-ENGINE-PRODUCT-ENV
+   s" --" >LEN PROC-ARGV+
+   HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
+   HBB-WHITEBOX @ if s" whitebox" >LEN PROC-ARGV+ then
+   HBB-ENGINE-TARGET @ if
+      s" --target" >LEN PROC-ARGV+
+      BUILD-TARGET:CURRENT RTARGET:PROFILE$ >LEN PROC-ARGV+
+   then
+   HBB-ENGINE-IMAGE-PATH HBB-ENGINE-IMAGE-U @ >LEN
+   s" " >LEN
+   [: HBB-OUT-ROOM ;]
+   [: HBB-ERR-ROOM ;]
+   HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
+
+: HBB-ENGINE-INPUTS-READ ( -- )
+   HBB-ENGINE-INPUT$ FILE-SIZE {: size:n :}
    size 0 <= if E-NUNIT-PROFILE throw then
-   size HBB-REPL-INPUTS-RESERVE
-   path pathu 0 HBB-REPL-INPUTS size READ-ALL size <> if E-FS-IO throw then
-   0 HBB-REPL-INPUTS size ;
+   NATIVE-BUILD-IMAGE:ROWS$ {: support:ptr supportu:n :}
+   size 152 + supportu + HBB-ENGINE-RECORD-RESERVE
+   support 0 HBB-ENGINE-RECORD 152 + supportu BYTE-COPY
+   HBB-ENGINE-INPUT$ 0 HBB-ENGINE-RECORD 152 + supportu + size
+      READ-ALL size <>
+      if E-FS-IO throw then
+   0 HBB-ENGINE-RECORD 152 + supportu + size NFILE-INPUTS:FORMAT
+   HBB-ENGINE-ROW-SHA SHA256-BEGIN
+   HBB-ENGINE-ROW-SHA 0 HBB-ENGINE-RECORD 152 + supportu + size SHA256-FEED
+   HBB-ENGINE-ROW-SHA HBB-ENGINE-ROW-DIGEST SHA256-END
+   CONTENT-KEY:OPEN
+   s" hb-engine-artifact-v2" CONTENT-KEY:TEXT+
+   NATIVE-BUILD-IMAGE:KEY$ CONTENT-KEY:TEXT+
+   HBB-WHITEBOX @ if s" whitebox" else s" product" then CONTENT-KEY:TEXT+
+   HBB-ENGINE-ROW-DIGEST CONTENT-KEY:DIGEST+
+   HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX
+   HBB-ENGINE-ARTIFACT-PATHS
+   0 HBB-ENGINE-RECORD {: rec:ptr :}
+   s" HBENGIN2" drop rec 8 BYTE-COPY
+   HBB-ARTIFACT-KEY-HEX rec 8 + 64 BYTE-COPY
+   NATIVE-BUILD-IMAGE:KEY$ drop rec 72 + 64 BYTE-COPY
+   supportu rec 136 + LE:U64!
+   size rec 144 + LE:U64! ;
+
+: HBB-BUILD-ENGINE ( -- )
+   HBB-PREPARE-CACHE
+   -1 HBB-ARTIFACT-CACHE !
+   NATIVE-BUILD-IMAGE:CONTEXT!
+   HBB-ENGINE-SELECT-KEY!
+   HBB-ENGINE-INPUT!
+   HBB-ENGINE-SELECT-FRESH? if
+      HBB-RESTORE-ARTIFACT? if
+         HBB-REPORT-JSON @ 0= if
+            s" hb-build: engine artifact hit" type cr
+         then
+         HBB-FINISH exit
+      then
+   then
+   -1 HBB-MAKER-RUN !
+   HBB-ENGINE-CMD HBB-FINISH-MAKER
+   HBB-ENGINE-INPUTS-READ
+   HBB-INSTALL-OUT
+   HBB-INSTALL-ARTIFACT
+   HBB-ENGINE-SELECT-WRITE
+   HBB-FINISH ;
 
 : HBB-REPL-ENGINE-DIGEST! ( -- )
    HBB-REPL-ENGINE-SHA BF-ENGINE$ HBB-REPL-ENGINE-DIGEST SHA256-FILE-IN
@@ -913,7 +1604,7 @@ defer HBB-REPORT-HOOK ( -- )
       HBB-REPL-SUPPORT-PATH HBB-REPL-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-REPL-FRESH-CHECK ( -- )
-   HBB-REPL-DEPS$ HBB-REPL-INPUTS-READ {: bytes:ptr size:n :}
+   HBB-REPL-DEPS$ HBB-INPUTS-READ {: bytes:ptr size:n :}
    size HBB-REPL-DEPS-HEADER-U < if E-NUNIT-PROFILE throw then
    bytes 8 s" HBRDEPS3" STR= 0= if E-NUNIT-PROFILE throw then
    bytes 8 + LE:U64@ {: srcu:n :}
@@ -944,7 +1635,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-DEPS-PATH? 0= if HBB-FALSE exit then
    HBB-REPL-DEPS$ FILE? 0= if HBB-FALSE exit then
    [: HBB-REPL-FRESH-CHECK ;] catch {: rc:n :}
-   HBB-REPL-INPUTS-RELEASE
+   HBB-INPUTS-RELEASE
    rc 0= if HBB-TRUE exit then
    rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
    rc throw ;
@@ -968,7 +1659,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-APP-BUILDER-U ! HBB-APP-BUILDER-A ! ;
 
 : HBB-REPL-SUPPORT-CHECK ( -- )
-   HBB-REPL-SUPPORT-PATH$ HBB-REPL-INPUTS-READ {: rec:ptr size:n :}
+   HBB-REPL-SUPPORT-PATH$ HBB-INPUTS-READ {: rec:ptr size:n :}
    size HBB-REPL-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
    rec 8 s" HBRSEL2!" STR= 0= if E-NUNIT-PROFILE throw then
    rec 72 + LE:U64@ size HBB-REPL-SUPPORT-HEADER-U - <>
@@ -989,7 +1680,7 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-REPL-SUPPORT-FRESH? ( -- bool )
    HBB-REPL-SUPPORT-PATH$ FILE? 0= if HBB-FALSE exit then
    [: HBB-REPL-SUPPORT-CHECK ;] catch {: rc:n :}
-   HBB-REPL-INPUTS-RELEASE
+   HBB-INPUTS-RELEASE
    rc 0= if
       HBB-REPL-PRODUCER-READY @ 0= if HBB-FALSE exit then
       HBB-REPL-SUPPORT-PATH$ BUILD-CACHE:USED if HBB-TRUE exit then
@@ -1094,7 +1785,7 @@ defer HBB-REPORT-HOOK ( -- )
    dst size ;
 
 : HBB-REPL-SAVE-INPUTS-RUN ( -- )
-   HBB-REPL-MAKER-INPUTS$ HBB-REPL-INPUTS-READ
+   HBB-MAKER-INPUTS$ HBB-INPUTS-READ
    2dup NFILE-INPUTS:FORMAT
    NFILE-INPUTS:RESET
    NFILE-INPUTS:APPEND
@@ -1108,7 +1799,7 @@ defer HBB-REPORT-HOOK ( -- )
    else 0 then
    {: rc:n :}
    NFILE-INPUTS:CLOSE
-   HBB-REPL-INPUTS-RELEASE
+   HBB-INPUTS-RELEASE
    HBB-REPL-SIDECAR-RELEASE
    HBB-REPL-PRODUCER-RELEASE
    rc 0<> if rc throw then ;
@@ -1131,6 +1822,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 : HBB-BUILD ( -- )
    HBB-BUILD-BEGIN
+   HBB-ENGINE @ if HBB-BUILD-ENGINE exit then
    HBB-REPL @ if HBB-BUILD-REPL exit then
    HBB-PREPARE-ARTIFACT-CACHE
    HBB-BUILD-REST ;
@@ -1149,22 +1841,40 @@ defer HBB-REPORT-HOOK ( -- )
    rc 0= if exit then
    rc E-PROC-TIMEOUT = if
       HBB-CLEANUP
+      HBB-ENGINE @ if PROC-TIMEOUT-RC HBB-EXIT then
       HBB-UNCAUGHT-RC HBB-EXIT
    then
    rc E-BUILD-INSTALL = if
-      HBB-CLEANUP
+      [: HBB-CLEANUP ;] catch {: clean:n :}
+      clean 0<> if
+         s" build cleanup failed" clean HBB-OUT$ HBB-PAIR-REPORT
+      then
       s" hb-build: cannot replace output" HBB-BUILD-RC die
    then
    rc throw ;
 
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
+   HBB-ENGINE @ if [: HBB-BUILD-ENGINE ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-PREPARE-CACHE-CLI
    [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
 
 : HBB-MAIN ( -- )
    HBB-PARSE
+   HBB-PREPARE-TMP
+   HBB-BUILD-CLI
+   HBB-CLEANUP ;
+
+: HBB-ENGINE-RUN-PATH ( ptr u8 n bool bool -- )
+   {: out:ptr outu:n whitebox:bool target:bool :}
+   HBB-RESET-OPTIONS
+   -1 HBB-ENGINE !
+   -1 HBB-ENGINE-COMPAT !
+   whitebox if -1 HBB-WHITEBOX ! then
+   target if -1 HBB-ENGINE-TARGET ! then
+   out outu HBB-OUT-ARG!
+   s" src/habu/habu2.f" HBB-SRC!
    HBB-PREPARE-TMP
    HBB-BUILD-CLI
    HBB-CLEANUP ;
@@ -1180,6 +1890,7 @@ EXPORT HBB-BUILD
 EXPORT HBB-EXIT
 EXPORT HBB-JSON
 EXPORT HBB-MAIN
+EXPORT HBB-ENGINE-RUN-PATH
 EXPORT HBB-PATHS!
 EXPORT HBB-PRESEED-ENTRY!
 EXPORT HBB-PRESEED-SEED!

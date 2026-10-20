@@ -20,21 +20,12 @@
 \ comparison policy says what an ordered comparison means in the presence of NaN.
 \ Integer overflow is a separate axis again.
 \
-\ IDENTITY. CNUM:DIGEST is SHA-256 over the canonical preimage: the
-\ domain-separation tag, the schema version, and one eight-byte slot per semantic
-\ field in declaration order. The per-field codes are the stable wire codes; an
-\ existing code may never be renumbered without bumping SCHEMA. The encoding is a
-\ fixed-arity product of injective per-field codes, so two policies share a
-\ preimage exactly when they are the same policy.
-\
 \ FORGERY. `numeric-policy` is a public family, so its generated MAKE can
-\ assemble any five field values without passing through CNUM:POLICY. The words
-\ that carry identity - ENCODE, DIGEST, SAME? - revalidate their input rather
-\ than trust that it came from the checked constructor.
+\ assemble any five field values without passing through CNUM:POLICY. SAME?
+\ revalidates its inputs rather than trusting the checked constructor was used.
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 
 package CNUM
 public
@@ -90,8 +81,7 @@ ENUM compare DERIVE eq
 ;ENUM
 
 \ The policy. Fields in declaration order, deepest stack field first. It does not
-\ DERIVE eq: SAME? below is the hand-written field-by-field identity, matching
-\ the target contract, and it is the equality the digest is proved to agree with.
+\ DERIVE eq: SAME? below compares its fields, as in the target contract.
 STRUCTURE numeric-policy
    FIELD overflow overflow
    FIELD float float-model
@@ -102,39 +92,6 @@ STRUCTURE numeric-policy
 
 private
 
-\ ---- stable wire codes -------------------------------------------------------
-: OVERFLOW-CODE ( CNUM:overflow -- n )
-   MATCH overflow
-      wrap OF 0 ENDOF
-      trap OF 1 ENDOF
-   ;MATCH ;
-
-: FLOAT-CODE ( CNUM:float-model -- n )
-   MATCH float-model
-      ieee754        OF 0 ENDOF
-      flush-denormal OF 1 ENDOF
-   ;MATCH ;
-
-: CONTRACTION-CODE ( CNUM:contraction -- n )
-   MATCH contraction
-      forbidden OF 0 ENDOF
-      allowed   OF 1 ENDOF
-   ;MATCH ;
-
-: FAST-MATH-CODE ( CNUM:fast-math -- n )
-   MATCH fast-math
-      bit-exact   OF 0 ENDOF
-      reassociate OF 1 ENDOF
-      approximate OF 2 ENDOF
-   ;MATCH ;
-
-: COMPARE-CODE ( CNUM:compare -- n )
-   MATCH compare
-      ieee754-unordered OF 0 ENDOF
-      total-order       OF 1 ENDOF
-      assume-ordered    OF 2 ENDOF
-   ;MATCH ;
-
 \ ---- coherence rule ----------------------------------------------------------
 \ Contraction changes the result bits of a multiply-add, so it cannot be allowed
 \ under a licence that forbids any transformation from changing the bits.
@@ -142,20 +99,6 @@ private
    {: c:contraction m:fast-math :}
    c CNUM-CONTRACTION:ALLOWED CNUM-CONTRACTION:EQ 0= if exit then
    m CNUM-FAST--MATH:BIT-EXACT CNUM-FAST--MATH:EQ if E-CNUM-CONTRACT throw then ;
-
-\ ---- canonical preimage ------------------------------------------------------
-1 constant SCHEMA
-7 constant SLOTS
-0 constant SLOT-TAG
-1 constant SLOT-SCHEMA
-2 constant SLOT-OVERFLOW
-3 constant SLOT-FLOAT
-4 constant SLOT-CONTRACTION
-5 constant SLOT-FAST-MATH
-6 constant SLOT-COMPARE
-
-SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
-PRE-BYTES CWORK-SPAN PRE u8
 
 public
 
@@ -198,22 +141,5 @@ public
    xc yc CNUM-CONTRACTION:EQ and
    xm ym CNUM-FAST--MATH:EQ and
    xk yk CNUM-COMPARE:EQ and ;
-
-\ The canonical preimage. The bytes live in this module and stay valid until the
-\ next ENCODE call.
-: ENCODE ( CNUM:numeric-policy -- ptr u8 n )
-   VALIDATE CNUM-NUMERIC--POLICY:UNMAKE
-   {: o:overflow f:float-model c:contraction m:fast-math k:compare :}
-   CDIGEST:TAG-NUMERIC PRE SLOT-TAG CDIGEST:SLOT!
-   SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
-   o OVERFLOW-CODE PRE SLOT-OVERFLOW CDIGEST:SLOT!
-   f FLOAT-CODE PRE SLOT-FLOAT CDIGEST:SLOT!
-   c CONTRACTION-CODE PRE SLOT-CONTRACTION CDIGEST:SLOT!
-   m FAST-MATH-CODE PRE SLOT-FAST-MATH CDIGEST:SLOT!
-   k COMPARE-CODE PRE SLOT-COMPARE CDIGEST:SLOT!
-   PRE PRE-BYTES ;
-
-: DIGEST ( CNUM:numeric-policy -- CDIGEST:digest )
-   ENCODE CDIGEST:COMPUTE ;
 
 ;package

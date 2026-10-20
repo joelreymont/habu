@@ -339,6 +339,93 @@ TASK:SEMAPHORE PET-ENV-START
    s" /bin/sleep" s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-STDIN-OUTCOME
    T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
+package PET-GROW-BOTH
+
+DYNAMIC-BUFFER OUT u8
+DYNAMIC-BUFFER ERR u8
+
+: OUT-ROOM ( n -- ptr u8 )
+   OUT-RESERVE 0 OUT ;
+
+: ERR-ROOM ( n -- ptr u8 )
+   ERR-RESERVE 0 ERR ;
+
+: SHELL ( ptr u8 n -- )
+   PET-RESET
+   s" -c" >LEN PROC-ARGV+
+   >LEN PROC-ARGV+ ;
+
+: CAPTURE ( ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len outcome )
+   {: in:ptr inu out err timeout :}
+   s" /bin/sh" >LEN in inu out err timeout
+   RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
+
+\ Failures to distinguish: either pipe truncated or mixed with the other,
+\ stdin stalled behind full output pipes, partial output lost on a deadline,
+\ and a throwing sink leaving its child or descriptors alive. The tee child
+\ copies 128 KiB stdin to both pipes, then gives each pipe a distinct tail and
+\ exits nonzero, so complete output must survive unsuccessful children too.
+: LARGE ( -- )
+   PET-EARLY-IN!
+   s" /usr/bin/tee /dev/stderr; printf out; printf err >&2; exit 7" SHELL
+   PET-EARLY-IN PET-EARLY-IN-CAP >LEN [: OUT-ROOM ;] [: ERR-ROOM ;]
+   PET-HB-TIMEOUT-MS >MS CAPTURE {: outu:len erru:len oc :}
+   oc PROC-OUTCOME>RC RC>N 7 T=
+   outu LEN>N PET-EARLY-IN-CAP 3 + T=
+   erru LEN>N PET-EARLY-IN-CAP 3 + T=
+   0 OUT PET-EARLY-IN-CAP PET-EARLY-IN PET-EARLY-IN-CAP T$=
+   0 ERR PET-EARLY-IN-CAP PET-EARLY-IN PET-EARLY-IN-CAP T$=
+   PET-EARLY-IN-CAP OUT 3 s" out" T$=
+   PET-EARLY-IN-CAP ERR 3 s" err" T$= ;
+
+: TIMEOUT ( -- )
+   s" printf before-out; printf before-err >&2; exec /bin/sleep 5" SHELL
+   s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] 300 >MS CAPTURE
+   T-OUTCOME-TIMEOUT LEN>N 10 T= LEN>N 10 T=
+   0 OUT 10 s" before-out" T$=
+   0 ERR 10 s" before-err" T$= ;
+
+\ Each sink yields while the child fills the other pipe. Readiness therefore
+\ continues past the deadline: poll(0) alone cannot end this capture.
+: BUSY-TIMEOUT ( -- )
+   s" /usr/bin/yes before-out & exec /usr/bin/yes before-err >&2" SHELL
+   s" " >LEN
+   [: OUT-ROOM 10 >MS TASK:SLEEP ;]
+   [: ERR-ROOM 10 >MS TASK:SLEEP ;] 300 >MS CAPTURE
+   {: outu:len erru:len oc :}
+   oc T-OUTCOME-TIMEOUT
+   outu LEN>N 10 > TTRUE erru LEN>N 10 > TTRUE
+   0 OUT 10 s" before-out" T$=
+   0 ERR 10 s" before-err" T$= ;
+
+: REFUSE ( n -- ptr u8 )
+   drop E-STR-CAPACITY throw ;
+
+: SINK-FAILS ( [ n -- ptr u8 ] [ n -- ptr u8 ] -- )
+   {: out err :}
+   s" printf out; printf err >&2; exec /bin/sleep 5" SHELL
+   s" " >LEN out err PET-HB-TIMEOUT-MS >MS CAPTURE
+   drop 2drop ;
+
+: CLEANED ( -- )
+   PROC-PID @ PROC-NO-PID T=
+   PROC-CAPTURE-DONE? TTRUE
+   PROC-IN-W @ PROC-NO-FD T= ;
+
+public
+: RUN ( -- )
+   LARGE
+   TIMEOUT
+   BUSY-TIMEOUT
+   CLEANED
+   [: [: REFUSE ;] [: ERR-ROOM ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
+   CLEANED
+   [: [: OUT-ROOM ;] [: REFUSE ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ
+   CLEANED
+   OUT-RELEASE ERR-RELEASE ;
+
+;package
+
 : PET-SPAWN-RAW-MISSING ( -- )
    PET-RESET
    s" /no/such/habu-process-env-test" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
@@ -584,6 +671,7 @@ TASK:SEMAPHORE PET-ENV-START
    s" env-stdin-false-large" [: PET-RUN-ENV-STDIN-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-false-large" [: PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-timeout" [: PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ;] PET-CASE
+   s" env-stdin-growing-both" [: PET-GROW-BOTH:RUN ;] PET-CASE
    s" spawn-raw-missing" [: PET-SPAWN-RAW-MISSING ;] PET-CASE
    s" spawn-raw-true" [: PET-SPAWN-RAW-TRUE ;] PET-CASE
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE

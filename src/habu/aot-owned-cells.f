@@ -46,9 +46,14 @@
 \ These runtime owners are baked into the native engine. Loading libraries here
 \ would put their data before the application's capture window.
 require src/habu/layout.f
+require src/habu/xref.f
 
 package AOT-OWNED
 private
+
+\ This linker can be source-loaded by a previous-generation host.
+$2D68 constant OWNED-SOURCE-CELL
+$2D70 constant OWNED-SOURCE-SIZE-CELL
 
 \ FFI controls and the table allocations latched at the application boundary
 \ are visited together. Linker-only declarations may grow the live tables.
@@ -167,6 +172,14 @@ public
 
 private
 
+CAST: ENV-CELLS-XT ( n -- [ [ ptr u8 -- ] -- ] )
+
+: ENV-CELLS ( -- )
+   \ A bootstrap donor can predate the hook and therefore owns no observer.
+   s" ENV-INPUT:OWNED-CELLS" XREF-FIND
+   dup XREF-FOUND? 0= if drop exit then
+   XREF-START ENV-CELLS-XT [: FRESH ;] swap execute ;
+
 \ Visit the same extents when reserving the carried run and collecting claims.
 \ Only collection inspects live process resources or publishes claim rows.
 : TABLES ( [ ptr u8 n -- ] [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
@@ -211,6 +224,7 @@ private
 \ that ARGC-CELL/ARGV-CELL/ENVP-CELL are read through, so the entry republishes it
 \ together with those three startup cells themselves. GETENV and ENV=? keep
 \ their lookup cursors on each invocation's stack.
+\ ENV-INPUT's observer starts empty: source tracking belongs to the build process.
 \
 \ The dynamic-storage registry (src/core/dynamic-storage.f), which every
 \ DYNAMIC-BUFFER declaration - and so src/lib/memory.f MEM:WITH-BYTES - reaches, is
@@ -282,25 +296,9 @@ private
 \ baked, so both tables sit below every window and any program that formats or
 \ parses an integer reaches one.
 \
-\ SHA-256 (src/core/sha256.f) is baked for the same reason and splits both ways.
-\ KK (64 round constants) and HH0 (the 8 initial hash values) are read-only
-\ tables SHA-BLOCK and SHA256-BEGIN read and nothing writes: carried. That file
-\ keeps no cell at all now - a digest in progress is the CALLER's span, every
-\ cursor the words once kept in a cell of their own is a local, and a caller's
-\ context travels inside that caller's own window. What is left below the window
-\ is the two statics src/core/type-family-sha.f keeps for the checker, each read
-\ for the fact that justifies its claim - written before read within one call:
-\   TF-SHA-CTX   the checker's own digest context, which TF-SHA16 passes to
-\                SHA256-IN. That word calls SHA256-BEGIN first, which writes all
-\                eight hash words from HH0 and zeroes the tail count and the
-\                total; inside the span only the first TAIL-U tail bytes are ever
-\                read and SHA256-FEED moves them in before it raises that count,
-\                SHA-BLOCK writes WS[0..15] from the block and WS[16..63] from
-\                those before the compression loop reads one, and SHA-PAD
-\                zero-fills all $80 bytes of PBLK and writes the tail and the
-\                length into it before SHA-BLOCK reads it.
-\   SHA-DIGEST   TF-SHA16 fills it through SHA256-IN before reading the first
-\                eight bytes back.
+\ SHA-256 (src/core/sha256.f) is baked because its read-only KK and HH0
+\ tables serve digest contexts owned by callers. The digest implementation
+\ itself keeps no mutable cell below the window.
 \ THE IMAGE-LIFECYCLE REGISTRY (src/lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
 \ its private lock, its two counters and the bases of its two hook tables,
@@ -319,10 +317,6 @@ private
 \ PATH0 hands it to the caller within that one call, so every byte it reads it
 \ wrote first.
 \
-\ src/core/type-family-sha.f declares no package, so the list names its two cells
-\ directly and that file needs no word of its own: the DYNAMIC-STORAGE:OWNED-CELLS
-\ detour below exists only because those three cells are private to their package.
-\
 \ NOT ON THE LIST, and refused as loudly as before, is every other engine cell
 \ below the window. src/os/env-base.f's own TMP-PATH cursors and buffer (TPB, TPP,
 \ TPQ, TPS, TPU) are the nearest miss: same file, same transient character, no
@@ -339,14 +333,16 @@ public
    window ENGINE-WINDOW !
    0 COUNT !
    ENV-DATA-PTR IMAGE-BASE
+   ENV-CELLS
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH ;] MEM:OWNED-CELLS
    [: FRESH ;] IMAGE-LIFECYCLE:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
    data-base EXIT-HOOK-CELL + FRESH
+   data-base OWNED-SOURCE-CELL + FRESH
+   data-base OWNED-SOURCE-SIZE-CELL + FRESH
    data-base CB-XDS + CB-BAND-BYTES FRESH-BYTES
    data-base RBASE-CELL + TEXT-BASE
-   TF-SHA-CTX FRESH  SHA-DIGEST FRESH
    window TASK:CHECK-OWNED
    [: ENGINE-CELLS ;] [: ENGINE-BYTES ;] [: ENGINE-FRESH ;] TABLES
    PZB PATH-CAP 1 + FRESH-BYTES ;

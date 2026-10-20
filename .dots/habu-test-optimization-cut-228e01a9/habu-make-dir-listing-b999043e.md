@@ -3,7 +3,7 @@ title: Make directory listing task-safe
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:12:52.724548+02:00\""
+created-at: "2026-10-02T23:12:52.724548+02:00"
 closed-at: "2026-10-14T19:43:43.277194+03:00"
 close-reason: "Directory listing and walk lock made task-safe in d7d3ba72; current process-fork.f registers PROC-TREE:CHILD-RESET. Remaining other-lock issue has separate af5c91a3."
 ---

@@ -1,23 +1,37 @@
 \ Files read while a selected source runs, plus the ordinary loader's path
-\ queries. The query rows preserve search order: a newly present candidate can
-\ change which child a require selects even when the old child is unchanged.
+\ queries and observed environment values. The query rows preserve search order:
+\ a newly present candidate can change which child a require selects even when
+\ the old child is unchanged.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/le.f
 require src/lib/memory.f
+require src/os/env-base.f
+require src/habu/xref.f
 
 package NFILE-INPUTS
 private
 
 1 constant FILE-ROW
 2 constant QUERY-ROW
+3 constant CONTENT-ROW
+4 constant ENV-ROW
 64 constant ROW-BYTES
+create CONTENT-SHA SHA256-FILE-CTX-BYTES allot
+create CONTENT-DIGEST 32 allot
 DYNAMIC-BUFFER INPUT-BUF u8
 variable INPUT-U
 variable INPUT-FIRST
 variable CHECK-OFF
+variable QUERY-OFF
+here data-base - negate 7 and allot
+variable MUTEX
+
+: LOCK ( -- ) begin 0 1 MUTEX atomic-cas 0= until ;
+: UNLOCK ( -- ) 0 MUTEX atomic! ;
+CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
 : MALFORMED ( -- ) E-NUNIT-FILE throw ;
@@ -29,7 +43,8 @@ variable CHECK-OFF
 
 : ROW ( n ptr u8 n ptr u8 n bool -- ptr u8 )
    {: kind:n path:ptr pathu:n answer:ptr answeru:n exists:bool :}
-   pathu 0 <= answeru 0 < or if BAD then
+   pathu 0 < answeru 0 < or if BAD then
+   pathu 0= kind ENV-ROW <> and if BAD then
    pathu MEM-MAX-N ROW-BYTES - > if BAD then
    answeru MEM-MAX-N ROW-BYTES - pathu - > if BAD then
    ROW-BYTES pathu + answeru + ROOM {: off:n :}
@@ -62,6 +77,19 @@ variable CHECK-OFF
    ns row 40 + LE:U64!
    size row 48 + LE:U64! ;
 
+: CONTENT-FILE ( ptr u8 ptr u8 n -- )
+   {: row:ptr path:ptr pathu:n :}
+   CONTENT-SHA path pathu row 32 + SHA256-FILE-IN
+      dup 0<> if throw then drop ;
+
+: CHECK-CONTENT ( ptr u8 ptr u8 n -- )
+   {: row:ptr path:ptr pathu:n :}
+   row 24 + LE:U64@ 1 <> if MALFORMED then
+   path pathu FILE? 0= if BAD then
+   CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN
+      dup 0<> if BAD then drop
+   row 32 + 32 CONTENT-DIGEST 32 STR= 0= if BAD then ;
+
 : CHECK-QUERY ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
    path pathu SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n exists:bool :}
@@ -69,38 +97,115 @@ variable CHECK-OFF
    answeru row 16 + LE:U64@ <> if BAD then
    answer answeru row ROW-BYTES pathu + + answeru STR= 0= if BAD then ;
 
+: CURRENT$ ( ptr u8 n -- ptr u8 n )
+   s" ENV-INPUT:CURRENT$" XREF-FIND
+   dup XREF-FOUND? 0= if drop BAD then
+   XREF-START ENV-CURRENT-XT execute ;
+
+: CHECK-ENV ( ptr u8 ptr u8 n [ ptr u8 n -- ptr u8 n ] -- )
+   {: row:ptr query:ptr queryu:n current :}
+   query queryu current execute {: answer:ptr answeru:n :}
+   answer NULL-PTR <> if 1 else 0 then row 24 + LE:U64@ <> if BAD then
+   answeru row 16 + LE:U64@ <> if BAD then
+   answer answeru row ROW-BYTES queryu + + answeru STR= 0= if BAD then ;
+
 public
 
 : RESET ( -- )
    0 INPUT-U ! 0 INPUT-FIRST ! 0 CHECK-OFF ! ;
 
-: ADD ( ptr u8 n ptr u8 n -- )
+private
+
+: STORE-SOURCE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n source:ptr sourceu:n :}
-   source drop sourceu drop
-   FILE-ROW path pathu s" " true ROW {: row:ptr :}
-   row path pathu STAMP-FILE ;
+   CONTENT-ROW path pathu s" " true ROW {: row:ptr :}
+   CONTENT-SHA source sourceu row 32 + SHA256-IN ;
 
-: ADD-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
+: STORE-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n :}
-   source drop sourceu drop
-   FILE-ROW path pathu root rootu true ROW {: row:ptr :}
-   row path pathu STAMP-FILE ;
+   CONTENT-ROW path pathu root rootu true ROW {: row:ptr :}
+   CONTENT-SHA source sourceu row 32 + SHA256-IN ;
 
-: ADD-MTIME ( ptr u8 n ptr u8 n -- )
+: STORE-HASH ( ptr u8 n ptr u8 n ptr u8 -- )
+   {: path:ptr pathu:n root:ptr rootu:n digest:ptr :}
+   CONTENT-ROW path pathu root rootu true ROW {: row:ptr :}
+   digest row 32 + 32 BYTE-COPY ;
+
+: STORE-MTIME ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n :}
    FILE-ROW path pathu root rootu true ROW {: row:ptr :}
    row path pathu STAMP-FILE ;
 
-: ADD-STAMP ( ptr u8 n ptr u8 n n n n -- )
+: STORE-CONTENT ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n root:ptr rootu:n :}
+   CONTENT-ROW path pathu root rootu true ROW {: row:ptr :}
+   row path pathu CONTENT-FILE ;
+
+: STORE-STAMP ( ptr u8 n ptr u8 n n n n -- )
    {: path:ptr pathu:n root:ptr rootu:n size:n sec:n ns:n :}
    FILE-ROW path pathu root rootu true ROW {: row:ptr :}
    sec row 32 + LE:U64!
    ns row 40 + LE:U64!
    size row 48 + LE:U64! ;
 
-: ADD-CANON ( ptr u8 n ptr u8 n bool -- )
+: STORE-CANON ( ptr u8 n ptr u8 n bool -- )
    {: path:ptr pathu:n answer:ptr answeru:n exists:bool :}
    QUERY-ROW path pathu answer answeru exists ROW drop ;
+
+\ One selection can revisit the same candidate during discovery's harvest
+\ passes. Its answer needs one validation row, regardless of visit count.
+: STORE-CANON-ONCE ( ptr u8 n ptr u8 n bool -- )
+   {: path:ptr pathu:n answer:ptr answeru:n exists:bool :}
+   INPUT-FIRST @ QUERY-OFF !
+   begin QUERY-OFF @ INPUT-U @ < while
+      QUERY-OFF @ INPUT-BUF {: row:ptr :}
+      row LE:U64@ QUERY-ROW =
+      row 8 + LE:U64@ pathu = and
+      row 16 + LE:U64@ answeru = and
+      row 24 + LE:U64@ exists if 1 else 0 then = and if
+         row ROW-BYTES + pathu path pathu STR= if
+            row ROW-BYTES pathu + + answeru answer answeru STR= if exit then
+         then
+      then
+      ROW-BYTES row 8 + LE:U64@ + row 16 + LE:U64@ + QUERY-OFF +!
+   repeat
+   path pathu answer answeru exists STORE-CANON ;
+
+: STORE-ENV ( ptr u8 n ptr u8 n -- )
+   {: query:ptr queryu:n answer:ptr answeru:n :}
+   ENV-ROW query queryu answer answeru answer NULL-PTR <> ROW drop ;
+
+public
+
+\ Workers may observe GETENV while the loading task records source rows.
+\ Hold one lock through reservation, growth and complete row finalization.
+\ Readers, reset and cleanup run after the source's workers have joined.
+: ADD ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-SOURCE ['] UNLOCK finally ;
+
+: ADD-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-ROOT ['] UNLOCK finally ;
+
+: ADD-HASH ( ptr u8 n ptr u8 n ptr u8 -- )
+   LOCK ['] STORE-HASH ['] UNLOCK finally ;
+
+: ADD-MTIME ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-MTIME ['] UNLOCK finally ;
+
+: ADD-CONTENT ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-CONTENT ['] UNLOCK finally ;
+
+: ADD-STAMP ( ptr u8 n ptr u8 n n n n -- )
+   LOCK ['] STORE-STAMP ['] UNLOCK finally ;
+
+: ADD-CANON ( ptr u8 n ptr u8 n bool -- )
+   LOCK ['] STORE-CANON ['] UNLOCK finally ;
+
+: ADD-CANON-ONCE ( ptr u8 n ptr u8 n bool -- )
+   LOCK ['] STORE-CANON-ONCE ['] UNLOCK finally ;
+
+: ADD-ENV ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-ENV ['] UNLOCK finally ;
 
 : BYTES$ ( -- ptr u8 n )
    INPUT-U @ INPUT-FIRST @ = if NULL-PTR 0 exit then
@@ -123,41 +228,58 @@ public
    first last = if NULL-PTR 0 exit then
    first INPUT-BUF last first - ;
 
-: APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+private
+
+: APPEND-ROWS ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
    u ROOM {: off:n :}
    a off INPUT-BUF u BYTE-COPY ;
+
+public
+
+: APPEND ( ptr u8 n -- )
+   LOCK ['] APPEND-ROWS ['] UNLOCK finally ;
 
 : TRUNCATE ( n -- ) {: off:n :}
    off 0 < off INPUT-U @ > or if BAD then
    INPUT-FIRST @ off > if off INPUT-FIRST ! then
    off INPUT-U ! ;
 
-: VERIFY ( ptr u8 n bool -- ) {: bytes:ptr size:n fresh:bool :}
+: VERIFY ( ptr u8 n bool [ ptr u8 n -- ptr u8 n ] -- )
+   {: bytes:ptr size:n fresh:bool current :}
    0 CHECK-OFF !
    begin CHECK-OFF @ size < while
       size CHECK-OFF @ - ROW-BYTES < if MALFORMED then
       bytes CHECK-OFF @ + {: row:ptr :}
       row 8 + LE:U64@ {: pathu:n :}
       row 16 + LE:U64@ {: answeru:n :}
-      pathu 0 <= answeru 0 < or if MALFORMED then
+      pathu 0 < answeru 0 < or if MALFORMED then
       pathu size CHECK-OFF @ - ROW-BYTES - > if MALFORMED then
       answeru size CHECK-OFF @ - ROW-BYTES - pathu - > if MALFORMED then
       row ROW-BYTES + {: path:ptr :}
       row LE:U64@ {: kind:n :}
+      pathu 0= kind ENV-ROW <> and if MALFORMED then
       kind FILE-ROW = if
          row 24 + LE:U64@ 1 <> if MALFORMED then
          fresh if row path pathu CHECK-FILE then
       else kind QUERY-ROW = if
          row 24 + LE:U64@ 1 > if MALFORMED then
          fresh if row path pathu CHECK-QUERY then
-      else MALFORMED then then
+      else kind CONTENT-ROW = if
+         row 24 + LE:U64@ 1 <> if MALFORMED then
+         fresh if row path pathu CHECK-CONTENT then
+      else kind ENV-ROW = if
+         row 24 + LE:U64@ 1 > if MALFORMED then
+         row 24 + LE:U64@ 0= answeru 0<> and if MALFORMED then
+         fresh if row path pathu current CHECK-ENV then
+      else MALFORMED then then then then
       ROW-BYTES pathu + answeru + CHECK-OFF +!
    repeat
    CHECK-OFF @ size <> if MALFORMED then ;
 
-: CHECK ( ptr u8 n -- ) true VERIFY ;
-: FORMAT ( ptr u8 n -- ) false VERIFY ;
+: CHECK-WITH ( ptr u8 n [ ptr u8 n -- ptr u8 n ] -- ) true swap VERIFY ;
+: CHECK ( ptr u8 n -- ) ['] CURRENT$ CHECK-WITH ;
+: FORMAT ( ptr u8 n -- ) false ['] CURRENT$ VERIFY ;
 
 : CLOSE ( -- )
    INPUT-BUF-RELEASE

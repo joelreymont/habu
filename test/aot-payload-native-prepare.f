@@ -2,7 +2,6 @@
 \ Match the cold engine's prefix, then open the portable source window.
 s" src/lib/prelude.f" provided
 include src/core/enums.f
-include src/core/type-family-sha.f
 include src/core/combinators.f
 require src/habu/code-span.f
 require src/habu/xref.f
@@ -20,7 +19,7 @@ require src/lib/memory.f
 require src/lib/vector.f
 
 package PAYLOAD-NATIVE-PRODUCER
-ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
 s" src/habu/layout.f" provided

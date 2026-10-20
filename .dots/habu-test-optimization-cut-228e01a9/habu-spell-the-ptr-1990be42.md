@@ -3,7 +3,7 @@ title: Spell the ptr constructor once
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:36:34.886143+02:00\""
+created-at: "2026-10-01T11:36:34.886143+02:00"
 closed-at: "2026-10-14T19:59:35.672992+03:00"
 close-reason: 9af3ef74 made both storage readers consume the shared CHECKER-TYPE-SPAN-STEP, which calls SIG-PTR-TOK? for the ptr constructor; the duplicate token predicates are gone. Its storage/checker suites and two-generation build passed.
 ---

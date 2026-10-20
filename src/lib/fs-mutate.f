@@ -821,6 +821,27 @@ public
    tmp tmpu path pathu RENAME-FILE
    path pathu tmp tmpu fill ;
 
+: FS-MUT-STAGED-CLEAN ( ptr u8 n -- ptr u8 n )
+   2dup FS-MUT-ATOMIC-CLEAN-TEMP ;
+
+: FS-MUT-STAGED-FORGET ( ptr u8 n -- ptr u8 n )
+   2dup CLEANUP-FORGET ;
+
+\ Reporting is best effort after a primary failure: a closed stderr must not
+\ replace the fill or rename error. Write the path separately from the 1 KiB
+\ string builder so even the longest legal sibling can be named.
+: FS-MUT-STAGED-REPORT ( ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n code:n path:ptr pathu:n :}
+   SB-RESET
+   s" hb: staged replacement " SB-APPEND
+   label labelu SB-APPEND
+   s"  threw " SB-APPEND
+   code FMT:SB-INT
+   s"  at " SB-APPEND
+   2 SB$ write drop
+   2 path pathu write drop
+   2 S\" \n" write drop ;
+
 \ Replace the file at path with the one fill writes at the path it is handed:
 \ the sibling RESERVE-SIBLING creates, its descriptor closed, renamed over path
 \ once fill returns. Until then path holds what it held, so it names its old
@@ -837,9 +858,28 @@ public
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}
    \ Closed once, before fill opens the sibling by path; ATOMIC-WRITE-FILE says
    \ why a failed close is not retried.
-   fd FS-ATOMIC:CLOSE-FD 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP E-FS-IO throw then
+   fd FS-ATOMIC:CLOSE-FD 0<> if
+      tmp tmpu [: FS-MUT-STAGED-CLEAN ;] catch {: clean-code:n :}
+      2drop
+      clean-code 0<> if
+         s" close cleanup" clean-code tmp tmpu FS-MUT-STAGED-REPORT
+      then
+      E-FS-IO throw
+   then
    path pathu tmp tmpu fill [: FS-MUT-STAGED-RUN ;] catch {: code:n :}
    drop 2drop 2drop
-   code 0<> if tmp tmpu FS-MUT-ATOMIC-CLEAN-TEMP then
-   tmp tmpu CLEANUP-FORGET
-   code 0<> if code throw then ;
+   code 0<> if
+      tmp tmpu [: FS-MUT-STAGED-CLEAN ;] catch {: clean-code:n :}
+      2drop
+      clean-code 0= if
+         tmp tmpu [: FS-MUT-STAGED-FORGET ;] catch {: forget-code:n :}
+         2drop
+         forget-code 0<> if
+            s" cleanup registration" forget-code tmp tmpu FS-MUT-STAGED-REPORT
+         then
+      else
+         s" cleanup" clean-code tmp tmpu FS-MUT-STAGED-REPORT
+      then
+      code throw
+   then
+   tmp tmpu CLEANUP-FORGET ;

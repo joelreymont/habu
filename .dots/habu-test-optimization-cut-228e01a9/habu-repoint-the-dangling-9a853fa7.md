@@ -3,7 +3,7 @@ title: Repoint the dangling Retirement pointers
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T17:42:16.097281+03:00\""
+created-at: "2026-10-03T17:42:16.097281+03:00"
 closed-at: "2026-10-14T19:33:10.235898+03:00"
 close-reason: "Implemented in 54e601b2: retirement pointers were mapped to live owners or removed with retired boundaries; the pointer census found 59 valid owners and no dangling ids, with affected suites and byte-identical engine checked."
 ---

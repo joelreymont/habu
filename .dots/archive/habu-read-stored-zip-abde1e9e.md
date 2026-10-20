@@ -3,7 +3,7 @@ title: Read stored ZIP entries without libzip
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-10-15T07:57:34.475574+03:00\\\"\""
+created-at: "2026-10-15T07:57:34.475574+03:00"
 closed-at: "2026-10-15T08:30:52.038371+03:00"
 close-reason: "All-STORE unencrypted archives now read the owned snapshot through shared bounded input/CRC/drain logic; mixed/encrypted archives retain eager libzip. Independent Astra review and16 focused libzip parity probes CLEAR after ZIP64 repairs. Installed source ZIP/lifecycle/framing/count/offset/concurrent/XML, stripped ZIP/XML/TMPDIR refusal, REPL XML and compressed Kaizen Office source/native pass. Exact public engine/map/XML unchanged. Frozen Tender55f/Kaizend175 six-open native workload passes: observed incremental physical7.28147888 to4.96875 MiB (31.76% lower), user14.80 to14.42s, sys0.54 to0.31s; faults1 after. This is one controlled run with32KiB threshold margin; requested repeatability work continues separately, no broad memory guarantee."
 ---

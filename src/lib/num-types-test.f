@@ -257,11 +257,8 @@ public
 \ shaped families never unify, in either direction. It has to be public, because a
 \ private family publishes no constructors and the positive control builds through
 \ the twin's own ok, so neither negative could pass by being unresolvable instead
-\ of ill-typed. Its generated constructor package NUM--TEST-NR--TWIN is 23
-\ bytes, inside the 32-byte readable-spelling cap TF-CTOR-NAME-LIMIT
-\ (src/core/type-family.f), so it keeps the readable escaped spelling instead of
-\ falling back to the opaque SHA form; the pin on that exact spelling below is
-\ what would notice if it ever crossed the cap.
+\ of ill-typed. Its generated constructor package NUM--TEST-NR--TWIN uses the
+\ escaped spelling pinned below.
 ENUM nr-twin<a>
    VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT

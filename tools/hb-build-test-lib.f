@@ -12,6 +12,7 @@
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
 \   tools/hb-build-aot-cache-test.f           object cache and its keys, failed
 \                                             publication
+\   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
@@ -131,8 +132,6 @@ variable HBT-LIFE-SRC-U
 variable HBT-LIFE-OUT-U
 variable HBT-HOOK-SRC-U
 variable HBT-HOOK-OUT-U
-variable HBT-NUMP-SRC-U
-variable HBT-NUMP-OUT-U
 variable HBT-MAPC-SRC-U
 variable HBT-MAPD-SRC-U
 variable HBT-MAPL-SRC-U
@@ -163,8 +162,6 @@ create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
 create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
 create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
 create HBT-HOOK-OUT-BUF FS-PATH-CAP allot
-create HBT-NUMP-SRC-BUF FS-PATH-CAP allot
-create HBT-NUMP-OUT-BUF FS-PATH-CAP allot
 create HBT-MAPC-SRC-BUF FS-PATH-CAP allot
 create HBT-MAPD-SRC-BUF FS-PATH-CAP allot
 create HBT-MAPL-SRC-BUF FS-PATH-CAP allot
@@ -265,9 +262,11 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ link against that line and links it a second time for byte equality.
 : HBT-MAPL-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require src/lib/memory.f\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
+   S\" require src/lib/memory.f\npackage HBT-ATTR\n: HIDDEN ( -- n ) 65 ;\npublic\nEXPORT HIDDEN\n: PUBLIC ( -- n ) HIDDEN ;\n;package\n: HBT-GLOBAL ( -- n ) HBT-ATTR:PUBLIC ;\n: HBT-DEAD ( -- n ) 99 ;\nPTR-VARIABLE BUF\n: MAIN ( -- )\n" SB-APPEND
    S\"    MEM-ALLOC-64K drop BUF !\n   BUF @ {: p:ptr :}\n" SB-APPEND
-   S\"    65 p c!  p 1 type cr ;\n" SB-APPEND
+   S\"    [: 0 ;] execute drop\n   HBT-GLOBAL p c!  p 1 type cr\n" SB-APPEND
+   S\"    MEM:ALLOC-64K {: q:ptr cap:NUM:alloc-byte-len :}\n" SB-APPEND
+   S\"    q cap MEM:RELEASE-BYTES ;\n" SB-APPEND
    SB$ ;
 
 : HBT-PREPARE ( -- )
@@ -309,8 +308,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
    HBT-ROOT s" lifehook.f" HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U HBT-PATH!
    HBT-ROOT s" lifehook" HBT-HOOK-OUT-BUF HBT-HOOK-OUT-U HBT-PATH!
-   HBT-ROOT s" numparse.f" HBT-NUMP-SRC-BUF HBT-NUMP-SRC-U HBT-PATH!
-   HBT-ROOT s" numparse" HBT-NUMP-OUT-BUF HBT-NUMP-OUT-U HBT-PATH!
    HBT-ROOT s" mapcell.f" HBT-MAPC-SRC-BUF HBT-MAPC-SRC-U HBT-PATH!
    HBT-ROOT s" mapdecl.f" HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U HBT-PATH!
    HBT-ROOT s" maplate.f" HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U HBT-PATH!
@@ -518,7 +515,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-REMOVE-ARTIFACT ( -- )
    HBB-ARTIFACT$ HBT-REMOVE-FILE? ;
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create READER-STATE JR:STORAGE-BYTES allot
 
 : REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
@@ -554,12 +551,10 @@ create READER-STATE JR:STORAGE-BYTES allot
    JR:INT 0 >= TTRUE
    JR:CLOSE ;
 
-\ The object cache key is the ordered-closure hex of the source (a self-contained
-\ AOT source closes over only itself), so the fixtures that pre-store objects must
-\ key them the same way hb-build now does.
+\ Object lookups use the actual-input key selected by the build's manifest.
 : HBT-AOT-HEX! ( -- )
    HBT-AOT-SRC HBB-SRC!
-   HBB-SRC-CLOSURE-HEX!
+   HBB-PREPARE-ARTIFACT-CACHE
    HBB-SRC-CLOSURE-HEX HBT-AOT-HEX 64 BYTE-COPY ;
 
 : HBT-OBJ-LOAD? ( -- bool )

@@ -305,8 +305,8 @@ variable ETEXT-N
 
 \ ---- the boot-seeded primitive dictionary --------------------------------------
 \ src/habu/habu1.f ENGINE-EMIT:EMIT-DICT bakes, in this order: the long names of
-\ the primitives whose name does not fit a record, an optional LHOSTROW cell
-\ (the one-based scalar primitive row), then LNCOUNT (the primitive count, one
+\ the primitives whose name does not fit a record, optional LHOSTROW and
+\ LHOSTDIVROW cells (one-based primitive rows), then LNCOUNT (one
 \ cell), then LDICT (that many 48-byte records). It is the LAST thing
 \ in the engine's code half, so the AOT payload starts after it.
 \ The run is found the way tools/imgdump.f finds it -- the longest run of
@@ -315,7 +315,7 @@ DREC constant PREC
 variable PDICT                                    \ file offset of the first record
 variable PDICT-N                                  \ records in the seeded table
 variable PNAME-BYTES                              \ padded long-name bytes before it
-variable PMETA-BYTES                              \ LHOSTROW cell between names and count
+variable PMETA-BYTES                              \ primitive marker cells between names and count
 
 : PREC-START ( n -- n ) U64@ ;
 : PREC-END ( n -- n ) 8 + U64@ ;
@@ -385,7 +385,7 @@ variable PMETA-BYTES                              \ LHOSTROW cell between names 
 
 : PAD4 ( n -- n ) negate 3 and ;
 
-\ The long-name blob sits below the count cell and optional scalar-row cell,
+\ The long-name blob sits below the count cell and primitive marker cells,
 \ one padded run per out-of-line name, in record order. Its first address and
 \ summed extent establish the boundary before either layout is accepted.
 variable NFIRST
@@ -402,15 +402,23 @@ variable NFIRST
    PNAME-BYTES @ 0 > if
       NFIRST @ PNAME-BYTES @ + {: name-end:n :}
       name-end PDICT @ 8 - = if exit then
-      name-end PDICT @ 16 - <> if
+      name-end PDICT @ 16 - <> name-end PDICT @ 24 - <> and if
          s" image-size: seeded long-name blob does not meet its count cell" RC die
       then
+      name-end PDICT @ 24 - = if 16 else 8 then PMETA-BYTES !
    then
-   PDICT @ 16 - U64@ {: row:n :}
-   row 0 < row PDICT-N @ > or if
-      s" image-size: invalid seeded scalar row" RC die
+   PMETA-BYTES @ 0 > if
+      PDICT @ 8 - PMETA-BYTES @ - U64@ {: row:n :}
+      row 0 < row PDICT-N @ > or if
+         s" image-size: invalid seeded scalar row" RC die
+      then
    then
-   8 PMETA-BYTES ! ;
+   PMETA-BYTES @ 16 = if
+      PDICT @ 16 - U64@ {: division:n :}
+      division 0 < division PDICT-N @ > or if
+         s" image-size: invalid seeded division row" RC die
+      then
+   then ;
 
 \ ---- the AOT payload -----------------------------------------------------------
 \ One walk of src/habu/habu2.f EMIT-AOT-SEED's emission order. Every count cell
@@ -926,8 +934,11 @@ variable BK-DZERO  variable BK-PAD
 : ENGINE-ROWS ( -- )
    s" engine/code" CODE-OFF NAMES-START CODE-OFF - SPAN B-CODE ROW
    s" engine/primitive-names" NAMES-START PNAME-BYTES @ SPAN B-NAMES ROW
-   PMETA-BYTES @ if
-      s" engine/scalar-row" NAMES-START PNAME-BYTES @ + PMETA-BYTES @ SPAN B-OTHER ROW
+   PMETA-BYTES @ 8 >= if
+      s" engine/scalar-row" NAMES-START PNAME-BYTES @ + 8 SPAN B-OTHER ROW
+   then
+   PMETA-BYTES @ 16 = if
+      s" engine/division-row" NAMES-START PNAME-BYTES @ + 8 + 8 SPAN B-OTHER ROW
    then
    s" engine/primitive-count" PDICT @ 8 - 8 SPAN B-OTHER ROW
    s" engine/primitive-records" PDICT @ PDICT-N @ PREC * SPAN B-NAMES ROW
@@ -2436,7 +2447,9 @@ variable HEAD-W     variable HEAD-Z
 \ THE BLOB is named by the startup's single code-base-relative address into x9
 \ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-lib.f
 \ TEXT-ADR,; test/gate-aot-image.f already admits exactly one such sequence in
-\ the startup), and the blob then frames itself: a u32 of groups and a u32 of
+\ the startup). Mach-O images before the DATA_CONST placement carried it at the
+\ end of __text; current images start it immediately after the GOT. The blob
+\ then frames itself: a u32 of groups and a u32 of
 \ stored bitmap bytes, the presence map and those groups, then one varint per
 \ present cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so
 \ RUN-V@ above decodes a cell and GROUP-SET? reads the map.
@@ -2455,6 +2468,7 @@ variable BLOB-CARRIED  variable BLOB-SPAN variable BLOB-STOP
 variable RELOC-AT    variable RELOC-N     variable APP-END
 variable BLOBADR-N   variable BLOBADR-PRE
 variable IP          variable MOVACC
+variable BLOB-CAND
 
 
 : INSN@ ( n -- n ) U32@ ;
@@ -2466,10 +2480,24 @@ variable IP          variable MOVACC
    at INSN IN-IMAGE? 0= if false exit then
    at INSN@ rd AOT-STARTUP-SHAPE:ADR-RD? ;
 
-\ Does a sparse blob start here? Its own header and bitmap have to walk to a
-\ value payload that ends inside the text, which no run of code bytes does by
-\ accident.
+\ Does a sparse blob start here? Its own header and bitmap have to walk within
+\ the segment that carries it, which no run of code bytes does by accident.
 variable ROWS-END
+
+: BLOB-LIMIT ( -- n )
+   MACHO @ if
+      BLOB-CAND @ MACHO-READ:TEXT-END < if MACHO-READ:TEXT-END exit then
+      MACHO-READ:DATA-OFF MACHO-READ:DATA-BYTES + exit
+   then
+   TEXT-SIZE ;
+
+: BLOB-PLACE? ( n -- bool ) {: at:n :}
+   MACHO @ if
+      at CODE-OFF >= at MACHO-READ:TEXT-END < and
+      at MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + = or
+   else
+      at CODE-OFF >= at TEXT-SIZE < and
+   then ;
 
 \ One pass of the AOT-WINDOW bitmap, throwing the walk's own refusal on a cell
 \ the format cannot express, so a candidate offset that is not a blob comes back
@@ -2486,7 +2514,7 @@ variable ROWS-END
             i CELL-BITS mod rshift  1 and 0<> if
                base i + 1+ CELL-BYTES * {: end:n :}
                end DATA-SIZE > if E-ES-WALK throw then
-               ROWS-END @ ACC @ +  TEXT-SIZE ROWS-END @ ACC @ + -  RUN-V@ {: v:n w:n :}
+               ROWS-END @ ACC @ +  BLOB-LIMIT ROWS-END @ ACC @ + -  RUN-V@ {: v:n w:n :}
                ACC @ w + ACC !
                end RUN-PREV !
                RUN-N @ 1+ RUN-N !
@@ -2501,19 +2529,21 @@ variable ROWS-END
 8 constant BLOB-HDR
 
 : BLOB-AT? ( n -- bool ) {: at:n :}
+   at BLOB-PLACE? 0= if false exit then
+   at BLOB-CAND !
    at BLOB-HDR IN-IMAGE? 0= if false exit then
    at U32@ {: groups:n :}
    at 4 + U32@ {: stored:n :}
-   groups TEXT-SIZE > stored TEXT-SIZE > or if false exit then
+   groups BLOB-LIMIT > stored BLOB-LIMIT > or if false exit then
    groups PMAP-BYTES {: pmap:n :}
    pmap stored + {: rowb:n :}
    at BLOB-HDR + rowb + {: rows-end:n :}
-   rows-end TEXT-SIZE > if false exit then
+   rows-end BLOB-LIMIT > if false exit then
    rows-end ROWS-END !  at BLOB-HDR + RUN-AT !
    at BLOB-HDR + pmap + RUN-BM0 !
    groups RUN-GROUPS !  stored RUN-STORED !  pmap RUN-PMAP !
    [: BLOB-ROWS-WALK ;] catch 0<> if false exit then
-   rows-end ACC @ + TEXT-SIZE > if false exit then
+   rows-end ACC @ + BLOB-LIMIT > if false exit then
    rowb BLOB-ROWB !  ACC @ BLOB-CARRIED !  RUN-N @ BLOB-RUNS !
    RUN-PREV @ BLOB-SPAN !
    rows-end ACC @ + BLOB-STOP !
@@ -2597,7 +2627,7 @@ variable COPY-AT
    \ TEXT-ADR, sites load x11, not x9.
    0 BLOBADR-PRE !
    CODE-OFF IP !
-   begin IP @ INSN + BLOB-AT @ <= while
+   begin IP @ INSN + TEXT-SIZE BLOB-AT @ min <= while
       IP @ TEXT-ADR9? if BLOBADR-PRE @ 1+ BLOBADR-PRE ! then
       IP @ INSN + IP !
    repeat
@@ -2648,7 +2678,7 @@ $D37EF54A constant XTC-LSL2
 : FIND-RELOC ( -- )
    0 RELOC-N !
    CODE-OFF IP !
-   begin IP @ 3 INSN * + BLOB-AT @ <= while
+   begin IP @ 3 INSN * + TEXT-SIZE BLOB-AT @ min <= while
       IP @ XTC-SIG? if
          IP @ XTC-COUNT {: n:n :}
          n 0 > if n RELOC-N ! exit then
@@ -2658,7 +2688,7 @@ $D37EF54A constant XTC-LSL2
 
 : ?ROWS ( -- )
    RELOC-N @ 0= if exit then
-   BLOB-AT @ CODE-OFF - {: codelen:n :}
+   TEXT-SIZE BLOB-AT @ min CODE-OFF - {: codelen:n :}
    RELOC-N @ 0 ?do
       RELOC-AT @ i XTOFF-ROW * + {: r:n :}
       r U32@ {: loc:n :}
@@ -2685,7 +2715,8 @@ $D37EF54A constant XTC-LSL2
 \ further down, where the content ends in a relocation row whose target really
 \ can leave two zero bytes behind it.
 : STRIP-CODE-ONLY ( -- )
-   CODE-OFF TEXT-SIZE LAST-NONZERO dup PAD4 + {: end:n :}
+   MACHO @ if TEXT-SIZE else CODE-OFF TEXT-SIZE LAST-NONZERO dup PAD4 + then
+      {: end:n :}
    end APP-END !  end BLOB-AT !  end BLOB-STOP !  end RELOC-AT !
    0 BLOB-ROWB !  0 BLOB-CARRIED !  0 BLOB-RUNS !  0 BLOB-SPAN !
    0 RELOC-N ! ;
@@ -2697,24 +2728,52 @@ $D37EF54A constant XTC-LSL2
    FIND-RELOC
    ?ROWS
    RELOC-AT @ RELOC-N @ XTOFF-ROW * + APP-END !
-   APP-END @ TEXT-SIZE > if
-      s" image-size: the relocation rows run past the text segment" RC die
+   APP-END @ BLOB-LIMIT > if
+      s" image-size: the relocation rows run past the payload" RC die
    then
-   APP-END @ TEXT-SIZE APP-END @ - ZEROS  TEXT-SIZE APP-END @ - <> if
+   MACHO @ if
+      BLOB-AT @ MACHO-READ:TEXT-END < if
+         APP-END @ MACHO-READ:TEXT-END <> if
+            s" image-size: stripped text payload does not end at __text boundary" RC die
+         then
+      then
+   then
+   APP-END @ BLOB-LIMIT APP-END @ - ZEROS
+   BLOB-LIMIT APP-END @ - <> if
       s" image-size: the stripped image's tail is not zero pad" RC die
    then ;
+
+: STRIP-MACHO-TAIL ( -- )
+   s" macho/text-pad" TEXT-SIZE MACHO-READ:DATA-OFF TEXT-SIZE - SPAN B-PAD ROW
+   s" macho/got" MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES SPAN B-OTHER ROW ;
+
+: STRIP-MACHO-END ( -- )
+   s" macho/data-pad" APP-END @ BLOB-LIMIT APP-END @ - SPAN B-PAD ROW
+   s" macho/chained-fixups" MACHO-READ:FIXUPS-OFF MACHO-READ:FIXUPS-BYTES SPAN B-OTHER ROW
+   s" macho/signature-pad" MACHO-READ:FIXUPS-OFF MACHO-READ:FIXUPS-BYTES +
+      MACHO-READ:SIGN-OFF over - SPAN B-PAD ROW
+   s" macho/code-signature" MACHO-READ:SIGN-OFF MACHO-READ:SIGN-BYTES SPAN B-OTHER ROW ;
+
+: STRIP-MACHO-PAYLOAD? ( -- bool )
+   MACHO @ 0= if false exit then
+   BLOB-AT @ MACHO-READ:DATA-OFF >= ;
 
 : STRIP-BUDGET ( -- )
    -1 ZCOL !  BUDGET-BEGIN
    ELF-ROWS
-   s" app/code" CODE-OFF BLOB-AT @ CODE-OFF - SPAN B-CODE ROW
+   s" app/code" CODE-OFF TEXT-SIZE BLOB-AT @ min CODE-OFF - SPAN B-CODE ROW
+   STRIP-MACHO-PAYLOAD? if STRIP-MACHO-TAIL then
    s" app/data-cell-bitmap" BLOB-AT @ BLOB-RUNS @ 0 > if BLOB-HDR BLOB-ROWB @ + else 0 then
       SPAN B-OTHER ROW
    s" app/data-cell-values" BLOB-STOP @ BLOB-CARRIED @ - BLOB-CARRIED @ SPAN B-DATA ROW
    s" app/row-align-pad" BLOB-STOP @ RELOC-AT @ BLOB-STOP @ - SPAN B-PAD ROW
    s" app/relocation-rows" RELOC-AT @ RELOC-N @ XTOFF-ROW * SPAN B-OTHER ROW
-   s" image/text-pad" APP-END @ TEXT-SIZE APP-END @ - SPAN B-PAD ROW
-   RW-ROW
+   STRIP-MACHO-PAYLOAD? if
+      STRIP-MACHO-END
+   else
+      s" image/text-pad" APP-END @ TEXT-SIZE APP-END @ - SPAN B-PAD ROW
+      RW-ROW
+   then
    SUMS?
    TOTAL-ROW ;
 
@@ -2794,7 +2853,7 @@ $D37EF54A constant XTC-LSL2
    CLASS-PTR @ MATCH image-class
       engine OF ENGINE-CENSUS ENDOF
       snapshot OF SNAP-NOTES ENDOF
-      stripped OF STRIP-NOTES ENDOF
+      stripped OF STRIP-NOTES IMAGE-NAMES:REPORT-CODE ENDOF
    ;MATCH ;
 
 public
@@ -2823,10 +2882,16 @@ public
    CLASSIFY
    WALK
    path pathu IMAGE-NAMES:LOAD
-   -1 QUIET !  TABLE  0 QUIET ! ;
+   -1 QUIET !  TABLE  0 QUIET !
+   CLASS-PTR @ MATCH image-class
+      stripped OF BK-CODE @ IMAGE-NAMES:CODE-ATTR drop ENDOF
+      engine OF ENDOF snapshot OF ENDOF
+   ;MATCH ;
 
 : TOTAL-BYTES ( -- n ) TOTAL @ ;
 : CODE-BYTES ( -- n ) BK-CODE @ ;
+: ATTR? ( -- bool ) IMAGE-NAMES:ATTR? ;
+: ATTR-BYTES ( -- n ) IMAGE-NAMES:ATTR-BYTES ;
 : NAME-BYTES ( -- n ) BK-NAMES @ ;
 : DATA-WRITTEN ( -- n ) BK-DATA @ ;
 : DATA-ZERO ( -- n ) BK-DZERO @ ;

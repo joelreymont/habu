@@ -743,6 +743,10 @@ public
 
 : CALL-ABI-F32 ( n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
+
+\ C int return registers define only their low 32 bits.
+: I32-RESULT ( n -- n )
+   $FFFFFFFF and $80000000 xor $80000000 - ;
 \ An exact descriptor includes the library index, complete C symbol, integer
 \ argument count and spill count. The terminating byte distinguishes a symbol
 \ from its prefix.
@@ -1263,6 +1267,11 @@ variable SCOPE-HOOK
 : GEN-SP ( -- ) SP-C GEN CODEGEN:APPEND-BYTE ;
 : GEN-ARG ( n -- ) s" A" GEN+ GEN-N ;
 
+: NEEDS-LOCALS? ( -- bool )
+   false ARG-N @ 0 ?do
+      i ARG-EXT-ARG@ NO-EXT <> or
+   loop ;
+
 : LOCALS ( -- )
    ARG-N @ 0= if exit then
    s" {: " GEN+
@@ -1276,19 +1285,18 @@ variable SCOPE-HOOK
    s" :} " GEN+ ;
 
 : STAGE-VALUE ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:VALUE! " GEN+ ;
+   i ARG-REG@ GEN-N s"  FFI:VALUE! " GEN+ ;
 
 : STAGE-FLOAT ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:FLOAT! " GEN+ ;
+   i ARG-REG@ GEN-N s"  FFI:FLOAT! " GEN+ ;
 
 : STAGE-FLOAT32 ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
+   i ARG-REG@ GEN-N s"  FFI:FLOAT32! " GEN+ ;
 
 : STAGE-READABLE ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP i ARG-REG@ GEN-N s"  FFI:READABLE! " GEN+ ;
+   i ARG-REG@ GEN-N s"  FFI:READABLE! " GEN+ ;
 
 : STAGE-WRITABLE ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP
    i ARG-EXT@ NO-EXT <> if i ARG-EXT@ GEN-N else i ARG-EXT-ARG@ GEN-ARG then
    GEN-SP i ARG-REG@ GEN-N s"  FFI:WRITABLE! " GEN+ ;
 
@@ -1299,7 +1307,6 @@ variable SCOPE-HOOK
 
 : STACK-POS ( n -- ) VAR-START @ - GEN-N ;
 : STAGE-SPILL ( n -- ) {: i:n :}
-   i GEN-ARG GEN-SP
    i ARG-KIND@ K-FLOAT = if
       i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
    i ARG-KIND@ K-VALUE = if
@@ -1310,15 +1317,18 @@ variable SCOPE-HOOK
    then
    i STACK-POS s"  FFI:STACK-READABLE! " GEN+ ;
 
-: STAGE-ONE ( n -- ) {: i:n :}
+: STAGE-ONE ( n bool -- ) {: i:n named:bool :}
+   named if i GEN-ARG GEN-SP then
    STACK-N @ 0 > i VAR-START @ >= and if i STAGE-SPILL exit then
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
    i ARG-KIND@ K-FLOAT32 = if i STAGE-FLOAT32 exit then
    i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
    i STAGE-POINTER ;
 
-: STAGE ( -- )
-   ARG-N @ 0 ?do i STAGE-ONE loop ;
+: STAGE ( bool -- ) {: named:bool :}
+   ARG-N @ 0 ?do
+      named if i else ARG-N @ i 1+ - then named STAGE-ONE
+   loop ;
 
 : CALL-WORD ( -- )
    RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
@@ -1384,19 +1394,19 @@ variable SCOPE-HOOK
 \ 32-bit result, or taken whole.
 : RESULT-TAIL ( -- )
    RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
-   RES-KIND @ R-I32 = if
-      s"  $FFFFFFFF and dup $80000000 and 0 <> if $FFFFFFFF00000000 or then" GEN+
-      exit
-   then
+   RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
    RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
 
 : EMIT ( -- )
    GEN CODEGEN:RESET
    s" : " GEN+ NAME-BUF NAME-U @ GEN+
    s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
-   LOCALS
-   s" FFI:RESET " GEN+
-   STAGE
+   NEEDS-LOCALS? {: named:bool :}
+   named if LOCALS then
+   \ The mixed ABI guard visits all nine register extents. Bounded calls guard
+   \ only FN-ARGC live slots, whose staging also writes each extent.
+   CALL-KIND @ C-ABI = CALL-KIND @ C-ABI-R = or if s" FFI:RESET " GEN+ then
+   named STAGE
    SLOT GEN-N GEN-SP
    CALL-WORD
    RESULT-TAIL

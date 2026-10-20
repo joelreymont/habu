@@ -1,11 +1,12 @@
-\ This object file owns only portable bytes. Its caller supplies thirteen semantic
+\ This object file owns only portable bytes. Its caller supplies seventeen semantic
 \ sections in order: code, dictionary records, calls, address sites, protected
 \ wordlists, checker state, DATA, preceding DATA updates, require/provided
-\ paths, typed address cells, literal rows, file inputs and retired prefix rows.
+\ paths, typed address cells, literal rows, file inputs, retired prefix rows,
+\ references, dependencies, compiler work and source origins.
 \
-\ Version 6 header (all integers are little-endian u64): magic at 0, version at
+\ Version 10 header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
-\ bytes), source key at 96 (64 bytes), and thirteen section lengths at 160.
+\ bytes), source key at 96 (64 bytes), and seventeen section lengths at 160.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -22,11 +23,10 @@ private
 8 constant FIELD-BYTES
 64 constant NAME-CAP
 64 constant KEY-BYTES
-13 constant SECTION-COUNT
+17 constant SECTION-COUNT
 160 constant LENGTHS-OFF
-264 constant HEADER-BYTES
-48 constant RECORD-BYTES
-6 constant FORMAT-VERSION
+296 constant HEADER-BYTES
+10 constant FORMAT-VERSION
 1 constant ARCH-ARM64
 
 DYNAMIC-BUFFER FILE-BUF u8
@@ -34,7 +34,6 @@ DYNAMIC-BUFFER SECTION-A ptr u8
 DYNAMIC-BUFFER SECTION-U n
 variable SECTION-MASK
 variable READY
-variable SECTION-OFF
 
 : BAD ( -- ) E-NUNIT-FILE throw ;
 
@@ -77,14 +76,11 @@ variable SECTION-OFF
    total size + ;
 
 : WRITE-SIZE ( -- n )
-   SECTION-MASK @ 8191 <> if BAD then
+   SECTION-MASK @ 131071 <> if BAD then
    HEADER-BYTES
    SECTION-COUNT 0 ?do
       i SECTION-LEN SIZE+
    loop ;
-
-: CHECK-RECORD-SIZE ( -- )
-   1 SECTION-LEN RECORD-BYTES mod 0<> if BAD then ;
 
 : WRITE-HEADER ( n ptr u8 n ptr u8 n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n :}
@@ -100,12 +96,13 @@ variable SECTION-OFF
    loop ;
 
 : WRITE-SECTIONS ( -- )
-   HEADER-BYTES SECTION-OFF !
+   HEADER-BYTES
    SECTION-COUNT 0 ?do
+      {: off:n :}
       \ A zero-byte tail begins at EOF; only the base is indexed.
-      i SECTION-PTR 0 FILE-BUF SECTION-OFF @ + i SECTION-LEN BYTE-COPY
-      i SECTION-LEN SECTION-OFF +!
-   loop ;
+      i SECTION-PTR 0 FILE-BUF off + i SECTION-LEN BYTE-COPY
+      off i SECTION-LEN +
+   loop drop ;
 
 : READ-HEADER ( n ptr u8 n ptr u8 n n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n size:n :}
@@ -117,18 +114,19 @@ variable SECTION-OFF
    32 FILE-BUF nameu name nameu STR= 0= if BAD then
    96 FILE-BUF KEY-BYTES key keyu STR= 0= if BAD then ;
 
-: READ-SECTIONS ( n -- ) {: size:n :}
-   HEADER-BYTES SECTION-OFF !
+: READ-SECTIONS ( n -- )
+   {: size:n :}
+   HEADER-BYTES
    SECTION-COUNT 0 ?do
+      {: off:n :}
       LENGTHS-OFF i FIELD-BYTES * + FIELD@ {: bytes:n :}
-      bytes size SECTION-OFF @ - > if BAD then
-      SECTION-OFF @ bytes SIZE+ SECTION-OFF !
+      bytes size off - > if BAD then
+      off bytes SIZE+
       \ The validated offset may equal size for an empty trailing section.
-      0 FILE-BUF SECTION-OFF @ bytes - + i SECTION-PTR!
+      0 FILE-BUF off + i SECTION-PTR!
       bytes i SECTION-LEN!
    loop
-   SECTION-OFF @ size <> if BAD then
-   CHECK-RECORD-SIZE ;
+   size <> if BAD then ;
 
 public
 
@@ -141,6 +139,11 @@ ARCH-ARM64 constant ARCH-AARCH64
 : RESET ( -- )
    CLOSE TABLE-OPEN ;
 
+\ Definition objects reuse the file and section arenas for a whole source
+\ load.  The ordinary FILE reset still releases them at its boundary.
+: RESET-KEEP ( -- )
+   0 READY ! 0 SECTION-MASK ! TABLE-OPEN ;
+
 : SECTION! ( n ptr u8 n -- ) {: slot:n bytes:ptr size:n :}
    slot SLOT-CK drop
    size 0 < if BAD then
@@ -152,7 +155,6 @@ ARCH-ARM64 constant ARCH-AARCH64
    {: arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    WRITE-SIZE {: size:n :}
-   CHECK-RECORD-SIZE
    size FILE-BUF-RESERVE
    arch name nameu key keyu WRITE-HEADER
    WRITE-SECTIONS
@@ -168,6 +170,17 @@ ARCH-ARM64 constant ARCH-AARCH64
    {: bytes:ptr size:n arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    RESET
+   size HEADER-BYTES < if BAD then
+   size FILE-BUF-RESERVE
+   bytes 0 FILE-BUF size BYTE-COPY
+   arch name nameu key keyu size READ-HEADER
+   size READ-SECTIONS
+   1 READY ! ;
+
+: READ-BYTES-REUSE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: bytes:ptr size:n arch:n name:ptr nameu:n key:ptr keyu:n :}
+   arch name nameu key keyu META-CK
+   RESET-KEEP
    size HEADER-BYTES < if BAD then
    size FILE-BUF-RESERVE
    bytes 0 FILE-BUF size BYTE-COPY

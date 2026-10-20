@@ -62,7 +62,7 @@
 
 package X64LT
 public
-ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PUB-WID                     \ the window package's public wordlist, host's id
 variable PRIVATE-WID
 ;package

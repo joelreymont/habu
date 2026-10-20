@@ -4,6 +4,7 @@ require src/lib/errors.f
 require src/lib/fs.f
 require tools/aot-startup-shape.f        \ the startup's instruction shapes, named once
 require tools/aot-call-report-lib.f      \ REPORT-JSON-BUFFER for CODE-REPORT
+require tools/macho-read.f
 require test/gate-build-common.f
 
 package AOT-IMAGE
@@ -99,12 +100,17 @@ create CODE-PATH FS-PATH-CAP allot
 
 
 : CHECK-CODE-END ( -- )
-   DATA-OFF @ RX-END @ < IMAGE-CK
+   HB-TARGET-MACOS? if
+      GB-EXEC-BUF GB-EXEC-U @ MACHO-READ:OPEN
+      DATA-OFF @ MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + = IMAGE-CK
+   else
+      DATA-OFF @ RX-END @ < IMAGE-CK
+   then
    DATA-OFF @ 3 and 0= IMAGE-CK
    ROOT-CALL @ INSTR@ $3FFFFFF and $2000000 xor $2000000 - 4 *
    ROOT-CALL @ + {: root:n :}
    \ PLAN-BLOBS places closure record zero (the selected root) first.
-   root DATA-OFF @ < IMAGE-CK ;
+   root RX-END @ < IMAGE-CK ;
 
 public
 
@@ -116,7 +122,7 @@ public
    off size + RX-END !
    CHECK-ENTRY dup SCAN-STARTUP
    CHECK-CODE-END
-   DATA-OFF @ over - ;
+   HB-TARGET-MACOS? if drop off size else DATA-OFF @ over - then ;
 
 
 \ The existing report accepts raw bytes. Give it only the validated code span;

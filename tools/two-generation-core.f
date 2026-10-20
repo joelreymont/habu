@@ -64,8 +64,10 @@ create TG-HOST FS-PATH-CAP allot
 create TG-ROOT FS-PATH-CAP allot
 create TG-PATH FS-PATH-CAP allot
 create TG-PATH-B FS-PATH-CAP allot
+create TG-CACHE-PATH FS-PATH-CAP allot
 create TG-NAME 8 allot
 create TG-NAME-B 8 allot
+create TG-CACHE-NAME 8 allot
 create TG-CMP-A TG-CMP-CAP allot
 create TG-CMP-B TG-CMP-CAP allot
 variable TG-SHAPE-U
@@ -135,6 +137,13 @@ variable TG-COL-NAME
 
 : TG-GEN-B$ ( n -- ptr u8 n ) TG-NAME-B TG-PATH-B TG-GEN-PATH ;
 
+: TG-CACHE$ ( n -- ptr u8 n ) {: g:n :}
+   g 0 < g 9 > or if E-STR-BOUNDS throw then
+   s" cache-" drop TG-CACHE-NAME 6 BYTE-COPY
+   g TG-ZERO + TG-CACHE-NAME 6 + c!
+   TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH JOIN-PATH {: u:n :}
+   TG-CACHE-PATH u ;
+
 \ The first line of a capture, so a stop names one diagnostic, not a trace.
 : TG-LINE1 ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < while
@@ -158,6 +167,7 @@ variable TG-COL-NAME
    TG-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    g TG-GEN$ >LEN PROC-ARGV+
+   s" HABU_BUILD_CACHE" >LEN g TG-CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    TG-HOST$ >LEN
    TG-OUT TG-CAP-OUT >LEN  TG-ERR TG-CAP-OUT >LEN

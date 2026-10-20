@@ -3,7 +3,7 @@ title: "Bring master's new records into the diagnostic contract"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:12:52.748391+02:00\""
+created-at: "2026-10-02T23:12:52.748391+02:00"
 closed-at: "2026-10-14T19:43:43.708998+03:00"
 close-reason: E-TRUST-UNRESOLVED and E-PKG-CONTEXT diagnostic contract added in fd4206d5; current gate and repair contracts include records.
 ---

@@ -2,7 +2,8 @@
 
 require src/lib/errors.f
 require src/lib/memory.f
-require tools/json.f
+require src/lib/jsonl.f
+require src/lib/string.f
 
 \ Checked filter. Raw fd primitives are used through checked effects.
 
@@ -10,6 +11,7 @@ require tools/json.f
 74 constant JSON-ONLY-E-IO
 
 create JSON-ONLY-LF 1 allot
+create JSON-ONLY-READER JR:STORAGE-BYTES allot
 
 variable JSON-ONLY-JSON-FD
 variable JSON-ONLY-PROSE-FD
@@ -20,6 +22,12 @@ variable JSON-ONLY-PROSE-A
 variable JSON-ONLY-PROSE-CAP
 variable JSON-ONLY-PROSE-U
 variable JSON-ONLY-BUF-ON
+TYPED-VARIABLE JSON-ONLY-SOURCE ptr u8
+variable JSON-ONLY-SOURCE-U
+variable JSON-ONLY-POS
+TYPED-VARIABLE JSON-ONLY-LINE ptr u8
+variable JSON-ONLY-LINE-U
+variable JSON-ONLY-ROW-OBJECT
 
 : JSON-ONLY-BUF-PTR-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -108,19 +116,43 @@ variable JSON-ONLY-BUF-ON
 
 : JSON-ONLY-JSON-LINE ( -- )
    JSON-ONLY-BUF-ON @ IF
-      JSONL-LU @ 1+ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-BUF-ROOM
-      JSONL-LA@ JSONL-LU @ JSON-ONLY-JSON-APPEND
+      JSON-ONLY-LINE-U @ 1+ JSON-ONLY-JSON-CAP @ JSON-ONLY-JSON-U JSON-ONLY-BUF-ROOM
+      JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON-ONLY-JSON-APPEND
       JSON-ONLY-LF$ JSON-ONLY-JSON-APPEND
       exit
    THEN
-   JSON-ONLY-JSON-FD @ JSONL-LA@ JSONL-LU @ JSON-ONLY-WRITE
+   JSON-ONLY-JSON-FD @ JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON-ONLY-WRITE
    JSON-ONLY-JSON-FD @ JSON-ONLY-LF$ JSON-ONLY-WRITE ;
 
+: JSON-ONLY-OBJECT ( -- )
+   JSON-ONLY-READER JR:STORAGE-BYTES JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JR:INIT
+   JR:NEXT {: kind:n :}
+   begin JR:NEXT dup JR:T-END <> while drop repeat drop
+   JR:CLOSE
+   kind JR:T-OBJ = JSON-ONLY-ROW-OBJECT ! ;
+
+: JSON-ONLY-OBJECT? ( -- bool )
+   [: JSON-ONLY-OBJECT ;] catch
+   dup 0= if drop JSON-ONLY-ROW-OBJECT @ 0<> exit then
+   dup E-JR-MALFORMED = over E-JR-STRING = or
+   over E-JR-ESCAPE = or over E-JR-SURROGATE = or
+   over E-JR-TRAILING = or over E-JR-NUMBER = or
+   over E-JR-EOF = or over E-JR-COLON = or
+   over E-JR-COMMA = or if drop false exit then
+   throw ;
+
 : JSON-ONLY-NEXT? ( -- bool )
-   JSONL-NEXT-OBJECT dup -1 = IF drop 0 0= 0= ELSE drop 0 0= THEN ;
+   begin
+      JSON-ONLY-SOURCE @ JSON-ONLY-SOURCE-U @ JSON-ONLY-POS @ JSONL:SPLIT-LINE
+      0= if 2drop drop false exit then
+      JSON-ONLY-POS !
+      TRIM JSON-ONLY-LINE-U ! JSON-ONLY-LINE !
+      JSON-ONLY-LINE-U @ 0 > if JSON-ONLY-OBJECT? if true exit then then
+   again ;
 
 : JSON-ONLY-START? ( ptr u8 n -- bool )
-   JSONL-START
+   JSON-ONLY-SOURCE-U ! JSON-ONLY-SOURCE !
+   0 JSON-ONLY-POS !
    JSON-ONLY-NEXT? ;
 
 : JSON-ONLY-EMIT-FOUND ( -- )

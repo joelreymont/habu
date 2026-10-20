@@ -1,15 +1,18 @@
-\ check-exit-test-lib.f - run a program under tools/check.f and assert it reached
+\ check-exit-test-lib.f - run a program through CHECK and assert it reached
 \ its own exit. A check.f refusal exits 1, 69, 70 or 78 and its usage exits 64,
 \ which a program's own 64 could hide, so a case also fails on check.f's
 \ `check.f:` prefix or its usage line in either stream.
 require src/lib/test.f
 require src/lib/test/outcome.f
+require src/lib/test/runner.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require test/suite-budget.f
+require tools/check-core.f
 
 package CHECK-EXIT
 private
@@ -19,9 +22,23 @@ create ERR IO-CAP allot variable ERR-U
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 : SAYS? ( ptr u8 n -- bool ) {: text:ptr textu:n :}
    OUT OUT-U @ text textu CONTAINS? ERR ERR-U @ text textu CONTAINS? or ;
+: RUN-ACT ( -- )
+   CHECK:RUN dup 0 <> if throw then drop ;
 public
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+
+\ The same checker phases and production verifier/run children, with the
+\ outer CHECK core shared between cases. dir holds the stream capture files.
+: DIRECT ( ptr u8 n ptr u8 n -- outcome )
+   {: src:ptr srcu:n dir:ptr diru:n :}
+   CHECK:RESET
+   src srcu CHECK:FILE
+   [: RUN-ACT ;] dir diru OUT IO-CAP SPAN:MAKE ERR IO-CAP SPAN:MAKE
+   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   outu LEN>N OUT-U ! erru LEN>N ERR-U !
+   rc 0 < rc 255 > or if rc throw then
+   rc OUTCOME:EXITED ;
 
 \ src under tools/check.f from the working directory, the repository root a
 \ gate row runs in; its streams land in OUT$ and ERR$. HABU_ALLOW_BOOTSTRAP is
@@ -38,7 +55,7 @@ public
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    oc ;
 
-\ RUN's outcome for src ended with src's own exit, want, and neither stream
+\ The outcome for src ended with src's own exit, want, and neither stream
 \ carries check.f's prefix or usage; a failed case prints both streams.
 : WANT ( ptr u8 n outcome n -- ) {: src:ptr srcu:n oc want:n :}
    T-FAILURES {: fails:n :}

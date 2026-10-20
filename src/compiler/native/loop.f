@@ -61,13 +61,14 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 
 \ This pass writes one key of its own and COPIES every one the elaborator built;
 \ a field copied under the wrong key would be a call reaching the wrong routine.
-6 constant KEYS-N
+7 constant KEYS-N
 0 constant K-VALUE
 1 constant K-ENTRY
 2 constant K-IN
 3 constant K-OUT
 4 constant K-ADDR
 5 constant K-KIND
+6 constant K-ORIGIN
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -78,13 +79,13 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 \ The header's own size, so it is bounded by what fits in a block.
 : COV-MAX ( -- n ) OMAX ;
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 0 CWORK-VARIABLE N-FOLDED n                    \ loops this rewrite really closed, counted as it goes
 
 1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
-HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
+HIR:OPCODES CWORK-BUFFER BND-OP IR-ID:ir-symbol-id
 KEYS-N CWORK-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-CELL IR-ID:ir-type-id
 1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
@@ -264,6 +265,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
    {: id:IR-ID:ir-op-id :}
    id O-CONST OP-IS? 0= if 0 false exit then
    id RESULTS-OF 1 <> if 0 false exit then
+   id K-ADDR ATTR-BY-KEY drop HIR:ADDR-NONE <> if 0 false exit then
    id K-VALUE ATTR-BY-KEY ;
 
 \ ANY of an operation's results answers: a load leaves the cell AND the memory
@@ -1001,6 +1003,8 @@ DYNAMIC-BUFFER P-THRU-BUF n
    IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD HIR:KEY-ADDR  CTX BLD HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD HIR:KEY-ORIGIN  CTX BLD -1 IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
    CLOSE 0 RESULT@ ;
 
 \ ---- copying one operation of an untouched block -----------------------------
@@ -1032,6 +1036,10 @@ DYNAMIC-BUFFER P-THRU-BUF n
       then
       k K-KIND = if
          CTX BLD  CTX BLD HIR:KEY-KIND  CTX BLD v IR-BUILD:INTERN-INT-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-ORIGIN = if
+         CTX BLD  CTX BLD HIR:KEY-ORIGIN  CTX BLD v IR-BUILD:INTERN-INT-ATTR
          IR-BUILD:ADD-ATTR
       then
    loop ;
@@ -1127,7 +1135,7 @@ DYNAMIC-BUFFER P-THRU-BUF n
 
 \ ---- the closed form ---------------------------------------------------------
 1 CWORK-BUFFER W-K IR-ID:ir-value-id     \ what one turn adds that is not the index
-variable W-K?
+0 CWORK-VARIABLE W-K? n
 1 CWORK-BUFFER W-ACC IR-ID:ir-value-id   \ the closed form's answer, built up one term at a time
 
 : K-ADD ( IR-ID:ir-op-id IR-ID:ir-value-id -- )
@@ -1309,6 +1317,7 @@ public
    c b HIR:KEY-OUT   K-OUT   BND-KEY !
    c b HIR:KEY-ADDR  K-ADDR  BND-KEY !
    c b HIR:KEY-KIND  K-KIND  BND-KEY !
+   c b HIR:KEY-ORIGIN K-ORIGIN BND-KEY !
    c b HIR:CELL-TYPE 0 BND-CELL !
    c b HIR:MEM-TYPE  0 BND-MEM !
    c b HIR:REAL-TYPE 0 BND-REAL !

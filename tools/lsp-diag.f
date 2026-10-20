@@ -269,7 +269,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    NEW$ FILE$ HAS-LINE? if exit then
    FILE$ HELD-OPEN? if exit then
    FILE$ KEEP-NEW LIST-U ! LIST-A !
-   LIST-A @ LIST-U @ FILE-TEXT!
+   LIST-A @ LIST-U @ FILE-SNAPSHOT!
    LIST-URI OPTION:NONE LIST ;
 
 \ A file the document's earlier check published a list for, withdrawn unless

@@ -3,7 +3,7 @@ title: Require what aot-file.f, aot-lib.f and icode.f use
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T18:24:49.016990+02:00\""
+created-at: "2026-10-01T18:24:49.016990+02:00"
 closed-at: "2026-10-14T19:33:10.229519+03:00"
 close-reason: "Implemented in b34525d1: each affected module requires its own dependencies, standalone-load rows fail before and pass after, native images remain byte-identical and two generations converge. Gforth check-only reached the same pre-existing stdin buffer limit as the parent, tracked by 15fca14f."
 ---

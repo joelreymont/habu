@@ -3,7 +3,7 @@
 \ as a negative visit; a name token in the validated prims.f selects the same
 \ row. Its subjects are all workspace .f files and open documents, since an
 \ implicit primitive needs no load. Each checked use with that row contributes
-\ a location, subject to the same text digest, deduplication and coverage
+\ a location, subject to the same source revision, deduplication and coverage
 \ warnings as source uses. Its declaration is included only while prims.f's
 \ text validates against the running specification. Built-in rename refuses.
 \ A source-backed engine use carries visit -1 and the live image origin's
@@ -28,9 +28,9 @@
 \ bytes there, its lower-case tail, its package and its visibility, and the
 \ visit the check gave it tells it apart from that check's other declarations
 \ of the same identity. D's check must hold exactly one such declaration and
-\ the digest of the bytes of P it read (LSP-DEFS:GROUP-SHA$). An included
+\ one consistent editor version or disk stamp for P. An included
 \ declaration is placed in the text of P, the open document's that holds P,
-\ else the file's, which must have that digest.
+\ else the file's, which must still have that revision.
 \
 \ The subjects are the workspace files and open documents whose loads reach P,
 \ and D, whose check read P though its loads on disk may no longer reach it,
@@ -44,13 +44,13 @@
 \ document's text in place of its file (tools/lsp-check.f), so a subject's
 \ check reads the bytes of P that D's read, the open text when a document
 \ holds P, unless P changed on disk between them. A check numbers only its own
-\ visits, so a subject's check that read P must state P's digest the same and
+\ visits, so a subject's check that read P must state the same revision and
 \ declare the word at P's token, by its identity, in one visit at most, and
 \ its uses bound to that token of the word's identity must carry that visit;
 \ one that declares the word there in no visit and binds no use of it there
 \ holds none. Each of those uses is placed in the text of the file it is in,
 \ the open document's that holds the file, else the file's, which must have
-\ the digest the check read of it, once however many checks give it. Each
+\ the revision the check read of it, once however many checks give it. Each
 \ visit of P that declares a word at P's token must declare the word there,
 \ beside any other, as a DEFTYPE's converters are declared beside each
 \ other: a check with a visit that declares another word there and not the
@@ -77,8 +77,8 @@
 \ to the working directory and why, when the position selects a use or a token
 \ without a whole identity, a token that declares several words or one
 \ word in several visits, or a declaration D's
-\ check does not hold once or holds no digest of P for; the declaration is
-\ included and P's text no longer has the digest; or a workspace folder's walk
+\ check does not hold once or holds no consistent revision of P for; the declaration is
+\ included and P's text no longer has that revision; or a workspace folder's walk
 \ fails. Otherwise the answer comes. A file is covered only when a
 \ verified check whose uses were placed read it, or a verified check that read
 \ P and passed the tests above: only that check's bindings are to this declaration, so a check that
@@ -86,8 +86,8 @@
 \ Each file the answer could not cover is named with why (WARNING): first a
 \ workspace file whose loads discovery cannot find, but P and D, whose
 \ checks say what they read; then, as the gather finds them, a file a use is
-\ in whose text no longer has the digest the check read, a subject that
-\ cannot be read, and one whose check states no digest of P or another one,
+\ in whose text no longer has the revision the check read, a subject that
+\ cannot be read, and one whose check states no revision of P or another one,
 \ declares at P's token a word without a whole identity or the word in
 \ several visits, or binds to that token a use without a whole identity, or
 \ one of the word in another visit or while it declares the word there in
@@ -134,7 +134,6 @@ require src/lib/adt/option.f
 require src/lib/sort.f
 require src/lib/json-write.f
 require src/lib/json-rpc.f
-require src/core/sha256.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
 require tools/lsp-source-index.f
@@ -177,14 +176,15 @@ private
 4 constant F-AGAIN
 5 constant FILE-CELLS
 
-\ A file the request knows, a subject or one a verified check read: its
+\ A file the request knows, a subject or one a completed check consumed: its
 \ path's offset and length in POOL, its index as a subject, -1 when it is
-\ none, and how it was read, 0 when by no verified check.
+\ none, how far verified coverage reaches, and whether a probe consumed it.
 0 constant K-PATH
 1 constant K-PATH-U
 2 constant K-SUB
 3 constant K-READ
-4 constant KNOWN-CELLS
+4 constant K-CONSUMED
+5 constant KNOWN-CELLS
 
 1 constant BY-VERIFIED                   \ read by a verified check,
 2 constant BY-PLACING                    \ by one whose uses were placed
@@ -212,7 +212,7 @@ private
 2 constant X-WHY-U
 3 constant PENDING-CELLS
 
-DYNAMIC-BUFFER POOL u8                   \ the request's paths, URIs, reasons and digest,
+DYNAMIC-BUFFER POOL u8                   \ the request's paths, URIs and reasons,
 variable POOL-U
 DYNAMIC-BUFFER LOCS n                    \ the locations it answers,
 variable LOC-N
@@ -254,8 +254,6 @@ variable VISIT                           \ the visit D's check gave it,
 variable PRIM-ROW                        \ a selected built-in's canonical row, else -1,
 TYPED-VARIABLE SOURCE-LOCATED bool        \ whether its source token can be placed,
 variable BUILTIN-SYM                     \ a selected source-backed engine symbol, else 0,
-variable H-AT                            \ and the digest of the bytes of P it read
-variable H-U
 variable D-AT                            \ D's path in POOL,
 variable D-U
 variable CUR                             \ the subject being gathered, by its index,
@@ -266,17 +264,23 @@ variable BATCH-FALLBACK
 REF-LANES TYPED-BUFFER WAVE-N n
 REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-SUB n
 REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-RESULT n
+REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-OWNER n
 variable WAVE-LANE
+variable WAVE-AT
 variable SUB-VISIT                       \ the visit its check declares the word in,
 variable TEXT-IN                         \ the probe's group whose file positions count in,
-TYPED-VARIABLE TEXT-OK bool              \ and whether its text has the digest read
+TYPED-VARIABLE TEXT-OK bool              \ and whether its text has the revision read
 variable RX-AT                           \ the first location that also declares
 variable RX-U                            \ another word, said in POOL
 DYNAMIC-BUFFER SRC u8                   \ a subject's text, read from disk,
 variable SRC-U
-SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
-32 BUFFER: SHA-RAW
-64 BUFFER: SHA-HEX                       \ as a file line states it
+variable SRC-SIZE
+variable SRC-MSEC
+variable SRC-MNS
+variable SRC-CSEC
+variable SRC-CNS
+REF-LANES REF-CHUNK * 5 * TYPED-BUFFER WAVE-META n
+REF-LANES REF-CHUNK * TYPED-BUFFER WAVE-DISK? n
 \ POOL, MSG and P-B hold a byte past those they name, which their writes
 \ reserve: an accessor refuses an index at its capacity, and an empty string
 \ still needs the address of index 0.
@@ -304,7 +308,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 : P$ ( -- ptr u8 n )  0 P-B P-U @ ;
 : NAME$ ( -- ptr u8 n )  NAME-AT @ NAME-U @ POOL$ ;
 : PKG$ ( -- ptr u8 n )  PKG-AT @ PKG-U @ POOL$ ;
-: H$ ( -- ptr u8 n )  H-AT @ H-U @ POOL$ ;
 : D$ ( -- ptr u8 n )  D-AT @ D-U @ POOL$ ;
 
 : IMPLICIT? ( -- bool )  PRIM-ROW @ 0 >= BUILTIN-SYM @ 0 > or ;
@@ -341,13 +344,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ and a text's SHA-256 digest,
 
 \ A path as a message names it: relative to the working directory.
 : SHOWN$ ( ptr u8 n -- ptr u8 n )  SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE ;
-
-\ The digest of these bytes as a file line states it.
-: DIGEST$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   SHA-CTX a u SHA-RAW SHA256-IN
-   SHA-RAW SHA-HEX SHA256>HEX
-   SHA-HEX 64 ;
 
 : FRESH ( -- )
    0 POOL-U !
@@ -442,10 +438,10 @@ public
 private
 
 \ The file at this canonical path, which does not lie in POOL, among the
-\ files placed in, added when it is none of them: its index. Its URI is the
-\ one positions count at in it (LSP-DEFS:DEP-URI$).
-: FILE-AT ( ptr u8 n -- n )
-   {: a:ptr u:n :}
+\ files placed in, added when it is none of them: its index. The URI names
+\ the source text whose positions the caller supplies.
+: FILE-AT ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n ua:ptr uu:n :}
    FILE-N @ 0 ?do
       i FILE$ a u STR= if i unloop exit then
    loop
@@ -453,7 +449,6 @@ private
    f 1+ FILE-CELLS * FILES-RESERVE
    a u POOL+ f F-PATH FILE!
    u f F-PATH-U FILE!
-   a u DEP-URI$ {: ua:ptr uu:n :}
    ua uu POOL+ f F-URI FILE!
    uu f F-URI-U FILE!
    0 f F-AGAIN FILE!
@@ -511,6 +506,7 @@ private
    u k K-PATH-U KNOWN!
    -1 k K-SUB KNOWN!
    0 k K-READ KNOWN!
+   0 k K-CONSUMED KNOWN!
    k 1+ BY-PATH-RESERVE
    k at - 0 ?do k i - dup 1- BY-PATH @ swap BY-PATH ! loop
    k at BY-PATH !
@@ -527,23 +523,26 @@ private
    then
    a u at KNOWN+ ;
 
-\ The file at this canonical path, which does not lie in POOL, read so:
-\ BY-VERIFIED or BY-PLACING, whichever says more of it.
-: READ! ( ptr u8 n n -- )
-   {: a:ptr u:n by:n :}
-   a u KNOWN-AT {: k:n :}
+\ The known file read so: BY-VERIFIED or BY-PLACING, whichever says more.
+: READ! ( n n -- )
+   {: k:n by:n :}
    k K-READ KNOWN@ by max k K-READ KNOWN! ;
 
-\ Each file the probe read a text of read so.
+\ Every file-line consumed by the completed probe; a consistent stamp also
+\ establishes coverage when its verdict was verified.
 : READS ( n -- )
    {: by:n :}
    PROBE DEFS-GROUP-RANGE ?do
-      i GROUP-SHA$ nip 0<> if i GROUP-PATH$ by READ! then
+      i GROUP-CONSUMED? if
+         i GROUP-PATH$ KNOWN-AT {: k:n :}
+         1 k K-CONSUMED KNOWN!
+         by 0 > i GROUP-STAMPED? and if k by READ! then
+      then
    loop ;
 
 \ A partial check contributes known bindings without certifying full coverage.
-: VERIFIED-READS ( n -- )
-   PROBE DEFS-VERIFIED? if READS else drop then ;
+: PROBE-READS ( n -- )
+   PROBE DEFS-VERIFIED? if READS else drop 0 READS then ;
 
 \ The file at this canonical path, which does not lie in POOL, the last
 \ subject, unless it is one.
@@ -660,8 +659,6 @@ private
    {: at:n end:n valid:bool :}
    valid 0= if exit then
    at TS !  end TE !
-   LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
-   sha shau POOL+ H-AT ! shau H-U !
    true SOURCE-LOCATED ! ;
 
 \ Keep the primitive's binding even when its specification is unavailable.
@@ -682,8 +679,6 @@ private
    {: start:n end:n located:bool :}
    located 0= if exit then
    start TS ! end TE !
-   LSP-TEXT:TEXT$ DIGEST$ {: sha:ptr shau:n :}
-   sha shau POOL+ H-AT ! shau H-U !
    true SOURCE-LOCATED ! ;
 
 \ The declaration use U is bound to, as its line states it.
@@ -818,15 +813,12 @@ private
       then
    loop ;
 
-\ D's check, in this slot, holding the selected declaration once, and the
-\ digest of the bytes of P it read, kept.
+\ D's check, in this slot, holding the selected declaration once in a file
+\ whose visits agreed on one source revision.
 : ANCHORED ( n -- )
    {: slot:n :}
    slot HELD 1 <> if P$ s" the check does not hold the declaration once" REFUSE exit then
-   G @ GROUP-SHA$ {: a:ptr u:n :}
-   u 0= if P$ s" the check states no digest of the file" REFUSE exit then
-   a u POOL+ H-AT !
-   u H-U ! ;
+   G @ GROUP-STAMPED? 0= if P$ s" the check states no consistent source revision" REFUSE then ;
 
 \ The declaration this byte of the text of D, in this slot, selects.
 : LOCATE ( n n -- )
@@ -845,8 +837,8 @@ private
    ;MATCH
    FOUND @ PRIM-ROW @ 0< and BUILTIN-SYM @ 0= and if slot ANCHORED then ;
 
-\ The declaration's location, first, and its token's text, while P's text has
-\ the digest D's check read.
+\ The declaration's location, first, and its token's text, while P still has
+\ the revision D's check read.
 : DECLARATION ( -- )
    IMPLICIT? SOURCE-LOCATED @ 0= and if
       BUILTIN-SYM @ 0 > if s" built-in source cannot be located"
@@ -854,12 +846,20 @@ private
       P$ 2swap MISS+
       exit
    then
-   P$ TEXT-OF!
-   LSP-TEXT:TEXT$ DIGEST$ H$ STR= 0= if P$ s" changed since it was checked" REFUSE exit then
+   IMPLICIT? 0= if
+      G @ GROUP-TEXT-FRESH? 0= if P$ s" changed since it was checked" REFUSE exit then
+   else
+      P$ DOC-HOLDING MATCH option
+         some OF drop ENDOF
+         none OF P$ LSP-TEXT:DISK-CURRENT? 0= if P$ s" changed while locating source" REFUSE exit then ENDOF
+      ;MATCH
+   then
    TS @ TE @ SPAN-IN drop {: a:ptr u:n :}
    a u POOL+ TOK-AT !
    u TOK-U !
-   P$ FILE-AT TS @ TE @ LOC+
+   IMPLICIT? if P$ P$ DEP-URI$
+   else G @ GROUP-PATH$ G @ GROUP-SOURCE-URI$ then
+   FILE-AT TS @ TE @ LOC+
    true DECLARED ! ;
 
 \ ---- the subjects ---------------------------------------------------------------
@@ -935,9 +935,8 @@ private
 \ contribute, else empty.
 : WHY ( n n -- ptr u8 n )
    {: slot:n g:n :}
-   g GROUP-SHA$ {: a:ptr u:n :}
-   u 0= if s" no digest" exit then
-   a u H$ STR= 0= if s" digest differs" exit then
+   g GROUP-STAMPED? 0= if s" no consistent source revision" exit then
+   g G @ GROUP-SAME? 0= if s" source revision differs" exit then
    slot g DECL-WHY {: w:ptr wu:n :}
    wu 0<> if w wu exit then
    slot g USE-WHY ;
@@ -1003,13 +1002,12 @@ private
    ;MATCH ;
 
 \ Positions count in the text of the file of the probe's group IN, and
-\ TEXT-OK holds whether that text has the digest the check read of the file;
+\ TEXT-OK holds whether that text has the revision the check read of the file;
 \ the file is named, once, when it does not.
 : TEXT-IN! ( n -- )
    {: in:n :}
    in TEXT-IN !
-   in GROUP-PATH$ TEXT-OF!
-   LSP-TEXT:TEXT$ DIGEST$ in GROUP-SHA$ STR= {: ok:bool :}
+   in GROUP-TEXT-FRESH? {: ok:bool :}
    ok TEXT-OK !
    ok if exit then
    in GROUP-PATH$ NAMED? if exit then
@@ -1017,12 +1015,12 @@ private
 
 \ Use U of the probe, bound to the declaration, placed in the file it is in,
 \ unless a location is there already or that file's text no longer has the
-\ digest the check read; kept for RE-EXPORT$ when its token also declares
+\ revision the check read; kept for RE-EXPORT$ when its token also declares
 \ another word in that file.
 : PLACE-USE ( n -- )
    {: u:n :}
    u USE-IN {: in:n :}
-   in GROUP-PATH$ FILE-AT {: f:n :}
+   in GROUP-PATH$ in GROUP-SOURCE-URI$ FILE-AT {: f:n :}
    u USE-BYTES {: from:n to:n :}
    f from to LOCATED? if exit then
    in TEXT-IN @ <> if in TEXT-IN! then
@@ -1073,15 +1071,15 @@ private
 : CONTRIBUTED ( n -- )
    {: g:n :}
    PROBE g WHY {: w:ptr wu:n :}
-   wu 0<> if BY-VERIFIED VERIFIED-READS CUR @ w wu SUBJECT-MISS+ exit then
-   BY-PLACING VERIFIED-READS
+   wu 0<> if BY-VERIFIED PROBE-READS CUR @ w wu SUBJECT-MISS+ exit then
+   BY-PLACING PROBE-READS
    g PLACED
    PROBE g OTHER-VISIT? if DECL-CONFLICT then ;
 
 \ The uses of the tail from a probe that read no P, and its files marked
 \ covered only when its check was verified.
 : WITHOUT-P ( -- )
-   BY-VERIFIED VERIFIED-READS
+   BY-VERIFIED PROBE-READS
    PROBE DEFS-USE-RANGE ?do i OTHER+ loop ;
 
 \ The subject being gathered held for SETTLE with its check's verdict, which
@@ -1102,7 +1100,7 @@ private
 : CONTRIBUTE ( -- )
    PROBE DEFS-VERIFIED? 0= if LSP-CHECK:OUTCOME$ PENDING+ then
    IMPLICIT? if
-      BY-PLACING VERIFIED-READS
+      BY-PLACING PROBE-READS
       -1 TEXT-IN !
       PROBE DEFS-USE-RANGE ?do
          BUILTIN-SYM @ 0 > if
@@ -1122,24 +1120,39 @@ private
 
 \ The file at this path read into SRC, its length in SRC-U.
 : READ-SRC ( ptr u8 n -- ptr u8 n )
-   2dup [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U ! ;
+   {: path:ptr pathu:n :}
+   path pathu FILE-META {: size:n msec:n mns:n csec:n cns:n :}
+   path pathu [: SRC-ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U !
+   path pathu FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   size after = msec amsec = and mns amns = and
+   csec acsec = and cns acns = and 0= if VERIFY:E-SOURCE-READ throw then
+   size SRC-SIZE ! msec SRC-MSEC ! mns SRC-MNS !
+   csec SRC-CSEC ! cns SRC-CNS !
+   path pathu ;
+
+: SRC-STAMP! ( -- )
+   CUR$ SRC-SIZE @ SRC-MSEC @ SRC-MNS @ SRC-CSEC @ SRC-CNS @
+   PROBE-DISK-STAMP! ;
 
 : BATCH-TEXT ( ptr u8 n -- )
    CUR$ LSP-CHECK:USES-BATCH-ADD
    1 BATCH-N +! ;
 
 \ The subject's uses from a check of this text of its file.
-: FROM-TEXT ( ptr u8 n -- )
-   CUR$ NAME$ [: CONTRIBUTE ;] LSP-CHECK:USES ;
+: FROM-TEXT ( ptr u8 n n -- )
+   {: a:ptr u:n owner:n :}
+   a u CUR$ NAME$ owner [: CONTRIBUTE ;] LSP-CHECK:USES ;
 
 \ The subject's uses from a check of its file on disk.
 : FROM-DISK ( -- )
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
+      code VERIFY:E-SOURCE-READ = if CUR @ s" changed while read" SUBJECT-MISS+ exit then
       code LSP-TEXT:FS-RC? 0= if code throw then
       CUR @ s" cannot be read" SUBJECT-MISS+ exit
    then
-   0 SRC SRC-U @ FROM-TEXT ;
+   SRC-STAMP!
+   0 SRC SRC-U @ -1 FROM-TEXT ;
 
 \ Pending subject K named by its check's verdict, unless a check whose uses
 \ are placed read its file, or any verified check did when pass 2 gave it.
@@ -1290,6 +1303,17 @@ public
    s"  as an EXPORT of another word" MSG+
    MSG$ ;
 
+\ SUMTYPE constructor calls bind to the generated word, while MATCH arm names
+\ are parsed as variants and do not occur in the checker's use inventory.
+\ The verifier gives those generated words their own declaration class.
+: CONSTRUCTOR? ( -- bool )
+   G @ TS @ TE @ GROUP-REC-AT MATCH option
+      some OF REC-CLASS CLASS-CONSTRUCTOR = ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+: CONSTRUCTOR-RENAME$ ( -- ptr u8 n )
+   s" Constructor rename cannot update MATCH arms" ;
+
 \ Whether a location placed is a token that also declares another word in its
 \ subject's file, and the first such one said: its file, the line and text
 \ of the token, and the word.
@@ -1299,6 +1323,17 @@ public
 \ How many subjects the request gathers from so far: none until a
 \ declaration is selected and walked.
 : SUBJECT-N ( -- n )  SUB-N @ ;
+
+\ A queued edit to a subject or to a file a completed probe read can change
+\ the answer being gathered. Other open documents do not affect this request.
+: TOUCHES? ( ptr u8 n -- bool )
+   {: path:ptr pathu:n :}
+   KNOWN-N @ 0 ?do
+      i K-SUB KNOWN@ 0 >= i K-CONSUMED KNOWN@ 0 > or if
+         i KNOWN$ path pathu STR= if true unloop exit then
+      then
+   loop
+   false ;
 
 : WAVE-SIZE ( -- n ) REF-LANES REF-CHUNK * ;
 : WAVE-COUNT ( n -- n ) WAVE-SIZE min REF-CHUNK 1- + REF-CHUNK / ;
@@ -1320,7 +1355,7 @@ public
    CUR !
    CUR$ NAMED? if exit then
    CUR$ DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ FROM-TEXT ENDOF
+      some OF {: slot:n :} slot DOC-TEXT$ slot FROM-TEXT ENDOF
       none OF FROM-DISK ENDOF
    ;MATCH ;
 
@@ -1334,25 +1369,37 @@ public
    lane WAVE-N @ {: at:n :}
    CUR @ lane REF-CHUNK * at + WAVE-SUB !
    result lane REF-CHUNK * at + WAVE-RESULT !
+   0 lane REF-CHUNK * at + WAVE-DISK? !
    at 1+ lane WAVE-N ! ;
 
-: WAVE-TEXT ( ptr u8 n -- )
-   BATCH-TEXT
-   BATCH-N @ 1- WAVE-ENTRY ;
+: WAVE-TEXT ( ptr u8 n n -- )
+   {: a:ptr u:n owner:n :}
+   a u BATCH-TEXT
+   BATCH-N @ 1- WAVE-ENTRY
+   WAVE-LANE @ REF-CHUNK * WAVE-LANE @ WAVE-N @ 1- + {: entry:n :}
+   owner entry WAVE-OWNER ! ;
 
 : WAVE-DISK ( -- )
    CUR$ [: READ-SRC ;] catch {: code:n :} 2drop
    code 0<> if
-      code LSP-TEXT:FS-RC? 0= if code throw then
+      code VERIFY:E-SOURCE-READ <> code LSP-TEXT:FS-RC? 0= and if code throw then
       -1 WAVE-ENTRY exit
    then
-   0 SRC SRC-U @ WAVE-TEXT ;
+   0 SRC SRC-U @ -1 WAVE-TEXT
+   WAVE-LANE @ REF-CHUNK * WAVE-LANE @ WAVE-N @ 1- + {: entry:n :}
+   1 entry WAVE-DISK? !
+   entry 5 * {: at:n :}
+   SRC-SIZE @ at WAVE-META !
+   SRC-MSEC @ at 1+ WAVE-META !
+   SRC-MNS @ at 2 + WAVE-META !
+   SRC-CSEC @ at 3 + WAVE-META !
+   SRC-CNS @ at 4 + WAVE-META ! ;
 
 : WAVE-SUBJECT ( n -- )
    CUR !
    CUR$ NAMED? if exit then
    CUR$ DOC-HOLDING MATCH option
-      some OF DOC-TEXT$ WAVE-TEXT ENDOF
+      some OF {: slot:n :} slot DOC-TEXT$ slot WAVE-TEXT ENDOF
       none OF WAVE-DISK ENDOF
    ;MATCH ;
 
@@ -1377,6 +1424,12 @@ public
 \ lane's remaining parser state; those subjects are checked individually.
 : APPLY-ENTRY ( n -- )
    {: result:n :}
+   LSP-DEFS:PROBE-DISK-CLEAR
+   WAVE-AT @ WAVE-DISK? @ 0<> if
+      WAVE-AT @ 5 * {: at:n :}
+      CUR$ at WAVE-META @ at 1+ WAVE-META @ at 2 + WAVE-META @
+      at 3 + WAVE-META @ at 4 + WAVE-META @ PROBE-DISK-STAMP!
+   then
    CUR$ NAMED? {: named:bool :}
    result 0< if
       named 0= if CUR @ s" cannot be read" SUBJECT-MISS+ then
@@ -1387,9 +1440,9 @@ public
       exit
    then
    named if
-      result [: ;] LSP-CHECK:USES-BATCH-RESULT
+      result WAVE-AT @ WAVE-OWNER @ [: ;] LSP-CHECK:USES-BATCH-RESULT
    else
-      result [: CONTRIBUTE ;] LSP-CHECK:USES-BATCH-RESULT
+      result WAVE-AT @ WAVE-OWNER @ [: CONTRIBUTE ;] LSP-CHECK:USES-BATCH-RESULT
    then
    0= if
       true BATCH-FALLBACK !
@@ -1403,6 +1456,7 @@ public
       false BATCH-FALLBACK !
       i WAVE-N @ 0 ?do
          j REF-CHUNK * i + {: at:n :}
+         at WAVE-AT !
          at WAVE-SUB @ CUR !
          at WAVE-RESULT @ APPLY-ENTRY
       loop

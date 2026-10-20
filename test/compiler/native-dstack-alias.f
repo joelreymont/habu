@@ -20,6 +20,8 @@ public
 PTR-VARIABLE SB                      \ base of the fresh data stack
 variable SZ                          \ its size
 variable ANS                         \ where a body leaves its answer
+variable PRESS-CELL
+create PRESS-BYTE 1 allot
 
 : ALLOC ( -- )
    STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED SZ !  SB ! ;
@@ -48,6 +50,16 @@ variable ANS                         \ where a body leaves its answer
 
 : RESULT ( -- n )
    41 1 + ;
+
+\ Integer and real locals remain live through two cell and two byte guards.
+: PRESSURE ( n n n n n n r r -- n r )
+   {: a:n b:n c:n d:n e:n f:n u:r v:r :}
+   a PRESS-CELL !
+   $2A PRESS-BYTE c!
+   c PRESS-CELL !
+   $4D PRESS-BYTE c!
+   a b + c + d + e + f + PRESS-CELL @ + PRESS-BYTE c@ +
+   u v f+ ;
 
 ;package
 
@@ -112,13 +124,20 @@ private
    \ TEST-EVAL:N enters RESULT by name above a closed floor.
    s" DKA:RESULT" TEST-EVAL:N 42 T= ;
 
+: PRESSURE-CASE ( -- )
+   s" live integer and real locals survive repeated checked stores" T-LABEL
+   1 2 3 4 5 6 1.5 2.25 DKA:PRESSURE {: total:n real:r :}
+   total 101 T=
+   real 3.75 f= TTRUE ;
+
 public
 
 : RUN ( -- )
    CALL-PRECONDITION
    ALIAS-CASE
    SAVE-CASE
-   EXIT-CASE ;
+   EXIT-CASE
+   PRESSURE-CASE ;
 
 ;package
 

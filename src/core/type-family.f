@@ -32,14 +32,14 @@
 \ the second is public and carries REG-PROTECT, as does TF-RBF-DEPTH (dot
 \ habu-tf-rbf-depth-614c88e0).
 \
-\ SIX NAMES STAY GLOBAL and each one is the engine's requirement, not a
+\ FIVE NAMES STAY GLOBAL and each one is the engine's requirement, not a
 \ preference. TFAM-NAME$, TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the
 \ `construct`/`match`/`;match` bridge: habu2.f resolves them through
 \ C-FIND-GLOBAL, which ZEROES the open package's wordlist cells before the lookup
 \ so a keyword's meaning cannot depend on where it is written, and
-\ bootstrap/cg/forth.fs mirrors the same four spellings. TFAM-CTOR-WORD? and
-\ TF-SHA16-XT are named by AOT-captured call sites, and the boot seed re-resolves
-\ a baked callee only through a global scope. Each of the six sits between a
+\ bootstrap/cg/forth.fs mirrors the same four spellings.
+\ TFAM-CTOR-WORD? is named by an AOT-captured call site, and the boot seed re-resolves
+\ a baked callee only through a global scope. Each of the five sits between a
 \ `;package` and a `package TFAM` and reads the registry through `using TFAM`.
 \ test/internal-word-gate.f pins that the surface stops there.
 
@@ -50,6 +50,57 @@ package TFAM
 \ --- kind of a family (what its values are).
 
 public
+
+\ NFILE-REF installs these after the engine prefix has loaded. Family identity
+\ is its exact canonical package and tail; constructor identity is an
+\ occurrence in the FILE tree.
+defer FAMILY-KEY-XT ( n -- ptr u8 n bool )
+defer FAMILY-BY-KEY-XT ( ptr u8 n -- n bool )
+defer FAMILY-KEY-MATCH-XT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+defer CON-DECLARED-XT ( n -- )
+defer CON-KEY-XT ( n -- ptr u8 n bool )
+defer CON-BY-KEY-XT ( ptr u8 n -- n bool )
+defer CON-BIND-XT ( n ptr u8 n -- )
+defer UNIT-FAM-RESET-XT ( -- )
+
+private
+: FAMILY-KEY-ABSENT ( n -- ptr u8 n bool ) drop NULL-PTR 0 RES-FALSE ;
+: FAMILY-BY-KEY-ABSENT ( ptr u8 n -- n bool ) 2drop 0 RES-FALSE ;
+: FAMILY-KEY-MATCH-ABSENT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   2drop 2drop 2drop RES-FALSE ;
+: FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop 76 throw ;
+: FAMILY-HOOK-DEFAULTS ( -- )
+   [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
+   [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
+   [: FAMILY-KEY-MATCH-ABSENT ;] is FAMILY-KEY-MATCH-XT
+   [: drop ;] is CON-DECLARED-XT
+   [: FAMILY-KEY-ABSENT ;] is CON-KEY-XT
+   [: FAMILY-BY-KEY-ABSENT ;] is CON-BY-KEY-XT
+   [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT
+   [: ;] is UNIT-FAM-RESET-XT ;
+FAMILY-HOOK-DEFAULTS
+
+public
+
+: FILE-REF-RESET ( -- )
+   [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
+   [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
+   [: FAMILY-KEY-MATCH-ABSENT ;] is FAMILY-KEY-MATCH-XT
+   [: drop ;] is CON-DECLARED-XT
+   [: drop ;] CHECKER-REG:CON-DECLARED-USE
+   [: FAMILY-KEY-ABSENT ;] is CON-KEY-XT
+   [: FAMILY-BY-KEY-ABSENT ;] is CON-BY-KEY-XT
+   [: FAMILY-BIND-ABSENT ;] is CON-BIND-XT ;
+
+: FILE-REF-USE ( [ n -- ptr u8 n bool ] [ ptr u8 n -- n bool ] [ ptr u8 n ptr u8 n ptr u8 n -- bool ] [ n -- ] [ n -- ptr u8 n bool ] [ ptr u8 n -- n bool ] [ n ptr u8 n -- ] -- )
+   is CON-BIND-XT
+   is CON-BY-KEY-XT
+   is CON-KEY-XT
+   dup CHECKER-REG:CON-DECLARED-USE
+   is CON-DECLARED-XT
+   is FAMILY-KEY-MATCH-XT
+   is FAMILY-BY-KEY-XT
+   is FAMILY-KEY-XT ;
 
 0 constant TK-CELL          \ scalar-cell family (no ADT layout)
 1 constant TK-PRODUCT       \ record / struct
@@ -286,10 +337,8 @@ private
 \ ---------------------------------------------------------------------------
 \ TFAM record arena.
 \ ---------------------------------------------------------------------------
-\ Bit i in a PTR-MASK marks slot i as a relocating pointer. Every registry
-\ record below contains only scalar ids, counts, codes, or interned offsets.
-: TF-LAYOUT= ( n n -- )
-   <> if s" type-family: layout drift" CORE-LAYOUT-RC die then ;
+\ Every registry record below contains only scalar ids, counts, codes, or
+\ interned offsets, so its arena needs no pointer relocation.
 
 0 cells constant TF.PKG-OFF-AT
 1 cells constant TF.PKG-U-OFF
@@ -321,9 +370,6 @@ private
 public
 
 21 cells constant TF-REC
-CELL constant TF-REC-ALIGN
-0 constant TF-REC-PTR-MASK
-
 private
 
 : TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
@@ -354,52 +400,6 @@ private
 : TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ptr a -- ptr a ) TF.OPAQUE-OFF + ;
 
-TF.PKG-OFF-AT 0 cells TF-LAYOUT=
-TF.PKG-U-OFF 1 cells TF-LAYOUT=
-TF.VIS-OFF 2 cells TF-LAYOUT=
-TF.NAME-OFF-AT 3 cells TF-LAYOUT=
-TF.NAME-U-OFF 4 cells TF-LAYOUT=
-TF.ARITY-OFF 5 cells TF-LAYOUT=
-TF.KIND-OFF 6 cells TF-LAYOUT=
-TF.PK-START-OFF 7 cells TF-LAYOUT=
-TF.LAYOUT-OFF 8 cells TF-LAYOUT=
-TF.SLOTS-OFF 9 cells TF-LAYOUT=
-TF.VAR-START-OFF 10 cells TF-LAYOUT=
-TF.VAR-COUNT-OFF 11 cells TF-LAYOUT=
-TF.FLD-START-OFF 12 cells TF-LAYOUT=
-TF.FLD-COUNT-OFF 13 cells TF-LAYOUT=
-TF.TAGW-OFF 14 cells TF-LAYOUT=
-TF.SCHEMA-ROOT-OFF 15 cells TF-LAYOUT=
-TF.SPAN-OFF-AT 16 cells TF-LAYOUT=
-TF.SPAN-U-OFF 17 cells TF-LAYOUT=
-TF.DERIVE-OFF 18 cells TF-LAYOUT=
-TF.TAILNEXT-OFF 19 cells TF-LAYOUT=
-TF.OPAQUE-OFF 20 cells TF-LAYOUT=
-TF-REC 21 cells TF-LAYOUT=
-TF-REC-ALIGN CELL TF-LAYOUT=
-TF-REC TF-REC-ALIGN mod 0 TF-LAYOUT=
-TF-REC-PTR-MASK 0 TF-LAYOUT=
-0 TF.PKG-OFF TF.PKG-OFF-AT TF-LAYOUT=
-0 TF.PKG-U TF.PKG-U-OFF TF-LAYOUT=
-0 TF.VIS TF.VIS-OFF TF-LAYOUT=
-0 TF.NAME-OFF TF.NAME-OFF-AT TF-LAYOUT=
-0 TF.NAME-U TF.NAME-U-OFF TF-LAYOUT=
-0 TF.ARITY TF.ARITY-OFF TF-LAYOUT=
-0 TF.KIND TF.KIND-OFF TF-LAYOUT=
-0 TF.PK-START TF.PK-START-OFF TF-LAYOUT=
-0 TF.LAYOUT TF.LAYOUT-OFF TF-LAYOUT=
-0 TF.SLOTS TF.SLOTS-OFF TF-LAYOUT=
-0 TF.VAR-START TF.VAR-START-OFF TF-LAYOUT=
-0 TF.VAR-COUNT TF.VAR-COUNT-OFF TF-LAYOUT=
-0 TF.FLD-START TF.FLD-START-OFF TF-LAYOUT=
-0 TF.FLD-COUNT TF.FLD-COUNT-OFF TF-LAYOUT=
-0 TF.TAGW TF.TAGW-OFF TF-LAYOUT=
-0 TF.SCHEMA-ROOT TF.SCHEMA-ROOT-OFF TF-LAYOUT=
-0 TF.SPAN-OFF TF.SPAN-OFF-AT TF-LAYOUT=
-0 TF.SPAN-U TF.SPAN-U-OFF TF-LAYOUT=
-0 TF.DERIVE TF.DERIVE-OFF TF-LAYOUT=
-0 TF.TAILNEXT TF.TAILNEXT-OFF TF-LAYOUT=
-0 TF.OPAQUE TF.OPAQUE-OFF TF-LAYOUT=
 
 4 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
@@ -739,6 +739,13 @@ public
    REPEAT
    0 RES-FALSE ;
 
+: FILE-IDENTITY$ ( n -- ptr u8 n ptr u8 n bool ) {: id:n :}
+   id 0 < id TFAM-N @ >= or IF
+      NULL-PTR 0 NULL-PTR 0 RES-FALSE EXIT THEN
+   id TFAM-PKG$ id TFAM-NAME$ RES-TRUE ;
+
+: FILE-FIND ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
+
 \ TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) : the SPECIFICATION of what
 \ the index answers — the lowest row matching (package, tail), by walking the
 \ registry. test/checker-scan-index-suite.f differentials the two.
@@ -882,9 +889,6 @@ private
 public
 
 10 cells constant SUMV-REC
-CELL constant SUMV-REC-ALIGN
-0 constant SUMV-REC-PTR-MASK
-
 private
 
 : SV.FAM ( ptr a -- ptr a ) SV.FAM-OFF + ;
@@ -898,30 +902,6 @@ private
 : SV.CTOR-PKG-OFF ( ptr a -- ptr a ) SV.CTOR-PKG-OFF-AT + ;
 : SV.CTOR-PKG-U ( ptr a -- ptr a ) SV.CTOR-PKG-U-OFF + ;
 
-SV.FAM-OFF 0 cells TF-LAYOUT=
-SV.NAME-OFF-AT 1 cells TF-LAYOUT=
-SV.NAME-U-OFF 2 cells TF-LAYOUT=
-SV.TAG-OFF 3 cells TF-LAYOUT=
-SV.SCH-START-OFF 4 cells TF-LAYOUT=
-SV.SCH-COUNT-OFF 5 cells TF-LAYOUT=
-SV.PAYCELLS-OFF 6 cells TF-LAYOUT=
-SV.CTOR-SYM-OFF 7 cells TF-LAYOUT=
-SV.CTOR-PKG-OFF-AT 8 cells TF-LAYOUT=
-SV.CTOR-PKG-U-OFF 9 cells TF-LAYOUT=
-SUMV-REC 10 cells TF-LAYOUT=
-SUMV-REC-ALIGN CELL TF-LAYOUT=
-SUMV-REC SUMV-REC-ALIGN mod 0 TF-LAYOUT=
-SUMV-REC-PTR-MASK 0 TF-LAYOUT=
-0 SV.FAM SV.FAM-OFF TF-LAYOUT=
-0 SV.NAME-OFF SV.NAME-OFF-AT TF-LAYOUT=
-0 SV.NAME-U SV.NAME-U-OFF TF-LAYOUT=
-0 SV.TAG SV.TAG-OFF TF-LAYOUT=
-0 SV.SCH-START SV.SCH-START-OFF TF-LAYOUT=
-0 SV.SCH-COUNT SV.SCH-COUNT-OFF TF-LAYOUT=
-0 SV.PAYCELLS SV.PAYCELLS-OFF TF-LAYOUT=
-0 SV.CTOR-SYM SV.CTOR-SYM-OFF TF-LAYOUT=
-0 SV.CTOR-PKG-OFF SV.CTOR-PKG-OFF-AT TF-LAYOUT=
-0 SV.CTOR-PKG-U SV.CTOR-PKG-U-OFF TF-LAYOUT=
 
 4 constant SUMV-CAP-INIT
 variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
@@ -1202,8 +1182,6 @@ public
 \ folded alias cannot reopen a constructor package, extend it with a new
 \ tail, or undefine a generated word through any case variant. Installed into
 \ the checker's CTOR-*-XT friend cells at the end of this file.
-variable TF-CI              \ protection scan index (TF-I stays the decl scanner's)
-
 private
 
 variable TF-CW-COL          \ first-colon split position
@@ -1211,20 +1189,17 @@ variable TF-CW-COL          \ first-colon split position
    id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
    id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
 : TFAM-CTOR-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a recorded ctor package name?
-   0 TF-CI !
-   BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ SUMV-CTOR-PKG-MATCH? IF RES-TRUE EXIT THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   SUMV-N @ 0 ?do
+      a u i SUMV-CTOR-PKG-MATCH? IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
 
 public
 
 : TF-CW-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ first non-edge ':' -> TF-CW-COL
    -1 TF-CW-COL !
-   0 TF-CI !
-   BEGIN TF-CI @ u < WHILE
-      a TF-CI @ + c@ 58 = IF TF-CI @ TF-CW-COL ! u TF-CI ! ELSE TF-CI @ 1 + TF-CI ! THEN
-   REPEAT
+   u 0 ?do
+      a i + c@ 58 = IF i TF-CW-COL ! leave THEN
+   loop
    TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and ;
 : TFAM-CTOR-WORD-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = ctor id?
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
@@ -1273,11 +1248,9 @@ public
       id VNX-LINK @ VNX-CUR !
    REPEAT
    ta tu TFAM-DERIVED-TAIL? 0= IF RES-FALSE EXIT THEN
-   0 TF-CI !
-   BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   SUMV-N @ 0 ?do
+      a u i TFAM-DERIVED-AT? IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
 
 ;package
 
@@ -1343,50 +1316,17 @@ public
 \ even-length and interior, and each single '-' separator decodes uniquely.
 \ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`; a
 \ top-level `a-b-c` derives `A--B--C` — all distinct. The escaped form is
-\ injective at EVERY length, and both the runtime dictionary (DNAME-EXT external
-\ names, habu2.f C-STORE-NAME) and the AOT snapshot (EXT records ride the
-\ kept-source path, aot-capture.f) store names past the 16-byte inline cell, so
-\ TF-CTOR-NAME-LIMIT is a READABILITY cap on the generated spelling — NOT a
-\ dictionary/record structural bound (audit dot habu-raise-or-alias-5d2a6b70:
-\ the SHA form below is itself > 16 bytes and already stores/constructs fine).
-\ Past the cap the spelling is `T` + the first 16 lowercase hex digits of SHA-256
-\ over the length-prefixed unescaped segment list + '-' + the raw uppercase
-\ tail (unescaped: the fixed-width hash region already delimits it); that opaque
-\ fallback only bounds pathologically long names, it never protects a fixed width.
+\ injective at every length. The checker stores package names up to 255 bytes
+\ (CHECKER-PACKAGE-CAP - 1); a longer derived package is refused by the same
+\ boundary as an explicit package name. The runtime dictionary and AOT
+\ snapshot both store names past their 16-byte inline cell.
 \ Top level (empty package) derives the bare escaped tail: `result` -> `RESULT`.
-\ SHA-256 loads after this file in the engine prefix, so the fallback hashes
-\ through the friend xt installed by type-family-sha.f.
-\ 32 (not 16): the longest legitimate escaped ctor package is ~25 bytes
-\ (CAD-KIND-ADDRESS--SPACE; EVID/POLICY presence-slot sums like
-\ EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22), so 32 keeps every real
-\ family on the readable escaped spelling with headroom while retaining the SHA
-\ fallback for anything longer.
 
 private
 
-32 constant TF-CTOR-NAME-LIMIT   \ readable-spelling cap (audit: NOT DNAME-INL)
-$400 constant TF-CTOR-CAP        \ derived-name / segment-list buffer bytes
+$400 constant TF-CTOR-CAP        \ derived-name buffer bytes
 create TF-CTOR-BUF TF-CTOR-CAP allot
 variable TF-CTOR-U               \ derived-name length
-create TF-CTOR-SEG TF-CTOR-CAP allot   \ length-prefixed segment list (SHA input)
-variable TF-CTOR-SEG-U
-create TF-CTOR-HEX 16 allot       \ 16 lowercase hex digits from the SHA fallback
-
-: TF-SHA16-UNSET ( ptr u8 n ptr u8 -- )   \ default until type-family-sha.f installs
-   {: a:ptr u:n dst:ptr :}
-   s" tfam: constructor sha hook not installed" 76 die ;
-
-;package
-
-\ friend hook: 16 hex of SHA-256 over (ptr,n) into the 16-byte output;
-\ type-family-sha.f installs TF-SHA16 once the registry and hash both exist.
-defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )
-
-package TFAM
-
-: TF-SHA16-DEFAULT ( -- )
-   [: TF-SHA16-UNSET ;] is TF-SHA16-XT ;
-TF-SHA16-DEFAULT
 
 public
 
@@ -1396,10 +1336,10 @@ public
 \ (src/core/checker.f CHECKER-PACKAGE-CAP), so every spelling derived from these
 \ names fits TF-CTOR-BUF. The longest is an escaped package and tail joined by
 \ '-', at most 2*255 + 1 + 2*255 = 1021 bytes; a private member spelling is at
-\ most 255 + 1 + 255 + 12, the segment list 1 + 255. The declaration front ends
+\ most 255 + 1 + 255 + 12. The declaration front ends
 \ (sumtype.f, structure-decl.f, enum-decl.f) refuse a longer name with
-\ E-TDECL-CAP and TF-NAME-LONG$'s reason, so the dies in TF-CTOR-C,,
-\ TF-CTOR-SEG-C, and TFAM-INIT-MEMBER$ guard only that arithmetic.
+\ E-TDECL-CAP and TF-NAME-LONG$'s reason, so the dies in TF-CTOR-C, and
+\ TFAM-INIT-MEMBER$ guard only that arithmetic.
 CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
 
 \ The reason refusing a name longer than TF-NAME-MAX. It is static text: no
@@ -1412,11 +1352,6 @@ private
    TF-CTOR-U @ TF-CTOR-CAP >= IF s" tfam: constructor name too long" 76 die THEN
    TF-CTOR-BUF TF-CTOR-U @ + c!
    TF-CTOR-U @ 1 + TF-CTOR-U ! ;
-: TF-CTOR-SEG-C, ( n -- )        \ append one byte to the SHA segment-list input
-   TF-CTOR-SEG-U @ TF-CTOR-CAP >= IF s" tfam: segment list too long" 76 die THEN
-   TF-CTOR-SEG TF-CTOR-SEG-U @ + c!
-   TF-CTOR-SEG-U @ 1 + TF-CTOR-SEG-U ! ;
-
 : TF-CTOR-ESC ( ptr u8 n -- ) {: a:ptr u:n :}   \ one uppercased '-'->'--' escaped segment
    0 TF-I !
    BEGIN TF-I @ u < WHILE
@@ -1425,7 +1360,7 @@ private
       ELSE TF-UPPER-C TF-CTOR-C, THEN
       TF-I @ 1 + TF-I !
    REPEAT ;
-: TF-CTOR-TAIL ( ptr u8 n -- ) {: a:ptr u:n :}      \ raw uppercased tail (hash form)
+: TF-CTOR-TAIL ( ptr u8 n -- ) {: a:ptr u:n :}      \ raw uppercased private tail
    0 TF-I !
    BEGIN TF-I @ u < WHILE
       a TF-I @ + c@ TF-UPPER-C TF-CTOR-C,
@@ -1437,58 +1372,30 @@ private
    pu 0 > IF pa pu TF-CTOR-ESC  45 TF-CTOR-C, THEN
    ta tu TF-CTOR-ESC ;
 
-: TF-CTOR-SEG-BUILD ( ptr u8 n -- ) {: pa:ptr pu:n :}   \ length-prefixed segment list
-   0 TF-CTOR-SEG-U !
-   pu 0= IF EXIT THEN                     \ top level: empty segment list
-   pu TF-CTOR-SEG-C,                      \ one length byte (package name <= 255)
-   0 TF-I !
-   BEGIN TF-I @ pu < WHILE
-      pa TF-I @ + c@ TF-CTOR-SEG-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
-: TF-CTOR-HEX, ( -- )            \ append the 16 fallback hex digits to the buffer
-   0 TF-I !
-   BEGIN TF-I @ 16 < WHILE
-      TF-CTOR-HEX TF-I @ + c@ TF-CTOR-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
-: TF-CTOR-BUILD-HASH ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
-   {: pa:ptr pu:n ta:ptr tu:n :}
-   pa pu TF-CTOR-SEG-BUILD
-   TF-CTOR-SEG TF-CTOR-SEG-U @ TF-CTOR-HEX TF-SHA16-XT
-   0 TF-CTOR-U !
-   [char] T TF-CTOR-C,
-   TF-CTOR-HEX,
-   45 TF-CTOR-C,
-   ta tu TF-CTOR-TAIL ;
-
 \ TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ptr u8 n ) : derived constructor
-\ package name in TF-CTOR-BUF. Escaped form when it fits the inline name limit,
-\ else the SHA-256 fallback. The tail must already be a canonical lowercase tail.
+\ package name in TF-CTOR-BUF. The tail must already be a canonical lowercase tail.
 
 public
 
 : TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n ta:ptr tu:n :}
    pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-U @ TF-CTOR-NAME-LIMIT > IF pa pu ta tu TF-CTOR-BUILD-HASH THEN
+   TF-CTOR-U @ CHECKER-PACKAGE-CAP >= IF E-PACKAGE-NAME-CAP throw THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ TF-CTOR-PRIV$ ( fam-tail member -- ptr u8 n ) : the spelling a PRIVATE family's
 \ generated words carry. Two spellings exist and they differ on purpose:
 \
 \   public   PKG-FAMILY:MEMBER  a word in the reserved constructor NAMESPACE
-\                               TF-CTOR-PKG$ derives above — escaped, capped, and
-\                               SHA-hashed past the cap, because that namespace is
-\                               GLOBAL and every family in the tree shares it.
+\                               TF-CTOR-PKG$ derives above — escaped and bounded
+\                               by the supported package-name length.
 \   private  FAMILY-MEMBER      a word in the DECLARING PACKAGE's private
 \                               wordlist: the uppercased family tail, '-', the
 \                               uppercased member.
 \
-\ The private form carries no package segment and needs no escaping, cap or hash.
+\ The private form carries no package segment and needs no escaping.
 \ Every use of it is inside the one package that declared the family, where the
-\ package name says nothing the reader does not already know, and a hashed
-\ spelling written on every line of a library would be the wrong trade. It is not
+\ package name says nothing the reader does not already know. It is not
 \ injective across packages and does not need to be: a collision with an existing
 \ private word, or between two families of one package, is refused loudly by the
 \ generator's own "generated declaration already defined" die — the same rule the
@@ -1531,7 +1438,7 @@ private
    i 0= IF s" make" EXIT THEN
    s" unmake" ;
 
-variable TF-CM              \ member scan index (TF-CI stays the family scanner's)
+variable TF-CM              \ member scan index
 : TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a member of THIS family?
    0 TF-CM !
    BEGIN TF-CM @ TF-PRIV-MEMBER-N < WHILE
@@ -1583,11 +1490,9 @@ private
 public
 
 : TF-CTOR-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 TF-CI !
-   BEGIN TF-CI @ TFAM-N @ < WHILE
-      a u TF-CI @ TF-CTOR-PRIV-FAM? IF RES-TRUE EXIT THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   TFAM-N @ 0 ?do
+      a u i TF-CTOR-PRIV-FAM? IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
 
 \ The third membership — a `DERIVE addr` accessor — is recognised from the FIELD
 \ registry, which this file declares further down, so the predicate is reached
@@ -1653,9 +1558,6 @@ private
 public
 
 11 cells constant PF-REC
-CELL constant PF-REC-ALIGN
-0 constant PF-REC-PTR-MASK
-
 : PF.FAM ( ptr a -- ptr a ) PF.FAM-OFF + ;
 : PF.VAR ( ptr a -- ptr a ) PF.VAR-OFF + ;
 : PF.NAME-OFF ( ptr a -- ptr a ) PF.NAME-OFF-AT + ;
@@ -1668,32 +1570,6 @@ CELL constant PF-REC-ALIGN
 : PF.ALIGN ( ptr a -- ptr a ) PF.ALIGN-OFF + ;
 : PF.FLAGS ( ptr a -- ptr a ) PF.FLAGS-OFF + ;
 
-PF.FAM-OFF 0 cells TF-LAYOUT=
-PF.VAR-OFF 1 cells TF-LAYOUT=
-PF.NAME-OFF-AT 2 cells TF-LAYOUT=
-PF.NAME-U-OFF 3 cells TF-LAYOUT=
-PF.SCH-OFF 4 cells TF-LAYOUT=
-PF.SLOT-OFF 5 cells TF-LAYOUT=
-PF.CELLS-OFF 6 cells TF-LAYOUT=
-PF.BYTE-OFF-AT 7 cells TF-LAYOUT=
-PF.BYTES-OFF 8 cells TF-LAYOUT=
-PF.ALIGN-OFF 9 cells TF-LAYOUT=
-PF.FLAGS-OFF 10 cells TF-LAYOUT=
-PF-REC 11 cells TF-LAYOUT=
-PF-REC-ALIGN CELL TF-LAYOUT=
-PF-REC PF-REC-ALIGN mod 0 TF-LAYOUT=
-PF-REC-PTR-MASK 0 TF-LAYOUT=
-0 PF.FAM PF.FAM-OFF TF-LAYOUT=
-0 PF.VAR PF.VAR-OFF TF-LAYOUT=
-0 PF.NAME-OFF PF.NAME-OFF-AT TF-LAYOUT=
-0 PF.NAME-U PF.NAME-U-OFF TF-LAYOUT=
-0 PF.SCH PF.SCH-OFF TF-LAYOUT=
-0 PF.SLOT PF.SLOT-OFF TF-LAYOUT=
-0 PF.CELLS PF.CELLS-OFF TF-LAYOUT=
-0 PF.BYTE-OFF PF.BYTE-OFF-AT TF-LAYOUT=
-0 PF.BYTES PF.BYTES-OFF TF-LAYOUT=
-0 PF.ALIGN PF.ALIGN-OFF TF-LAYOUT=
-0 PF.FLAGS PF.FLAGS-OFF TF-LAYOUT=
 
 \ --- Registry cell write-protection. REG-PROTECT / IMK-SEAL-REGISTRY (defined in
 \ src/core/util.f and src/core/internal-mark.f; see the util.f header) seal each
@@ -1729,7 +1605,7 @@ private
 PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 
 \ PF-SCRUB ( lo hi -- ) : zero the product-field records [lo,hi) back to canonical
-\ zero. Rows are pointer-free (PF-REC-PTR-MASK 0), so a zeroed row is the canonical
+\ zero. Rows contain only scalar ids and offsets, so a zeroed row is the canonical
 \ "absent" row: retired provisional or rejected rows then leave no observable bytes
 \ in reflection or in snapshot/fixpoint identity. lo>=hi (nothing retired) is a
 \ no-op. Operates on the live arena (PF-BASE).
@@ -1974,12 +1850,12 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   REG-PROTECT   \ families TFM-P holds
 : TFM-FLAG! ( bool n n -- ) {: b:bool fam:n k:n :}
    b IF 1 ELSE 0 THEN fam k TFM! ;
 
-\ Capture: back to the zeroed boot store, under a new epoch.
+\ Capture: back to the zeroed boot store. Its zero stamps are invalid at epoch 1.
 : TFM-SNAP-RESET ( -- )
    TFM-BOOT 0 TF-CAP-INIT TFM-REC * CELL / ARENA-CELLS-ZERO
    TFM-BOOT TFM-P !
    TF-CAP-INIT TFM-CAP !
-   TFM-EPOCH+ ;
+   1 TFM-EPOCH ! ;
 
 public
 
@@ -2343,29 +2219,12 @@ private
 public
 
 5 cells constant PF-TX-REC
-CELL constant PF-TX-REC-ALIGN
-0 constant PF-TX-REC-PTR-MASK
-
 : PFTX.PFN ( ptr a -- ptr a ) PFTX.PFN-OFF + ;
 : PFTX.STRU ( ptr a -- ptr a ) PFTX.STRU-OFF + ;
 : PFTX.TOK ( ptr a -- ptr a ) PFTX.TOK-OFF + ;
 : PFTX.COMMITN ( ptr a -- ptr a ) PFTX.COMMITN-OFF + ;
 : PFTX.STATE ( ptr a -- ptr a ) PFTX.STATE-OFF + ;
 
-PFTX.PFN-OFF 0 cells TF-LAYOUT=
-PFTX.STRU-OFF 1 cells TF-LAYOUT=
-PFTX.TOK-OFF 2 cells TF-LAYOUT=
-PFTX.COMMITN-OFF 3 cells TF-LAYOUT=
-PFTX.STATE-OFF 4 cells TF-LAYOUT=
-PF-TX-REC 5 cells TF-LAYOUT=
-PF-TX-REC-ALIGN CELL TF-LAYOUT=
-PF-TX-REC PF-TX-REC-ALIGN mod 0 TF-LAYOUT=
-PF-TX-REC-PTR-MASK 0 TF-LAYOUT=
-0 PFTX.PFN PFTX.PFN-OFF TF-LAYOUT=
-0 PFTX.STRU PFTX.STRU-OFF TF-LAYOUT=
-0 PFTX.TOK PFTX.TOK-OFF TF-LAYOUT=
-0 PFTX.COMMITN PFTX.COMMITN-OFF TF-LAYOUT=
-0 PFTX.STATE PFTX.STATE-OFF TF-LAYOUT=
 
 private
 
@@ -2998,8 +2857,6 @@ private
 
 package TFAM
 
-
-
 ;package
 
 package TYPE-FIELD
@@ -3048,18 +2905,16 @@ package TFAM
 
 private
 
-variable TF-CJ              \ accessor scan index (TF-CI stays the inner field scan's)
+variable TF-CJ              \ accessor scan index
 
 : TFAM-ADDR-FIELD-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ tail names a COMMITTED field of fam
    fam TFAM-FLD-START@ {: fs:n :}
-   0 TF-CI !
-   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
-      fs TF-CI @ + {: id:n :}
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fs i + {: id:n :}
       id PF-N@ < IF
-         id PF-NAME$ a u CORE-STR=CI IF RES-TRUE EXIT THEN
+         id PF-NAME$ a u CORE-STR=CI IF RES-TRUE unloop EXIT THEN
       THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   loop RES-FALSE ;
 
 public
 
@@ -3089,14 +2944,12 @@ private
 
 : TFAM-ADDR-PRIV-FIELD? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-FLD-START@ {: fs:n :}
-   0 TF-CI !
-   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
-      fs TF-CI @ + {: id:n :}
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fs i + {: id:n :}
       id PF-N@ < IF
-         a u  fam TFAM-NAME$ id PF-NAME$ TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         a u  fam TFAM-NAME$ id PF-NAME$ TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
       THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   loop RES-FALSE ;
 
 : TFAM-ADDR-PRIV-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id SUMV-FAM@ {: fam:n :}
@@ -3163,15 +3016,13 @@ private
 : TFAM-INIT-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-DERIVE-INIT? 0= IF RES-FALSE EXIT THEN
    fam TFAM-FLD-START@ {: fs:n :}
-   0 TF-CI !
-   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
-      fs TF-CI @ + {: fid:n :}
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fs i + {: fid:n :}
       fid PF-N@ < IF
-         a u fid RES-FALSE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE EXIT THEN
-         a u fid RES-TRUE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         a u fid RES-FALSE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
+         a u fid RES-TRUE TFAM-INIT-MEMBER$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
       THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   loop RES-FALSE ;
 
 : TFAM-INIT-QUAL-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id SUMV-FAM@ {: fam:n :}
@@ -3186,20 +3037,18 @@ private
    CHECKER-AUTH-PACKAGE$ fam TFAM-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u fam TFAM-INIT-RECEIVER$ CORE-STR=CI IF RES-TRUE EXIT THEN
    fam TFAM-FLD-START@ {: fs:n :}
-   0 TF-CI !
-   BEGIN TF-CI @ fam TFAM-FLD-COUNT@ < WHILE
-      fs TF-CI @ + {: fid:n :}
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fs i + {: fid:n :}
       fid PF-N@ < IF
-         a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE EXIT THEN
+         a u fam fid TFAM-INIT-HELPER$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
          fam TFAM-GEN-PUBLIC? 0= IF
             a u fam TFAM-NAME$ fid RES-FALSE TFAM-INIT-MEMBER$
-               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
             a u fam TFAM-NAME$ fid RES-TRUE TFAM-INIT-MEMBER$
-               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
+               TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE unloop EXIT THEN
          THEN
       THEN
-      TF-CI @ 1 + TF-CI !
-   REPEAT RES-FALSE ;
+   loop RES-FALSE ;
 
 : TFAM-INIT-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 TF-CJ !
@@ -3297,9 +3146,6 @@ TFCL-NODE-INSTALL
 public
 
 5 cells constant LAY-REC
-CELL constant LAY-REC-ALIGN
-0 constant LAY-REC-PTR-MASK
-
 private
 
 : LAY.FAM ( ptr a -- ptr a ) LAY.FAM-OFF + ;
@@ -3308,20 +3154,6 @@ private
 : LAY.ALIGN ( ptr a -- ptr a ) LAY.ALIGN-OFF + ;
 : LAY.TAGW ( ptr a -- ptr a ) LAY.TAGW-OFF + ;
 
-LAY.FAM-OFF 0 cells TF-LAYOUT=
-LAY.POLICY-OFF 1 cells TF-LAYOUT=
-LAY.SIZE-OFF 2 cells TF-LAYOUT=
-LAY.ALIGN-OFF 3 cells TF-LAYOUT=
-LAY.TAGW-OFF 4 cells TF-LAYOUT=
-LAY-REC 5 cells TF-LAYOUT=
-LAY-REC-ALIGN CELL TF-LAYOUT=
-LAY-REC LAY-REC-ALIGN mod 0 TF-LAYOUT=
-LAY-REC-PTR-MASK 0 TF-LAYOUT=
-0 LAY.FAM LAY.FAM-OFF TF-LAYOUT=
-0 LAY.POLICY LAY.POLICY-OFF TF-LAYOUT=
-0 LAY.SIZE LAY.SIZE-OFF TF-LAYOUT=
-0 LAY.ALIGN LAY.ALIGN-OFF TF-LAYOUT=
-0 LAY.TAGW LAY.TAGW-OFF TF-LAYOUT=
 
 4 constant LAY-CAP-INIT
 variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !   REG-PROTECT
@@ -3464,6 +3296,7 @@ public
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
+   UNIT-FAM-RESET-XT
    0 SVX-GEN !                           \ every variant row the index points at is going
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 VNX-READY !                         \ ... and every row the variant tail index chains
@@ -3502,6 +3335,7 @@ TFAM-RESET
 \ other participants with their own frames; a caller that also owns those rewinds
 \ them itself, after this (the field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
+   tfamn TFAM-N @ < stru TF-STR-U @ < or IF UNIT-FAM-RESET-XT THEN
    C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
@@ -3543,9 +3377,6 @@ private
 public
 
 8 cells constant TF-RBF-REC
-CELL constant TF-RBF-REC-ALIGN
-0 constant TF-RBF-REC-PTR-MASK
-
 : TFRB.TFAMN ( ptr a -- ptr a ) TFRB.TFAMN-OFF + ;
 : TFRB.STRU ( ptr a -- ptr a ) TFRB.STRU-OFF + ;
 : TFRB.PKN ( ptr a -- ptr a ) TFRB.PKN-OFF + ;
@@ -3555,26 +3386,6 @@ CELL constant TF-RBF-REC-ALIGN
 : TFRB.PFCOMMITN ( ptr a -- ptr a ) TFRB.PFCOMMITN-OFF + ;
 : TFRB.PFTXDEPTH ( ptr a -- ptr a ) TFRB.PFTXDEPTH-OFF + ;
 
-TFRB.TFAMN-OFF 0 cells TF-LAYOUT=
-TFRB.STRU-OFF 1 cells TF-LAYOUT=
-TFRB.PKN-OFF 2 cells TF-LAYOUT=
-TFRB.SUMVN-OFF 3 cells TF-LAYOUT=
-TFRB.PFN-OFF 4 cells TF-LAYOUT=
-TFRB.LAYN-OFF 5 cells TF-LAYOUT=
-TFRB.PFCOMMITN-OFF 6 cells TF-LAYOUT=
-TFRB.PFTXDEPTH-OFF 7 cells TF-LAYOUT=
-TF-RBF-REC 8 cells TF-LAYOUT=
-TF-RBF-REC-ALIGN CELL TF-LAYOUT=
-TF-RBF-REC TF-RBF-REC-ALIGN mod 0 TF-LAYOUT=
-TF-RBF-REC-PTR-MASK 0 TF-LAYOUT=
-0 TFRB.TFAMN TFRB.TFAMN-OFF TF-LAYOUT=
-0 TFRB.STRU TFRB.STRU-OFF TF-LAYOUT=
-0 TFRB.PKN TFRB.PKN-OFF TF-LAYOUT=
-0 TFRB.SUMVN TFRB.SUMVN-OFF TF-LAYOUT=
-0 TFRB.PFN TFRB.PFN-OFF TF-LAYOUT=
-0 TFRB.LAYN TFRB.LAYN-OFF TF-LAYOUT=
-0 TFRB.PFCOMMITN TFRB.PFCOMMITN-OFF TF-LAYOUT=
-0 TFRB.PFTXDEPTH TFRB.PFTXDEPTH-OFF TF-LAYOUT=
 
 private
 
@@ -3880,6 +3691,16 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
 
+: REG-AOT-CAP ( n -- n ) {: k:n :}
+   k 0 = IF TF-CAP-V @ EXIT THEN
+   k 1 = IF TF-PK-CAP-V @ EXIT THEN
+   k 2 = IF SUMV-CAP-V @ EXIT THEN
+   k 3 = IF PF-CAP-V @ EXIT THEN
+   k 4 = IF LAY-CAP-V @ EXIT THEN
+   k 5 = IF TF-STR-CAP-V @ EXIT THEN
+   k 6 = IF SCH-CAP-V @ EXIT THEN
+   SCH-ROOT-CAP-V @ ;
+
 : REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
    k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
    k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
@@ -4137,6 +3958,13 @@ private
 PTR-VARIABLE REG-AOT-PROJECTED
 variable REG-AOT-PROJECTED-U
 
+variable UNIT-FAM-PROJECT-ON
+defer UNIT-FAM-PROJECT-VIEW-XT ( n n n -- ptr u8 )
+: UNIT-FAM-NO-VIEW ( n n n -- ptr u8 ) drop 2drop NULL-PTR ;
+: UNIT-FAM-NO-VIEW-INSTALL ( -- )
+   [: UNIT-FAM-NO-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
+UNIT-FAM-NO-VIEW-INSTALL
+
 : REG-AOT-BLOB-STORE ( ptr u8 n -- ptr u8 ) {: src:ptr k:n :}
    REG-AOT-HDR
    k 0 ?do src i REG-AOT-ROW@ nip nip + loop
@@ -4206,6 +4034,8 @@ variable REG-AOT-PROJECTED-U
    {: src:ptr u:n k:n first:n count:n :}
    first 0 < count 0 < or IF
       s" tfam: a seeded registry reference is negative" REG-AOT-REFUSE THEN
+   UNIT-FAM-PROJECT-ON @ IF
+      k first count UNIT-FAM-PROJECT-VIEW-XT EXIT THEN
    u 0= IF
       first k REG-AOT-COUNT > IF
          s" tfam: a seeded registry reference exceeds the prefix" REG-AOT-REFUSE THEN
@@ -4286,6 +4116,12 @@ variable REG-AOT-PROJECTED-U
 : REG-AOT-NONNEG ( n -- )
    0 < IF s" tfam: a seeded registry scalar is negative" REG-AOT-REFUSE THEN ;
 
+: REG-AOT-CON-VALID? ( n -- bool ) {: id:n :}
+   id CC-N < IF RES-FALSE EXIT THEN
+   id CC-MAX < IF RES-TRUE EXIT THEN
+   UNIT-FAM-PROJECT-ON @ IF id CHECKER-REG:UNIT-CON-VALID-XT EXIT THEN
+   RES-FALSE ;
+
 : REG-AOT-LIMIT ( n n -- ) {: value:n ceiling:n :}
    value 0 < value ceiling > or IF
       s" tfam: a seeded registry scalar is outside its domain" REG-AOT-REFUSE THEN ;
@@ -4362,7 +4198,7 @@ variable REG-AOT-PROJECTED-U
          s" tfam: a seeded parameter schema has reserved fields" REG-AOT-REFUSE THEN EXIT
    THEN
    tag SCH-CON = IF
-      a CC-N < a CC-MAX >= or IF
+      a REG-AOT-CON-VALID? 0= IF
          s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
       b c or 0 <> IF
          s" tfam: a seeded constructor schema has reserved fields" REG-AOT-REFUSE THEN EXIT
@@ -4440,12 +4276,12 @@ variable REG-AOT-PROJECTED-U
       s" tfam: a seeded layout disagrees with its family descriptor" REG-AOT-REFUSE THEN ;
 
 : REG-AOT-SHAPE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
-   src u REG-AOT-TABLE-CHECK
+   UNIT-FAM-PROJECT-ON @ 0= IF src u REG-AOT-TABLE-CHECK THEN
    u 0= IF EXIT THEN
    src 6 REG-AOT-ROW@ drop + 1 ?do
       src u 6 i REG-AOT-ITEM {: node:ptr :}
       node @ SCH-CON = IF
-         node CELL + @ dup CC-N < swap CC-MAX >= or IF
+         node CELL + @ REG-AOT-CON-VALID? 0= IF
             s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
       THEN
    loop
@@ -4675,7 +4511,7 @@ REG-AOT-FAM-W-INSTALL
       key memo kind REG-AOT-MEMO-RESULT EXIT
    THEN
    tag SCH-CON = IF
-      a CC-N < a CC-MAX >= or IF
+      a REG-AOT-CON-VALID? 0= IF
          s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
    THEN
    tag SCH-PTR = IF
@@ -5268,9 +5104,88 @@ private
 \ signature-resolution scratch has been declared, so the same owner clears the
 \ raw token spans before DATA is baked.
 create UNIT-FAM-MARKS REG-AOT-N cells allot
-variable UNIT-FAM-AT
+create UNIT-FAM-STABLE REG-AOT-N cells allot
+PTR-VARIABLE UNIT-FAM-AT
+TFAM-N @ constant UNIT-FAM-STABLE-N
+$54464D44454C5432 constant UNIT-FAM-MAGIC
+16 REG-AOT-N 24 * + constant UNIT-FAM-HDR
+PTR-VARIABLE UNIT-FAM-REFS
+variable UNIT-FAM-REFS-CAP
+PTR-VARIABLE UNIT-CON-REFS
+variable UNIT-CON-REFS-CAP
+PTR-VARIABLE UNIT-FAM-SEEN
+variable UNIT-FAM-SEEN-CAP
+variable UNIT-FAM-SEEN-EPOCH 0 UNIT-FAM-SEEN-EPOCH !
+variable UNIT-FAM-REF-N
+variable UNIT-CON-REF-N
+
+: UNIT-FAM-REFS-RESERVE ( n -- ) {: need:n :}
+   UNIT-FAM-REFS UNIT-FAM-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
+: UNIT-CON-REFS-RESERVE ( n -- ) {: need:n :}
+   UNIT-CON-REFS UNIT-CON-REFS-CAP need 1 ARENA-ROWS-ENSURE ;
+: UNIT-FAM-SEEN-RESERVE ( n -- ) {: need:n :}
+   UNIT-FAM-SEEN-CAP @ {: old:n :}
+   UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP need 1 ARENA-ROWS-ENSURE
+   UNIT-FAM-SEEN-CAP @ old > IF
+      UNIT-FAM-SEEN @ old cells + CELL-VIEW
+      0 UNIT-FAM-SEEN-CAP @ old - ARENA-CELLS-ZERO
+   THEN ;
+: UNIT-FAM-REFS-RELEASE ( -- )
+   UNIT-FAM-REFS UNIT-FAM-REFS-CAP 1 ARENA-ROWS-RELEASE ;
+: UNIT-CON-REFS-RELEASE ( -- )
+   UNIT-CON-REFS UNIT-CON-REFS-CAP 1 ARENA-ROWS-RELEASE ;
+: UNIT-FAM-SEEN-RELEASE ( -- )
+   UNIT-FAM-SEEN UNIT-FAM-SEEN-CAP 1 ARENA-ROWS-RELEASE ;
+defer UNIT-FAM-SCRATCH-RESET ( -- )
+: UNIT-FAM-EXPORT-RESET ( -- )
+   UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
+   NULL-PTR UNIT-FAM-AT ! 0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N !
+   UNIT-FAM-REFS-RELEASE UNIT-CON-REFS-RELEASE
+   UNIT-FAM-SEEN-RELEASE 0 UNIT-FAM-SEEN-EPOCH !
+   UNIT-FAM-SCRATCH-RESET ;
+: UNIT-FAM-REF@ ( n -- n ) cells UNIT-FAM-REFS @ + @ ;
+: UNIT-CON-REF@ ( n -- n ) cells UNIT-CON-REFS @ + @ ;
+: UNIT-FAM-REF! ( n n -- ) cells UNIT-FAM-REFS @ + ! ;
+: UNIT-CON-REF! ( n n -- ) cells UNIT-CON-REFS @ + ! ;
+
+: UNIT-FAM-STABLE-INIT ( -- )
+   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-STABLE i cells + ! loop ;
+UNIT-FAM-STABLE-INIT
+
+: UNIT-FAM-REF+ ( n -- )
+   {: id:n :}
+   id 0 < id TFAM-N @ >= or IF E-TFAM-ARITY throw THEN
+   id UNIT-FAM-STABLE-N < IF EXIT THEN
+   id UNIT-FAM-MARKS @ >= IF EXIT THEN
+   UNIT-FAM-REF-N @ 0 ?do
+      i UNIT-FAM-REF@ id = IF UNLOOP EXIT THEN
+   loop
+   UNIT-FAM-REF-N @ 1+ UNIT-FAM-REFS-RESERVE
+   id UNIT-FAM-REF-N @ UNIT-FAM-REF!
+   1 UNIT-FAM-REF-N +! ;
+
+: UNIT-CON-REF+ ( n -- )
+   {: id:n :}
+   id CC-MAX < IF EXIT THEN
+   UNIT-CON-REF-N @ 0 ?do
+      i UNIT-CON-REF@ id = IF UNLOOP EXIT THEN
+   loop
+   UNIT-CON-REF-N @ 1+ UNIT-CON-REFS-RESERVE
+   id UNIT-CON-REF-N @ UNIT-CON-REF!
+   1 UNIT-CON-REF-N +! ;
+
+public
+: UNIT-TFAM-REF ( n -- ) UNIT-FAM-REF+ ;
+private
+
+26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
+create TFC-VARS TFC-VAR-CAP cells allot
+variable TFC-I   variable TFC-J   variable TFC-ROW
 
 : REG-EXT-PERSIST ( -- )
+   \ An ordinary prepared checker unit still owns its family plans here.
+   \ Its explicit prepare end releases them after installation or discard.
+   UNIT-FAM-PROJECT-ON @ 0= IF UNIT-FAM-RESET-XT THEN
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
    TFX-SNAP-RESET              \ tail-index buckets are process-local
@@ -5286,8 +5201,9 @@ variable UNIT-FAM-AT
    0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !
    NULL-PTR TFSR-NA !  0 TFSR-NU !
-   UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
-   0 UNIT-FAM-AT ! ;
+   TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
+   0 TFC-I !  0 TFC-J !  0 TFC-ROW !
+   UNIT-FAM-EXPORT-RESET ;
 
 : REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
 REG-EXT-PERSIST-INSTALL
@@ -5313,10 +5229,6 @@ public
 \ ---------------------------------------------------------------------------
 
 private
-
-26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
-create TFC-VARS TFC-VAR-CAP cells allot
-variable TFC-I   variable TFC-J   variable TFC-ROW
 
 : TFC-MINT-VARS ( n -- ) {: ar:n :}       \ one fresh checker var per family param
    ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" 76 die THEN
@@ -5994,46 +5906,1011 @@ public
 private
 
 : UNIT-FAM-MARK ( -- )
-   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop ;
+   REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop
+   0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N ! ;
 
 : UNIT-FAM-BASE@ ( n -- n ) cells UNIT-FAM-MARKS + @ ;
 
+: UNIT-FAM-SCAN-NODE ( n -- ) {: node:n :}
+   UNIT-FAM-SEEN @ node cells + @ UNIT-FAM-SEEN-EPOCH @ = IF EXIT THEN
+   UNIT-FAM-SEEN-EPOCH @ UNIT-FAM-SEEN @ node cells + !
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ UNIT-FAM-REF+
+      node SCHEMA-C@ 0 ?do
+         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
+      loop EXIT
+   THEN
+   node SCHEMA-CON? IF node SCHEMA-A@ UNIT-CON-REF+ EXIT THEN
+   node SCHEMA-PTR? IF node SCHEMA-A@ recurse EXIT THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-C@ 0 ?do
+         node SCHEMA-B@ i + SCHEMA-ROOT@ recurse
+      loop
+      EXIT
+   THEN
+   node SCHEMA-ROW? IF
+      node SCHEMA-B@ 0 ?do
+         node SCHEMA-A@ i + SCHEMA-ROOT@ recurse
+      loop
+   THEN ;
+
+: UNIT-FAM-SCAN-FAMILY ( n -- ) {: fam:n :}
+   fam TFAM-SCHEMA-ROOT@ dup 0 <> IF SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
+      ELSE drop THEN
+   fam TFAM-VAR-COUNT@ 0 ?do
+      fam TFAM-VAR-START@ i + {: vid:n :}
+      vid SUMV-SCH-COUNT@ 0 ?do
+         vid SUMV-REC@ SV.SCH-START @ i + SCHEMA-ROOT@
+         UNIT-FAM-SCAN-NODE
+      loop
+   loop
+   fam TFAM-FLD-COUNT@ 0 ?do
+      fam TFAM-FLD-START@ i + PF-REC@ PF.SCH @
+      SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
+   loop ;
+
+: UNIT-FAM-SCAN ( -- )
+   6 REG-AOT-COUNT dup UNIT-FAM-SEEN-RESERVE
+   drop
+   UNIT-FAM-SEEN-EPOCH @ 1+ dup 0= IF
+      drop UNIT-FAM-SEEN @ CELL-VIEW 0 UNIT-FAM-SEEN-CAP @ ARENA-CELLS-ZERO
+      1
+   THEN UNIT-FAM-SEEN-EPOCH !
+   6 REG-AOT-COUNT 6 UNIT-FAM-BASE@ ?do
+      i SCHEMA-APP? IF i SCHEMA-A@ UNIT-FAM-REF+ THEN
+      i SCHEMA-CON? IF i SCHEMA-A@ UNIT-CON-REF+ THEN
+   loop
+   0
+   BEGIN dup UNIT-FAM-REF-N @ < WHILE
+      dup UNIT-FAM-REF@ UNIT-FAM-SCAN-FAMILY
+      1+
+   REPEAT drop ;
+
+: UNIT-FAM-KEY-U ( n -- n ) FAMILY-KEY-XT
+   0= IF 2drop s" tfam: FILE family lacks declaration identity"
+      REG-AOT-REFUSE THEN nip ;
+
+: UNIT-CON-KEY-U ( n -- n ) CON-KEY-XT
+   0= IF 2drop s" tfam: FILE constructor lacks declaration identity"
+      REG-AOT-REFUSE THEN nip ;
+
+defer UNIT-FAM-CONTRACT-SIZE-XT ( n -- n )
+defer UNIT-FAM-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
+defer UNIT-FAM-CONTRACT-CHECK-XT ( n ptr u8 n -- )
+defer UNIT-CON-CONTRACT-SIZE-XT ( n -- n )
+defer UNIT-CON-CONTRACT-WRITE-XT ( n ptr u8 -- ptr u8 )
+defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
+
+: UNIT-FAM-STR-SIZE ( -- n )
+   0
+   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
+      i TF-REC@ {: row:ptr :}
+      16 row TF.PKG-U @ + +  row TF.NAME-U @ +
+   loop
+   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
+      i SUMV-REC@ {: row:ptr :}
+      16 row SV.NAME-U @ + + row SV.CTOR-PKG-U @ +
+   loop
+   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
+      i PF-REC@ PF.NAME-U @ 8 + +
+   loop ;
+
 : UNIT-FAM-SIZE ( -- n )
-   0 REG-AOT-N 0 ?do
-      i REG-AOT-COUNT i UNIT-FAM-BASE@ <> IF drop -1 LEAVE THEN
+   UNIT-FAM-SCAN
+   UNIT-FAM-REF-N @ UNIT-CON-REF-N @ or
+   REG-AOT-N 0 ?do
+      i 5 <> IF i REG-AOT-COUNT i UNIT-FAM-BASE@ - or THEN
    loop
    0= IF 0 EXIT THEN
-   REG-AOT-HDR
+   UNIT-FAM-HDR
    REG-AOT-N 0 ?do
-      i REG-AOT-COUNT i REG-AOT-WIDTH * +
+      i 5 <> IF
+         i REG-AOT-COUNT i UNIT-FAM-BASE@ -
+         i REG-AOT-WIDTH * +
+      THEN
+   loop
+   UNIT-FAM-STR-SIZE +
+   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
+      i UNIT-FAM-KEY-U 8 + +
+   loop
+   8 +
+   UNIT-FAM-REF-N @ 0 ?do
+      i UNIT-FAM-REF@ {: id:n :}
+      id UNIT-FAM-KEY-U 24 + +
+      id UNIT-FAM-CONTRACT-SIZE-XT +
+   loop
+   8 +
+   UNIT-CON-REF-N @ 0 ?do
+      i UNIT-CON-REF@ {: id:n :}
+      id UNIT-CON-KEY-U 24 + +
+      id UNIT-CON-CONTRACT-SIZE-XT +
    loop ;
+
+: UNIT-FAM-U64+ ( n ptr u8 -- ptr u8 )
+   {: value:n dst:ptr :}
+   value dst REG-AOT-U64! dst 8 + ;
+
+: UNIT-FAM-STR+ ( n n ptr u8 -- ptr u8 )
+   {: off:n u:n dst:ptr :}
+   u dst UNIT-FAM-U64+ {: bytes:ptr :}
+   u 0 > IF off u TF-OFF$ drop bytes u ARENA-COPY THEN
+   bytes u + ;
+
+: UNIT-FAM-KEY+ ( ptr u8 n ptr u8 -- ptr u8 )
+   {: key:ptr u:n dst:ptr :}
+   u dst UNIT-FAM-U64+ {: bytes:ptr :}
+   u 0 > IF key bytes u ARENA-COPY THEN
+   bytes u + ;
+
+: UNIT-FAM-OWN-KEY+ ( n ptr u8 -- ptr u8 )
+   {: id:n dst:ptr :}
+   id FAMILY-KEY-XT 0= IF 2drop
+      s" tfam: FILE family lacks declaration identity" REG-AOT-REFUSE THEN
+   dst UNIT-FAM-KEY+ ;
+
+: UNIT-CON-OWN-KEY+ ( n ptr u8 -- ptr u8 )
+   {: id:n dst:ptr :}
+   id CON-KEY-XT 0= IF 2drop
+      s" tfam: FILE constructor lacks declaration identity" REG-AOT-REFUSE THEN
+   dst UNIT-FAM-KEY+ ;
 
 : UNIT-FAM-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    UNIT-FAM-SIZE {: size:n :}
    size cap > IF REG-AOT-OVERFLOW THEN
    size 0= IF 0 EXIT THEN
-   6 REG-AOT-COUNT 1 ?do
-      i SCHEMA-CON? IF
-         i SCHEMA-A@ dup CC-N < swap CC-MAX >= or IF
-            s" tfam: unit schema constructor is process-local" 76 die THEN
-      THEN
-   loop
-   REG-AOT-N dst REG-AOT-U64!
-   REG-AOT-HDR UNIT-FAM-AT !
+   UNIT-FAM-MAGIC dst UNIT-FAM-U64+
+   REG-AOT-N swap UNIT-FAM-U64+ UNIT-FAM-AT !
    REG-AOT-N 0 ?do
       i UNIT-FAM-BASE@ {: base:n :}
       i REG-AOT-COUNT {: end:n :}
-      end base - {: count:n :}
-      end i REG-AOT-WIDTH * {: bytes:n :}
-      base dst i REG-AOT-ROW * 8 + + REG-AOT-U64!
-      count dst i REG-AOT-ROW * 8 + 8 + + REG-AOT-U64!
-      bytes dst i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64!
-      i REG-AOT-BASE-PTR dst UNIT-FAM-AT @ + bytes ARENA-COPY
-      UNIT-FAM-AT @ bytes + UNIT-FAM-AT !
+      base UNIT-FAM-AT @ UNIT-FAM-U64+
+      i 5 = IF 0 ELSE end base - THEN swap UNIT-FAM-U64+
+      UNIT-FAM-STABLE i cells + @ swap UNIT-FAM-U64+ UNIT-FAM-AT !
    loop
+   REG-AOT-N 0 ?do
+      i 5 <> IF
+         i REG-AOT-COUNT i UNIT-FAM-BASE@ - i REG-AOT-WIDTH * {: bytes:n :}
+         bytes 0 > IF
+            i REG-AOT-BASE-PTR i UNIT-FAM-BASE@ i REG-AOT-WIDTH * +
+            UNIT-FAM-AT @ bytes ARENA-COPY
+         THEN
+         UNIT-FAM-AT @ bytes + UNIT-FAM-AT !
+      THEN
+   loop
+   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
+      i TF-REC@ {: row:ptr :}
+      row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
+      row TF.NAME-OFF @ row TF.NAME-U @ rot UNIT-FAM-STR+
+      UNIT-FAM-AT !
+   loop
+   2 REG-AOT-COUNT 2 UNIT-FAM-BASE@ ?do
+      i SUMV-REC@ {: row:ptr :}
+      row SV.NAME-OFF @ row SV.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
+      row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ rot UNIT-FAM-STR+
+      UNIT-FAM-AT !
+   loop
+   3 REG-AOT-COUNT 3 UNIT-FAM-BASE@ ?do
+      i PF-REC@ {: row:ptr :}
+      row PF.NAME-OFF @ row PF.NAME-U @ UNIT-FAM-AT @ UNIT-FAM-STR+
+      UNIT-FAM-AT !
+   loop
+   0 REG-AOT-COUNT 0 UNIT-FAM-BASE@ ?do
+      i UNIT-FAM-AT @ UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
+   loop
+   UNIT-FAM-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
+   UNIT-FAM-REF-N @ 0 ?do
+      i UNIT-FAM-REF@ {: id:n :}
+      id UNIT-FAM-AT @ UNIT-FAM-U64+
+      id swap UNIT-FAM-OWN-KEY+ UNIT-FAM-AT !
+      id UNIT-FAM-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
+      id swap UNIT-FAM-CONTRACT-WRITE-XT UNIT-FAM-AT !
+   loop
+   UNIT-CON-REF-N @ UNIT-FAM-AT @ UNIT-FAM-U64+ UNIT-FAM-AT !
+   UNIT-CON-REF-N @ 0 ?do
+      i UNIT-CON-REF@ {: id:n :}
+      id UNIT-FAM-AT @ UNIT-FAM-U64+
+      id swap UNIT-CON-OWN-KEY+ UNIT-FAM-AT !
+      id UNIT-CON-CONTRACT-SIZE-XT UNIT-FAM-AT @ UNIT-FAM-U64+
+      id swap UNIT-CON-CONTRACT-WRITE-XT UNIT-FAM-AT !
+   loop
+   UNIT-FAM-AT @ dst - size <> IF
+      s" tfam: FILE family size drift" REG-AOT-REFUSE THEN
    size ;
 
-: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
+\ A FILE family's source indices are local to the capture engine. Keep only
+\ the new records while preparation builds a read view over live rows and the
+\ deltas already prepared for this FILE tree. Neither preparation nor graph
+\ checking publishes a registry member.
+0 constant UFP.NEXT
+1 constant UFP.BLOB
+2 constant UFP.CAP
+3 constant UFP.SRC
+4 constant UFP.U
+5 constant UFP.KEYS
+6 constant UFP.FMAP
+7 constant UFP.FN
+8 constant UFP.CMAP
+9 constant UFP.CN
+10 constant UFP.SBASE
+18 constant UFP.COUNT
+26 constant UFP.TBASE
+34 cells constant UFP.REC
+REG-AOT-N PTR-U8-TABLE UNIT-FAM-RAW
+PTR-VARIABLE UNIT-FAM-FIRST
+PTR-VARIABLE UNIT-FAM-LAST
+PTR-VARIABLE UNIT-FAM-CUR
+PTR-VARIABLE UNIT-FAM-OPEN
+PTR-VARIABLE UNIT-FAM-IN
+PTR-VARIABLE UNIT-FAM-LIMIT
+variable UNIT-FAM-ACC
+variable UNIT-FAM-STR-CUR
+PTR-VARIABLE UNIT-FAM-MAP-CUR
+PTR-VARIABLE UNIT-FAM-KEY-AT
+
+: UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
+: UFP! ( n ptr u8 n -- ) cells + CELL-VIEW ! ;
+: UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + 0 ptr-field @ ;
+: UFP-PTR! ( ptr u8 ptr u8 n -- ) cells + 0 ptr-field ! ;
+: UNIT-FAM-RAW@ ( n -- ptr u8 ) cells UNIT-FAM-RAW + 0 ptr-field @ ;
+: UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
+: UFP-SBASE@ ( ptr u8 n -- n ) UFP.SBASE + UFP@ ;
+: UFP-COUNT@ ( ptr u8 n -- n ) UFP.COUNT + UFP@ ;
+: UFP-TBASE@ ( ptr u8 n -- n ) UFP.TBASE + UFP@ ;
+
+: UNIT-FAM-READ ( n -- ptr u8 ) {: n:n :}
+   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - > or IF
+      s" tfam: truncated FILE family delta" REG-AOT-REFUSE THEN
+   UNIT-FAM-IN @ dup n + UNIT-FAM-IN ! ;
+
+: UNIT-FAM-CELL ( -- n ) 8 UNIT-FAM-READ REG-AOT-U64@ ;
+
+: UNIT-FAM-STR-LEN+ ( n n -- n ) {: sum:n len:n :}
+   len 0 < len UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - sum - > or IF
+      s" tfam: invalid FILE family string length" REG-AOT-REFUSE THEN
+   sum len + ;
+
+: UNIT-FAM-RAW-ROW ( n n -- ptr n ) {: k:n i:n :}
+   k UNIT-FAM-RAW@ i k REG-AOT-WIDTH * + CELL-VIEW ;
+
+: UNIT-FAM-STRING-BYTES ( ptr u8 -- n ) {: plan:ptr :}
+   0
+   plan 0 UFP-COUNT@ 0 ?do
+      0 i UNIT-FAM-RAW-ROW {: row:ptr :}
+      row TF.PKG-U @ UNIT-FAM-STR-LEN+
+      row TF.NAME-U @ UNIT-FAM-STR-LEN+
+   loop
+   plan 2 UFP-COUNT@ 0 ?do
+      2 i UNIT-FAM-RAW-ROW {: row:ptr :}
+      row SV.NAME-U @ UNIT-FAM-STR-LEN+
+      row SV.CTOR-PKG-U @ UNIT-FAM-STR-LEN+
+   loop
+   plan 3 UFP-COUNT@ 0 ?do
+      3 i UNIT-FAM-RAW-ROW PF.NAME-U @ UNIT-FAM-STR-LEN+
+   loop ;
+
+: UNIT-FAM-TARGET-BASE ( n -- n ) {: k:n :}
+   k REG-AOT-COUNT UNIT-FAM-ACC !
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup k UFP-COUNT@ UNIT-FAM-ACC +!
+      UFP.NEXT UFP-PTR@
+   REPEAT drop UNIT-FAM-ACC @ ;
+
+: UNIT-FAM-ROW ( ptr u8 n n -- ptr n ) {: plan:ptr k:n i:n :}
+   plan UFP.BLOB UFP-PTR@ k REG-AOT-BLOB-STORE
+   i k REG-AOT-WIDTH * + CELL-VIEW ;
+
+: UNIT-FAM-PROJECT-VIEW ( n n n -- ptr u8 )
+   {: k:n first:n count:n :}
+   first k REG-AOT-COUNT <= IF
+      count k REG-AOT-COUNT first - <= IF
+         k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
+      THEN
+   THEN
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup k UFP-TBASE@ {: base:n :}
+      dup k UFP-COUNT@ {: n:n :}
+      first base >= first base n + <= and
+      count base n + first - <= and IF
+         k first base - UNIT-FAM-ROW BYTE-VIEW EXIT
+      THEN
+      UFP.NEXT UFP-PTR@
+   REPEAT drop
+   s" tfam: FILE family reference has no projected row" REG-AOT-REFUSE ;
+
+: UNIT-FAM-PLAN-HEADER ( ptr u8 -- ) {: plan:ptr :}
+   plan UFP.BLOB UFP-PTR@ {: blob:ptr :}
+   REG-AOT-N blob REG-AOT-U64!
+   REG-AOT-N 0 ?do
+      plan i UFP-TBASE@ blob i REG-AOT-ROW * 8 + + REG-AOT-U64!
+      plan i UFP-COUNT@ blob i REG-AOT-ROW * 8 + 8 + + REG-AOT-U64!
+      plan i UFP-COUNT@ i REG-AOT-WIDTH *
+      blob i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64!
+   loop ;
+
+: UNIT-FAM-PLAN-ROWS ( ptr u8 -- ) {: plan:ptr :}
+   REG-AOT-N 0 ?do
+      i 5 <> IF
+         plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
+         bytes 0 > IF
+            i UNIT-FAM-RAW@
+            plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
+            bytes ARENA-COPY
+         THEN
+      THEN
+   loop ;
+
+: UNIT-FAM-PUT-STRING ( ptr n ptr u8 -- ) {: field:ptr plan:ptr :}
+   UNIT-FAM-CELL {: len:n :}
+   len field CELL + @ <> IF
+      s" tfam: FILE family string disagrees with its row" REG-AOT-REFUSE THEN
+   len UNIT-FAM-READ {: src:ptr :}
+   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE
+   UNIT-FAM-STR-CUR @ plan 5 UFP-TBASE@ - + {: dst:ptr :}
+   src dst len ARENA-COPY
+   UNIT-FAM-STR-CUR @ field !
+   len UNIT-FAM-STR-CUR +! ;
+
+: UNIT-FAM-PLAN-STRINGS ( ptr u8 -- ) {: plan:ptr :}
+   plan 5 UFP-TBASE@ UNIT-FAM-STR-CUR !
+   plan 0 UFP-COUNT@ 0 ?do
+      plan 0 i UNIT-FAM-ROW {: row:ptr :}
+      row TF.PKG-OFF plan UNIT-FAM-PUT-STRING
+      row TF.NAME-OFF plan UNIT-FAM-PUT-STRING
+   loop
+   plan 2 UFP-COUNT@ 0 ?do
+      plan 2 i UNIT-FAM-ROW {: row:ptr :}
+      row SV.NAME-OFF plan UNIT-FAM-PUT-STRING
+      row SV.CTOR-PKG-OFF plan UNIT-FAM-PUT-STRING
+   loop
+   plan 3 UFP-COUNT@ 0 ?do
+      plan 3 i UNIT-FAM-ROW PF.NAME-OFF plan UNIT-FAM-PUT-STRING
+   loop
+   plan 5 UFP-TBASE@ plan 5 UFP-COUNT@ + UNIT-FAM-STR-CUR @ <> IF
+      s" tfam: FILE family strings do not fill their section" REG-AOT-REFUSE THEN ;
+
+: UNIT-FAM-KEY-READ ( -- ptr u8 n )
+   UNIT-FAM-CELL {: n:n :}
+   n 0 <= IF s" tfam: empty FILE declaration key" REG-AOT-REFUSE THEN
+   n UNIT-FAM-READ n ;
+
+: UNIT-FAM-PREPARED-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
+      dup 0 UFP-COUNT@ 0 ?do
+         UNIT-FAM-KEY-AT @ REG-AOT-U64@ {: n:n :}
+         UNIT-FAM-KEY-AT @ 8 + n key len CORE-STR= IF
+            dup 0 UFP-TBASE@ i + nip RES-TRUE unloop EXIT
+         THEN
+         UNIT-FAM-KEY-AT @ 8 + n + UNIT-FAM-KEY-AT !
+      loop
+      UFP.NEXT UFP-PTR@
+   REPEAT drop 0 RES-FALSE ;
+
+: UNIT-FAM-LOOKUP-KEY ( ptr u8 n -- n bool ) {: key:ptr len:n :}
+   key len FAMILY-BY-KEY-XT IF RES-TRUE EXIT THEN drop
+   key len UNIT-FAM-PREPARED-KEY ;
+
+: UNIT-FAM-ROW-NAME ( ptr u8 n n -- ptr u8 n )
+   {: plan:ptr off:n len:n :}
+   plan UFP.BLOB UFP-PTR@ 5 REG-AOT-BLOB-STORE
+   off plan 5 UFP-TBASE@ - + len ;
+
+: UNIT-FAM-PRIOR-KEY? ( ptr u8 n ptr u8 n -- bool )
+   {: key:ptr len:n keys:ptr count:n :}
+   keys
+   count 0 ?do
+      dup REG-AOT-U64@ {: u:n :}
+      dup 8 + u key len CORE-STR= IF
+         drop RES-TRUE unloop EXIT THEN
+      8 + u +
+   loop drop RES-FALSE ;
+
+: UNIT-FAM-READ-KEYS ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-FAM-IN @ plan UFP.KEYS UFP-PTR!
+   plan 0 UFP-COUNT@ 0 ?do
+      UNIT-FAM-KEY-READ {: key:ptr len:n :}
+      key len plan UFP.KEYS UFP-PTR@ i UNIT-FAM-PRIOR-KEY? IF
+         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
+      THEN
+      plan 0 i UNIT-FAM-ROW {: row:ptr :}
+      key len
+      plan row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-ROW-NAME
+      plan row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-ROW-NAME
+      FAMILY-KEY-MATCH-XT 0= IF
+         s" tfam: FILE family key disagrees with its declaration" REG-AOT-REFUSE
+      THEN
+      key len UNIT-FAM-LOOKUP-KEY IF drop
+         s" tfam: duplicate FILE family declaration key" REG-AOT-REFUSE
+      THEN drop
+   loop ;
+
+: UNIT-FAM-MAP-PAIR ( n n ptr u8 n ptr u8 -- )
+   {: source:n target:n key:ptr len:n plan:ptr :}
+   source UNIT-FAM-MAP-CUR @ CELL-VIEW !
+   target UNIT-FAM-MAP-CUR @ CELL + CELL-VIEW !
+   key plan UFP.SRC UFP-PTR@ -
+      UNIT-FAM-MAP-CUR @ 2 cells + CELL-VIEW !
+   len UNIT-FAM-MAP-CUR @ 3 cells + CELL-VIEW !
+   UNIT-FAM-MAP-CUR @ 4 cells + UNIT-FAM-MAP-CUR ! ;
+
+: UNIT-FAM-MAP-ROOM ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-FAM-MAP-CUR @ 4 cells +
+   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ + > IF
+      s" tfam: FILE family map exceeds its delta" REG-AOT-REFUSE THEN ;
+
+: UNIT-FAM-READ-FMAP ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-FAM-MAP-CUR @ plan UFP.FMAP UFP-PTR!
+   UNIT-FAM-CELL {: n:n :}
+   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
+      s" tfam: FILE family reference count exceeds its bytes" REG-AOT-REFUSE THEN
+   n plan UFP.FN UFP!
+   n 0 ?do
+      UNIT-FAM-CELL {: source:n :}
+      source UNIT-FAM-STABLE-N <
+      source plan 0 UFP-SBASE@ >= or IF
+         s" tfam: FILE family dependency has a local or fixed source ID" REG-AOT-REFUSE
+      THEN
+      UNIT-FAM-KEY-READ {: key:ptr len:n :}
+      key len UNIT-FAM-LOOKUP-KEY 0= IF drop
+         s" tfam: FILE family dependency is absent" REG-AOT-REFUSE THEN
+      {: target:n :}
+      UNIT-FAM-CELL {: bytes:n :}
+      bytes 0 < IF
+         s" tfam: FILE family contract length is negative" REG-AOT-REFUSE THEN
+      bytes UNIT-FAM-READ {: contract:ptr :}
+      target contract bytes UNIT-FAM-CONTRACT-CHECK-XT
+      plan UNIT-FAM-MAP-ROOM
+      source target key len plan UNIT-FAM-MAP-PAIR
+   loop ;
+
+: UNIT-FAM-READ-CMAP ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-FAM-MAP-CUR @ plan UFP.CMAP UFP-PTR!
+   UNIT-FAM-CELL {: n:n :}
+   n 0 < n UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - 16 / > or IF
+      s" tfam: FILE constructor reference count exceeds its bytes" REG-AOT-REFUSE THEN
+   n plan UFP.CN UFP!
+   n 0 ?do
+      UNIT-FAM-CELL {: source:n :}
+      UNIT-FAM-KEY-READ {: key:ptr len:n :}
+      key len CON-BY-KEY-XT 0= IF drop
+         key len CHECKER-REG:UNIT-CON-PROJECT-XT 0= IF drop
+            s" tfam: FILE constructor dependency is absent" REG-AOT-REFUSE
+         THEN
+      THEN
+      {: target:n :}
+      UNIT-FAM-CELL {: bytes:n :}
+      bytes 0 < IF
+         s" tfam: FILE constructor contract length is negative" REG-AOT-REFUSE THEN
+      bytes UNIT-FAM-READ {: contract:ptr :}
+      target key len contract bytes UNIT-CON-CONTRACT-CHECK-XT
+      plan UNIT-FAM-MAP-ROOM
+      source target key len plan UNIT-FAM-MAP-PAIR
+   loop ;
+
+: UNIT-FAM-FIND-MAP ( n ptr u8 n -- n bool )
+   {: source:n pairs:ptr count:n :}
+   count 0 ?do
+      pairs i 4 cells * + dup CELL-VIEW @ source = IF
+         CELL + CELL-VIEW @ RES-TRUE unloop EXIT THEN drop
+   loop 0 RES-FALSE ;
+
+: UNIT-FAM-MAP-ID ( n -- n ) {: source:n :}
+   source UNIT-FAM-STABLE-N < IF source EXIT THEN
+   UNIT-FAM-CUR @ {: plan:ptr :}
+   plan NULL-PTR = IF
+      s" tfam: FILE family map has no active unit" REG-AOT-REFUSE THEN
+   source plan 0 UFP-SBASE@ >=
+   source plan 0 UFP-SBASE@ plan 0 UFP-COUNT@ + < and IF
+      source plan 0 UFP-SBASE@ - plan 0 UFP-TBASE@ + EXIT THEN
+   source plan UFP.FMAP UFP-PTR@ plan UFP.FN UFP@ UNIT-FAM-FIND-MAP
+   IF EXIT THEN drop
+   s" tfam: FILE family ID lacks an identity" REG-AOT-REFUSE ;
+
+: UNIT-CON-MAP-ID ( n -- n ) {: source:n :}
+   source CC-MAX < IF source EXIT THEN
+   UNIT-FAM-CUR @ {: plan:ptr :}
+   source plan UFP.CMAP UFP-PTR@ plan UFP.CN UFP@ UNIT-FAM-FIND-MAP
+   IF EXIT THEN drop
+   s" tfam: FILE constructor ID lacks an identity" REG-AOT-REFUSE ;
+
+: UNIT-FAM-SUBID ( ptr u8 n n -- n ) {: plan:ptr k:n source:n :}
+   source UNIT-FAM-STABLE k cells + @ < IF source EXIT THEN
+   source plan k UFP-SBASE@ >=
+   source plan k UFP-SBASE@ plan k UFP-COUNT@ + <= and IF
+      source plan k UFP-SBASE@ - plan k UFP-TBASE@ + EXIT THEN
+   s" tfam: FILE family row has an external store reference" REG-AOT-REFUSE ;
+
+: UNIT-FAM-ROW-ID! ( ptr u8 n ptr n -- ) {: plan:ptr k:n field:ptr :}
+   plan k field @ UNIT-FAM-SUBID field ! ;
+
+: UNIT-FAM-REBASE ( ptr u8 -- ) {: plan:ptr :}
+   plan 0 UFP-COUNT@ 0 ?do
+      plan 0 i UNIT-FAM-ROW {: row:ptr :}
+      plan 1 row TF.PK-START UNIT-FAM-ROW-ID!
+      plan 2 row TF.VAR-START UNIT-FAM-ROW-ID!
+      plan 3 row TF.FLD-START UNIT-FAM-ROW-ID!
+      row TF.SCHEMA-ROOT @ 0 <> IF
+         plan 7 row TF.SCHEMA-ROOT UNIT-FAM-ROW-ID! THEN
+      0 row TF.TAILNEXT !
+   loop
+   plan 2 UFP-COUNT@ 0 ?do
+      plan 2 i UNIT-FAM-ROW {: row:ptr :}
+      row SV.FAM @ UNIT-FAM-MAP-ID row SV.FAM !
+      plan 7 row SV.SCH-START UNIT-FAM-ROW-ID!
+      0 row SV.CTOR-SYM !
+   loop
+   plan 3 UFP-COUNT@ 0 ?do
+      plan 3 i UNIT-FAM-ROW {: row:ptr :}
+      row PF.FAM @ UNIT-FAM-MAP-ID row PF.FAM !
+      row PF.VAR @ -1 <> IF plan 2 row PF.VAR UNIT-FAM-ROW-ID! THEN
+      plan 7 row PF.SCH UNIT-FAM-ROW-ID!
+   loop
+   plan 4 UFP-COUNT@ 0 ?do
+      plan 4 i UNIT-FAM-ROW {: row:ptr :}
+      row LAY.FAM @ UNIT-FAM-MAP-ID row LAY.FAM !
+   loop
+   plan 6 UFP-COUNT@ 0 ?do
+      plan 6 i UNIT-FAM-ROW {: row:ptr :}
+      row @ {: tag:n :}
+      tag SCH-PTR = IF plan 6 row CELL + UNIT-FAM-ROW-ID! THEN
+      tag SCH-APP = IF
+         row CELL + @ UNIT-FAM-MAP-ID row CELL + !
+         row 2 cells + @ 0 <> IF
+            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
+      THEN
+      tag SCH-CON = IF
+         row CELL + @ UNIT-CON-MAP-ID row CELL + ! THEN
+      tag SCH-QUOT = IF
+         row 3 cells + @ 0 <> IF
+            plan 7 row 2 cells + UNIT-FAM-ROW-ID! THEN
+      THEN
+      tag SCH-ROW = IF
+         row 2 cells + @ 0 <> IF
+            plan 7 row CELL + UNIT-FAM-ROW-ID! THEN
+      THEN
+   loop
+   plan 7 UFP-COUNT@ 0 ?do
+      plan 7 i UNIT-FAM-ROW {: row:ptr :}
+      plan 6 row UNIT-FAM-ROW-ID!
+   loop ;
+
+: UNIT-FAM-PLAN-OPEN ( ptr u8 n -- ptr u8 ) {: src:ptr u:n :}
+   u 0= IF NULL-PTR EXIT THEN
+   u 0 <
+   u $7FFFFFFFFFFFFFFF REG-AOT-HDR - UFP.REC - 2 / > or IF
+      s" tfam: FILE family delta is too large" REG-AOT-REFUSE THEN
+   REG-AOT-HDR u 2 * + {: cap:n :}
+   UFP.REC cap + ARENA-ALLOC BYTE-VIEW {: plan:ptr :}
+   plan UNIT-FAM-OPEN !
+   NULL-PTR plan UFP.NEXT UFP-PTR!  src plan UFP.SRC UFP-PTR!
+   u plan UFP.U UFP!
+   plan UFP.REC + plan UFP.BLOB UFP-PTR!
+   cap plan UFP.CAP UFP!
+   src UNIT-FAM-IN ! src u + UNIT-FAM-LIMIT !
+   UNIT-FAM-CELL UNIT-FAM-MAGIC <> IF
+      s" tfam: FILE family delta has an invalid format" REG-AOT-REFUSE THEN
+   UNIT-FAM-CELL REG-AOT-N <> IF
+      s" tfam: FILE family delta has an invalid store count" REG-AOT-REFUSE THEN
+   REG-AOT-N 0 ?do
+      UNIT-FAM-CELL {: base:n :}
+      UNIT-FAM-CELL {: count:n :}
+      UNIT-FAM-CELL UNIT-FAM-STABLE i cells + @ <> IF
+         s" tfam: FILE family stable registry changed" REG-AOT-REFUSE THEN
+      base 0 < count 0 < or IF
+         s" tfam: FILE family delta has a negative extent" REG-AOT-REFUSE THEN
+      base UNIT-FAM-STABLE i cells + @ < IF
+         s" tfam: FILE family source predates the stable registry" REG-AOT-REFUSE THEN
+      base $7FFFFFFFFFFFFFFF count - > IF
+         s" tfam: FILE family source extent overflows" REG-AOT-REFUSE THEN
+      base plan UFP.SBASE i + UFP!
+      count plan UFP.COUNT i + UFP!
+      i UNIT-FAM-TARGET-BASE {: target:n :}
+      target $7FFFFFFFFFFFFFFF count - > IF
+         s" tfam: FILE family target extent overflows" REG-AOT-REFUSE THEN
+      target plan UFP.TBASE i + UFP!
+   loop
+   plan 5 UFP-COUNT@ 0 <> IF
+      s" tfam: FILE family delta carries raw string offsets" REG-AOT-REFUSE THEN
+   REG-AOT-N 0 ?do
+      i 5 <> IF
+         plan i UFP-COUNT@ {: count:n :}
+         count UNIT-FAM-LIMIT @ UNIT-FAM-IN @ - i REG-AOT-WIDTH / > IF
+            s" tfam: FILE family rows exceed their bytes" REG-AOT-REFUSE THEN
+         count i REG-AOT-WIDTH * UNIT-FAM-READ
+         i UNIT-FAM-RAW!
+      THEN
+   loop
+   plan UNIT-FAM-STRING-BYTES plan UFP.COUNT 5 + UFP!
+   plan UNIT-FAM-PLAN-HEADER
+   plan UNIT-FAM-PLAN-ROWS
+   plan UNIT-FAM-PLAN-STRINGS
+   plan UNIT-FAM-READ-KEYS
+   plan UFP.BLOB UFP-PTR@ REG-AOT-HDR +
+   REG-AOT-N 0 ?do
+      plan i UFP-COUNT@ i REG-AOT-WIDTH * +
+   loop UNIT-FAM-MAP-CUR !
+   plan UNIT-FAM-READ-FMAP
+   plan UNIT-FAM-READ-CMAP
+   UNIT-FAM-IN @ UNIT-FAM-LIMIT @ <> IF
+      s" tfam: FILE family delta has trailing bytes" REG-AOT-REFUSE THEN
+   NULL-PTR UNIT-FAM-OPEN !
+   plan ;
+
+: UNIT-FAM-PLAN-DROP ( ptr u8 -- ) {: plan:ptr :}
+   plan plan UFP.CAP UFP@ UFP.REC + ASIG-RELEASE ;
+
+: UNIT-FAM-PLAN-ADD ( ptr u8 -- ) {: plan:ptr :}
+   UNIT-FAM-LAST @ NULL-PTR = IF plan UNIT-FAM-FIRST !
+   ELSE plan UNIT-FAM-LAST @ UFP.NEXT UFP-PTR! THEN
+   plan UNIT-FAM-LAST !
+   plan UNIT-FAM-CUR ! ;
+
+: UNIT-FAM-BEGIN ( -- )
+   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
+   NULL-PTR UNIT-FAM-CUR ! NULL-PTR UNIT-FAM-OPEN !
+   0 UNIT-FAM-PROJECT-ON ! ;
+
+: UNIT-FAM-PREPARE ( ptr u8 n -- ptr u8 )
+   [: 2dup UNIT-FAM-PLAN-OPEN UNIT-FAM-OPEN ! ;] catch {: rc:n :}
+   2drop
+   rc 0 <> IF
+      UNIT-FAM-OPEN @ dup NULL-PTR <> IF UNIT-FAM-PLAN-DROP
+         ELSE drop THEN
+      NULL-PTR UNIT-FAM-OPEN !
+      rc throw
+   THEN
+   UNIT-FAM-OPEN @ {: plan:ptr :}
+   NULL-PTR UNIT-FAM-OPEN !
+   plan NULL-PTR = IF NULL-PTR EXIT THEN
+   plan UNIT-FAM-PLAN-ADD
+   -1 UNIT-FAM-PROJECT-ON !
+   plan UNIT-FAM-REBASE
+   plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@ REG-AOT-CHECK
+   plan ;
+
+: UNIT-FAM-VIEW ( ptr u8 -- ptr u8 n ) {: state:ptr :}
+   state NULL-PTR = IF NULL-PTR 0 EXIT THEN
+   state UFP.BLOB UFP-PTR@ state UFP.CAP UFP@ ;
+
+: UNIT-FAM-TAKE ( ptr u8 -- ) {: plan:ptr :}
+   plan NULL-PTR = IF EXIT THEN
+   REG-AOT-N 0 ?do
+      plan i UFP-TBASE@ i REG-AOT-COUNT <> IF
+         s" tfam: FILE family installation order changed" REG-AOT-REFUSE THEN
+      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-ROOM
+   loop
+   REG-AOT-N 0 ?do
+      plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
+      bytes 0 > IF
+         plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
+         i REG-AOT-BASE-PTR plan i UFP-TBASE@ i REG-AOT-WIDTH * +
+         bytes ARENA-COPY
+      THEN
+      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
+   loop
+   TFX-SNAP-RESET VNX-SNAP-RESET FVX-SNAP-RESET
+   TFM-EPOCH+ 0 SVX-GEN ! ;
+
+: UNIT-FAM-END ( -- )
+   0 UNIT-FAM-PROJECT-ON ! NULL-PTR UNIT-FAM-CUR !
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UFP.NEXT UFP-PTR@ swap
+      UNIT-FAM-PLAN-DROP
+   REPEAT drop
+   NULL-PTR UNIT-FAM-FIRST ! NULL-PTR UNIT-FAM-LAST !
+   UNIT-FAM-SCRATCH-RESET ;
+
+\ Exact semantic contracts for family dependencies. Source indices, interned
+\ offsets, diagnostic spans and derived lookup links are intentionally absent;
+\ names, parameter kinds, layout, fields and recursively expanded schemas are
+\ compared byte for byte. A schema application carries the defining FILE key
+\ of its family, so a different declaration cannot impersonate that edge.
+PTR-VARIABLE UNIT-FAM-CON-P
+variable UNIT-FAM-CON-N
+variable UNIT-FAM-CON-LIMIT
+variable UNIT-FAM-CON-MODE
+create UNIT-FAM-CON-CELL 8 allot
+
+: UNIT-FAM-CON-OUT ( ptr u8 n -- ) {: src:ptr len:n :}
+   len 0 < IF s" tfam: negative FILE family contract extent" REG-AOT-REFUSE THEN
+   UNIT-FAM-CON-MODE @ 0 <> IF
+      UNIT-FAM-CON-MODE @ 2 = IF
+         len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
+            s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
+         src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
+            s" tfam: FILE family dependency changed semantics" REG-AOT-REFUSE THEN
+      ELSE
+         src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
+      THEN
+   THEN
+   len UNIT-FAM-CON-N +! ;
+
+: UNIT-FAM-CON-CELL+ ( n -- )
+   UNIT-FAM-CON-CELL REG-AOT-U64!
+   UNIT-FAM-CON-CELL 8 UNIT-FAM-CON-OUT ;
+
+: UNIT-FAM-CON-STR ( ptr u8 n -- ) {: a:ptr u:n :}
+   u UNIT-FAM-CON-CELL+
+   a u UNIT-FAM-CON-OUT ;
+
+: UNIT-FAM-CON-COUNT ( n -- n ) {: k:n :}
+   k REG-AOT-COUNT UNIT-FAM-ACC !
+   UNIT-FAM-PROJECT-ON @ IF
+      UNIT-FAM-FIRST @
+      BEGIN dup NULL-PTR <> WHILE
+         dup k UFP-COUNT@ UNIT-FAM-ACC +!
+         UFP.NEXT UFP-PTR@
+      REPEAT drop
+   THEN UNIT-FAM-ACC @ ;
+
+: UNIT-FAM-CON-ROW ( n n -- ptr n ) {: k:n id:n :}
+   UNIT-FAM-PROJECT-ON @ IF
+      k id 1 UNIT-FAM-PROJECT-VIEW CELL-VIEW EXIT THEN
+   id 0 < id k REG-AOT-COUNT >= or IF
+      s" tfam: FILE contract row is outside the registry" REG-AOT-REFUSE THEN
+   k REG-AOT-BASE-PTR id k REG-AOT-WIDTH * + CELL-VIEW ;
+
+: UNIT-FAM-CON-NAME ( n n -- ) {: off:n len:n :}
+   UNIT-FAM-PROJECT-ON @ IF
+      5 off len UNIT-FAM-PROJECT-VIEW len UNIT-FAM-CON-STR EXIT THEN
+   off len TF-OFF$ UNIT-FAM-CON-STR ;
+
+: UNIT-FAM-CON-PLAN-KEY ( n -- ptr u8 n bool ) {: id:n :}
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup 0 UFP-TBASE@ {: base:n :}
+      dup 0 UFP-COUNT@ {: count:n :}
+      id base >= id base count + < and IF
+         dup UFP.KEYS UFP-PTR@ UNIT-FAM-KEY-AT !
+         id base - 0 ?do
+            UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ 8 + + UNIT-FAM-KEY-AT !
+         loop
+         drop UNIT-FAM-KEY-AT @ dup REG-AOT-U64@ {: n:n :}
+         8 + n RES-TRUE EXIT
+      THEN
+      UFP.NEXT UFP-PTR@
+   REPEAT drop NULL-PTR 0 RES-FALSE ;
+
+: UNIT-FAM-CON-FKEY ( n -- ptr u8 n ) {: id:n :}
+   id TFAM-N @ < IF
+      id FAMILY-KEY-XT IF EXIT THEN 2drop
+   THEN
+   id UNIT-FAM-CON-PLAN-KEY IF EXIT THEN 2drop
+   s" tfam: FILE contract family identity is absent" REG-AOT-REFUSE ;
+
+: UNIT-FAM-CON-CKEY ( n -- ptr u8 n ) {: id:n :}
+   id CTN @ < IF
+      id CON-KEY-XT IF EXIT THEN 2drop
+   THEN
+   UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UFP.CMAP UFP-PTR@ {: map:ptr :}
+      dup UFP.CN UFP@ 0 ?do
+         map i 4 cells * + {: pair:ptr :}
+         pair CELL + CELL-VIEW @ id = IF
+            dup UFP.SRC UFP-PTR@
+            pair 2 cells + CELL-VIEW @ +
+            pair 3 cells + CELL-VIEW @ rot drop unloop EXIT
+         THEN
+      loop
+      UFP.NEXT UFP-PTR@
+   REPEAT drop
+   s" tfam: FILE contract constructor identity is absent" REG-AOT-REFUSE ;
+
+: UNIT-FAM-CON-FAMREF ( n -- ) {: id:n :}
+   id UNIT-FAM-STABLE-N < IF
+      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
+   1 UNIT-FAM-CON-CELL+
+   id UNIT-FAM-CON-FKEY UNIT-FAM-CON-STR ;
+
+: UNIT-FAM-CON-CONREF ( n -- ) {: id:n :}
+   id CC-MAX < IF
+      0 UNIT-FAM-CON-CELL+ id UNIT-FAM-CON-CELL+ EXIT THEN
+   1 UNIT-FAM-CON-CELL+
+   id UNIT-FAM-CON-CKEY UNIT-FAM-CON-STR ;
+
+: UNIT-FAM-CON-SCHEMA ( n -- ) {: id:n :}
+   6 id UNIT-FAM-CON-ROW {: row:ptr :}
+   row @ {: tag:n :}
+   tag UNIT-FAM-CON-CELL+
+   tag SCH-PARAM = IF row CELL + @ UNIT-FAM-CON-CELL+ EXIT THEN
+   tag SCH-CON = IF row CELL + @ UNIT-FAM-CON-CONREF EXIT THEN
+   tag SCH-PTR = IF row CELL + @ recurse EXIT THEN
+   tag SCH-APP = IF
+      row CELL + @ UNIT-FAM-CON-FAMREF
+      row 3 cells + @ {: count:n :}
+      count UNIT-FAM-CON-CELL+
+      count 0 ?do
+         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
+      loop EXIT
+   THEN
+   tag SCH-QUOT = IF
+      row CELL + @ UNIT-FAM-CON-CELL+
+      row 3 cells + @ {: count:n :}
+      count UNIT-FAM-CON-CELL+
+      count 0 ?do
+         7 row 2 cells + @ i + UNIT-FAM-CON-ROW @ recurse
+      loop EXIT
+   THEN
+   tag SCH-ROW = IF
+      row 2 cells + @ {: count:n :}
+      count UNIT-FAM-CON-CELL+
+      count 0 ?do
+         7 row CELL + @ i + UNIT-FAM-CON-ROW @ recurse
+      loop EXIT
+   THEN
+   s" tfam: FILE contract has invalid schema" REG-AOT-REFUSE ;
+
+: UNIT-FAM-CON-FAMILY ( n -- ) {: id:n :}
+   0 id UNIT-FAM-CON-ROW {: row:ptr :}
+   row TF.PKG-OFF @ row TF.PKG-U @ UNIT-FAM-CON-NAME
+   row TF.NAME-OFF @ row TF.NAME-U @ UNIT-FAM-CON-NAME
+   row TF.VIS @ UNIT-FAM-CON-CELL+
+   row TF.ARITY @ UNIT-FAM-CON-CELL+
+   row TF.KIND @ UNIT-FAM-CON-CELL+
+   row TF.LAYOUT @ UNIT-FAM-CON-CELL+
+   row TF.SLOTS @ UNIT-FAM-CON-CELL+
+   row TF.TAGW @ UNIT-FAM-CON-CELL+
+   row TF.DERIVE @ UNIT-FAM-CON-CELL+
+   row TF.OPAQUE @ UNIT-FAM-CON-CELL+
+   row TF.SCHEMA-ROOT @ 0 <> IF
+      1 UNIT-FAM-CON-CELL+
+      7 row TF.SCHEMA-ROOT @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
+   ELSE 0 UNIT-FAM-CON-CELL+ THEN
+   row TF.ARITY @ 0 ?do
+      1 row TF.PK-START @ i + UNIT-FAM-CON-ROW @ UNIT-FAM-CON-CELL+
+   loop
+   row TF.VAR-COUNT @ UNIT-FAM-CON-CELL+
+   row TF.VAR-COUNT @ 0 ?do
+      2 row TF.VAR-START @ i + UNIT-FAM-CON-ROW {: variant:ptr :}
+      variant SV.NAME-OFF @ variant SV.NAME-U @ UNIT-FAM-CON-NAME
+      variant SV.CTOR-PKG-OFF @ variant SV.CTOR-PKG-U @ UNIT-FAM-CON-NAME
+      variant SV.TAG @ UNIT-FAM-CON-CELL+
+      variant SV.PAYCELLS @ UNIT-FAM-CON-CELL+
+      variant SV.SCH-COUNT @ UNIT-FAM-CON-CELL+
+      variant SV.SCH-COUNT @ 0 ?do
+         7 variant SV.SCH-START @ i + UNIT-FAM-CON-ROW @
+         UNIT-FAM-CON-SCHEMA
+      loop
+   loop
+   row TF.FLD-COUNT @ UNIT-FAM-CON-CELL+
+   row TF.FLD-COUNT @ 0 ?do
+      3 row TF.FLD-START @ i + UNIT-FAM-CON-ROW {: field:ptr :}
+      field PF.NAME-OFF @ field PF.NAME-U @ UNIT-FAM-CON-NAME
+      field PF.VAR @ -1 = IF -1 ELSE
+         field PF.VAR @ row TF.VAR-START @ - THEN UNIT-FAM-CON-CELL+
+      field PF.SLOT @ UNIT-FAM-CON-CELL+
+      field PF.CELLS @ UNIT-FAM-CON-CELL+
+      field PF.BYTE-OFF @ UNIT-FAM-CON-CELL+
+      field PF.BYTES @ UNIT-FAM-CON-CELL+
+      field PF.ALIGN @ UNIT-FAM-CON-CELL+
+      field PF.FLAGS @ UNIT-FAM-CON-CELL+
+      7 field PF.SCH @ UNIT-FAM-CON-ROW @ UNIT-FAM-CON-SCHEMA
+   loop
+   0
+   4 UNIT-FAM-CON-COUNT 0 ?do
+      4 i UNIT-FAM-CON-ROW LAY.FAM @ id = IF 1+ THEN
+   loop
+   dup UNIT-FAM-CON-CELL+
+   drop
+   4 UNIT-FAM-CON-COUNT 0 ?do
+      4 i UNIT-FAM-CON-ROW {: lay:ptr :}
+      lay LAY.FAM @ id = IF
+         lay LAY.POLICY @ UNIT-FAM-CON-CELL+
+         lay LAY.SIZE @ UNIT-FAM-CON-CELL+
+         lay LAY.ALIGN @ UNIT-FAM-CON-CELL+
+         lay LAY.TAGW @ UNIT-FAM-CON-CELL+
+      THEN
+   loop ;
+
+: UNIT-FAM-CONTRACT-SIZE ( n -- n )
+   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
+   UNIT-FAM-CON-FAMILY UNIT-FAM-CON-N @ ;
+
+: UNIT-FAM-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
+   {: id:n dst:ptr :}
+   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
+   id UNIT-FAM-CON-FAMILY
+   dst UNIT-FAM-CON-N @ + ;
+
+: UNIT-FAM-CONTRACT-CHECK ( n ptr u8 n -- )
+   {: id:n src:ptr len:n :}
+   2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
+   src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
+   id UNIT-FAM-CON-FAMILY
+   UNIT-FAM-CON-N @ len <> IF
+      s" tfam: FILE family contract has trailing bytes" REG-AOT-REFUSE THEN ;
+
+: UNIT-CON-CONTRACT-CONTENT ( n -- ) {: id:n :}
+   id CT-NAME$ UNIT-FAM-CON-STR
+   id CT-PKG$ UNIT-FAM-CON-STR
+   id CT-CLASS@ UNIT-FAM-CON-CELL+
+   id CT-WIDTH@ UNIT-FAM-CON-CELL+
+   id CT-SIGN@ UNIT-FAM-CON-CELL+ ;
+
+: UNIT-CON-CONTRACT-SIZE ( n -- n )
+   0 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
+   UNIT-CON-CONTRACT-CONTENT UNIT-FAM-CON-N @ ;
+
+: UNIT-CON-CONTRACT-WRITE ( n ptr u8 -- ptr u8 )
+   {: id:n dst:ptr :}
+   1 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N ! dst UNIT-FAM-CON-P !
+   id UNIT-CON-CONTRACT-CONTENT
+   dst UNIT-FAM-CON-N @ + ;
+
+PTR-VARIABLE UNIT-CON-CON-IN
+PTR-VARIABLE UNIT-CON-CON-END
+
+: UNIT-CON-CON-READ ( n -- ptr u8 ) {: n:n :}
+   n 0 < n UNIT-CON-CON-END @ UNIT-CON-CON-IN @ - > or IF
+      s" tfam: malformed FILE constructor contract" REG-AOT-REFUSE THEN
+   UNIT-CON-CON-IN @ dup n + UNIT-CON-CON-IN ! ;
+
+: UNIT-CON-CON-CELL ( -- n ) 8 UNIT-CON-CON-READ REG-AOT-U64@ ;
+
+: UNIT-CON-CON-STR ( -- ptr u8 n )
+   UNIT-CON-CON-CELL {: len:n :}
+   len UNIT-CON-CON-READ len ;
+
+: UNIT-CON-CONTRACT-CHECK ( n ptr u8 n ptr u8 n -- )
+   {: id:n key:ptr keyu:n src:ptr len:n :}
+   id CTN @ < IF
+      2 UNIT-FAM-CON-MODE ! 0 UNIT-FAM-CON-N !
+      src UNIT-FAM-CON-P ! len UNIT-FAM-CON-LIMIT !
+      id UNIT-CON-CONTRACT-CONTENT
+      UNIT-FAM-CON-N @ len <> IF
+         s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE
+      THEN EXIT
+   THEN
+   src UNIT-CON-CON-IN ! src len + UNIT-CON-CON-END !
+   UNIT-CON-CON-STR {: name:ptr nameu:n :}
+   UNIT-CON-CON-STR {: pkg:ptr pkgu:n :}
+   UNIT-CON-CON-CELL CT-LINEAR <> IF
+      s" tfam: FILE constructor class changed" REG-AOT-REFUSE THEN
+   UNIT-CON-CON-CELL 64 <> IF
+      s" tfam: FILE constructor width changed" REG-AOT-REFUSE THEN
+   UNIT-CON-CON-CELL CS-NONE <> IF
+      s" tfam: FILE constructor signedness changed" REG-AOT-REFUSE THEN
+   UNIT-CON-CON-IN @ UNIT-CON-CON-END @ <> IF
+      s" tfam: FILE constructor contract has trailing bytes" REG-AOT-REFUSE THEN
+   key keyu name nameu pkg pkgu
+      CHECKER-REG:UNIT-CON-PROJECT-CONTRACT-XT 0= IF
+      s" tfam: FILE constructor name or package changed" REG-AOT-REFUSE THEN ;
+
+\ The copied plans outlive parser and contract staging, including a capture
+\ while projection is active. Clear only the staging at its owner boundaries.
+: UNIT-FAM-SCRATCH-CLEAR ( -- )
+   REG-AOT-N 0 ?do NULL-PTR i UNIT-FAM-RAW! loop
+   NULL-PTR UNIT-FAM-IN ! NULL-PTR UNIT-FAM-LIMIT !
+   0 UNIT-FAM-ACC ! 0 UNIT-FAM-STR-CUR !
+   NULL-PTR UNIT-FAM-MAP-CUR ! NULL-PTR UNIT-FAM-KEY-AT !
+   NULL-PTR UNIT-FAM-CON-P ! 0 UNIT-FAM-CON-N !
+   0 UNIT-FAM-CON-LIMIT ! 0 UNIT-FAM-CON-MODE !
+   0 UNIT-FAM-CON-CELL REG-AOT-U64!
+   NULL-PTR UNIT-CON-CON-IN ! NULL-PTR UNIT-CON-CON-END ! ;
+
+: UNIT-FAM-SCRATCH-INSTALL ( -- )
+   [: UNIT-FAM-SCRATCH-CLEAR ;] is UNIT-FAM-SCRATCH-RESET ;
+UNIT-FAM-SCRATCH-INSTALL
+
+: UNIT-FAM-CONTRACT-INSTALL ( -- )
+   [: UNIT-FAM-CONTRACT-SIZE ;] is UNIT-FAM-CONTRACT-SIZE-XT
+   [: UNIT-FAM-CONTRACT-WRITE ;] is UNIT-FAM-CONTRACT-WRITE-XT
+   [: UNIT-FAM-CONTRACT-CHECK ;] is UNIT-FAM-CONTRACT-CHECK-XT
+   [: UNIT-CON-CONTRACT-SIZE ;] is UNIT-CON-CONTRACT-SIZE-XT
+   [: UNIT-CON-CONTRACT-WRITE ;] is UNIT-CON-CONTRACT-WRITE-XT
+   [: UNIT-CON-CONTRACT-CHECK ;] is UNIT-CON-CONTRACT-CHECK-XT
+   [: UNIT-FAM-PROJECT-VIEW ;] is UNIT-FAM-PROJECT-VIEW-XT ;
+UNIT-FAM-CONTRACT-INSTALL
+
+: UNIT-FAM-RESET-INSTALL ( -- ) [: UNIT-FAM-END ;] is UNIT-FAM-RESET-XT ;
+UNIT-FAM-RESET-INSTALL
+
+: UNIT-FAMILY-NAME-IN ( ptr u8 n ptr u8 n -- bool )
    {: name:ptr nameu:n src:ptr u:n :}
    u 0= IF RES-FALSE EXIT THEN
    src 0 REG-AOT-ROW@ drop + 0 ?do
@@ -6042,14 +6919,60 @@ private
       row TF.NAME-U @ name nameu CORE-STR= IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
+: UNIT-FAMILY-NAME? ( ptr u8 n ptr u8 n -- bool )
+   {: name:ptr nameu:n src:ptr u:n :}
+   UNIT-FAM-PROJECT-ON @ IF
+      UNIT-FAM-CUR @ {: plan:ptr :}
+      name nameu plan UFP.BLOB UFP-PTR@ plan UFP.CAP UFP@
+      UNIT-FAMILY-NAME-IN EXIT
+   THEN
+   name nameu src u UNIT-FAMILY-NAME-IN ;
+
+: UNIT-FAM-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
+   \ UNIT-FAM-TAKE advances the epoch; producer memo bytes are never imported.
+   TFM-BOOT BYTE-VIEW TF-CAP-INIT TFM-REC * visit execute
+   TFM-P BYTE-VIEW CELL visit execute
+   TFM-CAP BYTE-VIEW CELL visit execute
+   TFM-EPOCH BYTE-VIEW CELL visit execute
+   TFM-P @ BYTE-VIEW TFM-CAP @ TFM-REC * visit execute
+   TF-A-P BYTE-VIEW CELL visit execute
+   TF-CAP-V BYTE-VIEW CELL visit execute
+   TFAM-N BYTE-VIEW CELL visit execute
+   TF-PK-P BYTE-VIEW CELL visit execute
+   TF-PK-CAP-V BYTE-VIEW CELL visit execute
+   TF-PK-N BYTE-VIEW CELL visit execute
+   SUMV-A-P BYTE-VIEW CELL visit execute
+   SUMV-CAP-V BYTE-VIEW CELL visit execute
+   SUMV-N BYTE-VIEW CELL visit execute
+   PF-A-P BYTE-VIEW CELL visit execute
+   PF-CAP-V BYTE-VIEW CELL visit execute
+   PF-N BYTE-VIEW CELL visit execute
+   PF-COMMIT-N BYTE-VIEW CELL visit execute
+   LAY-A-P BYTE-VIEW CELL visit execute
+   LAY-CAP-V BYTE-VIEW CELL visit execute
+   LAY-N BYTE-VIEW CELL visit execute
+   TF-STR-P BYTE-VIEW CELL visit execute
+   TF-STR-CAP-V BYTE-VIEW CELL visit execute
+   TF-STR-U BYTE-VIEW CELL visit execute
+   visit SCHEMA-REG:UNIT-STATE-ROOTS
+   REG-AOT-N 0 ?do
+      i REG-AOT-BASE-PTR i REG-AOT-CAP i REG-AOT-WIDTH * visit execute
+   loop ;
+
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
    [: UNIT-FAM-SIZE ;] is CHECKER-REG:UNIT-TFAM-SIZE
    [: UNIT-FAM-SAVE ;] is CHECKER-REG:UNIT-TFAM-SAVE
-   [: REG-AOT-INSTALL ;] is CHECKER-REG:UNIT-TFAM-INSTALL
-   [: REG-AOT-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
-   [: REG-AOT-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
+   [: UNIT-FAM-REF+ ;] is CHECKER-REG:UNIT-TFAM-REF
+   [: UNIT-FAM-MAP-ID ;] is CHECKER-REG:UNIT-TFAM-MAP
+   [: UNIT-FAM-BEGIN ;] is CHECKER-REG:UNIT-TFAM-BEGIN
+   [: UNIT-FAM-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
+   [: UNIT-FAM-VIEW ;] is CHECKER-REG:UNIT-TFAM-VIEW
+   [: UNIT-FAM-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
+   [: UNIT-FAM-STATE-SPANS ;] is CHECKER-REG:UNIT-TFAM-STATE-SPANS
+   [: UNIT-FAM-EXPORT-RESET ;] is CHECKER-REG:UNIT-TFAM-EXPORT-RESET
+   [: UNIT-FAM-END ;] is CHECKER-REG:UNIT-TFAM-END
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT

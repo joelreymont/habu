@@ -3,7 +3,7 @@ title: "Make check-test's in-process runs refuse what the CLI refuses"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-02T13:19:10.918496+02:00\""
+created-at: "2026-10-02T13:19:10.918496+02:00"
 closed-at: "2026-10-14T19:49:59.740786+03:00"
 close-reason: 08fbc738 rewinds verifier definer rows with checker scope; commit reproduces all eight in-process/CLI disagreement fixtures across 155 cases and records repeat-definer regression and convergence.
 ---

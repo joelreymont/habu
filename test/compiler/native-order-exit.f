@@ -88,5 +88,71 @@ CHECK-RETURNS
 2 0 ' EXHAUST-READ catch CHECK-EXHAUST
 2 3 ' EXHAUST-READ catch CHECK-EXHAUST
 
+\ A loop-carried link crosses the comparison call and an early-return arm.
+\ The comparison also returns early; both offset and rank order matter.
+: NEXT-RECORD ( ptr n -- ptr ptr n ) 0 ptr-field ;
+: NIL? ( ptr n -- bool ) BYTE-VIEW NULL$ drop = ;
+: EDIT-OFF ( ptr n -- ptr n ) 4 cells + ;
+: EDIT-RANK ( ptr n -- ptr n ) 6 cells + ;
+
+: EDIT-BEFORE? ( ptr n ptr n -- bool )
+   {: first second :}
+   first EDIT-OFF @ second EDIT-OFF @ < if true exit then
+   first EDIT-OFF @ second EDIT-OFF @ > if false exit then
+   first EDIT-RANK @ second EDIT-RANK @ < ;
+
+: INSERT-EDIT ( ptr n ptr ptr n -- )
+   {: node list :}
+   list begin dup @ NIL? 0= while
+      dup @ node EDIT-BEFORE? 0= if
+         dup @ node NEXT-RECORD ! node swap ! exit
+      then @ NEXT-RECORD
+   repeat node swap ! ;
+
+PTR-VARIABLE HEAD
+create FIRST-EDIT 7 cells allot
+create MIDDLE-EDIT 7 cells allot
+create LAST-EDIT 7 cells allot
+create APPENDED-EDIT 7 cells allot
+create TIED-EDIT 7 cells allot
+
+: INIT-EDIT ( ptr n n n -- )
+   {: node off:n rank:n :}
+   NULL$ drop CELL-VIEW node NEXT-RECORD !
+   off node EDIT-OFF ! rank node EDIT-RANK ! ;
+
+: CHECK-EDIT ( ptr n n n -- ptr n )
+   {: node off:n rank:n :}
+   node EDIT-OFF @ off T=
+   node EDIT-RANK @ rank T=
+   node NEXT-RECORD @ ;
+
+: CHECK-INSERT ( -- )
+   NULL$ drop CELL-VIEW HEAD !
+   FIRST-EDIT 1 1 INIT-EDIT MIDDLE-EDIT 3 1 INIT-EDIT
+   LAST-EDIT 3 2 INIT-EDIT APPENDED-EDIT 4 1 INIT-EDIT
+   TIED-EDIT 3 1 INIT-EDIT
+   s" an empty list accepts its first node" T-LABEL
+   LAST-EDIT HEAD INSERT-EDIT
+   HEAD @ 3 2 CHECK-EDIT NIL? TTRUE
+   s" insertion before the head returns early" T-LABEL
+   FIRST-EDIT HEAD INSERT-EDIT
+   HEAD @ 1 1 CHECK-EDIT 3 2 CHECK-EDIT NIL? TTRUE
+   s" insertion after traversal orders equal offsets by rank" T-LABEL
+   MIDDLE-EDIT HEAD INSERT-EDIT
+   HEAD @ 1 1 CHECK-EDIT 3 1 CHECK-EDIT 3 2 CHECK-EDIT NIL? TTRUE
+   s" append reaches the exhausted loop edge" T-LABEL
+   APPENDED-EDIT HEAD INSERT-EDIT
+   HEAD @ 1 1 CHECK-EDIT 3 1 CHECK-EDIT 3 2 CHECK-EDIT
+      4 1 CHECK-EDIT NIL? TTRUE
+   s" an equal offset and rank inserts before the existing node" T-LABEL
+   TIED-EDIT HEAD INSERT-EDIT
+   HEAD @ 1 1 CHECK-EDIT
+      dup TIED-EDIT = TTRUE 3 1 CHECK-EDIT
+      dup MIDDLE-EDIT = TTRUE 3 1 CHECK-EDIT 3 2 CHECK-EDIT
+      4 1 CHECK-EDIT NIL? TTRUE ;
+
+CHECK-INSERT
+
 ;package
 T-REPORT

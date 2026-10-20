@@ -71,7 +71,7 @@ private
 4 constant SITE-TOKENS               \ [: ;] catch drop
 512 constant CAP-BUF-CAP
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create CAP-BUF CAP-BUF-CAP allot
 variable CAP-U
 

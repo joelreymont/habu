@@ -3,7 +3,7 @@ title: Give each backend a session and an owned emission
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-10-03T22:32:28.819643+03:00\\\"\""
+created-at: "2026-10-03T22:32:28.819643+03:00"
 closed-at: "2026-10-14T23:29:45.601405+03:00"
 close-reason: Independent Astra follow-up CLEAR on ed285fdc for all backend-session and owned-artifact hunks. Admission precedes mutation; refused child preserves parent; context/provider/owner identity live; bytes/rows copied before retirement; dynamic row registry and owner close correct. Registered native compiler/session suite passes with 88-byte A64 artifact including cross-backend failure recovery. Verified ancestry/source identity makes qualified 663/663 native gate and convergence applicable. No parallel-compiler claim.
 ---

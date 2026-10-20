@@ -36,7 +36,6 @@ variable SCHEMA-N0
 variable SCHEMA-ROOT-N0
 variable LAYOUT-N0
 variable STRING-N0
-variable EVENT-N0
 \ The observable for "the protection owner did not publish" is the size of the
 \ protected SET, not prot-wid-room. Room used to count free registry slots, which a
 \ rollback restored; it now counts free wordlist IDS, and a rolled-back declaration
@@ -49,7 +48,7 @@ variable GENERATED-NAME-PREFLIGHT-N
 variable GENERATED-PLAN-BROKEN
 variable GENERATED-XREF-ABSENT
 variable GENERATED-CHECKER-ABSENT
-variable GENERATED-EVENT-STAGED
+variable GENERATED-VARIANT-STAGED
 variable GENERATED-PROTECTION-UNPUBLISHED
 variable GENERATED-DICTIONARY-UNPUBLISHED
 variable NATIVE-NDICT-N0
@@ -70,6 +69,27 @@ variable CAPACITY-PREFLIGHT-N
 variable AFTER-FAIL-FAM
 variable AFTER-FAIL-FIELD
 
+\ A 253-byte package and a two-byte family derive a 256-byte constructor
+\ namespace (package, '-', family), one byte beyond the package-name limit.
+create CTOR-CAP-SRC 272 allot
+variable CTOR-CAP-U
+
+: CTOR-CAP-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CTOR-CAP-SRC CTOR-CAP-U @ + u BYTE-COPY
+   u CTOR-CAP-U +! ;
+
+: CTOR-CAP-OPEN$ ( -- ptr u8 n )
+   0 CTOR-CAP-U !
+   s" package " CTOR-CAP-APP
+   253 0 DO
+      112 CTOR-CAP-SRC CTOR-CAP-U @ + c!
+      1 CTOR-CAP-U +!
+   LOOP
+   s"  public" CTOR-CAP-APP
+   CTOR-CAP-SRC CTOR-CAP-U @ ;
+
+: CTOR-CAP-PKG$ ( -- ptr u8 n ) CTOR-CAP-SRC 8 + 253 ;
+
 : BREAK-GENERATED-EFFECT ( ptr u8 n -- ) {: a:ptr u:n :}
    0 GENERATED-PLAN-BROKEN !
    a u + 1 + dup c@ 40 <> IF
@@ -85,18 +105,9 @@ variable AFTER-FAIL-FIELD
 : RECORD-PREFLIGHT-NONPUBLICATION ( -- )
    s" GDTX:RED" XREF-FIND XREF-FOUND? 0= GENERATED-XREF-ABSENT !
    s" GDTX:RED" CHECKER-RESOLVES? 0= GENERATED-CHECKER-ABSENT !
-   \ The declaration's own event rows ARE on the stream by the time generation
-   \ runs, and that is the point: the runner commits DECL-EVENT before the
-   \ constructor participant, so DECL-EVENT has already promoted this
-   \ declaration's rows to the committed watermark before the constructor commit
-   \ reads them through the committed provider. The rows are reversible —
-   \ ASSERT-UNCHANGED below proves DECL-EVENT:COUNT is back at the baseline after
-   \ the reject. This used to read `= EVENT-N0` because the vehicle was
-   \ sumtype.f's compact ENUM definer, which wrote registry rows directly and
-   \ emitted no events at all; the global ENUM keyword is the unified front end
-   \ now, so the honest observable at this instant is that the events are staged,
-   \ not that they are absent.
-   DECL-EVENT:COUNT EVENT-N0 @ > GENERATED-EVENT-STAGED !
+   \ The variants already exist when constructor generation runs, and the
+   \ declaration transaction can still roll them back on a later failure.
+   SUMV-N@ VARIANT-N0 @ > GENERATED-VARIANT-STAGED !
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ = GENERATED-PROTECTION-UNPUBLISHED !
    ndict@ NATIVE-NDICT-N0 @ =
    cp@ NATIVE-CP-N0 @ = and
@@ -116,7 +127,7 @@ variable AFTER-FAIL-FIELD
    0 GENERATED-PLAN-BROKEN !
    0 GENERATED-XREF-ABSENT !
    0 GENERATED-CHECKER-ABSENT !
-   0 GENERATED-EVENT-STAGED !
+   0 GENERATED-VARIANT-STAGED !
    0 GENERATED-PROTECTION-UNPUBLISHED !
    0 GENERATED-DICTIONARY-UNPUBLISHED !
    [: EVALUATE-GENERATED ;] is TYPE-DECL:TDECL-EVAL-XT
@@ -184,7 +195,6 @@ variable AFTER-FAIL-FIELD
    SCHEMA-ROOT-N@ SCHEMA-ROOT-N0 !
    LAY-N@ LAYOUT-N0 !
    TF-STR-U@ STRING-N0 !
-   DECL-EVENT:COUNT EVENT-N0 !
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 ! ;
 
 : RECORD-OWNER-DEPTHS ( -- )
@@ -224,7 +234,6 @@ variable AFTER-FAIL-FIELD
    SCHEMA-ROOT-N@ SCHEMA-ROOT-N0 @ T=
    LAY-N@ LAYOUT-N0 @ T=
    TF-STR-U@ STRING-N0 @ T=
-   DECL-EVENT:COUNT EVENT-N0 @ T=
    PROT-WID-PROBE:COUNT PROTECTION-ROOM-N0 @ T= ;
 
 \ ---- a body failure rolls the dictionary and data space back ----------------
@@ -446,7 +455,7 @@ variable AFTER-FAIL-FIELD
    s" plan broken at the second word" T-LABEL GENERATED-PLAN-BROKEN @ TTRUE
    s" xref absent when generation ran" T-LABEL GENERATED-XREF-ABSENT @ TTRUE
    s" checker row absent when generation ran" T-LABEL GENERATED-CHECKER-ABSENT @ TTRUE
-   s" event rows staged when generation ran" T-LABEL GENERATED-EVENT-STAGED @ TTRUE
+   s" variants staged when generation ran" T-LABEL GENERATED-VARIANT-STAGED @ TTRUE
    s" protection unpublished when generation ran" T-LABEL
    GENERATED-PROTECTION-UNPUBLISHED @ TTRUE
    s" dictionary unpublished when generation ran" T-LABEL
@@ -482,21 +491,11 @@ variable AFTER-FAIL-FIELD
    ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
    [: TRY-EVENT-CURRENT ;] catch E-DEV-TX T=
 
-   \ The next real declaration must consume the exact rolled-back field/event
-   \ ids. Public committed reflection therefore detects provisional leaks
-   \ without exposing either owner's private arena.
+   \ The next real declaration consumes the exact rolled-back field id.
    s" PRODUCT gdafterfail FIELD clean n ;PRODUCT" EVALUATE-CATCH 0 T=
-   DECL-EVENT:COUNT EVENT-N0 @ 3 + T=
    TYPE-FIELD:COUNT FIELD-N0 @ 1 + T=
-   EVENT-N0 @ DECL-EVENT:DECL? TTRUE
-   EVENT-N0 @ 1 + DECL-EVENT:ARITY? TTRUE
-   EVENT-N0 @ 2 + DECL-EVENT:FIELD? TTRUE
-   EVENT-N0 @ DECL-EVENT:FAMILY@ AFTER-FAIL-FAM !
-   EVENT-N0 @ 1 + DECL-EVENT:FAMILY@ AFTER-FAIL-FAM @ T=
-   EVENT-N0 @ 2 + DECL-EVENT:FAMILY@ AFTER-FAIL-FAM @ T=
-   EVENT-N0 @ 1 + DECL-EVENT:VAR@ 0 T=
-   EVENT-N0 @ 2 + DECL-EVENT:FIELD@ AFTER-FAIL-FIELD !
-   AFTER-FAIL-FIELD @ FIELD-N0 @ T=
+   s" gdafterfail" TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop AFTER-FAIL-FAM !
+   FIELD-N0 @ AFTER-FAIL-FIELD !
    AFTER-FAIL-FIELD @ TYPE-FIELD:FAMILY@ AFTER-FAIL-FAM @ T=
    AFTER-FAIL-FIELD @ TYPE-FIELD:VARIANT@ TYPE-FIELD:NO-VARIANT T=
    AFTER-FAIL-FIELD @ TYPE-FIELD:NAME$ s" clean" T$=
@@ -512,7 +511,7 @@ variable AFTER-FAIL-FIELD
 \ ---- a multi-error load reports a refused product and continues ------------
 \ The path the all-errors check drives (tools/check-all-errors-core.f SESSION):
 \ the reject is counted and swallowed only after its transaction rolled back,
-\ so the next product consumes the refused one's event and field ids.
+\ so the next product consumes the refused one's field id.
 
 : MULTI-ERROR-PRODUCTS ( -- )
    s" gdmebad" s" FIELD x n FIELD x n" CHECKER-DEFPRODUCT
@@ -530,11 +529,38 @@ variable AFTER-FAIL-FIELD
    DECL-DIAG:HAS? TTRUE
    DECL-DIAG:OFF
    TFAM-N@ FAMILY-N0 @ 1 + T=
-   DECL-EVENT:COUNT EVENT-N0 @ 3 + T=
    TYPE-FIELD:COUNT FIELD-N0 @ 1 + T=
-   EVENT-N0 @ 2 + DECL-EVENT:FIELD@ TYPE-FIELD:NAME$ s" clean" T$=
+   FIELD-N0 @ TYPE-FIELD:NAME$ s" clean" T$=
    [: TRY-EVENT-CURRENT ;] catch E-DEV-TX T=
    ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS ;
+
+: TEST-CTOR-PACKAGE-CAP ( -- )
+   s" PRODUCT xy FIELD value n ;PRODUCT" {: src:ptr su:n :}
+   CTOR-CAP-OPEN$ EVALUATE-CATCH 0 T=
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+
+   \ PRODUCT uses the legacy declaration reporter after recording a field.
+   DECL-DIAG:JSON
+   src su 1 1 0 DIAG-SOURCE!
+   src su EVALUATE-CATCH E-PACKAGE-NAME-CAP T=
+   s\" \"decl\":\"product\",\"family\":\"xy\",\"token\":\"xy\",\"reason\":\"constructor package name exceeds 255 bytes\""
+   DECL-DIAG:HAS? TTRUE
+   s\" \"line\":1,\"column\":9,\"byte_start\":8,\"byte_end\":10"
+   DECL-DIAG:HAS? TTRUE
+   DIAG-SOURCE-OFF
+   DECL-DIAG:OFF
+   ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
+   CTOR-CAP-PKG$ s" xy" TFAM-FIND-IN nip TFALSE
+
+   \ ENUM reaches the same limit from its unified constructor participant.
+   DECL-DIAG:PROSE
+   s" ENUM xy red ;ENUM" EVALUATE-CATCH E-PACKAGE-NAME-CAP T=
+   s" bad enum declaration 'xy': constructor package name exceeds 255 bytes at 'xy'"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
+   ASSERT-UNCHANGED ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
+   CTOR-CAP-PKG$ s" xy" TFAM-FIND-IN nip TFALSE
+   s" ;package" EVALUATE-CATCH 0 T= ;
 
 \ Test-only friend boundary for the installed generated-plan capacity hook. A
 \ plain checked body since this suite became a WHITEBOX-SUITE: the hook's name
@@ -590,6 +616,7 @@ public
    TEST-GENERATOR-ROLLBACK
    TEST-EVALUATOR-FAILURE-CLEARS-AUTHORITY
    TEST-MULTI-ERROR-ROLLBACK
+   TEST-CTOR-PACKAGE-CAP
    TEST-PLAN-CAPACITY-PREFLIGHT
    TEST-SUCCESS-PUBLICATION
    TEST-CLOSED-WORLD

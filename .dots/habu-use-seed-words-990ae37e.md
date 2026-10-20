@@ -3,7 +3,7 @@ title: Use seed words in primitive state
 status: active
 priority: 0
 issue-type: task
-created-at: "\"2026-10-15T08:41:10.069633+03:00\""
+created-at: "2026-10-15T08:41:10.069633+03:00"
 ---
 
 Fresh combined-source recovery e028a6df fails its first bootstrap stack image

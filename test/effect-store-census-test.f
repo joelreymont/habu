@@ -26,11 +26,11 @@
 \   fresh     a signature the store has never seen, plus a definition the checker
 \             rejects: nodes appear, the rejected one leaves nothing behind, and
 \             the arithmetic still closes.
-\   swept     a capture's sweep that retires six words, beside kept words that
-\             share what they reached: nothing moves, the dropped records keep
-\             only their chain link, the bytes the walk stops reaching are
-\             exactly the ones the sweep zeroed, and the checker and the source
-\             pre-verifier answer every kept word as they did.
+\   swept     a capture's sweep that retires six names, beside kept words that
+\             share what they reached: live occurrences retain their contracts.
+\             After trimming the unused tail, its dropped records keep only
+\             their chain link and the bytes the walk stops reaching are exactly
+\             the ones the next sweep zeroed. Kept words still type and run.
 \
 \ AND THE IDENTITY EVERY WINDOW MUST SATISFY: window-bytes = final + dup + dead,
 \ i.e. ORPHAN-BYTES is zero — the walk saw every byte in the window exactly once,
@@ -112,7 +112,7 @@ EFF-CENSUS:NODE-TOTAL-BYTES + T=
 BALANCED
 
 \ ---------------------------------------------------------------------------
-\ window 4: a swept store — a retired binding keeps only its chain link
+\ window 4: retired names retain contracts until their occurrences are trimmed
 \ ---------------------------------------------------------------------------
 \ The capture's sweep (src/core/checker.f CHECKER-SWEEP) retires what its policy
 \ drops and zeroes, in place, every byte of the effect store that only a retired
@@ -135,11 +135,10 @@ BALANCED
 \ twice, a row no other word has, so its record owns a content and a node, and
 \ the effect CTS-DROPMK2 gives the words it creates is that window's one
 \ record keyed on nothing. The census reads the whole store on both sides: the
-\ same bytes and the same records, and the six dropped bindings keyed on
-\ nothing. Swept, the last window is chain links alone, the bytes it stopped
-\ reaching are every byte the sweep zeroed - an earlier sweep may have zeroed
-\ others before it - and the checker and the pre-verifier answer each kept word
-\ as they did.
+\ same bytes and the same records. Retiring six names alone leaves their live
+\ occurrences' contracts intact. Trimming the unused tail then lets a second
+\ sweep leave that window as chain links alone. The older dropped definer still
+\ has a bound caller, so its occurrence and contract survive both sweeps.
 : CTS-POLICY? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
    na nu s" cts-drop" STARTS-WITH? 0= ;
 : CT-SWEEP ( -- ) [: CTS-POLICY? ;] CHECKER-SWEEP:RUN ;
@@ -178,6 +177,15 @@ BALANCED
 
 variable RECS0   variable KEYLESS0   variable WINDOW0   variable DEAD0
 variable ZEROED
+variable TAIL-DICT   variable TAIL-CP
+
+: MARK-TAIL ( -- ) ndict@ TAIL-DICT ! cp@ TAIL-CP ! ;
+
+\ Trim the actual occurrences, leaving their effect-store rows for the sweep
+\ to reclaim. FORGET-DEFS-FROM also truncates that store and cannot measure it.
+TRUSTED: TRIM-TAIL ( -- )
+   TAIL-DICT @ ndict!
+   TAIL-CP @ CODE-RECLAIM:TRUNCATE ;
 
 s" enum ctswept ctsw-on ctsw-off ;enum" evaluate-closed
 s" : CTS-KEEP ( n -- n ) 1 + ;" evaluate-closed
@@ -202,6 +210,7 @@ s" : CTS-DROPMK ( n -- ) create , does> ( -- n ) @ ;" evaluate-closed
 s" : CTS-KEEPWD ( n -- ) CTS-DROPMK ;" evaluate-closed
 s" 7 CTS-KEEPWD CTS-MADE1" evaluate-closed
 EFF-CENSUS:MARK MK !
+MARK-TAIL
 s" : CTS-DROP1 ( n -- n ) 2 + ;" evaluate-closed
 s" : CTS-DROP2 ( n n -- n ) + ;" evaluate-closed
 s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" evaluate-closed
@@ -223,9 +232,16 @@ CT-SWEEP
 BALANCED
 EFF-CENSUS:WINDOW-BYTES WINDOW0 @ T=           \ nothing moved
 EFF-CENSUS:RECORDS RECS0 @ T=                  \ ... and every record is still on the chain
-EFF-CENSUS:UNKEYED KEYLESS0 @ 6 + T=           \ the six dropped bindings name nothing
-EFF-CENSUS:RETIRED-KEYED 0 T=                  \ ... and none names a retired symbol
+EFF-CENSUS:UNKEYED KEYLESS0 @ T=
+EFF-CENSUS:RETIRED-KEYED 6 T=                  \ live occurrences retain their contracts
+EFF-CENSUS:DEAD-BYTES DEAD0 @ T=              \ retiring names frees no store bytes
+VERDICTS
+TRIM-TAIL
+CT-SWEEP
+0 EFF-CENSUS:RUN
+BALANCED
 EFF-CENSUS:DEAD-BYTES DEAD0 @ - ZEROED !
+ZEROED @ 0 T<>
 MK @ EFF-CENSUS:RUN                            \ the last window is chain links alone:
 BALANCED
 EFF-CENSUS:CONTENTS 0 T=                       \ no record holds a content
@@ -237,8 +253,7 @@ s" 8 CTS-KEEPWD CTS-MADE2" evaluate-closed      \ ... and the wrapper still crea
 s" CTV ( -- n ) CTS-MADE2" CHECK-QUIET-CANDIDATE! -1 T=
 s" CTV ( -- n n ) CTS-MADE2" CHECK-QUIET-CANDIDATE! 0 T=
 s" CTV ( n -- n ) CTS-DROP1" CHECK-QUIET-CANDIDATE! 1 T=   \ a retired word resolves to nothing
-s" undefine CTS-DROP3" evaluate-closed          \ ... and its name certifies afresh, on
-s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" evaluate-closed     \ the row the sweep zeroed
+s" : CTS-DROP3 ( ctswept ctswept -- ) 2drop ;" evaluate-closed     \ a trimmed name certifies afresh
 s" CTV ( ctswept ctswept -- ) CTS-DROP3" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ title: Refuse ; with a control structure open
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T05:11:06.481475+02:00\""
+created-at: "2026-10-02T05:11:06.481475+02:00"
 closed-at: "2026-10-14T19:30:56.927355+03:00"
 close-reason: "Implemented in 347cd149: tier-0 semicolon refuses open control structures before publication, including caught-evaluate cases; red/green runtime regression and convergence recorded."
 ---

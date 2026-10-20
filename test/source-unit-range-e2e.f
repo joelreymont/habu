@@ -33,6 +33,9 @@ variable SEEN
 variable SEEN-KIND
 variable RETURN-CUT
 variable CUT-U
+variable PRIVATE-HIT
+variable PRIVATE-RUNS
+variable TICK-SEEN
 variable BAD-MODE
 variable DIRECT-VALUE
 variable DIRECT-MODE
@@ -62,6 +65,7 @@ public
    raw 2 s" #!" T$=
    1 OVERRIDE-RUNS +! ;
 : DIRECT-BUMP ( -- ) 1 DIRECT-VALUE +! ;
+: PRIVATE-BUMP ( -- ) 1 PRIVATE-RUNS +! ;
 : DIRECT-RANGE ( ptr u8 n n n -- )
    DIRECT-MODE @ 1 = if INCLUDE-EVALUATE-RANGE else OUTER:INTERPRET-RANGE then ;
 : DIRECT-INNER ( -- )
@@ -84,8 +88,35 @@ private
    then
    path pathu root rootu SOURCE-ROOT:READ-OS ;
 
-: BEFORE ( n n n n -- n bool ) {: unit:n op:n rec:n entry:n :}
+: BEFORE ( n n n n ptr u8 n -- n bool ) {: unit:n op:n rec:n entry:n spelling:ptr spelling-u:n :}
    op rec entry SOURCE-UNIT:LOADER-KIND {: kind:n :}
+   unit 20 = if
+      op SOURCE-EXEC:TICK = if
+         spelling spelling-u s" SOURCE-UNIT-RANGE-TEST:HELPER-BUMP" CORE-STR= TTRUE
+         1 TICK-SEEN +!
+      then
+   then
+   unit 19 = if
+      op SOURCE-EXEC:WORD = if
+         spelling spelling-u s" HELPER" CORE-STR= if
+            spelling spelling-u CHECKER-RESOLUTION:TOP
+            CHECKER-RESOLUTION:COUNT 0 ?do
+               i CHECKER-RESOLUTION:ROW {: row:ptr size:n :}
+               row CHECKER-OWNER-ABI:RES-ROLE cells + CELL-VIEW @
+                  CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = if
+                  row CHECKER-OWNER-ABI:RES-RECORD cells + CELL-VIEW @ 0< 0= if
+                     -1 PRIVATE-HIT !
+                  then
+               then
+            loop
+         then
+      then
+   then
+   kind SOURCE-UNIT:PARSED-PATH = if
+      spelling spelling-u s" require" CORE-STR= if true else
+         spelling spelling-u s" include" CORE-STR=
+      then TTRUE
+   then
    kind SEEN-KIND !
    kind SOURCE-UNIT:NONE <> if
       unit 18 = if
@@ -126,6 +157,20 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    path pathu s" /return-cut.f" ENDS-WITH? if
       q RANGE-Q ! size CUT-U !
       18 source size [: BEFORE ;] [: AFTER ;]
+         [: EXEC-CUT ;] SOURCE-EXEC:RUN {: rc:n :}
+      rc 0<> if rc throw then
+      exit
+   then
+   path pathu s" /private-public.f" ENDS-WITH? if
+      q RANGE-Q ! size CUT-U !
+      19 source size [: BEFORE ;] [: 2drop drop ;]
+         [: EXEC-CUT ;] SOURCE-EXEC:RUN {: rc:n :}
+      rc 0<> if rc throw then
+      exit
+   then
+   path pathu s" /tick.f" ENDS-WITH? if
+      q RANGE-Q ! size CUT-U !
+      20 source size [: BEFORE ;] [: 2drop drop ;]
          [: EXEC-CUT ;] SOURCE-EXEC:RUN {: rc:n :}
       rc 0<> if rc throw then
       exit
@@ -183,6 +228,19 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    s" return-cut.f" included
    RETURN-CUT @ TTRUE
    s" SOURCE-UNIT-RANGE-INCLUDE:NUMBER 419 T=" evaluate-closed ;
+
+: CHECK-PRIVATE-PUBLIC ( -- )
+   0 PRIVATE-HIT !  0 PRIVATE-RUNS !
+   [: 2drop ;] CHECKER-RESOLUTION:NS-INSTALL
+   [: s" private-public.f" included ;]
+      [: CHECKER-RESOLUTION:NS-DEFAULT ;] finally
+   PRIVATE-RUNS @ 1 T=
+   PRIVATE-HIT @ TTRUE ;
+
+: CHECK-TICK ( -- )
+   0 TICK-SEEN !
+   s" tick.f" included
+   TICK-SEEN @ 1 T= ;
 
 : LOAD-BAD ( -- ) s" bad.f" included ;
 : CHECK-BOUNDS ( -- )
@@ -271,6 +329,8 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    s" child.f" S\" #! child\nSOURCE-UNIT-RANGE-TEST:CHILD-BUMP\npackage SOURCE-UNIT-RANGE-CHILD public : NUMBER ( -- n ) 317 ; ;package\n" PUT
    s" cut-child.f" S\" package SOURCE-UNIT-RANGE-INCLUDE public : NUMBER ( -- n ) 419 ; ;package\n" PUT
    s" return-cut.f" S\" SOURCE-UNIT-RANGE-TEST:PUSH-R include cut-child.f SOURCE-UNIT-RANGE-TEST:POP-R\n" PUT
+   s" private-public.f" S\" package SOURCE-UNIT-RANGE-PRIVATE private : HELPER ( -- ) SOURCE-UNIT-RANGE-TEST:PRIVATE-BUMP ; public HELPER ;package\n" PUT
+   s" tick.f" S\" ' SOURCE-UNIT-RANGE-TEST:HELPER-BUMP drop\n" PUT
    s" parent.f"
       S\" #! parent\nrequire child.f\nSOURCE-UNIT-RANGE-TEST:PARENT-BUMP\n" PUT
    s" bad.f" S\" SOURCE-UNIT-RANGE-TEST:PARENT-BUMP\n" PUT
@@ -289,7 +349,7 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
 : LOADER ( -- )
    ['] LOAD SOURCE-UNIT:USE
    [: SOURCE-ROOT:CANON-OS ;] [: READ ;] SOURCE-INPUT:USE
-   ROOT$ [: CHECK-PARENT CHECK-RETURN-CUT CHECK-BOUNDS CHECK-FAIL CHECK-PATH CHECK-READ-FAIL CHECK-LONG CHECK-OVERRIDE CHECK-SHEBANG-EOF ;]
+   ROOT$ [: CHECK-PARENT CHECK-RETURN-CUT CHECK-PRIVATE-PUBLIC CHECK-TICK CHECK-BOUNDS CHECK-FAIL CHECK-PATH CHECK-READ-FAIL CHECK-LONG CHECK-OVERRIDE CHECK-SHEBANG-EOF ;]
       SOURCE-ROOT:WITH ;
 
 : RESET ( -- ) SOURCE-UNIT:RESET SOURCE-INPUT:RESET ;

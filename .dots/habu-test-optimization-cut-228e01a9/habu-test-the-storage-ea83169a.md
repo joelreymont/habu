@@ -3,7 +3,7 @@ title: Test the storage refusal of a type scheme
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T10:36:17.433100+02:00\""
+created-at: "2026-10-02T10:36:17.433100+02:00"
 closed-at: "2026-10-14T19:44:52.849512+03:00"
 close-reason: 0e595aa6 added a named scheme-in-storage refusal; current c2-memory-scope-refusals.f asserts the scheme reason for typed globals, buffers and layout definers. docs/type-families.md now describes E-BAD-STORAGE, rc 70.
 ---

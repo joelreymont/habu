@@ -33,13 +33,14 @@ BCG-HIDE:MARK-MID
 package BCG-DUP-LATE
 public
 : DUP-MARK ( -- ) ;
+: DUP-MARK-WITH-A-LONG-SPELLING ( -- ) ;
 ;package
 
 package BCG-HIDE
 private
 
 : REC ( ptr u8 n -- n )
-   BFR-FIND-FIRST-INDEX ;
+   BOOT-XREF-FIND-INDEX ;
 
 : IMK-REC ( -- n )
    s" IMK-NDICT0" REC ;
@@ -54,12 +55,12 @@ private
    IMK-REC 0 >= TTRUE
    SEQ-REC 0 >= TTRUE
    IMK-REC SEQ-REC < TTRUE
-   s" IMK-NDICT0" s" SEQ" BFR-MARKER-INDEX IMK-REC T=
-   s" SEQ" s" IMK-NDICT0" BFR-MARKER-INDEX IMK-REC T= ;
+   s" IMK-NDICT0" s" SEQ" BOOT-XREF-MARKER-INDEX IMK-REC T=
+   s" SEQ" s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T= ;
 
-\ Earliest-hide depends on FIND-FIRST returning the FIRST record of a name: the
+\ Earliest-hide depends on lookup returning the FIRST record of a name: the
 \ duplicate fixture record published before the MID watermark must win, and the
-\ match must fold case like the shell's BOOT-XREF-STR=CI. The dictionary record
+\ match must fold case. The dictionary record
 \ of a package word stores its bare tail, so the searched name is `DUP-MARK`.
 \ Naming both fixture words keeps the duplicate load-bearing: if either package
 \ stopped publishing the tail, the file would fail to load here instead of
@@ -67,19 +68,22 @@ private
 : FIRST-RECORD ( -- )
    BCG-DUP-EARLY:DUP-MARK
    BCG-DUP-LATE:DUP-MARK
+   BCG-DUP-LATE:DUP-MARK-WITH-A-LONG-SPELLING
    s" DUP-MARK" REC 0 >= TTRUE
    s" DUP-MARK" REC MID @ < TTRUE
-   s" dup-mark" REC s" DUP-MARK" REC T= ;
+   s" dup-mark" REC s" DUP-MARK" REC T=
+   s" DUP-MARK-WITH-A-LONG-SPELLING" REC 0 >= TTRUE
+   s" dup-mark-with-a-long-spelling" REC
+   s" DUP-MARK-WITH-A-LONG-SPELLING" REC T= ;
 
 \ One marker missing falls back to the found one; both missing is asserted at
 \ the component level (FIND -> NOT-FOUND, MIN-FOUND keeps NOT-FOUND) because
-\ BFR-MARKER-INDEX's both-missing path is a process exit (die 76) by design.
+\ BOOT-XREF-MARKER-INDEX's both-missing path is a process exit (die 76) by design.
 : MISSING-FALLBACK ( -- )
-   s" IMK-NDICT0" s" BCG-NO-SUCH-MARKER" BFR-MARKER-INDEX IMK-REC T=
-   s" BCG-NO-SUCH-MARKER" s" IMK-NDICT0" BFR-MARKER-INDEX IMK-REC T=
-   s" BCG-NO-SUCH-MARKER" REC BFR-NOT-FOUND T=
-   BFR-NOT-FOUND BFR-NOT-FOUND BFR-MIN-FOUND BFR-NOT-FOUND T=
-   5 BFR-REQUIRE-INDEX 5 T= ;
+   s" IMK-NDICT0" s" BCG-NO-SUCH-MARKER" BOOT-XREF-MARKER-INDEX IMK-REC T=
+   s" BCG-NO-SUCH-MARKER" s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T=
+   s" BCG-NO-SUCH-MARKER" REC -1 T=
+   -1 -1 BOOT-MIN-FOUND -1 T= ;
 
 public
 

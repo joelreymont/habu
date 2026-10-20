@@ -1,7 +1,6 @@
 \ gate-diagnostics.f - entry wrapper for checker diagnostic contracts.
 \
 require test/gate-common.f
-require tools/json.f
 require tools/gate-json-assert-core.f
 require src/lib/date.f
 require src/lib/vector.f
@@ -10,7 +9,6 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
 require src/lib/source-lex.f
 require tools/diag-origin-core.f
 require tools/json-only-core.f

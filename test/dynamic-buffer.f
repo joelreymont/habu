@@ -21,6 +21,9 @@ DYNAMIC-BUFFER ADDRS ptr u8
 \ (E-DUPLICATE-DEFINITION, rc 78, measured), so the bare-cell row is named here.
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
+STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
+DYNAMIC-BUFFER WIDE triple
+PTR-VARIABLE WIDTH-CTRL 0 , 0 , 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
@@ -39,6 +42,8 @@ variable DB-EVAL-U
 
 : BAD-LOW ( -- ) -1 TOKENS drop ;
 : BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
+\ A negative index must fail before ADDRESS-FIXED reads its control record.
+: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR DYNAMIC-STORAGE:ADDRESS-FIXED drop ;
 : BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
 : BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
 : AFTER-RELEASE ( -- ) 0 TOKENS drop ;
@@ -49,11 +54,8 @@ variable DB-EVAL-U
 \ at or above it - and the accessor bounds by that capacity, in bytes.
 : BYTE-AT-CAP ( -- ) 104 BYTES drop ;
 
-\ The byte row grows from a capacity that is NOT a cell multiple: a first
-\ reserve of 100 bytes is the whole capacity (need beats both 2 * old and the
-\ 64-byte floor), and the move that follows copies it cell by cell. Rounding
-\ that capacity up to a cell is what keeps byte 99; without it the growth copies
-\ 100 CELL / = 12 cells = 96 bytes and drops the last four.
+\ The byte row retains its cell-rounded capacity across growth, including the
+\ four bytes beyond the requested 100.
 : BYTE-ROWS ( -- )
    100 BYTES-RESERVE
    7 0 BYTES c!
@@ -79,6 +81,36 @@ variable DB-EVAL-U
    65 0 BYTES c!
    0 BYTES c@ 65 T=
    BYTES-RELEASE ;
+
+: WIDE-PAST ( -- ) 2 WIDE drop ;
+: WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
+: WIDTH-RESERVE ( -- ) 1 WIDTH-CTRL 24 DYNAMIC-STORAGE:RESERVE-FIXED ;
+: WIDTH-MISMATCH ( -- ) 3 WIDTH-CTRL 8 DYNAMIC-STORAGE:RESERVE-FIXED ;
+: WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
+
+: WIDE-ROWS ( -- )
+   0 WIDE-RESERVE
+   ['] WIDE-PAST 7122 TTHROWS
+   1 WIDE-RESERVE                         \ capacity 64, two complete elements
+   7 0 WIDE TRIPLE-A byte-view 63 + c!    \ fractional tail belongs to mapping
+   1 WIDE drop
+   ['] WIDE-PAST 7122 TTHROWS
+   WIDTH-RESERVE
+   ['] WIDTH-MISMATCH 7121 TTHROWS
+   WIDTH-CTRL byte-view 4 cells + cell-view @ 2 T=
+   ['] WIDE-MAP-FAIL 7138 TTHROWS
+   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
+   ['] WIDE-PAST 7122 TTHROWS
+   3 WIDE-RESERVE                         \ capacity doubles to 128
+   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
+   4 WIDE drop
+   ['] WIDE-PAST-GROWN 7122 TTHROWS
+   WIDE-RELEASE
+   ['] WIDE-PAST 7122 TTHROWS
+   1 WIDE-RESERVE
+   1 WIDE drop
+   WIDE-RELEASE
+   WIDTH-CTRL DYNAMIC-STORAGE:RELEASE-FIXED ;
 
 \ Every element admitted before the byte one keeps its old accessor: a bare
 \ cell's is `( n -- ptr n )` over whole cells.
@@ -115,6 +147,7 @@ variable DB-EVAL-U
    3 ADDRS @ MARK byte-view = TTRUE
    ['] BAD-LOW 7122 TTHROWS
    ['] BAD-HIGH 7122 TTHROWS
+   ['] NEG-NULL-CONTROL 7122 TTHROWS
    ['] BAD-SIZE 7121 TTHROWS
    ['] BAD-OVERFLOW 7121 TTHROWS
    0 TOKENS @ TOKEN-N 42 T=
@@ -132,6 +165,7 @@ variable DB-EVAL-U
    ADDRS-RELEASE
    BYTE-ROWS
    CELL-ROWS
+   WIDE-ROWS
    T-REPORT ;
 
 RUN

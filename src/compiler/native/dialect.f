@@ -33,8 +33,9 @@
 \                      token that is no register at all.
 \   the keys         - the attributes an operation carries its frame slot, its
 \                      frame size, its data-stack slot, its data-stack byte
-\                      move, its take-back, its call or branch target, its trap
-\                      target, its address and its address lane under.
+\                      move, its take-back, a tail callee's input and result
+\                      counts, its call or branch target, its trap target, its
+\                      address and its address lane under.
 \   dwb              - the data-stack key a dialect may not HAVE: an access that
 \                      moves the pointer as part of its own encoding. x86-64 has
 \                      no write-back addressing, so its vocabulary says `absent`
@@ -113,6 +114,8 @@ STRUCTURE vocab
    FIELD dslot IR-ID:ir-symbol-id
    FIELD dbytes IR-ID:ir-symbol-id
    FIELD dback IR-ID:ir-symbol-id
+   FIELD tail-in IR-ID:ir-symbol-id
+   FIELD tail-out IR-ID:ir-symbol-id
    FIELD dwb optsym
    FIELD entry IR-ID:ir-symbol-id
    FIELD trap-entry IR-ID:ir-symbol-id

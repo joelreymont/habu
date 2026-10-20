@@ -1,7 +1,7 @@
 \ fs.f - checked filesystem helpers.
 \
 \ STORAGE CLASS. TASK-LOCAL for everything one call threads: the per-call slots
-\ (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the NUL-padded path
+\ (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the last FS cause, the NUL-padded path
 \ buffer FS-PATHZ-BUF, the stat buffer FS-STAT-BUF and the read probe are the
 \ FS-ABI band of the per-task DATA region, so two tasks in READ-ALL, WRITE-ALL,
 \ FILE-SIZE, FILE-META or any FS-* predicate at once share nothing. The data
@@ -72,6 +72,28 @@ $A000 constant S-IFLNK
 
 $2E constant FS-DOT
 $2F constant FS-SLASH
+
+package FS
+public
+2 constant ENOENT
+13 constant EACCES
+20 constant ENOTDIR
+: ELOOP ( -- n )
+   HB-TARGET-MACOS? if 62 else 40 then ;
+: ENAMETOOLONG ( -- n )
+   HB-TARGET-MACOS? if 63 else 36 then ;
+
+\ Read immediately after the failed FS operation: another filesystem primitive
+\ replaces this task's cause, including on success. Zero means a semantic refusal.
+: ERRNO ( -- n )
+   data-base FS-ABI:ERRNO-OFF + @ ;
+private
+: CAUSE! ( n -- )
+   data-base FS-ABI:ERRNO-OFF + ! ;
+;package
+
+: FS-CAUSE-CLEAR ( -- )
+   0 data-base FS-ABI:ERRNO-OFF + ! ;
 
 \ THE PER-CALL SLOTS ARE TASK-LOCAL, in the FS-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
@@ -198,8 +220,8 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    a 7 FS-BYTE@ FS-BYTE-BITS-7 lshift or ;
 
 : FS-CHECK-DEPTH ( n -- ) {: d :}
-   d 0 < if E-FS-DEPTH throw then
-   d FS-MAX-DEPTH >= if E-FS-DEPTH throw then ;
+   d 0 < if FS-CAUSE-CLEAR E-FS-DEPTH throw then
+   d FS-MAX-DEPTH >= if FS-CAUSE-CLEAR E-FS-DEPTH throw then ;
 
 \ ---- the context's scalar cells ----------------------------------------------
 : FS-WALK-DEPTH@ ( ptr u8 -- n )
@@ -313,7 +335,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    rec ctx FS-WALK-RECS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK ! ;
 
 : FS-CHECK-JOIN-CAP ( n -- )
-   dup FS-PATH-CAP > if E-FS-CAPACITY throw then drop ;
+   dup FS-PATH-CAP > if FS-CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
 
 : FS-PATH-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u :}
    0 begin dup u < while
@@ -327,6 +349,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ terminator are bounds-checked against the destination's real reach, so the
 \ gate is no longer the only thing between a wrong length and an overrun.
 : FS-PATHZ-INTO ( ptr u8 n SPAN:span<u8> -- ptr u8 ) {: a:ptr u dst :}
+   FS-CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
    a u FS-PATH-UNSAFE? if E-FS-PATH-UNSAFE throw then
@@ -437,6 +460,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    pu 1 + nu + ;
 
 : JOIN-PATH-INTO ( ptr u8 n ptr u8 n SPAN:span<u8> -- n ) {: pa:ptr pu na:ptr nu dst :}
+   FS-CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
    nu 0 < if E-FS-PATH throw then
    pa pu dst SPAN:COPY
@@ -461,6 +485,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ under FS-PATH-CAP, and the parent's last byte is read only once the parent is
 \ known to fit.
 : JOIN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: pa:ptr pu na:ptr nu dst:ptr :}
+   FS-CAUSE-CLEAR
    pu 0 < if E-FS-PATH throw then
    nu 0 < if E-FS-PATH throw then
    pu FS-CHECK-JOIN-CAP
@@ -485,7 +510,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    n ;
 
 : READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
-   cap 0 < if E-FS-CAPACITY throw then
+   cap 0 < if FS-CAUSE-CLEAR E-FS-CAPACITY throw then
    pa pu FS-PATHZ open-rd FS-IO-FD !
    FS-IO-FD @ 0 < if E-FS-OPEN throw then
    0 FS-IO-LEN !
@@ -503,7 +528,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    FS-IO-LEN @ ;
 
 : FS-WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
-   u 0 < if E-FS-CAPACITY throw then
+   u 0 < if FS-CAUSE-CLEAR E-FS-CAPACITY throw then
    pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
    pa pu FS-PATHZ flags FS-MODE-0644 open FS-IO-FD !
    FS-IO-FD @ 0 < if E-FS-OPEN throw then
@@ -557,7 +582,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    FS-DIRENT-RECLEN-OFF BYTE+ FS-U16@ ;
 
 : FS-TARGET-UNKNOWN ( -- )
-   E-FS-DIR throw ;
+   FS-CAUSE-CLEAR E-FS-DIR throw ;
 
 : FS-DIRENT-NAME-OFFSET ( -- n )
    HB-TARGET-LINUX? if
@@ -566,6 +591,13 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    HB-TARGET-MACOS? if
       FS-DIRENT-NAME-OFF exit
    then
+   FS-TARGET-UNKNOWN ;
+
+\ Darwin dirent64 stores d_type at byte 20; Linux getdents64 stores it at 18.
+\ Keep the kernel byte, including zero for DT_UNKNOWN.
+: FS-DIRENT-TYPE ( ptr u8 -- u8 )
+   HB-TARGET-LINUX? if 18 + c@ exit then
+   HB-TARGET-MACOS? if 20 + c@ exit then
    FS-TARGET-UNKNOWN ;
 
 \ The dirent decoders below are shared with src/lib/fs-list.f, which lists one
@@ -577,7 +609,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
       ent over FS-LINUX-DIRENT-NAME-OFF + FS-BYTE@ 0= if exit then
       1+
    repeat
-   E-FS-DIR throw ;
+   FS-CAUSE-CLEAR E-FS-DIR throw ;
 
 : FS-LINUX-DIRENT-NAMELEN ( ptr u8 -- n ) {: ent:ptr :}
    ent ent FS-DIRENT-RECLEN FS-LINUX-DIRENT-NAMELEN-SCAN ;
@@ -594,10 +626,10 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    FS-DIRENT-NAME-OFFSET ent FS-DIRENT-NAMELEN + ;
 
 : FS-CHECK-RECORD ( ptr u8 ptr u8 -- ) {: ctx:ptr ent:ptr :}
-   ctx FS-REC@ 0 <= if E-FS-DIR throw then
-   ctx FS-OFF@ ctx FS-REC@ + ctx FS-N@ > if E-FS-DIR throw then
+   ctx FS-REC@ 0 <= if FS-CAUSE-CLEAR E-FS-DIR throw then
+   ctx FS-OFF@ ctx FS-REC@ + ctx FS-N@ > if FS-CAUSE-CLEAR E-FS-DIR throw then
    ent FS-DIRENT-NAME-END ctx FS-REC@ > if
-      E-FS-DIR throw
+      FS-CAUSE-CLEAR E-FS-DIR throw
    then ;
 
 : FS-READ-DIR ( ptr u8 -- bool ) {: ctx:ptr :}
@@ -609,19 +641,20 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ hand-written FS-PATH-CAP check is gone: a root too long for the slot is
 \ refused by the copy itself (E-SPAN-CAPACITY).
 : FS-WALK-ROOT! ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
+   FS-CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
    a u ctx FS-CUR-PATH SPAN:COPY ;
 
 : FS-WALK-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
-   pu 0 < if E-FS-PATH throw then
-   nu 0 < if E-FS-PATH throw then
+   pu 0 < if FS-CAUSE-CLEAR E-FS-PATH throw then
+   nu 0 < if FS-CAUSE-CLEAR E-FS-PATH throw then
    pa pu nu FS-JOIN-LEN ;
 
 : FS-CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
-   FS-WALK-JOIN-LEN FS-PATH-CAP > if E-FS-CAPACITY throw then ;
+   FS-WALK-JOIN-LEN FS-PATH-CAP > if FS-CAUSE-CLEAR E-FS-CAPACITY throw then ;
 
 : FS-CHECK-WALK-DESCEND ( ptr u8 -- ) {: ctx:ptr :}
-   ctx FS-WALK-DEPTH@ 1 + FS-MAX-DEPTH >= if E-FS-DEPTH throw then ;
+   ctx FS-WALK-DEPTH@ 1 + FS-MAX-DEPTH >= if FS-CAUSE-CLEAR E-FS-DEPTH throw then ;
 
 : FS-OPEN-WALK-DIR ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    ctx FS-CHECK-WALK-DESCEND
@@ -698,7 +731,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 
 : WALK-FILES-IF-IN ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    {: ctx:ptr a:ptr u allow q :}
-   ctx FS-WALK-ACTIVE@ 0<> if E-FS-WALK-ACTIVE throw then
+   ctx FS-WALK-ACTIVE@ 0<> if FS-CAUSE-CLEAR E-FS-WALK-ACTIVE throw then
    ctx FS-FDS-RESET
    0 ctx FS-WALK-DEPTH!
    ctx a u FS-WALK-ROOT!

@@ -1,15 +1,14 @@
 \ tape.f - the native stage N0 source tape: the exact token stream the
-\ compiler consumed, captured once, sealed, and digested.
+\ compiler consumed, captured once, and sealed.
 \
 \ Build live, read frozen: NEW, the appends and PUSHED are the only live
-\ operations, because a tape that could still grow has no digest worth sharing.
+\ operations, because readers need a complete token stream.
 \
 \ An origin ordinal is strictly below its child's, which is what makes the
 \ expansion relation acyclic; every walk re-verifies that decrease.
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -77,7 +76,7 @@ $4E545031 constant MAGIC        \ "NTP1": the tape header format tag
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 
 \ ---- stored codes ------------------------------------------------------------
-\ Part of every token preimage, so they never change value once a digest is out.
+\ Stored in token rows; existing codes keep their meaning.
 : KIND-CODE ( NTAPE:kind -- n )
    MATCH kind
       name           OF 0 ENDOF
@@ -498,96 +497,7 @@ public
       r sv yv key i ROW-CK
    loop ;
 
-\ ---- the shared digest -------------------------------------------------------
-private
 
-1 constant PRE-VER                   \ the preimage schema version
-
-\ The token's own ordinal is deliberately absent: the fold below runs in tape
-\ order, so a row's position is already bound by where its digest enters it.
-0 constant DS-TAG
-1 constant DS-VER
-2 constant DS-KIND
-3 constant DS-MODE
-4 constant DS-SRC
-5 constant DS-ST
-6 constant DS-LN
-7 constant DS-SYM
-8 constant DS-LIT
-9 constant DS-ORG
-10 constant DS-SLOTS
-
-DS-SLOTS CDIGEST:SLOT-BYTES * constant DPRE-BYTES
-create DPRE DPRE-BYTES allot
-
-: DP! ( n n -- )
-   DPRE swap CDIGEST:SLOT! ;
-
-: ROW-DIGEST ( IR-ARENA:reader n -- CDIGEST:digest )
-   {: r:IR-ARENA:reader l:n :}
-   CDIGEST:TAG-TAPE-TOKEN DS-TAG DP!
-   PRE-VER DS-VER DP!
-   r l OFF-KIND RC@ DS-KIND DP!
-   r l OFF-MODE RC@ DS-MODE DP!
-   r l OFF-SRC RC@ DS-SRC DP!
-   r l OFF-ST RC@ DS-ST DP!
-   r l OFF-LN RC@ DS-LN DP!
-   r l OFF-SYM RC@ DS-SYM DP!
-   r l OFF-LIT RC@ DS-LIT DP!
-   r l OFF-ORG RC@ DS-ORG DP!
-   DPRE DPRE-BYTES CDIGEST:COMPUTE ;
-
-\ A chain, so no buffer grows with the tape. The module serial is deliberately
-\ absent: it is per process, and a digest that moved between runs keys no cache.
-0 constant TS-TAG
-1 constant TS-VER
-2 constant TS-A0
-6 constant TS-B0
-10 constant TS-SLOTS
-
-TS-SLOTS CDIGEST:SLOT-BYTES * constant TPRE-BYTES
-create TPRE TPRE-BYTES allot
-
-: TP! ( n n -- )
-   TPRE swap CDIGEST:SLOT! ;
-
-: CHAIN-HEAD ( -- )
-   CDIGEST:TAG-TAPE TS-TAG TP!
-   PRE-VER TS-VER TP! ;
-
-: CHAIN-SEED ( n -- CDIGEST:digest )
-   {: cnt:n :}
-   CHAIN-HEAD
-   cnt TS-A0 TP!  0 TS-A0 1+ TP!  0 TS-A0 2 + TP!  0 TS-A0 3 + TP!
-   0 TS-B0 TP!  0 TS-B0 1+ TP!  0 TS-B0 2 + TP!  0 TS-B0 3 + TP!
-   TPRE TPRE-BYTES CDIGEST:COMPUTE ;
-
-: CHAIN-STEP ( CDIGEST:digest CDIGEST:digest -- CDIGEST:digest )
-   CDIGEST-DIGEST:UNMAKE {: v0:n v1:n v2:n v3:n :}
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   CHAIN-HEAD
-   w0 TS-A0 TP!  w1 TS-A0 1+ TP!  w2 TS-A0 2 + TP!  w3 TS-A0 3 + TP!
-   v0 TS-B0 TP!  v1 TS-B0 1+ TP!  v2 TS-B0 2 + TP!  v3 TS-B0 3 + TP!
-   TPRE TPRE-BYTES CDIGEST:COMPUTE ;
-
-public
-
-\ It covers only the cells the tape owns, not the bytes behind a span or a
-\ spelling; those tables carry their own content digests.
-: DIGEST ( IR-ARENA:view -- CDIGEST:digest )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r HDR-CK
-   r CNT CHAIN-SEED
-   r CNT 0 ?do
-      r i ROW-DIGEST CHAIN-STEP
-   loop ;
-
-\ Makes "the checker and the elaborator read the same tape" a checked fact.
-: VERIFY ( IR-ARENA:view CDIGEST:digest -- )
-   {: v:IR-ARENA:view want:CDIGEST:digest :}
-   v DIGEST  want CDIGEST-DIGEST:EQ
-   0= if E-NTAPE-DIGEST throw then ;
 
 private
 get-current prot-wid-add

@@ -24,12 +24,10 @@ create SAVED-CELL $2A ,
 : NAMED-TICK ( n -- n )
    ['] LONG-CALLEE APPLY ;
 
-\ A primitive tick is a raw engine execution token, typed `n`; this cast gives
-\ 1+'s checked scalar effect to the primitive address. Retire it when the
-\ checker derives a quotation effect for primitive ticks.
-CAST: >STEP ( n -- [ n -- n ] )
-: PRIMITIVE-XT ( -- [ n -- n ] )
-   ['] 1+ >STEP ;
+\ The primitive has scalar and pointer rows, so its tick has no single checked
+\ effect. This private boundary selects its scalar effect for the caller.
+TRUSTED: PRIMITIVE-XT ( -- [ n -- n ] )
+   ['] 1+ ;
 
 : PRIMITIVE-TICK ( n -- n )
    PRIMITIVE-XT APPLY ;

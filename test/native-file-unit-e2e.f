@@ -6,12 +6,16 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/le.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-engine.f
 require src/lib/process-cwd.f
+require src/lib/test/subject.f
 require src/lib/tree-copy.f
 require tools/image-size-lib.f
+require tools/native-unit-file.f
+require tools/native-file-object.f
 
 package NATIVE-FILE-UNIT-TEST
 
@@ -27,15 +31,19 @@ create ORIGINAL-AT-BUF FS-PATH-CAP allot
 create PUT-BUF FS-PATH-CAP allot
 create OUT CAP allot  variable OUT-U
 create ERR CAP allot  variable ERR-U
+create PROGRAM CAP allot  variable PROGRAM-U
 create CUT CAP allot  variable CUT-U
 DYNAMIC-BUFFER IMAGE-A u8
 DYNAMIC-BUFFER IMAGE-B u8
+variable ORIGIN-OFF
 variable CODE-A-O variable CODE-A-U
 variable CODE-B-O variable CODE-B-U
 variable WHITEBOX-ARG?
 variable EXTERNAL?
 variable ROOTED?
 variable ALT?
+variable PREFIX-TWO?
+variable ENV-VALUE
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : ALT$ ( -- ptr u8 n ) ALT ALT-U @ ;
@@ -66,6 +74,18 @@ variable ALT?
 : PREFIX ( -- )
    s" prefix.f"
    S\" package FILE-PREFIX\nprivate\n: BASE ( -- n ) 10 ;\npublic\n: PLUS-BASE ( n -- n ) BASE + ;\n;package\n" PUT ;
+
+: TASK-PREFIX ( -- )
+   s" prefix.f"
+   S\" require src/lib/task.f\nrequire src/lib/process-env.f\npackage FILE-TASK-PREFIX\npublic\nTASK:#USER s\" HABU_TASK_PREFIX_TWO\" GETENV nip 1+ cells TASK:+USER PREFIX-SLOT drop\n;package\n" PUT ;
+
+: TASK-UNIT ( -- )
+   s" nested/unit.f"
+   S\" require ../prefix.f\npackage FILE-TASK-UNIT\npublic\nTASK:#USER CELL TASK:+USER LEAF drop\n: LEAF@ ( -- n ) LEAF @ ;\n;package\ns\" task-unit-source-ran\" type cr\n" PUT ;
+
+: TASK-DOWNSTREAM ( -- )
+   s" downstream.f"
+   S\" require nested/unit.f\npackage FILE-TASK-CLIENT\npublic\nTASK:#USER CELL TASK:+USER OWN drop\n: LEAF@ ( -- n ) FILE-TASK-UNIT:LEAF@ ;\n: OWN@ ( -- n ) OWN @ ;\n111 FILE-TASK-UNIT:LEAF !\n222 OWN !\n;package\n" PUT ;
 
 : CHANGED-PREFIX ( -- )
    s" prefix.f"
@@ -107,17 +127,20 @@ variable ALT?
 
 : CAPTURE ( ptr u8 n ptr u8 n -- n )
    {: exe:ptr exeu:n stdin:ptr stdinu:n :}
-   exe exeu >LEN
    ROOTED? @ if
       ALT? @ if ALT$ else ROOT$ then
    else
       EXTERNAL? @ if FOREIGN$ else ROOT$ then
-   then >LEN
-   stdin stdinu >LEN
+   then {: cwd:ptr cwdu:n :}
+   0 PROGRAM-U ! s" cwd: " PROGRAM CAP PROGRAM-U BUF-APPEND
+   cwd cwdu PROGRAM CAP PROGRAM-U BUF-APPEND STR-LF PROGRAM CAP PROGRAM-U BUF-APPEND-C
+   exe exeu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
+   exe exeu >LEN cwd cwdu >LEN stdin stdinu >LEN
    OUT CAP >LEN ERR CAP >LEN 600000 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
+   PROGRAM PROGRAM-U @ OUT OUT-U @ ERR ERR-U @ rc SUBJECT:RC-TIMED-OUT
    rc ;
 
 : SUCCESS ( n -- )
@@ -130,6 +153,12 @@ variable ALT?
    EXTERNAL? @ if
       s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    then
+   ENV-VALUE @ 0<> if
+      SB-RESET ENV-VALUE @ SB-APPEND-C
+      s" FILE_UNIT_ENV" >LEN SB$ >LEN PROC-ENV+
+   then
+   s" HABU_TASK_PREFIX_TWO" >LEN
+   PREFIX-TWO? @ if s" 1" else s" " then >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
    EXTERNAL? @ if s" tools/native-unit-build.f" ROOT-AT
@@ -153,6 +182,30 @@ variable ALT?
    {: product:ptr productu:n expected:ptr expectu:n :}
    product productu AT s" FILE-DOWNSTREAM:VALUE ." CAPTURE SUCCESS
    OUT OUT-U @ expected expectu CONTAINS? TTRUE ;
+
+: RUN-TASK ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" FILE-TASK-CLIENT:LEAF@ . FILE-TASK-CLIENT:OWN@ ." CAPTURE SUCCESS
+   OUT OUT-U @ S\" 111\n222\n" CONTAINS? TTRUE ;
+
+: TASK-CASE ( -- )
+   s" a FILE carries TASK reservations and keys its incoming watermark" T-LABEL
+   0 PREFIX-TWO? !
+   TASK-PREFIX TASK-UNIT TASK-DOWNSTREAM
+   s" --export-file" s" task-export-hb" s" task.unit" BUILD-OBJECT SUCCESS
+   OUT OUT-U @ s" task-unit-source-ran" CONTAINS? TTRUE
+   s" task-export-hb" RUN-TASK
+   s" --import-file" s" task-import-hb" s" task.unit" BUILD-OBJECT SUCCESS
+   OUT OUT-U @ s" native-build: file unit hit" CONTAINS? TTRUE
+   OUT OUT-U @ s" task-unit-source-ran" CONTAINS? TFALSE
+   s" task-import-hb" RUN-TASK
+   1 PREFIX-TWO? !
+   s" --import-file" s" task-wrong-hb" s" task.unit" BUILD-OBJECT 74 T=
+   OUT OUT-U @ s" native-build: uncaught throw code -8599" CONTAINS? TTRUE
+   OUT OUT-U @ s" native-build: file unit hit" CONTAINS? TFALSE
+   OUT OUT-U @ s" task-unit-source-ran" CONTAINS? TFALSE
+   s" task-wrong-hb" AT EXISTS? TFALSE
+   0 PREFIX-TWO? ! ;
 
 : SAME-CODE? ( -- bool )
    s" export-hb" AT IMAGE-SIZE:MEASURE
@@ -222,6 +275,84 @@ variable ALT?
    OUT OUT-U @ s" native-build: file unit hit" CONTAINS? 0= TTRUE
    OUT OUT-U @ s" explicit-unit-source-ran" CONTAINS? 0= TTRUE
    s" malformed-hb" AT EXISTS? TFALSE ;
+
+: MISSING-ORIGIN-KEY ( ptr u8 n -- )
+   {: unit:ptr size:n :}
+   unit size NUNIT-FILE:ARCH-AARCH64 s" FILE" unit 96 + 64
+      NUNIT-FILE:READ-BYTES
+   16 NUNIT-FILE:SECTION$ nip {: originu:n :}
+   originu 48 < if s" FILE fixture has no origin header" 70 die then
+   unit size originu - + {: origin:ptr :}
+   origin LE:U64@ $4F524947494E3034 <> if
+      s" FILE fixture has no origin rows" 70 die then
+   origin 8 + LE:U64@ {: count:n :}
+   48 ORIGIN-OFF !
+   count 0 ?do
+      originu ORIGIN-OFF @ - 72 < if
+         s" FILE fixture has a truncated origin row" 70 die then
+      origin ORIGIN-OFF @ + {: row:ptr :}
+      row 16 + LE:U64@ {: pkgu:n :}
+      row 32 + LE:U64@ {: tailu:n :}
+      72 pkgu + tailu + row 40 + LE:U64@ +
+         row 48 + LE:U64@ +
+         {: rowu:n :}
+      rowu originu ORIGIN-OFF @ - > if
+         s" FILE fixture has an oversized origin row" 70 die then
+      row 24 + LE:U64@ 2 =
+      row 72 + pkgu s" FILE-UNIT" STR=CI and
+      row 72 + pkgu + tailu s" VALUE" STR=CI and if
+         [char] Q row 72 + pkgu + c!
+         NUNIT-FILE:CLOSE unloop exit
+      then
+      rowu ORIGIN-OFF +!
+   loop
+   s" FILE fixture has no FILE-UNIT:VALUE origin key" 70 die ;
+
+: REFUSE-MISSING-ORIGIN-KEY ( -- )
+   s" a missing nominal origin key refuses the explicit FILE before publication" T-LABEL
+   s" file.unit" AT FILE-SIZE {: size:n :}
+   size IMAGE-A-RESERVE
+   s" file.unit" AT 0 IMAGE-A BYTE-VIEW size READ-ALL size <> if
+      E-FS-IO throw then
+   size 128 < if E-NUNIT-FILE throw then
+   0 IMAGE-A BYTE-VIEW {: outer:ptr :}
+   outer 16 + LE:U64@ {: pathu:n :}
+   outer 24 + LE:U64@ {: rootu:n :}
+   pathu 0 <= rootu 0 < or pathu size 128 - > or if
+      E-NUNIT-FILE throw then
+   rootu size 128 pathu + - > if E-NUNIT-FILE throw then
+   s" file.unit" AT
+      outer 128 + pathu outer 128 pathu + + rootu
+      outer 32 + 64 outer 96 + LE:U64@
+      NFILE-OBJECT:TRY-OPEN {: h:n hit:bool :}
+   hit 0= if E-NUNIT-FILE throw then
+   h NFILE-OBJECT:NEXT
+      {: kind:n end:n mode:n bytes:ptr payload:n more:bool :}
+   end drop mode drop
+   more 0= kind NFILE-OBJECT:RANGE-KIND <> or if E-NUNIT-FILE throw then
+   bytes payload NFILE-OBJECT:SPLIT-RANGE
+      {: unit:ptr unitu:n signature:ptr scope:ptr
+         session:n module:n gen:n epoch:n before:n lease:n openlease:n
+         openepoch:n beforemodule:n openmodulebefore:n openmoduleafter:n
+         beforegen:n beforeepoch:n beforelease:n
+         build:n beforebuild:n openbuildbefore:n openbuildafter:n :}
+   unit unitu MISSING-ORIGIN-KEY
+   outer 128 + pathu outer 128 pathu + + rootu
+      outer 32 + 64 outer 96 + LE:U64@ NFILE-OBJECT:START
+      {: changed:n :}
+   changed end mode 1 and mode 2 and 2 / unit unitu signature scope
+      session module gen epoch before lease openlease openepoch
+      beforemodule openmodulebefore openmoduleafter beforegen beforeepoch
+      beforelease build beforebuild openbuildbefore openbuildafter
+      NFILE-OBJECT:ADD-RANGE
+   h NFILE-OBJECT:INPUTS$ {: inputs:ptr inputu:n :}
+   changed s" missing-key.unit" AT inputs inputu NFILE-OBJECT:WRITE
+   NFILE-OBJECT:CLOSE
+   s" --import-file" s" missing-key-hb" s" missing-key.unit"
+      BUILD-OBJECT 74 T=
+   OUT OUT-U @ s" native-build: uncaught throw code -8599" CONTAINS? TTRUE
+   OUT OUT-U @ s" explicit-unit-source-ran" CONTAINS? 0= TTRUE
+   s" missing-key-hb" AT EXISTS? TFALSE ;
 
 : LEASE-FILES ( -- )
    s" prefix.f"
@@ -353,6 +484,24 @@ variable ALT?
    s" default.unit" AT EXISTS? TFALSE
    s" default-hb" AT EXISTS? TFALSE ;
 
+: ENV-CASE ( -- )
+   s" explicit file imports check observed environment values" T-LABEL
+   PREFIX
+   s" nested/unit.f"
+   S\" package FILE-UNIT\npublic\ns\" FILE_UNIT_ENV\" GETENV drop c@ constant VALUE\n;package\n" PUT
+   s" downstream.f"
+   S\" require nested/unit.f\npackage FILE-DOWNSTREAM\npublic\n: VALUE ( -- n ) FILE-UNIT:VALUE ;\n;package\n" PUT
+   65 ENV-VALUE !
+   s" --export-file" s" env-export-hb" s" env.unit" BUILD-OBJECT SUCCESS
+   s" --import-file" s" env-import-hb" s" env.unit" BUILD-OBJECT SUCCESS
+   s" env-export-hb" s" 65" RUN-IMPORTED
+   s" env-import-hb" s" 65" RUN-IMPORTED
+   66 ENV-VALUE !
+   s" --import-file" s" env-changed-hb" s" env.unit" BUILD-OBJECT 74 T=
+   OUT OUT-U @ s" native-build: uncaught throw code -8597" CONTAINS? TTRUE
+   s" env-changed-hb" AT EXISTS? TFALSE
+   0 ENV-VALUE ! ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -388,6 +537,7 @@ public
    REFUSE-OTHER-ROOT
    REFUSE-WRONG-CLASS
    REFUSE-MALFORMED-OBJECT
+   REFUSE-MISSING-ORIGIN-KEY
    CHANGED-DOWNSTREAM
    s" --import-file" s" downstream-hb" BUILD SUCCESS
    s" downstream-hb" s" 44" RUN-IMPORTED
@@ -411,6 +561,8 @@ public
    FOREIGN-SESSION-CASE
    CWORK-CASE
    CWORK-DEFAULT-CASE
+   TASK-CASE
+   ENV-CASE
    T-REPORT
    s" native file unit artifacts: " type APP$ type cr ;
 ;package

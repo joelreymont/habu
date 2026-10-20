@@ -3,7 +3,7 @@ title: Reserve the ptr tail in ENUM and STRUCTURE
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:36:34.868754+02:00\""
+created-at: "2026-10-01T11:36:34.868754+02:00"
 closed-at: "2026-10-14T19:26:18.128429+03:00"
 close-reason: "Implemented in 99c8345d: ENUM and STRUCTURE reject ptr as a reserved family name through SIG-PTR-TOK; scope, declaration and check.f cases passed with converged images."
 ---

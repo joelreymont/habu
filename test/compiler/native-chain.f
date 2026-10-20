@@ -4,6 +4,7 @@
 
 require src/lib/test.f
 require src/lib/prelude.f
+require src/lib/ieee754.f
 require src/compiler/native/abi.f
 require src/arch/arm64/machine.f
 
@@ -43,6 +44,18 @@ create NCH-CELL 1 cells allot
 
 : NCH-ISLT ( n n -- bool )
    < ;
+
+: NCH-FIMM-ONE ( -- n )
+   1.0 IEEE754:F64>BITS ;
+
+: NCH-FIMM-MAX ( -- n )
+   31.0 IEEE754:F64>BITS ;
+
+: NCH-FIMM-NEGZERO ( -- n )
+   -0.0 IEEE754:F64>BITS ;
+
+: NCH-FIMM-GENERAL ( -- n )
+   0.3 IEEE754:F64>BITS ;
 
 : NCH-LTKEEP ( n n -- bool )
    < dup if then ;
@@ -136,6 +149,13 @@ create NCH-CELL 1 cells allot
    5 NCH-WDOWN 0 T= 0 NCH-WDOWN 0 T=
    5 NCH-TWOLOOP 1 T= -2 NCH-TWOLOOP 0 T=
    3 NCH-NESTW 0 T= -2 NCH-NESTW -2 T= ;
+
+: FLOAT-LITERAL-CASE ( -- )
+   s" compiled float literals keep their exact binary64 bits" T-LABEL
+   NCH-FIMM-ONE $3FF0000000000000 T=
+   NCH-FIMM-MAX $403F000000000000 T=
+   NCH-FIMM-NEGZERO $8000000000000000 T=
+   NCH-FIMM-GENERAL $3FD3333333333333 T= ;
 
 : RECURSION-CASE ( -- )
    s" recursive calls preserve live values and return through quotations" T-LABEL
@@ -252,7 +272,8 @@ public
 : RUN ( -- )
    T-RESET
    BUFFER-MAKE
-   ARITHMETIC-CASE MEM-CASE SCAN-CASE BRANCH-CASE LOOP-CASE RECURSION-CASE
+   ARITHMETIC-CASE MEM-CASE SCAN-CASE BRANCH-CASE LOOP-CASE
+   FLOAT-LITERAL-CASE RECURSION-CASE
    BINDING-CASE POOL-CASES
    NORET-TRAIT-CASE NORET-FIELD-CASE NORET-LAYOUT-CASE
    LINK-SPLIT-CASE NORET-SPILL-CASE

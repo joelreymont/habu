@@ -3,7 +3,7 @@ title: "Find a position's block without a linear search"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:32:11.958946+02:00\""
+created-at: "2026-10-01T11:32:11.958946+02:00"
 closed-at: "2026-10-14T19:41:02.985589+03:00"
 close-reason: "Implemented in c91beb3d: allocator POS-BLOCK bisects existing ascending block starts, preserving allocation results; 64-condition CPU measurement, masked output comparison, focused suites and convergence passed."
 ---

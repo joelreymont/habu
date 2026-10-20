@@ -3,44 +3,19 @@
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
+require tools/image-names.f
 require test/c2-image-pair.f
+require test/e2e-tree.f
 
+using E2E-TREE
 package C2-MEMORY-E2E
 private
 
-$8000 constant IO-CAP
-
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot variable TARGET-U
-create OUT IO-CAP allot variable OUT-U
-create ERR IO-CAP allot variable ERR-U
-variable RC
-
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-
-: AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH swap ;
-
-: LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A MAKE-SYMLINK ;
-
-: COPY-TEST ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A COPY-FILE-STREAM ;
-
 : SETUP ( -- )
-   s" c2-memory-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
-   s" src" LINK s" tools" LINK
-   s" test" AT-A MAKE-DIRS
+   s" c2-memory-e2e" TREE
    s" test/c2-memory-program.f" COPY-TEST
    s" test/c2-memory-refusals.f" COPY-TEST
    s" test/c2-memory-scope-refusals.f" COPY-TEST
@@ -60,58 +35,15 @@ variable RC
    s" test/c2-forall-input.f" COPY-TEST
    s" test/c2-forall-input-refusals.f" COPY-TEST ;
 
-: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
-: ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   source size >LEN PROC-ARGV+ ;
-
-: RUN-ON ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n cwd:ptr cwdu:n :}
-   PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
-
-: SAVE-LOG ( ptr u8 n ptr u8 n -- )
-   {: outpath:ptr outu:n errpath:ptr erru:n :}
-   outpath outu AT-A OUT OUT-U @ WRITE-ALL
-   errpath erru AT-A ERR ERR-U @ WRITE-ALL ;
-
-: NEED-OK ( -- )
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
-   RC @ 0 T= ;
-
-: EXPECT-OK ( ptr u8 n -- ) {: marker:ptr markeru:n :}
-   NEED-OK
-   OUT OUT-U @ marker markeru CONTAINS? TTRUE ;
-
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
-   0 RC !
    s" unique owner native images are supplied" T-LABEL
    s" hb-root" AT-A EXECUTABLE? TTRUE
    s" hb-ordinary" AT-A EXECUTABLE? TTRUE
-   s" hb-root.map" AT-A FILE? TTRUE ;
-
-: RUN-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n source:ptr sourceu:n :}
-   source sourceu ARGS
-   image imageu AT-A ROOT$ RUN-ON ;
-
-: RUN-INPUT ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n input:ptr inputu:n :}
-   PROC-ENV-INHERIT-MISSING
-   image imageu AT-A >LEN ROOT$ >LEN input inputu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
+   s" hb-root" AT-A IMAGE-NAMES:LOAD
+   IMAGE-NAMES:BOUND? TTRUE
+   s" hb-ordinary" AT-A IMAGE-NAMES:LOAD
+   IMAGE-NAMES:BOUND? TTRUE ;
 
 : ROOT-CASES ( -- )
    s" hb-root" s" test/c2-memory-native-boundary.f" RUN-IMAGE
@@ -197,10 +129,10 @@ variable RC
 : EXPECT-ENTRY-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: reason:ptr reasonu:n name:ptr nameu:n :}
    s" a scoped entry rejects a prompt callback before it runs" T-LABEL
-   RC @ 70 T=
-   ERR ERR-U @ reason reasonu CONTAINS? TTRUE
-   ERR ERR-U @ name nameu CONTAINS? TTRUE
-   OUT OUT-U @ s" accepted" CONTAINS? TFALSE ;
+   RC@ 70 T=
+   ERR$ reason reasonu CONTAINS? TTRUE
+   ERR$ name nameu CONTAINS? TTRUE
+   OUT$ s" accepted" CONTAINS? TFALSE ;
 
 : ENTRY-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -245,21 +177,21 @@ variable RC
    RUN-INPUT
    s" entry-forall.out" s" entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT OUT-U @ s" raw callback entered" CONTAINS? TFALSE
+   OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\nusing C2-MEMORY-WRAPPER\n0 ' C2-ENTRY-RAW TWICE .\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-forall-bare.out" s" entry-forall-bare.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" TWICE" EXPECT-ENTRY-REFUSAL
-   OUT OUT-U @ s" raw callback entered" CONTAINS? TFALSE
+   OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
    S\" require test/c2-memory-wrapper.f\npackage C2-ENTRY-ALIAS public EXPORT C2-MEMORY-WRAPPER:TWICE ;package\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-ENTRY-ALIAS:TWICE .\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-forall-alias.out" s" entry-forall-alias.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-ENTRY-ALIAS:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT OUT-U @ s" raw callback entered" CONTAINS? TFALSE
+   OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-root"
    S\" : C2-ENTRY-INC ( n -- n ) 1 + ;\n: C2-ENTRY-APPLY ( n [ n -- n ] -- n ) execute ;\ns\q ordinary prompt: \q type 41 ' C2-ENTRY-INC C2-ENTRY-APPLY . cr\n"
@@ -272,8 +204,8 @@ variable RC
    s" hb-ordinary" s" test/c2-memory-program.f" RUN-IMAGE
    s" ordinary-program.out" s" ordinary-program.err" SAVE-LOG
    s" ordinary image refuses the real unique program" T-LABEL
-   RC @ 70 T=
-   ERR ERR-U @ s" C2-MEM:WITH-MUT" CONTAINS? TTRUE
+   RC@ 70 T=
+   ERR$ s" C2-MEM:WITH-MUT" CONTAINS? TTRUE
    s" hb-ordinary" s" test/c2-memory-ordinary.f" RUN-IMAGE
    s" ordinary.out" s" ordinary.err" SAVE-LOG
    s" ordinary image grants no unique scope authority" T-LABEL
@@ -295,7 +227,7 @@ variable RC
    RUN-INPUT
    s" save.out" s" save.err" SAVE-LOG
    s" rooted image saves the unique wrapper" T-LABEL NEED-OK
-   RC @ 0<> if exit then
+   RC@ 0<> if exit then
    s" hb-saved" AT-A EXECUTABLE? TTRUE
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" hb-saved"
@@ -303,7 +235,7 @@ variable RC
    RUN-INPUT
    s" saved-entry-forall.out" s" saved-entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT OUT-U @ s" raw callback entered" CONTAINS? TFALSE
+   OUT$ s" raw callback entered" CONTAINS? TFALSE
    s" hb-saved" s" test/c2-memory-saved-consumer.f" RUN-IMAGE
    s" saved-consumer.out" s" saved-consumer.err" SAVE-LOG
    s" a fresh saved consumer invokes new owner and loan scopes" T-LABEL
@@ -396,21 +328,19 @@ variable RC
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CWD$ RUN-ON
    s" partial.out" s" partial.err" SAVE-LOG
    s" partial capture cannot bind public C2 entries" T-LABEL
-   RC @ 74 T=
-   OUT OUT-U @ s" c2-partial: code bytes " CONTAINS? TTRUE
+   RC@ 74 T=
+   OUT$ s" c2-partial: code bytes " CONTAINS? TTRUE
    s" hb-partial" AT-A EXISTS? TFALSE ;
 
 public
 
 : RUN ( -- )
    T-RESET
-   SETUP IMAGES
-   RC @ 0= if
-      ROOT-CASES ENTRY-CASES ORDINARY-CASES SAVED-CASES LIVE-SAVE PARTIAL-CASE
-   then
+   SETUP IMAGES ROOT-CASES ENTRY-CASES ORDINARY-CASES SAVED-CASES LIVE-SAVE PARTIAL-CASE
    s" c2-memory-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 
 ;package
+;using
 
 C2-MEMORY-E2E:RUN

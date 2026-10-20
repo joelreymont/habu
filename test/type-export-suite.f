@@ -19,6 +19,9 @@
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 
 require src/lib/test.f
+require src/core/checker-owner-extension.f
+require src/habu/xref.f
+require src/habu/interpret.f
 
 T-RESET
 
@@ -26,6 +29,37 @@ require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path
 
 variable FOUNDF   variable TC
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
+variable EXPORT-CP
+create BASE-CONTRACT 4096 allot
+variable BASE-CONTRACT-U
+package XTC
+private
+CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
+: CONTRACT$ ( ptr u8 n -- ptr u8 n bool )
+   XREF-FIND-INDEX
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+      CHECKER-OWNER-EXT:RECORD-CONTRACT-OFF + CELL-VIEW @
+      CONTRACT-XT execute ;
+public
+: SAVE-CONTRACT ( ptr u8 n -- )
+   CONTRACT$ {: bytes:ptr size:n found:bool :}
+   found TTRUE
+   found 0= if exit then
+   size 4096 <= TTRUE
+   size 4096 > if exit then
+   bytes BASE-CONTRACT size BYTE-COPY
+   size BASE-CONTRACT-U ! ;
+: SAME-CONTRACT ( ptr u8 n -- )
+   CONTRACT$ {: bytes:ptr size:n found:bool :}
+   found TTRUE
+   found 0= if exit then
+   size BASE-CONTRACT-U @ T=
+   bytes size BASE-CONTRACT BASE-CONTRACT-U @ STR= TTRUE ;
+: HAS-CONTRACT ( ptr u8 n -- )
+   CONTRACT$ nip nip TTRUE ;
+: ALIAS-ROOM ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 8 then ;
+: PAIR-ROOM ( -- n ) HB-TARGET-LINUX-X86-64? if 48 else 32 then ;
+;package
 \ The probes below are checked: on the whitebox engine a body naming a
 \ checker-internal word binds that word's recorded row.
 \
@@ -53,6 +87,8 @@ variable P-SYMN   variable P-SYMU   variable P-DEPTH
 package XPS
 public
 : XP-INC ( n -- n ) 1 + ;
+: XP-LONG-NAMED-INCREMENT ( n -- n ) 1 + ;
+: XP-LONG-NAMED-MAKER ( n -- ) create , does> ( -- n ) @ 1 + ;
 ;package
 
 package XPD
@@ -224,6 +260,56 @@ public
 EXPORT XPG-HID
 ;package
 4 XPG:XPG-HID 7 T=
+s" xpg:XPG-HID" XTC:HAS-CONTRACT
+
+\ Both entry paths publish an engine alias after the checker records its effect.
+s" package XPE public EXPORT xps:XP-INC ;package" evaluate-closed
+s" xpe:XP-INC" XTC:HAS-CONTRACT
+
+\ A direct checker declaration has no pending engine record. It must not
+\ attach its alias or cast effect to the next word the engine publishes.
+package XPC
+public
+: BASE ( -- n ) 42 ;
+;package
+s" xpc:BASE" XTC:SAVE-CONTRACT
+package XPC
+public
+s" xps:XP-INC" CHECKER-EXPORT
+: AFTER-EXPORT ( -- n ) 42 ;
+s" GHOST-CAST" s" n -- n" CHECKER-DEFCAST
+: AFTER-CAST ( -- n ) 42 ;
+;package
+s" xpc:AFTER-EXPORT" XTC:SAME-CONTRACT
+s" xpc:AFTER-CAST" XTC:SAME-CONTRACT
+
+\ A caught OUTER export with no room for its long alias must leave the next
+\ engine definition linked to its own checker declaration, after CP recovers.
+package XPC
+public
+cp@ EXPORT-CP !
+dbase@ REGION + $4000 - XTC:ALIAS-ROOM - cp!
+s" EXPORT xps:XP-LONG-NAMED-INCREMENT" ' OUTER:INTERPRET catch TC ! 2drop
+TC @ 76 T=
+EXPORT-CP @ cp!
+s" xpc:XP-LONG-NAMED-INCREMENT" XREF-FIND XREF-FOUND? TFALSE
+: AFTER-FAILED-EXPORT ( -- n ) 42 ;
+;package
+s" xpc:AFTER-FAILED-EXPORT" XTC:SAME-CONTRACT
+
+\ The long alias fits alone, but its does> clause does not fit after it.
+package XPC
+public
+cp@ EXPORT-CP !
+dbase@ REGION + $4000 - XTC:PAIR-ROOM - cp!
+s" EXPORT xps:XP-LONG-NAMED-MAKER" ' OUTER:INTERPRET catch TC ! 2drop
+TC @ 76 T=
+EXPORT-CP @ cp!
+s" xpc:XP-LONG-NAMED-MAKER" XREF-FIND XREF-FOUND? TFALSE
+s" xpc:XP-LONG-NAMED-MAKER;does" XREF-FIND XREF-FOUND? TFALSE
+: AFTER-FAILED-CLAUSE ( -- n ) 42 ;
+;package
+s" xpc:AFTER-FAILED-CLAUSE" XTC:SAME-CONTRACT
 
 \ ---------------------------------------------------------------------------
 \ report: "test: ok" on success, nonzero exit on any failure.

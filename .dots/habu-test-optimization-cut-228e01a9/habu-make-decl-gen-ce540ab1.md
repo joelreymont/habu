@@ -3,7 +3,7 @@ title: Make decl-gen-probe load and run
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T09:54:10.360433+02:00\""
+created-at: "2026-10-02T09:54:10.360433+02:00"
 closed-at: "2026-10-14T19:56:27.602792+03:00"
 close-reason: 4f2a202a deleted the unused, broken decl-gen probe and confirmed its capture/render/plan seam is covered by test/type-ctor-suite.f; no non-dot references remain.
 ---

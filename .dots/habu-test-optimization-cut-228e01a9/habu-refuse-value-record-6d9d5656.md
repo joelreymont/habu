@@ -3,7 +3,7 @@ title: Refuse value-record names in ENUM and STRUCTURE
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T00:07:43.882021+02:00\""
+created-at: "2026-10-02T00:07:43.882021+02:00"
 closed-at: "2026-10-14T19:30:56.944933+03:00"
 close-reason: "Implemented in 2d4c89b0: family definers share TYPE-NAME:FAMILY-RESERVED?, so ENUM and STRUCTURE refuse value-record names in loader and check.f; failing-before fixtures, suites and convergence passed."
 ---

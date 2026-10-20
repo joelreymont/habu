@@ -3,7 +3,7 @@ title: "Kill a PTY session's whole process tree"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:12:52.709519+02:00\""
+created-at: "2026-10-02T23:12:52.709519+02:00"
 closed-at: "2026-10-14T19:29:05.577967+03:00"
 close-reason: "Implemented in b55efd63: PTY harness and I/O teardown kill the child process tree, while IO-KILL-REAP remains non-throwing; sleeper-holds-pipe regressions were red before and green after, with focused PTY and process suites passing."
 ---

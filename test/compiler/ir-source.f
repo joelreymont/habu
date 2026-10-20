@@ -2,9 +2,8 @@
 \
 \ Proves the IR-0.2 source-registry contract of src/compiler/ir/source.f:
 \ registration mints distinct module-local identities under the module key;
-\ equal bytes digest identically independent of registration order and
-\ registry while identities never deduplicate; byte spans validate against
-\ the registered length and reject negative bounds and crossings with named
+\ byte spans validate against the registered length and reject negative bounds
+\ and crossings with named
 \ errors; origins must name already-registered sources, so self and
 \ multi-node cycle attempts reject and chain walks terminate; foreign keys,
 \ foreign source-ids, foreign contexts, and non-registry or misaligned
@@ -54,40 +53,16 @@ private
    BND [: RG-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 2 T= TTRUE TTRUE 1 T= 0 T= ;
 
-\ ---- stable digests; identity never deduplicates -----------------------------
-: DG-BODY ( IR-CTX:ctx -- bool bool bool n n )
-   {: c:IR-CTX:ctx :}
-   c 8 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
-   c a key s" shared bytes" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
-   c a key s" shared bytes" IR-SOURCE:REGISTER {: s1:IR-ID:ir-source-id :}
-   c a key s" other bytes" IR-SOURCE:REGISTER {: s2:IR-ID:ir-source-id :}
-   \ a second registry in the same context, same bytes at another ordinal
-   c 8 REG-NEW {: key2:IR-ID:ir-module-key b:IR-ARENA:arena :}
-   c b key2 s" pad" IR-SOURCE:REGISTER drop
-   c b key2 s" shared bytes" IR-SOURCE:REGISTER {: t1:IR-ID:ir-source-id :}
-   a s0 IR-SOURCE:DIGEST@ a s1 IR-SOURCE:DIGEST@ CDIGEST-DIGEST:EQ
-   a s0 IR-SOURCE:DIGEST@ a s2 IR-SOURCE:DIGEST@ CDIGEST-DIGEST:EQ
-   a s0 IR-SOURCE:DIGEST@ b t1 IR-SOURCE:DIGEST@ CDIGEST-DIGEST:EQ
-   s0 IR-ID:SOURCE-LOCAL
-   s1 IR-ID:SOURCE-LOCAL ;
-
-: DG-CASE ( -- )
-   s" equal bytes digest identically; ids never deduplicate" T-LABEL
-   BND [: DG-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= TTRUE TFALSE TTRUE ;
-
-: MT-BODY ( IR-CTX:ctx -- n bool )
+: MT-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
    c 4 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
    c a key s" " IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
-   c a key s" " IR-SOURCE:REGISTER {: s1:IR-ID:ir-source-id :}
-   a s0 IR-SOURCE:LEN@
-   a s0 IR-SOURCE:DIGEST@ a s1 IR-SOURCE:DIGEST@ CDIGEST-DIGEST:EQ ;
+   a s0 IR-SOURCE:LEN@ ;
 
 : MT-CASE ( -- )
-   s" an empty source registers with length zero and a stable digest" T-LABEL
+   s" an empty source registers with length zero" T-LABEL
    BND [: MT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE 0 T= ;
+   0 T= ;
 
 : LN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -332,7 +307,7 @@ private
 
 : CAP-HUGE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   c $30000000 REG-NEW IR-ARENA:ABORT drop ;
+   c $100000000 REG-NEW IR-ARENA:ABORT drop ;
 
 : CAP-HUGE ( -- )
    BND [: CAP-HUGE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -373,14 +348,12 @@ private
    3 T= 2 T= E-IR-SRC-CAP T= ;
 
 \ ---- frozen modules own their source rows ------------------------------------
-: FZ-BODY ( IR-CTX:ctx -- bool n n bool n n )
+: FZ-BODY ( IR-CTX:ctx -- n n bool n n )
    {: c:IR-CTX:ctx :}
    c 4 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
    c a key s" root" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
    c a key s0 s" kid" IR-SOURCE:REGISTER-FROM {: s1:IR-ID:ir-source-id :}
-   a s0 IR-SOURCE:DIGEST@              \ the live digest rides across the freeze
    a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
-   v s0 IR-SOURCE:FDIGEST@ CDIGEST-DIGEST:EQ
    v IR-SOURCE:FSOURCES
    v s0 IR-SOURCE:FLEN@
    v s0 IR-SOURCE:FROOT?
@@ -390,7 +363,7 @@ private
 : FZ-CASE ( -- )
    s" a frozen module serves every source row through the view" T-LABEL
    BND [: FZ-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 1 T= TTRUE 4 T= 2 T= TTRUE ;
+   0 T= 1 T= TTRUE 4 T= 2 T= ;
 
 : FZ-SPAN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -470,24 +443,22 @@ private
    [: SHAPE-RUN ;] E-IR-SRC-STATE TTHROWSQ ;
 
 \ ---- arena growth preserves registered sources -------------------------------
-\ The third six-cell row grows the row arena. Context scratch can grow beyond
+\ The third two-cell row grows the row arena. Context scratch can grow beyond
 \ its former $80000 mapping without invalidating either source identity.
 : GROW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 64 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
    c a key s" the first source" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
-   a s0 IR-SOURCE:DIGEST@ {: digest :}
    c $80000 IR-CTX:SCRATCH-TAKE 2drop
    c a key s" second" IR-SOURCE:REGISTER {: s1:IR-ID:ir-source-id :}
    c a key s" third" IR-SOURCE:REGISTER {: s2:IR-ID:ir-source-id :}
    a IR-SOURCE:SOURCES 3 T=
    a s0 IR-SOURCE:LEN@ 16 T=
    a s0 IR-SOURCE:ROOT? TTRUE
-   a s0 IR-SOURCE:DIGEST@ digest CDIGEST-DIGEST:EQ TTRUE
    a s1 IR-SOURCE:LEN@ 6 T=
    a s2 IR-SOURCE:LEN@ 5 T=
    a s2 IR-SOURCE:ROOT? TTRUE
-   a IR-ARENA:USED 3 3 6 * + T= ;
+   a IR-ARENA:USED 3 3 2 * + T= ;
 
 : GROW-CASE ( -- )
    s" growing the source registry preserves old and new rows" T-LABEL
@@ -541,7 +512,6 @@ private
 : HARNESS-BODY ( IR-CTX:ctx -- )
    drop
    RG-CASE
-   DG-CASE
    MT-CASE
    LN-CASE
    SP-CASE

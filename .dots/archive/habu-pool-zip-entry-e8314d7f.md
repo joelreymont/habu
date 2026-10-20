@@ -3,7 +3,7 @@ title: Pool ZIP entry and name copies
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-10-15T03:25:26.193477+03:00\\\"\""
+created-at: "2026-10-15T03:25:26.193477+03:00"
 closed-at: "2026-10-15T03:35:15.330604+03:00"
 close-reason: Pooled entry identities and NAME$ copies in archive-owned chunks; independent Astra and lead reviews clear. Exact b685+XML installed candidate passes source ZIP/lifecycle/ZIP-XML, XML-owner source/stripped E2E and public ZIP/XML stripped and REPL applications with unchanged e4404e86 engine and 78e2c2b2 map. Whole Office writer measurement remains with the parent task.
 ---

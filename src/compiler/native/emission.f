@@ -54,6 +54,7 @@ DYNAMIC-BUFFER CALL-LOC-BUF n        \ retained definition-body offset
 variable N-ADDRS
 DYNAMIC-BUFFER ADDR-OFF-BUF n        \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND-BUF n       \ which kind of address it carries
+DYNAMIC-BUFFER ADDR-ORIGIN-BUF n     \ exact DATA declaration, -1 otherwise
 
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-NEMIT-STATE throw then ;
@@ -129,6 +130,9 @@ public
 : ADDR-SITE-KIND@ ( n -- n )
    SEAL-CK N-ADDRS @ ROW-CK ADDR-KIND-BUF @ ;
 
+: ADDR-SITE-ORIGIN@ ( n -- n )
+   SEAL-CK N-ADDRS @ ROW-CK ADDR-ORIGIN-BUF @ ;
+
 \ ---- filling the rows, which only a backend's emission row does --------------
 \ Nonthrowing, because a RETIRE row runs it on the refusing path.
 : CLEAR ( -- )
@@ -175,13 +179,15 @@ public
    loc k CALL-LOC-BUF !
    k 1+ N-CALLS ! ;
 
-: ADDR-SITE+ ( n n -- ) {: off:n kind:n :}
+: ADDR-SITE+ ( n n n -- ) {: off:n kind:n origin:n :}
    OPEN-CK off OFFSET-CK drop
    N-ADDRS @ {: k:n :}
    k 1+ ADDR-OFF-BUF-RESERVE
    k 1+ ADDR-KIND-BUF-RESERVE
+   k 1+ ADDR-ORIGIN-BUF-RESERVE
    off k ADDR-OFF-BUF !
    kind k ADDR-KIND-BUF !
+   origin k ADDR-ORIGIN-BUF !
    k 1+ N-ADDRS ! ;
 
 : SEAL ( -- )

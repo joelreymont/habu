@@ -7,7 +7,7 @@
 \ MOVABS carrier can neither read nor rewrite; WLEB reads and rewrites it in
 \ place. Everything else is the x86-64 reader's, called rather than restated, so
 \ the two keep one set of rules: the map's publication order (SH-ORDER), the
-\ shipped rows (SH-NUMBER, SH-SHIPPED), the stripped and retired records
+\ shipped rows (SH-SHIPPED), the stripped and retired records
 \ (SH-STRIP), a call row and every target it names (SH-CALL, SH-TARGET), and
 \ the declared code cells (SH-XTCELL). It reopens the capture's package for
 \ them, as aot-shadow.f does, and loads beside the Wasm backend, which no
@@ -98,7 +98,6 @@ public
 \ Fill the shadow tables from the open Wasm shadow's map after capture completion.
 : WASM-SHADOW-CAPTURE ( -- )
    SH-ORDER
-   SH-NUMBER
    WC-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
 

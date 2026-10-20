@@ -3,7 +3,7 @@ title: Refuse every failed reaper fork
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T12:02:57.338938+02:00\""
+created-at: "2026-10-02T12:02:57.338938+02:00"
 closed-at: "2026-10-14T19:30:56.983680+03:00"
 close-reason: "Implemented in 7bf84995: both reaper fork failure paths refuse and all capture/pool callers clean up; injected second-fork and root-compatible tests plus focused process suites passed. Linux and full native suite were not run in that commit."
 ---

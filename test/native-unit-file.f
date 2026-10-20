@@ -1,6 +1,6 @@
 \ Boundary acceptance for the versioned NBR package artifact. The retained
 \ path printed below can be inspected with a byte dumper after this run.
-\ Failure modes: bad magic/version/arch/name/key, malformed row length,
+\ Failure modes: bad magic/version/arch/name/key, malformed section length,
 \ section length past EOF, truncation, and trailing bytes must all refuse; a
 \ package name past the header's 64-byte field refuses as a profile the format
 \ cannot represent.
@@ -18,7 +18,7 @@ create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot variable PATH-U
 create OUTER FS-PATH-CAP allot variable OUTER-U
 create LONG-SOURCE FS-PATH-CAP allot variable LONG-SOURCE-U
-create ROW 48 allot
+create ROW 80 allot
 create SCOPE 22 cells allot
 create GOOD 512 allot
 create RAW 512 allot variable RAW-U
@@ -29,6 +29,7 @@ create RAW 512 allot variable RAW-U
 : ART$ ( -- ptr u8 n ) PATH PATH-U @ ;
 : OUTER$ ( -- ptr u8 n ) OUTER OUTER-U @ ;
 : LONG-SOURCE$ ( -- ptr u8 n ) LONG-SOURCE LONG-SOURCE-U @ ;
+: LONG-CONTENT$ ( -- ptr u8 n ) s" : LONG-SOURCE ( -- n ) 42 ;" ;
 
 : SETUP ( -- )
    s" native-unit-file" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -37,12 +38,12 @@ create RAW 512 allot variable RAW-U
    ROOT ROOT-U @ s" enclosing.file" OUTER JOIN-PATH OUTER-U !
    ROOT ROOT-U @ s" abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnop.f"
       LONG-SOURCE JOIN-PATH LONG-SOURCE-U !
-   48 0 ?do i ROW i + c! loop ;
+   80 0 ?do i ROW i + c! loop ;
 
 : SECTIONS ( -- )
    NUNIT-FILE:RESET
    0 s" code" NUNIT-FILE:SECTION!
-   1 ROW 48 NUNIT-FILE:SECTION!
+   1 ROW 80 NUNIT-FILE:SECTION!
    2 s" calls" NUNIT-FILE:SECTION!
    3 s" addr" NUNIT-FILE:SECTION!
    4 s" protection" NUNIT-FILE:SECTION!
@@ -53,7 +54,11 @@ create RAW 512 allot variable RAW-U
    9 s" slots" NUNIT-FILE:SECTION!
    10 s" literals" NUNIT-FILE:SECTION!
    11 s" inputs" NUNIT-FILE:SECTION!
-   12 s" retired" NUNIT-FILE:SECTION! ;
+   12 s" retired" NUNIT-FILE:SECTION!
+   13 s" refs" NUNIT-FILE:SECTION!
+   14 s" deps" NUNIT-FILE:SECTION!
+   15 s" compiler" NUNIT-FILE:SECTION!
+   16 s" origins" NUNIT-FILE:SECTION! ;
 
 : WRITE-GOOD ( -- )
    SECTIONS
@@ -66,7 +71,7 @@ create RAW 512 allot variable RAW-U
    WRITE-GOOD
    READ-GOOD
    0 NUNIT-FILE:SECTION$ s" code" T$=
-   1 NUNIT-FILE:SECTION$ ROW 48 T$=
+   1 NUNIT-FILE:SECTION$ ROW 80 T$=
    2 NUNIT-FILE:SECTION$ s" calls" T$=
    3 NUNIT-FILE:SECTION$ s" addr" T$=
    4 NUNIT-FILE:SECTION$ s" protection" T$=
@@ -100,7 +105,7 @@ create RAW 512 allot variable RAW-U
    0 RAW 24 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    0 RAW 32 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    0 RAW 96 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
-   49 RAW 168 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
+   81 RAW 168 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    1 RAW 160 + c! 4 RAW 163 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    ART$ RAW RAW-U @ 1- WRITE-ALL REFUSE
    ART$ RAW RAW-U @ 1+ WRITE-ALL REFUSE ;
@@ -109,20 +114,20 @@ create RAW 512 allot variable RAW-U
    s" empty trailing sections remain valid at the exact file end" T-LABEL
    NUNIT-FILE:RESET
    0 s" code1234" NUNIT-FILE:SECTION!
-   1 ROW 48 NUNIT-FILE:SECTION!
-   13 2 ?do i s" " NUNIT-FILE:SECTION! loop
+   1 ROW 80 NUNIT-FILE:SECTION!
+   17 2 ?do i s" " NUNIT-FILE:SECTION! loop
    ART$ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:WRITE
    READ-GOOD
    0 NUNIT-FILE:SECTION$ s" code1234" T$=
-   13 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
+   17 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
    NUNIT-FILE:CLOSE ;
 
 : CHECK-LONG-INPUT ( -- )
    s" a real source file and canonical query beyond 64 path bytes survive input replay" T-LABEL
    LONG-SOURCE$ nip 64 > TTRUE
-   LONG-SOURCE$ s" : LONG-SOURCE ( -- n ) 42 ;" WRITE-ALL
+   LONG-SOURCE$ LONG-CONTENT$ WRITE-ALL
    NFILE-INPUTS:RESET
-   LONG-SOURCE$ s" " NFILE-INPUTS:ADD
+   LONG-SOURCE$ LONG-CONTENT$ NFILE-INPUTS:ADD
    LONG-SOURCE$ LONG-SOURCE$ SOURCE-ROOT:CANON-OS NFILE-INPUTS:ADD-CANON
    NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK
    NFILE-INPUTS:CLOSE ;
@@ -136,10 +141,10 @@ create RAW 512 allot variable RAW-U
    NUNIT-FILE:ARCH-AARCH64 s" FILE" KEY$ NUNIT-FILE:PACK
       {: unit:ptr unitu:n :}
    s" unit.f" s" root" KEY$ 1 NFILE-OBJECT:START {: h:n :}
-   h 1 0 unit unitu KEY$ drop SCOPE 0 5 7 6 0 9 0 0 0 0 0 4 5 6 12 10 0 0
+   h 1 0 0 unit unitu KEY$ drop SCOPE 0 5 7 6 0 9 0 0 0 0 0 4 5 6 12 10 0 0
       NFILE-OBJECT:ADD-RANGE
    NFILE-INPUTS:RESET
-   s" test/native-unit-file.f" s" " NFILE-INPUTS:ADD
+   s" test/native-unit-file.f" s" " NFILE-INPUTS:ADD-MTIME
    h OUTER$ NFILE-INPUTS:BYTES$ NFILE-OBJECT:WRITE
    NFILE-INPUTS:CLOSE
    NFILE-OBJECT:CLOSE

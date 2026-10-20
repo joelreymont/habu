@@ -1,9 +1,9 @@
 \ source.f - the compiler source registry: module-local source identities,
-\ byte spans, origin chains, and stable content digests.
+\ byte spans, and origin chains.
 \
 \ docs/compiler-ir-design.md sections 6.2 (the context's source registry
-\ member), 6.3 (the source table in the canonical serialization order), 7.1
-\ (the stage N0 source tape binds to source digests), and plan item IR-0.2.
+\ member), 6.3 (the source table in the canonical serialization order), and
+\ plan item IR-0.2.
 \ One registry serves one module. Its rows live on one IR-ARENA arena owned by
 \ the compilation context, so the registry dies with its context, freezes with
 \ its arena, and adds no storage mechanism of its own. Source identities are
@@ -11,8 +11,8 @@
 \ key; this file mints no parallel identity family and no raw converter.
 \
 \ ROW SHAPE. The arena carries a three-cell header (format tag, owning module
-\ serial, committed source capacity) followed by one six-cell row per source:
-\ byte length, the four digest words, and the origin cell. The header binds
+\ serial, committed source capacity) followed by one two-cell row per source:
+\ byte length and the origin cell. The header binds
 \ the arena to exactly one module key, so a foreign key or a foreign module's
 \ source-id rejects with a named error before any row is touched. Ownership is
 \ the same possession discipline as IR-ARENA: holding the context, the arena,
@@ -21,17 +21,9 @@
 \ this package and appends raw cells to the arena misaligns the row shape,
 \ which every operation rechecks fail-closed (E-IR-SRC-STATE).
 \
-\ CONTENT AND DIGESTS. The registry does not retain source bytes. A
-\ registration digests the presented bytes - SHA-256 over exactly those bytes,
-\ via CDIGEST:COMPUTE - and records length, digest, and origin. Equal bytes
-\ therefore digest identically regardless of registration order, registry, or
-\ module, which is what lets a later context cache deduplicate identical
-\ content. Identity never deduplicates: every registration mints the next
-\ module-local ordinal, so two registrations of the same bytes are two
-\ sources whose content equality is observable only through their digests.
-\ The record-preimage tag discipline of digest.f is for structured records;
-\ source content is raw bytes, and its digest is the plain content hash the
-\ section 7.1 source tape binds to.
+\ The registry stores source length and origin, not the presented bytes.
+\ Every registration mints the next module-local ordinal, including a second
+\ registration of the same bytes.
 \
 \ BYTE SPANS ARE ENCODING-AGNOSTIC. A span is (source-id, start, length) in
 \ bytes, validated against the registered byte length only: negative bounds,
@@ -49,15 +41,8 @@
 \ on every step (E-IR-SRC-STATE on a corrupted row), so a walk terminates on
 \ any registry state.
 \
-\ The IR-CTX SOURCES@ slot stays fail-closed unbound. An arena handle is a
-\ sealed nominal a stored raw cell cannot re-mint (arena.f, STALE HANDLES),
-\ so persisting a registry reference inside the context header is its own
-\ designed capability (dot habu-bind-ctx-src-df121c31), not a side effect of
-\ this file.
-
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -91,12 +76,8 @@ $53524331 constant SRC-MAGIC         \ "SRC1": the registry header format tag
 2 constant HC-CAP
 3 constant HDR-CELLS
 0 constant OFF-LEN
-1 constant OFF-DW0
-2 constant OFF-DW1
-3 constant OFF-DW2
-4 constant OFF-DW3
-5 constant OFF-ORG
-6 constant ROW-CELLS
+1 constant OFF-ORG
+2 constant ROW-CELLS
 0 constant ORG-NONE                  \ origin cell of a root source
 public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
@@ -191,32 +172,21 @@ private
 
 \ Append one validated row and report its module-local ordinal. The capacity
 \ check comes first, so a full registry still answers its own named error; the
-\ reservation then makes the whole row's storage real, so none of the six
-\ appends can allocate. The digest is in hand before the reservation as well, so
-\ between the first cell of the row and the last there is nothing left that can
-\ fail - which is what makes the six appends one commit.
+\ reservation then makes the whole row's storage real, so neither append can
+\ allocate. Between the first cell of the row and the last there is nothing
+\ left that can fail.
 \ The reader is opened once and outlives the appends: a PUSH changes neither
 \ the registry generation nor the state, and the reader re-reads the row's
 \ pointer and count on every call, so it follows the reservation's new span.
-: ROW-PUT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader n n CDIGEST:digest -- n )
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
+: ROW-PUT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader n n -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader u:n org:n :}
    u 0 < if E-IR-SRC-LEN throw then
    r ROOM-CK
    c a ROW-CELLS IR-ARENA:RESERVE
    r CNT {: l:n :}
    c a u IR-ARENA:PUSH drop
-   c a w0 IR-ARENA:PUSH drop
-   c a w1 IR-ARENA:PUSH drop
-   c a w2 IR-ARENA:PUSH drop
-   c a w3 IR-ARENA:PUSH drop
    c a org IR-ARENA:PUSH drop
    l ;
-
-\ The same row, for a caller that has the bytes and no digest of them yet.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader ptr u8 n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader p u:n org:n :}
-   c a r  u org  p u CDIGEST:COMPUTE  ROW-PUT ;
 
 \ An origin must already be a registered source of this same registry, so a
 \ parent ordinal is strictly below its child's and no chain can close: a self
@@ -231,13 +201,12 @@ private
 
 public
 
-\ Register a root source: digest the bytes, append the row, mint the next
-\ module-local identity under key. The bytes are not retained.
+\ Register a root source by its byte length and mint its module-local identity.
 : REGISTER ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
    a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r key KEY-CK
-   c a r p u ORG-NONE ROW-ADD
+   c a r u ORG-NONE ROW-PUT
    key swap IR-ID:PACK-SOURCE ;
 
 \ Register a source whose origin - its include or expansion parent - is an
@@ -247,7 +216,7 @@ public
    a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r key KEY-CK
    r parent ORIGIN-CK {: org:n :}
-   c a r p u org ROW-ADD
+   c a r u org ROW-PUT
    key swap IR-ID:PACK-SOURCE ;
 
 \ ---- live readers ------------------------------------------------------------
@@ -259,15 +228,6 @@ public
    a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r id ID-CK {: l:n :}
    r l OFF-LEN RC@ ;
-
-\ FOUR DIGEST WORDS OFF ONE RESOLUTION. This is the shape the reader exists
-\ for: the row is validated once and its four cells are then four loads.
-: DIGEST@ ( IR-ARENA:arena IR-ID:ir-source-id -- CDIGEST:digest )
-   {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
-   r id ID-CK {: l:n :}
-   r l OFF-DW0 RC@ r l OFF-DW1 RC@ r l OFF-DW2 RC@ r l OFF-DW3 RC@
-   CDIGEST-DIGEST:MAKE ;
 
 : ROOT? ( IR-ARENA:arena IR-ID:ir-source-id -- bool )
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
@@ -326,13 +286,6 @@ public
    r id ID-CK {: l:n :}
    r l OFF-LEN RC@ ;
 
-: FDIGEST@ ( IR-ARENA:view IR-ID:ir-source-id -- CDIGEST:digest )
-   {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r id ID-CK {: l:n :}
-   r l OFF-DW0 RC@ r l OFF-DW1 RC@ r l OFF-DW2 RC@ r l OFF-DW3 RC@
-   CDIGEST-DIGEST:MAKE ;
-
 : FROOT? ( IR-ARENA:view IR-ID:ir-source-id -- bool )
    {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
    v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
@@ -359,14 +312,8 @@ public
    repeat
    drop ;
 
-\ Carry a registered source from a FROZEN registry into this one, copying its
-\ length and its digest instead of taking either again. A pass that rewrites a
-\ module builds a new module over the same source, and the source it was
-\ compiled from is a fact that module already holds: recomputing the digest
-\ from the bytes to compare it with the row that holds it proves only that
-\ SHA-256 is a function. So the row is copied, the two modules carry the same
-\ source identity by construction rather than by agreement, and a chain of
-\ passes digests a word's text once instead of once per module.
+\ Carry the length of a registered source from a frozen registry into this one.
+\ A pass that rewrites a module builds a new module over the same source.
 \
 \ ONLY A ROOT CAN BE CARRIED. An origin is a module-local ordinal into the
 \ registry that holds it, and this registry has not registered the parent, so a
@@ -377,7 +324,7 @@ public
    a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r key KEY-CK
    v id FROOT? 0= if E-IR-SRC-ORIGIN throw then
-   c a r  v id FLEN@  ORG-NONE  v id FDIGEST@  ROW-PUT
+   c a r  v id FLEN@  ORG-NONE ROW-PUT
    key swap IR-ID:PACK-SOURCE ;
 
 \ ---- byte spans --------------------------------------------------------------

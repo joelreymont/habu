@@ -3,7 +3,7 @@ title: Refuse a false trust signature length
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T05:37:50.632585+02:00\""
+created-at: "2026-10-01T05:37:50.632585+02:00"
 closed-at: "2026-10-14T19:26:17.734168+03:00"
 close-reason: "Implemented in 871483b3: TRUST-USIG rejects false signature lengths before parsing or printing; trust-row regressions were red before, green after, with converged images."
 ---

@@ -14,11 +14,8 @@
 \ their frame slots and the reserve's frame size are read back off the module
 \ that comes out, by NAME, through the same frozen-module cursor the pass reads.
 \
-\ PRUNE IS A PASS-THROUGH HERE: src/compiler/native/prune.f rewrites nothing on
-\ the corpus and this machine has no prune pass, so the row answers the module
-\ it was given, and one case pins that by identity. EVERY ROW OF THIS BACKEND IS
-\ NOW FILLED: the placed case runs the driver's whole order - declare, select,
-\ prune, fixpoint, emit at a named slot, retire - and reads the sealed image from
+\ EVERY ROW OF THIS BACKEND IS FILLED: the placed case runs the driver's whole
+\ order - declare, select, fixpoint, emit at a named slot, retire - and reads the sealed image from
 \ its owned artifact, which says the x86-64 chain is reachable end to end
 \ from src/compiler/native/compiler.f.
 \
@@ -388,15 +385,14 @@ private
 
 \ ---- driving the chain -------------------------------------------------------
 \ The driver's order before emission: declare what the definition takes and
-\ leaves, select, prune, and lower to a fixpoint.
+\ leaves, select, and lower to a fixpoint.
 : CHAIN-LINKED ( n n NBACK:linkage -- IR-BUILD:module )
    {: in:n out:n l:NBACK:linkage :}
    NS in out l NBACK:DECLARE
    NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
    NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   NS m1 NBACK:FIXPOINT ;
+   NS m0 NBACK:FIXPOINT ;
 
 : CHAIN ( n n -- IR-BUILD:module )
    NBACK:L-NONE CHAIN-LINKED ;
@@ -500,20 +496,6 @@ variable FRAME-BYTES                 \ the size the reserve carries
    N-STORE @  N-LOAD @  SLOT-A @  SLOT-TOP @  N-RESERVE @  FRAME-BYTES @
    blocks  ok ;
 
-\ The prune row on the module selection wrote: the very same module comes back,
-\ by identity, with nothing threaded into it.
-: PRUNE-BODY ( IR-CTX:ctx -- n n n bool )
-   HIR-MOD
-   BUILD-DIFF
-   NS 2 1 NBACK:L-NONE NBACK:DECLARE
-   NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
-   NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
-   hm IR-BUILD:RETIRE
-   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   m0 IR-BUILD:FMODULE  m1 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}
-   m1 SCAN drop
-   N-STORE @  N-LOAD @  N-RESERVE @  same ;
-
 : UNCHANGED-BODY ( IR-CTX:ctx -- n n n n bool bool )
    HIR-MOD
    BUILD-DIFF
@@ -521,8 +503,7 @@ variable FRAME-BYTES                 \ the size the reserve carries
    NS BB NBACK:FREEZE {: hm:IR-BUILD:module :}
    NS hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   NS m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   NS m1 NBACK:FIXPOINT {: m2:IR-BUILD:module :}
+   NS m0 NBACK:FIXPOINT {: m2:IR-BUILD:module :}
    m0 IR-BUILD:FMODULE  m2 IR-BUILD:FMODULE  IR-ID:MODULE-SAME? {: same:bool :}
    m2 2 1 ACCEPTED {: ok:bool :}
    m2 SCAN drop
@@ -694,10 +675,6 @@ public
    s" twelve live values do not fit nine registers: the fixpoint lowers the plan into this dialect's own stores and loads over two turns, eight of each, and the validator accepts the module that comes out" T-LABEL
    [: PRESSURE-BODY ;] WITH-CASE
    TTRUE 1 T= 32 T= 1 T= 24 T= 8 T= 8 T= 8 T=
-
-   s" prune is a pass-through on this machine: the row answers the very module selection wrote, by identity, and threads no store, load or reserve into it" T-LABEL
-   [: PRUNE-BODY ;] WITH-CASE
-   TTRUE 0 T= 0 T= 0 T=
 
    s" a routine that fits comes back from the fixpoint as the very module selection wrote: nothing was lowered because the allocator sealed an empty plan" T-LABEL
    [: UNCHANGED-BODY ;] WITH-CASE

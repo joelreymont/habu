@@ -3,7 +3,7 @@ title: Grow the tier-1 string literal store
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T13:16:17.969807+02:00\""
+created-at: "2026-10-03T13:16:17.969807+02:00"
 closed-at: "2026-10-14T19:43:43.052241+03:00"
 close-reason: Tier-1 literal store segmented in 905580d6; current string.f has SEGMENTS and WINDOW-CLOSE, with native-string/trap regression and convergence recorded.
 ---

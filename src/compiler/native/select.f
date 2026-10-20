@@ -78,7 +78,9 @@ HIR-OPCODE:GT       HIR:ORD constant O-GT
 HIR-OPCODE:GE       HIR:ORD constant O-GE
 HIR-OPCODE:NE       HIR:ORD constant O-NE
 HIR-OPCODE:FCONST   HIR:ORD constant O-FCONST
+HIR-OPCODE:LOAD     HIR:ORD constant O-LOAD
 HIR-OPCODE:BITSREAL HIR:ORD constant O-BITSREAL
+HIR-OPCODE:REALBITS HIR:ORD constant O-REALBITS
 HIR-OPCODE:FLT      HIR:ORD constant O-FLT
 HIR-OPCODE:FGT      HIR:ORD constant O-FGT
 HIR-OPCODE:FEQ      HIR:ORD constant O-FEQ
@@ -96,14 +98,15 @@ HIR-OPCODE:XOR      HIR:ORD constant O-XOR
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 
 1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
-HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
+HIR:OPCODES CWORK-BUFFER BND-OP IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-VAL IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ORIGIN IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-IN IR-ID:ir-symbol-id
@@ -135,6 +138,9 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 0 CWORK-VARIABLE S-TAIL n                      \ whether the contract says control leaves through a callee
 0 CWORK-VARIABLE S-DSTACK n                    \ whether the contract declares the data-stack convention
 0 CWORK-VARIABLE S-LSAVE n                     \ whether the contract's prologue keeps the caller's return address
+0 CWORK-VARIABLE S-STORE-ENTRY n
+0 CWORK-VARIABLE S-BSTORE-ENTRY n
+0 CWORK-VARIABLE S-GUARD-ENTRY n
 0 CWORK-VARIABLE FUSE-AT n                     \ where in this block the fused comparison is, or -1
 
 \ One cell per operation of the block being selected: which operation of it, if
@@ -163,7 +169,7 @@ DYNAMIC-BUFFER VREAL-BUF n
 16 constant SEL-BLOCK-MAX            \ blocks a converted region may absorb
 4 constant SEL-CARRY-MAX             \ values it may still hold where its selects are made
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 DYNAMIC-BUFFER R-PRED-BUF n
 : R-PRED ( -- ptr n ) 0 R-PRED-BUF ;
 DYNAMIC-BUFFER R-FROM-BUF n
@@ -209,6 +215,17 @@ DYNAMIC-BUFFER R-LIST-BUF n
 DYNAMIC-BUFFER RSEL IR-ID:ir-value-id
 1 CWORK-BUFFER R-JB IR-ID:ir-block-id
 
+\ The residency walk uses the region's value identities before emission.
+\ Source values start with distinct keys; aliases and collapsed selects inherit
+\ the key of the value they actually name.
+DYNAMIC-BUFFER R-KEY-BUF n
+: R-KEY ( -- ptr n ) 0 R-KEY-BUF ;
+DYNAMIC-BUFFER R-PICK-BUF n
+: R-PICK ( -- ptr n ) 0 R-PICK-BUF ;
+DYNAMIC-BUFFER R-READ-BUF n
+: R-READ ( -- ptr n ) 0 R-READ-BUF ;
+0 CWORK-VARIABLE R-CHANGED n
+
 \ ---- what the data-stack residency pass answers ------------------------------
 \ A slot of the caller's data stack holds a value of the source module, and this
 \ is the window that fact is tracked over: past it, never resident.
@@ -217,7 +234,7 @@ DYNAMIC-BUFFER RSEL IR-ID:ir-value-id
 -2 constant DANY                     \ nothing has been said about this slot yet
 63 constant DELIDE-MAX               \ store positions one run's elision mask holds
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 DYNAMIC-BUFFER D-IN-BUF n
 : D-IN ( -- ptr n ) 0 D-IN-BUF ;
 DYNAMIC-BUFFER D-OUT-BUF n
@@ -247,6 +264,9 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
    BMAX R-QP-BUF-RESERVE
    BMAX R-LIST-BUF-RESERVE
    BMAX SEL-WIDTH-MAX * RSEL-RESERVE
+   VMAX R-KEY-BUF-RESERVE
+   BMAX SEL-WIDTH-MAX * R-PICK-BUF-RESERVE
+   BMAX R-READ-BUF-RESERVE
    BMAX DSLOT-MAX * D-IN-BUF-RESERVE
    BMAX DSLOT-MAX * D-OUT-BUF-RESERVE
    VMAX D-NEED-BUF-RESERVE
@@ -269,7 +289,7 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
 \ and is measured against its own policy.
 256 constant DREQ-MAX                \ places one routine's survey holds
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
 0 CWORK-VARIABLE D-REQ-N n
 0 CWORK-VARIABLE D-REQ-OVER n                                \ the survey ran past its size
@@ -354,12 +374,20 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    k VMAP @ ;
 
 \ ---- which register file a value's machine value is in -----------------------
-\ The source module's TYPE is the answer for every value but one kind.
+\ The source module's TYPE is the answer except for cells placed in the
+\ floating file. VREAL is planned once for the function and read by both the
+\ residency walk and emission.
 : FPLACE! ( IR-ID:ir-value-id -- )
    VSLOT cells VREAL + 1 swap ! ;
 
 : FPLACED? ( IR-ID:ir-value-id -- bool )
    VSLOT cells VREAL + @ 0<> ;
+
+: BITSREAL-ALIAS? ( IR-ID:ir-op-id -- bool )
+   0 OPERAND-AT FPLACED? ;
+
+: REALBITS-ALIAS? ( IR-ID:ir-op-id -- bool )
+   0 RESULT-AT FPLACED? ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : SRC-CK ( IR-ID:ir-source-id -- )
@@ -886,7 +914,6 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    n 0 ?do
       id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
       v DNEED? if
-         v LOAD-PLACE? if v FPLACE! then
          v
          i rider = if
             id  n A64IR:SLOT-WIDTH *  v FPLACED? DPOP-FORM  EMIT-DPOP
@@ -960,6 +987,24 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
    id TAIL-OP? 0= if a r kk m exit then
    a r 0  kk m + ;
 
+\ Only the current global engine bindings have this ABI. A package shadow or a
+\ later redefinition has a different recorded entry and keeps the ordinary call.
+$3C00 constant STORE-ABI-GPRS             \ x10..x13, all fixed by the guarded store
+: STORE-WIDTH ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-WORDCALL <> if 0 exit then
+   id TAIL-OP? if 0 exit then
+   S-GUARD-ENTRY @ 0= if 0 exit then
+   0 S-POOL @ NEFF:GPRS-N {: pool:n :}
+   pool STORE-ABI-GPRS and STORE-ABI-GPRS <> if 0 exit then
+   pool STORE-ABI-GPRS invert and 0= if 0 exit then
+   id WORD-SHAPE {: a:n r:n k:n m:n :}
+   a 2 <> r 0 <> or k 0<> or if 0 exit then
+   id WORD-ENTRY {: entry:n :}
+   entry S-STORE-ENTRY @ = S-STORE-ENTRY @ 0<> and if 8 exit then
+   entry S-BSTORE-ENTRY @ = S-BSTORE-ENTRY @ 0<> and if 1 exit then
+   0 ;
+
 : C2-STOW-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-KIND @ ATTR-INT-OF {: kind:n :}
@@ -997,10 +1042,11 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
 32 constant RLIT-MAX                 \ distinct constants one region's memo holds
 -1 constant RLIT-SHUT                \ the count when no region is being emitted
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 RLIT-MAX CWORK-SPAN RLIT-SLOT n   \ which member of the source family
 RLIT-MAX CWORK-SPAN RLIT-VAL n    \ the number it carried
 RLIT-MAX CWORK-SPAN RLIT-KIND n   \ and what that number IS
+RLIT-MAX CWORK-SPAN RLIT-ORIGIN n \ DATA declaration, -1 otherwise
 RLIT-MAX CWORK-BUFFER RLIT-ID IR-ID:ir-value-id
 RLIT-SHUT CWORK-VARIABLE RLIT-N n
 
@@ -1014,21 +1060,23 @@ RLIT-SHUT CWORK-VARIABLE RLIT-N n
 : RLIT-ON? ( -- bool )
    RLIT-N @ 0 >= ;
 
-: RLIT-FIND ( n n n -- n )
-   {: slot:n kind:n val:n :}
+: RLIT-FIND ( n n n n -- n )
+   {: slot:n kind:n val:n origin:n :}
    -1
    RLIT-N @ 0 ?do
       i cells RLIT-SLOT + @ slot =
       i cells RLIT-VAL + @ val = and
-      i cells RLIT-KIND + @ kind = and if drop i leave then
+      i cells RLIT-KIND + @ kind = and
+      i cells RLIT-ORIGIN + @ origin = and if drop i leave then
    loop ;
 
-: RLIT-REMEMBER ( n n n IR-ID:ir-value-id -- )
-   {: slot:n kind:n val:n id:IR-ID:ir-value-id :}
+: RLIT-REMEMBER ( n n n n IR-ID:ir-value-id -- )
+   {: slot:n kind:n val:n origin:n id:IR-ID:ir-value-id :}
    RLIT-N @ RLIT-MAX >= if exit then
    slot RLIT-N @ cells RLIT-SLOT + !
    val RLIT-N @ cells RLIT-VAL + !
    kind RLIT-N @ cells RLIT-KIND + !
+   origin RLIT-N @ cells RLIT-ORIGIN + !
    id RLIT-N @ RLIT-ID !
    RLIT-N @ 1+ RLIT-N ! ;
 
@@ -1041,6 +1089,9 @@ RLIT-SHUT CWORK-VARIABLE RLIT-N n
    {: id:IR-ID:ir-op-id :}
    id  0 BND-ADDR @  ATTR-INT-OF ;
 
+: CONST-ORIGIN ( IR-ID:ir-op-id -- n )
+   0 BND-ORIGIN @ ATTR-INT-OF ;
+
 : MOVE-WIDE ( IR-ID:ir-op-id A64IR:opcode n n bool n -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode imm:n sh:n keep:bool kind:n :}
    id o OPEN
@@ -1049,6 +1100,9 @@ RLIT-SHUT CWORK-VARIABLE RLIT-N n
    CTX BLD  CTX BLD A64IR:KEY-IMM    CTX BLD imm A64IR:IMM-ATTR    IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD A64IR:KEY-SHIFT  CTX BLD sh A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD A64IR:KEY-ADDR   CTX BLD kind A64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-ORIGIN
+      CTX BLD kind A64IR:ADDR-NONE = if -1 else id CONST-ORIGIN then
+         IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ A move-wide writes one sixteen-bit half; the shorter of the zero-based and
@@ -1137,6 +1191,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    RESULT+
    CTX BLD CTX BLD A64IR:KEY-DATA-OFFSET
    CTX BLD off A64IR:DATA-OFFSET-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD CTX BLD A64IR:KEY-ORIGIN
+      CTX BLD id CONST-ORIGIN IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ Address kind chooses a recorded carrier; scalars use an unrecorded minimal chain.
@@ -1159,10 +1215,20 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    sl O-FCONST = if HIR:ADDR-NONE exit then
    E-A64SEL-ATTR throw ;
 
+\ A nonnegative DATA origin identifies its declaration. Negative origins are
+\ literal events and share by numeric address until the declaration is known.
+: CONST-KEY ( IR-ID:ir-op-id -- n n n n )
+   {: id:IR-ID:ir-op-id :}
+   id CONST-KIND-OF {: kind:n :}
+   id OP-SLOT  kind  id CONST-VALUE
+   kind HIR:ADDR-DATA = if
+      id CONST-ORIGIN dup 0 < if drop -1 then
+   else -1 then ;
+
 : RLIT-REUSED? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    RLIT-ON? 0= if false exit then
-   id OP-SLOT  id CONST-KIND-OF  id CONST-VALUE  RLIT-FIND {: k:n :}
+   id CONST-KEY RLIT-FIND {: k:n :}
    k 0 < if false exit then
    id 0 RESULT-AT  k RLIT-ID @  VBIND
    true ;
@@ -1170,7 +1236,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : RLIT-NOTE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    RLIT-ON? 0= if exit then
-   id OP-SLOT  id CONST-KIND-OF  id CONST-VALUE  ACC  RLIT-REMEMBER ;
+   id CONST-KEY  ACC  RLIT-REMEMBER ;
 
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1179,9 +1245,20 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    id 0 RESULT-AT  ACC  VBIND
    id RLIT-NOTE ;
 
+: EMIT-FMOVDI ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id imm:n :}
+   id A64IR-OPCODE:FMOVDI OPEN
+   FRESULT+
+   CTX BLD  CTX BLD A64IR:KEY-IMM  CTX BLD imm A64IR:FIMM-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT ACC VBIND
+   id RLIT-NOTE ;
+
 : EMIT-FCONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id RLIT-REUSED? if exit then
+   id CONST-VALUE A64IR:FIMM8? if id swap EMIT-FMOVDI exit then drop
    id  id CONST-VALUE  A64IR:ADDR-NONE  MATERIALISE
    id A64IR-OPCODE:FMOVXD OPEN
    CTX BLD ACC IR-BUILD:ADD-OPERAND
@@ -1294,8 +1371,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ ---- the cell load and store, in the file the placement chose ----------------
 : EMIT-CELL-LOAD ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-AT LOAD-PLACE? if
-      id 0 RESULT-AT FPLACE!
+   id 0 RESULT-AT FPLACED? if
       id A64IR-OPCODE:FALOAD EMIT-ALOAD exit
    then
    id A64IR-OPCODE:ALOAD EMIT-ALOAD ;
@@ -1310,15 +1386,16 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ ---- the two reinterpretations -----------------------------------------------
 : EMIT-BITSREAL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-AT FPLACED? if
+   id BITSREAL-ALIAS? if
+      id 0 RESULT-AT DNEED? 0= if exit then
       id 0 RESULT-AT  id 0 OPERAND  VBIND exit
    then
    id A64IR-OPCODE:FMOVXD EMIT-FUNARY ;
 
 : EMIT-REALBITS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-AT STORE-PLACE? if
-      id 0 RESULT-AT FPLACE!
+   id REALBITS-ALIAS? if
+      id 0 RESULT-AT DNEED? 0= if exit then
       id 0 RESULT-AT  id 0 OPERAND  VBIND exit
    then
    id A64IR-OPCODE:FMOVDX EMIT-UNARY ;
@@ -2193,42 +2270,44 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    OP-SLOT {: s:n :}
    s O-CONST =  s O-FCONST =  or ;
 
-: R-FOLD-IN? ( IR-ID:ir-block-id n n n -- bool )
-   {: bk:IR-ID:ir-block-id k:n s:n v:n :}
+: SAME-CONST? ( IR-ID:ir-op-id IR-ID:ir-op-id -- bool )
+   {: a:IR-ID:ir-op-id b:IR-ID:ir-op-id :}
+   a CONST-KEY {: sa:n ka:n va:n oa:n :}
+   b CONST-KEY {: sb:n kb:n vb:n ob:n :}
+   sa sb =  ka kb = and  va vb = and  oa ob = and ;
+
+: R-FOLD-IN? ( IR-ID:ir-block-id n IR-ID:ir-op-id -- bool )
+   {: bk:IR-ID:ir-block-id k:n target:IR-ID:ir-op-id :}
    false
    k 0 ?do
       bk i OP-AT {: o:IR-ID:ir-op-id :}
       o R-FOLDABLE? if
-         o OP-SLOT s =  o CONST-VALUE v =  and if drop true leave then
+         o target SAME-CONST? if drop true leave then
       then
    loop ;
 
 : R-FOLD-BEFORE? ( IR-ID:ir-fun-id n n n IR-ID:ir-op-id -- bool )
    {: f:IR-ID:ir-fun-id h:n b:n k:n o:IR-ID:ir-op-id :}
-   o OP-SLOT {: s:n :}
-   o CONST-VALUE {: v:n :}
    f h BLOCK-AT {: hb:IR-ID:ir-block-id :}
-   hb  hb OP-COUNT 1-  s v R-FOLD-IN? if true exit then
-   f b BLOCK-AT k s v R-FOLD-IN? if true exit then
+   hb  hb OP-COUNT 1-  o R-FOLD-IN? if true exit then
+   f b BLOCK-AT k o R-FOLD-IN? if true exit then
    false
    R-LIST-N @ 0 ?do
       i cells R-LIST + @ {: m:n :}
       m b < if
          f m BLOCK-AT {: mb:IR-ID:ir-block-id :}
-         mb  mb OP-COUNT 1-  s v R-FOLD-IN? if drop true leave then
+         mb  mb OP-COUNT 1-  o R-FOLD-IN? if drop true leave then
       then
    loop ;
 
 : R-FOLD-AFTER? ( IR-ID:ir-fun-id n IR-ID:ir-op-id -- bool )
    {: f:IR-ID:ir-fun-id b:n o:IR-ID:ir-op-id :}
-   o OP-SLOT {: s:n :}
-   o CONST-VALUE {: v:n :}
    false
    R-LIST-N @ 0 ?do
       i cells R-LIST + @ {: m:n :}
       m b > if
          f m BLOCK-AT {: mb:IR-ID:ir-block-id :}
-         mb  mb OP-COUNT 1-  s v R-FOLD-IN? if drop true leave then
+         mb  mb OP-COUNT 1-  o R-FOLD-IN? if drop true leave then
       then
    loop ;
 
@@ -2586,33 +2665,55 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    f BLOCK-COUNT 0 ?do  f  f i BLOCK-AT  TAIL-SITE-TRY  loop ;
 
 \ ---- leaving through the callee ----------------------------------------------
-\ A tail call is not a call site with the end cut off: the pointer must already
-\ stand at the callee's entry base.
-: TAIL-CK ( n n -- )
-   {: a:n r:n :}
-   a ARGS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
-   r OUTS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then
-   a A64IR:SLOT-WIDTH * DPLACED 0<> if E-A64SEL-TAIL throw then
-   r A64IR:SLOT-WIDTH * DPLACED 0<> if E-A64SEL-TAIL throw then ;
+\ The callee writes this routine's declared result row. Its input row may have
+\ another width, so the final transfer publishes the callee's own arguments.
+: TAIL-CK ( n -- )
+   {: r:n :}
+   r OUTS SLOT-POSITIONS <> if E-A64SEL-TAIL throw then ;
 
-: EMIT-TAIL-BR ( IR-ID:ir-op-id n -- )
-   {: at:IR-ID:ir-op-id entry:n :}
+: EMIT-TAIL-BR ( IR-ID:ir-op-id n n n n -- )
+   {: at:IR-ID:ir-op-id entry:n a:n r:n move:n :}
    at A64IR-OPCODE:TAILCALL OPEN
    TOK OPERAND+
    CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-TAIL-IN  CTX BLD a IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-TAIL-OUT  CTX BLD r IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   move DBYTES-AT+
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ The epilogue stands in FRONT of the branch and not after it.
 : EMIT-TAIL-CALL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
-   a r TAIL-CK
+   r TAIL-CK
    id 0 OPERAND TOK!
-   id kk m a mask CALL-SAVE drop
+   id kk m a mask CALL-SAVE {: gave:bool :}
    id EPILOGUE
-   id  id WORD-ENTRY  EMIT-TAIL-BR
+   id  id WORD-ENTRY  a r  a A64IR:SLOT-WIDTH * gave SITE-MOVE
+   EMIT-TAIL-BR
    N-TAILS @ 1+ N-TAILS ! ;
+
+\ The guard observes the original address in x10. Give that pin its own value
+\ so a pointer reused after the store is not held in x10 across the call.
+: EMIT-PSTORE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id width:n :}
+   id 0 OPERAND TOK!
+   id  id 2 OPERAND  false EMIT-COPY {: addr:IR-ID:ir-value-id :}
+   id width 8 = if A64IR-OPCODE:PSTORE else A64IR-OPCODE:PBSTORE then OPEN
+   id 1 OPERAND OPERAND+
+   addr OPERAND+
+   TOK OPERAND+
+   RESULT+ RESULT+ RESULT+ TOKEN+
+   CTX BLD CTX BLD A64IR:KEY-GUARD-ENTRY
+      CTX BLD S-GUARD-ENTRY @ A64IR:ENTRY-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD IR-BUILD:END-OP {: nid:IR-ID:ir-op-id :}
+   CTX BLD nid 3 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
+   tk TOK!
+   id 0 RESULT-AT tk VBIND
+   N-CALLS @ 1+ N-CALLS ! ;
 
 
 \ ---- leaving through the routine that ends the process -----------------------
@@ -2662,6 +2763,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
+   id STORE-WIDTH dup 0<> if id swap EMIT-PSTORE exit then drop
    id TAIL-OP? if id mask EMIT-TAIL-CALL exit then
    id mask EMIT-WORD-CALL ;
 
@@ -2730,6 +2832,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 : DOP-XFER ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
+   id STORE-WIDTH 0<> if DKILL 0 exit then
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
    s O-C2-STOW = if id id C2-STOW-SHAPE DCALL-XFER exit then
@@ -2826,7 +2929,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    b DOUT<CUR ;
 
 \ ---- the meet, and the translation that makes it exact -----------------------
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 DSLOT-MAX CWORK-SPAN D-MEET n
 
 : DMEET1 ( n n -- n )
@@ -2992,7 +3095,20 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    id DOP-XFER {: mask:n :}
    id OP-SLOT {: s:n :}
    s O-BR = if exit then
+   s O-BITSREAL = if
+      id BITSREAL-ALIAS? if
+         id 0 RESULT-AT DNEED? if id 0 OPERAND-AT DNEED+ then
+         exit
+      then
+   then
+   s O-REALBITS = if
+      id REALBITS-ALIAS? if
+         id 0 RESULT-AT DNEED? if id 0 OPERAND-AT DNEED+ then
+         exit
+      then
+   then
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   id STORE-WIDTH 0<> if id DNEED-OPERANDS exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
    s O-C2-STOW = if id mask id C2-STOW-SHAPE DNEED-CALL exit then
    s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
@@ -3004,6 +3120,18 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    {: f:IR-ID:ir-fun-id b:n :}
    b DCUR<IN
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk BRZ-TERM?  b R-HEAD? b R-ABSORB? or and if
+      \ A converted branch writes its comparison only when a surviving join
+      \ value actually needs a select. Its source test result is never read.
+      bk FUSE-INDEX {: fz:n :}
+      bk OP-COUNT 1- 0 ?do
+         i fz <> if bk i OP-AT DNEED-OP then
+      loop
+      b cells R-READ + @ 0<> if
+         fz 0 >= if bk fz OP-AT else bk TERM-OP then DNEED-OPERANDS
+      then
+      exit
+   then
    bk OP-COUNT 0 ?do  bk i OP-AT DNEED-OP  loop ;
 
 : DNEED-EDGE-OF ( IR-ID:ir-fun-id n -- )
@@ -3032,10 +3160,220 @@ DSLOT-MAX CWORK-SPAN D-MEET n
       D-MOVED @ 0=
    until ;
 
+\ A load, a call restore, a data-stack entry and a REALBITS store are the only
+\ places that can put a cell in the floating file. Decide their forms before
+\ walking regions; emission reads the same VREAL row.
+: FPLACE-CALL ( IR-ID:ir-op-id n n n n -- )
+   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
+   kk r + 0 ?do
+      id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
+      v LOAD-PLACE? if v FPLACE! then
+   loop ;
+
+: FPLACE-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s O-LOAD = if
+      id 0 RESULT-AT dup LOAD-PLACE? if FPLACE! else drop then exit
+   then
+   s O-REALBITS = if
+      id 0 RESULT-AT dup STORE-PLACE? if FPLACE! else drop then exit
+   then
+   s O-CALL = if id id SELF-SHAPE FPLACE-CALL exit then
+   s O-WORDCALL = if id id SITE-SHAPE FPLACE-CALL exit then
+   s O-C2-STOW = if id id C2-STOW-SHAPE FPLACE-CALL then ;
+
+: FPLACE-PLAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   DSTACK? if
+      f 0 BLOCK-AT {: entry:IR-ID:ir-block-id :}
+      entry ARG-COUNT 0 ?do
+         entry i ARG-AT dup LOAD-PLACE? if FPLACE! else drop then
+      loop
+   then
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do bk i OP-AT FPLACE-OP loop
+   loop ;
+
+\ Give the residency walk the same equality decision REGION-PICK will make.
+\ This is an identity walk, not a second machine module: it follows the source
+\ aliases that selection binds, the region's literal memo and collapsed selects.
+: R-KEY@ ( IR-ID:ir-value-id -- n ) VSLOT cells R-KEY + @ ;
+: R-KEY! ( n IR-ID:ir-value-id -- ) VSLOT cells R-KEY + ! ;
+
+: R-PICK-SLOT ( n n -- n )
+   {: b:n i:n :}
+   i 0 < i SEL-WIDTH-MAX >= or if E-A64SEL-CAP throw then
+   b BLOCK-ORD-CK SEL-WIDTH-MAX * i + ;
+
+: R-PICK@ ( n n -- n ) R-PICK-SLOT cells R-PICK + @ ;
+: R-PICK! ( n n n -- )
+   {: key:n b:n i:n :}
+   key b i R-PICK-SLOT cells R-PICK + ! ;
+
+: R-LITERAL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id CONST-KEY RLIT-FIND {: k:n :}
+   k 0 >= if
+      k RLIT-ID @ R-KEY@  id 0 RESULT-AT R-KEY!
+      exit
+   then
+   id CONST-KEY id 0 RESULT-AT RLIT-REMEMBER ;
+
+: R-KEY-CALL ( IR-ID:ir-op-id n n n n -- )
+   {: id:IR-ID:ir-op-id a:n r:n kk:n m:n :}
+   m 0 ?do
+      id kk i + 1+ OPERAND-AT R-KEY@
+      id kk i + 1+ RESULT-AT R-KEY!
+   loop ;
+
+: R-KEY-ALIAS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-BITSREAL = if
+      id BITSREAL-ALIAS? if
+         id 0 OPERAND-AT R-KEY@  id 0 RESULT-AT R-KEY!
+      then
+   then
+   id OP-SLOT O-REALBITS = if
+      id REALBITS-ALIAS? if
+         id 0 OPERAND-AT R-KEY@  id 0 RESULT-AT R-KEY!
+      then
+   then
+   id OP-SLOT O-CALL = if id id SELF-SHAPE R-KEY-CALL then
+   id OP-SLOT O-WORDCALL = if id id SITE-SHAPE R-KEY-CALL then
+   id OP-SLOT O-C2-STOW = if id id C2-STOW-SHAPE R-KEY-CALL then ;
+
+: R-KEY-OPS ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk FUSE-INDEX {: fz:n :}
+   bk fz FOLD-SCAN-REGION
+   bk OP-COUNT 1- 0 ?do
+      i fz <> i FOLDED? 0= and if
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         RLIT-ON? id OP-SLOT O-CONST = id OP-SLOT O-FCONST = or and
+         if id R-LITERAL then
+         id R-KEY-ALIAS
+      then
+   loop ;
+
+: R-KEY-ARGS ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   f b R-FROM@ BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t OP-SLOT O-BR <> if exit then
+   bk ARG-COUNT 0 ?do
+      t i OPERAND-AT R-KEY@  bk i ARG-AT R-KEY!
+   loop ;
+
+: R-READ+ ( n -- )
+   {: b:n :}
+   b cells R-READ + @ 0= if
+      1 b cells R-READ + !
+      1 R-CHANGED !
+   then ;
+
+: R-PICK-BR ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t 0 SUCC-IDX {: sc:n :}
+   R-WIDTH @ 0 ?do
+      R-EXIT-BK @ i DDROP? 0= if
+         sc R-EXIT-BK @ = if
+            t i OPERAND-AT R-KEY@
+         else
+            sc i R-PICK@
+         then
+         b i R-PICK!
+      then
+   loop ;
+
+: R-PICK-BRZ ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
+   t 0 SUCC-IDX {: s0:n :}
+   t 1 SUCC-IDX {: s1:n :}
+   R-WIDTH @ 0 ?do
+      R-EXIT-BK @ i DDROP? 0= if
+         s0 i R-PICK@ {: fv:n :}
+         s1 i R-PICK@ {: tv:n :}
+         0 R-JB @ i ARG-AT TOKEN? if
+            tv
+         else
+            tv fv <> if
+               b R-READ+
+               VMAX 1+ b SEL-WIDTH-MAX * + i +
+            else
+               tv
+            then
+         then
+         b i R-PICK!
+      then
+   loop ;
+
+: R-PICK-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT BR-TERM? if f b R-PICK-BR exit then
+   f b R-PICK-BRZ ;
+
+: R-IN-HEAD? ( n n -- bool )
+   {: h:n b:n :}
+   b R-ABSORB? 0= if false exit then
+   b R-OWNER@ h = ;
+
+: R-KEY-REGION ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   RLIT-OPEN
+   f h BLOCK-AT R-KEY-OPS
+   f BLOCK-COUNT h 1+ ?do
+      h i R-IN-HEAD? if
+         f i R-KEY-ARGS
+         f i BLOCK-AT R-KEY-OPS
+      then
+   loop
+   RLIT-CLOSE ;
+
+\ Values defined before a converted region retain their identity in it.
+: R-KEY-PLAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   VMAX 0 ?do i 1+ i cells R-KEY + ! loop
+   RLIT-CLOSE
+   f BLOCK-COUNT 0 ?do
+      i R-ABSORB? 0= if
+         i R-HEAD? if f i R-KEY-REGION
+         else f i BLOCK-AT R-KEY-OPS then
+      then
+   loop ;
+
+: R-READ-REGION ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id h:n :}
+   h R-EXIT@ R-EXIT-BK !
+   f R-EXIT-BK @ BLOCK-AT 0 R-JB !
+   0 R-JB @ ARG-COUNT R-WIDTH !
+   R-WIDTH @ 0= if exit then
+   f BLOCK-COUNT {: k:n :}
+   k h 1+ ?do
+      k h + i - {: b:n :}
+      h b R-IN-HEAD? if f b R-PICK-BLOCK then
+   loop
+   f h R-PICK-BLOCK ;
+
+: R-READ-PLAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      i R-HEAD? if f i R-READ-REGION then
+   loop ;
+
 : DRESIDENCY ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f DRES-FIX
-   f DNEED-FIX ;
+   BMAX 0 ?do 0 i cells R-READ + ! loop
+   begin
+      f DNEED-FIX
+      0 R-CHANGED !
+      f R-READ-PLAN
+      R-CHANGED @ 0=
+   until ;
 
 \ ---- choosing where the pointer stands ---------------------------------------
 : DREQ+ ( n -- )
@@ -3064,6 +3402,7 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
    s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
+   id STORE-WIDTH 0<> if exit then
    s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
    s O-C2-STOW = if id C2-STOW-SHAPE DPLACE-CALL exit then
    s O-TRAP = if id OPERANDS-OF A64IR:SLOT-WIDTH * DREQ+ exit then
@@ -3198,7 +3537,6 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    a 0 ?do
       bk i ARG-AT {: v:IR-ID:ir-value-id :}
       v DNEED? if
-         v LOAD-PLACE? if v FPLACE! then
          v
          i rider = if
             at  a A64IR:SLOT-WIDTH *  v FPLACED? DPOP-FORM  EMIT-DPOP
@@ -3475,6 +3813,8 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    ORDER-CLEAR
    RLIT-CLOSE
    f PLAN-REGIONS
+   f FPLACE-PLAN
+   f R-KEY-PLAN
    f DRESIDENCY
    f DPLACE
    n 0 ?do
@@ -3516,6 +3856,7 @@ public
    loop
    m HIR:FKEY-VALUE 0 BND-VAL !
    m HIR:FKEY-ADDR  0 BND-ADDR !
+   m HIR:FKEY-ORIGIN 0 BND-ORIGIN !
    m HIR:FKEY-FUN   0 BND-FUN !
    m HIR:FKEY-ENTRY 0 BND-ENTRY !
    m HIR:FKEY-IN    0 BND-IN !
@@ -3534,6 +3875,11 @@ public
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
+: GLOBAL-STORE-ENTRY ( ptr u8 n -- n )
+   0 search-wl dup 0= if exit then
+   dup TERMINAL-CALL:IN-ENGINE-TEXT? if exit then
+   drop 0 ;
+
 \ A module with no such loop or no such pair is handed back untouched, because
 \ rebuilding renumbers values and would move registers for nothing.
 : SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
@@ -3553,6 +3899,9 @@ public
    r NEFF:CONTROL@ NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
    r NEFF:CONV@ NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
    r NEFF:TRAITS@ r NEFF:LINK@ A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
+   s" !" GLOBAL-STORE-ENTRY S-STORE-ENTRY !
+   s" c!" GLOBAL-STORE-ENTRY S-BSTORE-ENTRY !
+   s" (PROT-SPAN)" NDICT:HELPER-TARGET S-GUARD-ENTRY !
    0 N-CALLS !
    0 N-TAILS !
    -1 TAIL-SITE !

@@ -1,6 +1,6 @@
 ---
 title: Preserve filesystem OS errors
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-14T21:52:48.018488+03:00"

@@ -1,9 +1,9 @@
-\ A saved production AOT maker builds a stripped application from a fresh
+\ A saved production AOT builder builds a stripped application from a fresh
 \ process; a second selection reuses the same runnable maker image.
 \ Run: bin/hb --load tools/hb-build-aot-image-test.f
 
 require tools/hb-build-test-lib.f
-require tools/aot-maker-image.f
+require tools/aot-builder-image.f
 require src/lib/string.f
 require src/lib/process-cwd.f
 
@@ -44,7 +44,7 @@ variable HBT-MAKER-DIRECT-OUT-U
    SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
    1 SCRIPT-ARGV$ BUILD-CACHE:ROOT!
    2 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
-   HBB-MAKER-DEFAULT-MS AOT-MAKER-IMAGE:PATH$ type cr ;
+   HBB-MAKER-DEFAULT-MS AOT-BUILDER-IMAGE:PATH$ type cr ;
 
 : HBT-MAKER-CHILD-SETUP ( -- )
    SCRIPT-ARGC 4 <> if E-TBL-BOUNDS throw then
@@ -65,7 +65,7 @@ variable HBT-MAKER-DIRECT-OUT-U
 
 : HBT-MAKER-COUNT-CHILD ( -- )
    HBT-MAKER-CHILD-SETUP
-   HBB-MAKER-DEFAULT-MS AOT-MAKER-IMAGE:PATH$
+   HBB-MAKER-DEFAULT-MS AOT-BUILDER-IMAGE:PATH$
       HBT-MAKER-IMAGE HBT-MAKER-IMAGE-U HBT-COPY!
    HBB-CMD-RESET
    s" --" >LEN PROC-ARGV+
@@ -73,13 +73,13 @@ variable HBT-MAKER-DIRECT-OUT-U
    s" 0" >LEN PROC-ARGV+
    s" 1" >LEN PROC-ARGV+
    HBT-MAKER-IMAGE$ >LEN
-   S\" 1 set-tier\nAOT-MAKER:OPEN\nAOT-MAKER:RUN\n" >LEN
+   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" >LEN
    HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-MAKER-DEFAULT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
       HBT-MAKER-CAPTURE>N {: outn:n errn:n rc:n :}
    rc 0<> if HBB-OUT-BUF outn type HBB-ERR-BUF errn type rc throw then
    errn 0<> if E-BUILD-PATH throw then
-   HBB-OUT-BUF outn s" hb-build: file unit hits" CONTAINS? 0= if E-BUILD-PATH throw then
+   HBB-OUT-BUF outn s" definition hits" CONTAINS? 0= if E-BUILD-PATH throw then
    s" hb-aot-got" BUILD-FIXPOINT:BF-A$ EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
 : HBT-MAKER-CHILD? ( -- bool )
@@ -93,9 +93,9 @@ variable HBT-MAKER-DIRECT-OUT-U
    HBT-ROOT s" tools" HBT-MAKER-SHADOW JOIN-PATH
       HBT-MAKER-SHADOW-U !
    HBT-MAKER-SHADOW$ MAKE-DIR
-   HBT-ROOT s" tools/aot-maker.f" HBT-MAKER-SHADOW
+   HBT-ROOT s" tools/aot-builder.f" HBT-MAKER-SHADOW
       JOIN-PATH HBT-MAKER-SHADOW-U !
-   SOURCE-ROOT:ENGINE$ s" tools/aot-maker.f"
+   SOURCE-ROOT:ENGINE$ s" tools/aot-builder.f"
       HBT-MAKER-OLD JOIN-PATH HBT-MAKER-OLD-U !
    HBT-MAKER-OLD$ HBT-MAKER-SHADOW$ COPY-FILE-STREAM ;
 
@@ -187,6 +187,13 @@ variable HBT-MAKER-DIRECT-OUT-U
       HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
    then ;
 
+: HBT-MAKER-CACHE-PATH ( -- )
+   HBB-MAKER-DEFAULT-MS AOT-BUILDER-IMAGE:SELECT$
+      {: path:ptr pathu:n hit:bool :}
+   hit TTRUE
+   path pathu BASENAME s" hb-aot-builder-" STARTS-WITH? TTRUE
+   path pathu EXECUTABLE? TTRUE ;
+
 : HBT-MAKER-USER-RUN ( ptr u8 n -- )
    {: want:ptr wantu:n :}
    HBT-AOT-OUT EXECUTABLE? TTRUE
@@ -248,6 +255,7 @@ public
    HBT-PREPARE
    BUILD-FIXPOINT:BF-ENGINE-RESET
    false HBT-MAKER-REPORT-BUILD
+   HBT-MAKER-CACHE-PATH
    HBT-AOT-OUT EXECUTABLE? TTRUE
    HBT-RUN-AOT
    HBT-MAKER-USER-BAND

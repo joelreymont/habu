@@ -30,10 +30,10 @@
 \               digest from disk rather than trusting the stored one, so a match
 \               means "this came from the chain that is on disk NOW". A mismatch
 \               means the sources moved since capture; a recapture is the cure.
-\   PAYLOAD   - sha256 over everything after the header, verified BEFORE any
-\               section is parsed. The header's size arithmetic only catches
-\               truncation; this is what lets the reader say "corrupt" instead of
-\               "the sizes add up".
+\   PAYLOAD   - sha256 over everything after the header, verified after the
+\               bounded sections are loaded and before they are interpreted.
+\               The header's size arithmetic only catches truncation; this is
+\               what lets the reader say "corrupt" instead of "the sizes add up".
 \
 \ THE LAYOUT. All scalars are u64 little-endian and nothing is padded.
 \
@@ -141,14 +141,11 @@
 \ could reserve, a run row that is not a well-formed varint or does not end inside
 \ its own section, an empty window run, a run reaching past the span, runs whose
 \ lengths do not fill the run-byte section, a closure list that does not walk to
-\ its own end, a second pass that did not read what the first one verified,
-\ and a chain digest that does not re-derive from the files on disk.
-\ NOT ONE OF THEM IS FORGED YET. test/aot-chain-capture-suite.f drives a real
-\ capture through this writer and this reader in a child process and pins the
-\ header the write produced - magic, version, section count, the length arithmetic
-\ and the producer key - so the round trip and every reader in this file are
-\ proved; a case that truncates a payload, doctors a section table or moves a
-\ chain source belongs in that suite and is not there.
+\ its own end, and a chain digest that does not re-derive from the files on disk.
+\ test/aot-chain-capture-suite.f drives a real capture through this writer and
+\ reader in child processes. It checks the header and roundtrip, plus corrupt,
+\ truncated and trailing payloads and malformed rows. Other focused artifact
+\ suites cover source identity, address targets and merge placement.
 \
 \ TWO ENTRY POINTS OVER ONE MACHINERY. READ fills the buffers with the artifact,
 \ bases and all, and is what the round trip and the fixpoint compare. MERGE
@@ -223,22 +220,14 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 \ list is a count and then each path's length and bytes, so this is its largest.
 \ The overflow is still refused rather than truncated.
 8 AOT-IDENT:MAX PATH-CAP 8 + * + constant CLOSURE-CAP
-\ The verify pass's read granularity, and the whole of what CHUNK-BUF is for:
-\ pass one streams the payload through it and pass two reads the header back
-\ through it to move the cursor. No section is read PAST any more: the only one a
-\ merge ever skipped was the protected-WID bitmap, which version 6 does not
-\ carry, so nothing else puts a floor under this number.
-$10000 constant CHUNK
-
 $4B constant REFUSE-RC
 
-create HDR HDR-BYTES allot           \ the header as written, or as read in pass 1
+create HDR HDR-BYTES allot           \ the header as written or read
 create TBL SEC-N ROW-BYTES * allot
 create SCAL SCAL-BYTES allot
 create CBUF CLOSURE-CAP allot        \ the closure list, assembled or read back
-create CHUNK-BUF CHUNK allot
-\ This file's own digest context. One artifact is written or read at a time here,
-\ and the digest each pass opens is finished by the same pass, so one is enough.
+create EOF-BYTE 1 allot
+\ This file's own digest context. One artifact is written or read at a time here.
 create SHA-CTX SHA256-CTX-BYTES allot
 create PAYSHA SHA-BYTES allot        \ the payload digest this process computed
 create FILESHA SHA-BYTES allot       \ sha256 of the whole file WRITE just wrote
@@ -249,7 +238,6 @@ variable CLEN                        \ the closure section's length: staged on t
 variable FD
 variable RD
 variable GOT                         \ GET's own cursor: it runs inside loops that use CUR
-variable LEFT
 variable PAYLEN
 variable CUR
 
@@ -652,29 +640,6 @@ private
       s" aot-file: the payload is shorter than its own section table" DIE
    then ;
 
-\ Pass one: stream the payload through SHA-256 without touching a destination
-\ buffer, and refuse before any section is parsed. A file with bytes left over
-\ after the payload is refused too - the header's length is the whole story.
-: VERIFY-PAYLOAD ( -- )
-   SHA-CTX SHA256-BEGIN
-   PAYLEN @ LEFT !
-   begin LEFT @ 0 > while
-      LEFT @ CHUNK < if LEFT @ else CHUNK then {: want:n :}
-      CHUNK-BUF want GET
-      SHA-CTX CHUNK-BUF want SHA256-FEED
-      LEFT @ want - LEFT !
-   repeat
-   SHA-CTX PAYSHA SHA256-END
-   FD @ CHUNK-BUF 1 read RD !
-   RD @ 0 > if
-      FD @ close
-      s" aot-file: the artifact carries bytes past the end of its payload" DIE
-   then
-   PAYSHA HDR O-PAYSHA + SHA-BYTES BYTES= 0= if
-      FD @ close
-      s" aot-file: the artifact's payload does not match its payload digest" DIE
-   then ;
-
 : ?TABLE ( -- )
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
@@ -997,7 +962,6 @@ variable SH-PREV
    8 CUR !
    n 0 ?do
       CUR @ 8 + CLEN @ > if
-         FD @ close
          s" aot-file: the closure list ends inside an entry" DIE
       then
       CBUF CUR @ + U64@ {: pu:n :}
@@ -1005,14 +969,12 @@ variable SH-PREV
       \ with the bytes left after its length cell. Added to the cursor, a length
       \ near the maximum cell wraps back inside the section.
       pu 0 <  pu CLEN @ CUR @ 8 + - >  or if
-         FD @ close
          s" aot-file: the closure list ends inside a path" DIE
       then
       CBUF CUR @ 8 + +  pu  AOT-IDENT:PATH+
       CUR @ 8 + pu + CUR !
    loop
    CUR @ CLEN @ <> if
-      FD @ close
       s" aot-file: the closure list does not fill its section" DIE
    then ;
 
@@ -1024,37 +986,31 @@ variable SH-PREV
    DERIVED HDR O-CHAIN + SHA-BYTES BYTES= if exit then
    s" aot-file: the chain sources have changed since this capture" DIE ;
 
-\ The sibling of the header byte-identity check, over the payload: pass two
-\ accumulates what it actually read into the buffers and it has to come to the
-\ digest pass one verified. That closes two holes at once - the file changing
-\ between the passes, and a reader that filled less than it claimed the table
-\ said. Skipping one section reds here (measured).
-: ?PAYLOAD-AGAIN ( -- )
+\ The table and loaded sections must account for exactly the payload the header
+\ committed to. Check physical EOF and the digest before interpreting them.
+: FINISH-LOAD ( -- )
+   FD @ EOF-BYTE 1 read RD !
+   RD @ 0 < if
+      FD @ close
+      s" aot-file: cannot read the end of the artifact" DIE
+   then
+   RD @ 0 > if
+      FD @ close
+      s" aot-file: the artifact carries bytes past the end of its payload" DIE
+   then
    SHA-CTX PAYSHA SHA256-END
-   PAYSHA HDR O-PAYSHA + SHA-BYTES BYTES= if exit then
-   s" aot-file: the second pass did not read the payload the first pass verified" DIE ;
+   PAYSHA HDR O-PAYSHA + SHA-BYTES BYTES= 0= if
+      FD @ close
+      s" aot-file: the artifact's payload does not match its payload digest" DIE
+   then
+   FD @ close ;
 
-\ Everything both entry points do before a single byte lands anywhere: verify the
-\ header, verify the payload against its own digest, reopen, step over the header
-\ and take the section table. What follows differs only in where the sections go
-\ and what is done to them once they are there.
-\
-\ PASS ONE'S HEADER IS THE ONLY HEADER. The second open re-reads those 136 bytes
-\ to move the cursor and then discards them, because every decision - magic,
-\ version, target, section count, producer, payload length, payload digest, chain
-\ digest - was made from the copy pass one verified. A file replaced between the
-\ passes is caught by what pass two DOES read: a table that no longer fits pass
-\ one's payload length is refused by ?TABLE, and any payload that is not the one
-\ pass one verified is refused by ?PAYLOAD-AGAIN against pass one's own digest.
-\ Comparing the two headers as well answered a question no later step asks.
+\ Both entry points admit the header and bounded section table before allocating
+\ or copying any section. The same descriptor then reads and hashes each section.
 : LOAD-PASS ( ptr u8 ptr u8 n -- ) {: want:ptr path:ptr pathu:n :}
    path pathu OPEN-RD
    HDR HDR-BYTES GET
    want CHECK-HEADER
-   VERIFY-PAYLOAD
-   FD @ close
-   path pathu OPEN-RD
-   CHUNK-BUF HDR-BYTES GET
    SHA-CTX SHA256-BEGIN
    TBL SEC-N ROW-BYTES * GET
    SHA-CTX TBL SEC-N ROW-BYTES * SHA256-FEED
@@ -1074,8 +1030,7 @@ public
    SEC-N 0 ?do i ?ROOM loop
    0 0 <> ?BUDGET
    SEC-N 0 ?do i LOAD-SECTION loop
-   FD @ close
-   ?PAYLOAD-AGAIN
+   FINISH-LOAD
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
    0  S-WDATA ROW-LEN@  span  ?CELLS
@@ -1267,13 +1222,9 @@ DYNAMIC-BUFFER HOST-REG n
 \ reached first is not evidence - and the seed zeroes the whole span before it
 \ lays any cell down.
 \
-\ IT IS SET HERE AND NOT WITH THE OTHER BASES because it needs the artifact's
-\ own DATA base, and that arrives in the scalars section - which the format puts
-\ first, so it is already read when the window's own section comes up.
+\ Placement uses only the host's span and bitmap. The artifact's DATA base is
+\ checked after its complete payload has passed the digest and EOF checks.
 : PLACE-WDATA ( -- )
-   SCALARS@
-   A-D0 @ CELL-BYTES mod  AOT-DATA-D0 @ CELL-BYTES mod or 0<> if
-      s" aot-file: a captured DATA window base is not cell-aligned" DIE then
    H-DATA @ BM-BYTE-SPAN 1- + BM-BYTE-SPAN / BM-BYTE-SPAN * H-DATA-R !
    H-CEND @ H-DATA-R @ > if
       s" aot-file: the host window's own cells reach into the merge pad" DIE then
@@ -1285,10 +1236,12 @@ DYNAMIC-BUFFER HOST-REG n
    repeat
    bmbase S-WDATA BASE! ;
 
-\ Both captures canonicalize their code literals against base 0 (aot-capture.f
-\ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
-\ shifting an offset. A capture that did not is a shape this cannot rebase.
+\ Both DATA bases must keep the cell grid. Both captures also canonicalize their
+\ code literals against base 0 (aot-capture.f ACAP-SCAN-CSITES), which lets a
+\ merge move one into the other's blob by shifting an offset.
 : ?BASES ( -- )
+   A-D0 @ CELL-BYTES mod  AOT-DATA-D0 @ CELL-BYTES mod or 0<> if
+      s" aot-file: a captured DATA window base is not cell-aligned" DIE then
    AOT-CODE-B0 @ 0= A-B0 @ 0= and if exit then
    s" aot-file: a code base is not the canonical zero this merge shifts against" DIE ;
 
@@ -1562,17 +1515,14 @@ public
    LOAD-PASS
    ?NO-SHADOW
    BASES-AFTER-HOST
+   PLACE-WDATA
    SEC-N 0 ?do i ?ROOM loop
    0 0= ?BUDGET
    SAVE-REG
    OPEN-CSITE-GAP
    OPEN-SIGSTR-GAP
-   SEC-N 0 ?do
-      i S-WDATA = if PLACE-WDATA then
-      i LOAD-SECTION
-   loop
-   FD @ close
-   ?PAYLOAD-AGAIN
+   SEC-N 0 ?do i LOAD-SECTION loop
+   FINISH-LOAD
    MERGE-REG
    SCALARS@
    ?BASES

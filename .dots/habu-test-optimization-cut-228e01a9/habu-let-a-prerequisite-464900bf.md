@@ -3,7 +3,7 @@ title: Let a prerequisite image build finish under load
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-02T19:10:52.902812+02:00\""
+created-at: "2026-10-02T19:10:52.902812+02:00"
 closed-at: "2026-10-14T19:50:52.312618+03:00"
 close-reason: 2dd281d5 bounds prerequisite build rows by process-tree CPU with wall hang guard; 64-hog run passed whitebox build and dependent row after old deadline, stopped build was killed. Current gate-images.f uses SUITE-BUDGET CPU/ROW/CHILD values and docs/gate.md states rule.
 ---

@@ -152,6 +152,8 @@ create TXT
    IR-BUILD:ADD-ATTR
    CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN  CC BB -1 IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : RET1 ( IR-ID:ir-value-id -- )
@@ -360,6 +362,7 @@ $1000 constant BUMP-ADDR
    CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-SHIFT  CC BB 0 A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-ADDR   CC BB A64IR:ADDR-NONE A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ORIGIN CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ The same three move-wide forms with the relocation kind chosen by the caller,
@@ -375,6 +378,7 @@ $1000 constant BUMP-ADDR
    CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ORIGIN CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ A movk keeps the halves already in place, so it takes the running value as an
@@ -387,6 +391,7 @@ $1000 constant BUMP-ADDR
    CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR   IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR  IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-ADDR   CC BB kind A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ORIGIN CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : M-RET ( IR-ID:ir-value-id -- )
@@ -403,8 +408,83 @@ $1000 constant BUMP-ADDR
    M-RESULT+
    CLOSE-VALUE ;
 
+\ A deliberately wide machine frame exercises the encoder without relying on
+\ source-level local copies to inflate an allocation. The loaded value is used
+\ after another instruction, so the adjacent store/reload fold cannot erase it.
+: FRAME-ATTR+ ( n -- )
+   {: size:n :}
+   CC BB  CC BB A64IR:KEY-FRAME  CC BB size A64IR:FRAME-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: SLOT-ATTR+ ( n -- )
+   {: off:n :}
+   CC BB  CC BB A64IR:KEY-SLOT  CC BB off A64IR:SLOT-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: MEM-RESULT+ ( -- )
+   CC BB  CC BB A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
+
+: FRAME-RESERVE ( n -- IR-ID:ir-value-id )
+   A64IR-OPCODE:RESERVE M-OPEN
+   MEM-RESULT+
+   FRAME-ATTR+
+   CLOSE-VALUE ;
+
+: FRAME-STORE ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:STORE M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB tok IR-BUILD:ADD-OPERAND
+   MEM-RESULT+
+   off SLOT-ATTR+
+   CLOSE-VALUE ;
+
+: FRAME-LOAD ( IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:LOAD M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   MEM-RESULT+
+   off SLOT-ATTR+
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+: FRAME-RELEASE ( IR-ID:ir-value-id n -- )
+   {: tok:IR-ID:ir-value-id size:n :}
+   A64IR-OPCODE:RELEASE M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   size FRAME-ATTR+
+   CC BB IR-BUILD:END-OP drop ;
+
+: BUILD-WIDE-FRAME ( -- )
+   s" WFRAME" 0 1 OPEN-FUN
+   A64M:FRAME-MAX FRAME-RESERVE {: t0:IR-ID:ir-value-id :}
+   \ The validator's slot table is bounded by the module's value count.
+   A64M:FRAME-MAX 8 / 0 ?do i M-MOVZ drop loop
+   37 M-MOVZ t0 A64M:FRAME-MAX 8 - FRAME-STORE
+   {: t1:IR-ID:ir-value-id :}
+   5 M-MOVZ {: five:IR-ID:ir-value-id :}
+   t1 A64M:FRAME-MAX 8 - FRAME-LOAD
+   {: got:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   got five M-ADD {: answer:IR-ID:ir-value-id :}
+   t2 A64M:FRAME-MAX FRAME-RELEASE
+   answer M-RET
+   CLOSE-FUN ;
+
 : M-FREEZE ( -- IR-BUILD:module )
    CC BB IR-BUILD:FREEZE ;
+
+: WIDE-FRAME-EMITTED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW
+   BIND-RA BIND-RAV BIND-EMIT
+   BUILD-WIDE-FRAME
+   M-FREEZE {: m:IR-BUILD:module :}
+   4 A64M:FRAME-MAX NFIX:LEAF-FRAMED {: r:NEFF:routine :}
+   c m r A64RA:ALLOCATE
+   m r A64RAV:ACCEPT
+   c m A64EMIT:EMIT ;
 
 : BIND-SPILL ( -- )
    CC BB  CC BB A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT ;

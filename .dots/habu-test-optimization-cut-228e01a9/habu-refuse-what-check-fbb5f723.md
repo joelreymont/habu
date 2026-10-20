@@ -3,7 +3,7 @@ title: "Refuse what check.f's report buffers cannot hold"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T10:48:54.259015+02:00\""
+created-at: "2026-10-02T10:48:54.259015+02:00"
 closed-at: "2026-10-14T20:02:43.591183+03:00"
 close-reason: b1baffc3 replaced the JSON packet cap with a growing writer, streams all-errors reports, and gives diag-origin the same source cap as check.f; failing-first long-name, refusal-count and source-cap cases pass with named rc 70. e528bb3b makes remaining caller-owned scratch exhaustion a named E-DIAG-CAPACITY record.
 ---

@@ -31,7 +31,7 @@
 
 package AOTRT
 public
-ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
 require src/arch/arm64/asm.f

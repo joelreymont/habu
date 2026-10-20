@@ -1,40 +1,37 @@
 \ Shared native-build driver. Entries select and own the compilation tier.
 
-require src/lib/errors.f
-require src/core/prefix-boundary.f
-require src/lib/string.f
-require src/lib/memory.f
-require src/habu/address-cells.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
-require src/lib/process.f
-require src/lib/process-argv.f
-require src/lib/process-env.f
-require src/lib/process-cwd.f
-require src/os/script-argv.f
-require tools/native-build-args.f
-require tools/build-target.f
-require src/lib/codesign.f
-require src/arch/arm64/asm.f
-require src/arch/arm64/icode.f
-require src/habu/layout.f
-require src/habu/aot-decl.f
-require src/habu/aot-ident.f
-require src/habu/fdio.f
-require src/habu/aot-owned.f
-require src/habu/aot-arm.f
-require src/habu/aot-capture.f
-require src/compiler/native/string.f
-require src/compiler/native/abi.f
-require tools/native-layout.f
+require tools/native-build-deps.f
+require src/lib/sort.f
 
 package NATIVE-BUILD
+
+\ The retained host's baked SRCLOC package predates these target cells.
+$2D68 constant OWNED-SOURCE-CELL
+$2D70 constant OWNED-SOURCE-SIZE-CELL
 
 $1000 constant SMOKE-CAP
 10000 constant SMOKE-TIMEOUT-MS
 
 create SMOKE-OUT SMOKE-CAP allot
 create SMOKE-ERR SMOKE-CAP allot
+
+create PRIOR-ENGINE-ROOT FS-PATH-CAP allot
+variable PRIOR-ENGINE-ROOT-U
+
+\ The driver comes from the donor tree; every target source belongs to CWD.
+\ Copy ENGINE$ because ENGINE! overwrites its backing buffer. The fresh target
+\ loader receives this same root through TARGET-ENGINE-ROOT.
+: TARGET-ROOT-ENTER ( -- )
+   SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
+   root PRIOR-ENGINE-ROOT rootu BYTE-COPY
+   rootu PRIOR-ENGINE-ROOT-U !
+   SOURCE-ROOT:CWD$ SOURCE-ROOT:ENGINE! ;
+
+: TARGET-ROOT-LEAVE ( -- )
+   PRIOR-ENGINE-ROOT PRIOR-ENGINE-ROOT-U @ SOURCE-ROOT:ENGINE! ;
+
+: WITH-TARGET-ROOT ( R [ R -- S ] -- S )
+   TARGET-ROOT-ENTER [: TARGET-ROOT-LEAVE ;] finally ;
 
 : CLASS-WANTED$ ( -- ptr u8 n )
    CLASS-WANTED @ CLASS-WHITEBOX = if s" whitebox image" exit then
@@ -156,13 +153,64 @@ CAST: RESET-XT ( n -- [ -- ] )
 \ but none of its dictionary records or address declarations enters the window.
 \ The hook clears and the dictionary rewind are src/habu/window-rewind.f's
 \ top-level text: seed-ndict! is a top-level boundary no checked body names.
+: REWIND-CANON ( ptr u8 n -- ptr u8 n bool )
+   {: path:ptr pathu:n :}
+   path pathu SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n found:bool :}
+   path pathu answer answeru found NFILE-INPUTS:ADD-CANON
+   answer answeru found ;
+
+: REWIND-LOAD ( -- )
+   ['] REWIND-CANON ['] SOURCE-ROOT:READ-OS SOURCE-INPUT:USE
+   [: s" src/habu/window-rewind.f" included ;] catch {: rc:n :}
+   SOURCE-INPUT:RESET
+   rc 0<> if rc throw then ;
+
 : LOGICAL-RESET ( ptr u8 -- )
    RESET-CHECKER
-   [: s" src/habu/window-rewind.f" included ;] SOURCE-ROOT:WITH-CWD
+   [: REWIND-LOAD ;] SOURCE-ROOT:WITH-CWD
    RESET-ADDRESS-ROWS ;
 
 \ OPEN-TARGET-XT answers a target operation's entry as a code address integer.
 CAST: SOURCE-RESET-XT ( n -- [ -- ] )
+CAST: SOURCE-ENGINE-XT ( n -- [ ptr u8 n -- ] )
+CAST: SOURCE-ROLES-XT ( n -- [ ptr u8 ptr u8 [ ptr u8 n -- ] -- ] )
+CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
+CAST: ACTIVE-COMPILER-XT ( n -- [ -- ptr u8 n bool ] )
+CAST: SOURCE-INCLUDED-XT ( n -- [ ptr u8 n -- ] )
+CAST: SOURCE-INPUT-USE-XT
+   ( n -- [ [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ] )
+CAST: SOURCE-INPUT-OBSERVER-XT
+   ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] -- ] )
+CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
+
+\ Before the fresh include.f creates another SOURCE-INPUT, observe the real
+\ buffers through the retained loader. The FILE reader then carries the same
+\ observation across the handoff and through cached child validation.
+variable PREFIX-OBSERVING
+variable PREFIX-FILE-CACHE
+
+: PREFIX-NOOP ( -- ) ;
+
+: PREFIX-INPUT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   NFILE-INPUTS:ADD-ROOT ;
+
+: PREFIX-START ( -- )
+   BUILD-PRODUCER:START
+   BUILD-TARGET:CURRENT RTARGET:PROFILE$ BUILD-PRODUCER:OPTION
+   PREFIX-FILE-CACHE @ 0= if
+      ['] BUILD-PRODUCER:OBSERVE ['] PREFIX-NOOP
+         SOURCE-INPUT:USE-OBSERVER
+   else
+      ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
+   then
+   1 PREFIX-OBSERVING ! ;
+
+: ROLE-PTR ( ptr u8 n bool -- ptr u8 )
+   {: digest:ptr size:n known:bool :}
+   known 0= size 32 <> or if
+      s" native-build: missing loaded producer role" BUILD-RC die
+   then
+   digest ;
 
 \ A fresh operation's entry lies inside the open target code window, from B0 up
 \ to the code pointer.
@@ -181,6 +229,10 @@ CAST: SOURCE-RESET-XT ( n -- [ -- ] )
       drop s" native-build: target operation missing" BUILD-RC die
    then
    XREF-START OPEN-CODE ;
+
+: TARGET-ENGINE-ROOT ( -- )
+   SOURCE-ROOT:ENGINE$
+   s" SOURCE-ROOT:ENGINE!" OPEN-TARGET-XT SOURCE-ENGINE-XT execute ;
 
 \ Find a private word of a package in the FRESHLY LOADED target's pool, which
 \ did not exist when this file was compiled: the package's namespace record,
@@ -211,7 +263,63 @@ CAST: SOURCE-RESET-XT ( n -- [ -- ] )
 : OPEN-PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
    PRIVATE-TARGET-XT OPEN-CODE ;
 
+: PREFIX-COMPILER-FINISH ( -- )
+   s" SOURCE-PRODUCER" s" INSTALL-ROLES" OPEN-PRIVATE-XT
+      SOURCE-ROLES-XT {: install :}
+   BUILD-PRODUCER:CHECKER$ ROLE-PTR
+   BUILD-PRODUCER:COMPILER$ ROLE-PTR
+   NFILE-CACHE:SUSPEND-DISPATCH
+   data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ OPEN-CODE PREFIX-COMPILE-XT
+   NFILE-CACHE:DEFINITIONS-CLOSE
+   install execute ;
+
 variable TARGET-SOURCE-BOUND
+create HOST-KERNEL 32 allot
+variable HOST-KERNEL-KNOWN
+create HOST-COMPILER 32 allot
+variable HOST-COMPILER-KNOWN
+variable HOST-PREFIX-FIRST
+
+: HOST-COMPILER$ ( -- ptr u8 n bool )
+   HOST-COMPILER HOST-COMPILER-KNOWN @ if 32 else 0 then
+      HOST-COMPILER-KNOWN @ 0<> ;
+
+\ Resolve before LOGICAL-RESET, while the donor dictionary still owns this
+\ name. A source-defined namesake cannot authenticate the donor's baked role.
+: HOST-ACTIVE-COMPILER$ ( -- ptr u8 n bool )
+   s" SOURCE-PRODUCER:ACTIVE-COMPILER$" XREF-FIND
+   dup XREF-FOUND? 0= if drop NULL-PTR 0 false exit then
+   dup XREF-RETIRED? if drop NULL-PTR 0 false exit then
+   XREF-START dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if
+      drop NULL-PTR 0 false exit
+   then
+   ACTIVE-COMPILER-XT execute ;
+
+\ The host's source boundary and producer roles belong to its dictionary.
+\ Save them before LOGICAL-RESET retires that dictionary, then bind the
+\ matching producers to code-bearing seed rows in the replacement window.
+: RETAIN-HOST-PRODUCERS ( -- )
+   NFILE-CACHE:RETAIN-HOST-CHECKER
+   CORE-PREFIX:FIRST-RECORD HOST-PREFIX-FIRST !
+   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
+      {: digest:ptr size:n known:bool :}
+   known if
+      size 32 <> if
+         s" native-build: invalid host kernel producer" BUILD-RC die
+      then
+      digest HOST-KERNEL 32 BYTE-COPY
+   then
+   known HOST-KERNEL-KNOWN !
+   HOST-ACTIVE-COMPILER$
+      {: compiler:ptr compileru:n compiler-known:bool :}
+   compiler-known if
+      compileru 32 <> if
+         s" native-build: invalid host compiler producer" BUILD-RC die
+      then
+      compiler HOST-COMPILER 32 BYTE-COPY
+   then
+   compiler-known HOST-COMPILER-KNOWN !
+   ['] HOST-COMPILER$ NUNIT-DEP:USE-COMPILER-ROLE ;
 
 TYPED-VARIABLE SOURCE-BIND [ -- ]
 TYPED-VARIABLE SOURCE-CHECK [ -- ]
@@ -229,8 +337,77 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
 : SOURCE-TAIL! ( [ -- ] -- ) SOURCE-TAIL ! ;
 
 : DEFAULT-SOURCE-BIND ( -- )
-   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    s" REQUIRE-BOOT-OPEN" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
+
+\ The ordinary loader's completed child is the selected source boundary.
+\ Keep a custom source policy's loader inside the completion callback.
+TYPED-VARIABLE PREFIX-PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
+TYPED-VARIABLE HOST-UNIT-PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
+variable HOST-UNIT-BOUND
+
+: HOST-UNIT-ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   0 sourceu q execute ;
+
+: HOST-UNIT-RUN ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ptr u8 n ptr u8 n ptr u8 n [ n n -- ] )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   path pathu root rootu source sourceu q HOST-UNIT-PRIOR @ execute
+   path pathu root rootu source sourceu q ;
+
+\ The retained loader predates the new frame publisher. Its execution source
+\ is valid only while the prior unit policy runs, including nested loads.
+: HOST-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   data-base OWNED-SOURCE-CELL + 0 ptr-field @ {: old:ptr :}
+   data-base OWNED-SOURCE-SIZE-CELL + @ {: oldu:n :}
+   source NULL-PTR - data-base OWNED-SOURCE-CELL + !
+   sourceu data-base OWNED-SOURCE-SIZE-CELL + !
+   path pathu root rootu source sourceu q
+      [: HOST-UNIT-RUN ;] catch {: rc:n :}
+   2drop 2drop 2drop drop
+   old NULL-PTR - data-base OWNED-SOURCE-CELL + !
+   oldu data-base OWNED-SOURCE-SIZE-CELL + !
+   rc 0<> if rc throw then ;
+
+: BIND-HOST-UNIT ( -- )
+   SOURCE-UNIT:CURRENT HOST-UNIT-PRIOR !
+   [: HOST-UNIT ;] SOURCE-UNIT:USE
+   1 HOST-UNIT-BOUND ! ;
+
+: RESTORE-HOST-UNIT ( -- )
+   HOST-UNIT-BOUND @ 0= if exit then
+   HOST-UNIT-PRIOR @ SOURCE-UNIT:USE
+   ['] HOST-UNIT-ORDINARY HOST-UNIT-PRIOR !
+   0 HOST-UNIT-BOUND ! ;
+
+: PREFIX-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE
+   path pathu root rootu source sourceu q PREFIX-PRIOR @ execute
+   path pathu root rootu BUILD-PRODUCER:COMPILER-DONE ;
+
+: PREFIX-ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   0 sourceu q execute ;
+
+CAST: PREFIX-UNIT-CURRENT-XT
+   ( n -- [ -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ] )
+CAST: PREFIX-UNIT-USE-XT ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ] )
+
+: BIND-PREFIX-UNIT ( -- )
+   s" SOURCE-UNIT:CURRENT" OPEN-TARGET-XT
+      PREFIX-UNIT-CURRENT-XT execute PREFIX-PRIOR !
+   ['] PREFIX-UNIT
+      s" SOURCE-UNIT:USE" OPEN-TARGET-XT PREFIX-UNIT-USE-XT execute
+   1 TARGET-SOURCE-BOUND ! ;
+
+: BIND-SEED-PRODUCERS ( -- )
+   \ The seed ends at this frontier; later FILEs bind their own source role.
+   0 HOST-PREFIX-FIRST @ HOST-PREFIX-FIRST @
+   HOST-KERNEL HOST-KERNEL-KNOWN @ if 32 else 0 then
+   HOST-KERNEL-KNOWN @ 0<>
+   HOST-KERNEL
+   NFILE-REF:BIND-SEED-PRODUCER ;
 
 : DEFAULT-SOURCE-POLICY ( -- )
    ['] DEFAULT-SOURCE-BIND ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY! ;
@@ -239,13 +416,120 @@ TYPED-VARIABLE SOURCE-TAIL [ -- ]
    TARGET-SOURCE-BOUND @ if
       s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
       s" SOURCE-UNIT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+      \ The driver cell belongs to the retired host heap. Drop its target XT
+      \ after detaching the wrapper and before capture sees it.
+      ['] PREFIX-ORDINARY PREFIX-PRIOR !
       0 TARGET-SOURCE-BOUND !
    then ;
 
 TYPED-VARIABLE PREFIX-DISPATCH [ ptr u8 n -- ]
-CAST: PREFIX-COMPILE-XT ( n -- [ ptr u8 n -- ] )
 CAST: PREFIX-TAKE-XT ( n -- [ ptr u8 n n -- ] )
+CAST: PREFIX-IMPORT-XT ( n -- [ n n n n ptr u8 n ptr u8 n -- ] )
+CAST: PREFIX-RAW-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
+CAST: PREFIX-RAW-N ( [ ptr u8 n ptr u8 n -- ] -- n )
 variable PREFIX-TAKE
+PTR-VARIABLE PREFIX-RAW-OWNER
+variable PREFIX-RAW-PRIOR
+
+\ Before the early recorder loads, keep only accepted definition coordinates.
+\ Source and path are validated while the loader still owns their bytes.
+7 constant PRE-CELLS
+DYNAMIC-BUFFER PRE-BYTES u8
+DYNAMIC-BUFFER PRE-ROWS n
+variable PRE-BYTES-N
+variable PRE-ROWS-N
+
+: PRE-ROW@ ( n n -- n ) {: id:n field:n :}
+   id PRE-CELLS * field + PRE-ROWS @ ;
+
+: PRE-ROW! ( n n n -- ) {: value:n id:n field:n :}
+   value id PRE-CELLS * field + PRE-ROWS ! ;
+
+: PRE-BYTES+ ( ptr u8 n -- n ) {: a:ptr u:n :}
+   PRE-BYTES-N @ {: off:n :}
+   off u + 1 max PRE-BYTES-RESERVE
+   u 0 > if a off PRE-BYTES u BYTE-COPY then
+   off u + PRE-BYTES-N !
+   off ;
+
+: PRE-ROW+ ( ptr u8 n n ptr u8 -- )
+   {: name:ptr nameu:n raw:n token:ptr :}
+   raw 0= nameu 0 <= or if exit then
+   PRE-ROWS-N @ {: id:n :}
+   id 1+ PRE-CELLS * PRE-ROWS-RESERVE
+   raw XREF-ADDR>INDEX id 0 PRE-ROW!
+   0 id 1 PRE-ROW!  0 id 2 PRE-ROW!
+   0 id 3 PRE-ROW!  0 id 4 PRE-ROW!
+   data-base SRCLOC:PATH-CELL + 0 ptr-field @ {: path:ptr :}
+   data-base SRCLOC:PATHLEN-CELL + @ {: pathu:n :}
+   data-base OWNED-SOURCE-CELL + 0 ptr-field @ {: source:ptr :}
+   data-base OWNED-SOURCE-SIZE-CELL + @ {: sourceu:n :}
+   token source - {: at:n :}
+   pathu 0 > sourceu 0 > and
+   at 0 >= at sourceu <= and and
+   nameu sourceu at - <= and if
+      token nameu name nameu CORE-STR= if
+         at id 1 PRE-ROW!  at nameu + id 2 PRE-ROW!
+         path pathu PRE-BYTES+ id 3 PRE-ROW!
+         pathu id 4 PRE-ROW!
+      then
+   then
+   name nameu PRE-BYTES+ id 5 PRE-ROW!
+   nameu id 6 PRE-ROW!
+   id 1+ PRE-ROWS-N ! ;
+
+: PREFIX-RECORD ( ptr u8 n n ptr u8 -- )
+   PREFIX-TAKE @ dup 0= if drop PRE-ROW+ exit then
+   {: target:n :}
+   drop target PREFIX-TAKE-XT execute ;
+
+: PREFIX-TOKEN ( -- ptr u8 )
+   data-base PEND-CELL + @ 0= if
+      data-base DEF-TKA-CELL + 0 ptr-field @ exit
+   then
+   data-base PENDTKA-CELL + 0 ptr-field @ ;
+
+: DEF-TOKEN ( -- ptr u8 ) data-base DEF-TKA-CELL + 0 ptr-field @ ;
+
+\ The active source owner remains the retained checker until handover.
+\ Its raw registrar runs after a direct definer publishes LASTC.
+: PREFIX-RAW ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sig:ptr sigu:n :}
+   name nameu sig sigu PREFIX-RAW-PRIOR @ PREFIX-RAW-XT execute
+   data-base LASTC-CELL + @ {: raw:n :}
+   raw 0= if exit then
+   raw XREF-ADDR>REC {: rec:ptr :}
+   rec XREF-WORDLIST 0<> if exit then
+   rec XREF-NAME$ name nameu CORE-STR=CI 0= if exit then
+   name nameu raw DEF-TOKEN PREFIX-RECORD ;
+
+: BIND-PREFIX-RAW ( -- )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
+   owner PREFIX-RAW-OWNER !
+   owner NCOMP-DISPATCH:DECL-RAW-OFF + CELL-VIEW @ PREFIX-RAW-PRIOR !
+   ['] PREFIX-RAW PREFIX-RAW-N
+      owner NCOMP-DISPATCH:DECL-RAW-OFF + CELL-VIEW xt! ;
+
+: RESTORE-PREFIX-RAW ( -- )
+   PREFIX-RAW-OWNER @ dup NULL-PTR = if drop exit then
+   {: owner:ptr :}
+   PREFIX-RAW-PRIOR @ owner NCOMP-DISPATCH:DECL-RAW-OFF + CELL-VIEW xt!
+   NULL-PTR PREFIX-RAW-OWNER !  0 PREFIX-RAW-PRIOR ! ;
+
+: PRE-RELEASE ( -- )
+   PRE-BYTES-RELEASE PRE-ROWS-RELEASE
+   0 PRE-BYTES-N !  0 PRE-ROWS-N ! ;
+
+: PRE-FLUSH ( -- )
+   s" ENGINE-ORIGIN-EARLY:FILE-IMPORT" OPEN-TARGET-XT
+      PREFIX-IMPORT-XT {: import :}
+   PRE-ROWS-N @ 0 ?do
+      i 0 PRE-ROW@ 0 i 1 PRE-ROW@ i 2 PRE-ROW@
+      i 3 PRE-ROW@ PRE-BYTES i 4 PRE-ROW@
+      i 5 PRE-ROW@ PRE-BYTES i 6 PRE-ROW@
+      import execute
+   loop
+   PRE-RELEASE ;
 
 : FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < if a over + c@ 32 > else false then while 1+ repeat
@@ -254,17 +538,26 @@ variable PREFIX-TAKE
 \ The borrowed compiler finishes before the engine publishes the pending
 \ record. Keep only its exact global name token; the engine's subsequent
 \ publication makes that same record live for the origin owner to drain.
-: PREFIX-COMPILE ( ptr u8 n -- )
+: PREFIX-ACCEPT ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u NCOMP:COMPILE-CHECKED
-   PREFIX-TAKE @ 0= if exit then
    data-base PEND-CELL + @ {: raw:n :}
    raw 0= if exit then
    raw XREF-ADDR>REC {: rec:ptr :}
    rec XREF-WORDLIST 0<> if exit then
    a u FIRST-TOKEN {: name:ptr nameu:n :}
    rec XREF-NAME$ name nameu CORE-STR=CI 0= if exit then
-   name nameu raw PREFIX-TAKE @ PREFIX-TAKE-XT execute ;
+   name nameu raw PREFIX-TOKEN PREFIX-RECORD ;
+
+: PREFIX-ARM ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   ['] PREFIX-ACCEPT NFILE-CACHE:ARM-NATIVE-ACCEPT 0= if
+      a u PREFIX-ACCEPT
+   then ;
+
+: PREFIX-COMPILE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u NCOMP:COMPILE-CHECKED
+   a u PREFIX-ARM ;
 
 : RESTORE-PREFIX-DISPATCH ( -- )
    PREFIX-DISPATCH @ NCOMP:DISPATCH! ;
@@ -273,28 +566,34 @@ variable PREFIX-TAKE
 \ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
 : LOAD-CHECKED-PREFIX ( -- )
    0 PREFIX-TAKE !
-   ['] PREFIX-COMPILE NCOMP:DISPATCH!
+   BIND-PREFIX-RAW
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
    s" src/core/engine-error.f" included
    s" src/core/exec-vector.f" included
    s" src/core/checker-fetch-abi.f" included
+   s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/habu/prims.f" included
    s" src/core/does-clause.f" included
    s" src/core/checker.f" included
    s" src/core/engine-error-effects.f" included
    s" src/core/lower-cert-base.f" included
+   s" src/habu/native-body-abi.f" included
    s" src/habu/engine-origin-early.f" included
    s" ENGINE-ORIGIN-EARLY:PREFIX-TAKE" OPEN-TARGET-XT PREFIX-TAKE !
+   PRE-FLUSH
    s" src/core/type-schema.f" included
    s" src/core/type-family.f" included
    s" src/core/render.f" included
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
+   NFILE-CACHE:HANDOVER-PREPARE
+   RESTORE-PREFIX-RAW
    s" CHECKER-REG:HANDOVER" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   NFILE-CACHE:HANDOVER-BIND
    \ The handover, the same entry tools/bootstrap.sh's recovery reload calls,
    \ publishes the complete replacement owner. Earlier pre-hook code still needs
    \ the retained compiler's paired checker; later calls use this one.
@@ -302,16 +601,25 @@ variable PREFIX-TAKE
    CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
    s" src/core/check-hook.f" included
    0 PREFIX-TAKE !
+   s" src/habu/native-body.f" included
    s" src/habu/engine-origin-checked.f" included
    s" ENGINE-ORIGIN-EARLY:INSTALL" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
 
 : CHECKED-PREFIX ( -- )
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ PREFIX-COMPILE-XT
       PREFIX-DISPATCH !
-   [: LOAD-CHECKED-PREFIX ;] [: RESTORE-PREFIX-DISPATCH ;] finally ;
+   ['] PREFIX-COMPILE ['] PREFIX-ARM NFILE-CACHE:BORROW
+   [: LOAD-CHECKED-PREFIX ;]
+      [: RESTORE-PREFIX-RAW
+         PRE-RELEASE
+         NFILE-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
 
 : LOAD-TARGET ( -- )
+   PREFIX-FILE-CACHE @ if
+      BIND-SEED-PRODUCERS
+   then
    CHECKED-PREFIX
+   PREFIX-OBSERVING @ if BUILD-PRODUCER:FREEZE-CHECKER then
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
    s" src/core/declaration-transaction.f" included
@@ -326,9 +634,25 @@ variable PREFIX-TAKE
    s" src/habu/stack-abi.f" included
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included
+   s" src/core/quotation-storage.f" included
    s" src/core/include.f" included
+   RESTORE-HOST-UNIT
+   \ The fresh loader needs its canon callback before it can accept the host root.
+   s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   TARGET-ENGINE-ROOT
    SOURCE-BIND @ execute
-   s" src/habu/native-runtime.f" included
+   PREFIX-FILE-CACHE @ if
+      NFILE-CACHE:REBIND
+      1 TARGET-SOURCE-BOUND !
+   else
+      PREFIX-OBSERVING @ if BIND-PREFIX-UNIT then
+   then
+   s" src/habu/native-runtime.f"
+      s" included" OPEN-TARGET-XT SOURCE-INCLUDED-XT execute
+   PREFIX-OBSERVING @ if
+      PREFIX-COMPILER-FINISH
+      NFILE-CACHE:REBIND
+   then
    SOURCE-TAIL @ execute ;
 
 : OPEN-AND-COMPILE ( -- )
@@ -338,6 +662,13 @@ variable PREFIX-TAKE
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
    [: LOAD-TARGET ;] SOURCE-ROOT:WITH-CWD
+   AOT-ARM:WINDOW-CLOSE ;
+
+: OPEN-FILE-AND-COMPILE ( -- )
+   align
+   AOT-ARM:WINDOW-OPEN-PERSISTENT
+   NSTR:WINDOW-OPEN
+   [: ['] LOAD-TARGET NFILE-CACHE:RUN ;] SOURCE-ROOT:WITH-CWD
    AOT-ARM:WINDOW-CLOSE ;
 
 \ Resolve a target operation without compiling another definition or opening a
@@ -437,10 +768,76 @@ CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
       else drop then
    loop ;
 
-: CAPTURE ( -- )
+\ Accepted source paths must be borrowed before capture strips checker
+\ symbols. Keep only paths for the target window's record indices.
+DYNAMIC-BUFFER NAMES-SOURCE u8
+DYNAMIC-BUFFER NAMES-SRC-OFF n
+DYNAMIC-BUFFER NAMES-SRC-LEN n
+DYNAMIC-BUFFER NAMES-CAP-OFF n
+DYNAMIC-BUFFER NAMES-CAP-LEN n
+variable NAMES-SOURCE-U
+variable NAMES-SRC-N
+TYPED-VARIABLE NAMES-CAP-OP [ n -- n ]
+CAST: NAMES-SOURCE-XT ( n -- [ [ ptr n ptr u8 n -- ] -- ] )
+CAST: NAMES-CAP-XT ( n -- [ n -- n ] )
+s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
+   NAMES-CAP-XT NAMES-CAP-OP !
+
+: NAMES-SOURCE-TAKE ( ptr n ptr u8 n -- )
+   {: rec:ptr a:ptr u:n :}
+   rec BYTE-VIEW NULL-PTR BYTE-VIEW - XREF-ADDR>INDEX {: idx:n :}
+   idx AOT-ARM:R0 @ < idx AOT-ARM:R1 @ >= or if exit then
+   idx AOT-ARM:R0 @ - {: row:n :}
+   row NAMES-SRC-LEN @ -1 <> if exit then
+   NAMES-SOURCE-U @ row NAMES-SRC-OFF !
+   u row NAMES-SRC-LEN !
+   u 0= if exit then
+   NAMES-SOURCE-U @ u + NAMES-SOURCE-RESERVE
+   a 0 NAMES-SOURCE BYTE-VIEW NAMES-SOURCE-U @ + u BYTE-COPY
+   NAMES-SOURCE-U @ u + NAMES-SOURCE-U ! ;
+
+: NAMES-SOURCES ( -- )
+   AOT-ARM:R1 @ AOT-ARM:R0 @ - NAMES-SRC-N !
+   NAMES-SRC-N @ NAMES-SRC-OFF-RESERVE
+   NAMES-SRC-N @ NAMES-SRC-LEN-RESERVE
+   0 NAMES-SOURCE-U !
+   NAMES-SRC-N @ 0 ?do
+      0 i NAMES-SRC-OFF ! -1 i NAMES-SRC-LEN !
+   loop
+   ['] NAMES-SOURCE-TAKE
+      s" ENGINE-ORIGIN" s" MAP-SOURCES" TARGET-PRIVATE-XT
+      NAMES-SOURCE-XT execute
+   NAMES-SRC-N @ 0 ?do
+      i NAMES-SRC-LEN @ 0 < if 0 i NAMES-SRC-LEN ! then
+   loop ;
+
+\ Capture omits retired dictionary rows. Index the accepted paths by its own
+\ dictionary-to-record map without changing the source rows: a compiler bundle
+\ captures the same dictionary twice after the private checker rows are gone.
+: NAMES-SOURCE-ALIGN ( -- )
+   NAMES-CAP-OP @ {: to-cap :}
+   AOT-CAPTURE:MAP-N NAMES-CAP-OFF-RESERVE
+   AOT-CAPTURE:MAP-N NAMES-CAP-LEN-RESERVE
+   AOT-CAPTURE:MAP-N 0 ?do
+      0 i NAMES-CAP-OFF ! 0 i NAMES-CAP-LEN !
+   loop
+   NAMES-SRC-N @ 0 ?do
+      AOT-ARM:R0 @ i + to-cap execute {: k:n :}
+      k 0 >= if
+         i NAMES-SRC-OFF @ k NAMES-CAP-OFF !
+         i NAMES-SRC-LEN @ k NAMES-CAP-LEN !
+      then
+   loop ;
+
+: CAPTURE-START ( -- )
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
    s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
+   s" ENGINE-ORIGIN:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
+
+: CAPTURE ( -- )
+   CAPTURE-START
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   NAMES-SOURCE-ALIGN
    \ The snapshot has its armed cell. The builder still uses the old checker
    \ owner for the source writer compiled below, so stop observing in it.
    s" ENGINE-ORIGIN:DISARM" TARGET-XT PREPARE-XT execute
@@ -448,9 +845,9 @@ CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
 
 : CAPTURE-NAMED ( bool -- )
    {: all:bool :}
-   AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
-   s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
+   CAPTURE-START
    AOT-ARM:WINDOW$ all AOT-CAPTURE:CAPTURE-WITH-NAMES
+   NAMES-SOURCE-ALIGN
    CHECK-FIXED-ROWS ;
 
 FS-PATH-CAP constant OUTPUT-CAP
@@ -538,8 +935,62 @@ CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
 \ compile freely; none of those definitions or mutations enters that value.
 : SOURCE-WRITER-DISPATCH ( AOT-OWNED:capture ptr n n ptr u8 n -- )
    WRITER-MACHINE-CK
-   s" tools/native-emit.f" required
    SOURCE-WRITER execute ;
+
+DYNAMIC-BUFFER BUILD-INPUTS u8
+variable BUILD-INPUTS-U
+variable BUILD-INPUTS-MARK
+TYPED-VARIABLE BUILD-INPUTS-PATH ptr u8
+variable BUILD-INPUTS-PATH-U
+
+: BUILD-INPUTS-APPEND ( ptr u8 n -- )
+   {: rows:ptr rowsu:n :}
+   rowsu 0= if exit then
+   BUILD-INPUTS-U @ rowsu + BUILD-INPUTS-RESERVE
+   rows 0 BUILD-INPUTS BUILD-INPUTS-U @ + rowsu BYTE-COPY
+   rowsu BUILD-INPUTS-U +! ;
+
+: FILE-INPUTS-SNAPSHOT ( -- )
+   BUILD-INPUTS-PATH-U @ 0= if 0 BUILD-INPUTS-U ! exit then
+   BUILD-INPUTS-MARK @ NFILE-INPUTS:BYTES-FROM
+      {: rows:ptr rowsu:n :}
+   rowsu 0= if s" native-build: no engine source inputs" 76 die then
+   0 BUILD-INPUTS-U !
+   rows rowsu BUILD-INPUTS-APPEND ;
+
+: READ-SOURCE-WRITER ( -- )
+   s" tools/native-emit.f" s" required" OPEN-TARGET-XT
+      SOURCE-INCLUDED-XT execute ;
+
+: WRITER-INPUTS-RETAIN ( -- )
+   BUILD-INPUTS-U @ 0= if exit then
+   NFILE-INPUTS:BYTES$ BUILD-INPUTS-APPEND ;
+
+\ The post-capture writer loads through the fresh target's SOURCE-INPUT.
+\ Its nested file-cache session starts a new input buffer, so bind that loader
+\ to the same query and consumed-byte recorder before the first writer require.
+: WRITER-INPUTS ( -- )
+   ['] REWIND-CANON
+   s" SOURCE-ROOT:READ-OS" OPEN-TARGET-XT SOURCE-READ-XT
+   s" SOURCE-INPUT:USE" OPEN-TARGET-XT SOURCE-INPUT-USE-XT execute
+   ['] PREFIX-INPUT ['] PREFIX-NOOP
+   s" SOURCE-INPUT:USE-OBSERVER" OPEN-TARGET-XT
+      SOURCE-INPUT-OBSERVER-XT execute ;
+
+: WRITER-INPUTS-RESET ( -- )
+   s" SOURCE-INPUT:OBSERVER-DEFAULT" OPEN-TARGET-XT
+      SOURCE-RESET-XT execute ;
+
+: LOAD-SOURCE-WRITER ( -- )
+   \ Snapshot preparation cleared the target root from the captured image.
+   TARGET-ENGINE-ROOT
+   PREFIX-FILE-CACHE @ 0= if READ-SOURCE-WRITER exit then
+   s" engine"
+      [: NFILE-CACHE:REBIND
+         WRITER-INPUTS
+         [: READ-SOURCE-WRITER WRITER-INPUTS-RETAIN ;]
+            [: WRITER-INPUTS-RESET ;] finally ;]
+      NFILE-CACHE:WITH-QUIET ;
 
 : WRITE-TARGET ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: writer :}
@@ -643,9 +1094,16 @@ CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
 variable NAMES-PATH-U
+create NAMES-HASH-CTX SHA256-FILE-CTX-BYTES allot
+create NAMES-HASH-HEX 64 allot
+create NAMES-ONE 1 allot
 TYPED-VARIABLE NAMES-A ptr u8
 variable NAMES-CAP
 variable NAMES-U
+variable NAMES-HASH-OFF
+DYNAMIC-BUFFER NAMES-ALIAS-FLAGS u8
+DYNAMIC-BUFFER NAMES-ORDER n
+variable NAMES-ORDER-N
 
 : NAMES-SUFFIX$ ( -- ptr u8 n ) s" .map" ;
 
@@ -692,34 +1150,125 @@ variable NAMES-NI
    v 0 < if s" -" NAMES+ 0 v - NAMES-DIGITS+ exit then
    v NAMES-DIGITS+ ;
 
+: NAMES-CHAR+ ( n -- ) NAMES-ONE c! NAMES-ONE 1 NAMES+ ;
+
+: NAMES-HEX+ ( n -- )
+   dup 10 < if 48 + else 55 + then NAMES-CHAR+ ;
+
+: NAMES-ESC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if s" -" NAMES+ exit then
+   u 0 ?do
+      a i + c@ {: c:n :}
+      c 32 <= c 37 = or if
+         37 NAMES-CHAR+ c 4 rshift NAMES-HEX+ c 15 and NAMES-HEX+
+      else c NAMES-CHAR+ then
+   loop ;
+
+: NAMES-SRC$ ( n -- ptr u8 n ) {: k:n :}
+   k AOT-CAPTURE:MAP-N >= if NULL$ exit then
+   0 NAMES-SOURCE BYTE-VIEW k NAMES-CAP-OFF @ + k NAMES-CAP-LEN @ ;
+
+: NAMES-SPAN< ( n n -- bool )
+   {: a:n b:n :}
+   a AOT-CAPTURE:MAP-START {: start:n :}
+   b AOT-CAPTURE:MAP-START {: next:n :}
+   start next <> if start next < exit then
+   a AOT-CAPTURE:MAP-LEN {: size:n :}
+   b AOT-CAPTURE:MAP-LEN {: other:n :}
+   size other <> if size other < exit then
+   a b < ;
+
+: NAMES-SAME-SPAN? ( n n -- bool )
+   {: a:n b:n :}
+   a AOT-CAPTURE:MAP-START b AOT-CAPTURE:MAP-START =
+   a AOT-CAPTURE:MAP-LEN b AOT-CAPTURE:MAP-LEN = and ;
+
+\ Preserve capture order within each exact code span. Package rows and negative
+\ starts never classify as aliases and cannot establish an earlier owner.
+: NAMES-INDEX-ALIASES ( -- )
+   AOT-CAPTURE:MAP-N NAMES-ALIAS-FLAGS-RESERVE
+   AOT-CAPTURE:MAP-N NAMES-ORDER-RESERVE
+   0 NAMES-ORDER-N !
+   AOT-CAPTURE:MAP-N 0 ?do
+      0 i NAMES-ALIAS-FLAGS c!
+      i AOT-CAPTURE:MAP-PKG? 0= i AOT-CAPTURE:MAP-START 0 >= and if
+         i NAMES-ORDER-N @ NAMES-ORDER !
+         1 NAMES-ORDER-N +!
+      then
+   loop
+   NAMES-ORDER-N @ 1 <= if exit then
+   0 NAMES-ORDER NAMES-ORDER-N @ [: NAMES-SPAN< ;] SORT:SORT!
+   NAMES-ORDER-N @ 1 ?do
+      i 1- NAMES-ORDER @ i NAMES-ORDER @ NAMES-SAME-SPAN? if
+         1 i NAMES-ORDER @ NAMES-ALIAS-FLAGS c!
+      then
+   loop ;
+
+: NAMES-ALIAS? ( n -- bool ) NAMES-ALIAS-FLAGS c@ 0<> ;
+
+: NAMES-KIND$ ( n -- ptr u8 n ) {: k:n :}
+   k AOT-CAPTURE:MAP-PKG? if s" namespace" exit then
+   k NAMES-ALIAS? if s" alias" exit then
+   s" word" ;
+
 : NAMES-ROW ( n -- ) {: k:n :}
    k NAMES-INT+                          s"  " NAMES+
    k AOT-CAPTURE:MAP-NAMED NAMES-INT+    s"  " NAMES+
    k AOT-CAPTURE:MAP-START NAMES-INT+    s"  " NAMES+
    k AOT-CAPTURE:MAP-LEN NAMES-INT+      s"  " NAMES+
    k AOT-CAPTURE:MAP-WID NAMES-INT+      s"  " NAMES+
-   k AOT-CAPTURE:MAP-NAME$ NAMES+
+   k AOT-CAPTURE:MAP-NAME$ NAMES+       s"  " NAMES+
+   k NAMES-KIND$ NAMES+               s"  baked " NAMES+
+   k NAMES-SRC$ NAMES-ESC+
    S\" \n" NAMES+ ;
 
-\ 64 bytes a row is the budget: five decimal fields and their separators cannot
-\ reach 40, and ACAP-POOL-ADD already refuses a name over 255, so the only way
-\ past this is a record count the capture itself would have refused first.
+: NAMES-U32@ ( ptr u8 -- n ) {: a:ptr :}
+   a c@ a 1+ c@ 8 lshift or
+   a 2 + c@ 16 lshift or a 3 + c@ 24 lshift or ;
+
+: NAMES-SPAN ( n -- ) {: k:n :}
+   AOT-SPAN:BUF@ k AOT-SPAN:ROW * + {: row:ptr :}
+   AOT-CAPTURE:MAP-N k + NAMES-INT+ s"  0 " NAMES+
+   row NAMES-U32@ NAMES-INT+ s"  " NAMES+
+   row 4 + NAMES-U32@ NAMES-INT+
+   S\"  -1 - word baked -\n" NAMES+ ;
+
+\ Source tokens can expand threefold when escaped. The record and span ceilings
+\ are bounded by capture, so reserve for the actual accepted path bytes.
 : NAMES-ALLOCATE ( -- )
-   AOT-CAPTURE:MAP-N 64 * $1000 + MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   AOT-CAPTURE:MAP-N 340 * NAMES-SOURCE-U @ 3 * +
+   AOT-SPAN:N @ 80 * + $1000 + MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    buf NAMES-A!  cap NAMES-CAP !  0 NAMES-U ! ;
+
+: BUILD-NAMES ( -- )
+   NAMES-INDEX-ALIASES
+   NAMES-ALLOCATE
+   S\" habu-names 1\n" NAMES+
+   S\" columns rec named start len wid name kind origin source\n" NAMES+
+   s" image-sha256 " NAMES+
+   NAMES-U @ NAMES-HASH-OFF !
+   64 0 ?do 48 NAMES-CHAR+ loop
+   10 NAMES-CHAR+
+   AOT-CAPTURE:MAP-N 0 ?do i NAMES-ROW loop
+   AOT-SPAN:N @ 0 ?do i NAMES-SPAN loop ;
 
 : WRITE-NAMES ( -- )
    NAMES-PATH!
-   NAMES-ALLOCATE
-   S\" habu-names 1\n" NAMES+
-   S\" columns rec named start len wid name\n" NAMES+
-   AOT-CAPTURE:MAP-N 0 ?do i NAMES-ROW loop
+   NAMES-HASH-CTX OUTPUT$ NAMES-HASH-HEX SHA256-FILE-HEX-IN
+      dup 0<> if throw then drop
+   NAMES-HASH-HEX NAMES-A@ NAMES-HASH-OFF @ + 64 BYTE-COPY
    NAMES-PATH$ NAMES-A@ NAMES-U @ WRITE-ALL ;
 
-\ The suite builder's private directory is absolute. Each names map is
-\ written while its capture's map is still current, before another capture.
+\ The suite builder's private directory is absolute. Each capture retains its
+\ rows until the corresponding final image exists and can bind their hash.
 create BUNDLE-PATH OUTPUT-CAP allot
 variable BUNDLE-PATH-U
+TYPED-VARIABLE BUNDLE-DIR ptr u8
+variable BUNDLE-DIR-U
+TYPED-VARIABLE WHITE-NAMES-A ptr u8
+variable WHITE-NAMES-U
+TYPED-VARIABLE SEALED-NAMES-A ptr u8
+variable SEALED-NAMES-U
 
 : BUNDLE-OUTPUT ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
@@ -734,38 +1283,59 @@ variable BUNDLE-PATH-U
    NATIVE-LAYOUT:CURRENT OUTPUT$ writer execute
    OUTPUT$ CHMOD-X ;
 
-: BUNDLE-DRIVE ( ptr u8 n -- ) {: dir:ptr diru:n :}
+: BUNDLE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
       supported OF drop ENDOF
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
+   RETAIN-HOST-PRODUCERS ;
+
+: FILE-LOAD ( -- )
+   \ The manifest destination is driver transport, read before source recording.
+   s" HABU_ENGINE_INPUTS" GETENV BUILD-INPUTS-PATH-U ! BUILD-INPUTS-PATH !
+   1 PREFIX-FILE-CACHE !
+   NFILE-INPUTS:MARK BUILD-INPUTS-MARK !
+   ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
    CHECKER-OWNER LOGICAL-RESET
-   OPEN-AND-COMPILE
+   BIND-HOST-UNIT
+   PREFIX-START
+   OPEN-FILE-AND-COMPILE
+   FILE-INPUTS-SNAPSHOT ;
+
+: BUNDLE-FINISH ( -- )
+   BUNDLE-DIR @ BUNDLE-DIR-U @ {: dir:ptr diru:n :}
    SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
    TRANSFER-LITERALS
    COPY-SEAL-PLAN {: plan:ptr count:n :}
    AOT-CAPTURE:PAYLOAD-CAPTURE
+   NAMES-SOURCES
    PREPARE-WINDOW
    true CAPTURE-NAMED
-   dir diru s" hb-whitebox-source" BUNDLE-OUTPUT WRITE-NAMES
+   BUILD-NAMES
+   NAMES-A@ WHITE-NAMES-A !  NAMES-U @ WHITE-NAMES-U !
    OWN-CAPTURE {: white:AOT-OWNED:capture :}
    plan count APPLY-SEAL-PLAN
    PREPARE-TARGET
    false CAPTURE-NAMED
-   dir diru s" hb-root" BUNDLE-OUTPUT WRITE-NAMES
-   dir diru s" hb-ordinary" BUNDLE-OUTPUT WRITE-NAMES
+   BUILD-NAMES
+   NAMES-A@ SEALED-NAMES-A !  NAMES-U @ SEALED-NAMES-U !
    OWN-CAPTURE {: sealed:AOT-OWNED:capture :}
    WRITER-MACHINE-CK
-   s" tools/native-emit.f" required
+   LOAD-SOURCE-WRITER
    dir diru s" hb-whitebox-source" BUNDLE-OUTPUT
    white s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   WHITE-NAMES-A @ NAMES-A!  WHITE-NAMES-U @ NAMES-U !
+   WRITE-NAMES
    dir diru s" hb-root" BUNDLE-OUTPUT
    sealed s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   SEALED-NAMES-A @ NAMES-A!  SEALED-NAMES-U @ NAMES-U !
+   WRITE-NAMES
    dir diru s" hb-ordinary" BUNDLE-OUTPUT
    sealed s" NATIVE-EMIT:WRITE" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
+   WRITE-NAMES
    white AOT-OWNED:CLOSE
    sealed AOT-OWNED:CLOSE
    plan count 2 * cells munmap 0<> if E-MEM-UNMAP throw then ;
@@ -776,36 +1346,46 @@ variable BUNDLE-PATH-U
 
 CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
 
+: IMAGE-FINISH ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
+   {: query bootstrap:bool writer :}
+   SOURCE-CHECK @ execute
+   RESET-TARGET-SOURCE
+   SOURCE-CLOSE @ execute
+   TRANSFER-LITERALS
+   AOT-CAPTURE:PAYLOAD-CAPTURE
+   \ Private source identities are still live before the checker sweep.
+   NAMES-SOURCES
+   PREPARE-TARGET
+   CAPTURE
+   BUILD-NAMES
+   writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
+      LOAD-SOURCE-WRITER
+   then
+   query bootstrap writer EMIT-TEMP
+   SIGN-TEMP
+   OUTPUT-LAUNCH-CK
+   SMOKE
+   PROMOTE
+   WRITE-NAMES ;
+
 : DRIVE ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    {: query bootstrap:bool writer :}
+   0 PREFIX-FILE-CACHE !
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
       supported OF drop ENDOF
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
-   \ The selected action fixes the target ABI before loading its compiler. A
-   \ refused output must not spend a full source window on a writer or image
-   \ that cannot run here. The default writer also needs this machine's ISA.
    writer WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
       WRITER-MACHINE-CK
    else
       OUTPUT-LAUNCH-CK
    then
    CHECKER-OWNER LOGICAL-RESET
+   BIND-HOST-UNIT
+   PREFIX-START
    OPEN-AND-COMPILE
-   SOURCE-CHECK @ execute
-   RESET-TARGET-SOURCE
-   SOURCE-CLOSE @ execute
-   TRANSFER-LITERALS
-   AOT-CAPTURE:PAYLOAD-CAPTURE
-   PREPARE-TARGET
-   CAPTURE
-   query bootstrap writer EMIT-TEMP
-   SIGN-TEMP
-   OUTPUT-LAUNCH-CK
-   SMOKE
-   PROMOTE
-   WRITE-NAMES
+   query bootstrap writer IMAGE-FINISH
    query bootstrap writer ;
 
 \ The build proper, to an explicit output path, returning its result code.
@@ -817,6 +1397,7 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
 \ after the build and is that driver.
 : RUN-READY-INNER ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: query bootstrap:bool writer :}
+   0 PREFIX-OBSERVING !
    CLEANUP-RESET
    0 TARGET-SOURCE-BOUND !
    REMOVE-STALE-TEMP
@@ -824,6 +1405,7 @@ CAST: WRITER>N ( [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    SMOKE-DIR!
    query bootstrap writer [: DRIVE ;] catch {: rc:n :}
    drop 2drop
+   RESTORE-HOST-UNIT
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
    CLEANUP-RUN
@@ -835,10 +1417,49 @@ variable READY-BOOTSTRAP
 TYPED-VARIABLE READY-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
 variable READY-RC
 
+: FILE-PREPARE ( -- )
+   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
+      supported OF drop ENDOF
+      unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
+   ;MATCH
+   CHECK-HOST-LAYOUT
+   READY-WRITER @ WRITER>N ['] SOURCE-WRITER-DISPATCH WRITER>N = if
+      WRITER-MACHINE-CK
+   else
+      OUTPUT-LAUNCH-CK
+   then
+   RETAIN-HOST-PRODUCERS ;
+
+: FILE-FINISH ( -- )
+   READY-QUERY @ READY-BOOTSTRAP @ 0<> READY-WRITER @ IMAGE-FINISH
+   BUILD-INPUTS-U @ 0 > if
+      BUILD-INPUTS-PATH @ BUILD-INPUTS-PATH-U @
+         0 BUILD-INPUTS BUILD-INPUTS-U @ ATOMIC-WRITE-FILE
+   then ;
+
+: RUN-FILE-INNER ( -- n )
+   BUILD-TARGET:IDLE-CK
+   CLEANUP-RESET
+   0 TARGET-SOURCE-BOUND !
+   REMOVE-STALE-TEMP
+   TEMP$ CLEANUP+
+   SMOKE-DIR!
+   s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      ['] FILE-PREPARE ['] FILE-LOAD ['] FILE-FINISH
+      BUILD-CORE:WITH {: rc:n :}
+   RESTORE-HOST-UNIT
+   0 PREFIX-OBSERVING !
+   RESET-TARGET-SOURCE
+   SOURCE-CLOSE @ execute
+   CLEANUP-RUN
+   BUILD-INPUTS-RELEASE
+   rc 0<> if s" native-build: uncaught throw code " type rc . cr then
+   rc ;
+
 : READY-ACTION ( RTARGET:build-action -- )
    drop
    READY-QUERY @ READY-BOOTSTRAP @ 0<> READY-WRITER @
-      RUN-READY-INNER READY-RC ! ;
+      ['] RUN-READY-INNER WITH-TARGET-ROOT READY-RC ! ;
 
 : RUN-READY-RC ( [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: query bootstrap:bool writer :}
@@ -854,16 +1475,6 @@ public
 
 \ Test-only entry. Its source load is selected by the caller's bundle
 \ environment; standalone RUN-PATH-RC keeps its product/whitebox path.
-private
-TYPED-VARIABLE BUNDLE-DIR ptr u8
-variable BUNDLE-DIR-U
-
-: BUNDLE-ACTION ( RTARGET:build-action -- )
-   drop
-   BUNDLE-DIR @ BUNDLE-DIR-U @ BUNDLE-DRIVE ;
-
-public
-
 \ The suite selects its source policy before the one compiler bundle load.
 \ Ordinary callers keep the default policy through RUN-BUNDLE.
 : RUN-BUNDLE-READY ( ptr u8 n -- )
@@ -871,8 +1482,11 @@ public
    BUILD-TARGET:IDLE-CK
    dir BUNDLE-DIR !
    diru BUNDLE-DIR-U !
-   RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      [: BUNDLE-ACTION ;] BUILD-TARGET:WITH ;
+   s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      ['] BUNDLE-PREPARE ['] FILE-LOAD ['] BUNDLE-FINISH
+      ['] BUILD-CORE:WITH WITH-TARGET-ROOT {: rc:n :}
+   RESTORE-HOST-UNIT
+   rc 0<> if rc throw then ;
 
 : RUN-BUNDLE ( ptr u8 n -- )
    BUILD-TARGET:IDLE-CK
@@ -882,9 +1496,12 @@ public
 : RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
    {: out:ptr outu:n query bootstrap:bool :}
    BUILD-TARGET:IDLE-CK
-   DEFAULT-SOURCE-POLICY
+   ['] SOURCE-NOOP ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY!
    out outu OUTPUT!
-   query bootstrap ['] SOURCE-WRITER-DISPATCH RUN-READY-RC ;
+   query READY-QUERY !
+   bootstrap READY-BOOTSTRAP !
+   ['] SOURCE-WRITER-DISPATCH READY-WRITER !
+   ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN, RUN-UNIT and tools/build-profile.f): 0,
@@ -896,6 +1513,8 @@ public
 \ The build says which of the two images it wrote, on the way out, so a build
 \ log records the class instead of leaving it to be inferred from a size.
 : REPORT-CLASS ( -- )
+   \ hb-build reports the installed output path after the child build finishes.
+   BUILD-INPUTS-PATH-U @ 0<> if exit then
    s" native-build OK: " type OUTPUT$ type
    s"  (" type CLASS-WANTED$ type s" )" type cr ;
 

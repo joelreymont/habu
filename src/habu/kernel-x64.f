@@ -30,6 +30,7 @@ require src/core/does-clause.f
 require src/core/util.f
 require src/core/engine-error.f
 require src/habu/layout.f
+require src/habu/native-observer-extension.f
 require src/habu/stack-abi.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
@@ -121,9 +122,8 @@ variable DPBAD-CELL
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
-\ specifies: SPEC-CHECK runs before KEEP?, so a subset build cannot hide an
-\ unspecified primitive, and ENGINE-PRIMS:COMPLETE refuses a kept row that no
-\ body answered.
+\ specifies: SPEC-CHECK checks each body, and ENGINE-PRIMS:COMPLETE refuses a
+\ specified row that no body answered.
 defer BODY ( -- )
 PTR-VARIABLE ROW-A
 variable ROW-U
@@ -171,17 +171,14 @@ variable ROW-U
 
 public
 
-\ Register the body a quotation emits under the row's name, skipped when the
-\ tree shaker drops the row.
+\ Register the body a quotation emits under the row's name.
 : PRIM ( ptr u8 n [ -- ] -- )
    ARGS
-   ROW$ KEEP? 0= if exit then
    EMIT-ROW drop ;
 
 \ PRIM whose record carries wid n: the twin of habu1.f FPRIM-WID.
 : PRIM-WID ( ptr u8 n [ -- ] n -- ) {: wid:n :}
    ARGS
-   ROW$ KEEP? 0= if exit then
    wid EMIT-ROW ENGINE-PRIMS:WID! ;
 
 \ A row the x86-64 kernel does not carry: its body writes `hb: <name> is not
@@ -694,7 +691,8 @@ public
    LBL SPAN-CELL !  LBL REC-CELL !  LBL LIVE-CELL !
    LBL DPBAD-CELL !  LBL LGENIOOUT !
    SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS ;
+   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS
+   X64PROF:HELPERS, ;
 
 \ Each section's rows are tabled in docs/x86-64.md under the heading of its
 \ name.
@@ -725,6 +723,7 @@ $5402 constant TCSETS
 : DROP, ( -- ) DSP CELL >IMM8 ASM-SINK ENC-SUB-RI8 ;
 : AT-FDCWD, ( r64 -- ) AT-FDCWD >IMM32 ASM-SINK ENC-MOV-RI32 ;
 : SYS-PUSH, ( n -- ) SYS, SYS-PUSH ;
+: FS-SYS-PUSH, ( n -- ) SYS, FS-SYS-PUSH ;
 
 \ Load the cell n below the top of the data stack, which stays where it is.
 : PEEK, ( r64 n -- ) {: r:r64 depth:n :}
@@ -742,7 +741,7 @@ $5402 constant TCSETS
    R10 POP,  RSI POP,  RDI POP,
    OS-OPEN-FLAGS                    \ rsi's BSD-shaped flags into rdx
    RSI RDI ASM-SINK ENC-MOV-RR  RDI AT-FDCWD,
-   NR-OPEN SYS-PUSH, ;
+   NR-OPEN FS-SYS-PUSH, ;
 
 \ The twin of habu1.f GUARD-IOCTL, over the request and the argument still on
 \ the stack. TCGETS writes a termios and TCSETS only reads one; an _IOC request
@@ -824,7 +823,7 @@ $5402 constant TCSETS
    LBL {: done:label :}
    0 STAT-BYTES SIZED-GUARD,
    RDX POP,  RSI POP,  RDI AT-FDCWD,  R10 flags IMM32,
-   nr SYS-PUSH,
+   nr FS-SYS-PUSH,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
    RDX STAT-FIX,
    done LBL, ;
@@ -1266,29 +1265,29 @@ public
 \ them.
 : SYSCALLS, ( -- )
    s" open" [: OPEN-ROW ;] PRIM
-   s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ SYS-PUSH, ;] PRIM
-   s" write" [: RDX POP, RSI POP, RDI POP,  NR-WRITE SYS-PUSH, ;] PRIM
+   s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ FS-SYS-PUSH, ;] PRIM
+   s" write" [: RDX POP, RSI POP, RDI POP,  NR-WRITE FS-SYS-PUSH, ;] PRIM
    s" close" [: RDI POP,  NR-CLOSE SYS, ;] PRIM
    s" close-rc" [: RDI POP,  NR-CLOSE SYS-PUSH, ;] PRIM
    s" ioctl" [: IOCTL-GUARD,  RDX POP, RSI POP, RDI POP,  NR-IOCTL SYS-PUSH, ;] PRIM
    s" map-anon" [: MAP-ANON-ROW ;] PRIM
    s" mmap" [: MMAP-ROW ;] PRIM
    s" munmap" [: 1 0 SPAN-GUARD,  RSI POP, RDI POP,  NR-MUNMAP SYS-PUSH, ;] PRIM
-   s" open-rd" [: RDI POP,  RDI R64>N OS-OPEN-RD  SYS-PUSH ;] PRIM
-   s" access" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-ACCESS SYS-PUSH, ;] PRIM
-   s" unlink" [: RSI POP, RDI AT-FDCWD, RDX ZERO-REG,  NR-UNLINK SYS-PUSH, ;] PRIM
-   s" rename" [: R10 POP, RSI POP, RDI AT-FDCWD, RDX AT-FDCWD,  NR-RENAME SYS-PUSH, ;] PRIM
-   s" chmod" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-CHMOD SYS-PUSH, ;] PRIM
-   s" symlink" [: RDX POP, RDI POP, RSI AT-FDCWD,  NR-SYMLINKAT SYS-PUSH, ;] PRIM
-   s" readlink" [: 1 0 SPAN-GUARD,  R10 POP, RDX POP, RSI POP, RDI AT-FDCWD,  NR-READLINKAT SYS-PUSH, ;] PRIM
+   s" open-rd" [: RDI POP,  RDI R64>N OS-OPEN-RD  FS-SYS-PUSH ;] PRIM
+   s" access" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-ACCESS FS-SYS-PUSH, ;] PRIM
+   s" unlink" [: RSI POP, RDI AT-FDCWD, RDX ZERO-REG,  NR-UNLINK FS-SYS-PUSH, ;] PRIM
+   s" rename" [: R10 POP, RSI POP, RDI AT-FDCWD, RDX AT-FDCWD,  NR-RENAME FS-SYS-PUSH, ;] PRIM
+   s" chmod" [: RDX POP, RSI POP, RDI AT-FDCWD, R10 ZERO-REG,  NR-CHMOD FS-SYS-PUSH, ;] PRIM
+   s" symlink" [: RDX POP, RDI POP, RSI AT-FDCWD,  NR-SYMLINKAT FS-SYS-PUSH, ;] PRIM
+   s" readlink" [: 1 0 SPAN-GUARD,  R10 POP, RDX POP, RSI POP, RDI AT-FDCWD,  NR-READLINKAT FS-SYS-PUSH, ;] PRIM
    s" realpath" [: REALPATH-ROW ;] PRIM
-   s" mkdir" [: RDX POP, RSI POP, RDI AT-FDCWD,  NR-MKDIR SYS-PUSH, ;] PRIM
-   s" rmdir" [: RSI POP, RDI AT-FDCWD, RDX AT-REMOVEDIR IMM32,  NR-RMDIR SYS-PUSH, ;] PRIM
+   s" mkdir" [: RDX POP, RSI POP, RDI AT-FDCWD,  NR-MKDIR FS-SYS-PUSH, ;] PRIM
+   s" rmdir" [: RSI POP, RDI AT-FDCWD, RDX AT-REMOVEDIR IMM32,  NR-RMDIR FS-SYS-PUSH, ;] PRIM
    s" stat64" [: NR-STAT64 0 STAT-ROW ;] PRIM
    s" lstat64" [: NR-LSTAT64 AT-SYMLINK-NOFOLLOW STAT-ROW ;] PRIM
    \ getdents64 keeps no base cookie: the pointer is guarded, as the macOS
    \ call writes through it, and dropped.
-   s" getdirentries64" [: 2 1 SPAN-GUARD,  0 CELL SIZED-GUARD,  DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 SYS-PUSH, ;] PRIM
+   s" getdirentries64" [: 2 1 SPAN-GUARD,  0 CELL SIZED-GUARD,  DROP,  RDX POP, RSI POP, RDI POP,  NR-GETDIRENTRIES64 FS-SYS-PUSH, ;] PRIM
    s" epoch-seconds" [: EPOCH-ROW ;] PRIM
    s" mono-ns" [: MONO-ROW ;] PRIM
    s" getpid" [: NR-GETPID SYS-PUSH, ;] PRIM
@@ -2114,16 +2113,21 @@ variable SITE-TRAP-CELL
 \ on the target, never on a band another bracket may hold open. A generic
 \ instruction write carries no optimizer proof, so the four bytes lose their
 \ native evidence before the write can publish.
-: HOST-INVALIDATE, ( -- )
+: INVALIDATE-CELL, ( n -- )
+   {: cell:n :}
    LBL {: done:label :}
    RDI RSI ASM-SINK ENC-CMP-RR  C-AE done JCC,
-   RAX NATIVE-OBS-CELLS:HOST-INVALIDATE CELL@,
+   RAX cell CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH
    RDI PUSH,  RSI PUSH,
    RAX ASM-SINK ENC-CALL-REG
    RSI ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
    done LBL, ;
+
+: HOST-INVALIDATE, ( -- )
+   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL,
+   NATIVE-OBS-EXT:CAPTURE-INVALIDATE INVALIDATE-CELL, ;
 
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
@@ -2631,8 +2635,8 @@ private
 \ RAX is the new published count. Keep all caller scratch registers intact.
 \ The first mapped cell is the last number issued; slot cells follow it.
 : OCC-COUNT, ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: lower:label up:label up-done:label
-      down:label done:label exhausted:label end:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: lower:label up:label up-done:label
+      down:label done:label exhausted:label end:label prof-next:label :}
    RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
    R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
    R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
@@ -2656,9 +2660,28 @@ private
    lower LBL,
       RCX RAX ASM-SINK ENC-MOV-RR
       R11 ZERO-REG,
+      R8 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT IMM64,
+      R8 R8 PROF-ABI:PROF-ARENA MEM-OFF ASM-SINK ENC-MOV-RM
+      R8 R8 ASM-SINK ENC-TEST-RR  C-E down JCC,
+      R9 R8 PROF-ABI:ARN-IDS MEM-OFF ASM-SINK ENC-MOV-RM
+      R9 R9 ASM-SINK ENC-TEST-RR  C-NE down JCC,
+      R8 ZERO-REG,                                \ prof-rate alone has no initialized live map
    down LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       R11 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
+      \ Seed rewind has already detached its retained donors. Ordinary
+      \ trimming excludes the removed IDs' spans before slots can be reused.
+      R8 R8 ASM-SINK ENC-TEST-RR  C-E prof-next JCC,
+      R9 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-RM
+      R9 R9 ASM-SINK ENC-TEST-RR  C-S prof-next JCC,
+      R10 -1 IMM64,
+      R10 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-MR
+      R9 R9 PROF-ABI:PROF-ID-ENT >IMM8 ASM-SINK ENC-IMUL-RRI8
+      R9 R8 R9 1 PROF-ABI:ARN-RECS MEM-IDX ASM-SINK ENC-LEA
+      R10 R9 PROF-ABI:RID-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
+      R11 R9 PROF-ABI:RID-START MEM-OFF ASM-SINK ENC-MOV-MR
+      R11 R9 PROF-ABI:RID-END MEM-OFF ASM-SINK ENC-MOV-MR
+   prof-next LBL,
       RCX ASM-SINK ENC-INC  down JMP,
    done LBL,
    NDICT-REG RAX ASM-SINK ENC-MOV-RR
@@ -2733,6 +2756,26 @@ private
       RCX ASM-SINK ENC-INC  scan JMP,
    done LBL, ;
 
+\ The source owner observes newly published dictionary rows and forwards to a
+\ distinct target owner during checker replacement. Older owners have no
+\ callback at this appended offset.
+: RECORD-PUBLISHED, ( -- )
+   LBL {: done:label :}
+   RAX NCOMP-DISPATCH:DECL-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDX RAX ASM-SINK ENC-MOV-RR
+   RDX CHECKER-OWNER-ABI:HEADER-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RCX RDX 0 MOV-LOAD,
+   RDI CHECKER-OWNER-ABI:MAGIC IMM64,
+   RCX RDI ASM-SINK ENC-CMP-RR  C-NE done JCC,
+   RCX RDX 8 MOV-LOAD,
+   RCX $440 >IMM32 ASM-SINK ENC-CMP-RI32  C-B done JCC,
+   RAX RAX $438 MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDI NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA  RDI PUSH,
+   RAX ASM-SINK ENC-CALL-REG
+   done LBL, ;
+
 \ ndict! ( n -- ): a count past DICT-CAP, unsigned, writes `hb: dictionary
 \ count out of range` and exits COUNT-RC; one below the seal floor exits
 \ SEAL-VIOLATION. A lowered count keeps the index, whose probe skips a record
@@ -2768,6 +2811,8 @@ private
    bad LBL,
    COUNT-RC EXIT-GROUP,
    lower LBL,
+   RDI RAX ASM-SINK ENC-MOV-RR  X64PROF:REWIND-BODY
+   RAX 0 PEEK,
    RECORD-GUARD,
    RAX POP,
    OCC-COUNT,
@@ -2812,6 +2857,7 @@ private
    RAX NDICT-REG 1 MEM-OFF ASM-SINK ENC-LEA
    OCC-COUNT,
    HIDX-ADD,
+   RECORD-PUBLISHED,
    done JMP,
    bad LBL,
    ENGINE-ERROR:SEAL-VIOLATION EXIT-GROUP,
@@ -2821,8 +2867,16 @@ private
    s" cp@" [: CP-REG PUSH, ;] PRIM
    s" dbase@" [: DBASE-REG PUSH, ;] PRIM
    s" data-base" [: DATA-REG PUSH, ;] PRIM
+   s" native-unit-reclaim-cell" [:
+      RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
+      RAX PUSH, ;] PRIM
+   \ This kernel has no pre-body reader. The optional ABI reports absence.
+   s" native-body-reuse-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
+   s" native-body-reader-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
+   s" native-body-passive?" [: DROP, DROP, RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
+   s" native-pending-opaque?" [: RAX PEND-OPAQUE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" cp!" [:
       TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
       RDI RCX ASM-SINK ENC-MOV-RR
@@ -3066,6 +3120,8 @@ private
    s" ptr-cell-mark" [: 0 CELL SIZED-GUARD,  DROP, ;] PRIM
    s" addr-cells-abi" [: RAX ZERO-REG,  RAX PUSH, ;] PRIM
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
+   \ The x86-64 test kernel has no image writer to stamp implementation bytes.
+   s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
    s" snap-rebase" REFUSE
    s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -3430,6 +3486,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    OCC-COUNT,
    RAX ASM-SINK ENC-POP
    HIDX-ADD,
+   RECORD-PUBLISHED,
    WINDOW-CLOSE, ;
 
 \ namespace-record ( ptr u8 n bool -- n ): record NDICT, [0] a fresh wid, [8]
@@ -3558,7 +3615,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
+\ PEND-CELL the record; TSIG, TCSIG, PEND-OPAQUE, DOESB and TRUSTED clear; DEF-TIER-CELL
 \ takes TIER-CELL and the provenance window opens at that CP. At tier 0 it
 \ opens the record only.
 : DEF-OPEN-BODY ( -- )
@@ -3587,6 +3644,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX ZERO-REG,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
@@ -3638,7 +3696,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-close ( -- ): the pending definition of the native tier ends, as the
 \ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
-\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL
+\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL
 \ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )
    RDX PEND-CELL CELL@,
@@ -3650,6 +3708,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
+   RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
@@ -3678,7 +3737,7 @@ public
 \ function through X64KHIR (src/habu/kernel-hir-x64.f), the operations the
 \ word model gives the word (src/compiler/native/hir-word.f DEF-ARITH to
 \ DEF-BYTE-VIEW, src/compiler/native/elaborate.f EXPAND-CELL-INDEX to
-\ EXPAND-MAXIMUM), and lays the routine the x86-64 chain emits into the record
+\ EXPAND-EXTREME), and lays the routine the x86-64 chain emits into the record
 \ whole, its own ret included. A word the model has no row for is staged here
 \ from operations it has. The five hand-written rows are the guarded stores,
 \ the twins of habu1.f BSTORE, BCSTORE and BPLUSSTORE, which compiled stores
@@ -3732,17 +3791,15 @@ public
 
 \ Register the body the x86-64 chain compiles from the function the stager
 \ builds, of n cells in and n out, under the row's name: PRIM's twin for a
-\ compiled body, skipped when the tree shaker drops the row.
+\ compiled body.
 : PRIM-HIR ( ptr u8 n n n [ -- ] -- )
    HIR-STAGE !  HIR-OUT !  HIR-IN !
    [: HIR-BODY ;] ARGS
-   ROW$ KEEP? 0= if exit then
    false RECORD drop ;
 
 : SCALAR-HIR ( ptr u8 n n n [ -- ] -- )
    HIR-STAGE !  HIR-OUT !  HIR-IN !
    [: HIR-BODY-SCALAR ;] ARGS
-   ROW$ KEEP? 0= if exit then
    false RECORD ENGINE-PRIMS:MARK-SCALAR ;
 
 private
@@ -3767,7 +3824,7 @@ private
    x  0 X64KHIR:LIT  HIR-OPCODE:LT X64KHIR:OP2 {: m:IR-ID:ir-value-id :}
    x m HIR-OPCODE:XOR X64KHIR:OP2  m HIR-OPCODE:SUB X64KHIR:OP2  X64KHIR:RESULT ;
 
-\ elaborate.f EXPAND-MAXIMUM, `b xor ((a xor b) and (a rel b))`: gt answers the
+\ elaborate.f EXPAND-EXTREME, `b xor ((a xor b) and (a rel b))`: gt answers the
 \ larger, lt the smaller.
 : PICK-HIR ( HIR:opcode -- ) {: rel:HIR:opcode :}
    0 X64KHIR:ARG  1 X64KHIR:ARG {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
@@ -4015,7 +4072,6 @@ private
 public
 
 : PROFILER, ( -- )
-   X64PROF:HELPERS,
    s" prof-on" [: X64PROF:ON-BODY ;] PRIM
    s" prof-off" [: X64PROF:OFF-BODY ;] PRIM
    s" prof-reset" [: X64PROF:RESET-BODY ;] PRIM
@@ -4027,7 +4083,7 @@ public
 
 \ The whole kernel: the helpers, then every section, then the specification's
 \ other half. ENGINE-PRIMS:COMPLETE dies 76 naming the first row of
-\ src/habu/prims.f that KEEP? keeps and no section registered, as habu2.f
+\ src/habu/prims.f that no section registered, as habu2.f
 \ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, so a row this kernel
 \ does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )

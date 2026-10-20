@@ -3,7 +3,7 @@ title: Bound long suite rows by CPU time
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:31:35.906184+02:00\""
+created-at: "2026-10-02T23:31:35.906184+02:00"
 closed-at: "2026-10-14T19:41:03.028836+03:00"
 close-reason: "Implemented in d864b80a: suite rows use CPU budgets with wall hang guards, long children follow the row budget, and smoke remains safely bounded; saturated 64-hog gate, hung-row case and focused checks passed."
 ---

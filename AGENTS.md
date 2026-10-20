@@ -11,7 +11,7 @@ belong in the language core.
   The task authorizes bounded delegation without a separate user request.
   Keep small or tightly coupled work direct, with no fixed agent chain.
   Define each worker's ownership and acceptance checks before starting it.
-  Editing workers use isolated `.jj-ws/<agent>-<task>` workspaces, named with
+  Editing workers use isolated `.jj-ws.noindex/<agent>-<task>` workspaces, named with
   the lead's Herdr name: a workspace name is global to the repository, and
   another agent's cleanup of its own task name forgets a same-named workspace.
   The integrator owns review, integration, verification and cleanup.
@@ -30,7 +30,7 @@ belong in the language core.
   compression.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
   Use separate workspaces when concurrent edits would conflict. Create Habu
-  workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`,
+  workspaces under this repository's `.jj-ws.noindex/`, never directly under `~/Work/`,
   and only from the repo root: one workspace name maps to one directory (a
   nested duplicate checkout silently resets the other's edits; a divergent
   change id is the tell). An edit exists only after a jj snapshot — `jj

@@ -63,9 +63,6 @@ variable FETCH-N
 variable HAS-VALID
 
 variable CHECKS
-variable SUM-I
-variable PAY-I
-variable FIELD-I
 
 0 constant WALK-TASK
 1 constant GUARD-TASK
@@ -210,14 +207,14 @@ variable FIELD-I
 
 : QUEUE-VARIANT ( n n n n -- ) {: term:n off:n tag-off:n vid:n :}
    UNGUARD-TASK 0 0 0 TASK-PUSH
-   vid SUMV-PAY-N 1 - PAY-I !
-   begin PAY-I @ 0 >= while
+   vid SUMV-PAY-N {: count:n :}
+   count 0 ?do
+      count 1 - i - {: idx:n :}
       term ENV-TERM!
-      vid PAY-I @ SUMV-PAY-ROOT SCHEMA-ROOT@ SCHEMA-TERM {: child:n :}
-      term vid PAY-I @ off VARIANT-OFF {: child-off:n :}
+      vid idx SUMV-PAY-ROOT SCHEMA-ROOT@ SCHEMA-TERM {: child:n :}
+      term vid idx off VARIANT-OFF {: child-off:n :}
       WALK-TASK child child-off 0 TASK-PUSH
-      PAY-I @ 1 - PAY-I !
-   repeat
+   loop
    GUARD-TASK
    tag-off
    vid SUMV-TAG@
@@ -245,24 +242,22 @@ variable FIELD-I
    term PARAM>FAM {: fam:n :}
    off term T-WIDTH + 1 - {: tag-off:n :}
    tag-off fam CHECK,
-   fam TFAM-VAR-COUNT@ 1 - SUM-I !
-   begin SUM-I @ 0 >= while
-      fam TFAM-VAR-START@ SUM-I @ + {: vid:n :}
+   fam TFAM-VAR-COUNT@ {: count:n :}
+   count 0 ?do
+      fam TFAM-VAR-START@ count 1 - i - + {: vid:n :}
       term off tag-off vid QUEUE-VARIANT
-      SUM-I @ 1 - SUM-I !
-   repeat ;
+   loop ;
 
 : QUEUE-PRODUCT ( n n -- ) {: term:n off:n :}
    term ENV-TERM!
    term PARAM>FAM {: fam:n :}
-   fam TFAM-FLD-COUNT@ 1 - FIELD-I !
-   begin FIELD-I @ 0 >= while
-      fam TFAM-FLD-START@ FIELD-I @ + {: field:n :}
+   fam TFAM-FLD-COUNT@ {: count:n :}
+   count 0 ?do
+      fam TFAM-FLD-START@ count 1 - i - + {: field:n :}
       term ENV-TERM!
       field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-TERM
       off field TYPE-FIELD:SLOT@ + WALK-TASK -rot 0 TASK-PUSH
-      FIELD-I @ 1 - FIELD-I !
-   repeat ;
+   loop ;
 
 : WALK-ONE ( n n -- ) {: term0:n off:n :}
    term0 T-RES {: term:n :}
@@ -370,23 +365,30 @@ variable FIELD-I
    verdict -1 = if a u MAKE exit then
    a u EMPTY ;
 
-\ SNAP-RESET ( -- ) : the capture seam's job for this family - put all thirteen
-\ bases back on their baked boot buffers and every cap back at its init, so an image
-\ carries neither a grown mmap address nor a window DATA address. Every counter
-\ these arenas are filled through is rewound per certificate by MAKE, so nothing
-\ live is lost. This is checker.f DECOUPLED-ARENA-SNAP-RESET's discipline for the
-\ producer, reached through REG-CERT-SNAP-XT because this file loads after it.
+\ SNAP-RESET ( -- ) : the certificate is dead when REG-CERT-SNAP-XT runs.
+\ Empty its boot buffers before capture and reset their cursors with the bases:
+\ MAKE rebuilds every row for the next definition. No certificate scratch or
+\ grown mmap address belongs in the image.
 : SNAP-RESET ( -- )
    BUF-SNAP-RESET
-   DATA-BOOT DATA-P !              DATA-INIT DATA-CAP !
-   ENV-BOOT ENV-P !                ENV-INIT ENV-CAP !
-   GUARD-OFF-BOOT GUARD-OFF-P !    GUARD-TAG-BOOT GUARD-TAG-P !
-   GUARD-LIM-BOOT GUARD-LIM-P !    GUARD-INIT GUARD-CAP !
-   TASK-KIND-BOOT TASK-KIND-P !    TASK-A-BOOT TASK-A-P !
-   TASK-B-BOOT TASK-B-P !          TASK-C-BOOT TASK-C-P !
-   TASK-INIT TASK-CAP !
-   FETCH-KEY-BOOT FETCH-KEY-P !    FETCH-OFF-BOOT FETCH-OFF-P !
-   FETCH-LEN-BOOT FETCH-LEN-P !    FETCH-INIT FETCH-CAP ! ;
+   DATA-P DATA-BOOT DATA-INIT ARENA-SNAP-BOOT
+   DATA-INIT DATA-CAP ! 0 DATA-N !
+   ENV-P ENV-BOOT ENV-INIT ARENA-SNAP-BOOT
+   ENV-INIT ENV-CAP ! 0 ENV-OWNER !
+   GUARD-OFF-P GUARD-OFF-BOOT GUARD-INIT ARENA-SNAP-BOOT
+   GUARD-TAG-P GUARD-TAG-BOOT GUARD-INIT ARENA-SNAP-BOOT
+   GUARD-LIM-P GUARD-LIM-BOOT GUARD-INIT ARENA-SNAP-BOOT
+   GUARD-INIT GUARD-CAP ! 0 GUARD-N !
+   TASK-KIND-P TASK-KIND-BOOT TASK-INIT ARENA-SNAP-BOOT
+   TASK-A-P TASK-A-BOOT TASK-INIT ARENA-SNAP-BOOT
+   TASK-B-P TASK-B-BOOT TASK-INIT ARENA-SNAP-BOOT
+   TASK-C-P TASK-C-BOOT TASK-INIT ARENA-SNAP-BOOT
+   TASK-INIT TASK-CAP ! 0 TASK-N !
+   FETCH-KEY-P FETCH-KEY-BOOT FETCH-INIT ARENA-SNAP-BOOT
+   FETCH-OFF-P FETCH-OFF-BOOT FETCH-INIT ARENA-SNAP-BOOT
+   FETCH-LEN-P FETCH-LEN-BOOT FETCH-INIT ARENA-SNAP-BOOT
+   FETCH-INIT FETCH-CAP ! 0 FETCH-N !
+   0 HAS-VALID ! 0 CHECKS ! ;
 
 
 \ One-shot install seam: a quotation is a compile-time construct, so the full

@@ -61,8 +61,8 @@ public
 7103 constant E-SCHEMA-BAD
 
 \ --- node record layout (interleaved cell arena, one grow buffer).
-\ Bit i in a PTR-MASK marks slot i as a relocating pointer. Schema records
-\ contain only scalar ids/codes, so both masks are zero.
+\ Schema records contain only scalar ids/codes, so their arena needs no
+\ pointer relocation.
 private
 
 0 cells constant SCH.TAG-OFF
@@ -73,31 +73,12 @@ private
 public
 
 4 cells constant SCH-REC
-CELL constant SCH-REC-ALIGN
-0 constant SCH-REC-PTR-MASK
-
 private
 
 : SCH.TAG ( ptr a -- ptr a ) SCH.TAG-OFF + ;
 : SCH.A ( ptr a -- ptr a ) SCH.A-OFF + ;
 : SCH.B ( ptr a -- ptr a ) SCH.B-OFF + ;
 : SCH.C ( ptr a -- ptr a ) SCH.C-OFF + ;
-
-: SCH-LAYOUT= ( n n -- )
-   <> if s" type-schema: layout drift" CORE-LAYOUT-RC die then ;
-
-SCH.TAG-OFF 0 cells SCH-LAYOUT=
-SCH.A-OFF 1 cells SCH-LAYOUT=
-SCH.B-OFF 2 cells SCH-LAYOUT=
-SCH.C-OFF 3 cells SCH-LAYOUT=
-SCH-REC 4 cells SCH-LAYOUT=
-SCH-REC-ALIGN CELL SCH-LAYOUT=
-SCH-REC SCH-REC-ALIGN mod 0 SCH-LAYOUT=
-SCH-REC-PTR-MASK 0 SCH-LAYOUT=
-0 SCH.TAG SCH.TAG-OFF SCH-LAYOUT=
-0 SCH.A SCH.A-OFF SCH-LAYOUT=
-0 SCH.B SCH.B-OFF SCH-LAYOUT=
-0 SCH.C SCH.C-OFF SCH-LAYOUT=
 
 4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
@@ -306,22 +287,11 @@ private
 public
 
 2 cells constant SCH-RBF-REC
-CELL constant SCH-RBF-REC-ALIGN
-0 constant SCH-RBF-REC-PTR-MASK
-
 private
 
 : SCHRB.N ( ptr a -- ptr a ) SCHRB.N-OFF + ;
 : SCHRB.ROOTN ( ptr a -- ptr a ) SCHRB.ROOTN-OFF + ;
 
-SCHRB.N-OFF 0 cells SCH-LAYOUT=
-SCHRB.ROOTN-OFF 1 cells SCH-LAYOUT=
-SCH-RBF-REC 2 cells SCH-LAYOUT=
-SCH-RBF-REC-ALIGN CELL SCH-LAYOUT=
-SCH-RBF-REC SCH-RBF-REC-ALIGN mod 0 SCH-LAYOUT=
-SCH-RBF-REC-PTR-MASK 0 SCH-LAYOUT=
-0 SCHRB.N SCHRB.N-OFF SCH-LAYOUT=
-0 SCHRB.ROOTN SCHRB.ROOTN-OFF SCH-LAYOUT=
 
 16 constant SCH-RBF-CAP-INIT
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
@@ -408,5 +378,13 @@ public
 : SCHEMA-SNAPSHOT-PERSIST ( -- )
    SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
    SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
+
+: UNIT-STATE-ROOTS ( [ ptr u8 n -- ] -- ) {: visit :}
+   SCH-A-P BYTE-VIEW CELL visit execute
+   SCH-CAP-V BYTE-VIEW CELL visit execute
+   SCH-N BYTE-VIEW CELL visit execute
+   SCH-ROOT-P BYTE-VIEW CELL visit execute
+   SCH-ROOT-CAP-V BYTE-VIEW CELL visit execute
+   SCH-ROOT-N BYTE-VIEW CELL visit execute ;
 
 ;package

@@ -97,17 +97,10 @@
 \ and collapsing the two would make a contract undeclarable before the code it
 \ describes exists.
 \
-\ IDENTITY. NEFF:DIGEST is SHA-256 over the canonical preimage: the
-\ domain-separation tag, the schema version, and one eight-byte slot per field in
-\ declaration order. The per-family codes below are stable wire codes: a variant
-\ may be added to a family, but an existing variant's code may never be
-\ renumbered without bumping SCHEMA.
-\
 \ FORGERY. `routine` is a public family, so its generated MAKE can assemble
 \ thirteen field values that never passed the checked constructor, and
 \ `placeseq` likewise can assemble a cell that is not a list at all. Every word
-\ here whose result carries identity or a decision - VALIDATE, SAME?, ENCODE,
-\ DIGEST, the derived interface, preserved and writable sets, RETURNS?,
+\ here whose result carries identity or a decision - VALIDATE, SAME?, the derived interface, preserved and writable sets, RETURNS?,
 \ CHECK-SLOT, and each of the list readers - revalidates its input first. The
 \ plain field readers do not: they only project a value the caller holds.
 \
@@ -128,7 +121,6 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/native/machine.f
 
 package NEFF
@@ -152,8 +144,7 @@ STRUCTURE fprs DERIVE eq
 \ two kinds and the closed family says so, which is what makes every reader of a
 \ position answer for both: a general register, or a slot of the caller's data
 \ stack. The two codes are stable wire codes - they are the kind bit of the
-\ packing below, so they ride in the digest - and neither may be renumbered
-\ without bumping SCHEMA.
+\ packing below.
 ENUM pkind DERIVE eq
    gpr
    dslot
@@ -178,8 +169,7 @@ ENUM pkind DERIVE eq
 \ disagree - exactly what making the interface ordered was for. Packing the kind
 \ into the element makes a place one value with one spelling: the packing stays
 \ canonical because every bit past the last position is zero, so one list has
-\ exactly one cell and NEFF:DIGEST, which stores that cell, agrees with SAME?
-\ rather than approximating it. The cost is two positions: ten instead of the
+\ exactly one cell. The cost is two positions: ten instead of the
 \ twelve a five-bit element held.
 STRUCTURE placeseq DERIVE eq
    FIELD bits n
@@ -201,8 +191,7 @@ STRUCTURE placeseq DERIVE eq
 \              A contract may still name no position at all, which is how a test
 \              fixture says it has no opinion about an interface it is not about.
 \
-\ The two codes are stable wire codes and ride in the digest; neither may be
-\ renumbered without bumping SCHEMA.
+
 ENUM conv DERIVE eq
    dstack
    register
@@ -269,8 +258,7 @@ STRUCTURE traits DERIVE eq
 \ ---- the routine contract ----------------------------------------------------
 \ Fields in declaration order, deepest stack field first. It does not DERIVE eq -
 \ a structure field is not a derivable role - so SAME? below is the hand-written
-\ field-by-field identity, and it is the equality the digest is proved to agree
-\ with. `conv` comes first because it is what says how to READ the two lists
+\ field-by-field identity. `conv` comes first because it is what says how to READ the two lists
 \ after it: a position means a register under one convention and a data-stack
 \ slot under the other, and an empty list means nothing at all without it.
 \ `gpr-arg` is the place each argument arrives in and `gpr-out` the place each
@@ -343,37 +331,6 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : T-BITS ( NEFF:traits -- n )   NEFF-TRAITS:UNMAKE ;
 : MK-S ( n -- NEFF:placeseq )     NEFF-PLACESEQ:MAKE ;
 : S-BITS ( NEFF:placeseq -- n )   NEFF-PLACESEQ:UNMAKE ;
-
-\ ---- stable wire codes -------------------------------------------------------
-\ One injective code per closed family. These fix the digest; see the header.
-: NZCV-CODE ( NEFF:nzcv -- n )
-   MATCH nzcv
-      untouched      OF 0 ENDOF
-      clobbered      OF 1 ENDOF
-      delivered      OF 2 ENDOF
-      read-preserved OF 3 ENDOF
-      read-clobbered OF 4 ENDOF
-   ;MATCH ;
-
-: LINK-CODE ( NEFF:link -- n )
-   MATCH link
-      preserved OF 0 ENDOF
-      clobbered OF 1 ENDOF
-      absent    OF 2 ENDOF
-   ;MATCH ;
-
-: CONTROL-CODE ( NEFF:control -- n )
-   MATCH control
-      returns   OF 0 ENDOF
-      tail-call OF 1 ENDOF
-      no-return OF 2 ENDOF
-   ;MATCH ;
-
-: CONV-CODE ( NEFF:conv -- n )
-   MATCH conv
-      dstack   OF 0 ENDOF
-      register OF 1 ENDOF
-   ;MATCH ;
 
 \ ---- per-field rules ---------------------------------------------------------
 
@@ -583,43 +540,6 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    z NEFF-NZCV:DELIVERED NEFF-NZCV:EQ or
    if E-NEFF-CONTROL throw then ;
 
-\ ---- canonical preimage ------------------------------------------------------
-\ Version 3: the two interface slots hold ordered lists of PLACES rather than of
-\ registers, so the same cell means something different than it did - a position
-\ is now six bits and one of them says whether the payload is a register or a
-\ data-stack slot - and the version says so instead of two schemas sharing one
-\ digest. Version 2 was the step before, where those slots became ordered lists
-\ rather than sets.
-\ Version 4: the contract states which convention its two interface lists are
-\ written in, so the preimage carries one more slot and it stands in front of
-\ them - the field that says how the next two are read. Two contracts that
-\ differed only in a convention nothing recorded used to digest the same.
-\ Version 5: a contract names the machine it is about, so the preimage carries
-\ one more slot holding that machine's mark - the fold over its declared facts,
-\ not the ordinal it happens to have been declared under, which would make one
-\ compiler's digests disagree with another's. Two contracts that differed only
-\ in the machine they were stated about used to digest the same.
-5 constant SCHEMA
-16 constant SLOTS
-0 constant SLOT-TAG
-1 constant SLOT-SCHEMA
-2 constant SLOT-CONV
-3 constant SLOT-GPR-IN
-4 constant SLOT-GPR-RES
-5 constant SLOT-GPR-CLOB
-6 constant SLOT-FPR-IN
-7 constant SLOT-FPR-RES
-8 constant SLOT-FPR-CLOB
-9 constant SLOT-NZCV
-10 constant SLOT-LINK
-11 constant SLOT-CONTROL
-12 constant SLOT-TRAITS
-13 constant SLOT-FRAME
-14 constant SLOT-DELTA
-15 constant SLOT-MACH
-
-SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
-PRE-BYTES CWORK-SPAN PRE u8
 
 public
 
@@ -979,31 +899,5 @@ public
    xsize ysize = and
    xdelta ydelta = and ;
 
-\ The canonical preimage. The bytes live in this module and stay valid until the
-\ next ENCODE call; DIGEST is the copy-free consumer.
-: ENCODE ( NEFF:routine -- ptr u8 n )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: cv:conv gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
-      l:link c:control t:traits size:n delta:n m:NMACH:mach :}
-   CDIGEST:TAG-A64-ROUTINE PRE SLOT-TAG CDIGEST:SLOT!
-   SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
-   cv CONV-CODE PRE SLOT-CONV CDIGEST:SLOT!
-   gi S-BITS PRE SLOT-GPR-IN CDIGEST:SLOT!
-   gr S-BITS PRE SLOT-GPR-RES CDIGEST:SLOT!
-   gc G-BITS PRE SLOT-GPR-CLOB CDIGEST:SLOT!
-   fi F-BITS PRE SLOT-FPR-IN CDIGEST:SLOT!
-   fr F-BITS PRE SLOT-FPR-RES CDIGEST:SLOT!
-   fc F-BITS PRE SLOT-FPR-CLOB CDIGEST:SLOT!
-   z NZCV-CODE PRE SLOT-NZCV CDIGEST:SLOT!
-   l LINK-CODE PRE SLOT-LINK CDIGEST:SLOT!
-   c CONTROL-CODE PRE SLOT-CONTROL CDIGEST:SLOT!
-   t T-BITS PRE SLOT-TRAITS CDIGEST:SLOT!
-   size PRE SLOT-FRAME CDIGEST:SLOT!
-   delta PRE SLOT-DELTA CDIGEST:SLOT!
-   m NMACH:MARK PRE SLOT-MACH CDIGEST:SLOT!
-   PRE PRE-BYTES ;
-
-: DIGEST ( NEFF:routine -- CDIGEST:digest )
-   ENCODE CDIGEST:COMPUTE ;
 
 ;package

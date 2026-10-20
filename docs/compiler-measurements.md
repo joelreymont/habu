@@ -1324,6 +1324,9 @@ engine built from this lane's head, pinned to cpu8 at load average 5.8:
 | publish | 7.2 | 7.2 | 7.6 |
 | **the chain, selection through publish** | **351.9** | **305.8** | **453.5** |
 
+The prune scan row records the former chain. Selection now omits those unread
+loads, and the prune pass and its timer have been removed.
+
 The chain's own row is not the sum of the rows inside it: 73.7, 74.2 and 74.2
 microseconds of it are not in any phase. That residue is nearly constant in the
 size of the body because it is per-word setup — creating the machine builder,
@@ -1402,15 +1405,14 @@ the form has no field for another. Selection fuses exactly where the transfer
 reaches that cell: the last store of a publish run, the first load of a
 take-back run, at the routine's two ends and at every call and trap site.
 
-Two passes had to learn the forms rather than being told about them.
 `regalloc-verify.f` re-derives the whole data-stack discipline from the module,
-so every move it reads is now the operation's own attribute plus whatever the
-transfer beside it carries; and `prune.f`, which removes a data-stack load
-nothing reads, hands that load's move back to the operation in front of it
-before dropping it — a fused form has nowhere to keep a move it does not
-transfer for. `: W ( -- n ) SRC 0 > if 5 else 5 then ;` is the smallest body
-that needs it, and without the hand-back it does not compile at all
-(`E-A64RAV-DKEEP`); `test/compiler/native-fused-moves.f` pins it.
+so every move it reads is the operation's own attribute plus whatever the
+transfer beside it carries. The former `prune.f` removed an unread load and
+handed its pointer move back to the preceding operation. Selection now decides
+which comparison a converted region will emit before residency asks for a load,
+so `: W ( -- n ) SRC 0 > if 5 else 5 then ;` never writes the unread load.
+`test/compiler/native-fused-moves.f` pins the behavior and the following DATA
+access; the validator still refuses an unread one (`E-A64RAV-DKEEP`).
 
 **What it removed.** The 1,967-word corpus of section 1, compiled at tier 1 by
 an engine built from this lane's head and by one built from its base:

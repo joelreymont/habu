@@ -3,7 +3,7 @@ title: "Locate the pre-verifier's malformed-input refusals"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T11:36:34.841716+02:00\""
+created-at: "2026-10-01T11:36:34.841716+02:00"
 closed-at: "2026-10-14T19:48:36.691923+03:00"
 close-reason: b72c71f4 and 466dc36c replace reachable pre-verifier reader, lexer and statement dies with located throws and records; current verify-source.f has only internal BODY-APPEND die, and check-test-lib.f covers modes and paths.
 ---

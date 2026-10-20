@@ -3,7 +3,7 @@ title: Name every include I/O refusal that reaches the process exit
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T21:42:01.292202+03:00\""
+created-at: "2026-10-03T21:42:01.292202+03:00"
 closed-at: "2026-10-14T19:38:01.508365+03:00"
 close-reason: "Implemented in a670114b: every reachable include I/O exit writes one named line and preserves exit 74, with end-to-end refusal cases, focused suites and converged images. Include cycles are a separate task 270edec0."
 ---

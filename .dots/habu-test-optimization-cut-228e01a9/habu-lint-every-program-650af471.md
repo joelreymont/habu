@@ -3,7 +3,7 @@ title: Lint every program check.f accepts
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T10:16:55.382279+02:00\""
+created-at: "2026-10-02T10:16:55.382279+02:00"
 closed-at: "2026-10-14T19:41:03.068726+03:00"
 close-reason: "Implemented in 3f163ea0: check.f origin and lint stages use compatible source bounds and cleanup on failure, with end-of-buffer guard fixes; file/stdin size and cleanup cases plus focused suites passed."
 ---

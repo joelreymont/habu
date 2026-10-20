@@ -5,7 +5,6 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
 require tools/lint/text.f
-require tools/lint/json-writer.f
 require tools/checked-boundary-lint-core.f
 require src/lib/argv.f
 

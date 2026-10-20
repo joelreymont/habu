@@ -81,9 +81,9 @@ private
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
    c key 16 64 IR-TYPE:NEW ;
 
-: ATT-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena IR-ARENA:arena )
+: ATT-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
-   c key 16 64 IR-ATTR:NEW ;
+   c key 16 IR-ATTR:NEW ;
 
 : SRC-NEW ( IR-CTX:ctx IR-ID:ir-module-key -- IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key :}
@@ -141,17 +141,17 @@ private
 \ registry, a schema table holding all five opcodes, and an operation store with
 \ the requested ceilings. Every fixture starts here, so a fixture body differs
 \ only in what it then asks the store to do.
-: RIG ( IR-CTX:ctx n n n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
+: RIG ( IR-CTX:ctx n n n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx ocap:n vcap:n pcap:n :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
    c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
    c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
-   c key ATT-NEW {: ap:IR-ARENA:arena ar:IR-ARENA:arena :}
+   c key ATT-NEW {: ar:IR-ARENA:arena :}
    c key SRC-NEW {: sa:IR-ARENA:arena :}
    c sp sr key SCH-NEW {: qp:IR-ARENA:arena qr:IR-ARENA:arena :}
    c key ocap vcap pcap IR-OP:NEW {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c sp sr tp tr key qp qr SCH-ALL
-   key sp sr tp tr ap ar sa qr p v r ;
+   key sp sr tp tr ar sa qr p v r ;
 
 \ ---- the scenario vocabulary -------------------------------------------------
 \ Every append fixture stages one scenario. A scenario names an opcode and the
@@ -249,31 +249,31 @@ private
    {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena key:IR-ID:ir-module-key :}
    c sp sr key s" hir.value" IR-SYM:INTERN ;
 
-: STG-ATT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
-   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena key:IR-ID:ir-module-key s:n :}
+: STG-ATT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena ar:IR-ARENA:arena key:IR-ID:ir-module-key s:n :}
    s SC-ATN 0 ?do
       c sp sr key ATT-KEY
-      c ap ar key 42 IR-ATTR:INT
+      c ar key 42 IR-ATTR:INT
       IR-OP:ADD-ATTR
    loop ;
 
 \ Stage and append one scenario against the rigged module.
-: APPEND ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-op-id )
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena s:n :}
+: APPEND ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-op-id )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena s:n :}
    c sp sr key sa s STG-OPEN
    key s STG-VALS
    c tp tr key s STG-RES
-   c sp sr ap ar key s STG-ATT
+   c sp sr ar key s STG-ATT
    c p v r key qr tr ar sa IR-OP:END-OP ;
 
 \ ---- reading one appended operation back -------------------------------------
 : READ-BODY ( IR-CTX:ctx -- n n n n n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-ATTR APPEND {: o2:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-ATTR APPEND {: o2:IR-ID:ir-op-id :}
    r IR-OP:OPS
    v IR-OP:VALUES
    p IR-OP:POOL-CELLS
@@ -283,7 +283,7 @@ private
    p r key o2 0 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 0 =
    p r key o2 1 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 1 =
    p r key o2 0 IR-OP:ATTR@ IR-ID:ATTR-LOCAL
-      c ap ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL =
+      c ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL =
    p r key o2 0 IR-OP:ATTR-KEY@ IR-ID:SYMBOL-LOCAL
       c sp sr key ATT-KEY IR-ID:SYMBOL-LOCAL =
    r key o2 IR-OP:OPCODE@ IR-ID:SYMBOL-LOCAL
@@ -300,10 +300,10 @@ private
 : VALUE-BODY ( IR-CTX:ctx -- bool bool n bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-ADD APPEND {: o2:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-ADD APPEND {: o2:IR-ID:ir-op-id :}
    p r key o2 0 IR-OP:RESULT@ {: res:IR-ID:ir-value-id :}
    res IR-ID:VALUE-LOCAL 2 =
    v res IR-OP:VALUE-KIND@ IR--OP-DEF--KIND:OP-RESULT IR--OP-DEF--KIND:EQ
@@ -326,7 +326,7 @@ private
 : ARG-BODY ( IR-CTX:ctx -- n n bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c v tr key  key 3 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG
    {: a0:IR-ID:ir-value-id :}
    c v tr key  key 3 IR-ID:PACK-BLOCK  c tp tr key I64  1 IR-OP:MINT-ARG
@@ -346,7 +346,7 @@ private
 : FARG-BODY ( IR-CTX:ctx -- n bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c v tr key  key 2 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG
    {: a0:IR-ID:ir-value-id :}
    v IR-ARENA:FREEZE {: vv:IR-ARENA:view :}
@@ -361,7 +361,7 @@ private
 : ARGNEG-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
    k 1 = if
       c v tr key  other 0 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG drop
@@ -374,7 +374,7 @@ private
       c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  -1 IR-OP:MINT-ARG drop
    then
    k 4 = if
-      c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+      c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
       v key  key 0 IR-ID:PACK-VALUE  IR-OP:VALUE-BLOCK@ drop
    then
    k 5 = if
@@ -388,7 +388,7 @@ private
 : ARGCAP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 16 1 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG drop
    c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  1 IR-OP:MINT-ARG drop ;
 
@@ -416,8 +416,8 @@ private
 : SPAN-BODY ( IR-CTX:ctx -- n n bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
    sa  r key o0 IR-OP:SPAN@  IR-SOURCE:SPAN-CK
    r key o0 IR-OP:SPAN@ IR-SOURCE:SPAN-START
    r key o0 IR-OP:SPAN@ IR-SOURCE:SPAN-LEN
@@ -434,8 +434,8 @@ private
 : SUCC-BODY ( IR-CTX:ctx -- n n bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-BR APPEND {: o0:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-BR APPEND {: o0:IR-ID:ir-op-id :}
    r o0 IR-OP:SUCCESSORS
    r o0 IR-OP:RESULTS
    p r key o0 0 IR-OP:SUCCESSOR@ IR-ID:BLOCK-LOCAL 0 = ;
@@ -450,11 +450,11 @@ private
 : TAIL-BODY ( n IR-CTX:ctx -- n )
    {: s:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r s APPEND {: o:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r s APPEND {: o:IR-ID:ir-op-id :}
    r o IR-OP:OPERANDS ;
 
 : TAIL-CASE ( -- )
@@ -466,8 +466,8 @@ private
 : VOID-BODY ( IR-CTX:ctx -- n n n )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-VOID APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-VOID APPEND drop
    r IR-OP:OPS
    v IR-OP:VALUES
    p IR-OP:POOL-CELLS ;
@@ -481,10 +481,10 @@ private
 : NEG-BODY ( n IR-CTX:ctx -- )
    {: s:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r s APPEND drop ;
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r s APPEND drop ;
 
 : NEG-RUN ( n -- )
    BND [: NEG-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -549,10 +549,10 @@ private
 : STG-ABANDON-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c sp sr key K-CONST OPC-SYM IR-OP:BEGIN-OP
    IR-OP:ABANDON
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    r IR-OP:OPS ;
 
 : STG-TWICE-RUN ( -- )   BND [: STG-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -578,10 +578,10 @@ private
 : IDX-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-ADD APPEND {: o:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-ADD APPEND {: o:IR-ID:ir-op-id :}
    k 1 = if p r key o 2 IR-OP:OPERAND@ drop then
    k 2 = if p r key o -1 IR-OP:OPERAND@ drop then
    k 3 = if r  key 3 IR-ID:PACK-OP  IR-OP:OPERANDS drop then
@@ -610,13 +610,13 @@ private
 : SWAP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    p IR-OP:OPS drop ;
 
 : SHAPE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c r 7 IR-ARENA:PUSH drop
    r IR-OP:OPS drop ;
 
@@ -640,9 +640,9 @@ private
 : FORGE-BODY ( n n n IR-CTX:ctx -- )
    {: off:n val:n k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    r IR-OP:OPS {: l:n :}
    c r p IR-OP:POOL-CELLS off val FORGE-ROW
    key l IR-ID:PACK-OP {: bad:IR-ID:ir-op-id :}
@@ -689,8 +689,8 @@ private
 : FVROW-BODY ( n n n IR-CTX:ctx -- )
    {: off:n val:n k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    v IR-OP:VALUES {: n0:n :}
    c v off val FORGE-VROW
    key n0 IR-ID:PACK-VALUE {: bad:IR-ID:ir-value-id :}
@@ -736,8 +736,8 @@ private
 : FKEY-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
    k 1 = if r other  key 0 IR-ID:PACK-OP  IR-OP:OPCODE@ drop then
    k 2 = if c sp sr tp tr key sa other FOREIGN-OPERAND then
@@ -771,7 +771,7 @@ private
 : FTAB-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
    k 1 = if
       c other SYM-NEW {: sp2:IR-ARENA:arena sr2:IR-ARENA:arena :}
@@ -786,9 +786,9 @@ private
    k 3 = if
       c sp sr key K-CONST OPC-SYM IR-OP:BEGIN-OP
       c tp tr key I64 IR-OP:ADD-RESULT
-      c other ATT-NEW {: ap2:IR-ARENA:arena ar2:IR-ARENA:arena :}
+      c other ATT-NEW {: ar2:IR-ARENA:arena :}
       c sp sr key ATT-KEY
-      c ap2 ar2 other 42 IR-ATTR:INT
+      c ar2 other 42 IR-ATTR:INT
       IR-OP:ADD-ATTR
    then
    k 4 = if
@@ -796,7 +796,7 @@ private
       c tp tr key I64 IR-OP:ADD-RESULT
       c other SYM-NEW {: sp2:IR-ARENA:arena sr2:IR-ARENA:arena :}
       c sp2 sr2 other ATT-KEY
-      c ap ar key 42 IR-ATTR:INT
+      c ar key 42 IR-ATTR:INT
       IR-OP:ADD-ATTR
    then
    c sa key A-SPAN IR-OP:SET-SPAN
@@ -812,8 +812,8 @@ private
 : FCTX-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    BND [: FCTX-KEY ;] IR-CTX:WITH-CONTEXT {: other:IR-ID:ir-module-key :}
    r other  key 0 IR-ID:PACK-OP  IR-OP:OPCODE@ drop ;
 
@@ -858,9 +858,9 @@ private
 : OVF-BODY ( n IR-CTX:ctx -- n n n n )
    {: k:n c:IR-CTX:ctx :}
    c k OVF-CAPS RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   k 3 <> if c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop then
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   k 3 <> if c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop then
    k 3 = if
       c sp sr key K-CALL OPC-SYM IR-OP:BEGIN-OP
       c sa key A-SPAN IR-OP:SET-SPAN
@@ -870,7 +870,7 @@ private
       c sp sr key sa S-SEED STG-OPEN
       key S-SEED STG-VALS
       c tp tr key S-SEED STG-RES
-      c sp sr ap ar key S-SEED STG-ATT
+      c sp sr ar key S-SEED STG-ATT
    then
    \ `catch` restores the DEPTH of both stacks and never their contents, so the
    \ nine cells the caught body was handed come back stale; the locals bound
@@ -881,13 +881,13 @@ private
    v IR-OP:VALUES {: vals:n :}
    p IR-OP:POOL-CELLS {: pool:n :}
    k 2 = if
-      c key sp sr tp tr ap ar sa qr p v r S-VOID APPEND drop
+      c key sp sr tp tr ar sa qr p v r S-VOID APPEND drop
       r IR-OP:OPS ops 1+ T=
       v IR-OP:VALUES vals T=
       p IR-OP:POOL-CELLS pool T=
    then
    k 3 = if
-      c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+      c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
       r IR-OP:OPS ops 1+ T=
       v IR-OP:VALUES vals 1+ T=
       p IR-OP:POOL-CELLS pool 1+ T=
@@ -925,19 +925,19 @@ private
 
 : SSA-RECOVER-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c 8 8 64 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    c sp sr key sa S-SSA STG-OPEN
    key S-SSA STG-VALS
    c tp tr key S-SSA STG-RES
-   c sp sr ap ar key S-SSA STG-ATT
+   c sp sr ar key S-SSA STG-ATT
    c p v r key qr tr ar sa [: OVF-TRY ;] catch {: rc:n :}
    2drop 2drop 2drop 2drop drop
    rc E-IR-OP-SSA T=
    r IR-OP:OPS 2 T=
    v IR-OP:VALUES 2 T=
-   c key sp sr tp tr ap ar sa qr p v r S-ADD APPEND {: op:IR-ID:ir-op-id :}
+   c key sp sr tp tr ar sa qr p v r S-ADD APPEND {: op:IR-ID:ir-op-id :}
    r IR-OP:OPS 3 T=
    v IR-OP:VALUES 3 T=
    p r key op 0 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 0 T=
@@ -951,10 +951,10 @@ private
 : FZ-BODY ( IR-CTX:ctx -- n n n n bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
-   c key sp sr tp tr ap ar sa qr p v r S-ADD APPEND {: o2:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ar sa qr p v r S-ADD APPEND {: o2:IR-ID:ir-op-id :}
    p IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
    v IR-ARENA:FREEZE {: vv:IR-ARENA:view :}
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
@@ -976,10 +976,10 @@ private
 : FZ2-BODY ( IR-CTX:ctx -- n n n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
-   c key sp sr tp tr ap ar sa qr p v r S-BR-ATTR APPEND {: o1:IR-ID:ir-op-id :}
-   c ap ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL {: at:n :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
+   c key sp sr tp tr ar sa qr p v r S-BR-ATTR APPEND {: o1:IR-ID:ir-op-id :}
+   c ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL {: at:n :}
    c sp sr key ATT-KEY IR-ID:SYMBOL-LOCAL {: ak:n :}
    c tp tr key I64 IR-ID:TYPE-LOCAL {: ty:n :}
    c sp sr key K-BR OPC-SYM IR-ID:SYMBOL-LOCAL {: br:n :}
@@ -1004,8 +1004,8 @@ private
 : FZ3-BODY ( IR-CTX:ctx -- n bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
    p IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
    v IR-ARENA:FREEZE {: vv:IR-ARENA:view :}
    r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
@@ -1128,13 +1128,13 @@ variable MEMO-READERS?
 : FZ-RETIRED-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop
    p IR-ARENA:FREEZE drop
    v IR-ARENA:FREEZE drop
    r IR-ARENA:FREEZE drop
    k 1 = if r IR-OP:OPS drop then
-   k 2 = if c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop then ;
+   k 2 = if c key sp sr tp tr ar sa qr p v r S-SEED APPEND drop then ;
 
 : FZ-RETIRED-RUN ( n -- )
    BND [: FZ-RETIRED-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1143,7 +1143,7 @@ variable MEMO-READERS?
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
-   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    r ;
 
 : TD-READ ( -- )

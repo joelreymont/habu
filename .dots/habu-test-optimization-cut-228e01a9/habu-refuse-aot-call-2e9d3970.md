@@ -3,7 +3,7 @@ title: Refuse aot-call-report library misuse by throw
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T17:42:16.198912+03:00\""
+created-at: "2026-10-03T17:42:16.198912+03:00"
 closed-at: "2026-10-14T19:34:45.588668+03:00"
 close-reason: "Implemented in e02412bb: library misuse throws named errors and the CLI maps them to documented exits; misuse cases for output, path, number, input and read passed."
 ---

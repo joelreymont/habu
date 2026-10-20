@@ -26,6 +26,7 @@ require src/habu/layout.f
 require src/habu/sites.f
 require src/habu/terminal-call.f
 require src/core/does-clause.f
+require src/lib/sort.f
 
 package AOT-CAPTURE
 
@@ -109,16 +110,14 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 \ ascending order and an insert whose probe chain already holds a record with the
 \ same xt does nothing, so an xt's entry is the first index that ever carried it.
 \
-\ THE ANSWER IS VERIFIED, NEVER TRUSTED. A slot holds a record index and the probe
-\ re-reads that record's live [0] before accepting it, so a wrong slot can only
-\ make the probe walk on - it can never rename a call site. Staleness is refused
-\ rather than tolerated: the build stamps the ndict it indexed and every lookup
+\ A slot holds a record index and the probe re-reads that record's live [0]
+\ before accepting it. The build stamps the ndict it indexed and every lookup
 \ checks it, so an index built for a different dictionary - or not built at all,
 \ since the stamp starts at 0 and ndict never is - ends the build instead of
 \ quietly reporting live call sites unresolved.
 DICT-CAP 2 * constant ACAP-TIDX-SLOTS          \ 2x the dictionary bound, so the load stays at
 create ACAP-TIDX ACAP-TIDX-SLOTS 4 * allot     \ or under half and a probe always meets an empty
-variable ACAP-TIDX-N                           \ slot. u32 slots: 0 empty, else record index + 1
+                                              \ slot. u32 slots: 0 empty, else record index + 1
 variable ACAP-TIDX-ND                          \ the ndict this index was built for (0 = none)
 variable ACAP-TS                               \ probe cursor
 
@@ -132,15 +131,6 @@ variable ACAP-TS                               \ probe cursor
 : ACAP-TIDX-HASH ( n -- n ) {: xt:n :}
    xt 2 rshift 2654435761 *  $FFFFFFFF and {: g:n :}
    g 16 rshift  g xor  ACAP-TIDX-SLOTS 1 - and ;
-
-\ The linear reference the index replaces. It is the specification of the answer
-\ and ACAP-TIDX-PROVE below holds the index against it on the live dictionary at
-\ every capture; nothing on the capture's hot path calls it.
-: ACAP-TGT>SCAN ( n -- n ) {: tgt:n :}
-   ndict@ 0 ?do
-      i AOT-REC AOT-RXT tgt = if i unloop exit then
-   loop
-   -1 ;
 
 : ACAP-TGT>REC ( n -- n ) {: tgt:n :}
    ndict@ ACAP-TIDX-ND @ <> if
@@ -162,7 +152,6 @@ variable ACAP-TS                               \ probe cursor
       ACAP-TS @ ACAP-TIDX@ {: e:n :}
       e 0= if
          k 1+ ACAP-TS @ ACAP-TIDX!
-         ACAP-TIDX-N @ 1+ ACAP-TIDX-N !
          unloop exit
       then
       e 1- AOT-REC AOT-RXT xt = if unloop exit then     \ a lower index already carries this xt
@@ -176,53 +165,8 @@ variable ACAP-TS                               \ probe cursor
       s" aot-capture: dictionary above the target index bound" 74 die
    then
    ACAP-TIDX-SLOTS 0 ?do 0 i ACAP-TIDX! loop
-   0 ACAP-TIDX-N !
    ndict@ 0 ?do i ACAP-TIDX-INS loop
    ndict@ ACAP-TIDX-ND ! ;
-
-variable ACAP-TIDX-MM                          \ index/scan disagreement count
-\ A value no record carries must answer -1, and the witness's own absence is
-\ established by the linear scan rather than assumed.
-: ACAP-TIDX-ABSENT ( n -- ) {: w:n :}
-   w ACAP-TGT>SCAN 0 >= if
-      s" aot-capture: target-index absence witness is a live record" 74 die
-   then
-   w ACAP-TGT>REC 0 >= if 1 ACAP-TIDX-MM +! then ;
-
-\ Some ordinary record's code entry. A package record's [0] is a raw WID, not an
-\ entry, so the near-miss witness below has to come from an ordinary one to be
-\ off instruction alignment rather than off nothing.
-: ACAP-NO-ORDINARY ( -- )
-   s" aot-capture: dictionary holds no ordinary record" 74 die ;
-: ACAP-TIDX-CODE-XT ( -- n )
-   ndict@ 0 ?do
-      i AOT-REC AOT-RWID -1 <> if i AOT-REC AOT-RXT unloop exit then
-   loop
-   ACAP-NO-ORDINARY ;
-
-\ THE PROOF IS O(ndict) AND IT IS NOT A SAMPLE. For every record k the index must
-\ answer some j with xt(j) = xt(k) and j <= k. Take the smallest index m carrying
-\ a given xt: its answer j obeys j <= m and xt(j) = xt(m), and m is the smallest
-\ index with that xt, so j >= m and therefore j = m. The scan returns exactly m,
-\ so agreeing on every record's OWN xt is agreeing on every xt there is - which is
-\ why no quadratic cross-check is run and none is needed. The two witnesses close
-\ the other half of the answer, the absent one.
-: ACAP-TIDX-PROVE ( -- )
-   0 ACAP-TIDX-MM !
-   ndict@ 0 ?do
-      i AOT-REC AOT-RXT {: xt:n :}
-      xt ACAP-TGT>REC {: j:n :}
-      j 0 < if 1 ACAP-TIDX-MM +! else
-         j i > if 1 ACAP-TIDX-MM +! then
-         j AOT-REC AOT-RXT xt <> if 1 ACAP-TIDX-MM +! then
-      then
-   loop
-   AOT-DATA-N ACAP-TIDX-ABSENT                          \ far: no code entry is a DATA address
-   ACAP-TIDX-CODE-XT 2 + ACAP-TIDX-ABSENT               \ near: a real entry, off alignment
-   ACAP-TIDX-MM @ 0= 0= if
-      s" aot-capture: TARGET INDEX MISMATCH count=" type ACAP-TIDX-MM @ . cr
-      s" aot-capture: target index disagrees with the dictionary scan" 74 die
-   then ;
 
 \ --- deduped name pool: entries are [len:u8][name bytes]; ADD returns the entry
 \ byte offset (points at the len byte). Records and call-reloc rows both reference
@@ -236,17 +180,6 @@ variable ACAP-EQ                                             \ pool-compare mism
       loop
    else 1 ACAP-EQ ! then
    ACAP-EQ @ 0= ;
-variable ACAP-PP                                             \ pool scan cursor
-\ The linear reference the pool index replaces. ACAP-NIDX-SELFTEST holds the index
-\ against it; nothing on the capture's hot path calls it.
-: ACAP-POOL-SCAN ( ptr u8 n -- n ) {: a:ptr u:n :}           \ entry off, or -1 if absent
-   0 ACAP-PP !
-   begin ACAP-PP @ AOT-NAMES-LEN @ < while
-      a u ACAP-PP @ ACAP-POOL-EQ? if ACAP-PP @ exit then
-      AOT-NAMES-BUF@ ACAP-PP @ + c@ 1+ ACAP-PP @ + ACAP-PP !
-   repeat
-   -1 ;
-
 \ --- the pool's index: name bytes -> entry offset -----------------------------
 \ SAME DISEASE, SAME CURE, ONE EXTRA FACT. The pool is DEDUPED - ACAP-POOL-ADD
 \ asks before every add and only writes on absence - so a name has at most one
@@ -263,11 +196,8 @@ variable ACAP-PP                                             \ pool scan cursor
 \ name from somewhere else must re-derive that; the refusal below is what it meets
 \ if it does not.
 \
-\ THE POOL AND ITS INDEX ARE CLEARED BY ONE WORD. Several places empty the pool -
-\ the capture's own reset and both ends of each build-time self-test below - and an
-\ index left holding offsets into emptied bytes would answer a hit the scan cannot
-\ see. So no site sets AOT-NAMES-LEN to zero any more; ACAP-POOL-RESET is the only
-\ writer of the pair, and the coupling is structural rather than remembered.
+\ THE POOL AND ITS INDEX ARE CLEARED BY ONE WORD. An index left holding offsets
+\ into emptied bytes could answer a stale hit. ACAP-POOL-RESET owns both resets.
 DICT-CAP 2 * constant ACAP-NIDX-SLOTS
 create ACAP-NIDX ACAP-NIDX-SLOTS 4 * allot                   \ u32: 0 empty, else entry off + 1
 variable ACAP-NIDX-N                                         \ entries in the pool
@@ -303,23 +233,6 @@ variable ACAP-NS                                             \ probe cursor
       ACAP-NIDX-STEP
    loop
    -1 ;
-
-\ Every entry the pool holds must be the answer the index gives for its own
-\ bytes. It is one probe per entry, so it runs over the REAL pool at the end of
-\ every capture rather than over a fixture - which is where the thousands of names
-\ that actually share a slot are.
-variable ACAP-NIDX-PM                                        \ pool-proof mismatch count
-: ACAP-NIDX-PROVE ( -- )
-   0 ACAP-NIDX-PM !  0 ACAP-PP !
-   begin ACAP-PP @ AOT-NAMES-LEN @ < while
-      AOT-NAMES-BUF@ ACAP-PP @ 1+ +  AOT-NAMES-BUF@ ACAP-PP @ + c@
-      ACAP-POOL-FIND ACAP-PP @ <> if 1 ACAP-NIDX-PM +! then
-      AOT-NAMES-BUF@ ACAP-PP @ + c@ 1+ ACAP-PP @ + ACAP-PP !
-   repeat
-   ACAP-NIDX-PM @ 0= 0= if
-      s" aot-capture: POOL INDEX MISMATCH count=" type ACAP-NIDX-PM @ . cr
-      s" aot-capture: pool index does not answer its own entries" 74 die
-   then ;
 
 : ACAP-NIDX+ ( n -- ) {: off:n :}                            \ index an entry ACAP-POOL-ADD just wrote
    ACAP-NIDX-N @ DICT-CAP >= if
@@ -430,14 +343,12 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ EM-AOT-REGISTER-RECS expands each compact record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
 \ (flags nibble, DNAME-MIN-IN byte, DKIND pair, wid, name length, and the
-\ [24..40) inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
-\ pass then proves the expansion is byte-identical. The wid is a full u32
+\ [24..40) inline-name zero padding) are reconstructed at boot. The wid is a full u32
 \ (matching the verbatim [40] cell's checked u32 domain) so wordlist IDs above
 \ 255 round-trip through the seed -- the field was a truncating u8. The min-in
 \ byte (record [16] bits 52-59, dot habu-habu-certified-words-84e84eaf) rides
 \ the former pad byte so certified arity survives the seed round-trip. ---
 : ACAP-CREC-DST ( n -- ptr u8 ) AOT-CREC-ROW * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
-: ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * +  AOT-REC-BUF@ swap + ;
 
 \ A 48B record's EXT bit, read off the copy rather than the live dictionary.
 : ACAP-REC-EXT? ( ptr u8 -- bool ) {: v:ptr :}
@@ -471,26 +382,17 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ from a tree with one more package than its host moved every wid field, 3305
 \ bytes of one image, for a difference in the HOST and none in the tree. The
 \ three fields are here: an ordinary record's [40], and a package row's [0] and
-\ [8]. ACAP-EXPAND-REC inverts this against the host's W0, because the proof it
-\ feeds compares with the host's own 48-byte record; the seed inverts it against
-\ the target's WIDN, which is the whole point of storing an offset.
+\ [8]. The seed rebases them against the target's WIDN.
 \ The protected-wordlist rows (ACAP-PWIN-CAPTURE) are relative too, and
 \ zero-based: that table is a list of ids with no marker value to collide with.
 : ACAP-REL-WID ( n -- n ) {: w:n :}
    w 0= if 0 exit then
    w AOT-WID-W0 @ - WID-REL-BASE + ;
 
-: ACAP-ABS-WID ( n -- n ) {: r:n :}               \ ... in the capturing host's own space
-   r 0= if 0 exit then
-   r WID-REL-BASE - AOT-WID-W0 @ + ;
-
 \ A package row's first two cells hold its public and private WID where an
-\ ordinary record holds a code span, so one predicate decides both directions.
+\ ordinary record holds a code span, so one predicate handles the package fields.
 : ACAP-WID-FIELD ( n bool -- n ) {: w:n pkg:bool :}
    pkg if w ACAP-REL-WID else w then ;
-
-: ACAP-ABS-WID-FIELD ( n bool -- n ) {: r:n pkg:bool :}
-   pkg if r ACAP-ABS-WID else r then ;
 
 : ACAP-?WID ( ptr u8 n -- ) {: v:ptr w:n :}
    w ACAP-WID-IN? if exit then
@@ -862,9 +764,13 @@ variable ACAP-BP
 : ACAP-POOL$ ( n -- ptr u8 n ) {: noff:n :}
    AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@ ;
 
-: ACAP-XTOFF-ENTRY? ( n -- bool ) {: off:n :}
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + 4 + ACAP-W32@ {: tgt:n :}
+: ACAP-XTOFF-ENTRY? ( n -- bool )
+   {: off:n :}
+   AOT-WINDOW:XTOFF-N @ {: count:n :}
+   count 0= if false exit then
+   AOT-WINDOW:XTOFF-BUF@ {: rows:ptr :}
+   count 0 ?do
+      rows i AOT-WINDOW:XTOFF-ROW * + 4 + ACAP-W32@ {: tgt:n :}
       tgt AOT-WINDOW:XTOFF-KIND-MASK and 0= if
          tgt AOT-WINDOW:XTOFF-VALUE-MASK and off 1+ = if true unloop exit then
       then
@@ -913,6 +819,13 @@ variable ACAP-BP
 \ which test/compiler/native-string.f forbids outright, or a fixed engine cell.
 \ The drift guard is the build's own refusal, "native-build: literal importer
 \ missing", the moment the entry stops matching.
+\ The FILE cache resolves TFAM:FILE-REF-RESET/USE,
+\ TFAM:FILE-IDENTITY$/FILE-FIND, and
+\ CHECKER-REG:FILE-CON-RESET/USE after capture without reloading their sources.
+\ The definition cache binds and clears CHECKER-REG's publication observer
+\ through its public names after the checker source has been captured.
+\ The FILE origin codec and cache resolve their owner callbacks by name when
+\ they replay or neutralize a captured source window.
 \ DEFER-UNSET - habu2.f C-DEFER-FIND-UNSET resolves this global by name whenever
 \ source declares a new defer. The compiler embeds the lookup string in its own
 \ code, outside the capture's named-site tables; without this record even
@@ -941,7 +854,37 @@ variable ACAP-BP
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
    a u s" IMPORT-ROWS" CORE-STR=CI
    a u s" ATTACH-SEGMENTS" CORE-STR=CI or
-   k s" NSTR" ACAP-KEEP-PKG? and ;
+   k s" NSTR" ACAP-KEEP-PKG? and if true exit then
+   a u s" FILE-REF-RESET" CORE-STR=CI
+   a u s" FILE-REF-USE" CORE-STR=CI or
+   a u s" FILE-IDENTITY$" CORE-STR=CI or
+   a u s" FILE-FIND" CORE-STR=CI or
+   k s" TFAM" ACAP-KEEP-PKG? and if true exit then
+   a u s" FILE-CON-RESET" CORE-STR=CI
+   a u s" FILE-CON-USE" CORE-STR=CI or
+   a u s" PUBLICATION-USE" CORE-STR=CI or
+   a u s" PUBLICATION-CLEAR" CORE-STR=CI or
+   k s" CHECKER-REG" ACAP-KEEP-PKG? and if true exit then
+   a u s" FILE-MARK" CORE-STR=CI
+   a u s" FILE-ROWS" CORE-STR=CI or
+   a u s" FILE-IMPORT" CORE-STR=CI or
+   a u s" FILE-RESTORE" CORE-STR=CI or
+   a u s" FILE-HOOK?" CORE-STR=CI or
+   a u s" FILE-PENDING?" CORE-STR=CI or
+   a u s" FILE-STATE-SPANS" CORE-STR=CI or
+   a u s" INSTALL" CORE-STR=CI or
+   k s" ENGINE-ORIGIN-EARLY" ACAP-KEEP-PKG? and if true exit then
+   a u s" FILE-ROWS" CORE-STR=CI
+   a u s" FILE-IMPORT" CORE-STR=CI or
+   a u s" FILE-STATE" CORE-STR=CI or
+   a u s" FILE-BOUNDARY" CORE-STR=CI or
+   a u s" FILE-DRAIN" CORE-STR=CI or
+   a u s" FILE-RESTORE" CORE-STR=CI or
+   a u s" FILE-ACCEPT-USE" CORE-STR=CI or
+   a u s" FILE-ACCEPT-CLEAR" CORE-STR=CI or
+   a u s" FILE-STATE-SPANS" CORE-STR=CI or
+   a u s" INSTALL" CORE-STR=CI or
+   k s" ENGINE-ORIGIN" ACAP-KEEP-PKG? and ;
 
 \ THE WHITEBOX IMAGE KEEPS EVERY NAME, and it is the same switch the seal pass
 \ takes (src/core/internal-mark.f IMK-WHITEBOX?): test/whitebox-engine.f sets
@@ -1010,6 +953,28 @@ DYNAMIC-BUFFER ACAP-NAMED-STORAGE n
    AOT-REC-MAX ACAP-NAMED-STORAGE-RESERVE
    ACAP-NAMED-STORAGE ;
 variable ACAP-REC-ALL
+
+\ Number named capture records once, after the name and reachability passes.
+\ Dictionary indices first pass through ACAP-DICT>CAP, which excludes retired
+\ records; this table then excludes stripped private records.
+variable SH-SHIP-N
+DYNAMIC-BUFFER SH-ROWS n
+: SH-NUMBER ( -- )
+   ACAP-REC-ALL @ {: n:n :}
+   n SH-ROWS-RESERVE
+   0 SH-SHIP-N !
+   n 0 ?do
+      i ACAP-NAMED-BIT @ 0<> if
+         SH-SHIP-N @ i SH-ROWS !  1 SH-SHIP-N +!
+      else
+         -1 i SH-ROWS !
+      then
+   loop ;
+
+: SH-SHIPPED ( n -- n )
+   ACAP-DICT>CAP {: k:n :}
+   k 0 < if -1 exit then
+   k SH-ROWS @ ;
 
 \ --- the capture-side reach model ---------------------------------------------
 \ ACAP-NAMED-BIT says which records retain a dictionary row. It is not enough
@@ -1483,102 +1448,6 @@ $14000000 constant ACAP-GBR-TERM
    ACAP-REC-ALL @ 0 ?do
       i ACAP-COMPACT-ONE
    loop ;
-
-\ Expand a compact AOT-CREC-ROW record to a 48B dict record image -- the field
-\ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
-\ offset for the build-time inverse proof; boot adds CP. The two coordinates the
-\ row stores are inverted the same way, in the capturing host's space and not the
-\ target's: every wid field takes ACAP-ABS-WID, which adds this window's W0 back
-\ where the seed adds the booting engine's WIDN. The proof this feeds compares
-\ the result with the host's own record, so the host's numbers are what it owes.
-\ ONE CELL IS NOT MODELLED, AND CANNOT BE. For an EXT-named record the boot pass
-\ stores the RUNTIME address of the pool entry's bytes in [24], and that address
-\ exists only in the engine being booted -- the same reason the code literals
-\ travel b0-relative. So the model leaves [24..32) zero for those records and
-\ ACAP-PROVE-RECS proves the NAME rather than the pointer: the pooled name the
-\ seed will hand the record is the host record's own name, byte for byte. The
-\ pointer's proof is a boot, and it is a direct one - EM-AOT-BOOTRUN resolves an
-\ entry word through LFIND, which reads exactly this cell for an EXT name.
-: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact record, s=48B out
-   c 16 + ACAP-W32@ $FFFFFFFF = {: pkg:bool :}                \ the marker, read before the fields it types
-   c ACAP-W32@ pkg ACAP-ABS-WID-FIELD s AOT-N-C!              \ [0..8) = blob-off or package public WID
-   c 4 + ACAP-W32@ pkg ACAP-ABS-WID-FIELD s 8 + AOT-N-C!      \ [8..16) = code len or package private WID
-   c 8 + ACAP-W32@ {: noff:n :}                               \ name-off u32
-   AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
-   c 12 + c@ {: flags:n :}
-   c 13 + c@ {: minin:n :}
-   c 14 + c@ {: dkind:n :}
-   flags 60 lshift  minin 52 lshift or
-   dkind 3 and 50 lshift or  dkind 4 and 46 lshift or
-   dkind 8 and 44 lshift or
-   len or  s 16 + AOT-N-C!   \ [16] = flags | min-in | DKIND | CELL | ALLOC | len
-   0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
-   flags 2 and 0= if                                          \ inline name: the bytes live in the record
-      len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   then
-   pkg if -1 else c 16 + ACAP-W32@ ACAP-ABS-WID then
-   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid is the host's again
-variable ACAP-RECMM                                           \ record-proof mismatch count
-\ The pooled name a record will resolve to at boot IS the name the host record
-\ carries: same length byte, same bytes. This is what stands in for comparing an
-\ EXT record's [24] cell, which holds two different addresses for the same name.
-: ACAP-PROVE-NAME ( ptr u8 ptr u8 -- ) {: c:ptr v:ptr :}      \ c=compact row, v=verbatim record
-   c 8 + ACAP-W32@ {: noff:n :}
-   v 16 + ACAP-W32@ {: len:n :}
-   v  v ACAP-REC-EXT?  ACAP-REC-NAME {: nm:ptr :}
-   AOT-NAMES-BUF@ noff + c@ len = 0= if 1 ACAP-RECMM +! then
-   len 0 ?do
-      nm i + c@  AOT-NAMES-BUF@ noff 1+ + i + c@  = 0= if 1 ACAP-RECMM +! then
-   loop ;
-\ A SPAN ROW IS PROVED AGAINST THE RECORD IT REPLACED. There is no expansion to
-\ invert - the row is not a record and becomes none - so what has to hold is that
-\ its two u32 say what the record's first two cells said: the same blob offset
-\ and the same raw CODE-SPAN word. Those are the only two numbers the closure
-\ walk asks a record for, so this is the whole of what the row owes.
-: ACAP-PROVE-SPAN ( n ptr u8 -- ) {: sx:n v:ptr :}
-   sx ACAP-SPAN-ROW {: r:ptr :}
-   r ACAP-W32@      v ACAP-W32@     = 0= if 1 ACAP-RECMM +! then
-   r 4 + ACAP-W32@  v 8 + ACAP-W32@ = 0= if 1 ACAP-RECMM +! then ;
-variable ACAP-PROVE-CX                                        \ shipped-row cursor
-variable ACAP-PROVE-SX                                        \ span-row cursor
-: ACAP-PROVE-ROW ( n ptr u8 ptr u8 -- ) {: k:n v:ptr s:ptr :} \ record index, verbatim, scratch
-   ACAP-PROVE-CX @ ACAP-CREC-DST {: c:ptr :}
-   c s ACAP-EXPAND-REC                                        \ rebuild 48B from compact
-   v ACAP-REC-EXT? {: ext:bool :}
-   48 0 ?do
-      ext  i 24 >= and  i 32 < and  0= if
-         s i + c@  v i + c@  = 0= if
-            ACAP-RECMM @ 12 < if
-               s" record " type k .INT s"  byte " type i .INT
-               s"  expected " type s i + c@ .INT s"  actual " type v i + c@ .INT
-               s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
-            then
-            1 ACAP-RECMM +!
-         then
-      then
-   loop
-   ext if c v ACAP-PROVE-NAME then                            \ ... and the name stands in for it
-   ACAP-PROVE-CX @ 1+ ACAP-PROVE-CX ! ;
-: ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
-   0 ACAP-RECMM !  0 ACAP-PROVE-CX !  0 ACAP-PROVE-SX !
-   ACAP-REC48@ {: s:ptr :}
-   ACAP-REC-ALL @ 0 ?do
-      i ACAP-REC-DST {: v:ptr :}                              \ the record this row was made from
-      i ACAP-NAMED-BIT @ 0= if
-         i ACAP-GRAPH-LIVE? if
-            ACAP-PROVE-SX @ v ACAP-PROVE-SPAN
-            ACAP-PROVE-SX @ 1+ ACAP-PROVE-SX !
-         then
-      else
-         i v s ACAP-PROVE-ROW
-      then
-   loop
-   ACAP-PROVE-CX @ AOT-REC-N @ <> if 1 ACAP-RECMM +! then     \ every record accounted for, once
-   ACAP-PROVE-SX @ AOT-SPAN:N @ <> if 1 ACAP-RECMM +! then
-   ACAP-RECMM @ 0= 0= if
-      s" aot-capture: RECORD EXPANSION MISMATCH count=" type ACAP-RECMM @ . cr
-      s" aot-capture: compact record expansion != verbatim 48B" 74 die
-   then ;
 
 variable ACAP-SIG-KNOWN                            \ window records the checker knows an effect for
 variable ACAP-SIG-EXEMPT                           \ package, retired, and unrecorded records
@@ -2058,17 +1927,15 @@ variable ACAP-SWEEP-B1
 : ACAP-XTMETA@ ( n -- n ) {: k:n :}
    k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + 4 + ACAP-W32@ ;
 
-: ACAP-XTCELL-ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
-
-: ACAP-XTCELL-RAW ( n -- n ) ADDRESS-CELLS:ROW@ ;
-
-: ACAP-XTCELL-OFF ( n -- n ) ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-OFF-MASK and ;
+\ These readers consume the row itself. Each scan borrows LIVE-SPAN once and
+\ neither registers address cells nor calls back into source while it is live.
+: ACAP-XTCELL-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
 
 : ACAP-XTCELL-DATA? ( n -- bool )
-   ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
+   SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
 
-: ACAP-XTCELL-AT ( n -- ptr n ) {: k:n :}
-   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
+: ACAP-XTCELL-AT ( n -- ptr n )
+   AOT-LIVE-DATA swap ACAP-XTCELL-OFF + ;
 
 : ACAP-XTCELL-CELL-REFUSE ( n -- ) {: off:n :}
    s" aot-capture: declared address cell outside DATA: " type off . cr
@@ -2110,9 +1977,10 @@ variable ACAP-SWEEP-B1
 \ is answered by the DATA span and an execution-token cell by the code span, which
 \ is the whole reason the kind is recorded where it is decided rather than guessed
 \ from the value.
-: ACAP-XTCELL-TARGET ( n n n n n -- n n n ) {: k:n b0:n b1:n d0:n d1:n :}
-   k ACAP-XTCELL-AT AOT-CELL@
-   k ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then ;
+: ACAP-XTCELL-TARGET ( n n n n n -- n n n )
+   {: row:n b0:n b1:n d0:n d1:n :}
+   row ACAP-XTCELL-AT AOT-CELL@
+   row ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then ;
 
 : ACAP-XTCELL-TARGET-IN? ( n n n n n -- bool )
    ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
@@ -2124,24 +1992,26 @@ variable ACAP-SWEEP-B1
    then 2drop
    target ACAP-TARGET-REFUSE ;
 
-: ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
-   k b0 b1 d0 d1 ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
-   k ACAP-XTCELL-DATA? 0= v 0<> and if
+: ACAP-XTCELL-META ( n n n n n n -- n )
+   {: k:n row:n b0:n b1:n d0:n d1:n :}
+   row b0 b1 d0 d1 ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
+   row ACAP-XTCELL-DATA? 0= v 0<> and if
       v lo < v hi >= or if v ACAP-CELL-NAMED exit then
    then
    v 0<> v lo < v hi >= or and if
       s" aot-capture: address row " type k .INT
-      s"  cell DATA+" type k ACAP-XTCELL-OFF .INT
+      s"  cell DATA+" type row ACAP-XTCELL-OFF .INT
       s"  expected range " type lo .INT space hi .INT cr
    then
    v lo hi ACAP-TARGET-OFFSET
-   k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
+   row ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
-\ The blob offset declared code cell row k holds, or -1 when it holds no window
+\ The blob offset a declared code cell row holds, or -1 when it holds no window
 \ code.
-: ACAP-GRAPH-CELL-OFF ( n -- n ) {: k:n :}
-   k ACAP-XTCELL-DATA? if -1 exit then
-   k ACAP-XTCELL-AT AOT-CELL@ AOT-CODE-B0 @ - {: off:n :}
+: ACAP-GRAPH-CELL-OFF ( n -- n )
+   {: row:n :}
+   row ACAP-XTCELL-DATA? if -1 exit then
+   row ACAP-XTCELL-AT AOT-CELL@ AOT-CODE-B0 @ - {: off:n :}
    off 0 >=  off AOT-BLOB-LEN @ <  and if off else -1 then ;
 
 : ACAP-GRAPH-ROOTS ( -- )
@@ -2158,7 +2028,8 @@ variable ACAP-SWEEP-B1
    loop
    \ Every declared code cell is a root even when its owning definition is
    \ private: the DATA row is part of the captured ABI.
-   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do rows i cells + @ ACAP-GRAPH-CELL-OFF ACAP-GRAPH-MARK-OFF loop ;
 
 \ --- the shadow reach ---------------------------------------------------------
 \ A SECOND TARGET'S ROUTINE TRAVELS BY REAL REACHABILITY. A shadowed record the
@@ -2251,7 +2122,8 @@ variable ACAP-SWORK-N
    ACAP-REC-ALL @ 0 ?do
       i ACAP-NAMED-BIT @ 0<>  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
    loop
-   ACAP-XTCELL-ROWS 0 ?do i ACAP-GRAPH-CELL-OFF ACAP-SHADOW-OFF loop
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do rows i cells + @ ACAP-GRAPH-CELL-OFF ACAP-SHADOW-OFF loop
    AOT-BLOB-LEN @ 4 / 0 ?do i 4 * ACAP-SHADOW-GAP loop
    begin ACAP-SWORK-N @ 0 > while
       ACAP-SWORK-N @ 1- ACAP-SWORK-N !
@@ -2297,8 +2169,7 @@ variable ACAP-SWORK-N
 \ the highest present cell and no further, so a window's trailing room costs
 \ nothing at all. Both buffers refuse their own overflow by name.
 variable ACAP-RQ      \ the segment cursor across the window
-variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
-variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
+DYNAMIC-BUFFER ACAP-CELL-OFF n   \ copy-owned, sorted window offsets
 variable ACAP-CV      \ the cell value being assembled
 variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
@@ -2350,31 +2221,32 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       v 0<> if i v ACAP-ADD-CELL then
    loop ;
 
-\ The lowest declared-cell offset at or above `p`, or the span when none is left.
-\ Asked once per gap rather than once per byte, and it reads the table in whatever
-\ order the engine registered it - so the scan needs no ordering the engine does
-\ not promise. That costs a pass per gap, and the gaps are the cells plus one, so
-\ the whole walk is the window's length plus the square of its declared-cell
-\ count. An independently owned index can improve this without changing the
-\ append order of the engine registry or the artifact rows.
-: ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
-   len ACAP-RC !
+\ Sort a separate view of the window declarations; the artifact keeps the
+\ engine's registration order. An empty view has no element zero to fetch.
+: ACAP-ORDER-CELLS ( n -- n ) {: len:n :}
+   AOT-WINDOW:XTOFF-N @ ACAP-CELL-OFF-RESERVE
+   0
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i ACAP-XTOFF@ {: loc:n :}
       loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
          loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
-         off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+         off len < if
+            off over ACAP-CELL-OFF ! 1+
+         then
       then
    loop
-   ACAP-RC @ ;
+   dup 1 > if 0 ACAP-CELL-OFF over [: < ;] SORT:SORT! then ;
 
 : ACAP-SCAN-CELLS ( n n -- ) {: d0:n len:n :}
    0 ACAP-RQ !
-   begin ACAP-RQ @ len < while
-      ACAP-RQ @ len ACAP-NEXT-CELL ACAP-RN !
-      d0 ACAP-RQ @ ACAP-RN @ ACAP-SCAN-SEG
-      ACAP-RN @ AOT-WINDOW:CELL-BYTES + ACAP-RQ !
-   repeat ;
+   len ACAP-ORDER-CELLS 0 ?do
+      i ACAP-CELL-OFF @ {: off:n :}
+      off ACAP-RQ @ >= if
+         d0 ACAP-RQ @ off ACAP-SCAN-SEG
+         off AOT-WINDOW:CELL-BYTES + ACAP-RQ !
+      then
+   loop
+   ACAP-RQ @ len < if d0 ACAP-RQ @ len ACAP-SCAN-SEG then ;
 
 \ Where the seed will find this cell: a window offset under the window tag for a
 \ cell the capture carries, and a plain DATA offset for a fixed engine cell.
@@ -2416,7 +2288,8 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ declared address cell in the window must fall on one grid cell for the capture
 \ to leave its bits clear (measured on the release engine: base residue 0, and
 \ all 33,324 window cells eight-byte aligned).
-: ACAP-BAKE-DATA ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
+: ACAP-BAKE-DATA ( n n n n -- )
+   {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
@@ -2429,16 +2302,18 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    rlen AOT-DATA-SIZE !
    d0 AOT-DATA-N - {: d0off:n :}
-   ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF {: celloff:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row ACAP-XTCELL-OFF {: celloff:n :}
       celloff ACAP-XTCELL-CELL-CHECK
       celloff d0off - {: woff:n :}
       woff len ACAP-CLASSIFY-XTCELL
       woff 0 >= woff len < and  woff AOT-WINDOW:CELL-BYTES mod 0<> and if
          woff ACAP-XTCELL-GRID then
       woff 0 >= woff len < and
-      i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? or if
-         i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
+      row b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? or if
+         i row b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
          woff celloff len ACAP-XTCELL-LOC
          meta ACAP-ADD-XTOFF
       then
@@ -2446,8 +2321,9 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 \ The window's present cells, copied once everything that may still change them
 \ before the copy has run (CAPTURE says what that is).
-: ACAP-COPY-DATA ( n -- ) {: d0:n :}
-   d0 AOT-DATA-SIZE @ ACAP-SCAN-CELLS ;
+: ACAP-COPY-DATA ( n -- )
+   AOT-DATA-SIZE @ [: ACAP-SCAN-CELLS ;]
+      [: ACAP-CELL-OFF-RELEASE ;] finally ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
@@ -2537,12 +2413,14 @@ public
 \
 \ DECLARED-IN is the cells inside the window's DATA span. Their bytes are kept out
 \ of every sparse run, so the value the seed writes can only come from their row.
-: DECLARED-IN ( n n -- n ) {: d0:n d1:n :}
+: DECLARED-IN ( n n -- n )
+   {: d0:n d1:n :}
    d0 AOT-DATA-N - {: d0off:n :}
    d1 d0 - {: len:n :}
    0
-   ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF d0off - {: woff:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ ACAP-XTCELL-OFF d0off - {: woff:n :}
       woff 0 >= woff len < and if 1+ then
    loop ;
 
@@ -2552,14 +2430,17 @@ public
 \ is a load-time effect no captured byte carries. TRAPPED-BELOW asks a narrower
 \ question of the same population - the CODE cells below the window, which are the
 \ ones a boot-run installer has to refill - so the two are not interchangeable.
-: TARGETED-OUT ( n n n n -- n ) {: b0:n b1:n d0:n d1:n :}
+: TARGETED-OUT ( n n n n -- n )
+   {: b0:n b1:n d0:n d1:n :}
    d0 AOT-DATA-N - {: d0off:n :}
    d1 d0 - {: len:n :}
    0
-   ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF d0off - {: woff:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row ACAP-XTCELL-OFF d0off - {: woff:n :}
       woff 0 >= woff len < and 0= if
-         i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? if 1+ then
+         row b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? if 1+ then
       then
    loop ;
 
@@ -2582,13 +2463,16 @@ public
 \ cell whose value points somewhere else is somebody else's business and is not
 \ counted, so an install made after the window closes cannot be mistaken for one
 \ the window made.
-: TRAPPED-BELOW ( n n n -- n ) {: b0:n b1:n d0:n :}
+: TRAPPED-BELOW ( n n n -- n )
+   {: b0:n b1:n d0:n :}
    d0 AOT-DATA-N - {: d0off:n :}
    0
-   ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF {: off:n :}
-      i ACAP-XTCELL-DATA? 0= off d0off < and if
-         i ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row ACAP-XTCELL-OFF {: off:n :}
+      row ACAP-XTCELL-DATA? 0= off d0off < and if
+         row ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
          v b0 >= v b1 < and if 1+ then
       then
    loop ;
@@ -2761,6 +2645,21 @@ public
    s" PREFIX-MARK" s" CURSORS" ACAP-MEMBER? 0= if
       s" aot-capture: persistent payload has no completed core prefix" 74 die then ;
 
+private
+CAST: ACAP-RECORD-CAPTURE-XT ( n -- [ [ n -- n ] [ -- ] -- ] )
+public
+
+: ACAP-COPY-CHECKER-DATA ( -- )
+   AOT-ARM:PAYLOAD-OWNER @ CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF CELL +
+      CHECKER-OWNER-GUARD:VALIDATE {: owner:ptr :}
+   owner CHECKER-OWNER-ABI:RECORD-CAPTURE-OFF + CELL-VIEW @
+      dup 0= if
+         drop s" aot-capture: persistent checker has no record capture callback" 74 die
+      then
+      ACAP-RECORD-CAPTURE-XT {: capture :}
+   ['] SH-SHIPPED [: ACAP-W-D0 @ ACAP-COPY-DATA ;]
+      capture execute ;
+
 : PAYLOAD-CAPTURE ( -- )
    AOT-ARM:?FROZEN
    AOT-ARM:PAYLOAD-MODE @ 1 = if
@@ -2789,7 +2688,6 @@ public
    PAYLOAD-CAPTURE
    ACAP-RESET
    ACAP-TIDX-BUILD                              \ xt -> record index for THIS dictionary
-   ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
    bstart bend ACAP-COPY-BLOB
    rend rstart - ACAP-REC-OF-RESERVE
    rend rstart ?do i bstart ACAP-ADD-REC  i rstart - ACAP-REC-OF ! loop
@@ -2816,7 +2714,12 @@ public
 
 : CAPTURE-COMPLETE ( n n n -- ) {: bstart:n bend:n d0:n :}
    bstart bend ACAP-CHECKER-STRIP               \ ... so the checker retires what they leave
-   d0 ACAP-COPY-DATA                            \ ... before the DATA it changed is copied
+   SH-NUMBER                                    \ final named rows are the shipped rows
+   AOT-ARM:PAYLOAD-MODE @ 2 = if
+      ACAP-COPY-CHECKER-DATA
+   else
+      d0 ACAP-COPY-DATA
+   then
    ACAP-GRAPH-BUILD-MAP
    ACAP-GRAPH-COPY-BLOB
    ACAP-GRAPH-PATCH
@@ -2824,9 +2727,7 @@ public
    ACAP-GRAPH-REMAP-XTOFF
    0 AOT-CODE-B0 !                              \ the payload and merge contract use canonical zero
    ACAP-NORMALIZE-DSITES
-   ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
-   ACAP-PROVE-RECS                              \ fail-closed inverse proof
-   ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
+   ACAP-COMPACT-RECS                            \ build 20B compact records + add record names to pool
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
@@ -2838,148 +2739,5 @@ public
 
 : CAPTURE ( n n n n n n -- )
    ACAP-WHITEBOX? CAPTURE-WITH-NAMES ;
-
-private
-
-\ --- build-time regression: a wordlist ID above 255 must round-trip through the
-\ compact record format. Runs here in the live metabuild (the only context where
-\ ACAP-* exist) BEFORE stdin.f's CAPTURE-REPL / ACAP-RESET, so the synthetic record
-\ it writes into record #0 is discarded before the real capture. Fail-closed via
-\ die: pre-widening ACAP-COMPACT-RECS died on wid>255; the u16->u32 wid field now
-\ lets it survive, and ACAP-PROVE-RECS confirms expand(compact)==verbatim including
-\ the [40] wid. ACAP-EXPAND-REC models the boot-time EM-AOT-REGISTER-RECS unpack
-\ field for field, so this also guards that inverse - and the stored wid is the
-\ window offset, which is why the expected number below is not the wid.
-: ACAP-WID-SELFTEST ( -- )
-   ACAP-POOL-RESET                                  \ fresh dedup pool for the synthetic record
-   AOT-WID-W0 @ {: w0:n :}                           \ the real one is latched per capture (ACAP-BAND!)
-   300 AOT-WID-W0 !                                  \ a base of its own, so the stored offset is neither
-   0 ACAP-REC-DST {: d:ptr :}                        \ the wid nor small: 1000 - 300 + 1 = 701
-   0 d AOT-N-C!                                      \ [0..8)   xt/blob-off = 0
-   8 d 8 + AOT-N-C!                                  \ [8..16)  end = 8
-   3 d 16 + AOT-N-C!                                 \ [16]     flags(0)<<60 | name-len(3)
-   $434241 d 24 + AOT-N-C!                           \ [24..32) inline name "ABC" (LE)
-   0 d 32 + AOT-N-C!                                 \ [32..40) inline-name zero pad
-   1000 d 40 + AOT-N-C!                              \ [40..48) wid = 1000  ( > 255 )
-   1 AOT-REC-N !
-   ACAP-COMPACT-RECS                                 \ pack -> 16B compact
-   ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
-   AOT-REC-N @ 1 <> if
-      s" aot-capture: wid>255 self-test: the synthetic record did not ship" 74 die then
-   0 ACAP-CREC-DST 16 + ACAP-W32@ 701 <> if
-      s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
-   8 CODE-SPAN:EXACT d 8 + AOT-N-C!
-   1 AOT-REC-N !
-   ACAP-COMPACT-RECS ACAP-PROVE-RECS
-   0 ACAP-CREC-DST 4 + ACAP-W32@ 8 CODE-SPAN:EXACT <> if
-      s" aot-capture: full code span corrupted" 74 die then
-   w0 AOT-WID-W0 !
-   0 AOT-REC-N !  0 AOT-SPAN:N !  ACAP-POOL-RESET ;  \ leave buffers clean for the real capture
-
-\ --- build-time regression: the pool index answers what the linear pool walk
-\ answers. Runs in the live metabuild BEFORE stdin.f's CAPTURE-REPL and leaves the
-\ pool empty, so the real capture is unaffected. The cases are built to fool a
-\ reader that matches on bytes rather than on ENTRIES: a name that is a strict
-\ prefix of another, two of one length differing only in the last byte, and a name
-\ whose bytes also occur INSIDE a later entry at a non-entry boundary - which is
-\ the offset a substring search would return and an entry walk cannot. Each case
-\ is scored twice: the linear scan against the offset the add reported (so a
-\ broken reference is not mistaken for a broken index) and the index against the
-\ scan. Fail-closed via die. ---
-variable ACAP-NIDX-MM                                \ index disagrees with the pool scan
-variable ACAP-NIDX-XM                                \ pool scan disagrees with the expected offset
-: ACAP-NAME-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
-   a u ACAP-POOL-SCAN {: s:n :}
-   s want <> if 1 ACAP-NIDX-XM +! then
-   a u ACAP-POOL-FIND s <> if 1 ACAP-NIDX-MM +! then ;
-
-: ACAP-NIDX-CASES ( -- )                             \ the five entries, then every question
-   s" AB" ACAP-POOL-ADD {: o1:n :}
-   s" ABC" ACAP-POOL-ADD {: o2:n :}
-   s" ABD" ACAP-POOL-ADD {: o3:n :}                  \ same length as ABC, last byte differs
-   s" XY" ACAP-POOL-ADD {: o4:n :}
-   s" AXYB" ACAP-POOL-ADD {: o5:n :}                 \ contains XY at a non-entry boundary
-   o1 o2 = o1 o3 = or o1 o4 = or o1 o5 = or
-   o2 o3 = or o2 o4 = or o2 o5 = or
-   o3 o4 = or o3 o5 = or o4 o5 = or if
-      s" aot-capture: pool self-test: distinct names share an entry" 74 die
-   then
-   s" ABD" o3 ACAP-NAME-CASE                         \ asked out of add order
-   s" AB"  o1 ACAP-NAME-CASE
-   s" XY"  o4 ACAP-NAME-CASE                         \ not the copy inside AXYB
-   s" AXYB" o5 ACAP-NAME-CASE
-   s" ABC" o2 ACAP-NAME-CASE
-   s" ABE" -1 ACAP-NAME-CASE                         \ absent: shares a two-byte prefix
-   s" A"   -1 ACAP-NAME-CASE                         \ absent: a prefix of three entries
-   s" AXY" -1 ACAP-NAME-CASE                         \ absent: a prefix of AXYB
-   s" ABCD" -1 ACAP-NAME-CASE ;                      \ absent: an entry plus a byte
-
-\ THE BYTE COMPARISON NEEDS A COLLISION, AND FIVE NAMES IN 262,144 SLOTS DO NOT
-\ COLLIDE. Measured: a mutation that accepts the first OCCUPIED slot without
-\ comparing the name at all passed every case above and the whole battery, because
-\ each of those names had its slot to itself. These three do not: AAAV and ADQG
-\ are one length and LRK is another, and all three hash to one slot, so a reader
-\ that skips the bytes answers the first of them for all three and a reader that
-\ compares only the length answers the wrong four-byte one. The slots are asserted
-\ EQUAL first, so a future change to ACAP-NIDX-HASH ends the build here with this
-\ line rather than quietly retiring the case.
-: ACAP-NIDX-COLLIDE ( -- )
-   s" AAAV" ACAP-NIDX-HASH {: h1:n :}
-   s" ADQG" ACAP-NIDX-HASH {: h2:n :}
-   s" LRK"  ACAP-NIDX-HASH {: h3:n :}
-   h1 h2 <> h1 h3 <> or if
-      s" aot-capture: pool self-test: the collision fixture no longer collides" 74 die
-   then
-   s" AAAV" ACAP-POOL-ADD {: c1:n :}
-   s" ADQG" ACAP-POOL-ADD {: c2:n :}
-   s" LRK"  ACAP-POOL-ADD {: c3:n :}
-   c1 c2 = c1 c3 = or c2 c3 = or if
-      s" aot-capture: pool self-test: colliding names share an entry" 74 die
-   then
-   s" ADQG" c2 ACAP-NAME-CASE                        \ second on the chain, same length as the first
-   s" LRK"  c3 ACAP-NAME-CASE                        \ third on the chain, a different length
-   s" AAAV" c1 ACAP-NAME-CASE
-   s" AAAW" -1 ACAP-NAME-CASE ;                      \ absent, one byte from the first
-
-: ACAP-NIDX-SELFTEST ( -- )
-   ACAP-POOL-RESET
-   0 ACAP-NIDX-MM !  0 ACAP-NIDX-XM !
-   ACAP-NIDX-CASES
-   ACAP-NIDX-COLLIDE
-   AOT-NAMES-LEN @ {: len0:n :}  ACAP-NIDX-N @ {: n0:n :}
-   s" ABC" ACAP-POOL-ADD  s" ABC" ACAP-POOL-SCAN <> if
-      s" aot-capture: pool self-test: re-adding a name moved its entry" 74 die
-   then
-   AOT-NAMES-LEN @ len0 <> ACAP-NIDX-N @ n0 <> or if
-      s" aot-capture: pool self-test: re-adding a name grew the pool" 74 die
-   then
-   ACAP-NIDX-XM @ 0= 0= if
-      s" aot-capture: pool self-test: linear pool scan wrong, count=" type ACAP-NIDX-XM @ . cr
-      s" aot-capture: pool scan disagrees with the recorded entry offsets" 74 die
-   then
-   ACAP-NIDX-MM @ 0= 0= if
-      s" aot-capture: pool self-test: index/scan mismatch, count=" type ACAP-NIDX-MM @ . cr
-      s" aot-capture: pool index disagrees with the pool scan" 74 die
-   then
-   \ THE RESET IS HALF THE CONTRACT. Emptying the pool without emptying the index
-   \ leaves slots pointing at bytes the next add is about to overwrite, and the
-   \ bytes are still THERE - so the stale entry compares equal and the index hands
-   \ back an offset the scan cannot see. Nothing else in the tree notices: a
-   \ mutation dropping the index half of ACAP-POOL-RESET passed the whole battery,
-   \ because the fixture names above happen to be nobody's real word. These three
-   \ questions are what make that mutation red.
-   ACAP-POOL-RESET
-   s" AXYB" ACAP-POOL-FIND -1 <> if
-      s" aot-capture: pool self-test: reset left an entry findable in the index" 74 die
-   then
-   ACAP-NIDX-N @ 0= 0= if
-      s" aot-capture: pool self-test: reset left the index population nonzero" 74 die
-   then
-   s" AB" ACAP-POOL-ADD 0= 0= if
-      s" aot-capture: pool self-test: the pool did not restart at offset 0" 74 die
-   then
-   ACAP-POOL-RESET ;
-ACAP-NIDX-SELFTEST
-ACAP-WID-SELFTEST
 
 ;package

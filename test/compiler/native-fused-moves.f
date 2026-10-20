@@ -43,6 +43,7 @@ public
 
 : FM-PUSH1 ( -- n ) 5 ;                  \ publishes one cell and takes none
 : FM-PUSH2 ( -- n n ) 11 22 ;
+: FM-PUSH3 ( -- n n n ) 11 22 33 ;
 : FM-EXCH ( n n -- n n ) swap ;          \ takes two and leaves two: no move at all
 \ Use an ordinary call boundary: a direct throw now takes the cold trap path,
 \ which deliberately has no returning-call stack transfers to fuse.
@@ -54,10 +55,12 @@ public
 : FM-FPOP ( r -- ) 0 s>f f< 0= if 1 FM-RAISE then ;
 : FM-SRC ( -- n ) 7 ;
 : FM-PRUNED ( -- n ) FM-SRC 0 > if 5 else 5 then ;
+: FM-PRUNED-FLOAT ( r -- n ) f0< if 5 else 5 then ;
 variable FM-CELL
 : FM-PRUNED-DATA ( -- n ) FM-SRC 0 > if 5 else 5 then FM-CELL @ + ;
 : FM-SUM ( n n -- n ) + 1+ ;
 : FM-TAKE2 ( n n -- ) 3 * swap 5 * + FM-CELL ! ;
+: FM-TAKE-CALL ( -- n ) FM-PUSH2 3 * swap 5 * + ;
 : FM-SEND2 ( -- ) 11 22 FM-TAKE2 ;
 : FM-TWICE ( n -- n ) 2 * ;
 : FM-PAIR ( n n -- n ) FM-SUM FM-TWICE ;
@@ -88,6 +91,7 @@ $F8400C00 constant LDR-PRE                 \ ldr Xt,[Xn,#imm9]!
 $FC000400 constant STRD-POST               \ str Dt,[Xn],#imm9
 $FC400C00 constant LDRD-PRE                \ ldr Dt,[Xn,#imm9]!
 $A8800000 constant STP-POST                \ stp Xt,Xt2,[Xn],#imm7*8
+$A9C00000 constant LDP-PRE                 \ ldp Xt,Xt2,[Xn,#imm7*8]!
 $FFC00000 constant PAIR-MASK
 $FFC00000 constant AS-MASK                 \ the add/sub immediate opcode
 $91000000 constant ADD-IMM
@@ -114,10 +118,14 @@ $3E0 constant RN-FIELD                     \ bits 9:5
 4 constant K-ADD                          \ add x19,x19,#imm
 5 constant K-SUB                          \ sub x19,x19,#imm
 6 constant K-PUSH2                        \ stp Xt,Xt2,[x19],#imm
+7 constant K-POP2                         \ ldp Xt,Xt2,[x19,#imm]!
 
 : MATCHES? ( n n -- bool ) {: w:n kind:n :}
    kind K-PUSH2 = if
       w PAIR-MASK and STP-POST = w RN DS-REG = and exit
+   then
+   kind K-POP2 = if
+      w PAIR-MASK and LDP-PRE = w RN DS-REG = and exit
    then
    kind K-PUSH = if w STR-POST DS-INDEXED? exit then
    kind K-POP = if w LDR-PRE DS-INDEXED? exit then
@@ -153,7 +161,7 @@ variable MISSING
       lo i 4 * + CODE@ {: w:n :}
       w kind MATCHES? if
          drop
-         kind K-PUSH2 = if
+         kind K-PUSH2 = kind K-POP2 = or if
             w 15 rshift $7F and {: imm:n :}
             imm $40 >= if imm $80 - else imm then 8 *
             leave
@@ -189,6 +197,27 @@ variable MISSING
    s" NATIVE-FUSED-MOVES:FM-SEND2" K-PUSH2 COUNT-FORM 1 T=
    s" NATIVE-FUSED-MOVES:FM-SEND2" K-PUSH2 WB-OF 16 T=
    0 FM-CELL ! 80 FM-SEND2 FM-CELL @ 121 T= 80 T= ;
+
+: TRIPLE-CASE ( -- )
+   s" three ordered results publish through a pair and a single store" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-PUSH3" K-PUSH2 COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH3" K-PUSH2 WB-OF 16 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH3" K-PUSH COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH3" K-PUSH WB-OF 8 T=
+   s" NATIVE-FUSED-MOVES:FM-PUSH3" NO-MOVES
+   79 FM-PUSH3 33 T= 22 T= 11 T= 79 T= ;
+
+: POP-PAIR-CASE ( -- )
+   s" two stack arguments load through one pre-index pair" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-TAKE2" K-POP2 COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-TAKE2" K-POP2 WB-OF -16 T=
+   s" NATIVE-FUSED-MOVES:FM-TAKE2" K-POP COUNT-FORM 0 T=
+   s" NATIVE-FUSED-MOVES:FM-TAKE2" NO-MOVES
+   0 FM-CELL ! 81 11 22 FM-TAKE2 FM-CELL @ 121 T= 81 T=
+   s" two returned cells load through one pre-index pair" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-TAKE-CALL" K-POP2 COUNT-FORM 1 T=
+   s" NATIVE-FUSED-MOVES:FM-TAKE-CALL" K-POP2 WB-OF -16 T=
+   82 FM-TAKE-CALL 121 T= 82 T= ;
 
 \ The take rides the load of the first argument the body needs, and the argument
 \ the diagnostic call publishes rides the store in front of that call - two of
@@ -234,23 +263,21 @@ variable MISSING
    75 6 true FM-BRANCH 7 T= 75 T=
    76 6 false FM-BRANCH 12 T= 76 T= ;
 
-\ THE PRUNER'S CASE, and the one that says a fused transfer is not a load with
-\ an extra field. Both arms of `FM-PRUNED` hand the join the same value, so the
-\ if-conversion writes no comparison at all and the cell the call returned is
-\ read by nothing - which is the one operation src/compiler/native/prune.f
-\ removes. It may not remove the pointer move with it, so the CALL takes the
-\ move back and the body is the one the unfused compiler wrote minus the
-\ publish it still fuses. Built the other way round this word does not compile:
-\ the allocation validator refuses a data-stack access nothing reads
-\ (E-A64RAV-DKEEP).
-: PRUNE-CASE ( -- )
-   s" a fused transfer nothing reads hands its move back and goes" T-LABEL
+\ Both arms of `FM-PRUNED` hand the join the same value, so if-conversion
+\ writes no comparison. Residency must not request a load of the cell the call
+\ returned. The call's pointer move remains, and the allocation validator
+\ refuses an unread data-stack access (E-A64RAV-DKEEP).
+: RESIDENCY-CASE ( -- )
+   s" a collapsed select does not load its comparison operand" T-LABEL
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-POP COUNT-FORM 0 T=
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-SUB COUNT-FORM 1 T=
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-ADD COUNT-FORM 0 T=
    s" NATIVE-FUSED-MOVES:FM-PRUNED" K-PUSH COUNT-FORM 1 T=
    55 FM-PRUNED 5 T= 55 T=
-   s" pruning a dead transfer preserves the DATA address attribute" T-LABEL
+   s" NATIVE-FUSED-MOVES:FM-PRUNED-FLOAT" K-FPOP COUNT-FORM 0 T=
+   2 s>f FM-PRUNED-FLOAT 5 T=
+   -2 s>f FM-PRUNED-FLOAT 5 T=
+   s" a collapsed select preserves the following DATA access" T-LABEL
    37 FM-CELL ! 55 FM-PRUNED-DATA 42 T= 55 T= ;
 
 \ The same two moves in the other register file.
@@ -273,11 +300,13 @@ public
    0 MISSING !
    PUSH-CASE
    PAIR-CASE
+   TRIPLE-CASE
+   POP-PAIR-CASE
    GUARD-CASE
    EXCH-CASE
    CALL-CASE
    ADJUST-CASE
-   PRUNE-CASE
+   RESIDENCY-CASE
    FLOAT-CASE
    s" every word under test has a dictionary record" T-LABEL
    MISSING @ 0 T=

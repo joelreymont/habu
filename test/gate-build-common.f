@@ -2,7 +2,6 @@
 
 require src/lib/string.f
 require src/lib/memory.f
-require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 
@@ -46,7 +45,7 @@ $200000401 constant GB-ELF-DLSYM-RINFO
 34 constant GB-DQ
 \ The call report lists every relocated site; a stripped image carries one
 \ stack-guard call per guarded transfer besides its own calls, so the bundle's
-\ report outgrew the earlier 32 KiB (E-JSON-CAPACITY in the writer).
+\ report needs room for every relocated site.
 $40000 constant GB-REPORT-CAP
 
 create GB-SRC-PATH FS-PATH-CAP allot

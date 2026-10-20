@@ -11,7 +11,7 @@
 \ so a float row crosses its cells into reals and its real answer back. The
 \ function then goes down the backend rows in the order
 \ src/compiler/native/compiler.f runs them: declare with no linkage, select,
-\ prune and lower to a fixpoint. X64PASS:EMIT-UNPLACED seals a shadow
+\ lower to a fixpoint. X64PASS:EMIT-UNPLACED seals a shadow
 \ emission, since the kernel lays the bytes where its stream is and links the
 \ calls itself, and `use` reads it through X64EMIT's readers before the retire
 \ row gives it back.
@@ -163,8 +163,7 @@ variable TOK?                           \ nonzero once the function has a token
    s BB NBACK:FREEZE {: hm:IR-BUILD:module :}
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   s m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   s m0 NBACK:FIXPOINT {: m:IR-BUILD:module :}
    s m NBACK:EMIT-UNPLACED
    s NART:COPY use execute ;
 

@@ -3,7 +3,7 @@ title: Replay required files in a plain all-errors check
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T05:41:14.508015+02:00\""
+created-at: "2026-10-01T05:41:14.508015+02:00"
 closed-at: "2026-10-14T19:26:17.822405+03:00"
 close-reason: "Implemented in 7f4f38b3: plain all-errors uses the same expanded segment replay as source-list; required-word and real-undefined cases, focused suites and diagnostics passed."
 ---

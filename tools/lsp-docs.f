@@ -6,8 +6,8 @@
 \ for the URI, the path, the text, the path's canonical spelling, which the
 \ checker names it by, the files besides it whose diagnostics its last check
 \ published and the loads its last check reported once that check completed,
-\ then the version, then 1 while it waits for a check, then 1 while the slot
-\ holds a document.
+\ then the version and a unique identity for this opening, then 1 while it
+\ waits for a check, then 1 while the slot holds a document.
 \ Closing a document frees its buffers and its slot, and an open takes the
 \ first free slot. A document is found by its URI's bytes, its path's or its
 \ canonical path's.
@@ -34,7 +34,8 @@ TEXT-AT HDR-CELLS + constant CANON-AT   \ the canonical path's,
 CANON-AT HDR-CELLS + constant DEPS-AT   \ the published files',
 DEPS-AT HDR-CELLS + constant LOADS-AT   \ the loads',
 LOADS-AT HDR-CELLS + constant VERSION-AT \ the version,
-VERSION-AT 1+ constant DIRTY-AT         \ 1 while it waits for a check,
+VERSION-AT 1+ constant ID-AT            \ identity of this opening,
+ID-AT 1+ constant DIRTY-AT              \ 1 while it waits for a check,
 DIRTY-AT 1+ constant LIVE-AT            \ and 1 while the slot holds a document
 LIVE-AT 1+ constant SLOT-CELLS
 
@@ -42,6 +43,7 @@ DYNAMIC-BUFFER SLOTS n
 \ The slots ever taken. Nothing writes past them, so a slot taken new reads
 \ zero, which is a buffer never initialised and a slot neither dirty nor live.
 variable SLOT-COUNT
+variable NEXT-ID
 
 : SLOT-CELL ( n n -- ptr n )  swap SLOT-CELLS * + SLOTS ;
 : LIVE? ( n -- bool )  LIVE-AT SLOT-CELL @ 0<> ;
@@ -86,6 +88,7 @@ public
 : DOC-PATH$ ( n -- ptr u8 n )  PATH-AT BYTES$ ;
 : DOC-TEXT$ ( n -- ptr u8 n )  TEXT-AT BYTES$ ;
 : DOC-VERSION@ ( n -- n )  VERSION-AT SLOT-CELL @ ;
+: DOC-ID@ ( n -- n )  ID-AT SLOT-CELL @ ;
 
 \ The path the checker names the document by: its path's canonical spelling,
 \ taken when it opened.
@@ -176,6 +179,7 @@ private
    NULL$ slot DEPS-AT KEEP
    NULL$ slot LOADS-AT KEEP
    v slot VERSION-AT SLOT-CELL !
+   NEXT-ID @ 1+ dup NEXT-ID ! slot ID-AT SLOT-CELL !
    slot DOC-DIRTY
    1 slot LIVE-AT SLOT-CELL ! ;
 

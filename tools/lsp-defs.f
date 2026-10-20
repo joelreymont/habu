@@ -4,8 +4,9 @@
 \
 \ DEFS-KEEP takes the file, definition and use lines of a document's completed
 \ check (CHECK:VERIFY-FILES$, CHECK:VERIFY-DEFS$ and CHECK:VERIFY-USES$: one
-\ JSON object per line, as tools/check-verify-child.f states them) in place of
-\ what that document's last check kept, and decodes each line once. A group is
+\ JSON object per line, as tools/check-verify-child.f states them), plus its
+\ failed loader target when there is one, in place of what that document's
+\ last check kept, and decodes each line once. A group is
 \ one file a check read and the definitions it retained there, none if it
 \ retained none: the file's canonical path, the URI its positions count at,
 \ held as the JSON string that writes it, and its records in the order the
@@ -57,11 +58,14 @@
 \ for that same while, that check's group for a file by its path: the one a
 \ candidate the check offered at a cursor is declared in, as the check read it.
 \
-\ A group also keeps the digest its check's file lines state for its file,
-\ SHA-256 as 64 lowercase hexadecimal digits: GROUP-SHA$ gives it while every
-\ one of them states that one, and nothing once one states none, a malformed
-\ one or another, whichever comes first, or while none has, so that bytes a
-\ check read are identified only when it read one text of the file.
+\ A group also keeps its source stamp: the supplying document's opening,
+\ slot and editor version, or the size and modification/change times captured
+\ around a disk read. Conflicting visits of one path make its locations
+\ unusable.
+\ A failed loader target has no group because no bytes were read. Its path and
+\ stat at the failed check remain with that check. A watcher or editor event
+\ affecting the path dirties the check; a request rechecks when its stat has
+\ changed, or once per request when the target existed but could not be read.
 \ A decl is the declaration identity a definition line states, one per line,
 \ so that a file read twice gives a decl per reading where it gives one
 \ record: the check's group for the declaration's file, the bytes its token
@@ -73,15 +77,14 @@
 \ declaration it is bound to as its line states it, the same way.
 \ DEFS-DECL-RANGE gives the decls of a document's last completed check, which,
 \ as its definitions do, serve until a completed check replaces them. The
-\ digests and strings are the store's own: a caller copies what it needs
+\ stamps and strings are the store's own: a caller copies what it needs
 \ before the store keeps or drops another check.
 \
-\ DEFS-PROBE keeps a completed check of a file, of an open document's text or
-\ of the file on disk, as the probe, under the slot PROBE, until DEFS-UNPROBE
-\ removes it: its groups, which DEFS-GROUP-RANGE gives, digests, decls and
-\ uses, but no record, and none of its groups its own file's or answering in
-\ another's place, so that it leaves every open document's groups, decls and
-\ uses as they were. Nothing is kept or dropped while a probe is kept.
+\ DEFS-PROBE keeps a completed check of an open document's text or a file on
+\ disk, with the subject's supplying slot, as the probe under PROBE until
+\ DEFS-UNPROBE removes it. It keeps groups, stamps, decls and uses, but no
+\ records. None of its groups answers in another's place, so every open
+\ document's groups, decls and uses remain as they were while it is kept.
 \
 \ The store holds the groups check after check, oldest first, each check's in
 \ the order its definition lines first name their files, then the files it
@@ -105,6 +108,7 @@ require src/lib/byte-buffer.f
 require src/lib/adt/option.f
 require src/lib/json-read.f
 require src/lib/json-write.f
+require src/lib/fs.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
 
@@ -118,6 +122,7 @@ public
 1 constant CLASS-CONSTANT                \ verifier states for the path that
 2 constant CLASS-STORAGE                 \ declared it
 3 constant CLASS-EXPORT
+4 constant CLASS-CONSTRUCTOR
 
 -2 constant PROBE                        \ the probe's slot, no document's
 
@@ -129,13 +134,16 @@ private
 1 constant VIS-PRIVATE                   \ the verifier states for it
 2 constant VIS-PUBLIC
 
--1 constant UNSEEN                       \ a group's digest before a file line states one,
--2 constant UNUSABLE                     \ and once its file lines disagree
-64 constant SHA-HEX-U                    \ a digest's hexadecimal digits
+0 constant ST-UNSEEN                    \ no file visit for this group
+1 constant ST-DOCUMENT                  \ bytes supplied by the editor
+2 constant ST-DISK                      \ bytes acquired from disk
+3 constant ST-UNUSABLE                  \ malformed or conflicting visits
+4 constant ST-SUBJECT                   \ subject bytes before their owner is known
 
 \ A check's block: the slot of the document checked, its first group,
 \ record, byte, use and decl, 1 while its positions are of the document's
-\ current text, and 1 when the check's verdict was verified.
+\ current text, 1 when the check's verdict was verified, then the one loader
+\ target a completed check failed to read and its state at that failure.
 0 constant B-SLOT
 1 constant B-GROUP
 2 constant B-REC
@@ -144,12 +152,21 @@ private
 5 constant B-DECL
 6 constant B-CURRENT
 7 constant B-VERIFIED
-8 constant BLOCK-CELLS
+8 constant B-UNREAD
+9 constant B-UNREAD-U
+10 constant B-UNREAD-STAT
+11 constant B-UNREAD-MODE
+12 constant B-UNREAD-SIZE
+13 constant B-UNREAD-MSEC
+14 constant B-UNREAD-MNS
+15 constant B-UNREAD-CSEC
+16 constant B-UNREAD-CNS
+17 constant BLOCK-CELLS
 
 \ A group: 1 while another group for its file answers in its place, its
 \ path's offset and length in BYTES, its URI's JSON string's, its first and
-\ last records, 1 when its file is the one its check is of, and its digest's
-\ offset in BYTES, else UNSEEN or UNUSABLE.
+\ last records, 1 when its file is the one its check is of, then its source
+\ kind, document supplier and version or disk metadata.
 0 constant G-OVER
 1 constant G-PATH
 2 constant G-PATH-U
@@ -158,8 +175,16 @@ private
 5 constant G-FIRST
 6 constant G-LAST
 7 constant G-OWN
-8 constant G-SHA
-9 constant GROUP-CELLS
+8 constant G-STAMP
+9 constant G-VERSION
+10 constant G-SIZE
+11 constant G-MSEC
+12 constant G-MNS
+13 constant G-CSEC
+14 constant G-CNS
+15 constant G-SOURCE                    \ document slot supplying the bytes,
+16 constant G-ID                        \ opening identity of that slot
+17 constant GROUP-CELLS
 
 \ A record: its group's next record, -1 after the last, its class, the line
 \ and character its token starts at and ends at, its word's and package's
@@ -253,8 +278,24 @@ variable EFF-AT                          \ its effect's,
 variable EFF-U
 variable NAME-AT                         \ its declaration's name's,
 variable NAME-U
-variable SHA-AT                          \ its digest's,
-variable SHA-U
+variable STAMP-V                         \ source kind of this file visit,
+variable SOURCE-V                        \ slot supplying document bytes,
+variable VERSION-V                       \ the editor version when supplied,
+variable SIZE-V                          \ and its disk metadata, when present
+variable MSEC-V
+variable MNS-V
+variable CSEC-V
+variable CNS-V
+variable META-MASK
+create PROBE-PATH FS-PATH-CAP allot
+variable PROBE-PATH-U
+variable PROBE-SIZE
+variable PROBE-MSEC
+variable PROBE-MNS
+variable PROBE-CSEC
+variable PROBE-CNS
+variable PROBE-DISK-VALID
+variable PROBE-SOURCE                     \ slot of the probe's supplied subject
 variable VISIT-V                         \ its declaration's visit, 0 for none,
 variable VIS-V                           \ its visibility, -1 for none,
 variable START-V                         \ its token's offsets,
@@ -324,6 +365,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    s" constant" JR:STR-EQ? if CLASS-CONSTANT exit then
    s" storage" JR:STR-EQ? if CLASS-STORAGE exit then
    s" export" JR:STR-EQ? if CLASS-EXPORT exit then
+   s" constructor" JR:STR-EQ? if CLASS-CONSTRUCTOR exit then
    CLASS-WORD ;
 
 \ The visibility the string the reader is at names, -1 for any other.
@@ -348,8 +390,33 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    s" decl_name" JR:STR-EQ? if
       JR:NEXT JR:T-STR = if STRING>BYTES NAME-U ! NAME-AT ! else JR:SKIP-VALUE then exit
    then
-   s" sha256" JR:STR-EQ? if
-      JR:NEXT JR:T-STR = if STRING>BYTES SHA-U ! SHA-AT ! else JR:SKIP-VALUE then exit
+   s" source" JR:STR-EQ? if
+      JR:NEXT JR:T-STR = if
+         s" subject" JR:STR-EQ? if ST-SUBJECT else
+         s" document" JR:STR-EQ? if ST-DOCUMENT else
+         s" disk" JR:STR-EQ? if ST-DISK else ST-UNUSABLE then then then
+         STAMP-V !
+      else JR:SKIP-VALUE then exit
+   then
+   s" size" JR:STR-EQ? if
+      JR:NEXT JR:T-INT = if JR:INT SIZE-V ! META-MASK @ 1 or META-MASK !
+      else JR:SKIP-VALUE then exit
+   then
+   s" mtime_sec" JR:STR-EQ? if
+      JR:NEXT JR:T-INT = if JR:INT MSEC-V ! META-MASK @ 2 or META-MASK !
+      else JR:SKIP-VALUE then exit
+   then
+   s" mtime_ns" JR:STR-EQ? if
+      JR:NEXT JR:T-INT = if JR:INT MNS-V ! META-MASK @ 4 or META-MASK !
+      else JR:SKIP-VALUE then exit
+   then
+   s" ctime_sec" JR:STR-EQ? if
+      JR:NEXT JR:T-INT = if JR:INT CSEC-V ! META-MASK @ 8 or META-MASK !
+      else JR:SKIP-VALUE then exit
+   then
+   s" ctime_ns" JR:STR-EQ? if
+      JR:NEXT JR:T-INT = if JR:INT CNS-V ! META-MASK @ 16 or META-MASK !
+      else JR:SKIP-VALUE then exit
    then
    s" decl_visit" JR:STR-EQ? if
       JR:NEXT JR:T-INT = if JR:INT VISIT-V ! else JR:SKIP-VALUE then exit
@@ -380,8 +447,11 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 EFF-U !
    BYTES-U @ NAME-AT !
    0 NAME-U !
-   BYTES-U @ SHA-AT !
-   0 SHA-U !
+   ST-UNUSABLE STAMP-V !
+   -1 SOURCE-V !
+   0 VERSION-V !
+   0 SIZE-V ! 0 MSEC-V ! 0 MNS-V ! 0 CSEC-V ! 0 CNS-V !
+   0 META-MASK !
    0 VISIT-V !
    -1 VIS-V !
    0 FILE-U !
@@ -438,7 +508,7 @@ private
 : KEPT-SLOT ( -- n )  BLOCK-N @ 1- B-SLOT BLOCK@ ;
 
 \ A new group of this check's, for the file at this path, which does not lie
-\ in BYTES, with no digest yet: its index. The group of the document's own
+\ in BYTES, with no file visit yet: its index. The group of the document's own
 \ file is at the URI of that document, whose text its positions count in
 \ (COUNT-IN); the probe's check is of no document's.
 : GROUP+ ( ptr u8 n -- n )
@@ -448,7 +518,7 @@ private
    KEPT-SLOT {: slot:n :}
    slot 0 >= if p pu slot DOC-CANON$ STR= else false then {: own:bool :}
    0 g G-OVER GROUP!
-   UNSEEN g G-SHA GROUP!
+   ST-UNSEEN g G-STAMP GROUP!
    p pu BYTES+ g G-PATH GROUP!
    pu g G-PATH-U GROUP!
    own if KEPT-SLOT DOC-URI$ else p pu DEP-URI$ then URI-JSON {: ua:ptr uu:n :}
@@ -621,41 +691,77 @@ private
    IDS-DOWN
    FILE-GROUP DECL+ ;
 
-\ Whether the byte is a lowercase hexadecimal digit.
-: HEX-DIGIT? ( n -- bool )
-   {: c:n :}
-   c [char] 0 >= c [char] 9 <= and  c [char] a >= c [char] f <= and  or ;
+\ A supplied file's version is the one held while the child ran: incoming
+\ changes are queued until the check returns. A disk subject's stamp comes
+\ from the caller's read, which finished before the child was launched.
+: SUBJECT-OWNER ( -- option<n> )
+   KEPT-SLOT dup 0 >= if OPTION:SOME exit then
+   drop PROBE-SOURCE @ dup 0 >= if OPTION:SOME else drop OPTION:NONE then ;
 
-\ Whether these bytes are a digest as a file line states it.
-: DIGEST? ( ptr u8 n -- bool )
-   {: h:ptr hu:n :}
-   hu SHA-HEX-U <> if false exit then
-   hu 0 ?do
-      h i + c@ HEX-DIGIT? 0= if unloop false exit then
-   loop
-   true ;
+: LINE-SOURCE ( -- )
+   STAMP-V @ ST-SUBJECT = if
+      SUBJECT-OWNER MATCH option
+         some OF
+            dup SOURCE-V ! DOC-VERSION@ VERSION-V !
+            ST-DOCUMENT STAMP-V !
+         ENDOF
+         none OF
+            PROBE-DISK-VALID @ 0<> FILE$ PROBE-PATH PROBE-PATH-U @ STR= and if
+               ST-DISK STAMP-V !
+               PROBE-SIZE @ SIZE-V ! PROBE-MSEC @ MSEC-V !
+               PROBE-MNS @ MNS-V ! PROBE-CSEC @ CSEC-V ! PROBE-CNS @ CNS-V !
+               31 META-MASK !
+            else ST-UNUSABLE STAMP-V ! then
+         ENDOF
+      ;MATCH
+      exit
+   then
+   STAMP-V @ ST-DOCUMENT = if
+      FILE$ DOC-HOLDING MATCH option
+         some OF dup SOURCE-V ! DOC-VERSION@ VERSION-V ! ENDOF
+         none OF ST-UNUSABLE STAMP-V ! ENDOF
+      ;MATCH
+   then
+   STAMP-V @ ST-DISK = META-MASK @ 31 <> and if ST-UNUSABLE STAMP-V ! then ;
 
-\ The digest of a group whose digest was D once the line reads its file, the
-\ line's own digest dropped from BYTES unless kept: kept, the group's from
-\ then on, when D is UNSEEN and the line's is a digest; D when D is the
-\ line's; else UNUSABLE, which stays.
-: DIGEST-AFTER ( n -- n )
-   {: d:n :}
-   SHA-AT @ SHA-U @ AT$ {: h:ptr hu:n :}
-   h hu DIGEST? {: valid:bool :}
-   d 0 >= valid and if d SHA-HEX-U AT$ h hu STR= else false then {: same:bool :}
-   LINE-AT @ BYTES-U !
-   d UNSEEN = valid and if SHA-AT @ SHA-U @ BYTES-DOWN exit then
-   same if d else UNUSABLE then ;
+: STAMP-SAME? ( n -- bool )
+   {: g:n :}
+   g G-STAMP GROUP@ STAMP-V @ <> if false exit then
+   STAMP-V @ ST-DOCUMENT = if
+      g G-SOURCE GROUP@ SOURCE-V @ =
+      g G-ID GROUP@ SOURCE-V @ DOC-ID@ = and
+      g G-VERSION GROUP@ VERSION-V @ = and exit
+   then
+   STAMP-V @ ST-DISK = if
+      g G-SIZE GROUP@ SIZE-V @ =
+      g G-MSEC GROUP@ MSEC-V @ = and
+      g G-MNS GROUP@ MNS-V @ = and
+      g G-CSEC GROUP@ CSEC-V @ = and
+      g G-CNS GROUP@ CNS-V @ = and exit
+   then
+   false ;
 
-\ The line's file read with the line's digest, its group made if this check
-\ has none: the digest's fate is settled before a new group's strings follow
-\ it.
+: STAMP-KEEP ( n -- )
+   {: g:n :}
+   g G-STAMP GROUP@ ST-UNSEEN <> if
+      g STAMP-SAME? 0= if ST-UNUSABLE g G-STAMP GROUP! then
+      exit
+   then
+   STAMP-V @ g G-STAMP GROUP!
+   SOURCE-V @ g G-SOURCE GROUP!
+   SOURCE-V @ 0 >= if SOURCE-V @ DOC-ID@ else 0 then g G-ID GROUP!
+   VERSION-V @ g G-VERSION GROUP!
+   SIZE-V @ g G-SIZE GROUP!
+   MSEC-V @ g G-MSEC GROUP!
+   MNS-V @ g G-MNS GROUP!
+   CSEC-V @ g G-CSEC GROUP!
+   CNS-V @ g G-CNS GROUP! ;
+
+\ Each visit's stamp must agree with earlier visits of the same path.
 : FILE-LINE ( -- )
-   FILE$ FOUND MATCH option
-      some OF {: g:n :} g G-SHA GROUP@ DIGEST-AFTER g G-SHA GROUP! ENDOF
-      none OF UNSEEN DIGEST-AFTER FILE$ GROUP+ G-SHA GROUP! ENDOF
-   ;MATCH ;
+   LINE-SOURCE
+   LINE-AT @ BYTES-U !
+   FILE$ GROUP-AT STAMP-KEEP ;
 
 \ The line's use, last of this check's, with the identity of the
 \ declaration it is bound to and the group of the file it is in: the strings
@@ -744,16 +850,13 @@ private
    r R-KIND REC@ dt - r R-KIND REC!
    r R-EFF REC@ dt - r R-EFF REC! ;
 
-\ Group G's offsets, DR records and DT bytes down, its digest's with them
-\ when it has one.
+\ Group G's offsets, DR records and DT bytes down.
 : GROUP-DOWN ( n n n -- )
    {: g:n dr:n dt:n :}
    g G-PATH GROUP@ dt - g G-PATH GROUP!
    g G-URI GROUP@ dt - g G-URI GROUP!
    g G-FIRST GROUP@ dr - g G-FIRST GROUP!
-   g G-LAST GROUP@ dr - g G-LAST GROUP!
-   g G-SHA GROUP@ {: sha:n :}
-   sha 0 >= if sha dt - g G-SHA GROUP! then ;
+   g G-LAST GROUP@ dr - g G-LAST GROUP! ;
 
 \ Decl D's group DG groups down, and its strings DT bytes.
 : DECL-DOWN ( n n n -- )
@@ -819,6 +922,9 @@ private
       i B-REC BLOCK@ dr - i B-REC BLOCK!
       i B-DECL BLOCK@ dd - i B-DECL BLOCK!
       i B-BYTE BLOCK@ dt - i B-BYTE BLOCK!
+      i B-UNREAD-U BLOCK@ 0<> if
+         i B-UNREAD BLOCK@ dt - i B-UNREAD BLOCK!
+      then
    loop ;
 
 \ The block of the last completed check of the document in this slot, if the
@@ -866,14 +972,50 @@ private
    DECL-N @ k B-DECL BLOCK!
    1 k B-CURRENT BLOCK!
    verified if 1 else 0 then k B-VERIFIED BLOCK!
+   0 k B-UNREAD-U BLOCK!
+   0 k B-UNREAD-STAT BLOCK!
    1 BLOCK-N +!
    -1 CUR-G ! ;
+
+: UNREAD-PATH$ ( n -- ptr u8 n )
+   dup B-UNREAD BLOCK@ swap B-UNREAD-U BLOCK@ AT$ ;
+
+\ A completed check may stop at one loader target it could not read. Keep its
+\ actual path and stat at failure; the path is separate from files it read.
+: UNREAD! ( ptr u8 n n -- )
+   {: path:ptr pathu:n k:n :}
+   pathu 0= if exit then
+   path pathu BYTES+ k B-UNREAD BLOCK!
+   pathu k B-UNREAD-U BLOCK!
+   path pathu FS-TRY-STAT 0= if exit then
+   1 k B-UNREAD-STAT BLOCK!
+   FS-STAT-MODE@ k B-UNREAD-MODE BLOCK!
+   FS-STAT-SIZE@ k B-UNREAD-SIZE BLOCK!
+   FS-STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK!
+   FS-STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK!
+   FS-STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK!
+   FS-STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK! ;
+
+: UNREAD-STABLE? ( n -- bool )
+   {: k:n :}
+   k B-UNREAD-U BLOCK@ 0= if true exit then
+   k UNREAD-PATH$ FS-TRY-STAT {: now:bool :}
+   k B-UNREAD-STAT BLOCK@ 0<> {: had:bool :}
+   now 0= if had 0= exit then
+   had 0= if false exit then
+   FS-STAT-MODE@ k B-UNREAD-MODE BLOCK@ =
+   FS-STAT-SIZE@ k B-UNREAD-SIZE BLOCK@ = and
+   FS-STAT-MTIME-SEC@ k B-UNREAD-MSEC BLOCK@ = and
+   FS-STAT-MTIME-NS@ k B-UNREAD-MNS BLOCK@ = and
+   FS-STAT-CTIME-SEC@ k B-UNREAD-CSEC BLOCK@ = and
+   FS-STAT-CTIME-NS@ k B-UNREAD-CNS BLOCK@ = and ;
 
 public
 
 \ Readies the store, before any check.
 : DEFS-PREPARE ( -- )
-   ESC-B 1 BUF:N>BLEN BUF:INIT ;
+   ESC-B 1 BUF:N>BLEN BUF:INIT
+   false PROBE-DISK-VALID ! ;
 
 \ Removes what the last check of the document in this slot kept.
 : DEFS-DROP ( n -- )
@@ -891,15 +1033,17 @@ public
    ;MATCH ;
 
 \ Keeps these file, definition and use lines of the completed check of the
-\ document in this slot, and whether its verdict was verified, in place of
-\ what its last check kept.
-: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n n bool -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n slot:n verified:bool :}
+\ document in this slot, its failed loader target if any, and whether its
+\ verdict was verified, in place of what its last check kept.
+: DEFS-KEEP ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n bool -- )
+   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n unread:ptr unreadu:n slot:n verified:bool :}
    slot DEFS-DROP
    slot verified BLOCK+
+   BLOCK-N @ 1- {: k:n :}
    a u [: RECORD ;] LINES
    fa fu [: FILE-LINE ;] LINES
    ua uu [: KEEP-USE ;] LINES
+   unread unreadu k UNREAD!
    SUPERSEDE ;
 
 \ Removes the probe, if the store keeps one. No group answered in another's
@@ -911,17 +1055,34 @@ public
    ;MATCH ;
 
 \ Keeps these file, definition and use lines of a completed check of a file,
-\ of an open document's text or of the file on disk, and whether its verdict
-\ was verified, as the probe, in place of the one the store keeps: the newest
+\ of an open document's text or of the file on disk, whether its verdict
+\ was verified and which slot supplied the subject (-1 for disk), as the
+\ probe, in place of the one the store keeps: the newest
 \ block, under the slot PROBE, with no record, whose groups answer in no
 \ other's place.
-: DEFS-PROBE ( ptr u8 n ptr u8 n ptr u8 n bool -- )
-   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n verified:bool :}
+: DEFS-PROBE ( ptr u8 n ptr u8 n ptr u8 n bool n -- )
+   {: fa:ptr fu:n a:ptr u:n ua:ptr uu:n verified:bool source:n :}
    DEFS-UNPROBE
+   source PROBE-SOURCE !
    PROBE verified BLOCK+
    a u [: PROBE-DECL ;] LINES
    fa fu [: FILE-LINE ;] LINES
-   ua uu [: KEEP-USE ;] LINES ;
+   ua uu [: KEEP-USE ;] LINES
+   false PROBE-DISK-VALID ! ;
+
+\ The metadata captured with a disk subject's bytes before a references
+\ probe. The next probe consumes it; other sources use their document version
+\ or the verifier's own disk read stamp.
+: PROBE-DISK-STAMP! ( ptr u8 n n n n n n -- )
+   {: path:ptr pathu:n size:n msec:n mns:n csec:n cns:n :}
+   pathu FS-PATH-CAP > if E-PATH-RANGE throw then
+   path PROBE-PATH pathu BYTE-COPY
+   pathu PROBE-PATH-U !
+   size PROBE-SIZE ! msec PROBE-MSEC ! mns PROBE-MNS !
+   csec PROBE-CSEC ! cns PROBE-CNS !
+   true PROBE-DISK-VALID ! ;
+
+: PROBE-DISK-CLEAR ( -- )  false PROBE-DISK-VALID ! ;
 
 \ Whether another group for the same file answers in this group's place.
 : GROUP-OVER? ( n -- bool )  G-OVER GROUP@ 0<> ;
@@ -942,6 +1103,12 @@ public
 
 \ The JSON string of the URI the group's positions count at.
 : GROUP-URI$ ( n -- ptr u8 n )  dup G-URI GROUP@ swap G-URI-U GROUP@ AT$ ;
+
+\ The raw URI whose document or disk bytes the group read.
+: GROUP-SOURCE-URI$ ( n -- ptr u8 n )
+   {: g:n :}
+   g G-STAMP GROUP@ ST-DOCUMENT = if g G-SOURCE GROUP@ DOC-URI$ exit then
+   g PATH$ FILE-URI$ ;
 
 \ The group's first record.
 : GROUP-FIRST ( n -- n )  G-FIRST GROUP@ ;
@@ -1039,13 +1206,81 @@ public
       none OF false ENDOF
    ;MATCH ;
 
-\ The digest of the bytes the group's check read of its file, while each of
-\ the check's file lines for the file states that one; else empty. The bytes
-\ are the store's until it keeps or drops another check.
-: GROUP-SHA$ ( n -- ptr u8 n )
-   G-SHA GROUP@ {: sha:n :}
-   sha 0 < if s" " exit then
-   sha SHA-HEX-U AT$ ;
+\ Whether the last completed check still owns positions in this document.
+: DEFS-CURRENT? ( n -- bool )
+   BLOCK-OF MATCH option
+      some OF B-CURRENT BLOCK@ 0<> ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+
+\ Whether the group has one usable source revision across its file visits.
+: GROUP-STAMPED? ( n -- bool )
+   G-STAMP GROUP@ dup ST-DOCUMENT = swap ST-DISK = or ;
+
+\ A file line was read for this group, even if its visits conflicted.
+: GROUP-CONSUMED? ( n -- bool )  G-STAMP GROUP@ ST-UNSEEN <> ;
+
+\ Whether two checks read the same revision of the same file.
+: GROUP-SAME? ( n n -- bool )
+   {: a:n b:n :}
+   a GROUP-STAMPED? b GROUP-STAMPED? and 0= if false exit then
+   a PATH$ b PATH$ STR= 0= if false exit then
+   a G-STAMP GROUP@ b G-STAMP GROUP@ <> if false exit then
+   a G-STAMP GROUP@ ST-DOCUMENT = if
+      a G-SOURCE GROUP@ b G-SOURCE GROUP@ =
+      a G-ID GROUP@ b G-ID GROUP@ = and
+      a G-VERSION GROUP@ b G-VERSION GROUP@ = and exit
+   then
+   a G-SIZE GROUP@ b G-SIZE GROUP@ =
+   a G-MSEC GROUP@ b G-MSEC GROUP@ = and
+   a G-MNS GROUP@ b G-MNS GROUP@ = and
+   a G-CSEC GROUP@ b G-CSEC GROUP@ = and
+   a G-CNS GROUP@ b G-CNS GROUP@ = and ;
+
+\ Whether the file still has the revision the group read. An unavailable
+\ disk path is stale, so the owner rechecks and reports its actual load error.
+: GROUP-FRESH? ( n -- bool )
+   {: g:n :}
+   g G-STAMP GROUP@ ST-DOCUMENT = if
+      g G-SOURCE GROUP@ {: slot:n :}
+      slot DOC-LIVE? 0= if false exit then
+      slot DOC-ID@ g G-ID GROUP@ <> if false exit then
+      slot DOC-VERSION@ g G-VERSION GROUP@ <> if false exit then
+      g G-OWN GROUP@ 0<> if true exit then
+      g PATH$ DOC-HOLDING MATCH option
+         some OF slot = ENDOF
+         none OF false ENDOF
+      ;MATCH exit
+   then
+   g G-STAMP GROUP@ ST-DISK <> if false exit then
+   g PATH$ DOC-HOLDING MATCH option
+      some OF drop false exit ENDOF
+      none OF ENDOF
+   ;MATCH
+   g PATH$ FS-TRY-STAT 0= if false exit then
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> if false exit then
+   FS-STAT-SIZE@ g G-SIZE GROUP@ =
+   FS-STAT-MTIME-SEC@ g G-MSEC GROUP@ = and
+   FS-STAT-MTIME-NS@ g G-MNS GROUP@ = and
+   FS-STAT-CTIME-SEC@ g G-CSEC GROUP@ = and
+   FS-STAT-CTIME-NS@ g G-CNS GROUP@ = and ;
+
+\ Load exactly the group's source and check its revision. A disk read changed
+\ midstream has no valid stamp.
+: GROUP-TEXT-FRESH? ( n -- bool )
+   {: g:n :}
+   g GROUP-FRESH? 0= if false exit then
+   g G-STAMP GROUP@ ST-DOCUMENT = if
+      g G-SOURCE GROUP@ DOC-TEXT$ LSP-TEXT:TEXT! true exit
+   then
+   g PATH$ FILE-TEXT!
+   LSP-TEXT:DISK-META {: size:n msec:n mns:n csec:n cns:n valid:bool :}
+   valid 0= if false exit then
+   size g G-SIZE GROUP@ =
+   msec g G-MSEC GROUP@ = and
+   mns g G-MNS GROUP@ = and
+   csec g G-CSEC GROUP@ = and
+   cns g G-CNS GROUP@ = and ;
 
 \ The decls of the last completed check of the document in this slot, or of
 \ the probe's for PROBE, as the limit and first index of a ?do loop over
@@ -1064,6 +1299,32 @@ public
    BLOCK-OF MATCH option
       some OF {: k:n :} k B-GROUP GROUP-N @ BLOCK-END k B-GROUP BLOCK@ ENDOF
       none OF 0 0 ENDOF
+   ;MATCH ;
+
+\ Every file the check consumed still matches its recorded revision. Groups
+\ created only by an origin/use line were not a consumed input.
+: DEFS-INPUTS-FRESH? ( n -- bool )
+   {: slot:n :}
+   slot DEFS-GROUP-RANGE ?do
+      i G-STAMP GROUP@ ST-UNSEEN <> if
+         i GROUP-FRESH? 0= if false unloop exit then
+      then
+   loop
+   slot BLOCK-OF MATCH option
+      some OF UNREAD-STABLE? ENDOF
+      none OF true ENDOF
+   ;MATCH ;
+
+\ An existing target that a loader could not read may have failed during a
+\ changing read. Try it once more when a request needs this check; a request
+\ still answers from the new check if the target's state remains unchanged.
+: DEFS-UNREAD-RETRY? ( n -- bool )
+   BLOCK-OF MATCH option
+      some OF
+         dup B-UNREAD-U BLOCK@ 0<>
+         swap B-UNREAD-STAT BLOCK@ 0<> and
+      ENDOF
+      none OF false ENDOF
    ;MATCH ;
 
 \ The check's group for the file the decl's declaration is in.
@@ -1221,10 +1482,26 @@ public
    {: slot:n p:ptr pu:n :}
    slot BLOCK-OF MATCH option
       some OF
-         p pu GROUP-IN MATCH option
+         {: k:n :}
+         k p pu GROUP-IN MATCH option
             some OF drop true ENDOF
             none OF false ENDOF
          ;MATCH
+      ENDOF
+      none OF false ENDOF
+   ;MATCH ;
+
+\ A check depends on files it read and on the loader target at which it
+\ stopped. The latter has no source group because the check read no bytes.
+: DEFS-DEPENDS? ( n ptr u8 n -- bool )
+   {: slot:n p:ptr pu:n :}
+   slot p pu DEFS-READ? if true exit then
+   slot BLOCK-OF MATCH option
+      some OF
+         {: k:n :}
+         k B-UNREAD-U BLOCK@ 0<> if
+            k UNREAD-PATH$ p pu STR=
+         else false then
       ENDOF
       none OF false ENDOF
    ;MATCH ;

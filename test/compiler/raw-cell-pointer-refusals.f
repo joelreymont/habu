@@ -251,6 +251,14 @@ create DIAG-BUF 8192 allot
    NAMED-EXEC
    DISARM ;
 
+: CASE-OPAQUE-XT-STORE ( -- )
+   s" a compiled opaque tick cannot enter raw storage" T-LABEL
+   ARM
+   [: s" : RCP-OPAQUEPUT ( -- ) ['] execute RCP-V ! ;" evaluate-closed ;]
+      CHECK-RC TTHROWSQ
+   NAMED-EXEC
+   DISARM ;
+
 \ ---- the controls ------------------------------------------------------------
 
 \ The control for the return-row case above. A return row that simply does not balance
@@ -353,6 +361,7 @@ public
    CASE-VARIABLE-AS-XT-CELL
    CASE-CREATE-AS-XT-CELL
    CASE-QUOTATION-STORE
+   CASE-OPAQUE-XT-STORE
    CASE-BYTE-BUFFER
    CASE-TYPED-VARIABLE-XT
    CASE-TYPED-BUFFER-XT

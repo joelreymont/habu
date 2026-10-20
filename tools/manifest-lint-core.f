@@ -170,10 +170,10 @@ variable ML-NI
    s" src/core/enums.f" ML-ENTRY+                              \ the ENUM front end the checker parses
    s" src/core/sha256.f" ML-ENTRY+                             \ content keys the compiler and snapshots write
    s" src/core/source-producer.f" ML-ENTRY+                    \ the source history used by cached FILE units
-   s" src/core/type-family-sha.f" ML-ENTRY+                    \ the family identity the checker hashes
    s" src/core/combinators.f" ML-ENTRY+                        \ the quotation combinators the checker certifies
    s" src/habu/code-span.f" ML-ENTRY+                          \ the code spans the emitters record
    s" src/habu/xref.f" ML-ENTRY+                               \ the cross-reference registry the REPL reads
+   s" src/core/cell-body.f" ML-ENTRY+                        \ explicit created-body cell grids for capture
    s" src/habu/engine-origin.f" ML-ENTRY+                      \ accepted engine source targets for language tools
    s" src/core/generated-declaration-dictionary.f" ML-ENTRY+   \ generated declarations the checker publishes
    s" src/core/generated-declaration-protection.f" ML-ENTRY+   \ their protection pass

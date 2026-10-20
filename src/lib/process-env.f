@@ -560,6 +560,20 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
    in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
+\ Both streams use independent caller-owned growing storage. Sinks have the
+\ same contract as the stdout sink above; their buffers stay with the caller
+\ on every outcome, including a timeout or a nonzero child completion.
+: RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len outcome )
+   {: path:ptr pathu in:ptr inu out err timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   inu PROC-CAPTURE-CHECK-STDIN
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
+   in inu out err PROC-RUN-STDIN-GROWING-BOTH-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME ;
+
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
    LEN>N STR:LENGTH PROC-PATH-SLASH STR:INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF

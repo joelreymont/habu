@@ -132,29 +132,56 @@ public
    {: a u:n :}
    a u SPELL-REC REC-FIXED ;
 
-\ A record no definer stamped is refused BEFORE the word is entered. The count
-\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77). A
-\ caller already holding the record, as a dictionary walk does, asks REC-VALUE.
-: REC-VALUE ( ptr n -- n )
+private
+
+: FIXED-ENTRY ( ptr n -- n )
    {: rec:ptr :}
    rec XREF-FOUND? 0= if E-NDICT-NAME throw then
    rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
    rec REC-FIXED FIXED-NONE = if E-NDICT-KIND throw then
+   start ;
+
+: READ-FIXED ( n -- n )
+   {: entry:n :}
    depth FX-BASE !
-   rec NHOST:SELECT-REC RUN-WORD
+   entry RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
 
+public
+
+\ A record no definer stamped is refused BEFORE the word is entered. The count
+\ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77). A
+\ caller already holding the record, as a dictionary walk does, asks REC-VALUE.
+: REC-VALUE ( ptr n -- n )
+   {: rec:ptr :}
+   rec FIXED-ENTRY drop
+   rec NHOST:SELECT-REC READ-FIXED ;
+
+\ The checker calls this once at the completed generated-word publication.
+\ It retains the exact record's fixed result; later dependency checks only
+\ read that stored fact and never enter the word again. This publication read
+\ is bookkeeping, not another source construction call through a host body.
+: RETAIN-FIXED ( ptr n -- n n bool ) {: rec:ptr :}
+   rec REC-FIXED {: kind:n :}
+   kind FIXED-NONE = if 0 0 true exit then
+   kind rec FIXED-ENTRY READ-FIXED true ;
+
 : FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
+
+\ A fixed DATA literal keeps the exact declaration that produced its address.
+\ -1 means the fixed value is a scalar and has no DATA owner.
+: FIXED-OWNER ( ptr u8 n -- n )
+   SPELL-REC {: rec:ptr :}
+   rec REC-FIXED FIXED-ADDR <> if -1 exit then
+   rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 \ Enter the exact fixed implementation the scan selected. The caller checked
 \ its captured definer stamp; no spelling is resolved again here.
 : BOUND-VALUE ( n n -- n ) {: entry:n kind:n :}
    entry 0< entry 0= or if E-NDICT-NAME throw then
    kind FIXED-VAL <> kind FIXED-ADDR <> and if E-NDICT-KIND throw then
-   depth FX-BASE !
-   entry NHOST:ADMIT-ENTRY RUN-WORD
-   depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
+   entry NHOST:ADMIT-ENTRY READ-FIXED ;
 
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of
@@ -486,16 +513,43 @@ CAST: >TRAILER-CELL ( n -- ptr n )
 
 public
 
-\ The record carries the code's start and its length, and the trailer begins
-\ where the code ends, so there is no second opinion about a word's extent.
-: SPELL-DEFER-CELL ( ptr u8 n -- n )
-   {: a u:n :}
-   a u SPELL-REC {: rec:ptr :}
+\ The selected live code record carries the trailer's exact location. A data
+\ word cannot qualify by putting the magic in its body.
+: REC-DEFER-CELL ( ptr n -- n )
+   {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-RETIRED? if 0 exit then
+   rec XREF-START 0= if 0 exit then
+   rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 exit then
+   rec XREF-FLAGS DKIND:MASK and 0<> if 0 exit then
    rec XREF-START  rec XREF-LEN +  {: meta:n :}
    meta TRAILER@ DEFER-MAGIC <> if 0 exit then
    meta 8 + TRAILER@ ;
+
+\ Resolve once: the address and its owner must describe the same declaration.
+: SPELL-DEFER-BINDING ( ptr u8 n -- n n )
+   SPELL-REC {: rec:ptr :}
+   rec REC-DEFER-CELL {: cell:n :}
+   cell 0= if 0 -1 exit then
+   cell rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
+
+: SPELL-DEFER-CELL ( ptr u8 n -- n )
+   SPELL-DEFER-BINDING drop ;
+
+private
+
+CAST: RECORD-FIXED-USE-XT ( n -- [ [ ptr n -- n n bool ] -- ] )
+
+public
+
+\ The source load and a restored partial compiler bind the same reader into
+\ the retained checker, whose dispatch cell lies below the capture window.
+: RETAIN-FIXED-INSTALL ( -- )
+   s" CHECKER-REG:RECORD-FIXED-USE" XREF-FIND
+   dup XREF-FOUND? 0= if drop exit then
+   XREF-START RECORD-FIXED-USE-XT
+   ['] RETAIN-FIXED swap execute ;
+RETAIN-FIXED-INSTALL
 
 private
 get-current prot-wid-add

@@ -1,6 +1,6 @@
 ---
 title: Discard completed declaration event history
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.698781+03:00"

@@ -3,7 +3,7 @@ title: Use one tree-copy helper in tests and build tools
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T19:09:14.965852+02:00\""
+created-at: "2026-10-02T19:09:14.965852+02:00"
 closed-at: "2026-10-14T19:43:43.593842+03:00"
 close-reason: Tree-copy helper shared and duplicate walkers removed in d48702d1; commit records affected builder E2E checks.
 ---

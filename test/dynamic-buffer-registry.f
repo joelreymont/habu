@@ -11,6 +11,8 @@ DYNAMIC-STORAGE:REGISTERED-N BASE-N !
 DYNAMIC-BUFFER OUTSIDE n
 create WINDOW-START
 DYNAMIC-BUFFER FIRST n
+create CONTROL-GAP 2 cells allot            \ isolates FIRST's fifth cell
+PTR-VARIABLE LEGACY 0 , 0 ,             \ public three-cell runtime contract
 DYNAMIC-BUFFER SECOND n
 create WINDOW-END
 DYNAMIC-BUFFER LAST n
@@ -28,6 +30,11 @@ DYNAMIC-BUFFER LAST n
 
 : CUT-CONTROL ( -- )
    WINDOW-START byte-view 1 DYNAMIC-STORAGE:RELEASE-RANGE ;
+
+: CUT-TAIL ( -- )
+   WINDOW-START byte-view 4 cells + 1 DYNAMIC-STORAGE:RELEASE-RANGE ;
+
+: LEGACY-RESERVE ( -- ) 1 LEGACY CELL DYNAMIC-STORAGE:RESERVE ;
 
 : RUN ( -- )
    T-RESET
@@ -91,6 +98,20 @@ DYNAMIC-BUFFER LAST n
    2 LIVE=
    OUTSIDE-RELEASE LAST-RELEASE
    0 LIVE=
+
+   s" mixed control extents survive swap removal and refuse a partial capture" T-LABEL
+   1 FIRST-RESERVE LEGACY-RESERVE 1 SECOND-RESERVE
+   3 LIVE=
+   ['] CUT-TAIL 7121 TTHROWS
+   3 LIVE=
+   FIRST-RELEASE                         \ SECOND moves over FIRST
+   2 LIVE=
+   WINDOW-CLEAN                           \ releases LEGACY and SECOND
+   0 LIVE=
+   1 FIRST-RESERVE LEGACY-RESERVE
+   2 LIVE=
+   DYNAMIC-STORAGE:RELEASE-ALL
+   DYNAMIC-STORAGE:REGISTERED-N 0 T=
 
    s" full cleanup is empty, repeatable and permits later reserve" T-LABEL
    DYNAMIC-STORAGE:RELEASE-ALL

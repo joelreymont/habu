@@ -1,0 +1,1678 @@
+\ Portable identities and references for one native FILE build. The loader binds
+\ actual published records here; section 13 keeps identities instead of live
+\ dictionary ordinals or DATA addresses.
+
+require src/lib/errors.f
+require src/lib/le.f
+require src/lib/memory.f
+require src/lib/string.f
+require src/core/checker-owner-abi.f
+require src/habu/xref.f
+require src/compiler/native/dict.f
+require tools/native-unit-capture.f
+
+package NFILE-REF
+private
+
+32 constant REF-BYTES
+8 constant REC-CELLS
+0 constant REC-OFF
+1 constant REC-LEN
+2 constant REC-PRODUCER
+3 constant REC-KNOWN
+4 constant REC-CON-OFF
+5 constant REC-CON-U
+6 constant REC-TOKEN
+7 constant REC-PROJECTED
+4 constant GROUP-CELLS
+3 constant ORIGIN-CELLS
+5 constant KEY-CELLS
+4096 constant HASH-SLOTS
+9 constant SEED-DECL
+
+DYNAMIC-BUFFER KEY-BUF u8
+DYNAMIC-BUFFER INPUT-KEY u8
+DYNAMIC-BUFFER KEY-ARENA u8
+DYNAMIC-BUFFER REC-ROWS n
+DYNAMIC-BUFFER GROUP-ROWS n
+DYNAMIC-BUFFER GROUP-HEADS n
+DYNAMIC-BUFFER KEY-ROWS n
+DYNAMIC-BUFFER KEY-HEADS n
+DYNAMIC-BUFFER WID-OWNERS n
+DYNAMIC-BUFFER IMPL-ROWS n
+DYNAMIC-BUFFER IMPL-TREE n
+DYNAMIC-BUFFER EXACT-ROWS n
+DYNAMIC-BUFFER EXACT-HEADS n
+DYNAMIC-BUFFER ORIGIN-ROWS n
+DYNAMIC-BUFFER INSTANCE-ROWS n
+DYNAMIC-BUFFER CON-ROWS n
+DYNAMIC-BUFFER FILE-STACK n
+DYNAMIC-BUFFER MARK-ROWS n
+DYNAMIC-BUFFER ALLOC-ROWS n
+DYNAMIC-BUFFER PREP-ALLOCS n
+DYNAMIC-BUFFER REF-ROWS u8
+DYNAMIC-BUFFER IMPORT-BYTES u8
+DYNAMIC-BUFFER IMPORT-OFF n
+DYNAMIC-BUFFER PREP-IMPORT-OFF n
+DYNAMIC-BUFFER OUTPUT u8
+variable KEY-U
+variable ARENA-U
+variable REC-N
+variable GROUP-N
+variable KEY-N
+variable INDEX-READY
+variable WID-CAP
+variable IMPL-N
+variable IMPL-CAP
+variable IMPL-LO
+variable IMPL-HI
+variable EXACT-N
+variable EXACT-READY
+variable ORIGIN-N
+variable PENDING-ORD
+variable PENDING-GROUP
+variable PENDING-OCC
+variable PENDING-KEY-OFF
+variable PENDING-KEY-U
+variable INSTANCE-N
+variable CURRENT-INSTANCE
+variable CON-N
+variable FILE-DEPTH
+variable FILE-OCC
+variable MARK-N
+variable ALLOC-N
+variable CAP-ALLOC
+variable PREP-ALLOC-BASE
+variable PREP-ALLOC-N
+variable REF-N
+variable IMPORT-N
+variable IMPORT-U
+variable OUTPUT-U
+PTR-VARIABLE PREP-REFS
+variable PREP-REF-N
+PTR-VARIABLE PREP-IMPORTS
+PTR-VARIABLE PREP-SRC
+variable PREP-IMPORT-N
+variable PREP-REC-BASE
+variable PREP-REC-COUNT
+variable PREP-CODE-BASE
+variable PREP-CODE-U
+variable PREP-WID-BASE
+variable PREP-WID-COUNT
+variable PREP-WIDS-INDEXED
+variable PREP-DATA-BASE
+variable PREP-DATA-U
+variable PREP-CURSOR
+variable CAP-CODE
+variable CAP-CODE-U
+variable CAP-REC
+variable CAP-REC-U
+variable CAP-WID
+variable CAP-WID-U
+variable CAP-DATA
+variable CAP-DATA-U
+variable CAP-READY
+variable RANGE-ACTIVE
+variable RANGE-FIRST
+variable DEFINITION-ORD
+TYPED-VARIABLE RECORD-AT [ n -- ptr n ]
+defer EFFECTIVE-WID ( n -- n )
+: LIVE-WID ( n -- n ) XREF-REC XREF-WORDLIST ;
+: WID-DEFAULT ( -- ) ['] LIVE-WID is EFFECTIVE-WID ;
+WID-DEFAULT
+defer LIVE-CONTRACT$ ( n -- ptr u8 n bool )
+: NO-CONTRACT ( n -- ptr u8 n bool ) drop NULL-PTR 0 false ;
+: CONTRACT-DEFAULT ( -- ) ['] NO-CONTRACT is LIVE-CONTRACT$ ;
+CONTRACT-DEFAULT
+defer FIXED-READ ( n -- n n bool )
+: NO-FIXED ( n -- n n bool ) drop 0 0 false ;
+: FIXED-DEFAULT ( -- ) ['] NO-FIXED is FIXED-READ ;
+FIXED-DEFAULT
+CAST: N>U8 ( n -- ptr u8 )
+CAST: U8>N ( ptr u8 -- n )
+CAST: FAMILY-IDENTITY-XT ( n -- [ n -- ptr u8 n ptr u8 n bool ] )
+CAST: FAMILY-FIND-XT ( n -- [ ptr u8 n ptr u8 n -- n bool ] )
+variable FAMILY-IDENTITY
+variable FAMILY-FIND
+
+: BAD ( -- ) E-NUNIT-PROFILE throw ;
+: KEY-ROOM ( n -- ) {: bytes:n :}
+   bytes 0 < bytes MEM-MAX-N KEY-U @ - > or if BAD then
+   KEY-U @ bytes + KEY-BUF-RESERVE ;
+: K-N ( n -- ) {: value:n :}
+   8 KEY-ROOM
+   value KEY-U @ KEY-BUF LE:U64!
+   8 KEY-U +! ;
+: K-S ( ptr u8 n -- ) {: a:ptr u:n :}
+   u K-N
+   u 0= if exit then
+   u KEY-ROOM
+   a KEY-U @ KEY-BUF u BYTE-COPY
+   u KEY-U +! ;
+: K-FOLD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u K-S
+   KEY-U @ u - {: first:n :}
+   u 0 ?do
+      first i + KEY-BUF c@ XREF-FOLD-C first i + KEY-BUF c!
+   loop ;
+: KEY$ ( -- ptr u8 n ) 0 KEY-BUF KEY-U @ ;
+: SAVE-KEY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0 <= u MEM-MAX-N ARENA-U @ - > or if BAD then
+   ARENA-U @ {: off:n :}
+   off u + KEY-ARENA-RESERVE
+   a off KEY-ARENA u BYTE-COPY
+   u ARENA-U +!
+   off ;
+: ROW@ ( n n -- n ) {: ord:n field:n :}
+   ord REC-CELLS * field + REC-ROWS @ ;
+: ROW! ( n n n -- ) {: x:n ord:n field:n :}
+   x ord REC-CELLS * field + REC-ROWS ! ;
+: GROUP@ ( n n -- n ) {: row:n field:n :}
+   row GROUP-CELLS * field + GROUP-ROWS @ ;
+: GROUP! ( n n n -- ) {: value:n row:n field:n :}
+   value row GROUP-CELLS * field + GROUP-ROWS ! ;
+: KEY@ ( n n -- n ) {: row:n field:n :}
+   row KEY-CELLS * field + KEY-ROWS @ ;
+: KEY! ( n n n -- ) {: value:n row:n field:n :}
+   value row KEY-CELLS * field + KEY-ROWS ! ;
+: INSTANCE@ ( n n -- n ) {: row:n field:n :}
+   row 4 * field + INSTANCE-ROWS @ ;
+: INSTANCE! ( n n n -- ) {: value:n row:n field:n :}
+   value row 4 * field + INSTANCE-ROWS ! ;
+: CON@ ( n n -- n ) {: row:n field:n :}
+   row 3 * field + CON-ROWS @ ;
+: CON! ( n n n -- ) {: value:n row:n field:n :}
+   value row 3 * field + CON-ROWS ! ;
+: MARK@ ( n n -- n ) {: row:n field:n :}
+   row 9 * field + MARK-ROWS @ ;
+: MARK! ( n n n -- ) {: value:n row:n field:n :}
+   value row 9 * field + MARK-ROWS ! ;
+: ALLOC@ ( n n -- n ) {: row:n field:n :}
+   row 6 * field + ALLOC-ROWS @ ;
+: ALLOC! ( n n n -- ) {: value:n row:n field:n :}
+   value row 6 * field + ALLOC-ROWS ! ;
+: GROW-RECS ( n -- ) {: want:n :}
+   want REC-N @ <= if exit then
+   want 0 < want MEM-MAX-N REC-CELLS / CELL / > or if BAD then
+   want REC-CELLS * REC-ROWS-RESERVE
+   want REC-N @ ?do
+      -1 i REC-OFF ROW! 0 i REC-LEN ROW!
+      -1 i REC-PRODUCER ROW! 0 i REC-KNOWN ROW!
+      -1 i REC-CON-OFF ROW! 0 i REC-CON-U ROW!
+      0 i REC-TOKEN ROW! 0 i REC-PROJECTED ROW!
+   loop
+   want REC-N ! ;
+: RECORD-KEY$ ( n -- ptr u8 n ) {: ord:n :}
+   ord 0 < ord REC-N @ >= or if BAD then
+   ord REC-OFF ROW@ {: off:n :}
+   off 0 < if BAD then
+   off KEY-ARENA ord REC-LEN ROW@ ;
+: SAME-KEY? ( ptr u8 n ptr u8 n -- bool ) STR= ;
+
+: HASH-KEY ( ptr u8 n -- n ) {: key:ptr size:n :}
+   5381
+   size 0 ?do 33 * key i + c@ + $7FFFFFFFFFFFFFFF and loop
+   HASH-SLOTS mod ;
+
+: INDEX-INIT ( -- )
+   INDEX-READY @ if exit then
+   HASH-SLOTS GROUP-HEADS-RESERVE
+   HASH-SLOTS KEY-HEADS-RESERVE
+   HASH-SLOTS 0 ?do
+      -1 i GROUP-HEADS ! -1 i KEY-HEADS !
+   loop
+   1 INDEX-READY ! ;
+
+: GROUP-FIND ( ptr u8 n -- n ) {: key:ptr size:n :}
+   INDEX-INIT
+   key size HASH-KEY GROUP-HEADS @
+   begin dup 0 >= while
+      dup 0 GROUP@ KEY-ARENA over 1 GROUP@ key size STR= if exit then
+      3 GROUP@
+   repeat ;
+
+: GROUP-GET ( ptr u8 n -- n ) {: key:ptr size:n :}
+   key size GROUP-FIND dup 0 >= if exit then drop
+   GROUP-N @ {: row:n :}
+   row 1+ GROUP-CELLS * GROUP-ROWS-RESERVE
+   key size SAVE-KEY row 0 GROUP!
+   size row 1 GROUP!
+   0 row 2 GROUP!
+   key size HASH-KEY {: slot:n :}
+   slot GROUP-HEADS @ row 3 GROUP!
+   row slot GROUP-HEADS !
+   1 GROUP-N +! row ;
+
+: KEY-FIND ( ptr u8 n -- n ) {: key:ptr size:n :}
+   INDEX-INIT
+   key size HASH-KEY KEY-HEADS @
+   begin dup 0 >= while
+      dup 0 KEY@ KEY-ARENA over 1 KEY@ key size STR= if exit then
+      4 KEY@
+   repeat ;
+
+: KEY-PUT ( ptr u8 n n n -- )
+   {: key:ptr size:n ord:n token:n :}
+   key size KEY-FIND dup 0 >= if
+      {: row:n :}
+      ord row 2 KEY! token row 3 KEY! exit
+   then drop
+   KEY-N @ {: row:n :}
+   row 1+ KEY-CELLS * KEY-ROWS-RESERVE
+   key size SAVE-KEY row 0 KEY!
+   size row 1 KEY!
+   ord row 2 KEY! token row 3 KEY!
+   key size HASH-KEY {: slot:n :}
+   slot KEY-HEADS @ row 4 KEY!
+   row slot KEY-HEADS !
+   1 KEY-N +! ;
+
+: GROUP-OBSERVE ( ptr u8 n -- ) {: key:ptr size:n :}
+   \ A prepared object's external declaration key can be opaque to this
+   \ session. Only keys minted by this owner advance a name occurrence.
+   size 16 < if exit then
+   key LE:U64@ 2 <> if exit then
+   key size 8 - GROUP-GET {: row:n :}
+   key size 8 - + LE:U64@ {: occurrence:n :}
+   occurrence 0 < if BAD then
+   occurrence row 2 GROUP@ >= if occurrence 1+ row 2 GROUP! then ;
+
+: NEXT-KEY$ ( ptr u8 n -- ptr u8 n n n )
+   {: base:ptr baseu:n :}
+   base baseu GROUP-GET {: group:n :}
+   group 2 GROUP@ {: occurrence:n :}
+   0 KEY-U !
+   baseu KEY-ROOM
+   base 0 KEY-BUF baseu BYTE-COPY
+   baseu KEY-U !
+   occurrence K-N
+   occurrence 1+ group 2 GROUP!
+   KEY$ group occurrence ;
+
+: WID-ROW ( n -- n ) {: wid:n :}
+   wid 0 <= if BAD then
+   wid WID-CAP @ >= if
+      wid 1+ 2 * WID-OWNERS-RESERVE
+      wid 1+ WID-CAP @ ?do
+         -1 i 2 * WID-OWNERS !
+         -1 i 2 * 1+ WID-OWNERS !
+      loop
+      wid 1+ WID-CAP !
+   then
+   wid 2 * ;
+
+: WID-OWNER ( n -- n n bool ) {: wid:n :}
+   wid 0 <= wid WID-CAP @ >= or if -1 0 false exit then
+   wid 2 * WID-OWNERS @ {: ord:n :}
+   ord 0 < if -1 0 false exit then
+   ord wid 2 * 1+ WID-OWNERS @ true ;
+
+: WID-BIND ( n n n -- ) {: wid:n ord:n vis:n :}
+   wid 0= if exit then
+   wid WID-ROW {: row:n :}
+   ord row WID-OWNERS !
+   vis row 1+ WID-OWNERS ! ;
+
+: WID-BIND-REC ( n -- ) {: ord:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if exit then
+   rec XREF-PKG-PUBLIC ord 1 WID-BIND
+   rec XREF-PKG-PRIVATE ord 2 WID-BIND ;
+
+: IMPL@ ( n n -- n ) {: row:n field:n :}
+   row 4 * field + IMPL-ROWS @ ;
+: IMPL! ( n n n -- ) {: value:n row:n field:n :}
+   value row 4 * field + IMPL-ROWS ! ;
+
+\ Sorted starts select a prefix; this tree skips subtrees whose intervals
+\ have all ended before the requested address.
+: IMPL-TREE-BUILD ( -- )
+   IMPL-CAP @ 0= if 1 IMPL-CAP ! then
+   begin IMPL-CAP @ IMPL-N @ < while
+      IMPL-CAP @ 2 * IMPL-CAP !
+   repeat
+   IMPL-CAP @ 2 * IMPL-TREE-RESERVE
+   IMPL-CAP @ 0 ?do 0 IMPL-CAP @ i + IMPL-TREE ! loop
+   IMPL-N @ 0 ?do
+      i 1 IMPL@ IMPL-CAP @ i + IMPL-TREE !
+   loop
+   IMPL-CAP @ 1- begin dup 0 > while
+      dup 2 * IMPL-TREE @ over 2 * 1+ IMPL-TREE @ max
+      over IMPL-TREE ! 1-
+   repeat drop ;
+
+: IMPL-TREE-APPEND ( n -- ) {: row:n :}
+   row IMPL-CAP @ + IMPL-LO !
+   row 1 IMPL@ IMPL-LO @ IMPL-TREE !
+   begin IMPL-LO @ 1 > while
+      IMPL-LO @ 2 / IMPL-LO !
+      IMPL-LO @ 2 * IMPL-TREE @
+      IMPL-LO @ 2 * 1+ IMPL-TREE @ max
+         IMPL-LO @ IMPL-TREE !
+   repeat ;
+
+: IMPL-TREE-REFRESH ( n n -- ) {: row:n old:n :}
+   IMPL-N @ IMPL-CAP @ > row old < or if
+      IMPL-TREE-BUILD exit
+   then
+   row IMPL-TREE-APPEND ;
+
+: EXACT@ ( n n -- n ) {: row:n field:n :}
+   row 4 * field + EXACT-ROWS @ ;
+: EXACT! ( n n n -- ) {: value:n row:n field:n :}
+   value row 4 * field + EXACT-ROWS ! ;
+: EXACT-SLOT ( n -- n ) HASH-SLOTS mod ;
+: EXACT-INIT ( -- )
+   EXACT-READY @ if exit then
+   HASH-SLOTS EXACT-HEADS-RESERVE
+   HASH-SLOTS 0 ?do -1 i EXACT-HEADS ! loop
+   1 EXACT-READY ! ;
+
+: LIVE-TOKEN ( n -- n ) {: ord:n :}
+   ord XREF-REC DEF-OCC:SELECT {: slot:n occurrence:n :}
+   slot ord <> if BAD then occurrence ;
+
+\ An exact anonymous entry can sit inside its parent's code span. The
+\ occurrence keeps a reclaimed address from naming a later occupant.
+: REGISTER-IMPL ( n n -- ) {: entry:n ord:n :}
+   entry 0 < ord 0 < ord ndict@ >= or or if BAD then
+   ord LIVE-TOKEN {: occurrence:n :}
+   EXACT-INIT
+   EXACT-N @ {: row:n :}
+   row 1+ 4 * EXACT-ROWS-RESERVE
+   entry row 0 EXACT!
+   ord row 1 EXACT!
+   occurrence row 2 EXACT!
+   entry EXACT-SLOT {: slot:n :}
+   slot EXACT-HEADS @ row 3 EXACT!
+   row slot EXACT-HEADS !
+   1 EXACT-N +! ;
+
+: RESOLVE-KEEP ( n n -- n n )
+   2dup DEF-OCC:RESOLVE drop ;
+
+: LIVE-RECORD? ( n n -- ptr n bool )
+   [: RESOLVE-KEEP ;] catch {: code:n :}
+   code 0= if drop XREF-REC true exit then
+   code DEF-OCC:E-STALE = if 2drop XREF-NULL false exit then
+   2drop code throw ;
+
+: ORIGIN@ ( n n -- n ) {: row:n field:n :}
+   row ORIGIN-CELLS * field + ORIGIN-ROWS @ ;
+: ORIGIN! ( n n n -- ) {: value:n row:n field:n :}
+   value row ORIGIN-CELLS * field + ORIGIN-ROWS ! ;
+
+\ A FILE acceptance can precede publication. Zero occurrence is completed
+\ only by publication of that pending record, and discarded on failure.
+: ORIGIN-ACCEPT-BODY ( n n -- ) {: serial:n ord:n :}
+   serial 0 <= ord 0 < ord ndict@ > or or if BAD then
+   ORIGIN-N @ {: row:n :}
+   row 1+ ORIGIN-CELLS * ORIGIN-ROWS-RESERVE
+   serial row 0 ORIGIN!  ord row 1 ORIGIN!
+   ord ndict@ = if 0 else ord LIVE-TOKEN then row 2 ORIGIN!
+   1 ORIGIN-N +! ;
+
+: ORIGIN-PUBLISHED ( n -- ) {: ord:n :}
+   ORIGIN-N @ 0 ?do
+      i 0 ORIGIN@ 0<> i 1 ORIGIN@ ord = and
+      i 2 ORIGIN@ 0= and if
+         ord LIVE-TOKEN i 2 ORIGIN!
+      then
+   loop ;
+
+: ORIGIN-DROP-PENDING ( n -- ) {: ord:n :}
+   ORIGIN-N @ 0 ?do
+      i 1 ORIGIN@ ord = i 2 ORIGIN@ 0= and if
+         0 i 0 ORIGIN!
+      then
+   loop ;
+
+: ORIGIN-RECORD-BODY ( n n -- n bool ) {: serial:n xt:n :}
+   ORIGIN-N @ begin dup 0 > while
+      1- dup 0 ORIGIN@ serial = if
+         dup 2 ORIGIN@ {: occ:n :}
+         dup 1 ORIGIN@ {: ord:n :}
+         drop
+         occ 0= if 0 false exit then
+         ord occ LIVE-RECORD? if
+            {: rec:ptr :}
+            rec XREF-START xt =
+            xt cp@ < and
+            rec XREF-START rec XREF-CODE-BYTES + cp@ <= and
+            ord swap exit
+         then drop
+         0 false exit
+      then
+   repeat drop 0 false ;
+
+: IMPL-LIVE? ( n -- bool ) {: row:n :}
+   row 2 IMPL@ row 3 IMPL@ LIVE-RECORD?
+      if drop true else drop false then ;
+
+: REGISTER-IMPL-RANGE ( n n n -- )
+   {: entry:n size:n ord:n :}
+   size 0 <= if exit then
+   entry 0 < ord 0 < ord ndict@ >= or or if BAD then
+   ord LIVE-TOKEN {: occurrence:n :}
+   0 IMPL-LO ! IMPL-N @ IMPL-HI !
+   begin IMPL-LO @ IMPL-HI @ < while
+      IMPL-LO @ IMPL-HI @ + 2 / {: mid:n :}
+      mid 0 IMPL@ entry <= if mid 1+ IMPL-LO !
+      else mid IMPL-HI ! then
+   repeat
+   IMPL-LO @ 0 ?do
+      IMPL-LO @ 1- i - {: prior:n :}
+      prior 0 IMPL@ entry <> if leave then
+      prior 1 IMPL@ entry size + =
+      prior 2 IMPL@ ord = and
+      prior 3 IMPL@ occurrence = and if unloop exit then
+   loop
+   IMPL-LO @ {: row:n :}
+   IMPL-N @ {: old:n :}
+   old 1+ 4 * IMPL-ROWS-RESERVE
+   old row - 0 ?do
+      old i - 1- {: source:n :}
+      4 0 ?do
+         source i IMPL@ source 1+ i IMPL!
+      loop
+   loop
+   entry row 0 IMPL!
+   entry size + row 1 IMPL!
+   ord row 2 IMPL!
+   occurrence row 3 IMPL!
+   1 IMPL-N +!
+   row old IMPL-TREE-REFRESH ;
+
+: REF! ( n n n n -- n ) {: kind:n owner:n item:n addend:n :}
+   REF-N @ {: idx:n :}
+   idx MEM-MAX-N REF-BYTES / >= if BAD then
+   idx 1+ REF-BYTES * REF-ROWS-RESERVE
+   idx REF-BYTES * {: off:n :}
+   kind off REF-ROWS LE:U64!
+   owner off 8 + REF-ROWS LE:U64!
+   item off 16 + REF-ROWS LE:U64!
+   addend off 24 + REF-ROWS LE:U64!
+   1 REF-N +!
+   idx 1+ ;
+
+: IMPORT-ROOM ( n -- ) {: bytes:n :}
+   bytes 0 < bytes MEM-MAX-N IMPORT-U @ - > or if BAD then
+   IMPORT-U @ bytes + IMPORT-BYTES-RESERVE ;
+: OUTPUT-ROOM ( n -- ) {: bytes:n :}
+   bytes 0 < bytes MEM-MAX-N OUTPUT-U @ - > or if BAD then
+   OUTPUT-U @ bytes + OUTPUT-RESERVE ;
+: O-N ( n -- ) {: value:n :}
+   8 OUTPUT-ROOM
+   value OUTPUT-U @ OUTPUT LE:U64!
+   8 OUTPUT-U +! ;
+: O-S ( ptr u8 n -- ) {: a:ptr u:n :}
+   u OUTPUT-ROOM
+   a OUTPUT-U @ OUTPUT u BYTE-COPY
+   u OUTPUT-U +! ;
+: PREP-ROOM ( n n -- ) {: bytes:n size:n :}
+   bytes 0 < bytes size PREP-CURSOR @ - > or if BAD then ;
+
+: IMPORT-KEY ( n ptr u8 n n n -- n )
+   {: kind:n key:ptr keyu:n extent:n alignment:n :}
+   keyu 0 <= extent 0 < or alignment 0 <= or if BAD then
+   IMPORT-N @ {: row:n :}
+   row 1+ IMPORT-OFF-RESERVE
+   IMPORT-U @ row IMPORT-OFF !
+   32 keyu + IMPORT-ROOM
+   kind IMPORT-U @ IMPORT-BYTES LE:U64!
+   keyu IMPORT-U @ 8 + IMPORT-BYTES LE:U64!
+   extent IMPORT-U @ 16 + IMPORT-BYTES LE:U64!
+   alignment IMPORT-U @ 24 + IMPORT-BYTES LE:U64!
+   key IMPORT-U @ 32 + IMPORT-BYTES keyu BYTE-COPY
+   32 keyu + IMPORT-U +!
+   1 IMPORT-N +!
+   row ;
+
+: PREP-IMPORT-ROW$ ( n -- n ptr u8 n n n ) {: idx:n :}
+   idx 0 < idx PREP-IMPORT-N @ >= or if BAD then
+   PREP-SRC @ idx PREP-IMPORT-OFF @ + {: row:ptr :}
+   row LE:U64@ row 32 + row 8 + LE:U64@
+   row 16 + LE:U64@ row 24 + LE:U64@ ;
+
+: IMPORT-DECL ( n n -- n ) {: kind:n ord:n :}
+   kind ord RECORD-KEY$ 0 1 IMPORT-KEY ;
+
+
+public
+
+: ORIGIN-ACCEPT ( n n -- ) ORIGIN-ACCEPT-BODY ;
+: ORIGIN-ABANDON ( -- ) ndict@ ORIGIN-DROP-PENDING ;
+: ORIGIN-RECORD? ( n n -- n bool ) ORIGIN-RECORD-BODY ;
+: ORIGIN-CLEAR ( -- ) 0 ORIGIN-N ! ;
+
+: BIND-FAMILY ( n n -- )
+   FAMILY-FIND ! FAMILY-IDENTITY ! ;
+
+: RESET-CONSTRUCTORS ( -- ) 0 CON-N ! ;
+
+EXPORT IMPORT-KEY
+EXPORT PREP-IMPORT-ROW$
+EXPORT REGISTER-IMPL
+
+1 constant CODE
+2 constant RECORD
+3 constant WID
+4 constant DATA
+5 constant LITERAL
+0 constant LOCAL
+1 constant EXTERNAL
+2 constant BUILTIN
+
+\ Symbol keys identify interned names. Dictionary bindings use DECL-KEY$ and
+\ add an occurrence at their publication, so redefinitions stay distinct.
+: SYMBOL-KEY$ ( ptr u8 n n ptr u8 n -- ptr u8 n )
+   {: pkg:ptr pkgu:n visibility:n name:ptr nameu:n :}
+   visibility 0 < visibility 2 > or if BAD then
+   0 KEY-U !
+   1 K-N
+   pkg pkgu K-FOLD
+   visibility K-N
+   name nameu K-FOLD
+   KEY$ ;
+
+\ The loader supplies the canonical FILE-instance path, root and same-child
+\ load occurrence. Each instance owns separate family and DATA-range ordinals.
+: FILE-INSTANCE! ( ptr u8 n -- ) {: key:ptr keyu:n :}
+   keyu 0 <= if BAD then
+   INSTANCE-N @ {: row:n :}
+   row 1+ 4 * INSTANCE-ROWS-RESERVE
+   key keyu SAVE-KEY row 0 INSTANCE!
+   keyu row 1 INSTANCE!
+   0 row 2 INSTANCE! 0 row 3 INSTANCE!
+   row 1+ INSTANCE-N ! row CURRENT-INSTANCE ! ;
+
+: FILE-INSTANCE-CLEAR ( -- ) -1 CURRENT-INSTANCE ! ;
+
+: INSTANCE-ID ( -- n )
+   CURRENT-INSTANCE @ dup 0 < if BAD then ;
+
+: INSTANCE-KEY$ ( -- ptr u8 n )
+   INSTANCE-ID {: row:n :}
+   row 0 INSTANCE@ KEY-ARENA row 1 INSTANCE@ ;
+
+\ Selection reserves each child occurrence once. Replay enters that same
+\ instance so a later source load receives the next occurrence.
+: ENTER-FILE ( n -- ) {: row:n :}
+   row 0 < row INSTANCE-N @ >= or if BAD then
+   row 0 INSTANCE@ KEY-ARENA {: key:ptr :}
+   row 1 INSTANCE@ {: keyu:n :}
+   keyu 16 < key LE:U64@ 4 <> or if BAD then
+   key 8 + LE:U64@ {: parentu:n :}
+   parentu 0 <= parentu keyu 16 - > or if BAD then
+   INSTANCE-KEY$ key 16 + parentu STR= 0= if BAD then
+   FILE-DEPTH @ 1+ FILE-STACK-RESERVE
+   row FILE-DEPTH @ FILE-STACK !
+   FILE-DEPTH @ 1+ FILE-DEPTH !
+   row CURRENT-INSTANCE ! ;
+
+: PACKAGE-OF ( ptr n -- ptr u8 n n ) {: rec:ptr :}
+   rec XREF-WORDLIST {: wid:n :}
+   wid XREF-NAMESPACE-WL = if NULL-PTR 0 0 exit then
+   wid XREF-RETIRED-WL = if NULL-PTR 0 3 exit then
+   wid OWNER-API-PUB-WID = if s" hb-engine-api" 1 exit then
+   wid OWNER-API-PRI-WID = if s" hb-engine-api" 2 exit then
+   wid 0= if NULL-PTR 0 0 exit then
+   wid WID-OWNER if {: ord:n vis:n :}
+      ord XREF-REC XREF-NAME$ vis exit
+   then 2drop BAD ;
+
+: PUSH-FILE ( ptr u8 n ptr u8 n n -- )
+   {: path:ptr pathu:n root:ptr rootu:n kind:n :}
+   pathu 0 <= rootu 0 < or kind 0 < or if BAD then
+   0 KEY-U ! 4 K-N
+   CURRENT-INSTANCE @ {: parent:n :}
+   parent 0 >= if
+      parent 0 INSTANCE@ KEY-ARENA parent 1 INSTANCE@ K-S
+   else
+      NULL-PTR 0 K-S
+   then
+   kind K-N path pathu K-S root rootu K-S
+   KEY-U @ {: baseu:n :}
+   0 FILE-OCC !
+   INSTANCE-N @ 0 ?do
+      i 1 INSTANCE@ baseu 8 + = if
+         i 0 INSTANCE@ KEY-ARENA baseu 0 KEY-BUF baseu STR= if
+            FILE-OCC @ 1+ FILE-OCC !
+         then
+      then
+   loop
+   FILE-OCC @ K-N
+   KEY$ FILE-INSTANCE!
+   FILE-DEPTH @ 1+ FILE-STACK-RESERVE
+   CURRENT-INSTANCE @ FILE-DEPTH @ FILE-STACK !
+   FILE-DEPTH @ 1+ FILE-DEPTH ! ;
+
+: POP-FILE ( -- )
+   FILE-DEPTH @ 0 <= if BAD then
+   -1 FILE-DEPTH +!
+   FILE-DEPTH @ 0= if -1 CURRENT-INSTANCE ! exit then
+   FILE-DEPTH @ 1- FILE-STACK @ CURRENT-INSTANCE ! ;
+
+: FAMILY-KEY$ ( n -- ptr u8 n bool ) {: id:n :}
+   id FAMILY-IDENTITY @ FAMILY-IDENTITY-XT execute
+      0= if 2drop 2drop NULL-PTR 0 false exit then
+   {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   0 KEY-U ! 7 K-N
+   pkg pkgu K-FOLD
+   name nameu K-S
+   KEY$ true ;
+
+: FAMILY-PARTS? ( ptr u8 n -- ptr u8 n ptr u8 n bool )
+   {: key:ptr keyu:n :}
+   keyu 24 < if NULL-PTR 0 NULL-PTR 0 false exit then
+   key LE:U64@ 7 <> if NULL-PTR 0 NULL-PTR 0 false exit then
+   key 8 + LE:U64@ {: pkgu:n :}
+   pkgu 0 < pkgu keyu 24 - > or if
+      NULL-PTR 0 NULL-PTR 0 false exit then
+   key 16 pkgu + + LE:U64@ {: nameu:n :}
+   nameu 0 < nameu keyu 24 pkgu + - <> or if
+      NULL-PTR 0 NULL-PTR 0 false exit then
+   key 16 + pkgu key 24 pkgu + + nameu true ;
+
+: FAMILY-KEY-MATCH? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: key:ptr keyu:n pkg:ptr pkgu:n name:ptr nameu:n :}
+   key keyu FAMILY-PARTS? 0= if 2drop 2drop false exit then
+   {: actual-pkg:ptr actual-pkgu:n actual-name:ptr actual-nameu:n :}
+   actual-pkg actual-pkgu pkg pkgu STR=CI
+   actual-name actual-nameu name nameu STR= and ;
+
+: FAMILY-BY-KEY ( ptr u8 n -- n bool )
+   FAMILY-PARTS? 0= if 2drop 2drop -1 false exit then
+   FAMILY-FIND @ FAMILY-FIND-XT execute ;
+
+: CON-KEY-NEXT$ ( -- ptr u8 n )
+   CURRENT-INSTANCE @ {: row:n :}
+   row 0 < row INSTANCE-N @ >= or if BAD then
+   0 KEY-U ! 6 K-N
+   row 0 INSTANCE@ KEY-ARENA row 1 INSTANCE@ K-S
+   row 3 INSTANCE@ dup K-N 1+ row 3 INSTANCE!
+   KEY$ ;
+
+: CON-KEY$ ( n -- ptr u8 n bool ) {: id:n :}
+   CON-N @ 0 ?do
+      i 0 CON@ id = if
+         i 1 CON@ KEY-ARENA i 2 CON@ true unloop exit
+      then
+   loop NULL-PTR 0 false ;
+
+: CON-BY-KEY ( ptr u8 n -- n bool ) {: key:ptr keyu:n :}
+   CON-N @ 0 ?do
+      i 1 CON@ KEY-ARENA i 2 CON@ key keyu STR= if
+         i 0 CON@ true unloop exit
+      then
+   loop -1 false ;
+
+: BIND-CON ( n ptr u8 n -- ) {: id:n key:ptr keyu:n :}
+   id 0 < keyu 0 <= or if BAD then
+   key keyu CON-BY-KEY if id <> if BAD then exit then drop
+   CON-N @ 0 ?do
+      i 0 CON@ id = if
+         key keyu i 1 CON@ KEY-ARENA i 2 CON@ STR= 0= if BAD then
+         unloop exit
+      then
+   loop
+   CON-N @ {: row:n :}
+   row 1+ 3 * CON-ROWS-RESERVE
+   id row 0 CON!
+   key keyu SAVE-KEY row 1 CON!
+   keyu row 2 CON!
+   1 CON-N +! ;
+
+: CON-DECLARED ( n -- ) {: id:n :}
+   CURRENT-INSTANCE @ 0 < if exit then
+   CON-KEY-NEXT$ {: key:ptr keyu:n :}
+   id key keyu BIND-CON ;
+
+\ The publication owner calls this for the exact record it just emitted.
+\ A zero producer length means this declaration has no proven implementation
+\ producer contract, so consumers must use their ordered dependency path.
+: BIND-DECL ( n ptr u8 n ptr u8 n -- )
+   {: ord:n raw:ptr keyu:n producer:ptr produceru:n :}
+   ord 0 < keyu 0 <= or produceru 0 < or produceru 32 > or if BAD then
+   produceru 0<> produceru 32 <> and if BAD then
+   keyu INPUT-KEY-RESERVE
+   raw 0 INPUT-KEY keyu BYTE-COPY
+   0 INPUT-KEY {: key:ptr :}
+   ord 1+ GROW-RECS
+   ord REC-OFF ROW@ 0 >= if
+      ord RECORD-KEY$ key keyu SAME-KEY? 0= if BAD then
+      produceru 32 = if
+         ord REC-KNOWN ROW@ 0<> if
+            producer 32 ord REC-PRODUCER ROW@ KEY-ARENA 32
+               STR= 0= if BAD then
+         else
+            producer 32 SAVE-KEY ord REC-PRODUCER ROW!
+            1 ord REC-KNOWN ROW!
+         then
+      then
+      exit
+   then
+   key keyu GROUP-OBSERVE
+   key keyu SAVE-KEY ord REC-OFF ROW!
+   keyu ord REC-LEN ROW!
+   key keyu ord 0 KEY-PUT
+   produceru 32 = if
+      producer 32 SAVE-KEY ord REC-PRODUCER ROW!
+      1 ord REC-KNOWN ROW!
+   then ;
+
+\ A published dictionary slot is identified by the engine's occurrence,
+\ not by this session's key-table insertion order. A prepared projection has
+\ no occurrence until its records are installed.
+: BIND-LIVE ( n -- ) {: ord:n :}
+   ord XREF-REC DEF-OCC:SELECT {: slot:n occurrence:n :}
+   slot ord <> if BAD then
+   occurrence ord REC-TOKEN ROW!
+   0 ord REC-PROJECTED ROW!
+   ord RECORD-KEY$ ord occurrence KEY-PUT
+   ord ORIGIN-PUBLISHED ;
+
+: CLEAR-RECORD ( n -- ) {: ord:n :}
+   -1 ord REC-OFF ROW! 0 ord REC-LEN ROW!
+   -1 ord REC-PRODUCER ROW! 0 ord REC-KNOWN ROW!
+   -1 ord REC-CON-OFF ROW! 0 ord REC-CON-U ROW!
+   0 ord REC-TOKEN ROW! 0 ord REC-PROJECTED ROW! ;
+
+: RETIRE-REUSED ( n -- ) {: ord:n :}
+   ord REC-OFF ROW@ 0 < if exit then
+   ord REC-TOKEN ROW@ {: token:n :}
+   token 0= if
+      ord PENDING-ORD @ = ord REC-PROJECTED ROW@ 0<> or if exit then
+      ord CLEAR-RECORD exit
+   then
+   ord token LIVE-RECORD? if drop exit then drop
+   ord CLEAR-RECORD ;
+
+: BASE-KEY$ ( n -- ptr u8 n ) {: ord:n :}
+   CURRENT-INSTANCE @ {: instance:n :}
+   instance 0 < instance INSTANCE-N @ >= or if BAD then
+   ord XREF-REC {: rec:ptr :}
+   rec PACKAGE-OF {: pkg:ptr pkgu:n vis:n :}
+   vis 3 = if BAD then
+   rec XREF-NAME$ {: name:ptr nameu:n :}
+   0 KEY-U ! 2 K-N
+   instance 0 INSTANCE@ KEY-ARENA instance 1 INSTANCE@ K-S
+   pkg pkgu K-FOLD vis K-N name nameu K-FOLD
+   KEY$ ;
+
+: BIND-CONTRACT ( n ptr u8 n -- )
+   {: ord:n bytes:ptr size:n :}
+   ord 0 < ord REC-N @ >= or size 0 <= or if BAD then
+   ord REC-CON-OFF ROW@ 0 >= if
+      ord REC-CON-OFF ROW@ KEY-ARENA ord REC-CON-U ROW@
+         bytes size STR= 0= if BAD then
+      exit
+   then
+   bytes size SAVE-KEY ord REC-CON-OFF ROW!
+   size ord REC-CON-U ROW! ;
+
+: BIND-RECORD ( n -- ) {: ord:n :}
+   ord 0 < ord ndict@ >= or if BAD then
+   ord 1+ GROW-RECS
+   ord RETIRE-REUSED
+   ord REC-OFF ROW@ 0 >= if
+      \ Prepared rows carry the original identity, even if later retired.
+      ord REC-TOKEN ROW@ 0= ord REC-PROJECTED ROW@ 0= and if
+         ord RECORD-KEY$ {: key:ptr keyu:n :}
+         ord BASE-KEY$ {: base:ptr baseu:n :}
+         keyu baseu 8 + <> if BAD then
+         key baseu base baseu STR= 0= if BAD then
+      then
+      ord BIND-LIVE exit
+   then
+   ord PENDING-ORD @ = if
+      PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @
+   else
+      ord BASE-KEY$ GROUP-GET {: group:n :}
+      group 2 GROUP@ K-N
+      KEY$
+   then
+   {: key:ptr keyu:n :}
+   ord key keyu NULL-PTR 0 BIND-DECL
+   ord BIND-LIVE ;
+
+: PENDING-CLEAR ( -- )
+   -1 PENDING-ORD ! -1 PENDING-GROUP !
+   0 PENDING-OCC ! -1 PENDING-KEY-OFF ! 0 PENDING-KEY-U ! ;
+PENDING-CLEAR
+-1 DEFINITION-ORD !
+
+: PENDING-RELEASE ( -- )
+   PENDING-ORD @ 0 < if exit then
+   PENDING-ORD @ {: ord:n :}
+   ord ORIGIN-DROP-PENDING
+   ord ndict@ = ord REC-N @ < and if
+      ord REC-OFF ROW@ 0 >= if
+         ord CLEAR-RECORD
+      then
+   then
+   PENDING-GROUP @ {: group:n :}
+   group 2 GROUP@ PENDING-OCC @ 1+ = if
+      PENDING-OCC @ group 2 GROUP!
+   then
+   PENDING-CLEAR ;
+
+: PENDING-KEY$ ( -- ptr u8 n )
+   PENDING-ORD @ 0 >= if BAD then
+   CURRENT-INSTANCE @ 0 < if BAD then
+   ndict@ {: ord:n :}
+   ord REC-N @ < if ord RETIRE-REUSED then
+   ord BASE-KEY$ {: base:ptr baseu:n :}
+   base baseu GROUP-GET {: group:n :}
+   group 2 GROUP@ {: occurrence:n :}
+   occurrence K-N
+   KEY$ {: key:ptr keyu:n :}
+   key keyu SAVE-KEY PENDING-KEY-OFF !
+   keyu PENDING-KEY-U !
+   ord PENDING-ORD ! group PENDING-GROUP !
+   occurrence PENDING-OCC !
+   occurrence 1+ group 2 GROUP!
+   ord PENDING-KEY-OFF @ KEY-ARENA keyu NULL-PTR 0 BIND-DECL
+   PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ ;
+
+: ON-PUBLISHED ( n -- ) {: ord:n :}
+   CURRENT-INSTANCE @ 0 < if exit then
+   ord BIND-RECORD
+   ord WID-BIND-REC
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+      rec XREF-START rec XREF-CODE-BYTES ord REGISTER-IMPL-RANGE
+   then ;
+
+: PUBLISH-DEFINITION ( n ptr u8 n ptr u8 n -- )
+   {: ord:n key:ptr keyu:n producer:ptr produceru:n :}
+   ord 0 < ord ndict@ >= or if BAD then
+   PENDING-ORD @ ord <> if BAD then
+   key keyu PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ STR=
+      0= if BAD then
+   ord key keyu producer produceru BIND-DECL
+   ord BIND-LIVE
+   ord LIVE-CONTRACT$ if
+      ord -rot BIND-CONTRACT
+   else 2drop then
+   PENDING-CLEAR ;
+
+: BIND-RANGE ( -- )
+   CAP-REC @ CAP-REC-U @ + CAP-REC @ ?do
+      i BIND-RECORD
+      i LIVE-CONTRACT$ if
+         {: contract:ptr contractu:n :}
+         contractu 0 <= if BAD then
+         contract contractu SAVE-KEY i REC-CON-OFF ROW!
+         contractu i REC-CON-U ROW!
+      else 2drop then
+   loop ;
+
+: ALLOC-KEY$ ( n -- ptr u8 n ) {: row:n :}
+   row 0 < row ALLOC-N @ >= or if BAD then
+   row 0 ALLOC@ KEY-ARENA row 1 ALLOC@ ;
+
+: FIND-ALLOC ( ptr u8 n -- n bool ) {: key:ptr keyu:n :}
+   ALLOC-N @ 0 ?do
+      i ALLOC-KEY$ key keyu STR= if i true unloop exit then
+   loop -1 false ;
+
+: BIND-ALLOC ( ptr u8 n n n n n -- n )
+   {: key:ptr keyu:n base:n extent:n alignment:n storage:n :}
+   keyu 0 <= extent 0 <= or alignment 0 <= or if BAD then
+   key keyu FIND-ALLOC if {: row:n :}
+      row 2 ALLOC@ base <> row 3 ALLOC@ extent <> or
+      row 4 ALLOC@ alignment <> or
+      row 5 ALLOC@ storage <> or if BAD then
+      row exit
+   then drop
+   ALLOC-N @ {: row:n :}
+   row 1+ 6 * ALLOC-ROWS-RESERVE
+   key keyu SAVE-KEY row 0 ALLOC!
+   keyu row 1 ALLOC!
+   base row 2 ALLOC!
+   extent row 3 ALLOC!
+   alignment row 4 ALLOC!
+   storage row 5 ALLOC!
+   1 ALLOC-N +!
+   row ;
+
+: BEGIN-ALLOC ( -- )
+   CURRENT-INSTANCE @ {: instance:n :}
+   instance 0 < instance INSTANCE-N @ >= or if BAD then
+   instance 2 INSTANCE@ {: ordinal:n :}
+   ordinal 1+ instance 2 INSTANCE!
+   -1 CAP-ALLOC !
+   CAP-DATA-U @ 0= if exit then
+   0 KEY-U ! 5 K-N
+   instance 0 INSTANCE@ KEY-ARENA instance 1 INSTANCE@ K-S
+   ordinal K-N
+   KEY$ CAP-DATA @ CAP-DATA-U @ 1 0 BIND-ALLOC CAP-ALLOC ! ;
+
+: BIND-SEED ( -- )
+   s" hb-seed" FILE-INSTANCE!
+   ndict@ 0 ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-RETIRED? if
+         \ A retired row no longer has a wordlist to name its declaration.
+         0 KEY-U ! SEED-DECL K-N INSTANCE-KEY$ K-S i K-N
+         i KEY$ NULL-PTR 0 BIND-DECL
+         i BIND-LIVE
+      else
+         i BIND-RECORD
+      then
+      i WID-BIND-REC
+      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+         rec XREF-START rec XREF-CODE-BYTES i REGISTER-IMPL-RANGE
+      then
+   loop
+   here BYTE-VIEW data-base BYTE-VIEW - {: bytes:n :}
+   bytes 0 > if
+      0 KEY-U ! 5 K-N
+      s" hb-seed" K-S 0 K-N
+      KEY$ DATA-VA VA>N bytes 1 0 BIND-ALLOC drop
+      1 0 2 INSTANCE!
+   then
+   FILE-INSTANCE-CLEAR ;
+
+: REBUILD-INDEXES ( -- )
+   0 GROUP-N ! 0 KEY-N ! 0 INDEX-READY !
+   INDEX-INIT
+   0 EXACT-READY ! EXACT-INIT
+   EXACT-N @ 0 ?do
+      i 0 EXACT@ EXACT-SLOT {: slot:n :}
+      slot EXACT-HEADS @ i 3 EXACT!
+      i slot EXACT-HEADS !
+   loop
+   WID-CAP @ 0 ?do
+      -1 i 2 * WID-OWNERS !
+      -1 i 2 * 1+ WID-OWNERS !
+   loop
+   0 PREP-WIDS-INDEXED !
+   0 IMPL-N ! 0 IMPL-CAP !
+   REC-N @ 0 ?do
+      i REC-OFF ROW@ 0 >= if
+         i RECORD-KEY$ {: key:ptr keyu:n :}
+         keyu INPUT-KEY-RESERVE
+         key 0 INPUT-KEY keyu BYTE-COPY
+         0 INPUT-KEY keyu GROUP-OBSERVE
+         0 INPUT-KEY keyu i i REC-TOKEN ROW@ KEY-PUT
+         i WID-BIND-REC
+         i XREF-REC {: rec:ptr :}
+         rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+            rec XREF-START rec XREF-CODE-BYTES i REGISTER-IMPL-RANGE
+         then
+      then
+   loop ;
+
+\ Host kernel code and source-built prefix code have separate producers.
+\ Declarations without code and a kernel with no known role stay ordered.
+: BIND-SEED-PRODUCER ( n n n ptr u8 n bool ptr u8 -- )
+   {: first:n last:n frontier:n kernel:ptr kernelu:n known:bool source:ptr :}
+   first 0 < last first < or last ndict@ > or
+   frontier 0 < or frontier last > or if BAD then
+   known if kernelu 32 <> if BAD then
+   else kernelu 0<> if BAD then then
+   last first ?do
+      i REC-N @ >= if BAD then
+      i REC-OFF ROW@ 0 < if BAD then
+      i XREF-REC XREF-CODE-BYTES 0 > if
+         i frontier < if
+            known if kernel else NULL-PTR then
+         else source then {: producer:ptr :}
+         producer NULL-PTR <> if
+            i REC-KNOWN ROW@ 0<> if
+               producer 32 i REC-PRODUCER ROW@ KEY-ARENA 32 STR= 0= if BAD then
+            else
+               producer 32 SAVE-KEY i REC-PRODUCER ROW!
+               1 i REC-KNOWN ROW!
+            then
+         then
+      then
+   loop ;
+
+: MARK ( -- n )
+   MARK-N @ {: id:n :}
+   id 1+ 9 * MARK-ROWS-RESERVE
+   REC-N @ id 0 MARK!
+   INSTANCE-N @ id 1 MARK!
+   CON-N @ id 2 MARK!
+   ALLOC-N @ id 3 MARK!
+   ARENA-U @ id 4 MARK!
+   CURRENT-INSTANCE @ id 5 MARK!
+   FILE-DEPTH @ id 6 MARK!
+   EXACT-N @ id 7 MARK!
+   ORIGIN-N @ id 8 MARK!
+   1 MARK-N +! id ;
+
+: MARK-CHECK ( n -- ) {: id:n :}
+   id 0 < id MARK-N @ 1- <> or if BAD then ;
+
+: REWIND ( n -- ) {: id:n :}
+   id MARK-CHECK
+   PENDING-RELEASE
+   id 0 MARK@ REC-N !
+   id 1 MARK@ INSTANCE-N !
+   id 2 MARK@ CON-N !
+   id 3 MARK@ ALLOC-N !
+   id 4 MARK@ ARENA-U !
+   id 5 MARK@ CURRENT-INSTANCE !
+   id 6 MARK@ FILE-DEPTH !
+   id 7 MARK@ EXACT-N !
+   id 8 MARK@ ORIGIN-N !
+   REBUILD-INDEXES
+   -1 MARK-N +!
+   NULL-PTR PREP-REFS ! 0 PREP-REF-N !
+   NULL-PTR PREP-IMPORTS ! 0 PREP-IMPORT-N !
+   NULL-PTR PREP-SRC ! 0 PREP-ALLOC-N ! ;
+
+: COMMIT ( n -- ) MARK-CHECK -1 MARK-N +! ;
+
+: DECL-KEY$ ( n -- ptr u8 n ) RECORD-KEY$ ;
+
+: DECL-KEY? ( n -- ptr u8 n bool ) {: ord:n :}
+   ord 0 < ord REC-N @ >= or if NULL-PTR 0 false exit then
+   ord REC-OFF ROW@ 0 < if NULL-PTR 0 false exit then
+   ord RECORD-KEY$ true ;
+
+: INDEX-PREPARED-WIDS ( -- )
+   PREP-REC-COUNT @ 0 ?do
+      PREP-REC-BASE @ i + {: ord:n :}
+      ord RECORD-AT @ execute {: rec:ptr :}
+      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+         rec XREF-PKG-PUBLIC ord 1 WID-BIND
+         rec XREF-PKG-PRIVATE ord 2 WID-BIND
+      then
+   loop
+   1 PREP-WIDS-INDEXED ! ;
+
+: MAYBE-INDEX-PREPARED-WIDS ( -- )
+   PREP-WIDS-INDEXED @ 0= if INDEX-PREPARED-WIDS then ;
+
+: WID-KEY$ ( n -- ptr u8 n ) {: wid:n :}
+   0 KEY-U ! 8 K-N
+   wid 0= if 0 K-N KEY$ exit then
+   wid XREF-RETIRED-WL = if 1 K-N KEY$ exit then
+   wid OWNER-API-PUB-WID = if 4 K-N KEY$ exit then
+   wid OWNER-API-PRI-WID = if 5 K-N KEY$ exit then
+   wid WID-OWNER dup 0= if drop 2drop MAYBE-INDEX-PREPARED-WIDS
+      wid WID-OWNER then
+   if {: ord:n vis:n :}
+      vis 1 = if 2 else 3 then K-N
+      ord RECORD-KEY$ K-S KEY$ exit
+   then 2drop BAD ;
+
+: CONTRACT$ ( n -- ptr u8 n bool ) {: ord:n :}
+   ord 0 < ord REC-N @ >= or if NULL-PTR 0 false exit then
+   ord ndict@ < if ord LIVE-CONTRACT$ exit then
+   ord REC-CON-OFF ROW@ {: off:n :}
+   off 0 < if NULL-PTR 0 false exit then
+   off KEY-ARENA ord REC-CON-U ROW@ true ;
+
+: USE-LIVE-CONTRACT ( [ n -- ptr u8 n bool ] -- ) is LIVE-CONTRACT$ ;
+: USE-FIXED-READ ( [ n -- n n bool ] -- ) is FIXED-READ ;
+: USE-EFFECTIVE-WID ( [ n -- n ] -- ) is EFFECTIVE-WID ;
+: RECORD-RETIRED? ( n -- bool )
+   EFFECTIVE-WID XREF-RETIRED-WL = ;
+
+: REC-ORD ( ptr n -- n ) {: rec:ptr :}
+   rec XREF-NULL = if -1 exit then
+   rec XREF-A>U8 dbase@ N>U8 - {: off:n :}
+   off 0 < off ndict@ DREC * >= or off DREC mod 0<> or if -1 exit then
+   off DREC / ;
+
+: FIND-NAMESPACE ( ptr u8 n -- n ) {: name:ptr nameu:n :}
+   name nameu XREF-NAMESPACE-WL XREF:INDEXED-WL
+   dup XREF-FOUND? 0= if drop -1 exit then
+   REC-ORD ;
+
+: FIND-WORD ( ptr u8 n n -- n )
+   {: name:ptr nameu:n wid:n :}
+   name nameu wid XREF:INDEXED-WL
+   dup XREF-FOUND? 0= if drop -1 exit then
+   REC-ORD ;
+
+: QUALIFIED-TAIL ( ptr u8 n -- ptr u8 n )
+   {: spelling:ptr spellingu:n :}
+   spellingu 0 ?do
+      spelling i + c@ [char] : = if
+         i 0= i spellingu 1- = or if
+            spelling spellingu unloop exit
+         then
+         spelling i 1+ + spellingu i 1+ - unloop exit
+      then
+   loop spelling spellingu ;
+
+\ A resolution observation names one eligible wordlist, not a new search
+\ order. Recheck exactly that candidate against the accepted prefix.
+: RESOLVE-CANDIDATE ( n ptr u8 n ptr u8 n -- n n )
+   {: role:n spelling:ptr spellingu:n namespace:ptr namespaceu:n :}
+   role 0= if
+      spelling spellingu QUALIFIED-TAIL 0 FIND-WORD 0 exit
+   then
+   namespace namespaceu FIND-NAMESPACE {: ns:n :}
+   ns -2 = if -2 0 exit then
+   ns -1 = if -1 0 exit then
+   ns RECORD-AT @ execute {: rec:ptr :}
+   1 rec XREF-PKG-PRIVATE 0<> if 2 or then {: shape:n :}
+   role 5 >= if ns shape exit then
+   role 2 = if rec XREF-PKG-PRIVATE else rec XREF-PKG-PUBLIC then
+      {: wid:n :}
+   role 4 = if
+      spelling spellingu QUALIFIED-TAIL
+   else spelling spellingu then wid FIND-WORD shape ;
+
+\ Retirement changes name lookup only; the published key and implementation
+\ remain available to references that already selected this declaration.
+: ON-RETIRE ( ptr n -- ) drop ;
+
+: PRODUCER$ ( n -- ptr u8 n bool ) {: ord:n :}
+   ord 0 < ord REC-N @ >= or if BAD then
+   ord REC-KNOWN ROW@ 0= if NULL-PTR 0 false exit then
+   ord REC-PRODUCER ROW@ KEY-ARENA 32 true ;
+
+: KEY-RECORD ( ptr u8 n -- ptr n n ) {: key:ptr keyu:n :}
+   key keyu KEY-FIND dup 0 < if drop XREF-NULL -1 exit then
+   {: row:n :}
+   row 2 KEY@ {: ord:n :}
+   ord 0 < ord REC-N @ >= or if XREF-NULL -1 exit then
+   ord REC-TOKEN ROW@ row 3 KEY@ <> if XREF-NULL -1 exit then
+   ord RECORD-KEY$ key keyu STR= 0= if XREF-NULL -1 exit then
+   ord ndict@ < if
+      row 3 KEY@ {: occurrence:n :}
+      occurrence 0= if XREF-NULL -1 exit then
+      ord occurrence LIVE-RECORD? if ord else drop XREF-NULL -1 then exit
+   then
+   ord PENDING-ORD @ = if XREF-NULL -1 exit then
+   ord RECORD-AT @ execute ord ;
+
+private
+
+: DATA-ORIGIN-RECORD ( ptr n n -- n bool ) {: rec:ptr ord:n :}
+   ord 0 < ord ndict@ >= or if 0 false exit then
+   ord FIXED-READ {: kind:n value:n known:bool :}
+   kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = known and
+      if value true exit then
+   rec NDICT:REC-DEFER-CELL {: cell:n :}
+   cell 0= if 0 false exit then
+   cell true ;
+
+public
+
+: DATA-ORIGIN-BASE ( n -- n bool ) {: ord:n :}
+   ord 0 < ord ndict@ >= or if 0 false exit then
+   ord RECORD-AT @ execute ord DATA-ORIGIN-RECORD ;
+
+: DATA-BY-KEY ( ptr u8 n n n n n -- n bool )
+   {: key:ptr keyu:n addend:n requested:n extent:n alignment:n :}
+   addend 0 < requested 0 < or extent 0 < or alignment 0 <= or
+      if 0 false exit then
+   key keyu KEY-RECORD {: rec:ptr ord:n :}
+   rec XREF-NULL = if 0 false exit then
+   rec ord DATA-ORIGIN-RECORD {: base:n known:bool :}
+   known 0= if 0 false exit then
+   addend 0<> requested 0<> or extent 0<> or if 0 false exit then
+   base addend + alignment mod 0<> if 0 false exit then
+   base addend + true ;
+
+: DECL-BY-KEY ( ptr u8 n -- n )
+   KEY-RECORD {: rec:ptr ord:n :}
+   rec NULL-PTR = if BAD then
+   ord ;
+
+: PREP-DECL-ORD ( n n -- n ) {: kind:n item:n :}
+   item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
+   extent drop alignment drop
+   rowkind kind <> if BAD then
+   key keyu DECL-BY-KEY ;
+
+: RECORD-AT! ( [ n -- ptr n ] -- ) RECORD-AT ! ;
+
+\ Reference index zero is the only null value. The fixed row format is
+\ kind/owner/item/addend in little-endian u64, never a live process address.
+: REF-LOCAL ( n n n -- n ) {: kind:n item:n addend:n :}
+   kind LOCAL item addend REF! ;
+: REF-IMPORT ( n n n -- n ) {: kind:n item:n addend:n :}
+   kind EXTERNAL item addend REF! ;
+: REF-COUNT ( -- n ) REF-N @ ;
+: REF-ROW ( n -- n n n n ) {: idx:n :}
+   idx 0 <= idx REF-N @ > or if BAD then
+   idx 1- REF-BYTES * {: off:n :}
+   off REF-ROWS LE:U64@
+   off 8 + REF-ROWS LE:U64@
+   off 16 + REF-ROWS LE:U64@
+   off 24 + REF-ROWS LE:U64@ ;
+
+: BEGIN-CAPTURE ( -- )
+   NUNIT-CAPTURE:FIRST-CODE CAP-CODE !
+   NUNIT-CAPTURE:CODE$ nip CAP-CODE-U !
+   NUNIT-CAPTURE:FIRST-REC CAP-REC !
+   NUNIT-CAPTURE:RECORDS$ nip DREC / CAP-REC-U !
+   NUNIT-CAPTURE:FIRST-WID CAP-WID !
+   NUNIT-CAPTURE:NEW-WIDS CAP-WID-U !
+   NUNIT-CAPTURE:FIRST-DATA CAP-DATA !
+   NUNIT-CAPTURE:DATA$ nip CAP-DATA-U !
+   BEGIN-ALLOC
+   0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U !
+   1 CAP-READY ! ;
+
+\ One pending definition owns only its emitted code and one dictionary row.
+\ Its source DATA prefix and FILE allocation range are outside this frame.
+: BEGIN-DEFINITION-BOUNDS ( n n n -- )
+   {: code:n size:n ord:n :}
+   CAP-READY @ if BAD then
+   code 0 <= size 0 <= or ord ndict@ <> or if BAD then
+   code CAP-CODE ! size CAP-CODE-U !
+   ord CAP-REC ! 1 CAP-REC-U !
+   0 CAP-WID ! 0 CAP-WID-U !
+   0 CAP-DATA ! 0 CAP-DATA-U ! -1 CAP-ALLOC !
+   0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U !
+   1 CAP-READY ! ;
+
+: ENSURE-CAPTURE ( -- )
+   CAP-READY @ 0= if BEGIN-CAPTURE then ;
+
+: END-CAPTURE ( -- ) 0 CAP-READY ! ;
+
+: BEGIN-RANGE ( -- ) ndict@ RANGE-FIRST ! 1 RANGE-ACTIVE ! ;
+: END-RANGE ( -- ) 0 RANGE-ACTIVE ! ;
+: BEGIN-DEFINITION ( n -- ) {: ord:n :}
+   ord ndict@ <> DEFINITION-ORD @ 0 >= or if BAD then
+   ord DEFINITION-ORD ! ;
+: END-DEFINITION ( -- ) -1 DEFINITION-ORD ! ;
+: CURRENT-RECORD? ( n -- bool ) {: ord:n :}
+   DEFINITION-ORD @ 0 >= if ord DEFINITION-ORD @ = exit then
+   RANGE-ACTIVE @ 0<> ord RANGE-FIRST @ >= and
+      ord ndict@ < and ;
+
+: REF-RECORD ( n -- n ) {: ord:n :}
+   ord 0 < ord CAP-REC @ CAP-REC-U @ + >= or if BAD then
+   ord CAP-REC @ >= if RECORD ord CAP-REC @ - 0 REF-LOCAL exit then
+   RECORD ord IMPORT-DECL {: row:n :}
+   RECORD row 0 REF-IMPORT ;
+
+: IMPL-SEARCH ( n n n n n -- n bool )
+   {: entry:n node:n first:n last:n upper:n :}
+   first upper >= if -1 false exit then
+   node IMPL-TREE @ entry <= if -1 false exit then
+   last first - 1 = if
+      first IMPL-LIVE? if first 2 IMPL@ true exit then
+      -1 false exit
+   then
+   first last + 2 / {: mid:n :}
+   entry node 2 * 1+ mid last upper recurse
+      if true exit then drop
+   entry node 2 * first mid upper recurse ;
+
+: IMPL-OWNER ( n -- n bool ) {: entry:n :}
+   entry 0 < if -1 false exit then
+   EXACT-READY @ if
+      entry EXACT-SLOT EXACT-HEADS @
+      begin dup 0 >= while
+         dup 0 EXACT@ entry = if
+            dup 1 EXACT@ over 2 EXACT@ LIVE-RECORD?
+               if drop 1 EXACT@ true exit else drop then
+         then
+         3 EXACT@
+      repeat drop
+   then
+   0 IMPL-LO ! IMPL-N @ IMPL-HI !
+   begin IMPL-LO @ IMPL-HI @ < while
+      IMPL-LO @ IMPL-HI @ + 2 / {: mid:n :}
+      mid 0 IMPL@ entry <= if mid 1+ IMPL-LO !
+      else mid IMPL-HI ! then
+   repeat
+   entry 1 0 IMPL-CAP @ IMPL-LO @ IMPL-SEARCH ;
+
+: REF-CODE ( n -- n ) {: target:n :}
+   target CAP-CODE @ >= target CAP-CODE @ CAP-CODE-U @ + < and if
+      CODE target CAP-CODE @ - 0 REF-LOCAL exit
+   then
+   target IMPL-OWNER 0= if drop BAD then {: ord:n :}
+   ord XREF-REC XREF-START {: first:n :}
+   CODE ord IMPORT-DECL {: row:n :}
+   CODE row target first - REF-IMPORT ;
+
+: REF-WID ( n -- n ) {: wid:n :}
+   wid 0= if WID BUILTIN 0 0 REF! exit then
+   wid XREF-RETIRED-WL = if WID BUILTIN 1 0 REF! exit then
+   wid CAP-WID @ >= wid CAP-WID @ CAP-WID-U @ + < and if
+      WID wid CAP-WID @ - 0 REF-LOCAL exit
+   then
+   wid WID-OWNER if {: ord:n vis:n :}
+      WID ord IMPORT-DECL {: row:n :}
+      WID row vis 1- REF-IMPORT exit
+   then 2drop BAD ;
+
+: REF-DATA ( ptr u8 n -- n ) {: address:ptr extent:n :}
+   extent 0 < if BAD then
+   address U8>N {: target:n :}
+   ALLOC-N @ 0 ?do
+      ALLOC-N @ 1- i - {: row:n :}
+      row 2 ALLOC@ {: base:n :}
+      row 3 ALLOC@ {: size:n :}
+      target base >= target base size + <= and if
+         target base - {: addend:n :}
+         extent size addend - <= if
+            row CAP-ALLOC @ = if
+               DATA 0 addend REF-LOCAL unloop exit
+            then
+            DATA row ALLOC-KEY$ extent 1 IMPORT-KEY {: import:n :}
+            DATA import addend REF-IMPORT unloop exit
+         then
+      then
+   loop
+   BAD ;
+
+\ The emitter names the declaration that supplied this literal. A bare
+\ allocation address cannot establish that provenance.
+: REF-DECL-DATA ( n n n n -- n )
+   {: ord:n addend:n extent:n alignment:n :}
+   addend 0 < extent 0 < or alignment 0 <= or if BAD then
+   ord DECL-KEY? 0= if 2drop BAD then
+   {: key:ptr keyu:n :}
+   DATA key keyu extent alignment IMPORT-KEY {: row:n :}
+   DATA row addend REF-IMPORT ;
+
+: REF-LITERAL ( n n -- n ) {: ordinal:n addend:n :}
+   ordinal 0 < addend 0 < or if BAD then
+   LITERAL ordinal addend REF-LOCAL ;
+
+: REF-ANY ( ptr u8 n -- n ) {: address:ptr extent:n :}
+   address U8>N {: value:n :}
+   extent DREC = value dbase@ >= and
+      value dbase@ ndict@ DREC * + < and if
+      value dbase@ - DREC mod 0<> if BAD then
+      value dbase@ - DREC / REF-RECORD exit
+   then
+   address extent REF-DATA ;
+
+: FINALIZE-RANGE ( ptr u8 n bool -- )
+   {: producer:ptr produceru:n known:bool :}
+   known if produceru 32 <> if BAD then
+   else produceru 0<> if BAD then then
+   CAP-REC @ CAP-REC-U @ + CAP-REC @ ?do
+      i REC-OFF ROW@ 0 < if BAD then
+      known if
+         producer 32 SAVE-KEY i REC-PRODUCER ROW!
+         1 i REC-KNOWN ROW!
+      else
+         -1 i REC-PRODUCER ROW! 0 i REC-KNOWN ROW!
+      then
+   loop ;
+
+\ An import row names one exact declaration or allocation owner. Its key has
+\ length-prefix framing and its requested extent/alignment are explicit.
+: IMPORT-ROW$ ( n -- n ptr u8 n n n ) {: row:n :}
+   row 0 < row IMPORT-N @ >= or if BAD then
+   row IMPORT-OFF @ IMPORT-BYTES {: src:ptr :}
+   src LE:U64@
+   src 32 + src 8 + LE:U64@
+   src 16 + LE:U64@
+   src 24 + LE:U64@ ;
+
+\ Declarations carry exact publication contracts beside their stable identity.
+: ENCODE ( n n -- ptr u8 n ) {: first:n last:n :}
+   first 0 < last first < or last REC-N @ > or if BAD then
+   0 OUTPUT-U !
+   REF-N @ O-N IMPORT-N @ O-N
+   last first - O-N
+   CAP-ALLOC @ 0 >= if 1 else 0 then O-N
+   REF-N @ 0<> if REF-N @ REF-BYTES * 0 REF-ROWS swap O-S then
+   IMPORT-U @ 0<> if 0 IMPORT-BYTES IMPORT-U @ O-S then
+   last first ?do
+      i RECORD-KEY$ {: key:ptr keyu:n :}
+      i first - O-N
+      keyu O-N
+      i REC-KNOWN ROW@ O-N
+      i REC-CON-U ROW@ O-N
+      key keyu O-S
+      i REC-KNOWN ROW@ 0<> if
+         i REC-PRODUCER ROW@ KEY-ARENA 32 O-S
+      then
+      i REC-CON-U ROW@ 0<> if
+         i REC-CON-OFF ROW@ KEY-ARENA i REC-CON-U ROW@ O-S
+      then
+   loop
+   CAP-ALLOC @ 0 >= if
+      CAP-ALLOC @ {: row:n :}
+      row ALLOC-KEY$ {: key:ptr keyu:n :}
+      keyu O-N 0 O-N row 3 ALLOC@ O-N
+      row 4 ALLOC@ O-N row 5 ALLOC@ O-N
+      key keyu O-S
+   then
+   0 OUTPUT OUTPUT-U @ ;
+
+\ A prepared object keeps its copied section bytes alive through installation.
+\ This parse registers projected declarations before any consumer resolves an
+\ import, and checks every length before advancing into variable rows.
+: PREPARE ( ptr u8 n n n n n n n n -- )
+   {: src:ptr size:n recbase:n codebase:n codeu:n widbase:n widcount:n
+      database:n datau:n :}
+   size 32 < if BAD then
+   recbase PREP-REC-BASE ! codebase PREP-CODE-BASE !
+   codeu PREP-CODE-U ! widbase PREP-WID-BASE !
+   widcount PREP-WID-COUNT ! database PREP-DATA-BASE !
+   datau PREP-DATA-U !
+   src LE:U64@ {: refs:n :}
+   src 8 + LE:U64@ {: imports:n :}
+   src 16 + LE:U64@ {: decls:n :}
+   src 24 + LE:U64@ {: allocs:n :}
+   refs 0 < refs size 32 - REF-BYTES / > or if BAD then
+   imports 0 < imports size 32 - refs REF-BYTES * - 32 / > or if BAD then
+   decls 0 < decls size 32 - refs REF-BYTES * - 32 / > or if BAD then
+   allocs 0 < allocs size 32 - refs REF-BYTES * - 40 / > or if BAD then
+   refs PREP-REF-N !
+   src PREP-SRC !
+   src 32 + PREP-REFS !
+   32 refs REF-BYTES * + PREP-CURSOR !
+   imports PREP-IMPORT-N !
+   imports PREP-IMPORT-OFF-RESERVE
+   src PREP-CURSOR @ + PREP-IMPORTS !
+   imports 0 ?do
+      32 size PREP-ROOM
+      PREP-CURSOR @ i PREP-IMPORT-OFF !
+      src PREP-CURSOR @ 8 + + LE:U64@ {: keyu:n :}
+      keyu 0 <= keyu size PREP-CURSOR @ 32 + - > or if BAD then
+      src PREP-CURSOR @ 24 + + LE:U64@ 0 <= if BAD then
+      32 keyu + PREP-CURSOR +!
+   loop
+   decls PREP-REC-COUNT !
+   0 PREP-WIDS-INDEXED !
+   decls 0 ?do
+      32 size PREP-ROOM
+      src PREP-CURSOR @ + {: row:ptr :}
+      row LE:U64@ i <> if BAD then
+      row 8 + LE:U64@ {: keyu:n :}
+      row 16 + LE:U64@ {: known:n :}
+      row 24 + LE:U64@ {: contractu:n :}
+      known 0 <> known 1 <> and if BAD then
+      contractu 0 < if BAD then
+      32 PREP-CURSOR +!
+      keyu 0 <= keyu size PREP-CURSOR @ - > or if BAD then
+      src PREP-CURSOR @ + {: key:ptr :}
+      keyu PREP-CURSOR +!
+      known 0<> if
+         32 size PREP-ROOM
+         recbase i + key keyu src PREP-CURSOR @ + 32 BIND-DECL
+         32 PREP-CURSOR +!
+      else
+         recbase i + key keyu NULL-PTR 0 BIND-DECL
+      then
+      1 recbase i + REC-PROJECTED ROW!
+      contractu size PREP-CURSOR @ - > if BAD then
+      contractu 0<> if
+         recbase i + src PREP-CURSOR @ + contractu BIND-CONTRACT
+      then
+      contractu PREP-CURSOR +!
+   loop
+   allocs PREP-ALLOC-N !
+   allocs PREP-ALLOCS-RESERVE
+   allocs 0 ?do
+      40 size PREP-ROOM
+      src PREP-CURSOR @ + {: row:ptr :}
+      row LE:U64@ {: keyu:n :}
+      row 8 + LE:U64@ {: off:n :}
+      row 16 + LE:U64@ {: extent:n :}
+      row 24 + LE:U64@ {: alignment:n :}
+      row 32 + LE:U64@ {: storage:n :}
+      off 0 < off datau > or extent 0 <= or
+         extent datau off - > or if BAD then
+      40 PREP-CURSOR +!
+      keyu 0 <= keyu size PREP-CURSOR @ - > or if BAD then
+      src PREP-CURSOR @ + {: key:ptr :}
+      keyu PREP-CURSOR +!
+      key keyu database off + extent alignment storage BIND-ALLOC
+         i PREP-ALLOCS !
+   loop
+   PREP-CURSOR @ size <> if BAD then ;
+
+: PREP-REF@ ( n -- n n n n ) {: idx:n :}
+   idx 0 <= idx PREP-REF-N @ > or if BAD then
+   PREP-REFS @ idx 1- REF-BYTES * + {: row:ptr :}
+   row LE:U64@ row 8 + LE:U64@
+   row 16 + LE:U64@ row 24 + LE:U64@ ;
+
+: REF-KIND ( n -- n ) PREP-REF@ 2drop drop ;
+
+: REF-KEY$ ( n -- ptr u8 n ) {: idx:n :}
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   addend drop
+   owner EXTERNAL = if
+      item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
+      rowkind kind <> if BAD then
+      extent drop alignment drop
+      key keyu exit
+   then
+   owner LOCAL = kind RECORD = and if
+      item 0 < item PREP-REC-COUNT @ >= or if BAD then
+      PREP-REC-BASE @ item + DECL-KEY$ exit
+   then
+   BAD ;
+
+: REF>RECORD ( n -- n ) {: idx:n :}
+   idx 0= if -1 exit then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind RECORD <> addend 0<> or if BAD then
+   owner LOCAL = if
+      item 0 < item PREP-REC-COUNT @ >= or if BAD then
+      PREP-REC-BASE @ item + exit
+   then
+   owner EXTERNAL = if RECORD item PREP-DECL-ORD exit then
+   BAD ;
+
+: REF>CODE ( n -- n ) {: idx:n :}
+   idx 0= if 0 exit then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind CODE <> if BAD then
+   owner LOCAL = if
+      item 0 < item PREP-CODE-U @ >= or if BAD then
+      addend 0<> if BAD then
+      PREP-CODE-BASE @ item + exit
+   then
+   owner EXTERNAL = if
+      CODE item PREP-DECL-ORD RECORD-AT @ execute {: rec:ptr :}
+      addend 0 < addend rec XREF-CODE-BYTES >= or if BAD then
+      rec XREF-START addend + exit
+   then
+   BAD ;
+
+: REF>WID ( n -- n ) {: idx:n :}
+   idx 0= if BAD then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind WID <> if BAD then
+   owner LOCAL = if
+      item 0 < item PREP-WID-COUNT @ >= or addend 0<> or if BAD then
+      PREP-WID-BASE @ item + exit
+   then
+   owner EXTERNAL = if
+      WID item PREP-DECL-ORD RECORD-AT @ execute {: rec:ptr :}
+      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
+      addend 0= if rec XREF-PKG-PUBLIC exit then
+      addend 1 = if rec XREF-PKG-PRIVATE exit then
+      BAD
+   then
+   owner BUILTIN = if
+      item 0= if 0 exit then
+      item 1 = if XREF-RETIRED-WL exit then
+   then
+   BAD ;
+
+: REF>DATA ( n n -- ptr u8 ) {: idx:n extent:n :}
+   idx 0= extent 0 < or if BAD then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind DATA <> addend 0 < or if BAD then
+   owner LOCAL = if
+      item 0 < item PREP-ALLOC-N @ >= or if BAD then
+      item PREP-ALLOCS @ {: row:n :}
+      addend row 3 ALLOC@ >
+         extent row 3 ALLOC@ addend - > or if BAD then
+      row 2 ALLOC@ addend + N>U8 exit
+   then
+   owner EXTERNAL = if
+      item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n
+         requested:n alignment:n :}
+      rowkind DATA <> requested extent < or if BAD then
+      key keyu FIND-ALLOC if {: row:n :}
+         alignment row 4 ALLOC@ > if BAD then
+         addend row 3 ALLOC@ >
+            requested row 3 ALLOC@ addend - > or
+            extent row 3 ALLOC@ addend - > or if BAD then
+         row 2 ALLOC@ addend + N>U8 exit
+      then drop
+      key keyu addend requested extent alignment DATA-BY-KEY
+         0= if drop BAD then
+      N>U8 exit
+   then
+   BAD ;
+
+: REF>LITERAL ( n -- n n ) {: idx:n :}
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind LITERAL <> owner LOCAL <> or if BAD then
+   item addend ;
+
+: REF>ANY ( n n -- ptr u8 ) {: idx:n extent:n :}
+   idx REF-KIND RECORD = if
+      extent DREC <> if BAD then
+      idx REF>RECORD RECORD-AT @ execute XREF-A>U8 exit
+   then
+   idx extent REF>DATA ;
+
+: CLOSE ( -- )
+   0 FAMILY-IDENTITY ! 0 FAMILY-FIND !
+   CONTRACT-DEFAULT
+   FIXED-DEFAULT
+   WID-DEFAULT
+   KEY-BUF-RELEASE INPUT-KEY-RELEASE KEY-ARENA-RELEASE REC-ROWS-RELEASE
+   GROUP-ROWS-RELEASE GROUP-HEADS-RELEASE
+   KEY-ROWS-RELEASE KEY-HEADS-RELEASE
+   WID-OWNERS-RELEASE IMPL-ROWS-RELEASE IMPL-TREE-RELEASE
+   EXACT-ROWS-RELEASE
+   EXACT-HEADS-RELEASE
+   ORIGIN-ROWS-RELEASE
+   INSTANCE-ROWS-RELEASE CON-ROWS-RELEASE
+   FILE-STACK-RELEASE MARK-ROWS-RELEASE
+   ALLOC-ROWS-RELEASE PREP-ALLOCS-RELEASE
+   REF-ROWS-RELEASE IMPORT-BYTES-RELEASE IMPORT-OFF-RELEASE
+   PREP-IMPORT-OFF-RELEASE OUTPUT-RELEASE
+   0 KEY-U ! 0 ARENA-U ! 0 REC-N ! 0 REF-N !
+   0 GROUP-N ! 0 KEY-N ! 0 INDEX-READY ! 0 WID-CAP !
+   0 IMPL-N ! 0 IMPL-CAP ! 0 EXACT-N ! 0 EXACT-READY !
+   0 ORIGIN-N !
+   0 INSTANCE-N ! -1 CURRENT-INSTANCE ! 0 CON-N !
+   0 FILE-DEPTH ! 0 FILE-OCC ! 0 MARK-N !
+   0 ALLOC-N ! -1 CAP-ALLOC ! 0 PREP-ALLOC-N !
+   0 IMPORT-N ! 0 IMPORT-U ! 0 OUTPUT-U !
+   NULL-PTR PREP-REFS ! 0 PREP-REF-N !
+   NULL-PTR PREP-IMPORTS ! 0 PREP-IMPORT-N !
+   NULL-PTR PREP-SRC ! 0 PREP-REC-BASE ! 0 PREP-REC-COUNT !
+   0 PREP-CODE-BASE ! 0 PREP-CODE-U !
+   0 PREP-WID-BASE ! 0 PREP-WID-COUNT !
+   0 PREP-WIDS-INDEXED !
+   0 PREP-DATA-BASE ! 0 PREP-DATA-U ! 0 PREP-CURSOR !
+   0 CAP-CODE ! 0 CAP-CODE-U ! 0 CAP-REC ! 0 CAP-REC-U !
+   0 CAP-WID ! 0 CAP-WID-U ! 0 CAP-DATA ! 0 CAP-DATA-U !
+   0 CAP-READY ! 0 RANGE-ACTIVE ! 0 RANGE-FIRST !
+   -1 DEFINITION-ORD ! PENDING-CLEAR ;
+
+;package

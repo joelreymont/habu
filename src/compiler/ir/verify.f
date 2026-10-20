@@ -81,14 +81,12 @@
 \ unreachable and keeps the full set, which is the standard initialisation: an
 \ unreachable use constrains nothing, and unreachable code is not an SSA fault.
 \
-\ THE COMMITTED WORKING SET. The dominator sets and the predecessor lists are
-\ package-owned arrays with named ceilings, in the shape IR-OP's staged lists and
-\ IR-FUN's staged attributes already use. BLOCK-MAX matches the block ceiling the
-\ production plan commits to, so a module built to that plan always fits; a module
-\ planned larger than the verifier's working set is refused by name with
-\ E-IR-VERIFY-CAP rather than checked partially. Growing that working set with the
-\ module instead of committing to a ceiling is its own capacity decision and its
-\ own dot, exactly as the arena registry's own limits were.
+\ THE WORKING SET. One package-owned dynamic slab holds the counts, predecessor
+\ lists and dominator sets for the current module. Its slices follow the live
+\ block and edge counts, and its capacity is retained for later verifications.
+\ Growth can move the slab, so the helpers keep offsets and fetch the current
+\ base on every access. Invocation dimensions are cleared on return or refusal;
+\ the ordinary dynamic-buffer capture path releases its mapping.
 \
 \ NAMED DIAGNOSTICS. Every arm throws its own code from the -8080..-8099 block, so
 \ a refusal says which invariant failed rather than which reader noticed. Where a
@@ -135,12 +133,8 @@ $45445231 constant EDR-MAGIC         \ "EDR1": the edge row header tag
 $FFFFFFFF HDR-CELLS - EROW-CELLS / constant EROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 
-\ ---- the committed working set -----------------------------------------------
-256 constant BLOCK-MAX               \ matches IR-BUILD's committed block ceiling
-2048 constant EDGE-MAX               \ control-flow edges one module may hold
+\ ---- the reusable working set -------------------------------------------------
 64 constant SET-BITS                 \ dominator-set bits per cell
-BLOCK-MAX SET-BITS / constant SET-CELLS
--1 constant UNSET
 
 \ ---- the module under verification -------------------------------------------
 \ One open verification per process, in the shape the producer packages already
@@ -162,17 +156,17 @@ BLOCK-MAX SET-BITS / constant SET-CELLS
 13 constant T-EDR                    \ derived edge rows
 14 constant TAB#
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 TAB# CWORK-BUFFER VT IR-ARENA:arena
 1 CWORK-BUFFER VK IR-ID:ir-module-key
 
-BLOCK-MAX CWORK-SPAN PN n      \ predecessors counted per block
-BLOCK-MAX CWORK-SPAN PS n      \ predecessor window start per block
-BLOCK-MAX CWORK-SPAN PF n      \ fill cursor while the lists are written
-BLOCK-MAX CWORK-SPAN SN n      \ successors counted per block
-EDGE-MAX CWORK-SPAN PL n       \ the predecessor lists themselves
-BLOCK-MAX SET-CELLS * CWORK-SPAN DOM n
-SET-CELLS CWORK-SPAN TMP n
+DYNAMIC-BUFFER WORK n
+0 CWORK-VARIABLE BLOCK-N n
+0 CWORK-VARIABLE EDGE-N n
+0 CWORK-VARIABLE SET-N n
+0 CWORK-VARIABLE PL-OFF n
+0 CWORK-VARIABLE DOM-OFF n
+0 CWORK-VARIABLE TMP-OFF n
 
 \ Locals are single-assignment, so the three walks that carry a running value -
 \ the window tilings, the dominator rounds, and the block bisection - keep it in
@@ -249,12 +243,38 @@ SET-CELLS CWORK-SPAN TMP n
    {: o:IR-ID:ir-op-id i:n :}
    T-OPP T@ T-OPR T@ K@ o i IR-OP:SUCCESSOR@ IR-ID:BLOCK-LOCAL ;
 
-\ ---- capacity ----------------------------------------------------------------
-: FITS-CK ( -- )
-   BLOCKS BLOCK-MAX > if E-IR-VERIFY-CAP throw then ;
+\ ---- scratch sizing -----------------------------------------------------------
+\ Sizes and offsets count cells; reject an extent before cells can overflow.
+: WORK+ ( n n -- n )
+   {: a:n b:n :}
+   a MEM-MAX-CELLS b - > if E-IR-VERIFY-CAP throw then
+   a b + ;
 
-: EDGE-ROOM ( n -- )
-   EDGE-MAX > if E-IR-VERIFY-CAP throw then ;
+: WORK* ( n n -- n )
+   {: a:n b:n :}
+   b 0= if 0 exit then
+   a MEM-MAX-CELLS b / > if E-IR-VERIFY-CAP throw then
+   a b * ;
+
+: WORK-CLEAR ( -- )
+   0 BLOCK-N ! 0 EDGE-N ! 0 SET-N !
+   0 PL-OFF ! 0 DOM-OFF ! 0 TMP-OFF ! ;
+
+: WORK-BEGIN ( -- )
+   BLOCKS BLOCK-N !
+   BLOCK-N @ SET-BITS / BLOCK-N @ SET-BITS mod 0<> if 1+ then SET-N !
+   BLOCK-N @ 4 WORK* dup PL-OFF ! WORK-RESERVE ;
+
+\ Counts are already initialized when the edge walk determines the rest of the
+\ slab. RESERVE preserves them, and no pointer is retained across its growth.
+: WORK-GROW ( bool -- )
+   {: dominance:bool :}
+   PL-OFF @ EDGE-N @ WORK+ dup DOM-OFF !
+   dominance if
+      BLOCK-N @ SET-N @ WORK* WORK+ dup TMP-OFF !
+      SET-N @ WORK+
+   then
+   WORK-RESERVE ;
 
 \ ---- coverage (the two window tilings, totalled) ------------------------------
 \ IR-FUN's tiling proves each window continues where the one before it ended, so
@@ -354,16 +374,16 @@ SET-CELLS CWORK-SPAN TMP n
    loop ;
 
 \ ---- the derived predecessor and successor tables ----------------------------
-: PN@ ( n -- n )   cells PN + @ ;
-: PN! ( n n -- )   cells PN + ! ;
-: PS@ ( n -- n )   cells PS + @ ;
-: PS! ( n n -- )   cells PS + ! ;
-: PF@ ( n -- n )   cells PF + @ ;
-: PF! ( n n -- )   cells PF + ! ;
-: SN@ ( n -- n )   cells SN + @ ;
-: SN! ( n n -- )   cells SN + ! ;
-: PL@ ( n -- n )   cells PL + @ ;
-: PL! ( n n -- )   cells PL + ! ;
+: PN@ ( n -- n )   WORK @ ;
+: PN! ( n n -- )   WORK ! ;
+: PS@ ( n -- n )   BLOCK-N @ + WORK @ ;
+: PS! ( n n -- )   BLOCK-N @ + WORK ! ;
+: PF@ ( n -- n )   BLOCK-N @ 2 * + WORK @ ;
+: PF! ( n n -- )   BLOCK-N @ 2 * + WORK ! ;
+: SN@ ( n -- n )   BLOCK-N @ 3 * + WORK @ ;
+: SN! ( n n -- )   BLOCK-N @ 3 * + WORK ! ;
+: PL@ ( n -- n )   PL-OFF @ + WORK @ ;
+: PL! ( n n -- )   PL-OFF @ + WORK ! ;
 
 : EDGES-RESET ( -- )
    BLOCKS 0 ?do
@@ -398,9 +418,9 @@ SET-CELLS CWORK-SPAN TMP n
    BLOCKS 0 ?do
       AT @ i PS!
       AT @ i PF!
-      AT @ i PN@ + AT !
+      AT @ i PN@ WORK+ AT !
    loop
-   AT @ EDGE-ROOM ;
+   AT @ EDGE-N ! ;
 
 : EDGES-FILL ( -- )
    BLOCKS 0 ?do
@@ -415,10 +435,11 @@ SET-CELLS CWORK-SPAN TMP n
 \ The predecessor of a successor edge is the block whose terminator carries it,
 \ so the outer index is the predecessor and the inner one is the edge position.
 \ EDGES-FILL reads both, which is why it re-walks rather than reusing a cursor.
-: EDGES-BUILD ( -- )
+: EDGES-BUILD ( bool -- )
    EDGES-RESET
    EDGES-COUNT
    EDGES-LAYOUT
+   WORK-GROW
    EDGES-FILL ;
 
 \ ---- successor arguments (design line 536) ------------------------------------
@@ -459,16 +480,16 @@ SET-CELLS CWORK-SPAN TMP n
 \ ---- dominator sets -----------------------------------------------------------
 : DOM-CELL ( n n -- n )
    {: b:n w:n :}
-   b SET-CELLS * w + ;
+   b SET-N @ * w + DOM-OFF @ + ;
 
 : DOM@ ( n n -- n )
-   DOM-CELL cells DOM + @ ;
+   DOM-CELL WORK @ ;
 
 : DOM! ( n n n -- )
-   DOM-CELL cells DOM + ! ;
+   DOM-CELL WORK ! ;
 
-: TMP@ ( n -- n )   cells TMP + @ ;
-: TMP! ( n n -- )   cells TMP + ! ;
+: TMP@ ( n -- n )   TMP-OFF @ + WORK @ ;
+: TMP! ( n n -- )   TMP-OFF @ + WORK ! ;
 
 : BIT-CELL ( n -- n )
    SET-BITS / ;
@@ -485,7 +506,7 @@ SET-CELLS CWORK-SPAN TMP n
    d BIT-CELL TMP@ d BIT-MASK or  d BIT-CELL TMP! ;
 
 : TMP-CLEAR ( -- )
-   SET-CELLS 0 ?do
+   SET-N @ 0 ?do
       0 i TMP!
    loop ;
 
@@ -499,11 +520,11 @@ SET-CELLS CWORK-SPAN TMP n
 : TMP>DOM ( n -- bool )
    {: b:n :}
    0 SAME !
-   SET-CELLS 0 ?do
+   SET-N @ 0 ?do
       i TMP@ b i DOM@ <> if 1 SAME ! then
    loop
    SAME @ 0<> if
-      SET-CELLS 0 ?do
+      SET-N @ 0 ?do
          i TMP@ b i DOM!
       loop
    then
@@ -511,7 +532,7 @@ SET-CELLS CWORK-SPAN TMP n
 
 : TMP-AND-DOM ( n -- )
    {: p:n :}
-   SET-CELLS 0 ?do
+   SET-N @ 0 ?do
       i TMP@ p i DOM@ and i TMP!
    loop ;
 
@@ -519,13 +540,13 @@ SET-CELLS CWORK-SPAN TMP n
    {: bst:n bn:n :}
    bst bn TMP-FULL
    bn 0 ?do
-      SET-CELLS 0 ?do
+      SET-N @ 0 ?do
          i TMP@ bst j + i DOM!
       loop
    loop
    TMP-CLEAR
    bst TMP-SET
-   SET-CELLS 0 ?do
+   SET-N @ 0 ?do
       i TMP@ bst i DOM!
    loop ;
 
@@ -818,11 +839,10 @@ SET-CELLS CWORK-SPAN TMP n
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
-\ The pool cells the publication below writes: one per predecessor edge, over
-\ every block. The ceiling check and the reservation both count them here, so
-\ the number the ceiling was checked against is the number that gets allocated.
+\ EDGES-LAYOUT totals one pool cell per predecessor edge. Both the ceiling
+\ check and the reservation use that same live total.
 : EDGE-CELLS ( -- n )
-   0 BLOCKS 0 ?do i PN@ + loop ;
+   EDGE-N @ ;
 
 \ One ceiling each, so the caller still opens the row arena, checks it, and only
 \ then opens the pool - the order in which the two were resolved before.
@@ -862,9 +882,9 @@ SET-CELLS CWORK-SPAN TMP n
 public
 
 \ ---- creation -----------------------------------------------------------------
-\ The derived table's two arenas, created with the module's other tables so the
-\ verifier allocates nothing at freeze time. The ceilings are the module's own
-\ block ceiling and an upper bound on its control-flow edges.
+\ The derived table's two arenas are created with the module's other tables,
+\ using its block ceiling and an upper bound on its control-flow edges. The
+\ private scratch slab grows independently at freeze.
 : NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key rcap:n pcap:n :}
    rcap 1 < rcap EROW-CAP-MAX > or if E-IR-VERIFY-CAP throw then
@@ -899,6 +919,27 @@ private
    tyr T-TYR T!   atr T-ATR T!   src T-SRC T!
    edp T-EDP T!   edr T-EDR T! ;
 
+: VERIFY-MODULE ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   WORK-BEGIN
+   BLOCK-COVER-CK
+   OP-COVER-CK
+   PARENTS-CK
+   TERMS-CK
+   VALUES-CK
+   FUNS-CK
+   BLOCK-SPANS-CK
+   c OPS-CK
+   true EDGES-BUILD
+   ALL-SUCCARGS-CK
+   DOM-CK
+   c EDGES-PUBLISH ;
+
+: DERIVE-MODULE ( IR-CTX:ctx -- )
+   WORK-BEGIN
+   false EDGES-BUILD
+   EDGES-PUBLISH ;
+
 public
 
 \ Verify one module whole and derive its predecessor and successor tables. Every
@@ -908,19 +949,7 @@ public
 : VERIFY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
    key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
-   FITS-CK
-   BLOCK-COVER-CK
-   OP-COVER-CK
-   PARENTS-CK
-   TERMS-CK
-   VALUES-CK
-   FUNS-CK
-   BLOCK-SPANS-CK
-   c OPS-CK
-   EDGES-BUILD
-   ALL-SUCCARGS-CK
-   DOM-CK
-   c EDGES-PUBLISH ;
+   c [: VERIFY-MODULE ;] [: WORK-CLEAR ;] finally ;
 
 \ Derive one module's predecessor and successor tables and publish them, without
 \ the whole-module verification VERIFY performs. This is the freeze of a module
@@ -930,20 +959,17 @@ public
 \ A64SEL reads a block's predecessors off the very module it lowers - so what is
 \ dropped here is the checking, never the deriving.
 \
-\ WHAT STILL REFUSES. Three of VERIFY's arms survive because the derivation
-\ needs them and asks them itself: a module with more blocks than the working
-\ set (FITS-CK), a successor naming a block this module never defined or a block
-\ belonging to another function (EDGES-COUNT), and more edges than the pool was
-\ sized for (EDGES-LAYOUT). IR-FUN:TERMINATOR@ refuses a block whose recorded
-\ terminator is not the last operation of its window, so a block that ends in
+\ WHAT STILL REFUSES. The derivation rejects a successor naming a block this
+\ module never defined or a block belonging to another function (EDGES-COUNT),
+\ and more edges than the published pool was sized for (EDGES-PUBLISH).
+\ IR-FUN:TERMINATOR@ refuses a block whose recorded terminator is not the last
+\ operation of its window, so a block that ends in
 \ nothing is named here as well. What is no longer checked on such a module is
 \ listed where the interim freeze is declared.
 : DERIVE-EDGES ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
    key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
-   FITS-CK
-   EDGES-BUILD
-   c EDGES-PUBLISH ;
+   c [: DERIVE-MODULE ;] [: WORK-CLEAR ;] finally ;
 
 private
 

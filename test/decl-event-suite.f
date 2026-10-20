@@ -6,13 +6,13 @@
 \ rows at top level and in a checked ':' body alike. The gate runs it on that
 \ engine, which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/decl-event-suite.f
-\ Proves: atomic publication + event reflection; malformed and nested streams roll
+\ Proves: field publication; malformed and nested streams roll
 \ back EVERY watermark (event arena, field ordinal, variant ordinal, current
 \ variant, field-record cursor, and — via the enclosing checker candidate frame —
 \ the family/variant/schema registry cursors); STRUCTURE and ENUM consumers observe
-\ identical field events; the field-record name gate throws pass through unchanged;
-\ duplicate POLICY / DERIVE and out-of-range arity reject; changed declarations
-\ change snapshot identity; standalone PUBLISH cannot bypass the contiguity preflight.
+\ the field-record name gate throws pass through unchanged; duplicate POLICY /
+\ DERIVE and out-of-range arity reject; standalone PUBLISH cannot bypass the
+\ contiguity preflight.
 \ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
 \
 \ Each field-publishing case uses its OWN family so committed field rows never
@@ -29,12 +29,12 @@ T-RESET
 variable TOK   variable ITOK          \ live + inner transaction tokens
 variable SCHROOT                       \ a param-0 schema root shared by every field
 variable TC                            \ caught throw code
-variable IDA   variable IDB   variable IDC
-variable VAR-S   variable VAR-E
+variable IDA   variable IDB
+variable VAR-E                         \ current variant in payload-view tests
 variable P-TFAM   variable P-SUMV   variable P-PF   variable P-SCHN
-variable P-SCHR   variable P-STRU   variable P-DEV
+variable P-SCHR   variable P-STRU
 \ per-case family ids (all arity 2 so a param-0 field schema is legal).
-variable FP1   variable FE2   variable FD3   variable FS7   variable FV7   variable FN8
+variable FP1   variable FE2   variable FD3   variable FV7   variable FN8
 
 TFAM-RESET
 SCHEMA-RESET
@@ -42,32 +42,22 @@ DECL-EVENT:RESET
 s" de" CHECKER-PACKAGE-PUBLIC s" p1" 2 TK-PRODUCT TFAM-DECL FP1 !
 s" de" CHECKER-PACKAGE-PUBLIC s" e2" 2 TK-SUM     TFAM-DECL FE2 !
 s" de" CHECKER-PACKAGE-PUBLIC s" d3" 2 TK-PRODUCT TFAM-DECL FD3 !
-s" de" CHECKER-PACKAGE-PUBLIC s" s7" 2 TK-PRODUCT TFAM-DECL FS7 !
 s" de" CHECKER-PACKAGE-PUBLIC s" v7" 2 TK-SUM     TFAM-DECL FV7 !
 s" de" CHECKER-PACKAGE-PUBLIC s" n8" 2 TK-PRODUCT TFAM-DECL FN8 !
 0 SCHEMA-PARAM SCHEMA-ROOT+ SCHROOT !
 
 \ ---------------------------------------------------------------------------
-\ 1. Atomic publication + event reflection. A product declaration with a header
-\    (arity) and one field publishes as one contiguous stream; nothing is visible
-\    before PUBLISH.
+\ 1. A product declaration publishes its field and retires its token.
 \ ---------------------------------------------------------------------------
 TYPE-FIELD:COUNT P-PF !
 DECL-EVENT:OPEN TOK !
 TOK @ FP1 @ DECL-EVENT:DECL TOK !
 TOK @ FP1 @ 2 DECL-EVENT:ARITY TOK !
 TOK @ FP1 @ s" x" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
-DECL-EVENT:COUNT 0 T=                                  \ nothing published yet
 TOK @ FP1 @ P-PF @ DECL-EVENT:FIELD-SCHEMA@ SCHROOT @ T= \ exact live token/family/row may read provisional schema
 TOK @ FE2 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
 TC @ 7173 T=                                            \ foreign family cannot use the token
 TOK @ DECL-EVENT:PUBLISH
-DECL-EVENT:COUNT 3 T=                                  \ DECL, ARITY, FIELD published atomically
-0 DECL-EVENT:DECL? TTRUE
-1 DECL-EVENT:ARITY? TTRUE
-2 DECL-EVENT:FIELD? TTRUE
-2 DECL-EVENT:FAMILY@ FP1 @ T=
-2 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT T=            \ structure field: no variant
 TYPE-FIELD:COUNT P-PF @ 1 + T=                         \ exactly one field committed
 TOK @ FP1 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
 TC @ 7161 T=                                            \ consumed token cannot read the now-committed row
@@ -78,11 +68,10 @@ TC @ 7161 T=                                            \ CURRENT reads the runn
 \ 2. Rollback restores EVERY watermark. Inside a checker candidate, open a sum
 \    declaration, register a variant, add a payload field, then ROLLBACK the
 \    event transaction and pop the candidate; every registry high-water returns
-\    to its pre-declaration baseline and nothing new publishes.
+\    to its pre-declaration baseline.
 \ ---------------------------------------------------------------------------
 TFAM-N@ P-TFAM !   SUMV-N@ P-SUMV !   TYPE-FIELD:COUNT P-PF !
 SCHEMA-N@ P-SCHN !   SCHEMA-ROOT-N@ P-SCHR !   TF-STR-U@ P-STRU !
-DECL-EVENT:COUNT P-DEV !
 CHECK-CANDIDATE-START
    DECL-EVENT:OPEN TOK !
    TOK @ FE2 @ DECL-EVENT:DECL TOK !
@@ -97,7 +86,6 @@ TYPE-FIELD:COUNT P-PF @ T=                              \ field row retired
 SCHEMA-N@ P-SCHN @ T=
 SCHEMA-ROOT-N@ P-SCHR @ T=
 TF-STR-U@ P-STRU @ T=                                   \ interned names retired
-DECL-EVENT:COUNT P-DEV @ T=                             \ nothing published
 DECL-EVENT:CURRENT-VARIANT DECL-EVENT:NO-VARIANT T=     \ selector restored
 
 \ ---------------------------------------------------------------------------
@@ -149,31 +137,8 @@ TC @ 7108 T=
 TOK @ DECL-EVENT:ROLLBACK
 
 \ ---------------------------------------------------------------------------
-\ 7. STRUCTURE and ENUM consumers observe IDENTICAL field events: the same field
-\    event kind, differing only in the current-variant selector. Structure field
-\    carries NO-VARIANT; enum payload field carries the open variant id.
-\ ---------------------------------------------------------------------------
-DECL-EVENT:RESET
-DECL-EVENT:OPEN TOK !
-TOK @ FS7 @ DECL-EVENT:DECL TOK !
-TOK @ FS7 @ s" sx" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
-TOK @ DECL-EVENT:PUBLISH
-1 DECL-EVENT:FIELD? TTRUE                               \ structure field event (DECL=0, FIELD=1)
-1 DECL-EVENT:VAR@ VAR-S !                               \ its selector = NO-VARIANT
-DECL-EVENT:RESET
-DECL-EVENT:OPEN TOK !
-TOK @ FV7 @ DECL-EVENT:DECL TOK !
-TOK @ FV7 @ s" ex" DECL-EVENT:VARIANT TOK !
-TOK @ FV7 @ s" ey" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
-TOK @ DECL-EVENT:PUBLISH
-2 DECL-EVENT:FIELD? TTRUE                               \ enum payload field event (DECL=0, VARIANT=1, FIELD=2)
-2 DECL-EVENT:VAR@ VAR-E !                               \ its selector = the open variant id
-VAR-S @ DECL-EVENT:NO-VARIANT T=                        \ structure: no variant
-VAR-E @ DECL-EVENT:NO-VARIANT <> TTRUE                  \ enum: a real variant selector
-
-\ ---------------------------------------------------------------------------
-\ 8. Nested event streams: an inner OPEN…ROLLBACK retires only the inner
-\    watermarks; the outer frame survives and publishes.
+\ 7. Nested event streams: an inner OPEN…ROLLBACK retires only the inner
+\    watermarks; the outer frame survives and publishes its field.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 DECL-EVENT:OPEN TOK !                                   \ outer
@@ -184,29 +149,11 @@ ITOK @ FN8 @ DECL-EVENT:DECL ITOK !
 ITOK @ FN8 @ s" n1" SCHROOT @ 1 1 CELL CELL CELL 0 DECL-EVENT:FIELD ITOK !
 ITOK @ DECL-EVENT:ROLLBACK                              \ retire only the inner field/event
 TOK @ DECL-EVENT:PUBLISH                                \ outer publishes n0 only
-DECL-EVENT:COUNT 2 T=                                   \ DECL + n0 (n1 rolled back)
-0 DECL-EVENT:DECL? TTRUE
-1 DECL-EVENT:FIELD? TTRUE
+TYPE-FIELD:COUNT P-PF @ 1 + T=
+P-PF @ TYPE-FIELD:NAME$ s" n0" T$=
 
 \ ---------------------------------------------------------------------------
-\ 9. Changing the declared arity changes the snapshot identity.
-\ ---------------------------------------------------------------------------
-DECL-EVENT:RESET
-DECL-EVENT:OPEN TOK !
-TOK @ FP1 @ DECL-EVENT:DECL TOK !
-TOK @ FP1 @ 2 DECL-EVENT:ARITY TOK !
-TOK @ DECL-EVENT:PUBLISH
-DECL-EVENT:IDENTITY IDA !
-DECL-EVENT:RESET
-DECL-EVENT:OPEN TOK !
-TOK @ FP1 @ DECL-EVENT:DECL TOK !
-TOK @ FP1 @ 3 DECL-EVENT:ARITY TOK !                    \ different arity
-TOK @ DECL-EVENT:PUBLISH
-DECL-EVENT:IDENTITY IDC !
-IDA @ IDC @ <> TTRUE                                    \ different declaration -> different identity
-
-\ ---------------------------------------------------------------------------
-\ 10. A stale / non-LIFO token is rejected (E-DEV-TX 7161).
+\ 8. A stale / non-LIFO token is rejected (E-DEV-TX 7161).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:OPEN TOK !
 TOK @ 1 + FP1 @ ' DECL-EVENT:DECL catch TC ! drop drop
@@ -214,9 +161,9 @@ TC @ 7161 T=
 TOK @ DECL-EVENT:ROLLBACK
 
 \ ---------------------------------------------------------------------------
-\ 11. Standalone PUBLISH runs the same contiguity preflight as the runner's prepare.
+\ 9. Standalone PUBLISH runs the same contiguity preflight as the runner's prepare.
 \     Inject one field row through this package's own field token without its
-\     matching event; PUBLISH rejects before either published high-water moves.
+\     matching event; PUBLISH rejects before field publication.
 \ ---------------------------------------------------------------------------
 package DECL-EVENT
 
@@ -230,20 +177,40 @@ package DECL-EVENT
    [: TEST-PUBLISH ;] catch ;
 
 : TEST-STANDALONE-PREFLIGHT ( -- )
-   COUNT P-DEV !
    TYPE-FIELD:COUNT P-PF !
    OPEN TOK !
    TOK @ FD3 @ DECL TOK !
    FD3 @ TEST-ADD-UNTRACKED-FIELD
    TEST-PUBLISH-CATCH TC !
    TC @ E-DEV-STATE T=
-   COUNT P-DEV @ T=
    TYPE-FIELD:COUNT P-PF @ T=
    DEPTH 1 T=
    TC @ 0 <> if TOK @ ROLLBACK then
    DEPTH 0 T= ;
 
 TEST-STANDALONE-PREFLIGHT
+
+\ An inner successful frame remains available while its parent is live. The
+\ scratch is reusable only after the outer completion or rollback.
+: TEST-SCRATCH-LIFETIME ( -- )
+   DEV-N @ 0 T=
+   OPEN TOK !
+   TOK @ FP1 @ DECL TOK !
+   OPEN ITOK !
+   ITOK @ FP1 @ DECL ITOK !
+   ITOK @ FP1 @ 0 POLICY ITOK !
+   ITOK @ PUBLISH
+   DEV-N @ 3 T=
+   TOK @ FP1 @ 0 POLICY TOK !   \ the inner clause does not own the parent
+   TOK @ PUBLISH
+   DEV-N @ 0 T=
+   OPEN TOK !
+   TOK @ FP1 @ DECL TOK !
+   DEV-N @ 1 T=
+   TOK @ ROLLBACK
+   DEV-N @ 0 T= ;
+
+TEST-SCRATCH-LIFETIME
 
 \ ---------------------------------------------------------------------------
 \ 12. A frame opened before a nested declaration still receives a distinct
@@ -318,7 +285,7 @@ TEST-PUBLISHED-PAYLOAD-HIDDEN
 \     closes the transaction, and rollback retires the owner token.
 \ ---------------------------------------------------------------------------
 variable HOLD-TOK     variable HOLD-NEXT
-variable HOLD-EVN     variable HOLD-ID
+variable HOLD-EVN
 variable HOLD-EDEPTH  variable HOLD-FLD
 variable HOLD-FDEPTH  variable HOLD-CDEPTH
 
@@ -327,16 +294,14 @@ variable HOLD-FDEPTH  variable HOLD-CDEPTH
 : SNAP-CATCH ( -- n ) [: SNAP-RUN ;] catch ;
 
 : HOLD-SAVE ( -- )
-   COUNT HOLD-EVN !
-   IDENTITY HOLD-ID !
+   DEV-N @ HOLD-EVN !
    DEPTH HOLD-EDEPTH !
    TYPE-FIELD:COUNT HOLD-FLD !
    TYPE-FIELD:TX-DEPTH HOLD-FDEPTH !
    CHECKER-SCOPE-DEPTH HOLD-CDEPTH ! ;
 
 : HOLD-SAME ( -- )
-   COUNT HOLD-EVN @ T=
-   IDENTITY HOLD-ID @ T=
+   DEV-N @ HOLD-EVN @ T=
    DEPTH HOLD-EDEPTH @ T=
    TYPE-FIELD:COUNT HOLD-FLD @ T=
    TYPE-FIELD:TX-DEPTH HOLD-FDEPTH @ T=
@@ -385,17 +350,17 @@ TYPED-VARIABLE VN-A ptr u8   variable VN-U
 variable VN-TFAM      variable VN-STR       variable VN-PK
 variable VN-SUMV      variable VN-LAY       variable VN-SCH
 variable VN-ROOT      variable VN-PF        variable VN-PFP
-variable VN-ON        variable VN-OPUB      variable VN-OBASE
+variable VN-ON        variable VN-OBASE
 variable VN-OFORD     variable VN-OVORD     variable VN-OCUR
 variable VN-ODEPTH
-variable VN-IN        variable VN-IPUB      variable VN-IBASE
+variable VN-IN        variable VN-IBASE
 variable VN-IFORD     variable VN-IVORD     variable VN-ICUR
 variable VN-IDEPTH    variable VN-ISERIAL
 variable VN-RK        variable VN-RF        variable VN-RV
 variable VN-RFLD      variable VN-ROWN
 variable VN-FEVN      variable VN-FFORD     variable VN-FVORD
 variable VN-FCUR      variable VN-FFLDTOK   variable VN-FTOK
-variable VN-FPUB      variable VN-FSTATE    variable VN-FFAM
+variable VN-FSTATE    variable VN-FFAM
 variable VN-FOWNER
 
 : VN-SAVE-REG ( -- )
@@ -416,19 +381,19 @@ variable VN-FOWNER
    DEV-FLD-PROVISIONAL-COUNT VN-PFP @ T= ;
 
 : VN-SAVE-OUT ( -- )
-   DEV-N @ VN-ON !               DEV-PUB-N @ VN-OPUB !
+   DEV-N @ VN-ON !
    DEV-BASE-FLD @ VN-OBASE !     DEV-FLD-ORD @ VN-OFORD !
    DEV-VAR-ORD @ VN-OVORD !      DEV-CUR-VAR @ VN-OCUR !
    DEV-TX-DEPTH @ VN-ODEPTH ! ;
 
 : VN-CHECK-OUT ( -- )
-   DEV-N @ VN-ON @ T=               DEV-PUB-N @ VN-OPUB @ T=
+   DEV-N @ VN-ON @ T=
    DEV-BASE-FLD @ VN-OBASE @ T=     DEV-FLD-ORD @ VN-OFORD @ T=
    DEV-VAR-ORD @ VN-OVORD @ T=      DEV-CUR-VAR @ VN-OCUR @ T=
    DEV-TX-DEPTH @ VN-ODEPTH @ T= ;
 
 : VN-SAVE-IN ( -- )
-   DEV-N @ VN-IN !               DEV-PUB-N @ VN-IPUB !
+   DEV-N @ VN-IN !
    DEV-BASE-FLD @ VN-IBASE !     DEV-FLD-ORD @ VN-IFORD !
    DEV-VAR-ORD @ VN-IVORD !      DEV-CUR-VAR @ VN-ICUR !
    DEV-TX-DEPTH @ VN-IDEPTH !    DEV-TX-SERIAL @ VN-ISERIAL !
@@ -440,11 +405,11 @@ variable VN-FOWNER
    frame DEVTX.EVN @ VN-FEVN !       frame DEVTX.FLDORD @ VN-FFORD !
    frame DEVTX.VARORD @ VN-FVORD !   frame DEVTX.CURVAR @ VN-FCUR !
    frame DEVTX.FLDTOK @ VN-FFLDTOK ! frame DEVTX.TOK @ VN-FTOK !
-   frame DEVTX.PUBN @ VN-FPUB !      frame DEVTX.STATE @ VN-FSTATE !
+   frame DEVTX.STATE @ VN-FSTATE !
    frame DEVTX.FAM @ VN-FFAM !       frame DEVTX.OWNER @ VN-FOWNER ! ;
 
 : VN-CHECK-IN ( -- )
-   DEV-N @ VN-IN @ T=               DEV-PUB-N @ VN-IPUB @ T=
+   DEV-N @ VN-IN @ T=
    DEV-BASE-FLD @ VN-IBASE @ T=     DEV-FLD-ORD @ VN-IFORD @ T=
    DEV-VAR-ORD @ VN-IVORD @ T=      DEV-CUR-VAR @ VN-ICUR @ T=
    DEV-TX-DEPTH @ VN-IDEPTH @ T=    DEV-TX-SERIAL @ VN-ISERIAL @ T=
@@ -459,7 +424,6 @@ variable VN-FOWNER
    frame DEVTX.CURVAR @ VN-FCUR @ T=
    frame DEVTX.FLDTOK @ VN-FFLDTOK @ T=
    frame DEVTX.TOK @ VN-FTOK @ T=
-   frame DEVTX.PUBN @ VN-FPUB @ T=
    frame DEVTX.STATE @ VN-FSTATE @ T=
    frame DEVTX.FAM @ VN-FFAM @ T=
    frame DEVTX.OWNER @ VN-FOWNER @ T= ;
@@ -513,7 +477,7 @@ s" ready" VN-ACCEPT
 \ 16. Every family-scoped mutator rejects a foreign family and an unbound
 \     sentinel before changing the live event, field, registry, or frame state.
 \ ---------------------------------------------------------------------------
-variable WF-N       variable WF-PUB
+variable WF-N
 variable WF-BASE    variable WF-FORD
 variable WF-VORD    variable WF-CUR
 variable WF-DEPTH   variable WF-SERIAL
@@ -522,7 +486,7 @@ variable WF-TOK     variable WF-FLDTOK
 variable WF-FAM     variable WF-OWNER
 variable WF-FEVN    variable WF-FFORD
 variable WF-FVORD   variable WF-FCUR
-variable WF-FPUB    variable WF-FSTATE
+variable WF-FSTATE
 variable WF-K0      variable WF-F0      variable WF-V0
 variable WF-L0      variable WF-O0
 variable WF-K1      variable WF-F1      variable WF-V1
@@ -575,7 +539,7 @@ variable WF-PK      variable WF-LAY
    THEN ;
 
 : WF-STATE-SAVE ( -- )
-   DEV-N @ WF-N !             DEV-PUB-N @ WF-PUB !
+   DEV-N @ WF-N !
    DEV-BASE-FLD @ WF-BASE !   DEV-FLD-ORD @ WF-FORD !
    DEV-VAR-ORD @ WF-VORD !    DEV-CUR-VAR @ WF-CUR !
    DEV-TX-DEPTH @ WF-DEPTH !  DEV-TX-SERIAL @ WF-SERIAL !
@@ -585,12 +549,12 @@ variable WF-PK      variable WF-LAY
    frame DEVTX.EVN @ WF-FEVN !       frame DEVTX.FLDORD @ WF-FFORD !
    frame DEVTX.VARORD @ WF-FVORD !   frame DEVTX.CURVAR @ WF-FCUR !
    frame DEVTX.FLDTOK @ WF-FLDTOK !  frame DEVTX.TOK @ WF-TOK !
-   frame DEVTX.PUBN @ WF-FPUB !      frame DEVTX.STATE @ WF-FSTATE !
+   frame DEVTX.STATE @ WF-FSTATE !
    frame DEVTX.FAM @ WF-FAM !        frame DEVTX.OWNER @ WF-OWNER !
    WF-EVENT-SAVE ;
 
 : WF-STATE-SAME ( -- )
-   DEV-N @ WF-N @ T=             DEV-PUB-N @ WF-PUB @ T=
+   DEV-N @ WF-N @ T=
    DEV-BASE-FLD @ WF-BASE @ T=   DEV-FLD-ORD @ WF-FORD @ T=
    DEV-VAR-ORD @ WF-VORD @ T=    DEV-CUR-VAR @ WF-CUR @ T=
    DEV-TX-DEPTH @ WF-DEPTH @ T=  DEV-TX-SERIAL @ WF-SERIAL @ T=
@@ -603,7 +567,6 @@ variable WF-PK      variable WF-LAY
    frame DEVTX.CURVAR @ WF-FCUR @ T=
    frame DEVTX.FLDTOK @ WF-FLDTOK @ T=
    frame DEVTX.TOK @ WF-TOK @ T=
-   frame DEVTX.PUBN @ WF-FPUB @ T=
    frame DEVTX.STATE @ WF-FSTATE @ T=
    frame DEVTX.FAM @ WF-FAM @ T=
    frame DEVTX.OWNER @ WF-OWNER @ T=
@@ -754,7 +717,7 @@ variable HF-BASE-PF
 : HF-CLOSE ( -- )
    TOK @ ROLLBACK
    0 CHECK-CANDIDATE-DONE drop
-   DEV-N @ 0 T=             DEV-PUB-N @ 0 T=
+   DEV-N @ 0 T=
    DEV-FLD-ORD @ 0 T=       DEV-VAR-ORD @ 0 T=
    DEV-CUR-VAR @ DEV-NO-VARIANT T=
    DEV-TX-DEPTH @ 0 T=
@@ -918,19 +881,19 @@ $100000 constant RT-STALE       \ added to a live token to name one never minted
 -7195 constant RT-BODY-CODE     \ a declaration body's own, unrelated failure
 
 variable RT-TOK    variable RT-FLD
-variable RT-N      variable RT-PUB    variable RT-BASE
+variable RT-N      variable RT-BASE
 variable RT-FORD   variable RT-VORD   variable RT-CUR
 variable RT-EDEPTH variable RT-FDEPTH
-variable RT-RC     variable RT-EV0    variable RT-PF0
+variable RT-RC     variable RT-PF0
 
 : RT-SAVE ( -- )                \ every transaction mark a retire-through restores
-   DEV-N @ RT-N !               DEV-PUB-N @ RT-PUB !
+   DEV-N @ RT-N !
    DEV-BASE-FLD @ RT-BASE !     DEV-FLD-ORD @ RT-FORD !
    DEV-VAR-ORD @ RT-VORD !      DEV-CUR-VAR @ RT-CUR !
    DEV-TX-DEPTH @ RT-EDEPTH !   TYPE-FIELD:TX-DEPTH RT-FDEPTH ! ;
 
 : RT-SAME ( -- )
-   DEV-N @ RT-N @ T=              DEV-PUB-N @ RT-PUB @ T=
+   DEV-N @ RT-N @ T=
    DEV-BASE-FLD @ RT-BASE @ T=    DEV-FLD-ORD @ RT-FORD @ T=
    DEV-VAR-ORD @ RT-VORD @ T=     DEV-CUR-VAR @ RT-CUR @ T=
    DEV-TX-DEPTH @ RT-EDEPTH @ T=  TYPE-FIELD:TX-DEPTH RT-FDEPTH @ T= ;
@@ -1020,14 +983,12 @@ RT-RETIRE
 DEV-TX-DEPTH @ RT-EDEPTH @ 2 - T=
 0 CHECK-CANDIDATE-DONE drop
 
-\ 19c. Retiring a COMMITTED frame puts every published mark back, including the
-\      committed field high-water the outer commit advanced.
+\ 19c. Retiring a COMMITTED frame puts the committed field high-water back.
 CHECK-CANDIDATE-START
 RT-MARK
 s" rt-commit" RT-BASE-FRAME
 RT-TOK @ PREPARE
 RT-TOK @ COMMIT
-DEV-PUB-N @ RT-PUB @ 2 + T=
 TYPE-FIELD:COUNT P-PF @ 1 + T=
 RT-RETIRE
 RT-RESTORED
@@ -1041,7 +1002,6 @@ s" rt-outer" RT-BASE-FRAME
 s" rt-inner" 1 RT-DESCEND PUBLISH
 DEV-TX-DEPTH @ RT-EDEPTH @ 1 + T=
 TYPE-FIELD:TX-DEPTH RT-FDEPTH @ 1 + T=
-DEV-PUB-N @ RT-PUB @ T=
 RT-RETIRE
 RT-RESTORED
 0 CHECK-CANDIDATE-DONE drop
@@ -1085,12 +1045,12 @@ RT-HEALTHY
 : RT-GOOD-RUN ( -- ) [: RT-GOOD-BODY ;] DECLARATION-TRANSACTION:RUN ;
 : RT-GOOD-CATCH ( -- n ) [: RT-GOOD-RUN ;] catch ;
 
-COUNT RT-EV0 !
 TYPE-FIELD:COUNT RT-PF0 !
 RT-GOOD-CATCH 0 T=
-COUNT RT-EV0 @ 2 + T=
 TYPE-FIELD:COUNT RT-PF0 @ 1 + T=
+RT-PF0 @ TYPE-FIELD:NAME$ s" rt-after" T$=
 DEPTH 0 T=
+DEV-N @ 0 T=
 TYPE-FIELD:TX-DEPTH 0 T=
 
 ;package

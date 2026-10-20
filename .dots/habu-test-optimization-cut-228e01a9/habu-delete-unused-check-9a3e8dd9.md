@@ -3,7 +3,7 @@ title: Delete unused check-run and multi-error origin words
 status: closed
 priority: 4
 issue-type: task
-created-at: "\"2026-10-02T09:39:52.702781+02:00\""
+created-at: "2026-10-02T09:39:52.702781+02:00"
 closed-at: "2026-10-14T19:38:01.480994+03:00"
 close-reason: "Implemented in a3b5016d: unused CHK-RUN-N and MEO origin state and its whitebox-only section were removed after caller census; check suites, whitebox suite and convergence passed."
 ---

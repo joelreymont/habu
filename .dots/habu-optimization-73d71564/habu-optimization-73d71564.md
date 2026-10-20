@@ -3,7 +3,7 @@ title: Optimization
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-09-24T16:53:24.838504+02:00\""
+created-at: "2026-09-24T16:53:24.838504+02:00"
 ---
 
 Reduce Habu engine and application size, unnecessary generated instructions,

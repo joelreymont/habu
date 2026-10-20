@@ -61,10 +61,13 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
+require src/habu/native-observer-extension.f
+require src/habu/native-body-abi.f
 require src/habu/data-bands.f           \ each band GUARD-SPAN tests is a claim
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f
+require src/habu/prof-abi.f
 PTR-VARIABLE FP-A  variable FP-U
 
 \ Every primitive body emitter has the same Habu effect. Keep that type when
@@ -75,24 +78,21 @@ defer FP-EMIT ( -- )
 require src/habu/code-origin.f
 
 variable FPL  variable FPE
+variable DIVISION-PRIM-ROW
 
 \ Every body below registers under a name that src/habu/prims.f specifies.
-\ FP-ARGS checks the name (ENGINE-PRIMS:SPEC-CHECK) before FP-KEEP?, so a subset
-\ build cannot hide an unspecified primitive; habu2.f
+\ FP-ARGS checks the name (ENGINE-PRIMS:SPEC-CHECK), so a build cannot hide an
+\ unspecified primitive; habu2.f
 \ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS runs the registry's completeness gate.
 : FP-ARGS ( ptr u8 n [ -- ] -- )
    is FP-EMIT  FP-U !  FP-A !
    FP-A@ FP-U @ ENGINE-PRIMS:SPEC-CHECK ;
-
-: FP-KEEP? ( -- bool )
-   FP-A@ FP-U @ KEEP? ;
 
 : FP-REG ( -- n )
    FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
 
 : FPRIM ( ptr u8 n [ -- ] -- )
    FP-ARGS
-   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG drop
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
@@ -100,16 +100,21 @@ variable FPL  variable FPE
 
 : FPRIM-L ( ptr u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
-   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG drop
+   FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
+
+\ Retain the exact '/' row until its out-of-line refusal helper is finished.
+: FPRIM-L-DIVISION ( ptr u8 n [ -- ] -- )
+   FP-ARGS
+   LBL FPL !  LBL FPE !
+   FP-REG 1+ DIVISION-PRIM-ROW !
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
 \ BABS is an LR-preserving straight-line scalar body. Its emitter owns the
 \ statement that the finished span has no helper or terminal call edge.
 : FPRIM-L-SCALAR ( ptr u8 n [ -- ] -- )
    FP-ARGS
-   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG {: row:n :}
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL,
@@ -120,14 +125,13 @@ variable FP-WID
 : FPRIM-WID ( ptr u8 n [ -- ] n -- )
    FP-WID !
    FP-ARGS
-   FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG FP-WID @ swap ENGINE-PRIMS:WID!
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
 \ shared label ids (forward refs)
-variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LSRC  variable SRCN
+variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LHOSTDIVROW  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 \ The number EMIT-DICT actually bakes into LNCOUNT, kept so a later emitter can
@@ -224,8 +228,9 @@ variable LAFTER
 variable LMATCH
 variable LRECLAIM
 \ The first product is emitted by the qualified predecessor, whose baked
-\ layout predates DEF-OCC. These are builder-side mirrors of layout.f's new
-\ process-local cell and refusal ABI; neither adds a captured DATA band.
+\ layout predates DEF-OCC. These builder-side mirrors match layout.f's
+\ process-local cell and engine-error.f's refusal ABI; they add no captured
+\ DATA band.
 $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 -7231 constant E-STALE
@@ -1402,6 +1407,15 @@ variable SZA-I
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BNUNITRECLAIMCELL ( -- )
+   9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
+   9 DATA 9 ADD,  9 G-PUSH ;
+: BNATIVEBODYREUSECELL ( -- )
+   9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MOVZ,
+   9 DATA 9 ADD,  9 G-PUSH ;
+: BNATIVEBODYREADERCELL ( -- )
+   9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + MOVZ,
+   9 DATA 9 ADD,  9 G-PUSH ;
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
@@ -1542,6 +1556,9 @@ variable LDIE
    A NDICT CMP,  C-LT lower BCOND,
    bad LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    lower LBL,
+   SP SP 16 SUBI,  A SP 0 STR,
+   6 A 0 ADDI,  PROF-ABI:LPROFREWIND LABEL@ BL,
+   A SP 0 LDR,  SP SP 16 ADDI,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    EM-DEF-OCC:LCOUNT LABEL@ BL,
    HIDX-EMIT:LREBUILD LABEL@ BL,
@@ -1972,10 +1989,6 @@ variable LSOURCEEXECFINISH
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
-: BALLOT ( -- )
-   B-TASK-LIVE-GUARD
-   A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
-
 \ Standard ALIGN: round the data pointer up to a cell, bound-checked, so the
 \ next `,` or allot starts on a cell. `create` applies the same rounding itself.
 : BALIGN ( -- )
@@ -2037,6 +2050,25 @@ variable LSOURCEEXECFINISH
    SYS-DONE LABEL@ LBL,
    0 G-PUSH ;
 
+\ x9 holds the carry sampled immediately after a filesystem syscall. Linux
+\ leaves -errno in x0; Darwin leaves positive errno there. Preserve that
+\ cause in the running task before publishing the existing 0/-1 result.
+: FS-SYS-PUSH-FLAG ( -- )
+   LBL LBL {: ok:label done:label :}
+   9 ok CBZ,
+      HB-TARGET-LINUX? IF 10 31 0 SUB, ELSE
+         HB-TARGET-MACOS? IF 10 0 0 ADDI, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
+      THEN
+      10 DATA FS-ABI:ERRNO-OFF STR,
+      0 0 MOVN, done B,
+   ok LBL,
+   10 0 MOVZ,  10 DATA FS-ABI:ERRNO-OFF STR,
+   done LBL,
+   0 G-PUSH ;
+
+: FS-SYS-PUSH ( -- )
+   9 C-CS CSET,  FS-SYS-PUSH-FLAG ;
+
 : BOPEN ( -- )
    2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
@@ -2044,17 +2076,17 @@ variable LSOURCEEXECFINISH
       OS-OPEN-FLAGS
       1 0 0 ADDI,
       0 99 MOVN,
-      NR-OPEN SYS,  SYS-PUSH
+      NR-OPEN SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-OPEN SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-OPEN SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BWRITE ( -- )
-   2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  FS-SYS-PUSH ;
 
 : BREAD ( -- )
-   2 G-POP  1 G-POP  0 G-POP  1 2 PROT-GUARD:CALL  NR-READ SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  1 2 PROT-GUARD:CALL  NR-READ SYS,  FS-SYS-PUSH ;
 
 : BIOCTL ( -- )
    2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
@@ -2623,46 +2655,46 @@ $150 constant CBT-BYTES
    9 0 FMOVDX,  9 G-PUSH ;
 
 : BOPENRD ( -- )
-   A G-POP  A OS-OPEN-RD  SYS-PUSH ;
+   A G-POP  A OS-OPEN-RD  FS-SYS-PUSH ;
 
 : BACCESS ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
-      NR-ACCESS SYS,  SYS-PUSH
+      NR-ACCESS SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-ACCESS SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-ACCESS SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BUNLINK ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 0 MOVZ,
-      NR-UNLINK SYS,  SYS-PUSH
+      NR-UNLINK SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-UNLINK SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-UNLINK SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BRENAME ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
-      NR-RENAME SYS,  SYS-PUSH
+      NR-RENAME SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-RENAME SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-RENAME SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BCHMOD ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
-      NR-CHMOD SYS,  SYS-PUSH
+      NR-CHMOD SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-CHMOD SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-CHMOD SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BSYMLINK ( -- )
@@ -2671,7 +2703,7 @@ $150 constant CBT-BYTES
       HB-TARGET-MACOS? IF 1 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
    3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
-   NR-SYMLINKAT SYS,  SYS-PUSH ;
+   NR-SYMLINKAT SYS,  FS-SYS-PUSH ;
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
@@ -2680,7 +2712,7 @@ $150 constant CBT-BYTES
       HB-TARGET-MACOS? IF 0 1 MOVN, ELSE ENGINE-EMIT:TARGET-UNKNOWN THEN
    THEN
    4 0 MOVZ,  5 0 MOVZ,
-   NR-READLINKAT SYS,  SYS-PUSH ;
+   NR-READLINKAT SYS,  FS-SYS-PUSH ;
 
 package LIBC-OS
 
@@ -2777,20 +2809,20 @@ public
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
-      NR-MKDIR SYS,  SYS-PUSH
+      NR-MKDIR SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-MKDIR SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-MKDIR SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BRMDIR ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 $200 MOVZ,
-      NR-RMDIR SYS,  SYS-PUSH
+      NR-RMDIR SYS,  FS-SYS-PUSH
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-RMDIR SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-RMDIR SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : LINUX-STAT-FIX ( n -- )
@@ -2810,14 +2842,14 @@ public
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
       NR-STAT64 SYS,
       9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
-         0 0 MOVN,  STAT-DONE LABEL@ B,
+         STAT-DONE LABEL@ B,
       STAT-OK LABEL@ LBL,
-      2 LINUX-STAT-FIX
+      2 LINUX-STAT-FIX  9 0 MOVZ,
       STAT-DONE LABEL@ LBL,
-      0 G-PUSH
+      FS-SYS-PUSH-FLAG
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-STAT64 SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-STAT64 SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BLSTAT64 ( -- )
@@ -2829,30 +2861,31 @@ public
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 AT-SYMLINK-NOFOLLOW MOVZ,
       NR-LSTAT64 SYS,
       9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
-         0 0 MOVN,  STAT-DONE LABEL@ B,
+         STAT-DONE LABEL@ B,
       STAT-OK LABEL@ LBL,
-      2 LINUX-STAT-FIX
+      2 LINUX-STAT-FIX  9 0 MOVZ,
       STAT-DONE LABEL@ LBL,
-      0 G-PUSH
+      FS-SYS-PUSH-FLAG
       exit
    THEN
-   HB-TARGET-MACOS? IF NR-LSTAT64 SYS,  SYS-PUSH  exit THEN
+   HB-TARGET-MACOS? IF NR-LSTAT64 SYS,  FS-SYS-PUSH  exit THEN
    ENGINE-EMIT:TARGET-UNKNOWN ;
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    1 2 PROT-GUARD:CALL  7 8 MOVZ,  3 7 PROT-GUARD:CALL
-   NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
+   NR-GETDIRENTRIES64 SYS,  FS-SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
 \ x9/x10 bound the changed bytes. The mandatory owner retires facts before
 \ an instruction write or CP rewind can expose replacement code.
-: HOST-INVALIDATE, ( -- )
+: INVALIDATE-CELL, ( n -- )
+   {: cell:n :}
    LBL {: done:label :}
    9 10 CMP,  C-CS done BCOND,
-   12 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE LDR,  12 done CBZ,
+   12 DATA cell LDR,  12 done CBZ,
    SP SP 64 SUBI,
    30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
    13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
@@ -2861,6 +2894,10 @@ public
    11 SP 24 LDR,  10 SP 16 LDR,  9 SP 8 LDR,  30 SP 0 LDR,
    SP SP 64 ADDI,
    done LBL, ;
+
+: HOST-INVALIDATE, ( -- )
+   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL,
+   NATIVE-OBS-EXT:CAPTURE-INVALIDATE INVALIDATE-CELL, ;
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
@@ -3389,6 +3426,24 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+
+\ ALLOT's missing owner callback throws through the engine helper above.
+: BALLOT ( -- )
+   LBL LBL LBL {: store:label no-owner:label missing:label :}
+   B-TASK-LIVE-GUARD
+   A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
+   A 0 CMPI,  C-GE store BCOND,
+   SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
+   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 no-owner CBZ,
+   11 11 CHECKER-OWNER-ABI:GRID-REVOKE-OFF LDR,  11 missing CBZ,
+   9 7 DATA SUB,  9 G-PUSH  11 BLR,
+   no-owner LBL,
+   7 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   store LBL,
+   7 DATA 0 STR,
+   RET,
+   missing LBL,
+   9 -8574 LIT64,  9 G-PUSH  BTHROW ;
 
 \ Selection takes the exact record a resolver has already borrowed. Validate
 \ its region, stride and published bound before consulting the owner mapping.
@@ -3922,7 +3977,12 @@ public
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
-   done LBL, ;
+   done LBL,
+      \ Each successful install invalidates the observer identity, including
+      \ suspension and same-xt rearming. INSTALL pairs hook and completion.
+      10 0 MOVZ,
+      10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
+      10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
 
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
 \ 0 = tier 0, the legacy JIT; 1 = tier 1, the IR pipeline behind
@@ -4584,7 +4644,7 @@ public
 
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
-   s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
+   s" /"    ['] BDIV  FPRIM-L-DIVISION   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
    s" abs"  ['] BABS  FPRIM-L-SCALAR   s" min"  ['] BMIN  FPRIM-L   s" max"  ['] BMAX FPRIM-L ;
 
 : EMIT-COMPARE-PRIMS ( -- )
@@ -4666,6 +4726,9 @@ package ENGINE-EMIT
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
+   s" native-unit-reclaim-cell" ['] BNUNITRECLAIMCELL FPRIM-L
+   s" native-body-reuse-cell" ['] BNATIVEBODYREUSECELL FPRIM-L
+   s" native-body-reader-cell" ['] BNATIVEBODYREADERCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" seed-ndict!" ['] BSEEDNDICTSET FPRIM
@@ -4700,7 +4763,7 @@ package ENGINE-EMIT
    LBL LCALLBACKTHUNK !
    LBL LCALLBACKADDR !
    s" callback-entry" ['] BCALLBACK-ENTRY FPRIM
-   FP-KEEP? if EMIT-CALLBACK-THUNK then
+   EMIT-CALLBACK-THUNK
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
@@ -4958,7 +5021,8 @@ package ENGINE-EMIT
    s" (DIV-ZERO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
    9 ARITH-ABI:E-DIV-ZERO LIT64,  9 G-PUSH  BTHROW
-   end LBL, ;
+   end LBL,
+   DIVISION-PRIM-ROW @ dup 0<> if 1- ENGINE-PRIMS:MARK-DIVISION else drop then ;
 
 \ ---- the region's write bands --------------------------------------------------
 \ The region mapping holds three things a compile bracket writes, and they are far
@@ -5520,7 +5584,9 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: room-ok:label lower:label raise:label loop:label raised:label
       done:label clear-loop:label reset:label :}
-   LBL LBL LBL {: reset-loop:label init-bad:label init-msg:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: reset-loop:label init-bad:label init-msg:label append-done:label
+      append-records:label append-cf:label append-restored:label prof-next:label :}
    S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
    EM-DEF-OCC:LROOM LABEL@ LBL,
       SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
@@ -5543,7 +5609,7 @@ variable LHIDXBUILD
    EM-DEF-OCC:LCOUNT LABEL@ LBL,
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
-      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
       10 NDICT 0 ADDI,
       9 10 CMP,  C-LT lower BCOND,  C-GT raise BCOND,
        done B,
@@ -5562,20 +5628,74 @@ variable LHIDXBUILD
          done B,
       lower LBL,
          11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
+         14 DATA-VA VA>N DATA-SIZE PROF-ABI:PROF-BAND-AT LIT64,
+         14 14 PROF-ABI:PROF-ARENA LDR,  14 clear-loop CBZ,
+         12 14 PROF-ABI:ARN-IDS LDR,  12 clear-loop CBNZ,
+         14 0 MOVZ,                              \ prof-rate alone has no initialized live map
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,
          12 10 3 LSLI,  12 11 12 ADD,
          13 0 MOVZ,  13 12 8 STR,
+         \ Ordinary trimming detaches the removed IDs. Seed rewind has
+         \ already cleared these slots while retaining the donors' spans.
+         14 prof-next CBZ,
+         12 PROF-ABI:ARN-LIVE LIT64,  12 14 12 ADD,
+         13 10 3 LSLI,  12 12 13 ADD,
+         13 12 0 LDR,  13 0 CMPI,  C-LT prof-next BCOND,
+         15 0 MOVN,  15 12 0 STR,
+         12 PROF-ABI:ARN-RECS LIT64,  12 14 12 ADD,
+         15 PROF-ABI:PROF-ID-ENT MOVZ,  13 13 15 MUL,  12 12 13 ADD,
+         15 0 MOVN,  15 12 PROF-ABI:RID-OWNER STR,
+         15 0 MOVZ,  15 12 PROF-ABI:RID-START STR,  15 12 PROF-ABI:RID-END STR,
+      prof-next LBL,
          10 10 1 ADDI,  clear-loop B,
       done LBL,
       NDICT 9 0 ADDI,
       30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
-      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
       SP SP 64 ADDI,  RET,
    EM-DEF-OCC:LAPPEND LABEL@ LBL,
-      SP SP 16 SUBI,  30 SP 0 STR,  9 SP 8 STR,
+      SP SP 128 SUBI,
+      30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
+      12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
+      16 SP 64 STR,  17 SP 72 STR,
       9 NDICT 1 ADDI,  EM-DEF-OCC:LCOUNT LABEL@ BL,
-      30 SP 0 LDR,  9 SP 8 LDR,  SP SP 16 ADDI,  RET,
+      \ Only APPEND publishes a new record. COUNT also restores old rows.
+      11 DATA NCOMP-DISPATCH:DECL-CELL LDR,
+      11 append-done CBZ,
+      12 11 CHECKER-OWNER-ABI:HEADER-BYTES SUBI,
+      13 12 0 LDR,  14 CHECKER-OWNER-ABI:MAGIC LIT64,
+      13 14 CMP,  C-NE append-done BCOND,
+      13 12 8 LDR,  14 $440 LIT64,
+      13 14 CMP,  C-LT append-done BCOND,
+      11 11 $438 LDR,  11 append-done CBZ,
+         \ The forwarded checker can share the code page just written.
+         \ Execute it RX, then restore the caller's declared write spans;
+         \ bulk record publication still owns the rest of its open bracket.
+         0 DATA PROT:WLO LDR,     0 SP 80 STR,
+         0 DATA PROT:WINDOW LDR,  0 SP 88 STR,
+         0 DATA PROT:RLO LDR,     0 SP 96 STR,
+         0 DATA PROT:RHI LDR,     0 SP 104 STR,
+         0 DATA PROT:CF LDR,      0 SP 112 STR,
+         11 SP 120 STR,
+         PROT-EMIT:LCLOSE LABEL@ BL,
+         11 SP 120 LDR,
+         9 NDICT 1 SUBI,  9 G-PUSH  11 BLR,
+         0 SP 80 LDR,  1 SP 88 LDR,  1 append-records CBZ,
+            0 DATA PROT:WLO STR,  1 DATA PROT:WINDOW STR,
+            1 1 0 SUB,  2 3 MOVZ,  LPROT LABEL@ BL,
+         append-records LBL,
+         0 SP 96 LDR,  1 SP 104 LDR,  1 append-cf CBZ,
+            0 DATA PROT:RLO STR,  1 DATA PROT:RHI STR,
+            1 1 0 SUB,  2 3 MOVZ,  LPROT LABEL@ BL,
+         append-cf LBL,
+         0 SP 112 LDR,  0 append-restored CBZ,
+            PROT-EMIT:LCF LABEL@ BL,
+         append-restored LBL,
+      append-done LBL,
+      30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
+      12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
+      16 SP 64 LDR,  17 SP 72 LDR,  SP SP 128 ADDI,  RET,
    EM-DEF-OCC:LRESET LABEL@ LBL,
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
@@ -6116,6 +6236,7 @@ create NAME-PADDING 0 , 0 ,
       THEN
       1 + REPEAT drop
    LHOSTROW LABEL@ LBL,  ENGINE-PRIMS:SCALAR-ROW@ DCQ,
+   LHOSTDIVROW LABEL@ LBL,  ENGINE-PRIMS:DIVISION-ROW@ DCQ,
    LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT dup SEEDED-PRIM-N !  DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE

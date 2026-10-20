@@ -18,10 +18,7 @@
 \ WHY THERE ARE POSITIVE CONTROLS. "No BL into these spans" is worth nothing if
 \ the decoder cannot see a call at all, so the same decoder is asked two
 \ questions it must answer YES to: an ordinary call between two definitions of
-\ this file is found, and `!` is still found calling the engine's guarded store.
-\ The second is not only a control - `!` keeps its call BY DESIGN, because the
-\ primitive's body performs the PROT-GUARD write-span check and inlining the
-\ store alone would drop it.
+\ this file is found, and an eligible checked store calls the sealed span guard.
 \
 \ Values are asserted as well as shapes: an op lowered to the wrong arithmetic
 \ would pass a call census and fail here. The two byte-order rows read a cell
@@ -29,8 +26,10 @@
 \ fact and the only target this compiler emits for.
 
 require src/lib/test.f
+require src/lib/fs.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
+require src/compiler/native/dict.f
 
 1 set-tier
 
@@ -112,6 +111,13 @@ variable PRIM-N
       then
    4 +loop ;
 
+: CALLS-ENTRY ( ptr u8 n n -- n ) {: na:ptr nu:n target:n :}
+   na nu SPAN {: lo:n hi:n :}
+   0
+   hi lo ?do
+      i BL? if i BL-TARGET target = if 1+ then then
+   4 +loop ;
+
 \ ---- the subjects ------------------------------------------------------------
 \ Real checked definitions, each doing work whose answer is asserted below.
 create TIP-CELLS 8 cells allot       \ plain cells
@@ -145,8 +151,13 @@ public
 : TIP-MAX ( n n -- n ) max ;
 : TIP-MOD ( n n -- n ) mod ;
 
-\ The guarded store, which keeps its call: see the header.
-: TIP-STORE ( n ptr n -- ) ! ;
+\ A guarded store whose span check is folded into its caller.
+: TIP-STORE ( n ptr n -- n ) ! 7 ;
+
+\ Keep the store address live over a real call before the guarded write.
+: TIP-CLOSE-CELL ( ptr n -- )
+   {: p:ptr :}
+   p @ close -1 p ! ;
 
 \ The decoder's positive control: an ordinary call, not in tail position.
 : TIP-CALLEE ( n -- n ) 1 lshift ;
@@ -181,8 +192,14 @@ private
    s" the call decoder finds an ordinary call between two definitions" T-LABEL
    s" TIER1-INLINE-PRIMS:TIP-CALLER" s" TIER1-INLINE-PRIMS:TIP-CALLEE"
    CALLS-WORD 1 T=
-   s" a store still calls the engine's guarded store primitive" T-LABEL
-   s" TIER1-INLINE-PRIMS:TIP-STORE" s" !" CALLS-WORD 1 T= ;
+   s" an eligible store calls the sealed span guard" T-LABEL
+   s" (PROT-SPAN)" NDICT:HELPER-TARGET {: guard:n :}
+   guard 0 > TTRUE
+   s" TIER1-INLINE-PRIMS:TIP-STORE" guard CALLS-ENTRY 1 T=
+   s" TIER1-INLINE-PRIMS:TIP-STORE" s" !" CALLS-WORD 0 T=
+   s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" guard CALLS-ENTRY 1 T=
+   s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" s" close" CALLS-WORD 1 T=
+   s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" s" !" CALLS-WORD 0 T= ;
 
 : TEST-NO-CALLS ( -- )
    s" no tier-1 subject calls one of the lowered primitives" T-LABEL
@@ -214,7 +231,18 @@ private
    7 TIP-INDEXED $55AA T=
    $1234 TIP-CELLS !
    TIP-CELLS byte-view TIP-CELL-VIEW $1234 T=
-   TIP-CELLS TIP-BYTE-VIEW $34 T= ;
+   TIP-CELLS TIP-BYTE-VIEW $34 T=
+   77 TIP-CELLS TIP-STORE 7 T=
+   TIP-CELLS @ 77 T= ;
+
+: TEST-STORE-AFTER-CALL ( -- )
+   s" a guarded store keeps its address through a call" T-LABEL
+   s" /dev/null" FS-PATHZ open-rd {: fd:n :}
+   fd 0 >= TTRUE
+   fd TIP-CELLS !
+   TIP-CELLS byte-view cell-view TIP-CLOSE-CELL
+   TIP-CELLS @ -1 T=
+   fd close-rc -1 T= ;
 
 : TEST-ARITHMETIC-VALUES ( -- )
    s" the lowered stack and arithmetic words answer what they answered" T-LABEL
@@ -241,6 +269,7 @@ public
    TEST-NO-CALLS
    TEST-VIEWS-EMIT-NOTHING
    TEST-ADDRESS-VALUES
+   TEST-STORE-AFTER-CALL
    TEST-ARITHMETIC-VALUES
    T-REPORT ;
 

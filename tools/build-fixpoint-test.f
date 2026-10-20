@@ -22,6 +22,12 @@ package BUILD-FIXPOINT
 
 13 constant BFT-BUILD-ARGV#
 create BFT-KEY1 64 allot
+create BFT-ART-B-BUF FS-PATH-CAP allot
+variable BFT-ART-B-U
+
+: BFT-ART-B$ ( -- ptr u8 n )
+   BFT-ROOT s" chain-b.aot" BFT-ART-B-BUF BFT-ART-B-U BFT-PATH!
+   BFT-ART-B-BUF BFT-ART-B-U @ ;
 
 : BFT-ENV$ ( -- ptr u8 n )
    BFT-ROOT ;
@@ -109,6 +115,16 @@ create BFT-KEY1 64 allot
    BFT-HB WHITEBOX-ENGINE:PROVIDE
    BFT-ROOT BF-TMP!
    s" hb-host" BF-A$ COLD-ENGINE:PROVIDE
+   BF-TMP-RESET ;
+
+\ A capture reads the host's live dictionary. Two separate host processes must
+\ write identical bytes on their first try, despite different ASLR and heaps.
+\ The product build uses the first artifact without retrying a mismatch.
+: BFT-TEST-CAPTURE-DETERMINISM ( -- )
+   BFT-ROOT BF-TMP!
+   BF-CHAIN-ART$ BF-CAPTURE-INTO
+   BFT-ART-B$ BF-CAPTURE-INTO
+   BF-CHAIN-ART$ BFT-ART-B$ BF-FILE= TTRUE
    BF-TMP-RESET ;
 
 \ Promote private copies of the supplied compiler and host from a copied
@@ -823,6 +839,7 @@ public
    T-RESET
    BFT-PREPARE
    s" suite compiler and cold host" [: BFT-PROVIDE-ENGINES ;] BFT-STEP
+   s" chain capture deterministic" [: BFT-TEST-CAPTURE-DETERMINISM ;] BFT-STEP
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP

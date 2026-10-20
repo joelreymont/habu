@@ -3,7 +3,7 @@ title: Refuse a check run that passes its deadline by name
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T13:49:03.867889+02:00\""
+created-at: "2026-10-02T13:49:03.867889+02:00"
 closed-at: "2026-10-14T19:41:03.041054+03:00"
 close-reason: "Implemented in e2ccb533: check.f reports a run deadline by name and exits 70 in both output modes, with configurable --deadline-ms and killed child tree; failing-before CLI cases and affected suites passed."
 ---

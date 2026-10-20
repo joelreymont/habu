@@ -50,7 +50,7 @@ public
 \ JCHAR writes one byte as the inside of a JSON string: `"`, `\` and every byte
 \ below 32 escaped, as RFC 8259 section 7 requires. LF, CR and TAB take their
 \ short escapes and every other one \u00XX in upper-case hex, the form
-\ tools/lint/json-writer.f writes.
+\ src/lib/json-write.f writes.
 : JCHAR {: c :}
    c case
       10 of 92 EMIT-RAW 110 EMIT-RAW endof

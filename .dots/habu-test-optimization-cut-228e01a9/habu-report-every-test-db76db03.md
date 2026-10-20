@@ -3,7 +3,7 @@ title: Report every test timeout with its capture
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T04:59:27.137195+02:00\""
+created-at: "2026-10-02T04:59:27.137195+02:00"
 closed-at: "2026-10-14T19:30:56.973349+03:00"
 close-reason: "Implemented in 9ddfe2a2: timeout arms across the listed test/tool sites use the shared capture report, with the intentional worker deadline rethrow documented; forced-timeout output and touched tests passed."
 ---

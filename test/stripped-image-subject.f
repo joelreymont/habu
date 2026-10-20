@@ -8,6 +8,7 @@ require src/lib/memory.f
 require src/lib/aio.f
 require src/lib/engine-id.f
 require test/stripped-quotation-subject.f
+require test/stripped-address-pool-subject.f
 require test/stripped-sparse-data-subject.f
 require test/aot-image-class-subject.f
 require test/compiler/aot-xt-cells-subject.f
@@ -69,6 +70,7 @@ public
 
 : RUN ( -- )
    STRIPPED-QUOTATION-SUBJECT:RUN
+   STRIPPED-ADDRESS-POOL-SUBJECT:RUN
    DOES-RUN
    STRIPPED-SPARSE-DATA-SUBJECT:RUN
    AOT-IMAGE-CLASS-SUBJECT:RUN

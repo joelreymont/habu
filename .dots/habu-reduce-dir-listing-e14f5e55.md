@@ -1,6 +1,6 @@
 ---
 title: Reduce directory listing overhead
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-14T22:16:08.631101+03:00"

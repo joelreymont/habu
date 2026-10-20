@@ -239,11 +239,10 @@ s" EIXT2" SIG-MIN-IN 5 T=
 \ A REWIND NO SEAM PERFORMED. The store can move under the table without
 \ USIGS-RESTORE-END ever being called: E-INTERN's hit path assigns UEND itself
 \ (it rewinds mid-record, before the record has an ER.NEXT for that seam's chain
-\ walk to follow), and so does the raw rewind below. Two hand rewinds that used
-\ to be quoted here are gone - src/habu/hide.f's BFR-* twin as uncalled (dot
-\ habu-give-the-build-4b825045) and tools/bootstrap.sh's recovery prologue,
-\ which calls USIGS-RESTORE-END itself now (dot
-\ habu-route-the-recovery-4ef43bd9) - so the engine is the live example and the
+\ walk to follow), and so does the raw rewind below. The old hide.f test-only
+\ lookup twin and the launcher's hand rewind are gone; the launcher calls
+\ CHECKER-BOUND:EMPTY-STORE after appending hide.f's shared lookup source.
+\ The engine is the live example and the
 \ fixture below is the deliberate one. The append choke point is where that has
 \ to be noticed, and the case that proves it is a record with NO NODES: an
 \ `undefine` appends a record and copies nothing, so the interner's own entry

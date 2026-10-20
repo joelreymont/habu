@@ -2,7 +2,10 @@
 
 require src/lib/errors.f
 require src/lib/memory.f
-require tools/json.f
+require src/lib/jsonl.f
+require src/lib/json-write.f
+require src/lib/json-copy.f
+require src/lib/string.f
 
 65 constant SARIF-E-DATA
 74 constant SARIF-E-IO
@@ -12,7 +15,16 @@ PATH-CAP 1 + constant SARIF-PATH-CAP
 $100 constant SARIF-MAX-RULES
 $2000 constant SARIF-RULE-BUF-CAP
 $1000 constant SARIF-TEXT-CAP
-32 constant SARIF-NUM-CAP
+$8000 constant SARIF-QUOTE-CAP
+
+10 constant SARIF-LF
+44 constant SARIF-COMMA
+45 constant SARIF-MINUS
+58 constant SARIF-COLON
+91 constant SARIF-LBRACK
+93 constant SARIF-RBRACK
+123 constant SARIF-LBRACE
+125 constant SARIF-RBRACE
 
 create SARIF-IN-BUF SARIF-IN-CAP allot
 create SARIF-PATH-BUF SARIF-PATH-CAP allot
@@ -20,14 +32,16 @@ create SARIF-RULE-BUF SARIF-RULE-BUF-CAP allot
 create SARIF-RULE-OFF SARIF-MAX-RULES cells allot
 create SARIF-RULE-LEN SARIF-MAX-RULES cells allot
 create SARIF-TEXT-BUF SARIF-TEXT-CAP allot
-create SARIF-NUM-BUF SARIF-NUM-CAP allot
 create SARIF-ONE 1 allot
+create SARIF-QUOTE SARIF-QUOTE-CAP allot
+create SARIF-DECODE SARIF-IN-CAP allot
+create SARIF-READER JR:STORAGE-BYTES allot
+TYPED-VARIABLE SARIF-W JSON-WRITE:writer
 
 variable SARIF-IN-LEN
 variable SARIF-RULE-N
 variable SARIF-RULE-END
 variable SARIF-LINE-I
-variable SARIF-LINE-N
 variable SARIF-LINE-START
 TYPED-VARIABLE SARIF-LINE-A ptr u8
 variable SARIF-LINE-U
@@ -37,7 +51,8 @@ variable SARIF-FD
 variable SARIF-NV
 variable SARIF-NP
 variable SARIF-NEG?
-variable SARIF-PARSE-NODE
+variable SARIF-ROW-OBJECT
+variable SARIF-RESULT-N
 
 : SARIF-TRUE ( -- bool )
    0 0= ;
@@ -67,31 +82,18 @@ variable SARIF-PARSE-NODE
    1 SARIF-ONE 1 SARIF-WRITE ;
 
 : SARIF-STRING ( ptr u8 n -- )
-   JSONW-RESET
-   JSONW-STRING
-   JSON-OUT-BUF JSON-OUT-LEN @ SARIF-OUT ;
+   {: a:ptr u:n :}
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
+   a u JSON-WRITE:STRING JSON-WRITE:$ SARIF-OUT ;
 
 : SARIF-KEY ( ptr u8 n -- )
    SARIF-STRING
-   J-COLON SARIF-C ;
-
-: SARIF-U64 ( n -- )
-   SARIF-NV !
-   SARIF-NV @ 0= if 48 SARIF-C exit then
-   0 SARIF-NP !
-   begin SARIF-NV @ 0 > while
-      SARIF-NV @ 10 mod 48 + SARIF-NUM-BUF SARIF-NP @ + c!
-      SARIF-NV @ 10 / SARIF-NV !
-      SARIF-NP @ 1+ SARIF-NP !
-   repeat
-   begin SARIF-NP @ 0 > while
-      SARIF-NP @ 1- SARIF-NP !
-      SARIF-NUM-BUF SARIF-NP @ + c@ SARIF-C
-   repeat ;
+   SARIF-COLON SARIF-C ;
 
 : SARIF-I64 ( n -- )
-   dup 0< if J-MINUS SARIF-C negate then
-   SARIF-U64 ;
+   {: value:n :}
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
+   value JSON-WRITE:INT JSON-WRITE:$ SARIF-OUT ;
 
 : SARIF-DIGIT ( n -- n )
    dup 48 < if drop -1 exit then
@@ -104,7 +106,7 @@ variable SARIF-PARSE-NODE
    0 SARIF-NV !
    0 SARIF-NP !
    0 SARIF-NEG? !
-   a c@ J-MINUS = if
+   a c@ SARIF-MINUS = if
       -1 SARIF-NEG? !
       1 SARIF-NP !
       u 1 = if s" diag-to-sarif: expected integer" SARIF-E-DATA SARIF-FAIL then
@@ -119,18 +121,14 @@ variable SARIF-PARSE-NODE
 : SARIF-COPY-TEXT ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    u SARIF-TEXT-CAP > if s" diag-to-sarif: text too large" SARIF-E-DATA SARIF-FAIL then
-   a u SARIF-TEXT-BUF JSON-COPY
+   a SARIF-TEXT-BUF u BYTE-COPY
    SARIF-TEXT-BUF u ;
 
-: SARIF-NODE-TEXT$ ( n -- ptr u8 n )
-   {: node:n :}
-   node JSON-KIND J-STR = if node JSON-STRING$ exit then
-   node JSON-KIND J-NUM = if node JSON-NUMBER$ exit then
-   node JSON-KIND J-BOOL = if
-      node JSON-BOOL@ if s" True" else s" False" then exit
-   then
-   node JSON-KIND J-NULL = if s" None" exit then
-   node JSON-WRITE SARIF-COPY-TEXT ;
+: SARIF-GET ( ptr u8 n -- JR:reader bool )
+   {: key:ptr ku:n :}
+   SARIF-READER JR:STORAGE-BYTES SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
+   JR:NEXT drop
+   key ku JR:FIND-KEY ;
 
 : SARIF-NONZERO-NUM? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
@@ -139,141 +137,153 @@ variable SARIF-PARSE-NODE
       1+
    repeat drop SARIF-FALSE ;
 
-: SARIF-TRUTHY? ( n -- bool )
-   {: node:n :}
-   node JSON-KIND J-NULL = if SARIF-FALSE exit then
-   node JSON-KIND J-BOOL = if node JSON-BOOL@ exit then
-   node JSON-KIND J-STR = if node JSON-STRING$ nip 0 > exit then
-   node JSON-KIND J-NUM = if node JSON-NUMBER$ SARIF-NONZERO-NUM? exit then
-   node JSON-COUNT 0 > ;
+: SARIF-NODE-TEXT? ( JR:reader -- ptr u8 n bool )
+   JR:TOKEN {: kind:n :}
+   kind JR:T-STR = if
+      SARIF-DECODE SARIF-IN-CAP JR:STR {: u:n :} JR:CLOSE
+      SARIF-DECODE u u 0 > exit
+   then
+   kind JR:T-INT = kind JR:T-FLOAT = or if
+      JR:SPAN$ {: a:ptr u:n :} JR:CLOSE
+      a u a u SARIF-NONZERO-NUM? exit
+   then
+   kind JR:T-TRUE = if JR:CLOSE s" True" SARIF-TRUE exit then
+   kind JR:T-FALSE = if JR:CLOSE s" False" SARIF-FALSE exit then
+   kind JR:T-NULL = if JR:CLOSE s" None" SARIF-FALSE exit then
+   kind JR:T-OBJ = kind JR:T-ARR = or if
+      SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
+      SARIF-DECODE SARIF-IN-CAP JSON-COPY:VALUE
+      swap JR:CLOSE
+      JSON-WRITE:$ SARIF-COPY-TEXT {: a:ptr u:n :}
+      a u u 2 > exit
+   then
+   JR:CLOSE E-JR-STATE throw ;
 
-: SARIF-TRUTHY-GET ( n ptr u8 n -- n )
-   {: obj:n a:ptr u:n :}
-   obj a u JSON-GET dup -1 = if exit then
-   dup SARIF-TRUTHY? if exit then
-   drop -1 ;
+: SARIF-NODE-TEXT$ ( JR:reader -- ptr u8 n )
+   SARIF-NODE-TEXT? drop ;
 
-: SARIF-MESSAGE$ ( n -- ptr u8 n )
-   {: obj:n :}
-   obj s" suggestion" SARIF-TRUTHY-GET dup -1 <> if SARIF-NODE-TEXT$ exit then drop
-   obj s" reason" SARIF-TRUTHY-GET dup -1 <> if SARIF-NODE-TEXT$ exit then drop
-   obj s" verdict" SARIF-TRUTHY-GET dup -1 <> if SARIF-NODE-TEXT$ exit then drop
-   obj s" code" SARIF-TRUTHY-GET dup -1 <> if SARIF-NODE-TEXT$ exit then drop
+: SARIF-TRUTHY-GET ( ptr u8 n -- ptr u8 n bool )
+   SARIF-GET 0= if JR:CLOSE SARIF-DECODE 0 SARIF-FALSE exit then
+   SARIF-NODE-TEXT? ;
+
+: SARIF-MESSAGE$ ( -- ptr u8 n )
+   s" suggestion" SARIF-TRUTHY-GET if exit then 2drop
+   s" reason" SARIF-TRUTHY-GET if exit then 2drop
+   s" verdict" SARIF-TRUTHY-GET if exit then 2drop
+   s" code" SARIF-TRUTHY-GET if exit then 2drop
    s" Habu diagnostic" ;
 
-: SARIF-CODE$ ( n -- ptr u8 n )
-   s" code" JSON-GET dup -1 = if drop s" HABU-DIAGNOSTIC" exit then
+: SARIF-CODE$ ( -- ptr u8 n )
+   s" code" SARIF-GET 0= if JR:CLOSE s" HABU-DIAGNOSTIC" exit then
    SARIF-NODE-TEXT$ ;
 
-: SARIF-FILE$ ( n -- ptr u8 n )
-   s" file" JSON-GET dup -1 = if drop s" <input>" exit then
+: SARIF-FILE$ ( -- ptr u8 n )
+   s" file" SARIF-GET 0= if JR:CLOSE s" <input>" exit then
    SARIF-NODE-TEXT$ ;
 
-: SARIF-NODE>I64 ( n -- n )
-   {: node:n :}
-   node JSON-KIND J-NUM = if node JSON-NUMBER$ SARIF>S exit then
-   node JSON-KIND J-STR = if node JSON-STRING$ SARIF>S exit then
-   s" diag-to-sarif: expected integer" SARIF-E-DATA SARIF-FAIL ;
+: SARIF-NODE>I64 ( JR:reader -- n )
+   JR:TOKEN {: kind:n :}
+   kind JR:T-INT = kind JR:T-FLOAT = or if
+      JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a u SARIF>S exit
+   then
+   kind JR:T-STR = if
+      SARIF-DECODE SARIF-IN-CAP JR:STR {: u:n :} JR:CLOSE
+      SARIF-DECODE u SARIF>S exit
+   then
+   JR:CLOSE s" diag-to-sarif: expected integer" SARIF-E-DATA SARIF-FAIL ;
 
-: SARIF-EMIT-NODE-OR-NULL ( n -- )
-   dup -1 = if drop s" null" SARIF-OUT exit then
-   JSON-WRITE SARIF-OUT ;
+: SARIF-EMIT-NODE-OR-NULL ( JR:reader bool -- )
+   0= if JR:CLOSE s" null" SARIF-OUT exit then
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
+   SARIF-DECODE SARIF-IN-CAP JSON-COPY:VALUE
+   swap JR:CLOSE JSON-WRITE:$ SARIF-OUT ;
 
-: SARIF-EMIT-GET ( n ptr u8 n -- )
-   JSON-GET SARIF-EMIT-NODE-OR-NULL ;
+: SARIF-EMIT-GET ( ptr u8 n -- )
+   SARIF-GET SARIF-EMIT-NODE-OR-NULL ;
 
 : SARIF-FIELDS-START ( -- )
    0 SARIF-FIELD? ! ;
 
 : SARIF-NEXT-FIELD ( -- )
-   SARIF-FIELD? @ if J-COMMA SARIF-C then
+   SARIF-FIELD? @ if SARIF-COMMA SARIF-C then
    -1 SARIF-FIELD? ! ;
 
-: SARIF-REGION-FIELD ( n ptr u8 n ptr u8 n -- )
-   {: obj:n src-a:ptr src-u:n out-a:ptr out-u:n :}
-   obj src-a src-u JSON-GET dup -1 = if drop exit then
+: SARIF-REGION-FIELD ( ptr u8 n ptr u8 n -- )
+   {: src-a:ptr src-u:n out-a:ptr out-u:n :}
+   src-a src-u SARIF-GET 0= if JR:CLOSE exit then
    SARIF-NEXT-FIELD
    out-a out-u SARIF-KEY
    SARIF-NODE>I64 SARIF-I64 ;
 
-: SARIF-REGION-LEN ( n -- )
-   {: obj:n :}
-   obj s" byte_start" JSON-GET dup -1 = if drop exit then
-   SARIF-NODE>I64
-   obj s" byte_end" JSON-GET dup -1 = if drop drop exit then
-   SARIF-NODE>I64 swap -
+: SARIF-REGION-LEN ( -- )
+   s" byte_start" SARIF-GET 0= if JR:CLOSE exit then
+   SARIF-NODE>I64 {: start:n :}
+   s" byte_end" SARIF-GET 0= if JR:CLOSE exit then
+   SARIF-NODE>I64 start -
    dup 0< if drop 0 then
    SARIF-NEXT-FIELD
    s" byteLength" SARIF-KEY
    SARIF-I64 ;
 
-: SARIF-EMIT-REGION ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
+: SARIF-EMIT-REGION ( -- )
+   SARIF-LBRACE SARIF-C
    SARIF-FIELDS-START
-   obj s" line" s" startLine" SARIF-REGION-FIELD
-   obj s" column" s" startColumn" SARIF-REGION-FIELD
-   obj s" byte_start" s" byteOffset" SARIF-REGION-FIELD
-   obj SARIF-REGION-LEN
-   J-RBRACE SARIF-C ;
+   s" line" s" startLine" SARIF-REGION-FIELD
+   s" column" s" startColumn" SARIF-REGION-FIELD
+   s" byte_start" s" byteOffset" SARIF-REGION-FIELD
+   SARIF-REGION-LEN
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-PROPERTIES ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" schema_version" SARIF-KEY obj s" schema_version" SARIF-EMIT-GET
-   J-COMMA SARIF-C
-   s" word" SARIF-KEY obj s" word" SARIF-EMIT-GET
-   J-COMMA SARIF-C
-   s" token" SARIF-KEY obj s" token" SARIF-EMIT-GET
-   J-COMMA SARIF-C
-   s" verdict" SARIF-KEY obj s" verdict" SARIF-EMIT-GET
-   J-RBRACE SARIF-C ;
+: SARIF-EMIT-PROPERTIES ( -- )
+   SARIF-LBRACE SARIF-C
+   s" schema_version" SARIF-KEY s" schema_version" SARIF-EMIT-GET
+   SARIF-COMMA SARIF-C
+   s" word" SARIF-KEY s" word" SARIF-EMIT-GET
+   SARIF-COMMA SARIF-C
+   s" token" SARIF-KEY s" token" SARIF-EMIT-GET
+   SARIF-COMMA SARIF-C
+   s" verdict" SARIF-KEY s" verdict" SARIF-EMIT-GET
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-MESSAGE ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" text" SARIF-KEY obj SARIF-MESSAGE$ SARIF-STRING
-   J-RBRACE SARIF-C ;
+: SARIF-EMIT-MESSAGE ( -- )
+   SARIF-LBRACE SARIF-C
+   s" text" SARIF-KEY SARIF-MESSAGE$ SARIF-STRING
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-ARTIFACT ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" uri" SARIF-KEY obj SARIF-FILE$ SARIF-STRING
-   J-RBRACE SARIF-C ;
+: SARIF-EMIT-ARTIFACT ( -- )
+   SARIF-LBRACE SARIF-C
+   s" uri" SARIF-KEY SARIF-FILE$ SARIF-STRING
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-PHYSICAL ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" artifactLocation" SARIF-KEY obj SARIF-EMIT-ARTIFACT
-   J-COMMA SARIF-C
-   s" region" SARIF-KEY obj SARIF-EMIT-REGION
-   J-RBRACE SARIF-C ;
+: SARIF-EMIT-PHYSICAL ( -- )
+   SARIF-LBRACE SARIF-C
+   s" artifactLocation" SARIF-KEY SARIF-EMIT-ARTIFACT
+   SARIF-COMMA SARIF-C
+   s" region" SARIF-KEY SARIF-EMIT-REGION
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-LOCATION ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" physicalLocation" SARIF-KEY obj SARIF-EMIT-PHYSICAL
-   J-RBRACE SARIF-C ;
+: SARIF-EMIT-LOCATION ( -- )
+   SARIF-LBRACE SARIF-C
+   s" physicalLocation" SARIF-KEY SARIF-EMIT-PHYSICAL
+   SARIF-RBRACE SARIF-C ;
 
-: SARIF-EMIT-LOCATIONS ( n -- )
-   {: obj:n :}
-   J-LBRACK SARIF-C
-   obj SARIF-EMIT-LOCATION
-   J-RBRACK SARIF-C ;
+: SARIF-EMIT-LOCATIONS ( -- )
+   SARIF-LBRACK SARIF-C
+   SARIF-EMIT-LOCATION
+   SARIF-RBRACK SARIF-C ;
 
-: SARIF-EMIT-RESULT ( n -- )
-   {: obj:n :}
-   J-LBRACE SARIF-C
-   s" ruleId" SARIF-KEY obj SARIF-CODE$ SARIF-STRING
-   J-COMMA SARIF-C
+: SARIF-EMIT-RESULT ( -- )
+   SARIF-LBRACE SARIF-C
+   s" ruleId" SARIF-KEY SARIF-CODE$ SARIF-STRING
+   SARIF-COMMA SARIF-C
    s" level" SARIF-KEY s" error" SARIF-STRING
-   J-COMMA SARIF-C
-   s" message" SARIF-KEY obj SARIF-EMIT-MESSAGE
-   J-COMMA SARIF-C
-   s" properties" SARIF-KEY obj SARIF-EMIT-PROPERTIES
-   J-COMMA SARIF-C
-   s" locations" SARIF-KEY obj SARIF-EMIT-LOCATIONS
-   J-RBRACE SARIF-C ;
+   SARIF-COMMA SARIF-C
+   s" message" SARIF-KEY SARIF-EMIT-MESSAGE
+   SARIF-COMMA SARIF-C
+   s" properties" SARIF-KEY SARIF-EMIT-PROPERTIES
+   SARIF-COMMA SARIF-C
+   s" locations" SARIF-KEY SARIF-EMIT-LOCATIONS
+   SARIF-RBRACE SARIF-C ;
 
 : SARIF-RULE$ ( n -- ptr u8 n )
    {: idx:n :}
@@ -283,7 +293,7 @@ variable SARIF-PARSE-NODE
 : SARIF-RULE-FIND ( ptr u8 n -- n )
    {: a:ptr u:n :}
    0 begin dup SARIF-RULE-N @ < while
-      dup SARIF-RULE$ a u JSON-STR= if exit then
+      dup SARIF-RULE$ a u STR= if exit then
       1+
    repeat drop -1 ;
 
@@ -294,7 +304,7 @@ variable SARIF-PARSE-NODE
    SARIF-RULE-END @ u + SARIF-RULE-BUF-CAP > if s" diag-to-sarif: rule buffer full" SARIF-E-DATA SARIF-FAIL then
    SARIF-RULE-END @ SARIF-RULE-N @ cells SARIF-RULE-OFF + !
    u SARIF-RULE-N @ cells SARIF-RULE-LEN + !
-   a u SARIF-RULE-BUF SARIF-RULE-END @ + JSON-COPY
+   a SARIF-RULE-BUF SARIF-RULE-END @ + u BYTE-COPY
    SARIF-RULE-END @ u + SARIF-RULE-END !
    SARIF-RULE-N @ 1+ SARIF-RULE-N ! ;
 
@@ -334,25 +344,25 @@ variable SARIF-PARSE-NODE
 
 : SARIF-EMIT-RULE ( n -- )
    {: idx:n :}
-   J-LBRACE SARIF-C
+   SARIF-LBRACE SARIF-C
    s" id" SARIF-KEY idx SARIF-RULE$ SARIF-STRING
-   J-COMMA SARIF-C
+   SARIF-COMMA SARIF-C
    s" name" SARIF-KEY idx SARIF-RULE$ SARIF-STRING
-   J-COMMA SARIF-C
+   SARIF-COMMA SARIF-C
    s" shortDescription" SARIF-KEY
-      J-LBRACE SARIF-C
+      SARIF-LBRACE SARIF-C
       s" text" SARIF-KEY idx SARIF-RULE$ SARIF-STRING
-      J-RBRACE SARIF-C
-   J-RBRACE SARIF-C ;
+      SARIF-RBRACE SARIF-C
+   SARIF-RBRACE SARIF-C ;
 
 : SARIF-EMIT-RULES ( -- )
-   J-LBRACK SARIF-C
+   SARIF-LBRACK SARIF-C
    0 begin dup SARIF-RULE-N @ < while
-      dup 0 > if J-COMMA SARIF-C then
+      dup 0 > if SARIF-COMMA SARIF-C then
       dup SARIF-EMIT-RULE
       1+
    repeat drop
-   J-RBRACK SARIF-C ;
+   SARIF-RBRACK SARIF-C ;
 
 : SARIF-IN-C+ ( n -- )
    SARIF-IN-LEN @ 1+ SARIF-IN-CAP > if s" diag-to-sarif: input too large" SARIF-E-DATA SARIF-FAIL then
@@ -362,29 +372,23 @@ variable SARIF-PARSE-NODE
 : SARIF-IN+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    SARIF-IN-LEN @ u + SARIF-IN-CAP > if s" diag-to-sarif: input too large" SARIF-E-DATA SARIF-FAIL then
-   a u SARIF-IN-BUF SARIF-IN-LEN @ + JSON-COPY
+   a SARIF-IN-BUF SARIF-IN-LEN @ + u BYTE-COPY
    SARIF-IN-LEN @ u + SARIF-IN-LEN ! ;
 
 : SARIF-LAST-LF? ( -- bool )
    SARIF-IN-LEN @ 0= if SARIF-TRUE exit then
-   SARIF-IN-BUF SARIF-IN-LEN @ 1- + c@ J-LF = ;
-
-: SARIF-COPY-BYTES {: a:ptr dst:ptr u:n :} ( ptr u8 ptr u8 n -- )
-   0 begin dup u < while
-      dup a + c@ over dst + c!
-      1+
-   repeat drop ;
+   SARIF-IN-BUF SARIF-IN-LEN @ 1- + c@ SARIF-LF = ;
 
 : SARIF-PATHZ {: a:ptr u:n :} ( ptr u8 n -- ptr u8 )
    u 1+ SARIF-PATH-CAP > if s" diag-to-sarif: path too long" SARIF-E-IO SARIF-FAIL then
-   a SARIF-PATH-BUF u SARIF-COPY-BYTES
+   a SARIF-PATH-BUF u BYTE-COPY
    0 SARIF-PATH-BUF u + c!
    SARIF-PATH-BUF ;
 
 : SARIF-APPEND-SOURCE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u SARIF-IN+
-   u 0 > if SARIF-LAST-LF? 0= if J-LF SARIF-IN-C+ then then ;
+   u 0 > if SARIF-LAST-LF? 0= if SARIF-LF SARIF-IN-C+ then then ;
 
 : SARIF-READ-FD ( n -- )
    {: fd:n :}
@@ -396,7 +400,7 @@ variable SARIF-PARSE-NODE
       SARIF-IN-LEN @ SARIF-RD @ + SARIF-IN-LEN !
    repeat
    SARIF-RD @ 0< if s" diag-to-sarif: read failed" SARIF-E-IO SARIF-FAIL then
-   SARIF-IN-LEN @ 0 > if SARIF-LAST-LF? 0= if J-LF SARIF-IN-C+ then then ;
+   SARIF-IN-LEN @ 0 > if SARIF-LAST-LF? 0= if SARIF-LF SARIF-IN-C+ then then ;
 
 : SARIF-READ-STDIN ( -- )
    0 SARIF-READ-FD ;
@@ -422,38 +426,43 @@ variable SARIF-PARSE-NODE
    repeat drop ;
 
 : SARIF-LINES-START ( -- )
-   0 SARIF-LINE-I !
-   0 SARIF-LINE-N ! ;
+   0 SARIF-LINE-I ! ;
 
 : SARIF-NEXT-LINE ( -- bool )
    SARIF-LINE-I @ SARIF-IN-LEN @ >= if SARIF-FALSE exit then
    SARIF-LINE-I @ SARIF-LINE-START !
    begin SARIF-LINE-I @ SARIF-IN-LEN @ < while
-      SARIF-IN-BUF SARIF-LINE-I @ + c@ J-LF = if
+      SARIF-IN-BUF SARIF-LINE-I @ + c@ SARIF-LF = if
          SARIF-IN-BUF SARIF-LINE-START @ +
-         SARIF-LINE-I @ SARIF-LINE-START @ - JSON-TRIM
+         SARIF-LINE-I @ SARIF-LINE-START @ - TRIM
          SARIF-LINE-U ! SARIF-LINE-A!
          SARIF-LINE-I @ 1+ SARIF-LINE-I !
-         SARIF-LINE-N @ 1+ SARIF-LINE-N !
          SARIF-TRUE exit
       then
       SARIF-LINE-I @ 1+ SARIF-LINE-I !
    repeat
    SARIF-IN-BUF SARIF-LINE-START @ +
-   SARIF-IN-LEN @ SARIF-LINE-START @ - JSON-TRIM
+   SARIF-IN-LEN @ SARIF-LINE-START @ - TRIM
    SARIF-LINE-U ! SARIF-LINE-A!
    SARIF-IN-LEN @ SARIF-LINE-I !
-   SARIF-LINE-N @ 1+ SARIF-LINE-N !
    SARIF-TRUE ;
 
 : SARIF-PARSE-RAW ( -- )
-   SARIF-LINE-A@ SARIF-LINE-U @ JSON-PARSE SARIF-PARSE-NODE ! ;
+   SARIF-READER JR:STORAGE-BYTES SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
+   JR:NEXT {: kind:n :}
+   begin JR:NEXT dup JR:T-END <> while drop repeat drop
+   JR:CLOSE
+   kind JR:T-OBJ = SARIF-ROW-OBJECT ! ;
 
-: SARIF-PARSE-LINE ( -- n )
+: SARIF-PARSE-LINE ( -- )
    [: SARIF-PARSE-RAW ;] catch
-   dup 0= if drop else s" diag-to-sarif: invalid JSON" SARIF-E-DATA SARIF-FAIL then
-   SARIF-PARSE-NODE @
-   dup JSON-KIND J-OBJ <> if s" diag-to-sarif: expected JSON object" SARIF-E-DATA SARIF-FAIL then ;
+   dup 0<> if
+      dup E-JR-DEPTH = if throw then
+      s" diag-to-sarif: invalid JSON" SARIF-E-DATA SARIF-FAIL
+   then drop
+   SARIF-ROW-OBJECT @ 0= if
+      s" diag-to-sarif: expected JSON object" SARIF-E-DATA SARIF-FAIL
+   then ;
 
 : SARIF-COLLECT-RULES ( -- )
    0 SARIF-RULE-N !
@@ -467,43 +476,44 @@ variable SARIF-PARSE-NODE
    SARIF-SORT-RULES ;
 
 : SARIF-EMIT-RESULTS ( -- )
-   J-LBRACK SARIF-C
-   SARIF-FIELDS-START
+   SARIF-LBRACK SARIF-C
+   0 SARIF-RESULT-N !
    SARIF-LINES-START
    begin SARIF-NEXT-LINE while
       SARIF-LINE-U @ 0 > if
-         SARIF-NEXT-FIELD
+         SARIF-RESULT-N @ 0 > if SARIF-COMMA SARIF-C then
          SARIF-PARSE-LINE SARIF-EMIT-RESULT
+         SARIF-RESULT-N @ 1+ SARIF-RESULT-N !
       then
    repeat
-   J-RBRACK SARIF-C ;
+   SARIF-RBRACK SARIF-C ;
 
 : SARIF-EMIT-DOC ( -- )
-   J-LBRACE SARIF-C
+   SARIF-LBRACE SARIF-C
    s" $schema" SARIF-KEY s" https://json.schemastore.org/sarif-2.1.0.json" SARIF-STRING
-   J-COMMA SARIF-C
+   SARIF-COMMA SARIF-C
    s" version" SARIF-KEY s" 2.1.0" SARIF-STRING
-   J-COMMA SARIF-C
+   SARIF-COMMA SARIF-C
    s" runs" SARIF-KEY
-      J-LBRACK SARIF-C
-      J-LBRACE SARIF-C
+      SARIF-LBRACK SARIF-C
+      SARIF-LBRACE SARIF-C
       s" tool" SARIF-KEY
-         J-LBRACE SARIF-C
+         SARIF-LBRACE SARIF-C
          s" driver" SARIF-KEY
-            J-LBRACE SARIF-C
+            SARIF-LBRACE SARIF-C
             s" name" SARIF-KEY s" habu" SARIF-STRING
-            J-COMMA SARIF-C
+            SARIF-COMMA SARIF-C
             s" informationUri" SARIF-KEY s" https://github.com/joelreymont/habu" SARIF-STRING
-            J-COMMA SARIF-C
+            SARIF-COMMA SARIF-C
             s" rules" SARIF-KEY SARIF-EMIT-RULES
-            J-RBRACE SARIF-C
-         J-RBRACE SARIF-C
-      J-COMMA SARIF-C
+            SARIF-RBRACE SARIF-C
+         SARIF-RBRACE SARIF-C
+      SARIF-COMMA SARIF-C
       s" results" SARIF-KEY SARIF-EMIT-RESULTS
-      J-RBRACE SARIF-C
-      J-RBRACK SARIF-C
-   J-RBRACE SARIF-C
-   J-LF SARIF-C ;
+      SARIF-RBRACE SARIF-C
+      SARIF-RBRACK SARIF-C
+   SARIF-RBRACE SARIF-C
+   SARIF-LF SARIF-C ;
 
 : SARIF-MAIN ( -- )
    SARIF-LOAD-INPUT

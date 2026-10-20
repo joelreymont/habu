@@ -40,6 +40,9 @@ variable CLOSURE-IDX
 variable CHILD-TIMEOUT-MS
 variable CAPTURE-OUT-U
 variable CAPTURE-ERR-U
+variable QUIET
+variable RESULT-PATH
+TYPED-VARIABLE RESULT-XT [ ptr u8 n -- ptr u8 n ]
 
 \ The build in progress, which ENSURE records for the words it runs under
 \ catch.
@@ -126,13 +129,17 @@ TYPED-VARIABLE ARGS-XT [ ptr u8 n -- ]
    \ The caller owns timeout reporting. Keep the capture off stdout so a
    \ structured CLI error can be the only output, then EMIT closes the work.
    rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
-   OUT outu LEN>N type
+   QUIET @ 0= rc 0<> or if OUT outu LEN>N type then
    2 ERR erru LEN>N write drop
    rc 0 <> if s" image build failed" FAILED$ rc die then ;
 
 : PUBLISH ( -- )
    TMP$ EXECUTABLE? 0= if
       s" builder produced no executable image" FAILED$ BUILD-RC die
+   then
+   RESULT-PATH @ if
+      TMP$ RESULT-XT @ execute {: path:ptr pathu:n :}
+      path PATH-A ! pathu PATH-U !
    then
    TMP$ PATH$ RENAME-FILE ;
 
@@ -203,7 +210,7 @@ public
 \ use, and one a pruner took meanwhile is built again. The build runs the
 \ engine with the program on stdin and `--` then what ARGS stages, given the
 \ path the builder must save to. The engine path is copied; the family name,
-\ keyed path and program are read until ENSURE returns. TRUE means the existing
+\ keyed path and program are read until ENSURE-WITH returns. TRUE means the existing
 \ image was selected; FALSE means this call built and published it.
 : ENSURE-WITH ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- bool )
    {: fam:ptr famu:n path:ptr pathu:n eng:ptr engu:n prog:ptr progu:n args timeout:n :}
@@ -214,6 +221,29 @@ public
    prog PROGRAM-A ! progu PROGRAM-U !
    args ARGS-XT !
    eng engu ENGINE-BUF ENGINE-U COPY-OUT!
-   EMIT false ;
+   false QUIET !
+   0 RESULT-PATH !
+   ['] EMIT catch {: rc:n :}
+   0 QUIET !
+   rc 0<> if rc throw then
+   false ;
+
+\ A builder whose consumed inputs determine its key chooses the destination
+\ only after its child succeeds and the temporary image is executable.
+: BUILD-WITH-RESULT-QUIET ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] n bool [ ptr u8 n -- ptr u8 n ] -- ptr u8 n )
+   {: fam:ptr famu:n eng:ptr engu:n prog:ptr progu:n args timeout:n quiet:bool result :}
+   fam FAMILY-A ! famu FAMILY-U !
+   prog PROGRAM-A ! progu PROGRAM-U !
+   args ARGS-XT !
+   eng engu ENGINE-BUF ENGINE-U COPY-OUT!
+   timeout CHILD-TIMEOUT-MS !
+   quiet QUIET !
+   result RESULT-XT !
+   -1 RESULT-PATH !
+   ['] EMIT catch {: rc:n :}
+   0 QUIET !
+   0 RESULT-PATH !
+   rc 0<> if rc throw then
+   PATH$ ;
 
 ;package

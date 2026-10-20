@@ -3,7 +3,7 @@ title: "Check the profiler band against the target's DATA size"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T17:17:49.801701+02:00\""
+created-at: "2026-10-01T17:17:49.801701+02:00"
 closed-at: "2026-10-14T19:34:45.532164+03:00"
 close-reason: "Implemented in 4d15399f: DATA-CLAIMS:BAND-ASSERT stamps the profiler band for x86 target DATA size and the harness calls it; overlap probe, harness suites and convergence passed."
 ---

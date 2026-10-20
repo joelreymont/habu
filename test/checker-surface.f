@@ -9,10 +9,9 @@
 \ keeps by name, the primitive axioms, the words a program defines after boot -
 \ keeps its effect exactly as before. So this pins both halves on the product
 \ itself, where the sweep has already run:
-\   - a stripped helper that carried a recorded signature (HIDX-BUILD in
-\     checker.f, CORE-FOLD-C in util.f) no longer answers an effect, and a
-\     source naming one is E-UNDEFINED at check and at load. Before the sweep
-\     the checker still answered both;
+\   - internal globals the image keeps by name (HIDX-BUILD in checker.f,
+\     CORE-FOLD-C in util.f) keep their effects, while checked callers are
+\     refused and interpreted calls answer `internal engine word`;
 \   - a DNAME-INT word the image keeps by name (TFL-CVAR?, read by habu2.f
 \     C-FIND-GLOBAL for `construct`) keeps its effect, so a TRUSTED: body at
 \     tier 1 still compiles a call to it: the native compiler asks the checker
@@ -33,8 +32,8 @@
 \     application package is not sealed, so the saved image reopens the package,
 \     certifies a definition calling the private word and runs it, while an
 \     engine package stays sealed in it.
-\ On the whitebox engine the sweep keeps everything, so the first group would
-\ not hold there; the image class is asserted first so that reads as what it is.
+\ The image class is asserted first: a whitebox engine leaves these internal
+\ names open and cannot establish the product's source authority boundary.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -75,7 +74,6 @@ package CHECKER-SURFACE-TEST
 
 -1 constant ACCEPTED
 0 constant REFUSED
-1 constant UNRESOLVED
 
 4096 constant CAP
 30000 constant TIMEOUT-MS
@@ -117,17 +115,20 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
    s" the engine under test is the sealed product" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-SEALED T= ;
 
-: SECTION-STRIPPED ( -- )
-   s" a stripped checker helper answers no effect" T-LABEL
-   s" HIDX-BUILD" KNOWN? TFALSE
-   s" a stripped internal global of another file answers none" T-LABEL
-   s" CORE-FOLD-C" KNOWN? TFALSE
-   s" a definition naming one is unresolved at check" T-LABEL
-   s" CS-U1 ( -- ) HIDX-BUILD" VERDICT UNRESOLVED T=
-   s" CS-U2 ( n -- n ) CORE-FOLD-C" VERDICT UNRESOLVED T=
-   s" and E-UNDEFINED at load, compiled or interpreted" T-LABEL
+: SECTION-INTERNAL ( -- )
+   s" a named internal checker helper keeps its effect" T-LABEL
+   s" HIDX-BUILD" KNOWN? TTRUE
+   s" a named internal global of another file keeps its effect" T-LABEL
+   s" CORE-FOLD-C" KNOWN? TTRUE
+   s" checked definitions cannot call either internal record" T-LABEL
+   s" CS-U1 ( -- ) HIDX-BUILD" VERDICT REFUSED T=
+   s" CS-U2 ( n -- n ) CORE-FOLD-C" VERDICT REFUSED T=
+   s" a compiled call is E-UNDEFINED at load" T-LABEL
    s\" : CS-U3 ( -- ) HIDX-BUILD ;\n" s" HIDX-BUILD" UNDEFINED-AT-LOAD
-   s\" CORE-FOLD-C\n" s" CORE-FOLD-C" UNDEFINED-AT-LOAD ;
+   s" an interpreted call is refused as an internal engine word" T-LABEL
+   s\" CORE-FOLD-C\n" LOAD
+   RC @ REJECT-RC T=
+   ERR$ s" hb: internal engine word: CORE-FOLD-C" CONTAINS? TTRUE ;
 
 : PRIVATE-KNOWN? ( ptr u8 n ptr u8 n -- bool ) {: pa:ptr pu:n na:ptr nu:n :}
    pa pu false na nu CHECKER-ASIG-KNOWN? ;
@@ -244,7 +245,7 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
 : MAIN ( -- )
    T-RESET
    SECTION-CLASS
-   SECTION-STRIPPED
+   SECTION-INTERNAL
    SECTION-PRIVATE
    SECTION-RETAINED
    SECTION-PUBLIC

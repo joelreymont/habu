@@ -3,7 +3,7 @@ title: "Keep the maker's literal out of AOT images"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T10:28:49.711798+02:00\""
+created-at: "2026-10-02T10:28:49.711798+02:00"
 closed-at: "2026-10-14T19:56:27.702403+03:00"
 close-reason: 49cb1547 moved the literal-pool switch to the capture-window latch and verified engine-run and linker-image span DATA blobs match through hb-build-aot-test and stripped-image tests.
 ---

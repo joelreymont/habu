@@ -3,7 +3,7 @@ title: "Keep a capture's own code when its tree walk throws"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T04:14:46.991384+02:00\""
+created-at: "2026-10-03T04:14:46.991384+02:00"
 closed-at: "2026-10-14T19:33:10.260621+03:00"
 close-reason: "Implemented in 9866db1e: a failed process-tree walk is reported while the capture retains its own timeout or signal outcome and its child is reaped; deterministic denied-walk tests and affected suites passed."
 ---

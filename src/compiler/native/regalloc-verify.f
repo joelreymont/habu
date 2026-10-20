@@ -108,7 +108,7 @@ private
 
 : SLOTS-MAX ( -- n ) VMAX ;
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE ST n
 ST-NONE ST !
 0 CWORK-VARIABLE BND-MODE n
@@ -143,6 +143,8 @@ BOUND-NO BND-MODE !
 1 CWORK-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-TAIL-IN IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-TAIL-OUT IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
 1 CWORK-BUFFER V-POOL NEFF:gprs
@@ -260,6 +262,8 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
 : DSLOT-OF ( IR-ID:ir-op-id -- n )   0 BND-DSLOT @ ATTR-INT ;
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
+: TAIL-IN-OF ( IR-ID:ir-op-id -- n ) 0 BND-TAIL-IN @ ATTR-INT ;
+: TAIL-OUT-OF ( IR-ID:ir-op-id -- n ) 0 BND-TAIL-OUT @ ATTR-INT ;
 \ A dialect that declared no write-back key has no fused form either: nothing in
 \ its module moves the pointer inside an access, so there is nothing to find and
 \ no symbol to look for.
@@ -1124,7 +1128,7 @@ DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
 3 constant P-DEF
 4 constant PLANES
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE V-BLKS n
 0 CWORK-VARIABLE V-AT n
 0 CWORK-VARIABLE V-CHANGED n
@@ -1516,7 +1520,7 @@ DYNAMIC-BUFFER V-TMP-BUF n
 0 constant VD-UNDEF
 1 constant VD-DEF
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 DYNAMIC-BUFFER VD-VIN-BUF n
 : VD-VIN ( -- ptr n ) 0 VD-VIN-BUF ;
 DYNAMIC-BUFFER VD-VOUT-BUF n
@@ -1582,7 +1586,7 @@ VDSLOTS CWORK-SPAN VD-DMEET n
 
 256 constant VDREQ-MAX               \ places one routine's collection holds
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 VDREQ-MAX CWORK-SPAN VD-REQ n
 0 CWORK-VARIABLE VD-REQ-N n
 0 CWORK-VARIABLE VD-REQ-OVER n
@@ -1936,6 +1940,11 @@ DKEEP-HOOK-DEFAULT
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - VDPUB-BACK - {: pub:n :}
    pub 0 ?do  xb i VDOP-XFER  loop
+   V-TAIL @ 0<> if
+      xb xb OP-COUNT 1- OP-AT TAIL-IN-OF {: a:n :}
+      a 0< if E-A64RAV-DSTACK throw then
+      a NEFF:SEQ-DSTACK a VDOUTS-CK exit
+   then
    outs r VDOUTS-CK ;
 
 : VDRES-CK ( IR-ID:ir-fun-id n n n NEFF:placeseq NEFF:placeseq -- )
@@ -2053,20 +2062,27 @@ DKEEP-HOOK-DEFAULT
       then
    loop ;
 
-\ The same window for a routine that leaves through a CALLEE, whose results the
-\ callee publishes into the very cells this routine's caller reads.
-: VDTAIL-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
+\ The callee's input row, not this routine's result row, is what the final store
+\ run publishes. The callee later fills this routine's declared result cells.
+: VDTAIL-CK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id rb:n r:n :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - {: n:n :}
    n 1 < if E-A64RAV-DSTACK throw then
-   xb  xb OP-COUNT 1-  OP-AT TAILBR? 0= if E-A64RAV-DSTACK throw then
-   VD-STAND @  r BND-SLOTW @ *  <> if E-A64RAV-DSTACK throw then
+   xb xb OP-COUNT 1- OP-AT {: tail:IR-ID:ir-op-id :}
+   tail TAILBR? 0= if E-A64RAV-DSTACK throw then
+   tail TAIL-IN-OF {: a:n :}
+   a 0< if E-A64RAV-DSTACK throw then
+   tail TAIL-OUT-OF r <> if E-A64RAV-DSTACK throw then
+   tail DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
+   tail DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
+   tail DBYTES-OF  xb n 2 - true VDWB-AT +
+      a BND-SLOTW @ * VD-STAND @ - <> if E-A64RAV-DSTACK throw then
    xb n 1 - VDSTORE-SPAN
    0 VD-J !
    VD-ES @ 0 ?do
       xb VD-P @ i + VDSTORE? if
-         outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
+         a NEFF:SEQ-DSTACK a  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
       then
    loop ;
 
@@ -2075,13 +2091,13 @@ DKEEP-HOOK-DEFAULT
 : VDLEAVE-CK ( IR-ID:ir-fun-id n n NEFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:NEFF:placeseq :}
    rb NO-RET = if exit then
-   V-TAIL @ 0<> if f rb r outs VDTAIL-CK exit then
+   V-TAIL @ 0<> if f rb r VDTAIL-CK exit then
    f rb r outs VDEXIT-CK ;
 
 : VDTAIL-POS? ( n n -- bool )
    {: n:n at:n :}
    n 1 - PRO-N - {: q:n :}
-   at q VD-ES @ - >= at q < and ;
+   at q VD-ES @ - >= at q < and  at n 1- = or ;
 
 : VDEXIT-POS? ( n n -- bool )
    {: n:n at:n :}
@@ -2275,7 +2291,11 @@ DKEEP-HOOK-DEFAULT
       exit
    then
    a BND-SLOTW @ * VD-ENTRY !
-   r BND-SLOTW @ * VD-LEAVE !
+   V-TAIL @ 0<> if
+      f rb BLOCK-AT TERM-AT TAIL-IN-OF BND-SLOTW @ * VD-LEAVE !
+   else
+      r BND-SLOTW @ * VD-LEAVE !
+   then
    0 VD-REQ-N !
    0 VD-REQ-OVER !
    VD-ENTRY @ VDREQ+
@@ -2479,7 +2499,8 @@ public
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
-      dback:IR-ID:ir-symbol-id wb:NDIALECT:optsym
+      dback:IR-ID:ir-symbol-id tail-in:IR-ID:ir-symbol-id
+      tail-out:IR-ID:ir-symbol-id wb:NDIALECT:optsym
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
@@ -2495,6 +2516,8 @@ public
    dslot 0 BND-DSLOT !
    dbytes 0 BND-DBYTES !
    dback 0 BND-DBACK !
+   tail-in 0 BND-TAIL-IN !
+   tail-out 0 BND-TAIL-OUT !
    wb 0 BND-DWB !
    entry 0 BND-ENTRY !
    trap 0 BND-TRAP !

@@ -1,4 +1,4 @@
-\ Fresh FILE import restores nominal, linear and deferred checker declarations.
+\ Definition reuse preserves nominal, linear and deferred declarations.
 \ bin/hb --load test/native-file-types-e2e.f
 
 require src/lib/test.f
@@ -35,6 +35,10 @@ package NATIVE-FILE-TYPES-TEST
       NATIVE-FILE-APP:COPY-SKIP-LINES
    s" app.f" S\" require prefix.f\nrequire unit.f\nrequire fresh.f\n: MAIN ( -- ) FILE-TYPES-CLIENT:RESULT . FILE-TYPES:SAVED-VALUE . ;\n" PUT ;
 
+: SHIFT-PREFIX ( -- )
+   s" prefix.f" AT
+   S\" package FILE-SHIFT\npublic\nNEWTYPE unrelated\n;package\n" APPEND-FILE ;
+
 : RUN-IMPORTED ( -- )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" warm-hb" AT s" " CAPTURE SUCCESS
@@ -43,7 +47,7 @@ package NATIVE-FILE-TYPES-TEST
 : REJECT-TYPED-CLIENT ( -- )
    s" app.f" S\" require prefix.f\nrequire unit.f\nrequire bad.f\n: MAIN ( -- ) ;\n" PUT
    s" bad-hb" BUILD 70 T=
-   OUT$ s" types-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    ERR$ s" expected: n actual: file-types:item" CONTAINS? TTRUE ;
 
 public
@@ -53,19 +57,24 @@ public
    s" native-file-types" TREE
    PREPARE
    s" cold-hb" BUILD SUCCESS
-   OUT$ s" file unit hits 0" CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    s" warm-hb" BUILD SUCCESS
-   OUT$ s" file unit hits " CONTAINS? TTRUE
-   OUT$ s" file unit hits 0" CONTAINS? 0= TTRUE
-   OUT$ s" compiled 0" CONTAINS? TTRUE
-   OUT$ s" types-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    RUN-IMPORTED
    FRESH-DOWNSTREAM
    s" fresh-hb" BUILD SUCCESS
-   OUT$ s" types-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" fresh-hb" AT s" " CAPTURE SUCCESS
+   OUT$ S\" 9\n456\n" CONTAINS? TTRUE
+   SHIFT-PREFIX
+   s" shifted-hb" BUILD SUCCESS
+   OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" shifted-hb" AT s" " CAPTURE SUCCESS
    OUT$ S\" 9\n456\n" CONTAINS? TTRUE
    REJECT-TYPED-CLIENT
    T-REPORT

@@ -1,100 +1,26 @@
 \ Use the initial rooted C2 engine, save XML-C2 and compile a fresh consumer.
 \ The printed tree keeps the native images and child logs for replay.
 require src/lib/test.f
-require src/lib/string.f
 require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/process-cwd.f
-require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 require test/c2-image-pair.f
+require test/e2e-tree.f
 
+using E2E-TREE
 package C2-XML-CONSUMER-E2E
 private
-$8000 constant IO-CAP
-
-create ROOT FS-PATH-CAP allot variable ROOT-U
-create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot variable TARGET-U
-create OUT IO-CAP allot variable OUT-U
-create ERR IO-CAP allot variable ERR-U
-variable RC
-
-: ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-
-: AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
-   ROOT$ rel relu PATH JOIN-PATH PATH swap ;
-
-: LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A MAKE-SYMLINK ;
-
-: COPY-TEST ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A COPY-FILE-STREAM ;
 
 : SETUP ( -- )
-   s" c2-xml-consumer-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
-   a ROOT u BYTE-COPY u ROOT-U !
-   s" src" LINK s" tools" LINK
-   s" test" AT-A MAKE-DIRS
+   s" c2-xml-consumer-e2e" TREE
    s" test/c2-xml-consumer-program.f" COPY-TEST
    s" test/c2-xml-consumer-refusals.f" COPY-TEST
    s" test/c2-xml-consumer-saved.f" COPY-TEST ;
 
-: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
-: ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   source size >LEN PROC-ARGV+ ;
-
-: RUN-ON ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n cwd:ptr cwdu:n :}
-   PROC-ENV-INHERIT-MISSING
-   engine engineu >LEN cwd cwdu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
-
-: SAVE-LOG ( ptr u8 n ptr u8 n -- )
-   {: outpath:ptr outu:n errpath:ptr erru:n :}
-   outpath outu AT-A OUT OUT-U @ WRITE-ALL
-   errpath erru AT-A ERR ERR-U @ WRITE-ALL ;
-
-: NEED-OK ( -- )
-   RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
-   RC @ 0 T= ;
-
-: EXPECT-OK ( ptr u8 n -- ) {: marker:ptr markeru:n :}
-   NEED-OK
-   OUT OUT-U @ marker markeru CONTAINS? TTRUE ;
-
 : IMAGES ( -- )
    ROOT$ C2-IMAGE-PAIR:PROVIDE
-   0 RC !
    s" a rooted C2 image is supplied from the initial compiler build" T-LABEL
-   s" hb-root" AT-A EXECUTABLE? TTRUE
-   s" hb-root.map" AT-A {: names:ptr namesu:n :}
-   names TARGET namesu BYTE-COPY namesu TARGET-U !
-   TARGET TARGET-U @ s" hb-saved.map" AT-A COPY-FILE-STREAM ;
-
-: RUN-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n source:ptr sourceu:n :}
-   source sourceu ARGS
-   image imageu AT-A ROOT$ RUN-ON ;
-
-: RUN-INPUT ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n input:ptr inputu:n :}
-   image imageu AT-A >LEN ROOT$ >LEN input inputu >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
+   s" hb-root" AT-A EXECUTABLE? TTRUE ;
 
 : SOURCE-CASES ( -- )
    s" hb-root" s" test/c2-xml-consumer-program.f" RUN-IMAGE
@@ -115,7 +41,7 @@ variable RC
    RUN-INPUT
    s" save.out" s" save.err" SAVE-LOG
    s" the typed XML-C2 module saves into a new image" T-LABEL NEED-OK
-   RC @ 0<> if exit then
+   RC@ 0<> if exit then
    s" hb-saved" AT-A EXECUTABLE? TTRUE ;
 
 : SAVED-CASES ( -- )
@@ -138,11 +64,10 @@ variable RC
 public
 : RUN ( -- )
    T-RESET
-   SETUP IMAGES
-   RC @ 0= if SOURCE-CASES SAVE-XML then
-   RC @ 0= if SAVED-CASES then
+   SETUP IMAGES SOURCE-CASES SAVE-XML RC@ 0= if SAVED-CASES then
    s" c2-xml-consumer-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package
+;using
 
 C2-XML-CONSUMER-E2E:RUN

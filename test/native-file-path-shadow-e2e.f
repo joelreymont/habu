@@ -1,5 +1,5 @@
-\ A warm parent must retain a selected child's missing-path queries in its
-\ object, so a later nearer dependency makes the all-warm manifest stale.
+\ A cached definition still reads every source path. A nearer dependency
+\ changes both the input manifest and the compiled binding.
 \ bin/hb --load test/native-file-path-shadow-e2e.f
 
 require src/lib/test.f
@@ -68,7 +68,7 @@ variable CHECK-SIZE
 public
 : MAIN ( -- )
    T-RESET
-   s" FILE warm parent retains child path query" T-LABEL
+   s" warm definitions retain the child path query" T-LABEL
    s" native-file-path-shadow" TREE
    s" appdir" AT MAKE-DIR
    s" childdir" AT MAKE-DIR
@@ -77,14 +77,16 @@ public
       S\" require test/fixtures/native-file-state-dependency.f\n" PUT
    0 EDIT ! PUT-APP
    BUILD SUCCESS
-   OUT$ S\" file unit hits 0\n compiled 3" CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" 42" CONTAINS? TTRUE
    1 EDIT ! PUT-APP
    BUILD SUCCESS
-   OUT$ S\" file unit hits 2\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    OUT$ s" 44" CONTAINS? TTRUE
    BUILD SUCCESS
-   OUT$ S\" file unit hits 3\n compiled 0" CONTAINS? TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    CHECK-MANIFEST
    s" childdir/test" AT MAKE-DIR
    s" childdir/test/fixtures" AT MAKE-DIR
@@ -92,7 +94,7 @@ public
       S\" package FILE-STATE-DEPENDENCY public : INCREMENT ( n -- n ) 2 + ; ;package\n" PUT
    [: CHECK-MANIFEST ;] E-NUNIT-PROFILE TTHROWSQ
    BUILD SUCCESS
-   OUT$ S\" file unit hits 0\n compiled 3" CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" 45" CONTAINS? TTRUE
    CHECK-MANIFEST
    T-REPORT

@@ -17,7 +17,7 @@ public
 
 \ Tier 1 ends this definition at the engine throw; there is no fallback die.
 1 set-tier
-ndict@ here AOT-CAPTURE:PRELUDE-MARK
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - AOT-CAPTURE:PRELUDE-MARK
 AOT-ARM:WINDOW-OPEN
 NSTR:WINDOW-OPEN
 package CGT-WINDOW

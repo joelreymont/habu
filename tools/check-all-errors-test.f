@@ -2,7 +2,7 @@
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f src/lib/source-lex.f
+\ src/lib/source-lex.f
 \ tools/check-all-errors-core.f src/lib/argv.f
 \ tools/check-all-errors-test.f
 
@@ -18,7 +18,6 @@ require src/lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
 require src/lib/source-lex.f
 require tools/check-all-errors-core.f
 require src/lib/argv.f

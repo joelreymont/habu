@@ -3,7 +3,7 @@
 \
 \ CONCERN. verify-source reads a file's declarations without executing it, so
 \ every tool built on it (the all-errors reporter, the fixpoint builder, the
-\ tree shaker, the public-signature dumper, the AOT closure walker) sees types
+\ public-signature dumper, the AOT closure walker) sees types
 \ only through what its RECORD-* arms register. If that view drifts from what
 \ the declaration itself would have registered, those tools disagree with the
 \ engine about what a family IS, and the disagreement is silent.

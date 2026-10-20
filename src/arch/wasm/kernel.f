@@ -602,6 +602,7 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" f<=" STR=CI if s" WKWORDS:F-AT-MOST?" exit then
    a u s" f>=" STR=CI if s" WKWORDS:F-AT-LEAST?" exit then
    a u s" NULL-PTR" STR=CI if s" WKWORDS:NIL" exit then
+   a u s" field-project" STR=CI if s" WKWORDS:FIELD-PROJECT" exit then
    a u s" data-base" STR=CI if s" WKWORDS:DATA-START" exit then
    a u s" field-project" STR=CI if s" WKWORDS:FIELD-ADDRESS" exit then
    a u s" +!" STR=CI if s" WKWORDS:ADD-STORE" exit then
@@ -609,8 +610,12 @@ variable MADE                              \ blocks built, the next one's ordina
    a u s" BYTE-COPY" STR=CI if s" WKWORDS:COPY-BYTES" exit then
    a u s" DYNAMIC-STORAGE:BOUNDS" STR=CI if s" WKWORDS:DYN-BOUNDS" exit then
    a u s" DYNAMIC-STORAGE:OFFSET" STR=CI if s" WKWORDS:DYN-OFFSET" exit then
+   a u s" DYNAMIC-STORAGE:ADDRESS" STR=CI if s" WKWORDS:DYN-ADDRESS" exit then
+   a u s" DYNAMIC-STORAGE:ADDRESS-FIXED" STR=CI if s" WKWORDS:DYN-ADDRESS-FIXED" exit then
    a u s" DYNAMIC-STORAGE:RESERVE" STR=CI if s" WKWORDS:DYN-RESERVE" exit then
+   a u s" DYNAMIC-STORAGE:RESERVE-FIXED" STR=CI if s" WKWORDS:DYN-RESERVE-FIXED" exit then
    a u s" DYNAMIC-STORAGE:RELEASE" STR=CI if s" WKWORDS:DYN-RELEASE" exit then
+   a u s" DYNAMIC-STORAGE:RELEASE-FIXED" STR=CI if s" WKWORDS:DYN-RELEASE-FIXED" exit then
    s" " ;
 
 \ The row answering an engine name, or -1.

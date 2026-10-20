@@ -1,9 +1,8 @@
-\ Cold and warm FILE replay of a callback declaration must build the same
-\ runnable stripped image. The declaration lives in a required child file, so
-\ its table controls precede the parent source's native range.
+\ Cold and warm definition reuse must rerun callback initialization and build
+\ the same runnable stripped image with fresh runtime callback bindings.
 require src/lib/string.f
 require test/gate-common.f
-require test/aot-maker-engine.f
+require test/aot-builder-engine.f
 
 package FFI-CB-FILE-CACHE-TEST
 
@@ -16,21 +15,30 @@ variable IMAGE-U
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
-: BUILD ( ptr u8 n bool -- ) {: expected:ptr expectu:n source-ran:bool :}
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+: BUILD ( bool -- ) {: hit:bool :}
+   AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+ s" 1" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
-   AOT-MAKER-ENGINE:STDIN$
+   AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN
    s" callback FILE image build" GE-EXPECT-OK
-   GT-OUT$ s" callback declaration source ran" CONTAINS? source-ran if 0= then if
-      s" callback FILE source execution" GE-FAIL
+   GT-OUT$ s" callback declaration source ran" CONTAINS? 0= if
+      s" callback initializer execution" GE-FAIL
    then
-   expected expectu s" callback FILE cache counts" GE-EXPECT-OUT-HAS
+   s" definition hits " s" definition cache counts" GE-EXPECT-OUT-HAS
+   hit if
+      GT-OUT$ s" definition hits 0" CONTAINS? if
+         s" callback definition reuse" GE-FAIL
+      then
+   else
+      GT-OUT$ s" definition hits 0" CONTAINS? 0= if
+         s" cold callback definition build" GE-FAIL
+      then
+   then
    IMAGE$ EXECUTABLE? 0= if s" callback FILE image missing" GE-FAIL then ;
 
 : RUN-IMAGE ( -- )
@@ -58,13 +66,13 @@ variable IMAGE-U
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" hb-aot-got" IMAGE GT-PATH IMAGE-U !
    false WRITE-SUBJECT
-   S\" file unit hits 0\n compiled 3\n" true BUILD RUN-IMAGE
-   S\" file unit hits 3\n compiled 0\n" false BUILD RUN-IMAGE
-   \ Rewrite the whole fixture so the unbind is in the replayed parent FILE unit.
+   false BUILD RUN-IMAGE
+   true BUILD RUN-IMAGE
+   \ Changing a source action still reruns initialization around cached bodies.
    true WRITE-SUBJECT
-   S\" file unit hits 1\n compiled 2\n" true BUILD RUN-IMAGE
-   S\" file unit hits 3\n compiled 0\n" false BUILD RUN-IMAGE
-   s" PASS: callback FILE cold/warm image" type cr ;
+   true BUILD RUN-IMAGE
+   true BUILD RUN-IMAGE
+   s" PASS: callback definition cold/warm image" type cr ;
 
 public
 : RUN ( -- ) [: BODY ;] [: GT-CLEANUP ;] finally ;

@@ -2,10 +2,8 @@
 \
 \ docs/compiler-ir-design.md section 6.2. Every compilation gets exactly one
 \ context, and the context is the single owner of the compilation's target and
-\ numerical policy, its module serial allocation, and its scratch memory. The
-\ slots for the source registry, the diagnostic sink, and the witness allocator
-\ exist from birth but stay in an explicit unbound state that rejects use until
-\ those modules land; nothing is stubbed silently.
+\ numerical policy, its module serial allocation, and its scratch memory. It
+\ stores the validated binding in its own transient storage.
 \
 \ THE SCRATCH IS ONE REGION WITH A MARK AND A RELEASE, which is Forth's HERE
 \ and ALLOT applied to a transient extent. One mapping serves the whole process;
@@ -31,17 +29,8 @@
 \ ONLY THE INNERMOST CONTEXT MAY TAKE, which is what keeps an offset's extent
 \ the taker's own; TOP-CK is where that is refused.
 \
-\ PERSISTED STATE. All per-context state lives in the context's own mapping as
-\ eight-byte little-endian slots written with the canonical CDIGEST slot words:
-\ the module-mint count and ceiling, scratch usage, the unbound module
-\ slots, and the bound target/policy pair. The pair is persisted as the stable
-\ wire codes read straight out of the components' canonical preimages
-\ (CTARGET:ENCODE / CNUM:ENCODE), and reading it back reconstructs the value
-\ through the validating constructors and CBIND:BIND, so a forged or corrupted
-\ header can never produce an unvalidated binding. Creation round-trips the
-\ staged codes through that same decoder and compares with CBIND:SAME?, so a
-\ component schema change that renumbers a wire code fails closed at creation
-\ instead of decoding a different machine later.
+\ CONTEXT STATE. The counters, mark and validated binding live in a typed
+\ header in the scratch region. CAPTURE-PREPARE releases the entire mapping.
 \
 \ CONCURRENCY. The generation counter is atomic, so serials stay unique if
 \ tasks race. The registry itself is one process-wide stack and assumes the
@@ -52,10 +41,10 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/lib/memory.f
-require src/compiler/digest.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
 require src/lib/image-lifecycle.f
+require src/compiler/workspace.f
 
 package IR-CTX
 public
@@ -86,38 +75,18 @@ DEPTH-MAX 1- constant SLOT-MASK
 1 OFFSET-BITS lshift constant REGION-BYTES   \ 64 MiB of reserved scratch address space
 $7FFFFFFFF constant EPOCH-MAX         \ region release epoch ceiling
 
-\ Header slots inside the mapping, one CDIGEST slot each.
-0 constant HF-MINTED                 \ modules minted by this context
-1 constant HF-CEIL                   \ this context's module ceiling
-2 constant HF-USED                   \ aligned bytes handed to scratch callers
-3 constant HF-CODE0                  \ first of the ten binding wire-code slots
-13 constant HF-SOURCES               \ source registry slot (unbound)
-14 constant HF-DIAG                  \ diagnostic sink slot (unbound)
-15 constant HF-WITNESS               \ witness allocator slot (unbound)
-16 constant HF-MARK                  \ region cursor when this context entered
-17 constant HDR-SLOTS
-HDR-SLOTS CDIGEST:SLOT-BYTES * constant HDR-BYTES
-0 constant SLOT-UNBOUND
+STRUCTURE header DERIVE addr
+   FIELD minted n
+   FIELD ceil n
+   FIELD used n
+   FIELD mark n
+   FIELD binding CBIND:binding
+;STRUCTURE
 
-\ Wire-code slots relative to a ten-slot code window: five target fields then
-\ five policy fields, in each component's canonical preimage order.
-0 constant CS-ARCH
-1 constant CS-ABI
-2 constant CS-ENDIAN
-3 constant CS-PTRW
-4 constant CS-FEAT
-5 constant CS-OVF
-6 constant CS-FLOAT
-7 constant CS-CONTR
-8 constant CS-FAST
-9 constant CS-CMP
-10 constant CODES#
-2 constant COMP-CODE0                \ first semantic slot of a component preimage
-5 constant COMP-CODE#                \ semantic slots per component preimage
-7 CDIGEST:SLOT-BYTES * constant COMP-PRE-BYTES
+CAST: HEADER-PTR ( ptr u8 -- ptr header )
 
 \ ---- registry storage --------------------------------------------------------
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable GEN-CELL
 0 GEN-CELL !
 variable DEPTH
@@ -128,17 +97,9 @@ DEPTH-MAX CWORK-SPAN HANDLES n
 DEPTH-MAX CWORK-BUFFER BASES ptr u8
 DEPTH-MAX CWORK-SPAN ENTERED n   \ scope depth -> the slot that scope took
 0 CWORK-VARIABLE ENTERED-N n
-CODES# CDIGEST:SLOT-BYTES * CWORK-SPAN STAGE u8
 
 : HANDLE! ( n n -- )
    cells HANDLES + ! ;
-
-\ ---- header slot access ------------------------------------------------------
-: HDR@ ( ptr u8 n -- n )
-   CDIGEST:SLOT@ ;
-
-: HDR! ( n ptr u8 n -- )
-   CDIGEST:SLOT! ;
 
 : CNT-OK ( n -- n )
    dup 0 < if E-IR-CTX-STATE throw then ;
@@ -148,7 +109,7 @@ CODES# CDIGEST:SLOT-BYTES * CWORK-SPAN STAGE u8
 \ first take and given back only at capture, because a region whose pages are
 \ already faulted in is the whole saving: a compilation that mapped its own
 \ storage paid the kernel for the same pages again per definition.
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 PTR-VARIABLE REGION-BASE
 NULL-PTR REGION-BASE !
 variable REGION-HERE
@@ -298,140 +259,6 @@ private
    dup TOP-CK
    BASES @ ;
 
-\ ---- binding wire codes: decode ----------------------------------------------
-\ The codes are the components' stable canonical wire codes; a slot outside the
-\ published vocabulary is corrupted context state.
-: N>ARCH ( n -- CTARGET:arch )
-   case
-      0 of CTARGET-ARCH:AARCH64 endof
-      1 of CTARGET-ARCH:PTX endof
-      2 of CTARGET-ARCH:A32 endof
-      3 of CTARGET-ARCH:THUMB2 endof
-      4 of CTARGET-ARCH:C66X endof
-      5 of CTARGET-ARCH:X86-64 endof
-      6 of CTARGET-ARCH:WASM endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>ABI ( n -- CTARGET:abi )
-   case
-      0 of CTARGET-ABI:AAPCS64-DARWIN endof
-      1 of CTARGET-ABI:AAPCS64-LINUX endof
-      2 of CTARGET-ABI:PTX-KERNEL endof
-      3 of CTARGET-ABI:AAPCS32 endof
-      4 of CTARGET-ABI:C6000-EABI endof
-      5 of CTARGET-ABI:SYSV-AMD64 endof
-      6 of CTARGET-ABI:HABU-WASM-CELL64-V1 endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>ENDIAN ( n -- CTARGET:endian )
-   case
-      0 of CTARGET-ENDIAN:LITTLE endof
-      1 of CTARGET-ENDIAN:BIG endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>PTRW ( n -- CTARGET:ptr-width )
-   case
-      0 of CTARGET-PTR--WIDTH:BITS32 endof
-      1 of CTARGET-PTR--WIDTH:BITS64 endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>OVF ( n -- CNUM:overflow )
-   case
-      0 of CNUM-OVERFLOW:WRAP endof
-      1 of CNUM-OVERFLOW:TRAP endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>FLOAT ( n -- CNUM:float-model )
-   case
-      0 of CNUM-FLOAT--MODEL:IEEE754 endof
-      1 of CNUM-FLOAT--MODEL:FLUSH-DENORMAL endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>CONTR ( n -- CNUM:contraction )
-   case
-      0 of CNUM-CONTRACTION:FORBIDDEN endof
-      1 of CNUM-CONTRACTION:ALLOWED endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>FAST ( n -- CNUM:fast-math )
-   case
-      0 of CNUM-FAST--MATH:BIT-EXACT endof
-      1 of CNUM-FAST--MATH:REASSOCIATE endof
-      2 of CNUM-FAST--MATH:APPROXIMATE endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-: N>CMP ( n -- CNUM:compare )
-   case
-      0 of CNUM-COMPARE:IEEE754-UNORDERED endof
-      1 of CNUM-COMPARE:TOTAL-ORDER endof
-      2 of CNUM-COMPARE:ASSUME-ORDERED endof
-      E-IR-CTX-STATE throw
-   endcase ;
-
-\ Reconstruct the target contract from a ten-slot code window. Every value goes
-\ back through the validating constructors, so the result is always a coherent
-\ contract or a named throw.
-: CODES-TARGET@ ( ptr u8 -- CTARGET:contract )
-   dup CS-ARCH HDR@ N>ARCH swap
-   dup CS-ABI HDR@ N>ABI swap
-   dup CS-ENDIAN HDR@ N>ENDIAN swap
-   dup CS-PTRW HDR@ N>PTRW swap
-   CS-FEAT HDR@ CTARGET:FEATURE-SET
-   CTARGET:CONTRACT ;
-
-: CODES-POLICY@ ( ptr u8 -- CNUM:numeric-policy )
-   dup CS-OVF HDR@ N>OVF swap
-   dup CS-FLOAT HDR@ N>FLOAT swap
-   dup CS-CONTR HDR@ N>CONTR swap
-   dup CS-FAST HDR@ N>FAST swap
-   CS-CMP HDR@ N>CMP
-   CNUM:POLICY ;
-
-: CODES-BINDING@ ( ptr u8 -- CBIND:binding )
-   dup CODES-TARGET@ swap CODES-POLICY@ CBIND:BIND ;
-
-: CODES-AT ( ptr u8 n -- ptr u8 )
-   CDIGEST:SLOT-BYTES * + ;
-
-\ ---- binding wire codes: stage on creation -----------------------------------
-\ Copy one component's five semantic preimage slots into the staging window.
-: STAGE-CODES! ( ptr u8 n n -- )
-   {: dst0:n :}
-   COMP-PRE-BYTES <> if E-IR-CTX-STATE throw then
-   COMP-CODE# 0 ?do
-      dup COMP-CODE0 i + HDR@
-      STAGE dst0 i + HDR!
-   loop
-   drop ;
-
-: STAGE-TARGET! ( ptr u8 n -- )
-   CS-ARCH STAGE-CODES! ;
-
-: STAGE-POLICY! ( ptr u8 n -- )
-   CS-OVF STAGE-CODES! ;
-
-\ Persist a validated binding as wire codes and prove the codes decode back to
-\ the same binding before any context is built on them.
-: STAGE-BINDING ( CBIND:binding -- )
-   dup CBIND:TARGET@ CTARGET:ENCODE STAGE-TARGET!
-   dup CBIND:POLICY@ CNUM:ENCODE STAGE-POLICY!
-   STAGE CODES-BINDING@ CBIND:SAME? 0= if E-IR-CTX-STATE throw then ;
-
-: STAGE>HDR ( ptr u8 -- )
-   CODES# 0 ?do
-      STAGE i HDR@
-      over HF-CODE0 i + HDR!
-   loop
-   drop ;
-
 \ ---- child registries --------------------------------------------------------
 \ A context owns storage that OTHER packages hand out under its serial: the IR
 \ arena registry keeps a row per arena whose owner cell is this context. Those
@@ -483,20 +310,15 @@ private
 : DEPTH-ROOM ( -- )
    DEPTH @ DEPTH-MAX >= if E-IR-CTX-DEPTH throw then ;
 
-\ Install one registry slot: record the header's place in the region and the
-\ mark the context's storage starts at, reset the counters, mark the
-\ not-yet-landed module slots unbound, and copy the staged binding codes.
-: CTX-INSTALL ( n ptr u8 n n -- )
-   {: slot:n mark:n :}
-   dup slot BASES !
-   swap over HF-CEIL HDR!
-   0 over HF-MINTED HDR!
-   0 over HF-USED HDR!
-   mark over HF-MARK HDR!
-   SLOT-UNBOUND over HF-SOURCES HDR!
-   SLOT-UNBOUND over HF-DIAG HDR!
-   SLOT-UNBOUND over HF-WITNESS HDR!
-   STAGE>HDR ;
+\ Install one registry slot in the region with the validated binding.
+: CTX-INSTALL ( CBIND:binding n ptr u8 n n -- )
+   {: binding:CBIND:binding ceil:n base:ptr slot:n mark:n :}
+   base slot BASES !
+   0 base HEADER-PTR HEADER-MINTED !
+   ceil base HEADER-PTR HEADER-CEIL !
+   0 base HEADER-PTR HEADER-USED !
+   mark base HEADER-PTR HEADER-MARK !
+   binding base HEADER-PTR HEADER-BINDING ! ;
 
 \ ---- leaving, on both paths ---------------------------------------------------
 \ Retire ONE named slot: announce its dying serial to the child registries,
@@ -525,7 +347,7 @@ private
    at cells HANDLES + @ RETIRE-CHILDREN
    0 at HANDLE!
    at DEPTH @ 1- = if
-      at BASES @ HF-MARK HDR@ REGION-HERE !
+      at BASES @ HEADER-PTR HEADER-MARK @ REGION-HERE !
       EPOCH-BUMP
       at DEPTH !
    then ;
@@ -564,12 +386,13 @@ private
 \
 \ THE MARK IS READ BEFORE THE HEADER IS ALLOTTED, so releasing to it gives back
 \ the header as well as everything the context took after it.
-: CTX-TAKE ( n -- IR-CTX:ctx n )
+: CTX-TAKE ( CBIND:binding n -- IR-CTX:ctx n )
+   {: binding:CBIND:binding ceil:n :}
    DEPTH-ROOM
    DEPTH @ TAKE-GEN {: at:n g:n :}
    REGION-OPEN
    REGION-HERE @ {: mark:n :}
-   HDR-BYTES REGION-ALLOT REGION-AT
+   binding ceil HEADER-BYTES REGION-ALLOT REGION-AT
    at mark CTX-INSTALL
    g at PACK-HANDLE at HANDLE!
    at 1+ DEPTH !
@@ -578,8 +401,9 @@ private
 \ Build the context at the region's cursor, run the caller's quotation with the
 \ minted handle, then retire the slot this entry took - which is also what
 \ gives the region's cursor back, on the ordinary path and on a throw alike.
-: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n -- S )
-   CTX-TAKE ENTERED-PUSH swap [: CE-CLEANUP ;] finally ;
+: CTX-ENTER ( R CBIND:binding [ R IR-CTX:ctx -- S ] n -- S )
+   {: body ceil:n :}
+   ceil CTX-TAKE ENTERED-PUSH body [: CE-CLEANUP ;] finally ;
 
 public
 
@@ -591,8 +415,7 @@ public
 : WITH-CONTEXT-BOUND ( R CBIND:binding n [ R IR-CTX:ctx -- S ] -- S )
    {: ceil:n body :}
    ceil CEIL-OK
-   CBIND:VALIDATE STAGE-BINDING
-   body ceil CTX-ENTER ;
+   CBIND:VALIDATE body ceil CTX-ENTER ;
 
 : WITH-CONTEXT ( R CBIND:binding [ R IR-CTX:ctx -- S ] -- S )
    SERIAL-CEILING swap WITH-CONTEXT-BOUND ;
@@ -624,7 +447,7 @@ public
 
 \ ---- bound target and policy -------------------------------------------------
 : BINDING@ ( IR-CTX:ctx -- CBIND:binding )
-   RESOLVE HF-CODE0 CODES-AT CODES-BINDING@ ;
+   RESOLVE HEADER-PTR HEADER-BINDING @ ;
 
 \ ---- module allocation -------------------------------------------------------
 private
@@ -633,10 +456,10 @@ private
 \ IR-ID take, so a global serial-exhaustion throw can never leave a module this
 \ context took but did not account for.
 : MINT-TAKE ( ptr u8 -- )
-   dup HF-MINTED HDR@ CNT-OK
-   over HF-CEIL HDR@ CNT-OK {: m:n c:n :}
+   dup HEADER-PTR HEADER-MINTED @ CNT-OK
+   over HEADER-PTR HEADER-CEIL @ CNT-OK {: m:n c:n :}
    m c >= if E-IR-CTX-SERIALS throw then
-   m 1+ swap HF-MINTED HDR! ;
+   m 1+ swap HEADER-PTR HEADER-MINTED ! ;
 
 public
 
@@ -648,7 +471,7 @@ public
    RESOLVE MINT-TAKE IR-ID:NEW-MODULE ;
 
 : MINTED ( IR-CTX:ctx -- n )
-   RESOLVE HF-MINTED HDR@ CNT-OK ;
+   RESOLVE HEADER-PTR HEADER-MINTED @ CNT-OK ;
 
 \ ---- scratch -----------------------------------------------------------------
 public
@@ -667,16 +490,16 @@ public
    need 1 < if E-IR-CTX-SIZE throw then
    need REGION-BYTES > if E-IR-CTX-SCRATCH throw then
    c RESOLVE-TOP {: base:ptr :}
-   base HF-USED HDR@ CNT-OK {: used:n :}
+   base HEADER-PTR HEADER-USED @ CNT-OK {: used:n :}
    need REGION-ALLOT {: off:n :}
-   used need ALIGN8 + base HF-USED HDR!
+   used need ALIGN8 + base HEADER-PTR HEADER-USED !
    off ;
 
 : SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
    c need SCRATCH-OFFSET REGION-AT need ;
 
 : SCRATCH-USED ( IR-CTX:ctx -- n )
-   RESOLVE HF-USED HDR@ CNT-OK ;
+   RESOLVE HEADER-PTR HEADER-USED @ CNT-OK ;
 
 : SCRATCH-LIMIT ( -- n ) REGION-BYTES ;
 
@@ -715,26 +538,6 @@ public
    {: gen:n epoch:n :}
    gen epoch CHECK-HISTORY
    gen GEN-ENSURE epoch EPOCH-ENSURE ;
-
-\ ---- not-yet-landed module slots ---------------------------------------------
-private
-
-: SLOT-CHECK ( ptr u8 n -- )
-   HDR@ SLOT-UNBOUND <> if E-IR-CTX-STATE throw then
-   E-IR-CTX-UNBOUND throw ;
-
-public
-
-\ Fail-closed unbound slots: each throws E-IR-CTX-UNBOUND until its owning
-\ module lands and binds it, and anything else in the slot is corrupted state.
-: SOURCES@ ( IR-CTX:ctx -- )
-   RESOLVE HF-SOURCES SLOT-CHECK ;
-
-: DIAG@ ( IR-CTX:ctx -- )
-   RESOLVE HF-DIAG SLOT-CHECK ;
-
-: WITNESSES@ ( IR-CTX:ctx -- )
-   RESOLVE HF-WITNESS SLOT-CHECK ;
 
 public
 
@@ -811,7 +614,7 @@ SESSION-FORGET
 
 \ The slot is recorded from what CTX-TAKE answers, not from DEPTH read a second
 \ time: the row the session gives back is the row it took.
-: SESSION-INSTALL ( -- )
+: SESSION-INSTALL ( CBIND:binding -- )
    SERIAL-CEILING CTX-TAKE SESSION-SLOT !
    0 SESSION-CTX ! ;
 
@@ -935,7 +738,7 @@ variable HOOKED
 
 public
 
-\ Open the load's context. The binding is revalidated and staged exactly as
+\ Open the load's context. The binding is revalidated just as
 \ WITH-CONTEXT-BOUND does, and the ceiling is the production one: a session is
 \ the production spelling and has no test-only narrowing.
 \
@@ -949,7 +752,7 @@ public
    SERIAL-CEILING CEIL-OK
    DEPTH-ROOM
    HOOK-CAPTURE
-   CBIND:VALIDATE STAGE-BINDING
+   CBIND:VALIDATE
    SESSION-INSTALL
    0 SESSION-CTX @ ;
 

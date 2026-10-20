@@ -1,9 +1,9 @@
 ---
 title: Move capture self-tests out of aot-capture.f
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-15T17:16:31.060506+03:00"
 ---
 
-Problem: src/habu/aot-capture.f:2842-2983 runs ACAP-NIDX-SELFTEST and ACAP-WID-SELFTEST at every load (54 files require it). Every capture also re-audits pure functions through ACAP-TIDX-PROVE (:210-230), ACAP-PROVE-RECS (:1525-1585) and ACAP-NIDX-PROVE (:305-323), called at :2792 and :2828-2829. About -265 lines. Acceptance: the prove passes deleted; the self-tests become a test file registered in the gate; capture output unchanged. Files: src/habu/aot-capture.f, a new test file, test/gate-stdlib-cases.f. Verify: aot capture tests; bin/hb --load test/run.f (capture format). Depends: carl-final-core chain landed on master (it edits these files); start from master after it lands. Ownership: listed files. Claim: unassigned.
+Problem: loading aot-capture.f runs synthetic pool and WID self-tests, and each capture rechecks its own target index, name index, and compact record expansion. Remove those internal proofs and unused helpers while preserving capture output and external artifact validation. Existing capture, boot, out-of-line-name, and WID rebase tests cover the observable behavior, so duplicating the synthetic assertions in a new gate case would add no distinct coverage. Claim: mark-capture-cleanup from 2e2a1f98, authorized to work before Carl's combined lane lands. Capture source cleanup and focused capture checks are complete; keep active pending integration, combined native/convergence qualification, and independent review owned by the lead.

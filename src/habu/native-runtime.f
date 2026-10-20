@@ -59,6 +59,7 @@ s" src/core/pointer-storage.f" provided
 s" src/core/engine-error.f" provided
 s" src/core/exec-vector.f" provided
 s" src/core/checker-fetch-abi.f" provided
+s" src/core/checker-owner-extension.f" provided
 s" src/core/checker-owner-abi.f" provided
 s" src/habu/prims.f" provided
 s" src/core/does-clause.f" provided
@@ -72,6 +73,8 @@ s" src/core/sumtype.f" provided
 s" src/core/layout-buffer.f" provided
 s" src/core/layout-valid.f" provided
 s" src/core/check-hook.f" provided
+s" src/habu/native-body-abi.f" provided
+s" src/habu/native-body.f" provided
 s" src/habu/engine-origin-early.f" provided
 s" src/habu/engine-origin-checked.f" provided
 s" src/core/roles.f" provided
@@ -85,15 +88,16 @@ s" src/core/enum-decl.f" provided
 s" src/core/structures.f" provided
 s" src/core/bytes.f" provided
 s" src/os/env-base.f" provided
+s" src/core/quotation-storage.f" provided
 s" src/core/include.f" provided
 
 s" src/core/enums.f" required
 s" src/core/sha256.f" required
 s" src/core/source-producer.f" required
-s" src/core/type-family-sha.f" required
 s" src/core/combinators.f" required
 s" src/habu/code-span.f" required
 s" src/habu/xref.f" required
+s" src/core/cell-body.f" required
 s" src/habu/engine-origin.f" required
 ENGINE-ORIGIN:INSTALL
 ENGINE-ORIGIN:ARM
@@ -106,13 +110,13 @@ s" src/core/lower-cert-seal.f" required
 s" src/lib/prelude.f" required
 s" src/lib/errors.f" required
 s" src/lib/span.f" required
+s" src/core/layout-buffer-address.f" required
 s" src/lib/image-lifecycle.f" required
 s" src/lib/adt/option.f" required
 s" src/lib/num-types.f" required
 s" src/lib/num-arithmetic.f" required
 s" src/lib/string.f" required
 s" src/lib/memory.f" required
-s" src/core/layout-buffer-address.f" required
 s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
 \ Later checked publications record their own visibility and minimum arity.
@@ -163,9 +167,9 @@ public
    LBUF-CAPTURE-PREPARE
    XREF-SNAPSHOT-PREPARE
    NCOMP:CAPTURE-PREPARE
-   TF-SHA-SNAPSHOT-PREPARE
    ENV-SNAPSHOT-PREPARE
-   CHECKER-CAPTURE-PREPARE ;
+   CHECKER-CAPTURE-PREPARE
+   ENGINE-ORIGIN:CAPTURE-END ;
 
 ;package
 

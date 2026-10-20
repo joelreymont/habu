@@ -158,6 +158,20 @@ public
    C-B RAX RCX ASM-SINK ENC-CMOVCC
    0 G-PUSH ;
 
+\ Only filesystem calls update the running task's cause. SYS, leaves CF set
+\ for Linux's negative errno; the old primitive result remains -1 on error.
+: FS-SYS-PUSH ( -- )
+   LBL LBL {: failed:label done:label :}
+   C-B failed JCC,
+   RCX ZERO-REG,  done JMP,
+   failed LBL,
+   RCX RAX ASM-SINK ENC-MOV-RR
+   RCX ASM-SINK ENC-NEG
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   done LBL,
+   RCX DATA-REG FS-ABI:ERRNO-OFF MEM-OFF ASM-SINK ENC-MOV-MR
+   0 G-PUSH ;
+
 \ An x86-64 stencil is a byte string of whole instructions
 \ (src/os/linux-x86-64/sys.f), so it is appended as it stands where ARM64's
 \ consumer reassembles four-byte words. BUF:N>BLEN refuses a negative length.

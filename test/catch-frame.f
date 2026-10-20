@@ -107,19 +107,19 @@ variable ERRLEN
 
 : FORGED-FRAMES ( -- )
    s" forged sentinel fails closed rc 87"
-   s" create FF 64 allot  $DEADBEEF FF 56 + !  FF data-base HND-CELL + !  5 throw"
+   s" 0 set-check create FF 64 allot  $DEADBEEF FF 56 + !  FF data-base HND-CELL + !  5 throw"
    FORGE-FAILS-CLOSED
    s" adjacent sentinel mutation fails closed rc 87"
-   s" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  1 FF 56 + +!  FF data-base HND-CELL + !  5 throw"
+   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  1 FF 56 + +!  FF data-base HND-CELL + !  5 throw"
    FORGE-FAILS-CLOSED
    s" saved-depth underflow fails closed rc 87"
-   s" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  FF data-base HND-CELL + !  5 throw"
+   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  FF data-base HND-CELL + !  5 throw"
    FORGE-FAILS-CLOSED
    s" saved-depth over region fails closed rc 87"
-   s" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  RSTK-CELLS 1 + FF 40 + !  FF data-base HND-CELL + !  5 throw"
+   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  RSTK-CELLS 1 + FF 40 + !  FF data-base HND-CELL + !  5 throw"
    FORGE-FAILS-CLOSED
    s" a throw inside evaluate fails closed rc 87"
-   S\" create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  s\" FF data-base HND-CELL + !  5 throw\" evaluate"
+   S\" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  s\" FF data-base HND-CELL + !  5 throw\" evaluate"
    FORGE-FAILS-CLOSED ;
 
 public

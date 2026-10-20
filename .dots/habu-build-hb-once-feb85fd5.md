@@ -1,6 +1,6 @@
 ---
 title: "Build hb once as the test suite's prelude"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-08T10:58:28.842931+02:00"

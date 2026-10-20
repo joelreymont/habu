@@ -8,7 +8,7 @@ using XML
 CAST: TOKEN>N ( XML:kind -- n )
 8 constant XML-CAP
 $1000 constant BYTE-CAP
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create PARSER XML-CAP STORAGE-BYTES allot
 create EDITOR 2 EDIT:STORAGE-BYTES allot
 create ATTRIBUTE-BUF BYTE-CAP allot

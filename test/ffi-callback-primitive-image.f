@@ -2,7 +2,7 @@
 \ The shared thunk and that primitive must have disjoint owned code spans.
 \ Two numeric fallbacks force descriptor growth before the AOT DATA scan.
 require test/gate-common.f
-require test/aot-maker-engine.f
+require test/aot-builder-engine.f
 
 package FFI-CB-PRIMITIVE-IMAGE-TEST
 
@@ -16,13 +16,13 @@ variable IMAGE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 : BUILD ( -- )
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+   AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
-   AOT-MAKER-ENGINE:STDIN$
+   AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN
    s" callback primitive image build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" callback primitive image missing" GE-FAIL then ;

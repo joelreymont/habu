@@ -3,7 +3,7 @@ title: Refuse ; with a quotation open on the JIT tier
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T00:07:43.841092+02:00\""
+created-at: "2026-10-02T00:07:43.841092+02:00"
 closed-at: "2026-10-14T19:33:10.302992+03:00"
 close-reason: "Implemented in 120c597e: tier-0 semicolon refuses an open quotation before publication, catch resets compiler state, red/green runtime cases and image convergence passed."
 ---

@@ -15,12 +15,24 @@ create TGT-B FS-PATH-CAP allot
 variable TGT-B-U
 create TGT-M FS-PATH-CAP allot
 variable TGT-M-U
+create TGT-HOST FS-PATH-CAP allot
+variable TGT-HOST-U
+create TGT-INHERITED FS-PATH-CAP allot
+variable TGT-INHERITED-U
+create TGT-CACHE-A FS-PATH-CAP allot
+variable TGT-CACHE-A-U
+create TGT-CACHE-B FS-PATH-CAP allot
+variable TGT-CACHE-B-U
 67 constant TGT-UNCAUGHT-RC                 \ hb's exit status for an uncaught throw
 
 : TGT-A$ ( -- ptr u8 n ) TGT-A TGT-A-U @ ;
 : TGT-B$ ( -- ptr u8 n ) TGT-B TGT-B-U @ ;
 : TGT-M$ ( -- ptr u8 n ) TGT-M TGT-M-U @ ;
 : TGT-ROOT$ ( -- ptr u8 n ) TGT-ROOT TGT-ROOT-U @ ;
+: TGT-HOST$ ( -- ptr u8 n ) TGT-HOST TGT-HOST-U @ ;
+: TGT-INHERITED$ ( -- ptr u8 n ) TGT-INHERITED TGT-INHERITED-U @ ;
+: TGT-CACHE-A$ ( -- ptr u8 n ) TGT-CACHE-A TGT-CACHE-A-U @ ;
+: TGT-CACHE-B$ ( -- ptr u8 n ) TGT-CACHE-B TGT-CACHE-B-U @ ;
 
 : TGT-PREP ( -- )
    CLEANUP-RESET
@@ -29,7 +41,9 @@ variable TGT-M-U
    TGT-ROOT$ CLEANUP-TREE+
    TGT-ROOT$ s" a" TGT-A JOIN-PATH TGT-A-U !
    TGT-ROOT$ s" b" TGT-B JOIN-PATH TGT-B-U !
-   TGT-ROOT$ s" missing" TGT-M JOIN-PATH TGT-M-U ! ;
+   TGT-ROOT$ s" missing" TGT-M JOIN-PATH TGT-M-U !
+   TGT-ROOT$ s" host" TGT-HOST JOIN-PATH TGT-HOST-U !
+   TGT-ROOT$ s" inherited" TGT-INHERITED JOIN-PATH TGT-INHERITED-U ! ;
 
 : TGT-COMPARE ( n n -- ) {: count:n first:n :}
    TGT-A$ TGT-B$ TG-BYTE-DIFF count T=
@@ -78,10 +92,10 @@ variable TGT-M-U
 
 : TGT-IMAGE ( -- )
    s" image reader supplies the sidecar's file-coordinate base" T-LABEL
-   s" bin/hb" IMAGE-SIZE:MEASURE
+   ENGINE-CANDIDATE:PATH$ IMAGE-SIZE:MEASURE
    IMAGE-SIZE:CODE-BLOB-RANGE {: at:n len:n :}
    at 0 > TTRUE len 0 > TTRUE
-   at len + s" bin/hb" FILE-SIZE < TTRUE ;
+   at len + ENGINE-CANDIDATE:PATH$ FILE-SIZE < TTRUE ;
 
 \ --compare of file a against the given path: stdout and stderr lengths, rc.
 : TGT-CLI-RUN ( ptr u8 n -- len len n ) {: b:ptr bu:n :}
@@ -119,12 +133,69 @@ variable TGT-M-U
    rc TGT-UNCAUGHT-RC T= outu LEN>N 0 T=
    TG-ERR erru LEN>N TGT-FAILED$ CONTAINS? TTRUE ;
 
+\ The host launcher only invokes this Habu child. The child's file records the
+\ cache selected for an actual TG-BUILD spawn; its marker makes reuse visible.
+: TGT-CACHE-CHILD ( -- )
+   s" HABU_BUILD_CACHE" GETENV {: root:ptr rootu:n :}
+   rootu 0= if s" two-gen-test: no cache" 1 die then
+   root rootu s" seen" TG-PATH JOIN-PATH {: pathu:n :}
+   TG-PATH pathu EXISTS? if s" two-gen-test: dirty cache" 1 die then
+   root rootu MAKE-DIRS
+   TG-PATH pathu s" seen" WRITE-ALL
+   4 SCRIPT-ARGV$ root rootu WRITE-ALL ;
+
+: TGT-CACHE-HOST ( -- )
+   SB-RESET
+   S\" #!/bin/sh\nexec \q" SB-APPEND
+   ENGINE-CANDIDATE:PATH$ SB-APPEND
+   S\" \q --load tools/two-generation-test.f -- cache-child \q$@\q\n" SB-APPEND
+   TGT-HOST$ SB$ WRITE-ALL
+   TGT-HOST$ CHMOD-X ;
+
+: TGT-CACHE-READ ( n ptr u8 ptr n -- ) {: g:n buf:ptr size:ptr :}
+   g TG-GEN$ buf FS-PATH-CAP READ-ALL size ! ;
+
+: TGT-CACHE ( -- )
+   s" each build child starts in a private empty cache" T-LABEL
+   TGT-CACHE-HOST
+   TGT-ROOT$ {: root:ptr rootu:n :}
+   root TG-ROOT rootu BYTE-COPY
+   rootu TG-ROOT-U !
+   TGT-HOST$ TG-HOST!
+   TGT-INHERITED$ MAKE-DIR
+   TGT-INHERITED$ s" seen" TG-PATH JOIN-PATH {: pathu:n :}
+   TG-PATH pathu s" old" WRITE-ALL
+   PROC-ENV-DEFAULT-RESET
+   s" HABU_BUILD_CACHE" >LEN TGT-INHERITED$ >LEN PROC-ENV-DEFAULT+
+   1 TG-BUILD {: err1:len rc1:n :}
+   rc1 0 T=
+   rc1 0<> if PROC-ENV-DEFAULT-RESET exit then
+   err1 LEN>N 0 T=
+   2 TG-BUILD {: err2:len rc2:n :}
+   rc2 0 T=
+   rc2 0<> if PROC-ENV-DEFAULT-RESET exit then
+   err2 LEN>N 0 T=
+   PROC-ENV-DEFAULT-RESET
+   1 TGT-CACHE-A TGT-CACHE-A-U TGT-CACHE-READ
+   2 TGT-CACHE-B TGT-CACHE-B-U TGT-CACHE-READ
+   TGT-CACHE-A$ TGT-ROOT$ STARTS-WITH? TTRUE
+   TGT-CACHE-B$ TGT-ROOT$ STARTS-WITH? TTRUE
+   TGT-CACHE-A$ TGT-CACHE-B$ STR= TFALSE
+   TGT-CACHE-A$ DIR? TTRUE
+   TGT-CACHE-B$ DIR? TTRUE ;
+
 : TGT-RUN ( -- )
    T-RESET TGT-PREP TGT-BYTES TGT-NAMES TGT-IMAGE
    s" the command refuses unequal products and accepts equal ones" T-LABEL
    1 TGT-CLI TGT-A$ TGT-B$ COPY-FILE-STREAM 0 TGT-CLI
-   TGT-CLI-MISSING
+   TGT-CLI-MISSING TGT-CACHE
    TG-MAP-RELEASE CLEANUP-RUN T-REPORT ;
 
-TGT-RUN
+: TGT-MAIN ( -- )
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" cache-child" STR= if TGT-CACHE-CHILD exit then
+   then
+   TGT-RUN ;
+
+TGT-MAIN
 ;package

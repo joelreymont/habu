@@ -112,7 +112,7 @@ create BEFORE MARK-N cells allot
       1 of SYM-STR-U @ endof
       2 of DFER-END @ endof
       3 of NORET-END @ endof
-      4 of FMEND @ endof
+      4 of UEND @ endof
       5 of VREC-N @ endof
       6 of VREC-STR-U @ endof
       7 of CTN @ endof

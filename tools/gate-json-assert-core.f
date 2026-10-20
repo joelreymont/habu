@@ -2,8 +2,8 @@
 
 require src/lib/errors.f
 require src/lib/memory.f
-require src/lib/adt/option.f                 \ option<n> for GJA-U? (switchover wave A)
-require tools/json.f
+require src/lib/span.f
+require src/lib/json-read.f
 require tools/diag-code.f
 
 $8000 constant GJA-IN-CAP
@@ -14,14 +14,17 @@ $100 constant GJA-LINE-MAX
 create GJA-IN GJA-IN-CAP allot
 create GJA-SRC GJA-SRC-CAP allot
 create GJA-PATH GJA-PATH-CAP allot
+create GJA-JR JR:STORAGE-BYTES allot
+create GJA-STR-BUF GJA-IN-CAP allot
+create GJA-CLASS-BUF GJA-IN-CAP allot
 GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ptr u8   \ one line start per captured line
 create GJA-LINE-U GJA-LINE-MAX cells allot
 
 variable GJA-FD
 variable GJA-RD
 variable GJA-LEN
-variable GJA-ROOT
-variable GJA-ARR
+TYPED-VARIABLE GJA-ROOT SPAN:span<u8>
+TYPED-VARIABLE GJA-ARR SPAN:span<u8>
 variable GJA-I
 variable GJA-J
 variable GJA-N
@@ -123,16 +126,6 @@ variable GJA-DIRECT
       a GJA-LS @ + u GJA-LS @ - GJA-LINE+
    THEN ;
 
-: GJA-U? ( ptr u8 n -- option<n> )   \ SOME parsed unsigned decimal, else NONE
-   {: a:ptr u:n :}
-   u 0= IF OPTION:NONE exit THEN
-   0 GJA-N !
-   0 begin dup u < while
-      dup a + c@ dup 48 < over 57 > or IF drop drop OPTION:NONE exit THEN
-      48 - GJA-N @ 10 * + GJA-N !
-      1+
-   repeat drop GJA-N @ OPTION:SOME ;
-
 : GJA-READ ( ptr u8 n -- ptr u8 n )
    GJA-PATHZ 0 0 open GJA-FD !
    GJA-FD @ 0 < IF s" cannot open JSON fixture" GJA-FAIL THEN
@@ -174,62 +167,104 @@ variable GJA-DIRECT
    THEN
    GJA-FD @ close ;
 
-: GJA-PARSE-FILE ( ptr u8 n -- n )
-   GJA-READ JSON-PARSE ;
+: GJA-OPEN ( SPAN:span<u8> -- JR:reader )
+   SPAN:$ GJA-JR JR:STORAGE-BYTES 2swap JR:INIT JR:NEXT drop ;
 
-: GJA-REQ ( n ptr u8 n -- n )
-   JSON-GET dup -1 = IF s" missing JSON field" GJA-FAIL THEN ;
+\ Turn the current token into its borrowed source value, including quotes for
+\ strings. A container is walked to its close; a scalar keeps the cursor.
+: GJA-VALUE ( JR:reader -- JR:reader SPAN:span<u8> )
+   JR:TOKEN {: kind:n :}
+   kind JR:T-OBJ = kind JR:T-ARR = or if JR:VALUE-SPAN$ SPAN:MAKE exit then
+   JR:SPAN$ {: a:ptr u:n :}
+   kind JR:T-STR = if a 1- u 2 + SPAN:MAKE exit then
+   a u SPAN:MAKE ;
 
-: GJA-OBJ ( n -- )
-   JSON-KIND J-OBJ <> IF s" expected JSON object" GJA-FAIL THEN ;
+: GJA-PARSE ( ptr u8 n -- SPAN:span<u8> )
+   {: a:ptr u:n :}
+   GJA-JR JR:STORAGE-BYTES a u JR:INIT JR:NEXT drop
+   JR:SKIP-VALUE JR:NEXT JR:T-END <> if E-JR-TRAILING throw then JR:CLOSE
+   a u SPAN:MAKE ;
 
-: GJA-ARR-KIND ( n -- )
-   JSON-KIND J-ARR <> IF s" expected JSON array" GJA-FAIL THEN ;
+: GJA-PARSE-FILE ( ptr u8 n -- SPAN:span<u8> )
+   GJA-READ GJA-PARSE ;
 
-: GJA-INT ( n -- n )
-   dup JSON-KIND J-NUM <> IF drop s" expected JSON integer" GJA-FAIL THEN
-   JSON-NUMBER$ GJA-U? MATCH option
-     none OF s" invalid JSON integer" GJA-FAIL ENDOF
-     some OF ENDOF
-   ;MATCH ;
+: GJA-KIND ( SPAN:span<u8> -- n )
+   GJA-OPEN JR:TOKEN swap JR:CLOSE ;
 
-: GJA-SIGNED-INT ( n -- )                \ a JSON integer, negative or not
-   dup JSON-KIND J-NUM <> IF drop s" expected JSON integer" GJA-FAIL THEN
-   JSON-NUMBER$ {: a:ptr u:n :}
-   u 0 > IF a c@ 45 = ELSE GJA-FALSE THEN
-   IF a 1 + u 1 - ELSE a u THEN GJA-U? MATCH option
-     none OF s" invalid JSON integer" GJA-FAIL ENDOF
-     some OF drop ENDOF
-   ;MATCH ;
+: GJA-FIELD? ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> bool )
+   {: value:SPAN:span<u8> key:ptr keyu:n :}
+   value GJA-OPEN key keyu JR:FIND-KEY
+   if GJA-VALUE swap JR:CLOSE true exit then
+   JR:CLOSE value false ;
 
-: GJA-STR= ( n ptr u8 n -- bool )
-   {: node want:ptr wantu :}
-   node JSON-KIND J-STR <> IF GJA-FALSE exit THEN
-   node JSON-STRING$ want wantu GJA-BYTES= ;
+: GJA-REQ ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
+   GJA-FIELD? 0= if drop s" missing JSON field" GJA-FAIL then ;
 
-: GJA-ASSERT-STR ( n ptr u8 n -- )
+: GJA-ARR@ ( SPAN:span<u8> n -- SPAN:span<u8> )
+   {: arr:SPAN:span<u8> idx:n :}
+   idx 0 < if s" missing JSON array item" GJA-FAIL then
+   arr GJA-OPEN JR:TOKEN JR:T-ARR <> if JR:CLOSE s" expected JSON array" GJA-FAIL then
+   idx 0 ?do JR:NEXT dup JR:T-ARR-END = if drop JR:CLOSE s" missing JSON array item" GJA-FAIL then
+      drop JR:SKIP-VALUE
+   loop
+   JR:NEXT dup JR:T-ARR-END = if drop JR:CLOSE s" missing JSON array item" GJA-FAIL then
+   drop GJA-VALUE swap JR:CLOSE ;
+
+: GJA-COUNT ( SPAN:span<u8> -- n )
+   GJA-OPEN JR:TOKEN JR:T-ARR <> if JR:CLOSE s" expected JSON array" GJA-FAIL then
+   0 GJA-N !
+   begin JR:NEXT dup JR:T-ARR-END <> while
+      drop JR:SKIP-VALUE GJA-N @ 1+ GJA-N !
+   repeat drop JR:CLOSE GJA-N @ ;
+
+: GJA-OBJ ( SPAN:span<u8> -- )
+   GJA-KIND JR:T-OBJ <> IF s" expected JSON object" GJA-FAIL THEN ;
+
+: GJA-ARR-KIND ( SPAN:span<u8> -- )
+   GJA-KIND JR:T-ARR <> IF s" expected JSON array" GJA-FAIL THEN ;
+
+: GJA-INT ( SPAN:span<u8> -- n )
+   GJA-OPEN JR:TOKEN JR:T-INT <> if JR:CLOSE s" expected JSON integer" GJA-FAIL then
+   JR:INT {: value:n :} JR:CLOSE
+   value 0 < if s" expected unsigned JSON integer" GJA-FAIL then value ;
+
+: GJA-SIGNED-INT ( SPAN:span<u8> -- )
+   GJA-OPEN JR:TOKEN JR:T-INT <> if JR:CLOSE s" expected JSON integer" GJA-FAIL then
+   JR:INT drop JR:CLOSE ;
+
+: GJA-STR= ( SPAN:span<u8> ptr u8 n -- bool )
+   {: value:SPAN:span<u8> want:ptr wantu:n :}
+   value GJA-OPEN JR:TOKEN JR:T-STR <> if JR:CLOSE GJA-FALSE exit then
+   want wantu JR:STR-EQ? swap JR:CLOSE ;
+
+: GJA-ASSERT-STR ( SPAN:span<u8> ptr u8 n -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
-: GJA-NONEMPTY-STR ( n -- )
-   dup JSON-KIND J-STR <> IF drop s" expected JSON string" GJA-FAIL THEN
-   JSON-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
+: GJA-STRING-INTO ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
+   {: value:SPAN:span<u8> dst:ptr cap:n :}
+   value GJA-OPEN JR:TOKEN JR:T-STR <> if JR:CLOSE s" expected JSON string" GJA-FAIL then
+   dst cap JR:STR {: u:n :} JR:CLOSE dst u ;
 
-: GJA-REQ-STRF ( n ptr u8 n -- )
-   GJA-REQ dup JSON-KIND J-STR <> IF drop s" expected JSON string" GJA-FAIL THEN
-   drop ;
+: GJA-STRING$ ( SPAN:span<u8> -- ptr u8 n )
+   GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
 
-: GJA-REQ-INTF ( n ptr u8 n -- )
+: GJA-NONEMPTY-STR ( SPAN:span<u8> -- )
+   GJA-STRING$ nip 0= IF s" expected nonempty JSON string" GJA-FAIL THEN ;
+
+: GJA-REQ-STRF ( SPAN:span<u8> ptr u8 n -- )
+   GJA-REQ GJA-STRING$ 2drop ;
+
+: GJA-REQ-INTF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ GJA-INT drop ;
 
-: GJA-NULL-OR-STR ( n -- )
-   dup JSON-KIND J-NULL = IF drop exit THEN
-   dup JSON-KIND J-STR <> IF drop s" expected JSON string or null" GJA-FAIL THEN
-   drop ;
+: GJA-NULL-OR-STR ( SPAN:span<u8> -- )
+   dup GJA-KIND JR:T-NULL = IF drop exit THEN
+   GJA-KIND JR:T-STR <> IF s" expected JSON string or null" GJA-FAIL THEN ;
 
-: GJA-REQ-NULL-OR-STRF ( n ptr u8 n -- )
+: GJA-REQ-NULL-OR-STRF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ GJA-NULL-OR-STR ;
 
-: GJA-SCHEMA1 ( n -- )
+: GJA-SCHEMA1 ( SPAN:span<u8> -- )
    s" schema_version" GJA-REQ GJA-INT 1 <> IF s" schema_version is not 1" GJA-FAIL THEN ;
 
 : GJA-LINE-STARTS-OBJECT ( ptr u8 n -- )
@@ -243,7 +278,7 @@ variable GJA-DIRECT
    0 GJA-I !
    begin GJA-I @ GJA-LINE# @ < while
       GJA-I @ GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-      JSON-PARSE dup GJA-OBJ GJA-SCHEMA1
+      GJA-PARSE dup GJA-OBJ GJA-SCHEMA1
       GJA-I @ 1+ GJA-I !
    repeat ;
 
@@ -251,22 +286,22 @@ variable GJA-DIRECT
    GJA-READ GJA-SPLIT-LINES
    GJA-LINE# @ 1 <> IF s" expected one JSON line" GJA-FAIL THEN
    0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-   JSON-PARSE dup GJA-OBJ GJA-SCHEMA1 ;
+   GJA-PARSE dup GJA-OBJ GJA-SCHEMA1 ;
 
-: GJA-FIRST-JSON ( ptr u8 n -- n )
+: GJA-FIRST-JSON ( ptr u8 n -- SPAN:span<u8> )
    GJA-READ GJA-SPLIT-LINES
    GJA-LINE# @ 0= IF s" no JSON lines" GJA-FAIL THEN
    0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-   JSON-PARSE dup GJA-OBJ ;
+   GJA-PARSE dup GJA-OBJ ;
 
-: GJA-LINE-JSON ( n -- n )
+: GJA-LINE-JSON ( n -- SPAN:span<u8> )
    GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-   JSON-PARSE dup GJA-OBJ ;
+   GJA-PARSE dup GJA-OBJ ;
 
-: GJA-DIAG-WORD? ( n ptr u8 n -- bool ) {: root word:ptr wordu :}
+: GJA-DIAG-WORD? ( SPAN:span<u8> ptr u8 n -- bool ) {: root:SPAN:span<u8> word:ptr wordu :}
    root s" word" GJA-REQ word wordu GJA-STR= ;
 
-: GJA-FIND-WORD ( ptr u8 n ptr u8 n -- n ) {: json:ptr jsonu word:ptr wordu :}
+: GJA-FIND-WORD ( ptr u8 n ptr u8 n -- SPAN:span<u8> ) {: json:ptr jsonu word:ptr wordu :}
    json jsonu GJA-READ GJA-SPLIT-LINES
    GJA-LINE# @ 0= IF s" no JSON lines" GJA-FAIL THEN
    0 GJA-I !
@@ -291,8 +326,8 @@ variable GJA-DIRECT
    repeat
    GJA-IDX @ GJA-LAST-NL @ - GJA-COL ! ;
 
-: GJA-ASSERT-INT-FIELD ( n ptr u8 n n -- )
-   {: root key:ptr keyu want :}
+: GJA-ASSERT-INT-FIELD ( SPAN:span<u8> ptr u8 n n -- )
+   {: root:SPAN:span<u8> key:ptr keyu want :}
    root key keyu GJA-REQ GJA-INT want <> IF s" unexpected JSON integer field" GJA-FAIL THEN ;
 
 : GJA-DIAG-FILE-ORIGIN ( ptr u8 n ptr u8 n -- )
@@ -317,7 +352,7 @@ variable GJA-DIRECT
    GJA-ROOT @ s" byte_start" GJA-IDX @ GJA-ASSERT-INT-FIELD
    GJA-ROOT @ s" byte_end" GJA-IDX @ 3 + GJA-ASSERT-INT-FIELD ;
 
-: GJA-DIAG-CLASS-FIELDS ( n ptr u8 n -- ) {: root class:ptr classu :}
+: GJA-DIAG-CLASS-FIELDS ( SPAN:span<u8> ptr u8 n -- ) {: root:SPAN:span<u8> class:ptr classu :}
    root s" repair_class" GJA-REQ
    class classu GJA-ASSERT-STR
    root s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
@@ -332,14 +367,14 @@ variable GJA-DIRECT
    json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
    GJA-ROOT @ class classu GJA-DIAG-CLASS-FIELDS ;
 
-: GJA-HAS? ( n ptr u8 n -- bool )
-   JSON-GET -1 <> ;
+: GJA-HAS? ( SPAN:span<u8> ptr u8 n -- bool )
+   GJA-FIELD? {: value:SPAN:span<u8> found:bool :} found ;
 
-: GJA-NO-FIELD ( n ptr u8 n -- )
+: GJA-NO-FIELD ( SPAN:span<u8> ptr u8 n -- )
    GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
 
 \ The fields only a definition carries.
-: GJA-NO-DEF-FIELDS ( n -- )
+: GJA-NO-DEF-FIELDS ( SPAN:span<u8> -- )
    dup s" token_index" GJA-NO-FIELD
    dup s" definition_source" GJA-NO-FIELD
    dup s" declared_effect" GJA-NO-FIELD
@@ -351,27 +386,27 @@ variable GJA-DIRECT
    s" source_excerpt" GJA-NO-FIELD ;
 
 \ None of a definition's own fields.
-: GJA-NO-DEF ( n -- )
+: GJA-NO-DEF ( SPAN:span<u8> -- )
    dup s" word" GJA-NO-FIELD
    GJA-NO-DEF-FIELDS ;
 
-: GJA-NO-PLACE ( n -- )
+: GJA-NO-PLACE ( SPAN:span<u8> -- )
    dup s" line" GJA-NO-FIELD
    dup s" column" GJA-NO-FIELD
    dup s" byte_start" GJA-NO-FIELD
    s" byte_end" GJA-NO-FIELD ;
 
-: GJA-DECL-NO-DEF ( n -- )
+: GJA-DECL-NO-DEF ( SPAN:span<u8> -- )
    GJA-NO-DEF ;
 
 \ A record's code names its shape, the repair classes it may carry and the
 \ field a refused record adds (tools/diag-code.f).
-: GJA-CODE$ ( n -- ptr u8 n )
-   s" code" GJA-REQ dup GJA-NONEMPTY-STR JSON-STRING$ ;
+: GJA-CODE$ ( SPAN:span<u8> -- ptr u8 n )
+   s" code" GJA-REQ dup GJA-NONEMPTY-STR GJA-STRING$ ;
 
 \ A declaration diagnostic carries all four position fields when its token
 \ locates in the file, and none when it does not.
-: GJA-DECL-POSITION ( n -- )
+: GJA-DECL-POSITION ( SPAN:span<u8> -- )
    dup s" line" GJA-HAS? IF
       dup s" line" GJA-REQ-INTF
       dup s" column" GJA-REQ-INTF
@@ -381,13 +416,13 @@ variable GJA-DIRECT
       GJA-NO-PLACE
    THEN ;
 
-: GJA-SHAPE ( n -- DIAG-CODE:shape )
+: GJA-SHAPE ( SPAN:span<u8> -- DIAG-CODE:shape )
    GJA-CODE$ DIAG-CODE:SHAPE ;
 
-: GJA-THROW? ( n -- bool )
+: GJA-THROW? ( SPAN:span<u8> -- bool )
    GJA-CODE$ s" E-STATEMENT-THROW" GJA-BYTES= ;
 
-: GJA-SPAN-FIELDS ( n -- ) {: root:n :}
+: GJA-SPAN-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF
    root s" token" GJA-REQ GJA-NONEMPTY-STR
    root s" line" GJA-REQ-INTF
@@ -395,7 +430,7 @@ variable GJA-DIRECT
    root s" byte_start" GJA-REQ-INTF
    root s" byte_end" GJA-REQ-INTF ;
 
-: GJA-INPUT-FIELDS ( n -- ) {: root:n :}
+: GJA-INPUT-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF
    root s" token" GJA-NO-FIELD
    root s" byte_start" GJA-NO-FIELD
@@ -404,14 +439,14 @@ variable GJA-DIRECT
    root s" column" GJA-REQ-INTF ;
 
 \ The used packages a token resolves in: a non-empty array of package names.
-: GJA-PACKAGES ( n -- ) {: arr:n :}
+: GJA-PACKAGES ( SPAN:span<u8> -- ) {: arr:SPAN:span<u8> :}
    arr GJA-ARR-KIND
-   arr JSON-COUNT 0= IF s" empty used_packages" GJA-FAIL THEN
-   arr JSON-COUNT 0 ?DO arr i JSON-ARR@ GJA-NONEMPTY-STR LOOP ;
+   arr GJA-COUNT 0= IF s" empty used_packages" GJA-FAIL THEN
+   arr GJA-COUNT 0 ?DO arr i GJA-ARR@ GJA-NONEMPTY-STR LOOP ;
 
 \ A using refusal names the token, placed when it locates in the file, and
 \ each used package it resolves in, with no definition field or throw code.
-: GJA-USING-FIELDS ( n -- ) {: root:n :}
+: GJA-USING-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF
    root s" throw_code" GJA-NO-FIELD
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -421,7 +456,7 @@ variable GJA-DIRECT
 \ A refused checker record names the token it would have described, with the
 \ field its code adds, and has no place for that token. The field is text, and
 \ empty only as the signature of a row that stored none.
-: GJA-RECORD-FIELDS ( n -- ) {: root:n :}
+: GJA-RECORD-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF
    root GJA-DECL-POSITION
    root s" throw_code" GJA-NO-FIELD
@@ -431,7 +466,7 @@ variable GJA-DIRECT
    root GJA-CODE$ s" E-BAD-STORED-SIGNATURE" GJA-BYTES= IF root key keyu GJA-REQ-STRF exit THEN
    root key keyu GJA-REQ GJA-NONEMPTY-STR ;
 
-: GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}
+: GJA-REPAIR-HEAD ( SPAN:span<u8> ptr u8 n -- ) {: root:SPAN:span<u8> class:ptr classu:n :}
    root s" schema_version" 1 GJA-ASSERT-INT-FIELD
    root s" kind" GJA-REQ s" habu_repair_packet" GJA-ASSERT-STR
    root s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
@@ -439,7 +474,7 @@ variable GJA-DIRECT
    root s" file" GJA-REQ GJA-NONEMPTY-STR
    root class classu GJA-DIAG-CLASS-FIELDS ;
 
-: GJA-REPAIR-DEF ( n -- ) {: root:n :}
+: GJA-REPAIR-DEF ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" token" GJA-REQ GJA-NONEMPTY-STR
    root s" token_index" GJA-REQ-INTF
@@ -457,7 +492,7 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Fix the definition so it certifies. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-DECL ( n -- ) {: root:n :}
+: GJA-REPAIR-DECL ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DECL-NO-DEF
    root GJA-NO-PLACE
    root s" decl" GJA-REQ GJA-NONEMPTY-STR
@@ -467,28 +502,28 @@ variable GJA-DIRECT
    root s" instruction" GJA-REQ
    s" Repair the type-family declaration. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-THROW-CODE ( n -- ) {: root:n :}  \ null unless a statement threw
-   root s" throw_code" GJA-REQ {: node:n :}
+: GJA-REPAIR-THROW-CODE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}  \ null unless a statement threw
+   root s" throw_code" GJA-REQ {: node:SPAN:span<u8> :}
    root GJA-THROW? IF node GJA-SIGNED-INT exit THEN
-   node JSON-KIND J-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
+   node GJA-KIND JR:T-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
 
-: GJA-REPAIR-SPAN ( n -- ) {: root:n :}
+: GJA-REPAIR-SPAN ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-SPAN-FIELDS
    root GJA-REPAIR-THROW-CODE
    root s" instruction" GJA-REQ
    s" Fix the source at this token so it checks. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-INPUT ( n -- ) {: root:n :}
+: GJA-REPAIR-INPUT ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-INPUT-FIELDS
    root s" instruction" GJA-REQ
    s" Rebuild bin/hb to check this source; no code change answers this diagnostic." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-RECORD ( n -- ) {: root:n :}
+: GJA-REPAIR-RECORD ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-RECORD-FIELDS
    root s" instruction" GJA-REQ
    s" Fix the statement that names this token so it loads. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-USING ( n -- ) {: root:n :}
+: GJA-REPAIR-USING ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-USING-FIELDS
    root s" instruction" GJA-REQ
    s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code." GJA-ASSERT-STR ;
@@ -512,8 +547,8 @@ variable GJA-DIRECT
 
 \ A storage record's class follows its reason, and its reason is one the
 \ renderer writes.
-: GJA-STORAGE-CLASS ( n -- ) {: root:n :}
-   root s" reason" GJA-REQ JSON-STRING$ GJA-STORAGE-CLASS$ {: want:ptr wantu:n :}
+: GJA-STORAGE-CLASS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
+   root s" reason" GJA-REQ GJA-STRING$ GJA-STORAGE-CLASS$ {: want:ptr wantu:n :}
    wantu 0= IF s" storage reason is not one the renderer writes" GJA-FAIL THEN
    root s" repair_class" GJA-REQ want wantu GJA-STR= 0= IF
       s" storage repair class does not follow its reason" GJA-FAIL
@@ -523,7 +558,7 @@ variable GJA-DIRECT
 \ the declared word, the refused token and the reason, under the class that
 \ reason takes. Only a refusal the pre-pass read carries the token's place, so
 \ it has all four place fields or none.
-: GJA-STORAGE-FIELDS ( n -- ) {: root:n :}
+: GJA-STORAGE-FIELDS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-NO-DEF-FIELDS
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -535,12 +570,12 @@ variable GJA-DIRECT
    root s" byte_start" GJA-REQ-INTF
    root s" byte_end" GJA-REQ-INTF ;
 
-: GJA-REPAIR-STORAGE ( n -- ) {: root:n :}
+: GJA-REPAIR-STORAGE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-STORAGE-FIELDS
    root s" instruction" GJA-REQ
    s" Fix the storage declaration so its definer accepts it. Output only corrected Habu code." GJA-ASSERT-STR ;
 
-: GJA-REPAIR-SHAPE ( n -- ) {: root:n :}
+: GJA-REPAIR-SHAPE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-SHAPE MATCH DIAG-CODE:shape
       definition OF root GJA-REPAIR-DEF ENDOF
       declaration OF root GJA-REPAIR-DECL ENDOF
@@ -559,7 +594,7 @@ variable GJA-DIRECT
    GJA-ROOT @ class classu GJA-REPAIR-HEAD
    GJA-ROOT @ GJA-REPAIR-SHAPE ;
 
-: GJA-DIAG-HEAD ( n -- )
+: GJA-DIAG-HEAD ( SPAN:span<u8> -- )
    dup GJA-SCHEMA1
    dup s" code" GJA-REQ GJA-NONEMPTY-STR
    dup s" repair_class" GJA-REQ GJA-NONEMPTY-STR
@@ -567,7 +602,7 @@ variable GJA-DIRECT
    dup s" file" GJA-REQ GJA-NONEMPTY-STR
    s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
 
-: GJA-DIAG-COMMON ( n -- )
+: GJA-DIAG-COMMON ( SPAN:span<u8> -- )
    dup GJA-DIAG-HEAD
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
    dup s" token" GJA-REQ GJA-NONEMPTY-STR
@@ -585,7 +620,7 @@ variable GJA-DIRECT
    s" actual" GJA-REQ-STRF
    drop ;
 
-: GJA-DIAG-DECL ( n -- ) {: root:n :}
+: GJA-DIAG-DECL ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-DECL-NO-DEF
    root GJA-DECL-POSITION
@@ -597,23 +632,23 @@ variable GJA-DIRECT
       s" declaration verdict is not rejected" GJA-FAIL
    THEN ;
 
-: GJA-DIAG-VERDICT ( n -- )
+: GJA-DIAG-VERDICT ( SPAN:span<u8> -- )
    s" verdict" GJA-REQ
    dup s" rejected" GJA-STR= IF drop exit THEN
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
-: GJA-DIAG-STORAGE ( n -- ) {: root:n :}
+: GJA-DIAG-STORAGE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-STORAGE-FIELDS
    root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
       s" storage verdict is not rejected" GJA-FAIL
    THEN ;
 
-: GJA-DIAG-THROW-CODE ( n -- ) {: root:n :}  \ only a statement throw has one
+: GJA-DIAG-THROW-CODE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}  \ only a statement throw has one
    root GJA-THROW? IF root s" throw_code" GJA-REQ GJA-SIGNED-INT exit THEN
    root s" throw_code" GJA-NO-FIELD ;
 
-: GJA-DIAG-SPAN ( n -- ) {: root:n :}
+: GJA-DIAG-SPAN ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-SPAN-FIELDS
    root GJA-DIAG-THROW-CODE
@@ -622,9 +657,11 @@ variable GJA-DIRECT
    THEN ;
 
 \ A record's repair class is one its code names and has a suggestion.
-: GJA-DIAG-CLASS ( n -- ) {: root:n :}
-   root s" repair_class" GJA-REQ JSON-STRING$ {: class:ptr classu:n :}
-   root GJA-CODE$ class classu DIAG-CODE:ADMITS? 0= IF
+: GJA-DIAG-CLASS ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
+   root GJA-CODE$ {: code:ptr codeu:n :}
+   root s" repair_class" GJA-REQ GJA-CLASS-BUF GJA-IN-CAP GJA-STRING-INTO
+   {: class:ptr classu:n :}
+   code codeu class classu DIAG-CODE:ADMITS? 0= IF
       s" repair class is not one its code names" GJA-FAIL
    THEN
    root class classu GJA-DIAG-CLASS-FIELDS ;
@@ -632,7 +669,7 @@ variable GJA-DIRECT
 \ A deferral is no refusal: the source pre-pass left the stretch that opens at
 \ its token to the run. It is placed as a span is, under the verdict deferred
 \ and the repair class its code names.
-: GJA-DIAG-DEFERRAL ( n -- ) {: root:n :}
+: GJA-DIAG-DEFERRAL ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-SPAN-FIELDS
    root s" throw_code" GJA-NO-FIELD
@@ -641,12 +678,12 @@ variable GJA-DIRECT
    THEN
    root GJA-DIAG-CLASS ;
 
-: GJA-DIAG-INPUT ( n -- ) {: root:n :}
+: GJA-DIAG-INPUT ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-INPUT-FIELDS
    root s" verdict" GJA-REQ s" uncheckable" GJA-ASSERT-STR ;
 
-: GJA-DIAG-RECORD ( n -- ) {: root:n :}
+: GJA-DIAG-RECORD ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-RECORD-FIELDS
    root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
@@ -655,7 +692,7 @@ variable GJA-DIRECT
 
 \ A warning is no refusal: the definition loaded and the run's status stands. It
 \ names the word and why, and has no verdict, repair class or suggestion.
-: GJA-DIAG-WARNING ( n -- ) {: root:n :}
+: GJA-DIAG-WARNING ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-SCHEMA1
    root s" word" GJA-REQ GJA-NONEMPTY-STR
    root s" file" GJA-REQ GJA-NONEMPTY-STR
@@ -665,14 +702,14 @@ variable GJA-DIRECT
    root s" repair_class" GJA-NO-FIELD
    root s" suggestion" GJA-NO-FIELD ;
 
-: GJA-DIAG-USING ( n -- ) {: root:n :}
+: GJA-DIAG-USING ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-HEAD
    root GJA-USING-FIELDS
    root s" verdict" GJA-REQ s" rejected" GJA-STR= 0= IF
       s" using verdict is not rejected" GJA-FAIL
    THEN ;
 
-: GJA-DIAG-SHAPE ( n -- ) {: root:n :}
+: GJA-DIAG-SHAPE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-SHAPE MATCH DIAG-CODE:shape
       definition OF root GJA-DIAG-COMMON ENDOF
       declaration OF root GJA-DIAG-DECL ENDOF
@@ -687,7 +724,7 @@ variable GJA-DIRECT
 
 \ Each record in the shape its code names; a refusal also under a verdict and
 \ one of the repair classes its code names, with a nonempty suggestion.
-: GJA-DIAG-CONTRACT-ROW ( n -- ) {: root:n :}
+: GJA-DIAG-CONTRACT-ROW ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-DIAG-SHAPE
    root GJA-CODE$ DIAG-CODE:REFUSAL? 0= IF exit THEN
    root GJA-DIAG-VERDICT
@@ -699,11 +736,11 @@ variable GJA-DIRECT
    0 GJA-I !
    begin GJA-I @ GJA-LINE# @ < while
       GJA-I @ GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
-      JSON-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW
+      GJA-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW
       GJA-I @ 1+ GJA-I !
    repeat ;
 
-: GJA-DIAG-DSTACK ( n -- )
+: GJA-DIAG-DSTACK ( SPAN:span<u8> -- )
    dup s" expected" GJA-REQ-STRF
    s" actual" GJA-REQ-STRF ;
 
@@ -742,14 +779,14 @@ variable GJA-DIRECT
    GJA-ROOT @ s" repair_class" GJA-REQ
    class classu GJA-ASSERT-STR ;
 
-: GJA-ALL-ROW0 ( n -- )
+: GJA-ALL-ROW0 ( SPAN:span<u8> -- )
    dup GJA-DIAG-COMMON
    dup s" word" GJA-REQ s" gdx-ae-bad1" GJA-ASSERT-STR
    dup s" code" GJA-REQ s" E-MISMATCH" GJA-ASSERT-STR
    dup s" repair_class" GJA-REQ s" remove_producer" GJA-ASSERT-STR
    GJA-DIAG-DSTACK ;
 
-: GJA-ALL-ROW1 ( n -- )
+: GJA-ALL-ROW1 ( SPAN:span<u8> -- )
    dup GJA-DIAG-COMMON
    dup s" word" GJA-REQ s" gdx-ae-bad2" GJA-ASSERT-STR
    dup s" code" GJA-REQ s" E-REJECTED" GJA-ASSERT-STR
@@ -759,12 +796,12 @@ variable GJA-DIRECT
 : GJA-ALL-ERRORS ( ptr u8 n -- )
    GJA-READ GJA-SPLIT-LINES
    GJA-LINE# @ 2 <> IF s" expected two all-errors diagnostics" GJA-FAIL THEN
-   0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT JSON-PARSE dup GJA-OBJ GJA-ALL-ROW0
-   1 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT JSON-PARSE dup GJA-OBJ GJA-ALL-ROW1 ;
+   0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT GJA-PARSE dup GJA-OBJ GJA-ALL-ROW0
+   1 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT GJA-PARSE dup GJA-OBJ GJA-ALL-ROW1 ;
 
-: GJA-START-LINE-OK ( n -- )
+: GJA-START-LINE-OK ( SPAN:span<u8> -- )
    s" locations" GJA-REQ dup GJA-ARR-KIND
-   0 JSON-ARR@
+   0 GJA-ARR@
    s" physicalLocation" GJA-REQ
    s" region" GJA-REQ
    s" startLine" GJA-REQ GJA-INT 0 <= IF s" SARIF result missing startLine" GJA-FAIL THEN ;
@@ -772,17 +809,17 @@ variable GJA-DIRECT
 : GJA-SARIF ( ptr u8 n -- )
    GJA-PARSE-FILE GJA-ROOT !
    GJA-ROOT @ s" version" GJA-REQ s" 2.1.0" GJA-ASSERT-STR
-   GJA-ROOT @ s" runs" GJA-REQ dup GJA-ARR-KIND 0 JSON-ARR@
+   GJA-ROOT @ s" runs" GJA-REQ dup GJA-ARR-KIND 0 GJA-ARR@
    s" results" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
-   GJA-ARR @ JSON-COUNT 2 <> IF s" SARIF result count mismatch" GJA-FAIL THEN
+   GJA-ARR @ GJA-COUNT 2 <> IF s" SARIF result count mismatch" GJA-FAIL THEN
    0 GJA-I !
-   begin GJA-I @ GJA-ARR @ JSON-COUNT < while
-      GJA-ARR @ GJA-I @ JSON-ARR@ GJA-START-LINE-OK
+   begin GJA-I @ GJA-ARR @ GJA-COUNT < while
+      GJA-ARR @ GJA-I @ GJA-ARR@ GJA-START-LINE-OK
       GJA-I @ 1+ GJA-I !
    repeat ;
 
-: GJA-CHECK-PUBLIC-ITEM ( n -- )
-   {: item :}
+: GJA-CHECK-PUBLIC-ITEM ( SPAN:span<u8> -- )
+   {: item:SPAN:span<u8> :}
    item s" word" GJA-REQ s" SQUARE" GJA-STR= IF
       item s" signature" GJA-REQ s" (i64 -- i64)" GJA-ASSERT-STR
       -1 GJA-OK1 !
@@ -800,14 +837,14 @@ variable GJA-DIRECT
    GJA-ROOT @ GJA-SCHEMA1
    GJA-ROOT @ s" definitions" GJA-REQ dup GJA-ARR-KIND GJA-ARR !
    0 GJA-I !
-   begin GJA-I @ GJA-ARR @ JSON-COUNT < while
-      GJA-ARR @ GJA-I @ JSON-ARR@ GJA-CHECK-PUBLIC-ITEM
+   begin GJA-I @ GJA-ARR @ GJA-COUNT < while
+      GJA-ARR @ GJA-I @ GJA-ARR@ GJA-CHECK-PUBLIC-ITEM
       GJA-I @ 1+ GJA-I !
    repeat
    GJA-OK1 @ 0= IF s" missing SQUARE public signature" GJA-FAIL THEN
    GJA-OK2 @ 0= IF s" missing APPLY public signature" GJA-FAIL THEN ;
 
-: GJA-AOT-COMMON ( n -- )
+: GJA-AOT-COMMON ( SPAN:span<u8> -- )
    dup GJA-SCHEMA1
    dup s" file_bytes" GJA-REQ GJA-INT 0 <= IF s" AOT report file_bytes invalid" GJA-FAIL THEN
    dup s" patched_call_stencils" GJA-REQ GJA-INT GJA-STENCILS !

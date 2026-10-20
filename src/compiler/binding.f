@@ -1,12 +1,10 @@
-\ binding.f - the compiler target and numerical policy bound into one identity.
+\ binding.f - the compiler target and numerical policy bound together.
 \
 \ docs/compiler-ir-design.md sections 5.4 and 5.5. A target contract says what
 \ machine the compilation is for; a numerical policy says what the compiler may
 \ assume about arithmetic. Neither is complete on its own, and some combinations
 \ of the two are not realisable even though each side is coherent by itself. This
-\ file binds the pair, rejects those combinations, and gives the pair one digest
-\ - the value a later stage records so that "this table was built under exactly
-\ this policy" is a checkable statement rather than a comment.
+\ file binds the pair and rejects those combinations.
 \
 \ WHAT THE BINDING VALIDATOR OWNS. Only the facts that need both halves to
 \ decide. Today that is one rule: a policy may not allow a multiply-add to be
@@ -14,21 +12,9 @@
 \ from one half alone stays with that half, and both halves are revalidated here
 \ so a forged component cannot enter a binding.
 \
-\ IDENTITY. CBIND:DIGEST is SHA-256 over a preimage that begins with the binding
-\ tag and schema version and then carries the COMPLETE canonical preimage of the
-\ target contract followed by the complete canonical preimage of the numerical
-\ policy - each including its own tag and schema version. Composing the preimages
-\ rather than the component digests has two consequences worth stating. First,
-\ the binding digest depends directly on every semantic field of both halves, so
-\ its injectivity does not rest on the components' hashes being collision-free,
-\ only on the encoding being injective. Second, a schema change on either side
-\ flows into the binding digest automatically: no one has to remember to bump a
-\ second version number, and no component field can be added that the binding
-\ digest fails to see.
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f
 
@@ -51,32 +37,6 @@ private
    {: c:CNUM:contraction f:CTARGET:features :}
    c CNUM-CONTRACTION:ALLOWED CNUM-CONTRACTION:EQ 0= if exit then
    f CTARGET:F-FP CTARGET:HAS? 0= if E-CBIND-CONTRACT throw then ;
-
-\ ---- canonical preimage ------------------------------------------------------
-1 constant SCHEMA
-0 constant SLOT-TAG
-1 constant SLOT-SCHEMA
-2 constant SLOT-HEAD          \ first slot a component preimage is copied into
-
-\ Exactly the tag, the schema version, and the two component preimages as they
-\ stand today. No slack: if a component schema grows a slot, APPEND throws
-\ E-CBIND-PREIMAGE and every binding test goes red, which is the signal to widen
-\ this alongside the component. Slack here would let a component grow silently.
-16 constant SLOT-CAP
-
-SLOT-CAP CDIGEST:SLOT-BYTES * constant PRE-BYTES
-PRE-BYTES CWORK-SPAN PRE u8
-
-\ Copy a component's whole canonical preimage into the binding preimage and
-\ report the next free slot.
-: APPEND ( ptr u8 n n -- n )
-   {: src:ptr len:n at:n :}
-   len CDIGEST:SLOT-BYTES / {: slots:n :}
-   at slots + SLOT-CAP > if E-CBIND-PREIMAGE throw then
-   slots 0 ?do
-      src i CDIGEST:SLOT@  PRE at i + CDIGEST:SLOT!
-   loop
-   at slots + ;
 
 public
 
@@ -111,20 +71,5 @@ public
    CBIND-BINDING:UNMAKE
    {: xt:CTARGET:contract xn:CNUM:numeric-policy :}
    xn yn CNUM:SAME? xt yt CTARGET:SAME? and ;
-
-\ The canonical preimage: binding tag, binding schema version, the target
-\ contract's whole preimage, the numerical policy's whole preimage. The bytes
-\ live in this module and stay valid until the next ENCODE call.
-: ENCODE ( CBIND:binding -- ptr u8 n )
-   VALIDATE CBIND-BINDING:UNMAKE
-   {: numeric:CNUM:numeric-policy :}
-   CDIGEST:TAG-BINDING PRE SLOT-TAG CDIGEST:SLOT!
-   SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
-   CTARGET:ENCODE SLOT-HEAD APPEND {: at:n :}
-   numeric CNUM:ENCODE at APPEND {: end:n :}
-   PRE end CDIGEST:SLOT-BYTES * ;
-
-: DIGEST ( CBIND:binding -- CDIGEST:digest )
-   ENCODE CDIGEST:COMPUTE ;
 
 ;package

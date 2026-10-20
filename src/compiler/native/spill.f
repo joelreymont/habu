@@ -82,7 +82,7 @@ private
 \ chose; a function's name is carried whole (FUN-NAME).
 128 constant NAME-CAP
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 0 CWORK-VARIABLE N-CUR n                       \ how far through the plan the walk has read

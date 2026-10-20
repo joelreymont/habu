@@ -61,6 +61,8 @@ CAST: AS-BOOL ( n -- [ -- bool ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
+CAST: AS-RESOLUTION-TOP ( n -- [ ptr u8 n -- ] )
+CAST: AS-RESOLUTION-NS-INSTALL ( n -- [ [ ptr u8 n -- ] -- ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
 CAST: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] )
@@ -285,6 +287,34 @@ TRUSTED: DOES-COMMIT ( -- )
 
 : SOURCE-BINDING ( n -- ptr u8 n )
    BIND-UNJUDGED @ 0<> if UNJUDGED-BINDING else CALL-BINDING then ;
+
+\ A resolution row contains the spelling and namespace copied by the active
+\ source checker. These calls are paired with the same owner as the binding
+\ window; the native feed consumes them before the next scan resets the table.
+: RESOLUTION-COUNT ( -- n )
+   CHECKER-OWNER-ABI:RESOLUTION-COUNT-OFF s" source resolution count" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:COUNT exit then
+   AS-N execute ;
+
+: RESOLUTION-ROW ( n -- ptr u8 n )
+   CHECKER-OWNER-ABI:RESOLUTION-ROW-OFF s" source resolution row" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:ROW exit then
+   AS-BINDING execute ;
+
+: RESOLUTION-TOP ( ptr u8 n -- )
+   CHECKER-OWNER-ABI:RESOLUTION-TOP-OFF s" top resolution" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:TOP exit then
+   AS-RESOLUTION-TOP execute ;
+
+: RESOLUTION-NS-INSTALL ( [ ptr u8 n -- ] -- )
+   CHECKER-OWNER-ABI:RESOLUTION-NS-INSTALL-OFF s" namespace observer" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:NS-INSTALL exit then
+   AS-RESOLUTION-NS-INSTALL execute ;
+
+: RESOLUTION-NS-DEFAULT ( -- )
+   CHECKER-OWNER-ABI:RESOLUTION-NS-DEFAULT-OFF s" namespace observer reset" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:NS-DEFAULT exit then
+   AS-ACTION execute ;
 
 \ The current source owner and scan identity. Its validity is checked when a
 \ compiler binds or borrows rows, so a rejected tape can still be sealed.

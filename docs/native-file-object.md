@@ -1,10 +1,37 @@
 # Native file objects
 
-`hb-build` uses source files as compilation units. Packages remain namespaces.
-The ordinary loader determines file order, and each file owns its object in
-`.out/hb-file-<key>.hfo`, or the directory selected by `HABU_BUILD_CACHE`.
-Unchanged files import their compiled state; changed files compile normally.
-The build then links the application or saves its REPL image.
+`hb-build` reads source through the ordinary loader and caches native
+definitions in `HABU_BUILD_CACHE`. A rebuild runs file-level source actions in
+order, including initialization in unchanged files. A definition can reuse its
+native emission and checker facts when its current bindings, values and
+executed producers match. Other definitions compile normally, including changed
+definitions in the same file. The build then links the application or saves its
+REPL image. An unchanged whole-image cache hit needs no source execution.
+
+Set `HABU_NATIVE_CACHE_DIAG=1` to print one stderr line immediately before each
+native definition falls back to compilation. A line begins
+`native-cache: compile-attempt`, gives the admission reason, and includes the
+pending name and source path when available. `eligible-cache-miss` means the
+definition passed the cache admission checks but no reusable object was found;
+other reasons name the first failed check. These lines count attempted compiler
+calls, so a failed compiler call can print a line without increasing the build
+report's `compiled` count.
+
+`native-cache: cache-store-refused` reports the guard that prevents an admitted
+candidate from being stored. `native-cache: ordered-dependency` reports the first
+dependency that makes construction depend on an ordered source action, including
+its name, dictionary ordinal and package when available. Global dependencies
+have no package field. These events explain storage refusals and do not count
+compiler calls.
+
+The same switch sends `native-file: dependency miss` to stderr with the first
+dependency check that prevents reuse. Ordinary cache misses remain quiet.
+
+## Explicit file objects
+
+Explicit FILE export/import captures a file's compiled ranges and stored state.
+Its replay skips the selected source; automatic definition reuse above does
+not. Packages remain namespaces in both paths.
 
 Before writing a native range, the loader checks new DATA and changed earlier
 DATA for live code, dictionary and mapped-process addresses. It skips declared

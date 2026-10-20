@@ -84,10 +84,36 @@ compiler, dictionary or REPL (`docs/native-applications.md:122`). The test
 suite builds `hb` once and runs every test against it. The two-generation build
 and the build from zero ([bootstrap.md](bootstrap.md)) are occasional
 integration tests.
-**Now:** the snapshot build (`tools/native-build.f`) loads the sources into the
-running engine and captures its memory. `tools/build-fixpoint.f` also compiles
+**Now:** the engine target loads sources into a fresh window of the running
+engine and captures its memory. `tools/build-fixpoint.f` also compiles
 glued source text to a byte fixpoint, and test files build engines of their
 own.
+
+The public native engine target is:
+
+```sh
+bin/hb --load tools/hb-build.f -- --engine -o bin/hb-next
+```
+
+`--target <profile>` selects the platform before loading the target sources;
+`--whitebox` requests an unsealed test engine. The same command builds REPL
+applications with `--repl source.f -o out`, or stripped applications with
+`source.f -o out`. `tools/native-build.f` accepts its previous output-first
+syntax for callers that still use it. A process that preloaded a compiler or
+backend keeps the in-process native driver so its live definitions remain
+available.
+
+An engine build reads the selected files through the native FILE session and
+uses its existing definition cache. It records the source buffers and path
+queries consumed by that session, then the late image writer's inputs. A
+repeat invocation with matching inputs restores the complete image and `.map`
+sidecar from the build cache. An edit rebuilds the image; definitions whose
+dependencies still match may reuse their cached native emission. The ordinary
+loader still executes file-level initialization during a rebuild.
+An unchanged checked body can also be reused before the reader enters it when
+another body in the same file changes. That path requires the original body
+span, its following delimiter, the current reader behavior, and the saved
+compiler dependencies to agree; otherwise the reader compiles the body normally.
 
 **Incremental-build implementation guidance.** Read files from disk and use
 files as compilation units, following the C compiler / make model. Packages

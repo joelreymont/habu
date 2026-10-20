@@ -160,12 +160,13 @@ ENUM rmove DERIVE eq
 \ `cell-index` is `ptr-field`, the cell index scaled and added to the base;
 \ `modulo` is `mod`, the remainder the engine's own division leaves, which is why
 \ it is spelled with the division that carries the zero-divisor refusal; `maximum`
-\ is `max`, the larger of two signed cells, taken branchlessly with the mask a
-\ comparison answers.
+\ is `max`, the larger of two signed cells, and `minimum` is `min`, the smaller;
+\ each selects branchlessly with the mask a comparison answers.
 ENUM expand DERIVE eq
    cell-index
    modulo
    maximum
+   minimum
 ;ENUM
 
 \ `literal` and `real-literal` are token meanings and never a word's; the rest
@@ -433,7 +434,8 @@ private
 4 constant K-OUT
 5 constant K-FUN
 6 constant K-KIND
-7 constant KEYS
+7 constant K-ORIGIN
+8 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -444,6 +446,7 @@ private
       K-OUT   of s" hir.out"   endof
       K-FUN   of s" hir.fun"   endof
       K-KIND  of s" hir.kind"  endof
+      K-ORIGIN of s" hir.origin" endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -558,6 +561,9 @@ public
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ADDR KEY-BIND ;
 
+: KEY-ORIGIN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-ORIGIN KEY-BIND ;
+
 \ A small enumeration rather than a flag, so a CODE kind is a new member and not
 \ a second attribute.
 0 constant ADDR-NONE
@@ -634,6 +640,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    c b KEY-VALUE IR-SCHEMA:ADD-ATTR
    c b KEY-ADDR IR-SCHEMA:ADD-ATTR
+   c b KEY-ORIGIN IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
    c TARGET
@@ -1242,6 +1249,9 @@ public
 
 : FKEY-ADDR ( IR-BUILD:module -- IR-ID:ir-symbol-id )
    K-ADDR KEY-NAME FSYMBOL ;
+
+: FKEY-ORIGIN ( IR-BUILD:module -- IR-ID:ir-symbol-id )
+   K-ORIGIN KEY-NAME FSYMBOL ;
 
 : FKEY-ENTRY ( IR-BUILD:module -- IR-ID:ir-symbol-id )
    K-ENTRY KEY-NAME FSYMBOL ;

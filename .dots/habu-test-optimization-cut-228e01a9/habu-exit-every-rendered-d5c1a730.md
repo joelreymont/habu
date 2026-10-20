@@ -3,7 +3,7 @@ title: Exit every rendered refusal as a refusal
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T12:43:43.185096+02:00\""
+created-at: "2026-10-03T12:43:43.185096+02:00"
 closed-at: "2026-10-14T19:30:56.956731+03:00"
 close-reason: "Implemented in 2d1b93e7: rendered checker refusals exit 70 through engine and check.f, bare throws keep 67, and a path capacity error is distinct; refusal probes, focused suites and convergence passed."
 ---

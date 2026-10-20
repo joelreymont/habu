@@ -6,6 +6,8 @@
 require src/habu/outer.f
 require src/habu/packages.f
 require src/habu/definers.f
+require src/habu/native-body-abi.f
+require src/habu/native-body.f
 
 package OUTER
 
@@ -46,6 +48,11 @@ private
    code 0<> if wid d 1- cells USE-WIDS-OFF + CELL! then
    code ;
 
+: CLEAR-BODY-TAKE ( -- )
+   NATIVE-BODY:BODY-CAPABILITY dup NULL-PTR = if drop exit then
+   {: record:ptr :}
+   0 record NATIVE-BODY-ABI:PENDING-TAKE cells + CELL-VIEW ! ;
+
 \ Interpret the buffer as the engine's evaluate reads it, and put the input
 \ cells and the using depth back after, whether the buffer ends or a token
 \ throws: usings are file-local (habu1.f B-EVAL, habu2.f EM-EVAL-CLEAN-EXIT).
@@ -74,12 +81,18 @@ private
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
-   d RUN-CAUGHT {: code:n :}
+   d RUN-CAUGHT
+   {: code:n :}
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!
    o ENTRY-PEND !
-   code 0<> if entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  rec parent cur floor PKG-RECOVER  code throw then
+   code 0<> if
+      entry 0= if 0 PEND-OPAQUE-CELL CELL! then
+      entry PEND-CELL CELL@ <> if CLEAR-BODY-TAKE then
+      entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!
+      rec parent cur floor PKG-RECOVER  code throw
+   then
    back USE-DEPTH-CELL CELL!
    0 EVALERR-CELL CELL!
    USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;

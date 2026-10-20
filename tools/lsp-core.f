@@ -388,20 +388,26 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ ---- notifications -----------------------------------------------------------
 
-\ Every open document of another file whose last completed check read the
-\ file of the document in this slot waits for a check: what that check read of
-\ the file is no longer what a check would read. A document holding the same
-\ file reads its own text for it.
-: READERS-DIRTY ( n -- )
-   {: slot:n :}
-   slot DOC-CANON$ {: c:ptr cu:n :}
+\ An editor event changes checks that consumed this path. A watched disk
+\ event also changes checks stopped at this path before they could read it.
+\ A document holding the path itself still supplies its editor text.
+: DIRTY-DEPENDENTS ( ptr u8 n bool -- )
+   {: path:ptr pathu:n include-unread:bool :}
    DOC-SLOTS 0 ?do
       i DOC-LIVE? if
-         i DOC-CANON$ c cu STR= 0= if
-            i c cu LSP-DEFS:DEFS-READ? if i DOC-DIRTY then
+         i DOC-CANON$ path pathu STR= 0= if
+            include-unread if
+               i path pathu LSP-DEFS:DEFS-DEPENDS?
+            else
+               i path pathu LSP-DEFS:DEFS-READ?
+            then if i DOC-DIRTY then
          then
       then
    loop ;
+
+: READERS-DIRTY-PATH ( ptr u8 n -- )  false DIRTY-DEPENDENTS ;
+
+: READERS-DIRTY ( n -- )  DOC-CANON$ READERS-DIRTY-PATH ;
 
 \ Each handler reads all of its params before it changes a document, so one
 \ that throws has changed nothing.
@@ -433,6 +439,26 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    slot DOC-CLOSE
    p pu ;
 
+\ A watched disk path affects open checks that read it or failed to read it.
+\ An editor buffer at that path remains the check's source while it stays open.
+: WATCH-CHANGE ( JR:reader -- JR:reader )
+   JR:TOKEN JR:T-OBJ <> if E-LSP-PARAMS throw then
+   begin JR:NEXT JR:T-KEY = while
+      s" uri" JR:STR-EQ? if
+         JR:NEXT JR:T-STR <> if E-LSP-PARAMS throw then
+         URI-SPAN DECODE {: n:n :}
+         URI-SPAN @ SPAN:$ drop n PATH SOURCE-ROOT:CANONICAL drop
+         true DIRTY-DEPENDENTS
+      else JR:NEXT drop JR:SKIP-VALUE then
+   repeat ;
+
+: DID-WATCH ( ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n :}
+   p pu s" changes" PARAM JR:T-ARR <> if E-LSP-PARAMS throw then
+   begin JR:NEXT JR:T-ARR-END <> while WATCH-CHANGE repeat
+   JR:CLOSE
+   p pu ;
+
 \ The throws that come of params the server cannot apply: a notification is
 \ left unapplied, the server saying why, and a request is answered -32602.
 \ Any other stops the server.
@@ -462,7 +488,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    m mu s" textDocument/didOpen" NAMED? if m mu p pu [: DID-OPEN ;] GUARDED exit then
    m mu s" textDocument/didChange" NAMED? if m mu p pu [: DID-CHANGE ;] GUARDED exit then
    m mu s" textDocument/didClose" NAMED? if m mu p pu [: DID-CLOSE ;] GUARDED exit then
-   m mu s" textDocument/didSave" NAMED? if DOC-DIRTY-ALL then ;
+   m mu s" textDocument/didSave" NAMED? if DOC-DIRTY-ALL exit then
+   m mu s" workspace/didChangeWatchedFiles" NAMED? if m mu p pu [: DID-WATCH ;] GUARDED then ;
 
 \ ---- held messages -----------------------------------------------------------
 
@@ -560,6 +587,34 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       else 2drop then
    loop
    false ;
+
+: EDIT-NOTICE? ( n ptr u8 n [ ptr u8 n -- bool ] -- bool )
+   {: k:n name:ptr nu:n affected :}
+   k name nu NOTICE? if
+      2dup [: DOC-URI PATH SOURCE-ROOT:CANONICAL drop ;] catch {: code:n :}
+      code 0<> if
+         2drop 2drop
+         code IGNORABLE? if false exit then
+         code throw
+      then
+      affected execute -rot 2drop
+   else 2drop false then ;
+
+\ A queued editor notification whose path the request actually uses.
+: HELD-EDITED? ( [ ptr u8 n -- bool ] -- bool )
+   {: affected :}
+   HELD-COUNT @ HELD-NEXT @ ?do
+      i s" textDocument/didOpen" affected EDIT-NOTICE? if true unloop exit then
+      i s" textDocument/didChange" affected EDIT-NOTICE? if true unloop exit then
+      i s" textDocument/didClose" affected EDIT-NOTICE? if true unloop exit then
+      i s" textDocument/didSave" affected EDIT-NOTICE? if true unloop exit then
+   loop
+   false ;
+
+: REQUEST-DEPENDS? ( ptr u8 n -- bool )
+   {: path:ptr pathu:n :}
+   AT-SLOT @ DOC-CANON$ path pathu STR= if true exit then
+   AT-SLOT @ path pathu LSP-DEFS:DEFS-DEPENDS? ;
 
 \ ---- input -------------------------------------------------------------------
 
@@ -665,7 +720,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ Checks the document in this slot first if it waits for a check, so that a
 \ request about it is answered from a check of its current text.
 : CHECK-WAITING ( n -- )
-   dup DOC-DIRTY? if CHECK-NOW else drop then ;
+   dup DOC-DIRTY? if CHECK-NOW exit then
+   dup LSP-DEFS:DEFS-INPUTS-FRESH? 0= if CHECK-NOW exit then
+   dup LSP-DEFS:DEFS-UNREAD-RETRY? if CHECK-NOW else drop then ;
 
 \ The byte of the text of the document in AT-SLOT that AT-LINE and AT-CHAR
 \ name, in AT-BYTE, positions counting in that text.
@@ -678,7 +735,23 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ replaces, and false.
 : UNCHANGED? ( JSON-RPC:id -- bool )
    {: i :}
-   AT-SLOT @ CHANGED? 0= if true exit then
+   AT-SLOT @ CHANGED? 0= [: REQUEST-DEPENDS? ;] HELD-EDITED? 0= and if true exit then
+   i CONTENT-MODIFIED s" content modified" REPLY-ERROR
+   false ;
+
+\ Only a check that still owns positions can have stale inputs for a request.
+: CURRENT-INPUTS-FRESH? ( n -- bool )
+   dup LSP-DEFS:DEFS-CURRENT? 0= if drop true exit then
+   LSP-DEFS:DEFS-INPUTS-FRESH? ;
+
+\ A request rechecks a stale root once. A completed check's positions require
+\ fresh inputs; an unfinished check kept no current positions to claim.
+: CHECK-CURRENT? ( JSON-RPC:id -- bool )
+   {: i :}
+   AT-SLOT @ CHECK-WAITING
+   READ-WAITING
+   i UNCHANGED? 0= if false exit then
+   AT-SLOT @ CURRENT-INPUTS-FRESH? if true exit then
    i CONTENT-MODIFIED s" content modified" REPLY-ERROR
    false ;
 
@@ -700,8 +773,9 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ waits for a check, and the byte of its text params.position names in
 \ AT-BYTE; false when the request is answered instead.
 : AT-READ? ( JSON-RPC:id ptr u8 n -- bool )
-   POSITION? 0= if false exit then
-   AT-SLOT @ CHECK-WAITING
+   {: i p:ptr pu:n :}
+   i p pu POSITION? 0= if false exit then
+   i CHECK-CURRENT? 0= if false exit then
    AT-BYTE!
    true ;
 
@@ -718,7 +792,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : DOCUMENT-SYMBOLS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
-   AT-SLOT @ CHECK-WAITING
+   i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-OUTLINE:ANSWER END SENT ;
 
 \ What the token at params.position in the open document params.textDocument
@@ -742,7 +816,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : SEMANTIC-TOKENS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
-   AT-SLOT @ CHECK-WAITING
+   i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-TOKENS:ANSWER END SENT ;
 
 \ params.context.includeDeclaration, true or false, in WITH-DECL.
@@ -770,21 +844,17 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ As POSITION!, with params.newName in NAME-SPAN.
 : RENAME! ( ptr u8 n -- ptr u8 n )  POSITION! NEW-NAME! ;
 
-\ The request's id copied out of the held bodies, which a request reading the
-\ input between its checks grows, and so may move.
+\ The request's id copied out of the held bodies, which reading input during
+\ a check can grow and move.
 : KEEP-ID ( JSON-RPC:id -- JSON-RPC:id )
    ID$ {: a:ptr u:n :}
    KEPT-ID u ROOM
    a u KEPT-ID @ SPAN:COPY
    KEPT-ID @ SPAN:$ drop u JSON--RPC-ID:MAKE ;
 
-\ Whether a change of any open document was read behind the request: every
-\ check it gathers from reads them all.
+\ Whether a queued edit affects a subject or file a gathered check read.
 : GATHER-CHANGED? ( -- bool )
-   DOC-SLOTS 0 ?do
-      i DOC-LIVE? if i CHANGED? if true unloop exit then then
-   loop
-   false ;
+   [: LSP-REFERENCES:TOUCHES? ;] HELD-EDITED? ;
 
 \ Whether the request with this id is answered once the input that waits is
 \ read: -32800 when a cancel of it was read behind it, else -32801 when a
@@ -796,7 +866,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
       id REQUEST-CANCELLED s" request cancelled" REPLY-ERROR
       true exit
    then
-   GATHER-CHANGED? if
+   GATHER-CHANGED? AT-SLOT @ CURRENT-INPUTS-FRESH? 0= or if
       id CONTENT-MODIFIED s" content modified" REPLY-ERROR
       true exit
    then
@@ -842,13 +912,12 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ params.textDocument names, and the declaration first when
 \ params.context.includeDeclaration is true, as tools/lsp-references.f states:
 \ -32803 when the request is refused, and a warning before the answer when a
-\ file is not covered. Its id is kept before any input is read.
+\ file is not covered.
 : REFERENCES ( JSON-RPC:id ptr u8 n -- )
-   {: held p:ptr pu:n :}
-   held KEEP-ID {: i :}
+   {: i p:ptr pu:n :}
    i p pu [: REFS! ;] READ? 0= if exit then
    i UNCHANGED? 0= if exit then
-   AT-SLOT @ CHECK-WAITING
+   i CHECK-CURRENT? 0= if exit then
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ WITH-DECL @ LSP-REFERENCES:SELECT
    LSP-REFERENCES:REFUSED? if
@@ -876,6 +945,10 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    LSP-REFERENCES:FOUND? 0= if i REPLY-NULL false exit then
    LSP-REFERENCES:PRIMITIVE? if
       i REQUEST-FAILED LSP-REFERENCES:PRIMITIVE-RENAME$ REPLY-ERROR
+      false exit
+   then
+   LSP-REFERENCES:CONSTRUCTOR? if
+      i REQUEST-FAILED LSP-REFERENCES:CONSTRUCTOR-RENAME$ REPLY-ERROR
       false exit
    then
    LSP-REFERENCES:SPELT? 0= if
@@ -928,15 +1001,14 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ every use of it, as tools/lsp-rename.f states: -32803 before any check
 \ when the name cannot be written over a tail, null when the position
 \ selects none, and else -32803, applying no edit, when prepareRename would
-\ refuse or APPLIES? does. Its id is kept before any input is read.
+\ refuse or APPLIES? does.
 : RENAME ( JSON-RPC:id ptr u8 n -- )
-   {: held p:ptr pu:n :}
-   held KEEP-ID {: i :}
+   {: i p:ptr pu:n :}
    i p pu [: RENAME! ;] READ? 0= if exit then
    i UNCHANGED? 0= if exit then
    NEW-NAME$ LSP-RENAME:WHY$ {: w:ptr wu:n :}
    wu 0<> if i REQUEST-FAILED w wu REPLY-ERROR exit then
-   AT-SLOT @ CHECK-WAITING
+   i CHECK-CURRENT? 0= if exit then
    AT-BYTE!
    AT-SLOT @ AT-BYTE @ true LSP-REFERENCES:SELECT
    i RENAMEABLE? 0= if exit then
@@ -953,6 +1025,11 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    AT-BYTE!
    AT-SLOT @ LAST-CHECKED !
    AT-SLOT @ AT-BYTE @ LSP-CHECK:RUN-AT
+   READ-WAITING
+   i UNCHANGED? 0= if exit then
+   AT-SLOT @ CURRENT-INPUTS-FRESH? 0= if
+      i CONTENT-MODIFIED s" content modified" REPLY-ERROR exit
+   then
    WRITER i RESULT AT-SLOT @ LSP-COMPLETION:ANSWER END SENT ;
 
 \ The links of the open document params.textDocument names, over the operands
@@ -961,7 +1038,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : DOCUMENT-LINKS ( JSON-RPC:id ptr u8 n -- )
    {: i p:ptr pu:n :}
    i p pu DOCUMENT? 0= if exit then
-   AT-SLOT @ CHECK-WAITING
+   i CHECK-CURRENT? 0= if exit then
    WRITER i RESULT AT-SLOT @ LSP-LINKS:ANSWER END SENT ;
 
 \ Whether the array the reader is at lists the string markdown.
@@ -1077,7 +1154,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    i METHOD-NOT-FOUND s" method not found" REPLY-ERROR ;
 
 : REQUESTED ( JSON-RPC:id ptr u8 n ptr u8 n -- )
-   {: i m:ptr mu:n p:ptr pu:n :}
+   {: held m:ptr mu:n p:ptr pu:n :}
+   held KEEP-ID {: i :}
    STATE@ MATCH state
       starting OF i m mu p pu STARTING-REQUEST ENDOF
       running OF i m mu p pu RUNNING-REQUEST ENDOF

@@ -3,7 +3,7 @@ title: Refuse a gate scratch path past the cap by name
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T18:47:04.790985+03:00\""
+created-at: "2026-10-03T18:47:04.790985+03:00"
 closed-at: "2026-10-14T19:34:45.599693+03:00"
 close-reason: "Implemented in bc5cec70: runner rejects an overlong HB_TMP by name and pool catches per-slot scratch removal failure as a row failure; red/green long-path and deep-tree cases passed."
 ---

@@ -6,19 +6,20 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
-require src/lib/engine-candidate.f
 require test/native-file-e2e.f
+require test/native-file-app-lib.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-ALIAS-TEST
 
 : RUN-DIRECT ( -- n )
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" direct-cache" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$
-   S\" require tools/app-build.f\nAPP-BUILD:RUN\n" CAPTURE ;
+   builder builderu
+   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
 
 : SOURCE ( -- )
    s" source.f"
@@ -42,18 +43,20 @@ public
    s" direct-cache" AT MAKE-DIR
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
-   OUT$ S\" file unit hits 0\n compiled 3" CONTAINS? TTRUE
-   BUILD-APP SUCCESS
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    RUN-DIRECT SUCCESS
-   OUT$ S\" file unit hits 3\n compiled 0" CONTAINS? TTRUE
-   BUILD-APP SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    CHANGED-CONSUMER
    RUN-DIRECT SUCCESS
-   OUT$ S\" file unit hits 2\n compiled 1" CONTAINS? TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   RUN-APP SUCCESS
+   OUT$ S\" 44\n44\n" CONTAINS? TTRUE
    BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 44\n44\n" CONTAINS? TTRUE

@@ -3,7 +3,7 @@ title: Catch a refused reaper arm in pool workers
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T12:39:04.024626+02:00\""
+created-at: "2026-10-02T12:39:04.024626+02:00"
 closed-at: "2026-10-14T19:48:37.022036+03:00"
 close-reason: 7bf84995 review fold catches rejected reaper forks in gate-pool and orphan workers, exits through worker failure path, and tests injected third-generation fork refusal.
 ---

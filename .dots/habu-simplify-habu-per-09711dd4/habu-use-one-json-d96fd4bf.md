@@ -1,6 +1,6 @@
 ---
 title: Use one JSON reader and writer in tools
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-15T17:16:31.135133+03:00"

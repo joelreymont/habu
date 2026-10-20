@@ -2,7 +2,7 @@
 \
 \    bin/hb --load tools/wasm-build.f -- <source.f> <entry> <out.wasm>
 \
-\ The pre-ticked driver survives src/habu/prefix-rewind.f's top-level rewind.
+\ The running driver survives src/habu/prefix-rewind.f's top-level rewind.
 \ It then opens a Wasm window and reloads the native product's portable library
 \ sources inside it, before authored source. Replaying those canonical files
 \ gives their runtime words Wasm emissions instead of addresses in the native
@@ -16,7 +16,7 @@
 \ engine's uncaught throw, 67.
 
 package WASM-BUILD
-ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 ;package
 
 require src/os/script-argv.f
@@ -30,6 +30,9 @@ require src/arch/wasm/capture.f
 require src/habu/link-wasm.f
 
 package WASM-BUILD
+private
+\ The prefix rewind retires this driver's effect records.
+TRUSTED: REWIND-CHECK-OFF ( -- ) 0 set-check ;
 public
 
 : ARGS ( -- )
@@ -70,10 +73,15 @@ public
 
 : LINK ( -- ) 1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ WASMLINK:LINK ;
 
-\ The rewind keeps this code and its data, but removes its dictionary records.
-\ The fresh record and DATA marks are handed in by top-level code after rewind.
-: RUN ( n n -- )
-   PRE-D ! PRE-R !
+\ Enter while the driver still has its checked effect. The rewind keeps this
+\ running code and its data, but removes its dictionary and effect records.
+\ Reinstall checking before loading any target source.
+: RUN ( -- )
+   REWIND-CHECK-OFF
+   s" src/habu/prefix-rewind.f" included
+   LOWER-CERT-HOOK:INSTALL
+   ndict@ PRE-R !
+   here BYTE-VIEW NULL-PTR BYTE-VIEW - PRE-D !
    WBACK:INSTALL
    OPEN
    1 TIER:SELECT
@@ -85,10 +93,7 @@ public
    CAPTURE
    LINK ;
 
+ARGS
 ;package
 
-WASM-BUILD:ARGS
-' WASM-BUILD:RUN
-include src/habu/prefix-rewind.f
-LOWER-CERT-HOOK:INSTALL
-ndict@ here rot execute
+WASM-BUILD:RUN

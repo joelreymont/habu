@@ -76,9 +76,9 @@ fi
 # the boot-hide prologue hides the startup prefix load's dictionary so this
 # second load owns every word, so a file the prologue hides and this list does
 # not carry is simply gone, and the order has to satisfy the same dependencies
-# the prefix does. In particular the declaration participants
-# (generated-declaration-dictionary.f and -protection.f, which seals their
-# registration) precede every generated declaration, the first of which is
+# the prefix does. In particular the declaration dictionary and protection
+# modules (the latter installs the runner) precede every generated declaration,
+# the first of which is
 # src/lib/adt/option.f's ENUM. The boot-stdlib rows the prefix loads
 # (PFX-LOAD-STDLIB-FILES) follow the seals as in the prefix: every
 # `DYNAMIC-BUFFER NAME n` declaration generates an accessor that calls
@@ -114,10 +114,10 @@ SRC_COMMON=(
   src/core/enums.f
   src/core/sha256.f
   src/core/source-producer.f
-  src/core/type-family-sha.f
   src/core/combinators.f
   src/habu/code-span.f
   src/habu/xref.f
+  src/core/cell-body.f
   src/core/generated-declaration-dictionary.f
   src/core/generated-declaration-protection.f
   src/core/layout-buffer-seal.f
@@ -130,7 +130,6 @@ SRC_COMMON=(
   src/arch/arm64/icode.f
   src/arch/arm64/mnem.f
   "$OS_SYS"
-  src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
   src/os/image-bytes.f
@@ -152,65 +151,15 @@ SRC_COMMON=(
 )
 
 emit_boot_hide() {
+  local top_hook="${2:-native}"
+  cat src/habu/hide.f >> "$1"
   cat >> "$1" <<'EOF'
-$0 constant BOOT-XREF-START-SLOT
-$2 constant BOOT-XREF-FLAGS-SLOT
-$3 constant BOOT-XREF-NAME-SLOT
-package BOOT-PRELUDE
-private
-CAST: N>REC ( n -- ptr n )
-public
-: REC ( n -- ptr n )
-   DREC * dbase@ + N>REC ;
-: LONG-NAME ( ptr n -- ptr u8 )
-   BOOT-XREF-NAME-SLOT ptr-field @ ;
-;package
-: BOOT-XREF-CELL@ ( ptr n n -- n )
-   cells + @ ;
-: BOOT-XREF-START ( ptr n -- n )
-   BOOT-XREF-START-SLOT BOOT-XREF-CELL@ ;
-: BOOT-XREF-FLAGS ( ptr n -- n )
-   BOOT-XREF-FLAGS-SLOT BOOT-XREF-CELL@ ;
-: BOOT-XREF-NAME-LEN ( ptr n -- n )
-   BOOT-XREF-FLAGS DNAME-LEN-MASK and ;
-: BOOT-XREF-EXT? ( ptr n -- bool )
-   BOOT-XREF-FLAGS DNAME-EXT and 0= 0= ;
-: BOOT-XREF-INLINE-NAME ( ptr n -- ptr u8 )
-   $18 + byte-view ;
-: BOOT-XREF-NAME-A ( ptr n -- ptr u8 ) {: rec:ptr :}
-   rec BOOT-XREF-EXT? if rec BOOT-PRELUDE:LONG-NAME exit then
-   rec BOOT-XREF-INLINE-NAME ;
-: BOOT-XREF-NAME$ ( ptr n -- ptr u8 n ) {: rec:ptr :}
-   rec BOOT-XREF-NAME-A
-   rec BOOT-XREF-NAME-LEN ;
-: BOOT-XREF-FOLD-C ( n -- n ) {: c:n :}
-   c $41 < if c exit then
-   c $5A > if c exit then
-   c $20 or ;
-: BOOT-XREF-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> if 0 0= 0= exit then
-   0 begin dup u < while
-      dup a + c@ BOOT-XREF-FOLD-C
-      over b + c@ BOOT-XREF-FOLD-C <> if drop 0 0= 0= exit then
-      1+
-   repeat drop
-   0 0= ;
-: BOOT-XREF-MATCH? ( ptr n ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
-   rec BOOT-XREF-NAME$ name u BOOT-XREF-STR=CI ;
-: BOOT-XREF-FIND-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
-   0
-   begin dup ndict@ < while
-      dup BOOT-PRELUDE:REC name u BOOT-XREF-MATCH? if exit then
-      1+
-   repeat drop
-   -1 ;
-: BOOT-MIN-FOUND ( n n -- n ) {: a:n b:n :}
-   a 0 < if b exit then
-   b 0 < if a exit then
-   a b < if a else b then ;
-: BOOT-XREF-MARKER-INDEX ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
-   dup 0 < if s" bootstrap: hide marker not found" 76 die then ;
+0 set-check
+EOF
+  if [[ "$top_hook" == "native" ]]; then
+    printf '0 set-top-check\n' >> "$1"
+  fi
+  cat >> "$1" <<'EOF'
 CHECKER-BOUND:EMPTY-STORE
 s" IMK-NDICT0" s" SEQ" BOOT-XREF-MARKER-INDEX seed-ndict!
 EOF
@@ -227,12 +176,14 @@ SRC_CORE=(
   src/core/engine-error.f
   src/core/exec-vector.f
   src/core/checker-fetch-abi.f
+  src/core/checker-owner-extension.f
   src/core/checker-owner-abi.f
   src/habu/prims.f
   src/core/does-clause.f
   src/core/checker.f
   src/core/engine-error-effects.f
   src/core/lower-cert-base.f
+  src/habu/native-body-abi.f
   src/core/type-schema.f
   src/core/type-family.f
   src/core/render.f
@@ -240,6 +191,7 @@ SRC_CORE=(
   src/core/layout-buffer.f
   src/core/layout-valid.f
   src/core/check-hook.f
+  src/habu/native-body.f
   src/core/cell-effects.f
   src/core/declaration-transaction.f
   src/core/generated-declaration.f
@@ -270,6 +222,7 @@ emit_provided() {
 emit_src() {
   local out="$1"
   local driver="$2"
+  local top_hook="${3:-native}"
   local tail=(src/habu/sign-id.f src/habu/driver-io.f)
   if [[ "$driver" == "src/habu/stdin.f" ]]; then
     tail+=(src/habu/aot-arm.f src/habu/aot-capture.f src/habu/aot-file.f)
@@ -309,7 +262,7 @@ emit_src() {
   # and a stage stripped to the names the checker knows could not compile the
   # prelude the whole recovery starts from (the shape dot
   # habu-give-the-build-4b825045 measured in the build chain as `ncomp: cannot
-  # compile REG-INCOMING?`). The call below is ordinary checked Habu, and no
+  # compile REG-INCOMING?`). The call below runs in the unchecked rewind boundary, and no
   # row lowers the dictionary: the prologue's own top-level token does.
   #
   # NOT CHECKER-BOUND:REWIND, the sibling src/habu/prefix-rewind.f uses for the
@@ -320,6 +273,10 @@ emit_src() {
   # Rewinding the boundary here instead builds a stage-1 engine that cannot
   # boot: measured on this tree, silent rc 78, the fixed-region class, with the
   # same tree's hand rewind building it (dot habu-route-the-recovery-4ef43bd9).
+  #
+  # The startup top-level hook must be uninstalled before the old checker store
+  # is emptied: it otherwise reads its old primitive records from reused bytes
+  # while this source loads the replacement checker.
   #
   # IT RUNS BEFORE THE DICTIONARY LOWERING, for the reason prefix-rewind.f
   # gives for the same order: the truncation walks the records it is
@@ -334,8 +291,7 @@ emit_src() {
   # the text without those rows: a checked call to src/core/render.f's
   # TDECL-DIAG died rc 70, E-UNDEFINED, on the Gforth seed and on a native
   # cold host alike.
-  emit_boot_hide "$out"
-  printf "0 set-check\n" >> "$out"
+  emit_boot_hide "$out" "$top_hook"
   local f
   for f in "${SRC_CORE[@]}"; do
     if [[ "$f" == "src/core/check-hook.f" ]]; then
@@ -530,10 +486,12 @@ bootstrap_preflight_recovery_gate() {
 
 bootstrap_preflight_recovery_gate
 
-# One emission serves both steps: Gforth compiles this text into hb-stage0, and
-# hb-stage0 then compiles the same text into the first native stage.
-emit_src "$T/stage2-src" src/habu/stage2.f
+# Stage-0 emits no top-level hook and has no set-top-check primitive. Its boot
+# source only clears the checker hook; the native source it builds also clears
+# the top-level hook before reusing the startup checker's store.
+emit_src "$T/stage2-src" src/habu/stage2.f stage0
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
+emit_src "$T/stage2-src" src/habu/stage2.f native
 
 env HB_TMP="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"

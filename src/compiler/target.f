@@ -3,9 +3,8 @@
 \ docs/compiler-ir-design.md section 5.4. No compiler pass may read target facts
 \ out of scattered globals; it reads them out of one immutable value that says
 \ what machine the compilation is for. This file owns the first stage of that
-\ value: architecture, ABI, byte order, pointer width and feature set, plus the
-\ canonical preimage and digest that give the combination an identity later
-\ stages can name.
+\ value: architecture, ABI, byte order, pointer width and feature set. The
+\ compilation context carries that value.
 \
 \ WHAT THE VALIDATOR OWNS. A contract is rejected when its facts cannot all be
 \ true of one machine - a PTX kernel ABI on an AArch64 core, a big-endian
@@ -16,8 +15,7 @@
 \ produce instructions, against the contract (design section 8, "target-specific
 \ operations are legal for the target contract"). Collapsing the two would make
 \ the contract undeclarable for any machine we are about to add support for, and
-\ - worse - would let a newly supported machine reuse the digest of an existing
-\ one, because the field that distinguishes them was never allowed to vary.
+\ - worse - would prevent the context from representing that machine.
 \
 \ Every semantic field carries its own closed family, so a swapped argument at
 \ construction is a checker reject rather than a silently different target. The
@@ -25,25 +23,14 @@
 \ integer cannot be passed where a feature set is wanted; callers build one from
 \ the named feature words and CTARGET:WITH.
 \
-\ IDENTITY. CTARGET:DIGEST is SHA-256 over the canonical preimage: the
-\ domain-separation tag, the schema version, and one eight-byte slot for each of
-\ the five semantic fields, in declaration order. The per-field codes below are
-\ the stable wire codes; they are what fixes the digest, so a variant may be
-\ added to a family but an existing variant's code may never be renumbered
-\ without bumping SCHEMA. Because the encoding is a fixed-arity product of
-\ per-field injective codes, two contracts have the same preimage exactly when
-\ they have the same five fields - which is what makes the digest load-bearing
-\ rather than decorative.
-\
 \ FORGERY. `contract` is a public family, so its generated MAKE can assemble any
-\ five field values without passing through CTARGET:CONTRACT. Every word here
-\ whose result carries identity - ENCODE, DIGEST, SAME? - therefore revalidates
-\ its input instead of trusting that it came from the checked constructor. The
-\ plain field readers do not: they only project a value the caller already holds.
+\ five field values without passing through CTARGET:CONTRACT. SAME? therefore
+\ revalidates its inputs instead of trusting that they came from the checked
+\ constructor. The plain field readers only project a value the caller already
+\ holds.
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 
 package CTARGET
 public
@@ -94,8 +81,7 @@ STRUCTURE features DERIVE eq
 \ The contract itself. Fields in declaration order, deepest stack field first:
 \ architecture, ABI, byte order, pointer width, feature set. It does not DERIVE
 \ eq - a structure field is not a derivable role - so SAME? below is the
-\ hand-written field-by-field identity, and it is the equality the digest is
-\ proved to agree with.
+\ hand-written field-by-field identity.
 STRUCTURE contract
    FIELD arch arch
    FIELD abi abi
@@ -107,8 +93,7 @@ STRUCTURE contract
 private
 
 \ ---- feature vocabulary ------------------------------------------------------
-\ One bit per capability. The bit values are part of the canonical preimage, so
-\ they are stable: a new capability takes the next free bit and never reuses one.
+\ One bit per capability. Keep each bit distinct.
 $001 constant BIT-BASE     \ the architecture's baseline instruction set
 $002 constant BIT-FP       \ hardware floating point including fused multiply-add
 $004 constant BIT-SIMD     \ packed vector arithmetic
@@ -154,43 +139,6 @@ BIT-BASE BIT-SCALAR-FP or constant MASK-WASM
 : BITS ( CTARGET:features -- n )
    CTARGET-FEATURES:UNMAKE ;
 
-\ ---- stable wire codes -------------------------------------------------------
-\ One injective code per family. These fix the digest; see the header.
-: ARCH-CODE ( CTARGET:arch -- n )
-   MATCH arch
-      aarch64 OF 0 ENDOF
-      ptx     OF 1 ENDOF
-      a32     OF 2 ENDOF
-      thumb2  OF 3 ENDOF
-      c66x    OF 4 ENDOF
-      x86-64  OF 5 ENDOF
-      wasm    OF 6 ENDOF
-   ;MATCH ;
-
-: ABI-CODE ( CTARGET:abi -- n )
-   MATCH abi
-      aapcs64-darwin OF 0 ENDOF
-      aapcs64-linux  OF 1 ENDOF
-      ptx-kernel     OF 2 ENDOF
-      aapcs32       OF 3 ENDOF
-      c6000-eabi    OF 4 ENDOF
-      sysv-amd64    OF 5 ENDOF
-      habu-wasm-cell64-v1 OF 6 ENDOF
-   ;MATCH ;
-
-: ENDIAN-CODE ( CTARGET:endian -- n )
-   MATCH endian
-      little OF 0 ENDOF
-      big    OF 1 ENDOF
-   ;MATCH ;
-
-: PTR-CODE ( CTARGET:ptr-width -- n )
-   MATCH ptr-width
-      bits32 OF 0 ENDOF
-      bits64 OF 1 ENDOF
-   ;MATCH ;
-
-\ ---- coherence rules ---------------------------------------------------------
 : ABI-ARCH? ( CTARGET:arch CTARGET:abi -- bool )
    {: a:arch b:abi :}
    b MATCH abi
@@ -284,20 +232,6 @@ BIT-BASE BIT-SCALAR-FP or constant MASK-WASM
    b p PTR-CK
    a f FEATURE-CK ;
 
-\ ---- canonical preimage ------------------------------------------------------
-1 constant SCHEMA
-7 constant SLOTS
-0 constant SLOT-TAG
-1 constant SLOT-SCHEMA
-2 constant SLOT-ARCH
-3 constant SLOT-ABI
-4 constant SLOT-ENDIAN
-5 constant SLOT-PTR
-6 constant SLOT-FEATURES
-
-SLOTS CDIGEST:SLOT-BYTES * constant PRE-BYTES
-PRE-BYTES CWORK-SPAN PRE u8
-
 public
 
 \ ---- feature set -------------------------------------------------------------
@@ -380,24 +314,6 @@ public
    xe ye CTARGET-ENDIAN:EQ and
    xp yp CTARGET-PTR--WIDTH:EQ and
    xf yf CTARGET-FEATURES:EQ and ;
-
-\ The canonical preimage. The bytes live in this module and stay valid until the
-\ next ENCODE call; DIGEST is the copy-free consumer, and the target/policy
-\ binding reads the slots straight back out.
-: ENCODE ( CTARGET:contract -- ptr u8 n )
-   VALIDATE CTARGET-CONTRACT:UNMAKE
-   {: a:arch b:abi e:endian p:ptr-width f:features :}
-   CDIGEST:TAG-TARGET PRE SLOT-TAG CDIGEST:SLOT!
-   SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
-   a ARCH-CODE PRE SLOT-ARCH CDIGEST:SLOT!
-   b ABI-CODE PRE SLOT-ABI CDIGEST:SLOT!
-   e ENDIAN-CODE PRE SLOT-ENDIAN CDIGEST:SLOT!
-   p PTR-CODE PRE SLOT-PTR CDIGEST:SLOT!
-   f BITS PRE SLOT-FEATURES CDIGEST:SLOT!
-   PRE PRE-BYTES ;
-
-: DIGEST ( CTARGET:contract -- CDIGEST:digest )
-   ENCODE CDIGEST:COMPUTE ;
 
 \ A backend descriptor states identity and capabilities. The native registry
 \ owns publication of the descriptor together with its implementation pass.

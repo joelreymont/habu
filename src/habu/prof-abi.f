@@ -14,6 +14,9 @@ require src/habu/layout.f
 
 package PROF-ABI
 public
+\ The seed rewind body is emitted before prof.f loads. Its helper label must
+\ therefore be declared in this early ABI package and assigned by habu2.f.
+variable LPROFREWIND
 
 \ ---- the band: PROF-STATE-BYTES of state cells, then one counter per dict record
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.
@@ -69,10 +72,12 @@ public
 72 constant ARN-SPILL       \ new-code samples the deferred buffer had no room for
 80 constant ARN-DEFER       \ deferred samples waiting for the next report to name them
 88 constant ARN-OLDHI       \ the high mark before a rebuild: what the handler could name
+96 constant ARN-IDS         \ profile identities issued this session, at most DICT-CAP
+104 constant ARN-CHUNKS      \ linked chunks holding copied names
 32 constant PROF-ENT        \ index entry bytes
 0  constant ENT-START
 8  constant ENT-END
-16 constant ENT-IDX         \ the dictionary record index, which owns the counter
+16 constant ENT-IDX         \ stable profile ID, which owns the counter
 24 constant ENT-INCL        \ inclusive samples since the last rebuild, folded by it
 
 \ ---- caller edges -------------------------------------------------------------
@@ -109,13 +114,40 @@ DICT-CAP PROF-ENT * constant ARN-IDX-BYTES
 PROF-CALL-SLOTS PROF-CALL-ENT * constant ARN-CALL-BYTES
 ARN-HDR constant ARN-IDX                       \ the index itself
 ARN-IDX ARN-IDX-BYTES + constant ARN-SCR       \ the merge sort's second half
+\ Before sorting, SNAP uses the scratch half to map each namespace WID to its
+\ first dictionary row. A cell packs WID (low 32) and row + 1 (high 32); zero
+\ is empty. At most two WIDs per row occupy at most half these slots.
+ARN-IDX-BYTES CELL / constant PROF-QUAL-SLOTS
+PROF-QUAL-SLOTS 1- constant PROF-QUAL-MASK
+32 constant PROF-QUAL-BITS
 ARN-SCR ARN-IDX-BYTES + constant ARN-CALL      \ the caller table
 DICT-CAP cells constant ARN-INCL-BYTES
 PROF-DEFER-SLOTS PROF-DEFER-ENT * constant ARN-DEF-BYTES
 ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECORD
 ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
 ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
-ARN-DEF ARN-DEF-BYTES + constant ARN-BYTES
+\ One identity owns its copied name and code span even after its dictionary
+\ ordinal is reused. RID-OWNER is -1 when there is no current dictionary owner:
+\ a nonempty stored span is seed-retained code, an empty span is excluded.
+\ Ordinary retired records keep their owner but have no live index entry.
+40 constant PROF-ID-ENT
+0  constant RID-OWNER
+8  constant RID-NAME
+16 constant RID-LEN
+24 constant RID-START
+32 constant RID-END
+DICT-CAP PROF-ID-ENT * constant ARN-RECS-BYTES
+DICT-CAP cells constant ARN-LIVE-BYTES
+ARN-DEF ARN-DEF-BYTES + constant ARN-RECS
+ARN-RECS ARN-RECS-BYTES + constant ARN-LIVE
+ARN-LIVE ARN-LIVE-BYTES + constant ARN-BYTES
+\ Exact-length name copies live in mmap chunks linked from ARN-CHUNKS. A name
+\ larger than the ordinary chunk gets a chunk large enough for that name.
+$10000 constant PROF-NAME-CHUNK
+0  constant CHUNK-NEXT
+8  constant CHUNK-USED
+16 constant CHUNK-LEN
+24 constant CHUNK-DATA
 1000000 constant USEC-PER-SEC   \ setitimer refuses a tv_usec at or above it: prof-on splits the interval
 14  constant SIGALRM
 \ SA_ONSTACK: the handler runs on the thread's alternate signal stack, the one
@@ -134,6 +166,9 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 99 constant PROF-LIMIT-RC
 : PROFARNMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot map the profiler arena\n" ;
 : PROFARMMSG$ ( -- ptr u8 n ) S\" hb: prof-on: cannot arm the interval timer\n" ;
+: PROFIDMSG$ ( -- ptr u8 n ) S\" hb: profiler profile IDs exhausted\n" ;
+: PROFNAMEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot map name snapshot\n" ;
+: PROFNAMEFREEMSG$ ( -- ptr u8 n ) S\" hb: profiler cannot release name snapshot\n" ;
 
 \ A negative interval is the caller's error, not a resource the process lacks:
 \ prof-rate throws E-PROF-RATE before it maps or stores anything, so a caller

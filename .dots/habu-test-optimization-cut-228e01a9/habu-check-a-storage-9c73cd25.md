@@ -3,7 +3,7 @@ title: "Check a storage record's class against its reason"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T11:09:11.909980+02:00\""
+created-at: "2026-10-02T11:09:11.909980+02:00"
 closed-at: "2026-10-14T19:41:03.007590+03:00"
 close-reason: "Implemented in c61e257f: diagnostic contract maps every rendered storage reason to its class and rejects relabelled or unknown reasons; failing-before contract rows and focused suites passed."
 ---

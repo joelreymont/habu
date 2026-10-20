@@ -2,7 +2,6 @@
 
 require src/lib/errors.f
 require src/lib/memory.f
-require tools/json.f
 require tools/diag-to-sarif-core.f
 
 SARIF-MAIN

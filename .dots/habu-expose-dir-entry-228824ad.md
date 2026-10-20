@@ -1,6 +1,6 @@
 ---
 title: Expose directory entry types
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-14T20:33:35.004276+03:00"

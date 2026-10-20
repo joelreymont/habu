@@ -1,5 +1,5 @@
-\ Loaded producer bytes key later file builds, including nested include reads.
-\ A preloaded producer and its nested includes feed a later APP-BUILD run.
+\ Reused caller definitions bind the producer loaded by the current process.
+\ Nested includes and edits after loading preserve the consumed source bytes.
 \ Run: HABU_UNDER_TEST=/path/to/hb /path/to/hb --load tools/hb-build-prefix-producer-test.f
 
 require src/lib/test.f
@@ -122,7 +122,8 @@ variable RC
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
    s" 41" RUN-APP
    HELPER$ S\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
-   S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 0 BUILD
+   \ An unrelated preloaded declaration leaves MAIN reusable.
+   S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
    s" 41" RUN-APP
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE ;
@@ -133,7 +134,8 @@ variable RC
    s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n: MAYBE-EDIT ( -- ) s\" HABU_PREFIX_TEST_EDIT\" GETENV nip 0 > if s\" producer.f\" s\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 999 ; ;package\" WRITE-ALL then ;\nMAYBE-EDIT\n" WRAPPER!
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 1 BUILD
    s" 41" RUN-APP
-   S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 0 BUILD
+   \ The new process relinks reused MAIN to the VALUE it loaded.
+   S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
    s" 999" RUN-APP
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE ;

@@ -3,7 +3,7 @@ title: Find the engine root where the kernel refuses its path
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T12:14:59.132737+02:00\""
+created-at: "2026-10-02T12:14:59.132737+02:00"
 closed-at: "2026-10-14T19:56:27.818242+03:00"
 close-reason: ec81f5e3 added canonicalized _NSGetExecutablePath fallback for engine-root discovery while keeping PATH$ semantics; sandboxed boot-relocation and two-generation checks passed.
 ---

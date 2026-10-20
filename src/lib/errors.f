@@ -343,17 +343,15 @@
 
 \ Compiler target/policy binding (package CBIND): -6630..-6639
 -6630 constant E-CBIND-CONTRACT   \ contraction is allowed but the target has no fused multiply-add
--6631 constant E-CBIND-PREIMAGE   \ a component preimage does not fit the binding preimage buffer
 
 \ Compiler context ownership (package IR-CTX): -6640..-6649
 -6640 constant E-IR-CTX-STALE     \ a context handle was used after its context tore down
 -6641 constant E-IR-CTX-DEPTH     \ context nesting exceeded the registry capacity
--6642 constant E-IR-CTX-UNBOUND   \ a context slot whose owning module has not landed was used
 -6643 constant E-IR-CTX-SERIALS   \ serial allocation reached its committed ceiling
 -6644 constant E-IR-CTX-SCRATCH   \ scratch size or total exceeds the addressable range
 -6645 constant E-IR-CTX-CEILING   \ a context-creation serial ceiling outside the accepted range
 -6646 constant E-IR-CTX-SIZE      \ a scratch request of zero or negative bytes
--6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck
+-6647 constant E-IR-CTX-STATE     \ context registry or session state is invalid
 -6648 constant E-IR-CTX-NESTED    \ scratch was taken for a context that a deeper live context encloses
 
 \ Compiler IR arena (package IR-ARENA): -6650..-6659
@@ -402,15 +400,11 @@
 
 \ Compiler attribute table (package IR-ATTR): -6691..-6699, completing the
 \ -6600..-6699 shared compiler IR block.
--6691 constant E-IR-ATTR-STATE    \ an attribute store failed its header, row-shape, payload, window, or stored-reference recheck
--6692 constant E-IR-ATTR-OWNER    \ a module key, attr-id, referenced id, or store pairing this attribute table does not own
--6693 constant E-IR-ATTR-BOUND    \ an attribute reference or element index at or past the constructed count
--6694 constant E-IR-ATTR-CAP      \ a row or pool capacity outside the accepted range, or a construction past a committed ceiling
--6695 constant E-IR-ATTR-KIND     \ a field reader applied to an attribute of a different kind or enum family
--6696 constant E-IR-ATTR-STAGE    \ staged-list misuse: a wrong or missing begin/end pairing, or a staged list past the ceiling
--6697 constant E-IR-ATTR-VALUE    \ a malformed payload: a negative string length or a duplicate record key
--6698 constant E-IR-ATTR-TARGET   \ an enum attribute stating a target fact the bound contract contradicts
--6699 constant E-IR-ATTR-RANGE    \ a destination span smaller than the copied or rendered text
+-6691 constant E-IR-ATTR-STATE    \ an attribute store failed its header, row shape, or stored symbol check
+-6692 constant E-IR-ATTR-OWNER    \ a module key, attr-id, or symbol id this attribute table does not own
+-6693 constant E-IR-ATTR-BOUND    \ an attribute id at or past the constructed count
+-6694 constant E-IR-ATTR-CAP      \ an attribute capacity outside the accepted range or a new row past the ceiling
+-6695 constant E-IR-ATTR-KIND     \ a field reader applied to an attribute of a different kind
 
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
@@ -544,7 +538,6 @@
 -8010 constant E-IR-SCHEMA-DUP     \ an opcode name this dialect's schema table already defines
 -8011 constant E-IR-SCHEMA-OPCODE  \ an opcode name no schema in this dialect's table defines
 -8012 constant E-IR-SCHEMA-KIND    \ a field reader applied to a schema whose effect shape does not carry that field
--8013 constant E-IR-SCHEMA-DIGEST  \ a presented schema-table digest does not match the recomputed one
 -8014 constant E-IR-SCHEMA-VERSION \ a schema major or minor version outside the accepted range
 -8015 constant E-IR-SCHEMA-TIE     \ a tied operand declaration naming no fixed entry, a mismatched type, or a field tied twice
 -8016 constant E-IR-SCHEMA-FIXED   \ a fixed-register declaration naming no fixed entry of its side's list, a field fixed twice, or a register no file numbers
@@ -649,7 +642,6 @@
 -8246 constant E-NTAPE-LITERAL  \ a literal value a token of that kind may not carry
 -8247 constant E-NTAPE-ORIGIN   \ an expansion parent that is not an already-appended token of this tape
 -8248 constant E-NTAPE-ROOT     \ an origin read on a directly lexed token, which has none
--8249 constant E-NTAPE-DIGEST   \ a presented tape digest does not match the recomputed one
 
 \ -8220..-8239 unassigned. The seven E-NIMM-* codes that held this block were
 \ the immediate-word contract table's, and they went with it on 2026-08-20: the
@@ -1052,26 +1044,11 @@
 -8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
 -8623 constant E-NPUB-TARGET  \ a sealed emission for another machine than the engine publishing it runs on: the code region holds only that machine's instructions, so another's bytes are refused before anything about the record is asked
 
-\ Pruning a machine operation nothing reads, and the string store: -8630..-8639
-\
-\ src/compiler/native/prune.f writes the module in which a data-stack load whose
-\ loaded cell nothing reads is not there, and these are its refusals. They are a
-\ rewriter's refusals rather than a validator's: the pass writes a module the
-\ ordinary src/compiler/native/regalloc-verify.f then decides, so anything the
-\ rewrite gets wrong about registers is caught there and not here. What is
-\ refused here is the pass being asked to work on something it cannot read.
-\
-\ -8635 is the emitter's, not the pass's: a multiply-add whose addend register
-\ is the zero register. Instruction selection writes those pairs as one
-\ operation now, and the encoder still refuses a form it cannot encode.
--8630 constant E-A64PRUNE-BIND   \ a prune attempted before the machine dialect's identities were bound, or a second binding over a live one
--8631 constant E-A64PRUNE-SHAPE  \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
--8633 constant E-A64PRUNE-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
--8634 constant E-A64PRUNE-CAP    \ more values in one function than the rewriter's value map holds
+\ Native emission and string storage: -8635..-8639
+\ A multiply-add with the zero register as addend encodes a different operation.
 -8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word is a plain multiply, so emitting one would encode a different operation
 -8636 constant E-NSTR-CAP       \ a string literal body larger than one segment's arena (512 KB), or one a stripped link copies into its window's closed pool past the room that pool kept (src/compiler/native/string.f WINDOW-CLOSE): a pool opens another segment for any other body its last one cannot hold. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
--8638 constant E-A64PRUNE-PLAN  \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The prune band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above
 
 \ The counted-loop closed form: -8660..-8669
 \
@@ -1312,6 +1289,7 @@
 -9171 constant E-FS-LIST-READ
 -9172 constant E-FS-LIST-ENTRY
 -9173 constant E-FS-LIST-CAPACITY
+-9174 constant E-FS-LIST-ACTIVE \ a context already owns an active listing
 
 \ IPv4 TCP host library: -9180..-9189.
 -9180 constant E-TCP4-FIRST

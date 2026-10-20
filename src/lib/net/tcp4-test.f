@@ -903,13 +903,14 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
    TCP4:SEND-SLICE-MS HALT-SLACK-MS + ;
 
 
-\ Slices of the flood to the sipping reader, each handed the rest of the flood
-\ and so at least LEAST-SPAN: the longest one's ms, once every one's is printed.
+\ Slices of the flood to the sipping reader, starting after the bytes already
+\ sent. Each gets the rest and at least LEAST-SPAN: the longest one's ms, once
+\ every one's is printed.
 \ It stops after SIP-SLICES, or at the first slice past the bound, so a slice
 \ that runs on for as long as the reader makes room is timed once.
-: SIPPED-SLICE-MS ( -- n )
+: SIPPED-SLICE-MS ( n -- n )
    s" sipped slices, ms:" type
-   0 0 0                                 \ the bytes sent, the slices timed, the longest
+   0 0                                   \ after bytes sent: slices timed, longest
    begin {: sent:n tries:n longest:n :}
       tries SIP-SLICES >= longest SLICE-BOUND-MS >= or
       FLOOD-BYTES sent - LEAST-SPAN < or if cr longest exit then
@@ -932,12 +933,16 @@ TASK:MIN-STACK TASK:TASK WRITER-TASK
 \ returns within the bound, where a send left to wait in the kernel, its every
 \ wait for room under a timeout of its own, ran on until the flood was in.
 : T-SLICE-SIPPED ( -- )
-   s" a reader taking bytes every 10 ms takes them while send slices run" T-LABEL
+   s" the pipe is full with at least 1 MiB left before the sipping reader starts" T-LABEL
    OPEN-PAIR
    PROBE-CONNECTION @ TCP4:>CONNECTION true TCP4:NODELAY! STATUS-ERRNO 0 T=
+   EMPTY-SLICE-MS {: sent:n took:n :}
+   took 0 >= TTRUE
+   FLOOD-BYTES sent - LEAST-SPAN >= TTRUE
+   s" a reader taking bytes every 10 ms takes them while send slices run" T-LABEL
    0 SIPPED ! 0 SIP-STOP ! 0 DRAIN-DONE !
    ['] SIP-WORK DRAIN-TASK TASK:ACTIVATE
-   SIPPED-SLICE-MS {: longest:n :}
+   sent SIPPED-SLICE-MS {: longest:n :}
    SIPPED atomic@ 0 > TTRUE
    s" and every slice, each handed 1 MiB or more, ends within one slice and a second" T-LABEL
    longest SLICE-BOUND-MS < TTRUE

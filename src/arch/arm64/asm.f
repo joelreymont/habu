@@ -22,6 +22,7 @@ public
 
 1  5 lshift constant REG-LIM     \ Rd/Rn/Rm/Rt register number
 1 16 lshift constant IMM16-LIM   \ move-wide immediate, SVC number
+1  8 lshift constant IMM8-LIM    \ floating move immediate
 1 12 lshift constant IMM12-LIM   \ add/sub/compare immediate, load/store offset field
 1  4 lshift constant COND-LIM    \ condition code
 1  2 lshift constant HW-LIM      \ move-wide shifted-half selector
@@ -56,6 +57,9 @@ private
 
 : ?IMM16 ( n -- n )
    dup IMM16-LIM OUT? IF s" asm: 16-bit immediate out of range" ASM-EXIT-RC die THEN ;
+
+: ?IMM8 ( n -- n )
+   dup IMM8-LIM OUT? IF s" asm: 8-bit immediate out of range" ASM-EXIT-RC die THEN ;
 
 : ?IMM12 ( n -- n )
    dup IMM12-LIM OUT? IF s" asm: 12-bit immediate out of range" ASM-EXIT-RC die THEN ;
@@ -120,25 +124,6 @@ private
 \ move-wide operands: destination register, 16-bit immediate, shifted half.
 : XMW3 ( n n n -- n n n )  ?HW rot XREG? rot ?IMM16 rot ;
 
-variable ARM-BASE
-variable ARM-RD
-variable ARM-RN
-variable ARM-RM
-variable ARM-IMM
-variable ARM-SH
-variable ARM-X
-variable ARM-Y
-variable ARM-Z
-
-: ARM-R3! ( n n n -- )
-   ARM-RM ! ARM-RN ! ARM-RD ! ;
-
-: ARM-R2! ( n n -- )
-   ARM-RN ! ARM-RD ! ;
-
-: ARM-I3! ( n n n -- )
-   ARM-IMM ! ARM-RN ! ARM-RD ! ;
-
 \ shifted-register 3-operand: rd rn rm
 : RRR ( n n n n -- n )
    {: rd:n rn:n rm:n op:n :}
@@ -155,14 +140,14 @@ variable ARM-Z
    op rd or  rn 5 lshift or  imm 10 lshift or MSK ;
 
 : RR ( n n n -- n )
-   ARM-BASE ! ARM-R2!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or MSK ;
+   {: rd:n rn:n op:n :}
+   op rd or  rn 5 lshift or MSK ;
 
 \ Unscaled SIGNED byte offset: the only spelling for an access below the base.
 : RRSI ( n n n n -- n )
-   ARM-BASE ! ARM-I3!
-   ARM-BASE @ ARM-RD @ or  ARM-RN @ 5 lshift or
-   ARM-IMM @ SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
+   {: rd:n rn:n imm:n op:n :}
+   op rd or  rn 5 lshift or
+   imm SIMM9-MASK and SIMM9-SHIFT lshift or MSK ;
 
 \ encodeBitMasks: mask -> nis. Encodable = a power-of-2-sized repeating element
 \ (2..64 bits) that is a rotated run of ones; 0 and all-ones are not.
@@ -187,17 +172,17 @@ variable RORE-E
    swap RORE-E @ RORE-R @ - lshift  or  REMSK @ and ;
 
 : HALVES= ( n n -- bool )
-   ARM-Y ! ARM-X !
-   1 ARM-Y @ 2 / lshift 1 -  dup  ARM-X @ and
-   swap  ARM-X @ ARM-Y @ 2 / rshift and  = ;
+   {: x:n e:n :}
+   1 e 2 / lshift 1 -  dup x and
+   swap x e 2 / rshift and = ;
 
 variable LELE
 
 : LELEM ( n -- n n )
-   ARM-X !
+   {: mask:n :}
    $40 LELE !
-   BEGIN  LELE @ 2 >  ARM-X @ LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
-   ARM-X @ LELE @ EMASK and  LELE @ ;
+   BEGIN  LELE @ 2 >  mask LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
+   mask LELE @ EMASK and  LELE @ ;
 
 variable LRI
 variable LROT-ELEM
@@ -216,10 +201,10 @@ variable LROT-E
    REPEAT ;
 
 : LIMM-PACK ( n n n -- n )
-   ARM-Z ! ARM-Y ! ARM-X !
-   ARM-Z @ $40 = IF $1000 ELSE 0 THEN
-   ARM-X @ 6 lshift or
-   ARM-Z @ 2 * 1 - $3F and $3F xor  ARM-Y @ 1 - or  or ;
+   {: rot:n ones:n e:n :}
+   e $40 = IF $1000 ELSE 0 THEN
+   rot 6 lshift or
+   e 2 * 1 - $3F and $3F xor  ones 1 - or or ;
 
 variable LIE   variable LIONES
 
@@ -233,9 +218,9 @@ variable LIE   variable LIONES
 \ Answers rather than dying, because >LIMM must die and LIMM? must choose. The
 \ nis is 0 when false, so ignoring the flag encodes `and rd, rn, #1`.
 : LIMM-TRY ( n -- n bool )
-   ARM-X !
-   ARM-X @ 0 =  ARM-X @ -1 =  or IF 0 LIMM-NO exit THEN
-   ARM-X @ LELEM LIE !                                  \ ( elem ), e in LIE
+   {: mask:n :}
+   mask 0 =  mask -1 =  or IF 0 LIMM-NO exit THEN
+   mask LELEM LIE !                                  \ ( elem ), e in LIE
    dup POPC64 LIONES !
    LIONES @ LIE @ = IF drop 0 LIMM-NO exit THEN
    LIONES @ LIE @ LROT                               \ ( r | -1 )
@@ -310,14 +295,14 @@ public
 
 \ logical-shift-left immediate (LSL #sh via UBFM): rd rn sh
 : ENC-LSLI ( n n n -- n )
-   XRDI ?SHIFT ARM-SH ! ARM-RN ! ARM-RD !
-   $D3400000 ARM-RD @ or  ARM-RN @ 5 lshift or
-   $40 ARM-SH @ - $3F and 16 lshift or  $3F ARM-SH @ - 10 lshift or MSK ;
+   XRDI ?SHIFT {: rd:n rn:n sh:n :}
+   $D3400000 rd or  rn 5 lshift or
+   $40 sh - $3F and 16 lshift or  $3F sh - 10 lshift or MSK ;
 
 \ logical-shift-right immediate: rd rn sh
 : ENC-LSRI ( n n n -- n )
-   XRDI ?SHIFT ARM-SH ! ARM-RN ! ARM-RD !
-   $D340FC00 ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-SH @ 16 lshift or MSK ;
+   XRDI ?SHIFT {: rd:n rn:n sh:n :}
+   $D340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
 
 \ compare (shifted reg) rn rm  -> subs xzr
 : ENC-CMP ( n n -- n )
@@ -326,8 +311,8 @@ public
 
 \ compare immediate rn imm12
 : ENC-CMPI ( n n -- n )
-   XR2ND ?IMM12 ARM-IMM ! ARM-RN !
-   $F100001F ARM-RN @ 5 lshift or  ARM-IMM @ 10 lshift or MSK ;
+   XR2ND ?IMM12 {: rn:n imm:n :}
+   $F100001F rn 5 lshift or  imm 10 lshift or MSK ;
 
 \ svc #imm  ; ret
 : ENC-SVC ( n -- n ) ?IMM16 $D4000001 swap 5 lshift or MSK ;
@@ -343,6 +328,15 @@ public
    {: rt:n rt2:n rn:n off:n :}
    rt rt2 = IF s" asm: load pair repeats a destination" ASM-EXIT-RC die THEN
    rt rt2 rn off $A9400000 PAIR-WORD ;
+
+: ENC-LDPPRE ( n n n n -- n )
+   {: rt:n rt2:n rn:n off:n :}
+   rt rt2 = IF s" asm: load pair repeats a destination" ASM-EXIT-RC die THEN
+   \ Register 31 is SP as a base and XZR as a destination.
+   rn 31 <> rt rn = rt2 rn = or and IF
+      s" asm: pair writeback overlaps a destination" ASM-EXIT-RC die
+   THEN
+   rt rt2 rn off $A9C00000 PAIR-WORD ;
 
 : ENC-STP ( n n n n -- n ) $A9000000 PAIR-WORD ;
 
@@ -412,16 +406,22 @@ public
    delta $7FFFF and 5 lshift $54000000 or  cond ?COND or MSK ;
 
 : ENC-CBZ ( n n -- n )
-   XR2ND swap ARM-RD ! $7FFFF and 5 lshift $B4000000 or ARM-RD @ or MSK ;
+   XR2ND {: rd:n delta:n :}
+   delta $7FFFF and 5 lshift $B4000000 or rd or MSK ;
 
 : ENC-CBNZ ( n n -- n )
-   XR2ND swap ARM-RD ! $7FFFF and 5 lshift $B5000000 or ARM-RD @ or MSK ;
+   XR2ND {: rd:n delta:n :}
+   delta $7FFFF and 5 lshift $B5000000 or rd or MSK ;
 
 \ FP (double): operands in the D-register file. DR2/DR3 bound every D field;
 \ XREG?/XR2ND then adds the reserved-register refusal to the one X operand.
 : ENC-FMOVXD ( n n -- n ) DR2 XREG? $9E670000 RR ;   \ X->D bits
 
 : ENC-FMOVDX ( n n -- n ) DR2 XR2ND $9E660000 RR ;   \ D->X bits
+
+: ENC-FMOVDI ( n n -- n )
+   {: rd:n imm:n :}
+   $1E601000 rd ?REG or imm ?IMM8 13 lshift or MSK ;
 
 : ENC-FADD ( n n n -- n ) DR3 $1E602800 RRR ;
 
@@ -436,29 +436,28 @@ public
 : ENC-UADDLV ( n n -- n ) DR2 $6E303800 RR ;
 
 : ENC-UMOVH ( n n n -- n )
-   ?LANEH ARM-IMM !  DR2 XR2ND ARM-R2!
-   $0E023C00 ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-IMM @ 18 lshift or MSK ;
+   ?LANEH {: lane:n :}
+   DR2 XR2ND {: rd:n rn:n :}
+   $0E023C00 rd or  rn 5 lshift or  lane 18 lshift or MSK ;
 
 \ conditional set ( rd cond -- w ): cset = csinc rd, xzr, xzr, invert(cond)
 : ENC-CSET ( n n -- n )
-   XR2ND ?COND ARM-IMM ! ARM-RD !
-   $9A9F07E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
+   XR2ND ?COND {: rd:n cond:n :}
+   $9A9F07E0 rd or  cond 1 xor 12 lshift or MSK ;
 
 \ Csetm = csinv rd, xzr, xzr, invert(cond): a full-cell 0/-1 flag.
 \ DDI 0596 CSETM excludes AL and NV from this conditional alias.
 : ENC-CSETM ( n n -- n )
    XR2ND
    dup C-AL OUT? IF s" asm: mask condition out of range" ASM-EXIT-RC die THEN
-   ARM-IMM ! ARM-RD !
-   $DA9F03E0 ARM-RD @ or  ARM-IMM @ 1 xor 12 lshift or MSK ;
+   {: rd:n cond:n :}
+   $DA9F03E0 rd or  cond 1 xor 12 lshift or MSK ;
 
 \ rd takes rn when the condition holds and rm when it does not, with no branch.
 \ The condition reads whatever last wrote the flags, Fcmp's NaN rule included.
 : ENC-CSEL ( n n n n -- n )
-   ?COND ARM-IMM !
-   XR3 ARM-R3!
-   $9A800000 ARM-RD @ or  ARM-RN @ 5 lshift or
-   ARM-RM @ 16 lshift or  ARM-IMM @ 12 lshift or MSK ;
+   ?COND {: cond:n :}
+   XR3 $9A800000 RRR  cond 12 lshift or MSK ;
 
 \ data-processing 2-source: shift-by-register, divide
 : ENC-LSLV ( n n n -- n ) XR3 $9AC02000 RRR ;
@@ -473,8 +472,8 @@ public
 
 \ arithmetic shift right immediate (SBFM)
 : ENC-ASRI ( n n n -- n )
-   XRDI ?SHIFT ARM-SH ! ARM-RN ! ARM-RD !
-   $9340FC00 ARM-RD @ or  ARM-RN @ 5 lshift or  ARM-SH @ 16 lshift or MSK ;
+   XRDI ?SHIFT {: rd:n rn:n sh:n :}
+   $9340FC00 rd or  rn 5 lshift or  sh 16 lshift or MSK ;
 
 \ nis = N<<12 | immr<<6 | imms. >LIMM already builds it inside the 13-bit field,
 \ so ?NIS only fires for a caller that packs its own value.
@@ -528,18 +527,16 @@ public
 : ENC-FSQRT ( n n -- n )  DR2 $1E61C000 RR ;
 
 : ENC-FCMP ( n n -- n )
-   DR2 ARM-RM ! ARM-RN !
-   $1E602000 ARM-RN @ 5 lshift or  ARM-RM @ 16 lshift or MSK ;
+   DR2 {: rn:n rm:n :}
+   $1E602000 rn 5 lshift or  rm 16 lshift or MSK ;
 
 : ENC-FCMP0 ( n -- n ) ?REG $1E602008 swap 5 lshift or MSK ;
 
 \ Csel on the D file: same four operand positions, ftype says double. No operand
 \ reaches XREG? - d18 holds no platform state - and the condition reads the flags.
 : ENC-FCSEL ( n n n n -- n )
-   ?COND ARM-IMM !
-   DR3 ARM-R3!
-   $1E600C00 ARM-RD @ or  ARM-RN @ 5 lshift or
-   ARM-RM @ 16 lshift or  ARM-IMM @ 12 lshift or MSK ;
+   ?COND {: cond:n :}
+   DR3 $1E600C00 RRR  cond 12 lshift or MSK ;
 
 : ENC-SCVTF ( n n -- n ) DR2 XREG? $9E620000 RR ;
 

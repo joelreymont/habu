@@ -27,11 +27,8 @@ variable OUTER-TOK
 variable INNER-TOK
 variable NEXT-TOK
 variable BASE-N
-variable BASE-EVENT
 variable BASE-STR
 variable AFTER-ADD-STR
-variable EVENT-N
-variable EVENT-ID
 variable FIELD-N
 variable STRING-N
 variable RC
@@ -233,8 +230,6 @@ variable RC
       s" TFO-L8 ( n n n -- n ) TYPE-FIELD-OWNER:TX-CELLS-FOR" OWNER-WORD-LIVE ;
 
 : COMMITTED-EVENT-STABLE ( -- )
-   DECL-EVENT:COUNT EVENT-N @ T=
-   DECL-EVENT:IDENTITY EVENT-ID @ T=
    DECL-EVENT:DEPTH 1 T=
    TYPE-FIELD:COUNT FIELD-N @ T=
    TF-STR-U@ STRING-N @ T=
@@ -288,7 +283,7 @@ public
 
 private
 
-DECL-EVENT:COUNT BASE-EVENT !
+TYPE-FIELD:COUNT BASE-N !
 
 public
 
@@ -298,8 +293,8 @@ PRODUCT row
 
 private
 
-BASE-EVENT @ DECL-EVENT:FAMILY@ FAM !
-BASE-EVENT @ 2 + DECL-EVENT:FIELD@ TYPE-FIELD:SCHEMA@ SCH !
+s" row" TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop FAM !
+BASE-N @ TYPE-FIELD:SCHEMA@ SCH !
 
 \ PREPARE returns the exact provisional count without changing any owner.
 TYPE-FIELD:COUNT BASE-N !
@@ -402,7 +397,6 @@ TYPE-FIELD:TX-DEPTH 0 T=
 \ A committed declaration frame is immutable until its owner finalizes or
 \ rolls it back. Every token-bearing operation that requires an open frame
 \ rejects the exact retained token before changing published or live state.
-DECL-EVENT:COUNT BASE-EVENT !
 TYPE-FIELD:COUNT BASE-N !
 TF-STR-U@ BASE-STR !
 DECL-EVENT:OPEN TOK !
@@ -411,8 +405,6 @@ TOK @ FAM @ s" event-rollback" SCH @
    6 1 6 cells CELL CELL 0 DECL-EVENT:FIELD TOK !
 TOK @ DECL-EVENT:PREPARE
 TOK @ DECL-EVENT:COMMIT
-DECL-EVENT:COUNT EVENT-N !
-DECL-EVENT:IDENTITY EVENT-ID !
 TYPE-FIELD:COUNT FIELD-N !
 TF-STR-U@ STRING-N !
 COMMITTED-EVENT-STABLE
@@ -455,13 +447,11 @@ RC @ E-DEV-TX T=
 COMMITTED-EVENT-STABLE
 
 TOK @ DECL-EVENT:ROLLBACK
-DECL-EVENT:COUNT BASE-EVENT @ T=
 TYPE-FIELD:COUNT BASE-N @ T=
 TF-STR-U@ BASE-STR @ T=
 DECL-EVENT:DEPTH 0 T=
 
 \ FINALIZE releases the retained frame while preserving its publication.
-DECL-EVENT:COUNT BASE-EVENT !
 TYPE-FIELD:COUNT BASE-N !
 DECL-EVENT:OPEN TOK !
 TOK @ FAM @ DECL-EVENT:DECL TOK !
@@ -469,11 +459,9 @@ TOK @ FAM @ s" event-finalize" SCH @
    6 1 6 cells CELL CELL 0 DECL-EVENT:FIELD TOK !
 TOK @ DECL-EVENT:PREPARE
 TOK @ DECL-EVENT:COMMIT
-DECL-EVENT:COUNT BASE-EVENT @ 2 + T=
 TYPE-FIELD:COUNT BASE-N @ 1 + T=
 DECL-EVENT:DEPTH 1 T=
 TOK @ DECL-EVENT:FINALIZE
-DECL-EVENT:COUNT BASE-EVENT @ 2 + T=
 TYPE-FIELD:COUNT BASE-N @ 1 + T=
 DECL-EVENT:DEPTH 0 T=
 

@@ -8,7 +8,7 @@ using XML
 64 constant CAP
 $400 constant TEXT-CAP
 $31415926 constant CANARY
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create BEFORE CANARY ,
 create STORAGE CAP STORAGE-BYTES allot
 create AFTER CANARY ,

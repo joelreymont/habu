@@ -346,6 +346,8 @@ create TEXT CAP allot                  variable TEXT-U
 \ The copy's util.f is the checkout's with one definition appended. The entry
 \ selects either the production source builder or the child that also observes
 \ dispatch restoration after a caught refusal.
+\ The ordinary CLI forwards a failed maker's output to stderr; the preloaded
+\ dispatch child invokes the source driver directly, whose status is on stdout.
 : BUILD-PROBE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n entry:ptr entryu:n :}
    s" src/core/util.f" UTIL$ COPY-FILE-STREAM
    UTIL$ a u APPEND-FILE
@@ -365,7 +367,7 @@ create TEXT CAP allot                  variable TEXT-U
       s" tools/native-build.f" BUILD-PROBE
    RC @ RC-BUILD T=
    s" habu: in probe-nz: at '0='" SAYS
-   s" native-build: uncaught throw code 70" PRINTS
+   s" native-build: uncaught throw code 70" SAYS
    IMAGE$ FILE? 0= TTRUE ;
 
 \ `0<>` is src/lib/prelude.f's, which the window has not loaded at util.f.
@@ -385,7 +387,7 @@ create TEXT CAP allot                  variable TEXT-U
       s" tools/native-build.f" BUILD-PROBE
    RC @ RC-BUILD T=
    s" habu: in probe-stop: at '0='" SAYS
-   s" native-build: uncaught throw code 70" PRINTS
+   s" native-build: uncaught throw code 70" SAYS
    IMAGE$ FILE? 0= TTRUE ;
 
 : RUN ( -- )

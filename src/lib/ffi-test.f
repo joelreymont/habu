@@ -101,6 +101,7 @@ FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n )
 \ through `u32` must be $FFFFFFFF, never -1.
 FUNCTION: FFI-T-CLOSE close ( n -- i32 ) ;FUNCTION
 FUNCTION: FFI-T-CLOSE-U32 close ( n -- u32 ) ;FUNCTION
+FUNCTION: FFI-T-ATOI atoi ( ptr u8 -- i32 ) ;FUNCTION
 
 \ Nominal-input fixture proves ABI-cell identity does not erase a role: the
 \ conversion is visible at this call site and the checker keeps ffi-ctx apart
@@ -264,6 +265,19 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-OUTCOME-EXITED=
    outu erru ;
+
+\ A bounded mixed call guards every register extent, including x8. Staging a
+\ protected DATA pointer there must refuse before the foreign call. This is the
+\ same stale slot the mixed binding below must clear after a low-arity call.
+: FFI-T-STALE-SRC$ ( -- ptr u8 n )
+   s\" require src/lib/ffi-abi.f\ns\" getpid\" FFI:PROCESS 0 FFI:DECLARE constant ZZ-ROW\n: ZZ-CALL ( -- ) data-base $28 + 1 8 FFI:WRITABLE! ZZ-ROW FFI:CALL-ABI drop ;\nZZ-CALL\n" ;
+
+: FFI-T-STALE-REFUSAL ( -- )
+   s" an uncleared x8 extent into protected DATA is refused" T-LABEL
+   FFI-T-STALE-SRC$ ENGINE-ERROR:SEAL-VIOLATION FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru LEN>N 0 T= ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
 \ needle follows src/lib/errors.f instead of repeating its number.
@@ -454,7 +468,7 @@ PROCESS-SYMBOLS
 \ The same declaration exercises Apple's stack varargs and Linux's registers.
 FUNCTION: FFI-T-PRINTF snprintf ( ptr u8 n ptr u8 n r ptr u8 -- i32 )
    3 VARIADIC
-   0 1 WRITES-ARG
+   0 64 WRITES-BYTES
 ;FUNCTION
 FUNCTION: FFI-T-SNPRINT-SHORT snprintf ( ptr u8 n ptr u8 n -- i32 )
    3 VARIADIC
@@ -584,8 +598,12 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
    FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
 
-   s" a C int result is sign-extended from its low half" T-LABEL
+   s" C int results preserve zero, positive and negative values" T-LABEL
+   s\" 0\z" drop FFI-T-ATOI 0 T=
+   s\" 2147483647\z" drop FFI-T-ATOI 2147483647 T=
+   s\" -2147483648\z" drop FFI-T-ATOI -2147483648 T=
    -1 FFI-T-CLOSE -1 T=
+   FFI:ERRNO 9 T=                                \ EBADF immediately after close(-1)
    s" an unsigned int result is masked to its low half" T-LABEL
    -1 FFI-T-CLOSE-U32 $FFFFFFFF T=
 
@@ -605,9 +623,14 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-STUBS
 
+   FFI-T-STALE-REFUSAL
+   s" a stale high-register extent cannot affect a later mixed call" T-LABEL
+   data-base $28 + 1 8 FFI:WRITABLE!
+   FFI-T-GETPID$ 0 T<>
+   1.5 4 FFI-T-SCALBLN-CALL 24.0 f= T-ASSERT
+
    1.25 2.5 3.0 FFI-T-FMA-CALL 6.125 f= T-ASSERT
    1.25 2.5 3.0 FFI-T-FMAF-CALL 6.125 f= T-ASSERT
-   1.5 4 FFI-T-SCALBLN-CALL 24.0 f= T-ASSERT
 
    9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
 

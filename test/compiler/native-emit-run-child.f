@@ -139,6 +139,16 @@ private
    WBND [: RUN-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
    $11 $22 + $33 + $44 + $55 + 2 * T= 0 T= ;
 
+: RUN-WIDE-FRAME-BODY ( IR-CTX:ctx -- n )
+   WIDE-FRAME-EMITTED
+   PUBLISH EXEC0 ;
+
+: RUN-WIDE-FRAME-CASE ( -- )
+   s" the emitted top-page frame returns its stored value and restores SP"
+   T-LABEL
+   WBND [: RUN-WIDE-FRAME-BODY ;] IR-CTX:WITH-CONTEXT
+   42 T= ;
+
 : RUN-REMAT-BODY ( IR-CTX:ctx -- n n )
    REMAT-EMITTED
    NFIX:RESULT-REG
@@ -172,6 +182,7 @@ public
    RUN-REUSE-CASE
    RUN-WIDE-CASE
    RUN-SPILL-CASE
+   RUN-WIDE-FRAME-CASE
    RUN-REMAT-CASE
    RUN-SECOND-CASE
    T-REPORT ;

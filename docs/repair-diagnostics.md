@@ -377,19 +377,33 @@ takes as a load, a superset of what the run loads, which loads nothing from a
 path the resolver refuses. The composition loads what the engine loads:
 
 - A runtime string loader in a definition, `included`, `required` or
-  `provided`, is checked as an ordinary call. Its path may come from a local
-  or `SCRIPT-ARGV$`; the composition does not run the word or read its file.
-  A missing file, duplicate definition in it, or path the resolver refuses
-  therefore refuses nothing, and the words it might define are unavailable
-  to later definitions. A wrong argument effect is a checker refusal at the
-  call. The walk records such a loader only right after a path literal the
-  resolver takes, however long as written, and reads past any other, as
-  both read past `UNDEFINE-IF-DEFINED` in a definition: each is the word's
-  run, which no check makes. `include` and `require` in a definition are
-  immediate: the engine refuses the definition as `E-UNMODELED-IMMEDIATE`
-  and loads nothing, while the walk and `--verify-only`'s composition still
-  read the file each names, a superset, so a missing one is
-  `E-MISSING-SOURCE` at the loader word.
+  `provided`, is checked as an ordinary call, and the composition does not
+  run the word. An `included` or `required` right after a path literal on
+  the body's straight line, with no control word or bracket before it, loads
+  whenever the word runs, so the composition loads its file whether or not
+  the word is called: at the first top-level statement boundary after the
+  definition where the file has closed every package and file-level `using`
+  it opened, in the order of the loaders, and at the end of the file at the
+  latest. A quotation `[: … ;]` is a straight line of its own, nested in the
+  line that holds it and bent from its `[:` when that line is: a loader on
+  its straight line loads the same way whether or not the quotation runs, a
+  control word or bracket inside it bends only its own line, and its `;]`
+  ends those bends, so the line after it goes on straight. The run alone
+  loads the file of any other runtime loader: one under a condition, outside
+  a quotation or inside one, save the arm a target predicate
+  (`HB-TARGET-LINUX?`, `HB-TARGET-MACOS?`, `HB-TARGET-LINUX-X86-64?`) right
+  before an `if` runs; one whose path comes from a local or `SCRIPT-ARGV$`;
+  `provided`; an `included` of a source the engine already provides; and one
+  whose path the resolver refuses. The words such a file defines are
+  unavailable to later definitions. A wrong argument effect is a checker
+  refusal at the call. The walk records such a loader only right after a
+  path literal the resolver takes, however long as written, and reads past
+  any other, as both read past `UNDEFINE-IF-DEFINED` in a definition: each
+  is the word's run, which no check makes. `include` and `require` in a
+  definition are immediate: the engine refuses the definition as
+  `E-UNMODELED-IMMEDIATE` and loads nothing, while the walk and
+  `--verify-only`'s composition still read the file each names, a superset,
+  so a missing one is `E-MISSING-SOURCE` at the loader word.
 - At top level, `provided` records a path as loaded and opens no file: a path
   no file is at refuses nothing. A path no literal gives, or one the resolver
   refuses, is still `E-LOADER-FORM`.

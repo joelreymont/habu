@@ -16,6 +16,8 @@ $37D8 constant INCLUDE-EVALERR-CELL
 \ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
+$2D68 constant INCLUDE-SRCLOC-OWNED-CELL
+$2D70 constant INCLUDE-SRCLOC-OWNEDLEN-CELL
 \ The design seal's watermark (src/lib/policy.f), spelled here the same way and
 \ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
 $4898 constant INCLUDE-POLICY-NDICT-CELL
@@ -83,14 +85,27 @@ variable REQUIRE-SAVE-BASE
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
 
+\ The loader's first callback cells are typed storage, whose generated
+\ accessors need TYPE-DECL's evaluator before REQUIRE-REG:MARK exists. Their
+\ source is closed here; INCLUDE-EVALUATE replaces this binding with the
+\ require rollback boundary once the registry is ready.
+using TYPE-DECL
+package INCLUDE-EVAL-BIND
+private
+: BOOT ( -- ) [: evaluate-closed ;] is TYPE-DECL:TDECL-EVAL-XT ;
+BOOT
+;package
+-1 TDECL-EVAL-ARMED !
+;using
+
 \ An invocation that owns source bytes supplies both filesystem answers through
 \ this loader-local pair. A newly source-loaded target gets its own pair, so its
 \ require registry and source frames remain independent of the retained host.
 package SOURCE-INPUT
 private
 
-defer CANON-XT ( ptr u8 n -- ptr u8 n bool )
-defer READ-XT ( ptr u8 n ptr u8 n -- ptr u8 n )
+TYPED-VARIABLE CANON-XT [ ptr u8 n -- ptr u8 n bool ]
+TYPED-VARIABLE READ-XT [ ptr u8 n ptr u8 n -- ptr u8 n ]
 defer OBSERVE-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
 defer CLEAR-XT ( -- )
 
@@ -100,17 +115,25 @@ defer CLEAR-XT ( -- )
 
 public
 
-: CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT ;
+: CANON ( ptr u8 n -- ptr u8 n bool ) CANON-XT @ execute ;
 : READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n root:ptr rootu:n :}
-   path pathu root rootu READ-XT {: bytes:ptr size:n :}
+   path pathu root rootu READ-XT @ execute {: bytes:ptr size:n :}
    path pathu root rootu bytes size OBSERVE-XT
    bytes size ;
 
 : USE ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
    {: canon read :}
-   canon is CANON-XT
-   read is READ-XT ;
+   canon CANON-XT !
+   read READ-XT ! ;
+
+: WITH ( [ ptr u8 n -- ptr u8 n bool ] [ ptr u8 n ptr u8 n -- ptr u8 n ] [ -- ] -- )
+   {: canon read action :}
+   CANON-XT @ READ-XT @ {: old-canon old-read :}
+   canon read USE
+   action catch {: rc:n :}
+   old-canon old-read USE
+   rc 0 <> if rc throw then ;
 
 : USE-OBSERVER ( [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] -- )
    {: observe clear :}
@@ -125,35 +148,6 @@ public
 ;package
 
 SOURCE-INPUT:OBSERVER-DEFAULT
-
-\ A source load is also the publication boundary for an explicitly selected
-\ package unit. The continuation keeps the ordinary frame and scope behavior;
-\ callers may bind a unit importer after the complete loader has been loaded.
-package SOURCE-UNIT
-private
-
-defer LOAD-XT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-
-: ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
-   0 sourceu q execute ;
-
-public
-
-variable GEN
-: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ) 1 GEN +! LOAD-XT ;
-: USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) is LOAD-XT ;
-: RESET ( -- ) [: ORDINARY ;] is LOAD-XT ;
-
-\ Run one source quotation with the engine's unit hook armed: the guard sees
-\ every token the interpreter dispatches and may refuse it or, at the parsed
-\ package name, skip the body. The engine refuses a busy hook or a quotation
-\ outside live code with 70 before the source runs.
-: GUARDED ( [ ptr u8 n n n -- n ] [ -- ] -- n ) unit-compile-run ;
-
-;package
-
-SOURCE-UNIT:RESET
 
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
@@ -637,6 +631,27 @@ public
    0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
    0 JOIN-U ! 0 OWNER-U !
    0 ENGINE-U ! 0 ENGINE-READ ! ;
+
+: FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
+   \ The receiver's active source scope owns these paths and cursors. Public
+   \ ENGINE!, RESOLVED-ROOT$, policy, path-stack and require state stay live.
+   CWD-BUF BYTE-VIEW PATH-BYTES visit execute
+   CWD-U BYTE-VIEW CELL visit execute
+   CANON-BUF BYTE-VIEW PATH-BYTES visit execute
+   CANON-U BYTE-VIEW CELL visit execute
+   NORMAL-U BYTE-VIEW CELL visit execute
+   CANDIDATE-BUF BYTE-VIEW PATH-BYTES visit execute
+   CANDIDATE-U BYTE-VIEW CELL visit execute
+   JOIN-BUF BYTE-VIEW WORK-BYTES visit execute
+   JOIN-U BYTE-VIEW CELL visit execute
+   WORK-BUF BYTE-VIEW WORK-BYTES visit execute
+   ZBUF BYTE-VIEW WORK-BYTES visit execute
+   REQUEST-BUF BYTE-VIEW WORK-BYTES visit execute
+   REQUEST-U BYTE-VIEW CELL visit execute
+   OWNER-SAVE BYTE-VIEW PATH-BYTES visit execute
+   CURRENT-A BYTE-VIEW CELL visit execute
+   CURRENT-U BYTE-VIEW CELL visit execute
+   SCOPES BYTE-VIEW CELL visit execute ;
 
 ;package
 
@@ -1336,8 +1351,8 @@ variable SCRIPT-NAMED-PEND
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
 \ The loader's evaluation boundary. Every loaded file (require, include,
-\ `--load`) and every generated core declaration crosses it through the two
-\ bindings at the end of this file, so each runs as a closed program: its floor
+\ `--load`) and every generated core declaration crosses the evaluator
+\ installed below, so each runs as a closed program: its floor
 \ is the loader's depth and whatever it leaves is refused E-EVAL-RESIDUE. A file
 \ that leaves cells is fixed at the file, never here.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
@@ -1345,6 +1360,50 @@ variable SCRIPT-NAMED-PEND
    [: 2dup evaluate-closed ;] catch {: rc:n :}
    2drop
    rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
+
+\ Once REQUIRE-REG is ready, generated declarations also roll back its rows
+\ on failure. Stage builders without include.f leave the evaluator unarmed.
+\ The `is` target is qualified because parsing words do not resolve through
+\ using-imports (bare `is TDECL-EVAL-XT` was measured to fail with rc 70).
+using TYPE-DECL
+
+package INCLUDE-EVAL-BIND
+private
+: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
+INSTALL
+;package
+;using
+
+\ A source load is also the publication boundary for an explicitly selected
+\ package unit. The continuation keeps the ordinary frame and scope behavior;
+\ callers may bind a unit importer after the complete loader has been loaded.
+package SOURCE-UNIT
+private
+
+TYPED-VARIABLE LOAD-XT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
+
+: ORDINARY ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   0 sourceu q execute ;
+
+public
+
+variable GEN
+: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   1 GEN +! LOAD-XT @ execute ;
+: USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
+: CURRENT ( -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
+: RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
+
+\ Run one source quotation with the engine's unit hook armed: the guard sees
+\ every token the interpreter dispatches and may refuse it or, at the parsed
+\ package name, skip the body. The engine refuses a busy hook or a quotation
+\ outside live code with 70 before the source runs.
+: GUARDED ( [ ptr u8 n n n -- n ] [ -- ] -- n ) unit-compile-run ;
+
+;package
+
+SOURCE-UNIT:RESET
 
 \ ---- Ordered source-composition event log (TFAM 5, item 5) --------------
 \ The loader words append one event per source-composition act so a restricted
@@ -1563,6 +1622,12 @@ variable LAST-LOAD-EVAL-OK
 : CHECK-ACTIVE ( -- )
    INCLUDE-DEPTH @ 0 <= if s" include: depth underflow" INCLUDE-DIE then ;
 
+: FRAME-EXEC-SOURCE ( ptr u8 -- ptr u8 )
+   {: frame:ptr :}
+   frame FR-EXEC-COPY CELL / ptr-field @ dup 0= if
+      drop frame HEADER-BYTES +
+   then ;
+
 \ The engine's refusal tail prints ` at <path>:<line>` from these two cells and
 \ nothing else decides when they are right: they are republished on every PUSH
 \ and every POP, so they name the file the interpreter is inside and read 0 when
@@ -1571,11 +1636,21 @@ variable LAST-LOAD-EVAL-OK
    INCLUDE-DEPTH @ 0 <= if
       0 data-base INCLUDE-SRCLOC-PATH-CELL + !
       0 data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
+      0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
+      0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
       exit
    then
    TOP@ {: frame:ptr :}
    frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
-   frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + ! ;
+   frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
+   frame FR-SIZE + CELL-VIEW @ dup 0 < if
+      drop 0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
+      0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
+      exit
+   then
+   data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
+   frame FRAME-EXEC-SOURCE NULL-PTR -
+      data-base INCLUDE-SRCLOC-OWNED-CELL + ! ;
 
 \ The bytes FRAME maps: its header and its room.
 : MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
@@ -1725,6 +1800,7 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
       a SOURCE u BYTE-COPY
    then
    u TOP@ FR-SIZE + CELL-VIEW !
+   PUBLISH-LOCATION
    SOURCE u ;
 
 : READ-SOURCE ( -- ptr u8 n )
@@ -1733,7 +1809,7 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 \ The original bytes remain in the frame while a shebang is rewritten in a
 \ private execution copy. Range positions continue to name the full source.
 : EXEC-SOURCE ( -- ptr u8 )
-   TOP@ FR-EXEC-COPY CELL / ptr-field @ dup 0= if drop SOURCE then ;
+   TOP@ FRAME-EXEC-SOURCE ;
 
 \ A loaded program starts on an empty data stack. Keep the range in its source
 \ frame across catch; copied arguments beneath evaluate-range would let an
@@ -1815,6 +1891,7 @@ private
          a copy u BYTE-COPY
          copy u SHEBANG-COMMENT
          copy TOP@ FR-EXEC-COPY CELL / ptr-field !
+         PUBLISH-LOCATION
       then
    then ;
 
@@ -1941,8 +2018,8 @@ package SOURCE-INPUT
 public
 
 : RESET ( -- )
-   [: SOURCE-ROOT:CANON-OS ;] is CANON-XT
-   [: SOURCE-ROOT:READ-OS ;] is READ-XT ;
+   [: SOURCE-ROOT:CANON-OS ;] CANON-XT !
+   [: SOURCE-ROOT:READ-OS ;] READ-XT ! ;
 
 ;package
 
@@ -2188,24 +2265,5 @@ public
    a u INCLUDE-DIAG+
    INCLUDE-DIAG$ INCLUDE-DIE ;
 
-\ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
-\ evaluate only through the closed INCLUDE-EVALUATE boundary; engines without
-\ include.f (stage builders) leave TYPE-DECL's armed flag 0 and generation stays
-\ fail-closed. Bind the defer (wrapped so the quotation compiles), then arm.
-\ Each binder is a package private rather than an 85th global in this file: it is
-\ a one-shot installer with no caller, and the `is` target has to be written
-\ qualified because `is` is a parsing word and parsing words resolve outside
-\ using-imports (measured: bare `is TDECL-EVAL-XT` under `using TYPE-DECL`
-\ answers `hb: is: no deferred word named TDECL-EVAL-XT`, rc 70).
-using TYPE-DECL
-
-package INCLUDE-EVAL-BIND
-private
-: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
-INSTALL
-;package
-
--1 TDECL-EVAL-ARMED !
-;using
 
 ;using

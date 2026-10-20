@@ -3,7 +3,6 @@
 
 require src/lib/string.f
 require src/lib/source.f
-require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 require src/habu/app-image.f     \ ... and the assembler under it (src/habu/aot-lib.f)
@@ -258,7 +257,9 @@ variable REPORT-U
    s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
    s" : ABT-RUN ( -- ) 1 CLO-TABLES 1 PLAN-TABLES ABT-BUILD" GE-SRC+
    s"  ABT-CHAIN 0 CLO ! 16 0 CLO-LEN ! XREF-NULL 0 CLO-REC !" GE-SRC+
-   s"  0 0 NEWOFF ! 1 NCLO ! 0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s"  0 0 NEWOFF ! 1 NCLO ! 0 POOL-TABLES" GE-SRC+
+   s"  0 PN ! 0 POOL-N ! 0 0 PSTART ! 0 0 PEND !" GE-SRC+
+   s"  0 COPY-COMPACT-BLOB ;" GE-SRC-LINE
    s" ABT-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 

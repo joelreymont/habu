@@ -6,7 +6,7 @@ using EDIT
 4 constant CAP
 $100 constant OUTPUT-CAP
 $12345678 constant CANARY
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 create BEFORE CANARY ,
 create STORAGE CAP STORAGE-BYTES allot
 create AFTER CANARY ,

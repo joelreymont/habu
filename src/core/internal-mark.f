@@ -179,7 +179,7 @@ variable IMK-QI
 \ token whatever the body around it is.
 \
 \ So the honest whitebox host is an engine built without this pass, and the
-\ builder asks for one here, the way src/core/top-row.f takes HABU_TOP_TIER:
+\ builder asks for one here:
 \ test/whitebox-engine.f sets HABU_WHITEBOX_IMAGE=1 in the environment of the
 \ ONE tools/native-build.f run whose image the gate hands to whitebox suites,
 \ under its own content key and never over bin/hb. The variable is read at

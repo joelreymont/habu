@@ -8,7 +8,7 @@
 \ for an open record publishes nothing at all, leaving the context's module
 \ count, its scratch cursor, the table counts and the builder itself exactly as
 \ they were, so the caller can finish the record and freeze again; a successful
-\ freeze transfers the seventeen tables to the context as read-only views and
+\ freeze transfers the sixteen tables to the context as read-only views and
 \ takes every mutation word away from the old handle; abort releases all
 \ provisional storage, shown by building and abandoning far more modules than
 \ the arena registry has slots for; and each way of misusing a handle -
@@ -27,7 +27,7 @@ package IR-BUILD-TEST
 private
 
 16 constant TSLOTS                   \ pins the builder registry capacity
-17 constant TTABLES                  \ pins the tables one module is made of
+16 constant TTABLES                  \ pins the tables one module is made of
 
 \ ---- bindings ----------------------------------------------------------------
 \ An AArch64 Darwin contract with the baseline instruction set and plain
@@ -47,7 +47,7 @@ private
    IR-BUILD:PLAN-BEGIN
    16 256 IR-BUILD:PLAN-SYMBOLS
    16 64 IR-BUILD:PLAN-TYPES
-   16 64 IR-BUILD:PLAN-ATTRS
+   16 IR-BUILD:PLAN-ATTRS
    8 IR-BUILD:PLAN-SOURCES
    8 64 IR-BUILD:PLAN-SCHEMAS
    16 16 128 IR-BUILD:PLAN-OPS
@@ -383,12 +383,9 @@ private
    TTRUE TTRUE TTRUE ;
 
 \ ---- every published view reaches its table ----------------------------------
-\ Seventeen views are published, and a reader of the wrong one would either fail
+\ Sixteen views are published, and a reader of the wrong one would either fail
 \ its header check or answer about another table, so reading one record or one
 \ count through each is what proves the publication is wired correctly.
-32 constant VW-CAP
-create VW-BUF VW-CAP allot
-
 : VW-A-BODY ( IR-CTX:ctx -- bool bool bool n )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
@@ -396,7 +393,7 @@ create VW-BUF VW-CAP allot
    c b I64 {: ty:IR-ID:ir-type-id :}
    c b SIGT {: sig:IR-ID:ir-type-id :}
    c b K-CONST OPC-SYM {: opc:IR-ID:ir-symbol-id :}
-   c b s" note" IR-BUILD:INTERN-TEXT-ATTR {: at:IR-ID:ir-attr-id :}
+   c b 23 IR-BUILD:INTERN-INT-ATTR {: at:IR-ID:ir-attr-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FKEY {: key:IR-ID:ir-module-key :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS opc s" hir.const" IR-SYM:FEQ?
@@ -404,12 +401,12 @@ create VW-BUF VW-CAP allot
       IR-ID:TYPE-LOCAL ty IR-ID:TYPE-LOCAL =
    m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS key opc 0 IR-SCHEMA:FRESULT@
       IR-ID:TYPE-LOCAL ty IR-ID:TYPE-LOCAL =
-   m IR-BUILD:FATTR-POOL m IR-BUILD:FATTR-ROWS at VW-BUF VW-CAP IR-ATTR:FTEXT-COPY ;
+   m IR-BUILD:FATTR-ROWS at IR-ATTR:FINT@ ;
 
 : VW-A-CASE ( -- )
    s" the pool views serve the records the builder interned" T-LABEL
    BND [: VW-A-BODY ;] IR-CTX:WITH-CONTEXT
-   4 T= TTRUE TTRUE TTRUE ;
+   23 T= TTRUE TTRUE TTRUE ;
 
 : VW-B-BODY ( IR-CTX:ctx -- n n n n n n n )
    {: c:IR-CTX:ctx :}
@@ -623,7 +620,7 @@ create VW-BUF VW-CAP allot
 
 \ ---- abort ends a builder, and the registry it ends is this file's -----------
 \ Building and abandoning TSLOTS modules in one context is TSLOTS times
-\ seventeen arenas, far more than any one module needs and far more than the
+\ sixteen arenas, far more than any one module needs and far more than the
 \ deleted arena registry could have held at once: they are records in the
 \ context's region and cost it nothing but bytes. The last builder is the one
 \ past the BUILDER registry's own capacity, which is a named refusal of its own
@@ -645,7 +642,7 @@ create VW-BUF VW-CAP allot
    E-IR-BUILD-SLOTS T= TSLOTS TTABLES * T= ;
 
 \ ---- a builder that runs out part-way leaves nothing behind -------------------
-\ A module's seventeen tables are made in order and a constructor can refuse
+\ A module's sixteen tables are made in order and a constructor can refuse
 \ one, so a creation can stop with nine tables made and eight to go. What used
 \ to be at stake was the arena registry: the nine held nine of sixty-four slots
 \ that only the whole context tearing down would reclaim, and the arena scope
@@ -659,7 +656,7 @@ create VW-BUF VW-CAP allot
    IR-BUILD:PLAN-BEGIN
    16 256 IR-BUILD:PLAN-SYMBOLS
    16 64 IR-BUILD:PLAN-TYPES
-   16 64 IR-BUILD:PLAN-ATTRS
+   16 IR-BUILD:PLAN-ATTRS
    8 IR-BUILD:PLAN-SOURCES
    8 64 IR-BUILD:PLAN-SCHEMAS
    0 16 128 IR-BUILD:PLAN-OPS
@@ -684,15 +681,15 @@ create VW-BUF VW-CAP allot
 
 \ ---- retire releases a PUBLISHED module's storage -----------------------------
 \ The other side of the freeze, and the same measurement. ABORT above proves an
-\ ABANDONED builder gives its seventeen arenas back; this proves a module that
-\ was published and then superseded gives its seventeen back too. Until RETIRE
+\ ABANDONED builder gives its sixteen arenas back; this proves a module that
+\ was published and then superseded gives its sixteen back too. Until RETIRE
 \ existed the only way a published slot came back was the whole context tearing
 \ down, so a chain of passes that each rewrote the last held every intermediate
 \ module to the end of the compilation - which is what ran the native chain out
 \ of arenas once a routine both combined and spilled.
 \
 \ Freezing and retiring RT-CYCLES modules in one context is RT-CYCLES times
-\ seventeen arenas, each of them a record in the context's own region.
+\ sixteen arenas, each of them a record in the context's own region.
 : RT-CYCLE ( IR-CTX:ctx -- IR-CTX:ctx )
    dup {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
@@ -934,7 +931,7 @@ create VW-BUF VW-CAP allot
    IR-BUILD:PLAN-BEGIN
    2 64 IR-BUILD:PLAN-SYMBOLS
    4 32 IR-BUILD:PLAN-TYPES
-   4 32 IR-BUILD:PLAN-ATTRS
+   4 IR-BUILD:PLAN-ATTRS
    4 IR-BUILD:PLAN-SOURCES
    4 32 IR-BUILD:PLAN-SCHEMAS
    4 4 32 IR-BUILD:PLAN-OPS
@@ -1364,7 +1361,7 @@ create VW-BUF VW-CAP allot
    IR-BUILD:PLAN-BEGIN
    syms bytes IR-BUILD:PLAN-SYMBOLS
    16 64 IR-BUILD:PLAN-TYPES
-   16 64 IR-BUILD:PLAN-ATTRS
+   16 IR-BUILD:PLAN-ATTRS
    8 IR-BUILD:PLAN-SOURCES
    8 64 IR-BUILD:PLAN-SCHEMAS
    16 16 128 IR-BUILD:PLAN-OPS

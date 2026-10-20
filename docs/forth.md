@@ -1471,6 +1471,18 @@ any suite fails. Documentation-only edits need no rebuild.
   and out-parameter cells). `allot`, `c,` and `,` never realign: storage carved
   after byte-sized data is misaligned unless `align` precedes it, and such a
   reader refuses it (`E-STORAGE`).
+- **`CELL-BODY` names complete cells in a created body.** After `create` and
+  the final `,` or `allot`, `n CELL-BODY` records exactly `n` cells in that
+  live word's body. The body must be cell-aligned, `n` must be positive and
+  within cell-size multiplication, and `here` must equal its end; otherwise
+  the declaration throws `E-LAYOUT-BUFFER` (7121). In a checked definer such
+  as `: GRID: ( n -- ) create , 2 , 2 CELL-BODY does> ( -- SPAN:span<u8> )
+  cell+ byte-view CELL SPAN:MAKE ;`, the declaration stays with the created
+  allocation when `does>` changes the callable result. Image capture then
+  scans only those complete cells instead of byte-shifted windows through
+  them. `CELL-BODY` does not declare their values or authorize a pointer:
+  an aligned cell containing a build-time mapping address remains refused in
+  a stripped image, and undeclared raw bytes retain the conservative scan.
 - **Missing convenience words are not bugs in the standard.** Core lacks `pick`,
   `within`, `s>number?`, `move`, `fill`, `erase`, `bl` and `*/`; each is
   `E-UNDEFINED` in a checked body (`: W ( -- ) bl ;`). Use cells, explicit
@@ -1836,7 +1848,8 @@ sections above.
   only `RESULT:OK` leaves the error type variable of `result<a,b>` free;
   that variable cannot unify with a nominal enum or family. Use a result
   family whose error alternatives are nullary, such as
-  `SUMTYPE foo-result<a>`. Spell an arity-one family with its argument in
+  `ENUM foo-result<a>` with a payload-bearing success variant and nullary
+  error variants. Spell an arity-one family with its argument in
   an effect (`family<PKG:t>`) and bare in `MATCH family`; the other form
   gives `wrong arity for type family`.
 - **Atom prefixes and declaration keywords reserve family names.** An atom

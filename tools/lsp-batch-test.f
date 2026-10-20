@@ -30,7 +30,7 @@ public
    1 RUN-WAVE
    0 LSP-CHECK:USES-BATCH-WAVE-LOAD
    s" batch-tail: earlier frame" T-LABEL
-   0 [: ;] LSP-CHECK:USES-BATCH-RESULT TTRUE
+   0 -1 [: ;] LSP-CHECK:USES-BATCH-RESULT TTRUE
    T-REPORT ;
 ;package
 

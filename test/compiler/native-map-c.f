@@ -1,0 +1,14 @@
+package NATIVE-MAP-ORIGIN
+: MAP-ORIGIN-C ( n -- n ) 33 + ;
+: MAP-ORIGIN-D ( -- n ) 44 ;
+undefine MAP-ORIGIN-D
+s" : MAP-ORIGIN-D ( n -- n ) 55 + ;" evaluate-closed
+public
+EXPORT MAP-ORIGIN-B
+EXPORT MAP-ORIGIN-C
+EXPORT MAP-ORIGIN-D
+41 constant MAP-ORIGIN-FIXED
+TYPED-VARIABLE MAP-ORIGIN-CELL n
+17 MAP-ORIGIN-CELL !
+create MAP-ORIGIN-DATA 29 ,
+;package

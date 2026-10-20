@@ -9,6 +9,7 @@ require src/compiler/native/fetch-check.f
 require src/habu/xref.f
 require src/habu/native-observer-cells.f
 require src/habu/native-host-cells.f
+require src/core/source-producer.f
 
 package NHOST
 public
@@ -79,6 +80,9 @@ DYNAMIC-BUFFER FACT-TYPES n
 variable OWNER-INSTALLED
 variable PRIOR-INVALIDATE
 variable PRIOR-FACTS
+variable KERNEL-BEGIN
+variable KERNEL-END
+variable SEEDED-N
 CAST: AS-INVALIDATE ( n -- [ n n -- ] )
 CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
@@ -218,12 +222,46 @@ public
 \ A zero id means no producer ever published facts for this exact entry.
 : ID-OF ( n -- n )
    {: entry:n :}
-   IMPL-N @
+   IMPL-N @ {: count:n :}
+   count 0= if 0 exit then
+   0 IMPL-LIVE {: live:ptr :}
+   0 IMPL-ENTRY {: entries:ptr :}
+   count
    begin dup 0 > while
       dup 1- {: row:n :}
-      row IMPL-LIVE @ 0<> row IMPL-ENTRY @ entry = and if exit then
+      live row cells + @ 0<> entries row cells + @ entry = and if exit then
       1-
    repeat ;
+
+\ Visit the implementation actually bound at each direct call, including
+\ nested functions in one definition. An unrecorded, indirect, or unsafe
+\ implementation has no complete construction dependency closure.
+: CLOSURE-EACH ( n [ n -- ] -- bool )
+   {: entry:n q :}
+   entry ID-OF {: root:n :}
+   root 0= if false exit then
+   RESERVE-WALK
+   IMPL-N @ 1+ 0 ?do 0 i SEEN ! loop
+   0 WORK-N !
+   root PUSH
+   begin WORK-N @ 0<> while
+      POP {: id:n :}
+      id SEEN @ 0= if
+         1 id SEEN !
+         id ROW {: row:n :}
+         row IMPL-LIVE @ 0=
+         row IMPL-TYPE-FIRST @ 0< or
+         row IMPL-REASON @ SAFE <> or if false exit then
+         row IMPL-ENTRY @ q execute
+         row IMPL-FIRST @ row IMPL-EDGES @ +
+         row IMPL-FIRST @ ?do
+            i EDGE-TO @ {: to:n :}
+            to 1 < to IMPL-N @ > or if false unloop exit then
+            to SEEN @ 0= if to PUSH then
+         loop
+      then
+   repeat
+   true ;
 
 private
 
@@ -255,6 +293,13 @@ public
    {: first:n end:n :}
    first end >= if exit then
    PRIOR-INVALIDATE @ dup 0<> if AS-INVALIDATE first end rot execute else drop then
+   KERNEL-END @ KERNEL-BEGIN @ >
+   first KERNEL-END @ < and
+   end KERNEL-BEGIN @ > and if
+      SEEDED-N @ 0 ?do 0 i IMPL-LIVE ! loop
+      0 data-base NATIVE-HOST-CELLS:SCALAR-PRIM + !
+      0 data-base NATIVE-HOST-CELLS:DIVISION-PRIM + !
+   then
    IMPL-N @ 0 ?do
       i IMPL-ENTRY @ end <
       i IMPL-ENTRY @ i IMPL-LEN @ + first > and if 0 i IMPL-LIVE ! then
@@ -264,12 +309,23 @@ public
       i ASSOC-ENTRY @ i ASSOC-LEN @ + first > and if 0 i ASSOC-LIVE ! then
    loop ;
 
-\ The boot publishes the registry ordinal of the one scalar body whose
-\ emitter supplied a complete, call-free contract. Zero means that backend
-\ provided no such body. A dictionary name is never used as authority.
-: SEED-SCALAR ( -- )
-   data-base NATIVE-HOST-CELLS:SCALAR-PRIM + @ {: marker:n :}
-   marker 0= if exit then
+\ The digest slot follows the entire immutable kernel code interval. A marker
+\ without that producer cannot claim a kernel-owned division implementation.
+: KERNEL-OWNER ( -- )
+   0 KERNEL-BEGIN !  0 KERNEL-END !
+   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
+      {: digest:ptr size:n known:bool :}
+   known 0= if exit then
+   size 32 <> if E-STATE throw then
+   data-base RBASE-CELL + @ {: base:n :}
+   digest NULL-PTR BYTE-VIEW - {: end:n :}
+   base 0 <= end base <= or if E-STATE throw then
+   base KERNEL-BEGIN !  end KERNEL-END ! ;
+
+\ A registry ordinal selects the exact booted occurrence. Its emitted row
+\ supplies the behavior; the specification contributes only its numeric shape.
+: SEED-ROW ( n n n -- )
+   {: marker:n din:n dout:n :}
    marker 0< marker ndict@ > or if E-STATE throw then
    marker 1- XREF-REC {: rec:ptr :}
    rec XREF-START {: entry:n :}
@@ -279,20 +335,43 @@ public
    MATCH RTARGET:core-result
       unsupported OF E-STATE throw ENDOF
       supported OF
-         1 RESERVE-IMPL
-         2 IMPL-TYPES-RESERVE
-         entry 0 IMPL-ENTRY !
-         len 0 IMPL-LEN !
-         1 0 IMPL-IN !  1 0 IMPL-OUT !
-         0 0 IMPL-TYPE-FIRST !
-         NUMBER-CON 0 IMPL-TYPES !  NUMBER-CON 1 IMPL-TYPES !
-         2 IMPL-TYPE-N !
-         SAFE 0 IMPL-REASON !  0 0 IMPL-LOC !
-         0 0 IMPL-FIRST !  0 0 IMPL-EDGES !
-         1 0 IMPL-LIVE !  1 IMPL-N !
-         0 IMPL-CONTRACT !
+         IMPL-N @ 1+ dup RESERVE-IMPL {: count:n :}
+         count 1- {: row:n :}
+         IMPL-TYPE-N @ {: first:n :}
+         din dout + {: types:n :}
+         first types + IMPL-TYPES-RESERVE
+         types 0 ?do NUMBER-CON first i + IMPL-TYPES ! loop
+         entry row IMPL-ENTRY !
+         len row IMPL-LEN !
+         din row IMPL-IN !  dout row IMPL-OUT !
+         first row IMPL-TYPE-FIRST !
+         SAFE row IMPL-REASON !  0 row IMPL-LOC !
+         0 row IMPL-FIRST !  0 row IMPL-EDGES !
+         1 row IMPL-LIVE !
+         row IMPL-CONTRACT !
+         first types + IMPL-TYPE-N !
+         count IMPL-N !
       ENDOF
    ;MATCH ;
+
+\ The scalar body is call-free. Division is partial: its guard can branch to
+\ the sealed terminal (DIV-ZERO) helper and throw E-DIV-ZERO. The emitter has
+\ published the marker only after both spans finished.
+: SEED-SCALAR ( -- )
+   data-base NATIVE-HOST-CELLS:SCALAR-PRIM + @ {: marker:n :}
+   marker 0<> if marker 1 1 SEED-ROW then ;
+
+: SEED-DIVISION ( -- )
+   data-base NATIVE-HOST-CELLS:DIVISION-PRIM + @ {: marker:n :}
+   marker 0= if exit then
+   KERNEL-BEGIN @ 0= if E-STATE throw then
+   marker 0< marker ndict@ > or if E-STATE throw then
+   marker 1- XREF-REC {: rec:ptr :}
+   rec XREF-START {: entry:n :}
+   rec XREF-CODE-BYTES {: len:n :}
+   entry KERNEL-BEGIN @ < entry KERNEL-END @ >= or if E-STATE throw then
+   len 0 <= len KERNEL-END @ entry - > or if E-STATE throw then
+   marker 2 1 SEED-ROW ;
 
 : INSTALL ( -- )
    OWNER-INSTALLED @ 0<> if exit then
@@ -302,7 +381,10 @@ public
    0 IMPL-TYPE-N !
    0 EDGE-N !
    0 ASSOC-N !
+   KERNEL-OWNER
    SEED-SCALAR
+   SEED-DIVISION
+   IMPL-N @ SEEDED-N !
    ['] INVALIDATE data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + xt!
    ['] MATCH-FACTS data-base NATIVE-HOST-CELLS:FACTS + xt!
    1 OWNER-INSTALLED ! ;
@@ -322,7 +404,8 @@ public
    then
    0 OWNER-INSTALLED !
    0 PRIOR-INVALIDATE !
-   0 PRIOR-FACTS ! ;
+   0 PRIOR-FACTS !
+   0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
 
 \ The elaborator keeps the first semantic refusal while its source tape is
 \ still live. Later HIR and machine rows cannot reinterpret that decision.

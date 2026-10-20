@@ -3,7 +3,7 @@ title: Print report numbers inline everywhere
 status: closed
 priority: 4
 issue-type: task
-created-at: "\"2026-10-01T17:44:47.838341+02:00\""
+created-at: "2026-10-01T17:44:47.838341+02:00"
 closed-at: "2026-10-14T19:34:45.551842+03:00"
 close-reason: "Implemented across the report-format sweep, ending in 6caf86f9: affected tools, gate and library report lines print inline numbers or deliberately label separate lines; forced-failure probes and touched suites passed. Source-level printer consolidation is separately tracked by e0fbdf03."
 ---

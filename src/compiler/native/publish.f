@@ -53,6 +53,9 @@ variable UNIT-ARMED
 : MIN-IN-REC ( n n -- )
    min-in-mark ;
 
+: WIDE-REC ( -- )
+   wide-mark ;
+
 : DOES-RECORD ( n n -- )
    does-record ;
 
@@ -248,6 +251,40 @@ public
 
 : IN-REGION? ( n -- bool )
    EXTERNAL? 0= ;
+
+\ A prepared definition reuses the interpreter's pending row.  Its name and
+\ wordlist were already written when the source definition opened.  All
+\ references and implementation facts have been prepared before this call.
+: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
+   {: code:ptr size:n recorded:n calls:ptr calln:n
+      addrs:ptr addrn:n wide:bool minin:n :}
+   PENDING-IDX {: idx:n :}
+   idx PENDING-CK
+   size 0 <= size 3 and 0<> or if E-NPUB-RELOC throw then
+   recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
+   recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
+   minin 0 < minin 255 > or if E-NPUB-RELOC throw then
+   calln 0 < addrn 0 < or if E-NPUB-RELOC throw then
+   calln 0 ?do
+      calls i cells + @ {: site:n :}
+      site 0 < site 3 and 0<> or
+      site size 4 - > or if E-NPUB-RELOC throw then
+   loop
+   addrn 0 ?do
+      addrs i cells + @ {: site:n :}
+      site 0 < site 3 and 0<> or
+      site size 4 - > or if E-NPUB-RELOC throw then
+   loop
+   size ROOM-CK {: fn:n :}
+   code fn size CODE-WINDOW
+   calln 0 ?do fn calls i cells + @ + RELOC-EXTERNAL loop
+   addrn 0 ?do fn addrs i cells + @ + RELOC-ADDR loop
+   fn recorded idx PUBLISH-REC
+   idx APPEND-PENDING
+   wide if WIDE-REC then
+   minin 0<> if idx minin MIN-IN-REC then
+   NHOST:PUBLISH-TAKEN
+   idx ;
 
 private
 get-current prot-wid-add

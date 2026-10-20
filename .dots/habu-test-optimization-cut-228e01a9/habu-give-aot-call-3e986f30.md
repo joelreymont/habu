@@ -3,7 +3,7 @@ title: Give aot-call-report-lib.f a package
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T20:18:16.890541+03:00\""
+created-at: "2026-10-03T20:18:16.890541+03:00"
 closed-at: "2026-10-14T19:30:30.891711+03:00"
 close-reason: "Implemented in b5a18e9b: the report library has package AOT-CALL-REPORT, callers use its public surface, and private helpers refuse outside access; check.f and affected report/gate tests passed."
 ---

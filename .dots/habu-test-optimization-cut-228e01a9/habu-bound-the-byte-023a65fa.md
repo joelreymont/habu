@@ -3,7 +3,7 @@ title: Bound the byte reads in two more lint scanners
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T10:48:54.271037+02:00\""
+created-at: "2026-10-02T10:48:54.271037+02:00"
 closed-at: "2026-10-14T19:43:43.494601+03:00"
 close-reason: Both scanner byte guards and further bounded reads fixed in c47644c2; commit records 64 KiB public-signatures and repl-lint edge regressions.
 ---

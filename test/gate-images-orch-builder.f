@@ -60,6 +60,7 @@ public
    s" hb-root" AT CHMOD-X
    s" hb-ordinary" AT s" ordinary" WRITE-ALL
    s" hb-root.map" AT s" names" WRITE-ALL
+   s" hb-ordinary.map" AT s" names" WRITE-ALL
    s" hb-whitebox-source" AT s" whitebox" WRITE-ALL
    s" hb-whitebox-source" AT CHMOD-X
    s" HABU_GATE_ORCH_EVIDENCE" GETENV s" builder-released" PATH JOIN-PATH

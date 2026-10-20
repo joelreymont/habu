@@ -420,8 +420,9 @@ apart in a trace: only the startup load runs `src/core/include.f`, and only the
 baked program runs `src/habu/habu1.f`.
 
 The second load must not inherit the first load's words. That is the job of the
-boot-hide prologue `emit_boot_hide` in `tools/bootstrap.sh`, which hides the
-startup load's dictionary and clears its recorded effects, and it is why
+boot-hide prologue `emit_boot_hide` in `tools/bootstrap.sh`, which appends
+`src/habu/hide.f` to find the marker, then hides the startup load's dictionary
+and clears its recorded effects. It is why
 instrumented seeds built by hand (above) drop it deliberately. When it is
 missing, `trust` and `checker-defer` from the startup load are still resolvable
 while `checker.f` is being re-read, so `C-PRETRUST-READY?` says "ready" and
@@ -722,8 +723,8 @@ machine stack for that word's callers. The surface:
 | `prof-json` | `( -- )` | print the same walk as one JSON object. |
 | `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. The clock is held for the clears, so no tick counts during them, and starts again unless `prof-off` stopped it. |
 | `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000, also asked for by `0`); any positive interval arms, a second or more included. A negative `n` throws `E-PROF-RATE` (-3803) before anything is stored, so a caller that catches it keeps the rate it had. Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
-| `n prof-row` | `( n -- )` | print the row for one dictionary record, whatever its rank, with its callers. A phase word takes no exclusive samples at all, so no ranking will ever show it; this is how you read one. The record index comes from the caller, where `XREF` already answers a name. |
-| `pc prof-pc>rec` | `( n -- n )` | the record index the armed index gives that pc, or -1. This is the handler's own search, which is what `test/prof-index.f` compares against an exhaustive dictionary scan. |
+| `n prof-row` | `( n -- )` | print the row for a current dictionary record, whatever its rank, with its callers. The caller supplies a current `XREF` index; the profiler resolves its own identity after syncing. |
+| `pc prof-pc>rec` | `( n -- n )` | the current dictionary record index for an indexed pc, or -1 if the pc belongs to a word retired by a seed rewind or no indexed word. This runs the handler's own search. |
 
 A report never samples itself: it holds the clock for the walk and starts it
 again if `prof-off` has not already stopped it, so the phase loses at most one
@@ -823,10 +824,34 @@ The handler cannot fix this itself: naming those words means reading the
 dictionary, and the interrupted thread may be in the middle of adding a record to
 it. So the handler keeps the raw pc and the interrupted x30 for such a tick — two
 cells, no walk, no allocation — and `prof-report` / `prof-json` do the work, with
-the clock stopped: fold the index entries' inclusive counts into the per-record
+  the clock stopped: fold the index entries' inclusive counts into the per-profile-ID
 array, rebuild the index from the dictionary as it now stands, and replay every
 deferred sample through it. That is the first moment at which every word the
 phase compiled exists.
+
+### Dictionary rewinds while profiling
+
+`seed-ndict!` lowers the dictionary record count while leaving compiled code in
+place. A continuation compiled before the rewind can still run, and a target
+definition can take the donor's former record number. Before lowering the count,
+the profiler holds the clock, syncs deferred samples, and retires the affected
+record numbers from its live map. Each sampled word keeps its own profile ID,
+copied qualified name, code span, counter, inclusive count and caller edges.
+The next report indexes retained code alongside new live definitions, so a new
+word at a reused ordinal cannot inherit the donor's samples or name.
+
+Ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and checker
+overlay cleanup) detaches the removed identities and clears their stored spans.
+Those words leave the index; a later seed rewind cannot revive a word already
+retired by `undefine`. Reusing an ordinary trimmed ordinal assigns a fresh
+profile ID at the next report refresh.
+
+`prof-on` starts a fresh identity session; `prof-reset` clears counts across
+the full profile-ID range while retaining the session's names and index.
+Profile IDs are bounded by `DICT-CAP`, and exhaustion exits 78 with
+`hb: profiler profile IDs exhausted` rather than reusing an ID. Name copies use
+exact-length mapped chunks that the next `prof-on` releases. A process that has
+never started profiling allocates nothing for a seed rewind.
 
 Two consequences worth knowing:
 

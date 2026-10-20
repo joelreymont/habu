@@ -108,17 +108,15 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 \ never be sealed. test/internal-word-gate.f owns the `internal engine word`
 \ diagnostic itself.) The control candidate is spelled with NULL-PTR-CELL's OWN
 \ effect, so a type disagreement cannot be what fails it: the name is. The
-\ product image keeps no NULL-PTR-CELL record (`: X NULL-PTR-CELL ;` is
-\ E-UNDEFINED, in a trusted body too) and its capture retired the checker's
-\ symbol for it with the name (src/core/checker-surface.f); a candidate binds
-\ the record the compiler binds, so the control is unresolvable (1), not
-\ refused.
+\ product image retains NULL-PTR-CELL's internal record and exact effect for
+\ its bound callers; that does not grant checked source authority to call it.
+\ The candidate therefore binds the internal record and is refused (0).
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
    s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
+   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The scanner's own row: the pre-scan sees the same definer and publishes the
 \ same effect for the word it creates, so a source file that declares a

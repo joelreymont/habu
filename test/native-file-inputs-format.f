@@ -3,14 +3,83 @@
 
 require src/lib/test.f
 require src/lib/le.f
+require src/lib/string.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/process-argv.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require tools/native-file-inputs.f
 
 package NFILE-INPUTS-FORMAT-TEST
 
 create ROW 72 allot
+create SOURCE-PATH FS-PATH-CAP allot
+variable SOURCE-U
+variable OUTER-CALLS
+variable INNER-CALLS
+4096 constant CAP
+create OUT CAP allot
+create ERR CAP allot
+
+PROCESS-SYMBOLS
+FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
+
+: SOURCE$ ( -- ptr u8 n ) SOURCE-PATH SOURCE-U @ ;
+
+: OUTER-CANON ( ptr u8 n -- ptr u8 n bool )
+   1 OUTER-CALLS +! SOURCE-ROOT:CANON-OS ;
+: INNER-CANON ( ptr u8 n -- ptr u8 n bool )
+   1 INNER-CALLS +! SOURCE-ROOT:CANON-OS ;
+: SCOPE-FAIL ( -- )
+   SOURCE$ SOURCE-INPUT:CANON 2drop drop
+   E-NUNIT-PROFILE throw ;
+
+: CALLBACK-SCOPE ( -- )
+   0 OUTER-CALLS ! 0 INNER-CALLS !
+   [: OUTER-CANON ;] [: SOURCE-ROOT:READ-OS ;] SOURCE-INPUT:USE
+   [: [: INNER-CANON ;] [: SOURCE-ROOT:READ-OS ;]
+      [: SCOPE-FAIL ;] SOURCE-INPUT:WITH ;]
+      E-NUNIT-PROFILE TTHROWSQ
+   INNER-CALLS @ 1 T=
+   OUTER-CALLS @ 0 T=
+   SOURCE$ SOURCE-INPUT:CANON 2drop drop
+   OUTER-CALLS @ 1 T=
+   SOURCE-INPUT:RESET ;
+
+: FIFO-CHILD ( -- )
+   1 SCRIPT-ARGV$ {: path:ptr pathu:n :}
+   path SOURCE-PATH pathu BYTE-COPY pathu SOURCE-U !
+   T-RESET
+   NFILE-INPUTS:RESET
+   SOURCE$ s" " NFILE-INPUTS:ADD-CONTENT
+   SOURCE$ REMOVE-FILE
+   SOURCE$ FS-PATHZ 384 MKFIFO-CALL 0 T=
+   [: NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK ;]
+      E-NUNIT-PROFILE TTHROWSQ
+   NFILE-INPUTS:CLOSE
+   T-REPORT ;
+
+: FIFO-STALE ( -- )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   s" test/native-file-inputs-format.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" fifo" >LEN PROC-ARGV+
+   SOURCE$ >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN s" " >LEN
+   OUT CAP >LEN ERR CAP >LEN 10000 >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
+      {: outu:len erru:len rc:n :}
+   rc 0<> if OUT outu LEN>N type ERR erru LEN>N type then
+   rc 0 T= ;
 
 public
 : MAIN ( -- )
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" fifo" STR= if FIFO-CHILD exit then
+   then
    T-RESET
    s" FILE input query truncation" T-LABEL
    72 0 ?do 0 ROW i + c! loop
@@ -20,6 +89,20 @@ public
    s" abc" drop ROW 64 + 3 BYTE-COPY
    s" xy" drop ROW 67 + 2 BYTE-COPY
    [: ROW 69 NFILE-INPUTS:FORMAT ;] E-NUNIT-FILE TTHROWSQ
+   s" native-input-content" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu s" source.f" SOURCE-PATH JOIN-PATH SOURCE-U !
+   SOURCE$ s" : A 1 ;" WRITE-ALL
+   NFILE-INPUTS:RESET
+   SOURCE$ s" " NFILE-INPUTS:ADD-CONTENT
+   NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK
+   SOURCE$ s" : A 2 ;" WRITE-ALL
+   [: NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK ;] E-NUNIT-PROFILE TTHROWSQ
+   s" a scoped source callback returns to its caller after a throw" T-LABEL
+   CALLBACK-SCOPE
+   s" a recorded content path replaced by a FIFO is stale" T-LABEL
+   FIFO-STALE
+   NFILE-INPUTS:CLOSE
+   root rootu REMOVE-TREE
    T-REPORT ;
 
 ;package

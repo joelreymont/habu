@@ -48,6 +48,7 @@ variable FMT-PARENT-A-U
 variable FMT-PARENT-B-U
 variable FMT-PARENT-LINK-U
 variable FMT-PARENT-BOUND-U
+variable FMT-STAGED-TMP-U
 
 create FMT-ROOT-BUF FS-PATH-CAP allot
 create FMT-REMOVE-BUF FS-PATH-CAP allot
@@ -95,6 +96,7 @@ create FMT-PARENT-A-BUF FS-PATH-CAP allot
 create FMT-PARENT-B-BUF FS-PATH-CAP allot
 create FMT-PARENT-LINK-BUF FS-PATH-CAP allot
 create FMT-PARENT-BOUND-BUF FS-PATH-CAP allot
+create FMT-STAGED-TMP-BUF FS-PATH-CAP allot
 
 9217 constant FMT-STREAM-LEN
 424242 constant FMT-TMP-SEED
@@ -543,6 +545,29 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 
 : FMT-PARENT-FILL ( ptr u8 n -- )
    s" published" WRITE-ALL ;
+
+: FMT-STAGED-TMP ( -- ptr u8 n )
+   FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U @ ;
+
+\ The fill's own refusal remains the error when removing its sibling also
+\ fails. Replacing the reserved file with a directory makes unlink refuse.
+: FMT-STAGED-CLEAN-FAIL ( ptr u8 n -- )
+   2dup FMT-STAGED-TMP-BUF FMT-STAGED-TMP-U FMT-COPY!
+   2dup REMOVE-FILE
+   MAKE-DIR
+   E-FS-CAPACITY throw ;
+
+: FMT-TEST-STAGED-PRIMARY ( -- )
+   FMT-ATOMIC-PATH s" previous" WRITE-ALL
+   s" staged fill error survives cleanup refusal" T-LABEL
+   [: FMT-ATOMIC-PATH [: FMT-STAGED-CLEAN-FAIL ;] REPLACE-STAGED ;]
+      E-FS-CAPACITY TTHROWSQ
+   FMT-ATOMIC-PATH FMT-READ-BUF 64 READ-ALL {: u:n :}
+   FMT-READ-BUF u s" previous" T$=
+   FMT-STAGED-TMP DIR? TTRUE
+   FMT-STAGED-TMP REMOVE-DIR
+   FMT-STAGED-TMP s" removable" WRITE-ALL
+   FMT-ATOMIC-PATH REMOVE-FILE ;
 
 : FMT-STAGED-SPAN ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
    {: data path:ptr pathu:n :}
@@ -1322,6 +1347,7 @@ public
    [: CLEANUP-RUN ;] catch 0 T=
    FMT-COPY-DST EXISTS? TFALSE
    FMT-ATOMIC-PATH EXISTS? TFALSE
+   FMT-STAGED-TMP EXISTS? TFALSE
    FMT-MKDIR-PATH EXISTS? TFALSE
    FMT-NEST-A EXISTS? TFALSE
    FMT-LINK-DIR EXISTS? TFALSE
@@ -1358,6 +1384,7 @@ public
    FMT-TEST-STAGED-CONTEXT
    FMT-TEST-ATOMIC-COLLISION
    FMT-TEST-ATOMIC-FAILURE
+   FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED
    FMT-TEST-TEMPS

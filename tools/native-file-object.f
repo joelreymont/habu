@@ -17,7 +17,7 @@ private
 32 constant EVENT-BYTES
 1 constant RANGE
 2 constant LOAD
-12 constant VERSION
+15 constant VERSION
 32 constant SIGNATURE-BYTES
 22 cells constant SCOPE-BYTES
 18 cells constant HISTORY-BYTES
@@ -206,7 +206,7 @@ variable CHECK-U
       i 1 and 0= if
          h i E-KIND E@ RANGE <>
          h i E-END E@ WALK-PRIOR @ < or
-         h i E-MODE E@ 0 < or h i E-MODE E@ 1 > or if BAD then
+         h i E-MODE E@ 0 < or h i E-MODE E@ 3 > or if BAD then
          h i E-END E@ WALK-PRIOR !
       else
          h i E-KIND E@ LOAD <>
@@ -320,7 +320,7 @@ variable CHECK-U
       i 1 and 0= if
          kind RANGE <> end WALK-PRIOR @ < or
          end h H-SOURCE-U H@ > or
-         mode 0 < or mode 1 > or if BAD then
+         mode 0 < or mode 3 > or if BAD then
          size 0 > if
             row EVENT-BYTES + size RANGE-PARTS
                 {: unit:ptr unitu:n signature:ptr scope:ptr
@@ -351,8 +351,8 @@ variable CHECK-U
 public
 
 : START ( ptr u8 n ptr u8 n ptr u8 n n -- n ) NEW-HANDLE ;
-: ADD-RANGE ( n n n ptr u8 n ptr u8 ptr u8 n n n n n n n n n n n n n n n n n n -- )
-   {: h:n end:n contributed:n unit:ptr unitu:n
+: ADD-RANGE ( n n n n ptr u8 n ptr u8 ptr u8 n n n n n n n n n n n n n n n n n n -- )
+   {: h:n end:n contributed:n compiled:n unit:ptr unitu:n
       signature:ptr scope:ptr session:n module:n gen:n epoch:n before:n lease:n
       openlease:n openepoch:n beforemodule:n openmodulebefore:n openmoduleafter:n
       beforegen:n beforeepoch:n beforelease:n
@@ -390,7 +390,9 @@ public
    beforebuild history 120 + RANGE-BUF LE:U64!
    openbuildbefore history 128 + RANGE-BUF LE:U64!
    openbuildafter history 136 + RANGE-BUF LE:U64!
-   h RANGE end contributed 0 RANGE-BUF size APPEND ;
+   contributed 0 < contributed 1 > or
+   compiled 0 < compiled 1 > or or if BAD then
+   h RANGE end contributed compiled 2 * + 0 RANGE-BUF size APPEND ;
 : SPLIT-RANGE ( ptr u8 n -- ptr u8 n ptr u8 ptr u8 n n n n n n n n n n n n n n n n n n ) RANGE-PARTS ;
 : ADD-LOAD ( n n n n n n n -- )
    {: h:n end:n mode:n child:n size:n sec:n ns:n :}
@@ -431,6 +433,11 @@ public
    h POSITION {: row:n :}
    h h H-COUNT H@ EVENT-ENSURE
    child 1+ h row E-OFF E! ;
+: SELECT-INSTANCE ( n n -- ) {: h:n instance:n :}
+   h H-CHECK drop
+   h POSITION {: row:n :}
+   h h H-COUNT H@ EVENT-ENSURE
+   instance h row E-PREP E! ;
 : SELECT-PREPARED ( n n -- ) {: h:n prepared:n :}
    h H-CHECK drop
    h POSITION {: row:n :}
@@ -444,6 +451,10 @@ public
    h H-CHECK drop
    h POSITION {: row:n :}
    h row E-OFF E@ 1- dup 0 < if BAD then ;
+: SELECTED-INSTANCE ( n -- n ) {: h:n :}
+   h H-CHECK drop
+   h POSITION {: row:n :}
+   h row E-PREP E@ dup 0 < if BAD then ;
 : REWIND ( n -- ) {: h:n :}
    h H-CHECK drop
    h H-EVENT-START H@ h H-SCAN H!

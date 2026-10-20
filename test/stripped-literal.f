@@ -4,7 +4,7 @@
 \ mutable pre-window DATA is tested by test/compiler/aot-data-cell-refusals.f.
 require src/lib/string.f
 require test/gate-common.f
-require test/aot-maker-engine.f
+require test/aot-builder-engine.f
 
 package STRIPPED-LITERAL-TEST
 
@@ -26,13 +26,13 @@ variable IMAGE-U
    SUBJECT$ a u WRITE-ALL ;
 
 : LINK-SUBJECT ( -- )
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+   AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
-   AOT-MAKER-ENGINE:STDIN$
+   AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN ;
 
 : REFUSE-COMPILER-ROWS ( -- )

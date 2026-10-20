@@ -2,7 +2,7 @@
 \
 \ Covers src/compiler/digest.f, src/compiler/target.f,
 \ src/compiler/numeric-policy.f and src/compiler/binding.f through their public
-\ production words. Three properties are owed by the dot, and each is proved over
+\ production words. Two properties are owed by the dot, and each is proved over
 \ the whole declarable domain rather than by example:
 \
 \ 1. MISSING OR ILLEGAL COMBINATIONS REJECT. A missing or role-swapped field is a
@@ -10,23 +10,16 @@
 \    to certify - so it never reaches runtime at all. An incoherent combination of
 \    present fields is a named throw, one case per rule, with the exact code.
 \
-\ 2. EQUAL RECORDS DIGEST IDENTICALLY. Records built twice by separate calls
-\    compare equal and digest equal, at every level including the binding.
+\ 2. Every coherent contract and numerical policy in the finite domain
+\    constructs, while the binding and structural readers agree with its parts.
 \
-\ 3. EVERY SEMANTIC FIELD CHANGES IDENTITY. The suite enumerates the ENTIRE legal
-\    domain - 1036 target contracts, 60 numerical policies - and shows the digests
-\    are pairwise distinct, and that digest equality holds exactly where the
-\    structural comparison holds. Enumerating everything is what makes this a
-\    proof over the domain rather than a sample: it covers every field, every
-\    variant of every field, and every interaction between them at once.
-\
-\ The enumeration is driven by this suite's own index arithmetic and its own
-\ legality rules, not by the modules under test, so a rule that silently widened
-\ would show up as a changed legal-domain size (the counts are asserted).
+\ The enumeration uses independent index arithmetic and legality rules, so a
+\ widened rule changes the asserted domain size.
 
 require src/lib/test.f
 require src/lib/string.f
 require test/checker-assert.f
+require src/compiler/digest.f
 require src/compiler/binding.f
 
 package CTPOL-TEST
@@ -55,42 +48,8 @@ ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
 OVF# FLT# * CON# * FM# * CMP# * constant PCOMBO#
 60 constant LEGAL-POLICIES
 
-\ One digest store, reused by each sweep in turn.
-COMBO# constant STORE#
-create DGA STORE# 4 * cells allot
-create IXA STORE# cells allot
 variable N
-
-: IX! ( n n -- )
-   {: v:n idx:n :}
-   v IXA idx cells + ! ;
-
-: IX@ ( n -- n )
-   cells IXA + @ ;
-
-: DG! ( n n n n n -- )
-   {: w0:n w1:n w2:n w3:n idx:n :}
-   idx 4 * {: at:n :}
-   w0 DGA at cells + !
-   w1 DGA at 1+ cells + !
-   w2 DGA at 2 + cells + !
-   w3 DGA at 3 + cells + ! ;
-
-: DG= ( n n -- bool )
-   {: x:n y:n :}
-   x 4 * {: px:n :}
-   y 4 * {: py:n :}
-   DGA px cells + @      DGA py cells + @ =
-   DGA px 1+ cells + @   DGA py 1+ cells + @ = and
-   DGA px 2 + cells + @  DGA py 2 + cells + @ = and
-   DGA px 3 + cells + @  DGA py 3 + cells + @ = and ;
-
-\ Assert two truth values agree. `=` is not defined on booleans, so the check is
-\ written as a case split.
-: TBOOL= ( bool bool -- )
-   {: got:bool want:bool :}
-   want if got TTRUE exit then
-   got TFALSE ;
+96 BUFFER: SLOT-BUF
 
 \ ---- consuming layout values -------------------------------------------------
 \ A record is several stack cells, so a test that only wants the throw has to
@@ -368,19 +327,7 @@ variable N
       E-CTGT-ABI TTHROWSQ
    [: CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI CTARGET-ENDIAN:LITTLE
       CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
-      TRY-CONTRACT ;] E-CTGT-FEATURE TTHROWSQ
-   CTARGET-ARCH:A32 CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:BIG
-      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
-      CTARGET:ENCODE drop {: a:ptr :}
-   a 2 CDIGEST:SLOT@ 2 T= a 3 CDIGEST:SLOT@ 3 T=
-   a 4 CDIGEST:SLOT@ 1 T= a 5 CDIGEST:SLOT@ 0 T=
-   CTARGET-ARCH:THUMB2 CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:LITTLE
-      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
-      CTARGET:ENCODE drop 2 CDIGEST:SLOT@ 3 T=
-   CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI CTARGET-ENDIAN:LITTLE
-      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
-      CTARGET:ENCODE drop {: c:ptr :}
-   c 2 CDIGEST:SLOT@ 4 T= c 3 CDIGEST:SLOT@ 4 T= ;
+      TRY-CONTRACT ;] E-CTGT-FEATURE TTHROWSQ ;
 
 : BAD-FEATURES ( -- )
    [: $400 CTARGET:FEATURE-SET CTARGET-FEATURES:UNMAKE drop ;]
@@ -427,13 +374,8 @@ variable N
 
 : FORGERY-REJECTS ( -- )
    [: FORGED CTARGET:VALIDATE DROP-CONTRACT ;] E-CTGT-ABI TTHROWSQ
-   [: FORGED CTARGET:DIGEST CDIGEST-DIGEST:UNMAKE drop drop drop drop ;]
-      E-CTGT-ABI TTHROWSQ
    [: FORGED A64 CTARGET:SAME? drop ;] E-CTGT-ABI TTHROWSQ
-   [: FORGED-POLICY CNUM:DIGEST CDIGEST-DIGEST:UNMAKE drop drop drop drop ;]
-      E-CNUM-CONTRACT TTHROWSQ
-   [: A64 FORGED-POLICY CBIND-BINDING:MAKE CBIND:DIGEST
-      CDIGEST-DIGEST:UNMAKE drop drop drop drop ;]
+   [: A64 FORGED-POLICY CBIND-BINDING:MAKE CBIND:VALIDATE DROP-BINDING ;]
       E-CNUM-CONTRACT TTHROWSQ ;
 
 \ A missing or role-swapped field never reaches runtime: the checker refuses to
@@ -458,55 +400,12 @@ variable N
    s" CTP-BSWAP ( CNUM:numeric-policy CTARGET:contract -- CBIND:binding ) CBIND:BIND"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- 3. canonical preimage ---------------------------------------------------
-\ The stable wire codes are pinned here: renumbering one silently would change
-\ every stored digest, so the codes are asserted rather than assumed.
-: PREIMAGE ( -- )
-   GPU CTARGET:ENCODE {: base:ptr len:n :}
-   len 56 T=
-   base 0 CDIGEST:SLOT@ CDIGEST:TAG-TARGET T=
-   base 1 CDIGEST:SLOT@ 1 T=
-   base 2 CDIGEST:SLOT@ 1 T=
-   base 3 CDIGEST:SLOT@ 2 T=
-   base 4 CDIGEST:SLOT@ 0 T=
-   base 5 CDIGEST:SLOT@ 1 T=
-   base 6 CDIGEST:SLOT@ GPU CTARGET:FEATURES@ CTARGET:FEATURES-N T=
-   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
-      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
-      CTARGET:CONTRACT CTARGET:ENCODE drop {: wasm:ptr :}
-   wasm 2 CDIGEST:SLOT@ 6 T=
-   wasm 3 CDIGEST:SLOT@ 6 T=
-   wasm 5 CDIGEST:SLOT@ 0 T=
-   wasm 6 CDIGEST:SLOT@ $201 T=
-   FUSED CNUM:ENCODE {: pbase:ptr plen:n :}
-   plen 56 T=
-   pbase 0 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T=
-   pbase 1 CDIGEST:SLOT@ 1 T=
-   pbase 2 CDIGEST:SLOT@ 1 T=
-   pbase 3 CDIGEST:SLOT@ 1 T=
-   pbase 4 CDIGEST:SLOT@ 1 T=
-   pbase 5 CDIGEST:SLOT@ 1 T=
-   pbase 6 CDIGEST:SLOT@ 2 T=
-   GPU FUSED CBIND:BIND CBIND:ENCODE {: bbase:ptr blen:n :}
-   blen 128 T=
-   bbase 0 CDIGEST:SLOT@ CDIGEST:TAG-BINDING T=
-   bbase 1 CDIGEST:SLOT@ 1 T=
-   bbase 2 CDIGEST:SLOT@ CDIGEST:TAG-TARGET T=
-   bbase 9 CDIGEST:SLOT@ CDIGEST:TAG-NUMERIC T=
-   CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
-      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
-      CTARGET:CONTRACT STRICT CBIND:BIND CBIND:ENCODE drop {: wb:ptr :}
-   wb 4 CDIGEST:SLOT@ 6 T=
-   wb 5 CDIGEST:SLOT@ 6 T=
-   wb 7 CDIGEST:SLOT@ 0 T=
-   wb 8 CDIGEST:SLOT@ $201 T= ;
-
 \ Every address residue includes the aligned native path and the byte fallback.
 \ Inspect canonical bytes independently of SLOT@ and preserve neighboring bytes.
 : SLOT-AT ( n n -- )
    {: value:n offset:n :}
-   32 0 ?do $A5 DGA i + c! loop
-   DGA offset + {: base:ptr :}
+   32 0 ?do $A5 SLOT-BUF i + c! loop
+   SLOT-BUF offset + {: base:ptr :}
    value base 1 CDIGEST:SLOT!
    base 1 CDIGEST:SLOT@ value T=
    8 0 ?do
@@ -517,12 +416,12 @@ variable N
 
 : SLOT-ROUNDTRIP ( -- )
    CDIGEST:SLOT-BYTES 8 T=
-   -1 DGA 0 CDIGEST:SLOT!
-   DGA 0 CDIGEST:SLOT@ -1 T=
-   $0123456789ABCDEF DGA 3 CDIGEST:SLOT!
-   DGA 3 CDIGEST:SLOT@ $0123456789ABCDEF T=
-   0 DGA 3 CDIGEST:SLOT!
-   DGA 3 CDIGEST:SLOT@ 0 T=
+   -1 SLOT-BUF 0 CDIGEST:SLOT!
+   SLOT-BUF 0 CDIGEST:SLOT@ -1 T=
+   $0123456789ABCDEF SLOT-BUF 3 CDIGEST:SLOT!
+   SLOT-BUF 3 CDIGEST:SLOT@ $0123456789ABCDEF T=
+   0 SLOT-BUF 3 CDIGEST:SLOT!
+   SLOT-BUF 3 CDIGEST:SLOT@ 0 T=
    8 0 ?do
       0 i SLOT-AT
       -1 i SLOT-AT
@@ -530,81 +429,27 @@ variable N
       $8000000000000000 i SLOT-AT
    loop ;
 
-\ ---- 4. equal records digest identically -------------------------------------
-: STABLE ( -- )
-   A64 A64 CTARGET:SAME? TTRUE
-   A64 CTARGET:DIGEST A64 CTARGET:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   GPU CTARGET:DIGEST GPU CTARGET:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   A64 CTARGET:DIGEST GPU CTARGET:DIGEST CDIGEST-DIGEST:EQ TFALSE
-   STRICT STRICT CNUM:SAME? TTRUE
-   STRICT CNUM:DIGEST STRICT CNUM:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   STRICT CNUM:DIGEST FUSED CNUM:DIGEST CDIGEST-DIGEST:EQ TFALSE
-   GPU FUSED CBIND:BIND GPU FUSED CBIND:BIND CBIND:SAME? TTRUE
-   GPU FUSED CBIND:BIND CBIND:DIGEST
-   GPU FUSED CBIND:BIND CBIND:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   GPU FUSED CBIND:BIND CBIND:DIGEST
-   GPU STRICT CBIND:BIND CBIND:DIGEST CDIGEST-DIGEST:EQ TFALSE
-   GPU FUSED CBIND:BIND CBIND:DIGEST
-   A64 FUSED CBIND:BIND CBIND:DIGEST CDIGEST-DIGEST:EQ TFALSE ;
-
-\ A record kind can never share a digest with another kind: slot 0 separates the
-\ domains before a single field is written.
-: DOMAIN-SEPARATION ( -- )
-   A64 CTARGET:DIGEST STRICT CNUM:DIGEST CDIGEST-DIGEST:EQ TFALSE
-   A64 CTARGET:DIGEST A64 STRICT CBIND:BIND CBIND:DIGEST
-      CDIGEST-DIGEST:EQ TFALSE
-   STRICT CNUM:DIGEST A64 STRICT CBIND:BIND CBIND:DIGEST
-      CDIGEST-DIGEST:EQ TFALSE ;
-
-\ ---- 5. every field changes identity, over the whole legal domain -------------
-: COLLECT-CONTRACTS ( -- )
+\ ---- legal-domain construction --------------------------------------------
+: VALID-CONTRACTS ( -- )
    COMBO# 200704 T=
    0 N !
    COMBO# 0 ?do
       i OK-COMBO? if
-         i N @ IX!
+         i COMBO>CONTRACT DROP-CONTRACT
          N @ 1+ N !
       then
    loop
    N @ LEGAL-CONTRACTS T= ;
 
-: DIGEST-CONTRACTS ( -- )
-   N @ 0 ?do
-      i IX@ COMBO>CONTRACT CTARGET:DIGEST CDIGEST-DIGEST:UNMAKE i DG!
-   loop ;
-
-: PAIR-CONTRACTS ( -- )
-   N @ dup * 0 ?do
-      i N @ / {: x:n :}
-      i N @ mod {: y:n :}
-      x IX@ COMBO>CONTRACT y IX@ COMBO>CONTRACT CTARGET:SAME? {: same:bool :}
-      x y DG= same TBOOL=
-      same x y = TBOOL=
-   loop ;
-
-: COLLECT-POLICIES ( -- )
+: VALID-POLICIES ( -- )
    0 N !
    PCOMBO# 0 ?do
       i OK-PCOMBO? if
-         i N @ IX!
+         i COMBO>POLICY DROP-POLICY
          N @ 1+ N !
       then
    loop
    N @ LEGAL-POLICIES T= ;
-
-: DIGEST-POLICIES ( -- )
-   N @ 0 ?do
-      i IX@ COMBO>POLICY CNUM:DIGEST CDIGEST-DIGEST:UNMAKE i DG!
-   loop ;
-
-: PAIR-POLICIES ( -- )
-   N @ dup * 0 ?do
-      i N @ / {: x:n :}
-      i N @ mod {: y:n :}
-      x IX@ COMBO>POLICY y IX@ COMBO>POLICY CNUM:SAME? {: same:bool :}
-      x y DG= same TBOOL=
-      same x y = TBOOL=
-   loop ;
 
 \ Every rejected policy index is rejected for the one stated reason, over the
 \ entire product of the five families.
@@ -624,35 +469,6 @@ variable REJ-IX
       then
    loop ;
 
-\ The binding digest separates every target when the policy is held fixed, and
-\ every policy when the target is held fixed. With the preimage being the two
-\ component preimages concatenated, those two sweeps cover both halves.
-: BIND-OVER-TARGETS ( -- )
-   COLLECT-CONTRACTS
-   N @ 0 ?do
-      i IX@ COMBO>CONTRACT STRICT CBIND:BIND CBIND:DIGEST
-      CDIGEST-DIGEST:UNMAKE i DG!
-   loop
-   N @ dup * 0 ?do
-      i N @ / {: x:n :}
-      i N @ mod {: y:n :}
-      x y DG= x y = TBOOL=
-   loop ;
-
-: BIND-OVER-POLICIES ( -- )
-   COLLECT-POLICIES
-   N @ 0 ?do
-      GPU i IX@ COMBO>POLICY CBIND:BIND CBIND:DIGEST
-      CDIGEST-DIGEST:UNMAKE i DG!
-   loop
-   N @ dup * 0 ?do
-      i N @ / {: x:n :}
-      i N @ mod {: y:n :}
-      GPU x IX@ COMBO>POLICY CBIND:BIND
-      GPU y IX@ COMBO>POLICY CBIND:BIND CBIND:SAME? {: same:bool :}
-      x y DG= same TBOOL=
-      same x y = TBOOL=
-   loop ;
 
 public
 
@@ -669,19 +485,10 @@ public
    BAD-BINDING
    FORGERY-REJECTS
    STATIC-REJECTS
-   PREIMAGE
    SLOT-ROUNDTRIP
-   STABLE
-   DOMAIN-SEPARATION
-   COLLECT-CONTRACTS
-   DIGEST-CONTRACTS
-   PAIR-CONTRACTS
-   COLLECT-POLICIES
-   DIGEST-POLICIES
-   PAIR-POLICIES
+   VALID-CONTRACTS
+   VALID-POLICIES
    SWEEP-POLICY-REJECTS
-   BIND-OVER-TARGETS
-   BIND-OVER-POLICIES
    T-REPORT ;
 
 ;package

@@ -681,16 +681,11 @@ CLID @ LAY-FIND FOUNDF !  LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
 FID @ TL-STACK-CELL-TAG 8 8 8 ' LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
-\ 12b. constructor package-name derivation (PLAN Package Shape, docs §12; item 8).
-\    TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ctor-a ctor-u ): uppercase the
-\    package segment and family tail, escape a literal '-' inside the segment as
-\    '--', join package-then-tail with a single '-'; when the escaped spelling
-\    exceeds the 32-byte readability cap (TF-CTOR-NAME-LIMIT; raised from 16 by
-\    dot habu-raise-or-alias-5d2a6b70), the name is `T` + the first 16 lowercase
-\    hex digits of SHA-256 over the length-prefixed segment list + `-` + the
-\    uppercase tail. Pure, injective, stable (no alloc-order id).
+\ 12b. Constructor package names escape each hyphen in the package and family
+\ tail, join them with one hyphen, and remain spelled out through the checker's
+\ 255-byte package-name limit.
 \ ---------------------------------------------------------------------------
-variable CPA   variable CPU   variable CQA   variable CQU
+variable CPA   variable CPU
 \ top level: bare uppercased tail, no separator.
 s" " s" result" TF-CTOR-PKG$ s" RESULT" T$=
 \ in-package: PKG-TAIL.
@@ -705,57 +700,27 @@ s" a-b" s" c"      TF-CTOR-PKG$ s" A--B-C" T$=
 s" a"   s" b-c"    TF-CTOR-PKG$ s" A-B--C" T$=
 s" "    s" a-b-c"  TF-CTOR-PKG$ s" A--B--C" T$=
 
-\ Readable band 16 < len <= 32 (raised from 16 by dot
-\ habu-raise-or-alias-5d2a6b70): the escaped form is injective at every length
-\ and the runtime/AOT dictionary stores long names (DNAME-EXT), so an escaped
-\ spelling up to 32 bytes keeps its READABLE form -- the real EVID/POLICY
-\ presence-slot ctor packages (EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22)
-\ are now constructable by name. These three folded to opaque SHA before the raise:
+\ Longer names keep the same spelling, including lengths past the former cap.
 s" verylongpackagename" s" result" TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULT" T$=       \ 26
 s" " s" verylongfamilyname" TF-CTOR-PKG$ s" VERYLONGFAMILYNAME" T$=                        \ 18
-\ exactly 32 bytes stays readable (the boundary is len <= 32):
 s" abcdefghijklmno" s" pqrstuvwxyzabcde" TF-CTOR-PKG$ s" ABCDEFGHIJKLMNO-PQRSTUVWXYZABCDE" T$=      \ 15+1+16
+s" verylongpackagename" s" resultresultr" TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULTRESULTR" T$= \ 33
+s" verylongpackagenamx" s" resultresultr" TF-CTOR-PKG$ s" VERYLONGPACKAGENAMX-RESULTRESULTR" T$=
+s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TF-CTOR-PKG$ s" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
 
-\ SHA-256 fallback fires only PAST 32 bytes now. escaped
-\ `VERYLONGPACKAGENAME-RESULTRESULTR` is 33 bytes > 32, so the derived name is
-\ `T` + 16 hex + `-RESULTRESULTR` = 31 bytes (the hash covers only the package
-\ segment list; the tail is appended raw). Structure asserted here; the exact
-\ hash goldens (determinism + injectivity + algorithm pin) follow.
-s" verylongpackagename" s" resultresultr" TF-CTOR-PKG$ CPU ! CPA !
-CPU @ 31 T=
-CPA @ 1 s" T" T$=                           \ prefix marker
-CPA @ 17 + 1 s" -" T$=                      \ separator after the 16-hex hash
-CPA @ 18 + 13 s" RESULTRESULTR" T$=         \ uppercase family tail suffix (appended raw)
-\ every hash byte is a lowercase hex digit (0-9 a-f).
-: HEXLC? ( n -- bool ) {: c:n :}
-   c 48 >= c 57 <= and   c 97 >= c 102 <= and   or ;
-: HEX16? ( ptr u8 -- bool ) {: p:ptr :}
-   0 begin dup 16 < while
-      dup p + c@ HEXLC? 0= if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-CPA @ 1 + HEX16? -1 T=
-\ TF-CTOR-PKG$ returns a pointer into the shared derivation buffer, so intern a
-\ stable copy of the first result before deriving again.
-variable CPOFF
-CPA @ CPU @ TF-INTERN CPOFF !
-\ injectivity: a different long package hashes to a different name (the hash
-\ region separates inputs that share length and tail).
-s" verylongpackagenamx" s" resultresultr" TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  T$<>       \ NOT equal to the first long name
-\ exact golden pins the pinned algorithm byte-for-byte (hash covers the package
-\ segment list only, so the longer tail keeps the verylongpackagename golden):
-\ SHA-256(0x13 "verylongpackagename") = 92a8624462e75ea4... (independent impl).
-s" verylongpackagename" s" resultresultr" TF-CTOR-PKG$ s" T92a8624462e75ea4-RESULTRESULTR" T$=
-\ a long family tail with an empty package: fallback hashes the empty segment
-\ list, tail still appended (33-byte top-level tail > 32).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TF-CTOR-PKG$ CQU ! CQA !
-CQU @ 51 T=                                 \ T(1)+16 hex+ -(1)+33-byte tail
-CQA @ 1 s" T" T$=
-CQA @ 1 + HEX16? -1 T=
-CQA @ 18 + 33 s" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
-\ empty segment list golden: SHA-256("") = e3b0c44298fc1c14... (FIPS-180 constant).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TF-CTOR-PKG$ s" Te3b0c44298fc1c14-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
+\ A package segment of 253 bytes plus "-X" fits; one more byte refuses before
+\ any constructor package can be published.
+create CPKG 255 allot
+: CPKG-FILL ( -- )
+   255 0 ?DO [char] a CPKG I + c! LOOP ;
+CPKG-FILL
+CPKG 253 s" x" TF-CTOR-PKG$ CPU ! CPA !
+CPU @ 255 T=
+CPA @ c@ char A T=
+CPA @ 253 + c@ char - T=
+CPA @ 254 + c@ char X T=
+CPKG 254 s" x" ' TF-CTOR-PKG$ catch TC ! 2drop 2drop
+TC @ E-PACKAGE-NAME-CAP T=
 
 \ ---------------------------------------------------------------------------
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove

@@ -67,7 +67,7 @@ create ERR CAP allot
    s" DEFER-LAYOUT-BUFFER C2-SCOPE-COLUMN forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>"
    70 s" in C2-SCOPE-COLUMN: scheme in a stored type 'forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]>'" s" " REPORTED? TTRUE
    s" a refused layout type leaves the rest of its line to the next statement" T-LABEL
-   s" 4 ' LAYOUT-BUFFER catch C2-REST-ROWS forall<p,[ n -- n ]> nip 4444 . throw"
+   s" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-REST-ROWS forall<p,[ n -- n ]> nip nip 4444 . throw"
    70 s" in C2-REST-ROWS: scheme in a stored type 'forall<p,[ n -- n ]>'" s" 4444" REPORTED? TTRUE
    s" layout storage holds a family closed over a quotation" T-LABEL
    s\" STRUCTURE c2hook<a> DERIVE addr FIELD fn a ;STRUCTURE\n2 LAYOUT-BUFFER C2-HOOKS c2hook<[ n -- n ]>\n: C2-H ( -- n ) [: 1 + ;] C2HOOK:MAKE 1 C2-HOOKS ! 41 1 C2-HOOKS C2HOOK:FN @ execute ;\nC2-H ."
@@ -101,11 +101,11 @@ create ERR CAP allot
    70 s" in C2-NL-N: no type for 'C2-NL-N'" s" " REPORTED? TTRUE
    s\" ' TYPED-VARIABLE catch C2-NL-SLOT\n4501 . throw"
    70 s" in C2-NL-SLOT: no type for 'C2-NL-SLOT'" s" 4501" REPORTED? TTRUE
-   s\" 4 ' TYPED-BUFFER catch C2-NL-SLOTS\nnip 4502 . throw"
+   s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-SLOTS\nnip nip 4502 . throw"
    70 s" in C2-NL-SLOTS: no type for 'C2-NL-SLOTS'" s" 4502" REPORTED? TTRUE
    s\" ' DYNAMIC-BUFFER catch C2-NL-DYN\n4503 . throw"
    70 s" in C2-NL-DYN: no type for 'C2-NL-DYN'" s" 4503" REPORTED? TTRUE
-   s\" 4 ' LAYOUT-BUFFER catch C2-NL-ROWS\nnip 4504 . throw"
+   s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch C2-NL-ROWS\nnip nip 4504 . throw"
    70 s" in C2-NL-ROWS: no type for 'C2-NL-ROWS'" s" 4504" REPORTED? TTRUE
    s\" ' DEFER-LAYOUT-BUFFER catch C2-NL-COLUMN\n4505 . throw"
    70 s" in C2-NL-COLUMN: no type for 'C2-NL-COLUMN'" s" 4505" REPORTED? TTRUE
@@ -114,16 +114,22 @@ create ERR CAP allot
    70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" " REPORTED? TTRUE
    s\" ' TYPED-VARIABLE catch\n4511 . throw"
    70 s" in TYPED-VARIABLE: no name for 'TYPED-VARIABLE'" s" 4511" REPORTED? TTRUE
-   s\" 4 ' TYPED-BUFFER catch\nnip 4512 . throw"
+   s\" 4 ' TYPED-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4512 . throw"
    70 s" in TYPED-BUFFER: no name for 'TYPED-BUFFER'" s" 4512" REPORTED? TTRUE
    s\" ' DYNAMIC-BUFFER catch\n4513 . throw"
    70 s" in DYNAMIC-BUFFER: no name for 'DYNAMIC-BUFFER'" s" 4513" REPORTED? TTRUE
-   s\" 4 ' LAYOUT-BUFFER catch\nnip 4514 . throw"
+   s\" 4 ' LAYOUT-BUFFER ' C2-MEMORY-SCOPE-REFUSALS:KEEP-COUNT catch\nnip nip 4514 . throw"
    70 s" in LAYOUT-BUFFER: no name for 'LAYOUT-BUFFER'" s" 4514" REPORTED? TTRUE
    s\" ' DEFER-LAYOUT-BUFFER catch\n4515 . throw"
    70 s" in DEFER-LAYOUT-BUFFER: no name for 'DEFER-LAYOUT-BUFFER'" s" 4515" REPORTED? TTRUE ;
 
 public
+
+\ Buffer definers consume a count. Return both operands on success so catch
+\ has the same row on either path while the definer still parses the source.
+: KEEP-COUNT ( n [ n -- ] -- n [ n -- ] )
+   {: count:n definer :}
+   count definer execute count definer ;
 
 : RUN ( -- )
    T-RESET

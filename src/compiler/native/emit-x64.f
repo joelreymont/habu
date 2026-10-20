@@ -104,7 +104,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 create EM-SINK BUF:HDR-BYTES allot      \ the emission this pass hands back
 create SC-SINK BUF:HDR-BYTES allot      \ and the one every measurement writes into
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable SINK-MODE                      \ nonzero once both sinks are mapped
 
 0 constant BOUND-NO
@@ -758,11 +758,10 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id ENTRY-OF id s PUT-FAR-CALL
    id DBACK-OF negate s PUT-DMOVE ;
 
-\ ONE instruction and never more: the selector only builds it where the pointer
-\ already stands at the callee's entry base, and the callee returns to THIS
-\ routine's caller.
+\ Publish the callee's argument row, then branch without another call frame.
 : PUT-TAILCALL ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
+   id DBYTES-OF s PUT-DMOVE
    id ENTRY-OF id s PUT-FAR-JMP ;
 
 \ ---- leaving through the routine that ends the process -----------------------

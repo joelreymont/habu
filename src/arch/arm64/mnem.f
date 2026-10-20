@@ -114,6 +114,8 @@ using A64ICODE
 
 : FMOVDX, ( n n -- )  ENC-FMOVDX EMITW ;
 
+: FMOVDI, ( n n -- )  ENC-FMOVDI EMITW ;
+
 : FMOVDD, ( n n -- )  ENC-FMOVDD EMITW ;
 
 : FADD, ( n n n -- )  ENC-FADD EMITW ;

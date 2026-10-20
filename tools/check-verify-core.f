@@ -37,8 +37,8 @@
 \ form the composition refused or at the loader word naming a file that is not
 \ there or cannot be read, but for a string or a locals group never closed, the
 \ stop's record at its opener. VERIFY-FILES$ is the
-\ files the verifier read, the subject and its dependencies, each with the
-\ digest of the bytes it read there, VERIFY-DEFS$ the
+\ visits the verifier read, the subject and its dependencies, each with its
+\ editor source or disk read stamp, VERIFY-DEFS$ the
 \ definitions it retained in them, VERIFY-USES$ the uses in the subject the
 \ checker bound to source targets or identified as engine primitives, and for
 \ CHECK:VERIFY-BYTES-OF those of its tail in the files the subject loads,
@@ -47,9 +47,7 @@
 \ CHECK:VERIFY-BYTES-AT's cursor offered, each one JSON object per line, never
 \ among the packets. VERIFY-LOG$ is the child's stderr, then after a loader's
 \ fault the status line naming the file it is in, or the file it could not
-\ read, and why. VERIFY-INDEX$ holds the potentially partial declaration rows
-\ of a separate INDEX-BYTES scan, usable only for a verified or refused verdict.
-\ These outputs hold until the next call.
+\ read, and why. All seven hold until the next call.
 \
 \ CHECK:PREVERIFY-BYTES is check.f's pre-pass, on the same child and image: the
 \ first refused definition stops it, as it stops the load, and the subject's
@@ -72,6 +70,8 @@ require src/lib/process-env.f
 require src/lib/process-command.f
 require src/lib/task.f
 require src/lib/engine-candidate.f
+require src/lib/byte-buffer.f
+require src/lib/json-write.f
 require tools/source-discovery.f
 require tools/check-all-errors-core.f
 require src/lib/verify-diagnostics.f
@@ -408,48 +408,58 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
    def LINT-LEX:TOKEN drop
    name CHK-TOK-END def LINT-LEX:BYTE@ - ;
 
-: CHK-NOM-JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
-   key keyu LJW-KEY val valu LJW-STRING LJW-COMMA ;
+: CHK-NOM-JSTR ( ptr JSON-WRITE:writer ptr u8 n ptr u8 n -- ptr JSON-WRITE:writer )
+   {: key:ptr keyu:n val:ptr valu:n :}
+   key keyu val valu JSON-WRITE:FIELD-S JSON-WRITE:COMMA ;
 
-: CHK-NOM-JU ( n ptr u8 n -- )
-   LJW-KEY LJW-U LJW-COMMA ;
+: CHK-NOM-JU ( ptr JSON-WRITE:writer n ptr u8 n -- ptr JSON-WRITE:writer )
+   {: value:n key:ptr keyu:n :}
+   key keyu value JSON-WRITE:FIELD-U JSON-WRITE:COMMA ;
+
+create CHK-NOM-JSON-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE CHK-NOM-JSON-W JSON-WRITE:writer
+variable CHK-NOM-JSON-READY
+
+: CHK-NOM-JSON-WRITER ( -- ptr JSON-WRITE:writer )
+   CHK-NOM-JSON-READY @ 0= if
+      CHK-NOM-JSON-BUF 1 BUF:N>BLEN BUF:INIT
+      1 CHK-NOM-JSON-READY !
+   then
+   CHK-NOM-JSON-W CHK-NOM-JSON-BUF JSON-WRITE:OPEN-BUF ;
 
 \ A declaration packet up to its suggestion: the declaration from def to token
 \ tok of the lex of the file the label names, which the packet names and
 \ locates.
 : CHK-PACKET-START ( n n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: def:n tok:n code:ptr codeu:n class:ptr classu:n word:ptr wordu:n label:ptr labelu:n :}
-   LJW-RESET
-   LJW-OBJECT-START
+   CHK-NOM-JSON-WRITER JSON-WRITE:OBJECT-START
    1 s" schema_version" CHK-NOM-JU
    s" code" code codeu CHK-NOM-JSTR
    s" repair_class" class classu CHK-NOM-JSTR
    s" verdict" s" rejected" CHK-NOM-JSTR
    s" word" word wordu CHK-NOM-JSTR
-   s" token" LJW-KEY tok LINT-LEX:TOKEN LJW-STRING LJW-COMMA
+   s" token" tok LINT-LEX:TOKEN JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    tok s" token_index" CHK-NOM-JU
-   s" file" LJW-KEY label labelu LJW-STRING LJW-COMMA
+   s" file" label labelu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    tok LINT-LEX:LINE@ s" line" CHK-NOM-JU
    tok LINT-LEX:COL@ s" column" CHK-NOM-JU
    tok LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
    tok CHK-TOK-END s" byte_end" CHK-NOM-JU
-   s" definition_source" LJW-KEY def tok CHK-NOM-SRC$ LJW-STRING LJW-COMMA
+   s" definition_source" def tok CHK-NOM-SRC$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" declared_effect" s" unknown " CHK-NOM-JSTR
    s" declared_effect_source" s" unknown" CHK-NOM-JSTR
    s" inferred_effect" s" unknown " CHK-NOM-JSTR
-   s" return_stack" LJW-KEY
-   LJW-OBJECT-START
-   s" expected" LJW-KEY s" " LJW-STRING LJW-COMMA
-   s" actual" LJW-KEY s" " LJW-STRING
-   LJW-OBJECT-END
-   LJW-COMMA ;
+   s" return_stack" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
+   s" expected" s" " JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" actual" s" " JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END JSON-WRITE:COMMA drop ;
 
 \ The packet CHK-PACKET-START began, ended by its suggestion: one JSON object,
 \ no line feed.
 : CHK-PACKET$ ( ptr u8 n -- ptr u8 n ) {: sug:ptr sugu:n :}
-   s" suggestion" LJW-KEY sug sugu LJW-STRING
-   LJW-OBJECT-END
-   LJW$ ;
+   CHK-NOM-JSON-W
+   s" suggestion" sug sugu JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END JSON-WRITE:$ ;
 
 : CHK-NONAME-SUG$ ( -- ptr u8 n )
    s" Give the definer a name: the next whitespace-delimited token." ;
@@ -473,12 +483,12 @@ DYNAMIC-BUFFER CHK-FILE-SRC u8          \ a closure file's bytes, read for a rec
       CHK-PACKET-START
       CHK-NONAME-SUG$ CHK-PACKET$ exit
    then
-   LJW-RESET
-   s" check.f: " LJW-RAW label labelu LJW-RAW
-   58 LJW-C k LINT-LEX:LINE@ LJW-U
-   58 LJW-C k LINT-LEX:COL@ LJW-U
-   s" : missing name after '" LJW-RAW k LINT-LEX:TOKEN LJW-RAW 39 LJW-C
-   LJW$ ;
+   CHK-NOM-JSON-WRITER
+   s" check.f: " JSON-WRITE:RAW label labelu JSON-WRITE:RAW
+   s" :" JSON-WRITE:RAW k LINT-LEX:LINE@ JSON-WRITE:U
+   s" :" JSON-WRITE:RAW k LINT-LEX:COL@ JSON-WRITE:U
+   s" : missing name after '" JSON-WRITE:RAW k LINT-LEX:TOKEN JSON-WRITE:RAW
+   s" '" JSON-WRITE:RAW JSON-WRITE:$ ;
 
 \ The record of a reader with no name after it, which starts at the given byte
 \ of the given bytes of the file the label names; empty when their lex has no
@@ -1266,9 +1276,8 @@ public
    VFY-DEFS-U @ 0= if NULL$ exit then
    0 VFY-DEFS VFY-DEFS-U @ ;
 
-\ The files the last VERIFY-BYTES read and the digests of the bytes it read of
-\ them, one JSON object per line as tools/check-verify-child.f's file line
-\ states it, each file and digest once, in the order the verifier started them.
+\ The file visits the last VERIFY-BYTES read, one JSON object per visit as
+\ tools/check-verify-child.f states it, in acquisition order.
 : VERIFY-FILES$ ( -- ptr u8 n )
    VFY-FILES-U @ 0= if NULL$ exit then
    0 VFY-FILES VFY-FILES-U @ ;
@@ -1296,8 +1305,8 @@ public
    VFY-CANDS-U @ 0= if NULL$ exit then
    0 VFY-CANDS VFY-CANDS-U @ ;
 
-\ Potentially partial declarations from the last INDEX-BYTES, one JSON object
-\ per line. Use them only when its corresponding verdict is verified or refused.
+\ Surviving declarations from a standalone scan of the last INDEX-BYTES,
+\ one JSON object per line. The caller uses them only after a complete child.
 : VERIFY-INDEX$ ( -- ptr u8 n )
    VFY-INDEX-U @ 0= if NULL$ exit then
    0 VFY-INDEX VFY-INDEX-U @ ;
@@ -1851,6 +1860,11 @@ public
 \ child's, a loader's fault's among them (VERIFY:LOADER-FAULT?), 0 when none did.
 : VERIFY-STOP ( -- n )
    VFY-STOP-RC @ ;
+
+\ The actual target of a loader's failed source read, if there was one.
+\ The next verification replaces these bytes; a consumer keeps its own copy.
+: VERIFY-UNREAD$ ( -- ptr u8 n )
+   VFY-STOP-RC @ VERIFY:E-SOURCE-READ = if VFY-TARGET$ else NULL$ then ;
 
 \ Where it stopped: the byte where the token it stopped at starts, the one the
 \ verifier read last or the opener of the statement it was in, whether that is

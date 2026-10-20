@@ -3,7 +3,7 @@ title: Tie copied error codes to their owners
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T14:12:40.502097+02:00\""
+created-at: "2026-10-02T14:12:40.502097+02:00"
 closed-at: "2026-10-14T19:30:30.928634+03:00"
 close-reason: "Implemented in 5fd45e3e: declaration reasons read their owners code constants, perf-map uses a real exit status, and JSON exponent bytes no longer look like error codes; renumbering probe, lint, suites and convergence passed."
 ---

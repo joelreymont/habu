@@ -8,17 +8,11 @@
 \ closed on the bare token. A TRUSTED: wrapper does not reopen them, because the
 \ refusal is on the token and not on the body around it.
 \
-\ So such a suite runs on an engine built WITHOUT that pass instead: the same
-\ tools/native-build.f image the product is, from the same tree, with
-\ HABU_WHITEBOX_IMAGE=1 telling the seal pass to stand down. It is built once,
-\ into the build cache under its content key, and every caller copies it;
-\ it is never installed and never becomes bin/hb, so the product engine the rest
-\ of the gate runs on keeps its seal and test/internal-word-gate.f keeps pinning
-\ that.
-\
-\ The key and the name are test/whitebox-key.f's: an edit anywhere in the
-\ builder's closure, or another engine, names another file, and no stale host
-\ is reused.
+\ Such a suite asks the unified engine builder for --engine --whitebox. The
+\ builder validates its observed inputs and owns artifact reuse. This adapter
+\ publishes the finished product under its content digest so PATH$ remains
+\ available after a gate build row exits; callers still run private copies.
+\ It is never installed over bin/hb.
 \
 \ PROVIDE names the private path a caller wants its own copy at, so no suite
 \ runs from - or clobbers - the shared bytes; PATH$ names the keyed artifact
@@ -41,7 +35,7 @@ require src/lib/engine-candidate.f
 require test/image-grant.f
 require test/compiler-images.f
 require test/suite-budget.f              \ CHILD-MS, the build's hang guard
-require test/whitebox-key.f
+require src/lib/content-key.f
 
 package WHITEBOX-ENGINE
 
@@ -53,6 +47,7 @@ create TMP-BUF FS-PATH-CAP allot
 create BUNDLE-BUF FS-PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
+create KEY-HEX 64 allot
 
 variable PATH-U
 variable WORK-U
@@ -60,18 +55,10 @@ variable WORK-FD
 variable TMP-U
 variable BUNDLE-U
 variable EMIT-RC
-variable RESOLVED?
+variable READY?
 
 \ The exit status of a build that produced no executable image.
 75 constant WB-RC
-
-\ The variable the build-time passes that shape the shipped image read to learn
-\ that this one is for whitebox suites: src/core/internal-mark.f's seal, and any
-\ later pass with the same question. It is set for this build and nothing else,
-\ so it is spelled in those files and in this one, and in no shipped engine's
-\ boot path at all.
-: SWITCH$ ( -- ptr u8 n )
-   s" HABU_WHITEBOX_IMAGE" ;
 
 : PATH-BYTES ( -- ptr u8 n )
    PATH-BUF PATH-U @ ;
@@ -97,11 +84,6 @@ variable RESOLVED?
 : WORK-PREFIX$ ( -- ptr u8 n )
    s" whitebox-engine" ;
 
-: RESOLVE ( -- )
-   RESOLVED? @ 0 <> if exit then
-   WHITEBOX-KEY:BUILDER$ PATH-BUF PATH-U WHITEBOX-KEY:ENTRY-PATH!
-   0 0= RESOLVED? ! ;
-
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 <= if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -124,23 +106,16 @@ variable RESOLVED?
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-\ TWO HALVES, AND NEITHER ALONE BUILDS THIS. The variable reaches the seal pass,
-\ which runs deep inside the target load where no argument can be handed to it;
-\ the `whitebox` argument is what the builder checks the finished image against
-\ before it promotes anything, so an ambient variable cannot turn some other
-\ build's product into this. Both are set here, deliberately, for this one run.
-\
-\ The variable goes in BEFORE the inherit, so the one row the child reads is
-\ this one whatever the parent's own environment says.
 : BUILD-ARGS ( -- )
    PROC-ARGV-ENV-RESET
-   SWITCH$ >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
-   WHITEBOX-KEY:BUILDER$ ARG
+   s" tools/hb-build.f" ARG
    s" --" ARG
-   TMP-BYTES ARG
-   s" whitebox" ARG ;
+   s" --engine" ARG
+   s" --whitebox" ARG
+   s" -o" ARG
+   TMP-BYTES ARG ;
 
 : BUILD-RUN ( -- )
    BUILD-ARGS
@@ -163,6 +138,14 @@ variable RESOLVED?
    TMP-BYTES EXECUTABLE? 0= if
       s" whitebox-engine: builder produced no executable image" WB-RC die
    then
+   CONTENT-KEY:OPEN
+   s" whitebox-product-v1" CONTENT-KEY:TEXT+
+   TMP-BYTES s" product" CONTENT-KEY:FILE-NAMED+
+   KEY-HEX CONTENT-KEY:FINAL-HEX
+   SB-RESET
+   s" hb-whitebox-" SB-APPEND
+   KEY-HEX 64 SB-APPEND
+   BUILD-CACHE:ROOT$ SB$ PATH-BUF JOIN-PATH PATH-U !
    TMP-BYTES PATH-BYTES RENAME-FILE ;
 
 \ A second builder racing this one writes the same keyed bytes and the rename
@@ -180,14 +163,13 @@ variable RESOLVED?
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
    WORK-CLOSE
    EMIT-RC @ 0 <> if EMIT-RC @ throw then
-   WHITEBOX-KEY:IMAGE-PREFIX$ s" " WORK-PREFIX$ PATH-BYTES BUILD-CACHE:PRUNE ;
+   s" hb-whitebox-" s" " WORK-PREFIX$ PATH-BYTES BUILD-CACHE:PRUNE ;
 
 public
 
-\ Build the shared unsealed engine unless the keyed artifact is already on disk,
-\ once the engine is granted (IMAGE-GRANT:CHECK; the family name is the work
-\ prefix). An engine found there is marked in use (BUILD-CACHE:USED), and one
-\ a pruner took meanwhile is built again.
+\ The unified builder validates source inputs before this process adopts a
+\ product. Later calls share that immutable result while it remains published;
+\ a missing supplier is materialized again. Bundle rows use the gate's supplier.
 : ENSURE ( -- )
    BUNDLE? if
       BUNDLE-PATH$ EXECUTABLE? 0= if
@@ -196,9 +178,11 @@ public
       exit
    then
    WORK-PREFIX$ IMAGE-GRANT:CHECK
-   RESOLVE
-   PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
-   EMIT ;
+   READY? @ if
+      PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
+   then
+   EMIT
+   true READY? ! ;
 
 \ The keyed artifact, for a caller that only wants to name it.
 : PATH$ ( -- ptr u8 n )

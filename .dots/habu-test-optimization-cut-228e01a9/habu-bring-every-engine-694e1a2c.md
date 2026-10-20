@@ -3,7 +3,7 @@ title: Bring every engine JSON record into the diagnostic contract
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:30:47.569389+02:00\""
+created-at: "2026-10-02T23:30:47.569389+02:00"
 closed-at: "2026-10-14T19:38:01.544621+03:00"
 close-reason: "Implemented in fd4206d5: one DIAG-CODE shape table drives assertion and repair tools, all listed records pass the contract, and warning handling is explicit; failing-before cases, focused suites and convergence passed."
 ---

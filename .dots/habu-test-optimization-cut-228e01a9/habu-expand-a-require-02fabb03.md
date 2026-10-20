@@ -3,7 +3,7 @@ title: Expand a require where it sits in check.f
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T04:12:40.682337+02:00\""
+created-at: "2026-10-01T04:12:40.682337+02:00"
 closed-at: "2026-10-14T19:26:17.337569+03:00"
 close-reason: "Implemented in 326774fb: check.f expands require at its source segment; check-test reduced load-order and use-before-definition cases and gate-diagnostics passed."
 ---

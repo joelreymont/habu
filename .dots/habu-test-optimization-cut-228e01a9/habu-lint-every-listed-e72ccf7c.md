@@ -3,7 +3,7 @@ title: Lint every listed file for the checked boundary
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-10-02T14:50:44.739677+02:00\""
+created-at: "2026-10-02T14:50:44.739677+02:00"
 closed-at: "2026-10-14T19:49:59.842059+03:00"
 close-reason: Current check-core.f CHK-LINT-LISTED applies checked-boundary lint to every non-engine-provided source-list file; check-test-lib.f TEST-BOUNDARY-LIST checks set-check violation in prose, JSON and all-errors.
 ---

@@ -3,7 +3,7 @@ title: "Fold the case of does> in check.f's pre-pass"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T16:39:51.758060+03:00\""
+created-at: "2026-10-03T16:39:51.758060+03:00"
 closed-at: "2026-10-14T19:33:10.273331+03:00"
 close-reason: "Implemented in 9d895f68: the verifier pre-pass recognizes mixed-case does> in both colon and TRUSTED: definers; failing-before fixture and native-create-does check modes passed."
 ---

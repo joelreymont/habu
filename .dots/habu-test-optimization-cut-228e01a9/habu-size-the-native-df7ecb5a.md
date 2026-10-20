@@ -3,7 +3,7 @@ title: Size the native trap table to its compilation
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T11:04:22.779487+02:00\""
+created-at: "2026-10-03T11:04:22.779487+02:00"
 closed-at: "2026-10-14T19:46:58.467035+03:00"
 close-reason: "c090d530 removed the fixed native trap table; current trap.f builds each site's message in the segmented string store with no table count or name-length cap."
 ---

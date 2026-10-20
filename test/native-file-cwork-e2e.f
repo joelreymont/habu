@@ -1,5 +1,4 @@
-\ A FILE that extends CWORK must run its source on every build: a native
-\ range cannot replay the workspace layout or its mapped default values.
+\ A cached FILE replays CWORK layout and ordered defaults across a parent edit.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -40,6 +39,50 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
    APP APP-U @ BIN-PATH BIN-PATH-U @ CACHE CACHE-U @ NATIVE-FILE-APP:BUILD 70 T=
    NATIVE-FILE-APP:ERR$ s" expected: ptr u8 actual: ptr n" CONTAINS? TTRUE ;
 
+: CHECK-DEFAULT-ORDER ( -- )
+   s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE VALUE n\n;package\nCWORK-FILE:VALUE @ drop\nCWORK:DECLARED-BYTES CELL - 9 CWORK:DEFAULT\nCWORK:DECLARED-BYTES CELL - 0 CWORK:DEFAULT\ns\" default unit source ran\" type cr\n" PUT
+   s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . ;\n" PUT
+   s" FILE replay retains repeated and zero defaults" T-LABEL
+   s" defaults-hb" BUILD
+   RUN-BIN-PATH
+   OUT$ S\" 0\n" CONTAINS? TTRUE
+   s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . 5 . ;\n" PUT
+   s" defaults-warm-hb" BUILD
+   NATIVE-FILE-APP:OUT$ s" default unit source ran" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   RUN-BIN-PATH
+   OUT$ S\" 0\n5\n" CONTAINS? TTRUE ;
+
+: CHECK-MOVED-PREFIX ( -- )
+   s" prefix.f" S\" package CWORK-PREFIX public\n1 constant CELL-COUNT\n1 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
+   s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE VALUE n\n2 CWORK-BUFFER ROWS n\n;package\nCWORK:DECLARED-BYTES 3 CELL * - 9 CWORK:DEFAULT\nCWORK:DECLARED-BYTES 3 CELL * - 19 CWORK:DEFAULT\ns\" moved unit source ran\" type cr\n" PUT
+   s" app.f" S\" require prefix.f\nrequire unit.f\n: MAIN ( -- ) CWORK-PREFIX:CELL-COUNT 0 ?do 71 i CWORK-PREFIX:PREFIX-ROW ! loop CWORK-FILE:VALUE @ . 31 1 CWORK-FILE:ROWS ! CWORK-FILE:VALUE @ . 1 CWORK-FILE:ROWS @ . ;\n" PUT
+   s" cached CWORK allocation follows an earlier prefix" T-LABEL
+   s" moved-cold-hb" BUILD
+   NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
+   RUN-BIN-PATH
+   OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
+   s" prefix.f" S\" package CWORK-PREFIX public\n3 constant CELL-COUNT\n3 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
+   s" moved-grow-hb" BUILD
+   NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   RUN-BIN-PATH
+   OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
+   s" prefix.f" S\" package CWORK-PREFIX public\n2 constant CELL-COUNT\n2 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
+   s" moved-shrink-hb" BUILD
+   NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   RUN-BIN-PATH
+   OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE ;
+
+: CHECK-STALE-DECL ( -- )
+   s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE VALUE n\n;package\n" PUT
+   s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . ;\n" PUT
+   s" cached client follows CWORK declaration identity" T-LABEL
+   s" identity-hb" BUILD
+   s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE OTHER n\n;package\n" PUT
+   APP APP-U @ BIN-PATH BIN-PATH-U @ CACHE CACHE-U @ NATIVE-FILE-APP:BUILD 70 T= ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -52,16 +95,19 @@ public
    APP-COLD
    s" cold FILE compilation observes the late default" T-LABEL
    s" cold-hb" BUILD
-   OUT$ s" cwork unit source ran" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" cwork unit source ran" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n42\n" CONTAINS? TTRUE
    APP-WARM
-   s" changed parent reruns CWORK child source" T-LABEL
+   s" changed parent reuses CWORK child FILE" T-LABEL
    s" warm-hb" BUILD
-   OUT$ s" cwork unit source ran" CONTAINS? TTRUE
-   OUT$ S\" file unit hits 0\n compiled 2" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" cwork unit source ran" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n43\n" CONTAINS? TTRUE
+   CHECK-DEFAULT-ORDER
+   CHECK-MOVED-PREFIX
+   CHECK-STALE-DECL
    CHECK-TYPED-STORAGE
    T-REPORT
    s" CWORK FILE artifacts: " type ROOT$ type cr ;

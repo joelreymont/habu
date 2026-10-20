@@ -10,7 +10,7 @@ public
 5 constant WORD
 9 constant SOURCE-END
 
-: RUN ( n ptr u8 n [ n n n n -- n bool ] [ n n n -- ] [ -- ] -- n )
+: RUN ( n ptr u8 n [ n n n n ptr u8 n -- n bool ] [ n n n -- ] [ -- ] -- n )
    source-exec-run ;
 : LIVE? ( -- bool ) source-exec-live? ;
 : BOUNDARY? ( -- bool ) source-exec-boundary? ;

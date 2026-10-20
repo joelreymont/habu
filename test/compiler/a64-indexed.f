@@ -81,6 +81,14 @@ $00000C00 constant MODE-BITS
    18 DS-REG 8 ENC-STRDPOST $FC008672 T=
    18 DS-REG -8 ENC-LDRDPRE $FC5F8E72 T= ;
 
+\ Independently assembled with clang's AArch64 assembler and read from the
+\ Mach-O text section. The signed pair field counts eight-byte cells.
+: PAIR-PRE-CASES ( -- )
+   9 10 DS-REG -16 ENC-LDPPRE $A9FF2A69 T=
+   SP-REG 0 SP-REG -16 ENC-LDPPRE $A9FF03FF T= \ ldp xzr,x0,[sp,#-16]!
+   0 1 DS-REG -512 ENC-LDPPRE $A9E00660 T=
+   20 21 DS-REG 504 ENC-LDPPRE $A9DFD674 T= ;
+
 \ Both ends of the signed nine-bit byte field, in both modes.
 : FIELD-END-CASES ( -- )
    1 2 255 ENC-STRPOST   $F80FF441 T=
@@ -129,6 +137,7 @@ public
    FRAME-CASES
    STACK-CASES
    FLOAT-CASES
+   PAIR-PRE-CASES
    FIELD-END-CASES
    MODE-CASES
    MNEMONIC-CASES ;

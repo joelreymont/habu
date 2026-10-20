@@ -3,7 +3,7 @@ title: Make the effect-store census run as documented
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T12:20:51.628715+02:00\""
+created-at: "2026-10-02T12:20:51.628715+02:00"
 closed-at: "2026-10-14T19:41:02.998189+03:00"
 close-reason: "Implemented in daeccb15: effect-store census headers document a working whitebox engine command and all three documented commands ran; the sealed product keeps private layout unavailable."
 ---

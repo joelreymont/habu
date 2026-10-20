@@ -329,6 +329,15 @@ snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 
+`CELL-BODY ( n -- )` declares exactly `n` complete cells in the current live
+`create` body, after allocating them. For example, `: GRID: ( n -- ) create ,
+2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;`
+keeps the two-cell body boundary when `does>` changes the word's result to a
+span. The count must be positive and the body must end at `here`; invalid
+extents throw 7121. The declaration supplies storage boundaries to image
+capture, not pointer or type authority: a complete cell holding a build-time
+mapping address still causes stripped-image refusal.
+
 forth.md: **Structures And Enums**, **Habu Native Tooling Gotchas**.
 
 ## 5 A cell that holds an address is declared

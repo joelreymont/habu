@@ -1,6 +1,6 @@
 ---
 title: Store the validated compiler binding directly
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.662814+03:00"

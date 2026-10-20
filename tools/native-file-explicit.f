@@ -9,7 +9,9 @@ require src/lib/fs.f
 require src/lib/engine-id.f
 require src/core/sha256.f
 require src/habu/app-image.f
+require src/habu/xref.f
 require src/os/script-argv.f
+require src/os/env-base.f
 require tools/native-file-cache.f
 
 package NATIVE-FILE-EXPLICIT
@@ -34,6 +36,16 @@ PTR-VARIABLE SOURCE-PATH variable SOURCE-U
 PTR-VARIABLE DOWNSTREAM-PATH variable DOWNSTREAM-U
 TYPED-VARIABLE SOURCE-BODY [ n n -- ]
 variable SOURCE-BODY-U
+variable ENV-RESET
+
+CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
+CAST: ENV-USE-XT ( n -- [ [ ptr u8 n ptr u8 n -- ] -- ] )
+CAST: ENV-RESET-XT ( n -- [ -- ] )
+
+: ENV-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-build: engine lacks ENV-INPUT hooks" 74 die
+   then XREF-START ;
 
 : ARTIFACT$ ( -- ptr u8 n ) ARTIFACT ARTIFACT-U @ ;
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
@@ -52,7 +64,17 @@ variable SOURCE-BODY-U
    else
       SOURCE-PRODUCER:HASH$
    then HASH-BYTES ;
+: HASH-USER-CELL ( ptr u8 -- ) CELL-VIEW @ HASH-N ;
+: HASH-USER-NEXT ( -- )
+   \ Resolve after the prefix: it may have introduced TASK.
+   s" TASK:OWNED-USER-NEXT" XREF-FIND dup XREF-FOUND? if
+      1 HASH-N
+      XREF-START USER-NEXT-XT ['] HASH-USER-CELL swap execute
+   else
+      drop 0 HASH-N
+   then ;
 : KEY-END ( -- )
+   HASH-USER-NEXT
    HASH-CTX HASH-RAW SHA256-END
    HASH-RAW KEY SHA256>HEX ;
 
@@ -99,15 +121,20 @@ variable SOURCE-BODY-U
    rc 0<> if rc throw then ;
 : EXPORT-LOAD ( -- )
    KEY-END
-   NFILE-CACHE:EXPLICIT-START
+   UNIT-PATH UNIT-PATH-U @ UNIT-ROOT UNIT-ROOT-U @
+      NFILE-CACHE:EXPLICIT-START
+   CWORK:FILE-MARK
+   NUNIT-DEP:BEGIN-UNIT
    ['] EXPORT-SOURCE NUNIT-CAPTURE:WITH
    NFILE-INPUTS:BYTES$ {: inputs:ptr inputu:n :}
    UNIT-PATH UNIT-PATH-U @ UNIT-ROOT UNIT-ROOT-U @
       KEY 64 HASH-RAW ARTIFACT$ SOURCE-BODY-U @ inputs inputu
-      NFILE-CACHE:EXPLICIT-EXPORT ;
+      NFILE-CACHE:EXPLICIT-EXPORT
+   NUNIT-DEP:CLOSE ;
 : IMPORT-LOAD ( -- )
    KEY-END
-   NFILE-CACHE:EXPLICIT-START
+   UNIT-PATH UNIT-PATH-U @ UNIT-ROOT UNIT-ROOT-U @
+      NFILE-CACHE:EXPLICIT-START
    UNIT-PATH UNIT-PATH-U @ UNIT-ROOT UNIT-ROOT-U @
       KEY 64 HASH-RAW ARTIFACT$ SOURCE-BODY-U @
       NFILE-CACHE:EXPLICIT-IMPORT
@@ -127,6 +154,8 @@ variable SOURCE-BODY-U
    answer answeru exists ;
 : READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    SOURCE-ROOT:READ-OS ;
+: ENV ( ptr u8 n ptr u8 n -- )
+   COLLECTING @ if NFILE-INPUTS:ADD-ENV else 2drop 2drop then ;
 : SELECTED? ( ptr u8 n -- bool )
    UNIT-PATH UNIT-PATH-U @ STR= ;
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
@@ -147,11 +176,14 @@ variable SOURCE-BODY-U
    else 0 sourceu q execute then ;
 
 : SOURCE-LOAD ( -- )
+   s" ENV-INPUT:RESET" ENV-XT ENV-RESET !
    NFILE-INPUTS:RESET
    KEY-BEGIN
+   NUNIT-CAPTURE:BIND-PRODUCER
    NUNIT-CAPTURE:START-FILE-PREFIX
    ['] CANON ['] READ SOURCE-INPUT:USE
    ['] LOAD SOURCE-UNIT:USE
+   ['] ENV s" ENV-INPUT:USE" ENV-XT ENV-USE-XT execute
    PREFIX-PATH @ PREFIX-U @ required
    SOURCE-PATH @ SOURCE-U @ required
    DOWNSTREAM-PATH @ DOWNSTREAM-U @ included
@@ -164,6 +196,8 @@ variable SOURCE-BODY-U
    0 SAVED-ROOT-U ! ;
 : CLOSE ( -- )
    SOURCE-UNIT:RESET SOURCE-INPUT:RESET
+   ENV-RESET @ dup 0<> if ENV-RESET-XT execute else drop then
+   0 ENV-RESET !
    NFILE-CACHE:EXPLICIT-CLOSE ;
 
 public

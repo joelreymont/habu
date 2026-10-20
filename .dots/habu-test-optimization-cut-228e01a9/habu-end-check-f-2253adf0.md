@@ -3,7 +3,7 @@ title: "End check.f's child when check.f is ended"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T05:11:06.490698+02:00\""
+created-at: "2026-10-02T05:11:06.490698+02:00"
 closed-at: "2026-10-14T19:45:53.132981+03:00"
 close-reason: 16ca8c6a adds shared signal capture handling and check.f child-tree cleanup; check-signal-test and real timeout repro pass with no orphan or temp directory.
 ---

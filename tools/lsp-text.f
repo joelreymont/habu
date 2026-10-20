@@ -1,8 +1,9 @@
 \ lsp-text.f - offsets in a text as the language server counts positions: the
 \ line by LF and the character in UTF-16 units.
 \
-\ TEXT! names the text positions count in, and FILE-TEXT! names a file's text
-\ on disk, read into this module's buffer; TEXT$ gives back the text named.
+\ TEXT! names the text positions count in, and FILE-TEXT! names a stable read
+\ of a file on disk. FILE-SNAPSHOT! also keeps a completed read whose metadata
+\ changed while reading, for diagnostic ranges. TEXT$ gives back the text named.
 \ FS-RC? tells the code of a throw a file system call took from any other.
 \ LINE-CHARACTER answers an offset's position through a cursor: moving forward
 \ reads only the bytes between, moving back within the line keeps the line,
@@ -37,6 +38,12 @@ variable CUR-LINE                        \ the line the offset is on,
 variable CUR-START                       \ and where that line starts
 DYNAMIC-BUFFER DISK u8                   \ a file's text, read from disk,
 variable DISK-U                          \ and its length
+variable DISK-SIZE                       \ metadata captured around that read,
+variable DISK-MSEC
+variable DISK-MNS
+variable DISK-CSEC
+variable DISK-CNS
+variable DISK-VALID
 
 : CUR-RESET ( -- )
    0 CUR-AT !
@@ -61,7 +68,15 @@ variable DISK-U                          \ and its length
 \ a missing file's, is only the first room (src/lib/source.f READ-WHOLE-SAMPLED).
 : SLURP ( ptr u8 n -- ptr u8 n )
    {: f:ptr fu:n :}
+   f fu FILE-META {: size:n msec:n mns:n csec:n cns:n :}
    f fu  f fu FILE-SIZE  [: DISK-ROOM ;] SOURCE:READ-WHOLE-SAMPLED DISK-U !
+   f fu FILE-META {: after:n amsec:n amns:n acsec:n acns:n :}
+   size after = msec amsec = and mns amns = and
+   csec acsec = and cns acns = and if
+      size DISK-SIZE ! msec DISK-MSEC ! mns DISK-MNS !
+      csec DISK-CSEC ! cns DISK-CNS !
+      true DISK-VALID !
+   then
    f fu ;
 
 : ERR ( ptr u8 n -- )
@@ -75,6 +90,7 @@ public
    {: a:ptr u:n :}
    a TEXT-A !
    u TEXT-U !
+   false DISK-VALID !
    CUR-RESET ;
 
 \ The text positions count in.
@@ -85,12 +101,14 @@ public
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;
 
-\ Positions count in the text of the file at this path, read from disk and
-\ taken after the read, which may move it, from now on. A file that cannot be
-\ read says so on stderr and counts as empty; it may have been refused before
-\ any storage held it.
-: FILE-TEXT! ( ptr u8 n -- )
+private
+
+\ Keep every byte acquired by a completed read, even when its metadata changed.
+\ The validity flag separately tells navigation whether the read stayed stable.
+\ A file that cannot be read says so on stderr and counts as empty.
+: READ-TEXT? ( ptr u8 n -- bool )
    {: f:ptr fu:n :}
+   false DISK-VALID !
    f fu [: SLURP ;] catch {: code:n :} 2drop
    code 0<> if
       code FS-RC? 0= if code throw then
@@ -98,9 +116,44 @@ public
       SB-RESET s" : not read: throw " SB-APPEND code FMT:SB-INT LF SB-APPEND-C
       SB$ ERR
       NULL$ TEXT!
-      exit
+      false exit
    then
-   0 DISK DISK-U @ TEXT! ;
+   DISK-VALID @ 0<> {: valid:bool :}
+   0 DISK DISK-U @ TEXT!
+   valid DISK-VALID !
+   true ;
+
+public
+
+\ Diagnostic positions count in the complete acquired snapshot. Changed
+\ metadata grants no freshness: DISK-META and DISK-CURRENT? remain false.
+: FILE-SNAPSHOT! ( ptr u8 n -- )
+   READ-TEXT? drop ;
+
+\ Navigation requires a stable read. Take the buffer after reading, since
+\ growth may move it; a missing or changed file counts as empty text.
+: FILE-TEXT! ( ptr u8 n -- )
+   {: f:ptr fu:n :}
+   f fu READ-TEXT? 0= if exit then
+   DISK-VALID @ 0= if
+      s" lsp: " ERR f fu ERR s" : changed while read\n" ERR
+      NULL$ TEXT!
+   then ;
+
+\ Metadata of the most recent file read, valid only when that read stayed
+\ stable. TEXT! of an editor buffer clears it.
+: DISK-META ( -- n n n n n bool )
+   DISK-SIZE @ DISK-MSEC @ DISK-MNS @ DISK-CSEC @ DISK-CNS @ DISK-VALID @ 0<> ;
+
+: DISK-CURRENT? ( ptr u8 n -- bool )
+   DISK-VALID @ 0= if 2drop false exit then
+   FS-TRY-STAT 0= if false exit then
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> if false exit then
+   FS-STAT-SIZE@ DISK-SIZE @ =
+   FS-STAT-MTIME-SEC@ DISK-MSEC @ = and
+   FS-STAT-MTIME-NS@ DISK-MNS @ = and
+   FS-STAT-CTIME-SEC@ DISK-CSEC @ = and
+   FS-STAT-CTIME-NS@ DISK-CNS @ = and ;
 
 \ The line and UTF-16 character of an offset held to the text: below it is its
 \ start, past it its end.

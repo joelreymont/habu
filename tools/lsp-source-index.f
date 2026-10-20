@@ -1,10 +1,9 @@
 \ Locate an image word in current engine source. The verifier child scans the
-\ supplied bytes in its own process and returns accepted declaration identities;
+\ supplied bytes in its own process and returns surviving declaration identities;
 \ this file matches them to the image's compiled origins.
 
 require src/lib/string.f
 require src/lib/json-read.f
-require src/core/sha256.f
 require src/habu/engine-origin.f
 require src/habu/verify-source.f
 require tools/check-verify-core.f
@@ -15,8 +14,6 @@ private
 60000 constant INDEX-MS
 
 create JR-ST JR:STORAGE-BYTES allot
-create HASH-CTX SHA256-CTX-BYTES allot
-create HASH-OUT 32 allot
 DYNAMIC-BUFFER ID-PKG u8
 DYNAMIC-BUFFER ID-TAIL u8
 variable ID-PKG-U
@@ -154,13 +151,6 @@ variable RESULT-SYM
       1 COUNT +!  sym RESULT-SYM !
    then ;
 
-: ORIGINAL? ( n ptr u8 n -- bool )
-   {: sym:n src:ptr srcu:n :}
-   sym ENGINE-ORIGIN:SOURCE-HASH {: saved:ptr savedu:n live:bool :}
-   live 0= if false exit then
-   HASH-CTX src srcu HASH-OUT SHA256-IN
-   HASH-OUT 32 saved savedu CORE-STR= ;
-
 public
 
 \ The current declaration of this compiled symbol in the supplied file.
@@ -173,7 +163,6 @@ public
    path pathu RELATIVE {: got:ptr gotu:n in-root:bool :}
    in-root 0= if 0 0 false exit then
    got gotu rel relu CORE-STR= 0= if 0 0 false exit then
-   sym src srcu ORIGINAL? if old old-end true exit then
    sym VERIFY:SYM-IDENTITY ID!
    0 MODE !
    src srcu path pathu SCAN
@@ -185,9 +174,6 @@ public
    {: path:ptr pathu:n byte:n src:ptr srcu:n :}
    path pathu RELATIVE {: rel:ptr relu:n in-root:bool :}
    in-root 0= if 0 false exit then
-   path pathu byte ENGINE-ORIGIN:SYMBOL-AT
-   {: origin:n found:bool :}
-   found if origin src srcu ORIGINAL? if origin true exit then then
    1 MODE !  byte CURSOR !
    src srcu path pathu SCAN
    COUNT @ 1 <> if 0 false exit then

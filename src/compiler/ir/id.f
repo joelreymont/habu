@@ -25,7 +25,7 @@ $7FFFFFFF constant MODULE-MAX
 $FFFFFFFF constant LOCAL-MAX
 32 constant LOCAL-BITS
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 variable NEXT-SERIAL
 0 NEXT-SERIAL !
 

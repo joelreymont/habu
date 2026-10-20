@@ -156,7 +156,7 @@ DYNAMIC-BUFFER MODULE u8
    ERR ERR-U @ RTRIM
    s" wasmlink: runtime-reached does> companion has no Wasm routine" T$=
    MOD MOD-U @ EXISTS? TFALSE
-   S\" package ADV\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- ] ) ;\nCODE-CELL: ACTION\npublic\n: MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ;\n' MAKER;does ACTION xt!\n;package\n"
+   S\" package ADV\nprivate\nvariable ACTION\npublic\n: MAKER ( -- ) create 0 , does> ( -- ) drop ;\n: MAIN ( -- ) ;\n' MAKER;does ACTION xt!\n;package\n"
    s" companion-cell.f" SOURCE!
    s" a code cell reaching a does> companion is refused before output" T-LABEL
    s" ADV:MAIN" s" companion-cell.wasm" BUILD 74 T=
@@ -183,18 +183,20 @@ DYNAMIC-BUFFER MODULE u8
    ERR ERR-U @ RTRIM  s" wasmlink: an output path that cannot be written" T$= ;
 
 \ ---- execute and catch in a code cell -----------------------------------------
+\ These primitives have no stored effect. The getter states this fixture's
+\ calling convention while returning the primitive's own entry for the table.
 : EXECUTE-CELL! ( -- )
    SB-RESET
    S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- ] ) ;\n" SB-APPEND
-   S\" CODE-CELL: ACTION\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
-   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute ;\n' execute ACTION xt!\n;package\n" SB-APPEND
+   S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- ] ) ['] execute ;\npublic\n: TARGET ( -- ) 31 . ;\n" SB-APPEND
+   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
    SB$ s" execute-cell.f" SOURCE! ;
 
 : CATCH-CELL! ( -- )
    SB-RESET
    S\" package PROBE\nprivate\n: CODE-CELL: ( -- ) create 0 , does> ( -- ptr [ [ -- ] -- n ] ) ;\n" SB-APPEND
-   S\" CODE-CELL: ACTION\npublic\n: TARGET ( -- ) -37 throw ;\n" SB-APPEND
-   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute . ;\n' catch ACTION xt!\n;package\n" SB-APPEND
+   S\" CODE-CELL: ACTION\nTRUSTED: ACTION-XT ( -- [ [ -- ] -- n ] ) ['] catch ;\npublic\n: TARGET ( -- ) -37 throw ;\n" SB-APPEND
+   S\" : MAIN ( -- ) ['] TARGET ACTION @ execute . ;\nACTION-XT ACTION xt!\n;package\n" SB-APPEND
    SB$ s" catch-cell.f" SOURCE! ;
 
 : CELL-CASES ( -- )

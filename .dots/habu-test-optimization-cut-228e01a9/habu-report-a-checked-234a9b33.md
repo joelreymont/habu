@@ -3,7 +3,7 @@ title: "Report a checked statement's throw in default check mode"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T10:49:09.873581+02:00\""
+created-at: "2026-10-01T10:49:09.873581+02:00"
 closed-at: "2026-10-14T19:26:18.027257+03:00"
 close-reason: "Implemented in 95351f48: default check mode renders statement throws as located records with refusal status in prose and JSON; red-first focused and diagnostics suites passed."
 ---

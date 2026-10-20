@@ -29,3 +29,13 @@ public
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/policy.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)
 ;package
+
+\ Dictionary occurrence failures belong to DEF-OCC. The checker needs the
+\ selection refusal before layout.f loads; both prefixes load this ABI first.
+package DEF-OCC
+public
+-7231 constant E-STALE
+-7232 constant E-SELECT
+-7233 constant E-NONCALLABLE
+-7234 constant E-EXHAUSTED
+;package

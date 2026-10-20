@@ -1,6 +1,6 @@
 ---
 title: Read AOT artifact payloads once
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.800386+03:00"

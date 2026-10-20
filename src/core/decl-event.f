@@ -1,7 +1,6 @@
 \ decl-event.f — shared typed-declaration syntax-event transaction (package
-\ DECL-EVENT). ONE transaction, event log, rollback/publication boundary, and
-\ read-only event reflection that BOTH post-hook declarers (STRUCTURE and ENUM)
-\ drive, so neither front end duplicates parser state or publication logic.
+\ DECL-EVENT). One transaction and provisional event scratch that both
+\ post-hook declarers (STRUCTURE and ENUM) drive.
 \ This file owns NO front end, no
 \ parser state, no cold descriptors, no legacy syntax: the two front ends
 \ (structure-decl.f / enum-decl.f, later dots) only recognise tokens and drive
@@ -13,8 +12,8 @@
 \ payload field (current variant = the open variant id) both produce one
 \ DEV-K-FIELD event and one field-record row with the SAME shape; only the
 \ variant selector — held here, not by the front end — differs. Downstream
-\ consumers (constructors, MATCH, codecs, snapshots, AOT) walk one ordered
-\ stream regardless of front end.
+\ consumers inspect the provisional stream while the declaration is open;
+\ committed family, variant, schema, and field registries own the result.
 \
 \ Ownership (settled by the chain orchestrator):
 \  - Header clauses (arity, POLICY, DERIVE, OPAQUE) are events HERE, with
@@ -31,8 +30,8 @@
 \ Transaction shape mirrors the field record's strict last-in, first-out frames.
 \ DECLARATION-TRANSACTION:RUN opens this participant at its savepoint, keeps
 \ events and field rows provisional through body validation, preflights
-\ their contiguity, then publishes both reversible watermarks. Rollback restores
-\ the event arena, published event high-water, field ordinal, variant ordinal,
+\ their contiguity, then commits the field rows reversibly. Rollback restores
+\ the event scratch, field ordinal, variant ordinal,
 \ current-variant selector, and the field registry. The checker participant owns
 \ the enclosing family, variant, schema, and layout registry savepoint.
 \
@@ -135,11 +134,11 @@ TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the s
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
 \ ---------------------------------------------------------------------------
-\ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
-\ all integers, so a grow is a plain cell copy and any later snapshot bake is
-\ verbatim with no rebase). OWNER is the first event id of the frame that
-\ emitted the row, so finalized nested declarations remain distinguishable from
-\ their still-open parent. One growable buffer whose base rides a variable.
+\ event scratch (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
+\ all integers, so a grow is a plain cell copy). OWNER is the first event id of
+\ the frame that emitted the row, so finalized nested declarations remain
+\ distinguishable from their still-open parent. One growable buffer is reused
+\ after the outer frame ends.
 \ ---------------------------------------------------------------------------
 0 cells constant DEV.KIND-OFF
 1 cells constant DEV.FAM-OFF
@@ -160,13 +159,12 @@ create DEV-A-BOOT   DEV-CAP-INIT DEV-REC * allot
 PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
 : DEV-BASE ( -- ptr n ) DEV-A-P @ ;
 
-variable DEV-N        \ provisional event high-water (arena end, in records)
-variable DEV-PUB-N    \ published event count; reflection reads [0, DEV-PUB-N)
+variable DEV-N        \ provisional event high-water (scratch end, in records)
 variable DEV-BASE-FLD \ field-record committed count captured at the OUTER open
 variable DEV-FLD-ORD  \ running field-event ordinal within the outer transaction
 variable DEV-VAR-ORD  \ running variant tag ordinal within the outer transaction
 variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-VARIANT
-variable DEV-I        \ private scan index (dedup / reflection / identity)
+variable DEV-I        \ private scan index (dedup)
 variable DEV-FOUND    \ private dedup-scan hit marker
 
 : DEV-GROW ( n -- ) {: need:n :}
@@ -181,15 +179,10 @@ variable DEV-FOUND    \ private dedup-scan hit marker
    id 0 < IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-N @ >= IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
-: DEV-REC@ ( n -- ptr n ) {: id:n :}    \ address of PUBLISHED event `id` (reflection)
-   id 0 < IF s" decl-event: bad published event id" DEV-BUG-RC die THEN
-   id DEV-PUB-N @ >= IF s" decl-event: bad published event id" DEV-BUG-RC die THEN
-   id DEV-REC * DEV-BASE + ;
-
 \ ---------------------------------------------------------------------------
 \ strict-LIFO transaction frames. Nested COMMIT keeps events + field rows
-\ reversible; only the outer COMMIT advances DEV-PUB-N and outer-commits the
-\ field record. Every frame owns the event-arena high-water, the field ordinal,
+\ reversible; the outer release reuses the event scratch after every participant
+\ has committed. Every frame owns the event high-water, the field ordinal,
 \ the variant ordinal, the current-variant selector, the field-record token, and
 \ its own serial token.
 \ ---------------------------------------------------------------------------
@@ -199,11 +192,10 @@ variable DEV-FOUND    \ private dedup-scan hit marker
 3 cells constant DEVTX.CURVAR-OFF   \ DEV-CUR-VAR at open (current-variant watermark)
 4 cells constant DEVTX.FLDTOK-OFF   \ field-record transaction token
 5 cells constant DEVTX.TOK-OFF      \ this frame's serial token
-6 cells constant DEVTX.PUBN-OFF     \ published event high-water at open
-7 cells constant DEVTX.STATE-OFF    \ open / reversibly published
-8 cells constant DEVTX.FAM-OFF      \ family owned by this declaration frame
-9 cells constant DEVTX.OWNER-OFF    \ exact first event that owns frame rows
-10 cells constant DEV-TX-REC
+6 cells constant DEVTX.STATE-OFF    \ open / reversibly committed
+7 cells constant DEVTX.FAM-OFF      \ family owned by this declaration frame
+8 cells constant DEVTX.OWNER-OFF    \ exact first event that owns frame rows
+9 cells constant DEV-TX-REC
 
 : DEVTX.EVN ( ptr a -- ptr a ) DEVTX.EVN-OFF + ;
 : DEVTX.FLDORD ( ptr a -- ptr a ) DEVTX.FLDORD-OFF + ;
@@ -211,7 +203,6 @@ variable DEV-FOUND    \ private dedup-scan hit marker
 : DEVTX.CURVAR ( ptr a -- ptr a ) DEVTX.CURVAR-OFF + ;
 : DEVTX.FLDTOK ( ptr a -- ptr a ) DEVTX.FLDTOK-OFF + ;
 : DEVTX.TOK ( ptr a -- ptr a ) DEVTX.TOK-OFF + ;
-: DEVTX.PUBN ( ptr a -- ptr a ) DEVTX.PUBN-OFF + ;
 : DEVTX.STATE ( ptr a -- ptr a ) DEVTX.STATE-OFF + ;
 : DEVTX.FAM ( ptr a -- ptr a ) DEVTX.FAM-OFF + ;
 : DEVTX.OWNER ( ptr a -- ptr a ) DEVTX.OWNER-OFF + ;
@@ -224,7 +215,7 @@ variable DEV-TX-DEPTH
 variable DEV-TX-SERIAL
 
 0 constant DEV-TX-OPEN
-1 constant DEV-TX-PUBLISHED
+1 constant DEV-TX-COMMITTED
 
 : DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
@@ -282,7 +273,6 @@ variable DEV-TX-SERIAL
    DEV-CUR-VAR @ r DEVTX.CURVAR !
    fldtok r DEVTX.FLDTOK !
    tok r DEVTX.TOK !
-   DEV-PUB-N @ r DEVTX.PUBN !
    DEV-TX-OPEN r DEVTX.STATE !
    DEV-NO-FAMILY r DEVTX.FAM !
    DEV-NO-OWNER r DEVTX.OWNER !
@@ -506,7 +496,7 @@ variable DEV-TX-SERIAL
 
 \ PREPARE proves the field rows are exactly the contiguous provisional range the
 \ event stream names, then delegates the field owner's mutation-free preflight.
-\ COMMIT advances reversible published watermarks while retaining both frames.
+\ COMMIT retains both frames so a later participant failure can roll them back.
 \ Releasing them afterwards is the runner's release step (PART-RELEASE
 \ below); the public FINALIZE here is the standalone entry point and re-proves
 \ everything, which is why the participant does not use it.
@@ -517,18 +507,15 @@ variable DEV-TX-SERIAL
 
 : DEV-COMMIT ( n -- ) {: tok:n :}
    tok DEV-PREPARE
-   DEV-N @ DEV-TX-TOP DEVTX.EVN @ <> {: changed:bool :}
    DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:COMMIT
-   DEV-TX-DEPTH @ 1 = changed and IF
-      DEV-N @ DEV-PUB-N !
-   THEN
-   DEV-TX-PUBLISHED DEV-TX-TOP DEVTX.STATE ! ;
+   DEV-TX-COMMITTED DEV-TX-TOP DEVTX.STATE ! ;
 
 : DEV-FINALIZE ( n -- ) {: tok:n :}
    tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.STATE @ DEV-TX-PUBLISHED <> IF E-DEV-TX throw THEN
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-COMMITTED <> IF E-DEV-TX throw THEN
    DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:FINALIZE
-   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
+   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
+   DEV-TX-DEPTH @ 0= IF 0 DEV-N ! THEN ;
 
 : DEV-PUBLISH ( n -- ) {: tok:n :}
    tok DEV-PREPARE
@@ -536,8 +523,7 @@ variable DEV-TX-SERIAL
    tok DEV-FINALIZE ;
 
 \ roll back every watermark this frame owns and delegate the field-registry
-\ cursor to the field record. Both open and reversibly committed frames restore
-\ the published view captured at OPEN. The family/variant/schema/layout cursors
+\ cursor to the field record. The family/variant/schema/layout cursors
 \ are retired by the enclosing checker scope/candidate frame (see header).
 \ A live frame is always either open or reversibly committed — the only two
 \ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
@@ -546,8 +532,7 @@ variable DEV-TX-SERIAL
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
-   r DEVTX.CURVAR @ DEV-CUR-VAR !
-   r DEVTX.PUBN @ DEV-PUB-N ! ;
+   r DEVTX.CURVAR @ DEV-CUR-VAR ! ;
 
 : DEV-FRAME-POP ( -- )            \ retire the live top frame's own watermarks
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
@@ -559,52 +544,11 @@ variable DEV-TX-SERIAL
    DEV-FRAME-POP ;
 
 : DEV-RESET ( -- )                \ base state; re-seeded at load (process-local)
-   0 DEV-N !   0 DEV-PUB-N !
+   0 DEV-N !
    0 DEV-TX-DEPTH !   0 DEV-TX-SERIAL !
    0 DEV-BASE-FLD !   0 DEV-FLD-ORD !   0 DEV-VAR-ORD !
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
 DEV-RESET
-
-\ ---------------------------------------------------------------------------
-\ read-only event reflection (published events only).
-\ ---------------------------------------------------------------------------
-: DEV-PUB-N@ ( -- n ) DEV-PUB-N @ ;
-: DEV-KIND@ ( n -- n ) DEV-REC@ DEV.KIND @ ;
-: DEV-FAM@ ( n -- n ) DEV-REC@ DEV.FAM @ ;
-: DEV-VAR@ ( n -- n ) DEV-REC@ DEV.VAR @ ;
-: DEV-FLD@ ( n -- n ) DEV-REC@ DEV.FLD @ ;
-: DEV-OWNER@ ( n -- n ) DEV-REC@ DEV.OWNER @ ;
-: DEV-DECL? ( n -- bool ) DEV-KIND@ DEV-K-DECL = ;
-: DEV-ARITY? ( n -- bool ) DEV-KIND@ DEV-K-ARITY = ;
-: DEV-POLICY? ( n -- bool ) DEV-KIND@ DEV-K-POLICY = ;
-: DEV-DERIVE? ( n -- bool ) DEV-KIND@ DEV-K-DERIVE = ;
-: DEV-OPAQUE? ( n -- bool ) DEV-KIND@ DEV-K-OPAQUE = ;
-: DEV-VARIANT? ( n -- bool ) DEV-KIND@ DEV-K-VARIANT = ;
-: DEV-VARIANT-END? ( n -- bool ) DEV-KIND@ DEV-K-VARIANT-END = ;
-: DEV-FIELD? ( n -- bool ) DEV-KIND@ DEV-K-FIELD = ;
-
-\ ---------------------------------------------------------------------------
-\ deterministic snapshot identity. FNV-1a-64 fold over the published event
-\ records. Records are pointer-free integers appended in declaration order, so
-\ identical declarations always fold to an identical identity across rebuilds
-\ and hosts (no address, no ordering nondeterminism). This is the deterministic
-\ identity the event stream carries; cryptographic content-addressing of the
-\ persisted snapshot rides the later AOT/snapshot dot.
-\ ---------------------------------------------------------------------------
-$100000001b3 constant DEV-FNV-PRIME
-$cbf29ce484222325 constant DEV-FNV-OFFSET
-: DEV-MIX ( n n -- n ) xor DEV-FNV-PRIME * ;
-: DEV-IDENTITY ( -- n )
-   DEV-FNV-OFFSET
-   0 DEV-I !
-   BEGIN DEV-I @ DEV-PUB-N @ < WHILE
-      DEV-I @ DEV-KIND@ DEV-MIX
-      DEV-I @ DEV-FAM@  DEV-MIX
-      DEV-I @ DEV-VAR@  DEV-MIX
-      DEV-I @ DEV-FLD@  DEV-MIX
-      DEV-I @ DEV-OWNER@ DEV-MIX
-      DEV-I @ 1 + DEV-I !
-   REPEAT ;
 
 \ Declaration-transaction participant.  Two cells hold the EXACT event token and
 \ field token this participant opened, both written before the declaration body
@@ -718,6 +662,7 @@ public
    DEV-PART-OPEN? IF
       TDECL-FIELD-RELEASE-XT
       DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
+      DEV-TX-DEPTH @ 0= IF 0 DEV-N ! THEN
       DEV-PART-CLEAR
    THEN ;
 
@@ -737,18 +682,8 @@ private
 \ unmapped page and died SIGSEGV/SIGBUS on its first ENUM, and on the runs where
 \ that address happened to land inside a mapped region it corrupted it silently
 \ instead. The three cursors go back to zero with the arenas because the boot
-\ stores they point at are the small baked ones - a published high-water that
-\ outran them would index off the end of the buffer it names.
-\
-\ THE EVENTS ARE MEANT TO GO. `variable DEV-A-P DEV-A-BOOT DEV-A-P !` at the head
-\ of this file is the module's own statement that its state is re-seeded per
-\ process, and reflection is a within-declaration view: COUNT/KIND@/IDENTITY read
-\ what the declarations of THIS process published, and every durable consequence
-\ of a declaration - family, variants, schema, layout, generated words - was
-\ published into registries that persist properly. A restored image therefore
-\ starts its event log empty, which is exactly what a restored image did before,
-\ by accident, when the build re-loaded this file on top of itself and re-ran the
-\ line above.
+\ stores they point at are the small baked ones. Event scratch has no durable
+\ contents; declarations publish their consequences into separate registries.
 \
 \ It runs at depth 0 or not at all: an image captured mid-declaration would carry
 \ frames whose field-owner and checker savepoints no one will ever close.
@@ -761,7 +696,7 @@ private
    DEV-RESET ;
 
 \ ---------------------------------------------------------------------------
-\ public API: the transaction both front ends drive + read-only reflection.
+\ public API: the transaction both front ends drive.
 \ Phase constraints: CURRENT returns the frame opened by the declaration
 \ savepoint and rejects outside an open declaration; OPEN remains the explicit
 \ standalone interface. DECL/ARITY/
@@ -773,8 +708,7 @@ private
 \ performs PREPARE, COMMIT, and FINALIZE in one call. FINALIZE is the
 \ standalone release and re-proves the token, the frame state, and the field
 \ owner's watermarks, so it is not what the runner's total release step
-\ runs. Reflection + IDENTITY
-\ read only published events and are legal any time.
+\ runs. The outer release or rollback discards the event scratch.
 \ ---------------------------------------------------------------------------
 public
 
@@ -806,21 +740,7 @@ public
 : CURRENT-VARIANT ( -- n ) DEV-CUR-VAR @ ;
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;
 
-: COUNT ( -- n ) DEV-PUB-N@ ;
 : DEPTH ( -- n ) DEV-TX-DEPTH @ ;
-: KIND@ ( n -- n ) DEV-KIND@ ;
-: FAMILY@ ( n -- n ) DEV-FAM@ ;
-: VAR@ ( n -- n ) DEV-VAR@ ;
-: FIELD@ ( n -- n ) DEV-FLD@ ;
-: DECL? ( n -- bool ) DEV-DECL? ;
-: ARITY? ( n -- bool ) DEV-ARITY? ;
-: POLICY? ( n -- bool ) DEV-POLICY? ;
-: DERIVE? ( n -- bool ) DEV-DERIVE? ;
-: OPAQUE? ( n -- bool ) DEV-OPAQUE? ;
-: VARIANT? ( n -- bool ) DEV-VARIANT? ;
-: VARIANT-END? ( n -- bool ) DEV-VARIANT-END? ;
-: FIELD? ( n -- bool ) DEV-FIELD? ;
-: IDENTITY ( -- n ) DEV-IDENTITY ;
 
 private
 

@@ -3,7 +3,7 @@ title: Build AOT test rows on the image
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T09:56:33.903503+02:00\""
+created-at: "2026-10-02T09:56:33.903503+02:00"
 closed-at: "2026-10-14T19:30:56.978744+03:00"
 close-reason: "Implemented in 9161fa93: AOT test rows use image builds when their actual closure permits; remaining engine-built rows have observed pre-window refusals and comments. Focused suites and interleaved wall-time measurements recorded."
 ---

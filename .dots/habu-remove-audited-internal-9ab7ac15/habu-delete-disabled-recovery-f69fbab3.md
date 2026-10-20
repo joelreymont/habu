@@ -1,6 +1,6 @@
 ---
 title: Delete disabled recovery extension machinery
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.836203+03:00"

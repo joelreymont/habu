@@ -1,4 +1,4 @@
-\ Source-bound emission, loaded only after the target capture is complete.
+\ Image emission, loaded only after the target capture is complete.
 require src/lib/string.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -21,7 +21,6 @@ package NATIVE-EMIT
 execute
 
 require src/os/script-argv.f
-require src/habu/treeshake.f
 require src/habu/rt.f
 require src/habu/crash.f
 

@@ -26,7 +26,22 @@ package NATIVE-FILE-RETIRED-TEST
    s" late.f"
       S\" require prefix.f\npackage FILE-PREFIX-RETIRED\npublic\n: NEW-CALLER ( -- n ) VALUE ;\nundefine VALUE\n;package\ns\" late-retire-source-ran\" type cr\n" PUT
    s" late-app.f"
-      S\" require late.f\n: MAIN ( -- ) FILE-PREFIX-RETIRED:NEW-CALLER . ;\n" PUT ;
+      S\" require late.f\n: MAIN ( -- ) FILE-PREFIX-RETIRED:NEW-CALLER . ;\n" PUT
+   \ These definers advance CP past SAVE's retired CALL site without NART publication.
+   s" called.f"
+      S\" package FILE-CALLED-RETIRED\nvariable RESULT\npublic\n: OLD ( -- n ) 1 ;\n: SAVE ( -- ) OLD RESULT ! ;\nSAVE\ns\" FILE-CALLED-RETIRED:OLD\" FORGET-DEFS-FROM\nvariable FILL-A\nvariable FILL-B\nvariable FILL-C\nvariable FILL-D\nvariable FILL-E\nvariable FILL-F\nvariable FILL-G\nvariable FILL-H\n: VALUE ( -- n ) RESULT @ ;\n;package\ns\" called-retire-source-ran\" type cr\n" PUT
+   s" called-app.f"
+      S\" require called.f\n: MAIN ( -- ) FILE-CALLED-RETIRED:VALUE . ;\n" PUT
+   s" replaced.f"
+      S\" require src/habu/xref.f\npackage FILE-REPLACED-OWNER\nvariable HITS\nCAST: TRACK-N ( [ n -- ] -- n )\npublic\n: TRACK ( n -- ) drop 1 HITS +! ;\n: HITS@ ( -- n ) HITS @ ;\n: INSTALLED? ( -- bool ) data-base NATIVE-OBS-CELLS:INVALIDATE + @ ['] TRACK TRACK-N = ;\n: SEVEN ( -- n ) 7 ;\n: EARLIER ( -- n ) SEVEN ;\n: QUOTED ( -- n ) [: SEVEN ;] execute ;\n;package\n' FILE-REPLACED-OWNER:TRACK CODE-RECLAIM:INVALIDATE!\nrequire replaced-child.f\npackage FILE-REPLACED-OWNER\npublic\n: LATER ( -- n ) EARLIER ;\n;package\ns\" replaced-source-ran\" type cr\n" PUT
+   s" replaced-child.f"
+      S\" package FILE-REPLACED-CHILD\nvariable RESULT\npublic\n: OLD ( -- n ) 1 ;\n: SAVE ( -- ) [: OLD ;] execute RESULT ! ;\nSAVE\ns\" FILE-REPLACED-CHILD:OLD\" FORGET-DEFS-FROM\nvariable FILL-A\nvariable FILL-B\nvariable FILL-C\nvariable FILL-D\nvariable FILL-E\nvariable FILL-F\nvariable FILL-G\nvariable FILL-H\n: VALUE ( -- n ) RESULT @ ;\n;package\n" PUT
+   s" replaced-app.f"
+      S\" require replaced.f\n: MAIN ( -- ) FILE-REPLACED-OWNER:LATER . FILE-REPLACED-OWNER:QUOTED . FILE-REPLACED-CHILD:VALUE . FILE-REPLACED-OWNER:HITS@ 0 > if 1 else 0 then . FILE-REPLACED-OWNER:INSTALLED? if 1 else 0 then . ;\n" PUT
+   s" failed.f"
+      S\" require src/habu/xref.f\npackage FILE-FAILED-OWNER\npublic\n: TRACK ( n -- ) drop ;\n;package\n' FILE-FAILED-OWNER:TRACK CODE-RECLAIM:INVALIDATE!\n7277 throw\n" PUT
+   s" failed-app.f"
+      S\" require failed.f\n: MAIN ( -- ) ;\n" PUT ;
 
 : BUILD ( ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n :}
@@ -46,30 +61,49 @@ public
    s" native-file-retired" TREE
    PREPARE
    s" app.f" s" cold-hb" BUILD SUCCESS
-   OUT$ s" file unit hits 0" CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" retire-source-ran" CONTAINS? TTRUE
    s" app.f" s" warm-hb" BUILD SUCCESS
-   OUT$ s" file unit hits " CONTAINS? TTRUE
-   OUT$ s" file unit hits 0" CONTAINS? 0= TTRUE
-   OUT$ s" retire-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" retire-source-ran" CONTAINS? TTRUE
    s" cold-hb" S\" 2\n1\n" RUN-PRODUCT
    s" warm-hb" S\" 2\n1\n" RUN-PRODUCT
    s" absent-app.f" s" absent-cold-hb" BUILD SUCCESS
    OUT$ s" prefix-retire-source-ran" CONTAINS? TTRUE
    s" absent-app.f" s" absent-warm-hb" BUILD SUCCESS
-   OUT$ s" file unit hits 3" CONTAINS? TTRUE
-   OUT$ s" compiled 0" CONTAINS? TTRUE
-   OUT$ s" prefix-retire-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" prefix-retire-source-ran" CONTAINS? TTRUE
    s" absent-cold-hb" S\" 0\n1\n" RUN-PRODUCT
    s" absent-warm-hb" S\" 0\n1\n" RUN-PRODUCT
    s" new caller keeps its retired target on warm import" T-LABEL
    s" late-app.f" s" late-cold-hb" BUILD SUCCESS
    OUT$ s" late-retire-source-ran" CONTAINS? TTRUE
    s" late-app.f" s" late-warm-hb" BUILD SUCCESS
-   OUT$ s" file unit hits 0" CONTAINS? 0= TTRUE
-   OUT$ s" late-retire-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" late-retire-source-ran" CONTAINS? TTRUE
    s" late-cold-hb" S\" 1\n" RUN-PRODUCT
    s" late-warm-hb" S\" 1\n" RUN-PRODUCT
+   s" retired load-time call survives FILE capture" T-LABEL
+   s" called-app.f" s" called-cold-hb" BUILD SUCCESS
+   OUT$ s" called-retire-source-ran" CONTAINS? TTRUE
+   s" called-app.f" s" called-warm-hb" BUILD SUCCESS
+   OUT$ s" called-retire-source-ran" CONTAINS? TTRUE
+   s" called-cold-hb" S\" 1\n" RUN-PRODUCT
+   s" called-warm-hb" S\" 1\n" RUN-PRODUCT
+   s" source owner survives FILE capture and later reclamation" T-LABEL
+   s" replaced-app.f" s" replaced-cold-hb" BUILD SUCCESS
+   OUT$ s" replaced-source-ran" CONTAINS? TTRUE
+   s" replaced-app.f" s" replaced-warm-hb" BUILD SUCCESS
+   OUT$ s" replaced-source-ran" CONTAINS? TTRUE
+   s" replaced-cold-hb" S\" 7\n7\n1\n1\n1\n" RUN-PRODUCT
+   s" replaced-warm-hb" S\" 7\n7\n1\n1\n1\n" RUN-PRODUCT
+   s" a source error survives callback replacement" T-LABEL
+   s" failed-app.f" s" failed-hb" BUILD 0<> TTRUE
+   ERR$ s" 7277" CONTAINS? TTRUE
+   ERR$ s" 7243" CONTAINS? 0= TTRUE
    T-REPORT
    s" native file retired artifacts: " type ROOT$ type cr ;
 ;package

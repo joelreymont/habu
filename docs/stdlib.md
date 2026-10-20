@@ -84,15 +84,15 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 (a `TASK:+USER` row or a per-task DATA cell, so any number of tasks may use it
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
-and the size of the band a `TASK:+USER` row comes from, which is 6024 bytes
-for the whole image with 4328 free once the libraries above have claimed
+and the size of the band a `TASK:+USER` row comes from, which is 6016 bytes
+for the whole image with 4320 free once the libraries above have claimed
 theirs.
 
 | module | class |
 | --- | --- |
 | `src/lib/string.f` | task-local (the SB builder, STRING-ABI band) / caller-owned (the `BUF-*` family) |
 | `src/lib/fmt.f` | task-local (the render buffer and its scratch cells, FMT-ABI band) |
-| `src/lib/fs.f` | task-local (the per-call slots, FS-ABI band) / process-wide (the walk stack) |
+| `src/lib/fs.f` | task-local (the per-call slots and cause, FS-ABI band) / caller-owned (walk contexts; one static convenience context) |
 | `src/lib/fs-lock.f` | caller-owned (the held descriptor) |
 | `src/lib/fs-mutate.f` | task-local (the staged paths, FS-MUT-ABI band; the stream copy's descriptors and cursors) / process-wide (the copy buffer, so the two copy words are single-task; the cleanup registry, which any task may register into) |
 | `src/lib/svg-pdf.f` | task-local (the foreign handles and fractional viewport) |
@@ -1055,7 +1055,7 @@ them: a decoded NUL or `/` is kept, and `src/lib/fs.f` refuses a path holding a 
 ## JSON Write
 
 `src/lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark
-rows, and native tools that do not need the full parser DOM from `tools/json.f`.
+rows, and native tools.
 It emits compact JSON, escapes string control bytes/quotes/backslashes, and
 throws instead of truncating or emitting invalid bytes. Commas remain explicit so
 object and array shape is visible in code.
@@ -1826,6 +1826,62 @@ as 20 bytes. It is here for the RFC 6455 handshake and is not for security. See
 `src/lib/fs.f` is the canonical filesystem helper surface. Public path words accept
 counted byte strings and own any private NUL-terminated copy needed for syscalls.
 
+`FS:ERRNO ( -- n )` gives the positive host errno saved by the last filesystem
+primitive in the running task. Read it immediately after catching an `E-FS-*`
+or `E-FS-LIST-*` throw: another filesystem primitive, including a successful
+one, replaces it. A semantic refusal such as path capacity has cause zero.
+`FS:ENOENT`, `FS:EACCES`, `FS:ENOTDIR`, `FS:ELOOP`, and
+`FS:ENAMETOOLONG` name the relevant host values; the last two depend on the
+target OS. The existing `E-FS-*` throws and primitive `-1` results remain the
+primary contracts. The guarantee covers `fs.f`, `fs-list.f`, and
+`fs-anchored.f`; the other FFI-based
+identity, lock and mutation helpers do not acquire a cause contract through
+this API. The cell is task-local, so two tasks keep distinct causes, while a
+nested filesystem call in the same task replaces the outer call's value.
+
+`require src/lib/fs-anchored.f` adds descriptor-anchored reads:
+
+```forth
+FS:OPEN-DIR     ( ptr u8 n -- fd )
+FS:OPEN-DIR-AT  ( fd ptr u8 n -- fd )
+FS:READ-FILE-AT ( fd ptr u8 n SPAN:span<u8> -- n )
+FS:CLOSE        ( fd -- )
+```
+
+`OPEN-DIR` acquires an owned directory descriptor starting at `/` for an
+absolute path or `.` for a relative path; the complete `/` and `.` paths are
+valid. `OPEN-DIR-AT` and `READ-FILE-AT` borrow the anchor descriptor, and
+reject absolute paths. Their returned directory descriptor is owned by the
+caller, who retires it with `CLOSE` by convention; `fd` is a non-linear type.
+Each call first copies its counted path to private storage, rejects an empty,
+negative, over-`FS-PATH-CAP`, or NUL-containing path, then rejects empty,
+repeated, trailing, `.` and `..` components. Ordinary names such as `.cache`
+and `a..b` are valid.
+
+Each path component is opened relative to the preceding live directory
+descriptor with `O_NOFOLLOW`; directory components also require
+`O_DIRECTORY`. `READ-FILE-AT` opens the last component with `O_NONBLOCK` and
+`O_NOCTTY`, checks that the **opened descriptor** is a regular file with
+`fstat`, and reads that same descriptor into the caller's span. It probes one
+additional byte when the span fills, including a zero-length span. The buffer
+contents are unspecified if the call throws. A replaced final or intermediate
+symlink cannot redirect a component lookup. An opened directory remains the
+anchor if its old name is renamed or replaced. Lookup starts from the actual
+directory inode encountered at acquisition; it cannot prove that inode was a
+caller's intended root. Concurrent cross-root renames, hard links, mounts,
+and file-content changes are outside this guarantee. The same descriptor
+preserves object identity across the type check and read, not a snapshot of
+its contents. These limits follow the [openat descriptor and flag semantics](https://man7.org/linux/man-pages/man2/open.2.html)
+and the [Darwin open flags](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/fcntl.h).
+
+Malformed structure throws `E-FS-PATH`, NUL throws `E-FS-PATH-UNSAFE`, open
+failure throws `E-FS-OPEN`, failed `fstat` or a nonregular inode throws
+`E-FS-STAT`, excess bytes throw `E-FS-CAPACITY`, and read or close failure
+throws `E-FS-IO`. A failed syscall leaves its positive errno in `FS:ERRNO`;
+semantic refusals leave zero. Cleanup attempts every owned close while
+preserving the first operation failure and its cause. A standalone failed
+`CLOSE` reports its close errno. These calls never close a borrowed anchor.
+
 The current source-backed surface covers path predicates, stat mode and size,
 basename, bounded path joining, bounded file I/O, file mutation, and recursive file
 walking:
@@ -2019,16 +2075,35 @@ removal that fails is reported, not swallowed: `CLEANUP-AT-EXIT` writes one
 registered with `CLEANUP-DIR+` gives `E-FS-IO` (-2105)) and leaves the exit code the
 process is carrying untouched.
 
-`src/lib/fs-list.f` (package `FS-LIST`) lists one directory's entry names for test
-harnesses that assert what an output directory holds. `EACH` hands every name
+`src/lib/fs-list.f` (package `FS-LIST`) lists one directory's entries. `EACH` hands every name
 except `.` and `..` to a quotation in directory order; `NAMES` writes the names
 newline-separated and in byte order into a caller buffer of a stated capacity,
 so two listings of one directory compare equal, and refuses a buffer that is
 too small with `E-FS-LIST-CAPACITY`. It reads through the raw directory-entry
-primitive and shares the record decoding with `WALK-FILES`. A listing is the
-call's own: each call maps its descriptor, cursor and dirent block and gives
-them back, the descriptor closed, however it ends, so tasks list at once and a
-quotation may list again inside `EACH`.
+primitive and shares the record decoding with `WALK-FILES`. `EACH`,
+`EACH-TYPED`, and `NAMES` allocate one private listing context per call,
+close its descriptor on every exit, and release its backing storage. They
+support concurrent tasks and nested listings.
+For repeated listings, `STORAGE-BYTES` is the required backing span size
+(two cells and a 4096-byte block). Pass a cell-aligned span of at least that
+size to `INIT ( SPAN:span<u8> -- FS-LIST:context )` once; the caller keeps the
+span alive until every operation using the context has ended. `EACH-IN`,
+`EACH-TYPED-IN`, and `NAMES-IN` take that context before the legacy arguments
+and reuse its storage. Two simultaneous listings need distinct contexts;
+reentry or concurrency on the same context throws `E-FS-LIST-ACTIVE`
+(`FS-LIST:E-ACTIVE`) without disturbing the first listing. Reuse is safe after
+success, an open or read failure, or a callback throw. `INIT` rejects short or
+unaligned storage with
+`E-FS-LIST-CAPACITY`; do not call it while a listing is active. Semantic
+refusals clear `FS:ERRNO` to zero.
+`EACH-TYPED ( ptr u8 n [ ptr u8 n u8 -- ] -- )` hands the same borrowed name
+and the kernel's unchanged `d_type` byte to its callback. The name is valid
+only during that callback. `DT-UNKNOWN` is 0, `DT-DIR` is 4, `DT-REG` is 8,
+and `DT-LNK` is 10. A caller must handle `DT-UNKNOWN`, since a filesystem may
+omit entry types.
+On Darwin, opening a regular file for listing succeeds, then
+`getdirentries64` fails with `EINVAL` (22); `E-FS-LIST-READ` keeps that host
+cause through descriptor cleanup.
 
 `src/lib/tree-copy.f` (package `TREE-COPY`) makes private copies of checkout files
 for tools and tests that build or boot a tree without touching the checkout.

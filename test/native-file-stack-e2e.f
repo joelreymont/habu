@@ -22,9 +22,6 @@ public
    BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 620" CONTAINS? TTRUE
-   BUILD-APP SUCCESS
-   RUN-APP SUCCESS
-   OUT$ s" 620" CONTAINS? TTRUE
    s" app.f" S\" require leaf.f\n123 include empty.f constant CARRIED\n456 s\" arg.f\" included constant ARG-CARRIED\n: MAIN ( -- ) FILE-LEAF:VALUE CARRIED + ARG-CARRIED + 3 + . ;\n" PUT
    BUILD-APP SUCCESS
    RUN-APP SUCCESS

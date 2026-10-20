@@ -78,10 +78,12 @@ variable SYNC-CELL
 variable NUM-CELL
 variable PCT-CELL
 variable NAME-CELL
-variable QUAL-CELL
 variable DUMP-CELL
 variable JSON-CELL
 variable ROW-CELL
+variable SNAP-CELL
+variable SESSION-CELL
+variable REWIND-CELL
 : HANDLER-LBL ( -- label ) HANDLER-CELL @ >LABEL ;
 : RESTORER-LBL ( -- label ) RESTORER-CELL @ >LABEL ;
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
@@ -91,10 +93,12 @@ variable ROW-CELL
 : NUM-LBL ( -- label ) NUM-CELL @ >LABEL ;
 : PCT-LBL ( -- label ) PCT-CELL @ >LABEL ;
 : NAME-LBL ( -- label ) NAME-CELL @ >LABEL ;
-: QUAL-LBL ( -- label ) QUAL-CELL @ >LABEL ;
 : DUMP-LBL ( -- label ) DUMP-CELL @ >LABEL ;
 : JSON-LBL ( -- label ) JSON-CELL @ >LABEL ;
 : ROW-LBL ( -- label ) ROW-CELL @ >LABEL ;
+: SNAP-LBL ( -- label ) SNAP-CELL @ >LABEL ;
+: SESSION-LBL ( -- label ) SESSION-CELL @ >LABEL ;
+: REWIND-LBL ( -- label ) REWIND-CELL @ >LABEL ;
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
@@ -194,35 +198,258 @@ variable ROW-CELL
    RAX CODE-SPAN:INSN-BYTES ADDI,
    RBX RBX CODE-SPAN:INSN-BYTES SCALE,  RAX RBX ASM-SINK ENC-SUB-RR ;
 
-\ One entry per live record of [0, r14) with code of its own, from r13, in
-\ dictionary order, then the header: the twin of prof.f C-PROF-INDEX-BUILD. A
-\ record in DICT-WL:NAMESPACE (-1) or DICT-WL:RETIRED (-2), whose span is empty
-\ or whose code cell is 0 owns no code; the +2 test names both wordlists at
-\ once. Leaves rcx = the entry count and rbp = 0.
-: BUILD, ( -- )
-   LBL LBL LBL LBL {: turn:label next:label done:label low:label :}
-   RDI RSI ARN-IDX MEM-OFF LEA,                                  \ the entry cursor
-   RCX ZERO-REG,  RDX ZERO-REG,  R8 DBASE-REG COPY,              \ entries, record index, record
-   R9 ALL-ONES,  R10 ZERO-REG,  RBP ZERO-REG,                    \ lo, hi, a zero
+\ Write a named profiler refusal on fd 2 and exit PROF-MAP-RC.
+: REFUSED, ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL {: msg:label :}
+   RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
+   RDI PROF-MAP-RC IMM32,  NR-EXIT-GROUP SYS,
+   msg LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
+
+\ rdi = a live dictionary record; rsi/rdx = its raw name bytes and exact
+\ length. The caller copies those bytes before a rewind can reuse the record.
+: NAME-PART, ( -- )
+   LBL {: inline:label :}
+   RDX RDI REC-FLAGS MEM-OFF LOAD,
+   RSI RDI REC-NAME MEM-OFF LEA,
+   RAX DNAME-EXT IMM,  RAX RDX ASM-SINK ENC-TEST-RR  C-E inline JCC,
+   RSI RDI REC-NAME MEM-OFF LOAD,
+   inline LBL,
+   RAX DNAME-LEN-MASK IMM,  RDX RAX ASM-SINK ENC-AND-RR ;
+
+\ Copy rdx bytes from rsi to rdi, advancing both. The caller owns the exact
+\ destination span; this is used for the qualifier and the word name.
+: COPY-NAME, ( -- )
+   LBL LBL {: turn:label done:label :}
    turn LBL,
-      RDX NDICT-REG CMP-REG,  C-AE done JCC,
-      RAX R8 DICT-WL-OFF MEM-OFF LOAD,
+      RDX TEST,  C-E done JCC,
+      RAX RSI MEM-AT ASM-SINK ENC-MOVZX-8-RM
+      RAX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+      RSI INC,  RDI INC,  RDX DEC,  turn JMP,
+   done LBL, ;
+
+\ R12 = arena, RBX = the first new ordinal; SNAP's frame keeps NDICT and
+\ DBASE at 24 and 32. Build WID -> first namespace row in the sort scratch.
+\ Each packed cell holds WID and row + 1, so zero is empty. At most two WIDs
+\ per row keep the table at most half full. RBX and R12 survive.
+: QUAL-INDEX, ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL {: clear:label cleared:label turn:label next:label insert:label probe:label store:label keydone:label :}
+   LBL {: done:label :}
+   R13 R12 ARN-SCR MEM-OFF LEA,
+   RSI R13 COPY,  RCX PROF-QUAL-SLOTS IMM32,  RAX ZERO-REG,
+   clear LBL,
+      RCX TEST,  C-E cleared JCC,
+      RAX RSI MEM-AT STORE,  RSI CELL ADDI,  RCX DEC,  clear JMP,
+   cleared LBL,
+   R14 ZERO-REG,  R15 RSP 32 MEM-OFF LOAD,
+   turn LBL,
+      R14 RSP 24 MEM-OFF CMP-MEM,  C-AE done JCC,
+      RAX R15 DICT-WL-OFF MEM-OFF LOAD,
+      RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+      RDX R15 MEM-AT LOAD,  R8 R15 CELL MEM-OFF LOAD,
+      insert LBL,
+         RDX TEST,  C-E keydone JCC,
+         R9 RDX COPY,  RAX PROF-HASH IMM,  R9 RAX ASM-SINK ENC-IMUL-RR
+         R9 PROF-QUAL-MASK >IMM32 ASM-SINK ENC-AND-RI32
+      probe LBL,
+         R10 R13 R9 CELL 0 MEM-IDX LEA,
+         R11 R10 MEM-AT LOAD,  R11 TEST,  C-E store JCC,
+         RCX R64>N >R32 R11 R64>N >R32 ASM-SINK ENC-MOV32-RR
+         RCX RDX CMP-REG,  C-E keydone JCC,
+         R9 INC,  R9 PROF-QUAL-MASK >IMM32 ASM-SINK ENC-AND-RI32  probe JMP,
+      store LBL,
+         R11 R14 1 MEM-OFF LEA,  R11 PROF-QUAL-BITS >IMM8 ASM-SINK ENC-SHL-RI8
+         R11 RDX ASM-SINK ENC-OR-RR  R11 R10 MEM-AT STORE,
+      keydone LBL,
+         RDX R8 COPY,  R8 ZERO-REG,  RDX TEST,  C-NE insert JCC,
+   next LBL,  R14 INC,  R15 DREC ADDI,  turn JMP,
+   done LBL, ;
+
+\ The profiler session keeps exact-length qualified name copies in small mmap
+\ chunks. RBX is the current dictionary ordinal; R12 the arena; R13 its new
+\ profile row; R14/R15 the unqualified source and length; RBP the qualifier
+\ source. The machine frame keeps the qualifier length and exact total, plus
+\ the two VM registers this helper borrows. It is called only with the clock
+\ held or stopped. No report reads a dictionary name again.
+: SNAP-HELPER, ( -- )
+   SNAP-LBL LBL,
+   LBL LBL LBL LBL LBL {: turn:label next:label qturn:label qfound:label qdone:label :}
+   LBL LBL LBL LBL LBL LBL LBL {: noqual:label idok:label fresh:label sized:label mapped:label use:label name:label :}
+   LBL LBL {: own:label done:label :}
+   LBL LBL {: pending:label prepare:label :}
+   RBX ASM-SINK ENC-PUSH  RBP ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH
+   R13 ASM-SINK ENC-PUSH  R14 ASM-SINK ENC-PUSH  R15 ASM-SINK ENC-PUSH
+   RSP 48 >IMM8 ASM-SINK ENC-SUB-RI8
+   R12 RSI COPY,  RBX ZERO-REG,
+   RAX NDICT-REG COPY,  RAX RSP 24 MEM-OFF STORE,
+   RAX DBASE-REG COPY,  RAX RSP 32 MEM-OFF STORE,
+   pending LBL,
+      RBX RSP 24 MEM-OFF CMP-MEM,  C-AE done JCC,
+      RAX R12 RBX CELL ARN-LIVE MEM-IDX LOAD,
+      RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E prepare JCC,
+      RBX INC,  pending JMP,
+   prepare LBL,
+   QUAL-INDEX,
+   turn LBL,
+      RBX RSP 24 MEM-OFF CMP-MEM,  C-AE done JCC,
+      RAX R12 RBX CELL ARN-LIVE MEM-IDX LOAD,
+      RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+      RCX R12 ARN-IDS MEM-OFF LOAD,
+      RCX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-B idok JCC,
+      PROFIDMSG$ REFUSED,
+      idok LBL,
+      R13 R12 ARN-RECS MEM-OFF LEA,
+      RAX RCX PROF-ID-ENT SCALE,  R13 RAX ASM-SINK ENC-ADD-RR
+      R8 RSP 32 MEM-OFF LOAD,
+      RAX RBX DREC SCALE,  R8 RAX ASM-SINK ENC-ADD-RR
+      RBP ZERO-REG,
+      R9 R8 DICT-WL-OFF MEM-OFF LOAD,
+      R9 TEST,  C-LE qdone JCC,
+      RDI R12 ARN-SCR MEM-OFF LEA,
+      RCX R9 COPY,  RAX PROF-HASH IMM,  RCX RAX ASM-SINK ENC-IMUL-RR
+      RCX PROF-QUAL-MASK >IMM32 ASM-SINK ENC-AND-RI32
+      qturn LBL,
+         RDX RDI RCX CELL 0 MEM-IDX LOAD,  RDX TEST,  C-E qdone JCC,
+         RAX R64>N >R32 RDX R64>N >R32 ASM-SINK ENC-MOV32-RR
+         RAX R9 CMP-REG,  C-E qfound JCC,
+         RCX INC,  RCX PROF-QUAL-MASK >IMM32 ASM-SINK ENC-AND-RI32  qturn JMP,
+      qfound LBL,
+         RDX PROF-QUAL-BITS >IMM8 ASM-SINK ENC-SHR-RI8  RDX DEC,
+         RBP RDX DREC SCALE,  RBP RSP 32 MEM-OFF ASM-SINK ENC-ADD-RM
+      qdone LBL,
+      RDI R8 COPY,  NAME-PART,
+      R14 RSI COPY,  R15 RDX COPY,
+      RAX ZERO-REG,  RAX RSP 0 MEM-OFF STORE,
+      RBP TEST,  C-E noqual JCC,
+      RDI RBP COPY,  NAME-PART,
+      RBP RSI COPY,
+      RDX INC,  RDX RSP 0 MEM-OFF STORE,           \ qualifier plus ':'
+      noqual LBL,
+      RAX RSP 0 MEM-OFF LOAD,  RAX R15 ASM-SINK ENC-ADD-RR
+      RAX RSP 8 MEM-OFF STORE,                     \ exact qualified length
+      RCX R12 ARN-CHUNKS MEM-OFF LOAD,
+      RCX TEST,  C-E fresh JCC,
+      RDX RCX CHUNK-USED MEM-OFF LOAD,
+      RAX RDX COPY,  RAX RSP 8 MEM-OFF ASM-SINK ENC-ADD-RM
+      RAX RCX CHUNK-LEN MEM-OFF CMP-MEM,  C-BE use JCC,
+      fresh LBL,
+         RSI RSP 8 MEM-OFF LOAD,  RSI CHUNK-DATA ADDI,
+         RSI PROF-NAME-CHUNK >IMM32 ASM-SINK ENC-CMP-RI32  C-AE sized JCC,
+         RSI PROF-NAME-CHUNK IMM32,
+      sized LBL,
+         RDI ZERO-REG,  RDX PROT-RW IMM32,  R10 MAP-ANON-PRIVATE IMM32,
+         R8 ALL-ONES,  R9 ZERO-REG,  NR-MMAP SYS,
+         C-AE mapped JCC,
+         PROFNAMEMSG$ REFUSED,
+      mapped LBL,
+         RCX R12 ARN-CHUNKS MEM-OFF LOAD,
+         RCX RAX CHUNK-NEXT MEM-OFF STORE,
+         RSI RAX CHUNK-LEN MEM-OFF STORE,
+         RDX RSP 8 MEM-OFF LOAD,  RDX CHUNK-DATA ADDI,
+         RDX RAX CHUNK-USED MEM-OFF STORE,
+         RAX R12 ARN-CHUNKS MEM-OFF STORE,
+         RDI RAX CHUNK-DATA MEM-OFF LEA,
+         name JMP,
+      use LBL,
+         RDI RCX RDX 1 0 MEM-IDX LEA,
+         RDX RSP 8 MEM-OFF ASM-SINK ENC-ADD-RM
+         RDX RCX CHUNK-USED MEM-OFF STORE,
+      name LBL,
+      RBX R13 RID-OWNER MEM-OFF STORE,
+      RDI R13 RID-NAME MEM-OFF STORE,
+      RAX RSP 8 MEM-OFF LOAD,  RAX R13 RID-LEN MEM-OFF STORE,
+      RAX ZERO-REG,  RAX R13 RID-START MEM-OFF STORE,
+      RAX R13 RID-END MEM-OFF STORE,
+      RBP TEST,  C-E own JCC,
+      RSI RBP COPY,  RDX RSP 0 MEM-OFF LOAD,  RDX DEC,
+      COPY-NAME,
+      RAX [char] : IMM32,
+      RAX R64>N >R8 RDI MEM-AT ASM-SINK ENC-MOV8-MR
+      RDI INC,
+      own LBL,
+      RSI R14 COPY,  RDX R15 COPY,  COPY-NAME,
+      RAX R12 ARN-IDS MEM-OFF LOAD,
+      RAX R12 RBX CELL ARN-LIVE MEM-IDX STORE,
+      RAX INC,  RAX R12 ARN-IDS MEM-OFF STORE,
+   next LBL,  RBX INC,  turn JMP,
+   done LBL,
+   RSI R12 COPY,
+   RSP 48 >IMM8 ASM-SINK ENC-ADD-RI8
+   R15 ASM-SINK ENC-POP  R14 ASM-SINK ENC-POP  R13 ASM-SINK ENC-POP
+   R12 ASM-SINK ENC-POP  RBP ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
+   RET, ;
+
+\ A fresh prof-on releases prior name chunks and clears the ordinal map.
+: SESSION-HELPER, ( -- )
+   SESSION-LBL LBL,
+   LBL LBL LBL LBL {: chunks:label released:label clear:label done:label :}
+   RBX ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH  R13 ASM-SINK ENC-PUSH
+   R12 RSI COPY,  RBX R12 ARN-CHUNKS MEM-OFF LOAD,
+   chunks LBL,
+      RBX TEST,  C-E clear JCC,
+      R13 RBX CHUNK-NEXT MEM-OFF LOAD,
+      RDI RBX COPY,  RSI RBX CHUNK-LEN MEM-OFF LOAD,
+      NR-MUNMAP SYS,
+      C-AE released JCC,
+      PROFNAMEFREEMSG$ REFUSED,
+      released LBL,
+      RBX R13 COPY,  chunks JMP,
+   clear LBL,
+   RAX ZERO-REG,  RAX R12 ARN-CHUNKS MEM-OFF STORE,
+   RAX R12 ARN-IDS MEM-OFF STORE,
+   RCX R12 ARN-LIVE MEM-OFF LEA,
+   RDX DICT-CAP IMM32,
+   RAX ALL-ONES,
+   done LBL,
+      RAX RCX MEM-AT STORE,  RCX CELL ADDI,  RDX DEC,
+      RDX TEST,  C-NE done JCC,
+   R13 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
+   RET, ;
+
+\ One entry per profile ID with code of its own, in ID order. A live row uses
+\ its dictionary span; a seed-retired row uses its stored span. Ordinary
+\ retired records have no entry. Leaves rcx = the entry count and rbp = 0.
+: BUILD, ( -- )
+   LBL LBL LBL LBL LBL LBL {: turn:label next:label done:label live:label entry:label lowdone:label :}
+   RDI RSI ARN-IDX MEM-OFF LEA,                                  \ the entry cursor
+   RCX ZERO-REG,  RDX ZERO-REG,  RBP ZERO-REG,
+   R12 ALL-ONES,  R15 ZERO-REG,                                  \ lo, hi
+   turn LBL,
+      RDX RSI ARN-IDS MEM-OFF CMP-MEM,  C-AE done JCC,
+      R8 RSI ARN-RECS MEM-OFF LEA,
+      RAX RDX PROF-ID-ENT SCALE,  R8 RAX ASM-SINK ENC-ADD-RR
+      RAX R8 RID-OWNER MEM-OFF LOAD,
+      RAX TEST,  C-NS live JCC,
+      R9 R8 RID-START MEM-OFF LOAD,
+      R10 R8 RID-END MEM-OFF LOAD,
+      R9 TEST,  C-E next JCC,
+      R9 R10 CMP-REG,  C-AE next JCC,
+      entry JMP,
+      live LBL,
+      RBP R8 RID-START MEM-OFF STORE,
+      RBP R8 RID-END MEM-OFF STORE,
+      R11 RAX DREC SCALE,
+      RAX DBASE-REG COPY,  R11 RAX ASM-SINK ENC-ADD-RR
+      RAX R11 DICT-WL-OFF MEM-OFF LOAD,
       RAX DICT-WL:RETIRED negate ADDI,
       RAX DICT-WL:RETIRED negate >IMM8 ASM-SINK ENC-CMP-RI8  C-B next JCC,
-      RAX R8 CELL MEM-OFF LOAD,  SPAN-BYTES,  RAX TEST,  C-E next JCC,
-      R11 R8 MEM-AT LOAD,  R11 TEST,  C-E next JCC,
-      R11 RDI ENT-START MEM-OFF STORE,
-      RAX R11 ASM-SINK ENC-ADD-RR  RAX RDI ENT-END MEM-OFF STORE,
+      RAX R11 CELL MEM-OFF LOAD,  SPAN-BYTES,  RAX TEST,  C-E next JCC,
+      R9 R11 MEM-AT LOAD,  R9 TEST,  C-E next JCC,
+      R10 R9 COPY,  R10 RAX ASM-SINK ENC-ADD-RR
+      R9 R8 RID-START MEM-OFF STORE,
+      R10 R8 RID-END MEM-OFF STORE,
+      entry LBL,
+      R9 RDI ENT-START MEM-OFF STORE,
+      R10 RDI ENT-END MEM-OFF STORE,
       RDX RDI ENT-IDX MEM-OFF STORE,
       RBP RDI ENT-INCL MEM-OFF STORE,
       RDI PROF-ENT ADDI,  RCX INC,
-      R11 R9 CMP-REG,  C-AE low JCC,  R9 R11 COPY,
-      low LBL,
-      RAX R10 CMP-REG,  C-BE next JCC,  R10 RAX COPY,
-   next LBL,  R8 DREC ADDI,  RDX INC,  turn JMP,
+      R9 R12 CMP-REG,  C-AE lowdone JCC,  R12 R9 COPY,
+      lowdone LBL,
+      R10 R15 CMP-REG,  C-BE next JCC,  R15 R10 COPY,
+   next LBL,  RDX INC,  turn JMP,
    done LBL,
-   RCX RSI ARN-COUNT MEM-OFF STORE,  R9 RSI ARN-LO MEM-OFF STORE,
-   R10 RSI ARN-HI MEM-OFF STORE,  NDICT-REG RSI ARN-NDICT MEM-OFF STORE, ;
+   RCX RSI ARN-COUNT MEM-OFF STORE,  R12 RSI ARN-LO MEM-OFF STORE,
+   R15 RSI ARN-HI MEM-OFF STORE,  NDICT-REG RSI ARN-NDICT MEM-OFF STORE, ;
 
 \ One entry from the register's address to r15's, both advancing. Clobbers rax.
 : ENT-COPY, ( r64 -- ) {: src:r64 :}
@@ -376,6 +603,7 @@ variable ROW-CELL
    ARENA>RSI,  RSI TEST,  C-E none JCC,
    RAX RSI ARN-HI MEM-OFF LOAD,  RAX RSI ARN-OLDHI MEM-OFF STORE,
    FOLD,
+   SNAP-LBL CALL,
    INDEX-LBL CALL,
    REPLAY,
    none LBL,  RET, ;
@@ -595,51 +823,16 @@ variable ROW-CELL
    RAX ASM-SINK ENC-POP  1 NUM,
    RET, ;
 
-\ NAME ( rdi = record ): its own name bytes, the twin of prof.f LPROFNAME. The
-\ length is the flags cell under DNAME-LEN-MASK, below the four fields above
-\ it, and the name sits inline unless DNAME-EXT says the cell holds its
-\ address.
+\ NAME ( rdi = profile row ): the complete copied qualified name.
 : NAME-HELPER, ( -- )
    NAME-LBL LBL,
-   LBL {: inline:label :}
-   RDX RDI REC-FLAGS MEM-OFF LOAD,
-   RSI RDI REC-NAME MEM-OFF LEA,
-   RAX DNAME-EXT IMM,  RAX RDX ASM-SINK ENC-TEST-RR  C-E inline JCC,
-   RSI RDI REC-NAME MEM-OFF LOAD,
-   inline LBL,
-   RAX DNAME-LEN-MASK IMM,  RDX RAX ASM-SINK ENC-AND-RR
+   RDX RDI RID-LEN MEM-OFF LOAD,
+   RSI RDI RID-NAME MEM-OFF LOAD,
    RDI STDOUT IMM32,  NR-WRITE SYS,
    RET, ;
 
-\ QUAL ( rdi = record ): "PKG:" when the record's wordlist cell is a package
-\ row's public or private wid, the first such row in dictionary order, and
-\ nothing for the global wordlist 0: the twin of prof.f LPROFQUAL, whose
-\ comment gives why the rows themselves answer this. It walks the records
-\ from PROF-DBASE up to ARN-NDICT and keeps rdi.
-: QUAL-HELPER, ( -- )
-   QUAL-LBL LBL,
-   LBL LBL LBL LBL {: turn:label next:label found:label done:label :}
-   RAX RDI DICT-WL-OFF MEM-OFF LOAD,
-   RAX TEST,  C-E done JCC,
-   R9 BAND-VA IMM,
-   R8 R9 PROF-DBASE MEM-OFF LOAD,                                \ the record
-   R10 R9 PROF-ARENA MEM-OFF LOAD,  R10 R10 ARN-NDICT MEM-OFF LOAD,   \ the records left
-   turn LBL,
-      R10 TEST,  C-E done JCC,
-      RDX R8 DICT-WL-OFF MEM-OFF LOAD,
-      RDX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
-      RAX R8 MEM-AT CMP-MEM,  C-E found JCC,                     \ its public wid
-      RAX R8 CELL MEM-OFF CMP-MEM,  C-E found JCC,               \ its private wid
-   next LBL,  R8 DREC ADDI,  R10 DEC,  turn JMP,
-   found LBL,
-   RDI ASM-SINK ENC-PUSH
-   RDI R8 COPY,  NAME-LBL CALL,
-   [char] : BYTE,
-   RDI ASM-SINK ENC-POP
-   done LBL,  RET, ;
-
-\ rdi = a record: its qualified name.
-: NAMED, ( -- )  QUAL-LBL CALL,  NAME-LBL CALL, ;
+\ rdi = an owned profile row: its qualified name.
+: NAMED, ( -- )  NAME-LBL CALL, ;
 
 \ ---- the reports -----------------------------------------------------------------
 \ The twins of prof.f LPROFDUMP, LPROFJSON and LPROFROW, whose comments give
@@ -701,8 +894,8 @@ variable ROW-CELL
 
 \ rdi = the record behind the row.
 : ROW-REC, ( -- )
-   RDI RBX ENT-IDX MEM-OFF LOAD,  RDI RDI DREC SCALE,
-   RAX BAND-VA IMM,  RDI RAX PROF-DBASE MEM-OFF ASM-SINK ENC-ADD-RM ;
+   RDI RBX ENT-IDX MEM-OFF LOAD,  RDI RDI PROF-ID-ENT SCALE,
+   RAX R15 ARN-RECS MEM-OFF LEA,  RDI RAX ASM-SINK ENC-ADD-RR ;
 
 \ The header's two sums: the samples attributed to a word, over every
 \ record's counter up to ARN-NDICT, whose reason prof.f
@@ -710,7 +903,7 @@ variable ROW-CELL
 \ which is how many rows the reports can name.
 : WORDSUM, ( -- )
    LBL LBL LBL LBL LBL {: sum:label summed:label turn:label next:label done:label :}
-   RAX ZERO-REG,  RCX CNT-VA IMM,  RDX R15 ARN-NDICT MEM-OFF LOAD,
+   RAX ZERO-REG,  RCX CNT-VA IMM,  RDX R15 ARN-IDS MEM-OFF LOAD,
    sum LBL,
       RDX TEST,  C-E summed JCC,
       RAX RCX MEM-AT ASM-SINK ENC-ADD-RM
@@ -771,8 +964,8 @@ variable ROW-CELL
 : CALLER-REC, ( -- )
    LBL LBL {: none:label done:label :}
    R9 PROF-CALLER-NONE >IMM32 ASM-SINK ENC-CMP-RI32  C-E none JCC,
-   RAX R9 DREC SCALE,
-   RCX BAND-VA IMM,  RAX RCX PROF-DBASE MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX R9 PROF-ID-ENT SCALE,
+   RCX R15 ARN-RECS MEM-OFF LEA,  RAX RCX ASM-SINK ENC-ADD-RR
    done JMP,
    none LBL,  RAX ZERO-REG,
    done LBL, ;
@@ -975,36 +1168,15 @@ variable ROW-CELL
 
 public
 
-\ Make the labels and emit the handler, its restorer, the index helpers, the
-\ sync, the printers and the reports, where no control falls in; the rows that
-\ call them follow in the same stream. src/habu/kernel-x64.f PROFILER, calls
-\ it.
-: HELPERS, ( -- )
-   LBL HANDLER-CELL !  LBL RESTORER-CELL !
-   LBL FIND-CELL !  LBL EDGE-CELL !  LBL INDEX-CELL !  LBL SYNC-CELL !
-   LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !  LBL QUAL-CELL !
-   LBL DUMP-CELL !  LBL JSON-CELL !  LBL ROW-CELL !
-   HANDLER,
-   RESTORER-LBL X64BOOT:RESTORER,
-   FIND-HELPER,  EDGE-HELPER,  INDEX-HELPER,  SYNC-HELPER,
-   NUM-HELPER,  PCT-HELPER,  NAME-HELPER,  QUAL-HELPER,
-   false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
-
 \ The calls into the three helpers, under the contracts above.
 : FIND, ( -- ) FIND-LBL CALL, ;
 : EDGE, ( -- ) EDGE-LBL CALL, ;
 : INDEX, ( -- ) INDEX-LBL CALL, ;
+: REWIND-BODY ( -- ) REWIND-LBL CALL, ;
 
 private
 
 \ ---- the bodies' pieces ---------------------------------------------------------
-\ Write the text on fd 2 and exit PROF-MAP-RC; the text follows the exit.
-: REFUSED, ( ptr u8 n -- ) {: a:ptr u:n :}
-   LBL {: msg:label :}
-   RDI STDERR IMM32,  RSI msg MOVABS,  RDX u IMM32,  NR-WRITE SYS,
-   RDI PROF-MAP-RC IMM32,  NR-EXIT-GROUP SYS,
-   msg LBL,  a u BUF:N>BLEN ASM-SINK BUF:APPEND-SPAN ;
-
 \ rax = n fresh read/write bytes. A refused mapping writes the text on fd 2
 \ and exits PROF-MAP-RC: a profiler that ran without its arena would report
 \ numbers nobody could trust (prof.f C-PROF-ARENA-MAP).
@@ -1064,20 +1236,18 @@ private
       RAX RCX MEM-AT STORE,  RCX CELL ADDI,  turn JMP,
    done LBL, ;
 
-\ Clear PROF-TOT, PROF-OTHER, PROF-FOREIGN and the counter of each record of
-\ [0, r14). Clobbers rax rcx rdx.
+\ Clear PROF-TOT, PROF-OTHER, PROF-FOREIGN and every profile-ID counter.
 : BAND-CLEAR, ( -- )
    RAX ZERO-REG,  RCX BAND-VA IMM,
    RAX RCX PROF-TOT MEM-OFF STORE,  RAX RCX PROF-OTHER MEM-OFF STORE,
    RAX RCX PROF-FOREIGN MEM-OFF STORE,
-   RCX CNT-VA IMM,  RDX NDICT-REG CELL SCALE,  RDX RCX ASM-SINK ENC-ADD-RR
+   RCX CNT-VA IMM,  RDX DICT-CAP IMM32,  RDX RDX CELL SCALE,
+   RDX RCX ASM-SINK ENC-ADD-RR
    ZERO-SPAN, ;
 
 \ rsi = arena: the counts a phase accumulates, the twin of prof.f
 \ C-PROF-COUNTERS-CLEAR and C-PROF-CALL-CLEAR, cleared by prof-on and
-\ prof-reset and never by the index build. Every edge goes: the table is keyed
-\ on record indices, which a rebuilt index gives new meanings. Clobbers rax
-\ rcx rdx.
+\ prof-reset and never by the index build. A reset discards every prior edge.
 : COUNTS-CLEAR, ( -- )
    RAX ZERO-REG,
    RAX RSI ARN-NEW MEM-OFF STORE,  RAX RSI ARN-DROP MEM-OFF STORE,
@@ -1108,7 +1278,53 @@ private
    ARENA>RSI,  TIMER-START,
    stopped LBL, ;
 
+\ seed-ndict! calls this with the new count in rdi before lowering NDICT.
+\ SYNC names deferred donor PCs while their dictionary rows still exist. The
+\ retired ID rows keep their names and spans; only the live ordinal slots go.
+: REWIND-HELPER, ( -- )
+   REWIND-LBL LBL,
+   LBL LBL LBL LBL {: absent:label turn:label next:label done:label :}
+   RBX ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH  R13 ASM-SINK ENC-PUSH
+   R12 BAND-VA IMM,  R12 R12 PROF-ARENA MEM-OFF LOAD,
+   R12 TEST,  C-E absent JCC,
+   RAX R12 ARN-IDS MEM-OFF LOAD,  RAX TEST,  C-E absent JCC,
+   RDI ASM-SINK ENC-PUSH
+   DISARM,
+   SYNC-LBL CALL,
+   RBX ASM-SINK ENC-POP
+   turn LBL,
+      RBX NDICT-REG CMP-REG,  C-AE done JCC,
+      R13 R12 RBX CELL ARN-LIVE MEM-IDX LEA,
+      RAX R13 MEM-AT LOAD,
+      RAX TEST,  C-S next JCC,
+      RDX RAX PROF-ID-ENT SCALE,
+      RCX R12 ARN-RECS MEM-OFF LEA,  RDX RCX ASM-SINK ENC-ADD-RR
+      RAX ALL-ONES,
+      RAX RDX RID-OWNER MEM-OFF STORE,
+      RAX R13 MEM-AT STORE,
+   next LBL,  RBX INC,  turn JMP,
+   done LBL,
+   RESUME,
+   absent LBL,
+   R13 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
+   RET, ;
+
 public
+
+\ Make labels before any primitive section references them, then emit each
+\ helper once. kernel-x64.f calls this from its initial helpers section.
+: HELPERS, ( -- )
+   LBL HANDLER-CELL !  LBL RESTORER-CELL !
+   LBL FIND-CELL !  LBL EDGE-CELL !  LBL INDEX-CELL !  LBL SYNC-CELL !
+   LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !
+   LBL DUMP-CELL !  LBL JSON-CELL !  LBL ROW-CELL !
+   LBL SNAP-CELL !  LBL SESSION-CELL !  LBL REWIND-CELL !
+   HANDLER,
+   RESTORER-LBL X64BOOT:RESTORER,
+   FIND-HELPER,  EDGE-HELPER,  SNAP-HELPER,  SESSION-HELPER,
+   INDEX-HELPER,  SYNC-HELPER,  REWIND-HELPER,
+   NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
+   false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 
 \ ---- the bodies -----------------------------------------------------------------
 \ prof-on ( n -- ): the twin of prof.f BPROF-ON. It runs as Habu code, where
@@ -1121,6 +1337,8 @@ public
    DBASE-REG RCX PROF-DBASE MEM-OFF STORE,
    BAND-CLEAR,
    ARENA-MAP,
+   ARENA>RSI,  SESSION-LBL CALL,
+   ARENA>RSI,  SNAP-LBL CALL,
    ARENA>RSI,  INDEX,
    COUNTS-CLEAR,
    SIGALRM LINUX-SA-PROF-FLAGS HANDLER-LBL RESTORER-LBL X64BOOT:SIGACTION,
@@ -1164,7 +1382,10 @@ public
    ARENA>RSI,  RSI TEST,  C-E miss JCC,
    FIND,
    RAX TEST,  C-E miss JCC,
-   RAX RAX ENT-IDX MEM-OFF LOAD,  out JMP,
+   RAX RAX ENT-IDX MEM-OFF LOAD,
+   RAX RAX PROF-ID-ENT SCALE,
+   RCX RSI ARN-RECS MEM-OFF LEA,  RAX RCX ASM-SINK ENC-ADD-RR
+   RAX RAX RID-OWNER MEM-OFF LOAD,  out JMP,
    miss LBL,  RAX ALL-ONES,
    out LBL,  RAX R64>N G-PUSH ;
 
@@ -1179,7 +1400,16 @@ public
 : ROW-BODY ( -- )
    RAX R64>N G-POP  RAX ASM-SINK ENC-PUSH
    QUIET,
-   RDI ASM-SINK ENC-POP  ROW-LBL CALL,
+   LBL LBL {: no:label ready:label :}
+   RDI ASM-SINK ENC-POP
+   RDI TEST,  C-S no JCC,
+   RDI NDICT-REG CMP-REG,  C-AE no JCC,
+   ARENA>RSI,  RSI TEST,  C-E no JCC,
+   RDI RSI RDI CELL ARN-LIVE MEM-IDX LOAD,
+   ready JMP,
+   no LBL,  RDI ALL-ONES,
+   ready LBL,
+   ROW-LBL CALL,
    RESUME, ;
 
 ;using   \ X64LAYOUT

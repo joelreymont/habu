@@ -3,7 +3,7 @@ title: Look locals up before parsing keywords in every scanner
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T17:24:37.410400+02:00\""
+created-at: "2026-10-01T17:24:37.410400+02:00"
 closed-at: "2026-10-14T19:38:01.525233+03:00"
 close-reason: "Implemented in 97eb373d: pre-verifier and check lexers resolve live locals before parsing keywords, matching loader precedence; failing-before local and diagnostic cases, affected check suites and image equality passed."
 ---

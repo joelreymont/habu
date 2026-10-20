@@ -1,7 +1,7 @@
 \ A real frozen graph arena larger than the old text-only pool. Every byte
 \ survives file/owned transfer, merge and the source writer's contiguous span.
 package EFFECT-POOL-TEST
-ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
 require src/lib/string.f

@@ -343,7 +343,9 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-RUN ( ptr n -- )
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    DEF-PREFLIGHT
-   slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC execute-floor FLOORED ;
+   slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC
+   -1 PEND-OPAQUE-CELL CELL!
+   execute-floor FLOORED ;
 
 : DEF-IMMEDIATE? ( -- bool )
    DEF-IMMEDIATE if DEF-RUN true exit then

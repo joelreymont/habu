@@ -97,7 +97,6 @@ require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/machine.f
 require src/compiler/native/spill.f
-require src/compiler/native/prune.f
 
 package A64RA-TEST
 private
@@ -317,6 +316,8 @@ create TXT
    CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
    CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
+   IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN  CC BB -1 IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
@@ -614,7 +615,8 @@ create TXT
    {: imm:n sh:n :}
    CC BB  CC BB A64IR:KEY-IMM    CC BB imm A64IR:IMM-ATTR    IR-BUILD:ADD-ATTR
    CC BB  CC BB A64IR:KEY-SHIFT  CC BB sh A64IR:SHIFT-ATTR   IR-BUILD:ADD-ATTR
-   CC BB  CC BB A64IR:KEY-ADDR   CC BB A64IR:ADDR-NONE A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR ;
+   CC BB  CC BB A64IR:KEY-ADDR   CC BB A64IR:ADDR-NONE A64IR:ADDR-ATTR IR-BUILD:ADD-ATTR
+   CC BB  CC BB A64IR:KEY-ORIGIN CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR ;
 
 : M-MOVZ ( n -- IR-ID:ir-value-id )
    {: imm:n :}
@@ -1856,11 +1858,6 @@ create TXT
 : SPILL-BIND ( -- )
    CC BB  CC BB A64IR:LOWERING  [: A64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT ;
 
-\ The prune takes its binding the same way, and needs it for the cases below
-\ that reach its rewrite without the scan that plans one.
-: PRUNE-BIND ( -- )
-   CC BB A64PRUNE:BIND-DIALECT ;
-
 variable LOWER-TURNS
 
 : LOWER-ONE ( IR-BUILD:module -- IR-BUILD:module )
@@ -2470,47 +2467,6 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC m0 nb  CC nb A64IR:LOWERING  A64SPILL:REWRITE drop ;
 
-\ The same shape one pass over, and the reason the prune needs its own refusal:
-\ A64PRUNE:REWRITES is what searches for the loads AND seals the plan the
-\ rewrite walks, so a rewrite reached without it would prune against whatever
-\ the last module left behind. Nothing about the body matters - every refusal
-\ below is ahead of the first operation read - so all four stand on the same
-\ plain module, whose plan is empty.
-: PRUNE-NO-PLAN-BODY ( IR-CTX:ctx -- )
-   A64-MOD
-   PRUNE-BIND
-   BUILD-PLAIN
-   M-FREEZE {: m0:IR-BUILD:module :}
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64PRUNE:REWRITE drop ;
-
-\ A scanned module, whose plan the cases below then misuse. It is sealed and
-\ empty: this corpus builds no unread data-stack load by hand, and an empty
-\ plan is a plan.
-: PLANNED-PRUNE ( IR-CTX:ctx -- IR-BUILD:module )
-   A64-MOD PRUNE-BIND
-   BUILD-PLAIN
-   M-FREEZE dup A64PRUNE:REWRITES 0 T= ;
-
-\ A module carrying two registered sources: the rewrite cannot know which one it
-\ is continuing, so it refuses before it reads an operation and still consumes
-\ the binding it took.
-: PRUNE-SOURCE-BODY ( IR-CTX:ctx -- )
-   A64-MOD PRUNE-BIND
-   CC BB TXT TXT-N IR-BUILD:ADD-SOURCE drop
-   BUILD-PLAIN
-   M-FREEZE {: m0:IR-BUILD:module :}
-   m0 A64PRUNE:REWRITES 0 T=
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64PRUNE:REWRITE drop ;
-
-: PRUNE-TWICE-BODY ( IR-CTX:ctx -- )
-   PLANNED-PRUNE {: m0:IR-BUILD:module :}
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64PRUNE:REWRITE drop
-   A64PRUNE:REWRITTEN 0 T=
-   CC m0 nb A64PRUNE:REWRITE drop ;
-
 \ ---- the frame rules, on modules that are wrong in one way -------------------
 \ Each of these is a lowered shape with one thing changed, allocated and then
 \ presented to the validator. The allocator itself has nothing to say about them
@@ -2770,9 +2726,6 @@ using A64RA
 : SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWICE-LOWER ( -- bool n n n )
    WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
-: PRUNE-NO-PLAN ( -- )  WBND [: PRUNE-NO-PLAN-BODY ;] IR-CTX:WITH-CONTEXT ;
-: PRUNE-SOURCE ( -- )   WBND [: PRUNE-SOURCE-BODY ;] IR-CTX:WITH-CONTEXT ;
-: PRUNE-TWICE ( -- )    WBND [: PRUNE-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2909,30 +2862,6 @@ using A64RA
 : LOWER-NONE-CASE ( -- )
    s" lowering a module whose walk decided no spill is refused" T-LABEL
    [: NO-SPILL-LOWER ;] E-A64SPILL-PLAN TTHROWSQ ;
-
-\ PLAN-TAKE also refuses a plan sealed for ANOTHER module, which BND-MODULE-CK
-\ reaches first with E-A64PRUNE-BIND, so that clause is fail-closed rather than
-\ reachable and only this one is asserted.
-\ A64-MOD binds the allocator as well, and A64RA:ALLOCATE is what takes that
-\ binding back; this case refuses before it ever runs, so it gives the binding
-\ back itself or the next A64-MOD in this suite dies of E-A64RA-BIND. A64RAV is
-\ bound there too and needs no such care - its BIND-DIALECT overwrites rather
-\ than refusing a live binding, which is why the spill case beside this one can
-\ leave it standing.
-: PRUNE-NO-PLAN-CASE ( -- )
-   s" pruning a module the scan never planned is refused" T-LABEL
-   [: PRUNE-NO-PLAN ;] E-A64PRUNE-PLAN TTHROWSQ
-   A64RA:BOUND? if A64RA:RELEASE then ;
-
-: PRUNE-PLAN-CASES ( -- )
-   s" a refused source consumes the prune binding" T-LABEL
-   [: PRUNE-SOURCE ;] E-A64PRUNE-SHAPE TTHROWSQ
-   A64PRUNE:BOUND? TFALSE
-   A64RA:BOUND? if A64RA:RELEASE then
-   s" a fresh plan succeeds after refusal and cannot be consumed twice" T-LABEL
-   [: PRUNE-TWICE ;] E-A64PRUNE-BIND TTHROWSQ
-   A64PRUNE:BOUND? TFALSE
-   A64RA:BOUND? if A64RA:RELEASE then ;
 
 : SLOT-REFUSE-CASES ( -- )
    s" a slot outside the declared frame is refused" T-LABEL
@@ -3626,8 +3555,7 @@ using A64RA
 : GROUP-PLACE ( IR-CTX:ctx -- )     drop PLACE-REFUSE-CASES ;
 : GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
-: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE PRUNE-NO-PLAN-CASE ;
-: GROUP-PRUNE-PLAN ( IR-CTX:ctx -- ) drop PRUNE-PLAN-CASES ;
+: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
 : GROUP-ORDER ( IR-CTX:ctx -- )     drop ORDER-REFUSE-CASES ;
 : GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;
@@ -4015,7 +3943,6 @@ public
    WBND [: GROUP-FIXED-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-PRUNE-PLAN ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ORDER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-RELOAD ;] IR-CTX:WITH-CONTEXT

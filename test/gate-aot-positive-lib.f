@@ -10,7 +10,6 @@ require src/lib/codesign.f
 require src/lib/process-env.f
 require tools/build-fixpoint.f
 require tools/hb-build-lib.f
-require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 require test/gate-build-common.f

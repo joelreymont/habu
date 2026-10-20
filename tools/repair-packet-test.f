@@ -16,10 +16,9 @@ require src/lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
 require src/lib/source-lex.f
 require tools/check-all-errors-core.f
-require tools/json.f
+require src/lib/json-write.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
@@ -46,6 +45,8 @@ create ROOT-BUF FS-PATH-CAP allot
 create SRC-BUF FS-PATH-CAP allot
 create DIAG-BUF FS-PATH-CAP allot
 create PACKET-BUF FS-PATH-CAP allot
+create J-OUT $8000 allot
+TYPED-VARIABLE J-W JSON-WRITE:writer
 
 : PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -266,23 +267,25 @@ create PACKET-BUF FS-PATH-CAP allot
    s" : BAD2 ( i64 -- ) >r ;" SB-APPEND LF
    SB$ ;
 
-: JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
-   key keyu JSONW-KEY
-   val valu JSONW-STRING ;
+: JSTART ( -- )
+   J-W J-OUT $8000 JSON-WRITE:OPEN JSON-WRITE:OBJECT-START drop ;
 
-: JNUM ( ptr u8 n n -- ) {: key:ptr keyu:n val:n :}
-   key keyu JSONW-KEY
-   val RP-U ;
+: JSTR ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n val:ptr valu:n :}
+   J-W key keyu JSON-WRITE:KEY val valu JSON-WRITE:STRING drop ;
+
+: JNUM ( ptr u8 n n -- )
+   {: key:ptr keyu:n val:n :}
+   J-W key keyu JSON-WRITE:KEY val JSON-WRITE:U drop ;
 
 : JNEXT ( -- )
-   JSONW-COMMA ;
+   J-W JSON-WRITE:COMMA drop ;
 
 : JDONE ( -- ptr u8 n )
-   JSONW-OBJECT-END
-   JSON-OUT-BUF JSON-OUT-LEN @ ;
+   J-W JSON-WRITE:OBJECT-END JSON-WRITE:$ ;
 
 : FAMILY-DIAG$ ( -- ptr u8 n )
-   JSONW-RESET  JSONW-OBJECT-START
+   JSTART
    s" schema_version" 1 JNUM
    JNEXT s" code" s" E-MISMATCH" JSTR
    JNEXT s" repair_class" s" fix_type" JSTR
@@ -299,10 +302,10 @@ create PACKET-BUF FS-PATH-CAP allot
    JNEXT s" declared_effect" s" n -- rptzrc " JSTR
    JNEXT s" declared_effect_source" s" n -- rptzrc" JSTR
    JNEXT s" inferred_effect" s" n -- n " JSTR
-   JNEXT s" return_stack" JSONW-KEY JSONW-OBJECT-START
+   JNEXT J-W s" return_stack" JSON-WRITE:KEY JSON-WRITE:OBJECT-START drop
    s" expected" s" " JSTR
    JNEXT s" actual" s" " JSTR
-   JSONW-OBJECT-END
+   J-W JSON-WRITE:OBJECT-END drop
    JNEXT s" expected" s" rptzrc " JSTR
    JNEXT s" actual" s" n " JSTR
    JNEXT s" family" s" rptzrc" JSTR
@@ -310,7 +313,7 @@ create PACKET-BUF FS-PATH-CAP allot
    JDONE ;
 
 : DECL-DIAG$ ( -- ptr u8 n )
-   JSONW-RESET  JSONW-OBJECT-START
+   JSTART
    s" schema_version" 1 JNUM
    JNEXT s" code" s" E-BAD-DECLARATION" JSTR
    JNEXT s" repair_class" s" fix_family_declaration" JSTR
@@ -439,7 +442,7 @@ create PACKET-BUF FS-PATH-CAP allot
 \ A using record whose `used_packages` is no array is refused, not copied into
 \ the packet.
 : USING-STRING-DIAG$ ( -- ptr u8 n )
-   JSONW-RESET  JSONW-OBJECT-START
+   JSTART
    s" schema_version" 1 JNUM
    JNEXT s" code" s" E-USING-AMBIGUOUS" JSTR
    JNEXT s" repair_class" s" disambiguate_using_ambiguous" JSTR
@@ -535,28 +538,6 @@ create PACKET-BUF FS-PATH-CAP allot
    s" engine" EXPECT-GOLDEN ;
 
 
-\ switchover wave A: GJA-U? returns option<n> (SOME parsed unsigned decimal,
-\ else NONE). Both branches, directly (GJA-INT's none arm dies via GJA-FAIL, so
-\ the raw parser is the testable seam).
-: TEST-GJA-U ( -- )
-   s" gja-u option branches" T-LABEL
-   s" 12345" GJA-U? MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF 12345 = ENDOF
-   ;MATCH TTRUE
-   s" 0" GJA-U? MATCH option
-     none OF 0 0= 0= ENDOF
-     some OF 0 = ENDOF
-   ;MATCH TTRUE
-   s" 12a" GJA-U? MATCH option
-     none OF 0 0= ENDOF
-     some OF drop 0 0= 0= ENDOF
-   ;MATCH TTRUE
-   s" " GJA-U? MATCH option
-     none OF 0 0= ENDOF
-     some OF drop 0 0= 0= ENDOF
-   ;MATCH TTRUE ;
-
 : RUN ( -- )
    T-RESET
    GOLD:INIT
@@ -576,7 +557,6 @@ create PACKET-BUF FS-PATH-CAP allot
    TEST-TWO-DIAGS
    TEST-NOARGS
    TEST-ENGINE
-   TEST-GJA-U
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
    ROOT EXISTS? TFALSE

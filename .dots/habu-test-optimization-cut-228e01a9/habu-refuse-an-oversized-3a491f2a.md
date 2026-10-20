@@ -3,7 +3,7 @@ title: Refuse an oversized diagnostic buffer by name
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T12:02:57.315333+02:00\""
+created-at: "2026-10-02T12:02:57.315333+02:00"
 closed-at: "2026-10-14T19:41:03.059351+03:00"
 close-reason: "Implemented in e528bb3b: diagnostic and all-errors report buffers throw E-DIAG-CAPACITY on full records, preserve prior complete output, and check.f emits a named throw record; failing-before 1 MiB case and convergence passed."
 ---

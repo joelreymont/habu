@@ -1,6 +1,8 @@
 \ Persistent application state exercises DATA and compiled-code relocation.
 require src/lib/string.f
 require src/lib/unicode.f
+require src/lib/image-lifecycle.f
+require src/core/include.f
 
 package APP-IMAGE-SUBJECT
 
@@ -16,6 +18,22 @@ PERSISTED-PTR-VARIABLE LINK
 TYPED-VARIABLE ACTION [ n -- n ]
 DYNAMIC-BUFFER SCRATCH n
 variable REGISTRY-ID
+variable ORIGIN-N
+
+: CHECK-ORIGIN ( n -- )
+   ENGINE-ORIGIN:TARGET >r 2drop 2drop 2drop r>
+   0= if 70 throw then
+   1 ORIGIN-N +! ;
+
+\ Cleanup can inspect source locations. A query here must not leave a
+\ process-local lookup mapping in the executable saved immediately afterward.
+: CHECK-ORIGINS ( -- )
+   0 ORIGIN-N !
+   s" src/lib/string.f" ['] CHECK-ORIGIN ENGINE-ORIGIN:EACH-IN
+   ORIGIN-N @ 0= if 70 throw then ;
+
+: IGNORE-SOURCE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   2drop 2drop 2drop ;
 
 \ Force both registry arrays and their name pool into grown mappings. Capture
 \ must move them into DATA and preserve their lookup across both image boots.
@@ -50,6 +68,8 @@ variable REGISTRY-ID
    USE-SCRATCH
    CHECK-UNICODE
    GROW-REGISTRY
+   ['] CHECK-ORIGINS IMAGE-LIFECYCLE:REGISTER
+   ['] IGNORE-SOURCE ['] CHECK-ORIGINS SOURCE-INPUT:USE-OBSERVER
    42 VALUE !
    VALUE LINK !
    [: DOUBLE ;] ACTION PUT
@@ -65,6 +85,7 @@ public
    [: SCRATCH-ADDRESS ;] catch 7122 <> if 70 throw then ;
 
 : RUN ( -- n )
+   CHECK-ORIGINS
    USE-SCRATCH
    CHECK-UNICODE
    CHECK-REGISTRY

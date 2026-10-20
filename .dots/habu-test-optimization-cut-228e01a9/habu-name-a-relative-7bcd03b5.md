@@ -3,7 +3,7 @@ title: "Name a relative path's directory without a slash"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T16:39:51.746004+03:00\""
+created-at: "2026-10-03T16:39:51.746004+03:00"
 closed-at: "2026-10-14T19:38:01.492104+03:00"
 close-reason: "Implemented in 11b4109b: SOURCE-ROOT:DIRNAME returns the current directory for a bare relative name and callers dropped duplicate parent helpers; source-root-test passed in this workspace."
 ---

@@ -16,10 +16,7 @@ holding a digest context, the digest, the read buffer and the path, so two tasks
 digest two files at once by holding one each. `SHA256-IN
 ( ptr u8 ptr u8 n ptr u8 -- )` — context, bytes, out — is those three calls in
 one for a caller that already holds every byte, over the same kind of context.
-No digest word keeps storage of its own: the only static digest cells left in
-the engine are `TF-SHA-CTX` and `SHA-DIGEST` in
-[`src/core/type-family-sha.f`](../src/core/type-family-sha.f), the checker's own,
-single-task because the checker is.
+No digest word keeps storage of its own; each caller owns its context.
 
 ## Migrating the former singleton SHA API
 

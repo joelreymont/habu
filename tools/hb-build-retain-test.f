@@ -2,10 +2,12 @@
 \ nothing has used it for a day (src/lib/build-cache.f), through real builds.
 \
 \ hb-build publishes an artifact hb-build-out-<key>, an object <key>.hbo with
-\ its index <key>.idx (src/lib/object-resolve.f), and a keyed AOT maker image
-\ hb-aot-maker-<key> (tools/aot-maker-image.f). A publish prunes its own family;
+\ its index <key>.idx (src/lib/object-resolve.f), an observed-input manifest
+\ hb-build-inputs-<key>, paired artifact/object maps, a maker-support record,
+\ and a keyed AOT builder image hb-aot-builder-<key>
+\ (tools/aot-builder-image.f). A publish prunes its own family;
 \ a hit dates what it found. So this builds two programs into a private root,
-\ dates their six program entries to 2020, past the window, and then
+\ dates their program entries to 2020, past the window, and then
 \ - builds the second program again, which restores its artifact;
 \ - builds it with --json-errors, which misses the artifact (the flag is in the
 \   artifact's key) and loads the object (it is not in the object's key), and
@@ -41,24 +43,30 @@ package HB-BUILD-CLI
 
 128 constant HBR-NAME-CAP
 
-\ The entries, by the build that published them.
+\ The entries, by the build that published them. Each artifact and object has
+\ its map in the following slot, so a pair's two paths have one owner.
 0 constant HBR-A-ART
-1 constant HBR-A-OBJ
-2 constant HBR-A-IDX
-3 constant HBR-B-ART
-4 constant HBR-B-OBJ
-5 constant HBR-B-IDX
-6 constant HBR-B2-ART
-7 constant HBR-C-ART
-8 constant HBR-C-OBJ
-9 constant HBR-C-IDX
-10 constant HBR-MAKER
-11 constant HBR-SLOTS
+2 constant HBR-A-OBJ
+4 constant HBR-A-IDX
+5 constant HBR-B-ART
+7 constant HBR-B-OBJ
+9 constant HBR-B-IDX
+10 constant HBR-B2-ART
+12 constant HBR-C-ART
+14 constant HBR-C-OBJ
+16 constant HBR-C-IDX
+17 constant HBR-BUILDER
+18 constant HBR-SUPPORT
+19 constant HBR-A-INPUTS
+20 constant HBR-B-INPUTS
+21 constant HBR-C-INPUTS
+22 constant HBR-SLOTS
 -1 constant HBR-NONE
 
-\ hb-build-out-<key>, hb-aot-maker-<key>, <key>.hbo and <key>.idx use
-\ 64-digit keys; the two named prefixes have the same length.
+\ hb-build-out-<key>, hb-aot-builder-<key>, <key>.hbo and <key>.idx use
+\ 64-digit keys.
 77 constant HBR-ART-LEN
+79 constant HBR-BUILDER-LEN
 68 constant HBR-OBJ-LEN
 
 create HBR-ROOT-BUF FS-PATH-CAP allot
@@ -75,6 +83,7 @@ variable HBR-AT-U
 variable HBR-ART-SLOT
 variable HBR-OBJ-SLOT
 variable HBR-IDX-SLOT
+variable HBR-INPUT-SLOT
 variable HBR-FRESH
 variable HBR-STRAY
 
@@ -128,8 +137,19 @@ variable HBR-STRAY
 : HBR-IDX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .idx" ENDS-WITH? u HBR-OBJ-LEN = and ;
 
-: HBR-MAKER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" hb-aot-maker-" STARTS-WITH? u HBR-ART-LEN = and ;
+: HBR-BUILDER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" hb-aot-builder-" STARTS-WITH? u HBR-BUILDER-LEN = and ;
+
+: HBR-INPUTS? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" hb-build-inputs-" STARTS-WITH? u 80 = and ;
+
+: HBR-SUPPORT? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" hb-maker-support-" STARTS-WITH? u 81 = and ;
+
+: HBR-MAP-SLOT ( n -- n )
+   dup HBR-NONE <> if 1+ then ;
 
 \ A new entry of a kind the build publishes fills that kind's slot, once.
 : HBR-TAKE ( ptr u8 n n -- ) {: a:ptr u:n s:n :}
@@ -140,27 +160,54 @@ variable HBR-STRAY
 
 : HBR-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HBR-KNOWN? if exit then
+   a u s" .map" ENDS-WITH? if
+      a u 4 - HBR-ART? if
+         a u HBR-ART-SLOT @ HBR-MAP-SLOT HBR-TAKE exit
+      then
+      a u 4 - HBR-OBJ? if
+         a u HBR-OBJ-SLOT @ HBR-MAP-SLOT HBR-TAKE exit
+      then
+   then
    a u HBR-ART? if a u HBR-ART-SLOT @ HBR-TAKE exit then
    a u HBR-OBJ? if a u HBR-OBJ-SLOT @ HBR-TAKE exit then
    a u HBR-IDX? if a u HBR-IDX-SLOT @ HBR-TAKE exit then
-   a u HBR-MAKER? if a u HBR-MAKER HBR-TAKE exit then
+   a u HBR-BUILDER? if a u HBR-BUILDER HBR-TAKE exit then
+   a u HBR-SUPPORT? if a u HBR-SUPPORT HBR-TAKE exit then
+   a u HBR-INPUTS? if a u HBR-INPUT-SLOT @ HBR-TAKE exit then
    1 HBR-STRAY +! ;
+
+\ A hit or prune must preserve the map exactly as long as its executable or
+\ object, including pairs recorded by an earlier build that have since aged.
+: HBR-PAIRS? ( -- bool )
+   HBR-SLOTS 0 ?do
+      i HBR-SLOT$ s" .map" ENDS-WITH? if
+         i HBR-SLOT$ {: map:ptr mapu:n :}
+         map mapu 4 - i 1- HBR-SLOT$ STR= 0= if false unloop exit then
+         i HBR-HELD? i 1- HBR-HELD? xor if false unloop exit then
+      then
+   loop
+   true ;
 
 \ Name what a build added to the root: the slots for its artifact, object and
 \ index, HBR-NONE for a kind it must not publish, and how many it publishes.
-\ The first build also records one maker image; another maker name is a stray.
+\ The first build also records one maker image and its support record.
+\ Another name of either kind is a stray.
 \ Any other name is a stray.
-: HBR-RECORD ( n n n n -- ) {: art:n obj:n idx:n want:n :}
+: HBR-RECORD ( n n n n n -- )
+   {: art:n obj:n idx:n inputs:n want:n :}
    art HBR-ART-SLOT !
    obj HBR-OBJ-SLOT !
    idx HBR-IDX-SLOT !
+   inputs HBR-INPUT-SLOT !
    0 HBR-FRESH !
    0 HBR-STRAY !
    HBR-ROOT$ [: HBR-NOTE ;] FS-LIST:EACH
    s" the build publishes one entry of each kind it missed" T-LABEL
    HBR-FRESH @ want T=
    s" the root holds nothing but entries: no work directory, no claim" T-LABEL
-   HBR-STRAY @ 0 T= ;
+   HBR-STRAY @ 0 T=
+   s" map sidecars follow their artifact or object" T-LABEL
+   HBR-PAIRS? TTRUE ;
 
 \ ---- the builds ----------------------------------------------------------------
 
@@ -180,7 +227,12 @@ variable HBR-STRAY
    PROC-ENV-INHERIT-MISSING
    s" -t" >LEN PROC-ARGV+
    s" 202001010000" >LEN PROC-ARGV+
-   HBR-B-IDX 1+ 0 ?do i HBR-SLOT$ HBR-AT$ >LEN PROC-ARGV+ loop
+   HBR-SLOTS 0 ?do
+      i HBR-BUILDER <> i HBR-SUPPORT <> and
+      i HBR-NAME-LEN @ 0 > and if
+         i HBR-SLOT$ HBR-AT$ >LEN PROC-ARGV+
+      then
+   loop
    s" /usr/bin/touch" >LEN HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rc:n :}
    s" touch dates the two programs' entries to 2020" T-LABEL
@@ -189,21 +241,21 @@ variable HBR-STRAY
 : HBR-FIRST-BUILDS ( -- )
    s" ra.f" S\" : MAIN ( -- ) 1 . cr ;\n" HBR-SOURCE!
    s" ra" false HBR-BUILD
-   HBR-A-ART HBR-A-OBJ HBR-A-IDX 4 HBR-RECORD
+   HBR-A-ART HBR-A-OBJ HBR-A-IDX HBR-A-INPUTS 8 HBR-RECORD
    s" rb.f" S\" : MAIN ( -- ) 2 . cr ;\n" HBR-SOURCE!
    s" rb" false HBR-BUILD
-   HBR-B-ART HBR-B-OBJ HBR-B-IDX 3 HBR-RECORD
+   HBR-B-ART HBR-B-OBJ HBR-B-IDX HBR-B-INPUTS 6 HBR-RECORD
    HBR-AGE ;
 
 : HBR-HITS ( -- )
    s" rb" false HBR-BUILD
    s" the second build again restores its artifact" T-LABEL
    HBB-ARTIFACT-HIT @ 0 <> TTRUE
-   HBR-NONE HBR-NONE HBR-NONE 0 HBR-RECORD
+   HBR-NONE HBR-NONE HBR-NONE HBR-NONE 0 HBR-RECORD
    s" rb2" true HBR-BUILD
    s" --json-errors misses the artifact and loads the object" T-LABEL
    HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBR-B2-ART HBR-NONE HBR-NONE 1 HBR-RECORD
+   HBR-B2-ART HBR-NONE HBR-NONE HBR-NONE 2 HBR-RECORD
    s" the artifact publish takes the unused artifact" T-LABEL
    HBR-A-ART HBR-HELD? TFALSE
    s" and keeps the one restored since" T-LABEL
@@ -216,7 +268,11 @@ variable HBR-STRAY
    s" rc" false HBR-BUILD
    s" the third build runs its maker" T-LABEL
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HBR-C-ART HBR-C-OBJ HBR-C-IDX 3 HBR-RECORD
+   HBR-C-ART HBR-C-OBJ HBR-C-IDX HBR-C-INPUTS 6 HBR-RECORD
+   s" the input publish takes the unused manifest and keeps the reused one" T-LABEL
+   HBR-A-INPUTS HBR-HELD? TFALSE
+   HBR-B-INPUTS HBR-HELD? TTRUE
+   HBR-C-INPUTS HBR-HELD? TTRUE
    s" the object publish takes the unused object" T-LABEL
    HBR-A-OBJ HBR-HELD? TFALSE
    s" and the unused index" T-LABEL

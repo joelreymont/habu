@@ -11,7 +11,7 @@
 \ pulls in app-image-core.f, and that requires eight lib modules including
 \ src/lib/process-env.f, so GETENV's table was already below the window before the
 \ application was even read. The latch words therefore cannot live in aot-lib.f
-\ with the rest of the linker. tools/aot-maker.f loads THIS file, opens the
+\ with the rest of the linker. tools/aot-builder.f loads THIS file, opens the
 \ window, loads the application, latches the span, and only then loads the linker
 \ above it. src/habu/aot-decl.f is the other lib-free candidate and is deliberately
 \ not used: it is baked into the engine (tools/bootstrap.sh SRC_COMMON,
@@ -52,7 +52,7 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ the same one-liner for package AOT-ARM, which this file's package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
-\ The dictionary record count tools/aot-maker.f refreshes immediately before
+\ The dictionary record count tools/aot-builder.f refreshes immediately before
 \ AOT-DATA-START. A saved maker restores more fixed definitions than the plain
 \ engine, and all must be below this pre-window watermark. A record above the
 \ engine's seal and below it was loaded ahead of the application - on the
@@ -60,6 +60,7 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ the keyed linker image its whole load. The closure refuses to carry a
 \ reachable pre-window word that the engine does not bake.
 variable OPENER-NDICT
+variable WINDOW-CODE-START
 
 \ The window owns a literal pool, and the application owns it only while it
 \ loads: a body interned into it lands inside the span and travels in the image.
@@ -74,6 +75,7 @@ PTR-VARIABLE MAKER-POOL
 PTR-VARIABLE APP-POOL
 
 : AOT-DATA-START ( -- )
+   cp@ WINDOW-CODE-START !
    FFI:IMAGE-UNPIN
    NSTR:ACTIVE MAKER-POOL !
    NSTR:WINDOW-OPEN
@@ -157,7 +159,7 @@ variable TASK-USER-MARK
 : AOT-APP-POOL ( -- )
    APP-POOL @ NSTR:SWITCH ;
 
-\ Opening the window is separate from linking (tools/aot-maker.f OPEN and RUN),
+\ Opening the window is separate from linking (tools/aot-builder.f OPEN and RUN),
 \ so linking without it is a reachable mistake rather
 \ than an impossible one. It would emit an image whose data span is whatever a zero
 \ BLOB-SRC implies, which is why this refuses instead of defaulting: a real span

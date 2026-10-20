@@ -3,7 +3,7 @@ title: Open a quotation inside a quotation on the JIT tier
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T13:00:53.023200+02:00\""
+created-at: "2026-10-01T13:00:53.023200+02:00"
 closed-at: "2026-10-14T19:46:58.819250+03:00"
 close-reason: "Current habu2.f parks nested quotation frames to JIT-QUOT:LEVELS, docs/forth.md and card state 32-level rule, and native-quot-scope.f plus runtime-regression-test.f cover nested inputs, EXIT and overdepth."
 ---

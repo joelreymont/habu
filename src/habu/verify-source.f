@@ -7,6 +7,7 @@
 require src/lib/errors.f
 require src/core/checker-owner-guard.f
 require src/lib/string.f
+require src/lib/fs.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
@@ -103,8 +104,7 @@ variable BODY-ROWS
 \ nested loads so a require back to it observes these bytes, and an include of
 \ it scans these bytes again.
 variable COMPOSE-ON
-\ A standalone source index uses the checker's top-level parser verdicts, but
-\ follows no loader into another file.
+\ A standalone index judges top-level calls but follows no loader dependencies.
 variable INDEX-ON
 PTR-VARIABLE COMPOSE-SUBJ-A
 variable COMPOSE-SUBJ-U
@@ -366,8 +366,8 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    drop c@ dup $73 = swap $53 = or IF LIT-PATH EXIT THEN
    LIT-OTHER ;
 
-\ A literal the source ends inside stops a quiet composition or standalone
-\ index at its opener, as discovery's lexer stops there (E-DISC-UNTERM).
+\ A literal the source ends inside stops a quiet composition or index at its
+\ opener, as discovery's lexer stops there (E-DISC-UNTERM).
 : QUIET-UNTERM ( -- )
    FOUND @ 0= QUIET @ INDEX-ON @ or and IF E-DISC-UNTERM throw THEN ;
 
@@ -632,9 +632,10 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 \ control-flow DISPATCHER and pushes a frame for every token it recognises, so
 \ asking it would move the checker's state. These are its token list, plus the
 \ compile-time brackets a definer call (WRAP-TOKEN) or a loader (BODY-TOKEN-SEEN)
-\ must not hide behind. Each matches case-folded, as the checker reads a token
-\ after TOKFOLD and the engine's keywords ignore case, so `EXIT` ends the line
-\ as `exit` does.
+\ must not hide behind; the loader reads `[:` and `;]` as a nested line
+\ (QUOT-TOKEN?) before the bracket list applies. Each matches case-folded, as
+\ the checker reads a token after TOKFOLD and the engine's keywords ignore
+\ case, so `EXIT` ends the line as `exit` does.
 : WRAP-COND-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR=CI
    a u s" else" STR=CI or
@@ -742,15 +743,26 @@ variable RETIRED
 
 \ ---- a loader in a definition -------------------------------------------------
 \ `s" PATH" required` or `s" PATH" included` in a definition loads PATH when the
-\ word runs, after the definition at the earliest. A loader the body reaches on
-\ a straight line, with no control word, quotation or bracket before it
-\ (WRAP-CTL-TOK?), loads whenever the word runs, so the composition loads its
-\ file at the first top-level statement boundary after the definition where the
-\ file being read has closed every package and file-level `using` it opened, in
-\ the order of the loaders, and at the end of that file at the latest
-\ (VERIFY-SOURCE, PEND-RELEASE). A loader under a condition may not run - a
-\ target's layout loads only when the image lacks one (tools/imgdump.f) - so
-\ its file is the run's to load. A target predicate right before an `if` is no
+\ word runs, after the definition at the earliest. An `included` of a source
+\ already provided by the engine waits for execution: a build may rewind the
+\ dictionary before replaying that source, and replaying it here would define
+\ the engine's prefix twice. A loader the body reaches on a straight line,
+\ with no control word or bracket before it (WRAP-CTL-TOK?), loads whenever
+\ the word runs, so the composition loads its file at the first top-level
+\ statement boundary after the definition where the file being read has closed
+\ every package and file-level `using` it opened, in the order of the loaders,
+\ and at the end of that file at the latest (VERIFY-SOURCE, PEND-RELEASE). A
+\ quotation `[: ... ;]` is a straight line of its own, nested in the line that
+\ holds it: a loader on the quotation's straight line is the composition's to
+\ load exactly as one on a definition's straight line is, whether or not the
+\ quotation is ever run, since the composition already loads for a definition
+\ that is never called. The quotation's line starts bent when the enclosing
+\ line is bent at its `[:`; a control word or bracket inside the quotation
+\ bends only the quotation's line, and `;]` ends every bend made inside it, so
+\ the enclosing line goes on straight after it (QUOT-TOKEN?). A loader under a
+\ condition, outside a quotation or inside one, may not run - a target's
+\ layout loads only when the image lacks one (tools/imgdump.f) - so its file
+\ is the run's to load. A target predicate right before an `if` is no
 \ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
 \ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
 \ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
@@ -785,7 +797,8 @@ variable PEND-N
 variable PEND-BASE                            \ the first entry of the file being read
 PTR-VARIABLE BODY-LIT-A  variable BODY-LIT-U  \ the literal the body token before closed, or 0
 variable BODY-LIT-KIND                        \ its kind (LIT-KIND or LIT-BAD), 0 for none
-variable BODY-BENT                            \ the body read so far is no straight line
+variable BODY-BENT                            \ 0 on a straight line, else 1 + BODY-QUOT at the bend
+variable BODY-QUOT                            \ the `[:`s open at the body token
 0 constant GUARD-NONE                         \ the body token before is no target predicate
 1 constant GUARD-LIVE                         \ it is one the engine answers true
 2 constant GUARD-DEAD                         \ it is one the engine answers false
@@ -798,7 +811,23 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    0 BODY-LIT-U !  0 BODY-LIT-KIND !  GUARD-NONE BODY-GUARD ! ;
 
 : BODY-LOAD-RESET ( -- )
-   0 BODY-BENT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
+   0 BODY-BENT !  0 BODY-QUOT !  BODY-PREV-CLEAR  0 BODY-ARMS !  0 BODY-DEAD ! ;
+
+\ The line the body token is on bends there, with every line nested in it. A
+\ bend already made holds: it is on that line or one holding it.
+: BODY-BEND ( -- )
+   BODY-BENT @ 0= IF BODY-QUOT @ 1 + BODY-BENT ! THEN ;
+
+\ `[:` and `;]`, true when the token is one. `[:` opens the quotation's line,
+\ bent when the line holding it is, and its `;]` ends a bend made inside it.
+\ A `;]` with no quotation open is a bracket like any other and bends the line.
+: QUOT-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [:" STR=CI IF BODY-QUOT @ 1 + BODY-QUOT ! 0 0= EXIT THEN
+   a u s" ;]" STR=CI 0= IF 0 0= 0= EXIT THEN
+   BODY-QUOT @ 0= IF BODY-BEND 0 0= EXIT THEN
+   BODY-QUOT @ 1 - BODY-QUOT !
+   BODY-BENT @ BODY-QUOT @ 1 + > IF 0 BODY-BENT ! THEN
+   0 0= ;
 
 \ The end of the waiting entries' paths.
 : PEND-END ( -- n )
@@ -853,13 +882,13 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 \ The three match case-folded, as the engine's keywords do.
 : ARM-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" STR=CI IF
-      BODY-GUARD @ GUARD-NONE = IF 1 BODY-BENT ! 0 0= EXIT THEN
+      BODY-GUARD @ GUARD-NONE = IF BODY-BEND 0 0= EXIT THEN
       BODY-ARMS @ 1 + BODY-ARMS !
       BODY-GUARD @ GUARD-DEAD = IF 1 BODY-DEAD ! THEN
       0 0= EXIT
    THEN
    a u s" else" STR=CI a u s" then" STR=CI or 0= IF 0 0= 0= EXIT THEN
-   BODY-ARMS @ 0= IF 1 BODY-BENT ! 0 0= EXIT THEN
+   BODY-ARMS @ 0= IF BODY-BEND 0 0= EXIT THEN
    a u s" else" STR=CI IF 1 BODY-DEAD ! 0 0= EXIT THEN
    BODY-ARMS @ 1 - BODY-ARMS !
    0 0= ;
@@ -892,7 +921,7 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    a u BODY-USE
    BODY-DEAD @ 0 > IF a u DEAD-TOKEN BODY-PREV-CLEAR EXIT THEN
    BODY-BENT @ 0= IF a u ARM-TOKEN? IF BODY-PREV-CLEAR EXIT THEN THEN
-   a u WRAP-CTL-TOK? IF 1 BODY-BENT ! THEN
+   a u QUOT-TOKEN? 0= IF a u WRAP-CTL-TOK? IF BODY-BEND THEN THEN
    COMPOSE-ON @ 0<> QUIET @ 0= and BODY-BENT @ 0= and BODY-LIT-KIND @ LIT-PATH = and
    BODY-LIT-U @ 0 > and IF
       a u s" required" STR=CI IF BODY-LIT-A @ BODY-LIT-U @ 0 TOKEN-BYTE @ u PEND-PUSH THEN
@@ -1163,6 +1192,7 @@ CAST: TICK-ORDER-ACTION ( n -- [ ptr u8 n n ptr u8 [ -- ] -- n ] )
 
 CAST: VERIFIER-ACTION ( n -- [ -- ] )
 CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
+CAST: CTOR-DECL-ACTION ( n -- [ n ptr u8 n n n n -- ] )
 CAST: USES-ACTION ( n -- [ [ n n n n n n -- ] [ -- ] -- ] )
 
 \ ---- navigation: where a declaration was written, what a use bound ----------
@@ -1913,11 +1943,13 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ that runs code (`:`, `TRUSTED:`, `defer`, a cast, a field, `FUNCTION:`), a
 \ constant (`constant`, a structure's size), storage whose word answers its
 \ address (`variable`, `create`, a buffer, a word a definer creates when it
-\ runs), or a re-export, which is what the word it names is.
+\ runs), a re-export, which is what the word it names is, or a generated
+\ SUMTYPE constructor whose variant name MATCH also uses.
 0 constant DEF-WORD
 1 constant DEF-CONSTANT
 2 constant DEF-STORAGE
 3 constant DEF-EXPORT
+4 constant DEF-CONSTRUCTOR
 
 \ A definition the scan retained, once its registrar returned and its name's
 \ recording scope holds a live record: its kind, the statement token that
@@ -1925,7 +1957,7 @@ defer ON-DUPLICATE ( n n ptr u8 n bool -- )
 \ writes it, or a name the definer generates as spelled; the symbol the
 \ checker recorded it under; its declared effect, empty for none;
 \ where the token that declared it starts and ends in the file FILE$
-\ names; its class, one of the four above; and its file visit. The strings are
+\ names; its class, one of the five above; and its file visit. The strings are
 \ borrowed: a word installed here consumes them before it returns.
 defer ON-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
 
@@ -2338,6 +2370,11 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
       TOKEN-U @ 0= IF E-VS-UNTERMINATED-DEFINITION STATEMENT-STOP THEN
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF EXIT THEN
       LOCAL-TOKEN? 0=  TOKEN-A @ TOKEN-U @ s" does>" STR=CI  and IF
+         \ This scan skips the clause body, so its acceptance is unknown.
+         INDEX-ON @ IF
+            TOKEN-A @ TOKEN-U @ DEFER-AT
+            true TICK-REMAINDER ! EXIT
+         THEN
          REQUIRE-SIGNATURE
          kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
          -1 TRUSTED-DOES !
@@ -2367,13 +2404,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
    DISARM
-   kept IF
-      INDEX-ON @ 0= IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
-   ELSE QUIET-TYPE-REPORT THEN
+   kept 0= IF QUIET-TYPE-REPORT THEN
    name nameu kept SCAN-TRUSTED-BODY
+   TICK-REMAINDER @ IF EXIT THEN
    name nameu at TRUSTED-DOES @ 0<> REFUSE-SHAPE IF EXIT THEN
-   kept INDEX-ON @ and IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN
-   TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN ;
+   TRUSTED-DOES @ kept and IF name nameu TRUSTED-CLAUSE THEN
+   kept IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 \ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
 \ nothing to skip: the declaration ends at its closing paren. Registration goes
@@ -2512,8 +2548,39 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
 \ A SUMTYPE defines its constructors when it loads, so after the registration
 \ the scan replays their checked effects: a later definition that calls one, as
 \ src/lib/aio.f's OUTCOME-OF calls AIO-OUTCOME:ready, resolves here as in the load.
-: RECORD-SUMTYPE ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+DYNAMIC-BUFFER SUM-VAR-AT n
+variable SUM-VAR-N
+variable SUM-VAR-NEXT
+
+: SUM-VAR-STEP ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   SUM-VAR-NEXT @ IF
+      SUM-VAR-N @ 1+ SUM-VAR-AT-RESERVE
+      TOKEN-BYTE @ SUM-VAR-N @ SUM-VAR-AT !
+      SUM-VAR-N @ 1+ SUM-VAR-N !
+   THEN
+   a u s" VARIANT" STR=CI SUM-VAR-NEXT ! ;
+
+\ Constructor symbols belong to the variants just registered. Give each its
+\ source name token, in the same order the declaration registered the variants.
+: SUM-VAR-DEFINED ( n -- )
+   {: fam:n :}
+   fam TFAM:TFAM-VAR-START@ {: start:n :}
+   SUM-VAR-N @ 0 ?DO
+      start i + {: vid:n :}
+      vid TFAM:SUMV-CTOR-SYM@ {: sym:n :}
+      sym 0 <> IF
+         vid TFAM:SUMV-NAME$ {: name:ptr nameu:n :}
+         i SUM-VAR-AT @ {: at:n :}
+         sym name nameu VISIT-CUR @ at at nameu +
+            NCOMP-DISPATCH:DECL-VERIFY-CTOR-DECL-OFF OWNER-XT CTOR-DECL-ACTION execute
+         s" VARIANT" name nameu sym NULL$ at at nameu + DEF-CONSTRUCTOR VISIT-CUR @ ON-DEFINITION
+      THEN
+   LOOP ;
+
+: RECORD-SUMTYPE-BODY ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   0 SUM-VAR-N !  0 SUM-VAR-NEXT !
    BODY-RESET
    BEGIN
       NEXT-SCAN
@@ -2524,12 +2591,20 @@ DYNAMIC-BUFFER NOM-TAIL u8                    \ the folded tail, as long as the 
       THEN
       2dup SUMTYPE-END? IF
          2drop
+         TFAM:TFAM-N@ {: before:n :}
          name nameu BODY$ CHECKER-DEFSUM
          GENERATED-DECL-CTOR:REPLAY-LEGACY
+         TFAM:TFAM-N@ before > IF
+            TFAM:TFAM-N@ 1- SUM-VAR-DEFINED
+         THEN
          EXIT
       THEN
+      2dup SUM-VAR-STEP
       BODY-APPEND
    AGAIN ;
+
+: RECORD-SUMTYPE ( -- )
+   NAME-TOKEN [: RECORD-SUMTYPE-BODY ;] [: SUM-VAR-AT-RELEASE ;] finally ;
 
 : ENUM-END? ( ptr u8 n -- bool )
    s" ;ENUM" STR=CI ;
@@ -2904,6 +2979,10 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 : TOP-BINDING ( ptr u8 n -- n n n )
    CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF OWNER-XT BINDING-ACTION execute ;
 
+CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
+: TOP-VERDICT ( ptr u8 n bool -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
+
 \ A source-backed engine token consumed by this scan still names a use.
 \ A replaced or unlocated word has no live origin and supplies no source target.
 : ENGINE-ORIGIN-USE ( ptr u8 n n n -- )
@@ -2958,8 +3037,7 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    {: a:ptr u:n renders:bool :}
    renders IF a u RENDER-GAP THEN
    a u TOP-NAMED
-   \ The index does not execute top-level calls. Literal openers only push
-   \ the scanned string; any other call may alter later bindings.
+   \ Literal openers only push the scanned string. Other calls may alter bindings.
    INDEX-ON @ IF a u STRING-OPENER? 0= IF a u TOP-OPAQUE THEN THEN ;
 
 \ The id of the engine word a control word names (checker.f CTL-INTRINSIC).
@@ -3070,6 +3148,21 @@ CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
    row PRS-COUNT @ 0 ?do NEXT-RAW nip 0= IF unloop EXIT THEN loop
    row PRS-LEN @ 0= IF EXIT THEN
    BEGIN NEXT-RAW dup 0= IF 2drop EXIT THEN row PRS-TERM? UNTIL ;
+
+\ A source-reading word either declares its row, consumes a bounded row, or
+\ stops this scan. The same handling applies inside a structure body.
+: TOP-PARSER ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u TOP-BINDING {: sym:n eff1:n ctl:n :}
+   ctl BINDING-ID {: id:n :}
+   id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
+   id CHECKER-OWNER-ABI:BINDING-THROUGH-ID = IF a u 0 0= PARSES-ROW EXIT THEN
+   id CHECKER-OWNER-ABI:BINDING-NAMES-ID = IF a u NAMES-ROW EXIT THEN
+   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
+   sym eff1 PRS-FIND {: row:n :}
+   row 0= IF a u TOP-OPAQUE EXIT THEN
+   a u DEFER-AT
+   row 1 - PRS-CONSUME ;
 
 \ EXPORT has two documented roles split by package context (dot
 \ habu-compiler-pkg-re-688212c1): inside an open package it is the re-export
@@ -3285,18 +3378,26 @@ variable LOAD-U
    THEN
    false ;
 
-\ Whether a string loader's body load of LOAD$ loads its file: not when the
+\ Whether a string loader's body load of LOAD$ loads its file: an `included`
+\ source the engine already provides waits until the body actually runs; other
+\ body loads keep their normal dependency validation. Also false when the
 \ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2050
 \ bytes or more, relative and 2050 bytes or more joined as root, `/` and path
 \ to a root searched before one holds the file, or over PATH-CAP once
 \ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
 \ NORMALIZE), as the engine's loader does when the
 \ word runs, so discovery reads past it (tools/source-discovery.f SD-LOAD?).
-\ The catch holds this path's resolution alone; the load resolves it again and
-\ reads the file outside it, so that file keeps its own refusals.
-: BODY-LOAD? ( -- bool )
-   [: LOAD$ SOURCE-ROOT:RESOLVE drop 2drop ;] catch {: rc:n :}
-   rc 0= IF true EXIT THEN
+\ The catch holds the provided-source check and this path's resolution; the
+\ load resolves it again and reads the file outside it, keeping that file's
+\ own refusals.
+: BODY-LOAD-RESOLVE? ( bool -- bool )
+   IF LOAD$ ENGINE-PROVIDES? IF false EXIT THEN THEN
+   LOAD$ SOURCE-ROOT:RESOLVE drop 2drop true ;
+
+: BODY-LOAD? ( bool -- bool )
+   [: BODY-LOAD-RESOLVE? ;] catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   drop
    rc E-PATH-RANGE <> IF rc throw THEN
    false ;
 
@@ -3316,7 +3417,7 @@ variable LOAD-U
          \ load takes it (LOADED) or ends, and no file is scanned in between.
          i PEND-WORD-AT @  i PEND-WORD-U @  CLAIMED-LOAD
       ELSE
-         BODY-LOAD? IF execute ELSE drop THEN
+         i PEND-INC @ 0<> BODY-LOAD? IF execute ELSE drop THEN
       THEN
    loop
    PEND-BASE @ PEND-N ! ;
@@ -3343,8 +3444,10 @@ variable FILE-USE
    a u s" included" STR=CI or  a u s" required" STR=CI or
    a u s" script-required" STR=CI or  a u s" provided" STR=CI or IF
       TICK-CONTEXT-UNKNOWN
+      QUIET @ IF a u QUIET-USE THEN
+      a u TOKEN-BYTE @ a u TOP-BINDING drop drop ENGINE-ORIGIN-USE
    THEN
-   QUIET @ IF a u QUIET-USE a u QUIET-TOP? EXIT THEN
+   QUIET @ IF a u QUIET-TOP? EXIT THEN
    a u s" include" STR=CI IF COMPOSE-RAW-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
    a u s" require" STR=CI IF COMPOSE-RAW-PATH COMPOSE-REQUIRED 0 0= EXIT THEN
    a u s" included" STR=CI IF COMPOSE-STRING-PATH COMPOSE-INCLUDED 0 0= EXIT THEN
@@ -3452,6 +3555,29 @@ variable FILE-USE
    DISARM
    IF name nameu s" -- n" at DEF-CONSTANT DEFINED-HERE THEN ;
 
+\ These words form the structure scanner's syntax; it takes their operands
+\ itself, even though their runtime call may read source.
+: STRUCTURE-SYNTAX? ( ptr u8 n -- bool )
+   2dup STRUCTURE-END? IF 2drop true EXIT THEN
+   2dup STRUCTURE-PTR-FIELD? IF 2drop true EXIT THEN
+   2dup STRUCTURE-CFIELD? IF 2drop true EXIT THEN
+   STRUCTURE-CELL-FIELD? ;
+
+\ The body executes its bound words even though this scanner reads their
+\ tokens. Built-in parsers consume their next raw token first: `char` takes
+\ data, while `'` names a word. Structure syntax has already been interpreted
+\ here; other calls use the normal top-level verdict and parser rows.
+: STRUCTURE-USE ( ptr u8 n -- )
+   2dup TOP-PARSER? IF
+      2dup CHAR-KEYWORD? IF 2drop OPERAND 2drop EXIT THEN
+      2drop OPERAND
+      2dup TOP-BINDING drop drop 0= IF 2drop EXIT THEN
+      false TOP-VERDICT drop EXIT
+   THEN
+   2dup TOP-BINDING drop drop 0= IF 2drop EXIT THEN
+   2dup 2dup STRUCTURE-SYNTAX? 0= TOP-VERDICT 2 =
+   IF TOP-PARSER ELSE 2drop THEN ;
+
 \ Record the size word then each field accessor with its runtime effect
 \ so BEGIN-STRUCTURE layouts self-certify their field uses.
 : RECORD-STRUCTURE ( -- )
@@ -3462,9 +3588,10 @@ variable FILE-USE
    BEGIN
       NEXT-SCAN
       dup 0= IF E-VS-DECL-SYNTAX STATEMENT-STOP THEN
+      2dup STRUCTURE-USE
+      TICK-REMAINDER @ IF 2drop EXIT THEN
       2dup STRUCTURE-END? IF
-         2dup TOP-BINDING drop drop
-         TOKEN-BYTE @ swap ENGINE-ORIGIN-USE
+         2drop
          EXIT
       THEN
       \ A pointer field's POINTEE is independent of the record's element type: a
@@ -3795,9 +3922,6 @@ s" RESERVED-PTR-U8-CELL" XREF-FIND-INDEX constant RESERVED-PTR-U8-CELL-REC
 \ nothing is refused. A refusal opens a stretch too, unreported: the load stops
 \ at it, so the operands of a misspelt parsing word, or the rest of a
 \ declaration its definer misread, are not refused after it.
-CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
-: TOP-VERDICT ( ptr u8 n bool -- n )
-   NCOMP-DISPATCH:DECL-VERIFY-TOP-OFF OWNER-XT TOP-ACTION execute ;
 variable TOP-DEFER                               \ a stretch is open
 PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report is due, else 0
 
@@ -3810,23 +3934,6 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    TOP-DEFER-U @ 0= IF EXIT THEN
    TOP-DEFER-A @ TOP-DEFER-U @ DEFER-AT
    0 TOP-DEFER-U ! ;
-
-\ A token that runs a word that may read the source after it (TOP-VERDICT 2):
-\ a declarer reads its row; a word a row bounds is reported at once, as the
-\ run's, and what it reads is consumed; any other stops the scan (TOP-OPAQUE).
-\ A deferred word stays opaque whatever row names it.
-: TOP-PARSER ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u TOP-BINDING {: sym:n eff1:n ctl:n :}
-   ctl BINDING-ID {: id:n :}
-   id CHECKER-OWNER-ABI:BINDING-PARSES-ID = IF a u 0 0= 0= PARSES-ROW EXIT THEN
-   id CHECKER-OWNER-ABI:BINDING-THROUGH-ID = IF a u 0 0= PARSES-ROW EXIT THEN
-   id CHECKER-OWNER-ABI:BINDING-NAMES-ID = IF a u NAMES-ROW EXIT THEN
-   ctl CHECKER-OWNER-ABI:BINDING-DEFER and 0<> IF a u TOP-OPAQUE EXIT THEN
-   sym eff1 PRS-FIND {: row:n :}
-   row 0= IF a u TOP-OPAQUE EXIT THEN
-   a u DEFER-AT
-   row 1 - PRS-CONSUME ;
 
 \ The checker's answer for a token, a call when RUNS, else a tick's operand: a
 \ word that may read on is TOP-PARSER's, a call it binds is BOUND-CALL's, and a
@@ -3887,7 +3994,9 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    a u QUIET-NOMINAL
    a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
    renders 0= IF a u MARK-UNSEEN RENDERS-MARK? drop THEN
-   COMPOSE-ON @ INDEX-ON @ or 0=  TOP-DEFER @ 0<>  or IF
+   \ Index safety still needs every call after a refused declaration: an open
+   \ diagnostic stretch must not hide a call that can change earlier bindings.
+   COMPOSE-ON @ 0= TOP-DEFER @ 0<> or INDEX-ON @ 0= and IF
       renders IF a u RENDER-GAP THEN
       EXIT
    THEN
@@ -3900,8 +4009,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
    {: a:ptr u:n :}
    MULTI-ERR-N @ {: before:n :}
    a u TICK-NATIVE-DEFINER? {: native:bool :}
-   \ A library definer is a call of a replaceable dictionary word. The index
-   \ cannot trust its spelling or infer the effects of its replacement.
+   \ A library definer is a replaceable dictionary call, not structural syntax.
    INDEX-ON @ native 0= and IF false EXIT THEN
    TOKEN-BYTE @ {: at:n :}
    a u TOP-BINDING drop drop {: sym:n :}
@@ -4092,11 +4200,29 @@ create READ-PATHZ PATH-CAP 1+ allot
 DYNAMIC-BUFFER READ-BUF u8                    \ the file's bytes, READ-U of them
 variable READ-U
 variable READ-FD
+variable READ-SIZE
+variable READ-MSEC
+variable READ-MNS
+variable READ-CSEC
+variable READ-CNS
+variable READ-PATH-U
+variable READ-META-VALID
 65536 constant READ-STEP                      \ the bytes each read asks for
 
 : FAULT-TARGET! ( ptr u8 n -- ) {: a:ptr u:n :}
    a FAULT-TARGET u BYTE-COPY
    u FAULT-U ! ;
+
+: QUIET-FILE-META ( ptr u8 n -- n n n n n )
+   {: path:ptr pathu:n :}
+   path pathu FS-TRY-STAT 0= IF
+      path pathu FAULT-TARGET!  E-SOURCE-READ throw
+   THEN
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> IF
+      path pathu FAULT-TARGET!  E-SOURCE-READ throw
+   THEN
+   FS-STAT-SIZE@ FS-STAT-MTIME-SEC@ FS-STAT-MTIME-NS@
+   FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ ;
 
 : READ-FILL ( -- )
    0 READ-U !
@@ -4111,8 +4237,12 @@ variable READ-FD
 
 : QUIET-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop {: path:ptr pathu:n :}
+   0 READ-META-VALID !
    path READ-PATHZ pathu BYTE-COPY
    0 READ-PATHZ pathu + c!
+   pathu READ-PATH-U !
+   path pathu QUIET-FILE-META
+   {: size:n msec:n mns:n csec:n cns:n :}
    READ-PATHZ open-rd {: fd:n :}
    fd 0 < IF path pathu FAULT-TARGET!  E-SOURCE-READ throw THEN
    fd READ-FD !
@@ -4120,166 +4250,50 @@ variable READ-FD
    fd close
    rc E-SOURCE-READ = IF path pathu FAULT-TARGET! THEN
    rc 0<> IF rc throw THEN
+   path pathu QUIET-FILE-META
+   {: after:n amsec:n amns:n acsec:n acns:n :}
+   size after = msec amsec = and mns amns = and
+   csec acsec = and cns acns = and 0= IF
+      path pathu FAULT-TARGET!
+      E-SOURCE-READ throw
+   THEN
+   size READ-SIZE ! msec READ-MSEC ! mns READ-MNS !
+   csec READ-CSEC ! cns READ-CNS !
+   true READ-META-VALID !
    0 READ-BUF READ-U @ ;
 
-\ Engine origins are image facts, but the source token is trusted only while
-\ that same token still exists in the source tree (or the open supplied copy).
-\ Cache each file's bytes for one composition so repeated uses do not reread it.
+public
+
+\ The stamp of the disk bytes the quiet reader just handed to SOURCE-INPUT.
+\ ON-FILE runs before another acquisition can replace it.
+: QUIET-READ-META ( ptr u8 n -- n n n n n bool )
+   {: path:ptr pathu:n :}
+   READ-META-VALID @ 0<> pathu READ-PATH-U @ = and
+   path pathu READ-PATHZ pathu CORE-STR= and 0= IF 0 0 0 0 0 false EXIT THEN
+   READ-SIZE @ READ-MSEC @ READ-MNS @ READ-CSEC @ READ-CNS @ true ;
+
+private
+
 create ENGINE-PATH PATH-CAP allot
-DYNAMIC-BUFFER ENGINE-PATHS u8
-DYNAMIC-BUFFER ENGINE-BYTES u8
-DYNAMIC-BUFFER ENGINE-FILES n
-DYNAMIC-BUFFER ENGINE-TOKENS n
-DYNAMIC-BUFFER ENGINE-HASHES u8
-create ENGINE-HASH-CTX SHA256-CTX-BYTES allot
-variable ENGINE-PATHS-U
-variable ENGINE-BYTES-U
-variable ENGINE-FILES-N
-variable ENGINE-TOKEN-N
-6 constant ENGINE-FILE-CELLS           \ path, bytes and word-token offsets/counts
-
-: ENGINE-FILE-AT ( n n -- ptr n )
-   {: row:n field:n :}
-   row ENGINE-FILE-CELLS * field + ENGINE-FILES ;
-
-: ENGINE-FILE-DROP ( -- )
-   ENGINE-PATHS-RELEASE ENGINE-BYTES-RELEASE ENGINE-FILES-RELEASE
-   ENGINE-TOKENS-RELEASE ENGINE-HASHES-RELEASE
-   0 ENGINE-PATHS-U ! 0 ENGINE-BYTES-U ! 0 ENGINE-FILES-N !
-   0 ENGINE-TOKEN-N ! ;
-
-: ENGINE-TOKEN-AT ( n n -- ptr n )
-   {: token:n field:n :}
-   token 2 * field + ENGINE-TOKENS ;
-
-\ The lexer excludes comments and strings. Record its word-token boundaries
-\ once for this file, before its global token table is used for another file.
-: ENGINE-WORDS+ ( ptr u8 n -- n )
-   LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if -1 exit then
-   ENGINE-TOKEN-N @ {: first:n :}
-   ENGINE-TOKEN-N @ LINT-LEX:COUNT + 2 * ENGINE-TOKENS-RESERVE
-   LINT-LEX:COUNT 0 ?do
-      i LINT-LEX:KIND@ LINT-LEX:WORD = if
-         i LINT-LEX:BYTE@ {: start:n :}
-         start ENGINE-TOKEN-N @ 0 ENGINE-TOKEN-AT !
-         i LINT-LEX:TOKEN nip start + ENGINE-TOKEN-N @ 1 ENGINE-TOKEN-AT !
-         1 ENGINE-TOKEN-N +!
-      then
-   loop
-   ENGINE-TOKEN-N @ first - ;
 
 : ENGINE-FULL-PATH ( ptr u8 n -- ptr u8 n bool )
    {: rel:ptr relu:n :}
    SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
-   rootu relu + 1 + PATH-CAP > if NULL$ false exit then
+   rootu relu + 1+ PATH-CAP > if NULL$ false exit then
    root ENGINE-PATH rootu BYTE-COPY
    47 ENGINE-PATH rootu + c!
-   rel ENGINE-PATH rootu 1 + + relu BYTE-COPY
-   ENGINE-PATH rootu relu + 1 + true ;
-
-: ENGINE-FILE-LOOKUP ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
-   ENGINE-FILES-N @ 0 ?do
-      i 1 ENGINE-FILE-AT @ pathu = if
-         i 0 ENGINE-FILE-AT @ ENGINE-PATHS
-         pathu path pathu CORE-STR= if i unloop exit then
-      then
-   loop -1 ;
-
-: ENGINE-FILE-ADD ( ptr u8 n ptr u8 n bool -- n )
-   {: path:ptr pathu:n src:ptr srcu:n got:bool :}
-   ENGINE-FILES-N @ {: row:n :}
-   row 1 + ENGINE-FILE-CELLS * ENGINE-FILES-RESERVE
-   ENGINE-PATHS-U @ row 0 ENGINE-FILE-AT !
-   pathu row 1 ENGINE-FILE-AT !
-   ENGINE-PATHS-U @ pathu + ENGINE-PATHS-RESERVE
-   path ENGINE-PATHS-U @ ENGINE-PATHS pathu BYTE-COPY
-   ENGINE-PATHS-U @ pathu + ENGINE-PATHS-U !
-   ENGINE-BYTES-U @ row 2 ENGINE-FILE-AT !
-   ENGINE-TOKEN-N @ row 4 ENGINE-FILE-AT !
-   got if
-      row 1+ 32 * ENGINE-HASHES-RESERVE
-      ENGINE-HASH-CTX src srcu row 32 * ENGINE-HASHES SHA256-IN
-      src srcu ENGINE-WORDS+ {: words:n :}
-      words 0 >= if
-         words row 5 ENGINE-FILE-AT !
-         srcu row 3 ENGINE-FILE-AT !
-         ENGINE-BYTES-U @ srcu + ENGINE-BYTES-RESERVE
-         src ENGINE-BYTES-U @ ENGINE-BYTES srcu BYTE-COPY
-         ENGINE-BYTES-U @ srcu + ENGINE-BYTES-U !
-      else
-         -1 row 3 ENGINE-FILE-AT !
-         0 row 5 ENGINE-FILE-AT !
-      then
-   else
-      -1 row 3 ENGINE-FILE-AT !
-      0 row 5 ENGINE-FILE-AT !
-   then
-   row 1 + ENGINE-FILES-N !
-   row ;
-
-: ENGINE-FILE-READ+ ( ptr u8 n -- n )
-   {: path:ptr pathu:n :}
-   path pathu SUPPLIED {: src:ptr srcu:n got:bool :}
-   got if path pathu src srcu true ENGINE-FILE-ADD exit then
-   path pathu PRIM-SOURCE:FILE-BYTES {: disk:ptr disku:n read:bool :}
-   path pathu disk disku read ENGINE-FILE-ADD ;
-
-: ENGINE-FILE ( ptr u8 n -- ptr u8 n n bool )
-   {: path:ptr pathu:n :}
-   path pathu ENGINE-FILE-LOOKUP dup 0< if
-      drop path pathu ENGINE-FILE-READ+
-   then {: row:n :}
-   row 3 ENGINE-FILE-AT @ {: size:n :}
-   size 0< if NULL$ 0 false exit then
-   row 2 ENGINE-FILE-AT @ ENGINE-BYTES size row true ;
-
-: ENGINE-TOKEN? ( ptr u8 n n n n ptr u8 n -- bool )
-   {: src:ptr size:n row:n at:n end:n name:ptr nameu:n :}
-   at 0< end at <= or end size > or if false exit then
-   end at - nameu <> if false exit then
-   src at + nameu name nameu CORE-STR= 0= if false exit then
-   row 4 ENGINE-FILE-AT @ {: first:n :}
-   first row 5 ENGINE-FILE-AT @ + first ?do
-      i 0 ENGINE-TOKEN-AT @ at =
-      i 1 ENGINE-TOKEN-AT @ end = and if true unloop exit then
-   loop false ;
+   rel ENGINE-PATH rootu 1+ + relu BYTE-COPY
+   ENGINE-PATH rootu relu + 1+ true ;
 
 : ENGINE-TARGET-READ ( n -- ptr u8 n n n bool )
-   {: sym:n :}
-   sym ENGINE-ORIGIN:TARGET {: rel:ptr relu:n at:n end:n name:ptr nameu:n found:bool :}
+   ENGINE-ORIGIN:TARGET
+   {: rel:ptr relu:n at:n end:n name:ptr nameu:n found:bool :}
    found 0= if NULL$ 0 0 false exit then
    rel relu ENGINE-FULL-PATH {: path:ptr pathu:n fits:bool :}
-   fits 0= if NULL$ 0 0 false exit then
-   path pathu ENGINE-FILE {: src:ptr srcu:n row:n got:bool :}
-   got 0= if path pathu at 0 true exit then
-   sym ENGINE-ORIGIN:SOURCE-HASH {: saved:ptr savedu:n live:bool :}
-   live 0= if path pathu at 0 true exit then
-   row 32 * ENGINE-HASHES 32 saved savedu CORE-STR= 0= if
-      path pathu at 0 true exit
-   then
-   src srcu row at end name nameu ENGINE-TOKEN? 0= if
-      path pathu at 0 true exit
-   then
-   path pathu at end true ;
+   path pathu at end fits ;
 
 : ENGINE-TARGET-INSTALL ( -- ) ['] ENGINE-TARGET-READ is ENGINE-TARGET ;
 ENGINE-TARGET-INSTALL
-
-public
-
-\ A source token in the engine tree selects the same checker symbol as its
-\ uses only when the latest image origin still names that token. This is the
-\ reverse of ENGINE-TARGET's source-backed visit -1 use packet.
-: ENGINE-SYMBOL-AT ( ptr u8 n n -- n bool )
-   {: path:ptr pathu:n byte:n :}
-   path pathu byte ENGINE-ORIGIN:SYMBOL-AT {: sym:n found:bool :}
-   found 0= if 0 false exit then
-   sym ENGINE-TARGET-READ {: located:ptr locatedu:n at:n end:n valid:bool :}
-   valid 0= if 0 false exit then
-   located locatedu path pathu CORE-STR=
-   byte at >= byte end < and and if sym true else 0 false then ;
 
 private
 
@@ -4291,6 +4305,20 @@ PTR-VARIABLE QUIET-PATH-A
 variable QUIET-PATH-U
 
 public
+
+\ Select while both checker scopes still own the declaration symbols. A
+\ completed multi-error scan retains surviving declarations. A thrown scan
+\ skips the action and propagates after both scopes close.
+
+: SOURCE-INDEX-BUF-IN-SCOPE ( ptr u8 n [ -- ] -- )
+   THEN-ACTION !
+   SOURCE!
+   CHECKER-CANDIDATE-SCOPE-START
+   true INDEX-ON !
+   [: [: VERIFY-THEN ;] RUN-IN-SCOPE ;] catch
+   false INDEX-ON !
+   CHECKER-CANDIDATE-SCOPE-DONE
+   THROW-RESULT ;
 
 \ A framed verifier child makes each neutral scope stand for an independent
 \ child. The previous scope has retired every declaration before this reset.
@@ -4348,7 +4376,6 @@ public
    NULL-PTR COMPOSE-CUR-PATH-A !  0 COMPOSE-CUR-PATH-U !
    0 COMPOSE-STOP-U !
    0 COMPOSE-STOP-SRC-U !
-   ENGINE-FILE-DROP
    0 PRIM-OPEN-READY !
    0 PEND-N !
    REQUIRE-REG:COUNT COMPOSE-REQ0 !
@@ -4358,7 +4385,6 @@ public
    -1 COMPOSE-ON !
    [: COMPOSE-WITH-USES ;] catch {: rc:n :}
    VISITS-DROP
-   ENGINE-FILE-DROP
    CSR-RESET
    0 COMPOSE-ON !
    COMPOSE-REQ0 @ REQUIRE-REG:TRUNCATE
@@ -4435,17 +4461,6 @@ public
    THEN-ACTION !
    SOURCE!
    [: VERIFY-THEN ;] RUN-IN-SCOPE ;
-
-\ Scan supplied bytes under a candidate scope, judging top-level parser payloads
-\ without opening loader dependencies. A throw propagates after cleanup.
-: SOURCE-INDEX-BUF-IN-SCOPE ( ptr u8 n -- )
-   SOURCE!
-   CHECKER-CANDIDATE-SCOPE-START
-   true INDEX-ON !
-   [: RUN ;] catch
-   false INDEX-ON !
-   CHECKER-CANDIDATE-SCOPE-DONE
-   THROW-RESULT ;
 
 \ What the certify path says about one candidate definition, `NAME ( effect )
 \ body`: -1 certified, 0 refused, 1 unresolvable, as CHECK-QUIET-CANDIDATE!

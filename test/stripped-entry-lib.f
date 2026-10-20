@@ -7,7 +7,7 @@
 \ owns in a tree of its own.
 require test/gate-common.f
 require src/lib/engine-candidate.f
-require test/aot-maker-engine.f
+require test/aot-builder-engine.f
 
 package STRIPPED-ENTRY-TEST
 
@@ -79,14 +79,14 @@ variable GOT-U
 \ refusal's exit 74 and diagnostic through. The maker writes GOT$.
 : MAKER-BUILD ( ptr u8 n -- ) {: entry:ptr entryu:n :}
    GOT$ EXISTS? if GOT$ REMOVE-FILE then
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+   AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    entryu 0 > if entry entryu GE-ARG+ SEED$ GE-ARG+ then
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
-   AOT-MAKER-ENGINE:STDIN$
+   AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN ;
 
 : REFUSED ( ptr u8 n -- ) {: label:ptr labelu:n :}

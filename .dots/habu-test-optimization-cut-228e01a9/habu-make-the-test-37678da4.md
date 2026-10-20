@@ -3,7 +3,7 @@ title: Make the test capture reentrant and cloexec
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T11:02:08.052179+02:00\""
+created-at: "2026-10-02T11:02:08.052179+02:00"
 closed-at: "2026-10-14T19:30:30.948651+03:00"
 close-reason: "Implemented in 55146a28: nested capture has per-call state, saved descriptors are close-on-exec, and late output reports truncation; red/green capture cases and affected gate/check tests passed."
 ---

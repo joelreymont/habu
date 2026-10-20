@@ -159,6 +159,8 @@ $400 constant CALLEE-ENTRY           \ an address; nothing here branches to it
    IR-BUILD:ADD-ATTR
    CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN  CC BB -1 IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : RET1 ( IR-ID:ir-value-id -- )

@@ -34,9 +34,10 @@
 \ runs before them: the composition reads each file a loader loads and refuses
 \ the loader forms tools/source-discovery.f refuses where it meets them.
 \ `--index` scans only the supplied subject bytes, including for an
-\ engine-provided path. It emits accepted declarations as the checker reports
-\ them. Only a verified or refused result makes those index rows usable.
-\ A thrown scan has no result line, even if it reported earlier declarations.
+\ engine-provided path. It emits surviving declarations after a completed
+\ scan, while their checker scopes are still open. A top-level dictionary call
+\ defers the whole index; the parent consumes no rows from a deferred result.
+\ A thrown scan has no result line, even if earlier declarations survived.
 \
 \ stdout is the schema-1 JSON packets, one per line in verification order, each
 \ written as the checker makes it, so a child that dies has passed on every
@@ -54,7 +55,9 @@
 \    check-verify: verified | refused | deferred | held
 \                | stopped RC BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
 \    check-verify: duplicate 78 BYTE DUP-AT DUP-LEN IN-SUBJECT FILE
-\    check-verify: file {"file":F,"sha256":H}
+\    check-verify: file {"file":F,"source":"subject|document|disk",
+\       "size":S,"mtime_sec":MS,"mtime_ns":MN,
+\       "ctime_sec":CS,"ctime_ns":CN}
 \    check-verify: definition {"kind":K,"class":C,"word":W,
 \       "decl_visit":D,"decl_name":T,"package":P,"visibility":V,
 \       "effect":E,"file":F,"byte_start":S,"byte_end":N}
@@ -72,18 +75,14 @@
 \ TARGET, the rest of the line and absent when empty, the file the loader could
 \ not read, as it was resolved.
 \
-\ A file line names a file src/habu/verify-source.f ON-FILE reports, F as
-\ its packets name it, and H, the SHA-256 of the bytes ON-FILE hands over with
-\ it, the bytes the scan reads there, in 64 lowercase hexadecimal digits: for
-\ the subject, BYTES, and for an open document's file, its TEXT. A file read
-\ again with the same bytes has no other line.
-\ One whose bytes differ between two reads, which only a write to the file
-\ between them can make, has a line for each, in the order they were read, and
-\ its definition and use lines, which name F alone, cannot say which bytes
-\ they are in. A definition line names what ON-DEFINITION reports:
+\ A file line names each file visit reported by ON-FILE. Subject and open
+\ document bytes have an editor source; disk bytes carry the metadata captured
+\ around their acquisition by the quiet reader. Different stamps of the same
+\ path in one composition make its locations unusable. A definition line names
+\ what ON-DEFINITION reports:
 \ K the statement token that declared it, C its class as that token's path
-\ knows it (word, constant, storage, or export: a re-export, whatever the word
-\ it names is), W its name as the source writes it
+\ knows it (word, constant, storage, export or a generated SUMTYPE constructor),
+\ W its name as the source writes it
 \ (a name its definer generates, as spelled), P and V the package (empty for a
 \ global) and visibility (global, private or public) the checker recorded it
 \ under, T its recorded canonical tail, D its local file visit, E its declared
@@ -128,7 +127,7 @@
 \ The other forms write the subject's uses alone.
 \ The batch-ref form is for primitive references: it writes uses of TAIL in
 \ the subject and loaded files, including unlocated bindings, and omits
-\ definition lines. File digests and result packets still describe each check.
+\ definition lines. File visits and result packets still describe each check.
 \
 \ deferred: nothing is refused, but a stretch of top-level source or a
 \ definition was deferred to the run, and a W-CHECK-DEFERRED packet locates each
@@ -211,8 +210,6 @@ $10000 constant CHUNK                   \ bytes asked of one read
 10 constant LF
 1 constant OUT-FD
 2 constant ERR-FD
-32 constant DIGEST-U                    \ a SHA-256 digest's bytes
-64 constant HEX-U                       \ a digest in lowercase hexadecimal
 
 DYNAMIC-BUFFER IN u8                    \ stdin's bytes: the open documents, then the subject's
 variable IN-U
@@ -236,13 +233,8 @@ create ESC 6 allot                      \ one \u00XX escape
 variable RUN-AT                         \ where the bytes not yet written start
 DYNAMIC-BUFFER DEF-PKG u8               \ a definition's package
 variable DEF-PKG-U
-create SHA-CTX SHA256-CTX-BYTES allot   \ FILE-LINE's digest context
-create DIGEST DIGEST-U allot            \ the digest of the bytes FILE-LINE was handed
-create DIGEST-HEX HEX-U allot           \ that digest as its file line states it
-DYNAMIC-BUFFER SEEN u8                  \ each file line's digest, then its file, end to end,
-variable SEEN-U
-DYNAMIC-BUFFER SEEN-AT n                \ each one's offset there and length
-variable SEEN-N
+DYNAMIC-BUFFER IDX-EVENTS n              \ symbol, start, end for each declaration
+variable IDX-N
 TYPED-VARIABLE OF-A ptr u8              \ the fourth form's TAIL,
 variable OF-U                           \ 0 for the other forms
 
@@ -504,6 +496,7 @@ variable OF-U                           \ 0 for the other forms
    class VERIFY:DEF-CONSTANT = if s" constant" exit then
    class VERIFY:DEF-STORAGE = if s" storage" exit then
    class VERIFY:DEF-EXPORT = if s" export" exit then
+   class VERIFY:DEF-CONSTRUCTOR = if s" constructor" exit then
    s" check-verify: unknown definition class" 74 die ;
 
 
@@ -542,11 +535,20 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
-: IDX-DUPLICATE ( n n ptr u8 n bool -- ) drop 2drop 2drop ;
-
-\ Consume the borrowed identity while the declaration's checker scope is open.
+\ Index records are selected before the candidate scope destroys its symbols.
 : IDX-DEFINITION ( ptr u8 n ptr u8 n n ptr u8 n n n n n -- )
    {: kind:ptr kindu:n name:ptr nameu:n sym:n eff:ptr effu:n at:n end:n class:n visit:n :}
+   IDX-N @ 1+ 3 * IDX-EVENTS-RESERVE
+   IDX-N @ 3 * {: row:n :}
+   sym row IDX-EVENTS !
+   at row 1+ IDX-EVENTS !
+   end row 2 + IDX-EVENTS !
+   1 IDX-N +! ;
+
+: IDX-DUPLICATE ( n n ptr u8 n bool -- ) drop 2drop 2drop ;
+
+: IDX-LINE ( n n n -- )
+   {: sym:n at:n end:n :}
    sym VERIFY:SYM-IDENTITY {: pkg:ptr pkgu:n tail:ptr tailu:n vis:n :}
    tailu 0= if exit then
    pkg pkgu DEF-PKG!
@@ -563,63 +565,40 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
+: IDX-SELECT ( -- )
+   IDX-N @ 0 ?do
+      i 3 * {: row:n :}
+      row IDX-EVENTS @ row 1+ IDX-EVENTS @ row 2 + IDX-EVENTS @ IDX-LINE
+   loop ;
+
 : INDEX-CUR ( -- )
-   SUBJECT$ VERIFY:SOURCE-INDEX-BUF-IN-SCOPE ;
+   SUBJECT$ [: IDX-SELECT ;] VERIFY:SOURCE-INDEX-BUF-IN-SCOPE ;
 
 
-\ The digest and the file the Kth file line stated, end to end.
-: SEEN$ ( n -- ptr u8 n )
-   {: k:n :}
-   k 2 * SEEN-AT @ SEEN  k 2 * 1+ SEEN-AT @ ;
-
-
-\ Whether the Kth file line stated the file with DIGEST.
-: SEEN-KEY? ( n ptr u8 n -- bool )
-   {: k:n f:ptr fu:n :}
-   k SEEN$ {: row:ptr rowu:n :}
-   row DIGEST-U DIGEST DIGEST-U CORE-STR=
-   row DIGEST-U + rowu DIGEST-U - f fu CORE-STR= and ;
-
-
-\ Whether a file line stated the file with DIGEST.
-: SEEN? ( ptr u8 n -- bool )
-   {: f:ptr fu:n :}
-   SEEN-N @ 0 ?do
-      i f fu SEEN-KEY? if unloop true exit then
-   loop
-   false ;
-
-
-\ DIGEST and the file kept as a file line stated them. The digest comes first
-\ and a path is never empty, so both offsets lie inside SEEN.
-: SEEN+ ( ptr u8 n -- )
-   {: f:ptr fu:n :}
-   SEEN-U @ {: at:n :}
-   SEEN-N @ {: k:n :}
-   DIGEST-U fu + {: rowu:n :}
-   at rowu + SEEN-RESERVE
-   DIGEST at SEEN DIGEST-U BYTE-COPY
-   f at DIGEST-U + SEEN fu BYTE-COPY
-   k 1+ 2 * SEEN-AT-RESERVE
-   at k 2 * SEEN-AT !
-   rowu k 2 * 1+ SEEN-AT !
-   at rowu + SEEN-U !
-   1 SEEN-N +! ;
-
-
-\ A file the first form starts reading and the bytes it reads there, as a file
-\ line the first time the file comes with those bytes. It keeps the file and
-\ the bytes' digest, never the strings, which are borrowed.
+\ A file visit, with the source of the bytes ON-FILE was handed. Disk metadata
+\ comes from the quiet reader, never from a stat after verification.
 : FILE-LINE ( ptr u8 n ptr u8 n -- )
    {: f:ptr fu:n a:ptr u:n :}
-   SHA-CTX a u DIGEST SHA256-IN
-   f fu SEEN? if exit then
-   f fu SEEN+
-   DIGEST DIGEST-HEX SHA256>HEX
    OUT-FD s\" check-verify: file {\"file\":" WRITE
    f fu JSON-STR
-   OUT-FD s\" ,\"sha256\":" WRITE
-   DIGEST-HEX HEX-U JSON-STR
+   f fu SUBJECT-PATH$ CORE-STR= if
+      OUT-FD s\" ,\"source\":\"subject\"" WRITE
+   else
+      f fu OPEN-TEXT {: open:bool :} 2drop
+      open if
+         OUT-FD s\" ,\"source\":\"document\"" WRITE
+      else
+         f fu VERIFY:QUIET-READ-META
+         {: size:n msec:n mns:n csec:n cns:n valid:bool :}
+         valid 0= if VERIFY:E-SOURCE-READ throw then
+         OUT-FD s\" ,\"source\":\"disk\",\"size\":" WRITE
+         OUT-FD size FD-N
+         OUT-FD s\" ,\"mtime_sec\":" WRITE OUT-FD msec FD-N
+         OUT-FD s\" ,\"mtime_ns\":" WRITE OUT-FD mns FD-N
+         OUT-FD s\" ,\"ctime_sec\":" WRITE OUT-FD csec FD-N
+         OUT-FD s\" ,\"ctime_ns\":" WRITE OUT-FD cns FD-N
+      then
+   then
    OUT-FD s" }" WRITE
    OUT-FD NEWLINE ;
 
@@ -750,6 +729,7 @@ variable OF-U                           \ 0 for the other forms
    OUT-FD NEWLINE ;
 
 : INDEX-SUBJECT ( -- )
+   0 IDX-N !
    true DIAG-JSON!
    OUT-FD DIAG-FD!
    ['] IDX-DEFINITION is VERIFY:ON-DEFINITION
@@ -866,7 +846,6 @@ public
          0 POS !
          0 BATCH-INDEX !
          begin BATCH-NEXT while
-            0 SEEN-N ! 0 SEEN-U !
             VERIFY:SOURCE-RESET-ISOLATED-VISITS
             SUBJECT-PATH$ HELD? if s" held" RESULT else VERIFY-CLOSURE then
             OUT-FD s" check-verify: batch-end " WRITE

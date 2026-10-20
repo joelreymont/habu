@@ -8,6 +8,7 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
+require src/core/source-producer.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -60,7 +61,6 @@ public
 STRUCTURE pass DERIVE addr
    FIELD declare [ n n NBACK:linkage -- ]
    FIELD select [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
-   FIELD prune [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
    FIELD fixpoint [ IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ]
    FIELD emit [ IR-CTX:ctx IR-BUILD:module n -- ]
    FIELD unplaced [ IR-CTX:ctx IR-BUILD:module -- ]
@@ -134,7 +134,6 @@ variable ROW-N
       i ROWS ROW-DESCRIPTOR CTARGET-BACKEND:EMIT dup @ swap xt!
       i PASS-PTR NBACK-PASS:DECLARE dup @ swap xt!
       i PASS-PTR NBACK-PASS:SELECT dup @ swap xt!
-      i PASS-PTR NBACK-PASS:PRUNE dup @ swap xt!
       i PASS-PTR NBACK-PASS:FIXPOINT dup @ swap xt!
       i PASS-PTR NBACK-PASS:EMIT dup @ swap xt!
       i PASS-PTR NBACK-PASS:UNPLACED dup @ swap xt!
@@ -180,7 +179,8 @@ public
    E-CTGT-UNLOADED throw ;
 
 : REGISTER ( CTARGET:backend NBACK:pass -- )
-   [: PUBLISH ;] NLEASE:WITH ;
+   [: PUBLISH ;] NLEASE:WITH
+   SOURCE-PRODUCER:COMPILER-CHANGED ;
 
 : LOWERS? ( CTARGET:contract -- bool )
    CTARGET:VALIDATE dup CTARGET:ARCH@ ROW DESCRIPTOR@ BACK-LOWER execute ;
@@ -296,11 +296,6 @@ public
    {: s:NSESSION:session m:IR-BUILD:module :}
    s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
    c m row PASS-PTR NBACK-PASS:SELECT @ execute ;
-
-: PRUNE ( NSESSION:session IR-BUILD:module -- IR-BUILD:module )
-   {: s:NSESSION:session m:IR-BUILD:module :}
-   s NSESSION:RESOLVE {: c:IR-CTX:ctx row:n :}
-   c m row PASS-PTR NBACK-PASS:PRUNE @ execute ;
 
 : FIXPOINT ( NSESSION:session IR-BUILD:module -- IR-BUILD:module )
    {: s:NSESSION:session m:IR-BUILD:module :}

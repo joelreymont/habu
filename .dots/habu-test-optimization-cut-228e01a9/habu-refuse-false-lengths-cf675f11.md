@@ -3,7 +3,7 @@ title: Refuse false lengths at artifact, trust and intern
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T05:11:02.508262+02:00\""
+created-at: "2026-10-01T05:11:02.508262+02:00"
 closed-at: "2026-10-14T19:26:17.433480+03:00"
 close-reason: "Implemented in 8dd9c842: artifact path, AOT identity, all trust-name spellings and IR symbol lengths are guarded before reading; focused hostile cases and build convergence are recorded in that commit."
 ---

@@ -11,7 +11,7 @@ private
 CAP BUFFER: ART
 variable ART-U
 128 BUFFER: TEXT
-82 TYPED-BUFFER IDS IR-ID:ir-symbol-id
+HIR:OPCODES A64IR:OPCODES max TYPED-BUFFER IDS IR-ID:ir-symbol-id
 32 BUFFER: DIGEST
 64 BUFFER: HEX
 SHA256-CTX-BYTES BUFFER: SHA-CTX
@@ -26,14 +26,135 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    u CELL+ u ROOM
    a ART ART-U @ + u BYTE-COPY u ART-U +! ;
 
-: DIGEST+ ( CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   w0 CELL+ w1 CELL+ w2 CELL+ w3 CELL+ ;
-
 : SYMBOL+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
    {: m:IR-BUILD:module sym:IR-ID:ir-symbol-id :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS sym TEXT 128 IR-SYM:FCOPY
    TEXT swap TEXT+ ;
+
+: TYPE+ ( IR-BUILD:module IR-ID:ir-type-id -- )
+   {: m:IR-BUILD:module ty:IR-ID:ir-type-id :}
+   m IR-BUILD:FTYPE-POOL m IR-BUILD:FTYPE-ROWS ty TEXT 128 IR-TYPE:FRENDER
+   TEXT swap TEXT+ ;
+
+: FLAG+ ( bool -- )
+   if 1 else 0 then CELL+ ;
+
+: EFFECT+ ( IR-SCHEMA:effect -- )
+   MATCH effect
+      pure       OF 0 ENDOF
+      read       OF 1 ENDOF
+      write      OF 2 ENDOF
+      read-write OF 3 ENDOF
+   ;MATCH CELL+ ;
+
+: DOMAIN+ ( IR-TYPE:domain -- )
+   MATCH IR-TYPE:domain
+      data-mem OF 0 ENDOF
+      dict     OF 1 ENDOF
+      code-pub OF 2 ENDOF
+      io       OF 3 ENDOF
+      process  OF 4 ENDOF
+      ffi      OF 5 ENDOF
+   ;MATCH CELL+ ;
+
+: SPACE+ ( IR-TYPE:space -- )
+   MATCH IR-TYPE:space
+      generic OF 0 ENDOF
+      global  OF 1 ENDOF
+      shared  OF 2 ENDOF
+      local   OF 3 ENDOF
+      param   OF 4 ENDOF
+      const   OF 5 ENDOF
+   ;MATCH CELL+ ;
+
+: ALIAS+ ( IR-SCHEMA:alias -- )
+   MATCH alias
+      unaliased    OF 0 ENDOF
+      grouped      OF 1 ENDOF
+      unrestricted OF 2 ENDOF
+   ;MATCH CELL+ ;
+
+: ARCH+ ( CTARGET:arch -- )
+   MATCH CTARGET:arch
+      aarch64 OF 0 ENDOF
+      ptx     OF 1 ENDOF
+      a32     OF 2 ENDOF
+      thumb2  OF 3 ENDOF
+      c66x    OF 4 ENDOF
+      x86-64  OF 5 ENDOF
+      wasm    OF 6 ENDOF
+   ;MATCH CELL+ ;
+
+: SIDE+ ( IR-SCHEMA:side -- )
+   MATCH side
+      operand OF 0 ENDOF
+      result  OF 1 ENDOF
+   ;MATCH CELL+ ;
+
+: TYPES+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
+   {: m:IR-BUILD:module op:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FOPERANDS {: n:n :}
+   n CELL+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FOPERAND-TAIL? FLAG+
+   n 0 ?do
+      m  m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      m IR-BUILD:FKEY op i IR-SCHEMA:FOPERAND@ TYPE+
+   loop
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FRESULTS {: rn:n :}
+   rn CELL+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FRESULT-TAIL? FLAG+
+   rn 0 ?do
+      m  m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      m IR-BUILD:FKEY op i IR-SCHEMA:FRESULT@ TYPE+
+   loop ;
+
+: ATTRS+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
+   {: m:IR-BUILD:module op:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FATTRS {: n:n :}
+   n CELL+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FATTR-EXT? FLAG+
+   n 0 ?do
+      m  m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      m IR-BUILD:FKEY op i IR-SCHEMA:FATTR@ SYMBOL+
+   loop ;
+
+: EFFECT-FIELDS+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
+   {: m:IR-BUILD:module op:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FEFFECT@
+   {: eff:IR-SCHEMA:effect :}
+   eff EFFECT+
+   eff IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ if exit then
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FDOMAIN@
+   {: dom:IR-TYPE:domain :}
+   dom DOMAIN+
+   dom IR--TYPE-DOMAIN:DATA-MEM IR--TYPE-DOMAIN:EQ if
+      m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FSPACE@ SPACE+
+      m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FALIAS@ ALIAS+
+   then ;
+
+: TIES+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
+   {: m:IR-BUILD:module op:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FTIES {: n:n :}
+   n CELL+
+   n 0 ?do
+      m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      op i IR-SCHEMA:FTIE-RESULT@ CELL+
+      m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      op i IR-SCHEMA:FTIE-OPERAND@ CELL+
+   loop ;
+
+: FIXED+ ( IR-BUILD:module IR-ID:ir-symbol-id -- )
+   {: m:IR-BUILD:module op:IR-ID:ir-symbol-id :}
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FFIXED-COUNT@ {: n:n :}
+   n CELL+
+   n 0 ?do
+      m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      op i IR-SCHEMA:FFIXED-SIDE@ SIDE+
+      m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      op i IR-SCHEMA:FFIXED-ORDINAL@ CELL+
+      m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS
+      op i IR-SCHEMA:FFIXED-REG@ CELL+
+   loop ;
 
 : ROW+ ( IR-BUILD:module n -- )
    {: m:IR-BUILD:module idx:n :}
@@ -41,11 +162,24 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
    m op SYMBOL+
    m IR-BUILD:FSCHEMA-ROWS m IR-BUILD:FKEY op IR-SCHEMA:FRULE@ m swap SYMBOL+
    m IR-BUILD:FSCHEMA-ROWS m IR-BUILD:FKEY op IR-SCHEMA:FRENDERER@ m swap SYMBOL+
-   m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FDIGEST DIGEST+ ;
+   m op TYPES+
+   m op ATTRS+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FREGIONS CELL+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FSUCCESSORS CELL+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FTERMINATOR? FLAG+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FTRAPS? FLAG+
+   m op EFFECT-FIELDS+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FARCH@ ARCH+
+   m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FFEATURES@ CTARGET:FEATURES-N CELL+
+   m op TIES+
+   m op FIXED+ ;
 
 : TABLE+ ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
-   m IR-BUILD:FSCHEMA-POOL m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FTABLE-DIGEST DIGEST+ ;
+   m m IR-BUILD:FSCHEMA-ROWS m IR-BUILD:FKEY IR-SCHEMA:FDIALECT@ SYMBOL+
+   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FMAJOR@ CELL+
+   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FMINOR@ CELL+
+   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FSCHEMAS CELL+ ;
 
 : HIR-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}

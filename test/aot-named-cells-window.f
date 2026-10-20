@@ -11,6 +11,23 @@ PERSISTED-PTR-VARIABLE NULL-DATA-SLOT
 variable VALUE
 defer UNASSIGNED ( -- )
 
+\ The null pointer cells are declared from the high address down. Every
+\ intervening scalar must still be copied through the sparse DATA bitmap.
+16384 constant GAP-COUNT
+create GAP-CELLS GAP-COUNT 2 * cells allot
+: GAP-SCALAR ( n -- n ) $5A000000 + ;
+: GAP-INIT ( -- )
+   GAP-COUNT 0 ?do
+      GAP-COUNT i - 1- {: idx:n :}
+      GAP-CELLS idx 2 * cells + dup ptr-cell-mark 0 swap !
+      idx GAP-SCALAR GAP-CELLS idx 2 * 1+ cells + !
+   loop ;
+: GAP-CHECK ( -- )
+   GAP-COUNT 0 ?do
+      GAP-CELLS i 2 * cells + @ 0<> if 79 throw then
+      GAP-CELLS i 2 * 1+ cells + @ i GAP-SCALAR <> if 79 throw then
+   loop ;
+
 : LOCAL ( n -- n ) 9 + ;
 : GLOBAL ( n -- bool ) GLOBAL-SLOT @ execute ;
 : PUBLIC-VALUE ( n -- n ) PUBLIC-SLOT @ execute ;
@@ -27,5 +44,6 @@ defer UNASSIGNED ( -- )
    10 INTERNAL 19 <> if 79 throw then
    DATA-VALUE $5A5A <> if 79 throw then
    NULL-CODE? NULL-DATA? and 0= if 79 throw then
+   GAP-CHECK
    s" named-cells: live" type cr ;
 ;package

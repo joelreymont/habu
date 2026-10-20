@@ -3,7 +3,7 @@
 \ THE TIER IS THIS FILE'S OWN PRECONDITION. A tail call is lowered by the
 \ optimizing compiler, so every shape row below - the branch out, the absent
 \ trailing return, the call count - is a tier-1 fact. At the default tier the
-\ same bodies keep their last call and their return, and fourteen assertions
+\ same bodies keep their last call and their return, and shape assertions
 \ fail (measured: SHAPE-CASE and QUOT-CASE, `expected 2 got 3` on NTL-LEN's
 \ calls). The gate's adapter used to prepend test/compiler/aot-mode.f to every
 \ `test/compiler/native-*.f` row, which is why the suite was green under
@@ -45,8 +45,7 @@ public
 : NTL-ROLE ( n -- n )
    dup 17 * over 19 xor + swap 23 and + dup 29 * + 31 xor ;
 
-\ The tail callee whose arity is NOT the caller's, which is what makes NTL-NOTAIL
-\ an ordinary call rather than a branch.
+\ The tail callee whose input width differs from its caller's.
 : NTL-ROLE2 ( n n -- n )
    swap NTL-ROLE swap NTL-ROLE 37 * + ;
 
@@ -97,10 +96,33 @@ public
 : NTL-SELF ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-ROLE ;
 
-\ The adversarial twin: the same body with a two-argument callee, which is not
-\ this routine's arity, so it is an ordinary call and the routine returns.
-: NTL-NOTAIL ( n -- n ) {: v:n :}
+\ The adversarial twin: a one-input caller leaves through a two-input callee.
+: NTL-EXPAND ( n -- n ) {: v:n :}
    v NTL-GUARD  v NTL-RAW v NTL-ROLE2 ;
+
+\ Both directions of arity change must leave the caller's lower cells alone.
+: NTL-LESS ( n n -- n ) {: a:n b:n :}
+   a NTL-GUARD  a b + NTL-ROLE ;
+
+: NTL-ZERO ( -- ) 7 NTL-GUARD ;
+: NTL-DROP-TO-ZERO ( n -- )
+   NTL-GUARD NTL-ZERO ;
+
+\ Keep an execution token to a generated accessor after its declaration.
+DYNAMIC-BUFFER NTL-BYTES u8
+DYNAMIC-BUFFER NTL-CELLS n
+TYPED-VARIABLE NTL-BYTES-XT [ n -- ptr u8 ]
+TYPED-VARIABLE NTL-RESERVE-XT [ n -- ]
+TYPED-VARIABLE NTL-RELEASE-XT [ -- ]
+' NTL-BYTES NTL-BYTES-XT !
+' NTL-BYTES-RESERVE NTL-RESERVE-XT !
+' NTL-BYTES-RELEASE NTL-RELEASE-XT !
+: NTL-BYTES-RETAINED ( n -- ptr u8 )
+   NTL-BYTES-XT @ execute ;
+: NTL-RESERVE-RETAINED ( n -- )
+   NTL-RESERVE-XT @ execute ;
+: NTL-RELEASE-RETAINED ( -- )
+   NTL-RELEASE-XT @ execute ;
 
 \ src/compiler/target.f CONTRACT and src/compiler/numeric-policy.f POLICY reduced:
 \ five locals, a guard two of them cross, and a tail call taking all five.
@@ -132,19 +154,16 @@ public
 \ call site, which is this suite's subject, and the two features have to be
 \ measured together rather than assumed disjoint.
 \
-\ A PADDED CONSTRUCTION CANNOT ITSELF BE THE SITE A ROUTINE LEAVES THROUGH, and
-\ that is a structural fact rather than a hope. The pads make the definition leave
-\ MORE cells than the constructor declares, and the elaborator calls a body a tail
-\ caller only when the callee's declared output IS the definition's own - so a
-\ padded construction as the last call is an ordinary call and the routine
-\ returns. `( n -- option<pt> ) drop OPTION:NONE` compiles that way (measured).
-\ The two shapes that CAN be written are below: the tail over a wide bundle, and
-\ the padded construction whose bundle feeds an ordinary last call.
+\ A padded construction's call still has to publish the actual bound input row.
+\ This example's conditional construction stays on the ordinary return path:
+\ tail qualification requires a straight-line body.
+\ The two shapes below are a tail over a wide bundle and a conditional padded
+\ construction whose bundle feeds an ordinary last call.
 \
 \ AND THE CHECKER IS WHY THERE IS NO THIRD. A construction resolves its
 \ instantiation from the definition's declared OUTPUT, so a body that constructs
-\ must declare that bundle; a tail caller must declare the same width in as out;
-\ and a bundle cannot be taken apart into cells without a dispatch, which is
+\ must declare that bundle; the last callee must return the declared width; and
+\ a bundle cannot be taken apart into cells without a dispatch, which is
 \ control flow no tail caller has yet. `( n n n -- n n n )` holding a construction
 \ is refused by the checker before the chain sees it (`expected: a actual: pt`,
 \ measured), which is the honest reason this file has two rows here and not three.
@@ -152,6 +171,9 @@ PRODUCT pt
    FIELD x n
    FIELD y n
 ;PRODUCT
+
+STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
+DYNAMIC-BUFFER NTL-WIDE-BUF triple
 
 \ A maker for the wide-bundle rows' input, and its reader. What is under test is
 \ the routine between them.
@@ -178,8 +200,8 @@ PRODUCT pt
    NTL-BUMP ;
 
 \ And the padded construction beside one: both arms build a value of the wide
-\ instantiation, and the last call is over the bundle they built. Its arity is not
-\ its callee's, so it returns - which is what the shape row asserts.
+\ instantiation, and the last call is over the bundle they built. Its conditional
+\ body returns normally, which is what the shape row asserts.
 : NTL-PADDED ( n -- option<pt> ) {: v:n :}
    v NTL-GUARD
    v 0 > if  v 3 *  v 5 *  NTL--FIXTURE-PT:MAKE OPTION:SOME  else  OPTION:NONE  then
@@ -207,9 +229,34 @@ private
    0 NTL-FIXTURE:NTL-LEN 26503 T=
    0 NTL-FIXTURE:NTL-SELF 549 T= ;
 
-: NOTAIL-CASE ( -- )
-   s" a mismatched callee arity returns normally" T-LABEL
-   0 NTL-FIXTURE:NTL-NOTAIL 46816 T= ;
+: UNEQUAL-CASE ( -- )
+   s" unequal and zero callee inputs preserve lower stack cells" T-LABEL
+   812 0 NTL-FIXTURE:NTL-EXPAND 46816 T= 812 T=
+   813 2 3 NTL-FIXTURE:NTL-LESS 3391 T= 813 T=
+   814 5 NTL-FIXTURE:NTL-DROP-TO-ZERO 814 T=
+   815 0 [: NTL-FIXTURE:NTL-EXPAND ;] execute 46816 T= 815 T= ;
+
+: BUFFER-CASE ( -- )
+   s" generated byte, cell and wide buffers grow, release and reload" T-LABEL
+   100 NTL-FIXTURE:NTL-RESERVE-RETAINED
+   37 99 NTL-FIXTURE:NTL-BYTES c!
+   99 NTL-FIXTURE:NTL-BYTES-RETAINED c@ 37 T=
+   300 NTL-FIXTURE:NTL-BYTES-RESERVE
+   99 NTL-FIXTURE:NTL-BYTES-RETAINED c@ 37 T=
+   NTL-FIXTURE:NTL-RELEASE-RETAINED
+   1 NTL-FIXTURE:NTL-BYTES-RESERVE
+   0 NTL-FIXTURE:NTL-BYTES c@ 0 T=
+   NTL-FIXTURE:NTL-BYTES-RELEASE
+   1 NTL-FIXTURE:NTL-CELLS-RESERVE
+   41 0 NTL-FIXTURE:NTL-CELLS !
+   100 NTL-FIXTURE:NTL-CELLS-RESERVE
+   0 NTL-FIXTURE:NTL-CELLS @ 41 T=
+   NTL-FIXTURE:NTL-CELLS-RELEASE
+   1 NTL-FIXTURE:NTL-WIDE-BUF-RESERVE
+   0 NTL-FIXTURE:NTL-WIDE-BUF drop
+   100 NTL-FIXTURE:NTL-WIDE-BUF-RESERVE
+   99 NTL-FIXTURE:NTL-WIDE-BUF drop
+   NTL-FIXTURE:NTL-WIDE-BUF-RELEASE ;
 
 : WIDE-CASE ( -- )
    s" wide tail callers preserve every result cell" T-LABEL
@@ -230,8 +277,8 @@ private
 \ are one BUNDLE - three cells that are one value, with the glue a construction
 \ puts on them - and it is where the site's arity is not one. The second holds a
 \ padded construction, whose zero cells the compiler pushes at the constructor's own
-\ call site: its last call is over the bundle those cells helped build, its arity
-\ is not that callee's, and it returns. Both answer through the ordinary maker
+\ call site: its last call is over the bundle those cells helped build, and its
+\ conditional body returns normally. Both answer through the ordinary maker
 \ and reader, so a lost or misplaced pad is a wrong number here.
 : BUNDLE-CASE ( -- )
    s" a tail site over a wide bundle preserves the bundle" T-LABEL
@@ -243,8 +290,7 @@ private
 \ THE SHAPE, WHICH IS WHAT SAYS THE OPTIMISATION IS REALLY THERE. NTL-LEN holds
 \ two calls - the guard and the middle word - and leaves through the third, so
 \ its emitted code has exactly two branch-with-links and ends in a plain branch
-\ with no return behind it. NTL-NOTAIL is the same body with the last callee's
-\ arity changed: three calls, and it returns.
+\ with no return behind it. Unequal and zero callee inputs also branch.
 : SHAPE-CASE ( -- )
    s" the routine really leaves by a branch and keeps its other calls" T-LABEL
    s" NTL-FIXTURE:NTL-LEN" BRANCHES? TTRUE
@@ -256,9 +302,25 @@ private
    s" NTL-FIXTURE:NTL-TEN" BRANCHES? TTRUE
    s" NTL-FIXTURE:NTL-FRESULT" BRANCHES? TTRUE
    s" NTL-FIXTURE:NTL-FARG" BRANCHES? TTRUE
-   s" NTL-FIXTURE:NTL-NOTAIL" BRANCHES? TFALSE
-   s" NTL-FIXTURE:NTL-NOTAIL" RETURNS? TTRUE
-   s" NTL-FIXTURE:NTL-NOTAIL" CALLS 3 T=
+   s" NTL-FIXTURE:NTL-EXPAND" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-EXPAND" RETURNS? TFALSE
+   s" NTL-FIXTURE:NTL-EXPAND" CALLS 2 T=
+   s" NTL-FIXTURE:NTL-LESS" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-LESS" RETURNS? TFALSE
+   s" NTL-FIXTURE:NTL-DROP-TO-ZERO" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-DROP-TO-ZERO" RETURNS? TFALSE
+
+   s" generated buffer wrappers leave by branches" T-LABEL
+   s" NTL-FIXTURE:NTL-BYTES" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-BYTES" RETURNS? TFALSE
+   s" NTL-FIXTURE:NTL-BYTES-RESERVE" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-BYTES-RELEASE" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-CELLS" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-CELLS-RESERVE" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-CELLS-RELEASE" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-WIDE-BUF" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-WIDE-BUF-RESERVE" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-WIDE-BUF-RELEASE" BRANCHES? TTRUE
 
    s" the wide-bundle site is the whole routine, and the padded one is not" T-LABEL
    s" NTL-FIXTURE:NTL-WBUNDLE" BRANCHES? TTRUE
@@ -279,7 +341,8 @@ public
 : RUN ( -- )
    T-RESET
    NARROW-CASE
-   NOTAIL-CASE
+   UNEQUAL-CASE
+   BUFFER-CASE
    WIDE-CASE
    REAL-CASE
    BUNDLE-CASE

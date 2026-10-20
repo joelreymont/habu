@@ -22,7 +22,7 @@
 package AOT-BAND
 public
 ndict@ variable PRE-R  variable PRE-D  PRE-R !
-PRE-R PRE-D !
+PRE-R BYTE-VIEW NULL-PTR BYTE-VIEW - PRE-D !
 ;package
 
 require src/lib/string.f

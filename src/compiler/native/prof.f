@@ -1,9 +1,9 @@
-\ prof.f - the native chain's own stopwatch: how long each of the two passes that
-\ build a second module took, and how large the modules they were handed were.
+\ prof.f - the native chain's own stopwatch: how long spill lowering took,
+\ and how large the modules it was handed were.
 \
-\ FIVE NUMBERS, AND NO MORE. tools/chain-scale.f asks one question - does either
-\ pass read more of a module than the module's size - and answering it needs a
-\ total, a call count and an operation count per pass. A phase per stage of the
+\ THREE PHASES, AND NO MORE. tools/chain-scale.f asks whether lowering
+\ scales with the module's size, which needs elapsed time, the module's
+\ operation count and the sealed spill plan's size. A phase per stage of the
 \ chain would be a profiler, and what a caller of the compiler actually cares
 \ about is already one number: the per-definition floor tools/compile-floor.f
 \ prints.
@@ -47,22 +47,19 @@ require src/lib/prelude.f
 package NPROF
 public
 
-\ The two passes, and what each was handed: the operations of the module it
-\ reads, and - for the lowering, whose output is the module PLUS one operation
-\ per spill decision - the size of the sealed plan. The count beside a pass is
-\ its calls and the count beside a total is how many modules contributed to it,
+\ What lowering was handed: the operations of the module it reads and the size
+\ of the sealed plan. The count beside a pass is its calls, and the count beside
+\ a total is how many modules contributed to it,
 \ so a per-module mean is a division and not an assumption.
 ENUM phase DERIVE eq
-   prune
    spill
-   prune-ops
    spill-ops
    spill-plan
 ;ENUM
 
 private
 
-5 constant SLOTS
+3 constant SLOTS
 
 \ Three arrays of SLOTS cells in one mapping: the totals, the stamp an open phase
 \ left behind, and the counts.
@@ -84,11 +81,9 @@ variable SESSION
 
 : SLOT ( NPROF:phase -- n )
    MATCH phase
-      prune       OF 0 ENDOF
-      spill       OF 1 ENDOF
-      prune-ops   OF 2 ENDOF
-      spill-ops   OF 3 ENDOF
-      spill-plan  OF 4 ENDOF
+      spill       OF 0 ENDOF
+      spill-ops   OF 1 ENDOF
+      spill-plan  OF 2 ENDOF
    ;MATCH ;
 
 : BUMP ( n -- ) {: k:n :}

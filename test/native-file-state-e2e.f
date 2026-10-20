@@ -1,5 +1,5 @@
 \ DATA, prior writes, typed cells, literals, reopened packages and created
-\ words survive cold compilation and warm import in small applications.
+\ words survive cold compilation and warm definition reuse in small applications.
 \ bin/hb --load test/native-file-state-e2e.f
 
 require src/lib/test.f
@@ -60,8 +60,39 @@ variable CODE-B-O  variable CODE-B-U
 : REJECT-TYPED-CLIENT ( -- )
    s" app.f" S\" require prefix.f\nrequire unit.f\nrequire bad.f\n: MAIN ( -- ) ;\n" PUT
    s" bad-hb" BUILD 70 T=
-   OUT$ s" state-unit-source-ran" CONTAINS? 0= TTRUE
+   \ The ordinary loader runs the earlier unit action before rejecting bad.f.
+   OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    ERR$ s" expected: ptr a actual: ptr u8" CONTAINS? TTRUE ;
+
+: TASK-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" prefix.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-STATE-PREFIX\npublic\nTASK:#USER CELL TASK:+USER PREFIX-SLOT drop\n;package\n" PUT
+   s" unit.f"
+   S\" require prefix.f\npackage FILE-TASK-STATE-UNIT\npublic\nTASK:#USER CELL TASK:+USER LEAF drop\n: LEAF@ ( -- n ) LEAF @ ;\n111 LEAF !\n;package\ns\" task-state-unit-ran\" type cr\n" PUT
+   s" downstream.f"
+   S\" require unit.f\npackage FILE-TASK-STATE-CLIENT\npublic\nTASK:#USER CELL TASK:+USER OWN drop\n: LEAF@ ( -- n ) FILE-TASK-STATE-UNIT:LEAF@ ;\n: OWN@ ( -- n ) OWN @ ;\n222 OWN !\n;package\n" PUT
+   s" app.f"
+   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\n: MAIN ( -- ) FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . ;\n" PUT ;
+
+: RUN-TASK-STATE ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE SUCCESS
+   OUT$ S\" 111\n222\n" CONTAINS? TTRUE ;
+
+: TASK-STATE-CASE ( -- )
+   s" a consumer-only edit reuses the leaf TASK reservation" T-LABEL
+   s" native-file-task-state" TREE
+   TASK-FILES
+   s" task-cold-hb" BUILD SUCCESS
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
+   s" task-cold-hb" RUN-TASK-STATE
+   s" downstream.f" AT S\" \\ task consumer comment\n" APPEND-FILE
+   s" task-warm-hb" BUILD SUCCESS
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   s" task-warm-hb" RUN-TASK-STATE ;
 
 : PAIR-PATHS ( -- )
    s" cold-hb" AT {: a:ptr u:n :}
@@ -99,17 +130,16 @@ variable CODE-B-O  variable CODE-B-U
 public
 : MAIN ( -- )
    T-RESET
-   s" full file object restores owned storage and checker state" T-LABEL
+   s" cold and warm definition reuse preserves state" T-LABEL
    s" native-file-state" TREE
    PREPARE
    s" cold-hb" BUILD SUCCESS
-   OUT$ s" file unit hits 0" CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    s" warm-hb" BUILD SUCCESS
-   OUT$ s" file unit hits " CONTAINS? TTRUE
-   OUT$ s" file unit hits 0" CONTAINS? 0= TTRUE
-   OUT$ s" compiled 0" CONTAINS? TTRUE
-   OUT$ s" state-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    PAIR-PATHS
    SAME-CODE? TTRUE
    SAME-CUT? TTRUE
@@ -117,9 +147,10 @@ public
    IMPORT-PATH IMPORT-U @ RUN-STATE
    FRESH-DOWNSTREAM
    s" fresh-hb" BUILD SUCCESS
-   OUT$ s" state-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    s" fresh-hb" AT RUN-STATE
    REJECT-TYPED-CLIENT
+   TASK-STATE-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

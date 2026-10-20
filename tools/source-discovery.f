@@ -101,6 +101,7 @@ variable SD-R-BYTES-U
 DYNAMIC-BUFFER SD-F-AT n
 DYNAMIC-BUFFER SD-F-U n
 DYNAMIC-BUFFER SD-F-HEAD n
+DYNAMIC-BUFFER SD-F-START n
 variable SD-F-N
 DYNAMIC-BUFFER SD-R-OFF n
 DYNAMIC-BUFFER SD-R-FILE n
@@ -132,6 +133,8 @@ variable SD-C-PKG
 variable SD-C-N
 DYNAMIC-BUFFER SD-C-ROW n
 DYNAMIC-BUFFER SD-C-OWNER n
+DYNAMIC-BUFFER SD-C-ORDER n
+variable SD-C-ORDER-N
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -173,11 +176,14 @@ variable SD-SCOPES
    at u + SD-R-BYTES-U !
    at ;
 
-: SD-FILE-OF ( -- n )
+: SD-FILE-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    SD-F-N @ 0 ?do
-      SD-ENTRY SD-ENTRY-U @
-      i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR= if i unloop exit then
+      a u i SD-F-AT @ SD-R-BYTES i SD-F-U @ STR= if i unloop exit then
    loop
+   -1 ;
+
+: SD-FILE-OF ( -- n )
+   SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND dup 0 >= if exit then drop
    SD-F-N @ {: id:n :}
    id 1+ dup SD-F-AT-RESERVE dup SD-F-U-RESERVE SD-F-HEAD-RESERVE
    SD-ENTRY SD-ENTRY-U @ SD-R-COPY id SD-F-AT !
@@ -306,9 +312,44 @@ variable SD-SCOPES
       then
    loop ;
 
+\ Each file chain is newest first. Fill its contiguous index backwards so
+\ intervals can binary-search source offsets in their original scan order.
+: SD-C-ORDER-BUILD ( -- )
+   SD-F-N @ 1+ SD-F-START-RESERVE
+   0 SD-C-ORDER-N !
+   SD-F-N @ 0 ?do
+      SD-C-ORDER-N @ i SD-F-START !
+      i SD-F-HEAD @
+      begin dup 0 >= while
+         SD-C-ORDER-N @ 1+ SD-C-ORDER-N !
+         SD-R-NEXT @
+      repeat drop
+   loop
+   SD-C-ORDER-N @ SD-F-N @ SD-F-START !
+   SD-C-ORDER-N @ SD-C-ORDER-RESERVE
+   SD-F-N @ 0 ?do
+      i SD-F-HEAD @ i 1+ SD-F-START @
+      begin over 0 >= while
+         1-
+         2dup SD-C-ORDER !
+         swap SD-R-NEXT @ swap
+      repeat 2drop
+   loop ;
+
+: SD-C-LOWER ( n n n -- n ) {: first:n limit:n off:n :}
+   first limit
+   begin 2dup < while
+      2dup + 2 / dup SD-C-ORDER @ SD-R-OFF @ off < if
+         1+ rot drop swap
+      else
+         swap drop
+      then
+   repeat drop ;
+
 : SD-R-CONTEXT-BEGIN ( -- )
    -1 SD-C-PKG !
-   0 SD-C-N ! ;
+   0 SD-C-N !
+   SD-C-ORDER-BUILD ;
 
 : SD-C-FAMILY-ROW? ( n -- bool ) {: row:n :}
    row SD-R-KIND @ SD-R-RETIRE = row SD-R-NAME-U @ 0= and if true exit then
@@ -332,25 +373,24 @@ variable SD-SCOPES
 \ next child. Replaying an include visits these same rows again in a new place.
 : SD-R-CONTEXT-BETWEEN ( n n ptr u8 n -- )
    {: start:n stop:n pa:ptr pu:n :}
-   SD-R-N @ 0 ?do
-      i SD-R-ACTIVE @ 0<> i SD-R-OFF @ start >= and
-      i SD-R-OFF @ stop < and if
-         i SD-R-FILE @ SD-F-AT @ SD-R-BYTES
-         i SD-R-FILE @ SD-F-U @ pa pu STR= if
-            i SD-R-KIND @ {: kind:n :}
-            kind SD-R-PACKAGE = if
-               i SD-C-PACKAGE-OPEN
-            else kind SD-R-END-PACKAGE = if
-               SD-C-PACKAGE-CLOSE
-            else
-               kind SD-R-FAMILY = if
-                  i SD-R-CONTEXT-FAMILY
-               else
-                  kind SD-R-DECL = kind SD-R-RETIRE = or if i SD-C-ADD then
-               then
-            then then
+   pa pu SD-FILE-FIND {: file:n :}
+   file 0 < if exit then
+   file SD-F-START @ file 1+ SD-F-START @ start SD-C-LOWER
+   file 1+ SD-F-START @ swap ?do
+      i SD-C-ORDER @ {: row:n :}
+      row SD-R-OFF @ stop >= if unloop exit then
+      row SD-R-KIND @ {: kind:n :}
+      kind SD-R-PACKAGE = if
+         row SD-C-PACKAGE-OPEN
+      else kind SD-R-END-PACKAGE = if
+         SD-C-PACKAGE-CLOSE
+      else
+         kind SD-R-FAMILY = if
+            row SD-R-CONTEXT-FAMILY
+         else
+            kind SD-R-DECL = kind SD-R-RETIRE = or if row SD-C-ADD then
          then
-      then
+      then then
    loop ;
 
 : SD-R-BEFORE? ( n n -- bool ) {: row:n next:n :}
@@ -1171,13 +1211,13 @@ public
    0 SD-R-BYTES-U !
    0 SD-R-VERSION !
    SD-R-BYTES-RELEASE
-   SD-F-AT-RELEASE SD-F-U-RELEASE SD-F-HEAD-RELEASE
+   SD-F-AT-RELEASE SD-F-U-RELEASE SD-F-HEAD-RELEASE SD-F-START-RELEASE
    SD-R-OFF-RELEASE SD-R-FILE-RELEASE SD-R-NEXT-RELEASE SD-R-KIND-RELEASE
    SD-R-NAME-RELEASE SD-R-NAME-U-RELEASE
    SD-R-PKG-RELEASE SD-R-PKG-U-RELEASE
    SD-R-COUNT-RELEASE SD-R-TERMS-RELEASE SD-R-TERMS-U-RELEASE
    SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE SD-R-CANON-RELEASE
-   SD-C-ROW-RELEASE SD-C-OWNER-RELEASE
+   SD-C-ROW-RELEASE SD-C-OWNER-RELEASE SD-C-ORDER-RELEASE
    SD-E-SPEC-RELEASE
    SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE ;
 

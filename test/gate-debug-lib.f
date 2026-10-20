@@ -493,17 +493,19 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GE-HB-RESET GE-SRC-RESET
    s" require src/habu/code-bytes.f" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
-   s" package GDBBP" GE-SRC-LINE
-   s" : VALID ( n -- n ) 1+ ; ' VALID constant VALID-XT" GE-SRC-LINE
-   s" ' atomic-cas constant TARGET-XT" GE-SRC-LINE
+   s" package GDBBP private" GE-SRC-LINE
+   s" : VALID ( n -- n ) 1+ ; TYPED-VARIABLE VALID-XT [ n -- n ] ' VALID VALID-XT !" GE-SRC-LINE
+   s" TYPED-VARIABLE TARGET-XT [ n n ptr n -- n ] ' atomic-cas TARGET-XT !" GE-SRC-LINE
+   s" CAST: VALID>ADDR ( [ n -- n ] -- n )" GE-SRC-LINE
+   s" CAST: TARGET>ADDR ( [ n n ptr n -- n ] -- n )" GE-SRC-LINE
    s" create SAVED-SLOTS DEBUG:MAXBP 32 * allot create SAVED-CODE 16 allot" GE-SRC-LINE
    s" : TABLE ( -- ptr u8 ) data-base BPTAB-OFF + ;" GE-SRC-LINE
-   s" : TARGET ( -- ptr u8 ) TARGET-XT 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
-   s" : ARM ( -- ) TARGET-XT DEBUG:BP+ ;" GE-SRC-LINE
-   s" : CHECK ( -- ) VALID-XT DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY TARGET SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
+   s" : TARGET ( -- ptr u8 ) TARGET-XT @ TARGET>ADDR 16 CODE-BYTES:AT drop ;" GE-SRC-LINE
+   s" : ARM ( -- ) TARGET-XT @ TARGET>ADDR DEBUG:BP+ ;" GE-SRC-LINE
+   s" : CHECK ( -- ) VALID-XT @ VALID>ADDR DEBUG:BP+ TABLE SAVED-SLOTS DEBUG:MAXBP 32 * BYTE-COPY TARGET SAVED-CODE 16 BYTE-COPY" GE-SRC-LINE
    s" ['] ARM catch ." GE-SRC-LINE
    s" TABLE DEBUG:MAXBP 32 * SAVED-SLOTS DEBUG:MAXBP 32 * STR= if 1 else 0 then ." GE-SRC-LINE
-   s" TARGET 16 SAVED-CODE 16 STR= if 1 else 0 then . VALID-XT DEBUG:BP- ; CHECK ;package" GE-SRC-LINE
+   s" TARGET 16 SAVED-CODE 16 STR= if 1 else 0 then . VALID-XT @ VALID>ADDR DEBUG:BP- ; CHECK ;package" GE-SRC-LINE
    s" unsupported breakpoint target" GE-HB-RUN-STDIN
    S\" -9300\n1\n1\n" s" named breakpoint refusal preserves table and code" GE-EXPECT-OUT
    s" PASS: unsupported breakpoint refuses before changing slots or code" type cr ;
@@ -539,7 +541,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-BREAKPOINT-NATIVE ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" 1 set-tier require src/habu/debug.f" GE-SRC-LINE
-   s" package GDBNBP : TARGET ( n -- n ) 3 + ; ' TARGET DEBUG:BP+ 4 TARGET . 5 TARGET . ;package" GE-SRC-LINE
+   s" package GDBNBP private CAST: TARGET>ADDR ( [ n -- n ] -- n )" GE-SRC-LINE
+   s" : TARGET ( n -- n ) 3 + ; ' TARGET TARGET>ADDR DEBUG:BP+ 4 TARGET . 5 TARGET . ;package" GE-SRC-LINE
    s" native breakpoint resumes" GE-HB-RUN-STDIN
    S\" 7\n8\n" s" native target resumes and runs again" GE-EXPECT-OUT
    s" habu-bp:" s" native breakpoint was hit" GE-EXPECT-ERR-HAS

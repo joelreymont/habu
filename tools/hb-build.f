@@ -2,7 +2,7 @@
 \ It loads at the caller's tier, outside any executable-build scope: no image
 \ captures this process's code. Each maker is a child engine
 \ (tools/hb-build-lib.f HBB-RUN-MAKER-CMD and HBB-RUN-APP-CMD) whose own entry
-\ holds native compilation over the application it loads, and an object hit
+\ holds the build session over the application it loads, and an object hit
 \ links the cached maker output.
 require src/lib/errors.f
 require src/lib/string.f

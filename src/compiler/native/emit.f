@@ -80,6 +80,8 @@ A64IR-OPCODE:SDIV      A64IR:ORD constant O-SDIV
 A64IR-OPCODE:CALL      A64IR:ORD constant O-CALL
 A64IR-OPCODE:CMPBR     A64IR:ORD constant O-CMPBR
 A64IR-OPCODE:WORDCALL  A64IR:ORD constant O-WORDCALL
+A64IR-OPCODE:PSTORE    A64IR:ORD constant O-PSTORE
+A64IR-OPCODE:PBSTORE   A64IR:ORD constant O-PBSTORE
 A64IR-OPCODE:FFLAG     A64IR:ORD constant O-FFLAG
 A64IR-OPCODE:FFLAGZ    A64IR:ORD constant O-FFLAGZ
 A64IR-OPCODE:FCMPBR    A64IR:ORD constant O-FCMPBR
@@ -127,7 +129,7 @@ A64IR-OPCODE:FLOAD     A64IR:ORD constant O-FLOAD
 0 constant ST-EMPTY
 1 constant ST-SEALED
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 0 CWORK-VARIABLE ST n
@@ -157,6 +159,7 @@ ST-EMPTY ST !
 \ the size the instruction will hold.
 0 CWORK-VARIABLE EM-FUSED n                    \ nonzero when this function's frame is fused
 0 CWORK-VARIABLE EM-FRAME n                    \ ...and the bytes both of its ends move
+0 CWORK-VARIABLE EM-OMIT n                     \ this function needs no inherited link frame
 
 \ ---- where this routine will be written --------------------------------------
 \ A branch to another WORD is measured from where this routine's bytes go, which
@@ -171,10 +174,11 @@ PLACE-NO PLACE-MODE !
 0 CWORK-VARIABLE STUB-START n                  \ first instruction after the accessor
 
 1 CWORK-BUFFER BND-MOD IR-ID:ir-module-id
-A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
+A64IR:OPCODES CWORK-BUFFER BND-OP IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-IMM IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-DATA-OFF IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-ORIGIN IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-SH IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
@@ -186,6 +190,7 @@ A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-TRAP IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-COLD IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-GUARD IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-MASK IR-ID:ir-symbol-id
@@ -196,6 +201,8 @@ DYNAMIC-BUFFER CODE-BUF n
 \ so the kind travels from the elaborator and is recorded per INSTRUCTION.
 DYNAMIC-BUFFER M-ADDR-BUF n
 : M-ADDR ( -- ptr n ) 0 M-ADDR-BUF ;
+DYNAMIC-BUFFER M-ORIGIN-BUF n
+: M-ORIGIN ( -- ptr n ) 0 M-ORIGIN-BUF ;
 DYNAMIC-BUFFER M-ARD-BUF n
 : M-ARD ( -- ptr n ) 0 M-ARD-BUF ;
 DYNAMIC-BUFFER M-OFF-BUF n
@@ -232,7 +239,8 @@ DYNAMIC-BUFFER F-START-BUF n
 
 \ Two signed distances per operation: before and after its other instructions.
 \ Calls have both; take/publish have only the first and no other instruction.
-\ A paired plain store has no move attributes; its tail holds fused writeback.
+\ A paired store or the last scalar store of a triple publish uses its tail
+\ to hold fused writeback; neither has a move attribute in the accepted IR.
 DYNAMIC-BUFFER D-MOVES n
 : DHEAD ( IR-ID:ir-op-id -- n ) IR-ID:OP-LOCAL 2 * ;
 : DHEAD@ ( IR-ID:ir-op-id -- n ) DHEAD D-MOVES @ ;
@@ -248,6 +256,7 @@ DYNAMIC-BUFFER PAIRS n
    SCRATCH-SIZES!
    INSN-CAP INSN-BYTES * CELL 1- + CELL / CODE-BUF-RESERVE
    INSN-CAP M-ADDR-BUF-RESERVE
+   INSN-CAP M-ORIGIN-BUF-RESERVE
    INSN-CAP M-ARD-BUF-RESERVE
    INSN-CAP M-OFF-BUF-RESERVE
    INSN-CAP M-ST-BUF-RESERVE
@@ -337,6 +346,11 @@ DYNAMIC-BUFFER PAIRS n
    id 0 BND-ADDR @ ATTR-HAS? 0= if A64IR:ADDR-NONE exit then
    id 0 BND-ADDR @ ATTR-INT ;
 
+: ORIGIN-OF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-ORIGIN @ ATTR-HAS? if id 0 BND-ORIGIN @ ATTR-INT exit then
+   -1 ;
+
 \ The dialect records a number of BITS and the encoding holds the half it
 \ selects, so SCALE/ refuses a shift that names no whole half.
 : HALF-OF ( IR-ID:ir-op-id -- n )
@@ -387,6 +401,9 @@ DYNAMIC-BUFFER PAIRS n
 \ The engine's (DIV-ZERO) helper, which the divide's cold side branches to.
 : COLD-ADDR ( IR-ID:ir-op-id -- n )
    0 BND-COLD @ ATTR-INT ;
+
+: GUARD-ADDR ( IR-ID:ir-op-id -- n )
+   0 BND-GUARD @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 : WORD-MOVZ ( IR-ID:ir-op-id -- n )
@@ -473,6 +490,10 @@ DYNAMIC-BUFFER PAIRS n
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDX ;
 
+: WORD-FMOVDI ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id IMM-OF  ENC-FMOVDI ;
+
 : WORD-FMOVDD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
@@ -521,6 +542,9 @@ DYNAMIC-BUFFER PAIRS n
 
 : WORD-DSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
+   id DTAIL@ 0<> if
+      id 0 OPERAND-REG  A64M:DSTACK-GPR  id DTAIL@  ENC-STRPOST exit
+   then
    id 0 OPERAND-REG  A64M:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
 \ The two fused forms, which is where the pointer move went. Post-index stores
@@ -661,6 +685,7 @@ DYNAMIC-BUFFER PAIRS n
    id off k MAP!
    id ADDR-OF {: kind:n :}
    kind k cells M-ADDR + !
+   id ORIGIN-OF k cells M-ORIGIN + !
    kind A64IR:ADDR-NONE = if -1 else id 0 RESULT-REG then  k cells M-ARD + !
    k 1+ N-INS ! ;
 
@@ -695,6 +720,7 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
 \ have longer forms.
 : INSNS-OF ( n -- n )
    {: k:n :}
+   k O-PSTORE = k O-PBSTORE = or if 3 exit then
    k O-DATAADDR = if 3 exit then
    k O-RESERVE = if 2 exit then
    k O-RELEASE = if 2 exit then
@@ -718,6 +744,7 @@ DIV-INSNS 1 -  constant DIV-SKIP     \ words from the guard to the divide
    k O-FCMPBR = if 3 exit then
    k O-FCMPBRZ = if 3 exit then
    k O-BRZ = if 2 exit then
+   k O-TAILCALL = if 2 exit then
    k O-TRAP = if 2 exit then
    1 ;
 
@@ -852,9 +879,10 @@ INSN-PER-OP-CK
    id COPY? 0= if false exit then
    id 0 RESULT-REG  id 0 OPERAND-REG  = ;
 
-\ Only adjacent moves within one block combine. Every other operation is a
-\ barrier, including memory transfers, calls and branches. Keep both moves if
-\ their sum does not fit one immediate; optimization must not add a refusal.
+\ Moves combine within one block, through link-frame restoration alone: it
+\ touches only SP and x30. Data-stack accesses, calls and branches are barriers.
+\ Keep both moves when their sum does not fit one immediate; optimization must
+\ not add a refusal.
 : D-MERGE ( n n -- n )
    {: prev:n slot:n :}
    slot D-MOVES @ 0= if prev exit then
@@ -880,6 +908,7 @@ INSN-PER-OP-CK
    id 0 BND-DBACK @ ATTR-HAS? if
       id DBACK-SIZE negate slot 1+ D-MOVES !
    then
+   k O-LINKLOAD = k O-RELEASE = or if prev exit then
    prev slot D-MERGE
    k O-DTAKE = k O-DPUBLISH = or if exit then
    drop -1 slot 1+ D-MERGE ;
@@ -890,21 +919,46 @@ INSN-PER-OP-CK
    id 0 BND-DBYTES @ ATTR-HAS? if id DHEAD@ 0= if 1+ then then
    id 0 BND-DBACK @ ATTR-HAS? if id DTAIL@ 0= if 1+ then then ;
 
+\ A quotation shares its definition's call contract. A leaf quotation can
+\ therefore inherit a link frame from a calling sibling. Only a returning
+\ call overwrites x30; a trap or the division refusal never comes back here.
+\ A frame slot access still needs the reserve even when x30 stays untouched.
+: FRAME-USE? ( IR-ID:ir-op-id -- bool )
+   SLOT-AT {: k:n :}
+   k O-CALL = k O-WORDCALL = or k O-PSTORE = or k O-PBSTORE = or
+   k O-STORE = or k O-LOAD = or k O-FSTORE = or k O-FLOAD = or ;
+
+: FRAME-USED? ( IR-ID:ir-fun-id -- bool )
+   {: f:IR-ID:ir-fun-id :}
+   false
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do
+         bk i OP-AT FRAME-USE? if drop true then
+      loop
+   loop ;
+
 \ The selector's prologue is a reserve opening the entry block with the link
 \ save right behind it; nothing else produces that pair. A reserve the spill
 \ pass inserted for a routine that only spills has no link save after it and
 \ stays two plain pointer moves.
 : FRAME-SHAPE! ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   0 EM-FUSED !  0 EM-FRAME !
+   0 EM-FUSED !  0 EM-FRAME !  0 EM-OMIT !
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 2 < if exit then
    bk 0 OP-AT {: r:IR-ID:ir-op-id :}
    r SLOT-AT O-RESERVE <> if exit then
    bk 1 OP-AT SLOT-AT O-LINKSAVE <> if exit then
+   f FRAME-USED? 0= if 1 EM-OMIT ! exit then
    r FRAME-SIZE {: size:n :}
    size A64FRAME:FUSED? 0= if exit then
    size EM-FRAME !  1 EM-FUSED ! ;
+
+: OMIT-FRAME? ( IR-ID:ir-op-id -- bool )
+   EM-OMIT @ 0= if drop false exit then
+   SLOT-AT {: k:n :}
+   k O-RESERVE = k O-LINKSAVE = or k O-LINKLOAD = or k O-RELEASE = or ;
 
 \ The second half of a fused end writes nothing: its work is in the first.
 : FUSED-SILENT? ( IR-ID:ir-op-id -- bool )
@@ -923,6 +977,7 @@ INSN-PER-OP-CK
 
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
+   id OMIT-FRAME? if 0 exit then
    id SLOT-AT INSNS-OF
    id home FALL-THRU? if 1- then
    id SELF-MOV? if 1- then
@@ -970,6 +1025,7 @@ INSN-PER-OP-CK
 \ register assignment - so the ORDER is chosen after the acceptance is probed.
 : OP-LEFT ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
+   id OMIT-FRAME? if 0 exit then
    id SLOT-AT INSNS-OF
    id SELF-MOV? if 1- then
    id FUSED-SILENT? if 1- then
@@ -981,15 +1037,16 @@ INSN-PER-OP-CK
 \ Only compiler-owned plain eight-byte GPR transfers participate. Neither the
 \ allocator nor the accepted IR is changed; both ordered accesses remain there.
 : PAIR-FORM? ( n -- bool ) {: k:n :}
-   k O-LOAD = k O-STORE = or k O-DLOAD = or k O-DSTORE = or ;
+   k O-LOAD = k O-STORE = or k O-DLOAD = or k O-DSTORE = or k O-DPOP = or ;
 
 : PAIR-LOAD? ( n -- bool ) {: k:n :}
-   k O-LOAD = k O-DLOAD = or ;
+   k O-LOAD = k O-DLOAD = or k O-DPOP = or ;
 
 : PAIR-BASE ( n -- n )
    dup O-LOAD = swap O-STORE = or if A64M:SP-GPR else A64M:DSTACK-GPR then ;
 
 : PAIR-OFF ( IR-ID:ir-op-id -- n ) {: id:IR-ID:ir-op-id :}
+   id SLOT-AT O-DPOP = if 0 exit then
    id SLOT-AT PAIR-BASE A64M:SP-GPR = if id SLOT-OFF else id DSLOT-OFF then ;
 
 : PAIR-VALUE ( IR-ID:ir-op-id -- IR-ID:ir-value-id ) {: id:IR-ID:ir-op-id :}
@@ -1007,7 +1064,16 @@ INSN-PER-OP-CK
    {: first:IR-ID:ir-op-id second:IR-ID:ir-op-id :}
    first SLOT-AT {: k:n :}
    k PAIR-FORM? 0= if false exit then
-   second SLOT-AT k <> if false exit then
+   second SLOT-AT k <> if
+      k O-DPOP <> second SLOT-AT O-DLOAD <> or if false exit then
+   then
+   \ DPOP writes x19 back before reading cell zero; the following DLOAD
+   \ reads cell one at +8. Its writeback must fit the signed pair field.
+   k O-DPOP = if
+      first IR-ID:OP-LOCAL 1+ second IR-ID:OP-LOCAL <> if false exit then
+      first DWB-SIZE negate {: wb:n :}
+      wb PAIR-MIN < wb PAIR-MAX > or wb PAIR-SCALE mod 0<> or if false exit then
+   then
    first ADDR-OF A64IR:ADDR-NONE <>
    second ADDR-OF A64IR:ADDR-NONE <> or if false exit then
    first PAIR-OFF {: off:n :}
@@ -1083,6 +1149,30 @@ INSN-PER-OP-CK
       slot 0 >= if bk prev OP-AT slot PAIR-MOVE! -1 exit then
    then
    id POST-PAIR? if at else -1 then ;
+
+\ Three consecutive result cells at x19 can advance over only cells already
+\ written: the first pair writes 0 and 8, then moves 16; the scalar writes the
+\ old slot 16 at the new base, then moves 8. The accepted store order and
+\ register assignment remain unchanged. Exact adjacency excludes intervening
+\ data-stack accesses, spills and calls; the encoders bound both writebacks.
+: PLAN-TRIPLE-PUBLISH ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id at:n :}
+   at 3 + bk OP-COUNT >= if exit then
+   bk at OP-AT {: first:IR-ID:ir-op-id :}
+   first POST-PAIR? 0= first DTAIL@ 0<> or if exit then
+   bk at 1+ OP-AT {: second:IR-ID:ir-op-id :}
+   first PAIR@ second IR-ID:OP-LOCAL 1+ <> if exit then
+   bk at 2 + OP-AT {: third:IR-ID:ir-op-id :}
+   third PAIR@ 0<> third SLOT-AT O-DSTORE <> or if exit then
+   third DSLOT-OFF 2 A64IR:SLOT-WIDTH * <> if exit then
+   third 0 OPERAND-REG A64M:DSTACK-GPR = if exit then
+   third DTAIL@ 0<> if exit then
+   bk at 3 + OP-AT {: pub:IR-ID:ir-op-id :}
+   pub SLOT-AT O-DPUBLISH <> if exit then
+   pub DHEAD@ 3 A64IR:SLOT-WIDTH * <> if exit then
+   2 A64IR:SLOT-WIDTH * first DHEAD 1+ D-MOVES !
+   A64IR:SLOT-WIDTH third DHEAD 1+ D-MOVES !
+   0 pub DHEAD D-MOVES ! ;
 
 : SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
@@ -1465,10 +1555,10 @@ INSN-PER-OP-CK
    id  id 0 RESULT-REG  id ADR-DELTA  ADR-WORD  APPEND ;
 
 \ ---- leaving through another word --------------------------------------------
-\ ONE instruction and never more: the selector only builds it where the pointer
-\ already stands at the callee's entry base.
+\ Publish the callee's argument row, then branch without another call frame.
 : PUT-TAILCALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id  id DHEAD@  PUT-DMOVE
    id  id WORD-DELTA B-WORD  APPEND ;
 
 \ ---- branching to a routine of the engine's own text --------------------------
@@ -1478,6 +1568,16 @@ INSN-PER-OP-CK
 \ into a stripped image and retargets the branch there.
 : EXT-DELTA ( n -- n )
    PLACEMENT-CK -  INSN-BYTES /  N-INS @ - ;
+
+\ The guard preserves x10/x11 and clobbers x12/x13. Fixed results account for
+\ each scratch write while the real store remains after the returning call.
+: PUT-PSTORE ( IR-ID:ir-op-id bool -- )
+   {: id:IR-ID:ir-op-id byte:bool :}
+   id  id 0 RESULT-REG  byte if 1 else 8 then  0 MOVZHW APPEND
+   id 1 RESULT-REG drop  id 2 RESULT-REG drop
+   id  id GUARD-ADDR EXT-DELTA  BL-WORD APPEND
+   id  id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF
+   byte if ENC-STRB else ENC-STR then APPEND ;
 
 \ ---- leaving through the routine that ends the process -----------------------
 \ It does NOT note its callee: control that reaches here never returns to this
@@ -1521,22 +1621,26 @@ INSN-PER-OP-CK
 \ source-map row, for the reason an elided copy gets none.
 : PUT-RESERVE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id OMIT-FRAME? if exit then
    EM-FUSED @ 0<> if id WORD-LNKPUSH APPEND exit then
    id PAGES-ELIDED? 0= if id  id WORD-RESERVE-PAGES  APPEND then
    id  id WORD-RESERVE  APPEND ;
 
 : PUT-LINKSAVE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id OMIT-FRAME? if exit then
    EM-FUSED @ 0<> if exit then
    id  id WORD-LNKSTR  APPEND ;
 
 : PUT-LINKLOAD ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id OMIT-FRAME? if exit then
    EM-FUSED @ 0<> if id WORD-LNKPOP APPEND exit then
    id  id WORD-LNKLDR  APPEND ;
 
 : PUT-RELEASE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   id OMIT-FRAME? if exit then
    EM-FUSED @ 0<> if exit then
    id  id WORD-RELEASE  APPEND
    id PAGES-ELIDED? 0= if id  id WORD-RELEASE-PAGES  APPEND then ;
@@ -1600,6 +1704,8 @@ INSN-PER-OP-CK
       fdpop    OF id  id WORD-FDPOP  APPEND ENDOF
       aload    OF id  id WORD-ALOAD  APPEND ENDOF
       astore   OF id  id WORD-ASTORE  APPEND ENDOF
+      pstore   OF id false PUT-PSTORE ENDOF
+      pbstore  OF id true PUT-PSTORE ENDOF
       fload    OF id  id WORD-FLOAD  APPEND ENDOF
       fstore   OF id  id WORD-FSTORE  APPEND ENDOF
       faload   OF id  id WORD-FALOAD  APPEND ENDOF
@@ -1632,6 +1738,7 @@ INSN-PER-OP-CK
       fcvtzs   OF id  id WORD-FCVTZS  APPEND ENDOF
       fmovxd   OF id  id WORD-FMOVXD  APPEND ENDOF
       fmovdx   OF id  id WORD-FMOVDX  APPEND ENDOF
+      fmovdi   OF id  id WORD-FMOVDI  APPEND ENDOF
       fmovdd   OF id PUT-FMOVDD ENDOF
       fflag    OF id PUT-FFLAG ENDOF
       fflagz   OF id PUT-FFLAGZ ENDOF
@@ -1692,7 +1799,8 @@ INSN-PER-OP-CK
 
 : CALL-FORM? ( n -- bool )
    {: k:n :}
-   k O-CALL = k O-WORDCALL = or k O-TAILCALL = or ;
+   k O-CALL = k O-WORDCALL = or k O-TAILCALL = or
+   k O-PSTORE = or k O-PBSTORE = or ;
 
 \ Both end control here, and a caller may not COPY such a routine: a copied `b`
 \ would branch out of whatever caller it was copied into.
@@ -1718,7 +1826,8 @@ INSN-PER-OP-CK
    first
    k PAIR-LOAD? if
       first 0 RESULT-REG second 0 RESULT-REG
-      k PAIR-BASE first PAIR-OFF ENC-LDP
+      k PAIR-BASE
+      k O-DPOP = if first DWB-SIZE negate ENC-LDPPRE else first PAIR-OFF ENC-LDP then
    else
       first 0 OPERAND-REG second 0 OPERAND-REG
       k PAIR-BASE
@@ -1827,6 +1936,7 @@ public
    c b A64IR:KEY-DATA-OFFSET 0 BND-DATA-OFF !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-ADDR   0 BND-ADDR !
+   c b A64IR:KEY-ORIGIN 0 BND-ORIGIN !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
@@ -1837,6 +1947,7 @@ public
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR:KEY-COLD-ENTRY 0 BND-COLD !
+   c b A64IR:KEY-GUARD-ENTRY 0 BND-GUARD !
    c b A64IR:KEY-OFF    0 BND-OFF !
    c b A64IR:KEY-MASK   0 BND-MASK !
    c b A64IR:KEY-FUN    0 BND-FUN !
@@ -1910,6 +2021,7 @@ public
          -1
          bk OP-COUNT 0 ?do bk i PLAN-POST-OP loop
          drop
+         bk OP-COUNT 0 ?do bk i PLAN-TRIPLE-PUBLISH loop
       loop
    loop ;
 
@@ -1949,6 +2061,7 @@ public
    N-INS @ {: at:n :}
    STUB-WORD
    A64IR:ADDR-CODE at cells M-ADDR + !
+   -1 at cells M-ORIGIN + !
    16 at cells M-ARD + ! ;
 
 : WRITE-STUB ( -- )
@@ -2035,6 +2148,7 @@ DYNAMIC-BUFFER SITES-BUF n
    0 EM-TAIL !
    0 EM-FUSED !
    0 EM-FRAME !
+   0 EM-OMIT !
    -1 EM-LAST !
    m BND-MODULE-CK
    c TARGET-CK
@@ -2099,6 +2213,12 @@ DYNAMIC-BUFFER SITES-BUF n
    SEAL-CK
    i 0 < i N-SITES @ >= or if E-A64EMIT-BOUND throw then
    i cells SITES + @ cells M-ADDR + @ ;
+
+: ADDR-SITE-ORIGIN@ ( n -- n )
+   {: i:n :}
+   SEAL-CK
+   i 0 < i N-SITES @ >= or if E-A64EMIT-BOUND throw then
+   i cells SITES + @ cells M-ORIGIN + @ ;
 
 \ Measured while the crossings are written rather than derived from an arity: an
 \ arity-derived interface OVERSTATES what most routines pay and so UNDERSTATES

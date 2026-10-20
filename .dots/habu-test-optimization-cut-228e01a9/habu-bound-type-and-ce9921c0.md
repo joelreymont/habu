@@ -3,7 +3,7 @@ title: Bound type and source text lengths at checker entries
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T13:57:08.459695+02:00\""
+created-at: "2026-10-02T13:57:08.459695+02:00"
 closed-at: "2026-10-14T19:34:45.541120+03:00"
 close-reason: "Implemented in b5204ef8: checker text, storage and arity entries reject invalid lengths before reading or changing pool state; guard-page cases, focused suites and convergence passed."
 ---

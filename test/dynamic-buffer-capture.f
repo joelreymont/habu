@@ -2,7 +2,7 @@
 \ Window buffers are cleaned each time; writer buffers before/after it stay live.
 package DBUF-CAPTURE-TEST
 public
-ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
 require src/lib/test.f

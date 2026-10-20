@@ -3,7 +3,7 @@ title: Locate an undefined-type storage refusal
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T07:11:23.861697+02:00\""
+created-at: "2026-10-01T07:11:23.861697+02:00"
 closed-at: "2026-10-14T19:26:17.918834+03:00"
 close-reason: "Implemented in c6a2ae46: shared storage refusal names undefined types, invalid names and counts through load and check modes; five storage definers covered and image convergence recorded."
 ---

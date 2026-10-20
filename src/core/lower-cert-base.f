@@ -88,7 +88,9 @@ variable FULL-SET   0 FULL-SET !
 \ calls this one - it reopens this package and is the file that installs the
 \ producer, so it installs the whole family's reset too.
 : BUF-SNAP-RESET ( -- )
-   BUF-BOOT BUF-P !   BUF-INIT BUF-CAP ! ;
+   BUF-BOOT BUF-P !   BUF-INIT BUF-CAP !
+   BUF-BOOT 0 BUF-INIT ARENA-CELLS-ZERO
+   0 BUF-N ! 0 BODY-LEN ! 0 BODY-HASH ! ;
 
 : BUF, ( n -- )
    BUF-N @ 1 + BUF-ENSURE

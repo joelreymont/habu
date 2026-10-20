@@ -3,7 +3,7 @@ title: Read layout buffer types through the shared stored-type reader
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T13:11:59.496530+02:00\""
+created-at: "2026-10-02T13:11:59.496530+02:00"
 closed-at: "2026-10-14T19:46:58.576759+03:00"
 close-reason: Current layout-buffer.f STORAGE-PARSE-TYPE and verify-source.f SCAN-STORAGE-TYPE both use CHECKER-TYPE-SPAN-STEP; c2-memory-scope-refusals.f checks scheme and quotation rows.
 ---

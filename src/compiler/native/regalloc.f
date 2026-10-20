@@ -111,7 +111,7 @@ NEFF:SEQ-LIMIT constant FIXED-MAX
 0 constant ST-EMPTY
 1 constant ST-SEALED
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE BND-MODE n
 BOUND-NO BND-MODE !
 0 CWORK-VARIABLE ST n
@@ -759,7 +759,7 @@ DYNAMIC-BUFFER F-RET-BUF n
 
 $3FFFFFFF constant POS-INF
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE N-BLKS n
 0 CWORK-VARIABLE B-BASE n                      \ where this function's blocks start in the module
 0 CWORK-VARIABLE MB-AT n
@@ -792,6 +792,11 @@ DYNAMIC-BUFFER CL-HI-BUF n
 : CL-HI ( -- ptr n ) 0 CL-HI-BUF ;
 DYNAMIC-BUFFER CL-SLOT-BUF n
 : CL-SLOT ( -- ptr n ) 0 CL-SLOT-BUF ;
+DYNAMIC-BUFFER SH-PRED-BUF n
+DYNAMIC-BUFFER SH-ORIGIN-BUF n
+DYNAMIC-BUFFER SH-USE-BUF n
+DYNAMIC-BUFFER SH-NEIGH-BUF n
+DYNAMIC-BUFFER SH-BAD-BUF n
 DYNAMIC-BUFFER CL-REMAT-BUF n
 : CL-REMAT ( -- ptr n ) 0 CL-REMAT-BUF ;
 \ Only evicted roots need temporary registers for their stores and reloads.
@@ -876,6 +881,11 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    VMAX CL-LO-BUF-RESERVE
    VMAX CL-HI-BUF-RESERVE
    VMAX CL-SLOT-BUF-RESERVE
+   BMAX SH-PRED-BUF-RESERVE
+   VMAX SH-ORIGIN-BUF-RESERVE
+   VMAX SH-USE-BUF-RESERVE
+   VMAX SH-NEIGH-BUF-RESERVE
+   VMAX SH-BAD-BUF-RESERVE
    VMAX CL-REMAT-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-LOAD-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-STORE-BUF-RESERVE
@@ -1324,6 +1334,70 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       then
    loop ;
 
+\ The first row at or after a position of an index whose rows lie in position
+\ order, by bisection. Copy coalescing reads the call index before the class
+\ tables exist.
+: MB-FROM ( n ptr n n -- n )
+   {: p:n at:ptr u:n :}
+   0 u
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid cells at + @ p < if mid 1+ hi else lo mid then
+   repeat
+   drop ;
+
+: MB-CALL-FROM ( n -- n )   CALL-POS N-CALLS @ MB-FROM ;
+
+\ A member crosses a call only when it lives on both sides of that call.
+\ The first indexed call after its definition settles the question.
+: MB-MEMBER-CALL? ( n -- bool )
+   {: k:n :}
+   k DEF-AT 1+ MB-CALL-FROM {: i:n :}
+   i N-CALLS @ = if false exit then
+   i cells CALL-POS + @ k LAST-AT < ;
+
+: MB-CLASS-CALL? ( n -- bool )
+   begin dup 0 >= while
+      dup MB-MEMBER-CALL? if drop true exit then
+      UF-NEXT@
+   repeat drop false ;
+
+\ A hard pin cannot be given to a merged class when one of its members must
+\ keep that register over a call. A soft want may be declined by placement.
+: MB-PIN-CALL? ( n n n -- bool )
+   {: ra:n rb:n pin:n :}
+   pin NOBODY = if false exit then
+   1 pin lshift ra FILE-AT RF-CLOBBERED and 0= if false exit then
+   ra MB-CLASS-CALL? if true exit then
+   rb MB-CLASS-CALL? ;
+
+\ Placement holds a class's register across gaps between its members. Merging
+\ a pinned copy must not stretch that hull across another pin in the same
+\ register, even when no pair of members interferes (two protected stores on
+\ different arms of a pointer traversal are one such case).
+: MB-HULL ( n -- n n )
+   POS-INF -1 rot
+   begin dup 0 >= while
+      {: lo:n hi:n member:n :}
+      lo member DEF-AT min  hi member LAST-AT max  member UF-NEXT@
+   repeat drop ;
+
+: MB-PIN-TAKEN? ( n n n -- bool )
+   {: ra:n rb:n pin:n :}
+   pin NOBODY = if false exit then
+   ra MB-HULL rb MB-HULL {: al:n ah:n bl:n bh:n :}
+   al bl min {: lo:n :} ah bh max {: hi:n :}
+   N-VALS @ 0 ?do
+      i UF-FIND i = i ra <> and i rb <> and if
+         i D-FIX MB-DECL-KIND pin = if
+            i MB-HULL {: first:n last:n :}
+            first lo = first hi < last lo > and or if true unloop exit then
+         then
+      then
+   loop
+   false ;
+
 \ Ends already in one class need nothing; ends whose classes hold an interfering
 \ pair keep their copy; ends the contract declares into two registers keep it too.
 \
@@ -1348,6 +1422,10 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    w NOBODY <> if
       ra rb w MB-WANT-TAKEN? if exit then
    then
+   ra D-FIX MB-DECL-KIND {: fa:n :}
+   fa NOBODY = if rb D-FIX MB-DECL-KIND else fa then {: pin:n :}
+   ra rb pin MB-PIN-CALL? if exit then
+   ra rb pin MB-PIN-TAKEN? if exit then
    s d UF-UNION ;
 
 : MB-COALESCE-OP ( IR-ID:ir-op-id -- )
@@ -1656,19 +1734,6 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       UF-NEXT@
    repeat drop false ;
 
-\ The first row at or after a position of an index whose `u` rows lie in position
-\ order, by bisection.
-: MB-FROM ( n ptr n n -- n )
-   {: p:n at:ptr u:n :}
-   0 u
-   begin 2dup < while
-      {: lo:n hi:n :}
-      lo hi + 2 / {: mid:n :}
-      mid cells at + @ p < if mid 1+ hi else lo mid then
-   repeat
-   drop ;
-
-: MB-CALL-FROM ( n -- n )   CALL-POS N-CALLS @ MB-FROM ;
 : MB-FIX-FROM ( n -- n )    FIXP-POS N-FIXP @ MB-FROM ;
 : MB-PIN-FROM ( n -- n )    PIN-POS N-PINS @ MB-FROM ;
 
@@ -2181,8 +2246,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    then
    f MB-FIXED
    N-BLKS @ 0 ?do f i MB-EDGES-OF loop
-   f MB-TIES
-   f MB-COALESCE ;
+   f MB-TIES ;
 
 \ ---- what one allocation run is told -----------------------------------------
 : FUN-AT ( n -- IR-ID:ir-fun-id )
@@ -2209,6 +2273,12 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    k FUN-AT  k cells F-BASE + @  MB-LAYOUT
    k cells F-RET + @ RET-B !
    k LAID ! ;
+
+: MB-COALESCE-ALL ( -- )
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT MB-COALESCE
+   loop ;
 
 \ Coalescing is complete before these slices are built. Count every operand,
 \ including duplicates, then fill in module position order. Allocation retries
@@ -2388,6 +2458,155 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       REFIT-AT @ TRAIL-UNWIND
    repeat ;
 
+\ ---- one frame slot for copies of one unchanged value -----------------------
+\ Register classes stay separate: this pass only gives an otherwise unspilled
+\ copy class the existing slot of its direct spilled neighbour. The one original
+\ definition must be in a predecessor-free entry block. Every other member is
+\ defined by a pure copy or by the single-successor argument map MB-EDGES-OF
+\ already unified. An unspilled class must be read only by those transports;
+\ a changed loop counter, call argument, return or conditional use cannot share.
+: SH-CLEAR ( -- )
+   BMAX 0 ?do 0 i SH-PRED-BUF ! loop
+   N-VALS @ 0 ?do
+      0 i SH-ORIGIN-BUF !
+      0 i SH-USE-BUF !
+      NOBODY i SH-NEIGH-BUF !
+      0 i SH-BAD-BUF !
+   loop ;
+
+: SH-PRED1 ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF {: n:n :}
+   n 0 ?do
+      id i SUCC-AT IR-ID:BLOCK-LOCAL {: b:n :}
+      n 1 = if
+         b SH-PRED-BUF @ 0= if 1 b SH-PRED-BUF ! then
+      else
+         -1 b SH-PRED-BUF !
+      then
+   loop ;
+
+: SH-PREDS ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do f i BLOCK-AT TERM-AT SH-PRED1 loop
+   loop ;
+
+: SH-ORIGIN+ ( n bool -- )
+   {: r:n entry:bool :}
+   entry r SH-ORIGIN-BUF @ 0= and if
+      1 r SH-ORIGIN-BUF !
+   else
+      -1 r SH-ORIGIN-BUF !
+   then ;
+
+: SH-ARG ( IR-ID:ir-value-id n n -- )
+   {: v:IR-ID:ir-value-id b:n idx:n :}
+   v SLOT UF-FIND {: r:n :}
+   idx SH-PRED-BUF @ {: pred:n :}
+   b 0= pred 0= and if r true SH-ORIGIN+ exit then
+   pred 1 <> if -1 r SH-ORIGIN-BUF ! then ;
+
+: SH-NEIGH+ ( n n -- )
+   {: r:n other:n :}
+   r SH-NEIGH-BUF @ {: prior:n :}
+   prior NOBODY = if other r SH-NEIGH-BUF ! exit then
+   prior other <> if -2 r SH-NEIGH-BUF ! then ;
+
+: SH-COPY ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-AT SLOT UF-FIND {: s:n :}
+   id 0 RESULT-AT SLOT UF-FIND {: d:n :}
+   s d = if exit then
+   s d SH-NEIGH+
+   d s SH-NEIGH+
+   s cells CL-SLOT + @ {: ss:n :}
+   d cells CL-SLOT + @ {: ds:n :}
+   ss NOSLOT <> ds NOSLOT <> and ss ds <> and if
+      1 s SH-BAD-BUF !
+      1 d SH-BAD-BUF !
+   then ;
+
+: SH-FORWARD? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF 1 <> if false exit then
+   id 0 SUCC-AT ARG-COUNT id OPERANDS-OF = ;
+
+: SH-OP ( IR-ID:ir-op-id bool -- )
+   {: id:IR-ID:ir-op-id entry:bool :}
+   id MB-COPY? if id SH-COPY else
+      id RESULTS-OF 0 ?do
+         id i RESULT-AT SLOT UF-FIND entry SH-ORIGIN+
+      loop
+   then
+   id MB-COPY? id SH-FORWARD? or if exit then
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT UF-FIND {: r:n :}
+      1 r SH-USE-BUF !
+   loop ;
+
+: SH-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk IR-ID:BLOCK-LOCAL {: idx:n :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT b idx SH-ARG loop
+   b 0= idx SH-PRED-BUF @ 0= and {: entry:bool :}
+   bk OP-COUNT 0 ?do bk i OP-AT entry SH-OP loop ;
+
+: SH-FUNS ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do f i SH-BLOCK loop
+   loop ;
+
+: SH-TRANSPORT? ( n n -- bool )
+   {: r:n owner:n :}
+   r CLS-AT C-TOKEN = if false exit then
+   r cells CL-SLOT + @ NOSLOT <> if false exit then
+   r cells CL-REMAT + @ 0<> if false exit then
+   r SH-ORIGIN-BUF @ 0<> if false exit then
+   r SH-USE-BUF @ 0<> r SH-BAD-BUF @ 0<> or if false exit then
+   r SH-NEIGH-BUF @ owner = ;
+
+\ An incoming copy from another original value could overwrite the slot after
+\ a transport class had taken its earlier snapshot. Outgoing copies to call or
+\ arithmetic classes do not change the owner's value.
+: SH-INBOUND ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id MB-COPY? 0= if exit then
+   id 0 OPERAND-AT SLOT UF-FIND {: s:n :}
+   id 0 RESULT-AT SLOT UF-FIND {: d:n :}
+   s d = if exit then
+   d cells CL-SLOT + @ NOSLOT = if exit then
+   s d SH-TRANSPORT? 0= if 1 d SH-BAD-BUF ! then ;
+
+: SH-INBOUNDS ( -- )
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do bk i OP-AT SH-INBOUND loop
+      loop
+   loop ;
+
+: SH-CANDIDATE? ( n -- bool )
+   {: r:n :}
+   r UF-FIND r <> if false exit then
+   r SH-NEIGH-BUF @ {: owner:n :}
+   owner 0 < if false exit then
+   r owner SH-TRANSPORT? 0= if false exit then
+   owner SH-ORIGIN-BUF @ 1 <> if false exit then
+   owner SH-BAD-BUF @ 0<> if false exit then
+   owner cells CL-SLOT + @ NOSLOT <> ;
+
+: MB-SHARE-SLOTS ( -- )
+   SH-CLEAR SH-PREDS SH-FUNS SH-INBOUNDS
+   N-VALS @ 0 ?do
+      i SH-CANDIDATE? if
+         i SH-NEIGH-BUF @ cells CL-SLOT + @ i cells CL-SLOT + !
+      then
+   loop ;
+
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
 \ bound to a local, so it is unmade at entry.
@@ -2468,7 +2687,8 @@ public
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       dslot:IR-ID:ir-symbol-id dbytes:IR-ID:ir-symbol-id
-      dback:IR-ID:ir-symbol-id wb:NDIALECT:optsym
+      dback:IR-ID:ir-symbol-id tail-in:IR-ID:ir-symbol-id
+      tail-out:IR-ID:ir-symbol-id wb:NDIALECT:optsym
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
@@ -2538,9 +2758,10 @@ public
    FUNS-CK N-FUNS !
    cv MEASURE-ALL
    COVER-CK
+   MB-CALL-INDEX
+   MB-COALESCE-ALL
    MB-CLASSES
    MB-USES
-   MB-CALL-INDEX
    MB-FIX-INDEX
    MB-KIND-CLEAR
    MB-SIZES
@@ -2550,6 +2771,7 @@ public
    MB-DEF-INDEX
    MB-PIN-INDEX
    MB-FIT
+   MB-SHARE-SLOTS
    MB-FINISH
    PLAN-ALL ;
 

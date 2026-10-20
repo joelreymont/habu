@@ -8,6 +8,7 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require test/checker-owner-reset.f
+require src/habu/xref.f
 
 package CHECKER-UNIT-CODEC-TEST
 
@@ -39,6 +40,7 @@ CAST: PREPARE-BEGIN-XT ( n -- [ -- ] )
 CAST: PREPARE-XT ( n -- [ ptr u8 n n n -- n ] )
 CAST: INSTALL-XT ( n -- [ n -- ] )
 CAST: PREPARE-END-XT ( n -- [ -- ] )
+CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
 
 : MARK ( -- )
    OWNER CHECKER-OWNER-ABI:UNIT-MARK-OFF + CELL-VIEW @ MARK-XT execute ;
@@ -58,12 +60,63 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
 : PREPARE-END ( -- )
    OWNER CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF + CELL-VIEW @ PREPARE-END-XT execute ;
 
+: CONTRACT ( n -- ptr u8 n bool )
+   OWNER CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + CELL-VIEW @ CONTRACT-XT execute ;
+
+: RECORD-HISTORY ( -- )
+   s" package UNIT-HISTORY public : WORD ( n -- n ) 1+ ; ;package" evaluate-closed
+   s" UNIT-HISTORY:WORD" XREF-FIND-INDEX {: old:n :}
+   old CONTRACT {: first:ptr size:n found:bool :}
+   found TTRUE
+   size ART-CAP <= TTRUE
+   first BAD size BYTE-COPY
+   s" package UNIT-HISTORY public undefine WORD : WORD ( n n -- n ) + ; ;package" evaluate-closed
+   old CONTRACT {: prior:ptr prioru:n still:bool :}
+   still TTRUE prioru size T=
+   prior prioru BAD size STR= TTRUE
+   s" UNIT-HISTORY:WORD" XREF-FIND-INDEX {: current:n :}
+   current old <> TTRUE
+   current CONTRACT {: later:ptr lateru:n has:bool :}
+   has TTRUE
+   later lateru BAD size STR= 0= TTRUE ;
+
+: CREATED-CONTRACT ( -- )
+   s" package UNIT-HISTORY public : MAKE ( n -- ) create , does> ( -- n ) @ ; 19 MAKE MADE ;package"
+      evaluate-closed
+   s" UNIT-HISTORY:MADE" XREF-FIND-INDEX CONTRACT
+      {: bytes:ptr size:n found:bool :}
+   found TTRUE
+   size CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE
+   bytes CHECKER-OWNER-ABI:RECORD-FIXED-KIND-OFF + CELL-VIEW @ 0 T= ;
+
+: FIXED-HISTORY ( -- )
+   s" package UNIT-HISTORY public 41 constant NUM ;package" evaluate-closed
+   s" UNIT-HISTORY:NUM" XREF-FIND-INDEX {: old:n :}
+   old CONTRACT {: first:ptr size:n found:bool :}
+   found TTRUE
+   size CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE
+   first CHECKER-OWNER-ABI:RECORD-FIXED-KIND-OFF + CELL-VIEW @
+      CHECKER-OWNER-ABI:RECORD-FIXED-VAL T=
+   first CHECKER-OWNER-ABI:RECORD-FIXED-VALUE-OFF + CELL-VIEW @ 41 T=
+   s" package UNIT-HISTORY public undefine NUM 77 constant NUM ;package" evaluate-closed
+   old CONTRACT {: prior:ptr prioru:n still:bool :}
+   still TTRUE
+   prioru CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE
+   prior CHECKER-OWNER-ABI:RECORD-FIXED-VALUE-OFF + CELL-VIEW @ 41 T=
+   s" UNIT-HISTORY:NUM" XREF-FIND-INDEX CONTRACT
+      {: later:ptr lateru:n has:bool :}
+   has TTRUE
+   lateru CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE
+   later CHECKER-OWNER-ABI:RECORD-FIXED-VALUE-OFF + CELL-VIEW @ 77 T= ;
+
 : LOAD-UNIT ( -- )
-   s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed ;
+   s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed
+   s" package UNIT-NBR public : SAME-ID ( x x -- ) 2drop ; defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) ;package" evaluate-closed
+   s" package UNIT-NBR public defer EX-ONE ( -- fresh-extent-a ) defer EX-PAIR ( -- fresh-extent-a fresh-extent-a ) ;package" evaluate-closed
+   s" package UNIT-NBR public defer GN-ONE ( -- fresh-gen-a ) defer GN-PAIR ( -- fresh-gen-a fresh-gen-a ) ;package" evaluate-closed
+   s" package UNIT-NBR public defer MS-ONE ( -- fresh-mask-a ) defer MS-PAIR ( -- fresh-mask-a fresh-mask-a ) ;package" evaluate-closed ;
 : SHADOW ( -- )
    s" package UNIT-NBR public : UNIT-SHADOW ( n -- n ) 1+ ; undefine UNIT-SHADOW : UNIT-SHADOW ( n n -- n ) + ; ;package" evaluate-closed ;
-: CLIENT ( -- n )
-   s" 4096 8 UNIT-NBR:BL-WORD" TEST-EVAL:N ;
 : DEFER-CHANGE ( -- )
    s" package UNIT-NBR public defer UNIT-DEFER ( -- n ) ;package" evaluate-closed ;
 
@@ -85,15 +138,28 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
    u ART-CAP <= TTRUE
    a ART u BYTE-COPY
    u ART-U !
-   ART 4 cells + CELL-VIEW @ 10 T=
    ART 6 cells + CELL-VIEW @ SERIAL MARK-SERIAL @ - T=
    s" checker-unit-codec-e2e" HB-TMP-MKDIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-U !
    ROOT$ s" unit-nbr.checker-unit" PATH JOIN-PATH
    PATH swap ART ART-U @ WRITE-ALL ;
 
+: CHECK-FRESH ( -- )
+   s" FRESH-RG-TWO ( -- ) UNIT-NBR:RG-ONE UNIT-NBR:RG-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-RG-PAIR ( -- ) UNIT-NBR:RG-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
+   s" FRESH-RG-DIFF ( -- ) UNIT-NBR:RG-DIFF UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-EX-TWO ( -- ) UNIT-NBR:EX-ONE UNIT-NBR:EX-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-EX-PAIR ( -- ) UNIT-NBR:EX-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
+   s" FRESH-GN-TWO ( -- ) UNIT-NBR:GN-ONE UNIT-NBR:GN-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-GN-PAIR ( -- ) UNIT-NBR:GN-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
+   s" FRESH-MS-TWO ( -- ) UNIT-NBR:MS-ONE UNIT-NBR:MS-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-MS-PAIR ( -- ) UNIT-NBR:MS-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T= ;
+
 : CHECK-CLIENT ( -- )
-   CLIENT 4104 T=
+   \ Reset retired the test helper's source effects too. Compile the client
+   \ against the imported facts and check its value inside that fresh body.
+   S\" : UNIT-CLIENT ( -- ) 4096 8 UNIT-NBR:BL-WORD 4104 <> if s\" checker unit client value\" 1 die then ; UNIT-CLIENT" evaluate-closed
+   CHECK-FRESH
    s" UNIT-GOOD ( n n -- n ) UNIT-NBR:UNIT-SHADOW" CHECK-CANDIDATE! -1 T=
    s" UNIT-SHADOW-OLD ( n -- n ) UNIT-NBR:UNIT-SHADOW" CHECK-CANDIDATE! 0 T=
    s" UNIT-BAD ( ptr u8 -- bool ) UNIT-NBR:BL?" CHECK-CANDIDATE! 0 T=
@@ -102,7 +168,7 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
 
 \ The wire header has ten cells. Family and constructor payloads precede symbols.
 \ Each symbol has a visibility cell and two
-\ length-prefixed, cell-aligned strings; an effect begins with six cells.
+\ length-prefixed, cell-aligned strings; an effect begins with seven cells.
 : STRING-END ( n -- n ) dup ART + CELL-VIEW @ 7 + -8 and + CELL + ;
 : ROWS-START ( -- n )
    10 cells ART 7 cells + CELL-VIEW @ +
@@ -127,13 +193,13 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
       ART-I @ STRING-END ART-I !
       ART-I @ STRING-END ART-I !
    loop
-   ART-I @ 6 cells + ;
+   ART-I @ 7 cells + ;
 
 : FIRST-CONTROL-OFF ( -- n )
-   FIRST-GRAPH-OFF 6 cells - ART-I !
+   FIRST-GRAPH-OFF 7 cells - ART-I !
    ART 4 cells + CELL-VIEW @ 0 ?do
-      ART-I @ 5 cells + ART + CELL-VIEW @ 7 + -8 and
-      6 cells + ART-I +!
+      ART-I @ 6 cells + ART + CELL-VIEW @ 7 + -8 and
+      7 cells + ART-I +!
    loop
    ART-I @ ;
 
@@ -184,7 +250,7 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
    SERIAL BASE-SERIAL @ T=
    ART BAD ART-U @ BYTE-COPY
    ART 3 cells + CELL-VIEW @
-      BAD FIRST-GRAPH-OFF 6 cells - + CELL-VIEW !
+      BAD FIRST-GRAPH-OFF 7 cells - + CELL-VIEW !
    [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T= ;
 
@@ -228,7 +294,7 @@ CAST: PREPARE-END-XT ( n -- [ -- ] )
 : PATCH-LINEAR ( -- )
    s" CODEC-LIN:tok" {: name:ptr len:n :}
    0 LINEAR-HITS !
-   ART-U @ len - 1+ FIRST-GRAPH-OFF 6 cells - ?do
+   ART-U @ len - 1+ FIRST-GRAPH-OFF 7 cells - ?do
       BAD i + len name len STR= IF
          [char] x BAD i + len 1- + c!
          1 LINEAR-HITS +!
@@ -269,7 +335,15 @@ public
    s" ordered package checker facts import into source-fresh checker" T-LABEL
    MARK SERIAL MARK-SERIAL !
    LOAD-UNIT SHADOW
+   s" retired record keeps its own effect across a redefinition" T-LABEL
+   RECORD-HISTORY
+   s" a does> word binds its reissued record occurrence" T-LABEL
+   CREATED-CONTRACT
+   s" a fixed value is retained by actual record" T-LABEL
+   FIXED-HISTORY
    s" UNIT-EXTRA ( -- n ) UNIT-NBR:BL-ALPHA" CHECK-CANDIDATE! -1 T=
+   s" fresh identity templates certify cold calls" T-LABEL
+   CHECK-FRESH
    SAVE
    OWNER-RESET:SOURCE
    MARK

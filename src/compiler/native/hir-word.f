@@ -67,7 +67,7 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 3 constant OFF-IN                    \ rename: the number of values consumed, a cast's cells; rstack: the number of cells moved; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back, none for a cast; callable: the values the callee leaves; otherwise zero
 5 constant OFF-GLUE                  \ callable result glue; rename host semantic class
-6 constant OFF-DEAD                  \ callable: whether control comes back from the callee; otherwise zero
+6 constant OFF-DEAD                  \ callable: return control; fixed: DATA owner ordinal
 7 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant ROW-CAP-MAX
@@ -231,6 +231,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       cell-index OF 0 ENDOF
       modulo     OF 1 ENDOF
       maximum    OF 2 ENDOF
+      minimum    OF 3 ENDOF
    ;MATCH ;
 
 : N>EXPAND ( n -- HIR:expand )
@@ -238,6 +239,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       0 of HIR-EXPAND:CELL-INDEX endof
       1 of HIR-EXPAND:MODULO endof
       2 of HIR-EXPAND:MAXIMUM endof
+      3 of HIR-EXPAND:MINIMUM endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -549,11 +551,11 @@ private
 \ in the cell an op row keeps its opcode in: a `constant`'s number is a number,
 \ a `create`d word's is a DATA address a snapshot moves with that region.
 \ The row a word that pushes one fixed value writes. A `create`d data word is
-: FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n -- )
-   {: v:n kind:n :}
+: FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n -- )
+   {: v:n kind:n owner:n :}
    HIR-MEANING:FIXED MEAN-CODE
    kind
-   v UNUSED UNUSED UNUSED
+   v UNUSED UNUSED owner
    ROW-ADD ;
 
 \ The spelling of a word the body names, read back out of the module's interner
@@ -723,7 +725,8 @@ public
       id:IR-ID:ir-symbol-id :}
    c b id FIX-SPELL {: a:ptr u:n :}
    c r  c b id BKEY-CK
-   a u NDICT:FIXED-VALUE  a u NDICT:SPELL-FIXED LIT-KIND  FIXED-ROW ;
+   a u NDICT:FIXED-VALUE  a u NDICT:SPELL-FIXED LIT-KIND
+      a u NDICT:FIXED-OWNER FIXED-ROW ;
 
 \ Direct tapes have no source checker window. Resolve their dictionary words
 \ through the ordinary model path; the recorded-source entry below never calls
@@ -735,7 +738,8 @@ public
    a u NDICT:SPELL-FIXED {: k:n :}
    k NDICT:FIXED-NONE = if false exit then
    c r  c b id BKEY-CK
-   a u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
+   a u NDICT:FIXED-VALUE  k LIT-KIND
+      a u NDICT:FIXED-OWNER FIXED-ROW
    true ;
 
 \ Declare that a source word is another word this definition CALLS: where its
@@ -783,7 +787,7 @@ private
 0 constant MODE-NONE
 1 constant MODE-OPEN
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 0 CWORK-VARIABLE STG-MODE n
 0 CWORK-VARIABLE STG-IN n
 0 CWORK-VARIABLE STG-N n
@@ -974,7 +978,10 @@ public
    flags DKIND:MASK and {: kind:n :}
    kind DKIND:VAL = kind DKIND:ADDR = or if
       kind DKIND:VAL = if NDICT:FIXED-VAL else NDICT:FIXED-ADDR then {: fixed:n :}
-      c r c b id BKEY-CK entry fixed NDICT:BOUND-VALUE fixed LIT-KIND FIXED-ROW
+      c r c b id BKEY-CK entry fixed NDICT:BOUND-VALUE fixed LIT-KIND
+         kind DKIND:ADDR = if
+            row CHECKER-OWNER-ABI:BOUND-RECORD BOUND@
+         else -1 then FIXED-ROW
       true exit
    then
    row CHECKER-OWNER-ABI:BOUND-EFFECT BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
@@ -1146,6 +1153,11 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-A RC@ ;
 
+: FIXED-OWNER@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-DEAD RC@ ;
+
 \ Where a callable word's code starts, and its declared effect. Each is asked of
 \ Through ROW-AS, for the same reason.
 : ENTRY@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
@@ -1311,7 +1323,7 @@ public
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
 \ them rather than to a guess. Only the fourteen renames contribute pick cells.
-98 constant WORDS
+99 constant WORDS
 33 constant PICK-CELLS
 
 private
@@ -1369,17 +1381,18 @@ private
    c b r c b s" c@" MODEL-SYM HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" MODEL-SYM HIR-OPCODE:BSTORE BDECLARE-OP ;
 
-\ The three words that are a SHORT SEQUENCE of this dialect's operations rather
+\ The four words that are a SHORT SEQUENCE of this dialect's operations rather
 \ than one of them. Each was an engine primitive the elaborator called, and each
-\ body is arithmetic the dialect already has: `ptr-field` scales a cell index and
-\ adds it to the base, `mod` is the remainder the engine's own division leaves,
-\ and `max` is the larger of two signed cells. What each sequence IS lives in
+\ body is arithmetic the dialect already has: `ptr-field` scales a cell index
+\ and adds it to the base; `mod` computes the remainder; `max` and `min` select
+\ the larger and smaller signed cell. Their sequences live in
 \ src/compiler/native/elaborate.f; a row says only which one.
 : DEF-EXPAND ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" ptr-field" MODEL-SYM HIR-EXPAND:CELL-INDEX BDECLARE-EXPAND
    c b r c b s" mod" MODEL-SYM HIR-EXPAND:MODULO BDECLARE-EXPAND
-   c b r c b s" max" MODEL-SYM HIR-EXPAND:MAXIMUM BDECLARE-EXPAND ;
+   c b r c b s" max" MODEL-SYM HIR-EXPAND:MAXIMUM BDECLARE-EXPAND
+   c b r c b s" min" MODEL-SYM HIR-EXPAND:MINIMUM BDECLARE-EXPAND ;
 
 \ `s>f` rounds to nearest with ties to even; `f>s` truncates toward zero,
 \ saturates at the ends and answers zero for a NaN - two roundings, two rows.

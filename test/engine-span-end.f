@@ -2,21 +2,19 @@
 \
 \ Run: bin/hb --load test/engine-span-end.f
 \
-\ CHECK! and CHECK-DOES! (src/core/checker.f) and the shaker's SHK-TOPLEVEL
-\ (src/habu/treeshake.f) scan a caller's text. Their guards tested the bound and
-\ the byte with `and`, which evaluates both, so each scan read the byte past the
-\ text. Every case copies its text to end on the last byte before an
+\ CHECK! and CHECK-DOES! (src/core/checker.f) scan a caller's text. Their
+\ guards tested the bound and the byte with `and`, which evaluates both, so
+\ each scan read the byte past the text. Every case copies its text to end on
+\ the last byte before an
 \ inaccessible page (src/lib/test/guard-page.f): a read past the end faults, rc 134,
 \ where a bounded scan answers what the same text answers anywhere else.
 \   - a body whose last token ends at the edge: CHECK-SCAN's token loop;
 \   - a signature left open to the edge: CHECK-SCAN's comment loop, then
 \     NEXT-SIG-TOK;
-\   - a DOES> clause signature ending at the edge: NEXT-SIG-TOK alone;
-\   - a program whose one-byte last token ends at the edge: the shaker's OPN2?.
+\   - a DOES> clause signature ending at the edge: NEXT-SIG-TOK alone.
 
 require src/lib/test.f
 require src/lib/test/guard-page.f
-require src/habu/treeshake.f
 
 package ENGINE-SPAN-END-TEST
 private
@@ -40,18 +38,9 @@ TRUSTED: CLAUSE-AT-EDGE ( -- )
    s" a DOES> clause signature that ends at the edge certifies" T-LABEL
    s" drop" s" n -- n" EDGE CHECK-DOES! -1 T= ;
 
-: SHAKE-AT-EDGE ( -- )
-   s" dup ." EDGE {: a:ptr u:n :}
-   a SHK-A !  u SHK-U !  1 SHAKE? !
-   SHK-TOPLEVEL
-   0 SHAKE? !
-   s" a program whose one-byte last token ends at the edge keeps that token" T-LABEL
-   s" ." IN-REACH? TTRUE
-   s" dup" IN-REACH? TTRUE ;
-
 : RUN ( -- )
    T-RESET
-   BODY-AT-EDGE  SIG-AT-EDGE  CLAUSE-AT-EDGE  SHAKE-AT-EDGE
+   BODY-AT-EDGE  SIG-AT-EDGE  CLAUSE-AT-EDGE
    T-REPORT ;
 
 RUN

@@ -1,7 +1,7 @@
 \ A stripped image with the callback package loaded but no declarations must
 \ leave TASK's row allocation absent rather than claiming a zero-byte extent.
 require test/gate-common.f
-require test/aot-maker-engine.f
+require test/aot-builder-engine.f
 
 package FFI-CB-ZERO-IMAGE-TEST
 
@@ -15,13 +15,13 @@ variable IMAGE-U
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 : BUILD ( -- )
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+   AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    GE-HB-RESET
    maker makeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    maker makeru
-   AOT-MAKER-ENGINE:STDIN$
+   AOT-BUILDER-ENGINE:STDIN$
    TIMEOUT-MS GE-RUN-STDIN
    s" zero callback image build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" zero callback image missing" GE-FAIL then ;

@@ -201,7 +201,6 @@ variable IN-DEFINITION
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
    s" src/core/source-producer.f" LINT-FILE
-   s" src/core/type-family-sha.f" LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
    s" src/os/macos/sys.f"   LINT-FILE
@@ -212,7 +211,6 @@ variable IN-DEFINITION
    s" src/habu/bundle-argv.f" LINT-FILE
    s" src/habu/layout.f"    LINT-FILE
    s" src/os/linux/repl-term.f" LINT-FILE
-   s" src/habu/treeshake.f" LINT-FILE
    s" src/habu/rt.f"        LINT-FILE   s" src/habu/crash.f"     LINT-FILE
    s" src/os/image-bytes.f" LINT-FILE
    s" src/os/macos/macho.f" LINT-FILE   s" src/os/macos/sign2.f" LINT-FILE

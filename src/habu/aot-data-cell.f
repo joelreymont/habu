@@ -175,32 +175,37 @@ names: OPTIONAL-XT
       then
    loop ;
 
-: PREPARE ( n -- )
-   SPAN-FLOOR !
+: PREPARE-WITH-OWNERS ( n [ [ ptr u8 n -- ] -- ] n n n n n -- )
+   {: floor:n checker literal:n ffi:n decl:n task:n callback:n :}
+   floor SPAN-FLOOR !
    0 SPAN-N ! 0 SPAN-CURSOR ! -1 SPAN-LAST !
    ADD-SCALARS
    ADD-ALLOC-STARTS
-   [: CELLS+ ;] s" CHECKER-STORAGE-CELLS"
-      TARGET-XT CELL-PRODUCER-XT execute
-   [: CELLS+ ;] s" NSTR:CELL-SPANS"
-      TARGET-XT CELL-PRODUCER-XT execute
-   [: CELLS+ ;] [: BYTES+ ;] s" FFI:SCAN-SPANS"
-      TARGET-XT MIXED-PRODUCER-XT execute
-   [: CELLS+ ;] [: BYTES+ ;] s" FFI-DECL:SCAN-SPANS"
-      TARGET-XT MIXED-PRODUCER-XT execute
+   [: CELLS+ ;] checker execute
+   [: CELLS+ ;] literal CELL-PRODUCER-XT execute
+   [: CELLS+ ;] [: BYTES+ ;] ffi MIXED-PRODUCER-XT execute
+   [: CELLS+ ;] [: BYTES+ ;] decl MIXED-PRODUCER-XT execute
    \ TASK owns callback controls below the FILE range and the live row table.
    \ Its declaration visitor supplies their exact cell extents even when the
    \ baked engine no longer retains the private variable records.
-   s" TASK:OWNED-CALLBACK-ROWS" OPTIONAL-XT {: task:n :}
    task 0<> if
       [: CELLS+ ;] task CELL-PRODUCER-XT execute
    then
-   s" FFI-CB:SCAN-SPANS" OPTIONAL-XT {: callback:n :}
    callback 0<> if
       [: CELLS+ ;] [: BYTES+ ;]
       callback MIXED-PRODUCER-XT execute
    then
    0 SPAN-ORDER SPAN-N @ [: SPAN-LESS? ;] SORT:SORT! ;
+
+: PREPARE ( n -- )
+   dup SPAN-FLOOR !
+   s" CHECKER-STORAGE-CELLS" TARGET-XT CELL-PRODUCER-XT
+   s" NSTR:CELL-SPANS" TARGET-XT
+   s" FFI:SCAN-SPANS" TARGET-XT
+   s" FFI-DECL:SCAN-SPANS" TARGET-XT
+   s" TASK:OWNED-CALLBACK-ROWS" OPTIONAL-XT
+   s" FFI-CB:SCAN-SPANS" OPTIONAL-XT
+   PREPARE-WITH-OWNERS ;
 
 : RESET ( -- )
    0 SPAN-N !  0 SPAN-CURSOR !  0 SPAN-LAST !  0 SPAN-FLOOR ! ;
@@ -344,6 +349,7 @@ EXPORT DICT-PTR?
 EXPORT CODE-PTR?
 EXPORT TEXT-PTR?
 EXPORT PREPARE
+EXPORT PREPARE-WITH-OWNERS
 EXPORT RESET
 EXPORT NONCELL-WINDOW?
 EXPORT LITERAL-OVERLAP?

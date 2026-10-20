@@ -3,7 +3,7 @@ title: Render a bad stored signature under --json-errors
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T13:23:51.461268+02:00\""
+created-at: "2026-10-03T13:23:51.461268+02:00"
 closed-at: "2026-10-14T19:43:43.805811+03:00"
 close-reason: Stored-signature refusal rendered and thrown through BADSIG-XT in 48848409; current checker.f route and JSON regression recorded. Follow-up prose-mode issue is separate 5dce644f.
 ---

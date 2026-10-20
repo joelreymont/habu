@@ -6,7 +6,8 @@
 \ case runs a fresh child of a copy of the engine under test
 \ (src/lib/engine-candidate.f), placed in the layout the case needs, with an
 \ environment of HB_TMP alone when this run has one, so the scratch a child
-\ makes lies under it, and checks what the child prints:
+\ makes lies under it; the native build also has its own cache. Each case
+\ checks what the child prints:
 \ - the root is the working directory when it is a Habu tree (it holds the
 \   engine's first boot row), else the tree two levels above the executable
 \   when that is one, else the working directory; the executable is found by
@@ -681,8 +682,8 @@ variable RC
 
 \ ---- a build ---------------------------------------------------------------------
 
-\ The working directory holds only the tree's tools, so the host compiles from
-\ its own tree and the build records its rows under the working directory.
+\ The working directory holds only the tree's tools. Driver support comes from
+\ the host tree, but the first target source must still come from CWD.
 : BUILD-OUTSIDE ( -- )
    s" a native build outside a tree dies at its first row" T-LABEL
    PROC-ARGV-RESET
@@ -690,8 +691,13 @@ variable RC
    s" tools/native-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" hb-foreign" A$ >LEN PROC-ARGV+
-   s" tree/bin/hb" HB-AT$ s" cwd" A$ BUILD-TIMEOUT-MS RUN-ARGS
-   s" cwd" A$ s" /src/core/" CANNOT-OPEN
+   \ This case exercises source selection after the cache prerequisite.
+   CHILD-ENV
+   s" HABU_BUILD_CACHE" >LEN s" build-cache" A$ >LEN PROC-ENV+
+   s" tree/bin/hb" HB-AT$ >LEN s" cwd" A$ >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
+   s" cwd" A$ s" /src/habu/window-rewind.f" CANNOT-OPEN
    s" the failed build writes no engine" T-LABEL
    s" hb-foreign" A$ EXISTS? TFALSE ;
 

@@ -1,6 +1,6 @@
 ---
 title: Capture recovery artifacts once
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.816463+03:00"

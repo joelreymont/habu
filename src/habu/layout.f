@@ -534,13 +534,19 @@ $3668 constant RRECP-CELL
 \ records. A failed line cuts the records back to it as it rolls CP, NDICT and
 \ DP back (EM-REPL-RECOVER), so no definition the line drops keeps a record or
 \ a pending window. It sits in the $2800..$3000 free header band past
-\ NATIVE-HOST-CELLS:FACTS ($2D30), swept for a claimant across src lib tools
+\ NATIVE-HOST-CELLS:DIVISION-PRIM ($2D40), swept for a claimant across src lib tools
 \ test bootstrap maki docs, below $7FF8 for the `DATA <off> LDR` form.
 $2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
 $3688 constant PEND-CELL
+\ A definition whose capture ran a parsing immediate has construction inputs
+\ outside BODYBUF. The native cache reads this only through the running engine's
+\ native-pending-opaque? primitive; an older host has no such word. The cell is
+\ transient and clears with PEND-CELL on close or abandonment. $2D48 follows
+\ NATIVE-HOST-CELLS:DIVISION-PRIM; the slot had no claimant across src/lib/tools/test.
+$2D48 constant PEND-OPAQUE-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
@@ -620,6 +626,10 @@ public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
 $2810 constant INB-CELL
+\ The loader alone publishes the execution bytes owned by the active file.
+\ An inner evaluate changes INB, but never changes this file span.
+$2D68 constant OWNED-CELL
+$2D70 constant OWNEDLEN-CELL
 \ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next.
 \ The native FILE cache reads it at a loader cut.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR
@@ -1177,6 +1187,8 @@ $358 constant XT-CELL
 \ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
+\ The optional body-reader callback at $3840 follows the four-cell native body
+\ record at $3820..$383F. Older kernels expose only the four-cell getter.
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
@@ -1343,6 +1355,8 @@ CHECKER-OWNER-ABI:VERIFY-SYM-SOURCE-OFF constant DECL-VERIFY-SYM-SOURCE-OFF
 CHECKER-OWNER-ABI:VERIFY-DEFERRED-BODY-OFF constant DECL-VERIFY-DEFERRED-BODY-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-OFF constant DECL-VERIFY-DECL-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-ARM-OFF constant DECL-VERIFY-DECL-ARM-OFF
+CHECKER-OWNER-ABI:VERIFY-CTOR-DECL-OFF constant DECL-VERIFY-CTOR-DECL-OFF
+CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF constant DECL-EXPORT-ACCEPT-OFF
 CHECKER-OWNER-ABI:VERIFY-DECL-DISARM-OFF constant DECL-VERIFY-DECL-DISARM-OFF
 CHECKER-OWNER-ABI:VERIFY-USES-OFF constant DECL-VERIFY-USES-OFF
 \ Completion: the names a top-level cursor sees.
@@ -1432,8 +1446,7 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER
 \ / the pushing string keywords / C-TICK / C-CHAR) emit one pre-continue
 \ event per token through LTOPHOOK; the hook's effect is
-\ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
-\ (word/tick classes; 0 for literal classes).
+\ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags.
 $27F0 constant TOP-HOOK-CELL
 \ The ENGINE-HOOK band is the two hook cells above.
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
@@ -1608,10 +1621,6 @@ package DEF-OCC
 public
 $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
--7231 constant E-STALE
--7232 constant E-SELECT
--7233 constant E-NONCALLABLE
--7234 constant E-EXHAUSTED
 ;package
 \ The design seal (src/lib/policy.f, docs/policy.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
@@ -1775,7 +1784,7 @@ DV-OFF 8 + constant SCI-LIMBS-OFF
 SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 ;package
 
-\ FS-ABI is src/lib/fs.f's per-call slots: the five cells one transfer threads, the
+\ FS-ABI is src/lib/fs.f's per-call slots: one cause cell and the five cells one transfer threads, the
 \ stat buffer, the one-byte read probe and the NUL-padded path copy. src/lib/fs.f
 \ is NOT baked into the engine, so the rule above would send it to TASK:+USER
 \ rows - except tools/native-build-core.f requires it to BUILD the engine, and
@@ -1804,10 +1813,10 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ Sized the way FMT-ABI above is: every member at its measured width, the five
 \ cells at the band base so they are cell-aligned whatever the buffers do, the
 \ buffers after them, and BYTES the member sum rounded up to the cell the base
-\ needs - 1322 bytes of members in a 1328-byte extent.
+\ needs - 1330 bytes of members in a 1336-byte extent.
 package FS-ABI
 public
-5 constant IO-CELLS                    \ FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
+6 constant IO-CELLS                    \ ERRNO, FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
 256 constant STAT-BYTES                \ src/lib/fs.f FS-STAT-CAP
 1 constant PROBE-BYTES                 \ src/lib/fs.f FS-READ-PROBE-CAP
 PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS-PATHZ-CAP
@@ -1815,7 +1824,8 @@ IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
 END BYTES - constant START
-START constant FD-OFF
+START constant ERRNO-OFF
+ERRNO-OFF 8 + constant FD-OFF
 FD-OFF 8 + constant LEN-OFF
 LEN-OFF 8 + constant RD-OFF
 RD-OFF 8 + constant OFF-OFF
@@ -2141,10 +2151,7 @@ XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 \ (snap-lib.f SND-CANON-XT-CELLS) and the loader's relocate (habu2.f EMIT-XT) --
 \ add the offset to a DATA base and read or write the eight bytes there, so the
 \ whole cell has to be inside the region. Comparing UNSIGNED against this bound
-\ rejects a negative offset in the same instruction, because a negative offset is
-\ an enormous unsigned one -- and negative is the shape the real defect produced:
-\ a participant table grown into anonymous mmap sat about 4.6e12 bytes BELOW
-\ data-base (dot habu-seal-the-declaration-7183177e).
+\ rejects negative offsets in the same instruction.
 \
 \ Containment is the whole rule; the cell is deliberately NOT required to be on a
 \ cell boundary. `create` rounds its own field up to a cell (habu2.f LCREATE),

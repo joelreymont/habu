@@ -18,6 +18,7 @@ STRUCTURE fact
 private
 
 DYNAMIC-BUFFER FACTS fact
+DYNAMIC-BUFFER ORIGINS n
 variable COUNT
 
 : BAD ( -- )
@@ -77,7 +78,10 @@ variable COUNT
    data bytes width NFETCH-CHECK:SHAPE
    data 0 CDIGEST:SLOT@ 0= if exit then
    COUNT @ 1+ FACTS-RESERVE
-   offset data bytes NSTR:INTERN bytes width NFETCH-FACT:MAKE COUNT @ FACTS !
+   COUNT @ 1+ ORIGINS-RESERVE
+   data bytes NSTR:INTERN-SOURCE {: address:n origin:n :}
+   offset address bytes width NFETCH-FACT:MAKE COUNT @ FACTS !
+   origin COUNT @ ORIGINS !
    1 COUNT +! ;
 
 : COPY-ROW ( ptr u8 n n n n -- )
@@ -95,7 +99,7 @@ public
 : RELEASE ( -- )
    0 COUNT !
    CHECKER-OWNER:RELEASE-CERTIFICATE
-   FACTS-RELEASE ;
+   FACTS-RELEASE ORIGINS-RELEASE ;
 
 \ Each split body contributes its own complete snapshot under its source base.
 \ Only NSTR-owned immutable bytes survive this call; no live certificate or
@@ -110,14 +114,14 @@ public
       data count start i LOWER-CERT:FETCH-CELLS * + size base COPY-ROW
    loop ;
 
-: AT ( n -- n n n ) {: offset:n :}
+: AT ( n -- n n n n ) {: offset:n :}
    COUNT @ 0 ?do
       i FACTS @ NFETCH-FACT:UNMAKE {: at:n address:n bytes:n width:n :}
-      at offset = if address bytes width unloop exit then
+      at offset = if address bytes width i ORIGINS @ unloop exit then
    loop
-   0 0 0 ;
+   0 0 0 -1 ;
 
 : CHECKED? ( n -- bool )
-   AT 0 > nip nip ;
+   AT drop 0 > nip nip ;
 
 ;package

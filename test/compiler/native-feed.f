@@ -106,16 +106,6 @@ create UTXT UNITS TEXT-CAP * allot
    {: slot:n :}
    slot SRC@ slot SRC-ID IR-SOURCE:FLEN@ ;
 
-: SRC-DIGEST ( n -- CDIGEST:digest )
-   {: slot:n :}
-   slot SRC@ slot SRC-ID IR-SOURCE:FDIGEST@ ;
-
-: SAME-TAPE? ( -- bool )
-   0 TAPE@ NTAPE:DIGEST  1 TAPE@ NTAPE:DIGEST  CDIGEST-DIGEST:EQ ;
-
-: SAME-TEXT? ( -- bool )
-   0 SRC-DIGEST  1 SRC-DIGEST  CDIGEST-DIGEST:EQ ;
-
 : REC ( IR-CTX:ctx ptr u8 n n -- )
    {: c:IR-CTX:ctx a:ptr u:n slot:n :}
    c NEW-BLD {: b:IR-BUILD:builder :}
@@ -215,25 +205,6 @@ using NTAPE-KIND
    0 1 LOCAL-SPELL 0 3 LOCAL-SPELL T=
    0 1 SPAN-START 0 3 SPAN-START T<> ;
 
-: NAME-DIGEST ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
-   c s" NF-NMA ( -- n ) 1" 0 REC c s" NF-NMB ( -- n ) 1" 1 REC
-   SAME-TAPE? TTRUE SAME-TEXT? TFALSE ;
-
-: COMMENT-DIGEST ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
-   c s" NF-CMA ( -- n ) ( aa ) 1" 0 REC
-   c s" NF-CMB ( -- n ) ( ab ) 1" 1 REC
-   0 TOKENS 2 T= 1 TOKENS 2 T=
-   0 s" aa" ANY-SPELL? TFALSE 1 s" ab" ANY-SPELL? TFALSE
-   SAME-TAPE? TTRUE SAME-TEXT? TFALSE ;
-
-: LITERAL-DIGEST ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
-   c s" NF-LIA ( -- n ) 1" 0 REC c s" NF-LIB ( -- n ) 2" 1 REC
-   SAME-TAPE? TFALSE ;
-
-: SHAPE-DIGEST ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
-   c s" NF-SHA ( -- n ) 1" 0 REC c s" NF-SHB ( -- n ) 1 1 +" 1 REC
-   0 TOKENS 2 T= 1 TOKENS 4 T= SAME-TAPE? TFALSE ;
-
 : KEPT$ ( -- ptr u8 n ) s" NF-KEPT ( n -- n ) dup * 3 +" ;
 create INPUT TEXT-CAP allot
 : KEPT ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
@@ -241,8 +212,7 @@ create INPUT TEXT-CAP allot
    c INPUT KEPT$ nip 0 REC
    TEXT-CAP 0 ?do 0 INPUT i + c! loop
    c s" NF-AFTER ( -- n ) 9" 1 REC
-   0 TEXT-BUF 0 SRC-LEN KEPT$ T$=
-   0 TEXT-BUF 0 SRC-LEN CDIGEST:COMPUTE 0 SRC-DIGEST CDIGEST-DIGEST:EQ TTRUE ;
+   0 TEXT-BUF 0 SRC-LEN KEPT$ T$= ;
 
 \ The reader also reports names consumed by the `is` judgment itself.
 : CONSUMED-NAMES ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
@@ -459,10 +429,6 @@ public
    BND [: ESCAPED-FORMS ;] IR-CTX:WITH-CONTEXT
    BND [: ESCAPES ;] IR-CTX:WITH-CONTEXT
    BND [: REPEATED ;] IR-CTX:WITH-CONTEXT
-   BND [: NAME-DIGEST ;] IR-CTX:WITH-CONTEXT
-   BND [: COMMENT-DIGEST ;] IR-CTX:WITH-CONTEXT
-   BND [: LITERAL-DIGEST ;] IR-CTX:WITH-CONTEXT
-   BND [: SHAPE-DIGEST ;] IR-CTX:WITH-CONTEXT
    BND [: KEPT ;] IR-CTX:WITH-CONTEXT
    BND [: CONSUMED-NAMES ;] IR-CTX:WITH-CONTEXT
    BND [: STATES ;] IR-CTX:WITH-CONTEXT

@@ -34,7 +34,18 @@ $100000000 constant VMBASE
 CODE-CAP-BYTES CODE-OFF + constant MPAGE
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
+16        constant MACHO-GOT-BYTES
+MACHO-GOT-BYTES IMG-PAYLOAD-PREFIX !
 104       constant MACHO-FIXUPS-SIZE
+\ One chained start belongs to each __DATA_CONST page. The first starts the two
+\ GOT binds; remaining pages contain only the immutable stripped DATA payload.
+\ The payload can fill the assembler window, with the GOT prefix taking another
+\ page at that boundary.
+CODE-CAP-BYTES MACHO-GOT-BYTES + MACHO-PAGE 1- + MACHO-PAGE / 1- 2 * 3 + -4 and
+   MACHO-FIXUPS-SIZE + constant MACHO-FIXUPS-MAX
+\ Code and payload share the assembler window. Their two separately rounded
+\ segments can therefore exceed MPAGE + one DATA_CONST page by one more page.
+MPAGE DATA-CONST-SIZE + MACHO-PAGE + constant MACHO-IMAGE-MAX
 \ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF, COMPUTED
 \ from the window rather than chosen, because it is a function of the window and
 \ a number chosen against one window size is wrong at the next. sign2.f hashes
@@ -54,12 +65,26 @@ $4000     constant DATA-CONST-SIZE
 \ enforced: if sign2.f's CS-PAGE, CS-HASH or CD-HDR ever moved without this line,
 \ the failure is the loud 73 die below or the 75 image-cursor bounds throw, never
 \ a bad image. A dot for the cross-check is owed.
-MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE +
+MACHO-IMAGE-MAX MACHO-FIXUPS-MAX +
    $FFF + $1000 / $20 *   $14 + $58 + $40 +   constant MACHO-SIG-MAX
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
 variable CODELEN
+variable MACHO-DATA-WROTE
+variable MACHO-FIXUPS-WROTE
+
+: DATA-CONST-BYTES ( -- n )
+   MACHO-GOT-BYTES IMG-PAYLOAD-N @ + MACHO-PAGE 1- + MACHO-PAGE 1- invert and
+   DATA-CONST-SIZE max ;
+
+: DATA-CONST-PAGES ( -- n ) DATA-CONST-BYTES MACHO-PAGE / ;
+
+: MACHO-FIXUPS-BYTES ( -- n )
+   DATA-CONST-PAGES 1- 2 * 3 + -4 and MACHO-FIXUPS-SIZE + ;
+
+: MACHO-STARTS-BYTES ( -- n )
+   24 DATA-CONST-PAGES 1- 2 * + 3 + -4 and ;
 
 \ Fail closed at load time: the image buffer must fit the largest emittable
 \ image (__text at MPAGE + __DATA_CONST + chained fixups + signature) so the
@@ -68,12 +93,12 @@ variable CODELEN
 \ src/os/image-bytes.f, which cannot see this target's tail, so this is the
 \ check that binds the two.
 : MACHO-MSIZE-CHECK ( -- )
-   MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + MACHO-SIG-MAX + MSIZE >
+   MACHO-IMAGE-MAX MACHO-FIXUPS-MAX + MACHO-SIG-MAX + MSIZE >
    IF s" macho: MSIZE below max image" 73 die THEN ;
 MACHO-MSIZE-CHECK
 
 : ASM-CODELEN! ( -- )
-   ASM-LEN CODELEN ! ;  \ code already assembled in icode's CODE
+   IMG-PAYLOAD-N @ 0 > if IMG-CODE-N @ else ASM-LEN then CODELEN ! ;
 
 : ASM-CODE ( -- asm )
    ASM-CODELEN!
@@ -92,7 +117,7 @@ variable NCMDS
    NCMDS @ 1 + NCMDS ! ;
 
 : LINKOFF ( n -- n )
-   DATA-CONST-SIZE + ;
+   DATA-CONST-BYTES + ;
 
 : VA+ ( n -- n )
    VMBASE + ;
@@ -139,16 +164,16 @@ variable NCMDS
    LC-DYLD-CHAINED-FIXUPS IMG-M32
    16 IMG-M32
    linkoff IMG-M32
-   MACHO-FIXUPS-SIZE IMG-M32 ;
+   MACHO-FIXUPS-BYTES IMG-M32 ;
 
 : DATA-CONST-SEG, ( n -- ) {: textsz:n :}
-   s" __DATA_CONST" textsz VA+ DATA-CONST-SIZE textsz DATA-CONST-SIZE 3 1 80 SG-READ-ONLY SEGX,
-   s" __got" s" __DATA_CONST" textsz VA+ 16 textsz 3 S-NON-LAZY-SYMBOL-POINTERS SECT, ;
+   s" __DATA_CONST" textsz VA+ DATA-CONST-BYTES textsz DATA-CONST-BYTES 3 1 80 SG-READ-ONLY SEGX,
+   s" __got" s" __DATA_CONST" textsz VA+ MACHO-GOT-BYTES textsz 3 S-NON-LAZY-SYMBOL-POINTERS SECT, ;
 
 : LINKEDIT-SEG, ( n -- ) {: textsz:n :}
    textsz LINKOFF {: linkoff:n :}
    M-HERE LE-OFF !
-   s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-SIZE 1 0 0 SEG, ;
+   s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-BYTES 1 0 0 SEG, ;
 
 : MACHO-GOT, ( -- )
    0 IMG-M32  $80100000 IMG-M32
@@ -157,21 +182,23 @@ variable NCMDS
 : MACHO-FIXUPS, ( n -- ) {: segoff:n :}
    0 IMG-M32                 \ fixups_version
    $20 IMG-M32               \ starts_offset
-   $50 IMG-M32               \ imports_offset
-   $58 IMG-M32               \ symbols_offset
+   $38 MACHO-STARTS-BYTES + IMG-M32  \ imports_offset
+   $40 MACHO-STARTS-BYTES + IMG-M32  \ symbols_offset
    2 IMG-M32                 \ imports_count
    1 IMG-M32                 \ DYLD_CHAINED_IMPORT
    0 IMG-M32                 \ uncompressed symbol strings
    4 M-ZEROS
    4 IMG-M32  0 IMG-M32  0 IMG-M32  $18 IMG-M32  0 IMG-M32
    4 M-ZEROS
-   $18 IMG-M32
+   MACHO-STARTS-BYTES IMG-M32
    MACHO-PAGE IMG-M16
    DYLD-CHAINED-PTR-64-OFFSET IMG-M16
    segoff IMG-M64
    0 IMG-M32
-   1 IMG-M16
+   DATA-CONST-PAGES IMG-M16
    0 IMG-M16
+   DATA-CONST-PAGES 1- 0 ?do $FFFF IMG-M16 loop
+   DATA-CONST-PAGES 1 and 0= if 0 IMG-M16 then
    $201 IMG-M32
    $1201 IMG-M32
    0 IMG-M8
@@ -181,10 +208,11 @@ variable NCMDS
 : MACHO-EXTRA, ( n n -- ) {: off:n segoff:n :}
    off M-OFF M-PAD-OFF
    MACHO-GOT,
-   DATA-CONST-SIZE 16 - M-ZEROS
-   off DATA-CONST-SIZE + M-OFF M-PAD-OFF
+   IMG-PAYLOAD-N @ 0 > if IMG-PAYLOAD-A @ IMG-PAYLOAD-N @ M-BYTES then
+   DATA-CONST-BYTES MACHO-GOT-BYTES - IMG-PAYLOAD-N @ - M-ZEROS
+   off DATA-CONST-BYTES + M-OFF M-PAD-OFF
    segoff MACHO-FIXUPS,
-   MACHO-FIXUPS-SIZE LE-BASE-SIZE ! ;
+   MACHO-FIXUPS-BYTES LE-BASE-SIZE ! ;
 
 : MACHO-CMDS, ( n n -- ) {: textsz:n textlen:n :}
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
@@ -217,7 +245,10 @@ variable NCMDS
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    TEXTSZ TEXTSZ MACHO-EXTRA,
-   M-HERE MLEN! ;
+   M-HERE MLEN!
+   DATA-CONST-BYTES MACHO-DATA-WROTE !
+   MACHO-FIXUPS-BYTES MACHO-FIXUPS-WROTE !
+   IMG-PAYLOAD-CLEAR ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE ( asm -- img )
@@ -226,6 +257,7 @@ variable NCMDS
    IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
+   IMG-PAYLOAD-CLEAR
    CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
    M-RESET  0 NCMDS !
    MH-HDR,
@@ -233,6 +265,8 @@ variable NCMDS
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
    CODE-OFF sfts MACHO-EXTRA,
+   DATA-CONST-BYTES MACHO-DATA-WROTE !
+   MACHO-FIXUPS-BYTES MACHO-FIXUPS-WROTE !
    SNAP-PHASE sfts ;
 
 : SNAP-EXTRA-PTR ( -- ptr u8 )

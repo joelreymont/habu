@@ -42,6 +42,17 @@
 \                                    moves: a foreign sample at the limit
 \                                    returns; a report while armed arms
 \                                    ITIMER_REAL again at 1000 us
+\    hb-x64-kernel-prof-rewind   0  a sampled donor executes again after a
+\                                    seed rewind; its copied package and long
+\                                    name survive ordinal reuse, the new row
+\                                    has no donor samples, both PC queries
+\                                    name only the live ordinal, and the
+\                                    sample accounting still balances
+\    hb-x64-kernel-prof-trim     0  ndict! hides a sampled row from the index
+\                                    and prof-row; its reused ordinal gets
+\                                    a new name without the old samples
+\    hb-x64-kernel-prof-retired  0  RETIRED after prof-on, then seed-ndict!,
+\                                    never restores the old span or its row
 \    hb-x64-kernel-prof-limit     0  forks; the child, its fd 1 the pipe, runs
 \                                    3 prof-on and spins, and the parent sees
 \                                    it exit 99 with its fd 1 starting
@@ -129,6 +140,7 @@ $1000 constant TEXT-CAP                 \ a capture's room, and what the image r
 8 constant RFD                          \ scratch (PUSH-SCRATCH,): the pipe's two ends,
 16 constant WFD
 24 constant SAVED                       \ fd 1 as the image found it
+48 constant CAP-LEN                     \ bytes in the latest image-side pipe capture
 $40 constant GOT                        \ and what it read
 1000 constant DEFAULT-RATE              \ prof-on's interval when prof-rate set none, microseconds
 3 constant LIMIT-SAMPLES                \ the limit case's prof-on
@@ -297,12 +309,13 @@ C-IX XREF-REC XREF-START constant C-START
 
 \ ---- the checks after the clock stops ---------------------------------------
 \ rax = sum(counters) + ARN-NEW + ARN-DEFER + ARN-SPILL + PROF-OTHER +
-\ PROF-FOREIGN - PROF-TOT, over the records r14 counts: 0 while the identity
+\ PROF-FOREIGN - PROF-TOT, over every profile ID: 0 while the identity
 \ holds. It clobbers rcx, rdx and r8.
 : SKEW, ( -- )
    LBL LBL {: sum:label done:label :}
    RAX ZERO-REG,
-   RDX COUNTERS IMM,  RCX ENGINE-GPR:X64-NDICT >R64 COPY,
+   R8 ARENA,  RCX R8 ARN-IDS MEM-OFF LOAD,
+   RDX COUNTERS IMM,
    sum LBL,
       RCX TEST,  C-E done JCC,
       RAX RDX MEM-AT ASM-SINK ENC-ADD-RM
@@ -624,6 +637,143 @@ variable ENTRY-AT
    XOR-BYTES,
    0 G-PUSH  0 WANT ;
 
+\ Capture an image's report for the checks below, retaining the first read's
+\ length. PIPED, has restored fd 1 and closed the pipe's write end.
+: REPORT-TEXT, ( [ -- ] -- )
+   PIPED,  0 G-POP  CAP-LEN KEEP, ;
+
+\ Check whether the latest captured report contains these bytes. This names
+\ a failed check with the sought text instead of spending a numbered status.
+: HAS, ( ptr u8 n bool -- )
+   {: a:ptr u:n present:bool :}
+   LBL LBL LBL LBL LBL {: next:label byte:label miss:label found:label done:label :}
+   a u X64HARNESS:PUSH-TEXT,
+   R9 R64>N G-POP  RDI R64>N G-POP
+   GOT AT,  RSI R64>N G-POP
+   CAP-LEN RECALL,  RDX R64>N G-POP  RDX RSI ASM-SINK ENC-ADD-RR
+   RAX ZERO-REG,
+   next LBL,
+      RCX RSI R9 1 0 MEM-IDX ASM-SINK ENC-LEA
+      RCX RDX ASM-SINK ENC-CMP-RR  C-A done JCC,
+      R8 ZERO-REG,
+      byte LBL,
+         R8 R9 ASM-SINK ENC-CMP-RR  C-AE found JCC,
+         RCX RSI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+         R10 RDI R8 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+         RCX R10 ASM-SINK ENC-CMP-RR  C-NE miss JCC,
+         R8 ASM-SINK ENC-INC  byte JMP,
+      miss LBL,  RSI ASM-SINK ENC-INC  next JMP,
+   found LBL,  RAX 1 IMM,
+   done LBL,
+   RCX present if 1 else 0 then IMM,
+   a u X64HARNESS:CHECK-RCX, ;
+
+\ ---- dictionary retirement and ordinal reuse -------------------------------------
+\ A cold record's span behind a jump.
+: COLD-SPAN, ( -- label label )
+   LBL LBL LBL {: start:label end:label past:label :}
+   past JMP,
+   start LBL,  ASM-SINK ENC-RET  end LBL,
+   past LBL,
+   start end ;
+
+\ The donor waits for its own stable counter to move. All three cases put
+\ it at ordinal 1 before prof-on gives that ordinal its initial identity.
+: DONOR-SPAN, ( -- label label )
+   LBL LBL LBL {: start:label end:label past:label :}
+   past JMP,
+   start LBL,
+   R8 COUNTERS CELL + IMM,  0 WAIT-MOVE,
+   ASM-SINK ENC-RET  end LBL,
+   past LBL,
+   start end ;
+
+\ The seed rewind reuses both a package row and its long-name donor's row.
+\ A retained donor still executes and takes samples, but has no live ordinal;
+\ prof-row of ordinal 1 must resolve the target, whose fresh counter is zero.
+: REWIND-CASE ( -- )
+   DONOR-SPAN, {: donor:label donor-end:label :}
+   COLD-SPAN, {: target:label target-end:label :}
+   NDICT-REG ZERO-REG,
+   s" PROF-DONOR-QUALIFIER-LONG" DICT-WL:NAMESPACE 0 X64HARNESS:RECORD,
+   1 0 0 RECORD-CELL!,  2 0 CELL RECORD-CELL!,
+   s" DONOR-WITH-EXTERNAL-NAME" donor donor-end X64HARNESS:CODE-RECORD,
+   1 1 DICT-WL-OFF RECORD-CELL!,
+   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   0 N,  s" prof-on" ROW
+   donor CALL,  0 G-PUSH  1 WANT
+   0 N,  s" seed-ndict!" ROW
+   s" PROF-TARGET-QUALIFIER-LONG" DICT-WL:NAMESPACE 0 X64HARNESS:RECORD,
+   3 0 0 RECORD-CELL!,  4 0 CELL RECORD-CELL!,
+   s" TARGET-NEW" target target-end X64HARNESS:CODE-RECORD,
+   3 1 DICT-WL-OFF RECORD-CELL!,
+   donor CALL,  0 G-PUSH  1 WANT
+   s" prof-off" ROW
+   [: s" prof-json" ROW ;] REPORT-TEXT,
+   s\" {\"word\":\"PROF-DONOR-QUALIFIER-LONG:DONOR-WITH-EXTERNAL-NAME\",\"excl\":" true HAS,
+   s\" {\"word\":\"PROF-TARGET-QUALIFIER-LONG:TARGET-NEW\",\"excl\":" false HAS,
+   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
+   target 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  1 WANT
+   IDENTITY,
+   [: 1 N,  s" prof-row" ROW ;] REPORT-TEXT,
+   s" PROF-TARGET-QUALIFIER-LONG:TARGET-NEW" true HAS,
+   s" DONOR-WITH-EXTERNAL-NAME" false HAS, ;
+
+\ An ordinary count trim is HIDE's boundary. Reuse its ordinal before any
+\ report can observe the lowered count: the target gets its own copied name
+\ and no inherited samples. A second trim hides that target from the index
+\ and prof-row without publishing a replacement.
+: TRIM-CASE ( -- )
+   COLD-SPAN, {: keep:label keep-end:label :}
+   DONOR-SPAN, {: donor:label donor-end:label :}
+   COLD-SPAN, {: target:label target-end:label :}
+   NDICT-REG ZERO-REG,
+   s" prof-keeper" keep keep-end X64HARNESS:CODE-RECORD,
+   s" prof-hidden-donor" donor donor-end X64HARNESS:CODE-RECORD,
+   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   0 N,  s" prof-on" ROW
+   donor CALL,  0 G-PUSH  1 WANT
+   s" prof-off" ROW
+   1 N,  s" ndict!" ROW
+   s" prof-reused-target" target target-end X64HARNESS:CODE-RECORD,
+   [: s" prof-json" ROW ;] REPORT-TEXT,
+   s\" {\"word\":\"prof-hidden-donor\",\"excl\":" false HAS,
+   s\" {\"word\":\"prof-reused-target\",\"excl\":" false HAS,
+   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
+   target 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  1 WANT
+   IDENTITY,
+   [: 1 N,  s" prof-row" ROW ;] REPORT-TEXT,
+   s" prof-reused-target" true HAS,
+   s" prof-hidden-donor" false HAS,
+   1 N,  s" ndict!" ROW
+   [: s" prof-json" ROW ;] REPORT-TEXT,
+   s\" ,\"indexed\":1," true HAS,
+   target 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
+   [: 1 N,  s" prof-row" ROW ;] REPORT-TEXT,
+   s" profiler: no row for that record" true HAS, ;
+
+\ The kernel has no undefine evaluator. Stamp its RETIRED representation,
+\ as XREF:RETIRE does, after prof-on cached the donor's live span. The seed
+\ rewind syncs that retirement before detaching the ordinal; a later report
+\ must not treat the stale cached span as a retained donor.
+: RETIRED-CASE ( -- )
+   COLD-SPAN, {: keep:label keep-end:label :}
+   DONOR-SPAN, {: donor:label donor-end:label :}
+   NDICT-REG ZERO-REG,
+   s" prof-keeper" keep keep-end X64HARNESS:CODE-RECORD,
+   s" prof-retired-donor" donor donor-end X64HARNESS:CODE-RECORD,
+   STDOUT N,  F-DUPFD N,  FD-FLOOR N,  s" fcntl" ROW  SAVED KEEP,
+   0 N,  s" prof-on" ROW
+   donor CALL,  0 G-PUSH  1 WANT
+   s" prof-off" ROW
+   DICT-WL:RETIRED 1 DICT-WL-OFF RECORD-CELL!,
+   1 N,  s" seed-ndict!" ROW
+   [: s" prof-json" ROW ;] REPORT-TEXT,
+   s\" ,\"indexed\":1," true HAS,
+   s\" {\"word\":\"prof-retired-donor\",\"excl\":" false HAS,
+   donor 0 X64HARNESS:PUSH-LABEL,  s" prof-pc>rec" ROW  -1 WANT
+   IDENTITY, ;
+
 \ The foreign spin at the limit: PROF-LIM 1 while rbp is not DATA, until
 \ PROF-FOREIGN moves, so a tick reaches the limit on a foreign sample, which
 \ must return; PROF-LIM 0 again before rbp comes back.
@@ -803,6 +953,9 @@ public
    [: SAMPLES-CASE ;] false s" hb-x64-kernel-prof" TMP-PATH BUILD
    [: SAMPLES-CASE ;] true s" hb-x64-kernel-prof-negative" TMP-PATH BUILD
    [: REPORT-CASE ;] false s" hb-x64-kernel-prof-report" TMP-PATH BUILD
+   [: REWIND-CASE ;] false s" hb-x64-kernel-prof-rewind" TMP-PATH BUILD
+   [: TRIM-CASE ;] false s" hb-x64-kernel-prof-trim" TMP-PATH BUILD
+   [: RETIRED-CASE ;] false s" hb-x64-kernel-prof-retired" TMP-PATH BUILD
    [: LIMIT-CASE ;] false s" hb-x64-kernel-prof-limit" TMP-PATH BUILD
    [: SLOW-CASE ;] false s" hb-x64-kernel-prof-slow" TMP-PATH BUILD
    [: RESETS-CASE ;] false s" hb-x64-kernel-prof-resets" TMP-PATH BUILD

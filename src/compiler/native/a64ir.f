@@ -70,6 +70,8 @@ ENUM opcode DERIVE eq
    fdpop
    aload
    astore
+   pstore
+   pbstore
    abload
    abstore
    flag
@@ -95,6 +97,7 @@ ENUM opcode DERIVE eq
    fmovxd
    fmovdx
    fmovdd
+   fmovdi
    fload
    fstore
    faload
@@ -215,7 +218,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-15 constant MINOR
+18 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -235,6 +238,22 @@ public
    i 0 < i HALVES-N >= or if E-A64IR-SHIFT throw then
    i HALF-N * ;
 
+\ VFPExpandImm for binary64 has a zero low 48-bit fraction and exponent
+\ 0x3fc..0x403. The top exponent bits encode the immediate's bit 6; the
+\ remaining exponent and fraction bits occupy its low six bits.
+1 48 lshift 1- constant FIMM-LOW-MASK
+$3FC constant FIMM-EXP-MIN
+$403 constant FIMM-EXP-MAX
+
+: FIMM8? ( n -- n bool )
+   {: bits:n :}
+   bits FIMM-LOW-MASK and 0<> if 0 false exit then
+   bits 52 rshift $7FF and {: e:n :}
+   e FIMM-EXP-MIN < e FIMM-EXP-MAX > or if 0 false exit then
+   bits 56 rshift $80 and
+   bits 55 rshift $40 and or
+   bits 48 rshift $3F and or true ;
+
 : DATA-OFFSET ( n -- n )
    dup 0 < over DATA-SIZE > or
    over DATA-VA VA>N + $FFFFFFFFFFFF > or if E-A64IR-DATA throw then ;
@@ -250,6 +269,9 @@ private
 \ ---- checked move-wide operands ----------------------------------------------
 : IMM16 ( n -- n )
    dup 0 < over IMM-LIM >= or if E-A64IR-IMM throw then ;
+
+: FIMM8 ( n -- n )
+   dup 0 < over 256 >= or if E-A64IR-IMM throw then ;
 
 : HALF ( n -- n )
    dup 0 < over XBITS >= or if E-A64IR-SHIFT throw then
@@ -399,7 +421,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
 \ native passes that store them in their own tables.
-82 constant OPCODES
+85 constant OPCODES
 
 : ORD ( A64IR:opcode -- n )
    MATCH opcode
@@ -485,6 +507,9 @@ public
       fdpop     OF 79 ENDOF
       dataaddr  OF 80 ENDOF
       sdivnz    OF 81 ENDOF
+      fmovdi    OF 82 ENDOF
+      pstore    OF 83 ENDOF
+      pbstore   OF 84 ENDOF
    ;MATCH ;
 
 : NTH ( n -- A64IR:opcode )
@@ -571,6 +596,9 @@ public
       79 of A64IR-OPCODE:FDPOP     endof
       80 of A64IR-OPCODE:DATAADDR  endof
       81 of A64IR-OPCODE:SDIVNZ    endof
+      82 of A64IR-OPCODE:FMOVDI    endof
+      83 of A64IR-OPCODE:PSTORE    endof
+      84 of A64IR-OPCODE:PBSTORE   endof
       E-A64IR-OPCODE throw
    endcase ;
 
@@ -579,8 +607,8 @@ private
 \ ---- the opcode names --------------------------------------------------------
 \ Three exact immutable spans per stable ordinal: name, rule and renderer.
 \ The typed opcode selects its row through ORD, never through enum TAG.
-246 PTR-U8-TABLE TEXT-A
-246 TYPED-BUFFER TEXT-U n
+255 PTR-U8-TABLE TEXT-A
+255 TYPED-BUFFER TEXT-U n
 
 : TEXT! ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
    u idx TEXT-U !
@@ -622,6 +650,8 @@ s" a64.fdpush" s" a64.rule.fdpush" s" a64.render.fdpush" A64IR-OPCODE:FDPUSH NAM
 s" a64.fdpop" s" a64.rule.fdpop" s" a64.render.fdpop" A64IR-OPCODE:FDPOP NAMES!
 s" a64.aldr" s" a64.rule.aldr" s" a64.render.aldr" A64IR-OPCODE:ALOAD NAMES!
 s" a64.astr" s" a64.rule.astr" s" a64.render.astr" A64IR-OPCODE:ASTORE NAMES!
+s" a64.pstore" s" a64.rule.pstore" s" a64.render.pstore" A64IR-OPCODE:PSTORE NAMES!
+s" a64.pbstore" s" a64.rule.pbstore" s" a64.render.pbstore" A64IR-OPCODE:PBSTORE NAMES!
 s" a64.aldrb" s" a64.rule.aldrb" s" a64.render.aldrb" A64IR-OPCODE:ABLOAD NAMES!
 s" a64.astrb" s" a64.rule.astrb" s" a64.render.astrb" A64IR-OPCODE:ABSTORE NAMES!
 s" a64.flag" s" a64.rule.flag" s" a64.render.flag" A64IR-OPCODE:FLAG NAMES!
@@ -647,6 +677,7 @@ s" a64.fcvtzs" s" a64.rule.fcvtzs" s" a64.render.fcvtzs" A64IR-OPCODE:FCVTZS NAM
 s" a64.fmovxd" s" a64.rule.fmovxd" s" a64.render.fmovxd" A64IR-OPCODE:FMOVXD NAMES!
 s" a64.fmovdx" s" a64.rule.fmovdx" s" a64.render.fmovdx" A64IR-OPCODE:FMOVDX NAMES!
 s" a64.fmovdd" s" a64.rule.fmovdd" s" a64.render.fmovdd" A64IR-OPCODE:FMOVDD NAMES!
+s" a64.fmovdi" s" a64.rule.fmovdi" s" a64.render.fmovdi" A64IR-OPCODE:FMOVDI NAMES!
 s" a64.fldr" s" a64.rule.fldr" s" a64.render.fldr" A64IR-OPCODE:FLOAD NAMES!
 s" a64.fstr" s" a64.rule.fstr" s" a64.render.fstr" A64IR-OPCODE:FSTORE NAMES!
 s" a64.faldr" s" a64.rule.faldr" s" a64.render.faldr" A64IR-OPCODE:FALOAD NAMES!
@@ -706,7 +737,11 @@ private
 14 constant K-DWB
 15 constant K-COLD-ENTRY
 16 constant K-DATA-OFFSET
-17 constant KEYS
+17 constant K-ORIGIN
+18 constant K-TAIL-IN
+19 constant K-TAIL-OUT
+20 constant K-GUARD-ENTRY
+21 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -727,6 +762,10 @@ private
       K-DWB        of s" a64.dwb" endof
       K-COLD-ENTRY of s" a64.cold-entry" endof
       K-DATA-OFFSET of s" a64.data-offset" endof
+      K-ORIGIN of s" a64.origin" endof
+      K-TAIL-IN of s" a64.tail-in" endof
+      K-TAIL-OUT of s" a64.tail-out" endof
+      K-GUARD-ENTRY of s" a64.guard-entry" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -914,8 +953,14 @@ public
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ADDR KEY-BIND ;
 
+: KEY-ORIGIN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-ORIGIN KEY-BIND ;
+
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
+
+: FIMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   FIMM8 IR-BUILD:INTERN-INT-ATTR ;
 
 : SHIFT-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    HALF IR-BUILD:INTERN-INT-ATTR ;
@@ -967,6 +1012,15 @@ public
 
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ENTRY KEY-BIND ;
+
+: KEY-GUARD-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-GUARD-ENTRY KEY-BIND ;
+
+: KEY-TAIL-IN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-TAIL-IN KEY-BIND ;
+
+: KEY-TAIL-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-TAIL-OUT KEY-BIND ;
 
 \ Its own key, because two passes recognise a tail branch by its ATTRIBUTES and
 \ a trap under `a64.entry` would BE one to both of them.
@@ -1032,6 +1086,7 @@ public
    c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
    c b KEY-SLOT  c b KEY-FRAME
    c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
+   c b KEY-TAIL-IN  c b KEY-TAIL-OUT
    c b KEY-DWB NDIALECT-OPTSYM:PRESENT
    c b KEY-ENTRY  c b KEY-TRAP-ENTRY
    c b KEY-ADDR  c b KEY-SHIFT
@@ -1095,7 +1150,8 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b KEY-IMM IR-SCHEMA:ADD-ATTR
    c b KEY-SHIFT IR-SCHEMA:ADD-ATTR
-   c b KEY-ADDR IR-SCHEMA:ADD-ATTR ;
+   c b KEY-ADDR IR-SCHEMA:ADD-ATTR
+   c b KEY-ORIGIN IR-SCHEMA:ADD-ATTR ;
 
 : DEF-MOVZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
@@ -1124,6 +1180,7 @@ private
    c b A64IR-OPCODE:DATAADDR OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-RESULT
    c b KEY-DATA-OFFSET IR-SCHEMA:ADD-ATTR
+   c b KEY-ORIGIN IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL
    TARGET
@@ -1417,6 +1474,31 @@ private
    TARGET
    c b o FINISH-OP ;
 
+\ A checked scalar store calls the sealed span guard before writing. The copied
+\ address is pinned to x10; x11 holds the width and the guard may overwrite
+\ x12/x13. Fixed results reserve those early clobbers even while this form
+\ reads its value. The guard entry is distinct from ordinary calls, so this
+\ form publishes no data-stack arguments or results.
+: DEF-PSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-SIDE:OPERAND 1 10 IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT 0 11 IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT 1 12 IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT 2 13 IR-SCHEMA:ADD-FIXED
+   c b KEY-GUARD-ENTRY IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE ADDR-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b o FINISH-OP ;
+
 \ The width is the FORM: the machine has separate Ldrb and Strb encodings. The
 \ loaded byte arrives zero-extended, which is what `c@` leaves.
 : DEF-ALDRB ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
@@ -1587,14 +1669,16 @@ private
    TARGET
    c b A64IR-OPCODE:WORDCALL FINISH-OP ;
 
-\ A TERMINATOR and not a call. It carries NO adjustment, which is what makes it
-\ one instruction: the selector only chooses it where the pointer already stands
-\ at the callee's entry base. It takes the data-stack order and ends it.
+\ A terminator: publish the callee's actual argument width, then branch into its
+\ entry. It takes the data-stack order and ends it.
 : DEF-TAILCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:TAILCALL OPCODE IR-SCHEMA:BEGIN-OP
    k IR-SCHEMA:ADD-OPERAND
    c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-TAIL-IN IR-SCHEMA:ADD-ATTR
+   c b KEY-TAIL-OUT IR-SCHEMA:ADD-ATTR
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
    IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET
@@ -1666,6 +1750,16 @@ private
    TOTAL
    FP-TARGET
    c b o FINISH-OP ;
+
+: DEF-FMOVDI ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FMOVDI OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-RESULT
+   c b KEY-IMM IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FMOVDI FINISH-OP ;
 
 \ ---- the four float comparison forms -----------------------------------------
 
@@ -1917,6 +2011,8 @@ public
    c b t k A64IR-OPCODE:DPOP DEF-DPOP
    c b t t k A64IR-OPCODE:ALOAD DEF-ALDR
    c b t t k A64IR-OPCODE:ASTORE DEF-ASTR
+   c b t k A64IR-OPCODE:PSTORE DEF-PSTORE
+   c b t k A64IR-OPCODE:PBSTORE DEF-PSTORE
    c b t k DEF-ALDRB
    c b t k DEF-ASTRB
    c b t DEF-FLAG
@@ -1949,6 +2045,7 @@ public
    c b t f A64IR-OPCODE:FMOVXD DEF-FCROSS
    c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS
    c b f f A64IR-OPCODE:FMOVDD DEF-FCROSS
+   c b f DEF-FMOVDI
    c b f t DEF-FFLAG
    c b f t DEF-FFLAGZ
    c b f DEF-FCMPBR
@@ -2006,6 +2103,8 @@ private
       dpop      OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DPOP DEF-DPOP ENDOF
       aload     OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ALOAD DEF-ALDR ENDOF
       astore    OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ASTORE DEF-ASTR ENDOF
+      pstore    OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:PSTORE DEF-PSTORE ENDOF
+      pbstore   OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:PBSTORE DEF-PSTORE ENDOF
       abload    OF c b c b GPR-TYPE c b MEM-TYPE DEF-ALDRB ENDOF
       abstore   OF c b c b GPR-TYPE c b MEM-TYPE DEF-ASTRB ENDOF
       flag      OF c b c b GPR-TYPE DEF-FLAG ENDOF
@@ -2037,6 +2136,7 @@ private
       fmovxd    OF c b c b GPR-TYPE c b FPR-TYPE A64IR-OPCODE:FMOVXD DEF-FCROSS ENDOF
       fmovdx    OF c b c b FPR-TYPE c b GPR-TYPE A64IR-OPCODE:FMOVDX DEF-FCROSS ENDOF
       fmovdd    OF c b c b FPR-TYPE c b FPR-TYPE A64IR-OPCODE:FMOVDD DEF-FCROSS ENDOF
+      fmovdi    OF c b c b FPR-TYPE DEF-FMOVDI ENDOF
       fflag     OF c b c b FPR-TYPE c b GPR-TYPE DEF-FFLAG ENDOF
       fflagz    OF c b c b FPR-TYPE c b GPR-TYPE DEF-FFLAGZ ENDOF
       fcmpbr    OF c b c b FPR-TYPE DEF-FCMPBR ENDOF

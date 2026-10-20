@@ -798,7 +798,7 @@ create DRV-CH 1 allot
 : CAPTURE-PRELUDE ( -- )
    s" package AOT-WID-PRODUCER" DRV-LINE
    s" public" DRV-LINE
-   s" ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !" DRV-LINE
+   s" ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R variable PRE-D PRE-D ! PRE-R !" DRV-LINE
    s" ;package" DRV-LINE
    s" require src/habu/layout.f" DRV-LINE
    s" require src/habu/aot-arm.f" DRV-LINE

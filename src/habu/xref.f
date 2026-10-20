@@ -334,6 +334,20 @@ INSTALL
 
 variable XREF-QI
 
+: XREF-FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
+   \ These are lookup cursors; retired rows and package/index state stay live.
+   XREF-A BYTE-VIEW CELL visit execute
+   XREF-B BYTE-VIEW CELL visit execute
+   XREF-U BYTE-VIEW CELL visit execute
+   XREF-V BYTE-VIEW CELL visit execute
+   XREF-SN BYTE-VIEW CELL visit execute
+   XREF-SU BYTE-VIEW CELL visit execute
+   XREF-FN BYTE-VIEW CELL visit execute
+   XREF-FU BYTE-VIEW CELL visit execute
+   XREF-IDX BYTE-VIEW CELL visit execute
+   XREF-NV BYTE-VIEW CELL visit execute
+   XREF-QI BYTE-VIEW CELL visit execute ;
+
 : XREF-QUAL-INDEX ( ptr u8 n -- n )
    XREF-SU ! XREF-SN!
    -1 XREF-QI !
@@ -486,13 +500,53 @@ get-current prot-wid-add
 \ 32-bit halves; that primitive is trusted-only everywhere but here, where this
 \ package's own row (src/habu/prims.f EPPRIM: XREF patch32) types it.
 package XREF
+private
 
-public
+CAST: RETIRE-XT ( n -- [ ptr n -- ] )
 
-: RETIRE ( ptr n -- ) {: rec:ptr :}
+: RETIRE-RAW ( ptr n -- ) {: rec:ptr :}
    rec XREF-WORDLIST-SLOT cells + {: wl:ptr :}
    XREF-RETIRED-WL wl patch32
    -1 wl 4 + patch32 ;
+
+private
+
+CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
+
+: GRID-RETIRE-OWNER ( ptr n ptr u8 -- )
+   {: rec:ptr owner:ptr :}
+   owner NULL-PTR = IF EXIT THEN
+   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
+      CHECKER-OWNER-ABI:MAGIC <> IF
+      s" xref: invalid checker owner" 76 die
+   THEN
+   owner CELL - CELL-VIEW @
+      CHECKER-OWNER-ABI:GRID-RETIRE-OFF CELL + < IF EXIT THEN
+   owner CHECKER-OWNER-ABI:GRID-RETIRE-OFF + CELL-VIEW @ {: action:n :}
+   action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
+
+: GRID-RETIRE ( ptr n -- ) {: rec:ptr :}
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @
+      {: target:ptr :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+      {: source:ptr :}
+   rec target GRID-RETIRE-OWNER
+   source target <> IF rec source GRID-RETIRE-OWNER THEN ;
+
+public
+
+variable RETIRE-HOOK
+
+: BEFORE-RETIRE! ( n -- ) RETIRE-HOOK ! ;
+
+: BEFORE-RETIRE ( ptr n -- ) {: rec:ptr :}
+   RETIRE-HOOK @ dup 0= if drop exit then
+   RETIRE-XT rec swap execute ;
+
+: RETIRE ( ptr n -- ) {: rec:ptr :}
+   rec BEFORE-RETIRE
+   rec GRID-RETIRE
+   rec RETIRE-RAW ;
 
 ;package
 
@@ -610,8 +664,8 @@ DOES-COMPANION-INSTALL
 \ A selected record is borrowed from the resolver at SELECT. The slot alone is
 \ never identity: lowering and re-exposing the count issues another occurrence.
 \ These references stay in this process and carry no checker effect or code lease.
-\ The two primitives' rows are DEF-OCC's own (src/habu/prims.f), so no other
-\ checked body calls them.
+\ The resolver's primitive rows belong to DEF-OCC; the checker also selects
+\ occurrences when it binds an exported contract (src/habu/prims.f).
 package DEF-OCC
 public
 : SELECT ( ptr n -- n n ) def-occ-select ;

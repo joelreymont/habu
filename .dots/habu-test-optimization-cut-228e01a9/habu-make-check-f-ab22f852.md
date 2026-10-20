@@ -3,7 +3,7 @@ title: Make check.f accept test/gate-images.f
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-30T16:51:16.726317+02:00\\\"\""
+created-at: "2026-09-30T16:51:16.726317+02:00"
 closed-at: "2026-10-14T23:29:45.595767+03:00"
 close-reason: Qualified ed285fdc contains the complete source-loading/constructor correction. Independent Astra follow-up passes the real check.f on test/gate-images.f and existing cycle/constructor cases including refusal halves. Source composition supersedes the original SCC workaround. Applicable registered 663/663 native gate and byte convergence receipt verified by ancestry and unchanged sources.
 ---

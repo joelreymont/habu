@@ -74,6 +74,11 @@ variable HBT-USER-VALUE-AT
 : HBT-AOT-DIVZ-SRC$ ( -- ptr u8 n )
    S\" package HBT-DIVZ\n: LOADING ( -- ) tier@ 1 <> if -9050 throw then ;\nLOADING\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\npublic\n: RUN ( -- ) 7 A ! 0 B ! TRY dup . cr -6400 <> if -9051 throw then 7 A ! 2 B ! TRY 0 <> if -9052 throw then R @ 3 <> if -9053 throw then ;\n;package\n: MAIN ( -- ) HBT-DIVZ:RUN ;\n" ;
 
+\ A nonzero 20 KiB source span has an encoded sparse payload longer than one
+\ Mach-O DATA_CONST page. Its last byte must survive the extra mapped page.
+: HBT-AOT-MULTI-SRC$ ( -- ptr u8 n )
+   S\" package HBT-MULTI\ncreate MULTI-BUF 20000 allot\n: INIT ( -- ) 20000 0 ?do 1 MULTI-BUF i + c! loop ;\nINIT\npublic\n: RUN ( -- ) MULTI-BUF c@ MULTI-BUF 19999 + c@ + . cr ;\n;package\n: MAIN ( -- ) HBT-MULTI:RUN ;\n" ;
+
 4096 CODEGEN:BUFFER HBT-SPAN-PROGRAM
 
 : HBT-SPAN-SRC$ ( -- ptr u8 n )
@@ -234,6 +239,11 @@ variable HBT-USER-VALUE-AT
    HBT-HBB-BUILD-OUT
    HBT-SPAN-OUT FILE? TTRUE
    HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
+   HB-TARGET-MACOS? if
+      HBT-SPAN-OUT IMAGE-SIZE:MEASURE
+      IMAGE-SIZE:DATA-BLOB-RANGE drop
+      MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + T=
+   then
    HBT-REMOVE-ARTIFACT ;
 \ HBT-SPAN-OUT stays on disk: BUILD-AOT-SPAN-ENGINE compares its DATA blob.
 
@@ -378,6 +388,20 @@ variable HBT-USER-VALUE-AT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
 
+: BUILD-AOT-MULTI-PAGE ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-MULTI-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
+   HBT-AOT-OUT IMAGE-SIZE:MEASURE
+   MACHO-READ:DATA-BYTES $4000 > TTRUE
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -395,6 +419,7 @@ public
    BUILD-AOT-EXBUILD
    BUILD-AOT-DOES-EMPTY
    BUILD-AOT-FFI
+   BUILD-AOT-MULTI-PAGE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

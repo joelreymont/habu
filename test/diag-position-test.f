@@ -26,7 +26,9 @@
 \ and a packet in the subject after a required file returns locates in
 \ the subject: plain, under --all-errors and under --verify-only, the
 \ check a language server makes.
-\ The child engine is HABU_UNDER_TEST when the gate sets it, else the running engine.
+\ Semantic checks use CHECK's public API with captured process descriptors;
+\ its verifier and run stages still use the real child engine. That engine is
+\ HABU_UNDER_TEST when the gate sets it, else the running engine.
 \
 \ Run: bin/hb --load test/diag-position-test.f
 
@@ -34,15 +36,16 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
+require src/lib/test/runner.f
 require src/lib/memory.f
+require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require tools/json.f
 require tools/gate-json-assert-core.f
+require tools/check-core.f
 
 package DIAG-POSITION-TEST
 
@@ -138,47 +141,45 @@ variable RC
      timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ Run the checker on the fixture, FLAG (when not empty) before --json-errors,
-\ and split its packets into lines; the checker exits WANT.
+\ CHECK:MAIN throws a nonzero run code, which the CLI exits with. Keep that
+\ mapping while capturing the same stdout and stderr writes in this process.
+: CHECK-RUN ( -- )
+   CHECK:RUN dup 0 <> IF throw THEN drop ;
+
+\ Run the checker on the fixture with FLAG (when not empty) and JSON errors,
+\ then split its packets into lines; the command-line exit status is WANT.
 : CHECK-EXIT ( ptr u8 n n -- )
    {: flag:ptr flagu:n want:n :}
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   flagu 0 > IF flag flagu >LEN PROC-ARGV+ THEN
-   s" --json-errors" >LEN PROC-ARGV+
-   FX-PATH$ >LEN PROC-ARGV+
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   FX-PATH$
-   ENGINE-CANDIDATE:PATH$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   STORE!
-   RC @ want T=
+   CHECK:RESET
+   flagu 0 > IF flag 2 + flagu 2 - CHECK:OPT THEN
+   s" json-errors" CHECK:OPT
+   FX-PATH$ CHECK:FILE
+   [: CHECK-RUN ;] BASE$ OUT CAP SPAN:MAKE ERR CAP SPAN:MAKE GT-CAPTURE-ACTION
+   rot drop {: erru:len rc:n :}
+   erru LEN>N ERR-U !
+   rc want T=
    ERR$ GJA-SPLIT-LINES ;
 
 : CHECK ( ptr u8 n -- )
    REJECT-RC CHECK-EXIT ;
 
-: INT-FIELD ( n ptr u8 n -- n ) \ a packet's integer field, -1 when absent
-   JSON-GET dup -1 = IF EXIT THEN
-   GJA-INT ;
+: INT-FIELD ( SPAN:span<u8> ptr u8 n -- n ) \ -1 when absent
+   GJA-FIELD? if GJA-INT exit then drop -1 ;
 
 \ Packet k of the last run has the string WANT for KEY.
 : FIELD= ( n ptr u8 n ptr u8 n -- )
    {: k:n key:ptr keyu:n want:ptr wantu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ JSON-PARSE key keyu GJA-REQ JSON-STRING$ want wantu T$= ;
+   k GJA-LINE$ GJA-PARSE key keyu GJA-REQ GJA-STRING$ want wantu T$= ;
 
 \ Packet k of the last run names file PATH, whose bytes are TEXT, at LINE, COL
 \ and bytes [BS, BE), and those bytes of TEXT are SPELL.
 : PLACED-IN ( n ptr u8 n n n n n ptr u8 n ptr u8 n -- )
    {: k:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n text:ptr textu:n :}
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ JSON-PARSE
-   {: root:n :}
-   root s" file" GJA-REQ JSON-STRING$ path pathu T$=
+   k GJA-LINE$ GJA-PARSE
+   {: root:SPAN:span<u8> :}
+   root s" file" GJA-REQ GJA-STRING$ path pathu T$=
    root s" line" INT-FIELD line T=
    root s" column" INT-FIELD col T=
    root s" byte_start" INT-FIELD bs T=
@@ -640,7 +641,7 @@ variable RC
 : THREW ( n -- )
    {: code:n :}
    GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
-   0 GJA-LINE$ JSON-PARSE s" throw_code" INT-FIELD code T= ;
+   0 GJA-LINE$ GJA-PARSE s" throw_code" INT-FIELD code T= ;
 
 \ REFUSED-AT for a statement that throws CODE at TOK: each check's one packet is
 \ the record of that throw.
@@ -931,7 +932,7 @@ variable RC
    s" : X ( -- n ) ['] NOPE ;" s" tick-undefined.f" LINE-FIXTURE
    s" E-UNDEFINED" s" NOPE" 1 18 17 21 REFUSED-AT
    s" a defined ticked word" T-LABEL
-   s" : X ( -- n ) ['] dup ;" s" tick-defined.f" LINE-FIXTURE
+   s" : X ( -- ) ['] dup drop ;" s" tick-defined.f" LINE-FIXTURE
    CERTIFIED ;
 
 \ The fixture NAME holding the line TEXT after MK, the create caller the line
@@ -1013,8 +1014,8 @@ variable RC
    k s" token" tok toku FIELD=
    k s" file" path pathu FIELD=
    GJA-LINE# @ k > dup TTRUE 0= IF EXIT THEN
-   k GJA-LINE$ JSON-PARSE
-   {: root:n :}
+   k GJA-LINE$ GJA-PARSE
+   {: root:SPAN:span<u8> :}
    root s" line" INT-FIELD -1 T=
    root s" column" INT-FIELD -1 T=
    root s" byte_start" INT-FIELD -1 T=

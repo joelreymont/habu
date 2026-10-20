@@ -3,7 +3,7 @@ title: Keep checking after a call to a malformed qualified name
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T12:52:04.451320+02:00\""
+created-at: "2026-10-03T12:52:04.451320+02:00"
 closed-at: "2026-10-14T19:46:59.065290+03:00"
 close-reason: 595ab8aa classifies a malformed qualified call as a counted reject; check/malformed-call-all-errors tests both its record and a later mismatch in prose and JSON.
 ---

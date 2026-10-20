@@ -1078,9 +1078,8 @@ LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 
 \ Registry internals predate the checker hook; a checked body binds their
-\ recorded rows on this unsealed engine. These leaves expose only measured
-\ metadata, predicates, and transaction operations to the checked assertions
-\ and orchestration below.
+\ recorded rows on this unsealed engine. These helpers exercise registry
+\ growth and rollback through the checked assertions below.
 variable TR-REG-SYM-MARK
 variable TR-REG-UEND-MARK
 variable TR-REG-DFER-MARK
@@ -1090,54 +1089,6 @@ variable TR-VREC-FIELD-MARK
 variable TR-VREC-NODE-MARK
 variable TR-VNARG-MARK
 variable TR-VREC-STR-MARK
-
-\ The pre-checker record layouts, probed explicitly: this package owns the probe
-\ base and the six raw readers, and reopens below for the assertions that read
-\ them. TR-REG-REC is only an address the field accessors are compared against —
-\ it is never read through — and it is as wide as the widest record, so every
-\ probe stays inside it.
-package ES-LAYOUT
-
-create TR-REG-REC 12 cells allot
-
-: TR-SYM-LAYOUT-RAW ( -- n n n bool )
-   SYM-REC SYM-REC-ALIGN SYM-REC-PTR-MASK
-   TR-REG-REC SYM.PKG-A TR-REG-REC SYM-PKG-A-OFF + =
-   TR-REG-REC SYM.PKG-U TR-REG-REC SYM-PKG-U-OFF + = and
-   TR-REG-REC SYM.NAME-A TR-REG-REC SYM-NAME-A-OFF + = and
-   TR-REG-REC SYM.NAME-U TR-REG-REC SYM-NAME-U-OFF + = and
-   TR-REG-REC SYM.VIS TR-REG-REC SYM-VIS-OFF + = and ;
-
-: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
-   EFF-REC EFF-REC-ALIGN EFF-REC-PTR-MASK
-   TR-REG-REC ER.NEXT TR-REG-REC ER-NEXT-OFF + =
-   TR-REG-REC ER.CONTENT TR-REG-REC ER-CONTENT-OFF + = and
-   TR-REG-REC ER.SYMPREV TR-REG-REC ER-SYMPREV-OFF + = and ;
-
-: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
-   EFF-NODE EFF-NODE-ALIGN EFF-NODE-PTR-MASK
-   TR-REG-REC EN.TAG TR-REG-REC EN-TAG-OFF + =
-   TR-REG-REC EN.H TR-REG-REC EN-H-OFF + = and ;
-
-: TR-PE-LAYOUT-RAW ( -- n n n bool )
-   PE-REC PE-REC-ALIGN PE-REC-PTR-MASK
-   TR-REG-REC PE.SYM TR-REG-REC PE-SYM-OFF + =
-   TR-REG-REC PE.FLAGS TR-REG-REC PE-FLAGS-OFF + = and ;
-
-: TR-DFER-LAYOUT-RAW ( -- n n n bool )
-   DFER-REC DFER-REC-ALIGN DFER-REC-PTR-MASK
-   TR-REG-REC DFER.SYM TR-REG-REC DFER-SYM-OFF + =
-   TR-REG-REC DFER.FLAG TR-REG-REC DFER-FLAG-OFF + = and ;
-
-: TR-NORET-LAYOUT-RAW ( -- n n n bool )
-   NORET-ENTRY NORET-ENTRY-ALIGN NORET-ENTRY-PTR-MASK
-   TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
-   TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and
-   TR-REG-REC NORET.SYMPREV TR-REG-REC NORET-SYMPREV-OFF + = and
-   TR-REG-REC NORET.CREATES TR-REG-REC NORET-CREATES-OFF + = and
-   TR-REG-REC NORET.SOURCE TR-REG-REC NORET-SOURCE-OFF + = and ;
-
-;package
 
 : TR-CORE-MARKS@ ( -- n n n n )
    SYM-N @ UEND @ DFER-END @ NORET-END @ ;
@@ -1154,51 +1105,6 @@ create TR-REG-REC 12 cells allot
 
 : TR-NORET-ADD ( -- )
    s" TRREGSCOPE" CTL-DEAD NORET-ADD ;
-
-package ES-LAYOUT
-public
-
-: TR-SYM-LAYOUT ( -- )
-   TR-SYM-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" sym-record-layout" T-LABEL
-   stride 5 cells T=
-   align $8 T=
-   mask 0 T=
-   ok TTRUE ;
-
-: TR-EFF-REC-LAYOUT ( -- )
-   TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" effect-record-layout" T-LABEL
-   stride 7 cells T=  align $8 T=  mask 0 T=
-   ok TTRUE ;
-
-: TR-EFF-NODE-LAYOUT ( -- )
-   TR-EFF-NODE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" effect-node-layout" T-LABEL
-   stride 9 cells T=  align $8 T=  mask 0 T=
-   ok TTRUE ;
-
-: TR-PE-LAYOUT ( -- )
-   TR-PE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" primitive-record-layout" T-LABEL
-   stride 3 cells T=  align $8 T=  mask 0 T=
-   ok TTRUE ;
-
-: TR-DFER-LAYOUT ( -- )
-   TR-DFER-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" defer-record-layout" T-LABEL
-   stride 2 cells T=  align $8 T=  mask 0 T=
-   ok TTRUE ;
-
-\ Four cells: (sym, flags) and the two the store carries beside them - the
-\ per-symbol back-link and the effect a `does>` definer gives what it creates.
-: TR-NORET-LAYOUT ( -- )
-   TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
-   s" control-record-layout" T-LABEL
-   stride 5 cells T=  align $8 T=  mask 0 T=
-   ok TTRUE ;
-
-;package
 
 : TR-CORE-MARKS! ( -- )
    TR-CORE-MARKS@
@@ -1260,12 +1166,6 @@ public
    TR-REG-GROW-PROBE
    TR-REG-ROLLBACK-PROBE ;
 
-ES-LAYOUT:TR-SYM-LAYOUT
-ES-LAYOUT:TR-EFF-REC-LAYOUT
-ES-LAYOUT:TR-EFF-NODE-LAYOUT
-ES-LAYOUT:TR-PE-LAYOUT
-ES-LAYOUT:TR-DFER-LAYOUT
-ES-LAYOUT:TR-NORET-LAYOUT
 TR-REG-ROLLBACK
 \ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
 \ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail

@@ -5,33 +5,28 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fs-mutate.f
-require test/aot-maker-engine.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 require test/native-file-e2e.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-TASK-STATE-TEST
 
-: BUILD ( ptr u8 n -- )
-   {: cache:ptr cacheu:n :}
-   AOT-MAKER-ENGINE:PATH$ {: maker:ptr makeru:n :}
+: BUILD ( ptr u8 n ptr u8 n -- )
+   {: mode:ptr modeu:n product:ptr productu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --" ARG s" app.f" AT ARG s" 0" ARG s" 1" ARG
-   maker makeru AOT-MAKER-ENGINE:STDIN$ CAPTURE SUCCESS ;
+   s" --load" ARG s" tools/native-unit-build.f" ARG s" --" ARG
+   mode modeu ARG
+   s" prefix.f" AT ARG s" task.f" AT ARG s" app.f" AT ARG
+   s" task.unit" AT ARG product productu AT ARG
+   ENGINE-CANDIDATE:PATH$ s" " CAPTURE SUCCESS ;
 
-: RUN-IMAGE ( ptr u8 n -- )
-   {: expected:ptr expectedu:n :}
+: RUN-IMAGE ( ptr u8 n ptr u8 n -- )
+   {: product:ptr productu:n expected:ptr expectedu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" hb-aot-got" AT s" " CAPTURE SUCCESS
+   product productu AT s" MAIN" CAPTURE SUCCESS
    OUT$ expected expectedu T$= ;
-
-: COUNTS ( ptr u8 n ptr u8 n -- )
-   {: hits:ptr hitsu:n compiled:ptr compiledu:n :}
-   OUT$ hits hitsu CONTAINS? TTRUE
-   OUT$ compiled compiledu CONTAINS? TTRUE ;
 
 : CHAIN-SOURCE ( -- )
    s" task.f" S\" require src/lib/ffi-callback.f\npackage FILE-TASK\npublic\n$10000 TASK:TASK WORKER\nCALLBACK: ENTRY ( -- ) ;CALLBACK\n: RUN ( -- )\n   WORKER TASK:EXPOSE\n   ENTRY WORKER TASK:CONTEXT FFI-CB:ENTRY drop\n   WORKER TASK:UNEXPOSE WORKER TASK:KILL\n   s\q task chain ok\q type cr ;\n;package\n" PUT
@@ -43,25 +38,23 @@ package NATIVE-FILE-TASK-STATE-TEST
 
 : CHAIN ( -- )
    s" cached task declarations remain in the callback context chain" T-LABEL
-   s" chain-cache" AT MAKE-DIR
+   s" prefix.f" S\" require src/lib/ffi-callback.f\n" PUT
    CHAIN-SOURCE
-   s" chain-cache" BUILD
-   S\" file unit hits 0\n" S\" compiled 3\n" COUNTS
-   S\" task chain ok\n" RUN-IMAGE
-   s" chain-cache" BUILD
-   S\" file unit hits 3\n" S\" compiled 0\n" COUNTS
-   S\" task chain ok\n" RUN-IMAGE ;
+   s" --export-file" s" chain-export-hb" BUILD
+   s" chain-export-hb" S\" task chain ok\n" RUN-IMAGE
+   s" --import-file" s" chain-import-hb" BUILD
+   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
+   s" chain-import-hb" S\" task chain ok\n" RUN-IMAGE ;
 
 : EXIT-HOOKS ( -- )
    s" cached task declarations retain their exit registrations" T-LABEL
-   s" exit-cache" AT MAKE-DIR
+   s" prefix.f" S\" require src/lib/task.f\n" PUT
    EXIT-SOURCE
-   s" exit-cache" BUILD
-   S\" file unit hits 0\n" S\" compiled 2\n" COUNTS
-   S\" task exit ok\n" RUN-IMAGE
-   s" exit-cache" BUILD
-   S\" file unit hits 2\n" S\" compiled 0\n" COUNTS
-   S\" task exit ok\n" RUN-IMAGE ;
+   s" --export-file" s" exit-export-hb" BUILD
+   s" exit-export-hb" S\" task exit ok\n" RUN-IMAGE
+   s" --import-file" s" exit-import-hb" BUILD
+   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
+   s" exit-import-hb" S\" task exit ok\n" RUN-IMAGE ;
 
 public
 : MAIN ( -- )

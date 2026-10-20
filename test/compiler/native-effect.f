@@ -28,21 +28,14 @@
 \    writable set an allocator hands registers out of - which has to hold the
 \    result register precisely because the destroyed set cannot.
 \
-\ 6. AN ORDERED REGISTER LIST IS ORDERED, BOUNDED AND CANONICAL. Position order
+\ 5. AN ORDERED REGISTER LIST IS ORDERED, BOUNDED AND CANONICAL. Position order
 \    is the declaration's and not the register number's; a register named twice
 \    is refused, because a caller cannot put two values in one place; a register
 \    no routine may hold state in is refused by the set rule's own name; a
 \    position past the end has no answer; and a packed cell the generated
 \    constructor assembled with bits past its length is refused, which is what
-\    keeps the digest agreeing with the structural comparison.
+\    keeps the representation canonical.
 \
-\ 5. EVERY FIELD CHANGES IDENTITY. The suite enumerates 392 legal contracts - one
-\    sweep over the register roles and the flag family, one over the traits and
-\    every legal shape of control, link, frame and stack delta - and shows their
-\    digests are pairwise distinct and that digest equality holds exactly where
-\    the structural comparison holds. The enumeration is driven by this suite's
-\    own index arithmetic and its own legality rules, not by the module under
-\    test.
 \ Tier-neutral by design: the schema words are called directly and every bound
 \ is asserted against the assembler's own constant, so the tier this file loads
 \ under changes no answer below.
@@ -65,9 +58,6 @@ private
 : DROP-ROUTINE ( NEFF:routine -- )
    NEFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop drop drop drop drop drop drop drop drop ;
-
-: DROP-DIGEST ( CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE drop drop drop drop ;
 
 \ ---- named register sets -----------------------------------------------------
 : X0 ( -- NEFF:gprs )   0 NEFF:GPR-REG ;
@@ -621,8 +611,6 @@ variable ER-REG
 
 : FORGERY-REJECTS ( -- )
    [: FORGED NEFF:VALIDATE DROP-ROUTINE ;] E-NEFF-SP TTHROWSQ
-   [: FORGED NEFF:DIGEST DROP-DIGEST ;] E-NEFF-SP TTHROWSQ
-   [: FORGED NEFF:ENCODE drop drop ;] E-NEFF-SP TTHROWSQ
    [: FORGED LEAF NEFF:SAME? drop ;] E-NEFF-SP TTHROWSQ
    [: LEAF FORGED NEFF:SAME? drop ;] E-NEFF-SP TTHROWSQ
    [: FORGED NEFF:GPR-PRESERVED NEFF:GPRS-N drop ;] E-NEFF-SP TTHROWSQ
@@ -630,7 +618,6 @@ variable ER-REG
    [: FORGED NEFF:RETURNS? drop ;] E-NEFF-SP TTHROWSQ
    [: 0 8 FORGED NEFF:CHECK-SLOT ;] E-NEFF-SP TTHROWSQ
    [: FORGED-RESERVED NEFF:VALIDATE DROP-ROUTINE ;] E-NEFF-GPR TTHROWSQ
-   [: FORGED-RESERVED NEFF:DIGEST DROP-DIGEST ;] E-NEFF-GPR TTHROWSQ
    [: FORGED-RESERVED NEFF:GPR-PRESERVED NEFF:GPRS-N drop ;]
       E-NEFF-GPR TTHROWSQ
    [: FORGED-RESERVED NEFF:GPR-IN@ NEFF:GPRS-N drop ;] E-NEFF-GPR TTHROWSQ
@@ -692,186 +679,9 @@ variable ER-REG
    s" A64T-SLOTSWAP ( NEFF:routine n n -- ) NEFF:CHECK-SLOT"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- 5a. the canonical preimage ----------------------------------------------
-: PREIMAGE ( -- )
-   0 SQ 1 SQ X2 R-GPR NEFF:ENCODE {: base:ptr len:n :}
-   len 128 T=
-   base 0 CDIGEST:SLOT@ CDIGEST:TAG-A64-ROUTINE T=
-   base 1 CDIGEST:SLOT@ 5 T=
-   base 2 CDIGEST:SLOT@ 1 T=
-   base 3 CDIGEST:SLOT@ 0 SQ NEFF-PLACESEQ:UNMAKE T=
-   base 4 CDIGEST:SLOT@ 1 SQ NEFF-PLACESEQ:UNMAKE T=
-   base 5 CDIGEST:SLOT@ X2 NEFF:GPRS-N T=
-   base 6 CDIGEST:SLOT@ 0 T=
-   base 7 CDIGEST:SLOT@ 0 T=
-   base 8 CDIGEST:SLOT@ 0 T=
-   base 9 CDIGEST:SLOT@ 0 T=
-   base 10 CDIGEST:SLOT@ 0 T=
-   base 11 CDIGEST:SLOT@ 0 T=
-   base 12 CDIGEST:SLOT@ 0 T=
-   base 13 CDIGEST:SLOT@ 0 T=
-   base 14 CDIGEST:SLOT@ 0 T=
-   base 15 CDIGEST:SLOT@ A64M:MACHINE NMACH:MARK T=
-   0 DQ 1 DQ X2 R-DSTACK NEFF:ENCODE {: db:ptr dlen:n :}
-   db 2 CDIGEST:SLOT@ 0 T=
-   NEFF-CONTROL:NO-RETURN 32 -32 R-STACK NEFF:ENCODE {: nb:ptr nlen:n :}
-   nb 11 CDIGEST:SLOT@ 2 T=
-   nb 13 CDIGEST:SLOT@ 32 T=
-   nb 14 CDIGEST:SLOT@ -32 T=
-   SQ-NONE NEFF:FPR-NONE NEFF-NZCV:READ-CLOBBERED
-      NEFF-CONTROL:RETURNS R-RESULT NEFF:ENCODE {: zb:ptr zlen:n :}
-   zb 9 CDIGEST:SLOT@ 4 T=
-   NEFF-CONTROL:NO-RETURN NEFF-LINK:CLOBBERED R-LINK
-      NEFF:ENCODE {: lb:ptr llen:n :}
-   lb 10 CDIGEST:SLOT@ 1 T= ;
-
-\ The tag is what keeps a routine contract's digest out of every other compiler
-\ record's space, so it is asserted to be its own value and not a neighbour's.
-: DOMAIN-SEPARATION ( -- )
-   CDIGEST:TAG-A64-ROUTINE 6 T=
-   CDIGEST:TAG-A64-ROUTINE CDIGEST:TAG-TARGET = TFALSE
-   CDIGEST:TAG-A64-ROUTINE CDIGEST:TAG-NUMERIC = TFALSE
-   CDIGEST:TAG-A64-ROUTINE CDIGEST:TAG-BINDING = TFALSE
-   CDIGEST:TAG-A64-ROUTINE CDIGEST:TAG-SCHEMA = TFALSE
-   CDIGEST:TAG-A64-ROUTINE CDIGEST:TAG-SCHEMA-TABLE = TFALSE ;
-
-\ ---- 5b. the enumeration -----------------------------------------------------
-\ Sweep A varies the six register-role sets and the whole flag family over a
-\ returning leaf: 2^6 * 5 = 320 rows. Sweep B varies the eight trait masks over
-\ nine legal shapes of (link, control, frame, delta): 72 rows. No sweep-B shape
-\ is sweep A's fixed shape, so the two are disjoint and the whole enumeration is
-\ injective - which is what lets the pairwise check assert that two rows compare
-\ equal exactly when they are the same row.
-
-320 constant SWEEP-A
-72 constant SWEEP-B
-SWEEP-A SWEEP-B + constant ROWS
-
-create DGA ROWS 4 * cells allot
-
-: DG! ( n n n n n -- )
-   {: w0:n w1:n w2:n w3:n idx:n :}
-   idx 4 * {: at:n :}
-   w0 DGA at cells + !
-   w1 DGA at 1+ cells + !
-   w2 DGA at 2 + cells + !
-   w3 DGA at 3 + cells + ! ;
-
-: DG= ( n n -- bool )
-   {: x:n y:n :}
-   x 4 * {: px:n :}
-   y 4 * {: py:n :}
-   DGA px cells + @      DGA py cells + @ =
-   DGA px 1+ cells + @   DGA py 1+ cells + @ = and
-   DGA px 2 + cells + @  DGA py 2 + cells + @ = and
-   DGA px 3 + cells + @  DGA py 3 + cells + @ = and ;
-
-: TBOOL= ( bool bool -- )
-   {: got:bool want:bool :}
-   want if got TTRUE exit then
-   got TFALSE ;
-
-\ Sweep A projections. The index is a mixed-radix number, flag family fastest.
-: A-NZCV ( n -- NEFF:nzcv )
-   5 mod {: k:n :}
-   k 0= if NEFF-NZCV:UNTOUCHED exit then
-   k 1 = if NEFF-NZCV:CLOBBERED exit then
-   k 2 = if NEFF-NZCV:DELIVERED exit then
-   k 3 = if NEFF-NZCV:READ-PRESERVED exit then
-   NEFF-NZCV:READ-CLOBBERED ;
-
-: BIT-AT ( n n -- n )   \ index, position -> 0 or 1
-   {: a:n p:n :}
-   a 5 / p rshift 1 and ;
-
-: A-GPR ( n n n -- NEFF:gprs )   \ index, bit position, register
-   {: a:n p:n r:n :}
-   a p BIT-AT 0= if NEFF:GPR-NONE exit then
-   r NEFF:GPR-REG ;
-
-\ The same for an interface position: either the routine declares one there or
-\ it declares none.
-: A-SEQ ( n n n -- NEFF:placeseq )   \ index, bit position, register
-   {: a:n p:n r:n :}
-   a p BIT-AT 0= if SQ-NONE exit then
-   r SQ ;
-
-: A-FPR ( n n n -- NEFF:fprs )
-   {: a:n p:n r:n :}
-   a p BIT-AT 0= if NEFF:FPR-NONE exit then
-   r NEFF:FPR-REG ;
-
-: SWEEP-A>ROUTINE ( n -- NEFF:routine )
-   {: a:n :}
-   NEFF-CONV:REGISTER
-   a 5 0 A-SEQ  a 4 1 A-SEQ  a 3 2 A-GPR
-   a 2 0 A-FPR  a 1 1 A-FPR  a 0 2 A-FPR
-   a A-NZCV NEFF-LINK:PRESERVED NEFF-CONTROL:RETURNS
-   NEFF:TRAITS-NONE 16 0 A64M:MACHINE NEFF:ROUTINE ;
-
-\ Sweep B shapes: link, control, frame, delta. None is (preserved, returns, 16,
-\ 0), which is sweep A's fixed shape.
-: B-LINK ( n -- NEFF:link )
-   6 < if NEFF-LINK:PRESERVED exit then NEFF-LINK:CLOBBERED ;
-
-: B-CONTROL ( n -- NEFF:control )
-   {: s:n :}
-   s 3 < if NEFF-CONTROL:RETURNS exit then
-   s 3 = if NEFF-CONTROL:TAIL-CALL exit then
-   NEFF-CONTROL:NO-RETURN ;
-
-: B-FRAME ( n -- n )
-   {: s:n :}
-   s 0= if 0 exit then
-   s 1 = if 32 exit then
-   s 2 = if 48 exit then
-   s 7 = if 32 exit then
-   s 8 = if 0 exit then
-   16 ;
-
-: B-DELTA ( n -- n )
-   {: s:n :}
-   s 5 = if -16 exit then
-   s 7 = if -32 exit then
-   0 ;
-
-: SWEEP-B>ROUTINE ( n -- NEFF:routine )
-   {: b:n :}
-   b 9 mod {: s:n :}
-   b 9 / {: t:n :}
-   NEFF-CONV:REGISTER SQ-NONE SQ-NONE NEFF:GPR-NONE
-   NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
-   NEFF-NZCV:UNTOUCHED s B-LINK s B-CONTROL
-   t NEFF:TRAIT-SET s B-FRAME s B-DELTA A64M:MACHINE NEFF:ROUTINE ;
-
-: IX>ROUTINE ( n -- NEFF:routine )
-   dup SWEEP-A < if SWEEP-A>ROUTINE exit then
-   SWEEP-A - SWEEP-B>ROUTINE ;
-
-: COLLECT ( -- )
-   ROWS 0 ?do
-      i IX>ROUTINE NEFF:DIGEST CDIGEST-DIGEST:UNMAKE i DG!
-   loop ;
-
-\ Two contracts compare equal exactly when they digest equal, and - because the
-\ enumeration is injective - exactly when they are the same row. The second
-\ clause is what makes this a distinctness proof and not just a consistency one.
-: PAIRWISE ( -- )
-   ROWS ROWS * 0 ?do
-      i ROWS / {: x:n :}
-      i ROWS mod {: y:n :}
-      x IX>ROUTINE y IX>ROUTINE NEFF:SAME? {: same:bool :}
-      x y DG= same TBOOL=
-      same x y = TBOOL=
-   loop ;
-
-\ A record built twice by separate calls is the same record and the same digest.
 : STABLE ( -- )
    0 SQ 1 SQ X2 R-GPR 0 SQ 1 SQ X2 R-GPR NEFF:SAME? TTRUE
-   0 SQ 1 SQ X2 R-GPR NEFF:DIGEST
-   0 SQ 1 SQ X2 R-GPR NEFF:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   LEAF 0 SQ 1 SQ X2 R-GPR NEFF:SAME? TFALSE
-   LEAF NEFF:DIGEST LEAF NEFF:DIGEST CDIGEST-DIGEST:EQ TTRUE ;
+   LEAF 0 SQ 1 SQ X2 R-GPR NEFF:SAME? TFALSE ;
 
 public
 
@@ -896,11 +706,7 @@ public
    FORGERY-REJECTS
    READERS
    STATIC-REJECTS
-   PREIMAGE
-   DOMAIN-SEPARATION
    STABLE
-   COLLECT
-   PAIRWISE
    T-REPORT ;
 
 ;using

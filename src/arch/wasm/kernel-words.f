@@ -6,8 +6,9 @@
 \ do: each uses only words HIR models, the rows emit, map-anon and munmap, and
 \ one another.
 \
-\ DYN-OFFSET, DYN-RESERVE and DYN-RELEASE are src/core/dynamic-storage.f's
-\ OFFSET, RESERVE and RELEASE on the control record DYNAMIC-BUFFER generates,
+\ DYN-OFFSET and the generic DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE
+\ keep the three-cell runtime contract. Their FIXED siblings operate on the
+\ five-cell control record DYNAMIC-BUFFER generates,
 \ without its registry: a module saves no image, so nothing releases its
 \ buffers before one.
 \
@@ -51,10 +52,6 @@ DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
    {: cb:ptr :}
    cb byte-view 8 + cell-view ;
 
-: COPY ( ptr a ptr a n -- )
-   {: src:ptr dst:ptr bytes:n :}
-   bytes 8 / 0 ?do src i cells + @ dst i cells + ! loop ;
-
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
 CAST: F>BITS ( r -- n )
@@ -90,6 +87,8 @@ public
 
 : NIL ( -- ptr n ) 0 ZERO>PTR ;
 
+: FIELD-PROJECT ( ptr a n -- ptr a ) + ;
+
 \ src/core/bytes.f is below the rewind mark. Keep its forward-copy behavior,
 \ including a narrow overlap where written bytes become later source bytes.
 : COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
@@ -121,21 +120,56 @@ public
    idx cb CAP @ width / >= if E-BOUNDS throw then
    idx width * ;
 
-: DYN-RESERVE ( n ptr ptr a n -- )
-   {: count:n cb:ptr width:n :}
-   count width EXTENT {: need:n :}
-   cb CAP @ {: old:n :}
-   need old <= if exit then
+: DYN-ADDRESS ( n ptr ptr a n -- ptr a )
+   {: idx:n cb:ptr width:n :}
+   idx cb width DYN-OFFSET
+   cb @ swap + ;
+
+: STRIDE ( ptr ptr a -- ptr n )
+   {: cb:ptr :}
+   cb byte-view 24 + cell-view ;
+
+: BOUND ( ptr ptr a -- ptr n )
+   {: cb:ptr :}
+   cb byte-view 32 + cell-view ;
+
+: DYN-ADDRESS-FIXED ( n ptr ptr a -- ptr a )
+   {: idx:n cb:ptr :}
+   idx 0 < if E-BOUNDS throw then
+   idx cb BOUND @ >= if E-BOUNDS throw then
+   cb @ idx cb STRIDE @ * + ;
+
+: DYN-GROW ( n ptr ptr a n n -- )
+   {: need:n cb:ptr old:n width:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0 > if
-      cb @ fresh old COPY
+      cb @ byte-view fresh byte-view old COPY-BYTES
       cb @ old munmap 0< if
          fresh cap munmap drop E-UNMAP throw
       then
    then
    fresh cb !
-   cap cb CAP ! ;
+   cap cb CAP !
+   width 0 > if
+      width cb STRIDE !
+      cap width / cb BOUND !
+   then ;
+
+: DYN-RESERVE ( n ptr ptr a n -- )
+   {: count:n cb:ptr width:n :}
+   count width EXTENT {: need:n :}
+   cb CAP @ {: old:n :}
+   need old <= if exit then
+   need cb old 0 DYN-GROW ;
+
+: DYN-RESERVE-FIXED ( n ptr ptr a n -- )
+   {: count:n cb:ptr width:n :}
+   count width EXTENT {: need:n :}
+   cb CAP @ {: old:n :}
+   old 0 > if width cb STRIDE @ <> if E-SIZE throw then then
+   need old <= if exit then
+   need cb old width DYN-GROW ;
 
 : DYN-RELEASE ( ptr ptr a -- )
    {: cb:ptr :}
@@ -144,6 +178,16 @@ public
    cb @ cap munmap 0< if E-UNMAP throw then
    0 cb byte-view cell-view !
    0 cb CAP ! ;
+
+: DYN-RELEASE-FIXED ( ptr ptr a -- )
+   {: cb:ptr :}
+   cb CAP @ {: cap:n :}
+   cap 0= if exit then
+   cb @ cap munmap 0< if E-UNMAP throw then
+   0 cb byte-view cell-view !
+   0 cb CAP !
+   0 cb STRIDE !
+   0 cb BOUND ! ;
 
 : NEWLINE ( -- )
    10 emit ;

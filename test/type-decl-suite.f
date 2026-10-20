@@ -42,18 +42,12 @@ variable TDB-PF
 package TDT-EVENT
 public
 variable BASE
-\ Declaration-event and transaction-depth watermarks. TDT-BASE!/TDT-BASE= record
-\ only the registry high-waters, which cannot observe a rejected declaration that
-\ published an event or left an event/field frame open — the leak the
-\ declaration runner's rollback exists to prevent. SAVE/SAME bracket a negative to
-\ cover that.
-variable EV     variable EVD    variable PFD
+\ Transaction depths bracket a negative to catch leaked event or field frames.
+variable EVD    variable PFD
 : SAVE ( -- )
-   DECL-EVENT:COUNT EV !
    DECL-EVENT:DEPTH EVD !
    TYPE-FIELD:TX-DEPTH PFD ! ;
 : SAME ( -- )
-   DECL-EVENT:COUNT EV @ T=
    DECL-EVENT:DEPTH EVD @ T=
    TYPE-FIELD:TX-DEPTH PFD @ T= ;
 ;package

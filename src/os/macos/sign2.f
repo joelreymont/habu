@@ -108,7 +108,7 @@ variable CSI
    s" macho: size tail index out of range" MACHO-TAIL-RC die ;
 
 : IMG-TAIL-BYTES ( n -- n ) {: i:n :}
-   i 0 = if DATA-CONST-SIZE exit then
-   i 1 = if MACHO-FIXUPS-SIZE exit then
+   i 0 = if MACHO-DATA-WROTE @ exit then
+   i 1 = if MACHO-FIXUPS-WROTE @ exit then
    i 2 = if SB-SIZE exit then
    s" macho: size tail index out of range" MACHO-TAIL-RC die ;

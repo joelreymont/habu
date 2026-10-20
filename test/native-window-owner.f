@@ -125,6 +125,7 @@ create ERR IO-CAP allot
    s" src/habu/layout.f" ARG+
    s" src/core/bytes.f" ARG+
    s" src/os/env-base.f" ARG+
+   s" src/core/quotation-storage.f" ARG+
    s" src/core/include.f" ARG+ ;
 
 \ The compiler target declares families, so its require closure follows the
@@ -181,7 +182,6 @@ create ERR IO-CAP allot
    SOURCE-DEPS+
    s" src/core/enums.f" ARG+
    s" src/core/sha256.f" ARG+
-   s" src/core/type-family-sha.f" ARG+
    s" src/core/combinators.f" ARG+
    s" src/habu/code-span.f" ARG+
    s" src/habu/xref.f" ARG+

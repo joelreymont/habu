@@ -5,8 +5,8 @@
 \ unsealed engine binds by their recorded rows. The gate runs it on that engine,
 \ which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/structure-decl-suite.f
-\ Proves: POLICY and DERIVE reach both the event stream and the family
-\ record; every reject anchor (E-TDECL-* family + the field record's own name
+\ Proves: POLICY and DERIVE reach the family record; every reject anchor
+\ (E-TDECL-* family + the field record's own name
 \ gate) fires at the offending token; a mid-declaration reject leaves every
 \ registry cursor byte-identical to the pre-declaration baseline;
 \ a public STRUCTURE with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
@@ -45,7 +45,7 @@ T-RESET
 : PACKED# ( -- n ) TL-PACKED-TAG ;
 
 \ --- registry snapshot, so a reject can prove that the family, schema,
-\ field and event transactions have returned to their prior watermarks.
+\ field transactions have returned to their prior watermarks.
 variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
 variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
 : REG-MARK ( -- )
@@ -56,28 +56,23 @@ variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable R
 : SCHN@ ( -- n ) SCH-N @ ;
 : SUMVN@ ( -- n ) SUMV-N @ ;
 
-variable FID   variable B   variable PFB   variable DEVB
+variable FID   variable B   variable PFB
 variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
 
 \ ---------------------------------------------------------------------------
-\ 4. POLICY reaches both the family record and the event stream.
+\ 4. POLICY reaches the family record.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" STRUCTURE ppk POLICY packed-tag FIELD x n ;STRUCTURE" evaluate-closed
 s" ppk" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
-2 DECL-EVENT:POLICY? TTRUE                            \ a POLICY event followed DECL + ARITY
-2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
 
 \ ---------------------------------------------------------------------------
-\ 5. DERIVE reaches both the family record and the event stream; two features
-\    on one clause are accepted, each recorded once.
+\ 5. DERIVE reaches the family record; two features on one clause are accepted.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" STRUCTURE der DERIVE eq hash FIELD x n ;STRUCTURE" evaluate-closed
 s" der" FAMID FAM-EQ? TTRUE                           \ eq derived
 s" der" FAMID FAM-HASH? TTRUE                         \ hash derived
-2 DECL-EVENT:DERIVE? TTRUE                            \ two DERIVE events after DECL + ARITY
-3 DECL-EVENT:DERIVE? TTRUE
 
 \ ---------------------------------------------------------------------------
 \ 6. A duplicate field name rejects through the field record (E-TFAM-DUP 7102)
@@ -85,13 +80,11 @@ s" der" FAMID FAM-HASH? TTRUE                         \ hash derived
 \ ---------------------------------------------------------------------------
 REG-MARK
 TYPE-FIELD:COUNT PFB !
-DECL-EVENT:COUNT DEVB !
 s" STRUCTURE dupf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ variant cursor unchanged
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
-DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 
 \ ---------------------------------------------------------------------------
 \ 7. Grammar / name / arity / type / policy / derive / terminator rejects, each
@@ -271,13 +264,11 @@ package SDPRIVROLL
 private
 REG-MARK
 TYPE-FIELD:COUNT PFB !
-DECL-EVENT:COUNT DEVB !
 s" STRUCTURE roll FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ no ctor rows from a rejected private decl
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
-DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 STRUCTURE roll FIELD z n ;STRUCTURE                 \ the name is free again
 : RRT ( n -- n ) ROLL-MAKE ROLL-UNMAKE ;
 public
@@ -940,18 +931,17 @@ s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 \     returns every registry cursor to its mark and renders its line. What the
 \     clause does to the generated words is section 17.
 \ ---------------------------------------------------------------------------
-: REJ-MARK ( -- ) REG-MARK TYPE-FIELD:COUNT PFB ! DECL-EVENT:COUNT DEVB ! ;
+: REJ-MARK ( -- ) REG-MARK TYPE-FIELD:COUNT PFB ! ;
 : REJ-SAME ( -- )
    TFAM-N @ RB-TFAM @ T=  TF-STR-U @ RB-STR @ T=  TF-PK-N @ RB-PK @ T=
    SUMV-N @ RB-SUMV @ T=  LAY-N @ RB-LAY @ T=  SCH-N @ RB-SCH @ T=
    SCH-ROOT-N @ RB-ROOT @ T=  PF-N @ RB-PFN @ T=  PF-COMMIT-N @ RB-PFC @ T=
-   TYPE-FIELD:COUNT PFB @ T=  DECL-EVENT:COUNT DEVB @ T= ;
+   TYPE-FIELD:COUNT PFB @ T= ;
 DECL-EVENT:RESET
 package SDOPQ
 public
 STRUCTURE obox OPAQUE FIELD x n FIELD y n ;STRUCTURE
 s" obox" FAMID FID !
-2 DECL-EVENT:OPAQUE? TTRUE                            \ an OPAQUE event followed DECL + ARITY
 FID @ TFAM-OPAQUE? TTRUE                              \ the family record carries it
 FID @ TFAM-PUBLIC? TTRUE                              \ the family's visibility is unchanged
 FID @ TFAM-GEN-PUBLIC? 0= TTRUE                       \ its generated words are placed privately

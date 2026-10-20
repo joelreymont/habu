@@ -3,7 +3,7 @@ title: Clear the remaining reserved-name definitions in lib and src
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T14:50:44.753414+02:00\""
+created-at: "2026-10-02T14:50:44.753414+02:00"
 closed-at: "2026-10-14T19:34:45.570050+03:00"
 close-reason: "Implemented in 94c0e22f: remaining non-engine reserved definitions were renamed or removed, the engine-language exception is documented, and lint, focused tests and converged image checks passed."
 ---

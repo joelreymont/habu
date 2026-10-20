@@ -17,10 +17,10 @@ private
 
 14 constant VIEWS-N
 
-here CELL 1- and CELL swap - CELL 1- and allot
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
-VIEWS-N TYPED-BUFFER S-READ IR-ARENA:reader
+align
+1 CWORK-BUFFER S-KEY IR-ID:ir-module-key
+VIEWS-N CWORK-BUFFER S-VIEW IR-ARENA:view
+VIEWS-N CWORK-BUFFER S-READ IR-ARENA:reader
 
 : RD ( n -- IR-ARENA:reader ) S-READ @ ;
 

@@ -18,10 +18,7 @@ using A64EMIT
 
 private
 
-\ The most bytes one published routine holds: 64 instructions, more than any
-\ executing case emits.
-$100 constant CODE-CAP
-CODE-CAP BUFFER: CODE
+DYNAMIC-BUFFER CODE u8
 
 
 : MAP-CHECK ( -- )
@@ -58,11 +55,12 @@ public
 : PUBLISH ( -- n )
    cp@ {: fn:n :}
    MAP-CHECK fn PLACE-CHECK fn ROOM-CHECK
-   SIZE CODE-CAP > if E-NPUB-SIZE throw then
+   SIZE CODE-RESERVE
+   0 CODE BYTE-VIEW {: code:ptr :}
    INSNS 0 ?do
-      i WORD@ CODE i MAP-OFFSET@ + LE:U32!
+      i WORD@ code i MAP-OFFSET@ + LE:U32!
    loop
-   CODE fn SIZE NPUB:WRITE-AT
+   code fn SIZE NPUB:WRITE-AT
    fn ;
 
 ;using

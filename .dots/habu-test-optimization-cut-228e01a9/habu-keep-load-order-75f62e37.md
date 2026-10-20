@@ -3,7 +3,7 @@ title: Keep load order in an all-errors source list
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T05:26:32.079267+02:00\""
+created-at: "2026-10-01T05:26:32.079267+02:00"
 closed-at: "2026-10-14T19:26:17.643183+03:00"
 close-reason: "Implemented in 97ae5543: all-errors source-list replays source segments in load order; reduced require-before-use and dual cases, diagnostic and all-errors suites passed."
 ---

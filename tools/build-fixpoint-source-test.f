@@ -126,7 +126,7 @@ package BUILD-FIXPOINT
       E-BUILD-CERTIFY TTHROWSQ ;
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
-\ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
+\ pre-hook prefix. Its target-width check uses cell.f's CORE-LAYOUT-RC, and
 \ PTR-VARIABLE has its own pre-checker owner. The generic structure DSL is
 \ deliberately post-hook and must not enter this prefix. The source verifier
 \ remains independently checked through the same VERIFY:SOURCE-BUF path.
@@ -140,6 +140,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker-owner-extension.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/prims.f" BF-APPEND-SOURCE
    out outu s" src/core/does-clause.f" BF-APPEND-SOURCE

@@ -1,11 +1,11 @@
 ---
 title: "Run check.f's all-errors pass on the engine's image"
-status: closed
+status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-10-03T13:25:02.863518+02:00\""
-closed-at: "2026-10-14T19:43:42.953854+03:00"
-close-reason: check.f all-errors pre-pass moved to verifier child in 26cef4c7; current check-core.f routes through child and commit records regression.
+created-at: "2026-10-03T13:25:02.863518+02:00"
 ---
 
 After f634089a (488654e5) the default pre-pass runs in tools/check-verify-child.f, but --all-errors skips it (tools/check-core.f ~1716-1718) and its static pass, CHK-RUN-ALL -> CHECK-ALL-ERRORS:COMPOSE-BUF (~1531-1535), still resolves names in check.f's own process, on the CLI as in process (review 435): with the lane 335 fixtures ($HOME/.cache/tmp/kestrel-r4-inproc/p/hl/), hl.f using T= is refused by the run in process but by the static pass on the CLI, and fs.f using FILE-SIZE (a word check.f loaded) is certified by the CLI's static pass and refused only by the run. Acceptance: the --all-errors static pass runs where the default pre-pass runs (the verifier child's image), so a tool-loaded word is undefined to it in both modes with the same diagnostic and stage, seen failing first; cost measured.
+
+The requirement remains unfinished: CHK-RUN-ALL-COMPOSE still calls CHECK-ALL-ERRORS:COMPOSE-BUF in the tool process, and CHK-RUN-CURRENT skips CHK-RUN-PREVERIFY when CHK-ALL is set. The default-path child change does not establish the all-errors boundary. Reproduce the named-word contamination before implementation and retain the real CLI/in-process comparison.

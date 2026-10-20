@@ -3,7 +3,7 @@ title: Share one family-taken check in TYPE-NAME
 status: closed
 priority: 4
 issue-type: task
-created-at: "\"2026-10-02T05:08:51.592974+02:00\""
+created-at: "2026-10-02T05:08:51.592974+02:00"
 closed-at: "2026-10-14T19:30:56.936520+03:00"
 close-reason: "Implemented in c3ff8f38: TYPE-NAME exports one FAMILY-TAKEN? scope predicate and the SUMTYPE variant gate uses it; focused suites and before/after refusals match, with rebuild convergence."
 ---

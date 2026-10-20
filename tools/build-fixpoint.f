@@ -17,9 +17,9 @@ require tools/build-certify.f            \ the certify report and census lines
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
-\ files call. The sibling packages in this file (COMPILER-BUILD, BUILD-EXT)
-\ close and reopen BUILD-FIXPOINT around themselves, because packages do not
-\ nest, and import what they need with `using BUILD-FIXPOINT`.
+\ files call. The sibling COMPILER-BUILD package closes and reopens
+\ BUILD-FIXPOINT, because packages do not nest, and imports what it needs
+\ with `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
 32768 constant BF-CMP-CAP
@@ -507,57 +507,7 @@ private
 
 ;package
 
-package BUILD-EXT
-using BUILD-FIXPOINT
-
-TYPED-VARIABLE PATH-A ptr u8
-variable PATH-U
-PTR-VARIABLE KEEP-A
-variable KEEP-U
-
-: PATH@ ( -- ptr u8 )
-   PATH-A @ ;
-
-: KEEP@ ( -- ptr u8 )
-   KEEP-A @ ;
-
-: CLEAR ( -- )
-   0 PATH-U !
-   0 KEEP-U ! ;
-
-: SET ( ptr u8 n -- )
-   PATH-U !
-   PATH-A ! ;
-
-: KEEP-SET ( ptr u8 n -- )
-   KEEP-U !
-   KEEP-A ! ;
-
-CLEAR
-
-public
-
-: ASSERT-EMPTY ( -- )
-   PATH-U @ 0 <> KEEP-U @ 0 <> or if
-      s" build-fixpoint: production extension enabled" BF-BUILD-RC die
-   then ;
-
-: APPEND ( ptr u8 n -- ) {: out:ptr outu:n :}
-   KEEP-U @ 0 > if out outu KEEP@ KEEP-U @ BF-APPEND-SOURCE then
-   PATH-U @ 0 > if out outu PATH@ PATH-U @ BF-APPEND-SOURCE then ;
-
-: APPEND-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
-   KEEP-U @ 0 > if
-      out outu KEEP@ KEEP-U @ BF-APPEND-SOURCE
-   then ;
-
-;using
-;package
-
 package BUILD-FIXPOINT
-
-: BF-SOURCE-HAS? ( ptr u8 n -- bool )
-   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ then read the found option<NUM:index> through NUM's one public
@@ -636,35 +586,8 @@ package BUILD-FIXPOINT
    out outu BF-SOURCE-BUF off + BF-SOURCE-LEN @ off - BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
-: BF-SOURCE-MUST-HAVE ( ptr u8 n -- )
-   BF-SOURCE-HAS? 0= if s" build-fixpoint: native emitter shape missing" BF-BUILD-RC die then ;
-
-: BF-SOURCE-MUST-LACK ( ptr u8 n -- )
-   BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
-
-\ The stage compiler checks emitter stack effects. Runtime process and native
-\ compilation suites verify spawn descriptors, locals and branch fixups.
-
-\ icode.f is emitted after the checker-boot hook reinstall, so the stage
-\ compile checks it, and the BLOCKING BF-CERTIFY static scan also covers its
-\ typed shape (VERIFY:SOURCE-BUF checks the whole emitted source, the
-\ prelude's `0 set-check` window included, and a reject kills the build), so
-\ the typed-shape asserts retired with habu1/habu2's. Kept below:
-\ runtime invariants the checker cannot express -- fail-closed mmap error
-\ handling, and the no-static-allot executable-memory shape (JIT code/label/
-\ fixup storage must live in mmap'd regions, never `create ... allot` data
-\ space).
-: BF-PREFLIGHT-ICODE ( -- )
-   s" src/arch/arm64/icode.f" BF-READ-SOURCE
-   s" icode: code mmap failed" BF-SOURCE-MUST-HAVE
-   s" icode: table mmap failed" BF-SOURCE-MUST-HAVE
-   s" create CODE CODE-CAP-BYTES allot" BF-SOURCE-MUST-LACK
-   s" create LBLP LBL-CAP cells allot" BF-SOURCE-MUST-LACK
-   s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK ;
-
 : BF-PREFLIGHT ( -- )
-   BF-REQUIRE-WATERMARK
-   BF-PREFLIGHT-ICODE ;
+   BF-REQUIRE-WATERMARK ;
 
 : BF-TARGET-UNKNOWN ( -- )
    s" build-fixpoint: unknown target" BF-BUILD-RC die ;
@@ -782,6 +705,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-fetch-abi.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker-owner-extension.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/prims.f" BF-APPEND-SOURCE
    out outu s" src/core/does-clause.f" BF-APPEND-SOURCE
@@ -871,10 +795,10 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-ENUMS
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu s" src/core/source-producer.f" BF-APPEND-SOURCE
-   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/code-span.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/cell-body.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
@@ -943,7 +867,6 @@ package BUILD-FIXPOINT
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-SYS
    out outu BF-APPEND-SCRIPT-ARGV
-   out outu s" src/habu/treeshake.f" BF-APPEND-MODULE   \ primitive-registry.f requires it
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
@@ -951,7 +874,6 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-TARGET-PROC-WATCH
    out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu BF-APPEND-HABU1
-   out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
@@ -1263,12 +1185,7 @@ package BUILD-FIXPOINT
 \ lands in code below the window and the seed's canonical CODE-B0 absorbs it.
 \ src/habu/stdin.f DP-MARK refuses the top-level shape by name.
 create BF-CHAIN-DRV-BUF FS-PATH-CAP allot   variable BF-CHAIN-DRV-U
-create BF-ART-A-BUF FS-PATH-CAP allot       variable BF-ART-A-U
-create BF-ART-B-BUF FS-PATH-CAP allot       variable BF-ART-B-U
-create BF-ART-DG-A BF-STAMP-DG-U allot
-create BF-ART-DG-B BF-STAMP-DG-U allot
-variable BF-AGEN
-variable BF-AFOUND
+create BF-ART-BUF FS-PATH-CAP allot         variable BF-ART-U
 variable BF-DRV-R
 
 : BF-CHAIN-DRIVER$ ( -- ptr u8 n )
@@ -1277,13 +1194,9 @@ variable BF-DRV-R
 : BF-CHAIN-DRIVER-PATH! ( -- )
    s" chain-driver.f" BF-CHAIN-DRV-BUF BF-TMP> BF-CHAIN-DRV-U ! ;
 
-: BF-ART-A$ ( -- ptr u8 n )
-   s" chain.aot" BF-ART-A-BUF BF-TMP> BF-ART-A-U !
-   BF-ART-A-BUF BF-ART-A-U @ ;
-
-: BF-ART-B$ ( -- ptr u8 n )
-   s" chain-b.aot" BF-ART-B-BUF BF-TMP> BF-ART-B-U !
-   BF-ART-B-BUF BF-ART-B-U @ ;
+: BF-CHAIN-ART$ ( -- ptr u8 n )
+   s" chain.aot" BF-ART-BUF BF-TMP> BF-ART-U !
+   BF-ART-BUF BF-ART-U @ ;
 
 : BF-CAPTURE-TOOL$ ( -- ptr u8 n )
    s" tools/aot-chain-capture.f" ;
@@ -1304,41 +1217,6 @@ variable BF-DRV-R
 
 : BF-CAPTURE-INTO ( ptr u8 n -- ) {: art:ptr artu:n :}
    s" hb-host" BF-A$ art artu BF-RUN-CAPTURE BF-RC0 ;
-
-: BF-ART-DIGEST ( ptr u8 n ptr u8 -- ) {: p:ptr u:n dg:ptr :}
-   BF-FSHA-CTX p u dg SHA256-FILE-IN dup 0 <> if throw then drop ;
-
-: BF-ART-MATCH? ( -- bool )
-   BF-ART-A$ BF-ART-DG-A BF-ART-DIGEST
-   BF-ART-B$ BF-ART-DG-B BF-ART-DIGEST
-   BF-ART-DG-A BF-STAMP-DG-U BF-ART-DG-B BF-STAMP-DG-U STR= ;
-
-\ TWO CAPTURES, TWO PROCESSES, ONE ANSWER - the promoted acceptance, run in the
-\ build and fail-closed. A capture reads a booted engine's live dictionary and
-\ writes addresses out of it, so "the same tree gives the same artifact" is a
-\ property of the capture and not of the sources; proving it needs a second
-\ process, whose ASLR and heap differ, rather than a second call. The loop is
-\ BF-STAGE-FIXPOINT-FROM-SOURCE's shape: a generation that disagrees promotes and
-\ retries, and running out of generations is a named death, not a warning.
-: BF-ARTIFACT-FIXPOINT ( -- )
-   BF-ART-A$ BF-CAPTURE-INTO
-   0 BF-AGEN !
-   0 BF-AFOUND !
-   begin BF-AGEN @ BF-MAX-GENS < while
-      BF-ART-B$ BF-CAPTURE-INTO
-      BF-ART-MATCH? if
-         -1 BF-AFOUND !
-         BF-MAX-GENS BF-AGEN !
-      else
-         s" chain-b.aot" s" chain.aot" BF-RENAME-TMP
-         BF-AGEN @ 1 + BF-AGEN !
-      then
-   repeat
-   BF-AFOUND @ 0= if
-      s" ARTIFACT-FIXPOINT BROKEN: two captures of one engine disagree after 4 generations"
-      BF-BUILD-RC die
-   then
-   s" chain capture OK: two processes wrote the same artifact" type cr ;
 
 : BF-DRV-WS? ( n -- bool ) {: c:n :}
    c 32 = c 9 = or c 13 = or c 10 = or ;
@@ -1411,7 +1289,7 @@ variable BF-DRV-R
    BF-LF-BUF 1 BF-DRV+ ;
 
 : BF-CHAIN-DRIVER! ( -- )
-   BF-ART-A$ s" hb-host" BF-B$ BF-CHAIN-DRIVER-FROM ;
+   BF-CHAIN-ART$ s" hb-host" BF-B$ BF-CHAIN-DRIVER-FROM ;
 
 \ ---------------------------------------------------------------------------
 \ TWO ENGINES, ONE PREFIX.
@@ -1448,7 +1326,7 @@ variable BF-DRV-R
    s" src/habu/stdin.f" BF-EMIT-ENGINE
    BF-RECORD-STDIN                              \ the HOST's source is the stamp's: the
    BF-KEEP-HOST                                 \ product's names a temporary artifact path
-   BF-ARTIFACT-FIXPOINT
+   BF-CHAIN-ART$ BF-CAPTURE-INTO
    BF-CHAIN-DRIVER!
    BF-CHAIN-DRIVER$ BF-EMIT-ENGINE ;
 
@@ -1474,13 +1352,11 @@ variable BF-DRV-R
 \ source, so it runs the seal pass again at every start and its class is a
 \ property of whoever runs it, not of this build - reading it back would answer
 \ about the probe. So the request is what is refused, before a byte is emitted,
-\ the way a production extension already is - in the same word, at the same four
-\ verbs.
+\ in the same word at the four build verbs.
 : BF-WHITEBOX-REQUESTED? ( -- bool )
    s" HABU_WHITEBOX_IMAGE" GETENV s" 1" STR= ;
 
 : BF-ASSERT-PRODUCT ( -- )
-   BUILD-EXT:ASSERT-EMPTY
    BF-WHITEBOX-REQUESTED? if
       s" build-fixpoint: HABU_WHITEBOX_IMAGE is set; this builds the product engine, and an unsealed one must come from tools/native-build.f with `whitebox`" BF-BUILD-RC die
    then ;
@@ -1947,21 +1823,6 @@ variable BF-CLI-RAN
    [: BF-MAIN ;] catch {: rc:n :}      \ entry wrapper must not both drive a build
    rc 0 <> if rc BF-FAIL-DIE then ;
 
-\ Compiled callers retain direct xts; erase the mutable extension authority so
-\ reopening BUILD-EXT cannot select an arbitrary source file.
-;package
-
-package BUILD-EXT
-undefine SET
-undefine CLEAR
-undefine PATH@
-undefine PATH-A
-undefine PATH-A#base
-undefine PATH-U
-undefine KEEP-SET
-undefine KEEP@
-undefine KEEP-A
-undefine KEEP-U
 ;package
 
 package BUILD-FIXPOINT

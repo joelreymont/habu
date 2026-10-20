@@ -3,7 +3,7 @@ title: Print the capture when a subject run times out
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T18:00:48.161771+02:00\""
+created-at: "2026-10-01T18:00:48.161771+02:00"
 closed-at: "2026-10-14T19:30:56.910903+03:00"
 close-reason: "Implemented in d98a752d: SUBJECT:RUN callers preserve drained lengths and report label, program and output before timeout throw; forced-timeout probes and affected rows passed."
 ---

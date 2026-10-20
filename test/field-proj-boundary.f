@@ -50,6 +50,7 @@ create ERR IO-CAP allot
    s" src/habu/stack-abi.f" ARG
    s" src/habu/layout.f" ARG
    s" src/os/env-base.f" ARG
+   s" src/core/quotation-storage.f" ARG
    s" src/core/include.f" ARG
    s" src/core/sha256.f" ARG
    s" src/habu/code-span.f" ARG

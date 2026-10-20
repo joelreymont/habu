@@ -87,6 +87,7 @@ TYPED-VARIABLE SRC-P ptr u8              \ its path,
 variable SRC-PU
 TYPED-VARIABLE SRC-T ptr u8              \ the tail of the word they are of,
 variable SRC-TU
+variable SRC-OWNER                      \ slot supplying a probe's subject, -1 for disk
 40 BUFFER: OUTCOME-B                     \ and what its check came to
 variable OUTCOME-U
 variable BATCH-CODE
@@ -184,6 +185,7 @@ variable BATCH-K
 : PROBED ( [ -- ] -- [ -- ] )
    PUBLISHABLE @ if
       CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ VERIFIED @
+      SRC-OWNER @
       LSP-DEFS:DEFS-PROBE
    then
    dup execute ;
@@ -209,7 +211,8 @@ public
    then
    PUBLISHABLE @ if
       CHECK:VERIFY-LOADS$ slot DOC-LOADS!
-      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot
+      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$
+      CHECK:VERIFY-UNREAD$ slot
       VERIFIED @ LSP-DEFS:DEFS-KEEP
    then
    CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
@@ -224,14 +227,15 @@ public
 \ this canonical tail, and runs GATHER with the check as the store's probe
 \ when it completed, removing the probe once GATHER returns or
 \ throws.
-: USES ( ptr u8 n ptr u8 n ptr u8 n [ -- ] -- )
-   {: a:ptr u:n p:ptr pu:n t:ptr tu:n gather :}
+: USES ( ptr u8 n ptr u8 n ptr u8 n n [ -- ] -- )
+   {: a:ptr u:n p:ptr pu:n t:ptr tu:n owner:n gather :}
    a SRC-A !
    u SRC-U !
    p SRC-P !
    pu SRC-PU !
    t SRC-T !
    tu SRC-TU !
+   owner SRC-OWNER !
    false PUBLISHABLE !
    false VERIFIED !
    [: CHECKED ;] catch {: code:n :}
@@ -240,6 +244,7 @@ public
    then
    gather [: PROBED ;] catch {: rc:n :} drop
    LSP-DEFS:DEFS-UNPROBE
+   LSP-DEFS:PROBE-DISK-CLEAR
    rc 0<> if rc throw then ;
 
 \ Primitive references can check a bounded group in one isolated child.
@@ -268,16 +273,18 @@ public
    BATCH-K @ CHECK:VERIFY-BATCH-RESULT USES-VERDICT ;
 
 \ False leaves the subject untouched so the caller can retry it one-shot.
-: USES-BATCH-RESULT ( n [ -- ] -- bool )
-   {: k:n gather :}
+: USES-BATCH-RESULT ( n n [ -- ] -- bool )
+   {: k:n owner:n gather :}
    false PUBLISHABLE !
    false VERIFIED !
+   owner SRC-OWNER !
    BATCH-CODE @ 0<> if false exit then
    k BATCH-K !
    [: USES-BATCH-CHECKED ;] catch 0<> if false exit then
    CHECK:VERIFY-BATCH-COMPLETE? 0= if false exit then
    gather [: PROBED ;] catch {: rc:n :} drop
    LSP-DEFS:DEFS-UNPROBE
+   LSP-DEFS:PROBE-DISK-CLEAR
    rc 0<> if rc throw then
    true ;
 

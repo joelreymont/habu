@@ -3,7 +3,7 @@ title: Name the cause when a definition has no effect record
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-09-17T19:20:41.018475+03:00\""
+created-at: "2026-09-17T19:20:41.018475+03:00"
 closed-at: "2026-10-14T19:38:01.536097+03:00"
 close-reason: "Implemented in d767677e: hookless native compile reports the checker reason before KEEP-ARITY rejects and names the definition; prefix/extra-row probes, regression suite and convergence passed. A separate same-name effect-record lookup remains under 7b3f85de."
 ---

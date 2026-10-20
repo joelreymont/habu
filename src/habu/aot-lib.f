@@ -31,6 +31,7 @@ require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/xref.f
 require src/habu/fdio.f
+require src/lib/le.f
 require src/habu/address-carrier.f
 require src/habu/aot-decl.f
 require src/habu/aot-window-latch.f
@@ -87,6 +88,7 @@ using A64ICODE
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL
+variable CODE-END
 \ The label at text offset zero: the image's own code base, which the declared
 \ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
 variable LTEXT
@@ -143,6 +145,31 @@ DYNAMIC-BUFFER BLEN n     \ ... and the bytes planned for it
 : PLAN-TABLES ( n -- ) {: rows:n :}
    rows 1 < IF s" aot: no closure members to plan" 74 die THEN
    rows NEWOFF-RESERVE  rows BLEN-RESERVE ;
+
+\ Only recorded DATA carriers enter this table. Rows are in member and source
+\ order; PSTART/PEND delimit each member's sparse shortening map. PCUM holds
+\ the bytes removed through a row, so every consumer maps an old offset by the
+\ same arithmetic, including targets that name ordinary bytes between sites.
+DYNAMIC-BUFFER PSITE ptr u8
+DYNAMIC-BUFFER PMODE n
+DYNAMIC-BUFFER PGROUP n
+DYNAMIC-BUFFER PHOLD n
+DYNAMIC-BUFFER PCUM n
+DYNAMIC-BUFFER PSTART n
+DYNAMIC-BUFFER PEND n
+variable PN
+DYNAMIC-BUFFER GTARGET n
+DYNAMIC-BUFFER GSAVE n
+DYNAMIC-BUFFER GOFF n
+DYNAMIC-BUFFER GON n
+variable GN
+variable POOL-OFF
+variable POOL-N
+: POOL-TABLES ( n -- ) {: rows:n :}
+   rows PSITE-RESERVE rows PMODE-RESERVE
+   rows PGROUP-RESERVE rows PHOLD-RESERVE rows PCUM-RESERVE
+   rows GTARGET-RESERVE rows GSAVE-RESERVE rows GOFF-RESERVE rows GON-RESERVE
+   NCLO @ PSTART-RESERVE NCLO @ PEND-RESERVE ;
 
 \ --- the persistent data region this file emits is the span
 \ src/habu/aot-window-latch.f latched: AOT-DATA-START and AOT-DATA-SPAN live there
@@ -271,12 +298,11 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 \ dictionary pointer no declaration accounts for - a `' word ,` table - and the
 \ scan reports the first one with the three facts a program has to be edited by:
 \ its owning word, its DATA offset and the pointer it holds.
-\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN. Inside a definition the
-\ checker refuses a pointer or a token in either kind of cell, but the top level
-\ is not certified: `variable V ' FOO V !` and `TYPED-VARIABLE V n ' FOO V !`
-\ both bake a code address (measured on this engine), so no storage declaration
-\ says what a baked cell holds until the top level checks typed stores. A
-\ literal body has no such door: nothing stores into it.
+\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN. A stored value can
+\ come from unchecked top-level code or an explicit `0 set-check` window.
+\ A declared pointer cell can likewise hold a builder-only mapping;
+\ its type says what kind of value it holds, not whether that mapping survives
+\ capture. A literal body has no such door: nothing stores into it.
 \ ONE CELL, JUDGED BY WHAT DECLARED ITS BYTES. The value decides only WHICH
 \ refusal a cell would draw; whether it draws one at all is the declaration's
 \ answer, so the second declaration - the compiler's literal rows
@@ -574,6 +600,8 @@ variable FFI-BASE-INDEX
 \ buffer.
 $1E0000 constant SPARSE-CAP
 create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
+variable AOT-CODE-N
+variable AOT-PAYLOAD-OFF
 
 : SPARSE-ROOM? ( n -- )
    SPARSE-LEN @ + SPARSE-CAP > IF
@@ -654,18 +682,47 @@ variable BLOB-CV
    loop ;
 
 \ The declared xt-cell rows follow this blob immediately (LINK emits them next),
-\ at the four-byte boundary BYTES, pads to.
-: EMIT-DATA-BLOB ( -- )                            \ place the sparse blob after all code
+\ at the four-byte boundary BYTES, pads to. On macOS the label names the file's
+\ __DATA_CONST address after its two GOT cells. The assembler advances through
+\ the virtual gap for its existing label fixups; the object and image writers
+\ omit that gap from their code slice.
+: AOT-PAYLOAD-PLACE ( -- )
+   ASM-LEN AOT-CODE-N !
+   ASM-LEN CODELEN !
+   TEXTSZ CODE-OFF - IMG-PAYLOAD-PREFIX @ + AOT-PAYLOAD-OFF !
+   begin ASM-LEN AOT-PAYLOAD-OFF @ < while 0 EMITW repeat ;
+
+: EMIT-DATA-BLOB ( -- )
    BLOB-LEN @ 0= IF exit THEN
    BUILD-SPARSE-DATA
+   HB-TARGET-MACOS? if AOT-PAYLOAD-PLACE then
    BLOB-LBL LABEL@ LBL,
    SPARSE-BUF SPARSE-LEN @ BYTES, ;
 
+: AOT-OBJ-CODE-N ( -- n )
+   AOT-CODE-N @ 0 > if AOT-CODE-N @ else ASM-LEN then ;
+
+: AOT-OBJ-PAYLOAD-N ( -- n )
+   AOT-CODE-N @ 0 > if ASM-LEN AOT-PAYLOAD-OFF @ - else 0 then ;
+
+create AOT-OBJ-HDR 8 allot
+
 : AOT-WRITE-OBJ ( -- )
+   AOT-OBJ-CODE-N AOT-OBJ-HDR LE:U32!
+   AOT-OBJ-PAYLOAD-N AOT-OBJ-HDR 4 + LE:U32!
    AOT-OBJ PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" aot: cannot open object output" 74 die THEN
-   DRV-WFD @ CODE ASM-LEN FDIO:WALL
+   DRV-WFD @ AOT-OBJ-HDR 8 FDIO:WALL
+   DRV-WFD @ CODE AOT-OBJ-CODE-N FDIO:WALL
+   AOT-OBJ-PAYLOAD-N 0 > if
+      DRV-WFD @ CODE AOT-PAYLOAD-OFF @ + AOT-OBJ-PAYLOAD-N FDIO:WALL
+   then
    DRV-WFD @ close ;
+
+: AOT-FRESH-PAYLOAD! ( -- )
+   AOT-OBJ-PAYLOAD-N 0 > if
+      AOT-OBJ-CODE-N CODE AOT-PAYLOAD-OFF @ + AOT-OBJ-PAYLOAD-N IMG-PAYLOAD!
+   then ;
 
 \ --- preseeded test entry: raw physical value-stack cells materialized before
 \ the selected root is called. A preseeded bad-tag object/AOT entry
@@ -788,6 +845,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
 PTR-VARIABLE CP2  PTR-VARIABLE CEND   \ the copy walk's cursor and its one-past end
 variable NEXT-OFF
+variable DP-REF-OFF
 \ --- THE MEMBERS IN ENTRY ORDER, the third per-member column. The closure walk
 \ discovers members in CALL order (aot-closure.f ADD-CLO appends what it reaches),
 \ so the entries in CLO are unordered, and the two lookups below - the exact-entry
@@ -912,18 +970,8 @@ variable MBP                                  \ ... and the best position it saw
 : TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
 : ADR? {: w:n :}  w $9F000000 and $10000000 = ;
 : ADRP? {: w:n :}  w $9F000000 and $90000000 = ;
-\ Compacted blob length. Under the direct-BL-only contract every word maps 1:1
-\ (no movz/movk/movk/blr chain is ever collapsed), so the compacted length is the
-\ member's own length.
-: PLAN-BLOBS
-   NCLO @ PLAN-TABLES
-   MEMBER-ORDER
-   ASM-LEN NEXT-OFF !
-   0 WI ! BEGIN WI @ NCLO @ < WHILE
-      NEXT-OFF @       WI @ NEWOFF !
-      WI @ CLO-BYTES dup WI @ BLEN !
-      NEXT-OFF @ + NEXT-OFF !
-      WI @ 1+ WI ! REPEAT ;
+\ PLAN-BLOBS follows the pooling pass below, which uses the relocation target
+\ decoders and the final DATA-TARGET mapping before it sets member lengths.
 \ Relocation math for direct branches. The binary is PIE (arm64 macOS requires it),
 \ so absolute targets would be wrong under the ASLR slide — instead each direct
 \ branch is rewritten to a PC-RELATIVE form whose offset within __text is
@@ -950,20 +998,32 @@ variable BDELTA  variable TNEW
    BDELTA @ 4 / BDELTA !
    BDELTA @ -8192 <  BDELTA @ 8191 > or IF s" aot: rel14 target out of range" 74 die THEN
    BDELTA @ $3FFF and ;
-\ ADR carries a BYTE delta, and its range check is the ENCODER's guard: no
-\ relocated ADR can trip it, because ADR-TARGET! below resolves every site inside
-\ its own member and the plan preserves that member's length, so the delta
-\ arriving here is the one the compiler already fitted.
+\ ADR carries a BYTE delta. Its target remains inside the same member, but a
+\ shortened DATA site between it and the target changes that delta.
 : ADRD32 {: site:n target:n :}
    target site - BDELTA !
    BDELTA @ -1048576 <  BDELTA @ 1048575 > or IF s" aot: ADR target out of range" 74 die THEN
    BDELTA @ 3 and 29 lshift  BDELTA @ 2 rshift $7FFFF and 5 lshift or ;
 
 \ A target at a member's end is the adjacent member's start, not this one's.
-: MAP-IN-MEMBER {: i:n t:ptr :} ( n ptr u8 -- n )
-   t i CLO-AT < IF -1 EXIT THEN
-   t i CLO-AT i CLO-BYTES + >= IF -1 EXIT THEN
-   i MEMBER-NEWOFF  t i CLO-AT -  + ;
+variable MREM
+: MAP-IN-MEMBER {: m:n t:ptr :} ( n ptr u8 -- n )
+   t m CLO-AT < IF -1 EXIT THEN
+   t m CLO-AT m CLO-BYTES + >= IF -1 EXIT THEN
+   0 MREM !
+   PN @ 0 > IF
+      m PEND @ m PSTART @ ?do
+         i PMODE @ 0<> IF
+            t i PSITE @ > t i PSITE @ ADDRESS-CARRIER:DATA-CHAIN-BYTES + < and IF
+               s" aot: code target inside shortened DATA carrier" 74 die
+            THEN
+            t i PSITE @ ADDRESS-CARRIER:DATA-CHAIN-BYTES + >= IF
+               i PCUM @ MREM !
+            THEN
+         THEN
+      loop
+   THEN
+   m MEMBER-NEWOFF  t m CLO-AT -  + MREM @ - ;
 \ THE ONE MEMBER THAT CAN COVER t is the last one whose entry is at or below it
 \ (MEMBER-ORDER above asserted the members are disjoint), so the search answers a
 \ position and MAP-IN-MEMBER answers whether t is inside that member at all.
@@ -1012,9 +1072,8 @@ variable BDELTA  variable TNEW
 \ A target in ANOTHER member is therefore a defect in the emitter or in the walk
 \ and not a program to relocate, and it is named here rather than mapped through
 \ OLD>NEW into a delta the copy was never asked to keep. THE LONG FORM IS NO
-\ ANSWER to such a target: the planner maps every word 1:1 (PLAN-BLOBS above,
-\ "the compacted length is the member's own length"), and ADRP+ADD is two words
-\ where the ADR was one. ITS TARGET IS NAMED THE WAY MAP-TARGET!'s is, and an ADR
+\ ANSWER to such a target: ADRP+ADD is two words where the ADR was one. ITS
+\ TARGET IS NAMED THE WAY MAP-TARGET!'s is, and an ADR
 \ is the writer that meets an UNALIGNED target: its delta is in bytes where a
 \ branch target is always 4-byte aligned, and ADDRESS-OWNER answers no owner for
 \ an unaligned address, so the record below it is all there is to name.
@@ -1057,7 +1116,7 @@ variable BDELTA  variable TNEW
    t PTR-MARK-TARGET? IF 9 XDS -8 ENC-LDRPRE EXIT THEN
    t DECLARATION-TARGET? IF ENC-NOP EXIT THEN
    t DP-REFUSAL-TARGET? IF
-      w $FC000000 and  ASM-LEN NEXT-OFF @ REL26 or EXIT THEN
+      w $FC000000 and  ASM-LEN DP-REF-OFF @ REL26 or EXIT THEN
    i t MAP-TARGET!
    w $FC000000 and  ASM-LEN TNEW @ REL26 or ;
 : RELOC-W32 {: i:n p:ptr w:n :} ( n ptr u8 n -- n )
@@ -1118,21 +1177,10 @@ variable BDELTA  variable TNEW
    rd rd target $FFF and ADDI,
    NOP, NOP, ;
 
-\ The closure member whose span holds this code address, or -1 when nothing in
-\ the closure covers it. The owner record answers for a word the image still
-\ names; the payload's span table answers for one it does not, and an address
-\ neither can place is refused here rather than relocated to a guess.
-: ADDRESS-MEMBER ( n -- n ) {: v:n :}
-   v ADDRESS-OWNER {: owner:ptr :}
-   owner XREF-FOUND? if owner REC-CODE-PTR@ MEMBER-AT exit then
-   v SPAN-OWNER {: k:n :}
-   k 0 < if s" aot: code address has no dictionary owner" 74 die then
-   k SPAN-START MEMBER-AT ;
-
 \ A declared xt cell's row target is the new offset of the code it names, from
 \ the SAME mapping a relocated branch target goes through (OLD>NEW: the member
-\ that covers the address, plus the address's own distance into it, which
-\ COPY-COMPACT-BLOB's instruction-for-instruction copy preserves). An address no
+\ that covers the address, plus its offset adjusted through the member's sparse
+\ shortening map). An address no
 \ member covers dies by name here: the emit-time proof that this image carries
 \ the code the cell will point at, after the root pass put it in the closure.
 : XT-CELL-TARGET ( n -- n ) {: k:n :}
@@ -1152,6 +1200,208 @@ variable BDELTA  variable TNEW
       i XT-CELL-TARGET XT-ROW-FIELD 32 lshift or DCQ,
    loop ;
 
+\ Inventory only the source region's recorded sites. DATA-TARGET is the final
+\ answer after the copied window, carried claims and literal pool have settled;
+\ grouping an earlier compiler address would merge independently mapped cells.
+: POOL-COUNT ( -- )
+   0 PN !
+   NCLO @ 0 ?do
+      i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+      BEGIN CP2 @ CEND @ < WHILE
+         CP2 @ ADDRESS-SITE? IF
+            CP2 @ CEND @ ADDRESS-VALUE {: value:n :}
+            CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+            size ADDRESS-CARRIER:DATA-CHAIN-BYTES =
+               value DATA-ADDRESS? and IF 1 PN +! THEN
+            size
+         ELSE 4 THEN CP2 @ + CP2 !
+      REPEAT
+   loop ;
+
+: GROUP-FIND ( n -- n ) {: target:n :}
+   GN @ 0 ?do i GTARGET @ target = IF i unloop EXIT THEN loop
+   -1 ;
+
+variable ROW-GROUP
+: POOL-ROW ( n ptr u8 n -- ) {: m:n p:ptr value:n :}
+   m CLO-REC@ p value DATA-TARGET {: target:n :}
+   target GROUP-FIND ROW-GROUP !
+   ROW-GROUP @ -1 = IF
+      GN @ {: fresh:n :}
+      target fresh GTARGET !  0 fresh GSAVE !  0 fresh GON !
+      fresh ROW-GROUP !
+      1 GN +!
+   THEN
+   p PN @ PSITE !
+   0 PN @ PMODE !  0 PN @ PHOLD !  0 PN @ PCUM !
+   ROW-GROUP @ PN @ PGROUP !
+   1 PN +! ;
+
+: POOL-FILL ( -- )
+   0 PN !  0 GN !
+   NCLO @ 0 ?do
+      PN @ i PSTART !
+      i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+      BEGIN CP2 @ CEND @ < WHILE
+         CP2 @ ADDRESS-SITE? IF
+            CP2 @ CEND @ ADDRESS-VALUE {: value:n :}
+            CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+            size ADDRESS-CARRIER:DATA-CHAIN-BYTES =
+            value DATA-ADDRESS? and IF i CP2 @ value POOL-ROW THEN
+            size
+         ELSE 4 THEN CP2 @ + CP2 !
+      REPEAT
+      PN @ i PEND !
+   loop ;
+
+\ A code target inside a site being shortened would name one of its deleted
+\ words. Preserve that site's original carrier. Exact source-site starts remain
+\ valid targets; bytes at or after its end map through the cumulative removal.
+: POOL-HOLD-TARGET ( ptr u8 -- ) {: target:ptr :}
+   target MORD-BELOW {: pos:n :}
+   pos 0 < IF EXIT THEN
+   pos MORD-AT {: m:n :}
+   target m CLO-AT m CLO-BYTES + >= IF EXIT THEN
+   m PEND @ m PSTART @ ?do
+      target i PSITE @ >
+      target i PSITE @ ADDRESS-CARRIER:DATA-CHAIN-BYTES + < and IF
+         1 i PHOLD !  unloop EXIT
+      THEN
+   loop ;
+
+: POOL-HOLD-SOURCE ( -- )
+   NCLO @ 0 ?do
+      i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+      BEGIN CP2 @ CEND @ < WHILE
+         CP2 @ ADDRESS-SITE? IF
+            CP2 @ CEND @ ADDRESS-VALUE {: value:n :}
+            value DATA-ADDRESS? 0= IF value CODE-PTR POOL-HOLD-TARGET THEN
+            CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE
+         ELSE
+            CP2 @ AOT-W32@ {: w:n :}
+            w DIRECT? IF CP2 @ w TARGET POOL-HOLD-TARGET THEN
+            w BCOND? w CBZIMM? or IF CP2 @ w BTGT19 POOL-HOLD-TARGET THEN
+            w TBZIMM? IF CP2 @ w BTGT14 POOL-HOLD-TARGET THEN
+            w ADR? IF CP2 @ w ADRTGT POOL-HOLD-TARGET THEN
+            4
+         THEN CP2 @ + CP2 !
+      REPEAT
+   loop
+   XTC-N @ 0 ?do i XTC-VAL@ CODE-PTR POOL-HOLD-TARGET loop ;
+
+variable POOL-WORST-END
+variable POOL-ORIG-OFF
+variable POOL-SAVED
+variable POOL-CUM
+
+\ Classify a load against the unshortened member sequence and the largest
+\ possible pool, including its branch and alignment. Shortening any site can
+\ only bring that pool closer to a site left in the image.
+: POOL-FORMS ( -- )
+   ASM-LEN POOL-WORST-END !
+   NCLO @ 0 ?do i CLO-BYTES POOL-WORST-END +! loop
+   11 GN @ 8 * + POOL-WORST-END +!
+   ASM-LEN POOL-ORIG-OFF !
+   NCLO @ 0 ?do
+      i PEND @ i PSTART @ ?do
+         i PSITE @ AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and 31 <>
+         i PHOLD @ 0= and IF
+            POOL-WORST-END @ POOL-ORIG-OFF @
+               i PSITE @ j CLO-AT - + -
+            1048572 <= IF 1 ELSE 2 THEN
+            dup i PMODE !
+            1 = IF 8 ELSE 4 THEN
+            i PGROUP @ {: group:n :}
+            group GSAVE @ + group GSAVE !
+         THEN
+      loop
+      i CLO-BYTES POOL-ORIG-OFF +!
+   loop ;
+
+: POOL-SELECT ( -- )
+   0 POOL-SAVED !  0 POOL-N !
+   GN @ 0 ?do
+      i GSAVE @ 8 > IF
+         1 i GON !
+         i GSAVE @ 8 - POOL-SAVED +!
+         1 POOL-N +!
+      THEN
+   loop
+   \ At most four branch bytes and seven alignment bytes frame one pool.
+   POOL-SAVED @ 11 <= IF
+      GN @ 0 ?do 0 i GON ! loop
+      0 POOL-N !
+   THEN
+   NCLO @ 0 ?do
+      0 POOL-CUM !
+      i PEND @ i PSTART @ ?do
+         i PGROUP @ GON @ 0= IF 0 i PMODE ! THEN
+         i PMODE @ dup 1 = IF drop 8 POOL-CUM +! ELSE
+            2 = IF 4 POOL-CUM +! THEN
+         THEN
+         POOL-CUM @ i PCUM !
+      loop
+   loop ;
+
+: POOL-PLAN ( -- )
+   MEMBER-ORDER
+   POOL-COUNT
+   PN @ POOL-TABLES
+   POOL-FILL
+   PN @ 0 > IF POOL-HOLD-SOURCE POOL-FORMS POOL-SELECT ELSE 0 POOL-N ! THEN ;
+
+variable POOL-CELL-OFF
+: PLAN-BLOBS ( -- )
+   POOL-PLAN
+   NCLO @ PLAN-TABLES
+   ASM-LEN NEXT-OFF !
+   NCLO @ 0 ?do
+      NEXT-OFF @ i NEWOFF !
+      i CLO-BYTES {: bytes:n :}
+      i PSTART @ i PEND @ < IF bytes i PEND @ 1- PCUM @ - ELSE bytes THEN
+         dup i BLEN ! NEXT-OFF +!
+   loop
+   NEXT-OFF @ DP-REF-OFF !
+   POOL-N @ 0 > IF
+      NEXT-OFF @ 11 + 8 / 8 * POOL-OFF !
+      POOL-OFF @ POOL-N @ 8 * + DP-REF-OFF !
+      POOL-OFF @ POOL-CELL-OFF !
+      GN @ 0 ?do
+         i GON @ 0<> IF
+            POOL-CELL-OFF @ i GOFF !
+            8 POOL-CELL-OFF +!
+         THEN
+      loop
+   THEN ;
+
+: EMIT-POOL-LOAD ( n -- ) {: row:n :}
+   row PSITE @ AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and {: rd:n :}
+   row PGROUP @ GOFF @ {: at:n :}
+   row PMODE @ 1 = IF
+      at ASM-LEN - {: delta:n :}
+      delta 3 and 0<> delta -1048576 < or delta 1048572 > or IF
+         s" aot: pooled literal out of range" 74 die
+      THEN
+      $58000000 delta 4 / $7FFFF and 5 lshift or rd or EMITW
+      EXIT
+   THEN
+   at 12 rshift ASM-LEN 12 rshift - {: pages:n :}
+   pages -1048576 < pages 1048575 > or IF
+      s" aot: pooled page out of range" 74 die
+   THEN
+   $90000000 pages 3 and 29 lshift or
+   pages 2 rshift $7FFFF and 5 lshift or rd or EMITW
+   rd rd at $FFF and LDR, ;
+
+: EMIT-POOL ( -- )
+   POOL-N @ 0= IF EXIT THEN
+   LBL {: after:label :}
+   after B,
+   BEGIN ASM-LEN 7 and 0<> WHILE NOP, REPEAT
+   GN @ 0 ?do i GON @ 0<> IF i GTARGET @ DCQ, THEN loop
+   after LBL,
+   ASM-LEN DP-REF-OFF @ <> IF s" aot: pool layout changed" 74 die THEN ;
+
 : COPY-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: owner:ptr p:ptr e:ptr :}
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
@@ -1166,17 +1416,26 @@ variable BDELTA  variable TNEW
       loop
       exit
    then
-   v ADDRESS-MEMBER {: m:n :}
-   m 0 < if s" aot: code address is outside the closure" 74 die then
-   m MEMBER-NEWOFF  v m CLO-AT-N -  +
+   v CODE-PTR OLD>NEW dup 0 < if
+      s" aot: code address is outside the closure" 74 die
+   then
    p AOT-W32@ ADDRESS-CARRIER:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
 
+variable PCOPY
 : COPY-COMPACT-BLOB {: i:n :} ( n -- )
    i CLO-AT CP2 !  i CLO-AT i CLO-BYTES + CEND !
+   i PSTART @ PCOPY !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
       CP2 @ ADDRESS-SITE? if
-         i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS
+         PCOPY @ i PEND @ < IF
+            CP2 @ PCOPY @ PSITE @ = IF
+               PCOPY @ PMODE @ 0 > IF
+                  PCOPY @ EMIT-POOL-LOAD
+               ELSE i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS THEN
+               1 PCOPY +!
+            ELSE i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS THEN
+         ELSE i CLO-REC@ CP2 @ CEND @ COPY-ADDRESS THEN
          CP2 @ CEND @ ADDRESS-CARRIER:CHAIN-SIZE
       else
          i CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
@@ -1186,8 +1445,13 @@ variable BDELTA  variable TNEW
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ 0= IF MLBL LABEL@ LBL, THEN          \ MAIN is closure word 0 -> place its label
       WI @ COPY-COMPACT-BLOB
+      ASM-LEN WI @ MEMBER-NEWOFF WI @ BLEN @ + <> IF
+         s" aot: planned member " AETXT WI @ AEJNUM
+         s"  ends at=" AETXT WI @ MEMBER-NEWOFF WI @ BLEN @ + AEJNUM
+         s"  actual=" AETXT ASM-LEN AEJNUM 10 AE1
+         s" aot: planned member length differs from copy" 74 die THEN
       WI @ 1+ WI ! REPEAT ;
-: COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;
+: COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS  EMIT-POOL ;
 variable RP  variable RE
 \ Fail-closed output verification. COPY-COMPACT-BLOB (via RELOC-W32) already relocated
 \ every direct branch as it emitted the blobs, so under the direct-BL-only contract
@@ -1211,6 +1475,7 @@ public
 \ bounds it is given and never latches them itself; latching here would put the
 \ whole linker inside the span.
 : LINK ( -- )
+   0 AOT-CODE-N !  0 AOT-PAYLOAD-OFF !
    AOT-APP-POOL                                     \ reached literals are copied into the window's pool
    CARRY-CELLS                                      \ the engine constants this image carries
    CARRY-TASK-USER-MARK                             \ user slots allocated by the application
@@ -1223,8 +1488,11 @@ public
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !
    LBL LDPREFUSE !  LBL LDPREFUSE-NUM !
    LBL LDPREFUSE-MSG !  LBL LDPREFUSE-OF !  LBL LDPREFUSE-UNIT !
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-CRASH-CODE  EMIT-DATA-BLOB  EMIT-XT-ROWS
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-CRASH-CODE
+   ASM-LEN CODE-END !
+   EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ
+   AOT-FRESH-PAYLOAD!
    SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 
 ;using

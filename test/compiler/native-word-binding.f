@@ -50,6 +50,19 @@ public
 
 : XOR-AFTER ( n n -- n ) xor ;
 
+: MIN-BEFORE ( n n -- n ) min ;
+
+package NATIVE-BOUND-MIN
+public
+
+: min ( n n -- n ) drop drop 99 ;
+
+: MIN-INSIDE ( n n -- n ) min ;
+
+;package
+
+: MIN-AFTER ( n n -- n ) min ;
+
 package NATIVE-WORD-BINDING-TEST
 private
 
@@ -89,6 +102,10 @@ private
    6 3 XOR-BEFORE 5 T=
    6 3 NATIVE-BOUND-XOR:XOR-INSIDE 99 T=
    6 3 XOR-AFTER 5 T=
+   s" min keeps its recorded binding across a package shadow" T-LABEL
+   6 3 MIN-BEFORE 3 T=
+   6 3 NATIVE-BOUND-MIN:MIN-INSIDE 99 T=
+   6 3 MIN-AFTER 3 T=
    T-REPORT ;
 
 RUN

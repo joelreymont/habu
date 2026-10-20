@@ -160,8 +160,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    s b NBACK:FREEZE {: hm:IR-BUILD:module :}
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   s m1 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   s m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    s ready SLOT @ NBACK:EMIT
    [: FOREIGN-CTX ;] NLEASE:E-STATE TTHROWSQ
    s NART:COPY ;
@@ -185,8 +184,7 @@ TASK:MIN-STACK TASK:TASK WORKER
    {: s:NSESSION:session :}
    s 1 2 NBACK:L-CALLED NBACK:DECLARE
    s PARENT-HIR @ NBACK:SELECT {: m0:IR-BUILD:module :}
-   s m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   s m1 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   s m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    s ready SLOT @ NBACK:EMIT
    s NART:COPY ;
 

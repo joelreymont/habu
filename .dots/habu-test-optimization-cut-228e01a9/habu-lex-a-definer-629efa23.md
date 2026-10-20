@@ -3,7 +3,7 @@ title: "Lex a definer's name as the loader does"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T05:24:08.650591+02:00\""
+created-at: "2026-10-01T05:24:08.650591+02:00"
 closed-at: "2026-10-14T19:26:17.542869+03:00"
 close-reason: "Implemented in 354f59d3: check.f reads parsing-definer operands by parse-name rules, including comment-shaped and missing names; focused check-test cases cover the loader and JSON paths."
 ---

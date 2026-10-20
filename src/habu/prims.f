@@ -368,14 +368,14 @@ EPPRIM: SOURCE-UNIT unit-compile-run
    PE-Q ;PE-Q PE-IN PE-N PE-OUT ECLOSE-PRIVATE
 EPRIM: source-exec-run
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
-   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
    PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN
    PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: SOURCE-EXEC source-exec-run
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
-   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
+   PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QOUT PE-F PE-QOUT ;PE-Q PE-IN
    PE-Q PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
    PE-Q ;PE-Q PE-IN
    PE-N PE-OUT ECLOSE-PRIVATE
@@ -501,6 +501,7 @@ EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
+EPRIM: kernel-producer$ PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
 \ Explicit memory views preserve address bits while changing the access type.
 EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM;
@@ -664,6 +665,7 @@ ETRUSTED-ONLY!                       \ records a certified minimum input arity o
 \ and the interpret loop written in Habu after a cast (src/habu/definers.f) inside OUTER.
 EPPRIM: NPUB min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: OUTER min-in-mark PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: NPUB wide-mark ECLOSE-PRIVATE
 EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 \ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
@@ -716,7 +718,7 @@ EPRIM: set-top-check PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 \ The top-level tracker's own install (src/core/top-row.f TR-INSTALL): its row
 \ takes a hook of the shape the tracker is called with, where the global row
-\ above takes any cell.
+\ above takes a raw cell, as set-check and set-preflight do.
 EPPRIM: TOP-ROW set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 \ Choosing the compiler belongs to package TIER (src/lib/tier.f), and this row is
@@ -727,6 +729,10 @@ EPPRIM: TOP-ROW set-top-check
 \ from a global row; addrmap-set keeps its row for that).
 EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
+\ The running engine owns capture-time construction state. A cache driver
+\ queries this word only while a definition is pending; absence means an old
+\ host whose construction state the driver cannot inspect.
+EPRIM: native-pending-opaque? PE-F PE-OUT EPRIM;
 EPRIM: ndict!         PE-N PE-IN EPRIM;
 EPRIM: seed-ndict!    PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ top-level boundary: no checked body names it
@@ -736,6 +742,7 @@ EPPRIM: NPUB ndict-append PE-N PE-IN ECLOSE-PRIVATE    \ src/compiler/native/pub
 EPRIM: def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ exact resolved dictionary record
 EPPRIM: DEF-OCC def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:SELECT
+EPPRIM: CHECKER-REG def-occ-select PE-PTR-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE   \ src/core/checker.f RECORD-LINK-OCC
 EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
@@ -833,7 +840,7 @@ EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled,
 \ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
 \ closes native, origin 1 over [open, CP), and the state def-open set clears:
-\ DEF-TIER-CELL, TSIG, TCSIG, DOESB, TRUSTED and PEND-CELL. It refuses when
+\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL. It refuses when
 \ no definition is pending and when the pending one is not the native tier's
 \ (DEF-TIER-CELL other than 1), as ndict-append does.
 EPRIM: def-close EPRIM;
@@ -915,6 +922,18 @@ EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the 
 \ habu-fence-a-base-c6c1d71d). A cell of the region that really holds an address
 \ is reached with `ptr-field`, the declared door, exactly as before.
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
+\ Resolve the capture observer slot from the running kernel. Older retained
+\ engines lack this name and explicit export declines before arming a capture.
+EPRIM: native-unit-reclaim-cell PE-PTR-A PE-OUT EPRIM;
+ETRUSTED-ONLY!
+\ A null result means the running kernel has no pre-body reader. The four
+\ optional cells are addressed through this byte pointer, never baked offsets.
+EPRIM: native-body-reuse-cell PE-PTR-U8 PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: native-body-reader-cell PE-PTR-U8 PE-OUT EPRIM;
+ETRUSTED-ONLY!
+EPRIM: native-body-passive? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT EPRIM;
+ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 \ The design seal's two writers (src/lib/policy.f, docs/policy.md): admit a

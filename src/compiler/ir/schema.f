@@ -4,9 +4,9 @@
 \
 \ docs/compiler-ir-design.md section 5.3 (closed-world operation schemas, lines
 \ 227-245), section 6.4 (the builder API, lines 497-521), section 6.5 (the
-\ freeze checks that consume a schema, lines 523-545), section 6.7 (the witness
-\ schema digest, line 602), and section 10.6 (schema name, major/minor version,
-\ and schema digest, lines 1710-1719). This file defines the schema MACHINERY.
+\ freeze checks that consume a schema, lines 523-545), and section 10.6
+\ (schema name and major/minor version, lines 1710-1719). This file defines
+\ the schema machinery.
 \ The dialect packages that fill a table with their own opcodes stay separate,
 \ exactly as design line 317 says the shared substrate "does not define the
 \ meaning of dialect-specific operations".
@@ -166,42 +166,9 @@
 \ (E-IR-SCHEMA-STATE), so a holder who bypasses this package and appends raw
 \ cells cannot make a reader touch cells outside the live ranges.
 \
-\ DIGESTS DETECT ANY CHANGE. Design line 602 binds a witness to a schema digest
-\ and design line 1716 gives a dialect's schema table one. DIGEST computes a
-\ record's digest over a canonical preimage in the CDIGEST slot form: the
-\ domain-separation tag, this file's preimage version, the dialect and opcode
-\ ordinals, every fixed field, and then the operand, result, and attribute-key
-\ ordinals, with each list's length already fixed earlier in the preimage so the
-\ encoding stays injective. TABLE-DIGEST chains the record digests: it seeds
-\ with the table header and the row count and folds one record digest at a time,
-\ so the table digest is deterministic, covers every row, and needs no buffer
-\ that grows with the table. VERIFY recomputes the table digest and throws
-\ E-IR-SCHEMA-DIGEST when a presented digest differs, which is how a caller
-\ detects that the schema table it is holding is not the one an artifact was
-\ built against.
-\
-\ WHAT THE DIGEST IS OVER, AND WHAT IT IS NOT. Every reference a schema records
-\ - its opcode name, its dialect, its semantic rule and renderer, its required
-\ attribute keys, its operand and result types - is stored and digested as the
-\ module-local ordinal the owning table gave it, exactly as the type table
-\ stores its own references (src/compiler/ir/type.f, the note on canonical
-\ order). Two schemas of one module therefore digest differently whenever any
-\ field differs, which is what VERIFY needs. What the digest is NOT is a
-\ module-independent name for a dialect: those ordinals are insertion-ordered,
-\ so the same dialect registered against two modules whose symbol interners saw
-\ different strings first digests differently. A dialect that needs a schema
-\ digest stable across compilations - which is what design line 1716's "schema
-\ digest" and design line 602's witness binding ultimately want - must give its
-\ schema table an interner and a type table of its own, so the ordinals are a
-\ pure function of its registration sequence. Making that stability structural
-\ instead of a usage rule is the section 6.6 canonical encoder's job, the same
-\ boundary the type table draws: the encoder sorts structurally and renumbers
-\ every embedded reference under the permutation it chose. This file must not
-\ duplicate that authority, and the residual work is tracked as its own dot.
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/compiler/digest.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -492,8 +459,8 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 \ twins that used to run down this file collapse into one set, because a reader
 \ carries the state it was opened against and refuses the other with the error
 \ the handle would have given - the only thing the two entry points still differ
-\ in is OPEN-LIVE against OPEN. THE ROW IS WHY: a record is twenty-six cells
-\ found by a name scan, and a digest resolved a store for every one of them.
+\ in is OPEN-LIVE against OPEN. A record has twenty-six cells and is found by
+\ a name scan, so each public read resolves its arena once.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -1434,191 +1401,6 @@ public
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
 
-\ ---- digests (design lines 602, 1716) ----------------------------------------
-private
-
-3 constant PRE-VER                \ this file's canonical preimage version
-
-0 constant DS-TAG
-1 constant DS-VER
-2 constant DS-DIA
-3 constant DS-NAME
-4 constant DS-OPN
-5 constant DS-OPTAIL
-6 constant DS-RSN
-7 constant DS-RSTAIL
-8 constant DS-SUCC
-9 constant DS-REGN
-10 constant DS-ATN
-11 constant DS-ATEXT
-12 constant DS-EFF
-13 constant DS-DOM
-14 constant DS-SPC
-15 constant DS-ALI
-16 constant DS-TRAP
-17 constant DS-ARCH
-18 constant DS-FEAT
-19 constant DS-TERM
-20 constant DS-RULE
-21 constant DS-REND
-22 constant DS-TIN
-23 constant DS-FXN
-24 constant DS-FIX
-\ Three lists of one cell per entry, the tie list of TIE-PAIR cells each, and
-\ the fixed list of FIX-TRIPLE cells each.
-DS-FIX ARITY-MAX 3 * + ARITY-MAX TIE-CELLS + ARITY-MAX FIX-CELLS + constant DS-SLOTS
-DS-SLOTS CDIGEST:SLOT-BYTES * constant DS-BYTES
-create DPRE DS-BYTES allot
-
-10 constant TS-SLOTS
-TS-SLOTS CDIGEST:SLOT-BYTES * constant TS-BYTES
-create TPRE TS-BYTES allot
-
-: DP! ( n n -- )
-   DPRE swap CDIGEST:SLOT! ;
-
-: TP! ( n n -- )
-   TPRE swap CDIGEST:SLOT! ;
-
-\ Write the fixed head of a record preimage: the domain-separation tag, this
-\ file's preimage version, the dialect, and every fixed field, so a byte's
-\ position determines which field it belongs to.
-: DPRE-FIX ( IR-ARENA:reader n n -- )
-   {: rr:IR-ARENA:reader dia:n l:n :}
-   CDIGEST:TAG-SCHEMA DS-TAG DP!
-   PRE-VER DS-VER DP!
-   dia DS-DIA DP!
-   rr l OFF-NAME RC@ DS-NAME DP!
-   rr l OFF-OPN RC@ DS-OPN DP!
-   rr l OFF-OPTAIL RC@ DS-OPTAIL DP!
-   rr l OFF-RSN RC@ DS-RSN DP!
-   rr l OFF-RSTAIL RC@ DS-RSTAIL DP!
-   rr l OFF-SUCC RC@ DS-SUCC DP!
-   rr l OFF-REGN RC@ DS-REGN DP!
-   rr l OFF-ATN RC@ DS-ATN DP!
-   rr l OFF-ATEXT RC@ DS-ATEXT DP!
-   rr l OFF-EFF RC@ DS-EFF DP!
-   rr l OFF-DOM RC@ DS-DOM DP!
-   rr l OFF-SPC RC@ DS-SPC DP!
-   rr l OFF-ALI RC@ DS-ALI DP!
-   rr l OFF-TRAP RC@ DS-TRAP DP!
-   rr l OFF-ARCH RC@ DS-ARCH DP!
-   rr l OFF-FEAT RC@ DS-FEAT DP!
-   rr l OFF-TERM RC@ DS-TERM DP!
-   rr l OFF-RULE RC@ DS-RULE DP!
-   rr l OFF-REND RC@ DS-REND DP!
-   rr l OFF-TIN RC@ DS-TIN DP!
-   rr l OFF-FXN RC@ DS-FXN DP! ;
-
-\ Append one stored list to the preimage and answer the next free slot. The
-\ list's length is already fixed earlier in the preimage, so the concatenation
-\ stays injective.
-: DPRE-LIST ( IR-ARENA:reader IR-ARENA:reader n n n n -- n )
-   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n stoff:n lenoff:n at:n :}
-   rr l lenoff RC@ {: ln:n :}
-   at ln + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
-   ln 0 ?do
-      pr rr l stoff lenoff i WIN@  at i + DP!
-   loop
-   at ln + ;
-
-\ The tie list, both halves of every tie in declaration order. Its length is
-\ already fixed earlier in the preimage, so this stays injective too.
-: DPRE-TIES ( IR-ARENA:reader IR-ARENA:reader n n -- n )
-   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n at:n :}
-   rr l OFF-TIN RC@ {: ln:n :}
-   at ln TIE-CELLS + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
-   ln 0 ?do
-      pr rr l i TIE-RS TWIN@  at i TIE-CELLS + DP!
-      pr rr l i TIE-OP TWIN@  at i TIE-CELLS + TIE-OP + DP!
-   loop
-   at ln TIE-CELLS + ;
-
-\ The fixed list, all three cells of every entry in declaration order. Its
-\ length is already fixed earlier in the preimage, so this stays injective too.
-: DPRE-FIXES ( IR-ARENA:reader IR-ARENA:reader n n -- n )
-   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n at:n :}
-   rr l OFF-FXN RC@ {: ln:n :}
-   at ln FIX-CELLS + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
-   ln 0 ?do
-      pr rr l i FIX-SIDE FWIN@  at i FIX-CELLS + DP!
-      pr rr l i FIX-ORD FWIN@   at i FIX-CELLS + FIX-ORD + DP!
-      pr rr l i FIX-REG FWIN@   at i FIX-CELLS + FIX-REG + DP!
-   loop
-   at ln FIX-CELLS + ;
-
-: ROW-DIGEST ( IR-ARENA:reader IR-ARENA:reader n n -- CDIGEST:digest )
-   {: pr:IR-ARENA:reader rr:IR-ARENA:reader dia:n l:n :}
-   rr dia l DPRE-FIX
-   pr rr l OFF-OPST OFF-OPN DS-FIX DPRE-LIST
-   {: at:n :}
-   pr rr l OFF-RSST OFF-RSN at DPRE-LIST
-   {: at2:n :}
-   pr rr l OFF-ATST OFF-ATN at2 DPRE-LIST
-   {: at3:n :}
-   pr rr l at3 DPRE-TIES
-   {: at4:n :}
-   pr rr l at4 DPRE-FIXES
-   {: at5:n :}
-   DPRE at5 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
-
-\ The table digest is a chain: seed over the header and the row count, then one
-\ fold step per record digest. Deterministic, covers every row, and needs no
-\ buffer that grows with the table.
-: CHAIN-HEAD ( -- )
-   CDIGEST:TAG-SCHEMA-TABLE 0 TP!
-   PRE-VER 1 TP! ;
-
-: CHAIN-SEED ( n n n n -- CDIGEST:digest )
-   {: dia:n major:n minor:n cnt:n :}
-   CHAIN-HEAD
-   dia 2 TP!  major 3 TP!  minor 4 TP!  cnt 5 TP!
-   0 6 TP!  0 7 TP!  0 8 TP!  0 9 TP!
-   TPRE TS-BYTES CDIGEST:COMPUTE ;
-
-: CHAIN-STEP ( CDIGEST:digest CDIGEST:digest -- CDIGEST:digest )
-   CDIGEST-DIGEST:UNMAKE {: v0:n v1:n v2:n v3:n :}
-   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
-   CHAIN-HEAD
-   w0 2 TP!  w1 3 TP!  w2 4 TP!  w3 5 TP!
-   v0 6 TP!  v1 7 TP!  v2 8 TP!  v3 9 TP!
-   TPRE TS-BYTES CDIGEST:COMPUTE ;
-
-public
-
-\ One schema record's digest: a mutation of any field it records, of any
-\ listed operand, result, or attribute key, or of the dialect it belongs to
-\ moves it.
-: DIGEST ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- CDIGEST:digest )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id :}
-   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
-   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
-   pr rr PAIR-CK
-   pr rr  rr HC-DIALECT IR-ARENA:RD@ ORD-OK  rr op ROW-OF  ROW-DIGEST ;
-
-\ The whole table's digest (design lines 602, 1716).
-\ ONE RESOLUTION FOR THE WHOLE TABLE. The chain folds one record digest per row
-\ and every record reads twenty-six cells and its three lists, so this is the
-\ walk the reader exists for: two resolutions, then loads.
-: TABLE-DIGEST ( IR-ARENA:arena IR-ARENA:arena -- CDIGEST:digest )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
-   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
-   pr rr PAIR-CK
-   rr HC-DIALECT IR-ARENA:RD@ ORD-OK {: dia:n :}
-   dia rr HC-MAJOR IR-ARENA:RD@ rr HC-MINOR IR-ARENA:RD@ rr CNT CHAIN-SEED
-   rr CNT 0 ?do
-      pr rr dia i ROW-DIGEST CHAIN-STEP
-   loop ;
-
-\ Recompute the table digest and reject a presented one that differs, which is
-\ how a caller detects that the schema table it holds is not the one an
-\ artifact was built against.
-: VERIFY ( IR-ARENA:arena IR-ARENA:arena CDIGEST:digest -- )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena digest:CDIGEST:digest :}
-   a r TABLE-DIGEST digest CDIGEST-DIGEST:EQ
-   0= if E-IR-SCHEMA-DIGEST throw then ;
-
 \ ---- frozen readers ----------------------------------------------------------
 \ A frozen module reads its schemas through the two arena views; the retired
 \ builder handles reject every touch with E-IR-ARENA-FROZEN.
@@ -1781,28 +1563,6 @@ public
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
 
-: FDIGEST ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- CDIGEST:digest )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id :}
-   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
-   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
-   pr rr PAIR-CK
-   pr rr  rr HC-DIALECT IR-ARENA:RD@ ORD-OK  rr op ROW-OF  ROW-DIGEST ;
-
-: FTABLE-DIGEST ( IR-ARENA:view IR-ARENA:view -- CDIGEST:digest )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view :}
-   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
-   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
-   pr rr PAIR-CK
-   rr HC-DIALECT IR-ARENA:RD@ ORD-OK {: dia:n :}
-   dia rr HC-MAJOR IR-ARENA:RD@ rr HC-MINOR IR-ARENA:RD@ rr CNT CHAIN-SEED
-   rr CNT 0 ?do
-      pr rr dia i ROW-DIGEST CHAIN-STEP
-   loop ;
-
-: FVERIFY ( IR-ARENA:view IR-ARENA:view CDIGEST:digest -- )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view digest:CDIGEST:digest :}
-   pv rv FTABLE-DIGEST digest CDIGEST-DIGEST:EQ
-   0= if E-IR-SCHEMA-DIGEST throw then ;
 
 private
 get-current prot-wid-add

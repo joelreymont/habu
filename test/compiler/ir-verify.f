@@ -39,7 +39,7 @@ private
    IR-BUILD:PLAN-BEGIN
    32 512 IR-BUILD:PLAN-SYMBOLS
    16 64 IR-BUILD:PLAN-TYPES
-   16 64 IR-BUILD:PLAN-ATTRS
+   16 IR-BUILD:PLAN-ATTRS
    64 IR-BUILD:PLAN-SOURCES
    16 128 IR-BUILD:PLAN-SCHEMAS
    32 32 256 IR-BUILD:PLAN-OPS
@@ -77,6 +77,7 @@ private
 5 constant K-TAGGED                  \ one i64 result and one required attribute key
 6 constant K-MEM                     \ a memory effect with no token to carry it
 7 constant K-BR2                     \ two successors, no argument windows
+8 constant K-BR32                    \ an edge-dense control-flow fixture
 
 : OPC-NAME ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:n :}
@@ -87,6 +88,7 @@ private
    k K-BR1 = if c b s" hir.br1" IR-BUILD:INTERN-SYMBOL exit then
    k K-TAGGED = if c b s" hir.tagged" IR-BUILD:INTERN-SYMBOL exit then
    k K-BR2 = if c b s" hir.br2" IR-BUILD:INTERN-SYMBOL exit then
+   k K-BR32 = if c b s" hir.br32" IR-BUILD:INTERN-SYMBOL exit then
    c b s" hir.mem" IR-BUILD:INTERN-SYMBOL ;
 
 : ATT-KEY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
@@ -108,6 +110,7 @@ private
    k K-RET = if true 0 0 IR-SCHEMA:SET-CONTROL exit then
    k K-BR = k K-BR1 = or if true 1 0 IR-SCHEMA:SET-CONTROL exit then
    k K-BR2 = if true 2 0 IR-SCHEMA:SET-CONTROL exit then
+   k K-BR32 = if true 32 0 IR-SCHEMA:SET-CONTROL exit then
    false 0 0 IR-SCHEMA:SET-CONTROL ;
 
 \ hir.mem declares a data-memory effect and no memory-token operand or result to
@@ -585,6 +588,47 @@ private
    BND [: EDGE-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 0 T= 2 T= 1 T= 0 T= 4 T= ;
 
+\ Fewer than 256 blocks can still carry more than 2048 edges. Repeated
+\ successor ordinals are separate edges, and all must survive publication.
+: DENSE-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN
+   32 512 IR-BUILD:PLAN-SYMBOLS
+   16 64 IR-BUILD:PLAN-TYPES
+   16 IR-BUILD:PLAN-ATTRS
+   256 IR-BUILD:PLAN-SOURCES
+   16 128 IR-BUILD:PLAN-SCHEMAS
+   128 32 4096 IR-BUILD:PLAN-OPS
+   8 128 64 IR-BUILD:PLAN-FUNS
+   c s" hir" 1 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b K-BR32 SCH-DEF
+   c b MAIN-OPEN
+   65 0 ?do
+      c b BLK-OPEN
+      c b K-BR32 OP-OPEN
+      c b i 1+ BLK-ID {: next:IR-ID:ir-block-id :}
+      32 0 ?do c b next IR-BUILD:ADD-SUCCESSOR loop
+      c b IR-BUILD:END-OP drop
+      c b IR-BUILD:END-BLOCK drop
+   loop
+   c b BLK-OPEN
+   c b RET+
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FKEY {: key:IR-ID:ir-module-key :}
+   m IR-BUILD:FEDGE-ROWS {: r:IR-ARENA:view :}
+   r key 65 IR-ID:PACK-BLOCK IR-VERIFY:FPRED-COUNT
+   r key 64 IR-ID:PACK-BLOCK IR-VERIFY:FSUCC-COUNT
+   m IR-BUILD:FEDGE-POOL r key key 65 IR-ID:PACK-BLOCK 31 IR-VERIFY:FPRED@
+   IR-ID:BLOCK-LOCAL ;
+
+: DENSE-CASE ( -- )
+   s" more than 2048 edges freeze and publish their predecessors" T-LABEL
+   BND [: DENSE-BODY ;] IR-CTX:WITH-CONTEXT
+   64 T= 32 T= 32 T= ;
+
 \ ---- the published readers refuse a bad index --------------------------------
 : PREDIDX-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -742,6 +786,7 @@ public
    T-RESET
    BND [: drop LEGAL-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop EDGE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DENSE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SUCC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SUCCARG-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SUCCTYPE-CASE ;] IR-CTX:WITH-CONTEXT

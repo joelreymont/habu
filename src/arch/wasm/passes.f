@@ -8,8 +8,8 @@
 \ module NBACK:FREEZE froze, and ends in EMIT-UNPLACED (src/compiler/native/
 \ compiler.f SHADOW-WORK). DECLARE and SELECT are WSEL's: SELECT selects into a
 \ fresh WSTRUCT builder and freezes it with WSTRUCT:FREEZE, the full
-\ IR-BUILD:FREEZE (docs/wasm-backend.md 17.2). PRUNE and the lowering FIXPOINT
-\ hand that module back as it is: Wasm has no registers to allocate and no
+\ IR-BUILD:FREEZE (docs/wasm-backend.md 17.2). The lowering FIXPOINT
+\ hands that module back as it is: Wasm has no registers to allocate and no
 \ spills to lower, and rebuilding renumbers values. EMIT is refused, as there
 \ is no placed Wasm emission.
 \
@@ -45,7 +45,7 @@ private
 : ARCH ( -- CTARGET:arch )
    CTARGET-ARCH:WASM ;
 
-\ PRUNE and FIXPOINT: the module selection froze, untouched.
+\ FIXPOINT: the module selection froze, untouched.
 : AS-SELECTED ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
    nip ;
 
@@ -70,7 +70,7 @@ private
       NEMIT:CALL-SITE+
    loop
    WENC:ADDR-SITES 0 ?do
-      i WENC:ADDR-SITE@  i WENC:ADDR-SITE-KIND@  NEMIT:ADDR-SITE+
+      i WENC:ADDR-SITE@  i WENC:ADDR-SITE-KIND@  -1 NEMIT:ADDR-SITE+
    loop
    NEMIT:SEAL ;
 
@@ -93,7 +93,7 @@ public
 
 \ The rows WBACK:INSTALL registers, in NBACK-PASS's field order.
 : PASS ( -- NBACK:pass )
-   [: WSEL:DECLARE ;] [: WSEL:SELECT ;] [: AS-SELECTED ;] [: AS-SELECTED ;]
+   [: WSEL:DECLARE ;] [: WSEL:SELECT ;] [: AS-SELECTED ;]
    [: PLACED-UNSUPPORTED ;] [: EMIT-UNPLACED ;] [: NOTHING-HELD ;] [: RETIRE ;]
    [: NO-PROTOTYPE ;] [: NOTHING-HELD ;] [: NOTHING-HELD ;]
       NBACK-PASS:MAKE ;

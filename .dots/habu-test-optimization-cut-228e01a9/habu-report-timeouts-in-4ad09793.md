@@ -3,7 +3,7 @@ title: Report timeouts in the outcome asserts
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T00:07:43.872591+02:00\""
+created-at: "2026-10-02T00:07:43.872591+02:00"
 closed-at: "2026-10-14T19:29:05.562907+03:00"
 close-reason: "Implemented in 05c53e8f: shared outcome asserts report case label, program and captured output on timeout, all callers use the new signature, and ir-id drops its local copy; forced-timeout before/after and focused suites recorded in that commit."
 ---

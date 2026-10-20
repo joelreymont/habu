@@ -68,10 +68,11 @@ public
    s" hb-root" NEED-IMAGE
    s" hb-ordinary" NEED-FILE
    s" hb-root.map" NEED-FILE
+   s" hb-ordinary.map" NEED-FILE
    s" hb-root" s" hb-root" COPY
    s" hb-ordinary" s" hb-ordinary" COPY
    s" hb-root.map" s" hb-root.map" COPY
-   s" hb-root.map" s" hb-ordinary.map" COPY
+   s" hb-ordinary.map" s" hb-ordinary.map" COPY
    s" hb-root" DEST-AT CHMOD-X
    s" hb-ordinary" DEST-AT CHMOD-X ;
 

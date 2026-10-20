@@ -1,21 +1,22 @@
 \ lsp-test-lib.f - the language server end to end: tools/lsp.f run as a
-\ client runs it, one child per conversation.
+\ client runs it, with compatible cases sharing one child.
 \ Run: bin/hb --load tools/lsp-test.f
 \
-\ A conversation is written to the server's stdin whole, and the input then
-\ ends; its stdout, stderr and exit code are read after. Every frame the server
-\ writes must be `Content-Length: N`, CR LF twice and N bytes, and the replies
-\ come in the order of the messages they answer. The rest run over pipes the
-\ test holds: answers-at-once keeps the input open, stdout-closed closes the
-\ output first, and each diagnostics conversation is held turn by turn, the
+\ An isolated conversation is written to the server's stdin whole, and the
+\ input then ends; its stdout, stderr and exit code are read after. Every frame
+\ the server writes must be `Content-Length: N`, CR LF twice and N bytes, and
+\ the replies come in the order of the messages they answer. The rest run over
+\ pipes the test holds: answers-at-once keeps the input open, stdout-closed
+\ closes the output first, and the checked cases are held turn by turn, the
 \ messages of a turn written together once the server has answered the last and
 \ every publish read as it comes, since the server checks a document only when
 \ no input waits; references-eof and references-fault end their input before
 \ exit, and what the server writes after is read once it ends. The directory
-\ the test prints after `artifact:` keeps every conversation byte for byte,
-\ NAME.in, NAME.out and NAME.err, and its exit code in `exits`: `bin/hb --load
-\ tools/lsp.f < NAME.in` replays one, though a held one's turns then come at
-\ once. A conversation whose wait ran out keeps what was read before it.
+\ the test prints after `artifact:` keeps each case's input, output and stderr
+\ byte for byte, plus the fixtures. `exits` records each process exit. A shared
+\ session also has SESSION.trace.in, .trace.out and .trace.err for the full
+\ exchange; rerun the driver for the same timed turns with fresh fixtures. A
+\ conversation whose wait ran out keeps what was read before it.
 \
 \ How the server could fail, and the conversation that would show it:
 \
@@ -103,6 +104,10 @@
 \   text on disk ....................................... dependency-open-edit
 \ - a dependency's list not published again from disk once the document that
 \   held it open closes ................................... dependency-close
+\ - a watched disk dependency change not rechecking its open reader or
+\   retracting the old dependency diagnostic ............ dependency-watched
+\ - a previously missing target created on disk and announced by a watcher
+\   leaving its open reader's missing-source diagnostic ... dependency-created
 \ - a document whose check found no dependency on disk not checked again once
 \   the dependency, open, is written there and saved, or one whose check
 \   verified not checked again then ....................... dependency-saved
@@ -198,11 +203,16 @@
 \   by; the character after a use, or a declaring token, answered with a
 \   Location; a negative character answered other than -32602 .... definition
 \ - a use of a dependency on disk only, its global or, qualified, its public
-\   word, not answered with the declaring token's range in its text on disk
+\   word, or the source-backed `require` that loads it, not answered with the
+\   declaring token's range in its text on disk
 \   at its canonical file URI ............................ definition-dependency
 \ - a use of a dependency open with lines inserted and swapped, unsaved, not
 \   answered with its declaring token's range in the open text, which the
 \   check read, at the URI the client opened it by .. definition-dependency-open
+\ - a definition request after a missing loader target appears on disk
+\   answering before its root is rechecked ..... definition-created-dependency
+\ - a definition request after an unreadable loader target becomes readable
+\   answering before its root is rechecked .... definition-readable-dependency
 \ - a use in a document whose file is open by another URI too not answered at
 \   the URI the client opened the document by
 \   ......................................... workspace-symbol-open-dependency
@@ -305,21 +315,16 @@
 \   the check of the text before it ............ semantic-tokens-incomplete
 \
 \ Declaration identities, which no reply states yet: each case runs the store
-\ in the test's own process, on the lines the test's own check of the text
-\ states, or, for what no check can be made to state, on lines it writes
-\ - a file a check's file lines state one valid digest for not given it, or
-\   given one when two of them state different digests, one states none or a
-\   malformed one, whichever comes first; a definition or use line without
-\   identity members given a visit .................... identities-digest
+\ in the test's own process, on the lines the test's own check of the text states
 \ - a file included into two packages not giving two decls at its token, one
 \   per package, each with its own visit: each use of P:K and Q:K must name
-\   the package it selects and that package's decl's visit; a file's digest
-\   not that of the bytes the check read .............. identities-included
+\   the package it selects and that package's decl's visit
+\   .................................................. identities-included
 \ - DEFTYPE's two converters not giving two decls at its name's token under
 \   one visit, or a use of either not naming its own converter
 \   ..................................................... identities-deftype
 \ - an earlier check, replaced by its document's next one, changing a later
-\   check's digests, decls or uses ....................... identities-remove
+\   check's decls or uses ............................... identities-remove
 \ - a probe of a file on disk changing an open document's groups, decls or
 \   uses while kept or once removed, or not keeping its use's identity
 \   ....................................................... identities-probe
@@ -337,6 +342,8 @@
 \ - a bare prefix, or a package's name and an edge colon, answered without
 \   a qualified spelling a qualified prefix offers there, or with another
 \   detail ................................................ completion-qualified
+\ - an incomplete check after an edit answered -32801 from the old check's
+\   source stamp ........................................ completion-incomplete
 \
 \ Document links
 \ - a loader of an open document whose file its last completed check read not
@@ -410,20 +417,24 @@
 \   an unresolved token given a guessed declaration ........ references-unverified
 \ - a known use in a dependency outside the folder read by a partial check
 \   omitted from the answer ........................ references-partial-dependency
+\ - a queued edit of a file a refused probe consumed answered from old bindings
+\   ................................................. references-partial-edit
+\ - an incomplete check after an edit answered -32801 from the old check's
+\   source stamp ........................................ references-incomplete
+\ - two open aliases with different text treated as one source revision, or
+\   ROOK's declaration and use placed at DUCK's URI .. references-open-alias
 \ - a resolved use in an open refused document refused without its known
 \   locations and warning ....................... references-refused-selection
 \ - a file whose loads discovery cannot find not named with its reason
 \   ................................................ references-undiscoverable
 \ - a file on disk whose loads reach the declaring document, open a line
 \   down and unsaved, named, or its uses not listed ...... references-unsaved
-\ - a declaring file changed on disk since the requesting check read it
-\   answered other than -32803 naming it; once that document is checked
-\   again, not the whole answer ............................. references-stale
+\ - a declaring file moved on disk since the requesting check read it
+\   not refreshed before the request's answer .............. references-stale
 \ - the same when it changed only after the declaration, its span unchanged
 \   ...................................................... references-digest
-\ - a use in the requesting document listed, or the document not named as
-\   refused, once its loads on disk no longer reach the declaration its
-\   check read ........................................... references-requester
+\ - a use in the requesting document still bound to a removed declaration
+\   once its loads on disk no longer reach it ........... references-requester
 \ - an empty workspaceFolders not winning over rootUri
 \   .................................................. references-folders-empty
 \ - a use in a file that is no subject, read by a subject's check: in the
@@ -524,6 +535,8 @@
 \ - a request held when shutdown is read not answered first, a cancel of it
 \   read past shutdown not counted, or a request after shutdown answered other
 \   than -32600 .............................................. cancel-shutdown
+\ - a malformed close read behind a definition request stopping the server
+\   before its reply or not being logged when served ... definition-before-check
 \ - a cancel of a references request, read between the checks of the files it
 \   gathers from, not answered -32800 before the next check begins
 \   ......................................................... references-cancel
@@ -531,6 +544,8 @@
 \   between its checks, not answered -32801 before the next check begins, or
 \   the change applied before that answer or not checked after it
 \   ....................................................... references-modified
+\ - a queued unrelated open making references fail content-modified
+\   ...................................................... references-unrelated
 \ - a change of an open document a rename gathers from, read between its
 \   checks, not answered -32801 before the next check begins, or the change
 \   applied before that answer or not checked after it ........ rename-modified
@@ -540,6 +555,8 @@
 \   ........................................... references-eof, references-fault
 \ - a references request answered with another id once a 700 KB message read
 \   between its checks moved the messages held ............ references-growth
+\ - a definition request answered with another id once a 700 KB message read
+\   after its first check moved the messages held .......... definition-growth
 \
 \ Not proven here: a packet line that is not JSON, that names no file, or that
 \ names its file by a relative path, goes to stderr, but the checker writes
@@ -615,6 +632,7 @@ variable OUT-AT                          \ of them the bytes read as frames,
 variable ERR-LEN                         \ and the bytes it wrote to stderr
 
 create LABEL-B HDR-BYTES allot           \ the conversation's name
+create SESSION-B HDR-BYTES allot         \ the initialized process's name
 create IN-B HDR-BYTES allot              \ its input
 create WANT-B HDR-BYTES allot            \ the stderr it must write
 create MSG-B HDR-BYTES allot             \ a message or a reply being composed
@@ -636,10 +654,19 @@ variable SENT                            \ and the bytes of its input written
 FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
 create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
 TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
+TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
+TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
+TYPED-VARIABLE SESSION-INIT [ -- ]
+TYPED-VARIABLE SESSION-CASES [ -- ]
+32 constant OPEN-CAP
+create OPEN-PATHS OPEN-CAP FS-PATH-CAP * allot
+OPEN-CAP TYPED-BUFFER OPEN-LENS n
+variable OPEN-N
 
 : READY ( ptr a -- )  256 N>BLEN INIT ;
 
 : LABEL$ ( -- ptr u8 n )  LABEL-B SPAN$ BLEN>N ;
+: SESSION$ ( -- ptr u8 n )  SESSION-B SPAN$ BLEN>N ;
 : IN$ ( -- ptr u8 n )  IN-B SPAN$ BLEN>N ;
 : WANT$ ( -- ptr u8 n )  WANT-B SPAN$ BLEN>N ;
 : MSG$ ( -- ptr u8 n )  MSG-B SPAN$ BLEN>N ;
@@ -707,6 +734,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}" ;
 
 : INITIALIZE ( -- )  INITIALIZE$ FRAMED ;
+: SESSION-INITIALIZE ( -- )  SHARED? @ 0= if INITIALIZE then ;
 : SHUTDOWN ( -- )  s" 2" s" shutdown" ASK ;
 : EXIT-NOTE ( -- )  s" exit" s" " TELL ;
 
@@ -754,13 +782,22 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" {\"textDocument\":{\"uri\":" PAR+ u uu PAR+ s" }}" PAR+
    s" textDocument/didClose" PAR$ TELL ;
 
-\ The diagnostics conversations' documents, each by its path: a file of the
-\ artifact directory, on disk only when a case writes it there, or of the tree.
+\ The workspace session reuses one root: the first path component names the
+\ case and is dropped. Its live tree moves into that case's artifact afterward.
 : FIXTURE ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
    DIR$ N>BLEN PATH-B REPLACE
+   SHARED? @ if
+      s" /" N>BLEN PATH-B APPEND-SPAN
+      WORKSPACE? @ if s" workspace" else LABEL$ then N>BLEN PATH-B APPEND-SPAN
+   then
    s" /" N>BLEN PATH-B APPEND-SPAN
-   a u N>BLEN PATH-B APPEND-SPAN
+   SHARED? @ WORKSPACE? @ and if
+      a u s" /" FIND-SUB MATCH option
+         none OF a u ENDOF
+         some OF {: cut:idx :} a cut IDX>N 1+ + u cut IDX>N 1+ - ENDOF
+      ;MATCH
+   else a u then N>BLEN PATH-B APPEND-SPAN
    PATH-B SPAN$ BLEN>N ;
 
 : IN-TREE ( ptr u8 n -- ptr u8 n )
@@ -800,6 +837,34 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    u 0 ?do a i + ESCAPED+ loop
    s\" \"" PAR+ ;
 
+: OPEN-AT ( n -- ptr u8 )  FS-PATH-CAP * OPEN-PATHS + ;
+: OPEN-PATH ( n -- ptr u8 n )
+   dup OPEN-AT swap OPEN-LENS @ ;
+
+: OPEN-ADD ( ptr u8 n -- )
+   SHARED? @ 0= if 2drop exit then
+   {: p:ptr pu:n :}
+   OPEN-N @ OPEN-CAP < pu FS-PATH-CAP <= and 0= if E-TBL-BOUNDS throw then
+   OPEN-N @ {: idx:n :}
+   p idx OPEN-AT pu BYTE-COPY
+   pu idx OPEN-LENS !
+   1 OPEN-N +! ;
+
+: OPEN-REMOVE ( ptr u8 n -- )
+   SHARED? @ 0= if 2drop exit then
+   {: p:ptr pu:n :}
+   OPEN-N @ 0 ?do
+      i OPEN-PATH p pu STR= if
+         OPEN-N @ 1- {: last:n :}
+         i last <> if
+            last OPEN-PATH i OPEN-AT swap BYTE-COPY
+            last OPEN-LENS @ i OPEN-LENS !
+         then
+         -1 OPEN-N +!
+         unloop exit
+      then
+   loop ;
+
 \ didOpen of the document at PATH with this text and version.
 : OPENS ( ptr u8 n ptr u8 n n -- )
    {: p:ptr pu:n t:ptr tu:n v:n :}
@@ -807,7 +872,8 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" {\"textDocument\":{\"uri\":" PAR+ p pu URI+
    s\" ,\"languageId\":\"habu\",\"version\":" PAR+ v INT$ PAR+
    s\" ,\"text\":" PAR+ t tu TEXT+ s" }}" PAR+
-   s" textDocument/didOpen" PAR$ TELL ;
+   s" textDocument/didOpen" PAR$ TELL
+   p pu OPEN-ADD ;
 
 \ didChange of the document at PATH to this whole text and version.
 : CHANGES ( ptr u8 n ptr u8 n n -- )
@@ -824,7 +890,16 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" {\"textDocument\":{\"uri\":" PAR+ URI+ s" }}" PAR+ ;
 
 : SAVES ( ptr u8 n -- )  NAMING s" textDocument/didSave" PAR$ TELL ;
-: CLOSES ( ptr u8 n -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
+: CLOSE-WIRE ( ptr u8 n -- )  NAMING s" textDocument/didClose" PAR$ TELL ;
+: CLOSES ( ptr u8 n -- )
+   2dup CLOSE-WIRE
+   OPEN-REMOVE ;
+
+: WATCHES ( ptr u8 n -- )
+   PAR-B CLEAR
+   s\" {\"changes\":[{\"uri\":" PAR+ URI+
+   s\" ,\"type\":2}]}" PAR+
+   s" workspace/didChangeWatchedFiles" PAR$ TELL ;
 
 \ ---- the stderr expected ------------------------------------------------------
 
@@ -887,16 +962,38 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    DIR$ SB-APPEND s" /" SB-APPEND LABEL$ SB-APPEND x xu SB-APPEND
    SB$ ;
 
-\ Keeps the conversation: its input, output and stderr, and its exit code.
-: ARCHIVE ( n -- )
-   {: rc:n :}
+\ Keeps this conversation or shared case's input, output and stderr.
+: ARCHIVE-STREAMS ( -- )
    s" .in" ARTIFACT$ IN$ WRITE-ALL
    s" .out" ARTIFACT$ OUT$ WRITE-ALL
-   s" .err" ARTIFACT$ ERR$ WRITE-ALL
+   s" .err" ARTIFACT$ ERR$ WRITE-ALL ;
+
+\ A process that exited also records its exit code.
+: ARCHIVE ( n -- )
+   {: rc:n :}
+   ARCHIVE-STREAMS
    MSG-B CLEAR
    LABEL$ MSG+ s"  " MSG+ rc INT$ MSG+ s\" \n" MSG+
    SB-RESET DIR$ SB-APPEND s" /exits" SB-APPEND
    SB$ MSG$ APPEND-FILE ;
+
+\ The shared session's complete byte trace includes initialize and shutdown;
+\ its named case files are individual segments.
+: TRACE$ ( ptr u8 n -- ptr u8 n )
+   {: x:ptr xu:n :}
+   SB-RESET DIR$ SB-APPEND s" /" SB-APPEND SESSION$ SB-APPEND
+   s" .trace" SB-APPEND
+   x xu SB-APPEND SB$ ;
+
+: TRACE-WRITE ( -- )
+   s" .in" TRACE$ IN$ WRITE-ALL
+   s" .out" TRACE$ OUT$ WRITE-ALL
+   s" .err" TRACE$ ERR$ WRITE-ALL ;
+
+: TRACE-APPEND ( -- )
+   s" .in" TRACE$ IN$ APPEND-FILE
+   s" .out" TRACE$ OUT$ APPEND-FILE
+   s" .err" TRACE$ ERR$ APPEND-FILE ;
 
 \ The server ended so, and must have exited with this code; past its deadline,
 \ the conversation and what the server wrote are printed.
@@ -1026,6 +1123,7 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s\" \"serverInfo\":{\"name\":\"habu\"}}}" MSG+
    MSG$ HEARD ;
 
+
 : NULL-RESULT ( ptr u8 n -- )
    {: i:ptr iu:n :}
    MSG-B CLEAR
@@ -1079,14 +1177,18 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
       dup dst SPAN:LEN < if dup f dst deadline BYTE else false then
    while 1+ repeat drop ;
 
+\ The server killed if it still runs, and reaped: its wait status.
+: KILLED ( pid -- n )
+   dup SIGKILL PROC-KILL-RAW drop
+   PROC-WAIT-STATUS ;
+
 \ The server's outcome once its output is read. A wait that ran out kills it,
 \ and the outcome is a timeout, as a capture's is; any other throw goes on.
 : SETTLED ( n pid -- outcome )
    {: code:n pid :}
    code 0= if pid PROC-WAIT-OUTCOME exit then
+   pid KILLED drop
    code E-PROC-TIMEOUT <> if code throw then
-   pid SIGKILL PROC-KILL-RAW drop
-   pid PROC-WAIT-STATUS drop
    OUTCOME:TIMEOUT ;
 
 \ The reply's first byte while the input stays open; the input then ends,
@@ -1250,153 +1352,6 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    s" 4" JSON-RPC:INVALID-REQUEST REFUSED
    ENDS ;
 
-: TEST-UNKNOWN-METHOD ( -- )
-   s" unknown-method" CONVERSATION
-   INITIALIZE
-   s" 3" s" habu/unknown" ASK
-   s" habu/unknown" s" {}" TELL
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   s" 3" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   s" 2" NULL-RESULT
-   ENDS ;
-
-\ A string id with a quote, a backslash, \u and \/ escaped.
-: ESCAPED-ID ( -- ptr u8 n )  s\" \"a\\\"b\\\\\\u00e9\\/c\"" ;
-: LONG-ID ( -- ptr u8 n )  s" 123456789012345678901234567890" ;
-
-: TEST-IDS ( -- )
-   s" ids" CONVERSATION
-   INITIALIZE
-   s" 0" s" habu/unknown" ASK
-   s" -7" s" habu/unknown" ASK
-   s" 1.5e3" s" habu/unknown" ASK
-   LONG-ID s" habu/unknown" ASK
-   ESCAPED-ID s" habu/unknown" ASK
-   s" null" s" habu/unknown" ASK
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   s" 0" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   s" -7" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   s" 1.5e3" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   LONG-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
-   ESCAPED-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
-   s" null" JSON-RPC:METHOD-NOT-FOUND REFUSED
-   s" 2" NULL-RESULT
-   ENDS ;
-
-: TEST-BODY-NOT-JSON ( -- )
-   s" body-not-json" CONVERSATION
-   INITIALIZE
-   s\" {\"jsonrpc\":" FRAMED
-   s" " FRAMED
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   s" null" JSON-RPC:PARSE-ERROR REFUSED
-   s" null" JSON-RPC:PARSE-ERROR REFUSED
-   s" 2" NULL-RESULT
-   ENDS ;
-
-: TEST-INVALID-REQUEST ( -- )
-   s" invalid-request" CONVERSATION
-   INITIALIZE
-   s" [1]" FRAMED
-   s" 5" FRAMED
-   s\" {\"jsonrpc\":\"1.0\",\"id\":3,\"method\":\"habu/unknown\"}" FRAMED
-   s\" {\"jsonrpc\":\"2.0\",\"id\":4,\"method\":7}" FRAMED
-   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"result\":null}" FRAMED
-   s\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":1,\"message\":\"m\"}}" FRAMED
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   s" null" JSON-RPC:INVALID-REQUEST REFUSED
-   s" null" JSON-RPC:INVALID-REQUEST REFUSED
-   s" 3" JSON-RPC:INVALID-REQUEST REFUSED
-   s" 4" JSON-RPC:INVALID-REQUEST REFUSED
-   s" 2" NULL-RESULT
-   ENDS ;
-
-\ The document opened under its URI escaped is changed and closed under it
-\ plain, and the close echoes the URI decoded with its percent escapes kept. A
-\ second open replaces the first, so one close publishes and the next is
-\ refused.
-: TEST-SYNC ( -- )
-   s" sync" CONVERSATION
-   INITIALIZE
-   s\" \"file:\\/\\/\\/habu-lsp-test\\/a.f\"" OPEN-DOC
-   URI-A CHANGE-DOC
-   URI-A CLOSE-DOC
-   URI-B OPEN-DOC
-   URI-B CLOSE-DOC
-   URI-A OPEN-DOC
-   URI-A OPEN-DOC
-   URI-A CLOSE-DOC
-   URI-A CLOSE-DOC
-   s" textDocument/didClose" LSP:E-LSP-NOT-OPEN IGNORED
-   URI-A CHANGE-DOC
-   s" textDocument/didChange" LSP:E-LSP-NOT-OPEN IGNORED
-   s\" \"untitled:Untitled-1\"" OPEN-DOC
-   s" textDocument/didOpen" E-URI-SCHEME IGNORED
-   s\" \"untitled:Untitled-1\"" CLOSE-DOC
-   s" textDocument/didClose" LSP:E-LSP-NOT-OPEN IGNORED
-   URI-A OPEN-DOC
-   URI-A RANGE-CHANGE
-   s" textDocument/didChange" LSP:E-LSP-PARAMS IGNORED
-   URI-A CLOSE-DOC
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   URI-A PUBLISHED
-   URI-B PUBLISHED
-   URI-A PUBLISHED
-   URI-A PUBLISHED
-   s" 2" NULL-RESULT
-   ENDS ;
-
-\ didOpen params the server cannot read, each logged.
-: BAD-OPENS ( -- )
-   s" textDocument/didOpen" s" " LSP:E-LSP-PARAMS UNAPPLIED
-   s" textDocument/didOpen" s" [1]" LSP:E-LSP-PARAMS UNAPPLIED
-   s" textDocument/didOpen" s" {}" LSP:E-LSP-PARAMS UNAPPLIED
-   s" 1" s" 1" s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   URI-A s" 1.5" s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   URI-A LONG-ID s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ E-JR-NUMBER UNAPPLIED
-   URI-A s" 1" s" null" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ E-PATH-RANGE UNAPPLIED ;
-
-\ didChange and didClose params the server cannot read, each logged.
-: BAD-CHANGES ( -- )
-   URI-A s" []" CHANGE-PARAMS
-   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   URI-A s" [1]" CHANGE-PARAMS
-   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   URI-A s" [{}]" CHANGE-PARAMS
-   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
-   s" textDocument/didClose" s\" {\"textDocument\":{}}" LSP:E-LSP-PARAMS UNAPPLIED ;
-
-\ None of them stops the server, and the document open among them stays open.
-: TEST-MALFORMED-PARAMS ( -- )
-   s" malformed-params" CONVERSATION
-   INITIALIZE
-   BAD-OPENS
-   URI-A OPEN-DOC
-   BAD-CHANGES
-   URI-A CLOSE-DOC
-   SIGN-OFF
-   0 CONVERSE
-   CAPABILITIES
-   URI-A PUBLISHED
-   s" 2" NULL-RESULT
-   ENDS ;
-
 \ A lower-case name; Content-Type before, blanks and tabs around the value;
 \ leading zeros, Content-Type after.
 : TEST-FRAME-FORMS ( -- )
@@ -1512,6 +1467,8 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
       else false then
    while 1 OUT-LEN +! repeat ;
 
+: SESSION-CAPABILITIES ( -- )  SHARED? @ 0= if HEAR CAPABILITIES then ;
+
 \ Reads stderr until it holds as many bytes as the conversation must write
 \ there, or ends: a check that publishes nothing is over once it has said why.
 : LOGGED ( -- )
@@ -1538,8 +1495,10 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 \ Holds the conversation RUN writes from these turns with the server, every
 \ wait against one deadline CHECKED-MS from its start. Its input then ends,
 \ stdout and stderr are read to their ends, and the server must exit RC. A
-\ throw kills the server and fails the conversation by name; whether none
-\ came.
+\ deadline kills the server, and EXITED prints the conversation and both
+\ streams and throws E-PROC-TIMEOUT. Any other throw kills the server and
+\ fails the conversation by name, and its real outcome is asserted; whether
+\ none came.
 : HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
    {: turns run rc:n :}
    PIPE-PAIR {: in-r:fd in-w:fd :}
@@ -1568,9 +1527,15 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
    out-r FD>N close
    err-r FD>N close
    mono-ns t0 - TOOK
-   why 0= if 0 else E-PROC-TIMEOUT then pid SETTLED {: r :}
-   SB-RESET LABEL$ SB-APPEND s" : throw" SB-APPEND SB$ T-LABEL
-   why 0 T=
+   why 0= why E-PROC-TIMEOUT = or if
+      why pid SETTLED
+   else
+      pid KILLED PROC-STATUS>OUTCOME
+   then {: r :}
+   why E-PROC-TIMEOUT <> if
+      SB-RESET LABEL$ SB-APPEND s" : throw" SB-APPEND SB$ T-LABEL
+      why 0 T=
+   then
    r rc EXITED
    why 0= ;
 
@@ -1579,23 +1544,6 @@ TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 : HELD ( [ -- ] -- )
    [: FINISHED ;] 0 HELD-BY 0= if exit then
    s" 2" NULL-RESULT
-   ENDS ;
-
-\ Holds the conversation of this name and these turns.
-: TALK ( ptr u8 n [ -- ] -- )
-   {: a:ptr u:n turns :}
-   a u CONVERSATION
-   turns HELD ;
-
-\ Holds the conversation of this name, whose turns end its input before exit
-\ and say what the server must write to stderr then; AFTER checks the frames
-\ the server wrote once its input ended, among those read to its stdout's end
-\ (HEAR). It must exit 1, nothing past them.
-: TALK-CUT ( ptr u8 n [ -- ] [ -- ] -- )
-   {: a:ptr u:n turns after :}
-   a u CONVERSATION
-   turns [: UNFINISHED ;] 1 HELD-BY 0= if exit then
-   after execute
    ENDS ;
 
 \ ---- the diagnostics expected ----------------------------------------------------
@@ -1730,10 +1678,206 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    HEAR
    EXP$ HEARD ;
 
+\ A batch of independent opens can publish in any order. Keep every exact
+\ diagnostic body, then match each document once against that batch.
+3 PTR-U8-TABLE PUB-BODIES
+3 TYPED-BUFFER PUB-LENS n
+3 TYPED-BUFFER PUB-USED bool
+variable PUB-COUNT
+
+: PUBLISH-BATCH ( n -- )
+   {: count:n :}
+   count PUB-COUNT !
+   count 0 ?do
+      HEAR NEXT-BODY {: body:ptr len:n :}
+      body PUB-BODIES i ptr-field !
+      len i PUB-LENS !
+      false i PUB-USED !
+   loop ;
+
+: PUBLISHES-ANY ( -- )
+   s" ]}}" EXP+
+   EXP$ {: want:ptr wantu:n :}
+   PUB-COUNT @ 0 ?do
+      i PUB-USED @ 0= if
+         PUB-BODIES i ptr-field @ i PUB-LENS @ want wantu STR= if
+            true i PUB-USED ! unloop exit
+         then
+      then
+   loop
+   false LABEL$ T-LABEL TTRUE ;
+
 \ The next frame is the empty list of the document at PATH at this version,
 \ heard as it comes: the test runs no check of its own first, so the turn
 \ after it is written while the server goes on.
 : CLEAN ( ptr u8 n n -- )  EXPECT PUBLISHES ;
+
+\ didClose may also retract diagnostics for a disk dependency. The final
+\ request marks the end of the batch, so every preceding frame must be an
+\ empty diagnostic publication.
+: CLEANUP-REPLY? ( ptr u8 n -- bool )
+   2dup s\" {\"jsonrpc\":\"2.0\",\"id\":99999999,\"error\":{\"code\":-32601,\"message\":\"" STARTS-WITH?
+   >r s\" \"}}" ENDS-WITH? r> and ;
+
+: CLEANUP-EMPTY? ( ptr u8 n -- bool )
+   2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" STARTS-WITH?
+   >r s\" \",\"diagnostics\":[]}}" ENDS-WITH? r> and ;
+
+: CLEANUP-DRAIN ( -- )
+   begin
+      HEAR NEXT-BODY 2dup CLEANUP-REPLY? if 2drop exit then
+      CLEANUP-EMPTY? LABEL$ T-LABEL TTRUE
+   again ;
+
+\ Holds the conversation of this name and these turns.
+: TALK ( ptr u8 n [ -- ] -- )
+   {: a:ptr u:n turns :}
+   a u CONVERSATION
+   SHARED? @ 0= if turns HELD exit then
+   0 SENT !
+   CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE !
+   s" " ARTIFACT$ MAKE-DIR
+   turns execute
+   LOGGED
+   ENDS
+   OPEN-N @ 0 > if
+      OPEN-N @ 0 ?do OPEN-N @ 1- i - OPEN-PATH CLOSE-WIRE loop
+      s" 99999999" s" habu/cleanup" ASK
+      SAY
+      CLEANUP-DRAIN
+      0 OPEN-N !
+   then
+   ENDS
+   ARCHIVE-STREAMS
+   TRACE-APPEND
+   WORKSPACE? @ if
+      DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
+      PATH-B SPAN$ BLEN>N s" /fixtures" ARTIFACT$ RENAME-FILE
+      DIR$ N>BLEN PATH-B REPLACE s" /workspace" N>BLEN PATH-B APPEND-SPAN
+      PATH-B SPAN$ BLEN>N MAKE-DIR
+   then ;
+
+\ Holds the conversation of this name, whose turns end its input before exit
+\ and say what the server must write to stderr then; AFTER checks the frames
+\ the server wrote once its input ended, among those read to its stdout's end
+\ (HEAR). It must exit 1, nothing past them.
+: TALK-CUT ( ptr u8 n [ -- ] [ -- ] -- )
+   {: a:ptr u:n turns after :}
+   a u CONVERSATION
+   turns [: UNFINISHED ;] 1 HELD-BY 0= if exit then
+   after execute
+   ENDS ;
+
+: UNKNOWN-METHOD-TURNS ( -- )
+   s" 3" s" habu/unknown" ASK
+   s" habu/unknown" s" {}" TELL
+   SAY
+   HEAR s" 3" JSON-RPC:METHOD-NOT-FOUND REFUSED ;
+
+\ A string id with a quote, a backslash, \u and \/ escaped.
+: ESCAPED-ID ( -- ptr u8 n )  s\" \"a\\\"b\\\\\\u00e9\\/c\"" ;
+: LONG-ID ( -- ptr u8 n )  s" 123456789012345678901234567890" ;
+
+: IDS-TURNS ( -- )
+   s" 0" s" habu/unknown" ASK
+   s" -7" s" habu/unknown" ASK
+   s" 1.5e3" s" habu/unknown" ASK
+   LONG-ID s" habu/unknown" ASK
+   ESCAPED-ID s" habu/unknown" ASK
+   s" null" s" habu/unknown" ASK
+   SAY
+   HEAR s" 0" JSON-RPC:METHOD-NOT-FOUND REFUSED
+   HEAR s" -7" JSON-RPC:METHOD-NOT-FOUND REFUSED
+   HEAR s" 1.5e3" JSON-RPC:METHOD-NOT-FOUND REFUSED
+   HEAR LONG-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
+   HEAR ESCAPED-ID JSON-RPC:METHOD-NOT-FOUND REFUSED
+   HEAR s" null" JSON-RPC:METHOD-NOT-FOUND REFUSED ;
+
+: BODY-NOT-JSON-TURNS ( -- )
+   s\" {\"jsonrpc\":" FRAMED
+   s" " FRAMED
+   SAY
+   HEAR s" null" JSON-RPC:PARSE-ERROR REFUSED
+   HEAR s" null" JSON-RPC:PARSE-ERROR REFUSED ;
+
+: INVALID-REQUEST-TURNS ( -- )
+   s" [1]" FRAMED
+   s" 5" FRAMED
+   s\" {\"jsonrpc\":\"1.0\",\"id\":3,\"method\":\"habu/unknown\"}" FRAMED
+   s\" {\"jsonrpc\":\"2.0\",\"id\":4,\"method\":7}" FRAMED
+   s\" {\"jsonrpc\":\"2.0\",\"id\":5,\"result\":null}" FRAMED
+   s\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":1,\"message\":\"m\"}}" FRAMED
+   SAY
+   HEAR s" null" JSON-RPC:INVALID-REQUEST REFUSED
+   HEAR s" null" JSON-RPC:INVALID-REQUEST REFUSED
+   HEAR s" 3" JSON-RPC:INVALID-REQUEST REFUSED
+   HEAR s" 4" JSON-RPC:INVALID-REQUEST REFUSED ;
+
+\ The document opened under its URI escaped is changed and closed under it
+\ plain, and the close echoes the URI decoded with its percent escapes kept. A
+\ second open replaces the first, so one close publishes and the next is
+\ refused.
+: SYNC-TURNS ( -- )
+   s\" \"file:\\/\\/\\/habu-lsp-test\\/a.f\"" OPEN-DOC
+   URI-A CHANGE-DOC
+   URI-A CLOSE-DOC
+   URI-B OPEN-DOC
+   URI-B CLOSE-DOC
+   URI-A OPEN-DOC
+   URI-A OPEN-DOC
+   URI-A CLOSE-DOC
+   URI-A CLOSE-DOC
+   s" textDocument/didClose" LSP:E-LSP-NOT-OPEN IGNORED
+   URI-A CHANGE-DOC
+   s" textDocument/didChange" LSP:E-LSP-NOT-OPEN IGNORED
+   s\" \"untitled:Untitled-1\"" OPEN-DOC
+   s" textDocument/didOpen" E-URI-SCHEME IGNORED
+   s\" \"untitled:Untitled-1\"" CLOSE-DOC
+   s" textDocument/didClose" LSP:E-LSP-NOT-OPEN IGNORED
+   URI-A OPEN-DOC
+   URI-A RANGE-CHANGE
+   s" textDocument/didChange" LSP:E-LSP-PARAMS IGNORED
+   URI-A CLOSE-DOC
+   SAY
+   HEAR URI-A PUBLISHED
+   HEAR URI-B PUBLISHED
+   HEAR URI-A PUBLISHED
+   HEAR URI-A PUBLISHED ;
+
+\ didOpen params the server cannot read, each logged.
+: BAD-OPENS ( -- )
+   s" textDocument/didOpen" s" " LSP:E-LSP-PARAMS UNAPPLIED
+   s" textDocument/didOpen" s" [1]" LSP:E-LSP-PARAMS UNAPPLIED
+   s" textDocument/didOpen" s" {}" LSP:E-LSP-PARAMS UNAPPLIED
+   s" 1" s" 1" s\" \"\"" OPEN-PARAMS
+   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   URI-A s" 1.5" s\" \"\"" OPEN-PARAMS
+   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   URI-A LONG-ID s\" \"\"" OPEN-PARAMS
+   s" textDocument/didOpen" PAR$ E-JR-NUMBER UNAPPLIED
+   URI-A s" 1" s" null" OPEN-PARAMS
+   s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
+   s" textDocument/didOpen" PAR$ E-PATH-RANGE UNAPPLIED ;
+
+\ didChange and didClose params the server cannot read, each logged.
+: BAD-CHANGES ( -- )
+   URI-A s" []" CHANGE-PARAMS
+   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   URI-A s" [1]" CHANGE-PARAMS
+   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   URI-A s" [{}]" CHANGE-PARAMS
+   s" textDocument/didChange" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
+   s" textDocument/didClose" s\" {\"textDocument\":{}}" LSP:E-LSP-PARAMS UNAPPLIED ;
+
+\ None of them stops the server, and the document open among them stays open.
+: MALFORMED-PARAMS-TURNS ( -- )
+   BAD-OPENS
+   URI-A OPEN-DOC
+   BAD-CHANGES
+   URI-A CLOSE-DOC
+   SAY
+   HEAR URI-A PUBLISHED ;
 
 \ ---- diagnostics ------------------------------------------------------------------
 
@@ -1749,10 +1893,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The first turn: initialize and A opened as F.
 : F-OPENED ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH TEXT-F 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    A-PATH 1 F-LISTED ;
 
 \ An undefined word refuses LSPT-U1. LSPT-U2 uses its declared effect and
@@ -1803,10 +1947,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ A requires a file of the tree: checked in A's load context, it verifies, and
 \ changed to call that file's word without its input, it is refused.
 : REQUIRE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH REQUIRES-FMT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    REQUIRES-FMT A-PATH CHECKS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT PUBLISHES
@@ -1830,20 +1974,20 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ The engine provides src/lib/string.f, so nothing is checked whatever its text.
 : ENGINE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" src/lib/string.f" IN-TREE TEXT-F 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    s" src/lib/string.f" IN-TREE 1 EXPECT PUBLISHES ;
 
 \ The emoji before H's drop is four bytes and two UTF-16 units.
 : TEXT-H ( -- ptr u8 n )  s" ( 😀 ) : H ( n -- n ) drop ;" ;
 
 : UTF16-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH TEXT-H 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-H A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 22 0 26 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
@@ -1859,9 +2003,9 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ SAY streams this oversized turn; F's packet on its last line proves the
 \ document was received whole and checked.
 : BIG-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    BIG-TEXT
    BIG-PATH TXT$ 1 OPENS
    SAY
@@ -1895,6 +2039,12 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    p pu w wu COMPLETED
    p pu v EXPECT PUBLISHES ;
 
+: BATCH-LISTED ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: t:ptr tu:n p:ptr pu:n v:n w:ptr wu:n :}
+   t tu p pu CHECKS
+   p pu w wu COMPLETED
+   p pu v EXPECT PUBLISHES-ANY ;
+
 \ The list at PATH, with this version or none for -1, holding the broken D's
 \ packet, which the test's last check found first.
 : D-LISTED ( ptr u8 n n -- )
@@ -1907,10 +2057,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ shutdown's reply comes next.
 : DEPENDENCY-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
-   INITIALIZE
+   SESSION-INITIALIZE
    S-PATH TEXT-S 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED
    DEP-FIXED DEP-WRITTEN
@@ -1929,15 +2079,31 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    S-PATH s" verified" COMPLETED
    S-PATH 2 EXPECT PUBLISHES ;
 
+\ A watched disk dependency changes without a document edit or save. Its
+\ reader is checked again and retracts the now stale dependency diagnostic.
+: DEP-WATCH-TURNS ( -- )
+   DEP-BROKEN DEP-WRITTEN
+   SESSION-INITIALIZE
+   S-PATH TEXT-S 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-S S-PATH 1 s" refused" LISTED
+   DEP-CANON -1 D-LISTED
+   DEP-FIXED DEP-WRITTEN
+   DEP-PATH WATCHES
+   SAY
+   TEXT-S S-PATH 1 s" verified" LISTED
+   DEP-CANON -1 EXPECT PUBLISHES ;
+
 \ S calls D in dep.f, fixed on disk. Opened with a D taking two cells, unsaved,
 \ dep.f has its own list, and S, whose check read dep.f, is checked again with
 \ no save, over the open text: its list holds its call's underflow.
 : DEP-OPEN-EDIT-TURNS ( -- )
    DEP-FIXED DEP-WRITTEN
-   INITIALIZE
+   SESSION-INITIALIZE
    S-PATH TEXT-SD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-SD S-PATH 1 s" verified" LISTED
    DEP-PATH DEP-TWO 1 OPENS
    SAY
@@ -1953,10 +2119,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ again, publishes dep.f's list from disk again.
 : DEP-CLOSE-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
-   INITIALIZE
+   SESSION-INITIALIZE
    S-PATH TEXT-S 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED
    DEP-PATH DEP-BROKEN 1 OPENS
@@ -1981,6 +2147,15 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 : SV-NEW-PATH ( -- ptr u8 n )  s" sv-new.f" FIXTURE ;
 : TEXT-SV ( -- ptr u8 n )  s\" require sv-new.f\n: S ( -- ) ;\n" ;
 : TEXT-SV-NEW ( -- ptr u8 n )  s\" : N ( -- ) ;\n" ;
+: MW-PATH ( -- ptr u8 n )  s" mw.f" FIXTURE ;
+: MW-NEW-PATH ( -- ptr u8 n )  s" mw-new.f" FIXTURE ;
+: TEXT-MW ( -- ptr u8 n )  s\" require mw-new.f\n: M ( -- ) ;\n" ;
+: SR-PATH ( -- ptr u8 n )  s" sr.f" FIXTURE ;
+: SR-NEW-PATH ( -- ptr u8 n )  s" sr-new.f" FIXTURE ;
+: TEXT-SR ( -- ptr u8 n )  s\" require sr-new.f\n: S ( -- ) ;\n" ;
+: UR-PATH ( -- ptr u8 n )  s" ur.f" FIXTURE ;
+: UR-DEP-PATH ( -- ptr u8 n )  s" ur-dep.f" FIXTURE ;
+: TEXT-UR ( -- ptr u8 n )  s\" require ur-dep.f\n: U ( -- ) ;\n" ;
 
 \ sv.f requires sv-new.f, which is open but on no disk: the loader finds no
 \ file to read the open text for, so sv.f's list holds E-MISSING-SOURCE, and
@@ -1991,10 +2166,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ the server checks the next waiting document after the last one checked,
 \ sv-new.f, wrapping round to the first.
 : SAVE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    SV-PATH TEXT-SV 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-SV SV-PATH CHECKS
    SV-PATH s" refused" COMPLETED
    SV-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
@@ -2009,6 +2184,21 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    SV-PATH s" verified" COMPLETED
    SV-PATH 1 EXPECT PUBLISHES
    TEXT-SV-NEW SV-NEW-PATH 1 s" verified" LISTED ;
+
+\ A watched file that did not exist at the prior check is now available.
+\ The open requester must be checked again without a document edit or save.
+: MISSING-WATCH-TURNS ( -- )
+   SESSION-INITIALIZE
+   MW-PATH TEXT-MW 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-MW MW-PATH CHECKS
+   MW-PATH s" refused" COMPLETED
+   MW-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   MW-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   MW-NEW-PATH WATCHES
+   SAY
+   TEXT-MW MW-PATH 1 s" verified" LISTED ;
 
 : LINK-S ( -- ptr u8 n )  s" link/s.f" FIXTURE ;
 : LINK-DEP ( -- ptr u8 n )  s" link/dep.f" FIXTURE ;
@@ -2028,10 +2218,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
    s" real" FIXTURE MAKE-DIR
    s" real" s" link" FIXTURE MAKE-SYMLINK
    REAL-DEP DEP-BROKEN WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LINK-S TEXT-SD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-SD LINK-S 1 s" refused" LISTED
    REAL-CANON -1 D-LISTED
    LINK-DEP DEP-TWO 1 OPENS
@@ -2053,13 +2243,14 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ publishes it again; T dropping its require too withdraws it.
 : DEP-SHARED-TURNS ( -- )
    DEP-BROKEN DEP-WRITTEN
-   INITIALIZE
+   SESSION-INITIALIZE
    S-PATH TEXT-S 1 OPENS
-   T-PATH TEXT-T 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-S S-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED
+   T-PATH TEXT-T 1 OPENS
+   SAY
    TEXT-T T-PATH 1 s" refused" LISTED
    DEP-CANON -1 D-LISTED
    S-PATH ALONE-S 2 CHANGES
@@ -2077,11 +2268,11 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 
 \ B calls the word only A defines: each check sees its own document alone.
 : TWO-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH DEFINES-A 1 OPENS
    B-PATH CALLS-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    DEFINES-A A-PATH CHECKS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT PUBLISHES
@@ -2095,10 +2286,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 : UNENDED ( -- ptr u8 n )  s" : H6 ( n -- n ) 1" ;
 
 : UNENDED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH UNENDED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    UNENDED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
@@ -2109,10 +2300,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 : MISSING-NAME ( -- ptr u8 n )  s" :" ;
 
 : MISSING-NAME-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH MISSING-NAME 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    MISSING-NAME A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 0 0 1 1 s" E-MISSING-NAME" DIAG+ PUBLISHES ;
@@ -2131,11 +2322,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
    TXT-B CLEAR  OVER-USINGS+ ;
 
 : INCOMPLETE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    OVER-USING-TEXT
    A-PATH TXT$ 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
    A-PATH s" not checked: exit 76" SAID
    LOGGED ;
@@ -2150,11 +2341,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
    OVER-USINGS+ ;
 
 : INCOMPLETE-PACKET-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    REFUSED-OVER-TEXT
    A-PATH TXT$ 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
    A-PATH s" not checked: exit 76" SAID
    A-PATH 1 EXPECT 0 16 0 26 1 s" E-UNDEFINED" DIAG+ PUBLISHES ;
@@ -2163,10 +2354,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : HELD-PATH ( -- ptr u8 n )  s" tools/check-verify-child.f" IN-TREE ;
 
 : HELD-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HELD-PATH TEXT-F 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-F HELD-PATH CHECKS
    HELD-PATH s" not checked: the verifier's image holds it" SAID
    LOGGED ;
@@ -2178,10 +2369,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" package LSPT-Q\nprivate\n: W ( n -- ) drop ;\npublic\n: W ( -- ) ;\n;package\n: LSPT-M ( -- ) 1 ;\n" ;
 
 : SHADOWED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH SHADOWS 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    SHADOWS A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+
@@ -2193,10 +2384,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" defer LSPT-V14 ( -- a b c d e g h i j k l m o p )\n: LSPT-WIDE LSPT-V14 LSPT-V14 ;\n" ;
 
 : NOT-RECORDED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH WIDENS 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    WIDENS A-PATH CHECKS
    A-PATH s" verified" COMPLETED
    A-PATH 1 EXPECT 1 2 1 11 s" W-EFFECT-NOT-RECORDED" UNRATED+ PUBLISHES ;
@@ -2208,10 +2399,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" package LSPT-UA\npublic\n: LSPT-W ( n -- ) drop ;\n;package\npackage LSPT-UB\npublic\n: LSPT-W ( n -- ) drop ;\n;package\nusing LSPT-UA\nusing LSPT-UB\n: LSPT-U ( -- ) 1 LSPT-W ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
 : TWO-USED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH TWO-USED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TWO-USED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 10 18 10 24 1 s" E-USING-AMBIGUOUS" DIAG+
@@ -2223,10 +2414,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-SP\npublic\n: LSPT-SW ( n -- ) drop ;\n;package\nusing LSPT-SP\n: LSPT-SU ( -- ) 1 LSPT-SW ;\n: LSPT-M ( -- ) 1 ;\n;using\n" ;
 
 : GLOBAL-USED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH GLOBAL-USED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    GLOBAL-USED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 6 19 6 26 1 s" E-USING-SHADOW-GLOBAL" DIAG+
@@ -2239,10 +2430,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : LSPT-SW ( n -- ) drop ;\npackage LSPT-DA\npublic\n: LSPT-SW ( n -- ) drop ;\n: LSPT-DV ( n -- ) drop ;\n;package\npackage LSPT-DB\npublic\n: LSPT-DV ( n -- ) drop ;\n;package\nusing LSPT-DA\nusing LSPT-DB\n: LSPT-DS ( n -- ) create , does> ( -- ) @ LSPT-SW ;\n: LSPT-DM ( n -- ) create , does> ( -- ) @ LSPT-DV ;\n: LSPT-M ( -- ) 1 ;\n;using\n;using\n" ;
 
 : CLAUSE-USED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH CLAUSE-USED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    CLAUSE-USED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 12 43 12 50 1 s" E-USING-SHADOW-GLOBAL" DIAG+
@@ -2253,10 +2444,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : TEXT-DUP ( -- ptr u8 n )  s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n" ;
 
 : DUPLICATE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH TEXT-DUP 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DUP A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 4 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
@@ -2268,10 +2459,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 
 : DUP-REQUIRED-TURNS ( -- )
    DD-DEP s\" : LSPT-DD ( -- n ) 1 ;\n" WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH TEXT-DD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DD A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 2 1 9 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES ;
@@ -2282,10 +2473,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : DEFERRED-AT-TOP ( -- ptr u8 n )  s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" ;
 
 : TOP-LEVEL-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH UNDEFINED-AT-TOP 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    UNDEFINED-AT-TOP A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 0 2 0 12 1 s" E-UNDEFINED-TOP-LEVEL" DIAG+ PUBLISHES
@@ -2300,10 +2491,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : DEFERRED-IN-BODY ( -- ptr u8 n )  s\" s\" : G ( -- n ) 2 ;\" evaluate\n: F ( -- n ) NOSUCH ;\n" ;
 
 : DEFINITION-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH DEFERRED-IN-BODY 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    DEFERRED-IN-BODY A-PATH CHECKS
    A-PATH s" deferred" COMPLETED
    A-PATH 1 EXPECT
@@ -2319,11 +2510,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
    UNENDED N>BLEN TXT-B APPEND-SPAN ;
 
 : DEFERRED-UNENDED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEFERRED-UNENDED-TEXT
    A-PATH TXT$ 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TXT$ A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT
@@ -2468,12 +2659,13 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ QUX-DEP again, and A, whose check did not read B's file, not checked again.
 : SYMBOL-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    SYM-B-PATH TEXT-SYM-B 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
    s" 3" s\" {\"query\":\"qux\"}" SYMBOLS-ASK
    SAY
@@ -2538,11 +2730,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ whose check did not read B's file, not checked again.
 : EMPTY-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SYM-B-PATH TEXT-SYM-B 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
    SYM-DEP-PATH TEXT-SYM-DEP3 WRITE-ALL
@@ -2590,10 +2782,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ record, so a query lists NAV-RETAIN once, where the first declaration names
 \ it.
 : RETAINED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RETAINED-PATH TEXT-RETAINED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RETAINED RETAINED-PATH CHECKS
    RETAINED-PATH s" refused" COMPLETED
    RETAINED-PATH 1 EXPECT 1 9 1 19 1 s" E-DUPLICATE-DEFINITION" DIAG+ PUBLISHES
@@ -2609,10 +2801,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ NAV-ODD.
 : REDECLARED-TURNS ( -- )
    REDECLARED-TEXT
-   INITIALIZE
+   SESSION-INITIALIZE
    REDECLARED-PATH TXT$ 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TXT$ REDECLARED-PATH CHECKS
    REDECLARED-PATH s" refused" COMPLETED
    REDECLARED-PATH 1 EXPECT
@@ -2642,10 +2834,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ The check reads rep-dep.f twice, and a query lists REV-SHARED once.
 : REINCLUDE-TURNS ( -- )
    REP-DEP-PATH TEXT-REP-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    REP-PATH TEXT-REP 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-REP REP-PATH 1 s" verified" LISTED
    s" 3" s\" {\"query\":\"rev-shared\"}" SYMBOLS-ASK
    SAY
@@ -2680,10 +2872,10 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ is checked again, REV-DISK where the file on disk places it.
 : OPEN-DEP-TURNS ( -- )
    OD-DEP-PATH TEXT-OD-DISK WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    OD-DEP-PATH TEXT-OD-EDIT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-OD-EDIT OD-DEP-PATH 1 s" verified" LISTED
    OD-PATH TEXT-OD 1 OPENS
    SAY
@@ -2760,10 +2952,11 @@ variable LENGTH-N                        \ the length of its directory's name
 
 \ The document is checked and published, and Z9, its last word, answered.
 : LENGTH-TURNS ( -- )
-   INITIALIZE
+   LENGTH-DIR MAKE-DIR
+   SESSION-INITIALIZE
    LENGTH-PATH TXT$ 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TXT$ LENGTH-PATH 1 s" verified" LISTED
    s" 3" s\" {\"query\":\"z9\"}" SYMBOLS-ASK
    SAY
@@ -2801,16 +2994,50 @@ variable LENGTH-N                        \ the length of its directory's name
    HEAR
    MSG$ HEARD ;
 
+\ A request notices a previously missing loader target on disk, even without
+\ a watched-file notification. It rechecks before answering from the root.
+: MISSING-REQUEST-TURNS ( -- )
+   SESSION-INITIALIZE
+   SR-PATH TEXT-SR 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-SR SR-PATH CHECKS
+   SR-PATH s" refused" COMPLETED
+   SR-PATH 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   SR-NEW-PATH TEXT-SV-NEW WRITE-ALL
+   s" 3" SR-PATH 1 2 DEFINITION-ASK
+   SAY
+   TEXT-SR SR-PATH 1 s" verified" LISTED
+   s" 3" NOWHERE ;
+
+\ A source that exists but cannot be read becomes readable. The request sees
+\ the failed target's changed file state and rechecks before it answers.
+: UNREAD-REQUEST-TURNS ( -- )
+   UR-DEP-PATH TEXT-SV-NEW WRITE-ALL
+   UR-DEP-PATH 0 CHMOD-MODE
+   SESSION-INITIALIZE
+   UR-PATH TEXT-UR 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-UR UR-PATH CHECKS
+   UR-PATH s" refused" COMPLETED
+   UR-PATH 1 EXPECT 0 0 0 7 1 s" E-UNREADABLE-SOURCE" DIAG+ PUBLISHES
+   UR-DEP-PATH FS-MODE-0644 CHMOD-MODE
+   s" 3" UR-PATH 1 2 DEFINITION-ASK
+   SAY
+   TEXT-UR UR-PATH 1 s" verified" LISTED
+   s" 3" NOWHERE ;
+
 \ DEF-ONE's uses, at the first and last character of the one in DEF-TWO and
 \ the first of the one in DEF-THREE, its byte one past its character, each
 \ answered with DEF-ONE's declaring token at the URI the document was opened
 \ by; the caret at the use's exact end still selects it, while the next space
 \ and DEF-TWO's declaring token select none; a negative character -32602.
 : DEF-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
    s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
    s" 4" DEF-A-PATH 1 25 DEFINITION-ASK
@@ -2827,23 +3054,6 @@ variable LENGTH-N                        \ the length of its directory's name
    s" 7" NOWHERE
    s" 8" NOWHERE
    HEAR s" 9" -32602 REFUSED ;
-
-\ Definition and declaration of words in a dependency answer with the
-\ declaring token in its text on disk at the canonical URI.
-: DEF-DEP-TURNS ( -- )
-   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
-   INITIALIZE
-   DEF-B-PATH TEXT-DEF-B 1 OPENS
-   SAY
-   HEAR CAPABILITIES
-   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
-   s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
-   s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
-   s" 5" DEF-B-PATH 1 27 DECLARATION-ASK
-   SAY
-   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
-   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
-   s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED ;
 
 \ An in-tree file, read whole. A case that navigates into the tree finds its
 \ target's line or byte in the file as it stands, not by a number every edit
@@ -2879,6 +3089,101 @@ DYNAMIC-BUFFER TREE-TEXT u8
 : URI-LINE ( ptr u8 n ptr u8 n -- ptr u8 n n )
    PATH-LINE {: at:n :} URI-OF at ;
 
+\ Definition and declaration of words in a dependency answer with the
+\ declaring token in its text on disk at the canonical URI. The engine's
+\ require binding is known, but include.f's top-level dictionary calls defer
+\ its whole source index.
+: DEF-DEP-TURNS ( -- )
+   DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
+   SESSION-INITIALIZE
+   DEF-B-PATH TEXT-DEF-B 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
+   s" 3" DEF-B-PATH 1 19 DEFINITION-ASK
+   s" 4" DEF-B-PATH 1 27 DEFINITION-ASK
+   s" 5" DEF-B-PATH 1 27 DECLARATION-ASK
+   s" 6" DEF-B-PATH 0 2 DEFINITION-ASK
+   SAY
+   s" 3" DEF-DEP-CANON URI-OF 4 2 9 LOCATED
+   s" 4" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
+   s" 5" DEF-DEP-CANON URI-OF 2 2 9 LOCATED
+   s" 6" NOWHERE ;
+
+\ Generated constructors in aio.f's scanned declarations remain locatable.
+\ Its engine calls retain their bindings, but roles.f's NOMINAL-PROVIDER,
+\ cell.f's CELL-WIDTH-CHECK and pointer-storage.f's REG-PROTECT are dictionary
+\ calls, so their whole source indexes defer without claiming a Location.
+: AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
+: AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
+
+: SUMTYPE-DEF-TURNS ( -- )
+   SESSION-INITIALIZE
+   AIO-PATH AIO-PATH TREE$ 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   AIO-PATH TREE$ AIO-PATH CHECKS
+   AIO-PATH s" deferred" COMPLETED
+   AIO-PATH 1 EXPECT
+   AIO-PATH s" AIO-LOAD:HOST" PATH-LINE >r 2drop r> {: line:n :}
+   line 0 line 13 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 3" AIO-PATH s"    res 0 >= if res AIO-OUTCOME:ready" PATH-LINE 32 DEFINITION-ASK
+   s" 4" AIO-PATH s"    r REC.TIMED-OUT @ 0 <> if AIO-OUTCOME:timed-out" PATH-LINE 42 DEFINITION-ASK
+   s" 5" AIO-PATH s"    res ERR-CANCELED negate = if AIO-OUTCOME:cancelled" PATH-LINE 45 DEFINITION-ASK
+   s" 6" AIO-PATH s"    res negate AIO-OUTCOME:refused" PATH-LINE 27 DEFINITION-ASK
+   s" 7" AIO-PATH 1061 5 DEFINITION-ASK
+   s" 8" AIO-PATH 1061 25 DEFINITION-ASK
+   s" 9" AIO-PATH 1067 11 DEFINITION-ASK
+   s" 10" AIO-PATH 1107 5 DEFINITION-ASK
+   s" 11" AIO-PATH 1111 5 DEFINITION-ASK
+   s" 12" AIO-PATH 1118 5 DEFINITION-ASK
+   s" 13" AIO-PATH 1127 5 DEFINITION-ASK
+   s" 14" AIO-PATH 268 11 DEFINITION-ASK
+   s" 15" AIO-PATH 180 0 DEFINITION-ASK
+   s" 16" AIO-PATH 208 0 DEFINITION-ASK
+   s" 17" AIO-PATH 244 2 DEFINITION-ASK
+   s" 18" AIO-PATH 245 2 DEFINITION-ASK
+   s" 19" AIO-PATH 246 2 DEFINITION-ASK
+   SAY
+   s" 3" AIO-PATH s"    VARIANT ready" URI-LINE 11 16 LOCATED
+   s" 4" AIO-PATH s"    VARIANT timed-out" URI-LINE 11 20 LOCATED
+   s" 5" AIO-PATH s"    VARIANT cancelled" URI-LINE 11 20 LOCATED
+   s" 6" AIO-PATH s"    VARIANT refused" URI-LINE 11 18 LOCATED
+   s" 7" NOWHERE
+   s" 8" NOWHERE
+   s" 9" NOWHERE
+   s" 10" NOWHERE
+   s" 11" NOWHERE
+   s" 12" NOWHERE
+   s" 13" NOWHERE
+   s" 14" NOWHERE
+   s" 15" NOWHERE
+   s" 16" NOWHERE
+   s" 17" NOWHERE
+   s" 18" NOWHERE
+   s" 19" NOWHERE
+   AIO-PTR-PATH s\" \\ changed\n" 1 OPENS
+   SAY
+   AIO-PTR-PATH 1 EXPECT PUBLISHES
+   AIO-PATH TREE$ AIO-PATH CHECKS
+   AIO-PATH s" deferred" COMPLETED
+   AIO-PATH 1 EXPECT
+   line 0 line 13 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 20" AIO-PATH 244 2 DEFINITION-ASK
+   SAY
+   s" 20" NOWHERE ;
+
+\ A constructor's MATCH arm is a source reference that checked use collection
+\ does not report. A rename of its generated word cannot safely edit the
+\ declaration and call while leaving that arm spelling behind.
+: CHOICE-PATH ( -- ptr u8 n )  s" sumtype-rename.f" FIXTURE ;
+: CHOICE-TEXT ( -- ptr u8 n )
+   s\" SUMTYPE choice\n  VARIANT red ;VARIANT\n  VARIANT blue ;VARIANT\n;SUMTYPE\n: PICK ( -- choice ) CHOICE:red ;\n: PICK-CODE ( choice -- n ) MATCH choice red OF 1 ENDOF blue OF 2 ENDOF ;MATCH ;\n" ;
+
+: VARIANT-DEF-PATH ( -- ptr u8 n )  s" variant-definer-rename.f" FIXTURE ;
+: VARIANT-DEF-TEXT ( -- ptr u8 n )
+   s\" : VARIANT ( n -- ) create , does> ( -- n ) @ ;\n7 VARIANT SEVEN\n: READ-SEVEN ( -- n ) SEVEN ;\n" ;
+
 \ The built-in multiplication word binds at a body call, an interpreted call,
 \ and a tick. A later user definition of the same spelling takes its own use.
 : PRIM-PATH ( -- ptr u8 n )  s" prim-nav.f" FIXTURE ;
@@ -2888,10 +3193,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s\" : PRIM-MUL ( -- n ) 2 3 * ;\n2 3 * drop\n' * drop\nundefine *\n: * ( n n -- n ) + ;\n: PRIM-SHADOW ( -- n ) 2 3 * ;\nscript-argc drop\nscript-arg-start drop\nundefine script-argc\n: script-argc ( -- n ) 7 ;\nscript-argc drop\n" ;
 
 : PRIM-DEF-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
    s" 3" PRIM-PATH 0 24 DEFINITION-ASK
    s" 4" PRIM-PATH 1 4 DEFINITION-ASK
@@ -2920,10 +3225,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ An open unsaved prims.f with a mismatched row sequence has no trusted target.
 \ Closing it restores navigation from the engine's matching file on disk.
 : PRIM-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
    PRIM-SOURCE-PATH s\" \\ changed\n" 1 OPENS
    SAY
@@ -2942,17 +3247,18 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ An edited engine file can preserve the same spelling at the baked byte
 \ range while changing it from a declaration to a call: the colon of
-\ `: SCRIPT-ARGC` becomes a space.
+\ `: SCRIPT-ARGC` becomes a space. That opaque call defers the entire index,
+\ including SCRIPT-ARG-START's otherwise unchanged declaration.
 : ENGINE-OPEN-SOURCE ( -- ptr u8 n )
    SCRIPT-ARGV-PATH TREE-READ {: size:n :}
    32 size s" : SCRIPT-ARGC " LINE-START TREE-TEXT c!
    0 TREE-TEXT size ;
 
 : ENGINE-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    PRIM-PATH TEXT-PRIM-NAV 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PRIM-NAV PRIM-PATH 1 s" verified" LISTED
    SCRIPT-ARGV-PATH ENGINE-OPEN-SOURCE 1 OPENS
    SAY
@@ -2965,8 +3271,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 4" NOWHERE ;
 
 \ NEWTYPE is compiled in the checked prefix, before the normal engine-origin
-\ hook is installed. Its definition and declaration name the source token that
-\ built the image; an edited copy of that source cannot supply the target.
+\ hook is installed. Its origin remains known, but top-level dictionary calls
+\ in sumtype.f defer its source index, even for unchanged bytes. The same
+\ limitation applies to util.f and structures.f below; target.f is declarations
+\ only and remains locatable (habu-locate-origins-across-3fd3d72d).
 : PREFIX-SOURCE-PATH ( -- ptr u8 n )  s" src/core/sumtype.f" IN-TREE ;
 : PREFIX-TARGET-PATH ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" src/os/macos/target.f" IN-TREE exit then
@@ -2976,27 +3284,29 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" src/os/linux/target.f" IN-TREE ;
 : PREFIX-USE-PATH ( -- ptr u8 n )  s" prefix-origin.f" FIXTURE ;
 : PREFIX-USE ( -- ptr u8 n )
-   s\" NEWTYPE prefix-role\n: target-probe ( -- bool ) HB-TARGET-MACOS? ;\n" ;
+   s\" NEWTYPE prefix-role\n: target-probe ( -- bool ) HB-TARGET-MACOS? ;\n: pre-cap ( -- n ) PATH-CAP ;\n" ;
 
 : PREFIX-STRUCT-PATH ( -- ptr u8 n )  s" prefix-structure.f" FIXTURE ;
 : PREFIX-STRUCT ( -- ptr u8 n )
-   s\" BEGIN-STRUCTURE STRUCT-NAV\nCELL +FIELD STRUCT-NAV.F\nEND-STRUCTURE\n" ;
+   s\" 8 constant STRUCT-NAV-WIDTH\nBEGIN-STRUCTURE STRUCT-NAV\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV.F\nchar STRUCT-NAV-WIDTH drop\n' STRUCT-NAV-WIDTH drop\nEND-STRUCTURE\n: STRUCT-SKIP ( -- ) parse-name 2drop ;\nparses: STRUCT-SKIP 1\nBEGIN-STRUCTURE STRUCT-NAV-2\nSTRUCT-SKIP STRUCT-NAV-WIDTH\n8 +FIELD STRUCT-NAV-2.F\nEND-STRUCTURE\nBEGIN-STRUCTURE STRUCT-NAV-3\n' STRUCT-SKIP drop\nSTRUCT-NAV-WIDTH +FIELD STRUCT-NAV-3.F\nEND-STRUCTURE\n" ;
 
 : PREFIX-DEF-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    PREFIX-USE-PATH PREFIX-USE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    PREFIX-USE PREFIX-USE-PATH 1 s" verified" LISTED
    s" 3" PREFIX-USE-PATH 0 2 DEFINITION-ASK
    s" 4" PREFIX-USE-PATH 0 2 DECLARATION-ASK
    s" 5" PREFIX-USE-PATH 1 28 DEFINITION-ASK
    s" 6" PREFIX-USE-PATH 1 28 DECLARATION-ASK
+   s" 10" PREFIX-USE-PATH 2 20 DEFINITION-ASK
    SAY
-   s" 3" PREFIX-SOURCE-PATH s" : NEWTYPE " URI-LINE 2 9 LOCATED
-   s" 4" PREFIX-SOURCE-PATH s" : NEWTYPE " URI-LINE 2 9 LOCATED
+   s" 3" NOWHERE
+   s" 4" NOWHERE
    s" 5" PREFIX-TARGET-PATH s" : HB-TARGET-MACOS? " URI-LINE 2 18 LOCATED
    s" 6" PREFIX-TARGET-PATH s" : HB-TARGET-MACOS? " URI-LINE 2 18 LOCATED
+   s" 10" NOWHERE
    PREFIX-SOURCE-PATH s\" \\ changed\n" 1 OPENS
    SAY
    PREFIX-SOURCE-PATH 1 EXPECT PUBLISHES
@@ -3006,32 +3316,47 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 7" NOWHERE
    PREFIX-STRUCT-PATH PREFIX-STRUCT 1 OPENS
    SAY
-   PREFIX-STRUCT-PATH 1 EXPECT PUBLISHES
-   s" 8" PREFIX-STRUCT-PATH 0 2 DEFINITION-ASK
+   PREFIX-STRUCT PREFIX-STRUCT-PATH CHECKS
+   PREFIX-STRUCT-PATH s" deferred" COMPLETED
+   PREFIX-STRUCT-PATH 1 EXPECT
+   9 0 9 11 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
+   s" 8" PREFIX-STRUCT-PATH 1 2 DEFINITION-ASK
    s" 9" PREFIX-STRUCT-PATH 2 2 DEFINITION-ASK
+   s" 10" PREFIX-STRUCT-PATH 2 18 DEFINITION-ASK
+   s" 11" PREFIX-STRUCT-PATH 3 6 DEFINITION-ASK
+   s" 12" PREFIX-STRUCT-PATH 4 3 DEFINITION-ASK
+   s" 13" PREFIX-STRUCT-PATH 5 2 DEFINITION-ASK
+   s" 14" PREFIX-STRUCT-PATH 9 13 DEFINITION-ASK
+   s" 15" PREFIX-STRUCT-PATH 13 3 DEFINITION-ASK
+   s" 16" PREFIX-STRUCT-PATH 14 3 DEFINITION-ASK
    SAY
-   s" 8" s" src/core/structures.f" IN-TREE
-   s" : BEGIN-STRUCTURE " URI-LINE 2 17 LOCATED
-   s" 9" s" src/core/structures.f" IN-TREE
-   s" : END-STRUCTURE " URI-LINE 2 15 LOCATED ;
+   s" 8" NOWHERE
+   s" 9" PREFIX-STRUCT-PATH URI-OF 0 11 27 LOCATED
+   s" 10" NOWHERE
+   s" 11" NOWHERE
+   s" 12" PREFIX-STRUCT-PATH URI-OF 0 11 27 LOCATED
+   s" 13" NOWHERE
+   s" 14" NOWHERE
+   s" 15" PREFIX-STRUCT-PATH URI-OF 6 2 13 LOCATED
+   s" 16" PREFIX-STRUCT-PATH URI-OF 0 11 27 LOCATED ;
 
 \ A definer still binds at its call when its operand declares a word with the
 \ same spelling. The newly declared private word must not replace that use.
+\ Its image origin's layout-buffer.f contains top-level allocation calls, so
+\ the conservative no-hash index supplies no source location.
 : PREFIX-SHADOW-PATH ( -- ptr u8 n )  s" prefix-shadow.f" FIXTURE ;
-: PREFIX-LAYOUT-PATH ( -- ptr u8 n )  s" src/core/layout-buffer.f" IN-TREE ;
 : PREFIX-SHADOW ( -- ptr u8 n )
    s\" package REVIEW\nTYPED-VARIABLE a n\nTYPED-VARIABLE TYPED-VARIABLE n\n;package\n" ;
 
 : PREFIX-SHADOW-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    PREFIX-SHADOW-PATH PREFIX-SHADOW 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    PREFIX-SHADOW PREFIX-SHADOW-PATH 1 s" verified" LISTED
    s" 3" PREFIX-SHADOW-PATH 2 2 DEFINITION-ASK
    SAY
-   s" 3" s" src/core/layout-buffer.f" IN-TREE
-   s" : TYPED-VARIABLE " URI-LINE 2 16 LOCATED ;
+   s" 3" NOWHERE ;
 
 \ def-od-dep.f on disk, and the text its open document holds: three lines
 \ inserted atop and its two lines swapped, so that DEF-DEPB's and DEF-DEPA's
@@ -3052,10 +3377,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ client opened def-od-dep.f by.
 : DEF-OPEN-DEP-TURNS ( -- )
    DEF-OD-DEP-PATH TEXT-DEF-OD-DISK WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
    DEF-OD-PATH TEXT-DEF-OD 1 OPENS
    SAY
@@ -3068,21 +3393,23 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ A position in a document the client never opened: -32602.
 : DEF-NOT-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
 \ A use asked about with the document's opening, before the server checked
 \ it: the request checks it first, so its list comes before the answer, the
-\ declaration's.
+\ declaration's. A malformed queued close is ignored during currentness
+\ inspection and logged when its own notification is served.
 : DEF-BEFORE-CHECK-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
    s" 3" DEF-A-PATH 1 19 DEFINITION-ASK
+   s" textDocument/didClose" s\" {\"textDocument\":{}}" LSP:E-LSP-PARAMS UNAPPLIED
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
    s" 3" DEF-A-PATH URI-OF 0 2 9 LOCATED ;
 
@@ -3095,10 +3422,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ them: the request checks the changed text first, so its list comes before
 \ the answer, DEF-ONE's new declaring token.
 : DEF-AFTER-CHANGE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-A-MOVED 2 CHANGES
    s" 3" DEF-A-PATH 3 19 DEFINITION-ASK
@@ -3126,10 +3453,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ before it would answer DEF-ONE's declaring token, so the answer is no
 \ Location; the definitions of the last completed check are still listed.
 : DEF-INCOMPLETE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
    s" 3" DEF-A-PATH 2 19 DEFINITION-ASK
@@ -3158,14 +3485,16 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ document, are -32602.
 : OUTLINE-TURNS ( -- )
    SYM-DEP-PATH TEXT-SYM-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    SYM-A-PATH TEXT-SYM-A 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    SYM-B-PATH TEXT-SYM-B 1 OPENS
+   SAY
+   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
    SYM-NONE-PATH TEXT-SYM-NONE 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
-   TEXT-SYM-B SYM-B-PATH 1 s" verified" LISTED
    TEXT-SYM-NONE SYM-NONE-PATH 1 s" verified" LISTED
    s" 3" SYM-A-PATH OUTLINE-ASK
    s" 4" SYM-B-PATH OUTLINE-ASK
@@ -3203,7 +3532,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    HIERARCHICAL-CLIENT
    SYM-A-PATH TEXT-SYM-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-SYM-A SYM-A-PATH 1 s" verified" LISTED
    SYM-A-PATH TEXT-SYM-A2 2 CHANGES
    s" 3" SYM-A-PATH OUTLINE-ASK
@@ -3228,10 +3557,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ definitions of the text before it are not of the document's text, so the
 \ answer is an empty list, while workspace symbols still list them.
 : OUTLINE-INCOMPLETE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
    s" 3" DEF-A-PATH OUTLINE-ASK
@@ -3258,7 +3587,8 @@ DYNAMIC-BUFFER TREE-TEXT u8
    f fu MSG+ s" }}}}}" MSG+
    MSG$ FRAMED ;
 
-: MARKDOWN-CLIENT ( -- )  s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS ;
+: MARKDOWN-CLIENT ( -- )
+   SHARED? @ 0= if s\" [\"markdown\",\"plaintext\"]" INITIALIZE-AS then ;
 : PLAIN-CLIENT ( -- )  s\" [\"plaintext\"]" INITIALIZE-AS ;
 
 \ textDocument/hover, by its id's JSON text, at character C of line L of the
@@ -3315,7 +3645,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
    s" 4" HOVER-A-PATH 2 23 HOVER-ASK
@@ -3330,7 +3660,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
    s" 3" DEF-B-PATH 1 19 HOVER-ASK
    s" 4" DEF-B-PATH 1 27 HOVER-ASK
@@ -3348,7 +3678,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    DEF-OD-DEP-PATH TEXT-DEF-OD-EDIT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-OD-EDIT DEF-OD-DEP-PATH 1 s" verified" LISTED
    DEF-OD-PATH TEXT-DEF-OD 1 OPENS
    SAY
@@ -3367,7 +3697,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
    s" 3" HOVER-A-PATH 1 2 HOVER-ASK
    s" 4" HOVER-A-PATH 1 7 HOVER-ASK
@@ -3396,7 +3726,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    s" 3" HOVER-CVT-PATH 4 20 HOVER-ASK
    s" 4" HOVER-CVT-PATH 4 27 HOVER-ASK
@@ -3417,7 +3747,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    DEF-A-PATH TEXT-DEF-A-MOVED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A-MOVED DEF-A-PATH 1 s" verified" LISTED
    s" 3" DEF-A-PATH 0 3 HOVER-ASK
    s" 4" DEF-A-PATH 3 18 HOVER-ASK
@@ -3432,7 +3762,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    PLAIN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
    SAY
@@ -3444,7 +3774,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    s" 3" HOVER-A-PATH 2 18 HOVER-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
 \ HV-ONE's use asked about at its new place in the turn of the change that
@@ -3454,7 +3784,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
    HOVER-A-PATH TEXT-HOVER-A-MOVED 2 CHANGES
    s" 3" HOVER-A-PATH 4 18 HOVER-ASK
@@ -3496,10 +3826,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ the use still selects it, the next space selects none; a negative character
 \ -32602.
 : HIGHLIGHT-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
    s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
    s" 4" DEF-A-PATH 1 25 HIGHLIGHT-ASK
@@ -3522,10 +3852,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ none of the other's: the check states both converters at that one token. The
 \ token itself selects neither word, so it answers null.
 : HIGHLIGHT-DEFTYPE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    s" 3" HOVER-CVT-PATH 4 20 HIGHLIGHT-ASK
    s" 4" HOVER-CVT-PATH 6 30 HIGHLIGHT-ASK
@@ -3544,10 +3874,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ the document.
 : HIGHLIGHT-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
    s" 3" DEF-B-PATH 1 19 HIGHLIGHT-ASK
    s" 4" DEF-B-PATH 1 27 HIGHLIGHT-ASK
@@ -3557,10 +3887,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 \ A position in a document the client never opened: -32602.
 : HIGHLIGHT-NOT-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" DEF-A-PATH 1 19 HIGHLIGHT-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
 \ DEF-ONE's use asked about at its new place in the turn of the change that
@@ -3570,10 +3900,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ applied and checked after it; asked once more, the uses of the restored text
 \ are answered without a check.
 : HIGHLIGHT-AFTER-CHANGE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-A DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-A-MOVED 2 CHANGES
    s" 3" DEF-A-PATH 3 19 HIGHLIGHT-ASK
@@ -3602,14 +3932,15 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ one, each answered null, while go to definition at the same byte answers
 \ its declaration from the same check.
 : HIGHLIGHT-UNPROVED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HU-PATH TEXT-HU 1 OPENS
-   HD-PATH TEXT-HD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HU HU-PATH CHECKS
    HU-PATH s" refused" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   HD-PATH TEXT-HD 1 OPENS
+   SAY
    TEXT-HD HD-PATH CHECKS
    HD-PATH s" deferred" COMPLETED
    HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
@@ -3627,10 +3958,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ complete: no check of the document's text was verified, so the answer is
 \ null, not the uses of the text before it.
 : HIGHLIGHT-INCOMPLETE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
    s" 3" DEF-A-PATH 2 19 HIGHLIGHT-ASK
@@ -3665,14 +3996,16 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ rather than of the other.
 : HIGHLIGHT-INCLUDED-TURNS ( -- )
    HL-COMMON-PATH TEXT-HL-COMMON WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    HL-TWICE-PATH TEXT-HL-TWICE 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-HL-TWICE HL-TWICE-PATH 1 s" verified" LISTED
    HL-VIS-PATH TEXT-HL-VIS 1 OPENS
+   SAY
+   TEXT-HL-VIS HL-VIS-PATH 1 s" verified" LISTED
    HL-UNDEF-PATH TEXT-HL-UNDEF 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-HL-TWICE HL-TWICE-PATH 1 s" verified" LISTED
-   TEXT-HL-VIS HL-VIS-PATH 1 s" verified" LISTED
    TEXT-HL-UNDEF HL-UNDEF-PATH 1 s" verified" LISTED
    s" 3" HL-TWICE-PATH 8 19 HIGHLIGHT-ASK
    s" 4" HL-TWICE-PATH 8 28 HIGHLIGHT-ASK
@@ -3746,7 +4079,7 @@ DYNAMIC-BUFFER TREE-TEXT u8
    107 110 HL-CASE-USE+
    111 114 HL-CASE-USE+
    PAR$ {: a:ptr u:n :}
-   a files  a files + defs files -  a defs + u defs -  slot true
+   a files  a files + defs files -  a defs + u defs -  NULL$ slot true
    LSP-DEFS:DEFS-KEEP
    slot 8 20 s" highlight-case-reread: P:K" HL-NULL-AT
    slot 8 24 s" highlight-case-reread: Q:k" HL-NULL-AT ;
@@ -3820,10 +4153,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ before it. EXPORT's operand is a use of ROOK; the export's declaration and
 \ TP:ROOK, bound to it, get none, nor does `dup`, an engine word.
 : TOKENS-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    TOK-PATH TEXT-TOK 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-TOK TOK-PATH 1 s" verified" LISTED
    s" 3" TOK-PATH TOKENS-ASK
    SAY
@@ -3839,10 +4172,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ CVT-T's token, at which the check declares both converters, gets none; each
 \ use of either, in either case and qualified, is a function.
 : TOKENS-DEFTYPE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    s" 3" HOVER-CVT-PATH TOKENS-ASK
    SAY
@@ -3856,10 +4189,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ their declarations in the file on disk.
 : TOKENS-DEP-TURNS ( -- )
    DEF-DEP-PATH TEXT-DEF-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-B-PATH TEXT-DEF-B 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-B DEF-B-PATH 1 s" verified" LISTED
    s" 3" DEF-B-PATH TOKENS-ASK
    SAY
@@ -3871,14 +4204,15 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ the words its check bound, as hover answers from that check, PN's top-level
 \ use among them.
 : TOKENS-UNPROVED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HU-PATH TEXT-HU 1 OPENS
-   HD-PATH TEXT-HD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HU HU-PATH CHECKS
    HU-PATH s" refused" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
+   HD-PATH TEXT-HD 1 OPENS
+   SAY
    TEXT-HD HD-PATH CHECKS
    HD-PATH s" deferred" COMPLETED
    HD-PATH 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
@@ -3897,10 +4231,10 @@ DYNAMIC-BUFFER TREE-TEXT u8
 \ is of the document's text, so none is answered, not those of the text
 \ before it.
 : TOKENS-INCOMPLETE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    DEF-A-PATH TEXT-DEF-C 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
    DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
    s" 3" DEF-A-PATH TOKENS-ASK
@@ -3918,34 +4252,20 @@ DYNAMIC-BUFFER TREE-TEXT u8
 
 create SNAP-B HDR-BYTES allot            \ the store's decls and uses, as SNAP-SLOT states them,
 create WAS-B HDR-BYTES allot             \ and as they were before the store changed
-SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
-32 BUFFER: SHA-RAW
-64 BUFFER: SHA-HEX                       \ as a file line states it
 
 : SNAP$ ( -- ptr u8 n )  SNAP-B SPAN$ BLEN>N ;
 : WAS$ ( -- ptr u8 n )  WAS-B SPAN$ BLEN>N ;
 : SNAP+ ( ptr u8 n -- )  N>BLEN SNAP-B APPEND-SPAN ;
 : SNAP-INT+ ( n -- )  s"  " SNAP+ INT$ SNAP+ ;
 
-\ The digest of these bytes as a file line states it.
-: SHA$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   SHA-CTX a u SHA-RAW SHA256-IN
-   SHA-RAW SHA-HEX SHA256>HEX
-   SHA-HEX 64 ;
-
 \ id-inc.f, on disk: the global K. id-twice.f includes it into P's public
 \ section, then into Q's, and uses P:K and Q:K. id-dt.f declares DEFTYPE
 \ ID-CVT public in ID-DT and uses both its converters. id-probe.f, on disk
 \ and never open, includes id-inc.f into R's public section and uses R:K.
-\ id-sha.f is a document whose checks state the lines the test writes for
-\ id-f.f, on disk with id-inc.f's text.
 : ID-INC-PATH ( -- ptr u8 n )  s" id-inc.f" FIXTURE ;
 : ID-TWICE-PATH ( -- ptr u8 n )  s" id-twice.f" FIXTURE ;
 : ID-DT-PATH ( -- ptr u8 n )  s" id-dt.f" FIXTURE ;
 : ID-PROBE-PATH ( -- ptr u8 n )  s" id-probe.f" FIXTURE ;
-: ID-SHA-PATH ( -- ptr u8 n )  s" id-sha.f" FIXTURE ;
-: ID-F-PATH ( -- ptr u8 n )  s" id-f.f" FIXTURE ;
 : TEXT-ID-INC ( -- ptr u8 n )  s\" : K ( -- n ) 1 ;\n" ;
 : TEXT-ID-TWICE ( -- ptr u8 n )
    s\" package P\npublic\ninclude id-inc.f\n;package\npackage Q\npublic\ninclude id-inc.f\n;package\n: ID-BOTH ( -- n ) P:K Q:K + ;\n" ;
@@ -3982,16 +4302,16 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    {: slot:n l:ptr lu:n :}
    slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
    l lu T-LABEL ok TTRUE
-   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ slot ok
+   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$
+   CHECK:VERIFY-UNREAD$ slot ok
    LSP-DEFS:DEFS-KEEP ;
 
-\ Group G as SNAP-SLOT states it: its path, its URI, its digest, whether it
+\ Group G as SNAP-SLOT states it: its path, its URI, whether it
 \ answers for its file and whether its file is its check's own.
 : SNAP-GROUP ( n -- )
    {: g:n :}
    s"  " SNAP+ g LSP-DEFS:GROUP-PATH$ SNAP+
    s"  " SNAP+ g LSP-DEFS:GROUP-URI$ SNAP+
-   s"  " SNAP+ g LSP-DEFS:GROUP-SHA$ SNAP+
    g LSP-DEFS:GROUP-OVER? if s"  over" else s"  answers" then SNAP+
    g LSP-DEFS:GROUP-OWN? if s"  own" else s"  dependency" then SNAP+ ;
 
@@ -4064,57 +4384,48 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 
 \ id-twice.f's check, kept: its two readings of id-inc.f give two decls at
 \ K's token, one per package, each with its own visit, which each use of P:K
-\ and Q:K names with the package it selects; each file's digest is of the
-\ bytes the check read.
+\ and Q:K names with the package it selects.
 : ID-INCLUDED ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
-   s" identities-included: uses" T-LABEL lim first - 3 T=
-   lim first - 3 <> if exit then
-   first LSP-DEFS:USE-GROUP {: g:n :}
-   first LSP-DEFS:USE-TARGET {: s:n e:n :}
-   slot first s" k" s" p" s" identities-included: P:K" USE-NAMES
-   slot first 1+ s" k" s" q" s" identities-included: Q:K" USE-NAMES
-   s" identities-included: one token" T-LABEL first 1+ LSP-DEFS:USE-GROUP g T=
+   s" identities-included: uses" T-LABEL lim first - 3 >= TTRUE
+   lim first - 3 < if exit then
+   lim 3 - {: use:n :}
+   use LSP-DEFS:USE-GROUP {: g:n :}
+   use LSP-DEFS:USE-TARGET {: s:n e:n :}
+   slot use s" k" s" p" s" identities-included: P:K" USE-NAMES
+   slot use 1+ s" k" s" q" s" identities-included: Q:K" USE-NAMES
+   s" identities-included: one token" T-LABEL use 1+ LSP-DEFS:USE-GROUP g T=
    s" identities-included: two decls" T-LABEL slot g s e DECLS-AT 2 T=
    s" identities-included: two visits" T-LABEL
-   first LSP-DEFS:USE-VISIT first 1+ LSP-DEFS:USE-VISIT <> TTRUE
-   s" identities-included: digest" T-LABEL
-   g LSP-DEFS:GROUP-SHA$ TEXT-ID-INC SHA$ T$=
-   s" identities-included: own digest" T-LABEL
-   slot LSP-DEFS:DEFS-OWN-GROUP MATCH option
-      some OF LSP-DEFS:GROUP-SHA$ TEXT-ID-TWICE SHA$ T$= ENDOF
-      none OF false TTRUE ENDOF
-   ;MATCH ;
+   use LSP-DEFS:USE-VISIT use 1+ LSP-DEFS:USE-VISIT <> TTRUE ;
 
 \ id-dt.f's check, kept: DEFTYPE's two converters give two decls at its
 \ name's token under one visit, and each use names its own converter.
 : ID-DEFTYPE ( n -- )
    {: slot:n :}
    slot LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
-   s" identities-deftype: uses" T-LABEL lim first - 2 T=
-   lim first - 2 <> if exit then
-   first LSP-DEFS:USE-GROUP {: g:n :}
-   first LSP-DEFS:USE-TARGET {: s:n e:n :}
-   slot first s" >id-cvt" s" id-dt" s" identities-deftype: >ID-CVT" USE-NAMES
-   slot first 1+ s" id-cvt>n" s" id-dt" s" identities-deftype: ID-CVT>N" USE-NAMES
-   first 1+ LSP-DEFS:USE-TARGET {: s2:n e2:n :}
-   s" identities-deftype: one token" T-LABEL first 1+ LSP-DEFS:USE-GROUP g T=
+   s" identities-deftype: uses" T-LABEL lim first - 2 >= TTRUE
+   lim first - 2 < if exit then
+   lim 2 - {: use:n :}
+   use LSP-DEFS:USE-GROUP {: g:n :}
+   use LSP-DEFS:USE-TARGET {: s:n e:n :}
+   slot use s" >id-cvt" s" id-dt" s" identities-deftype: >ID-CVT" USE-NAMES
+   slot use 1+ s" id-cvt>n" s" id-dt" s" identities-deftype: ID-CVT>N" USE-NAMES
+   use 1+ LSP-DEFS:USE-TARGET {: s2:n e2:n :}
+   s" identities-deftype: one token" T-LABEL use 1+ LSP-DEFS:USE-GROUP g T=
    s" identities-deftype: one token" T-LABEL s2 s T=
    s" identities-deftype: one token" T-LABEL e2 e T=
    s" identities-deftype: two decls" T-LABEL slot g s e DECLS-AT 2 T=
    s" identities-deftype: one visit" T-LABEL
-   first LSP-DEFS:USE-VISIT first 1+ LSP-DEFS:USE-VISIT T= ;
+   use LSP-DEFS:USE-VISIT use 1+ LSP-DEFS:USE-VISIT T= ;
 
-\ id-dt.f's check, kept before id-twice.f's, replaced by its next check, whose
-\ bytes the store keeps where id-twice.f's were before they moved down:
-\ id-twice.f's digests, decls and uses read as they did.
+\ Rechecking id-dt.f leaves id-twice.f's two K identities intact. The two
+\ checks also read include.f, so the newer check can answer for that shared
+\ loader source in place of the older one's group.
 : ID-REMOVE ( n n -- )
    {: dt:n twice:n :}
-   SNAP-B CLEAR twice SNAP-SLOT WAS!
    dt s" identities-remove: verified" ID-KEEP
-   SNAP-B CLEAR twice SNAP-SLOT
-   s" identities-remove" T-LABEL SNAP$ WAS$ T$=
    twice ID-INCLUDED ;
 
 \ id-probe.f, on disk, checked by the test's own check, its lines kept as a
@@ -4126,16 +4437,15 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    dt twice SNAP WAS!
    TEXT-ID-PROBE ID-PROBE-PATH ID-CHECK {: ok:bool :}
    s" identities-probe: verified" T-LABEL ok TTRUE
-   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ ok
+   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ ok -1
    LSP-DEFS:DEFS-PROBE
    dt twice SNAP
    s" identities-probe: kept" T-LABEL SNAP$ WAS$ T$=
    LSP-DEFS:PROBE LSP-DEFS:DEFS-USE-RANGE {: lim:n first:n :}
-   s" identities-probe: R:K" T-LABEL lim first - 1 T=
-   lim first - 1 = if
-      LSP-DEFS:PROBE first s" k" s" r" s" identities-probe: R:K" USE-NAMES
-      s" identities-probe: digest" T-LABEL
-      first LSP-DEFS:USE-GROUP LSP-DEFS:GROUP-SHA$ TEXT-ID-INC SHA$ T$=
+   s" identities-probe: R:K" T-LABEL lim first - 1 >= TTRUE
+   lim first - 1 >= if
+      lim 1- {: use:n :}
+      LSP-DEFS:PROBE use s" k" s" r" s" identities-probe: R:K" USE-NAMES
    then
    LSP-DEFS:DEFS-UNPROBE
    dt twice SNAP
@@ -4143,83 +4453,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    s" identities-probe: no decl" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE ;
 
-\ Digests no producer of this tree states, and a file line of id-f.f with
-\ one, in PAR.
-: SHA-A ( -- ptr u8 n )
-   s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
-: SHA-B ( -- ptr u8 n )
-   s" fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" ;
-: SHA-UPPER ( -- ptr u8 n )
-   s" 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF" ;
-: ID-FILE+ ( ptr u8 n -- )
-   {: h:ptr hu:n :}
-   s\" {\"file\":" PAR+ ID-F-PATH TEXT+
-   s\" ,\"sha256\":\"" PAR+ h hu PAR+ s\" \"}\n" PAR+ ;
-
-\ id-f.f's file line without a digest, as a verifier before digests states it.
-: ID-BARE+ ( -- )
-   s\" {\"file\":" PAR+ ID-F-PATH TEXT+ s\" }\n" PAR+ ;
-
-\ The file lines in PAR kept as the check of the document in this slot, with
-\ no definition or use: the store's digest for id-f.f must be W; it fails
-\ under this label.
-: DIGEST-IS ( n ptr u8 n ptr u8 n -- )
-   {: slot:n w:ptr wu:n l:ptr lu:n :}
-   PAR$ {: a:ptr u:n :}
-   a u a 0 a 0 slot true LSP-DEFS:DEFS-KEEP
-   l lu T-LABEL
-   slot ID-F-PATH LSP-DEFS:DEFS-GROUP-OF MATCH option
-      some OF LSP-DEFS:GROUP-SHA$ w wu T$= ENDOF
-      none OF false TTRUE ENDOF
-   ;MATCH ;
-
-\ A check's file lines for one file give it a digest only when each states
-\ the same valid one: equal ones keep it; two, one missing or one malformed,
-\ in either order, leave none. A definition and a use line without identity
-\ members give no visit.
-: ID-DIGESTS ( n -- )
-   {: slot:n :}
-   PAR-B CLEAR SHA-A ID-FILE+
-   slot SHA-A s" identities-digest: one" DIGEST-IS
-   PAR-B CLEAR SHA-A ID-FILE+ SHA-A ID-FILE+
-   slot SHA-A s" identities-digest: equal" DIGEST-IS
-   PAR-B CLEAR SHA-A ID-FILE+ SHA-B ID-FILE+ SHA-A ID-FILE+
-   slot s" " s" identities-digest: A B A" DIGEST-IS
-   PAR-B CLEAR ID-BARE+
-   slot s" " s" identities-digest: absent" DIGEST-IS
-   PAR-B CLEAR ID-BARE+ SHA-A ID-FILE+
-   slot s" " s" identities-digest: absent, valid" DIGEST-IS
-   PAR-B CLEAR SHA-A ID-FILE+ ID-BARE+
-   slot s" " s" identities-digest: valid, absent" DIGEST-IS
-   PAR-B CLEAR SHA-UPPER ID-FILE+ SHA-A ID-FILE+
-   slot s" " s" identities-digest: malformed, valid" DIGEST-IS
-   PAR-B CLEAR SHA-A ID-FILE+
-   PAR$ nip {: files:n :}
-   s\" {\"kind\":\":\",\"class\":\"word\",\"word\":\"K\",\"package\":\"\",\"visibility\":\"global\",\"file\":" PAR+
-   ID-F-PATH TEXT+ s\" ,\"byte_start\":2,\"byte_end\":3}\n" PAR+
-   PAR$ nip {: defs:n :}
-   s\" {\"byte_start\":0,\"byte_end\":1,\"in\":" PAR+
-   ID-SHA-PATH TEXT+ s\" ,\"file\":" PAR+
-   ID-F-PATH TEXT+ s\" ,\"target_start\":2,\"target_end\":3}\n" PAR+
-   PAR$ {: a:ptr u:n :}
-   a files  a files + defs files -  a defs + u defs -  slot true
-   LSP-DEFS:DEFS-KEEP
-   slot LSP-DEFS:DEFS-DECL-RANGE {: dlim:n dfirst:n :}
-   s" identities-digest: one decl" T-LABEL dlim dfirst - 1 T=
-   dlim dfirst - 1 = if
-      s" identities-digest: decl visit" T-LABEL dfirst LSP-DEFS:DECL-VISIT -1 T=
-   then
-   slot LSP-DEFS:DEFS-USE-RANGE {: ulim:n ufirst:n :}
-   s" identities-digest: one use" T-LABEL ulim ufirst - 1 T=
-   ulim ufirst - 1 = if
-      s" identities-digest: use visit" T-LABEL ufirst LSP-DEFS:USE-VISIT -1 T=
-   then ;
-
 : TEST-IDENTITIES ( -- )
    ID-INC-PATH TEXT-ID-INC WRITE-ALL
    ID-PROBE-PATH TEXT-ID-PROBE WRITE-ALL
-   ID-F-PATH TEXT-ID-INC WRITE-ALL
-   ID-SHA-PATH s\" \n" ID-OPEN ID-DIGESTS
    ID-DT-PATH TEXT-ID-DT ID-OPEN {: dt:n :}
    ID-TWICE-PATH TEXT-ID-TWICE ID-OPEN {: twice:n :}
    dt s" identities-deftype: verified" ID-KEEP
@@ -4288,10 +4524,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ each answer.
 : CMP-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
-   INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
    s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
@@ -4324,14 +4558,14 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 8" ITEMS-START
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
-   ITEMS-END ;
+   ITEMS-END
+   CMP-A-PATH CLOSES SAY
+   CMP-A-PATH -1 EXPECT PUBLISHES ;
 
 \ A position in a document the client never opened: -32602.
 : CMP-NOT-OPEN-TURNS ( -- )
-   INITIALIZE
    s" 3" CMP-A-PATH 2 24 COMPLETION-ASK
    SAY
-   HEAR CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
 \ CMPL asked about in the turn of the change that renamed CMPL-ONE: the
@@ -4339,10 +4573,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ which offers CMPL-NEW and no CMPL-ONE.
 : CMP-AFTER-CHANGE-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
-   INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
    s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
@@ -4351,7 +4583,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    s" 3" ITEMS-START
    s" CMPL-DEP" s" ( n -- n )" ITEM+
    s" CMPL-NEW" s" ( -- n ) \\ package cmpa" ITEM+
-   ITEMS-END ;
+   ITEMS-END
+   CMP-A-PATH CLOSES SAY
+   CMP-A-PATH -1 EXPECT PUBLISHES ;
 
 \ In CMPQ-USE's body, at CMPQ, the package's name, a bare prefix, and at
 \ CMPQ:, its name and an edge colon, each answer holds every qualified
@@ -4360,10 +4594,8 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ to either keeps what a later request would offer.
 : CMP-QUALIFIED-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
-   INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 3" CMP-A-PATH 12 26 COMPLETION-ASK
    s" 4" CMP-A-PATH 12 27 COMPLETION-ASK
@@ -4387,7 +4619,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 6" ITEMS-START
    s" CMPQ:CMPQ-T>N" s" ( cmpq-t -- n ) \\ package cmpq" ITEM+
-   ITEMS-END ;
+   ITEMS-END
+   CMP-A-PATH CLOSES SAY
+   CMP-A-PATH -1 EXPECT PUBLISHES ;
 
 \ ---- document links ----------------------------------------------------------
 
@@ -4477,10 +4711,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 : LINK-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
    LK-INC-PATH TEXT-LK-LOADED WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LK-PATH TEXT-LK 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LK LK-PATH CHECKS
    LK-PATH s" refused" COMPLETED
    LK-PATH 1 EXPECT 4 0 4 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
@@ -4502,10 +4736,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
    s" lk-real" FIXTURE MAKE-DIR
    s" lk-real" s" lk-link" FIXTURE MAKE-SYMLINK
    LK-REAL-DEP TEXT-LK-LOADED WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LK-LINK-DOC TEXT-LK-ONE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LK-ONE LK-LINK-DOC 1 s" verified" LISTED
    s" 3" LK-LINK-DOC LINKS-ASK
    SAY
@@ -4519,11 +4753,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 
 \ A document the client never opened, and params naming no document: -32602.
 : LINK-NOT-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" LK-PATH LINKS-ASK
    s" 4" s" textDocument/documentLink" ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED
    HEAR s" 4" -32602 REFUSED ;
 
@@ -4531,11 +4765,11 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ request checks it first, so its list comes before the answer.
 : LINK-BEFORE-CHECK-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    s" 3" LK-PATH LINKS-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
    s" 3" LINKS-START 0 8 16 LK-DEP-PATH LK-CANON READ-LINK+ LINKS-END ;
 
@@ -4545,10 +4779,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ behind them, they are -32801, and the change is applied and checked after.
 : LINK-AFTER-CHANGE-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
    LK-PATH TEXT-LK-MOVED 2 CHANGES
    s" 3" LK-PATH LINKS-ASK
@@ -4567,10 +4801,10 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX         \ a text's SHA-256 digest,
 \ list.
 : LINK-INCOMPLETE-TURNS ( -- )
    LK-DEP-PATH TEXT-LK-LOADED WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    LK-PATH TEXT-LK-ONE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LK-ONE LK-PATH 1 s" verified" LISTED
    LK-PATH TEXT-LK-OVER 2 CHANGES
    s" 3" LK-PATH LINKS-ASK
@@ -4794,9 +5028,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s\" : EOUT ( -- n ) EX:EK ;\n" HV+
    TXT$ ;
 
-\ initialize with these members of its params after its capabilities.
+\ A shared workspace session has already initialized with its fixed root.
+\ An isolated case sends its own initialize members after the capabilities.
 : INITIALIZE-WITH ( ptr u8 n -- )
    {: m:ptr mu:n :}
+   SHARED? @ if exit then
    MSG-B CLEAR
    s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}," MSG+
    m mu MSG+ s" }}" MSG+
@@ -4805,6 +5041,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ initialize's member naming the folder of this name as the root, in PAR.
 : ROOT-URI+ ( ptr u8 n -- )
    PAR-B CLEAR s\" \"rootUri\":" PAR+ FIXTURE URI+ ;
+
+: WORKSPACE-INIT ( -- )
+   s" workspace" FIXTURE MAKE-DIR
+   s" workspace/w" FIXTURE MAKE-DIR
+   s" workspace/w" ROOT-URI+ PAR$ INITIALIZE-WITH ;
 
 : DECL-TOO ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":true}" ;
 : DECL-NOT ( -- ptr u8 n )  s\" ,\"context\":{\"includeDeclaration\":false}" ;
@@ -4902,10 +5143,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ the declaration first when asked for; a further space has no binding, and
 \ the engine's + selects the primitive.
 : REFS-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-REF-A REF-A-PATH 1 s" verified" LISTED
    s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
    s" 4" REF-A-PATH 1 23 DECL-NOT REFS-ASK
@@ -4929,19 +5170,19 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    SYMBOLS-END ;
 
 : REFS-NOT-OPEN-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" REF-A-PATH 1 15 DECL-TOO REFS-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED ;
 
 \ No context, a context without includeDeclaration, one that is a string,
 \ and a negative character: each -32602.
 : REFS-PARAMS-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    REF-A-PATH TEXT-REF-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-REF-A REF-A-PATH 1 s" verified" LISTED
    s" 3" REF-A-PATH 1 15 s" " REFS-ASK
    s" 4" REF-A-PATH 1 15 s\" ,\"context\":{}" REFS-ASK
@@ -4989,7 +5230,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-ws/w/d.f" FIXTURE TEXT-RD 1 OPENS
    s" refs-ws/w/e.f" FIXTURE TEXT-RE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-ws/w/d.f" FIXTURE 1 s" verified" LISTED
    TEXT-RE s" refs-ws/w/e.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-ws/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
@@ -5016,10 +5257,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : REFS-ID-TURNS ( -- )
    s" refs-id" REFS-DIR
    s" refs-id/g.f" TEXT-RG REFS-FILE
-   INITIALIZE
+   SESSION-INITIALIZE
    s" refs-id/id.f" FIXTURE TEXT-RID 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RID s" refs-id/id.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-id/id.f" FIXTURE 16 14 DECL-TOO REFS-ASK
    s" 4" s" refs-id/id.f" FIXTURE 16 21 DECL-TOO REFS-ASK
@@ -5044,10 +5285,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ converter's uses, in either case and qualified, CVT-T's token first when
 \ asked for; that token, which declares both, -32803.
 : REFS-DEFTYPE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    s" 3" HOVER-CVT-PATH 4 20 DECL-TOO REFS-ASK
    s" 4" HOVER-CVT-PATH 6 30 DECL-NOT REFS-ASK
@@ -5068,10 +5309,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : REFS-LIFE-TURNS ( -- )
    s" refs-life" REFS-DIR
    s" refs-life/g.f" TEXT-RG REFS-FILE
-   INITIALIZE
+   SESSION-INITIALIZE
    s" refs-life/life.f" FIXTURE TEXT-LIFE 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-LIFE s" refs-life/life.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-life/life.f" FIXTURE 3 14 DECL-TOO REFS-ASK
    SAY
@@ -5098,7 +5339,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-unv/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-unv/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-unv/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-unv/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
@@ -5128,7 +5369,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-refused/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-refused/w/s.f" FIXTURE TEXT-RS-BAD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RS-BAD s" refs-refused/w/s.f" FIXTURE CHECKS
    s" refs-refused/w/s.f" FIXTURE s" refused" COMPLETED
    s" refs-refused/w/s.f" FIXTURE 1 EXPECT 1 12 1 16 1 s" E-MISMATCH" DIAG+ PUBLISHES
@@ -5151,7 +5392,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-dep/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-dep/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-dep/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-dep/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
@@ -5160,6 +5401,56 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-dep/w/f.f" DISK-URI 0 2 6 REF+
    s" refs-dep/out/u.f" DISK-URI 1 14 18 REF+
    s" refs-dep/w/d.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END ;
+
+: TEXT-REFS-READ ( -- ptr u8 n )
+   s\" require d.f\ninclude x.f\n: EU ( -- n ) ROOK ;\n: BAD ( -- ) NO-SUCH-WORD ;\n" ;
+: TEXT-REFS-READ-X ( -- ptr u8 n )  s\" \\ no changes to ROOK\n" ;
+: TEXT-REFS-READ-EDIT ( -- ptr u8 n )
+   s\" \\ changed after the probe read it\n" ;
+
+\ A refused probe consumed x.f before its verdict. A queued edit of x.f
+\ invalidates the references answer even though that probe cannot cover it.
+: REFS-PARTIAL-EDIT-TURNS ( -- )
+   s" refs-read" REFS-DIR s" refs-read/w" REFS-DIR
+   s" refs-read/w/d.f" TEXT-RF REFS-FILE
+   s" refs-read/w/e.f" TEXT-REFS-READ REFS-FILE
+   s" refs-read/w/x.f" TEXT-REFS-READ-X REFS-FILE
+   s" refs-read/w" ROOT-URI+ PAR$ INITIALIZE-WITH
+   s" refs-read/w/d.f" FIXTURE TEXT-RF 1 OPENS
+   s" refs-read/w/x.f" FIXTURE TEXT-REFS-READ-X 1 OPENS
+   s" 3" s" refs-read/w/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
+   SAY SESSION-CAPABILITIES
+   s" refs-read/w/d.f" FIXTURE 1 CLEAN
+   s" refs-read/w/x.f" FIXTURE TEXT-REFS-READ-EDIT 2 CHANGES
+   s" 4" s" refs-read/w/x.f" FIXTURE OUTLINE-ASK
+   SAY HEAR s" 3" -32801 REFUSED
+   s" refs-read/w/x.f" FIXTURE 2 CLEAN
+   s" 4" SYMBOLS-START SYMBOLS-END ;
+
+: REFS-ALIAS-A ( -- ptr u8 n )  s" refs-alias/a.f" FIXTURE ;
+: REFS-ALIAS-B ( -- ptr u8 n )  s" refs-alias/b.f" FIXTURE ;
+: TEXT-REFS-ALIAS-A ( -- ptr u8 n )  s\" : DUCK ( -- n ) 1 ;\n" ;
+: TEXT-REFS-ALIAS-B ( -- ptr u8 n )
+   s\" : ROOK ( -- n ) 1 ;\n: USE-ROOK ( -- n ) ROOK ;\n" ;
+
+\ Two URIs of one canonical file have different open buffers. The check of
+\ b.f owns ROOK's declaration; a.f cannot certify or supply its uses.
+: REFS-ALIAS-TURNS ( -- )
+   s" refs-alias" REFS-DIR
+   REFS-ALIAS-A TEXT-REFS-ALIAS-A WRITE-ALL
+   s" a.f" REFS-ALIAS-B MAKE-SYMLINK
+   SESSION-INITIALIZE
+   REFS-ALIAS-A TEXT-REFS-ALIAS-A 1 OPENS
+   SAY SESSION-CAPABILITIES
+   REFS-ALIAS-A 1 CLEAN
+   REFS-ALIAS-B TEXT-REFS-ALIAS-B 1 OPENS
+   SAY REFS-ALIAS-B 1 CLEAN
+   s" 3" REFS-ALIAS-B 1 20 DECL-TOO REFS-ASK
+   SAY
+   1 NAMED s" refs-alias/a.f" CANON s" source revision differs" NAMED+ NAMED-END
+   s" 3" SYMBOLS-START
+   REFS-ALIAS-B URI-OF 0 2 6 REF+
    SYMBOLS-END ;
 
 \ ld.f loads at top level a path its command line names, which no walk can
@@ -5172,7 +5463,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-ld/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-ld/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-ld/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-ld/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
@@ -5191,7 +5482,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-uns/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-uns/w/f.f" FIXTURE TEXT-RF-MOVED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF-MOVED s" refs-uns/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-uns/w/f.f" FIXTURE 1 2 DECL-TOO REFS-ASK
    SAY
@@ -5200,10 +5491,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-uns/w/s.f" DISK-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ f.f given a comment line after the declaration on disk after d.f's check
-\ read it: the declaration keeps its place, but the text no longer has the
-\ digest that check read, -32803 naming it. Once a change has d.f checked
-\ again, the whole answer.
+\ A disk dependency gets an unrelated trailing comment after d.f's check.
+\ The request rechecks d.f and still finds the declaration and both uses.
 : REFS-DIGEST-TURNS ( -- )
    s" refs-dig" REFS-DIR s" refs-dig/w" REFS-DIR
    s" refs-dig/w/f.f" TEXT-RF REFS-FILE
@@ -5211,17 +5500,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-dig/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-dig/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-dig/w/d.f" FIXTURE 1 s" verified" LISTED
    s" refs-dig/w/f.f" TEXT-RF-TAIL REFS-FILE
    s" 3" s" refs-dig/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   s" 3" s" refs-dig/w/f.f" CANON FAILED
-   s" refs-dig/w/d.f" FIXTURE TEXT-RD 2 CHANGES
-   s" 4" s" refs-dig/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
-   SAY
-   TEXT-RD s" refs-dig/w/d.f" FIXTURE 2 s" verified" LISTED
-   s" 4" SYMBOLS-START
+   TEXT-RD s" refs-dig/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" SYMBOLS-START
    s" refs-dig/w/f.f" DISK-URI 0 2 6 REF+
    s" refs-dig/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
@@ -5229,9 +5514,8 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 : TEXT-RDB ( -- ptr u8 n )  s\" require b.f\n: DU ( -- n ) ROOK ;\n" ;
 : TEXT-RSTL ( -- ptr u8 n )  s\" require ../lib/f.f\n: DU ( -- n ) ROOK ;\n" ;
 
-\ lib/f.f, outside the folder, moved a line down on disk after d.f's check
-\ read it: the declaration cannot be placed, -32803 naming it. Once a change
-\ has d.f checked again, the whole answer.
+\ A declaration moved on disk after d.f's check; the request rechecks d.f
+\ and reports the new location without an edit to the requester.
 : REFS-STALE-TURNS ( -- )
    s" refs-stl" REFS-DIR s" refs-stl/lib" REFS-DIR s" refs-stl/w" REFS-DIR
    s" refs-stl/lib/f.f" TEXT-RF REFS-FILE
@@ -5239,24 +5523,19 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-stl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-stl/w/d.f" FIXTURE TEXT-RSTL 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 1 s" verified" LISTED
    s" refs-stl/lib/f.f" TEXT-RF-MOVED REFS-FILE
    s" 3" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
-   s" 3" s" refs-stl/lib/f.f" CANON FAILED
-   s" refs-stl/w/d.f" FIXTURE TEXT-RSTL 2 CHANGES
-   s" 4" s" refs-stl/w/d.f" FIXTURE 1 14 DECL-TOO REFS-ASK
-   SAY
-   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 2 s" verified" LISTED
-   s" 4" SYMBOLS-START
+   TEXT-RSTL s" refs-stl/w/d.f" FIXTURE 1 s" verified" LISTED
+   s" 3" SYMBOLS-START
    s" refs-stl/lib/f.f" DISK-URI 1 2 6 REF+
    s" refs-stl/w/d.f" OPEN-URI 1 14 18 REF+
    SYMBOLS-END ;
 
-\ d.f reaches f.f through b.f, which on disk then loads nothing: the request
-\ checks d.f's text over the disk, where ROOK is not defined, so d.f is named
-\ as refused and only s.f's use is listed.
+\ d.f reaches f.f through b.f, which on disk then loads nothing. The request
+\ rechecks d.f, publishes its undefined use, and selects no declaration.
 : REFS-REQ-TURNS ( -- )
    s" refs-req" REFS-DIR s" refs-req/w" REFS-DIR
    s" refs-req/w/f.f" TEXT-RF REFS-FILE
@@ -5266,15 +5545,16 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-req/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-req/w/d.f" FIXTURE TEXT-RDB 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RDB s" refs-req/w/d.f" FIXTURE 1 s" verified" LISTED
    s" refs-req/w/b.f" s\" \\ nothing\n" REFS-FILE
    s" 3" s" refs-req/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
-   1 NAMED s" refs-req/w/d.f" CANON s" refused" NAMED+ NAMED-END
-   s" 3" SYMBOLS-START
-   s" refs-req/w/s.f" DISK-URI 1 14 18 REF+
-   SYMBOLS-END ;
+   TEXT-RDB s" refs-req/w/d.f" FIXTURE CHECKS
+   s" refs-req/w/d.f" FIXTURE s" refused" COMPLETED
+   s" refs-req/w/d.f" FIXTURE 1 EXPECT
+   1 14 1 18 1 s" E-UNDEFINED" DIAG+ PUBLISHES
+   s" 3" SYMBOLS-START SYMBOLS-END ;
 
 \ An empty workspaceFolders beside a rootUri: no folder, so s.f, on disk in
 \ rootUri's folder, is no subject.
@@ -5287,7 +5567,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    PAR$ INITIALIZE-WITH
    s" refs-fe/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" refs-fe/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-fe/w/d.f" FIXTURE 1 14 DECL-NOT REFS-ASK
    SAY
@@ -5323,12 +5603,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-rch/w/e.f" FIXTURE TEXT-RVE 1 OPENS
    s" refs-rch/h.f" FIXTURE TEXT-RVH 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-RXB s" refs-rch/w/q/b.f" FIXTURE 1 s" verified" LISTED
-   TEXT-RVE s" refs-rch/w/e.f" FIXTURE 1 s" verified" LISTED
+   SESSION-CAPABILITIES
+   3 PUBLISH-BATCH
+   TEXT-RXB s" refs-rch/w/q/b.f" FIXTURE 1 s" verified" BATCH-LISTED
+   TEXT-RVE s" refs-rch/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVH s" refs-rch/h.f" FIXTURE CHECKS
    s" refs-rch/h.f" FIXTURE s" refused" COMPLETED
-   s" refs-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   s" refs-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
    s" 3" s" refs-rch/w/q/b.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    s" 4" s" refs-rch/w/e.f" FIXTURE 1 14 DECL-TOO REFS-ASK
    SAY
@@ -5361,7 +5642,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-frg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-frg/w/d.f" FIXTURE TEXT-RFD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RFD s" refs-frg/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-frg/w/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
@@ -5391,7 +5672,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-cnf/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-cnf/w/d.f" FIXTURE TEXT-RCD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RCD s" refs-cnf/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-cnf/w/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
@@ -5419,7 +5700,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-eng/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-eng/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-ENG-D s" refs-eng/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-eng/w/d.f" FIXTURE 1 2 DECL-TOO REFS-ASK
    SAY
@@ -5438,7 +5719,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-img/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-img/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-ENG-D s" refs-img/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-img/w/d.f" FIXTURE 2 2 DECL-TOO REFS-ASK
    SAY
@@ -5463,7 +5744,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-pkg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-pkg/w/f.f" FIXTURE TEXT-RF 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF s" refs-pkg/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-pkg/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
@@ -5487,7 +5768,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-vis/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-vis/w/f.f" FIXTURE TEXT-RF 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF s" refs-vis/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-vis/w/f.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
@@ -5516,10 +5797,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
 \ the declaration and every use, the name between each literal's quotes among
 \ them; its name in XREF-FIND's literal with the uses alone.
 : REFS-NAMED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RN-PATH TEXT-RN 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RN RN-PATH 1 s" verified" LISTED
    s" 3" RN-PATH 0 2 DECL-TOO REFS-ASK
    s" 4" RN-PATH 3 17 DECL-TOO REFS-ASK
@@ -5567,10 +5848,11 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    PR-C-PATH TEXT-PR-C 1 OPENS
    s" refs-prim/w/e.f" FIXTURE TEXT-PR-ELAB 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-PR-A PR-A-PATH 1 s" verified" LISTED
-   TEXT-PR-C PR-C-PATH 1 s" verified" LISTED
-   TEXT-PR-ELAB s" refs-prim/w/e.f" FIXTURE 1 s" verified" LISTED
+   SESSION-CAPABILITIES
+   3 PUBLISH-BATCH
+   TEXT-PR-A PR-A-PATH 1 s" verified" BATCH-LISTED
+   TEXT-PR-C PR-C-PATH 1 s" verified" BATCH-LISTED
+   TEXT-PR-ELAB s" refs-prim/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    s" 3" PR-A-PATH 0 17 DECL-TOO REFS-ASK
    s" 4" PR-C-PATH 0 17 DECL-NOT REFS-ASK
    s" textDocument/prepareRename" s" 5" PR-A-PATH 0 17 AT-ASK
@@ -5601,7 +5883,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-upper/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-upper/w/a.f" FIXTURE TEXT-PR-UPPER 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PR-UPPER s" refs-prim-upper/w/a.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-upper/w/a.f" FIXTURE 0 12 DECL-NOT REFS-ASK
    SAY
@@ -5642,9 +5924,10 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    0 PRIM-WAVE-PATH FIXTURE TEXT-PR-A 1 OPENS
    s" refs-prim-wave/w/dep.f" FIXTURE TEXT-PR-DEP-OPEN 2 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-PR-A 0 PRIM-WAVE-PATH FIXTURE 1 s" verified" LISTED
-   TEXT-PR-DEP-OPEN s" refs-prim-wave/w/dep.f" FIXTURE 2 s" verified" LISTED
+   SESSION-CAPABILITIES
+   2 PUBLISH-BATCH
+   TEXT-PR-A 0 PRIM-WAVE-PATH FIXTURE 1 s" verified" BATCH-LISTED
+   TEXT-PR-DEP-OPEN s" refs-prim-wave/w/dep.f" FIXTURE 2 s" verified" BATCH-LISTED
    s" 3" 0 PRIM-WAVE-PATH FIXTURE 0 17 DECL-NOT REFS-ASK
    SAY
    1 NAMED 33 PRIM-WAVE-PATH CANON s" refused" NAMED+ NAMED-END
@@ -5675,7 +5958,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-fail/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-fail/w/00.f" FIXTURE TEXT-PR-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PR-A s" refs-prim-fail/w/00.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-fail/w/00.f" FIXTURE 0 17 DECL-NOT REFS-ASK
    SAY
@@ -5699,7 +5982,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-missing/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-missing/w/a.f" FIXTURE TEXT-PR-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PR-A s" refs-prim-missing/w/a.f" FIXTURE 1 s" verified" LISTED
    PRIM-SOURCE-PATH s\" \\ changed\n" 1 OPENS
    SAY
@@ -5725,12 +6008,13 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    PRIM-DECL-TREE
    s" refs-prim-decl/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    PR-DECL-A-PATH TEXT-PR-A 1 OPENS
    PRIM-SOURCE-PATH 2dup TREE$ 1 OPENS
    STREAM
-   TEXT-PR-A PR-DECL-A-PATH 1 s" verified" LISTED
-   PRIM-SOURCE-PATH 1 EXPECT PUBLISHES
+   2 PUBLISH-BATCH
+   TEXT-PR-A PR-DECL-A-PATH 1 s" verified" BATCH-LISTED
+   PRIM-SOURCE-PATH 1 EXPECT PUBLISHES-ANY
    s" 3" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 7 DECL-TOO REFS-ASK
    s" 4" PRIM-SOURCE-PATH s" EPRIM: * " PATH-LINE 6 DECL-TOO REFS-ASK
    s" 5" PRIM-SOURCE-PATH s" EPRIM: +      PE-PTR-A-OFF " PATH-LINE
@@ -5772,7 +6056,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-cover/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-cover/w/a.f" FIXTURE TEXT-PR-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-PR-A s" refs-prim-cover/w/a.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-cover/w/a.f" FIXTURE 0 17 DECL-TOO REFS-ASK
    SAY
@@ -5792,7 +6076,7 @@ variable WS-ROOT-U                       \ the bytes a case's names drop
    s" refs-prim-conflict/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" refs-prim-conflict/w/z.f" FIXTURE TEXT-ENG-Z 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-ENG-Z s" refs-prim-conflict/w/z.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" refs-prim-conflict/w/z.f" FIXTURE 0 18 DECL-TOO REFS-ASK
    SAY
@@ -5814,13 +6098,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ once the gather throws, the throw going on.
 : REFS-PROBE ( -- )
    0 PROBE-DECLS !
-   TEXT-ID-PROBE ID-PROBE-PATH s" " [: PROBE-SEEN ;] LSP-CHECK:USES
+   TEXT-ID-PROBE ID-PROBE-PATH s" " -1 [: PROBE-SEEN ;] LSP-CHECK:USES
    s" references-probe: verified" T-LABEL LSP-CHECK:OUTCOME$ s" verified" T$=
    s" references-probe: gathered" T-LABEL PROBE-DECLS @ 0 > TTRUE
    s" references-probe: removed" T-LABEL
    LSP-DEFS:PROBE LSP-DEFS:DEFS-DECL-RANGE = TTRUE
    0 PROBE-DECLS !
-   [: TEXT-ID-PROBE ID-PROBE-PATH s" " [: PROBE-THROWN ;] LSP-CHECK:USES ;]
+   [: TEXT-ID-PROBE ID-PROBE-PATH s" " -1 [: PROBE-THROWN ;] LSP-CHECK:USES ;]
    LSP:E-LSP-PARAMS TTHROWSQ
    s" references-probe: gathered, then thrown" T-LABEL PROBE-DECLS @ 0 > TTRUE
    s" references-probe: removed after the throw" T-LABEL
@@ -5844,10 +6128,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" SCRIPT-ARGC drop\n" HV+
    TXT$ ;
 
-: BI-SOURCE-SHIFT$ ( -- ptr u8 n )
+: BI-SOURCE-SHIFT$ ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
    TXT-B CLEAR
    s\" \n" HV+
-   SCRIPT-ARGV-PATH TREE$ HV+
+   path pathu TREE$ HV+
    TXT$ ;
 
 : BI-SOURCE-UNENDED$ ( -- ptr u8 n )
@@ -5856,26 +6141,49 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" \n: BAD ( -- n" HV+
    TXT$ ;
 
+: BI-SOURCE-UNBALANCED$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n;using\n" ;
+: BI-SOURCE-RETIRED$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n" ;
+: BI-SOURCE-REPLACED$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
+: BI-SOURCE-TRUST-UNENDED$ ( -- ptr u8 n )
+   s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1" ;
+: BI-SOURCE-USING-CRASH$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
+   17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
+   TXT$ ;
+: BI-SOURCE-CAST-CRASH$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
+
 : BI-SOURCE-REFUSED$ ( -- ptr u8 n )
    s\" : SCRIPT-ARGC ( -- n ) drop ;\n: SCRIPT-ARG-START ( -- n ) 1 ;\n" ;
-
 : BI-SOURCE-PARSED$ ( -- ptr u8 n )
    s\" : SKIP-DECL ( -- ) 8 0 do parse-name 2drop loop ;\nparses: SKIP-DECL 8\nSKIP-DECL : SCRIPT-ARGC ( -- n ) 1 ;\n" ;
-
 : BI-SOURCE-UNTERM$ ( -- ptr u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" unclosed\n" ;
-
 : BI-SOURCE-DEFERRED$ ( -- ptr u8 n )
    s\" : MK ( -- ) create 0 , ;\nparses: MK 1\nMK THING\n: SCRIPT-ARGC ( -- n ) THING @ ;\n" ;
-
 : BI-SOURCE-OPAQUE$ ( -- ptr u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\ns\" undefine SCRIPT-ARGC\" evaluate\n" ;
-
-: BI-SOURCE-RETIRED$ ( -- ptr u8 n )
-   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nundefine SCRIPT-ARGC\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
-
 : BI-SOURCE-REPLACED-DEFINER$ ( -- ptr u8 n )
    s\" package LSPRET\n: BEGIN-STRUCTURE ( -- ) 2 0 do parse-name 2drop loop ;\nBEGIN-STRUCTURE X END-STRUCTURE\n;package\n: SCRIPT-ARGC ( -- n ) 2 ;\n" ;
+: BI-SOURCE-REFUSED-TRUST$ ( -- ptr u8 n )
+   s\" : SCRIPT-ARGC ( -- n ) 1 ;\nTRUSTED: REVIEW-BAD ( -- zzz-unknown ) 1 ;\n" ;
+: BI-SOURCE-REFUSED-OPAQUE$ ( -- ptr u8 n )
+   TXT-B CLEAR
+   BI-SOURCE-REFUSED-TRUST$ HV+
+   s\" undefine SCRIPT-ARGC\n" HV+
+   TXT$ ;
+: BI-SOURCE-TRUST$ ( -- ptr u8 n )
+   s\" TRUSTED: SCRIPT-ARGC ( -- n ) 1 ;\n" ;
+: BI-SOURCE-TRUST-DOES-BAD$ ( -- ptr u8 n )
+   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) drop ;\n" ;
+: BI-SOURCE-TRUST-DOES$ ( -- ptr u8 n )
+   s\" TRUSTED: PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) ;\n" ;
+: BI-SOURCE-CHECKED-DOES$ ( -- ptr u8 n )
+   s\" : PTR-VARIABLE ( -- ) create 0 , does> ( -- ptr ptr a ) ;\n" ;
 
 : BI-USES+ ( -- )
    s" refs-builtin/w/a.f" OPEN-URI 0 13 24 REF+
@@ -5889,7 +6197,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" refs-builtin/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    BI-A-PATH TEXT-BI-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-BI-A BI-A-PATH 1 s" verified" LISTED
    s" 3" BI-A-PATH 0 16 DECL-TOO REFS-ASK
    s" 4" BI-A-PATH 0 16 DECL-NOT REFS-ASK
@@ -5919,7 +6227,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    SCRIPT-ARGV-PATH s" : SCRIPT-ARGC " URI-LINE 2 13 REF+ BI-USES+ SYMBOLS-END
    1 NAMED SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
    s" 6" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-SHIFT$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
+   SCRIPT-ARGV-PATH BI-SOURCE-SHIFT$ SCRIPT-ARGV-PATH 2swap 2 CHANGES
    SAY
    SCRIPT-ARGV-PATH 2 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
@@ -5955,78 +6263,134 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 15" NOWHERE
    1 NAMED SCRIPT-ARGV-PATH s" built-in source cannot be located" NAMED+ NAMED-END
    s" 16" SYMBOLS-START BI-USES+ SYMBOLS-END
-   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH 2swap 5 CHANGES
+   BI-SOURCE-UNBALANCED$ SCRIPT-ARGV-PATH 2swap 5 CHANGES
    SAY
    SCRIPT-ARGV-PATH 5 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 17" BI-A-PATH 0 16 DEFINITION-ASK
-   s" 18" BI-A-PATH 1 16 DEFINITION-ASK
    SAY
    s" 17" NOWHERE
-   s" 18" SCRIPT-ARGV-PATH URI-OF 1 2 18 LOCATED
-   BI-SOURCE-PARSED$ SCRIPT-ARGV-PATH 2swap 6 CHANGES
+   BI-SOURCE-RETIRED$ SCRIPT-ARGV-PATH 2swap 6 CHANGES
    SAY
    SCRIPT-ARGV-PATH 6 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 19" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 18" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
-   s" 19" NOWHERE
-   BI-SOURCE-UNTERM$ SCRIPT-ARGV-PATH 2swap 7 CHANGES
+   s" 18" NOWHERE
+   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH 2swap 7 CHANGES
    SAY
    SCRIPT-ARGV-PATH 7 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 20" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 19" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 20" SCRIPT-ARGV-PATH 0 3 DECL-TOO REFS-ASK
+   s" 22" SCRIPT-ARGV-PATH 2 3 DECL-TOO REFS-ASK
    SAY
-   s" 20" NOWHERE
-   BI-SOURCE-DEFERRED$ SCRIPT-ARGV-PATH 2swap 8 CHANGES
+   s" 19" NOWHERE
+   s" 20" SYMBOLS-START SYMBOLS-END
+   s" 22" SYMBOLS-START SYMBOLS-END
+   BI-SOURCE-TRUST-UNENDED$ SCRIPT-ARGV-PATH 2swap 8 CHANGES
    SAY
    SCRIPT-ARGV-PATH 8 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 21" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 21" NOWHERE
-   BI-SOURCE-OPAQUE$ SCRIPT-ARGV-PATH 2swap 9 CHANGES
+   BI-SOURCE-USING-CRASH$ SCRIPT-ARGV-PATH 2swap 9 CHANGES
    SAY
    SCRIPT-ARGV-PATH 9 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 22" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 23" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
-   s" 22" NOWHERE
-   BI-SOURCE-RETIRED$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
+   s" 23" NOWHERE
+   BI-SOURCE-CAST-CRASH$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
    SAY
    SCRIPT-ARGV-PATH 10 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
-   s" 23" BI-A-PATH 0 16 DEFINITION-ASK
-   s" 24" SCRIPT-ARGV-PATH 0 2 DECL-TOO REFS-ASK
-   s" 25" SCRIPT-ARGV-PATH 2 2 DECL-TOO REFS-ASK
+   s" 24" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
-   s" 23" NOWHERE
-   s" 24" SYMBOLS-START SYMBOLS-END
-   s" 25" SYMBOLS-START SYMBOLS-END
-   BI-SOURCE-REPLACED-DEFINER$ SCRIPT-ARGV-PATH 2swap 11 CHANGES
+   s" 24" NOWHERE
+   BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH 2swap 11 CHANGES
    SAY
    SCRIPT-ARGV-PATH 11 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 25" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 25" NOWHERE
+   BI-SOURCE-REFUSED$ SCRIPT-ARGV-PATH 2swap 12 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 12 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 26" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 27" BI-A-PATH 1 16 DEFINITION-ASK
+   SAY
+   s" 26" NOWHERE
+   s" 27" SCRIPT-ARGV-PATH URI-OF 1 2 18 LOCATED
+   BI-SOURCE-PARSED$ SCRIPT-ARGV-PATH 2swap 13 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 13 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 28" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 28" NOWHERE
-   \ An unchanged prefix selects its accepted declaration over a PRIM: twin.
-   PREFIX-LAYOUT-PATH 2dup TREE$ 1 OPENS
-   STREAM
-   PREFIX-LAYOUT-PATH 1 EXPECT PUBLISHES
-   s" 29" PREFIX-LAYOUT-PATH s" : TYPED-VARIABLE " PATH-LINE
-   2 DECL-TOO REFS-ASK
+   BI-SOURCE-UNTERM$ SCRIPT-ARGV-PATH 2swap 14 CHANGES
    SAY
-   2 NAMED PREFIX-LAYOUT-PATH s" engine-provided" NAMED+
-   SCRIPT-ARGV-PATH s" engine-provided" NAMED+ NAMED-END
-   s" 29" SYMBOLS-START
-   PREFIX-LAYOUT-PATH s" : TYPED-VARIABLE " URI-LINE 2 16 REF+
-   SYMBOLS-END ;
+   SCRIPT-ARGV-PATH 14 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 29" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 29" NOWHERE
+   BI-SOURCE-DEFERRED$ SCRIPT-ARGV-PATH 2swap 15 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 15 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 30" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 30" NOWHERE
+   BI-SOURCE-OPAQUE$ SCRIPT-ARGV-PATH 2swap 16 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 16 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 31" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 31" NOWHERE
+   BI-SOURCE-REPLACED-DEFINER$ SCRIPT-ARGV-PATH 2swap 17 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 17 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 32" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 32" NOWHERE
+   \ A refused structural declaration must not hide a later opaque call.
+   BI-SOURCE-REFUSED-OPAQUE$ SCRIPT-ARGV-PATH 2swap 18 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 18 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 33" BI-A-PATH 0 16 DEFINITION-ASK
+   s" 34" SCRIPT-ARGV-PATH 0 3 DECL-TOO REFS-ASK
+   SAY
+   s" 33" NOWHERE
+   s" 34" SYMBOLS-START SYMBOLS-END
+   \ Without the call, the accepted declaration survives that same refusal.
+   BI-SOURCE-REFUSED-TRUST$ SCRIPT-ARGV-PATH 2swap 19 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 19 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 35" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 35" SCRIPT-ARGV-PATH URI-OF 0 2 13 LOCATED
+   BI-SOURCE-TRUST$ SCRIPT-ARGV-PATH 2swap 20 CHANGES
+   SAY
+   SCRIPT-ARGV-PATH 20 EXPECT PUBLISHES
+   BI-A-PATH 1 EXPECT PUBLISHES
+   s" 36" BI-A-PATH 0 16 DEFINITION-ASK
+   SAY
+   s" 36" SCRIPT-ARGV-PATH URI-OF 0 9 20 LOCATED ;
 
-\ A checked word loaded before origin recording and a public word in an
-\ image package both retain their source identities in a restored engine.
+\ Both image words retain their source identities. xref.f's top-level require
+\ defers its index, so its known references survive without source locations.
+\ code-bytes.f is declarations only, including after an open-document move.
 : TEXT-BI-OTHER ( -- ptr u8 n )
-   s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n" ;
+   s\" : X ( ptr n -- n ) XREF-START ;\n: Y ( n n -- bool ) CODE-BYTES:IN-CODE? ;\n: Z ( -- ) WORDS ;\n" ;
 : BI-OTHER-PATH ( -- ptr u8 n )  s" refs-builtin-other/w/a.f" FIXTURE ;
 
 : REFS-BUILTIN-OTHER-TURNS ( -- )
@@ -6035,58 +6399,94 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" refs-builtin-other/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    BI-OTHER-PATH TEXT-BI-OTHER 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-BI-OTHER BI-OTHER-PATH 1 s" verified" LISTED
    s" 3" BI-OTHER-PATH 0 22 DECL-TOO REFS-ASK
    s" 4" BI-OTHER-PATH 1 32 DECL-TOO REFS-ASK
+   s" 5" BI-OTHER-PATH 2 15 DEFINITION-ASK
    SAY
+   1 NAMED s" src/habu/xref.f" IN-TREE s" built-in source cannot be located" NAMED+ NAMED-END
    s" 3" SYMBOLS-START
-   s" src/habu/xref.f" IN-TREE
-   s" : XREF-START " URI-LINE 2 12 REF+
    BI-OTHER-PATH URI-OF 0 19 29 REF+
    SYMBOLS-END
    s" 4" SYMBOLS-START
    s" src/habu/code-bytes.f" IN-TREE
    s" : IN-CODE? " URI-LINE 2 10 REF+
    BI-OTHER-PATH URI-OF 1 20 39 REF+
+   SYMBOLS-END
+   s" 5" NOWHERE
+   s" src/habu/code-bytes.f" IN-TREE 2dup TREE$ 1 OPENS
+   STREAM
+   s" src/habu/code-bytes.f" IN-TREE 1 EXPECT PUBLISHES
+   BI-OTHER-PATH 1 EXPECT PUBLISHES
+   s" src/habu/code-bytes.f" IN-TREE BI-SOURCE-SHIFT$
+   s" src/habu/code-bytes.f" IN-TREE 2swap 2 CHANGES
+   SAY
+   s" src/habu/code-bytes.f" IN-TREE 2 EXPECT PUBLISHES
+   BI-OTHER-PATH 1 EXPECT PUBLISHES
+   s" 6" BI-OTHER-PATH 1 32 DEFINITION-ASK
+   s" 7" s" src/habu/code-bytes.f" IN-TREE
+   s" : IN-CODE? " PATH-LINE 1+ 3 DECL-TOO REFS-ASK
+   SAY
+   s" 6" s" src/habu/code-bytes.f" IN-TREE
+   s" : IN-CODE? " URI-LINE 1+ 2 10 LOCATED
+   1 NAMED s" src/habu/code-bytes.f" IN-TREE s" engine-provided" NAMED+ NAMED-END
+   s" 7" SYMBOLS-START
+   s" src/habu/code-bytes.f" IN-TREE
+   s" : IN-CODE? " URI-LINE 1+ 2 10 REF+
+   BI-OTHER-PATH URI-OF 1 20 39 REF+
+   SYMBOLS-END
+   \ Trusted bodies are skipped, so neither clause's acceptance is known.
+   \ A declaration cursor must not select the image's PTR-VARIABLE from them.
+   AIO-PTR-PATH BI-SOURCE-TRUST-DOES-BAD$ 1 OPENS
+   SAY
+   AIO-PTR-PATH 1 EXPECT PUBLISHES
+   s" 8" AIO-PTR-PATH 0 11 DECL-TOO REFS-ASK
+   SAY
+   s" 8" SYMBOLS-START SYMBOLS-END
+   BI-SOURCE-TRUST-DOES$ AIO-PTR-PATH 2swap 2 CHANGES
+   SAY
+   AIO-PTR-PATH 2 EXPECT PUBLISHES
+   s" 9" AIO-PTR-PATH 0 11 DECL-TOO REFS-ASK
+   SAY
+   s" 9" SYMBOLS-START SYMBOLS-END
+   BI-SOURCE-CHECKED-DOES$ AIO-PTR-PATH 2swap 3 CHANGES
+   SAY
+   AIO-PTR-PATH 3 EXPECT PUBLISHES
+   s" 10" AIO-PTR-PATH 0 3 DECL-TOO REFS-ASK
+   SAY
+   2 NAMED AIO-PTR-PATH s" engine-provided" NAMED+
+   s" src/habu/code-bytes.f" IN-TREE s" engine-provided" NAMED+ NAMED-END
+   s" 10" SYMBOLS-START
+   AIO-PTR-PATH URI-OF 0 2 14 REF+
    SYMBOLS-END ;
+
+\ A failed check after a change has no current positions to invalidate from
+\ its earlier stamps. References answer from the incomplete check's bindings.
+: REFS-INCOMPLETE-TURNS ( -- )
+   SESSION-INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY SESSION-CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH 2 19 DECL-NOT REFS-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" NOWHERE
+   LOGGED ;
 
 : TEST-REFERENCES ( -- )
    s" references" [: REFS-TURNS ;] TALK
    s" references-not-open" [: REFS-NOT-OPEN-TURNS ;] TALK
    s" references-params" [: REFS-PARAMS-TURNS ;] TALK
-   s" references-workspace" [: REFS-WS-TURNS ;] TALK
    s" references-identity" [: REFS-ID-TURNS ;] TALK
    s" references-deftype" [: REFS-DEFTYPE-TURNS ;] TALK
    s" references-lifetimes" [: REFS-LIFE-TURNS ;] TALK
-   s" references-unverified" [: REFS-UNV-TURNS ;] TALK
-   s" references-partial-dependency" [: REFS-DEP-TURNS ;] TALK
-   s" references-refused-selection" [: REFS-REFUSED-TURNS ;] TALK
-   s" references-undiscoverable" [: REFS-LD-TURNS ;] TALK
-   s" references-unsaved" [: REFS-UNSAVED-TURNS ;] TALK
-   s" references-digest" [: REFS-DIGEST-TURNS ;] TALK
-   s" references-stale" [: REFS-STALE-TURNS ;] TALK
-   s" references-requester" [: REFS-REQ-TURNS ;] TALK
-   s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
-   s" references-reaching" [: REFS-RCH-TURNS ;] TALK
-   s" references-fragment" [: REFS-FRG-TURNS ;] TALK
-   s" references-conflict" [: REFS-CNF-TURNS ;] TALK
-   s" references-engine" [: REFS-ENG-TURNS ;] TALK
-   s" references-engine-image" [: REFS-IMG-TURNS ;] TALK
-   s" references-package" [: REFS-PKG-TURNS ;] TALK
-   s" references-visits" [: REFS-VIS-TURNS ;] TALK
-   s" references-named" [: REFS-NAMED-TURNS ;] TALK
-   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
-   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
-   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
-    s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
-   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
-   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
-   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
-   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
-   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
-   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
-   REFS-PROBE ;
+   s" references-open-alias" [: REFS-ALIAS-TURNS ;] TALK
+   s" references-incomplete" [: REFS-INCOMPLETE-TURNS ;] TALK
+   s" references-named" [: REFS-NAMED-TURNS ;] TALK ;
+
 
 \ ---- rename ------------------------------------------------------------------
 
@@ -6124,14 +6524,16 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ naming it;
 \ ref-a.f, never opened, -32602.
 : RENAME-PREPARE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED
    HOVER-CVT-PATH TEXT-HOVER-CVT 1 OPENS
+   SAY
+   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    HU-PATH TEXT-HU 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED
-   TEXT-HOVER-CVT HOVER-CVT-PATH 1 s" verified" LISTED
    TEXT-HU HU-PATH CHECKS
    HU-PATH s" refused" COMPLETED
    HU-PATH 1 EXPECT 1 16 1 22 1 s" E-MISMATCH" DIAG+ PUBLISHES
@@ -6173,6 +6575,20 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ The new name the renames here ask for.
 : CROW ( -- ptr u8 n )  s\" ,\"newName\":\"CROW\"" ;
 
+: SUMTYPE-RENAME-TURNS ( -- )
+   SESSION-INITIALIZE
+   CHOICE-PATH CHOICE-TEXT 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   CHOICE-TEXT CHOICE-PATH 1 s" verified" LISTED
+   s" 3" CHOICE-PATH 1 11 PREPARE-ASK
+   s" 4" CHOICE-PATH 4 29 PREPARE-ASK
+   s" 5" CHOICE-PATH 4 29 CROW RENAME-ASK
+   SAY
+   HEAR s" 3" -32803 REFUSED
+   HEAR s" 4" -32803 REFUSED
+   HEAR s" 5" -32803 REFUSED ;
+
 \ The answer the next frame must be to the request with this id's JSON text,
 \ begun in MSG: EDITS-IN starts each document's edits, EDIT+ adds each,
 \ EDITS-END hears it.
@@ -6205,6 +6621,22 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    HEAR
    MSG$ HEARD ;
 
+\ An ordinary definer may also be spelled VARIANT. Its created word remains
+\ renameable, including the declaration at that definer's operand.
+: VARIANT-DEFINER-RENAME-TURNS ( -- )
+   SESSION-INITIALIZE
+   VARIANT-DEF-PATH VARIANT-DEF-TEXT 1 OPENS
+   SAY
+   SESSION-CAPABILITIES
+   VARIANT-DEF-TEXT VARIANT-DEF-PATH 1 s" verified" LISTED
+   s" 3" VARIANT-DEF-PATH 1 11 PREPARE-ASK
+   s" 4" VARIANT-DEF-PATH 2 22 CROW RENAME-ASK
+   SAY
+   s" 3" 1 10 15 RANGED
+   s" 4" EDITS-START VARIANT-DEF-PATH URI-OF EDITS-IN
+   1 10 15 EDIT+  2 22 27 EDIT+
+   EDITS-END ;
+
 \ rn-prep.f's ROOK edited where it is declared and used, RNP:ROOK's qualifier
 \ kept, in the answer to the request with this id's JSON text.
 : ROOK-EDITS ( ptr u8 n -- )
@@ -6218,10 +6650,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ the exact trailing edges of a use and its declaration also select those
 \ edits; the space after the last use and the space before a use null.
 : RENAME-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RN-PREP RN-PREP-PATH 1 s" verified" LISTED
    s" 3" RN-PREP-PATH 3 15 CROW RENAME-ASK
    s" 4" RN-PREP-PATH 3 18 CROW RENAME-ASK
@@ -6245,7 +6677,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ tab, a colon that qualifies it, a quote or a backslash, each -32803. All are answered before
 \ the document's check, whose list comes after them.
 : RENAME-PARAMS-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RN-PREP-PATH TEXT-RN-PREP 1 OPENS
    s" 3" RN-PREP-PATH 3 15 s" " RENAME-ASK
    s" 4" RN-PREP-PATH 3 15 s\" ,\"newName\":5" RENAME-ASK
@@ -6256,7 +6688,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 9" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\\"OK\"" RENAME-ASK
    s" 10" RN-PREP-PATH 3 15 s\" ,\"newName\":\"RO\\\\OK\"" RENAME-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32602 REFUSED
    HEAR s" 4" -32602 REFUSED
    HEAR s" 5" -32803 REFUSED
@@ -6278,7 +6710,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-ws/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-ws/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" rn-ws/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-ws/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
@@ -6299,7 +6731,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-ld/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-ld/w/d.f" FIXTURE TEXT-RD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RD s" rn-ld/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-ld/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
@@ -6314,7 +6746,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-unv/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-unv/w/s.f" FIXTURE TEXT-RS-PN 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RS-PN s" rn-unv/w/s.f" FIXTURE CHECKS
    s" rn-unv/w/s.f" FIXTURE s" deferred" COMPLETED
    s" rn-unv/w/s.f" FIXTURE 1 EXPECT 3 0 3 2 3 s" W-CHECK-DEFERRED" DIAG+ PUBLISHES
@@ -6344,9 +6776,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-out/w/d.f" FIXTURE TEXT-RVD 1 OPENS
    s" rn-out/w/e.f" FIXTURE TEXT-RVE 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-RVD s" rn-out/w/d.f" FIXTURE 1 s" verified" LISTED
-   TEXT-RVE s" rn-out/w/e.f" FIXTURE 1 s" verified" LISTED
+   SESSION-CAPABILITIES
+   2 PUBLISH-BATCH
+   TEXT-RVD s" rn-out/w/d.f" FIXTURE 1 s" verified" BATCH-LISTED
+   TEXT-RVE s" rn-out/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    s" 3" s" rn-out/w/d.f" FIXTURE 1 14 CROW RENAME-ASK
    s" 4" s" rn-out/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
@@ -6379,12 +6812,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-rch/w/e.f" FIXTURE TEXT-RVE 1 OPENS
    s" rn-rch/h.f" FIXTURE TEXT-RVH 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-RXB s" rn-rch/w/q/b.f" FIXTURE 1 s" verified" LISTED
-   TEXT-RVE s" rn-rch/w/e.f" FIXTURE 1 s" verified" LISTED
+   SESSION-CAPABILITIES
+   3 PUBLISH-BATCH
+   TEXT-RXB s" rn-rch/w/q/b.f" FIXTURE 1 s" verified" BATCH-LISTED
+   TEXT-RVE s" rn-rch/w/e.f" FIXTURE 1 s" verified" BATCH-LISTED
    TEXT-RVH s" rn-rch/h.f" FIXTURE CHECKS
    s" rn-rch/h.f" FIXTURE s" refused" COMPLETED
-   s" rn-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES
+   s" rn-rch/h.f" FIXTURE 1 EXPECT 0 0 0 7 1 s" E-MISSING-SOURCE" DIAG+ PUBLISHES-ANY
    s" 3" s" rn-rch/w/q/b.f" FIXTURE 1 14 CROW RENAME-ASK
    s" 4" s" rn-rch/w/e.f" FIXTURE 1 14 CROW RENAME-ASK
    SAY
@@ -6410,7 +6844,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-frg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-frg/w/d.f" FIXTURE TEXT-RFD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RFD s" rn-frg/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-frg/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
    SAY
@@ -6432,7 +6866,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-cnf/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-cnf/w/d.f" FIXTURE TEXT-RCD 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RCD s" rn-cnf/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-cnf/w/d.f" FIXTURE 0 2 CROW RENAME-ASK
    SAY
@@ -6452,7 +6886,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-eng/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-eng/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-ENG-D s" rn-eng/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-eng/w/d.f" FIXTURE 1 2 CROW RENAME-ASK
    SAY
@@ -6467,7 +6901,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-img/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-img/w/d.f" FIXTURE TEXT-ENG-D 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-ENG-D s" rn-img/w/d.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-img/w/d.f" FIXTURE 2 2 CROW RENAME-ASK
    SAY
@@ -6485,7 +6919,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-pkg/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-pkg/w/f.f" FIXTURE TEXT-RF 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF s" rn-pkg/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-pkg/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
    SAY
@@ -6508,7 +6942,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-vis/w" ROOT-URI+ PAR$ INITIALIZE-WITH
    s" rn-vis/w/f.f" FIXTURE TEXT-RF 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF s" rn-vis/w/f.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-vis/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
    SAY
@@ -6532,9 +6966,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-exp/w/f.f" FIXTURE TEXT-RF 1 OPENS
    s" rn-exp/w/u.f" FIXTURE TEXT-RU 1 OPENS
    SAY
-   HEAR CAPABILITIES
-   TEXT-RF s" rn-exp/w/f.f" FIXTURE 1 s" verified" LISTED
-   TEXT-RU s" rn-exp/w/u.f" FIXTURE 1 s" verified" LISTED
+   SESSION-CAPABILITIES
+   2 PUBLISH-BATCH
+   TEXT-RF s" rn-exp/w/f.f" FIXTURE 1 s" verified" BATCH-LISTED
+   TEXT-RU s" rn-exp/w/u.f" FIXTURE 1 s" verified" BATCH-LISTED
    s" 3" s" rn-exp/w/f.f" FIXTURE 0 2 CROW RENAME-ASK
    s" 4" s" rn-exp/w/u.f" FIXTURE 1 14 CROW RENAME-ASK
    s" 5" s" rn-exp/w/u.f" FIXTURE 1 14 PREPARE-ASK
@@ -6576,10 +7011,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ :CROW, a colon last and first, each written over every global ROOK, none
 \ qualified; CROW: over RNN's ROOK, whose literals qualify it, -32803.
 : RENAME-NAMED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    RNN-PATH TEXT-RNN 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RNN RNN-PATH 1 s" verified" LISTED
    s" 3" RNN-PATH 0 2 CROW RENAME-ASK
    s" 4" RNN-PATH 3 18 CROW RENAME-ASK
@@ -6609,7 +7044,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" rn-uns/w/f.f" FIXTURE TEXT-RF-DOWN 1 OPENS
    s" rn-uns/w/s.f" FIXTURE TEXT-RS 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-RF-DOWN s" rn-uns/w/f.f" FIXTURE 1 s" verified" LISTED
    TEXT-RS s" rn-uns/w/s.f" FIXTURE 1 s" verified" LISTED
    s" 3" s" rn-uns/w/s.f" FIXTURE 1 14 CROW RENAME-ASK
@@ -6621,22 +7056,12 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : TEST-RENAMES ( -- )
    s" rename-prepare" [: RENAME-PREPARE-TURNS ;] TALK
+   s" rename-sumtype" [: SUMTYPE-RENAME-TURNS ;] TALK
+   s" rename-variant-definer" [: VARIANT-DEFINER-RENAME-TURNS ;] TALK
    s" rename" [: RENAME-TURNS ;] TALK
    s" rename-params" [: RENAME-PARAMS-TURNS ;] TALK
-   s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
-   s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
-   s" rename-unverified" [: RENAME-UNV-TURNS ;] TALK
-   s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
-   s" rename-reaching" [: RENAME-RCH-TURNS ;] TALK
-   s" rename-fragment" [: RENAME-FRG-TURNS ;] TALK
-   s" rename-conflict" [: RENAME-CNF-TURNS ;] TALK
-   s" rename-engine" [: RENAME-ENG-TURNS ;] TALK
-   s" rename-engine-image" [: RENAME-IMG-TURNS ;] TALK
-   s" rename-package" [: RENAME-PKG-TURNS ;] TALK
-   s" rename-visits" [: RENAME-VIS-TURNS ;] TALK
-   s" rename-export" [: RENAME-EXP-TURNS ;] TALK
-   s" rename-named" [: RENAME-NAMED-TURNS ;] TALK
-   s" rename-open" [: RENAME-OPEN-TURNS ;] TALK ;
+   s" rename-named" [: RENAME-NAMED-TURNS ;] TALK ;
+
 
 \ ---- cancellation ------------------------------------------------------------
 
@@ -6652,10 +7077,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ by the second's check, before its answer.
 : CANCEL-CMP-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
    s" 4" CMP-A-PATH 3 45 COMPLETION-ASK
@@ -6673,7 +7098,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    MARKDOWN-CLIENT
    HOVER-A-PATH TEXT-HOVER-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-HOVER-A HOVER-A-PATH 1 s" verified" LISTED
    s\" \"h\\/3\"" HOVER-A-PATH 4 18 HOVER-ASK
    s\" \"h/3\"" CANCELS
@@ -6686,10 +7111,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ checked.
 : MODIFIED-TURNS ( -- )
    CMP-DEP-PATH TEXT-CMP-DEP WRITE-ALL
-   INITIALIZE
+   SESSION-INITIALIZE
    CMP-A-PATH TEXT-CMP-A 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    TEXT-CMP-A CMP-A-PATH 1 s" verified" LISTED
    s" 3" CMP-A-PATH 3 24 COMPLETION-ASK
    CMP-A-PATH TEXT-CMP-A-NEW 2 CHANGES
@@ -6703,10 +7128,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ invalid message are answered as they would be, and a cancel of request 5
 \ behind it still counts: the server goes on.
 : STRAY-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" s" habu/unknown" ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    HEAR s" 3" -32601 REFUSED
    s" 4" s" habu/unknown" ASK
    s" 3" CANCELS
@@ -6728,7 +7153,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ down takes no cancel, and exit after shutdown exits 0.
 : TEST-CANCEL-SHUTDOWN ( -- )
    s" cancel-shutdown" CONVERSATION
-   INITIALIZE
+   SESSION-INITIALIZE
    s" 3" s" habu/unknown" ASK
    SHUTDOWN
    s" 3" CANCELS
@@ -6752,7 +7177,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : TEXT-HH-NEW ( -- ptr u8 n )  s\" require d.f\n: HU ( -- n ) ROOK ROOK + ;\n" ;
 
 : HALT-TREE ( -- )
-   s" refs-halt" REFS-DIR
+   s" refs-halt" FIXTURE MAKE-DIRS
    s" refs-halt/d.f" TEXT-RF REFS-FILE
    s" refs-halt/e.f" TEXT-HE REFS-FILE
    s" refs-halt/g.f" TEXT-HG REFS-FILE
@@ -6765,14 +7190,15 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ time its first check is over.
 : HALT-START ( [ -- ] -- )
    {: ask :}
-   INITIALIZE
+   HALT-TREE
+   SESSION-INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
    s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
    s" refs-halt/g.f" FIXTURE TEXT-HG 1 OPENS
    s" refs-halt/h.f" FIXTURE TEXT-HH 1 OPENS
    ask execute
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN ;
 
 : HALT-REFS ( -- )  s" 3" s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK ;
@@ -6785,12 +7211,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 \ over.
 : PAIR-START ( ptr u8 n -- )
    {: i:ptr iu:n :}
-   INITIALIZE
+   HALT-TREE
+   SESSION-INITIALIZE
    s" refs-halt/d.f" FIXTURE TEXT-RF 1 OPENS
    s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
    i iu s" refs-halt/d.f" FIXTURE 0 2 DECL-TOO REFS-ASK
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    s" refs-halt/d.f" FIXTURE 1 CLEAN ;
 
 \ The answer to the request with this id's JSON text: the declaration and
@@ -6828,6 +7255,24 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 
 : REFS-MODIFIED-TURNS ( -- )  [: HALT-REFS ;] HALT-MODIFIED ;
 : RENAME-MODIFIED-TURNS ( -- )  [: HALT-RENAME ;] HALT-MODIFIED ;
+
+\ An unrelated document opened while references gathers cannot change the
+\ selected declaration or any file this request reads.
+: REFS-UNRELATED-TURNS ( -- )
+   [: HALT-REFS ;] HALT-START
+   s" refs-halt/u.f" s\" : UNRELATED ( -- n ) 1 ;\n" REFS-FILE
+   s" refs-halt/u.f" FIXTURE s\" : UNRELATED ( -- n ) 1 ;\n" 1 OPENS
+   SAY
+   s" 3" SYMBOLS-START
+   s" refs-halt/d.f" OPEN-URI 0 2 6 REF+
+   s" refs-halt/e.f" OPEN-URI 1 14 18 REF+
+   s" refs-halt/g.f" OPEN-URI 1 14 18 REF+
+   s" refs-halt/h.f" OPEN-URI 1 14 18 REF+
+   SYMBOLS-END
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
+   s" refs-halt/g.f" FIXTURE 1 CLEAN
+   s" refs-halt/h.f" FIXTURE 1 CLEAN
+   s" refs-halt/u.f" FIXTURE 1 CLEAN ;
 
 \ Another request and the end of the input written once d.f's list is heard:
 \ the request goes on and is answered, then the other one, and only then does
@@ -6871,32 +7316,90 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" refs-halt/e.f" FIXTURE 1 CLEAN
    s" src/lib/string.f" IN-TREE 1 CLEAN ;
 
+\ The first check for a definition request publishes its list before reading
+\ a queued large didOpen. The reply must keep the string id after that input
+\ grows the held-message buffer.
+: DEF-GROWTH-TURNS ( -- )
+   HALT-TREE
+   SESSION-INITIALIZE
+   s" refs-halt/e.f" FIXTURE TEXT-HE 1 OPENS
+   s\" \"def-grow\"" s" refs-halt/e.f" FIXTURE 1 14 DEFINITION-ASK
+   SAY
+   SESSION-CAPABILITIES
+   s" refs-halt/e.f" FIXTURE 1 CLEAN
+   BIG-QUIET
+   s" src/lib/string.f" IN-TREE TXT$ 1 OPENS
+   STREAM
+   s\" \"def-grow\"" s" refs-halt/d.f" DISK-URI 0 2 6 LOCATED
+   s" src/lib/string.f" IN-TREE 1 CLEAN ;
+
 \ The input that comes while a request checks the files it gathers from.
 \ Those checks publish nothing, as intended: a document's list comes only from
 \ its own check, a turn after the answer. So each conversation writes its next
 \ turn once it hears d.f's list, which the request's own turn publishes.
 : REFS-HALTS ( -- )
-   HALT-TREE
    s" references-cancel" [: REFS-CANCEL-TURNS ;] TALK
    s" references-modified" [: REFS-MODIFIED-TURNS ;] TALK
    s" rename-modified" [: RENAME-MODIFIED-TURNS ;] TALK
-   s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
-   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
-   s" references-growth" [: REFS-GROWTH-TURNS ;] TALK ;
+   s" references-unrelated" [: REFS-UNRELATED-TURNS ;] TALK
+   s" references-growth" [: REFS-GROWTH-TURNS ;] TALK
+   s" definition-growth" [: DEF-GROWTH-TURNS ;] TALK ;
 
 : TEST-CANCELS ( -- )
-   TEST-CANCEL-SHUTDOWN
    s" cancel-completion" [: CANCEL-CMP-TURNS ;] TALK
-   s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK
    s" content-modified" [: MODIFIED-TURNS ;] TALK
    s" cancel-stray" [: STRAY-TURNS ;] TALK
    REFS-HALTS ;
 
-: TEST-COMPLETIONS ( -- )
+\ An incomplete check after a change can still answer an empty completion;
+\ its earlier source stamps cannot reject the current request.
+: COMPLETION-INCOMPLETE-TURNS ( -- )
+   SESSION-INITIALIZE
+   DEF-A-PATH TEXT-DEF-C 1 OPENS
+   SAY SESSION-CAPABILITIES
+   TEXT-DEF-C DEF-A-PATH 1 s" verified" LISTED
+   DEF-A-PATH TEXT-DEF-C-SWAPPED 2 CHANGES
+   s" 3" DEF-A-PATH 20 0 COMPLETION-ASK
+   SAY
+   TEXT-DEF-C-SWAPPED DEF-A-PATH CHECKS
+   DEF-A-PATH s" not checked: exit 76" SAID
+   s" 3" ITEMS-START ITEMS-END
+   LOGGED ;
+
+: COMPLETION-CASES ( -- )
    s" completion" [: CMP-TURNS ;] TALK
    s" completion-not-open" [: CMP-NOT-OPEN-TURNS ;] TALK
    s" completion-after-change" [: CMP-AFTER-CHANGE-TURNS ;] TALK
-   s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK ;
+   s" completion-qualified" [: CMP-QUALIFIED-TURNS ;] TALK
+   s" completion-incomplete" [: COMPLETION-INCOMPLETE-TURNS ;] TALK ;
+
+: TEST-COMPLETIONS ( -- )
+   COMPLETION-CASES ;
+
+\ One initialized child serves every compatible case in this session.
+: SESSION-TURNS ( -- )
+   SESSION-INIT @ execute
+   SAY HEAR CAPABILITIES
+   TRACE-WRITE
+   WORKSPACE? @ if s" workspace/w" FIXTURE REMOVE-DIR then
+   true SHARED? !
+   SESSION-CASES @ execute
+   false SHARED? !
+   SESSION$ CONVERSATION
+   0 SENT !
+   CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE ! ;
+
+: SESSION-RUN ( ptr u8 n [ -- ] [ -- ] -- )
+   {: a:ptr u:n init cases :}
+   a u N>BLEN SESSION-B REPLACE
+   init SESSION-INIT !
+   cases SESSION-CASES !
+   a u CONVERSATION
+   [: SESSION-TURNS ;] [: FINISHED ;] 0 HELD-BY if
+      s" 2" NULL-RESULT ENDS
+      TRACE-APPEND
+   then
+   false SHARED? ! ;
 
 : TEST-LINKS ( -- )
    s" document-link" [: LINK-TURNS ;] TALK
@@ -6913,7 +7416,6 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" hover-definition" [: HOVER-DEF-TURNS ;] TALK
    s" hover-deftype" [: HOVER-DEFTYPE-TURNS ;] TALK
    s" hover-none" [: HOVER-NONE-TURNS ;] TALK
-   s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
    s" hover-not-open" [: HOVER-NOT-OPEN-TURNS ;] TALK
    s" hover-after-change" [: HOVER-AFTER-CHANGE-TURNS ;] TALK ;
 
@@ -6942,10 +7444,13 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK
    s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
    s" definition-dependency" [: DEF-DEP-TURNS ;] TALK
+   s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
    s" definition-dependency-open" [: DEF-OPEN-DEP-TURNS ;] TALK
    s" definition-not-open" [: DEF-NOT-OPEN-TURNS ;] TALK
    s" definition-before-check" [: DEF-BEFORE-CHECK-TURNS ;] TALK
    s" definition-after-change" [: DEF-AFTER-CHANGE-TURNS ;] TALK
+   s" definition-created-dependency" [: MISSING-REQUEST-TURNS ;] TALK
+   s" definition-readable-dependency" [: UNREAD-REQUEST-TURNS ;] TALK
    s" definition-incomplete" [: DEF-INCOMPLETE-TURNS ;] TALK ;
 
 : TEST-SYMBOLS ( -- )
@@ -6958,14 +7463,12 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    LENGTH-TEXT
    5 1 ?do
       i LENGTH-N !
-      LENGTH-DIR MAKE-DIR
       SB-RESET s" path-length-" SB-APPEND i FMT:SB-INT
       SB$ [: LENGTH-TURNS ;] TALK
    loop ;
 
 : TEST-OUTLINES ( -- )
    s" document-symbol" [: OUTLINE-TURNS ;] TALK
-   s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
    s" document-symbol-incomplete" [: OUTLINE-INCOMPLETE-TURNS ;] TALK ;
 
 \ A FUNCTION: whose group is empty stores a signature that does not parse: the
@@ -6973,10 +7476,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : EMPTY-FFI ( -- ptr u8 n )  s\" require src/lib/ffi-abi.f\nFUNCTION: F getpid ( )\n" ;
 
 : STORED-SIGNATURE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH EMPTY-FFI 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    EMPTY-FFI A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 1 10 1 11 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
@@ -6987,10 +7490,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : REPLACED-TRUSTED ( -- ptr u8 n )  s\" : X ( -- ) ;\nundefine X\nTRUSTED: X ( -- zz ) ;\n" ;
 
 : REPLACED-SIGNATURE-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH REPLACED-TRUSTED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    REPLACED-TRUSTED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT 2 9 2 10 1 s" E-BAD-STORED-SIGNATURE" DIAG+ PUBLISHES ;
@@ -7000,10 +7503,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : MALFORMED-DEFER ( -- ptr u8 n )  s\" defer DIAG:MAL:NAME ( -- )\n" ;
 
 : MALFORMED-RECORD-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH MALFORMED-DEFER 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    MALFORMED-DEFER A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT
@@ -7016,10 +7519,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 : MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
 
 : MALFORMED-REJECTED-TURNS ( -- )
-   INITIALIZE
+   SESSION-INITIALIZE
    A-PATH MALFORMED-REJECTED 1 OPENS
    SAY
-   HEAR CAPABILITIES
+   SESSION-CAPABILITIES
    MALFORMED-REJECTED A-PATH CHECKS
    A-PATH s" refused" COMPLETED
    A-PATH 1 EXPECT
@@ -7037,9 +7540,11 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" utf16-column" [: UTF16-TURNS ;] TALK
    s" big-frame" [: BIG-TURNS ;] TALK
    s" dependency" [: DEPENDENCY-TURNS ;] TALK
+   s" dependency-watched" [: DEP-WATCH-TURNS ;] TALK
    s" dependency-open-edit" [: DEP-OPEN-EDIT-TURNS ;] TALK
    s" dependency-close" [: DEP-CLOSE-TURNS ;] TALK
    s" dependency-saved" [: SAVE-TURNS ;] TALK
+   s" dependency-created" [: MISSING-WATCH-TURNS ;] TALK
    s" dependency-symlink" [: DEP-SYMLINK-TURNS ;] TALK
    s" dependency-shared" [: DEP-SHARED-TURNS ;] TALK
    s" two-in-turn" [: TWO-TURNS ;] TALK
@@ -7066,7 +7571,10 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
 public
 
 : TEST-INIT ( -- )
+   false SHARED? !
+   0 OPEN-N !
    LABEL-B READY
+   SESSION-B READY
    IN-B READY
    WANT-B READY
    MSG-B READY
@@ -7084,19 +7592,116 @@ public
    s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
    T-RESET ;
 
+: TEST-COMPLETION ( -- )
+   TEST-INIT
+   s" completion-session" [: INITIALIZE ;] [: TEST-COMPLETIONS ;] SESSION-RUN
+   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
+   T-REPORT ;
+
 : TEST-BUILTIN ( -- )
    TEST-INIT
-   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
-   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   true WORKSPACE? !
+   s" workspace-session" [: WORKSPACE-INIT ;]
+   [: s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+      s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK ;]
+   SESSION-RUN
+   false WORKSPACE? !
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 
 : TEST-PREFIX ( -- )
    TEST-INIT
-   s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
-   s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
+   s" prefix-session" [: INITIALIZE ;]
+   [: s" definition-prefix-origin" [: PREFIX-DEF-TURNS ;] TALK
+      s" definition-prefix-shadow" [: PREFIX-SHADOW-TURNS ;] TALK
+      s" definition-engine-open" [: ENGINE-OPEN-TURNS ;] TALK ;] SESSION-RUN
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
+
+: TEST-SUMTYPE ( -- )
+   TEST-INIT
+   s" sumtype-session" [: INITIALIZE ;]
+   [: s" definition-sumtype" [: SUMTYPE-DEF-TURNS ;] TALK
+      s" rename-sumtype" [: SUMTYPE-RENAME-TURNS ;] TALK
+      s" rename-variant-definer" [: VARIANT-DEFINER-RENAME-TURNS ;] TALK ;] SESSION-RUN
+   SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
+   T-REPORT ;
+
+\ These rooted cases share one initialize and a freshly written fixture tree.
+: WORKSPACE-CASES ( -- )
+   s" references-unverified" [: REFS-UNV-TURNS ;] TALK
+   s" references-partial-dependency" [: REFS-DEP-TURNS ;] TALK
+   s" references-partial-edit" [: REFS-PARTIAL-EDIT-TURNS ;] TALK
+   s" references-refused-selection" [: REFS-REFUSED-TURNS ;] TALK
+   s" references-undiscoverable" [: REFS-LD-TURNS ;] TALK
+   s" references-unsaved" [: REFS-UNSAVED-TURNS ;] TALK
+   s" references-digest" [: REFS-DIGEST-TURNS ;] TALK
+   s" references-stale" [: REFS-STALE-TURNS ;] TALK
+   s" references-requester" [: REFS-REQ-TURNS ;] TALK
+   s" references-reaching" [: REFS-RCH-TURNS ;] TALK
+   s" references-fragment" [: REFS-FRG-TURNS ;] TALK
+   s" references-conflict" [: REFS-CNF-TURNS ;] TALK
+   s" references-engine" [: REFS-ENG-TURNS ;] TALK
+   s" references-engine-image" [: REFS-IMG-TURNS ;] TALK
+   s" references-package" [: REFS-PKG-TURNS ;] TALK
+   s" references-visits" [: REFS-VIS-TURNS ;] TALK
+   s" references-primitive" [: PRIM-REF-TURNS ;] TALK
+   s" references-primitive-uppercase" [: PRIM-UPPER-TURNS ;] TALK
+   s" references-primitive-wave" [: PRIM-WAVE-TURNS ;] TALK
+   s" references-primitive-batch-failure" [: PRIM-BATCH-FAIL-TURNS ;] TALK
+   s" references-primitive-declaration" [: PRIM-DECL-TURNS ;] TALK
+   s" references-primitive-source-changed" [: PRIM-MISSING-TURNS ;] TALK
+   s" references-primitive-coverage" [: PRIM-COVER-TURNS ;] TALK
+   s" references-primitive-conflict" [: PRIM-CONFLICT-TURNS ;] TALK
+   s" references-source-backed-builtin" [: REFS-BUILTIN-TURNS ;] TALK
+   s" references-source-backed-other" [: REFS-BUILTIN-OTHER-TURNS ;] TALK
+   s" rename-workspace" [: RENAME-WS-TURNS ;] TALK
+   s" rename-uncovered" [: RENAME-LD-TURNS ;] TALK
+   s" rename-unverified" [: RENAME-UNV-TURNS ;] TALK
+   s" rename-outside" [: RENAME-OUT-TURNS ;] TALK
+   s" rename-reaching" [: RENAME-RCH-TURNS ;] TALK
+   s" rename-fragment" [: RENAME-FRG-TURNS ;] TALK
+   s" rename-conflict" [: RENAME-CNF-TURNS ;] TALK
+   s" rename-engine" [: RENAME-ENG-TURNS ;] TALK
+   s" rename-engine-image" [: RENAME-IMG-TURNS ;] TALK
+   s" rename-package" [: RENAME-PKG-TURNS ;] TALK
+   s" rename-visits" [: RENAME-VIS-TURNS ;] TALK
+   s" rename-export" [: RENAME-EXP-TURNS ;] TALK
+   s" rename-open" [: RENAME-OPEN-TURNS ;] TALK ;
+
+: SPECIAL-CASES ( -- )
+   s" references-workspace" [: REFS-WS-TURNS ;] TALK
+   s" references-folders-empty" [: REFS-FE-TURNS ;] TALK
+   s" hover-plaintext" [: HOVER-PLAIN-TURNS ;] TALK
+   s" document-symbol-after-change" [: OUTLINE-AFTER-CHANGE-TURNS ;] TALK
+   s" references-eof" [: REFS-EOF-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT
+   s" references-fault" [: REFS-FAULT-TURNS ;] [: REFS-CUT-AFTER ;] TALK-CUT ;
+
+: DEFAULT-CASES ( -- )
+   s" unknown-method" [: UNKNOWN-METHOD-TURNS ;] TALK
+   s" ids" [: IDS-TURNS ;] TALK
+   s" body-not-json" [: BODY-NOT-JSON-TURNS ;] TALK
+   s" invalid-request" [: INVALID-REQUEST-TURNS ;] TALK
+   s" sync" [: SYNC-TURNS ;] TALK
+   s" malformed-params" [: MALFORMED-PARAMS-TURNS ;] TALK
+   TEST-DIAGNOSTICS
+   TEST-SYMBOLS
+   TEST-OUTLINES
+   TEST-DEFINITIONS
+   TEST-HIGHLIGHTS
+   TEST-TOKENS
+   TEST-IDENTITIES
+   REFS-PROBE
+   TEST-COMPLETIONS
+   TEST-LINKS
+   WORKSPACE-REACHING
+   TEST-REFERENCES
+   TEST-RENAMES
+   TEST-CANCELS ;
+
+: HOVER-CASES ( -- )
+   TEST-HOVERS
+   s" cancel-hover" [: CANCEL-HOVER-TURNS ;] TALK ;
 
 : TEST ( -- )
    TEST-INIT
@@ -7109,30 +7714,17 @@ public
    TEST-BEFORE-INITIALIZE
    TEST-INITIALIZE-TWICE
    TEST-AFTER-SHUTDOWN
-   TEST-UNKNOWN-METHOD
-   TEST-IDS
-   TEST-BODY-NOT-JSON
-   TEST-INVALID-REQUEST
-   TEST-SYNC
-   TEST-MALFORMED-PARAMS
    TEST-FRAME-FORMS
    TEST-MALFORMED-FRAMES
    TEST-TRUNCATED-FRAMES
    TEST-STDOUT-CLOSED
-   TEST-DIAGNOSTICS
-   TEST-SYMBOLS
-   TEST-OUTLINES
-   TEST-DEFINITIONS
-   TEST-HOVERS
-   TEST-HIGHLIGHTS
-   TEST-TOKENS
-   TEST-IDENTITIES
-   TEST-COMPLETIONS
-   TEST-LINKS
-   WORKSPACE-REACHING
-   TEST-REFERENCES
-   TEST-RENAMES
-   TEST-CANCELS
+   TEST-CANCEL-SHUTDOWN
+   s" lsp-session" [: INITIALIZE ;] [: DEFAULT-CASES ;] SESSION-RUN
+   s" hover-session" [: MARKDOWN-CLIENT ;] [: HOVER-CASES ;] SESSION-RUN
+   true WORKSPACE? !
+   s" workspace-session" [: WORKSPACE-INIT ;] [: WORKSPACE-CASES ;] SESSION-RUN
+   false WORKSPACE? !
+   SPECIAL-CASES
    SB-RESET s" artifact: " SB-APPEND DIR$ SB-APPEND SB$ type cr
    T-REPORT ;
 

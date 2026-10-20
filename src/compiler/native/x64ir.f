@@ -237,9 +237,10 @@ public
    s" x64" ;
 
 \ Every consumer compares the version exactly, so a table with a form and one
-\ without are two different tables. MINOR 2 added the scalar double forms.
+\ without are two different tables. MINOR 2 added the scalar double forms;
+\ MINOR 3 added the tail callee's input and result counts.
 0 constant MAJOR
-2 constant MINOR
+3 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )        XBITS ;
@@ -604,7 +605,9 @@ private
 10 constant K-FUN
 11 constant K-COND
 12 constant K-THROW-ENTRY
-13 constant KEYS
+13 constant K-TAIL-IN
+14 constant K-TAIL-OUT
+15 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -621,6 +624,8 @@ private
       K-FUN        of s" x64.fun" endof
       K-COND       of s" x64.cond" endof
       K-THROW-ENTRY of s" x64.throw-entry" endof
+      K-TAIL-IN of s" x64.tail-in" endof
+      K-TAIL-OUT of s" x64.tail-out" endof
       E-X64IR-DIALECT throw
    endcase ;
 
@@ -768,6 +773,12 @@ public
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ENTRY KEY-BIND ;
 
+: KEY-TAIL-IN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-TAIL-IN KEY-BIND ;
+
+: KEY-TAIL-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-TAIL-OUT KEY-BIND ;
+
 \ Its own key, because two passes recognise a tail branch by its ATTRIBUTES and
 \ a trap under `x64.entry` would BE one to both of them.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
@@ -852,6 +863,7 @@ public
    c b GPR-TYPE  c b FPR-TYPE  c b MEM-TYPE
    c b KEY-SLOT  c b KEY-FRAME
    c b KEY-DSLOT  c b KEY-DBYTES  c b KEY-DBACK
+   c b KEY-TAIL-IN  c b KEY-TAIL-OUT
    NDIALECT-OPTSYM:ABSENT
    c b KEY-ENTRY  c b KEY-TRAP-ENTRY
    c b KEY-ADDR  c b KEY-SHIFT
@@ -1587,15 +1599,16 @@ private
    c b X64IR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ A TERMINATOR and not a call: `jmp rel32` to the callee, which returns to this
-\ routine's own caller. It carries NO adjustment, which is what makes it one
-\ instruction: the selector only chooses it where the pointer already stands at
-\ the callee's entry base.
+\ A terminator: publish the callee's actual argument width and jump to its
+\ entry. The callee returns to this routine's own caller.
 : DEF-TAILCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b X64IR-OPCODE:TAILCALL OPCODE IR-SCHEMA:BEGIN-OP
    k IR-SCHEMA:ADD-OPERAND
    c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-TAIL-IN IR-SCHEMA:ADD-ATTR
+   c b KEY-TAIL-OUT IR-SCHEMA:ADD-ATTR
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
    IR--SCHEMA-EFFECT:WRITE DSTACK-TERM-MEM
    true IR-SCHEMA:SET-TRAP
    TARGET

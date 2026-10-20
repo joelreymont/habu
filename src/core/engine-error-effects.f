@@ -18,6 +18,7 @@ PPRIM: ENGINE-ERROR STACK-BOUNDS PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR CALLBACK PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR POLICY PE-N PE-OUT PPRIM;
 PPRIM: ENGINE-ERROR OVERLAY-OPEN PE-N PE-OUT PPRIM;
+PPRIM: DEF-OCC E-STALE PE-N PE-OUT PPRIM;
 \ The `using` failure codes, which the Habu loop's checked bodies throw
 \ (src/habu/packages.f, src/habu/outer.f): without these rows
 \ src/habu/interpret.f does not load on a from-source prefix boot

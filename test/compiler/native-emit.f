@@ -317,6 +317,31 @@ private
    WBND [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
    $910043FF T= TTRUE TTRUE $D10043FF T= ;
 
+\ A frame in the contract's top page needs both immediate halves. The store
+\ and load address its highest owned cell; only the allocated transfer register
+\ varies, so the exact address and offset fields are pinned independently.
+: MASKED-WORD? ( n n -- bool )
+   {: want:n mask:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ mask and want = if true unloop exit then
+   loop
+   false ;
+
+: WIDE-FRAME-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   WIDE-FRAME-EMITTED
+   $D1401FFF HAS-WORD?
+   $D13FC3FF HAS-WORD?
+   $913FC3FF HAS-WORD?
+   $91401FFF HAS-WORD?
+   $F93FF7E0 $FFFFFFE0 MASKED-WORD?
+   $F97FF7E0 $FFFFFFE0 MASKED-WORD? ;
+
+: WIDE-FRAME-CASE ( -- )
+   s" a top-page frame reserves, accesses and restores its whole range"
+   T-LABEL
+   WBND [: WIDE-FRAME-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
 \ ---- the same program, written again instead of put away ---------------------
 : REMAT-EMIT-BODY ( IR-CTX:ctx -- n n n )
    REMAT-EMITTED
@@ -608,12 +633,15 @@ create CHILD-ERR CHILD-CAP allot
    M-FREEZE {: m:IR-BUILD:module :}
    c m 0 4 NFIX:FINISH ;
 
-: DATA-ADDR-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+: DATA-ADDR-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
    c A64-NEW BIND-RA BIND-RAV BIND-EMIT
    s" DATAADDR" 0 1 OPEN-FUN
    A64IR-OPCODE:DATAADDR M-OPEN M-RESULT+
    CC BB CC BB A64IR:KEY-DATA-OFFSET
    CC BB DATA-SIZE A64IR:DATA-OFFSET-ATTR IR-BUILD:ADD-ATTR
+   CC BB CC BB A64IR:KEY-ORIGIN
+   CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE M-RET CLOSE-FUN
    c EMIT-BUILT
    s" DATA addresses above 16 MiB keep a contiguous three-instruction carrier" T-LABEL
@@ -749,6 +777,7 @@ public
    TWO-FUNS-CASE
    DATA-ADDR-CASE
    SPILL-CASE
+   WIDE-FRAME-CASE
    REMAT-EMIT-CASE
    SECOND-CASE
    RUN-CHILD-CASE

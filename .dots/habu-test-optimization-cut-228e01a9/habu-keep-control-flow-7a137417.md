@@ -3,7 +3,7 @@ title: Keep control-flow depth per definition and quotation
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-02T09:33:57.627182+02:00\""
+created-at: "2026-10-02T09:33:57.627182+02:00"
 closed-at: "2026-10-14T19:44:53.059046+03:00"
 close-reason: "Current habu2.f resets CFSTK depth through PROT-EMIT:LCF on compile recovery and checks CFK-QUOT at J-SEMIQUOT; runtime-regression-test.f exercises mismatched quotation/if through real load path."
 ---

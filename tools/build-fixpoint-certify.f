@@ -22,6 +22,9 @@ require tools/build-certify.f            \ the report and census lines
 package BUILD-FIXPOINT-CERTIFY
 private
 
+\ The prefix rewind removes the checker that certified this driver.
+TRUSTED: REWIND-CHECK-OFF ( -- ) 0 set-check ;
+
 $10000 constant DIAG-CAP
 create DIAG DIAG-CAP allot
 variable DIAG-U
@@ -58,9 +61,10 @@ public
    then
    s" " 0 die ;
 
+' FINISH
+REWIND-CHECK-OFF
 ;package
 
-' BUILD-FIXPOINT-CERTIFY:FINISH
 include src/habu/prefix-rewind.f
 CHECKER-END-PACKAGE
 execute

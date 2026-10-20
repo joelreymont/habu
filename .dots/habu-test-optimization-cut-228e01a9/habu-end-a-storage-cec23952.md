@@ -3,7 +3,7 @@ title: End a storage name and first type token at the line
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T14:12:40.492260+02:00\""
+created-at: "2026-10-02T14:12:40.492260+02:00"
 closed-at: "2026-10-14T19:46:58.694384+03:00"
 close-reason: 62f06d9c ends storage declarations at their line; current STORAGE-LINE-TOKEN and SCAN-LINE-TOKEN share the rule, with cross-line name/type cases in c2-memory-scope-refusals.f and gate-diagnostics-lib.f.
 ---

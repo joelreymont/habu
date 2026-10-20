@@ -33,17 +33,22 @@ private
 \ Compiled while `dup` and `+` are the engine's words.
 : EARLY-PAIR ( -- n n ) 5 dup ;
 : EARLY-SUM ( -- n ) 5 3 + ;
+: EARLY-MIN ( -- n ) 5 3 min ;
 
 ;package
 
 STRUCTURE ubrec FIELD v n ;STRUCTURE
 1 TYPED-BUFFER UB-RECS ubrec
+create UB-BYTE 1 allot
+$11 UB-BYTE c!
 
 \ Redefined while `dup` and `+` are still the engine's words.
 undefine @
 : @ ( n -- n n ) dup ;
 undefine !
 : ! ( n n -- n ) + ;
+undefine c!
+: c! ( u8 ptr u8 -- ) 2drop ;
 undefine ?dup
 : ?dup ( n -- n n ) dup ;
 undefine record-at
@@ -53,6 +58,8 @@ undefine dup
 : dup ( n -- n ) 100 + ;
 undefine +
 : + ( n n -- n ) - ;
+undefine min
+: min ( n n -- n ) drop drop 77 ;
 
 package UNDEFINE-BINDING-TEST
 
@@ -77,8 +84,12 @@ s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 
 : UB-SUM ( -- n ) 5 3 + ;
 : UB-SUM-ARGS ( n n -- n ) + ;
 : UB-SUM-LOCALS ( n n -- n ) {: a:n b:n :} a b + ;
+: UB-MIN ( n n -- n ) min ;
 : UB-FETCH ( -- n n ) 5 @ ;
 : UB-STORE ( -- n ) 2 3 ! ;
+1 set-tier
+: UB-BYTE-STORE ( -- u8 ) $22 UB-BYTE c! UB-BYTE c@ ;
+0 set-tier
 : UB-QDUP ( -- n n ) 5 ?dup ;
 : UB-REC ( ptr ubrec -- n ) 0 record-at ;
 
@@ -86,6 +97,7 @@ s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 
    s" a body compiled before the redefinition keeps the engine word" T-LABEL
    EARLY-PAIR 5 T= 5 T=
    EARLY-SUM 8 T=
+   EARLY-MIN 3 T=
    s" a redefined operator spelling is the new word at every operand" T-LABEL
    UB-DUP 105 T=
    5 UB-DUP-ARG 105 T=
@@ -93,9 +105,12 @@ s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 
    UB-SUM 2 T=
    5 3 UB-SUM-ARGS 2 T=
    5 3 UB-SUM-LOCALS 2 T=
+   s" a redefined min uses the new dictionary record" T-LABEL
+   5 3 UB-MIN 77 T=
    s" a redefined engine word runs as the new word" T-LABEL
    UB-FETCH 5 T= 5 T=
    UB-STORE 5 T=
+   UB-BYTE-STORE $11 T=
    UB-QDUP 5 T= 5 T=
    0 UB-RECS UB-REC 42 T= ;
 

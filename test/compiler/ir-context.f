@@ -405,25 +405,6 @@ variable EP-BEFORE
    BND [: NEST-OUTER ;] IR-CTX:WITH-CONTEXT
    1 T= TTRUE TTRUE ;
 
-\ ---- unbound module slots are fail-closed ------------------------------------
-: UB-SRC-BODY ( IR-CTX:ctx -- )
-   IR-CTX:SOURCES@ ;
-
-: UB-SRC ( -- )
-   BND [: UB-SRC-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: UB-DIAG-BODY ( IR-CTX:ctx -- )
-   IR-CTX:DIAG@ ;
-
-: UB-DIAG ( -- )
-   BND [: UB-DIAG-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-: UB-WIT-BODY ( IR-CTX:ctx -- )
-   IR-CTX:WITNESSES@ ;
-
-: UB-WIT ( -- )
-   BND [: UB-WIT-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 \ ---- registry depth: exhaustion, and healing by the enclosing exit -----------
 defer DEEP-STEP ( n IR-CTX:ctx -- n )
 
@@ -453,12 +434,6 @@ defer DEEP-STEP ( n IR-CTX:ctx -- n )
 \ accounting stays clean.
 : HARNESS-BODY ( IR-CTX:ctx -- )
    drop
-   s" an unbound source-registry slot rejects use" T-LABEL
-   [: UB-SRC ;] E-IR-CTX-UNBOUND TTHROWSQ
-   s" an unbound diagnostic-sink slot rejects use" T-LABEL
-   [: UB-DIAG ;] E-IR-CTX-UNBOUND TTHROWSQ
-   s" an unbound witness-allocator slot rejects use" T-LABEL
-   [: UB-WIT ;] E-IR-CTX-UNBOUND TTHROWSQ
    s" an aborted context still released its mapping" T-LABEL
    ACCT-PROBE
    s" nesting past the registry capacity is a named error" T-LABEL
@@ -494,7 +469,7 @@ variable ABANDONED
    dup IR-CTX:SERIAL ABANDONED !
    dup $200000 IR-CTX:SCRATCH-TAKE drop $5A swap c!
    dup $300000 IR-CTX:SCRATCH-TAKE drop $6B swap c!
-   IR-CTX:SOURCES@ ;
+   0 IR-CTX:SCRATCH-TAKE 2drop ;
 
 : THROW-RUN ( -- )
    BND [: THROW-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -508,14 +483,14 @@ variable ABANDONED
 
 : ABANDON-CASES ( -- )
    s" a body that throws reports its own error" T-LABEL
-   [: THROW-RUN ;] E-IR-CTX-UNBOUND TTHROWSQ
+   [: THROW-RUN ;] E-IR-CTX-SIZE TTHROWSQ
    s" and its context is retired anyway: the serial it named is not live" T-LABEL
    ABANDONED @ IR-CTX:SERIAL-LIVE? TFALSE
    s" more caught failures than the registry holds do not fill it" T-LABEL
    THROW-MANY
    TDEPTH-MAX DEEP-RUN 0 T=
    s" and the error a body throws after them is still its own" T-LABEL
-   [: THROW-RUN ;] E-IR-CTX-UNBOUND TTHROWSQ ;
+   [: THROW-RUN ;] E-IR-CTX-SIZE TTHROWSQ ;
 
 \ ---- the checker seals the handle family -------------------------------------
 : CHECKER-CASES ( -- )

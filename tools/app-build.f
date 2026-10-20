@@ -4,7 +4,7 @@ require src/lib/errors.f
 require src/lib/fs.f
 require src/habu/app-image.f
 require src/os/script-argv.f
-require tools/native-file-cache.f
+require tools/hb-build-core.f
 
 package APP-BUILD
 private
@@ -14,6 +14,7 @@ variable SAVED-ROOT-U
 create INPUTS-PATH FS-PATH-CAP allot
 variable INPUTS-U
 variable SAVED-RUN
+variable REPORT
 
 \ MAIN exists only after the application has loaded. This fixed source defines
 \ its startup continuation then passes its typed execution token to START!.
@@ -40,26 +41,30 @@ variable SAVED-RUN
    FS-PATH-CAP 0 ?do 0 INPUTS-PATH i + c! loop
    0 INPUTS-U ! ;
 
-: BUILD ( bool -- )
-   {: report:bool :}
+: PREPARE ( -- )
    SCRIPT-ARGC 2 <> if
       s" app-build: source and output paths are required" 74 die
    then
-   NCOMP:SESSION-LIVE? if IR-CTX:SESSION-CLOSE then
+   NCOMP:SESSION-LIVE? if IR-CTX:SESSION-CLOSE then ;
+
+: LOAD ( -- )
    SAVED-RUN @ 0<> if
       0 SAVED-RUN !
-      0 SCRIPT-ARGV$ s" repl" INPUTS$
-      report if
-         NFILE-CACHE:LOAD-WITH-INPUTS
-      else
-         NFILE-CACHE:LOAD-WITH-INPUTS-QUIET
-      then
+      0 SCRIPT-ARGV$ INPUTS$ REPORT @ 0<> NFILE-CACHE:APP-LOAD
       CLEAR-INPUTS
    else
-      0 SCRIPT-ARGV$ s" repl" NFILE-CACHE:LOAD
-   then
+      0 SCRIPT-ARGV$ NULL-PTR 0 true NFILE-CACHE:APP-LOAD
+   then ;
+
+: FINISH ( -- )
    STARTUP
    1 SCRIPT-ARGV$ APP-IMAGE:SAVE ;
+
+: BUILD ( bool -- )
+   REPORT !
+   s" repl" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
+      ['] PREPARE ['] LOAD ['] FINISH BUILD-CORE:WITH {: rc:n :}
+   rc 0<> if rc throw then ;
 
 public
 
@@ -76,7 +81,7 @@ public
 : RUN ( -- )
    \ APP-IMAGE:SAVE prepares capture after the application's source load.
    \ Preparing here erases SOURCE-PRODUCER's observed preloaded reads before
-   \ NFILE-CACHE:LOAD includes that history in its object key.
+   \ APP-LOAD includes that history in its FILE object key.
    true ['] BUILD EXECUTABLE-BUILD:WITH ;
 
 : RUN-SAVED ( -- )

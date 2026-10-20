@@ -58,8 +58,6 @@ variable SH-E                        \ the map's emission last copied
 variable SH-AT                       \ where its bytes start in the shadow code
 variable SH-LEN                      \ and how many there are
 variable SH-PREV                     \ the record filed before this one
-variable SH-SHIP-N                   \ the shipped records numbered so far
-DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
 
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
@@ -104,30 +102,6 @@ DYNAMIC-BUFFER SH-ROWS n             \ capture record -> its shipped row, or -1
    s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
    s"  is live, and the capture ships neither its record nor one sharing its emission" type cr
    s" aot-capture: a live shadow routine no shipped record carries" 74 die ;
-
-\ ---- the shipped rows -----------------------------------------------------------
-\ ACAP-COMPACT-ONE gives a record a row of the compact table exactly when it sets
-\ the record's named bit, in capture order, so a record's row is the count of
-\ shipped records below it; ACAP-PROVE-RECS, which CAPTURE runs after the last
-\ change to either, has proved the count over the window is the table's.
-: SH-NUMBER ( -- )
-   ACAP-REC-ALL @ {: n:n :}
-   n SH-ROWS-RESERVE
-   0 SH-SHIP-N !
-   n 0 ?do
-      i ACAP-NAMED-BIT @ 0<> if
-         SH-SHIP-N @ i SH-ROWS !  1 SH-SHIP-N +!
-      else
-         -1 i SH-ROWS !
-      then
-   loop ;
-
-\ The shipped row of dictionary record idx, or -1 when it lies outside the window
-\ or the capture retires or strips it.
-: SH-SHIPPED ( n -- n )
-   ACAP-DICT>CAP {: k:n :}
-   k 0 < if -1 exit then
-   k SH-ROWS @ ;
 
 \ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
@@ -313,7 +287,6 @@ public
    AOT-SHADOW:RESET
    NSHADOW:OPEN? 0= if exit then
    SH-ORDER
-   SH-NUMBER
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
 

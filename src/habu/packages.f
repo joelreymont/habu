@@ -65,20 +65,31 @@ $4000 constant PKG-CODE-RESERVE
    ndict@ DICT-CAP < if exit then
    PKG-DICT-FULL ;
 
-\ A name past DNAME-INL bytes is copied to CP, 4-aligned, below the code
-\ ceiling (habu2.f DEFWRITE:NAME-ROOM). The comparisons are unsigned, so a CP
-\ already at the ceiling refuses.
-: PKG-FITS? ( n -- bool ) {: u:n :}
+\ A long name copied to CP takes one whole target code slot. Both names an
+\ export writes must fit before its checker declaration becomes pending.
+: PKG-CODE-SLOT ( -- n )
+   HB-TARGET-LINUX-X86-64? if 16 else 4 then ;
+
+: PKG-CODE-SPAN ( n -- n )
+   dup DNAME-INL <= if drop 0 exit then
+   PKG-CODE-SLOT {: slot:n :}
+   slot 1- + slot negate and ;
+
+: PKG-FITS-AFTER? ( n n -- bool ) {: u:n used:n :}
    u DNAME-INL U> 0= if true exit then
    dbase@ REGION + PKG-CODE-RESERVE - {: ceil:n :}
    ceil cp@ U> 0= if false exit then
    ceil cp@ - {: room:n :}
-   room u U>  room u 3 + -4 and U>  and ;
+   room used U> 0= if false exit then
+   room used - {: left:n :}
+   left u PKG-CODE-SPAN U> ;
 
-: PKG-CODE-ROOM ( ptr u8 n -- ) {: a:ptr u:n :}
-   u PKG-FITS? if exit then
+: PKG-CODE-ROOM-AFTER ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
+   u used PKG-FITS-AFTER? if exit then
    s" hb: code space full at: " SAY
    a u SAY PKG-RC-CODE-FULL THROW-AT ;
+
+: PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
 \ ---- the checker's declaration operations (habu2.f DECL-OWNER) ---------------
 \ The operation at off in the owner record a dispatch cell names, 0 when there
@@ -93,6 +104,7 @@ $4000 constant PKG-CODE-RESERVE
 \ signatures called here.
 CAST: PKG-AS-ACTION ( n -- [ -- ] )
 CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
+CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
 \ `package`, `public`, `private` and `;package` notify the target checker
 \ alone (habu2.f C-CALL-CHECKER-PACKAGE and its siblings).
@@ -121,13 +133,22 @@ CAST: PKG-AS-NAME-ACTION ( n -- [ ptr u8 n -- ] )
    target own = if exit then
    TOKEN$ target PKG-AS-NAME-ACTION execute ;
 
-\ `export` asks the checker by name instead (habu2.f C-CALL-CHECKER-EXPORT):
-\ checker-export in the global wordlist, and without one the process ends
-\ with that name.
+\ An actual export names the source checker's declaration callback. A direct
+\ CHECKER-EXPORT call only adds a checker row and has no engine alias to bind.
 : PKG-CHECK-EXPORT ( -- )
-   s" checker-export" 0 WL-PROBE {: rec:ptr :}
-   rec XREF-FOUND? 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
-   TOKEN$ rec XREF-START PKG-AS-NAME-ACTION execute ;
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
+      {: xt:n :}
+   xt 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
+   TOKEN$ xt PKG-AS-NAME-ACTION execute ;
+
+: PKG-NOTIFY-EXPORT ( ptr u8 n n -- )
+   {: operand:ptr operand-u:n ord:n :}
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @
+      dup NULL-PTR = if drop exit then {: owner:ptr :}
+   owner 8 - CELL-VIEW @ CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF CELL + < if exit then
+   owner CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF + CELL-VIEW @ {: xt:n :}
+   xt 0= if exit then
+   operand operand-u ord xt PKG-AS-EXPORT-ACTION execute ;
 
 \ ---- package, public, private, ;package (habu2.f C-PACKAGE to C-END-PACKAGE) -
 \ The namespace row the token names, or XREF-NULL.
@@ -332,7 +353,6 @@ variable USE-FLOOR
 \ (habu2.f C-EXPORT-CLAUSE-RECORD).
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
-   a u PKG-CODE-ROOM
    a u k get-current alias-record ;
 
 \ In a package, publish an existing word under its tail into the current
@@ -345,6 +365,7 @@ variable USE-FLOOR
    PKG-NAME
    OVERLAY-GUARD
    PKG-EXPORT-SOURCE {: src:ptr :}
+   TOKEN$ {: operand:ptr operand-u:n :}
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
    ta tu get-current WL-PROBE XREF-FOUND? if
@@ -352,11 +373,16 @@ variable USE-FLOOR
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then
-   PKG-CHECK-EXPORT
    get-current PKG-OPEN-WID
    ta tu PKG-CODE-ROOM
+   clause 0 >= if
+      clause XREF-REC XREF-NAME$ tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER
+   then
+   PKG-CHECK-EXPORT
+   ndict@ {: ord:n :}
    ta tu src PKG-INDEX get-current alias-record
-   clause 0 >= if clause PKG-CLAUSE-ALIAS then ;
+   clause 0 >= if clause PKG-CLAUSE-ALIAS then
+   operand operand-u ord PKG-NOTIFY-EXPORT ;
 
 \ ---- the package keywords ----------------------------------------------------
 \ The engine's EM-INTERPRET-DEFINE-KEYWORDS rows for packages, matched as

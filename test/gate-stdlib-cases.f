@@ -13,7 +13,42 @@ using TEST
 \ must justify its isolation or reduce measured suite time, including any
 \ duplicated builds or process setup (test/suite-budget.f keeps the limits).
 
-\ Diagnostic modes run many fresh checker processes and need no shared image.
+\ These long rows need no keyed image, including their child load paths.
+\ Start them before the first image-dependent row holds the registry, so
+\ they keep the pool busy while the compiler bundle builds.
+SUITE check-cli-boundary
+   tools/check-test.f
+;SUITE
+
+SUITE hb-build-aot-image
+   tools/hb-build-aot-image-test.f
+;SUITE
+
+SUITE stripped-pool-reach
+   test/stripped-pool-reach.f
+;SUITE
+
+SUITE hb-build-repl-image
+   tools/hb-build-repl-image-test.f
+;SUITE
+
+SUITE check-drivers
+   tools/check-drivers-test.f
+;SUITE
+
+SUITE dictionary-capacity
+   test/dictionary-capacity-e2e.f
+;SUITE
+
+SUITE xml-owner-consumer
+   test/xml-owner-e2e.f
+;SUITE
+
+SUITE engine-stack-machine
+   test/engine-stack-machine.f
+;SUITE
+
+\ Diagnostic modes share their outer checker and need no keyed image.
 \ Start them early so their serial checks overlap the other suite rows.
 SUITE diag-position
    test/diag-position-test.f
@@ -30,8 +65,7 @@ SUITE native-build-entry
 ;SUITE
 
 \ The positive hb-build AOT checks are two rows of about 28 s each that share no
-\ state and need no keyed image, so they start at once, beside the image build
-\ rows, and add their work to the slots the whitebox hold below leaves idle.
+\ state and need no keyed image, so they also run before the first image wait.
 SUITE native-gate-aot-positive-bundle
    test/gate-aot-positive-bundle.f
 ;SUITE
@@ -42,7 +76,7 @@ SUITE native-gate-aot-positive-preseed
 
 \ The fixpoint fixtures reuse the suite's whitebox compiler image and the
 \ fixture writer and cold host. This row waits for those images to settle.
-\ The stripped-entry row waits for the saved AOT maker image.
+\ The stripped-entry row waits for the saved AOT builder image.
 SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
@@ -71,6 +105,10 @@ SUITE ffi-callback-file-cache
 \ ordinary images into its owned source tree, then tests both consumers.
 SUITE c2-memory
    test/c2-memory-e2e.f
+;SUITE
+
+SUITE native-donor-map
+   test/compiler/native-donor-map-e2e.f
 ;SUITE
 
 SUITE c2-view-record
@@ -154,10 +192,6 @@ SUITE hb-build-repl-twin
    tools/hb-build-repl-twin-test.f
 ;SUITE
 
-SUITE hb-build-repl-image
-   tools/hb-build-repl-image-test.f
-;SUITE
-
 SUITE hb-build-repl-fresh
    tools/hb-build-repl-fresh-test.f
 ;SUITE
@@ -166,8 +200,8 @@ SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE
 
-SUITE hb-build-aot-image
-   tools/hb-build-aot-image-test.f
+SUITE hb-build-aot-inputs
+   tools/hb-build-aot-inputs-test.f
 ;SUITE
 
 SUITE hb-build-aot-cache
@@ -184,9 +218,22 @@ SUITE app-image
 
 SUITE native-file-state
    test/native-file-object-prepared-e2e.f
+   test/native-file-object-strict-e2e.f
    test/native-file-prepared-boundary-e2e.f
    test/native-file-state-e2e.f
    test/native-file-retired-e2e.f
+;SUITE
+
+SUITE native-file-explicit-reclaim
+   test/native-file-explicit-reclaim-e2e.f
+;SUITE
+
+SUITE engine-origin-lookup
+   test/engine-origin-lookup.f
+;SUITE
+
+SUITE cell-body-image
+   test/cell-body-image-e2e.f
 ;SUITE
 
 SUITE native-file-types
@@ -274,6 +321,10 @@ SUITE native-unit-refusals
 \ A package's checker facts survive an artifact boundary.
 SUITE checker-unit-codec
    test/checker-unit-codec-e2e.f
+;SUITE
+
+SUITE cell-body
+   test/cell-body-e2e.f
 ;SUITE
 
 SUITE checker-unit-capture
@@ -416,14 +467,6 @@ SUITE tool-boundary-lints
    tools/reserved-name-lint-test.f
    tools/bundle-lib-test.f
    tools/json-only-test.f
-;SUITE
-
-SUITE check-cli-boundary
-   tools/check-test.f
-;SUITE
-
-SUITE check-drivers
-   tools/check-drivers-test.f
 ;SUITE
 
 SUITE live-verify-source
@@ -625,10 +668,6 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
-SUITE compiler-target-digest-goldens
-   test/compiler/target-digest-goldens.f
-;SUITE
-
 \ The sealed Wasm target, scalar-FP split and function convention.
 SUITE compiler-wasm-target
    test/compiler/wasm-target.f
@@ -816,6 +855,10 @@ SUITE compiler-native-address-spill
 
 SUITE compiler-native-identity-spill
    test/compiler/native-identity-spill.f
+;SUITE
+
+SUITE compiler-native-frame-slot-e2e
+   test/compiler/native-frame-slot-e2e.f
 ;SUITE
 
 SUITE compiler-native-loop-frame-order
@@ -1944,10 +1987,6 @@ SUITE xml-byte-edits
    src/lib/xml-source-test.f
 ;SUITE
 
-SUITE xml-owner-consumer
-   test/xml-owner-e2e.f
-;SUITE
-
 SUITE xml-c2-consumer
    test/c2-xml-consumer-e2e.f
 ;SUITE
@@ -2404,10 +2443,6 @@ SUITE engine-stack-jit
    test/engine-stack-jit.f
 ;SUITE
 
-SUITE engine-stack-machine
-   test/engine-stack-machine.f
-;SUITE
-
 SUITE engine-stack-debugger
    test/engine-stack-debugger.f
 ;SUITE
@@ -2522,6 +2557,11 @@ SUITE fs-lock
 
 SUITE fs-list
    src/lib/fs-list-test.f
+   src/lib/fs-cause-test.f
+;SUITE
+
+SUITE fs-anchored
+   test/fs-anchored-consumer.f
 ;SUITE
 
 SUITE tree-copy
@@ -2688,10 +2728,6 @@ SUITE boot-relocation
    test/boot-relocation-e2e.f
 ;SUITE
 
-SUITE json
-   tools/json-test.f
-;SUITE
-
 SUITE source-discovery
    tools/source-discovery-test.f
 ;SUITE
@@ -2789,6 +2825,10 @@ SUITE profiler-index
    test/prof-index.f
 ;SUITE
 
+SUITE profiler-rewind
+   test/prof-rewind.f
+;SUITE
+
 SUITE perf-map-fixtures
    tools/perf-map-test.f
 ;SUITE
@@ -2799,10 +2839,6 @@ SUITE boot-census
 
 SUITE native-gate-dictionary
    test/gate-dictionary.f
-;SUITE
-
-SUITE dictionary-capacity
-   test/dictionary-capacity-e2e.f
 ;SUITE
 
 SUITE proc-maps
@@ -3075,7 +3111,7 @@ SUITE c2-diagnostics
    test/c2-diagnostics.f
 ;SUITE
 
-SUITE type-field-owner
+WHITEBOX-SUITE type-field-owner
    test/type-field-owner-suite.f
 ;SUITE
 

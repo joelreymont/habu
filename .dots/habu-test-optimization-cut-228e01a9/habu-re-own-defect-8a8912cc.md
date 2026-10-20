@@ -3,7 +3,7 @@ title: Re-own defect comments that cite missing dots
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-03T21:11:09.647423+03:00\""
+created-at: "2026-10-03T21:11:09.647423+03:00"
 closed-at: "2026-10-14T19:43:43.160499+03:00"
 close-reason: Named defect comments audited and re-owned in 9c1770c0; current follow-up dots own remaining separate gaps.
 ---

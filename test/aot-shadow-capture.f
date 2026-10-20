@@ -56,7 +56,7 @@
 
 package AOTSH
 public
-ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PRIVATE-WID
 ;package
 

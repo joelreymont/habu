@@ -3,7 +3,7 @@ title: Load a check subject once, by path
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-01T04:12:40.675977+02:00\""
+created-at: "2026-10-01T04:12:40.675977+02:00"
 closed-at: "2026-10-14T19:51:32.752825+03:00"
 close-reason: The subject is now loaded by canonical path through CHK-APPEND-ENTRY and CHK-BUILD-READER, not pasted into run.f. Current explicit engine-provided policy (ab8b7b27) refuses that input once with located E-ENGINE-PROVIDED rc 64 instead of the old requested rc 0; real duplicate test remains, check-test and load-context cover both modes.
 ---

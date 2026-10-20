@@ -3,7 +3,7 @@ title: Refuse a backslash nominal type name
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T17:35:26.651793+02:00\""
+created-at: "2026-10-01T17:35:26.651793+02:00"
 closed-at: "2026-10-14T19:30:30.911661+03:00"
 close-reason: "Implemented in b39d9bea: nominal names containing backslash are refused consistently by loader and check.f, with documentation and failing-before check fixtures."
 ---

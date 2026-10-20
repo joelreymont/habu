@@ -16,10 +16,8 @@ require src/lib/source.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
 require src/lib/source-lex.f
 require tools/diag-origin-core.f
-require tools/json.f
 require tools/json-only-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f

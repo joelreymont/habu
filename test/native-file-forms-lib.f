@@ -1,4 +1,4 @@
-\ Small applications exercise the ordinary FILE loader in fresh engines.
+\ Small applications exercise ordinary source loading around cached definitions.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -8,6 +8,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/process-cwd.f
+require src/lib/test/subject.f
 require tools/image-size-lib.f
 require test/native-file-app-lib.f
 
@@ -21,6 +22,7 @@ create AT-B-BUF FS-PATH-CAP allot
 create PUT-BUF FS-PATH-CAP allot
 create OUT CAP allot  variable OUT-U
 create ERR CAP allot  variable ERR-U
+create PROGRAM CAP allot  variable PROGRAM-U
 create CUT CAP allot  variable CUT-U
 DYNAMIC-BUFFER IMAGE-A u8
 DYNAMIC-BUFFER IMAGE-B u8
@@ -40,11 +42,15 @@ DYNAMIC-BUFFER IMAGE-B u8
    ROOT$ name nameu PUT-BUF JOIN-PATH PUT-BUF swap body bodyu WRITE-ALL ;
 : CAPTURE ( ptr u8 n ptr u8 n -- n )
    {: exe:ptr exeu:n stdin:ptr stdinu:n :}
+   0 PROGRAM-U ! s" cwd: " PROGRAM CAP PROGRAM-U BUF-APPEND
+   ROOT$ PROGRAM CAP PROGRAM-U BUF-APPEND STR-LF PROGRAM CAP PROGRAM-U BUF-APPEND-C
+   exe exeu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
    exe exeu >LEN ROOT$ >LEN stdin stdinu >LEN
    OUT CAP >LEN ERR CAP >LEN 600000 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
+   PROGRAM PROGRAM-U @ OUT OUT-U @ ERR ERR-U @ rc SUBJECT:RC-TIMED-OUT
    rc ;
 : SUCCESS ( n -- )
    dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
@@ -64,9 +70,6 @@ DYNAMIC-BUFFER IMAGE-B u8
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    product productu AT s" " CAPTURE SUCCESS
    OUT OUT-U @ expected expectu CONTAINS? TTRUE ;
-
-: PROFILE ( -- n n n n )
-   s" cache" AT-A s" /unit.f" NATIVE-FILE-APP:PROFILE ;
 
 : PREFIX ( -- )
    s" dep.f" S\" package FORMS-DEP\npublic\n: NUMBER ( -- n ) 6 ;\n;package\n" PUT
@@ -109,15 +112,13 @@ variable CODE-B-O  variable CODE-B-U
 : BUILD-PAIR ( ptr u8 n ptr u8 n -- )
    {: export:ptr exportu:n imported:ptr importu:n :}
    export exportu BUILD SUCCESS
-   OUT OUT-U @ s" file unit hits 0" CONTAINS? TTRUE
+   OUT OUT-U @ s" definition hits 0" CONTAINS? TTRUE
    imported importu BUILD SUCCESS
-   OUT OUT-U @ s" file unit hits " CONTAINS? TTRUE
-   OUT OUT-U @ s" file unit hits 0" CONTAINS? 0= TTRUE
-   OUT OUT-U @ s" compiled 0" CONTAINS? TTRUE
+   OUT OUT-U @ s" definition hits " CONTAINS? TTRUE
+   OUT OUT-U @ s" definition hits 0" CONTAINS? TFALSE
    export exportu AT-A {: a:ptr au:n :}
    imported importu AT-B {: b:ptr bu:n :}
-   \ The FILE hit can leave inactive scratch different. Compare emitted code
-   \ and live extents, then exercise both applications below.
+   \ Compare emitted code and live extents, then run both applications below.
    a au b bu SAME-CODE? TTRUE
    a au b bu SAME-CUT? TTRUE ;
 
@@ -135,39 +136,33 @@ public
    s" native file forms artifacts: " type ROOT$ type cr ;
 
 : ZERO ( -- )
-   s" definition-free FILE with dependency, provided, and DATA state" START
+   s" source actions retain dependency, provided, and DATA state" START
    s" unit.f" S\" require dep.f\ns\" provided.f\" provided\n27 FORMS-PREFIX:COUNT!\n" PUT
    S\" require provided.f\npackage FORMS-CLIENT\npublic\n: RESULT ( -- n ) FORMS-PREFIX:COUNT@ FORMS-DEP:NUMBER + FORMS-PROVIDED:NUMBER + ;\n;package\n" DOWNSTREAM
    s" zero-export" s" zero-import" BUILD-PAIR
-   PROFILE {: code:n rec:n update:n requires:n :}
-   code 0 T= rec 0 T= update 0 > TTRUE requires 0 > TTRUE
    s" zero-export" s" 46" RUN-PRODUCT
    s" zero-import" s" 46" RUN-PRODUCT
    FINISH ;
 
 : NAMESPACE ( -- )
-   s" namespace-only FILE with zero CODE" START
+   s" namespace initialization remains visible to cached definitions" START
    s" unit.f" S\" package FORMS-EMPTY\n;package\n" PUT
    S\" package FORMS-EMPTY\npublic\n: VALUE ( -- n ) 7 ;\n;package\npackage FORMS-CLIENT\npublic\n: RESULT ( -- n ) FORMS-PREFIX:VALUE FORMS-EMPTY:VALUE + ;\n;package\n" DOWNSTREAM
    s" namespace-export" s" namespace-import" BUILD-PAIR
-   PROFILE {: code:n rec:n update:n requires:n :}
-   code 0 T= rec 0 > TTRUE
    s" namespace-export" s" 17" RUN-PRODUCT
    s" namespace-import" s" 17" RUN-PRODUCT
    FINISH ;
 
 : GLOBAL ( -- )
-   s" ordinary global word FILE and downstream checker" START
+   s" ordinary global definition and downstream checker" START
    s" unit.f" S\" : NUMBER ( -- n ) 42 ;\ns\" global-unit-source-ran\" type cr\n" PUT
    S\" package FORMS-CLIENT\npublic\n: RESULT ( -- n ) NUMBER 1+ ;\n;package\n" DOWNSTREAM
    s" global-export" s" global-import" BUILD-PAIR
-   PROFILE {: code:n rec:n update:n requires:n :}
-   code 0 > TTRUE rec 0 > TTRUE
    s" global-export" s" 43" RUN-PRODUCT
    s" global-import" s" 43" RUN-PRODUCT
    S\" package FORMS-CLIENT\npublic\n: RESULT ( -- n ) NUMBER @ ;\n;package\n" DOWNSTREAM
    s" global-bad" BUILD 70 T=
-   OUT OUT-U @ s" global-unit-source-ran" CONTAINS? 0= TTRUE
+   OUT OUT-U @ s" global-unit-source-ran" CONTAINS? TTRUE
    ERR ERR-U @ s" expected: ptr n actual: n" CONTAINS? TTRUE
    FINISH ;
 

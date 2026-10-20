@@ -3,7 +3,7 @@ title: Resolve pre-pass names against the subject, not the checking tool
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T18:39:44.808811+02:00\""
+created-at: "2026-10-02T18:39:44.808811+02:00"
 closed-at: "2026-10-14T19:46:58.367830+03:00"
 close-reason: 26cef4c7 runs preverify in a child with the engine image; check-core.f states names resolve there, and commit records CLI and in-process fixture agreement.
 ---

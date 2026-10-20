@@ -197,10 +197,50 @@ get-current constant SAT-WID
    s" SAT-TARGET-DATA"
       s" target-word=<unknown>" SAT-REFUSED ;
 
+\ A recorded full carrier can hold a DATA address too. Three such sites would
+\ make a false 12-byte pool plan profitable, although the copier must preserve
+\ each valid 16-byte form. Patch a real code member only in the forked child.
+TRUSTED: SAT-MARK-SITE ( n -- ) addrmap-set ;
+TRUSTED: SAT-PATCH ( n ptr u8 -- ) patch32 ;
+
+: SAT-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :}
+   ok 0= if label labelu 74 die then ;
+
+: SAT-FULL-DATA ( ptr u8 -- ) {: p:ptr :}
+   9 SAT-RESET
+   SAT-CHAIN DATA-VA VA>N ADDRESS-CARRIER:SET-CHAIN
+   4 0 ?do SAT-CHAIN i 4 * + AOT-W32@ p i 4 * + SAT-PATCH loop
+   p AOT-DBASE@ BYTE-VIEW - AOT-DBASE-N + SAT-MARK-SITE ;
+
+: SAT-FULL-POOL ( -- )
+   s" SAT-VALID" SAT-WID XREF-FIND-WL {: rec:ptr :}
+   rec REC-BYTES 48 >= s" full DATA fixture member length" SAT-EXPECT
+   rec REC-CODE-PTR@ {: code:ptr :}
+   3 0 ?do code i 16 * + SAT-FULL-DATA loop
+   1 CLO-TABLES  1 NCLO !
+   code 0 CLO !  48 0 CLO-LEN !  XREF-NULL 0 CLO-REC !
+   DATA-VA VA>N BLOB-SRC !  DATA-VA VA>N 8 + BLOB-END !
+   0 XTC-N !  A64ICODE:ASM-INIT  A64ICODE:LBL MLBL !  COPY-BLOBS
+   A64ICODE:ASM-LEN 48 = s" full DATA carrier length" SAT-EXPECT
+   3 0 ?do
+      A64ICODE:CODE i 16 * + {: p:ptr :}
+      p p 16 + ADDRESS-CARRIER:CHAIN-SIZE 16 =
+         s" full DATA carrier preserved" SAT-EXPECT
+      p ADDRESS-CARRIER:CHAINV DATA-VA VA>N =
+         s" full DATA target preserved" SAT-EXPECT
+   loop ;
+
+: SAT-FULL-POOL-CHECK ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK SAT-FULL-POOL ;package" GE-SRC-LINE
+   GE-EVAL-FORK-CAPTURE
+   s" full recorded DATA carriers through blob writer" GE-EXPECT-OK ;
+
 public
 : SAT-RUN ( -- )
    T-RESET
    SAT-VALID
+   SAT-FULL-POOL-CHECK
    SAT-REFUSALS
    T-REPORT ;
 

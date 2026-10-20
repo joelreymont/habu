@@ -7,13 +7,20 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/memory.f
+require src/habu/layout.f
 require src/habu/xref.f
+require src/habu/code-span.f
 require src/habu/address-carrier.f
 require src/habu/aot-data-cell.f
 require src/habu/sites.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/branch.f
+require src/compiler/native/string.f
+require src/compiler/workspace.f
 require tools/native-unit-capture.f
+require tools/native-file-reference.f
+require tools/native-unit-origin.f
+require tools/native-unit-dependency.f
 require tools/native-unit-file.f
 require tools/native-file-inputs.f
 
@@ -21,23 +28,14 @@ package NUNIT-OBJECT
 
 private
 
-0 constant UNIT-REF
-1 constant PREFIX-REF
-2 constant LOCAL-DATA-REF
-3 constant PREFIX-DATA-REF
-4 constant NULL-REF
-5 constant LITERAL-REF
-\ Exact interior prefix code address, relative to dbase@ and before FIRST-CODE.
-6 constant PREFIX-CODE-REF
-\ Local WID refs use -2-row; sentinels lie below that bounded range.
-0 PROT-WID-MAX - 2 - constant GLOBAL-WID-REF
-GLOBAL-WID-REF 1- constant RETIRED-WID-REF
 32 constant CALL-BYTES
 40 constant ADDR-BYTES
 40 constant SLOT-BYTES
 4 constant INSN-BYTES
 CAST: CODE-BYTES ( n -- ptr u8 )
-CAST: ACTION-XT ( n -- [ -- ] )
+CAST: LITERAL-ATTACH-XT ( n -- [ ptr u8 n n n -- ] )
+defer LITERAL-ATTACH ( ptr u8 n n n -- )
+TYPED-VARIABLE CHECKER-CELLS [ [ ptr u8 n -- ] -- ]
 
 DYNAMIC-BUFFER CODE-BUF u8
 DYNAMIC-BUFFER REC-BUF u8
@@ -87,8 +85,8 @@ variable INPUTS-CHECK-U
 
 \ Each prepared range owns the section bytes that its publication consumes.
 \ Section offsets stay valid while other ranges are prepared or installed.
-16 constant PREP-SECTIONS
-42 cells constant PREP-HEAD
+17 constant PREP-SECTIONS
+50 cells constant PREP-HEAD
 0 constant P-SIZE
 1 constant P-CODE
 2 constant P-REC
@@ -107,6 +105,7 @@ variable INPUTS-CHECK-U
 15 constant P-CHECKER
 DYNAMIC-BUFFER PREP-P ptr u8
 DYNAMIC-BUFFER PREP-U n
+DYNAMIC-BUFFER PREP-CWORK-ID n
 variable PREP-N
 PTR-VARIABLE PREP-ACTIVE
 variable PROJECT-ON
@@ -115,6 +114,8 @@ variable PROJECT-REC
 variable PROJECT-WID
 variable PROJECT-DATA
 variable PREP-CURSOR
+PTR-VARIABLE CWORK-BYTES
+variable CWORK-U
 
 : PREP-ROOM ( n -- ) {: size:n :}
    size 0 < size MEM-MAX-N PREP-CURSOR @ - > or if BAD then
@@ -127,7 +128,7 @@ variable PREP-CURSOR
    block field cells + CELL-VIEW @ ;
 : P! ( n ptr u8 n -- ) {: value:n block:ptr field:n :}
    value block field cells + CELL-VIEW ! ;
-: SECTION-OFF ( n -- n ) PREP-SECTIONS swap 2 * + ;
+: SECTION-OFF ( n -- n ) 16 swap 2 * + ;
 : SECTION$ ( n -- ptr u8 n ) {: slot:n :}
    PREP-ACTIVE @ NULL-PTR = if slot NUNIT-FILE:SECTION$ exit then
    PREP-ACTIVE @ {: block:ptr :}
@@ -155,8 +156,19 @@ variable PREP-CURSOR
    loop
    BAD ;
 
-: PROJECT-RETIRED? ( n -- bool ) {: ord:n :}
-   PREP-N @ 1- 0 ?do
+: PREP-OWNER ( n -- ptr u8 ) {: ord:n :}
+   PREP-N @ 0 ?do
+      i PREP-P @ {: block:ptr :}
+      block NULL-PTR <> if
+         block P-REC P@ {: first:n :}
+         ord first >= ord first block P-REC-U P@ DREC / + < and if
+            block unloop exit
+         then
+      then
+   loop BAD ;
+
+: PROJECT-RETIRED-UPTO? ( n n -- bool ) {: ord:n count:n :}
+   count 0 ?do
       i PREP-P @ {: block:ptr :}
       block NULL-PTR <> if
          block 12 SECTION-OFF 1+ P@ 8 / 0 ?do
@@ -166,13 +178,54 @@ variable PREP-CURSOR
       then
    loop false ;
 
+: PROJECT-RETIRED? ( n -- bool )
+   PREP-N @ 1- 0 max PROJECT-RETIRED-UPTO? ;
+
 : PREFIX-WID ( n -- n ) {: ord:n :}
    ord PREP-RECORD XREF-WORDLIST
    ord PROJECT-RETIRED? if drop XREF-RETIRED-WL then ;
 
+: PROJECT-ROW-WID ( n -- n ) {: ord:n :}
+   ord PREP-RECORD XREF-WORDLIST
+   ord PREP-N @ PROJECT-RETIRED-UPTO? if
+      drop XREF-RETIRED-WL
+   then ;
+
+: PROJECT-NAME$ ( n -- ptr u8 n ) {: ord:n :}
+   ord PREP-RECORD {: rec:ptr :}
+   ord ndict@ < rec XREF-EXT? 0= or if rec XREF-NAME$ exit then
+   ord PREP-OWNER {: block:ptr :}
+   rec XREF-NAME-A BYTE-VIEW NULL-PTR BYTE-VIEW -
+      block P-CODE P@ - {: off:n :}
+   off 0 < off block P-CODE-U P@ >= or if BAD then
+   rec XREF-NAME-LEN {: size:n :}
+   size block P-CODE-U P@ off - > if BAD then
+   block block 0 SECTION-OFF P@ + off + size ;
+
+: PROJECT-NS ( ptr u8 n -- n ) {: pkg:ptr pkgu:n :}
+   PROJECT-REC @ 1- begin dup 0 >= while
+      dup PROJECT-ROW-WID XREF-NAMESPACE-WL = if
+         dup PROJECT-NAME$ pkg pkgu STR=CI if exit then
+      then
+      1-
+   repeat drop -1 ;
+
+: PROJECT-PUBLIC ( n ptr u8 n -- n )
+   {: wid:n name:ptr nameu:n :}
+   PROJECT-REC @ 1- begin dup 0 >= while
+      dup PROJECT-ROW-WID wid = if
+         dup PROJECT-NAME$ name nameu STR=CI if exit then
+      then
+      1-
+   repeat drop -1 ;
+
+: PROJECT-CODE? ( n -- bool ) {: ord:n :}
+   ord PREP-RECORD XREF-START {: entry:n :}
+   entry 0 > entry PROJECT-CODE @ < and ;
+
 : PREP-ALLOC ( -- n )
    PREP-HEAD PREP-CURSOR !
-   13 0 ?do
+   PREP-SECTIONS 0 ?do
       i NUNIT-FILE:SECTION$ nip {: u:n :}
       u PREP-ROOM
    loop
@@ -182,10 +235,12 @@ variable PREP-CURSOR
    3 NUNIT-FILE:SECTION$ nip ADDR-BYTES / CELL PREP-TABLE-ROOM
    PREP-N @ {: id:n :}
    id 1+ PREP-P-RESERVE id 1+ PREP-U-RESERVE
+   id 1+ PREP-CWORK-ID-RESERVE
+   -1 id PREP-CWORK-ID !
    PREP-CURSOR @ MEM-ALLOC-BYTES drop {: block:ptr :}
    PREP-CURSOR @ block P-SIZE P!
    PREP-HEAD PREP-CURSOR !
-   13 0 ?do
+   PREP-SECTIONS 0 ?do
       i NUNIT-FILE:SECTION$ {: src:ptr u:n :}
       PREP-CURSOR @ block i SECTION-OFF P!
       u block i SECTION-OFF 1+ P!
@@ -245,50 +300,6 @@ variable PREP-CURSOR
 : REC-PTR ( -- ptr u8 )
    REC-U @ 0= if NULL-PTR exit then 0 REC-BUF ;
 
-: WID-SLOT ( n -- n ) {: wid:n :}
-   wid 0= if GLOBAL-WID-REF exit then
-   wid XREF-RETIRED-WL = if RETIRED-WID-REF exit then
-   wid WID-FIRST >= if
-      wid WID-FIRST NUNIT-CAPTURE:NEW-WIDS + >= if BAD then
-      -2 wid WID-FIRST - - exit
-   then
-   NUNIT-CAPTURE:FIRST-REC 0 ?do
-      i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
-         rec XREF-PKG-PUBLIC wid = if i 2 * unloop exit then
-         rec XREF-PKG-PRIVATE wid = if i 2 * 1+ unloop exit then
-      then
-   loop
-   BAD ;
-
-: WID-IMPORT ( n -- n ) {: ref:n :}
-   ref 0 >= if
-      ref 2 / {: ord:n :}
-      ord IMPORT-REC @ >= if BAD then
-      ord PREP-RECORD {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
-      ref 1 and 0<> if rec XREF-PKG-PRIVATE else rec XREF-PKG-PUBLIC then exit
-   then
-   ref GLOBAL-WID-REF = if 0 exit then
-   ref RETIRED-WID-REF = if XREF-RETIRED-WL exit then
-   -2 ref - {: row:n :}
-   row 0 < row PROTECTION-U @ >= or if BAD then
-   IMPORT-WID @ row + ;
-
-: PREFIX-ORD? ( n -- n bool ) {: target:n :}
-   NUNIT-CAPTURE:FIRST-REC 0 ?do
-      i XREF-REC {: rec:ptr :}
-      i NUNIT-CAPTURE:PREFIX-WID@ {: wid:n :}
-      wid XREF-NAMESPACE-WL <>
-      wid XREF-RETIRED-WL <> and if
-         rec XREF-START target = if i true unloop exit then
-      then
-   loop
-   0 false ;
-
-: PREFIX-ORD ( n -- n )
-   PREFIX-ORD? if exit then drop BAD ;
-
 : RECORD-ONE ( n -- ) {: row:n :}
    row NUNIT-CAPTURE:FIRST-REC + XREF-REC {: rec:ptr :}
    row DREC * REC-BUF {: dst:ptr :}
@@ -300,17 +311,13 @@ variable PREP-CURSOR
       name CODE-START - dst 24 + LE:U64!
    then
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if
-      rec XREF-PKG-PUBLIC WID-SLOT dst LE:U64!
-      rec XREF-PKG-PRIVATE WID-SLOT dst 8 + LE:U64!
+      rec XREF-PKG-PUBLIC NFILE-REF:REF-WID dst LE:U64!
+      rec XREF-PKG-PRIVATE NFILE-REF:REF-WID dst 8 + LE:U64!
       exit
    then
-   rec XREF-WORDLIST WID-SLOT dst 40 + LE:U64!
+   rec XREF-WORDLIST NFILE-REF:REF-WID dst 40 + LE:U64!
    rec XREF-START {: start:n :}
-   start CODE-START >= start CODE-END < and if
-      start CODE-START - dst LE:U64!
-   else
-      start PREFIX-ORD -1 swap - dst LE:U64!
-   then ;
+   start NFILE-REF:REF-CODE -1 swap - dst LE:U64! ;
 
 : RECORDS-PROFILE ( -- )
    REC-U @ DREC / 0 ?do i RECORD-ONE loop ;
@@ -323,18 +330,10 @@ variable PREP-CURSOR
       old current <> if
          old 0 < current XREF-RETIRED-WL <> or if BAD then
          RETIRE-U @ 8 + RETIRE-BUF-RESERVE
-         i RETIRE-U @ RETIRE-BUF LE:U64!
+         i NFILE-REF:REF-RECORD RETIRE-U @ RETIRE-BUF LE:U64!
          8 RETIRE-U +!
       then
    loop ;
-
-: TARGET-REF ( n -- n n ) {: target:n :}
-   target CODE-START >= target CODE-END < and if
-      UNIT-REF target CODE-START - exit
-   then
-   target PREFIX-ORD? if PREFIX-REF swap exit then drop
-   target dbase@ < target CODE-START >= or if BAD then
-   PREFIX-CODE-REF target dbase@ - ;
 
 : SITE-CK ( n n -- ) {: site:n span:n :}
    site 0 < site INSN-BYTES mod 0<> or if BAD then
@@ -343,13 +342,13 @@ variable PREP-CURSOR
 : CALL-ONE ( n -- ) {: row:n :}
    row NUNIT-CAPTURE:CALL@ {: site:n kind:n target:n :}
    site INSN-BYTES SITE-CK
-   target TARGET-REF {: domain:n ref:n :}
+   target NFILE-REF:REF-CODE {: ref:n :}
    row CALL-BYTES * CALL-BUF {: dst:ptr :}
    site dst LE:U64!
    kind dst 8 + LE:U64!
-   domain dst 16 + LE:U64!
+   0 dst 16 + LE:U64!
    ref dst 24 + LE:U64!
-   domain PREFIX-REF = if
+   target CODE-START < if
       site CODE-START + {: at:n :}
       kind NEMIT:CALL = if at at NBR:BL-WORD
       else kind NEMIT:TAIL = if at at NBR:B-WORD
@@ -378,17 +377,12 @@ variable PREP-CURSOR
    LITERAL-BEST @ 0 < if 0 0 false exit then
    LITERAL-BEST @ LITERAL-ADDEND @ true ;
 
-: ADDRESS-REF ( n n -- n n n ) {: kind:n target:n :}
-   kind A64IR:ADDR-CODE = if target TARGET-REF 0 exit then
+: ADDRESS-REF ( n n -- n ) {: kind:n target:n :}
+   kind A64IR:ADDR-CODE = if target NFILE-REF:REF-CODE exit then
    target LITERAL-ADDRESS if {: ordinal:n addend:n :}
-      LITERAL-REF ordinal addend exit
+      ordinal addend NFILE-REF:REF-LITERAL exit
    then 2drop
-   NUNIT-CAPTURE:FIRST-DATA {: first:n :}
-   target first >= target first DATA-U @ + < and if
-      LOCAL-DATA-REF target first - 0 exit
-   then
-   target DATA-VA VA>N < target first >= or if BAD then
-   PREFIX-DATA-REF target DATA-VA VA>N - 0 ;
+   target CODE-BYTES 0 NFILE-REF:REF-DATA ;
 
 : ADDR-SITE ( n n -- ) {: site:n kind:n :}
    kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
@@ -399,14 +393,14 @@ variable PREP-CURSOR
    carrier 0 CODE-BUF CODE-U @ + ADDRESS-CARRIER:CHAIN-SIZE
       width <> if BAD then
    carrier width ADDRESS-CARRIER:CHAIN-VALUE {: target:n :}
-   kind target ADDRESS-REF {: domain:n ref:n addend:n :}
+   kind target ADDRESS-REF {: ref:n :}
    ADDR-U @ ADDR-BYTES + ADDR-BUF-RESERVE
    ADDR-U @ ADDR-BUF {: dst:ptr :}
    site dst LE:U64!
    kind dst 8 + LE:U64!
-   domain dst 16 + LE:U64!
+   0 dst 16 + LE:U64!
    ref dst 24 + LE:U64!
-   addend dst 32 + LE:U64!
+   0 dst 32 + LE:U64!
    carrier 0 width ADDRESS-CARRIER:SET-CHAIN-VALUE
    ADDR-BYTES ADDR-U +! ;
 
@@ -418,26 +412,17 @@ variable PREP-CURSOR
       i ADDR-BYTES * ADDR-BUF LE:U64@ site = if true unloop exit then
    loop false ;
 
-\ Adapt Phil's DIRECT-CARRIER seam: the source's site map identifies a
-\ non-NPUB address carrier, and its dictionary record identifies its owner.
+\ The site map identifies a non-NPUB address carrier. Its complete chain must
+\ lie inside a newly published dictionary body's code, including the carriers
+\ emitted inside defining words such as PTR-VARIABLE.
 : DIRECT-OWNER? ( n n -- bool ) {: site:n width:n :}
    NUNIT-CAPTURE:RECORDS$ nip DREC / 0 ?do
       NUNIT-CAPTURE:FIRST-REC i + XREF-REC {: rec:ptr :}
       rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
-         rec XREF-START CODE-START site + =
-         rec XREF-CODE-BYTES width 4 + >= and if true unloop exit then
-         \ `defer` emits its dispatch-cell carrier inside the recorded body.
-         \ The source site map is authoritative, but require the engine's
-         \ defer trailer before treating an interior carrier as owned.
          rec XREF-START {: first:n :}
-         first rec XREF-LEN + {: meta:n :}
          CODE-START site + first >=
-         CODE-START site + width + meta <= and
-         meta 16 + CODE-END <= and if
-            meta CODE-START - CODE-BUF LE:U64@ DEFER-MAGIC = if
-               true unloop exit
-            then
-         then
+         CODE-START site + width + first rec XREF-LEN + <= and
+         if true unloop exit then
       then
    loop false ;
 
@@ -453,11 +438,8 @@ variable PREP-CURSOR
    site width DIRECT-OWNER? 0= if BAD then
    width ADDRESS-CARRIER:DATA-CHAIN-BYTES = if A64IR:ADDR-DATA
    else A64IR:ADDR-CODE then {: kind:n :}
-   kind A64IR:ADDR-DATA = if
-      carrier width ADDRESS-CARRIER:CHAIN-VALUE {: target:n :}
-      target NUNIT-CAPTURE:FIRST-DATA <
-      target NUNIT-CAPTURE:FIRST-DATA DATA-U @ + >= or if BAD then
-   then
+   \ ADDR-SITE resolves prior DATA through the named allocation registry;
+   \ a chain with no recorded allocation remains a profile refusal.
    site kind ADDR-SITE ;
 
 : ADDRS-PROFILE ( -- )
@@ -485,63 +467,45 @@ variable PREP-CURSOR
    size 0= if 0 DATA-U ! exit then
    size DATA-BUF-RESERVE
    a 0 DATA-BUF size BYTE-COPY
+   0 DATA-BUF size NUNIT-CAPTURE:NEUTRALIZE-FRESH
    size DATA-U ! ;
 
-: DATA-REF ( n -- n n ) {: target:n :}
-   NUNIT-CAPTURE:FIRST-DATA {: first:n :}
-   target first >= target first DATA-U @ + < and if
-      LOCAL-DATA-REF target first - exit
-   then
-   target DATA-VA VA>N < target first >= or if BAD then
-   PREFIX-DATA-REF target DATA-VA VA>N - ;
-
-CAST: LITERAL-SEGMENTS-XT ( n -- [ -- n ] )
-CAST: LITERAL-ROWS-XT ( n -- [ n -- n n n n ] )
-CAST: LITERAL-SPAN-XT ( n -- [ n -- n n ] )
-CAST: LITERAL-INTERN-XT ( n -- [ ptr u8 n -- n ] )
-CAST: LITERAL-ATTACH-XT ( n -- [ ptr u8 n n n -- ] )
-CAST: LITERAL-PLAN-BEGIN-XT ( n -- [ n -- ] )
-CAST: LITERAL-PLAN-ADDR-XT ( n -- [ ptr u8 n -- n ] )
-CAST: LITERAL-PLAN-END-XT ( n -- [ -- n ] )
-CAST: LITERAL-PLAN-ADVANCE-XT ( n -- [ n -- ] )
-CAST: LITERAL-PLAN-SEGS-XT ( n -- [ ptr u8 n n n n -- ] )
-CAST: LITERAL-PLAN-TAILS-XT ( n -- [ -- n n ] )
-CAST: N-CELLS ( n -- ptr n )
 
 : TARGET-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if drop BAD then
    XREF-START ;
 
 : FORGET-FFI-CACHE ( -- )
-   s" FFI:FORGET-CACHE" TARGET-XT ACTION-XT execute ;
+   \ PROC-MAPS:RELOAD above uses this retained loader's FFI before the first
+   \ target FILE can define FFI:FORGET-CACHE. Clear the same loader's cache.
+   FFI:FORGET-CACHE ;
 
-: PLAN-LITERAL-BEGIN ( n -- )
-   s" NSTR:PREPARE-BEGIN" TARGET-XT
-      LITERAL-PLAN-BEGIN-XT execute ;
-: PLAN-LITERAL-ADDR ( ptr u8 n -- n )
-   s" NSTR:PREPARE-INTERN" TARGET-XT
-      LITERAL-PLAN-ADDR-XT execute ;
-: PLAN-LITERAL-END ( -- n )
-   s" NSTR:PREPARE-DATA-END" TARGET-XT
-      LITERAL-PLAN-END-XT execute ;
-: PLAN-LITERAL-ADVANCE ( n -- )
-   s" NSTR:PREPARE-ADVANCE" TARGET-XT
-      LITERAL-PLAN-ADVANCE-XT execute ;
-: PLAN-LITERAL-SEGMENTS ( ptr u8 n n n n -- )
-   s" NSTR:PREPARE-SEGMENTS" TARGET-XT
-      LITERAL-PLAN-SEGS-XT execute ;
-: PLAN-LITERAL-TAILS ( -- n n )
-   s" NSTR:PREPARE-TAILS" TARGET-XT
-      LITERAL-PLAN-TAILS-XT execute ;
-: PLAN-LITERAL-CLOSE ( -- )
-   s" NSTR:PREPARE-CLOSE" TARGET-XT ACTION-XT execute ;
+: PLAN-LITERAL-BEGIN ( n -- ) NSTR:PREPARE-BEGIN ;
+: PLAN-LITERAL-ADDR ( ptr u8 n -- n ) NSTR:PREPARE-INTERN ;
+: PLAN-LITERAL-END ( -- n ) NSTR:PREPARE-DATA-END ;
+: PLAN-LITERAL-ADVANCE ( n -- ) NSTR:PREPARE-ADVANCE ;
+: PLAN-LITERAL-SEGMENTS ( ptr u8 n n n n -- ) NSTR:PREPARE-SEGMENTS ;
+: PLAN-LITERAL-TAILS ( -- n n ) NSTR:PREPARE-TAILS ;
+: PLAN-LITERAL-CLOSE ( -- ) NSTR:PREPARE-CLOSE ;
+: RAW-ADDRESS ( ptr u8 -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
-: PRIVATE-LITERAL-XT ( ptr u8 n -- n )
-   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
+: PRIVATE-XT? ( ptr u8 n ptr u8 n -- n bool )
+   {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   pkg pkgu XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if drop 0 false exit then
+   XREF-PKG-PRIVATE name nameu rot XREF-FIND-WL
    dup XREF-FOUND? 0= if drop BAD then
-   XREF-PKG-PRIVATE XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop BAD then
-   XREF-START ;
+   XREF-START true ;
+
+: PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
+   PRIVATE-XT? 0= if drop BAD then ;
+
+\ The importer and literal pool belong to the retained compiler. Resolve the
+\ private seam before a fresh target can define another NSTR namespace.
+: BIND-LITERAL-ATTACH ( -- )
+   s" NSTR" s" ATTACH-SEGMENTS" PRIVATE-XT LITERAL-ATTACH-XT
+      is LITERAL-ATTACH ;
+BIND-LITERAL-ATTACH
 
 \ Phil's literal codec records rows in source order. Rows added to an old
 \ arena need their body bytes; complete new segments are already in DATA, so
@@ -578,8 +542,7 @@ CAST: N-CELLS ( n -- ptr n )
    16 LITERAL-U !
    NUNIT-CAPTURE:NEW-LITERALS {: count:n :}
    count LITERAL-N !
-   s" NSTR:SEGMENTS" TARGET-XT LITERAL-SEGMENTS-XT execute
-      {: segments:n :}
+   NSTR:SEGMENTS {: segments:n :}
    NUNIT-CAPTURE:FIRST-SEGMENTS {: old:n :}
    segments old < if BAD then
    segments old - {: fresh:n :}
@@ -588,9 +551,8 @@ CAST: N-CELLS ( n -- ptr n )
    fresh 0 LITERAL-BUF LE:U64!
    count 8 LITERAL-BUF LE:U64!
    fresh 0 ?do
-      old i + s" NSTR:SOURCE-SEGMENT-SPAN" TARGET-XT
-         LITERAL-SPAN-XT execute {: owner:n span:n :}
-      owner NUNIT-CAPTURE:FIRST-DATA - {: off:n :}
+      old i + NSTR:SOURCE-SEGMENT-SPAN {: owner:ptr span:n :}
+      owner RAW-ADDRESS NUNIT-CAPTURE:FIRST-DATA - {: off:n :}
       off 0 < span 0 <= or off DATA-U @ > or
       span DATA-U @ off - > or if BAD then
       off LITERAL-U @ LITERAL-BUF LE:U64!
@@ -603,16 +565,14 @@ CAST: N-CELLS ( n -- ptr n )
    then
    0 LITERAL-CURSOR ! 0 LITERAL-OUT !
    segments 0 ?do
-      i s" NSTR:SOURCE-ROWS" TARGET-XT LITERAL-ROWS-XT execute
-         {: arena:n rows:n offsets:n lengths:n :}
-      i s" NSTR:SOURCE-SPAN" TARGET-XT LITERAL-SPAN-XT execute
-         {: span:n cap:n :}
+      i NSTR:SOURCE-ROWS {: arena:ptr rows:n offsets:ptr lengths:ptr :}
+      i NSTR:SOURCE-SPAN {: span:ptr cap:n :}
       span arena <> if BAD then
       rows 0 ?do
          LITERAL-CURSOR @ i + NUNIT-CAPTURE:FIRST-LITERAL >= if
-            i cells offsets + N-CELLS @ {: off:n :}
-            i cells lengths + N-CELLS @ {: bytes:n :}
-            arena off bytes cap j old >= LITERAL-ROW-PROFILE
+            offsets i cells + @ {: off:n :}
+            lengths i cells + @ {: bytes:n :}
+            arena RAW-ADDRESS off bytes cap j old >= LITERAL-ROW-PROFILE
          then
       loop
       rows LITERAL-CURSOR +!
@@ -648,14 +608,24 @@ variable ADMIT-LAST
    value AOT-CELL:TEXT-PTR? if site value AOT-CELL:REFUSE-UNDECLARED then
    site value AOT-CELL:REFUSE-MAPPED ;
 
-: SLOT-ONE ( n -- ) {: raw:n :}
+: SLOT-ONE ( n n -- ) {: row:n raw:n :}
    raw SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N + {: site:n :}
    site SLOT-OWNED? 0= if exit then
-   site CODE-BYTES CELL-VIEW @ {: target:n :}
-   target 0= if NULL-REF 0 0
+   site NUNIT-CAPTURE:FIRST-DATA <
+      site NUNIT-CAPTURE:STATE-CELL? and if exit then
+   \ An old declared cell that this range did not change remains in the
+   \ previous image. Re-encoding it could mistake a live host mapping for a
+   \ new unit-owned address; a new declaration must still be exported.
+   site NUNIT-CAPTURE:FIRST-DATA < if
+      site NUNIT-CAPTURE:UNCHANGED-CELL?
+      row raw NUNIT-CAPTURE:DECLARED-BEFORE? and if exit then
+   then
+   site NUNIT-CAPTURE:STATE-CELL? if 0 else
+      site CODE-BYTES CELL-VIEW @ then {: target:n :}
+   target 0= if 0
    else raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> if
       target LITERAL-ADDRESS if {: ord:n addend:n :}
-         LITERAL-REF ord addend
+         ord addend NFILE-REF:REF-LITERAL
       else
          2drop
          \ FILE cannot encode a builder-only mapping as a DATA reference. Name
@@ -665,17 +635,16 @@ variable ADMIT-LAST
                site target DECLINE-CELL exit
             then
          then
-         target DATA-REF 0
+         target CODE-BYTES 0 NFILE-REF:REF-DATA
       then
-   else target TARGET-REF 0 then then
-      {: domain:n ref:n addend:n :}
+   else target NFILE-REF:REF-CODE then then {: ref:n :}
    SLOT-U @ SLOT-BYTES + SLOT-BUF-RESERVE
    SLOT-U @ SLOT-BUF {: dst:ptr :}
    raw dst LE:U64!
    site NUNIT-CAPTURE:FIRST-DATA >= if 1 else 0 then dst 8 + LE:U64!
-   domain dst 16 + LE:U64!
+   0 dst 16 + LE:U64!
    ref dst 24 + LE:U64!
-   addend dst 32 + LE:U64!
+   0 dst 32 + LE:U64!
    site NUNIT-CAPTURE:FIRST-DATA >= if
       site NUNIT-CAPTURE:FIRST-DATA - {: off:n :}
       CELL 0 ?do 0 off i + DATA-BUF c! loop
@@ -687,12 +656,24 @@ variable ADMIT-LAST
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
    count 0 ?do
       FILE-ADMITTED @ 0= if leave then
-      rows i cells + @ SLOT-ONE
+      i rows i cells + @ SLOT-ONE
+   loop ;
+
+: SLOTS-REFS ( -- )
+   SLOT-U @ SLOT-BYTES / 0 ?do
+      i SLOT-BYTES * SLOT-BUF {: row:ptr :}
+      row LE:U64@ {: raw:n :}
+      raw SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N +
+         CODE-BYTES CELL NFILE-REF:REF-DATA row LE:U64!
+      row 8 + LE:U64@ {: place:n :}
+      raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> if 2 else 0 then
+         place + row 8 + LE:U64!
    loop ;
 
 \ Sparse changes to owned preloaded DATA, as DATA-base offset/u8 pairs.
 : UPDATE-BYTE ( n n -- ) {: site:n previous:n :}
    site CODE-BYTES c@ previous = if exit then
+   site NUNIT-CAPTURE:STATE-BYTE? if exit then
    site 1 SLOT-OVERLAP? if exit then
    UPDATE-U @ 16 + UPDATE-BUF-RESERVE
    site DATA-VA VA>N - UPDATE-U @ UPDATE-BUF LE:U64!
@@ -712,13 +693,20 @@ variable ADMIT-LAST
       i NUNIT-CAPTURE:OWNED@ UPDATE-SPAN
    loop ;
 
-CAST: LITERAL-OWNER-XT ( n -- [ n -- ptr u8 n bool ] )
+: UPDATES-REFS ( -- )
+   UPDATE-U @ 16 / 0 ?do
+      i 16 * UPDATE-BUF {: row:ptr :}
+      row LE:U64@ DATA-VA VA>N + CODE-BYTES 1
+         NFILE-REF:REF-DATA row LE:U64!
+   loop ;
+
 : TARGET-LITERAL-BYTE? ( n -- bool )
-   s" NSTR:OWNER-ROW" TARGET-XT LITERAL-OWNER-XT execute
+   NSTR:OWNER-ROW
    {: body:ptr size:n found:bool :}
    body drop size drop found ;
 : ADMIT-CELL ( n -- ) {: site:n :}
    FILE-ADMITTED @ 0= if exit then
+   site NUNIT-CAPTURE:STATE-CELL? if exit then
    site CELL SLOT-OVERLAP? if exit then
    site CODE-BYTES CELL-VIEW @ {: value:n :}
    value AOT-CELL:TEXT-PTR? value AOT-CELL:MAPPED? or if
@@ -750,7 +738,10 @@ CAST: LITERAL-OWNER-XT ( n -- [ n -- ptr u8 n bool ] )
       repeat drop
    loop ;
 : ADMIT-FILE ( -- bool )
-   AOT-ARM:B0 @ AOT-CELL:PREPARE
+   \ FILE's literal and foreign registries belong to the retained compiler.
+   \ Scan those owners, paired with the row readers bound before target reset.
+   AOT-ARM:B0 @ CHECKER-CELLS @ NUNIT-CAPTURE:SCAN-XTS
+      AOT-CELL:PREPARE-WITH-OWNERS
    ADMIT-FRESH
    FILE-ADMITTED @ if ADMIT-UPDATES then
    AOT-CELL:RESET
@@ -794,25 +785,6 @@ variable FILE-REQUIRES
    then
    BAD ;
 
-: IMPORT-REF ( n n -- n ) {: domain:n ref:n :}
-   domain UNIT-REF = if
-      ref 0 < ref CODE-U @ >= or ref INSN-BYTES mod 0<> or if BAD then
-      IMPORT-CODE @ ref + exit
-   then
-   domain PREFIX-REF = if
-      ref 0 < ref IMPORT-REC @ >= or if BAD then
-      ref PREP-RECORD {: rec:ptr :}
-      ref PREFIX-WID {: wid:n :}
-      wid XREF-NAMESPACE-WL = wid XREF-RETIRED-WL = or if BAD then
-      rec XREF-START exit
-   then
-   domain PREFIX-CODE-REF = if
-      ref 0 < ref INSN-BYTES mod 0<> or
-      ref IMPORT-CODE @ dbase@ - >= or if BAD then
-      dbase@ ref + exit
-   then
-   BAD ;
-
 : IMPORT-RECORD ( n -- ) {: row:n :}
    row DREC * REC-BUF {: dst:ptr :}
    dst 16 + LE:U64@ {: flags:n :}
@@ -826,20 +798,14 @@ variable FILE-REQUIRES
    then
    dst 40 + LE:U64@ {: wid:n :}
    wid XREF-NAMESPACE-WL = if
-      dst LE:U64@ WID-IMPORT dst LE:U64!
-      dst 8 + LE:U64@ WID-IMPORT dst 8 + LE:U64!
+      dst LE:U64@ NFILE-REF:REF>WID dst LE:U64!
+      dst 8 + LE:U64@ NFILE-REF:REF>WID dst 8 + LE:U64!
       exit
    then
-   wid WID-IMPORT dst 40 + LE:U64!
+   wid NFILE-REF:REF>WID dst 40 + LE:U64!
    dst LE:U64@ {: off:n :}
-   off 0 < if
-      -1 off - {: ord:n :}
-      ord IMPORT-REC @ >= if BAD then
-      ord PREP-RECORD XREF-START dst LE:U64!
-   else
-      off CODE-U @ >= off INSN-BYTES mod 0<> or if BAD then
-      IMPORT-CODE @ off + dst LE:U64!
-   then ;
+   off 0 >= if BAD then
+   -1 off - NFILE-REF:REF>CODE dst LE:U64! ;
 
 : IMPORT-RECORDS ( -- )
    REC-U @ DREC / 0 ?do i IMPORT-RECORD loop ;
@@ -848,12 +814,10 @@ variable FILE-REQUIRES
    12 SECTION$ {: rows:ptr size:n :}
    size 8 mod 0<> if BAD then
    size 8 / 0 ?do
-      rows i 8 * + LE:U64@ {: ord:n :}
+      rows i 8 * + LE:U64@ NFILE-REF:REF>RECORD {: ord:n :}
       ord 0 < ord IMPORT-REC @ >= or if BAD then
-      i 0<> if
-         rows i 1- 8 * + LE:U64@ ord >= if BAD then
-      then
       ord PREFIX-WID 0 < if BAD then
+      ord rows i 8 * + LE:U64!
    loop ;
 
 : IMPORT-RETIRE ( -- )
@@ -907,7 +871,8 @@ variable FILE-REQUIRES
    site INSN-BYTES SITE-CK
    src 8 + LE:U64@ {: kind:n :}
    kind NEMIT:CALL <> kind NEMIT:TAIL <> and if BAD then
-   src 16 + LE:U64@ src 24 + LE:U64@ IMPORT-REF {: target:n :}
+   src 16 + LE:U64@ 0<> if BAD then
+   src 24 + LE:U64@ NFILE-REF:REF>CODE {: target:n :}
    target src 24 + LE:U64!
    site CODE-BUF {: at:ptr :}
    at LE:U32@ {: old:n :}
@@ -993,8 +958,7 @@ variable FILE-REQUIRES
    10 SECTION$ drop {: src:ptr :}
    6 SECTION$ {: data:ptr data-size:n :}
    LITERAL-SEG-N @ LITERAL-SEGS-RESERVE
-   s" NSTR:SEGMENT-BYTES" TARGET-XT
-      LITERAL-SEGMENTS-XT execute {: required:n :}
+   NSTR:SEGMENT-BYTES {: required:n :}
    0 LITERAL-PRIOR !
    LITERAL-SEG-N @ 0 ?do
       src 16 + i 16 * + {: row:ptr :}
@@ -1018,7 +982,7 @@ variable FILE-REQUIRES
       row LE:U64@ 0= if
          10 SECTION$ drop row 8 + LE:U64@ +
          row 16 + LE:U64@
-         s" NSTR:INTERN" TARGET-XT LITERAL-INTERN-XT execute drop
+         NSTR:INTERN drop
       then
    loop ;
 
@@ -1034,8 +998,7 @@ variable FILE-REQUIRES
    PREP-ACTIVE @ dup P-LIT-OFF P@ + {: tails:ptr :}
    0 LITERAL-SEGS BYTE-VIEW segments
    tails LE:U64@ tails 8 + LE:U64@
-   s" ATTACH-SEGMENTS" PRIVATE-LITERAL-XT
-      LITERAL-ATTACH-XT execute ;
+   LITERAL-ATTACH ;
 
 : IMPORT-LITERAL-REF ( n n -- n ) {: ordinal:n addend:n :}
    ordinal 0 < ordinal LITERAL-N @ >= or if BAD then
@@ -1050,24 +1013,15 @@ variable FILE-REQUIRES
    else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
    else BAD then then {: width:n :}
    site width SITE-CK
-   src 16 + LE:U64@ {: domain:n :}
+   src 16 + LE:U64@ 0<> if BAD then
    src 24 + LE:U64@ {: ref:n :}
-   src 32 + LE:U64@ {: addend:n :}
+   src 32 + LE:U64@ 0<> if BAD then
    kind A64IR:ADDR-CODE = if
-      addend 0<> if BAD then
-      domain ref IMPORT-REF
+      ref NFILE-REF:REF>CODE
    else
-      ref 0 < if BAD then
-      domain LITERAL-REF = if ref addend IMPORT-LITERAL-REF
-      else
-         addend 0<> if BAD then
-         domain LOCAL-DATA-REF = if
-         6 SECTION$ nip ref <= if BAD then
-         IMPORT-DATA-BASE @ ref +
-         else domain PREFIX-DATA-REF = if
-            DATA-VA VA>N ref + dup IMPORT-DATA-BASE @ >= if BAD then
-         else BAD then then
-      then
+      ref NFILE-REF:REF-KIND NFILE-REF:LITERAL = if
+         ref NFILE-REF:REF>LITERAL IMPORT-LITERAL-REF
+      else ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - then
    then {: target:n :}
    site CODE-BUF {: carrier:ptr :}
    carrier 0 CODE-BUF CODE-U @ + ADDRESS-CARRIER:CHAIN-SIZE
@@ -1101,9 +1055,7 @@ variable FILE-REQUIRES
    rows CALL-SITES-RESERVE
    0 rows 0 ?do
       2 i CALL-BYTES ROW-SECTION {: src:ptr :}
-      src 16 + LE:U64@ PREFIX-REF =
-      src 16 + LE:U64@ PREFIX-CODE-REF = or
-      src 8 + LE:U64@ NEMIT:CALL = and
+      src 8 + LE:U64@ NEMIT:CALL =
       src 24 + LE:U64@ OUTSIDE-REGION? and if
          src LE:U64@ over CALL-SITES ! 1+
       then
@@ -1134,20 +1086,21 @@ variable FILE-REQUIRES
 : PREPARE-UPDATES ( -- )
    7 SECTION$ {: src:ptr size:n :}
    size 16 mod 0<> if BAD then
-   IMPORT-DATA-BASE @ DATA-VA VA>N - {: span:n :}
    size 16 / 0 ?do
-      src i 16 * + LE:U64@ {: off:n :}
-      off 0 < off span >= or if BAD then
-      DATA-VA VA>N off + {: site:n :}
+      src i 16 * + {: row:ptr :}
+      row LE:U64@ 1 NFILE-REF:REF>DATA
+         NULL-PTR BYTE-VIEW - {: site:n :}
+      site IMPORT-DATA-BASE @ >= if BAD then
       site IMPORT-DATA-BASE @ NUNIT-CAPTURE:OWNED-BYTE? 0= if BAD then
-      src i 16 * 8 + + LE:U64@ {: byte:n :}
+      row 8 + LE:U64@ {: byte:n :}
       byte 0 < byte 255 > or if BAD then
+      site row LE:U64!
    loop ;
 
 : IMPORT-UPDATES ( -- )
    7 SECTION$ {: src:ptr size:n :}
    size 16 / 0 ?do
-      src i 16 * + LE:U64@ DATA-VA VA>N + {: site:n :}
+      src i 16 * + LE:U64@ {: site:n :}
       src i 16 * 8 + + LE:U64@ {: byte:n :}
       byte site CODE-BYTES c!
    loop ;
@@ -1205,10 +1158,15 @@ TRUSTED: STORE-TYPED ( n n n -- ) {: site:n target:n raw:n :}
 
 : PREPARE-SLOT ( n -- ) {: row:n :}
    9 row SLOT-BYTES ROW-SECTION {: src:ptr :}
-   src LE:U64@ {: raw:n :}
+   src LE:U64@ CELL NFILE-REF:REF>DATA
+      NULL-PTR BYTE-VIEW - {: site:n :}
+   site DATA-VA VA>N - {: off:n :}
+   src 8 + LE:U64@ {: flags:n :}
+   flags 0 < flags 3 > or if BAD then
+   off flags 2 and 0<> if SNAP-RELOC:XTCELL-DATA-TAG or then
+      {: raw:n :}
    raw row SLOT-COMPATIBLE? 0= if BAD then
-   raw SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N + {: site:n :}
-   src 8 + LE:U64@ {: place:n :}
+   flags 1 and {: place:n :}
    place 1 = if
       site IMPORT-DATA-BASE @ < if BAD then
       6 SECTION$ nip IMPORT-DATA-BASE @ +
@@ -1216,25 +1174,20 @@ TRUSTED: STORE-TYPED ( n n n -- ) {: site:n target:n raw:n :}
    else place 0= if
       site IMPORT-DATA-BASE @ NUNIT-CAPTURE:OWNED-CELL? 0= if BAD then
    else BAD then then
-   src 16 + LE:U64@ {: domain:n :}
+   src 16 + LE:U64@ 0<> if BAD then
    src 24 + LE:U64@ {: ref:n :}
-   src 32 + LE:U64@ {: addend:n :}
-   domain NULL-REF = if ref 0<> addend 0<> or if BAD then 0
-   else domain LOCAL-DATA-REF = if
-      addend 0<> if BAD then
-      ref 0 < 6 SECTION$ nip ref <= or if BAD then
-      IMPORT-DATA-BASE @ ref +
-   else domain PREFIX-DATA-REF = if
-      addend 0<> if BAD then
-      ref 0 < if BAD then
-      DATA-VA VA>N ref + dup IMPORT-DATA-BASE @ >= if BAD then
-   else domain LITERAL-REF = if
-      ref addend IMPORT-LITERAL-REF
-   else
-      addend 0<> if BAD then
-      domain ref IMPORT-REF
-   then then then then {: target:n :}
-   target src 24 + LE:U64! ;
+   src 32 + LE:U64@ 0<> if BAD then
+   ref 0= if 0
+   else ref NFILE-REF:REF-KIND {: kind:n :}
+      kind NFILE-REF:CODE = if ref NFILE-REF:REF>CODE
+      else kind NFILE-REF:DATA = if
+         ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW -
+      else kind NFILE-REF:LITERAL = if
+         ref NFILE-REF:REF>LITERAL IMPORT-LITERAL-REF
+      else BAD then then then
+   then {: target:n :}
+   target src 24 + LE:U64!
+   raw src LE:U64! ;
 
 : PREPARE-SLOTS ( -- )
    9 SECTION$ nip {: size:n :}
@@ -1311,8 +1264,11 @@ TRUSTED: STORE-TYPED ( n n n -- ) {: site:n target:n raw:n :}
    6 SECTION$ nip {: datau:n :}
    datau block P-DATA-U P!
    PREPARE-LITERAL-TAILS
+   13 SECTION$ IMPORT-REC @ IMPORT-CODE @ CODE-U @
+      IMPORT-WID @ PROTECTION-U @ IMPORT-DATA-BASE @ datau
+      NFILE-REF:PREPARE
    PREPARE-RETIRE
-   IMPORT-RECORDS IMPORT-CALLS
+   IMPORT-RECORDS NFILE-REF:INDEX-PREPARED-WIDS IMPORT-CALLS
    RESOLVE-LOCAL-LITERALS
    PREPARE-UPDATES PREPARE-REQUIRES
    datau PLAN-LITERAL-ADVANCE
@@ -1326,16 +1282,49 @@ TRUSTED: STORE-TYPED ( n n n -- ) {: site:n target:n raw:n :}
    PLAN-LITERAL-END PROJECT-DATA ! ;
 
 CAST: PREPARE-XT ( n -- [ -- ] )
+variable HOST-STORAGE
 : PREPARE-STORAGE ( -- )
    s" CHECKER-STORAGE-PREPARE" TARGET-XT {: xt:n :}
    xt AOT-ARM:B0 @ < xt cp@ >= or if BAD then
    xt PREPARE-XT execute ;
 
+CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
+: FILE-STORES ( -- )
+   HOST-STORAGE @ PREPARE-XT execute
+   s" CHECKER-STORAGE-PREPARE" XREF-FIND
+   dup XREF-FOUND? 0= if drop exit then
+   XREF-START {: xt:n :}
+   xt AOT-ARM:B0 @ >= xt cp@ < and if
+      xt PREPARE-XT execute
+   then ;
+: FILE-PREPARE-STORAGE ( -- )
+   \ Only a target ADDRESS-CELLS record published in this window replaces
+   \ the donor header. APP-LOAD leaves R0 at zero; target WINDOW-OPEN latches
+   \ ndict@ after the donor's nonempty dictionary. Earlier FILEs use ordinary
+   \ storage preparation.
+   AOT-ARM:R0 @ {: start:n :}
+   start 0= if FILE-STORES exit then
+   s" ADDRESS-CELLS" XREF-NAMESPACE-WL XREF-FIND-WL-INDEX
+      start < if FILE-STORES exit then
+   s" ADDRESS-CELLS" s" WITH-HOST-HEADER" PRIVATE-XT {: xt:n :}
+   xt AOT-ARM:B0 @ < xt cp@ >= or if BAD then
+   SNAP-RELOC:XTCELL-N-CELL ['] FILE-STORES
+      xt HOST-HEADER-XT execute ;
+
 public
+
+: BIND-HOST-STORAGE ( -- )
+   s" CHECKER-STORAGE-PREPARE" TARGET-XT HOST-STORAGE ! ;
+
+: BIND-CHECKER-CELLS ( [ [ ptr u8 n -- ] -- ] -- )
+   CHECKER-CELLS ! ;
+
+: CLEAR-HOST-STORAGE ( -- ) 0 HOST-STORAGE ! ;
 
 : BEGIN-PREPARATION ( -- )
    PROJECT-ON @ if BAD then
    PROJECT-START
+   ['] PREP-RECORD NFILE-REF:RECORD-AT!
    PROJECT-DATA @ PLAN-LITERAL-BEGIN ;
 
 : DISCARD-PREPARED ( -- )
@@ -1345,25 +1334,49 @@ public
    0 PROJECT-CODE ! 0 PROJECT-REC ! 0 PROJECT-WID ! 0 PROJECT-DATA ! ;
 
 : PROJECTED-COUNTS ( -- n n ) PROJECT-REC @ PROJECT-WID @ ;
+: PROJECT-RECORD-WID ( n -- n ) {: ord:n :}
+   ord PROJECT-ROW-WID ;
 
-: PREPARE-BYTES-NAMED ( ptr u8 n ptr u8 n ptr u8 n -- n )
+: PROJECT-CALLABLE? ( ptr u8 n ptr u8 n -- bool )
+   {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   pkg pkgu PROJECT-NS {: ns:n :}
+   ns 0 < if false exit then
+   ns PREP-RECORD XREF-PKG-PUBLIC name nameu PROJECT-PUBLIC
+      {: ord:n :}
+   ord 0 < if false exit then
+   ord PROJECT-CODE? ;
+
+: DEP-EXPORT ( -- ptr u8 n )
+   NUNIT-DEP:EXPORT ;
+
+: DEP-CHECK ( -- bool )
+   14 NUNIT-FILE:SECTION$ NUNIT-DEP:CHECK ;
+
+: PREPARE-BYTES-NAMED? ( ptr u8 n ptr u8 n ptr u8 n -- n bool )
    {: bytes:ptr size:n key:ptr keyu:n name:ptr nameu:n :}
    PROJECT-ON @ 0= if BEGIN-PREPARATION then
    bytes size NUNIT-FILE:ARCH-AARCH64 name nameu key keyu NUNIT-FILE:READ-BYTES
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FORMAT
+   name nameu s" FILE" STR= if
+      DEP-CHECK 0= if NUNIT-FILE:CLOSE -1 false exit then
+   then
    name nameu s" FILE" STR= if NUNIT-CAPTURE:REFRESH-OWNERS then
    PREP-ALLOC {: id:n :}
    NUNIT-FILE:CLOSE
    ['] PREPARE-OPEN catch {: rc:n :}
    rc 0<> if DISCARD-PREPARED rc throw then
    NULL-PTR PREP-ACTIVE !
-   id ;
+   id true ;
+
+: PREPARE-BYTES-NAMED ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   PREPARE-BYTES-NAMED? 0= if drop BAD then ;
 
 : PREPARE-NAMED ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: path:ptr pathu:n key:ptr keyu:n name:ptr nameu:n :}
    PROJECT-ON @ 0= if BEGIN-PREPARATION then
    path pathu NUNIT-FILE:ARCH-AARCH64 name nameu key keyu NUNIT-FILE:READ
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:CHECK
+   name nameu s" FILE" STR= if DEP-CHECK 0= if BAD then then
    name nameu s" FILE" STR= if NUNIT-CAPTURE:REFRESH-OWNERS then
    PREP-ALLOC {: id:n :}
    NUNIT-FILE:CLOSE
@@ -1374,12 +1387,14 @@ public
 
 : PREPARE-SECTIONS-WITH-INPUTS ( ptr u8 n ptr u8 n -- bool )
    {: checker:ptr checku:n inputs:ptr inputu:n :}
+   NFILE-REF:ENSURE-CAPTURE
    CODE-PROFILE RECORD-PROFILE RECORDS-PROFILE RETIRE-PROFILE
    DATA-PROFILE LITERALS-PROFILE SLOTS-PROFILE
    FILE-ADMITTED @ 0= if ADMISSION-RESET false exit then
    CALLS-PROFILE ADDRS-PROFILE PROTECTION-PROFILE
    UPDATES-PROFILE REQUIRES-PROFILE
    FILE-CHECK @ if ADMIT-FILE 0= if ADMISSION-RESET false exit then then
+   UPDATES-REFS SLOTS-REFS
    NUNIT-FILE:RESET
    0 CODE-PTR CODE-U @ NUNIT-FILE:SECTION!
    1 REC-PTR REC-U @ NUNIT-FILE:SECTION!
@@ -1398,32 +1413,51 @@ public
    11 inputs inputu NUNIT-FILE:SECTION!
    12 RETIRE-U @ 0= if CODE-PTR else 0 RETIRE-BUF then
       RETIRE-U @ NUNIT-FILE:SECTION!
+   16 FILE-CHECK @ if NUNIT-ORIGIN:EXPORT else NULL-PTR 0 then
+      NUNIT-FILE:SECTION!
+   13 NUNIT-CAPTURE:FIRST-REC
+      NUNIT-CAPTURE:RECORDS$ nip DREC / over +
+      NFILE-REF:ENCODE NUNIT-FILE:SECTION!
+   14 FILE-CHECK @ if DEP-EXPORT else NULL-PTR 0 then
+      NUNIT-FILE:SECTION!
+   15 CWORK-BYTES @ CWORK-U @ NUNIT-FILE:SECTION!
+   NFILE-REF:END-CAPTURE
    ADMISSION-RESET true ;
 
 : PREPARE-SECTIONS ( ptr u8 n -- bool )
    NFILE-INPUTS:BYTES$ PREPARE-SECTIONS-WITH-INPUTS ;
 
-: PREPARE-EXPORT ( ptr u8 n bool -- ) {: name:ptr nameu:n strict:bool :}
-   PREPARE-STORAGE
+: PREPARE-EXPORT ( ptr u8 n bool -- bool )
+   {: name:ptr nameu:n strict:bool :}
+   name nameu s" FILE" STR= {: file?:bool :}
+   file? if
+      \ Close the retained workspace range even when its owner is rejected.
+      CWORK:FILE-EXPORT CWORK-U ! CWORK-BYTES !
+      \ A rejected owner cannot supply the retained storage callbacks below.
+      NUNIT-ORIGIN:ELIGIBLE? 0= if ADMISSION-RESET false exit then
+   else
+      NULL-PTR CWORK-BYTES ! 0 CWORK-U !
+   then
+   file? if FILE-PREPARE-STORAGE else PREPARE-STORAGE then
    strict FILE-STRICT !
    1 FILE-ADMITTED !
-   name nameu s" FILE" STR= dup FILE-CHECK ! if
+   file? dup FILE-CHECK ! if
       \ The map read resolves foreign symbols; clear that cache afterward so
       \ admission does not mistake its own newly owned pointer for source DATA.
       PROC-MAPS:RELOAD
       FORGET-FFI-CACHE
-   then ;
+   then true ;
 
 : PACK-NAMED-INPUTS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n checker:ptr checku:n name:ptr nameu:n
       inputs:ptr inputu:n :}
-   name nameu true PREPARE-EXPORT
-   checker checku inputs inputu PREPARE-SECTIONS-WITH-INPUTS drop
+   name nameu true PREPARE-EXPORT 0= if BAD then
+   checker checku inputs inputu PREPARE-SECTIONS-WITH-INPUTS 0= if BAD then
    NUNIT-FILE:ARCH-AARCH64 name nameu key keyu NUNIT-FILE:PACK ;
 
 : PACK-FILE-INPUTS? ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n bool )
    {: key:ptr keyu:n checker:ptr checku:n inputs:ptr inputu:n :}
-   s" FILE" false PREPARE-EXPORT
+   s" FILE" false PREPARE-EXPORT 0= if NULL-PTR 0 false exit then
    checker checku inputs inputu PREPARE-SECTIONS-WITH-INPUTS 0= if
       NULL-PTR 0 false exit
    then
@@ -1431,14 +1465,14 @@ public
 
 : PACK-NAMED ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n checker:ptr checku:n name:ptr nameu:n :}
-   name nameu true PREPARE-EXPORT
-   checker checku PREPARE-SECTIONS drop
+   name nameu true PREPARE-EXPORT 0= if BAD then
+   checker checku PREPARE-SECTIONS 0= if BAD then
    NUNIT-FILE:ARCH-AARCH64 name nameu key keyu NUNIT-FILE:PACK ;
 
 : EXPORT-NAMED ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n key:ptr keyu:n checker:ptr checku:n name:ptr nameu:n :}
-   name nameu true PREPARE-EXPORT
-   checker checku PREPARE-SECTIONS drop
+   name nameu true PREPARE-EXPORT 0= if BAD then
+   checker checku PREPARE-SECTIONS 0= if BAD then
    path pathu NUNIT-FILE:ARCH-AARCH64 name nameu key keyu NUNIT-FILE:WRITE ;
 
 \ The importer is the running compiler's NPUB:IMPORT-FILE-UNIT.
@@ -1493,6 +1527,22 @@ public
    id PREP-USE
    PREP-ACTIVE @ P-CHECKER P@ ;
 
+: PREPARED-CWORK-OF$ ( n -- ptr u8 n ) {: id:n :}
+   id PREP-USE
+   15 SECTION$ ;
+
+: PREPARED-CWORK-ID! ( n n -- ) {: id:n plan:n :}
+   id PREP-USE
+   plan id PREP-CWORK-ID ! ;
+
+: PREPARED-CWORK-ID ( n -- n ) {: id:n :}
+   id PREP-USE
+   id PREP-CWORK-ID @ ;
+
+: PREPARED-ORIGIN-OF$ ( n -- ptr u8 n ) {: id:n :}
+   id PREP-USE
+   16 SECTION$ ;
+
 : IMPORT-BYTES-NAMED ( [ ptr u8 n ptr u8 n ptr n n ptr n n -- ] ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
    {: importer bytes:ptr size:n key:ptr keyu:n name:ptr nameu:n :}
    bytes size key keyu name nameu PREPARE-BYTES-NAMED {: id:n :}
@@ -1537,12 +1587,14 @@ public
 
 : CLOSE ( -- )
    CLOSE-OBJECT
+   OUTER:SCOPE-CLOSE
    PREP-N @ 0 ?do i PREP-DROP loop
-   PREP-P-RELEASE PREP-U-RELEASE
+   PREP-P-RELEASE PREP-U-RELEASE PREP-CWORK-ID-RELEASE
    0 PREP-N ! 0 PROJECT-ON !
    0 PROJECT-CODE ! 0 PROJECT-REC ! 0 PROJECT-WID ! 0 PROJECT-DATA !
    0 PREP-CURSOR !
    NFILE-INPUTS:CLOSE
+   NFILE-REF:CLOSE
    NUNIT-CAPTURE:CLOSE
    CALL-SITES-RELEASE ADDR-SITES-RELEASE
    \ All remaining sizes and cursors describe only this unit's export or import.
@@ -1552,5 +1604,720 @@ public
    0 LITERAL-U ! 0 LITERAL-N ! 0 LITERAL-CURSOR ! 0 LITERAL-OUT !
    0 LITERAL-SEG-N ! 0 LITERAL-PRIOR ! 0 LITERAL-BEST ! 0 LITERAL-ADDEND !
    0 REQUIRE-CURSOR ! 0 PROTECTION-U ! 0 FILE-REQUIRES ! ;
+
+private
+
+\ A definition payload uses the same outer envelope as FILE but owns no FILE
+\ rows or DATA prefix. Section 1 is one 80-byte metadata row;
+\ section 15 carries the function facts taken by the live native publisher.
+40 constant DEF-CALL-BYTES
+40 constant DEF-ADDR-BYTES
+80 constant DEF-META-BYTES
+DYNAMIC-BUFFER DEF-CODE u8
+DYNAMIC-BUFFER DEF-CALL u8
+DYNAMIC-BUFFER DEF-ADDR u8
+DYNAMIC-BUFFER DEF-LIT u8
+DYNAMIC-BUFFER DEF-HOST u8
+DYNAMIC-BUFFER DEF-CHECK u8
+DYNAMIC-BUFFER DEF-CALL-SITES n
+DYNAMIC-BUFFER DEF-ADDR-SITES n
+DYNAMIC-BUFFER DEF-LIT-ADDR n
+DYNAMIC-BUFFER DEF-LIT-LEN n
+DEF-META-BYTES CWORK-SPAN DEF-META u8
+variable DEF-CODE-U
+variable DEF-CALL-U
+variable DEF-ADDR-U
+variable DEF-LIT-U
+variable DEF-HOST-U
+variable DEF-CHECK-U
+variable DEF-LIT-N
+variable DEF-CALL-SITE-N
+variable DEF-ADDR-SITE-N
+variable DEF-PENDING
+variable DEF-CODE-BASE
+variable DEF-RECORDED
+variable DEF-WIDE
+variable DEF-MIN-IN
+variable DEF-ACTIVE
+variable DEF-EMITTED
+variable DEF-FINISHED
+variable DEF-PREPARED
+variable DEF-CHECK-ID
+variable DEF-PLAN-ON
+variable DEF-REQUIRE-COMPLETE
+variable DEF-MODULE-DELTA
+variable DEF-GEN-DELTA
+variable DEF-EPOCH-DELTA
+variable DEF-BUILD-DELTA
+
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
+
+: DEF-DIAG-W2 ( ptr u8 n -- )
+   {: bytes:ptr size:n :}
+   0 begin dup size < while
+      dup {: sent:n :}
+      2 bytes sent + size sent - write
+      dup 0 <= if drop E-FS-IO throw then
+      +
+   repeat drop ;
+
+public
+: REPORT-STORE-REFUSED ( ptr u8 n n -- )
+   {: reason:ptr reasonu:n ord:n :}
+   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= 0= if exit then
+   s" native-cache: cache-store-refused reason=" DEF-DIAG-W2
+   reason reasonu DEF-DIAG-W2
+   s"  name=" DEF-DIAG-W2 ord XREF-REC XREF-NAME$ DEF-DIAG-W2
+   data-base SRCLOC:PATHLEN-CELL + @ {: pathu:n :}
+   pathu 0 > if
+      s"  path=" DEF-DIAG-W2 DEF-DIAG-PATH @ pathu DEF-DIAG-W2
+   then
+   S\" \n" DEF-DIAG-W2 ;
+private
+
+CAST: DEF-ONE-XT ( n -- [ n -- n ] )
+CAST: DEF-TWO-XT ( n -- [ n n -- n ] )
+CAST: DEF-PTR-XT ( n -- [ n -- ptr u8 ] )
+CAST: DEF-NUM-XT ( n -- [ -- n ] )
+CAST: DEF-FACTS-XT ( n -- [ n -- n n n n n n ] )
+CAST: DEF-PREP-HOST-XT ( n -- [ n n ptr u8 n ptr u8 n -- ] )
+CAST: DEF-PUBLISH-XT ( n -- [ ptr u8 n n ptr n n ptr n n bool n -- n ] )
+CAST: DEF-ACTION-XT ( n -- [ -- ] )
+CAST: DEF-CHECK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
+CAST: DEF-CHECK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
+CAST: DEF-CHECK-INSTALL-XT ( n -- [ n -- ] )
+CAST: DEF-HOST-ABANDON-XT ( n -- [ -- ] )
+CAST: DEF-PREP-BEGIN-XT ( n -- [ n -- ] )
+CAST: DEF-LITERAL-XT ( n -- [ ptr u8 n -- n ] )
+CAST: DEF-SOURCE-XT ( n -- [ n -- ptr u8 n ] )
+CAST: DEF-HISTORY-XT ( n -- [ -- n n n n ] )
+CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
+
+: DEF-TARGET ( ptr u8 n -- n ) NUNIT-CAPTURE:BOUND-PRODUCER-XT ;
+: DEF-ONE ( n ptr u8 n -- n )
+   DEF-TARGET DEF-ONE-XT execute ;
+: DEF-TWO ( n n ptr u8 n -- n )
+   DEF-TARGET DEF-TWO-XT execute ;
+: DEF-NUM ( ptr u8 n -- n )
+   DEF-TARGET DEF-NUM-XT execute ;
+: DEF-ELIGIBLE? ( -- bool )
+   s" NCOMP:DEFINITION-CACHEABLE?"
+      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop false exit then
+   DEF-NUM-XT execute 0= if false exit then
+   s" NCOMP:DEFINITION-HISTORY" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
+   s" NCOMP:REPLAY-DEFINITION" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:PREPARE-BEGIN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:PREPARE-INTERN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:PREPARE-DATA-END" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:PREPARE-CLOSE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:INTERN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE-BEGIN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE-END" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE-COUNT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE@" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE-CLOSE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NHOST:PREPARE-IMPORT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NHOST:ABANDON-TAKEN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
+: DEF-HISTORY-CAPTURE ( -- )
+   s" NCOMP:DEFINITION-HISTORY" DEF-TARGET DEF-HISTORY-XT execute
+      DEF-BUILD-DELTA ! DEF-EPOCH-DELTA ! DEF-GEN-DELTA !
+      DEF-MODULE-DELTA ! ;
+: DEF-HISTORY-CHECK ( -- )
+   DEF-MODULE-DELTA @ 0 <= DEF-GEN-DELTA @ 0 <= or
+   DEF-EPOCH-DELTA @ 0 <= or DEF-BUILD-DELTA @ 0 <= or if BAD then
+   DEF-MODULE-DELTA @ IR-ID:SERIAL-CHECK drop
+   DEF-GEN-DELTA @ DEF-EPOCH-DELTA @ IR-CTX:CHECK-HISTORY
+   DEF-BUILD-DELTA @ IR-BUILD:CHECK-HISTORY ;
+: DEF-HISTORY-REPLAY ( -- )
+   DEF-MODULE-DELTA @ DEF-GEN-DELTA @ DEF-EPOCH-DELTA @ DEF-BUILD-DELTA @
+   s" NCOMP:REPLAY-DEFINITION" DEF-TARGET DEF-REPLAY-XT execute ;
+: DEF-PREP-BEGIN ( n -- )
+   s" NSTR:PREPARE-BEGIN" DEF-TARGET DEF-PREP-BEGIN-XT execute ;
+: DEF-PREP-INTERN ( ptr u8 n -- n )
+   s" NSTR:PREPARE-INTERN" DEF-TARGET DEF-LITERAL-XT execute ;
+: DEF-PREP-DATA-END ( -- n )
+   s" NSTR:PREPARE-DATA-END" DEF-NUM ;
+: DEF-INTERN ( ptr u8 n -- n )
+   s" NSTR:INTERN" DEF-TARGET DEF-LITERAL-XT execute ;
+: DEF-SOURCE-BEGIN ( -- )
+   s" NSTR:SOURCE-BEGIN" DEF-TARGET DEF-ACTION-XT execute ;
+: DEF-SOURCE-END ( -- )
+   s" NSTR:SOURCE-END"
+      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop exit then
+   DEF-ACTION-XT execute ;
+: DEF-SOURCE-COUNT ( -- n )
+   s" NSTR:SOURCE-COUNT" DEF-NUM ;
+: DEF-SOURCE@ ( n -- ptr u8 n )
+   s" NSTR:SOURCE@" DEF-TARGET DEF-SOURCE-XT execute ;
+: DEF-ABANDON-HOST ( -- )
+   s" NHOST:ABANDON-TAKEN"
+      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop exit then
+   DEF-HOST-ABANDON-XT execute ;
+: DEF-BYTES ( n -- ptr u8 )
+   s" NART:BYTES" DEF-TARGET DEF-PTR-XT execute ;
+
+: DEF-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+: DEF-CHECK-AVAILABLE? ( -- bool )
+   DEF-OWNER {: owner:ptr :}
+   owner NULL-PTR = if false exit then
+   owner 16 - CELL-VIEW @ CHECKER-OWNER-ABI:MAGIC <> if false exit then
+   owner 8 - CELL-VIEW @ $508 < if false exit then
+   5 0 ?do
+      owner $4D0 i cells + + CELL-VIEW @ 0= if false unloop exit then
+   loop
+   owner $500 + CELL-VIEW @ 0<> ;
+: DEF-CHECK-XT ( n -- n )
+   DEF-OWNER + CELL-VIEW @ dup 0= if BAD then ;
+: DEF-CHECK-IDLE? ( -- bool )
+   $500 DEF-CHECK-XT DEF-NUM-XT execute 0<> ;
+: DEF-CHECK-MARK ( -- )
+   $4D0 DEF-CHECK-XT DEF-ACTION-XT execute ;
+: DEF-CHECK-DISCARD ( -- )
+   DEF-CHECK-AVAILABLE? if $4F0 DEF-CHECK-XT DEF-ACTION-XT execute then ;
+
+: DEF-CHECK-REF ( ptr u8 n -- n )
+   {: rec:ptr bytes:n :}
+   bytes DREC <> if BAD then
+   rec NULL-PTR BYTE-VIEW - dbase@ - {: off:n :}
+   off 0 < off DREC mod 0<> or if BAD then
+   off DREC / NFILE-REF:REF-RECORD ;
+: DEF-CHECK-RESOLVE ( n n -- ptr u8 )
+   {: ref:n bytes:n :}
+   bytes DREC <> if BAD then
+   ref NFILE-REF:REF>RECORD XREF-REC BYTE-VIEW ;
+: DEF-CHECK-EXPORT ( -- )
+   ['] DEF-CHECK-REF $4D8 DEF-CHECK-XT
+      DEF-CHECK-EXPORT-XT execute {: source:ptr bytes:n :}
+   bytes 0 < if BAD then
+   bytes DEF-CHECK-RESERVE
+   source 0 DEF-CHECK bytes BYTE-COPY
+   bytes DEF-CHECK-U ! ;
+: DEF-CHECK-PREPARE ( ptr u8 n -- n )
+   ['] DEF-CHECK-RESOLVE $4E0 DEF-CHECK-XT
+      DEF-CHECK-PREP-XT execute ;
+: DEF-CHECK-INSTALL ( n -- )
+   $4E8 DEF-CHECK-XT DEF-CHECK-INSTALL-XT execute ;
+
+: DEF-HOST-N ( n -- )
+   {: value:n :}
+   DEF-HOST-U @ 8 + DEF-HOST-RESERVE
+   value DEF-HOST-U @ DEF-HOST LE:U64!
+   8 DEF-HOST-U +! ;
+: DEF-LIT-NUM ( n -- )
+   {: value:n :}
+   DEF-LIT-U @ 8 + DEF-LIT-RESERVE
+   value DEF-LIT-U @ DEF-LIT LE:U64!
+   8 DEF-LIT-U +! ;
+: DEF-FIRST-ADDR ( n n -- n )
+   {: address:n limit:n :}
+   limit 0 ?do
+      address i DEF-LIT-ADDR @ = if i unloop exit then
+   loop
+   limit ;
+
+: DEF-CAPTURE-LITERALS ( -- )
+   0 DEF-LIT-U !
+   DEF-SOURCE-COUNT DEF-LIT-N !
+   DEF-LIT-N @ DEF-LIT-ADDR-RESERVE
+   DEF-LIT-N @ DEF-LIT-LEN-RESERVE
+   DEF-LIT-N @ 0 ?do
+      i DEF-SOURCE@ {: body:ptr bytes:n :}
+      body NULL-PTR BYTE-VIEW - {: address:n :}
+      address i DEF-LIT-ADDR !
+      bytes i DEF-LIT-LEN !
+      bytes DEF-LIT-NUM
+      address i DEF-FIRST-ADDR DEF-LIT-NUM
+      DEF-LIT-U @ bytes + DEF-LIT-RESERVE
+      body DEF-LIT-U @ DEF-LIT bytes BYTE-COPY
+      bytes DEF-LIT-U +!
+   loop ;
+
+: DEF-CALL+ ( n n n n n -- )
+   {: site:n kind:n ref:n loc:n known:n :}
+   DEF-CALL-U @ DEF-CALL-BYTES + DEF-CALL-RESERVE
+   DEF-CALL-U @ DEF-CALL {: dst:ptr :}
+   site dst LE:U64!
+   kind dst 8 + LE:U64!
+   ref dst 16 + LE:U64!
+   loc dst 24 + LE:U64!
+   known dst 32 + LE:U64!
+   DEF-CALL-BYTES DEF-CALL-U +! ;
+: DEF-ADDR+ ( n n n -- )
+   {: site:n kind:n ref:n :}
+   DEF-ADDR-U @ DEF-ADDR-BYTES + DEF-ADDR-RESERVE
+   DEF-ADDR-U @ DEF-ADDR {: dst:ptr :}
+   site dst LE:U64!
+   kind dst 8 + LE:U64!
+   0 dst 16 + LE:U64!
+   ref dst 24 + LE:U64!
+   0 dst 32 + LE:U64!
+   DEF-ADDR-BYTES DEF-ADDR-U +! ;
+
+: DEF-CAPTURE-CALLS ( n n n -- )
+   {: emission:n fn:n size:n :}
+   emission s" NART:CALL-SITES" DEF-ONE 0 ?do
+      emission i s" NART:CALL-SITE@" DEF-TWO {: site:n :}
+      emission i s" NART:CALL-KIND@" DEF-TWO {: kind:n :}
+      emission i s" NART:CALL-TARGET@" DEF-TWO {: target:n :}
+      site 0 < site 4 + size > or if BAD then
+      target NFILE-REF:REF-CODE {: ref:n :}
+      emission i s" NART:CALL-LOC@" DEF-TWO {: loc:n :}
+      emission i s" NART:CALL-IMPL@" DEF-TWO 0<> if 1 else 0 then
+         {: known:n :}
+      site kind ref loc known DEF-CALL+
+      target fn < target fn size + >= or if
+         site DEF-CODE {: at:ptr :}
+         kind NEMIT:CALL = if
+            fn site + target NBR:BL-WORD at LE:U32!
+         else
+            fn site + target NBR:B-WORD at LE:U32!
+         then
+      then
+   loop ;
+
+: DEF-ADDR-REF ( n n n -- n )
+   {: kind:n target:n owner:n :}
+   kind A64IR:ADDR-CODE = if target NFILE-REF:REF-CODE exit then
+   owner -2 <= if
+      owner negate 2 - {: row:n :}
+      row DEF-SOURCE-COUNT >= if BAD then
+      row DEF-SOURCE@ {: body:ptr bytes:n :}
+      target body NULL-PTR BYTE-VIEW - - {: addend:n :}
+      addend 0 < addend bytes > or if BAD then
+      row addend NFILE-REF:REF-LITERAL exit
+   then
+   owner 0 < if BAD then
+   owner NFILE-REF:DATA-ORIGIN-BASE 0= if drop BAD then
+   target <> if BAD then
+   owner NUNIT-DEP:BIND-ORD
+   owner 0 0 1 NFILE-REF:REF-DECL-DATA ;
+
+: DEF-CAPTURE-ADDRS ( n n -- )
+   {: emission:n size:n :}
+   emission s" NART:ADDR-SITES" DEF-ONE 0 ?do
+      emission i s" NART:ADDR-SITE@" DEF-TWO {: site:n :}
+      emission i s" NART:ADDR-SITE-KIND@" DEF-TWO {: kind:n :}
+      emission i s" NART:ADDR-SITE-ORIGIN@" DEF-TWO {: owner:n :}
+      kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+      else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
+      else BAD then then {: width:n :}
+      site 0 < site width + size > or if BAD then
+      site DEF-CODE {: carrier:ptr :}
+      carrier 0 DEF-CODE size + ADDRESS-CARRIER:CHAIN-SIZE
+         width <> if BAD then
+      carrier width ADDRESS-CARRIER:CHAIN-VALUE {: target:n :}
+      kind target owner DEF-ADDR-REF {: ref:n :}
+      site kind ref DEF-ADDR+
+      carrier 0 width ADDRESS-CARRIER:SET-CHAIN-VALUE
+   loop ;
+
+: DEF-CAPTURE-HOST ( n -- )
+   {: emission:n :}
+   0 DEF-HOST-U !
+   s" NHOST:TAKEN-FUNCTIONS" DEF-NUM {: funs:n :}
+   funs 0 <= if BAD then
+   funs DEF-HOST-N
+   funs 0 ?do
+      i s" NHOST:TAKEN-FACTS" DEF-TARGET DEF-FACTS-XT execute
+         {: len:n din:n dout:n reason:n loc:n types:n :}
+      emission i s" NART:FUNCTION-OFFSET@" DEF-TWO DEF-HOST-N
+      len DEF-HOST-N din DEF-HOST-N dout DEF-HOST-N
+      reason DEF-HOST-N loc DEF-HOST-N types DEF-HOST-N
+      types 0 > if
+         types 0 ?do
+            j i s" NHOST:TAKEN-TYPE@" DEF-TWO DEF-HOST-N
+         loop
+      then
+   loop ;
+
+: DEF-REGISTER-FUNCTIONS ( -- )
+   0 DEF-HOST LE:U64@ {: funs:n :}
+   8
+   funs 0 ?do
+      {: cursor:n :}
+      cursor DEF-HOST {: row:ptr :}
+      i 0<> if
+         DEF-CODE-BASE @ row LE:U64@ +
+            DEF-PENDING @ NFILE-REF:REGISTER-IMPL
+      then
+      cursor 7 cells + row 48 + LE:U64@ 0 max cells +
+   loop drop ;
+
+: DEF-CAPTURE ( n n n n -- )
+   {: emission:n idx:n fn:n size:n :}
+   DEF-ACTIVE @ 0= if exit then
+   DEF-EMITTED @ if BAD then
+   idx DEF-PENDING @ <> size 0 <= or if BAD then
+   fn DEF-CODE-BASE !
+   size DEF-CODE-RESERVE
+   emission DEF-BYTES 0 DEF-CODE size BYTE-COPY
+   size DEF-CODE-U !
+   fn size idx NFILE-REF:BEGIN-DEFINITION-BOUNDS
+   emission fn size DEF-CAPTURE-CALLS
+   emission size DEF-CAPTURE-ADDRS
+   emission DEF-CAPTURE-HOST
+   1 DEF-EMITTED ! ;
+
+variable DEF-REFUSED
+variable DEF-HELD-E
+variable DEF-HELD-IDX
+variable DEF-HELD-FN
+variable DEF-HELD-SIZE
+: DEF-CAPTURE-HELD ( -- )
+   DEF-HELD-E @ DEF-HELD-IDX @ DEF-HELD-FN @ DEF-HELD-SIZE @
+      DEF-CAPTURE ;
+: DEF-OBSERVE ( n n n n -- )
+   {: emission:n idx:n fn:n size:n :}
+   DEF-ACTIVE @ 0= if exit then
+   emission DEF-HELD-E ! idx DEF-HELD-IDX !
+   fn DEF-HELD-FN ! size DEF-HELD-SIZE !
+   ['] DEF-CAPTURE-HELD catch {: rc:n :}
+   rc 0= if exit then
+   rc E-NUNIT-PROFILE <> if rc throw then
+   s" capture-profile-unsupported" DEF-PENDING @ REPORT-STORE-REFUSED
+   1 DEF-REFUSED ! ;
+
+: DEF-FIELDS ( -- )
+   DEF-PENDING @ XREF-REC {: rec:ptr :}
+   rec XREF-START DEF-CODE-BASE @ <> if BAD then
+   rec XREF-RAW-LEN DEF-RECORDED !
+   rec XREF-WIDE? DEF-WIDE !
+   rec XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift DEF-MIN-IN ! ;
+
+: DEF-META! ( -- )
+   DEF-RECORDED @ DEF-META LE:U64!
+   DEF-CODE-U @ DEF-META 8 + LE:U64!
+   DEF-WIDE @ if 1 else 0 then DEF-META 16 + LE:U64!
+   DEF-MIN-IN @ DEF-META 24 + LE:U64!
+   DEF-LIT-N @ DEF-META 32 + LE:U64!
+   0 DEF-META 40 + LE:U64!
+   DEF-MODULE-DELTA @ DEF-META 48 + LE:U64!
+   DEF-GEN-DELTA @ DEF-META 56 + LE:U64!
+   DEF-EPOCH-DELTA @ DEF-META 64 + LE:U64!
+   DEF-BUILD-DELTA @ DEF-META 72 + LE:U64! ;
+
+: DEF-PACK-SECTIONS ( ptr u8 n -- )
+   {: deps:ptr depsu:n :}
+   NUNIT-FILE:RESET-KEEP
+   17 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
+   0 0 DEF-CODE DEF-CODE-U @ NUNIT-FILE:SECTION!
+   1 DEF-META DEF-META-BYTES NUNIT-FILE:SECTION!
+   DEF-CALL-U @ 0 > if
+      2 0 DEF-CALL DEF-CALL-U @ NUNIT-FILE:SECTION!
+   then
+   DEF-ADDR-U @ 0 > if
+      3 0 DEF-ADDR DEF-ADDR-U @ NUNIT-FILE:SECTION!
+   then
+   DEF-CHECK-U @ 0 > if
+      5 0 DEF-CHECK DEF-CHECK-U @ NUNIT-FILE:SECTION!
+   then
+   DEF-LIT-U @ 0 > if
+      10 0 DEF-LIT DEF-LIT-U @ NUNIT-FILE:SECTION!
+   then
+   13 DEF-PENDING @ DEF-PENDING @ 1+ NFILE-REF:ENCODE
+      NUNIT-FILE:SECTION!
+   14 deps depsu NUNIT-FILE:SECTION!
+   15 0 DEF-HOST DEF-HOST-U @ NUNIT-FILE:SECTION! ;
+
+: DEF-RESET ( -- )
+   0 DEF-ACTIVE ! 0 DEF-EMITTED ! 0 DEF-FINISHED !
+   0 DEF-PREPARED ! 0 DEF-REFUSED !
+   0 DEF-CODE-U ! 0 DEF-CALL-U ! 0 DEF-ADDR-U !
+   0 DEF-LIT-U ! 0 DEF-HOST-U ! 0 DEF-CHECK-U !
+   0 DEF-LIT-N ! 0 DEF-CALL-SITE-N ! 0 DEF-ADDR-SITE-N !
+   0 DEF-PENDING ! 0 DEF-CODE-BASE ! 0 DEF-CHECK-ID !
+   0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
+   0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
+   0 DEF-HELD-E ! 0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
+   0 DEF-PLAN-ON ! 0 DEF-REQUIRE-COMPLETE ! ;
+
+: DEF-DROP-PLAN ( -- n )
+   DEF-SOURCE-END
+   ['] DEF-CHECK-DISCARD catch
+   ['] DEF-ABANDON-HOST catch
+   over 0<> if drop else nip then
+   NFILE-REF:END-CAPTURE
+   DEF-RESET ;
+
+: DEF-READ-META ( -- )
+   1 NUNIT-FILE:SECTION$ {: meta:ptr size:n :}
+   size DEF-META-BYTES <> if BAD then
+   meta LE:U64@ DEF-RECORDED !
+   meta 8 + LE:U64@ DEF-CODE-U !
+   meta 16 + LE:U64@ dup 0<> over 1 <> and if BAD then 0<> DEF-WIDE !
+   meta 24 + LE:U64@ DEF-MIN-IN !
+   meta 32 + LE:U64@ DEF-LIT-N !
+   meta 40 + LE:U64@ 0<> if BAD then
+   meta 48 + LE:U64@ DEF-MODULE-DELTA !
+   meta 56 + LE:U64@ DEF-GEN-DELTA !
+   meta 64 + LE:U64@ DEF-EPOCH-DELTA !
+   meta 72 + LE:U64@ DEF-BUILD-DELTA !
+   ['] DEF-HISTORY-CHECK catch {: history-rc:n :}
+   history-rc E-IR-MODULE-EXHAUSTED =
+   history-rc E-IR-CTX-SERIALS = or
+   history-rc E-IR-BUILD-SERIALS = or if BAD then
+   history-rc 0<> if history-rc throw then
+   DEF-RECORDED @ CODE-SPAN:VALID? 0= if BAD then
+   DEF-RECORDED @ CODE-SPAN:BYTES DEF-CODE-U @ <> if BAD then
+   DEF-CODE-U @ 0 <= DEF-CODE-U @ 3 and 0<> or if BAD then
+   DEF-MIN-IN @ 0 < DEF-MIN-IN @ 255 > or if BAD then ;
+
+: DEF-READ-LITERALS ( -- )
+   10 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
+   0 DEF-LIT-U !
+   DEF-LIT-N @ DEF-LIT-ADDR-RESERVE
+   DEF-LIT-N @ DEF-LIT-LEN-RESERVE
+   DEF-LIT-N @ 0 ?do
+      size DEF-LIT-U @ - 16 < if BAD then
+      src DEF-LIT-U @ + LE:U64@ {: bytes:n :}
+      src DEF-LIT-U @ 8 + + LE:U64@ {: first:n :}
+      first 0 < first i > or if BAD then
+      bytes 0 < bytes size DEF-LIT-U @ 16 + - > or if BAD then
+      bytes i DEF-LIT-LEN !
+      src DEF-LIT-U @ 16 + + bytes DEF-PREP-INTERN
+         {: address:n :}
+      address i DEF-LIT-ADDR !
+      address i DEF-FIRST-ADDR first <> if BAD then
+      bytes 16 + DEF-LIT-U +!
+   loop
+   DEF-LIT-U @ size <> if BAD then ;
+
+: DEF-PREP-CALL ( n -- )
+   {: row:n :}
+   2 NUNIT-FILE:SECTION$ drop row DEF-CALL-BYTES * + {: src:ptr :}
+   src LE:U64@ {: site:n :}
+   src 8 + LE:U64@ {: kind:n :}
+   site 0 < DEF-CODE-U @ 4 < or if BAD then
+   site DEF-CODE-U @ 4 - > if BAD then
+   kind NEMIT:CALL <> kind NEMIT:TAIL <> and if BAD then
+   src 16 + LE:U64@ NFILE-REF:REF>CODE {: target:n :}
+   row DEF-CALL-BYTES * DEF-CALL {: dst:ptr :}
+   src dst DEF-CALL-BYTES BYTE-COPY
+   target dst 16 + LE:U64!
+   site DEF-CODE {: at:ptr :}
+   kind NEMIT:CALL = if
+      at LE:U32@ NBR:BL? 0= if BAD then
+      DEF-CODE-BASE @ site + target NBR:BL-WORD at LE:U32!
+      target dbase@ < target dbase@ REGION + >= or if
+         site DEF-CALL-SITE-N @ DEF-CALL-SITES !
+         1 DEF-CALL-SITE-N +!
+      then
+   else
+      at LE:U32@ NBR:B? 0= if BAD then
+      DEF-CODE-BASE @ site + target NBR:B-WORD at LE:U32!
+   then ;
+
+: DEF-PREP-CALLS ( -- )
+   2 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
+   src drop
+   size DEF-CALL-BYTES mod 0<> if BAD then
+   size DEF-CALL-RESERVE
+   size DEF-CALL-U !
+   size DEF-CALL-BYTES / DEF-CALL-SITES-RESERVE
+   0 DEF-CALL-SITE-N !
+   size DEF-CALL-BYTES / 0 ?do i DEF-PREP-CALL loop ;
+
+: DEF-LIT-REF ( n -- n )
+   NFILE-REF:REF>LITERAL {: row:n addend:n :}
+   row 0 < row DEF-LIT-N @ >= or if BAD then
+   addend 0 < addend row DEF-LIT-LEN @ > or if BAD then
+   row DEF-LIT-ADDR @ addend + ;
+
+: DEF-PREP-ADDR ( n -- )
+   {: row:n :}
+   3 NUNIT-FILE:SECTION$ drop row DEF-ADDR-BYTES * + {: src:ptr :}
+   src LE:U64@ {: site:n :}
+   src 8 + LE:U64@ {: kind:n :}
+   kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+   else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
+   else BAD then then {: width:n :}
+   site 0 < width DEF-CODE-U @ > or if BAD then
+   site DEF-CODE-U @ width - > if BAD then
+   src 16 + LE:U64@ 0<> src 32 + LE:U64@ 0<> or if BAD then
+   src 24 + LE:U64@ {: ref:n :}
+   kind A64IR:ADDR-CODE = if ref NFILE-REF:REF>CODE else
+      ref NFILE-REF:REF-KIND NFILE-REF:LITERAL = if
+         ref DEF-LIT-REF
+      else ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - then
+   then {: target:n :}
+   site DEF-CODE {: carrier:ptr :}
+   carrier 0 DEF-CODE DEF-CODE-U @ + ADDRESS-CARRIER:CHAIN-SIZE
+      width <> if BAD then
+   carrier target width ADDRESS-CARRIER:SET-CHAIN-VALUE
+   site row DEF-ADDR-SITES ! ;
+
+: DEF-PREP-ADDRS ( -- )
+   3 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
+   src drop
+   size DEF-ADDR-BYTES mod 0<> if BAD then
+   size DEF-ADDR-RESERVE
+   size DEF-ADDR-U !
+   size DEF-ADDR-BYTES / DEF-ADDR-SITES-RESERVE
+   size DEF-ADDR-BYTES / DEF-ADDR-SITE-N !
+   size DEF-ADDR-BYTES / 0 ?do i DEF-PREP-ADDR loop ;
+
+: DEF-PREP-OPEN ( -- )
+   DEF-CHECK-AVAILABLE? 0= if BAD then
+   DEF-REQUIRE-COMPLETE @ if
+      14 NUNIT-FILE:SECTION$ NUNIT-DEP:COMPLETE? 0= if BAD then
+   then
+   14 NUNIT-FILE:SECTION$ NUNIT-DEP:CHECK 0= if BAD then
+   DEF-READ-META
+   0 NUNIT-FILE:SECTION$ {: source:ptr size:n :}
+   size DEF-CODE-U @ <> if BAD then
+   size DEF-CODE-RESERVE
+   source 0 DEF-CODE size BYTE-COPY
+   cp@ DEF-CODE-BASE !
+   ['] XREF-REC NFILE-REF:RECORD-AT!
+   13 NUNIT-FILE:SECTION$
+      ndict@ DEF-CODE-BASE @ DEF-CODE-U @
+      0 0 0 0 NFILE-REF:PREPARE
+   AOT-ARM:HERE-N DEF-PREP-BEGIN
+   1 DEF-PLAN-ON !
+   DEF-READ-LITERALS
+   DEF-PREP-DATA-END DATA-VA VA>N - DATA-SIZE > if BAD then
+   DEF-PREP-CALLS DEF-PREP-ADDRS
+   15 NUNIT-FILE:SECTION$ {: funcs:ptr funcu:n :}
+   DEF-CODE-BASE @ DEF-CODE-U @ funcs funcu
+      DEF-CALL-U @ 0= if NULL-PTR else 0 DEF-CALL then DEF-CALL-U @
+      s" NHOST:PREPARE-IMPORT" DEF-TARGET DEF-PREP-HOST-XT execute
+   5 NUNIT-FILE:SECTION$ DEF-CHECK-PREPARE DEF-CHECK-ID !
+   1 DEF-PREPARED ! ;
+
+: DEF-COPY-LITERALS ( -- )
+   10 NUNIT-FILE:SECTION$ drop {: src:ptr :}
+   0
+   DEF-LIT-N @ 0 ?do
+      {: cursor:n :}
+      src cursor + LE:U64@ {: bytes:n :}
+      src cursor 16 + + bytes DEF-INTERN
+         i DEF-LIT-ADDR @ <> if BAD then
+      cursor bytes 16 + +
+   loop drop ;
+
+: DEF-INSTALL ( -- n )
+   DEF-PREPARED @ 0= if BAD then
+   DEF-HISTORY-REPLAY
+   DEF-COPY-LITERALS
+   0 DEF-CODE DEF-CODE-U @ DEF-RECORDED @
+      DEF-CALL-SITE-N @ 0= if NULL-PTR else 0 DEF-CALL-SITES then
+      DEF-CALL-SITE-N @
+      DEF-ADDR-SITE-N @ 0= if NULL-PTR else 0 DEF-ADDR-SITES then
+      DEF-ADDR-SITE-N @
+      DEF-WIDE @ DEF-MIN-IN @
+      s" NPUB:IMPORT-PENDING" DEF-TARGET DEF-PUBLISH-XT execute
+      {: ord:n :}
+   DEF-CHECK-ID @ DEF-CHECK-INSTALL
+   ord ;
+
+0 CWORK-VARIABLE DEF-IN-BYTES ptr u8
+0 CWORK-VARIABLE DEF-IN-SIZE n
+0 CWORK-VARIABLE DEF-IN-KEY ptr u8
+0 CWORK-VARIABLE DEF-IN-KEY-U n
+: DEF-PREPARE-BODY ( -- )
+   DEF-IN-BYTES @ DEF-IN-SIZE @
+      NUNIT-FILE:ARCH-AARCH64 s" DEFINITION"
+      DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-BYTES-REUSE
+   DEF-PREP-OPEN ;
+
+public
+
+: WITH-DEFINITIONS ( [ -- ] -- )
+   ['] DEF-OBSERVE swap NUNIT-CAPTURE:WITH-OBSERVER ;
+
+: DEFINITION-BEGIN ( -- )
+   DEF-RESET
+   DEF-ELIGIBLE? 0= if
+      s" begin-ineligible" ndict@ REPORT-STORE-REFUSED
+      1 DEF-REFUSED ! exit
+   then
+   DEF-CHECK-AVAILABLE? 0= if
+      s" checker-unavailable" ndict@ REPORT-STORE-REFUSED
+      1 DEF-REFUSED ! exit
+   then
+   DEF-CHECK-IDLE? 0= if
+      s" checker-busy" ndict@ REPORT-STORE-REFUSED
+      1 DEF-REFUSED ! exit
+   then
+   ndict@ DEF-PENDING !
+   1 DEF-ACTIVE !
+   DEF-CHECK-MARK
+   DEF-SOURCE-BEGIN ;
+
+: DEFINITION-END ( -- bool )
+   DEF-ACTIVE @ 0= if DEF-SOURCE-END false exit then
+   0 DEF-ACTIVE !
+   DEF-ELIGIBLE? 0= if
+      s" end-ineligible" DEF-PENDING @ REPORT-STORE-REFUSED
+      1 DEF-REFUSED !
+   then
+   DEF-EMITTED @ 0= DEF-REFUSED @ 0<> or if
+      DEF-REFUSED @ 0<> if s" capture-refused" else s" no-emission" then
+         DEF-PENDING @ REPORT-STORE-REFUSED
+      DEF-SOURCE-END
+      DEF-CHECK-DISCARD
+      NFILE-REF:END-CAPTURE false exit
+   then
+   ndict@ DEF-PENDING @ 1+ <> if BAD then
+   DEF-FIELDS
+   DEF-REGISTER-FUNCTIONS
+   DEF-CHECK-EXPORT
+   DEF-CAPTURE-LITERALS
+   DEF-SOURCE-END
+   DEF-HISTORY-CAPTURE
+   DEF-META!
+   1 DEF-FINISHED !
+   true ;
+
+: PACK-DEFINITION ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: key:ptr keyu:n deps:ptr depsu:n :}
+   DEF-FINISHED @ 0= if BAD then
+   deps depsu DEF-PACK-SECTIONS
+   NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;
+
+: PREPARE-DEFINITION-KIND? ( ptr u8 n ptr u8 n bool -- bool )
+   {: bytes:ptr size:n key:ptr keyu:n complete:bool :}
+   DEF-PLAN-ON @ if BAD then
+   DEF-RESET
+   complete DEF-REQUIRE-COMPLETE !
+   DEF-ELIGIBLE? 0= if false exit then
+   DEF-CHECK-AVAILABLE? 0= if false exit then
+   DEF-CHECK-IDLE? 0= if false exit then
+   bytes DEF-IN-BYTES ! size DEF-IN-SIZE !
+   key DEF-IN-KEY ! keyu DEF-IN-KEY-U !
+   ['] DEF-PREPARE-BODY catch {: rc:n :}
+   rc 0= if true exit then
+   DEF-DROP-PLAN {: cleanup:n :}
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if
+      cleanup 0<> if cleanup throw then
+      false exit
+   then
+   rc throw ;
+
+: PREPARE-DEFINITION? ( ptr u8 n ptr u8 n -- bool )
+   false PREPARE-DEFINITION-KIND? ;
+
+: PREPARE-DEFINITION-COMPLETE? ( ptr u8 n ptr u8 n -- bool )
+   true PREPARE-DEFINITION-KIND? ;
+
+: INSTALL-DEFINITION ( -- n )
+   DEF-INSTALL ;
+
+: DISCARD-DEFINITION ( -- )
+   DEF-DROP-PLAN dup 0<> if throw then drop
+   NUNIT-FILE:RESET-KEEP ;
+
+: DEFINITIONS-CLOSE ( -- )
+   s" NSTR:SOURCE-CLOSE"
+      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0<> if
+         DEF-ACTION-XT execute
+      else drop then
+   s" NSTR:PREPARE-CLOSE"
+      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0<> if
+         DEF-ACTION-XT execute
+      else drop then
+   DEF-RESET ;
 
 ;package

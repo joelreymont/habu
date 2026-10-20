@@ -3,7 +3,6 @@
 \ the target engine rather than to the retained compiler's larger host registry.
 s" src/lib/prelude.f" provided
 include src/core/enums.f
-include src/core/type-family-sha.f
 include src/core/combinators.f
 require src/habu/code-span.f
 require src/habu/xref.f
@@ -25,7 +24,7 @@ s" src/habu/layout.f" provided
 
 \ The native reader receives only the completed artifact after this process exits.
 package PREFIX-LITERAL-PRODUCER
-ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !
+ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R variable PRE-D PRE-D ! PRE-R !
 ;package
 
 require src/habu/aot-arm.f

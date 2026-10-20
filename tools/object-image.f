@@ -76,7 +76,9 @@ using OBJ
 
 DYNAMIC-BUFFER TEXT-STORAGE n
 variable TEXT-U
+variable DATA-U
 variable TEXT-ROW
+variable DATA-ROW
 variable EXPORT-ROW
 variable DEF-ROW
 variable ENTRY-ROW
@@ -86,7 +88,9 @@ variable ENTRY-ROW
 
 : CLEAR ( -- )
    0 TEXT-U !
+   0 DATA-U !
    -1 TEXT-ROW !
+   -1 DATA-ROW !
    -1 EXPORT-ROW !
    -1 DEF-ROW !
    -1 ENTRY-ROW ! ;
@@ -101,6 +105,7 @@ variable ENTRY-ROW
    row ROW-TAG$ s" checker" STR= if exit then
    row ROW-TAG$ s" compiler" STR= if exit then
    row ROW-TAG$ s" text" STR= if row TEXT-ROW CLAIM exit then
+   row ROW-TAG$ s" data" STR= if row DATA-ROW CLAIM exit then
    row ROW-TAG$ s" export" STR= if row EXPORT-ROW CLAIM exit then
    row ROW-TAG$ s" def" STR= if row DEF-ROW CLAIM exit then
    row ROW-TAG$ s" entry" STR= if row ENTRY-ROW CLAIM exit then
@@ -143,19 +148,24 @@ variable ENTRY-ROW
    hex idx 2 * + c@ HEX-NIB 4 lshift
    hex idx 2 * 1+ + c@ HEX-NIB or ;
 
-: DECODE-BYTE ( ptr u8 n -- ) {: hex:ptr idx:n :}
-   hex idx HEX-BYTE TEXT-BUF idx + c! ;
+: DECODE-ROW ( n ptr u8 -- )
+   {: row:n dest:ptr :}
+   row 0 ROW-FIELD$ {: hex:ptr hexu:n :}
+   hexu 2 / 0 ?do
+      hex i HEX-BYTE dest i + c!
+   loop ;
 
 : DECODE ( -- )
-   TEXT-ROW @ 0 ROW-FIELD$ {: hex:ptr hexu:n :}
-   hexu 2 / {: bytes:n :}
+   TEXT-ROW @ 0 ROW-FIELD$ nip 2 / {: bytes:n :}
    bytes 0 <= if E-OBJ-SCHEMA throw then
-   bytes CELL / bytes CELL mod 0 > if 1+ then
+   DATA-ROW @ 0 >= if
+      DATA-ROW @ 0 ROW-FIELD$ nip 2 / DATA-U !
+   then
+   bytes DATA-U @ + {: total:n :}
+   total CELL / total CELL mod 0 > if 1+ then
    TEXT-STORAGE-RESERVE
-   0 begin dup bytes < while
-      dup hex swap DECODE-BYTE
-      1+
-   repeat drop
+   TEXT-ROW @ TEXT-BUF DECODE-ROW
+   DATA-U @ 0 > if DATA-ROW @ TEXT-BUF bytes + DECODE-ROW then
    bytes TEXT-U ! ;
 
 : TEXT>ASM ( -- )
@@ -172,14 +182,19 @@ public
    CHECK-ENTRY
    DECODE ;
 
-\ An object's text is a stripped program as the maker's link emitted it
-\ (src/habu/aot-lib.f LINK writes both), so this writes that link's image under
+\ The object keeps executable text and immutable DATA payload as separate
+\ sections. The latter's address is already bound in the startup's code-base
+\ offset and is written after the two GOT cells by the Mach-O writer.
+\ This writes the link's image under
 \ the identifier that link signs, SIGN-ID:PROG$ (src/habu/sign-id.f says why
 \ the identifier is part of the bytes), and a relink is the file a fresh build
 \ writes (tools/hb-build-stripped-cache-test.f HBT-STRIPPED-OBJECT-RELINK).
 : WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    TEXT-U @ 0 <= if E-OBJ-SCHEMA throw then
    TEXT>ASM
+   DATA-U @ 0 > if
+      TEXT-U @ TEXT-BUF TEXT-U @ + DATA-U @ IMG-PAYLOAD!
+   then
    SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
 
 ;using

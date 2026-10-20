@@ -239,6 +239,58 @@ variable LONG-U
    S\" package CVO-P\npublic\n: RUN ( n -- n n ) CVO-F ;\n;package\n" VERDICT 70 T=
    DIAG$ s" run" CONTAINS? TTRUE ;
 
+\ A body that includes an engine source can execute only after the build's
+\ dictionary rewind. Reading that source while verifying the body duplicates
+\ the engine's first prefix record, IMK-NDICT0. An explicit top-level include
+\ still reads it, and an ordinary body dependency still contributes its words.
+: BODY-PROVIDED-CASE ( -- )
+   s" a provided body include waits for execution" T-LABEL
+   S\" : CVO-RELOAD ( -- ) s\" src/core/util.f\" included ;\n" COMPOSE-VERDICT 0 T=
+   s" an explicit include still reads a provided source" T-LABEL
+   S\" s\" src/core/util.f\" included\n" COMPOSE-VERDICT 78 T=
+   s" a nonprovided body include still supplies its dependency" T-LABEL
+   S\" : CVO-LOAD-DEP ( -- ) s\" test/fixtures/native-file-state-dependency.f\" included ;\n: CVO-USE-DEP ( n -- n ) FILE-STATE-DEPENDENCY:INCREMENT ;\n" COMPOSE-VERDICT 0 T= ;
+
+: BODY-LONG-PATH$ ( -- ptr u8 n )
+   1000 0 ?do $58 LONG-NAME i + c! loop
+   0 LONG-U !
+   S\" : CVO-LONG-INC ( -- ) s\" " LONG+
+   LONG-NAME 1000 LONG+
+   LONG-NAME 1000 LONG+
+   LONG-NAME 1000 LONG+
+   S\" \" included ;" LONG+
+   LONG-BUF LONG-U @ ;
+
+: BODY-INVALID-PATH-CASE ( -- )
+   s" an uncalled body defers a NUL include path to execution" T-LABEL
+   S\" : CVO-NUL-INC ( -- ) S\\\" \\x00\" included ;\n" COMPOSE-VERDICT 0 T=
+   s" an uncalled body defers an oversized include path to execution" T-LABEL
+   BODY-LONG-PATH$ COMPOSE-VERDICT 0 T= ;
+
+\ A quotation is a line of its own: a loader on its straight line waits as a
+\ definition's does, whether or not the quotation is run - its consumer is no
+\ condition, as a call is none for a definition (BODY-PROVIDED-CASE) - and a
+\ condition on either line, outside the quotation or inside it, leaves the
+\ file to the run. The quotation's bend ends at its `;]`. A verdict that
+\ certifies keeps its words and the files it loaded in this engine, so a later
+\ one defining the same name or loading the same file again is a duplicate:
+\ each row names its own words, and each row that loads its file has a fixture
+\ of its own. The conditional rows' file is one an earlier row loaded, which
+\ their verdicts do not see.
+: BODY-QUOTATION-CASE ( -- )
+   s" a quotation-run load on the line supplies its dependency" T-LABEL
+   S\" : CVO-QLOAD ( -- ) [: s\" test/fixtures/quotation-load-run.f\" included ;] execute ;\n: CVO-QLOAD-USE ( n -- n ) QUOTATION-LOAD-RUN:INCREMENT ;\n" COMPOSE-VERDICT 0 T=
+   s" whether or not the quotation is run" T-LABEL
+   S\" : CVO-QDROP ( -- ) [: s\" test/fixtures/quotation-load-drop.f\" included ;] drop ;\n: CVO-QDROP-USE ( n -- n ) QUOTATION-LOAD-DROP:INCREMENT ;\n" COMPOSE-VERDICT 0 T=
+   s" a quotation under a condition leaves its load to the run" T-LABEL
+   S\" : CVO-QCOND ( bool -- ) if [: s\" test/fixtures/native-file-state-dependency.f\" included ;] execute then ;\n: CVO-QCOND-USE ( n -- n ) FILE-STATE-DEPENDENCY:INCREMENT ;\n" COMPOSE-VERDICT 70 T=
+   DIAG$ s" cvo-qcond-use" CONTAINS? TTRUE
+   s" a condition inside the quotation leaves its load to the run" T-LABEL
+   S\" : CVO-QIN ( -- ) [: if s\" test/fixtures/native-file-state-dependency.f\" included then ;] drop ;\n: CVO-QIN-USE ( n -- n ) FILE-STATE-DEPENDENCY:INCREMENT ;\n" COMPOSE-VERDICT 70 T=
+   DIAG$ s" cvo-qin-use" CONTAINS? TTRUE
+   s" and ends at the quotation's close: the line after it is straight" T-LABEL
+   S\" : CVO-QAFTER ( -- ) [: if then ;] drop s\" test/fixtures/quotation-load-after.f\" included ;\n: CVO-QAFTER-USE ( n -- n ) QUOTATION-LOAD-AFTER:INCREMENT ;\n" COMPOSE-VERDICT 0 T= ;
+
 \ ---- the quiet resolver ------------------------------------------------------
 \ The scan asks of every token it reads "does this name a definer?", and it asks
 \ the resolver the rows above measure. That resolver answers two questions with
@@ -330,6 +382,9 @@ public
    USING-CASE
    HORIZON-MOVE-CASE
    REJECT-CASE
+   BODY-PROVIDED-CASE
+   BODY-INVALID-PATH-CASE
+   BODY-QUOTATION-CASE
    QUIET-CASE
    IMMEDIATE-CASE
    LONG-IMMEDIATE-CASE ;

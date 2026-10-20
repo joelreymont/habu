@@ -192,11 +192,9 @@ doubled. `STRUCTURE config` inside `package GPT2` produces
 `GPT2-CONFIG:MAKE`. This spelling rule creates one trap:
 `ENUM map-take` inside `package SAFET` produces `SAFET-MAP--TAKE:MOVED`, which
 reads as though it belongs to `package SAFET-MAP` — a real package declared
-earlier in the same file. There is also a readability cap of thirty-two
-characters on the generated spelling (`TF-CTOR-NAME-LIMIT` in
-`src/core/type-family.f`); past it the name is built from a hash instead, so a
-long, fully spelled-out constructor simply does not resolve. Wrap the long ones
-in short private words.
+earlier in the same file. The escaped spelling remains readable through the
+checker's 255-byte package-name limit. A longer derived constructor package is
+refused at declaration, just as an explicit package name of that length is.
 
 **Multi-cell values.** A record with several fields is one logical value that
 occupies several stack cells. The checker tracks the whole bundle, and two
@@ -614,7 +612,7 @@ two forms are `TF-CTOR-PKG$` and `TF-CTOR-PRIV$` in `src/core/type-family.f`:
 | | public `F` | private or `OPAQUE` `F` |
 |---|---|---|
 | spelling | `PKG-FAMILY:member` | `FAMILY-member` |
-| derived from | package name, then the family tail, internal hyphens doubled, capped at `TF-CTOR-NAME-LIMIT` = 32 characters with a SHA-256 fallback past the cap | the family tail, `-`, the member — uppercased, no escaping, no cap, no hash |
+| derived from | package name, then the family tail, internal hyphens doubled; up to 255 bytes | the family tail, `-`, the member — uppercased, no escaping or package-name cap |
 | lands in | the reserved constructor **namespace**, which is global | the **declaring package's private wordlist** |
 | resolvable from | anywhere, qualified | that one package only |
 
@@ -625,8 +623,7 @@ predicate `TFAM-GEN-PUBLIC?` (`src/core/type-family.f`) answers placement,
 
 The private form drops the package segment and the escaping because every use of
 it is inside the one package that declared the family, where the package name
-says nothing new, and a hashed spelling written on every line of a library would
-be the wrong trade. It is not injective across packages and does not need to be:
+says nothing new. It is not injective across packages and does not need to be:
 a collision with an existing private word, or between two families of one
 package, is refused by the generator's own "generated declaration already
 defined" die. A qualified private spelling is not merely unchosen but

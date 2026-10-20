@@ -10,7 +10,7 @@
 
 require src/lib/string.f
 require test/gate-common.f
-require tools/json.f
+require src/lib/jsonl.f
 require tools/check-core.f
 
 package DIAG-JSON-ESCAPE
@@ -18,6 +18,9 @@ package DIAG-JSON-ESCAPE
 32 constant CONTROL-END                  \ the first byte a JSON string holds raw
 
 variable BYTE
+variable POS
+variable COUNT
+create READER-STORAGE JR:STORAGE-BYTES allot
 
 \ The byte sits inside the token n<c>--, so an escape that swallowed or split a
 \ neighbour would not decode back to it.
@@ -44,31 +47,49 @@ variable BYTE
    [: CHECK-ACT ;] GE-CAPTURE-ACTION
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
-: TOKEN-FIELD ( n -- )
-   {: root:n :}
-   root s" token" JSON-GET {: node:n :}
-   node -1 = if s" packet has no token field" FAIL then
-   node JSON-KIND J-STR <> if s" packet token field is not a string" FAIL then
+: TOKEN-FIELD ( ptr u8 n -- )
+   READER-STORAGE JR:STORAGE-BYTES 2swap JR:INIT JR:NEXT drop
+   s" token" JR:FIND-KEY 0= if JR:CLOSE s" packet has no token field" FAIL then
+   JR:TOKEN JR:T-STR <> if JR:CLOSE s" packet token field is not a string" FAIL then
    SB-RESET  s" n" SB-APPEND  BYTE @ SB-APPEND-C  s" --" SB-APPEND
-   node JSON-STRING$ SB$ STR= 0= if
+   SB$ JR:STR-EQ? 0= if JR:CLOSE
       s" packet token field does not decode to n<c>--" FAIL
-   then ;
+   then JR:CLOSE ;
+
+: BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ dup 32 = over 9 = or over 13 = or swap 10 = or
+      0= if false unloop exit then
+   loop true ;
+
+: ROW ( ptr u8 n bool -- )
+   {: a:ptr u:n first:bool :}
+   READER-STORAGE JR:STORAGE-BYTES a u JR:INIT JR:NEXT JR:T-OBJ <> if
+      JR:CLOSE s" packet stream has a non-object" FAIL
+   then
+   JR:SKIP-VALUE JR:NEXT JR:T-END <> if JR:CLOSE E-JR-TRAILING throw then
+   JR:CLOSE
+   first if a u TOKEN-FIELD then ;
 
 \ Every row of the stream parses strictly; the first object is the packet.
 : STREAM ( -- )
-   GT-ERR$ JSONL-START-STRICT
-   JSONL-NEXT-OBJECT {: root:n :}
-   root -1 = if s" stream holds no packet" FAIL then
-   root TOKEN-FIELD
-   begin JSONL-NEXT-OBJECT -1 <> while repeat ;
-
-: STRICT ( -- )
-   [: STREAM ;] catch 0 <> if s" packet stream is not strict JSONL" FAIL then ;
+   GT-ERR$ {: a:ptr u:n :}
+   0 POS !
+   0 COUNT !
+   begin POS @ u < while
+      a u POS @ JSONL:SPLIT-LINE drop {: line:ptr lu:n next:n :}
+      line lu BLANK? 0= if
+         line lu COUNT @ 0= ROW
+         COUNT @ 1+ COUNT !
+      then
+      next POS !
+   repeat
+   COUNT @ 0= if s" stream holds no packet" FAIL then ;
 
 : ONE ( n -- )
    FIXTURE!
    CHECK-JSON
-   STRICT ;
+   STREAM ;
 
 : ALL ( -- )
    s" every control byte in a packet token" GT-PROGRESS-RUN

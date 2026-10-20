@@ -29,6 +29,16 @@ The installed release, a copied seed and a newly recovered source-only
 engine are different artifacts. Build and test a native product from the
 exact source tree before using it as a release candidate.
 
+An older native donor may lack `ENV-INPUT`. The engine build admits that only
+in its retained-host source phase; the first target rebind requires the hook
+from the replacement `env-base.f`. Before that rebind, the definition cache's
+environment reads select its cache directory (`HABU_BUILD_CACHE`) or diagnostics
+(`HABU_NATIVE_CACHE_DIAG`), without selecting target source or target behavior.
+The loader reads its established source roots directly. Target class queries
+in `internal-mark.f` run from `native-runtime.f` after that rebind, so they are
+observed. Application builds require environment observation immediately and
+refuse an engine without the hook.
+
 ## Requirements
 
 The Gforth seed emits ARM64 code and supports macOS ARM64 and Linux AArch64.
@@ -63,6 +73,41 @@ HABU_TARGET is set. It validates Gforth, builds private stages under HB_TMP
 The successful full run ends with “bootstrap OK: bin/hb”. The installed
 source-only engine can build the native product; it is not itself the
 product qualified by the native suite.
+
+For a source-only recovery host, load and install the source compiler before
+the native driver's initial `1 set-tier`. With `HOST` naming that host and
+`TMP` outside the checkout, build from the target tree:
+
+```sh
+cat > "$TMP/native-preload.f" <<'EOF'
+require src/compiler/native/compiler.f
+NCOMP:INSTALL
+EOF
+HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$TMP" \
+  "$HOST" --load "$TMP/native-preload.f" tools/native-build.f -- "$OUT"
+```
+
+This route emits the ordinary native product and its `.map`; qualify that
+pair against the matching sources before promotion.
+
+When a source update adds a baked checker API used by snapshot support, an
+older native host cannot first save the new builder support. For
+`CHECKER-REG:RECORD-SNAPSHOT-COPY`, the ordinary older-host build refuses with
+`E-UNDEFINED` in `CANON-DATA`. Stage a fresh checker-bearing host once through
+the same compiler preload above, then use the public command on that host:
+
+```sh
+HABU_WHITEBOX_IMAGE=1 HB_TMP="$TMP" HABU_BUILD_CACHE="$TMP/cache" \
+  HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" \
+  "$HOST" --load "$TMP/native-preload.f" tools/native-build.f \
+  -- "$TMP/hb-whitebox" whitebox
+HB_TMP="$TMP" HABU_BUILD_CACHE="$TMP/cache" \
+  "$TMP/hb-whitebox" --load tools/hb-build.f -- --engine -o "$OUT"
+```
+
+The first command requests a whitebox host and enables its target load with
+`HABU_WHITEBOX_IMAGE=1`. Keep that variable unset for the second command, which
+builds the ordinary sealed product and its matching `.map`.
 
 The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
 working ARM64 compiler with the x86-64 backend loaded to cross-build the
@@ -107,7 +152,9 @@ affect successive output:
 Use an external scratch directory for `$TMP`, as described in
 [gate.md](gate.md). With no argument the checkout's bin/hb supplies generation
 zero. The tool prints its private output directory and leaves the installed
-engine alone.
+engine alone. Every build uses a separate empty cache under that directory,
+including the two builds in same-host mode, so cached support and FILE
+artifacts cannot affect the comparison.
 Its same-host mode builds twice with one host to check repeatability:
 
     HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
@@ -229,6 +276,9 @@ This recovery/development refresh is the positive stage-2 fixpoint check:
 `BF-STAGE-FIXPOINT-FROM-SOURCE` compares successive native stages before the
 candidate is promoted. The native suite's `build-fixpoint-fixtures` row uses
 its already built compiler images for install, rollback, CLI and stamp checks.
+The product build captures its chain artifact once from `hb-host`. The same
+fixture row separately captures it in two fresh host processes and requires
+their first artifacts to match byte for byte.
 
 A retained AOT host resolves named calls against its cold prefix before reading
 tool input. Removing a prefix provider can make that host exit 82 with

@@ -3,7 +3,7 @@ title: Exit a refused checker record as a refusal, not an uncaught throw
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T23:39:30.937012+02:00\""
+created-at: "2026-10-02T23:39:30.937012+02:00"
 closed-at: "2026-10-14T19:45:53.015483+03:00"
 close-reason: 18c95d8b maps run-stage refused checker records to exit 70 in check.f, documents three codes, and records failing-first repair-packet regression.
 ---

@@ -14,7 +14,7 @@ build/
 /.out/
 
 # jj workspace checkouts (never snapshot or track these)
-.jj-ws/
+/.jj-ws.noindex/
 
 # python bytecode cache
 __pycache__/

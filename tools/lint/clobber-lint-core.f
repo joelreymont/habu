@@ -132,6 +132,8 @@ variable RX  variable RACC
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
    \ The source observer leaves the original or callback status in x15.
    a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
+   \ The shared body reader returns PASSIVE, EXECUTE or DOES in x16.
+   a u s" Lreaderdecide" LINT-STR=CI if 0 16 CL-ADD exit then
    a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lrowwalk" LINT-STR=CI if 0 0 CL-ADD exit then
@@ -165,10 +167,12 @@ variable RX  variable RACC
    \ LROOM restores x9-x12; its exhaustion branch throws without returning.
    a u s" EM-DEF-OCC:LROOM" LINT-STR=CI if
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD exit then
-   \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND and RESET
-   \ restore their own frames around LCOUNT and inherit its x15 preservation.
+   \ LCOUNT frames x9-x14/x30 and leaves x15 untouched. APPEND also frames
+   \ x15-x17 around its forwarded checker callback; RESET frames LCOUNT.
+   a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI if
+      0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
+        15 CL-ADD 16 CL-ADD 17 CL-ADD 30 CL-ADD exit then
    a u s" EM-DEF-OCC:LCOUNT" LINT-STR=CI
-   a u s" EM-DEF-OCC:LAPPEND" LINT-STR=CI or
    a u s" EM-DEF-OCC:LRESET" LINT-STR=CI or if
       0 9 CL-ADD 10 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD
         15 CL-ADD 30 CL-ADD exit then
@@ -273,6 +277,7 @@ public
 package CLOBBER
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" TADR," LINT-STR=CI if LINT-TRUE exit then
    a u s" PROT-EMIT:reserve" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
@@ -351,6 +356,8 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
+   \ TADR, writes its destination and scratch; the text base is read via DATA.
+   a u s" TADR," LINT-STR=CI if 0 EW 1 EW 0 20 CL-ADD CL-ROR exit then
    \ PROT-EMIT:RESERVE reads the byte count in x1 and CP, preserves its LR, and
    \ calls LGROW, whose only unpreserved register is x1.
    a u s" PROT-EMIT:reserve" LINT-STR=CI if

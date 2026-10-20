@@ -64,7 +64,6 @@ variable HBT-INST-FILES
    {: src:ptr srcu:n dst:ptr :}
    src srcu HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-PREPARE-ARTIFACT-CACHE
-   HBB-ARTIFACT-CACHE @ 0= if E-BUILD-SOURCE throw then
    HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY
    BF-TMP-RESET ;
 
@@ -439,8 +438,10 @@ variable HBT-INST-FILES
    HBB-LF SB-APPEND-C
    SB$ ;
 
-: HBT-ARTIFACT-KEY ( ptr u8 -- ) {: dst:ptr :}
+: HBT-ARTIFACT-KEY ( ptr u8 -- )
+   {: dst:ptr :}
    HBB-SRC-CLOSURE-HEX!
+   HBB-MAKER-KEY!
    HBB-ARTIFACT-KEY!
    HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY ;
 

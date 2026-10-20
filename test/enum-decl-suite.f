@@ -6,18 +6,15 @@
 \ engine, which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/enum-decl-suite.f
 \ Proves: full and compact declarations generate typed constructors; POLICY
-\ and DERIVE headers are accepted before compact variants and reach both the
-\ family record and the event stream; the shared
-\ variant open/close and field events sequence correctly and each field event
-\ carries the open variant selector; every reject anchor (mixed mode,
+\ and DERIVE headers are accepted before compact variants and reach the family
+\ record; every reject anchor (mixed mode,
 \ parameterized compact form, late compact header, compact positional payload,
 \ missing ;VARIANT / ;ENUM, malformed parameter list, empty enum,
 \ reserved / case family name, duplicate variant, every reserved variant-name
 \ category, package-scoped family collisions, and the field record's own dup /
 \ reserved / case / schema gate)
 \ fires at the offending token; a mid-declaration reject leaves every
-\ registry cursor byte-identical to the pre-declaration baseline; and the
-\ snapshot identity changes when a variant or payload field is added.
+\ registry cursor byte-identical to the pre-declaration baseline.
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 \
 \ ENUM-DECL:ED-RUN is the front-end entry: the global ENUM token still belongs to
@@ -64,24 +61,18 @@ T-RESET
 : PACKED# ( -- n ) TL-PACKED-TAG ;
 : CCN# ( -- n ) CC-N ;
 
-\ --- registry snapshot, so a reject can be proven byte-identical and the identity
-\ test can re-run an identical declaration against a fresh registry (family id
-\ restored, event log reset).
+\ --- registry snapshot, so a reject can be proven byte-identical.
 variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
 variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
 : REG-MARK ( -- )
    TFAM-N @ RB-TFAM !  TF-STR-U @ RB-STR !  TF-PK-N @ RB-PK !
    SUMV-N @ RB-SUMV !  LAY-N @ RB-LAY !  SCH-N @ RB-SCH !  SCH-ROOT-N @ RB-ROOT !
    PF-N @ RB-PFN !  PF-COMMIT-N @ RB-PFC ! ;
-: REG-RESTORE ( -- )
-   RB-TFAM @ TFAM-N !  RB-STR @ TF-STR-U !  RB-PK @ TF-PK-N !
-   RB-SUMV @ SUMV-N !  RB-LAY @ LAY-N !  RB-SCH @ SCH-N !  RB-ROOT @ SCH-ROOT-N !
-   RB-PFN @ PF-N !  RB-PFC @ PF-COMMIT-N ! ;
 : TFAMN@ ( -- n ) TFAM-N @ ;
 : SCHN@ ( -- n ) SCH-N @ ;
 : SUMVN@ ( -- n ) SUMV-N @ ;
 
-variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
+variable RC   variable FID   variable B   variable NODE   variable PFB
 variable VS0  variable VID
 
 \ The production parser and declaration runner stay unchanged.  These private
@@ -196,37 +187,7 @@ RC @ FID @ VS0 @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
 B @ 7161 T=                                            \ rolled-back token is stale
 
 \ ---------------------------------------------------------------------------
-\ 5. Compact event stream: DECL then one VARIANT + VARIANT-END pair per variant,
-\    with a bare family name (compact has arity zero).
-\ ---------------------------------------------------------------------------
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN evtc ea eb ;ENUM" evaluate-closed
-DECL-EVENT:COUNT 5 T=                                 \ DECL + (VARIANT + VARIANT-END) x 2
-0 DECL-EVENT:DECL? TTRUE
-1 DECL-EVENT:VARIANT? TTRUE
-2 DECL-EVENT:VARIANT-END? TTRUE
-3 DECL-EVENT:VARIANT? TTRUE
-4 DECL-EVENT:VARIANT-END? TTRUE
-
-\ ---------------------------------------------------------------------------
-\ 6. Full event stream: DECL, ARITY header, then variant open/close bracketing
-\    with the shared field event carrying the open variant as its selector.
-\ ---------------------------------------------------------------------------
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN evtf VARIANT quit ;VARIANT VARIANT move FIELD mx n ;VARIANT ;ENUM" evaluate-closed
-DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VARIANT-END, VARIANT, FIELD, VARIANT-END
-0 DECL-EVENT:DECL? TTRUE
-1 DECL-EVENT:ARITY? TTRUE
-2 DECL-EVENT:VARIANT? TTRUE
-3 DECL-EVENT:VARIANT-END? TTRUE
-4 DECL-EVENT:VARIANT? TTRUE
-5 DECL-EVENT:FIELD? TTRUE
-6 DECL-EVENT:VARIANT-END? TTRUE
-5 DECL-EVENT:VAR@ 4 DECL-EVENT:VAR@ T=               \ the field carries the open (move) variant selector
-5 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT <> TTRUE     \ which is a real variant, not NO-VARIANT
-
-\ ---------------------------------------------------------------------------
-\ 7. Compact POLICY and DERIVE clauses use the same family and event owners as
+\ 7. Compact POLICY and DERIVE clauses use the same family owner as
 \    full mode, remain TK-ENUM, and may precede variants in either header order.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
@@ -234,36 +195,22 @@ s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" evaluate-close
 s" compact-policy" FAMID TFAM-ENUM? TTRUE
 s" compact-policy" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-policy" FAMID F-VAR-COUNT 1 T=
-DECL-EVENT:COUNT 4 T=                                 \ DECL, POLICY, VARIANT, VARIANT-END
-0 DECL-EVENT:DECL? TTRUE
-1 DECL-EVENT:POLICY? TTRUE
-2 DECL-EVENT:VARIANT? TTRUE
-3 DECL-EVENT:VARIANT-END? TTRUE
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-derive-a DERIVE eq hash alpha ;ENUM" evaluate-closed
 s" compact-derive-a" FAMID TFAM-ENUM? TTRUE
 s" compact-derive-a" FAMID F-EQ? TTRUE
 s" compact-derive-a" FAMID F-HASH? TTRUE
-DECL-EVENT:COUNT 5 T=                                 \ DECL, DERIVE x2, VARIANT, VARIANT-END
-1 DECL-EVENT:DERIVE? TTRUE
-2 DECL-EVENT:DERIVE? TTRUE
-3 DECL-EVENT:VARIANT? TTRUE
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-derive-b DERIVE hash eq alpha ;ENUM" evaluate-closed
 s" compact-derive-b" FAMID F-EQ? TTRUE
 s" compact-derive-b" FAMID F-HASH? TTRUE
-1 DECL-EVENT:DERIVE? TTRUE
-2 DECL-EVENT:DERIVE? TTRUE
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-derive-split DERIVE eq DERIVE hash alpha ;ENUM" evaluate-closed
 s" compact-derive-split" FAMID F-EQ? TTRUE
 s" compact-derive-split" FAMID F-HASH? TTRUE
-DECL-EVENT:COUNT 5 T=                                 \ distinct clauses retain one event per feature
-1 DECL-EVENT:DERIVE? TTRUE
-2 DECL-EVENT:DERIVE? TTRUE
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-both-a POLICY packed-tag DERIVE eq hash alpha beta ;ENUM" evaluate-closed
@@ -272,11 +219,6 @@ s" compact-both-a" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-a" FAMID F-EQ? TTRUE
 s" compact-both-a" FAMID F-HASH? TTRUE
 s" compact-both-a" FAMID F-VAR-COUNT 2 T=
-DECL-EVENT:COUNT 8 T=                                 \ both headers, then two variant pairs
-1 DECL-EVENT:POLICY? TTRUE
-2 DECL-EVENT:DERIVE? TTRUE
-3 DECL-EVENT:DERIVE? TTRUE
-4 DECL-EVENT:VARIANT? TTRUE
 
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN compact-both-b DERIVE hash eq POLICY packed-tag alpha ;ENUM" evaluate-closed
@@ -284,31 +226,21 @@ s" compact-both-b" FAMID TFAM-ENUM? TTRUE
 s" compact-both-b" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=
 s" compact-both-b" FAMID F-EQ? TTRUE
 s" compact-both-b" FAMID F-HASH? TTRUE
-DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one variant pair
-1 DECL-EVENT:DERIVE? TTRUE
-2 DECL-EVENT:DERIVE? TTRUE
-3 DECL-EVENT:POLICY? TTRUE
-4 DECL-EVENT:VARIANT? TTRUE
 
 \ ---------------------------------------------------------------------------
-\ 8. POLICY reaches both the family record and the event stream (full mode).
+\ 8. POLICY reaches the family record (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN opt POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" opt" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
-2 DECL-EVENT:POLICY? TTRUE                            \ a POLICY event followed DECL + ARITY
-2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
 
 \ ---------------------------------------------------------------------------
-\ 9. DERIVE reaches both the family record and the event stream; two features on
-\    one clause are accepted, each recorded once (full mode).
+\ 9. DERIVE reaches the family record; two features on one clause are accepted.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN der DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" evaluate-closed
 s" der" FAMID F-EQ? TTRUE                             \ eq derived
 s" der" FAMID F-HASH? TTRUE                           \ hash derived
-2 DECL-EVENT:DERIVE? TTRUE                            \ two DERIVE events after DECL + ARITY
-3 DECL-EVENT:DERIVE? TTRUE
 
 \ ---------------------------------------------------------------------------
 \ 10. A duplicate FIELD name inside a variant rejects through the field record
@@ -317,13 +249,11 @@ s" der" FAMID F-HASH? TTRUE                           \ hash derived
 \ ---------------------------------------------------------------------------
 REG-MARK
 TYPE-FIELD:COUNT PFB !
-DECL-EVENT:COUNT DEVB !
 s" ENUM-DECL:ED-RUN dupf VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TEST-EVAL:RC 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
-DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 
 \ ---------------------------------------------------------------------------
 \ 11. A duplicate variant name rejects (E-TFAM-DUP 7102 from SUMV-ADD) and the
@@ -365,48 +295,10 @@ s" ENUM-DECL:ED-RUN twice red ;ENUM" evaluate-closed
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TEST-EVAL:RC 7102 T=
 
 \ ---------------------------------------------------------------------------
-\ 14. Snapshot identity changes when a variant or payload field is added,
-\     with family ids held constant by restoring the registry cursors.
-\
-\     These declarations are package-scoped, which makes them private, which
-\     keeps constructor generation out of the way. REG-RESTORE is a whitebox
-\     reset of the REGISTRY cursors only: it rewinds the family, variant, schema,
-\     and field counters so the same family id can be re-declared, but it cannot
-\     rewind the native dictionary. A public re-declaration would therefore ask
-\     the generator to define constructor names that the first pass already
-\     published, and sumtype.f's TDPLAN-NAME+ correctly refuses to render a plan
-\     row for a live word. Visibility is not part of the event stream the
-\     identity folds over — the events are DECL / VARIANT / FIELD keyed by family
-\     id — so scoping these costs the assertion nothing.
-\ ---------------------------------------------------------------------------
-package enum-identity-test
-REG-MARK
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" evaluate-closed
-DECL-EVENT:IDENTITY RC !                              \ RC holds identity A
-REG-RESTORE                                           \ retire family + variants; fresh registry
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN idc ia ib ic id ;ENUM" evaluate-closed
-DECL-EVENT:IDENTITY RC @ <> TTRUE                     \ different declaration -> different identity
-REG-RESTORE
-
-\ Adding a named payload field also changes the identity.
-REG-MARK
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" evaluate-closed
-DECL-EVENT:IDENTITY RC !
-REG-RESTORE
-DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" evaluate-closed
-DECL-EVENT:IDENTITY RC @ <> TTRUE
-REG-RESTORE
-;package
-
-\ ---------------------------------------------------------------------------
 \ Compact and full declarations reject reserved variant names before publication;
 \ the compact `variant` keyword is a syntax token, while the full name position
 \ reaches the shared 7110 policy. Every failure restores all registry and
-\ published-event cursors. Family collisions are lexical: global and
+\ field and family cursors. Family collisions are lexical: global and
 \ active-package families reserve their tails, while a family owned only by
 \ another package does not.
 \ ---------------------------------------------------------------------------
@@ -433,12 +325,10 @@ public
    SCHN@ RB-SCH @ T=
    SCHEMA-ROOT-N@ RB-ROOT @ T=
    TYPE-FIELD:COUNT RB-PFN @ T=
-   TYPE-FIELD:COUNT RB-PFC @ T=
-   DECL-EVENT:COUNT DEVB @ T= ;
+   TYPE-FIELD:COUNT RB-PFC @ T= ;
 
 : REJECT-SAME ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    REG-MARK
-   DECL-EVENT:COUNT DEVB !
    a u TEST-EVAL:RC want T=
    REG-SAME ;
 
@@ -544,13 +434,12 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
 : DICT-SAME ( -- ) DICT-RECS CT-DICT @ T=  DICT-CODE CT-CP @ T= ;
 : DICT-MOVED ( -- ) DICT-RECS CT-DICT @ > TTRUE ;
 
-\ A generation failure must leave every registry cursor, the published event log,
-\ AND the native dictionary byte-identical: whatever the generator had already
+\ A generation failure must leave every registry cursor and the native dictionary
+\ byte-identical: whatever the generator had already
 \ defined is truncated with the rest of the declaration.
 : CTOR-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
    REG-MARK
    DICT-MARK
-   DECL-EVENT:COUNT DEVB !
    a u TEST-EVAL:RC want T=
    TFAMN@ RB-TFAM @ T=
    SUMVN@ RB-SUMV @ T=
@@ -559,7 +448,6 @@ variable CT-DICT   variable CT-CP   variable CT-FAM
    LAY-N@ RB-LAY @ T=
    TF-STR-U@ RB-STR @ T=
    TYPE-FIELD:COUNT RB-PFN @ T=
-   DECL-EVENT:COUNT DEVB @ T=
    DICT-SAME ;
 
 private
@@ -646,10 +534,10 @@ s" privctor" FAMID F-VAR-START SUMV-CTOR-SYM@ 0 T=                \ and no const
 
 \ 20f. A generation failure rolls the WHOLE declaration back. Both anchors fail
 \      inside the participant's commit, after the family, its variants, its field
-\      rows and its events are all in place: a payload role with no derived
+\      rows are in place: a payload role with no derived
 \      equality, and a variant spelled like the derived word the same DERIVE
-\      clause generates. Every registry cursor, the published event log, and the
-\      native dictionary come back byte-identical.
+\      clause generates. Every registry cursor and the native dictionary come
+\      back byte-identical.
 s" ENUM-DECL:ED-RUN rollctor DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
    7119 enum-ctor-test:CTOR-REJECT
 s" ENUM-DECL:ED-RUN rollctor2 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"

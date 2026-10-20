@@ -34,6 +34,7 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
+require src/compiler/native/fetch-check.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
@@ -107,7 +108,7 @@ TEXT-CAP CWORK-SPAN TXT u8
 0 CWORK-VARIABLE NAME-A ptr u8
 0 CWORK-VARIABLE NAME-U n
 
-here CELL 1- and CELL swap - CELL 1- and allot
+align
 1 CWORK-BUFFER M-CTX IR-CTX:ctx
 1 CWORK-BUFFER M-BLD IR-BUILD:builder
 1 CWORK-BUFFER M-TAPE IR-ARENA:view
@@ -151,6 +152,14 @@ here CELL 1- and CELL swap - CELL 1- and allot
 0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
 0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
+0 CWORK-VARIABLE DEF-MODULE-BEFORE n
+0 CWORK-VARIABLE DEF-GEN-BEFORE n
+0 CWORK-VARIABLE DEF-EPOCH-BEFORE n
+0 CWORK-VARIABLE DEF-BUILD-BEFORE n
+0 CWORK-VARIABLE DEF-MODULE-DELTA n
+0 CWORK-VARIABLE DEF-GEN-DELTA n
+0 CWORK-VARIABLE DEF-EPOCH-DELTA n
+0 CWORK-VARIABLE DEF-BUILD-DELTA n
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -544,8 +553,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : SHADOW-WORK ( -- )
    SHS M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
    SHS 0 M-HM @ NBACK:SELECT {: m0:IR-BUILD:module :}
-   SHS m0 NBACK:PRUNE {: m:IR-BUILD:module :}
-   SHS m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   SHS m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    SHS ready NBACK:EMIT-UNPLACED
    SHS NART:COPY SHADOW-TAKE ;
 
@@ -581,8 +589,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    s M-IN @ M-OUT @ LINKAGE NBACK:DECLARE
    s hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   s m0 NBACK:PRUNE {: m:IR-BUILD:module :}
-   s m NBACK:FIXPOINT {: ready:IR-BUILD:module :}
+   s m0 NBACK:FIXPOINT {: ready:IR-BUILD:module :}
    M-CB-SLOT @ 0 >= if M-CB-SLOT @ M-CB-THUNK @ NCBSTUB:SET then
    s ready NPUB:NEXT-SLOT NBACK:EMIT
    M-CB-SLOT @ 0 >= if NCBSTUB:ENTRY@ M-CB-ENTRY ! then
@@ -826,7 +833,15 @@ INSTALL-FORGET
 \ A recursive compiler call would record one definition onto another's tape.
 : IN-CONTEXT ( -- )
    SESSION-READY
-   NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
+   IR-ID:SERIAL-HISTORY DEF-MODULE-BEFORE !
+   IR-CTX:HISTORY DEF-EPOCH-BEFORE ! DEF-GEN-BEFORE !
+   IR-BUILD:HISTORY DEF-BUILD-BEFORE !
+   NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT
+   IR-ID:SERIAL-HISTORY DEF-MODULE-BEFORE @ - DEF-MODULE-DELTA !
+   IR-CTX:HISTORY
+      DEF-EPOCH-BEFORE @ - DEF-EPOCH-DELTA !
+      DEF-GEN-BEFORE @ - DEF-GEN-DELTA !
+   IR-BUILD:HISTORY DEF-BUILD-BEFORE @ - DEF-BUILD-DELTA ! ;
 
 \ A refusal after the scan owns the checker row this definition recorded: a
 \ certified scan's, a TRUSTED: declaration's, and with the hook cell empty its
@@ -965,6 +980,41 @@ public
    IDLE-CK
    data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
    data-base NATIVE-OBS-CELLS:PUBLISHED + xt! ;
+
+: DEFINITION-CACHEABLE? ( -- bool )
+   M-OPEN @ 0=
+   DOES-BYTE@ 0= and
+   M-CB-SLOT @ 0< and
+   NSHADOW:OPEN? 0= and
+   data-base NATIVE-OBS-CELLS:PUBLISHED + @ 0= and ;
+
+\ One successful definition's identities start after SESSION-READY and include
+\ the ordinary child context's retirement. A warm install skips that child.
+: DEFINITION-HISTORY ( -- n n n n )
+   DEF-MODULE-DELTA @ DEF-GEN-DELTA @ DEF-EPOCH-DELTA @
+   DEF-BUILD-DELTA @ ;
+
+: REPLAY-DEFINITION-LEASED ( NLEASE:lease -- )
+   M-LEASE !
+   SESSION-READY
+   IR-ID:SERIAL-HISTORY DEF-MODULE-DELTA @ +
+      {: module:n :}
+   IR-CTX:HISTORY
+      DEF-EPOCH-DELTA @ + {: epoch:n :}
+      DEF-GEN-DELTA @ + {: gen:n :}
+   IR-BUILD:HISTORY DEF-BUILD-DELTA @ +
+      {: build:n :}
+   module IR-ID:SERIAL-CHECK drop
+   gen epoch IR-CTX:CHECK-HISTORY
+   build IR-BUILD:CHECK-HISTORY
+   module IR-ID:REPLAY-SERIAL
+   gen epoch IR-CTX:REPLAY-HISTORY
+   build IR-BUILD:REPLAY-HISTORY ;
+
+: REPLAY-DEFINITION ( n n n n -- )
+   DEF-BUILD-DELTA ! DEF-EPOCH-DELTA ! DEF-GEN-DELTA !
+   DEF-MODULE-DELTA !
+   [: REPLAY-DEFINITION-LEASED ;] NLEASE:WITH ;
 
 \ The engine has already parsed this definition and built its pending record.
 \ Compile the captured body directly.

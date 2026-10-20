@@ -11,7 +11,8 @@ require src/lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/json-writer.f
+require src/lib/byte-buffer.f
+require src/lib/json-write.f
 require src/lib/source-lex.f
 require src/lib/verify-diagnostics.f
 
@@ -57,6 +58,16 @@ public
 private
 
 create CA-LF-BUF 1 allot
+create CA-JSON-BUF BUF:HDR-BYTES allot
+TYPED-VARIABLE CA-JSON-W JSON-WRITE:writer
+variable CA-JSON-READY
+
+: CA-JSON-WRITER ( -- ptr JSON-WRITE:writer )
+   CA-JSON-READY @ 0= if
+      CA-JSON-BUF 1 BUF:N>BLEN BUF:INIT
+      1 CA-JSON-READY !
+   then
+   CA-JSON-W CA-JSON-BUF JSON-WRITE:OPEN-BUF ;
 
 
 variable CA-FAILED
@@ -234,8 +245,8 @@ variable CA-COMPOSE-LABEL-U
 
 
 
-: CA-JSON-EMPTY-FIELD ( ptr u8 n -- )
-   LJW-KEY s" " LJW-STRING ;
+: CA-JSON-EMPTY-FIELD ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+   s" " JSON-WRITE:FIELD-S ;
 
 
 \ ---- a definition of a name its scope already held ---------------------------
@@ -253,47 +264,45 @@ variable CA-COMPOSE-LABEL-U
 \ The word, its token index, and the line, column and byte where it starts.
 : CA-JSON-DUP ( ptr u8 n n n n n -- )
    {: wa:ptr wu:n ti:n line:n col:n byte:n :}
-   LJW-RESET
-   LJW-OBJECT-START
-   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
-   s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
-   s" repair_class" LJW-KEY s" rename_duplicate" LJW-STRING LJW-COMMA
-   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
-   s" word" LJW-KEY wa wu LJW-STRING LJW-COMMA
-   s" token" LJW-KEY wa wu LJW-STRING LJW-COMMA
-   s" token_index" LJW-KEY ti LJW-U LJW-COMMA
-   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY line LJW-U LJW-COMMA
-   s" column" LJW-KEY col LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY byte LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY byte wu + LJW-U LJW-COMMA
-   s" definition_source" LJW-KEY wa wu LJW-STRING LJW-COMMA
-   s" declared_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
-   s" declared_effect_source" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
-   s" inferred_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
-   s" return_stack" LJW-KEY
-   LJW-OBJECT-START
-   s" expected" CA-JSON-EMPTY-FIELD LJW-COMMA
+   CA-JSON-WRITER JSON-WRITE:OBJECT-START
+   s" schema_version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" s" E-DUPLICATE-DEFINITION" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" repair_class" s" rename_duplicate" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" wa wu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" token" wa wu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" token_index" ti JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" file" CA-FILE-A@ CA-FILE-U @ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" line" line JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" byte_start" byte JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" byte_end" byte wu + JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" definition_source" wa wu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" declared_effect" s" unknown" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" declared_effect_source" s" unknown" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" inferred_effect" s" unknown" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" return_stack" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
+   s" expected" CA-JSON-EMPTY-FIELD JSON-WRITE:COMMA
    s" actual" CA-JSON-EMPTY-FIELD
-   LJW-OBJECT-END LJW-COMMA
-   s" suggestion" LJW-KEY s" Rename the word or undefine the old definition before redefining it." LJW-STRING
-   LJW-OBJECT-END ;
+   JSON-WRITE:OBJECT-END JSON-WRITE:COMMA
+   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END drop ;
 
 \ A session checks several files, so the line names the one that defined the
 \ word again, as the JSON record does.
 : CA-PROSE-DUP ( -- )
-   LJW-RESET
-   s" checker: duplicate definition in " LJW-RAW
-   CA-FILE-A@ CA-FILE-U @ LJW-RAW ;
+   CA-JSON-WRITER
+   s" checker: duplicate definition in " JSON-WRITE:RAW
+   CA-FILE-A@ CA-FILE-U @ JSON-WRITE:RAW drop ;
 
 \ The words the engine's wall writes under --load, for the name and its line.
 : CA-PROSE-DUP-AT ( ptr u8 n n -- ) {: na:ptr nu:n line:n :}
-   LJW-RESET
-   s" duplicate definition: " LJW-RAW
-   na nu LJW-RAW
-   s"  at " LJW-RAW
-   CA-FILE-A@ CA-FILE-U @ LJW-RAW
-   s" :" LJW-RAW line LJW-U ;
+   CA-JSON-WRITER
+   s" duplicate definition: " JSON-WRITE:RAW
+   na nu JSON-WRITE:RAW
+   s"  at " JSON-WRITE:RAW
+   CA-FILE-A@ CA-FILE-U @ JSON-WRITE:RAW
+   s" :" JSON-WRITE:RAW line JSON-WRITE:U drop ;
 
 : CA-DUP-AT ( n n -- ) {: at:n u:n :}
    CA-SRC-A@ at BYTE-ORIGIN {: line:n col:n :}
@@ -309,7 +318,7 @@ variable CA-COMPOSE-LABEL-U
    ELSE
       CA-JSON? IF s" duplicate-definition" 1 1 1 0 CA-JSON-DUP ELSE CA-PROSE-DUP THEN
    THEN
-   LJW$ ;
+   CA-JSON-W JSON-WRITE:$ ;
 
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
@@ -338,15 +347,15 @@ variable CA-COMPOSE-LABEL-U
 \ opens, and the opener as written.
 : CA-PROSE-LEX ( ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n what:ptr whatu:n :}
-   LJW-RESET
-   code codeu LJW-RAW
-   s"  " LJW-RAW
-   CA-FILE-A@ CA-FILE-U @ LJW-RAW
-   s" :" LJW-RAW LINT-LEX:ERROR-LINE@ LJW-U
-   s" :" LJW-RAW LINT-LEX:ERROR-COL@ LJW-U
-   s" : " LJW-RAW what whatu LJW-RAW
-   s"  opened at '" LJW-RAW CA-LEX-TOKEN$ LJW-RAW
-   s" ' does not close" LJW-RAW ;
+   CA-JSON-WRITER
+   code codeu JSON-WRITE:RAW
+   s"  " JSON-WRITE:RAW
+   CA-FILE-A@ CA-FILE-U @ JSON-WRITE:RAW
+   s" :" JSON-WRITE:RAW LINT-LEX:ERROR-LINE@ JSON-WRITE:U
+   s" :" JSON-WRITE:RAW LINT-LEX:ERROR-COL@ JSON-WRITE:U
+   s" : " JSON-WRITE:RAW what whatu JSON-WRITE:RAW
+   s"  opened at '" JSON-WRITE:RAW CA-LEX-TOKEN$ JSON-WRITE:RAW
+   s" ' does not close" JSON-WRITE:RAW drop ;
 
 : CA-PROSE-LEX-ROW ( -- )
    s" E-MALFORMED-REGISTRY-ROW" s" primitive-axiom row" CA-PROSE-LEX ;
@@ -366,7 +375,7 @@ variable CA-COMPOSE-LABEL-U
       VERIFY-DIAGNOSTICS:LEX-RECORD$ EXIT
    THEN
    CA-LEX-ROW? IF CA-PROSE-LEX-ROW ELSE CA-PROSE-LEX-UNTERM THEN
-   LJW$ ;
+   CA-JSON-W JSON-WRITE:$ ;
 
 : CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
@@ -483,14 +492,14 @@ variable CA-COMPOSE-LABEL-U
 
 : CA-PROSE-THROW ( -- )
    CA-THROW-ORIGIN {: line:n col:n :}
-   LJW-RESET
-   s" E-STATEMENT-THROW " LJW-RAW
-   CA-FILE-A@ CA-FILE-U @ LJW-RAW
-   s" :" LJW-RAW line LJW-U
-   s" :" LJW-RAW col LJW-U
-   s" : throw " LJW-RAW CA-THROW-RC @ LJW-INT
-   s"  at '" LJW-RAW CA-THROW-TOKEN$ LJW-RAW
-   s" '" LJW-RAW ;
+   CA-JSON-WRITER
+   s" E-STATEMENT-THROW " JSON-WRITE:RAW
+   CA-FILE-A@ CA-FILE-U @ JSON-WRITE:RAW
+   s" :" JSON-WRITE:RAW line JSON-WRITE:U
+   s" :" JSON-WRITE:RAW col JSON-WRITE:U
+   s" : throw " JSON-WRITE:RAW CA-THROW-RC @ JSON-WRITE:INT
+   s"  at '" JSON-WRITE:RAW CA-THROW-TOKEN$ JSON-WRITE:RAW
+   s" '" JSON-WRITE:RAW drop ;
 
 : CA-THROW-RECORD$ ( -- ptr u8 n )
    CA-JSON? IF
@@ -498,7 +507,7 @@ variable CA-COMPOSE-LABEL-U
       CA-SRC-A@ CA-SRC-U @ VERIFY-DIAGNOSTICS:THROW-RECORD$ EXIT
    THEN
    CA-PROSE-THROW
-   LJW$ ;
+   CA-JSON-W JSON-WRITE:$ ;
 
 : CA-THROW! ( n -- )                     \ what threw, at the token read last
    CA-THROW-RC !

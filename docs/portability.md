@@ -259,7 +259,7 @@ These must not be one digest equality test. Objects built with different optimiz
 
 Use the existing domain-separated SHA-256 facilities and package encoding conventions. New administrative encodings use explicitly ordered tagged fields, length-prefixed bytes and checked LE u64 counts, not native struct dumps or delimiter-free concatenation. Sets sort by stable wire ID; sequences preserve semantic order. Include schema versions. Never hash host pointers, randomized interner IDs, hash-table iteration order, transient registry slot numbers or final code placement into unplaced content identity. [R1]
 
-Keep existing CTARGET wire meanings and native digests readable under their existing schema. Add a composite target descriptor around the old core contract during migration; bump the composite schema when adding new semantic fields. Do not make an old digest mean a newly widened ABI. Cache namespaces move with the relevant schema.
+Define a versioned composite target descriptor for artifact identity; the transient `CTARGET` value has no wire encoding. Bump the descriptor schema when adding semantic fields. Do not make an old digest mean a newly widened ABI. Cache namespaces move with the relevant schema.
 
 ### 4.3 Compatibility descriptor
 
@@ -269,7 +269,7 @@ A runtime requirement is an interface/version constraint; a release pin is an ex
 
 ### 4.4 Existing feature repairs
 
-Separate scalar floating-point availability from fused multiply-add. Preserve old feature wire values and give any old stronger feature its documented implication into the new scalar capability query. Update consumers that currently demand the stronger feature for ordinary FP. Unsupported fused semantics require a qualified helper or a diagnostic, never an unfused multiply followed by add. Also separate hardware atomics from runtime thread support, CPU tuning from legal instructions, and optional browser features from Wasm opcodes. [B1 §4; R1]
+Separate scalar floating-point availability from fused multiply-add. Preserve existing feature meanings and give any old stronger feature its documented implication into the new scalar capability query. Update consumers that currently demand the stronger feature for ordinary FP. Unsupported fused semantics require a qualified helper or a diagnostic, never an unfused multiply followed by add. Also separate hardware atomics from runtime thread support, CPU tuning from legal instructions, and optional browser features from Wasm opcodes. [B1 §4; R1]
 
 The sites that read `CTARGET:F-FP` as the one floating-point capability on master are `src/compiler/native/hir.f:208-213` (`FP-TARGET`), `src/compiler/ir/type.f:329-335` (`FMT-FEATURE`), `src/compiler/binding.f:50-53` (`FMA-CK`, the fused-contraction check), `src/compiler/ir/schema.f:903-913` (the schema's feature checks) and the ABI contract builders at `src/compiler/native/abi.f:56`, `src/arch/x86-64/abi.f:64` and `src/compiler/native/a64ir.f:197`.
 
@@ -591,7 +591,7 @@ An immutable `BackendDescriptor` identifies implementation code, accepted machin
 
 The backend registry (`src/compiler/native/backend.f`) uses checked storage sized to the loaded descriptors. Keep stable `BackendId` separate from runtime row index. Sort manifest entries deterministically. Duplicate provider identity or ambiguous providers for the same resolution is an error; an explicit backend selection can disambiguate experimental providers.
 
-The old A32 and Thumb2 target variants may map to one ARM32 provider with different instruction-state configurations. Do not renumber old target wire codes to achieve that. A new backend may require extending the centrally owned target vocabulary and validators; the goal is one owner for that extension, not a false promise of adding arbitrary architectures without any schema change.
+The old A32 and Thumb2 target variants may map to one ARM32 provider with different instruction-state configurations. A new backend may require extending the centrally owned target vocabulary and validators; the goal is one owner for that extension, not a false promise of adding arbitrary architectures without any schema change.
 
 ### 11.2 Stage contract
 
@@ -1245,7 +1245,7 @@ types and paths here are proposed contracts.
 
 | Label | Source | Observation |
 |---|---|---|
-| [R1] | `src/compiler/target.f` | Target identity and wire codes; verify current registered backends |
+| [R1] | `src/compiler/target.f` | Target vocabulary and contract validation; verify current registered backends |
 | [R2] | `src/compiler/native/compiler.f` | Per-definition orchestration, source-selected passes, native imports, mutable session scratch |
 | [R3] | `src/compiler/native/emission.f` | Byte-oriented sealed emission facts and architecture identity (`:1-24`) |
 | [R4] | `src/compiler/native/shadow.f` | Second-target emission, copied rows, host-address target mapping (`:1-30`) |

@@ -13,12 +13,6 @@
 \ its validator are shared for the same reason, bound with X64M:MACHINE and
 \ X64IR:VOCABULARY.
 \
-\ PRUNE IS A PASS-THROUGH ON THIS MACHINE. src/compiler/native/prune.f rewrites
-\ nothing on the whole corpus (its own header says so) and this machine has no
-\ prune pass of its own; the row hands the module back as it is, because
-\ rebuilding renumbers values and a routine that gained nothing would still come
-\ out with other bytes.
-\
 \ EMISSION IS THIS BACKEND'S LAST ROW AND IT IS FILLED. src/compiler/native/
 \ emit-x64.f owns its byte sink, lays every block of the accepted module out in
 \ BYTES, resolves every displacement against the slot this row is handed, and
@@ -32,7 +26,7 @@
 \ slot: the same rows with no placement, which is what a shadow target's chain
 \ ends in (src/compiler/native/shadow.f).
 \
-\ So declare, select, prune, the lowering fixpoint, emit and retire all run in
+\ So declare, select, the lowering fixpoint, emit and retire all run in
 \ the order src/compiler/native/compiler.f runs them;
 \ test/compiler/x64-chain.f drives that chain through this table.
 \
@@ -146,16 +140,6 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    c xb BIND-SPILL
    c m xb ROUTINE X64SEL:SELECT ;
 
-\ ---- pruning -----------------------------------------------------------------
-\ This machine has no prune pass: src/compiler/native/prune.f rewrites nothing
-\ on the whole corpus, and rebuilding a module renumbers its values, so a
-\ routine that gained nothing would still come out with other bytes. The module
-\ selection wrote is handed back UNTOUCHED - the ARM64 row's own answer when its
-\ prune finds nothing, without the binding it has and this backend has not.
-: PRUNE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module )
-   {: c:IR-CTX:ctx m:IR-BUILD:module :}
-   m ;
-
 \ ---- lowering ----------------------------------------------------------------
 \ The reserve is sized from A64RA:FRAME, the same count ROUTINE declares from,
 \ so the module and its contract agree by construction.
@@ -223,7 +207,7 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 : ADDR-ROWS ( -- )
    X64EMIT:ADDR-SITES 0 ?do
-      i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@  NEMIT:ADDR-SITE+
+      i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@  -1 NEMIT:ADDR-SITE+
    loop ;
 
 : OPEN-ROWS ( -- )
@@ -297,7 +281,7 @@ public
 : INSTALL ( -- )
    X64BACK:ID ARCH [: X64BACK:SERVES? ;] [: X64BACK:SERVES? ;]
       CTARGET-BACKEND:MAKE
-   [: DECLARE ;] [: SELECT ;] [: PRUNE ;] [: FIXPOINT ;]
+   [: DECLARE ;] [: SELECT ;] [: FIXPOINT ;]
    [: EMIT ;] [: EMIT-UNPLACED ;] [: RELEASE ;] [: RETIRE ;]
    [: X64IR:PROTOTYPE ;] [: X64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
       NBACK-PASS:MAKE

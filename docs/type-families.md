@@ -403,9 +403,9 @@ layouts with:
 
 - named cell or byte offsets and a named record stride;
 - ordinary accessor words, never a macro or definer;
-- load-time assertions for every expected offset, stride, alignment, and
-  pointer-field role; and
-- exact native/recovery layout-parity tests.
+- alignment and pointer-field metadata where storage or relocation uses it;
+- checks at actual target-width, serialized ABI, or capture boundaries; and
+- behavior tests for storage growth, rollback, and recovery.
 
 These records have no family ids, reflection, constructors, parser, definer,
 descriptor arena, adoption transaction, snapshot rows, or AOT rows. `CELL` is
@@ -1161,8 +1161,11 @@ an outer frame but retains rollback authority; nested commit remains provisional
 mark and the shared interned-string mark from an open or committed frame.
 The field owner exposes no one-shot publication operation. Declaration
 publication belongs to `DECL-EVENT`; its `PUBLISH` composes prepare, commit, and
-finalize across the event and field state. Every public owner word carries a
-`PPRIM` axiom in `src/core/checker.f`, so post-hook callers such as `DECL-EVENT`
+finalize across provisional event scratch and the field registry. Completed
+events are discarded when the outer frame finishes; family, variant, schema,
+and field registries retain the declaration's durable result. Every public owner
+word carries a `PPRIM` axiom in `src/core/checker.f`, so post-hook callers such
+as `DECL-EVENT`
 reach the lifecycle as ordinary checked qualified calls whose argument roles the
 checker verifies at each site — no trusted forwarder stands between them. Every transaction token comes from a
 single monotonic serial that only ever increases within a process:
@@ -1428,14 +1431,10 @@ Gforth bootstrap mirror: uppercase each canonical package path segment and the
 family tail, escape every literal `-` inside every joined segment — the family
 tail included — as `--`, and join segments plus tail with single `-`
 separators (escaping only the package segments is not injective: package `a`
-with family `b-c` would collide with a top-level family `a-b-c`); if the
-escaped spelling exceeds the engine dictionary name-length limit, the spelling
-is `T` plus the first 16 lowercase hex digits of SHA-256 over the
-length-prefixed unescaped segment list, then `-` plus the raw uppercase family
-tail (unescaped: the fixed-width hash region already delimits it, and hash
-spellings are always longer than the escaped-form limit, so the two forms can
-never collide). It must not
-collide with the top-level `RESULT` package. The spelling must be a legal
+with family `b-c` would collide with a top-level family `a-b-c`). The escaped
+spelling is accepted through the checker's 255-byte package-name limit; a
+longer derived name refuses the family declaration with `E-PACKAGE-NAME-CAP`.
+It must not collide with the top-level `RESULT` package. The spelling must be a legal
 one-colon package call, injective, and stable across unrelated earlier
 package/family declarations; it must not use allocation-order numeric
 package/family ids or raw hyphen concatenation. Hyphenated names such as package

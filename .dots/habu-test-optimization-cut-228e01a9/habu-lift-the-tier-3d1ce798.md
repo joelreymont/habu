@@ -3,7 +3,7 @@ title: Lift the tier-1 name cap to the tier-0 bound
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-10-02T19:07:57.006800+02:00\""
+created-at: "2026-10-02T19:07:57.006800+02:00"
 closed-at: "2026-10-14T19:30:30.936706+03:00"
 close-reason: "Implemented in 35de30d7: tier-1 fixed name copies and the 64-byte limit are gone; long-name tier parity at 65, 1000 and 7900 bytes, image builds and convergence passed. Separate remaining trap table capacity is tracked by df7ecb5a."
 ---

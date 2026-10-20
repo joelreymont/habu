@@ -5,10 +5,12 @@ require src/habu/address-cells.f
 
 package STORAGE-BIND-TEST
 
+T-RESET
 variable SAVED-CHECK
 check@ SAVED-CHECK !
 0 set-check
 TYPED-VARIABLE UNCHECKED-N n
+9 UNCHECKED-N ! UNCHECKED-N @ 9 T=
 SAVED-CHECK @ set-check
 
 STRUCTURE plain-row
@@ -56,7 +58,5 @@ TYPED-VARIABLE ROW n
    5 PRIVATE-CALL 6 T=
    T-REPORT ;
 
-T-RESET
-9 UNCHECKED-N ! UNCHECKED-N @ 9 T=
 RUN
 ;package

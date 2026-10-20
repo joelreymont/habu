@@ -89,8 +89,9 @@ public
    0 CALL-FRAMED ;
 
 \ ---- and the same convention for a word that LEAVES through its last callee ---
-\ The callee's own return goes to OUR caller, so the data stack needs no
-\ instruction at the boundary. A tail branch is a B and not a Bl: no trait.
+\ The callee's own return goes to OUR caller. Selection moves the data-stack
+\ pointer to the callee's argument base before branching, when needed.
+\ A tail branch is a B and not a Bl: no trait.
 : TAIL-FRAMED ( NEFF:gprs n n n -- NEFF:routine )
    {: pool:NEFF:gprs in:n out:n spills:n :}
    NEFF-CONV:DSTACK

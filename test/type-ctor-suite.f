@@ -152,12 +152,8 @@ SUMTYPE zafter
 s" GEN-AFTER" type cr
 
 \ ---------------------------------------------------------------------------
-\ >16-byte escaped ctor package, constructable by readable name
-\ (dot habu-raise-or-alias-5d2a6b70). Before the TF-CTOR-NAME-LIMIT raise
-\ (16 -> 32) a presence-slot sum whose escaped package name exceeds 16 got an
-\ opaque SHA ctor package (Thex...-TAIL), unwritable in committed source; now it
-\ keeps the READABLE escaped name and its constructors are callable by it. This
-\ is the real EVID presence-slot casualty shape (EVID-CERTIFY--SLOT = 18 bytes).
+\ Escaped constructor packages are called by their readable names across
+\ packages, including spellings beyond the former 32-byte cap.
 \ ---------------------------------------------------------------------------
 package evx
 public
@@ -167,7 +163,7 @@ SUMTYPE certify-slot
 ;SUMTYPE
 private
 ;package
-\ the derived ctor package is the readable escaped name (17 bytes > 16), NOT a SHA fold:
+\ The derived constructor package retains the escaped name.
 s" evx" s" certify-slot" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" EVX-CERTIFY--SLOT" T$=
 \ and the constructors are callable cross-package by that readable name:
@@ -177,6 +173,17 @@ s" EVX-GET ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT"  CHECK-QUIET
 s" EVX-NON (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
 \ wrong payload still rejects at the readable call site (no soundness lost):
 s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
+
+package verylongpackagename
+public
+SUMTYPE resultresultr
+  VARIANT one n ;VARIANT
+;SUMTYPE
+;package
+s" verylongpackagename" s" resultresultr" TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULTRESULTR" T$=
+: LONG-MK-ONE ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESULTRESULTR:ONE ;
+s" LONG-GET ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESULTRESULTR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" GEN-LONG-CTOR" type cr
 
 \ ---------------------------------------------------------------------------
@@ -269,8 +276,8 @@ s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 \ published checker symbol.
 \ ---------------------------------------------------------------------------
 s" " s" zres" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
+TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
 s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
 \ package reopen rejects, case-insensitively; state rolls back (a later
 \ package still opens cleanly).
@@ -290,7 +297,7 @@ s" UNDEF-SAFE" type cr
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
 \ native producer populated the protected-WID registry for constructor packages.
-PROT-WID-PROBE:COUNT 0 > -1 T=
+PROT-WID-PROBE:COUNT 0 > TTRUE
 
 \ ---------------------------------------------------------------------------
 \ item 9 slice 2: `construct family variant` — the checker-owned token
@@ -391,8 +398,8 @@ TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
 TCF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
 TCF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
+TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
 \ checked construction/destructure compile through ordinary calls.
 : ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
 : ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
@@ -880,9 +887,9 @@ public
 ;package
 
 CTOR-FAMILY-TEST:DECLARE
-CTOR-FAMILY-TEST:FIRST 0 < 0= -1 T=
+CTOR-FAMILY-TEST:FIRST 0 < 0= TTRUE
 \ zxa is live, and is no longer the family the register names.
-CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:FIRST <> -1 T=
+CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:FIRST <> TTRUE
 \ generate the NON-LAST family: the id comes back unchanged and the whole plan
 \ is zxa's single constructor.
 CTOR-FAMILY-TEST:FIRST CTOR-FAMILY-TEST:GENERATE CTOR-FAMILY-TEST:FIRST T=
@@ -1177,8 +1184,8 @@ variable LIVE-CODE
 \ 1. a coherent provider that is NOT the committed view decides what is
 \ RENDERED, and the canonical body then refuses to be published against it.
 CTOR-PAYPROV-TEST:DECLARE
-CTOR-PAYPROV-TEST:SWAP-FAMILY 0 < 0= -1 T=
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:SWAP-FAMILY <> -1 T=
+CTOR-PAYPROV-TEST:SWAP-FAMILY 0 < 0= TTRUE
+CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:SWAP-FAMILY <> TTRUE
 \ zps renders under the SWAPPED provider: sone's signature takes stwo's one
 \ payload cell and stwo's takes sone's two, which is the renderer reading the
 \ provider and nothing else - a renderer that read the variant rows itself would

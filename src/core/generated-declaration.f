@@ -80,7 +80,7 @@ package DECL-REJECT
 \ slot also keeps the span it was copied from, which a token that locates
 \ renders instead (TOKEN-SPAN@), until GUARD-CODE ends the declaration.
 4 constant SLOTS
-34 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
+35 constant REASON-CAP      \ reason-table rows: the codes the engine's owners explain
 96 constant SPAN-CAP        \ per-slot bytes; a longer copy is capped, never overruns
 3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
 46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
@@ -328,6 +328,7 @@ s" a payload type or role has no derived equality" E-TDECL-DERIVE EXPLAIN
 s" name is reserved or already taken" E-TDECL-NAME EXPLAIN
 s" name must be a lowercase tail" E-TFAM-CASE EXPLAIN
 s" duplicate name in this package" E-TFAM-DUP EXPLAIN
+s" constructor package name exceeds 255 bytes" E-PACKAGE-NAME-CAP EXPLAIN
 s" invalid or uncommitted field id" E-PF-ID EXPLAIN
 s" stale or out-of-order field transaction" E-PF-TX EXPLAIN
 s" invalid field owner family or variant" E-PF-OWNER EXPLAIN

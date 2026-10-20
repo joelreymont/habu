@@ -3,7 +3,7 @@ title: "Keep TTHROWSQ's expected code per call"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-10-01T13:14:26.839419+02:00\""
+created-at: "2026-10-01T13:14:26.839419+02:00"
 closed-at: "2026-10-14T19:30:56.964015+03:00"
 close-reason: "Implemented in a9f171e0: TTHROWSQ binds the expected code per call; nested failing-before assert cases and the affected test registry were checked."
 ---

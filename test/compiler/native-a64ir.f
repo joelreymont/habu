@@ -85,7 +85,6 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:FADD A64IR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   m IR-BUILD:FSCHEMA-ROWS IR-SCHEMA:FMINOR@ 15 T=
    m IR-BUILD:FSCHEMA-ROWS op IR-SCHEMA:FFEATURES@
       CTARGET:F-SCALAR-FP CTARGET:HAS? TTRUE ;
 
@@ -247,7 +246,7 @@ private
 \ The two moves and the return: movz writes a register nothing read, movk keeps
 \ the value it was handed, and the return is a terminator that takes the live
 \ values and has no results of its own.
-: SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool n n n bool bool )
+: SHAPE-BODY ( IR-CTX:ctx -- n n bool bool bool n n n bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
@@ -262,7 +261,6 @@ private
    m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FOPERANDS
    rv z IR-SCHEMA:FRESULTS
-   rv z IR-SCHEMA:FATTRS
    qv rv key z 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ik IR-ID:SYMBOL-LOCAL =
    qv rv key z 1 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL sk IR-ID:SYMBOL-LOCAL =
    qv rv key z 2 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ak IR-ID:SYMBOL-LOCAL =
@@ -275,7 +273,7 @@ private
 : SHAPE-CASE ( -- )
    s" the moves and the return have the shapes their forms have" T-LABEL
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE TTRUE 3 T= 1 T= 0 T= ;
+   TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE TTRUE 1 T= 0 T= ;
 
 \ ---- the declared shapes of the frame forms ----------------------------------
 \ The store puts a register away and passes the memory order on; the load takes

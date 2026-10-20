@@ -2,7 +2,7 @@
 \ the x86-64 rows emit, and the pressure fixtures of test/compiler/x64-chain.f
 \ whose spills the rows lower into a frame, cross-built into an executable for an
 \ x86-64 peer. Each is driven the way src/compiler/native/compiler.f drives a
-\ definition - declare, select, prune, fixpoint, emit at the image's own
+\ definition - declare, select, fixpoint, emit at the image's own
 \ address, retire - and the routine is wrapped in test/x86-64-peer-harness.f's
 \ checking entry with the answers its definition must give. Each fixture writes
 \ one positive image into $HB_TMP/x64-routines, and each compare fixture one per
@@ -79,8 +79,7 @@ private
    X64CHAIN-TEST:SESSION BB NBACK:FREEZE {: hm:IR-BUILD:module :}
    X64CHAIN-TEST:SESSION hm NBACK:SELECT {: m0:IR-BUILD:module :}
    hm IR-BUILD:RETIRE
-   X64CHAIN-TEST:SESSION m0 NBACK:PRUNE {: m1:IR-BUILD:module :}
-   X64CHAIN-TEST:SESSION m1 NBACK:FIXPOINT {: m:IR-BUILD:module :}
+   X64CHAIN-TEST:SESSION m0 NBACK:FIXPOINT {: m:IR-BUILD:module :}
    X64CHAIN-TEST:SESSION m X64HARNESS:POSITION MOVED @ - NBACK:EMIT ;
 
 \ A routine that landed where it was placed keeps the fields its emission wrote.

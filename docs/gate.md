@@ -26,6 +26,18 @@ fixtures pass unchanged with external scratch.
 bin/hb --load test/run.f </dev/null
 ```
 
+For definition-cache or persisted checker-state changes, also run the existing
+engine edit matrix; this longer run is outside the native registry:
+
+```sh
+bin/hb --load test/compiler/native-build-edit-e2e.f -- qualify </dev/null
+```
+
+It runs the rebuilt engines, compares cached and cold executable/map pairs
+after early, middle and late edits, and checks rejected input. Cold generations
+can converge while edited cached products retain stale scratch values; this
+matrix caught the checker's discarded `WAS` row cursor in saved DATA.
+
 The `svg-pdf` row needs native librsvg (2.52 or newer) with Cairo PDF support,
 plus `qpdf`, `pdfinfo` and `pdfimages` on PATH. On macOS, install them with
 `brew install librsvg qpdf poppler` ([SVG/PDF](svg-pdf.md)).
@@ -78,8 +90,14 @@ directory `tools/two-generation-build.f` prints), never the seed it was given.
 On macOS, keep the machine awake for the gate with a process-scoped assertion:
 
 ```sh
-caffeinate -is bin/hb --load test/run.f </dev/null
+sh -c 'caffeinate -is -w $$ & bin/hb --load test/run.f </dev/null'
 ```
+
+The assertion process is a sibling of the engine, so it cannot be reaped by
+the engine's child waits; it exits when the enclosing shell ends. When timing
+the gate, send `/usr/bin/time` output to stderr. On macOS, `time -o` passes its
+log descriptor into the engine and its children, violating `process-image`'s
+standard-descriptor-only fixture.
 
 The registry is noninteractive. Keep stdin at EOF: its child process groups
 inherit that input, and a read from an inherited terminal can stop them with
@@ -273,8 +291,8 @@ at its deadline.
   rows `fixture-writer-build`, `cold-engine-build`), the saver and linker
   images (`test/app-image-engine.f`, `test/preloaded-engine.f`;
   `app-image-build`, `linker-build`), and the unsealed engine
-  (`test/whitebox-engine.f`; `whitebox-engine-build`), and the saved AOT maker
-  (`test/aot-maker-engine.f`; `aot-maker-build`). A row needs an
+  (`test/whitebox-engine.f`; `whitebox-engine-build`), and the saved AOT builder
+  (`test/aot-builder-engine.f`; `aot-builder-build`). A row needs an
   image when its load closure holds the image's module: the files it loads and
   what those import, or launch as a `.f` source through a path literal a known
   load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
@@ -390,12 +408,12 @@ at its deadline.
   engine-baked FFI and TASK modules' claimed cells. A row whose claim is the
   saver's or the linker's own load (`test/app-image.f`) keeps compiling them
   from source.
-  Ordinary maker children in the FILE, callback, stripped-entry and literal
-  rows use `test/aot-maker-engine.f`: it selects the candidate engine before
-  argv and environment staging, and starts the saved maker with the same
-  application args and `1 set-tier`, `AOT-MAKER:OPEN`, `AOT-MAKER:RUN` stdin
+  Ordinary builder children in the FILE, callback, stripped-entry and literal
+  rows use `test/aot-builder-engine.f`: it selects the candidate engine before
+  argv and environment staging, and starts the saved builder with the same
+  application args and `1 set-tier`, `AOT-BUILDER:OPEN`, `AOT-BUILDER:RUN` stdin
   program as `hb-build`. The positive AOT compatibility row keeps its raw
-  maker child to require its self-test after the linker loads.
+  builder child to require its self-test after the linker loads.
   `test/gate-aot-negative.f` and `test/stripped-address.f` run on `LINKER$`:
   their die paths are forks of the image, not `ENGINE-CANDIDATE` children, and
   the mapped-band fixture's first question to the process-map reader reads the
@@ -425,9 +443,12 @@ at its deadline.
   (-2502) as the last stderr line (`test/gate-pool.f` `GT-POOL-INNER-TIMEOUT?`).
 - A deadline in a build or window child reaches the pool as a timeout through
   exit statuses, because a throw code cannot cross a process boundary.
-  `tools/native-build.f` and `tools/build-fixpoint.f` exit 124
-  (`PROC-TIMEOUT-RC`, `src/lib/process.f`) when a deadline expired and 74 for any
-  other failure they catch, after naming its throw code. build-fixpoint's
+  `tools/hb-build.f --engine`, `tools/native-build.f` and
+  `tools/build-fixpoint.f` exit 124 (`PROC-TIMEOUT-RC`, `src/lib/process.f`)
+  when a deadline expired. The ordinary application build CLI keeps exit 67;
+  an engine build's ordinary exit 67 is not a timeout. `tools/native-build.f`
+  and `tools/build-fixpoint.f` exit 74 for other failures they catch, after
+  naming the throw code. build-fixpoint's
   `BF-RC0`, the build-fixpoint rows (`tools/build-fixpoint-test-lib.f`
   `BFT-FIXPOINT-RC`) and `test/whitebox-engine.f` throw `E-PROC-TIMEOUT` again
   on 124, and the rows rethrow it once the step is named. The window child

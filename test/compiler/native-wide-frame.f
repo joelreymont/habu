@@ -1,22 +1,6 @@
-\ native-wide-frame.f - a frame past the reach of one add/sub immediate.
-\
-\ A routine takes its frame by moving the stack pointer, and the add/sub
-\ immediate holds 0 .. 4095. The frame contract is wider: src/arch/arm64/
-\ machine.f FRAME-MAX admits every frame the scaled slot offset reaches, 32752
-\ bytes, and the allocator hands out slots up to it. So a frame of a page or
-\ more is reserved and released in two words, the pages over the shifted
-\ immediate and the rest over the plain one (src/compiler/native/emit.f
-\ WORD-RESERVE).
-\
-\ Sixty locals stay live across the call in each of a run of conditionals, and
-\ no value survives a call in a register, so every conditional adds its copies
-\ of the locals to the frame. Sixty-four of them put the frame in the top page
-\ the contract admits. The word must compile, take every call and give back
-\ the sum of its locals. Its frame is read back, so the case still reaches the
-\ range it names, and so is its code: the frame it takes and gives back must be
-\ the frame the allocator measured.
+\ native-wide-frame.f - immutable locals across conditional calls.
+\ The independent top-page frame encoding case is in native-emit.f.
 require src/lib/test.f
-require src/habu/code-bytes.f
 
 1 set-tier
 
@@ -74,45 +58,13 @@ variable V
    a26 + a27 + a28 + a29 + a30 + a31 + a32 + a33 + a34 + a35 + a36 + a37 +
    a38 + a39 + a40 + a41 + a42 + a43 + a44 + a45 + a46 + a47 + a48 + a49 +
    a50 + a51 + a52 + a53 + a54 + a55 + a56 + a57 + a58 + a59 + ;
-A64RA:FRAME constant WIDE-FRAME
 
 ;package
 
 package NWF-TEST
 private
 
-\ `sub sp, sp, #imm` and `add sp, sp, #imm`, plain and with `lsl #12`, as the
-\ architecture encodes them: the immediate is bits 10..21.
-$D10003FF constant SUB-SP
-$D14003FF constant SUB-SP-PAGES
-$910003FF constant ADD-SP
-$914003FF constant ADD-SP-PAGES
-: SP-WORD ( n n -- n ) 10 lshift or ;
-
-: CODE-WORD ( ptr u8 n -- n ) {: a:ptr k:n :}
-   k 4 * {: o:n :}
-   a o + c@
-   a o 1+ + c@ 8 lshift or
-   a o 2 + + c@ 16 lshift or
-   a o 3 + + c@ 24 lshift or ;
-
-: HAS-WORD? ( n -- bool ) {: w:n :}
-   s" NWF-FIXTURE:WIDE" XREF-FIND {: rec:ptr :}
-   rec XREF-START rec XREF-CODE-BYTES CODE-BYTES:AT {: a:ptr u :}
-   false
-   u 4 / 0 ?do a i CODE-WORD w = if drop true leave then loop ;
-
 : WIDE-CASE ( -- )
-   s" a frame in the contract's top page compiles" T-LABEL
-   NWF-FIXTURE:WIDE-FRAME 7 12 lshift >= TTRUE
-   NWF-FIXTURE:WIDE-FRAME A64M:FRAME-MAX <= TTRUE
-   s" its frame is taken and given back as whole pages and the rest" T-LABEL
-   NWF-FIXTURE:WIDE-FRAME 12 rshift {: pages:n :}
-   NWF-FIXTURE:WIDE-FRAME 4095 and {: rest:n :}
-   SUB-SP-PAGES pages SP-WORD HAS-WORD? TTRUE
-   SUB-SP rest SP-WORD HAS-WORD? TTRUE
-   ADD-SP rest SP-WORD HAS-WORD? TTRUE
-   ADD-SP-PAGES pages SP-WORD HAS-WORD? TTRUE
    s" and runs: every call taken, every local read back" T-LABEL
    1 NWF-FIXTURE:V !
    NWF-FIXTURE:WIDE 60 1770 + T=

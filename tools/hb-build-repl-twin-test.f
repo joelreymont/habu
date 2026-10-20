@@ -259,7 +259,7 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
    S\" package HBT-RETRY-APP\n: HOOK ( -- ) 1 HBT-RETRY:HOOKS +! ;\n: INSTALL ( -- ) [: HOOK ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT ;\nINSTALL\n;package\n73 throw\n" SB-APPEND
    SB$ ;
 : HBT-TWIN-RETRY-INPUT$ ( -- ptr u8 n )
-   S\" require tools/app-build.f\npackage HBT-RETRY public variable HOOKS ;package\n: ATTEMPT ( -- ) ['] APP-BUILD:RUN catch s\" attempt-code=\" type . cr ;\nATTEMPT\nATTEMPT\ns\" hook-count=\" type HBT-RETRY:HOOKS @ . cr\n" ;
+   S\" require tools/app-build.f\npackage HBT-RETRY public variable HOOKS ;package\n: ATTEMPT ( -- ) ['] APP-BUILD:RUN catch dup s\" attempt-code=\" type . cr 73 <> if 74 throw then ;\nATTEMPT\nATTEMPT\ns\" hook-count=\" type HBT-RETRY:HOOKS @ . cr\n" ;
 
 : HBT-TWIN-RETRY ( -- )
    HBT-TWIN-RETRY-SRC HBT-TWIN-RETRY-SRC$ WRITE-ALL
@@ -273,8 +273,6 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
       {: outn:n errn:n rc:n :}
    rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
    rc 0 T=
-   HBT-OUT outn S\" attempt-code=73\n\nattempt-code=73\n" CONTAINS? TTRUE
-   HBT-OUT outn s" attempt-code=70" CONTAINS? TFALSE
    HBT-OUT outn s" hook-count=0" CONTAINS? TTRUE ;
 
 : HBT-TWIN-FINISH ( -- )
