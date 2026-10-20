@@ -16,7 +16,6 @@ package NATIVE-FILE-AUTO-TEST
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
 create TRACE CAP allot
-create BUILDER FS-PATH-CAP allot  variable BUILDER-U
 variable HISTORY-BYTES
 DYNAMIC-BUFFER LITERAL-IMAGE u8
 DYNAMIC-BUFFER LITERAL-COLD u8
@@ -46,8 +45,9 @@ variable DIAG-START
 
 : RUN-SAVED-SOURCE ( ptr u8 n ptr u8 n -- n )
    {: cache:ptr cacheu:n source:ptr sourceu:n :}
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    cache cacheu ENGINE-CANDIDATE:PATH$ STAGE-BUILD
-   BUILDER BUILDER-U @ source sourceu CAPTURE ;
+   builder builderu source sourceu CAPTURE ;
 
 : RUN-SAVED-IN ( ptr u8 n -- n )
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
@@ -641,9 +641,6 @@ variable INCOMPLETE-SAVED
 public
 : MAIN ( -- )
    T-RESET
-   \ These cases edit private app fixtures; the builder support and host stay fixed.
-   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
-   builder BUILDER builderu BYTE-COPY builderu BUILDER-U !
    s" native-file-auto" TREE
    s" direct-cache" AT MAKE-DIR
    s" execute-cache" AT MAKE-DIR

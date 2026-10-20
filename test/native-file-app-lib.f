@@ -31,13 +31,16 @@ variable SOURCE-START
    E-FS-IO throw ;
 
 public
-\ Resolve the production REPL builder before staging a child process. Its
-\ keyed-image path buffer can be reused by a later image lookup.
+\ These cases keep the parent host, builder support and cache fixed; they
+\ mutate private app inputs. Copy the builder path before another image lookup
+\ can reuse its buffer, resolving once before staging a child process.
 : BUILDER$ ( -- ptr u8 n )
-   APP-BUILDER-ENGINE:PATH$ {: path:ptr pathu:n :}
-   pathu FS-PATH-CAP > if E-FS-CAPACITY throw then
-   path BUILDER pathu BYTE-COPY
-   pathu BUILDER-U !
+   BUILDER-U @ 0= if
+      APP-BUILDER-ENGINE:PATH$ {: path:ptr pathu:n :}
+      pathu FS-PATH-CAP > if E-FS-CAPACITY throw then
+      path BUILDER pathu BYTE-COPY
+      pathu BUILDER-U !
+   then
    BUILDER BUILDER-U @ ;
 
 \ Rehost the explicit-build fixtures: app.f requires local prefix/unit files,
