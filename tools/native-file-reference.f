@@ -209,10 +209,16 @@ variable FAMILY-FIND
    off KEY-ARENA ord REC-LEN ROW@ ;
 : SAME-KEY? ( ptr u8 n ptr u8 n -- bool ) STR= ;
 
-: HASH-KEY ( ptr u8 n -- n ) {: key:ptr size:n :}
+: HASH-KEY ( ptr u8 n -- n )
+   {: key:ptr size:n :}
    5381
-   size 0 ?do 33 * key i + c@ + $7FFFFFFFFFFFFFFF and loop
-   HASH-SLOTS mod ;
+   \ Cell reads stay inside the key; mix high bits into the bucket bits.
+   size CELL / 0 ?do
+      key i CELL * + CELL-VIEW @ xor $9E3779B185EBCA87 *
+      dup 32 rshift xor
+   loop
+   size size CELL / CELL * ?do 33 * key i + c@ + loop
+   $7FFFFFFFFFFFFFFF and HASH-SLOTS mod ;
 
 : INDEX-INIT ( -- )
    INDEX-READY @ if exit then
