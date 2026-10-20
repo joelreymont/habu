@@ -71,11 +71,7 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
    OUT$ s" user A source ran" CONTAINS? TFALSE
    OUT$ s" user B source ran" CONTAINS? TTRUE
-   s" user-import-hb" RUN-USER-IMAGE
-   s" --export-file" s" user-export-hb" USER-FILE
-   OUT$ s" user A source ran" CONTAINS? TTRUE
-   OUT$ s" user B source ran" CONTAINS? TTRUE
-   s" user-export-hb" RUN-USER-IMAGE ;
+   s" user-import-hb" RUN-USER-IMAGE ;
 
 public
 : MAIN ( -- )

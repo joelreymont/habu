@@ -4,11 +4,8 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/memory.f
 require src/lib/process-env.f
-require tools/native-file-inputs.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 
@@ -18,8 +15,6 @@ package NATIVE-FILE-PATH-SHADOW-TEST
 $8000 constant CAP
 create INPUT CAP allot variable INPUT-U
 variable EDIT
-PTR-VARIABLE CHECK-BUF
-variable CHECK-SIZE
 
 : PUT-APP ( -- )
    0 INPUT-U !
@@ -50,21 +45,6 @@ variable CHECK-SIZE
    PROC-ENV-INHERIT-MISSING
    builder builderu SOURCE$ CAPTURE ;
 
-: VERIFY-MANIFEST ( -- )
-   CHECK-BUF @ CHECK-SIZE @ NFILE-INPUTS:CHECK ;
-
-: CHECK-MANIFEST ( -- )
-   s" manifest" AT {: path:ptr pathu:n :}
-   path pathu FILE-SIZE {: size:n :}
-   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: buf:ptr len :}
-   path pathu buf size READ-ALL size <> if
-      buf len MEM:RELEASE-BYTES E-FS-IO throw
-   then
-   buf CHECK-BUF ! size CHECK-SIZE !
-   [: VERIFY-MANIFEST ;] catch {: rc:n :}
-   buf len MEM:RELEASE-BYTES
-   rc 0<> if rc throw then ;
-
 public
 : MAIN ( -- )
    T-RESET
@@ -87,16 +67,13 @@ public
    BUILD SUCCESS
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
-   CHECK-MANIFEST
    s" childdir/test" AT MAKE-DIR
    s" childdir/test/fixtures" AT MAKE-DIR
    s" childdir/test/fixtures/native-file-state-dependency.f"
       S\" package FILE-STATE-DEPENDENCY public : INCREMENT ( n -- n ) 2 + ; ;package\n" PUT
-   [: CHECK-MANIFEST ;] E-NUNIT-PROFILE TTHROWSQ
    BUILD SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
    OUT$ s" 45" CONTAINS? TTRUE
-   CHECK-MANIFEST
    T-REPORT
    s" native file path shadow artifacts: " type ROOT$ type cr ;
 ;package

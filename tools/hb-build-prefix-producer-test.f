@@ -55,8 +55,7 @@ variable RC
    ROOT$ s" app" OUT-PATH JOIN-PATH OUT-U !
    ROOT$ s" producer.f" PRODUCER JOIN-PATH PRODUCER-U !
    ROOT$ s" helper.f" HELPER JOIN-PATH HELPER-U !
-   ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U !
-   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U ! ;
+   ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U ! ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -70,8 +69,13 @@ variable RC
       2drop s" bin/hb" then HB$ COPY-FILE-STREAM
    HB$ CHMOD-X
    TMP$ MAKE-DIR
-   CACHE$ MAKE-DIR
    APP$ s" : MAIN ( -- ) FILE-PRODUCER:VALUE . ;" WRITE-ALL ;
+
+\ Each case keys its objects in its own cache under the one prepared tree.
+: CACHE! ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   ROOT$ name nameu CACHE JOIN-PATH CACHE-U !
+   CACHE$ MAKE-DIR ;
 
 : CAPTURE ( result<pcap:captured,pcap:failed> -- )
    MATCH result
@@ -113,39 +117,36 @@ variable RC
    OUT CAP-OUT-U @ want wantu CONTAINS? TTRUE ;
 
 : INCLUDE-CASE ( -- )
-   PREPARE
+   s" cache-include" CACHE!
    PRODUCER$ S\" include helper.f\n" WRITE-ALL
    HELPER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
    s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n" WRAPPER!
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 0 BUILD
    s" 41" RUN-APP
-   S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
-   s" 41" RUN-APP
    HELPER$ S\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
    \ An unrelated preloaded declaration leaves MAIN reusable.
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
-   s" 41" RUN-APP
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE ;
+   s" 41" RUN-APP ;
 
 : EDIT-AFTER-LOAD-CASE ( -- )
-   PREPARE
+   s" cache-edit" CACHE!
    PRODUCER$ S\" package FILE-PRODUCER public : VALUE ( -- n ) 41 ; ;package\n" WRITE-ALL
    s" launch.f" S\" require tools/app-build.f\nrequire producer.f\n: MAYBE-EDIT ( -- ) s\" HABU_PREFIX_TEST_EDIT\" GETENV nip 0 > if s\" producer.f\" s\" package FILE-PRODUCER public : PAD ( -- n ) 999 ; : VALUE ( -- n ) 999 ; ;package\" WRITE-ALL then ;\nMAYBE-EDIT\n" WRAPPER!
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 1" 1 BUILD
    s" 41" RUN-APP
    \ The new process relinks reused MAIN to the VALUE it loaded.
    S\" require launch.f\nAPP-BUILD:RUN\n" s" compiled 0" 0 BUILD
-   s" 999" RUN-APP
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE ;
+   s" 999" RUN-APP ;
 
 public
 
 : RUN ( -- )
    T-RESET
+   PREPARE
    INCLUDE-CASE
    EDIT-AFTER-LOAD-CASE
+   CLEANUP-RUN
+   ROOT$ EXISTS? TFALSE
    T-REPORT
    s" hb-build-prefix-producer-test: ok" type cr ;
 

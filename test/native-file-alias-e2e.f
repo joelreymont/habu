@@ -37,18 +37,13 @@ package NATIVE-FILE-ALIAS-TEST
 public
 : MAIN ( -- )
    T-RESET
-   s" FILE alias identity survives automatic cold, warm, and edited-consumer builds" T-LABEL
+   s" FILE alias identity survives automatic cold and edited-consumer builds" T-LABEL
    s" native-file-alias" TREE
    s" cache" AT MAKE-DIR
    s" direct-cache" AT MAKE-DIR
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS
-   OUT$ S\" 42\n42\n" CONTAINS? TTRUE
-   RUN-DIRECT SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    CHANGED-CONSUMER

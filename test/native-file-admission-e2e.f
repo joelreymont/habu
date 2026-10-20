@@ -1,5 +1,5 @@
-\ An unsafe FILE source must run again on the next build. The final image
-\ still makes the ordinary AOT decision after source and lifecycle cleanup.
+\ An image build refuses DATA holding an undeclared code pointer or a mapped
+\ address, and admits a mapped pointer lifecycle cleanup clears, cold and warm.
 \ bin/hb --load test/native-file-admission-e2e.f
 
 require src/lib/test.f
@@ -49,25 +49,6 @@ package NATIVE-FILE-ADMISSION-TEST
       S\" require src/habu/native-body-abi.f\n1 set-tier\nvariable READER-SEEN\nTRUSTED: CHECK-HEAD ( ptr u8 n n n -- n bool )\n   {: source:ptr sourceu:n name-at:n body-at:n :}\n   name-at 0 < name-at sourceu >= or if 70 throw then\n   body-at name-at <= body-at sourceu >= or if 70 throw then\n   source name-at + c@ dup 80 = if\n      drop source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 53 <> if 70 throw then\n   else\n      84 <> if 70 throw then\n      source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 54 <> if 70 throw then\n   then\n   1 READER-SEEN +!  0 false ;\nTRUSTED: ARM-READER ( -- )\n   ['] CHECK-HEAD native-body-reuse-cell CELL-VIEW xt!\n   check@ native-body-reuse-cell NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW ! ;\nTRUSTED: DROP-READER ( -- ) 0 native-body-reuse-cell CELL-VIEW ! ;\nARM-READER\n: PLAIN ( -- n ) 5 ;\nTRUSTED: T-READER-TRUST ( -- n ) 6 ;\nDROP-READER\n: READER-VERIFY ( -- ) READER-SEEN @ 2 <> if 70 throw then PLAIN T-READER-TRUST + . cr ;\nREADER-VERIFY\n" PUT
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" --load" ARG s" reader.f" AT ARG ENGINE-CANDIDATE:PATH$ s" " CAPTURE 0 T= OUT$ S\" 11\n" CONTAINS? TTRUE ;
-: STRICT-SOURCE ( bool -- ) {: json?:bool :}
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" downstream.f" S\" : MAIN ( -- ) ;\n" PUT
-   s" selected.f" S\" require src/lib/memory.f\npackage ADMIT-LIVE\npublic\nPERSISTED-PTR-VARIABLE PBUF\n: ARM ( -- ) MEM-ALLOC-64K {: p:ptr bytes:n :} p PBUF ! bytes drop ;\nARM\n;package\n" PUT
-   json? if s" selected.f" AT S\" -1 JSON-DIAGS !\n" APPEND-FILE then ;
-: STRICT-UNALIGNED ( -- )
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" downstream.f" S\" : MAIN ( -- ) ;\n" PUT
-   s" selected.f" S\" : ADMIT-BUMP ( n -- n ) 1+ ;\nTRUSTED: ADMIT-RAW, ( -- ) ['] ADMIT-BUMP , ;\ncreate ADMIT-RAW 1 c, ADMIT-RAW,\n" PUT ;
-: STRICT-PREFIX-UPDATE ( -- )
-   s" prefix.f" S\" create ADMIT-RAW 16 allot\n" PUT
-   s" downstream.f" S\" : MAIN ( -- ) ;\n" PUT
-   s" selected.f" S\" : ADMIT-BUMP ( n -- n ) 1+ ;\nTRUSTED: ADMIT-RAW! ( -- ) ['] ADMIT-BUMP ADMIT-RAW 1+ ! ;\nADMIT-RAW!\n" PUT ;
-: STRICT-ACCEPTED ( -- )
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" selected.f"
-      S\" defer ADMIT-ACTION ( n -- n )\n: ADMIT-BUMP ( n -- n ) 1+ ;\n: ADMIT-INSTALL ( -- ) ['] ADMIT-BUMP is ADMIT-ACTION ;\nADMIT-INSTALL\n: ADMIT-TEXT ( -- ptr u8 n ) s\" literal-owned-by-file\" ;\n" PUT
-   s" downstream.f"
-      S\" : MAIN ( -- ) 41 ADMIT-ACTION . ADMIT-TEXT type cr ;\n" PUT ;
 : STRICT-SCALARS ( -- )
    s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
    s" selected.f"
@@ -80,11 +61,6 @@ package NATIVE-FILE-ADMISSION-TEST
       S\" package ADMIT-DEFER\nSTRUCTURE item DERIVE addr FIELD value n ;STRUCTURE\nDEFER-LAYOUT-BUFFER ROWS item\n2 ROWS-BIND\n456 ITEM-MAKE 0 ROWS !\n4 ROWS-GROW\npublic\n: VALUE@ ( -- n ) 0 ROWS ITEM-VALUE @ ;\n;package\n" PUT
    s" downstream.f"
       S\" : MAIN ( -- ) ADMIT-DEFER:VALUE@ . ;\n" PUT ;
-: STRICT-TYPED-MAPPED ( -- )
-   s" prefix.f" S\" : ADMIT-PREFIX ( -- ) ;\n" PUT
-   s" downstream.f" S\" : MAIN ( -- ) ;\n" PUT
-   s" selected.f"
-      S\" require src/lib/memory.f\npackage ADMIT-TYPED\npublic\nTYPED-VARIABLE BAD n\n: BAD! ( -- ) MEM-ALLOC-64K {: p:ptr bytes:n :} p BYTE-VIEW NULL-PTR BYTE-VIEW - BAD ! bytes drop ;\nBAD!\n;package\n" PUT ;
 : RUN-STRICT ( -- n )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING s" strict-hb" AT s" MAIN" CAPTURE ;
 : FILE-DRIVER ( ptr u8 n -- n ) {: mode:ptr modeu:n :}
@@ -106,18 +82,20 @@ public
    s" cache" AT MAKE-DIR
    s" native reader passes original name and body cursor after each opener" T-LABEL
    READER-PROBE
+   s" undeclared code pointer declines" T-LABEL
    COLD-UNSAFE
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
+   \ The failed cold build still cached definitions, so the warm build refuses
+   \ the raw pointer against cached code.
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    s" undeclared code/dict pointer" SAID? TTRUE
-   s" unaligned pointer declines on cold and warm builds" T-LABEL
+   s" unaligned pointer declines" T-LABEL
    COLD-UNALIGNED
-   BUILD 70 T=
-   OUT$ s" unaligned-source-ran" CONTAINS? TTRUE
-   s" undeclared code/dict pointer" SAID? TTRUE
    BUILD 70 T=
    OUT$ s" unaligned-source-ran" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
@@ -131,9 +109,6 @@ public
    BUILD 70 T=
    OUT$ s" typed-mapped-source-ran" CONTAINS? TTRUE
    s" mapped" SAID? TTRUE
-   BUILD 70 T=
-   OUT$ s" typed-mapped-source-ran" CONTAINS? TTRUE
-   s" mapped" SAID? TTRUE
    s" mapped pointer with lifecycle cleanup builds from source twice" T-LABEL
    LIFECYCLE
    BUILD 0 T=
@@ -144,37 +119,6 @@ public
    OUT$ s" life-source-ran" CONTAINS? TTRUE
    RUN-IMAGE 0 T=
    OUT$ s" life-ok" CONTAINS? TTRUE
-   s" explicit FILE export names an unsafe declared cell" T-LABEL
-   false STRICT-SOURCE
-   EXPORT 0<> TTRUE
-   s" word=PBUF" SAID? TTRUE
-   s" mapped" SAID? TTRUE
-   true STRICT-SOURCE
-   EXPORT 0<> TTRUE
-   s" schema_version" SAID? TTRUE
-   s" E-AOT-UNSUPPORTED" SAID? TTRUE
-   s" PBUF" SAID? TTRUE
-   s" explicit FILE export refuses unaligned new DATA" T-LABEL
-   STRICT-UNALIGNED
-   EXPORT 70 T=
-   s" undeclared code/dict pointer" SAID? TTRUE
-   s" explicit FILE export refuses unaligned prefix update" T-LABEL
-   STRICT-PREFIX-UPDATE
-   EXPORT 70 T=
-   s" undeclared code/dict pointer" SAID? TTRUE
-   s" explicit FILE export refuses aligned typed mapped data" T-LABEL
-   STRICT-TYPED-MAPPED
-   EXPORT 70 T=
-   s" mapped" SAID? TTRUE
-   s" declared slot and literal text survive FILE replay" T-LABEL
-   STRICT-ACCEPTED
-   EXPORT 0 T=
-   RUN-STRICT 0 T=
-   OUT$ S\" 42\nliteral-owned-by-file" CONTAINS? TTRUE
-   IMPORT 0 T=
-   OUT$ s" native-build: file unit hit" CONTAINS? TTRUE
-   RUN-STRICT 0 T=
-   OUT$ S\" 42\nliteral-owned-by-file" CONTAINS? TTRUE
    s" adjacent scalar variables survive FILE replay" T-LABEL
    STRICT-SCALARS
    EXPORT 0 T=

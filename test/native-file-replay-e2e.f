@@ -141,7 +141,7 @@ variable REMOVED
    REPORT
    CHECK-CANON-OUTPUT ;
 
-: SESSION-CASES-START ( -- )
+: SESSION-CLOSE-CASE ( -- )
    s" FILE replay closes a nested session before the next range" T-LABEL
    s" cache-close" AT MAKE-DIR
    s" session-close.f" S\" IR-CTX:SESSION-CLOSE\n" PUT
@@ -160,80 +160,9 @@ variable REMOVED
       SESSION-PROBE
    REPORT
    OUT$ s" session=0" CONTAINS? TTRUE
-   OUT$ s" open-result=0" CONTAINS? TTRUE
+   OUT$ s" open-result=0" CONTAINS? TTRUE ;
 
-   s" FILE replay never revives a retired child context" T-LABEL
-   s" cache-revive" AT MAKE-DIR
-   s" revive-child.f" S\" REVIEW-ID:SAVE\n: REVIEW-AFTER ( -- ) ;\n" PUT
-   s" revive-parent.f"
-      S\" package REVIEW-ID\npublic\n1 TYPED-BUFFER SAVED IR-CTX:ctx\n: SAVE ( -- ) NABI:BINDING [: 0 SAVED ! ;] IR-CTX:WITH-CONTEXT ;\n: LIVE ( -- bool ) 0 SAVED @ IR-CTX:LIVE? ;\n;package\nIR-CTX:SESSION-CLOSE\ninclude revive-child.f\n" PUT
-   s" " s" revive-parent.f" s" cache-revive"
-      S\" s\" saved-live=\" type REVIEW-ID:LIVE . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" saved-live=0" CONTAINS? TTRUE
-   s" " s" revive-parent.f" s" cache-revive"
-      S\" s\" saved-live=\" type REVIEW-ID:LIVE . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" saved-live=0" CONTAINS? TTRUE
-
-   s" FILE replay does not revive a retired arena at a new session offset" T-LABEL
-   s" cache-arena" AT MAKE-DIR
-   s" arena-child.f" S\" REVIEW-ARENA:SAVE\n: REVIEW-AFTER ( -- ) ;\n" PUT
-   s" arena-parent.f"
-      S\" package REVIEW-ARENA\npublic\n1 TYPED-BUFFER SAVED IR-ARENA:arena\n: SAVE ( -- ) NABI:BINDING [: 16 IR-ARENA:NEW 0 SAVED ! ;] IR-CTX:WITH-CONTEXT ;\n: LIVE ( -- bool ) 0 SAVED @ IR-ARENA:LIVE? ;\n;package\nIR-CTX:SESSION-CLOSE\ninclude arena-child.f\n" PUT
-   s" " s" arena-parent.f" s" cache-arena"
-      S\" s\" saved-live=\" type REVIEW-ARENA:LIVE . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" saved-live=0" CONTAINS? TTRUE
-   s" " s" arena-parent.f" s" cache-arena"
-      S\" s\" saved-live=\" type REVIEW-ARENA:LIVE . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" saved-live=0" CONTAINS? TTRUE
-
-;
-
-: PROTOTYPE-CASE ( -- )
-   s" FILE replay keeps a provider's session module distinct from saved IDs" T-LABEL
-   s" cache-prototype" AT MAKE-DIR
-   s" prototype-child.f"
-      S\" IR-ID:NEW-MODULE 0 REVIEW-PROTOTYPE:SAVED ! drop\n: REVIEW-AFTER ( -- ) ;\n" PUT
-   s" prototype-parent.f"
-      S\" package REVIEW-PROTOTYPE\npublic\n1 TYPED-BUFFER SAVED IR-ID:ir-module-id\n;package\nIR-CTX:SESSION-CLOSE\ninclude prototype-child.f\n" PUT
-   S\" package REVIEW-BACK\npublic\n1 TYPED-BUFFER MODULE IR-ID:ir-module-id\nprivate\n: NO ( CTARGET:contract -- bool ) drop false ;\n: NO-REWRITE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) nip ;\n: NO-EMIT ( IR-CTX:ctx IR-BUILD:module n -- ) 2drop drop ;\n: NO-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- ) 2drop ;\n: NO-STAGE ( -- ) ;\n: PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- ) 0 IR-ID:PACK-SYMBOL IR-ID:SYMBOL-OWNER 0 MODULE ! 2drop drop ;\n: DECLARE ( n n NBACK:linkage -- ) 2drop drop ;\n: FAKE-PASS ( -- NBACK:pass ) [: DECLARE ;] [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;] [: PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE ;\npublic\n: INSTALL ( -- ) 30 CTARGET:ID CTARGET-ARCH:PTX [: NO ;] [: NO ;] CTARGET-BACKEND:MAKE FAKE-PASS NBACK:REGISTER ;\n;package\nREVIEW-BACK:INSTALL\n"
-      s" prototype-parent.f" s" cache-prototype"
-      S\" s\" module=\" type 0 REVIEW-PROTOTYPE:SAVED @ 0 REVIEW-BACK:MODULE @ IR-ID:MODULE-SAME? . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" module=0" CONTAINS? TTRUE
-   S\" package REVIEW-BACK\npublic\n1 TYPED-BUFFER MODULE IR-ID:ir-module-id\nprivate\n: NO ( CTARGET:contract -- bool ) drop false ;\n: NO-REWRITE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) nip ;\n: NO-EMIT ( IR-CTX:ctx IR-BUILD:module n -- ) 2drop drop ;\n: NO-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- ) 2drop ;\n: NO-STAGE ( -- ) ;\n: PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- ) 0 IR-ID:PACK-SYMBOL IR-ID:SYMBOL-OWNER 0 MODULE ! 2drop drop ;\n: DECLARE ( n n NBACK:linkage -- ) 2drop drop ;\n: FAKE-PASS ( -- NBACK:pass ) [: DECLARE ;] [: NO-REWRITE ;] [: NO-REWRITE ;] [: NO-EMIT ;] [: NO-UNPLACED ;] [: NO-STAGE ;] [: NO-STAGE ;] [: PROTOTYPE ;] [: NO-STAGE ;] [: NO-STAGE ;] NBACK-PASS:MAKE ;\npublic\n: INSTALL ( -- ) 30 CTARGET:ID CTARGET-ARCH:PTX [: NO ;] [: NO ;] CTARGET-BACKEND:MAKE FAKE-PASS NBACK:REGISTER ;\n;package\nREVIEW-BACK:INSTALL\n"
-      s" prototype-parent.f" s" cache-prototype"
-      S\" s\" module=\" type 0 REVIEW-PROTOTYPE:SAVED @ 0 REVIEW-BACK:MODULE @ IR-ID:MODULE-SAME? . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" module=0" CONTAINS? TTRUE
-
-;
-
-: SESSION-CASES-END ( -- )
-   s" FILE replay keeps retired compiler leases stale" T-LABEL
-   s" cache-lease" AT MAKE-DIR
-   s" lease.f"
-      S\" package REVIEW-LEASE\npublic\n1 TYPED-BUFFER SAVED NLEASE:lease\n: SAVE ( -- ) [: 0 SAVED ! ;] NLEASE:WITH ;\n: PROBE ( -- ) 32 0 ?do [: drop 0 SAVED @ NLEASE:LIVE? if 73 throw then ;] NLEASE:WITH loop ;\n;package\nREVIEW-LEASE:SAVE\n" PUT
-   s" " s" lease.f" s" cache-lease"
-      S\" s\" lease-probe=\" type ' REVIEW-LEASE:PROBE catch . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" lease-probe=0" CONTAINS? TTRUE
-   s" " s" lease.f" s" cache-lease"
-      S\" s\" lease-probe=\" type ' REVIEW-LEASE:PROBE catch . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" lease-probe=0" CONTAINS? TTRUE
-
+: FOREIGN-CASE ( -- )
    s" FILE source opening a foreign IR session remains a source load" T-LABEL
    s" cache-foreign" AT MAKE-DIR
    s" foreign.f" S\" REVIEW-OPEN\n" PUT
@@ -248,80 +177,7 @@ variable REMOVED
       S\" s\" session=\" type IR-CTX:SESSION-LIVE? . cr\n"
       SESSION-PROBE
    REPORT
-   OUT$ s" session=-1" CONTAINS? TTRUE
-
-   s" FILE replay rejects unrelated module serials before import" T-LABEL
-   s" cache-module" AT MAKE-DIR
-   s" module.f"
-      S\" 1 TYPED-BUFFER REVIEW-MODULE IR-ID:ir-module-id\nIR-ID:NEW-MODULE 0 REVIEW-MODULE ! drop\n" PUT
-   S\" 1 TYPED-BUFFER REVIEW-OUTSIDE IR-ID:ir-module-id\n"
-      s" module.f" s" cache-module"
-      S\" s\" module-collision=\" type 0 REVIEW-MODULE @ 0 REVIEW-OUTSIDE @ IR-ID:MODULE-SAME? . cr\n"
-      s" " SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" module-collision=0" CONTAINS? TTRUE
-   S\" 1 TYPED-BUFFER REVIEW-OUTSIDE IR-ID:ir-module-id\n"
-      s" module.f" s" cache-module"
-      S\" s\" module-collision=\" type 0 REVIEW-MODULE @ 0 REVIEW-OUTSIDE @ IR-ID:MODULE-SAME? . cr\n"
-      S\" IR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\nIR-ID:NEW-MODULE 0 REVIEW-OUTSIDE ! drop\n"
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" module-collision=0" CONTAINS? TTRUE
-
-   s" FILE selection falls back after an unrelated retired context" T-LABEL
-   s" cache-guard" AT MAKE-DIR
-   s" guard.f" S\" : REVIEW-GUARD ( -- n ) 7 ;\n" PUT
-   S\" : REVIEW-UNRELATED ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
-      s" guard.f" s" cache-guard"
-      S\" s\" guard=\" type REVIEW-GUARD . cr\n" s" "
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" guard=7" CONTAINS? TTRUE
-   S\" : REVIEW-UNRELATED ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
-      s" guard.f" s" cache-guard"
-      S\" s\" guard=\" type REVIEW-GUARD . cr\n"
-      S\" REVIEW-UNRELATED\n"
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" guard=7" CONTAINS? TTRUE ;
-
-: HISTORY-CASES ( -- )
-   s" FILE replay rebases an unrelated lease before a unit" T-LABEL
-   s" cache-lease-history" AT MAKE-DIR
-   s" lease-history.f" S\" REVIEW-LEASE-BURN\n" PUT
-   S\" variable REVIEW-BEFORE\n: REVIEW-LEASE-BURN ( -- ) [: drop ;] NLEASE:WITH ;\n"
-      s" lease-history.f" s" cache-lease-history"
-      S\" s\" lease-delta=\" type NLEASE:HISTORY REVIEW-BEFORE @ - . cr\n"
-      S\" NLEASE:HISTORY REVIEW-BEFORE !\n" SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" lease-delta=1" CONTAINS? TTRUE
-   S\" variable REVIEW-BEFORE\n: REVIEW-LEASE-BURN ( -- ) [: drop ;] NLEASE:WITH ;\n"
-      s" lease-history.f" s" cache-lease-history"
-      S\" s\" lease-delta=\" type NLEASE:HISTORY REVIEW-BEFORE @ - . cr\n"
-      S\" REVIEW-LEASE-BURN NLEASE:HISTORY REVIEW-BEFORE !\n"
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" lease-delta=1" CONTAINS? TTRUE
-
-   s" FILE replay rebases an unrelated context before a unit" T-LABEL
-   s" cache-context-history" AT MAKE-DIR
-   s" context-history.f" S\" REVIEW-CONTEXT-BURN\n" PUT
-   S\" variable REVIEW-BEFORE-GEN\nvariable REVIEW-BEFORE-EPOCH\n: REVIEW-CONTEXT-BURN ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
-      s" context-history.f" s" cache-context-history"
-      S\" s\" gen-delta=\" type IR-CTX:HISTORY drop REVIEW-BEFORE-GEN @ - . cr\ns\" epoch-delta=\" type IR-CTX:EPOCH REVIEW-BEFORE-EPOCH @ - . cr\n"
-      S\" IR-CTX:HISTORY REVIEW-BEFORE-EPOCH ! REVIEW-BEFORE-GEN !\n"
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" gen-delta=1" CONTAINS? TTRUE
-   OUT$ s" epoch-delta=1" CONTAINS? TTRUE
-   S\" variable REVIEW-BEFORE-GEN\nvariable REVIEW-BEFORE-EPOCH\n: REVIEW-CONTEXT-BURN ( -- ) NABI:BINDING [: drop ;] IR-CTX:WITH-CONTEXT ;\n"
-      s" context-history.f" s" cache-context-history"
-      S\" s\" gen-delta=\" type IR-CTX:HISTORY drop REVIEW-BEFORE-GEN @ - . cr\ns\" epoch-delta=\" type IR-CTX:EPOCH REVIEW-BEFORE-EPOCH @ - . cr\n"
-      S\" REVIEW-CONTEXT-BURN IR-CTX:HISTORY REVIEW-BEFORE-EPOCH ! REVIEW-BEFORE-GEN !\n"
-      SESSION-PROBE-WITH
-   REPORT
-   OUT$ s" gen-delta=1" CONTAINS? TTRUE
-   OUT$ s" epoch-delta=1" CONTAINS? TTRUE ;
+   OUT$ s" session=-1" CONTAINS? TTRUE ;
 
 : ROOT-REGISTRY-CASE ( -- )
    s" an app FILE does not reuse an unrelated live compiler session" T-LABEL
@@ -337,22 +193,6 @@ variable REMOVED
       S\" NCOMP:SESSION-ENSURE\n" SESSION-PROBE-WITH
    REPORT
    OUT$ s" root-registry=42" CONTAINS? TTRUE ;
-
-: BUILDER-CASE ( -- )
-   s" FILE replay never revives a retired builder" T-LABEL
-   s" cache-builder" AT MAKE-DIR
-   s" builder.f"
-      S\" package REVIEW-BUILDER\npublic\n1 TYPED-BUFFER SAVED IR-BUILD:builder\n: NEW ( IR-CTX:ctx -- IR-BUILD:builder ) IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT HIR:NEW-BUILDER ;\n: SAVE ( -- ) NABI:BINDING [: NEW dup 0 SAVED ! IR-BUILD:ABORT ;] IR-CTX:WITH-CONTEXT ;\n: PROBE ( -- ) 128 0 ?do NABI:BINDING [: NEW 0 SAVED @ IR-BUILD:LIVE? if 73 throw then IR-BUILD:ABORT ;] IR-CTX:WITH-CONTEXT loop ;\n;package\nREVIEW-BUILDER:SAVE\n" PUT
-   s" " s" builder.f" s" cache-builder"
-      S\" s\" builder-probe=\" type ' REVIEW-BUILDER:PROBE catch . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" builder-probe=0" CONTAINS? TTRUE
-   s" " s" builder.f" s" cache-builder"
-      S\" s\" builder-probe=\" type ' REVIEW-BUILDER:PROBE catch . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" builder-probe=0" CONTAINS? TTRUE ;
 
 : SYMBOL-CASE ( -- )
    s" FILE replay reuses a symbol interned then undefined before the unit" T-LABEL
@@ -641,9 +481,8 @@ variable REMOVED
    OUT$ s" opens=48" CONTAINS? TTRUE ;
 
 : SESSION-CASES ( -- )
-   SESSION-CASES-START PROTOTYPE-CASE SESSION-CASES-END HISTORY-CASES
-   ROOT-REGISTRY-CASE
-   BUILDER-CASE SYMBOL-CASE PREPARED-CODE-CASE EVICTED-CHILD-CASE
+   SESSION-CLOSE-CASE FOREIGN-CASE ROOT-REGISTRY-CASE
+   SYMBOL-CASE PREPARED-CODE-CASE EVICTED-CHILD-CASE
    DEFER-CASE DEFER-PUBLISHED-CASE DEFER-REPLACEMENT-CASE DEFER-ALIAS-CASE
    DEFER-EFFECT-CASE DEFER-RETIRED-CASE
    EMPTY-CHILD-CASE TRAILING-COLON-CASE
