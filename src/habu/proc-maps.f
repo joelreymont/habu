@@ -304,8 +304,14 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
 \ The area this value is interior to, or -1, among the map's first count rows.
 \ [start, end): the end is the next area's start, or a hole, and belongs to
 \ neither.
-: ROW-AT ( n n -- n ) {: v:n count:n :}
-   0 BS-LO !  count BS-HI !  -1 BS-AT !
+: ROW-AT ( n n -- n )
+   {: v:n count:n :}
+   0 BS-LO !  0 BS-HI !  0 BS-MID !  0 BS-AT !
+   count 0 <= IF -1 EXIT THEN
+   \ Most overlapping DATA values lie outside the kernel's sorted map.
+   v 0 EXT-LO @ < IF -1 EXIT THEN
+   v count 1- EXT-HI @ >= IF -1 EXIT THEN
+   count BS-HI !  -1 BS-AT !
    BEGIN BS-LO @ BS-HI @ < BS-AT @ 0 < and WHILE
       BS-LO @ BS-HI @ + 2 / BS-MID !
       v BS-MID @ EXT-HI @ >= IF

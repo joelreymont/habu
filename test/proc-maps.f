@@ -22,6 +22,17 @@ private
 
 public
 
+: TEST-OUTER-BOUNDS ( -- )
+   RELOAD
+   0 EXT-LO @ {: lo:n :}
+   EXTENTS 1- EXT-HI @ {: hi:n :}
+   lo MAPPED? TTRUE
+   hi 1- MAPPED? TTRUE
+   lo 1- MAPPED? TFALSE
+   hi MAPPED? TFALSE
+   \ Queries leave no address or search cursor for a subsequent image capture.
+   BS-LO @ BS-HI @ or BS-MID @ or BS-AT @ or 0 T= ;
+
 : TEST-MACH-EXTENSION ( -- )
    OS-MEMORY:PAGE-SIZE {: page:n :}
    MEM-64K page + MEM-ALLOC-BYTES {: span:ptr spanlen:n :}
@@ -75,6 +86,7 @@ FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 
 : RUN ( -- )
    T-RESET
+   PROC-MAPS:TEST-OUTER-BOUNDS
    HB-TARGET-MACOS? if
       PROC-MAPS:TEST-MACH-EXTENSION
       MACOS-REGIONS
