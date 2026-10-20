@@ -55,7 +55,7 @@ private
 \ counts are the leading cells, read through CELL-VIEW of the region's base:
 \ `create ... allot` is zeroed and cell-aligned, so a fresh context starts at
 \ zero and the view is aligned.
-16 constant COUNT-CELLS
+17 constant COUNT-CELLS
 COUNT-CELLS cells constant PATHZ-OFF
 PROC-PATHZ-CAP constant PATHZ-CAP
 PATHZ-OFF PATHZ-CAP + constant CWDZ-OFF
@@ -83,7 +83,7 @@ private
 : COUNT-CELL ( ptr ptr u8 n -- ptr n ) {: h:ptr i:n :}
    h BASE i cells + CELL-VIEW ;
 
-\ The count cells, by index in the sixteen-cell header.
+\ The count cells, by index in the header.
 : ARG-N-CELL ( ptr ptr u8 -- ptr n ) 0 COUNT-CELL ;
 : ENV-N-CELL ( ptr ptr u8 -- ptr n ) 1 COUNT-CELL ;
 : ARG-OFF-CELL ( ptr ptr u8 -- ptr n ) 2 COUNT-CELL ;
@@ -100,6 +100,10 @@ private
 \ whatever inheritance appended for this run. ENV-N stays the caller's count, so
 \ a second run inherits into the same place rather than after the last run's copy.
 : ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
+: CANCEL-FD-CELL ( ptr ptr u8 -- ptr n ) 13 COUNT-CELL ;
+: CANCELLED-CELL ( ptr ptr u8 -- ptr n ) 14 COUNT-CELL ;
+: CAP-OUT-CELL ( ptr ptr u8 -- ptr n ) 15 COUNT-CELL ;
+: CAP-ERR-CELL ( ptr ptr u8 -- ptr n ) 16 COUNT-CELL ;
 
 : PATHZ ( ptr ptr u8 -- ptr u8 ) BASE PATHZ-OFF + ;
 : CWDZ ( ptr ptr u8 -- ptr u8 ) BASE CWDZ-OFF + ;
@@ -123,6 +127,9 @@ private
 : CAPTURE-RESET ( ptr ptr u8 -- ) {: h:ptr :}
    0 h OUT-LEN-CELL !
    0 h ERR-LEN-CELL !
+   0 h CAP-OUT-CELL !
+   0 h CAP-ERR-CELL !
+   0 h CANCELLED-CELL !
    1 h EXITED-CELL !
    0 h TIMED-OUT-CELL !
    0 h CODE-CELL ! ;
@@ -138,7 +145,21 @@ public
    0 h IN-LEN-CELL !
    0 h CWD-LEN-CELL !
    1 h INHERIT-CELL !
+   PROC-NO-FD h CANCEL-FD-CELL !
    h CAPTURE-RESET ;
+
+\ Lend a pipe's read end until the next run returns or throws. Another task
+\ writes or closes its writer; it never mutates a running command. PROC-NO-FD
+\ disconnects. The owner must keep the read end open through run completion.
+: CANCEL-FD! ( ptr ptr u8 fd -- )
+   {: h:ptr fd:fd :}
+   fd FD>N h CANCEL-FD-CELL ! ;
+
+\ Lengths of the valid last-run prefixes, including a cancelled run. Growing
+\ captures refer to caller storage; OUT$/ERR$ refer only to the fixed buffers.
+: CAPTURE-LENGTHS ( ptr ptr u8 -- len len )
+   {: h:ptr :}
+   h CAP-OUT-CELL @ >LEN h CAP-ERR-CELL @ >LEN ;
 
 \ Explicitly erase stdin and captures, including bytes beyond the live lengths.
 \ RESET and RUN keep their existing lifetime; the caller chooses when to wipe.
@@ -322,34 +343,75 @@ private
 \ Decompose the outcome sum into exited/timed-out flags plus the code cell
 \ (all one cell, lossless): exit codes >= 128 stay distinct from signal
 \ deaths, unlike the retired rc-based pair store.
-: STORE-RUN ( len len outcome ptr ptr u8 -- ) {: h:ptr :}
+: STORE-OUTCOME ( outcome ptr ptr u8 -- )
+   {: h:ptr :}
    MATCH outcome
      exited OF h CODE-CELL ! 1 h EXITED-CELL ! 0 h TIMED-OUT-CELL ! ENDOF
      signaled OF h CODE-CELL ! 0 h EXITED-CELL ! 0 h TIMED-OUT-CELL ! ENDOF
      timeout OF 0 h CODE-CELL ! 0 h EXITED-CELL ! 1 h TIMED-OUT-CELL ! ENDOF
-   ;MATCH
-   LEN>N h ERR-LEN-CELL !
-   LEN>N h OUT-LEN-CELL ! ;
+   ;MATCH ;
+
+: STORE-LENGTHS ( ptr ptr u8 -- )
+   {: h:ptr :}
+   PROC-OUT-LEN @ h CAP-OUT-CELL !
+   PROC-ERR-LEN @ h CAP-ERR-CELL ! ;
+
+\ The command disconnects at entry; release the capture's borrowed reference
+\ after its cleanup. Cancellation has no outcome variant: its getters throw.
+: RUN-DONE ( n ptr ptr u8 -- )
+   {: code:n h:ptr :}
+   PROC-NO-FD PROC-CANCEL-FD !
+   code E-PROC-CANCELLED = if 1 h CANCELLED-CELL ! then
+   code 0<> if code throw then ;
+
+: START-CANCEL ( fd -- )
+   FD>N PROC-CANCEL-FD !
+   PROC-STOP-ASK ;
+
+: FIXED-CAPTURE ( ptr ptr u8 fd -- ptr ptr u8 fd )
+   {: h:ptr cancel:fd :}
+   cancel START-CANCEL
+   h SPAWN
+   h IN-BUF h IN-LEN-CELL @ >LEN
+   h OUT-BUF OUT-CAP >LEN
+   h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
+   h cancel ;
 
 public
 
 : OUTCOME@ ( ptr ptr u8 -- outcome ) {: h:ptr :}
+   h CANCELLED-CELL @ 0<> if E-PROC-CANCELLED throw then
    h TIMED-OUT-CELL @ 0<> if OUTCOME:TIMEOUT exit then
    h EXITED-CELL @ 0<> if h CODE-CELL @ OUTCOME:EXITED exit then
    h CODE-CELL @ OUTCOME:SIGNALED ;
 
 : RUN-OUTCOME ( ptr ptr u8 ptr u8 n ms -- outcome )
    {: h:ptr path:ptr pathu:n timeout:ms :}
-   path pathu timeout CHECK-RUN
+   h CANCEL-FD-CELL @ >FD {: cancel:fd :}
+   PROC-NO-FD h CANCEL-FD-CELL !
    h CAPTURE-RESET
+   path pathu timeout CHECK-RUN
    h path pathu PREPARE
    timeout PROC-STDIN-CAPTURE-BEGIN
-   h SPAWN
-   h IN-BUF h IN-LEN-CELL @ >LEN
-   h OUT-BUF OUT-CAP >LEN
-   h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME h STORE-RUN
+   h cancel [: FIXED-CAPTURE ;] catch {: code:n :} 2drop
+   h STORE-LENGTHS
+   h CAP-OUT-CELL @ h OUT-LEN-CELL !
+   h CAP-ERR-CELL @ h ERR-LEN-CELL !
+   code h RUN-DONE
+   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop
    h OUTCOME@ ;
+
+private
+
+: GROW-CAPTURE
+  ( ptr ptr u8 fd ptr u8 len [ n -- ptr u8 ] ptr u8 len -- ptr ptr u8 fd ptr u8 len [ n -- ptr u8 ] ptr u8 len )
+   {: h:ptr cancel:fd in:ptr inu:len sink err:ptr errcap:len :}
+   cancel START-CANCEL
+   h SPAWN
+   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
+   h cancel in inu sink err errcap ;
+
+public
 
 \ Capture into caller-owned spans. The command owns only argv/env staging; the
 \ input and growing stdout stay with the caller, so separate tasks may run
@@ -357,14 +419,20 @@ public
 : RUN-STDIN-GROWING-OUTCOME
   ( ptr ptr u8 ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
    {: h:ptr path:ptr pathu:len in:ptr inu:len sink err:ptr errcap:len timeout:ms :}
+   h CANCEL-FD-CELL @ >FD {: cancel:fd :}
+   PROC-NO-FD h CANCEL-FD-CELL !
+   h CAPTURE-RESET
    path pathu LEN>N timeout CHECK-RUN
    inu PROC-CAPTURE-CHECK-STDIN
    errcap PROC-CAPTURE-CHECK-CAP
    h path pathu LEN>N PREPARE
    timeout PROC-STDIN-CAPTURE-BEGIN
-   h SPAWN
-   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   h cancel in inu sink err errcap [: GROW-CAPTURE ;] catch
+   {: code:n :} drop 2drop 2drop 2drop
+   h STORE-LENGTHS
+   code h RUN-DONE
+   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop
+   h CAPTURE-LENGTHS h OUTCOME@ ;
 
 \ Wrap the stored outcome's completion rc into a result<n,n>: ok = clean exit
 \ (0), err = the nonzero completion code (a nonzero exit code, or 128+signal).

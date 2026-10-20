@@ -52,6 +52,42 @@ in the child, once, leaving the parent's fds and flags alone. Parent-only pipe
 and PTY fds must still be marked close-on-exec before spawning, or children can
 inherit writers and prevent EOF.
 
+## Cancel one command capture
+
+`CMD:CANCEL-FD! ( ptr ptr u8 fd -- )` lends a pipe's read end to the next
+`CMD:RUN-OUTCOME`, `CMD:RUN-RC` or `CMD:RUN-STDIN-GROWING-OUTCOME`. Keep the
+read end open until the run returns or throws. Another task requests
+cancellation by writing a byte or closing the writer; it must never mutate
+the running command. Mark parent-only pipe ends close-on-exec as usual.
+`PROC-NO-FD >FD` disables cancellation, and `CMD:RESET` disconnects it.
+
+The run checks the pipe before spawning, beside stdout/stderr/stdin while
+capturing, and during the bounded reap after EOF. Readability or hang-up
+cancels; a descriptor error throws `E-PROC-OUTPUT`. A cancellation throws
+`E-PROC-CANCELLED` after terminating the discovered child tree, reaping the
+direct child, closing owned capture descriptors and disarming its reaper.
+The existing tree-walk bounds and limits for escaped or reparented descendants
+still apply; this does not promise to waitpid every grandchild. A completion
+already collected wins over a later cancellation. Process-wide `PROC-STOP`
+handling still runs first when both descriptors are ready. Timeouts and
+signal-death outcomes retain their existing meanings; the outcome ABI is
+unchanged. `TASK:HALT` still requests a stop at a cooperative `TASK:PAUSE`.
+
+The library never reads, drains, duplicates or closes the borrowed descriptor.
+Every run disconnects it on success or failure. Join all old requesters before
+reusing a command, then drain or replace the pipe and explicitly lend it again.
+A byte left from a prior request would otherwise cancel the next run.
+
+`CMD:CAPTURE-LENGTHS ( ptr ptr u8 -- len len )` gives the stdout and stderr
+prefix lengths copied during the last run, including one that threw. It is
+zeroed by the next run or reset. Fixed captures remain readable through
+`CMD:OUT$` and `CMD:ERR$` after catching cancellation. Growing captures keep
+their prefixes in the caller's sink and stderr span, and leave `OUT$`/`ERR$`
+empty. Cancellation does not promise to drain any remaining pipe bytes.
+`CMD:OUTCOME@` and `CMD:RC@` throw the recorded cancellation until another run
+or reset clears it, so a killed child cannot be mistaken for a normal signal
+outcome. Caller `finally` cleanup runs normally when the cancellation throws.
+
 ## PTY Foundation
 
 The PTY flow is target-specific but the parent contract is shared:

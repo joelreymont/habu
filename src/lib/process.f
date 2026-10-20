@@ -116,7 +116,7 @@ $FF constant PROC-WAIT-EXIT-MASK
 \ called outside a capture (tools/check-core.f answering a stop), where the row
 \ can still read 0, and kill(0) or waitpid(0) reaches the caller's whole
 \ process group.
-4 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin, the stop descriptor
+5 constant PROC-PFD-SLOTS                \ stdout, stderr, stdin, stop, per-call cancellation
 8 constant PROC-PFD-SLOT-BYTES           \ one struct pollfd: fd | events | revents
 0 constant PROC-PATHZ-OFF
 PROC-PATHZ-OFF PROC-PATHZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant PROC-PFD-OFF
@@ -137,7 +137,8 @@ PROC-DEADLINE-OFF 1 cells + constant PROC-RD-OFF
 PROC-RD-OFF      1 cells + constant PROC-STATUS-OFF
 PROC-STATUS-OFF  1 cells + constant PROC-TIMED-OUT-OFF
 PROC-TIMED-OUT-OFF 1 cells + constant PROC-REAP-PID-OFF
-PROC-REAP-PID-OFF 1 cells + constant PROC-STORAGE-BYTES
+PROC-REAP-PID-OFF 1 cells + constant PROC-CANCEL-FD-OFF
+PROC-CANCEL-FD-OFF 1 cells + constant PROC-STORAGE-BYTES
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE drop
 
@@ -167,6 +168,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and PROC-STORAGE-BYTES TASK:+USER PROC-STORAGE 
 : PROC-TIMED-OUT ( -- ptr n ) PROC-ROW PROC-TIMED-OUT-OFF + CELL-VIEW ;
 \ Capture-child death-reaper pid; see the PROC-REAP-ARM seam below.
 : PROC-REAP-PID ( -- ptr n ) PROC-ROW PROC-REAP-PID-OFF + CELL-VIEW ;
+\ Borrowed, never read, duplicated or closed. CMD installs it after BEGIN.
+: PROC-CANCEL-FD ( -- ptr n ) PROC-ROW PROC-CANCEL-FD-OFF + CELL-VIEW ;
 
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
@@ -445,6 +448,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-NO-FD PROC-ERR-W !
    PROC-NO-FD PROC-IN-R !
    PROC-NO-FD PROC-IN-W !
+   PROC-NO-FD PROC-CANCEL-FD !
    0 PROC-OUT-LEN !
    0 PROC-ERR-LEN !
    0 PROC-IN-OFF !
@@ -634,6 +638,16 @@ PROC-STOP-DEFAULT
    [: PROC-STOP ;] catch {: code:n :}
    code 0<> if code PROC-THROW-CAPTURE then ;
 
+4 constant PROC-CANCEL-SLOT
+
+: PROC-ARM-CANCEL-PFD ( -- )
+   PROC-CANCEL-FD @ >FD POLLIN PROC-CANCEL-SLOT >IDX PROC-PFD-AT! ;
+
+: PROC-CANCEL-HEARD ( -- )
+   PROC-CANCEL-SLOT >IDX PROC-PFD-REVENTS {: events:n :}
+   events POLLERR POLLNVAL or and 0<> if E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   events POLLIN POLLHUP or and 0<> if E-PROC-CANCELLED PROC-THROW-CAPTURE then ;
+
 \ A capture without stdin leaves that slot empty: every capture poll covers
 \ every slot, the stop descriptor's included.
 : PROC-ARM-CAPTURE-PFD ( -- )
@@ -643,8 +657,9 @@ PROC-STOP-DEFAULT
 
 : PROC-POLL-CAPTURE-RC ( n -- n ) {: ms:n :}
    PROC-ARM-STOP-PFD
+   PROC-ARM-CANCEL-PFD
    PROC-PFD-SLOTS ms PROC-DEADLINE @ PROC-POLL-RESTART {: rc:n :}
-   rc 0 > if PROC-STOP-HEARD then
+   rc 0 > if PROC-STOP-HEARD PROC-CANCEL-HEARD then
    rc ;
 
 : PROC-POLL-CAPTURE ( ms -- count ) {: ms :}
@@ -811,16 +826,19 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one stdout read
    PROC-CAPTURE-DONE? PROC-IN-W @ 0 < and ;
 
 \ The stop descriptor without waiting, beside whatever capture slot is still
-\ open. One poll and no restart: a restart waits out the capture's deadline,
-\ which the reap must not, and a signal that interrupts this one is asked
-\ after on the reap's next turn.
+\ open. Retry interrupted zero-time polls without waiting out the capture's
+\ deadline. CMD also calls this before spawning, so an interruption cannot
+\ skip an already pending cancellation request.
 : PROC-STOP-ASK ( -- )
    PROC-ARM-IO-PFD
    PROC-ARM-STOP-PFD
-   PROC-PFD-SLOTS 0 PROC-POLL-ONCE {: rc:n :}
-   rc EINTR# negate = if exit then
+   PROC-ARM-CANCEL-PFD
+   begin
+      PROC-PFD-SLOTS 0 PROC-POLL-ONCE
+      dup EINTR# negate =
+   while drop repeat {: rc:n :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   rc 0 > if PROC-STOP-HEARD then ;
+   rc 0 > if PROC-STOP-HEARD PROC-CANCEL-HEARD then ;
 
 \ EOF says that the child closed its pipes, not that it exited. Keep the same
 \ absolute capture deadline while waiting for its status; only the existing

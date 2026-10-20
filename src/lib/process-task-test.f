@@ -6,6 +6,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -438,12 +439,188 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    PTT-GROW-OUT-A-U @ PTT-GROW-U 8 + T=
    PTT-GROW-OUT-B-U @ PTT-GROW-U 7 + T=
    PTT-GROW-ERR-A-U @ 0 T= PTT-GROW-ERR-B-U @ 0 T=
+   PTT-CMD-A CMD:CAPTURE-LENGTHS LEN>N 0 T= LEN>N PTT-GROW-U 8 + T=
+   PTT-CMD-A CMD:OUT$ nip 0 T= PTT-CMD-A CMD:ERR$ nip 0 T=
    0 PTT-GROW-OUT-A 8 S\" A:alpha\n" T$=
    0 PTT-GROW-OUT-B 7 S\" B:beta\n" T$=
    0 PTT-GROW-OUT-A 8 + PTT-GROW-U PTT-GROW-IN-A PTT-GROW-U T$=
    0 PTT-GROW-OUT-B 7 + PTT-GROW-U PTT-GROW-IN-B PTT-GROW-U T$= ;
 
-: PROCESS-TASK-TEST-MAIN ( -- )
+\ ---- cancelling one call, while another completes --------------------------
+\ Failure cases: a ready cancellation must wake both capture shapes (including
+\ blocked stdin), preserve the bytes already copied, run caller cleanup, and
+\ leave the other command alone. Descendants can hold capture pipes open; EOF
+\ can precede child exit. Neither may turn cancellation into a blocking reap.
+\ HALT remains cooperative: explicit cancellation is the pipe, never PAUSE.
+variable PTT-CANCEL-R
+variable PTT-CANCEL-W
+variable PTT-CANCEL-MODE
+variable PTT-CANCEL-CLEAN
+variable PTT-CANCEL-CODE
+variable PTT-CANCEL-PID
+create PTT-CANCEL-BYTE 99 c,
+create PTT-CANCEL-ERR 1024 allot
+DYNAMIC-BUFFER PTT-CANCEL-OUT u8
+
+: PTT-CANCEL-SCRIPT ( -- ptr u8 n )
+   PTT-CANCEL-MODE @ 2 = if
+      s" sleep 10 & printf out; printf err >&2; wait" exit
+   then
+   PTT-CANCEL-MODE @ 3 = if
+      s" printf out; printf err >&2; exec 0<&- 1>&- 2>&-; exec sleep 10" exit
+   then
+   s" printf out; printf err >&2; exec sleep 10" ;
+
+: PTT-CANCEL-RUN ( -- )
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   PTT-CMD-A s" -c" CMD:ARG+
+   PTT-CMD-A PTT-CANCEL-SCRIPT CMD:ARG+
+   PTT-CANCEL-MODE @ 1 = if
+      PTT-CMD-A s" /bin/sh" >LEN PTT-GROW-IN-A PTT-GROW-U >LEN
+      [: PTT-CANCEL-OUT-RESERVE 0 PTT-CANCEL-OUT ;]
+      PTT-CANCEL-ERR 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
+      drop 2drop exit
+   then
+   PTT-CMD-A PTT-GROW-IN-A PTT-GROW-U CMD:IN!
+   PTT-CANCEL-MODE @ 4 = if
+      PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-RC drop exit
+   then
+   PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+
+: PTT-CANCEL-CLEANUP ( -- )
+   1 PTT-CANCEL-CLEAN atomic! ;
+
+: PTT-CANCEL-BODY ( -- )
+   [: [: PTT-CANCEL-RUN ;] [: PTT-CANCEL-CLEANUP ;] finally ;] catch
+   PTT-CANCEL-CODE !
+   PROC-PID @ PTT-CANCEL-PID !
+   0 TASK:RETURN ;
+
+: PTT-CANCEL-CONTROL ( -- )
+   PTT-CMD-B CMD:RESET
+   PTT-CMD-B s" -c" CMD:ARG+
+   PTT-CMD-B s" sleep 0.2; printf unaffected" CMD:ARG+
+   PTT-CMD-B s" /bin/sh" PTT-RUN-OK
+   PTT-CMD-B CMD:OUT$ s" unaffected" STR= if 0 else 1 then TASK:RETURN ;
+
+: PTT-CANCEL-OPEN ( -- )
+   PIPE-PAIR {: rd:fd wr:fd :}
+   rd FD-CLOEXEC! wr FD-CLOEXEC!
+   rd FD>N PTT-CANCEL-R ! wr FD>N PTT-CANCEL-W ! ;
+
+: PTT-CANCEL-SIGNAL ( -- )
+   PTT-CANCEL-W @ PTT-CANCEL-BYTE 1 write 1 T= ;
+
+\ The last-run lengths bound exactly the valid prefix, even after a throw.
+\ Growing output belongs to the sink; OUT$/ERR$ must keep their fixed lengths.
+: PTT-CANCEL-PREFIX ( -- )
+   PTT-CMD-A CMD:CAPTURE-LENGTHS {: outu:len erru:len :}
+   outu LEN>N 3 T= erru LEN>N 3 T=
+   PTT-CANCEL-MODE @ 1 = if
+      0 PTT-CANCEL-OUT outu LEN>N s" out" T$=
+      PTT-CANCEL-ERR erru LEN>N s" err" T$=
+      PTT-CMD-A CMD:OUT$ nip 0 T= PTT-CMD-A CMD:ERR$ nip 0 T=
+   else
+      PTT-CMD-A CMD:OUT$ s" out" T$=
+      PTT-CMD-A CMD:ERR$ s" err" T$=
+   then ;
+
+\ Inspect only this live task's process row, before JOIN releases its region.
+\ Copied bytes establish the capture state, rather than assuming a scheduler
+\ delay is long enough. The tree child starts before those bytes are printed.
+\ Closed owned descriptors additionally establish the EOF/reap boundary.
+: PTT-CANCEL-READY? ( -- bool )
+   PTT-A TASK:DONE? if
+      PTT-A 0 PTT-JOIN=
+      PTT-CANCEL-CODE @ dup 0<> if throw then drop
+      E-PROC-OUTPUT throw
+   then
+   PTT-A PROC-PID TASK:HIS atomic@ 0 <= if false exit then
+   PTT-A PROC-OUT-LEN TASK:HIS atomic@ 3 < if false exit then
+   PTT-A PROC-ERR-LEN TASK:HIS atomic@ 3 < if false exit then
+   PTT-CANCEL-MODE @ 3 <> if true exit then
+   PTT-A PROC-OUT-R TASK:HIS atomic@ 0 <
+   PTT-A PROC-ERR-R TASK:HIS atomic@ 0 < and
+   PTT-A PROC-IN-W TASK:HIS atomic@ 0 < and ;
+
+: PTT-CANCEL-ONE ( n -- )
+   PTT-CANCEL-MODE !
+   PTT-CANCEL-OPEN
+   0 PTT-CANCEL-CLEAN ! 0 PTT-CANCEL-CODE !
+   ['] PTT-CANCEL-BODY PTT-A TASK:ACTIVATE
+   ['] PTT-CANCEL-CONTROL PTT-B TASK:ACTIVATE
+   [: PTT-CANCEL-READY? ;] mono-ns PTT-WAIT-NS +
+   s" process-task-test capture cancellation boundary" TEST-WAIT:POLL
+   mono-ns {: start:n :}
+   PTT-CANCEL-SIGNAL
+   PTT-A 0 PTT-JOIN=
+   mono-ns start - 1000000000 < TTRUE
+   PTT-B 0 PTT-JOIN=
+   PTT-CANCEL-CODE @ E-PROC-CANCELLED T=
+   PTT-CANCEL-CLEAN atomic@ 1 T=
+   PTT-CANCEL-PID @ PROC-NO-PID T=
+   PTT-CANCEL-PREFIX
+   [: PTT-CMD-A CMD:OUTCOME@ drop ;] E-PROC-CANCELLED TTHROWSQ
+   [: PTT-CMD-A CMD:RC@ drop ;] E-PROC-CANCELLED TTHROWSQ
+   \ The borrowed fd is still open and its byte was never consumed.
+   PTT-CANCEL-W @ close
+   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
+   PTT-CANCEL-R @ close ;
+
+create PTT-CANCEL-MARK FS-PATH-CAP allot
+variable PTT-CANCEL-MARK-U
+
+: PTT-CANCEL-MARK$ ( -- ptr u8 n )
+   PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ ;
+
+: PTT-CANCEL-PRE-RUN ( -- )
+   PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+
+: PTT-CANCEL-PRE-SETUP ( -- )
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A s" -c" CMD:ARG+
+   PTT-CMD-A S\" printf spawned > \q$PC_CANCEL_MARK\q" CMD:ARG+
+   PTT-CMD-A s" PC_CANCEL_MARK" PTT-CANCEL-MARK$ CMD:ENV+ ;
+
+: PTT-CANCEL-PRE ( -- )
+   CLEANUP-RESET
+   s" cmd-cancel" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" spawned" PTT-CANCEL-MARK JOIN-PATH PTT-CANCEL-MARK-U !
+   PTT-CANCEL-OPEN PTT-CANCEL-SIGNAL
+   PTT-CANCEL-PRE-SETUP
+   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   [: PTT-CANCEL-PRE-RUN ;] E-PROC-CANCELLED TTHROWSQ
+   PTT-CANCEL-MARK$ FILE? TFALSE
+   PTT-CMD-A CMD:CAPTURE-LENGTHS LEN>N 0 T= LEN>N 0 T=
+   \ Reusing a command disconnects the old request even while its pipe stays
+   \ readable; the caller has joined every old requester before reuse.
+   PTT-CANCEL-PRE-RUN
+   PTT-CANCEL-MARK$ FILE? TTRUE
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A CMD:OUTCOME@ PROC-OUTCOME>RC RC>N 0 T=
+   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   PTT-CMD-A CMD:RESET
+   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
+   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   PTT-CMD-A PROC-NO-FD >FD CMD:CANCEL-FD!
+   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
+   \ POLLHUP cancels too, without a byte to read or a writer left alive.
+   PTT-CANCEL-W @ close
+   PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
+   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   [: PTT-CANCEL-PRE-RUN ;] E-PROC-CANCELLED TTHROWSQ
+   PTT-CANCEL-R @ close
+   PTT-CMD-A 1000000 >FD CMD:CANCEL-FD!
+   [: PTT-CANCEL-PRE-RUN ;] E-PROC-OUTPUT TTHROWSQ
+   \ A refused call also disconnects the borrowed reference.
+   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
+   CLEANUP-RUN ;
+
+public
+
+: MAIN ( -- )
    T-RESET
    PTT-CONCURRENT-CAPTURE-AND-POLL
    s" a task's own command arguments survive another task's" T-LABEL
@@ -454,9 +631,14 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    PTT-WAITS-BESIDE-CAPTURE
    s" owned growing captures keep argv, env and large stdout apart" T-LABEL
    PTT-GROW-CAPTURES
+   s" cancelling fixed, growing, tree-held and EOF captures isolates another call" T-LABEL
+   5 0 ?do i PTT-CANCEL-ONE loop
+   s" pre-signalled cancellation never spawns and reuse disconnects the old pipe" T-LABEL
+   PTT-CANCEL-PRE
+   PTT-CANCEL-OUT-RELEASE
    T-REPORT
    s" process-task-test: ok" type cr ;
 
-PROCESS-TASK-TEST-MAIN
+MAIN
 
 ;package
