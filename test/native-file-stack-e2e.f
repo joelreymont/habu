@@ -14,7 +14,6 @@ public
    T-RESET
    s" hb-build preserves stack values across includes" T-LABEL
    s" native-file-stack" TREE
-   s" cache" AT MAKE-DIR
    s" leaf.f" S\" package FILE-LEAF public : VALUE ( -- n ) 41 ; ;package\n" PUT
    s" empty.f" S\" \\ no definitions\n" PUT
    s" arg.f" S\" \\ no definitions\n" PUT

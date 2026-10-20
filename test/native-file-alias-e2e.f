@@ -39,7 +39,6 @@ public
    T-RESET
    s" FILE alias identity survives automatic cold and edited-consumer builds" T-LABEL
    s" native-file-alias" TREE
-   s" cache" AT MAKE-DIR
    s" direct-cache" AT MAKE-DIR
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
