@@ -626,7 +626,7 @@ variable PENDING-KEY-U
 : COPY-ROW ( n n -- n )
    {: dest:n at:n :}
    at ROW-SIZE {: size:n :}
-   FB at + FB dest + size BYTE-COPY
+   dest at <> if FB at + FB dest + size BYTE-COPY then
    dest size + ;
 
 \ BYTE-COPY moves forward, so retained rows can move toward the header while
