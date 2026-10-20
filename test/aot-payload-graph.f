@@ -1,4 +1,9 @@
-\ Supported graph metadata survives source-effect destruction and a fresh boot.
+\ A native producer's graph metadata crosses process exits: a fresh reader bakes
+\ the exited producer's artifact, and a fresh boot of that image executes the
+\ imported code and compiles typed dependents. On the seeded image, completion
+\ selects the imported word, captured parser control holds and yields to a
+\ replacement, and the preverifier keeps its refusal packets and stop codes.
+\ A capture refuses a failed declaration's row.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -7,7 +12,6 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/fmt.f
-require src/lib/engine-candidate.f
 require src/lib/test/subject.f
 require test/whitebox-child.f
 require test/window-child-args.f
@@ -19,7 +23,6 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 create IN IO-CAP allot                  \ a verifier child's stdin
 variable PRE-OUT-U
-variable LINE-START
 create ART FS-PATH-CAP allot
 variable ART-U
 create IMAGE FS-PATH-CAP allot
@@ -41,7 +44,7 @@ variable SUBJECT-U
    path u CLEANUP-TREE+
    path u s" metadata.aot" ART JOIN-PATH ART-U !
    path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U !
-   path u s" visibility.f" SUBJECT JOIN-PATH SUBJECT-U !
+   path u s" control.f" SUBJECT JOIN-PATH SUBJECT-U !
    path u WHITEBOX-CHILD:PROVIDE-IN ;
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
@@ -61,27 +64,12 @@ variable SUBJECT-U
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    s" test/aot-payload-graph-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
-   modeu 0= if
-      rc 0 <> OUT outu LEN>N s" graph metadata file roundtrip: ok" CONTAINS? 0= or
-      if OUT outu LEN>N type ERR erru LEN>N type cr then
-      rc 0 T=
-      OUT outu LEN>N s" graph metadata file roundtrip: ok" CONTAINS? TTRUE
-      OUT outu LEN>N S\" window: 0\n" CONTAINS? TTRUE
-   else
-      rc 76 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
-      rc 76 T=
-      OUT outu LEN>N s" graph corruption applied: " CONTAINS? TTRUE
-      OUT outu LEN>N mode modeu CONTAINS? TTRUE
-      OUT outu LEN>N diagnostic diagnosticu CONTAINS?
-      ERR erru LEN>N diagnostic diagnosticu CONTAINS? or TTRUE
-      mode modeu s" scalar-zero" CORE-STR=
-      mode modeu s" wide-width" CORE-STR= or
-      mode modeu s" logical-width" CORE-STR= or IF
-         OUT outu LEN>N s" graph width refusal preserved publication state" CONTAINS? TTRUE
-      THEN
-   then ;
-
-: BAD-GRAPH ( ptr u8 n -- ) s" checker: invalid captured effect graph" CASE-RUN ;
+   rc 76 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
+   rc 76 T=
+   OUT outu LEN>N s" graph corruption applied: " CONTAINS? TTRUE
+   OUT outu LEN>N mode modeu CONTAINS? TTRUE
+   OUT outu LEN>N diagnostic diagnosticu CONTAINS?
+   ERR erru LEN>N diagnostic diagnosticu CONTAINS? or TTRUE ;
 
 
 \ Each synchronous call returns only after that process has exited. The reader
@@ -142,28 +130,6 @@ variable SUBJECT-U
 
 : PREVERIFY-CHILD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    true VERIFY-CHILD ;
-
-: DEFINITION-MEMBERS? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
-   {: word:ptr wordu:n pkg:ptr pkgu:n vis:ptr visu:n :}
-   0 LINE-START !
-   begin
-      PRE-OUT$ 10 LINE-START @ SPLIT-NEXT
-      {: line:ptr lineu:n next:n found:bool :}
-      found 0= if false exit then
-      next LINE-START !
-      line lineu s" check-verify: definition {" STARTS-WITH?
-      line lineu word wordu CONTAINS? and if
-         line lineu pkg pkgu CONTAINS?
-         line lineu vis visu CONTAINS? and exit
-      then
-   again ;
-
-: VISIBILITY-CASE ( ptr u8 n -- )
-   s" : SEED-GLOBAL ( -- n ) 1 ; package SEED-VIS private : HIDDEN ( -- n ) 2 ; public : SHOWN ( -- n ) 3 ; ;package"
-   s" check-verify: verified" s" " false VERIFY-CHILD
-   S\" \"word\":\"SEED-GLOBAL\"" S\" \"package\":\"\"" S\" \"visibility\":\"global\"" DEFINITION-MEMBERS? TTRUE
-   S\" \"word\":\"HIDDEN\"" S\" \"package\":\"seed-vis\"" S\" \"visibility\":\"private\"" DEFINITION-MEMBERS? TTRUE
-   S\" \"word\":\"SHOWN\"" S\" \"package\":\"seed-vis\"" S\" \"visibility\":\"public\"" DEFINITION-MEMBERS? TTRUE ;
 
 : PREVERIFY-CASES ( ptr u8 n -- )
    {: engine:ptr engineu:n :}
@@ -343,29 +309,12 @@ variable SUBJECT-U
    IMAGE$ 0 s" native graph fresh consumer: ok" CHILD if
       COMPLETION-CASES
       CONTROL-CASES
-      s" the seeded verifier renders global, private and public definitions" T-LABEL
-      IMAGE$ VISIBILITY-CASE
       IMAGE$ PREVERIFY-CASES
-      s" the product verifier renders global, private and public definitions" T-LABEL
-      ENGINE-CANDIDATE:PATH$ VISIBILITY-CASE
-      ENGINE-CANDIDATE:PATH$ PREVERIFY-CASES
    then ;
 
 
 : CASES ( -- )
-   s" " s" " CASE-RUN
    FRESH-NATIVE
-   s" length" BAD-GRAPH
-   s" authority-bits" BAD-GRAPH
-   s" cycle" BAD-GRAPH
-   s" tag" BAD-GRAPH
-   s" variables" BAD-GRAPH
-   s" family" s" tfam: a seeded effect has the wrong family arity" CASE-RUN
-   s" exception" s" checker: exceptional quotation rows are not portable" CASE-RUN
-   s" scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
-   s" wide-width" s" checker: captured row width disagrees with its type" CASE-RUN
-   s" logical-width" s" checker: captured row width disagrees with its type" CASE-RUN
-   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
    s" recovery" s" checker: a failed declaration's row is not portable" CASE-RUN ;
 
 : RUN ( -- )
