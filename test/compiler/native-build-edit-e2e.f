@@ -781,7 +781,8 @@ variable ENGINE-WHITEBOX
    true 1 COUNTS
    111 201 301 RUN-IMAGE
    EARLY-ROLES SAVE-ROLES
-   BASE-ROLES EARLY-ROLES SAME-KERNEL? TTRUE
+   \ Kernel bytes contain resolved payload addresses, which an edit can move.
+   \ RUN-IMAGE checks each digest against its bytes; cold builds match below.
    BASE-ROLES EARLY-ROLES SAME-CHECKER? TTRUE
    BASE-ROLES EARLY-ROLES DIFFERENT-COMPILER? TTRUE
    s" early-cold" s" cold/hb" s" cold-cache-early" BUILD SUCCESS
@@ -797,7 +798,6 @@ variable ENGINE-WHITEBOX
    true 1 COUNTS
    111 211 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
-   EARLY-ROLES NEXT-ROLES SAME-KERNEL? TTRUE
    EARLY-ROLES NEXT-ROLES SAME-CHECKER? TTRUE
    EARLY-ROLES NEXT-ROLES DIFFERENT-COMPILER? TTRUE
    s" middle-cold" s" cold/hb" s" cold-cache-middle" BUILD SUCCESS
@@ -813,7 +813,6 @@ variable ENGINE-WHITEBOX
    true 1 COUNTS
    111 211 311 RUN-IMAGE
    EARLY-ROLES SAVE-ROLES
-   NEXT-ROLES EARLY-ROLES SAME-KERNEL? TTRUE
    NEXT-ROLES EARLY-ROLES SAME-CHECKER? TTRUE
    NEXT-ROLES EARLY-ROLES SAME-COMPILER? TTRUE
    s" late-cold" s" cold/hb" s" cold-cache-late" BUILD SUCCESS
