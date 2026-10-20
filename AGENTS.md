@@ -97,6 +97,12 @@ belong in the language core.
 - Highly prefer E2E tests as the sole testing mechanism. Use them to verify
   complex features work. At the end of E2E tests, produce a verifiable and
   repeatable artifact.
+- Run compatible cases through one loaded tool or built application. Add a
+  fresh process or build only when that boundary is under test, and state why
+  beside it. When adding expensive setup, measure the affected row's wall and
+  CPU time before and after; passing assertions alone do not justify its cost.
+  Do not split a slow row merely to meet a per-row limit: first remove repeated
+  work, and include duplicated setup when comparing the total suite cost.
 - If you must test a system in isolation, first write down all the ways it
   could fail, then write the code.
 - Keep an isolated test only when it catches a concrete failure the E2E tests

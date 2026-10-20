@@ -7,15 +7,11 @@ using TEST
 \ for a free slot or the images its load closure needs. Long rows lead so they
 \ do not start late and alone set the gate's tail.
 
-\ A ROW STAYS UNDER HALF ITS CPU BUDGET. The gate ends a row once its process
-\ tree has run SUITE-BUDGET:CPU-MS (360 s) of CPU time, and its wall deadline
-\ is only a hang guard (test/suite-budget.f). CPU time is the row's own work,
-\ which load does not stretch as it does wall time, so a row is measured
-\ outside the gate:
-\ user plus system from `/usr/bin/time bin/hb --load <file>`, under 180 s.
-\ native-file-unit, the longest, runs 115 s and c2-memory 113 s. Move a
-\ fixture group into a new row file - the shared fixture stays in the family's
-\ *-lib.f - rather than letting one row grow past that.
+\ The CPU budget bounds runaway work; it is not a target for growing a row.
+\ Measure wall and user+system time with `/usr/bin/time bin/hb --load <file>`.
+\ Remove repeated work and share setup before splitting a slow row. A split
+\ must justify its isolation or reduce measured suite time, including any
+\ duplicated builds or process setup (test/suite-budget.f keeps the limits).
 
 \ Diagnostic modes run many fresh checker processes and need no shared image.
 \ Start them early so their serial checks overlap the other suite rows.

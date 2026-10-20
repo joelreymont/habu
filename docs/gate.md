@@ -336,8 +336,10 @@ at its deadline.
   build-fixpoint-fixtures at their children's 180 s and 120 s. Bounded by CPU
   time, all eleven passed, c2-memory last at 1088 s, and they ran 699 s of CPU
   there against 680 s alone. A row's CPU is measured outside the gate, user
-  plus system from `/usr/bin/time bin/hb --load <file>`, and stays under half
-  the budget (`test/gate-stdlib-cases.f`). A short child keeps a short deadline:
+  plus system from `/usr/bin/time bin/hb --load <file>`. Reduce repeated work
+  and share setup before splitting a slow row; compare total suite cost with
+  any duplicated setup included. The CPU budget bounds runaway work, rather
+  than setting an acceptable cost for each row. A short child keeps a short deadline:
   native-build's smoke run (`tools/native-build-core.f` `SMOKE-TIMEOUT-MS`,
   10 s) and build-fixpoint's boot check of a candidate (`BF-BOOT-TIMEOUT-MS`,
   30 s) each run about 20 ms of CPU, and on a freshly signed copy of the
