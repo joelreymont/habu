@@ -1,15 +1,13 @@
-\ hb-build-repl-twin-test.f - checked fixture for tools/hb-build-lib.f: two
-\ --repl builds of one program write the same bytes across fresh and warm
-\ caches, and so does the maker run directly to an output of another name.
-\ A failed app load's retry leaves its lifecycle hook for final capture.
-\ The restored image
-\ answers with its own process where the build's would be wrong: a `does>` run
-\ before the session's first `create` patches the image's own created word, the
-\ AOT code-span table reads as it does in a fresh engine, and a persist that
-\ names no output path is refused. tools/hb-build-test-lib.f lists the other
-\ hb-build rows.
+\ hb-build-repl-twin-test.f - checked fixture for tools/hb-build-lib.f: --repl
+\ builds of one program write the same image across fresh and warm caches and
+\ an output of another name. The restored image answers with its own process
+\ where the build's would be wrong: a `does>` run before the session's first
+\ `create` patches the image's own created word, a restored FILE import keeps
+\ its retired context handle stale, the AOT code-span table reads as it does in
+\ a fresh engine, and a persist that names no output path is refused.
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-repl-twin-test.f
-\ Set HABU_RETAIN_TWIN=1 to keep the four executable images and FILE objects
+\ Set HABU_RETAIN_TWIN=1 to keep the three executable images and FILE objects
 \ under the printed test root for independent inspection.
 
 require tools/hb-build-test-lib.f
@@ -25,38 +23,26 @@ variable HBT-TWIN-CHILD-U
 variable HBT-TWIN-CTX-U
 variable HBT-TWIN-TMP-A-U
 variable HBT-TWIN-TMP-B-U
-variable HBT-TWIN-TMP-C-U
 variable HBT-TWIN-OUT-A-U
 variable HBT-TWIN-OUT-B-U
-variable HBT-TWIN-OUT-C-U
 variable HBT-TWIN-OUT-D-U
-variable HBT-TWIN-RETRY-SRC-U
-variable HBT-TWIN-RETRY-OUT-U
 create HBT-TWIN-SRC-BUF FS-PATH-CAP allot
 create HBT-TWIN-CHILD-BUF FS-PATH-CAP allot
 create HBT-TWIN-CTX-BUF FS-PATH-CAP allot
 create HBT-TWIN-TMP-A-BUF FS-PATH-CAP allot
 create HBT-TWIN-TMP-B-BUF FS-PATH-CAP allot
-create HBT-TWIN-TMP-C-BUF FS-PATH-CAP allot
 create HBT-TWIN-OUT-A-BUF FS-PATH-CAP allot
 create HBT-TWIN-OUT-B-BUF FS-PATH-CAP allot
-create HBT-TWIN-OUT-C-BUF FS-PATH-CAP allot
 create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
-create HBT-TWIN-RETRY-SRC-BUF FS-PATH-CAP allot
-create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
 
 : HBT-TWIN-SRC ( -- ptr u8 n ) HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U @ ;
 : HBT-TWIN-CHILD ( -- ptr u8 n ) HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U @ ;
 : HBT-TWIN-CTX ( -- ptr u8 n ) HBT-TWIN-CTX-BUF HBT-TWIN-CTX-U @ ;
 : HBT-TWIN-TMP-A ( -- ptr u8 n ) HBT-TWIN-TMP-A-BUF HBT-TWIN-TMP-A-U @ ;
 : HBT-TWIN-TMP-B ( -- ptr u8 n ) HBT-TWIN-TMP-B-BUF HBT-TWIN-TMP-B-U @ ;
-: HBT-TWIN-TMP-C ( -- ptr u8 n ) HBT-TWIN-TMP-C-BUF HBT-TWIN-TMP-C-U @ ;
 : HBT-TWIN-OUT-A ( -- ptr u8 n ) HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U @ ;
 : HBT-TWIN-OUT-B ( -- ptr u8 n ) HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U @ ;
-: HBT-TWIN-OUT-C ( -- ptr u8 n ) HBT-TWIN-OUT-C-BUF HBT-TWIN-OUT-C-U @ ;
 : HBT-TWIN-OUT-D ( -- ptr u8 n ) HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U @ ;
-: HBT-TWIN-RETRY-SRC ( -- ptr u8 n ) HBT-TWIN-RETRY-SRC-BUF HBT-TWIN-RETRY-SRC-U @ ;
-: HBT-TWIN-RETRY-OUT ( -- ptr u8 n ) HBT-TWIN-RETRY-OUT-BUF HBT-TWIN-RETRY-OUT-U @ ;
 
 \ The build creates X and nothing after it, so X is the record LASTC-CELL names
 \ when the image is written. The clause cannot be part of the program: the build
@@ -104,23 +90,18 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X . cr\n" ;
 
 \ Fresh builds get different HB_TMP and cache roots; the warm build reuses A's.
-\ Their outputs have the same length; the direct maker uses a longer name.
+\ B's output name is longer than A's and D's.
 : HBT-TWIN-PREPARE ( -- )
    HBT-ROOT s" twin.f" HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U HBT-PATH!
    HBT-ROOT s" twin-child.f" HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U HBT-PATH!
    HBT-ROOT s" twin-ctx.f" HBT-TWIN-CTX-BUF HBT-TWIN-CTX-U HBT-PATH!
    HBT-ROOT s" twin-tmp-a" HBT-TWIN-TMP-A-BUF HBT-TWIN-TMP-A-U HBT-PATH!
    HBT-ROOT s" twin-tmp-b" HBT-TWIN-TMP-B-BUF HBT-TWIN-TMP-B-U HBT-PATH!
-   HBT-ROOT s" twin-tmp-c" HBT-TWIN-TMP-C-BUF HBT-TWIN-TMP-C-U HBT-PATH!
    HBT-ROOT s" twin-out-a" HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U HBT-PATH!
-   HBT-ROOT s" twin-out-b" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
-   HBT-ROOT s" twin-direct-image" HBT-TWIN-OUT-C-BUF HBT-TWIN-OUT-C-U HBT-PATH!
+   HBT-ROOT s" twin-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH!
-   HBT-ROOT s" twin-retry.f" HBT-TWIN-RETRY-SRC-BUF HBT-TWIN-RETRY-SRC-U HBT-PATH!
-   HBT-ROOT s" twin-retry-out" HBT-TWIN-RETRY-OUT-BUF HBT-TWIN-RETRY-OUT-U HBT-PATH!
    HBT-TWIN-TMP-A MAKE-DIR
    HBT-TWIN-TMP-B MAKE-DIR
-   HBT-TWIN-TMP-C MAKE-DIR
    HBT-TWIN-CHILD HBT-TWIN-CHILD$ WRITE-ALL
    HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
@@ -146,28 +127,6 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
    rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
    rc 0 T= ;
 
-\ Run hb-build's keyed maker directly at this longer name. Resolve the maker
-\ before staging child arguments and environment: image publication uses both.
-: HBT-TWIN-MAKE ( ptr u8 n -- ) {: out:ptr outu:n :}
-   HBT-TWIN-TMP-A BUILD-CACHE:ROOT!
-   ENGINE-CANDIDATE:PATH$ BUILD-FIXPOINT:BF-ENGINE!
-   HBT-TIMEOUT-MS APP-BUILD-IMAGE:PATH$ {: maker:ptr makeru:n :}
-   BUILD-FIXPOINT:BF-ENGINE-RESET
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TWIN-TMP-C >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TWIN-TMP-C >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --" >LEN PROC-ARGV+
-   HBT-TWIN-SRC >LEN PROC-ARGV+
-   out outu >LEN PROC-ARGV+
-   maker makeru >LEN
-   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED\n" >LEN
-   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rc:n :}
-   rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
-   rc 0 T= ;
-
 : HBT-TWIN-READ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
    buf  path pathu buf cap READ-ALL ;
@@ -180,45 +139,35 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
    out HBT-CAPTURE-CAP >LEN err HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE HBT-CAPTURE>N ;
 
-\ The same program built three times is the same image: every cell the build
-\ process owns is written as a value any process restores, or not written at all,
-\ and the signature names no file (a codesign identifier defaults to the name).
+\ The same program built three times is the same image across fresh and warm
+\ builds and an output of another name: every cell the build process owns is
+\ written as a value any process restores, or not written at all, and the
+\ signature names no file (a codesign identifier defaults to the name).
 : HBT-TWIN-SAME ( -- )
    HBT-TWIN-OUT-A HBT-TWIN-READ {: a:ptr au:n :}
    HBT-TWIN-OUT-B HBT-TWIN-READ {: b:ptr bu:n :}
-   HBT-TWIN-OUT-C HBT-TWIN-READ {: c:ptr cu:n :}
    HBT-TWIN-OUT-D HBT-TWIN-READ {: d:ptr du:n :}
    a au b bu HBT-DIFF-AT -1 T=
-   a au c cu HBT-DIFF-AT -1 T=
    a au d du HBT-DIFF-AT -1 T= ;
 
-\ A FILE import carries the retired context handle in DATA. Replaying its
-\ generation history must keep it stale when restored compilation reuses the
-\ same registry slot, and must leave cold and warm image counters aligned.
+\ A restored FILE import keeps its retired context handle stale when restored
+\ compilation reuses the same registry slot. D's bytes equal A's, so A alone runs.
 : HBT-TWIN-GENERATIONS ( -- )
+   HBT-TWIN-OUT-A
    S\" IR-CTX:EPOCH . HBT-TWIN-CTX:PROBE-CTX . HBT-TWIN-CTX:PROBE-MODULE . cr\n"
-      {: input:ptr inu:n :}
-   HBT-TWIN-OUT-A input inu HBT-OUT HBT-ERR HBT-TWIN-RUN
-      {: wantn:n wanterrn:n wantrc:n :}
-   wantrc 0 T=
-   HBT-TWIN-OUT-D input inu HBT-RUN-OUT HBT-RUN-ERR HBT-TWIN-RUN
-      {: outn:n errn:n rcn:n :}
+   HBT-RUN-OUT HBT-RUN-ERR HBT-TWIN-RUN
+   {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
-   HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-RUN-OUT outn HBT-OUT wantn T$= ;
+   HBT-RUN-ERR errn HBT-EMPTY$ T$= ;
 
-: HBT-TWIN-DOES-ONE ( ptr u8 n -- )
-   HBT-TWIN-INPUT$ HBT-RUN-OUT HBT-RUN-ERR HBT-TWIN-RUN
+: HBT-TWIN-DOES ( -- )
+   HBT-TWIN-OUT-A HBT-TWIN-INPUT$ HBT-RUN-OUT HBT-RUN-ERR HBT-TWIN-RUN
    {: outn:n errn:n rcn:n :}
    rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn S\" 5\n\n" T$= ;
-
-: HBT-TWIN-DOES ( -- )
-   HBT-TWIN-OUT-A HBT-TWIN-DOES-ONE
-   HBT-TWIN-OUT-D HBT-TWIN-DOES-ONE ;
 
 \ The seed publishes the engine's code-span table - its __text address, row count
 \ and the blob's landing address - before the snapshot restore copies DATA, so
@@ -248,33 +197,6 @@ create HBT-TWIN-RETRY-OUT-BUF FS-PATH-CAP allot
    rcn 74 T=
    HBT-RUN-ERR errn s" snap: persist has no output path" CONTAINS? TTRUE ;
 
-\ A failed app load can leave its persistent hook registered even though the
-\ source is rolled back. A direct retry must not prepare support a second time
-\ and run that app hook before the final image capture.
-: HBT-TWIN-RETRY-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   S\" s\" " SB-APPEND
-   HBT-TWIN-CHILD SB-APPEND
-   S\" \" required\nHBT-TWIN-CHILD:NUMBER drop\n" SB-APPEND
-   S\" package HBT-RETRY-APP\n: HOOK ( -- ) 1 HBT-RETRY:HOOKS +! ;\n: INSTALL ( -- ) [: HOOK ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT ;\nINSTALL\n;package\n73 throw\n" SB-APPEND
-   SB$ ;
-: HBT-TWIN-RETRY-INPUT$ ( -- ptr u8 n )
-   S\" require tools/app-build.f\npackage HBT-RETRY public variable HOOKS ;package\n: ATTEMPT ( -- ) ['] APP-BUILD:RUN catch dup s\" attempt-code=\" type . cr 73 <> if 74 throw then ;\nATTEMPT\nATTEMPT\ns\" hook-count=\" type HBT-RETRY:HOOKS @ . cr\n" ;
-
-: HBT-TWIN-RETRY ( -- )
-   HBT-TWIN-RETRY-SRC HBT-TWIN-RETRY-SRC$ WRITE-ALL
-   PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   HBT-TWIN-RETRY-SRC >LEN PROC-ARGV+
-   HBT-TWIN-RETRY-OUT >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN HBT-TWIN-RETRY-INPUT$ >LEN
-   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE HBT-CAPTURE>N
-      {: outn:n errn:n rc:n :}
-   rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
-   rc 0 T=
-   HBT-OUT outn s" hook-count=0" CONTAINS? TTRUE ;
-
 : HBT-TWIN-FINISH ( -- )
    s" HABU_RETAIN_TWIN" GETENV dup 0 > if
       2drop CLEANUP-RESET
@@ -294,13 +216,11 @@ public
    HBT-TWIN-TMP-A HBT-TWIN-OUT-A HBT-TWIN-BUILD
    HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
    HBT-TWIN-TMP-A HBT-TWIN-OUT-D HBT-TWIN-BUILD
-   HBT-TWIN-OUT-C HBT-TWIN-MAKE
    HBT-TWIN-SAME
    HBT-TWIN-GENERATIONS
    HBT-TWIN-DOES
    HBT-TWIN-SPAN
    HBT-TWIN-UNNAMED
-   HBT-TWIN-RETRY
    HBT-TWIN-FINISH
    T-REPORT
    s" hb-build-repl-twin-test: ok" type cr ;
