@@ -2170,7 +2170,6 @@ variable ACAP-SWORK-N
 \ nothing at all. Both buffers refuse their own overflow by name.
 variable ACAP-RQ      \ the segment cursor across the window
 DYNAMIC-BUFFER ACAP-CELL-OFF n   \ copy-owned, sorted window offsets
-variable ACAP-CV      \ the cell value being assembled
 variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 \ The bitmap is written in ascending cell order, so extending it is appending
@@ -2200,15 +2199,18 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ to a whole cell, so the last cell can reach above the captured content: those
 \ bytes are above the builder's DP, they are not the window's, and they read as
 \ the zeros the seed will leave there.
-: ACAP-CELL@ ( n n -- n ) {: d0:n c:n :}
-   0 ACAP-CV !
+: ACAP-CELL@ ( n n -- n )
+   {: d0:n c:n :}
+   c AOT-WINDOW:CELL-BYTES * {: off:n :}
+   off AOT-WINDOW:CELL-BYTES + ACAP-WLEN @ <= if
+      d0 off + AOT-N>U8 CELL-VIEW @ exit
+   then
+   0
    AOT-WINDOW:CELL-BYTES 0 ?do
-      c AOT-WINDOW:CELL-BYTES * i + {: off:n :}
-      off ACAP-WLEN @ < if
-         d0 off + AOT-N>U8 c@  i 8 * lshift  ACAP-CV @ or  ACAP-CV !
+      off i + ACAP-WLEN @ < if
+         d0 off + i + AOT-N>U8 c@ i 8 * lshift or
       then
-   loop
-   ACAP-CV @ ;
+   loop ;
 
 \ The present cells of [from, to), which is one gap between declared cells.
 \ Nothing outside such a gap is ever offered, which is how a declared cell keeps

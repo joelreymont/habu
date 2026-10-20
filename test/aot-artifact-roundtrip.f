@@ -81,6 +81,12 @@ defer HOOK ( n -- n )
 : ARM-HOOK ( -- ) [: LEAF ;] is HOOK ;
 ARM-HOOK
 
+\ End the logical DATA window inside a cell. The byte above it is poisoned
+\ before capture; the artifact must carry only these seven bytes.
+create WTAIL 7 allot
+1 WTAIL c! 2 WTAIL 1+ c! 3 WTAIL 2 + c! 4 WTAIL 3 + c!
+5 WTAIL 4 + c! $7F WTAIL 5 + c! $80 WTAIL 6 + c!
+
 ;package
 
 AOTRT-WINDOW:WWID @ prot-wid-add
@@ -204,6 +210,25 @@ variable SAVED-XTOFF-N
    AOT-PWIN-N @ 0 >  and  AOT-NAMES-LEN @ 0 >  and if exit then
    s" aot-artifact-roundtrip: the read left the capture empty" REFUSE-RC die ;
 
+: ?TAIL ( -- )
+   WTAIL BYTE-VIEW NULL-PTR BYTE-VIEW - AOT-ARM:D0 @ - CELL-BYTES / {: tail:n :}
+   0
+   BM-LEN @ CELL-BITS * 0 ?do
+      BM-BUF@ i CELL-BITS / + c@ i CELL-BITS mod rshift 1 and 0<> if
+         dup {: at:n :}
+         VAL-BUF@ at + VAL-LEN @ at - CELL-V@ {: v:n w:n :}
+         i tail = if
+            drop
+            v $807F0504030201 = if unloop exit then
+            s" aot-artifact-roundtrip: bytes above the logical DATA end were captured"
+            REFUSE-RC die
+         then
+         w +
+      then
+   loop
+   drop
+   s" aot-artifact-roundtrip: the partial DATA cell is missing" REFUSE-RC die ;
+
 : REPORT ( -- )
    s" roundtrip: recs=" type AOT-REC-N @ .
    s" sites=" type AOT-SITE-N @ .
@@ -222,6 +247,7 @@ variable SAVED-XTOFF-N
    SCRIPT-ARGC 2 = if exit then
    KEY!
    CLOSURE!
+   $FF WTAIL 7 + c!
    CAPTURE
    ?XTCELLS
    SAVE-XTOFFS
@@ -232,6 +258,7 @@ variable SAVED-XTOFF-N
    KEY ART$ AOT-FILE:READ
    ?XTOFFS-RESTORED
    ?RESTORED
+   ?TAIL
    KEY ART$ AOT-FILE:WRITE
    ?ROUND-TRIP
    REPORT ;
