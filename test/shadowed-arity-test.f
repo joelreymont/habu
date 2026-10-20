@@ -180,7 +180,7 @@ s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- 
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s\" package SAT-DU\ncheck@ 0 set-check\n: SAT-DU-X ( n -- n ) 1 + ;\nLOWER-CERT-HOOK:INSTALL set-check\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
+s\" package SAT-DU\ncheck@ 0 set-check\n: SAT-DU-X ( n -- n ) 1 + ;\nset-check\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DU\n: SAT-DU-USE ( -- n ) s\q ab\q drop SAT-DU-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=

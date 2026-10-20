@@ -245,7 +245,7 @@ TYPED-VARIABLE RUN-XT [ -- ]
 private
 : HOOKLESS ( [ -- ] -- n )
    RUN-XT !
-   s" check@ 0 set-check ' EFFECT-AUTHORITY-TEST:RUN-SAVED catch swap LOWER-CERT-HOOK:INSTALL set-check EFFECT-AUTHORITY-TEST:RC!"
+   s" check@ 0 set-check ' EFFECT-AUTHORITY-TEST:RUN-SAVED catch swap set-check EFFECT-AUTHORITY-TEST:RC!"
    evaluate-closed
    RC-CELL @ ;
 

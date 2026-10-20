@@ -237,7 +237,7 @@ private
 : RUN ( ptr u8 n -- n )
    SRC-U !
    SRC-A !
-   s" check@ 0 set-check ' PROP-CORE:COMPILE catch swap LOWER-CERT-HOOK:INSTALL set-check PROP-CORE:RC!"
+   s" check@ 0 set-check ' PROP-CORE:COMPILE catch swap set-check PROP-CORE:RC!"
    evaluate-closed
    RC-CELL @ ;
 
