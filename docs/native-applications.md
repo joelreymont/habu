@@ -476,8 +476,8 @@ the text-base cell those slots are located from, since `src/os/linux/layout.f
 DLSYM-SLOT` reads `rbase - CODE-OFF + the image's text size + $B8`. With that
 cell left at the mapping's zero the slot address came out as -$FA0 and the image
 took SIGSEGV where it should have called; the claim above is what carries it.
-`tools/hb-build-aot-test.f BUILD-AOT-FFI` builds a stripped image whose `MAIN`
-calls `getpid` through the declarer and holds it to its output.
+`tools/hb-build-aot-test.f BUILD-AOT-SPAN` builds a stripped image that calls
+`getpid` and `gethostname` through the declarer and holds it to its output.
 
 When TASK is baked, its symbol names, user-slot cursor and chain of declared
 TCBs and task exit declarations are carried from the application load. The

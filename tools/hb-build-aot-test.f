@@ -1,9 +1,8 @@
 \ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f: the AOT
 \ groups that build and run one program each - the object producer, the native
-\ call sites, the division refusal, the span definer as a snapshot and
-\ stripped (by both makers, to the same application DATA), a build driver,
-\ the empty does> clause and one foreign call - and the programs the keyed
-\ linker image refuses.
+\ call sites, the division refusal, the stripped span definer with its foreign
+\ calls, the empty does> clause and a multi-page DATA payload - and the program
+\ the keyed linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -24,43 +23,6 @@ package HB-BUILD-CLI
 
 : HBT-SPAN-OUT ( -- ptr u8 n )
    HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
-
-\ The same span program linked by the engine's maker, beside the linker
-\ image's HBT-SPAN-OUT.
-variable HBT-SPAN-ENG-U
-create HBT-SPAN-ENG-BUF FS-PATH-CAP allot
-
-: HBT-SPAN-ENG ( -- ptr u8 n )
-   HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U @ ;
-
-\ The DATA blob of the stripped image at a path, read whole: the cell stream its
-\ window carries, framed as tools/image-size-lib.f DATA-BLOB-RANGE says.
-: HBT-DATA-BLOB ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
-   path pathu IMAGE-SIZE:MEASURE
-   IMAGE-SIZE:CLASS$ s" stripped" T$=
-   IMAGE-SIZE:DATA-BLOB-RANGE {: at:n len:n :}
-   path pathu FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   path pathu buf cap READ-ALL drop
-   buf at +  len ;
-
-\ The final present cell in this fixture is TASK's carried user-slot cursor.
-\ Its value belongs to the engine that opened the window: the preloaded linker
-\ has support slots that the direct maker retires. The sparse blob stores each
-\ present cell as one unsigned LEB128 value, so locate that final value from
-\ its continuation bytes and compare everything before it.
-variable HBT-USER-VALUE-AT
-
-: HBT-USER-VALUE-START ( ptr u8 n -- n ) {: blob:ptr len:n :}
-   len 8 > TTRUE
-   blob len 1- + c@ $80 and 0= TTRUE
-   len 1- HBT-USER-VALUE-AT !
-   begin HBT-USER-VALUE-AT @ 0 > while
-      blob HBT-USER-VALUE-AT @ 1- + c@ $80 and 0= if
-         HBT-USER-VALUE-AT @ exit
-      then
-      -1 HBT-USER-VALUE-AT +!
-   repeat
-   HBT-USER-VALUE-AT @ ;
 
 \ A zero divisor in a STRIPPED image. The division is compiled by the native
 \ compiler (the image is built at tier 1, which `LOADING` holds it to), and its
@@ -100,25 +62,6 @@ variable HBT-USER-VALUE-AT
 \ cell with no branch out of its own body, and the image prints what was stored.
 : HBT-AOT-DOES-SRC$ ( -- ptr u8 n )
    S\" package HBT-DOES\n: LOADING ( -- ) tier@ 1 <> if -9070 throw then ;\nLOADING\n: SLOT: ( -- ) create 0 , does> ( -- ptr n ) ;\nSLOT: S1\npublic\n: RUN ( -- ) 42 S1 ! S1 @ dup . cr 42 <> if -9071 throw then ;\n;package\n: MAIN ( -- ) HBT-DOES:RUN ;\n" ;
-
-\ ONE FOREIGN CALL IN A STRIPPED IMAGE. The declarer's generated word reaches
-\ package FFI's staged call, which resolves `getpid` through the loader at the
-\ FIRST CALL - in the image's own process, never the builder's - so the program
-\ prints 1 only if the image carried everything that resolution needs: the FFI
-\ table; the loader's two GOT slots, which src/os/linux/elf.f relocates in every
-\ image it writes; and the engine's text-base cell, which src/os/linux/layout.f
-\ locates those slots from and src/habu/aot-owned-cells.f claims TEXT-BASE.
-\ Left at the fresh mapping's zero that cell made this program build without a
-\ word of complaint and take SIGSEGV inside DLSYM-SLOT's `@`. src/lib/ffi-abi.f is
-\ baked into the engine (src/habu/layout.f puts its buffer block at a fixed
-\ engine offset; `require src/lib/ffi-abi.f` compiles nothing), so on the engine's
-\ maker and on the linker image alike the table lies below the window and
-\ src/habu/aot-owned-cells.f ENGINE-CARRY claims it; this program reaches no
-\ word of the linker's load, so it links on the image (test/preloaded-engine.f
-\ rule 3). test/stripped-preloaded-runtime.f drives the maker directly for the
-\ same claim; this row takes the hb-build path.
-: HBT-AOT-FFI-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: GETPID-CALL getpid ( -- i32 ) ;FUNCTION\n: MAIN ( -- ) GETPID-CALL 0 > if 1 else 0 then . cr ;\n" ;
 
 \ Run an image at a path of its own and hold it to its whole output, for a case
 \ that builds somewhere other than HBT-AOT-OUT or HBT-REPL-OUT.
@@ -203,33 +146,20 @@ variable HBT-USER-VALUE-AT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
 
-\ A `create ... does>` definer whose clause yields a multi-cell value, built and
-\ RUN as an image: the clause is compiled at tier 1 (LOADING asserts the tier),
-\ the created word yields src/lib/span.f's two-cell span, and the span set it belongs
-\ to - allocate, copy, skip, take, sub, release - is exercised through that
-\ value. Nothing short of running the image shows the created word's row
-\ surviving the build (dot habu-give-a-does-97cd0db2).
-\ BUILD-AOT-SPAN below is the stripped twin of this case, on the same source.
-: BUILD-REPL-SPAN ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
-   HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
-   HBT-SPAN-OUT HBT-REMOVE-FILE?
-   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-REPL
-   HBT-HBB-BUILD-OUT
-   HBT-SPAN-OUT FILE? TTRUE
-   HBT-SPAN-OUT HBT-SPAN-EXPECTED$ HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
-   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
-
-\ THE SAME SOURCE WITH THE NAMES SHAKEN OUT. `SPAN-BUFFER:` is a `create ...
-\ does>` definer whose clause has a body, so the created word's last instruction
-\ is the plain B that habu2.f DOESPATCH:EMIT wrote over its RET, aimed at the
-\ parent's `;does` companion record. Only src/habu/aot-closure.f SCAN-DIRECT
-\ following a direct branch OUT of the member puts that record in the closure;
-\ without it the relocation refused this very program with `aot: PC-relative
-\ target removed or outside closure`. Running the image is what proves the clause
-\ was copied and retargeted rather than merely counted. The engine bakes both
-\ modules the program requires, so the linker image links it
+\ A `create ... does>` definer whose clause yields src/lib/span.f's two-cell
+\ span, built stripped and RUN as an image: the clause is compiled at tier 1
+\ (LOADING asserts the tier), and the span set the value belongs to - allocate,
+\ copy, skip, take, sub, release - is exercised through it (dot
+\ habu-give-a-does-97cd0db2). The program also calls getpid and gethostname
+\ through FUNCTION: declarations, resolved at the first call in the image's own
+\ process. `SPAN-BUFFER:`'s clause has a body, so the created word's last
+\ instruction is the plain B that habu2.f DOESPATCH:EMIT wrote over its RET,
+\ aimed at the parent's `;does` companion record. Only src/habu/aot-closure.f
+\ SCAN-DIRECT following a direct branch OUT of the member puts that record in
+\ the closure; without it the relocation refused this very program with `aot:
+\ PC-relative target removed or outside closure`. Running the image is what
+\ proves the clause was copied and retargeted rather than merely counted. The
+\ engine bakes both modules the program requires, so the linker image links it
 \ (KEYED-PRE-WINDOW-REFUSED below says why).
 : BUILD-AOT-SPAN ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
@@ -244,35 +174,7 @@ variable HBT-USER-VALUE-AT
       IMAGE-SIZE:DATA-BLOB-RANGE drop
       MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + T=
    then
-   HBT-REMOVE-ARTIFACT ;
-\ HBT-SPAN-OUT stays on disk: BUILD-AOT-SPAN-ENGINE compares its DATA blob.
-
-\ ... AND THE ENGINE'S MAKER CARRIES THE SAME DATA. The production maker
-\ compiles tools/aot-build.f after the application has loaded
-\ (tools/hb-build-lib.f HBB-RUN-MAKER-CMD), where the linker image's require of
-\ it is a no-op, so a literal the maker compiles into the application's pool
-\ lands inside the capture window and travels in the engine's image alone:
-\ `tools/aot-build-core.f` did, in every image the engine linked. Neither maker
-\ may add a byte of its own to the application's stream. The one carried TASK
-\ user-slot cursor may differ with the engine's pre-window support allocations.
-\ Their code differs: each window is restored at the DATA address its maker
-\ opened it at, and the linker image's sits above the linker. The maker key
-\ names the engine that runs it, so the second build is a link, not the first
-\ one's artifact.
-: BUILD-AOT-SPAN-ENGINE ( -- )
-   HBT-ROOT s" spaneng" HBT-SPAN-ENG-BUF HBT-SPAN-ENG-U HBT-PATH!
-   HBT-SPAN-ENG HBT-REMOVE-FILE?
-   HBT-SPAN-SRC HBT-SPAN-ENG HBT-HBB-PREPARE-AOT-SOURCE
-   HBT-HBB-BUILD-OUT
-   HBB-MAKER-RUN @ 0 <> TTRUE
-   HBT-SPAN-OUT HBT-DATA-BLOB {: img:ptr imgu:n :}
-   HBT-SPAN-ENG HBT-DATA-BLOB {: eng:ptr engu:n :}
-   imgu 0 > TTRUE
-   img imgu HBT-USER-VALUE-START {: imguser:n :}
-   eng engu HBT-USER-VALUE-START {: enguser:n :}
-   img imguser eng enguser HBT-DIFF-AT -1 T=
    HBT-REMOVE-ARTIFACT
-   HBT-SPAN-ENG HBT-REMOVE-FILE?
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
 \ A program requiring a module of the linker's lib closure that the engine does
@@ -280,35 +182,22 @@ variable HBT-USER-VALUE-AT
 : HBT-REQUIRED-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
 
-\ The same program without its require: it names a word of the linker's
-\ closure that it never required.
-: HBT-UNREQUIRED-SRC$ ( -- ptr u8 n )
-   S\" : MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
-
-\ A build driver's shape: tools/app-build.f and tools/build-profile.f run their
-\ work through src/lib/executable-build.f's WITH. The engine bakes that module, so
-\ this program's require is a no-op on every engine and WITH lies below the
-\ seal watermark.
-: HBT-EXBUILD-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/executable-build.f\n: MAIN ( -- ) 1 [: 1+ . cr ;] EXECUTABLE-BUILD:WITH ;\n" ;
-
-\ THE KEYED LINKER IMAGE REFUSES BOTH PROGRAMS BY NAME
-\ (test/preloaded-engine.f rule 3). The image loaded src/lib/fmt.f with the linker,
-\ before its maker latched the band, so the first program's require resolves to
-\ that copy and the second program's FMT:.INT names one without a require. Each
-\ closure reaches a word compiled outside the window, and the maker refuses the
-\ first such word rather than carry the image's copy. The engine compiles the
-\ first program's module inside the window and refuses the second program's
-\ name. The first program's module is one the engine does not bake: a baked
-\ module's words lie below the engine's seal watermark, where the band starts
-\ (src/habu/aot-closure.f PRE-WINDOW?), so every maker carries them and the
-\ image links a program that requires one. src/lib/executable-build.f is such a
-\ module (BUILD-AOT-EXBUILD).
-: KEYED-PRE-WINDOW-REFUSED ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   HBT-SPAN-SRC src srcu WRITE-ALL
+\ THE KEYED LINKER IMAGE REFUSES THAT PROGRAM BY NAME (test/preloaded-engine.f
+\ rule 3). The image loaded src/lib/fmt.f with the linker, before its maker
+\ latched the band, so the program's require resolves to that copy: its closure
+\ reaches a word compiled outside the window, and the maker refuses the first
+\ such word rather than carry the image's copy. The module is one the engine
+\ does not bake: a baked module's words lie below the engine's seal watermark,
+\ where the band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker
+\ carries them and the image links a program that requires one. Without
+\ --json-errors the refusal is PRE-WINDOW-DIE's prose arm, naming the word and
+\ a suggestion.
+: KEYED-PRE-WINDOW-REFUSED ( -- )
+   HBT-SPAN-SRC HBT-REQUIRED-SRC$ WRITE-ALL
    HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
    rc 74 T=
-   HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened" CONTAINS? TTRUE ;
+   HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened word=" CONTAINS? TTRUE
+   HBB-ERR-BUF err s"  suggestion='" CONTAINS? TTRUE ;
 
 \ The same refusal through the CLI under --json-errors, which promises its
 \ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
@@ -331,34 +220,6 @@ variable HBT-USER-VALUE-AT
    HBT-ERR erru S\" \qword\q:\q.INT\q" CONTAINS? TTRUE
    HBT-SPAN-OUT EXISTS? TFALSE ;
 
-: BUILD-AOT-PRE-WINDOW ( -- )
-   HBT-REQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
-   HBT-UNREQUIRED-SRC$ KEYED-PRE-WINDOW-REFUSED
-   KEYED-PRE-WINDOW-JSON ;
-
-\ THE ENGINE LINKS THE BUILD DRIVER, and runs it, because it bakes
-\ src/lib/executable-build.f: WITH lies below the seal watermark and every maker
-\ carries it. Both makers link it: the keyed linker image, then the
-\ source-loaded maker, each running its own maker rather than taking the
-\ other's object from the store.
-: BUILD-AOT-EXBUILD ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
-   HBT-AOT-SRC HBT-EXBUILD-SRC$ WRITE-ALL
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBT-HBB-BUILD-OUT
-   HBB-MAKER-RUN @ 0 <> TTRUE
-   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE
-   HBT-HBB-BUILD-OUT
-   HBB-MAKER-RUN @ 0 <> TTRUE
-   HBT-AOT-OUT S\" 2\n\n" HBT-RUN-IMAGE-OUT
-   HBT-REMOVE-ARTIFACT
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
-
 \ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
 \ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
 \ nothing: the created word keeps its RET and emits no branch at all. Such a
@@ -371,18 +232,6 @@ variable HBT-USER-VALUE-AT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-BUILD
    S\" 42\n" HBT-RUN-AOT-PRINTS
-   HBT-REMOVE-ARTIFACT
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
-   BF-TMP-RESET ;
-
-: BUILD-AOT-FFI ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
-   HBT-AOT-SRC HBT-AOT-FFI-SRC$ WRITE-ALL
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBB-BUILD
-   S\" 1\n\n" HBT-RUN-AOT-PRINTS
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
@@ -412,13 +261,10 @@ public
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
    BUILD-AOT-DIV-REFUSAL
-   BUILD-REPL-SPAN
    BUILD-AOT-SPAN
-   BUILD-AOT-SPAN-ENGINE
-   BUILD-AOT-PRE-WINDOW
-   BUILD-AOT-EXBUILD
+   KEYED-PRE-WINDOW-REFUSED
+   KEYED-PRE-WINDOW-JSON
    BUILD-AOT-DOES-EMPTY
-   BUILD-AOT-FFI
    BUILD-AOT-MULTI-PAGE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
