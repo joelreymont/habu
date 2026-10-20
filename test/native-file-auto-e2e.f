@@ -123,22 +123,7 @@ variable DIAG-START
    s" body-cache" AT RUN-SAVED-IN SUCCESS
    BODY-SKIPPED
    OUT$ s" source-action" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 49" CONTAINS? TTRUE
-
-   s" a changed immediate binding invalidates an unchanged caller" T-LABEL
-   s" immediate-cache" AT MAKE-DIR
-   s" mode.f"
-      S\" package FILE-MODE public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
-      PUT
-   s" app.f" S\" require mode.f\n: MAIN ( -- ) FILE-MODE:STEP ;\n" PUT
-   s" immediate-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" mode-step" CONTAINS? TTRUE
-   s" mode.f"
-      S\" package FILE-MODE public\n: STEP ( -- ) s\" mode-step\" type ; immediate\n;package\ns\" FILE-MODE:STEP\" 0 parse-imm\n"
-      PUT
-   s" immediate-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ s" mode-step" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" mode-step" CONTAINS? TFALSE ;
+   RUN-APP SUCCESS OUT$ s" 49" CONTAINS? TTRUE ;
 
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
@@ -505,23 +490,25 @@ variable DIAG-START
    s" body-reader-fresh-cache" AT MAKE-DIR
    \ Only READER-KEEP can contribute a skip; MIDDLE changes on each build.
    s" reader.f"
-      S\" package FILE-READER public\n: STEP ( -- ) ;\n;package\n"
+      S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
       PUT
    s" app.f"
       S\" require reader.f\n: READER-KEEP ( -- n ) 42 FILE-READER:STEP ;\n: MIDDLE ( -- n ) 1 ;\nTRUSTED: MAIN ( -- ) READER-KEEP MIDDLE + . cr ;\n"
       PUT
    s" body-reader-cache" AT RUN-SAVED-IN SUCCESS
    RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
+   OUT$ s" mode-step" CONTAINS? TTRUE
    s" reader.f"
-      S\" package FILE-READER public\n: STEP ( -- ) s\" compile-step\" type ; immediate\n;package\ns\" FILE-READER:STEP\" 0 parse-imm\n"
+      S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ; immediate\n;package\ns\" FILE-READER:STEP\" 0 parse-imm\n"
       PUT
    s" app.f"
       S\" require reader.f\n: READER-KEEP ( -- n ) 42 FILE-READER:STEP ;\n: MIDDLE ( -- n ) 3 ;\nTRUSTED: MAIN ( -- ) READER-KEEP MIDDLE + . cr ;\n"
       PUT
    s" body-reader-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   OUT$ s" compile-step" CONTAINS? TTRUE
+   OUT$ s" mode-step" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
+   OUT$ s" mode-step" CONTAINS? TFALSE
    LITERAL-IMAGE-SAVE
    s" body-reader-fresh-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE

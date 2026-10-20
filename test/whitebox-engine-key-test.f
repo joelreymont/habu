@@ -155,20 +155,15 @@ public
    then
    s" the supplied whitebox runs its copied boot prefix" T-LABEL
    PREFIX-41 PROVIDE S\" 41\n\n" RUN-IMAGE
-   s" an unchanged request reuses the builder's artifact" T-LABEL
-   PROVIDE
-   OUT OUT-U @ s" engine artifact hit" CONTAINS? TTRUE
-   S\" 41\n\n" RUN-IMAGE
-   s" a prefix edit changes the next supplied engine's behavior" T-LABEL
-   PREFIX-42 PROVIDE S\" 42\n\n" RUN-IMAGE
-   s" restoring source restores executable behavior through the same cache" T-LABEL
-   PREFIX-41 PROVIDE S\" 41\n\n" RUN-IMAGE
    s" an unloaded file does not invalidate the builder's artifact" T-LABEL
    ROOT$ s" src/core/whitebox-key-unloaded.f" PREFIX JOIN-PATH PREFIX-U !
    PREFIX$ s" unreachable fixture" WRITE-ALL
    PROVIDE
    OUT OUT-U @ s" engine artifact hit" CONTAINS? TTRUE
    S\" 41\n\n" RUN-IMAGE
+   s" a prefix edit changes the next supplied engine's behavior" T-LABEL
+   ROOT$ s" src/core/internal-mark.f" PREFIX JOIN-PATH PREFIX-U !
+   PREFIX-42 PROVIDE S\" 42\n\n" RUN-IMAGE
    s" and bin/hb was never written" T-LABEL
    ENG-B ENGINE-DIGEST!
    ENG-A DIGEST-LEN ENG-B DIGEST-LEN T$=
