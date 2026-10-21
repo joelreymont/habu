@@ -95,6 +95,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
   definition, block-scoped, bindable after a closed early-exit guard.
+- Keep related one-line definitions together. Separate multiline definitions
+  with two blank lines; place each word's comment directly above it.
 - A `{: … :}` group that binds at entry goes on its own line after the line
   holding the name and stack effect, indented as the body: three spaces, as in
   `src/lib/` and `tools/`. New and changed definitions follow this; existing files
