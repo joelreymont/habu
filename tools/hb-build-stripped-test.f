@@ -7,7 +7,8 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
+require test/aot-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -286,9 +287,9 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
-   BUILD-CACHE:RESET
    HBT-STRIPPED-LIB-STATE
    HBT-STRIPPED-FORK
    HBT-STRIPPED-ENGINE-CELLS

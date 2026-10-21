@@ -296,11 +296,13 @@ variable HBR-STRAY
 public
 : HBR-RETAIN-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   PRELOADED-ENGINE:LINKER$ HBT-KEYED!
    HBT-PREPARE
    HBR-SLOTS-RESET
    HBT-ROOT s" cache" HBR-ROOT-BUF HBR-ROOT-U HBT-PATH!
    HBR-ROOT$ MAKE-DIR
+   \ A private root by claim: HBR-BUILDER? counts the builder entry this root
+   \ publishes, which the run's shared root would already hold.
    HBR-ROOT$ BUILD-CACHE:ROOT!
    HBR-FIRST-BUILDS
    HBR-HITS

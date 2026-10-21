@@ -8,7 +8,7 @@
 
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 require src/lib/string.f
 require src/lib/codegen.f
 
@@ -83,7 +83,6 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn want wantu CONTAINS? TTRUE ;
 
 : BUILD-AOT-OBJECT-PRODUCER ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -92,7 +91,7 @@ package HB-BUILD-CLI
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-OBJECT-STORE @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-OBJ-LOAD? TTRUE
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -110,7 +109,6 @@ package HB-BUILD-CLI
    BF-TMP-RESET ;
 
 : BUILD-AOT-NATIVE ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -135,7 +133,6 @@ package HB-BUILD-CLI
 \ because the relocation of the refusal's branch is what makes it true and
 \ nothing short of running the image exercises it.
 : BUILD-AOT-DIV-REFUSAL ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-DIVZ-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -162,7 +159,6 @@ package HB-BUILD-CLI
 \ engine bakes both modules the program requires, so the linker image links it
 \ (KEYED-PRE-WINDOW-REFUSED below says why).
 : BUILD-AOT-SPAN ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-SPAN-SRC HBT-SPAN-SRC$ WRITE-ALL
    HBT-SPAN-OUT HBT-REMOVE-FILE?
    HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
@@ -226,7 +222,6 @@ package HB-BUILD-CLI
 \ definer must still build and run stripped - the closure has nothing extra to
 \ follow and the unreached companion record is shaken out with every other name.
 : BUILD-AOT-DOES-EMPTY ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-DOES-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -239,7 +234,6 @@ package HB-BUILD-CLI
 
 : BUILD-AOT-MULTI-PAGE ( -- )
    HB-TARGET-MACOS? 0= if exit then
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-MULTI-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -256,7 +250,7 @@ package HB-BUILD-CLI
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE

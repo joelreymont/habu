@@ -8,7 +8,7 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -108,9 +108,8 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-CELLS-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
-   BUILD-CACHE:RESET
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED
    HBT-STRIPPED-MAPPED-BYTES

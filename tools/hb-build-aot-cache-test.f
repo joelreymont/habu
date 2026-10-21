@@ -8,7 +8,7 @@
 require src/lib/string.f
 require tools/hb-build-test-lib.f
 require src/arch/arm64/icode.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
@@ -106,7 +106,7 @@ create HBT-PAIR-GOT-HEX 64 allot
 
 : HBT-STORE-AOT-OBJ ( -- )
    HBB-RESET-OPTIONS
-   HBT-TMP OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBB-TARGET-ABI$ HBT-BUILD-EXIT-OBJ
    OBJRES:STORE {: key:ptr keyu:n :}
    keyu HBT-KEY-U T=
@@ -119,14 +119,13 @@ create HBT-PAIR-GOT-HEX 64 allot
 
 : HBT-STORE-WRONG-AOT-OBJ ( -- )
    HBB-RESET-OPTIONS
-   HBT-TMP OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    s" wrong-aarch64" HBT-BUILD-EXIT-OBJ
    OBJSTORE:STORE {: key:ptr keyu:n :}
    HBT-AOT-SOURCE-KEY!
    HBT-SRC-KEY HBT-KEY-U key keyu OBJIDX:STORE ;
 
 : HBT-BUILD-AOT-OBJECT-HIT ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-STORE-AOT-OBJ
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
@@ -207,7 +206,6 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-RUN-OUT outn s" 25" CONTAINS? TTRUE ;
 
 : HBT-BUILD-AOT-EXPORT-ONE-BODY ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" exp.f" HBT-EXP-SRC-BUF HBT-EXP-SRC-U HBT-PATH!
    HBT-ROOT s" exp" HBT-EXP-OUT-BUF HBT-EXP-OUT-U HBT-PATH!
    HBT-EXP-REF-SRC$ HBT-EXP-BUILD
@@ -262,7 +260,7 @@ create HBT-PAIR-GOT-HEX 64 allot
 : HBT-PRODUCER-KEY-MISS ( -- )
    HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
-   HBT-TMP OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBT-AOT-HEX!
    HBT-ALT-CHECKER$ {: alt:ptr altu:n :}
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ alt altu HBB-COMPILER-ABI$ OBJRES:LOAD TFALSE ;
@@ -286,10 +284,12 @@ create HBT-PAIR-GOT-HEX 64 allot
 
 \ Model the input range and loader pair owned by an enclosing
 \ NDEF-CACHE:LOAD-WITH-INPUTS. Maker selection returns both even when
-\ publishing the selector fails after discovery.
+\ publishing the selector fails after discovery. A private root by claim: the
+\ case deletes and damages the maker-support record, which is keyed by engine
+\ only, so in the run's root it would break concurrent rows on that engine.
 : HBT-MAKER-NESTED-INPUTS ( -- )
-   HBB-RESET-OPTIONS
    HBT-TMP BUILD-CACHE:ROOT!
+   HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
    HBB-MAKER-SUPPORT-PATH$ REMOVE-FILE
    NFILE-INPUTS:RESET
@@ -308,7 +308,8 @@ create HBT-PAIR-GOT-HEX 64 allot
    end active HBT-MAKER-OUTER-HOLDS
    HBB-MAKER-SUPPORT-PATH$ REMOVE-TREE
    SOURCE-INPUT:RESET
-   NFILE-INPUTS:CLOSE ;
+   NFILE-INPUTS:CLOSE
+   BUILD-CACHE:RESET ;
 
 : HBT-BUILD-AOT-WRONG-OBJECT-FAILS ( -- )
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
@@ -435,7 +436,6 @@ variable HBT-PUB-FILES
    HBT-PUB-DIR MAKE-DIR
    HBT-PUB-OUT s" previous" WRITE-ALL
    HBB-RESET-OPTIONS
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-PUB-OUT HBB-PATHS!
    HBB-PREPARE-ARTIFACT-CACHE
    -1 HBB-ARTIFACT-CACHE !
@@ -523,7 +523,7 @@ variable HBT-PUB-FILES
 public
 : HBT-AOT-CACHE-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-LINKER HBT-ENGINE!
    HBT-PREPARE
    HBT-PUB-PREPARE

@@ -50,6 +50,7 @@ require tools/build-fixpoint.f
 require tools/object-image.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
+require src/lib/engine-candidate.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 
 using BUILD-FIXPOINT                     \ the build tmp root
@@ -102,11 +103,9 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 create HBT-REPORT-BUF FS-PATH-CAP allot
 create HBT-AOT-HEX 80 allot
 
-\ The keyed images a row's builds run on (HBT-KEYED!); empty, the engine.
+\ The engine a row's AOT builds run on (HBT-KEYED!); empty, the engine.
 create HBT-LINKER-BUF FS-PATH-CAP allot
-create HBT-SAVER-BUF FS-PATH-CAP allot
 variable HBT-LINKER-U
-variable HBT-SAVER-U
 
 \ The three stripped-window fixtures: an application whose own require closure
 \ owns the library cells it touches, one that reads the engine runtime cells the
@@ -324,36 +323,30 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
-   \ Private by default; selected runtime rows RESET to the ambient cache.
-   BUILD-CACHE:RESET
-   HBT-TMP BUILD-CACHE:ROOT! ;
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
-\ THE ENGINE A BUILD'S CHILD RUNS. Before it reaches its subject a maker child
-\ compiles the AOT linker, 5.1 to 6.8 s of each one measured alone, and an
-\ app-build child compiles the image saver, 3.3 s. A row whose subjects need
-\ neither load hands HBT-KEYED! the keyed images that hold them
-\ (test/preloaded-engine.f LINKER$, test/app-image-engine.f PATH$) before it
-\ stages any argv. Its AOT builds, maker refusals and CLI spawns' makers then
-\ run the production maker script on the linker image, and its REPL builds, app
-\ refusals and REPL CLI spawns (HBT-ARGV-BASE-REPL) run on the saver image
-\ (docs/gate.md). A row with no maker to run hands an empty linker and loads
-\ only the saver's module. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the
-\ engine, which compiles the linker above the application: for a subject whose
-\ closure reaches a word, or an unclaimed cell, of a module of the linker's lib
-\ closure the engine does not bake, which the linker image refuses by name
-\ (test/preloaded-engine.f rule 3), and for a case about that order. A subject that only requires such a
-\ module links on the image. A row that records no image builds every program
-\ on the engine.
-: HBT-KEYED! ( ptr u8 n ptr u8 n -- ) {: linker:ptr linkeru:n saver:ptr saveru:n :}
-   linker linkeru HBT-LINKER-BUF HBT-LINKER-U HBT-COPY!
-   saver saveru HBT-SAVER-BUF HBT-SAVER-U HBT-COPY! ;
+\ THE ENGINE A BUILD'S CHILD RUNS. A row's AOT builds, maker refusals and CLI
+\ spawns' makers run on the engine HBT-KEYED! records: the linker image
+\ (test/linker-builder-engine.f HOST$) for a row whose subjects rule 3 of
+\ test/preloaded-engine.f admits there, else the engine. Its REPL builds, app
+\ refusals, REPL CLI spawns (HBT-ARGV-BASE-REPL) and HBT-RUN-APP run on
+\ ENGINE-CANDIDATE:PATH$. The keyed builders those children select are the
+\ family images the row's load closure grants (aot-builder, linker-builder,
+\ app-builder; docs/gate.md), each built once and found in the process's cache
+\ root: under the gate the run's, standalone the user's (test/image-grant.f).
+\ No row overrides that root except where a case owns a cache miss or a damaged
+\ entry, and says so beside it. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on
+\ the engine, which compiles the linker above the application: for a subject
+\ whose closure reaches a word, or an unclaimed cell, of a module of the
+\ linker's lib closure the engine does not bake, which the linker image refuses
+\ by name (test/preloaded-engine.f rule 3), and for a case about that order. A
+\ subject that only requires such a module links on the image. A row that
+\ records no image builds every program on the engine.
+: HBT-KEYED! ( ptr u8 n -- )
+   HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
 
 : HBT-LINKER ( -- ptr u8 n )
    HBT-LINKER-BUF HBT-LINKER-U @ ;
-
-: HBT-SAVER ( -- ptr u8 n )
-   HBT-SAVER-BUF HBT-SAVER-U @ ;
 
 : HBT-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if BF-ENGINE-RESET exit then
@@ -361,7 +354,9 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 
 \ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs. Its maker
-\ or app-build child runs the image named second, unless that is empty.
+\ or app-build child runs the engine named second, unless that is empty. The
+\ child uses the process's cache root, made absolute because the child may run
+\ in another directory.
 : HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- )
    {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
@@ -384,14 +379,13 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
 
-\ A --repl build's CLI, whose app-build child runs the saver image.
+\ A --repl build's CLI, whose app-build child runs the product engine.
 : HBT-ARGV-BASE-REPL ( -- )
-   HBT-TMP HBT-SAVER HBT-ARGV-CLI ;
+   HBT-TMP ENGINE-CANDIDATE:PATH$ HBT-ARGV-CLI ;
 
 : HBT-TIMEOUT-ENV ( ptr u8 n -- )
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-AOT-OUT >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN 2swap >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
@@ -447,7 +441,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-REPL-ON
    HBB-PATHS!
    HBT-TMP BF-TMP!
-   HBT-SAVER HBT-ENGINE! ;
+   ENGINE-CANDIDATE:PATH$ BF-ENGINE! ;
 
 : HBT-HBB-PREPARE-AOT ( ptr u8 n ptr u8 n -- )
    HBB-RESET-OPTIONS
@@ -508,7 +502,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    BF-TMP-RESET ;
 
 : HBT-RUN-APP ( ptr u8 n -- n n n )
-   HBT-SAVER HBT-ENGINE!
+   ENGINE-CANDIDATE:PATH$ BF-ENGINE!
    HBB-RESET-OPTIONS
    HBB-REPL-ON
    HBB-SRC!
@@ -541,9 +535,10 @@ create READER-STATE JR:STORAGE-BYTES allot
    JR:TOKEN JR:T-INT T=
    JR:INT 1 T=
    s" cache_root" JR:FIND-KEY TTRUE
-   HBB-REPL @ if NULL$ else HBT-TMP then REPORT-STRING=
+   HBB-REPL @ if NULL$ else BUILD-CACHE:ROOT$ then REPORT-STRING=
    s" cache_source" JR:FIND-KEY TTRUE
-   HBB-REPL @ if s" none" else s" explicit" then REPORT-STRING=
+   HBB-REPL @ if s" none" else BUILD-CACHE:SOURCE BUILD-CACHE:SOURCE$ then
+   REPORT-STRING=
    s" artifact_hit" JR:FIND-KEY TTRUE
    JR:TOKEN artifact T=
    s" object_hit" JR:FIND-KEY TTRUE
@@ -568,7 +563,7 @@ create READER-STATE JR:STORAGE-BYTES allot
 : HBT-OBJ-LOAD? ( -- bool )
    HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
-   HBT-TMP OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBT-AOT-HEX!
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 

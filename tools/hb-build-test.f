@@ -7,7 +7,8 @@
 
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
+require test/app-builder-engine.f
 require src/lib/string.f
 require src/lib/test/outcome.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
@@ -267,7 +268,6 @@ variable HBT-INST-FILES
 \ Builds its own image, because this case reads the file rather than a report
 \ about it.
 : HBT-SIZE-AOT ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -357,7 +357,6 @@ variable HBT-INST-FILES
    HBT-RUN-HB-BUILD ;
 
 : HBT-SIZE-AOT-LOST-BLOB ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" lostcopy" HBT-LOST-CPY-BUF HBT-LOST-CPY-U HBT-PATH!
    HBT-ROOT s" lostblob" HBT-LOST-OUT-BUF HBT-LOST-OUT-U HBT-PATH!
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
@@ -447,7 +446,6 @@ variable HBT-INST-FILES
 
 : HBT-CLOSURE-KEY-CHANGES ( -- )
    HBB-RESET-OPTIONS
-   HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" dep-closure.f" HBT-DEP-SRC-BUF HBT-DEP-SRC-U HBT-PATH!
    HBT-ROOT s" entry-closure.f" HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U HBT-PATH!
    HBT-DEP-SRC s\" \\ dep v1\n" WRITE-ALL
@@ -468,7 +466,8 @@ variable HBT-INST-FILES
 public
 : HBT-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    CLI-REPORT
    HBT-INSTALL-FAIL

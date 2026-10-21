@@ -6,7 +6,7 @@
 \ Run: bin/hb --load tools/hb-build-repl-fresh-test.f
 
 require tools/hb-build-test-lib.f
-require test/app-image-engine.f
+require test/app-builder-engine.f
 require src/lib/string.f
 
 package HB-BUILD-CLI
@@ -76,7 +76,7 @@ variable HBT-FRESH-NS
 
 : HBT-FRESH-CLI-SOURCE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
-   HBT-ARGV-BASE-REPL
+   HBT-TMP ENGINE-CANDIDATE:PATH$ HBT-ARGV-CLI
    s" --repl" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -141,7 +141,10 @@ variable HBT-FRESH-NS
    rc HBB-UNCAUGHT-RC T= ;
 
 \ Damaged support selection and a missing selected image rebuild normally
-\ through the real CLI.
+\ through the real CLI. The case corrupts the support record and deletes the
+\ selected builder image, which must never be the run's shared one, so it owns
+\ HBT-TMP as its cache root and its two CLI builds pay a cold app-builder build
+\ there by claim.
 : HBT-FRESH-SUPPORT ( -- )
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-TMP BUILD-CACHE:ROOT!
@@ -171,7 +174,8 @@ public
 
 : HBT-FRESH-MAIN ( -- )
    T-RESET
-   s" " APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   NULL$ HBT-KEYED!
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-ROOT s" child.f" HBT-FRESH-DEP-BUF HBT-FRESH-DEP-U HBT-PATH!
    HBT-ROOT s" other.f" HBT-FRESH-OTHER-BUF HBT-FRESH-OTHER-U HBT-PATH!
@@ -183,8 +187,8 @@ public
    HBT-REPL-OUT HBT-FRESH-CLI
    HBT-REPL-OUT 111 HBT-FRESH-RUN
    HBT-FRESH-MARK
-   \ Another process can date the shared keyed engine while this output is fresh.
-   APP-IMAGE-ENGINE:PATH$ 2drop
+   \ Another process can date the shared keyed builder while this output is fresh.
+   APP-BUILDER-ENGINE:PATH$ 2drop
    HBT-REPL-OUT HBT-FRESH-CLI
    HBT-FRESH-SAME? TTRUE
    HBT-FRESH-SIZE-REPORT

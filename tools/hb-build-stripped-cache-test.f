@@ -10,7 +10,7 @@ require src/lib/string.f
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f
 require src/lib/engine-candidate.f
-require test/app-image-engine.f
+require test/aot-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -182,7 +182,7 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-SRC HBT-MAPL-OUT2 HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-MAPL-OUT2 HBT-CODE-MAPPED
-   HBT-TMP BUILD-CACHE:ROOT!
+   BUILD-CACHE:RESET
    HBT-MAPL-SAME-BYTES
    HBT-MAPL-OUT HBT-REMOVE-FILE? ;
 
@@ -220,7 +220,7 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT HBT-CODE-MAPPED
    HBB-OBJECT-PATH$ HBT-MAP2$ HBT-OBJ-MAP-PATH HBT-OBJ-MAP-PATH-U HBT-COPY!
    HBT-REMOVE-ARTIFACT
-   HBT-TMP BUILD-CACHE:ROOT!
+   BUILD-CACHE:RESET
    HBT-MAPL-SAME-BYTES
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
@@ -235,7 +235,7 @@ variable HBT-DONOR-OUT-U
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
    HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBT-TMP BUILD-CACHE:ROOT! ;
+   BUILD-CACHE:RESET ;
 
 \ The donor's matching map changes the attribution of the same executable.
 \ Build once without it, then restore it: the second build must select a new
@@ -297,7 +297,7 @@ public
    T-RESET
    \ Baked attribution needs the map bound to the actual donor binary. The
    \ preloaded linker snapshot has different capture coordinates and no map.
-   ENGINE-CANDIDATE:PATH$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
    HBT-STRIPPED-OBJECT-RELINK

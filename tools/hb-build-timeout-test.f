@@ -3,7 +3,7 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 using BUILD-FIXPOINT
 
@@ -66,7 +66,7 @@ package HB-BUILD-CLI
 public
 : HBT-TIMEOUT-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
    HBT-MAKER-TIMEOUTS
    CLEANUP-RUN

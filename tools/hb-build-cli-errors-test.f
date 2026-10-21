@@ -10,7 +10,7 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/app-image-engine.f
+require test/app-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -74,7 +74,7 @@ TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
    HBT-BAD-OUT BUILD-CACHE:ROOT!
    [: HBB-PREPARE-ARTIFACT-CACHE ;] catch E-BUILD-PATH T=
    HBB-PATH-ERROR$ HBT-PATH-ERROR-TEXT$ T$=
-   HBT-TMP BUILD-CACHE:ROOT! ;
+   BUILD-CACHE:RESET ;
 
 : CLI-PATH-ERROR ( -- )
    HBT-BAD-OUT s" cache path file" WRITE-ALL
@@ -260,7 +260,8 @@ HBT-LONG-ENTRY-U BUFFER: HBT-LONG-ENTRY-BUF
 public
 : HBT-CLI-ERRORS-MAIN ( -- )
    T-RESET
-   NULL$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   NULL$ HBT-KEYED!
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    CLI-PATH-ERROR
    CLI-OUT-TOO-LONG

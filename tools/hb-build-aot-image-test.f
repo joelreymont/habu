@@ -226,8 +226,11 @@ public
       0 SCRIPT-ARGV$ s" run" STR= if HBT-MAKER-RUN-CHILD exit then
    then
    T-RESET
-   s" " s" " HBT-KEYED!
+   NULL$ HBT-KEYED!
    HBT-PREPARE
+   \ A private root by claim: the first report build's maker is built cold
+   \ (maker_built), and HBT-MAKER-CACHE-PATH asserts the hit that child left.
+   HBT-TMP BUILD-CACHE:ROOT!
    BUILD-FIXPOINT:BF-ENGINE-RESET
    HBT-MAKER-USER-BAND
    HBT-MAKER-CACHE-PATH

@@ -3,7 +3,7 @@
 \ Run: bin/hb --load tools/hb-build-aot-inputs-test.f
 
 require tools/hb-build-test-lib.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 package HB-BUILD-CLI
 
@@ -101,7 +101,7 @@ variable HBT-ENV-ROOT-B-U
 public
 : HBT-AOT-INPUTS-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-LINKER HBT-ENGINE!
    HBT-PREPARE
    HBT-ENV-SELECTED-INPUT

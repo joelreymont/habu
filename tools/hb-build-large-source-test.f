@@ -7,7 +7,8 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
+require test/app-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -117,9 +118,9 @@ create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 public
 : HBT-LARGE-SOURCE-MAIN ( -- )
    T-RESET
-   PRELOADED-ENGINE:LINKER$ APP-IMAGE-ENGINE:PATH$ HBT-KEYED!
+   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
-   BUILD-CACHE:RESET
    HBT-STRIPPED-LITERAL-BODY
    HBT-BUILD-LARGE-SOURCE
    CLEANUP-RUN

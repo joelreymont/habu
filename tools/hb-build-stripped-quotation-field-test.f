@@ -2,6 +2,7 @@
 \ Its whole-record replacements happen during source load, before the link.
 require src/lib/string.f
 require tools/hb-build-test-lib.f
+require test/aot-builder-engine.f
 
 package HB-BUILD-CLI
 
@@ -35,8 +36,8 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-QUOT-FIELD-MAIN ( -- )
    T-RESET
+   AOT-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
-   BUILD-CACHE:RESET
    HBT-STRIPPED-QUOT-FIELD
    HBT-STRIPPED-QUOT-LOOKALIKE
    CLEANUP-RUN
