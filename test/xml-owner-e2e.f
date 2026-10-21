@@ -3,7 +3,6 @@
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
-require src/lib/fs-root.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -11,6 +10,7 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/suite-budget.f
 require test/pcap-result.f
+require test/aot-builder-engine.f
 
 package XML-OWNER-E2E
 private
@@ -19,7 +19,7 @@ $8000 constant IO-CAP
 512 constant FILE-CAP
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot
-create CACHE FS-PATH-CAP allot variable CACHE-U
+create SUBJECT FS-PATH-CAP allot variable SUBJECT-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
 create FILE-BYTES FILE-CAP allot
@@ -27,7 +27,6 @@ create EXPECTED FILE-CAP allot
 variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
 : APP$ ( -- ptr u8 n ) ROOT$ s" xml-owner-app" PATH JOIN-PATH PATH swap ;
 : FILE$ ( ptr u8 n -- ptr u8 n ) {: rel:ptr size:n :}
    ROOT$ rel size PATH JOIN-PATH PATH swap ;
@@ -60,13 +59,16 @@ variable RC
    NEED-OK s" xml-owner-consumer: ok" MARKER ;
 
 : BUILD ( -- )
+   AOT-BUILDER-ENGINE:ENSURE
+   \ A subject under this run's fresh root keys a new artifact, so every run links.
+   s" consumer.f" FILE$ SUBJECT swap dup SUBJECT-U ! BYTE-COPY
+   s" test/xml-owner-consumer.f" SUBJECT SUBJECT-U @ COPY-FILE-STREAM
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   s" test/xml-owner-consumer.f" >LEN PROC-ARGV+
+   SUBJECT SUBJECT-U @ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    APP$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$
@@ -152,12 +154,9 @@ public
    T-RESET
    s" xml-owner-e2e" HB-TMP-MKDIR {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
-   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
-   CACHE$ MAKE-DIR
    SOURCE-RUN REFUSALS BUILD NATIVE-RUN
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT
    APP$ REMOVE-FILE
-   CACHE$ REMOVE-TREE
    s" xml-owner-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

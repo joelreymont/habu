@@ -28,8 +28,8 @@
 \ test/compiler/native-div-image.f at tier 1 and keeps only what its closure
 \ reaches, so the image catches the zero divide only if the closure followed the
 \ guard's branch into the helper. The directory the case prints keeps the image.
-\ The subject requires nothing, so the build's maker runs on the keyed linker
-\ image (test/preloaded-engine.f).
+\ The subject requires nothing, so the build's maker is the AOT builder settled
+\ on the keyed linker image (test/linker-builder-engine.f).
 \
 \ The runtime cases run in a child process: `set-tier` is engine-global state,
 \ and a child's own source names its tier. The one word whose bytes are read is
@@ -44,7 +44,7 @@ require src/lib/engine-candidate.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require test/gate-common.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 package NDIVREF-TEST
 
@@ -190,23 +190,27 @@ variable DIV-AT                           \ where the last sdiv found stands
    DIV-AT @ 4 - BL-DEST  HELPER T= ;
 
 \ ---- the stripped image -------------------------------------------------------
+create SUBJECT FS-PATH-CAP allot variable SUBJECT-U
 create IMAGE FS-PATH-CAP allot
 variable IMAGE-U
 
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
 : BUILD-IMAGE ( -- )
-   PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
+   LINKER-BUILDER-ENGINE:ENSURE
+   LINKER-BUILDER-ENGINE:HOST$ {: linker:ptr linkeru:n :}
    s" ndiv-image" HB-TMP-MKDIR GT-COPY-ROOT!
    s" ndiv-image" IMAGE GT-PATH IMAGE-U !
+   \ A subject under this run's fresh root keys a new artifact, so every run links.
+   s" ndiv-image.f" SUBJECT GT-PATH SUBJECT-U !
+   s" test/compiler/native-div-image.f" SUBJECT SUBJECT-U @ COPY-FILE-STREAM
    GE-HB-RESET
    s" --load" GE-ARG+
    s" tools/hb-build.f" GE-ARG+
    s" --" GE-ARG+
-   s" test/compiler/native-div-image.f" GE-ARG+
+   SUBJECT SUBJECT-U @ GE-ARG+
    s" -o" GE-ARG+
    IMAGE$ GE-ARG+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN linker linkeru >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
 

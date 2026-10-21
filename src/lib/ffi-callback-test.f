@@ -26,6 +26,7 @@ require src/lib/task.f
 require test/whitebox-child.f
 require src/lib/test/subject.f
 require test/ffi-callback-fixture.f
+require test/aot-builder-engine.f
 
 package FFI-CB-TEST
 using FFI-CB
@@ -448,8 +449,10 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : SUBJECT-SOURCE$ ( -- ptr u8 n )
    S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) STRIPPED-CALLBACK-SUBJECT:RUN ;\n" ;
 
-\ A private cache root, so hb-build links the subject on every run.
+\ The artifact key folds the subject's path, which lies under this run's fresh
+\ root, so hb-build links it on every run in the shared cache root.
 : BUILD-IMAGE ( -- len len outcome )
+   AOT-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
@@ -458,7 +461,6 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" -o" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
    OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS

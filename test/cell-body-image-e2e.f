@@ -43,10 +43,10 @@ create ERR CAP allot  variable ERR-U
    name nameu AT body bodyu WRITE-ALL ;
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
+\ The maker image resolves in the shared cache root.
 : MAKER ( ptr u8 n -- n ) {: source:ptr sourceu:n :}
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG source sourceu AT ARG s" 0" ARG s" 1" ARG
@@ -69,8 +69,8 @@ create ERR CAP allot  variable ERR-U
    rc ;
 
 : BUILD ( -- n )
+   AOT-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG

@@ -9,6 +9,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/test/subject.f
+require test/app-builder-engine.f
 
 package DICTIONARY-CAPACITY-TEST
 
@@ -84,8 +85,8 @@ create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
    0 T= ;
 
 : BUILD ( -- )
+   APP-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
    s" --repl" ARG s" source.f" AT ARG
@@ -115,7 +116,6 @@ public
    s" 53,000 checked definitions cross 65,536 total records and survive REPL save" T-LABEL
    s" habu-dictionary-capacity" HB-TMP-MKDIR {: a:ptr size:n :}
    a ROOT size BYTE-COPY size ROOT-U !
-   s" cache" AT MAKE-DIR
    WRITE-SOURCE
    BUILD
    REOPEN

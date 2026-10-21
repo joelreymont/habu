@@ -9,6 +9,7 @@ require test/gate-common.f
 require test/gate-aot-image.f
 require src/lib/string.f
 require src/lib/engine-candidate.f
+require test/aot-builder-engine.f
 
 package STRIPPED-IMAGE-TEST
 private
@@ -63,6 +64,7 @@ variable RETURN-TREE-U
 \ The fresh subject path has no observed-input index, so hb-build links it
 \ with the shared maker instead of restoring an artifact.
 : BUILD ( -- )
+   AOT-BUILDER-ENGINE:ENSURE
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+

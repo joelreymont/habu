@@ -12,6 +12,7 @@
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
+require test/aot-builder-engine.f
 
 package MACHINE-STACK-TEST
 private
@@ -85,6 +86,7 @@ variable IMAGE-U
 \ path has no observed-input index, so hb-build links it with the shared maker.
 : STRIPPED ( -- )
    SUBJECT$ S\" TRUSTED: R ( -- ) recurse ;\n: MAIN ( -- ) R ;\n" WRITE-ALL
+   AOT-BUILDER-ENGINE:ENSURE
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+

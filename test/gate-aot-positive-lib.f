@@ -16,6 +16,7 @@ require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-image.f
 require test/suite-budget.f              \ CHILD-MS, the maker's hang guard
+require test/aot-builder-engine.f
 
 package AOT-POSITIVE
 using HB-BUILD-CLI                       \ the preseed knobs and the json flag
@@ -566,9 +567,9 @@ variable SELF-SRC-U
    s" hb: bad gemt tag" label labelu GE-EXPECT-ERR-HAS ;
 
 : PRESEED ( -- )
-   \ This assertion owns a fresh cache: without one, HB-BUILD:OBJECT-HIT? is
-   \ structurally impossible; a shared warm artifact can also bypass production.
-   GT-ROOT BUILD-CACHE:ROOT!
+   \ The artifact and object keys fold the subject's path, which lies under this
+   \ run's fresh root, so the first build links and HB-BUILD:OBJECT-HIT? below
+   \ answers this run's own PRESEED-BUILD, never a warm entry from another run.
    s" hb-aot-preseed.f" s" hb-aot-preseed" s" hb-aot-preseed-report.json" PATHS
    PRESEED-SRC
    s" hb-build AOT preseed normal-MAIN control" GB-HBB-BUILD
@@ -702,6 +703,7 @@ public
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
+   AOT-BUILDER-ENGINE:ENSURE
    MAKER-SELFTEST
    BUNDLE
    LAYOUT-FETCH
@@ -710,6 +712,7 @@ public
 
 : RUN-PRESEED ( -- )
    s" hb-gate-aot-preseed" GT-START
+   AOT-BUILDER-ENGINE:ENSURE
    PRESEED
    PRESEED-FETCH
    GT-CLEANUP ;

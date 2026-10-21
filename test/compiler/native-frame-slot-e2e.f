@@ -1,7 +1,7 @@
 \ Build the source through production hb-build and run its retained executable.
 require test/gate-common.f
 require src/lib/engine-candidate.f
-require test/preloaded-engine.f
+require test/linker-builder-engine.f
 
 package FRAME-SLOT-E2E
 private
@@ -19,7 +19,8 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
    s" output.txt" OUTPUT GT-PATH OUTPUT-U ! ;
 
 : BUILD ( -- )
-   PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}
+   LINKER-BUILDER-ENGINE:ENSURE
+   LINKER-BUILDER-ENGINE:HOST$ {: linker:ptr linkeru:n :}
    s" test/compiler/native-frame-slot-image.f" SOURCE$ COPY-FILE-STREAM
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -28,7 +29,6 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
    SOURCE$ GE-ARG+
    s" -o" GE-ARG+
    IMAGE$ GE-ARG+
-   s" HABU_BUILD_CACHE" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN linker linkeru >LEN PROC-ENV+
    ENGINE-CANDIDATE:PATH$ 600000 GE-RUN-ENV
    s" frame slot production build" GE-EXPECT-OK

@@ -4,6 +4,7 @@ require test/gate-common.f
 require test/gate-aot-image.f
 require src/lib/string.f
 require src/lib/engine-candidate.f
+require test/aot-builder-engine.f
 
 package STRIPPED-POOL-REACH-TEST
 private
@@ -51,6 +52,7 @@ variable IMAGE-U
    SUBJECT$ SB$ APPEND-FILE ;
 
 : BUILD ( -- )
+   AOT-BUILDER-ENGINE:ENSURE
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+

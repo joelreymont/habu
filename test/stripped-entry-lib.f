@@ -35,6 +35,7 @@ variable GOT-U
 
 : PREPARE ( ptr u8 n -- )
    GT-START
+   AOT-BUILDER-ENGINE:ENSURE
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" application" IMAGE GT-PATH IMAGE-U !
    s" hb-aot-got" GOT GT-PATH GOT-U !

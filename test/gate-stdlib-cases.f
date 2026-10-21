@@ -16,9 +16,13 @@ using TEST
 \ must justify its isolation or reduce measured suite time, including any
 \ duplicated builds or process setup (test/suite-budget.f keeps the limits).
 
-\ These long rows need no keyed image, including their child load paths.
-\ They lead so they start at once and keep the pool busy while the compiler
-\ bundle builds.
+\ These long rows lead so they keep the pool busy while the compiler bundle
+\ builds. check-cli-boundary, hb-build-aot-image, whitebox-engine-key and
+\ check-drivers need no keyed image, including their child load paths, and
+\ start at once. stripped-pool-reach, hb-build-repl-image,
+\ dictionary-capacity, xml-owner-consumer and engine-stack-machine wait for a
+\ builder image: each steps aside until it settles and then starts ahead of
+\ every later row.
 SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
@@ -77,8 +81,8 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
-\ The positive hb-build AOT checks are two rows of about 28 s each that share no
-\ state and need no keyed image, so they also start while the images build.
+\ The positive hb-build AOT checks are two rows that share no state. Both wait
+\ for the saved AOT builder image and start once it settles.
 SUITE native-gate-aot-positive-bundle
    test/gate-aot-positive-bundle.f
 ;SUITE
