@@ -858,8 +858,10 @@ variable DEF-VALUE
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 
 \ The keyword refuses a live task, then a full code space or dictionary,
-\ naming itself, then a missing name, as the engine's does.
-: DEF-CAST ( -- )
+\ naming itself, then a missing name, as the engine's does. Its name folds
+\ apart from the def-cast row: a word spelled DEF-CAST here would shadow the
+\ row for every later body, and DEF-LINEAR's def-cast would read a cast head.
+: DEF-CAST-ROW ( -- )
    TASK-GUARD
    DEF-ROOM
    DEF-CAST-NAME
@@ -1016,7 +1018,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    s" variable" TOKEN-IS? if true DEF-ADDR 1 cells allot true exit then
    s" constant" TOKEN-IS? if DEF-CONSTANT true exit then
    s" defer" TOKEN-IS? if DEF-DEFER true exit then
-   s" cast:" TOKEN-IS? if DEF-CAST true exit then
+   s" cast:" TOKEN-IS? if DEF-CAST-ROW true exit then
    s" linear:" TOKEN-IS? if DEF-LINEAR true exit then
    s" immediate" TOKEN-IS? if imm-mark true exit then
    false ;
