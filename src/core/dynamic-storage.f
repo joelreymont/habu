@@ -190,10 +190,12 @@ public
       exit
    then
    cb @ fresh old COPY
+   LOCK
    cb @ old munmap 0< if
-      fresh cap munmap drop E-UNMAP throw
+      UNLOCK fresh cap munmap drop E-UNMAP throw
    then
-   fresh cap cb len width PUBLISH ;
+   fresh cap cb len width PUBLISH
+   UNLOCK ;
 
 : RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
@@ -211,8 +213,8 @@ public
 : RELEASE-RECORD ( ptr ptr a n -- ) {: cb:ptr len:n :}
    cb CAP @ {: cap:n :}
    cap 0= if exit then
-   cb @ cap munmap 0< if E-UNMAP throw then
    LOCK
+   cb @ cap munmap 0< if UNLOCK E-UNMAP throw then
    cb UNREGISTER
    NULL-PTR cb !
    0 cb CAP !
@@ -225,12 +227,13 @@ public
 : RELEASE ( ptr ptr a -- ) GENERIC-CELLS RELEASE-RECORD ;
 : RELEASE-FIXED ( ptr ptr a -- ) FIXED-CELLS RELEASE-RECORD ;
 
-\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A growth
-\ unmaps the old registry before it publishes the new one, and a membership
-\ change is several stores, so a child forked while another task was inside
-\ could neither wait for that task nor carry on where it stopped. Held, nobody
-\ is inside when the process is copied, and parent and child each free their
-\ own copy.
+\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A buffer's
+\ growth or release unmaps its old mapping before it publishes the new one or
+\ clears the control, a registry growth does the same to the registry, and a
+\ membership change is several stores. Each runs under this lock, since a child
+\ forked while another task was inside could neither wait for that task nor
+\ carry on where it stopped. Held, nobody is inside when the process is copied,
+\ and parent and child each free their own copy.
 : ACROSS-FORK ( [ -- n ] -- n )
    LOCK [: UNLOCK ;] finally ;
 
