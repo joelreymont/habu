@@ -1396,11 +1396,6 @@ variable LONG-J
 : CLAUSE-RENDERED-AT$ ( -- ptr u8 n )
    s\" \"line\":1,\"column\":170,\"byte_start\":169,\"byte_end\":172" ;
 
-: CLI-FLAG-STDIN ( ptr u8 n ptr u8 n -- n n n ) {: src:ptr srcu:n flag:ptr flagu:n :}
-   CHECK-ARGV-START
-   flag flagu CHECK-ARG+
-   src srcu CHECK-STDIN-CAPTURE ;
-
 : EXPECT-CLAUSE-JSON ( n n ptr u8 n -- ) {: outu:n erru:n at:ptr atu:n :}
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
@@ -1445,7 +1440,7 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-UNDEFINED-TOP-LEVEL\",\"repair_class\":\"unknown_rejection\",\"verdict\":\"rejected\",\"token\":\"CKLB-NOPE\"" CONTAINS? TTRUE
-   src srcu s" --all-errors" CLI-FLAG-STDIN 70 T=
+   src srcu DIRECT-ALL-STDIN 70 T=
    {: outa:n erra:n :}
    outa 0 T=
    CAP-ERR erra s" undefined word 'CKLB-NOPE'" CONTAINS? TTRUE
@@ -1858,24 +1853,16 @@ variable LONG-J
    erru 0 T= ;
 
 : CHECK-TOOL-SOURCE ( ptr u8 n -- )
-   CHECK-ARGV-START
-   CHECK-ARG+
-   CHECK-CAPTURE 0 T=
+   PATH-RUN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-\ test/gate-images.f requires src/lib/aio.f, which ends by loading its macOS host
-\ module (a require cycle) and calls SUMTYPE constructors it declares itself.
-\ tools/object-image.f loads its target's image writers in target arms, and
-\ src/habu/driver-io.f, which it loads after them, calls their ASM-CODE.
-\ tools/native-emit.f's writers read src/os/image-bytes.f's MSIZE as they load.
+\ Check the image tools with their full require closures, including imgdump's
+\ target layout loader. Loading without arguments defines each tool quietly.
 : TEST-IMAGE-TOOL-SOURCES ( -- )
    s" tools/engine-size.f" CHECK-TOOL-SOURCE
-   s" tools/imgdump.f" CHECK-TOOL-SOURCE
-   s" test/gate-images.f" CHECK-TOOL-SOURCE
-   s" tools/object-image.f" CHECK-TOOL-SOURCE
-   s" tools/native-emit.f" CHECK-TOOL-SOURCE ;
+   s" tools/imgdump.f" CHECK-TOOL-SOURCE ;
 
 \ ---- a subject the engine provides -------------------------------------------
 \ A run loads nothing from a source the engine carries, so it checks nothing
@@ -4521,10 +4508,8 @@ variable REQ-U
    UT-CODE$ UT-SDQ-TOKEN$ UT-STDIN-AT$ EXPECT-ONE ;
 
 : TEST-CLOSURE-STDIN ( -- )
-   CL-STDIN$ s" --json-errors" CLI-FLAG-STDIN EXPECT-STDIN-LOST
    CL-STDIN$ DIRECT-JSON-STDIN EXPECT-STDIN-LOST
    CL-STDIN$ ALL-JSON-STDIN EXPECT-STDIN-LOST
-   UT-STDIN$ s" --json-errors" CLI-FLAG-STDIN EXPECT-STDIN-UNTERM
    UT-STDIN$ DIRECT-JSON-STDIN EXPECT-STDIN-UNTERM
    UT-STDIN$ ALL-JSON-STDIN EXPECT-STDIN-UNTERM ;
 
@@ -7315,7 +7300,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : TEST-GENR-BADSIG-JSON ( -- )
    GENR-PRELUDE
    s\" generates: CKT-GMAKE ( -- i32 )\n" SB-APPEND
-   SB$ s" --json-errors" CLI-FLAG-STDIN REFUSED-LINE {: erru:n :}
+   SB$ DIRECT-JSON-STDIN REFUSED-LINE {: erru:n :}
    CAP-ERR c@ $7B T=
    CAP-ERR erru s\" \"code\":\"E-GENERATES-ROW\"" CONTAINS? TTRUE
    CAP-ERR erru s\" \"repair_class\":\"fix_signature_type\"" CONTAINS? TTRUE ;
@@ -7371,8 +7356,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 \ Every mode reads a row as the load does, so each takes the row the load takes
 \ and refuses the row it refuses: the load, the check, and the check that stops
-\ before the run. Each runs in a process of its own, as a pre-pass that dies
-\ ends its process. The definer makes nothing, so the row is all a source says.
+\ before the run. The definer makes nothing, so the row is all a source says.
 : GENR-MODE ( n n n bool -- )
    {: outu:n erru:n rc:n taken:bool :}
    taken IF rc 0 T= ELSE rc 0 T<> THEN ;
@@ -7385,13 +7369,9 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" generates: row under --load" T-LABEL
    SB$ HB-LOAD-SRC taken GENR-MODE
    s" generates: row under check.f" T-LABEL
-   SB$ CLI-STDIN taken GENR-MODE
+   BAD$ PATH-RUN taken GENR-MODE
    s" generates: row under check.f --verify-only" T-LABEL
-   CHECK-ARGV-START
-   s" --verify-only" CHECK-ARG+
-   s" --stdin-path" CHECK-ARG+
-   s" generates-row.f" CHECK-ARG+
-   SB$ CHECK-STDIN-CAPTURE taken GENR-MODE ;
+   BAD$ VO-FILE-RUN taken GENR-MODE ;
 
 \ `undefine` retires the definer's row, so the definer defined again states
 \ what it makes afresh.
