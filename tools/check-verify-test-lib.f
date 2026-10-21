@@ -200,6 +200,7 @@
 \   a name the load accepts at top level is refused                       top-accepted
 \   a type made by reached source rendering or nominal registration is
 \   refused as absent; an unrelated absence or later error is lost         type-deferred
+\   the image is not re-keyed when a file of its closure changes           image-stale
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -214,7 +215,9 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
+require src/lib/content-key.f
 require test/cold-engine.f
+require test/pcap-result.f
 require src/lib/jsonl.f
 require tools/gate-json-assert-core.f
 require tools/check-verify-core.f
@@ -4575,6 +4578,123 @@ variable SEEN-U
    0 ERR erru s" candidate" CONTAINS? or TFALSE ;
 
 
+\ ---- the saved verifier image -----------------------------------------------
+
+\ Two image builds on a loaded host.
+300000 constant IMAGE-MS
+
+create STALE FS-PATH-CAP allot
+create WALK FS-PATH-CAP allot
+create DST FS-PATH-CAP allot
+variable STALE-U
+variable WALK-U
+variable TREE-U                         \ this tree's root, with its slash
+variable LINE-AT
+variable LINE-K
+
+: STALE$ ( -- ptr u8 n ) STALE STALE-U @ ;
+
+\ The rest of the K-th (from 0) line of TEXT that starts with LEAD, empty for none.
+: LINE-AFTER$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
+   {: text:ptr textu:n lead:ptr leadu:n k:n :}
+   0 LINE-AT !  k LINE-K !
+   begin
+      text textu 10 LINE-AT @ SPLIT-NEXT {: line:ptr lineu:n next:n found:bool :}
+      found 0= if s" " exit then
+      next LINE-AT !
+      line lineu lead leadu STARTS-WITH? if
+         LINE-K @ 0= if line leadu + lineu leadu - exit then
+         -1 LINE-K +!
+      then
+   again ;
+
+\ The source of a driver's word answering a verdict's kind by name.
+: KIND$SRC+ ( -- )
+   S\" : KIND$ ( CHECK:verdict -- ptr u8 n )\n   MATCH CHECK:verdict\n      verified OF s\" verified\" ENDOF\n      refused OF s\" refused\" ENDOF\n      engine-provided OF s\" engine-provided\" ENDOF\n      held OF s\" held\" ENDOF\n      incomplete OF {: status :} s\" incomplete\" ENDOF\n      deferred OF s\" deferred\" ENDOF\n   ;MATCH ;\n" GEN+ ;
+
+\ Run the driver PATH on the candidate engine in directory CWD, stdout in OUT and
+\ stderr in ERR: their lengths and the exit code.
+: DRIVE ( ptr u8 n ptr u8 n -- n n n )
+   {: path:ptr pathu:n cwd:ptr cwdu:n :}
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   s" --load" ARG+ path pathu ARG+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN cwd cwdu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN IMAGE-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N ;
+
+\ ROOT/stale-tree/REL for a tree file, REL its path below this tree.
+: STALE-COPY ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   STALE$ src TREE-U @ + srcu TREE-U @ - DST JOIN-PATH {: dstu:n :}
+   DST dstu SOURCE-ROOT:DIRNAME MAKE-DIRS
+   src srcu DST dstu COPY-FILE-STREAM ;
+
+: STALE-DIR ( ptr u8 n -- )
+   SOURCE-ROOT:CWD$ 2swap WALK JOIN-PATH WALK-U !
+   WALK WALK-U @ [: STALE-COPY ;] WALK-FILES ;
+
+\ A copy of this tree's tools/ and src/ under the fixture root: a tree of its own,
+\ whose closure paths key an image of its own and whose files the case edits.
+\ Symlinks would canonicalise to this tree, share its key and edit it.
+: STALE-TREE ( -- )
+   s" stale-tree" AT$ STALE STALE-U COPY!
+   SOURCE-ROOT:CWD$ nip 1+ TREE-U !
+   s" tools" STALE-DIR
+   s" src" STALE-DIR ;
+
+\ The code of the K-th (from 0) "refused " line of TEXT, 0 for none.
+: REFUSED-CODE ( ptr u8 n n -- n )
+   {: text:ptr textu:n k:n :}
+   text textu s" refused " k LINE-AFTER$ STR>NUMBER? MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ The image is re-keyed in one process when a file of its closure changes: a driver
+\ in the stale tree checks once, appends a comment to that tree's
+\ tools/check-verify-child-lib.f, a closure member the save file loads, and
+\ checks again; its two images differ, both keyed entries of the build cache.
+\ Each check pays a build (the row's wall). The driver then deletes that member
+\ and asks for the image once more than src/lib/content-key.f has folds: each
+\ walk refuses with the missing member's E-FS-STAT, so a refused key derivation
+\ releases its fold (leaked folds would make the last refusal the pool's own).
+: IMAGE-STALE ( -- )
+   STALE-TREE
+   0 GEN-U !
+   S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\nrequire src/lib/build-cache.f\n" GEN+
+   S\" require src/lib/engine-candidate.f\nrequire tools/check-verify-core.f\nrequire tools/check-verify-image.f\nrequire src/lib/content-key.f\npackage CVT-STALE\n" GEN+
+   KIND$SRC+
+   s\" : CHECK ( -- )\n   s\" : CVT-STALE-W ( -- n ) 1 ;\" s\" " GEN+ STALE$ GEN+
+   s\" /stale.f\" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
+   s\"    s\" image \" type ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ type cr ;\n" GEN+
+   s\" : REFUSE ( -- )\n   CONTENT-KEY:FOLDS 1+ 0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
+   s\"       s\" refused \" type FMT:.INT cr\n   loop ;\npublic\n" GEN+
+   s\" : MAIN ( -- )\n   s\" cache \" type BUILD-CACHE:ROOT$ type cr\n   CHECK\n   s\" " GEN+ STALE$ GEN+
+   s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
+   s\" /tools/check-verify-child-lib.f\" REMOVE-FILE\n   REFUSE ;\n;package\nCVT-STALE:MAIN\n" GEN+
+   s" stale-tree/stale-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
+   s" stale-tree/stale-driver.f" AT$ STALE$ DRIVE {: outu:n erru:n rc:n :}
+   s" image-stale: driver exit" T-LABEL rc 0 T=
+   rc 0<> if 0 ERR erru type cr then
+   0 OUT outu {: out:ptr outn:n :}
+   out outn s" cache " 0 LINE-AFTER$ {: cache:ptr cacheu:n :}
+   out outn s" image " 0 LINE-AFTER$ {: a:ptr au:n :}
+   out outn s" image " 1 LINE-AFTER$ {: b:ptr bu:n :}
+   s" image-stale: first verdict" T-LABEL out outn s" verdict " 0 LINE-AFTER$ s" verified" T$=
+   s" image-stale: second verdict" T-LABEL out outn s" verdict " 1 LINE-AFTER$ s" verified" T$=
+   s" image-stale: a keyed entry of the cache" T-LABEL a au cache cacheu STARTS-WITH? TTRUE
+   s" image-stale: named for the family" T-LABEL
+   a cacheu + au cacheu - s" /hb-check-verify-" STARTS-WITH? TTRUE
+   s" image-stale: the edit re-keys" T-LABEL a au b bu STR= TFALSE
+   s" image-stale: the second entry too" T-LABEL
+   b cacheu + bu cacheu - s" /hb-check-verify-" STARTS-WITH? TTRUE
+   s" image-stale: both executable" T-LABEL a au EXECUTABLE? b bu EXECUTABLE? and TTRUE
+   CONTENT-KEY:FOLDS 1+ 0 do
+      s" image-stale: each walk refuses with the missing member's cause" T-LABEL
+      out outn i REFUSED-CODE E-FS-STAT T=
+   loop ;
+
+
 \ ---- case timings ----------------------------------------------------------
 
 : MS. ( -- )
@@ -4710,6 +4830,7 @@ public
    s" type-deferred" [: TYPE-DEFERRED ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
+   s" image-stale" [: IMAGE-STALE ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-trust" [: TOP-TRUST ;] RUN-CASE
    s" top-trust-refused" [: TOP-TRUST-REFUSED ;] RUN-CASE

@@ -23,7 +23,7 @@ $1000 constant GT-POOL-CHUNK-CAP
 32 constant GT-POOL-NUM-CAP
 \ Rows an adapter starts beside the registered suites: test/gate-images.f starts
 \ one build row per keyed image family, and refuses more families than this.
-9 constant GT-POOL-SIDE-MAX
+10 constant GT-POOL-SIDE-MAX
 10000 constant GT-POOL-GRACE-MS         \ a root that catches SIGTERM ends itself inside this (GT-POOL-ASK-END)
 \ Red rows: one per registered suite (src/lib/test/suite.f ITEM-MAX) plus the side
 \ rows, so a complete run reports every red with its exit code and capture

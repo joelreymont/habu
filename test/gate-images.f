@@ -4,8 +4,10 @@
 \ ONE MODULE PER IMAGE. An image family is what one module builds:
 \ test/compiler-images.f, test/fixture-writer.f, test/cold-engine.f,
 \ test/app-image-engine.f, test/preloaded-engine.f, test/whitebox-engine.f,
-\ test/aot-builder-engine.f, test/linker-builder-engine.f and
-\ test/app-builder-engine.f.
+\ test/aot-builder-engine.f, test/linker-builder-engine.f,
+\ test/app-builder-engine.f and tools/check-verify-image.f (a tool, not a test
+\ adapter: no grant check, so a row that reaches it ungranted builds its own
+\ keyed image instead of dying).
 \ Loading the module is how a file reaches the image, so a row NEEDS a family
 \ when its load closure holds the family's module: the files the row loads, and
 \ the files those import or launch (test/load-refs.f). A WHITEBOX-SUITE row
@@ -67,7 +69,8 @@ package GATE-IMAGES
 6 constant AOT-BUILDER
 7 constant LINKER-BUILDER
 8 constant APP-BUILDER
-9 constant FAMILY-N
+9 constant CHECK-VERIFY
+10 constant FAMILY-N
 
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
@@ -80,6 +83,7 @@ package GATE-IMAGES
    f AOT-BUILDER = if s" aot-builder" exit then
    f LINKER-BUILDER = if s" linker-builder" exit then
    f APP-BUILDER = if s" app-builder" exit then
+   f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
 
 \ A family's prerequisites come before it here: DERIVE refuses a table that
@@ -94,6 +98,7 @@ package GATE-IMAGES
    f AOT-BUILDER = if s" test/aot-builder-engine.f" exit then
    f LINKER-BUILDER = if s" test/linker-builder-engine.f" exit then
    f APP-BUILDER = if s" test/app-builder-engine.f" exit then
+   f CHECK-VERIFY = if s" tools/check-verify-image.f" exit then
    E-TBL-BOUNDS throw ;
 
 \ What the build row runs once the module is loaded. The whitebox row also puts
@@ -108,6 +113,7 @@ package GATE-IMAGES
    f AOT-BUILDER = if s" AOT-BUILDER-ENGINE:ENSURE" exit then
    f LINKER-BUILDER = if s" LINKER-BUILDER-ENGINE:ENSURE" exit then
    f APP-BUILDER = if s" APP-BUILDER-ENGINE:ENSURE" exit then
+   f CHECK-VERIFY = if s" 600000 CHECK-VERIFY-IMAGE:SETTLE" exit then
    E-TBL-BOUNDS throw ;
 
 : BIT ( n -- n )

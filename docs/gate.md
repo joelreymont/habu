@@ -287,7 +287,7 @@ at its deadline.
   through `test/whitebox-child.f` (`PROVIDE`, `ENGINE$`, `ENV!`) and stays a
   plain `SUITE`, green on its own; loading that file is what makes the row
   wait for the build row.
-- The gate settles nine image families, each once per run in a pool row of its
+- The gate settles ten image families, each once per run in a pool row of its
   own started beside the first rows (`test/gate-images.f`). The keyed families
   (every one but the compiler bundle) land in the selected build cache and can
   be reused across runs. The
@@ -307,8 +307,11 @@ at its deadline.
   both settled as the image hb-build's maker selection keys
   (`tools/hb-build-lib.f` `HBB-MAKER-IMAGE$`), so a row's AOT hb-build
   children on that engine find it,
-  and the saved REPL builder (`test/app-builder-engine.f`;
-  `app-builder-build`). A row needs an
+  the saved REPL builder (`test/app-builder-engine.f`;
+  `app-builder-build`), and the saved verifier child
+  (`tools/check-verify-image.f`; `check-verify-build`), a tool module with no
+  grant check: a row that reaches it ungranted builds its own keyed image. A
+  row needs an
   image when its load closure holds the image's module: the files it loads and
   what those import, or launch as a `.f` source through a path literal a known
   load helper consumes (`test/load-refs.f`, the reader the entry guard uses).
