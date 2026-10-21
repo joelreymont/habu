@@ -8,8 +8,10 @@ require src/lib/engine-candidate.f
 package STRIPPED-POOL-REACH-TEST
 private
 
-2048 constant CHAIN-N
+512 constant CHAIN-N
 128 constant STEP-N
+81985529216486895 constant STEP-BASE
+32 constant FLUSH-N
 900000 constant TIMEOUT-MS
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
@@ -23,14 +25,18 @@ variable IMAGE-U
    value 10 >= if value 10 / recurse then
    value 10 mod STR-ZERO + SB-APPEND-C ;
 
-\ Small straight-line bodies provide reachable code beyond literal-load reach
-\ without making every increment a dictionary entry.
+\ Wide arithmetic fills the required code span with fewer compiler operations.
+\ Small straight-line bodies keep the reachable chain's dictionary modest.
 : WORD! ( n -- )
    {: k:n :}
    SB-RESET
    s" : CW" SB-APPEND k NUM+ s"  ( n -- n ) " SB-APPEND
    k 0 > if s" CW" SB-APPEND k 1- NUM+ s"  " SB-APPEND then
-   STEP-N 0 ?do S\" 1+\n" SB-APPEND loop
+   \ Flush each 32-step chunk below the 1024-byte string buffer's capacity.
+   STEP-N 0 ?do
+      STEP-BASE i + NUM+ S\"  +\n" SB-APPEND
+      i 1+ FLUSH-N mod 0= if SUBJECT$ SB$ APPEND-FILE SB-RESET then
+   loop
    S\" ;\n" SB-APPEND
    SUBJECT$ SB$ APPEND-FILE ;
 
@@ -41,7 +47,7 @@ variable IMAGE-U
    S\" : MAIN ( -- )\n   3 SHARED !\n   0 CW" SB-APPEND
    CHAIN-N 1- NUM+
    8 0 ?do s"  SHARED @ +" SB-APPEND loop
-   S\"  262168 = if s\q reach=ok\q type cr else s\q reach: mismatch\q 74 die then ;\n" SB-APPEND
+   S\"  5001117282209792024 = if s\q reach=ok\q type cr else s\q reach: mismatch\q 74 die then ;\n" SB-APPEND
    SUBJECT$ SB$ APPEND-FILE ;
 
 : BUILD ( -- )
