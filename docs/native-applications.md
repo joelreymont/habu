@@ -467,8 +467,9 @@ restores no mapping the build made; allocate at run time (in MAIN or an
 IMAGE-LIFECYCLE hook) and store the pointer then, or use --repl*;
 `HBT-STRIPPED-MAPPED-CELL` and `HBT-STRIPPED-MAPPED-DECLARED` are the two
 reproducers. The same allocation inside `MAIN` links, runs and prints a byte
-out of its run-time buffer, and one source linked twice, each build with a
-cache root of its own, is the same bytes: `HBT-STRIPPED-SAME-TWICE` in
+out of its run-time buffer, and one source linked twice, the second with the
+first's artifact and object removed from the cache and its maker asserted to
+have run, is the same bytes: `HBT-STRIPPED-SAME-TWICE` in
 `tools/hb-build-stripped-cache-test.f` runs its first link (`HBT-RUN-MAPL`)
 and compares the second. The reader is Linux-only: a host without
 `/proc/self/maps` dies by name at the first question instead of answering. A

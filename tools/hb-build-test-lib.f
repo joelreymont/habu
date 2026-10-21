@@ -136,7 +136,6 @@ variable HBT-MAPD-SRC-U
 variable HBT-MAPL-SRC-U
 variable HBT-MAPL-OUT-U
 variable HBT-MAPL-OUT2-U
-variable HBT-TWICE-CACHE-U
 variable HBT-LITB-SRC-U
 variable HBT-LITB-OUT-U
 variable HBT-LITC-SRC-U
@@ -166,7 +165,6 @@ create HBT-MAPD-SRC-BUF FS-PATH-CAP allot
 create HBT-MAPL-SRC-BUF FS-PATH-CAP allot
 create HBT-MAPL-OUT-BUF FS-PATH-CAP allot
 create HBT-MAPL-OUT2-BUF FS-PATH-CAP allot
-create HBT-TWICE-CACHE-BUF FS-PATH-CAP allot
 create HBT-LITB-SRC-BUF FS-PATH-CAP allot
 create HBT-LITB-OUT-BUF FS-PATH-CAP allot
 create HBT-LITC-SRC-BUF FS-PATH-CAP allot
@@ -241,9 +239,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
    S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then NULL$ nip 0 <> if -9045 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
-: HBT-TWICE-CACHE ( -- ptr u8 n )
-   HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U @ ;
-
 : HBT-MAPL-SRC ( -- ptr u8 n )
    HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U @ ;
 
@@ -315,11 +310,9 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" maplate.f" HBT-MAPL-SRC-BUF HBT-MAPL-SRC-U HBT-PATH!
    HBT-ROOT s" maplate" HBT-MAPL-OUT-BUF HBT-MAPL-OUT-U HBT-PATH!
    HBT-ROOT s" maplate2" HBT-MAPL-OUT2-BUF HBT-MAPL-OUT2-U HBT-PATH!
-   HBT-ROOT s" cache-twice" HBT-TWICE-CACHE-BUF HBT-TWICE-CACHE-U HBT-PATH!
    HBT-ROOT s" litbody.f" HBT-LITB-SRC-BUF HBT-LITB-SRC-U HBT-PATH!
    HBT-ROOT s" litbody" HBT-LITB-OUT-BUF HBT-LITB-OUT-U HBT-PATH!
    HBT-ROOT s" litcell.f" HBT-LITC-SRC-BUF HBT-LITC-SRC-U HBT-PATH!
-   HBT-TWICE-CACHE MAKE-DIR
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL

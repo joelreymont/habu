@@ -1,6 +1,6 @@
 \ hb-build-stripped-cache-test.f - checked fixture for tools/hb-build-lib.f:
-\ a program that allocates at run time links and runs, two links of it under
-\ separate cache roots are the same bytes and so is an object hit's relink of
+\ a program that allocates at run time links and runs, two links of it are
+\ the same bytes and so is an object hit's relink of
 \ it, and a declared cell caching a baked table's address is mapped to the
 \ carried copy, or refused when no claim names the table.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
@@ -150,13 +150,21 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT2 bbuf bcap READ-ALL {: bu:n :}
    abuf au bbuf bu HBT-DIFF-AT -1 T= ;
 
+\ The last build's artifact and the object it stored or hit, removed, so the
+\ next build of the same source is a link: the resolver misses when the
+\ indexed object is gone, and the link rewrites the index and both maps.
+: HBT-FORGET-BUILD ( -- )
+   HBB-ARTIFACT$ HBT-REMOVE-FILE?
+   HBB-OBJECT-PATH$ HBT-REMOVE-FILE? ;
+
 \ ... and TWO LINKS OF IT ARE THE SAME BYTES. This is the equality the mapped
 \ cell broke: three stripped builds of Tender's server differed in the middle
-\ bytes of eight window cells and nowhere else. Under one cache root the second
-\ build is no link at all - the artifact cache answers it with a copy of the
-\ first, and equal bytes would prove nothing about the linker - so it gets a
-\ cache root of its own, and the maker having run is asserted, not assumed.
-\ The second link stays for HBT-STRIPPED-OBJECT-RELINK.
+\ bytes of eight window cells and nowhere else. With the first link's artifact
+\ and object in the cache the second build is no link at all - the cache
+\ answers it with a copy of the first, and equal bytes would prove nothing
+\ about the linker - so HBT-FORGET-BUILD removes them, and the maker having
+\ run is asserted, not assumed. The second link stays for
+\ HBT-STRIPPED-OBJECT-RELINK.
 : HBT-STRIPPED-SAME-TWICE ( -- )
    HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
    HBT-MAPL-OUT HBT-REMOVE-FILE?
@@ -178,17 +186,16 @@ variable HBT-DONOR-OUT-U
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0 <> TTRUE
    HBT-MAPL-OUT HBT-CODE-MAPPED
-   HBT-TWICE-CACHE BUILD-CACHE:ROOT!
+   HBT-FORGET-BUILD
    HBT-MAPL-SRC HBT-MAPL-OUT2 HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-MAPL-OUT2 HBT-CODE-MAPPED
-   BUILD-CACHE:RESET
    HBT-MAPL-SAME-BYTES
    HBT-MAPL-OUT HBT-REMOVE-FILE? ;
 
 \ ... and AN OBJECT HIT WRITES THE BYTES THE MAKER WROTE. The second link above
 \ is a fresh build: its maker wrote HBT-MAPL-OUT2 and the build stored the
-\ object text under that root. With that root's artifact entry gone, the same
+\ object text in the cache. With its artifact entry gone, the same
 \ source misses the artifact and hits the object, and this process relinks it
 \ through tools/object-image.f OBJIMG:WRITE. One source, target and engine are
 \ one image whichever cache path writes it. A relink signed under an identifier
@@ -210,7 +217,6 @@ variable HBT-DONOR-OUT-U
    HBT-DONOR-OUT$ REMOVE-DIR ;
 
 : HBT-STRIPPED-OBJECT-RELINK ( -- )
-   HBT-TWICE-CACHE BUILD-CACHE:ROOT!
    HBT-REMOVE-ARTIFACT
    \ A refused object-hit publication must leave the prior map untouched.
    HBT-STRIPPED-OBJECT-RENAME-FAILS
@@ -220,7 +226,6 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT HBT-CODE-MAPPED
    HBB-OBJECT-PATH$ HBT-MAP2$ HBT-OBJ-MAP-PATH HBT-OBJ-MAP-PATH-U HBT-COPY!
    HBT-REMOVE-ARTIFACT
-   BUILD-CACHE:RESET
    HBT-MAPL-SAME-BYTES
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
@@ -228,14 +233,12 @@ variable HBT-DONOR-OUT-U
 \ A cached object and a map from another valid image must miss the object
 \ cache. The maker then publishes a new executable and matching sidecar.
 : HBT-STRIPPED-OBJECT-MAP-CORRUPTION ( -- )
-   HBT-TWICE-CACHE BUILD-CACHE:ROOT!
    HBT-MAPL-SRC HBT-MAPL-OUT HBT-HBB-PREPARE-AOT
    HBT-PTRC-OUT HBT-MAP$ HBT-OBJ-MAP$ COPY-FILE-STREAM
    HBT-HBB-BUILD-OUT
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
-   HBT-MAPL-OUT HBT-CODE-MAPPED
-   BUILD-CACHE:RESET ;
+   HBT-MAPL-OUT HBT-CODE-MAPPED ;
 
 \ The donor's matching map changes the attribution of the same executable.
 \ Build once without it, then restore it: the second build must select a new
