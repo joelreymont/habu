@@ -6,6 +6,7 @@
 require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/process-cwd.f
+require test/app-builder-engine.f
 
 package HB-BUILD-CLI
 
@@ -32,10 +33,13 @@ variable HBT-IMAGE-NS
 : HBT-IMAGE-SHADOW-PATH ( -- )
    HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
 
-: HBT-IMAGE-ENV ( ptr u8 n -- ) {: limit:ptr limitu:n :}
+\ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
+\ shared root, which holds the app-builder family image.
+: HBT-IMAGE-ENV ( ptr u8 n ptr u8 n -- )
+   {: limit:ptr limitu:n cache:ptr cacheu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   cacheu 0 > if s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+ then
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-IMAGE-HB$ >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
@@ -53,8 +57,10 @@ variable HBT-IMAGE-NS
    HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N ;
 
 \ A cold attempt reports its deadline in text form and leaves no output image.
+\ The cold deadline needs a cache root with no builder: in a warm root the
+\ deadline would time out the saved builder instead of the build.
 : HBT-COLD-REPL-TIMEOUT-TEXT ( -- )
-   s" 1" HBT-IMAGE-ENV
+   s" 1" HBT-TMP HBT-IMAGE-ENV
    HBT-IMAGE-ARGS
    HBT-REPL-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -70,8 +76,11 @@ variable HBT-IMAGE-NS
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
    S\" require src/lib/json-read.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
 
-: HBT-ROOTED-BUILD ( -- )
-   s" 600000" HBT-IMAGE-ENV
+\ The rooted build uses the given cache; an empty one inherits the run's root
+\ and its app-builder family image.
+: HBT-ROOTED-BUILD ( ptr u8 n -- )
+   {: cache:ptr cacheu:n :}
+   s" 600000" cache cacheu HBT-IMAGE-ENV
    HBT-IMAGE-ARGS
    HBT-REPL-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -103,16 +112,18 @@ variable HBT-IMAGE-NS
 
 : HBT-ROOTED-COLD-WARM ( -- )
    HBT-REPL-SRC HBT-ROOTED-APP$ WRITE-ALL
-   HBT-ROOTED-BUILD
+   NULL$ HBT-ROOTED-BUILD
    HBT-ROOTED-RUN
    HBT-ROOTED-MARK
-   HBT-ROOTED-BUILD
+   NULL$ HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TTRUE
    HBT-ROOTED-RUN ;
 
 \ A newly present CWD producer shadows the selected engine root's fallback
 \ copy. The existing output must be rebuilt even though its old files match.
-\ Editing that shadow after the warm no-op build rebuilds again.
+\ Editing that shadow after the warm no-op build rebuilds again. The builder
+\ key folds the shadow's path under this run's fresh root, so these builders
+\ can never hit again: they build in the row's private cache.
 : HBT-ROOTED-PRODUCER-SHADOW ( -- )
    HBT-IMAGE-SHADOW-PATH
    HBT-IMAGE-SHADOW$ SOURCE-ROOT:DIRNAME MAKE-DIR
@@ -120,20 +131,21 @@ variable HBT-IMAGE-NS
       HBT-IMAGE-SOURCE-BUF JOIN-PATH HBT-IMAGE-SOURCE-U !
    HBT-IMAGE-SOURCE-BUF HBT-IMAGE-SOURCE-U @
       HBT-IMAGE-SHADOW$ COPY-FILE-STREAM
-   HBT-ROOTED-BUILD
+   HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN
    HBT-ROOTED-MARK
-   HBT-ROOTED-BUILD
+   HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TTRUE
    HBT-IMAGE-SHADOW$ S\" \\ edited\n" APPEND-FILE
-   HBT-ROOTED-BUILD
+   HBT-TMP HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
 
 public
 : HBT-REPL-IMAGE-MAIN ( -- )
    T-RESET
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-IMAGE-PATHS
    HBT-COLD-REPL-TIMEOUT-TEXT

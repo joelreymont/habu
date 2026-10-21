@@ -1,10 +1,11 @@
 \ hb-build-repl-twin-test.f - checked fixture for tools/hb-build-lib.f: --repl
-\ builds of one program write the same image across fresh and warm caches and
-\ an output of another name. The restored image answers with its own process
-\ where the build's would be wrong: a `does>` run before the session's first
-\ `create` patches the image's own created word, a restored FILE import keeps
-\ its retired context handle stale, the AOT code-span table reads as it does in
-\ a fresh engine, and a persist that names no output path is refused.
+\ builds of one program write the same image across the run's warm cache (A, D)
+\ and a fresh one (B) and an output of another name. The restored image answers
+\ with its own process where the build's would be wrong: a `does>` run before
+\ the session's first `create` patches the image's own created word, a restored
+\ FILE import keeps its retired context handle stale, the AOT code-span table
+\ reads as it does in a fresh engine, and a persist that names no output path
+\ is refused.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-repl-twin-test.f
 \ Set HABU_RETAIN_TWIN=1 to keep the three executable images and FILE objects
@@ -13,6 +14,7 @@
 require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/engine-candidate.f
+require test/app-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -89,7 +91,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X . cr\n" ;
 
-\ Fresh builds get different HB_TMP and cache roots; the warm build reuses A's.
+\ A and D share HB_TMP and the run's cache; B gets its own HB_TMP and cache root.
 \ B's output name is longer than A's and D's.
 : HBT-TWIN-PREPARE ( -- )
    HBT-ROOT s" twin.f" HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U HBT-PATH!
@@ -106,11 +108,14 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
 
-: HBT-TWIN-BUILD ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n out:ptr outu:n :}
+\ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
+\ shared root, which holds the app-builder family image.
+: HBT-TWIN-BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN tmp tmpu >LEN PROC-ENV+
+   cacheu 0 > if s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+
@@ -139,10 +144,11 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    out HBT-CAPTURE-CAP >LEN err HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE HBT-CAPTURE>N ;
 
-\ The same program built three times is the same image across fresh and warm
-\ builds and an output of another name: every cell the build process owns is
-\ written as a value any process restores, or not written at all, and the
-\ signature names no file (a codesign identifier defaults to the name).
+\ The same program built three times is the same image across the run's warm
+\ cache (A, D) and a fresh one (B) and an output of another name: every cell
+\ the build process owns is written as a value any process restores, or not
+\ written at all, and the signature names no file (a codesign identifier
+\ defaults to the name).
 : HBT-TWIN-SAME ( -- )
    HBT-TWIN-OUT-A HBT-TWIN-READ {: a:ptr au:n :}
    HBT-TWIN-OUT-B HBT-TWIN-READ {: b:ptr bu:n :}
@@ -211,11 +217,13 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 public
 : HBT-TWIN-MAIN ( -- )
    T-RESET
+   APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-TWIN-PREPARE
-   HBT-TWIN-TMP-A HBT-TWIN-OUT-A HBT-TWIN-BUILD
-   HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
-   HBT-TWIN-TMP-A HBT-TWIN-OUT-D HBT-TWIN-BUILD
+   HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
+   \ B's fresh cache root is the cold boundary: its builder is built there.
+   HBT-TWIN-TMP-B HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
+   HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-D HBT-TWIN-BUILD
    HBT-TWIN-SAME
    HBT-TWIN-GENERATIONS
    HBT-TWIN-DOES
