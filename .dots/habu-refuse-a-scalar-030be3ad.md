@@ -1,6 +1,6 @@
 ---
 title: Refuse a scalar store through a view of a pointer cell
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-09-18T02:57:37.390477+03:00"
@@ -16,3 +16,5 @@ hole remains open. Reproduce it on the current matching engine, then migrate
 only the concrete storage/accessors required by the chosen checker rule.
 Special wire and relocation layouts retain their explicit owner boundaries;
 no tree-wide zero-cast count or unrelated layout feature blocks the fix.
+
+Status 2026-10-21: reproduced on master 662cbf3d (fixtures ~/.cache/tmp/carl-launder/{a,b,c}.f certify rc 0). A log-only census of candidate rules (V1 BYTE-VIEW over a pointer pointee; F1-F3 ptr-field base and RAW pointee) runs before the rule is designed together with habu-refuse-ptr-field-331a9731. Claim: agent=carl workspace=.jj-ws.noindex/carl-launder-census.
