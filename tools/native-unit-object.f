@@ -7,6 +7,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/memory.f
+require src/core/type-family.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/code-span.f
@@ -719,7 +720,8 @@ public
    ['] DEF-PREPARE-BODY catch {: rc:n :}
    rc 0= if true exit then
    DEF-DROP-PLAN {: cleanup:n :}
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or
+   rc TFAM:E-UNIT-FAMILY-CHANGED = or if
       cleanup 0<> if cleanup throw then
       false exit
    then

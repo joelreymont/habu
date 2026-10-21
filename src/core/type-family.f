@@ -153,6 +153,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
+7209 constant E-UNIT-FAMILY-CHANGED \ a FILE dependency's exact family contract differs
 
 private
 
@@ -6622,7 +6623,10 @@ create UNIT-FAM-CON-CELL 8 allot
          len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
             s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
          src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
-            s" tfam: FILE family dependency changed semantics" REG-AOT-REFUSE THEN
+            s" tfam: FILE family dependency changed semantics"
+            REG-AOT-ERROR-U ! REG-AOT-ERROR-A !
+            E-UNIT-FAMILY-CHANGED throw
+         THEN
       ELSE
          src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
       THEN
