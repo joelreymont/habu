@@ -4991,6 +4991,7 @@ package INTERP-EMIT
    1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this constant publishes
    C-STORE-DEF-NAME
    15 G-POP                                             \ n -> x15 after name storage (clobbers x15)
+   SP SP 16 SUBI,  15 SP 0 STR,                         \ and kept for the shadow below
    CP 9 0 STR,
    11 15 0 ADDI,  C-LIT
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
@@ -5001,6 +5002,18 @@ package INTERP-EMIT
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    9 CP CODE-ORIGIN:NATIVE-RANGE,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
+   \ The native compiler's fixed shadow callback, when one is installed
+   \ (src/compiler/native/compiler.f SHADOW-FIXED), learns the published record,
+   \ NDICT - 1, and the number its body pushes, as DEFWRITE:ADDR-SHADOW, does
+   \ for `create`.
+   LBL {: noshadow:label :}
+   9 SP 0 LDR,  SP SP 16 ADDI,
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 G-PUSH
+   9 NCOMP-DISPATCH:FIXED-VAL-KIND MOVZ,  9 G-PUSH
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL,
    LKWCONST KWCONST$ nip C-DEFHOOK
    LASTC-TRUST:PUBLISH-A ;
 

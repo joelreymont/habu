@@ -1692,6 +1692,7 @@ public
 $2D90 constant JIT-RET-CELL
 $2D98 constant FIXED-SHADOW-CELL
 $2DA0 constant DOES-SHADOW-CELL
+1 constant FIXED-VAL-KIND
 2 constant FIXED-ADDR-KIND
 ;package
 $2DA8 constant TASK-CHAIN-CELL
