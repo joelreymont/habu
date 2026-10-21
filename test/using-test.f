@@ -108,7 +108,12 @@ s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 \ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
 \ it resolves alone - the production source verifier is one - so the code below
 \ pins E-USING-AMBIGUOUS there (src/core/checker.f LIVE-BIND).
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+\ x86-64 compiles at tier 1 only, where the checker refuses the body
+\ (E-USING-AMBIGUOUS, as UAD-R2 below pins); this tier-0 row runs elsewhere.
+: UT-AMB-TIER0 ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T= ;
+UT-AMB-TIER0
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
@@ -380,19 +385,19 @@ s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
 \ while UA and UC both export AW, at each available tier, and runs as itself. A
-\ reference to the bare AW stays ambiguous: a checked body and a top-level token
-\ both expose the engine's E-AMBIGUOUS. This section comes last
+\ reference to the bare AW stays ambiguous: a checked body is E-USING-AMBIGUOUS
+\ and a top-level token the engine's E-AMBIGUOUS. This section comes last
 \ because it defines a global AW, which the cases above need absent.
 package USING-TEST public variable UAD-V ;package
 s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 1 T=
-s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" undefine AW" UCE-CATCH 0 T=
 1 set-tier
 s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 2 T=
-s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 USING-TEST:RESTORE-TIER
 
 \ ---------------------------------------------------------------------------

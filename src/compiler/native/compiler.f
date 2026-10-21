@@ -35,7 +35,6 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/compiler/native/fetch-check.f
-require src/core/engine-error.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
@@ -386,20 +385,8 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    su 0= if exit then
    NAME$ sa su CHECKER-OWNER:DECLARED-ROW ;
 
-\ A using refusal the scan answered reports as the engine reports it at tier 0:
-\ its spelling on stderr and the ENGINE-ERROR status, so a native-only target
-\ (x86-64) refuses an ambiguous bare word the way the interpreter does.
-: SOURCE-RC ( n -- n )
-   dup E-USING-AMBIGUOUS <> if exit then
-   drop
-   2 s" hb: ambiguous bare word resolves in multiple used packages: " write drop
-   CHECKER-OWNER:REFUSAL-TOKEN$ {: a:ptr u:n :}
-   2 a u write drop
-   2 S\" \n" write drop
-   ENGINE-ERROR:USING-AMBIGUOUS ;
-
 : SCAN ( -- )
-   [: CHECK-RECORDED M-VERDICT ! ;] catch SOURCE-RC {: src-rc:n :}
+   [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
@@ -1042,7 +1029,6 @@ INSTALL-FORGET
    then
    M-RC @ {: rc:n :}
    rc E-NCOMP-RECOVERY = if rc throw then
-   rc ENGINE-ERROR:USING-AMBIGUOUS = if RETRACT rc throw then
    rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and if
       REPORT-UNDEFINED-TICK
       RETRACT RC-REJECT throw

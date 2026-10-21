@@ -250,6 +250,18 @@ variable XE-CNT
    XE-ERR$ s" hb: ambiguous bare word resolves in multiple used packages: XEU-W"
    CONTAINS? TTRUE ;
 
+\ The ambiguity refusal: ARM64 compiles the child at tier 0, where the engine's
+\ lookup dies XE-AMB-RC; x86-64 compiles at tier 1 only, where the checker
+\ refuses the body (E-USING-AMBIGUOUS) and --load exits 67.
+: XE-AMB-DIED ( -- )
+   XE-EXITED @ TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      XE-RC @ 67 T=
+      XE-ERR$ s" E-USING-AMBIGUOUS habu: bare 'XEU-W'" CONTAINS? TTRUE
+   else
+      XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
+   then ;
+
 : XE-USING ( -- )
    XE-USING-PROG$ XE-RUN
    s" a body ticking a using-imported bare name runs to the end (rc 0)" T-LABEL
@@ -264,12 +276,12 @@ variable XE-CNT
    s" u6:7" XE-HAS  s" u7:7" XE-HAS ;
 
 : XE-USING-REFUSED ( -- )
-   s" ['] of a bare name two used packages export dies rc 94" T-LABEL
+   s" ['] of a bare name two used packages export dies" T-LABEL
    s" : XEU-TICK ( -- n ) 7 ['] XEU-W drop ;" XE-AMB-PROG$ XE-RUN
-   XE-EXITED @ TTRUE  XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
+   XE-AMB-DIED
    s" a CALL of that bare name dies the same way (same message, same rc)" T-LABEL
    s" : XEU-CALL ( -- n ) 7 XEU-W ;" XE-AMB-PROG$ XE-RUN
-   XE-EXITED @ TTRUE  XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
+   XE-AMB-DIED
    s" ['] of a name nothing resolves is undefined, never a silent no-op" T-LABEL
    s" : XEU-NONE ( -- n ) 7 ['] XEU-NOSUCH drop ;" XE-AMB-PROG$ XE-RUN
    XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
