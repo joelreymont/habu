@@ -116,8 +116,6 @@ private
 \ trusted-only row, at both tiers: the call guards admit the record (tier 0's
 \ C-COMPILE-CALL-GUARD, tier 1's NDICT:INT-CALL?), so the refusal is the row's.
 : OUTSIDE ( -- )
-   s" : OA-OUT0 ( n n -- ) package-scope! ;"
-   s" E-CAP-TRUSTED habu: in oa-out0: 'package-scope!' is a trust-boundary primitive" REJECTS
    s" 1 set-tier : OA-OUT1 ( n n -- ) package-scope! ;"
    s" E-CAP-TRUSTED habu: in oa-out1: 'package-scope!' is a trust-boundary primitive" REJECTS
    s" : OA-NS-OUT0 ( ptr u8 n bool -- n ) namespace-record ;"

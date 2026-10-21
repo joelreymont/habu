@@ -275,12 +275,12 @@ at its deadline.
 - A `WHITEBOX-SUITE` row is the gate-only kind: the runner hands it the gate's
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
-  — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
-  (measured on `test/whitebox-engine-suite.f`). Its checker is unsealed, so a
-  checked body that names an internal word binds that word's recorded row and
-  is checked against it ([forth.md](forth.md#rules-learned-by-refusal)): a
-  whitebox suite calls an internal word from a plain `:` definition, and a
-  wrong signature there is refused. That engine is a keyed image
+  — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`.
+  Its checker is unsealed, so a checked body that names an internal word binds
+  that word's recorded row and is checked against it
+  ([forth.md](forth.md#rules-learned-by-refusal)): a whitebox suite calls an
+  internal word from a plain `:` definition, and a wrong signature there is
+  refused. That engine is a keyed image
   (below): its build row, `whitebox-engine-build`, also puts the copy in
   place, and every whitebox row waits for that row. A file that only *spawns*
   a child needing the unsealed engine is not of that kind: it names one itself

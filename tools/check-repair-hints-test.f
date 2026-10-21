@@ -1,4 +1,7 @@
-\ check-repair-hints-test.f - checked fixtures for repair-class diagnostics.
+\ check-repair-hints-test.f - repair-class diagnostics no other row checks: a
+\ definition too deep to check (rewrite_uncheckable), a row-typed dup mismatch,
+\ a data-stack mismatch that outranks a return-stack leak, and a quotation's
+\ own return-stack leak.
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \ src/lib/vector.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
@@ -77,9 +80,6 @@ create ERR BUF-CAP allot
 : LF ( -- )
    LF-C SB-APPEND-C ;
 
-: DQ ( -- )
-   34 SB-APPEND-C ;
-
 : EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -96,18 +96,6 @@ create ERR BUF-CAP allot
 : SRC+ ( ptr u8 n -- )
    SRC 2swap APPEND-FILE ;
 
-: REMOVE-PRODUCER$ ( -- ptr u8 n )
-   s" : DIAG-REMOVE-PRODUCER ( i64 -- i64 ) dup ;" LINE$ ;
-
-: ADD-PRODUCER$ ( -- ptr u8 n )
-   s" : DIAG-ADD-PRODUCER ( i64 -- i64 ) drop ;" LINE$ ;
-
-: FIX-TYPE$ ( -- ptr u8 n )
-   s" : DIAG-FIX-TYPE ( i64 -- i64 ) 0= ;" LINE$ ;
-
-: FIX-RSTACK$ ( -- ptr u8 n )
-   s" : DIAG-FIX-RSTACK ( i64 -- ) >r ;" LINE$ ;
-
 \ A quotation literal pushes a cell and returns: the return rows named are the
 \ quotation's own, not the definition's around it.
 : QUOT-RSTACK$ ( -- ptr u8 n )
@@ -117,33 +105,8 @@ create ERR BUF-CAP allot
 : MIXED-RSTACK$ ( -- ptr u8 n )
    s" : DIAG-MIXED-RSTACK ( i64 -- ) dup >r ;" LINE$ ;
 
-: BALANCED-RSTACK$ ( -- ptr u8 n )
-   s" : DIAG-BALANCED-RSTACK ( i64 -- ) >r r> drop ;" LINE$ ;
-
 : ROW-DUP-EXTRA$ ( -- ptr u8 n )
    s" : DIAG-ROW-DUP-EXTRA ( R x -- R x ) dup ;" LINE$ ;
-
-: ROW-DUP-OK$ ( -- ptr u8 n )
-   s" : DIAG-ROW-DUP-OK ( R x -- R x x ) dup ;" LINE$ ;
-
-: TRUSTED-EVAL$ ( -- ptr u8 n )
-   s" : DIAG-TRUSTED-BOUNDARY ( -- i64 ) evaluate ;" LINE$ ;
-
-: TRUSTED-TRUST$ ( -- ptr u8 n )
-   SB-RESET
-   s" : DIAG-TRUSTED-BOUNDARY-TRUST ( -- i64 ) s" SB-APPEND DQ
-   s"  HIDDEN" SB-APPEND DQ
-   s"  s" SB-APPEND DQ
-   s"  -- i64" SB-APPEND DQ
-   s"  TRUST 42 ;" SB-APPEND
-   LF
-   SB$ ;
-
-: TRUSTED-SET-CHECK$ ( -- ptr u8 n )
-   s" : DIAG-TRUSTED-BOUNDARY-SET-CHECK ( -- i64 ) 0 set-check 42 ;" LINE$ ;
-
-: SIGNATURE-SYNTAX$ ( -- ptr u8 n )
-   s" : DIAG-SIGNATURE-SYNTAX ( i64 ) 1 + ;" LINE$ ;
 
 : DEEP-IFS ( -- )
    DEEP-IF-N 0 ?do s" 0 0= if " SB-APPEND loop ;
@@ -219,14 +182,6 @@ create ERR BUF-CAP allot
    then
    code expect T= ;
 
-: EXPECT-CLEAN ( n n n n -- )
-   {: outu:n erru:n code:n expect:n :}
-   outu erru code expect EXPECT-OUTCOME
-   outu 0 <> if outu erru code expect DUMP-CAPTURE then
-   erru 0 <> if outu erru code expect DUMP-CAPTURE then
-   OUT outu EMPTY$ T$=
-   ERR erru EMPTY$ T$= ;
-
 : EXPECT-DIAG ( n n n n -- n )
    {: outu:n erru:n code:n expect:n :}
    outu erru code expect EXPECT-OUTCOME
@@ -234,24 +189,11 @@ create ERR BUF-CAP allot
    OUT outu EMPTY$ T$=
    erru ;
 
-: CHECK-ACCEPTS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n body:ptr bodyu:n :}
-   SRC body bodyu WRITE-ALL
-   label labelu s" check" CONTEXT!
-   label labelu RUN-CHECK 0 EXPECT-CLEAN ;
-
 : BAD-BATCH-SOURCE ( -- )
    SRC-CLEAR
-   REMOVE-PRODUCER$ SRC+
-   ADD-PRODUCER$ SRC+
-   FIX-TYPE$ SRC+
-   FIX-RSTACK$ SRC+
    QUOT-RSTACK$ SRC+
    MIXED-RSTACK$ SRC+
    ROW-DUP-EXTRA$ SRC+
-   TRUSTED-EVAL$ SRC+
-   TRUSTED-TRUST$ SRC+
-   TRUSTED-SET-CHECK$ SRC+
-   SIGNATURE-SYNTAX$ SRC+
    REWRITE-UNCHECKABLE$ SRC+ ;
 
 : RUN-BAD-BATCH ( -- )
@@ -277,27 +219,15 @@ create ERR BUF-CAP allot
    DIAG word wordu src srcu exp expu act actu class classu GJA-DIAG-WORD-ROW-EFFECT ;
 
 : BAD-BATCH-ASSERTS ( -- )
-   s" diag-remove-producer" s" remove_producer" ASSERT-WORD-CLASS
-   s" diag-add-producer" s" add_producer" ASSERT-WORD-CLASS
-   s" diag-fix-type" s" fix_type" ASSERT-WORD-CLASS
-   s" diag-fix-rstack" s" fix_return_stack" ASSERT-WORD-CLASS
-   s" diag-fix-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
    s" diag-quot-rstack" EMPTY$ s" i64 " ASSERT-WORD-RSTACK
    s" diag-mixed-rstack" s" remove_producer" ASSERT-WORD-CLASS
    s" diag-mixed-rstack" s" i64 --" EMPTY$ s" i64 " s" remove_producer" ASSERT-WORD-ROW-EFFECT
-   s" diag-row-dup-extra" s" remove_producer" ASSERT-WORD-CLASS
    s" diag-row-dup-extra" s" R x -- R x" s" a " s" a a " s" remove_producer" ASSERT-WORD-ROW-EFFECT
-   s" diag-trusted-boundary" s" trusted_boundary_required" ASSERT-WORD-CLASS
-   s" diag-trusted-boundary-trust" s" trusted_boundary_required" ASSERT-WORD-CLASS
-   s" diag-trusted-boundary-set-check" s" trusted_boundary_required" ASSERT-WORD-CLASS
-   s" diag-signature-syntax" s" fix_signature_syntax" ASSERT-WORD-CLASS
    s" diag-rewrite-uncheckable" s" rewrite_uncheckable" ASSERT-WORD-CLASS ;
 
 : CASES ( -- )
    RUN-BAD-BATCH
-   BAD-BATCH-ASSERTS
-   s" balanced-return-stack" BALANCED-RSTACK$ CHECK-ACCEPTS
-   s" row-dup-ok" ROW-DUP-OK$ CHECK-ACCEPTS ;
+   BAD-BATCH-ASSERTS ;
 
 : RUN ( -- )
    T-RESET

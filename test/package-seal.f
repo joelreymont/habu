@@ -22,8 +22,7 @@
 \     wordlist, which the capture refuses to mark).
 \ Each program runs in a disposable fork of this engine (src/lib/test/subject.f),
 \ so a refusal ends the fork and not the suite. The whitebox engine keeps every
-\ package open (test/whitebox-engine-suite.f), so the image class is asserted
-\ first.
+\ package open, so the image class is asserted first.
 
 require src/lib/errors.f
 require src/lib/string.f

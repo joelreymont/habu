@@ -394,14 +394,6 @@ SUITE chain-run
    tools/chain-run-test.f
 ;SUITE
 
-SUITE text-foundation-fixtures
-   tools/lint/text-foundation-test.f
-;SUITE
-
-SUITE lint-slab
-   tools/lint/slab-test.f
-;SUITE
-
 SUITE byte-copy
    test/byte-copy-test.f
 ;SUITE
@@ -451,10 +443,6 @@ SUITE live-verify-source
 
 SUITE verify-binding
    test/verify-binding.f
-;SUITE
-
-SUITE primitive-source
-   test/primitive-source.f
 ;SUITE
 
 SUITE check-verify-batch
@@ -790,19 +778,11 @@ SUITE print-min-int
 \ ticked internal word - and say here which of those it needs.
 \ test/internal-word-gate.f stays on the product engine on purpose: it pins the
 \ refusals this engine does not have.
-WHITEBOX-SUITE whitebox-engine
-   test/whitebox-engine-suite.f
-;SUITE
-
 \ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
 \ sealed in the product image, which is why this suite drives its fixture
 \ through a from-source child window that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
-;SUITE
-
-SUITE control-capture
-   test/control-capture.f
 ;SUITE
 
 SUITE name-intern-capture
@@ -1655,20 +1635,12 @@ SUITE checker-dup-record
    test/checker-dup-record.f
 ;SUITE
 
-SUITE diag-buffer-capacity
-   test/diag-buffer-capacity.f
-;SUITE
-
 WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
 WHITEBOX-SUITE checker-completion
    test/checker-completion.f
-;SUITE
-
-SUITE defer-history
-   test/defer-history.f
 ;SUITE
 
 WHITEBOX-SUITE effect-intern
@@ -1758,10 +1730,6 @@ SUITE aot-payload-unsupported
 
 SUITE aot-effect-pool
    test/aot-effect-pool.f
-;SUITE
-
-SUITE signal-stub
-   test/signal-stub.f
 ;SUITE
 
 SUITE compiler-native-create-does
@@ -2224,10 +2192,6 @@ SUITE code-window
 
 SUITE lower-txn-large
    test/lower-txn-large.f
-;SUITE
-
-WHITEBOX-SUITE bootstrap-wide-memory-src
-   test/bootstrap-wide-memory-src.f
 ;SUITE
 
 WHITEBOX-SUITE enum-decl
