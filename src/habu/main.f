@@ -12,7 +12,7 @@
 \ Past argv[1] only `--` is special: `--load a.f --x` loads a file named `--x`.
 \
 \ Every route builds one stream of source, as the assembly does, and it is
-\ interpreted once through the closed SOURCE-ROOT:RUN-INTERPRET-RANGE seam.
+\ interpreted once, open, through SOURCE-ROOT:RUN-ROOT.
 \ `--load` writes a `s" <path>" script-required` row per file, so the registry
 \ loads each in its own include frame and skips a file the engine already
 \ holds. The program file, and the first file of `--build`, are read raw into
@@ -186,10 +186,9 @@ variable USED
    ARENA @ USED @ SHEBANG
    ARENA @ USED @ ;
 
-\ The root stream is one closed source unit: the loader closes the program's
-\ stack around it (src/core/include.f SOURCE-ROOT:RUN-INTERPRET-RANGE).
-: RUN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u 0 u SOURCE-ROOT:RUN-INTERPRET-RANGE ;
+\ The root stream runs open, as the engine's loop runs it: a program that
+\ leaves cells still exits 0 (src/core/include.f SOURCE-ROOT:RUN-ROOT).
+: RUN-TEXT ( ptr u8 n -- ) SOURCE-ROOT:RUN-ROOT ;
 
 \ APP-ENTRY holds an executable token supplied by the image writer. Keep the
 \ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.

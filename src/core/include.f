@@ -1848,8 +1848,6 @@ variable EVAL-END
 
 : EVAL-STAGED ( -- )
    EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ EVALUATE-RANGE-RAW ;
-: INTERPRET-STAGED ( -- )
-   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ INCLUDE-INTERPRET ;
 : INTERPRET-INSTALL ( -- ) [: EVAL-OPEN ;] is INCLUDE-INTERPRET ;
 INTERPRET-INSTALL
 
@@ -1878,7 +1876,12 @@ public
 \ Direct renderers own a closed program. Loader fragments use EVAL-OPEN
 \ inside LOAD-UNIT's whole-program boundary, so values can cross fragments.
 : RUN-EVAL-RANGE ( ptr u8 n n n -- ) [: EVAL-STAGED ;] CLOSE-RANGE ;
-: RUN-INTERPRET-RANGE ( ptr u8 n n n -- ) [: INTERPRET-STAGED ;] CLOSE-RANGE ;
+
+\ The process's root stream runs open, as the engine's own loop runs it: the
+\ program may leave cells on the stack and the process still exits 0. The
+\ files it loads keep their own closed units (LOAD-UNIT).
+: RUN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u 0 u INCLUDE-INTERPRET ;
 
 private
 
