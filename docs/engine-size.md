@@ -1247,25 +1247,30 @@ the same image as a fresh build. `image-size` charges the text pad, GOT, DATA
 pad, chained fixups and signature to their own file spans.
 
 One same-source Dots build illustrates the page effect. Both products use
-`/Users/joel/Work/dots/main.f` with SHA-256
-`ae5c3c7d38709fc55f43e7d79c03419e2de0af916c109a243e966bdec114827f`,
-the same engine with SHA-256
-`3f13e9191f05c888bb3d9f774e1426351c7a4196f4feb64c2dc0f3d7b514e070`,
-and Habu source based on `48f15050`. The first build uses that source unchanged;
-the second has the DATA placement change.
+Dots revision `a0b1e8f9476c16e6c515abf161d4236667725f99`, whose `main.f` has
+SHA-256 `cb1c5c830d2edb4e4e6492d0f04248c2752688259cf99bc2d441fb7272404fe4`,
+Habu source `9ff01561`, and the same engine with SHA-256
+`a30a9b645475f058fd1332ed2c3bd27659826b0e2fa6f1c663b585bb526543de`.
+The control omits only the macOS `AOT-PAYLOAD-PLACE` call, using the existing
+text-placement fallback. The production build restores that call. Both use
+the same sparse encoding, writer, source path and output path, with separate
+initially empty caches.
 
 | Dots stripped Mach-O | Before | After |
 | --- | ---: | ---: |
-| Code bytes | 142,720 | 142,720 |
-| Sparse DATA value bytes | 9,918 | 9,918 |
-| `__TEXT` segment bytes | 163,840 | 147,456 |
+| Code bytes | 155,620 | 155,620 |
+| Sparse DATA value bytes | 10,225 | 10,225 |
+| `__TEXT` segment bytes | 180,224 | 163,840 |
 | `__DATA_CONST` segment bytes | 16,384 | 16,384 |
-| Code signature bytes | 1,556 | 1,428 |
-| Complete signed file bytes | 181,884 | 165,372 |
+| Code signature bytes | 1,684 | 1,556 |
+| Complete signed file bytes | 198,396 | 181,884 |
 
 The file saves 16,512 bytes: one 16 KiB text page and 128 signature bytes.
-Both signatures pass `codesign --verify --strict`, and the latter image runs
-`--help` successfully. These are measured artifacts, not fixed size limits.
+The complete 11,080-byte encoded payload is identical. Code differs only in
+the startup instruction naming its new address. Both signatures pass
+`codesign --verify --strict`; both images run `--help` and `--version` with
+equal output. These checks cover placement and startup, not all Dots commands.
+These are measured artifacts, not fixed size limits.
 
 ### What frames the two classes
 
