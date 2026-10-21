@@ -773,6 +773,18 @@ variable HBB-APP-BUILDER-U
    hit HBB-MAKER-HIT !
    hit 0= HBB-MAKER-BUILD ! ;
 
+\ The saved AOT builder a build on BF-ENGINE$ runs, settled: the image
+\ HBB-RUN-MAKER-CMD selects by its producer key, so a row that settles it
+\ once (test/aot-builder-engine.f, test/linker-builder-engine.f) serves every
+\ build on that engine in the same cache root. The caller selects BF-ENGINE$.
+: HBB-MAKER-IMAGE$ ( n -- ptr u8 n )
+   {: timeout:n :}
+   HBB-RESET-OPTIONS
+   timeout HBB-MAKER-TIMEOUT-MS !
+   HBB-MAKER-KEY!
+   HBB-SELECT-MAKER
+   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ ;
+
 \ Select the saved maker before HBB-RUN-MAKER-ARGS stages argv and env: image
 \ publication has its own child and staging buffer. RUN loads the linker after
 \ OPEN latched the application span.
@@ -1343,9 +1355,13 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-PATH-ERROR$ HBB-WERR
    HBB-WERR-LF ;
 
+\ A build runs on the selected engine, else on the running one.
+: HBB-SELECT-ENGINE ( -- )
+   BF-ENGINE-SELECTED? 0= if ENGINE-ID:PATH$ BF-ENGINE! then ;
+
 : HBB-BUILD-BEGIN ( -- )
    mono-ns HBB-START-NS !
-   BF-ENGINE-SELECTED? 0= if ENGINE-ID:PATH$ BF-ENGINE! then
+   HBB-SELECT-ENGINE
    HB-BUILD:RESET
    HBB-RESET-TRACE
    HBB-READ-MAKER-TIMEOUT ;
@@ -1890,6 +1906,7 @@ EXPORT HBB-BUILD
 EXPORT HBB-EXIT
 EXPORT HBB-JSON
 EXPORT HBB-MAIN
+EXPORT HBB-MAKER-IMAGE$
 EXPORT HBB-ENGINE-RUN-PATH
 EXPORT HBB-PATHS!
 EXPORT HBB-PRESEED-ENTRY!

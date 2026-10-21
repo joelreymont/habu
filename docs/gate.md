@@ -304,6 +304,9 @@ at its deadline.
   (`test/whitebox-engine.f`; `whitebox-engine-build`), the saved AOT builder
   on the product engine and on the linker image (`test/aot-builder-engine.f`,
   `test/linker-builder-engine.f`; `aot-builder-build`, `linker-builder-build`),
+  both settled as the image hb-build's maker selection keys
+  (`tools/hb-build-lib.f` `HBB-MAKER-IMAGE$`), so a row's AOT hb-build
+  children on that engine find it,
   and the saved REPL builder (`test/app-builder-engine.f`;
   `app-builder-build`). A row needs an
   image when its load closure holds the image's module: the files it loads and

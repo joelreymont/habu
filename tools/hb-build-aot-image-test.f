@@ -3,7 +3,6 @@
 \ Run: bin/hb --load tools/hb-build-aot-image-test.f
 
 require tools/hb-build-test-lib.f
-require tools/aot-builder-image.f
 require src/lib/string.f
 require src/lib/process-cwd.f
 
@@ -39,7 +38,7 @@ variable HBT-MAKER-DIRECT-OUT-U
    SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
    1 SCRIPT-ARGV$ BUILD-CACHE:ROOT!
    2 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
-   HBB-MAKER-DEFAULT-MS AOT-BUILDER-IMAGE:PATH$ type cr ;
+   HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ type cr ;
 
 : HBT-MAKER-CHILD-SETUP ( -- )
    SCRIPT-ARGC 4 <> if E-TBL-BOUNDS throw then
@@ -164,10 +163,8 @@ variable HBT-MAKER-DIRECT-OUT-U
    then ;
 
 : HBT-MAKER-CACHE-PATH ( -- )
-   HBB-BUILD-BEGIN
-   HBB-MAKER-KEY!
-   HBB-SELECT-MAKER
-   HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ {: path:ptr pathu:n :}
+   HBB-SELECT-ENGINE
+   HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ {: path:ptr pathu:n :}
    HBB-MAKER-HIT @ 0<> TTRUE
    path pathu BASENAME s" hb-aot-builder-" STARTS-WITH? TTRUE
    path pathu EXECUTABLE? TTRUE ;
