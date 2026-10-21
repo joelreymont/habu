@@ -510,14 +510,18 @@ private
 \ closes the code window over the head's unit before it asks the checker; here
 \ that window is closed already: def-open closes its own, and evaluate's
 \ return closes the one an engine head opened. The engine finds
-\ NEUTRAL-PARSE-IMM? by name as it asks, and exits 70 naming it when no checker
-\ is loaded; this file binds it as it loads, after the engine's checker.
+\ NEUTRAL-PARSE-IMM? by name as it asks, so a checker loaded after it answers.
+\ Here the live checker owner answers (CHECKER-OWNER:PARSE-IMM?), the one the
+\ compiler asks at `;` when it passes over the token (elaborate.f): a binding
+\ fixed at this file's load would ask the retained checker, which never saw a
+\ `parse-imm` the replacement checker of a build window recorded, and the
+\ immediate would wait in the capture instead of running.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
    rec POLICY-CHECK-REC
-   rec TOKEN$ NEUTRAL-PARSE-IMM? ;
+   rec TOKEN$ CHECKER-OWNER:PARSE-IMM? ;
 
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
