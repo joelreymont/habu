@@ -87,10 +87,10 @@ belong in the language core.
 ## Verification and documentation
 
 - Each significant feature implementation needs an independent adversarial
-  review before landing, including lead-written code: on Astra when Codex
-  wrote it, on Fable when Claude Code did. Give the reviewer the requirements
-  and completed code, not the implementation discussion. Reviews must look for behavioral defects, overengineering and
-  opportunities to simplify. Fix confirmed findings or show they do not affect
+  review before landing, including lead-written code. Give the reviewer the
+  requirements and completed code, not the implementation discussion. Reviews
+  must look for behavioral defects, overengineering and opportunities to
+  simplify. Fix confirmed findings or show they do not affect
   outcomes; get focused follow-up review of fixes. Missing or interrupted
   reviews are not approval.
 - Never write unit tests after you write code.
