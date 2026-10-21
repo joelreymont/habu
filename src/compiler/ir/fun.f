@@ -378,15 +378,6 @@ private
    blr BHDR-CK
    blr HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
-\ An attribute-window lookup holds only the pool and the function table, so it
-\ checks that pairing itself: both stores are what their tags claim, both carry
-\ the same owning module serial, and that serial is the presented key's.
-: PFN-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
-   {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader key:IR-ID:ir-module-key :}
-   fnp PHDR-CK
-   fnr key FNKEY-CK
-   fnp HC-SERIAL IR-ARENA:RD@ fnr HC-SERIAL IR-ARENA:RD@ SERIAL-CK ;
-
 \ A block-table lookup that also names the function table checks the two are one
 \ module's pair, so a foreign function table can never answer a parent lookup.
 : BFN-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
@@ -454,23 +445,7 @@ private
 : BC@ ( IR-ARENA:reader n n -- n )
    BROW-CELL IR-ARENA:RD@ ;
 
-: PC@ ( IR-ARENA:reader n -- n )
-   HDR-CELLS + IR-ARENA:RD@ ;
-
 \ ---- the window tilings ------------------------------------------------------
-\ A function row's attribute window continues exactly where the row before it
-\ ended and ends inside the live pool, so overlap and gaps are both impossible
-\ and non-overlap costs one comparison against one neighbouring row.
-: FNAT-END ( IR-ARENA:reader n -- n )
-   {: fnr:IR-ARENA:reader l:n :}
-   fnr l OFF-ATST FNC@ LEN-OK  fnr l OFF-ATN FNC@ LEN-OK + ;
-
-: ATILE-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
-   {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader l:n :}
-   l 0= if 0 else fnr l 1- FNAT-END then {: at:n :}
-   at fnr l OFF-ATST FNC@ STEP-CK
-   fnr l FNAT-END fnp PCELLS > if E-IR-FUN-STATE throw then ;
-
 \ A function row's block window continues exactly where the row before it ended.
 \ Its upper bound belongs to the block table, so the readers that hold one check
 \ it there.
@@ -493,14 +468,6 @@ private
    {: blr:IR-ARENA:reader l:n :}
    l 0= if 0 else blr l 1- BOP-END then
    blr l OFF-OPST BC@ STEP-CK ;
-
-\ One element of a stored window, read only after the row's tiling holds.
-: AWIN@ ( IR-ARENA:reader IR-ARENA:reader n n -- n )
-   {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader l:n i:n :}
-   fnp fnr l ATILE-CK
-   fnr l OFF-ATN FNC@ {: ln:n :}
-   i 0 < i ln >= or if E-IR-FUN-BOUND throw then
-   fnp  fnr l OFF-ATST FNC@ i +  PC@ ORD-OK ;
 
 \ ---- the staged function and block --------------------------------------------
 \ Two package-owned stages under the single-task compilation discipline, in the
@@ -1019,24 +986,6 @@ public
    fnr key FNKEY-CK
    key fnr id OFF-SYM FNFLD ORD-OK IR-ID:PACK-SYMBOL ;
 
-: SIGNATURE@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-ID:ir-type-id )
-   {: f:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN-LIVE {: fnr:IR-ARENA:reader :}
-   fnr key FNKEY-CK
-   key fnr id OFF-SIG FNFLD ORD-OK IR-ID:PACK-TYPE ;
-
-: LINKAGE@ ( IR-ARENA:arena IR-ID:ir-fun-id -- IR-FUN:linkage )
-   {: f:IR-ARENA:arena id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN-LIVE id OFF-LNK FNFLD N>LNK ;
-
-: VISIBILITY@ ( IR-ARENA:arena IR-ID:ir-fun-id -- IR-FUN:visibility )
-   {: f:IR-ARENA:arena id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN-LIVE id OFF-VIS FNFLD N>VIS ;
-
-: CONVENTION@ ( IR-ARENA:arena IR-ID:ir-fun-id -- IR-FUN:convention )
-   {: f:IR-ARENA:arena id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN-LIVE id OFF-CC FNFLD N>CC ;
-
 \ The span this function came from. A span is a value, so the consumer
 \ revalidates it against the registry it names with IR-SOURCE:SPAN-CK.
 : SPAN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-SOURCE:span )
@@ -1052,36 +1001,6 @@ public
 : BLOCK-COUNT ( IR-ARENA:arena IR-ID:ir-fun-id -- n )
    {: f:IR-ARENA:arena id:IR-ID:ir-fun-id :}
    f IR-ARENA:OPEN-LIVE id OFF-BN FNFLD LEN-OK ;
-
-: ATTR-COUNT ( IR-ARENA:arena IR-ID:ir-fun-id -- n )
-   {: f:IR-ARENA:arena id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN-LIVE id OFF-ATN FNFLD LEN-OK ;
-
-: ATTR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-attr-id )
-   {: p:IR-ARENA:arena f:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
-   p IR-ARENA:OPEN-LIVE {: fnp:IR-ARENA:reader :}
-   f IR-ARENA:OPEN-LIVE {: fnr:IR-ARENA:reader :}
-   fnp fnr key PFN-CK
-   key fnp fnr  fnr id FNROW-AT  i AWIN@ IR-ID:PACK-ATTR ;
-
-\ One block of this function's block window. The window is revalidated as a
-\ tiling of the block table, the ordinal is bound-checked against that table,
-\ and the block is then asked whether it agrees that this function is its
-\ parent - so a window that reaches into another function's blocks is a named
-\ reject rather than a silent cross-function read.
-: BLOCK@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
-   {: f:IR-ARENA:arena b:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
-   b IR-ARENA:OPEN-LIVE {: blr:IR-ARENA:reader :}
-   f IR-ARENA:OPEN-LIVE {: fnr:IR-ARENA:reader :}
-   blr fnr key BFN-CK
-   fnr id FNROW-AT {: l:n :}
-   fnr l BTILE-CK
-   fnr l OFF-BN FNC@ LEN-OK {: ln:n :}
-   i 0 < i ln >= or if E-IR-FUN-BOUND throw then
-   fnr l OFF-BST FNC@ LEN-OK i + {: ord:n :}
-   ord blr BCNT >= if E-IR-FUN-BOUND throw then
-   blr ord OFF-PAR BC@ l <> if E-IR-FUN-PARENT throw then
-   key ord IR-ID:PACK-BLOCK ;
 
 \ ---- block readers -----------------------------------------------------------
 \ The function this block belongs to, bound-checked against the function table
@@ -1223,17 +1142,11 @@ public
    {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
    f IR-ARENA:OPEN id RBLOCK-COUNT ;
 
-: FATTR-COUNT ( IR-ARENA:view IR-ID:ir-fun-id -- n )
-   {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN id OFF-ATN FNFLD LEN-OK ;
-
-: FATTR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-attr-id )
-   {: p:IR-ARENA:view f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
-   p IR-ARENA:OPEN {: fnp:IR-ARENA:reader :}
-   f IR-ARENA:OPEN {: fnr:IR-ARENA:reader :}
-   fnp fnr key PFN-CK
-   key fnp fnr  fnr id FNROW-AT  i AWIN@ IR-ID:PACK-ATTR ;
-
+\ One block of this function's block window. The window is revalidated as a
+\ tiling of the block table, the ordinal is bound-checked against that table,
+\ and the block is then asked whether it agrees that this function is its
+\ parent - so a window that reaches into another function's blocks is a named
+\ reject rather than a silent cross-function read.
 : RBLOCK@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
    {: f:IR-ARENA:reader b:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
    b IR-ARENA:FROZEN-READER {: blr:IR-ARENA:reader :}
@@ -1252,15 +1165,6 @@ public
    {: f:IR-ARENA:view b:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
    b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
    f IR-ARENA:OPEN blr key id i RBLOCK@ ;
-
-: FPARENT@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-fun-id )
-   {: b:IR-ARENA:view f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
-   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
-   f IR-ARENA:OPEN {: fnr:IR-ARENA:reader :}
-   blr fnr key BFN-CK
-   blr id OFF-PAR BFLD ORD-OK {: par:n :}
-   par fnr FNCNT >= if E-IR-FUN-BOUND throw then
-   key par IR-ID:PACK-FUN ;
 
 : RARG-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
    {: b:IR-ARENA:reader id:IR-ID:ir-block-id :}

@@ -2497,8 +2497,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \
 \ A CONTRACT MIXING THE TWO KINDS IS NOT TESTED HERE ANY MORE. It cannot reach
 \ this pass at all now: A64M:MACHINE NEFF:ROUTINE refuses a declared convention that
-\ disagrees with the places it names, so the case is a construction case and
-\ lives in test/compiler/native-effect.f, in both directions.
+\ disagrees with the places it names.
 : CALL-REG-CONV ( -- NEFF:routine )
    NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE NEFF:GPR-NONE
    NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE

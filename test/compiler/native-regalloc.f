@@ -2414,7 +2414,7 @@ using A64RA
 \ arguments, this allocation would leave them in registers no caller ever wrote
 \ to, and it refuses instead. A side that names a register place and a data-stack
 \ place at once never reaches this pass: A64M:MACHINE NEFF:ROUTINE refuses that contract
-\ where it is built, and test/compiler/native-effect.f is where the case lives.
+\ where it is built.
 : DSLOT-Q ( n -- NEFF:placeseq )
    NEFF:SEQ-NONE swap NEFF:SEQ-WITH-SLOT ;
 

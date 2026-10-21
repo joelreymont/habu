@@ -246,22 +246,9 @@ private
    loop
    true ;
 
-: HASH ( ptr u8 n -- n )
-   {: p u:n :}
-   FNV-OFFSET
-   u 0 ?do
-      p i + c@ xor  FNV-PRIME *
-   loop
-   dup 32 rshift xor
-   dup 16 rshift xor ;
-
-public
-
 \ The deterministic content filter a symbol row stores: FNV-1a over the bytes
 \ (64-bit, offset basis FNV-OFFSET, prime FNV-PRIME), the resulting hash
-\ XOR-folded down onto FILTER-MASK bits. It is public so fixtures can force
-\ two different strings through one filter and prove the verify step
-\ discriminates.
+\ XOR-folded down onto FILTER-MASK bits.
 \
 \ WHAT THE VALUE OWES, AND WHAT IT DOES NOT. It is a pure function of the
 \ bytes and nothing else - no address, no ordinal, no interning order - taken
@@ -279,10 +266,14 @@ public
 \ changing it moves no digest anyone has stored. It cheaply rejects candidates;
 \ a cryptographic digest per intern was a steep price for sixteen bits of
 \ reject power that FNV-1a delivers in a few instructions per byte.
-: FILTER ( ptr u8 n -- n )
-   HASH FILTER-MASK and ;
-
-private
+: HASH ( ptr u8 n -- n )
+   {: p u:n :}
+   FNV-OFFSET
+   u 0 ?do
+      p i + c@ xor  FNV-PRIME *
+   loop
+   dup 32 rshift xor
+   dup 16 rshift xor ;
 
 \ ---- matching --------------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
@@ -532,7 +523,7 @@ public
 \ module the same spelling at the same ordinal: a caller that recorded an
 \ ordinal against the prototype can mint the identity it names in this module
 \ with IR-ID:PACK-SYMBOL and no lookup at all. The filter value a row stores is
-\ a pure function of the bytes (FILTER above), so it copies verbatim too - no
+\ a pure function of the bytes (HASH above), so it copies verbatim too - no
 \ row is recomputed and nothing here can disagree with what INTERN would have
 \ written.
 \
@@ -595,19 +586,6 @@ public
    key ord IR-ID:PACK-SYMBOL ;
 
 \ ---- live readers ------------------------------------------------------------
-\ Total bucket visits for one successful lookup of every interned symbol.
-\ This derives deterministic work from placement without instrumenting INTERN.
-: LOOKUP-PROBES ( IR-ARENA:arena -- n )
-   IR-ARENA:OPEN-LIVE dup RHDR-CK INDEX-CK {: ix:ptr :}
-   ix IX-CAP CDIGEST:SLOT@ {: cap:n :}
-   ix BUCKETS-FIELD @ {: buckets:ptr :}
-   0
-   cap 0 ?do
-      buckets i BK-ORD BUCKET@ 0<> if
-         i buckets i BK-HASH BUCKET@ - cap 1- and 1+ +
-      then
-   loop ;
-
 : SYMBOLS ( IR-ARENA:arena -- n )
    IR-ARENA:OPEN-LIVE dup RHDR-CK CNT ;
 

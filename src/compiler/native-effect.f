@@ -23,7 +23,7 @@
 \ only thing a caller and a callee have to agree about. The two general interface
 \ fields are therefore ordered lists rather than sets: `gpr-arg` says where each
 \ argument arrives, position by position, and `gpr-out` where each returned value
-\ leaves. The register sets are still answerable - GPR-IN@ and GPR-RESULT@ derive
+\ leaves. The register sets are still answerable - SEQ-SET derives
 \ them - so no reader lost anything, and there is no second place a convention
 \ could be written down and disagree from. This is what the register allocator
 \ pre-colours from and what its validator checks the finished assignment against,
@@ -76,11 +76,11 @@
 \ register its machine reserved, which is the invariant those per-set refusals
 \ were there for.
 \
-\ WHY THE DESTROYED SET IS COMPLETE AND THE PRESERVED SET IS DERIVED. A contract
+\ WHY THE DESTROYED SET IS COMPLETE AND THE PRESERVED SET IS NOT STORED. A contract
 \ that stored both could say a register is preserved and destroyed at once, and
 \ two readers of one contract would then disagree. The destroyed set is therefore
 \ total - it names every register the routine may write and not restore - and what
-\ the routine preserves is computed from it. For the same reason the link register
+\ the routine preserves follows from it. For the same reason the link register
 \ is NOT a member of the general-register sets even though x30 is a general
 \ register: whether the caller's return address survives is a different question
 \ from whether some scratch register does, and one fact must have one owner.
@@ -100,7 +100,7 @@
 \ FORGERY. `routine` is a public family, so its generated MAKE can assemble
 \ thirteen field values that never passed the checked constructor, and
 \ `placeseq` likewise can assemble a cell that is not a list at all. Every word
-\ here whose result carries identity or a decision - VALIDATE, SAME?, the derived interface, preserved and writable sets, RETURNS?,
+\ here whose result carries identity or a decision - VALIDATE, the writable sets, RETURNS?,
 \ CHECK-SLOT, and each of the list readers - revalidates its input first. The
 \ plain field readers do not: they only project a value the caller holds.
 \
@@ -138,17 +138,6 @@ STRUCTURE gprs DERIVE eq
 STRUCTURE fprs DERIVE eq
    FIELD bits n
 ;STRUCTURE
-
-\ ---- what one position of a convention names ---------------------------------
-\ A place is where one argument arrives or one returned value leaves. There are
-\ two kinds and the closed family says so, which is what makes every reader of a
-\ position answer for both: a general register, or a slot of the caller's data
-\ stack. The two codes are stable wire codes - they are the kind bit of the
-\ packing below.
-ENUM pkind DERIVE eq
-   gpr
-   dslot
-;ENUM
 
 \ ---- an ordered place list ---------------------------------------------------
 \ What a set cannot say: where argument two arrives. A nominal one-field record
@@ -256,9 +245,8 @@ STRUCTURE traits DERIVE eq
 ;STRUCTURE
 
 \ ---- the routine contract ----------------------------------------------------
-\ Fields in declaration order, deepest stack field first. It does not DERIVE eq -
-\ a structure field is not a derivable role - so SAME? below is the hand-written
-\ field-by-field identity. `conv` comes first because it is what says how to READ the two lists
+\ Fields in declaration order, deepest stack field first. It does not DERIVE eq:
+\ a structure field is not a derivable role. `conv` comes first because it is what says how to READ the two lists
 \ after it: a position means a register under one convention and a data-stack
 \ slot under the other, and an empty list means nothing at all without it.
 \ `gpr-arg` is the place each argument arrives in and `gpr-out` the place each
@@ -586,21 +574,6 @@ public
    {: set:gprs less:gprs :}
    set G-BITS GPR-CK less G-BITS GPR-CK invert and MK-G ;
 
-: FPR-WITHOUT ( NEFF:fprs NEFF:fprs -- NEFF:fprs )
-   {: set:fprs less:fprs :}
-   set F-BITS FPR-CK less F-BITS FPR-CK invert and MK-F ;
-
-\ Does the set hold every register of the probe set?
-: GPR-HAS? ( NEFF:gprs NEFF:gprs -- bool )
-   {: set:gprs probe:gprs :}
-   probe G-BITS GPR-CK {: want:n :}
-   set G-BITS GPR-CK want and want = ;
-
-: FPR-HAS? ( NEFF:fprs NEFF:fprs -- bool )
-   {: set:fprs probe:fprs :}
-   probe F-BITS FPR-CK {: want:n :}
-   set F-BITS FPR-CK want and want = ;
-
 \ ---- ordered place lists ------------------------------------------------------
 \ The convention that names nothing: a routine whose arguments arrive, or whose
 \ results leave, in no place this contract has an opinion about. It is also what
@@ -611,10 +584,6 @@ public
 \ How many positions one list can hold at all. A consumer that walks positions
 \ asks rather than assuming the packing.
 : SEQ-LIMIT ( -- n )              SEQ-MAX-N ;
-
-\ The largest data-stack slot index a position can name, which is the reach of a
-\ position's payload field. A consumer placing slots asks rather than assuming.
-: SEQ-SLOT-LIMIT ( -- n )         PAY-MASK ;
 
 private
 
@@ -665,15 +634,6 @@ private
 
 public
 
-\ Which kind of place one position names. Every reader of a position goes through
-\ this or is refused: there is no word that answers a payload without saying what
-\ it is, so a pass that treated a slot index as a register number would have had
-\ to ask for the register of a slot and be told no.
-: SEQ-KIND@ ( NEFF:placeseq n -- NEFF:pkind )
-   SEQ-POSITION {: w:n p:n :}
-   w SEQ-RANGE? if NEFF-PKIND:DSLOT exit then
-   w p SEQ-AT PLACE-SLOT? if NEFF-PKIND:DSLOT exit then NEFF-PKIND:GPR ;
-
 \ The register at one position. A position holding a data-stack slot is refused
 \ rather than answered with an index that would read as a register number.
 : SEQ-REG@ ( NEFF:placeseq n -- n )
@@ -699,15 +659,9 @@ public
    S-BITS SEQ-CK SEQ-MASK MK-G ;
 
 \ ---- traits ------------------------------------------------------------------
-: TRAIT-SET ( n -- NEFF:traits )   TRAIT-CK MK-T ;
 : TRAITS-N ( NEFF:traits -- n )    T-BITS ;
 : TRAITS-NONE ( -- NEFF:traits )   0 MK-T ;
 : T-CALL ( -- NEFF:traits )        BIT-CALL MK-T ;
-: T-INDIRECT ( -- NEFF:traits )    BIT-INDIRECT MK-T ;
-: T-SYSCALL ( -- NEFF:traits )     BIT-SYSCALL MK-T ;
-
-: TRAITS-WITH ( NEFF:traits NEFF:traits -- NEFF:traits )
-   T-BITS swap T-BITS or TRAIT-CK MK-T ;
 
 : TRAITS-HAS? ( NEFF:traits NEFF:traits -- bool )
    {: set:traits probe:traits :}
@@ -765,10 +719,6 @@ public
    NEFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop drop drop drop drop nip nip nip ;
 
-: FPR-IN@ ( NEFF:routine -- NEFF:fprs )
-   NEFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop drop drop drop nip nip nip nip ;
-
 : FPR-RESULT@ ( NEFF:routine -- NEFF:fprs )
    NEFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop drop drop nip nip nip nip nip ;
@@ -776,10 +726,6 @@ public
 : FPR-CLOBBER@ ( NEFF:routine -- NEFF:fprs )
    NEFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop drop nip nip nip nip nip nip ;
-
-: NZCV@ ( NEFF:routine -- NEFF:nzcv )
-   NEFF-ROUTINE:UNMAKE
-   drop drop drop drop drop drop nip nip nip nip nip nip nip ;
 
 : LINK@ ( NEFF:routine -- NEFF:link )
    NEFF-ROUTINE:UNMAKE
@@ -808,41 +754,16 @@ public
    nip nip nip nip nip nip nip nip nip nip nip nip nip ;
 
 \ ---- derived facts -----------------------------------------------------------
-\ Which registers the interface lists name, as sets. A caller that only wants to
-\ know whether a register takes part - and every caller before the convention was
-\ ordered wanted exactly that - asks here rather than walking positions, and the
-\ answer cannot contradict the list because there is nothing else to read it out
-\ of.
-: GPR-IN@ ( NEFF:routine -- NEFF:gprs )
-   VALIDATE ARGS@ SEQ-SET ;
-
-: GPR-RESULT@ ( NEFF:routine -- NEFF:gprs )
-   VALIDATE RESULTS@ SEQ-SET ;
-
-\ What survives the routine: every register of the file it neither returns nor
-\ destroys. Derived, never stored, so it cannot contradict the destroyed set.
-: GPR-PRESERVED ( NEFF:routine -- NEFF:gprs )
-   VALIDATE {: r:routine :}
-   r MACH@ NMACH:GPR-ALLOCATABLE   \ the machine says what there is to preserve
-   r RESULTS@ S-BITS SEQ-MASK invert and
-   r GPR-CLOBBER@ G-BITS invert and MK-G ;
-
 \ Every register the routine may WRITE: the ones it destroys, plus the ones it
 \ returns a value in. They are two roles and one register cannot be both, which
 \ is why they are two fields - but a register allocator does not care why a
 \ register may be written, only that it may, so the set it may hand out is this
-\ one and not the destroyed set alone. Derived for the same reason the preserved
-\ set is: a stored copy could disagree with the two fields it is made of.
+\ one and not the destroyed set alone. Derived, never stored:
+\ a stored copy could disagree with the two fields it is made of.
 : GPR-WRITABLE ( NEFF:routine -- NEFF:gprs )
    VALIDATE {: r:routine :}
    r RESULTS@ S-BITS SEQ-MASK
    r GPR-CLOBBER@ G-BITS or MK-G ;
-
-: FPR-PRESERVED ( NEFF:routine -- NEFF:fprs )
-   VALIDATE {: r:routine :}
-   r MACH@ NMACH:FPR-ALLOCATABLE   \ the machine says what there is to preserve
-   r FPR-RESULT@ F-BITS invert and
-   r FPR-CLOBBER@ F-BITS invert and MK-F ;
 
 \ The floating file's writable set, derived exactly as the general file's is:
 \ what the routine destroys plus what it returns a value in. A register
@@ -873,31 +794,5 @@ public
    off width mod 0<> if E-NEFF-SLOT throw then
    off width + size > if E-NEFF-SLOT throw then
    off  width m NMACH:SLOT-REACH  > if E-NEFF-SLOT throw then ;
-
-\ ---- identity ----------------------------------------------------------------
-\ Field-by-field identity. Both inputs are revalidated first, so a forged
-\ contract cannot be compared as if it were a declarable routine.
-: SAME? ( NEFF:routine NEFF:routine -- bool )
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: ycv:conv ygi:placeseq ygr:placeseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs
-      yz:nzcv yl:link yc:control yt:traits ysize:n ydelta:n ym:NMACH:mach :}
-   VALIDATE NEFF-ROUTINE:UNMAKE
-   {: xcv:conv xgi:placeseq xgr:placeseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs
-      xz:nzcv xl:link xc:control xt:traits xsize:n xdelta:n xm:NMACH:mach :}
-   xm ym NMACH-MACH:EQ
-   xcv ycv NEFF-CONV:EQ and
-   xgi ygi NEFF-PLACESEQ:EQ and
-   xgr ygr NEFF-PLACESEQ:EQ and
-   xgc ygc NEFF-GPRS:EQ and
-   xfi yfi NEFF-FPRS:EQ and
-   xfr yfr NEFF-FPRS:EQ and
-   xfc yfc NEFF-FPRS:EQ and
-   xz yz NEFF-NZCV:EQ and
-   xl yl NEFF-LINK:EQ and
-   xc yc NEFF-CONTROL:EQ and
-   xt yt NEFF-TRAITS:EQ and
-   xsize ysize = and
-   xdelta ydelta = and ;
-
 
 ;package

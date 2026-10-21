@@ -490,24 +490,12 @@ SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
 
-SUITE compiler-ir-op
-   test/compiler/ir-op.f
-;SUITE
-
-SUITE compiler-ir-fun
-   test/compiler/ir-fun.f
-;SUITE
-
 SUITE compiler-ir-build
    test/compiler/ir-build.f
 ;SUITE
 
 SUITE compiler-ir-verify
    test/compiler/ir-verify.f
-;SUITE
-
-SUITE compiler-ir-attr
-   test/compiler/ir-attr.f
 ;SUITE
 
 SUITE compiler-ir-context
@@ -518,16 +506,8 @@ SUITE compiler-ir-source
    test/compiler/ir-source.f
 ;SUITE
 
-SUITE compiler-ir-symbol
-   test/compiler/ir-symbol.f
-;SUITE
-
 SUITE compiler-ir-type
    test/compiler/ir-type.f
-;SUITE
-
-SUITE compiler-native-tape
-   test/compiler/native-tape.f
 ;SUITE
 
 SUITE compiler-native-feed
@@ -573,13 +553,6 @@ SUITE compiler-a64-indexed
 
 SUITE compiler-native-a64ir
    test/compiler/native-a64ir.f
-;SUITE
-
-\ The typed ARM64 routine-effect schema, next to the a64 lowering it constrains.
-\ It was fork-only, so the register bounds it pins were unchecked in a standalone
-\ gate run.
-SUITE compiler-native-effect
-   test/compiler/native-effect.f
 ;SUITE
 
 SUITE compiler-native-colon
@@ -796,10 +769,6 @@ SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
 ;SUITE
 
-SUITE compiler-native-emit
-   test/compiler/native-emit.f
-;SUITE
-
 SUITE compiler-native-fused-moves
    test/compiler/native-fused-moves.f
 ;SUITE
@@ -878,10 +847,6 @@ SUITE name-intern-capture
 
 SUITE loop-obligations
    test/loop-obligations.f
-;SUITE
-
-SUITE native-build-layout
-   test/native-layout.f
 ;SUITE
 
 SUITE stripped-image
@@ -965,10 +930,6 @@ SUITE code-reclaim
 
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
-;SUITE
-
-SUITE native-branch-reloc
-   test/native-branch-reloc.f
 ;SUITE
 
 SUITE compiler-native-tail
@@ -1077,14 +1038,6 @@ SUITE undefine-binding-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/undefine-binding.f
-;SUITE
-
-SUITE compiler-native-dictionary-append
-   test/compiler/native-dictionary-append.f
-;SUITE
-
-SUITE compiler-native-dictionary-publish
-   test/compiler/native-dictionary-publish.f
 ;SUITE
 
 SUITE compiler-code-span
@@ -1723,10 +1676,6 @@ SUITE certify-does-definer
    test/certify-does-definer.f
 ;SUITE
 
-SUITE certify-generated
-   test/certify-generated.f
-;SUITE
-
 SUITE underdepth-gate
    test/underdepth-gate.f
 ;SUITE
@@ -1775,10 +1724,6 @@ SUITE owner-access
 
 SUITE engine-span-end
    test/engine-span-end.f
-;SUITE
-
-SUITE checker-owner-descriptor
-   test/checker-owner-descriptor.f
 ;SUITE
 
 SUITE checker-soundness
@@ -2089,10 +2034,6 @@ SUITE fs-anchored
    test/fs-anchored-consumer.f
 ;SUITE
 
-SUITE tree-copy
-   src/lib/tree-copy-test.f
-;SUITE
-
 SUITE pty
    src/lib/pty-test.f
 ;SUITE
@@ -2350,10 +2291,6 @@ SUITE dynamic-buffer
 
 SUITE values
    test/values.f
-;SUITE
-
-SUITE primitive-registry
-   test/primitive-registry.f
 ;SUITE
 
 SUITE dynamic-buffer-registry

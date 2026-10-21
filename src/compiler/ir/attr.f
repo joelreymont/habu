@@ -130,29 +130,8 @@ public
    r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
    rr rr id ID-CK OFF-KIND RC@ N>KIND ;
 
-: INT@ ( IR-ARENA:arena IR-ID:ir-attr-id -- n )
-   {: r:IR-ARENA:arena id:IR-ID:ir-attr-id :}
-   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
-   rr id ID-CK {: l:n :}
-   rr l OFF-KIND RC@ K-INT KIND-CK
-   rr l OFF-VALUE RC@ ;
-
-: SYM@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-attr-id -- IR-ID:ir-symbol-id )
-   {: r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-attr-id :}
-   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
-   rr key KEY-CK
-   rr id ID-CK {: l:n :}
-   rr l OFF-KIND RC@ K-SYM KIND-CK
-   rr l OFF-VALUE RC@ dup 0 < if E-IR-ATTR-STATE throw then
-   key swap IR-ID:PACK-SYMBOL ;
-
 : FATTRS ( IR-ARENA:view -- n )
    IR-ARENA:OPEN dup HDR-CK CNT ;
-
-: FKIND@ ( IR-ARENA:view IR-ID:ir-attr-id -- IR-ATTR:kind )
-   {: rv:IR-ARENA:view id:IR-ID:ir-attr-id :}
-   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
-   rr rr id ID-CK OFF-KIND RC@ N>KIND ;
 
 : RINT@ ( IR-ARENA:reader IR-ID:ir-attr-id -- n )
    {: reader:IR-ARENA:reader id:IR-ID:ir-attr-id :}

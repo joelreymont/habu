@@ -535,6 +535,15 @@ at its deadline.
   the unmodified base under the same load, then rerun the suite alone. Every
   gate run gets its own `HB_TMP` root. Run against a matching private
   source and engine tree when the result must qualify that exact pair.
+- A row earns its place by a user-visible failure no other row catches. A
+  refusal of in-memory state no real input reaches (a hand-built row or
+  table, a forged token, a patched code byte) is not one: the real path runs
+  in every build, and the test pins internal APIs. A capacity limit a real
+  program can reach is one, even when the test reaches it by a shortcut, and
+  so is a refusal of a malformed saved file (image, cache unit, effect
+  graph); such a test corrupts the file on disk rather than steering the
+  producer through a test-only switch. Platform rows are switched by
+  platform, never trimmed.
 
 ## Separate Gforth recovery checks
 

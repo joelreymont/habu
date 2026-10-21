@@ -48,7 +48,6 @@ public
 
 : COUNT ( -- n ) USED @ ;
 : RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! ;
-: RELEASE ( -- ) RESET ROWS-RELEASE NAMES-RELEASE ;
 
 : ADD ( ptr u8 n label label -- n ) {: name:ptr size:n first:label last:label :}
    size RESERVE
