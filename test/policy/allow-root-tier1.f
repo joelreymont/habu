@@ -1,10 +1,12 @@
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require test/policy/dep.f
+using VOCABULARY
 1 set-tier
 
 : RUN ( -- )
-   s" test/policy/confined" POLICY:ROOT
-   s" PDEP" POLICY:ALLOW
-   POLICY:SEAL
+   s" test/policy/confined" SOURCE-ROOT!
+   s" PDEP" ALLOW-PACKAGE
+   RESTRICT
    0 SCRIPT-ARGV$ script-required ;
 RUN
+;using

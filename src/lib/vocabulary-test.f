@@ -1,18 +1,18 @@
-\ policy-test.f - the design seal through the real load path, at both tiers.
+\ vocabulary-test.f - the design seal through the real load path, at both tiers.
 \
 \ Every row is one child: `bin/hb --load test/policy/<harness>.f -- test/policy/<case>.f`.
 \ The harness admits package PDEP (test/policy/dep.f), seals and loads the case,
 \ so a case may name PDEP's public words, its own definitions and the design
-\ built-ins (docs/policy.md). allow.f compiles bodies with the JIT and
+\ built-ins (docs/vocabulary.md). allow.f compiles bodies with the JIT and
 \ allow-tier1.f with the native compiler; a case is run under both, because the
 \ two read a body's tokens at different sites.
 \
 \ A child is judged by its exit code, the first line of its stderr and its whole
-\ stdout, and leaves one line in build/policy-run.txt:
+\ stdout, and leaves one line in build/vocabulary-run.txt:
 \    <harness> <case> rc=<n> <first stderr line>
 \ with a location's path cut back to the tree-relative one, so the file reads
 \ the same from any checkout.
-\ Run: bin/hb --load src/lib/policy-test.f
+\ Run: bin/hb --load src/lib/vocabulary-test.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/string.f
@@ -23,7 +23,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
 
-package POLICY-TEST
+package VOCABULARY-TEST
 private
 
 60000 constant TIMEOUT-MS
@@ -33,7 +33,7 @@ PTR-VARIABLE STEM-A                    \ the harness the next child loads, as it
 variable STEM-U
 variable CODE                          \ the last child's exit code, -1 when it did not exit
 
-: ARTIFACT$ ( -- ptr u8 n ) s" build/policy-run.txt" ;
+: ARTIFACT$ ( -- ptr u8 n ) s" build/vocabulary-run.txt" ;
 : DIR$ ( -- ptr u8 n ) s" test/policy/" ;
 
 : HARNESS! ( ptr u8 n -- ) STEM-U ! STEM-A ! ;
@@ -200,8 +200,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:2" BOTH-REFUSE ;
 
 : WIDENING ( -- )
-   s" allow-call" s" hb: not in vocabulary: POLICY:ALLOW at test/policy/allow-call.f:2" BOTH-REFUSE
-   s" seal-call" s" hb: not in vocabulary: POLICY:SEAL at test/policy/seal-call.f:2" BOTH-REFUSE ;
+   s" allow-call" s" hb: not in vocabulary: VOCABULARY:ALLOW-PACKAGE at test/policy/allow-call.f:2" BOTH-REFUSE
+   s" seal-call" s" hb: not in vocabulary: VOCABULARY:RESTRICT at test/policy/seal-call.f:2" BOTH-REFUSE ;
 
 \ ---- refused in a body --------------------------------------------------------
 
@@ -302,7 +302,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" confined/forbidden" s" hb: not in vocabulary: included at test/policy/confined/forbidden.f:1" REFUSES
    s" confined/body" s" hb: not in vocabulary: require at test/policy/confined/body.f:1" REFUSES
    s" confined/string-required" s" hb: not in vocabulary: required at test/policy/confined/string-required.f:1" REFUSES
-   s" confined/root-call" s" hb: not in vocabulary: POLICY:ROOT at test/policy/confined/root-call.f:1" REFUSES
+   s" confined/root-call" s" hb: not in vocabulary: VOCABULARY:SOURCE-ROOT! at test/policy/confined/root-call.f:1" REFUSES
    s" allow-root-tier1" HARNESS!
    s" confined/parent" s" hb: policy: source outside root: " REFUSES
    s" confined/known" s" hb: policy: source outside root: " REFUSES
@@ -312,7 +312,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" confined/forbidden" s" hb: not in vocabulary: included at test/policy/confined/forbidden.f:1" REFUSES
    s" confined/body" s" hb: not in vocabulary: require at test/policy/confined/body.f:1" REFUSES
    s" confined/string-required" s" hb: not in vocabulary: required at test/policy/confined/string-required.f:1" REFUSES
-   s" confined/root-call" s" hb: not in vocabulary: POLICY:ROOT at test/policy/confined/root-call.f:1" REFUSES
+   s" confined/root-call" s" hb: not in vocabulary: VOCABULARY:SOURCE-ROOT! at test/policy/confined/root-call.f:1" REFUSES
    s" allow-root-direct" HARNESS!
    s" " 107 s" hb: policy: source outside root: " s" " RUNS
    s" allow-root-preflight" HARNESS!
@@ -339,4 +339,4 @@ public
 
 ;package
 
-POLICY-TEST:RUN
+VOCABULARY-TEST:RUN

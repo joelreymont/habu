@@ -897,10 +897,10 @@ variable STRAYS
 
 \ ---- policy belongs to the sealing process, not its saved image ----------
 : POLICY-SAVE$ ( -- ptr u8 n )
-   S\" : SAVE-POLICY ( -- ) s\q PDEP\q POLICY:ALLOW 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
+   S\" : SAVE-POLICY ( -- ) s\q PDEP\q VOCABULARY:ALLOW-PACKAGE 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
 
 : POLICY-SEALED-SAVE$ ( -- ptr u8 n )
-   S\" : SAVE-POLICY ( -- ) s\q PDEP\q POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
+   S\" : SAVE-POLICY ( -- ) s\q PDEP\q VOCABULARY:ALLOW-PACKAGE VOCABULARY:RESTRICT 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ; SAVE-POLICY\n" ;
 
 : POLICY-PROBE$ ( -- ptr u8 n )
    S\" POLICY-NDICT-CELL data-base + @ .\n: POLICY-BYTES ( -- n ) 0 PROT-BITS-BYTES 0 ?do POLICY-BITS-OFF data-base + i + c@ 0<> if 1+ then loop ; POLICY-BYTES .\n" ;

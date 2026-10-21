@@ -1,5 +1,5 @@
 \ allow-no-package.f - admitting a name no package owns is refused.
-require src/lib/policy.f
+require src/lib/vocabulary.f
 
-: RUN ( -- ) s" NOPE" POLICY:ALLOW ;
+: RUN ( -- ) s" NOPE" VOCABULARY:ALLOW-PACKAGE ;
 RUN

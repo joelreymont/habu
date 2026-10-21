@@ -1620,7 +1620,7 @@ public
 $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 ;package
-\ The design seal (src/lib/policy.f, docs/policy.md): a cell and bitmap that confine a
+\ The design seal (src/lib/vocabulary.f, docs/vocabulary.md): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
 \ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped

@@ -1,4 +1,4 @@
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require src/habu/verify-source.f
 
 : CHECK-OK ( -- )
@@ -14,7 +14,7 @@ require src/habu/verify-source.f
    CHECKER-SCOPE-DONE
    . ;
 : RUN ( -- )
-   s" test/policy/confined" [: CHECK-OK CHECK-IN ;] POLICY:WITH-ROOT
+   s" test/policy/confined" [: CHECK-OK CHECK-IN ;] VOCABULARY:WITH-SOURCE-ROOT
    s" test/policy/outside.f" SOURCE-ROOT:RESOLVE drop 2drop
    0 . cr ;
 RUN

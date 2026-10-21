@@ -18,7 +18,7 @@ $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 $2D68 constant INCLUDE-SRCLOC-OWNED-CELL
 $2D70 constant INCLUDE-SRCLOC-OWNEDLEN-CELL
-\ The design seal's watermark (src/lib/policy.f), spelled here the same way and
+\ The design seal's watermark (src/lib/vocabulary.f), spelled here the same way and
 \ reserved in src/habu/layout.f as POLICY-NDICT-CELL: 0 while nothing is sealed.
 $4898 constant INCLUDE-POLICY-NDICT-CELL
 $4CA0 constant INCLUDE-POLICY-REQUIRE-CELL

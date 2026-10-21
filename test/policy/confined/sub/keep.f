@@ -1,1 +1,1 @@
-\ A narrower directory for nested POLICY:WITH-ROOT.
+\ A narrower directory for nested VOCABULARY:WITH-SOURCE-ROOT.

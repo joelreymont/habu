@@ -1,22 +1,25 @@
-\ policy.f - seal the source a process reads to an admitted vocabulary.
+\ vocabulary.f - restrict loaded source to admitted packages' public words.
 \
 \ A harness loads the packages a design may call, admits each by name, seals,
-\ and only then reads the design. It may set ROOT before checking and sealing
-\ to admit confined static require. From the seal on, every source token the
+\ and only then reads the design. SOURCE-ROOT! optionally confines static
+\ require to a directory before checking or calling RESTRICT. From then on,
+\ every source token the
 \ engine reads resolves in the design's own definitions, in an admitted
 \ package's public words, or in the design built-ins, and anything else is
 \ `hb: not in vocabulary: <token> at <path>:<line>` with exit code
-\ ENGINE-ERROR:POLICY. docs/policy.md states the vocabulary, the refusals and
+\ ENGINE-ERROR:POLICY. docs/vocabulary.md states the vocabulary, the refusals and
 \ what an admitted package must guarantee.
 \
 \ The harness does all three steps inside one compiled word, because the seal
-\ governs the harness's own file too: a token it reads after SEAL is gated like
+\ governs the harness's own file too: a token it reads after RESTRICT is gated like
 \ the design's.
 \
-\    require src/lib/policy.f
+\    require src/lib/vocabulary.f
 \    require my/vocabulary.f
-\    : RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
+\    using VOCABULARY
+\    : RUN ( -- ) s" MY-VOCAB" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
 \    RUN
+\    ;using
 \
 \ All four words refuse once the process is sealed (`hb: policy: sealed`), so
 \ nothing a design reaches can widen its own vocabulary. There is no unseal.
@@ -25,7 +28,7 @@
 \ Task-local: the seal and optional require identity live in the sealing
 \ task's DATA header and govern the source that task reads.
 
-package POLICY
+package VOCABULARY
 private
 
 TYPED-VARIABLE REQUIRE-XT [ -- ]
@@ -35,15 +38,15 @@ public
 
 \ Admit the public words of the package this span names. A name no package
 \ owns is `hb: policy: no package <name>`.
-: ALLOW ( ptr u8 n -- ) policy-admit ;
+: ALLOW-PACKAGE ( ptr u8 n -- ) policy-admit ;
 
 \ Opt in to ordinary static require within this canonical directory.
-: ROOT ( ptr u8 n -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
+: SOURCE-ROOT! ( ptr u8 n -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-ROOT ;
 
 \ Scope the same boundary around a check that may return or throw.
-: WITH-ROOT ( ptr u8 n [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
+: WITH-SOURCE-ROOT ( ptr u8 n [ -- ] -- ) REQUIRE-XT @ SOURCE-ROOT:POLICY-WITH-ROOT ;
 
-\ Seal the process: every definition made from here on is the design's own.
-: SEAL ( -- ) policy-seal ;
+\ Activate the vocabulary restriction; it cannot be widened afterward.
+: RESTRICT ( -- ) policy-seal ;
 
 ;package

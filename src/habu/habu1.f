@@ -4293,7 +4293,7 @@ private
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
-\ The design seal's two writers (src/lib/policy.f, docs/policy.md). The harness
+\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md). The harness
 \ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
 \ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
 \ so nothing the design can reach widens its own vocabulary. Each refusal is one

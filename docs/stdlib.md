@@ -59,7 +59,7 @@ Planned module files:
 - `src/lib/process-command.f`
 - `src/lib/process-cwd.f`
 - `src/lib/process-tree.f`
-- `src/lib/policy.f`
+- `src/lib/vocabulary.f`
 - `src/lib/argv.f`
 - `src/lib/test.f`
 - `src/lib/test/assert.f`
@@ -110,7 +110,7 @@ theirs.
 | `src/lib/process-command.f` | caller-owned (`CMD` contexts) / process-wide (the `PROC-CMD` surface over one static context) |
 | `src/lib/process-cwd.f` | process-wide |
 | `src/lib/process-tree.f` | process-wide |
-| `src/lib/policy.f` | task-local (two cells of the sealing task's DATA header, the seal watermark and the admission bitmap, written once by the harness: the seal they hold governs the source that task reads) |
+| `src/lib/vocabulary.f` | task-local (two cells of the sealing task's DATA header, the seal watermark and the admission bitmap, written once by the harness: the seal they hold governs the source that task reads) |
 | `src/lib/net/tcp4.f` | task-local |
 | `src/lib/net/udp4.f` | task-local |
 | `src/lib/net/curl.f` | task-local |
@@ -3183,20 +3183,22 @@ writes while still throwing exact error codes, so tests can assert
 
 ## Sealed vocabulary
 
-`src/lib/policy.f` is package `POLICY`, for a harness that loads source it did not
-write. `POLICY:ALLOW ( ptr u8 n -- )` admits the public wordlist of the package
-it names, and `POLICY:SEAL ( -- )` seals the process: from then on the source
+`src/lib/vocabulary.f` is package `VOCABULARY`, for a harness that loads source it did not
+write. `VOCABULARY:ALLOW-PACKAGE ( ptr u8 n -- )` admits the public wordlist of the package
+it names, and `VOCABULARY:RESTRICT ( -- )` seals the process: from then on the source
 the engine reads may name only its own definitions, the admitted public words,
-numbers, locals and twelve keywords. Admit, seal and `included` the design inside
+numbers, locals and thirteen keywords. Admit, restrict and `included` the design inside
 one compiled word, because the seal governs the harness's own file from the seal
 on:
 
 ```forth
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require my/vocabulary.f
+using VOCABULARY
 
-: RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
+: RUN ( -- ) s" MY-VOCAB" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
+;using
 ```
 
 The harness's refusals are one stderr line each and exit code 107:
@@ -3210,7 +3212,7 @@ tiers. AArch64 only: the x86-64 kernel refuses both words with rc 76.
 An admitted package guarantees that every public word terminates on every input
 (a throw counts), that a parsing word consumes a bounded number of tokens, that
 no word stores to an address its caller supplies, and that no word widens what
-the design can name. [policy.md](policy.md) has the vocabulary, every refusal
+the design can name. [vocabulary.md](vocabulary.md) has the vocabulary, every refusal
 and why a sealed load terminates.
 
 ## Test Property And Build Helpers

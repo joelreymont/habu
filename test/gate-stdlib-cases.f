@@ -2006,9 +2006,9 @@ SUITE using-import
 ;SUITE
 
 \ The design seal: each test/policy case loaded sealed at both tiers, one child
-\ per row; writes build/policy-run.txt.
-SUITE policy
-   src/lib/policy-test.f
+\ per row; writes build/vocabulary-run.txt.
+SUITE vocabulary
+   src/lib/vocabulary-test.f
 ;SUITE
 
 SUITE trust-row-refusal

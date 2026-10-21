@@ -1,7 +1,9 @@
 \ allow-sealed-admit.f - admission after the seal is refused.
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require test/policy/dep.f
 require test/policy/foreign.f
+using VOCABULARY
 
-: RUN ( -- ) s" PDEP" POLICY:ALLOW POLICY:SEAL s" PFOREIGN" POLICY:ALLOW ;
+: RUN ( -- ) s" PDEP" ALLOW-PACKAGE RESTRICT s" PFOREIGN" ALLOW-PACKAGE ;
 RUN
+;using

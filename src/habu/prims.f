@@ -936,7 +936,7 @@ EPRIM: native-body-passive? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
-\ The design seal's two writers (src/lib/policy.f, docs/policy.md): admit a
+\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md): admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;

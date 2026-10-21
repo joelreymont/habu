@@ -1,6 +1,6 @@
-# Sealing a load to an admitted vocabulary
+# Restricting loaded source
 
-`src/lib/policy.f` confines the source a process reads to a vocabulary its harness
+`src/lib/vocabulary.f` confines the source a process reads to a vocabulary its harness
 chose. It is for a program that loads source it did not write: the harness loads
 the packages that source may call, admits them by name, seals, and then loads
 the source. From the seal on the engine refuses every token outside the
@@ -12,11 +12,13 @@ because its token loops do not read the seal.
 ## Use
 
 ```forth
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require my/vocabulary.f
+using VOCABULARY
 
-: RUN ( -- ) s" MY-VOCAB" POLICY:ALLOW POLICY:SEAL 0 SCRIPT-ARGV$ included ;
+: RUN ( -- ) s" MY-VOCAB" ALLOW-PACKAGE RESTRICT 0 SCRIPT-ARGV$ included ;
 RUN
+;using
 ```
 
 ```sh
@@ -27,24 +29,26 @@ For a design split across source files, configure a canonical directory before
 checking and sealing it:
 
 ```forth
-require src/lib/policy.f
+require src/lib/vocabulary.f
 require my/vocabulary.f
+using VOCABULARY
 
 : RUN ( -- )
-   0 SCRIPT-ARGV$ POLICY:ROOT
-   s" MY-VOCAB" POLICY:ALLOW
-   POLICY:SEAL
+   0 SCRIPT-ARGV$ SOURCE-ROOT!
+   s" MY-VOCAB" ALLOW-PACKAGE
+   RESTRICT
    1 SCRIPT-ARGV$ script-required ;
 RUN
+;using
 ```
 
 Here argument 0 is the design directory and argument 1 its entry file.
 `script-required` loads a command-line entry with its directory as the owner
 for nested relative `require` paths.
-`POLICY:ROOT` resolves the directory to a canonical searchable path. From that
+`VOCABULARY:SOURCE-ROOT!` resolves the directory to a canonical searchable path. From that
 point, the ordinary source resolver and loader refuse a canonical path outside
 it before returning a registry hit or reading bytes. This applies to a checker
-or verifier pass before `SEAL` as well as to the sealed load. A `..` escape, an
+or verifier pass before `RESTRICT` as well as to the sealed load. A `..` escape, an
 absolute path, a symlink or a Habu library fallback outside the root fails
 with code 107 and `hb: policy: source outside root: <path>`. The trusted
 harness's `script-required` entry is checked too. Source files are not rewritten.
@@ -53,25 +57,25 @@ A process that checks several designs scopes each preflight:
 
 ```forth
 design-dir [: design-source design-path VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;]
-POLICY:WITH-ROOT
+VOCABULARY:WITH-SOURCE-ROOT
 ```
 
-`WITH-ROOT` also uses that directory as the owner for nested relative
+`WITH-SOURCE-ROOT` also uses that directory as the owner for nested relative
 `require` paths during the callback. It restores the previous root and owner
 on return or throw, and scopes may nest.
 It refuses if the process is already sealed. If its callback seals, the new
 root remains in force and leaving the scope throws 107; the seal never widens.
-After preflight, a final design run sets `ROOT` and `SEAL` in the same process.
+After preflight, a final design run calls `SOURCE-ROOT!` and `RESTRICT` in the same process.
 
 | word | effect | does |
 |---|---|---|
-| `POLICY:ALLOW` | `( ptr u8 n -- )` | admits the public words of the package the span names |
-| `POLICY:ROOT` | `( ptr u8 n -- )` | opts in to confined static `require` beneath this directory |
-| `POLICY:WITH-ROOT` | `( ptr u8 n [ -- ] -- )` | scopes the root around one preflight callback |
-| `POLICY:SEAL` | `( -- )` | seals the process |
+| `VOCABULARY:ALLOW-PACKAGE` | `( ptr u8 n -- )` | admits the public words of the package the span names |
+| `VOCABULARY:SOURCE-ROOT!` | `( ptr u8 n -- )` | opts in to confined static `require` beneath this directory |
+| `VOCABULARY:WITH-SOURCE-ROOT` | `( ptr u8 n [ -- ] -- )` | scopes the root around one preflight callback |
+| `VOCABULARY:RESTRICT` | `( -- )` | seals the process |
 
 - Admit, seal and load inside **one compiled word**. The seal governs the
-  harness's own file too: a token the engine reads from it after `SEAL` is gated
+  harness's own file too: a token the engine reads from it after `RESTRICT` is gated
   like the design's.
 - All four words refuse once the process is sealed: `hb: policy: sealed`, exit
   code 107. There is no unseal, and a fresh process is unsealed.
@@ -100,7 +104,7 @@ After the seal a token is in the vocabulary when it is one of these.
 - A public word of an admitted package that checked source may call. A word
   marked internal to the engine is not one, even when an admitted package's
   public wordlist holds it.
-- With `POLICY:ROOT` set before the seal, the ordinary global `require` record
+- With `VOCABULARY:SOURCE-ROOT!` set before the seal, the ordinary global `require` record
   at top level. Its path is a literal source token. The same record in a
   definition body remains refused at both tiers.
 
@@ -112,7 +116,7 @@ Nothing else is. There is no arithmetic, no stack word, no loop, no `recurse`,
 no quotation or execution token, no definer other than `:`, no store or fetch,
 no other string form, no `included` or `evaluate`, and no
 `trusted:`. The admitted packages supply every operation a design performs.
-Without `POLICY:ROOT`, `require` remains refused.
+Without `VOCABULARY:SOURCE-ROOT!`, `require` remains refused.
 
 The seal removes words. The optional root confines source resolution. The checker still certifies
 every body at `;` and refuses one that breaks its effect, a throw still ends
@@ -142,7 +146,7 @@ harness catches.
 | the same word through `using` | the bare name |
 | a private word of an admitted package, qualified or from inside it | the name |
 | an internal word of an admitted package | the name |
-| `POLICY:ALLOW`, `POLICY:ROOT`, `POLICY:WITH-ROOT`, `POLICY:SEAL` | the qualified name |
+| `VOCABULARY:ALLOW-PACKAGE`, `VOCABULARY:SOURCE-ROOT!`, `VOCABULARY:WITH-SOURCE-ROOT`, `VOCABULARY:RESTRICT` | the qualified name |
 | `begin`, `do`, `exit`, `>r`, `recurse`, `[:`, `[']`, `[char]`, `[`, `postpone` in a body | the keyword |
 | a call to the definition being compiled | its name |
 | `: begin ( -- ) ;`, `: dup ( -- n ) 5 ;`, `: create ( -- ) ;` | the name |
@@ -173,7 +177,7 @@ load form a graph ordered by dictionary index, and every run is bounded by
 induction on that index down to the admitted words. No fuel, timeout or
 analysis pass is involved.
 
-With `POLICY:ROOT`, top-level `require` reads statically named files inside the
+With `VOCABULARY:SOURCE-ROOT!`, top-level `require` reads statically named files inside the
 root. The registry marks a file before loading it, so repeated and cyclic
 requires do not replay it. Those files' definitions obey the same ordered call
 rule; a body cannot form a dynamic require or execute an unadmitted loader.
@@ -214,5 +218,5 @@ keyword row generated from the rows' own registrars, so a new row is covered
 when it is added. The native compiler never reads the seal: it binds only names
 the capture already admitted.
 
-`src/lib/policy-test.f` loads each case under `test/policy/` sealed at both tiers
-and writes `build/policy-run.txt`, one line per child.
+`src/lib/vocabulary-test.f` loads each case under `test/policy/` sealed at both tiers
+and writes `build/vocabulary-run.txt`, one line per child.
