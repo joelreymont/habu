@@ -144,6 +144,10 @@ variable TG-COL-NAME
    TG-DIR$ TG-CACHE-NAME 7 TG-CACHE-PATH JOIN-PATH {: u:n :}
    TG-CACHE-PATH u ;
 
+\ Qualified products no longer need their private build caches.
+: TG-CACHE-CLEANUP ( n -- )
+   0 ?do i 1+ TG-CACHE$ REMOVE-TREE loop ;
+
 \ The first line of a capture, so a stop names one diagnostic, not a trace.
 : TG-LINE1 ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < while
@@ -402,7 +406,8 @@ variable TG-COL-NAME
    TG-SHAPE-CHECK
    4 TG-GEN
    5 TG-GEN
-   TG-FIXPOINT ;
+   TG-FIXPOINT
+   5 TG-CACHE-CLEANUP ;
 
 \ Both uncached invocations execute the same private copy of the seed. TG-GEN
 \ normally advances the host, so restore generation 0 before the second build.
@@ -416,7 +421,8 @@ variable TG-COL-NAME
       1 TG-OWNER 2 TG-OWNER
       TG-FAIL-RC throw
    then
-   s" two-gen: same-host builds match byte for byte" type cr ;
+   s" two-gen: same-host builds match byte for byte" type cr
+   2 TG-CACHE-CLEANUP ;
 
 : TG-COMPARE ( -- )
    1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ TG-BYTE-DIFF {: n:n :}

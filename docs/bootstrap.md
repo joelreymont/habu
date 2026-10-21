@@ -155,7 +155,9 @@ Use an external scratch directory for `$TMP`, as described in
 zero. The tool prints its private output directory and leaves the installed
 engine alone. Every build uses a separate empty cache under that directory,
 including the two builds in same-host mode, so cached support and FILE
-artifacts cannot affect the comparison.
+artifacts cannot affect the comparison. After a successful chain or same-host
+comparison, the tool removes those private caches and retains the generation
+executables, maps and logs. Failed runs retain their caches for diagnosis.
 Its same-host mode builds twice with one host to check repeatability:
 
     HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
