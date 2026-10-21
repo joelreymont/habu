@@ -2335,17 +2335,16 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ (test/aot-address-cell-target-out-bad.f).
 \ THE SPAN IS A WHOLE NUMBER OF CELLS, and the bytes the rounding adds are above
 \ the captured DP: never read here, zero in the seeded engine, and they leave its
-\ DP cell-aligned. The base has to be cell-aligned already, because every
-\ declared address cell in the window must fall on one grid cell for the capture
-\ to leave its bits clear (measured on the release engine: base residue 0, and
-\ all 33,324 window cells eight-byte aligned).
+\ DP cell-aligned. The base is cell-aligned by construction - src/habu/aot-arm.f
+\ LATCH-OPEN aligns DP before it latches D0, and ACAP-START admits only the
+\ latched span - because every declared address cell in the window must fall on
+\ one grid cell for the capture to leave its bits clear (measured on the release
+\ engine: all 33,324 window cells eight-byte aligned).
 : ACAP-BAKE-DATA ( n n n n -- )
    {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
-   d0 AOT-WINDOW:CELL-BYTES mod 0<> if
-      s" aot-capture: the captured DATA window base is not cell-aligned" 74 die then
    len ACAP-WLEN !
    len AOT-WINDOW:CELL-BYTES 1- +
    AOT-WINDOW:CELL-BYTES / AOT-WINDOW:CELL-BYTES * {: rlen:n :}

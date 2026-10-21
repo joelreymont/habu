@@ -57,7 +57,7 @@ $1000 constant PROG-CAP
 600000 constant SAVE-TIMEOUT-MS
 1800000 constant BUILD-TIMEOUT-MS
 \ A prompt line holds 255 bytes, so `cd <name>` names at most this much; four
-\ nested names fit the 1024-byte path cap and a fifth does not.
+\ nested names fit the 1023-byte path cap and a fifth does not.
 200 constant LONG-NAME
 \ One more than the path stack holds (src/core/include.f PATH-DEPTH).
 9 constant OVER-DEPTH

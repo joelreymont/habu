@@ -103,6 +103,13 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ E-PATH-RANGE a PRIM: row: this file loads before the checker, and without
 \ the row a checked body that names either is E-UNDEFINED on an engine that
 \ boots its prefix from source (test/cold-naming-test.f).
+\ The value is PATH_MAX - 1 of the smallest supported target, so every path
+\ this gate admits is one the OS accepts: Darwin's PATH_MAX is 1024 counting
+\ the NUL, and a 1024-byte path passed a cap of 1024 only for lstat to answer
+\ ENAMETOOLONG (src/lib/fs-test.f FS-TEST-PATH-CAP-EDGE). Linux's PATH_MAX is
+\ 4096, but its builds keep 1023 too: the per-task FS-ABI and FS-MUT-ABI bands
+\ (src/habu/layout.f) hold path buffers of this size inside USER-REGION-END,
+\ which has no room for 4095-byte ones.
 \ The buffers of another size are the ones something else fixes:
 \   - an OS limit: a pty slave name (src/lib/pty.f SLAVE-PATH-CAP, Darwin's
 \     TIOCPTYGNAME answer) and a /proc/self/maps pathname
@@ -111,7 +118,7 @@ variable REG-PROT-N   0 REG-PROT-N !
 \     (src/habu/habu1.f SPAWN-CHDIR-PATH-CAP);
 \   - a bootstrap stage that cannot see this file: the Gforth fixture's
 \     NF-PATH-CAP (docs/gate.md "Separate Gforth recovery checks").
-1024 constant PATH-CAP
+1023 constant PATH-CAP
 7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP bytes
 : PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )
    u 0 < IF E-PATH-RANGE throw THEN

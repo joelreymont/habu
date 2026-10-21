@@ -237,7 +237,7 @@ CELL-GRID:VMAX constant VMAX
 \ cell in the window is eight-byte aligned in DATA - the atomics fault on a
 \ misaligned cell - and each must fall on exactly one grid cell, because the
 \ capture leaves its bits clear and lets the seed write the value. So a window
-\ whose base is not cell-aligned is refused by its writer, and a span is rounded
+\ opens on a cell-aligned base (src/habu/aot-arm.f LATCH-OPEN), and a span is rounded
 \ UP to a whole number of cells: the bytes it gains are above the captured DP,
 \ never read, and zero by construction. One grid also makes a merge a splice:
 \ two windows captured against cell-aligned bases share it, so an appended

@@ -124,8 +124,19 @@ public
 
 private
 
+\ THE WINDOW OPENS ON A WHOLE CELL, the way `create` publishes one: `align`
+\ before D0 is latched. A capture describes its DATA as one presence bit and one
+\ value per grid cell (src/habu/aot-decl.f package AOT-WINDOW), every declared
+\ address cell must fall on one of them, and a merge splices two windows' grids
+\ (src/habu/aot-file.f ?BASES), so the base is the grid's origin. `allot` never
+\ realigns, so the DP an opener meets is whatever the last buffer left: a
+\ PATH-CAP path buffer or a SHA256-FILE-CTX-BYTES context is an odd byte count,
+\ and an app image restores its exact cursor. The pad lies below the window and
+\ never travels; an opener whose DP is already aligned gets no pad, so a build
+\ that met an aligned DP writes the same bytes as before.
 : LATCH-OPEN ( -- )
    CANCEL
+   align
    cp@ B0 ! ndict@ R0 ! HERE-N D0 ! WIDN W0 ! ;
 
 public

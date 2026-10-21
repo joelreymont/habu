@@ -3367,8 +3367,8 @@ variable LOAD-U
 \ Whether a string loader's body load of LOAD$ loads its file: an `included`
 \ source the engine already provides waits until the body actually runs; other
 \ body loads keep their normal dependency validation. Also false when the
-\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2050
-\ bytes or more, relative and 2050 bytes or more joined as root, `/` and path
+\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2048
+\ bytes or more, relative and 2048 bytes or more joined as root, `/` and path
 \ to a root searched before one holds the file, or over PATH-CAP once
 \ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
 \ NORMALIZE), as the engine's loader does when the

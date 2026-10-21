@@ -237,11 +237,8 @@ variable WINDOW-ENDED
 \ one REQUIRE because src/habu/debug.f requires the watch cells and the stepper
 \ itself, and naming all three again loaded each of them twice (`duplicate
 \ definition: BPW-MAX`). The cold host provides none of the four, so the require
-\ reads the file. The capture refuses a DATA window base off the cell grid, and
-\ the host-side lines before it leave HERE wherever their string bytes ended, so
-\ the window opens on an aligned HERE.
+\ reads the file.
 : CAPTURE-REPL-LINES ( -- )
-   s" align" DRV-LINE
    s" AOT-ARM:WINDOW-OPEN" DRV-LINE
    HB-TARGET-LINUX? if s" include src/os/linux/repl-term.f"
    else s" include src/os/macos/repl-term.f" then DRV-LINE

@@ -105,7 +105,7 @@ $1000 constant SHA-IO-CAP
 \ is cell-aligned by the same rule), the 32-byte binary digest, the read buffer,
 \ and the NUL-terminated path the open is handed — PATHZ writes it here because
 \ PATH0's own scratch is process-wide and two tasks would race on it. The path
-\ region is a whole number of cells so the total is one too.
+\ region is PATH-CAP bytes and a cell, room for the longest path and its NUL.
 SHA256-CTX-BYTES constant SHA-FILE-DG-OFF
 SHA-FILE-DG-OFF $20 + constant SHA-FILE-IO-OFF
 SHA-FILE-IO-OFF SHA-IO-CAP + constant SHA-FILE-PATH-OFF

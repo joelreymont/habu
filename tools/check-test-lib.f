@@ -88,8 +88,8 @@ create MUT-LABEL FS-PATH-CAP allot
 create MUT-PATH FS-PATH-CAP allot
 create BOUNDARY-OUT BUF-CAP allot
 create CLEANUP-TMP FS-PATH-CAP allot
-create CLI-TARGET FS-PATH-CAP allot
-create CLI-HB FS-PATH-CAP allot
+create CLI-TARGET FS-PATHZ-CAP allot
+create CLI-HB FS-PATHZ-CAP allot
 create ENV-PROBE-PATH FS-PATH-CAP allot
 
 TYPED-VARIABLE OUT-A ptr u8
@@ -165,7 +165,7 @@ variable START-NS
 \ where PWD is unset, and a link target joined to an empty PWD dangles, so a
 \ child run among LC-ROOT's links dies 74 on its own load path.
 : CLI-ABS! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n buf:ptr lenp:ptr :}
-   a u FS-PATHZ buf FS-PATH-CAP realpath {: n:n :}
+   a u FS-PATHZ buf FS-PATHZ-CAP realpath {: n:n :}
    n 0 <= if E-FS-PATH throw then
    n lenp ! ;
 
@@ -4304,7 +4304,7 @@ variable REQ-U
    s" ckt-ut-esc.f" UT-CODE$ UT-ESC-TOKEN$ UT-ESC-AT$ ONE-MODES ;
 
 \ A require of a file that is not there, of one the file system will not read,
-\ or of a literal path within the 1024 bytes `require` takes that resolves
+\ or of a literal path within the 1023 bytes `require` takes that resolves
 \ past them, and a loader form discovery cannot follow, stop the require
 \ closure. Every --json-errors mode reports each by one record at the loader
 \ word, in the file that holds it, and fails as a refusal; a source that
@@ -4363,9 +4363,9 @@ variable REQ-U
    s" ckt-cl-long.f" CL-DYN-CODE$ CL-REQUIRE-TOKEN$ CL-LONG-AT$ ONE-MODES ;
 
 \ The engine's resolver alone caps a loader's path: it refuses an absolute one
-\ of 2050 bytes or more, a relative one that is 2050 bytes or more joined as
+\ of 2048 bytes or more, a relative one that is 2048 bytes or more joined as
 \ root, `/` and path to a root searched before one holds the file, and one over
-\ 1024 bytes once normalized (src/core/include.f SOURCE-ROOT CHECK,
+\ 1023 bytes once normalized (src/core/include.f SOURCE-ROOT CHECK,
 \ SEARCH-ROOTS, JOIN! and NORMALIZE). At top level
 \ the load runs while the file loads, so every mode refuses such a path at its
 \ loader word and follows any other literal one, however long as written: 512
@@ -4375,7 +4375,7 @@ variable REQ-U
 \ verifies its source: the walk reads past it and the composition loads
 \ nothing from it, here even where the path names a file the check would
 \ refuse. One after any other literal path loads its file, which keeps its
-\ own refusals, such as its top-level loader whose path resolves past 1024
+\ own refusals, such as its top-level loader whose path resolves past 1023
 \ bytes. Each source is over the string builder, so the BIG row holds it.
 : CLB-OPEN ( ptr u8 n -- )   \ `: NAME ( -- ) s" `
    0 BIG-U !
@@ -4393,18 +4393,18 @@ variable REQ-U
    $22 BIG-C, s"  required" BIG-APP tail tailu BIG-APP $0a BIG-C,
    REQ$ BIG BIG-U @ WRITE-ALL ;
 
-\ 1018 `./` and the 14 bytes of ckt-cl-under.f are 2050 bytes.
+\ 1017 `./` and the 14 bytes of ckt-cl-under.f are 2048 bytes.
 : CLB-FILES ( -- )
    SB-RESET s" : CKT-CL-UNDER ( -- ) dup ;" REQ-LINE+
    s" ckt-cl-under.f" REQ-WRITE
    SB-RESET CL-LONG+ s" ckt-cl-top-long.f" REQ-WRITE
    CLB-TOP s" ./" 512 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
    s" ckt-cl-top-pad.f" s" " CLB-WRITE
-   CLB-TOP s" ./" 1018 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   CLB-TOP s" ./" 1017 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
    s" ckt-cl-top-over.f" s" " CLB-WRITE
-   s" CKT-CL-BL" CLB-OPEN s" a" 1025 CLB-REPEAT s" ckt-cl-body-long.f" s"  ;" CLB-WRITE
-   s" CKT-CL-BR" CLB-OPEN s" a" 1024 CLB-REPEAT s" ckt-cl-body-res.f" s"  ;" CLB-WRITE
-   s" CKT-CL-BO" CLB-OPEN s" ./" 1018 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
+   s" CKT-CL-BL" CLB-OPEN s" a" 1024 CLB-REPEAT s" ckt-cl-body-long.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BR" CLB-OPEN s" a" 1023 CLB-REPEAT s" ckt-cl-body-res.f" s"  ;" CLB-WRITE
+   s" CKT-CL-BO" CLB-OPEN s" ./" 1017 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
    s" ckt-cl-body-over.f" s"  ;" CLB-WRITE
    s" CKT-CL-BP" CLB-OPEN s" ./" 512 CLB-REPEAT s" ckt-cl-under.f" BIG-APP
    s" ckt-cl-body-pad.f" s"  ;" CLB-WRITE
@@ -4418,7 +4418,7 @@ variable REQ-U
    s\" \"token\":\"required\",\"file\":" ;
 
 : CLB-OVER-AT$ ( -- ptr u8 n )
-   s\" /ckt-cl-top-over.f\",\"line\":1,\"column\":2056,\"byte_start\":2055,\"byte_end\":2063," ;
+   s\" /ckt-cl-top-over.f\",\"line\":1,\"column\":2054,\"byte_start\":2053,\"byte_end\":2061," ;
 
 : CLB-UNDER-CODE$ ( -- ptr u8 n )
    s\" \"code\":\"E-INPUT-UNDERFLOW\",\"repair_class\":\"supply_missing_input\"," ;
@@ -4439,7 +4439,7 @@ variable REQ-U
 : EXPECT-VO-PAD ( n n n -- )
    CLB-UNDER-CODE$ CLB-DUP-TOKEN$ CLB-UNDER-AT$ EXPECT-ONE ;
 
-\ --verify-only refuses the 2050-byte path at its loader word as the other modes
+\ --verify-only refuses the 2048-byte path at its loader word as the other modes
 \ do, and writes the verdict's reason on standard output: the subject's
 \ canonical path and why. The test root may lie behind a symlink (macOS's /var).
 : EXPECT-VO-OVER ( n n n -- ) {: outu:n erru:n rc:n :}
@@ -6248,7 +6248,7 @@ variable LC-POS
       then
    repeat CT-NONE ;
 
-create LC-CANON FS-PATH-CAP allot
+create LC-CANON FS-PATHZ-CAP allot
 variable LC-CANON-U
 
 \ A JSON packet names the file at PATH by its canonical absolute path.

@@ -934,7 +934,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
 
 
-\ A literal path within the 1024 bytes `require` takes that resolves past them
+\ A literal path within the 1023 bytes `require` takes that resolves past them
 \ refuses the subject, with a packet at the loader word.
 : LONG-RESOLVED ( -- )
    0 GEN-U !
@@ -1030,7 +1030,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" body-uncalled: effect at counted string" s" E-MISMATCH" s" included" s" 1" s" 29" AT-TOKEN
    0 GEN-U !
    s\" : CVT-LONG ( -- ) s\" " GEN+
-   1025 0 ?do s" a" GEN+ loop
+   1024 0 ?do s" a" GEN+ loop
    s\" \" included ;\n" GEN+
    0 GEN GEN-U @ s" body-long.f" VERIFIED ;
 
