@@ -3,16 +3,16 @@
 \ the verifier and tools/check-verify-child-lib.f loaded at tier 1 and saved by
 \ tools/check-verify-save.f, built once per engine and closure.
 \
-\ The key is the version text, the engine's bytes and the source root the image
-\ bakes for it (SOURCE-ROOT:ENGINE-FOR$, tools/check-verify-save.f), the program
-\ (which names the entry under ROOT, the tree this file was loaded from) and the
-\ content and canonical path of every file of the entry's closure
-\ (tools/keyed-image.f CLOSURE-IN-EACH+). Each file's mtime and size stamp
-\ (tools/native-file-inputs.f FILE rows) is kept, and PATH$ checks the stamps on
-\ every call: a change re-keys and builds again; an edit racing a build belongs to
-\ the next re-key, as for hb-build's makers (tools/hb-build-lib.f). A build that
-\ fails dies or throws (tools/keyed-image.f BUILD-RUN, PUBLISH); there is no
-\ fallback.
+\ The key is the version text, the engine's bytes and the canonical engine path
+\ the image bakes, from which ENTER finds its source root when it starts
+\ (tools/check-verify-save.f), the program (which names the entry under ROOT,
+\ the tree this file was loaded from) and the content and canonical path of
+\ every file of the entry's closure (tools/keyed-image.f CLOSURE-IN-EACH+). Each
+\ file's mtime and size stamp (tools/native-file-inputs.f FILE rows) is kept,
+\ and PATH$ checks the stamps on every call: a change re-keys and builds again;
+\ an edit racing a build belongs to the next re-key, as for hb-build's makers
+\ (tools/hb-build-lib.f). A build that fails dies or throws (tools/keyed-image.f
+\ BUILD-RUN, PUBLISH); there is no fallback.
 \
 \ CAPABLE? says whether a child engine can run the image: it is this process's
 \ own engine, canonical path for canonical path, and that engine provides
@@ -83,7 +83,7 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
 : FILL-KEY ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    VERSION$ CONTENT-KEY:TEXT+
    ENGINE$ s" host-engine" CONTENT-KEY:FILE-NAMED+
-   ENGINE$ SOURCE-ROOT:ENGINE-FOR$ CONTENT-KEY:TEXT+
+   ENGINE$ SOURCE-ROOT:CANONICAL drop CONTENT-KEY:TEXT+
    PROGRAM$ CONTENT-KEY:TEXT+
    ENTRY$ ROOT$ [: STAMP ;] KEYED-IMAGE:CLOSURE-IN-EACH+ ;
 

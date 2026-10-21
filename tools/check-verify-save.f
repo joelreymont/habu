@@ -19,10 +19,11 @@
 \ lib and this file, and nothing of the saver answers `held`.
 \
 \ The image runs as `IMAGE -- SUBJECT ...`, every argument form of
-\ tools/check-verify-child.f. ENTER restores the engine root the source child
-\ finds, SOURCE-ROOT:ENGINE-FOR$ of the engine that built it, baked here:
-\ SOURCE-ROOT:RESET cleared it at capture, and the image's own executable lies
-\ in the build cache, under no tree (docs/bootstrap.md).
+\ tools/check-verify-child.f. ENTER finds, when the image starts, the root the
+\ source child finds: SOURCE-ROOT:ENGINE-FOR$ of the engine path baked here, the
+\ working directory when that is a tree: SOURCE-ROOT:RESET cleared it at
+\ capture, and the image's own executable lies in the build cache, under no tree
+\ (docs/bootstrap.md).
 
 package CHECK-VERIFY-SAVE
 

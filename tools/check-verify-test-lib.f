@@ -205,7 +205,7 @@
 \   a word or file of the image's saver reaches a subject, or answers
 \   held                                                                  image-saver-leak
 \   the image checks under the working directory instead of the
-\   engine's root                                                         image-cwd
+\   engine's root, or a check from another tree builds its own image      image-cwd
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -4724,20 +4724,37 @@ variable LINE-K
    s" src/lib/engine-id.f" TREE$ s" read" LOAD-NEXT ;
 
 
+create CWD-TREE FS-PATH-CAP allot
+variable CWD-TREE-U
+create CWD-IMAGE FS-PATH-CAP allot
+variable CWD-IMAGE-U
+
+\ ROOT/cwd-tree, a tree other than the engine's: symlinks to this tree's src and
+\ tools, so TREE? finds the engine's first row under it.
+: CWD-TREE! ( -- )
+   s" cwd-tree" AT$ CWD-TREE CWD-TREE-U COPY!
+   CWD-TREE CWD-TREE-U @ MAKE-DIRS
+   s" src" TREE$ s" cwd-tree/src" AT$ MAKE-SYMLINK
+   s" tools" TREE$ s" cwd-tree/tools" AT$ MAKE-SYMLINK ;
+
 \ The image restores the engine root the source child finds: from a working
 \ directory that is no tree, a primitive use's file is under EXE-ROOT of the
 \ engine, which an image that lost its root at capture would spell as that
 \ directory. Core is loaded nested under this tree (tools/lsp-entry-test.f
 \ NESTED), so its child and image belong to this tree, not the fixture root.
+\ The image is one per engine and closure, whatever tree the check runs from: it
+\ finds its root when it starts.
 : IMAGE-CWD ( -- )
    0 GEN-U !
    s\" require src/lib/engine-candidate.f\npackage CVT-CWD\npublic\n: LOAD ( -- ) s\" " GEN+
    SOURCE-ROOT:CWD$ GEN+ s\" \" [: s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
-   s\" /tools/check-verify-core.f\" required ;] SOURCE-ROOT:WITH ;\n;package\nCVT-CWD:LOAD\npackage CVT-CWD\n" GEN+
+   s\" /tools/check-verify-core.f\" required s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
+   s\" /tools/check-verify-image.f\" required ;] SOURCE-ROOT:WITH ;\n;package\nCVT-CWD:LOAD\npackage CVT-CWD\n" GEN+
    KIND$SRC+
    s\" public\n: MAIN ( -- )\n   s\" expect \" type ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:ENGINE-FOR$ type s\" /src/habu/prims.f\" type cr\n" GEN+
    s\"    s\" : CVT-D ( n -- ) drop ;\" s\" " GEN+ s" d.f" AT$ GEN+
-   s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n   CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
+   s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
+   s\"    s\" image \" type ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ type cr\n   CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
    s" cwd-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
    s" cwd-driver.f" AT$ ROOT$ DRIVE {: outu:n erru:n rc:n :}
    s" image-cwd: driver exit" T-LABEL rc 0 T=
@@ -4747,7 +4764,19 @@ variable LINE-K
    out outn s" in" s" d.f" AT$ PACKET {: use:SPAN:span<u8> :}
    s" image-cwd: the use line" T-LABEL use SPAN:LEN 0<> TTRUE
    s" image-cwd: the primitive's file is under the engine root" T-LABEL
-   use s" file" STRING$ out outn s" expect " 0 LINE-AFTER$ T$= ;
+   use s" file" STRING$ out outn s" expect " 0 LINE-AFTER$ T$=
+   out outn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U COPY!
+   CWD-TREE!
+   s" cwd-driver.f" AT$ CWD-TREE CWD-TREE-U @ DRIVE {: toutu:n terru:n trc:n :}
+   s" image-cwd: driver exit from another tree" T-LABEL trc 0 T=
+   trc 0<> if 0 ERR terru type cr then
+   0 OUT toutu {: tout:ptr toutn:n :}
+   s" image-cwd: verified from another tree" T-LABEL
+   tout toutn s" verdict " 0 LINE-AFTER$ s" verified" T$=
+   s" image-cwd: one image from every working directory" T-LABEL
+   tout toutn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U @ T$=
+   s" image-cwd: one image from every working directory" T-LABEL
+   CWD-IMAGE CWD-IMAGE-U @ ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ T$= ;
 
 
 \ ---- case timings ----------------------------------------------------------
