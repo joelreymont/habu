@@ -2121,12 +2121,10 @@ variable MEMO-IDX
 \ ---- only a clone of THE prototype reads a session row -----------------------
 \ A table defers to the session's vocabulary because its module's ordinals ARE
 \ the prototype's, which is a fact IR-BUILD recorded when it copied that
-\ interner - see IR-BUILD:CLONED-FROM? and its cases in test/compiler/ir-build.f,
-\ where a copy of the prototype holding every spelling at every one of its
-\ ordinals still answers no. Here is the consumer's half: while a session stands,
-\ a module that interned its own names is not a clone, so its table holds no
-\ vocabulary row and models no vocabulary word - it behaves exactly as it did
-\ before a session existed.
+\ interner - see IR-BUILD:CLONED-FROM?. Here is the consumer's half: while a
+\ session stands, a module that interned its own names is not a clone, so its
+\ table holds no vocabulary row and models no vocabulary word - it behaves
+\ exactly as it did before a session existed.
 : PLAIN-BODY ( IR-CTX:ctx -- n bool )
    {: c:IR-CTX:ctx :}
    IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT

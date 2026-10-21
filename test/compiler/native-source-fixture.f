@@ -27,8 +27,6 @@
 \ token is marked interpreting and every later one compiling. That is the one
 \ fact src/compiler/native/elaborate.f reads the frame from, so a fixture that
 \ marked two tokens interpreting would be describing a tape no producer can make.
-\ test/compiler/native-feed.f measures the same grid on a definition the engine
-\ really compiled.
 \
 \ NOTHING IN THIS FILE ASSERTS. It defines no case and prints nothing: it is a
 \ fixture, not a test, so it never names the harness verdict word and no gate

@@ -800,12 +800,6 @@ public
 : SERIAL ( IR-BUILD:builder -- n )
    B>N ;
 
-: LIVE? ( IR-BUILD:builder -- bool )
-   B>N FIND-B {: slot:n :}
-   slot 0 < if 0 0 <> exit then
-   slot BOWNER@ IR-CTX:SERIAL-LIVE?
-   slot BSTATE@ ST-LIVE = and ;
-
 : FROZEN? ( IR-BUILD:module -- bool )
    M>N FIND-B {: slot:n :}
    slot 0 < if 0 0 <> exit then
@@ -991,12 +985,6 @@ public
    slot T-QR TAB@  slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    IR-OP:END-OP ;
 
-: ABANDON-OP ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b USE drop
-   b SERIAL OP-DONE
-   IR-OP:ABANDON ;
-
 \ ---- the function builder (design lines 498-499) -----------------------------
 : BEGIN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder sym:IR-ID:ir-symbol-id :}
@@ -1049,12 +1037,6 @@ public
    slot T-SR TAB@  slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    IR-FUN:END-FUN ;
 
-: ABANDON-FUN ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b USE drop
-   b SERIAL FN-DONE
-   IR-FUN:ABANDON-FUN ;
-
 \ ---- the block builder (design lines 501-503) --------------------------------
 : BEGIN-BLOCK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -1084,35 +1066,14 @@ public
    slot T-OV TAB@  slot T-OR TAB@  slot T-QR TAB@  slot T-SA TAB@
    IR-FUN:END-BLOCK ;
 
-: ABANDON-BLOCK ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b USE drop
-   b SERIAL BK-DONE
-   IR-FUN:ABANDON-BLOCK ;
-
 \ ---- what the builder holds so far -------------------------------------------
 \ Live counts, so a caller can see the committed prefix without being handed a
 \ table it could write through.
 : SYMBOLS ( IR-BUILD:builder -- n )
    LIVE-SLOT T-SR TAB@ IR-SYM:SYMBOLS ;
 
-: TYPES ( IR-BUILD:builder -- n )
-   LIVE-SLOT T-TR TAB@ IR-TYPE:TYPES ;
-
-: ATTRS ( IR-BUILD:builder -- n )
-   LIVE-SLOT T-AR TAB@ IR-ATTR:ATTRS ;
-
-: SOURCES ( IR-BUILD:builder -- n )
-   LIVE-SLOT T-SA TAB@ IR-SOURCE:SOURCES ;
-
 : SCHEMAS ( IR-BUILD:builder -- n )
    LIVE-SLOT T-QR TAB@ IR-SCHEMA:SCHEMAS ;
-
-: OPS ( IR-BUILD:builder -- n )
-   LIVE-SLOT T-OR TAB@ IR-OP:OPS ;
-
-: VALUES ( IR-BUILD:builder -- n )
-   LIVE-SLOT T-OV TAB@ IR-OP:VALUES ;
 
 : OP-CELLS ( IR-BUILD:builder -- n )
    LIVE-SLOT T-OP TAB@ IR-OP:POOL-CELLS ;
@@ -1510,9 +1471,6 @@ public
 
 : FOP-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-OR VIEW@ ;
-
-: FFUN-POOL ( IR-BUILD:module -- IR-ARENA:view )
-   FROZEN-SLOT T-FP VIEW@ ;
 
 : FFUN-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-FR VIEW@ ;

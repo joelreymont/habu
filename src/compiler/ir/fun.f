@@ -1093,9 +1093,6 @@ public
 : FBLOCKS ( IR-ARENA:view -- n )
    IR-ARENA:OPEN RBLOCKS ;
 
-: FATTR-CELLS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN PCELLS ;
-
 : FSYMBOL@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
    f IR-ARENA:OPEN {: fnr:IR-ARENA:reader :}

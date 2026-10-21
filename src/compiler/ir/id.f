@@ -214,8 +214,6 @@ public
    SYMBOL>N OWNER-N ;
 : SYMBOL-LOCAL ( IR-ID:ir-symbol-id -- n )
    SYMBOL>N LOCAL-N ;
-: SYMBOL-CHECK ( IR-ID:ir-module-key IR-ID:ir-count IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
-   SYMBOL>N CHECK-N MINT-SYMBOL ;
 
 : PACK-SPAN ( IR-ID:ir-module-key n -- IR-ID:ir-span-id )
    PACK-N MINT-SPAN ;

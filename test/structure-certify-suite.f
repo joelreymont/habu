@@ -6,14 +6,12 @@
 \ mutates the type registry, so it resolves only at top-level interpret):
 \     bin/hb < test/structure-certify-suite.f
 \
-\ This is the CERTIFY complement to the two whitebox STRUCTURE suites and the
-\ field-projection suite — it adds NO grammar, NO generator, NO checker word; it
-\ pins the checker's construct/access CONTRACT through real STRUCTURE syntax:
+\ This is the CERTIFY complement to the two whitebox STRUCTURE suites — it
+\ adds NO grammar, NO generator, NO checker word; it pins the checker's
+\ construct/access CONTRACT through real STRUCTURE syntax:
 \   - test/structure-decl-suite.f owns the declaration/rollback front end and the
 \     end-to-end MAKE/UNMAKE seam for cell/byte/generic fields;
 \   - the generator's field-kind/role/arity matrix is sections 1-5 here;
-\   - test/field-proj-suite.f owns the field-ACCESS armed window (the accessor the
-\     generate-field lane will emit; see the accessor note at the file end).
 \ Everything here is verified against the checker as it types the LEGACY product
 \ path (test/type-ctor-suite.f item 15, sumtype.f TDECL-PROD-WORDS): a STRUCTURE
 \ is a single-shape PRODUCT, so its generated FAMILY:MAKE/UNMAKE type through the
@@ -207,9 +205,9 @@ s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 \ ---------------------------------------------------------------------------
 \ ACCESSOR NOTE (report + follow-up). The generate-field lane will emit sealed
 \ FAMILY:FIELD accessor words ( ptr family<args> -- ptr field-type ) that fire
-\ the checker's field-projection armed window (src/core/checker.f, pinned by
-\ test/field-proj-suite.f). When that lands, this suite gains a section proving
-\ each accessor certifies its projected pointee type from real STRUCTURE syntax
+\ the checker's field-projection armed window (src/core/checker.f). When that
+\ lands, this suite gains a section proving each accessor certifies its
+\ projected pointee type from real STRUCTURE syntax
 \ (positive read-back per field kind: cell, ptr, wide-nested, generic-inst) and
 \ that a forged offset / foreign-family pointer / role mismatch rejects — the
 \ grammar-surface certify of the access half, mirroring §1-6 for the construct

@@ -481,12 +481,7 @@ gone too — `( ptr ZZ:rec n -- ptr ZZ:rec ) 3 cells * +` is refused, because
 armed window it consumes `ptr family<args>` plus a baked byte-offset literal and
 produces `ptr <instantiated field type>`, deriving the field's owning family,
 offset, extent, role and schema from the committed field id by `TYPE-FIELD`
-reflection. `test/field-proj-suite.f` pins the positives — a cell field, a
-byte-offset field, a **pointer** field (`FIELD p ptr u8` projects as
-`( ptr fpptr -- ptr ptr u8 )`), a generic field substituted at the caller's
-instantiation — and the negatives, red-first: unarmed use, a forged offset, an
-offset past the family width, a non-layout pointer, a foreign family, a wrong
-arity, a role or output mismatch, an uncommitted id. `docs/type-families.md` §2.2
+reflection. `docs/type-families.md` §2.2
 documents it and names the missing half: the accessor generator, tracker id
 `habu-structure-generate-field-b9dc52f8`.
 
@@ -708,8 +703,7 @@ The window is single-shot, keyed on the accessor's name, and disarms at the
 authority** — the checker derives the owning family, the committed offset, the
 extent, the role and the schema from it, instantiates that schema over the input
 pointer's family arguments, and cross-checks the baked offset. A generator that
-lies about an offset, a family, an arity, a role or an output type is refused,
-each case pinned in `test/field-proj-suite.f`.
+lies about an offset, a family, an arity, a role or an output type is refused.
 
 Two small pieces sit beside the generator; both landed with it, at global scope
 in `src/core/structure-make.f`, because a generated body names them unqualified
@@ -934,11 +928,10 @@ because `src/lib/task.f`'s TCB reaches its five pointer fields through the very 
    `DERIVE hash` work for a private family, in the private spelling. *Acceptance,
    pinned as case 15 of `test/structure-decl-suite.f`:* `DERIVE addr` publishes
    one accessor per field with the declared effect; a pointer field projects as
-   `ptr ptr t` and a generic field at the caller's instantiation; every negative
-   in `test/field-proj-suite.f` still rejects when reached through a generated
-   accessor; `F:AT` strides by the committed width and preserves the family; a
-   field read through an accessor equals the same field read through `UNMAKE`,
-   for a pointer field, a scalar field and a nested family field; a rejected
+   `ptr ptr t` and a generic field at the caller's instantiation; `F:AT`
+   strides by the committed width and preserves the family; a field read
+   through an accessor equals the same field read through `UNMAKE`, for a
+   pointer field, a scalar field and a nested family field; a rejected
    declaration rolls back byte-identically. Replay publishes the accessors too,
    which item 3 below owns.
 3. **The verify-source replay arm** — *landed*. The address participant

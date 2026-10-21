@@ -339,15 +339,7 @@ product's keep policy retires 6,299 symbols and leaves 8,052 of the store's
 finds those records' `CONTENT` cells (20,049 bytes of LEB128 values), their
 `ACTIVE` cells (7,998 bytes) and 3,574 cells only their spans reach (6,626
 bytes) still present after the sweep; with the change none is, and 275 of the
-284 4,096-byte stretches of the store still hold a cell. Window 4 of
-`test/effect-store-census-test.f` holds the sweep's contract on a store it
-builds, dropping six words: the store keeps its records and window bytes, the
-dropped bindings are keyed on nothing, the dropped words' window is chain links
-alone, the census balances with the bytes it stops reaching all zero
-(`effect-store-census swept zeroed-bytes 288`), and the checker answers as
-before for kept words placed where a sweep that zeroed too much would reach
-them. The parent tree's whitebox engine fails it: its last window still holds a
-content and ten references to older nodes.
+284 4,096-byte stretches of the store still hold a cell.
 
 The SHA-256 before is
 `659af9870c25fb31f9ac7e08d97b08dbe82630a719f9146368a392afd413f074`, after

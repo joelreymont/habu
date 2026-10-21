@@ -1056,17 +1056,11 @@ public
 : ROPS ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER CNT ;
 
-: FOPS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN ROPS ;
-
 : RVALUES ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER VCNT ;
 
 : FVALUES ( IR-ARENA:view -- n )
    IR-ARENA:OPEN RVALUES ;
-
-: FPOOL-CELLS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN PCELLS ;
 
 : ROPCODE@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
    {: ra:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
@@ -1101,10 +1095,6 @@ public
 : RATTRS ( IR-ARENA:reader IR-ID:ir-op-id -- n )
    {: ra:IR-ARENA:reader id:IR-ID:ir-op-id :}
    ra IR-ARENA:FROZEN-READER id OFF-ATN FLD LEN-OK AT-N ;
-
-: FATTRS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
-   ra IR-ARENA:OPEN id RATTRS ;
 
 : RSPAN@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
    {: ra:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}

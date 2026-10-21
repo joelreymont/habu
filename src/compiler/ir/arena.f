@@ -604,9 +604,6 @@ public
    d x IDX>N IDX-AT
    d swap CELL-AT ;
 
-: SIZE ( IR-ARENA:view -- n )
-   FROZEN-DESC D-CNT + CELL-VIEW @ ;
-
 \ Identity comparison grants no read authority; readers still check liveness.
 : VIEW-SAME? ( IR-ARENA:view IR-ARENA:view -- bool )
    {: a:IR-ARENA:view b:IR-ARENA:view :}

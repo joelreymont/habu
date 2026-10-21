@@ -51,8 +51,8 @@ package IR-SOURCE
 public
 
 \ A validated byte span into one registered source. A value, not authority:
-\ SPAN mints it validated, and every consumer revalidates with SPAN-CK or
-\ FSPAN-CK, so a span assembled by the generated constructor gains nothing.
+\ SPAN mints it validated, and every consumer revalidates with SPAN-CK, so a
+\ span assembled by the generated constructor gains nothing.
 \ Its source-id field still needs a genuine identity - the checker rejects a
 \ raw cell there - and no public word re-mints ids or handles from raw cells.
 STRUCTURE span
@@ -229,51 +229,6 @@ public
    r id ID-CK {: l:n :}
    r l OFF-LEN RC@ ;
 
-: ROOT? ( IR-ARENA:arena IR-ID:ir-source-id -- bool )
-   {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
-   r id ID-CK {: l:n :}
-   r l OFF-ORG RC@ ORG-NONE = ;
-
-private
-
-\ Decode an origin cell against its child's ordinal: a root rejects, and a
-\ parent ordinal that fails the strict decrease is a corrupted row.
-: ORG-LOCAL ( n n -- n )
-   {: l:n org:n :}
-   org ORG-NONE = if E-IR-SRC-ROOT throw then
-   org 1-
-   dup l >= if E-IR-SRC-STATE throw then ;
-
-public
-
-\ The origin parent's identity. Roots have none: probe with ROOT? first;
-\ reading a root's origin throws E-IR-SRC-ROOT.
-: ORIGIN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id -- IR-ID:ir-source-id )
-   {: a:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-source-id :}
-   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
-   r key KEY-CK
-   r id ID-CK {: l:n :}
-   key l r l OFF-ORG RC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
-
-\ The origin-chain length down to the root. Each step re-verifies the strict
-\ ordinal decrease, so the walk terminates on any registry state.
-\ ONE RESOLUTION FOR THE WHOLE WALK. The chain re-verifies the strict ordinal
-\ decrease at every step, so the walk still terminates on any registry state;
-\ what it no longer does is re-resolve the registry once per step.
-: DEPTH ( IR-ARENA:arena IR-ID:ir-source-id -- n )
-   {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
-   r id ID-CK
-   0 swap
-   begin
-      r over OFF-ORG RC@ ORG-NONE <>
-   while
-      r over OFF-ORG RC@ ORG-LOCAL
-      swap 1+ swap
-   repeat
-   drop ;
-
 \ ---- frozen readers ----------------------------------------------------------
 \ A frozen module reads its rows through the arena view; the retired builder
 \ handle rejects every mutation with E-IR-ARENA-FROZEN.
@@ -291,26 +246,6 @@ public
    v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
    r id ID-CK {: l:n :}
    r l OFF-ORG RC@ ORG-NONE = ;
-
-: FORIGIN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-source-id -- IR-ID:ir-source-id )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-source-id :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r key KEY-CK
-   r id ID-CK {: l:n :}
-   key l r l OFF-ORG RC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
-
-: FDEPTH ( IR-ARENA:view IR-ID:ir-source-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r id ID-CK
-   0 swap
-   begin
-      r over OFF-ORG RC@ ORG-NONE <>
-   while
-      r over OFF-ORG RC@ ORG-LOCAL
-      swap 1+ swap
-   repeat
-   drop ;
 
 \ Carry the length of a registered source from a frozen registry into this one.
 \ A pass that rewrites a module builds a new module over the same source.
@@ -353,14 +288,6 @@ public
    IR--SOURCE-SPAN:UNMAKE
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id st:n ln:n :}
    a id LEN@ st ln RANGE-CK ;
-
-: FSPAN-CK ( IR-ARENA:view IR-SOURCE:span -- )
-   IR--SOURCE-SPAN:UNMAKE
-   {: v:IR-ARENA:view id:IR-ID:ir-source-id st:n ln:n :}
-   v id FLEN@ st ln RANGE-CK ;
-
-: SPAN-SRC ( IR-SOURCE:span -- IR-ID:ir-source-id )
-   IR--SOURCE-SPAN:UNMAKE drop drop ;
 
 : SPAN-START ( IR-SOURCE:span -- n )
    IR--SOURCE-SPAN:UNMAKE drop nip ;

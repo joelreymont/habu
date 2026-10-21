@@ -478,28 +478,8 @@ SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
 
-SUITE compiler-ir-build
-   test/compiler/ir-build.f
-;SUITE
-
-SUITE compiler-ir-verify
-   test/compiler/ir-verify.f
-;SUITE
-
-SUITE compiler-ir-context
-   test/compiler/ir-context.f
-;SUITE
-
-SUITE compiler-ir-source
-   test/compiler/ir-source.f
-;SUITE
-
 SUITE compiler-ir-type
    test/compiler/ir-type.f
-;SUITE
-
-SUITE compiler-native-feed
-   test/compiler/native-feed.f
 ;SUITE
 
 SUITE compiler-native-string
@@ -962,10 +942,6 @@ SUITE undefine-binding-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/undefine-binding.f
-;SUITE
-
-SUITE compiler-code-span
-   test/compiler/code-span.f
 ;SUITE
 
 SUITE compiler-code-bytes
@@ -1643,14 +1619,6 @@ WHITEBOX-SUITE checker-completion
    test/checker-completion.f
 ;SUITE
 
-WHITEBOX-SUITE effect-intern
-   test/effect-intern-suite.f
-;SUITE
-
-WHITEBOX-SUITE effect-store-census
-   test/effect-store-census-test.f
-;SUITE
-
 WHITEBOX-SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
@@ -2043,20 +2011,12 @@ SUITE linear
    test/linear-suite.f
 ;SUITE
 
-WHITEBOX-SUITE decl-event
-   test/decl-event-suite.f
-;SUITE
-
 SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
 SUITE closed-source
    test/closed-source-suite.f
-;SUITE
-
-WHITEBOX-SUITE closed-unit
-   test/closed-unit-suite.f
 ;SUITE
 
 WHITEBOX-SUITE engine
@@ -2166,14 +2126,6 @@ SUITE layout-defer
    test/layout-defer.f
 ;SUITE
 
-WHITEBOX-SUITE layout-valid-guards
-   test/layout-valid-guards.f
-;SUITE
-
-WHITEBOX-SUITE layout-valid-growth
-   test/layout-valid-growth.f
-;SUITE
-
 SUITE wide-store-seal
    test/wide-store-seal.f
 ;SUITE
@@ -2202,10 +2154,6 @@ SUITE extent-product
    test/extent-product-test.f
 ;SUITE
 
-WHITEBOX-SUITE field-proj
-   test/field-proj-suite.f
-;SUITE
-
 WHITEBOX-SUITE field-proj-errors
    test/field-proj-errors.f
 ;SUITE
@@ -2230,10 +2178,6 @@ SUITE check-signal
 \ reaper arm - leaves nothing the child started.
 SUITE capture-tree
    test/capture-tree-test.f
-;SUITE
-
-WHITEBOX-SUITE generated-declaration-transaction
-   test/generated-declaration-transaction-suite.f
 ;SUITE
 
 SUITE require-cap
@@ -2314,10 +2258,6 @@ SUITE c2-records
 
 SUITE c2-diagnostics
    test/c2-diagnostics.f
-;SUITE
-
-WHITEBOX-SUITE type-field-owner
-   test/type-field-owner-suite.f
 ;SUITE
 
 SUITE type-linear

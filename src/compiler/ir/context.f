@@ -377,7 +377,6 @@ private
 : CE-CLEANUP ( -- )
    ENTERED-POP CTX-RETIRE ;
 
-
 \ Install one context into the registry over a header it allots from the region,
 \ and answer its handle and the slot it took. Entering a context is this and
 \ nothing else; the two callers differ only in when they give the slot back, so
@@ -470,9 +469,6 @@ public
 : NEW-MODULE ( IR-CTX:ctx -- IR-ID:ir-module-key IR-ID:ir-module-id )
    RESOLVE MINT-TAKE IR-ID:NEW-MODULE ;
 
-: MINTED ( IR-CTX:ctx -- n )
-   RESOLVE HEADER-PTR HEADER-MINTED @ CNT-OK ;
-
 \ ---- scratch -----------------------------------------------------------------
 public
 
@@ -497,9 +493,6 @@ public
 
 : SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
    c need SCRATCH-OFFSET REGION-AT need ;
-
-: SCRATCH-USED ( IR-CTX:ctx -- n )
-   RESOLVE HEADER-PTR HEADER-USED @ CNT-OK ;
 
 : SCRATCH-LIMIT ( -- n ) REGION-BYTES ;
 

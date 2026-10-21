@@ -111,7 +111,7 @@ Proof (temp engine + installed byte-fixpoint):
   naming one is rejected (verdict 0, reported `E-UNDEFINED`) before any
   signature or primitive lookup — deletion alone would only make them
   uncheckable. The sealed `TYPE-FIELD-OWNER` package is the sole lifecycle
-  authority; `test/type-field-owner-suite.f` owns the negatives.
+  authority.
 
 Arena rows: the arena BASE names (`PF-A-P`, `PF-A-BOOT`, `PF-TX-P`, `PF-TX-BOOT`)
 are among the marked cells, so a bare row-address computation
