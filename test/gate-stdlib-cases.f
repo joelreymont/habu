@@ -17,14 +17,23 @@ using TEST
 \ duplicated builds or process setup (test/suite-budget.f keeps the limits).
 
 \ These long rows lead so they keep the pool busy while the compiler bundle
-\ builds. check-cli-boundary, hb-build-aot-image, whitebox-engine-key and
-\ check-drivers need no keyed image, including their child load paths, and
-\ start at once. stripped-pool-reach, hb-build-repl-image,
-\ dictionary-capacity, xml-owner-consumer and engine-stack-machine wait for a
-\ builder image: each steps aside until it settles and then starts ahead of
-\ every later row.
+\ builds. check-cli-boundary, lsp-boundary, hb-build-aot-image,
+\ whitebox-engine-key and check-drivers need no keyed image, including their
+\ child load paths, and start at once. check-verify waits for the cold engine;
+\ stripped-pool-reach, hb-build-repl-image, dictionary-capacity,
+\ xml-owner-consumer and engine-stack-machine wait for a builder image: each
+\ steps aside until it settles and then starts ahead of every later row.
 SUITE check-cli-boundary
    tools/check-test.f
+;SUITE
+
+SUITE check-verify
+   tools/check-verify-test.f
+;SUITE
+
+SUITE lsp-boundary
+   tools/lsp-test.f
+   tools/lsp-entry-test.f
 ;SUITE
 
 SUITE hb-build-aot-image
@@ -436,17 +445,8 @@ SUITE live-verify-source
    test/live-verify-source-e2e.f
 ;SUITE
 
-SUITE check-verify
-   tools/check-verify-test.f
-;SUITE
-
 SUITE verify-binding
    test/verify-binding.f
-;SUITE
-
-SUITE lsp-boundary
-   tools/lsp-test.f
-   tools/lsp-entry-test.f
 ;SUITE
 
 SUITE primitive-source
