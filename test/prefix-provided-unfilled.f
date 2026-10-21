@@ -1,8 +1,11 @@
-\ A seeded build whose captured runtime leaves a prefix-provided row's dispatch
-\ cell empty refuses at the registry gate (76, src/habu/primitive-registry.f
-\ UNFILLED) and promotes no product. Without that refusal the build emits an
-\ engine whose `evaluate` stub jumps through the empty cell, and the product
-\ dies on its first load. The private tree links the checkout except
+\ A seeded x86-64 build whose captured runtime leaves a prefix-provided row's
+\ dispatch cell empty refuses at the registry gate (76, src/habu/
+\ primitive-registry.f COMPLETE-PROVIDED, UNFILLED) and promotes no product.
+\ Without that refusal the build emits an engine whose `evaluate` stub jumps
+\ through the empty cell, and the product dies on its first load. An ARM64
+\ record is its assembly body and has no cell, so a host on another machine
+\ builds `--target linux-x86-64` with src/arch/x86-64/passes.f loaded before
+\ tools/native-build.f. The private tree links the checkout except
 \ src/habu/native-runtime.f, a copy whose SEAL leaves out
 \ OUTER:INSTALL-EVALUATE. The printed tree keeps the build's output.
 require src/lib/test.f
@@ -87,13 +90,17 @@ variable RC
    ;MATCH ;
 
 \ The production entry, as `bin/hb --load tools/native-build.f -- <out>` runs
-\ it, in the private tree.
+\ it, in the private tree, for an x86-64 product on any host.
 : BUILD ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
+   HB-TARGET-LINUX-X86-64? 0= if s" src/arch/x86-64/passes.f" >LEN PROC-ARGV+ then
    s" tools/native-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" hb" AT-A >LEN PROC-ARGV+
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" --target" >LEN PROC-ARGV+  s" linux-x86-64" >LEN PROC-ARGV+
+   then
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS

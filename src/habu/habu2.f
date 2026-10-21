@@ -2065,7 +2065,6 @@ public
    skip LBL, ;
 
 : EMIT-SOURCE ( -- )
-   SEEDED-RUNTIME? if exit then
    C-SOURCE-LABELS
    EMIT-SOURCE-APPEND-SHARED
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
@@ -9198,7 +9197,6 @@ ardone LBL,
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
 : EM-APPLICATION-START ( -- )
-   SEEDED-RUNTIME? if exit then
    LBL {: done:label :}
    9 DATA APP-ENTRY:XT-CELL LDR,  9 done CBZ,
    9 BLR,
@@ -9241,16 +9239,6 @@ ardone LBL,
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ A complete capture has one Habu entry point. Its cell is populated when
-\ the runtime is sealed; an empty cell means the seed is incomplete.
-: EM-ENGINE-MAIN ( -- )
-   SEEDED-RUNTIME? 0= if exit then
-   LBL {: ready:label :}
-   9 DATA ENGINE-MAIN:XT-CELL LDR,  9 ready CBNZ,
-   0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   ready LBL,
-   9 BLR, ;
-
 : EM-STARTUP ( -- )
    LANCHOR LABEL@ LBL,
    EM-ENTRY-ARGS
@@ -9283,7 +9271,6 @@ ardone LBL,
    EM-SNAPSHOT-RX-FLUSH                 \ the region at rest before any application word executes
    EM-RECORD-LINK-RESTORE
    EM-APPLICATION-START
-   EM-ENGINE-MAIN
    EMIT-SOURCE ;
 
 \ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
@@ -13548,7 +13535,7 @@ PTR-VARIABLE SRCA
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  CODE-ORIGIN:LABELS  ENGINE-PRIMS:RESET  SEEDED-RUNTIME? ENGINE-PRIMS:SEEDED!
+   ASM-INIT  CODE-ORIGIN:LABELS  ENGINE-PRIMS:RESET
    0 DIVISION-PRIM-ROW !  0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
@@ -14171,20 +14158,6 @@ variable KERNEL-CODE-END
    KERNEL-CONTEXT CODE KERNEL-CODE-END @ SHA256-FEED
    KERNEL-CONTEXT CODE KERNEL-CODE-END @ + SHA256-END ;
 
-\ Whether the captured runtime fills the DATA cell a prefix-provided row's
-\ seeded stub jumps through (src/habu/primitive-registry.f COMPLETE): the
-\ capture carries a fixed address row at the cell whose target is code the
-\ window placed (src/habu/aot-decl.f AOT-WINDOW: kind 00, a nonzero target).
-: PROVIDED-FILLED? ( n -- bool ) {: cell:n :}
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ {: pair:n :}
-      pair 32 rshift {: meta:n :}
-      pair $FFFFFFFF and cell =
-      meta AOT-WINDOW:XTOFF-KIND-MASK and 0= and
-      meta AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and if unloop true exit then
-   loop
-   false ;
-
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    CODE-ORIGIN:EMIT-HELPERS
    EMIT-PRIMS
@@ -14226,7 +14199,7 @@ variable KERNEL-CODE-END
    s" kernel-producer$" ['] BKERNELPRODUCER FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
-   [: PROVIDED-FILLED? ;] ENGINE-PRIMS:COMPLETE
+   ENGINE-PRIMS:COMPLETE
    EMIT-CEMIT
    EMIT-CEMITBL
    EMIT-ADDSUB-IMM

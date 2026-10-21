@@ -556,8 +556,8 @@ $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
 \ EVAL-TOP-CELL: the innermost evaluate frame, zero at rest. habu1.f
-\ EVAL-ENTER (`evaluate-closed`, and `evaluate` with no captured runtime)
-\ pushes its frame on the native stack; the Habu `evaluate`
+\ EVAL-ENTER (`evaluate-closed`, and ARM64's `evaluate`) pushes its frame on
+\ the native stack; x86-64's Habu `evaluate`
 \ (src/habu/interpret.f OUTER:EVAL-FRAMED) writes the same fields into a
 \ mapping of its own. EVAL-PREV links each to the frame it nests in.
 $43C0 constant EVAL-TOP-CELL
@@ -1150,11 +1150,12 @@ $37F8 constant SNAP-CELL
 \ pins this offset against the copy pointer-storage.f has to spell for itself.
 $3800 constant NULL-PTR-CELL-OFF
 
-\ ENGINE-MAIN:XT-CELL is the DATA cell a seeded boot calls the engine's MAIN
-\ through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell from
-\ APP-ENTRY:XT-CELL because that one also switches the argv and stdin
+\ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's
+\ MAIN through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell
+\ from APP-ENTRY:XT-CELL because that one also switches the argv and stdin
 \ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
-\ MAIN there; ARM64 and x86-64 seeded boots read it. It takes the next cell of
+\ MAIN there; only the x86-64 boot reads it, and an ARM64 boot, which reaches
+\ the kernel's own source and REPL routes, never does. It takes the next cell of
 \ the run NULL-PTR-CELL-OFF ends, swept for a claimant up to the FFI buffers at
 \ $3A00 the way that cell was, and a fresh DATA mapping reads it zero until set.
 package ENGINE-MAIN
@@ -1166,25 +1167,25 @@ $3808 constant XT-CELL
 $3858 constant REPORT-CELL
 ;package
 
-\ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row the captured
-\ runtime provides (EPREFIX-PROVIDED!). In a seeded build the row keeps its
-\ record and name, and its body is a stub that jumps through the cell (habu1.f
-\ ENGINE-EMIT:FPRIM-PROVIDED); a seeded `evaluate-closed` jumps through
-\ EVALUATE-CELL as well (habu1.f B-EVAL-CLOSED). The captured runtime stores
-\ its word there with `xt!`
-\ (src/habu/interpret.f OUTER:INSTALL-EVALUATE, which native-runtime.f
-\ CHECKER-REG:SEAL runs), so the capture carries the cell as a fixed address
-\ row (tools/native-layout.f) and the seed restores it on every boot (habu2.f
-\ AOT-WINDOW:RESTORE-ADDRESS-CELLS). A build with no captured runtime keeps the
-\ assembly body as the record and never reads the cell. EVALUATE-CELL is the
+\ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row an x86-64
+\ captured runtime provides (EPREFIX-PROVIDED!). In a seeded x86-64 build the
+\ row keeps its record and name, and its body is a stub that jumps through the
+\ cell (src/habu/kernel-x64.f X64KERNEL:PROVIDED-ROW); the x86-64
+\ `evaluate-closed` jumps through EVALUATE-CELL as well. The captured runtime
+\ stores its word there with `xt!` (src/habu/interpret.f
+\ OUTER:INSTALL-EVALUATE, which native-runtime.f CHECKER-REG:SEAL runs), so the
+\ capture carries the cell as a fixed address row (tools/native-layout.f) and
+\ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
+\ An ARM64 record, and an x86-64 build with no captured runtime,
+\ keep the assembly body and never read the cell. EVALUATE-CELL is the
 \ first cell past the native body record's reader callback ($3840), in the run
 \ ENGINE-MAIN:XT-CELL extends, swept for a claimant up to the FFI buffers at
 \ $3A00 the way that cell was.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
-\ `evaluate-range` jumps through its own cell the same way (habu1.f
-\ B-EVAL-RANGE, src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE). It follows
+\ A seeded x86-64 `evaluate-range` jumps through its own cell the same way
+\ (src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE). It follows
 \ ENGINE-MAIN:REPORT-CELL ($3858) in the same swept run below $3A00.
 $3860 constant EVALUATE-RANGE-CELL
 ;package
@@ -1192,6 +1193,7 @@ $3860 constant EVALUATE-RANGE-CELL
 \ The x86-64 policy writer calls the checked interpreter's dispatch-keyword
 \ predicate before admitting a package. CHECKER-REG:SEAL installs that callback;
 \ its fixed code cell is captured and restored with the other engine callbacks.
+\ No ARM64 code reads the cell.
 package POLICY-ABI
 public
 $3850 constant KEYWORD-CELL

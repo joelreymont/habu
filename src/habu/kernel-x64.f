@@ -216,8 +216,8 @@ public
 
 \ PRIM for a row the captured runtime provides (src/habu/prims.f
 \ EPREFIX-PROVIDED!), registered with its dispatch cell n (layout.f
-\ PROVIDED-XT): the twin of habu1.f FPRIM-PROVIDED. In a seeded build the
-\ record is a stub that jumps through the cell; otherwise it is the body given.
+\ PROVIDED-XT). In a seeded build the record is a stub that jumps through the
+\ cell; otherwise it is the body given.
 : PROVIDED-ROW ( n ptr u8 n [ -- ] -- ) {: cell:n a:ptr u:n q :}
    a u q ARGS
    cell ROW-CELL !
@@ -5681,10 +5681,11 @@ public
    RAX ZERO-REG,  ASM-SINK ENC-RET ;
 
 \ The whole kernel: the helpers, then every section. The specification's
-\ other half, ENGINE-PRIMS:COMPLETE, runs once the linker knows which provided
-\ cells the capture fills (tools/native-emit-x64.f LINKED-PROVIDED?): it dies
-\ 76 naming the first row of src/habu/prims.f that no section registered, as
-\ habu2.f ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, so a row this
+\ other half runs once the linker knows which provided cells the capture fills
+\ (tools/native-emit-x64.f): ENGINE-PRIMS:COMPLETE dies 76 naming the first row
+\ of src/habu/prims.f that no section registered, as habu2.f
+\ ENGINE-EMIT:EMIT-PRIMITIVE-SECTIONS does for ARM64, and COMPLETE-PROVIDED
+\ refuses a provided row whose cell the capture leaves empty, so a row this
 \ kernel does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )
    X64CODE:LBL LCLOSE-CELL !

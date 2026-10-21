@@ -420,8 +420,8 @@ public
    a u 0 u EVAL-FRAMED-RANGE ;
 
 \ Make EVAL-FRAMED the engine's `evaluate` and EVAL-FRAMED-RANGE its
-\ `evaluate-range`. A seeded engine's records of both jump through
-\ PROVIDED-XT:EVALUATE-CELL and EVALUATE-RANGE-CELL (habu1.f FPRIM-PROVIDED),
+\ `evaluate-range`. A seeded x86-64 engine's records of both jump through
+\ PROVIDED-XT:EVALUATE-CELL and EVALUATE-RANGE-CELL (kernel-x64.f PROVIDED-ROW),
 \ so every caller keeps the record it was compiled against, src/core/include.f
 \ EVALUATE-RANGE-RAW's among them. src/habu/native-runtime.f CHECKER-REG:SEAL
 \ runs this as the build window's last act. `xt!` makes each cell an address

@@ -269,13 +269,15 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : EC2-RECORDS! ( -- )
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-C2-RECORDS or swap ! ;
 
-\ The just-written row is one the captured runtime provides. Its record stays in
-\ every build; in a seeded build its body jumps through the row's dispatch cell
-\ (src/habu/layout.f PROVIDED-XT), which the captured runtime fills, and a
-\ build with no captured runtime keeps the backend body. The backend registers
-\ the cell with the body (src/habu/primitive-registry.f DISPATCH!), and the
-\ gate refuses a marked row registered without one, or a seeded build whose
-\ captured runtime leaves the cell empty.
+\ The just-written row is one an x86-64 captured runtime provides. Its record
+\ stays in every build; in a seeded x86-64 build its body jumps through the
+\ row's dispatch cell (src/habu/layout.f PROVIDED-XT), which the captured
+\ runtime fills, and a build with no captured runtime keeps the backend body.
+\ The x86-64 backend registers the cell with the body
+\ (src/habu/primitive-registry.f DISPATCH!), and COMPLETE-PROVIDED refuses a
+\ marked row registered without one, or a seeded build whose captured runtime
+\ leaves the cell empty. An ARM64 record is the assembly body and registers no
+\ cell.
 : EPREFIX-PROVIDED! ( -- )
    ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;
@@ -537,7 +539,7 @@ EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPREFIX-PROVIDED!                    \ seeded: src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
+EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
@@ -1130,7 +1132,7 @@ ELAB: catch
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!
-EPREFIX-PROVIDED!                    \ seeded: src/habu/interpret.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
+EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
 ELAB: ?dup
 1 EMIN-IN!
 ELAB: 2>r

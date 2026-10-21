@@ -2,10 +2,10 @@
 \ builder registers each primitive body and engine helper it emits; this file
 \ checks each body's name against the specification table, answers the seed
 \ dictionary's name and wid cells, and refuses a kept row that no body answered.
-\ A row the captured runtime provides (src/habu/prims.f EPREFIX-PROVIDED!)
-\ registers the DATA cell its seeded stub jumps through, and the gate refuses
-\ one registered without it, or a seeded build whose captured runtime leaves
-\ the cell empty.
+\ On x86-64 a row the captured runtime provides (src/habu/prims.f
+\ EPREFIX-PROVIDED!) registers the DATA cell its seeded stub jumps through, and
+\ COMPLETE-PROVIDED refuses one registered without it, or a seeded build whose
+\ captured runtime leaves the cell empty.
 \ It takes code positions only as `label` values and never emits code, so it
 \ loads without any instruction set. Names are offsets, so growing either buffer
 \ cannot invalidate an earlier row. The emitted dictionary format is unchanged.
@@ -32,8 +32,8 @@ variable USED
 variable NAME-BYTES
 variable SCALAR-ROW
 variable DIVISION-ROW
-\ Nonzero while the build carries a complete captured runtime; RESET clears it
-\ and the ARM64 builder arms it (habu2.f EMIT-RESET-BUILDER).
+\ Nonzero while an x86-64 build carries a complete captured runtime; RESET
+\ clears it and the x86-64 builder arms it (tools/native-emit-x64.f STREAM,).
 variable SEEDED
 
 : ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
@@ -137,9 +137,9 @@ private
 
 public
 
-\ A row the captured runtime provides keeps its record in every build; in a
-\ seeded build its body jumps through this DATA cell (layout.f PROVIDED-XT).
-\ Every other row has none, -1.
+\ On x86-64 a row the captured runtime provides keeps its record in every
+\ build; in a seeded build its body jumps through this DATA cell (layout.f
+\ PROVIDED-XT). Every other row, and every ARM64 row, has none, -1.
 : DISPATCH ( n -- n ) 6 ROW-FIELD @ ;
 : DISPATCH! ( n n -- ) {: cell:n row:n :}
    row NAME$ PROVIDED-ROW? 0= if row NAME$ UNMARKED-DISPATCH then
@@ -213,12 +213,15 @@ public
 \ for the name - which is the same fork the table exists to close, read from the
 \ other end.
 \
-\ A ROW THE CAPTURED RUNTIME PROVIDES (src/habu/prims.f EPREFIX-PROVIDED!) must
-\ also register its dispatch cell: a body without one is an assembly body under
-\ the runtime's name, which a seeded build would run in place of the runtime's
-\ word. A seeded build's body is the stub alone, so its captured runtime must
-\ fill the cell; the builder's provider answers that for a cell. Run it after
-\ the last body.
+\ Run it after the last body.
+\
+\ ON X86-64 A ROW THE CAPTURED RUNTIME PROVIDES (src/habu/prims.f
+\ EPREFIX-PROVIDED!) must also register its dispatch cell: a body without one
+\ is an assembly body under the runtime's name, which a seeded build would run
+\ in place of the runtime's word. A seeded build's body is the stub alone, so
+\ its captured runtime must fill the cell; the builder's provider answers that
+\ for a cell. COMPLETE-PROVIDED checks both, after COMPLETE. An ARM64 record is
+\ its assembly body and registers no cell.
 private
 
 \ The registered body of the name, or -1.
@@ -240,11 +243,15 @@ private
    s" prims: captured runtime leaves the dispatch cell empty for prefix-provided primitive " type type cr
    s" prims: prefix-provided row not in the captured runtime" SPEC-RC die ;
 
-: CHECK-ROW ( n [ n -- bool ] -- ) {: spec:n filled :}
+: CHECK-ROW ( n -- )
+   PRIM-SPEC:NAME$
+   2dup BODY-ROW 0 < if NO-BODY else 2drop then ;
+
+: CHECK-PROVIDED ( n [ n -- bool ] -- ) {: spec:n filled :}
+   spec PRIM-SPEC:PREFIX-PROVIDED? 0= if exit then
    spec PRIM-SPEC:NAME$ {: name:ptr size:n :}
    name size BODY-ROW {: body:n :}
    body 0 < if name size NO-BODY then
-   spec PRIM-SPEC:PREFIX-PROVIDED? 0= if exit then
    body DISPATCH {: cell:n :}
    cell 0 < if name size NO-DISPATCH then
    SEEDED? 0= if exit then
@@ -252,7 +259,10 @@ private
 
 public
 
-: COMPLETE ( [ n -- bool ] -- ) {: filled :}
-   PRIM-SPEC:COUNT 0 ?do i filled CHECK-ROW loop ;
+: COMPLETE ( -- )
+   PRIM-SPEC:COUNT 0 ?do i CHECK-ROW loop ;
+
+: COMPLETE-PROVIDED ( [ n -- bool ] -- ) {: filled :}
+   PRIM-SPEC:COUNT 0 ?do i filled CHECK-PROVIDED loop ;
 
 ;package
