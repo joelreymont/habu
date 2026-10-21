@@ -1,5 +1,4 @@
-\ Bind the retained compiler's producer words that object import calls, and
-\ classify DATA sites against the prefix the importer keeps.
+\ Bind the retained compiler's producer words that object import calls.
 
 require src/lib/errors.f
 require src/compiler/native/publish.f
@@ -13,14 +12,12 @@ package NUNIT-CAPTURE
 
 private
 
-variable PREFIX-DATA-N
 DYNAMIC-BUFFER PRODUCER-NAME ptr u8
 DYNAMIC-BUFFER PRODUCER-LEN n
 DYNAMIC-BUFFER PRODUCER-XT n
 variable PRODUCER-N
 
 CAST: WITH-UNIT-XT ( n -- [ [ n n n n -- ] [ -- ] -- ] )
-CAST: ACTION-XT ( n -- [ -- ] )
 
 : BIND-ONE ( ptr u8 n bool -- ) {: a:ptr u:n optional:bool :}
    a u XREF-FIND dup XREF-FOUND? if XREF-START
@@ -47,17 +44,7 @@ CAST: ACTION-XT ( n -- [ -- ] )
 : TARGET-XT ( ptr u8 n -- n )
    BOUND-XT dup 0= if E-NUNIT-PROFILE throw then ;
 
-\ These owners exist only when an application has loaded callback support.
-: CALLBACK-OWNER-XT ( ptr u8 n -- n ) BOUND-XT ;
-
-: ARM-IMPORTED-CALLBACKS ( -- )
-   s" TASK:ARM-IMPORTED-CALLBACKS" CALLBACK-OWNER-XT dup 0<> if
-      ACTION-XT execute
-   else drop then ;
-
 public
-
-EXPORT ARM-IMPORTED-CALLBACKS
 
 : BIND-PRODUCER ( -- )
    0 PRODUCER-N !
@@ -92,8 +79,7 @@ EXPORT ARM-IMPORTED-CALLBACKS
    s" NSTR:SOURCE-END" true BIND-ONE
    s" NSTR:SOURCE-COUNT" true BIND-ONE
    s" NSTR:SOURCE@" true BIND-ONE
-   s" NSTR:SOURCE-CLOSE" true BIND-ONE
-   s" TASK:ARM-IMPORTED-CALLBACKS" true BIND-ONE ;
+   s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;
@@ -101,15 +87,8 @@ EXPORT ARM-IMPORTED-CALLBACKS
 : WITH-OBSERVER ( [ n n n n -- ] [ -- ] -- )
    s" NPUB:WITH-UNIT" TARGET-XT WITH-UNIT-XT execute ;
 
-: START-PREFIX ( -- ) AOT-ARM:HERE-N PREFIX-DATA-N ! ;
-
-: IN-OWNED? ( n n n -- bool ) {: address:n width:n prefix-end:n :}
-   address PREFIX-DATA-N @ >= width prefix-end address - <= and ;
-: OWNED-BYTE? ( n n -- bool ) 1 swap IN-OWNED? ;
-: OWNED-CELL? ( n n -- bool ) CELL swap IN-OWNED? ;
-
 : CLOSE ( -- )
    PRODUCER-NAME-RELEASE PRODUCER-LEN-RELEASE PRODUCER-XT-RELEASE
-   0 PRODUCER-N ! 0 PREFIX-DATA-N ! ;
+   0 PRODUCER-N ! ;
 
 ;package

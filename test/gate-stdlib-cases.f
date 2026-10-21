@@ -220,8 +220,6 @@ SUITE app-image
 ;SUITE
 
 SUITE native-file-state
-   test/native-file-object-prepared-e2e.f
-   test/native-file-prepared-boundary-e2e.f
    test/native-file-state-e2e.f
    test/native-file-retired-e2e.f
 ;SUITE
@@ -297,7 +295,6 @@ SUITE native-file-forms-repeat
 
 SUITE native-unit-refusals
    test/native-unit-file.f
-   test/native-file-object-wid-reject.f
 ;SUITE
 
 \ A package's checker facts survive an artifact boundary.

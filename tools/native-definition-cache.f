@@ -732,7 +732,7 @@ variable PENDING-KEY-U
 
 : DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: source:ptr sourceu:n pending:ptr pendingu:n :}
-   s" habu-native-definition-v6" HASH-START
+   s" habu-native-definition-v7" HASH-START
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    s" HBNUNIT2-definition-v2" HASH-S
    data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N

@@ -457,10 +457,7 @@ stripped rows beside it) was refused at an undeclared cell holding
 ask: `aot-lib.f AOT-DATA-TEXTPTR-CHECK` for an undeclared window
 cell, beside the undeclared code-pointer refusal, and `aot-closure.f XTD-ROW`
 for a declared `DATA` cell — a plain `variable` or `PTR-VARIABLE` meets the
-first, `PERSISTED-PTR-VARIABLE` the second. The FILE producer meets a declared
-DATA cell even earlier while encoding the source unit: a mapped pointer has no
-valid FILE address reference, so `tools/native-unit-object.f SLOT-ONE` uses the
-same classifier, exact cell owner and diagnostic before it can publish a unit.
+first, `PERSISTED-PTR-VARIABLE` the second.
 The refusal reads *stripped AOT persistent data holds a pointer into memory the
 build mapped word=BUF data-off=… value=…*, and its suggestion *the image
 restores no mapping the build made; allocate at run time (in MAIN or an
