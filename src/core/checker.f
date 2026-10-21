@@ -23304,15 +23304,16 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
 
 \ The first four spans track objects, variable kinds, logical widths, and
 \ outer binder references. Lexical-context spans head domain memo lists.
+\ Only accepted node offsets need lexical heads; the structural pass sets them.
 : CK-GRAPH-ROOM ( -- )
    CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF CK-GRAPH-SPANS / -8 and > IF ASIG-GRAPH-DIE THEN
    CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! CK-GRAPH-SPANS * {: bytes:n :}
    bytes CK-GRAPH-CAP @ > IF
       CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
-      old oldcap bytes ARENA-BYTES-GROW CK-GRAPH-MAP !
+      bytes ARENA-ALLOC CK-GRAPH-MAP !
       bytes CK-GRAPH-CAP ! old oldcap ASIG-RELEASE
    THEN
-   CK-GRAPH-MAP @ bytes ASIG-GRAPH-ZERO
+   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ CK-GRAPH-META-SPANS * ASIG-GRAPH-ZERO
    0 CK-LEX-MEMO-U ! ;
 
 : CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
@@ -23465,6 +23466,9 @@ variable CK-GRAPH-UNIT-MAP
       ELSE 1 THEN
       off CK-GRAPH-WIDTH-SLOT !
    THEN
+   CK-LEX-MASK 1+ 0 ?do
+      0 off i CK-GRAPH-LEX-SLOT !
+   loop
    tag 1+ off CK-GRAPH-SLOT ! ;
 
 create CK-LEX-DOMAINS 64 cells allot
