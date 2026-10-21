@@ -341,9 +341,18 @@ variable USE-FLOOR
    k XREF-DOES-COMPANION? if k 1+ exit then
    -1 ;
 
+\ The export and its clause each take an occurrence, so two must remain before
+\ the checker hears of the export (habu2.f C-EXPORT-CLAUSE-ROOM): the
+\ allocation's first cell is the last number issued, and -1 the last one that
+\ can be, so fewer than two remain after -2 or -1 (habu1.f EM-DEF-OCC:LROOM).
+: PKG-OCC-ROOM ( -- )
+   data-base DEF-OCC:PTR-CELL + 0 ptr-field @ CELL-VIEW @ {: last:n :}
+   last -2 =  last -1 =  or if DEF-OCC:E-EXHAUSTED throw then ;
+
 \ The clause takes the slot above the export's own, and its name must not be
 \ live in the current wordlist (habu2.f C-EXPORT-CLAUSE-ROOM).
 : PKG-CLAUSE-ROOM ( n -- ) {: k:n :}
+   PKG-OCC-ROOM
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u get-current WL-PROBE XREF-FOUND? if
