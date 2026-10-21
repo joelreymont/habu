@@ -566,7 +566,7 @@ CND-RT-SOME 7 T=
 CND-RT-NONE 999 T=
 \ A declared payload can itself be a nested application. Its published width
 \ must include both inner tags, then construct and MATCH keep every cell.
-SUMTYPE cnpayload 0
+SUMTYPE cnpayload
    VARIANT wrapped clopt<clfres<n,n>> ;VARIANT
    VARIANT nop ;VARIANT
 ;SUMTYPE
@@ -574,7 +574,7 @@ SUMTYPE cnpayload 0
 : CNP-GET ( cnpayload -- n ) MATCH cnpayload wrapped OF CN-GET ENDOF nop OF 999 ENDOF ;MATCH ;
 : CNP-RT ( -- n ) 5 CN-IOK CN-SOME CNP-WRAP CNP-GET ;
 CNP-RT 5 T=
-SUMTYPE cnpayloadg 1
+SUMTYPE cnpayloadg<a>
    VARIANT wrapped clopt<clfres<a,n>> ;VARIANT
    VARIANT nop ;VARIANT
 ;SUMTYPE
