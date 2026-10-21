@@ -567,8 +567,9 @@ variable HBB-APP-BUILDER-U
 : HBB-ARTIFACT-NAME$ ( -- ptr u8 n )
    HBB-ARTIFACT-NAME-BUF HBB-ARTIFACT-NAME-U @ ;
 
-: HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
-   a u CONTENT-KEY:FILE+ ;
+: HBB-KEY-FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
+   SOURCE-ROOT:CANON-OS 0= if SHA-E-OPEN throw then
+   CONTENT-KEY:FILE+ ;
 
 \ Discover the producer's loaded source closure instead of maintaining a
 \ second dependency list. The target selector is part of the key; discovery
@@ -607,7 +608,7 @@ variable HBB-APP-BUILDER-U
    BF-ENGINE$ HBB-MAP-SRC!
    HBB-MAP-SRC$ FILE? if
       s" donor-map:present" CONTENT-KEY:TEXT+
-      HBB-MAP-SRC$ CONTENT-KEY:FILE+
+      HBB-MAP-SRC$ HBB-KEY-FILE+
    else
       s" donor-map:missing" CONTENT-KEY:TEXT+
    then ;
@@ -637,7 +638,7 @@ variable HBB-APP-BUILDER-U
 : HBB-MAKER-SUPPORT-SELECT ( -- )
    CONTENT-KEY:OPEN
    s" hb-maker-support-v1" CONTENT-KEY:TEXT+
-   BF-ENGINE$ CONTENT-KEY:FILE+
+   BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-DONOR-MAP+
    HBB-KEY-TARGET+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+

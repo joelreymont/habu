@@ -18,6 +18,10 @@ variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
 variable HBT-MAKER-OLD-U
 variable HBT-MAKER-DIRECT-OUT-U
+create HBT-MAKER-FSHA-CTX SHA256-FILE-CTX-BYTES allot
+create HBT-MAKER-EXE-HEX 64 allot
+create HBT-MAKER-MAP-HEX 64 allot
+create HBT-MAKER-GOT-HEX 64 allot
 
 : HBT-MAKER-HB$ ( -- ptr u8 n )
    HBT-MAKER-HB HBT-MAKER-HB-U @ ;
@@ -145,9 +149,9 @@ variable HBT-MAKER-DIRECT-OUT-U
 \ linker loads its own process support after the application. Temporary support
 \ must not spend the application's task-user band. Exercise the saved maker
 \ through hb-build and the compatibility maker directly on the public engine.
-: HBT-MAKER-REPORT-BUILD ( bool -- )
-   {: warm:bool :}
-   HBT-ARGV-BASE
+: HBT-MAKER-REPORT-BUILD ( ptr u8 n bool -- )
+   {: engine:ptr engineu:n warm:bool :}
+   HBT-TMP engine engineu HBT-ARGV-CLI
    s" --report-json" >LEN PROC-ARGV+
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -162,12 +166,18 @@ variable HBT-MAKER-DIRECT-OUT-U
       HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
    then ;
 
-: HBT-MAKER-CACHE-PATH ( -- )
+: HBT-MAKER-CACHE-PATH ( ptr u8 n -- ptr u8 n )
+   BUILD-FIXPOINT:BF-ENGINE!
    HBB-SELECT-ENGINE
    HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ {: path:ptr pathu:n :}
    HBB-MAKER-HIT @ 0<> TTRUE
    path pathu BASENAME s" hb-aot-builder-" STARTS-WITH? TTRUE
-   path pathu EXECUTABLE? TTRUE ;
+   path pathu EXECUTABLE? TTRUE
+   path pathu ;
+
+: HBT-MAKER-HASH ( ptr u8 n ptr u8 -- )
+   {: path:ptr pathu:n hex:ptr :}
+   HBT-MAKER-FSHA-CTX path pathu hex SHA256-FILE-HEX-IN 0 T= ;
 
 : HBT-MAKER-USER-RUN ( ptr u8 n -- )
    {: want:ptr wantu:n :}
@@ -210,12 +220,30 @@ variable HBT-MAKER-DIRECT-OUT-U
    \ would round the user ceiling and hide the odd 25-byte regression.
    HBT-AOT-SRC S\" require src/lib/task.f\nrequire src/lib/zip.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   false HBT-MAKER-REPORT-BUILD
+   s" bin/hb" false HBT-MAKER-REPORT-BUILD
+   S\" user-ok\n" HBT-MAKER-USER-RUN
+   HBT-AOT-OUT HBT-MAKER-EXE-HEX HBT-MAKER-HASH
+   HBT-AOT-OUT HBB-MAP-DST!
+   HBB-MAP-DST$ HBT-MAKER-MAP-HEX HBT-MAKER-HASH
+   s" bin/hb" HBT-MAKER-CACHE-PATH
+      HBT-MAKER-OLD HBT-MAKER-OLD-U HBT-COPY!
+   s" bin/hb" SOURCE-ROOT:CANON-OS 0= if E-BUILD-PATH throw then
+      HBT-MAKER-HB HBT-MAKER-HB-U HBT-COPY!
+   HBT-MAKER-HB$ HBT-MAKER-CACHE-PATH HBT-MAKER-OLD$ T$=
+   \ Keep the source fixed and require maker_ran: comparing a restored
+   \ artifact would not exercise the absolute spelling's linker path.
+   HBT-REMOVE-AOT-OUT
+   HBT-MAKER-HB$ true HBT-MAKER-REPORT-BUILD
+   HBT-AOT-OUT HBT-MAKER-GOT-HEX HBT-MAKER-HASH
+   HBT-MAKER-GOT-HEX 64 HBT-MAKER-EXE-HEX 64 T$=
+   HBT-AOT-OUT HBB-MAP-DST!
+   HBB-MAP-DST$ HBT-MAKER-GOT-HEX HBT-MAKER-HASH
+   HBT-MAKER-GOT-HEX 64 HBT-MAKER-MAP-HEX 64 T$=
    S\" user-ok\n" HBT-MAKER-USER-RUN
    S\" user-ok\n" HBT-MAKER-DIRECT-RUN
    HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
-   true HBT-MAKER-REPORT-BUILD
+   HBT-MAKER-HB$ true HBT-MAKER-REPORT-BUILD
    S\" zip-ok\n" HBT-MAKER-USER-RUN ;
 
 public
@@ -233,7 +261,6 @@ public
    HBT-TMP BUILD-CACHE:ROOT!
    BUILD-FIXPOINT:BF-ENGINE-RESET
    HBT-MAKER-USER-BAND
-   HBT-MAKER-CACHE-PATH
    HBT-MAKER-ROOT-EDIT
    HBT-MAKER-ROOTED-BUILD
    CLEANUP-RUN

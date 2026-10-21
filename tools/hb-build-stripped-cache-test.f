@@ -240,19 +240,23 @@ variable HBT-DONOR-OUT-U
    HBB-MAKER-RUN @ 0<> TTRUE
    HBT-MAPL-OUT HBT-CODE-MAPPED ;
 
-\ The donor's matching map changes the attribution of the same executable.
-\ Build once without it, then restore it: the second build must select a new
-\ cache entry and produce rows attributed to their baked source files.
+\ Select a symlink whose target has a map, but whose own sibling map is absent.
+\ Only the selected sibling supplies attribution: restoring it must invalidate
+\ the no-map build and produce rows attributed to their baked source files.
 : HBT-DONOR-MAP-KEY ( -- )
    HBT-ROOT s" donor" HBT-DONOR-BUF HBT-DONOR-U HBT-PATH!
    HBT-ROOT s" donor-out" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
-   HBT-LINKER HBT-DONOR$ COPY-FILE-STREAM
-   HBT-DONOR$ CHMOD-X
+   HBT-LINKER HBT-MAP$ FILE? TTRUE
+   HBT-LINKER HBT-DONOR$ MAKE-SYMLINK
+   HBT-DONOR$ HBT-MAP$ FILE? TFALSE
    HBT-MAPL-SRC HBT-MAPL-SRC$ WRITE-ALL
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    HBT-DONOR$ HBT-ENGINE!
    HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0<> TTRUE
+   HBT-DONOR-OUT$ HBT-CODE-ATTR
+   IMAGE-NAMES:UNKNOWN-BYTES 0 > TTRUE
+   IMAGE-NAMES:BAKED-SOURCE? TFALSE
    HBT-LINKER HBT-MAP$ HBT-DONOR$ HBT-MAP2$ COPY-FILE-STREAM
    HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
    HBT-DONOR$ HBT-ENGINE!
