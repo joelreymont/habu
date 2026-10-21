@@ -3485,6 +3485,9 @@ public
 : EMIT-DEF-OCC-RECLAIM ( -- )
    LBL LBL LBL LBL {: loop:label next:label full:label done:label :}
    EM-DEF-OCC:LRECLAIM LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   PROF-ABI:LPROFRECLAIM LABEL@ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,
    10 CP 0 ADDI,  HOST-INVALIDATE,
    10 0 MOVZ,
    loop LBL,
@@ -5584,9 +5587,9 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: room-ok:label lower:label raise:label loop:label raised:label
       done:label clear-loop:label reset:label :}
-   LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL
    {: reset-loop:label init-bad:label init-msg:label append-done:label
-      append-records:label append-cf:label append-restored:label prof-next:label :}
+      append-records:label append-cf:label append-restored:label :}
    S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
    EM-DEF-OCC:LROOM LABEL@ LBL,
       SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
@@ -5627,27 +5630,12 @@ variable LHIDXBUILD
          13 11 0 STR,
          done B,
       lower LBL,
+         PROF-ABI:LPROFTRIM LABEL@ BL,
          11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
-         14 DATA-VA VA>N DATA-SIZE PROF-ABI:PROF-BAND-AT LIT64,
-         14 14 PROF-ABI:PROF-ARENA LDR,  14 clear-loop CBZ,
-         12 14 PROF-ABI:ARN-IDS LDR,  12 clear-loop CBNZ,
-         14 0 MOVZ,                              \ prof-rate alone has no initialized live map
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,
          12 10 3 LSLI,  12 11 12 ADD,
          13 0 MOVZ,  13 12 8 STR,
-         \ Ordinary trimming detaches the removed IDs. Seed rewind has
-         \ already cleared these slots while retaining the donors' spans.
-         14 prof-next CBZ,
-         12 PROF-ABI:ARN-LIVE LIT64,  12 14 12 ADD,
-         13 10 3 LSLI,  12 12 13 ADD,
-         13 12 0 LDR,  13 0 CMPI,  C-LT prof-next BCOND,
-         15 0 MOVN,  15 12 0 STR,
-         12 PROF-ABI:ARN-RECS LIT64,  12 14 12 ADD,
-         15 PROF-ABI:PROF-ID-ENT MOVZ,  13 13 15 MUL,  12 12 13 ADD,
-         15 0 MOVN,  15 12 PROF-ABI:RID-OWNER STR,
-         15 0 MOVZ,  15 12 PROF-ABI:RID-START STR,  15 12 PROF-ABI:RID-END STR,
-      prof-next LBL,
          10 10 1 ADDI,  clear-loop B,
       done LBL,
       NDICT 9 0 ADDI,

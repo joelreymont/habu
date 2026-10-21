@@ -849,11 +849,19 @@ copied qualified name, code span, counter, inclusive count and caller edges.
 The next report indexes retained code alongside new live definitions, so a new
 word at a reused ordinal cannot inherit the donor's samples or name.
 
-Ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and checker
-overlay cleanup) detaches the removed identities and clears their stored spans.
-Those words leave the index; a later seed rewind cannot revive a word already
-retired by `undefine`. Reusing an ordinary trimmed ordinal assigns a fresh
-profile ID at the next report refresh.
+On ARM64, ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and
+checker overlay cleanup) resolves pending samples before detaching the removed
+identities and clearing their stored spans. Those words leave the searchable
+index immediately; their names, counts and edges remain in reports. A later
+seed rewind cannot revive a word already retired by `undefine`. Reusing an
+ordinary trimmed ordinal assigns a fresh profile ID at the next refresh.
+
+An ARM64 code-pointer rewind (`cp!`, including ordinary code reclamation) resolves
+pending samples before releasing any bytes, then removes every overlapping
+live or seed-retained span from the index. Code emitted at a reused address
+cannot inherit the old word's exclusive samples. Reports walk stable profile
+IDs independently of the searchable spans, so reclaimed words keep their
+accumulated samples.
 
 `prof-on` starts a fresh identity session; `prof-reset` clears counts across
 the full profile-ID range while retaining the session's names and index.

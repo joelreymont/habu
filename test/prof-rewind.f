@@ -45,6 +45,14 @@ create ERR ERR-CAP allot
    OUT outu s" PROF-TRIM-NEW" CONTAINS? TTRUE
    s" prof-row resolves the current ordinal" T-LABEL
    OUT outu s" PROF-REWIND-TARGET-QUALIFIER-LONG:TARGET-NEW" CONTAINS? TTRUE
+   s" ordinary trimming preserves deferred word samples" T-LABEL
+   OUT outu s\" \qword\q:\qPROF-LATE-TRIM\q" CONTAINS? TTRUE
+   s" reused code is sampled as its executable target" T-LABEL
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q" CONTAINS? TTRUE
+   s" reused target receives exclusive samples" T-LABEL
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q,\qexcl\q:0" CONTAINS? TFALSE
+   s" reused code never charges its reclaimed donor" T-LABEL
+   OUT outu s\" \qword\q:\qPROF-RECLAIM-DONOR\q" CONTAINS? TFALSE
    s" profiler child has no diagnostic" T-LABEL  erru 0 T=
    s" prof-rewind report artifact:" type cr
    OUT outu type
