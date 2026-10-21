@@ -10560,10 +10560,10 @@ public
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT source: TKA/TKL still hold the operand; nothing pushed or published
    SP SP 64 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
    DOES-REC:CLAUSE-OF  6 SP 24 STR,                     \ x5 = LFIND's record; [24] = its clause or 0
-   14 0 MOVZ,  14 SP 32 STR,
+   14 0 MOVZ,  14 SP 56 STR,                           \ [56] = the kind bits the alias copies; [32] is its ordinal
    14 5 16 LDR,  16 DKIND:MASK LIT64,  14 14 16 AND,
    16 DKIND:VAL LIT64,  14 16 CMP,  C-NE notval BCOND,
-      16 SP 32 STR,                                      \ only immutable constant bodies keep their fixed-value kind
+      16 SP 56 STR,                                      \ only immutable constant bodies keep their fixed-value kind
    notval LBL,
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
@@ -10588,7 +10588,7 @@ public
    16 14 2 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit1 -> DNAME-IMM
    16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
-   16 SP 32 LDR,  15 15 16 ORR,                          \ constant alias still pushes the same fixed value
+   16 SP 56 LDR,  15 15 16 ORR,                          \ constant alias still pushes the same fixed value
    15 9 16 STR,
    C-EXPORT-CLAUSE-RECORD
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
