@@ -763,17 +763,44 @@ variable ACAP-BP
 : ACAP-POOL$ ( n -- ptr u8 n ) {: noff:n :}
    AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@ ;
 
-: ACAP-XTOFF-ENTRY? ( n -- bool )
-   {: off:n :}
+DYNAMIC-BUFFER ACAP-ENTRY-OFF n
+variable ACAP-ENTRY-N
+
+\ Name selection asks once per eligible record over unchanged declared rows.
+\ Decode their code targets once for that pass and sort a
+\ separate view: the artifact keeps its registration order and encoded values.
+\ Keep offset+1, including null zero, and exclude both DATA and named targets.
+: ACAP-ENTRY-BUILD ( -- )
+   0 ACAP-ENTRY-N !
    AOT-WINDOW:XTOFF-N @ {: count:n :}
-   count 0= if false exit then
+   count ACAP-ENTRY-OFF-RESERVE
+   count 0= if exit then
    AOT-WINDOW:XTOFF-BUF@ {: rows:ptr :}
    count 0 ?do
       rows i AOT-WINDOW:XTOFF-ROW * + 4 + ACAP-W32@ {: tgt:n :}
       tgt AOT-WINDOW:XTOFF-KIND-MASK and 0= if
-         tgt AOT-WINDOW:XTOFF-VALUE-MASK and off 1+ = if true unloop exit then
+         tgt AOT-WINDOW:XTOFF-VALUE-MASK and ACAP-ENTRY-N @ ACAP-ENTRY-OFF !
+         1 ACAP-ENTRY-N +!
       then
    loop
+   ACAP-ENTRY-N @ 1 > if
+      0 ACAP-ENTRY-OFF ACAP-ENTRY-N @ [: < ;] SORT:SORT!
+   then ;
+
+: ACAP-XTOFF-ENTRY? ( n -- bool )
+   {: off:n :}
+   ACAP-ENTRY-N @ 0= if false exit then
+   0 ACAP-ENTRY-OFF {: entries:ptr :}
+   off 1+ {: target:n :}
+   0 ACAP-ENTRY-N @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      entries mid cells + @ {: value:n :}
+      value target = if true exit then
+      value target < if mid 1+ hi else lo mid then
+   repeat
+   2drop
    false ;
 
 : ACAP-XTSITE-NAMES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1442,11 +1469,13 @@ $14000000 constant ACAP-GBR-TERM
 \ record, so AOT-REC-N becomes the cursor the shipped rows are counted on and
 \ ACAP-REC-ALL is what every walk over the capture's own records reads.
 : ACAP-COMPACT-RECS ( -- )
+   ACAP-GRAPH-READY @ ACAP-ALL-NAMES @ or 0= if ACAP-ENTRY-BUILD then
    AOT-REC-N @ ACAP-REC-ALL !
    0 AOT-REC-N !  0 AOT-SPAN:N !
    ACAP-REC-ALL @ 0 ?do
       i ACAP-COMPACT-ONE
-   loop ;
+   loop
+   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N ! ;
 
 variable ACAP-SIG-KNOWN                            \ window records the checker knows an effect for
 variable ACAP-SIG-EXEMPT                           \ package, retired, and unrecorded records
@@ -2014,6 +2043,7 @@ variable ACAP-SWEEP-B1
    off 0 >=  off AOT-BLOB-LEN @ <  and if off else -1 then ;
 
 : ACAP-GRAPH-ROOTS ( -- )
+   ACAP-ALL-NAMES @ 0= if ACAP-ENTRY-BUILD then
    0 ACAP-GWORK-N !
    ACAP-REC-ALL @ 0 ?do
       i ACAP-NAMED? if
@@ -2025,6 +2055,7 @@ variable ACAP-SWEEP-B1
          0 i ACAP-NAMED-BIT !
       then
    loop
+   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N !
    \ Every declared code cell is a root even when its owning definition is
    \ private: the DATA row is part of the captured ABI.
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
@@ -2517,6 +2548,7 @@ private
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
+   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N !
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  0 AOT-SPAN:N !
