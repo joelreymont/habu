@@ -27,6 +27,11 @@ require tools/macho-read.f
 IMG-LOAD-TARGET-LAYOUT
 undefine IMG-LOAD-TARGET-LAYOUT
 
+\ An x86 image is a linux-x86-64 image on any host, so its paths read that
+\ target's layout, qualified, under the guards below; the host's DATA-VA is not
+\ where an x86 image maps DATA on a macOS host.
+require src/os/linux-x86-64/target-layout.f
+
 package IMAGE-DUMP
 
 TYPED-VARIABLE IB ptr u8                     \ image buffer
@@ -251,7 +256,8 @@ variable OKV
    o SNAP-TRL-REGLEN + I@ DICT-SIZE < if IMG-FALSE exit then
    o SNAP-TRL-REGLEN + I@ REGION > if IMG-FALSE exit then
    o SNAP-TRL-DATALEN + I@ 0 <= if IMG-FALSE exit then
-   o SNAP-TRL-DATALEN + I@ DATA-SIZE > if IMG-FALSE exit then
+   X64-IMAGE @ if X64LAYOUT:DATA-SIZE else DATA-SIZE then {: size:n :}
+   o SNAP-TRL-DATALEN + I@ size > if IMG-FALSE exit then
    o SNAP-TRL-NDICT + I@ DREC * CFSTK-OFF > if IMG-FALSE exit then
    0 0= ;
 
@@ -264,13 +270,13 @@ variable OKV
    X64-IMAGE @ if
       o SNAP-TRL-DATALEN + I@ DATA-START < if IMG-FALSE exit then
       o o SNAP-TRL-DATALEN + I@ DATA-START - - {: end:n :}
-      end CODE-OFF < end PROT-PAGE-MAX mod 0<> or if IMG-FALSE exit then
+      end X64LAYOUT:CODE-OFF < end PROT-PAGE-MAX mod 0<> or if IMG-FALSE exit then
       end 8 - I@ $3145544953343658 <> if IMG-FALSE exit then
       X64-REG-PHDR {: p:n :}
       p 0 < if IMG-FALSE exit then
       p 32 + I@ o SNAP-TRL-REGLEN + I@ < if IMG-FALSE exit then
       p 16 + I@ ELF-VA>OFF 0 < if IMG-FALSE exit then
-      DATA-VA DATA-START ELF-VA-SPAN>OFF 0 < if IMG-FALSE exit then
+      X64LAYOUT:DATA-VA DATA-START ELF-VA-SPAN>OFF 0 < if IMG-FALSE exit then
       0 0= exit
    then
    o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
@@ -304,6 +310,8 @@ variable OKV
       TOFF @ TDATA @ - TOFF @ SNAP-REGION-STORED - ROFF !
    then ;
 
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+
 : X64-PTR-SPAN>OFF ( n n -- n ) {: p:n len:n :}
    len 1 max {: size:n :}
    HAS-SNAP @ if
@@ -312,13 +320,15 @@ variable OKV
          size TREG @ off - <= if ROFF @ off + exit then
          -1 exit
       then
-      TOFF @ TDATA @ DATA-START - - CODE-OFF - {: textlen:n :}
+      TOFF @ TDATA @ DATA-START - - X64LAYOUT:CODE-OFF - {: textlen:n :}
       p 0 >= p textlen < and if
-         size textlen p - <= if p CODE-OFF + exit then
+         size textlen p - <= if p X64LAYOUT:CODE-OFF + exit then
          -1 exit
       then
    then
    p size ELF-VA-SPAN>OFF ;
+
+;using   \ X64LAYOUT
 
 : PTR>OFF {: p :} ( n -- n )
    X64-IMAGE @ if
@@ -683,9 +693,11 @@ variable OKV
    repeat drop
    s" imgdump: word not found" 74 die ;
 
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+
 : X64-DATA-BYTE ( n -- n ) {: off:n :}
    off DATA-START < if
-      DATA-VA off + ELF-VA>OFF
+      X64LAYOUT:DATA-VA off + ELF-VA>OFF
    else
       TOFF @ TDATA @ DATA-START - - off DATA-START - +
    then
@@ -696,6 +708,8 @@ variable OKV
    0 8 0 ?do
       off i + X64-DATA-BYTE i 8 * lshift or
    loop ;
+
+;using   \ X64LAYOUT
 
 : DATA-IMG ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
