@@ -13,6 +13,19 @@ create EST-X64-BUF EST-X64-BYTES allot
 create EST-X64-PATH FS-PATH-CAP allot
 variable EST-X64-PATH-U
 
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+
+\ A stripped image as AOT-LINK's X64-TABLE-FOOTER, and X64IMAGE:WRITE-FD lay
+\ it out: page-rounded text ending in the X64AOT table footer, then the RW
+\ tail, an empty region LOAD and the fixed DATA LOAD. The table at text offset
+\ $800 is the empty one the writer emits for a window with no nonzero byte and
+\ no XT cell: a zero run count and a zero XT count, 8 bytes, which the zeroed
+\ buffer already holds. Unlike the writer's, this DATA LOAD carries $20 file
+\ bytes, so its row is file-backed.
+$2000 constant EST-X64-TEXT
+$800 constant EST-X64-TABLE
+8 constant EST-X64-TABLE-BYTES
+
 : EST-X64-PHDR ( n n n n n n -- )
    {: idx:n off:n va:n files:n mem:n flags:n :}
    64 idx 56 * + {: p:n :}
@@ -35,20 +48,23 @@ variable EST-X64-PATH-U
    64 EST-X64-BUF 52 + !
    56 EST-X64-BUF 54 + !
    4 EST-X64-BUF 56 + !
-   0 0 $400000 $2000 $2000 5 EST-X64-PHDR
-   1 $2000 $402000 $20 $20 6 EST-X64-PHDR
-   2 0 $1400000 0 $2000000 6 EST-X64-PHDR
-   3 $4000 $340000000 $20 $2000000 6 EST-X64-PHDR
-   $90 EST-X64-BUF $1000 + c!
-   1 EST-X64-BUF $1800 + !
-   0 EST-X64-BUF $1804 + !
-   1 EST-X64-BUF $1808 + c!
-   $800 EST-X64-BUF $1FF0 + !
-   1 EST-X64-BUF $1FF4 + !
-   $3145544953343658 EST-X64-BUF $1FF8 + !
+   0 0 $400000 EST-X64-TEXT EST-X64-TEXT 5 EST-X64-PHDR
+   1 EST-X64-TEXT $400000 EST-X64-TEXT + $20 $20 6 EST-X64-PHDR
+   2 0 $400000 REGION-OFF + 0 REGION 6 EST-X64-PHDR
+   3 $4000 X64LAYOUT:DATA-VA $20 X64LAYOUT:DATA-SIZE 6 EST-X64-PHDR
+   $90 EST-X64-BUF X64LAYOUT:CODE-OFF + c!
+   EST-X64-TEXT X64AOT-FORMAT:FOOTER-BYTES - {: footer:n :}
+   EST-X64-TABLE EST-X64-BUF footer + !
+   EST-X64-TABLE-BYTES EST-X64-BUF footer 4 + + !
+   X64AOT-FORMAT:MAGIC EST-X64-BUF footer 8 + + !
    1 EST-X64-BUF $4000 + c!
    2 EST-X64-BUF $401F + c! ;
 
+\ Expected rows, in file order: header page $1000 other; text $800 code up to
+\ the table; run count 4 and XT count 4 other; table gap $1FF0 - $1808 = $7E8
+\ pad; footer 16 other; RW tail $20 other; segment gap $4000 - $2020 = $1FE0
+\ pad; fixed DATA $20, 2 written and 30 zero. Other is $1000 + 8 + 16 + $20 =
+\ $1038.
 : EST-X64-SEGMENTS ( -- )
    s" x86 fixed DATA PT_LOAD has its own file-backed row" T-LABEL
    CLEANUP-RESET
@@ -64,10 +80,12 @@ variable EST-X64-PATH-U
    NAME-BYTES 0 T=
    DATA-WRITTEN 2 T=
    DATA-ZERO 30 T=
-   PAD-BYTES $1FE0 T=
-   OTHER-BYTES $1820 T=
+   PAD-BYTES $27C8 T=
+   OTHER-BYTES $1038 T=
    CLEANUP-RUN ;
 
+\ With the DATA LOAD empty the file ends at the page after the RW tail: no
+\ data is written, and padding is the table gap $7E8 plus $3000 - $2020 = $FE0.
 : EST-X64-EMPTY ( -- )
    s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
    CLEANUP-RESET
@@ -82,7 +100,7 @@ variable EST-X64-PATH-U
    CLASS$ s" stripped" T$=
    TOTAL-BYTES $3000 T=
    DATA-WRITTEN 0 T=
-   PAD-BYTES $FE0 T=
+   PAD-BYTES $17C8 T=
    s" a negative fixed LOAD size is not an empty segment" T-LABEL
    -1 EST-X64-BUF $108 + !
    EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
@@ -92,6 +110,8 @@ variable EST-X64-PATH-U
    EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
    [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
    CLEANUP-RUN ;
+
+;using   \ X64LAYOUT
 
 : EST-U64! ( n n -- ) {: value:n off:n :}
    value IMG@ off + CELL-VIEW ! ;
