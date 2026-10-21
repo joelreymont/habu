@@ -76,6 +76,10 @@ SUITE engine-stack-machine
 
 \ Diagnostic modes share their outer checker and need no keyed image.
 \ Start them early so their serial checks overlap the other suite rows.
+SUITE native-gate-diagnostics
+   test/gate-diagnostics.f
+;SUITE
+
 SUITE diag-position
    test/diag-position-test.f
 ;SUITE
@@ -2574,10 +2578,6 @@ SUITE repl-open-definition
 
 SUITE repl-literal-segment
    test/repl-literal-segment.f
-;SUITE
-
-SUITE native-gate-diagnostics
-   test/gate-diagnostics.f
 ;SUITE
 
 ;GROUP
