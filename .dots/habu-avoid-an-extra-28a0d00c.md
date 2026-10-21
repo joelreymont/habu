@@ -1,6 +1,6 @@
 ---
 title: Avoid an extra DATA payload page
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-14T16:55:46.946322+03:00"
