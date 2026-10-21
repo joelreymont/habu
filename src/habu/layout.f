@@ -1165,6 +1165,12 @@ $3808 constant XT-CELL
 \ sealed. The linker publishes its translated XT in protected UNCGH-CELL.
 \ $3858 follows POLICY-ABI:KEYWORD-CELL and is outside PROT-REG.
 $3858 constant REPORT-CELL
+\ The x86-64 Habu loop's source arena (src/habu/main.f ARENA): a mapping this
+\ process made, so the snapshot writer zeroes it in copied DATA (snap-lib.f
+\ SND-ZERO-LIVE) and every boot reads it zero until MAIN maps its stream.
+\ $3868 follows PROVIDED-XT:EVALUATE-RANGE-CELL ($3860) in the run swept for a
+\ claimant up to the FFI buffers at $3A00.
+$3868 constant ARENA-CELL
 ;package
 
 \ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row an x86-64

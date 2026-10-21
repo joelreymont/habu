@@ -116,8 +116,11 @@ ENUM route load build plain ;ENUM
 \ habu2.f C-SOURCE-FILE-LOOP and C-SOURCE-APPEND-ARG: one row per file, a
 \ newline between files, all of it in one arena before any of it runs. The
 \ bytes stay mapped for the life of the process, as the assembly's boot
-\ source arena does.
-PTR-VARIABLE ARENA
+\ source arena does. The arena pointer lives in the fixed DATA cell
+\ ARENA-CELL (src/habu/layout.f), which the snapshot writer zeroes.
+: ARENA ( -- ptr ptr u8 )
+   data-base ENGINE-MAIN:ARENA-CELL + 0 ptr-field ;
+
 variable USED
 
 : ROOM ( -- n )
@@ -237,10 +240,6 @@ TRUSTED: REPORT-PTR ( -- ptr [ n -- ] )
    ;MATCH ;
 
 public
-
-\ The snapshot writer clears this process-owned mmap pointer in copied DATA.
-: ARENA-CELL ( -- n )
-   ARENA BYTE-VIEW data-base BYTE-VIEW - ;
 
 \ Load what argv names, in order. argv[0] is the program and is not read; a
 \ vector with nothing after it has no file to load (the assembly sends that

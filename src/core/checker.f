@@ -10956,6 +10956,11 @@ PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ Snapshot support loads after capture; this prefix definition has no check
 \ hook to grant its declared public effect to later checked callers.
 PPRIM: CHECKER-REG RECORD-SNAPSHOT-COPY PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
+\ The x86-64 Habu loop's definers (src/habu/definers.f DEF-PREFIX-BIND, a
+\ TRUSTED: body) load after capture too; without a row the seal marks this
+\ public internal and an ARM64 product, which captures no caller, strips it.
+PPRIM: CHECKER-PREFIX BIND? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
+PRIM-TRUSTED-ONLY!
 \ The capture's keep policy (src/core/checker-surface.f), installed once. The
 \ policy answers for a symbol by its package, visibility and name - the scope key
 \ CHECKER-ASIG-ROW-FOR takes - and the sweep it arms retires the rest.

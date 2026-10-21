@@ -6,8 +6,9 @@
 \ ownership of the complete runtime closure.
 \
 \ WHAT BELONGS HERE is the closure of the compiler, the JIT, the REPL and the
-\ product's checked C2 storage. No other package or type signature reaches the
-\ image unless one of those entry points requires it. tools/manifest-lint.f checks that
+\ product's checked C2 storage, and on x86-64 the Habu loop that is its
+\ evaluate (src/habu/runtime-x64.f). No other package or type signature reaches
+\ the image unless one of those entry points requires it. tools/manifest-lint.f checks that
 \ against this file - every row is either a declared entry point, with its reason
 \ on the row there, or a file some file in the closure requires - so a row added
 \ here for convenience fails the lint rather than growing the binary quietly.
@@ -145,7 +146,6 @@ package NATIVE-RUNTIME
 ;package
 execute
 s" src/habu/repl.f" required
-s" src/habu/main.f" required
 s" src/habu/code-bytes.f" required
 s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
@@ -153,7 +153,26 @@ s" src/habu/debug.f" required
 s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required
-s" src/habu/interpret.f" required
+
+package CHECKER-REG
+public
+\ The target's own installs, run by SEAL on x86-64 and filled there by
+\ src/habu/runtime-x64.f; no other target loads a filler or calls it.
+defer SEAL-TARGET ( -- )
+;package
+
+package NATIVE-RUNTIME
+
+\ The Habu loop is x86-64's evaluate, startup and command line; ARM64 keeps
+\ the kernel's bodies for them and captures none of the loop's files.
+: LOAD-HABU-LOOP ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" src/habu/runtime-x64.f" required
+   then ;
+
+' LOAD-HABU-LOOP
+;package
+execute
 
 package NATIVE-RUNTIME
 
@@ -186,10 +205,7 @@ TRUSTED: BIND-OWNER ( -- )
 
 : SEAL ( -- )
    NCOMP:INSTALL
-   OUTER:INSTALL-EVALUATE
-   OUTER:INSTALL-CREATE
-   OUTER:INSTALL-POLICY
-   ENGINE-MAIN:INSTALL
+   HB-TARGET-LINUX-X86-64? if SEAL-TARGET then
    BIND-OWNER
    SEAL-CAPTURE ;
 

@@ -6,7 +6,7 @@
 \ record is its assembly body and has no cell, so a host on another machine
 \ builds `--target linux-x86-64` with src/arch/x86-64/passes.f loaded before
 \ tools/native-build.f. The private tree holds a copy of the checkout's build
-\ sources whose src/habu/native-runtime.f SEAL leaves out
+\ sources whose src/habu/runtime-x64.f, the x86-64 seal installs, leaves out
 \ OUTER:INSTALL-EVALUATE. The sources are copies, not links: a source's identity
 \ is its physical path, so a linked one lies outside the tree, and the build
 \ refuses 74 when no compiler.f below the tree completes (tools/
@@ -40,10 +40,10 @@ variable RC
 : AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
    ROOT$ rel relu PATH JOIN-PATH PATH swap ;
 
-: RUNTIME$ ( -- ptr u8 n ) s" src/habu/native-runtime.f" ;
+: RUNTIME$ ( -- ptr u8 n ) s" src/habu/runtime-x64.f" ;
 : INSTALL$ ( -- ptr u8 n ) S\"    OUTER:INSTALL-EVALUATE\n" ;
 
-\ The runtime manifest without the line that fills the evaluate cell.
+\ The x86-64 installs without the line that fills the evaluate cell.
 : WRITE-RUNTIME ( -- )
    RUNTIME$ AT-A SRC SRC-CAP READ-ALL SRC-U !
    SRC SRC-U @ INSTALL$ FIND-SUB MATCH option
@@ -51,7 +51,7 @@ variable RC
       some OF IDX>N ENDOF
    ;MATCH {: at:n :}
    at 0 < if
-      s" prefix-provided-unfilled: native-runtime.f SEAL runs no OUTER:INSTALL-EVALUATE" 1 die
+      s" prefix-provided-unfilled: runtime-x64.f runs no OUTER:INSTALL-EVALUATE" 1 die
    then
    INSTALL$ nip at + {: past:n :}
    RUNTIME$ AT-A SRC at WRITE-ALL

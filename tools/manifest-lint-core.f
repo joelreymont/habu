@@ -191,8 +191,7 @@ variable ML-NI
    s" src/os/linux-x86-64/repl-term.f" ML-ENTRY+               \ the REPL terminal, linux-x86-64
    s" src/habu/repl.f" ML-ENTRY+                               \ the REPL
    s" src/habu/debug.f" ML-ENTRY+                              \ the breakpoint debugger and token stepper the REPL offers
-   s" src/habu/main.f" ML-ENTRY+                               \ runtime argv and stdin entry
-   s" src/habu/interpret.f" ML-ENTRY+                          \ seeded evaluate provider
+   s" src/habu/runtime-x64.f" ML-ENTRY+                        \ the x86-64 Habu loop and its installs
    s" src/core/top-row.f" ML-ENTRY+                          \ the top-level row tracker the REPL warns from
    s" src/lib/c2-owner.f" ML-ENTRY+                              \ checked owner and allocation surface in every product
    s" src/lib/executable-build.f" ML-ENTRY+ ;                    \ the build scope every build driver enters

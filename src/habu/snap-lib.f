@@ -28,14 +28,16 @@ require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
-require src/habu/main.f
 
 package SNAP
 
 \ This writer is also loaded by the previous-generation host, whose baked
-\ SRCLOC package predates the owned source cells in layout.f.
+\ SRCLOC package predates the owned source cells in layout.f and whose baked
+\ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL; each must equal
+\ layout.f's.
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
+$3868 constant ENGINE-ARENA-CELL
 
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
@@ -278,7 +280,7 @@ PTR-VARIABLE SND-A
    SRCLOC:PATH-CELL SND-ZERO-CELL
    SRCLOC:PATHLEN-CELL SND-ZERO-CELL
    SRCLOC:INB-CELL SND-ZERO-CELL
-   ENGINE-MAIN:ARENA-CELL SND-ZERO-CELL
+   ENGINE-ARENA-CELL SND-ZERO-CELL
    HIDXP-CELL SND-ZERO-CELL
    HIDX:CLAIMS SND-ZERO-CELL
    ADDRESS-CELLS:INDEX-CELL SND-ZERO-CELL
