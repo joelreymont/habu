@@ -1,6 +1,7 @@
 \ A maker that compiled the original runtime keeps that producer key when the
 \ runtime source changes before object storage. The next build takes the edit.
-\ Run from a private copy of the tree via hb-build-producer-cache-test.f.
+\ Run via hb-build-producer-cache-test.f in its private copy of the tree, after
+\ that copy's builds.
 
 require src/lib/string.f
 require src/lib/test.f

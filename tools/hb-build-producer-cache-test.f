@@ -1,4 +1,6 @@
-\ From an external CWD, producer edits change the application on a warm cache.
+\ Producer edits change the application on a warm cache: a builder edit from an
+\ external CWD, then a runtime edit racing the maker
+\ (tools/hb-build-producer-race-test.f, run in this copy after those builds).
 \ Run: bin/hb --load tools/hb-build-producer-cache-test.f
 
 require src/lib/test.f
@@ -21,7 +23,6 @@ create PROJECT FS-PATH-CAP allot
 create HB FS-PATH-CAP allot
 create APP FS-PATH-CAP allot
 create OUT-PATH FS-PATH-CAP allot
-create RT FS-PATH-CAP allot
 create BUILDER FS-PATH-CAP allot
 create TOOL FS-PATH-CAP allot
 create SAVED FS-PATH-CAP allot
@@ -35,7 +36,6 @@ variable PROJECT-U
 variable HB-U
 variable APP-U
 variable OUT-U
-variable RT-U
 variable BUILDER-U
 variable TOOL-U
 variable SAVED-U
@@ -50,7 +50,6 @@ variable RC
 : HB$ ( -- ptr u8 n ) HB HB-U @ ;
 : APP$ ( -- ptr u8 n ) APP APP-U @ ;
 : OUT$ ( -- ptr u8 n ) OUT-PATH OUT-U @ ;
-: RT$ ( -- ptr u8 n ) RT RT-U @ ;
 : BUILDER$ ( -- ptr u8 n ) BUILDER BUILDER-U @ ;
 : TOOL$ ( -- ptr u8 n ) TOOL TOOL-U @ ;
 : SAVED$ ( -- ptr u8 n ) SAVED SAVED-U @ ;
@@ -62,7 +61,6 @@ variable RC
    ROOT$ s" bin/hb" HB JOIN-PATH HB-U !
    ROOT$ s" app.f" APP JOIN-PATH APP-U !
    ROOT$ s" app" OUT-PATH JOIN-PATH OUT-U !
-   ROOT$ s" src/habu/rt.f" RT JOIN-PATH RT-U !
    ROOT$ s" tools/hb-build-lib.f" BUILDER JOIN-PATH BUILDER-U !
    ROOT$ s" tools/hb-build.f" TOOL JOIN-PATH TOOL-U !
    ROOT$ s" maker-saved.f" SAVED JOIN-PATH SAVED-U !
@@ -185,17 +183,6 @@ variable RC
    OUT CAP-OUT-U @ S\" \"maker_ran\":true" CONTAINS? TTRUE
    OUT CAP-OUT-U @ S\" \"artifact_hit\":false" CONTAINS? TTRUE ;
 
-: CHANGE-RT ( -- )
-   RT$ READ-TEXT {: text:ptr size:n :}
-   text size s" hb: cannot map guarded VM stack" FIND-SUB MATCH option
-      none OF s" rt.f has no guarded-stack diagnostic" T-EX-FAIL die ENDOF
-      some OF
-         IDX>N text +
-         s" hb: REVIEW map guarded VM stack" rot swap BYTE-COPY
-      ENDOF
-   ;MATCH
-   RT$ text size WRITE-ALL ;
-
 : IMAGE-HAS ( ptr u8 n ptr u8 n -- ) {: yes:ptr yesu:n no:ptr nou:n :}
    OUT$ IMAGE IMAGE-CAP READ-ALL {: u:n :}
    IMAGE u yes yesu CONTAINS? TTRUE
@@ -208,15 +195,9 @@ public
    PREPARE
    BUILD
    s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
-   CHANGE-RT
-   BUILD
-   s" hb: REVIEW map guarded VM stack" s" hb: cannot map guarded VM stack" IMAGE-HAS
    CHANGE-BUILDER-SAME-MTIME
    BUILD-AFTER-BUILDER-EDIT
-   s" hb: REVIEW map guarded VM stack" s" hb: cannot map guarded VM stack" IMAGE-HAS
-   CLEANUP-RUN
-   ROOT$ EXISTS? TFALSE
-   PREPARE
+   s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
    BUILD-RACE
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE
