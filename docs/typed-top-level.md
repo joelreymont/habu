@@ -275,7 +275,7 @@ For the orchestrator to mint. Ordered; 1 and 8 are independent of the rest.
 1. **checker: immediates are compile-time effects, not body steps.**
    Files: `src/core/checker.f` (token step path: consult `DNAME-IMM`;
    immediate calls inside a body apply to no row / are excluded from the
-   body scheme), new `test/immediate-model-test.f`.
+   body scheme).
    Acceptance: `: IMM2 ( n -- n n ) dup ; immediate  : USER ( n -- n n )
    IMM2 ;` REJECTS (negative regression for the p5 certificate
    divergence); `postpone` and engine immediates (`require`, `include`,

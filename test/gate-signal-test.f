@@ -389,7 +389,7 @@ variable STAT-PATH-U
    ENGINE-CANDIDATE:PATH$ ;
 
 \ The watch is opened while the root is alive: macOS cannot register a process
-\ that has already exited (test/proc-watch-smoke.f).
+\ that has already exited.
 : ROOT-START ( -- )
    OPEN-PIPE
    ROOT-ARGV {: exe:ptr exeu:n :}

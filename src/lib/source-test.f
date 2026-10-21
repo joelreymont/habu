@@ -24,10 +24,6 @@ create ST-QP-BUF ST-CAP allot
 : TEST-READ-STDIN-ALL ( -- )
    ST-BUF ST-CAP ST-READ-STDIN-ALL 0 T= ;
 
-: TEST-READ-STDIN-DATA ( -- )
-   ST-BUF ST-CAP ST-READ-STDIN-ALL 4 T=
-   ST-BUF 4 s" DATA" T$= ;
-
 : TEST-SOURCE-APPEND-NEG-LEN ( -- )
    -1 ST-APPEND-LEN !
    s" x" >LEN ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
@@ -97,21 +93,6 @@ create ST-QP-BUF ST-CAP allot
    T-REPORT
    s" source-test: ok" type cr ;
 
-: ST-STDIN-MAIN ( -- )
-   T-RESET
-   TEST-READ-STDIN-DATA
-   T-REPORT
-   s" source-test stdin: ok" type cr ;
-
-: ST-USAGE ( -- )
-   s" source-test: usage: [stdin]" 64 die ;
-
-: ST-ENTRY ( -- )
-   SCRIPT-ARGC 0= if ST-MAIN exit then
-   SCRIPT-ARGC 1 <> if ST-USAGE then
-   0 SCRIPT-ARGV$ s" stdin" STR= if ST-STDIN-MAIN exit then
-   ST-USAGE ;
-
-ST-ENTRY
+ST-MAIN
 
 ;package

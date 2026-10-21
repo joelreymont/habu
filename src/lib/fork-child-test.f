@@ -33,8 +33,8 @@
 \
 \ A holder takes its lock with the word its owner takes it with. PROC-TREE's
 \ is private, so that case reopens its package. TASK seals its package, and
-\ IMAGE-LIFECYCLE, DYNAMIC-STORAGE and ADDRESS-CELLS are baked into the engine
-\ (test/baked-owner.f), so none of them is reopened: their
+\ IMAGE-LIFECYCLE, DYNAMIC-STORAGE and ADDRESS-CELLS are baked into the engine,
+\ so none of them is reopened: their
 \ holders take and free the lock through a public word over and over, and many
 \ children fork into it. TASK's one-time park setup, which holds
 \ MAIN-PARK-READY at 1 while it runs, has no public word that holds it at all;

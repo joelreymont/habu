@@ -11421,8 +11421,6 @@ variable USING-HOLD      \ a body token's walk holds its using refusal for the s
 \ (CHECKER-VERIFY-DEFERRED, CHECKER-VERIFY-DEFERRED-BODY). One defer
 \ and not six because every `defer` written here, before `: TRUST`, takes a slot
 \ of the engine's pre-trust pending table (src/habu/layout.f PD-CAP).
-\ test/pre-trust-defer.f exercises both an added defer and an overflow beyond
-\ the running engine's capacity.
 defer SHADOW-DIAG-XT ( n -- )               \ render.f installs the diagnostics behind one selector
 : SHADOW-DIAG-DEFAULT ( -- ) [: drop ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-DEFAULT
@@ -21172,13 +21170,7 @@ package CHECKER-REG
 \ 70) there, and a `search-wl` lookup that missed would leave the table undrained
 \ and hit the exit-73 backstop, while costing a trusted execute-of-plain-n
 \ boundary (RSEXEC).
-\ The bare token sits between the two unique PTD-REGRESSION-BLANK sentinels so the
-\ negative regression (test/pre-trust-defer.f) can blank exactly this region and
-\ prove the exit-73 undrained backstop still fires, naming a real prefix defer;
-\ keep the sentinels contiguous with it.
-\ PTD-REGRESSION-BLANK-BEGIN
 DRAIN-PRETRUST
-\ PTD-REGRESSION-BLANK-END
 
 \ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
 : REJECT-UNSAFE ( -- )

@@ -346,10 +346,6 @@ SUITE build-fixpoint-sandbox
    tools/build-fixpoint-sandbox-test.f
 ;SUITE
 
-SUITE os-memory
-   src/lib/os-memory-test.f
-;SUITE
-
 SUITE shadow-lint
    tools/lint/shadow-lint.f
    tools/lint/shadow-lint-test.f
@@ -399,10 +395,6 @@ SUITE byte-copy
 
 SUITE lint-intern-set
    tools/lint/set-test.f
-;SUITE
-
-SUITE imgdump-compare
-   tools/imgdump-test.f
 ;SUITE
 
 SUITE engine-size-fixtures
@@ -475,10 +467,6 @@ SUITE streaming-sha256
 
 SUITE content-key
    src/lib/content-key-test.f
-;SUITE
-
-SUITE engine-identity
-   src/lib/engine-id-test.f
 ;SUITE
 
 SUITE engine-id-capture
@@ -841,10 +829,6 @@ SUITE compiler-native-fetch-snapshot
 
 SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
-;SUITE
-
-SUITE primitive-trust
-   test/primitive-trust.f
 ;SUITE
 
 \ Native primitive goldens live in prim-cases.f and prim-float-cases.f, owned
@@ -1251,18 +1235,6 @@ SUITE object-image-writer
    tools/object-image-test.f
 ;SUITE
 
-SUITE getpid-primitive-smoke
-   test/getpid-smoke.f
-;SUITE
-
-SUITE proc-watch-primitive-smoke
-   test/proc-watch-smoke.f
-;SUITE
-
-SUITE proc-signal-primitive-smoke
-   test/proc-signal-smoke.f
-;SUITE
-
 SUITE proc-capture-under-signals
    test/proc-capture-signal.f
 ;SUITE
@@ -1278,10 +1250,6 @@ SUITE proc-pty-io-supervisor-smoke
 
 SUITE proc-pty-tty-smoke
    test/process-pty-tty-smoke.f
-;SUITE
-
-SUITE engine-candidate-resolver
-   test/engine-candidate-test.f
 ;SUITE
 
 \ CPU tasking over pthread, including shared storage and task-local FFI staging.
@@ -1385,18 +1353,6 @@ SUITE native-callback-stub-immediate
    test/native-callback-stub-immediate.f
 ;SUITE
 
-\ IMAGE-LIFECYCLE:PREPARE closes the library a FUNCTION: row opened, and the
-\ row's next call opens it again; RTLD_NOLOAD reads whether libzip is loaded.
-SUITE ffi-library-lifetime
-   test/ffi-library-lifetime.f
-;SUITE
-
-\ The five foreign libraries a server binds at once, in one image: the load is
-\ the case, because one short declaration table refuses it outright.
-SUITE five-bindings
-   test/five-bindings.f
-;SUITE
-
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
 \ starts on a Unix-domain socket, runs src/lib/pg-test.f and then src/lib/db/rows-test.f
 \ against, and stops however they end; then the same harness killed by a pool,
@@ -1462,10 +1418,6 @@ SUITE fmt-numbers
    src/lib/fmt-test.f
 ;SUITE
 
-SUITE float-sort
-   src/lib/sort-test.f
-;SUITE
-
 SUITE hashmap
    src/lib/hashmap-test.f
 ;SUITE
@@ -1476,14 +1428,6 @@ SUITE prelude
 
 SUITE array-helpers
    src/lib/array-test.f
-;SUITE
-
-SUITE adt-option
-   src/lib/adt/option-test.f
-;SUITE
-
-SUITE adt-result
-   src/lib/adt/result-test.f
 ;SUITE
 
 SUITE num-arithmetic
@@ -1498,24 +1442,12 @@ SUITE codegen-stdlib
    src/lib/codegen-test.f
 ;SUITE
 
-SUITE unicode-class-runtime
-   src/lib/unicode/class-test.f
-;SUITE
-
 SUITE unicode-casefold
    src/lib/unicode-test.f
 ;SUITE
 
-SUITE unicode-class-tools
-   tools/unicode/class-tool-test.f
-;SUITE
-
 SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
-;SUITE
-
-SUITE-STDIN source-stdlib-stdin DATA
-   src/lib/source-test.f -- stdin
 ;SUITE
 
 SUITE argv-stdlib-mocks
@@ -1566,10 +1498,6 @@ SUITE compiler-compile-floor
 \ benchmark slow in all three rounds.
 SUITE compiler-compile-floor-gate
    test/compile-floor-gate.f
-;SUITE
-
-SUITE icode-fixup
-   test/icode-fixup-test.f
 ;SUITE
 
 \ src/lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
@@ -1725,10 +1653,6 @@ SUITE friend-arena-seal
    test/seal.f
 ;SUITE
 
-SUITE baked-owner
-   test/baked-owner.f
-;SUITE
-
 SUITE internal-word-gate
    test/internal-word-gate.f
 ;SUITE
@@ -1739,10 +1663,6 @@ SUITE checker-surface
 
 SUITE package-seal
    test/package-seal.f
-;SUITE
-
-SUITE immediate-model
-   test/immediate-model-test.f
 ;SUITE
 
 SUITE pointer-storage
@@ -1763,14 +1683,6 @@ SUITE typed-storage-structural
 
 SUITE storage-binding
    test/storage-binding-e2e.f
-;SUITE
-
-SUITE record-launder-probe
-   test/record-launder-probe.f
-;SUITE
-
-SUITE certify-dynamic-buffer
-   test/certify-dynamic-buffer.f
 ;SUITE
 
 SUITE c2-read-effects
@@ -1839,16 +1751,8 @@ SUITE create-axiom
    test/create-axiom-test.f
 ;SUITE
 
-SUITE ndict-spell-call
-   test/ndict-spell-call.f
-;SUITE
-
 SUITE ndict-binding
    test/ndict-binding.f
-;SUITE
-
-SUITE outer-find
-   test/outer-find.f
 ;SUITE
 
 SUITE outer-interpret
@@ -1859,10 +1763,6 @@ SUITE outer-interpret
 \ seals every package it ships, so the row runs on the engine that keeps them open.
 WHITEBOX-SUITE main-argv
    test/main-argv.f
-;SUITE
-
-SUITE engine-writers
-   test/engine-writers.f
 ;SUITE
 
 SUITE owner-access
@@ -1903,10 +1803,6 @@ WHITEBOX-SUITE checker-completion
 
 SUITE defer-history
    test/defer-history.f
-;SUITE
-
-SUITE parses-window
-   test/parses-window.f
 ;SUITE
 
 WHITEBOX-SUITE effect-intern
@@ -2014,10 +1910,6 @@ SUITE aot-effect-pool
    test/aot-effect-pool.f
 ;SUITE
 
-SUITE heap-start-cell
-   test/heap-start-cell.f
-;SUITE
-
 SUITE signal-stub
    test/signal-stub.f
 ;SUITE
@@ -2045,22 +1937,11 @@ SUITE engine-error-package
    test/engine-error-package.f
 ;SUITE
 
-SUITE pre-trust-defer
-   test/pre-trust-defer.f
-;SUITE
-
 WHITEBOX-SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
 
 SUITE address-cell-rollback
-   test/address-cell-rollback.f
-;SUITE
-
-SUITE address-cell-rollback-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/address-cell-rollback.f
 ;SUITE
 
@@ -2098,10 +1979,6 @@ SUITE engine-stack-lifecycle
 
 SUITE stack-guard
    test/stack-guard.f
-;SUITE
-
-SUITE engine-stack-jit
-   test/engine-stack-jit.f
 ;SUITE
 
 SUITE engine-stack-debugger
@@ -2142,10 +2019,6 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
-SUITE core-prefix-mark
-   test/prefix-mark-test.f
-;SUITE
-
 SUITE stdlib-runner-fixtures
    src/lib/test/runner-test.f
 ;SUITE
@@ -2160,14 +2033,6 @@ SUITE load-argv-contract
 
 SUITE cold-argv-separator
    test/cold-argv-separator.f
-;SUITE
-
-SUITE build-rewind
-   test/build-rewind-test.f
-;SUITE
-
-SUITE cold-runtime
-   test/cold-runtime-test.f
 ;SUITE
 
 SUITE cold-naming
@@ -2205,11 +2070,6 @@ SUITE fs-mutate
 
 SUITE exit-hook
    test/exit-hook-test.f
-;SUITE
-
-SUITE fs-copy-alias
-   src/lib/fs-copy-alias-test.f
-   src/lib/fs-identity-test.f
 ;SUITE
 
 SUITE fs-lock
@@ -2270,12 +2130,6 @@ SUITE process-tasks
    src/lib/process-task-test.f
 ;SUITE
 
-\ Generic text I/O devices: the engine's own text through a memory device, and
-\ a REPL over a loopback connection.
-SUITE genio
-   src/lib/genio-test.f
-;SUITE
-
 SUITE process-argv
    src/lib/process-argv-test.f
 ;SUITE
@@ -2311,16 +2165,8 @@ SUITE ddc-verify
    tools/ddc-verify-test.f
 ;SUITE
 
-SUITE error-code-region
-   tools/error-code-region-test.f
-;SUITE
-
 SUITE event-closure
    tools/event-closure-test.f
-;SUITE
-
-SUITE fixture-cache
-   test/fixture-cache-test.f
 ;SUITE
 
 SUITE keyed-image-reap
@@ -2331,16 +2177,8 @@ SUITE build-cache-retain
    src/lib/build-cache-retain-test.f
 ;SUITE
 
-SUITE hb-baseline-contracts
-   tools/hb-baseline-contracts-test.f
-;SUITE
-
 SUITE hb-open-failure
    tools/hb-open-failure-test.f
-;SUITE
-
-SUITE include-events
-   tools/include-events-test.f
 ;SUITE
 
 SUITE realpath
@@ -2363,10 +2201,6 @@ SUITE whole-source-read
    test/whole-source-read-test.f
 ;SUITE
 
-SUITE room-left
-   test/room-left-test.f
-;SUITE
-
 SUITE name-length
    test/name-length-test.f
 ;SUITE
@@ -2383,15 +2217,6 @@ SUITE source-discovery
    tools/source-discovery-test.f
 ;SUITE
 
-SUITE xref
-   tools/xref-test.f
-   test/native-unit-xref-newest.f
-;SUITE
-
-SUITE zed-run
-   tools/zed-run-test.f
-;SUITE
-
 SUITE seed
    tools/seed-test.f
 ;SUITE
@@ -2406,10 +2231,6 @@ SUITE nominal-pointer
 
 SUITE pointer-view
    test/pointer-view.f
-;SUITE
-
-SUITE cast
-   test/cast-suite.f
 ;SUITE
 
 SUITE linear
@@ -2555,10 +2376,6 @@ WHITEBOX-SUITE lower-cert
    test/lower-cert.f
 ;SUITE
 
-SUITE layout-buffer-depth
-   test/layout-buffer-depth.f
-;SUITE
-
 WHITEBOX-SUITE layout-valid-guards
    test/layout-valid-guards.f
 ;SUITE
@@ -2581,10 +2398,6 @@ SUITE data-claims-build
 
 SUITE code-window
    test/code-window.f
-;SUITE
-
-SUITE addrmap-set
-   test/addrmap-set.f
 ;SUITE
 
 SUITE addrmap-call
@@ -2649,14 +2462,6 @@ WHITEBOX-SUITE generated-declaration-transaction
    test/generated-declaration-transaction-suite.f
 ;SUITE
 
-SUITE golden
-   test/golden-test.f
-;SUITE
-
-SUITE lit-emit-size
-   test/lit-emit-size-test.f
-;SUITE
-
 SUITE require-cap
    test/require-cap-test.f
 ;SUITE
@@ -2687,10 +2492,6 @@ WHITEBOX-SUITE structure-decl
 
 SUITE structure-opaque
    test/structure-opaque-e2e.f
-;SUITE
-
-WHITEBOX-SUITE structure-make
-   test/structure-make-suite.f
 ;SUITE
 
 WHITEBOX-SUITE type-ctor

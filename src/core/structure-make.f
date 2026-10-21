@@ -27,9 +27,7 @@
 \ src/core/structure-decl.f's constructor-generation seam note). This module now
 \ loads baked in the post-hook DECL group immediately BEFORE
 \ src/core/structure-decl.f — the front end references STRUCTURE-MAKE:GENERATE, so
-\ the generator must be defined first. test/structure-make-suite.f still drives
-\ GENERATE directly over hand-built declarations for the field-kind and rollback
-\ matrix.
+\ the generator must be defined first.
 \
 \ Generation reads layout truth (field schemas, generic parameter slots, the
 \ product width, hidden-field expansion) straight from the shared transaction

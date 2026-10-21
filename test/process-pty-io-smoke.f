@@ -15,8 +15,7 @@
 \ The pipe-I/O supervisor itself has no OS-divergent code; the one place a
 \ lifetime watch DOES diverge by backend is opening it on an already-exited
 \ process, which is exactly why the supervisor opens the watch while the target is
-\ still gated-alive. That divergence is expressed here, gated exactly like
-\ test/proc-watch-smoke.f, to document the design.
+\ still gated-alive. That divergence is expressed here to document the design.
 \
 \ Run: bin/hb --load test/process-pty-io-smoke.f
 

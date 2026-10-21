@@ -42,8 +42,7 @@ public
 \ actual aggregate bytes, including framing/alignment, are checked separately.
 \
 \ This file loads before layout.f and habu2.f, so all three terms are spelled out
-\ here. test/icode-fixup-test.f checks the window's reach and admission, and
-\ habu2.f checks the third against AOT-SECTION:BYTES before emission.
+\ here. habu2.f checks the third against AOT-SECTION:BYTES before emission.
 \
 \ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
 \ anonymous mapping taken on first emit (CODE-ALLOC), by build drivers only, and
@@ -425,7 +424,7 @@ variable IMSG-V
 \ That is the whole point of the form: the reader adds the offset to the code
 \ base it holds at runtime, so a label the 21-bit ADR field cannot reach is still
 \ addressable. The window must fit inside this field for the form to be total
-\ over the buffer, and test/icode-fixup-test.f holds the two against each other.
+\ over the buffer.
 $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
 2 constant LOFF-LANES               \ the pair LOFF, emits
 0 constant LOFF-LO                  \ inclusive: a code-buffer byte offset is never negative

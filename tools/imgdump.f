@@ -106,9 +106,7 @@ create EB 4 allot
 : NIB {: n :}  n 10 < if n 48 + else n 87 + then ;
 create HB 24 allot
 variable HV  variable HP
-public
-\ The view lives in HB and dies at the next call. Public so
-\ tools/imgdump-test.f can build the exact line the dump prints.
+\ The view lives in HB and dies at the next call.
 : HEX$ {: u :} ( n -- ptr u8 n )
    u HV !  20 HP !  0 HN !
    begin
@@ -121,7 +119,6 @@ public
    HP @ 1 - HP !  36 HB HP @ + c!
    HN @ 1 + HN !
    HB HP @ +  HN @ ;
-private
 : h. ( n -- )
    HEX$ type ;
 
@@ -166,16 +163,12 @@ private
    o E-CODE-END o E-S - ;
 
 variable OKV
-public
 \ FIND-DICT asks this of every 4-byte offset in the image and E-L is a 46-bit
 \ field (src/habu/layout.f DNAME-LEN-MASK), so a candidate whose length field
 \ is large but still inside the file made this scan megabytes of bytes even
 \ when byte 0 had already answered: `--pc` over the 5 MB bin/hb cost 130 s of
-\ CPU, and two of those overran tools/imgdump-test.f's own child deadline
-\ under a loaded test pool. The loop therefore stops at the first byte that is
+\ CPU. The loop therefore stops at the first byte that is
 \ not printable ASCII and reads no byte past it; the answer is the same one.
-\ Public so tools/imgdump-test.f can pin that bound structurally, with a span
-\ whose declared length runs off the end of a guarded mapping.
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
    0 begin dup u < OKV @ 0<> and while
@@ -184,7 +177,6 @@ public
      1 +
    repeat drop
    OKV @ ;
-private
 \ Validate the six 8-byte trailer fields (src/habu/layout.f owns the geometry).
 : SNAP-CORE? {: o :} ( n -- bool )
    o SNAP-TRL-BYTES + IL @ > if IMG-FALSE exit then
@@ -348,9 +340,6 @@ private
 \ ---- no-trailer xt base ----
 \ Elf64_Ehdr fields. The header of the image in hand is the only evidence of
 \ its class; this tool's own build target is not a property of that file.
-\ Public so tools/imgdump-test.f's synthetic no-trailer fixtures can build a
-\ header that satisfies (or deliberately fails) this same check.
-public
 $00 constant ELF-MAG-OFF
 $464C457F constant ELF-MAG    \ e_ident[0..4) = 7f 45 4c 46, little-endian
 $04 constant ELF-CLASS-OFF
@@ -364,7 +353,6 @@ $12 constant ELF-MACHINE-OFF
 183 constant ELF-EM-AARCH64
 $18 constant ELF-ENTRY-OFF    \ e_entry: XREG-RBASE for a fixed-base image (see below)
 $40 constant ELF-EHDR-BYTES
-private
 
 \ Without a snapshot trailer, the only part of the dictionary imgdump can
 \ locate offline is the boot-seeded table src/habu/habu2.f EM-SEED-DICT reads

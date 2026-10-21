@@ -237,7 +237,7 @@ PROC-NO-FD FEED-WR !
 
 \ check.f, with the case's arguments and environment added and in as its stdin.
 \ The watch is opened while check.f is alive: macOS cannot register a process
-\ that has already exited (test/proc-watch-smoke.f).
+\ that has already exited.
 : CHECK-SPAWN ( n -- ) {: in:n :}
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING

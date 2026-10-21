@@ -1,4 +1,4 @@
-\ xref-test.f - focused tests for live dictionary xref words.
+\ xref-test-fixture.f - focused tests for live dictionary xref words.
 
 require src/lib/test.f
 

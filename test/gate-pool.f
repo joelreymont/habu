@@ -542,7 +542,7 @@ false GT-POOL-CAUGHT !
    true idx GT-POOL-ASKED-PTR ! ;
 
 \ Until the asked root has exited or the deadline passes. macOS cannot watch a
-\ process that has already exited (test/proc-watch-smoke.f): proc-watch-open
+\ process that has already exited: proc-watch-open
 \ answers -1 for one, and there is nothing left to wait for.
 : GT-POOL-AWAIT-END ( idx n -- ) {: idx:idx deadline:n :}
    idx GT-POOL-ASKED-PTR @ 0= if exit then

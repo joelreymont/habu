@@ -124,8 +124,7 @@ variable GPT-ROOT-SAVE-U
 \ A suite's own inner deadline: src/lib/process throws E-PROC-TIMEOUT when a child
 \ it spawned outlives the deadline it was given, and an uncaught one leaves the
 \ suite through the engine's top-level reporter. The pool has to name that as
-\ the load outcome it is (tools/imgdump-test.f reds this way under a saturated
-\ pool), never as an anonymous exit.
+\ the load outcome it is, never as an anonymous exit.
 : GPT-INNER-TIMEOUT-SRC$ ( -- ptr u8 n )
    S\" require src/lib/errors.f\nE-PROC-TIMEOUT throw\n" ;
 

@@ -437,9 +437,7 @@ PTR-VARIABLE RLP-HEAD 0 , 0 ,
 : L4 ( n -- u8 ) RLP-HEAD BYTE-VIEW CELL-VIEW ! RLP-HEAD @ c@ ; \ certifies
 ```
 
-`test/record-launder-probe.f` pins both launders, the refusals that did land,
-and the six legitimate field reads a record must preserve. The same two are
-suite rows `V8` and `V9` of
+Both launders are suite rows `V8` and `V9` of
 `test/typed-storage-structural-test.f`. Dots `habu-refuse-ptr-field-331a9731`
 and `habu-refuse-a-scalar-030be3ad`.
 
@@ -566,7 +564,7 @@ pointer-bearing base: ~70 in `src/`, ~40 in `src/lib/`, ~25 in `tools/` and `tes
 | `LINT-SLAB`, `lint/text.f:110-166`, **6 `create`d instances** (`lint/text.f:173`, `error-code-lint-core.f` `SRC-SLAB`, `aot-section-reach-lint.f:47`, `public-signatures-core.f:45,46`, `lint/shadow-lint.f:34`) | 0 `ptr u8`, 1 cap, 2 len | A + plain `+ @` |
 | `*-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )` helpers (`json.f`, `check-core.f`, `build-fixpoint.f`, `hb-build-lib.f`, `json-only*.f`, `repair-*.f`) | one `variable` pointer slot beside a *separate* `variable` length — a two-field record spelled as two words | A only |
 | `tools/check-core.f:137-144` | an indexed cast-A helper with **no caller anywhere** | delete, do not migrate |
-| `test/` | the two documented-open rows `V8`/`V9`, the landed refusals in `test/compiler/raw-cell-pointer-refusals.f`, ~10 engine-layout readers, and `test/record-launder-probe.f` | A and B |
+| `test/` | the two documented-open rows `V8`/`V9`, the landed refusals in `test/compiler/raw-cell-pointer-refusals.f`, and ~10 engine-layout readers | A and B |
 
 Two facts from the survey shape the migration more than the totals do. First,
 the recurring shape is not exotic: a pointer at offset 0 followed by a length
@@ -859,8 +857,7 @@ it. Neither rule needs to see an offset, which is what killed the earlier
 attempt — a declared record base was never in either row, so a migrated site
 leaves the rule's reach entirely rather than arguing with it.
 
-The rows the narrowing must **not** disturb are pinned as `K1`–`K6` in
-`test/record-launder-probe.f`: a count behind a declared head (until its record
+The rows the narrowing must **not** disturb are a count behind a declared head (until its record
 is declared), a `PTR-U8-TABLE` field, a declared cell's fetch, and the two
 unrelated pointees one declared cell accepts today — which is the last
 observation worth keeping, because it says why a declared cell alone is not a
@@ -994,10 +991,9 @@ because `src/lib/task.f`'s TCB reaches its five pointer fields through the very 
 9. **The two rule narrowings.** `MD-FIELD-BASE-KIND` and `MD-VIEW-PTR-BASE`,
    taking the next free `MD-` codes when they land (the vocabulary grows in
    between: `MD-UNDERFLOW` took 28 on 2026-09-18). *Acceptance:* `V8` and `V9` in
-   `test/typed-storage-structural-test.f` and `L1`–`L4` in
-   `test/record-launder-probe.f` flip from certified to rejected, each with its
-   own code, reason and repair class; `K1`–`K6` and every control in
-   `test/compiler/raw-cell-pointer-refusals.f` keep their verdicts; a
+   `test/typed-storage-structural-test.f` flip from certified to rejected, each with its
+   own code, reason and repair class; every control in
+   `test/compiler/raw-cell-pointer-refusals.f` keeps its verdict; a
    rule-hosted generation build completes; `test/run.f` is green.
 
 ## 11. Bounded pointers

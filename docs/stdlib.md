@@ -456,8 +456,7 @@ byte match; different versions, directories and case remain distinct. Missing
 libraries remain unresolved until a declared function is called.
 `PROCESS-SYMBOLS` selects the process library without consuming a path row.
 `test/ffi-growth.f` exercises declarations past the former 256-row boundary in
-a stripped executable; `test/five-bindings.f` holds `TCP4`, `CURL`, `PG`,
-`CRYPTO` and `TASK` in one image.
+a stripped executable.
 
 ```forth
 FFI:RESET         ( -- )

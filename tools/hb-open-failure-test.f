@@ -7,7 +7,7 @@
 \ opposite - a boot outside the repo dying 74 on src/core/util.f, which only an
 \ engine whose build captured nothing does (src/habu/habu2.f EMIT-COLD-PREFIX,
 \ emitted for the stage2/maker engines and never for the product; the rule is
-\ SEEDED-RUNTIME? beside it, and test/cold-runtime-test.f pins that other arm) -
+\ SEEDED-RUNTIME? beside it) -
 \ and went red on the product for that reason. Both halves of the real contract
 \ are here now: the product needs no checkout, and a source file it is handed and
 \ cannot open is still named on stderr with exit 74 rather than skipped.

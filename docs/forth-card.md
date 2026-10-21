@@ -397,8 +397,7 @@ never holds an address".
 - A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
   in the file that owns the package (`src/lib/json-read.f`), and `src/lib/errors.f`
   says where. The engine bakes `src/lib/errors.f`, and a package the engine bakes
-  has one owning file: no source a product engine loads reopens it
-  (`test/baked-owner.f`).
+  has one owning file: no source a product engine loads reopens it.
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
   (`ptr u8 n n --`, a real message and exit code) ends the process and is

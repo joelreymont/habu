@@ -185,8 +185,7 @@ exits `$4F` naming the rejected token. `evaluate` exits `$4F` too, with no
 output (see [threads.md](threads.md)). A remote REPL on a server that is running
 worker tasks can therefore neither evaluate nor define. That is a restriction
 of Habu's tasking model, not of this layer - the W^X unit a definition flips,
-measured in threads.md - and it is why [`src/lib/genio-test.f`](../src/lib/genio-test.f)
-holds both ends of its connection in the main task.
+measured in threads.md.
 
 ## Images
 
@@ -200,25 +199,3 @@ both capture paths already understand — the snapshot rebase leaves a zero
 declared cell zero, and an AOT capture records a zero target rather than
 refusing one outside its window. Close your connections before capturing;
 descriptors are process resources.
-
-## Checks
-
-```sh
-bin/hb --load src/lib/genio-test.f
-```
-
-A memory device of eight byte-buffer operations proves that each operation
-dispatches, that an operation is handed its own state cell, and — the point of
-the exercise — that `emit`, `type` and `.` themselves land in the device's
-buffer, which they can only do through the engine funnel. The suite also covers
-`WITH-IO` restoring on a normal return and on a throw, a task inheriting its
-creator's device and writing through it, a REPL served over a loopback TCP
-connection that compiles a definition and answers a query, and a read through a
-closed peer failing with `E-GENIO-IO`. Reclamation has its own cases: four
-hundred open-and-close rounds over an eight-row table, a ninth simultaneous
-device refused with `E-GENIO-FULL`, a handle refused with `E-GENIO-STATE` after
-its device is closed, the declared-address table not growing across those
-rounds, and a closed current device leaving the task on the terminal. Three
-tasks then run two hundred build-and-close rounds each, asserting that no two
-live handles are ever equal — which is what one row handed out twice would look
-like.

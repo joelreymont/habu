@@ -655,7 +655,6 @@ Run:
 ```sh
 bin/hb --load src/lib/task-test.f
 bin/hb --load src/lib/queue-test.f
-bin/hb --load test/engine-stack-jit.f
 bin/hb --load src/lib/process-task-test.f
 ```
 

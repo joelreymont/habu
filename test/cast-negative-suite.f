@@ -342,7 +342,7 @@ s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
 \ scope: a cast with a scoped term on either side is E-CAST-SCOPE, asked before
 \ the arity rule, which would read a view's two cells as two terms. The legal
 \ scoped casts are the view representation casts: a read-view unpack
-\ ( read-view<p,q,T> -- ptr u8 n ) in any private section (test/cast-suite.f),
+\ ( read-view<p,q,T> -- ptr u8 n ) in any private section,
 \ and the pack ( ptr u8 n -- V ) and the mut-view unpack in C2-MEM's private
 \ section alone (test/c2-reopen-refusals.f). A pack's output variables are
 \ supplied by no input, which no other declaration admits. Each refusal leaves

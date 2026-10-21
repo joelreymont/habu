@@ -10,8 +10,8 @@
 \ row.
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
-\ interpret loop, and judges the child by its status and its streams, as
-\ test/engine-writers.f does. The owner's admitted calls need the owner open,
+\ interpret loop, and judges the child by its status and its streams. The
+\ owner's admitted calls need the owner open,
 \ so test/prim-owner-scope.f measures them in its unsealed window.
 \
 \ Run: bin/hb --load test/owner-access.f

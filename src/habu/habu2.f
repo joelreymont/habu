@@ -4327,7 +4327,7 @@ variable LREPLAYTRAP
 \ wid writer dies while the latch is set (habu1.f OVERLAY-EMIT:GUARD,), so a
 \ definition pends in an open overlay only through a raw store to PEND-CELL,
 \ which reaches the pending-definition refusals below, as a raw ndict! reaches
-\ the HW one (test/engine-writers.f EW-PEND).
+\ the HW one.
 
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
@@ -7641,9 +7641,7 @@ public
 \ file compiles against is the HOST's, and the first engine that has the cell has
 \ to be built by a host that does not. Naming BOOT-LAYOUT here would therefore
 \ fail to compile on exactly the hosts that must build it (E-UNDEFINED, measured).
-\ It is the same reason src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL, and the
-\ mirror is not left to prose: test/heap-start-cell.f reads the cell out of a
-\ booted engine, where a disagreement between the two numbers reads as zero.
+\ It is the same reason src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL.
 \ Both spellings go when every host in use has the cell.
 package EM-LAYOUT
 public

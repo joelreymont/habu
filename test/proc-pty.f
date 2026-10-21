@@ -809,7 +809,7 @@ variable PTY-LONG-U
 \ That is a spin, not a failure, so this case bounds its own reap: PROC-WAIT-RC
 \ has no timeout and would hang the run the defect is meant to fail. The watch
 \ descriptor opens while the child is still alive -- macOS cannot register a
-\ process that has already exited (test/proc-watch-smoke.f).
+\ process that has already exited.
 \ This case runs LAST and owns the second child: PTY-STOP-HB reaped the first and
 \ closed the master, and the harness holds one pair at a time.
 

@@ -361,10 +361,6 @@ mirror replay is broken it exits 70 in about five seconds with
 
     hook: non-certified definition: zz-pretrust-selftest at 'is'
 
-The same two patches applied through `test/pre-trust-defer.f`, which boots child
-engines from an installed `bin/hb`, pass — that contrast is the evidence that the
-defect is in the mirror and not in the checker, the prefix source, or `is`.
-
 ### Censusing what the checker actually learned
 
 `is NAME` needs two separate checker rows: the deferred-word row that
@@ -488,8 +484,6 @@ holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
   is not the engine input arena and has no fixed bound; the code window refuses
   a source an image cannot carry. It learns the size by reading because
   `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`.
-  `test/cold-runtime-test.f` CR-STAGE-BUILDS pads the source one byte past
-  `SOURCE-ARENA-CAP` and checks the built engine carries it whole.
 
 `SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
 recovery carry matching owner tokens. The assembler image window budgets one
@@ -514,7 +508,7 @@ the reason before theorising about the launcher.
   ( ptr u8 n n n ptr u8 n ptr u8 n -- )` takes a label, the wanted and the got
   rc, and the captured stdout/stderr, and prints all of it plus the launch
   context. Wire every child-rc assertion in a fixture through a helper that
-  calls it on a mismatch — `test/pre-trust-defer.f` `CHILD-RC` is the pattern.
+  calls it on a mismatch.
   The exit-70-vs-73 disagreement that stood for a day was one line of the
   child's own stderr.
 - `bin/hb --load tools/launch-context.f` prints only the context, so the same
@@ -667,8 +661,8 @@ short of its page by a margin versus filling the whole page, unbounded
 data/return/loop recursion, and one case per `GUARDED-EXTENT?` clause — each
 changing a single field of an extent the same fixture shows being accepted, so
 the clause named in the label is the one that decided. `test/engine-stack-wide.f`
-and `test/engine-stack-jit.f` add the capacity boundary of individual
-transfers: each wraps the transfer in a ratchet that grows the stack by one
+adds the capacity boundary of individual
+transfers: it wraps the transfer in a ratchet that grows the stack by one
 cell per recursion level on a `MEM:ALLOC-GUARDED` stack, so the transfer is
 what fills the stack and, being wider than the ratchet, its own write is what
 first crosses the guard page.

@@ -250,7 +250,7 @@ DEFAULT-CASE-MS CASE-MS !
 
 \ ---- waiting on a process -----------------------------------------------------
 \ A process's watch (proc-watch-open) is readable once it has exited. macOS
-\ cannot watch a process that has already exited (test/proc-watch-smoke.f) and
+\ cannot watch a process that has already exited and
 \ answers -1, so a process that has no watch has ended.
 : GONE-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then

@@ -1,6 +1,6 @@
 \ FFI releases the library references its rows own when an image is prepared.
-\ test/ffi-library-lifetime.f runs CHECK under --load, and test/stripped-image.f's
-\ application runs RUN in a stripped executable, whose line guards that
+\ test/stripped-image.f's application runs RUN in a stripped executable, whose
+\ line guards that
 \ executable's PREPARE: it starts with an empty lifecycle registry and FFI's
 \ registered flag clear and replays no declaration, so only its first resolution
 \ can arm FFI's cleanup. Without it the PREPARE left libzip loaded.
@@ -84,13 +84,13 @@ create DL-INFO $20 allot
    IMAGE-LIFECYCLE:PREPARE
    ZIP-LOADED? TFALSE ;
 
-public
-
 \ The assertions, counted by src/lib/test.f; the caller resets and reports.
 : CHECK ( -- )
    s" the loader names the image libzip.5 opens" T-LABEL
    FIND-ZIP-PATH dup TTRUE
    if LIFETIME then ;
+
+public
 
 \ The stripped application's line, after the failed assertions' own lines.
 : RUN ( -- )

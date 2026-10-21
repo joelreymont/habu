@@ -173,7 +173,7 @@ writer described below.
 
 A cold source build binds the writer to the fresh target layout before it
 captures pre-trust declarations. A 64-entry donor can therefore build a target
-with 128 pending slots and pass `test/pre-trust-defer.f`. A direct donor
+with 128 pending slots. A direct donor
 writer retains the donor's layout and cannot stage that transition; use the
 cold source writer for a reserved-layout change.
 
@@ -188,8 +188,6 @@ above it belong to the retired heap and are discarded.
 (`src/habu/habu2.f`) publishes the running engine's heap floor at boot in
 `BOOT-LAYOUT:HEAP-START-CELL` (`src/habu/layout.f`), out of the same register it
 gives DP, so the two can never disagree. `RESET-ADDRESS-ROWS` reads that cell.
-`test/heap-start-cell.f` is the registered check that an engine publishes a floor
-and that it is the floor its own code uses.
 
 **Use a donor with a matching published layout.** `RESET-ADDRESS-ROWS` refuses a
 zero heap floor or a floor that disagrees with the donor's `DATA-START`; it has no

@@ -423,8 +423,7 @@ The server binaries are a gate requirement on every host
 ([bootstrap.md](bootstrap.md#requirements)): without `initdb` or `postgres` on
 `PATH` the row fails with `pg-cluster: required executable missing on PATH:`
 and the name. Loaded without its argument, `src/lib/pg-test.f` dies naming the
-harness. Neither skips. `test/five-bindings.f` also loads and binds package
-`PG` beside the other foreign libraries.
+harness. Neither skips.
 
 ## Row readers (package DB-ROWS)
 

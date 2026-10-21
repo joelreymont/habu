@@ -177,9 +177,7 @@ checked `getpagesize` binding. It is a runtime fact for mapping descriptions;
 it does not replace Habu's fixed `STACK-ABI:PAGE-BYTES` guard-window contract or
 change allocation growth. The binding resolves on its first call, image
 preparation forgets that address and the next call resolves it again, so an
-image never carries a process-owned function address. `src/lib/os-memory-test.f`
-compares the answer with `getconf PAGESIZE` on the host that runs it, before
-and after `IMAGE-LIFECYCLE:PREPARE`.
+image never carries a process-owned function address.
 
 The default build prints its output path, or says the image is up to date.
 `--size-report` measures the image and prints the size table; `--report-json`

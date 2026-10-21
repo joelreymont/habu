@@ -1,6 +1,6 @@
 \ field-proj-suite.f — checker field-projection capability (dot
 \ habu-checker-type-structure-d996215b, docs/type-families.md §2.2). Run BY THE
-\ ENGINE over stdin, like test/structure-make-suite.f:
+\ ENGINE over stdin:
 \     bin/hb < test/field-proj-suite.f
 \
 \ Proves the sealed, schema-aware FIELD-PROJECTION armed window that mints

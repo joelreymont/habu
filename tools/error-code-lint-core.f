@@ -51,8 +51,8 @@
 \   its own process space; renumbering it would break the audited seed.
 \
 \ LEDGER prints the ledger without throwing; STRICT throws on any finding and is
-\ the gate entrypoint. SCAN, RESERVATIONS and CLAIMS-IN expose the live ledger to
-\ tools/error-code-region-test.f without letting a caller reach the tables.
+\ the gate entrypoint. RESERVATIONS exposes the live ledger without letting a
+\ caller reach the tables.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -556,11 +556,6 @@ public
    show SHOW!
    BAD @ ;
 
-\ build the live ledger for the whole tree without printing anything
-: SCAN ( -- )
-   SHOW? @ {: show:bool :}
-   SHOW-OFF  WALK  show SHOW! ;
-
 \ Live rows whose bounds are exactly first/last. This public query retains 0
 \ for an absent bound; the stored state and range checks never use a sentinel.
 : RESERVATIONS ( n n -- n ) {: first:n last:n :}
@@ -575,13 +570,6 @@ public
          ENDOF
       ;MATCH
    loop ;
-
-\ live claims whose code falls inside the inclusive range
-: CLAIMS-IN ( n n -- n ) {: first:n last:n :}
-   0  0 begin dup CLAIM# @ < while
-      dup CODE@ first last IN-RANGE? if swap 1+ swap then
-      1+
-   repeat drop ;
 
 \ report view: prints the ledger without throwing
 : LEDGER ( -- )

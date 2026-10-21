@@ -28,7 +28,7 @@
 \ its lifetime watch descriptor while it is guaranteed alive, and only LAUNCH
 \ releases it to exec. Opening the watch while the child is still alive is what
 \ makes the exit observable on both backends (Linux pidfd_open and macOS
-\ kqueue/NOTE_EXIT); test/proc-watch-smoke.f owns the already-dead-race behavior.
+\ kqueue/NOTE_EXIT).
 
 \ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL for the
 \ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program

@@ -85,7 +85,7 @@ variable SPIN-U
 \ that a global twin shadows, two packages whose publics share a tail, a
 \ namespace a qualified definition made (it has no private wordlist), an
 \ integer constant, and a word that fills the dictionary (the name index goes
-\ first, as test/engine-writers.f EW-DICT-FULL drops it). OI-DUMP prints the
+\ first). OI-DUMP prints the
 \ pending definition: its record's name, flags, whether its wordlist is
 \ OI-WANT's and its entry the provenance window's, its body capture, its
 \ signature's length, the trusted and tier cells and the code origin of its

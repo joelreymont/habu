@@ -612,8 +612,7 @@ declared form, so one of the two halves is expressed by a cast, and the cast is
 the launder. `docs/type-system.md` § 10 is the design that closes them — a
 declared memory record whose fields carry their offsets and types into the
 checker, after which `ptr-field` admits only a declared pointer cell and a view
-refuses a pointer pointee. `test/record-launder-probe.f` measures both launders,
-the refusals that did land, and the field reads the design must preserve.
+refuses a pointer pointee.
 
 ## Examples
 
@@ -815,8 +814,6 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `tools/tier-census.f` read through it, and `test/compiler/code-bytes.f` is the
   test of its bound. A site that only carries a code address on rather than
   reading through it — `NWALK:SPAN-EACH`, `XREF-START` itself — keeps it a number.
-  `test/icode-fixup-test.f` needs no boundary: `CW@`
-  (`src/arch/arm64/icode.f`) already answers `ptr u8`, held in a local.
   `src/arch/arm64/disasm.f` was walking its own
   `create`d row table, which is now a declared `PTR-VARIABLE`.
 - **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**

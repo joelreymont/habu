@@ -11,9 +11,7 @@
 \ pins the checker's construct/access CONTRACT through real STRUCTURE syntax:
 \   - test/structure-decl-suite.f owns the declaration/rollback front end and the
 \     end-to-end MAKE/UNMAKE seam for cell/byte/generic fields;
-\   - test/structure-make-suite.f owns only the generator's registry-level
-\     rejects (enum id, out-of-range id, empty product, rolled-back field row,
-\     second generation); the field-kind/role/arity matrix is sections 1-5 here;
+\   - the generator's field-kind/role/arity matrix is sections 1-5 here;
 \   - test/field-proj-suite.f owns the field-ACCESS armed window (the accessor the
 \     generate-field lane will emit; see the accessor note at the file end).
 \ Everything here is verified against the checker as it types the LEGACY product

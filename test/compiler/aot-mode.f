@@ -12,8 +12,8 @@
 \ the subject's harness (src/lib/test.f) BEFORE it: the subject's own require is
 \ then a no-op and the harness stays on the default compiler. This file loads
 \ nothing itself because some callers pass it inside a native build window
-\ (test/primitive-trust.f, test/loop-obligations.f,
-\ test/field-proj-boundary.f), where every file loaded is compiled by that
+\ (test/loop-obligations.f, test/field-proj-boundary.f), where every file
+\ loaded is compiled by that
 \ window.
 
 package NATIVE-AOT-MODE

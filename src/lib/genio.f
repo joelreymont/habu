@@ -328,7 +328,7 @@ variable RESET-REGISTERED
 \ PREPARE removes this one-shot hook once it returns, so the flag goes with it:
 \ a capture carries the flag but no registration, and a flag left set would
 \ stop the next DEVICE - in this process or the restored image - from arming
-\ the next capture's reset (src/lib/genio-test.f T-CAPTURE-RESETS).
+\ the next capture's reset.
 : RESET-ROUTING ( -- )
    0 OUT-PTR !
    0 IN-PTR !
