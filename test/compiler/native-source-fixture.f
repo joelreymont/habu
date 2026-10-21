@@ -2,11 +2,9 @@
 \ that needs to run it. One concern: turning a line of straight-line Habu source
 \ into a sealed tape and the module the elaborator writes into.
 \
-\ WHY THIS IS ITS OWN FILE. Two callers turn source text into HIR the same way -
-\ test/compiler/native-elaborate.f, which proves the operations a definition
-\ becomes, and the judge's own corpus rows, which measure the machine code a
-\ real corpus word compiles to. A second copy of the lexer would be a second
-\ opinion about what a token is, and the two harnesses would then disagree for a
+\ WHY THIS IS ITS OWN FILE. Every caller turns source text into HIR the same
+\ way. A second copy of the lexer would be a second
+\ opinion about what a token is, and two harnesses would then disagree for a
 \ reason that is about them rather than about the compiler.
 \
 \ WHAT A FIXTURE STATES AND WHAT THIS FILE DERIVES. The caller states the source

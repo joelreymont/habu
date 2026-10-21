@@ -767,9 +767,9 @@ private
    s" a tape is dead after its context ends" T-LABEL
    [: TD ;] E-IR-ARENA-STALE TTHROWSQ ;
 
-\ The sealed view dies with the context as well, which is the reader cases of
-\ test/compiler/ir-arena.f through this file's own published word: the view is
-\ resolved once, so one that outlived its cells must refuse rather than read.
+\ The sealed view dies with the context as well, through this file's own
+\ published word: the view is resolved once, so one that outlived its cells must
+\ refuse rather than read.
 : TDV-BODY ( IR-CTX:ctx -- IR-ARENA:view )
    {: c:IR-CTX:ctx :}
    c 8 MOD-NEW

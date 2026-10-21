@@ -1260,8 +1260,7 @@ here BPL-KW - constant BPL-LEN
 \ It used to publish 146 global names, so loading it at every boot made a bare
 \ `enc-b` under `using onnx` ambiguous against the global ENC-B it defined
 \ (E-USING-SHADOW-GLOBAL, maki/onnx/proto-test.f). It is package A64ASM now (dot
-\ habu-pkg-the-arm64-ce972795) and publishes nothing globally, which
-\ test/compiler/asm-package-test.f measures from both sides. Adding the row is
+\ habu-pkg-the-arm64-ce972795) and publishes nothing globally. Adding the row is
 \ the seed work's, not the packaging's - dot habu-seed-the-chain-e98b03d4.
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-BASELIB PFX-RESTLIB or ['] PFX-LOAD-ROW PFX-FILES ;

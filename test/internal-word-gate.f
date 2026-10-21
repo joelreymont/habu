@@ -921,8 +921,7 @@ create QNAME QNAME-CAP allot
    s" 5 SCHEMA-REG:SCH-RBF-DEPTH !" SB-APPEND LF
    SB$ ;
 
-\ The IR verifier's package-scope mirror, moved here from
-\ test/compiler/ir-id.f when that suite became a WHITEBOX-SUITE: the claim is
+\ The IR verifier's package-scope mirror: the claim is
 \ about the PRODUCT engine's refusal, so it belongs with the rest of the seal
 \ and not on a host built without one. src/compiler/ir/id.f still owns the
 \ positive side - that the mirror is the only way the verifier reaches a

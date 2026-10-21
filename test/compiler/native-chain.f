@@ -1,6 +1,6 @@
 \ native-chain.f - checked source programs compiled and executed by bin/hb.
 \ Backend encoding, coalescing and spill plans are tested in native-select,
-\ native-regalloc, native-emit and native-address-spill.
+\ native-regalloc and native-emit.
 
 require src/lib/test.f
 require src/lib/prelude.f

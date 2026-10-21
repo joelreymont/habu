@@ -117,8 +117,7 @@ variable HIT
 \
 \ The native checker refuses these source programs before elaboration. The
 \ resolver assertions separately prove why forged data and ordinary code are
-\ not defer targets; the elaborator's own backstop is exercised on a hand-built
-\ tape in test/compiler/native-elaborate.f.
+\ not defer targets.
 : SETUP-BAD ( -- )
    s" create ND-DATA  $4842444546455201 ,  0 ," evaluate-closed
    s" : ND-PLAIN ( n -- n ) 2 * ;" evaluate-closed ;

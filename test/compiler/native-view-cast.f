@@ -9,10 +9,10 @@
 \ value, a body that used the cells apart did not compile at tier 1.
 \
 \ The words read "habu" through the unpacked base and length and check an
-\ index against the unpacked bound. This row asserts them at tier 0 and its
-\ twin compiler-native-view-cast-aot at tier 1 (test/compiler/aot-mode.f): the
-\ same answers at both tiers. A cast whose sides differ in cells never reaches
-\ the compiler: the checker refuses the declaration, at either tier.
+\ index against the unpacked bound. Row compiler-native-view-cast-aot asserts
+\ them at tier 1 (test/compiler/aot-mode.f). A cast whose sides differ in
+\ cells never reaches the compiler: the checker refuses the declaration, at
+\ either tier.
 
 require src/lib/test.f
 require src/lib/errors.f

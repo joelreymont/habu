@@ -22,10 +22,8 @@
 \ exactly the two bits that name the mode, on identical operands.
 \
 \ THE OFFSET BOUND IS NOT NEW. Both modes carry the same signed nine-bit byte
-\ field `?SIMM9` screens for LDUR and STUR, whose two ends and whose refusals
-\ are already rows in test/compiler/insn-schema.f. These forms inherit that
-\ screen rather than adding one, so the ends are asserted here and the refusals
-\ stay where they are pinned.
+\ field `?SIMM9` screens for LDUR and STUR. These forms inherit that screen
+\ rather than adding one, so the ends are asserted here.
 
 require src/lib/test.f
 require src/arch/arm64/asm.f

@@ -19,8 +19,8 @@ public
 \ The address arrives as a number - REC-START read it out of a dictionary record
 \ - and CODE-BYTES:AT is where it becomes bytes, bounded against the running
 \ image's code. Reading the four separately rather than a whole span keeps the
-\ public effect a number in and a number out, which is what the callers below and
-\ test/compiler/native-exec.f ask for.
+\ public effect a number in and a number out, which is what the callers below ask
+\ for.
 : INSN@ ( n -- n ) {: a:n :}
    a NBR:INSN-BYTES CODE-BYTES:AT drop {: p:ptr :}
    p c@

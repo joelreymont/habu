@@ -958,9 +958,7 @@ variable MBP                                  \ ... and the best position it saw
 \ NOTHING MAY ASK FOR A MEMBER BEFORE THIS RUNS, and nothing in a link does - the
 \ first lookup of a link is in COPY-BLOBS, which is PLAN-BLOBS and then the copy.
 \ A whitebox that asks earlier gets E-LAYOUT-BOUNDS off the unfilled order rather
-\ than an answer, which is the fail-closed direction and how the order is proved
-\ to be what the lookups read (test/compiler/aot-nested-body-cases.f plans first
-\ for that reason; test/compiler/native-code-span-cases.f already did).
+\ than an answer, which is the fail-closed direction.
 : MEMBER-ORDER ( -- )
    NCLO @ 1 < IF s" aot: no closure members to order" 74 die THEN
    NCLO @ MORD-RESERVE

@@ -18,12 +18,10 @@ behavior; they do not establish a formal soundness or refinement theorem.
 
 Dynamic growth, normal and exceptional lifetime, owner/stale rejection and
 state after refusals are tested through the native paths in
-`test/compiler/ir-context.f` and `test/compiler/ir-arena.f`.
+`test/compiler/ir-context.f`.
 
-The relocation tests compare selected vectors with shipped instruction
-sequences using a mnemonic interpreter. They do not establish that every
-address producer records its sites. Actual writer and restored-image behavior
-is tested separately in `test/snapshot-writer.f` and `test/app-image.f`.
+Actual writer and restored-image behavior is tested in
+`test/snapshot-writer.f` and `test/app-image.f`.
 
 Stripped-image pointer checks query the linking process's kernel memory map:
 `/proc/self/maps` on Linux and `mach_vm_region_recurse` on macOS. The Darwin

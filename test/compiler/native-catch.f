@@ -225,8 +225,7 @@ public
 \ the forty catch sites in src and lib are written this way. Its body calls
 \ nothing, which used to be forced - a body that calls under a definition with a
 \ locals group was a quotation-path ceiling - and now is only what this case
-\ happens to measure: the calling twin of the same shape is a production test of its
-\ own in test/compiler/native-quot-scope.f.
+\ happens to measure.
 : NCA-D4 ( n -- n n )
    [: 1+ ;] catch {: rc:n :}
    rc 0 <> if 77 else 0 then ;
@@ -585,9 +584,7 @@ public
 \ made (src/compiler/native/regalloc.f B-BASE!, and its two siblings in
 \ regalloc-verify.f and emit.f).
 \
-\ WHAT IS LEFT HERE IS THE RUNTIME ANSWER. test/compiler/native-quot-scope.f
-\ measures the branching and straight-line bodies under every enclosing shape
-\ and through both compilation routes.
+\ WHAT IS LEFT HERE IS THE RUNTIME ANSWER.
 : BODY-CONTROL-CASE ( -- )
    s" a caught body holding a control structure" T-LABEL
    7 NCA-FIXTURE:NCA-BC {: cu:n cr:n :}
@@ -598,9 +595,7 @@ public
 \ another function - the body was built with the enclosing routine's local scope
 \ still open, so its call carried the enclosing routine's local values. The body
 \ is now built with no local scope at all, which is what a quotation has (dot
-\ habu-let-a-calling-7578eaaa). What the compiled shape ANSWERS is measured in
-\ test/compiler/native-quot-scope.f on both paths; this case keeps the runtime
-\ result.
+\ habu-let-a-calling-7578eaaa). This case keeps the runtime result.
 : BODY-CALL-LOCALS-CASE ( -- )
    s" a caught calling body runs under a definition with locals" T-LABEL
    7 NCA-FIXTURE:NCA-BL {: bu:n br:n :}

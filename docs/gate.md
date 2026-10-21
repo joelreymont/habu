@@ -396,8 +396,8 @@ at its deadline.
   Only code compiled after `1 set-tier` belongs to the tier, so the line goes
   after the harness and tool requires (`src/lib/test.f`, the code-reading tools,
   test fixtures that drive the chain) and before the code under test; a
-  library whose own words a case runs as the subject is required after it
-  (`test/compiler/native-exec.f` and `src/lib/array.f`). `' W dup 4 + code-origin .`
+  library whose own words a case runs as the subject is required after it.
+  `' W dup 4 + code-origin .`
   prints the tier that compiled `W`. No assertion depends on the harness's
   tier, and compiling it at tier 1 dominated these rows
   (`test/compiler/native-do.f`: 1.17 s with the line above its requires,
@@ -516,9 +516,6 @@ at its deadline.
   (`test/gate-common-lib.f`): an `E-PROC-TIMEOUT` that escapes the checks ends
   the child with 124 and any other throw leaves with its own code;
   `LINKER-LOAD` names the row and throws `E-PROC-TIMEOUT` again on 124.
-  `test/compiler/native-code-span-cases.f` and
-  `test/compiler/aot-nested-body-cases.f` start no process and have no
-  deadline to report.
 - A row that needs an external server starts a private one and stops it
   whatever its cases do. The `pg` row (`test/db/pg-cluster.f`) runs `initdb`
   and `postgres` from `PATH`, a gate requirement on every host

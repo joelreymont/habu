@@ -4,8 +4,7 @@ require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 
 \ Tier 1 below: the emission, frames and refusals these cases measure are the
-\ optimizing compiler's. Nested quotations at both tiers are
-\ test/compiler/native-quot-scope.f's.
+\ optimizing compiler's.
 1 set-tier
 
 package NQUOT-TEST

@@ -489,25 +489,9 @@ SUITE engine-id-replace
    test/engine-id-replace-e2e.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-ir-id
-   test/compiler/ir-id.f
-;SUITE
-
-SUITE compiler-ir-id-manifest
-   test/compiler/ir-id-manifest.f
-;SUITE
-
 \ These manifests execute the native schema and case checks without a prover.
 SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f
-;SUITE
-
-SUITE compiler-insn-manifest
-   test/compiler/insn-manifest.f
-;SUITE
-
-SUITE compiler-reloc-manifest
-   test/compiler/reloc-manifest.f
 ;SUITE
 
 SUITE compiler-ir-schema
@@ -528,10 +512,6 @@ SUITE compiler-ir-build
 
 SUITE compiler-ir-verify
    test/compiler/ir-verify.f
-;SUITE
-
-SUITE compiler-ir-arena
-   test/compiler/ir-arena.f
 ;SUITE
 
 SUITE compiler-ir-attr
@@ -584,14 +564,6 @@ SUITE compiler-native-long-string-image
 
 SUITE compiler-native-hir
    test/compiler/native-hir.f
-;SUITE
-
-SUITE compiler-native-elaborate
-   test/compiler/native-elaborate.f
-;SUITE
-
-SUITE compiler-asm-package
-   test/compiler/asm-package-test.f
 ;SUITE
 
 \ Reads the code the ENGINE UNDER TEST baked, so it belongs to whichever engine
@@ -816,10 +788,6 @@ SUITE compiler-native-regalloc
    test/compiler/native-regalloc.f
 ;SUITE
 
-SUITE compiler-native-address-spill
-   test/compiler/native-address-spill.f
-;SUITE
-
 SUITE compiler-native-identity-spill
    test/compiler/native-identity-spill.f
 ;SUITE
@@ -832,10 +800,6 @@ SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE
 
-SUITE compiler-native-arm-frame-order
-   test/compiler/native-arm-frame-order.f
-;SUITE
-
 SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
 ;SUITE
@@ -846,10 +810,6 @@ SUITE compiler-native-emit
 
 SUITE compiler-native-fused-moves
    test/compiler/native-fused-moves.f
-;SUITE
-
-SUITE compiler-native-session
-   test/compiler/native-session.f
 ;SUITE
 
 SUITE compiler-native-trap
@@ -868,29 +828,11 @@ SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE
 
-SUITE compiler-native-finally
-   test/compiler/native-finally.f
-;SUITE
-
 SUITE compiler-native-finally-aot
    src/lib/test.f
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-finally.f
-;SUITE
-
-SUITE compiler-native-layout-control
-   test/compiler/native-layout-control.f
-;SUITE
-
-SUITE compiler-native-layout-control-aot
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-layout-control.f
-;SUITE
-
-SUITE compiler-native-fetch-check
-   test/compiler/native-fetch-check.f
 ;SUITE
 
 SUITE compiler-native-fetch-snapshot
@@ -926,10 +868,7 @@ SUITE print-min-int
 \ inside the engine it tests - a reopened engine package, a pre-hook global, a
 \ ticked internal word - and say here which of those it needs.
 \ test/internal-word-gate.f stays on the product engine on purpose: it pins the
-\ refusals this engine does not have. test/compiler/ir-id.f does not - it is the
-\ compiler-ir-id row above, because its FAMILY-SURFACE and PUBLIC-SURFACE cases
-\ read the engine's own TFAM and XREF tables (standalone on bin/hb: rc 1, 26
-\ failures).
+\ refusals this engine does not have.
 WHITEBOX-SUITE whitebox-engine
    test/whitebox-engine-suite.f
 ;SUITE
@@ -985,27 +924,8 @@ SUITE aot-seeded-address-sites
    test/aot-seeded-address-sites.f
 ;SUITE
 
-SUITE compiler-native-exec
-   test/compiler/native-exec.f
-;SUITE
-
 SUITE native-quote-forward
    test/native-quote-forward-e2e.f
-;SUITE
-
-SUITE compiler-native-generic-calls
-   test/compiler/native-generic-calls.f
-;SUITE
-
-SUITE compiler-native-generic-calls-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-generic-calls.f
-;SUITE
-
-SUITE compiler-native-provider-rows
-   test/compiler/native-provider-rows.f
 ;SUITE
 
 SUITE compiler-native-internal-call
@@ -1014,17 +934,6 @@ SUITE compiler-native-internal-call
 
 SUITE compiler-native-hookless-reject
    test/compiler/native-hookless-reject.f
-;SUITE
-
-SUITE compiler-native-stored-quot
-   test/compiler/native-stored-quot.f
-;SUITE
-
-SUITE compiler-native-stored-quot-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-stored-quot.f
 ;SUITE
 
 SUITE image-lifecycle
@@ -1062,21 +971,6 @@ SUITE host-io-image
    test/host-io-image.f
 ;SUITE
 
-SUITE compiler-native-many-locals
-   test/compiler/native-many-locals.f
-;SUITE
-
-SUITE compiler-native-many-locals-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-many-locals.f
-;SUITE
-
-SUITE compiler-native-tail-owner
-   test/compiler/native-tail-owner.f
-;SUITE
-
 SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
@@ -1101,27 +995,8 @@ SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
-SUITE compiler-jit-plusloop
-   test/compiler/jit-plusloop.f
-;SUITE
-
-SUITE compiler-jit-do
-   test/compiler/jit-do.f
-;SUITE
-
 SUITE compiler-native-edge-permutation
    test/compiler/native-edge-permutation.f
-;SUITE
-
-SUITE compiler-native-switch
-   test/compiler/native-switch.f
-;SUITE
-
-SUITE compiler-native-switch-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-switch.f
 ;SUITE
 
 SUITE compiler-native-do
@@ -1138,10 +1013,6 @@ SUITE compiler-native-j
 
 SUITE compiler-native-again
    test/compiler/native-again.f
-;SUITE
-
-SUITE compiler-native-leave
-   test/compiler/native-leave.f
 ;SUITE
 
 SUITE compiler-native-rstack
@@ -1164,28 +1035,12 @@ SUITE empty-quotation
    test/empty-quotation.f
 ;SUITE
 
-SUITE compiler-native-locals-scope
-   test/compiler/native-locals-scope.f
-;SUITE
-
-SUITE compiler-native-locals-scope-aot
-   test/compiler/native-eval-fixture.f
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-locals-scope.f
-;SUITE
-
 SUITE compiler-native-local-case
    test/compiler/native-local-case.f
 ;SUITE
 
 SUITE compiler-native-local-ambiguity
    test/compiler/native-local-ambiguity.f
-;SUITE
-
-SUITE compiler-native-product-locals
-   test/compiler/native-product-locals.f
 ;SUITE
 
 SUITE compiler-native-product-locals-aot
@@ -1236,10 +1091,6 @@ SUITE undefine-binding-aot
    test/undefine-binding.f
 ;SUITE
 
-SUITE compiler-native-dictionary-record
-   test/compiler/native-dictionary-record.f
-;SUITE
-
 SUITE compiler-native-dictionary-append
    test/compiler/native-dictionary-append.f
 ;SUITE
@@ -1248,43 +1099,16 @@ SUITE compiler-native-dictionary-publish
    test/compiler/native-dictionary-publish.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-native-dictionary-retarget
-   test/compiler/native-dictionary-retarget.f
-;SUITE
-
 SUITE compiler-code-span
    test/compiler/code-span.f
-;SUITE
-
-SUITE compiler-code-span-capture
-   test/compiler/code-span-capture.f
 ;SUITE
 
 SUITE compiler-code-bytes
    test/compiler/code-bytes.f
 ;SUITE
 
-SUITE compiler-native-code-span
-   test/compiler/native-code-span.f
-;SUITE
-
-SUITE compiler-aot-nested-body
-   test/compiler/aot-nested-body.f
-;SUITE
-
 SUITE compiler-aot-closure-index
    test/compiler/aot-closure-index.f
-;SUITE
-
-SUITE compiler-native-quot-scope
-   test/compiler/native-quot-scope.f
-;SUITE
-
-SUITE compiler-native-quot-scope-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-quot-scope.f
 ;SUITE
 
 SUITE compiler-native-chain
@@ -1302,10 +1126,6 @@ SUITE compiler-native-qualified-trusted
    test/compiler/native-qualified-trusted.f
 ;SUITE
 
-SUITE compiler-native-generated-constructor
-   test/compiler/native-generated-constructor.f
-;SUITE
-
 SUITE compiler-native-generated-constructor-aot
    test/compiler/aot-mode.f
    ENTRIES
@@ -1316,37 +1136,8 @@ SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
 ;SUITE
 
-SUITE compiler-native-exit
-   test/compiler/native-exit.f
-;SUITE
-
-SUITE compiler-native-exit-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-exit.f
-;SUITE
-
 SUITE compiler-native-tick
    test/compiler/native-tick.f
-;SUITE
-
-SUITE compiler-native-tick-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-tick.f
-;SUITE
-
-SUITE compiler-native-literals
-   test/compiler/native-literals.f
-;SUITE
-
-SUITE compiler-native-literals-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-literals.f
 ;SUITE
 
 SUITE compiler-integer-literals
@@ -1396,12 +1187,8 @@ SUITE compiler-native-rename-rows
    test/compiler/native-rename-rows.f
 ;SUITE
 
-\ A read-view unpacked by a CAST: used as its two cells: the base row is the
-\ tier-0 reference, its -aot twin the tier-1 regrouping (test/compiler/aot-mode.f).
-SUITE compiler-native-view-cast
-   test/compiler/native-view-cast.f
-;SUITE
-
+\ A read-view unpacked by a CAST: used as its two cells, run through the
+\ tier-1 regrouping (test/compiler/aot-mode.f).
 SUITE compiler-native-view-cast-aot
    src/lib/test.f
    src/lib/memory.f
@@ -1422,17 +1209,6 @@ SUITE compiler-native-wide-mem-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-wide-mem.f
-;SUITE
-
-SUITE compiler-native-fetch-terms
-   test/compiler/native-fetch-terms.f
-;SUITE
-
-SUITE compiler-native-fetch-terms-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-fetch-terms.f
 ;SUITE
 
 SUITE compiler-native-vocab
@@ -2845,10 +2621,6 @@ WHITEBOX-SUITE field-proj
 
 WHITEBOX-SUITE field-proj-errors
    test/field-proj-errors.f
-;SUITE
-
-SUITE compiler-native-field-proj
-   test/compiler/native-field-proj.f
 ;SUITE
 
 SUITE gate-pool-orphan

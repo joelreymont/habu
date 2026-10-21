@@ -643,8 +643,8 @@ private
    BND [: PREDIDX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- a published view whose context is gone ----------------------------------
-\ The reader cases of test/compiler/ir-arena.f, restated through this file's own
-\ published word: the view is resolved once, at the reader, so a view that
+\ Through this file's own published word: the view is resolved once, at the
+\ reader, so a view that
 \ outlived the context holding its cells must refuse rather than read them.
 : DEADROW-BODY ( IR-CTX:ctx -- IR-ARENA:view )
    {: c:IR-CTX:ctx :}
