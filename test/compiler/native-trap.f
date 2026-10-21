@@ -19,6 +19,12 @@ require src/compiler/native/compiler.f
 package NTRAP-TEST
 private
 
+\ Source records contain the host machine's bytes. The hand-built NFIX cases
+\ above always emit AArch64, but their ARM instruction reader cannot decode
+\ source compiled by an x86-64 host.
+: A64-HOST? ( -- bool )
+   RTARGET:HOST-TARGET RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ ;
+
 : REC-LEN ( ptr u8 n -- n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" native-trap: record not found" 76 die then
@@ -650,11 +656,13 @@ public
 private
 
 : PRIMITIVE-DIE-CASE ( -- )
-   s" die has one terminal transfer and no returned-callee fallback" T-LABEL
-   s" NTRAP-TEST:DIE-PRIMITIVE" RECORD-CODE
-   s" die" NDICT:CALL-TARGET BRANCHES-TO 1 T=
-   RETS-IN-EMISSION 0 T=
-   EMISSION-CODE
+   A64-HOST? if
+      s" die has one terminal transfer and no returned-callee fallback" T-LABEL
+      s" NTRAP-TEST:DIE-PRIMITIVE" RECORD-CODE
+      s" die" NDICT:CALL-TARGET BRANCHES-TO 1 T=
+      RETS-IN-EMISSION 0 T=
+      EMISSION-CODE
+   then
    s" test/compiler/native-terminal-die.f" CHILD-RUN
    CHILD-RC @ 71 T=
    CHILD-ERR$ s" terminal die" CONTAINS? TTRUE ;
@@ -669,26 +677,27 @@ private
 
 : COMPILED-DEAD-BYTES-CASE ( -- )
    s" : NTB ( n -- ) drop E-A-EMPTY throw ;" evaluate-closed
-   s" NTB" RECORD-CODE
+   A64-HOST? if
+      s" NTB" RECORD-CODE
 
-   s" a compiled all-dead routine moves the machine stack pointer nowhere"
-   T-LABEL
-   SPMOVES-IN-EMISSION 0 T=
+      s" a compiled all-dead routine moves the machine stack pointer nowhere"
+      T-LABEL
+      SPMOVES-IN-EMISSION 0 T=
 
-   s" and carries no return at all" T-LABEL
-   RETS-IN-EMISSION 0 T=
+      s" and carries no return at all" T-LABEL
+      RETS-IN-EMISSION 0 T=
 
-   s" replacing the consumed input needs no data-stack pointer move" T-LABEL
-   DMOVES-IN-EMISSION 0 T=
+      s" replacing the consumed input needs no data-stack pointer move" T-LABEL
+      DMOVES-IN-EMISSION 0 T=
 
-   s" and it leaves at throw without a returned-callee fallback" T-LABEL
-   LAST-IS-BRANCH? TTRUE
-   LAST-TARGET  s" throw" NDICT:CALL-TARGET  T=
+      s" and it leaves at throw without a returned-callee fallback" T-LABEL
+      LAST-IS-BRANCH? TTRUE
+      LAST-TARGET  s" throw" NDICT:CALL-TARGET  T=
+      EMISSION-CODE
+   then
 
    s" the replacement cell reaches throw with the expected error code" T-LABEL
-   s" : NTB-RUN ( -- ) 0 NTB ; ' NTB-RUN E-A-EMPTY TTHROWS" evaluate-closed
-
-   EMISSION-CODE ;
+   s" : NTB-RUN ( -- ) 0 NTB ; ' NTB-RUN E-A-EMPTY TTHROWS" evaluate-closed ;
 
 variable ZERO-CONTINUED
 defer ZERO-THROW ( n -- )
@@ -714,18 +723,21 @@ defer ZERO-THROW ( n -- )
 \ `abs` is an external primitive, so this really is a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
    s" : NTC ( n -- n ) abs 1 + ;" evaluate-closed
-   s" NTC" RECORD-CODE
-   s" its recorded span ends immediately before the trailing return" T-LABEL
-   CODE-LEN @ INSN-BYTES / CODE-WORD@ RET-WORD T=
-   INSN-BYTES CODE-LEN +!
+   A64-HOST? if
+      s" NTC" RECORD-CODE
+      s" its recorded span ends immediately before the trailing return" T-LABEL
+      CODE-LEN @ INSN-BYTES / CODE-WORD@ RET-WORD T=
+      INSN-BYTES CODE-LEN +!
 
-   s" a compiled routine that calls and returns moves it twice" T-LABEL
-   SPMOVES-IN-EMISSION 2 T=
+      s" a compiled routine that calls and returns moves it twice" T-LABEL
+      SPMOVES-IN-EMISSION 2 T=
 
-   s" and ends in the return the other one has nowhere for" T-LABEL
-   RETS-IN-EMISSION 0 T<>
+      s" and ends in the return the other one has nowhere for" T-LABEL
+      RETS-IN-EMISSION 0 T<>
 
-   EMISSION-CODE ;
+      EMISSION-CODE
+   then
+   s" -1 NTC 2 T=" evaluate-closed ;
 
 \ An earlier exit block must not interrupt the guard's successful trace.
 public
@@ -744,14 +756,16 @@ public
 private
 
 : COMPILED-GUARD-CASE ( -- )
-   s" a guard continues into its normal successor before an earlier exit" T-LABEL
-   s" NTRAP-TEST:NT-GUARD" RECORD-CODE
-   0
-   CODE-INSNS 0 ?do
-      i CODE-WORD@ B-MASK and B-OP = if 1+ then
-   loop
-   1 T=                          \ only the earlier exit jumps to the epilogue
-   EMISSION-CODE
+   A64-HOST? if
+      s" a guard continues into its normal successor before an earlier exit" T-LABEL
+      s" NTRAP-TEST:NT-GUARD" RECORD-CODE
+      0
+      CODE-INSNS 0 ?do
+         i CODE-WORD@ B-MASK and B-OP = if 1+ then
+      loop
+      1 T=                       \ only the earlier exit jumps to the epilogue
+      EMISSION-CODE
+   then
    0 NT-GUARD 1 T= 2 NT-GUARD 4 T=
    [: 1 NT-GUARD drop ;] E-A-EMPTY TTHROWSQ
 
@@ -769,16 +783,18 @@ private
    0.0 0.0 f/ NT-FZERO 42 T= ;
 
 : COLD-DISPATCH-CASE ( -- )
-   s" choosing an error also belongs after the successful return" T-LABEL
-   s" NTRAP-TEST:NT-COLD-SELECT" RECORD-CODE
-   0
-   CODE-INSNS 0 ?do
-      i CODE-WORD@ {: w:n :}
-      w RET-WORD = if leave then
-      w B-MASK and B-OP = if 1+ then
-   loop
-   0 T=
-   EMISSION-CODE
+   A64-HOST? if
+      s" choosing an error also belongs after the successful return" T-LABEL
+      s" NTRAP-TEST:NT-COLD-SELECT" RECORD-CODE
+      0
+      CODE-INSNS 0 ?do
+         i CODE-WORD@ {: w:n :}
+         w RET-WORD = if leave then
+         w B-MASK and B-OP = if 1+ then
+      loop
+      0 T=
+      EMISSION-CODE
+   then
    0 NT-COLD-SELECT 42 T=
    [: 1 NT-COLD-SELECT drop ;] E-A-EMPTY TTHROWSQ
    [: 2 NT-COLD-SELECT drop ;] E-A-BOUNDS TTHROWSQ ;
@@ -798,7 +814,7 @@ private
    RETS-IN-EMISSION 0 T=
 
    s" and the branch it ends in reaches the one shared routine" T-LABEL
-   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T= ;
+   LAST-TARGET  NTRAP:ROUTINE  T= ;
 
 \ The placement survey with trap sites in it. The routine takes and publishes
 \ nothing, so the entry wants the pointer where the caller left it; its two trap
@@ -818,7 +834,7 @@ private
 
    s" and it is the address the dictionary answers for the shared routine"
    T-LABEL
-   T-FIRST @  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
+   T-FIRST @  NTRAP:ROUTINE  T=
 
    s" which the two reached from two different placements" T-LABEL
    CODE-PLACEMENT  NPUB:NEXT-SLOT  T<> ;

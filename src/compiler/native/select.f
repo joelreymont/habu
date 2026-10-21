@@ -1103,6 +1103,10 @@ RLIT-SHUT CWORK-VARIABLE RLIT-N n
    CTX BLD  CTX BLD A64IR:KEY-ORIGIN
       CTX BLD kind A64IR:ADDR-NONE = if -1 else id CONST-ORIGIN then
          IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   o A64IR-OPCODE:MOVZ A64IR-OPCODE:EQ if
+      CTX BLD  CTX BLD A64IR:KEY-REMAT-MARK
+      CTX BLD 0 IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   then
    CLOSE-VALUE ;
 
 \ A move-wide writes one sixteen-bit half; the shorter of the zero-based and
@@ -2717,12 +2721,8 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The trap registry resolves diagnostics at compile time; only die is needed
-\ in the target dictionary, even during the first source-prefix definitions.
-: TRAP-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-A64SEL-TRAP throw then
-   e ;
+\ The trap registry resolves diagnostics at compile time. Trap sites enter
+\ the engine's die through NTRAP:ROUTINE.
 
 \ Under the trap form's own key and not the one a tail branch carries.
 : EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
@@ -2879,7 +2879,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
       wordcall OF id mask EMIT-CALL-OR-TAIL ENDOF
       c2-stow OF id mask EMIT-C2-STOW ENDOF
       return OF id mask EMIT-RETURN-OR-TAILED ENDOF
-      trap   OF id 0 TRAP-ENTRY 0 EMIT-TRAP ENDOF
+      trap   OF id 0 NTRAP:ROUTINE 0 EMIT-TRAP ENDOF
       terminal OF id mask EMIT-TERMINAL ENDOF
       fconst   OF id EMIT-FCONST ENDOF
       fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF

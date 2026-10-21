@@ -7,6 +7,7 @@ require src/compiler/native/string.f
 require src/habu/xref.f
 require src/habu/aot-arm.f
 require src/lib/string.f
+require tools/build-target.f
 
 package NUNIT-CAPTURE
 
@@ -83,6 +84,20 @@ public
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;
+
+\ A unit object is written under NUNIT-FILE:ARCH-AARCH64 and carries the code
+\ and address sites of an AArch64 compiler. Check both the retained engine and
+\ a selected body target: another profile caches no definition.
+: AARCH64-PROFILE? ( -- bool )
+   RTARGET:HOST-TARGET RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   BUILD-TARGET:CURRENT RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   and ;
+
+\ The refusal behind AARCH64-PROFILE?. DEF-ELIGIBLE? answers it quietly so a
+\ build for another target simply caches no definition; capturing, packing or
+\ installing a unit body under another profile is a caller error and throws.
+: PROFILE-CK ( -- )
+   AARCH64-PROFILE? 0= if E-NUNIT-PROFILE throw then ;
 
 : WITH-OBSERVER ( [ n n n n -- ] [ -- ] -- )
    s" NPUB:WITH-UNIT" TARGET-XT WITH-UNIT-XT execute ;

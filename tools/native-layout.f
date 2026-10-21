@@ -41,6 +41,19 @@ create SLOTS
    \ The capture host's baked layout has no names for the suspended hook pair.
    $2D80 ,                             0 ,   \ SUSP-HOOK-CELL
    $2D88 ,                             0 ,   \ SUSP-PREFLIGHT-CELL
+   \ The x86-64 port's fixed callback and chain cells. The capture host's baked
+   \ layout names the first three; the rest are spelled as offsets for a host
+   \ that predates them, and must equal src/habu/layout.f's.
+   UNCGH-CELL ,                         0 ,
+   ENGINE-MAIN:XT-CELL ,                0 ,
+   CREATEP-CELL ,                       0 ,
+   $2D98 ,                             0 ,   \ NCOMP-DISPATCH:FIXED-SHADOW-CELL
+   $2DA0 ,                             0 ,   \ NCOMP-DISPATCH:DOES-SHADOW-CELL
+   $2DA8 ,                             1 ,   \ TASK-CHAIN-CELL
+   $3848 ,                             0 ,   \ PROVIDED-XT:EVALUATE-CELL
+   $3850 ,                             0 ,   \ POLICY-ABI:KEYWORD-CELL
+   $3858 ,                             0 ,   \ ENGINE-MAIN:REPORT-CELL
+   $3860 ,                             0 ,   \ PROVIDED-XT:EVALUATE-RANGE-CELL
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;
@@ -78,6 +91,19 @@ public
          SLOTS i OFFSET unloop exit
       then
    loop
+   s" native-build: unknown fixed cell offset " type off .
    REFUSE ;
+
+: TRANSLATE-ROWS ( ptr n n -- ) {: host:ptr count:n :}
+   CURRENT DATA-START CHECK
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW {: row:ptr :}
+      row @ {: pair:n :}
+      pair $FFFFFFFF and {: loc:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
+         host count loc pair 32 rshift AOT-WINDOW:XTOFF-DATA-TAG and 0<>
+         TRANSLATE pair $FFFFFFFF00000000 and or row !
+      then
+   loop ;
 
 ;package

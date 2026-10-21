@@ -24,7 +24,8 @@ The goal is a tier-1-only Linux x86-64 engine:
 - **Write-time link.** A host-side Habu linker writes the x86 image with the
   code region and DATA as fixed `PT_LOAD`s.
 - **Self-host.** The cross-built engine rebuilds itself on the ThinkPad to a
-  byte fixpoint, which is the release artefact.
+  byte fixpoint, which is the release artefact. A native build records the
+  already published Intel emission; it does not lower or emit it a second time.
 
 The ARM64 product keeps tier 0 through the B1 hook
 (`habu-hook-tier-0-96e33c29`). A tier-1-only product on both architectures
@@ -43,25 +44,26 @@ Landed on `master` (the facts are in [docs/x86-64.md](docs/x86-64.md)):
 - the backend registry and pass rows;
 - `x64ir.f`, `select-x64.f`, the partial `emit-x64.f` and `X64PASS`.
 
-Executed natively on the ThinkPad: `test/x86-64-peer-image.f`, run on spark,
-writes `hb-x64-peer` and `hb-x64-peer-negative`. They exit 0 and 21. They are
-the only x86 code that has run so far.
+The implementation lane also carries checked Habu startup and interpretation,
+the fixed-segment image linker, recorded anonymous-function targets, SysV FFI,
+Linux runtime facts, and native capture. Emitted Intel executables exercise
+these boundaries on the ThinkPad; ARM products are built and tested on spark.
 
-The spark baseline at `afd626da` is 488/491:
-
-- `zip` and `native-resource-image` fail only because Ubuntu ships no
-  `libzip.so.5`. This is host setup outside the repository (below).
-- `fs-mutate` is a real defect: a C `int` result is not sign-extended, so
-  `-1` reads as `0xFFFFFFFF`. The fix is `habu-sign-extend-c-c7f55f0e`.
+A complete cross-built engine enters captured `MAIN`, evaluates `cr` from
+stdin, and reports a missing load file with exit 74. Completion still requires
+the remaining kernel interpreter boundaries, full native suites, saved images
+and snapshots, and native byte convergence. A successful cross-build alone
+does not establish those outcomes.
 
 ## Hosts
 
 - **ThinkPad** (x86-64 Arch Linux) is the lead's machine. It runs cross-built
   x86 images until `habu-run-bin-hb-6378f297` (X6) lands. After that it
   builds and gates natively.
-- **spark** (aarch64 Ubuntu 24.04, 20 cores; the clone is
-  `~/Work/habu/krait`) builds, cross-builds and runs the ARM64 gate. Reach it
-  with `ssh -o BatchMode=yes spark bash -lc '…'`. Every command there that
+- **spark** (aarch64 Ubuntu 24.04) builds, cross-builds and runs the ARM64 gate.
+  Use an isolated source copy and build directory under `~/.cache/habu/`;
+  `~/Work/habu/krait` belongs to other active work. Reach it
+  with `ssh -o BatchMode=yes spark`. Every command there that
   loads libzip needs `LD_LIBRARY_PATH=$HOME/.local/opt/libzip/lib` (zlib 1.3.1
   and libzip 1.11.4 are built into `~/.local/opt/libzip`).
 - **No CI.** macOS is untested by this lane. Alder pulls `master` and fixes
@@ -88,44 +90,29 @@ HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=linux-aarch64 HB_TMP=$TMP \
   GFORTH=$(command -v gforth) tools/bootstrap.sh
 ```
 
-On the ThinkPad, until X6 lands: copy the images spark writes (`scp`) and run
-them, comparing exit statuses. After X6: `bin/hb --load test/run.f`
-natively.
+Cross-build from a working ARM64 engine whose baked layout matches the source:
+
+```sh
+bin/hb --load src/arch/x86-64/passes.f tools/native-build.f -- <out> --target linux-x86-64
+```
+
+Copy the output and its matching `.names` sidecar to the ThinkPad. Run the
+Intel native gate with that candidate installed in the isolated tree's
+`bin/hb`, and rebuild there through `tools/native-build.f`.
 
 ## Ownership and landing
 
-- Every x86 dot belongs to this lane (`Ownership: krait (Intel lane)`),
-  including `habu-cross-build-the-d25a959d`.
-- `habu-make-build-fixpoint-eeaf6c00` stays Alder's. It is ARM64 recovery
-  work, and x86 has no cold route.
-- Each leaf's `Route:` field says how it lands:
-  - **`Route: direct`**: every file the leaf changes is x86-only
-    (`src/arch/x86-64/`, `src/os/linux-x86-64/`,
-    `src/compiler/native/{x64ir,select-x64,emit-x64}.f`, new x86-only files,
-    `test/x86-64-*`, `test/compiler/x64-*`, `docs/x86-64.md`, `INTEL.md`,
-    `.dots/`). The lane lands it on `master` after the Linux gates.
-  - **`Route: Alder`**: anything a macOS build loads. The lane pushes the
-    leaf as bookmark `intel/<dot-id>` to `origin`, rebased on
-    `master@origin`, reviewed and Linux-gated. It lists the bookmark, commit,
-    base, paths and Linux results in its receipt
-    (`~/.cache/tmp/habu-intel-krait-current.md` on the ThinkPad), which Alder
-    pulls. Alder gates macOS and moves `master`. The lane never moves
-    `master` for these leaves.
-- A dot closes after its commit is on `master`.
-
-Workflow rules from [CLAUDE.md](CLAUDE.md):
-
-- one commit per leaf, made in its own `.jj-ws/<dot-id>` workspace created
-  from the repository root;
-- an independent review of every delegated change before it lands;
-- the gate and the push are never one command chain;
-- no shell or Python logic under `tools/` or `test/`: the x86 peer runs
-  images, and Habu programs do the checking.
+Follow [AGENTS.md](AGENTS.md): use isolated jj workspaces, preserve unrelated
+work, independently review each significant feature, run the required gates,
+and push `master`. Shared-file changes preserve the macOS arms; this lane
+reports macOS as untested. Retire integrated task bookmarks and workspaces only
+after verifying their changes are accounted for. Existing campaign dots close
+when their stated acceptance is met.
 
 ## Design facts that must not drift
 
-- VM registers: `rbp` is the user area, `r12` the data stack pointer, `r13`
-  the data base, `r14` the dictionary, `r15` the code pointer and `rbx` the
+- VM registers: `rbp` is DATA, `r12` the data stack pointer, `r13`
+  the dictionary base, `r14` its record count, `r15` the code pointer and `rbx` the
   interpreter register. `rsp` is reserved too, and nine registers are
   allocatable. The SysV callee-saved set is exactly the VM set, so a foreign
   call needs no save block.

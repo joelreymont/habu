@@ -178,6 +178,14 @@ public
    a 0 ARG,  b 1 ARG,  c 2 ARG,
    3 want INVOKE, ;
 
+\ Ten cells in, more than the nine registers a routine allocates, and one out.
+: CASE10, ( n n n n n n n n n n n -- )
+   {: x0:n x1:n x2:n x3:n x4:n x5:n x6:n x7:n x8:n x9:n want:n :}
+   R12 RBP ASM-SINK ENC-MOV-RR
+   x0 0 ARG,  x1 1 ARG,  x2 2 ARG,  x3 3 ARG,  x4 4 ARG,
+   x5 5 ARG,  x6 6 ARG,  x7 7 ARG,  x8 8 ARG,  x9 9 ARG,
+   10 want INVOKE, ;
+
 \ One cell in, the address of the scratch cell once it holds `content`, and one
 \ out; then a second check, of what the cell holds after the call.
 : CELL-CASE, ( n n n -- ) {: content:n want:n after:n :}

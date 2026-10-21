@@ -1189,7 +1189,9 @@ SUMTYPE tdpgn
   VARIANT nested tdopt<tdres<n,f>> ;VARIANT
   VARIANT nop ;VARIANT
 ;SUMTYPE
-s" " s" tdpgn" TFAM-FIND-IN nip -1 T=
+s" " s" tdpgn" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TWX-TFAM-SLOTS@ 3 T=  \ tdopt<tdres<n,f>> is three cells
 
 \ malformed enum declarations (item 14): every reject rolls back to baseline via
 \ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or

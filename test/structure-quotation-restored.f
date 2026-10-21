@@ -4,8 +4,9 @@ require src/compiler/native/compiler.f
 
 package QUOT-FIELD-TEST
 
-0 set-tier
-: CHECK-SAVED-T0 ( -- )
+: FIRST-TIER ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
+FIRST-TIER set-tier
+: CHECK-SAVED-FIRST ( -- )
    SAVED-BOX @ ROUTE-BOX-UNMAKE ROUTE-UNMAKE
    {: method:route-text pattern:route-text handler :}
    method ROUTE-TEXT-UNMAKE s" GET" T$=
@@ -24,7 +25,7 @@ package QUOT-FIELD-TEST
 
 : FRESH-CHECK ( -- )
    T-RESET
-   CHECK-SAVED-T0
+   CHECK-SAVED-FIRST
    CHECK-SAVED-T1
    129 0 ?do i ADD loop
    0 DISPATCH SEEN @ 20 T=

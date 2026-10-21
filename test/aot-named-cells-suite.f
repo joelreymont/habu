@@ -7,7 +7,9 @@ require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require test/cold-engine.f
 require test/fixture-writer.f
+require test/suite-budget.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
+require src/core/sha256.f
 
 package NAMED-CELLS-SUITE
 
@@ -18,6 +20,9 @@ create IMAGE FS-PATH-CAP allot variable IMAGE-U
 create OUT $4000 allot variable OUT-U
 create ERR $4000 allot variable ERR-U
 variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
+create FSHA-CTX SHA256-FILE-CTX-BYTES allot
+create BEFORE 32 allot
+create AFTER 32 allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : COLD$ ( -- ptr u8 n ) COLD COLD-U @ ;
@@ -46,7 +51,8 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
 : RUN-CHILD ( ptr u8 n ptr u8 n n -- )
    {: path:ptr pathu:n source:ptr size:n code:n :}
    PROC-ARGV-N @ COUNT>N CHILD-ARGC !
-   path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN 120000 >MS
+   path pathu >LEN source size >LEN OUT $4000 >LEN ERR $4000 >LEN
+   SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    oc path pathu source size STATUS!
@@ -69,15 +75,24 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
    ROOT$ s" hb-named" IMAGE JOIN-PATH IMAGE-U ! ;
 
 : CAPTURE ( ptr u8 n -- ) {: forged:ptr size:n :}
-   s" test/aot-named-cells-capture.f" LOAD s" --" ARG+ ART$ ARG+ COLD$ ARG+
+   HB-TARGET-LINUX-X86-64? if
+      s" test/aot-named-cells-capture-x64.f"
+   else
+      s" test/aot-named-cells-capture.f"
+   then LOAD s" --" ARG+ ART$ ARG+ COLD$ ARG+
    size 0 > if forged size ARG+ then
    COLD$ NULL$ 0 RUN-CHILD LIVE ART$ EXISTS? TTRUE ;
 
 \ The writer path comes first: see FIXTURE-WRITER:PATH$.
-: WRITE ( -- )
+: WRITE-RC ( n -- ) {: code:n :}
    FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    PROC-ARGV-RESET s" --" ARG+ IMAGE$ ARG+ ART$ ARG+ COLD$ ARG+
-   writer writeru NULL$ 0 RUN-CHILD IMAGE$ EXISTS? TTRUE ;
+   writer writeru NULL$ code RUN-CHILD ;
+
+: WRITE ( -- ) 0 WRITE-RC IMAGE$ EXISTS? TTRUE ;
+
+: IMAGE-DIGEST ( ptr u8 -- ) {: digest:ptr :}
+   FSHA-CTX IMAGE$ digest SHA256-FILE-IN 0 T= ;
 
 : BUILD ( -- )
    s" the shared cold prefix host reaches this fixture's private tree" T-LABEL
@@ -97,11 +112,22 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
    LIVE OUT OUT-U @ s" defer: unset execution vector" CONTAINS?
    ERR ERR-U @ s" defer: unset execution vector" CONTAINS? or TTRUE ;
 
-: FORGED ( ptr u8 n -- )
-   2dup T-LABEL CAPTURE WRITE
-   PROC-ARGV-RESET IMAGE$ NULL$ ENGINE-ERROR:AOT-SEED RUN-CHILD
-   ERR ERR-U @ S\" hb: AOT named address cell unresolved\n" T$=
-   OUT-U @ 0 T= ;
+: FORGED ( ptr u8 n -- ) {: name:ptr size:n :}
+   name size T-LABEL
+   name size CAPTURE
+   HB-TARGET-LINUX-X86-64? if
+      BEFORE IMAGE-DIGEST
+      74 WRITE-RC
+      OUT OUT-U @ name size CONTAINS? TTRUE
+      AFTER IMAGE-DIGEST
+      BEFORE 32 AFTER 32 T$=
+      IMAGE$ EXISTS? TTRUE
+   else
+      WRITE
+      PROC-ARGV-RESET IMAGE$ NULL$ ENGINE-ERROR:AOT-SEED RUN-CHILD
+      ERR ERR-U @ S\" hb: AOT named address cell unresolved\n" T$=
+      OUT-U @ 0 T=
+   then ;
 
 : REFUSALS ( -- )
    s" NAMED-CELLS-NO-SUCH-TARGET" FORGED

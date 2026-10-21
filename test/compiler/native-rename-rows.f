@@ -291,8 +291,15 @@ CAPTURE-DYNAMIC-CASES
    SPB 9 SP-LEN-AFTER 9 T= ;
 
 : REFUSALS ( -- )
-   s" parking one cell of a bundle remains a named refusal" T-LABEL
-   TORB-RC @ E-NELAB-BUNDLE T=
+   HB-TARGET-LINUX-X86-64? if
+      s" return-stack transport keeps the option bundle whole" T-LABEL
+      TORB-RC @ 0 T=
+      s" package NRR : C-TORB-RUN ( -- ) 43 OPTION:SOME C-TORB OPTION>N 43 T= ; C-TORB-RUN ;package"
+         evaluate-closed
+   else
+      s" parking one cell of a bundle remains a named refusal" T-LABEL
+      TORB-RC @ E-NELAB-BUNDLE T=
+   then
 
    s" an open argument the width READS is refused, its closed twin placed" T-LABEL
    BOX-OPEN-RC @ E-NELAB-BUNDLE T=

@@ -195,6 +195,34 @@ package HB-BUILD-CLI
    HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened word=" CONTAINS? TTRUE
    HBB-ERR-BUF err s"  suggestion='" CONTAINS? TTRUE ;
 
+\ FMT:.INT has two valid placements. When the donor engine bakes src/lib/fmt.f
+\ below its seal (as the x86-64 engine does), every maker carries it and the
+\ keyed image links the program and runs it; otherwise the linker loads it before
+\ the window and the program is refused by name. Ask the keyed linker itself:
+\ HABU_UNDER_TEST can select a donor other than the engine running this row.
+: HBT-FMT-BAKED? ( -- bool )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   HBT-LINKER >LEN
+   S\" : FMT-PLACEMENT ( -- ) s\q FMT:.INT\q XREF-FIND-INDEX SEAL-NDICT@ < if s\q baked\q else s\q pre-window\q then type cr ;\nFMT-PLACEMENT\n" >LEN
+   HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE HBT-CAPTURE>N
+   {: out:n err:n rc:n :}
+   rc 0 T=
+   HBT-RUN-ERR err HBT-EMPTY$ T$=
+   HBT-RUN-OUT out S\" baked\n" T-STR= if true exit then
+   HBT-RUN-OUT out S\" pre-window\n" T$=
+   false ;
+
+: KEYED-BAKED-FMT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   HBT-SPAN-SRC src srcu WRITE-ALL
+   HBT-SPAN-OUT HBT-REMOVE-FILE?
+   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBT-SPAN-OUT S\" 42\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
+
 \ The same refusal through the CLI under --json-errors, which promises its
 \ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
 \ and the CLI keeps only the JSON lines of the maker's stderr
@@ -215,6 +243,11 @@ package HB-BUILD-CLI
    HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
    HBT-ERR erru S\" \qword\q:\q.INT\q" CONTAINS? TTRUE
    HBT-SPAN-OUT EXISTS? TFALSE ;
+
+: KEYED-PRE-WINDOW ( -- )
+   HBT-FMT-BAKED? if HBT-REQUIRED-SRC$ KEYED-BAKED-FMT exit then
+   KEYED-PRE-WINDOW-REFUSED
+   KEYED-PRE-WINDOW-JSON ;
 
 \ THE OTHER HALF OF THE DOES> RULE. An EMPTY clause compiles no instruction, so
 \ elaborate.f STAGE-DOES-ENTRY publishes the companion record and patches
@@ -256,8 +289,7 @@ public
    BUILD-AOT-NATIVE
    BUILD-AOT-DIV-REFUSAL
    BUILD-AOT-SPAN
-   KEYED-PRE-WINDOW-REFUSED
-   KEYED-PRE-WINDOW-JSON
+   KEYED-PRE-WINDOW
    BUILD-AOT-DOES-EMPTY
    BUILD-AOT-MULTI-PAGE
    CLEANUP-RUN

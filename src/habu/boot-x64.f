@@ -1,9 +1,10 @@
 \ boot-x64.f - the x86-64 engine's process entry, package X64BOOT. START, emits
 \ `_start`, the twin of src/habu/habu2.f EM-STARTUP up to its first run-time
-\ state: it maps the guarded VM stacks, the code region and the DATA region,
+\ state: it maps the guarded VM stacks and initializes the code and DATA regions,
 \ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
-\ ARM64 boot fills, publishes the signal stub it carries out of line and
-\ installs the crash handler, then falls through into whatever the stream emits
+\ ARM64 boot fills, publishes the signal stub it carries out of line, registers
+\ a separate crash signal stack and installs the crash handler, then falls
+\ through into whatever the stream emits
 \ next. docs/x86-64.md "Kernel inventory" lists each register and cell beside
 \ its ARM64 twin.
 \
@@ -31,6 +32,10 @@ require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/native-host-cells.f
+require src/habu/task-abi.f
+require src/habu/address-cells.f
+require src/habu/snapshot-format.f
+require src/habu/snap-decode-x64.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/sys.f
@@ -46,16 +51,19 @@ create SCALAR-ROW-VALUE 0 ,
 
 0 constant PROT-NONE
 3 constant PROT-RW                  \ PROT_READ|PROT_WRITE
+5 constant PROT-RX                  \ PROT_READ|PROT_EXEC
 \ The rc every boot mapping failure exits with: STACK-GUARD's MAP-FAIL-RC
 \ (src/habu/rt.f) and habu2.f's two fixed-region mappings.
 78 constant MAP-FAIL-RC
 2 constant STDERR
+16 constant CODE-SLOT
 
-\ The three failures the boot names, one label each per image.
+\ The four failures the boot names, one label each per image.
 variable STACK-BAD
 variable REGION-BAD
 variable DATA-BAD
 variable OCC-BAD
+variable SNAP-END
 
 : RBASE-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 : DSTACK-REG ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
@@ -89,8 +97,7 @@ variable OCC-BAD
 \ first PAGE-BYTES boundary at least one page in, so at least one inaccessible
 \ page lies below the base and one above base + cap, and a push past the
 \ capacity faults.
-: MAP-STACK, ( n r64 -- ) {: cap:n dst:r64 :}
-   STACK-BAD @ >LABEL {: bad:label :}
+: MAP-STACK, ( n r64 label -- ) {: cap:n dst:r64 bad:label :}
    RDI ZERO-REG,
    cap STACK-ABI:PAGE-BYTES 3 * +  PROT-NONE  MAP-ANON-PRIVATE MMAP,
    C-B bad JCC,
@@ -106,7 +113,7 @@ variable OCC-BAD
 \ the same base into XREG-RBASE with an ADR.
 : TEXT-BASE, ( r64 -- ) {: r:r64 :}
    r 0 MEM-RIP ASM-SINK ENC-LEA
-   r ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
+   r X64CODE:ASM-LEN >IMM32 ASM-SINK ENC-SUB-RI32 ;
 
 \ r13 = the code region, REGION bytes at the image base plus REGION-OFF, where
 \ the writer's PT_LOAD places it; r15 = its code area past the records;
@@ -124,44 +131,161 @@ variable OCC-BAD
    RDI X64LAYOUT:DATA-VA VA>N IMM,
    X64LAYOUT:DATA-SIZE DATA-BAD @ >LABEL MAP-FIXED, ;
 
+\ A linked image carries its region and DATA in PT_LOADs. The records begin
+\ at r13 and the code pointer and record count are known at write time.
+: LINKED-REGION, ( n n -- ) {: records:n cp:n :}
+   DBASE-REG RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   ENGINE-GPR:X64-CP >R64 cp IMM,
+   ENGINE-GPR:X64-NDICT >R64 records IMM,
+   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
+   NR-MPROTECT SYS,
+   C-B REGION-BAD @ >LABEL JCC, ;
+
+\ The snapshot's REGION and DATA are already mapped at their fixed VAs.
+\ Its trailer supplies the exact live dictionary count and code pointer.
+: SNAP-REGION, ( -- )
+   DBASE-REG RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   ENGINE-GPR:X64-NDICT >R64 R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
+   ENGINE-GPR:X64-CP >R64 DBASE-REG ASM-SINK ENC-MOV-RR
+   ENGINE-GPR:X64-CP >R64 RCX ASM-SINK ENC-ADD-RR
+   ENGINE-GPR:X64-INTERP >R64 ZERO-REG,
+   RDI DBASE-REG ASM-SINK ENC-MOV-RR  RSI REGION IMM,  RDX PROT-RX IMM,
+   NR-MPROTECT SYS,
+   C-B REGION-BAD @ >LABEL JCC, ;
+
+\ Reject a malformed appended frame before the decoder reads any RX payload.
+\ R8 is the immutable cold text end and R9 points to the final 48-byte
+\ trailer; R10/R11 are the exact heap extent and wire form for the decoder.
+: SNAP-FRAME, ( label label -- ) {: bad:label badver:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: framed:label legacy:label versioned:label :}
+   R8 SNAP-END @ >LABEL MOVABS,
+   RCX RBASE-REG $60 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R8 ASM-SINK ENC-MOV-RR  RAX RBASE-REG ASM-SINK ENC-SUB-RR
+   RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX SNAP-TRL-LEGACY-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX SNAP-TRL-BYTES SNAP-TRL-LEGACY-BYTES - >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B legacy JCC,
+   R9 RBASE-REG SNAP-TRL-BYTES X64LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
+   R9 RCX ASM-SINK ENC-ADD-RR
+   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RDX SNAP-MAGIC IMM,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-E versioned JCC,
+   legacy X64CODE:LBL,
+   R9 RBASE-REG SNAP-TRL-LEGACY-BYTES X64LAYOUT:CODE-OFF + negate MEM-OFF ASM-SINK ENC-LEA
+   R9 RCX ASM-SINK ENC-ADD-RR
+   RAX R9 MEM-AT ASM-SINK ENC-MOV-RM
+   RDX SNAP-MAGIC IMM,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-E badver JCC,
+   bad JMP,
+   versioned X64CODE:LBL,
+   RAX R9 SNAP-TRL-VERSION MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX SNAPSHOT-FORMAT:VERSION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE badver JCC,
+   R11 R9 SNAPSHOT-FORMAT:HEAP-FIELD MEM-OFF ASM-SINK ENC-MOV-RM
+   R11 SNAPSHOT-FORMAT:HEAP-GRID >IMM8 ASM-SINK ENC-CMP-RI8  C-E framed JCC,
+   R11 SNAPSHOT-FORMAT:HEAP-RAW >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   framed X64CODE:LBL,
+   RAX R9 SNAP-TRL-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RAX R9 SNAP-TRL-REGLEN MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DICT-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
+   RAX X64LAYOUT:CODE-CEILING >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RAX CODE-SLOT 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE bad JCC,
+   \ ELF64's fifth/sixth headers must carry exactly the saved fixed spans.
+   RCX RBASE-REG $130 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
+   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $140 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $148 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX REGION >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RCX RBASE-REG $168 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX X64LAYOUT:DATA-VA VA>N IMM,
+   RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RCX RBASE-REG $178 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RCX RBASE-REG $180 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX X64LAYOUT:DATA-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-NE bad JCC,
+   RAX R9 SNAP-TRL-DATALEN MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX DATA-START >IMM32 ASM-SINK ENC-CMP-RI32  C-B bad JCC,
+   RAX X64LAYOUT:DATA-SIZE >IMM32 ASM-SINK ENC-CMP-RI32  C-A bad JCC,
+   RCX R9 ASM-SINK ENC-MOV-RR  RCX R8 ASM-SINK ENC-SUB-RR
+   RAX DATA-START >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RCX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   R10 RAX DP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX X64LAYOUT:DATA-VA VA>N DATA-START + IMM,
+   R10 RCX ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RCX X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - + IMM,
+   R10 RCX ASM-SINK ENC-CMP-RR  C-A bad JCC,
+   R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-MR ;
+
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
 \ the data stack's extent, the argument vector ([rsp] = argc, argv at rsp + 8,
 \ envp past argv's null) and the heap floor with the DP that starts at it.
-: DATA-INIT, ( -- )
+: DATA-INIT, ( bool -- ) {: heap:bool :}
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
+   \ A saved image carries DATA, but no process owns its old mutex or index.
+   RAX ZERO-REG,
+   RAX ADDRESS-CELLS:LOCK-CELL CELL!
+   RAX ADDRESS-CELLS:INDEX-CELL CELL!
    DSTACK-REG STACK-ABI:BASE-CELL CELL!
    RAX STACK-ABI:BOOT-BYTES IMM,  RAX STACK-ABI:CAP-CELL CELL!
    RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RAX ARGC-CELL CELL!
    RCX RSP CELL MEM-OFF ASM-SINK ENC-LEA  RCX ARGV-CELL CELL!
    RCX RCX RAX CELL CELL MEM-IDX ASM-SINK ENC-LEA  RCX ENVP-CELL CELL!
-   RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
-   RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
+   heap if
+      RAX DATA-START IMM,  RAX BOOT-LAYOUT:HEAP-START-CELL CELL!
+      RAX RBASE-REG DATA-START MEM-OFF ASM-SINK ENC-LEA  RAX DP-CELL CELL!
+   then
    RAX SCALAR-ROW-LABEL @ >LABEL MOVABS,
    RAX RAX MEM-AT ASM-SINK ENC-MOV-RM
-   RAX NATIVE-HOST-CELLS:SCALAR-PRIM CELL! ;
+   RAX NATIVE-HOST-CELLS:SCALAR-PRIM CELL!
+   RAX 1 IMM,  RAX NCOMP-DISPATCH:TIER-CELL CELL! ;
 
+\ This process's definition occurrence allocation (layout.f DEF-OCC): a fresh
+\ mapping whatever DATA the image carried, whose pointer DATA-INIT's caller
+\ could not have restored. The records already counted, [0,NDICT), take the
+\ first numbers in order, as ARM64's EM-DEF-OCC LINIT issues them: slot i+1
+\ holds i+1, and the first cell, the last number issued, holds NDICT. Without
+\ them a linked or restored record has no selectable occurrence.
 : OCC-INIT, ( -- )
+   X64CODE:LBL X64CODE:LBL {: issue:label issued:label :}
    RDI ZERO-REG,
    DEF-OCC:STATE-BYTES PROT-RW MAP-ANON-PRIVATE MMAP,
    C-B OCC-BAD @ >LABEL JCC,
-   RAX DEF-OCC:PTR-CELL CELL! ;
+   RAX DEF-OCC:PTR-CELL CELL!
+   RCX ZERO-REG,
+   issue X64CODE:LBL,
+      RCX ENGINE-GPR:X64-NDICT >R64 ASM-SINK ENC-CMP-RR  C-AE issued JCC,
+      RCX ASM-SINK ENC-INC
+      RCX RAX RCX CELL 0 MEM-IDX ASM-SINK ENC-MOV-MR
+      issue JMP,
+   issued X64CODE:LBL,
+   RCX RAX MEM-AT ASM-SINK ENC-MOV-MR ;
 
 \ The twin of EM-FRAME-STACKS: the return and DO/LOOP frame stacks, published
 \ in their DATA cells.
 : FRAME-STACKS, ( -- )
-   STACK-ABI:RETURN-BYTES RAX MAP-STACK,  RAX STACK-ABI:RETURN-BASE-CELL CELL!
-   STACK-ABI:LOOP-BYTES RAX MAP-STACK,  RAX STACK-ABI:LOOP-BASE-CELL CELL! ;
+   STACK-ABI:RETURN-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
+   RAX STACK-ABI:RETURN-BASE-CELL CELL!
+   STACK-ABI:LOOP-BYTES RAX STACK-BAD @ >LABEL MAP-STACK,
+   RAX STACK-ABI:LOOP-BASE-CELL CELL! ;
 
 \ Bind a failure at the label: its line, newline included, to fd 2 in one
 \ write, then exit with the status. The line follows the exit syscall inside
 \ the loaded text, so it is readable before any region exists.
 : FAIL, ( label ptr u8 n n -- ) {: at:label a:ptr u:n rc:n :}
-   LBL {: msg:label :}
-   at LBL,
+   X64CODE:LBL {: msg:label :}
+   at X64CODE:LBL,
    RDI STDERR IMM,  RSI msg MOVABS,  RDX u IMM,  NR-WRITE SYS,
    RDI rc IMM,  NR-EXIT-GROUP SYS,
-   msg LBL,
+   msg X64CODE:LBL,
    a u TEXT-BYTES, ;
 
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
@@ -183,8 +307,8 @@ variable OCC-BAD
 \ restorer the installer named: src/lib/signal.f installs through libc sigaction,
 \ which supplies one.
 : SIGNAL-STUB, ( label -- )
-   LBL,
-   LBL {: done:label :}
+   X64CODE:LBL,
+   X64CODE:LBL {: done:label :}
    RDI ASM-SINK ENC-PUSH
    RAX FD-WORD-VA IMM,
    RDI RAX MEM-AT ASM-SINK ENC-MOV-RM
@@ -194,7 +318,7 @@ variable OCC-BAD
    RDX R64>N >R32 SIGNO-BYTES >IMM32 ASM-SINK ENC-MOV32-RI32
    RAX R64>N >R32 NR-WRITE >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL
-   done LBL,
+   done X64CODE:LBL,
    RDI ASM-SINK ENC-POP
    ASM-SINK ENC-RET ;
 
@@ -206,6 +330,9 @@ variable OCC-BAD
 : PUBLISH-STUB, ( label -- ) {: stub:label :}
    RAX stub MOVABS,  RAX SIGNAL-ABI:STUB-CELL CELL!
    RAX FD-WORD-VA IMM,  RAX SIGNAL-ABI:FD-PTR-CELL CELL! ;
+
+: PUBLISH-FLOOR, ( label -- )
+   RAX swap MOVABS,  RAX FLOORREC-CELL CELL! ;
 
 \ The kernel's own struct sigaction on x86-64, which is not glibc's: the
 \ handler, the flags, the restorer, then the blocked mask, SIGSET-BYTES wide,
@@ -231,7 +358,7 @@ create GREG-SLOTS
 
 public
 
-\ START, emits an absent marker; the completed kernel fills that same cell
+\ CLOSE, emits an absent marker; the completed kernel fills that same cell
 \ with the audited primitive ordinal plus one.
 : SCALAR-ROW, ( n -- )
    SCALAR-ROW-VALUE !
@@ -256,7 +383,7 @@ UC-GREGS 16 CELL * + constant UC-RIP
 \ context from the ucontext and never returns. A handler's `ret` enters it, so
 \ it goes where no other control falls in.
 : RESTORER, ( label -- )
-   LBL,
+   X64CODE:LBL,
    0 >R32 NR-SIGRETURN >IMM32 ASM-SINK ENC-MOV32-RI32
    ASM-SINK ENC-SYSCALL ;
 
@@ -300,7 +427,7 @@ $08000000 constant SA-ONSTACK
 \ refused registration writes its line and exits MAP-FAIL-RC. It clobbers rax
 \ rcx rdi rsi r11.
 : SIGNAL-STACK, ( -- )
-   LBL LBL {: ok:label bad:label :}
+   X64CODE:LBL X64CODE:LBL {: ok:label bad:label :}
    RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RAX RSP ASM-SINK ENC-MOV-RR                                   \ the band's base
    RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
@@ -311,7 +438,7 @@ $08000000 constant SA-ONSTACK
    RSP RSP SS-BYTES MEM-OFF ASM-SINK ENC-LEA                     \ the frame back, CF kept
    C-AE ok JCC,
    bad S\" hb: cannot install the signal stack\n" MAP-FAIL-RC FAIL,
-   ok LBL, ;
+   ok X64CODE:LBL, ;
 
 \ The way out of the code that registered: SS_DISABLE, then the caller gives
 \ the band back. Its result goes unchecked because it cannot fail off the
@@ -357,9 +484,8 @@ private
 11 constant SIGSEGV
 $10 constant SI-ADDR                    \ siginfo_t._sifields._sigfault.si_addr
 134 constant CRASH-RC
-\ The code region's base less the text base, and Habu's own code's length.
+\ The code region's base less the text base.
 REGION-OFF X64LAYOUT:CODE-OFF - constant REGION-FROM-TEXT
-REGION-FROM-TEXT REGION + constant HABU-SPAN
 
 \ Where the handler keeps the signal, the siginfo, the ucontext, the text base
 \ and the code region's base.
@@ -395,13 +521,13 @@ $F constant NIBBLE
 \ order mask, it writes one line to fd 2 in one write. It clobbers rax rcx rdx
 \ rsi rdi r8 r11.
 : HEX-LINE, ( label -- ) {: at:label :}
-   LBL LBL {: digits:label next:label :}
+   X64CODE:LBL X64CODE:LBL {: digits:label next:label :}
    RDI R64>N >R8 {: low:r8 :}
-   at LBL,
+   at X64CODE:LBL,
    RSP LINE-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    R8 digits MOVABS,
    RCX ZERO-REG,
-   next LBL,
+   next X64CODE:LBL,
       RSI RCX ASM-SINK ENC-MOV-RR  RSI RDX ASM-SINK ENC-XOR-RR
       RDI RAX ASM-SINK ENC-MOV-RR  RDI NIBBLE >IMM8 ASM-SINK ENC-AND-RI8
       RDI R8 RDI 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
@@ -414,7 +540,7 @@ $F constant NIBBLE
    NR-WRITE SYS,
    RSP LINE-FRAME >IMM8 ASM-SINK ENC-ADD-RI8
    ASM-SINK ENC-RET
-   digits LBL,
+   digits X64CODE:LBL,
    HEX$ TEXT-BYTES, ;
 
 \ Print rax through the printer at the label, in the given order.
@@ -427,7 +553,7 @@ $F constant NIBBLE
 \ then what the quotation emits adds the capacity to rax and a fault in the
 \ page there branches to `hit` too. It clobbers rax and rcx.
 : GUARD-CASE, ( [ -- ] n label -- ) {: base:n hit:label :}
-   LBL {: next:label :}
+   X64CODE:LBL {: next:label :}
    RAX RDI base MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E next JCC,
    RAX STACK-ABI:PAGE-BYTES 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE next JCC,
@@ -437,32 +563,148 @@ $F constant NIBBLE
    execute
    RCX RSI ASM-SINK ENC-MOV-RR  RCX RAX ASM-SINK ENC-SUB-RR
    RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-CMP-RI32  C-B hit JCC,
-   next LBL, ;
+   next X64CODE:LBL, ;
 
-\ Classify a SIGSEGV or SIGBUS by the machine stack, then one from Habu's own
-\ code by the three VM stacks, crash.f's order; any other signal or address
-\ goes on to `dump`.
-: GUARDS, ( label -- ) {: dump:label :}
-   LBL LBL LBL LBL LBL {: fault:label dhit:label rhit:label lhit:label mhit:label :}
-   SIG-REG SIGSEGV >IMM8 ASM-SINK ENC-CMP-RI8  C-E fault JCC,
-   SIG-REG SIGBUS >IMM8 ASM-SINK ENC-CMP-RI8  C-NE dump JCC,
-   fault LBL,
-   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX RSI ASM-SINK ENC-MOV-RR
-   RAX UC-REG RSP UC-GREG MEM-OFF ASM-SINK ENC-SUB-RM
-   RAX STACK-ABI:MACHINE-REACH >IMM32 ASM-SINK ENC-ADD-RI32       \ fault - rsp + reach
-   RAX STACK-ABI:MACHINE-REACH 2 * >IMM32 ASM-SINK ENC-CMP-RI32  C-B mhit JCC,
-   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
-   RAX TEXT-REG ASM-SINK ENC-SUB-RR
-   RAX HABU-SPAN >IMM32 ASM-SINK ENC-CMP-RI32  C-AE dump JCC,
-   RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+\ A data access through the page below an owned stack can resume at the
+\ kernel's underdepth throw entry. GUARDS, admits the saved RIP as owned code
+\ before this routine reads the saved DATA descriptor.
+: DATA-RECOVER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: next:label resume:label done:label :}
+   RCX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E next JCC,
+   RAX RDI STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E next JCC,
+   RAX STACK-ABI:PAGE-BYTES 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE next JCC,
+   RCX RSI ASM-SINK ENC-MOV-RR  RCX RAX ASM-SINK ENC-SUB-RR
+   RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RCX STACK-ABI:PAGE-BYTES >IMM32 ASM-SINK ENC-CMP-RI32  C-B resume JCC,
+   next X64CODE:LBL,  done JMP,
+   resume X64CODE:LBL,
+   RAX RDI FLOORREC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET
+   done X64CODE:LBL, ;
+
+\ Classify a context's three guarded VM stacks in crash.f's order.
+: STACK-GUARDS, ( label label label -- ) {: dhit:label rhit:label lhit:label :}
    [: RAX RDI STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
    STACK-ABI:BASE-CELL dhit GUARD-CASE,
    [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
    STACK-ABI:RETURN-BASE-CELL rhit GUARD-CASE,
    [: RAX STACK-ABI:LOOP-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
-   STACK-ABI:LOOP-BASE-CELL lhit GUARD-CASE,
+   STACK-ABI:LOOP-BASE-CELL lhit GUARD-CASE, ;
+
+\ A task's REGION can be released while the signal handler is inspecting its
+\ persistent TCB. process_vm_readv copies only the four stack descriptor
+\ cells; a partial copy leaves no descriptor to classify. The two iovec arrays,
+\ their four result cells and the next-chain pointer live in this handler's
+\ machine stack frame. No task-region address is dereferenced in the handler.
+$40 constant TASK-REMOTE-AT
+$80 constant TASK-COPY-AT
+$A0 constant TASK-NEXT-AT
+$B0 constant TASK-FRAME-BYTES
+STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
+
+: TASK-IOV, ( n n -- ) {: index:n off:n :}
+   RAX RSP TASK-COPY-AT index cells + MEM-OFF ASM-SINK ENC-LEA
+   RAX RSP index 16 * MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX CELL IMM,
+   RAX RSP index 16 * CELL + MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX R9 off MEM-OFF ASM-SINK ENC-LEA
+   RAX RSP TASK-REMOTE-AT index 16 * + MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX CELL IMM,
+   RAX RSP TASK-REMOTE-AT index 16 * + CELL + MEM-OFF ASM-SINK ENC-MOV-MR ;
+
+: TASK-GUARDS, ( label label label -- ) {: dhit:label rhit:label lhit:label :}
+   [: RAX RDI CELL MEM-OFF ASM-SINK ENC-ADD-RM ;]
+   0 dhit GUARD-CASE,
+   [: RAX STACK-ABI:RETURN-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
+   2 cells rhit GUARD-CASE,
+   [: RAX STACK-ABI:LOOP-BYTES >IMM32 ASM-SINK ENC-ADD-RI32 ;]
+   3 cells lhit GUARD-CASE, ;
+
+: TASK-CHAIN-GUARDS, ( label label label label -- )
+   {: dump:label dhit:label rhit:label lhit:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: loop:label next:label done:label :}
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX RDI TASK-CHAIN-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E dump JCC,
+   RCX RAX ASM-SINK ENC-MOV-RR  RCX RDI ASM-SINK ENC-SUB-RR
+   RCX CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE dump JCC,
+   RCX X64LAYOUT:DATA-SIZE CELL - >IMM32 ASM-SINK ENC-CMP-RI32
+      C-A dump JCC,
+   R8 RAX MEM-AT ASM-SINK ENC-MOV-RM
+   RBP RSI ASM-SINK ENC-MOV-RR
+   RSP TASK-FRAME-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   R8 RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-MR
+   loop X64CODE:LBL,
+   R8 RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX R8 ASM-SINK ENC-MOV-RR  RAX RDI ASM-SINK ENC-SUB-RR
+   RAX X64LAYOUT:DATA-SIZE TASK-ABI:TCB-BYTES CELL + - >IMM32
+      ASM-SINK ENC-CMP-RI32  C-A done JCC,
+   R8 CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE done JCC,
+   RAX R8 TASK-ABI:TCB-BYTES MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-MR
+   R9 R8 TASK-ABI:REGION-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R8 TASK-ABI:REGION-U-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX TASK-REGION-MIN >IMM32 ASM-SINK ENC-CMP-RI32  C-B next JCC,
+   0 STACK-ABI:BASE-CELL TASK-IOV,
+   1 STACK-ABI:CAP-CELL TASK-IOV,
+   2 STACK-ABI:RETURN-BASE-CELL TASK-IOV,
+   3 STACK-ABI:LOOP-BASE-CELL TASK-IOV,
+   NR-GETPID SYS,
+   RDI RAX ASM-SINK ENC-MOV-RR
+   RSI RSP ASM-SINK ENC-MOV-RR
+   RDX 4 IMM,
+   R10 RSP TASK-REMOTE-AT MEM-OFF ASM-SINK ENC-LEA
+   R8 4 IMM,  R9 ZERO-REG,
+   NR-PROCESS-VM-READV SYS,
+   RAX 4 cells >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   RDI RSP TASK-COPY-AT MEM-OFF ASM-SINK ENC-LEA
+   RSI RBP ASM-SINK ENC-MOV-RR
+   dhit rhit lhit TASK-GUARDS,
+   next X64CODE:LBL,  loop JMP,
+   done X64CODE:LBL,
+   RSP TASK-FRAME-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   dump JMP, ;
+
+\ Saved RBP is a DATA descriptor only when the saved instruction was Habu
+\ code. An instruction fetch in a guard has RIP outside every code interval,
+\ so inspect the fixed root DATA directly there and never dereference RBP.
+: GUARDS, ( label -- ) {: dump:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+      {: fault:label region:label owned:label foreign:label dhit:label rhit:label lhit:label :}
+   X64CODE:LBL {: mhit:label :}
+   SIG-REG SIGSEGV >IMM8 ASM-SINK ENC-CMP-RI8  C-E fault JCC,
+   SIG-REG SIGBUS >IMM8 ASM-SINK ENC-CMP-RI8  C-NE dump JCC,
+   fault X64CODE:LBL,
+   RSI INFO-REG SI-ADDR MEM-OFF ASM-SINK ENC-MOV-RM
+   \ The machine stack first, whatever code faulted, as crash.f orders it.
+   RAX RSI ASM-SINK ENC-MOV-RR
+   RAX UC-REG RSP UC-GREG MEM-OFF ASM-SINK ENC-SUB-RM
+   RAX STACK-ABI:MACHINE-REACH >IMM32 ASM-SINK ENC-ADD-RI32       \ fault - rsp + reach
+   RAX STACK-ABI:MACHINE-REACH 2 * >IMM32 ASM-SINK ENC-CMP-RI32  C-B mhit JCC,
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX TEXT-REG ASM-SINK ENC-CMP-RR  C-B region JCC,
+   RCX RDI CODE-END-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B owned JCC,
+   region X64CODE:LBL,
+   RCX REGION-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B foreign JCC,
+   RCX REGION-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   RAX RCX ASM-SINK ENC-CMP-RR  C-AE foreign JCC,
+   owned X64CODE:LBL,
+   RDI UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+   DATA-RECOVER,
+   dhit rhit lhit STACK-GUARDS,
    dump JMP,
+   foreign X64CODE:LBL,
+   RDI X64LAYOUT:DATA-VA VA>N IMM,
+   dhit rhit lhit STACK-GUARDS,
+   dump dhit rhit lhit TASK-CHAIN-GUARDS,
    dhit DATA-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
    rhit RETURN-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
    lhit LOOP-HIT$ ENGINE-ERROR:STACK-BOUNDS FAIL,
@@ -471,14 +713,14 @@ $F constant NIBBLE
 \ One code line: the cell at the saved rip plus `off`, in memory order, when
 \ all eight of its bytes lie in the code region at REGION-REG; 0 otherwise.
 : CODE-LINE, ( n label -- ) {: off:n hex:label :}
-   LBL {: print:label :}
+   X64CODE:LBL {: print:label :}
    RSI UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
    RSI RSI off MEM-OFF ASM-SINK ENC-LEA
    RCX RSI ASM-SINK ENC-MOV-RR  RCX REGION-REG ASM-SINK ENC-SUB-RR
    RAX ZERO-REG,
    RCX REGION CELL - >IMM32 ASM-SINK ENC-CMP-RI32  C-A print JCC,
    RAX RSI MEM-AT ASM-SINK ENC-MOV-RM
-   print LBL,
+   print X64CODE:LBL,
    hex MEMORY-ORDER PRINT, ;
 
 \ The dump: HEAD$ from the label, the signal, the registers, rip and the three
@@ -497,17 +739,18 @@ $F constant NIBBLE
 \ Bind the handler at the label, then the printer and the header it writes,
 \ where no control falls in.
 : CRASH-HANDLER, ( label -- ) {: at:label :}
-   LBL LBL LBL {: dump:label hex:label head:label :}
-   at LBL,
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: dump:label hex:label head:label :}
+   at X64CODE:LBL,
    SIG-REG RDI ASM-SINK ENC-MOV-RR
    INFO-REG RSI ASM-SINK ENC-MOV-RR
    UC-REG RDX ASM-SINK ENC-MOV-RR
    TEXT-REG TEXT-BASE,
+   REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
    dump GUARDS,
-   dump LBL,
+   dump X64CODE:LBL,
    head hex DUMP,
    hex HEX-LINE,
-   head LBL,
+   head X64CODE:LBL,
    HEAD$ TEXT-BYTES, ;
 
 \ Install the handler at a label for crash.f's signals, each returning through
@@ -522,37 +765,122 @@ $F constant NIBBLE
    SIGFPE flags at rest SIGACTION,
    SIGSEGV flags at rest SIGACTION, ;
 
-public
 
-\ Emit `_start`. The ELF entry is the text's byte 0, so it begins the stream.
-\ The crash handler goes in once the stacks it classifies are published; it,
-\ its restorer and the signal stub sit behind the jump with the failures.
-: START, ( -- )
-   LBL SCALAR-ROW-LABEL !
-   LBL STACK-BAD !  LBL REGION-BAD !  LBL DATA-BAD !  LBL OCC-BAD !
-   LBL LBL LBL LBL {: booted:label crash:label rest:label stub:label :}
+\ Shared open and close of both startup paths.
+: OPEN, ( -- )
+   X64CODE:LBL SCALAR-ROW-LABEL !
+   X64CODE:LBL STACK-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !  X64CODE:LBL OCC-BAD !
    RBASE-REG TEXT-BASE,
-   STACK-ABI:BOOT-BYTES DSTACK-REG MAP-STACK,
-   CODE-REGION,
-   DATA-REGION,
-   DATA-INIT,
+   STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
+
+: SETTLE, ( label label label -- ) {: crash:label rest:label stub:label :}
    SIGNAL-STACK,                 \ once DATA-INIT, has read argc and argv off rsp
    OCC-INIT,
    stub PUBLISH-STUB,
    FRAME-STACKS,
-   crash rest INSTALL-CRASH,
-   booted JMP,
+   crash rest INSTALL-CRASH, ;
+
+: CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
-   REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
-   DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB,
-   SCALAR-ROW-LABEL @ >LABEL LBL,
+   SCALAR-ROW-LABEL @ >LABEL X64CODE:LBL,
    0 SCALAR-ROW-VALUE !
    SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES,
-   booted LBL, ;
+   booted X64CODE:LBL, ;
+
+public
+
+\ The caller binds this after the immutable text-site footer.
+: TEXT-END, ( -- ) SNAP-END @ >LABEL X64CODE:LBL, ;
+
+: START, ( label label -- ) {: floor:label code-end:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
+   OPEN,
+   CODE-REGION,
+   DATA-REGION,
+   true DATA-INIT,
+   floor PUBLISH-FLOOR,
+   RAX code-end MOVABS,  RAX CODE-END-CELL CELL!
+   crash rest stub SETTLE,
+   booted JMP,
+   REGION-BAD @ >LABEL S\" hb: cannot map fixed code region\n" MAP-FAIL-RC FAIL,
+   DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+: LINKED-START, ( n n -- ) {: records:n cp:n :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
+   OPEN,
+   records cp LINKED-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   crash rest stub SETTLE,
+   booted JMP,
+   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+\ Full-engine entry accepts either its cold RX extent or an appended snapshot
+\ frame. The snapshot's REGION and DATA prefixes are already loaded at their
+\ fixed addresses; only the heap needs materialization before ENGINE-MAIN.
+: SNAP-START, ( n n label [ -- ] -- ) {: records:n cp:n floor:label hidx :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: booted:label crash:label rest:label stub:label
+      cold:label ready:label bad:label badver:label :}
+   X64CODE:LBL SNAP-END !
+   OPEN,
+   RAX RBASE-REG $60 X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX REGION-OFF >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
+   RCX SNAP-END @ >LABEL MOVABS,
+   RCX RBASE-REG ASM-SINK ENC-SUB-RR
+   RCX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E cold JCC,
+   C-B bad JCC,
+   bad badver SNAP-FRAME,
+   bad X64SNAP:DECODE,
+   SNAP-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   hidx execute
+   ready JMP,
+   cold X64CODE:LBL,
+   records cp LINKED-REGION,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   false DATA-INIT,
+   ready X64CODE:LBL,
+   floor PUBLISH-FLOOR,
+   crash rest stub SETTLE,
+   booted JMP,
+   bad S\" hb: snapshot trailer corrupt\n" 79 FAIL,
+   badver S\" hb: snapshot format version unsupported\n" 80 FAIL,
+   REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
+   booted crash rest stub CLOSE, ;
+
+\ A full engine's MAIN runs a saved application before routing stdin or the
+\ terminal. An image without MAIN can run APP-ENTRY directly. A word that
+\ returns exits successfully, while an image with neither entry is broken.
+: ENTRY, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: go:label none:label exit:label :}
+   RAX RBASE-REG ENGINE-MAIN:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE go JCC,
+   RAX RBASE-REG APP-ENTRY:XT-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E none JCC,
+   go X64CODE:LBL,
+   RAX ASM-SINK ENC-CALL-REG
+   RAX RBASE-REG EXIT-HOOK-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E exit JCC,
+   RCX ZERO-REG,  RCX EXIT-HOOK-CELL CELL!
+   RAX ASM-SINK ENC-CALL-REG
+   exit X64CODE:LBL,
+   RDI ZERO-REG,  NR-EXIT-GROUP SYS,
+   none S\" hb: no entry\n" ENGINE-ERROR:AOT-SEED FAIL, ;
+
+\ A write-time resolved boot-run row has its linked XT in the mapped record.
+\ Called only after SNAP-START has installed the VM registers and dictionary.
+: RECORD-CALL, ( n -- ) {: row:n :}
+   RAX DBASE-REG row DREC * MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX ASM-SINK ENC-CALL-REG ;
 
 ;using   \ X64LAYOUT
 ;using

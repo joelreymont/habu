@@ -19,12 +19,13 @@ private
 \ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image that
 \ carried it is at least that long, as that subject's image alone was before
 \ sparse DATA extents (1,704,128 bytes). IMAGE-MAX bounds this whole image,
-\ every subject's code and DATA together, which measured 181,884 bytes, so it
-\ fails the image if it grows by 80,260 bytes or more, whatever grows.
+\ every subject's code and DATA together. The ARM image measured 181,884
+\ bytes, so its bound refuses another 80,260 bytes, whatever grows.
 \ Being below HOLE-BYTES it also refuses the hole by itself; the HOLE-BYTES
-\ check names that failure.
+\ check names that failure. The x86-64 fixed-page ELF measured 327,680 bytes;
+\ reject another 64 KiB page there while retaining the ARM bound.
 1000000 constant HOLE-BYTES
-$40000 constant IMAGE-MAX
+: IMAGE-MAX ( -- n ) HB-TARGET-LINUX-X86-64? if $60000 else $40000 then ;
 
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
@@ -115,13 +116,11 @@ variable RETURN-TREE-U
    s" " s" stripped image return stderr" GE-EXPECT-ERR
    RETURN-TREE$ EXISTS? if s" a stripped application's own exit removes the registered tree" GE-FAIL then ;
 
-\ The startup carries the xt-cell apply loop, so it has to keep satisfying the
-\ image gate's model of one: exactly one ADR x9 (the DATA copy, whose row and
-\ byte loop the gate re-reads instruction by instruction), the root call
-\ immediately after the startup's exit tail, and a reported code range that ends
-\ at the data blob - which keeps the xt rows, placed after the blob, out of
-\ every instruction reader. CODE-RANGE throws if any of that stops holding.
+\ The ARM startup carries the xt-cell apply loop, so it has to keep satisfying
+\ the image gate's ARM instruction model. The x86 image's actual DATA, xt-cell,
+\ root and exit behavior is checked by RUN-IMAGE and RUN-RETURN above.
 : CHECK-SHAPE ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;
 
 : BODY ( -- )

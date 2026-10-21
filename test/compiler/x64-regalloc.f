@@ -201,6 +201,30 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
+: BR0 ( n -- )
+   {: target:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB target BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id target:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB target BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: CONSTOP ( n -- IR-ID:ir-value-id )
+   {: v:n :}
+   HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
+   IR-BUILD:ADD-ATTR
+   CLOSE-VALUE ;
+
 \ ---- the shapes --------------------------------------------------------------
 \ `: LEAF ( a b -- n ) - ;` - two arguments that die at the subtraction, which is
 \ two-address and destroys the first of them. Nothing is copied.
@@ -310,6 +334,24 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    t RET1
    BLOCK+
    t 1 BR1
+   CLOSE-FUN ;
+
+\ A register-convention entry can be a backedge destination. Its argument's
+\ incoming class overlaps a result used on the exit path, even though the
+\ consuming block has no backedge and the argument's own last use is there.
+: BUILD-ENTRY-LOOP ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: value:IR-ID:ir-value-id :}
+   ARG+ {: count:IR-ID:ir-value-id :}
+   1 BR0
+   BLOCK+
+   HIR-OPCODE:ADD value 1 CONSTOP BINOP {: answer:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB count 1 CONSTOP BINOP {: next:IR-ID:ir-value-id :}
+   next 3 2 BRZ2
+   BLOCK+
+   0 CONSTOP next 0 BR2
+   BLOCK+
+   answer RET1
    CLOSE-FUN ;
 
 : MEM0 ( -- IR-ID:ir-value-id )
@@ -499,7 +541,7 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ satisfiable by COPYING the count and the dividend first. These modules are
 \ built straight into the machine dialect - the way native-regalloc.f builds the
 \ shapes its own selector never produces - so that what they measure is the
-\ allocator alone: the constraint read out of the schema, and the refusal of a
+\ allocator alone: the constraint read out of the schema, and what becomes of a
 \ pair no copy has been inserted for. The selected shapes are cases of their own
 \ further down.
 : X64-MOD ( IR-CTX:ctx -- )
@@ -529,6 +571,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    CC BB  CC BB X64IR:KEY-IMM   CC BB imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
    CC BB  CC BB X64IR:KEY-ADDR
       CC BB HIR:ADDR-NONE X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CC BB  CC BB X64IR:KEY-REMAT-MARK
+   CC BB 0 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 : M-BIN ( X64IR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
@@ -642,11 +686,17 @@ $1000 constant THROW-STAND
    4 A64RAV:REG@
    A64RAV:ACCEPTED? ;
 
-\ Two counts, both fixed to rcx, live over one interval. One register cannot
-\ hold both, and this lane inserts no copy: the allocation is refused by name.
-\ The copy that makes such a pair satisfiable is the selector's.
-: TWO-COUNTS-BODY ( IR-CTX:ctx -- )
+\ Two counts, both fixed to rcx, live over one interval: the second is made
+\ before the first shift reads the first. Neither can keep rcx over its whole
+\ range, and neither is refused for it: each goes the way of a value the pool
+\ cannot hold (regalloc.f MB-PIN), and the spill pass gives each shift a count
+\ of its own, made in front of it, that nothing crosses. The lowered module
+\ allocates with nothing planned and the validator accepts it.
+\ test/x86-64-peer-routines.f runs two such counts, loaded from the data stack,
+\ on the peer.
+: TWO-COUNTS-BODY ( IR-CTX:ctx -- bool n bool )
    X64-MOD
+   CC BB  CC BB X64IR:LOWERING  [: X64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
    0 1 OPEN-FUN
    $40 M-MOVI {: v:IR-ID:ir-value-id :}
    3 M-MOVI {: c1:IR-ID:ir-value-id :}
@@ -654,7 +704,19 @@ $1000 constant THROW-STAND
    v c1 M-SHL {: s1:IR-ID:ir-value-id :}
    s1 c2 M-SHL M-RET
    CLOSE-FUN
-   M-ALLOCATE ;
+   CC BB IR-BUILD:FREEZE {: m0:IR-BUILD:module :}
+   CC m0 LEAF A64RA:ALLOCATE
+   A64RA:PLAN-N 0<> {: planned:bool :}
+   X64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb X64M:MACHINE  CC nb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC nb  CC nb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC m0 nb  CC nb X64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 LEAF A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m1 LEAF A64RAV:ACCEPT
+   planned
+   A64RA:PLAN-N
+   A64RAV:ACCEPTED? ;
 
 \ A form of this module's own table that fixes its operand to rbx, the register
 \ the running engine keeps its interpreter in and the routine's pool therefore
@@ -693,16 +755,10 @@ $1000 constant THROW-STAND
    CLOSE-FUN
    M-ALLOCATE ;
 
-: TWO-COUNTS ( -- )
-   WBND [: TWO-COUNTS-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 : RESERVED-FIX ( -- )
    WBND [: RESERVED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FIXED-REFUSE-CASES ( -- )
-   s" two values that both demand the count register over one interval are refused: one register holds one value and this pass inserts no copy" T-LABEL
-   [: TWO-COUNTS ;] E-A64RA-FIXED TTHROWSQ
-
    s" a form fixing an operand to a register the routine may not write is refused where the file is known, which is not the schema" T-LABEL
    [: RESERVED-FIX ;] E-A64RA-FIXED TTHROWSQ ;
 
@@ -758,6 +814,9 @@ $1000 constant THROW-STAND
    BUILD-LOOP
    2 DSTACK-ALLOCATED drop
    A64RAV:ACCEPTED? ;
+
+: ENTRY-LOOP-BODY ( IR-CTX:ctx -- bool )
+   HIR-MOD BUILD-ENTRY-LOOP ALLOCATED drop A64RAV:ACCEPTED? ;
 
 : SQUARE-BODY ( IR-CTX:ctx -- n n n n n bool )
    HIR-MOD
@@ -991,6 +1050,10 @@ public
    WBND [: DLOOP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE
 
+   s" a register-convention entry reached by a backedge keeps its incoming argument separate from an overlapping tied result" T-LABEL
+   WBND [: ENTRY-LOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+
    s" the count of a variable shift is placed in rcx because the form fixes it there, and the value shifted takes the lowest free register" T-LABEL
    WBND [: SHL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 1 T= 0 T=
@@ -1010,6 +1073,10 @@ public
    s" two variable shifts whose counts are both live at the first allocate, because the second count's copy is NOT coalesced into a count another class already wants the register for" T-LABEL
    WBND [: TWO-SHIFTS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= 1 T= 0 T= 1 T= 2 T= 1 T= 0 T=
+
+   s" two counts that both demand rcx over one interval, with no copy between them, compile: neither keeps rcx over its range, so each shift is given a count of its own and the lowered module allocates with nothing planned and is accepted" T-LABEL
+   WBND [: TWO-COUNTS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= TTRUE
 
    s" a value the shift reads as its tied destination is kept out of rcx, so the count's copy is placed there and the module is accepted: `( a b n -- x ) lshift +` under the register convention" T-LABEL
    WBND [: SHIFT-ADD-BODY ;] IR-CTX:WITH-CONTEXT

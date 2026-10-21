@@ -51,9 +51,10 @@
 \ producer's scope is retired before the window opens. The linker loads its own
 \ copy above the captured span.
 \
-\ A CAPTURE DROPS THE MAP WHOLE. The rows, and the one cell that says a read
-\ completed and how many areas it found, are DYNAMIC-BUFFER storage, which every
-\ image capture releases (src/core/dynamic-storage.f RELEASE-ALL, run by the
+\ A CAPTURE DROPS THE MAP WHOLE. The rows, the Linux text snapshot and the one
+\ cell that says a read completed and how many areas it found are DYNAMIC-BUFFER
+\ storage. Every image capture releases them (src/core/dynamic-storage.f
+\ RELEASE-ALL, run by the
 \ snapshot writer's CANON-DATA), so an image restored from any process starts
 \ with no map and reads its own at the first question. No DATA cell says
 \ whether the map was read, because DATA is copied: the linker reads the map
@@ -67,13 +68,16 @@
 \ `<start>-<end> <perms> <offset> <dev> <inode> <path>`, the path field may be
 \ absent, and a deleted file adds a further ` (deleted)` field - which is why the
 \ path is taken as field four after the address pair and not as the last field.
-\ A read's chunk boundary may fall anywhere, including inside an address, and no
-\ line length bounds the file (a path runs to PATH_MAX).
+\ A path can reach PATH_MAX, and the file can span any number of reads.
 \
 \ THE TABLE IS ASCENDING BECAUSE THE KERNEL WRITES IT THAT WAY, area by area in
 \ address order, which is what makes the lookup a binary search. A file that
 \ broke that order would silently break the search, so the reader refuses it
 \ rather than sorting bytes whose shape it has already stopped trusting.
+\ Capture the file before appending rows: table growth maps and unmaps memory,
+\ which can change a live /proc/self/maps stream between its read calls. If the
+\ byte buffer fills, close the file, grow the buffer, and read again from the
+\ beginning; no mapping changes from this reader occur during a complete pass.
 
 require src/lib/ffi-abi.f
 require src/lib/le.f
@@ -81,7 +85,7 @@ require src/lib/le.f
 package PROC-MAPS
 
 74 constant FAIL-RC              \ the internal-driver exit status, as fdio.f uses
-4096 constant CHUNK              \ one read's bytes
+4096 constant SNAP-INIT-CAP      \ initial read budget, doubled on a full pass
 4096 constant MAPS-PATH-MAX      \ PATH_MAX, the longest pathname a line can carry
 4 constant PATH-FIELD            \ fields after the address pair: perms dev offset inode PATH
 
@@ -89,9 +93,9 @@ package PROC-MAPS
 1 constant ST-HI                 \ ... the end address
 2 constant ST-REST               \ ... walking the fields after it
 
-create CHUNK-BUF CHUNK allot
 create PATH-BUF MAPS-PATH-MAX allot
 create EXE-BUF MAPS-PATH-MAX allot
+DYNAMIC-BUFFER SNAP-BYTES u8       \ complete Linux maps text, released on capture
 DYNAMIC-BUFFER EXT-LO n
 DYNAMIC-BUFFER EXT-HI n
 DYNAMIC-BUFFER EXT-SELF n        \ 1 when our own executable backs the area, else 0
@@ -109,15 +113,23 @@ variable PATH-OVER               \ a pathname longer than MAPS-PATH-MAX: not our
 variable EXE-U
 variable FD
 variable GOT
+variable SNAP-CAP
+variable SNAP-U
 \ The search cursor is storage rather than locals because a local binds once and
 \ this loop moves its bounds; the linker is single-threaded, as the tables in
 \ src/habu/aot-closure.f beside it are.
 variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
 
+\ Kernel VMA addresses are ordered as unsigned cells, including x86-64's
+\ high vsyscall mapping. Flipping the sign bit makes signed order equivalent.
+$8000000000000000 constant VA-SIGN
+: VA< ( n n -- bool ) {: a:n b:n :}
+   a VA-SIGN xor b VA-SIGN xor < ;
+
 : ROW+ ( n n n n -- ) {: lo:n hi:n self:n heap:n :}
-   hi lo <= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
+   lo hi VA< 0= IF s" proc-maps: area has no ascending extent" FAIL-RC die THEN
    EXT-N @ 0 > IF
-      lo EXT-N @ 1- EXT-HI @ < IF
+      lo EXT-N @ 1- EXT-HI @ VA< IF
          s" proc-maps: areas are not in ascending order" FAIL-RC die THEN
    THEN
    EXT-N @ 1+ EXT-LO-RESERVE
@@ -184,19 +196,33 @@ variable BS-LO  variable BS-HI  variable BS-MID  variable BS-AT
    0 FLD !  false INFLD !  0 PATH-U !  false PATH-OVER !
    ST-REST ST ! ;
 
-: FEED ( n -- ) {: got:n :}
-   got 0 ?do CHUNK-BUF i + c@ BYTE loop ;
-
-\ A /proc file answers one read at a time and ends with a zero, so the loop is
-\ the file's length and not a size the reader asked the kernel for beforehand.
-: SLURP ( -- )
+\ True means the buffer filled before EOF, so the caller reopens after growth.
+: READ-SNAPSHOT ( -- bool )
+   0 SNAP-U !
    BEGIN
-      FD @ CHUNK-BUF CHUNK read GOT !
-      GOT @ 0 >
-   WHILE
-      GOT @ FEED
-   REPEAT
-   GOT @ 0 < IF s" proc-maps: cannot read /proc/self/maps" FAIL-RC die THEN ;
+      SNAP-U @ SNAP-CAP @ = IF true EXIT THEN
+      FD @ SNAP-U @ SNAP-BYTES SNAP-CAP @ SNAP-U @ - read GOT !
+      GOT @ 0 < IF s" proc-maps: cannot read /proc/self/maps" FAIL-RC die THEN
+      GOT @ 0= IF false EXIT THEN
+      SNAP-U @ GOT @ + SNAP-U !
+   AGAIN ;
+
+: CAPTURE-MAPS ( -- )
+   SNAP-INIT-CAP SNAP-CAP !
+   BEGIN
+      SNAP-CAP @ SNAP-BYTES-RESERVE
+      s\" /proc/self/maps\z" drop open-rd FD !
+      FD @ 0 < IF s" proc-maps: cannot open /proc/self/maps" FAIL-RC die THEN
+      READ-SNAPSHOT {: full:bool :}
+      FD @ close
+      full 0= IF EXIT THEN
+      SNAP-CAP @ 2 * SNAP-CAP !
+   AGAIN ;
+
+: FEED-SNAPSHOT ( -- )
+   SNAP-U @ 0= IF EXIT THEN
+   0 SNAP-BYTES {: bytes:ptr :}
+   SNAP-U @ 0 ?do bytes i + c@ BYTE loop ;
 
 \ Our own executable's path, which the tag above compares against. A link that
 \ does not resolve, or one longer than a pathname can be, leaves every area
@@ -274,11 +300,9 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
 
 : LINUX-RELOAD ( -- )
    EXE-PATH!
-   s\" /proc/self/maps\z" drop open-rd FD !
-   FD @ 0 < IF s" proc-maps: cannot open /proc/self/maps" FAIL-RC die THEN
+   CAPTURE-MAPS
    ST-LO ST !  0 ACC !
-   SLURP
-   FD @ close
+   FEED-SNAPSHOT
    ST @ ST-LO <> IF s" proc-maps: /proc/self/maps ended inside a line" FAIL-RC die THEN ;
 
 : CLEAR-BYTES ( ptr u8 n -- )
@@ -314,10 +338,10 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
    count BS-HI !  -1 BS-AT !
    BEGIN BS-LO @ BS-HI @ < BS-AT @ 0 < and WHILE
       BS-LO @ BS-HI @ + 2 / BS-MID !
-      v BS-MID @ EXT-HI @ >= IF
+      v BS-MID @ EXT-HI @ VA< 0= IF
          BS-MID @ 1+ BS-LO !
       ELSE
-         v BS-MID @ EXT-LO @ < IF
+         v BS-MID @ EXT-LO @ VA< IF
             BS-MID @ BS-HI !
          ELSE
             BS-MID @ BS-AT !

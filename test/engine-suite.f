@@ -172,7 +172,7 @@ TLEAVE 4 T=
 \ only to test it: ldur x9,[x19,#-8]; cmp x9,x16; cset x9,eq; cbz x9,next; drop.
 \ It now branches straight off the compare flags:
 \   ldur x9,[x19,#-8]; cmp x9,x16; b.ne next; sub x19,#8 (drop scrutinee on match)
-\ Byte-exact per-arm hex (measured via tools/jitdump.f xt->RET walk):
+\ Byte-exact per-arm hex (measured within the recorded code span):
 \   before arm: F85F8269 EB10013F 9A9F17E9 B4000009 D1002273  (cset+cbz, 5 words)
 \   after  arm: F85F8269 EB10013F 54000001 D1002273           (b.ne,     4 words)
 \ (B4000009/54000001 shown with imm=0; the real placeholder carries the imm19
@@ -208,7 +208,8 @@ KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 : TTARGET-COUNT ( -- n )
    0
    HB-TARGET-LINUX? if 1 + then
-   HB-TARGET-MACOS? if 1 + then ;
+   HB-TARGET-MACOS? if 1 + then
+   HB-TARGET-LINUX-X86-64? if 1 + then ;
 TTARGET-KNOWN 1 T=
 TTARGET-COUNT 1 T=
 
@@ -1799,6 +1800,7 @@ $44000000000 constant ES-MACOS-DATA-VA
 
 : ES-DATA-VA ( -- n )
    HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
+   HB-TARGET-LINUX-X86-64? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
 dbase@ rbase > -1 T=                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
@@ -1968,19 +1970,29 @@ variable ES-CPX-ND
 \ >16-char name: C-STORE-NAME copies it into code space before the entry, so
 \ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME 0 set-check ;" ;
+TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
+TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
+TRUSTED: ES-CPX-BAD-RUN ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ['] ES-CPX-BAD-EVAL catch E-NCOMP-VERDICT T=
+   else ES-CPX-BAD$ evaluate then ;
+TRUSTED: ES-CPX-BAD-EXT-RUN ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ['] ES-CPX-BAD-EXT-EVAL catch E-NCOMP-VERDICT T=
+   else ES-CPX-BAD-EXT$ evaluate then ;
 1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
-ES-CPX-BAD$ evaluate
+ES-CPX-BAD-RUN
 s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
-ES-CPX-BAD$ evaluate
-ES-CPX-BAD$ evaluate
-ES-CPX-BAD$ evaluate
+ES-CPX-BAD-RUN
+ES-CPX-BAD-RUN
+ES-CPX-BAD-RUN
 s" cpx-reject-4" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
-ES-CPX-BAD-EXT$ evaluate
+ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-1" T-LABEL cp@ ES-CPX-CP @ T=
-ES-CPX-BAD-EXT$ evaluate
-ES-CPX-BAD-EXT$ evaluate
+ES-CPX-BAD-EXT-RUN
+ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 LOWER-CERT-HOOK:INSTALL
@@ -1993,7 +2005,8 @@ s" cpx-retry-entry" T-LABEL ' ES-CPX-GOOD ES-CPX-CP @ T=
 cp@ ES-CPX-CP !
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
-s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
+: ES-CPX-EXT-OFF ( -- n ) HB-TARGET-LINUX-X86-64? if 32 else 28 then ;
+s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ ES-CPX-EXT-OFF + T=
 
 \ Hash-index rollback churn must leave the index ALIVE, not merely terminate.
 \ Every cycle publishes a record at the same dictionary index, rolls NDICT and

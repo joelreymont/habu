@@ -10,6 +10,7 @@ require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/process-env.f          \ the stub child runs on the unsealed engine
 require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
+require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require test/whitebox-child.f
 require src/lib/test/subject.f
 require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
@@ -386,10 +387,11 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ The staging shapes no C function reproduces on both ABIs: ten integers, x0-x7
-\ plus two stack cells; a float register beside a float stack slot; an sret
-\ output in x8; a binary32 beside a double and an integer; eight binary32 beside
-\ eight integers; a binary32 register before a stack double. No libm function
+\ The staging shapes no C function reproduces on both ABIs: ten integers, the
+\ integer registers plus stack cells; a float register beside a float stack
+\ slot; an output cell (AAPCS64's sret x8, SysV's first integer argument); a
+\ binary32 beside a double and an integer; eight binary32 beside eight
+\ integers; a binary32 register before a stack double. No libm function
 \ takes any of the binary32 shapes. A variadic callee is the only system witness
 \ for a stack spill, and Apple's ABI puts every variadic argument on the stack,
 \ so it never reaches the register exhaustion that spills.
@@ -415,13 +417,17 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" src/core/structures.f" FFI-T-WIN-ARG
    s" src/core/bytes.f" FFI-T-WIN-ARG
    s" src/core/dynamic-storage.f" FFI-T-WIN-ARG
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" FFI-T-WIN-ARG
+      s" src/os/linux/layout-constants.f" FFI-T-WIN-ARG
+      s" src/os/linux/layout.f" FFI-T-WIN-ARG
+   else HB-TARGET-LINUX? if
       s" src/os/linux/target.f" FFI-T-WIN-ARG
       s" src/os/linux/layout-constants.f" FFI-T-WIN-ARG
       s" src/os/linux/layout.f" FFI-T-WIN-ARG
    else
       s" src/os/macos/target.f" FFI-T-WIN-ARG s" src/os/macos/layout.f" FFI-T-WIN-ARG
-   then
+   then then
    s" src/habu/stack-abi.f" FFI-T-WIN-ARG
    s" src/habu/layout.f" FFI-T-WIN-ARG
    s" src/os/env-base.f" FFI-T-WIN-ARG
@@ -446,8 +452,9 @@ create FFI-T-LONG-PATH PATH-CAP allot
    [: s" ffi-stub" WHITEBOX-CHILD:PROVIDE FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;]
    [: CLEANUP-RUN ;] finally ;
 
-\ The libm rows ride the AAPCS64 call: sqrt a float argument and a float result,
-\ fma three float registers d0-d2, scalbln a float in d0 beside all 64 bits of x0.
+\ The libm rows ride the ABI call: sqrt a float argument and a float result,
+\ fma three float registers, scalbln a float register beside all 64 bits of the
+\ first integer register (d0-d2 and x0 on AAPCS64, xmm0-xmm2 and rdi on SysV).
 \ The library is chosen at load time because the two targets keep it in
 \ different files, which is what the runtime-string form of LIBRARY is for.
 : FFI-T-SELECT-MATH ( -- )
@@ -477,10 +484,55 @@ FUNCTION: FFI-T-SNPRINT-LONG snprintf ( ptr u8 n ptr u8 n n n n n n n -- i32 )
    3 VARIADIC
    0 1 WRITES-ARG
 ;FUNCTION
+FUNCTION: FFI-T-PRINTF-INTS snprintf ( ptr u8 n ptr u8 n n n n n n n n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+FUNCTION: FFI-T-PRINTF-MIXED snprintf ( ptr u8 n ptr u8 n n n n r n -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+;FUNCTION
+FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
+   3 VARIADIC
+   0 1 WRITES-ARG
+   6 4 WRITES-BYTES
+;FUNCTION
 64 BUFFER: FFI-T-PRINT-BUF
+4 BUFFER: FFI-T-COUNT
 : FFI-T-VARARGS ( -- )
    FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
-   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$= ;
+   FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %ld %ld %ld %ld\z" drop
+      1 2 3 4 5 6 7 8 FFI-T-PRINTF-INTS
+   FFI-T-PRINT-BUF swap s" 1 2 3 4 5 6 7 8" T$=
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld %ld %.1f %ld\z" drop
+      11 22 33 44 5.5 66 FFI-T-PRINTF-MIXED
+   FFI-T-PRINT-BUF swap s" 11 22 33 44 5.5 66" T$=
+   0 FFI-T-COUNT LE:U32!
+   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld%n\z" drop
+      11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
+   FFI-T-PRINT-BUF swap s" 11 22 33" T$=
+   FFI-T-COUNT LE:U32@ 8 T= ;
+
+\ SysV's ninth float spills after eight XMM registers. The declaration is
+\ target-conditional because the AAPCS64 planner deliberately keeps its
+\ existing eight-float limit.
+: FFI-T-F9-FORMAT ( -- ptr u8 )
+   s\" %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f %.0f\z" drop ;
+: FFI-T-F9-WANT ( -- ptr u8 n )
+   s" 1 2 3 4 5 6 7 8 9" ;
+: FFI-T-X86-FLOAT-SPILL ( -- )
+   HB-TARGET-LINUX-X86-64? 0= if exit then
+   s" FUNCTION: FFI-T-PRINTF-F9 snprintf ( ptr u8 n ptr u8 r r r r r r r r r -- i32 ) 3 VARIADIC 0 1 WRITES-ARG ;FUNCTION"
+      INCLUDE-EVALUATE
+   FFI-T-SRC CODEGEN:RESET
+   s" : FFI-T-F9-CHECK ( -- ) FFI-T-PRINT-BUF 64 FFI-T-F9-FORMAT"
+      FFI-T-SRC+
+   s"  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 FFI-T-PRINTF-F9"
+      FFI-T-SRC+
+   s"  FFI-T-PRINT-BUF swap FFI-T-F9-WANT T$= ; FFI-T-F9-CHECK"
+      FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
 : FFI-T-VARARG-KEY ( -- )
    s" a short variadic binding resolves before a longer one" T-LABEL
@@ -652,7 +704,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
-   [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   \ SysV spills a ninth double to the stack; AAPCS64 keeps its eight-float
+   \ limit. A ninth C float has no stack staging on either ABI.
+   HB-TARGET-LINUX-X86-64? if
+      [: FFI-T-BAD-FLOAT-ARITY ;] 0 TTHROWSQ
+   else
+      [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   then
    [: FFI-T-BAD-F32-ARITY ;] E-FFI-ARITY TTHROWSQ
    [: FFI-T-BAD-F32-VARARG ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-F32-FIXED ;] 0 TTHROWSQ
@@ -711,6 +769,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-VERSIONED-CALL
    FFI-T-VARARGS
    FFI-T-VARARG-KEY
+   FFI-T-X86-FLOAT-SPILL
 
    FFI-T-GROW-ALIAS
    FFI-T-LIBRARY-SHARED

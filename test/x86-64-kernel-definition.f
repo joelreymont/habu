@@ -16,15 +16,16 @@
 \   then gives it a private wid.
 \ - hb-x64-kernel-alias-record, after the seal and with the wid's neighbour in
 \   its bitmap cell protected, aliases a long-named source: the alias carries
-\   the source's code and length cells and exactly its IMM, WIDE and MIN-IN
-\   bits, neither its VAL nor its EXT bit, and xref-search-wl finds it.
+\   the source's code and length cells and its IMM, WIDE, MIN-IN and immutable
+\   VAL bits, but not its EXT bit, and xref-search-wl finds it.
 \ - hb-x64-kernel-package-scope, with a task live past the namespace row, sets
 \   the four package cells from that row, then clears them with `-1 0`.
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
 \   length cell 0, TSIG, TCSIG, DOESB and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL and the provenance window open at CP, which an inline name leaves.
+\   the passed tier even when TIER-CELL differs, and the provenance window open
+\   at CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP, the entry and
 \   the open window move 32 bytes, the pad over poisoned cells is 0 and
 \   code-origin answers 1 for the name's slots.
@@ -38,6 +39,10 @@
 \   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
 \   other bits, and leaves the record before it alone.
+\ - hb-x64-kernel-def-abort closes a failed definition's window with unknown
+\   provenance and clears its pending signature and body state.
+\ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
+\   loop depths while clearing compile mode.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
 \ pending record and exits 21.
 \
@@ -112,9 +117,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    a u X64HARNESS:PUSH-TEXT,  src X64HARNESS:PUSH,  wid X64HARNESS:PUSH,
    s" alias-record" X64HARNESS:CALL-ROW, ;
 
-: DEF-OPEN, ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
+: DEF-OPEN-TIER, ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,  kind X64HARNESS:PUSH,
+   tier X64HARNESS:PUSH,
    s" def-open" X64HARNESS:CALL-ROW, ;
+
+: DEF-OPEN, ( ptr u8 n n n -- ) 1 DEF-OPEN-TIER, ;
 
 : SCOPE, ( n n -- ) {: row:n parent:n :}
    row X64HARNESS:PUSH,  parent X64HARNESS:PUSH,
@@ -233,7 +241,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    s" Al" 0 ALIAS-WID ALIAS,
    1 1 X64KERNEL:REC-CODE X64HARNESS:EXPECT-RECORD,
    -1 1 REC-AUX X64HARNESS:EXPECT-RECORD,
-   s" Al" nip COPIED or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
+   s" Al" nip SOURCE-FLAGS or 1 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    ALIAS-WID 1 X64KERNEL:REC-WID X64HARNESS:EXPECT-RECORD,
    1 CLOSED,
    s" aL" ALIAS-WID XREF,  1 X64HARNESS:EXPECT-ROW, ;
@@ -270,7 +278,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
-   1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
+   0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" w" 0 DKIND:CAST DEF-OPEN,
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
@@ -347,6 +355,36 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    HELLO$ nip 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    1 CLOSED, ;
 
+\ A failed definition closes its code window and compile state while leaving
+\ the enclosing catch's handler, return depth and loop depth intact.
+: DEF-ABORT-CASE, ( -- )
+   TIER-1-OPEN,
+   14 LOCN-CELL X64HARNESS:CELL!,
+   15 BODYLEN-CELL X64HARNESS:CELL!,
+   RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
+   X64KERNEL:WINDOW-OPEN,
+   s" def-abort" X64HARNESS:CALL-ROW,
+   DICT-SIZE DICT-SIZE 32 + ORIGIN,  -1 X64HARNESS:EXPECT-POP,
+   PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
+   0 CLOSED,
+   0 TIER-PROV:OPEN-CELL X64HARNESS:EXPECT-CELL,
+   0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
+   0 PEND-CELL X64HARNESS:EXPECT-CELL,
+   0 LOCN-CELL X64HARNESS:EXPECT-CELL,
+   0 BODYLEN-CELL X64HARNESS:EXPECT-CELL, ;
+
+: DEF-ABORT-SCOPE-CASE, ( -- )
+   TIER-1-OPEN,
+   11 HND-CELL X64HARNESS:CELL!,
+   12 RSP-CELL X64HARNESS:CELL!,
+   13 LOOPSP-CELL X64HARNESS:CELL!,
+   16 CMM-CELL X64HARNESS:CELL!,
+   s" def-abort" X64HARNESS:CALL-ROW,
+   0 CMM-CELL X64HARNESS:EXPECT-CELL,
+   11 HND-CELL X64HARNESS:EXPECT-CELL,
+   12 RSP-CELL X64HARNESS:EXPECT-CELL,
+   13 LOOPSP-CELL X64HARNESS:EXPECT-CELL, ;
+
 \ ---- the refusals -------------------------------------------------------------
 \ Each call but for its refusal is one the row admits.
 : NAMESPACE-LIVE, ( -- ) LIVE,  X64HARNESS:REST,  s" ns" BOTH-WIDS NAMESPACE, ;
@@ -400,7 +438,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : TIER-0-CLOSE, ( -- )
    0 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
-   HELLO$ 0 0 DEF-OPEN,
+   HELLO$ 0 0 0 DEF-OPEN-TIER,
    s" def-close" X64HARNESS:CALL-ROW, ;
 
 : DEF-OPEN-PROT, ( -- )
@@ -431,6 +469,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    [: CREATED-SIG-CASE, ;] false s" hb-x64-kernel-created-sig" TMP-PATH IMAGE
    [: DEF-CLOSE-CASE, ;] false s" hb-x64-kernel-def-close" TMP-PATH IMAGE
    [: IMM-MARK-CASE, ;] false s" hb-x64-kernel-imm-mark" TMP-PATH IMAGE
+   [: DEF-ABORT-CASE, ;] false s" hb-x64-kernel-def-abort" TMP-PATH IMAGE
+   [: DEF-ABORT-SCOPE-CASE, ;] false s" hb-x64-kernel-def-abort-scope" TMP-PATH IMAGE
    [: DEF-OPEN-CASE, ;] true s" hb-x64-kernel-definition-negative" TMP-PATH IMAGE ;
 
 : REFUSALS ( -- )

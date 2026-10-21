@@ -5,6 +5,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/address-carrier.f
 require src/habu/proc-maps.f
+require src/habu/sites.f
 require src/lib/sort.f
 
 \ The checker does not publish this diagnostic-mode cell to later checked loads.
@@ -110,6 +111,24 @@ names: TARGET-XT
 : OPTIONAL-XT ( ptr u8 n -- n ) false TARGET-XT? ;
 names: OPTIONAL-XT
 
+\ The address literal recorded at p, read up to e, as its byte size and value;
+\ size 0 when no whole literal of the running target's shape starts there. An
+\ AArch64 site is a move-wide chain, an x86-64 site one `mov r64, imm64`.
+: SITE-LITERAL ( ptr u8 ptr u8 -- n n ) {: p:ptr e:ptr :}
+   HB-TARGET-LINUX-X86-64? if
+      e p - MOVABS-BYTES < if 0 0 exit then
+      p MOVABS-SITE? 0= if 0 0 exit then
+      MOVABS-BYTES  p MOVABSV exit
+   then
+   p e CHAIN-SIZE {: size:n :}
+   size 0= if 0 0 exit then
+   size  p size CHAIN-VALUE ;
+
+\ The literal size an allocation start's carrier must have.
+: DATA-SITE-BYTES ( -- n )
+   HB-TARGET-LINUX-X86-64? if MOVABS-BYTES exit then
+   ADDRESS-CARRIER:DATA-CHAIN-BYTES ;
+
 : SCALAR-REC? ( ptr n -- bool ) {: rec:ptr :}
    rec XREF-RETIRED? if false exit then
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if false exit then
@@ -119,9 +138,8 @@ names: OPTIONAL-XT
 
 : SCALAR-BASE ( ptr n -- n ) {: rec:ptr :}
    rec XREF-START-SLOT XREF-PTR@ {: p:ptr :}
-   p p rec XREF-CODE-BYTES + CHAIN-SIZE {: size:n :}
+   p p rec XREF-CODE-BYTES + SITE-LITERAL {: size:n base:n :}
    size 0= if s" aot-cell: malformed variable address carrier" 74 die then
-   p size CHAIN-VALUE {: base:n :}
    base DATA-VA VA>N <
    base DATA-VA VA>N DATA-SIZE CELL - + > or
    base CELL mod 0<> or if
@@ -137,9 +155,19 @@ names: OPTIONAL-XT
       then
    loop ;
 
+\ Whether p is the first byte of a recorded address site. AArch64 keeps one
+\ address-map bit per region word; x86-64 keeps byte-offset rows, which
+\ src/habu/sites.f reads.
+variable SITE-HIT
+: ADDR-ROW ( n n -- ) nip SITE-ADDR = if 1 SITE-HIT ! then ;
 : ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
    p DBASE@ BYTE-VIEW - {: off:n :}
    off DICT-SIZE < off REGION >= or if false exit then
+   HB-TARGET-LINUX-X86-64? if
+      0 SITE-HIT !
+      off 1 [: ADDR-ROW ;] SITES:EACH-IN-SPAN
+      SITE-HIT @ 0<> exit
+   then
    data-base ADDRMAP-OFF + off 5 rshift + c@
    off 2 rshift 7 and rshift 1 and 0<> ;
 
@@ -153,11 +181,10 @@ names: OPTIONAL-XT
    p ADDRESS-SITE? 0= if
       s" aot-cell: allocation start has no recorded address site" 74 die
    then
-   p p rec XREF-CODE-BYTES + CHAIN-SIZE {: size:n :}
-   size ADDRESS-CARRIER:DATA-CHAIN-BYTES <> if
+   p p rec XREF-CODE-BYTES + SITE-LITERAL {: size:n base:n :}
+   size DATA-SITE-BYTES <> if
       s" aot-cell: malformed allocation address carrier" 74 die
    then
-   p size CHAIN-VALUE {: base:n :}
    base DATA-VA VA>N <
    base DATA-VA VA>N DATA-SIZE + > or
    base CELL mod 0<> or if
@@ -261,8 +288,24 @@ names: OPTIONAL-XT
 
 \ A word owns a cell only when a recorded address carrier spells that cell's
 \ exact address. Neighbouring data and a coincidentally close record do not.
+\ x86-64 sites are byte offsets, so its arm walks the recorded rows in the
+\ record's span instead of stepping by instruction word. The per-site word runs
+\ inside SITES:EACH-IN-SPAN's quotation, so the span's end and value are cells.
+PTR-VARIABLE ROW-END  variable ROW-V
+: ROW-CELL ( n n -- ) {: off:n kind:n :}
+   kind SITE-ADDR <> if exit then
+   DBASE@ BYTE-VIEW off + ROW-END @ SITE-LITERAL {: size:n w:n :}
+   size 0<> w ROW-V @ = and if 1 SITE-HIT ! then ;
+: REC-ROW-SITE? ( ptr u8 n n -- bool ) {: p:ptr u:n v:n :}
+   p DBASE@ BYTE-VIEW - DICT-SIZE max {: lo:n :}
+   p u + DBASE@ BYTE-VIEW - REGION min {: hi:n :}
+   lo hi >= if false exit then
+   0 SITE-HIT !  p u + ROW-END !  v ROW-V !
+   lo hi lo - [: ROW-CELL ;] SITES:EACH-IN-SPAN
+   SITE-HIT @ 0<> ;
 : REC-CELL-SITE? ( ptr n n -- bool ) {: r:ptr v:n :}
    r XREF-START N>U8 {: p:ptr :}
+   HB-TARGET-LINUX-X86-64? if p r XREF-CODE-BYTES v REC-ROW-SITE? exit then
    r XREF-CODE-BYTES ADDRESS-CARRIER:DATA-CHAIN-BYTES - 4 / 1+ 0 max 0 ?do
       p i 4 * + ADDRESS-SITE? if
          p i 4 * + p r XREF-CODE-BYTES + CHAIN-SIZE {: size:n :}

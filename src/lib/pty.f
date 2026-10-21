@@ -100,7 +100,7 @@ variable WRITTEN
 
 
 : NAME-SLAVE ( n ptr u8 -- n ) {: m:n path :}
-   HB-TARGET-LINUX? if m path NAME-LINUX exit then
+   HB-TARGET-LINUX-KERNEL? if m path NAME-LINUX exit then
    HB-TARGET-MACOS? if m path NAME-MACOS exit then
    m close E-PROC-HOST throw ;
 

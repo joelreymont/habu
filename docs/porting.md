@@ -14,7 +14,10 @@ Each target owns these files under `src/os/<target>/`:
 
 - `target.f` — target predicates used by source selection:
   `HB-TARGET-<NAME>?` for each supported target and `HB-TARGET-KNOWN?` for the
-  closed target set.
+  closed target set. `HB-TARGET-LINUX-KERNEL?` names facts common to the two
+  Linux ABIs, such as signal numbers, ioctl requests and socket flags. A record
+  layout or calling convention that differs by architecture still selects the
+  exact target.
 - `layout.f` — executable/data virtual addresses and image layout constants.
 - `sys.f` — raw syscall numbers and `SYS, ( n -- )`.
 - `repl-term.f` — terminal ioctl, raw-mode, and termios offsets for baked REPLs.
@@ -81,8 +84,11 @@ reference implementation that answers for it, and nothing machine-specific.
 stated once. `src/habu/primitive-registry.f` holds both gates:
 `ENGINE-PRIMS:SPEC-CHECK`, called from each body's registration, refuses a
 machine body whose name has no row, and `ENGINE-PRIMS:COMPLETE`, called after
-the last body, refuses a specified row that no body answered. A new backend
-adds bodies under the row names and declares no effects of its own. Rows of kind
+the last body, refuses a specified row that no body answered. A
+`EPREFIX-PROVIDED!` row keeps its dictionary record; a seeded backend jumps
+through its registered DATA cell, and the gate refuses an empty cell. A cold
+build keeps the backend body. A new backend adds bodies under the row names
+and declares no effects of its own. Rows of kind
 `ELAB` (the checker computes the effect at the call site) and `UNROWED` (no
 declaration anywhere) name the primitives that deliberately have no row.
 

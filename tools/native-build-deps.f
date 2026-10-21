@@ -16,6 +16,18 @@ require tools/native-build-args.f
 require tools/hb-build-core.f
 require tools/build-target.f
 require src/lib/codesign.f
+
+\ A cross writer runs in the build host. Load it before the target window
+\ installs its own compiler, and before ARM64's global CODE/LBL definitions
+\ (tools/native-emit-x64.f says why).
+package NATIVE-BUILD
+: X64-TARGET? ( -- bool ) TARGET-ARCH CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ;
+: LOAD-X64-WRITER ( -- )
+   X64-TARGET? if s" tools/native-emit-x64.f" required then ;
+' LOAD-X64-WRITER
+;package
+execute
+
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -25,6 +37,7 @@ require src/habu/fdio.f
 require src/habu/aot-owned.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
+require src/habu/aot-shadow.f
 require src/compiler/native/string.f
 require src/compiler/native/abi.f
 require tools/native-layout.f

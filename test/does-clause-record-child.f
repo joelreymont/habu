@@ -47,6 +47,12 @@ $14000000 constant OPC-B
 $94000000 constant OPC-BL
 $3FFFFFF constant IMM26
 $2000000 constant IMM26-SIGN
+$E9 constant X64-JMP
+$E8 constant X64-CALL
+$C3 constant X64-RET
+6 constant X64-PATCH-BYTES
+5 constant X64-JMP-BYTES
+$80000000 constant X64-DISP-SIGN
 5 constant SUF-LEN
 0 constant GLOBAL-WID
 
@@ -63,6 +69,22 @@ variable WANT-U
    a W32@ IMM26 and  IMM26-SIGN xor IMM26-SIGN -  2 lshift  a + ;
 
 : OPC ( n -- n ) W32@ OPC-MASK and ;
+
+\ A64 replaces the created word's RET with B. x86-64 keeps a final RET after a
+\ five-byte relative jump, whose signed displacement starts at slot+1.
+: PATCH-AT ( n -- n )
+   HB-TARGET-LINUX-X86-64? if X64-PATCH-BYTES - then ;
+
+: PATCH-OP ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PATCH-AT N>U8 c@ else OPC then ;
+
+: PATCH-TARGET ( n -- n ) {: end:n :}
+   HB-TARGET-LINUX-X86-64? if
+      end PATCH-AT {: at:n :}
+      at 1+ W32@ X64-DISP-SIGN xor X64-DISP-SIGN -
+      at X64-JMP-BYTES + + exit
+   then
+   end TGT ;
 
 : IDX ( ptr u8 n -- n ) XREF-FIND-INDEX ;
 : START ( n -- n ) XREF-REC XREF-START ;
@@ -204,11 +226,17 @@ create ERR IO-CAP allot
 \ target is the clause record's entry.
 : ?BRANCH ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n ca:ptr cu:n :}
    s" the created word's RET holds a branch, not a call" T-LABEL
-   ca cu IDX END OPC  OPC-B  T=
+   ca cu IDX END PATCH-OP
+   HB-TARGET-LINUX-X86-64? if X64-JMP else OPC-B then T=
    s" ... and it is not a branch-with-link" T-LABEL
-   ca cu IDX END OPC  OPC-BL <>  TTRUE
+   ca cu IDX END PATCH-OP
+   HB-TARGET-LINUX-X86-64? if X64-CALL else OPC-BL then <> TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      s" ... and its return remains after the jump" T-LABEL
+      ca cu IDX END 1- N>U8 c@ X64-RET T=
+   then
    s" ... and it lands on the clause record's entry" T-LABEL
-   ca cu IDX END TGT  da du CLAUSE START  T= ;
+   ca cu IDX END PATCH-TARGET  da du CLAUSE START  T= ;
 
 : ?FINDABLE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u WANT!
@@ -218,15 +246,27 @@ create ERR IO-CAP allot
 : PAD4 ( n -- n )
    3 + -4 and ;
 
+: PAD16 ( n -- n )
+   15 + -16 and ;
+
+\ Native publication appends the name past both spans at the running target's
+\ code alignment: past the final four-byte instruction on ARM64, at the next
+\ sixteen-byte boundary on x86-64.
+: NAME-START ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PAD16 else 4 + then ;
+
+: NAME-PAD ( n -- n )
+   HB-TARGET-LINUX-X86-64? if PAD16 else PAD4 then ;
+
 : ?NAME-PAD ( -- )
    s" DR-MK" CLAUSE NAME$ {: a:ptr u:n :}
    s" the appended clause name starts past both recorded spans" T-LABEL
-   a U8>N  s" DR-MK" IDX END 4 +  T=
-   a U8>N  s" DR-MK" CLAUSE END 4 +  T=
+   a U8>N  s" DR-MK" IDX END NAME-START  T=
+   a U8>N  s" DR-MK" CLAUSE END NAME-START  T=
    s" its padded name is the only code-space tail after the emission" T-LABEL
-   a U8>N u PAD4 + MK-CP @ T=
+   a U8>N u NAME-PAD + MK-CP @ T=
    s" and the bytes outside the name are deterministic zero padding" T-LABEL
-   u PAD4 u ?do a i + c@ 0 T= loop ;
+   u NAME-PAD u ?do a i + c@ 0 T= loop ;
 
 variable FAIL-RESTORE-CP
 variable FAIL-CP
@@ -244,7 +284,8 @@ variable FORGET-NAME-A
    dbase@ REGION + $4000 - ;
 
 : DR-MK-SIZE ( -- n )
-   s" DR-MK" IDX LEN 4 + ;
+   s" DR-MK" IDX LEN
+   HB-TARGET-LINUX-X86-64? if PAD16 else 4 + then ;
 
 \ Leave exactly enough room for the emitted module, but not for its permanent
 \ clause-name pad. The publisher must refuse before either durable pointer moves.

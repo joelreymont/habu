@@ -149,6 +149,17 @@ variable GE-SCRIPT-U
    S\" hb: does>-split cannot lower layout width facts: ;\n"
       s" does>-split wide diagnostic" GE-EXPECT-ERR ;
 
+: GE-DOES-TRUSTED-WIDE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" 0 set-tier" GE-SRC-LINE
+   s" TRUSTED: GE-TDOES ( -- ) create does> ( gewide<n,n> -- ) drop drop ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   75 s" trusted does>-split wide facts fail closed" GE-EXPECT-RC
+   S\" hb: does>-split cannot lower layout width facts: ;\n"
+      s" trusted does>-split wide diagnostic" GE-EXPECT-ERR ;
+
 \ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
 \ closed naming the limit and the token that carved it. No one value may
 \ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
@@ -249,6 +260,7 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
+   HB-TARGET-LINUX-X86-64? 0= if GE-DOES-TRUSTED-WIDE then
    GE-P2-FRAME-WIDE
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
@@ -561,6 +573,13 @@ variable GE-NEST-J
       76 s" data-space definer-sink exit rc" RUNTIME-RUNNER:LINE-RC
    DATA-SIZE PROF-CNT-BYTES - 8 + GE-DATA-DIAG$
       s" data-space definer-sink diagnostic" GE-EXPECT-ERR
+   \ A refused nested allot restores its evaluation frame and reaches the caller's
+   \ catch. The following literal proves execution resumed after the refusal.
+   S\" s\q data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot\q ' evaluate catch . 2drop 9 ."
+      0 s" data-space nested catch" RUNTIME-RUNNER:LINE-RC
+   S\" 76\n9\n" s" data-space nested catch output" GE-EXPECT-OUT
+   DATA-SIZE PROF-CNT-BYTES - 1+ GE-DATA-DIAG$
+      s" data-space nested catch diagnostic" GE-EXPECT-ERR
    s" PASS: data-space cap names the refused DP and the ceiling + off-by-one boundary holds" type cr ;
 
 : GE-DIV-TRAP ( ptr u8 n ptr u8 n -- )
@@ -1719,10 +1738,11 @@ create GE-END-AT 16 allot
 
 \ def-open leaves a definition open as `:` does, located at the word that ran
 \ it, on line 2, with its body on line 3 and a blank line after it. GEENDOPEN
-\ starts the capture the refusal names, as `:` does.
+\ starts the capture the refusal names, as `:` does. Tier 0 also opens the JIT
+\ head before the following body token, as the real colon definer does.
 : GE-END-DEFOPEN ( -- )
    GE-SRC-RESET
-   s" TRUSTED: GEENDOPEN ( ptr u8 n -- ) {: a:ptr u:n :} 0 data-base BODYLEN-CELL + ! a u get-current 0 def-open a u body-append ;" GE-SRC-LINE
+   s" TRUSTED: GEENDOPEN ( ptr u8 n -- ) {: a:ptr u:n :} 0 data-base BODYLEN-CELL + ! a u get-current 0 tier@ def-open a u body-append tier@ 0= if jit-open then ;" GE-SRC-LINE
    S\" s\" GEEND\" GEENDOPEN" GE-SRC-LINE
    s" 1 drop" GE-SRC-LINE
    GE-SRC-LF

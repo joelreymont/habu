@@ -1,11 +1,11 @@
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself.
 \
-\ Invariant (dot habu-silent-exit-70-215b2da7): every load leg that rejects a
-\ definition exits 70 WITH a named diagnostic on stderr — a silent fail-closed
-\ exit is the harness gap this campaign keeps paying for (cf. the seal-exit
-\ labeling and the check.f E-FS-CAPACITY raw-67 fix). Pins the direct --load
-\ leg, the require-chain leg, and the checked-body reject leg by spawning the
-\ engine on generated rejecting fixtures and asserting stderr names the error.
+\ Invariant (dot habu-silent-exit-70-215b2da7): a checked load refusal exits
+\ 70 WITH a named diagnostic on stderr — a silent fail-closed exit is the
+\ harness gap this campaign keeps paying for. Native lowering of an unmodeled
+\ immediate in a TRUSTED body refuses with its own named -8286 instead.
+\ Pins the direct --load leg, the require-chain leg, and the checked-body
+\ reject leg by spawning the engine on generated rejecting fixtures.
 \ The child engine is HABU_UNDER_TEST when the gate sets it, else the running engine.
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
@@ -388,10 +388,28 @@ LOWER-CERT-HOOK:INSTALL
    root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;
 
 : TEST-IMM-TRUSTED ( -- )
-   s" trusted body cannot bypass immediate preflight" T-LABEL
+   s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
+   HB-TARGET-LINUX-X86-64? if
+      EXITED @ TTRUE
+      RC @ 67 T=
+      OUT-U @ 0 T=
+      ERR$ s" ncomp: cannot compile LRD-TRUST-BODY at LRD-TRUST-IMM" CONTAINS? TTRUE
+      ERR$ s" -8286" CONTAINS? TTRUE
+      exit
+   then
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
+
+: TEST-UNREPORTED-REJECT ( -- )
+   s" a custom hook's unreported reject retains the compiler fallback" T-LABEL
+   BODY$ s" 1 set-tier TRUSTED: LRD-SILENT-HOOK ( ptr u8 n -- n ) 2drop 70 throw ; -1 JSON-DIAGS ! ' LRD-SILENT-HOOK set-check : LRD-CUSTOM ( -- ) ;" WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile" ASSERT-NAMED
+   s" a silent diagnostic defer retains the hook fallback" T-LABEL
+   BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" WRITE-ALL
+   BODY$ RUN
+   s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
@@ -418,6 +436,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-IMM-REQUIRE
    TEST-IMM-SIGNATURELESS
    TEST-IMM-TRUSTED
+   TEST-UNREPORTED-REJECT
    TEST-PREFLIGHT-POSITIVES
    CLEANUP-RUN
    T-REPORT

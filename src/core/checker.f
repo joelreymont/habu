@@ -150,6 +150,7 @@ create OWNER-STORAGE
    0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 ,
+   0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
    0 ,
    0 ,
@@ -170,7 +171,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:RECOVERY-USED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10063,6 +10064,14 @@ variable PRM-FIRST
    sym PRIM-FIRST-IDX dup 0 = IF EXIT THEN
    1 - PE-EFF@ ;
 
+\ A refused declaration is available only to the current multi-error run's
+\ checker walk. It never becomes an engine binding or an executable source row.
+: RECOVERY-LIVE ( n -- n )
+   {: sym:n :}
+   sym SYM-VISIBLE 0= IF 0 EXIT THEN
+   sym USIG-NEWEST-VISIBLE dup 0= IF drop 0 EXIT THEN
+   1 - E-PTR RECOVERY-ROW? IF sym ELSE 0 THEN ;
+
 \ A source `undefine` is stronger than a stale engine wordlist entry. The
 \ visible newest record decides, so a later declaration makes the name live.
 : SYM-DELETED? ( n -- bool )
@@ -11119,6 +11128,7 @@ PPRIM: PRIM-SPEC PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC REF$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC TRUSTED-ONLY? PE-N PE-IN  PE-F PE-OUT PPRIM;
 PPRIM: PRIM-SPEC FIXED-ABI? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: PRIM-SPEC PREFIX-PROVIDED? PE-N PE-IN  PE-F PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE-LEN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
@@ -12515,9 +12525,12 @@ public
 \
 \ Compiled code binds a token to the record the lookup binds, to a definition
 \ recorded and not yet published (CK-PENDING-SYM), or to a keyword's axiom
-\ (CK-AXIOM-SYM); a symbol the engine holds no record for - a TRUST with no
-\ body, a name only the source pre-verifier registered - binds nowhere, bare or
-\ qualified. An owner-private primitive row (CLOSE-PRIVATE) binds only as the
+\ (CK-AXIOM-SYM). During a multi-error run only, a current-run recovery row
+\ can bind ahead of a lower-priority live record for diagnostics; any native
+\ definition that uses it remains unpublished. Other symbols the engine holds
+\ no record for - a TRUST with no body, a name only the source pre-verifier
+\ registered - bind nowhere, bare or qualified. An owner-private primitive row
+\ (CLOSE-PRIVATE) binds only as the
 \ owner's view of the global record the engine holds (CK-REC-BIND), so a row
 \ for a word the dictionary does not carry binds nowhere either.
 \
@@ -12539,10 +12552,11 @@ public
 \ scope is its symbol (CK-PENDING-SYM), ahead of the lookup, whose answer is the
 \ word it is about to shadow. The window is a fact the stores state, not a flag
 \ anyone clears: the dictionary count has not moved since the record (`ndict@`),
-\ and the record is still its symbol's newest one. A publication, a truncation,
-\ a rollback and `undefine` each end it. Only a check that runs while the engine
-\ holds the definition unpublished opens it (CK-CLOSE!): a check a program runs
-\ by hand publishes nothing.
+\ and the record is still its symbol's newest one. A recovery record cannot open
+\ this window because the native compiler abandons its definition instead of
+\ publishing it. A publication, a truncation, a rollback and `undefine` each end
+\ it. Only a check that runs while the engine holds the definition unpublished
+\ opens it (CK-CLOSE!): a check a program runs by hand publishes nothing.
 \
 \ A CANDIDATE SCOPE IS ITS ROWS AHEAD OF THE DICTIONARY. A candidate scope
 \ (CHECKER-CANDIDATE-SCOPE-START) checks definitions that are published together
@@ -12588,7 +12602,11 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
    data-base CK-DEF-PEND-OFF + @ 0= IF EXIT THEN
-   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  sym USIG-NEWEST CK-CLOSED-OFF ! ;
+   sym USIG-NEWEST {: off:n :}
+   off 1 - E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
+      0 CK-CLOSED-SYM ! EXIT
+   THEN
+   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  off CK-CLOSED-OFF ! ;
 
 \ A live check that certifies nothing ends the window: the definition recorded
 \ last is no longer the one being compiled. A replay or a candidate leaves the
@@ -12788,6 +12806,65 @@ variable BIND-SEEDED
 \ engine holds words no checker symbol names, as one defined without a
 \ declaration under `0 set-check`. So LIVE-BIND sets WALK-REC when its answer
 \ is the record the engine's lookup found, whether or not a symbol names it.
+
+\ NATIVE MULTI-ERROR RECOVERY. The native compiler abandons a refused definition
+\ instead of publishing it, so during a multi-error run the engine's lookup
+\ cannot see the current-run recovery row (RECOVERY-ROW?) of a word a later
+\ definition calls, and on x86-64 every definition is native. Under MULTI-ERR?
+\ a recovery row in a scope the engine searches ahead of the record its lookup
+\ found binds instead, for diagnostics only: the native compiler publishes no
+\ definition that used one (CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?). The order
+\ is the engine's: the open package's private then public wordlist, the
+\ globals, then the used publics in import order. A qualified name asks its
+\ package's public row, and the global row when that package is the open one.
+\ Answers the recovery symbol, or 0 when the lookup's own answer stands.
+: RECOVERY-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   CK-USE-SCAN-N 0 ?DO
+      a u i CK-USED-SYM@ RECOVERY-LIVE {: sym:n :}
+      sym 0 <> IF sym UNLOOP EXIT THEN
+   LOOP 0 ;
+
+0 constant RB-PRIVATE   1 constant RB-PUBLIC   2 constant RB-GLOBAL
+3 constant RB-USED      4 constant RB-NONE
+
+\ Where the engine found the record, in the order above.
+: RECOVERY-RANK ( ptr n -- n ) {: rec:ptr :}
+   rec 0= IF RB-NONE EXIT THEN
+   rec CK-REC-WID {: wid:n :}
+   wid 0= IF RB-GLOBAL EXIT THEN
+   wid data-base CK-PKG-PRI-OFF + @ = IF RB-PRIVATE EXIT THEN
+   wid data-base CK-PKG-PUB-OFF + @ = IF RB-PUBLIC EXIT THEN
+   RB-USED ;
+
+: RECOVERY-QUALIFIED ( ptr n -- n ) {: rec:ptr :}
+   CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? RECOVERY-LIVE
+   dup 0 <> IF EXIT THEN drop
+   rec 0= 0= IF 0 EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE = IF 0 EXIT THEN
+   CHECKER-QPKG$ pkg pkgu CORE-STR=CI 0= IF 0 EXIT THEN
+   CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? RECOVERY-LIVE ;
+
+: RECOVERY-BIND ( ptr u8 n ptr n -- n ) {: a:ptr u:n rec:ptr :}
+   a u CHECKER-QUALIFIED? IF rec RECOVERY-QUALIFIED EXIT THEN
+   rec RECOVERY-RANK {: rank:n :}
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      rank RB-PRIVATE > IF
+         pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
+         dup 0 <> IF EXIT THEN drop
+      THEN
+      rank RB-PUBLIC > IF
+         pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
+         dup 0 <> IF EXIT THEN drop
+      THEN
+   THEN
+   rank RB-GLOBAL > IF
+      a u CHECKER-GLOBAL-SYM? RECOVERY-LIVE dup 0 <> IF EXIT THEN drop
+   THEN
+   rank RB-NONE = IF a u RECOVERY-USED-BIND EXIT THEN
+   0 ;
+
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -12810,6 +12887,10 @@ variable BIND-SEEDED
    THEN
    a u HORIZON-FIND {: rec:ptr used:ptr used2:ptr flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
+   MULTI-ERR? IF
+      a u rec RECOVERY-BIND {: rsym:n :}
+      rsym 0 <> IF rsym 0 EXIT THEN
+   THEN
    flags SCOPE-FIND-AMBIGUOUS and 0 <> {: two:bool :}
    rec 0= IF
       two IF -1 USING-UNBOUND !  a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
@@ -13899,7 +13980,7 @@ CALL-FREEZE-INSTALL
 
 : CALL-ROW-GLUE ( n -- n ) {: row:n :}
    row ROW-CELLS {: width:n :}
-   width CELL 8 * > IF -1 EXIT THEN
+   width 0 < width CELL 8 * > or IF -1 EXIT THEN
    0 0 row
    BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE {: t:n :}
@@ -15323,6 +15404,10 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
+   \ Closed definitions and candidate scopes leave host dictionary record counts
+   \ in these inactive fields. A captured engine begins with neither pending.
+   0 CK-CLOSED-SYM !  0 CK-CLOSED-IX !  0 CK-CLOSED-OFF !
+   0 CK-PEND-FLOOR !  0 CK-PEND-IX !
    SG-ROWS-RESET
    REC-RELEASE
    UWL-SNAP-RESET
@@ -18366,8 +18451,24 @@ C2-STOW-BORROW-INSTALL
 \ the name joins the lazy intake's queue (ASIG-MISS+), and a name a rendering
 \ statement in scope may define is left to the run (UNSEEN-COVERS?), which the
 \ flag answers.
+\ A prefix probe (CHECKER-PREFIX:BIND?) observes only misses in the token it
+\ just captured. Earlier body text belongs to the caller and may still await
+\ its own closing `;`.
+variable CHECKER-PREFIX-ACTIVE
+variable CHECKER-PREFIX-CUT
+variable CHECKER-PREFIX-MISS
+variable CHECKER-PREFIX-ROLLBACK
+
+: PREFIX-MISS-AT ( n n -- ) {: off:n rollback:n :}
+   CHECKER-PREFIX-ACTIVE @ 0= IF exit THEN
+   off CHECKER-PREFIX-CUT @ >= IF
+      -1 CHECKER-PREFIX-MISS !
+      rollback CHECKER-PREFIX-ROLLBACK !
+   THEN ;
+
 : CALL-UNDEFINED ( ptr u8 n -- bool )
    {: a:ptr u:n :}
+   TSTART @ dup PREFIX-MISS-AT
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
    -1 UNDEFERR !  -1 UNCK !
    a u UNSEEN-COVERS?                              \ the run's to judge: see UNSEEN-MARK$
@@ -20401,6 +20502,10 @@ variable TOK0
 defer RECXT ( ptr u8 n -- )
 defer DIAGXT ( -- )
 variable DIAG-QUIET
+variable JSON-REPORTED
+: CHECKER-REPORT-RESET ( -- ) 0 JSON-REPORTED ! ;
+: CHECKER-REPORT-MARK ( -- ) -1 JSON-REPORTED ! ;
+: CHECKER-JSON-REPORTED? ( -- bool ) JSON-REPORTED @ 0= 0= ;
 : DIAG-HOOK-DEFAULTS ( -- )
    [: 2drop ;] is RECXT
    [: ;] is DIAGXT ;
@@ -21962,6 +22067,10 @@ variable IS-PEND-U                   \ and its length
 : IS-TARGET-SYM ( -- n )
    TKF TKFU @ IS-TA@ IS-TU @ CHECKER-BIND-WHY {: sym:n why:n :}
    why 0= IF sym IS-TA@ IS-TU @ NAV-USE THEN
+   sym 0= CHECKER-PREFIX-ACTIVE @ and IF
+      IS-TOFF @ TSTART @ PREFIX-MISS-AT
+      IS-TA@ IS-TU @ ASIG-MISS+
+   THEN
    sym ;
 
 : IS-TOK ( -- )
@@ -22865,7 +22974,7 @@ public
 \ observer must not have to know which class it is holding to know what the
 \ offset means.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
-   a u off u  a u KIND  first TOKEN-XT
+   a u off u  first 0 = IF a u KIND ELSE K-NAME THEN  first TOKEN-XT
    REC-STEP ;
 
 \ One string literal, as the reader consumed it: the literal's BODY, and the
@@ -25739,6 +25848,66 @@ variable CK-RETRY-V
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
 
+package CHECKER-PREFIX
+
+PTR-VARIABLE SOURCE-A
+variable SOURCE-U
+variable ANSWER
+
+\ Re-read the captured prefix with the checker's own token and binding reader.
+\ An imported seeded signature changes a binding, so the same text is read
+\ again; each retry adds a new row and the candidate scope retires every row.
+: SCAN ( -- )
+   BEGIN
+      0 CHECKER-PREFIX-MISS !
+      CHECKER-PREFIX-CUT @ CHECKER-PREFIX-ROLLBACK !
+      SOURCE-A @ SOURCE-U @ CHECK-RESET
+      CHECK-SCAN
+      CHECKER-PREFIX-MISS @ 0= IF RES-TRUE ANSWER ! EXIT THEN
+      CK-AOT-INTAKE 0= IF RES-FALSE ANSWER ! EXIT THEN
+   AGAIN ;
+
+public
+
+\ Ask only whether the newly captured part binds. Open control, quotation and
+\ local scopes remain prefixes; the declared result and publication belong to
+\ the caller's eventual `;`. No immediate word runs during this read.
+: BIND? ( ptr u8 n n -- n bool ) {: a:ptr u:n cut:n :}
+   WRITE-WINDOW-CK
+   a SOURCE-A !  u SOURCE-U !  cut CHECKER-PREFIX-CUT !
+   CK-AOT-RETRY-ARMED @ {: armed0:n :}
+   CK-AOT-RETRY-DUE @ {: due0:n :}
+   RESCAN @ {: rescan0:n :}
+   CK-RETRY-V @ {: v0:n :}
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
+   BIND-HORIZON @ {: horizon0:n :}
+   CHK-PROBE @ {: probe0:n :}
+   PU-N @ {: pu0:n :}
+   CUR-DONE @ {: done0:n :}
+   CUR-GAP @ {: gap0:n :}
+   CHECK-CANDIDATE-START
+   -1 CHK-PROBE !
+   -1 CUR-DONE !                    \ a prefix's text is not the cursor's
+   -1 PIMM-STREAM !                 \ the engine's body capture has spent parser operands
+   -1 CHECKER-PREFIX-ACTIVE !
+   [: SCAN ;] catch {: rc:n :}
+   0 CHECKER-PREFIX-ACTIVE !
+   done0 CUR-DONE !
+   gap0 CUR-GAP !
+   probe0 CHK-PROBE !
+   0 CHECK-CANDIDATE-DONE drop
+   pu0 PU-N !                       \ a prefix's uses are never published
+   armed0 CK-AOT-RETRY-ARMED !
+   due0 CK-AOT-RETRY-DUE !
+   rescan0 RESCAN !
+   v0 CK-RETRY-V !
+   recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   horizon0 BIND-HORIZON !
+   rc 0 <> IF rc throw THEN
+   CHECKER-PREFIX-ROLLBACK @ ANSWER @ ;
+
+;package
+
 \ The quiet probe. A caller that wants a verdict and not a rejection diagnostic
 \ - every certify/refuse fixture in test/ and src/lib/ - asks here, so the render
 \ counter stays inside this file.
@@ -25805,6 +25974,7 @@ variable DEF-STOPPED
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    0 BWIN-VALID !  0 UWIN-VALID !
+   CHECKER-REPORT-RESET
    -1 VSIG !
    a CK-DEF-A !  u CK-DEF-U !  0 DEF-REFUSAL !
    TORDER-ACTIVE @ TORDER-SCAN-UNKNOWN @ {: oldactive:n oldunknown:n :}
@@ -29863,6 +30033,10 @@ package CHECKER-REG
 ' CHECKER-SOURCE-CLAUSE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF + xt!
 ' CHECKER-VERIFY-TOP-BINDING DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF + xt!
 ' CHECKER-VERIFY-TRUST DECLARATIONS CHECKER-OWNER-ABI:VERIFY-TRUST-OFF + xt!
+' MULTI-ERR? DECLARATIONS CHECKER-OWNER-ABI:MULTI-ERROR-OFF + xt!
+' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
+' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
+' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's
@@ -29953,6 +30127,17 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
       CLAIM-SOURCE-OWNER CK-DECLARED-LOG-DRAIN
    then ;
 CLAIM-COLD-SOURCE
+;package
+
+\ The using refusal's spelling, read by a baked compiler through the owner record
+\ (src/compiler/native/checker-owner.f REFUSAL-TOKEN$).
+package CHECKER-USE
+public
+: REFUSAL-TOKEN$ ( -- ptr u8 n ) USH-TOK-A @ USH-TOK-U @ ;
+;package
+
+package CHECKER-REG
+' CHECKER-USE:REFUSAL-TOKEN$ DECLARATIONS CHECKER-OWNER-ABI:REFUSAL-TOKEN-OFF + xt!
 ;package
 
 \ Internal engine-build annotation, called immediately after a real registrar

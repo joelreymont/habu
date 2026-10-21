@@ -98,7 +98,11 @@ public
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 $2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
-$1000 constant ICODE-TAB-CELLS
+\ Labels and their pending-chain heads grow on demand (LBLP, FXH below). The
+\ identity shadow branches take the native recovery build past 4096 labels, and
+\ the fixups pending on them share these demand-paged tables, so they hold
+\ $2000 rows each.
+$2000 constant ICODE-TAB-CELLS
 $3 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 72 constant ICODE-EXIT-RC

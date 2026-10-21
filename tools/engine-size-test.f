@@ -8,6 +8,105 @@ require tools/image-size-lib.f
 package IMAGE-SIZE
 private
 
+$4020 constant EST-X64-BYTES
+create EST-X64-BUF EST-X64-BYTES allot
+create EST-X64-PATH FS-PATH-CAP allot
+variable EST-X64-PATH-U
+
+: EST-X64-PHDR ( n n n n n n -- )
+   {: idx:n off:n va:n files:n mem:n flags:n :}
+   64 idx 56 * + {: p:n :}
+   1 EST-X64-BUF p + !
+   flags EST-X64-BUF p 4 + + !
+   off EST-X64-BUF p 8 + + !
+   va EST-X64-BUF p 16 + + !
+   va EST-X64-BUF p 24 + + !
+   files EST-X64-BUF p 32 + + !
+   mem EST-X64-BUF p 40 + + !
+   $1000 EST-X64-BUF p 48 + + ! ;
+
+: EST-X64-IMAGE ( -- )
+   EST-X64-BYTES 0 ?do 0 EST-X64-BUF i + c! loop
+   $464C457F EST-X64-BUF !
+   2 EST-X64-BUF 4 + c!
+   2 EST-X64-BUF 16 + c!
+   62 EST-X64-BUF 18 + c!
+   64 EST-X64-BUF 32 + !
+   64 EST-X64-BUF 52 + !
+   56 EST-X64-BUF 54 + !
+   4 EST-X64-BUF 56 + !
+   0 0 $400000 $2000 $2000 5 EST-X64-PHDR
+   1 $2000 $402000 $20 $20 6 EST-X64-PHDR
+   2 0 $1400000 0 $2000000 6 EST-X64-PHDR
+   3 $4000 $340000000 $20 $2000000 6 EST-X64-PHDR
+   $90 EST-X64-BUF $1000 + c!
+   1 EST-X64-BUF $1800 + !
+   0 EST-X64-BUF $1804 + !
+   1 EST-X64-BUF $1808 + c!
+   $800 EST-X64-BUF $1FF0 + !
+   1 EST-X64-BUF $1FF4 + !
+   $3145544953343658 EST-X64-BUF $1FF8 + !
+   1 EST-X64-BUF $4000 + c!
+   2 EST-X64-BUF $401F + c! ;
+
+: EST-X64-SEGMENTS ( -- )
+   s" x86 fixed DATA PT_LOAD has its own file-backed row" T-LABEL
+   CLEANUP-RESET
+   s" habu-engine-size-x64" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   EST-X64-IMAGE
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF EST-X64-BYTES WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ MEASURE
+   CLASS$ s" stripped" T$=
+   TOTAL-BYTES EST-X64-BYTES T=
+   CODE-BYTES $800 T=
+   NAME-BYTES 0 T=
+   DATA-WRITTEN 2 T=
+   DATA-ZERO 30 T=
+   PAD-BYTES $1FE0 T=
+   OTHER-BYTES $1820 T=
+   CLEANUP-RUN ;
+
+: EST-X64-EMPTY ( -- )
+   s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
+   CLEANUP-RESET
+   s" habu-engine-size-x64-empty" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   root rootu CLEANUP-TREE+
+   root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
+   EST-X64-IMAGE
+   0 EST-X64-BUF $F0 + !
+   0 EST-X64-BUF $108 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   EST-X64-PATH EST-X64-PATH-U @ MEASURE
+   CLASS$ s" stripped" T$=
+   TOTAL-BYTES $3000 T=
+   DATA-WRITTEN 0 T=
+   PAD-BYTES $FE0 T=
+   s" a negative fixed LOAD size is not an empty segment" T-LABEL
+   -1 EST-X64-BUF $108 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
+   0 EST-X64-BUF $108 + !
+   -1 EST-X64-BUF $D0 + !
+   EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
+   [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
+   CLEANUP-RUN ;
+
+: EST-U64! ( n n -- ) {: value:n off:n :}
+   value IMG@ off + CELL-VIEW ! ;
+
+: EST-COUNTED-SEED ( -- )
+   s" seed count bounds records before adjacent plausible data" T-LABEL
+   $1100 IMG-RESERVE  $1100 ILEN !  $1100 ETEXT-N !
+   $1100 0 ?do 0 IMG@ i + c! loop
+   1 $FF8 EST-U64!
+   1 $1000 EST-U64!  4 $1008 EST-U64!
+   1 $1010 EST-U64!  65 IMG@ $1018 + c!
+   5 $1030 EST-U64!  8 $1038 EST-U64!
+   1 $1040 EST-U64!  66 IMG@ $1048 + c!
+   $1000 COUNTED-RUN 1 T= ;
+
 : EST-SUM ( -- )
    TOTAL-BYTES ILEN @ T=
    CODE-BYTES NAME-BYTES + DATA-WRITTEN + DATA-ZERO + PAD-BYTES + OTHER-BYTES +
@@ -36,11 +135,13 @@ private
    \ above exercise both containers, including all Mach-O load-command spans.
    MACHO @ if exit then
    s" header metadata includes the final RELA addend, including its zero bytes" T-LABEL
-   PHDR-END 288 T= ELF-META-END 488 T=
+   PHDR-END X64 @ if 400 else 288 then T=
+   ELF-META-END X64 @ if 600 else 488 then T=
    \ Alter the last metadata byte in this private copy. Its declared extent
    \ remains the same for both values; only the zero count may change.
-   1 IMG@ 487 + c! ELF-META-END 488 T=
-   0 IMG@ 487 + c! ELF-META-END 488 T=
+   ELF-META-END 1- {: last:n :}
+   1 IMG@ last + c! ELF-META-END last 1+ T=
+   0 IMG@ last + c! ELF-META-END last 1+ T=
    s" dynamic metadata lengths cannot wrap or run into the code page" T-LABEL
    [: $4001B8 $7FFFFFFFFFFFFFFF META-VA-END drop ;] E-ES-WALK TTHROWSQ
    [: $4001B8 CODE-OFF META-VA-END drop ;] E-ES-WALK TTHROWSQ ;
@@ -49,6 +150,9 @@ private
    s" bin/hb" MEASURE
    CLASS$ s" engine" T$=
    EST-SUM
+   \ The payload rows below are the ARM packed AOT trailer. Intel records
+   \ text sites in its ELF footer and dictionary rows in a fixed PT_LOAD.
+   X64 @ if exit then
    \ First walk the payload without a sidecar, even if the donor has one.
    SIGNAME-LEN @ 0 > if SIG0 @ 8 - else AOT-END @ then {: at:n :}
    at ETEXT-N !
@@ -137,6 +241,8 @@ private
 
 : EST-SPAN-REACH ( -- )
    s" bin/hb" MEASURE
+   \ The reachability sweep decodes AArch64 calls in the packed AOT blob.
+   X64 @ if exit then
    BUILD-CODE-INDEX
    SPAN-N @ 0 > TTRUE
    REACH-RESET ROOTS-SURFACE ROOTS-CAPTURE ROOTS-ENTRY SWEEP
@@ -157,6 +263,8 @@ variable EST-MAP-U
 
 : EST-SPAN-SIDECAR ( -- )
    s" bin/hb" MEASURE
+   \ This synthetic span row uses the ARM packed AOT code index.
+   X64 @ if exit then
    BUILD-CODE-INDEX
    CLEANUP-RESET
    s" habu-image-size" HB-TMP-MKDIR {: root:ptr rootu:n :}
@@ -191,6 +299,8 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 
 : EST-WID-FORM ( -- )
    s" bin/hb" MEASURE
+   \ This is the ARM packed AOT wid table; Intel keeps live dictionary rows.
+   X64 @ if exit then
    WID-W0 @ 1 T=
    0 EST-WID-BAD !  0 EST-WID-SEEN !
    NRECS 0 ?do
@@ -205,6 +315,9 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
 
 : EST-MAIN ( -- )
    T-RESET
+   EST-COUNTED-SEED
+   EST-X64-SEGMENTS
+   EST-X64-EMPTY
    EST-DATA-CARRIER
    EST-MACHO-BLOB-PLACE
    EST-WID-FORM

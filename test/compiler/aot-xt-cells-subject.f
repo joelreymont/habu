@@ -20,6 +20,7 @@ $4A constant FAILURE-RC
 defer STEP ( n -- n )            \ bound to a named word's entry
 defer QSTEP ( n -- n )           \ bound to an anonymous body
 defer QSTEP2 ( n -- n )          \ ... and a second one, from the same emission
+TYPED-VARIABLE RUNTIME-STEP [ n -- n ]
 
 \ This cell straddles two encoder grid cells. Its neighbors are ordinary DATA
 \ bytes: clearing either whole grid cell loses one of these marks.
@@ -46,6 +47,8 @@ public
    41 UNALIGNED-SLOT @ execute 42 = EXPECT
    UNALIGNED byte-view c@ 17 = EXPECT
    UNALIGNED byte-view 9 + c@ 34 = EXPECT
+   ['] BUMP RUNTIME-STEP xt!
+   41 RUNTIME-STEP @ execute 42 = EXPECT
    s" aot-xt-cells: ok" type cr ;
 
 ;package

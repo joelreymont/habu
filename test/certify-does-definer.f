@@ -105,7 +105,9 @@ package CERTIFY-DOES-DEFINER
 \ bend, so these three are wrappers of nothing at all.
 : CDD-RES-IFW ( n -- ) dup 0= if drop 1 then CDD-RES-D ;
 : CDD-RES-TWOW ( n n -- ) CDD-RES-D CDD-RES-D ;
-: CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] drop ;
+\ The native compiler needs a typed consumer for a quotation it never calls.
+: CDD-DROP-Q ( [ -- ] -- ) drop ;
+: CDD-RES-QW ( n -- ) drop [: 5 CDD-RES-D ;] CDD-DROP-Q ;
 
 \ A resident definer whose CLAUSE calls a definer: its own clause is what it
 \ creates, and the clause walk leaves nothing for the next record.
@@ -273,7 +275,10 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ run between two scopes.
 : CDD-SECTION-LATCH-LIVE ( -- )
    s" a clause its body contradicts is refused" T-LABEL
-   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;] 70 TTHROWSQ
+   \ Tier 0 refuses the clause with the checker's rc 70; the native compiler,
+   \ the only one an x86-64 engine has, refuses it as an uncertified verdict.
+   [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
+      tier@ 0= if 70 else E-NCOMP-VERDICT then TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed ;
 
 : CDD-SECTION-LATCH-AFTER ( -- )

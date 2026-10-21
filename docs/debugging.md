@@ -162,12 +162,15 @@ path/cdhash, so a binary that ran fine can be SIGKILLed at a path that previousl
 held an invalid signature. Write to a fresh path when in doubt.
 
 ## Forth disassembler (preferred over external disassemblers)
-The native disassembler decodes habu's ARM64 subset to mnemonics. Its decode math
-and encoders are written as checked Forth where expressible. Use this to inspect
-generated code before falling back to external tools.
+`jitdump` decodes a live word's exact recorded code span in process on ARM64 or
+x86-64. It includes instructions after an early return and stops at the word's
+recorded end, including a tail branch. It refuses an xt with no live code record
+and an unknown or truncated Intel encoding instead of reading into a neighbor.
+The decoders and encoders are checked Forth where expressible. Use the dump to
+inspect generated code before falling back to external tools.
 
 ```
-bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': S dup * ;' S
+bin/hb --load tools/jitdump.f -- ': S ( n -- n ) dup * ;' S
 bin/hb --load tools/imagedisasm.f -- bin/hb $1000 16
 bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
@@ -943,8 +946,10 @@ a shared library, resolve to nothing and stay hex.
   self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
 - The handler runs on the thread's alternate signal stack, the crash
   handler's, which every thread that runs Habu code registers
-  (`src/habu/crash.f` C-SIGNAL-STACK); a tick delivered to a thread C started
-  that is not inside a callback runs on that thread's own stack.
+  (`src/habu/crash.f` C-SIGNAL-STACK; on x86-64 the boot registers the main
+  thread's and each task's guarded stack comes from `src/lib/task.f` PREPARE);
+  a tick delivered to a thread C started that is not inside a callback runs on
+  that thread's own stack.
 - When the `n`-th sample is foreign the report waits for the next Habu sample, so
   a program that exits or stays blocked in a foreign call from that point on
   never reports; call `prof-report` yourself in that case.

@@ -52,10 +52,22 @@ E-SERIAL-RESULT constant E-RESULT
 
 private
 
-: TERM-BYTES ( -- n ) HB-TARGET-MACOS? if 72 else $2C then ;
-: OPEN-FLAGS ( -- n ) HB-TARGET-MACOS? if $1020006 else $80902 then ; \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
-: GET-TERM ( -- n ) HB-TARGET-MACOS? if $40487413 else $802C542A then ; \ TIOCGETA / TCGETS2.
-: SET-TERM ( -- n ) HB-TARGET-MACOS? if $80487414 else $402C542B then ; \ TIOCSETA / TCSETS2, no queue flush.
+: TERM-BYTES ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $2C exit then
+   HB-TARGET-MACOS? if 72 exit then
+   E-PLATFORM throw ;
+: OPEN-FLAGS ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $80902 exit then
+   HB-TARGET-MACOS? if $1020006 exit then
+   E-PLATFORM throw ;                    \ O_RDWR | O_NONBLOCK | O_NOCTTY | O_CLOEXEC.
+: GET-TERM ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $802C542A exit then
+   HB-TARGET-MACOS? if $40487413 exit then
+   E-PLATFORM throw ;                    \ TIOCGETA / TCGETS2.
+: SET-TERM ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $402C542B exit then
+   HB-TARGET-MACOS? if $80487414 exit then
+   E-PLATFORM throw ;                    \ TIOCSETA / TCSETS2, no queue flush.
 $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
@@ -167,6 +179,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RAW! ( baud -- ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW! exit then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    \ Preserve HUPCL; all other framing and flow settings are explicit.
    TERM-BYTES 0 do SAVED i + c@ TERM i + c! loop
    0 TERM LE32! 0 TERM $04 + LE32! 0 TERM $0C + LE32!
@@ -177,6 +190,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : RAW? ( baud -- bool ) {: baud:baud :}
    HB-TARGET-MACOS? if baud MAC-RAW? exit then
+   HB-TARGET-LINUX-KERNEL? 0= if E-PLATFORM throw then
    TERM LE32@ 0= TERM $04 + LE32@ 0= and TERM $0C + LE32@ 0= and
    TERM $08 + LE32@ BAUD-MASK invert and $400 invert and $8B0 = and
    TERM $10 + c@ 0= and
@@ -186,7 +200,7 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : CONFIGURE ( handle baud -- open-result ) {: handle:handle baud:baud :}
    handle SAVED GET-RAW 0 < if LAST-ERROR SERIAL-OPEN--RESULT:failed exit then
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       SAVED $10 + c@ 0 <> if SERIAL-OPEN--RESULT:unsupported exit then
    then
    baud RAW!
@@ -209,7 +223,11 @@ FUNCTION: CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
 
-: RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap HB-TARGET-MACOS? if 35 else 11 then = or ;
+: RETRY? ( errno -- bool )
+   ERRNO>N dup 4 = swap
+   HB-TARGET-LINUX-KERNEL? if 11 else
+      HB-TARGET-MACOS? if 35 else E-PLATFORM throw then
+   then = or ;
 
 
 \ Positive event bits, zero for the deadline, or a negative errno. One POLL

@@ -97,9 +97,14 @@
 \ EMIT-AOT-SEED's order has no place for them - so they follow the closure list,
 \ and SECTION-COUNT changes, which is what the version says. A capture with no
 \ shadow open carries all four empty, and a version 13 artifact, which has no
-\ room for them, is refused by name on its own version rather than read. MERGE
-\ refuses a shadow on either side: the merged engine is the ARM64 seed, and no
-\ shadow coordinate is rebased.
+\ room for them, is refused by name on its own version rather than read. ARM64
+\ MERGE still refuses a shadow; native x86-64 MERGE appends and rebases all four.
+\
+\ VERSION 15 lets x86 routines reached through a stripped or retired word
+\ travel without publishing that word's dictionary name. A shadow record now
+\ carries an anonymous source key, and a site or code-cell row can target that
+\ shadow record directly. The reader checks those tags and refuses version 14
+\ before it can interpret the same bytes as shipped record indices.
 \
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
@@ -158,7 +163,6 @@
 \ tools/build-fixpoint.f inlines icode.f, fdio.f, aot-decl.f and aot-ident.f as
 \ modules ahead of this file, while layout.f is a boot row of the host
 \ (src/habu/native-runtime.f).
-require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/fdio.f
 require src/habu/aot-decl.f
@@ -169,9 +173,10 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-14 constant VERSION  \ the capture carries a second target's routines
+15 constant VERSION  \ anonymous shadow routines have tagged references
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
+3 constant TARGET-LINUX-X86-64
 
 136 constant HDR-BYTES
 0 constant O-MAGIC
@@ -270,8 +275,9 @@ variable CUR
 
 : TARGET-ID ( -- n )
    HB-TARGET-MACOS? if TARGET-MACOS exit then
-   HB-TARGET-LINUX? 0= if s" aot-file: unknown target" DIE then
-   TARGET-LINUX ;
+   HB-TARGET-LINUX? if TARGET-LINUX exit then
+   HB-TARGET-LINUX-X86-64? if TARGET-LINUX-X86-64 exit then
+   s" aot-file: unknown target" DIE ;
 
 : ROW-OFF@ ( n -- n ) ROW-BYTES * TBL + U64@ ;
 : ROW-LEN@ ( n -- n ) ROW-BYTES * TBL + 8 + U64@ ;
@@ -451,6 +457,7 @@ $20 MSG-SP c!
 create BASE SEC-N cells allot
 : BASE@ ( n -- n ) cells BASE + @ ;
 : BASE! ( n n -- ) cells BASE + ! ;
+variable MERGE-SHXT-EXTRA
 
 \ The artifact IS the buffers: every section at its buffer's own start, except
 \ the CODE sites, which live behind the DATA sites in the buffer they share.
@@ -480,13 +487,15 @@ create BASE SEC-N cells allot
    SEC-N ROW-BYTES * HDR-BYTES +
    SEC-N 0 ?do
       i BASE@ i ROW-LEN@ + {: extent:n :}
-      i S-CSITES = if
+      i S-SHXTS = merged and if
+         extent MERGE-SHXT-EXTRA @ AOT-SHADOW:XT-ROW * +
+      else i S-CSITES = if
          extent S-DSITES BASE@ S-DSITES ROW-LEN@ + -
       else
          i S-REG = merged and i ROW-LEN@ 0= and if
             AOT-REG-LEN @
          else extent then
-      then {: bytes:n :}
+      then then {: bytes:n :}
       dup bytes AOT-SECTION:ROOM? 0= if
          FD @ close s" aot-file: encoded sections exceed their byte budget" DIE then
       bytes +
@@ -810,29 +819,56 @@ variable NAME-BOUNDARY-LEN
 \ an address-cell row, in order, whose target is window code. Every record index
 \ names a window record, so it is below the artifact's own record count.
 variable SH-PREV
+variable SH-PREV-AT
+variable SH-PREV-END
+DYNAMIC-BUFFER SH-SEEN u8
+
+: SH-ANON? ( n -- bool ) AOT-SHADOW:ANON-REC and 0<> ;
+
+: ?SH-ANON-KEY ( n -- ) {: k:n :}
+   k AOT-SHADOW:RETIRED-REC = if exit then
+   k SITE-TARGET-MASK invert and AOT-SHADOW:ANON-REC <> if
+      s" aot-file: anonymous shadow source has an invalid tag" DIE then
+   k SITE-TARGET-MASK and AOT-REC-MAX >= if
+      s" aot-file: anonymous shadow source exceeds capture record bound" DIE then ;
 
 : ?SH-RECS ( -- )
    S-SHCODE ROW-LEN@ {: clen:n :}
    S-RECS SEC-ROWS {: recs:n :}
-   -1 SH-PREV !
+   recs SH-SEEN-RESERVE
+   recs 0 ?do 0 i SH-SEEN c! loop
+   -1 SH-PREV !  -1 SH-PREV-AT !  0 SH-PREV-END !
    S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / 0 ?do
       S-SHRECS SEC-AT i AOT-SHADOW:REC-ROW * + {: r:ptr :}
       r U32@ {: k:n :}
       r 4 + U32@ {: at:n :}
       r 8 + U32@ {: len:n :}
       r 12 + U32@ {: entry:n :}
-      k SH-PREV @ <=  k recs >= or if
-         s" aot-file: the shadow records are not one ascending row per window record" DIE then
+      k SH-ANON? if
+         k ?SH-ANON-KEY
+      else
+         k recs >= if s" aot-file: a shadow record names no shipped record" DIE then
+         k SH-SEEN c@ 0<> if s" aot-file: duplicate shipped shadow record" DIE then
+         1 k SH-SEEN c!
+      then
       len 0=  at len + clen > or  entry len >= or if
          s" aot-file: a shadow record's routine lies outside the shadow code" DIE then
-      k SH-PREV !
-   loop ;
+      at SH-PREV-AT @ < if
+         s" aot-file: shadow emissions are not in publication order" DIE then
+      at SH-PREV-AT @ = at len + SH-PREV-END @ <> and if
+         s" aot-file: shared shadow emission has unequal spans" DIE then
+      at SH-PREV-AT @ <>  at SH-PREV-END @ < and if
+         s" aot-file: a shadow record's routine overlaps the one before it" DIE then
+      at SH-PREV-AT !  at len + SH-PREV-END !
+   loop
+   SH-SEEN-RELEASE ;
 
 \ A site's instruction width, or 0 for a kind this format does not name.
 : SH-WIDTH ( n -- n ) {: kind:n :}
    kind AOT-SHADOW:CALL = kind AOT-SHADOW:TAIL = or if 5 exit then
    kind AOT-SHADOW:DATA =  kind AOT-SHADOW:CODE = or  kind AOT-SHADOW:FUN = or if
       ADDRESS-CARRIER:MOVABS-BYTES exit then
+   kind AOT-SHADOW:DCELL = if CELL exit then
    0 ;
 
 : ?SH-TARGET ( n n -- ) {: t:n recs:n :}
@@ -840,6 +876,11 @@ variable SH-PREV
    t SITE-TARGET-MASK invert and {: tag:n :}
    tag SITE-NAME-TAG = if v 1+ ?NAMED-TARGET exit then
    tag SITE-REC-TAG = v recs < and if exit then
+   tag SITE-SHADOW-TAG = if
+      v S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / < if
+         S-SHRECS SEC-AT v AOT-SHADOW:REC-ROW * + U32@ SH-ANON? if exit then
+      then
+   then
    s" aot-file: a shadow site names neither a window record nor a pool entry" DIE ;
 
 : ?SH-SITES ( -- )
@@ -853,8 +894,8 @@ variable SH-PREV
       kind SH-WIDTH {: w:n :}
       w 0= if s" aot-file: a shadow site has a kind this format does not carry" DIE then
       at w + clen > if s" aot-file: a shadow site reaches past the shadow code" DIE then
-      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or if
-         t 0<> if s" aot-file: a shadow DATA or function site names a target" DIE then
+      kind AOT-SHADOW:DATA =  kind AOT-SHADOW:FUN = or  kind AOT-SHADOW:DCELL = or if
+         t 0<> if s" aot-file: a shadow DATA, function or trailer site names a target" DIE then
       else t recs ?SH-TARGET then
    loop ;
 
@@ -868,8 +909,12 @@ variable SH-PREV
       r 4 + U32@ {: k:n :}
       row SH-PREV @ <=  row rows >= or if
          s" aot-file: the shadow code cells are not ascending address-cell rows" DIE then
-      k recs >= if s" aot-file: a shadow code cell names no window record" DIE then
-      XTOFF-BUF@ row XTOFF-ROW * + 4 + U32@ {: meta:n :}
+      k SITE-TARGET-MASK invert and SITE-SHADOW-TAG = if
+         k recs ?SH-TARGET
+      else
+         k recs >= if s" aot-file: a shadow code cell names no window record" DIE then
+      then
+      S-XTOFFS SEC-AT row XTOFF-ROW * + 4 + U32@ {: meta:n :}
       meta XTOFF-KIND-MASK and 0<>  meta XTOFF-VALUE-MASK and 0= or if
          s" aot-file: a shadow code cell names an address cell that holds no window code" DIE then
       row SH-PREV !
@@ -885,7 +930,7 @@ variable SH-PREV
 
 : ?ADDRESS-ROWS ( -- )
    SCAL 32 + U64@ {: span:n :}
-   XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
+   S-XTOFFS SEC-AT S-XTOFFS ROW-LEN@ XTOFF-ROW /
    span S-BLOB ROW-LEN@ NAME-SECTION$ ?XTOFFS
    ?SHADOW-ROWS ;
 
@@ -1079,6 +1124,12 @@ private
 \ NO SECTION IS READ PAST, and none has been since version 6 stopped carrying the
 \ capture host's protected-WID band: what each capture contributes to the merged
 \ engine's seals is its own window's ids, which are the wordlist coordinates above.
+\ On native x86-64 the recorded shadow adds four more coordinates: emission
+\ starts and sites move by the host shadow-code length, named record targets by
+\ its shipped-record count, anonymous row targets by its shadow-record count,
+\ and CODE-cell rows by its address-cell count. Anonymous source keys and
+\ function entries retain their own meanings. A partial prefix name resolves
+\ only through the imported host's public compact records or the kernel linker.
 
 variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
@@ -1086,6 +1137,7 @@ variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable H-CSPAN                     \ the host's code-span rows
 variable H-SIG    variable H-SIGSTR  variable H-REG
 variable H-CELLS  variable H-BMLEN   variable H-CEND    variable H-VALS
+variable H-SHREC  variable H-SHCODE  variable H-SHSITE  variable H-SHXT
 variable A-D0     variable A-B0      variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
@@ -1121,6 +1173,8 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
    CELL-N @ H-CELLS !                VAL-LEN @ H-VALS !
    BM-LEN @ H-BMLEN !                 CONTENT-END @ H-CEND !
+   AOT-SHADOW:REC-N @ H-SHREC !       AOT-SHADOW:CODE-LEN @ H-SHCODE !
+   AOT-SHADOW:SITE-N @ H-SHSITE !    AOT-SHADOW:XT-N @ H-SHXT !
    AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
@@ -1130,9 +1184,9 @@ DYNAMIC-BUFFER HOST-REG n
    AOT-REC-N @ 0 > if exit then
    s" aot-file: nothing has been captured for this artifact to be merged into" DIE ;
 
-\ The merged engine is the ARM64 seed, and no shadow coordinate is rebased, so a
-\ shadow on either side is refused before any section lands.
+\ The ARM64 seed does not rebase a shadow target's coordinates.
 : ?NO-SHADOW ( -- )
+   TARGET-ID TARGET-LINUX-X86-64 = if exit then
    AOT-SHADOW:REC-N @ AOT-SHADOW:CODE-LEN @ or
    AOT-SHADOW:SITE-N @ or AOT-SHADOW:XT-N @ or
    S-SHRECS ROW-LEN@ or S-SHCODE ROW-LEN@ or
@@ -1172,7 +1226,11 @@ DYNAMIC-BUFFER HOST-REG n
    S-SIGSTR ?ROOM
    S-SIGSTR ROW-LEN@ 0 > if
       H-SIGSTR @ 7 + -8 and S-SIGSTR BASE!
-   then ;
+   then
+   H-SHREC @ AOT-SHADOW:REC-ROW * S-SHRECS BASE!
+   H-SHCODE @ S-SHCODE BASE!
+   H-SHSITE @ AOT-SHADOW:SITE-ROW * S-SHSITES BASE!
+   H-SHXT @ AOT-SHADOW:XT-ROW * S-SHXTS BASE! ;
 
 : OPEN-SIGSTR-GAP ( -- )
    S-SIGSTR ROW-LEN@ 0= if exit then
@@ -1294,6 +1352,243 @@ DYNAMIC-BUFFER HOST-REG n
          noff w REWID           c 16 + U32!
       then
    loop ;
+
+\ A partial capture's prefix name can now enter the fresh runtime the caller
+\ imported. Search only its already captured records: live dictionary indices
+\ belong to this process, while these compact rows survive READ and IMPORT.
+: HOST-REC ( n -- ptr u8 )
+   AOT-CREC-ROW * AOT-REC-MAX 48 * + AOT-REC-BUF@ + ;
+
+: HOST-PKG? ( n -- bool ) HOST-REC 16 + U32@ $FFFFFFFF = ;
+
+: HOST-NAME$ ( n -- ptr u8 n ) {: k:n :}
+   k HOST-REC 8 + U32@ {: off:n :}
+   off H-NAMES @ >= if s" aot-file: host record name is outside its pool" DIE then
+   AOT-NAMES-BUF@ off + {: p:ptr :}
+   p c@ H-NAMES @ off - 1- > if
+      s" aot-file: host record name ends outside its pool" DIE then
+   p 1+ p c@ ;
+
+: FOLD-ASCII ( n -- n )
+   dup $41 >= over $5A <= and if $20 or then ;
+
+: NAME= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> if false exit then
+   u 0 ?do
+      a i + c@ FOLD-ASCII b i + c@ FOLD-ASCII <> if false unloop exit then
+   loop true ;
+
+: QUAL-NAME= ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n pkg:ptr pu:n word:ptr wu:n :}
+   u pu wu + 1+ <> if false exit then
+   a pu pkg pu NAME= 0= if false exit then
+   a pu + c@ $3A <> if false exit then
+   a pu 1+ + wu word wu NAME= ;
+
+: HOST-PUBLIC? ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k HOST-REC 16 + U32@ {: wid:n :}
+   wid 0= if k HOST-NAME$ a u NAME= exit then
+   H-REC @ 0 ?do
+      i HOST-PKG? if
+         i HOST-REC U32@ wid = if
+            a u i HOST-NAME$ k HOST-NAME$ QUAL-NAME= if true unloop exit then
+         then
+      then
+   loop false ;
+
+: HOST-ROUTINE? ( n -- bool ) {: k:n :}
+   H-SHREC @ 0 ?do
+      AOT-SHADOW:REC-BUF@ i AOT-SHADOW:REC-ROW * + U32@ k = if
+         true unloop exit then
+   loop false ;
+
+: HOST-NAMED-ROW ( ptr u8 n -- n ) {: a:ptr u:n :}
+   H-REC @ 0 ?do
+      i HOST-PKG? if
+         i HOST-NAME$ a u NAME= if
+            s" aot-file: a partial named target resolves to a namespace" DIE then
+      else
+         i a u HOST-PUBLIC? if
+            i HOST-ROUTINE? 0= if
+               s" aot-file: a partial named target has no runtime routine" DIE then
+            i unloop exit
+         then
+      then
+   loop -1 ;
+
+: IN-NAME$ ( n -- ptr u8 n ) {: off:n :}
+   off S-NAMES ROW-LEN@ >= if
+      s" aot-file: partial shadow name is outside its pool" DIE then
+   S-NAMES SEC-AT off + {: p:ptr :}
+   p c@ S-NAMES ROW-LEN@ off - 1- > if
+      s" aot-file: partial shadow name ends outside its pool" DIE then
+   p 1+ p c@ ;
+
+: SH-ADD ( n n n -- n ) {: value:n shift:n bound:n :}
+   value 0 < shift 0 < or value bound > or if
+      s" aot-file: merged shadow coordinate exceeds its encoding" DIE then
+   shift bound value - > if
+      s" aot-file: merged shadow coordinate exceeds its encoding" DIE then
+   value shift + ;
+
+: SH-REC-KEY ( n -- n ) {: key:n :}
+   key AOT-SHADOW:ANON-REC and 0<> if key exit then
+   key H-REC @ SITE-TARGET-MASK SH-ADD ;
+
+: SH-TARGET-MERGED ( n -- n ) {: t:n :}
+   t SITE-TARGET-MASK invert and {: tag:n :}
+   t SITE-TARGET-MASK and {: value:n :}
+   tag SITE-NAME-TAG = if
+      value IN-NAME$ HOST-NAMED-ROW dup 0 >= if
+         SITE-REC-TAG or exit
+      then drop
+      value H-NAMES @ SITE-TARGET-MASK SH-ADD SITE-NAME-TAG or exit
+   then
+   tag SITE-REC-TAG = if
+      value H-REC @ SITE-TARGET-MASK SH-ADD SITE-REC-TAG or exit
+   then
+   tag SITE-SHADOW-TAG = if
+      value H-SHREC @ SITE-TARGET-MASK SH-ADD SITE-SHADOW-TAG or exit
+   then
+   s" aot-file: partial shadow site has no target kind" DIE ;
+
+: SH-XT-TARGET-MERGED ( n -- n ) {: t:n :}
+   t SITE-TARGET-MASK invert and SITE-SHADOW-TAG = if
+      t SITE-TARGET-MASK and H-SHREC @ SITE-TARGET-MASK SH-ADD
+      SITE-SHADOW-TAG or exit
+   then
+   t H-REC @ SITE-TARGET-MASK SH-ADD ;
+
+: SH-SITE-CODE ( n -- ptr u8 ) {: off:n :}
+   AOT-SHADOW:CODE-BUF@ H-SHCODE @ off + + ;
+
+: SH-DATA-MERGED ( n -- n ) {: value:n :}
+   value A-D0 @ < if
+      s" aot-file: partial shadow DATA site is below its window" DIE then
+   value A-D0 @ - A-DSPAN @ >= if
+      s" aot-file: partial shadow DATA site is outside its window" DIE then
+   value A-D0 @ - AOT-DATA-D0 @ + H-DATA-R @ + ;
+
+: SH-SITE-DATA@ ( n n -- n ) {: off:n kind:n :}
+   off SH-SITE-CODE {: p:ptr :}
+   kind AOT-SHADOW:DCELL = if p U64@ exit then
+   p ADDRESS-CARRIER:MOVABS-SITE? 0= if
+      s" aot-file: partial shadow DATA site is no movabs" DIE then
+   p ADDRESS-CARRIER:MOVABSV ;
+
+: SH-SITE-DATA! ( n n n -- ) {: off:n kind:n value:n :}
+   off SH-SITE-CODE {: p:ptr :}
+   kind AOT-SHADOW:DCELL = if value p U64! exit then
+   p value ADDRESS-CARRIER:SET-MOVABS ;
+
+\ The incoming artifact is verified in its own coordinates before any shift.
+\ Count named cells that will become CODE cells so the final XT section's byte
+\ budget and room are checked before its sorted rows are expanded.
+: SH-MERGE-PREFLIGHT ( -- )
+   TARGET-ID TARGET-LINUX-X86-64 <> if exit then
+   H-DSITE @ H-CSITE @ or S-DSITES ROW-LEN@ or S-CSITES ROW-LEN@ or
+      0<> if s" aot-file: native shadow merge carries ARM instruction sites" DIE then
+   S-SHRECS SEC-ROWS 0 ?do
+      S-SHRECS SEC-AT i AOT-SHADOW:REC-ROW * + {: r:ptr :}
+      r U32@ SH-REC-KEY drop
+      r 4 + U32@ H-SHCODE @ $FFFFFFFF SH-ADD drop
+   loop
+   S-SHSITES SEC-ROWS 0 ?do
+      S-SHSITES SEC-AT i AOT-SHADOW:SITE-ROW * + {: r:ptr :}
+      r U32@ H-SHCODE @ $FFFFFFFF SH-ADD drop
+      r 4 + U32@ {: kind:n :}
+      kind AOT-SHADOW:DATA = kind AOT-SHADOW:DCELL = or if
+         r U32@ kind SH-SITE-DATA@ SH-DATA-MERGED drop
+      else
+         kind AOT-SHADOW:FUN <> if r 8 + U32@ SH-TARGET-MERGED drop then
+      then
+   loop
+   S-SHXTS SEC-ROWS 0 ?do
+      S-SHXTS SEC-AT i AOT-SHADOW:XT-ROW * + {: r:ptr :}
+      r U32@ H-XTOFF @ SITE-TARGET-MASK SH-ADD drop
+      r 4 + U32@ SH-XT-TARGET-MERGED drop
+   loop
+   0 MERGE-SHXT-EXTRA !
+   S-XTOFFS SEC-ROWS 0 ?do
+      S-XTOFFS SEC-AT i XTOFF-ROW * + 4 + U32@ {: meta:n :}
+      meta XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
+         meta XTOFF-VALUE-MASK and 1- IN-NAME$ HOST-NAMED-ROW
+         dup 0 >= if
+            HOST-REC U32@ 1+ H-BLOB @ > if
+               s" aot-file: named runtime target lies outside host code" DIE then
+            MERGE-SHXT-EXTRA @ 1+ MERGE-SHXT-EXTRA !
+         else drop then
+      then
+   loop
+   H-SHXT @ S-SHXTS SEC-ROWS + MERGE-SHXT-EXTRA @ +
+      AOT-SHADOW:XT-MAX > if
+      s" aot-file: merged shadow code cells exceed their table" DIE then
+   H-SHXT @ S-SHXTS SEC-ROWS + MERGE-SHXT-EXTRA @ +
+      AOT-SHADOW:XT-RESERVE
+   0 0= ?BUDGET ;
+
+: MERGE-SH-RECS ( -- )
+   S-SHRECS SEC-ROWS 0 ?do
+      S-SHRECS SEC-AT i AOT-SHADOW:REC-ROW * + {: r:ptr :}
+      r U32@ SH-REC-KEY r U32!
+      r 4 + U32@ H-SHCODE @ $FFFFFFFF SH-ADD r 4 + U32!
+   loop ;
+
+: MERGE-SH-SITES ( -- )
+   S-SHSITES SEC-ROWS 0 ?do
+      S-SHSITES SEC-AT i AOT-SHADOW:SITE-ROW * + {: r:ptr :}
+      r U32@ {: off:n :}
+      r 4 + U32@ {: kind:n :}
+      kind AOT-SHADOW:DATA = kind AOT-SHADOW:DCELL = or if
+         off kind SH-SITE-DATA@ SH-DATA-MERGED
+         off kind rot SH-SITE-DATA!
+      else
+         kind AOT-SHADOW:FUN <> if
+            r 8 + U32@ SH-TARGET-MERGED r 8 + U32! then
+      then
+      off H-SHCODE @ $FFFFFFFF SH-ADD r U32!
+   loop ;
+
+: MERGE-SH-XT-ROW ( n -- ptr u8 )
+   AOT-SHADOW:XT-ROW * AOT-SHADOW:XT-BUF@ + ;
+
+variable MERGE-XT-SRC
+variable MERGE-XT-DST
+
+\ Walk the incoming address rows backwards. Each original XT row already
+\ names one CODE cell; a NAME cell resolved against host code adds a row at its
+\ own index. Writing from the end retains sorted order without a second table.
+: MERGE-SH-XTS ( -- )
+   S-SHXTS SEC-ROWS MERGE-XT-SRC !
+   H-SHXT @ S-SHXTS SEC-ROWS + MERGE-SHXT-EXTRA @ + MERGE-XT-DST !
+   S-XTOFFS SEC-ROWS 0 ?do
+      S-XTOFFS SEC-ROWS 1- i - {: idx:n :}
+      MERGE-XT-SRC @ 0 > if
+         MERGE-XT-SRC @ 1- H-SHXT @ + MERGE-SH-XT-ROW U32@ idx =
+      else false then if
+         MERGE-XT-SRC @ 1- H-SHXT @ + MERGE-SH-XT-ROW {: src:ptr :}
+         MERGE-XT-DST @ 1- MERGE-XT-DST !
+         MERGE-XT-DST @ MERGE-SH-XT-ROW {: dst:ptr :}
+         idx H-XTOFF @ SITE-TARGET-MASK SH-ADD dst U32!
+         src 4 + U32@ SH-XT-TARGET-MERGED dst 4 + U32!
+         MERGE-XT-SRC @ 1- MERGE-XT-SRC !
+      else
+         S-XTOFFS SEC-AT idx XTOFF-ROW * + 4 + {: meta:ptr :}
+         meta U32@ XTOFF-KIND-MASK and XTOFF-NAME-TAG = if
+            meta U32@ XTOFF-VALUE-MASK and 1- H-NAMES @ -
+               IN-NAME$ HOST-NAMED-ROW {: k:n :}
+            k 0 >= if
+               MERGE-XT-DST @ 1- MERGE-XT-DST !
+               MERGE-XT-DST @ MERGE-SH-XT-ROW {: dst:ptr :}
+               idx H-XTOFF @ SITE-TARGET-MASK SH-ADD dst U32!
+               k dst 4 + U32!
+               k HOST-REC U32@ 1+ meta U32!
+            then
+         then
+      then
+   loop
+   MERGE-XT-SRC @ 0<> MERGE-XT-DST @ H-SHXT @ <> or if
+      s" aot-file: merged shadow XT rows do not cover their source" DIE then ;
 
 \ A call site's third field is a SCOPE, and none of the kinds a capture can write
 \ moves: a layout constant and the QUALIFIED marker are the same number in every
@@ -1494,6 +1789,10 @@ DYNAMIC-BUFFER HOST-REG n
    H-SPAN @ A-SPAN @ + AOT-WID-SPAN !
    H-SIG @ S-SIGS SEC-ROWS + AOT-SIG-N !
    S-SIGSTR BASE@ S-SIGSTR ROW-LEN@ + AOT-SIG-STR-LEN !
+   H-SHREC @ S-SHRECS SEC-ROWS + AOT-SHADOW:REC-N !
+   H-SHCODE @ S-SHCODE ROW-LEN@ + AOT-SHADOW:CODE-LEN !
+   H-SHSITE @ S-SHSITES SEC-ROWS + AOT-SHADOW:SITE-N !
+   H-SHXT @ S-SHXTS SEC-ROWS + MERGE-SHXT-EXTRA @ + AOT-SHADOW:XT-N !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 public
@@ -1512,6 +1811,7 @@ public
 : MERGE ( ptr u8 ptr u8 n -- )
    ?HOST-CAPTURED
    LATCH-HOST
+   0 MERGE-SHXT-EXTRA !
    LOAD-PASS
    ?NO-SHADOW
    BASES-AFTER-HOST
@@ -1528,14 +1828,19 @@ public
    ?BASES
    H-DATA-R @ A-DSPAN @ + ?SPAN
    S-WDATA BASE@  S-WDATA ROW-LEN@  A-DSPAN @  ?CELLS
+   ?ADDRESS-ROWS
    ?MERGED-XTOFFS
+   SH-MERGE-PREFLIGHT
    MERGE-RECS
    MERGE-ROWS
-   MERGE-DSITES
-   MERGE-CSITES
-   MERGE-COUNTS
+   TARGET-ID TARGET-LINUX-X86-64 = if
+      MERGE-SH-RECS MERGE-SH-SITES MERGE-SH-XTS
+   else
+      MERGE-DSITES MERGE-CSITES
+   then
    RESTORE-CLOSURE
-   ?CHAIN ;
+   ?CHAIN
+   MERGE-COUNTS ;
 
 ;using
 ;using

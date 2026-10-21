@@ -65,8 +65,10 @@ using PTY-HARNESS
 
 : RUN ( -- )
    T-RESET
-   2 0 do
-      i REDEFINE-CASE
+   \ x86-64 has only the native tier; ARM also runs the JIT tier. REDEFINE-CASE
+   \ compiles its underflowing immediate at tier 0, so it runs on ARM only.
+   2 HB-TARGET-LINUX-X86-64? if 1 else 0 then ?do
+      HB-TARGET-LINUX-X86-64? 0= if i REDEFINE-CASE then
       s" defer FAILED ( -- n ) NOSUCH-WORD"
       s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
       s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"

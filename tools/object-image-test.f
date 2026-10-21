@@ -13,9 +13,18 @@ require src/lib/object.f
 require tools/object-image.f
 
 package OBJIMG-TEST
+: LOAD-EXIT ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" tools/object-image-test-x64.f" required exit
+   then
+   s" tools/object-image-test-arm.f" required ;
+' LOAD-EXIT
+;package
+execute
+
+package OBJIMG-TEST
 using OBJ
 using OBJIMG
-using A64ICODE
 
 1024 constant CAP
 5000 constant TIMEOUT-MS
@@ -39,6 +48,14 @@ DYNAMIC-BUFFER PADDING n
 : HASH$ ( -- ptr u8 n )
    s" abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" ;
 
+: TARGET$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" host-x86-64" exit then
+   s" host-aarch64" ;
+
+: COMPILER$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" hb-x86-64-v1" exit then
+   s" hb-arm64-v1" ;
+
 : COPY-PATH ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    a dst u BYTE-COPY
    u up ! ;
@@ -52,17 +69,12 @@ DYNAMIC-BUFFER PADDING n
 : START-OBJ ( -- )
    OBJ:RESET
    HASH$ SOURCE!
-   s" host-aarch64" TARGET!
+   TARGET$ TARGET!
    s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER! ;
-
-: EXIT-CODE ( -- )
-   ASM-INIT
-   0 0 MOVZ,
-   NR-EXIT-GROUP SYS, ;
+   COMPILER$ COMPILER! ;
 
 : FINISH-OBJ ( -- )
-   CODE ASM-LEN TEXT+
+   CODE-TEXT+
    s" MAIN" s" --" EXPORT+
    s" MAIN" 0 s" --" DEF+ ;
 
@@ -71,7 +83,7 @@ DYNAMIC-BUFFER PADDING n
 
 : BUILD-EXIT-OFF ( n -- ) {: off:n :}
    START-OBJ EXIT-CODE
-   CODE ASM-LEN TEXT+
+   CODE-TEXT+
    s" MAIN" s" --" EXPORT+
    s" MAIN" off s" --" DEF+ ;
 
@@ -102,7 +114,7 @@ DYNAMIC-BUFFER PADDING n
    START-OBJ EXIT-CODE
    PADDING-U CELL / PADDING-RESERVE
    \ The exit stub runs before this zero-filled, unreachable payload.
-   0 PADDING byte-view PADDING-U BYTES,
+   0 PADDING byte-view PADDING-U CODE-PAD
    FINISH-OBJ
    WRITE-IMAGE
    EXE$ FILE-SIZE PADDING-U > TTRUE
@@ -112,9 +124,9 @@ DYNAMIC-BUFFER PADDING n
 : EMPTY-FAILS ( -- )
    OBJ:RESET
    HASH$ SOURCE!
-   s" host-aarch64" TARGET!
+   TARGET$ TARGET!
    s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER!
+   COMPILER$ COMPILER!
    [: OBJIMG:LOAD ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 : BAD-SHAPES-FAIL ( -- )
@@ -155,7 +167,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-;using
 ;using
 ;using
 ;package

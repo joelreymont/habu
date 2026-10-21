@@ -47,7 +47,11 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
    s" --" >LEN PROC-ARGV+
    FIRST$ >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN
-   S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/deferred-quotation-subject.f\nrequire src/habu/app-image.f\n0 set-tier\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   HB-TARGET-LINUX-X86-64? if
+      S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/deferred-quotation-subject.f\nrequire src/habu/app-image.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   else
+      S\" require src/compiler/native/compiler.f\n1 set-tier\nrequire test/deferred-quotation-subject.f\nrequire src/habu/app-image.f\n0 set-tier\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   then >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\n" T$=
@@ -67,7 +71,11 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : FINAL ( -- )
    ENVIRONMENT
    SECOND$ >LEN
-   S\" DEFER-QUOT-TEST:FINAL\npackage DEFER-QUOT-TEST\n0 set-tier\n: FINAL-T0 ( -- ) CHECK-SWITCH ;\n1 set-tier\n: FINAL-T1 ( -- ) CHECK-SWITCH ;\nT-RESET FINAL-T0 FINAL-T1 T-REPORT\n;package\n" >LEN
+   HB-TARGET-LINUX-X86-64? if
+      S\" DEFER-QUOT-TEST:FINAL\npackage DEFER-QUOT-TEST\n1 set-tier\n: FINAL-T1 ( -- ) CHECK-SWITCH ;\nT-RESET FINAL-T1 T-REPORT\n;package\n"
+   else
+      S\" DEFER-QUOT-TEST:FINAL\npackage DEFER-QUOT-TEST\n0 set-tier\n: FINAL-T0 ( -- ) CHECK-SWITCH ;\n1 set-tier\n: FINAL-T1 ( -- ) CHECK-SWITCH ;\nT-RESET FINAL-T0 FINAL-T1 T-REPORT\n;package\n"
+   then >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n :}
    OUT outu S\" test: ok\ntest: ok\n" T$= ;

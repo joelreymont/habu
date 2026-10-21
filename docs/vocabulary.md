@@ -6,8 +6,7 @@ the packages that source may call, admits them by name, seals, and then loads
 the source. From the seal on the engine refuses every token outside the
 vocabulary, at the token, before anything it names can run.
 
-AArch64 only. The x86-64 kernel registers both engine words as refusals,
-because its token loops do not read the seal.
+The captured Habu interpreter applies the seal on AArch64 and x86-64.
 
 ## Use
 
@@ -193,9 +192,6 @@ harness's responsibility, and the argument above assumes all of it.
 - No admitted word stores to an address its caller supplies.
 - No admitted word changes what the design can name: none calls `set-current`
   or `prot-wid-add`, or `evaluate` or `included` on data its caller supplies.
-  Nor does one hand such data to the interpret loop written in Habu
-  (`src/habu/interpret.f` `OUTER:INTERPRET`): it reads no seal, so the data
-  would run unsealed.
 
 The admitted public words are the design's whole reach.
 
@@ -205,18 +201,24 @@ The seal is a DATA header watermark (`src/habu/layout.f`
 `POLICY-NDICT-CELL`), an admission bitmap (`POLICY-BITS-OFF`) and an optional
 ordinary-require identity (`POLICY-REQUIRE-CELL`): the dictionary size at the
 seal, the admitted wordlist ids and the opt-in record's xt. `policy-admit` and
-`policy-seal` (`src/habu/habu1.f`) write the live vocabulary. Image capture
-clears all three in its DATA copy, and warm restore clears them before the
-fresh process reads source.
-The readers are the sites where a
-source token is read (`src/habu/habu2.f`): `LPOLICYTOPREC` for a top-level
-ordinary require, `LPOLICYREC` for other found records,
-`LKWCMP` for a matched keyword, `LUNDEF` for a miss, `CAPTURE-IMMEDIATE`'s
-predicate for every tier-1 body token, and `EMIT-QUALIFY-DEF` for a definition
-name. The name wall and `policy-admit` share `LROWWALK`, a spelling test per
-keyword row generated from the rows' own registrars, so a new row is covered
-when it is added. The native compiler never reads the seal: it binds only names
-the capture already admitted.
+`policy-seal` (`src/habu/habu1.f`, `src/habu/kernel-x64.f`) write the live
+vocabulary. The x86-64 writer asks the captured `OUTER:POLICY-KEYWORD`
+callback, installed in the fixed `POLICY-ABI:KEYWORD-CELL`, to detect
+dispatch-row collisions before it sets a package's bit. Image capture clears
+all three in its DATA copy, and warm restore clears them before the fresh
+process reads source.
+The readers are the sites where a source token is read. The cold AArch64
+interpreter (`src/habu/habu2.f`) reads it at `LPOLICYTOPREC` for a top-level
+ordinary require, `LPOLICYREC` for other found records, `LKWCMP` for a matched
+keyword, `LUNDEF` for a miss, `CAPTURE-IMMEDIATE`'s predicate for every tier-1
+body token, and `EMIT-QUALIFY-DEF` for a definition name. The captured
+interpreter checks top-level tokens in `src/habu/interpret.f` (`POLICY-PRE`)
+and found records in `src/habu/outer.f` (`POLICY-CHECK-REC`); its definition
+writer checks every body token and definition name in `src/habu/definers.f`
+(`BODY-POLICY` and `DEF-WALL`). The name wall and `policy-admit` share
+`LROWWALK`, a spelling test per keyword row generated from the rows' own
+registrars, so a new row is covered when it is added. The native compiler never
+reads the seal: it binds only names the capture already admitted.
 
 `src/lib/vocabulary-test.f` loads each case under `test/policy/` sealed at both tiers
 and writes `build/vocabulary-run.txt`, one line per child.

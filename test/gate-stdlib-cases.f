@@ -94,6 +94,10 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
+SUITE prefix-provided-unfilled
+   test/prefix-provided-unfilled.f
+;SUITE
+
 \ The positive hb-build AOT checks are two rows that share no state. Both wait
 \ for the saved AOT builder image and start once it settles.
 SUITE native-gate-aot-positive-bundle
@@ -331,10 +335,6 @@ SUITE field-proj-boundary
    test/field-proj-boundary.f
 ;SUITE
 
-WHITEBOX-SUITE prop
-   test/prop-test.f
-;SUITE
-
 WHITEBOX-SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
@@ -351,12 +351,12 @@ SUITE build-fixpoint-source
    tools/build-fixpoint-source-test.f
 ;SUITE
 
-SUITE aot-chain-capture
-   test/aot-chain-capture-suite.f
+SUITE aot-chain-storage
+   test/aot-chain-storage-suite.f
 ;SUITE
 
-SUITE build-fixpoint-sandbox
-   tools/build-fixpoint-sandbox-test.f
+SUITE memory-guarded-failure
+   test/memory-guarded-failure.f
 ;SUITE
 
 SUITE shadow-lint
@@ -746,12 +746,18 @@ SUITE compiler-x64-chain
    test/compiler/x64-chain.f
 ;SUITE
 
-\ A second target beside the engine's own: the driver compiles each definition
-\ through the x86-64 rows in a nested context while an NSHADOW is open, and the
-\ map src/compiler/native/shadow.f keeps is read back from this host.
-SUITE compiler-shadow
-   test/compiler/shadow.f
-;SUITE
+\ Host rows exercise the ARM host/tier-0 JIT or native x86-64 capture. Mixed
+\ tier/compiler rows remain in the shared registry.
+package STDLIB-GATE
+private
+: HOST-ROWS ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" test/gate-x64-cases.f"
+   else
+      s" test/gate-arm-cases.f"
+   then included ;
+HOST-ROWS
+;package
 
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
@@ -780,10 +786,6 @@ SUITE compiler-native-regalloc
    test/compiler/native-regalloc.f
 ;SUITE
 
-SUITE compiler-native-identity-spill
-   test/compiler/native-identity-spill.f
-;SUITE
-
 SUITE compiler-native-frame-slot-e2e
    test/compiler/native-frame-slot-e2e.f
 ;SUITE
@@ -792,16 +794,8 @@ SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE
 
-SUITE compiler-native-wide-frame
-   test/compiler/native-wide-frame.f
-;SUITE
-
 SUITE compiler-native-emit
    test/compiler/native-emit.f
-;SUITE
-
-SUITE compiler-native-fused-moves
-   test/compiler/native-fused-moves.f
 ;SUITE
 
 SUITE compiler-native-trap
@@ -1021,6 +1015,10 @@ SUITE finally
 
 SUITE empty-quotation
    test/empty-quotation.f
+;SUITE
+
+SUITE compiler-native-lexical-recovery
+   test/compiler/native-lexical-recovery.f
 ;SUITE
 
 SUITE compiler-native-local-case
@@ -1259,6 +1257,14 @@ SUITE proc-pty-tty-smoke
 \ CPU tasking over pthread, including shared storage and task-local FFI staging.
 SUITE tasking-threads
    src/lib/task-test.f
+;SUITE
+
+SUITE task-signal-altstack
+   test/task-signal-altstack.f
+;SUITE
+
+SUITE task-prepare-failure
+   test/task-prepare-failure.f
 ;SUITE
 
 \ Readiness, timers and cancellation on io_uring, over pipes only.
@@ -1559,6 +1565,12 @@ SUITE x86-64-skel-image
    test/x86-64-skel-image.f
 ;SUITE
 
+\ Both captured entry cells in a real x86-64 boot: ARM emits the image and
+\ the x86-64 host also runs it, requiring MAIN to invoke APP before stdin.
+SUITE x86-64-main-entry
+   test/x86-64-main-entry.f
+;SUITE
+
 \ The x86-64 kernel's rows (src/habu/kernel-x64.f) in the booted harness,
 \ test/x86-64-boot-harness.f, for the peer to run. Each file has one negative
 \ image that exits 21; its header names the statuses the peer must see.
@@ -1571,12 +1583,32 @@ SUITE x86-64-kernel-control
    test/x86-64-kernel-control.f
 ;SUITE
 
+SUITE x86-64-kernel-unit
+   test/x86-64-kernel-unit.f
+;SUITE
+
+SUITE x86-64-kernel-policy
+   test/x86-64-kernel-policy.f
+;SUITE
+
 SUITE x86-64-kernel-atomics
    test/x86-64-kernel-atomics.f
 ;SUITE
 
 SUITE x86-64-kernel-engine
    test/x86-64-kernel-engine.f
+;SUITE
+
+SUITE x86-64-kernel-scope-find
+   test/x86-64-kernel-scope-find.f
+;SUITE
+
+SUITE x86-64-kernel-token
+   test/x86-64-kernel-token.f
+;SUITE
+
+SUITE x86-64-kernel-create
+   test/x86-64-kernel-create.f
 ;SUITE
 
 SUITE x86-64-kernel-ffi
@@ -1602,14 +1634,8 @@ SUITE x86-64-kernel-task
    test/x86-64-kernel-task.f
 ;SUITE
 
-\ src/habu/link-x64.f lays a captured window out over the x86-64 kernel's rows
-\ and links it: the records, the routines with every site resolved, the rebased
-\ wids, the protected-wid bitmap, the name index and the code cells' xts. Its
-\ children measure the layout host-independent and refuse, by name, what it
-\ cannot place or link. hb-x64-link-index, for the peer to run, stages the
-\ writer's index where the kernel's own find reads it; it exits 0.
-SUITE x86-64-link-records
-   test/x86-64-link-records.f
+SUITE x86-64-kernel-callback
+   test/x86-64-kernel-callback.f
 ;SUITE
 
 \ The crash handler the x86-64 boot installs, src/habu/boot-x64.f, in the
@@ -1859,18 +1885,10 @@ SUITE aot-data-window
 
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
-   test/aot-seed-metadata.f
 ;SUITE
 
 SUITE aot-capture-compact
    test/aot-capture-compact.f
-;SUITE
-
-\ A capture taken with an x86-64 shadow open carries the shadow's records,
-\ routines, sites and record-keyed code cells through the artifact's round trip;
-\ READ refuses forged shadow rows by name and MERGE refuses a shadow.
-SUITE aot-shadow-capture
-   test/aot-shadow-capture.f
 ;SUITE
 
 SUITE data-address-codec
@@ -1983,10 +2001,6 @@ SUITE engine-stack-lifecycle
 
 SUITE stack-guard
    test/stack-guard.f
-;SUITE
-
-SUITE engine-stack-debugger
-   test/engine-stack-debugger.f
 ;SUITE
 
 SUITE combinators
@@ -2261,10 +2275,6 @@ WHITEBOX-SUITE engine
    test/engine-suite.f
 ;SUITE
 
-SUITE debugger-resume
-   test/debugger-resume.f
-;SUITE
-
 SUITE engine-runtime-regressions
    test/runtime-regression-test.f
 ;SUITE
@@ -2402,10 +2412,6 @@ SUITE data-claims-build
 
 SUITE code-window
    test/code-window.f
-;SUITE
-
-SUITE addrmap-call
-   test/addrmap-call.f
 ;SUITE
 
 SUITE sites

@@ -780,7 +780,8 @@ public
    WIDE-FRAME-CASE
    REMAT-EMIT-CASE
    SECOND-CASE
-   RUN-CHILD-CASE
+   \ The child runs the emitted ARM64 routines, which an x86-64 host cannot.
+   HB-TARGET-LINUX-X86-64? 0= if RUN-CHILD-CASE then
    WBND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT

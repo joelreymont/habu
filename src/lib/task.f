@@ -978,7 +978,7 @@ variable ROW-N
 
 \ AN EMPTY TCB HOLDS NOTHING THIS PROCESS TOOK BUT ITS PARK, which outlives
 \ every release until the capture sweep (PARK-CREATE). The mailbox and the done
-\ semaphore are destroyed, the four mappings go back to the system, and the
+\ semaphore are destroyed, the five mappings go back to the system, and the
 \ five cells cleared last are what the run itself acquired: the pthread_t
 \ pthread_create stored, the value the join wrote, and PREPARE's record
 \ of this process's data base, record count and code end. An image restores none
@@ -1032,6 +1032,15 @@ variable ROW-N
 \ offset from `dbase@` either - measured on this engine, the window is at
 \ $340000000 and `dbase@` at $1410000 - so the link holds the address itself.
 PERSISTED-PTR-VARIABLE TASK-CHAIN
+
+\ The crash handler can inspect this immutable TCB chain after an instruction
+\ fetch faults in a task's guard. Publish the head cell in root DATA;
+\ task-local RBP is unavailable on that fault path. The fixed cell is declared
+\ as a DATA pointer so an image remaps it with the dictionary window.
+data-base TASK-CHAIN-CELL + ptr-cell-mark
+: TASK-CHAIN-PUBLISH ( -- )
+   TASK-CHAIN data-base TASK-CHAIN-CELL + 0 ptr-field ! ;
+TASK-CHAIN-PUBLISH
 
 : TASK-CHAIN@ ( -- ptr n )
    TASK-CHAIN @ ;
@@ -1169,10 +1178,7 @@ variable SWEEP-ARMED
 : TASK-STACK-BYTES ( n -- n ) {: want:n :}
    want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
 
-: PREPARE ( ptr n -- ) {: tcb:ptr :}
-   TASK-ARM-SWEEP
-   tcb TASK-CONSTRUCTED? if exit then
-   tcb TCB.SIZE @ TASK-CHECK-SIZE
+: TASK-PREPARE-RESOURCES ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.SIZE @ TASK-STACK-BYTES MEM:ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
    STACK-ABI:RETURN-BYTES MEM:ALLOC-GUARDED tcb TCB.RSTACK-U ! tcb TCB.RSTACK !
    STACK-ABI:LOOP-BYTES MEM:ALLOC-GUARDED tcb TCB.LSTACK-U ! tcb TCB.LSTACK !
@@ -1192,6 +1198,20 @@ variable SWEEP-ARMED
    tcb PARK-CREATE
    tcb DONE-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
+
+\ Every resource above records its owner as soon as it succeeds. A later mmap
+\ or semaphore refusal leaves the task EMPTY, so the capture sweep cannot own
+\ the partial record; release it here before propagating the original error.
+: PREPARE ( ptr n -- ) {: tcb:ptr :}
+   TASK-ARM-SWEEP
+   tcb TASK-CONSTRUCTED? if exit then
+   tcb TCB.SIZE @ TASK-CHECK-SIZE
+   tcb [: dup TASK-PREPARE-RESOURCES ;] catch {: rc:n :}
+   drop
+   rc 0<> if
+      tcb TASK-RELEASE-MEM
+      rc throw
+   then ;
 
 : TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
    tcb TCB.THREAD BYTE-VIEW 0 PTHREAD-ENTRY tcb BYTE-VIEW PTHREAD-CREATE-CALL ;

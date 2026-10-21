@@ -17,6 +17,9 @@ variable ERR-U
 variable RC
 variable EXITED
 
+: SETUP-TIER$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if s" 1 set-tier " else s" 0 set-tier " then ;
+
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
@@ -27,7 +30,7 @@ variable EXITED
 : SOURCE$ ( n bool -- ptr u8 n )
    {: tier:n trusted:bool :}
    SB-RESET
-   s" 0 set-tier " SB-APPEND
+   SETUP-TIER$ SB-APPEND
    s" TRUSTED: NIC-MARK-LAST ( -- ) ndict@ 1- int-mark ; " SB-APPEND
    s" : NIC-HIDDEN ( -- n ) 41 ; NIC-MARK-LAST " SB-APPEND
    S\" s\" NIC-KNOWN ( -- n ) NIC-HIDDEN\" CHECK-QUIET-CANDIDATE! . cr " SB-APPEND
@@ -42,7 +45,7 @@ variable EXITED
 : EXPORT-SOURCE$ ( n -- ptr u8 n )
    {: tier:n :}
    SB-RESET
-   s" ;package 0 set-tier " SB-APPEND
+   s" ;package " SB-APPEND SETUP-TIER$ SB-APPEND
    s" TRUSTED: NIC-MARK-LAST ( -- ) ndict@ 1- int-mark ; " SB-APPEND
    s" : NIC-HIDDEN ( -- n ) 41 ; NIC-MARK-LAST " SB-APPEND
    S\" s\" NIC-KNOWN ( -- n ) NIC-HIDDEN\" CHECK-QUIET-CANDIDATE! . cr " SB-APPEND
@@ -111,9 +114,13 @@ variable EXITED
    s" int-mark" 0 search-wl 0 T=
    s" int-mark" NDICT:CALL-TARGET 0 T=
    s" BAD-INTERNAL ( n -- ) int-mark" CHECK-QUIET-CANDIDATE! 0 T=
-   0 REJECT-CALL 1 REJECT-CALL
-   0 TRUST-CALL 1 TRUST-CALL
-   0 REJECT-EXPORT 1 REJECT-EXPORT
+   \ An x86-64 engine compiles at tier 1 only.
+   HB-TARGET-LINUX-X86-64? 0= if 0 REJECT-CALL then
+   1 REJECT-CALL
+   HB-TARGET-LINUX-X86-64? 0= if 0 TRUST-CALL then
+   1 TRUST-CALL
+   HB-TARGET-LINUX-X86-64? 0= if 0 REJECT-EXPORT then
+   1 REJECT-EXPORT
    T-REPORT ;
 
 RUN

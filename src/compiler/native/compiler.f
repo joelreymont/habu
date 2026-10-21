@@ -35,6 +35,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/compiler/native/fetch-check.f
+require src/core/engine-error.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
@@ -160,6 +161,16 @@ align
 0 CWORK-VARIABLE DEF-GEN-DELTA n
 0 CWORK-VARIABLE DEF-EPOCH-DELTA n
 0 CWORK-VARIABLE DEF-BUILD-DELTA n
+
+public
+3 constant FIXED-DEFER               \ a defer dispatch body, not an NDICT fixed kind
+4 constant FIXED-CAST                \ an engine-published CAST: identity body
+private
+
+0 CWORK-VARIABLE M-FIXED n                      \ the pending definer's body kind
+0 CWORK-VARIABLE M-FIXED-VAL n                  \ its value or dispatch cell
+-1 CWORK-VARIABLE M-FIXED-REC n                 \ published record for a seeded created child, or -1
+0 CWORK-VARIABLE M-SHADOW-ONLY n                \ the engine already published its own body
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -322,6 +333,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
+   CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECKER-OWNER:CHECK-UNJUDGED exit then
    check@ {: hook:n :}
@@ -374,8 +386,20 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    su 0= if exit then
    NAME$ sa su CHECKER-OWNER:DECLARED-ROW ;
 
+\ A using refusal the scan answered reports as the engine reports it at tier 0:
+\ its spelling on stderr and the ENGINE-ERROR status, so a native-only target
+\ (x86-64) refuses an ambiguous bare word the way the interpreter does.
+: SOURCE-RC ( n -- n )
+   dup E-USING-AMBIGUOUS <> if exit then
+   drop
+   2 s" hb: ambiguous bare word resolves in multiple used packages: " write drop
+   CHECKER-OWNER:REFUSAL-TOKEN$ {: a:ptr u:n :}
+   2 a u write drop
+   2 S\" \n" write drop
+   ENGINE-ERROR:USING-AMBIGUOUS ;
+
 : SCAN ( -- )
-   [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
+   [: CHECK-RECORDED M-VERDICT ! ;] catch SOURCE-RC {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
@@ -402,7 +426,19 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
+   \ In a multi-error run a definition the checker refused, or one that bound a
+   \ refused declaration's recovery row, is counted and abandoned unpublished:
+   \ E-NCOMP-RECOVERY ends it without a second report.
+   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
+      M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
+         CHECKER-OWNER:MULTI-ERROR? if E-NCOMP-RECOVERY throw then
+      then
+      E-NCOMP-VERDICT throw
+   else
+      CHECKER-OWNER:MULTI-ERROR? if
+         CHECKER-OWNER:RECOVERY-USED? if E-NCOMP-RECOVERY throw then
+      then
+   then then
    TAPE NFEED:RECORD-WINDOW
    before ;
 
@@ -528,10 +564,18 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : NO-RETURN? ( -- bool )
    NAME$ NDICT:SPELL-DEAD? ;
 
+: LEAF? ( -- bool )
+   M-FIXED @ NDICT:FIXED-VAL =  M-FIXED @ NDICT:FIXED-ADDR =  or ;
+
+: FIXED-LINKAGE ( -- NBACK:linkage )
+   NBACK:L-NONE
+   M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
+
 \ How control reaches and leaves this definition's routine. The backend composes
 \ its own machine contract from this and from what the definition takes and
 \ leaves; which registers or frame that means is the backend's answer.
 : LINKAGE ( -- NBACK:linkage )
+   LEAF? if FIXED-LINKAGE exit then
    NBACK:L-NONE
    NO-RETURN? if NBACK:L-DEAD NBACK:WITH then
    NELAB:CALLED? if NBACK:L-CALLED NBACK:WITH then
@@ -574,6 +618,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : SHADOWED ( IR-BUILD:module -- )
    {: hm:IR-BUILD:module :}
    NSHADOW:OPEN? 0= if exit then
+   NSHADOW:NATIVE? if exit then
    hm 0 M-HM !
    NSHADOW:BINDING [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -615,7 +660,9 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : EMITTED ( -- NART:emission )
    SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
    hm SHADOWED
-   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK ;
+   hm SS [: HOST-WORK ;] NSESSION:WITH-WORK {: e:NART:emission :}
+   NSHADOW:NATIVE? if e SHADOW-TAKE then
+   e ;
 
 : PUBLISH-IT ( NART:emission -- )
    M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
@@ -705,6 +752,89 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    0 M-DOES-FRAME !
    before M-PUBLISHED-START ! ;
 
+\ Fixed definers have no body text or checker scan. A one-row tape gives the
+\ HIR function its source and symbol; the definer publishes its effect later.
+\ Defer uses the captured qualified name so deadness resolves to its own word.
+$20 constant NAME-END
+
+: FIXED-NAME$ ( -- ptr u8 n )
+   M-FIXED-REC @ 0 >= if M-FIXED-REC @ XREF-REC XREF-NAME$ exit then
+   M-FIXED @ FIXED-DEFER = if
+      data-base BODYBUF-OFF + BYTE-VIEW
+      data-base BODYLEN-CELL + @ {: b:ptr len:n :}
+      0 begin
+         dup len < if b over + c@ dup NAME-END <> swap 0<> and else false then
+      while 1+ repeat
+      {: u:n :}
+      b u exit
+   then
+   PENDING-NAME$ ;
+
+: FIXED-TAPE ( -- )
+   FIXED-NAME$ {: a:ptr u:n :}
+   u TEXT-CAP > if E-NCOMP-TEXT throw then
+   a TXT u BYTE-COPY
+   CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
+   CC BB TXT u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CC BB tp
+   BB sid 0 u IR-BUILD:ADD-SPAN sym NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
+   NTAPE:PUSH-INTO drop
+   tp NTAPE:SEAL 0 M-TAPE ! ;
+
+: DEFER-WORK ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   KEEP-TAPE-NAME
+   0 M-IN ! 0 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
+   EMITTED dup M-EMISSION !
+   M-FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ;
+
+: FIXED-MODULE ( -- )
+   CC HIR-MOD 0 M-BLD !
+   FIXED-TAPE
+   MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   0 M-IN ! 1 M-OUT !
+   CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop ;
+
+: FIXED-SHADOW-WORK ( -- )
+   M-FIXED @ FIXED-DEFER = if
+      CC HIR-MOD 0 M-BLD !
+      FIXED-TAPE
+      MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+      KEEP-TAPE-NAME
+      0 M-IN ! 0 M-OUT !
+      CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
+   else
+      M-FIXED @ FIXED-CAST = if
+         CC HIR-MOD 0 M-BLD !
+         FIXED-TAPE
+         MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+         KEEP-TAPE-NAME
+         1 M-IN ! 1 M-OUT !
+         CC BB TAPE p r 1 1 NELAB:COLON drop
+      else
+         FIXED-MODULE
+      then
+   then
+   SS [: FROZEN ;] NSESSION:WITH-WORK {: hm:IR-BUILD:module :}
+   hm SHADOWED
+   hm IR-BUILD:RETIRE
+   M-FIXED-REC @ NSHADOW:PUBLISH ;
+
+: FIXED-WORK ( -- )
+   ndict@ {: before:n :}
+   M-FIXED @ FIXED-DEFER = if
+      CC HIR-MOD 0 M-BLD !
+      FIXED-TAPE
+      MODEL DEFER-WORK
+   else
+      FIXED-MODULE
+      EMITTED dup M-EMISSION !
+      NPUB:PUBLISH-RAW
+   then
+   before M-PUBLISHED-START ! ;
+
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
@@ -715,9 +845,11 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
+   -1 M-PUBLISHED-START !
    c M-LEASE @ NSESSION:NEW M-SESSION !
-   [: WORK ;] catch M-RC !
-   M-RC @ 0= if
+   [: M-SHADOW-ONLY @ if FIXED-SHADOW-WORK exit then
+      M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
+   M-RC @ 0= M-PUBLISHED-START @ 0 >= and if
       [: M-PUBLISHED-START @ M-EMISSION @ PUBLISHED-ROWS ;] catch 0<> if
          s" ncomp: publication callback threw" 76 die
       then
@@ -891,8 +1023,14 @@ INSTALL-FORGET
    u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
    S\" \n" ERROR-TEXT ;
 
+: REPORT-UNDEFINED-TICK ( -- )
+   s" E-UNDEFINED: " ERROR-TEXT
+   NELAB:REFUSED$ ERROR-TEXT
+   S\" \n" ERROR-TEXT ;
+
 : RUN ( -- )
    LENGTH-CK
+   CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
@@ -903,7 +1041,17 @@ INSTALL-FORGET
       entry-rc throw
    then
    M-RC @ {: rc:n :}
-   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
+   rc E-NCOMP-RECOVERY = if rc throw then
+   rc ENGINE-ERROR:USING-AMBIGUOUS = if RETRACT rc throw then
+   rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and if
+      REPORT-UNDEFINED-TICK
+      RETRACT RC-REJECT throw
+   then
+   rc 0 <> if
+      rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
+      if REPORT-FAILURE then
+      RETRACT rc throw
+   then ;
 
 : STAGE ( ptr u8 n bool -- )
    {: sa su:n required:bool :}
@@ -926,6 +1074,9 @@ INSTALL-FORGET
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !
+   NDICT:FIXED-NONE M-FIXED !
+   -1 M-FIXED-REC !
+   0 M-SHADOW-ONLY !
    0 NAME-U !
    NELAB:REFUSED-RESET ;
 
@@ -940,6 +1091,36 @@ private
 
 : LEASED-CHECKED ( ptr u8 n NLEASE:lease -- )
    true swap LEASED-MODE ;
+
+: FIXED-LEASED ( n n NLEASE:lease -- )
+   {: val:n kind:n lease:NLEASE:lease :}
+   lease M-LEASE !
+   TXT 0 false STAGE
+   kind M-FIXED ! val M-FIXED-VAL !
+   RUN ;
+
+: SHADOW-FIXED-LEASED ( n n n NLEASE:lease -- )
+   {: val:n kind:n idx:n lease:NLEASE:lease :}
+   lease M-LEASE !
+   IDLE-CK
+   kind NDICT:FIXED-ADDR <> kind NDICT:FIXED-VAL <> and
+   kind FIXED-DEFER <> and kind FIXED-CAST <> and if E-NCOMP-STATE throw then
+   idx 0 < idx ndict@ >= or if E-NCOMP-STATE throw then
+   NSHADOW:NATIVE? if
+      kind FIXED-CAST <> val 0<> or if E-NCOMP-STATE throw then
+      idx XREF-REC {: rec:ptr :}
+      rec XREF-START rec XREF-CODE-BYTES NSHADOW:TAKE-CAST
+      idx NSHADOW:PUBLISH
+      exit
+   then
+   idx M-FIXED-REC !
+   val M-FIXED-VAL !  kind M-FIXED !
+   0 M-DOES !  -1 M-DOES-FUN !
+   1 M-SHADOW-ONLY !  1 M-OPEN !  0 M-RC !
+   [: IN-CONTEXT ;] catch {: rc:n :}
+   0 M-SHADOW-ONLY !  0 M-OPEN !
+   rc 0<> if rc throw then
+   M-RC @ 0<> if M-RC @ throw then ;
 
 public
 
@@ -1027,6 +1208,21 @@ public
 : COMPILE-CHECKED ( ptr u8 n -- )
    [: LEASED-CHECKED ;] NLEASE:WITH ;
 
+: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+   kind NDICT:FIXED-VAL <> kind NDICT:FIXED-ADDR <> and
+   kind FIXED-DEFER <> and if E-NCOMP-STATE throw then
+   val kind [: FIXED-LEASED ;] NLEASE:WITH ;
+
+\ LCREATE has already published its ARM body and closed its write window.
+\ Compile the same fixed one-row HIR for the open target shadow, then attach
+\ that emission to the created record. No second ARM publication occurs.
+: SHADOW-FIXED ( n n n -- ) {: val:n kind:n idx:n :}
+   NSHADOW:OPEN? 0= if exit then
+   val kind idx [: SHADOW-FIXED-LEASED ;] NLEASE:WITH ;
+
+: SHADOW-DOES ( n n -- )
+   NSHADOW:PATCH-DOES ;
+
 \ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
 \ tier-1 `:` dispatches through. A tool that counts compiles borrows the cell
 \ with its wrapper and gives it back with INSTALL.
@@ -1038,16 +1234,17 @@ public
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
    ['] CALLBACK-ENTRY data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
-   ['] COMPILE DISPATCH! ;
+   ['] COMPILE DISPATCH!
+   ['] SHADOW-FIXED data-base NCOMP-DISPATCH:FIXED-SHADOW-CELL + xt!
+   ['] SHADOW-DOES data-base NCOMP-DISPATCH:DOES-SHADOW-CELL + xt! ;
 
-\ The session is already gone by the time this runs, and it took what NCOMP held
-\ in it with it: IMAGE-LIFECYCLE:PREPARE closed the session, and SESSION-FORGET
-\ above is the stand-down that close ran, before the interner the dialects were
-\ reading was unmapped. So there is nothing session-shaped left to clear here,
-\ and no order between the two entry points to get right.
+\ A whole-image capture closes the session through IMAGE-LIFECYCLE:PREPARE.
+\ A chain window captures this entry directly, so close a live session here too.
+\ SESSION-FORGET clears its readers before the interner is unmapped.
 : CAPTURE-PREPARE ( -- )
    NLEASE:IDLE-CK
    IDLE-CK
+   IR-CTX:SESSION-LIVE? if IR-CTX:SESSION-CLOSE then
    NFETCH:RELEASE
    \ A shadow's map lives in mappings no image carries, so the capture ends it.
    NSHADOW:CLOSE

@@ -28,6 +28,7 @@ require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
+require src/habu/main.f
 
 package SNAP
 
@@ -68,6 +69,7 @@ variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SRL  variable SML  variable SIL  variable SDW
 variable SNL  variable SFTS  variable SPAD  variable SFD
 variable SHF  variable SHL           \ heap form (SNAPSHOT-FORMAT:HEAP-RAW/-GRID), stored heap bytes
+PTR-VARIABLE SXT-A                   \ x86 text scratch (src/habu/snap-x64.f)
 create PAD-ZEROS 16 allot
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
@@ -126,6 +128,10 @@ s" SDB@" s" -- ptr u8" TRUST
    bytes SNAP-TRL-BYTES TEXT-CUT {: end:n :}
    STB@ end + {: trailer:ptr :}
    trailer CELL-VIEW @ SNAP-MAGIC <> if BAD-SOURCE then
+   HB-TARGET-LINUX-X86-64? if
+      trailer SNAP-TRL-DATALEN + CELL-VIEW @ DATA-START -
+         end swap TEXT-CUT exit
+   then
    end trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
       trailer SNAP-TRL-REGLEN + CELL-VIEW @ DICT-SIZE - + TEXT-CUT
    trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
@@ -179,6 +185,11 @@ PTR-VARIABLE SNC-A
 
 \ snap-rebase takes the copy's bounds as numbers: its distance from zero.
 : SNC-CANON ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      ndict@ DREC * {: used:n :}
+      DICT-SIZE used - 0 ?do 0 SNC-PTR used i + + c! loop
+      exit
+   then
    SNC-PTR NULL-PTR BYTE-VIEW - {: base:n :}
    base  base SCL @ +  ndict@
    STB @  STSZ @  0
@@ -245,20 +256,32 @@ PTR-VARIABLE SND-A
    PKG-PUB-CELL SND-ZERO-CELL PKG-PRI-CELL SND-ZERO-CELL
    PKG-PARENT-CELL SND-ZERO-CELL PKG-REC-CELL SND-ZERO-CELL
    LOOPSP-CELL SND-ZERO-CELL  DOESP-CELL SND-ZERO-CELL
-   CREATEP-CELL SND-ZERO-CELL RRECP-CELL SND-ZERO-CELL
+   \ ARM startup reinstalls LCREATE. The x86-64 fixed-address image keeps its
+   \ captured Habu CREATE handler, which snapshot startup does not reinstall.
+   HB-TARGET-LINUX-X86-64? 0= if CREATEP-CELL SND-ZERO-CELL then
+   RRECP-CELL SND-ZERO-CELL
    LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL
-   EVALREC-CELL SND-ZERO-CELL UNCGH-CELL SND-ZERO-CELL
+   EVALREC-CELL SND-ZERO-CELL
+   \ The x86-64 handler points into fixed linked code. MAIN installed it before
+   \ the sealed image was saved, so snapshot boot keeps that exact XT.
+   HB-TARGET-LINUX-X86-64? 0= if UNCGH-CELL SND-ZERO-CELL then
    REFUSAL-ABI:CODE-CELL SND-ZERO-CELL
    SIGNAL-ABI:STUB-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
-   AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
+   HB-TARGET-LINUX-X86-64? 0= if
+      AOT-CELLS:SPAN-TABLE-CELL SND-ZERO-CELL
+      AOT-CELLS:SPAN-N-CELL SND-ZERO-CELL
+      AOT-CELLS:SPAN-BASE-CELL SND-ZERO-CELL
+   then
    TSIG-A-CELL SND-ZERO-CELL  TSIG-U-CELL SND-ZERO-CELL
    TCSIG-A-CELL SND-ZERO-CELL TCSIG-U-CELL SND-ZERO-CELL
    CRSIG-A-CELL SND-ZERO-CELL CRSIG-U-CELL SND-ZERO-CELL
    INP-CELL SND-ZERO-CELL     INE-CELL SND-ZERO-CELL
    OWNED-SOURCE-CELL SND-ZERO-CELL
    OWNED-SOURCE-SIZE-CELL SND-ZERO-CELL
+   SRCLOC:PATH-CELL SND-ZERO-CELL
+   SRCLOC:PATHLEN-CELL SND-ZERO-CELL
+   SRCLOC:INB-CELL SND-ZERO-CELL
+   ENGINE-MAIN:ARENA-CELL SND-ZERO-CELL
    HIDXP-CELL SND-ZERO-CELL
    HIDX:CLAIMS SND-ZERO-CELL
    ADDRESS-CELLS:INDEX-CELL SND-ZERO-CELL
@@ -269,7 +292,8 @@ PTR-VARIABLE SND-A
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
    EVAL-TOP-CELL SND-ZERO-CELL  CLOSED-FREE-CELL SND-ZERO-CELL
-   FLOORREC-CELL SND-ZERO-CELL  CODE-END-CELL SND-ZERO-CELL
+   FLOORREC-CELL SND-ZERO-CELL
+   HB-TARGET-LINUX-X86-64? 0= if CODE-END-CELL SND-ZERO-CELL then
    DEF-OCC:PTR-CELL SND-ZERO-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE SND-ZERO-CELL
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE SND-ZERO-CELL
@@ -374,6 +398,7 @@ PTR-VARIABLE SND-A
 : SND-ZERO-WRITER ( -- )
    SNC-A SND-ZERO-OFF SND-ZERO-CELL
    SND-A SND-ZERO-OFF SND-ZERO-CELL
+   SXT-A SND-ZERO-OFF SND-ZERO-CELL
    MBUF-A SND-ZERO-OFF SND-ZERO-CELL
    MP SND-ZERO-OFF SND-ZERO-CELL
    MLEN SND-ZERO-OFF SND-ZERO-CELL
@@ -410,7 +435,7 @@ PTR-VARIABLE SND-A
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
-   SND-CANON-XT-CELLS ;
+   HB-TARGET-LINUX-X86-64? 0= if SND-CANON-XT-CELLS then ;
 
 : CANON-REGION ( -- )
    SNC-ALLOC
@@ -499,6 +524,7 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
    SNAPSHOT-FORMAT:HEAP-GRID SHF !  grid SHL !
    WRITE-GRID ;
 
+
 \ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
 \ the close it checks, and it does nothing. It is private, so no qualified name
 \ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
@@ -568,16 +594,19 @@ variable STAGED-U
    SHF @ SNAPSHOT-FORMAT:HEAP-GRID = if SFD @ SGR-PTR SHL @ FDIO:WALL exit then
    SFD @ SND-PTR DATA-START + SHL @ FDIO:WALL ;
 
+: FILL-TRL ( -- )
+   SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !
+   ndict@ TRL SNAP-TRL-NDICT + !
+   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
+   SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + ! ;
+
 : WRITE-BYTES ( -- )
    \ trailer (SNAP-TRL-BYTES): magic, heap form, dict count, region length,
    \ data length, format version - the region stream below is the
    \ canonicalized copy. The version is the LAST field so the magic and the four
    \ older fields sit where the legacy trailer put them, which is what lets the
    \ loader tell a legacy image apart from a corrupt one.
-   SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !
-   ndict@ TRL SNAP-TRL-NDICT + !
-   SCL @ TRL SNAP-TRL-REGLEN + !  SDW @ TRL SNAP-TRL-DATALEN + !
-   SNAPSHOT-FORMAT:VERSION TRL SNAP-TRL-VERSION + !
+   FILL-TRL
    \ stream: header, engine text, live dict rows, code, structured DATA, trailer
    \ (the heap section last in DATA, raw or grid as SHF says)
    STAGE
@@ -605,6 +634,11 @@ variable STAGED-U
 : WRITE-IMAGE ( snap -- )
    SNAP-DROP
    WRITE-BYTES ;
+
+defer WRITE-TARGET ( -- )
+: WRITE-ARM ( -- ) FRAME WRITE-IMAGE ;
+: INSTALL-WRITER ( -- ) [: WRITE-ARM ;] is WRITE-TARGET ;
+INSTALL-WRITER
 
 \ The control-flow stack's depth cell lies in the dictionary region, whose
 \ base dbase@ answers as a number.
@@ -655,8 +689,7 @@ public
    CANON-REGION
    CANON-DATA
    ENCODE-HEAP
-   FRAME
-   WRITE-IMAGE
+   WRITE-TARGET
    PUBLISH
    s" " 0 die ;
 

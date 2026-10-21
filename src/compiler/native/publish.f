@@ -108,13 +108,21 @@ variable UNIT-ARMED
       then
    loop ;
 
+\ The ARM call map needs only calls out of REGION. A stripped x86 image packs
+\ reachable bodies at new addresses, so every recorded E8 call or E9 tail
+\ branch must move with it, including calls between REGION words.
 : RELOC-CALLS ( NART:emission n -- )
    {: e:NART:emission fn:n :}
+   e NART:ARCH CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ {: x64:bool :}
    e NART:CALL-SITES 0 ?do
-      e i NART:CALL-KIND@ NEMIT:CALL = if
-         e i NART:CALL-TARGET@ EXTERNAL? if
-            fn e i NART:CALL-SITE@ + RELOC-EXTERNAL
-         then
+      e i NART:CALL-KIND@ {: kind:n :}
+      x64 if
+         kind NEMIT:CALL = kind NEMIT:TAIL = or
+      else
+         kind NEMIT:CALL =
+         e i NART:CALL-TARGET@ EXTERNAL? and
+      then if
+         fn e i NART:CALL-SITE@ + RELOC-EXTERNAL
       then
    loop ;
 
@@ -139,23 +147,49 @@ variable UNIT-ARMED
    e TAIL-RELOC-CK
    fn ;
 
-: COMMIT ( NART:emission n n n -- )
-   {: e:NART:emission idx:n fn:n size:n :}
+: PLACE ( NART:emission n n -- ) {: e:NART:emission fn:n size:n :}
    e NART:BYTES fn size CODE-WINDOW
    e fn RELOC-CALLS
-   e fn RELOC-ADDRS
+   e fn RELOC-ADDRS ;
+
+: COMMIT ( NART:emission n n n -- )
+   {: e:NART:emission idx:n fn:n size:n :}
+   e fn size PLACE
    fn e size RECORDED-LEN idx PUBLISH-REC ;
 
 TYPED-VARIABLE HELD-E NART:emission
 variable HELD-IDX
 variable HELD-FN
 variable HELD-SIZE
+variable HELD-DEFER                     \ a defer body's dispatch cell, or 0
+
+\ A defer record's span ends at the trailer just past its code slot.
+2 cells constant TRAILER-BYTES
+create TRAILER TRAILER-BYTES allot
+
+: TRAILER-PLACE ( n n -- ) {: cell:n slot:n :}
+   DEFER-MAGIC TRAILER !
+   cell TRAILER CELL + !
+   TRAILER slot TRAILER-BYTES CODE-WINDOW ;
+
+\ A defer body's record ends at its trailer, which names the dispatch cell the
+\ body jumps through (layout.f DEFER-MAGIC), so the span is the slot and not the
+\ emission's return-trimmed length.
+: COMMIT-DEFER ( NART:emission n n n n -- )
+   {: e:NART:emission idx:n fn:n size:n cell:n :}
+   e fn size PLACE
+   cp@ {: slot:n :}
+   fn slot fn - CODE-SPAN:EXACT idx PUBLISH-REC
+   cell slot TRAILER-PLACE ;
 
 : UNIT-NOTIFY ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
    UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
 
 : COMMIT-HELD ( -- )
+   HELD-DEFER @ 0<> if
+      HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ HELD-DEFER @ COMMIT-DEFER exit
+   then
    HELD-E @ HELD-IDX @ HELD-FN @ HELD-SIZE @ COMMIT ;
 
 \ The unit observer is the last callback; checker writes follow the commit.
@@ -174,7 +208,7 @@ variable HELD-SIZE
    {: e:NART:emission idx:n fn:n size:n :}
    e fn NHOST:TAKE
    e HELD-E !  idx HELD-IDX !  fn HELD-FN !  size HELD-SIZE !
-   [: COMMIT-OWNED-BODY ;] [: 0 HELD-FN ! ;] finally ;
+   [: COMMIT-OWNED-BODY ;] [: 0 HELD-FN !  0 HELD-DEFER ! ;] finally ;
 
 : PENDING-IDX ( -- n )
    ndict@ ;
@@ -224,19 +258,42 @@ variable HELD-SIZE
    off 0 <= if E-NPUB-OFFSET throw then
    idx fn size off ;
 
-public
-
-: PUBLISH-PENDING ( NART:emission -- )
+\ Commit one pending body; callers decide whether to consume checker facts.
+: PUBLISH-CODE ( NART:emission -- n )
    {: e:NART:emission :}
    e PENDING-PROVE {: idx:n fn:n size:n :}
+   e fn NSHADOW:SOURCE-FUNS
    e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    idx APPEND-PENDING
-   idx PENDING-FACTS ;
+   idx ;
+
+: HOOKED? ( -- bool )
+   data-base HOOK-CELL + @ 0<> ;
+
+public
+
+: PUBLISH-PENDING ( NART:emission -- )
+   PUBLISH-CODE PENDING-FACTS ;
+
+: PUBLISH-RAW ( NART:emission -- )
+   PUBLISH-CODE drop ;
+
+: PUBLISH-PENDING-DEFER ( NART:emission n -- )
+   {: e:NART:emission cell:n :}
+   e PENDING-PROVE {: idx:n fn:n size:n :}
+   fn size + TRAILER-BYTES + CODE-CEILING > if E-NPUB-ROOM throw then
+   e fn NSHADOW:SOURCE-FUNS
+   cell HELD-DEFER !
+   e idx fn size COMMIT-OWNED
+   idx NSHADOW:PUBLISH
+   idx APPEND-PENDING
+   HOOKED? if idx PENDING-FACTS then ;
 
 : PUBLISH-PENDING-DOES ( NART:emission n -- )
    {: e:NART:emission fun:n :}
    e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
+   e fn NSHADOW:SOURCE-FUNS
    e idx fn size COMMIT-OWNED
    idx NSHADOW:PUBLISH
    fn off + e size off - RECORDED-LEN DOES-RECORD

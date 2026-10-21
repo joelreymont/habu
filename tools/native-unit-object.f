@@ -131,6 +131,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
 : DEF-NUM ( ptr u8 n -- n )
    DEF-TARGET DEF-NUM-XT execute ;
 : DEF-ELIGIBLE? ( -- bool )
+   NUNIT-CAPTURE:AARCH64-PROFILE? 0= if false exit then
    s" NCOMP:DEFINITION-CACHEABLE?"
       NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop false exit then
    DEF-NUM-XT execute 0= if false exit then
@@ -378,6 +379,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
 : DEF-CAPTURE ( n n n n -- )
    {: emission:n idx:n fn:n size:n :}
    DEF-ACTIVE @ 0= if exit then
+   NUNIT-CAPTURE:PROFILE-CK
    DEF-EMITTED @ if BAD then
    idx DEF-PENDING @ <> size 0 <= or if BAD then
    fn DEF-CODE-BASE !
@@ -627,6 +629,7 @@ variable DEF-HELD-SIZE
    loop drop ;
 
 : DEF-INSTALL ( -- n )
+   NUNIT-CAPTURE:PROFILE-CK
    DEF-PREPARED @ 0= if BAD then
    DEF-HISTORY-REPLAY
    DEF-COPY-LITERALS
@@ -702,6 +705,7 @@ public
 
 : PACK-DEFINITION ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n deps:ptr depsu:n :}
+   NUNIT-CAPTURE:PROFILE-CK
    DEF-FINISHED @ 0= if BAD then
    deps depsu DEF-PACK-SECTIONS
    NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;

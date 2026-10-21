@@ -3,6 +3,7 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/lib/source-syntax.f
 
 package SOURCE
 private
@@ -168,10 +169,7 @@ public
 \ all four. In a body a local of the keyword's name is that local and takes
 \ nothing, so a scanner that knows the locals asks this after its local lookup.
 : PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" char" STR=CI if STR-TRUE exit then
-   a u s" [char]" STR=CI if STR-TRUE exit then
-   a u s" '" STR= if STR-TRUE exit then
-   a u s" [']" STR= ;
+   a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 
 \ The interpret keywords of src/habu/habu2.f EM-INTERPRET-DEFINE-KEYWORDS that
 \ read a name take the next whitespace-delimited token raw, whatever it spells,
@@ -203,26 +201,10 @@ public
 \ quotation is a block too. A scanner that knows the locals asks these after its
 \ local lookup, since a local of a control word's name is that local.
 : BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" STR=CI if STR-TRUE exit then
-   a u s" begin" STR=CI if STR-TRUE exit then
-   a u s" do" STR=CI if STR-TRUE exit then
-   a u s" ?do" STR=CI if STR-TRUE exit then
-   a u s" case" STR=CI if STR-TRUE exit then
-   a u s" of" STR=CI if STR-TRUE exit then
-   a u s" match" STR=CI if STR-TRUE exit then
-   a u s" [:" STR= ;
+   a u SOURCE-SYNTAX:BLOCK-OPENER? ;
 
 : BLOCK-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" then" STR=CI if STR-TRUE exit then
-   a u s" until" STR=CI if STR-TRUE exit then
-   a u s" repeat" STR=CI if STR-TRUE exit then
-   a u s" again" STR=CI if STR-TRUE exit then
-   a u s" loop" STR=CI if STR-TRUE exit then
-   a u s" +loop" STR=CI if STR-TRUE exit then
-   a u s" endof" STR=CI if STR-TRUE exit then
-   a u s" endcase" STR=CI if STR-TRUE exit then
-   a u s" ;match" STR=CI if STR-TRUE exit then
-   a u s" ;]" STR= ;
+   a u SOURCE-SYNTAX:BLOCK-CLOSER? ;
 
 private
 

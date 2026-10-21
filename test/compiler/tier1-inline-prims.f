@@ -30,6 +30,7 @@ require src/lib/fs.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require src/compiler/native/dict.f
+require src/arch/x86-64/disasm.f
 
 1 set-tier
 
@@ -53,6 +54,13 @@ private
    at CODE@ $3FFFFFF and {: d:n :}
    d $2000000 >= if d $4000000 - else d then
    2 lshift at + ;
+
+\ Decode complete x86 instructions: an E8 byte inside an immediate is not a
+\ call, and a direct call's displacement is relative to its instruction end.
+: X-STEP ( n n -- n n n ) {: at:n hi:n :}
+   at hi at - CODE-BYTES:AT at X64DIS:STEP
+   {: bytes:n kind:n target:n :}
+   at bytes + kind target ;
 
 \ ---- the spans ---------------------------------------------------------------
 variable MISSING                     \ names the dictionary did not answer for
@@ -94,6 +102,15 @@ variable PRIM-N
 \ How many calls the named word makes into ANY recorded primitive body.
 : CALLS-PRIMS ( ptr u8 n -- n ) {: na:ptr nu:n :}
    na nu SPAN {: lo:n hi:n :}
+   HB-TARGET-LINUX-X86-64? if
+      lo 0
+      begin over hi < while
+         swap hi X-STEP {: next:n kind:n target:n :}
+         kind X64DIS:FLOW-CALL = target IN-PRIM? and if 1+ then
+         next swap
+      repeat
+      nip exit
+   then
    0
    hi lo ?do
       i BL? if i BL-TARGET IN-PRIM? if 1+ then then
@@ -103,6 +120,16 @@ variable PRIM-N
 : CALLS-WORD ( ptr u8 n ptr u8 n -- n ) {: na:ptr nu:n ta:ptr tu:n :}
    ta tu SPAN {: tlo:n thi:n :}
    na nu SPAN {: lo:n hi:n :}
+   HB-TARGET-LINUX-X86-64? if
+      lo 0
+      begin over hi < while
+         swap hi X-STEP {: next:n kind:n target:n :}
+         kind X64DIS:FLOW-CALL =
+            target tlo >= target thi < and and if 1+ then
+         next swap
+      repeat
+      nip exit
+   then
    0
    hi lo ?do
       i BL? if
@@ -113,6 +140,15 @@ variable PRIM-N
 
 : CALLS-ENTRY ( ptr u8 n n -- n ) {: na:ptr nu:n target:n :}
    na nu SPAN {: lo:n hi:n :}
+   HB-TARGET-LINUX-X86-64? if
+      lo 0
+      begin over hi < while
+         swap hi X-STEP {: next:n kind:n at:n :}
+         kind X64DIS:FLOW-CALL = at target = and if 1+ then
+         next swap
+      repeat
+      nip exit
+   then
    0
    hi lo ?do
       i BL? if i BL-TARGET target = if 1+ then then

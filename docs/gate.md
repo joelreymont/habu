@@ -64,8 +64,9 @@ inside `TMP-PATH-CHECK` before it had a row: `native-build OK`, then
 host. The rows cannot be withheld to make the build refuse it: without them
 the window cannot compile `src/core/check-hook.f`'s first definition (the
 checker's reason, then `ncomp: cannot compile REPORT-UNCHECKABLE`, throw 70).
-After editing a prefix file, boot the candidate's prefix cold before the
-registry:
+After editing an ARM prefix file, boot the candidate's prefix cold before the
+registry. This source-built recovery route is ARM-only; Intel captures its
+checked prefix through `tools/native-build.f`:
 
 ```sh
 HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
@@ -114,6 +115,41 @@ files through the tree's `bin/hb`. Multi-generation convergence is a separate
 check for codegen, self-hosting or capture changes that can alter successive
 engine output; see [bootstrap.md](bootstrap.md#generation-chain-check). The
 Gforth recovery checks below are also separate from this registry.
+
+The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
+`set-tier: x86-64 runs tier 1 only`. The registry includes
+`test/gate-arm-cases.f` only on an ARM host. Its thirteen whole rows require
+the ARM host, its source recovery, JIT, or tier 0:
+
+- `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
+  use the ARM source window and observe x86-64 as a second target. On an x86-64
+  host the resident shadow map is different (29 records instead of the six
+  expected by `compiler-shadow`).
+- `engine-stack-debugger`, `debugger-resume`: the ARM BRK debugger fixtures
+  select tier 0; the x86-64 engine refuses that selection.
+- `addrmap-call`: it decodes four-byte AArch64 `BL` instructions and reads the
+  JIT address-map bitmap, after selecting tier 0.
+- `prop`: its candidate compilation, untyped measurement, and false-reject
+  oracle require the unchecked tier 0; the harness selects that tier before
+  running any generated case.
+- `build-fixpoint-sandbox`: both cases alter the ARM recovery assembler and
+  install its source-built engine. Intel's native generation chain uses
+  `tools/native-build.f`; its recovery cross-builds from ARM.
+- `compiler-native-identity-spill`, `compiler-native-wide-frame`,
+  `compiler-native-fused-moves`: these fixtures assert AArch64 instruction,
+  register and frame layouts. Intel selection, allocation and emission have
+  their own shared rows.
+- `aot-chain-capture`: its live-window mutation, capture and
+  instruction-chain compaction checks need an ARM host. The capture format's
+  inert metadata transfer, extent, capacity and refusal cases run in the shared
+  `aot-chain-storage` row.
+- `aot-seed-metadata`: its signed-image mutations target the ARM boot reader's
+  packed ULEB record and site tables. `aot-seed-batch` still builds and runs the
+  ordinary candidate on both targets.
+
+Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
+remain registered on x86-64. Their eligible tier-1 cases must run; a fixture
+may guard an individual ARM-only premise after measuring the native refusal.
 
 The gate runs executable checks without an external theorem prover. Passing it
 establishes only the behavior exercised; see [proofs.md](proofs.md).

@@ -107,19 +107,20 @@ create DIGIT 1 allot
 public
 
 : HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
+   CHECKER-REPORT-RESET
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REPORT-DUPLICATE DUP-RC throw then
    a u CHECK! REPORT-UNCHECKABLE
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if
-      \ never die bare: with no DIAGXT installed an uncheckable (verdict 1)
-      \ definition used to exit rc 70 with NO diagnostic - an opaque exit in
-      \ fork/gate captures. Name the definition and its failing token to fd 2.
-      s" hook: non-certified definition: " SAY
-      NMB NMU @ SAY
-      s"  at '" SAY
-      FAILTK FAILTU @ SAY
-      S\" '\n" SAY
+      \ A muted or replaced DIAGXT can emit nothing even in JSON mode.
+      CHECKER-JSON-REPORTED? 0= if
+         s" hook: non-certified definition: " SAY
+         NMB NMU @ SAY
+         s"  at '" SAY
+         FAILTK FAILTU @ SAY
+         S\" '\n" SAY
+      then
       CHECK-RC throw then ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;

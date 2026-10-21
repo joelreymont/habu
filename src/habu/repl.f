@@ -1,10 +1,8 @@
-\ repl.f — the interactive REPL for the stdin engine (bin/hb). Baked as the
-\ engine's LSRC; EMIT-SOURCE runs it only when fd 0 is a tty (a pipe gets the
-\ classic batch read-all and never sees these words run). INSTALL points
-\ REPLH-CELL at RD-LINE; the engine's LEXIT path then prints " ok", saves the
-\ line-start compile state (CP/NDICT/DP/SP), and BLRs RD-LINE for the next
-\ line. Undefined words print `E-UNDEFINED: name`, uncaught THROWs print "?",
-\ roll the line back, and re-read instead of exiting.
+\ repl.f — the terminal line reader for OUTER:REPL (src/habu/interpret.f).
+\ ENGINE-MAIN routes a tty to that session. INSTALL installs RD-LINE as the
+\ default REPL-READ defer and puts its xt in REPLH-CELL; genio may replace the
+\ defer, so OUTER:REPL reads the cell again before each line. The session owns
+\ prompts, pending definitions and recovery; this file owns terminal editing.
 \ The editor runs the tty RAW (per line; canonical is restored while the line
 \ executes): insert/backspace at a cursor, left/right arrows, ^A/^E home/end,
 \ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line
@@ -203,7 +201,7 @@ defer REPL-READ ( -- ptr u8 n )
 
 \ A line that asked for more than LLINE-MAX is NOT accepted: it is refused by
 \ name, left out of the history ring and read again from an empty buffer. The
-\ engine's LEXIT path only ever sees whole lines.
+\ outer session only ever sees whole lines.
 : RD-LINE ( -- ptr u8 n )
    TTY? 0= IF NULL$ exit THEN
    0 HBR-TIO-GET TIOB0 ioctl drop

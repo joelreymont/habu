@@ -7,6 +7,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require test/whitebox-child.f
 require src/lib/test/subject.f
+require test/suite-budget.f
 
 package REGISTRY-IDENTITY-SUITE
 
@@ -38,13 +39,17 @@ create ERR IO-CAP allot
    s" src/core/structures.f" ARG
    s" src/core/bytes.f" ARG
    s" src/core/dynamic-storage.f" ARG
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-X86-64? if
+      s" src/os/linux-x86-64/target.f" ARG
+      s" src/os/linux/layout-constants.f" ARG
+      s" src/os/linux/layout.f" ARG
+   else HB-TARGET-LINUX? if
       s" src/os/linux/target.f" ARG
       s" src/os/linux/layout-constants.f" ARG
       s" src/os/linux/layout.f" ARG
-   else
+   else HB-TARGET-MACOS? if
       s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG
-   then
+   else s" registry-identity: unsupported target" 76 die then then then
    s" src/habu/stack-abi.f" ARG
    s" src/habu/layout.f" ARG
    s" src/os/env-base.f" ARG
@@ -56,7 +61,7 @@ create ERR IO-CAP allot
 
 : CHECK ( -- )
    ARGS
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT

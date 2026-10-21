@@ -477,6 +477,38 @@ variable EVENT-FLAGS
    [: TOKEN$ EVENT-CLASS @ EVENT-FLAGS @ HOOK@ TOP-HOOK execute ;]
    HOOK-CALL execute-floor FLOORED ;
 
+\ ---- the unit hook (habu2.f C-UNIT-HOOK) -----------------------------------------
+\ unit-compile-run arms UNIT-COMPILE-CELL with a guard for the one source it
+\ runs (tools/native-unit-compile.f GUARD). The guard gets the token, a class
+\ and one of these events, and only a package name's answer is read: a
+\ nonzero one skips the rest of the input. A token outside a body is classed
+\ 0 for a word, 1 for an integer and 2 for a float; a word about to run is
+\ classed by its xt; the other events are classed 0.
+0 constant UNIT-EV-TOKEN         \ a token outside a body, past a comment
+2 constant UNIT-EV-PACKAGE       \ the name `package` has read
+3 constant UNIT-EV-IMMEDIATE     \ a body immediate about to run
+4 constant UNIT-EV-WORD          \ a word about to run, past its gates
+5 constant UNIT-EV-END           \ the end of the source
+
+: UNIT? ( -- bool )
+   UNIT-COMPILE-CELL CELL@ 0<> ;
+
+\ The cell holds the guard's xt raw; this view states the guard's effect.
+CAST: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] )
+
+\ The guard's answer, 0 with none armed. The token cells are put back after
+\ the guard returns, whatever it parsed.
+: UNIT-EVENT ( n n -- n ) {: class:n event:n :}
+   UNIT? 0= if 0 exit then
+   TKA-CELL CELL@ TKL-CELL CELL@ {: a:n u:n :}
+   TOKEN$ class event UNIT-COMPILE-CELL CELL@ UNIT-GUARD execute
+   a TKA-CELL CELL!  u TKL-CELL CELL! ;
+
+\ A unit's misuse names the token, then the engine's compile-die tail
+\ (habu2.f C-DIE-TOKEN with 70).
+: UNIT-REFUSE ( -- )
+   TOKEN$ SAY RC-REJECT THROW-AT ;
+
 \ ---- numbers ------------------------------------------------------------------------
 variable VALUE
 
@@ -489,7 +521,31 @@ variable VALUE
    num ;
 
 \ ---- words --------------------------------------------------------------------------
+\ The record of the word the step looked up. INTERPRET (interpret.f) puts back
+\ what it held when the buffer began, so no record outlives the buffer that
+\ looked it up: a stripped image would hold it as an undeclared dictionary
+\ pointer.
 TYPED-VARIABLE REC ptr n
+
+\ A sealed source may name a record it defined after the seal or a callable
+\ public record in an admitted wordlist (habu2.f LPOLICYREC).
+: POLICY-REFUSE ( -- )
+   s" hb: not in vocabulary: " SAY
+   TOKEN$ SAY ENGINE-ERROR:POLICY THROW-AT ;
+
+: POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
+   POLICY-NDICT-CELL CELL@ {: seal:n :}
+   seal 0= if exit then
+   rec XREF-FOUND? 0= if POLICY-REFUSE then
+   rec XREF-NULL - seal XREF-REC-ADDR < if
+      rec XREF-WORDLIST {: wid:n :}
+      wid 0 < wid PROT-WID-MAX >= or if POLICY-REFUSE then
+      wid 6 rshift 8 * data-base POLICY-BITS-OFF + + @
+      wid 63 and rshift 1 and 0= if POLICY-REFUSE then
+   then
+   rec XREF-FLAGS DNAME-INT and 0<> if POLICY-REFUSE then
+   rec XREF-WORDLIST OWNER-API-PRI-WID = if POLICY-REFUSE then
+   rec XREF-START 0= if POLICY-REFUSE then ;
 
 \ A global hit is asked of the used publics as well, as habu2.f
 \ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses
@@ -497,6 +553,7 @@ TYPED-VARIABLE REC ptr n
 \ record whether or not LFIND bound the token.
 : LOOKUP-GO ( -- )
    TOKEN$ FIND REC !
+   REC @ POLICY-CHECK-REC
    REC @ XREF-FOUND? 0= if exit then
    REC @ XREF-WORDLIST 0<> if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
@@ -547,12 +604,18 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ The xt waits on the return stack while the hook runs.
-: RUN-WORD ( -- )
-   LOOKUP GATE
-   REC @ NHOST:SELECT-REC >r
-   TOP-EV-WORD WORD-FLAGS HOOK
+\ The unit hook, then the top-row hook, before the word runs. The flags and
+\ the xt are read before either hook runs and wait on the return stack while
+\ they run.
+: RUN-FOUND ( -- )
+   GATE
+   WORD-FLAGS >r  REC @ NHOST:SELECT-REC >r
+   r@ UNIT-EV-WORD UNIT-EVENT drop
+   r> r> swap >r  TOP-EV-WORD swap HOOK
    r> execute-floor FLOORED ;
+
+: RUN-WORD ( -- )
+   LOOKUP RUN-FOUND ;
 
 \ ---- keywords (habu2.f CF-ENTRY, LKWCMP) --------------------------------------------
 \ A keyword is matched before the token is read as a number or a word, and it
@@ -726,6 +789,8 @@ TYPED-VARIABLE REC ptr n
 CAST: STR-LITERAL ( [ -- ptr u8 n ] -- n )
 CAST: CSTR-LITERAL ( [ -- ptr u8 ] -- n )
 CAST: CELL-LITERAL ( [ -- n ] -- n )
+\ A cell a definer takes from the program (definers.f DEF-CONSTANT).
+CAST: CELL-TAKE ( [ n -- ] -- n )
 
 : RUN-LITERAL ( n -- )
    execute-floor FLOORED ;

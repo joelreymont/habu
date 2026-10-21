@@ -980,6 +980,7 @@
 -8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
 -8574 constant E-NCOMP-OWNER   \ the checker that owns the source carries no operation for a front-end step this compiler needs: a replacement checker published a declaration-owner record without it, so the scan, the source tape, the does> split or a call fact has nowhere to come from
 -8575 constant E-NCOMP-BINDING \ no successful scan or resolved binding exists for a required call ordinal
+-8576 constant E-NCOMP-RECOVERY \ the active checker counted a refusal or borrowed its recovery fact; abandon the unpublished definition and continue
 -8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
@@ -1446,9 +1447,14 @@
 -9413 constant E-WS-WAIT          \ a RECEIVE wait below zero, or longer than a readiness poll takes
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
 
+\ Native host facts: -9440..-9449, minted by src/compiler/native/host.f,
+\ which owns package NHOST.
 \ SSE owns -9450..-9459. DECIMAL owns -9460..-9469.
 \ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
 \ Scoped typed values: -9480..-9489, minted in src/lib/values.f.
+
+\ Intel disassembly: -9500..-9509, minted by src/arch/x86-64/disasm.f,
+\ which owns package X64DIS.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

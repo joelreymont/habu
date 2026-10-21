@@ -29,7 +29,6 @@ DYNAMIC-BUFFER SAVED-STORAGE n
       SLOTS i cells + ptr-cell-mark
    loop
    MODE-FIELD HEADER@ 1 T=
-   INDEX@ 0<> TTRUE
    here data-base - BEFORE-DP !
    COUNT dup BEFORE-N ! SAVED-STORAGE-RESERVE
    COUNT 0 ?do i ROW@ SAVED i cells + ! loop

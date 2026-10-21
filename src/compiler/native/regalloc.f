@@ -139,8 +139,10 @@ NOATTR CWORK-VARIABLE SEEN-FRAME n                  \ the one frame size the mod
 1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
 1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
 1 CWORK-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-REMAT-MARK IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-SHIFT IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-ENTRY IR-ID:ir-symbol-id
@@ -1207,8 +1209,9 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
 \ What keeps the pinned register free for it is the forbid every class that
 \ crosses or reads the operation carries (MB-FIXED-BITS), and every class whose
 \ hull spans the pinned class's opening (MB-FORBID-PINS). What this pass does
-\ NOT do is insert a copy for a value that cannot be pre-coloured; the selector
-\ is what keeps two values that both demand one register apart.
+\ NOT do is insert a copy for a value that cannot be pre-coloured: a pinned class
+\ that cannot keep its register goes to the frame (MB-PIN), and the selector's
+\ copies are what let such a value move to another register instead.
 : MB-FIX-REG-CK ( n -- )
    {: r:n :}
    r 0 < r F-GPR RF-SIZE >= or if E-A64RA-FIXED throw then
@@ -1539,18 +1542,33 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  OP-AT ;
 
+\ A reload or re-emission placed in front of a read by an earlier lowering turn
+\ cannot be put away there again: it would be stored and brought back in front
+\ of that same read, the same class put away again each turn. The former
+\ carries its frame-slot key; the latter carries the rewriter's mark (spill.f
+\ COPY-ATTRS). Ordinary immediate definitions carry zero and remain eligible
+\ for the first re-emission.
+: MB-RETURNED? ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id r:n :}
+   r cells CL-SIZE + @ 1 <> if false exit then
+   r cells CL-LO + @ {: p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP {: d:IR-ID:ir-op-id :}
+   d 0 BND-SLOT @ ATTR-INT-OF NOATTR <>
+   d 0 BND-REMAT-MARK @ ATTR-INT-OF 1 = or ;
+
 : MB-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
-   nip {: r:n :}
+   {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r KEEP? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   true ;
+   f r MB-RETURNED? 0= ;
 
 : MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
-   nip {: r:n :}
+   {: f:IR-ID:ir-fun-id r:n :}
    r CL-EVICTED? if false exit then
    r CLS-AT C-TOKEN = if false exit then
-   true ;
+   f r MB-RETURNED? 0= ;
 
 \ Each class has a sorted slice of operand positions. A missing use answers
 \ this function's end, as did the forward walk through its operations.
@@ -1854,13 +1872,29 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    r CLS-AT C-TOKEN = if false exit then
    r CL-EVICTED? 0= ;
 
-\ A class the contract pins arrives in exactly that register, and three things
-\ make that impossible rather than merely awkward.
-: MB-PIN ( n n -- )
-   {: r:n want:n :}
+\ A pinned class takes exactly its register where it opens, and two things make
+\ that impossible: a register outside the set the routine may write, and one
+\ another class still holds there, which MB-FORBID-PINS exists to prevent.
+\
+\ A REGISTER THE CLASS CANNOT KEEP OVER ITS WHOLE HULL IS NO REFUSAL. A call or
+\ a form under the class destroys it, or another pin of it opens inside the hull
+\ (MB-FORBID): the class goes to the frame like one the pool cannot hold
+\ (MB-SHORT-ROOT!), and the lowering turn gives each pinned operation a value of
+\ its own - stored in front of the operation after the one that writes it, or
+\ reloaded in front of the one that reads it - which nothing crosses. On x86-64
+\ `/ {: k:n :} 1 RD-I ! k` holds the quotient idiv leaves in rax over the call
+\ `!` makes, and `{: a:n b:n :} NOP a b lshift` coalesces the count's copy
+\ fixed to rcx into b, which lives over the call to NOP. A contract's argument
+\ (KEEP?) is still refused: it arrives in its register before any operation
+\ runs, so there is no operation to store it after.
+: MB-PIN ( n n n -- )
+   {: r:n want:n pos:n :}
    r FILE-AT {: fl:n :}
    fl want POOL-HAS? 0= if E-A64RA-FIXED throw then
-   r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
+   r MB-FORBID want FORBIDDEN? if
+      r KEEP? if E-A64RA-FIXED throw then
+      pos fl r MB-SHORT-ROOT! exit
+   then
    fl want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
    r want TAKE ;
 
@@ -1879,7 +1913,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    {: f:IR-ID:ir-fun-id r:n pos:n :}
    r pos MB-DUE? 0= if exit then
    r cells CL-FIX + @ {: fix:n :}
-   fix NOBODY <> if r fix MB-PIN exit then
+   fix NOBODY <> if r fix pos MB-PIN exit then
    r MB-FORBID {: forbid:n :}
    f r forbid MB-WANTED {: w:n :}
    w 0 >= if r w TAKE exit then
@@ -2009,6 +2043,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    r CL-EVICTED? if false exit then
    r cells CL-SIZE + @ 1 <> if false exit then
    r CLS-AT C-TOKEN = if false exit then
+   f r MB-RETURNED? if false exit then
    f r MB-DEF-OP? ;
 
 \ A class the operation here reads would need its register back immediately.
@@ -2677,9 +2712,9 @@ public
 \ the tables holding a machine no allocation can reach: the mode stays unbound
 \ and WALK refuses before it reads them.
 \
-\ STAND names the data-stack pointer checked by regalloc-verify.f; slot names
-\ the dialect's frame slot. This pass makes no decision from either field.
-\ A value is unmade whole, so both are bound and left.
+\ STAND names the data-stack pointer checked by regalloc-verify.f; this pass
+\ makes no decision from it, and a value is unmade whole, so it is bound and
+\ left. SLOT marks a reload; REMAT-MARK marks a re-emission (MB-RETURNED?).
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder NMACH:mach NDIALECT:vocab -- )
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    NDIALECT-VOCAB:UNMAKE
@@ -2692,6 +2727,7 @@ public
       entry:IR-ID:ir-symbol-id trap:IR-ID:ir-symbol-id
       addr:IR-ID:ir-symbol-id shift:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       lanes:n slotw:n stand:NDIALECT:dstand :}
    NMACH:ID {: row:n :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -2715,6 +2751,7 @@ public
    fpr 0 BND-FPR !
    mem 0 BND-MEM !
    frame 0 BND-FRAME !
+   slot 0 BND-SLOT !
    dslot  DK-SLOT BND-DKEY !
    dbytes DK-BYTES BND-DKEY !
    dback  DK-BACK BND-DKEY !
@@ -2723,6 +2760,7 @@ public
    trap 0 BND-TRAP !
    copy 0 BND-COPY !
    remat 0 BND-REMAT !
+   mark 0 BND-REMAT-MARK !
    addr 0 BND-ADDR !
    shift 0 BND-SHIFT !
    lanes BND-LANES !

@@ -688,7 +688,6 @@ package BUILD-FIXPOINT
       exit
    then
    BUILD-TARGET:LINUX-X86-64? if
-      out outu s" src/os/linux-x86-64/target-layout.f" BF-APPEND-MODULE
       out outu s" src/os/linux-x86-64/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux-x86-64/sign.f" BF-APPEND-SOURCE
       exit
@@ -858,7 +857,14 @@ package BUILD-FIXPOINT
 \ load AFTER that mark, so the rewind takes them away and the payload has to
 \ bring them back. The absent files are still statically checked, as their
 \ own build phase: BF-APPEND-BOOT-PREFIX.
+: BF-RECOVERY-ONLY ( -- )
+   HB-TARGET-LINUX-X86-64? BUILD-TARGET:LINUX-X86-64? or if
+      s" build-fixpoint: ARM source recovery only; use tools/native-build.f or tools/two-generation-build.f on x86-64"
+         BF-BUILD-RC die
+   then ;
+
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
+   BF-RECOVERY-ONLY
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
    out outu s" src/lib/prelude.f" BF-APPEND-MODULE
@@ -886,6 +892,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-decl.f" BF-APPEND-MODULE   \ aot-capture.f requires it
+   out outu s" src/habu/aot-runtime.f" BF-APPEND-MODULE   \ habu2.f uses its completeness query
    out outu s" src/habu/aot-ident.f" BF-APPEND-MODULE   \ aot-file.f requires it
    out outu BF-APPEND-FMT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
@@ -1751,12 +1758,12 @@ variable CHAIN-I
    BF-ASSERT-PRODUCT
    BF-PARSE-FORCE {: argn:n :}
    BF-PIN-RESET BF-PIN-ON!
-   argn 0= if BF-BUILD-ALL-CACHED exit then
+   argn 0= if BF-RECOVERY-ONLY BF-BUILD-ALL-CACHED exit then
    argn 1 <> if BF-USAGE then
-   s" all" BF-ARG0= if BF-BUILD-ALL-CACHED exit then
-   s" install" BF-ARG0= if BF-INSTALL-CACHED exit then
-   s" stage" BF-ARG0= if BF-STAGE-FIXPOINT exit then
-   s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
+   s" all" BF-ARG0= if BF-RECOVERY-ONLY BF-BUILD-ALL-CACHED exit then
+   s" install" BF-ARG0= if BF-RECOVERY-ONLY BF-INSTALL-CACHED exit then
+   s" stage" BF-ARG0= if BF-RECOVERY-ONLY BF-STAGE-FIXPOINT exit then
+   s" stdin" BF-ARG0= if BF-RECOVERY-ONLY BF-BUILD-STDIN-FRESH exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
 

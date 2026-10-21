@@ -125,7 +125,7 @@ variable OUTPUT-RD
    s" " 0 die ;
 
 : RUN-OUTER ( -- )
-   HB-TARGET-LINUX? 0= if
+   HB-TARGET-LINUX-KERNEL? 0= if
       s" gate-env-stdin-tty-test: controlling-terminal regression applies to Linux" type cr
       exit
    then

@@ -26,10 +26,10 @@
 \ 3. A subject linked on LINKER$ reaches no word the linker's load left above
 \    the engine, and no cell of it but those an AOT ownership claim names. That
 \    load ran before the capture window opens (tools/aot-build-open.f), and it
-\    holds the linker's lib closure in the require registry, its packages and
-\    words in the dictionary and its cells below the window. A subject's
-\    require of one of those modules resolves to that copy, a name of one it
-\    never required resolves too, and a `package` line naming one of its
+\    holds the unbaked part of the linker's lib closure in the require registry,
+\    its packages and words in the dictionary and its cells below the window.
+\    A subject's require of one of those modules resolves to that copy; a name
+\    of one it never required resolves too, and a `package` line naming one of its
 \    packages reopens it; the engine's maker compiles the module inside the
 \    window, refuses the name and creates the package. So the maker refuses a
 \    closure that reaches such a word (`aot: closure reaches a word defined

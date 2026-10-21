@@ -16,6 +16,7 @@ require src/lib/prelude.f
 require src/lib/errors.f
 require src/core/does-clause.f
 require src/core/quotation-storage.f
+require src/habu/xref.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -77,12 +78,14 @@ align
 -1 CWORK-VARIABLE RF-AT n                       \ the row of the admit in flight, or -1
 -1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
 0 CWORK-VARIABLE RF-U n                        \ how many of that row's spelling bytes are held
+0 CWORK-VARIABLE RF-MISSING n                  \ a tick whose operand resolves to no record
 1 CWORK-BUFFER RF-KIND NTAPE:kind
 RF-CAP CWORK-SPAN RF-BUF u8
 
 : RF-RESET ( -- )
    -1 RF-AT !
-   -1 RF-ROW ! ;
+   -1 RF-ROW !
+   0 RF-MISSING ! ;
 
 \ The one place this file asks the word model what a body token means.
 : ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
@@ -133,6 +136,7 @@ VMAX CWORK-SPAN VQSAV n        \ and for the entries a call hands over and takes
 \ Measured: the tree's deepest return-stack nest is ten.
 16 constant RMAX                     \ measured: the tree's deepest nest is ten
 0 CWORK-VARIABLE RN n                          \ how many values the return vector holds
+0 CWORK-VARIABLE RGLUE n                       \ bit i joins return cells i and i-1
 RMAX CWORK-BUFFER RSTK IR-ID:ir-value-id
 RMAX CWORK-SPAN RQ n
 
@@ -140,6 +144,7 @@ RMAX CWORK-SPAN RQ n
    0 VN !
    0 RN !
    0 VGLUE !
+   0 RGLUE !
    VMAX 0 ?do  VQ-NONE i cells VQ + !  loop ;
 
 : VPUSH ( IR-ID:ir-value-id -- )
@@ -239,12 +244,27 @@ RMAX CWORK-SPAN RQ n
    dup 0 < over RN @ >= or if E-NELAB-UNDER throw then
    cells RQ + @ ;
 
-: RPUSH ( IR-ID:ir-value-id n -- )
-   {: val:IR-ID:ir-value-id q:n :}
+: RGLUE-BIT? ( n -- bool ) {: i:n :}
+   i 0 < i RN @ >= or if E-NELAB-UNDER throw then
+   RGLUE @  1 i lshift  and 0<> ;
+
+\ A return-stack transfer takes whole values: one that starts inside a value
+\ parked by a wider `>r` would take that value apart.
+: RSTACK-CK ( n -- ) {: base:n :}
+   base 0 <= if exit then
+   base RGLUE-BIT? if E-NELAB-BUNDLE throw then ;
+
+: RPUSH ( IR-ID:ir-value-id n bool -- )
+   {: val:IR-ID:ir-value-id q:n joined:bool :}
    RN @ RMAX >= if E-NELAB-CAP throw then
    val RN @ RSTK !
    q RN @ cells RQ + !
+   RGLUE @  1 RN @ lshift invert and  RGLUE !
+   joined if RGLUE @  1 RN @ lshift or  RGLUE ! then
    RN @ 1+ RN ! ;
+
+: V-RPUSH ( n -- ) {: i:n :}
+   i VAT  i VQ@  i VGLUE-BIT?  RPUSH ;
 
 : RDROP ( n -- )
    {: k:n :}
@@ -255,7 +275,8 @@ RMAX CWORK-SPAN RQ n
 \ moving them, because a seam has to leave the return row as it found it.
 : R-VPUSH ( n -- ) {: i:n :}
    i RAT VPUSH
-   i RQ@ VN @ 1- VQ! ;
+   i RQ@ VN @ 1- VQ!
+   i RGLUE-BIT? if VGLUE @  1 VN @ 1- lshift or  VGLUE ! then ;
 
 : R-SPILL ( -- )
    RN @ 0 ?do i R-VPUSH loop ;
@@ -264,7 +285,8 @@ RMAX CWORK-SPAN RQ n
    {: k:n :}
    VN @ k < if E-NELAB-UNDER throw then
    0 RN !
-   k 0 ?do  VN @ k - i + dup VAT swap VQ@ RPUSH  loop
+   0 RGLUE !
+   k 0 ?do  VN @ k - i + V-RPUSH  loop
    k VDROP ;
 
 \ ---- compile-time stack renames ----------------------------------------------
@@ -331,17 +353,17 @@ RMAX CWORK-SPAN RQ n
 \ ---- the return-stack transfers ----------------------------------------------
 \ The checker has already proved the return row at every join and loop edge, so
 \ the depth is a compile-time number.
-: RSTACK-CK ( n -- )
+: VSTACK-CK ( n -- )
    {: base:n :}
-   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then ;
+   base VRUN-DOWN? if E-NELAB-BUNDLE throw then ;
 
 : TO-R ( n -- )
    {: cells:n :}
    cells VN @ > if E-NELAB-UNDER throw then
    VN @ cells - {: base:n :}
-   base RSTACK-CK
+   base VSTACK-CK
    RN @ cells + RMAX > if E-NELAB-CAP throw then
-   cells 0 ?do  base i + dup VAT swap VQ@ RPUSH  loop
+   cells 0 ?do  base i + V-RPUSH  loop
    cells VDROP ;
 
 : FROM-R ( n -- )
@@ -349,6 +371,7 @@ RMAX CWORK-SPAN RQ n
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
+   base RSTACK-CK
    cells 0 ?do  base i + R-VPUSH  loop
    cells RDROP ;
 
@@ -359,11 +382,21 @@ RMAX CWORK-SPAN RQ n
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
+   base RSTACK-CK
    cells 0 ?do  base i + R-VPUSH  loop ;
 
-: RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
-   r sym HIR-WORD:RSTACK-CELLS@ {: cells:n :}
+\ The cells a transfer moves are its operands' whole widths, as the checker
+\ measured them at the token (NDICT:OPERAND-CELLS): a layout value parked by
+\ `>r` is as wide as its type, not one cell per operand. A direct tape has no
+\ checker facts and moves one cell per operand, as TOK-CELLS reads it.
+: RSTACK-CELLS ( n n -- n ) {: ix:n operands:n :}
+   EXACT-SOURCE @ 0= if operands exit then
+   VW ix TOK-OFF {: off:n :}
+   0  operands 0 ?do off i NDICT:OPERAND-CELLS + loop ;
+
+: RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id n -- )
+   {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id ix:n :}
+   ix  r sym HIR-WORD:RSTACK-CELLS@ RSTACK-CELLS {: cells:n :}
    r sym HIR-WORD:RSTACK@
    MATCH HIR:rmove
       to-r    OF cells TO-R ENDOF
@@ -3286,11 +3319,16 @@ align
    PATH-DEAD PATH-END ! ;
 
 
+\ Generated primitive calls bind their engine entries, regardless of a
+\ compiled source's package scope. Library calls still resolve by package.
+TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
+TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
+TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
+TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
+
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
-   s" type" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-HIR-UNMODELED throw then
    ix EMIT-STRING
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 
 : DO-STRING ( n -- ) {: ix:n :}
@@ -3357,7 +3395,15 @@ align
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
-   entry 0= if ix QUOT-REFUSE then
+   \ An operand no record answers is refused at the operand, as the engine's
+   \ tick refuses it (E-UNDEFINED, compiler.f REPORT-UNDEFINED-TICK).
+   entry 0= if
+      a u NDICT:SCOPE-REC XREF-FOUND? 0= if
+         -1 RF-MISSING !
+         ix 1+ QUOT-REFUSE
+      then
+      ix QUOT-REFUSE
+   then
    ix entry HIR:ADDR-CODE EMIT-KIND-LIT
    a u NDICT:SPELL-ARITY {: qi:n qo:n :}
    qi NDICT:ARITY-NONE = if exit then
@@ -3374,12 +3420,10 @@ align
    a u NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
    dout NDICT:ARITY-NONE = if E-NELAB-DEFER throw then
-   s" xt!" NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
    ix cell HIR:ADDR-DATA origin EMIT-KIND-LIT-OWNED
-   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
 : DO-EXEC ( IR-ARENA:arena n -- )
@@ -3919,7 +3963,7 @@ align
       callable     OF r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r ix RENAME ENDOF
-      rstack       OF r  ix WSYM  RSTACK-STEP ENDOF
+      rstack       OF r  ix WSYM  ix RSTACK-STEP ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
       close-locals OF ix DO-CLOSE-LOCALS ENDOF
       unmodeled    OF E-HIR-UNMODELED throw ENDOF
@@ -3983,6 +4027,8 @@ DYNAMIC-BUFFER QNAME-BUF u8
 0 constant FUN-COLON
 1 constant FUN-DOES-PARENT
 2 constant FUN-DOES-CLAUSE
+3 constant FUN-FIXED                 \ a definer's body: push its stamped cell and return
+4 constant FUN-DEFER                 \ a defer's body: execute the target its cell holds
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -4236,7 +4282,6 @@ private
 0 CWORK-VARIABLE DOES-FUN n
 0 CWORK-VARIABLE DOES-SIG ptr u8
 0 CWORK-VARIABLE DOES-SIG-U n
-0 CWORK-VARIABLE DOES-PATCH n
 \ True when the clause between `does>` and `;` holds no token at all. Such a
 \ clause runs after the created word has pushed its data address and does
 \ nothing to it, so `does-patch` is given a zero entry and publishes the
@@ -4244,6 +4289,8 @@ private
 \ the engine's own rule, src/habu/habu2.f DOES-REC:ELIDE-EMPTY, stated here on
 \ the tape because this compiler never reaches that path.
 0 CWORK-VARIABLE DOES-EMPTY n
+0 CWORK-VARIABLE FIXED-VAL n                   \ a fixed body's cell, or a defer's dispatch cell
+0 CWORK-VARIABLE FIXED-KIND n                  \ and how the fixed cell is a literal (NDICT:FIXED-*)
 
 private
 
@@ -4283,11 +4330,23 @@ private
       {: address:n origin:n :}
    DOES-AT @ address HIR:ADDR-DATA origin STAGE-OWNED-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
-   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
-   1 CALL-NEED ! ;
+   1 CALL-NEED !
+   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
+: STAGE-FIXED ( -- )
+   0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
+
+\ The defer body preserves its caller's stack while execute calls the target.
+: STAGE-DEFER ( -- )
+   0 EMIT-MEM
+   0 FIXED-VAL @ HIR:ADDR-DATA STAGE-LIT
+   0 HIR-OPCODE:LOAD EMIT-OPCODE
+   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 : BEFORE-RETURN ( -- )
-   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
+   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then
+   FUN-KIND @ FUN-DEFER = if STAGE-DEFER exit then
+   FUN-KIND @ FUN-FIXED = if STAGE-FIXED then ;
 
 : SCAN-FUN ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
@@ -4299,7 +4358,9 @@ private
    r lo hi DEFER-SCAN
    r lo hi RESOLVE-TRY
    r lo hi MEM-SCAN
-   r lo hi CALL-SCAN ;
+   FUN-KIND @ FUN-DOES-PARENT = if 1 TOK-NEED ! then
+   r lo hi CALL-SCAN
+   FUN-KIND @ FUN-DEFER = if 1 CALL-NEED ! then ;
 
 : OPEN-FUN-BODY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
@@ -4376,7 +4437,6 @@ private
    din dout ARITY-CK
    c b v UNIT {: n:n :}
    at 1 < at n >= or if E-NELAB-SHAPE throw then
-   s" does-patch" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DOES-PATCH !
    at DOES-AT !  sig DOES-SIG !  sigu DOES-SIG-U !
    0 DOES-EMPTY !
    at 1+ n >= if 1 DOES-EMPTY ! then
@@ -4402,6 +4462,37 @@ public
    0 EXACT-SOURCE !
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    DOES-CORE ;
+
+\ A fixed definer body pushes its stamped cell and returns. It has no source
+\ body, so no source-site fact is consulted (compiler.f FIXED-WORK).
+: FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena val:n kind:n :}
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   RF-RESET
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   val FIXED-VAL !  kind FIXED-KIND !
+   FUN-FIXED FUN-KIND !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 0 1 BUILD-FUN ;
+
+\ The target held by a defer's dispatch cell meets the caller's stack.
+: DEFER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena cell:n :}
+   0 EXACT-SOURCE !
+   NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
+   RF-RESET
+   c b v UNIT {: n:n :}
+   n 1 <> if E-NELAB-SHAPE throw then
+   cell FIXED-VAL !
+   FUN-DEFER FUN-KIND !
+   NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 1 0 0 BUILD-FUN ;
 
 : RECORDED-COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
@@ -4435,6 +4526,10 @@ public
 \ The row the refusal was about; every reader of the record asks this first.
 : REFUSED-ROW ( -- n )
    RF-ROW @ ;
+
+\ Whether the refusal is a tick whose operand no record answers (DO-TICK).
+: SOURCE-UNDEFINED? ( -- bool )
+   RF-MISSING @ 0<> ;
 
 : REFUSED-KIND? ( NTAPE:kind -- bool )
    {: k:NTAPE:kind :}

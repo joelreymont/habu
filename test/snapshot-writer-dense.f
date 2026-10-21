@@ -1,8 +1,7 @@
 \ A heap for test/snapshot-writer.f that the cell grid would enlarge. Every
 \ cell below has bit 63 set, so the grid would store each of its eight bytes as
-\ a ten-byte value, and 48 MiB of them outweigh the zero cells of the engine's
-\ own heap, which the grid stores as bits or not at all. The writer must keep
-\ the heap's bytes.
+\ a ten-byte value. The 48 MiB run outweighs the engine heap's zero cells;
+\ the writer must keep the heap's bytes.
 package SNAP-WRITER-DENSE
 public
 

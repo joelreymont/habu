@@ -1,9 +1,9 @@
-\ ffi-abi.f - checked AAPCS64 FFI calls and marshalling.
+\ ffi-abi.f - checked AAPCS64 and SysV FFI calls and marshalling.
 \
-\ Built on the AAPCS64 trampolines from habu1.f: `ffi-call` (x0..x7 only),
-\ `ffi-call-n` (integer/pointer x0..x7 plus stack spill), and `ffi-call-abi`
-\ / `ffi-call-abi-r` (x0..x8, d0..d7, caller-packed stack spill, integer or
-\ float return).
+\ Built on the host trampolines: `ffi-call` and `ffi-call-n` for integer-only
+\ calls, and `ffi-call-abi` / `ffi-call-abi-r` for separate integer, float and
+\ caller-packed stack arguments. AAPCS64 has eight registers of each kind;
+\ SysV has six integer and eight float registers.
 \
 \ Marshalling uses task-DATA scratch buffers. Integer/pointer args are
 \ cells in FFI-BUF; FP args are float cells in FFI-FBUF; stack spill slots are
@@ -91,7 +91,7 @@ $41C8 constant FFI-SCRATCH-END
 
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are
-\ copied to the C stack exactly as prepacked by the caller.
+\ copied to the C stack exactly as prepacked by the caller on either ABI.
 : FFI-CHECK-INDEX ( n n -- ) {: idx:n cap:n :}
    idx 0 < if E-FFI-ARITY throw then
    idx cap >= if E-FFI-ARITY throw then ;
@@ -590,10 +590,10 @@ public
       s" ." buf CODEGEN:APPEND-STRING
       version buf CODEGEN:APPEND-DECIMAL
       s" .dylib" buf CODEGEN:APPEND-STRING
-   else
+   else HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
       s" .so." buf CODEGEN:APPEND-STRING
       version buf CODEGEN:APPEND-DECIMAL
-   then
+   else E-FFI-LIBRARY throw then then
    buf CODEGEN:CONTENTS ;
 
 
@@ -1019,13 +1019,18 @@ get-current prot-wid-add
 \ as $FFFFFFFF. `i32` sign-extends the low half and reads `n` to the checker,
 \ which has no signed 32-bit type; `u32` masks it and keeps its own type.
 \
-\ Integer arguments take x0.. and floats d0.. in declaration order (AAPCS64).
+\ Arguments take integer and float registers in declaration order.
 \ A C float occupies the low 32 bits of an FP slot; a float result reads only
 \ those bits and widens to Habu `r`. Variadic positions use C default promotions,
-\ so declare a promoted float as `r`, never `f32`. A
-\ declaration carrying a float rides the ABI call, which packs no spill here, so
-\ it is refused past eight of either kind (E-FFI-ARITY); an integer-only
-\ declaration rides ffi-call-bounded, which spills past x7 itself.
+\ so declare a promoted float as `r`, never `f32`.
+\ AAPCS64 takes integers in x0..x7 and floats in d0..d7. A declaration carrying
+\ a float rides the ABI call, which packs no spill there, so it is refused past
+\ eight of either kind (E-FFI-ARITY); an integer-only declaration rides
+\ ffi-call-bounded, which spills past x7 itself. SysV takes six integer and
+\ eight float registers, then prepacked stack slots in argument order. Every
+\ SysV overflow call rides the ABI trampoline so mixed kinds and bounded
+\ pointer extents keep their own stack positions; a C float past the eighth
+\ float register has no stack staging and is refused (E-FFI-ARITY).
 \
 \ The symbol resolves once per process, at the FIRST CALL and never at the
 \ declaration, so an absent symbol is E-FFI-DLSYM where the caller stands;
@@ -1049,7 +1054,8 @@ $800 constant GEN-CAP
 $100 constant EFF-CAP
 $40 constant TOK-CAP
 $10 constant ARG-MAX
-8 constant REG-MAX                        \ AAPCS64 integer and float register slots
+8 constant REG-MAX                        \ AAPCS64 integer / both ABIs' float slots
+6 constant X86-INT-REG-MAX                \ SysV rdi, rsi, rdx, rcx, r8, r9
 10 constant DEC-BASE
 16 constant HEX-BASE
 $20 constant SP-C
@@ -1232,8 +1238,32 @@ variable SCOPE-HOOK
 \ ---- which call the declaration rides --------------------------------------
 
 : REG-ROOM ( -- )
-   INT-N @ REG-MAX > if E-FFI-ARITY throw then
+   INT-N @ HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then
+      > if E-FFI-ARITY throw then
    FLT-N @ REG-MAX > if E-FFI-ARITY throw then ;
+
+: X86-SPILL ( n -- ) {: i:n :}
+   STACK-N @ 1+ negate ARG-REG i cells + !
+   1 STACK-N +! ;
+
+: PLAN-X86 ( -- )
+   0 STACK-N ! 0 INT-N ! 0 FLT-N !
+   ARG-N @ 0 ?do
+      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or if
+         FLT-N @ REG-MAX < if
+            FLT-N @ ARG-REG i cells + !
+            1 FLT-N +!
+         else
+            i ARG-KIND@ K-FLOAT32 = if E-FFI-ARITY throw then
+            i X86-SPILL
+         then
+      else
+         INT-N @ X86-INT-REG-MAX < if
+            INT-N @ ARG-REG i cells + !
+            1 INT-N +!
+         else i X86-SPILL then
+      then
+   loop ;
 
 : PLAN-SPILLS ( -- )
    0 STACK-N !
@@ -1247,7 +1277,10 @@ variable SCOPE-HOOK
    REG-ROOM ;
 
 : PLAN-CALL ( -- )
-   PLAN-SPILLS
+   HB-TARGET-LINUX-X86-64? if PLAN-X86 else
+      HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS
+      else E-FFI-LIBRARY throw then
+   then
    STACK-N @ 0 > if
       RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
          if C-ABI-R else C-ABI then CALL-KIND ! exit
@@ -1305,7 +1338,9 @@ variable SCOPE-HOOK
    i ARG-EXT-ARG@ NO-EXT <> if i STAGE-WRITABLE exit then
    i STAGE-READABLE ;
 
-: STACK-POS ( n -- ) VAR-START @ - GEN-N ;
+: STACK-POS ( n -- )
+   HB-TARGET-LINUX-X86-64? if ARG-REG@ negate 1- GEN-N exit then
+   VAR-START @ - GEN-N ;
 : STAGE-SPILL ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if
       i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
@@ -1319,7 +1354,10 @@ variable SCOPE-HOOK
 
 : STAGE-ONE ( n bool -- ) {: i:n named:bool :}
    named if i GEN-ARG GEN-SP then
-   STACK-N @ 0 > i VAR-START @ >= and if i STAGE-SPILL exit then
+   HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
+   HB-TARGET-MACOS? STACK-N @ 0 > and i VAR-START @ >= and if
+      i STAGE-SPILL exit
+   then
    i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
    i ARG-KIND@ K-FLOAT32 = if i STAGE-FLOAT32 exit then
    i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
@@ -1357,7 +1395,9 @@ variable SCOPE-HOOK
 \ line names its path. A rendered name passes by construction, so the guard
 \ costs a literal row nothing.
 : TARGET$ ( -- ptr u8 n )
-   HB-TARGET-MACOS? if s" macos" exit then s" linux" ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if s" linux" exit then
+   HB-TARGET-MACOS? if s" macos" exit then
+   E-FFI-LIBRARY throw ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: path:ptr u:n :}
    0 u 0 ?do path i + c@ [char] / = if drop i 1+ then loop
@@ -1369,7 +1409,10 @@ variable SCOPE-HOOK
       path u s" .dylib" ENDS-WITH? if false exit then
       path u s" .so" ENDS-WITH? path u s" .so." CONTAINS? or exit
    then
-   path u s" .dylib" ENDS-WITH? ;
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if
+      path u s" .dylib" ENDS-WITH? exit
+   then
+   E-FFI-LIBRARY throw ;
 
 : REPORT-LIBRARY-TARGET ( ptr u8 n -- ) {: path:ptr u:n :}
    DIAG CODEGEN:RESET

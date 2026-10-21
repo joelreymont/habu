@@ -34,40 +34,52 @@ variable ACC
 
 \ ---- in-process: a caught throw restores caller return/loop state ----
 
-: CALLER-RSTK-PRESERVED ( -- n )       \ r> after a throwing >r quotation yields the caller's value
-   42 >r [: 99 >r 7 throw ;] catch drop r> ;
+\ These actions have a truthful empty normal interface. Each throws after
+\ changing the live frame; a tick gives catch a fixed callable effect.
+TRUSTED: THROW-R99-7 ( -- ) 99 >r 7 throw ;
+TRUSTED: THROW-R88-7 ( -- ) 88 >r 7 throw ;
+TRUSTED: THROW-R55-3 ( -- ) 55 >r 3 throw ;
+TRUSTED: THROW-R42-7 ( -- ) 42 >r 7 throw ;
+TRUSTED: THROW-LOOP4-9 ( -- ) 4 0 ?do 9 throw loop ;
+TRUSTED: THROW-LOOP5-9 ( -- ) 5 0 ?do 9 throw loop ;
+TRUSTED: THROW-LOOP4-8 ( -- ) 4 0 ?do 8 throw loop ;
+
+: CALLER-RSTK-PRESERVED ( -- n )       \ r> after a throwing action yields the caller's value
+   42 >r ['] THROW-R99-7 catch drop r> ;
 
 : RSP-DRIFT ( -- n )                   \ user return-stack depth drift across a throwing >r quotation
    data-base RSP-CELL + @ {: r0:n :}
-   [: 88 >r 7 throw ;] catch drop
+   ['] THROW-R88-7 catch drop
    data-base RSP-CELL + @ r0 - ;
 
 : LOOPSP-DRIFT ( -- n )                \ loop-stack depth drift across a throw inside ?do
    data-base LOOPSP-CELL + @ {: l0:n :}
-   [: 4 0 ?do 9 throw loop ;] catch drop
+   ['] THROW-LOOP4-9 catch drop
    data-base LOOPSP-CELL + @ l0 - ;
 
 : LOOP-INDEX-INTACT ( -- n )           \ caller's ?do index survives a throwing inner ?do
    0 ACC !
    3 0 ?do
-      [: 5 0 ?do 9 throw loop ;] catch drop
+      ['] THROW-LOOP5-9 catch drop
       ACC @ i + ACC !
    loop
    ACC @ ;                             \ 0 + 1 + 2 = 3
 
 : INNER-CATCH ( -- )                   \ a nested catch that returns normally (return-balanced)
-   [: 55 >r 3 throw ;] catch drop ;
+   ['] THROW-R55-3 catch drop ;
+
+TRUSTED: THROW-INNER-R99-7 ( -- ) INNER-CATCH 99 >r 7 throw ;
 
 : NESTED-RSP-DRIFT ( -- n )            \ repeated throws + a nested catch: return depth does not drift
    data-base RSP-CELL + @ {: r0:n :}
-   100 0 ?do [: 42 >r 7 throw ;] catch drop loop
-   [: INNER-CATCH  99 >r 7 throw ;] catch drop
+   100 0 ?do ['] THROW-R42-7 catch drop loop
+   ['] THROW-INNER-R99-7 catch drop
    data-base RSP-CELL + @ r0 - ;
 
 : NESTED-LOOPSP-DRIFT ( -- n )         \ repeated throws + a nested catch: loop depth does not drift
    data-base LOOPSP-CELL + @ {: l0:n :}
-   100 0 ?do [: 4 0 ?do 8 throw loop ;] catch drop loop
-   [: INNER-CATCH  99 >r 7 throw ;] catch drop
+   100 0 ?do ['] THROW-LOOP4-8 catch drop loop
+   ['] THROW-INNER-R99-7 catch drop
    data-base LOOPSP-CELL + @ l0 - ;
 
 : IN-PROCESS ( -- )

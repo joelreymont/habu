@@ -52,9 +52,41 @@ public
    edge page 1- + TEST-ADDR MAPPED? TTRUE
    span spanlen munmap 0 T= ;
 
+\ If this kernel lists a high VMA (normally [vsyscall]), look it up through the
+\ public search. Linux may disable that optional mapping.
+: TEST-LINUX-HIGH ( -- )
+   RELOAD
+   EXTENTS 0 ?do
+      i EXT-LO @ {: lo:n :}
+      lo 0< if lo MAPPED? TTRUE then
+   loop ;
+
 ;package
 
 package PROC-MAPS-TEST
+
+: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
+
+\ A fragmented live map spans many /proc/self/maps reads and forces all four
+\ area tables to grow. The result must still classify its live mappings.
+4096 constant LINUX-PAGES
+4 constant LINUX-STRIDE
+
+: LINUX-GROWTH ( -- )
+   OS-MEMORY:PAGE-SIZE {: page:n :}
+   LINUX-PAGES page * MEM-ALLOC-BYTES drop {: span:ptr :}
+   LINUX-PAGES LINUX-STRIDE / 0 ?do
+      span i LINUX-STRIDE * 1+ page * + {: gap:ptr :}
+      gap page LINUX-STRIDE 1- * munmap 0 T=
+   loop
+   PROC-MAPS:RELOAD
+   PROC-MAPS:EXTENTS LINUX-PAGES LINUX-STRIDE / >= TTRUE
+   LINUX-PAGES LINUX-STRIDE / 0 ?do
+      span i LINUX-STRIDE * page * + ADDRESS PROC-MAPS:MAPPED? TTRUE
+   loop
+   LINUX-PAGES LINUX-STRIDE / 0 ?do
+      span i LINUX-STRIDE * page * + page munmap 0 T=
+   loop ;
 
 PROCESS-SYMBOLS
 FUNCTION: MACH-SELF task_self_trap ( -- u32 ) ;FUNCTION
@@ -62,8 +94,6 @@ FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 
 \ mach_vm_address_t is the integer representation of this allocation's pointer:
 \ its distance from the null address.
-: ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
-
 : MACOS-REGIONS ( -- )
    MEM-ALLOC-64K {: live:ptr liveu:n :}
    MEM-ALLOC-64K {: blocked:ptr blocku:n :}
@@ -87,6 +117,8 @@ FUNCTION: MACH-PROTECT mach_vm_protect ( n n n n n -- i32 ) ;FUNCTION
 : RUN ( -- )
    T-RESET
    PROC-MAPS:TEST-OUTER-BOUNDS
+   HB-TARGET-LINUX-KERNEL? if LINUX-GROWTH then
+   HB-TARGET-LINUX-X86-64? if PROC-MAPS:TEST-LINUX-HIGH then
    HB-TARGET-MACOS? if
       PROC-MAPS:TEST-MACH-EXTENSION
       MACOS-REGIONS

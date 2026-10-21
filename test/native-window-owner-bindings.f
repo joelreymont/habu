@@ -15,7 +15,7 @@ package OWNER-BINDING-CHECK
 : BINDING-WORD ( n -- n ) 1 + ;
 
 : RUN ( -- )
-   tier@ 0 EQ!
+   tier@ HB-TARGET-LINUX-X86-64? if 1 else 0 then EQ!
    CLAUSE-SUFFIX$ s" ;does" CORE-STR= TRUE!
    CHECKER-OWNER:BY-NAME? TRUE!
    s" BINDING-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK-UNJUDGED -1 EQ!

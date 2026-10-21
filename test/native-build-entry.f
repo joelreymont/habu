@@ -5,10 +5,12 @@
 \ a typo cannot quietly produce a product. So are an unknown `--target` profile
 \ and one whose machine this engine has no backend for. With that backend
 \ loaded, the selected action refuses an unavailable writer before the full
-\ compiler window loads. The entry's accepted path, the closure
-\ compiling under the native build guard, is every gate's whitebox engine build
-\ (test/whitebox-engine.f runs this entry with `whitebox`). The saved route's
-\ runtime guard is exercised below with a source that stops at tier selection.
+\ compiler window loads; an x86-64 window's writer is loaded before that window,
+\ so a build for it writes an x86-64 ELF from either host. The entry's accepted
+\ path, the closure compiling under the native build guard, is every gate's
+\ whitebox engine build (test/whitebox-engine.f runs this entry with
+\ `whitebox`). The saved route's runtime guard is exercised below with a
+\ source that stops at tier selection.
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
@@ -17,6 +19,7 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/le.f
 require src/lib/string.f
 require test/suite-budget.f              \ CHILD-MS, every child's hang guard
 
@@ -149,9 +152,10 @@ variable GUARD-ENTRY-U
 \ The selected action refuses a foreign-machine writer before opening the
 \ compiler window; a writer loaded after that window would target its machine.
 \ The output path is writable, so an earlier filesystem refusal cannot satisfy
-\ the assertion and the other-machine build must leave it absent.
+\ the assertion and the other-machine build must leave it absent. An AArch64
+\ host preloads the x86-64 writer instead and must produce an actual x86-64 ELF.
 : FOREIGN-WINDOW-CASE ( -- )
-   s" a host with the retired observer reaches foreign writer refusal" T-LABEL
+   s" a host with the retired observer handles the foreign window at its writer boundary" T-LABEL
    s" other-machine-hb" FOREIGN-OUT!
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -164,8 +168,19 @@ variable GUARD-ENTRY-U
    s" --target" ARG
    FOREIGN$ ARG
    DRIVE
-   S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
-   FOREIGN-OUT$ FILE? 0= TTRUE ;
+   HB-TARGET-LINUX-X86-64? if
+      S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
+      FOREIGN-OUT$ FILE? 0= TTRUE
+   else
+      RC @ 0<> if OUT OUT-U @ type ERR$ type then
+      RC @ 0 T=
+      FOREIGN-OUT$ FILE? TTRUE
+      FOREIGN-OUT$ FS-PATHZ open-rd {: fd:n :}
+      fd 0 >= TTRUE
+      fd CONTENT 64 read 64 T=
+      fd close
+      CONTENT 18 + LE:U16@ $3E T=
+   then ;
 
 : BAD-HOST-CASE ( -- )
    s" an unrelated fixed CODE registration remains incompatible" T-LABEL

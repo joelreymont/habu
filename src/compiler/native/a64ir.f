@@ -218,7 +218,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-18 constant MINOR
+19 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -741,7 +741,8 @@ private
 18 constant K-TAIL-IN
 19 constant K-TAIL-OUT
 20 constant K-GUARD-ENTRY
-21 constant KEYS
+21 constant K-REMAT-MARK
+22 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -766,6 +767,7 @@ private
       K-TAIL-IN of s" a64.tail-in" endof
       K-TAIL-OUT of s" a64.tail-out" endof
       K-GUARD-ENTRY of s" a64.guard-entry" endof
+      K-REMAT-MARK of s" a64.remat-mark" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -956,6 +958,12 @@ public
 : KEY-ORIGIN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ORIGIN KEY-BIND ;
 
+\ A move-wide the spill rewriter wrote again in front of a read carries 1, every
+\ other one 0, so the allocator does not put the re-emission away again
+\ (regalloc.f MB-RETURNED?).
+: KEY-REMAT-MARK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-REMAT-MARK KEY-BIND ;
+
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
 
@@ -1092,6 +1100,7 @@ public
    c b KEY-ADDR  c b KEY-SHIFT
    c b A64IR-OPCODE:MOV OPCODE
    c b A64IR-OPCODE:MOVZ OPCODE
+   c b KEY-REMAT-MARK
    HALVES SLOT-WIDTH
    NDIALECT-DSTAND:SURVEY
    NDIALECT-VOCAB:MAKE ;
@@ -1117,6 +1126,7 @@ public
    c b KEY-SLOT  c b KEY-FRAME
    c b A64IR-OPCODE:MOV OPCODE
    c b A64IR-OPCODE:MOVZ OPCODE
+   c b KEY-REMAT-MARK
    c b A64IR-OPCODE:RESERVE OPCODE
    c b A64IR-OPCODE:RELEASE OPCODE
    c b A64IR-OPCODE:STORE OPCODE
@@ -1158,6 +1168,7 @@ private
    c b A64IR-OPCODE:MOVZ OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-RESULT
    c b MOVE-ATTRS
+   c b KEY-REMAT-MARK IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL
    TARGET

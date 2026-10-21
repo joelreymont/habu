@@ -834,12 +834,8 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id mask EMIT-WORD-CALL ;
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ The trap registry resolves diagnostics at compile time; only die is needed in
-\ the target dictionary.
-: TRAP-ENTRY ( -- n )
-   NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
+\ The trap registry resolves diagnostics at compile time. Trap sites enter
+\ the engine's die through NTRAP:ROUTINE.
 
 : EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id give:n entry:n :}
@@ -858,7 +854,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    TRAP-CELLS 0 ?do
       id  id i OPERAND  i X64IR:SLOT-WIDTH *  EMIT-DSTORE
    loop
-   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  TRAP-ENTRY  EMIT-TRAP-BR ;
+   id  TRAP-CELLS X64IR:SLOT-WIDTH * DPLACED  NTRAP:ROUTINE  EMIT-TRAP-BR ;
 
 : EMIT-TERMINAL ( IR-ID:ir-op-id n -- ) {: id:IR-ID:ir-op-id mask:n :}
    DSTACK? 0= if E-X64SEL-TRAP throw then
@@ -879,6 +875,8 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    CTX BLD  imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
    CTX BLD  CTX BLD X64IR:KEY-ADDR
    CTX BLD  kind X64IR:ADDR-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD X64IR:KEY-REMAT-MARK
+   CTX BLD 0 IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
    ACC ;
 
@@ -1163,9 +1161,37 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    v LIVE-OUT? if true exit then
    v LATER-LIVE? ;
 
+: ENTRY-IN? ( -- bool )
+   FUN 0 BLOCK-AT PRED-COUNT 0<> ;
+
+: ARG-IN-BLOCK? ( IR-ID:ir-value-id IR-ID:ir-block-id -- bool )
+   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
+   false
+   bk ARG-COUNT 0 ?do
+      v bk i ARG-AT SAME-VALUE? if drop true leave then
+   loop ;
+
+: EDGE-ARG? ( IR-ID:ir-value-id -- bool )
+   {: v:IR-ID:ir-value-id :}
+   v VALUE-FROM-OP? if false exit then
+   false
+   FUN BLOCK-COUNT 0 ?do
+      FUN i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      v bk ARG-IN-BLOCK? if
+         bk BLOCK-ORD 0<> ENTRY-IN? or if drop true leave then
+      then
+   loop
+   ;
+
 : TIED-OPERAND ( IR-ID:ir-op-id -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-AT  id LIVE-AFTER? if  id  id 0 OPERAND  EMIT-COPY exit then
+   \ An argument reached by an edge can share a register with edge values.
+   \ Their class may outlive this argument even after its own last use, so a
+   \ destructive operation must take a separate copy of it.
+   id 0 OPERAND-AT {: v:IR-ID:ir-value-id :}
+   v EDGE-ARG?  v id LIVE-AFTER? or if
+      id  id 0 OPERAND  EMIT-COPY exit
+   then
    id 0 OPERAND ;
 
 : TIED-BINARY ( IR-ID:ir-op-id X64IR:opcode -- IR-ID:ir-value-id )
@@ -1250,17 +1276,11 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ ---- selecting the division --------------------------------------------------
 \ A zero divisor is a CALLER error, so the divide's cold side hands the code to
 \ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
-\ does. The entry is asked for here, where the dictionary is readable, and
-\ carried to the emitter as the operation's own attribute; the name E-X64SEL-TRAP
-\ names is the routine a compiled refusal branches to missing from the target
-\ dictionary, which is the same refusal the ARM64 selector makes. Public, so a
-\ writer that links a compiled routine itself knows the call the divide makes
-\ (src/habu/kernel-x64.f PRIM-HIR).
+\ does. Its engine entry is ticked here regardless of source scope and carried
+\ to the emitter as the operation's attribute. A writer that links a compiled
+\ routine also reads this entry (src/habu/kernel-x64.f PRIM-HIR).
 public
-: THROW-ENTRY ( -- n )
-   s" throw" NDICT:CALL-TARGET {: e:n :}
-   e 0= if E-X64SEL-TRAP throw then
-   e ;
+TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
 
 private
 

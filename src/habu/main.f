@@ -21,15 +21,17 @@
 \ as the engine measured does it (`--build a.f missing.f` prints a.f's output,
 \ then include's "cannot open").
 \
-\ The assembly runs this at boot and reads the process's argv. RUN takes the
-\ vector as an argument instead, so a test can hand it one it built; the boot
-\ and its routing of stdin and the REPL stay in the assembly for now.
+\ MAIN reads the process's argv and stdin. RUN takes a vector instead, so a
+\ test can hand it one it built.
 
 require src/lib/string.f
 require src/core/bytes.f
 require src/habu/layout.f
 require src/core/include.f
 require src/os/env-base.f
+require src/habu/interpret.f
+require src/habu/repl.f
+require src/lib/fmt.f
 
 package ENGINE-MAIN
 
@@ -160,10 +162,13 @@ variable USED
    fd close
    ARENA @ from + USED @ from - SHEBANG ;
 
+: START-STREAM ( -- )
+   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
+   0 USED ! ;
+
 \ The stream for files [first, end); raw says whether the first is read raw.
 : STREAM ( ptr ptr u8 n n bool -- ptr u8 n ) {: argv:ptr first:n end:n raw:bool :}
-   SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
-   0 USED !
+   START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
       argv i ARG
@@ -175,7 +180,68 @@ variable USED
    loop
    ARENA @ USED @ ;
 
+: STDIN ( -- ptr u8 n )
+   START-STREAM
+   begin 0 STEP until
+   ARENA @ USED @ SHEBANG
+   ARENA @ USED @ ;
+
+\ The root stream is one closed source unit: the loader closes the program's
+\ stack around it (src/core/include.f SOURCE-ROOT:RUN-INTERPRET-RANGE).
+: RUN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u 0 u SOURCE-ROOT:RUN-INTERPRET-RANGE ;
+
+\ APP-ENTRY holds an executable token supplied by the image writer. Keep the
+\ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.
+CAST: APP-ACTION ( n -- [ -- ] )
+
+TRUSTED: APP-RUN ( -- )
+   data-base APP-ENTRY:XT-CELL + @ APP-ACTION execute ;
+
+: APP? ( -- bool )
+   data-base APP-ENTRY:XT-CELL + @ 0<> ;
+
+\ The x86 kernel calls this reporter with the throw code on the data stack.
+\ It has no machine-side exit hook; run and clear that hook before any report.
+CAST: HOOK-ACTION ( n -- [ -- ] )
+
+TRUSTED: EXIT-HOOK ( -- )
+   data-base EXIT-HOOK-CELL + {: slot:ptr :}
+   slot @ {: xt:n :}
+   0 slot !
+   xt 0<> if xt HOOK-ACTION execute then ;
+
+: THROW-REPORT ( n -- )
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   FMT:SB-INT
+   10 SB-APPEND-C
+   2 SB$ write drop ;
+
+: REPORT ( n -- )
+   {: code:n :}
+   EXIT-HOOK
+   code 1 >= code 255 <= and if NULL$ code die then
+   code THROW-REPORT
+   data-base REFUSAL-ABI:CODE-CELL + @ {: refusal:n :}
+   refusal 0<> code refusal = and if NULL$ 70 die then
+   NULL$ UNCAUGHT-RC die ;
+
+TRUSTED: REPORT-PTR ( -- ptr [ n -- ] )
+   data-base ENGINE-MAIN:REPORT-CELL + ;
+
+: LIST? ( route -- bool )
+   MATCH route
+      load OF true ENDOF
+      build OF true ENDOF
+      plain OF false ENDOF
+   ;MATCH ;
+
 public
+
+\ The snapshot writer clears this process-owned mmap pointer in copied DATA.
+: ARENA-CELL ( -- n )
+   ARENA BYTE-VIEW data-base BYTE-VIEW - ;
 
 \ Load what argv names, in order. argv[0] is the program and is not read; a
 \ vector with nothing after it has no file to load (the assembly sends that
@@ -190,7 +256,43 @@ public
       build OF true ENDOF
       plain OF true ENDOF
    ;MATCH {: raw:bool :}
-   argv first end raw STREAM {: a:ptr u:n :}
-   a u 0 u SOURCE-ROOT:RUN-INTERPRET-RANGE ;
+   argv first end raw STREAM RUN-TEXT ;
+
+private
+
+\ Unknown leading flags are checked before any stdin read. Explicit source
+\ lists never consume stdin, including when stdin is a pipe.
+: ROUTED ( -- )
+   APP? if
+      APP-RUN
+      TTY? if REPL-ENABLE OUTER:REPL else STDIN RUN-TEXT then
+      exit
+   then
+   ARGC 1 > if
+      1 ARGV$ ROUTE LIST? if
+         ARGV-BASE ARGC RUN exit
+      then
+   then
+   TTY? if
+      ARGC 1 > if ARGV-BASE ARGC RUN exit then
+      REPL-ENABLE OUTER:REPL exit
+   then
+   STDIN {: a:ptr u:n :}
+   u 0 > if a u RUN-TEXT exit then
+   ARGC 1 > if ARGV-BASE ARGC RUN else a u RUN-TEXT then ;
+
+public
+
+\ Normal completion follows die's deliberate exit path, which runs the hook.
+: MAIN ( -- )
+   ROUTED
+   NULL$ 0 die ;
+
+\ The x86 linker copies the captured reporter from its fixed code cell into
+\ protected UNCGH-CELL before it publishes the image. ARM boot installs its
+\ assembly uncaught reporter separately.
+: INSTALL ( -- )
+   HB-TARGET-LINUX-X86-64? if ['] REPORT REPORT-PTR xt! then
+   ['] MAIN data-base ENGINE-MAIN:XT-CELL + xt! ;
 
 ;package

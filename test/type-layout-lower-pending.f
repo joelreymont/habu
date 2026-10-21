@@ -68,6 +68,21 @@ TLPX-FETCH4 1 T= 93 T= 92 T= 91 T=
 TLPX-DUP 1 T= 7 T= 1 T= 7 T=
 : TLPX-DROP ( -- n ) 5 TLP-MK2 drop ;
 TLPX-DROP 5 T=
+\ Deconstruct the checked layout before raw scalar drops. The scalar below
+\ the four cells survives.
+TRUSTED: TLPX-TRUST-FREE ( n n n n n -- n ) 2drop 2drop ;
+: TLPX-TRUST-CALL ( -- n ) 37 TLP-MK4 TLP-UN4 TLPX-TRUST-FREE ;
+TLPX-TRUST-CALL 37 T=
+\ The checked does> clause has a wide input, so its positive execution runs
+\ at tier 1. Tier 0's named refusal is exercised by runtime-regression-test.f.
+variable TLPX-SAVED-TIER
+tier@ TLPX-SAVED-TIER !
+1 set-tier
+TRUSTED: TLPX-MAKER ( -- ) create does> ( tlp-res<n,n> -- ) drop drop ;
+TLPX-MAKER TLPX-CHILD
+: TLPX-DOES-CALL ( -- n ) 39 TLP-MK2 TLPX-CHILD ;
+TLPX-DOES-CALL 39 T=
+TLPX-SAVED-TIER @ set-tier
 : TLPX-SWAP ( -- n n n ) TLP-MK2 5 swap {: s:n r :} s r TLP-UN2 ;
 TLPX-SWAP 1 T= 7 T= 5 T=
 : TLPX-OVER ( -- n n n n n ) TLP-MK2 5 over {: r1 s:n r2 :} r1 TLP-UN2 s r2 TLP-UN2 ;
@@ -97,6 +112,17 @@ TLPX-2TOR 5 T= 1 T= 7 T=
 : TLPX-2RAT ( -- n n n n n n ) TLP-MK2 5 2>r 2r@ {: c cs:n :}
    2r> {: r s:n :} c TLP-UN2 cs r TLP-UN2 s ;
 TLPX-2RAT 5 T= 1 T= 7 T= 5 T= 1 T= 7 T=
+: TLPX-RBRANCH ( n -- n n n ) TLP-MK2 >r 0 > if 5 else 6 then r> TLP-UN2 ;
+1 TLPX-RBRANCH 1 T= 7 T= 5 T=
+0 TLPX-RBRANCH 1 T= 7 T= 6 T=
+: TLPX-R2BRANCH ( n -- n n n n n n n )
+   TLP-MK2 TLP-MK4 2>r 0 > if 5 else 6 then
+   2r> {: r m :} r TLP-UN2 m TLP-UN4 ;
+1 TLPX-R2BRANCH 1 T= 93 T= 92 T= 91 T= 1 T= 7 T= 5 T=
+0 TLPX-R2BRANCH 1 T= 93 T= 92 T= 91 T= 1 T= 7 T= 6 T=
+: TLPX-RCALLEE ( n -- n ) dup 2 * + ;
+: TLPX-RCALL ( -- n n n ) TLP-MK2 >r 5 TLPX-RCALLEE r> TLP-UN2 ;
+TLPX-RCALL 1 T= 7 T= 15 T=
 : TLPX-MIX-DUP ( -- n n n n n n n n ) TLP-MK4 dup {: a b :} a TLP-UN4 b TLP-UN4 ;
 TLPX-MIX-DUP 1 T= 93 T= 92 T= 91 T= 1 T= 93 T= 92 T= 91 T=
 : TLPX-MIX-SWAP ( -- n n n n n ) TLP-MK4 5 swap {: s:n m :} s m TLP-UN4 ;

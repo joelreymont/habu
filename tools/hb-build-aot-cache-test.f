@@ -7,8 +7,17 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require src/arch/arm64/icode.f
 require test/linker-builder-engine.f
+
+package HB-BUILD-CLI
+: HBT-LOAD-EXIT ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" tools/hb-build-aot-cache-x64.f" required exit
+   then
+   s" tools/hb-build-aot-cache-arm.f" required ;
+' HBT-LOAD-EXIT
+;package
+execute
 
 using BUILD-FIXPOINT                     \ the build tmp root and engine override
 
@@ -45,7 +54,11 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
    HBT-REPL-BAD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
    rc 70 T=
-   HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE ;
+   HB-TARGET-LINUX-X86-64? if
+      HBB-ERR-BUF erru s" set-tier: x86-64 runs tier 1 only" CONTAINS? TTRUE
+   else
+      HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   then ;
 
 : HBT-AOT-SOURCE-KEY! ( -- )
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
@@ -68,10 +81,7 @@ create HBT-PAIR-GOT-HEX 64 allot
    target targetu OBJ:TARGET!
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
-   A64ICODE:ASM-INIT
-   0 0 MOVZ,
-   NR-EXIT-GROUP SYS,
-   A64ICODE:CODE A64ICODE:ASM-LEN OBJ:TEXT+
+   HBT-ADD-EXIT-TEXT
    s" MAIN" s" --" OBJ:EXPORT+
    s" MAIN" 0 s" --" OBJ:DEF+ ;
 
@@ -143,9 +153,14 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
    HBB-CHECKER-ABI$ s" checker-effect-v1+" STARTS-WITH? TTRUE
-   HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
+   HB-TARGET-LINUX-X86-64? if
+      HBB-COMPILER-ABI$ s" hb-x86-64-v1+" STARTS-WITH? TTRUE
+      HBB-COMPILER-ABI$ nip 77 T=
+   else
+      HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
+      HBB-COMPILER-ABI$ nip 76 T=
+   then
    HBB-CHECKER-ABI$ nip 82 T=
-   HBB-COMPILER-ABI$ nip 76 T=
    HBT-ABI-MAKER-SUFFIX ;
 
 \ Store an object under the row's engine, the keyed linker image selected for

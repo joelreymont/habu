@@ -36,7 +36,15 @@ $508 constant RECORD-CAPTURE-OFF
 $510 constant RECORD-SEED-OFF
 $518 constant VERIFY-CTOR-DECL-OFF
 $520 constant EXPORT-ACCEPT-OFF
-EXPORT-ACCEPT-OFF CELL + constant OWNER-BYTES
+\ Native multi-error recovery and diagnostics. JSON-REPORTED, REFUSAL-TOKEN and
+\ RECOVERY-USED stay adjacent: a compiler built before the last two reads them
+\ at fixed cells after JSON-REPORTED (src/compiler/native/checker-owner.f).
+$528 constant MULTI-ERROR-OFF
+$530 constant RESET-REPORT-OFF
+$538 constant JSON-REPORTED-OFF
+$540 constant REFUSAL-TOKEN-OFF
+$548 constant RECOVERY-USED-OFF
+RECOVERY-USED-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

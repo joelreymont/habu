@@ -44,10 +44,11 @@ CAST: ARTIFACT-PTR ( ptr u8 -- ptr artifact )
 1 constant H-RET
 2 constant H-PLACED
 3 constant H-PLACE
-4 constant H-FUNS
-5 constant H-CALLS
-6 constant H-ADDRS
-7 constant HDR-CELLS
+4 constant H-PATCH
+5 constant H-FUNS
+6 constant H-CALLS
+7 constant H-ADDRS
+8 constant HDR-CELLS
 5 constant CALL-CELLS
 3 constant ADDR-CELLS
 
@@ -77,6 +78,7 @@ CAST: ARTIFACT-PTR ( ptr u8 -- ptr artifact )
    c a NEMIT:RET-BYTES CELL,
    c a NEMIT:PLACED? if 1 else 0 then CELL,
    c a NEMIT:PLACED? if NEMIT:PLACEMENT else 0 then CELL,
+   c a NEMIT:PATCH-SLOT CELL,
    c a NEMIT:FUNCTIONS CELL,
    c a NEMIT:CALL-SITES CELL,
    c a NEMIT:ADDR-SITES CELL, ;
@@ -157,6 +159,9 @@ public
 
 : RET-BYTES ( NART:emission -- n )
    READER H-RET IR-ARENA:RD@ ;
+
+: PATCH-SLOT ( NART:emission -- n )
+   READER H-PATCH IR-ARENA:RD@ ;
 
 : PLACED? ( NART:emission -- bool )
    READER H-PLACED IR-ARENA:RD@ 0<> ;

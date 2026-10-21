@@ -23,7 +23,7 @@
 \
 \ All four words refuse once the process is sealed (`hb: policy: sealed`), so
 \ nothing a design reaches can widen its own vocabulary. There is no unseal.
-\ AArch64 only: the x86-64 kernel refuses both engine words.
+\ Both native kernels enforce admission and the seal through these words.
 \
 \ Task-local: the seal and optional require identity live in the sealing
 \ task's DATA header and govern the source that task reads.

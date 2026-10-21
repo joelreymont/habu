@@ -70,7 +70,7 @@ CAST: QUOT-SLOT ( ptr n -- ptr [ -- ] )
 : GROW ( -- )
    EXTRA 0 ?do i MARK loop
    COUNT BASE-N @ EXTRA + T=
-   INDEX@ 0<> TTRUE LOCK@ 0 T=
+   LOCK@ 0 T=
    PREFIX EXTRA FORWARD
    EXTRA 0 ?do i MARK loop
    COUNT BASE-N @ EXTRA + T=
@@ -79,7 +79,7 @@ CAST: QUOT-SLOT ( ptr n -- ptr [ -- ] )
 : REWIND ( -- )
    \ A DATA-backed vector must secure its full capacity before the cut.
    PERSIST INDEX@ 0 T=
-   0 MARK INDEX@ 0<> TTRUE
+   0 MARK
    FIRST-OFF @ HALF cells + KEEP-BELOW
    INDEX@ 0 T= LOCK@ 0 T=
    COUNT BASE-N @ HALF + T=
@@ -99,10 +99,10 @@ CAST: QUOT-SLOT ( ptr n -- ptr [ -- ] )
    here data-base - KEEP-BELOW
    INDEX@ 0 T= LOCK@ 0 T=
    COUNT BASE-N @ EXTRA + T=
-   EXTRA 1- MARK INDEX@ 0<> TTRUE
+   EXTRA 1- MARK
    REVERSED
    PERSIST INDEX@ 0 T=
-   EXTRA 1- MARK INDEX@ 0<> TTRUE
+   EXTRA 1- MARK
    here data-base - {: before:n :}
    PERSIST INDEX@ 0 T= LOCK@ 0 T=
    here data-base - before T=

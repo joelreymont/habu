@@ -37,16 +37,22 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
+require src/lib/le.f
 require src/core/bytes.f
+require src/habu/address-carrier.f
 require src/compiler/target.f
 require src/compiler/binding.f
+require src/compiler/native/hir.f
 require src/compiler/session/emission.f
 require src/compiler/session/lease.f
 
 package NSHADOW
 private
 
+TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
+
 variable OPENED                      \ a shadow is open
+variable NATIVE                      \ its source already emitted for this binding
 TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
 
 \ ---- the emissions -----------------------------------------------------------
@@ -65,9 +71,12 @@ DYNAMIC-BUFFER EM-CALL0 n            \ its first call row
 DYNAMIC-BUFFER EM-CALLS n
 DYNAMIC-BUFFER EM-ADDR0 n            \ its first address row
 DYNAMIC-BUFFER EM-ADDRS n
+DYNAMIC-BUFFER EM-PATCH n            \ created-word does> jump, or -1
+DYNAMIC-BUFFER EM-PATCH-TGT n        \ later clause entry, or zero
 
 variable N-FUNS
 DYNAMIC-BUFFER FUN-OFF n             \ where a function starts
+DYNAMIC-BUFFER FUN-SOURCE n          \ matching function's published host entry, or zero
 variable N-CALLS
 DYNAMIC-BUFFER CALL-OFF n            \ where a call or leaving branch sits
 DYNAMIC-BUFFER CALL-KIND n           \ NEMIT:CALL or NEMIT:TAIL
@@ -106,6 +115,12 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 \ ---- taking a sealed emission -------------------------------------------------
 \ Only bytes of the machine the shadow's binding names are its routines.
 : TARGET-CK ( NART:emission -- )
+   NATIVE @ 0<> if
+      dup NART:PLACED? 0= if E-NSHADOW-TARGET throw then
+      NART:BINDING SH-BIND @ CBIND:SAME?
+      0= if E-NSHADOW-TARGET throw then
+      exit
+   then
    NART:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then ;
 
@@ -116,13 +131,57 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    at size + CODE-BUF-RESERVE
    e NART:BYTES at CODE-BUF size BYTE-COPY ;
 
+\ A native emission is already placed. Keep its exact recorded rows, while
+\ returning only their carried fields to the unplaced form the shadow linker
+\ consumes. Internal relative calls need no row and retain their displacement.
+5 constant REL32-BYTES
+1 constant REL32-FIELD
+$E8 constant CALL-OP
+$E9 constant TAIL-OP
+
+: NATIVE-CALLS ( NART:emission -- ) {: a:NART:emission :}
+   a NART:CALL-SITES 0 ?do
+      a i NART:CALL-SITE@ {: off:n :}
+      off 0 < off REL32-BYTES + a NART:SIZE > or if E-NSHADOW-ROW throw then
+      a i NART:CALL-KIND@ {: kind:n :}
+      kind NEMIT:CALL = if CALL-OP else
+         kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
+      then {: opcode:n :}
+      CODE-N @ off + CODE-BUF {: p:ptr :}
+      p c@ opcode <> if E-NSHADOW-ROW throw then
+      0 p REL32-FIELD + LE:U32!
+   loop ;
+
+: NATIVE-FUN-OFF ( NART:emission n -- n ) {: a:NART:emission v:n :}
+   a NART:PLACEMENT {: at:n :}
+   a NART:FUNCTIONS 0 ?do
+      a i NART:FUNCTION-OFFSET@ {: off:n :}
+      at off + v = if off unloop exit then
+   loop
+   -1 ;
+
+: NATIVE-ADDRS ( NART:emission -- ) {: a:NART:emission :}
+   a NART:ADDR-SITES 0 ?do
+      a i NART:ADDR-SITE@ {: off:n :}
+      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + a NART:SIZE > or
+         if E-NSHADOW-ROW throw then
+      CODE-N @ off + CODE-BUF {: p:ptr :}
+      p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
+      a i NART:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+         a p ADDRESS-CARRIER:MOVABSV NATIVE-FUN-OFF {: fun:n :}
+         fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
+      then
+   loop ;
+
 : COPY-FUNS ( NART:emission -- )
    {: e:NART:emission :}
    N-FUNS @ {: k0:n :}
    e NART:FUNCTIONS {: n:n :}
    k0 n + FUN-OFF-RESERVE
+   k0 n + FUN-SOURCE-RESERVE
    n 0 ?do
       e i NART:FUNCTION-OFFSET@ k0 i + FUN-OFF !
+      0 k0 i + FUN-SOURCE !
    loop ;
 
 : COPY-CALLS ( NART:emission -- )
@@ -153,7 +212,8 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    n EM-AT-RESERVE  n EM-SIZE-RESERVE  n EM-RET-RESERVE
    n EM-FUN0-RESERVE  n EM-FUNS-RESERVE
    n EM-CALL0-RESERVE  n EM-CALLS-RESERVE
-   n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE ;
+   n EM-ADDR0-RESERVE  n EM-ADDRS-RESERVE
+   n EM-PATCH-RESERVE  n EM-PATCH-TGT-RESERVE ;
 
 : COPY-ROW ( NART:emission -- )
    {: a:NART:emission :}
@@ -164,7 +224,9 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    a NART:RET-BYTES e EM-RET !
    N-FUNS @ e EM-FUN0 ! a NART:FUNCTIONS e EM-FUNS !
    N-CALLS @ e EM-CALL0 ! a NART:CALL-SITES e EM-CALLS !
-   N-ADDRS @ e EM-ADDR0 ! a NART:ADDR-SITES e EM-ADDRS ! ;
+   N-ADDRS @ e EM-ADDR0 ! a NART:ADDR-SITES e EM-ADDRS !
+   a NART:PATCH-SLOT e EM-PATCH !
+   0 e EM-PATCH-TGT ! ;
 
 \ Room for the records is made here, so PUBLISH, which runs after publication
 \ has committed the engine's own routine, grows nothing and refuses nothing.
@@ -180,6 +242,7 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    e TARGET-CK
    0 PENDING !
    e COPY-BYTES
+   NATIVE @ 0<> if e NATIVE-CALLS e NATIVE-ADDRS then
    e COPY-FUNS
    e COPY-CALLS
    e COPY-ADDRS
@@ -197,7 +260,8 @@ variable PEND-ENTRY                  \ which enters at this offset in it
    EM-FUN0-RELEASE  EM-FUNS-RELEASE
    EM-CALL0-RELEASE  EM-CALLS-RELEASE
    EM-ADDR0-RELEASE  EM-ADDRS-RELEASE
-   FUN-OFF-RELEASE
+   EM-PATCH-RELEASE  EM-PATCH-TGT-RELEASE
+   FUN-OFF-RELEASE  FUN-SOURCE-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE ;
@@ -227,17 +291,26 @@ public
    OPENED @ 0<> if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
+   0 NATIVE !
    1 OPENED ! ;
+
+: OPEN-NATIVE ( CBIND:binding -- )
+   OPEN
+   1 NATIVE ! ;
 
 \ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
    NLEASE:IDLE-CK
    0 OPENED !
+   0 NATIVE !
    CLEAR
    RELEASE-ROWS ;
 
 : OPEN? ( -- bool )
    OPENED @ 0<> ;
+
+: NATIVE? ( -- bool )
+   OPEN? NATIVE @ 0<> and ;
 
 : BINDING ( -- CBIND:binding )
    OPEN-CK SH-BIND @ ;
@@ -263,6 +336,45 @@ public
    1 PEND-DOES !
    1 PENDING ! ;
 
+\ The x86 def-cast writer publishes a raw one-byte RET identity body. It has
+\ no NART because the kernel writes it directly, so that writer reports the
+\ exact published entry and span through its fixed-shadow callback.
+: TAKE-CAST ( n n -- ) {: at:n size:n :}
+   OPEN-CK
+   NATIVE @ 0= if E-NSHADOW-STATE throw then
+   size 1 <> if E-NSHADOW-ROW throw then
+   at ENTRY-BYTES c@ $C3 <> if E-NSHADOW-ROW throw then
+   0 PENDING !
+   N-EMS @ {: e:n :}
+   e 1+ EM-RESERVE
+   CODE-N @ e EM-AT !
+   size e EM-SIZE !  size e EM-RET !
+   N-FUNS @ e EM-FUN0 !  1 e EM-FUNS !
+   N-CALLS @ e EM-CALL0 !  0 e EM-CALLS !
+   N-ADDRS @ e EM-ADDR0 !  0 e EM-ADDRS !
+   -1 e EM-PATCH !  0 e EM-PATCH-TGT !
+   CODE-N @ size + CODE-BUF-RESERVE
+   at ENTRY-BYTES CODE-N @ CODE-BUF size BYTE-COPY
+   N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
+   0 N-FUNS @ FUN-OFF !  at N-FUNS @ FUN-SOURCE !
+   REC-RESERVE
+   0 PEND-DOES !
+   1 PENDING ! ;
+
+\ Pair the host emission's function entries with the pending shadow's entries
+\ before the host publisher commits either code or dictionary record. Both
+\ selectors retain the same frozen HIR function sequence, even when their
+\ instruction and block layouts differ. TAKE reserved the rows; this grows
+\ nothing, and a failed publication discards the pending pair with ABANDON.
+: SOURCE-FUNS ( NART:emission n -- )
+   {: a:NART:emission at:n :}
+   PENDING @ 0= if exit then
+   N-EMS @ {: e:n :}
+   a NART:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
+   e EM-FUNS @ 0 ?do
+      at a i NART:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
+   loop ;
+
 \ File the taken emission under the record publication has just committed, and
 \ a definer's companion under the next. Nonthrowing: publication runs it past
 \ its code window, and TAKE made the room. With nothing taken - no shadow is
@@ -284,6 +396,22 @@ public
    e EM-ADDRS @ N-ADDRS +!
    e 1+ N-EMS !
    0 PENDING ! ;
+
+\ The host's does> primitive patches its created ARM body after CREATE has
+\ published. Its x86 body already holds a five-byte jump slot. Record the
+\ clause's ARM entry as that slot's relocation target; the capture resolves it
+\ through the clause companion's shadow row, just like any other tail site.
+: PATCH-DOES ( n n -- ) {: idx:n target:n :}
+   OPENED @ 0= if exit then
+   N-RECS @ 0 ?do
+      i REC-IDX @ idx = if
+         i REC-EM @ {: e:n :}
+         e EM-PATCH @ 0 < if E-NSHADOW-ROW throw then
+         target e EM-PATCH-TGT !
+         unloop exit
+      then
+   loop
+   E-NSHADOW-ROW throw ;
 
 \ Drop a taken emission no publication claimed. Nonthrowing: the driver runs it
 \ as every definition ends, on the refusing path and the accepting one alike.
@@ -328,17 +456,44 @@ public
 : FUNCTION-OFFSET@ ( n n -- n )
    FUN-ROW FUN-OFF @ ;
 
+\ A quotation has no dictionary record. An exact published host function entry
+\ still identifies its HIR sibling in the shadow emission; no interior address
+\ or nearest routine span is accepted as an identity.
+: SOURCE-FUNCTION ( n -- n n ) {: xt:n :}
+   OPEN-CK
+   N-EMS @ 0 ?do
+      i EM-FUNS @ 0 ?do
+         j i FUN-ROW FUN-SOURCE @ xt = if j i unloop unloop exit then
+      loop
+   loop
+   -1 -1 ;
+
 : CALL-SITES ( n -- n )
-   EM-CK EM-CALLS @ ;
+   EM-CK {: e:n :}
+   e EM-CALLS @
+   e EM-PATCH-TGT @ 0<> if 1+ then ;
+
+: PATCH-CALL? ( n n -- bool ) {: e:n k:n :}
+   e EM-PATCH-TGT @ 0<>
+   k e EM-CALLS @ = and ;
 
 : CALL-SITE@ ( n n -- n )
-   CALL-ROW CALL-OFF @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if e EM-PATCH @ exit then
+   e k CALL-ROW CALL-OFF @ ;
 
 : CALL-KIND@ ( n n -- n )
-   CALL-ROW CALL-KIND @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if NEMIT:TAIL exit then
+   e k CALL-ROW CALL-KIND @ ;
 
 : CALL-TARGET@ ( n n -- n )
-   CALL-ROW CALL-TGT @ ;
+   {: e:n k:n :}
+   e EM-CK drop
+   e k PATCH-CALL? if e EM-PATCH-TGT @ exit then
+   e k CALL-ROW CALL-TGT @ ;
 
 : ADDR-SITES ( n -- n )
    EM-CK EM-ADDRS @ ;

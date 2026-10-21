@@ -80,11 +80,12 @@ private
    b ;
 
 \ ---- the registry row --------------------------------------------------------
-\ Loading the low-level dialect does not publish a native pass provider. The
-\ pure capability predicate still answers for the machine it builds for.
+\ Loading the low-level dialect does not publish a native pass provider on an
+\ ARM host. The native x64 engine already has its provider registered.
 : REGISTRY-CASE ( -- )
-   s" loading the dialect does not publish incomplete native passes" T-LABEL
-   CTARGET-ARCH:X86-64 NBACK:REGISTERED? TFALSE
+   s" provider registration matches the native host" T-LABEL
+   CTARGET-ARCH:X86-64 NBACK:REGISTERED?
+   HB-TARGET-LINUX-X86-64? if TTRUE else TFALSE then
    CTR X64BACK:SERVES? TTRUE
    s" an architecture with no backend loaded is refused by the registry" T-LABEL
    [: PCTR NBACK:LOWERS? drop ;] E-CTGT-UNLOADED TTHROWSQ ;
@@ -208,6 +209,7 @@ private
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym
@@ -274,9 +276,9 @@ private
    rv v IR-SCHEMA:FTIES ;
 
 : MOVE-CASE ( -- )
-   s" the literal carries its value and its address kind; the copy ties nothing" T-LABEL
+   s" the literal carries its value, address kind and origin; the copy ties nothing" T-LABEL
    BND [: MOVE-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 1 T= 1 T= 2 T= 1 T= 0 T= ;
+   0 T= 1 T= 1 T= 3 T= 1 T= 0 T= ;
 
 \ Every two-address form declares one tie, and the tie names the operand the
 \ instruction overwrites: operand 0 for the arithmetic, operand 2 for the

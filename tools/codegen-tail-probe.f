@@ -11,12 +11,9 @@
 \ Legacy body lengths exclude the final slot; explicit full spans include the
 \ terminal branch or trap. The record bit decides whether a trailer exists.
 \
-\ WHY IT DOES NOT WALK TO THE FIRST RETURN. JITDUMP:JD (tools/jitdump-core.f) does, which
-\ is right for a routine somebody is reading and wrong for this question twice
-\ over: a routine with a guarded early exit stops at the first of its returns, and
-\ a routine that ends in a tail branch has no trailing return to stop at. The
-\ length in the dictionary record is the routine's own statement of its extent,
-\ so it is what is walked here.
+\ A routine with a guarded early exit has code past its first return, and one
+\ ending in a tail branch has no final return. The dictionary record states
+\ its extent; this probe and JITDUMP:JD both use that span.
 \
 \ THE NAMES ARE ARGUMENTS. A caller hands the tool the words it wants read, so a
 \ corpus lane names its own rows and nothing here has a list to keep in step with

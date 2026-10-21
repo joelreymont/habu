@@ -44,6 +44,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 62  constant NR-KILL
 109 constant NR-SETPGID
 39  constant NR-GETPID
+310 constant NR-PROCESS-VM-READV
 434 constant NR-PIDFD-OPEN
 293 constant NR-PIPE              \ pipe2(fds, flags)
 13  constant NR-SIGACTION         \ rt_sigaction

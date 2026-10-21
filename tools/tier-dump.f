@@ -12,9 +12,8 @@
 \ The word is looked up with XREF-FIND, so a package-qualified spelling
 \ (`ARRAY:A-LEN`) works and a private word is reachable, and the span comes from
 \ XREF-CODE-BYTES, so a body with an early exit is written whole. tools/jitdump.f
-\ is the sibling that decodes in process with Habu's own ARM64 decoder; it walks
-\ from an xt to the first `ret` and finds only the current wordlist, and its
-\ output prints one operand per line, which a side-by-side reading cannot use.
+\ is the sibling that decodes this exact live span in process on either native
+\ target; it finds the word in the current wordlist.
 \
 \ This file requires two things only, for the reason tools/tier-census.f gives:
 \ the string and formatting libraries are corpus a tier comparison wants to

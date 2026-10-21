@@ -787,9 +787,27 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
    s" NHOST:INSTALL" AOT-CAPTURE:BOOTRUN+
    s" ENGINE-ORIGIN:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
 
+\ An x86-64 target's routines are the shadow the pre-window writer opened
+\ (NATIVE-EMIT:OPEN-SHADOW). A native shadow reuses the placed emission, so
+\ its capture walks the shadow's reach. An ARM64 host's dual-emission shadow
+\ goes through TARGET-CAPTURE, which names a live emitted private routine with
+\ its private WID before compaction; x86-only routines travel unnamed. With no
+\ shadow open this is the plain capture. The shadow closes with the capture.
 : CAPTURE ( -- )
    CAPTURE-START
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   NSHADOW:NATIVE? if
+      AOT-ARM:WINDOW$
+      ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
+      AOT-CAPTURE:CAPTURE-NATIVE
+      AOT-CAPTURE:SHADOW-CAPTURE
+   else
+      NSHADOW:OPEN? if
+         AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
+      else
+         AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+      then
+   then
+   NSHADOW:CLOSE
    NAMES-SOURCE-ALIGN
    \ The snapshot has its armed cell. The builder still uses the old checker
    \ owner for the source writer compiled below, so stop observing in it.
@@ -837,23 +855,36 @@ variable SMOKE-DIR-U
 
 \ XREF-START answers the source writer's entry as a code address integer, and
 \ this private cast states its exact compiled ABI. Its capture is a multi-cell
-\ value, which cannot be passed through interpret-mode evaluate.
+\ value, which cannot be passed through interpret-mode evaluate. The x86-64
+\ writer's name-span query and shadow opener are cast the same way.
 CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+CAST: NAME-SPAN-XT ( n -- [ n -- n n ] )
+TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 
-: SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+: SOURCE-XT ( ptr u8 n -- n )
    XREF-FIND dup XREF-FOUND? 0= if
-      drop s" native-build: source writer missing" BUILD-RC die
+      drop s" native-build: source callback missing" BUILD-RC die
    then
    dup XREF-RETIRED? if
-      drop s" native-build: source writer retired" BUILD-RC die
+      drop s" native-build: source callback retired" BUILD-RC die
    then
    XREF-START {: xt:n :}
-   \ Resolve after loading: neither the retained host nor captured target owns
-   \ this writer. It was compiled above the frozen target window.
+   \ A source callback belongs above the captured target window, not to the
+   \ retained host or the target that the image will boot.
    xt 0= xt AOT-ARM:B1 @ < or xt cp@ >= or if
-      s" native-build: writer does not belong to the source load" BUILD-RC die
+      s" native-build: callback does not belong to the source load" BUILD-RC die
    then
-   xt WRITER-XT ;
+   xt ;
+
+: SOURCE-WRITER-NAMED ( ptr u8 n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   SOURCE-XT WRITER-XT {: writer :}
+   \ A source-loaded x86 writer links through its own X64LINK instance. Pair
+   \ the sidecar query with that instance before the writer uses its placement
+   \ storage; the pre-window callback belongs only to the pre-window writer.
+   X64-TARGET? if
+      s" X64LINK:NAMES-SPAN" SOURCE-XT NAME-SPAN-XT WRITER-NAME-SPAN !
+   then
+   writer ;
 
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
@@ -878,15 +909,44 @@ CAST: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" native-build: target process ABI or image format is not executable here" type cr
    BUILD-RC throw ;
 
+: FOREIGN? ( -- bool )
+   TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= ;
+
 : WRITER-MACHINE-CK ( -- )
-   TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= if
+   FOREIGN? if
       s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die
    then
    OUTPUT-LAUNCH-CK ;
 
+CAST: OPENER-XT ( n -- [ bool -- ] )
+TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
+
+: HELD-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-build: x86-64 writer not loaded before the target window" BUILD-RC die
+   then
+   XREF-START ;
+
+\ The retained host binding and the selected output action are both fixed
+\ before the target window replaces the compiler dispatch. Only an executable
+\ same-binding build can reuse its placed native emission.
+: NATIVE-X64? ( -- bool )
+   BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
+   action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
+      RTARGET:EXECUTABLE-HERE?
+   NABI:BINDING action RTARGET:BODY-TARGET@ RTARGET:NATIVE-BINDING
+      CBIND:SAME? and ;
+
+: HOLD-X64 ( -- )
+   s" NATIVE-EMIT:WRITE-C2" HELD-XT WRITER-XT HELD-WRITER !
+   s" X64LINK:NAMES-SPAN" HELD-XT NAME-SPAN-XT WRITER-NAME-SPAN !
+   NATIVE-X64?
+   s" NATIVE-EMIT:OPEN-SHADOW" HELD-XT OPENER-XT execute ;
+
 \ The reader's capture has its own bytes. Loading a writer may allocate and
 \ compile freely; none of those definitions or mutations enters that value.
 : SOURCE-WRITER-DISPATCH ( AOT-OWNED:capture ptr n n ptr u8 n -- )
+   X64-TARGET? if HELD-WRITER @ execute exit then
    WRITER-MACHINE-CK
    SOURCE-WRITER execute ;
 
@@ -952,8 +1012,17 @@ variable WRITER-TIER
    [: HB-TARGET-LINUX-X86-64? if 1 else 0 then TIER:SELECT READ-WRITER ;]
       [: WRITER-TIER @ TIER:SELECT ;] finally ;
 
+\ A caller-supplied writer (RUN-PATH-WRITER-RC) runs after the source writer
+\ loads, so it can bind that writer by name (SOURCE-WRITER-NAMED).
+TYPED-VARIABLE WRITER-OVERRIDE [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
+variable WRITER-OVERRIDE?
+
+\ An x86-64 target's writer was loaded before the window (HOLD-X64).
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   LOAD-SOURCE-WRITER
+   WRITER-OVERRIDE? @ 0<> X64-TARGET? 0= or if LOAD-SOURCE-WRITER then
+   WRITER-OVERRIDE? @ if
+      dup NATIVE-LAYOUT:CURRENT TEMP$ WRITER-OVERRIDE @ execute exit
+   then
    dup NATIVE-LAYOUT:CURRENT TEMP$ SOURCE-WRITER-DISPATCH ;
 
 : EMIT-TEMP ( AOT-OWNED:capture -- )
@@ -986,6 +1055,10 @@ variable WRITER-TIER
    CLASS-WANTED @ CLASS-WHITEBOX = if S\" 42\n\n1\n\n" exit then
    S\" 42\n\n0\n\n" ;
 
+: SMOKE-OTHER$ ( -- ptr u8 n )
+   CLASS-WANTED @ CLASS-WHITEBOX = if S\" 42\n\n0\n\n" exit then
+   S\" 42\n\n1\n\n" ;
+
 \ The one place a whitebox image is stopped from becoming a product. It runs
 \ before PROMOTE, so the refusal costs a temp file and nothing that was named.
 : SMOKE-CLASS-REFUSE ( -- )
@@ -1011,8 +1084,8 @@ variable WRITER-TIER
       SMOKE-ERR erru type
       BUILD-RC throw
    then
-   SMOKE-OUT outu SMOKE-EXPECT$ STR= 0= if
-      SMOKE-OUT outu S\" 42\n\n" STARTS-WITH? if SMOKE-CLASS-REFUSE then
+   SMOKE-OUT outu SMOKE-EXPECT$ ENDS-WITH? 0= if
+      SMOKE-OUT outu SMOKE-OTHER$ ENDS-WITH? if SMOKE-CLASS-REFUSE then
       BUILD-RC throw
    then ;
 
@@ -1038,14 +1111,13 @@ variable WRITER-TIER
 \ name is last and needs no quoting.
 \    rec    capture-order index, 0-based and dense
 \    named  1 when the image kept this name, 0 when it stripped it
-\    start  code offset in the payload blob, build-time - or, on a package row,
-\           the package's public wordlist as the image carries it
+\    start  code offset in the image's payload blob (x64: REGION code band),
+\           or, on a package row, its public wordlist as the image carries it
 \    len    raw CODE-SPAN length: bit 31 means an exact byte span; otherwise
 \           the final instruction follows the body (decode with CODE-SPAN:BYTES)
 \           - or, on a package row, its private wordlist, 0 when it has none
-\    wid    the record's wordlist as the image carries it - its one-based offset
-\           from the window's first wordlist (src/habu/aot-decl.f WID-REL-BASE),
-\           0 for the global wordlist, or -1 for a package row
+\    wid    the record's wordlist as the image carries it (ARM: window-relative;
+\           x64: placed image ID), 0 for global, or -1 for a package row
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
 variable NAMES-PATH-U
@@ -1059,6 +1131,9 @@ variable NAMES-HASH-OFF
 DYNAMIC-BUFFER NAMES-ALIAS-FLAGS u8
 DYNAMIC-BUFFER NAMES-ORDER n
 variable NAMES-ORDER-N
+DYNAMIC-BUFFER NAMES-SHADOW n           \ capture record -> placed shadow row
+DYNAMIC-BUFFER NAMES-NAMED n            \ shipped named row -> capture record
+variable NAMES-NAMED-N
 
 : NAMES-SUFFIX$ ( -- ptr u8 n ) s" .map" ;
 
@@ -1166,12 +1241,71 @@ variable NAMES-NI
    k NAMES-ALIAS? if s" alias" exit then
    s" word" ;
 
+: NAMES-SH-KEY ( n -- n ) {: row:n :}
+   AOT-SHADOW:REC-BUF@ row AOT-SHADOW:REC-ROW * + LE:U32@ ;
+
+\ The source capture keeps every record for the sidecar, while the payload
+\ keeps only named records and private live code. Pair the two once; a shadow
+\ row's anonymous key carries its capture index without shipping a name.
+: NAMES-X64-PLAN ( -- )
+   AOT-CAPTURE:MAP-N 1 max NAMES-SHADOW-RESERVE
+   AOT-CAPTURE:MAP-N 0 ?do -1 i NAMES-SHADOW ! loop
+   AOT-BUF:AOT-REC-N @ 1 max NAMES-NAMED-RESERVE
+   0 NAMES-NAMED-N !
+   AOT-CAPTURE:MAP-N 0 ?do
+      i AOT-CAPTURE:MAP-NAMED 0<> if
+         i NAMES-NAMED-N @ NAMES-NAMED !
+         1 NAMES-NAMED-N +!
+      then
+   loop
+   NAMES-NAMED-N @ AOT-BUF:AOT-REC-N @ <> if
+      s" native-build: capture and x64 named rows differ" BUILD-RC die then
+   AOT-SHADOW:REC-N @ 0 ?do
+      i NAMES-SH-KEY {: key:n :}
+      key AOT-SHADOW:ANON-REC and 0<> if
+         key AOT-SHADOW:RETIRED-REC <> if
+            key AOT-SHADOW:ANON-REC invert and {: k:n :}
+            k AOT-CAPTURE:MAP-N >= if
+               s" native-build: anonymous shadow row has no capture record" BUILD-RC die then
+            k NAMES-SHADOW @ 0 >= if
+               s" native-build: two shadow rows name one capture record" BUILD-RC die then
+            i k NAMES-SHADOW !
+         then
+      else
+         key NAMES-NAMED-N @ >= if
+            s" native-build: named shadow row has no capture record" BUILD-RC die then
+         key NAMES-NAMED @ {: k:n :}
+         k NAMES-SHADOW @ 0 >= if
+            s" native-build: two shadow rows name one capture record" BUILD-RC die then
+         i k NAMES-SHADOW !
+      then
+   loop ;
+
+: NAMES-X64-WID ( n -- n ) {: wid:n :}
+   wid 0= if 0 exit then
+   wid AOT-BUF:WID-REL-BASE - FIRST-DYNAMIC-WID + ;
+
+: NAMES-X64-FIELDS ( n -- n n n ) {: k:n :}
+   k AOT-CAPTURE:MAP-WID {: wid:n :}
+   wid -1 = if
+      k AOT-CAPTURE:MAP-START NAMES-X64-WID
+      k AOT-CAPTURE:MAP-LEN NAMES-X64-WID
+      -1 exit
+   then
+   k NAMES-SHADOW @ {: row:n :}
+   row 0 < if -1 0 wid NAMES-X64-WID exit then
+   row WRITER-NAME-SPAN @ execute
+   wid NAMES-X64-WID ;
+
 : NAMES-ROW ( n -- ) {: k:n :}
    k NAMES-INT+                          s"  " NAMES+
    k AOT-CAPTURE:MAP-NAMED NAMES-INT+    s"  " NAMES+
-   k AOT-CAPTURE:MAP-START NAMES-INT+    s"  " NAMES+
-   k AOT-CAPTURE:MAP-LEN NAMES-INT+      s"  " NAMES+
-   k AOT-CAPTURE:MAP-WID NAMES-INT+      s"  " NAMES+
+   X64-TARGET? if k NAMES-X64-FIELDS else
+      k AOT-CAPTURE:MAP-START k AOT-CAPTURE:MAP-LEN k AOT-CAPTURE:MAP-WID
+   then {: start:n len:n wid:n :}
+   start NAMES-INT+                      s"  " NAMES+
+   len NAMES-INT+                        s"  " NAMES+
+   wid NAMES-INT+                        s"  " NAMES+
    k AOT-CAPTURE:MAP-NAME$ NAMES+       s"  " NAMES+
    k NAMES-KIND$ NAMES+               s"  baked " NAMES+
    k NAMES-SRC$ NAMES-ESC+
@@ -1321,13 +1455,15 @@ variable SEALED-NAMES-U
    NAMES-SOURCES
    PREPARE-TARGET
    CAPTURE
-   BUILD-NAMES
+   \ An x86-64 map row reads the placement the held writer makes, so its rows
+   \ are paired with the shadow here and built once the image is written.
+   X64-TARGET? if NAMES-X64-PLAN else BUILD-NAMES then
    AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW ;
 
 : IMAGE-INSTALL ( -- )
+   X64-TARGET? if BUILD-NAMES then
    SIGN-TEMP
-   OUTPUT-LAUNCH-CK
-   SMOKE
+   FOREIGN? 0= if OUTPUT-LAUNCH-CK SMOKE then
    PROMOTE
    WRITE-NAMES ;
 
@@ -1349,7 +1485,12 @@ variable READY-BOOTSTRAP
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
-   WRITER-MACHINE-CK
+   \ An x86-64 target's writer runs in this host, so it may be another
+   \ machine's: bind it and open its shadow before the window loads.
+   X64-TARGET? if
+      FOREIGN? 0= if OUTPUT-LAUNCH-CK then
+      HOLD-X64
+   else WRITER-MACHINE-CK then
    RETAIN-HOST-PRODUCERS ;
 
 : FILE-FINISH ( -- )
@@ -1417,6 +1558,16 @@ public
    query READY-QUERY !
    bootstrap READY-BOOTSTRAP !
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
+
+\ RUN-PATH-RC with the image written by `writer` instead of the source writer's
+\ WRITE-C2. The x86-64 fixture writer (test/native-fixture-native.f) merges a
+\ partial artifact into the runtime capture this way.
+: RUN-PATH-WRITER-RC ( ptr u8 n [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+   {: out:ptr outu:n query bootstrap:bool writer :}
+   writer WRITER-OVERRIDE !
+   -1 WRITER-OVERRIDE? !
+   out outu query bootstrap RUN-PATH-RC
+   0 WRITER-OVERRIDE? ! ;
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN and tools/build-profile.f): 0,

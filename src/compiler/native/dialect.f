@@ -123,6 +123,7 @@ STRUCTURE vocab
    FIELD shift IR-ID:ir-symbol-id
    FIELD copy IR-ID:ir-symbol-id
    FIELD remat IR-ID:ir-symbol-id
+   FIELD remat-mark IR-ID:ir-symbol-id
    FIELD lanes n
    FIELD slot-width n
    FIELD stand dstand
@@ -161,6 +162,7 @@ STRUCTURE lowering
    FIELD frame IR-ID:ir-symbol-id
    FIELD copy IR-ID:ir-symbol-id
    FIELD remat IR-ID:ir-symbol-id
+   FIELD remat-mark IR-ID:ir-symbol-id
    FIELD reserve IR-ID:ir-symbol-id
    FIELD release IR-ID:ir-symbol-id
    FIELD store IR-ID:ir-symbol-id
@@ -202,6 +204,7 @@ STRUCTURE lowering
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym

@@ -36,10 +36,27 @@ create ERR IO-CAP allot
    OUT outu LEN>N diagnostic diagnosticu CONTAINS?
    ERR erru LEN>N diagnostic diagnosticu CONTAINS? or TTRUE ;
 
-: CASES ( -- )
+\ The x86-64 native compiler refuses the throwing quotation provider itself, so
+\ the window closes with that code and no exceptional row reaches a payload.
+: CASE-NATIVE-REFUSED ( -- )
+   s" test/aot-payload-exception-child.f" ARGS
+   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   s" test/aot-payload-exception-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
+   rc 0 <> if OUT outu LEN>N type ERR erru LEN>N type cr then
+   rc 0 T=
+   OUT outu LEN>N S\" window: -8651\n" T$=
+   ERR erru LEN>N s" ncomp: cannot compile PAYLOAD-THROW-PROVIDER at [:" CONTAINS? TTRUE ;
+
+: CASE-EXCEPTION ( -- )
+   HB-TARGET-LINUX-X86-64? if CASE-NATIVE-REFUSED exit then
    s" test/aot-payload-exception-child.f"
    s" exceptional quotation rows are present"
-   s" checker: exceptional quotation rows are not portable" CASE-RUN
+   s" checker: exceptional quotation rows are not portable" CASE-RUN ;
+
+: CASES ( -- )
+   CASE-EXCEPTION
    s" test/aot-payload-constructor-child.f"
    s" dynamic constructor schema is present"
    s" tfam: captured schema constructor has process-local identity" CASE-RUN ;

@@ -41,7 +41,7 @@ FUNCTION: CLOCK-GETTIME-CALL clock_gettime ( n ptr u8 -- i32 )
 ;FUNCTION
 
 : THREAD-CPU-CLOCK ( -- n )
-   HB-TARGET-LINUX? if THREAD-CPU-LINUX exit then
+   HB-TARGET-LINUX-KERNEL? if THREAD-CPU-LINUX exit then
    HB-TARGET-MACOS? if THREAD-CPU-MACOS exit then
    E-PROC-HOST throw ;
 

@@ -96,7 +96,15 @@ variable IMGU
 : TRAILER-OFF ( -- n )
    IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
 
+\ The x86 writer keeps REGION and the DATA control prefix in fixed PT_LOADs.
+\ The fifth and sixth program headers name their file offsets; the first four
+\ are RX, dynamic RW, interpreter and dynamic metadata.
+: X64-PHDR ( n -- n ) 56 * 32 U64@ + ;
+: X64-REGION-OFF ( -- n ) 4 X64-PHDR 8 + U64@ ;
+: X64-DATA-OFF ( -- n ) 5 X64-PHDR 8 + U64@ ;
+
 : DATA-OFF ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-DATA-OFF 8 - exit then
    TRAILER-OFF {: tr:n :}
    tr tr SNAP-TRL-DATALEN + U64@ - ;
 
@@ -121,18 +129,30 @@ variable IMGU
    TRAILER-OFF SNAP-TRL-NDICT + U64@ DREC * ;
 
 : STORED-REGION-LEN ( -- n )
+   HB-TARGET-LINUX-X86-64? if REGION-LEN exit then
    DICT-ROWS REGION-LEN DICT-SIZE - + ;
 
 : REGION-OFF ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-REGION-OFF exit then
    DATA-OFF STORED-REGION-LEN - ;
 
 : MAP-SLICE-LEN ( -- n )
    REGION-LEN 31 + 32 / DICT-SIZE 32 / - ;
 
 : DATA-HEADER-OFF ( -- n )
+   HB-TARGET-LINUX-X86-64? if
+      X64-DATA-OFF SNAP-RELOC:XTCELL-N-CELL + exit then
    DATA-OFF 8 + SNAP-RELOC:CALLMAP-OFF + MAP-SLICE-LEN 2 * + ;
 
+: X64-HEAP-OFF ( -- n )
+   X64-DATA-OFF CODE-END-CELL + U64@
+   24 U64@ - CODE-OFF + {: table:n :}
+   table U64@ $FFFFFFFF and {: rows:n :}
+   table 4 + rows 5 * + 16 + PROT-PAGE-MAX 1- +
+      PROT-PAGE-MAX 1- invert and ;
+
 : HEAP-OFF ( -- n )
+   HB-TARGET-LINUX-X86-64? if X64-HEAP-OFF exit then
    DATA-HEADER-OFF ADDRESS-CELLS:HEADER-BYTES +
    DATA-HEADER-OFF ADDRESS-CELLS:BASE-FIELD + U64@
       ADDRESS-CELLS:BOOT-OFF = if
@@ -140,7 +160,10 @@ variable IMGU
    then ;
 
 \ ---- the heap section: its bytes, or the src/habu/cell-grid.f form ----------
-: HEAP-BYTES ( -- n ) DATA-OFF U64@ DATA-START - ;
+: HEAP-BYTES ( -- n )
+   HB-TARGET-LINUX-X86-64? if
+      X64-DATA-OFF DP-CELL + U64@ DATA-VA VA>N - DATA-START - exit then
+   DATA-OFF U64@ DATA-START - ;
 : HEAP-FORM ( -- n ) TRAILER-OFF SNAPSHOT-FORMAT:HEAP-FIELD + U64@ ;
 : GRID? ( -- bool ) HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID = ;
 : GRID-G ( -- n ) HEAP-OFF U64@ ;
@@ -182,6 +205,17 @@ variable IMGU
    HEAP-OFF HEAP-BYTES + ;
 
 : STREAM-SHAPE-CASE ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" fixed x86 segments hold live dictionary rows and DATA control cells" T-LABEL
+      TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION T=
+      REGION-LEN DICT-SIZE >= TTRUE
+      DICT-ROWS DICT-SIZE <= TTRUE
+      REGION-OFF X64-DATA-OFF < TTRUE
+      X64-DATA-OFF DATA-START + IMGU @ <= TTRUE
+      X64-DATA-OFF DP-CELL + U64@ DATA-VA VA>N DATA-START + >= TTRUE
+      HEAP-OFF TRAILER-OFF < TTRUE
+      exit
+   then
    s" the snapshot stores live dictionary rows and preserves the virtual code extent" T-LABEL
    TRAILER-OFF SNAP-TRL-VERSION + U64@ SNAPSHOT-FORMAT:VERSION T=
    REGION-LEN DICT-SIZE >= TTRUE
@@ -193,13 +227,20 @@ variable IMGU
    s" it carries the address-vector header after the live map slices" T-LABEL
    DATA-HEADER-OFF ADDRESS-CELLS:MAGIC-FIELD + U64@ ADDRESS-CELLS:MAGIC T= ;
 
-: CANARIES-ABSENT? ( -- bool )
-   DATA-OFF DATA-LEN + 8 - DATA-OFF ?do
+: CANARIES-ABSENT-IN? ( n n -- bool ) {: from:n end:n :}
+   end 7 - from ?do
       i U64@ {: v:n :}
       v SNAP-WRITER-POISON:LO-CANARY invert = v SNAP-WRITER-POISON:HI-CANARY invert = or if
          false unloop exit
       then
    8 +loop true ;
+
+: CANARIES-ABSENT? ( -- bool )
+   HB-TARGET-LINUX-X86-64? if
+      X64-DATA-OFF X64-DATA-OFF DATA-START + CANARIES-ABSENT-IN?
+      HEAP-OFF TRAILER-OFF CANARIES-ABSENT-IN? and exit
+   then
+   DATA-OFF DATA-OFF DATA-LEN + CANARIES-ABSENT-IN? ;
 
 \ ---- child snapshot build with rc + stderr capture ----
 : CAPTURE! ( result<pcap:captured,pcap:failed> -- )
@@ -385,6 +426,23 @@ variable BAND-WID
    off -1 CELL! WRITE-BAND-COPY RUN-BAND-COPY
    off old CELL! ;
 
+: X64-DOCTOR-DP-CEILING ( -- )
+   X64-DATA-OFF DP-CELL + {: off:n :}
+   off U64@ {: old:n :}
+   off DATA-VA VA>N DATA-SIZE + CELL!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ;
+
+: X64-DOCTOR-UNALIGNED-REGION ( -- )
+   TRAILER-OFF SNAP-TRL-REGLEN + {: len-off:n :}
+   4 X64-PHDR 32 + {: file-off:n :}
+   len-off U64@ {: old:n :}
+   old 15 and 0= TTRUE
+   old file-off U64@ T=
+   len-off old 1+ CELL!  file-off old 1+ CELL!
+   WRITE-BAND-COPY RUN-BAND-COPY
+   len-off old CELL!  file-off old CELL! ;
+
 : DOCTOR-PARTIAL-CALL ( -- )
    TRAILER-OFF SNAP-TRL-REGLEN + {: len-off:n :}
    len-off U64@ {: old-len:n :}
@@ -455,13 +513,15 @@ variable BAND-WID
       DATA-OFF U64@ 8 - DOCTOR-ADDRESS-CELL ;
 
 : WARM-CASE ( -- )
-   ADDRESS-HEADER-CASE
+   HB-TARGET-LINUX-X86-64? 0= if ADDRESS-HEADER-CASE then
    s" unsupported trailer versions are refused before restore" T-LABEL
    TRAILER-OFF SNAP-TRL-VERSION + 2 DOCTOR-BYTE ASSERT-VERSION-REFUSED
    TRAILER-OFF SNAP-TRL-VERSION + 9 DOCTOR-BYTE ASSERT-VERSION-REFUSED
    TRAILER-OFF SNAP-TRL-VERSION + $FF DOCTOR-BYTE ASSERT-VERSION-REFUSED
-   s" an address row outside exact DP is refused before restore" T-LABEL
-   DOCTOR-FIRST-ROW
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" an address row outside exact DP is refused before restore" T-LABEL
+      DOCTOR-FIRST-ROW
+   then
    BAND-WID!
    s" persisted protected-WID band carries the bitmap shape tag" T-LABEL
    BAND-TAG PROT-REG-TAG T=
@@ -473,10 +533,12 @@ variable BAND-WID
    BAND-WID @ FORGE$ WARM-LOAD  ASSERT-REJECT
    s" warm protected wordlist rejects publication (stdin)" T-LABEL
    BAND-WID @ FORGE$ WARM-STDIN  ASSERT-REJECT
-   s" band with a wrong shape tag is refused at snapshot-read" T-LABEL
-   DOCTOR-TAG ASSERT-BAND-REFUSED
-   s" band claiming wid 0 is refused at snapshot-read" T-LABEL
-   DOCTOR-WID0 ASSERT-BAND-REFUSED
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" band with a wrong shape tag is refused at snapshot-read" T-LABEL
+      DOCTOR-TAG ASSERT-BAND-REFUSED
+      s" band claiming wid 0 is refused at snapshot-read" T-LABEL
+      DOCTOR-WID0 ASSERT-BAND-REFUSED
+   then
    s" a stored DATA length shorter than its sections is refused" T-LABEL
    DOCTOR-DATA-LENGTH ASSERT-BAND-REFUSED
    s" a negative dictionary count is refused before restore" T-LABEL
@@ -484,8 +546,16 @@ variable BAND-WID
    s" oversized positive region and dictionary counts are refused" T-LABEL
    TRAILER-OFF SNAP-TRL-REGLEN + 4 + $FF DOCTOR-BYTE ASSERT-BAND-REFUSED
    TRAILER-OFF SNAP-TRL-NDICT + 3 + $FF DOCTOR-BYTE ASSERT-BAND-REFUSED
-   s" a partial call site is refused before restore" T-LABEL
-   DOCTOR-PARTIAL-CALL ASSERT-BAND-REFUSED
+   HB-TARGET-LINUX-X86-64? if
+      s" x86 saved DP above the heap ceiling is refused" T-LABEL
+      X64-DOCTOR-DP-CEILING ASSERT-BAND-REFUSED
+      s" x86 unaligned code extent is refused" T-LABEL
+      X64-DOCTOR-UNALIGNED-REGION ASSERT-BAND-REFUSED
+   then
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" a partial call site is refused before restore" T-LABEL
+      DOCTOR-PARTIAL-CALL ASSERT-BAND-REFUSED
+   then
    s" the previous snapshot format is refused by the baked loader" T-LABEL
    TRAILER-OFF SNAP-TRL-VERSION + SNAPSHOT-FORMAT:VERSION 1- DOCTOR-BYTE
    ASSERT-VERSION-REFUSED
@@ -606,6 +676,14 @@ variable BAND-WID
    ten 0 >= TTRUE  ten 9 + 2 DOCTOR-BYTE ASSERT-BAND-REFUSED ;
 
 : GRID-TRUNCATED-CASE ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" a last grid value continuing into padding is refused" T-LABEL
+      LAST-VALUE {: at:n :}
+      at WIDTH CELL-GRID:VMAX < TTRUE
+      at dup WIDTH + 1- {: last:n :}
+      last last U8@ $80 or DOCTOR-BYTE ASSERT-BAND-REFUSED
+      RELOAD exit
+   then
    SHIFT-PAD
    s" a grid stream with no pad restores" T-LABEL
    TRAILER-OFF STREAM-END T=
@@ -702,12 +780,20 @@ variable PADDED
 \ the map, G and S untouched.
 3 constant TAIL-BYTES                \ test/snapshot-writer-tail.f's
 
-: EXTENT ( -- n ) DATA-OFF U64@ ;
+: EXTENT ( -- n )
+   HB-TARGET-LINUX-X86-64? if
+      X64-DATA-OFF DP-CELL + U64@ DATA-VA VA>N - exit then
+   DATA-OFF U64@ ;
 
 : DOCTOR-EXTENT ( n -- ) {: ext:n :}
    EXTENT {: old:n :}
    DATA-OFF 8 + DP-CELL + {: dp:n :}
    dp U64@ {: old-dp:n :}
+   HB-TARGET-LINUX-X86-64? if
+      dp DATA-VA VA>N ext + CELL!
+      WRITE-BAND-COPY RUN-BAND-COPY
+      dp old-dp CELL! exit
+   then
    DATA-OFF ext CELL!  dp old-dp old - ext + CELL!
    WRITE-BAND-COPY RUN-BAND-COPY
    DATA-OFF old CELL!  dp old-dp CELL! ;
@@ -768,8 +854,10 @@ variable PADDED
    s" the raw heap restores" T-LABEL
    s\" SNAP-WRITER-DENSE:MISMATCHES .\n" WARM-STDIN
    EXITED @ TTRUE  RC @ 0 T=  PARSE-OUT 0 T=
-   s" nonzero padding after a raw heap is refused" T-LABEL
-   DOCTOR-PAD ASSERT-BAND-REFUSED ;
+   STREAM-END TRAILER-OFF < if
+      s" nonzero padding after a raw heap is refused" T-LABEL
+      DOCTOR-PAD ASSERT-BAND-REFUSED
+   then ;
 
 \ ---- a failed write leaves the output path as it was ------------------------
 : CLOSE-FAIL$ ( -- ptr u8 n ) s" close-fail" PATH$ ;
@@ -877,9 +965,8 @@ variable STRAYS
    ACTIVE-SNAP$ EXISTS? TFALSE ;
 
 \ Tier 1 compiles a definition as one unit, so only its pending record is live
-\ when the immediate runs. Tier 0 also holds the innermost open quotation and
-\ parks each enclosing one; its code has no native provenance either, so the
-\ rc and the message show the quiescence check refuses before that one does.
+\ when the immediate runs. ARM tier 0 also holds the innermost open quotation
+\ and parks each enclosing one; x86-64 has only tier 1.
 : ACTIVE-CASE ( -- )
    QUIESCENT-SNAP$ s\" SNAP-WRITER-ACTIVE:SAVE\n" ACTIVE-BUILD
    s" a capture from the immediate with nothing open saves" T-LABEL
@@ -888,6 +975,7 @@ variable STRAYS
    QUIESCENT-SNAP$ EXISTS? TTRUE
    s" a capture with a definition open is refused" T-LABEL
    s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
+   HB-TARGET-LINUX-X86-64? if exit then
    s" a capture with a quotation open is refused" T-LABEL
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
    ACTIVE-REFUSED
@@ -937,7 +1025,7 @@ variable STRAYS
    POISON-CASE
    HOLE-CASE
    TAIL-CASE
-   DATA-SIZE DENSE-DATA > if DENSE-CASE then
+   HB-TARGET-LINUX-X86-64? 0= DATA-SIZE DENSE-DATA > and if DENSE-CASE then
    CLOSE-FAIL-CASE
    OPEN-FAIL-CASE
    REPLACE-FAIL-CASE

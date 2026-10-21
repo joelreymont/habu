@@ -145,6 +145,7 @@ package NATIVE-RUNTIME
 ;package
 execute
 s" src/habu/repl.f" required
+s" src/habu/main.f" required
 s" src/habu/code-bytes.f" required
 s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
@@ -152,6 +153,7 @@ s" src/habu/debug.f" required
 s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required
+s" src/habu/interpret.f" required
 
 package NATIVE-RUNTIME
 
@@ -184,6 +186,10 @@ TRUSTED: BIND-OWNER ( -- )
 
 : SEAL ( -- )
    NCOMP:INSTALL
+   OUTER:INSTALL-EVALUATE
+   OUTER:INSTALL-CREATE
+   OUTER:INSTALL-POLICY
+   ENGINE-MAIN:INSTALL
    BIND-OWNER
    SEAL-CAPTURE ;
 

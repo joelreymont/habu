@@ -112,6 +112,7 @@ BOUND-NO BND-MODE !
 1 CWORK-BUFFER BND-LINKLOAD NDIALECT:optsym
 1 CWORK-BUFFER BND-COPY IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-REMAT IR-ID:ir-symbol-id
+1 CWORK-BUFFER BND-REMAT-MARK IR-ID:ir-symbol-id
 1 CWORK-BUFFER BND-GPR IR-ID:ir-type-id
 1 CWORK-BUFFER BND-MEM IR-ID:ir-type-id
 1 CWORK-BUFFER BND-FPR IR-ID:ir-type-id
@@ -140,7 +141,8 @@ DYNAMIC-BUFFER F-ORDER-SET-BUF n
 DYNAMIC-BUFFER F-NEED-BUF n
 : F-NEED ( -- ptr n ) 0 F-NEED-BUF ;
 
-\ One flag per VALUE of the module: a frame access of the old module reads it.
+\ One flag per VALUE of the module: an order value a frame access of the old
+\ module reads, directly or through the edges that forward it (F-READS!).
 \ Module-wide, because value identities are.
 DYNAMIC-BUFFER F-READ-BUF n
 : F-READ ( -- ptr n ) 0 F-READ-BUF ;
@@ -425,17 +427,20 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    {: id:IR-ID:ir-op-id i:n :}
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
-\ Two callers want it: the copier, and the re-emission that rebuilds a move-wide
-\ out of the immediate its original carried.
-: COPY-ATTRS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ Copies preserve the source mark; re-emission marks its rebuilt move-wide.
+: COPY-ATTRS ( IR-ID:ir-op-id bool -- )
+   {: id:IR-ID:ir-op-id remat:bool :}
    id ATTRS-OF {: n:n :}
    n 0 ?do
       id i ATTR-KEY-AT {: k:IR-ID:ir-symbol-id :}
       k 0 BND-FRAME @ SAME-SYM? if
          k FRAME-N @ INT-ATTR+
       else
-         k  id i ATTR-INT-AT  INT-ATTR+
+         k 0 BND-REMAT-MARK @ SAME-SYM? remat and if
+            k 1 INT-ATTR+
+         else
+            k  id i ATTR-INT-AT  INT-ATTR+
+         then
       then
    loop ;
 
@@ -493,7 +498,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    k DOP @ {: d:IR-ID:ir-op-id :}
    at 0 BND-REMAT @ OPEN
    k FILE-RESULT+
-   d COPY-ATTRS
+   d true COPY-ATTRS
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
@@ -601,53 +606,61 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
 
 -1 constant NO-FRAME-ARG
 
-\ Every operand of every frame access of the module, read once: the values a
-\ frame access consumes directly. Asking a value instead walked every operation
-\ of the module again, once per block argument of every block.
+: F-READ? ( IR-ID:ir-value-id -- bool )
+   VSLOT cells F-READ + @ 0<> ;
+
+: F-READ! ( IR-ID:ir-value-id -- )
+   VSLOT cells F-READ + 1 swap ! ;
+
+\ One walk of the module's one-successor terminators: an order value forwarded
+\ into an argument a frame access reads is read by it as well. True when it
+\ found one more. Descending, because the selector emits a block before the
+\ blocks it branches to and the reading runs back along the edges, so a walk
+\ carries it the length of a straight-line region (F-NEED-PASS).
+: F-FORWARD ( -- bool )
+   false
+   TOTAL-OPS 0 ?do
+      MKEY  TOTAL-OPS 1- i -  IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+      id SUCCS-OF 1 = if
+         id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+         id OPERANDS-OF  sb ARG-COUNT  min  0 ?do
+            id i OPERAND-AT {: v:IR-ID:ir-value-id :}
+            sb i ARG-AT F-READ?  v F-READ? 0=  and if
+               v F-READ!  drop true
+            then
+         loop
+      then
+   loop ;
+
+\ The order values of the module a frame access reads, found once: those it
+\ consumes directly, then every one a one-successor edge forwards into an
+\ argument already found. The forwarding edge need not leave the argument's own
+\ block: a value is read in every block it dominates, so a lane can enter a
+\ block that branches two ways and be forwarded by the br of a block that block
+\ dominates. Asking a value instead walked every operation of the module again,
+\ once per block argument of every block.
 : F-READS! ( -- )
    VMAX 0 ?do 0 i cells F-READ + ! loop
    TOTAL-OPS 0 ?do
       MKEY i IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
       id FRAME-TOUCH? if
          id OPERANDS-OF 0 ?do
-            1 id i OPERAND-AT VSLOT cells F-READ + !
+            id i OPERAND-AT {: v:IR-ID:ir-value-id :}
+            v MEM-VALUE? if v F-READ! then
          loop
       then
-   loop ;
+   loop
+   begin F-FORWARD 0= until ;
 
-\ An argument may dominate a frame access after a conditional edge without
-\ being forwarded as another block argument. Value identities are module-wide,
-\ so this asks the module-wide map of direct frame consumers.
-: DIRECT-FRAME-ARG? ( IR-ID:ir-value-id -- bool )
-   {: a:IR-ID:ir-value-id :}
-   a MEM-VALUE? 0= if false exit then
-   a VSLOT cells F-READ + @ 0<> ;
-
-: FRAME-ARG-PATH? ( IR-ID:ir-block-id IR-ID:ir-value-id n -- bool )
-   {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id fuel:n :}
-   a DIRECT-FRAME-ARG? if true exit then
-   fuel 0= if false exit then
-   bk TERM-AT {: id:IR-ID:ir-op-id :}
-   id SUCCS-OF 1 <> if false exit then
-   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
-   false
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT a SAME-VALUE?  i sb ARG-COUNT < and if
-         sb sb i ARG-AT fuel 1- recurse or
-      then
-   loop ;
-
-: FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
-   BMAX FRAME-ARG-PATH? ;
-
-\ A prior lowering's frame lane is identified by a frame consumer or by the
-\ terminator that forwards it, never by its position among unrelated arguments.
+\ A prior lowering's frame lane is the argument a frame access reads, directly
+\ or through the edges that forward it (F-READS!), never found by its position
+\ among unrelated arguments.
 : FRAME-LANE ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    NO-FRAME-ARG
    bk ARG-COUNT 0 ?do
       bk i ARG-AT {: a:IR-ID:ir-value-id :}
-      bk a FRAME-ARG? if
+      a F-READ? if
          a IR-ID:VALUE-LOCAL {: x:n :}
          dup NO-FRAME-ARG <> over x <> and if E-A64SPILL-SHAPE throw then
          drop x
@@ -796,7 +809,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    f id carry FRAME-EDGE+
    id COPY-RESULTS
    f id carry COPY-SUCCS
-   id COPY-ATTRS
+   id false COPY-ATTRS
    id  CLOSE  frame BIND-RESULTS ;
 
 \ ---- the block ---------------------------------------------------------------
@@ -1059,6 +1072,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
       gpr:IR-ID:ir-type-id fpr:IR-ID:ir-type-id mem:IR-ID:ir-type-id
       slot:IR-ID:ir-symbol-id frame:IR-ID:ir-symbol-id
       copy:IR-ID:ir-symbol-id remat:IR-ID:ir-symbol-id
+      mark:IR-ID:ir-symbol-id
       reserve:IR-ID:ir-symbol-id release:IR-ID:ir-symbol-id
       store:IR-ID:ir-symbol-id load:IR-ID:ir-symbol-id
       fstore:NDIALECT:optsym fload:NDIALECT:optsym
@@ -1074,6 +1088,7 @@ NAME-CAP CWORK-SPAN NAMEBUF u8
    frame 0 BND-FRAME !
    copy 0 BND-COPY !
    remat 0 BND-REMAT !
+   mark 0 BND-REMAT-MARK !
    reserve 0 BND-RESERVE !
    release 0 BND-RELEASE !
    store 0 BND-STORE !

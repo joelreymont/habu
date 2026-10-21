@@ -97,8 +97,15 @@ CALLBACK: CMP-UNBIND ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 CALLBACK: START ( n -- n ) 0 FALLBACK ;CALLBACK
 CALLBACK: START-B ( n -- n ) 0 FALLBACK ;CALLBACK
 \ Every argument register, and the longest dispatch a declaration can generate:
-\ seven of the eight integer reads are the wide spellings.
-CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK
+\ on AAPCS64 seven of the eight integer reads are the wide spellings. SysV
+\ x86-64 has six integer slots, so each declaration keeps its target's limit.
+: DECLARE-MARSHAL ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
+   else
+      s" CALLBACK: MARSHAL ( n i32 u32 ptr u8 i32 u32 i32 u32 r r r r r r r r -- r ) 0.5 FFALLBACK ;CALLBACK" evaluate-closed
+   then ;
+DECLARE-MARSHAL
 CALLBACK: UNSET ( n -- n ) 7 FALLBACK ;CALLBACK
 CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 
@@ -165,13 +172,23 @@ CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 \ Bound and never reached: a second thread is refused before its dispatch.
 : START-B-IMPL ( n -- n ) ;
 
-: MARSHAL-IMPL ( n n n ptr u8 n n n n r r r r r r r r -- r )
-   {: i0:n i1:n i2:n p3 i4:n i5:n i6:n i7:n f0:r f1:r f2:r f3:r f4:r f5:r f6:r f7:r :}
-   i0 0 SEEN-INTS !  i1 1 SEEN-INTS !  i2 2 SEEN-INTS !  p3 c@ 3 SEEN-INTS !
-   i4 4 SEEN-INTS !  i5 5 SEEN-INTS !  i6 6 SEEN-INTS !  i7 7 SEEN-INTS !
+: MARSHAL-FLOATS ( r r r r r r r r -- r )
+   {: f0:r f1:r f2:r f3:r f4:r f5:r f6:r f7:r :}
    f0 0 SEEN-FLOATS !  f1 1 SEEN-FLOATS !  f2 2 SEEN-FLOATS !  f3 3 SEEN-FLOATS !
    f4 4 SEEN-FLOATS !  f5 5 SEEN-FLOATS !  f6 6 SEEN-FLOATS !  f7 7 SEEN-FLOATS !
    f7 ;
+
+: MARSHAL-X64-IMPL ( n n n ptr u8 n n r r r r r r r r -- r )
+   {: i0:n i1:n i2:n p3 i4:n i5:n f0:r f1:r f2:r f3:r f4:r f5:r f6:r f7:r :}
+   i0 0 SEEN-INTS !  i1 1 SEEN-INTS !  i2 2 SEEN-INTS !  p3 c@ 3 SEEN-INTS !
+   i4 4 SEEN-INTS !  i5 5 SEEN-INTS !
+   f0 f1 f2 f3 f4 f5 f6 f7 MARSHAL-FLOATS ;
+
+: MARSHAL-ARM-IMPL ( n n n ptr u8 n n n n r r r r r r r r -- r )
+   {: i0:n i1:n i2:n p3 i4:n i5:n i6:n i7:n f0:r f1:r f2:r f3:r f4:r f5:r f6:r f7:r :}
+   i0 0 SEEN-INTS !  i1 1 SEEN-INTS !  i2 2 SEEN-INTS !  p3 c@ 3 SEEN-INTS !
+   i4 4 SEEN-INTS !  i5 5 SEEN-INTS !  i6 6 SEEN-INTS !  i7 7 SEEN-INTS !
+   f0 f1 f2 f3 f4 f5 f6 f7 MARSHAL-FLOATS ;
 
 \ A comparator that keeps the owner of the region it runs on, which is the
 \ calling thread's.
@@ -186,7 +203,13 @@ CALLBACK: WHO ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
 ' CMP-UNBIND-IMPL CMP-UNBIND-BODY !
 ' START-IMPL START-BODY !
 ' START-B-IMPL START-B-BODY !
-' MARSHAL-IMPL MARSHAL-BODY !
+: INSTALL-MARSHAL ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" ' MARSHAL-X64-IMPL MARSHAL-BODY !" evaluate-closed
+   else
+      s" ' MARSHAL-ARM-IMPL MARSHAL-BODY !" evaluate-closed
+   then ;
+INSTALL-MARSHAL
 ' WHO-IMPL WHO-BODY !
 \ UNSET-BODY is left unset: its dispatch has to refuse, not execute the zero.
 

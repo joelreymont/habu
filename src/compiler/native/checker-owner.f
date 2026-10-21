@@ -10,6 +10,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/core/checker-owner-guard.f
+require src/core/checker-owner-extension.f
 require src/habu/layout.f
 
 package CHECKER-OWNER
@@ -41,6 +42,8 @@ defer SOURCE-DECLARED-ROW ( ptr u8 n ptr u8 n -- )
 defer SOURCE-ROWS-END ( -- n )
 defer SOURCE-RETRACT-ROWS ( n -- )
 defer SOURCE-WRITE-WINDOW ( n -- )
+defer SOURCE-REPORT-RESET ( -- )
+defer SOURCE-JSON-REPORTED ( -- bool )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -74,6 +77,7 @@ CAST: AS-WIDTH ( n -- [ n n -- n ] )
 CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
 CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
 CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
+CAST: AS-TOKEN ( n -- [ -- ptr u8 n ] )
 
 \ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
 \ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
@@ -110,7 +114,9 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" source declared row" SOURCE-FIELD AS-DECLARATION is SOURCE-DECLARED-ROW
    NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" SOURCE-FIELD AS-N is SOURCE-ROWS-END
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" SOURCE-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
-   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW ;
+   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
+   CHECKER-OWNER-EXT:RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
+   CHECKER-OWNER-EXT:JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -164,6 +170,40 @@ public
    NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" scan report" FIELD
    dup 0= if drop SOURCE-REPORT exit then
    AS-ACTION execute ;
+
+\ NATIVE MULTI-ERROR RECOVERY AND DIAGNOSTICS. Fields appended after the
+\ retained host's owner (src/core/checker-owner-extension.f), read through the
+\ live source owner so a captured compiler never asks a stale checker by name.
+\ The using refusal's spelling belongs to the checker that scanned the source
+\ and remains valid until that scan's tape is released.
+TRUSTED: REFUSAL-TOKEN$ ( -- ptr u8 n )
+   CHECKER-OWNER-EXT:REFUSAL-TOKEN-OFF s" refusal token" FIELD
+   dup 0= if drop CHECKER-USE:REFUSAL-TOKEN$ exit then
+   AS-TOKEN execute ;
+
+: RESET-REPORT ( -- )
+   CHECKER-OWNER-EXT:RESET-REPORT-OFF s" report reset" FIELD
+   dup 0= if drop SOURCE-REPORT-RESET exit then
+   AS-ACTION execute ;
+
+: JSON-REPORTED? ( -- bool )
+   CHECKER-OWNER-EXT:JSON-REPORTED-OFF s" JSON report" FIELD
+   dup 0= if drop SOURCE-JSON-REPORTED exit then
+   AS-BOOL execute ;
+
+\ The source owner that counted a refusal decides whether compilation may
+\ continue to the next definition.
+TRUSTED: MULTI-ERROR? ( -- bool )
+   CHECKER-OWNER-EXT:MULTI-ERROR-OFF s" multi-error mode" FIELD
+   dup 0= if drop MULTI-ERR? exit then
+   AS-BOOL execute ;
+
+\ Whether the definition just checked bound a refused declaration's recovery
+\ row (checker.f RECOVERY-BIND): it is checked for diagnostics, never published.
+TRUSTED: RECOVERY-USED? ( -- bool )
+   CHECKER-OWNER-EXT:RECOVERY-USED-OFF s" recovery use" FIELD
+   dup 0= if drop CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? exit then
+   AS-BOOL execute ;
 
 : TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD

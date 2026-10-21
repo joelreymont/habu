@@ -120,12 +120,12 @@ private
 public
 
 : VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u:n :}
-   HB-TARGET-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
+   HB-TARGET-LINUX-KERNEL? if a u CODESIGN-LINUX-VERIFY-RC exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-RC exit then
    CODESIGN-TARGET-UNKNOWN ;
 
 : VERIFY ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       a u CODESIGN-EXPECT-EXECUTABLE
       exit
    then
@@ -136,12 +136,12 @@ public
    CODESIGN-TARGET-UNKNOWN ;
 
 : FORCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX? if a u CODESIGN-LINUX-FORCE exit then
+   HB-TARGET-LINUX-KERNEL? if a u CODESIGN-LINUX-FORCE exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
    CODESIGN-TARGET-UNKNOWN ;
 
 : ENSURE ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       a u FORCE
       a u VERIFY
       exit
@@ -158,7 +158,7 @@ public
 \ codesign names the signature after the file, so the name a writer happened to
 \ use would travel inside the image.
 : SIGN-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n id:ptr idu:n :}
-   HB-TARGET-LINUX? if
+   HB-TARGET-LINUX-KERNEL? if
       a u FORCE
       a u VERIFY
       exit

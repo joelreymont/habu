@@ -25,7 +25,9 @@ FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
    dup FS-U16@ swap 2 + FS-U16@ 16 lshift or ;
 
 : DEVICE-INODE ( ptr u8 -- n n ) {: buffer :}
-   HB-TARGET-MACOS? if buffer UNSIGNED-INT else buffer FS-U64@ then
+   HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or if buffer FS-U64@ else
+      HB-TARGET-MACOS? if buffer UNSIGNED-INT else E-FS-STAT throw then
+   then
    buffer INODE-OFFSET + FS-U64@ ;
 
 : FD-IDENTITY ( fd ptr u8 -- n n ) {: file buffer :}

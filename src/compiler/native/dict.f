@@ -107,7 +107,7 @@ public
 \ it may not be compiled as an ordinary number. The stamp is the definer's own.
 0 constant FIXED-NONE                \ nothing a mention of this name folds to
 1 constant FIXED-VAL                 \ `constant`: the body pushes a decided number
-2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
+NCOMP-DISPATCH:FIXED-ADDR-KIND constant FIXED-ADDR \ `create`/`variable`: the body pushes a DATA address
 
 \ ---- one walk answers both the record and its start --------------------------
 \ The engine returned the record and its start together. Readers retain that
@@ -280,16 +280,21 @@ private
    RG-MASK @ ;
 
 \ The entry a bound record offers a compiled reference and its definer kind, or
-\ 0 0. An IMMEDIATE word runs at compile time, and a RETIRED record's start is
-\ code nothing can reach.
-: REC-BINDING ( ptr n -- n n )
-   {: rec:ptr :}
+\ 0 0. A RETIRED record's start is code nothing can reach. An IMMEDIATE word
+\ runs at compile time, so a CALL may not branch to it; a code-address literal
+\ (a tick) may still name it without running it (CALLABLE false).
+: REC-CODE ( ptr n bool -- n n )
+   {: rec:ptr callable:bool :}
    rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-START {: start:n :}
    start 0= if 0 0 exit then
    rec XREF-RETIRED? if 0 0 exit then
    rec XREF-FLAGS {: f:n :}
-   f DNAME-IMM and 0<> if 0 0 exit then
+   callable f DNAME-IMM and 0<> and if 0 0 exit then
+   start f DKIND:MASK and ;
+
+: REC-BINDING ( ptr n -- n n )
+   true REC-CODE ;
    start f DKIND:MASK and ;
 
 public
@@ -325,7 +330,7 @@ public
 \ is handed, so a tick binds only what SPELL-REC binds: an owned primitive's
 \ tick is refused as every internal word's is, at both tiers.
 : TICK-TARGET ( ptr u8 n -- n )
-   SPELL-REC REC-BINDING drop ;
+   SPELL-REC false REC-CODE drop ;
 
 \ Where a compiled branch may reach a sealed engine helper, or zero. A helper
 \ (src/habu/primitive-registry.f HELPER-REGISTER) sits in OWNER-API-PRI-WID,
@@ -495,8 +500,11 @@ public
 \ ---- and how many cells one memory access moves ------------------------------
 \ Keyed by the token's OFFSET into the checked text, the same key the engine's
 \ own pass 2 reads. Absent is one cell, which is the checker's own answer.
+: OPERAND-CELLS ( n n -- n )
+   CHECKER-OWNER:WIDTH-AT ;
+
 : MEM-CELLS ( n -- n )
-   0 CHECKER-OWNER:WIDTH-AT ;
+   0 OPERAND-CELLS ;
 
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.

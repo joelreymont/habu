@@ -15,6 +15,7 @@
 require src/lib/prelude.f
 require src/habu/verify-source.f
 require src/lib/test.f
+require src/lib/tier.f
 
 T-RESET
 
@@ -39,6 +40,14 @@ TYPED-VARIABLE UCE-A ptr u8   variable UCE-U
 104 constant E-OUTER            \ USING-OUTER: `;using` in a package closing a using opened before it
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-USING-SHADOW-GLOBAL constant E-SHADOW   \ a global shadows a used public of the same name
+
+package USING-TEST
+private
+variable START-TIER
+tier@ START-TIER !
+public
+: RESTORE-TIER ( -- ) START-TIER @ TIER:SELECT ;
+;package
 
 \ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package
@@ -370,21 +379,21 @@ s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
-\ while UA and UC both export AW, at tier 0 and tier 1, and runs as itself. A
-\ reference to the bare AW stays ambiguous: a checked body is E-USING-AMBIGUOUS
-\ and a top-level token the engine's E-AMBIGUOUS. This section comes last
+\ while UA and UC both export AW, at each available tier, and runs as itself. A
+\ reference to the bare AW stays ambiguous: a checked body and a top-level token
+\ both expose the engine's E-AMBIGUOUS. This section comes last
 \ because it defines a global AW, which the cases above need absent.
 package USING-TEST public variable UAD-V ;package
 s" using UA using UC : AW ( -- n ) 1 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 1 T=
-s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+s" using UA using UC : UAD-R1 ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
 s" undefine AW" UCE-CATCH 0 T=
 1 set-tier
 s" using UA using UC : AW ( -- n ) 2 ; ;using ;using AW USING-TEST:UAD-V !" UCE-CATCH 0 T=
 USING-TEST:UAD-V @ 2 T=
-s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
-0 set-tier
+s" using UA using UC : UAD-R2 ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+USING-TEST:RESTORE-TIER
 
 \ ---------------------------------------------------------------------------
 T-REPORT

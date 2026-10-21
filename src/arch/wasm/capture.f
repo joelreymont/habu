@@ -96,8 +96,11 @@ using WLEB
 public
 
 \ Fill the shadow tables from the open Wasm shadow's map after capture completion.
+\ SH-INDEX and SH-ASSIGN give each shipped record its map row, which SH-TARGET
+\ reads; SH-ROOTS marks only rows a shipped record enters, since this reader
+\ follows no x86 edges.
 : WASM-SHADOW-CAPTURE ( -- )
-   SH-ORDER
+   SH-ORDER SH-INDEX SH-ROOTS SH-ASSIGN
    WC-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
 

@@ -366,6 +366,9 @@ public
    span lo span - UNMAP-SLIVER
    hi span span-bytes + hi - UNMAP-SLIVER
    base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
+      \ The reserve still owns [lo, hi) when the fixed writable remap fails.
+      \ Report a refusing cleanup rather than losing that mapping too.
+      lo cap STACK-ABI:PAGE-BYTES 2 * + UNMAP-SLIVER
       E-MEM-MAP throw
    then
    base MAPPED>PTR cap ;

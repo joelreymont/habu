@@ -38,14 +38,18 @@ TYPED-VARIABLE MARSHAL-RESULT r
    arg 0 FFI:VALUE!
    1 fn FFI:CALL-AT ;
 
-\ Every argument register loaded: x0..x7 and d0..d7.
+\ Every argument register loaded: x0..x7 and d0..d7, or SysV's six integer
+\ and eight float registers.
 : MARSHAL-CALL ( n -- r ) {: fn:n :}
    FFI:RESET
    $123456789ABCDEF0 0 FFI:VALUE!
    $1FFFFFFFE 1 FFI:VALUE!           \ a C int -2 under a dirty high half
    $7FFFFFFFD 2 FFI:VALUE!           \ an unsigned $FFFFFFFD under one
    MARSHAL-BYTE 3 FFI:READABLE!
-   40 4 FFI:VALUE!  50 5 FFI:VALUE!  60 6 FFI:VALUE!  70 7 FFI:VALUE!
+   40 4 FFI:VALUE!  50 5 FFI:VALUE!
+   HB-TARGET-LINUX-X86-64? 0= if
+      60 6 FFI:VALUE!  70 7 FFI:VALUE!
+   then
    1.0 0 FFI:FLOAT!  2.0 1 FFI:FLOAT!  3.0 2 FFI:FLOAT!  4.0 3 FFI:FLOAT!
    5.0 4 FFI:FLOAT!  6.0 5 FFI:FLOAT!  7.0 6 FFI:FLOAT!  8.0 7 FFI:FLOAT!
    0 fn FFI:CALL-ABI-R-AT ;
@@ -59,6 +63,7 @@ TYPED-VARIABLE MARSHAL-RESULT r
 : INTS-SEEN? ( -- bool )
    4 SEEN-INTS @ 40 =
    5 SEEN-INTS @ 50 = and
+   HB-TARGET-LINUX-X86-64? if exit then
    6 SEEN-INTS @ 60 = and
    7 SEEN-INTS @ 70 = and ;
 
@@ -68,9 +73,9 @@ TYPED-VARIABLE MARSHAL-RESULT r
    1 SEEN-INTS @ -2 = s" i32 is sign-extended from the low half" FACT
    2 SEEN-INTS @ $FFFFFFFD = s" u32 is the low half" FACT
    3 SEEN-INTS @ $5A = s" ptr u8 is the address C passed" FACT
-   INTS-SEEN? s" x4..x7 arrive in order" FACT
-   FLOATS-SEEN? s" d0..d7 arrive in order" FACT
-   MARSHAL-RESULT FLOAT-BITS $4020000000000000 = s" an r result returns in d0" FACT
+   INTS-SEEN? s" integer argument registers arrive in order" FACT
+   FLOATS-SEEN? s" float argument registers arrive in order" FACT
+   MARSHAL-RESULT FLOAT-BITS $4020000000000000 = s" an r result returns in the float result register" FACT
    MARSHAL FAULT@ 0= s" and nothing faulted" FACT
    MARSHAL UNBIND
    9 UNSET TASK:SELF-CONTEXT ENTRY CALL1 7 = s" a body never stored answers the fallback" FACT

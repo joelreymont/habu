@@ -21,27 +21,28 @@
 \ as CAPTURE left them, empty.
 \
 \ ONE WALK, KEYED BY THE SHIPPED ROW. The map's rows are filed in publication
-\ order, so their records ascend: the walk keeps the rows whose record is in the
-\ window and copies each emission once, when the first row filed over it arrives -
-\ a `does>` companion follows its definer and shares its emission. Records that
-\ do not ascend are a map from another dictionary history, filed before a logical
-\ reset, and are refused rather than read. The artifact's record table holds only
-\ the records the capture ships, and a dead stripped private word moves every later
-\ one down a row, so a routine, a site target and a code cell each name their
-\ record by its row in that table (SH-NUMBER), never by its window index. Nor is
-\ the window index the capture's own: the capture does not record a retired
-\ record at all, so the walk reads a capture table only through ACAP-DICT>CAP.
-\ A stripped or retired record files no row - a retired one has no name to ship.
-\ A shipped record over the same emission carries a live one's routine (a
-\ private definer's companion, kept for the children it made), a live one
-\ nothing carries is refused by name, as is a site naming a stripped or retired
-\ record, and a dead one's routine goes: no live code reaches its body
-\ (ACAP-SHADOW-LIVE?), though the ARM64 payload may keep that body, as it keeps
-\ every retired one and what such a body calls. Every host address a routine names
-\ is resolved here, through the xt -> record index the ARM64 call sites use
-\ (ACAP-TGT>REC), into a shipped record or into the name of a word of the
-\ engine's own prefix; a host address nothing resolves is refused by name, as an
-\ ARM64 site is.
+\ order, so their records ascend: the walk copies each reached emission once, when
+\ the first row filed over it arrives - a `does>` companion follows its definer and
+\ shares its emission. Records that do not ascend are a map from another dictionary
+\ history, filed before a logical reset, and are refused rather than read. The
+\ artifact's record table holds only the records the capture ships, and a dead
+\ stripped private word moves every later one down a row, so a routine, a site
+\ target and a code cell name a shipped record by its row in that table
+\ (SH-NUMBER), never by its window index. Nor is the window index the capture's
+\ own: the capture does not record a retired record at all, so the walk reads a
+\ capture table only through ACAP-DICT>CAP.
+\
+\ THE X86 REACH USES X86 EDGES. Shipped record entries and declared code cells
+\ root the shadow map; its recorded call and code-address sites close the graph.
+\ ARM and x86 can make different optimizations, so ARM code reach cannot answer
+\ which x86 routines are needed. TARGET-CAPTURE first retains a live emitted
+\ private record by name, with its private WID (SH-KEEP-PRIVATE); a reached
+\ routine that still has no shipped record, stripped or retired, travels
+\ anonymously, without making its name available to the target. A public EXPORT
+\ alias can share a stripped or retired source's entry, so exact host xt identity
+\ attaches the alias's shipped row to that source's shadow emission. A target in
+\ the window must resolve to a reached shadow row, and a prefix target must
+\ resolve by name; otherwise capture refuses it.
 
 require src/compiler/native/hir.f
 require src/compiler/native/emission.f
@@ -58,6 +59,22 @@ variable SH-E                        \ the map's emission last copied
 variable SH-AT                       \ where its bytes start in the shadow code
 variable SH-LEN                      \ and how many there are
 variable SH-PREV                     \ the record filed before this one
+DYNAMIC-BUFFER SH-SOURCE n           \ window record -> NSHADOW row, or -1
+DYNAMIC-BUFFER SH-HEAD n             \ window record -> first shipped alias + 1
+DYNAMIC-BUFFER SH-NEXT n             \ capture record -> next alias + 1
+DYNAMIC-BUFFER SH-MARK n             \ NSHADOW row reached by x86 code
+DYNAMIC-BUFFER SH-WORK n             \ reached rows awaiting their site scan
+DYNAMIC-BUFFER SH-OUT n              \ NSHADOW row -> shadow record row, or -1
+DYNAMIC-BUFFER SH-EMROOT n           \ emission -> first published NSHADOW row
+variable SH-QN
+DYNAMIC-BUFFER SH-QXT n              \ exact host entry of an anonymous function
+DYNAMIC-BUFFER SH-QEM n              \ its owning shadow emission
+DYNAMIC-BUFFER SH-QFUN n             \ its HIR function ordinal
+DYNAMIC-BUFFER SH-QROW n             \ its assigned anonymous shadow row
+DYNAMIC-BUFFER SH-LIVE n             \ capture row retained by native x86 reach
+variable SH-WORK-N
+variable SH-OUT-N
+variable SH-NATIVE-READY
 
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
@@ -98,10 +115,65 @@ variable SH-PREV                     \ the record filed before this one
    s" , which the capture does not ship" type cr
    s" aot-capture: a shadow site names a record the capture strips" 74 die ;
 
+\ The Wasm reader (src/arch/wasm/capture.f) carries no anonymous routine, so it
+\ still refuses a live one no shipped row carries.
 : SH-STRIPPED ( -- )
    s" aot-capture: the shadow routine of " type SH-REC @ ACAP-NAME.
    s"  is live, and the capture ships neither its record nor one sharing its emission" type cr
    s" aot-capture: a live shadow routine no shipped record carries" 74 die ;
+
+\ ---- the window index -----------------------------------------------------------
+: SH-WINDOW? ( n -- bool ) {: idx:n :}
+   idx ACAP-W-R0 @ >= idx ACAP-W-R1 @ < and ;
+
+: SH-SLOT ( n -- n ) ACAP-W-R0 @ - ;
+
+: SH-SOURCE@ ( n -- n ) {: idx:n :}
+   idx SH-WINDOW? 0= if -1 exit then
+   idx SH-SLOT SH-SOURCE @ ;
+
+: SH-HEAD@ ( n -- n ) {: idx:n :}
+   idx SH-WINDOW? 0= if 0 exit then
+   idx SH-SLOT SH-HEAD @ ;
+
+: SH-REHEAD ( -- )
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do 0 i SH-SLOT SH-HEAD ! loop
+   ACAP-REC-ALL @ 0 ?do 0 i SH-NEXT ! loop
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i ACAP-DICT>CAP {: k:n :}
+      k 0 >= if
+         k SH-ROWS @ 0 >=  i AOT-REC AOT-RWID -1 <> and if
+            i AOT-REC AOT-RXT ACAP-TGT>REC {: source:n :}
+            source SH-WINDOW? if
+               source SH-HEAD@ k SH-NEXT !
+               k 1+ source SH-SLOT SH-HEAD !
+            then
+         then
+      then
+   loop ;
+
+\ The lowest dictionary record for an xt is the capture's target identity.
+\ A later EXPORT alias can ship that same entry after the source was retired
+\ or stripped, so attach its shipped row to the source's shadow map row.
+: SH-INDEX ( -- )
+   ACAP-W-R1 @ ACAP-W-R0 @ - {: n:n :}
+   n SH-SOURCE-RESERVE  n SH-HEAD-RESERVE
+   ACAP-REC-ALL @ SH-NEXT-RESERVE
+   NSHADOW:RECORDS SH-MARK-RESERVE
+   NSHADOW:RECORDS SH-WORK-RESERVE
+   NSHADOW:RECORDS SH-OUT-RESERVE
+   NSHADOW:EMISSIONS SH-EMROOT-RESERVE
+   n 0 ?do -1 i SH-SOURCE ! loop
+   NSHADOW:EMISSIONS 0 ?do -1 i SH-EMROOT ! loop
+   NSHADOW:RECORDS 0 ?do
+      i NSHADOW:RECORD@ {: idx:n :}
+      idx SH-WINDOW? if i idx SH-SLOT SH-SOURCE ! then
+      i NSHADOW:EMISSION@ {: e:n :}
+      e SH-EMROOT @ 0< if i e SH-EMROOT ! then
+      0 i SH-MARK !  -1 i SH-OUT !
+   loop
+   SH-REHEAD
+   0 SH-WORK-N !  0 SH-OUT-N !  0 SH-QN ! ;
 
 \ ---- rows ---------------------------------------------------------------------
 : SH-SITE+ ( n n n -- ) {: at:n kind:n target:n :}
@@ -119,6 +191,25 @@ variable SH-PREV                     \ the record filed before this one
    SH-LEN @ r 8 + AOT-P32!
    entry r 12 + AOT-P32! ;
 
+\ A window record's site target: a shipped alias of its exact entry, or its
+\ own anonymous shadow row. -1 means no reached x86 routine carries the entry.
+: SH-MAPPED ( n -- n ) {: idx:n :}
+   idx SH-SOURCE@ {: r:n :}
+   r 0 < if -1 exit then
+   r SH-OUT @ {: row:n :}
+   row 0 < if -1 exit then
+   idx SH-HEAD@ {: head:n :}
+   head 0<> if head 1- SH-ROWS @ SITE-REC-TAG or exit then
+   row SITE-SHADOW-TAG or ;
+
+: SH-QFIND ( n -- n ) {: xt:n :}
+   SH-QN @ 0 ?do i SH-QXT @ xt = if i unloop exit then loop
+   -1 ;
+
+: SH-QTARGET ( n -- n )
+   SH-QFIND dup 0 < if exit then
+   SH-QROW @ SITE-SHADOW-TAG or ;
+
 \ ---- what a host address names -------------------------------------------------
 \ A shipped window record's entry, by its shipped row, or a word of the engine's
 \ own prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
@@ -126,10 +217,11 @@ variable SH-PREV                     \ the record filed before this one
 : SH-TARGET ( n n -- n ) {: off:n v:n :}
    v ACAP-TGT>REC {: j:n :}
    j ACAP-W-R0 @ >= j ACAP-W-R1 @ < and if
-      j SH-SHIPPED {: row:n :}
-      row 0 < if off j SH-UNSHIPPED then
-      row SITE-REC-TAG or exit
+      j SH-MAPPED dup -1 = if
+         drop off j SH-UNSHIPPED
+      then exit
    then
+   j 0 < if v SH-QTARGET dup 0 >= if exit then drop then
    v ACAP-TARGET-NAME? if ACAP-POOL-ADD SITE-NAME-TAG or exit then 2drop
    off v SH-UNNAMED ;
 
@@ -159,6 +251,151 @@ variable SH-PREV                     \ the record filed before this one
 : SH-DATA? ( n -- bool ) {: v:n :}
    v ACAP-W-D0 @ >=  v ACAP-W-D0 @ AOT-DATA-SIZE @ + <  and ;
 
+: SH-MARK-ROW ( n -- ) {: r:n :}
+   r 0 < if exit then
+   r SH-MARK @ 0<> if exit then
+   1 r SH-MARK !
+   r SH-WORK-N @ SH-WORK !
+   SH-WORK-N @ 1+ SH-WORK-N ! ;
+
+\ A quotation's function entry is not a dictionary record. Only the exact
+\ source address paired at publication can identify its x86 function; the
+\ owner emission is then a reach root, so all of its recorded sites are seen.
+: SH-QNEED ( n -- n ) {: xt:n :}
+   xt SH-QFIND dup 0 >= if exit then drop
+   xt NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
+   e 0 < if -1 exit then
+   e SH-EMROOT @ {: root:n :}
+   root 0 < if -1 exit then
+   SH-QN @ {: q:n :}
+   q 1+ SH-QXT-RESERVE  q 1+ SH-QEM-RESERVE
+   q 1+ SH-QFUN-RESERVE  q 1+ SH-QROW-RESERVE
+   xt q SH-QXT !  e q SH-QEM !  f q SH-QFUN !  -1 q SH-QROW !
+   q 1+ SH-QN !
+   root SH-MARK-ROW
+   q ;
+
+: SH-MARK-TARGET ( n -- ) {: v:n :}
+   v ACAP-TGT>REC {: idx:n :}
+   idx 0 >= if idx SH-SOURCE@ SH-MARK-ROW exit then
+   v SH-QNEED drop ;
+
+\ The second target's edges are the shadow emitter's recorded rows, not the
+\ ARM instruction graph. A target can be live only on x86-64, or ARM can retain
+\ a body whose x86-64 routine has no incoming edge.
+: SH-SCAN ( n -- ) {: r:n :}
+   r NSHADOW:RECORD@ SH-REC !
+   r NSHADOW:EMISSION@ {: e:n :}
+   e NSHADOW:CALL-SITES 0 ?do
+      e i NSHADOW:CALL-TARGET@ SH-MARK-TARGET
+   loop
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i NSHADOW:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+         e i NSHADOW:ADDR-SITE@ {: off:n :}
+         off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + e NSHADOW:SIZE > or if
+            off SH-NOT-MOVABS then
+         e NSHADOW:BYTES off + {: p:ptr :}
+         p ADDRESS-CARRIER:MOVABS-SITE? 0= if off SH-NOT-MOVABS then
+         p ADDRESS-CARRIER:MOVABSV {: v:n :}
+         e v SH-FUN? 0= if v SH-MARK-TARGET then
+      then
+   loop ;
+
+\ A declared CODE cell is a root even if the word that stores it is private.
+\ Return its live target, or zero for a DATA, null or named-prefix cell.
+: SH-CELL-OFF ( n -- n ) {: row:n :}
+   row ACAP-XTOFF@ {: loc:n :}
+   loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
+   loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
+      off ACAP-W-D0 @ AOT-DATA-N - +
+   else off then ;
+
+: SH-CELL-V ( n -- n ) {: row:n :}
+   row ACAP-XTMETA@ {: meta:n :}
+   meta AOT-WINDOW:XTOFF-KIND-MASK and 0<> if 0 exit then
+   meta AOT-WINDOW:XTOFF-VALUE-MASK and 0= if 0 exit then
+   AOT-LIVE-DATA row SH-CELL-OFF + AOT-CELL@ ;
+
+\ Every map row a shipped record enters is a root. The Wasm reader marks only
+\ these, since it reads no x86 edges.
+: SH-ROOTS ( -- )
+   NSHADOW:RECORDS 0 ?do
+      i NSHADOW:RECORD@ SH-HEAD@ 0<> if i SH-MARK-ROW then
+   loop ;
+
+: SH-REACH ( -- )
+   SH-ROOTS
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i SH-CELL-V dup 0<> if SH-MARK-TARGET else drop then
+   loop
+   begin SH-WORK-N @ 0 > while
+      SH-WORK-N @ 1- SH-WORK-N !
+      SH-WORK-N @ SH-WORK @ SH-SCAN
+   repeat ;
+
+\ A does> companion is the next record of the same emission and enters its
+\ clause past the parent's entry. The parent's reach scan already covered that
+\ whole emission, but native capture has not named the private companion yet.
+\ Mark its row before CAPTURE-NATIVE asks which source records remain live.
+: SH-NATIVE-DOES ( -- )
+   NSHADOW:RECORDS {: count:n :}
+   count 1 <= if exit then
+   count 1 ?do
+      i NSHADOW:ENTRY@ 0 >  i 1- SH-MARK @ 0<> and if
+         i NSHADOW:RECORD@ i 1- NSHADOW:RECORD@ 1+ =
+         i NSHADOW:EMISSION@ i 1- NSHADOW:EMISSION@ = and if
+            1 i SH-MARK !
+         then
+      then
+   loop ;
+
+\ Native capture asks for reach before names and checker facts are finalized.
+\ Seed only named candidates, close the x86 graph once, and answer the later
+\ capture-row liveness query from its exact source-record mapping.
+: SH-PRE-NAMED ( -- )
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
+   loop ;
+
+: SH-NATIVE-LIVE-MAP ( -- )
+   ACAP-REC-ALL @ SH-LIVE-RESERVE
+   ACAP-REC-ALL @ 0 ?do 0 i SH-LIVE ! loop
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i ACAP-DICT>CAP {: k:n :}
+      k 0 >= i AOT-REC AOT-RWID -1 <> and if
+         i AOT-REC AOT-RXT ACAP-TGT>REC SH-SOURCE@ {: row:n :}
+         row 0 >= if row SH-MARK @ k SH-LIVE ! then
+      then
+   loop ;
+
+\ Reserve each reached map row's place in publication order before copying any
+\ emission: a call can target a routine published later than its caller.
+: SH-QASSIGN ( n -- ) {: e:n :}
+   SH-QN @ 0 ?do
+      i SH-QEM @ e = if
+         SH-OUT-N @ i SH-QROW !
+         1 SH-OUT-N +!
+      then
+   loop ;
+
+: SH-ASSIGN ( -- )
+   NSHADOW:RECORDS 0 ?do
+      i SH-MARK @ 0<> if
+         i NSHADOW:EMISSION@ {: e:n :}
+         SH-OUT-N @ i SH-OUT !
+         i NSHADOW:RECORD@ SH-HEAD@ {: head:n :}
+         head 0= if
+            1 SH-OUT-N +!
+         else
+            head begin dup 0<> while
+               1 SH-OUT-N +!
+               1- SH-NEXT @
+            repeat drop
+         then
+         i e SH-EMROOT @ = if e SH-QASSIGN then
+      then
+   loop ;
+
 \ An address literal, a MOVABS whose kind HIR's elaboration fixed and the x86-64
 \ rows carried through (x64ir.f spells HIR's kinds). A function's offset stays; a
 \ word's entry becomes its row's target and the field 0; a window DATA address
@@ -184,6 +421,26 @@ variable SH-PREV                     \ the record filed before this one
    then
    off ak SH-BAD-KIND ;
 
+\ A defer's native record carries a magic and dispatch cell after its body.
+\ Copy that trailer into the shadow and mark the cell for the x86 linker.
+: SH-DEFER-CELL ( n -- n ) {: idx:n :}
+   idx AOT-REC {: rec:ptr :}
+   rec AOT-RWID DICT-WL:NAMESPACE = if 0 exit then
+   rec AOT-RXT rec AOT-RBODY + {: meta:n :}
+   meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if 0 exit then
+   meta CELL + AOT-N>U8 CELL-VIEW AOT-CELL@ ;
+
+CELL 2 * constant SH-TRAILER-BYTES
+
+: SH-TRAILER ( n -- ) {: v:n :}
+   v SH-DATA? 0= if SH-LEN @ CELL + v SH-DATA-OUT then
+   AOT-SHADOW:CODE-LEN @ {: at:n :}
+   at SH-TRAILER-BYTES + AOT-SHADOW:CODE-LEN !
+   AOT-SHADOW:CODE-BUF@ at + {: p:ptr :}
+   DEFER-MAGIC p AOT-N-C!
+   v ACAP-W-D0 @ - AOT-DATA-D0 @ +  p CELL + AOT-N-C!
+   at CELL + AOT-SHADOW:DCELL 0 SH-SITE+ ;
+
 \ ---- one emission ---------------------------------------------------------------
 : SH-COPY ( n -- ) {: e:n :}
    e NSHADOW:SIZE {: size:n :}
@@ -192,7 +449,9 @@ variable SH-PREV                     \ the record filed before this one
    e NSHADOW:BYTES  AOT-SHADOW:CODE-BUF@ at +  size BYTE-COPY
    e SH-E !  at SH-AT !  size SH-LEN !
    e NSHADOW:CALL-SITES 0 ?do e i SH-CALL loop
-   e NSHADOW:ADDR-SITES 0 ?do e i SH-ADDR loop ;
+   e NSHADOW:ADDR-SITES 0 ?do e i SH-ADDR loop
+   SH-REC @ SH-DEFER-CELL {: cell:n :}
+   cell 0<> if cell SH-TRAILER then ;
 
 : SH-ORDER ( -- )
    -1 SH-PREV !
@@ -225,31 +484,45 @@ variable SH-PREV                     \ the record filed before this one
    r NSHADOW:EMISSION@ e <> if false exit then
    r NSHADOW:RECORD@ SH-SHIPPED 0 >= ;
 
-\ Map row r files a record the capture ships no row for. A shipped row over its
-\ emission carries its routine; otherwise a dead one goes with its code, and a
-\ live one is refused. Stripped and retired alike, a record is live when the
-\ capture's shadow reach reaches its body from live code (ACAP-SHADOW-LIVE?), not
-\ when ARM64 retention keeps it: that retention scans every gap as a root, and a
-\ retired body is a gap, live or not.
+\ The Wasm reader's map row r files a record the capture ships no row for. A
+\ shipped row over its emission carries its routine; otherwise a dead one goes
+\ with its code, and a live one is refused. Stripped and retired alike, a record
+\ is live when the capture's shadow reach reaches its body from live code
+\ (ACAP-SHADOW-LIVE?), not when ARM64 retention keeps it: that retention scans
+\ every gap as a root, and a retired body is a gap, live or not.
 : SH-STRIP ( n -- ) {: r:n :}
    r NSHADOW:EMISSION@ {: e:n :}
    r 1- e SH-OWNER?  r 1+ e SH-OWNER? or if exit then
    r NSHADOW:RECORD@ ACAP-SHADOW-LIVE? if SH-STRIPPED then ;
 
+: SH-QCOPY ( n -- ) {: e:n :}
+   SH-QN @ 0 ?do
+      i SH-QEM @ e = if
+         AOT-SHADOW:RETIRED-REC
+         e i SH-QFUN @ NSHADOW:FUNCTION-OFFSET@ SH-REC+
+      then
+   loop ;
+
 : SH-WALK ( -- )
    -1 SH-E !
    NSHADOW:RECORDS 0 ?do
-      i NSHADOW:RECORD@ {: idx:n :}
-      idx ACAP-W-R0 @ >=  idx ACAP-W-R1 @ <  and if
+      i SH-MARK @ 0<> if
+         i NSHADOW:RECORD@ {: idx:n :}
          idx SH-REC !
-         idx SH-SHIPPED {: row:n :}
-         row 0 >= if
-            i NSHADOW:EMISSION@ {: e:n :}
-            e SH-E @ <> if e SH-COPY then
-            row  i NSHADOW:ENTRY@  SH-REC+
+         i NSHADOW:EMISSION@ {: e:n :}
+         e SH-E @ <> if e SH-COPY then
+         idx SH-HEAD@ {: head:n :}
+         head 0= if
+            idx ACAP-DICT>CAP {: k:n :}
+            k 0 >= if k AOT-SHADOW:ANON-REC or else AOT-SHADOW:RETIRED-REC then
+            i NSHADOW:ENTRY@ SH-REC+
          else
-            i SH-STRIP
+            head begin dup 0<> while
+               dup 1- SH-ROWS @ i NSHADOW:ENTRY@ SH-REC+
+               1- SH-NEXT @
+            repeat drop
          then
+         i e SH-EMROOT @ = if e SH-QCOPY then
       then
    loop ;
 
@@ -263,20 +536,40 @@ variable SH-PREV                     \ the record filed before this one
    row ACAP-XTMETA@ {: meta:n :}
    meta AOT-WINDOW:XTOFF-KIND-MASK and 0<> if exit then
    meta AOT-WINDOW:XTOFF-VALUE-MASK and 0= if exit then
-   row ACAP-XTOFF@ {: loc:n :}
-   loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
-   loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
-      off ACAP-W-D0 @ AOT-DATA-N - +
-   else off then {: celloff:n :}
-   AOT-LIVE-DATA celloff + AOT-CELL@ {: v:n :}
-   v ACAP-TGT>REC SH-SHIPPED {: k:n :}
-   k 0 < if celloff v SH-XT-REFUSE then
+   row SH-CELL-OFF {: celloff:n :}
+   row SH-CELL-V {: v:n :}
+   v ACAP-TGT>REC {: idx:n :}
+   idx 0 >= if idx SH-MAPPED else v SH-QTARGET then {: target:n :}
+   target 0 < if celloff v SH-XT-REFUSE then
+   target SITE-TARGET-MASK invert and SITE-REC-TAG = if
+      target SITE-TARGET-MASK and
+   else target then {: key:n :}
    AOT-SHADOW:XT-N @ {: x:n :}
    x 1+ AOT-SHADOW:XT-N !
    AOT-SHADOW:XT-BUF@ x AOT-SHADOW:XT-ROW * + {: r:ptr :}
-   row r AOT-P32!  k r 4 + AOT-P32! ;
+   row r AOT-P32!  key r 4 + AOT-P32! ;
 
 public
+
+\ The native x86 collector shares the ordinary shadow graph. Its first pass
+\ runs before CAPTURE-NATIVE settles names; the final v15 writer reuses these
+\ marks after the collector has added any live `;does` companion names.
+: SHADOW-PRE-REACH ( -- )
+   0 SH-NATIVE-READY !
+   NSHADOW:NATIVE? 0= if E-NSHADOW-STATE throw then
+   SH-ORDER
+   SH-PRE-NAMED
+   SH-NUMBER
+   SH-INDEX
+   SH-REACH
+   SH-NATIVE-DOES
+   SH-NATIVE-LIVE-MAP
+   1 SH-NATIVE-READY ! ;
+
+: SHADOW-LIVE? ( n -- bool ) {: k:n :}
+   SH-NATIVE-READY @ 0= if E-NSHADOW-STATE throw then
+   k 0 < k ACAP-REC-ALL @ >= or if E-NSHADOW-ROW throw then
+   k SH-LIVE @ 0<> ;
 
 \ Fill the shadow tables from an open shadow's map after capture completion and
 \ against the dictionary it captured.
@@ -284,9 +577,16 @@ public
    ACAP-TIDX-ND @ ndict@ <> if
       s" aot-capture: the shadow is read only right after the capture it belongs to" 74 die
    then
+   SH-NATIVE-READY @ {: prepared:bool :}
+   0 SH-NATIVE-READY !
    AOT-SHADOW:RESET
    NSHADOW:OPEN? 0= if exit then
-   SH-ORDER
+   prepared if
+      SH-NUMBER SH-REHEAD
+   else
+      SH-ORDER SH-NUMBER SH-INDEX SH-REACH
+   then
+   SH-ASSIGN
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
 

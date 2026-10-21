@@ -76,7 +76,7 @@ variable MARK-U
 
 : TIO-GET ( -- n )
    HB-TARGET-MACOS? if TIO-GET-BSD exit then
-   HB-TARGET-LINUX? if TIO-GET-SYSV exit then
+   HB-TARGET-LINUX-KERNEL? if TIO-GET-SYSV exit then
    E-PROC-HOST throw ;
 
 : FD-TTY? ( n -- bool ) {: fd:n :}

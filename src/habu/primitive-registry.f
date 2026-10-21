@@ -2,6 +2,10 @@
 \ builder registers each primitive body and engine helper it emits; this file
 \ checks each body's name against the specification table, answers the seed
 \ dictionary's name and wid cells, and refuses a kept row that no body answered.
+\ A row the captured runtime provides (src/habu/prims.f EPREFIX-PROVIDED!)
+\ registers the DATA cell its seeded stub jumps through, and the gate refuses
+\ one registered without it, or a seeded build whose captured runtime leaves
+\ the cell empty.
 \ It takes code positions only as `label` values and never emits code, so it
 \ loads without any instruction set. Names are offsets, so growing either buffer
 \ cannot invalidate an earlier row. The emitted dictionary format is unchanged.
@@ -13,7 +17,7 @@ require src/habu/prims.f                \ PRIM-SPEC, the specification table
 
 package ENGINE-PRIMS
 
-6 constant ROW-CELLS
+7 constant ROW-CELLS
 $7FFFFFFFFFFFFFFF constant MAX-N
 \ The generated storage accessors' size and index refusals: src/core/
 \ layout-buffer.f's codes, which every chain that reaches this file (the native
@@ -28,6 +32,9 @@ variable USED
 variable NAME-BYTES
 variable SCALAR-ROW
 variable DIVISION-ROW
+\ Nonzero while the build carries a complete captured runtime; RESET clears it
+\ and the ARM64 builder arms it (habu2.f EMIT-RESET-BUILDER).
+variable SEEDED
 
 : ROW-FIELD ( n n -- ptr n ) {: row:n field:n :}
    row 0 < row USED @ >= or if E-INDEX throw then
@@ -47,7 +54,9 @@ variable DIVISION-ROW
 public
 
 : COUNT ( -- n ) USED @ ;
-: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! ;
+: RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! 0 SEEDED ! ;
+: SEEDED! ( bool -- ) if 1 else 0 then SEEDED ! ;
+: SEEDED? ( -- bool ) SEEDED @ 0<> ;
 : RELEASE ( -- ) RESET ROWS-RELEASE NAMES-RELEASE ;
 
 : ADD ( ptr u8 n label label -- n ) {: name:ptr size:n first:label last:label :}
@@ -56,7 +65,7 @@ public
    row ROW-CELLS * ROWS {: dst:ptr :}
    first LABEL>N dst ! last LABEL>N dst cell+ !
    size dst 2 cells + ! NAME-BYTES @ dst 3 cells + !
-   -1 dst 4 cells + ! 0 dst 5 cells + !
+   -1 dst 4 cells + ! 0 dst 5 cells + ! -1 dst 6 cells + !
    name 0 NAMES BYTE-VIEW NAME-BYTES @ + size BYTE-COPY
    NAME-BYTES @ size + NAME-BYTES !
    row 1+ USED !
@@ -114,6 +123,27 @@ public
 \ builder checks every body, so it cannot hide an unspecified primitive.
 : SPEC-CHECK ( ptr u8 n -- ) {: name:ptr size:n :}
    name size PRIM-SPEC:FIND 0 < if name size SPEC-MISSING then ;
+
+private
+
+: PROVIDED-ROW? ( ptr u8 n -- bool )
+   PRIM-SPEC:FIND {: spec:n :}
+   spec 0 < if false exit then
+   spec PRIM-SPEC:PREFIX-PROVIDED? ;
+
+: UNMARKED-DISPATCH ( ptr u8 n -- )
+   s" prims: dispatch cell for a primitive prims.f does not mark prefix-provided: " type type cr
+   s" prims: dispatch cell for an unmarked row" SPEC-RC die ;
+
+public
+
+\ A row the captured runtime provides keeps its record in every build; in a
+\ seeded build its body jumps through this DATA cell (layout.f PROVIDED-XT).
+\ Every other row has none, -1.
+: DISPATCH ( n -- n ) 6 ROW-FIELD @ ;
+: DISPATCH! ( n n -- ) {: cell:n row:n :}
+   row NAME$ PROVIDED-ROW? 0= if row NAME$ UNMARKED-DISPATCH then
+   cell row 6 ROW-FIELD ! ;
 
 \ A primitive whose dictionary record is globally searchable but cannot be
 \ executed or ticked by ordinary source. The sentinel lives only in this
@@ -183,26 +213,46 @@ public
 \ for the name - which is the same fork the table exists to close, read from the
 \ other end.
 \
-\ Run it after the last body.
+\ A ROW THE CAPTURED RUNTIME PROVIDES (src/habu/prims.f EPREFIX-PROVIDED!) must
+\ also register its dispatch cell: a body without one is an assembly body under
+\ the runtime's name, which a seeded build would run in place of the runtime's
+\ word. A seeded build's body is the stub alone, so its captured runtime must
+\ fill the cell; the builder's provider answers that for a cell. Run it after
+\ the last body.
 private
 
-: BODY? ( ptr u8 n -- bool ) {: name:ptr size:n :}
+\ The registered body of the name, or -1.
+: BODY-ROW ( ptr u8 n -- n ) {: name:ptr size:n :}
    USED @ 0 ?do
-      i NAME$ name size CORE-STR= if unloop 0 0= exit then
+      i NAME$ name size CORE-STR= if i unloop exit then
    loop
-   0 0= 0= ;
+   -1 ;
 
 : NO-BODY ( ptr u8 n -- )
    s" prims: no backend body for specified primitive " type type cr
    s" prims: specification row without a backend body" SPEC-RC die ;
 
-: CHECK-ROW ( n -- )
-   PRIM-SPEC:NAME$
-   2dup BODY? 0= if NO-BODY else 2drop then ;
+: NO-DISPATCH ( ptr u8 n -- )
+   s" prims: no dispatch cell for prefix-provided primitive " type type cr
+   s" prims: prefix-provided row registered without its dispatch cell" SPEC-RC die ;
+
+: UNFILLED ( ptr u8 n -- )
+   s" prims: captured runtime leaves the dispatch cell empty for prefix-provided primitive " type type cr
+   s" prims: prefix-provided row not in the captured runtime" SPEC-RC die ;
+
+: CHECK-ROW ( n [ n -- bool ] -- ) {: spec:n filled :}
+   spec PRIM-SPEC:NAME$ {: name:ptr size:n :}
+   name size BODY-ROW {: body:n :}
+   body 0 < if name size NO-BODY then
+   spec PRIM-SPEC:PREFIX-PROVIDED? 0= if exit then
+   body DISPATCH {: cell:n :}
+   cell 0 < if name size NO-DISPATCH then
+   SEEDED? 0= if exit then
+   cell filled execute 0= if name size UNFILLED then ;
 
 public
 
-: COMPLETE ( -- )
-   PRIM-SPEC:COUNT 0 ?do i CHECK-ROW loop ;
+: COMPLETE ( [ n -- bool ] -- ) {: filled :}
+   PRIM-SPEC:COUNT 0 ?do i filled CHECK-ROW loop ;
 
 ;package
