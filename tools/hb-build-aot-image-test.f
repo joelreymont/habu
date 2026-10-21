@@ -209,7 +209,9 @@ variable HBT-MAKER-DIRECT-OUT-U
    HBT-RUN-OUT runn want wantu T$= ;
 
 : HBT-MAKER-USER-BAND ( -- )
-   HBT-AOT-SRC S\" require src/lib/task.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
+   \ ZIP must load before APP-SLOT: its task-local allocations afterward
+   \ would round the user ceiling and hide the odd 25-byte regression.
+   HBT-AOT-SRC S\" require src/lib/task.f\nrequire src/lib/zip.f\nTASK:#USER 25 TASK:+USER APP-SLOT drop\n: MAIN ( -- ) APP-SLOT 0 swap ! s\" user-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
    false HBT-MAKER-REPORT-BUILD
    S\" user-ok\n" HBT-MAKER-USER-RUN
@@ -217,8 +219,7 @@ variable HBT-MAKER-DIRECT-OUT-U
    HBT-AOT-SRC S\" require src/lib/zip.f\n: MAIN ( -- ) s\" zip-ok\" type cr ;\n" WRITE-ALL
    HBT-REMOVE-AOT-OUT
    true HBT-MAKER-REPORT-BUILD
-   S\" zip-ok\n" HBT-MAKER-USER-RUN
-   S\" zip-ok\n" HBT-MAKER-DIRECT-RUN ;
+   S\" zip-ok\n" HBT-MAKER-USER-RUN ;
 
 public
 
