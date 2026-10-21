@@ -31,6 +31,12 @@ SUITE whitebox-engine-key
    test/whitebox-engine-key-test.f
 ;SUITE
 
+\ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
+\ TCP4; writes build/ws-transcript.txt and compares it whole.
+SUITE websocket
+   src/lib/net/ws-test.f
+;SUITE
+
 SUITE stripped-pool-reach
    test/stripped-pool-reach.f
 ;SUITE
@@ -2480,12 +2486,6 @@ SUITE websocket-frame
 \ SSE framing over arbitrary byte chunks, with no network dependency.
 SUITE event-stream
    src/lib/net/event-stream-test.f
-;SUITE
-
-\ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
-\ TCP4; writes build/ws-transcript.txt and compares it whole.
-SUITE websocket
-   src/lib/net/ws-test.f
 ;SUITE
 
 \ The process row is per task: a capturing task and a polling task at once.
