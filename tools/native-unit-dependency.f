@@ -289,7 +289,7 @@ INSTALL-DEFAULT
    then
    kind SCOPE = if
       keyu 0<> datau 0= or if MALFORMED then
-      data datau OUTER:SCOPE-MATCH? exit
+      data datau NFILE-SCOPE:SCOPE-MATCH? exit
    then
    kind RESOLUTION = if
       keyu RES-KEY-BYTES < if MALFORMED then
@@ -642,7 +642,7 @@ public
    off FRAME <> if BAD then
    s" HBFDEP02" drop off BYTES 8 BYTE-COPY
    0 off 8 + BYTES LE:U64!
-   OUTER:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
+   NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
    SCOPE NULL-PTR 0 scope scopeu ADD-ROW
    ['] OBSERVE-BOUND NFEED:USE-BINDINGS
    ['] OBSERVE-RESOLUTION NFEED:USE-RESOLUTIONS ;
