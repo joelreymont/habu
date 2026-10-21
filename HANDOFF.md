@@ -1,84 +1,263 @@
-# Handoff: Intel x86-64 port onto master
+# Handoff: bootstrap the Intel port on ARM64 macOS
 
-State on 2026-10-21. Delete this file when the port lands on `master`.
+State: 2026-10-21. Herdr agent name: none (outside Herdr).
 
-## Where things are
+## Task
 
-| Ref | Revision | Meaning |
-| --- | --- | --- |
-| `intel` | merge `40f36d55` + this file | The x86-64 checkpoint line (`4db1d989`, its second parent) merged onto `master@5999ba5f`. Every conflict is resolved. **Never built or run.** The branch was moved sideways from `4db1d989`, which stays reachable as the merge's parent. |
-| `intel-checkpoint-2026-10-07` | draft release | `hb-linux-x86_64` + `.names`, source `b16066cd`. It cannot host the merged tree: its baked prefix is the old `lib/` layout, so the build dies at once on `duplicate definition: E-A-FIRST at src/lib/errors.f:20` (exit 78). |
-| `master@origin` | `40860f6f` | Two commits past the merge's master parent (`42873837`, `40860f6f`); merge them into `intel` before gating. |
+The user requested: “build and merge into master periodically, after rebasing
+on top of master”. Work stopped before any build when the ARM64 donor
+requirement became clear. The user will switch to their Mac and requested
+this handoff committed and pushed to `intel`.
 
-The merge rule was: where both sides changed the same thing, master's design wins and the x86 capability is re-expressed on it. Nothing x86 was dropped silently; what changed or was lost is listed below.
+Continue on Apple Silicon: rebase onto current master, build and qualify a
+macOS ARM64 product, then cross-build Linux x86-64. Native x86-64 execution,
+self-hosting and the full suite must subsequently run on Linux x86-64.
+Merge verified, independently reviewed checkpoints into master.
 
-## What the merge decided
+## State
 
-- **Declared return-stack cells across calls:** intel's bridging (53b94c0b, a264b43e, return rows of cbc55b8a) is removed. Master refuses such signatures since 69e6c964 (no non-test word used them; ANS 3.2.3.3 forbids the form). `>r … r>` inside one definition still works; intel's whole-value return-stack cells (RGLUE, RSTACK-CK, RSTACK-CELLS by operand width) are kept.
-- **Libraries** follow master's `src/lib/`; `lib/` is gone. `lib/source-syntax.f` (intel-only) is now `src/lib/source-syntax.f`.
-- **Checker owner record** is $550 bytes / 170 cells: intel's fields are appended after master's in `CHECKER-OWNER-EXT` (MULTI-ERROR $528, RESET-REPORT $530, JSON-REPORTED $538, REFUSAL-TOKEN $540, RECOVERY-USED $548). `E-NCOMP-RECOVERY` is -8576; the x86 disassembler's codes are -9500..-9509.
-- **Compiler:** fixed/defer native paths, trusted and immediate ticks, undefined-tick refusal at the operand, the remat mark (a64ir MINOR 19, K-REMAT-MARK 21, KEYS 22; x64ir MINOR 4, K-REMAT-MARK 15, KEYS 16), MB-PIN (pinned class to the frame for idiv/rax, shl/rcx), reloads never re-spilled, x86 RELOC-CALLS, icode fixup tables at $2000. Master's MB-RUN-HELD? replaces intel's MB-DIVIDE/CL-ANCH/EVICTED-ROOTS; master's TFW replaces intel's nested generic widths. Intel's multi-error recovery binding is re-expressed as RECOVERY-BIND under master's LIVE-BIND; the used-import ambiguity among recovery rows is simplified (first used import's row wins).
-- **Runtime:** occurrence numbering now covers x86 boot (`OCC-INIT,` numbers existing records) and unit publication on both arches (intel handoff defects 1 and 4). Capture keeps master's prepare/complete split with shared ACAP-START/ACAP-FINISH; `aot-shadow.f` keeps intel's x86-edge reach (format v15) and names master's TARGET-CAPTURE routines with their private WID. The task ALTSTACK is removed (master's task ABI, `TCB-BYTES` $170).
-- **Tools:** `native-build-core.f` CAPTURE has three paths (native x86 shadow, ARM host with dual-emission shadow → `AOT-CAPTURE:TARGET-CAPTURE`, plain). `native-unit-capture.f` enforces PROFILE-CK itself; the definition cache declines x86 quietly. `aot-data-cell.f` reads x86 address sites through `SITES:EACH-IN-SPAN`.
-- `handoff.md` and `docs/branch-work.md` from the intel line are deleted; durable facts moved into `docs/x86-64.md`.
+- Origin: https://github.com/joelreymont/habu.git.
+- Previous cwd: `/home/joel/Work/habu`, Ubuntu 26.04 x86-64.
+- Published intel is the clean original port merge plus this replacement
+  handoff. It has **not been rebased onto latest master, built or run**.
+- Original merge: `40f36d55`, parents `5999ba5f` (master) and `4db1d989`
+  (Intel checkpoint). Original handoff: `46c33a36`.
+- Latest fetched master: `2d7b92c9`, “Rename source policy to vocabulary”.
+  Refresh again on the Mac.
+- The interrupted **local-only** rebase is preserved in the Linux repository
+  under `intel-rebase-local` at `df6513d8` (change `sqsqruws`). Its merge is
+  `9101c76d` (change `xwyrlqpu`), with four unresolved conflicts. The empty
+  resolution child `d9232c35` (change `romlzqxr`) has no edits. These were
+  not pushed; reproduce the rebase from the clean remote line on the Mac.
+- The original handoff was consumed/deleted locally; this replacement is
+  committed on clean intel for machine transfer, in change `nxxxkmrm`.
+- Master was neither changed nor pushed. No implementation fixes were made.
+- Linux `bin/hb` is an ignored Oct 7 x86-64 checkpoint with `hb.names`.
+  It cannot host the current tree: old baked `lib/` paths conflict with
+  `src/lib/` (earlier handoff reports duplicate E-A-FIRST, exit 78).
+  No new engine, build log or gate result exists.
 
-## Known gaps (work, not merge leftovers)
+## Decisions
 
-1. x86 replay writers and the source-exec observer still refuse (intel handoff defect 2; master refuses too).
-2. x86 `does-patch` does not reissue occurrence numbers for patched records and aliases (defect 3; `test/does-empty-clause.f:183` expects pre-patch handles to refuse `E-STALE`).
-3. After a throw inside the Habu `evaluate`, master's eval-frame rows are not retracted.
-4. `AOT-CAPTURE:TARGET-CAPTURE` does not set `ACAP-ALL-NAMES` from `ACAP-WHITEBOX?` as `CAPTURE` does; a whitebox x86 cross-build would miss names.
-5. The comment at `src/habu/aot-closure.f:715` (OWNER asks the ARM bitmap) is stale.
-6. New x86 FFI float32 stubs in `src/lib/ffi-abi.f` were written by hand and never ran.
-7. Not adapted: bundle builds to the x86 writer; incremental builds may not record every x86 writer input; an x86 cached object with a DATA payload is refused.
-8. Coverage lost with tests master deleted: 9 x86 golden rows (`target-native-layout-goldens.f`), the ARM-only PROFILE-CK of `native-unit-image.f` (now in the tool), `engine-writers.f`'s def-open tier and kind seal cases, the engine-suite x86 raw FFI leaf, imgdump/native-unit-profile/pre-trust/aot-shadow anonymous x86 cases. Master's REDEFINE-CASE (tier 0) runs on ARM only.
-9. `test/task-prepare-failure.f`'s 11-page limit was sized with the altstack page; check it still makes preparation fail.
-10. Intel's last full suite (on frozen 1f98c905) was 614 suites, 68 red; `test/xt-effect-test.f` F34/F36 red on the checkpoint. Expect reds; classify each, do not raise budgets.
-11. `intel-aot-wip` (97b4ddab) holds portable AOT graph/storage repairs with two requested review corrections (see `git show 4db1d989:handoff.md`, "Retained AOT work"); not merged.
+- The Gforth recovery seed emits ARM64 only. Bootstrap natively on the Mac,
+  then cross-build the first Intel engine; Intel should subsequently self-host.
+  Use a native arm64 shell, not Rosetta.
+- A donor must match the host OS and architecture. An ARM64 Linux executable
+  is not a macOS donor. Prefer a qualified installed macOS ARM64 hb, otherwise
+  recover with Gforth 0.7.9 or newer.
+- Preserve master's design and public API, re-expressing Intel capability on
+  it. Libraries live under `src/lib/`.
+- Current user instructions put private workspaces under `.jj-ws.noindex/`.
+  Candidates stay private, outside `~/.local/lib/habu/`, until qualified.
+- Build work remained stopped during handoff preparation. The user explicitly
+  requested this file committed and pushed to intel.
 
-## Needs a build to confirm
+## Findings
 
-Compiler and checker load (RECOVERY-BIND, CHECKER-PREFIX:BIND?, publish.f COMMIT-DEFER, dict.f REC-CODE, fixed/defer paths); the 170-cell owner record including a retained master host; layout offsets against DATA-CLAIMS; occurrence numbering at boot and unit publication; `evaluate-range` on x86; x86 snapshot boot with master's zeroed hook cells; `test/x86-64-link-records.f` strip/export/quot cases; error codes using-test and tier.f expect; x86 pinned spills; native-multi-error-recovery; C2 refusals, closed-unit-suite, match-factor-pin, does-clause-record on x86; sealed-source routing on x86.
-
-## How to continue
-
-The x86 engine has no cold route: it is cross-built from a working ARM64 engine. Real ARM64 Linux hardware is the fast route.
-
-Without ARM64 hardware, an x86-64 Linux host can run the ARM64 engine under qemu user emulation. Measured in the cloud session that produced this branch (2 cores):
-
-- `apt install qemu-user-static libc6-arm64-cross`; register binfmt (`mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc`, then write `/usr/lib/binfmt.d/qemu-aarch64.conf` with interpreter `/usr/bin/qemu-aarch64-static` into `/proc/sys/fs/binfmt_misc/register`); export `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu` (the stage engines link libc dynamically). PostgreSQL and zip rows need ARM64 `libpq5`/`libzip` unpacked from ports.ubuntu.com into that prefix; master's zip rows expect `libzip.so.5`, which Ubuntu 24.04 does not ship.
-- Gforth 0.7.9 builds from the complang snapshot tarball (needs `libtool-bin`). `HABU_TARGET=linux-aarch64` must be set explicitly on an x86 host.
-- The seed's self-check gates are the slow part: each gate binary ran about ten minutes because the JIT defeats qemu's translation cache. Without them (a copy of `tools/bootstrap.sh` whose `bootstrap_*_gate` calls are disabled — a host-preparation shortcut, never a qualification) the Gforth seed reached `hb-stage0` within a minute and the stage-1 engine in about 15 minutes. The stage fixpoint, cross-build and ARM gate under qemu were not completed in that session.
-- The x86 checkpoint engine (`intel-checkpoint-2026-10-07`) cannot host this tree: its baked prefix is the old `lib/` layout (`duplicate definition: E-A-FIRST at src/lib/errors.f:20`, exit 78).
-
-On an ARM64 Linux host, in an isolated copy of `intel` (`jj workspace add` under `.jj-ws.noindex/`):
-
-```sh
-# 0. Bring in master's newer commits first.
-jj new intel master@origin -m "Merge master into the Intel port"   # resolve, describe, continue
-
-# 1. ARM64 engine from the merged tree. Host: a qualified ARM64 hb of master
-#    (~/.local/lib/habu/current/bin/hb), or recover through Gforth 0.7.9:
-#    HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=linux-aarch64 HB_TMP=$TMP GFORTH=$(command -v gforth) tools/bootstrap.sh
-HOST=~/.local/lib/habu/current/bin/hb
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
-  $HOST --load tools/native-build.f -- $OUT/arm/hb
-cp $OUT/arm/hb $OUT/arm/hb.map bin/
-bin/hb --load test/run.f </dev/null                     # ARM gate: master must not regress
-
-# 2. Cross-build x86-64 from that ARM engine.
-bin/hb --load src/arch/x86-64/passes.f tools/native-build.f -- $OUT/x64/hb --target linux-x86-64
-```
-
-Then on x86-64 Linux, in a copy of the same tree with `$OUT/x64/hb` and its `hb.map` as `bin/`:
+The attempted rebase command was:
 
 ```sh
-HB=$PWD/bin/hb
-# 3. Self-host to a byte fixpoint: three generations, cmp each pair (executable and map).
-HABU_UNDER_TEST=$HB HABU_FIXPOINT_ENGINE=$HB HB_TMP=$TMP $HB --load tools/native-build.f -- $OUT/g1/hb
-# ... g2 from g1, g3 from g2; cmp g1/g2 and g2/g3.
-# 4. Full native suite on the x86 candidate.
-bin/hb --load test/run.f </dev/null
+jj rebase -s 40f36d55 -o master -o 4db1d989
 ```
 
-Fix what fails at the responsible layer, closing gaps 1–4 above as they surface; get an independent adversarial review of the merge and the fixes (Fable for Claude-written code); then land on `master` (gate and push on separate lines) and delete this file and the `intel*` refs once accounted for (`intel-rebase` and `intel-rebase-wip` on origin are superseded copies of this branch; delete them). Keep `INTEL.md` and `docs/x86-64.md` current: master's `INTEL.md` still describes the 2026-09-29 state.
+This replaces the merge's master parent and retains its Intel checkpoint
+parent. Do not replace both parents with master and assume the port is kept:
+the merge's resolution diff is relative to its merged parent trees.
+
+On master `2d7b92c9`, the four conflicts were:
+
+- `docs/policy.md`: master renamed it to `docs/vocabulary.md`. Carry the
+  Intel captured-interpreter/kernel enforcement documentation into the new
+  file, keeping master's public vocabulary names.
+- `src/lib/policy.f`: carry the correction that both kernels enforce admission
+  into `src/lib/vocabulary.f`, keeping master's `VOCABULARY` API.
+- `src/lib/policy-test.f`: preserve the Intel additions in
+  `src/lib/vocabulary-test.f`: locals-many, design/ordinary-keyword package
+  cases and captured-loop seam coverage. Inspect port-only harnesses under
+  `test/policy/` too: their requires/calls may still name the old API.
+- `src/habu/layout.f`: retain Intel's NCOMP-DISPATCH cells at $2D90, $2D98,
+  $2DA0 and TASK-CHAIN-CELL at $2DA8, with master's renamed documentation
+  references. The observed conflict surrounds the inserted block/comment.
+
+Useful port comparison:
+
+```sh
+jj diff --from 5999ba5f --to 40f36d55 -- src/lib/policy.f src/lib/policy-test.f docs/policy.md
+```
+
+Prior handoff's known gaps, **not reverified in this session**:
+
+1. x86 checker replay writers and source-exec observer still refuse.
+2. `does-patch` does not refresh occurrence numbers for patched records/aliases;
+   `test/does-empty-clause.f` expects old handles to refuse E-STALE.
+3. Throws inside Habu `evaluate` do not retract master's eval-frame rows.
+4. TARGET-CAPTURE does not copy ACAP-WHITEBOX? into ACAP-ALL-NAMES, so a
+   whitebox cross-build may lose names.
+5. x86 FFI float32 stubs are unexecuted. Bundle/incremental/cached-object paths
+   have gaps, and some old Intel test coverage was lost during reconciliation.
+6. `test/task-prepare-failure.f`'s page budget predates removal of the task
+   altstack. Check its real refusal; do not raise budgets to hide failures.
+7. Earlier suite on frozen `1f98c905`: 614 suites, 68 red; checkpoint
+   xt-effect-test F34/F36 also red. Neither result qualifies the merged tree.
+8. `intel-aot-wip@origin` (`97b4ddab`) retains unmerged AOT work with requested
+   review corrections. Do not merge blindly.
+
+The merged checker owner is $550 bytes / 170 cells; the task TCB is master's
+$170 bytes. Checker/compiler loads, retained-host layout, fixed/defer paths,
+boot/unit occurrence numbering, snapshots, pinned spills, multi-error recovery
+and sealed-source routing all need execution. The full original merge inventory
+and retained AOT context remain available:
+
+```sh
+jj file show -r 46c33a36 HANDOFF.md
+jj file show -r 4db1d989 handoff.md
+```
+
+## Workers
+
+Previous parent session ID: unknown. No active worker or task-owned build
+process was observed when writing this file. The read-only `/root/arm_donor`
+inventory agent was interrupted by a server restart and supplied no result.
+No editing worker/workspace was created; do not restart the old workspace pool.
+
+## Next
+
+### 1. Fetch and rebase on the Mac
+
+From the Mac's repository root, preserve existing work and choose a fresh
+workspace name if the example already exists:
+
+```sh
+uname -s
+uname -m
+jj status
+jj git fetch
+jj bookmark list intel master --all-remotes
+jj workspace list
+jj workspace add .jj-ws.noindex/mac-intel-bootstrap --name mac-intel-bootstrap -r intel@origin
+cd .jj-ws.noindex/mac-intel-bootstrap
+jj rebase -s 40f36d55 -o master@origin -o 4db1d989
+jj status
+```
+
+Expect Darwin and arm64. Resolve the known conflicts in a child of change
+`xwyrlqpu`, snapshot with `jj describe`, and squash the resolution into that
+merge; then build from the rebased Intel tip. Keep its descendants accounted
+for. No conflicted tree is a build candidate.
+
+### 2. Native ARM64 donor or Gforth recovery
+
+Read [docs/bootstrap.md](docs/bootstrap.md) and
+[docs/forth-card.md](docs/forth-card.md). Allocate external, disk-backed scratch:
+
+```sh
+mkdir -p "$HOME/.cache/tmp"
+OUT=$(mktemp -d "$HOME/.cache/tmp/habu-intel-arm.XXXXXX")
+mkdir -p "$OUT/tmp" "$OUT/arm" "$OUT/x64"
+export HB_TMP="$OUT/tmp"
+```
+
+Inspect `~/.local/lib/habu/current/bin/hb` with `file` if present; use it as
+HOST only if it is a working macOS ARM64 donor compatible with this tree.
+Otherwise follow Gforth installation guidance in docs/bootstrap.md and probe
+the selected interpreter (0.7.3 is too old):
+
+```sh
+GFORTH=$(command -v gforth)
+printf ': x {: a :} a . ; 7 x bye\n' | "$GFORTH"
+```
+
+It must print 7 and exit zero. Recover privately, keeping all recovery gates:
+
+```sh
+HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=macos-aarch64 \
+  HABU_BOOTSTRAP_CHECK_ONLY=1 GFORTH="$GFORTH" \
+  HB_TMP="$OUT/recovery" tools/bootstrap.sh
+```
+
+Success ends `bootstrap check OK: .../hb-stdin`. Build the native product from
+that source-only recovery host with the documented compiler preload:
+
+```sh
+HOST="$OUT/recovery/hb-stdin"
+cat > "$OUT/native-preload.f" <<'EOF'
+require src/compiler/native/compiler.f
+NCOMP:INSTALL
+EOF
+HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$OUT/tmp" \
+  "$HOST" --load "$OUT/native-preload.f" tools/native-build.f -- "$OUT/arm/hb"
+```
+
+If using an already qualified native product donor instead, set HOST to that
+binary and use the ordinary command:
+
+```sh
+HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$OUT/tmp" \
+  "$HOST" --load tools/native-build.f -- "$OUT/arm/hb"
+```
+
+Recovery is not product qualification. Run the documented generation chain:
+
+```sh
+HB_TMP="$OUT/tmp" "$OUT/arm/hb" --load tools/two-generation-build.f -- "$OUT/arm/hb"
+```
+
+It prints its private directory and leaves bin/hb alone. Copy the converged
+product and its **matching .map** into this private tree as regular bin/hb and
+bin/hb.map files, checking for symlinks first. Read docs/gate.md for the cold ARM
+prefix check and suite requirements, then run its macOS awake wrapper:
+
+```sh
+sh -c 'caffeinate -is -w $$ & bin/hb --load test/run.f </dev/null'
+```
+
+Documented Mac suite dependencies include Homebrew libzip, libunistring,
+openssl@3, libpq, socat, librsvg, qpdf, Poppler and PostgreSQL tools on PATH.
+Inspect installed dependencies first. Retain genuine failures and logs; do
+not weaken the gate. Rule out host sleep before diagnosing timeouts.
+
+### 3. Cross-build Linux x86-64, then qualify it on Linux
+
+Using the qualified private ARM product from the same source:
+
+```sh
+HB_TMP="$OUT/tmp" bin/hb --load src/arch/x86-64/passes.f tools/native-build.f \
+  -- "$OUT/x64/hb" --target linux-x86-64
+file "$OUT/x64/hb"
+shasum -a 256 "$OUT/x64/hb" "$OUT/x64/hb.map"
+jj log -r @ --no-graph
+```
+
+Record the exact source commit, hashes and build/gate logs. The driver has a
+held x86 writer and skips launch-smoke for a foreign architecture
+(FILE-PREPARE and IMAGE-INSTALL, tools/native-build-core.f). A macOS-to-Linux
+x86-64 cross-build was **not tested here**; diagnose host/target ABI or image
+format refusals at the responsible boundary.
+
+Transfer the binary, its matching .map and exact source revision to Linux
+x86-64. In a private matching tree, copy the pair as regular bin/hb and
+bin/hb.map; run tools/two-generation-build.f using the Intel candidate, then
+the full `bin/hb --load test/run.f </dev/null` on the converged Intel product.
+Do not substitute the old checkpoint .names sidecar for the new .map.
+
+Fix confirmed failures at the responsible layer. Obtain the independent
+adversarial reviews required by current AGENTS.md before landing significant
+changes. Refresh/rebase onto master again if it advances, merge verified
+checkpoints periodically, and read each gate's exit status before a separate
+push command.
+
+## Pointers
+
+- [docs/bootstrap.md](docs/bootstrap.md): recovery, preload, older-host staging,
+  generation chain and reserved layout transitions.
+- [docs/gate.md](docs/gate.md): product qualification, macOS dependencies.
+- [docs/x86-64.md](docs/x86-64.md): target design and build commands.
+- [INTEL.md](INTEL.md): lane overview; parts predate the merge.
+- [docs/debugging.md](docs/debugging.md): native diagnosis.
+- Full previous handoff: `jj file show -r 46c33a36 HANDOFF.md`.
+- Linux scratch `/home/joel/.cache/tmp/habu-intel-build` was empty. There are no
+  new artifacts to transfer. Old .jj-ws/ workspaces are unrelated history.
+- Codex transcript path: unknown.
+
+Start a new Codex session on the Mac and use
+`$pickup /absolute/mac/path/to/habu/HANDOFF.md`.
