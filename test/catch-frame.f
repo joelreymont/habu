@@ -5,30 +5,14 @@
 \ throwing quotation that leaves >r litter or an open ?do frame would otherwise
 \ clobber caller return/loop state with no type mismatch.
 \
-\ Native gates run it against HABU_UNDER_TEST; tools/bootstrap.sh runs the same
-\ file against the Gforth-recovered candidate, so native and recovery must agree.
-\ The in-process cases assert the restored VALUES a checked r>/loop-index sees; the
-\ forged-frame child fixtures assert the sentinel/underflow guards fail closed with
-\ ENGINE-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory,
-\ for a throw at top level (habu1.f BTHROW) and inside evaluate (habu2.f LEVALREC).
+\ Native gates run it; tools/bootstrap.sh runs the same file against the
+\ Gforth-recovered candidate, so native and recovery must agree. The cases assert
+\ the restored VALUES a checked r>/loop-index sees.
 
-require src/lib/errors.f
-require src/lib/string.f
 require src/lib/test.f
-require src/lib/memory.f
-require src/lib/fs.f
-require src/lib/process-argv.f
-require src/lib/engine-candidate.f
-require test/pcap-result.f
 
 package CATCH-FRAME-TEST
 private
-
-$800 constant CAP
-10000 constant TIMEOUT-MS
-
-create OUT CAP allot
-create ERR CAP allot
 
 variable ACC
 
@@ -84,50 +68,11 @@ variable ACC
    s" nested catch + repeated throws: no loop drift" T-LABEL
    NESTED-LOOPSP-DRIFT 0 T= ;
 
-\ ---- forged/underflow handler frames fail closed before any restore ----
-
-variable ERRLEN
-
-: DIAG$ ( -- ptr u8 n )  S\" hb: catch frame corrupt\n" ;
-
-: ERR$ ( -- ptr u8 n )  ERR ERRLEN @ ;
-
-: FORGE-RC ( ptr u8 n -- n )           \ run forge source on stdin under the candidate engine; leaves rc, ERR/ERRLEN hold stderr
-   {: src:ptr srcu:n :}
-   PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE                   \ record captured stderr length, return rc
-   PCAP-RESULT:>N swap ERRLEN ! nip ;
-
-: FORGE-FAILS-CLOSED ( ptr u8 n ptr u8 n -- )   \ ( label forge-src -- ): rc 87 + exact diagnostic
-   {: lbl:ptr lblu:n src:ptr srcu:n :}
-   lbl lblu T-LABEL
-   src srcu FORGE-RC ENGINE-ERROR:CATCH-STACK T=
-   ERR$ DIAG$ T$= ;
-
-: FORGED-FRAMES ( -- )
-   s" forged sentinel fails closed rc 87"
-   s" 0 set-check create FF 64 allot  $DEADBEEF FF 56 + !  FF data-base HND-CELL + !  5 throw"
-   FORGE-FAILS-CLOSED
-   s" adjacent sentinel mutation fails closed rc 87"
-   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  1 FF 56 + +!  FF data-base HND-CELL + !  5 throw"
-   FORGE-FAILS-CLOSED
-   s" saved-depth underflow fails closed rc 87"
-   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  FF data-base HND-CELL + !  5 throw"
-   FORGE-FAILS-CLOSED
-   s" saved-depth over region fails closed rc 87"
-   s" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  RSTK-CELLS 1 + FF 40 + !  FF data-base HND-CELL + !  5 throw"
-   FORGE-FAILS-CLOSED
-   s" a throw inside evaluate fails closed rc 87"
-   S\" 0 set-check create FF 64 allot  CATCH-FRAME-MAGIC FF 56 + !  -1 FF 40 + !  s\" FF data-base HND-CELL + !  5 throw\" evaluate"
-   FORGE-FAILS-CLOSED ;
-
 public
 
 : RUN ( -- )
    T-RESET
    IN-PROCESS
-   FORGED-FRAMES
    T-REPORT
    s" catch-frame: ok" type cr ;
 

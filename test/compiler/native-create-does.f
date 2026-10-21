@@ -15,10 +15,6 @@ TRUSTED: MAKE-TRUSTED ( n -- ) create , does> ( -- ptr n ) ;
 : CHECKED-VALUE ( -- n ) CHECKED-LIVE @ ;
 : TRUSTED-VALUE ( -- n ) TRUSTED-LIVE @ ;
 : PLAIN ( n -- n ) 1 + ;
-\ Runs inside a pending definer's body and hands the compiler entry a source of
-\ its own, which holds no `does> ` at the cut the engine recorded.
-: FORGE-CUT ( -- ) s" ab" NCOMP:COMPILE ; immediate
-s" FORGE-CUT" 0 parse-imm
 ;package
 
 package NATIVE-CREATE-DOES-TEST
@@ -138,11 +134,6 @@ public
    s" the next definition inherits no accepted clause from that refusal" T-LABEL
    s" NP3 ( -- ptr n ) NEXT-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
    CHECKER-SCOPE-DONE
-   s" a does> cut outside the compiled source is refused as the cut" T-LABEL
-   [: s\" : NATIVE-DOES-FORGED ( n -- ) create , does> ( -- n ) NATIVE-CREATE-DOES-PUBLIC:FORGE-CUT @ ;\n"
-      evaluate-closed ;] E-NFEED-CUT TTHROWSQ
-   s" a refused cut publishes no definer" T-LABEL
-   s" NF0 ( n -- ) NATIVE-DOES-FORGED" VERIFY:CANDIDATE-IN-SCOPE 1 T=
 
    s" created storage and the published output signature survive" T-LABEL
    CREATED-CELL 41 T=

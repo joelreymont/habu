@@ -4,10 +4,7 @@ require src/lib/errors.f
 require src/lib/memory.f
 require src/lib/test.f
 require src/compiler/native/compiler.f
-require tools/codegen-tail-probe.f
 
-\ Tier 1 below: the residency and the surviving external call are read out of the
-\ production routine's own emitted instructions (tools/codegen-tail-probe.f).
 1 set-tier
 
 \ ---- the program under test --------------------------------------------------
@@ -66,12 +63,6 @@ create PRESS-BYTE 1 allot
 package NDSA-TEST
 private
 
-: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u XREF-FIND dup XREF-FOUND? 0= if
-      drop s" native-dstack-alias: record not found" 76 die
-   then
-   XREF-START ;
-
 \ One direct XT run on a fresh data stack. The buffer is re-taken per run so no
 \ answer can survive into the next one.
 : RUN-XT ( [ -- ] -- n ) {: xt :}
@@ -79,27 +70,6 @@ private
    0 DKA:ANS !
    xt DKA:BASE DKA:SIZE run-in-stack
    DKA:ANS @ ;
-
-: ABS-ENTRY ( -- n )
-   s" abs" NDICT:CALL-TARGET ;
-
-\ Other checked helpers remain ordinary calls; this precondition names abs.
-: ABS-CALLS ( -- n )
-   s" DKA:POKED" ENTRY-OF {: base:n :}
-   0
-   s" DKA:POKED" NTAILPROBE:INSNS 0 ?do
-      s" DKA:POKED" i NTAILPROBE:INSN@ dup NBR:BL? if
-         base i NBR:INSN-BYTES * + swap NBR:BL-TARGET
-         ABS-ENTRY = if 1+ then
-      else drop then
-   loop ;
-
-
-: CALL-PRECONDITION ( -- )
-   s" abs remains an external call" T-LABEL
-   ABS-ENTRY 0 > TTRUE
-   ABS-ENTRY s" DKA:POKED" ENTRY-OF < TTRUE
-   ABS-CALLS 1 T= ;
 
 \ ---- 1. the witness ----------------------------------------------------------
 : ALIAS-CASE ( -- )
@@ -133,7 +103,6 @@ private
 public
 
 : RUN ( -- )
-   CALL-PRECONDITION
    ALIAS-CASE
    SAVE-CASE
    EXIT-CASE

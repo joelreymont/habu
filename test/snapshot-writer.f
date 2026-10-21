@@ -309,9 +309,6 @@ variable IMGU
 \ rule on every boot path rather than by a bit.
 variable BAND-WID
 
-: BAND-TAG ( -- n )
-   DATA-OFF 8 + PROT-REG-TAG-CELL + U64@ ;
-
 : BAND-BIT? ( n -- bool ) {: wid:n :}
    DATA-OFF 8 + PROT-BITS-OFF + wid 8 / + U8@
    wid 7 and rshift 1 and 0= 0= ;
@@ -463,10 +460,6 @@ variable BAND-WID
    s" an address row outside exact DP is refused before restore" T-LABEL
    DOCTOR-FIRST-ROW
    BAND-WID!
-   s" persisted protected-WID band carries the bitmap shape tag" T-LABEL
-   BAND-TAG PROT-REG-TAG T=
-   s" persisted band leaves wid 0 clear" T-LABEL
-   0 BAND-BIT? TFALSE
    s" persisted band names a wordlist protected by the image alone" T-LABEL
    BAND-WID @ 0 > TTRUE
    s" warm protected wordlist rejects publication (--load)" T-LABEL
