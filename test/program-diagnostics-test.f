@@ -158,7 +158,11 @@ package PROGRAM-DIAGNOSTICS
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
-   s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
+   \ Only x86-64's Habu load loop abandons a refused tier-1 definition and
+   \ reads on; ARM64's kernel loop, master's, ends the load at that `;`.
+   HB-TARGET-LINUX-X86-64? if
+      s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
+   then
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC
