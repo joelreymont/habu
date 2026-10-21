@@ -45,12 +45,13 @@
 \ forged rows: a site naming the package row, the same in a `does>` definer's
 \ routine, which the refusal names by the definer, a code cell whose xt row is
 \ gone, a code cell whose xt row names the package row, and a protected-wid row
-\ outside the window, and a public EXPORT alias with no emission row. The
-\ capture refuses calls to tier-0 and retired words before any layout, because
-\ a reached shadow target must have a native routine. A declared cell holding a
-\ quotation's entry instead links to its anonymous routine. A live emitted
+\ outside the window. The capture refuses calls to tier-0 and retired words
+\ before any layout, because a reached shadow target must have a native
+\ routine. A declared cell holding a quotation's entry instead links to its
+\ anonymous routine. A live emitted
 \ private HELPER beside its public USER ships with its private WID, links, and
-\ runs as USER(7)=22 on a Linux x86-64 host.
+\ runs as USER(7)=22 on a Linux x86-64 host. A public EXPORT alias of a live
+\ private body ships both names over one routine and lays out.
 \
 \ LOAD ORDER. The x86-64 writer first sizes its shared image buffer under
 \ `using X64CODE`; the ARM64 code layer then supplies the capture budget.
@@ -655,9 +656,12 @@ variable RC
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
 : EXPORT-CASE ( -- )
-   s" a public EXPORT alias with no emission is refused by the linker" T-LABEL
-   s" export" s" window record SHARED has no x86-64 routine"
-   s" x64link: a code record the capture's shadow carries no routine for" REFUSED ;
+   s" a public EXPORT alias of a live private body lays out" T-LABEL
+   s" export" RUN-CHILD
+   OUT OUT-U @ s" x86-64-link-records: laid out" CONTAINS? {: said:bool :}
+   RC @ 0<> said 0= or if SHOW-CHILD then
+   RC @ 0 T=
+   said TTRUE ;
 
 : STRIP-CASE ( -- )
    s" a live private helper ships with its public caller and links with its private WID" T-LABEL
@@ -778,7 +782,7 @@ variable RC
 
 \ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
-   s" stray" MODE?  s" export" MODE? or  s" callee" MODE? or  s" retired" MODE? or
+   s" stray" MODE?  s" callee" MODE? or  s" retired" MODE? or
    s" wid" MODE? or  s" unresolved" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
    s" pkgcell" MODE? or ;
@@ -802,7 +806,7 @@ public
    KERNEL
    X64LINK:LAYOUT
    s" strip" MODE? if STRIP-CHILD exit then
-   REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
+   REFUSAL? s" export" MODE? or if s" x86-64-link-records: laid out" type cr exit then
    s" quot" MODE? if QUOT-LINKED exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
