@@ -5297,8 +5297,6 @@ public
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" jit-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" jit-token" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ ---- pure rows ---------------------------------------------------------------

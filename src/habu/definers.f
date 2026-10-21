@@ -13,15 +13,15 @@
 \ tier 1 captures it, a stack-neutral parsing immediate among them runs as it
 \ is read, `does>` splits the body and takes the signature of the words it
 \ creates, and `;` compiles the body whole and ends the definition through
-\ def-close. That is tier 1. Tier 0 compiles each token as it is read, with
-\ the engine's JIT: the head ends through jit-open and each body token, `;`
-\ among them, goes to jit-token. `cast:`, `linear:`, `immediate` and the
-\ definers compile no body the JIT reads, so they are read at any tier.
+\ def-close. Only tier 1 is read here. The engine's tier 0 compiles each token
+\ as it reads it (its JIT), so at tier 0 a head or a body token is refused.
+\ `cast:`, `linear:`, `immediate` and the definers compile no body the JIT
+\ reads, so they are read at any tier.
 \
 \ The head refuses in the engine's order and with its text. A definition
 \ writer's own refusal exits without a word (src/habu/prims.f), so every
 \ refusal the engine reports is made here first. Unlike the engine's head,
-\ this one leaves no PROT window open: def-open and jit-open close their own.
+\ this one leaves no PROT window open: def-open closes its own.
 
 require src/lib/prelude.f
 require src/lib/string.f
@@ -50,16 +50,16 @@ variable TOK-BODY-RAW
 : BODY-LEX-RESET ( -- )
    0 BODY-DEPTH !  0 BODY-RAW-NEXT ! ;
 
-76 constant DEF-RC-P2-NEST       \ habu2.f EM-INTERPRET-COLON: a `:` while pass 2 runs
+76 constant DEF-RC-TIER-0        \ the code of the engine head's first refusal, a pass-2 nesting
 76 constant DEF-RC-BAD-SIG       \ habu2.f C-SIG-BAD: `trusted:` or `does>` with no signature
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
 \ ---- the definition writers --------------------------------------------------
 \ def-open, body-append, created-sig!, def-close, def-abort, def-create,
-\ def-cast, imm-mark, min-in-mark, jit-open and jit-token are OUTER's own rows
-\ (src/habu/prims.f), called below by name. trust-sig! has none: it is the
-\ `trusted:`, `cast:`, `linear:` and `defer` heads' alone.
+\ def-cast, imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f),
+\ called below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
+\ `linear:` and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
 \ Ending or abandoning a definition also ends the capture's lexical state.
@@ -76,17 +76,13 @@ CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ ---- tier 0 ------------------------------------------------------------------
-\ Nothing of this loop's is on the stack when jit-token runs: what the token
-\ leaves there is the program's, as after a word the loop runs.
-: DEF-TIER-0? ( -- bool )
-   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= ;
-
-\ A `:` while the JIT's pass 2 reads a body again refuses first, naming the
-\ token, as the engine's head does; `trusted:` is never refused for it.
-: DEF-P2-NEST ( -- )
-   P2-CELL CELL@ 0= if exit then
-   s" hb: nested definition in pass 2: " SAY
-   DEF-RC-P2-NEST PKG-FAIL ;
+\ The engine's tier 0 compiles each body token as it reads it, with its JIT,
+\ which this loop cannot call yet (habu-hook-tier-0-96e33c29): a head or a body
+\ token at tier 0 refuses, naming the token, where the engine's head makes its
+\ first refusal.
+: DEF-TIER-0 ( -- )
+   s" hb: tier 0 is not in the Habu loop: " SAY
+   DEF-RC-TIER-0 PKG-FAIL ;
 
 \ ---- the body capture (habu1.f EMIT-BCAP, habu2.f EM-BODY-CAP-DIE) ------------
 \ The capture's first token, the definition's name, which a head seeds: the
@@ -378,9 +374,8 @@ private
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
-\ The record's tier then picks the compiler: tier 0's JIT opens the body.
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
-   trusted 0= if DEF-P2-NEST then
+   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
@@ -393,7 +388,6 @@ private
    else
       DEF-MAYBE-SIG
    then
-   DEF-TIER-0? if jit-open exit then
    DEF-DISPATCH ;
 
 \ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
@@ -481,9 +475,9 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture at both tiers; a tier-0 JIT call sees it
-\ here first. A miss reaches the five design body keywords only after local,
-\ dictionary and numeric lookup, as the native capture does.
+\ `;` is handled before the capture. A miss reaches the five design body
+\ keywords only after local, dictionary and numeric lookup, as the native
+\ capture does.
 : BODY-POLICY ( -- )
    BODY-LOCAL? if exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
@@ -494,7 +488,6 @@ private
    rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
    TOKEN$ FIND {: used:ptr :}
    used XREF-FOUND? if used POLICY-CHECK-REC exit then
-   s" ;" TOKEN-IS? if exit then
    s" if" TOKEN-IS? if exit then
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
@@ -675,12 +668,12 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ ---- the body ----------------------------------------------------------------
 \ While a definition is pending every token is its body's (habu2.f EM-COMMENT):
-\ tier 0's JIT compiles it, or tier 1 ends it at `;`, or captures the token,
-\ runs it if it is a neutral immediate, splits the body at `does>`, or takes a
-\ string keyword's text (NCOMP-EMIT:EM-COMPILE).
+\ tier 1 ends it at `;`, or captures the token, runs it if it is a neutral
+\ immediate, splits the body at `does>`, or takes a string keyword's text
+\ (NCOMP-EMIT:EM-COMPILE).
 : COMPILING? ( -- bool )
    PEND-CELL CELL@ 0= if false exit then
-   DEF-TIER-0? if BODY-POLICY jit-token true exit then
+   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
    BODY-RAW-NEXT @ if
       0 BODY-RAW-NEXT !
       TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit

@@ -837,9 +837,9 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [16] and the wid in [40]; PEND-CELL is that
 \ record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR, the record
 \ `does-patch` reads; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
-\ takes the tier, the close that ends the record (0 the JIT's `;` through
-\ jit-token; 1 def-close, def-cast or ndict-append) and the provenance its
-\ body gets, whatever TIER-CELL holds; and the TIER-PROV open cell takes CP.
+\ takes the tier, the close that ends the record (0 the JIT's `;`; 1
+\ def-close, def-cast or ndict-append) and the provenance its body gets,
+\ whatever TIER-CELL holds; and the TIER-PROV open cell takes CP.
 \ It refuses another kind, a tier other than 0 or 1, tier 0 with a nonzero
 \ kind, whose body NCOMP compiles at either tier, tier 0 on x86-64, which has
 \ no JIT, wid -1 or -2 and CP at or past the code ceiling. At tier 0 it opens
@@ -913,30 +913,6 @@ EPPRIM: OUTER imm-mark ECLOSE-PRIVATE
 EPRIM: def-cast EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-cast ECLOSE-PRIVATE
-\ ---- the tier-0 rows ----------------------------------------------------------
-\ At tier 0 the engine's `:` head and body loop compile each token as it is
-\ read, with the JIT (habu2.f EM-INTERPRET-COLON, LCOMPILE). These two rows are
-\ how an interpret loop written in Habu runs it. Like the definition writers
-\ each is registered with ENGINE-PRIMS:GLOBAL-INT-WID, so a checked body
-\ reaches one only through OUTER's own row, and x86-64, which has no tier 0,
-\ refuses both. Each exits 83 when no definition is pending or the pending
-\ one is not tier 0's (DEF-TIER-CELL other than 0).
-\ jit-open ( -- ): after def-open and the signature, the JIT half of the head:
-\ the per-definition compile state resets, the pass-2 watermarks take DP and
-\ BODYLEN, FRAME-CELL takes CP and the link save is the body's first word. It
-\ throws 70 inside an executable build, as the engine's head does, and
-\ refuses a definition whose code has begun (CP past the record's entry).
-EPRIM: jit-open EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: OUTER jit-open ECLOSE-PRIVATE
-\ jit-token ( -- ): the token in TKA/TKL through the JIT, which reads on from
-\ the input as the token needs, and back when the JIT would read the next
-\ one. `;` publishes and ends the definition through it, pass 2 included. A
-\ throw out of the JIT comes out of the row with the code window closed. It
-\ refuses a definition jit-open has not begun (CP at the record's entry).
-EPRIM: jit-token EPRIM;
-ETRUSTED-ONLY!
-EPPRIM: OUTER jit-token ECLOSE-PRIVATE
 \ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds

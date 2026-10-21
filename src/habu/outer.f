@@ -625,7 +625,7 @@ TYPED-VARIABLE REC ptr n
 \ -position, the source-unit-run snapshot) read them unchanged. The fields the
 \ engine stores and nothing reads (SX-OP, SX-REC, SX-ENTRY, SX-WRITES) are not
 \ stored. The engine closes its PROT window around a callback; this loop never
-\ holds one (definers.f: def-open and jit-open close their own).
+\ holds one (definers.f: def-open closes its own).
 4 constant OBSERVE-TICK          \ SOURCE-EXEC:TICK (src/habu/source-exec.f)
 5 constant OBSERVE-WORD          \ SOURCE-EXEC:WORD
 
