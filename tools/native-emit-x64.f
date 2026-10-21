@@ -14,9 +14,10 @@
 \ window's payload, which is AArch64 code.
 \
 \ THE STREAM. Byte 0, the ELF entry, jumps over the kernel to the boot. The
-\ kernel's rows go first, so X64LINK:LAYOUT can enter each of its bodies in the
-\ record that names it; then the boot of a linked image
-\ (X64BOOT:LINKED-START,), the kernel text marked native, and the entry
+\ scalar row cell (X64BOOT:SCALAR-CELL,) follows, ahead of the kernel that
+\ fills it. The kernel's rows go next, so X64LINK:LAYOUT can enter each of its
+\ bodies in the record that names it; then the boot of a linked image
+\ (X64BOOT:SNAP-START,), the kernel text marked native, and the entry
 \ (X64BOOT:ENTRY,).
 \
 \ THE FILE. The ELF src/os/linux-x86-64/elf.f builds, then the region's records
@@ -86,6 +87,7 @@ variable BOOT-AT
    X64CODE:ASM-RESET
    X64CODE:LBL X64CODE:LBL {: start:label text:label :}
    start X64CODE:JMP,
+   X64BOOT:SCALAR-CELL,
    ENGINE-PRIMS:RESET
    AOT-RUNTIME:COMPLETE? ENGINE-PRIMS:SEEDED!
    text X64CODE:LBL,

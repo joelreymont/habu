@@ -366,8 +366,8 @@ create GREG-SLOTS
 
 public
 
-\ CLOSE, emits an absent marker; the completed kernel fills that same cell
-\ with the audited primitive ordinal plus one.
+\ CLOSE, or SCALAR-CELL, emits an absent marker; the completed kernel fills
+\ that same cell with the audited primitive ordinal plus one.
 : SCALAR-ROW, ( n -- )
    SCALAR-ROW-VALUE !
    SCALAR-ROW-VALUE BYTE-VIEW
@@ -774,9 +774,14 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    SIGSEGV flags at rest SIGACTION, ;
 
 
-\ Shared open and close of both startup paths.
+\ The scalar row cell DATA-INIT, loads, bound here, holding the absent marker.
+: SCALAR-MARKER, ( -- )
+   SCALAR-ROW-LABEL @ >LABEL X64CODE:LBL,
+   0 SCALAR-ROW-VALUE !
+   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES, ;
+
+\ Shared open and close of the startup paths.
 : OPEN, ( -- )
-   X64CODE:LBL SCALAR-ROW-LABEL !
    X64CODE:LBL STACK-BAD !  X64CODE:LBL REGION-BAD !  X64CODE:LBL DATA-BAD !  X64CODE:LBL OCC-BAD !
    RBASE-REG TEXT-BASE,
    STACK-ABI:BOOT-BYTES DSTACK-REG STACK-BAD @ >LABEL MAP-STACK, ;
@@ -788,24 +793,34 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    FRAME-STACKS,
    crash rest INSTALL-CRASH, ;
 
-: CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
+: STUBS, ( label label label -- ) {: crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
    crash CRASH-HANDLER,
    rest RESTORER,
-   stub SIGNAL-STUB,
-   SCALAR-ROW-LABEL @ >LABEL X64CODE:LBL,
-   0 SCALAR-ROW-VALUE !
-   SCALAR-ROW-VALUE BYTE-VIEW CELL TEXT-BYTES,
+   stub SIGNAL-STUB, ;
+
+\ The close of a boot that carries its own scalar row cell.
+: CLOSE, ( label label label label -- ) {: booted:label crash:label rest:label stub:label :}
+   crash rest stub STUBS,
+   SCALAR-MARKER,
    booted X64CODE:LBL, ;
 
 public
+
+\ The scalar row cell of a stream whose kernel precedes its boot: KERNEL, fills
+\ it (SCALAR-ROW,) and SNAP-START, loads it, so the stream emits it, once and
+\ out of the path of execution, before the kernel.
+: SCALAR-CELL, ( -- )
+   X64CODE:LBL SCALAR-ROW-LABEL !
+   SCALAR-MARKER, ;
 
 \ The caller binds this after the immutable text-site footer.
 : TEXT-END, ( -- ) SNAP-END @ >LABEL X64CODE:LBL, ;
 
 : START, ( label label -- ) {: floor:label code-end:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
+   X64CODE:LBL SCALAR-ROW-LABEL !
    OPEN,
    CODE-REGION,
    DATA-REGION,
@@ -820,6 +835,7 @@ public
 
 : LINKED-START, ( n n -- ) {: records:n cp:n :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: booted:label crash:label rest:label stub:label :}
+   X64CODE:LBL SCALAR-ROW-LABEL !
    OPEN,
    records cp LINKED-REGION,
    RAX X64LAYOUT:DATA-VA VA>N IMM,
@@ -832,6 +848,7 @@ public
 \ Full-engine entry accepts either its cold RX extent or an appended snapshot
 \ frame. The snapshot's REGION and DATA prefixes are already loaded at their
 \ fixed addresses; only the heap needs materialization before ENGINE-MAIN.
+\ Its stream's kernel precedes it, so it loads the cell SCALAR-CELL, emitted.
 : SNAP-START, ( n n label [ -- ] -- ) {: records:n cp:n floor:label hidx :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: booted:label crash:label rest:label stub:label
@@ -863,7 +880,8 @@ public
    bad S\" hb: snapshot trailer corrupt\n" 79 FAIL,
    badver S\" hb: snapshot format version unsupported\n" 80 FAIL,
    REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
-   booted crash rest stub CLOSE, ;
+   crash rest stub STUBS,
+   booted X64CODE:LBL, ;
 
 \ A full engine's MAIN runs a saved application before routing stdin or the
 \ terminal. An image without MAIN can run APP-ENTRY directly. A word that
