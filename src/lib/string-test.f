@@ -296,6 +296,29 @@ variable STR-TEST-BUF2-LEN
 : STR-TEST-EDGE ( -- ptr u8 )
    0 0 GUARD-PAGE:TAIL ;
 
+\ Equality must stay inside both spans, at every alignment and through NUL.
+\ The guarded span ends at unreadable memory; the other is independently
+\ aligned. A difference at each byte must remain visible after preceding NULs.
+3 cells BUFFER: STR-TEST-EQ-BUF
+
+: STR-TEST-EQ-SPANS ( -- )
+   3 cells 0 ?do 0 STR-TEST-EQ-BUF i + c! loop
+   2 cells 2 + 0 ?do
+      i {: u:n :}
+      u 0 GUARD-PAGE:TAIL {: a:ptr :}
+      CELL 0 ?do
+         STR-TEST-EQ-BUF i + {: b:ptr :}
+         a u b u STR= STR-ASSERT
+         u 0 ?do
+            128 b i + c!
+            a u b u STR= 0= STR-ASSERT
+            0 b i + c!
+         loop
+      loop
+   loop
+   STR-TEST-EDGE 0 STR-TEST-EDGE 1 STR= 0= STR-ASSERT
+   STR-TEST-EDGE 1 STR-TEST-EDGE 0 STR= 0= STR-ASSERT ;
+
 : STR-TEST-ORDER-LEFT-NEG ( n -- ) {: u:n :}
    STR-TEST-EDGE u s" a" STR< drop ;
 
@@ -636,6 +659,7 @@ STR-TEST-INDEX-OF-OPTION
 STR-TEST-FIND-SUB-OPTION
 STR-TEST-FIND-SUB-NEGATIVE
 STR-TEST-COMPARE-NEGATIVE
+STR-TEST-EQ-SPANS
 STR-TEST-ORDER
 STR-TEST-SCAN-NEGATIVE
 STR-TEST-NUMBER-NEGATIVE

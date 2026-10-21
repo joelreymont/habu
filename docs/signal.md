@@ -217,5 +217,3 @@ delivers a signal.
 `src/lib/signal-test.f` covers each of them except `E-PROC-HOST`, which no host here
 can reach, along with the delivery cases above, the two-task race, the owner
 rule and the absolute-address property observed from a spawned task.
-`test/signal-stub.f` covers the engine half: that the two cells are published,
-where they sit, and that an armed word carries a raised number out.

@@ -1410,8 +1410,7 @@ transfer beside it carries. The former `prune.f` removed an unread load and
 handed its pointer move back to the preceding operation. Selection now decides
 which comparison a converted region will emit before residency asks for a load,
 so `: W ( -- n ) SRC 0 > if 5 else 5 then ;` never writes the unread load.
-`test/compiler/native-fused-moves.f` pins the behavior and the following DATA
-access; the validator still refuses an unread one (`E-A64RAV-DKEEP`).
+The validator still refuses an unread load (`E-A64RAV-DKEEP`).
 
 **What it removed.** The 1,967-word corpus of section 1, compiled at tier 1 by
 an engine built from this lane's head and by one built from its base:
@@ -1663,7 +1662,7 @@ tree that already wrote an empty clause — `src/lib/string.f BUFFER:`,
 `src/lib/codegen.f BUFFER-E`, and `src/lib/task.f`'s `TASK` and `FACILITY` — get it
 without a source change, which is where the census movement comes from. A clause
 with a body still pays the dispatch, including one whose body
-is the identity, which is what `test/does-empty-clause.f` pins. The empty
+is the identity. The empty
 clause's own record and its three-instruction body are still published; nothing
 branches into them, and removing them would mean unwinding CP, the derived name
 and the frame cell at `;` in both compilers for twelve bytes and one dictionary

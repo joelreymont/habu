@@ -119,7 +119,6 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    s" $FFFFFFFFFFFFFFFF0" SPELLING ;
 
 
-\ test/compiler/native-feed.f DECLINE-CASE.
 : DECLINES ( -- )
    s" 5." SPELLING  s" 1.2.3" SPELLING  s" 1.5e3" SPELLING  s" 12a" SPELLING
    s" $" SPELLING  s" -" SPELLING  s" " TEXT

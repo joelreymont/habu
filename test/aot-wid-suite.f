@@ -110,8 +110,9 @@
 \ engine says it gave the fixture's package, since the id is the seed's to choose.
 \
 \ Cost: four independent captures, one of which the rebase case writes three
-\ ways. The gate registers one case per capture; a standalone run with no case
-\ keeps the complete focused sequence.
+\ ways. The gate registers one case for each capture but restore, which
+\ test/package-seal.f covers on the shipped engine; a standalone run with no
+\ case keeps the complete focused sequence.
 \ Run standalone: bin/hb --load test/aot-wid-suite.f [-- CASE]
 
 require src/lib/errors.f

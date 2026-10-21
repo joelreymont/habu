@@ -6,11 +6,10 @@
 \ do: each uses only words HIR models, the rows emit, map-anon and munmap, and
 \ one another.
 \
-\ DYN-OFFSET and the generic DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE
-\ keep the three-cell runtime contract. Their FIXED siblings operate on the
-\ five-cell control record DYNAMIC-BUFFER generates,
-\ without its registry: a module saves no image, so nothing releases its
-\ buffers before one.
+\ DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE keep the five-cell contract of
+\ src/core/dynamic-storage.f, width tag and cached bound included, without its
+\ registry or lock: a module saves no image, so nothing releases its buffers
+\ before one.
 \
 \ The printers are the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. f. prints the integer part of the real's
@@ -52,6 +51,17 @@ DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
    {: cb:ptr :}
    cb byte-view 8 + cell-view ;
 
+24 constant TAG-OFF
+32 constant BOUND-OFF
+
+: TAG ( ptr ptr a -- ptr n )
+   {: cb:ptr :}
+   cb byte-view TAG-OFF + cell-view ;
+
+: BOUND ( ptr ptr a -- ptr n )
+   {: cb:ptr :}
+   cb byte-view BOUND-OFF + cell-view ;
+
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
 CAST: F>BITS ( r -- n )
@@ -78,8 +88,6 @@ public
 
 : DATA-START ( -- ptr n )
    WPROF:DATA-BASE >DATA ;
-
-: FIELD-ADDRESS ( ptr a n -- ptr a ) + ;
 
 : ADD-STORE ( n ptr n -- )
    {: amount:n cell:ptr :}
@@ -114,30 +122,16 @@ public
    idx count >= if E-BOUNDS throw then
    idx ;
 
-: DYN-OFFSET ( n ptr ptr a n -- n )
-   {: idx:n cb:ptr width:n :}
-   idx 0 < if E-BOUNDS throw then
-   idx cb CAP @ width / >= if E-BOUNDS throw then
-   idx width * ;
-
 : DYN-ADDRESS ( n ptr ptr a n -- ptr a )
    {: idx:n cb:ptr width:n :}
-   idx cb width DYN-OFFSET
-   cb @ swap + ;
-
-: STRIDE ( ptr ptr a -- ptr n )
-   {: cb:ptr :}
-   cb byte-view 24 + cell-view ;
-
-: BOUND ( ptr ptr a -- ptr n )
-   {: cb:ptr :}
-   cb byte-view 32 + cell-view ;
-
-: DYN-ADDRESS-FIXED ( n ptr ptr a -- ptr a )
-   {: idx:n cb:ptr :}
    idx 0 < if E-BOUNDS throw then
-   idx cb BOUND @ >= if E-BOUNDS throw then
-   cb @ idx cb STRIDE @ * + ;
+   cb byte-view TAG-OFF + cell-view @ width = if
+      idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
+   else
+      width 0 <= if E-SIZE throw then
+      idx cb CAP @ width / >= if E-BOUNDS throw then
+   then
+   cb @ idx width * + ;
 
 : DYN-GROW ( n ptr ptr a n n -- )
    {: need:n cb:ptr old:n width:n :}
@@ -151,23 +145,13 @@ public
    then
    fresh cb !
    cap cb CAP !
-   width 0 > if
-      width cb STRIDE !
-      cap width / cb BOUND !
-   then ;
+   width cb TAG !
+   cap width / cb BOUND ! ;
 
 : DYN-RESERVE ( n ptr ptr a n -- )
    {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
    cb CAP @ {: old:n :}
-   need old <= if exit then
-   need cb old 0 DYN-GROW ;
-
-: DYN-RESERVE-FIXED ( n ptr ptr a n -- )
-   {: count:n cb:ptr width:n :}
-   count width EXTENT {: need:n :}
-   cb CAP @ {: old:n :}
-   old 0 > if width cb STRIDE @ <> if E-SIZE throw then then
    need old <= if exit then
    need cb old width DYN-GROW ;
 
@@ -177,16 +161,8 @@ public
    cap 0= if exit then
    cb @ cap munmap 0< if E-UNMAP throw then
    0 cb byte-view cell-view !
-   0 cb CAP ! ;
-
-: DYN-RELEASE-FIXED ( ptr ptr a -- )
-   {: cb:ptr :}
-   cb CAP @ {: cap:n :}
-   cap 0= if exit then
-   cb @ cap munmap 0< if E-UNMAP throw then
-   0 cb byte-view cell-view !
    0 cb CAP !
-   0 cb STRIDE !
+   0 cb TAG !
    0 cb BOUND ! ;
 
 : NEWLINE ( -- )

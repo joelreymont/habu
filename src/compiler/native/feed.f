@@ -349,14 +349,16 @@ public
       CHECKER-OWNER:BINDING-WINDOW-CK
    0 CHECKER-OWNER:SOURCE-BINDING 2drop ;
 
-\ PUBLIC so the observer this compiler owns can be put back: a test that installs
-\ its own trio over it (test/compiler/native-tape-owner.f) restores the engine's
-\ by calling this, and the identity below is how either side is read back.
+private
 \ The tape compares an opaque identity; it never calls it. Two compiler
 \ instances own different cells, even when they observe the same checker.
 : SCAN-ID ( -- n )
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+public
 
+\ PUBLIC so the observer this compiler owns can be put back: a test that installs
+\ its own trio over it (test/compiler/native-feed.f) restores the engine's
+\ by calling this.
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
 

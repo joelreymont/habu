@@ -796,6 +796,8 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
 1 TYPED-BUFFER EXIT-CONN PG:connection
 TYPED-VARIABLE EXIT-LIVE bool
 variable EXIT-STARTED
+variable EXIT-BACKEND
+variable EXIT-RELEASE
 TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 : EXIT-CLEAN ( -- )
@@ -817,7 +819,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    ;MATCH
    0 TASK:RETURN ;
 
-: EXIT-HALT ( -- )
+: EXIT-SEND ( -- )
    CONNINFO$ CONNECT-START 0 EXIT-CONN !
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       connected OF drop ENDOF
@@ -825,8 +827,14 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       waiting OF 2drop E-CONNECT throw ENDOF
       completed OF CLEAR E-CONNECT throw ENDOF
    ;MATCH
-   0 EXIT-CONN @ s" select pg_sleep(10)" SEND
-   1 EXIT-STARTED atomic!
+   0 EXIT-CONN @ s" select pg_backend_pid()" EXEC {: backend :}
+   backend 0 >ROW 0 >COL INT EXIT-BACKEND atomic!
+   backend CLEAR
+   0 EXIT-CONN @ s" update pqtcancel set value=1 where id=1" SEND
+   1 EXIT-STARTED atomic! ;
+
+: EXIT-HALT ( -- )
+   EXIT-SEND
    0 EXIT-CONN @ PG:AWAIT MATCH PG:progress
       completed OF CLEAR ENDOF
       connected OF drop E-EXEC throw ENDOF
@@ -834,6 +842,11 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
       refused OF 2drop E-EXEC throw ENDOF
    ;MATCH
    0 TASK:RETURN ;
+
+: EXIT-THROW ( -- )
+   EXIT-SEND
+   begin EXIT-RELEASE atomic@ 0= while TASK:PAUSE repeat
+   BOOM throw ;
 
 : EXIT-JOIN ( -- )
    EXIT-WORKER TASK:JOIN MATCH result
@@ -881,17 +894,112 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    ['] EXIT-REFUSED EXIT-WORKER TASK:ACTIVATE
    EXIT-JOIN
    EXIT-LIVE @ TFALSE
-   0 EXIT-CONN @ PG:LIVE? TFALSE
+   0 EXIT-CONN @ PG:LIVE? TFALSE ;
+
+\ The server-side boundary: closing a pending connection must cancel its
+\ blocked write, not merely discard its client handle. A second connection
+\ stays blocked on a different row until the holder releases both locks.
+: BACKEND-COUNT ( PG:connection n ptr u8 n -- n )
+   {: c pid:n sql:ptr size:n :}
+   c PARAMS c pid INT+
+   c sql size EXEC {: r :}
+   r 0 >ROW 0 >COL INT
+   r CLEAR ;
+
+: LOCKED? ( PG:connection n -- bool )
+   s" select count(*) from pg_stat_activity where pid=$1 and wait_event_type='Lock'"
+   BACKEND-COUNT 1 = ;
+
+: AWAIT-LOCK ( PG:connection n -- )
+   {: c pid:n :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin c pid LOCKED? 0= while deadline CHECK-PROGRESS repeat ;
+
+: AWAIT-GONE ( PG:connection n -- )
+   {: c pid:n :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      c pid s" select count(*) from pg_stat_activity where pid=$1" BACKEND-COUNT 0 >
+   while deadline CHECK-PROGRESS repeat ;
+
+: BACKEND ( PG:connection -- n )
+   s" select pg_backend_pid()" EXEC {: r :}
+   r 0 >ROW 0 >COL INT
+   r CLEAR ;
+
+: CANCEL-CASES ( PG:connection -- PG:connection )
+   {: c :}
+   s" halt cancels a blocked write without cancelling another connection" T-LABEL
+   c s" drop table if exists pqtcancel" EXEC-OK
+   c s" create table pqtcancel (id int primary key, value int)" EXEC-OK
+   c s" insert into pqtcancel values (1,0),(2,0)" EXEC-OK
+   OPEN {: holder :}
+   OPEN {: peer :}
+   peer BACKEND {: peer-pid:n :}
+   holder s" begin" EXEC-OK
+   holder s" select * from pqtcancel for update" EXEC CLEAR
+   peer s" update pqtcancel set value=1 where id=2" SEND
+   c peer-pid AWAIT-LOCK
    0 EXIT-STARTED !
    ['] EXIT-HALT EXIT-WORKER TASK:ACTIVATE
    STARTED-OR-HALT
+   c EXIT-BACKEND atomic@ AWAIT-LOCK
    EXIT-WORKER TASK:HALT
    EXIT-WORKER TASK:JOIN MATCH result
       ok OF drop E-EXEC throw ENDOF
       err OF E-TASK-NO-RESULT T= ENDOF
    ;MATCH
    EXIT-LIVE @ TTRUE
-   0 EXIT-CONN @ PG:LIVE? TFALSE ;
+   0 EXIT-CONN @ PG:LIVE? TFALSE
+   c EXIT-BACKEND atomic@ AWAIT-GONE
+   c peer-pid LOCKED? TTRUE
+   holder s" rollback" EXEC-OK
+   peer PG:AWAIT MATCH PG:progress
+      completed OF dup OUTCOME-TAG TAG-OK T= CLEAR ENDOF
+      connected OF PG:CLOSE E-EXEC throw ENDOF
+      waiting OF 2drop E-EXEC throw ENDOF
+      refused OF 2drop E-EXEC throw ENDOF
+   ;MATCH
+   c s" select value from pqtcancel order by id" EXEC {: values :}
+   values 0 >ROW 0 >COL INT 0 T=
+   values 1 >ROW 0 >COL INT 1 T=
+   values CLEAR
+   holder s" begin" EXEC-OK
+   holder s" select * from pqtcancel for update" EXEC CLEAR
+   s" a statement timeout returns its SQL error and leaves the connection usable" T-LABEL
+   peer s" set statement_timeout='20ms'" EXEC-OK
+   peer s" update pqtcancel set value=2 where id=1" EXEC {: timed :}
+   timed OUTCOME-TAG TAG-FAILED T=
+   timed FAILED-SQLSTATE$ s" 57014" T$=
+   timed CLEAR
+   peer PG:LIVE? TTRUE
+   peer s" set statement_timeout=0" EXEC-OK
+   s" direct close cancels a pending blocked write" T-LABEL
+   peer s" update pqtcancel set value=2 where id=1" SEND
+   c peer-pid AWAIT-LOCK
+   peer PG:CLOSE
+   c peer-pid AWAIT-GONE
+   holder s" rollback" EXEC-OK
+   s" pending close cleanup preserves the task body's exception" T-LABEL
+   holder s" begin" EXEC-OK
+   holder s" select * from pqtcancel for update" EXEC CLEAR
+   0 EXIT-STARTED !
+   0 EXIT-RELEASE !
+   ['] EXIT-THROW EXIT-WORKER TASK:ACTIVATE
+   STARTED-OR-HALT
+   c EXIT-BACKEND atomic@ AWAIT-LOCK
+   1 EXIT-RELEASE atomic!
+   EXIT-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF BOOM T= ENDOF
+   ;MATCH
+   c EXIT-BACKEND atomic@ AWAIT-GONE
+   holder s" rollback" EXEC-OK
+   holder PG:CLOSE
+   c s" select value from pqtcancel where id=1" EXEC {: kept :}
+   kept 0 >ROW 0 >COL INT 0 T=
+   kept CLEAR
+   c ;
 
 
 \ ---- image capture --------------------------------------------------------
@@ -913,6 +1021,16 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 : IMAGE-CASES ( -- )
    OPEN {: c :}
+   c s" drop table if exists pqtimage" EXEC-OK
+   c s" create table pqtimage (value int)" EXEC-OK
+   c s" insert into pqtimage values (0)" EXEC-OK
+   c s" begin" EXEC-OK
+   c s" select * from pqtimage for update" EXEC CLEAR
+   OPEN {: waiter :}
+   waiter BACKEND {: waiter-pid:n :}
+   waiter s" update pqtimage set value=1" SEND
+   OPEN {: observer :}
+   observer waiter-pid AWAIT-LOCK
    c PARAMS
    c s" select 1" EXEC {: r :}
    CAPTURE
@@ -923,6 +1041,9 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    res-code E-CLEARED T=
    OPEN {: fresh :}
    fresh PG:LIVE? TTRUE
+   fresh s" select value from pqtimage" EXEC {: kept :}
+   kept 0 >ROW 0 >COL INT 0 T=
+   kept CLEAR
    c PG:LIVE? TFALSE
    fresh s" select 2" EXEC {: current :}
    c [: USE-CONN ;] catch {: again-conn again-code:n :}
@@ -957,6 +1078,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CLEARED-CASES
    OWNER-CASES
    EXIT-CASES
+   CANCEL-CASES
    LOST-CONNECTION-CASES
    RECYCLE-CASES
    PG:CLOSE

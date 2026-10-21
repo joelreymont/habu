@@ -14,9 +14,7 @@
 \ (6) usage not refused: CASE-USAGE.
 \ (7) the command run without the census's environment: CASE-ENV.
 \
-\ The exec total is at least 2, not exactly 2: a listing that reads the
-\ /bin/sleep child before its exec counts it once more (boot-census.f,
-\ FOLLOWING THE TREE). The engine's own bucket row is not asserted. The argv
+\ The engine's own bucket row is not asserted. The argv
 \ shape row is, and the census lists shapes only for an engine in the hb
 \ family: a path ending in /bin/hb, as under the gate and `bin/hb --load`, an
 \ hb-under-test candidate or a fixpoint stage engine.
@@ -131,6 +129,23 @@ create LOGTXT CAP allot
    s" the census exits with its command's status" T-LABEL
    1 RUN-TOOL ;
 
+\ This exec replaces a process without changing the path or argv. Comparing
+\ image text alone would erase it from the census.
+: CASE-REEXEC ( -- )
+   ARGV-HEAD
+   LOG$ ARG+ ENGINE-CANDIDATE:PATH$ ARG+ s" --load" ARG+ FIXTURE$ ARG+
+   s" --" ARG+ s" reexec" ARG+
+   s" same-image reexec exits 0" T-LABEL
+   0 RUN-TOOL
+   s" same-image reexec counts both images" T-LABEL
+   s" total exec events (fresh images): " TOTAL 2 T=
+   OUT$ s" total fork children (no exec): 0" HAS
+   OUT$ s" lost registrations: 0" HAS
+   OUT$ s"        2  tools/perf/boot-census-fixture.f -- reexec" HAS
+   LOG$ LOGTXT CAP READ-ALL LOGTXT-U !
+   LOGTXT$ s"  EXEC " HAS
+   LOGTXT$ s"  DONE alive=0 lost=0 status=0" HAS ;
+
 : CASE-ENV ( -- )
    ARGV-HEAD
    s" BOOT_CENSUS_MARK" >LEN s" inherited" >LEN PROC-ENV+
@@ -164,6 +179,7 @@ create LOGTXT CAP allot
    then
    PREPARE
    CASE-TREE
+   CASE-REEXEC
    CASE-STATUS
    CASE-ENV
    CASE-USAGE

@@ -156,7 +156,7 @@ variable TGT-CACHE-B-U
    g TG-GEN$ buf FS-PATH-CAP READ-ALL size ! ;
 
 : TGT-CACHE ( -- )
-   s" each build child starts in a private empty cache" T-LABEL
+   s" builds use private caches and discard only those after success" T-LABEL
    TGT-CACHE-HOST
    TGT-ROOT$ {: root:ptr rootu:n :}
    root TG-ROOT rootu BYTE-COPY
@@ -182,7 +182,17 @@ variable TGT-CACHE-B-U
    TGT-CACHE-B$ TGT-ROOT$ STARTS-WITH? TTRUE
    TGT-CACHE-A$ TGT-CACHE-B$ STR= TFALSE
    TGT-CACHE-A$ DIR? TTRUE
-   TGT-CACHE-B$ DIR? TTRUE ;
+   TGT-CACHE-B$ DIR? TTRUE
+   2 TG-CACHE-CLEANUP
+   TGT-CACHE-A$ EXISTS? TFALSE
+   TGT-CACHE-B$ EXISTS? TFALSE
+   1 TG-GEN$ TG-OUT TG-CAP-OUT READ-ALL {: out1:n :}
+   TG-OUT out1 TGT-CACHE-A$ T$=
+   2 TG-GEN$ TG-OUT TG-CAP-OUT READ-ALL {: out2:n :}
+   TG-OUT out2 TGT-CACHE-B$ T$=
+   TGT-INHERITED$ s" seen" TG-PATH JOIN-PATH
+   TG-PATH swap TG-OUT TG-CAP-OUT READ-ALL {: seen:n :}
+   TG-OUT seen s" old" T$= ;
 
 : TGT-RUN ( -- )
    T-RESET TGT-PREP TGT-BYTES TGT-NAMES TGT-IMAGE

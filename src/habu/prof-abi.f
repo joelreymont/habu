@@ -17,6 +17,8 @@ public
 \ The seed rewind body is emitted before prof.f loads. Its helper label must
 \ therefore be declared in this early ABI package and assigned by habu2.f.
 variable LPROFREWIND
+variable LPROFTRIM
+variable LPROFRECLAIM
 
 \ ---- the band: PROF-STATE-BYTES of state cells, then one counter per dict record
 \ The band closes the DATA region: it starts PROF-CNT-BYTES below DATA's end.

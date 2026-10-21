@@ -246,9 +246,11 @@ variable DIAG-START
    OUT$ S\" 40\n9\n2\n7\n" CONTAINS? TTRUE ;
 
 : PRIVATE-CASE ( -- )
-   s" a private primitive refinement invalidates a cached caller" T-LABEL
+   s" primitive retyping replaces a queried declaration and cached caller" T-LABEL
+   \ FILE-NULL-SEED queries the declaration before PRIM: replaces its graph.
+   \ RESET must retain the new null fence, including for a quotation pointee.
    s" app.f"
-      S\" require number.f\n: MAIN ( -- ) 41 FILE-NUM:STEP . ;\n" PUT
+      S\" TRUSTED: FILE-NULL ( -- ptr a ) NULL-PTR ;\n: FILE-NULL-SEED ( -- ptr n ) FILE-NULL ;\nPRIM: FILE-NULL PE-PTR-A-NULL PE-OUT PRIM;\n: FILE-NULL-RESET ( ptr ptr a -- ) FILE-NULL swap ! ;\n: FILE-NULL-CHECK ( -- ) s\" CALL ( ptr ptr [ -- n ] -- ) FILE-NULL-RESET\" CHECK-CANDIDATE! 0 <> if s\" stale primitive effect admitted quotation\" 76 die then ;\nFILE-NULL-CHECK\nrequire number.f\n: MAIN ( -- ) 41 FILE-NUM:STEP . ;\n" PUT
    RUN-PRIVATE SUCCESS
    RUN-APP SUCCESS
    OUT$ s" 42" CONTAINS? TTRUE
@@ -647,6 +649,12 @@ public
    s" definition-cache" AT MAKE-DIR
    s" history-cache" AT MAKE-DIR
    SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" primitive" STR= if
+         PRIMITIVE-CASES
+         T-REPORT
+         s" native file auto artifacts: " type ROOT$ type cr
+         exit
+      then
       0 SCRIPT-ARGV$ s" diag" STR= if
          DIAG-CASE
          T-REPORT

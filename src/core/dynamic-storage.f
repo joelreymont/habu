@@ -1,6 +1,14 @@
 \ Checked transient allocation behind DYNAMIC-BUFFER declarations.
-\ A control record holds mapping, exact byte capacity and registry slot + 1.
-\ Generated buffers append immutable live stride and complete-element bound.
+\ A control record is five cells: mapping, exact byte capacity, registry
+\ slot + 1, a width tag and the element bound for that width. The element width
+\ lives in the generated accessor; the record only caches a bound for one.
+\ THE BOUND IS WRITTEN ONLY WITH THE CAPACITY: PUBLISH stores the tag (the
+\ reserving width) and the bound (capacity / tag) beside the capacity, and
+\ RELEASE zeroes all three, each under LOCK; no other word writes the capacity,
+\ and it never changes between those writes. ADDRESS uses the bound only when
+\ the tag equals its own width, so the bound it reads is exactly its capacity /
+\ width. Any other record - grown through RESERVE with a foreign width, empty,
+\ released, or a stripped image's zero mapping - answers by the exact division.
 \ Membership follows live allocation, including a precompiled reserve after
 \ restore. Release zeroes the record; no process address survives capture.
 \ THE RECORD HEAD IS A DECLARED POINTER CELL (dot habu-refuse-a-ptr-5ad2734e):
@@ -20,6 +28,9 @@ public
 7138 constant E-MAP
 7139 constant E-UNMAP
 
+\ Every control record.s cells: src/core/layout-buffer.f allots DBUF-CTRL-BYTES.
+DBUF-CTRL-BYTES CELL / constant CONTROL-CELLS
+
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
@@ -28,10 +39,6 @@ E-LAYOUT-BOUNDS constant E-BOUNDS
 
 $40 constant REG-INIT
 1 constant REG-HEAD
-3 constant GENERIC-CELLS
-5 constant FIXED-CELLS
-3 cells constant STRIDE-OFF
-4 cells constant BOUND-OFF
 
 : EXTENT ( n n -- n ) {: count:n width:n :}
    count 0 < width 0 <= or if E-SIZE throw then
@@ -39,8 +46,9 @@ $40 constant REG-INIT
    count width * ;
 
 \ Keep the existing cell-rounded capacity contract: 100 byte elements reserve
-\ 104 addressable bytes. The fixed accessor caches capacity / width, including
-\ only complete elements; COPY below preserves every capacity byte.
+\ 104 addressable bytes. The accessor admits only complete elements of its
+\ width within the capacity, whether it reads the cached bound or divides;
+\ COPY below preserves every capacity byte.
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
@@ -70,18 +78,19 @@ variable MUTEX
 
 : REG@ ( -- ptr n ) REG @ ;
 : REG-CAP ( -- n ) REG@ @ ;
-: REG-BYTES ( n -- n ) 2 * REG-HEAD + CELL EXTENT ;
-\ A registry row holds a declared control head and its explicit cell extent.
-: REG-AT ( n -- ptr ptr ptr a ) 2 * REG-HEAD + REG@ swap ptr-field ;
+: REG-BYTES ( n -- n ) REG-HEAD + CELL EXTENT ;
+\ A registry row is one cell: a declared control head.
+: REG-AT ( n -- ptr ptr ptr a ) REG-HEAD + REG@ swap ptr-field ;
 : REG-ENTRY ( n -- ptr ptr a ) REG-AT @ ;
-: REG-LEN ( n -- ptr n ) REG-AT byte-view CELL + cell-view ;
 
 \ The count cells sit behind the declared head: view the record's bytes as cells
 \ and address them by offset, which keeps the head's pointer type off the counts.
 : CTL ( ptr ptr a n -- ptr n ) {: cb:ptr off:n :} cb byte-view off + cell-view ;
 : CAP ( ptr ptr a -- ptr n ) CELL CTL ;
 : SLOT ( ptr ptr a -- ptr n ) 2 cells CTL ;
-: STRIDE ( ptr ptr a -- ptr n ) STRIDE-OFF CTL ;
+3 cells constant TAG-OFF
+4 cells constant BOUND-OFF
+: TAG ( ptr ptr a -- ptr n ) TAG-OFF CTL ;
 : BOUND ( ptr ptr a -- ptr n ) BOUND-OFF CTL ;
 
 : REG-MAP ( n -- ptr n )
@@ -103,7 +112,7 @@ variable MUTEX
    then
    REG-U @ REG-CAP < if exit then
    REG-CAP {: old:n :}
-   old MAX-BYTES CELL / REG-HEAD - 2 / > if E-SIZE throw then
+   old MAX-BYTES CELL / REG-HEAD - > if E-SIZE throw then
    old 2 * {: cap:n :}
    cap REG-MAP {: fresh:ptr :}
    REG@ fresh old REG-BYTES COPY
@@ -113,9 +122,8 @@ variable MUTEX
    then
    fresh REG ! ;
 
-: REGISTER ( ptr ptr a n -- ) {: cb:ptr len:n :}
+: REGISTER ( ptr ptr a -- ) {: cb:ptr :}
    cb REG-U @ REG-AT !
-   len REG-U @ REG-LEN !
    REG-U @ 1+ dup cb SLOT ! REG-U ! ;
 
 \ Swap removal is bounded and repairs the moved record's private handle.
@@ -125,11 +133,9 @@ variable MUTEX
    at last <> if
       last REG-ENTRY {: moved:ptr :}
       moved at REG-AT !
-      last REG-LEN @ at REG-LEN !
       at 1+ moved SLOT !
    then
    NULL-PTR last REG-AT !
-   0 last REG-LEN !
    last REG-U !
    0 cb SLOT ! ;
 
@@ -140,40 +146,36 @@ public
    idx count >= if E-BOUNDS throw then
    idx ;
 
-\ Reject a negative index before touching the control record.
-: OFFSET ( n ptr ptr a n -- n ) {: idx:n cb:ptr width:n :}
-   idx 0 < if E-BOUNDS throw then
-   idx cb CAP @ width / >= if E-BOUNDS throw then
-   idx width * ;
-
 \ The checked offset and current mapping are one address operation. Growth can
 \ replace the mapping, so every access fetches the head after checking capacity.
-: ADDRESS ( n ptr ptr a n -- ptr a )
-   {: idx:n cb:ptr width:n :}
-   idx cb width OFFSET
-   cb @ swap + ;
-
-\ Generated accessors bake their width at declaration. Read the cached
-\ complete-element bound after the negative guard and multiply only once.
-: ADDRESS-FIXED ( n ptr ptr a -- ptr a )
-   {: idx:n cb:ptr :}
+\ A negative index is refused before the record is read. A record tagged with
+\ this width bounds the index by its cached bound; any other is bounded by the
+\ exact division. The width guard sits on that division and keeps native and
+\ Wasm identical: a division by zero answers 0 on ARM64 and traps on Wasm.
+\ Since the index is checked first, a width <= 0 with a negative index, and a
+\ width of 0 on an empty record (tag 0), answer E-BOUNDS rather than E-SIZE;
+\ generated accessors always pass a positive width. The tag and bound are
+\ read through inline cell views at their offsets: TAG and BOUND are calls,
+\ and two of them per access cost more than the division they replace.
+: ADDRESS ( n ptr ptr a n -- ptr a ) {: idx:n cb:ptr width:n :}
    idx 0 < if E-BOUNDS throw then
-   idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
-   cb @ idx cb byte-view STRIDE-OFF + cell-view @ * + ;
+   cb byte-view TAG-OFF + cell-view @ width = if
+      idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
+   else
+      width 0 <= if E-SIZE throw then
+      idx cb CAP @ width / >= if E-BOUNDS throw then
+   then
+   cb @ idx width * + ;
 
-: PUBLISH ( ptr a n ptr ptr a n n -- )
-   {: fresh:ptr cap:n cb:ptr len:n width:n :}
+\ The capacity, its width tag and the bound for that width change together.
+: PUBLISH ( ptr a n ptr ptr a n -- ) {: fresh:ptr cap:n cb:ptr width:n :}
    fresh cb !
    cap cb CAP !
-   len FIXED-CELLS = if
-      width cb STRIDE !
-      cap width / cb BOUND !
-   then ;
+   width cb TAG !
+   cap width / cb BOUND ! ;
 
-\ Mapping, copy and old unmap are shared by both control layouts. Nothing in
-\ the control changes until every fallible operation has succeeded.
-: GROW ( n ptr ptr a n n n -- )
-   {: need:n cb:ptr old:n len:n width:n :}
+\ Nothing in the control changes until every fallible operation has succeeded.
+: GROW ( n ptr ptr a n n -- ) {: need:n cb:ptr old:n width:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0= if
@@ -184,53 +186,44 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cap cb len width PUBLISH
-      cb len REGISTER
+      fresh cap cb width PUBLISH
+      cb REGISTER
       UNLOCK
       exit
    then
    cb @ fresh old COPY
+   LOCK
    cb @ old munmap 0< if
-      fresh cap munmap drop E-UNMAP throw
+      UNLOCK fresh cap munmap drop E-UNMAP throw
    then
-   fresh cap cb len width PUBLISH ;
+   fresh cap cb width PUBLISH
+   UNLOCK ;
 
 : RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
    cb CAP @ {: old:n :}
    need old <= if exit then
-   need cb old GENERIC-CELLS width GROW ;
+   need cb old width GROW ;
 
-: RESERVE-FIXED ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
-   count width EXTENT {: need:n :}
-   cb CAP @ {: old:n :}
-   old 0 > if width cb STRIDE @ <> if E-SIZE throw then then
-   need old <= if exit then
-   need cb old FIXED-CELLS width GROW ;
-
-: RELEASE-RECORD ( ptr ptr a n -- ) {: cb:ptr len:n :}
+: RELEASE ( ptr ptr a -- ) {: cb:ptr :}
    cb CAP @ {: cap:n :}
    cap 0= if exit then
-   cb @ cap munmap 0< if E-UNMAP throw then
    LOCK
+   cb @ cap munmap 0< if UNLOCK E-UNMAP throw then
    cb UNREGISTER
    NULL-PTR cb !
    0 cb CAP !
-   len FIXED-CELLS = if
-      0 cb STRIDE !
-      0 cb BOUND !
-   then
+   0 cb TAG !
+   0 cb BOUND !
    UNLOCK ;
 
-: RELEASE ( ptr ptr a -- ) GENERIC-CELLS RELEASE-RECORD ;
-: RELEASE-FIXED ( ptr ptr a -- ) FIXED-CELLS RELEASE-RECORD ;
-
-\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A growth
-\ unmaps the old registry before it publishes the new one, and a membership
-\ change is several stores, so a child forked while another task was inside
-\ could neither wait for that task nor carry on where it stopped. Held, nobody
-\ is inside when the process is copied, and parent and child each free their
-\ own copy.
+\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A buffer's
+\ growth or release unmaps its old mapping before it publishes the new one or
+\ clears the control, a registry growth does the same to the registry, and a
+\ membership change is several stores. Each runs under this lock, since a child
+\ forked while another task was inside could neither wait for that task nor
+\ carry on where it stopped. Held, nobody is inside when the process is copied,
+\ and parent and child each free their own copy.
 : ACROSS-FORK ( [ -- n ] -- n )
    LOCK [: UNLOCK ;] finally ;
 
@@ -258,9 +251,9 @@ private
 : RANGE-CHECK ( ptr u8 n -- ) {: start:ptr size:n :}
    size 0 < if E-SIZE throw then
    size 0= if exit then
+   CONTROL-CELLS cells {: extent:n :}
    REG-U @ 0 ?do
       i REG-ENTRY byte-view start - {: off:n :}
-      i REG-LEN @ cells {: extent:n :}
       off 0 < if
          off extent + 0 > if E-SIZE throw then
       else
@@ -279,7 +272,7 @@ public
 \ caller's responsibility; the lock protects membership of distinct controls.
 : RELEASE-ALL ( -- )
    begin REG-U @ 0 > while
-      REG-U @ 1- dup REG-ENTRY swap REG-LEN @ RELEASE-RECORD
+      REG-U @ 1- REG-ENTRY RELEASE
    repeat
    REG-CLOSE ;
 
@@ -291,7 +284,7 @@ public
    begin dup 0 > while
       1- dup REG-ENTRY {: cb:ptr :}
       cb byte-view start - {: off:n :}
-      off 0 >= off size < and if cb over REG-LEN @ RELEASE-RECORD then
+      off 0 >= off size < and if cb RELEASE then
    repeat drop
    REG-U @ 0= if REG-CLOSE then ;
 

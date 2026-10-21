@@ -2,9 +2,7 @@
 \ every ARM64 routine contract is written against.
 \
 \ WHERE THESE NUMBERS COME FROM. Every bound here is read off the instruction
-\ vocabulary that src/arch/arm64/asm.f emits, and
-\ test/compiler/native-effect.f pins each one against that source instead of
-\ restating it:
+\ vocabulary that src/arch/arm64/asm.f emits:
 \   - a register operand is a five-bit field, so a file holds 32 registers;
 \   - x18 is AAPCS64's platform register: ordinary on Linux, reserved on
 \     Darwin, and reserved on a target that is not an AArch64 platform at all,
@@ -175,9 +173,6 @@ public
 \ ---- the frame ---------------------------------------------------------------
 : SP-ALIGN ( -- n )       SP-ALIGN-N ;
 : FRAME-MAX ( -- n )      FRAME-MAX-N ;
-: OFF-LIMIT ( -- n )      OFF-MAX ;
-
-: FRAME-ROUND ( n -- n )  MACHINE NMACH:FRAME-ROUND ;
 
 : SLOT-REACH ( n -- n )   MACHINE NMACH:SLOT-REACH ;
 

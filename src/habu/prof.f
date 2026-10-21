@@ -338,38 +338,45 @@ public
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
-\ x4 = samples attributed to a word, x3 = how many words took one.
-\
-\ THE SUM WALKS RECORDS, NOT INDEX ENTRIES. A word counted during the phase can
-\ lose its entry before the report: the sync rebuilds the index from the
-\ dictionary as it then stands, and a record retired in between is not in it.
-\ Summing the entries orphaned those counters and left the header's identity
-\ short - 397 samples of 92,013 on a self-build, which is exactly how this was
-\ found. The counter array is keyed by record, so walking it counts them all.
-\ x3 stays entry-based: it says how many rows the reports can name.
+\ x0 = arena, and the clock stopped. Empty every entry's inclusive count into the
+\ per-record array, so the rebuild that follows can move the entries freely.
+: C-PROF-INCL-FOLD ( -- )
+   LBL LBL LBL {: fl fdone fnext :}
+   8 0 0 ADDI,
+   12 ARN-IDX LIT64,  12 8 12 ADD,
+   13 8 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
+   fl LBL,
+      12 13 CMP,  C-CS fdone BCOND,
+      14 12 ENT-INCL LDR,  14 fnext CBZ,
+      10 12 ENT-IDX LDR,
+      11 ARN-INCL LIT64,  11 8 11 ADD,  15 10 3 LSLI,  11 11 15 ADD,
+      15 11 0 LDR,  15 15 14 ADD,  15 11 0 STR,
+      14 0 MOVZ,  14 12 ENT-INCL STR,
+      fnext LBL,  12 12 PROF-ENT ADDI,  fl B,
+   fdone LBL, ;
+
+\ x11 = the count for profile ID x12. Clobbers x10.
+: C-PROF-RANK ( bool -- ) {: incl:bool :}
+   incl IF 11 ARN-INCL LIT64,  11 19 11 ADD,
+   ELSE 11 PROF-CNT-VA LIT64, THEN
+   10 12 3 LSLI,  11 11 10 ADD,  11 11 0 LDR, ;
+
+\ The report walks every stable profile ID, including reclaimed code. Folding
+\ first gives each identity one inclusive count independent of index lifetime.
 : C-PROF-REP-WORDSUM ( -- )
-   LBL LBL LBL LBL LBL {: wl wd wnext cl cd :}
-   4 0 MOVZ,  3 0 MOVZ,
-   11 PROF-CNT-VA LIT64,
-   12 19 ARN-IDS LDR,
-   cl LBL,
-      12 cd CBZ,
-      10 11 0 LDR,  4 4 10 ADD,
-      11 11 8 ADDI,  12 12 1 SUBI,  cl B,
-   cd LBL,
-   12 ARN-IDX LIT64,  12 19 12 ADD,
-   13 19 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
-   wl LBL,
-      12 13 CMP,  C-CS wd BCOND,
-      10 12 ENT-IDX LDR,  11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,
-      10 11 0 LDR,
-      14 12 ENT-INCL LDR,  14 14 10 ORR,
-      15 12 ENT-IDX LDR,  11 ARN-INCL LIT64,  11 19 11 ADD,  15 15 3 LSLI,  11 11 15 ADD,
-      15 11 0 LDR,  14 14 15 ORR,
-      14 wnext CBZ,  3 3 1 ADDI,                   \ a word either count reached
-      wnext LBL,
-      12 12 PROF-ENT ADDI,  wl B,
-   wd LBL, ;
+   LBL LBL {: turn done :}
+   4 0 MOVZ,  3 0 MOVZ,  12 0 MOVZ,
+   13 19 ARN-IDS LDR,
+   turn LBL,
+      12 13 CMP,  C-CS done BCOND,
+      false C-PROF-RANK
+      4 4 11 ADD,  14 11 0 ADDI,
+      true C-PROF-RANK
+      14 14 11 ORR,
+      LBL {: next :}
+      14 next CBZ,  3 3 1 ADDI,
+      next LBL,  12 12 1 ADDI,  turn B,
+   done LBL, ;
 
 \ words + other + new + defer + spill + foreign == samples is the accounting this
 \ line states. After a sync, defer is 0 and new holds only the deferred samples
@@ -400,31 +407,15 @@ public
    json IF exit THEN
    C-PROF-NL ;
 
-\ x9 = the current row's inclusive count: what the per-record array holds plus
-\ what the entry has taken since the last fold. An auto-report at the limit never
-\ folds, so the second half is the only half it has.
+\ x21 is the stable profile ID selected for this row.
 : C-PROF-ROW-INCL ( -- )
-   9 21 ENT-IDX LDR,  10 ARN-INCL LIT64,  10 19 10 ADD,
-   9 9 3 LSLI,  9 10 9 ADD,  9 9 0 LDR,
-   10 21 ENT-INCL LDR,  9 9 10 ADD, ;
+   10 ARN-INCL LIT64,  10 19 10 ADD,
+   9 21 3 LSLI,  9 10 9 ADD,  9 9 0 LDR, ;
 
-\ x5 = the owned profile row behind the current index entry.
 : C-PROF-REP-ROW-REC ( -- )
-   17 21 ENT-IDX LDR,
+   17 21 0 ADDI,
    5 ARN-RECS LIT64,  5 19 5 ADD,
    10 PROF-ID-ENT MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
-
-\ x11 = what the current entry (x12) is ranked on: its exclusive count, or the
-\ inclusive one a phase word is only ever visible by. Clobbers x10.
-: C-PROF-RANK ( bool -- ) {: incl:bool :}
-   10 12 ENT-IDX LDR,
-   incl IF
-      11 ARN-INCL LIT64,  11 19 11 ADD,  10 10 3 LSLI,  11 11 10 ADD,
-      11 11 0 LDR,
-      10 12 ENT-INCL LDR,  11 11 10 ADD,
-      exit
-   THEN
-   11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,  11 11 0 LDR, ;
 
 \ One text row: exclusive, its share, inclusive, its share, then the word.
 : C-PROF-REP-ROW ( -- )
@@ -508,7 +499,7 @@ public
 \ One text section: at most PROF-ROWS rows ranked on one of the two counts, each
 \ with its callers.
 \
-\ ROWS ARE SELECTED BY REPEATED MAXIMUM, not sorted: one pass over the index per
+\ ROWS ARE SELECTED BY REPEATED MAXIMUM, not sorted: one pass over the IDs per
 \ row costs less than sorting every entry, no second array is needed, and - the
 \ reason that matters - the counters are left exactly as they were, so a later
 \ prof-report says the same thing.
@@ -517,8 +508,7 @@ public
    23 0 MOVN,  24 0 MOVN,  25 0 MOVZ,
    rowl LBL,
       7 0 MOVZ,  21 0 MOVN,
-      12 ARN-IDX LIT64,  12 19 12 ADD,
-      13 19 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
+      12 0 MOVZ,  13 19 ARN-IDS LDR,
       sell LBL,
          12 13 CMP,  C-CS seld BCOND,
          incl C-PROF-RANK
@@ -532,11 +522,11 @@ public
          12 21 CMP,  C-CS selnx BCOND,             \ same count, later entry: keep the first
          seltake LBL,
          7 11 0 ADDI,  21 12 0 ADDI,
-         selnx LBL,  12 12 PROF-ENT ADDI,  sell B,
+         selnx LBL,  12 12 1 ADDI,  sell B,
       seld LBL,
       7 rowsd CBZ,                                 \ no counted row left
       23 7 0 ADDI,  24 21 0 ADDI,
-      17 21 ENT-IDX LDR,
+      17 21 0 ADDI,
       7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,  \ the row prints exclusive
       incl IF C-PROF-ROW-INCL ELSE 9 7 0 ADDI, THEN  9 SP 88 STR,
       C-PROF-REP-ROW
@@ -549,21 +539,20 @@ public
 \ EVERY ATTRIBUTED WORD, not a top-N. A phase word - a compiler pass, a verifier
 \ entry - is often invisible in an exclusive ranking and is exactly what a
 \ per-phase table needs, so the machine-readable report carries the whole set:
-\ one object per index entry that took a sample, and the caller edges as a flat
+\ one object per profile ID that took a sample, and the caller edges as a flat
 \ array rather than nested under each row. Nesting them would mean one pass over
 \ the edge table per row - quadratic, and this walk runs over every row - while
 \ one pass emits every edge there is. Both are bounded by the arena: at most
-\ ARN-COUNT rows and PROF-CALL-SLOTS edges, so the report cannot outgrow it and
+\ ARN-IDS rows and PROF-CALL-SLOTS edges, so the report cannot outgrow it and
 \ nothing is truncated.
 : C-PROF-JSON-ROWS ( -- )
    LBL LBL LBL LBL {: jl jdone jnext jcomma :}
    s\" ,\"rows\":[" C-PROF-SAY
    25 0 MOVZ,
-   21 ARN-IDX LIT64,  21 19 21 ADD,
-   23 19 ARN-COUNT LDR,  23 23 5 LSLI,  23 21 23 ADD,
+   21 0 MOVZ,  23 19 ARN-IDS LDR,
    jl LBL,
       21 23 CMP,  C-CS jdone BCOND,
-      17 21 ENT-IDX LDR,
+      17 21 0 ADDI,
       7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
       C-PROF-ROW-INCL
       10 7 9 ORR,  10 jnext CBZ,                   \ neither count moved: not a row
@@ -577,7 +566,7 @@ public
       s\" ,\"incl\":" C-PROF-SAY
       C-PROF-ROW-INCL  10 1 MOVZ,  LPROFNUM LABEL@ BL,
       s" }" C-PROF-SAY
-   jnext LBL,  21 21 PROF-ENT ADDI,  jl B,
+   jnext LBL,  21 21 1 ADDI,  jl B,
    jdone LBL,
    s" ]" C-PROF-SAY ;
 
@@ -623,6 +612,7 @@ public
       json IF s\" {\"samples\":0,\"armed\":false}\n" ELSE s\" profiler not armed\n" THEN C-PROF-SAY
       C-PROF-REP-CLOSE
    armed LBL,
+   0 19 0 ADDI,  C-PROF-INCL-FOLD
    C-PROF-REP-WORDSUM
    json C-PROF-REP-HEAD
    json IF
@@ -641,25 +631,23 @@ public
 \ where a name lookup belongs.
 : EMIT-PROFROW ( -- )
    LPROFROW LABEL@ LBL,
-   LBL LBL LBL LBL {: rl rfound rdone rnone :}
-   C-PROF-REP-OPEN                                 \ x6 = the record the caller asked for
+   LBL {: rnone :}
+   C-PROF-REP-OPEN                                 \ x6 = the profile ID requested
    20 PROF-BAND-VA LIT64,
    22 20 PROF-TOT LDR,
    19 20 PROF-ARENA LDR,
    19 rnone CBZ,
-   21 ARN-IDX LIT64,  21 19 21 ADD,
-   23 19 ARN-COUNT LDR,  23 23 5 LSLI,  23 21 23 ADD,
-   rl LBL,
-      21 23 CMP,  C-CS rnone BCOND,
-      10 21 ENT-IDX LDR,  10 6 CMP,  C-EQ rfound BCOND,
-      21 21 PROF-ENT ADDI,  rl B,
-   rfound LBL,
-   17 21 ENT-IDX LDR,
+   6 0 CMPI,  C-LT rnone BCOND,
+   23 19 ARN-IDS LDR,  6 23 CMP,  C-CS rnone BCOND,
+   21 6 0 ADDI,
+   C-PROF-REP-ROW-REC
+   10 5 RID-START LDR,  10 rnone CBZ,
+   0 19 0 ADDI,  C-PROF-INCL-FOLD
+   17 21 0 ADDI,
    7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
-   C-PROF-ROW-INCL  9 SP 88 STR,                   \ one chosen row is read for its inclusive time
+   C-PROF-ROW-INCL  9 SP 88 STR,
    C-PROF-REP-ROW
    C-PROF-REP-CALLERS
-   rdone LBL,
    C-PROF-REP-CLOSE
    rnone LBL,
    s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
@@ -1100,29 +1088,12 @@ private
 \ fourteen times a tick, so it is the profiler's hottest store. But a report
 \ REBUILDS the index to name code compiled after prof-on, and a rebuild moves
 \ every entry. So the durable home is this per-RECORD array, and C-PROF-INCL-FOLD
-\ empties the entries into it immediately before each rebuild. A row prints the
-\ sum of the two, which is correct whether or not a sync has run.
+\ empties the entries into it before a rebuild or a report, so historical rows
+\ remain readable after their code leaves the searchable index.
 \ Clobbers x11 and x12, and preserves x10 for the caller.
 : C-PROF-INCL+ ( -- )
    11 ARN-INCL LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
    12 11 0 LDR,  12 12 1 ADDI,  12 11 0 STR, ;
-
-\ x0 = arena, and the clock stopped. Empty every entry's inclusive count into the
-\ per-record array, so the rebuild that follows can move the entries freely.
-: C-PROF-INCL-FOLD ( -- )
-   LBL LBL LBL {: fl fdone fnext :}
-   8 0 0 ADDI,
-   12 ARN-IDX LIT64,  12 8 12 ADD,
-   13 8 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
-   fl LBL,
-      12 13 CMP,  C-CS fdone BCOND,
-      14 12 ENT-INCL LDR,  14 fnext CBZ,
-      10 12 ENT-IDX LDR,
-      11 ARN-INCL LIT64,  11 8 11 ADD,  15 10 3 LSLI,  11 11 15 ADD,
-      15 11 0 LDR,  15 15 14 ADD,  15 11 0 STR,
-      14 0 MOVZ,  14 12 ENT-INCL STR,
-      fnext LBL,  12 12 PROF-ENT ADDI,  fl B,
-   fdone LBL, ;
 
 \ x0 = arena. Replay the deferred samples through the rebuilt index: the pc names
 \ a record now and the interrupted x30 names the caller. A pc that still resolves
@@ -1250,6 +1221,111 @@ private
    C-PROF-TIMER
    C-PROF-TIMER-DONE
    off LBL, ;
+
+\ Retirement is reached from engine helpers whose scratch registers still
+\ belong to their caller. Profiling disabled takes no allocation or syscall.
+: C-PROF-RETIRE-OPEN ( label -- )
+   {: absent:label :}
+   SP SP 160 SUBI,
+   18 0 ?do i SP i cells STR, loop
+   30 SP 144 STR,
+   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,  8 absent CBZ,
+   10 8 ARN-IDS LDR,  10 absent CBZ, ;
+
+: C-PROF-RETIRE-CLOSE ( -- )
+   18 0 ?do i SP i cells LDR, loop
+   30 SP 144 LDR,  SP SP 160 ADDI,  RET, ;
+
+\ After a sync every inclusive count is durable. Compact the sorted index in
+\ place, dropping IDs whose span was released without changing their history.
+: C-PROF-INDEX-PRUNE ( -- )
+   LBL LBL LBL {: turn next done :}
+   8 0 0 ADDI,
+   1 ARN-IDX LIT64,  1 8 1 ADD,  2 1 0 ADDI,
+   3 8 ARN-COUNT LDR,  3 3 5 LSLI,  3 1 3 ADD,
+   4 0 MOVN,  5 0 MOVZ,
+   turn LBL,
+      1 3 CMP,  C-CS done BCOND,
+      6 1 ENT-IDX LDR,
+      7 PROF-ID-ENT MOVZ,  6 6 7 MUL,
+      7 ARN-RECS LIT64,  7 8 7 ADD,  6 7 6 ADD,
+      6 6 RID-START LDR,  6 next CBZ,
+      6 1 ENT-START LDR,  7 1 ENT-END LDR,
+      6 2 ENT-START STR,  7 2 ENT-END STR,
+      10 1 ENT-IDX LDR,  10 2 ENT-IDX STR,
+      10 0 MOVZ,  10 2 ENT-INCL STR,
+      6 4 CMP,  4 6 4 C-CC CSEL,
+      7 5 CMP,  5 7 5 C-HI CSEL,
+      2 2 PROF-ENT ADDI,
+   next LBL,  1 1 PROF-ENT ADDI,  turn B,
+   done LBL,
+   1 ARN-IDX LIT64,  1 8 1 ADD,
+   2 2 1 SUB,  2 2 5 LSRI,
+   2 8 ARN-COUNT STR,  4 8 ARN-LO STR,  5 8 ARN-HI STR, ;
+
+\ Ordinary NDICT lowering: resolve deferred PCs before their dictionary rows
+\ disappear. Seed rewind already detached its live slots and keeps its spans.
+: EMIT-PROFTRIM ( -- )
+   LPROFTRIM LABEL@ LBL,
+   LBL LBL LBL LBL LBL {: absent scan sync turn next :}
+   absent C-PROF-RETIRE-OPEN
+   10 8 ARN-DEFER LDR,  10 sync CBNZ,
+   6 9 0 ADDI,
+   scan LBL,
+      6 NDICT CMP,  C-CS absent BCOND,
+      10 ARN-LIVE LIT64,  10 8 10 ADD,  11 6 3 LSLI,  10 10 11 ADD,
+      10 10 0 LDR,  10 0 CMPI,  C-GE sync BCOND,
+      6 6 1 ADDI,  scan B,
+   sync LBL,
+   C-PROF-CLOCK-HOLD
+   LPROFSYNC LABEL@ BL,
+   6 SP 72 LDR,
+   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
+   turn LBL,
+      6 NDICT CMP,  C-CS next BCOND,
+      10 ARN-LIVE LIT64,  10 8 10 ADD,  11 6 3 LSLI,  10 10 11 ADD,
+      11 10 0 LDR,
+      LBL {: skip :}
+      11 0 CMPI,  C-LT skip BCOND,
+      12 0 MOVN,  12 10 0 STR,
+      10 ARN-RECS LIT64,  10 8 10 ADD,
+      13 PROF-ID-ENT MOVZ,  11 11 13 MUL,  10 10 11 ADD,
+      12 10 RID-OWNER STR,
+      12 0 MOVZ,  12 10 RID-START STR,  12 10 RID-END STR,
+      skip LBL,  6 6 1 ADDI,  turn B,
+   next LBL,
+   0 8 0 ADDI,  C-PROF-INDEX-PRUNE
+   C-PROF-CLOCK-RESUME
+   absent LBL,  C-PROF-RETIRE-CLOSE ;
+
+\ CP lowering: no raw PC may survive reuse of its bytes. Retire live and
+\ seed-retained spans that intersect [new CP,old CP), after naming old samples.
+: EMIT-PROFRECLAIM ( -- )
+   LPROFRECLAIM LABEL@ LBL,
+   LBL LBL LBL LBL {: absent turn next done :}
+   absent C-PROF-RETIRE-OPEN
+   9 CP CMP,  C-CS absent BCOND,
+   C-PROF-CLOCK-HOLD
+   LPROFSYNC LABEL@ BL,
+   9 SP 72 LDR,
+   7 PROF-BAND-VA LIT64,  8 7 PROF-ARENA LDR,
+   6 0 MOVZ,  13 8 ARN-IDS LDR,
+   turn LBL,
+      6 13 CMP,  C-CS done BCOND,
+      10 ARN-RECS LIT64,  10 8 10 ADD,
+      11 PROF-ID-ENT MOVZ,  11 6 11 MUL,  10 10 11 ADD,
+      11 10 RID-START LDR,  11 next CBZ,
+      11 CP CMP,  C-CS next BCOND,
+      11 10 RID-END LDR,  11 9 CMP,  C-LS next BCOND,
+      \ Keep a published ordinal's existing ID: SNAPSHOT must not recreate
+      \ this invalidated dictionary span before ordinary trimming drops it.
+      11 0 MOVN,  11 10 RID-OWNER STR,
+      11 0 MOVZ,  11 10 RID-START STR,  11 10 RID-END STR,
+   next LBL,  6 6 1 ADDI,  turn B,
+   done LBL,
+   0 8 0 ADDI,  C-PROF-INDEX-PRUNE
+   C-PROF-CLOCK-RESUME
+   absent LBL,  C-PROF-RETIRE-CLOSE ;
 
 \ seed-ndict! calls this before lowering NDICT, with the new count in x6.
 \ The final sync names deferred donor PCs while their records still exist;
@@ -1395,6 +1471,7 @@ public
 : EMIT-PROF-REPORTS ( -- )
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFSYNC
    EMIT-PROFREWIND
+   EMIT-PROFTRIM  EMIT-PROFRECLAIM
    false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 
 ;package

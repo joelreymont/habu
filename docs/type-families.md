@@ -267,10 +267,10 @@ The checker half of the `FAMILY:FIELD` accessor — the sealed, schema-aware
 armed window that lets a generated accessor body mint `ptr <field-type>` from a
 `ptr family<args>` input — has landed (dot
 `habu-checker-type-structure-d996215b`, `src/core/checker.f` +
-`src/core/type-family.f`; regression `test/field-proj-suite.f`). The generator
-above it landed with dot `habu-generate-typed-field-ba63866e` and arms this
-window per accessor, under the contract below; `field-project` and `record-at`
-are production runtime words at global scope (`src/core/structure-make.f`).
+`src/core/type-family.f`). The generator above it landed with dot
+`habu-generate-typed-field-ba63866e` and arms this window per accessor, under
+the contract below; `field-project` and `record-at` are production runtime
+words at global scope (`src/core/structure-make.f`).
 
 **Why it needs a dedicated operation.** A layout pointer is fenced against
 ordinary retyping: `+` and `cell+` preserve the pointee (`ptr point + n` stays
@@ -310,13 +310,12 @@ admitted only inside the armed window.
   cross-checked against the committed offset.
 
 **Fail-closed outside the window and on any inconsistency.** Every one of these
-is a checker reject, each pinned in `test/field-proj-suite.f`: `field-project`
-used with no matching armed window; a baked offset that disagrees with the
-committed offset; a field extent past the committed family width; a projection
-on a non-pointer or a non-layout pointer; a field id owned by a different family
-than the input; a wrong generic arity; a non-addressable field role; a declared
-output type that does not match the projected field type; and a malformed
-(uncommitted-id) arming. The pre-existing layout-pointer rejects in
+is a checker reject: `field-project` used with no matching armed window; a baked
+offset that disagrees with the committed offset; a field extent past the
+committed family width; a projection on a non-pointer or a non-layout pointer; a
+field id owned by a different family than the input; a wrong generic arity; a
+non-addressable field role; a declared output type that does not match the
+projected field type; and a malformed (uncommitted-id) arming. The pre-existing layout-pointer rejects in
 `test/layout-buffer.f` (`cell+` on a layout pointer, an empty-body retype to
 `ptr u8`) stay red.
 

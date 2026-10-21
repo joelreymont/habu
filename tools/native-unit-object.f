@@ -7,6 +7,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/memory.f
+require src/core/type-family.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/code-span.f
@@ -471,6 +472,7 @@ variable DEF-HELD-SIZE
    ['] DEF-ABANDON-HOST catch
    over 0<> if drop else nip then
    NFILE-REF:END-CAPTURE
+   NFILE-REF:DISCARD-PREPARED
    DEF-RESET ;
 
 : DEF-READ-META ( -- )
@@ -649,9 +651,10 @@ variable DEF-HELD-SIZE
 0 CWORK-VARIABLE DEF-IN-KEY ptr u8
 0 CWORK-VARIABLE DEF-IN-KEY-U n
 : DEF-PREPARE-BODY ( -- )
+   \ NDEF-CACHE keeps its container stable through install and discard.
    DEF-IN-BYTES @ DEF-IN-SIZE @
       NUNIT-FILE:ARCH-AARCH64 s" DEFINITION"
-      DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-BYTES-REUSE
+      DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-VIEW
    DEF-PREP-OPEN ;
 
 public
@@ -723,7 +726,8 @@ public
    ['] DEF-PREPARE-BODY catch {: rc:n :}
    rc 0= if true exit then
    DEF-DROP-PLAN {: cleanup:n :}
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or
+   rc TFAM:E-UNIT-FAMILY-CHANGED = or if
       cleanup 0<> if cleanup throw then
       false exit
    then

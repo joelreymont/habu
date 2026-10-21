@@ -221,7 +221,6 @@ public
 19 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
-: REG-BITS ( -- n )      XBITS ;
 : HALVES ( -- n )        HALVES-N ;
 : HALF-BITS ( -- n )     HALF-N ;
 : IMM-LIMIT ( -- n )     IMM-LIM ;
@@ -800,13 +799,11 @@ VOCAB TYPED-BUFFER MEMO-ORD n        \ ordinals in the module the memo names
 VOCAB TYPED-BUFFER MEMO-SEEN bool
 1 TYPED-BUFFER MEMO-MOD IR-ID:ir-module-id
 variable MEMO-OWNED                  \ MEMO-MOD names a module
-variable MISS-COUNT
 
 : MEMO-FORGET ( -- )
    0 MEMO-OWNED !
    VOCAB 0 ?do false i MEMO-SEEN ! loop ;
 MEMO-FORGET
-0 MISS-COUNT !
 
 \ Whose ordinals the memo holds. Answering no is the per-hit owner check: the
 \ ordinals of another module name other spellings, or nothing at all.
@@ -847,7 +844,6 @@ MEMO-FORGET
       c b prior IR-BUILD:SYMBOL-CK
       prior exit
    then
-   1 MISS-COUNT +!
    c b idx VOCAB-NAME IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
    sym IR-ID:SYMBOL-LOCAL idx MEMO-ORD !
    true idx MEMO-SEEN !
@@ -859,13 +855,6 @@ MEMO-FORGET
    c b OPCODES k + MEMO-BIND ;
 
 public
-
-\ Vocabulary bindings this dialect had to intern instead of mint. Every module
-\ of a session is a clone, so a load past its first definition should report
-\ none.
-: MISSES ( -- n ) MISS-COUNT @ ;
-
-: MISSES-CLEAR ( -- ) 0 MISS-COUNT ! ;
 
 : BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
@@ -917,18 +906,6 @@ public
       ne    OF COND-NE ENDOF
       mi    OF COND-MI ENDOF
    ;MATCH ;
-
-: N>COND ( n -- A64IR:cond )
-   case
-      COND-LT of A64IR-COND:LT endof
-      COND-LE of A64IR-COND:LE endof
-      COND-GT of A64IR-COND:GT endof
-      COND-GE of A64IR-COND:GE endof
-      COND-EQ of A64IR-COND:EQUAL endof
-      COND-NE of A64IR-COND:NE endof
-      COND-MI of A64IR-COND:MI endof
-      E-A64IR-COND throw
-   endcase ;
 
 \ ---- the reach of each branch form -------------------------------------------
 : B-FITS? ( n -- bool )      B-BITS FITS? ;

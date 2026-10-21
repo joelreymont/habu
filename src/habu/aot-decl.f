@@ -387,8 +387,7 @@ create BUF MAX 8 * allot    variable N   \ 8B rows: blob-off u32 + name-off u32
 \ only a lookup needs. 20 bytes a word becomes 8, and 48 bytes of booted
 \ dictionary become none.
 \ A ROW IS (blob offset u32, raw code span u32), in capture order, the same two
-\ fields and the same CODE-SPAN encoding a compact record's first two words hold,
-\ so the build proves a span row against the record it replaced field for field.
+\ fields and the same CODE-SPAN encoding a compact record's first two words hold.
 \ The seed publishes the table's address, this count and the blob's landing base
 \ in the three AOT-CELLS cells layout.f set aside (SPAN-TABLE-CELL, SPAN-N-CELL,
 \ SPAN-BASE-CELL).

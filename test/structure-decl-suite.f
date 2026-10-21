@@ -1,9 +1,9 @@
 \ structure-decl-suite.f — behavior + rollback suite for the STRUCTURE typed
 \ declaration front end (src/core/structure-decl.f, package STRUCTURE-DECL; dot
-\ habu-structure-parse-typed-c5a01e1f). A WHITEBOX-SUITE row, like
-\ test/decl-event-suite.f: the registry probes are engine internals, which the
-\ unsealed engine binds by their recorded rows. The gate runs it on that engine,
-\ which test/whitebox-engine.f builds:
+\ habu-structure-parse-typed-c5a01e1f). A WHITEBOX-SUITE row: the
+\ registry probes are engine internals, which the unsealed engine binds by their
+\ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
+\ builds:
 \     <unsealed engine> --load test/structure-decl-suite.f
 \ Proves: POLICY and DERIVE reach the family record; every reject anchor
 \ (E-TDECL-* family + the field record's own name

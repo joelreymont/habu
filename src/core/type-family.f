@@ -153,6 +153,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
+7209 constant E-UNIT-FAMILY-CHANGED \ a FILE dependency's exact family contract differs
 
 private
 
@@ -2017,6 +2018,7 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   REG-PROTECT   \ cells TFW-P holds
 
 \ Capture: back to the boot row. The frames are process-local scratch, like TFM.
 : TFW-SNAP-RESET ( -- )
+   TFW-BOOT 0 TFW-INIT ARENA-CELLS-ZERO
    TFW-BOOT TFW-P !
    TFW-INIT TFW-CAP ! ;
 
@@ -5197,6 +5199,8 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
+   \ A caught FILE dependency refusal leaves only an invocation diagnostic.
+   NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
    TFQ-CAP 0 ?do 0 TFQ-BUF i + c! loop
    0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !
@@ -6622,7 +6626,10 @@ create UNIT-FAM-CON-CELL 8 allot
          len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
             s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
          src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
-            s" tfam: FILE family dependency changed semantics" REG-AOT-REFUSE THEN
+            s" tfam: FILE family dependency changed semantics"
+            REG-AOT-ERROR-U ! REG-AOT-ERROR-A !
+            E-UNIT-FAMILY-CHANGED throw
+         THEN
       ELSE
          src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
       THEN

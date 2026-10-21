@@ -16,10 +16,6 @@ Rules for published results, reference models and tests.
 The theorem-prover subsystem has been removed. Native checks cover executable
 behavior; they do not establish a formal soundness or refinement theorem.
 
-Dynamic growth, normal and exceptional lifetime, owner/stale rejection and
-state after refusals are tested through the native paths in
-`test/compiler/ir-context.f`.
-
 Actual writer and restored-image behavior is tested in
 `test/snapshot-writer.f` and `test/app-image.f`.
 

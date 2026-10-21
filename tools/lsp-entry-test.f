@@ -1,9 +1,11 @@
 \ Run: bin/hb --load tools/lsp-entry-test.f
 \ An absolute server entry must load its own implementation when the client
 \ starts it from a project directory containing older Habu tool sources.
+\ The printed artifact keeps both server conversations and their fixtures.
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -21,6 +23,8 @@ create CHILD FS-PATH-CAP allot      variable CHILD-U
 create SUBJECT FS-PATH-CAP allot    variable SUBJECT-U
 create PATH FS-PATH-CAP allot       variable PATH-U
 create DRIVER FS-PATH-CAP allot     variable DRIVER-U
+create WIRE 16384 allot            variable WIRE-U
+create BODY 4096 allot
 
 : RC>N ( result<n,n> -- n )
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
@@ -37,9 +41,7 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
    PROJECT-PATH s\" 86 throw\n" WRITE-ALL ;
 
 : SETUP ( -- )
-   CLEANUP-RESET
    s" hb-lsp-entry" HB-TMP-MKDIR {: d:ptr du:n :}
-   d du CLEANUP-TREE+
    d PROJECT du BYTE-COPY  du PROJECT-U !
    s" tools" PROJECT-PATH MAKE-DIRS
    s" src/core" PROJECT-PATH MAKE-DIRS
@@ -51,7 +53,7 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
    s" dep.f" PROJECT-PATH s\" : DEP ( -- n ) 1 ;\n" WRITE-ALL
    s" subject.f" PROJECT-PATH {: p:ptr pu:n :}
    p SUBJECT pu BYTE-COPY  pu SUBJECT-U !
-   SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n" WRITE-ALL
+   SUBJECT SUBJECT-U @ s\" require dep.f\n: A ( -- n ) DEP ;\n: B ( -- n ) A ;\n" WRITE-ALL
    s" tools/lsp.f" SERVER-ENTRY 2drop
    s" tools/check-verify-child.f" SERVER-ENTRY drop CHILD SERVER-U @ BYTE-COPY
    SERVER-U @ CHILD-U !
@@ -60,6 +62,8 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
 : STAGE ( ptr u8 n -- )
    PROC-CMD:RESET
    PROJECT PROJECT-U @ PROC-CMD:CWD!
+   \ Exercise a cold image build here, then reuse it for the nested entry.
+   s" HABU_BUILD_CACHE" s" cache" PROJECT-PATH PROC-CMD:ENV+
    s" --load" PROC-CMD:ARG+
    PROC-CMD:ARG+ ;
 
@@ -80,11 +84,56 @@ create DRIVER FS-PATH-CAP allot     variable DRIVER-U
    DRIVER DRIVER-U @ SB$ WRITE-ALL
    DRIVER DRIVER-U @ ;
 
-: SERVER-CASE ( ptr u8 n -- )
+\ A document request forces the server to acquire and run its verifier image.
+\ Loading the entry and reaching EOF alone never crosses that boundary.
+: FRAME ( -- )
+   SB$ {: a:ptr u:n :}
+   a BODY u BYTE-COPY
+   SB-RESET s" Content-Length: " SB-APPEND u FMT:SB-U
+   s\" \r\n\r\n" SB-APPEND
+   SB$ {: h:ptr hu:n :}
+   h WIRE WIRE-U @ + hu BYTE-COPY hu WIRE-U +!
+   BODY WIRE WIRE-U @ + u BYTE-COPY u WIRE-U +! ;
+
+: URI+ ( -- )
+   s" file://" SB-APPEND SUBJECT SUBJECT-U @ SB-APPEND ;
+
+: CONVERSATION ( -- )
+   0 WIRE-U !
+   SB-RESET
+   s\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}" SB-APPEND FRAME
+   SB-RESET
+   s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"" SB-APPEND
+   URI+
+   s\" \",\"languageId\":\"habu\",\"version\":1,\"text\":\"require dep.f\\n: A ( -- n ) DEP ;\\n: B ( -- n ) A ;\\n\"}}}" SB-APPEND FRAME
+   SB-RESET
+   s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/documentHighlight\",\"params\":{\"textDocument\":{\"uri\":\"" SB-APPEND
+   URI+
+   s\" \"},\"position\":{\"line\":2,\"character\":13}}}" SB-APPEND FRAME
+   SB-RESET
+   s\" {\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"textDocument/documentLink\",\"params\":{\"textDocument\":{\"uri\":\"" SB-APPEND
+   URI+ s\" \"}}}" SB-APPEND FRAME ;
+
+: STREAM-PATH ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n suffix:ptr suffixu:n :}
+   SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
+   SB$ PROJECT-PATH ;
+
+: SERVER-CASE ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n :}
    STAGE
+   CONVERSATION
+   WIRE WIRE-U @ PROC-CMD:IN!
    ENGINE-CANDIDATE:PATH$ 30000 >MS PROC-CMD:RUN-RC RC>N
+   name nameu s" .in" STREAM-PATH WIRE WIRE-U @ WRITE-ALL
+   name nameu s" .out" STREAM-PATH PROC-CMD:OUT$ WRITE-ALL
+   name nameu s" .err" STREAM-PATH PROC-CMD:ERR$ WRITE-ALL
    dup 1 <> if PROC-CMD:ERR$ type cr then 1 T=
-   PROC-CMD:ERR$ s" lsp: input ended before exit" CONTAINS? TTRUE ;
+   PROC-CMD:ERR$ s\" lsp: input ended before exit\n" T$=
+   PROC-CMD:OUT$ s\" \"version\":1,\"diagnostics\":[]" CONTAINS? TTRUE
+   PROC-CMD:OUT$ s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" CONTAINS? TTRUE
+   PROC-CMD:OUT$ s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
+   PROC-CMD:OUT$ s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
 
 : CHILD-CASE ( ptr u8 n -- )
    STAGE
@@ -99,11 +148,12 @@ public
 
 : TEST ( -- )
    SETUP
-   SERVER SERVER-U @ SERVER-CASE
+   SERVER SERVER-U @ s" direct" SERVER-CASE
    CHILD CHILD-U @ CHILD-CASE
-   SERVER SERVER-U @ NESTED SERVER-CASE
+   SERVER SERVER-U @ NESTED s" nested" SERVER-CASE
    CHILD CHILD-U @ NESTED CHILD-CASE
-   CLEANUP-RUN
+   s" cache" PROJECT-PATH REMOVE-TREE
+   s" artifact: " type PROJECT PROJECT-U @ type cr
    T-REPORT ;
 
 ;package

@@ -55,7 +55,8 @@ The GitHub tag archive requires an existing Gforth to build.
 
 The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database row needs initdb
-and postgres on PATH, run as an ordinary user because initdb refuses root.
+and postgres on PATH and libpq 17 or newer for native query cancellation,
+run as an ordinary user because initdb refuses root.
 On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 Keg-only postgresql@18 needs its bin directory on PATH.
@@ -154,7 +155,9 @@ Use an external scratch directory for `$TMP`, as described in
 zero. The tool prints its private output directory and leaves the installed
 engine alone. Every build uses a separate empty cache under that directory,
 including the two builds in same-host mode, so cached support and FILE
-artifacts cannot affect the comparison.
+artifacts cannot affect the comparison. After a successful chain or same-host
+comparison, the tool removes those private caches and retains the generation
+executables, maps and logs. Failed runs retain their caches for diagnosis.
 Its same-host mode builds twice with one host to check repeatability:
 
     HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
@@ -329,17 +332,17 @@ writes the stamp when its product is byte-identical to `bin/hb`.
 
 ## Stable local command
 
-Keep the checkout's `bin/hb` for development and build candidates outside
-`~/.local/lib/habu/`. Install only a verified product and its matching sources
-under `~/.local/lib/habu/<revision>/`, with `current` selecting that version and
-`~/.local/bin/hb` pointing to `current/bin/hb`. Changing the checkout then
-leaves dependent projects on the verified version.
+Keep the checkout's `bin/hb` for development and build candidates privately.
+Use one installed tree at a stable path for the executable, map and matching
+library sources, with `~/.local/bin/hb` pointing to its `bin/hb`. Update that
+installation when needed. Do not create per-revision release directories;
+ordinary development does not require installation or publication.
 
 Libraries loaded from source must match the installed engine. Habu resolves
 application paths from the application's root, then the working directory,
 then the engine's source root: the tree two levels above the executable,
-found through the `~/.local/bin/hb` and `current` symlinks. So an installed
-engine runs source-based tools from any directory:
+resolved through `~/.local/bin/hb` and any installation symlinks. An installed
+engine therefore runs source-based tools from any directory:
 
 ```sh
 ~/.local/bin/hb --load /absolute/path/to/etch/etch.f
@@ -362,9 +365,9 @@ built it and restores, at its entry, the root that engine's rule gives
 (`SOURCE-ROOT:ENGINE-FOR$`), since capture cleared the root and the image's own
 file lies in the build cache.
 
-After promoting a new verified release, move processes pinned to an older
-version onto `current`, then trash every other version directory. The installed
-tree holds only the latest qualified release and the `current` symlink.
+Keep the installed executable, map and sources together when updating the
+installation. Running applications retain their loaded executable; restart
+long-running source-loading tools against the updated installation.
 
 ## Warm Dev Snapshot
 

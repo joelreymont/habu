@@ -1,6 +1,7 @@
 \ bootstrap-wide-memory-src.f - stage0 wide ADT memory execution/goldens: the
 \ engine helper each wide transfer reaches, the span and tag it proves, and
-\ the values it delivers, on the native engine and the stage0 seed.
+\ the values it delivers. Only the Gforth recovery checks run it, through
+\ test/bootstrap-wide-memory.fs (tools/bootstrap.sh, test/nf-path-test.f).
 
 \ This isolated fixture does not load xref.f's constructor-package registration
 \ bridge. Keep the hook inert while the fixture exercises wide codegen.
@@ -211,9 +212,8 @@ variable BWM-GXT
 \ operand is below 4096 and a shifted high half plus a low half above it. Every
 \ width here is far below 4096, so index 4 is the single folded word; a
 \ register-materialized offset would cost one instruction more at every width.
-\ Measured on the native engine with `bin/hb --load
-\ test/bootstrap-wide-memory-src.f` and on this stage0 seed with `HABU_
-\ TARGET=linux-aarch64 gforth test/bootstrap-wide-memory.fs`, decoding the
+\ Measured on the stage0 seed with `HABU_TARGET=linux-aarch64 gforth
+\ test/bootstrap-wide-memory.fs`, decoding the
 \ actual compiled BWM-STORE2-G/BWM-STORE4-G bytes byte for byte.
 : BWM-STORE-GOLD ( ptr u8 n n -- ) {: name:ptr nameu:n width:n :}
    name nameu BWM-XT BWM-GXT !

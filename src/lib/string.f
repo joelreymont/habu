@@ -90,10 +90,20 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : ASCII-UPPER ( n -- n )
    dup STR-BEFORE-LOWER-A > over STR-AFTER-LOWER-Z < and if STR-SPACE - then ;
 
-: STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: STR= ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n b:ptr v:n :}
    u v STR-CHECK-LENS
    u v <> if 0 0= 0= exit then
-   0 begin dup u < while
+   u CELL - {: last:n :}
+   0
+   \ Supported targets admit unaligned cells; read only the complete-cell prefix.
+   begin dup last <= while
+      dup a + CELL-VIEW @ over b + CELL-VIEW @ <> if
+         drop 0 0= 0= exit
+      then
+      CELL +
+   repeat
+   begin dup u < while
       dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
       1+
    repeat drop 0 0= ;

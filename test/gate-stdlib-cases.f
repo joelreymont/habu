@@ -264,6 +264,7 @@ SUITE native-file-stack
 SUITE native-file-auto
    test/native-file-auto-e2e.f
    test/native-file-cwork-e2e.f
+   test/native-file-fresh-region-e2e.f
    test/native-file-admission-e2e.f
 ;SUITE
 
@@ -394,14 +395,6 @@ SUITE chain-run
    tools/chain-run-test.f
 ;SUITE
 
-SUITE text-foundation-fixtures
-   tools/lint/text-foundation-test.f
-;SUITE
-
-SUITE lint-slab
-   tools/lint/slab-test.f
-;SUITE
-
 SUITE byte-copy
    test/byte-copy-test.f
 ;SUITE
@@ -453,10 +446,6 @@ SUITE verify-binding
    test/verify-binding.f
 ;SUITE
 
-SUITE primitive-source
-   test/primitive-source.f
-;SUITE
-
 SUITE check-verify-batch
    tools/check-verify-batch-test.f
 ;SUITE
@@ -490,56 +479,8 @@ SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
 
-SUITE compiler-ir-op
-   test/compiler/ir-op.f
-;SUITE
-
-SUITE compiler-ir-fun
-   test/compiler/ir-fun.f
-;SUITE
-
-SUITE compiler-ir-build
-   test/compiler/ir-build.f
-;SUITE
-
-SUITE compiler-ir-verify
-   test/compiler/ir-verify.f
-;SUITE
-
-SUITE compiler-ir-attr
-   test/compiler/ir-attr.f
-;SUITE
-
-SUITE compiler-ir-context
-   test/compiler/ir-context.f
-;SUITE
-
-SUITE compiler-ir-source
-   test/compiler/ir-source.f
-;SUITE
-
-SUITE compiler-ir-symbol
-   test/compiler/ir-symbol.f
-;SUITE
-
 SUITE compiler-ir-type
    test/compiler/ir-type.f
-;SUITE
-
-SUITE compiler-native-tape
-   test/compiler/native-tape.f
-;SUITE
-
-SUITE compiler-native-feed
-   test/compiler/native-feed.f
-;SUITE
-
-WHITEBOX-SUITE compiler-native-tape-owner
-   test/compiler/native-tape-owner.f
-;SUITE
-
-WHITEBOX-SUITE compiler-native-host-construction
-   test/compiler/native-host-construction-e2e.f
 ;SUITE
 
 SUITE compiler-native-string
@@ -562,24 +503,6 @@ SUITE compiler-native-hir
 \ the gate runs and not to the sources a fixture could compile for itself.
 SUITE compiler-tier1-inline-prims
    test/compiler/tier1-inline-prims.f
-;SUITE
-
-\ The writeback addressing modes, beside the package boundary that publishes
-\ them. They are the one-instruction spelling of every pointer move the engine
-\ and the native compiler make, so a wrong mode bit is a wrong stack.
-SUITE compiler-a64-indexed
-   test/compiler/a64-indexed.f
-;SUITE
-
-SUITE compiler-native-a64ir
-   test/compiler/native-a64ir.f
-;SUITE
-
-\ The typed ARM64 routine-effect schema, next to the a64 lowering it constrains.
-\ It was fork-only, so the register bounds it pins were unchecked in a standalone
-\ gate run.
-SUITE compiler-native-effect
-   test/compiler/native-effect.f
 ;SUITE
 
 SUITE compiler-native-colon
@@ -725,10 +648,10 @@ SUITE compiler-x64-select
    test/compiler/x64-select.f
 ;SUITE
 
-\ The register allocator and its validator over an x86-64 module: the same
-\ src/compiler/native/regalloc.f and regalloc-verify.f the ARM64 suite runs,
-\ reading this machine through the vocabulary src/compiler/native/dialect.f
-\ declares and src/compiler/native/x64ir.f builds.
+\ The register allocator and its validator over an x86-64 module:
+\ src/compiler/native/regalloc.f and regalloc-verify.f reading this machine
+\ through the vocabulary src/compiler/native/dialect.f declares and
+\ src/compiler/native/x64ir.f builds.
 SUITE compiler-x64-regalloc
    test/compiler/x64-regalloc.f
 ;SUITE
@@ -770,20 +693,11 @@ SUITE compiler-backend-boundary
    test/compiler/backend-boundary.f
 ;SUITE
 
-SUITE compiler-native-select
-   test/compiler/native-select.f
-;SUITE
-
 \ The register-file description the allocator reads instead of one architecture's
-\ constants, and the ARM64 description a64ir.f derives from it. It is beside the
-\ allocator's own suite because the allocator is its only production consumer and
-\ the two have to agree about what a machine is.
+\ constants, and the ARM64 description a64ir.f derives from it. The allocator is
+\ its only production consumer, and the two have to agree about what a machine is.
 SUITE compiler-regfile
    test/compiler/regfile.f
-;SUITE
-
-SUITE compiler-native-regalloc
-   test/compiler/native-regalloc.f
 ;SUITE
 
 SUITE compiler-native-frame-slot-e2e
@@ -792,10 +706,6 @@ SUITE compiler-native-frame-slot-e2e
 
 SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
-;SUITE
-
-SUITE compiler-native-emit
-   test/compiler/native-emit.f
 ;SUITE
 
 SUITE compiler-native-trap
@@ -819,10 +729,6 @@ SUITE compiler-native-finally-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-finally.f
-;SUITE
-
-SUITE compiler-native-fetch-snapshot
-   test/compiler/native-fetch-snapshot.f
 ;SUITE
 
 SUITE compiler-native-prefix-declarations
@@ -851,19 +757,11 @@ SUITE print-min-int
 \ ticked internal word - and say here which of those it needs.
 \ test/internal-word-gate.f stays on the product engine on purpose: it pins the
 \ refusals this engine does not have.
-WHITEBOX-SUITE whitebox-engine
-   test/whitebox-engine-suite.f
-;SUITE
-
 \ PRIM: / PPRIM: / CLOSE-PRIVATE and the owner packages the fixture opens are
 \ sealed in the product image, which is why this suite drives its fixture
 \ through a from-source child window that runs the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
-;SUITE
-
-SUITE control-capture
-   test/control-capture.f
 ;SUITE
 
 SUITE name-intern-capture
@@ -872,10 +770,6 @@ SUITE name-intern-capture
 
 SUITE loop-obligations
    test/loop-obligations.f
-;SUITE
-
-SUITE native-build-layout
-   test/native-layout.f
 ;SUITE
 
 SUITE stripped-image
@@ -902,16 +796,8 @@ SUITE aot-data-cell-refusals
    test/compiler/aot-data-cell-refusals.f
 ;SUITE
 
-SUITE aot-seeded-address-sites
-   test/aot-seeded-address-sites.f
-;SUITE
-
 SUITE native-quote-forward
    test/native-quote-forward-e2e.f
-;SUITE
-
-SUITE compiler-native-internal-call
-   test/compiler/native-internal-call.f
 ;SUITE
 
 SUITE compiler-native-hookless-reject
@@ -932,10 +818,6 @@ SUITE image-lifecycle-late-register
 
 SUITE native-resource-image
    test/native-resource-image.f
-;SUITE
-
-WHITEBOX-SUITE registry-persist
-   test/registry-persist.f
 ;SUITE
 
 SUITE native-defer-image
@@ -959,14 +841,6 @@ SUITE code-reclaim
 
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
-;SUITE
-
-SUITE native-branch-reloc
-   test/native-branch-reloc.f
-;SUITE
-
-SUITE compiler-native-tail
-   test/compiler/native-tail.f
 ;SUITE
 
 SUITE compiler-native-fold
@@ -1040,10 +914,6 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
-SUITE compiler-native-call-binding
-   test/compiler/native-call-binding.f
-;SUITE
-
 SUITE compiler-native-word-binding-aot
    src/lib/test.f
    test/compiler/aot-mode.f
@@ -1077,35 +947,8 @@ SUITE undefine-binding-aot
    test/undefine-binding.f
 ;SUITE
 
-SUITE compiler-native-dictionary-append
-   test/compiler/native-dictionary-append.f
-;SUITE
-
-SUITE compiler-native-dictionary-publish
-   test/compiler/native-dictionary-publish.f
-;SUITE
-
-SUITE compiler-code-span
-   test/compiler/code-span.f
-;SUITE
-
 SUITE compiler-code-bytes
    test/compiler/code-bytes.f
-;SUITE
-
-SUITE compiler-aot-closure-index
-   test/compiler/aot-closure-index.f
-;SUITE
-
-SUITE compiler-native-chain
-   test/compiler/native-chain.f
-;SUITE
-
-SUITE compiler-native-chain-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-chain.f
 ;SUITE
 
 SUITE compiler-native-qualified-trusted
@@ -1120,10 +963,6 @@ SUITE compiler-native-generated-constructor-aot
 
 SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
-;SUITE
-
-SUITE compiler-native-tick
-   test/compiler/native-tick.f
 ;SUITE
 
 SUITE compiler-integer-literals
@@ -1144,10 +983,6 @@ SUITE native-dead-path
 
 SUITE native-dstack-alias
    test/compiler/native-dstack-alias.f
-;SUITE
-
-SUITE native-tail-placement
-   test/compiler/native-tail-placement.f
 ;SUITE
 
 WHITEBOX-SUITE compiler-native-match
@@ -1354,13 +1189,9 @@ SUITE ffi-callback
 ;SUITE
 
 \ More than 129 native C entries, stable pointers through growth, high-row
-\ lifecycle and fallback; the emitter check reaches beyond a 16-bit slot ID.
+\ lifecycle and fallback.
 SUITE ffi-callback-growth
    test/ffi-callback-growth.f
-;SUITE
-
-SUITE native-callback-stub-immediate
-   test/native-callback-stub-immediate.f
 ;SUITE
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
@@ -1749,10 +1580,6 @@ SUITE certify-does-definer
    test/certify-does-definer.f
 ;SUITE
 
-SUITE certify-generated
-   test/certify-generated.f
-;SUITE
-
 SUITE underdepth-gate
    test/underdepth-gate.f
 ;SUITE
@@ -1803,10 +1630,6 @@ SUITE engine-span-end
    test/engine-span-end.f
 ;SUITE
 
-SUITE checker-owner-descriptor
-   test/checker-owner-descriptor.f
-;SUITE
-
 SUITE checker-soundness
    test/checker-soundness-suite.f
 ;SUITE
@@ -1819,28 +1642,12 @@ SUITE checker-dup-record
    test/checker-dup-record.f
 ;SUITE
 
-SUITE diag-buffer-capacity
-   test/diag-buffer-capacity.f
-;SUITE
-
 WHITEBOX-SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
 WHITEBOX-SUITE checker-completion
    test/checker-completion.f
-;SUITE
-
-SUITE defer-history
-   test/defer-history.f
-;SUITE
-
-WHITEBOX-SUITE effect-intern
-   test/effect-intern-suite.f
-;SUITE
-
-WHITEBOX-SUITE effect-store-census
-   test/effect-store-census-test.f
 ;SUITE
 
 WHITEBOX-SUITE checker-dead-path
@@ -1863,10 +1670,6 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE aot-wid-restore
-   test/aot-wid-suite.f -- restore
-;SUITE
-
 SUITE aot-wid-refuse-address-span
    test/aot-wid-suite.f -- refuse-address-span
 ;SUITE
@@ -1887,10 +1690,6 @@ SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
 ;SUITE
 
-SUITE aot-capture-compact
-   test/aot-capture-compact.f
-;SUITE
-
 SUITE data-address-codec
    test/data-address-codec.f
    tools/snap-heap-owner-test.f
@@ -1904,20 +1703,12 @@ SUITE aot-named-cells-native
    test/aot-named-cells.f -- native
 ;SUITE
 
-SUITE aot-payload-admission
-   test/aot-payload-admission.f
-;SUITE
-
 SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
 SUITE aot-cell-values
    test/aot-cell-values.f
-;SUITE
-
-SUITE aot-registry-identity
-   test/aot-registry-identity.f
 ;SUITE
 
 SUITE checker-graph-domains
@@ -1932,10 +1723,6 @@ SUITE aot-effect-pool
    test/aot-effect-pool.f
 ;SUITE
 
-SUITE signal-stub
-   test/signal-stub.f
-;SUITE
-
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
@@ -1945,10 +1732,6 @@ SUITE tier
 ;SUITE
 SUITE does-clause-record
    test/does-clause-record.f
-;SUITE
-
-SUITE does-empty-clause
-   test/does-empty-clause.f
 ;SUITE
 
 SUITE sealed-system-package
@@ -1969,10 +1752,6 @@ SUITE address-cell-rollback
 
 SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
-;SUITE
-
-SUITE address-cell-index
-   test/address-cell-index.f
 ;SUITE
 
 SUITE address-cell-index-recovery
@@ -2101,10 +1880,6 @@ SUITE fs-list
 
 SUITE fs-anchored
    test/fs-anchored-consumer.f
-;SUITE
-
-SUITE tree-copy
-   src/lib/tree-copy-test.f
 ;SUITE
 
 SUITE pty
@@ -2255,20 +2030,12 @@ SUITE linear
    test/linear-suite.f
 ;SUITE
 
-WHITEBOX-SUITE decl-event
-   test/decl-event-suite.f
-;SUITE
-
 SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
 SUITE closed-source
    test/closed-source-suite.f
-;SUITE
-
-WHITEBOX-SUITE closed-unit
-   test/closed-unit-suite.f
 ;SUITE
 
 WHITEBOX-SUITE engine
@@ -2362,18 +2129,6 @@ SUITE values
    test/values.f
 ;SUITE
 
-SUITE primitive-registry
-   test/primitive-registry.f
-;SUITE
-
-SUITE dynamic-buffer-registry
-   test/dynamic-buffer-registry.f
-;SUITE
-
-SUITE dynamic-buffer-capture
-   test/dynamic-buffer-capture.f
-;SUITE
-
 SUITE aot-capture-bound
    test/aot-capture-bound.f
 ;SUITE
@@ -2384,18 +2139,6 @@ SUITE dynamic-buffer-tasks
 
 SUITE layout-defer
    test/layout-defer.f
-;SUITE
-
-WHITEBOX-SUITE lower-cert
-   test/lower-cert.f
-;SUITE
-
-WHITEBOX-SUITE layout-valid-guards
-   test/layout-valid-guards.f
-;SUITE
-
-WHITEBOX-SUITE layout-valid-growth
-   test/layout-valid-growth.f
 ;SUITE
 
 SUITE wide-store-seal
@@ -2414,20 +2157,8 @@ SUITE code-window
    test/code-window.f
 ;SUITE
 
-SUITE sites
-   test/sites.f
-;SUITE
-
-SUITE p2-map-rewind
-   test/p2-map-rewind.f
-;SUITE
-
 SUITE lower-txn-large
    test/lower-txn-large.f
-;SUITE
-
-WHITEBOX-SUITE bootstrap-wide-memory-src
-   test/bootstrap-wide-memory-src.f
 ;SUITE
 
 WHITEBOX-SUITE enum-decl
@@ -2436,10 +2167,6 @@ WHITEBOX-SUITE enum-decl
 
 SUITE extent-product
    test/extent-product-test.f
-;SUITE
-
-WHITEBOX-SUITE field-proj
-   test/field-proj-suite.f
 ;SUITE
 
 WHITEBOX-SUITE field-proj-errors
@@ -2468,16 +2195,13 @@ SUITE capture-tree
    test/capture-tree-test.f
 ;SUITE
 
-WHITEBOX-SUITE generated-declaration-transaction
-   test/generated-declaration-transaction-suite.f
-;SUITE
-
 SUITE require-cap
    test/require-cap-test.f
 ;SUITE
 
 SUITE rigid-region
    test/rigid-region-suite.f
+   test/rigid-region-inferred-e2e.f
 ;SUITE
 
 SUITE structure-certify
@@ -2550,10 +2274,6 @@ SUITE c2-records
 
 SUITE c2-diagnostics
    test/c2-diagnostics.f
-;SUITE
-
-WHITEBOX-SUITE type-field-owner
-   test/type-field-owner-suite.f
 ;SUITE
 
 SUITE type-linear

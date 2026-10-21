@@ -57,7 +57,6 @@ public
 : RESET ( -- ) 0 USED ! 0 NAME-BYTES ! 0 SCALAR-ROW ! 0 DIVISION-ROW ! 0 SEEDED ! ;
 : SEEDED! ( bool -- ) if 1 else 0 then SEEDED ! ;
 : SEEDED? ( -- bool ) SEEDED @ 0<> ;
-: RELEASE ( -- ) RESET ROWS-RELEASE NAMES-RELEASE ;
 
 : ADD ( ptr u8 n label label -- n ) {: name:ptr size:n first:label last:label :}
    size RESERVE

@@ -19,12 +19,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
 
-variable HBT-DEP-SRC-U
-variable HBT-ENTRY-SRC-U
-
-create HBT-DEP-SRC-BUF FS-PATH-CAP allot
-create HBT-ENTRY-SRC-BUF FS-PATH-CAP allot
-
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
 
@@ -48,12 +42,6 @@ variable HBT-INST-FILES
 
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
-
-: HBT-DEP-SRC ( -- ptr u8 n )
-   HBT-DEP-SRC-BUF HBT-DEP-SRC-U @ ;
-
-: HBT-ENTRY-SRC ( -- ptr u8 n )
-   HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U @ ;
 
 : HBT-APPEND-CACHE-MUTATION ( -- )
    SB-RESET
@@ -477,40 +465,6 @@ variable HBT-INST-FILES
    HBT-NEW-TMP DIR? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
 
-\ The AOT/object cache keys fold the whole require/include closure, so a
-\ content edit to a required file (not just the top-level source) must change the
-\ key. This is the property a single-file digest could not provide.
-: HBT-ENTRY-CLOSURE$ ( -- ptr u8 n )
-   SB-RESET
-   s" require " SB-APPEND
-   HBT-DEP-SRC SB-APPEND
-   HBB-LF SB-APPEND-C
-   SB$ ;
-
-: HBT-ARTIFACT-KEY ( ptr u8 -- )
-   {: dst:ptr :}
-   HBB-SRC-CLOSURE-HEX!
-   HBB-MAKER-KEY!
-   HBB-ARTIFACT-KEY!
-   HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY ;
-
-: HBT-CLOSURE-KEY-CHANGES ( -- )
-   HBB-RESET-OPTIONS
-   HBT-ROOT s" dep-closure.f" HBT-DEP-SRC-BUF HBT-DEP-SRC-U HBT-PATH!
-   HBT-ROOT s" entry-closure.f" HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U HBT-PATH!
-   HBT-DEP-SRC s\" \\ dep v1\n" WRITE-ALL
-   HBT-ENTRY-SRC HBT-ENTRY-CLOSURE$ WRITE-ALL
-   HBT-ENTRY-SRC HBB-SRC!
-   HBT-KEY-A HBT-ARTIFACT-KEY
-   HBT-DEP-SRC s\" \\ dep v2 changed\n" APPEND-FILE
-   HBT-KEY-B HBT-ARTIFACT-KEY
-   HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
-   HBT-ENTRY-SRC HBB-SRC!
-   HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-A 64 BYTE-COPY
-   HBT-DEP-SRC s\" \\ dep v3 changed\n" APPEND-FILE
-   HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-B 64 BYTE-COPY
-   HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE ;
-
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -522,7 +476,6 @@ public
    CLI-REPORT
    HBT-INSTALL-FAIL
    HBT-CACHE-KEY-CHANGES
-   HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL

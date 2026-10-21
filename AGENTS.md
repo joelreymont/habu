@@ -44,11 +44,11 @@ belong in the language core.
   `jj workspace forget` the workspace and `trash` its directory. Never infer
   equivalence from commit subjects alone. Finish by checking the bookmark and
   workspace inventories; retain only active work with a stated reason.
-- Build candidates in a private worktree or temporary directory. Keep only the
-  latest qualified release under `~/.local/lib/habu/`: after selecting it with
-  `current`, retire older release directories promptly. Move any process pinned
-  to an older path before retiring that directory. Do not install a candidate
-  there merely to run tests.
+- Build and test candidates in a private worktree or temporary directory.
+  Keep one installed Habu tree at a stable path, with matching executable, map
+  and library sources. Update that installation when needed; do not create
+  per-revision release directories. Ordinary development does not require
+  installation or publication.
 - A gate and its push never share one unconditional command chain: run the
   gate, read its exit code on its own line, then push.
 - Use dots only when the task calls for them; they are not a gate for coding,
@@ -87,10 +87,10 @@ belong in the language core.
 ## Verification and documentation
 
 - Each significant feature implementation needs an independent adversarial
-  review before landing, including lead-written code: on Astra when Codex
-  wrote it, on Fable when Claude Code did. Give the reviewer the requirements
-  and completed code, not the implementation discussion. Reviews must look for behavioral defects, overengineering and
-  opportunities to simplify. Fix confirmed findings or show they do not affect
+  review before landing, including lead-written code. Give the reviewer the
+  requirements and completed code, not the implementation discussion. Reviews
+  must look for behavioral defects, overengineering and opportunities to
+  simplify. Fix confirmed findings or show they do not affect
   outcomes; get focused follow-up review of fixes. Missing or interrupted
   reviews are not approval.
 - Never write unit tests after you write code.

@@ -1,7 +1,6 @@
 \ Run on the shared native fixture writer's retained runtime by
 \ build-fixpoint-source-test.f. These compact-record fixtures test runtime
-\ membership; real full/partial boot is covered by hb-open-failure and
-\ aot-wid-restore.
+\ membership; real full/partial boot is covered by hb-open-failure.
 package AOT-KIND-TEST
 using AOT-BUF
 

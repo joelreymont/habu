@@ -80,3 +80,35 @@ VERIFY-TRIM
 s" PROF-TRIM-NEW" HIDE-DEFS-FROM
 prof-json
 VERIFY-HIDDEN
+
+\ Ordinary trimming must name pending samples before the dictionary rows go.
+\ Otherwise the next report loses the only owner of these deferred PCs.
+1 set-tier
+0 prof-on
+: PROF-LATE-TRIM ( -- ) 100000000 0 ?do i drop loop ;
+PROF-LATE-TRIM
+prof-off
+s" PROF-LATE-TRIM" HIDE-DEFS-FROM
+prof-json
+
+\ A seed rewind retains runnable donor code, but a later CP rewind releases
+\ that code. Reuse must stop charging its old identity before the next report.
+variable REUSE-CP
+variable REUSE-ND
+variable REUSE-PC
+cp@ REUSE-CP !
+ndict@ REUSE-ND !
+: PROF-RECLAIM-DONOR ( -- ) 100000000 0 ?do i drop loop ;
+s" PROF-RECLAIM-DONOR" XREF-FIND XREF-START REUSE-PC !
+0 prof-on
+REUSE-ND @ seed-ndict!
+REUSE-CP @ cp!
+: PROF-RECLAIM-TARGET ( -- n ) 100000000 0 ?do i drop loop 42 ;
+: VERIFY-RECLAIM ( -- )
+   s" PROF-RECLAIM-TARGET" XREF-FIND XREF-START REUSE-PC @ <> if
+      s" profiler reclaim: code address was not reused" 74 die then
+   PROF-RECLAIM-TARGET 42 <> if
+      s" profiler reclaim: target returned wrong value" 74 die then
+   prof-off
+   prof-json ;
+VERIFY-RECLAIM

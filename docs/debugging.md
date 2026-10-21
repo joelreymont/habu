@@ -705,6 +705,21 @@ first crosses the guard page.
   process to LOGFILE and print a census that classifies every child
   fork-vs-exec by image path and argv (fork children keep the parent's argv).
   Start here for any "how many engines does this run actually start" question.
+  The census brackets path/argv reads with `proc_pidinfo`'s exec version and
+  counts each observed version once. The `PROC_PIDUNIQIDENTIFIERINFO` record
+  is 56 bytes with `p_idversion` at byte 32, as specified by Apple's
+  [API structure](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h);
+  Apple's [exec regression test](https://github.com/apple-oss-distributions/xnu/blob/main/tests/exec-race-128791723.c)
+  verifies that the version changes across exec. This preserves same-image
+  reexecs while avoiding a queued exec notification counting an image already
+  read at registration twice. An inherited child counts as a fork only at
+  exit without an observed exec. Unavailable or changing image reads are
+  reported as incomplete and retried at an event or sweep; exited processes
+  may never yield a coherent image. A child with no comparable parent image
+  remains unclassified until that comparison is possible; an earlier exit
+  logs `INCOMPLETE` instead of fabricating an exec or fork. Notifications can
+  coalesce, so the census counts observed generations and cannot reconstruct
+  unseen rapid execs.
 
 ## Sampling profiler
 
@@ -837,11 +852,19 @@ copied qualified name, code span, counter, inclusive count and caller edges.
 The next report indexes retained code alongside new live definitions, so a new
 word at a reused ordinal cannot inherit the donor's samples or name.
 
-Ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and checker
-overlay cleanup) detaches the removed identities and clears their stored spans.
-Those words leave the index; a later seed rewind cannot revive a word already
-retired by `undefine`. Reusing an ordinary trimmed ordinal assigns a fresh
-profile ID at the next report refresh.
+On ARM64, ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and
+checker overlay cleanup) resolves pending samples before detaching the removed
+identities and clearing their stored spans. Those words leave the searchable
+index immediately; their names, counts and edges remain in reports. A later
+seed rewind cannot revive a word already retired by `undefine`. Reusing an
+ordinary trimmed ordinal assigns a fresh profile ID at the next refresh.
+
+An ARM64 code-pointer rewind (`cp!`, including ordinary code reclamation) resolves
+pending samples before releasing any bytes, then removes every overlapping
+live or seed-retained span from the index. Code emitted at a reused address
+cannot inherit the old word's exclusive samples. Reports walk stable profile
+IDs independently of the searchable spans, so reclaimed words keep their
+accumulated samples.
 
 `prof-on` starts a fresh identity session; `prof-reset` clears counts across
 the full profile-ID range while retaining the session's names and index.

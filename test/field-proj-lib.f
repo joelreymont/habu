@@ -1,11 +1,11 @@
-\ field-proj-lib.f - the field-projection fixture test/field-proj-suite.f and
-\ test/field-proj-boundary-child.f share: the family and field lookups, and
+\ field-proj-lib.f - the field-projection fixture
+\ test/field-proj-boundary-child.f uses: the family and field lookups, and
 \ accessors generated inside the window test/field-proj-arm.f arms, for
 \ a cell field, a byte-offset field and a generic field, with the words that
-\ store a bundle and read each field back by value. It asserts nothing; each
-\ file stores and reads what it claims.
+\ store a bundle and read each field back by value. It asserts nothing; the
+\ child stores and reads what it claims.
 \
-\ The families are declared outside the package: the suite's candidates name
+\ The families are declared outside the package: the child's candidates name
 \ them bare, and FAM-ID finds them as top-level families.
 
 require test/field-proj-arm.f

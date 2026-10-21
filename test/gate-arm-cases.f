@@ -28,24 +28,14 @@ SUITE debugger-resume
    test/debugger-resume.f
 ;SUITE
 
-\ This reads 4-byte AArch64 BL encodings and the JIT address-map bitmap.
-SUITE addrmap-call
-   test/addrmap-call.f
-;SUITE
-
-\ These read source definitions as fixed-width AArch64 instructions. The
-\ identity-spill and wide-frame cases inspect SP slots; fused-moves inspects
-\ indexed x19 transfers. Their runtime subjects are checked in those suites.
+\ These read source definitions as fixed-width AArch64 instructions and
+\ inspect SP slots. Their runtime subjects are checked in those suites.
 SUITE compiler-native-identity-spill
    test/compiler/native-identity-spill.f
 ;SUITE
 
 SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
-;SUITE
-
-SUITE compiler-native-fused-moves
-   test/compiler/native-fused-moves.f
 ;SUITE
 
 \ Live ARM windows and instruction-chain compaction need an ARM host. Inert

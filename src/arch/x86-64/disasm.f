@@ -5,11 +5,11 @@ require src/lib/fmt.f
 
 package X64DIS
 public
--9500 constant E-FIRST
--9509 constant E-LAST
--9500 constant E-TRUNCATED
--9501 constant E-UNKNOWN
--9502 constant E-LENGTH
+-9510 constant E-FIRST
+-9519 constant E-LAST
+-9510 constant E-TRUNCATED
+-9511 constant E-UNKNOWN
+-9512 constant E-LENGTH
 
 0 constant FLOW-NEXT
 1 constant FLOW-COND

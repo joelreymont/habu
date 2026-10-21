@@ -140,6 +140,10 @@ variable GD-USED
 : DOMAIN-RUN ( -- )
    s" shared-dag" DOMAIN-MODE? IF GD-RUN EXIT THEN
    DOMAIN-PREPARE
+   \ Reuse the accepted graph's scratch before changing its binder paths.
+   \ A prior lexical memo must not hide the changed domain on the next check.
+   s" baseline" DOMAIN-MODE? s" nested-baseline" DOMAIN-MODE? or 0=
+   IF DOMAIN-CHECK THEN
    s" region-separate" DOMAIN-MODE? s" region-shared" DOMAIN-MODE? or
    s" nested-region-separate" DOMAIN-MODE? or
    s" nested-region-shared" DOMAIN-MODE? or IF

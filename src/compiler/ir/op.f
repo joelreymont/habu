@@ -978,13 +978,6 @@ public
    p r key PR-CK
    key p r  r id ROW-AT  OFF-SCST OFF-SCN i WIN@ IR-ID:PACK-BLOCK ;
 
-: ATTR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
-   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
-   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
-   p r key PR-CK
-   key p r  r id ROW-AT  i AT-VAL ATWIN@ IR-ID:PACK-ATTR ;
-
 \ The key this attribute answers. Whether the opcode declares it is the freeze
 \ verifier's question; this reader only says which key was recorded.
 : ATTR-KEY@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
@@ -1063,17 +1056,11 @@ public
 : ROPS ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER CNT ;
 
-: FOPS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN ROPS ;
-
 : RVALUES ( IR-ARENA:reader -- n )
    IR-ARENA:FROZEN-READER VCNT ;
 
 : FVALUES ( IR-ARENA:view -- n )
    IR-ARENA:OPEN RVALUES ;
-
-: FPOOL-CELLS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN PCELLS ;
 
 : ROPCODE@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
    {: ra:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
@@ -1105,17 +1092,9 @@ public
    {: ra:IR-ARENA:reader id:IR-ID:ir-op-id :}
    ra IR-ARENA:FROZEN-READER id OFF-SCN FLD LEN-OK ;
 
-: FSUCCESSORS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
-   ra IR-ARENA:OPEN id RSUCCESSORS ;
-
 : RATTRS ( IR-ARENA:reader IR-ID:ir-op-id -- n )
    {: ra:IR-ARENA:reader id:IR-ID:ir-op-id :}
    ra IR-ARENA:FROZEN-READER id OFF-ATN FLD LEN-OK AT-N ;
-
-: FATTRS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
-   ra IR-ARENA:OPEN id RATTRS ;
 
 : RSPAN@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
    {: ra:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
@@ -1126,10 +1105,6 @@ public
    r l OFF-SBEG RC@ LEN-OK
    r l OFF-SLEN RC@ LEN-OK
    IR--SOURCE-SPAN:MAKE ;
-
-: FSPAN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
-   {: ra:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
-   ra IR-ARENA:OPEN key id RSPAN@ ;
 
 : ROPERAND@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: pv:IR-ARENA:reader rv:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
@@ -1180,19 +1155,11 @@ public
    {: va:IR-ARENA:reader id:IR-ID:ir-value-id :}
    va IR-ARENA:FROZEN-READER id OFF-VKIND VFLD N>KIND ;
 
-: FVALUE-KIND@ ( IR-ARENA:view IR-ID:ir-value-id -- IR-OP:def-kind )
-   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
-   va IR-ARENA:OPEN id RVALUE-KIND@ ;
-
 : RVALUE-TYPE@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: va:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
    va IR-ARENA:FROZEN-READER {: v:IR-ARENA:reader :}
    v key VKEY-CK
    key v id OFF-VTYP VFLD ORD-OK IR-ID:PACK-TYPE ;
-
-: FVALUE-TYPE@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-type-id )
-   {: va:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
-   va IR-ARENA:OPEN key id RVALUE-TYPE@ ;
 
 : FVALUE-OP@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-op-id )
    {: va:IR-ARENA:view ra:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
@@ -1205,12 +1172,6 @@ public
    dup r CNT >= if E-IR-OP-BOUND throw then
    key swap IR-ID:PACK-OP ;
 
-: FVALUE-POS@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
-   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
-   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
-   v id OFF-VKIND VFLD RESULT-KIND-CK
-   v id OFF-VPOS VFLD LEN-OK ;
-
 : RVALUE-BLOCK@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
    {: va:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
    va IR-ARENA:FROZEN-READER {: v:IR-ARENA:reader :}
@@ -1218,19 +1179,11 @@ public
    v id OFF-VKIND VFLD ARG-KIND-CK
    key v id OFF-VDEF VFLD ORD-OK IR-ID:PACK-BLOCK ;
 
-: FVALUE-BLOCK@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
-   {: va:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
-   va IR-ARENA:OPEN key id RVALUE-BLOCK@ ;
-
 : RVALUE-ARG@ ( IR-ARENA:reader IR-ID:ir-value-id -- n )
    {: va:IR-ARENA:reader id:IR-ID:ir-value-id :}
    va IR-ARENA:FROZEN-READER {: v:IR-ARENA:reader :}
    v id OFF-VKIND VFLD ARG-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
-
-: FVALUE-ARG@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
-   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
-   va IR-ARENA:OPEN id RVALUE-ARG@ ;
 
 private
 get-current prot-wid-add

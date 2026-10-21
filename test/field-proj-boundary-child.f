@@ -59,6 +59,9 @@ TRUSTED: RAW-ROUNDTRIP ( -- n )
 public
 : RUN ( -- )
    10 20 0 FP-STORE 30 40 1 FP-STORE 42 0 FPG-STORE
+   \ Unarmed, the op is inert: a checked projection is refused.
+   FP-CLEAR
+   s" FPX-U ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 =ASSERT
    \ A projection rule refuses through the transferred checker: field a's
    \ committed offset is 0, not the CELL the single-shot window is armed with.
    s" FPX-WO" FID-A @ CELL TYPE-DECL:FP-ARM

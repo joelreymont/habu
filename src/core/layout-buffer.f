@@ -608,7 +608,8 @@ PRIM: TYPED-VARIABLE PRIM;
 \ The third control cell is the live registry handle. RESERVE registers
 \ on first allocation; RELEASE unregisters, so an existing declaration remains
 \ reusable after capture and restore without replaying this generated source.
-\ The fourth and fifth cells cache the live stride and complete-element bound.
+\ The fourth and fifth cache the element bound for the width that last grew
+\ the record; src/core/dynamic-storage.f states when the accessor trusts it.
 \
 \ THE CONTROL HEAD IS DECLARED, NOT `create`d (dot habu-refuse-a-ptr-5ad2734e).
 \ It holds the mapping's address, and a raw storage cell never holds an address:
@@ -629,12 +630,14 @@ PRIM: TYPED-VARIABLE PRIM;
 \ the head rather than through its pointer type.
 \ THE DYNAMIC ELEMENT WIDTH IS BYTES, where LBUF-W holds cells: this definer
 \ allots no element storage, it scales the accessor's index and the reserve by
-\ the width, and DYNAMIC-STORAGE:RESERVE-FIXED takes its width in bytes.
+\ the width, and DYNAMIC-STORAGE:RESERVE takes its width in bytes.
 \ A byte element is therefore expressible here and nowhere else, which is what
 \ CHECKER-DYNAMIC-INFO admits over CHECKER-STORAGE-INFO; every element the cell
 \ definers admit keeps the generated source it had, since DBUF-W is then
 \ exactly LBUF-W cells.
 variable DBUF-W
+\ Head, exact byte capacity, registry slot + 1, width tag and element bound for
+\ that width: every dynamic control record (src/core/dynamic-storage.f).
 5 cells constant DBUF-CTRL-BYTES
 
 : DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
@@ -650,12 +653,13 @@ variable DBUF-W
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
    s"  ) " LBUF-APP name nameu LBUF-BASE,
-   s"  DYNAMIC-STORAGE:ADDRESS-FIXED ; : " LBUF-APP name nameu LBUF-APP
+   s"  " LBUF-APP DBUF-W @ LBUF-DEC,
+   s"  DYNAMIC-STORAGE:ADDRESS ; : " LBUF-APP name nameu LBUF-APP
    s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
    s"  " LBUF-APP DBUF-W @ LBUF-DEC,
-   s"  DYNAMIC-STORAGE:RESERVE-FIXED ; : " LBUF-APP name nameu LBUF-APP
+   s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
    s" -RELEASE ( -- ) " LBUF-APP name nameu LBUF-BASE,
-   s"  DYNAMIC-STORAGE:RELEASE-FIXED ;" LBUF-APP
+   s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 \ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head

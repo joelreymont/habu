@@ -1,5 +1,4 @@
 \ native-wide-frame.f - immutable locals across conditional calls.
-\ The independent top-page frame encoding case is in native-emit.f.
 require src/lib/test.f
 
 1 set-tier

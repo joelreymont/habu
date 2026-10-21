@@ -52,9 +52,6 @@ variable READY
 : FIELD! ( n n -- )
    FILE-BUF LE:U64! ;
 
-: FIELD@ ( n -- n )
-   FILE-BUF LE:U64@ ;
-
 : SECTION-LEN ( n -- n ) {: slot:n :}
    slot SECTION-U @ ;
 
@@ -104,26 +101,26 @@ variable READY
       off i SECTION-LEN +
    loop drop ;
 
-: READ-HEADER ( n ptr u8 n ptr u8 n n -- )
-   {: arch:n name:ptr nameu:n key:ptr keyu:n size:n :}
+: READ-HEADER ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: arch:n name:ptr nameu:n key:ptr keyu:n base:ptr size:n :}
    size HEADER-BYTES < if BAD then
-   0 FILE-BUF MAGIC-BYTES s" HBNUNIT2" STR= 0= if BAD then
-   8 FIELD@ FORMAT-VERSION <> if BAD then
-   16 FIELD@ arch <> if BAD then
-   24 FIELD@ nameu <> if BAD then
-   32 FILE-BUF nameu name nameu STR= 0= if BAD then
-   96 FILE-BUF KEY-BYTES key keyu STR= 0= if BAD then ;
+   base MAGIC-BYTES s" HBNUNIT2" STR= 0= if BAD then
+   base 8 + LE:U64@ FORMAT-VERSION <> if BAD then
+   base 16 + LE:U64@ arch <> if BAD then
+   base 24 + LE:U64@ nameu <> if BAD then
+   base 32 + nameu name nameu STR= 0= if BAD then
+   base 96 + KEY-BYTES key keyu STR= 0= if BAD then ;
 
-: READ-SECTIONS ( n -- )
-   {: size:n :}
+: READ-SECTIONS ( ptr u8 n -- )
+   {: base:ptr size:n :}
    HEADER-BYTES
    SECTION-COUNT 0 ?do
       {: off:n :}
-      LENGTHS-OFF i FIELD-BYTES * + FIELD@ {: bytes:n :}
+      base LENGTHS-OFF i FIELD-BYTES * + + LE:U64@ {: bytes:n :}
       bytes size off - > if BAD then
       off bytes SIZE+
       \ The validated offset may equal size for an empty trailing section.
-      0 FILE-BUF off + i SECTION-PTR!
+      base off + i SECTION-PTR!
       bytes i SECTION-LEN!
    loop
    size <> if BAD then ;
@@ -173,19 +170,17 @@ ARCH-ARM64 constant ARCH-AARCH64
    size HEADER-BYTES < if BAD then
    size FILE-BUF-RESERVE
    bytes 0 FILE-BUF size BYTE-COPY
-   arch name nameu key keyu size READ-HEADER
-   size READ-SECTIONS
+   arch name nameu key keyu 0 FILE-BUF size READ-HEADER
+   0 FILE-BUF size READ-SECTIONS
    1 READY ! ;
 
-: READ-BYTES-REUSE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+\ The caller keeps these bytes immutable until the sections are reset or closed.
+: READ-VIEW ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: bytes:ptr size:n arch:n name:ptr nameu:n key:ptr keyu:n :}
    arch name nameu key keyu META-CK
    RESET-KEEP
-   size HEADER-BYTES < if BAD then
-   size FILE-BUF-RESERVE
-   bytes 0 FILE-BUF size BYTE-COPY
-   arch name nameu key keyu size READ-HEADER
-   size READ-SECTIONS
+   arch name nameu key keyu bytes size READ-HEADER
+   bytes size READ-SECTIONS
    1 READY ! ;
 
 : READ ( ptr u8 n n ptr u8 n ptr u8 n -- )
@@ -196,8 +191,8 @@ ARCH-ARM64 constant ARCH-AARCH64
    size HEADER-BYTES < if BAD then
    size FILE-BUF-RESERVE
    path pathu 0 FILE-BUF size READ-ALL size <> if BAD then
-   arch name nameu key keyu size READ-HEADER
-   size READ-SECTIONS
+   arch name nameu key keyu 0 FILE-BUF size READ-HEADER
+   0 FILE-BUF size READ-SECTIONS
    1 READY ! ;
 
 : SECTION$ ( n -- ptr u8 n ) {: slot:n :}

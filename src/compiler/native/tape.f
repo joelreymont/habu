@@ -1,7 +1,7 @@
 \ tape.f - the native stage N0 source tape: the exact token stream the
 \ compiler consumed, captured once, and sealed.
 \
-\ Build live, read frozen: NEW, the appends and PUSHED are the only live
+\ Build live, read frozen: NEW and the appends are the only live
 \ operations, because readers need a complete token stream.
 \
 \ An origin ordinal is strictly below its child's, which is what makes the
@@ -356,10 +356,6 @@ public
    parent 0 < if E-NTAPE-ORIGIN throw then
    NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE parent 1+ LIVE-ADD ;
 
-\ The only live reader; everything else reads the sealed view.
-: PUSHED ( IR-ARENA:arena -- n )
-   IR-ARENA:OPEN-LIVE dup HDR-CK CNT ;
-
 \ After this the builder handle rejects every append with E-IR-ARENA-FROZEN.
 : SEAL ( IR-ARENA:arena -- IR-ARENA:view )
    dup IR-ARENA:OPEN-LIVE HDR-CK IR-ARENA:FREEZE ;
@@ -406,23 +402,6 @@ public
    r l OFF-KIND RC@ N>KIND LIT-KIND? 0= if E-NTAPE-KIND throw then
    r l OFF-LIT RC@ ;
 
-\ The whole six-field record off one resolution, so the spelling and the span
-\ are read here rather than through SPELL@ and SPAN@ and their own opens.
-: TOKEN@ ( IR-ARENA:view IR-ID:ir-module-key n -- NTAPE:token )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key i:n :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r key KEY-CK
-   r i ORD-CK {: l:n :}
-   r l OFF-KIND RC@ N>KIND
-   r l OFF-MODE RC@ N>MODE
-   key r l OFF-SYM RC@ IR-ID:PACK-SYMBOL
-   r l OFF-LIT RC@
-   key r l OFF-SRC RC@ IR-ID:PACK-SOURCE
-   r l OFF-ST RC@
-   r l OFF-LN RC@
-   IR--SOURCE-SPAN:MAKE
-   NTAPE-TOKEN:MAKE ;
-
 \ ---- origin chains -----------------------------------------------------------
 : EXPANDED? ( IR-ARENA:view n -- bool )
    {: v:IR-ARENA:view i:n :}
@@ -463,41 +442,6 @@ public
       swap 1+ swap
    repeat
    drop ;
-
-\ ---- structural check --------------------------------------------------------
-private
-
-: ROW-CK ( IR-ARENA:reader IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key n -- )
-   {: r:IR-ARENA:reader sv:IR-ARENA:view yv:IR-ARENA:view
-      key:IR-ID:ir-module-key l:n :}
-   r l OFF-KIND RC@ N>KIND {: k:NTAPE:kind :}
-   r l OFF-MODE RC@ N>MODE drop
-   sv
-      key r l OFF-SRC RC@ IR-ID:PACK-SOURCE
-      r l OFF-ST RC@
-      r l OFF-LN RC@
-      IR--SOURCE-SPAN:MAKE
-   IR-SOURCE:FSPAN-CK
-   yv key r l OFF-SYM RC@ IR-ID:PACK-SYMBOL IR-SYM:FLEN@ drop
-   k r l OFF-LIT RC@ LIT-CK
-   r l OFF-ORG RC@ ORG-NONE = if exit then
-   l r l OFF-ORG RC@ ORG-LOCAL drop ;
-
-public
-
-\ View order: the tape, the frozen source registry, the frozen symbol rows.
-\ One resolution covers the whole walk; the other two tables keep their views,
-\ because this file reads no cell of either.
-: CHECK ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:view IR-ARENA:view -- )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key
-      sv:IR-ARENA:view yv:IR-ARENA:view :}
-   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
-   r key KEY-CK
-   r CNT 0 ?do
-      r sv yv key i ROW-CK
-   loop ;
-
-
 
 private
 get-current prot-wid-add

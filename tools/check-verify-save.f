@@ -49,7 +49,12 @@ TYPED-VARIABLE SAVE-XT [ ptr u8 n -- ]
 
 public
 
-: LOAD ( -- ) ROOT! [: LOAD-LIB ;] IN-ROOT ;
+\ The builder exits after capture. Its engine-provided files belong to this
+\ entry's tree during both the child and saver loads, as in the source child.
+: LOAD ( -- )
+   ROOT!
+   ROOT ROOT-U @ SOURCE-ROOT:ENGINE!
+   [: LOAD-LIB ;] IN-ROOT ;
 
 ;package
 

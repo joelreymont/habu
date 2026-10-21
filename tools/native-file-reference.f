@@ -616,6 +616,10 @@ EXPORT REGISTER-IMPL
    {: ord:n raw:ptr keyu:n producer:ptr produceru:n :}
    ord 0 < keyu 0 <= or produceru 0 < or produceru 32 > or if BAD then
    produceru 0<> produceru 32 <> and if BAD then
+   ord PENDING-ORD @ = if
+      raw keyu PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ STR=
+         0= if BAD then
+   then
    keyu INPUT-KEY-RESERVE
    raw 0 INPUT-KEY keyu BYTE-COPY
    0 INPUT-KEY {: key:ptr :}
@@ -767,8 +771,6 @@ PENDING-CLEAR
    {: ord:n key:ptr keyu:n producer:ptr produceru:n :}
    ord 0 < ord ndict@ >= or if BAD then
    PENDING-ORD @ ord <> if BAD then
-   key keyu PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ STR=
-      0= if BAD then
    ord key keyu producer produceru BIND-DECL
    ord BIND-LIVE
    ord LIVE-CONTRACT$ if
@@ -1129,6 +1131,7 @@ public
 \ import, and checks every length before advancing into variable rows.
 : PREPARE ( ptr u8 n n n n -- )
    {: src:ptr size:n recbase:n codebase:n codeu:n :}
+   0 PREP-REC-COUNT !
    size HEAD-BYTES < if BAD then
    recbase PREP-REC-BASE ! codebase PREP-CODE-BASE !
    codeu PREP-CODE-U !
@@ -1138,7 +1141,8 @@ public
    refs 0 < refs size HEAD-BYTES - REF-BYTES / > or if BAD then
    imports 0 < imports size HEAD-BYTES - refs REF-BYTES * - 32 / > or
       if BAD then
-   decls 0 < decls size HEAD-BYTES - refs REF-BYTES * - 32 / > or if BAD then
+   \ Definition capture exports exactly its one pending dictionary record.
+   decls 1 <> if BAD then
    refs PREP-REF-N !
    src PREP-SRC !
    src HEAD-BYTES + PREP-REFS !
@@ -1153,7 +1157,6 @@ public
       src PREP-CURSOR @ 24 + + LE:U64@ 0 <= if BAD then
       32 keyu + PREP-CURSOR +!
    loop
-   decls PREP-REC-COUNT !
    0 PREP-WIDS-INDEXED !
    decls 0 ?do
       32 size PREP-ROOM
@@ -1176,6 +1179,7 @@ public
          recbase i + key keyu NULL-PTR 0 BIND-DECL
       then
       1 recbase i + REC-PROJECTED ROW!
+      1 PREP-REC-COUNT +!
       contractu size PREP-CURSOR @ - > if BAD then
       contractu 0<> if
          recbase i + src PREP-CURSOR @ + contractu BIND-CONTRACT
@@ -1183,6 +1187,25 @@ public
       contractu PREP-CURSOR +!
    loop
    PREP-CURSOR @ size <> if BAD then ;
+
+\ A refused import may have published projected keys before its later sections
+\ were checked. Installed records have live occurrences and no longer project.
+: DISCARD-PREPARED ( -- )
+   PREP-REC-COUNT @ 0 > if
+      PREP-REC-BASE @ PREP-REC-COUNT @ +
+      PREP-REC-BASE @ ?do
+         i REC-PROJECTED ROW@ 0<> i REC-TOKEN ROW@ 0= and if
+            i RECORD-KEY$ KEY-FIND dup 0 >= if
+               {: row:n :}
+               row 2 KEY@ i = row 3 KEY@ 0= and if
+                  -1 row 2 KEY!
+               then
+            else drop then
+            i CLEAR-RECORD
+         then
+      loop
+   then
+   0 PREP-REC-COUNT ! ;
 
 : PREP-REF@ ( n -- n n n n ) {: idx:n :}
    idx 0 <= idx PREP-REF-N @ > or if BAD then

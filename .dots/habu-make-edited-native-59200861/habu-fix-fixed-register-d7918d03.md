@@ -1,9 +1,11 @@
 ---
 title: Fix fixed-register loop refusal
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-20T15:37:05.515619+03:00"
+closed-at: "2026-10-21T20:03:40.963286+03:00"
+close-reason: "landed in 3bdffeeafa17 (src/compiler/native/regalloc.f MB-HULL/MB-PIN-TAKEN?, MB-COALESCE1 keeps a copy whose merged hull crosses another pin of the same register); regression test/compiler/native-order-exit.f:104-155 is the reproducer's INSERT-EDIT body under 1 set-tier; independent review 2026-10-21 ACCEPT (rule equals MB-PIN placement refusals, no constraint relaxed); master full native suite and two-generation build pass"
 ---
 
 Public03d231f6 compiles the six-definition INSERT-EDIT reproducer, while public09fea843 and merged1228e908 refuse it at tier1 with E-A64RA-FIXED(-8460), exit67; tier0 succeeds. Exact body and wrappers are /Users/joel/.cache/tmp/kevin-insert-edit-repro. The pointer traversal and early-return branch obey checked stack contracts. Identify and repair the responsible native compiler/regalloc regression without caller rewrites or relaxed fixed-register constraints. Add coverage through the existing real native compile/run path before production changes, preserve actual sorted-list behavior, independently Astra-review and qualify the matching product before public promotion. Owner carl, isolated carl-native-fixed workspace.

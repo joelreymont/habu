@@ -170,7 +170,7 @@ DESC-CELLS cells constant DESC-BYTES
 \ branch and a frame for that on every read here was 8.9 percent of a trivial
 \ tier-1 definition's samples. The clause declares and computes nothing now, so
 \ a mention of this word folds to the same address literal the bare cell folded
-\ to (src/core/pointer-storage.f, test/does-empty-clause.f).
+\ to (src/core/pointer-storage.f).
 align
 create DEAD-DESC DESC-BYTES allot
 PERSISTED-PTR-VARIABLE RBASE
@@ -603,9 +603,6 @@ public
    f FROZEN-DESC {: d:ptr :}
    d x IDX>N IDX-AT
    d swap CELL-AT ;
-
-: SIZE ( IR-ARENA:view -- n )
-   FROZEN-DESC D-CNT + CELL-VIEW @ ;
 
 \ Identity comparison grants no read authority; readers still check liveness.
 : VIEW-SAME? ( IR-ARENA:view IR-ARENA:view -- bool )

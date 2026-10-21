@@ -151,62 +151,45 @@ private
 
 \ encodeBitMasks: mask -> nis. Encodable = a power-of-2-sized repeating element
 \ (2..64 bits) that is a rotated run of ones; 0 and all-ones are not.
-variable PCX
-
 : POPC64 ( n -- n )
-   PCX !  0
-   BEGIN PCX @ 0 <> WHILE  PCX @ 1 and +  PCX @ 1 rshift PCX !  REPEAT ;
+   0 swap
+   BEGIN dup 0 <> WHILE
+      dup 1 and rot + swap 1 rshift
+   REPEAT drop ;
 
 : EMASK ( n -- n )   \ low-e-bits mask; lshift wraps at 64
    dup $40 = IF drop -1 ELSE 1 swap lshift 1 - THEN ;
 
-variable REMSK
-variable RORE-X
-variable RORE-R
-variable RORE-E
-
 : RORE ( n n n -- n )
-   RORE-E ! RORE-R ! RORE-X !
-   RORE-E @ EMASK REMSK !
-   RORE-X @ REMSK @ and dup  RORE-R @ rshift
-   swap RORE-E @ RORE-R @ - lshift  or  REMSK @ and ;
+   {: x:n r:n e:n :}
+   e EMASK {: mask:n :}
+   x mask and dup r rshift
+   swap e r - lshift or mask and ;
 
 : HALVES= ( n n -- bool )
    {: x:n e:n :}
    1 e 2 / lshift 1 -  dup x and
    swap x e 2 / rshift and = ;
 
-variable LELE
-
 : LELEM ( n -- n n )
-   {: mask:n :}
-   $40 LELE !
-   BEGIN  LELE @ 2 >  mask LELE @ HALVES= and  WHILE  LELE @ 2 / LELE !  REPEAT
-   mask LELE @ EMASK and  LELE @ ;
-
-variable LRI
-variable LROT-ELEM
-variable LROT-ONES
-variable LROT-E
+   $40
+   BEGIN 2dup HALVES= over 2 > and WHILE 2 / REPEAT
+   tuck EMASK and swap ;
 
 : LROT ( n n n -- n )
-   LROT-E ! LROT-ONES ! LROT-ELEM !
-   -1  0 LRI !
-   BEGIN LRI @ LROT-E @ < WHILE
-      1 LROT-ONES @ lshift 1 -  LRI @ LROT-E @ RORE  LROT-ELEM @ = IF
-         drop LRI @  LROT-E @ LRI !
-      ELSE
-         LRI @ 1 + LRI !
+   {: elem:n ones:n e:n :}
+   e 0 max 0 ?do
+      1 ones lshift 1 - i e RORE elem = IF
+         i UNLOOP EXIT
       THEN
-   REPEAT ;
+   loop
+   -1 ;
 
 : LIMM-PACK ( n n n -- n )
    {: rot:n ones:n e:n :}
    e $40 = IF $1000 ELSE 0 THEN
    rot 6 lshift or
    e 2 * 1 - $3F and $3F xor  ones 1 - or or ;
-
-variable LIE   variable LIONES
 
 : LIMM-BAD ( -- )  s" asm: bad logical immediate" ASM-EXIT-RC die ;
 
@@ -220,12 +203,12 @@ variable LIE   variable LIONES
 : LIMM-TRY ( n -- n bool )
    {: mask:n :}
    mask 0 =  mask -1 =  or IF 0 LIMM-NO exit THEN
-   mask LELEM LIE !                                  \ ( elem ), e in LIE
-   dup POPC64 LIONES !
-   LIONES @ LIE @ = IF drop 0 LIMM-NO exit THEN
-   LIONES @ LIE @ LROT                               \ ( r | -1 )
+   mask LELEM {: elem:n e:n :}
+   elem POPC64 {: ones:n :}
+   ones e = IF 0 LIMM-NO exit THEN
+   elem ones e LROT
    dup 0 < IF drop 0 LIMM-NO exit THEN
-   LIONES @ LIE @ LIMM-PACK LIMM-YES ;
+   ones e LIMM-PACK LIMM-YES ;
 
 public
 

@@ -196,7 +196,6 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
 \ the whole store at the next check: 86% of a sweep's samples, and one
 \ 2000-program seed took 16.9 s against 1.0 s with identical verdicts and depths.
-\ test/effect-intern-suite.f owns the raw-rewind rebuild.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV

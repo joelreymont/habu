@@ -86,8 +86,6 @@ CAST: >ENTRY ( n -- code-entry )
 CAST: PUBLISHED-XT ( n -- [ n IR-CTX:ctx code-entry n n -- ] )
 
 public
-CAST: ENTRY>N ( code-entry -- n )
-
 : DECLARE-ENTRY ( ptr code-entry -- )
    0 >ENTRY swap xt! ;
 

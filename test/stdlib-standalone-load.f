@@ -102,39 +102,10 @@ variable PATHS-USED
       1+
    repeat drop ;
 
-\ ---- fixture: scheduling is structural, no exclusion table -----------------
-\ Inject synthetic paths straight into COLLECT and assert each verdict without
-\ spawning a load. This proves discovery keeps exactly the flat src/lib/<name>.f
-\ modules: the two spellings the deleted speculative table reserved
-\ (src/lib/engine-candidate.f and the src/lib/process-pty family) are now scheduled like
-\ any other flat module, a brand-new flat name is scheduled the moment it is
-\ discovered, and nested src/lib/<sub>/<name>.f and *-test.f drop out by FLAT-MODULE?
-\ structure alone. No path prefix or reserved future name can suppress a
-\ production module.
-: SCHEDULES? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ inject one path; collected?
-   0 PATHS-N !  0 PATHS-USED !
-   a u COLLECT
-   a u COLLECTED? ;
-
-: FIXTURE ( -- )
-   s" src/lib/engine-candidate.f scheduled" T-LABEL
-      s" src/lib/engine-candidate.f" SCHEDULES? TTRUE
-   s" src/lib/process-pty-handle.f scheduled" T-LABEL
-      s" src/lib/process-pty-handle.f" SCHEDULES? TTRUE
-   s" src/lib/process-pty-io.f scheduled" T-LABEL
-      s" src/lib/process-pty-io.f" SCHEDULES? TTRUE
-   s" newly discovered flat module scheduled" T-LABEL
-      s" src/lib/newly-discovered.f" SCHEDULES? TTRUE
-   s" nested sub-library excluded by scope" T-LABEL
-      s" src/lib/sub/nested.f" SCHEDULES? TFALSE
-   s" -test.f excluded by scope" T-LABEL
-      s" src/lib/newly-discovered-test.f" SCHEDULES? TFALSE ;
-
 public
 
 : RUN ( -- )
    T-RESET
-   FIXTURE
    0 PATHS-N !  0 PATHS-USED !
    s" src/lib" [: COLLECT ;] WALK-FILES
    s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE

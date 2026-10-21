@@ -64,7 +64,7 @@
 \ INSERTION ORDER AND CANONICALIZATION. Local ordinals are insertion-ordered
 \ and stable; the section 6.6 canonical encoding must not depend on that
 \ order. What canonicalization needs from this file is a deterministic,
-\ byte-faithful iteration surface, and that is SYMBOLS/FSYMBOLS plus the
+\ byte-faithful iteration surface, and that is SYMBOLS plus the
 \ ordinal-packed identities resolved through LEN@ and COPY: the encoder sorts
 \ symbols by their bytes and emits its own permutation. The filter cell is an
 \ in-memory lookup filter only and never serializes. Mutable buckets are private
@@ -246,22 +246,9 @@ private
    loop
    true ;
 
-: HASH ( ptr u8 n -- n )
-   {: p u:n :}
-   FNV-OFFSET
-   u 0 ?do
-      p i + c@ xor  FNV-PRIME *
-   loop
-   dup 32 rshift xor
-   dup 16 rshift xor ;
-
-public
-
 \ The deterministic content filter a symbol row stores: FNV-1a over the bytes
 \ (64-bit, offset basis FNV-OFFSET, prime FNV-PRIME), the resulting hash
-\ XOR-folded down onto FILTER-MASK bits. It is public so fixtures can force
-\ two different strings through one filter and prove the verify step
-\ discriminates.
+\ XOR-folded down onto FILTER-MASK bits.
 \
 \ WHAT THE VALUE OWES, AND WHAT IT DOES NOT. It is a pure function of the
 \ bytes and nothing else - no address, no ordinal, no interning order - taken
@@ -274,15 +261,19 @@ public
 \ WHY A NONCRYPTOGRAPHIC HASH IS THE RIGHT ONE. The value never leaves this
 \ file: it does not serialize, no canonical preimage or persisted digest
 \ contains it, and the section 6.6 encoder reaches symbols through
-\ SYMBOLS/FSYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
+\ SYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
 \ above). Nothing outside ROW-MATCH? can observe which function produced it, so
 \ changing it moves no digest anyone has stored. It cheaply rejects candidates;
 \ a cryptographic digest per intern was a steep price for sixteen bits of
 \ reject power that FNV-1a delivers in a few instructions per byte.
-: FILTER ( ptr u8 n -- n )
-   HASH FILTER-MASK and ;
-
-private
+: HASH ( ptr u8 n -- n )
+   {: p u:n :}
+   FNV-OFFSET
+   u 0 ?do
+      p i + c@ xor  FNV-PRIME *
+   loop
+   dup 32 rshift xor
+   dup 16 rshift xor ;
 
 \ ---- matching --------------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
@@ -310,23 +301,18 @@ private
 : BUCKETS-FIELD ( ptr u8 -- ptr ptr u8 )
    IX-BUCKETS ptr-field ;
 
-
 : INDEX@ ( IR-ARENA:reader -- ptr u8 )
    IR-ARENA:SIDE-FIELD @
    dup NULL-PTR = if E-IR-SYM-STATE throw then ;
 
-
 : BUCKET@ ( ptr u8 n n -- n )
    swap BUCKET-CELLS * + CDIGEST:SLOT@ ;
-
 
 : BUCKET! ( n ptr u8 n n -- )
    swap BUCKET-CELLS * + CDIGEST:SLOT! ;
 
-
 : BUCKET-NEXT ( n n -- n )
    1- swap 1+ and ;
-
 
 : EMPTY-BUCKET ( ptr u8 n n -- n )
    {: buckets:ptr cap:n hash:n :}
@@ -335,17 +321,14 @@ private
       cap BUCKET-NEXT
    repeat ;
 
-
 : BUCKET-ADD ( ptr u8 n n n -- )
    {: buckets:ptr cap:n hash:n ord:n :}
    buckets cap hash EMPTY-BUCKET {: at:n :}
    hash buckets at BK-HASH BUCKET!
    ord 1+ buckets at BK-ORD BUCKET! ;
 
-
 : BUCKETS-TAKE ( IR-CTX:ctx n -- ptr u8 )
    BUCKET-CELLS * cells IR-CTX:SCRATCH-TAKE drop ;
-
 
 \ A bucket table is a run of canonical slots, so both of these ask the canonical
 \ slot words once for the whole run - same cells, same order, same result as the
@@ -353,7 +336,6 @@ private
 : BUCKETS-ZERO ( ptr u8 n -- )
    {: buckets:ptr cap:n :}
    buckets cap BUCKET-CELLS * CDIGEST:SLOTS-ZERO ;
-
 
 : BUCKETS-CLONE ( ptr u8 ptr u8 n -- )
    {: src:ptr dst:ptr cap:n :}
@@ -369,13 +351,11 @@ private
    buckets ix BUCKETS-FIELD !
    ix ;
 
-
 : INDEX-NEW ( IR-CTX:ctx IR-ARENA:reader -- )
    {: c:IR-CTX:ctx rr:IR-ARENA:reader :}
    c INDEX-SEED 0 INDEX-TAKE {: ix:ptr :}
    ix BUCKETS-FIELD @ INDEX-SEED BUCKETS-ZERO
    ix rr IR-ARENA:SIDE-FIELD ! ;
-
 
 : BUCKETS-REHASH ( ptr u8 n ptr u8 n -- )
    {: old:ptr oldcap:n fresh:ptr cap:n :}
@@ -385,7 +365,6 @@ private
          fresh cap old i BK-HASH BUCKET@ entry 1- BUCKET-ADD
       then
    loop ;
-
 
 : INDEX-ROOM ( IR-CTX:ctx ptr u8 n -- )
    {: c:IR-CTX:ctx ix:ptr need:n :}
@@ -398,19 +377,16 @@ private
    fresh ix BUCKETS-FIELD !
    cap ix IX-CAP CDIGEST:SLOT! ;
 
-
 : INDEX-ADD ( ptr u8 n n -- )
    {: ix:ptr hash:n ord:n :}
    ix BUCKETS-FIELD @ ix IX-CAP CDIGEST:SLOT@ hash ord BUCKET-ADD
    ord 1+ ix IX-COUNT CDIGEST:SLOT! ;
-
 
 : INDEX-CK ( IR-ARENA:reader -- ptr u8 )
    {: rr:IR-ARENA:reader :}
    rr INDEX@ {: ix:ptr :}
    rr CNT ix IX-COUNT CDIGEST:SLOT@ <> if E-IR-SYM-STATE throw then
    ix ;
-
 
 : LOOKUP ( IR-ARENA:reader IR-ARENA:reader ptr u8 n n -- n )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader p u:n hash:n :}
@@ -426,7 +402,6 @@ private
       then
       cap BUCKET-NEXT
    again ;
-
 
 : INDEX-CLONE ( IR-CTX:ctx IR-ARENA:reader IR-ARENA:reader -- )
    {: c:IR-CTX:ctx rr:IR-ARENA:reader proto:IR-ARENA:reader :}
@@ -532,7 +507,7 @@ public
 \ module the same spelling at the same ordinal: a caller that recorded an
 \ ordinal against the prototype can mint the identity it names in this module
 \ with IR-ID:PACK-SYMBOL and no lookup at all. The filter value a row stores is
-\ a pure function of the bytes (FILTER above), so it copies verbatim too - no
+\ a pure function of the bytes (HASH above), so it copies verbatim too - no
 \ row is recomputed and nothing here can disagree with what INTERN would have
 \ written.
 \
@@ -595,19 +570,6 @@ public
    key ord IR-ID:PACK-SYMBOL ;
 
 \ ---- live readers ------------------------------------------------------------
-\ Total bucket visits for one successful lookup of every interned symbol.
-\ This derives deterministic work from placement without instrumenting INTERN.
-: LOOKUP-PROBES ( IR-ARENA:arena -- n )
-   IR-ARENA:OPEN-LIVE dup RHDR-CK INDEX-CK {: ix:ptr :}
-   ix IX-CAP CDIGEST:SLOT@ {: cap:n :}
-   ix BUCKETS-FIELD @ {: buckets:ptr :}
-   0
-   cap 0 ?do
-      buckets i BK-ORD BUCKET@ 0<> if
-         i buckets i BK-HASH BUCKET@ - cap 1- and 1+ +
-      then
-   loop ;
-
 : SYMBOLS ( IR-ARENA:arena -- n )
    IR-ARENA:OPEN-LIVE dup RHDR-CK CNT ;
 
@@ -681,8 +643,6 @@ public
 \ ---- frozen readers ----------------------------------------------------------
 \ A frozen module reads its symbols through the two arena views; the retired
 \ builder handles reject every touch with E-IR-ARENA-FROZEN.
-: FSYMBOLS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN dup RHDR-CK CNT ;
 
 : FLEN@ ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
    {: rv:IR-ARENA:view id:IR-ID:ir-symbol-id :}

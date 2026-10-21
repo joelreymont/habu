@@ -1,6 +1,6 @@
 ---
 title: Refuse ptr-field over a scalar pointee
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-09-17T19:56:10.890714+03:00"
@@ -16,3 +16,5 @@ laundering paths remain open. Reproduce them on the current matching engine,
 then migrate only storage/accessors needed by the chosen checker rule.
 Preserve legitimate declared/foreign storage boundaries and rejected controls;
 do not require every private record or BEGIN-STRUCTURE user to be converted.
+
+Status 2026-10-21: reproduced on master 662cbf3d; designed and landed together with habu-refuse-a-scalar-030be3ad after the same census. Claim: agent=carl workspace=.jj-ws.noindex/carl-launder-census.

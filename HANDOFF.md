@@ -88,8 +88,7 @@ jj diff --from 5999ba5f --to 40f36d55 -- src/lib/policy.f src/lib/policy-test.f 
 Prior handoff's known gaps, **not reverified in this session**:
 
 1. x86 checker replay writers and source-exec observer still refuse.
-2. `does-patch` does not refresh occurrence numbers for patched records/aliases;
-   `test/does-empty-clause.f` expects old handles to refuse E-STALE.
+2. `does-patch` does not refresh occurrence numbers for patched records/aliases.
 3. Throws inside Habu `evaluate` do not retract master's eval-frame rows.
 4. TARGET-CAPTURE does not copy ACAP-WHITEBOX? into ACAP-ALL-NAMES, so a
    whitebox cross-build may lose names.

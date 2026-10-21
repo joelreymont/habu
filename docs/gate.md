@@ -118,7 +118,7 @@ Gforth recovery checks below are also separate from this registry.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its thirteen whole rows require
+`test/gate-arm-cases.f` only on an ARM host. Its eleven whole rows require
 the ARM host, its source recovery, JIT, or tier 0:
 
 - `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
@@ -127,18 +127,15 @@ the ARM host, its source recovery, JIT, or tier 0:
   expected by `compiler-shadow`).
 - `engine-stack-debugger`, `debugger-resume`: the ARM BRK debugger fixtures
   select tier 0; the x86-64 engine refuses that selection.
-- `addrmap-call`: it decodes four-byte AArch64 `BL` instructions and reads the
-  JIT address-map bitmap, after selecting tier 0.
 - `prop`: its candidate compilation, untyped measurement, and false-reject
   oracle require the unchecked tier 0; the harness selects that tier before
   running any generated case.
 - `build-fixpoint-sandbox`: both cases alter the ARM recovery assembler and
   install its source-built engine. Intel's native generation chain uses
   `tools/native-build.f`; its recovery cross-builds from ARM.
-- `compiler-native-identity-spill`, `compiler-native-wide-frame`,
-  `compiler-native-fused-moves`: these fixtures assert AArch64 instruction,
-  register and frame layouts. Intel selection, allocation and emission have
-  their own shared rows.
+- `compiler-native-identity-spill`, `compiler-native-wide-frame`: these
+  fixtures assert AArch64 instruction, register and frame layouts. Intel
+  selection, allocation and emission have their own shared rows.
 - `aot-chain-capture`: its live-window mutation, capture and
   instruction-chain compaction checks need an ARM host. The capture format's
   inert metadata transfer, extent, capacity and refusal cases run in the shared
@@ -311,12 +308,12 @@ at its deadline.
 - A `WHITEBOX-SUITE` row is the gate-only kind: the runner hands it the gate's
   private copy of the unsealed engine (`test/whitebox-engine.f`) because such a
   file reaches inside the engine, and the sealed `bin/hb` refuses those tokens
-  — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`
-  (measured on `test/whitebox-engine-suite.f`). Its checker is unsealed, so a
-  checked body that names an internal word binds that word's recorded row and
-  is checked against it ([forth.md](forth.md#rules-learned-by-refusal)): a
-  whitebox suite calls an internal word from a plain `:` definition, and a
-  wrong signature there is refused. That engine is a keyed image
+  — standalone such a file exits 70 with `hb: internal engine word: <TOKEN>`.
+  Its checker is unsealed, so a checked body that names an internal word binds
+  that word's recorded row and is checked against it
+  ([forth.md](forth.md#rules-learned-by-refusal)): a whitebox suite calls an
+  internal word from a plain `:` definition, and a wrong signature there is
+  refused. That engine is a keyed image
   (below): its build row, `whitebox-engine-build`, also puts the copy in
   place, and every whitebox row waits for that row. A file that only *spawns*
   a child needing the unsealed engine is not of that kind: it names one itself
@@ -571,6 +568,15 @@ at its deadline.
   the unmodified base under the same load, then rerun the suite alone. Every
   gate run gets its own `HB_TMP` root. Run against a matching private
   source and engine tree when the result must qualify that exact pair.
+- A row earns its place by a user-visible failure no other row catches. A
+  refusal of in-memory state no real input reaches (a hand-built row or
+  table, a forged token, a patched code byte) is not one: the real path runs
+  in every build, and the test pins internal APIs. A capacity limit a real
+  program can reach is one, even when the test reaches it by a shortcut, and
+  so is a refusal of a malformed saved file (image, cache unit, effect
+  graph); such a test corrupts the file on disk rather than steering the
+  producer through a test-only switch. Platform rows are switched by
+  platform, never trimmed.
 
 ## Separate Gforth recovery checks
 

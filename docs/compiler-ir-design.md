@@ -982,12 +982,6 @@ that is the elaborator's interface, and the fixtures that drive it stage by stag
 still pass them - so a body that leaves the wrong number of values is refused at
 elaboration rather than discovered later.
 
-`test/compiler/native-chain.f` is the acceptance for both: it hands one colon
-definition to `evaluate`, takes the tape the engine's own check hook produced,
-and carries it through elaboration, selection, allocation, validation and
-emission to instruction words it then publishes and calls, comparing the routine's
-answer with the interpreted word's. Nothing in that run is hand-built.
-
 ### 7.3 Stage N2: SIR — stack SSA
 
 SIR is the principal optimization IR for native Habu.
@@ -2112,7 +2106,6 @@ test/compiler/native-straight.f
 test/compiler/native-control.f
 test/compiler/native-wide.f
 test/compiler/native-shadow.f
-test/compiler/native-regalloc.f
 test/compiler/native-object.f
 test/compiler/native-selfhost.f
 

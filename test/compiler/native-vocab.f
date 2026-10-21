@@ -4,8 +4,8 @@ require src/lib/ieee754.f
 require src/arch/arm64/asm.f
 require tools/codegen-tail-probe.f
 
-\ Tier 1 below: those published instructions are the optimizing compiler's
-\ (7 rows fail at the default tier).
+\ Tier 1 below: those published instructions are the optimizing compiler's;
+\ the default tier fails the instruction rows.
 1 set-tier
 
 package NVOCAB-FIXTURE
@@ -38,6 +38,13 @@ public
 : CELL-SIZE ( n -- n ) cells ;
 : DROP-PAIR ( n n n -- n ) 2drop ;
 : TAG-BITS ( n -- n ) 7 and ;
+: F-EIGHTH ( -- r ) 0.125 ;
+: F-THIRTY-ONE ( -- r ) 31.0 ;
+: F-NEG-SMALL ( -- r ) -0.1328125 ;
+: F-SIXTEENTH ( -- r ) 0.0625 ;
+: F-THIRTY-TWO ( -- r ) 32.0 ;
+: F-FINE ( -- r ) 1.03125 ;
+: F-NEG-ZERO ( -- r ) -0.0 ;
 
 32 constant SPACE
 9 constant TAB
@@ -61,6 +68,7 @@ $54000000 constant BCOND-FORM
 $FFE00C00 constant CSEL-MASK
 $9A800000 constant CSEL-FORM
 $FFE0FFE0 constant MVN-MASK
+$FFE01FE0 constant FMOVDI-MASK
 
 : FORM-COUNT ( ptr u8 n n n -- n )
    {: name:ptr bytes:n mask:n form:n :}
@@ -157,6 +165,22 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    -1 0 SHIFT-RIGHT -1 T= -1 63 SHIFT-RIGHT 1 T=
    -1 64 SHIFT-RIGHT -1 T= -1 1 SHIFT-RIGHT $7FFFFFFFFFFFFFFF T= ;
 
+: LITERAL ( ptr u8 n r n n -- ) {: name:ptr bytes:n value:r bits:n fmov:n :}
+   value IEEE754:F64>BITS bits T=
+   name bytes FMOVDI-MASK 0 0 ENC-FMOVDI FMOVDI-MASK and FORM-COUNT fmov T= ;
+
+\ An FMOV immediate encodes sign, exponent 0x3FC..0x403 and four fraction bits.
+\ The boundaries take one; their nearest outside neighbours keep exact bits.
+: FLOAT-LITERALS ( -- )
+   s" float literals at the FMOV immediate bounds keep their exact bits" T-LABEL
+   s" NVOCAB-FIXTURE:F-EIGHTH" F-EIGHTH $3FC0000000000000 1 LITERAL
+   s" NVOCAB-FIXTURE:F-THIRTY-ONE" F-THIRTY-ONE $403F000000000000 1 LITERAL
+   s" NVOCAB-FIXTURE:F-NEG-SMALL" F-NEG-SMALL $BFC1000000000000 1 LITERAL
+   s" NVOCAB-FIXTURE:F-SIXTEENTH" F-SIXTEENTH $3FB0000000000000 0 LITERAL
+   s" NVOCAB-FIXTURE:F-THIRTY-TWO" F-THIRTY-TWO $4040000000000000 0 LITERAL
+   s" NVOCAB-FIXTURE:F-FINE" F-FINE $3FF0800000000000 0 LITERAL
+   s" NVOCAB-FIXTURE:F-NEG-ZERO" F-NEG-ZERO $8000000000000000 0 LITERAL ;
+
 : VALUES ( -- )
    0 CELL-SIZE 0 T= 3 CELL-SIZE 24 T= -3 CELL-SIZE -24 T=
    1 2 3 DROP-PAIR 1 T=
@@ -165,7 +189,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    65 WHITE? TFALSE 0 WHITE? TFALSE 33 WHITE? TFALSE ;
 
 : RUN ( -- )
-   T-RESET COMPARES FLAG-VALUES FLOAT-FLAGS SELECTS BITWISE SHIFTS VALUES T-REPORT ;
+   T-RESET COMPARES FLAG-VALUES FLOAT-FLAGS FLOAT-LITERALS SELECTS BITWISE SHIFTS VALUES T-REPORT ;
 
 RUN
 ;using

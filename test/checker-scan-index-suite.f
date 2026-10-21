@@ -33,9 +33,8 @@
 \ their marks; 3d and 3e roll back records of SCXA and SCXT; section 5's
 \ survival checks read section 1's answers. The other row,
 \ test/checker-scan-index-rollback-suite.f, holds the cases that touch none of
-\ that state — 3a to 3c, which create their symbol or family inside the frame,
-\ and section 4's capacity refusals — so the two run side by side in the gate
-\ pool.
+\ that state — 3a to 3c, which create their symbol or family inside the frame —
+\ so the two run side by side in the gate pool.
 \
 \ Section 5 proves the indexes survive their store outgrowing its initial
 \ capacity: the family tail buckets grow with the record arena they index
@@ -215,8 +214,7 @@ SCX-DIFF-ALL
 \ 5. GROWTH. Both index families are sized from the store they key, so both
 \    have to survive that store outgrowing its initial capacity: the mapping is
 \    re-laid-out at the new SYM-CAP and every table in it rebuilds, and the
-\    family tail buckets are resized and rehashed. (Section 4 is in the
-\    rollback row.)
+\    family tail buckets are resized and rehashed.
 \ ---------------------------------------------------------------------------
 
 \ the boot image already declares far more than TFX-SLOTS-INIT families, so the
