@@ -736,12 +736,16 @@ false GT-POOL-CATCHING !
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
 
-: GT-POOL-PASS-LINE ( idx -- ) {: idx :}
+: GT-POOL-PASS-LINE ( idx -- )
+   {: idx :}
    s" PASS: " type
    idx GT-POOL-LABEL$ type
    s"  (" type
    idx GT-POOL-ELAPSED-MS GT-U-TYPE
-   s" ms)" type cr ;
+   s" ms)" type cr
+   idx GT-POOL-CPU-USED-PTR @ {: cpu:n :}
+   cpu 0 <= if exit then
+   s"   sampled CPU: " type cpu GT-U-TYPE s" ms" type cr ;
 
 : GT-POOL-WAIT-DUE? ( idx -- bool ) {: idx :}
    mono-ns idx GT-POOL-LAST-PTR @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;
