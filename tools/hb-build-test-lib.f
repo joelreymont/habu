@@ -325,6 +325,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   \ Private by default; selected runtime rows RESET to the ambient cache.
    BUILD-CACHE:RESET
    HBT-TMP BUILD-CACHE:ROOT! ;
 
@@ -361,11 +362,14 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs. Its maker
 \ or app-build child runs the image named second, unless that is empty.
-: HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n eng:ptr engu:n :}
+: HBT-ARGV-CLI ( ptr u8 n ptr u8 n -- )
+   {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE:ROOT$
+   2dup drop c@ 47 <> if SOURCE-ROOT:CANONICAL drop then
+   >LEN PROC-ENV+
    engu 0 > if
       s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+
    then
