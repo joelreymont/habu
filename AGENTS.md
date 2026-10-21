@@ -44,11 +44,11 @@ belong in the language core.
   `jj workspace forget` the workspace and `trash` its directory. Never infer
   equivalence from commit subjects alone. Finish by checking the bookmark and
   workspace inventories; retain only active work with a stated reason.
-- Build candidates in a private worktree or temporary directory. Keep only the
-  latest qualified release under `~/.local/lib/habu/`: after selecting it with
-  `current`, retire older release directories promptly. Move any process pinned
-  to an older path before retiring that directory. Do not install a candidate
-  there merely to run tests.
+- Build and test candidates in a private worktree or temporary directory.
+  Keep one installed Habu tree at a stable path, with matching executable, map
+  and library sources. Update that installation when needed; do not create
+  per-revision release directories. Ordinary development does not require
+  installation or publication.
 - A gate and its push never share one unconditional command chain: run the
   gate, read its exit code on its own line, then push.
 - Use dots only when the task calls for them; they are not a gate for coding,

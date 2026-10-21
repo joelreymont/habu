@@ -325,17 +325,17 @@ writes the stamp when its product is byte-identical to `bin/hb`.
 
 ## Stable local command
 
-Keep the checkout's `bin/hb` for development and build candidates outside
-`~/.local/lib/habu/`. Install only a verified product and its matching sources
-under `~/.local/lib/habu/<revision>/`, with `current` selecting that version and
-`~/.local/bin/hb` pointing to `current/bin/hb`. Changing the checkout then
-leaves dependent projects on the verified version.
+Keep the checkout's `bin/hb` for development and build candidates privately.
+Use one installed tree at a stable path for the executable, map and matching
+library sources, with `~/.local/bin/hb` pointing to its `bin/hb`. Update that
+installation when needed. Do not create per-revision release directories;
+ordinary development does not require installation or publication.
 
 Libraries loaded from source must match the installed engine. Habu resolves
 application paths from the application's root, then the working directory,
 then the engine's source root: the tree two levels above the executable,
-found through the `~/.local/bin/hb` and `current` symlinks. So an installed
-engine runs source-based tools from any directory:
+resolved through `~/.local/bin/hb` and any installation symlinks. An installed
+engine therefore runs source-based tools from any directory:
 
 ```sh
 ~/.local/bin/hb --load /absolute/path/to/etch/etch.f
@@ -358,9 +358,9 @@ built it and restores, at its entry, the root that engine's rule gives
 (`SOURCE-ROOT:ENGINE-FOR$`), since capture cleared the root and the image's own
 file lies in the build cache.
 
-After promoting a new verified release, move processes pinned to an older
-version onto `current`, then trash every other version directory. The installed
-tree holds only the latest qualified release and the `current` symlink.
+Keep the installed executable, map and sources together when updating the
+installation. Running applications retain their loaded executable; restart
+long-running source-loading tools against the updated installation.
 
 ## Warm Dev Snapshot
 
