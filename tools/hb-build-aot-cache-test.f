@@ -22,13 +22,7 @@ create HBT-ABI-ALT 96 allot
 create HBT-SRC-KEY 80 allot
 create HBT-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
-variable HBT-EXP-SRC-U
-variable HBT-EXP-OUT-U
-create HBT-EXP-SRC-BUF FS-PATH-CAP allot
-create HBT-EXP-OUT-BUF FS-PATH-CAP allot
-create HBT-EXP-HEX1 64 allot
-create HBT-OBJ-PREVIEW FS-PATH-CAP allot
-variable HBT-OBJ-PREVIEW-U
+create HBT-MAP-HEX 64 allot
 create HBT-OUTER-ROWS FS-PATH-CAP 2 * allot
 variable HBT-OUTER-CANON-N
 variable HBT-OUTER-READ-N
@@ -38,15 +32,12 @@ create HBT-PAIR-EXE-HEX 64 allot
 create HBT-PAIR-MAP-HEX 64 allot
 create HBT-PAIR-GOT-HEX 64 allot
 
-: HBT-OBJ-PREVIEW$ ( -- ptr u8 n )
-   HBT-OBJ-PREVIEW HBT-OBJ-PREVIEW-U @ ;
-
 : HBT-BOUND-MAP ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n path:ptr pathu:n :}
-   HBT-FSHA-CTX image imageu HBT-EXP-HEX1 SHA256-FILE-HEX-IN 0 T=
+   HBT-FSHA-CTX image imageu HBT-MAP-HEX SHA256-FILE-HEX-IN 0 T=
    SB-RESET
    S\" habu-names 1\ncolumns rec named start len wid name kind origin source\nimage-sha256 " SB-APPEND
-   HBT-EXP-HEX1 64 SB-APPEND
+   HBT-MAP-HEX 64 SB-APPEND
    10 SB-APPEND-C
    path pathu SB$ WRITE-ALL ;
 
@@ -88,14 +79,7 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBB-RESET-OPTIONS
    BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBB-TARGET-ABI$ HBT-BUILD-EXIT-OBJ
-   OBJRES:STORE {: key:ptr keyu:n :}
-   keyu HBT-KEY-U T=
-   HBT-ROOT s" object-preview" HBT-OBJ-PREVIEW HBT-OBJ-PREVIEW-U HBT-PATH!
-   OBJIMG:LOAD
-   HBT-OBJ-PREVIEW$ OBJIMG:WRITE
-   key keyu OBJSTORE:PATH$ HBB-MAP-SRC!
-   HBT-OBJ-PREVIEW$ HBB-MAP-SRC$ HBT-BOUND-MAP
-   HBT-OBJ-PREVIEW$ REMOVE-FILE ;
+   OBJRES:STORE nip HBT-KEY-U T= ;
 
 : HBT-STORE-WRONG-AOT-OBJ ( -- )
    HBB-RESET-OPTIONS
@@ -105,20 +89,17 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-AOT-SOURCE-KEY!
    HBT-SRC-KEY HBT-KEY-U key keyu OBJIDX:STORE ;
 
-: HBT-BUILD-AOT-OBJECT-HIT ( -- )
-   HBT-STORE-AOT-OBJ
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBT-HBB-BUILD-OUT
-   HBB-OBJECT-HIT @ 0 <> TTRUE
-   HBB-OBJECT-STORE @ 0= TTRUE
-   HBB-MAKER-RUN @ 0= TTRUE
-   HBB-MAKER-BUILD @ 0= TTRUE
-   HBT-AOT-OUT FILE? TTRUE
-   HBT-RUN-AOT ;
-
 : HBT-PAIR-HASH ( ptr u8 n ptr u8 -- )
    {: path:ptr pathu:n hex:ptr :}
    HBT-FSHA-CTX path pathu hex SHA256-FILE-HEX-IN 0 T= ;
+
+: HBT-PAIR-RUN ( ptr u8 n -- )
+   {: want:ptr wantu:n :}
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
+   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
+   RUN-CAPTURE HBT-CAPTURE>N {: outu:n erru:n rc:n :}
+   rc 0 T= erru 0 T=
+   HBT-RUN-OUT outu want wantu T$= ;
 
 : HBT-PAIR-SAME ( -- )
    HBT-AOT-OUT HBT-PAIR-GOT-HEX HBT-PAIR-HASH
@@ -126,59 +107,26 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-AOT-OUT HBB-MAP-DST!
    HBB-MAP-DST$ HBT-PAIR-GOT-HEX HBT-PAIR-HASH
    HBT-PAIR-GOT-HEX 64 HBT-PAIR-MAP-HEX 64 T$=
-   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
-   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
-   RUN-CAPTURE HBT-CAPTURE>N {: outu:n erru:n rc:n :}
-   rc 0 T= erru 0 T=
-   HBT-RUN-OUT outu S\" 222\n\n" T$= ;
+   S\" 222\n\n25\n\n25\n\n" HBT-PAIR-RUN ;
 
 \ An EXPORT alias in a stripped AOT program (dot habu-compiler-pkg-re-688212c1):
 \ a program calling a word through its defining package and through a
 \ re-exported alias builds, runs clean and prints the body's result once per
-\ name.
-: HBT-EXP-SRC ( -- ptr u8 n )
-   HBT-EXP-SRC-BUF HBT-EXP-SRC-U @ ;
-
-: HBT-EXP-OUT ( -- ptr u8 n )
-   HBT-EXP-OUT-BUF HBT-EXP-OUT-U @ ;
-
-: HBT-EXP-COMMON ( -- )
+\ name. Both source-race programs exercise these calls with distinct markers.
+: HBT-PAIR-SRC$ ( ptr u8 n -- ptr u8 n )
+   {: marker:ptr markeru:n :}
+   SB-RESET
    s" package XA" SB-APPEND HBB-LF SB-APPEND-C
    s" public" SB-APPEND HBB-LF SB-APPEND-C
    s" : W ( i64 -- i64 ) dup * ;" SB-APPEND HBB-LF SB-APPEND-C
-   s" ;package" SB-APPEND HBB-LF SB-APPEND-C ;
-
-: HBT-EXP-ALIAS-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   HBT-EXP-COMMON
+   s" ;package" SB-APPEND HBB-LF SB-APPEND-C
    s" package XB" SB-APPEND HBB-LF SB-APPEND-C
    s" public" SB-APPEND HBB-LF SB-APPEND-C
    s" EXPORT XA:W" SB-APPEND HBB-LF SB-APPEND-C
    s" ;package" SB-APPEND HBB-LF SB-APPEND-C
-   s" : MAIN ( -- ) 5 XA:W . cr 5 XB:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
+   s" : MAIN ( -- ) " SB-APPEND marker markeru SB-APPEND
+   s"  . cr 5 XA:W . cr 5 XB:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
    SB$ ;
-
-: HBT-EXP-BUILD ( ptr u8 n -- ) {: sa:ptr su:n :}
-   HBT-EXP-SRC sa su WRITE-ALL
-   HBT-EXP-OUT HBT-REMOVE-FILE?
-   HBT-EXP-SRC HBT-EXP-OUT HBT-HBB-PREPARE-AOT
-   HBB-BUILD
-   HBT-REMOVE-ARTIFACT ;
-
-: HBT-EXP-RUN ( -- )
-   HBT-EXP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 T=
-   errn 0 T=
-   HBT-RUN-OUT outn S\" 25\n\n25\n\n" T$= ;
-
-: HBT-BUILD-AOT-EXPORT-ALIAS ( -- )
-   HBT-ROOT s" exp.f" HBT-EXP-SRC-BUF HBT-EXP-SRC-U HBT-PATH!
-   HBT-ROOT s" exp" HBT-EXP-OUT-BUF HBT-EXP-OUT-U HBT-PATH!
-   HBT-EXP-ALIAS-SRC$ HBT-EXP-BUILD
-   HBT-EXP-RUN
-   HBT-EXP-OUT HBT-REMOVE-FILE?
-   BF-TMP-RESET ;
 
 : HBT-ENG ( -- ptr u8 n )
    HBT-ENG-BUF HBT-ENG-U @ ;
@@ -200,11 +148,10 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBB-COMPILER-ABI$ nip 76 T=
    HBT-ABI-MAKER-SUFFIX ;
 
-\ The object this loads is the one HBT-BUILD-AOT-OBJECT-HIT stored, so this
-\ case runs after that one in the same scratch tree. It was stored under the
-\ row's engine, the keyed linker image HBT-AOT-CACHE-MAIN selects for every
-\ case, so the flip back restores that engine rather than the default one.
+\ Store an object under the row's engine, the keyed linker image selected for
+\ every case. The flip back restores that engine rather than the default one.
 : HBT-ENGINE-KEY-FLIP ( -- )
+   HBT-STORE-AOT-OBJ
    HBT-ABI-MAKER-QUALIFIED
    HBT-WRITE-ENG
    HBT-OBJ-LOAD? TTRUE
@@ -431,20 +378,18 @@ variable HBT-PUB-FILES
 \ A real maker has read A when the source becomes B. Its result keeps A's
 \ source key, so the next ordinary build compiles and runs B.
 : HBT-SOURCE-CHANGED-DURING-MAKER ( -- )
-   HBT-AOT-SRC s" : MAIN ( -- ) 111 . cr ;" WRITE-ALL
+   HBT-AOT-SRC s" 111" HBT-PAIR-SRC$ WRITE-ALL
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-BUILD-BEGIN
    HBB-PREPARE-ARTIFACT-CACHE
    HBB-RUN-MAKER
-   HBT-AOT-SRC s" : MAIN ( -- ) 222 . cr ;" WRITE-ALL
+   HBB-MAKER-RUN @ 0<> TTRUE
+   HBT-AOT-SRC s" 222" HBT-PAIR-SRC$ WRITE-ALL
    HBB-STORE-OBJECT
+   HBB-OBJECT-STORE @ 0<> TTRUE
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
-   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
-   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
-   RUN-CAPTURE HBT-CAPTURE>N {: first-out:n first-err:n first-rc:n :}
-   first-rc 0 T= first-err 0 T=
-   HBT-RUN-OUT first-out s" 111" CONTAINS? TTRUE
+   S\" 111\n\n25\n\n25\n\n" HBT-PAIR-RUN
    HBT-ROOT s" old.map" HBT-PAIR-MAP HBT-PAIR-MAP-U HBT-PATH!
    HBB-ARTIFACT$ HBB-MAP-SRC!
    HBB-MAP-SRC$ HBT-PAIR-MAP HBT-PAIR-MAP-U @ COPY-FILE-STREAM
@@ -452,12 +397,8 @@ variable HBT-PUB-FILES
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0<> TTRUE
-   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN
-   HBT-RUN-ERR HBT-CAPTURE-CAP >LEN HBT-TIMEOUT-MS >MS
-   RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 T= errn 0 T=
-   HBT-RUN-OUT outn s" 222" CONTAINS? TTRUE
-   HBT-RUN-OUT outn s" 111" CONTAINS? TFALSE
+   HBB-OBJECT-STORE @ 0<> TTRUE
+   S\" 222\n\n25\n\n25\n\n" HBT-PAIR-RUN
    \ Interrupted publication can pair B's executable with A's valid map.
    s" a mismatched cached pair is rebuilt before an identical cache restore" T-LABEL
    HBT-AOT-OUT HBT-PAIR-EXE-HEX HBT-PAIR-HASH
@@ -469,7 +410,9 @@ variable HBT-PUB-FILES
    HBB-BUILD
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0<> TTRUE
+   HBB-OBJECT-STORE @ 0= TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
+   HBB-MAKER-BUILD @ 0= TTRUE
    HBT-PAIR-SAME
    HBT-REMOVE-AOT-OUT
    HBB-BUILD
@@ -492,8 +435,6 @@ public
    HBT-PUB-PREPARE
    HBT-PUB-PAIR-RENAME-FAILS
    HBT-AOT-JIT-REJECT
-   HBT-BUILD-AOT-OBJECT-HIT
-   HBT-BUILD-AOT-EXPORT-ALIAS
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-MAKER-NESTED-INPUTS
