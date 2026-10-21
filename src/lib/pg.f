@@ -44,7 +44,7 @@ package PG
 public
 
 -9250 constant E-CONNECT      \ the server refused the conninfo, or libpq could not build a connection
--9251 constant E-EXEC         \ libpq returned no result at all, or a transaction verb the server rejected
+-9251 constant E-EXEC         \ transport/readiness failure, no result, rejected transaction verb or failed cancel
 -9252 constant E-COLUMN       \ a row or column index outside the result
 -9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
 -9254 constant E-CLEARED      \ a result used after CLEAR, or cleared a second time
@@ -178,6 +178,9 @@ FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
+FUNCTION: LIB-CANCEL-CREATE PQcancelCreate ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-CANCEL-BLOCKING PQcancelBlocking ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-CANCEL-FINISH PQcancelFinish ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY PQsendQuery ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PARAMS PQsendQueryParams
    ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
@@ -592,6 +595,25 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    RESULT-CAP 0 ?do NO-CONN i RES-CONN ! loop ;
 
 
+\ PQfinish alone lets a blocked statement execute after the client exits.
+\ Cancel only an outstanding operation on this connection, before closing it.
+\ libpq 17+ preserves the connection's encryption and timeout options. Dispatch
+\ cannot undo a statement the server already completed.
+: DISPATCH-CANCEL ( ptr u8 -- ptr u8 )
+   dup LIB-CANCEL-BLOCKING 0= if E-EXEC throw then ;
+
+
+: CANCEL-PENDING ( n -- n )
+   {: slot:n :}
+   slot PENDING@ 0= if slot exit then
+   slot CONN-PG@ LIB-CANCEL-CREATE {: cancel :}
+   cancel NULL-ADDR? if E-EXEC throw then
+   cancel ['] DISPATCH-CANCEL catch {: held code:n :}
+   cancel LIB-CANCEL-FINISH
+   code 0<> if code throw then
+   slot ;
+
+
 \ ---- image capture --------------------------------------------------------
 \ A restored image runs in another process: its PGconn and PGresult addresses
 \ are gone and its mappings are not its own. Retiring every slot makes the
@@ -599,7 +621,16 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ the call arenas the image must not carry. The flag is set only after REGISTER
 \ returns, so a throwing registration stays retryable (docs/forth.md rule).
 : FORGET-HANDLES ( -- )
+   0
    CONFIGURED @ if
+      \ Cancel every pending statement before closing any connection: closing
+      \ an earlier lock holder first could let a later pending write commit.
+      CONN-CAP 0 ?do
+         i CONN-LIVE@ 0 <> if
+            i ['] CANCEL-PENDING catch nip
+            over 0= if nip else drop then
+         then
+      loop
       RESULT-CAP 0 ?do
          i RES-LIVE@ 0 <> if i RES-PG@ LIB-CLEAR then
       loop
@@ -612,7 +643,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
       loop
       RELEASE-REGISTRY
    then
-   false REGISTERED ! ;
+   false REGISTERED !
+   dup 0<> if throw then drop ;
 
 
 : REGISTER-CLEANUP ( -- )
@@ -698,7 +730,9 @@ REGISTER-CHILD-RESET
    0 slot RES-LIVE! ;
 
 
-: CLOSE-SLOT ( n -- ) {: slot:n :}
+: CLOSE-SLOT ( n -- n )
+   {: slot:n :}
+   slot ['] CANCEL-PENDING catch nip {: code:n :}
    RESULT-CAP 0 ?do
       i RES-LIVE@ 0<> i RES-CONN@ slot = and if
          i RES-PG@ LIB-CLEAR
@@ -707,7 +741,8 @@ REGISTER-CHILD-RESET
    loop
    slot DRAIN-LAST@ NULL-ADDR? 0= if slot DRAIN-LAST@ LIB-CLEAR then
    slot CONN-PG@ LIB-FINISH
-   slot RETIRE-CONN-SLOT ;
+   slot RETIRE-CONN-SLOT
+   code ;
 
 
 \ ---- server diagnostics ---------------------------------------------------
@@ -761,7 +796,7 @@ REGISTER-CHILD-RESET
 
 : FAIL-CONNECTION ( n -- ) {: slot:n :}
    slot COPY-CONN-MESSAGE
-   slot CLOSE-SLOT ;
+   slot CLOSE-SLOT drop ;                    \ the transport error stays primary
 
 
 : WAITING ( n n -- progress ) {: slot:n events:n :}
@@ -773,7 +808,7 @@ REGISTER-CHILD-RESET
 : CONNECT-REFUSED ( n -- progress ) {: slot:n :}
    slot COPY-CONN-MESSAGE
    slot MESSAGE$ {: ma:ptr mu:n :}
-   slot CLOSE-SLOT
+   slot CLOSE-SLOT drop
    ma mu PG-PROGRESS:refused ;
 
 
@@ -857,7 +892,7 @@ REGISTER-CHILD-RESET
       slot POLL-SLOT MATCH progress
          waiting OF
             [: WAIT-EVENT ;] catch {: code:n :} 2drop   \ the waiting payload is stale after a caught throw and unused
-            code 0<> if slot CLOSE-SLOT code throw then
+            code 0<> if slot CLOSE-SLOT drop code throw then
          ENDOF
          connected OF PG-PROGRESS:connected exit ENDOF
          completed OF PG-PROGRESS:completed exit ENDOF
@@ -1118,10 +1153,12 @@ public
    true ;
 
 
-\ CLOSE clears whatever results the connection still owns, so libpq keeps no
-\ orphan PGresult, then releases the call arena and retires the handle.
+\ CLOSE cancels pending SQL, clears owned results and retires the handle even
+\ when dispatch failed. An explicit close reports that failure after cleanup;
+\ an internal close during AWAIT keeps the original wait/transport exception.
 : CLOSE ( connection -- ) {: handle:connection :}
-   handle CONN-SLOT CLOSE-SLOT ;
+   handle CONN-SLOT CLOSE-SLOT
+   dup 0<> if throw then drop ;
 
 
 \ PARAMS empties the connection's parameter list and releases its call arena;

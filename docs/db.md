@@ -29,7 +29,31 @@ result owner linear: `PG:CLEAR` is
 the single consumption point, and a second `PG:CLEAR` — or any read — through
 the same handle is `PG:E-CLEARED` rather than a use of a freed `PGresult`.
 `PG:CLOSE` is the same contract for a connection, and it clears whatever
-results that connection still owns first, so libpq is left holding nothing.
+results that connection still owns, so libpq is left holding nothing. Closing
+a pending query first sends a native cancellation request, including when a
+halted task closes its owned connection through `TASK:AT-EXIT`. Idle and
+connecting handles send no cancellation. Keep that owner cleanup registered:
+halting a task alone does not close resources the application still owns.
+
+Cancellation uses libpq 17 or newer's `PQcancelCreate`, `PQcancelBlocking`
+and `PQcancelFinish`. It preserves the original connection's encryption
+requirements and configured `connect_timeout`. Closing a pending query can
+therefore block on the cancellation connection; without a configured timeout,
+there is no PG-imposed deadline. A dispatch failure still frees the native
+connection and retires its handle, then throws `PG:E-EXEC` on an explicit
+`CLOSE`; an internal close during `AWAIT` preserves the original failure.
+Task cleanup likewise preserves a body exception under the task's normal
+cleanup rules.
+
+A cancellation request cannot undo SQL already completed or committed when
+the request arrives. Successful dispatch alone does not prove cancellation
+took effect: the server may already have finished. See PostgreSQL's
+[cancellation contract](https://www.postgresql.org/docs/18/libpq-cancel.html).
+Image cleanup cancels pending queries across connections sequentially, not
+atomically: cancelling a transaction can release locks and let another pending
+query complete before its own cancellation arrives. Cleanup leaves no query
+pending, but it cannot undo that completed SQL.
+
 `PG:LIVE?` lets the owning task check a retained connection handle before
 cleanup: it answers false after `CLOSE`, an internally retired connect or
 transport failure, or image preparation, including when a new connection has
@@ -142,8 +166,8 @@ not start an AIO loop or wait inside PG.
 Only one operation may be pending on a connection. Parameter changes and a
 second send are refused with `E-STATEMENT` until the pending operation ends.
 Sends copy their statement and parameters before returning, so callers may
-reuse their input storage. `CLOSE` can abandon a connecting or busy handle;
-it also releases the pending result reservation. On a transport failure PG
+reuse their input storage. `CLOSE` can abandon a connecting handle or cancel
+a busy one; it also releases the pending result reservation. On a transport failure PG
 closes that connection and throws `E-EXEC`. A SQL rejection instead completes
 with a result whose `OUTCOME` carries the server diagnostic.
 
@@ -254,7 +278,7 @@ example below does it.
 | Code | Meaning |
 | --- | --- |
 | `PG:E-CONNECT` | libpq could not build a connection at all |
-| `PG:E-EXEC` | a transport/readiness failure, no result, or a rejected transaction verb |
+| `PG:E-EXEC` | a transport/readiness failure, no result, a rejected transaction verb, or failed cancellation dispatch |
 | `PG:E-COLUMN` | a row or column index outside the result |
 | `PG:E-TYPE` | a column read as a type its bytes are not, including `PG:INT` of NULL |
 | `PG:E-CLEARED` | a result used after `PG:CLEAR`, or cleared a second time |

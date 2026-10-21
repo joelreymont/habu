@@ -55,7 +55,8 @@ The GitHub tag archive requires an existing Gforth to build.
 
 The full native suite has additional host requirements. On Linux its PTY
 tests need working /dev/ptmx and /dev/pts. The database row needs initdb
-and postgres on PATH, run as an ordinary user because initdb refuses root.
+and postgres on PATH and libpq 17 or newer for native query cancellation,
+run as an ordinary user because initdb refuses root.
 On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
 Keg-only postgresql@18 needs its bin directory on PATH.
