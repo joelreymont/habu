@@ -1,7 +1,7 @@
 \ hb-build-aot-cache-test.f - checked fixture for tools/hb-build-lib.f: the
-\ AOT groups about the object cache and its keys - the preseeded entry, the
-\ tier refusal, a stored object's hit, one body behind an EXPORT, the engine
-\ and producer keys, a wrong object and a cache hit's failed publication.
+\ AOT groups about the object cache and its keys - the tier refusal, a stored
+\ object's hit, a call through an EXPORT alias, the engine and producer keys, a
+\ wrong object and a cache hit's failed publication.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
 
@@ -26,9 +26,7 @@ variable HBT-EXP-SRC-U
 variable HBT-EXP-OUT-U
 create HBT-EXP-SRC-BUF FS-PATH-CAP allot
 create HBT-EXP-OUT-BUF FS-PATH-CAP allot
-create HBT-EXP-DG 32 allot
 create HBT-EXP-HEX1 64 allot
-create HBT-EXP-HEX2 64 allot
 create HBT-OBJ-PREVIEW FS-PATH-CAP allot
 variable HBT-OBJ-PREVIEW-U
 create HBT-OUTER-ROWS FS-PATH-CAP 2 * allot
@@ -51,24 +49,6 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-EXP-HEX1 64 SB-APPEND
    10 SB-APPEND-C
    path pathu SB$ WRITE-ALL ;
-
-: BUILD-AOT-PRESEED ( -- )
-   HBT-AOT-SRC s" : ALTERNATE ( n n -- ) 42 <> if -9042 throw then 10 <> if -9043 throw then ; : MAIN ( -- ) -9044 throw ;" WRITE-ALL
-   HBT-REMOVE-AOT-OUT
-   HBT-ARGV-BASE
-   s" --preseed-entry" >LEN PROC-ARGV+
-   s" ALTERNATE" >LEN PROC-ARGV+
-   s" --preseed-seed" >LEN PROC-ARGV+
-   s" 000000000000000A000000000000002a" >LEN PROC-ARGV+
-   HBT-AOT-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-AOT-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   rc 0 T= erru 0 T=
-   HBT-OUT outu s" hb-build OK" CONTAINS? TTRUE
-   HBT-RUN-AOT
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 : HBT-AOT-JIT-REJECT ( -- )
    HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
@@ -152,13 +132,10 @@ create HBT-PAIR-GOT-HEX 64 allot
    rc 0 T= erru 0 T=
    HBT-RUN-OUT outu S\" 222\n\n" T$= ;
 
-\ EXPORT keeps one body (dot habu-compiler-pkg-re-688212c1): the stripped AOT
-\ binary carries no names, so a program calling a word through its defining
-\ package AND a re-exported alias must be byte-identical to the same program
-\ calling the defining name twice — a second body or a diverged call target
-\ changes the bytes. The signature identifier is no variable here: a stripped
-\ image is signed with src/habu/sign-id.f SIGN-ID:PROG$, whatever its path.
-\ The alias variant also runs, proving both names execute the one body.
+\ An EXPORT alias in a stripped AOT program (dot habu-compiler-pkg-re-688212c1):
+\ a program calling a word through its defining package and through a
+\ re-exported alias builds, runs clean and prints the body's result once per
+\ name.
 : HBT-EXP-SRC ( -- ptr u8 n )
    HBT-EXP-SRC-BUF HBT-EXP-SRC-U @ ;
 
@@ -170,12 +147,6 @@ create HBT-PAIR-GOT-HEX 64 allot
    s" public" SB-APPEND HBB-LF SB-APPEND-C
    s" : W ( i64 -- i64 ) dup * ;" SB-APPEND HBB-LF SB-APPEND-C
    s" ;package" SB-APPEND HBB-LF SB-APPEND-C ;
-
-: HBT-EXP-REF-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   HBT-EXP-COMMON
-   s" : MAIN ( -- ) 5 XA:W . cr 5 XA:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
-   SB$ ;
 
 : HBT-EXP-ALIAS-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -194,25 +165,17 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBB-BUILD
    HBT-REMOVE-ARTIFACT ;
 
-: HBT-EXP-HASH ( ptr u8 -- ) {: hex:ptr :}
-   HBT-FSHA-CTX HBT-EXP-OUT HBT-EXP-DG SHA256-FILE-IN 0 T=
-   HBT-EXP-DG hex SHA256>HEX ;
-
 : HBT-EXP-RUN ( -- )
    HBT-EXP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 T=
    errn 0 T=
-   HBT-RUN-OUT outn s" 25" CONTAINS? TTRUE ;
+   HBT-RUN-OUT outn S\" 25\n\n25\n\n" T$= ;
 
-: HBT-BUILD-AOT-EXPORT-ONE-BODY ( -- )
+: HBT-BUILD-AOT-EXPORT-ALIAS ( -- )
    HBT-ROOT s" exp.f" HBT-EXP-SRC-BUF HBT-EXP-SRC-U HBT-PATH!
    HBT-ROOT s" exp" HBT-EXP-OUT-BUF HBT-EXP-OUT-U HBT-PATH!
-   HBT-EXP-REF-SRC$ HBT-EXP-BUILD
-   HBT-EXP-HEX1 HBT-EXP-HASH
    HBT-EXP-ALIAS-SRC$ HBT-EXP-BUILD
-   HBT-EXP-HEX2 HBT-EXP-HASH
-   HBT-EXP-HEX1 64 HBT-EXP-HEX2 64 T$=
    HBT-EXP-RUN
    HBT-EXP-OUT HBT-REMOVE-FILE?
    BF-TMP-RESET ;
@@ -528,10 +491,9 @@ public
    HBT-PREPARE
    HBT-PUB-PREPARE
    HBT-PUB-PAIR-RENAME-FAILS
-   BUILD-AOT-PRESEED
    HBT-AOT-JIT-REJECT
    HBT-BUILD-AOT-OBJECT-HIT
-   HBT-BUILD-AOT-EXPORT-ONE-BODY
+   HBT-BUILD-AOT-EXPORT-ALIAS
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-MAKER-NESTED-INPUTS

@@ -455,11 +455,11 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP. A refusal ends the
 \ row in a die, the child's diagnostic on stderr: a lint refusal in
 \ HBB-FINISH-TOOL's, a maker refusal in HBB-FINISH-MAKER's. A row spawns the
-\ CLI only where the CLI is the subject: its options (CLI-REPORT,
-\ BUILD-AOT-PRESEED), a missing HB_TMP made and a lint refusal passed through
-\ (HBT-BUILD-MISSING-TMP), the cache path error's exit and JSON bytes
-\ (tools/hb-build-cli-errors-test.f), a maker refusal passed through (below)
-\ and the maker deadline and its override (the timeout rows).
+\ CLI only where the CLI is the subject: its options (CLI-REPORT), a
+\ missing HB_TMP made and a lint refusal passed through (HBT-BUILD-MISSING-TMP),
+\ the cache path error's exit and JSON bytes (tools/hb-build-cli-errors-test.f),
+\ a maker refusal passed through (below) and the maker deadline and its
+\ override (the timeout rows).
 : HBT-HBB-BUILD-OUT ( -- )
    HBB-BUILD
    BF-TMP-RESET ;
