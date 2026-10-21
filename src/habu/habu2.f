@@ -4459,19 +4459,13 @@ variable LREPLAYTRAP
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    done LBL, ;
 
-\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier. The tier waits on the
-\ machine stack for its store: of the registers WLFIND keeps, the name, the wid
-\ and the kind hold x0-x2 and x13.
+\ def-open ( ptr u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
-   LBL LBL LBL LBL LBL {: bad prot done nolast ncomp :}
+   LBL LBL LBL {: bad prot done :}
    B-TASK-LIVE-GUARD
    OVERLAY-EMIT:GUARD,
-   5 G-POP  4 G-POP  2 G-POP  1 G-POP  0 G-POP        \ x5 = the tier, x4 = the kind, x2 = the wid, x1/x0 = the name
+   4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK DNAME-CELL or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
-   5 1 CMPI,  C-HI bad BCOND,                         \ a tier other than 0 or 1, unsigned
-   5 ncomp CBNZ,  4 bad CBNZ,                         \ NCOMP compiles every body but kind 0's
-   ncomp LBL,
-   SP SP 16 SUBI,  5 SP 0 STR,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,
@@ -4489,17 +4483,13 @@ variable LREPLAYTRAP
    14 9 16 LDR,  14 14 4 ORR,  14 9 16 STR,           \ the kind beside the length
    3 9 40 STR,
    9 DATA PEND-CELL STR,  14 DATA TKA-CELL LDR,  14 DATA PENDTKA-CELL STR,
-   14 SP 0 LDR,  SP SP 16 ADDI,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   4 nolast CBZ,                                      \ a body that pushes a cell is the slot `does>` patches
-   14 DKIND:CAST LIT64,  4 14 CMP,  C-EQ nolast BCOND,
-   9 DATA LASTC-CELL STR,
-   nolast LBL,
    14 0 MOVZ,
    14 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    14 DATA TSIG-A-CELL STR,   14 DATA TSIG-U-CELL STR,
    14 DATA TCSIG-A-CELL STR,  14 DATA TCSIG-U-CELL STR,
    14 DATA PEND-OPAQUE-CELL STR,
    14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
+   14 DATA NCOMP-DISPATCH:TIER-CELL LDR,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    CODE-ORIGIN:OPEN,
    PROT-EMIT:LCLOSE LABEL@ BL,
    done B,

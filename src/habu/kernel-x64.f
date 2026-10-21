@@ -4657,8 +4657,7 @@ private
 24 constant DW-ARG                     \ the flag, the source's index or the kind
 32 constant DW-REC                     \ record NDICT, the one the row writes
 40 constant DW-SLOT                    \ the code slot past a long name
-48 constant DW-TIER                    \ requested tier when opening a definition
-64 constant DW-FRAME
+48 constant DW-FRAME
 $3A constant NAME-COLON                \ a qualified name's separator
 
 : FRAME-OPEN, ( -- ) RSP DW-FRAME >IMM8 ASM-SINK ENC-SUB-RI8 ;
@@ -4884,28 +4883,20 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
    done X64CODE:LBL, ;
 
-\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier: record NDICT unpublished, [0]
+\ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR;
-\ TSIG, TCSIG, PEND-OPAQUE, DOESB and TRUSTED clear; DEF-TIER-CELL takes tier
-\ and the provenance window opens at that CP. At tier 0 it opens the record
-\ only. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's, as
-\ habu2.f DEFWRITE:DEF-OPEN admits it.
+\ TSIG, TCSIG, PEND-OPAQUE, DOESB and TRUSTED clear; DEF-TIER-CELL takes
+\ TIER-CELL and the provenance window opens at that CP. At tier 0 it opens the
+\ record only. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's,
+\ as habu2.f DEFWRITE:DEF-OPEN admits it.
 : DEF-OPEN-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: prot:label done:label nolast:label ncomp:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label nolast:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
-   DW-TIER POP-TO,  DW-ARG POP-TO,  DW-WID POP-TO,
-   DW-LEN POP-TO,  DW-NAME POP-TO,
+   DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RAX DKIND:MASK DNAME-CELL or invert IMM64,
    RAX RSP DW-ARG MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
-   RAX RSP DW-TIER MOV-LOAD,
-   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-A SEAL-TRAP-LBL JCC,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE ncomp JCC,
-   RAX RSP DW-ARG MOV-LOAD,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
-   ncomp X64CODE:LBL,
    RDX RSP DW-WID MOV-LOAD,
    REAL-WID,
    prot OPEN-WID,
@@ -4934,7 +4925,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
-   RAX RSP DW-TIER MOV-LOAD,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
    WINDOW-CLOSE,
    FRAME-CLOSE,

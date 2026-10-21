@@ -344,13 +344,11 @@ private
 
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
 \ seal's protected wordlists, then the name's code room, before def-open
-\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME), then opens
-\ the record with its kind and the tier whose close ends it: the live tier for
-\ a colon body, 1 for a word published where its keyword is read. The
+\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
 \ refusals name the token, but the wall and the code room name the tail. The
 \ kind is the record's: 0 for a body the compiler compiles, DKIND:ADDR for a
 \ created word, DKIND:VAL for a constant, DKIND:CAST for a retype.
-: DEF-RECORD ( ptr u8 n n n n -- ) {: a:ptr u:n wid:n kind:n tier:n :}
+: DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid WL-PROBE XREF-FOUND? if
@@ -358,7 +356,7 @@ private
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
-   a u wid kind tier def-open ;
+   a u wid kind def-open ;
 
 \ The capture seeded with the name, the spelling the checker is told.
 : DEF-SEED ( -- )
@@ -366,11 +364,11 @@ private
    TOKEN$ DEF-CAPTURE ;
 
 \ A head's start: the capture seeded, the name qualified and recorded as the
-\ given kind at the given tier.
-: DEF-START ( n n -- )
-   {: kind:n tier:n :}
+\ given kind.
+: DEF-START ( n -- )
+   {: kind:n :}
    DEF-SEED
-   DEF-QUALIFY kind tier DEF-RECORD ;
+   DEF-QUALIFY kind DEF-RECORD ;
 
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
@@ -379,7 +377,7 @@ private
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
-   0 tier@ DEF-START
+   0 DEF-START
    0 LOCN-CELL CELL!  0 LOCF-CELL CELL!
    BODY-LEX-RESET
    trusted if
@@ -763,12 +761,12 @@ TRUSTED: DEF-HERE ( -- n ) here ;
 \ naming it, as the engine's `create` refuses it (C-QUALIFY-CAP, here
 \ DEF-RECORD). The engine's `create` writes at CP at the code ceiling, which
 \ def-open refuses, so the code room refuses first, naming the keyword, as
-\ `:`'s does. The record opens at tier 1: it is published where it is read.
+\ `:`'s does.
 : DEF-ADDR-ROW ( bool -- ) {: cell?:bool :}
    TASK-GUARD
    DEF-CODE-ROOM
    s" create" OPERAND
-   DKIND:ADDR cell? if DNAME-CELL or then 1 DEF-START
+   DKIND:ADDR cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
 
 \ A compiled defining word reaches `create` through the engine primitive,
@@ -796,7 +794,7 @@ variable DEF-VALUE
 : DEF-CONSTANT ( -- )
    TASK-GUARD
    s" constant" OPERAND
-   DKIND:VAL 1 DEF-START
+   DKIND:VAL DEF-START
    depth 0= if s" E-UNDERFLOW: " REFUSE then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
    DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
@@ -827,7 +825,7 @@ variable DEF-VALUE
    DEF-SEED
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
-   DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
+   DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER ;
 
 \ A signature's inside goes to the active owner's registrar at off, then to
@@ -891,7 +889,7 @@ variable DEF-VALUE
       s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
       TOKEN$ SAY RC-REJECT THROW-AT
    then
-   DEF-QUALIFY DKIND:CAST 1 DEF-RECORD
+   DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-LINEAR-OFF
    DEF-REGISTER-IDENTITY
@@ -1000,7 +998,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    s end DEF-SIG-PASS
    DEFER-CELL {: cell:n :}
-   DEF-QUALIFY 0 1 DEF-RECORD
+   DEF-QUALIFY 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
    cell NCOMP:FIXED-DEFER NCOMP:COMPILE-FIXED

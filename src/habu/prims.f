@@ -831,23 +831,18 @@ EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ def-open ( ptr u8 n n n n -- ) name, wid, kind, tier: write record NDICT
-\ unpublished, [0] CP after the name, [8] 0, the kind (0, DKIND:VAL,
-\ DKIND:ADDR, DNAME-CELL beside DKIND:ADDR for a variable, or DKIND:CAST) in
-\ [16] and the wid in [40]; PEND-CELL is that
-\ record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR, the record
-\ `does-patch` reads; TSIG, TCSIG, DOESB and TRUSTED clear; DEF-TIER-CELL
-\ takes the tier, the close that ends the record (0 the JIT's `;`; 1
-\ def-close, def-cast or ndict-append) and the provenance its body gets,
-\ whatever TIER-CELL holds; and the TIER-PROV open cell takes CP.
-\ It refuses another kind, a tier other than 0 or 1, tier 0 with a nonzero
-\ kind, whose body NCOMP compiles at either tier, tier 0 on x86-64, which has
-\ no JIT, wid -1 or -2 and CP at or past the code ceiling. At tier 0 it opens
-\ the record only: the JIT's own head (its frame and resets) is not this
-\ row's.
-EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+\ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
+\ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
+\ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
+\ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB and TRUSTED clear;
+\ DEF-TIER-CELL takes TIER-CELL and the TIER-PROV open cell takes CP. On
+\ x86-64 LASTC-CELL takes the record too for DKIND:VAL or DKIND:ADDR, the
+\ record `does-patch` reads. It refuses another kind, wid -1 or -2 and CP at
+\ or past the code ceiling. At tier 0 it opens the record only: the JIT's
+\ own head (its frame and resets) is not this row's.
+EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPPRIM: OUTER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: OUTER def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ body-append ( ptr u8 n -- ): append the bytes and one space to BODYBUF
 \ through the capture routine `:` uses. It refuses BODYLEN + u + 1 past
 \ BODYBUF-CAP, with BODYLEN and u both unsigned.
