@@ -1,6 +1,6 @@
 ---
 title: Canonicalize saved builder identity paths
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-21T03:55:46.415144+03:00"
