@@ -76,7 +76,6 @@ CAST: AS-WIDTH ( n -- [ n n -- n ] )
 CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
 CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
 CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
-CAST: AS-TOKEN ( n -- [ -- ptr u8 n ] )
 
 \ Checked bodies name field offsets through layout.f's NCOMP-DISPATCH:DECL-*.
 \ CHECKER-OWNER-ABI loads before the checker, so build-fixpoint's stage-built
@@ -174,13 +173,6 @@ public
 \ retained host's owner (src/core/checker-owner-extension.f), named through
 \ layout.f like every field above and read through the live source owner so a
 \ captured compiler never asks a stale checker by name.
-\ The using refusal's spelling belongs to the checker that scanned the source
-\ and remains valid until that scan's tape is released.
-TRUSTED: REFUSAL-TOKEN$ ( -- ptr u8 n )
-   NCOMP-DISPATCH:DECL-REFUSAL-TOKEN-OFF s" refusal token" FIELD
-   dup 0= if drop CHECKER-USE:REFUSAL-TOKEN$ exit then
-   AS-TOKEN execute ;
-
 : RESET-REPORT ( -- )
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" report reset" FIELD
    dup 0= if drop SOURCE-REPORT-RESET exit then

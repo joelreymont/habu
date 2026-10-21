@@ -307,11 +307,10 @@ CHECKER-OWNER-EXT:EXPORT-ACCEPT-OFF constant EXPORT-ACCEPT-OFF \ ( ptr u8 n n --
 \ Native multi-error recovery and diagnostics (src/compiler/native/checker-owner.f):
 \ the live checker answers whether this run reports every refusal and whether a
 \ refused declaration's recovery row was used, and it owns diagnostic emission
-\ and the refused using spelling even while a baked compiler asks it.
+\ even while a baked compiler asks it.
 CHECKER-OWNER-EXT:MULTI-ERROR-OFF constant MULTI-ERROR-OFF \ ( -- bool )
 CHECKER-OWNER-EXT:RESET-REPORT-OFF constant RESET-REPORT-OFF \ ( -- )
 CHECKER-OWNER-EXT:JSON-REPORTED-OFF constant JSON-REPORTED-OFF \ ( -- bool )
-CHECKER-OWNER-EXT:REFUSAL-TOKEN-OFF constant REFUSAL-TOKEN-OFF \ ( -- ptr u8 n )
 CHECKER-OWNER-EXT:RECOVERY-USED-OFF constant RECOVERY-USED-OFF \ ( -- bool )
 0 constant RES-ORD
 1 constant RES-ROLE

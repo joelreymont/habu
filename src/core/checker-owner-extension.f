@@ -40,7 +40,9 @@ $520 constant EXPORT-ACCEPT-OFF
 $528 constant MULTI-ERROR-OFF
 $530 constant RESET-REPORT-OFF
 $538 constant JSON-REPORTED-OFF
-$540 constant REFUSAL-TOKEN-OFF
+\ $540 held the using refusal's spelling and has no reader. A host's baked
+\ compiler asks the live checker's record at the offsets it was built with, so
+\ the cell stays reserved and RECOVERY-USED-OFF keeps $548.
 $548 constant RECOVERY-USED-OFF
 RECOVERY-USED-OFF CELL + constant OWNER-BYTES
 
