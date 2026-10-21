@@ -6,10 +6,27 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
 require src/lib/task.f
+require src/lib/process-env.f
+require src/lib/engine-candidate.f
 
 package BOOT-CENSUS-FIXTURE
 private
 500 constant HOLD-MS
+
+\ One exec with exactly the same path and argv; only its environment changes.
+\ Holding both images gives the census an observation on each side of exec.
+: REEXEC ( -- )
+   HOLD-MS >MS TASK:SLEEP
+   s" BOOT_CENSUS_REEXEC" GETENV nip 0 > if exit then
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/perf/boot-census-fixture.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" reexec" >LEN PROC-ARGV+
+   s" BOOT_CENSUS_REEXEC" >LEN s" 1" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE execve
+   drop E-PROC-SPAWN throw ;
 
 : FORK-CHILD ( -- )
    HOLD-MS >MS TASK:SLEEP
@@ -22,6 +39,7 @@ private
 
 public
 : MAIN ( -- )
+   SCRIPT-ARGC 0 > if REEXEC exit then
    PROC-FORK:CHECKED {: child:pid :}
    child PID>N 0= if FORK-CHILD then
    SPAWN-SLEEP

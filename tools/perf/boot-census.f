@@ -16,18 +16,23 @@
 \ registered. After the root exits the census waits for the rest of the tree,
 \ at most DRAIN-ROUNDS quiet ticks. A process that ends before it is listed is
 \ not seen at all, one listed after it ended cannot be registered (LOST), and
-\ one listed between its spawn and its exec counts as a fresh image twice: as
-\ listed, and at its exec event.
+\ an image read spanning exec is logged incomplete and retried on the next
+\ event or sweep. The exec version prevents a queued NOTE_EXEC from counting
+\ the image already observed during registration twice.
 \
 \ FORK OR EXEC. A process's image is its path (proc_pidpath) and its argv
 \ (KERN_PROCARGS2, joined with single spaces, at most ARGV-CAP bytes), read
-\ when it is registered and again on each exec event. A child whose image is its
-\ parent's latest image is a fork; every other child, the root and every exec
-\ event is a fresh image.
+\ when it is registered and again on each exec event, bracketed by libproc's
+\ p_idversion, which changes even on same-path/argv exec. A child whose first
+\ image is its parent's latest image is inherited; it counts as a fork only
+\ when it exits without an observed exec. Every other child, the root and each
+\ newly observed exec version is a fresh image.
 \
 \ THE LOG, one line per event, t in milliseconds since the start:
 \   t ROOT|CHILD pid ppid path | argv
 \   t EXEC pid 0 path | argv
+\   t IMAGE pid ppid path | argv   a deferred image read recovered at a sweep
+\   t INCOMPLETE pid ppid - | -    exited before its image could be classified
 \   t FORK pid 0 - | -
 \   t EXIT pid 0 - | -              kqueue reports an exit status only to
 \                                   the parent; DONE carries the root's
@@ -35,7 +40,9 @@
 \   t DONE alive=A lost=L status=S  S is the root's raw wait status
 \
 \ THE CENSUS: fresh images by image bucket, fork children by image basename,
-\ refused registrations, and the argv shapes of the Habu engines' images.
+\ refused registrations, incomplete image reads, and Habu argv shapes. Exec
+\ notifications may coalesce: only observed image generations can be counted.
+\ See docs/debugging.md for the libproc ABI and exec-version sources.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -61,6 +68,8 @@ private
 1 constant CTL-KERN                \ sys/sysctl.h
 49 constant KERN-PROCARGS2         \ sys/sysctl.h
 6 constant PROC-PPID-ONLY          \ proc_listpids: children of a pid (src/lib/process-tree.f)
+17 constant PROC-PIDUNIQINFO       \ proc_pidinfo: proc_uniqidentifierinfo, sys/proc_info_private.h
+56 constant UNIQINFO-BYTES         \ API struct size; p_idversion is u32 at byte 32
 4 constant PID-BYTES               \ pid_t
 4096 constant LIST-MAX             \ children of one process listed at once; a full list is E-PROC-TRUNCATED
 LIST-MAX PID-BYTES * constant LIST-BYTES
@@ -76,13 +85,18 @@ NOTE-FORK NOTE-EXEC or NOTE-EXIT or constant NOTE-ALL
 5000 constant SWEEP-TENTHS         \ a sweep at least every 500 ms while events flow
 50 constant DRAIN-ROUNDS           \ quiet ticks to wait for stragglers after the root exited
 
-6 constant REC-CELLS               \ a watched process:
+11 constant REC-CELLS              \ a watched process:
 0 constant R-PID
 1 constant R-ALIVE                 \ 1 until its exit event
 2 constant R-PATH                  \ TEXT offset and length of its latest image path
 3 constant R-PATH-U
 4 constant R-ARGV                  \ and of its argv
 5 constant R-ARGV-U
+6 constant R-VERSION               \ exec version, 0 until a coherent image was read
+7 constant R-INHERITED             \ first image matched parent; cleared on exec
+8 constant R-PPID
+9 constant R-DIRTY                 \ image read needs retry at next event or sweep
+10 constant R-EXEC                 \ an exec event was observed, even if its image was unavailable
 4 constant KEY-CELLS               \ a census row:
 0 constant K-OFF                   \ TEXT offset and length of its key
 1 constant K-U
@@ -96,6 +110,8 @@ create TICK 16 allot               \ struct timespec: the wait's 200 ms
 0 TICK LE:U64!  TICK-NS TICK 8 + LE:U64!
 create MIB 12 allot                \ { CTL_KERN, KERN_PROCARGS2, pid }
 create RAW RAW-CAP allot
+create UNIQINFO UNIQINFO-BYTES allot
+variable IMAGE-VERSION
 variable RAW-U                     \ sysctl's size_t, in and out
 variable CUR                       \ the argv reader's offset in RAW
 create PATH-BUF PATH-CAP-BYTES allot
@@ -129,6 +145,7 @@ variable ALIVE
 variable LOST
 variable EXEC-TOTAL
 variable FORK-TOTAL
+variable INCOMPLETE
 variable ROOT-EXITED
 variable ROOT-STATUS
 variable LAST-SWEEP
@@ -148,6 +165,10 @@ FUNCTION: KEVENT kevent ( n ptr u8 n ptr u8 n ptr u8 -- i32 )
 
 FUNCTION: PID-PATH proc_pidpath ( n ptr u8 n -- i32 )
    1 2 WRITES-ARG
+;FUNCTION
+
+FUNCTION: PID-INFO proc_pidinfo ( n n n ptr u8 n -- i32 )
+   3 UNIQINFO-BYTES WRITES-BYTES
 ;FUNCTION
 
 FUNCTION: LIST-PIDS proc_listpids ( n n ptr u8 n -- i32 )
@@ -180,12 +201,13 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 : ARGS-C+ ( n -- )   ARGS ARGV-CAP ARGS-U BUF-APPEND-C ;
 
 \ The image path of pid, or ?path-errno=E when libproc refuses it.
-: PATH-READ ( n -- ) {: pid:n :}
+: PATH-READ ( n -- bool )
+   {: pid:n :}
    pid PATH-BUF PATH-CAP-BYTES PID-PATH {: u:n :}
-   u 0 > if u >LEN PATH-U ! exit then
+   u 0 > if u >LEN PATH-U ! true exit then
    ERRNO@ {: e:n :}
    PATH-U BUF-RESET
-   s" ?path-errno=" PATH+  e NUM$ PATH+ ;
+   s" ?path-errno=" PATH+  e NUM$ PATH+ false ;
 
 : MORE? ( -- bool )   CUR @ RAW-U @ < ;
 : BYTE ( -- n )   RAW CUR @ + c@ ;
@@ -207,7 +229,8 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 \ KERN_PROCARGS2 answers argc, the exec path, its NUL padding, then the argv
 \ strings, each ending in a NUL. The argv of pid, joined with single spaces and
 \ cut at ARGV-CAP bytes, or ?argv-errno=E when sysctl refuses it.
-: ARGS-READ ( n -- ) {: pid:n :}
+: ARGS-READ ( n -- bool )
+   {: pid:n :}
    ARGS-U BUF-RESET
    CTL-KERN MIB LE:U32!
    KERN-PROCARGS2 MIB 4 + LE:U32!
@@ -216,9 +239,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    MIB 3 RAW RAW-U BYTE-VIEW NULL-PTR 0 SYSCTL 0 < if
       ERRNO@ {: e:n :}
       s" ?argv-errno=" ARGS+  e NUM$ ARGS+
-      exit
+      false exit
    then
-   RAW-U @ 4 < if exit then
+   RAW-U @ 4 < if false exit then
    RAW LE:U32@ {: argc:n :}
    4 CUR !
    SKIP-EXEC-PATH
@@ -226,7 +249,30 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
       ARG+
       dup 1+ argc < ARGS-ROOM? and if STR-SPACE ARGS-C+ then
       1+
-   repeat drop ;
+   repeat drop true ;
+
+\ 0 is an unavailable observation, including a process that has exited.
+: VERSION@ ( n -- n )
+   PROC-PIDUNIQINFO 0 UNIQINFO UNIQINFO-BYTES PID-INFO {: bytes:n :}
+   bytes 0= if 0 exit then
+   bytes UNIQINFO-BYTES <> if E-PROC-OUTPUT throw then
+   UNIQINFO 32 + LE:U32@ ;
+
+\ A changing or unavailable version leaves no image to classify. Retry only
+\ at the existing event/sweep boundary; a process may keep execing or exit.
+: IMAGE-READ ( n -- bool )
+   {: pid:n :}
+   pid VERSION@ {: before:n :}
+   pid PATH-READ {: pathok:bool :}
+   pid ARGS-READ {: argsok:bool :}
+   pid VERSION@ {: after:n :}
+   before 0<> before after = and pathok and argsok and if
+      after IMAGE-VERSION ! true exit
+   then
+   1 INCOMPLETE +!
+   PATH-U BUF-RESET s" ?incomplete-image" PATH+
+   ARGS-U BUF-RESET s" ?incomplete-image" ARGS+
+   false ;
 
 \ ---- the log -------------------------------------------------------------------
 
@@ -284,7 +330,9 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    PATH$ TEXT+ i R-PATH REC !
    PATH-U @ LEN>N i R-PATH-U REC !
    ARGS$ TEXT+ i R-ARGV REC !
-   ARGS-U @ LEN>N i R-ARGV-U REC ! ;
+   ARGS-U @ LEN>N i R-ARGV-U REC !
+   IMAGE-VERSION @ i R-VERSION REC !
+   0 i R-DIRTY REC ! ;
 
 : IMAGE-SAME? ( n -- bool ) {: i:n :}
    i R-PATH REC$ PATH$ STR=
@@ -426,8 +474,8 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    a u 80 min ;
 
 \ ---- classifying ----------------------------------------------------------------
-\ Each image is classified when its line is logged, so the census reads the log
-\ in its own order.
+\ Classify coherent observations in log order. An initial child comparison
+\ stays pending until its parent's image is available.
 
 : FRESH ( n -- )                   \ record i holds a fresh image, the one just read
    1 EXEC-TOTAL +!
@@ -437,12 +485,31 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    i IMAGE! ;
 
 : CHILD-SEEN ( n n -- ) {: i:n ppid:n :}
+   i R-EXEC REC @ 0<> if i FRESH exit then
    ppid CURRENT {: p:n :}
-   p 0 >= if p IMAGE-SAME? else false then if
-      1 FORK-TOTAL +!
-      FORKS FORKS-N PATH$ BASENAME COUNT+
+   \ Missing parent evidence establishes neither exec nor inheritance. Keep
+   \ this child unclassified and dirty until an event or sweep can compare it.
+   p 0 >= if p R-VERSION REC @ 0<> else false then 0= if
+      1 INCOMPLETE +! exit
+   then
+   p IMAGE-SAME? if
+      1 i R-INHERITED REC !
       i IMAGE! exit
    then
+   i FRESH ;
+
+: CLASSIFY ( n -- )
+   {: i:n :}
+   i R-VERSION REC @ 0= if
+      i R-PID REC @ ROOT @ = if i FRESH else i i R-PPID REC @ CHILD-SEEN then
+      exit
+   then
+   i R-VERSION REC @ IMAGE-VERSION @ = if
+      i R-INHERITED REC @ 0<> i R-EXEC REC @ 0<> and 0= if
+         0 i R-DIRTY REC ! exit
+      then
+   then
+   0 i R-INHERITED REC !
    i FRESH ;
 
 \ ---- following the tree ---------------------------------------------------------
@@ -478,13 +545,17 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    i 1+ REC-CELLS * RECS-RESERVE
    pid i R-PID REC !
    1 i R-ALIVE REC !
+   0 i R-VERSION REC !
+   0 i R-INHERITED REC !
+   ppid i R-PPID REC !
+   1 i R-DIRTY REC !
+   0 i R-EXEC REC !
    i 1+ pid SLOT !
    1 REC-N +!
    1 ALIVE +!
-   pid PATH-READ
-   pid ARGS-READ
+   pid IMAGE-READ {: valid:bool :}
    tag tagu pid ppid PROC-LINE
-   tag tagu s" ROOT" STR= if i FRESH else i ppid CHILD-SEEN then
+   valid if i CLASSIFY then
    pid PENDING+ ;
 
 : LISTED@ ( n -- n )   PID-BYTES * LIST + LE:U32@ ;
@@ -510,7 +581,15 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 : SWEEP ( -- )
    REC-N @ 0 ?do
-      i R-ALIVE REC @ 0<> if i R-PID REC @ SCAN-CHILDREN then
+      i R-ALIVE REC @ 0<> if
+         i R-DIRTY REC @ 0<> if
+            i R-PID REC @ IMAGE-READ if
+               s" IMAGE" i R-PID REC @ i R-PPID REC @ PROC-LINE
+               i CLASSIFY
+            then
+         then
+         i R-PID REC @ SCAN-CHILDREN
+      then
    loop
    DRAIN ;
 
@@ -520,7 +599,15 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 : EXITED ( n -- ) {: pid:n :}
    pid CURRENT {: c:n :}
-   c 0 >= if c R-ALIVE REC @ 0<> if 0 c R-ALIVE REC !  -1 ALIVE +! then then
+   c 0 >= if c R-ALIVE REC @ 0<> if
+      c R-VERSION REC @ 0= if s" INCOMPLETE" pid c R-PPID REC @ EVENT-LINE then
+      c R-INHERITED REC @ 0<> c R-EXEC REC @ 0= and if
+         1 FORK-TOTAL +!
+         PATH-U BUF-RESET c R-PATH REC$ PATH+
+         FORKS FORKS-N PATH$ BASENAME COUNT+
+      then
+      0 c R-ALIVE REC !  -1 ALIVE +!
+   then then
    s" EXIT" pid 0 EVENT-LINE
    pid ROOT @ = if ROOT-REAP then
    ROOT-EXITED @ 0<> ALIVE @ 0 <= and if 1 DONE ! then ;
@@ -528,10 +615,11 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 : EXECED ( n -- ) {: pid:n :}
    pid CURRENT {: c:n :}
    c 0 < if E-PROC-OUTPUT throw then
-   pid PATH-READ
-   pid ARGS-READ
+   1 c R-EXEC REC !
+   1 c R-DIRTY REC !
+   pid IMAGE-READ {: valid:bool :}
    s" EXEC" pid 0 PROC-LINE
-   c FRESH ;
+   valid if c CLASSIFY then ;
 
 : EVENT-HANDLE ( -- )
    EVENT LE:U64@ {: pid:n :}
@@ -604,6 +692,7 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
    s" total fork children (no exec): " FORK-TOTAL @ .TOTAL
    FORKS FORKS-N @ .MOST-COMMON
    s" lost registrations: " LOST @ .TOTAL
+   s" incomplete image reads: " INCOMPLETE @ .TOTAL
    cr s" hb-family exec argv shapes:" type cr
    SHAPES SHAPES-N @ .MOST-COMMON ;
 

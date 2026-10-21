@@ -702,6 +702,21 @@ first crosses the guard page.
   process to LOGFILE and print a census that classifies every child
   fork-vs-exec by image path and argv (fork children keep the parent's argv).
   Start here for any "how many engines does this run actually start" question.
+  The census brackets path/argv reads with `proc_pidinfo`'s exec version and
+  counts each observed version once. The `PROC_PIDUNIQIDENTIFIERINFO` record
+  is 56 bytes with `p_idversion` at byte 32, as specified by Apple's
+  [API structure](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h);
+  Apple's [exec regression test](https://github.com/apple-oss-distributions/xnu/blob/main/tests/exec-race-128791723.c)
+  verifies that the version changes across exec. This preserves same-image
+  reexecs while avoiding a queued exec notification counting an image already
+  read at registration twice. An inherited child counts as a fork only at
+  exit without an observed exec. Unavailable or changing image reads are
+  reported as incomplete and retried at an event or sweep; exited processes
+  may never yield a coherent image. A child with no comparable parent image
+  remains unclassified until that comparison is possible; an earlier exit
+  logs `INCOMPLETE` instead of fabricating an exec or fork. Notifications can
+  coalesce, so the census counts observed generations and cannot reconstruct
+  unseen rapid execs.
 
 ## Sampling profiler
 
