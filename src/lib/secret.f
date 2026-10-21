@@ -94,8 +94,8 @@ public
 package SECRET-LOAD
 public
 : HOST ( -- )
-   HB-TARGET-MACOS? if s" src/lib/secret-macos.f" required then
+   HB-TARGET-MACOS? if s" src/lib/secret/macos.f" required then
    HB-TARGET-LINUX? HB-TARGET-LINUX-X86-64? or
-      if s" src/lib/secret-linux.f" required then ;
+      if s" src/lib/secret/linux.f" required then ;
 ;package
 SECRET-LOAD:HOST
