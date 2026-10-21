@@ -170,7 +170,7 @@ private
 0 CWORK-VARIABLE M-FIXED n                      \ the pending definer's body kind
 0 CWORK-VARIABLE M-FIXED-VAL n                  \ its value or dispatch cell
 -1 CWORK-VARIABLE M-FIXED-REC n                 \ published record for a seeded created child, or -1
-0 CWORK-VARIABLE M-SHADOW-ONLY n                \ the engine already published its own body
+0 CWORK-VARIABLE M-SHADOW-ONLY bool             \ the engine already published its own body
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -1076,7 +1076,7 @@ INSTALL-FORGET
    -1 M-DOES-ROW !
    NDICT:FIXED-NONE M-FIXED !
    -1 M-FIXED-REC !
-   0 M-SHADOW-ONLY !
+   false M-SHADOW-ONLY !
    0 NAME-U !
    NELAB:REFUSED-RESET ;
 
@@ -1116,9 +1116,9 @@ private
    idx M-FIXED-REC !
    val M-FIXED-VAL !  kind M-FIXED !
    0 M-DOES !  -1 M-DOES-FUN !
-   1 M-SHADOW-ONLY !  1 M-OPEN !  0 M-RC !
+   true M-SHADOW-ONLY !  1 M-OPEN !  0 M-RC !
    [: IN-CONTEXT ;] catch {: rc:n :}
-   0 M-SHADOW-ONLY !  0 M-OPEN !
+   false M-SHADOW-ONLY !  0 M-OPEN !
    rc 0<> if rc throw then
    M-RC @ 0<> if M-RC @ throw then ;
 
