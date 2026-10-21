@@ -61,7 +61,7 @@ create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-CLOSURE-HEX 80 allot
-create HBB-SRC-STATIC-HEX 80 allot
+create HBB-SRC-ENTRY-HEX 80 allot
 create HBB-INPUTS-SHA SHA256-CTX-BYTES allot
 create HBB-INPUTS-DIGEST 32 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
@@ -574,14 +574,6 @@ variable HBB-APP-BUILDER-U
 \ Discover the producer's loaded source closure instead of maintaining a
 \ second dependency list. The target selector is part of the key; discovery
 \ includes every statically reachable target branch.
-: HBB-KEY-CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
-   a u EC:BUILD
-   0 HBB-KEY-I !
-   begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
-      HBB-KEY-I @ 1+ HBB-KEY-I !
-   repeat ;
-
 : HBB-MAKER-CLOSURE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold )
    {: a:ptr u:n :}
    a u SOURCE-ROOT:RESOLVE drop SOURCE-ROOT:RESOLVED-ROOT$
@@ -1002,12 +994,10 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 : HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
 
-\ Static discovery folds the ordered literal source closure. Observed inputs
-\ select the final source key after the maker load or a fresh index lookup.
 \ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
-\ key, the source-index key (via HBB-CLOSURE-HEX!), and the object source header.
+\ key, the source-index key (via HBB-ENTRY-HEX!), and the object source header.
 \ Without it a preseeded run would restore a stale normal-MAIN artifact.
 : HBB-PRESEED-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    HBB-PRESEED? 0= if exit then
@@ -1016,16 +1006,24 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-SEED-HEX$ CONTENT-KEY:TEXT+
    SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CONTENT-KEY:TEXT+ ;
 
-: HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
+
+\ The canonical entry selects a prior observed load. Its actual inputs supply
+\ the dependency key: static replay cannot know the root a loader scopes at
+\ runtime, or whether a body containing a literal import runs at all.
+: HBB-ENTRY-HEX! ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n dst:ptr :}
+   a u SOURCE-ROOT:ENTRY-RESOLVE drop {: path:ptr pathu:n :}
    CONTENT-KEY:OPEN
-   s" user-source-closure-v1" CONTENT-KEY:TEXT+
-   a u HBB-KEY-CLOSURE+
+   s" user-source-entry-v1" CONTENT-KEY:TEXT+
+   path pathu CONTENT-KEY:FILE+
    HBB-PRESEED-CK+
    dst CONTENT-KEY:FINAL-HEX ;
 
+
 : HBB-SRC-CLOSURE-HEX! ( -- )
-   HBB-SRC$ HBB-SRC-STATIC-HEX HBB-CLOSURE-HEX!
-   HBB-SRC-STATIC-HEX HBB-SRC-CLOSURE-HEX 64 BYTE-COPY ;
+   HBB-SRC$ HBB-SRC-ENTRY-HEX HBB-ENTRY-HEX!
+   HBB-SRC-ENTRY-HEX HBB-SRC-CLOSURE-HEX 64 BYTE-COPY ;
+
 
 : HBB-AOT-INPUTS$ ( -- ptr u8 n )
    HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U @ ;
@@ -1037,7 +1035,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 : HBB-AOT-INPUTS-PATH! ( -- )
    CONTENT-KEY:OPEN
    s" hb-build-actual-inputs-v1" CONTENT-KEY:TEXT+
-   HBB-SRC-STATIC-HEX 64 CONTENT-KEY:TEXT+
+   HBB-SRC-ENTRY-HEX 64 CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    HBB-SRC$ CONTENT-KEY:TEXT+
    BF-ENGINE$ CONTENT-KEY:TEXT+
@@ -1052,7 +1050,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-INPUTS-SHA rows rowsu HBB-INPUTS-DIGEST SHA256-IN
    CONTENT-KEY:OPEN
    s" user-source-inputs-v1" CONTENT-KEY:TEXT+
-   HBB-SRC-STATIC-HEX 64 CONTENT-KEY:TEXT+
+   HBB-SRC-ENTRY-HEX 64 CONTENT-KEY:TEXT+
    HBB-INPUTS-DIGEST CONTENT-KEY:DIGEST+
    HBB-SRC-CLOSURE-HEX CONTENT-KEY:FINAL-HEX ;
 

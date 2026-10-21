@@ -155,6 +155,10 @@ Before reusing a stripped executable or stored object, `hb-build` checks the
 files, path resolutions and environment queries the builder actually used.
 Those recorded inputs also select the cache keys, so changing a dynamic
 loader's source root cannot restore an image built from its previous root.
+The canonical entry path and content select the recorded load. Imports run
+under their ordinary source roots, including `SOURCE-ROOT:WITH`; a literal
+import in a body that never runs adds no dependency. A reached missing import
+or rejected definition still fails while the builder loads the source.
 Environment inputs distinguish an absent value from an empty value. Runtime
 `GETENV` reads remain ordinary process environment queries.
 
