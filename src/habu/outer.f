@@ -260,9 +260,10 @@ public
 \ TKL-CELL, so a parsing word a token runs reads this buffer, a nested load
 \ nests, and a refusal names the token the engine would.
 \
-\ The data stack is the program's. Nothing of the loop's is on it while a
-\ word or the top-row hook runs, so the words that run them declare no locals
-\ and keep their state in cells or, across the hook, on the return stack.
+\ The data stack and the return stack are the program's while a word runs:
+\ the source observer compares the return-stack depth with the floor it
+\ recorded at evaluate entry (SX-RFLOOR), so the loop keeps its own state in
+\ locals and cells, never on the return stack.
 
 package OUTER
 
@@ -300,6 +301,13 @@ create NL NEWLINE c,
 \ `ptr-field`, the declared door to a DATA cell that holds an address.
 : ADDR@ ( n -- ptr u8 ) data-base + 0 ptr-field @ ;
 : ADDR! ( ptr u8 n -- ) data-base + 0 ptr-field ! ;
+
+\ A cell of a frame the engine holds (interpret.f FRAME-OPEN, the source observer).
+: FR! ( n ptr u8 n -- )
+   + CELL-VIEW ! ;
+
+: FR@ ( ptr u8 n -- n )
+   + CELL-VIEW @ ;
 
 : TOKEN$ ( -- ptr u8 n )
    TKA-CELL ADDR@ TKL-CELL CELL@ ;
@@ -604,15 +612,110 @@ TYPED-VARIABLE REC ptr n
    1 f DNAME-IMM and 0<> if 2 or then
    f MIN-IN 8 lshift or ;
 
-\ The unit hook, then the top-row hook, before the word runs. The flags and
-\ the xt are read before either hook runs and wait on the return stack while
-\ they run.
+\ ---- the source observer (habu2.f C-SOURCE-EXEC-BEFORE, EMIT-SOURCE-EXEC-FINISH) --
+\ source-exec-run (habu1.f BSOURCEEXECRUN) pushes one frame on the native
+\ stack, named by SOURCE-EXEC-CTX-CELL, and runs a continuation that evaluates
+\ the owned range. The engine's evaluate arms the frame when the range it
+\ opens is the owned one (habu1.f EMIT-EVAL-BODY); its loop calls the before
+\ callback for a word about to run and for a tick's target (SOURCE-EXEC:WORD,
+\ SOURCE-EXEC:TICK; numbers, strings and characters have no event) and the
+\ after callback at the top of the next pass, and BSOURCEEXECRUN runs the
+\ finish once more after its catch. This loop does the same with the same
+\ fields, so the engine's predicates (source-exec-boundary?, -loader-cut?,
+\ -position, the source-unit-run snapshot) read them unchanged. The fields the
+\ engine stores and nothing reads (SX-OP, SX-REC, SX-ENTRY, SX-WRITES) are not
+\ stored. The engine closes its PROT window around a callback; this loop never
+\ holds one (definers.f: def-open and jit-open close their own).
+4 constant OBSERVE-TICK          \ SOURCE-EXEC:TICK (src/habu/source-exec.f)
+5 constant OBSERVE-WORD          \ SOURCE-EXEC:WORD
+
+\ The frame of the loop now reading tokens, as EVAL-TOP-CELL holds it, 0 for
+\ the frameless INTERPRET-OPEN. The engine tests SX-EVAL = EVAL-TOP-CELL; a
+\ frameless loop nested in an action leaves EVAL-TOP-CELL the owner's, so
+\ this loop compares its own frame.
+variable LOOP-EVAL
+
+\ The frame's callback cells hold raw execution tokens.
+CAST: BEFORE-CALL ( n -- [ n n n n ptr u8 n -- n bool ] )
+CAST: AFTER-CALL ( n -- [ n n n -- ] )
+
+: OBSERVER ( -- ptr u8 )
+   SOURCE-EXEC-CTX-CELL ADDR@ ;
+
+: OWNED? ( ptr u8 -- bool ) {: ctx:ptr :}
+   ctx SX-ARMED FR@ 0= if false exit then
+   ctx SX-EVAL FR@ LOOP-EVAL @ = ;
+
+\ Arm the frame when the range this evaluate opens is the owned one: the
+\ frame, the depth floor and the return-stack floor (habu1.f EMIT-EVAL-BODY).
+: OBSERVE-ARM ( ptr u8 n ptr u8 -- ) {: src:ptr len:n f:ptr :}
+   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
+   ctx SX-ARMED FR@ 0<> if exit then
+   ctx SX-SRC FR@ src NULL-PTR - <> if exit then
+   ctx SX-LEN FR@ len <> if exit then
+   f NULL-PTR - ctx SX-EVAL FR!
+   depth ctx SX-FLOOR FR!
+   RSP-CELL CELL@ ctx SX-RFLOOR FR!
+   1 ctx SX-ARMED FR! ;
+
+\ Before an action (habu2.f C-SOURCE-EXEC-BEFORE): the depths, the before
+\ callback with the token and input cells put back after it, then the action
+\ is pending until the next pass. A callback that throws unwinds through the
+\ loop's catch, as the engine's does.
+: OBSERVE-BEFORE ( n n n -- ) {: op:n rec:n entry:n :}
+   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
+   ctx OWNED? 0= if exit then
+   ctx SX-SUSPEND FR@ 0<> if exit then
+   ctx SX-PENDING FR@ 0<> if exit then
+   TKA-CELL CELL@ TKL-CELL CELL@ INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@
+   {: tka:n tkl:n inp:n ine:n inb:n :}
+   depth ctx SX-DEPTH FR!
+   RSP-CELL CELL@ ctx SX-RDEPTH FR!
+   1 ctx SX-SUSPEND FR!
+   ctx SX-UNIT FR@ op rec entry TOKEN$ ctx SX-BEFORE FR@ BEFORE-CALL execute
+   drop ctx SX-TICKET FR!
+   tka TKA-CELL CELL!  tkl TKL-CELL CELL!  inp INP-CELL CELL!
+   ine INE-CELL CELL!  inb SRCLOC:INB-CELL CELL!
+   0 ctx SX-SUSPEND FR!
+   1 ctx SX-PENDING FR! ;
+
+\ The after callback: ( unit ticket 0 ). A quotation reads no local.
+: AFTER-RUN ( -- )
+   OBSERVER {: ctx:ptr :}
+   ctx SX-UNIT FR@ ctx SX-TICKET FR@ 0 ctx SX-AFTER FR@ AFTER-CALL execute ;
+
+\ At the top of a pass (habu2.f EMIT-SOURCE-EXEC-FINISH from LMAIN): the
+\ pending action is done, so the depths and the cursor's offset go to the
+\ frame and the after callback runs under catch, the input cells put back
+\ after it. Its throw goes on to the loop's catch (the engine's BR EVALREC):
+\ an owned loop always runs under EVAL-FRAMED-RANGE's frame.
+: OBSERVE-FINISH ( -- )
+   OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
+   ctx SX-PENDING FR@ 0= if exit then
+   ctx OWNED? 0= if exit then
+   TKA-CELL CELL@ TKL-CELL CELL@ INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@
+   {: tka:n tkl:n inp:n ine:n inb:n :}
+   0 ctx SX-PENDING FR!
+   depth ctx SX-DEPTH FR!
+   RSP-CELL CELL@ ctx SX-RDEPTH FR!
+   inp ctx SX-SRC FR@ - ctx SX-POS FR!
+   1 ctx SX-SUSPEND FR!
+   [: AFTER-RUN ;] catch {: code:n :}
+   tka TKA-CELL CELL!  tkl TKL-CELL CELL!  inp INP-CELL CELL!
+   ine INE-CELL CELL!  inb SRCLOC:INB-CELL CELL!
+   0 ctx SX-SUSPEND FR!
+   code 0<> if code throw then ;
+
+\ The unit hook, then the top-row hook, then the source observer, before the
+\ word runs (habu2.f EM-INTERPRET-FIND). The flags and the xt are read before
+\ any of them runs.
 : RUN-FOUND ( -- )
    GATE
-   WORD-FLAGS >r  REC @ NHOST:SELECT-REC >r
-   r@ UNIT-EV-WORD UNIT-EVENT drop
-   r> r> swap >r  TOP-EV-WORD swap HOOK
-   r> execute-floor FLOORED ;
+   WORD-FLAGS REC @ NHOST:SELECT-REC {: flags:n xt:n :}
+   xt UNIT-EV-WORD UNIT-EVENT drop
+   TOP-EV-WORD flags HOOK
+   OBSERVE-WORD REC @ XREF-NULL - XREF-ADDR>INDEX xt OBSERVE-BEFORE
+   xt execute-floor FLOORED ;
 
 : RUN-WORD ( -- )
    LOOKUP RUN-FOUND ;
@@ -877,9 +980,13 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    SCOPE-ENTRY-GUARD
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
+\ The observer sees the tick's target before the xt is pushed (habu2.f C-TICK).
+: TICK-OBSERVE ( -- )
+   OBSERVE-TICK REC @ XREF-NULL - XREF-ADDR>INDEX REC @ XREF-START OBSERVE-BEFORE ;
+
 \ The hook sees the operand as the token and the record's flags.
 : PUSH-XT ( -- )
-   [: TICKED REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
+   [: TICKED TICK-OBSERVE REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its

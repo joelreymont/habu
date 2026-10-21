@@ -110,8 +110,10 @@ private
    REGALLOC-ABI:VRFREE-CELL CELL@ TOKVRF-CELL CELL!
    REGALLOC-ABI:FRFREE-CELL CELL@ TOKFRF-CELL CELL! ;
 
+\ The pending action finishes before the mark and the read, as LMAIN does
+\ (habu2.f EM-COMMENT).
 : RUN-TOKENS ( -- )
-   begin TOKEN-MARK TOKEN while STEP repeat ;
+   begin OBSERVE-FINISH TOKEN-MARK TOKEN while STEP repeat ;
 
 : RUN ( -- )
    RUN-TOKENS
@@ -168,12 +170,6 @@ $38 constant FR-DP
 
 \ The frame on its way into the catch that links it; empty at rest.
 TYPED-VARIABLE FRAME-ARG ptr u8
-
-: FR! ( n ptr u8 n -- )
-   + CELL-VIEW ! ;
-
-: FR@ ( ptr u8 n -- n )
-   + CELL-VIEW @ ;
 
 \ `evaluate` while a task is live ends the process with no output, as the
 \ engine's does (habu1.f B-TASK-LIVE-GUARD).
@@ -309,9 +305,12 @@ variable REPL-OK
    0 f EVAL-FRAME:PEND FR!
    USE-FLOOR @ {: prior:n :}
    REC @ {: found:ptr :}
+   LOOP-EVAL @ {: reading:n :}
    a INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a u + INE-CELL ADDR!
    f FRAME-ARG !
+   f NULL-PTR - LOOP-EVAL !
    [: FRAME-ARG @ FRAME-LINK RUN-TOKENS ;] catch {: code:n :}
+   reading LOOP-EVAL !
    code 0= if
       f FRAME-UNLINK
    else
@@ -352,10 +351,14 @@ public
 \ code. Either way the frame's mapping goes back, and so do the buffer's using
 \ floor and the record the step that ran the word looked up (outer.f REC).
 \ The input base stays the buffer's first byte, so a refusal's line counts
-\ from the start of the whole source.
+\ from the start of the whole source. An owned source range arms the observer
+\ here, as the engine's evaluate does (habu1.f EMIT-EVAL-BODY), and LOOP-EVAL
+\ names this frame while its loop reads.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
+   a first + end first - f OBSERVE-ARM
+   LOOP-EVAL @ {: reading:n :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    ENTRY-PEND @ {: prior:n :}
@@ -364,7 +367,9 @@ public
    USE-DEPTH-CELL CELL@ USE-FLOOR !
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
+   f NULL-PTR - LOOP-EVAL !
    [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
+   reading LOOP-EVAL !
    code 0= if
       f FRAME-LEAVE
    else
@@ -432,11 +437,14 @@ private
    PKG-STATE {: rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
+   LOOP-EVAL @ {: reading:n :}
    d USE-FLOOR !
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
+   0 LOOP-EVAL !
    d RUN-CAUGHT {: code:n :}
+   reading LOOP-EVAL !
    code 0= if CLEAN-END then
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  found REC !
