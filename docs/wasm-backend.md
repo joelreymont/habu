@@ -450,8 +450,11 @@ sites to build the runtime closure, emits only those routines, and resolves
 only their sites. A reachable host address without a Wasm provider is a build
 error; an unused compile-time helper does not enter the module. A created word
 with a nonempty `does>` clause has no Wasm routine yet and is refused when
-reached, including words made by `SPAN-BUFFER:` and `SPAN-CELLS:`. The latter
-definers can still appear in an unused compile-time library body. A directly
+reached: the Wasm body carries no slot for the clause, so the capture ships
+the record without the routine the shadow filed at `create`
+(`NSHADOW:ROUTINE?`, `src/arch/wasm/capture.f`). This includes words made by
+`SPAN-BUFFER:` and `SPAN-CELLS:`. The latter definers can still appear in an unused
+compile-time library body. A directly
 reached `does>` companion is also refused before output, including when its xt
 is in a code cell.
 

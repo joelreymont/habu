@@ -6,11 +6,14 @@
 \ WHAT IS PROVED. INSTALL registers the provider, which serves only the
 \ little-endian ptr32 habu-wasm-cell64-v1 contract. Real source compiled with
 \ the shadow open still runs on the host, and every record publication
-\ committed is filed with one Wasm emission whose header names its one body -
+\ committed, a created word's included, is filed with one Wasm emission whose header names its one body -
 \ offset, size, lanes, frame variant - and whose call and address rows sit on
 \ the padded fields after `call` and `i64.const`, each holding what the row
 \ says: a zero index and the callee's host entry or its own body offset, an
-\ address of its kind. The placed emission row is refused by name. A definition
+\ address of its kind. A does> child whose nonempty clause replaced its body
+\ stays filed but is no routine (NSHADOW:ROUTINE?) and reports no call site; an
+\ empty clause, or an empty replacement of an earlier one, keeps its routine.
+\ The placed emission row is refused by name. A definition
 \ of the engine's own machine comes out byte for byte as it did before the
 \ backend loaded.
 
@@ -98,13 +101,38 @@ variable REC-ADDR
 variable REC-BOOM
 variable REC-TRAP
 variable REC-SAME
+variable REC-BUF
+variable REC-EMPTY
+variable REC-FULL
+variable REC-LAST
+variable REC-PX
 
 : OPEN-WASM ( -- )
    WBACK:BINDING NSHADOW:OPEN ;
 
+\ Definers made before the open, so only their children are filed. A Wasm
+\ body carries no patch slot, so a nonempty clause outdates its child's
+\ routine; an empty one leaves the body `create` made.
+: FULLD ( n -- ) create , does> ( -- n ) @ ;
+: EMPTYD ( n -- ) create , does> ( -- ptr n ) ;
+\ PB's empty clause replaces PA's and restores the body `create` made.
+: PA ( -- ) create 5 , does> ( -- n ) @ 100 + ;
+: PB ( -- ) PA does> ( -- ptr n ) ;
+
+\ Reading scaffolding precedes the open, so only the words under test are filed.
+\ Wasm's own opcodes for the bytes a row sits after, and the body's last.
+$10 constant OP-CALL
+$42 constant OP-I64-CONST
+$0B constant OP-END
+\ The header: magic and function count, then twelve bytes per function.
+8 constant HEAD-BYTES
+12 constant ROW-BYTES
+CAST: >CODE ( n -- ptr u8 )
+
 T-RESET
 WBACK:INSTALL
 OPEN-WASM
+ndict@ REC-BUF !
 create BK-BUF 16 allot
 1 set-tier
 ndict@ REC-LEAF !
@@ -122,6 +150,16 @@ ndict@ REC-TRAP !
 ndict@ REC-SAME !
 : BK-SAME-AFTER ( n n -- n ) 2dup < if swap then - 3 lshift ;
 0 set-tier
+ndict@ REC-EMPTY !
+8 EMPTYD BK-EMPTY
+ndict@ REC-FULL !
+7 FULLD BK-FULL
+ndict@ REC-PX !
+PB BK-PX
+1 set-tier
+ndict@ REC-LAST !
+: BK-LAST ( n -- n ) 2 * ;
+0 set-tier
 
 : HOST-CASE ( -- )
    s" every word compiled with the Wasm shadow open runs on the host as before" T-LABEL
@@ -130,16 +168,12 @@ ndict@ REC-SAME !
    5 BK-SELF 1 T=
    BK-ADDR >N  BK-BUF >N  T=
    [: 7 BK-TRAP ;] 7 TTHROWSQ
-   9 2 BK-SAME-AFTER 56 T= ;
+   9 2 BK-SAME-AFTER 56 T=
+   BK-EMPTY @ 8 T=
+   BK-FULL 7 T=
+   BK-PX @ 5 T= ;
 
 \ ---- reading the map ----------------------------------------------------------
-\ Wasm's own opcodes for the bytes a row sits after, and the body's last.
-$10 constant OP-CALL
-$42 constant OP-I64-CONST
-$0B constant OP-END
-\ The header: magic and function count, then twelve bytes per function.
-8 constant HEAD-BYTES
-12 constant ROW-BYTES
 
 \ The row a record was filed under, or -1.
 : ROW-OF ( n -- n ) {: idx:n :}
@@ -198,26 +232,41 @@ $0B constant OP-END
 
 : FILED-CASE ( -- )
    s" each record publication committed is filed once, with an emission of its own" T-LABEL
-   NSHADOW:RECORDS 7 T=
-   NSHADOW:EMISSIONS 7 T=
-   REC-LEAF @ ROW-OF 0 T=
-   REC-CALLER @ ROW-OF 1 T=
-   REC-SELF @ ROW-OF 2 T=
-   REC-ADDR @ ROW-OF 3 T=
-   REC-BOOM @ ROW-OF 4 T=
-   REC-TRAP @ ROW-OF 5 T=
-   REC-SAME @ ROW-OF 6 T=
-   7 0 ?do  i NSHADOW:EMISSION@ i T=  loop ;
+   NSHADOW:RECORDS 12 T=
+   NSHADOW:EMISSIONS 12 T=
+   REC-BUF @ ROW-OF 0 T=
+   REC-LEAF @ ROW-OF 1 T=
+   REC-CALLER @ ROW-OF 2 T=
+   REC-SELF @ ROW-OF 3 T=
+   REC-ADDR @ ROW-OF 4 T=
+   REC-BOOM @ ROW-OF 5 T=
+   REC-TRAP @ ROW-OF 6 T=
+   REC-SAME @ ROW-OF 7 T=
+   REC-EMPTY @ ROW-OF 8 T=
+   REC-FULL @ ROW-OF 9 T=
+   REC-PX @ ROW-OF 10 T=
+   REC-LAST @ ROW-OF 11 T=
+   12 0 ?do  i NSHADOW:EMISSION@ i T=  loop
+   s" an empty does> clause keeps its child's routine" T-LABEL
+   REC-EMPTY @ EM-OF NSHADOW:ROUTINE? TTRUE
+   s" a nonempty clause outdates its child's routine, which stays filed and reports no call site" T-LABEL
+   REC-FULL @ EM-OF NSHADOW:ROUTINE? TFALSE
+   REC-FULL @ EM-OF NSHADOW:CALL-SITES 0 T=
+   s" an empty replacement clears the earlier one: the create body's routine stands" T-LABEL
+   REC-PX @ EM-OF NSHADOW:ROUTINE? TTRUE ;
 
 : BODY-CASE ( -- )
    s" each emission's header names its one body, its lanes the word's arity" T-LABEL
+   REC-BUF @ 0 1 ONE-BODY
    REC-LEAF @ 2 1 ONE-BODY
    REC-CALLER @ 1 1 ONE-BODY
    REC-SELF @ 1 1 ONE-BODY
    REC-ADDR @ 0 1 ONE-BODY
    REC-BOOM @ 1 0 ONE-BODY
    REC-TRAP @ 1 0 ONE-BODY
-   REC-SAME @ 2 1 ONE-BODY ;
+   REC-SAME @ 2 1 ONE-BODY
+   REC-FULL @ 0 1 ONE-BODY
+   REC-PX @ 0 1 ONE-BODY ;
 
 : CALL-CASE ( -- )
    s" a call row sits on the padded index after `call`, naming the callee's host entry" T-LABEL
@@ -236,6 +285,7 @@ $0B constant OP-END
    boom NSHADOW:CALL-SITES 1 T=
    boom 0 CALL-ROW 0<> TTRUE
    s" a word that calls nothing has no call row" T-LABEL
+   REC-BUF @ EM-OF NSHADOW:CALL-SITES 0 T=
    REC-LEAF @ EM-OF NSHADOW:CALL-SITES 0 T=
    REC-ADDR @ EM-OF NSHADOW:CALL-SITES 0 T=
    REC-SAME @ EM-OF NSHADOW:CALL-SITES 0 T= ;
@@ -245,6 +295,9 @@ $0B constant OP-END
    REC-ADDR @ EM-OF {: addr:n :}
    addr NSHADOW:ADDR-SITES 1 T=
    addr 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
+   REC-BUF @ EM-OF {: buf:n :}
+   buf NSHADOW:ADDR-SITES 1 T=
+   buf 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
    s" a trap's message is a data address row" T-LABEL
    REC-TRAP @ EM-OF {: trap:n :}
    trap NSHADOW:ADDR-SITES 1 T=
@@ -262,7 +315,6 @@ $0B constant OP-END
    [: WENC:SIZE drop ;] E-WENC-STATE TTHROWSQ ;
 
 \ ---- the engine's own routine -------------------------------------------------
-CAST: >CODE ( n -- ptr u8 )
 
 \ Whether records a and b hold the same code bytes.
 : CODE-SAME? ( n n -- bool ) {: a:n b:n :}

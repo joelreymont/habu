@@ -24,11 +24,10 @@
 \ throws natively.
 \
 \ .s calls kernel-words.f's `.` on each cell, deepest first, and leaves them.
-\ The window's address cells, which no linked word reaches (a created word has
-\ no routine), are in the module's data image: a code cell holds the slot its
-\ word's code literal answers, a window word's or an engine word's, and a DATA
-\ cell WPROF's image base plus the offset of the text it points at, which the
-\ image holds there.
+\ The window's address cells, which no linked word reaches, are in the module's
+\ data image: a code cell holds the slot its word's code literal answers, a
+\ window word's or an engine word's, and a DATA cell WPROF's image base plus
+\ the offset of the text it points at, which the image holds there.
 
 package WASM-DYNAMIC
 public

@@ -75,7 +75,11 @@ using WLEB
 
 \ ---- the walk -------------------------------------------------------------------
 \ aot-shadow.f SH-WALK over the Wasm copy: each emission copied once, when the
-\ first shipped row over it arrives.
+\ first shipped row over it arrives. A shipped record whose emission a slotless
+\ clause patch has outdated gets no row, so the linker refuses it by name when
+\ reached (link-wasm.f NO-ROUTINE); its call sites still resolve to the shipped
+\ row (aot-shadow.f SH-MAPPED), as test/wasm/build.f's span-buffer refusal
+\ requires.
 : WC-WALK ( -- )
    -1 SH-E !
    RECORDS 0 ?do
@@ -85,8 +89,10 @@ using WLEB
          idx SH-SHIPPED {: row:n :}
          row 0 >= if
             i EMISSION@ {: e:n :}
-            e SH-E @ <> if e WC-COPY then
-            row  i ENTRY@  SH-REC+
+            e ROUTINE? if
+               e SH-E @ <> if e WC-COPY then
+               row  i ENTRY@  SH-REC+
+            then
          else
             i SH-STRIP
          then

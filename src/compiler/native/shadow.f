@@ -283,6 +283,11 @@ $E9 constant TAIL-OP
    e EM-CK drop
    k  e EM-ADDR0 @  e EM-ADDRS @  SUB-ROW ;
 
+\ Whether a clause has been patched into emission e's jump slot: the tail
+\ call CALL-SITES reports past its rows. An emission with no slot carries none.
+: SLOT-CALL? ( n -- bool ) {: e:n :}
+   e EM-PATCH @ 0 >=  e EM-PATCH-TGT @ 0<>  and ;
+
 public
 
 \ ---- opening and closing -----------------------------------------------------
@@ -398,16 +403,18 @@ public
    0 PENDING ! ;
 
 \ The host's does> primitive patches its created ARM body after CREATE has
-\ published. Its x86 body already holds a five-byte jump slot. Record the
-\ clause's ARM entry as that slot's relocation target; the capture resolves it
-\ through the clause companion's shadow row, just like any other tail site.
+\ published, passing the clause's ARM entry, or zero for an empty replacement
+\ that restores the body `create` made; record it as the jump slot's
+\ relocation target. The x86 body holds a five-byte slot and the capture
+\ resolves the tail call through the clause companion's row like any other
+\ tail site. A backend with no slot (Wasm) cannot carry the clause, and since
+\ a later replacement can still clear the target, nothing is dropped here:
+\ ROUTINE? answers the capture when the map is read.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
    OPENED @ 0= if exit then
    N-RECS @ 0 ?do
       i REC-IDX @ idx = if
-         i REC-EM @ {: e:n :}
-         e EM-PATCH @ 0 < if E-NSHADOW-ROW throw then
-         target e EM-PATCH-TGT !
+         target i REC-EM @ EM-PATCH-TGT !
          unloop exit
       then
    loop
@@ -471,11 +478,18 @@ public
 : CALL-SITES ( n -- n )
    EM-CK {: e:n :}
    e EM-CALLS @
-   e EM-PATCH-TGT @ 0<> if 1+ then ;
+   e SLOT-CALL? if 1+ then ;
+
+\ Whether emission e still does what its records do: false once a clause has
+\ patched a created body that carries no slot for it (the Wasm backend emits
+\ none), so the capture ships that record with no routine and the linker
+\ refuses it by name when reached.
+: ROUTINE? ( n -- bool )
+   EM-CK {: e:n :}
+   e EM-PATCH @ 0 >=  e EM-PATCH-TGT @ 0= or ;
 
 : PATCH-CALL? ( n n -- bool ) {: e:n k:n :}
-   e EM-PATCH-TGT @ 0<>
-   k e EM-CALLS @ = and ;
+   e SLOT-CALL?  k e EM-CALLS @ = and ;
 
 : CALL-SITE@ ( n n -- n )
    {: e:n k:n :}

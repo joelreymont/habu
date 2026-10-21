@@ -4,7 +4,7 @@
 \
 \ The module's data image is the window's DATA as the capture found it, byte
 \ for byte; the window holds a word whose text literal lies in that DATA, and a
-\ constant no call names, which links with no routine.
+\ constant no call names, whose routine the link leaves out.
 \ test/wasm/dynamic.f runs linked modules under wasm-tools and bun.
 \
 \ Each refused window is compiled, captured and linked in a child of its own,

@@ -45,6 +45,7 @@ variable REC-CALLER
 variable REC-CONST
 variable REC-QUOT
 variable REC-SEVEN
+variable REC-PX
 variable BAD-RC                      \ what refusing the definition threw
 variable BAD-NDICT                   \ the record count before it was tried
 variable BAD-MOVED                   \ and how far trying it moved the count
@@ -57,6 +58,11 @@ TYPED-VARIABLE USE-ART NART:emission
 
 : OPEN-A64 ( -- )
    NABI:BINDING NSHADOW:OPEN ;
+
+\ Definers made before the open file only their children; PB's empty clause
+\ replaces PA's.
+: SH-PA ( -- ) create 5 , does> ( -- n ) @ 100 + ;
+: SH-PB ( -- ) SH-PA does> ( -- ptr n ) ;
 
 \ ---- the words compiled with the shadow open ---------------------------------
 OPEN-X64
@@ -73,6 +79,8 @@ ndict@ REC-QUOT !
 \ The definer's generated child has its own fixed shadow publication.
 ndict@ REC-SEVEN !
 7 SH-CONST SH-SEVEN
+ndict@ REC-PX !
+SH-PB SH-PX
 
 \ ---- reading the map ----------------------------------------------------------
 \ The row a record was filed under, or -1.
@@ -103,18 +111,20 @@ ndict@ REC-SEVEN !
    2 3 SH-LEAF 5 T=
    4 SH-CALLER 9 T=
    SH-SEVEN 7 T=
+   SH-PX @ 5 T=
    5 SH-QUOT execute 6 T= ;
 
 : FILED-CASE ( -- )
    s" each record publication committed is filed once, a definer's companion beside it, and nothing else was" T-LABEL
-   NSHADOW:RECORDS 6 T=
-   NSHADOW:EMISSIONS 5 T=
+   NSHADOW:RECORDS 7 T=
+   NSHADOW:EMISSIONS 6 T=
    REC-LEAF @ ROW-OF 0 T=
    REC-CALLER @ ROW-OF 1 T=
    REC-CONST @ ROW-OF 2 T=
    REC-CONST @ 1+ ROW-OF 3 T=
    REC-QUOT @ ROW-OF 4 T=
-   REC-SEVEN @ ROW-OF 5 T= ;
+   REC-SEVEN @ ROW-OF 5 T=
+   REC-PX @ ROW-OF 6 T= ;
 
 : LEAF-CASE ( -- )
    s" a leaf is one x86-64 function entered at its start and ending in ret, with no rows and no trailing return split off" T-LABEL
@@ -152,7 +162,13 @@ ndict@ REC-SEVEN !
       e i NSHADOW:ADDR-SITE-KIND@ X64IR:ADDR-CODE = if drop i leave then
    loop {: k:n :}
    k 0 >= TTRUE
-   e k IMM@ clause T= ;
+   e k IMM@ clause T=
+   s" the child's slot reports one tail call to the clause; an empty replacement clears it" T-LABEL
+   REC-SEVEN @ EM-OF NSHADOW:CALL-SITES 1 T=
+   REC-SEVEN @ EM-OF 0 NSHADOW:CALL-KIND@ NEMIT:TAIL T=
+   REC-SEVEN @ EM-OF NSHADOW:ROUTINE? TTRUE
+   REC-PX @ EM-OF NSHADOW:CALL-SITES 0 T=
+   REC-PX @ EM-OF NSHADOW:ROUTINE? TTRUE ;
 
 : QUOT-CASE ( -- )
    s" a quotation's address is a code row whose immediate is that function's offset in the emission" T-LABEL

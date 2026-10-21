@@ -31,8 +31,8 @@
 \   engine's, which the module does not carry.
 \
 \ Refused by name, each before the module is written: a call, a code literal or
-\ cell, or the entry naming a code record with no routine (a variable, a
-\ created word, a constant, a defer, a tier-0 word), whose data the image holds
+\ cell, or the entry naming a code record with no routine (a tier-0 colon word,
+\ a created word a does> clause has patched), whose data the image holds
 \ all the same; a runtime-reached does> companion; a name no kernel row answers;
 \ a name WKERNEL's map or the entry gives that no shipped record carries; and
 \ an entry that takes or leaves cells, since run calls it with ctx alone. So

@@ -10,7 +10,10 @@
 \ literal naming a window word, a window DATA literal, a call to a word of the
 \ engine's own prefix, a live private helper called by a public word, a `does>`
 \ definer, a quotation and a declared code cell holding a window word's entry.
-\ It also holds three shadowed words that ship no record, a dead private word
+\ The window also holds a created word (WCELL) and a defer (HOOK), both tier 0,
+\ which carry routines like any fixed word; and a `does>` child (SEVEN), whose
+\ routine the capture leaves out because its Wasm body carries no slot for the
+\ clause, so it ships with no routine. It also holds three shadowed words that ship no record, a dead private word
 \ and two dead retired ones, the second calling the first, between two shadowed
 \ records: past them a record's window index and its shipped row differ.
 \
@@ -85,6 +88,8 @@ undefine GONER
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 0 set-tier
 
+7 CONST SEVEN
+
 defer HOOK ( n n -- n )
 : ARM-HOOK ( -- ) ['] LEAF is HOOK ;
 ARM-HOOK
@@ -123,6 +128,8 @@ $0B constant OP-END
 : W-CONST ( -- n ) s" CONST" SHIPPED ;
 : W-DOES ( -- n ) s" CONST;does" SHIPPED ;
 : W-QUOT ( -- n ) s" QUOT" SHIPPED ;
+: W-CELL ( -- n ) s" WCELL" SHIPPED ;
+: W-HOOK ( -- n ) s" HOOK" SHIPPED ;
 
 \ ---- the tables ---------------------------------------------------------------
 : REC@ ( n n -- n ) {: r:n f:n :}
@@ -179,19 +186,21 @@ $0B constant OP-END
    AOT-ARM:WINDOW$ AOT-CAPTURE:WASM-TARGET-CAPTURE ;
 
 : RECORDS-CASE ( -- )
-   s" every shipped tier-1 definition is one shadow record in window order, a does> companion beside its definer" T-LABEL
-   REC-N @ 11 T=
-   W-PEEK ROW-OF 0 T=
-   W-HELPER ROW-OF 1 T=
-   W-USER ROW-OF 2 T=
-   W-LEAF ROW-OF 3 T=
-   W-CALLER ROW-OF 4 T=
-   W-TICK ROW-OF 5 T=
-   W-SHOW ROW-OF 6 T=
-   W-FACT ROW-OF 7 T=
-   W-CONST ROW-OF 8 T=
-   W-DOES ROW-OF 9 T=
-   W-QUOT ROW-OF 10 T= ;
+   s" every shipped tier-1 definition and fixed word but a does> child whose clause replaced its body is one shadow record in window order, a does> companion beside its definer" T-LABEL
+   REC-N @ 13 T=
+   W-CELL ROW-OF 0 T=
+   W-PEEK ROW-OF 1 T=
+   W-HELPER ROW-OF 2 T=
+   W-USER ROW-OF 3 T=
+   W-LEAF ROW-OF 4 T=
+   W-CALLER ROW-OF 5 T=
+   W-TICK ROW-OF 6 T=
+   W-SHOW ROW-OF 7 T=
+   W-FACT ROW-OF 8 T=
+   W-CONST ROW-OF 9 T=
+   W-DOES ROW-OF 10 T=
+   W-QUOT ROW-OF 11 T=
+   W-HOOK ROW-OF 12 T= ;
 
 : STRIP-CASE ( -- )
    s" dead private and retired words ship no record; the live helper keeps its private WID, and LEAF follows USER past six window records" T-LABEL
@@ -208,7 +217,7 @@ $0B constant OP-END
    W-LEAF AT-OF CODE-LE32@ WENC:MAGIC T=
    W-LEAF AT-OF W-LEAF LEN-OF + 1- CODE-BYTE@ OP-END T=
    W-LEAF SITES-IN 0 T=
-   CODE-LEN @ W-QUOT AT-OF W-QUOT LEN-OF + T= ;
+   CODE-LEN @ W-HOOK AT-OF W-HOOK LEN-OF + T= ;
 
 \ Shipped record w's routine holds one site, a call row naming shipped record t
 \ over a padded zero index.
@@ -285,6 +294,26 @@ $0B constant OP-END
    0 4 XT@ W-LEAF T=
    0 0 XT@ AOT-WINDOW:XTOFF-N @ < TTRUE ;
 
+: FIXED-CASE ( -- )
+   s" a created word's routine holds its window DATA literal and nothing else; a defer's loads its cell and calls execute by name; a does> child ships with no routine" T-LABEL
+   W-CELL SITES-IN 1 T=
+   W-CELL AOT-SHADOW:DATA SITE-IN {: d:n :}
+   d 0 >= TTRUE
+   d 0 SITE@ {: dat:n :}
+   dat 1- CODE-BYTE@ OP-I64-CONST T=
+   dat ADDR@ WCELL-OFF T=
+   W-HOOK AOT-SHADOW:DATA SITE-IN 0 >= TTRUE
+   W-HOOK AOT-SHADOW:CALL SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 8 SITE@ {: t:n :}
+   t SITE-TARGET-MASK invert and SITE-NAME-TAG T=
+   AOT-NAMES-BUF@ t SITE-TARGET-MASK and + {: e:ptr :}
+   e 1+ e c@ s" execute" T$=
+   s" SEVEN" SHIPPED {: w:n :}
+   w 0 >= TTRUE
+   w ROW-OF -1 T=
+   WSHCAP-WINDOW:SEVEN 7 T= ;
+
 public
 
 : RUN ( -- )
@@ -301,6 +330,7 @@ public
    QUOT-CASE
    PREFIX-CASE
    CELL-CASE
+   FIXED-CASE
    T-REPORT ;
 
 ;using
