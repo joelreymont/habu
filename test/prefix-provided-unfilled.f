@@ -5,18 +5,21 @@
 \ through the empty cell, and the product dies on its first load. An ARM64
 \ record is its assembly body and has no cell, so a host on another machine
 \ builds `--target linux-x86-64` with src/arch/x86-64/passes.f loaded before
-\ tools/native-build.f. The private tree links the checkout except
-\ src/habu/native-runtime.f, a copy whose SEAL leaves out
-\ OUTER:INSTALL-EVALUATE. The printed tree keeps the build's output.
+\ tools/native-build.f. The private tree holds a copy of the checkout's build
+\ sources whose src/habu/native-runtime.f SEAL leaves out
+\ OUTER:INSTALL-EVALUATE. The sources are copies, not links: a source's identity
+\ is its physical path, so a linked one lies outside the tree, and the build
+\ refuses 74 when no compiler.f below the tree completes (tools/
+\ build-producer.f COMPILER-DONE). The printed tree keeps the build's output.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/fs-list.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
+require src/lib/tree-copy.f
 
 package PREFIX-PROVIDED-UNFILLED
 private
@@ -27,8 +30,6 @@ $4000 constant SRC-CAP
 
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot
-create TARGET FS-PATH-CAP allot variable TARGET-U
-create REL FS-PATH-CAP allot variable REL-U
 create SRC SRC-CAP allot variable SRC-U
 create OUT IO-CAP allot variable OUT-U
 create ERR IO-CAP allot variable ERR-U
@@ -39,28 +40,12 @@ variable RC
 : AT-A ( ptr u8 n -- ptr u8 n ) {: rel:ptr relu:n :}
    ROOT$ rel relu PATH JOIN-PATH PATH swap ;
 
-: LINK ( ptr u8 n -- ) {: rel:ptr relu:n :}
-   SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ rel relu AT-A MAKE-SYMLINK ;
-
 : RUNTIME$ ( -- ptr u8 n ) s" src/habu/native-runtime.f" ;
 : INSTALL$ ( -- ptr u8 n ) S\"    OUTER:INSTALL-EVALUATE\n" ;
 
-\ Every entry of src but habu, which gets a directory of its own.
-: LINK-SRC ( ptr u8 n -- ) {: name:ptr size:n :}
-   name size s" habu" STR= if exit then
-   s" src" name size REL JOIN-PATH REL-U !
-   REL REL-U @ LINK ;
-
-: LINK-HABU ( ptr u8 n -- ) {: name:ptr size:n :}
-   name size s" native-runtime.f" STR= if exit then
-   s" src/habu" name size REL JOIN-PATH REL-U !
-   REL REL-U @ LINK ;
-
 \ The runtime manifest without the line that fills the evaluate cell.
 : WRITE-RUNTIME ( -- )
-   SOURCE-ROOT:CWD$ RUNTIME$ TARGET JOIN-PATH TARGET-U !
-   TARGET TARGET-U @ SRC SRC-CAP READ-ALL SRC-U !
+   RUNTIME$ AT-A SRC SRC-CAP READ-ALL SRC-U !
    SRC SRC-U @ INSTALL$ FIND-SUB MATCH option
       none OF -1 ENDOF
       some OF IDX>N ENDOF
@@ -75,10 +60,7 @@ variable RC
 : SETUP ( -- )
    s" prefix-provided-unfilled" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
-   s" lib" LINK s" tools" LINK
-   s" src/habu" AT-A MAKE-DIRS
-   s" src" [: LINK-SRC ;] FS-LIST:EACH
-   s" src/habu" [: LINK-HABU ;] FS-LIST:EACH
+   ROOT$ TREE-COPY:BUILD-SOURCES
    WRITE-RUNTIME ;
 
 : CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
@@ -116,7 +98,7 @@ public
    s" a build whose runtime leaves the evaluate cell empty refuses 76" T-LABEL
    RC @ 76 <> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 76 T=
-   OUT OUT-U @ s" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate" CONTAINS? TTRUE
+   OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
    ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
    s" the refused build promotes no product" T-LABEL
    s" hb" AT-A FILE? 0= TTRUE
