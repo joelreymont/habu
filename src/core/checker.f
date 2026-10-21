@@ -21843,7 +21843,6 @@ public
 : CUR-LIVE? ( -- bool )
    CUR-OWNED @ 0 <>  CUR-DONE @ 0 = and  VIS-OPEN @ 0 = and ;
 
-variable ISQ
 PTR-VARIABLE IS-TA
 variable IS-TU
 
@@ -21925,11 +21924,11 @@ variable IS-PEND-U                   \ and its length
    MK-QUOT ;
 
 : IS-APPLY ( n -- )
-   ISQ !
-   ISQ @ NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
-   ISQ @ QCON-BEGIN
+   {: q:n :}
+   q NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
+   q QCON-BEGIN
    FRESH MK-ROW {: rest :}
-   DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
+   DCUR @ q rest MK-PUSH UNIFY OK @ and OK !
    OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
    rest DCUR ! ;
 
@@ -29721,7 +29720,7 @@ public
    0 UF-NEED ! 0 UF-HAVE ! 0 NP-CELL-TERM !
    0 LTC-P ! 0 XM-K ! 0 LBI-T !
    0 UIX-I ! 0 UIX-J ! 0 UIX-H ! 0 UIX-BP !
-   0 CHX-I ! 0 CHX-J ! 0 CHX-BP ! 0 CHX-C !
+   0 CHX-I ! 0 CHX-J ! 0 CHX-BP ! 0 CHX-BK ! 0 CHX-C !
    0 CK-CLOSED-SYM ! 0 CK-CLOSED-IX ! 0 CK-CLOSED-OFF !
    -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF !
    0 CK-PEND-FLOOR ! 0 CK-PEND-IX !

@@ -2018,6 +2018,7 @@ variable TFW-CAP   TFW-INIT TFW-CAP !   REG-PROTECT   \ cells TFW-P holds
 
 \ Capture: back to the boot row. The frames are process-local scratch, like TFM.
 : TFW-SNAP-RESET ( -- )
+   TFW-BOOT 0 TFW-INIT ARENA-CELLS-ZERO
    TFW-BOOT TFW-P !
    TFW-INIT TFW-CAP ! ;
 
@@ -5198,6 +5199,8 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
+   \ A caught FILE dependency refusal leaves only an invocation diagnostic.
+   NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
    TFQ-CAP 0 ?do 0 TFQ-BUF i + c! loop
    0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !

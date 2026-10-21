@@ -36,6 +36,11 @@ create PRODUCT-PATH FS-PATH-CAP allot
    {: digest:ptr :}
    HASH-CTX s" app-hb" AT digest SHA256-FILE-IN 0 T= ;
 
+: SAVE-APP ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   ROOT$ s" app-hb" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
+   name nameu AT 0 NATIVE-FILE-APP:COPY-SKIP-LINES ;
+
 : BUILD-FRESH ( -- n )
    ROOT$ s" app.f" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
    ROOT$ s" app-hb" PRODUCT-PATH JOIN-PATH PRODUCT-PATH swap
@@ -86,8 +91,10 @@ create PRODUCT-PATH FS-PATH-CAP allot
    s" cache" AT MAKE-DIR
    s" fresh-cache" AT MAKE-DIR
    false SHAPE-SOURCE
+   \ Width frames, checked deferred binding and logical-immediate encoding must
+   \ leave the same captured bytes when their bodies are reused from the cache.
    s" storage.f"
-      S\" require types.f\npackage FILE-STORAGE public\n2 TYPED-BUFFER CONTEXTS FILE-SHAPE:context\n2 TYPED-BUFFER CLIENTS FILE-SHAPE:client\n: RESULT ( -- n ) 1 CLIENTS drop 1 CONTEXTS FILE-SHAPE:VALUE ;\n;package\n"
+      S\" require types.f\npackage FILE-STORAGE public\nSTRUCTURE pair<a,b> FIELD first a FIELD second b ;STRUCTURE\n2 TYPED-BUFFER PAIRS pair<n,FILE-SHAPE:context>\n2 TYPED-BUFFER CONTEXTS FILE-SHAPE:context\n2 TYPED-BUFFER CLIENTS FILE-SHAPE:client\ndefer FILTER ( n -- n )\n: BIND ( -- ) [: $FF and ;] is FILTER ;\n: RESULT ( -- n ) BIND 1 PAIRS drop 1 CLIENTS drop 1 CONTEXTS FILE-SHAPE:VALUE FILTER ;\n;package\n"
       PUT
    s" app.f" S\" require storage.f\n: MAIN ( -- ) FILE-STORAGE:RESULT . FILE-SHAPE:SIZE . ;\n" PUT
    s" app-hb" BUILD SUCCESS
@@ -95,11 +102,15 @@ create PRODUCT-PATH FS-PATH-CAP allot
    true SHAPE-SOURCE
    s" app-hb" BUILD SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n16\n" CONTAINS? TTRUE
+   COLD-HASH HASH-APP
+   s" cold-app-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n" CONTAINS? TTRUE
    WARM-HASH HASH-APP
+   COLD-HASH 32 WARM-HASH 32 T$=
+   s" warm-app-hb" SAVE-APP
    BUILD-FRESH SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n16\n" CONTAINS? TTRUE
    COLD-HASH HASH-APP
