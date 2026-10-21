@@ -90,7 +90,10 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 \ >=3-identity owner looked "unbindable"; the fix is a non-reserved letter).
 : RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
 
-0 set-check
+\ The window holds the suspended hook on the stack. After the report the hook
+\ resumes and diagnostics leave RR-DIAG, so a file loaded after this one in the
+\ same process is checked and reports as usual.
+check@ 0 set-check
 
 T-RESET
 
@@ -164,4 +167,5 @@ s" C-MSKX ( -- ) RR-BOXM RR-BOXM RR-UBOX"  RR-CHECK 0 T=
 RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
 
 T-REPORT
+DIAG-BUFFER-OFF set-check
 ;package

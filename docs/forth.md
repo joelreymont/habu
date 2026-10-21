@@ -1646,6 +1646,11 @@ sections above.
   `j` inside `i`, unchanged init scope `i`, and region `field(a,name)`. On
   return it restores the exact parent without copying a record; throw and
   task halt close the child loan.
+- **A fresh identity is minted per call, declared or inferred.** With
+  `defer RG-ONE ( -- fresh-region-a )`, `: USE-INF RG-ONE ;` records its
+  region as a template slot, so `: T3 USE-INF USE-INF SAME-ID ;` (where
+  `SAME-ID` is `( x x -- )`) compares two allocations:
+  `E-RIGID-REGION-MISMATCH`, rc 70, as two calls of `RG-ONE` are.
 - **A refused storage declaration defines nothing.** `LAYOUT-BUFFER`,
   `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE` and
   `DYNAMIC-BUFFER` require a valid storable type and name, plus a valid count

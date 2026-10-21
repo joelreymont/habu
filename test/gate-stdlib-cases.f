@@ -260,6 +260,7 @@ SUITE native-file-stack
 SUITE native-file-auto
    test/native-file-auto-e2e.f
    test/native-file-cwork-e2e.f
+   test/native-file-fresh-region-e2e.f
    test/native-file-admission-e2e.f
 ;SUITE
 
@@ -2186,6 +2187,7 @@ SUITE require-cap
 
 SUITE rigid-region
    test/rigid-region-suite.f
+   test/rigid-region-inferred-e2e.f
 ;SUITE
 
 SUITE structure-certify

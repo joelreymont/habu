@@ -7571,6 +7571,14 @@ variable EC-RVN
 create EI-AK EI-AK-CAP cells allot
 variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK wrote
 
+\ A record's rigid identities in first-seen order. E-COPY* stores each as the
+\ slot key -(idx+1) that E-I-AK-IDX inverts, so a record says which outputs
+\ share an allocation and never holds a live counter value: counters reset per
+\ check in NEW, so a stored live id would collide with the next check's mints.
+\ The capacity is the instantiation table's, which reads these slots back.
+create EC-AK EI-AK-CAP cells allot
+variable EC-AKN
+
 PTR-VARIABLE FEP
 PTR-VARIABLE TOK-EFF
 variable FEP-OFF
@@ -7598,7 +7606,8 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    0 EC-TV-HW !
    0 EC-RV-HW !
    0 EC-TVN !
-   0 EC-RVN ! ;
+   0 EC-RVN !
+   0 EC-AKN ! ;
 
 \ E-INST-RESET runs per instantiated effect - once per checked call site - and
 \ this table is 64 cells against the handful of fresh atoms a signature
@@ -7620,6 +7629,22 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
       EC-RVN @ 1+ EC-RVN !
       id 1+ EC-RV-HW @ max EC-RV-HW !
    then @ 1- ;
+
+\ One rigid identity: the same id in the same domain name (ATOM-OK?).
+: E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
+   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
+   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
+
+\ The stored key of atom t: 0 for a nominal atom, else its record slot.
+: E-AK-SLOT ( n -- n ) {: t:n :}
+   t ATOM>K 0= IF 0 EXIT THEN
+   0 BEGIN dup EC-AKN @ < WHILE
+      dup cells EC-AK + @ t E-AK-SAME? IF 1+ negate EXIT THEN
+      1+
+   REPEAT
+   EI-AK-CAP >= IF s" checker: fresh atom record table full" 76 die THEN
+   t EC-AKN @ cells EC-AK + !
+   EC-AKN @ 1+ dup EC-AKN ! negate ;
 
 : E-OFF ( ptr u8 -- n )
    USIGS - ;
@@ -8189,7 +8214,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
       T-ATOM of
          EN-ATOM E-NODE-NEW E-OFF >r
          x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
-         x E-RES ATOM>K r@ E-PTR EN.C !
+         x E-RES E-AK-SLOT r@ E-PTR EN.C !
          r>
       endof
       T-PARAM of
@@ -23036,12 +23061,10 @@ variable ASIG-GRAPH-MAP-CAP
 \ Bound below to the same semantic validator used before graph import.
 defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
 variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
-variable ASIG-GRAPH-PORTABLE
 : ASIG-GRAPH-SCRATCH-RELEASE ( -- )
    ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
    NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
-   0 ASIG-GRAPH-BASE ! 0 ASIG-GRAPH-GEN ! 0 ASIG-GRAPH-UNIT-OFF !
-   0 ASIG-GRAPH-PORTABLE ! ;
+   0 ASIG-GRAPH-BASE ! 0 ASIG-GRAPH-GEN ! 0 ASIG-GRAPH-UNIT-OFF ! ;
 
 : ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
    src 0= IF 0 EXIT THEN
@@ -23083,7 +23106,6 @@ variable ASIG-GRAPH-PORTABLE
       src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
       src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
    ELSE tag EN-ATOM = IF
-      src E-PTR EN.C @ 0 > IF 0 ASIG-GRAPH-PORTABLE ! THEN
       src dst ASIG-GRAPH-STRING
    ELSE tag EN-PARAM = IF
       src E-PTR EN.H @ {: fam:n :}
@@ -23114,7 +23136,7 @@ variable ASIG-GRAPH-PORTABLE
    rec E-HASR@ dst EW.HASR ! rec E-TVN@ dst EW.TVN !
    rec E-RVN@ dst EW.RVN ! rec E-MINI@ dst EW.MINI ! ;
 
-: ASIG-GRAPH-COPY-RECORD? ( n n -- n bool ) {: off1:n flags:n :}
+: ASIG-GRAPH-COPY-RECORD ( n n -- n ) {: off1:n flags:n :}
    off1 0= IF ASIG-GRAPH-DIE THEN
    off1 1- {: src:n :}
    \ A failed declaration's row serves only its own run. The wire has no
@@ -23122,7 +23144,6 @@ variable ASIG-GRAPH-PORTABLE
    src E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
       s" checker: a failed declaration's row is not portable" 76 die
    THEN
-   -1 ASIG-GRAPH-PORTABLE !
    ASIG-GRAPH-MAP-ROOM
    ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
    ASIG-GRAPH-GEN !
@@ -23138,13 +23159,8 @@ variable ASIG-GRAPH-PORTABLE
    src E-PTR E-RIN@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.RIN !
    src E-PTR E-ROUT@ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR EW.ROUT !
    ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR EW.NEXT !
-   ASIG-GRAPH-PORTABLE @ 0= IF 0 RES-FALSE EXIT THEN
    0 ASIG-GRAPH-PTR dup EW.NEXT @ ASIG-GRAPH-CHECK-XT
-   ASIG-GRAPH-BASE @ RES-TRUE ;
-
-: ASIG-GRAPH-COPY-RECORD ( n n -- n )
-   ASIG-GRAPH-COPY-RECORD? IF EXIT THEN drop
-   s" checker: a captured rigid atom has process-local identity" 76 die ;
+   ASIG-GRAPH-BASE @ ;
 
 : ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
    ASIG-GRAPH-UNIT-OFF @ dup 0= IF drop sym USIG-NEWEST THEN
@@ -27453,17 +27469,17 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
       THEN
    loop ;
 
-: RECORD-GRAPH+ ( n n -- bool ) {: effect:n flags:n :}
-   effect 0= IF 0 RECORD-CELL+ RES-TRUE EXIT THEN
-   effect flags ASIG-GRAPH-COPY-RECORD? 0= IF drop RES-FALSE EXIT THEN
+: RECORD-GRAPH+ ( n n -- ) {: effect:n flags:n :}
+   effect 0= IF 0 RECORD-CELL+ EXIT THEN
+   effect flags ASIG-GRAPH-COPY-RECORD
    ASIG-STR-P @ + {: graph:ptr :}
    graph EW.NEXT @ {: bytes:n :}
    graph bytes RECORD-GRAPH-NOMINALS
    bytes RECORD-CELL+
    graph bytes RECORD-BUF+
-   RECORD-ALIGN RES-TRUE ;
+   RECORD-ALIGN ;
 
-: RECORD-CONTRACT-BUILD ( n n n n n n -- bool )
+: RECORD-CONTRACT-BUILD ( n n n n n n -- )
    {: effect:n control:n deferred:n fixed-kind:n fixed-value:n grid:n :}
    0 RECORD-BUF-U !
    RECORD-CONTRACT-MAGIC RECORD-CELL+
@@ -27482,7 +27498,7 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    grid 0= 0= IF 1 ELSE 0 THEN RECORD-CELL+
    packed XFER-FLAGS
    deferred 0 <> IF ASIG-GRAPH-DEFER or THEN
-   effect swap RECORD-GRAPH+ 0= IF RES-FALSE EXIT THEN
+   effect swap RECORD-GRAPH+
    control 0= IF 0 ELSE control 1- NORET-CELL NORET.CREATES @ THEN
       0 RECORD-GRAPH+ ;
 
@@ -27522,7 +27538,6 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    THEN
    grid
    [: RECORD-CONTRACT-BUILD ;] [: RECORD-GRAPH-END ;] finally
-   0= IF NULL-PTR 0 RES-FALSE EXIT THEN
    RECORD-BUF-P @ RECORD-BUF-U @ RES-TRUE ;
 
 public

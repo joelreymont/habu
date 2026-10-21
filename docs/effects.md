@@ -907,7 +907,9 @@ checker domains name these rigidly (`src/core/checker.f`, dot
 - **host region** — *which* allocation. A constructor whose output spells
   `fresh-region-*` mints a fresh, rigid region identity **per call**, shared
   across that one call's outputs. Two allocations (or a recreated owner) get
-  distinct regions, so they never unify even at equal extent.
+  distinct regions, so they never unify even at equal extent. An inferred
+  effect records its body's identities as its own template slots, so its
+  callers mint per call exactly as for a declared producer.
 - **extent** — the bounds identity, spelled `fresh-extent-*` (the incumbent
   device-span extent, now a first-class domain).
 - **mutation generation** — the epoch, spelled `fresh-gen-*`. A mutation that

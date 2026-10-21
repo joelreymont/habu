@@ -109,9 +109,15 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    lateru CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE
    later CHECKER-OWNER-ABI:RECORD-FIXED-VALUE-OFF + CELL-VIEW @ 77 T= ;
 
+: INFERRED-CONTRACT ( -- )
+   s" UNIT-NBR:USE-INF" XREF-FIND-INDEX CONTRACT rot drop
+      {: size:n found:bool :}
+   found TTRUE
+   size CHECKER-OWNER-ABI:RECORD-CONTRACT-MIN-BYTES >= TTRUE ;
+
 : LOAD-UNIT ( -- )
    s" package UNIT-NBR public : BL-ALPHA ( -- n ) 1 ; : BL-OMEGA ( -- n ) 2 ; : BL-WORD ( n n -- n ) + ; : BL-TARGET ( n n -- n ) + ; : BL? ( n -- bool ) 0= ; : BL-SCHEME ( forall<p,[ R n -- R n | U -- U ]> -- ) drop ; : BL-INFER BL-SCHEME ; ;package" evaluate-closed
-   s" package UNIT-NBR public : SAME-ID ( x x -- ) 2drop ; defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) ;package" evaluate-closed
+   s" package UNIT-NBR public : SAME-ID ( x x -- ) 2drop ; defer RG-ONE ( -- fresh-region-a ) defer RG-PAIR ( -- fresh-region-a fresh-region-a ) defer RG-DIFF ( -- fresh-region-a fresh-region-b ) : USE-INF RG-ONE ; : USE-PAIR RG-PAIR ; ;package" evaluate-closed
    s" package UNIT-NBR public defer EX-ONE ( -- fresh-extent-a ) defer EX-PAIR ( -- fresh-extent-a fresh-extent-a ) ;package" evaluate-closed
    s" package UNIT-NBR public defer GN-ONE ( -- fresh-gen-a ) defer GN-PAIR ( -- fresh-gen-a fresh-gen-a ) ;package" evaluate-closed
    s" package UNIT-NBR public defer MS-ONE ( -- fresh-mask-a ) defer MS-PAIR ( -- fresh-mask-a fresh-mask-a ) ;package" evaluate-closed ;
@@ -148,6 +154,8 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    s" FRESH-RG-TWO ( -- ) UNIT-NBR:RG-ONE UNIT-NBR:RG-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
    s" FRESH-RG-PAIR ( -- ) UNIT-NBR:RG-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
    s" FRESH-RG-DIFF ( -- ) UNIT-NBR:RG-DIFF UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-INF-TWO ( -- ) UNIT-NBR:USE-INF UNIT-NBR:USE-INF UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
+   s" FRESH-INF-PAIR ( -- ) UNIT-NBR:USE-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
    s" FRESH-EX-TWO ( -- ) UNIT-NBR:EX-ONE UNIT-NBR:EX-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
    s" FRESH-EX-PAIR ( -- ) UNIT-NBR:EX-PAIR UNIT-NBR:SAME-ID" CHECK-CANDIDATE! -1 T=
    s" FRESH-GN-TWO ( -- ) UNIT-NBR:GN-ONE UNIT-NBR:GN-ONE UNIT-NBR:SAME-ID" CHECK-CANDIDATE! 0 T=
@@ -341,6 +349,8 @@ public
    CREATED-CONTRACT
    s" a fixed value is retained by actual record" T-LABEL
    FIXED-HISTORY
+   s" an inferred fresh-region producer has a record contract" T-LABEL
+   INFERRED-CONTRACT
    s" UNIT-EXTRA ( -- n ) UNIT-NBR:BL-ALPHA" CHECK-CANDIDATE! -1 T=
    s" fresh identity templates certify cold calls" T-LABEL
    CHECK-FRESH
