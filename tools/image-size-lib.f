@@ -103,6 +103,10 @@ ES-LOAD-TARGET-LAYOUT
 undefine ES-LOAD-TARGET-LAYOUT
 
 require src/habu/address-carrier.f
+\ The x86 path measures a linux-x86-64 image on any host, so it reads that
+\ target's layout, qualified, under the guard below; the host's DATA-VA is not
+\ where an x86 image maps DATA on a macOS host.
+require src/os/linux-x86-64/target-layout.f
 
 package IMAGE-SIZE
 
@@ -237,6 +241,8 @@ variable ETEXT-N
 : RW-BYTES ( -- n ) PHDR2 32 + U64@ ;
 
 : ELF-PHDR ( n -- n ) ELF-EHDR-BYTES swap ELF-PHDR-BYTES * + ;
+
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 : ELF-LOAD-VA ( n -- n ) {: va:n :}
    ELF-PHNUM-OFF U16@ 0 ?do
       i ELF-PHDR {: at:n :}
@@ -286,11 +292,11 @@ variable X64-DATA-PH
    0= if s" image-size: invalid x86 text or RW LOAD segment" RC die then
    rwph 40 + U64@ RW-BYTES < if E-ES-WALK throw then
    textph 16 + U64@ REGION-OFF + ELF-LOAD-VA X64-REG-PH !
-   DATA-VA ELF-LOAD-VA X64-DATA-PH !
+   X64LAYOUT:DATA-VA ELF-LOAD-VA X64-DATA-PH !
    X64-REG-PH @ 4 + U32@ 6 =
    X64-DATA-PH @ 4 + U32@ 6 = and
    X64-REG-PH @ 40 + U64@ REGION = and
-   X64-DATA-PH @ 40 + U64@ DATA-SIZE = and
+   X64-DATA-PH @ 40 + U64@ X64LAYOUT:DATA-SIZE = and
    0= if s" image-size: invalid x86 fixed LOAD segment" RC die then
    X64-REG-BYTES 0 < X64-DATA-BYTES 0 < or if E-ES-WALK throw then
    RW-OFF TEXT-SIZE <> if E-ES-WALK throw then
@@ -306,7 +312,7 @@ variable X64-DATA-PH
       X64-DATA-OFF X64-DATA-BYTES + ILEN @ <> if
          s" image-size: x86 file length does not end at fixed DATA" RC die
       then
-      DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then
+      X64LAYOUT:DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then
    else
       X64-LAST-END X64-PAGE-END ILEN @ <> if
          s" image-size: x86 empty DATA has wrong page padding" RC die
@@ -316,10 +322,13 @@ variable X64-DATA-PH
       X64-REG-PH @ 16 + U64@ ELF-VA>OFF X64-REG-OFF <> if E-ES-WALK throw then
    then ;
 
+;using   \ X64LAYOUT
+
 : CHECK-SEGMENTS ( -- )
    ELF-EHSIZE-OFF U16@ ELF-EHDR-BYTES <>
    ELF-PHENTSIZE-OFF U16@ ELF-PHDR-BYTES <> or if E-ES-WALK throw then
-   ELF-PHNUM-OFF U16@ CODE-OFF ELF-EHDR-BYTES - ELF-PHDR-BYTES / > if E-ES-WALK throw then
+   X64 @ if X64LAYOUT:CODE-OFF else CODE-OFF then {: code:n :}
+   ELF-PHNUM-OFF U16@ code ELF-EHDR-BYTES - ELF-PHDR-BYTES / > if E-ES-WALK throw then
    ELF-PHNUM-OFF U16@ 2 < if
       s" image-size: image has no RW segment" RC die
    then
@@ -2886,6 +2895,8 @@ $D37EF54A constant XTC-LSL2
    ETEXT-END PRIM-DICT-SCAN
    PDICT-N @ 0 > ;
 
+using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
+
 variable X64-TEXT-END
 variable X64-CODE-END
 variable X64-DICT-N
@@ -2898,16 +2909,16 @@ variable X64-AOT-LAST
 $3145544953343658 constant X64-SITES-MAGIC
 
 : X64-AOT-LOCATE ( -- )
-   X64-TEXT-END @ CODE-OFF X64AOT-FORMAT:FOOTER-BYTES + 8 + >=
+   X64-TEXT-END @ X64LAYOUT:CODE-OFF X64AOT-FORMAT:FOOTER-BYTES + 8 + >=
       s" image-size: x86 stripped table footer is missing" ?TRL
    X64-TEXT-END @ X64AOT-FORMAT:FOOTER-BYTES - {: footer:n :}
    footer 8 + U64@ X64AOT-FORMAT:MAGIC =
       s" image-size: x86 stripped table footer is missing" ?TRL
    footer U32@ {: offset:n :}
    footer 4 + U32@ {: length:n :}
-   offset footer CODE-OFF - <=
+   offset footer X64LAYOUT:CODE-OFF - <=
       s" image-size: x86 stripped table starts outside text" ?TRL
-   CODE-OFF offset + {: start:n :}
+   X64LAYOUT:CODE-OFF offset + {: start:n :}
    length 8 >= length footer start - <= and
       s" image-size: x86 stripped table length is invalid" ?TRL
    start X64-CODE-END !
@@ -2941,8 +2952,8 @@ $3145544953343658 constant X64-SITES-MAGIC
       X64-AOT-U32 {: len:n :}
       off X64-AOT-LAST @ >=
          s" image-size: x86 stripped runs overlap or are unordered" ?TRL
-      len 0 > off DATA-SIZE <= and
-      if len DATA-SIZE off - <= else false then
+      len 0 > off X64LAYOUT:DATA-SIZE <= and
+      if len X64LAYOUT:DATA-SIZE off - <= else false then
          s" image-size: x86 stripped run exceeds DATA window" ?TRL
       off len + X64-AOT-LAST !
       len X64-AOT-FITS
@@ -2966,9 +2977,9 @@ $3145544953343658 constant X64-SITES-MAGIC
       X64-AOT-U32 {: off:n :}
       X64-AOT-U32 {: target:n :}
       off X64-AOT-LAST @ >
-      off DATA-SIZE 8 - <= and
+      off X64LAYOUT:DATA-SIZE 8 - <= and
          s" image-size: x86 stripped XT cell is outside DATA or unordered" ?TRL
-      target X64-CODE-END @ CODE-OFF - <
+      target X64-CODE-END @ X64LAYOUT:CODE-OFF - <
          s" image-size: x86 stripped XT target is outside code" ?TRL
       off X64-AOT-LAST !
    loop
@@ -2977,7 +2988,7 @@ $3145544953343658 constant X64-SITES-MAGIC
 
 : X64-FOOTER ( -- )
    X64-TEXT-END @ X64-CODE-END !
-   X64-TEXT-END @ CODE-OFF 16 + < if exit then
+   X64-TEXT-END @ X64LAYOUT:CODE-OFF 16 + < if exit then
    X64-TEXT-END @ 8 - U64@ X64-SITES-MAGIC <> if
       SNAPSHOT-CLASS? if
          s" image-size: x86 snapshot donor text has no site footer" RC die
@@ -2985,9 +2996,9 @@ $3145544953343658 constant X64-SITES-MAGIC
       exit
    then
    X64-TEXT-END @ 16 - {: footer:n :}
-   footer U32@ CODE-OFF + {: start:n :}
+   footer U32@ X64LAYOUT:CODE-OFF + {: start:n :}
    footer 4 + U32@ {: count:n :}
-   start CODE-OFF >= start footer 4 - <= and
+   start X64LAYOUT:CODE-OFF >= start footer 4 - <= and
       s" image-size: x86 site footer starts outside text" ?TRL
    start U32@ count =
       s" image-size: x86 site count does not match footer" ?TRL
@@ -2995,12 +3006,12 @@ $3145544953343658 constant X64-SITES-MAGIC
       s" image-size: x86 site rows overrun footer" ?TRL
    count 0 ?do
       start 4 + i 5 * + {: row:n :}
-      row U32@ CODE-OFF + {: field:n :}
+      row U32@ X64LAYOUT:CODE-OFF + {: field:n :}
       row 4 + U8@ {: kind:n :}
       kind 2 <=
          s" image-size: x86 site kind is invalid" ?TRL
       kind 0= if 1 else kind 1 = if 4 else 8 then then {: width:n :}
-      field CODE-OFF >= field start width - <= and
+      field X64LAYOUT:CODE-OFF >= field start width - <= and
          s" image-size: x86 site field is outside code" ?TRL
    loop
    start 4 + count 5 * + {: pad:n :}
@@ -3021,20 +3032,20 @@ $3145544953343658 constant X64-SITES-MAGIC
       s" image-size: x86 snapshot dictionary count is outside the region" ?TRL
    region DICT-SIZE >= region REGION <= and
       s" image-size: x86 snapshot region extent is invalid" ?TRL
-   data DATA-START >= data DATA-SIZE <= and
+   data DATA-START >= data X64LAYOUT:DATA-SIZE <= and
       s" image-size: x86 snapshot DATA extent is invalid" ?TRL
    X64-REG-BYTES region >= X64-DATA-BYTES DATA-START >= and
       s" image-size: x86 snapshot has no fixed dictionary segment" ?TRL
    trl data DATA-START - - {: end:n :}
-   end CODE-OFF >= end PROT-PAGE-MAX mod 0= and
+   end X64LAYOUT:CODE-OFF >= end PROT-PAGE-MAX mod 0= and
       s" image-size: x86 snapshot has no aligned donor text boundary" ?TRL
    end X64-TEXT-END !
    end DAT-HEAP !
    X64-DATA-OFF U64@ {: absolute:n :}
-   absolute DATA-VA DATA-START + >=
-   absolute DATA-VA DATA-SIZE + <= and
+   absolute X64LAYOUT:DATA-VA DATA-START + >=
+   absolute X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE + <= and
       s" image-size: x86 snapshot DATA extent is outside the heap" ?TRL
-   absolute DATA-VA - DAT-VIRT !
+   absolute X64LAYOUT:DATA-VA - DAT-VIRT !
    trl SNAPSHOT-FORMAT:HEAP-FIELD + U64@ DAT-FORM !
    DAT-FORM @ SNAPSHOT-FORMAT:HEAP-GRID = if
       READ-HEAP-GRID
@@ -3098,8 +3109,8 @@ $3145544953343658 constant X64-SITES-MAGIC
 
 : X64-BUDGET ( -- )
    -1 ZCOL !  BUDGET-BEGIN
-   s" elf/header-page" 0 CODE-OFF SPAN B-OTHER ROW
-   s" image/text" CODE-OFF X64-CODE-END @ CODE-OFF - SPAN B-CODE ROW
+   s" elf/header-page" 0 X64LAYOUT:CODE-OFF SPAN B-OTHER ROW
+   s" image/text" X64LAYOUT:CODE-OFF X64-CODE-END @ X64LAYOUT:CODE-OFF - SPAN B-CODE ROW
    X64-AOT @ if
       X64-AOT-ROWS
       X64-AOT-END @ X64-AOT-FOOTER @ X64-AOT-END @ - X64-GAP
@@ -3140,6 +3151,8 @@ $3145544953343658 constant X64-SITES-MAGIC
       ILEN @ over - X64-GAP
    then
    SUMS?  TOTAL-ROW ;
+
+;using   \ X64LAYOUT
 
 : CLASSIFY ( -- )
    X64 @ if X64-CLASSIFY exit then
