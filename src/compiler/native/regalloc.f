@@ -2858,9 +2858,6 @@ public
 : FRAME ( -- n )
    SEAL-CK FRAME-WANT ;
 
-: FRAME-USED ( -- n )
-   SEAL-CK DEPTH-WANT ;
-
 : VALUES ( -- n )
    SEAL-CK N-VALS @ ;
 

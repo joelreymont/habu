@@ -8,9 +8,9 @@
 \ now arrives in the vocabulary the dialect builds
 \ (src/compiler/native/dialect.f). This suite is what proves the vocabulary is
 \ ENOUGH: the same two passes run here over a module in which no ARM64 name
-\ appears, and the ARM64 suite next door runs unchanged over the other.
+\ appears.
 \
-\ WHAT THESE CASES MEASURE THAT test/compiler/native-regalloc.f CANNOT:
+\ WHAT THESE CASES MEASURE THAT AN ARM64 ALLOCATION CANNOT:
 \
 \ - THE ARCHITECTURE. The allocator refused any contract whose arch was not
 \   AARCH64. It now refuses any contract that is not the bound dialect's own
@@ -26,7 +26,7 @@
 \   declares one address-carrier lane and the allocator does no lane arithmetic;
 \   ARM64's four move-wides must stay contiguous through spill insertion.
 \
-\ A REGISTER CONVENTION, which is the shape the ARM64 cases allocate under too:
+\ A REGISTER CONVENTION:
 \ the contract names no place, so the module is the body the source selected to
 \ and every value in it is one the allocator is free to place.
 \
@@ -497,8 +497,7 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ and rdx, which x64ir declares in the schema as fixed registers beside the
 \ operand types. The selector lowers both shapes, and it makes every constraint
 \ satisfiable by COPYING the count and the dividend first. These modules are
-\ built straight into the machine dialect - the way native-regalloc.f builds the
-\ shapes its own selector never produces - so that what they measure is the
+\ built straight into the machine dialect so that what they measure is the
 \ allocator alone: the constraint read out of the schema, and the refusal of a
 \ pair no copy has been inserted for. The selected shapes are cases of their own
 \ further down.

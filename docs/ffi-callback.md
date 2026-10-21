@@ -334,8 +334,7 @@ case through libc's `qsort` and `pthread_create`. It writes
 
 `test/ffi-callback-growth.f` exercises more than 129 emitted C entries, a
 saved pointer across growth, binding and lifecycle operations above slot 64,
-and a high-slot fallback. `test/native-callback-stub-immediate.f` verifies the
-emitter loads an ID beyond 65535 without truncation.
+and a high-slot fallback.
 
 `src/lib/task-test.f` covers the EXPOSE, UNEXPOSE, CONTEXT and CONTEXT-BIND
 refusals, an exposed task at capture, a worker activating a worker, which

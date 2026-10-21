@@ -3,8 +3,8 @@
 \ Exercises policy-dependent schemas and source-word ownership, memoization and
 \ refusals that ordinary compilation cannot construct: forged rows, swapped
 \ arenas, foreign symbols, full tables, invalid stages and out-of-range picks.
-\ The production load-and-execute flows in native-chain.f, native-vocab.f and
-\ native-rename-rows.f cover arithmetic, control words and stack renames.
+\ The production load-and-execute flows in native-vocab.f and native-rename-rows.f
+\ cover arithmetic, control words and stack renames.
 \ Tier-neutral by design: the dialect and its source-word model are read back
 \ through their own API, so the tier this file loads under changes no row.
 
@@ -734,9 +734,8 @@ $4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
 \ meaning it does not carry, in both directions - and the second two are the two
 \ facts this table owns about a callable declaration: no code lives at the null
 \ address, and a call site cannot publish minus one value. Whether the address is
-\ the address of a whole INSTRUCTION is the machine dialect's field and is
-\ asserted in test/compiler/native-a64ir.f, so it is deliberately not restated
-\ here.
+\ the address of a whole INSTRUCTION is the machine dialect's field, so it is
+\ deliberately not restated here.
 align
 1 TYPED-BUFFER BC-CTX IR-CTX:ctx
 1 TYPED-BUFFER BC-BLD IR-BUILD:builder

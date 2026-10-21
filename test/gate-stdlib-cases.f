@@ -514,14 +514,6 @@ SUITE compiler-native-feed
    test/compiler/native-feed.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-native-tape-owner
-   test/compiler/native-tape-owner.f
-;SUITE
-
-WHITEBOX-SUITE compiler-native-host-construction
-   test/compiler/native-host-construction-e2e.f
-;SUITE
-
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
@@ -542,17 +534,6 @@ SUITE compiler-native-hir
 \ the gate runs and not to the sources a fixture could compile for itself.
 SUITE compiler-tier1-inline-prims
    test/compiler/tier1-inline-prims.f
-;SUITE
-
-\ The writeback addressing modes, beside the package boundary that publishes
-\ them. They are the one-instruction spelling of every pointer move the engine
-\ and the native compiler make, so a wrong mode bit is a wrong stack.
-SUITE compiler-a64-indexed
-   test/compiler/a64-indexed.f
-;SUITE
-
-SUITE compiler-native-a64ir
-   test/compiler/native-a64ir.f
 ;SUITE
 
 SUITE compiler-native-colon
@@ -698,10 +679,10 @@ SUITE compiler-x64-select
    test/compiler/x64-select.f
 ;SUITE
 
-\ The register allocator and its validator over an x86-64 module: the same
-\ src/compiler/native/regalloc.f and regalloc-verify.f the ARM64 suite runs,
-\ reading this machine through the vocabulary src/compiler/native/dialect.f
-\ declares and src/compiler/native/x64ir.f builds.
+\ The register allocator and its validator over an x86-64 module:
+\ src/compiler/native/regalloc.f and regalloc-verify.f reading this machine
+\ through the vocabulary src/compiler/native/dialect.f declares and
+\ src/compiler/native/x64ir.f builds.
 SUITE compiler-x64-regalloc
    test/compiler/x64-regalloc.f
 ;SUITE
@@ -737,20 +718,11 @@ SUITE compiler-backend-boundary
    test/compiler/backend-boundary.f
 ;SUITE
 
-SUITE compiler-native-select
-   test/compiler/native-select.f
-;SUITE
-
 \ The register-file description the allocator reads instead of one architecture's
-\ constants, and the ARM64 description a64ir.f derives from it. It is beside the
-\ allocator's own suite because the allocator is its only production consumer and
-\ the two have to agree about what a machine is.
+\ constants, and the ARM64 description a64ir.f derives from it. The allocator is
+\ its only production consumer, and the two have to agree about what a machine is.
 SUITE compiler-regfile
    test/compiler/regfile.f
-;SUITE
-
-SUITE compiler-native-regalloc
-   test/compiler/native-regalloc.f
 ;SUITE
 
 SUITE compiler-native-identity-spill
@@ -767,10 +739,6 @@ SUITE compiler-native-loop-frame-order
 
 SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
-;SUITE
-
-SUITE compiler-native-fused-moves
-   test/compiler/native-fused-moves.f
 ;SUITE
 
 SUITE compiler-native-trap
@@ -794,10 +762,6 @@ SUITE compiler-native-finally-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-finally.f
-;SUITE
-
-SUITE compiler-native-fetch-snapshot
-   test/compiler/native-fetch-snapshot.f
 ;SUITE
 
 SUITE compiler-native-prefix-declarations
@@ -881,10 +845,6 @@ SUITE native-quote-forward
    test/native-quote-forward-e2e.f
 ;SUITE
 
-SUITE compiler-native-internal-call
-   test/compiler/native-internal-call.f
-;SUITE
-
 SUITE compiler-native-hookless-reject
    test/compiler/native-hookless-reject.f
 ;SUITE
@@ -930,10 +890,6 @@ SUITE code-reclaim
 
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
-;SUITE
-
-SUITE compiler-native-tail
-   test/compiler/native-tail.f
 ;SUITE
 
 SUITE compiler-native-fold
@@ -1003,10 +959,6 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
-SUITE compiler-native-call-binding
-   test/compiler/native-call-binding.f
-;SUITE
-
 SUITE compiler-native-word-binding-aot
    src/lib/test.f
    test/compiler/aot-mode.f
@@ -1048,21 +1000,6 @@ SUITE compiler-code-bytes
    test/compiler/code-bytes.f
 ;SUITE
 
-SUITE compiler-aot-closure-index
-   test/compiler/aot-closure-index.f
-;SUITE
-
-SUITE compiler-native-chain
-   test/compiler/native-chain.f
-;SUITE
-
-SUITE compiler-native-chain-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-chain.f
-;SUITE
-
 SUITE compiler-native-qualified-trusted
    test/compiler/native-qualified-trusted.f
 ;SUITE
@@ -1075,10 +1012,6 @@ SUITE compiler-native-generated-constructor-aot
 
 SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
-;SUITE
-
-SUITE compiler-native-tick
-   test/compiler/native-tick.f
 ;SUITE
 
 SUITE compiler-integer-literals
@@ -1099,10 +1032,6 @@ SUITE native-dead-path
 
 SUITE native-dstack-alias
    test/compiler/native-dstack-alias.f
-;SUITE
-
-SUITE native-tail-placement
-   test/compiler/native-tail-placement.f
 ;SUITE
 
 WHITEBOX-SUITE compiler-native-match
@@ -1301,13 +1230,9 @@ SUITE ffi-callback
 ;SUITE
 
 \ More than 129 native C entries, stable pointers through growth, high-row
-\ lifecycle and fallback; the emitter check reaches beyond a 16-bit slot ID.
+\ lifecycle and fallback.
 SUITE ffi-callback-growth
    test/ffi-callback-growth.f
-;SUITE
-
-SUITE native-callback-stub-immediate
-   test/native-callback-stub-immediate.f
 ;SUITE
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness

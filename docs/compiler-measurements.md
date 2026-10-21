@@ -1410,8 +1410,7 @@ transfer beside it carries. The former `prune.f` removed an unread load and
 handed its pointer move back to the preceding operation. Selection now decides
 which comparison a converted region will emit before residency asks for a load,
 so `: W ( -- n ) SRC 0 > if 5 else 5 then ;` never writes the unread load.
-`test/compiler/native-fused-moves.f` pins the behavior and the following DATA
-access; the validator still refuses an unread one (`E-A64RAV-DKEEP`).
+The validator still refuses an unread load (`E-A64RAV-DKEEP`).
 
 **What it removed.** The 1,967-word corpus of section 1, compiled at tier 1 by
 an engine built from this lane's head and by one built from its base:

@@ -16,8 +16,7 @@ private
 \ SOURCE. A published routine is called by NAME, and the name does not exist
 \ while this file is being compiled - the compilation mints it. So every call
 \ below is one line of source handed to `TEST-EVAL:N`, the same interpreter the
-\ definition arrived through, which is also how test/compiler/native-chain.f
-\ calls what it published.
+\ definition arrived through.
 
 \ ---- 1. the definition the dot was written about ------------------------------
 \ `: JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;` is the body the chain

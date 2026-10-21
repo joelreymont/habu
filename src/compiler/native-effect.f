@@ -353,9 +353,6 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : REG-CK ( n -- n )
    dup 0 < over PAY-MASK > or if E-NEFF-GPR throw then ;
 
-: FREG-CK ( n -- n )
-   dup 0 < over PAY-MASK > or if E-NEFF-FPR throw then ;
-
 \ ---- the rules of an ordered place list --------------------------------------
 \ Reading one packed list. Nothing below is public: a caller reaches a position
 \ through the readers further down, which validate the whole list first, so there
@@ -562,13 +559,9 @@ public
 \ The set holding exactly one register. A number no place list could write down
 \ is refused here rather than silently shifted out of the cell.
 : GPR-REG ( n -- NEFF:gprs )    REG-CK 1 swap lshift GPR-CK MK-G ;
-: FPR-REG ( n -- NEFF:fprs )    FREG-CK 1 swap lshift MK-F ;
 
 : GPR-WITH ( NEFF:gprs NEFF:gprs -- NEFF:gprs )
    G-BITS swap G-BITS or GPR-CK MK-G ;
-
-: FPR-WITH ( NEFF:fprs NEFF:fprs -- NEFF:fprs )
-   F-BITS swap F-BITS or FPR-CK MK-F ;
 
 : GPR-WITHOUT ( NEFF:gprs NEFF:gprs -- NEFF:gprs )
    {: set:gprs less:gprs :}
@@ -774,9 +767,6 @@ public
    VALIDATE {: r:routine :}
    r FPR-RESULT@ F-BITS
    r FPR-CLOBBER@ F-BITS or MK-F ;
-
-: RETURNS? ( NEFF:routine -- bool )
-   VALIDATE CONTROL@ RETURNING? ;
 
 \ ---- frame slots -------------------------------------------------------------
 \ A slot the A64IR dialect wants to place: a byte offset from the deepest point

@@ -173,9 +173,6 @@ public
 \ ---- the frame ---------------------------------------------------------------
 : SP-ALIGN ( -- n )       SP-ALIGN-N ;
 : FRAME-MAX ( -- n )      FRAME-MAX-N ;
-: OFF-LIMIT ( -- n )      OFF-MAX ;
-
-: FRAME-ROUND ( n -- n )  MACHINE NMACH:FRAME-ROUND ;
 
 : SLOT-REACH ( n -- n )   MACHINE NMACH:SLOT-REACH ;
 
