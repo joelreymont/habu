@@ -23,8 +23,10 @@ DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
-\ A three-cell control record no definer generated, as a downstream table's is.
-PTR-VARIABLE RAW-CTRL 0 , 0 ,
+\ A control record no definer generated, as a downstream table's is. It is
+\ DYNAMIC-STORAGE:CONTROL-CELLS (five) cells wide: a shorter hand-made record
+\ would overlap its neighbour's cells.
+PTR-VARIABLE RAW-CTRL 0 , 0 , 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
@@ -89,6 +91,7 @@ variable DB-EVAL-U
 : WIDE-2047 ( -- ) 2047 WIDE drop ;
 : WIDE-682 ( -- ) 682 WIDE drop ;
 : WIDE-100 ( -- ) 100 WIDE drop ;
+: WIDE-2048 ( -- ) 2048 WIDE drop ;
 : RAW-RESERVE ( -- ) 3 RAW-CTRL 24 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
 
@@ -117,16 +120,26 @@ variable DB-EVAL-U
    7 681 WIDE TRIPLE-C !
    681 WIDE TRIPLE-C @ 7 T=
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
+   \ The generated reserve grows the foreign-width record to 49152 bytes and
+   \ retags its bound for width 24: 2048 triples, the last at 2047.
+   2048 WIDE-RESERVE
+   2047 WIDE drop
+   ['] WIDE-2048 7122 TTHROWS
+   681 WIDE TRIPLE-C @ 7 T=
+   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    \ The generic release empties the generated control for its accessor too.
    WIDE#base DYNAMIC-STORAGE:RELEASE
    ['] WIDE-100 7122 TTHROWS
    1 WIDE-RESERVE
    1 WIDE drop
    WIDE-RELEASE
-   \ The downstream contract: a hand-made three-cell record reserves 72 bytes
-   \ and releases to empty, its capacity read behind the head.
+   \ The downstream contract: a hand-made record reserves 72 bytes and releases
+   \ to empty, its capacity read behind the head. The reserve tags the record
+   \ with its width 24 and caches the bound 72 / 24.
    RAW-RESERVE
    RAW-CTRL byte-view CELL + cell-view @ 72 T=
+   RAW-CTRL byte-view 3 cells + cell-view @ 24 T=
+   RAW-CTRL byte-view 4 cells + cell-view @ 3 T=
    RAW-CTRL DYNAMIC-STORAGE:RELEASE
    RAW-CTRL byte-view CELL + cell-view @ 0 T= ;
 

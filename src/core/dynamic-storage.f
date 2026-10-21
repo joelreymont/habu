@@ -1,7 +1,14 @@
 \ Checked transient allocation behind DYNAMIC-BUFFER declarations.
-\ A control record is three cells: mapping, exact byte capacity and registry
-\ slot + 1. The element width lives in the generated accessor, never in the
-\ record.
+\ A control record is five cells: mapping, exact byte capacity, registry
+\ slot + 1, a width tag and the element bound for that width. The element width
+\ lives in the generated accessor; the record only caches a bound for one.
+\ THE BOUND IS WRITTEN ONLY WITH THE CAPACITY: PUBLISH stores the tag (the
+\ reserving width) and the bound (capacity / tag) beside the capacity, and
+\ RELEASE zeroes all three, each under LOCK; no other word writes the capacity,
+\ and it never changes between those writes. ADDRESS uses the bound only when
+\ the tag equals its own width, so the bound it reads is exactly its capacity /
+\ width. Any other record - grown through RESERVE with a foreign width, empty,
+\ released, or a stripped image's zero mapping - answers by the exact division.
 \ Membership follows live allocation, including a precompiled reserve after
 \ restore. Release zeroes the record; no process address survives capture.
 \ THE RECORD HEAD IS A DECLARED POINTER CELL (dot habu-refuse-a-ptr-5ad2734e):
@@ -40,7 +47,8 @@ $40 constant REG-INIT
 
 \ Keep the existing cell-rounded capacity contract: 100 byte elements reserve
 \ 104 addressable bytes. The accessor admits only complete elements of its
-\ width within the capacity; COPY below preserves every capacity byte.
+\ width within the capacity, whether it reads the cached bound or divides;
+\ COPY below preserves every capacity byte.
 : CELL-CEIL ( n -- n ) {: bytes:n :}
    bytes CELL mod {: part:n :}
    part 0= if bytes exit then
@@ -80,6 +88,10 @@ variable MUTEX
 : CTL ( ptr ptr a n -- ptr n ) {: cb:ptr off:n :} cb byte-view off + cell-view ;
 : CAP ( ptr ptr a -- ptr n ) CELL CTL ;
 : SLOT ( ptr ptr a -- ptr n ) 2 cells CTL ;
+3 cells constant TAG-OFF
+4 cells constant BOUND-OFF
+: TAG ( ptr ptr a -- ptr n ) TAG-OFF CTL ;
+: BOUND ( ptr ptr a -- ptr n ) BOUND-OFF CTL ;
 
 : REG-MAP ( n -- ptr n )
    REG-BYTES map-anon 0< if drop E-MAP throw then ;
@@ -136,21 +148,34 @@ public
 
 \ The checked offset and current mapping are one address operation. Growth can
 \ replace the mapping, so every access fetches the head after checking capacity.
-\ A negative index is refused before the record is read. The width guard keeps
-\ native and Wasm identical: a division by zero answers 0 on ARM64 and traps
-\ on Wasm.
+\ A negative index is refused before the record is read. A record tagged with
+\ this width bounds the index by its cached bound; any other is bounded by the
+\ exact division. The width guard sits on that division and keeps native and
+\ Wasm identical: a division by zero answers 0 on ARM64 and traps on Wasm.
+\ Since the index is checked first, a width <= 0 with a negative index, and a
+\ width of 0 on an empty record (tag 0), answer E-BOUNDS rather than E-SIZE;
+\ generated accessors always pass a positive width. The tag and bound are
+\ read through inline cell views at their offsets: TAG and BOUND are calls,
+\ and two of them per access cost more than the division they replace.
 : ADDRESS ( n ptr ptr a n -- ptr a ) {: idx:n cb:ptr width:n :}
-   width 0 <= if E-SIZE throw then
    idx 0 < if E-BOUNDS throw then
-   idx cb CAP @ width / >= if E-BOUNDS throw then
+   cb byte-view TAG-OFF + cell-view @ width = if
+      idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
+   else
+      width 0 <= if E-SIZE throw then
+      idx cb CAP @ width / >= if E-BOUNDS throw then
+   then
    cb @ idx width * + ;
 
-: PUBLISH ( ptr a n ptr ptr a -- ) {: fresh:ptr cap:n cb:ptr :}
+\ The capacity, its width tag and the bound for that width change together.
+: PUBLISH ( ptr a n ptr ptr a n -- ) {: fresh:ptr cap:n cb:ptr width:n :}
    fresh cb !
-   cap cb CAP ! ;
+   cap cb CAP !
+   width cb TAG !
+   cap width / cb BOUND ! ;
 
 \ Nothing in the control changes until every fallible operation has succeeded.
-: GROW ( n ptr ptr a n -- ) {: need:n cb:ptr old:n :}
+: GROW ( n ptr ptr a n n -- ) {: need:n cb:ptr old:n width:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0= if
@@ -161,7 +186,7 @@ public
       rc 0 <> if
          UNLOCK fresh cap munmap drop rc throw
       then
-      fresh cap cb PUBLISH
+      fresh cap cb width PUBLISH
       cb REGISTER
       UNLOCK
       exit
@@ -171,14 +196,14 @@ public
    cb @ old munmap 0< if
       UNLOCK fresh cap munmap drop E-UNMAP throw
    then
-   fresh cap cb PUBLISH
+   fresh cap cb width PUBLISH
    UNLOCK ;
 
 : RESERVE ( n ptr ptr a n -- ) {: count:n cb:ptr width:n :}
    count width EXTENT {: need:n :}
    cb CAP @ {: old:n :}
    need old <= if exit then
-   need cb old GROW ;
+   need cb old width GROW ;
 
 : RELEASE ( ptr ptr a -- ) {: cb:ptr :}
    cb CAP @ {: cap:n :}
@@ -188,6 +213,8 @@ public
    cb UNREGISTER
    NULL-PTR cb !
    0 cb CAP !
+   0 cb TAG !
+   0 cb BOUND !
    UNLOCK ;
 
 \ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A buffer's

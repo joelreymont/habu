@@ -59,6 +59,7 @@ STRUCTURE sample OPAQUE DERIVE addr
 : WIDE-2047 ( -- ) 2047 WIDE drop ;
 : WIDE-682 ( -- ) 682 WIDE drop ;
 : WIDE-100 ( -- ) 100 WIDE drop ;
+: WIDE-2048 ( -- ) 2048 WIDE drop ;
 
 : GROW ( -- )
    100 BYTES-RESERVE
@@ -112,6 +113,11 @@ public
    ['] WIDE-2047 catch .
    ['] WIDE-682 catch .
    7 681 WIDE TRIPLE-C !
+   681 WIDE TRIPLE-C @ .
+   0 WIDE TRIPLE-A byte-view 63 + c@ .
+   2048 WIDE-RESERVE
+   2047 WIDE drop
+   ['] WIDE-2048 catch .
    681 WIDE TRIPLE-C @ .
    0 WIDE TRIPLE-A byte-view 63 + c@ .
    WIDE#base DYNAMIC-STORAGE:RELEASE

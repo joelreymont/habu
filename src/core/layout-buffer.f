@@ -608,6 +608,8 @@ PRIM: TYPED-VARIABLE PRIM;
 \ The third control cell is the live registry handle. RESERVE registers
 \ on first allocation; RELEASE unregisters, so an existing declaration remains
 \ reusable after capture and restore without replaying this generated source.
+\ The fourth and fifth cache the element bound for the width that last grew
+\ the record; src/core/dynamic-storage.f states when the accessor trusts it.
 \
 \ THE CONTROL HEAD IS DECLARED, NOT `create`d (dot habu-refuse-a-ptr-5ad2734e).
 \ It holds the mapping's address, and a raw storage cell never holds an address:
@@ -623,7 +625,7 @@ PRIM: TYPED-VARIABLE PRIM;
 \ load counts, and never fetch a pointer out of it.
 \
 \ The head's cell is committed by the generated `PTR-VARIABLE` itself, so the
-\ definer allots the two count cells behind it (DBUF-ALLOT). Those counts are
+\ definer allots the four count cells behind it (DBUF-ALLOT). Those counts are
 \ numbers, so DYNAMIC-STORAGE reads capacity through an explicit cell view of
 \ the head rather than through its pointer type.
 \ THE DYNAMIC ELEMENT WIDTH IS BYTES, where LBUF-W holds cells: this definer
@@ -634,8 +636,9 @@ PRIM: TYPED-VARIABLE PRIM;
 \ definers admit keeps the generated source it had, since DBUF-W is then
 \ exactly LBUF-W cells.
 variable DBUF-W
-\ Head, exact byte capacity, registry slot + 1: every dynamic control record.
-3 cells constant DBUF-CTRL-BYTES
+\ Head, exact byte capacity, registry slot + 1, width tag and element bound for
+\ that width: every dynamic control record (src/core/dynamic-storage.f).
+5 cells constant DBUF-CTRL-BYTES
 
 : DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-DYNAMIC-INFO 0= if
@@ -660,7 +663,7 @@ variable DBUF-W
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 \ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
-\ AND commits its cell, so the definer allots the two count cells behind it and
+\ AND commits its cell, so the definer allots the four count cells behind it and
 \ zeroes the record it measured. The same transactional check — if anything else
 \ moved DP between the measurement and here, the accessor and the storage would
 \ name different places, so this refuses instead of allotting into the gap. A

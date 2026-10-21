@@ -79,7 +79,7 @@ variable FILE-U
    S\" 1\n0\n1\n1\n" ;
 
 : FRACTIONAL$ ( -- ptr u8 n )
-   S\" 7122\n7122\n7\n7122\n7122\n7122\n7\n7\n7122\n" ;
+   S\" 7122\n7122\n7\n7122\n7122\n7122\n7\n7\n7122\n7\n7\n7122\n" ;
 
 \ Each map's and free's ior, and INSIDE's pages' distance, up to the trap.
 : TWICE$ ( -- ptr u8 n )
