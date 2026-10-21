@@ -55,6 +55,10 @@ require src/compiler/native/prof.f
 require src/arch/x86-64/backend.f
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/machine.f
+require src/habu/address-carrier.f
+require src/compiler/native/hir.f
+require src/compiler/session/emission.f
+require src/compiler/native/shadow.f
 
 package X64PASS
 private
@@ -262,6 +266,33 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 : PREPARE ( -- )
    X64EMIT:CAPTURE-PREPARE ;
 
+\ ---- the native shadow's address sites ---------------------------------------
+\ A native shadow (src/compiler/native/shadow.f OPEN-NATIVE) copies this row's
+\ placed emission, so every MOVABS site still carries the host address it was
+\ placed with. A code address that is one of the emission's own function starts
+\ goes back to that function's offset in the emission, the unplaced form the
+\ shadow linker reads; any other address stays as the host named it.
+: FUN-OFF ( NART:emission n -- n ) {: a:NART:emission v:n :}
+   a NART:PLACEMENT {: at:n :}
+   a NART:FUNCTIONS 0 ?do
+      a i NART:FUNCTION-OFFSET@ {: off:n :}
+      at off + v = if off unloop exit then
+   loop
+   -1 ;
+
+: SHADOW-ADDRS ( NART:emission ptr u8 -- ) {: a:NART:emission base:ptr :}
+   a NART:ADDR-SITES 0 ?do
+      a i NART:ADDR-SITE@ {: off:n :}
+      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + a NART:SIZE > or
+         if E-NSHADOW-ROW throw then
+      base off + {: p:ptr :}
+      p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
+      a i NART:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
+         a p ADDRESS-CARRIER:MOVABSV FUN-OFF {: fun:n :}
+         fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
+      then
+   loop ;
+
 public
 
 \ The emit row with no slot: a SHADOW emission (emit-x64.f), whose call fields
@@ -287,7 +318,8 @@ public
    [: EMIT ;] [: EMIT-UNPLACED ;] [: RELEASE ;] [: RETIRE ;]
    [: X64IR:PROTOTYPE ;] [: X64IR:PROTOTYPE-CLEAR ;] [: PREPARE ;]
       NBACK-PASS:MAKE
-   NBACK:REGISTER ;
+   NBACK:REGISTER
+   [: SHADOW-ADDRS ;] NSHADOW:NATIVE-ADDRS! ;
 
 ;package
 

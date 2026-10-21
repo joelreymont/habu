@@ -39,10 +39,8 @@ require src/lib/prelude.f
 require src/lib/errors.f
 require src/lib/le.f
 require src/core/bytes.f
-require src/habu/address-carrier.f
 require src/compiler/target.f
 require src/compiler/binding.f
-require src/compiler/native/hir.f
 require src/compiler/session/emission.f
 require src/compiler/session/lease.f
 
@@ -54,6 +52,8 @@ TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
 variable OPENED                      \ a shadow is open
 variable NATIVE                      \ its source already emitted for this binding
 TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
+TYPED-VARIABLE NATIVE-ADDRS-XT [ NART:emission ptr u8 -- ]
+variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
 \ ---- the emissions -----------------------------------------------------------
 \ Each column counts only the published emissions; a taken one lies just past
@@ -152,27 +152,6 @@ $E9 constant TAIL-OP
       0 p REL32-FIELD + LE:U32!
    loop ;
 
-: NATIVE-FUN-OFF ( NART:emission n -- n ) {: a:NART:emission v:n :}
-   a NART:PLACEMENT {: at:n :}
-   a NART:FUNCTIONS 0 ?do
-      a i NART:FUNCTION-OFFSET@ {: off:n :}
-      at off + v = if off unloop exit then
-   loop
-   -1 ;
-
-: NATIVE-ADDRS ( NART:emission -- ) {: a:NART:emission :}
-   a NART:ADDR-SITES 0 ?do
-      a i NART:ADDR-SITE@ {: off:n :}
-      off 0 < off ADDRESS-CARRIER:MOVABS-BYTES + a NART:SIZE > or
-         if E-NSHADOW-ROW throw then
-      CODE-N @ off + CODE-BUF {: p:ptr :}
-      p ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NSHADOW-ROW throw then
-      a i NART:ADDR-SITE-KIND@ HIR:ADDR-CODE = if
-         a p ADDRESS-CARRIER:MOVABSV NATIVE-FUN-OFF {: fun:n :}
-         fun 0 >= if p fun ADDRESS-CARRIER:SET-MOVABS then
-      then
-   loop ;
-
 : COPY-FUNS ( NART:emission -- )
    {: e:NART:emission :}
    N-FUNS @ {: k0:n :}
@@ -242,7 +221,10 @@ $E9 constant TAIL-OP
    e TARGET-CK
    0 PENDING !
    e COPY-BYTES
-   NATIVE @ 0<> if e NATIVE-CALLS e NATIVE-ADDRS then
+   NATIVE @ 0<> if
+      e NATIVE-CALLS
+      e CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
+   then
    e COPY-FUNS
    e COPY-CALLS
    e COPY-ADDRS
@@ -299,7 +281,17 @@ public
    0 NATIVE !
    1 OPENED ! ;
 
+\ A native shadow keeps the placed emission's bytes, so each address site still
+\ carries the host address it was placed with. The backend whose emissions a
+\ native shadow takes installs how its sites carry an address and return to the
+\ unplaced form (src/arch/x86-64/passes.f), given the emission and the first
+\ byte of its copy; OPEN-NATIVE refuses until one has.
+: NATIVE-ADDRS! ( [ NART:emission ptr u8 -- ] -- )
+   NATIVE-ADDRS-XT !
+   1 NATIVE-ADDRS-SET ! ;
+
 : OPEN-NATIVE ( CBIND:binding -- )
+   NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
    OPEN
    1 NATIVE ! ;
 

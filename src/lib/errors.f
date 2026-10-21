@@ -1095,7 +1095,7 @@
 \ second machine, and the map from each published record to that routine. A
 \ refusal another authority owns - the shadow chain's own stages, publication's
 \ - keeps that authority's name.
--8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one, or its binding, an emission or a row asked of none
+-8680 constant E-NSHADOW-STATE  \ a shadow opened over an open one or natively with no address rewriter installed, or its binding, an emission or a row asked of none
 -8681 constant E-NSHADOW-ROW    \ a record, emission or row index at or past what the shadow holds, or a `does>` clause function the taken emission does not have or that starts where the definer enters
 -8682 constant E-NSHADOW-TARGET \ an emission taken for another machine than the one the shadow's binding names
 
