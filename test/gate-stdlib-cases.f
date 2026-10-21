@@ -2576,8 +2576,8 @@ SUITE repl-address-cell-rollback
    test/repl-address-cell-rollback.f
 ;SUITE
 
-\ The open-definition PTY fixture starts and reaps four engine children, under
-\ the same fixed reap budget.
+\ The open-definition PTY fixture starts and reaps one engine child per case,
+\ under the same fixed reap budget.
 SUITE repl-open-definition
    test/repl-open-definition.f
 ;SUITE

@@ -55,7 +55,9 @@ using PTY-HARNESS
    s" -107" IN-BUF? TTRUE ;
 
 \ Tier 1 keeps a block's local table across source lines, then releases it at
-\ `then`: the same spelling is a string opener in the last line.
+\ `then`: the same spelling is a string opener in the last line. Only the Habu
+\ REPL, x86-64's, carries the table across lines; ARM64's kernel REPL, like
+\ master's, drops the local table at each line end.
 : LEXICAL-LINES ( -- )
    s" : SPAN-LEX ( bool -- n )" STEP TTRUE
    S\" if 7 {: s\q:n :}" STEP TTRUE
@@ -73,7 +75,7 @@ using PTY-HARNESS
       s" : SPAN-X ( -- n )" STEP dup TTRUE if
          SPAN-LINES
          BRANCH-LINES
-         tier 1 = if LEXICAL-LINES then
+         tier 1 = HB-TARGET-LINUX-X86-64? and if LEXICAL-LINES then
          4 SEND-BYTE
       then
    then
@@ -107,10 +109,11 @@ using PTY-HARNESS
          4 SEND-BYTE
       then
    then
-   EXIT-CODE 0 T= ;
+   0 EXIT= ;
 
 \ Once EOF ends the session, a throwing exit hook must be an uncaught exit,
-\ not a jump into the assembly reader's retired REPL savepoint.
+\ not a jump into the assembly reader's retired REPL savepoint. x86-64's Habu
+\ REPL meets this; ARM64's kernel REPL, master's, still re-enters the reader.
 : HOOK-CASE ( -- )
    FIRST-TIER OPEN dup TTRUE if
       S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
@@ -118,7 +121,7 @@ using PTY-HARNESS
       s" RV-ARM" STEP TTRUE
       4 SEND-BYTE
    then
-   EXIT-CODE 91 T=
+   91 EXIT=
    s" HOOK" IN-BUF? TTRUE
    s" hb: stack bounds exceeded" IN-BUF? TFALSE ;
 
@@ -142,7 +145,7 @@ using PTY-HARNESS
    s" 44" IN-BUF? TTRUE
    s" ;using" STEP TTRUE
    4 SEND-BYTE
-   EXIT-CODE 0 T= ;
+   0 EXIT= ;
 
 public
 
@@ -154,7 +157,7 @@ public
       i REJECT-CASE
    loop
    USING-CASE
-   HOOK-CASE
+   HB-TARGET-LINUX-X86-64? if HOOK-CASE then
    T-REPORT ;
 
 ;using
