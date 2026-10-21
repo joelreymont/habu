@@ -654,15 +654,20 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ have cleared it. The compiler checks, compiles and publishes the record, or
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close closes the provenance window native and clears what
-\ def-open set.
+\ def-open set. This `;` recovers: it declares so in RECOVER-CELL for the
+\ compile, and abandons the definition the compiler refused with
+\ E-NCOMP-RECOVERY, which only a multi-error run throws, and reads on.
 : DEF-COMPILE ( ptr u8 n -- )
    DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ AS-COMPILE execute ;
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
    DEF-SOURCE-CLOSE
+   NCOMP-DISPATCH:RECOVER-CELL CELL@ {: prior:n :}
+   -1 NCOMP-DISPATCH:RECOVER-CELL CELL!
    [: data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
    {: rc:n :}
+   prior NCOMP-DISPATCH:RECOVER-CELL CELL!
    rc E-NCOMP-RECOVERY = if DEF-ABORT true exit then
    rc 0<> if rc throw then
    DEF-CLOSE

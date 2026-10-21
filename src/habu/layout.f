@@ -1255,6 +1255,14 @@ $388 constant DEF-TIER-CELL
 \ scopes keep tier 1 until the outer finally restores it.
 $390 constant BUILD-DEPTH-CELL
 $398 constant BUILD-TIER-CELL
+\ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
+\ recovers from a refused definition: src/habu/definers.f DEF-SEMI? sets it
+\ around its compile, catches E-NCOMP-RECOVERY and reads on. In a multi-error
+\ run the compiler then abandons a refused definition unpublished without a
+\ second report; under any other reader it refuses with E-NCOMP-VERDICT
+\ (compiler.f RECORD). Zero outside that compile, so no image carries it set.
+\ It takes the first cell of the free $690..$6D0 hole below LVF-OFF.
+$690 constant RECOVER-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
 \ The record is DATA; its fields are execution tokens of existing private
@@ -1414,8 +1422,9 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
 \ states its own offset. Below it, $600..$690 is GENIO-ABI, AOT-SPAN and
-\ SIGNAL-ABI, $690..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF
-\ and $7D0..$7E0 is FRAME-CELL and QFRAME-CELL.
+\ SIGNAL-ABI, $690 is NCOMP-DISPATCH:RECOVER-CELL, $698..$6D0 is free,
+\ $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF and $7D0..$7E0 is FRAME-CELL
+\ and QFRAME-CELL.
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
@@ -1424,7 +1433,7 @@ $578 constant LVD-CELL
 $580 constant LVH-OFF
 \ LVF-OFF: the locals-frame bytes open when each DO level was entered, which
 \ that level's `leave` releases back to. It takes the top LV-LEVELS cells of
-\ the $690..$750 hole below LVQ-OFF, swept for a claimant across src lib tools
+\ the $698..$750 hole below LVQ-OFF, swept for a claimant across src lib tools
 \ test bootstrap and read back as zero out of a booted engine that had compiled
 \ loops at both tiers.
 $6D0 constant LVF-OFF

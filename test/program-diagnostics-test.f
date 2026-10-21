@@ -13,6 +13,15 @@ package PROGRAM-DIAGNOSTICS
    path pathu GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
 
+\ The file is read by the Habu loop, whose `;` recovers from a refused
+\ definition (src/habu/definers.f DEF-SEMI?); the engine's own loop does not.
+: RUN-LOAD-HABU ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   s" test/outer-loop-on.f" GE-ARG+
+   path pathu GE-ARG+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
+
 : RUN-LOAD-WB ( ptr u8 n -- ) {: path:ptr pathu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -66,12 +75,21 @@ package PROGRAM-DIAGNOSTICS
    marker markeru path pathu EXPECT-MARKER-FIRST
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
-: DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
+: EXPECT-DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n needle:ptr needleu:n :}
-   path pathu RUN-LOAD
    path pathu GE-EXPECT-OK
    path pathu EXPECT-OK-END
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
+
+: DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n needle:ptr needleu:n :}
+   path pathu RUN-LOAD
+   path pathu needle needleu EXPECT-DIAGNOSTIC ;
+
+: HABU-DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n needle:ptr needleu:n :}
+   path pathu RUN-LOAD-HABU
+   path pathu needle needleu EXPECT-DIAGNOSTIC ;
 
 : ADDRESS-CAP ( -- )
    s" test/address-cell-cap-bad.f" 96
@@ -158,11 +176,7 @@ package PROGRAM-DIAGNOSTICS
    BADSIG-ONCE
    BADSIG-WIDE-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
-   \ Only x86-64's Habu load loop abandons a refused tier-1 definition and
-   \ reads on; ARM64's kernel loop, master's, ends the load at that `;`.
-   HB-TARGET-LINUX-X86-64? if
-      s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
-   then
+   s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC

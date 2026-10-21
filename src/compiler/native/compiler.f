@@ -403,6 +403,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : TAPE-ROOM ( -- n )
    M-SRC-U @ TEXT-CAP min 2 / 1 max ;
 
+\ A multi-error run whose reader recovers from E-NCOMP-RECOVERY: that reader
+\ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
+\ reader a refusal is E-NCOMP-VERDICT, which RUN reports.
+: RECOVERING? ( -- bool )
+   CHECKER-OWNER:MULTI-ERROR?
+   data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
+
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
    M-DOES @ 0<> if
@@ -413,16 +420,16 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   \ In a multi-error run a definition the checker refused, or one that bound a
-   \ refused declaration's recovery row, is counted and abandoned unpublished:
-   \ E-NCOMP-RECOVERY ends it without a second report.
+   \ Under a recovering reader a definition the checker refused, or one that
+   \ bound a refused declaration's recovery row, is counted and abandoned
+   \ unpublished: E-NCOMP-RECOVERY ends it without a second report.
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
-         CHECKER-OWNER:MULTI-ERROR? if E-NCOMP-RECOVERY throw then
+         RECOVERING? if E-NCOMP-RECOVERY throw then
       then
       E-NCOMP-VERDICT throw
    else
-      CHECKER-OWNER:MULTI-ERROR? if
+      RECOVERING? if
          CHECKER-OWNER:RECOVERY-USED? if E-NCOMP-RECOVERY throw then
       then
    then then
