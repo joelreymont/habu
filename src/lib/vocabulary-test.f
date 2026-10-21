@@ -284,10 +284,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" far" s" hb: not in vocabulary: PBIG:FAR at test/policy/far.f:2" REFUSES ;
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in
-\ Habu. The final count proves the sealed load reaches that loop.
+\ Habu, which reads no seal: a sealed load is read by the engine's loop all the
+\ same (src/core/include.f LOAD-BYTES), so it runs and refuses as it does there.
 : SEAM ( -- )
    s" allow-outer" HARNESS!
-   s" ok" 0 s" " S\" 42\n5\n5\n42\n0\n1\n" RUNS
+   s" ok" 0 s" " OK-OUT$ RUNS
    s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" REFUSES ;
 
 \ Confined static require uses the original source paths through nested loads.
