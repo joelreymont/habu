@@ -618,11 +618,16 @@ process.
   visible. The subject's packets name PATH, canonical and absolute, with
   positions in the bytes; a dependency's name the dependency, with positions
   in its file.
-- The child runs, in the caller's working directory, on the engine
-  `src/lib/engine-candidate.f` names (`HABU_UNDER_TEST` if set, else the running
-  engine), as `check.f`'s run stage does, and loads
-  `ROOT/tools/check-verify-child.f` by its absolute path, ROOT being the tree
-  `tools/check-verify-core.f` was loaded from.
+- The child runs in the caller's working directory on the engine
+  `src/lib/engine-candidate.f` names. When that engine is the process's own
+  and can save an image, the child is the saved verifier image
+  `hb-check-verify-<key>` in the build cache (`tools/check-verify-image.f`:
+  the engine with the verifier and `tools/check-verify-child-lib.f` loaded by
+  `tools/check-verify-save.f`, built once per engine and closure, argv
+  `-- SUBJECT ...`). On any other engine (an `HABU_UNDER_TEST` naming another
+  engine, or one that cannot save, the Gforth recovery engine) it runs that
+  engine with `ROOT/tools/check-verify-child.f` by its absolute path, ROOT
+  being the tree `tools/check-verify-core.f` was loaded from.
 - The child has the run stage's deadline, `--deadline-ms` included.
 
 | `CHECK:verdict` | Meaning | check.f exit |
@@ -630,7 +635,7 @@ process.
 | `verified` | Nothing in the closure or the subject is refused. | 0 |
 | `refused` | The subject, a file of its closure, or the closure itself is refused. | 70 |
 | `engine-provided` | The engine provides PATH (`ENGINE-PROVIDES?`): nothing is verified, whatever the bytes hold. | 64 |
-| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`, `tools/check-verify-child-lib.f`), so it cannot be verified there. | 69 |
+| `held` | The child's image holds PATH though the engine does not (`src/habu/verify-source.f`, `tools/check-verify-child.f`, `tools/check-verify-child-lib.f`; in the saved image, `tools/check-verify-save.f`), so it cannot be verified there. | 69 |
 | `incomplete` | The child ended without a result line; its `status` is the exit, signal or deadline, and the packets are those it made before. | 69 |
 | `deferred` | Nothing is refused, but the source pre-pass left a stretch of top-level source or a definition in the closure or the subject to the run: a `W-CHECK-DEFERRED` packet locates each, and its tokens are not verified. | 0 |
 
@@ -763,7 +768,12 @@ The child, `tools/check-verify-child.f`, is run only by this operation and by
 ```text
 ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT < STDIN
 ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT LABEL < STDIN
+IMAGE -- SUBJECT < STDIN
+IMAGE -- SUBJECT LABEL < STDIN
 ```
+
+IMAGE is the saved verifier image, which runs in place of ENGINE and the
+source child when the engine is the process's own and can save one.
 
 SUBJECT is canonical and absolute. STDIN is the open documents, each a line
 `PU U` then PU bytes of PATH and U bytes of TEXT, the counts in decimal; then

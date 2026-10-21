@@ -200,7 +200,12 @@
 \   a name the load accepts at top level is refused                       top-accepted
 \   a type made by reached source rendering or nominal registration is
 \   refused as absent; an unrelated absence or later error is lost         type-deferred
-\   the image is not re-keyed when a file of its closure changes           image-stale
+\   the suite's engine does not run the image, or the image is not
+\   re-keyed when a file of its closure changes                            image-stale
+\   a word or file of the image's saver reaches a subject, or answers
+\   held                                                                  image-saver-leak
+\   the image checks under the working directory instead of the
+\   engine's root                                                         image-cwd
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -221,6 +226,7 @@ require test/pcap-result.f
 require src/lib/jsonl.f
 require tools/gate-json-assert-core.f
 require tools/check-verify-core.f
+require tools/check-verify-image.f
 
 package CHECK-VERIFY-TEST
 
@@ -4659,6 +4665,8 @@ variable LINE-K
 \ walk refuses with the missing member's E-FS-STAT, so a refused key derivation
 \ releases its fold (leaked folds would make the last refusal the pool's own).
 : IMAGE-STALE ( -- )
+   s" image-stale: the engine runs the saved image" T-LABEL
+   ENGINE-CANDIDATE:PATH$ CHECK-VERIFY-IMAGE:CAPABLE? TTRUE
    STALE-TREE
    0 GEN-U !
    S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\nrequire src/lib/build-cache.f\n" GEN+
@@ -4693,6 +4701,53 @@ variable LINE-K
       s" image-stale: each walk refuses with the missing member's cause" T-LABEL
       out outn i REFUSED-CODE E-FS-STAT T=
    loop ;
+
+
+\ The image holds nothing of its saver: a word of the dropped support closure
+\ is undefined to a subject, and its file reads as source, not as held. The
+\ source child never loads the saver, so this is green on both children and
+\ catches a leak on the image path alone.
+: IMAGE-SAVER-LEAK ( -- )
+   s\" : CVT-SV ( -- ) s\" a\" APP-IMAGE:SAVE ;\n" s" sv.f" GUARD-MS CHECK-AS
+   1 s" image-saver-leak: the saver's word is refused" EXPECT-KIND
+   s" image-saver-leak: undefined" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" APP-IMAGE:SAVE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   s\" : CVT-EI ( -- ptr u8 n ) ENGINE-ID:PATH$ ;\n" s" ei.f" GUARD-MS CHECK-AS
+   1 s" image-saver-leak: the engine identity's word is refused" EXPECT-KIND
+   s" image-saver-leak: undefined too" T-LABEL
+   CHECK:VERIFY-OUT$ s" token" s" ENGINE-ID:PATH$" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   0 GEN-U !  s\" require src/lib/engine-id.f\n" GEN+
+   s" ei-load.f" DEFS-CHECK
+   0 s" image-saver-leak: the saver's dependency verifies" EXPECT-KIND
+   CHECK:VERIFY-LOADS$ CV-START
+   s" image-saver-leak: and is read, not held" s" require src/lib/engine-id.f" 19
+   s" src/lib/engine-id.f" TREE$ s" read" LOAD-NEXT ;
+
+
+\ The image restores the engine root the source child finds: from a working
+\ directory that is no tree, a primitive use's file is under EXE-ROOT of the
+\ engine, which an image that lost its root at capture would spell as that
+\ directory. Core is loaded nested under this tree (tools/lsp-entry-test.f
+\ NESTED), so its child and image belong to this tree, not the fixture root.
+: IMAGE-CWD ( -- )
+   0 GEN-U !
+   s\" require src/lib/engine-candidate.f\npackage CVT-CWD\npublic\n: LOAD ( -- ) s\" " GEN+
+   SOURCE-ROOT:CWD$ GEN+ s\" \" [: s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
+   s\" /tools/check-verify-core.f\" required ;] SOURCE-ROOT:WITH ;\n;package\nCVT-CWD:LOAD\npackage CVT-CWD\n" GEN+
+   KIND$SRC+
+   s\" public\n: MAIN ( -- )\n   s\" expect \" type ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:ENGINE-FOR$ type s\" /src/habu/prims.f\" type cr\n" GEN+
+   s\"    s\" : CVT-D ( n -- ) drop ;\" s\" " GEN+ s" d.f" AT$ GEN+
+   s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n   CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
+   s" cwd-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
+   s" cwd-driver.f" AT$ ROOT$ DRIVE {: outu:n erru:n rc:n :}
+   s" image-cwd: driver exit" T-LABEL rc 0 T=
+   rc 0<> if 0 ERR erru type cr then
+   0 OUT outu {: out:ptr outn:n :}
+   s" image-cwd: verified" T-LABEL out outn s" verdict " 0 LINE-AFTER$ s" verified" T$=
+   out outn s" in" s" d.f" AT$ PACKET {: use:SPAN:span<u8> :}
+   s" image-cwd: the use line" T-LABEL use SPAN:LEN 0<> TTRUE
+   s" image-cwd: the primitive's file is under the engine root" T-LABEL
+   use s" file" STRING$ out outn s" expect " 0 LINE-AFTER$ T$= ;
 
 
 \ ---- case timings ----------------------------------------------------------
@@ -4831,6 +4886,8 @@ public
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
    s" image-stale" [: IMAGE-STALE ;] RUN-CASE
+   s" image-saver-leak" [: IMAGE-SAVER-LEAK ;] RUN-CASE
+   s" image-cwd" [: IMAGE-CWD ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-trust" [: TOP-TRUST ;] RUN-CASE
    s" top-trust-refused" [: TOP-TRUST-REFUSED ;] RUN-CASE

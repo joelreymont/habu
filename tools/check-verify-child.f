@@ -12,6 +12,17 @@
 \    ENGINE --load ROOT/tools/check-verify-child.f -- SUBJECT --index < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- --batch TAIL < STDIN
 \    ENGINE --load ROOT/tools/check-verify-child.f -- --batch-ref TAIL < STDIN
+\    IMAGE -- SUBJECT < STDIN
+\    IMAGE -- SUBJECT LABEL < STDIN
+\    IMAGE -- SUBJECT --at N < STDIN
+\    IMAGE -- SUBJECT --of TAIL < STDIN
+\    IMAGE -- SUBJECT --index < STDIN
+\    IMAGE -- --batch TAIL < STDIN
+\    IMAGE -- --batch-ref TAIL < STDIN
+\
+\ IMAGE is the saved verifier image (tools/check-verify-image.f, built by
+\ tools/check-verify-save.f) core runs when the engine is its own and can save
+\ one; this file is the child on any other engine.
 \
 \ STDIN is the open documents, each a line `PU U` then PU bytes of PATH and U
 \ bytes of TEXT, the counts in decimal; then an empty line; then BYTES, to the
@@ -22,8 +33,9 @@
 \ must still be on disk: the loader resolves it there, and one that is not is
 \ no such source. check.f's pre-pass, the second form, sends none.
 \
-\ The image is the engine's boot prefix, the verifier, this file and
-\ tools/check-verify-child-lib.f, its body, so no tool's word stands in for, or
+\ The image is the engine's boot prefix, the verifier and
+\ tools/check-verify-child-lib.f, its body, with this file or, in the saved
+\ image, tools/check-verify-save.f, so no tool's word stands in for, or
 \ collides with, a word of the subject. Nothing of SUBJECT or its closure runs:
 \ the verifier scans source and records what it declares.
 \
@@ -135,7 +147,8 @@
 \ tokens are not verified.
 \ held is answered before anything is verified: this image holds SUBJECT though
 \ the engine does not provide it (the verifier's source, this file and
-\ tools/check-verify-child-lib.f), so it cannot be verified here. The parent
+\ tools/check-verify-child-lib.f; in the saved image,
+\ tools/check-verify-save.f), so it cannot be verified here. The parent
 \ answers engine-provided itself. stopped is a throw that ended the
 \ composition, whatever was refused before it.
 \

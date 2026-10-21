@@ -14,15 +14,17 @@
 \   path and its text, and a load of such a file other than PATH meets that
 \   text, never the copy on disk, which the load still resolves. Of two for
 \   one path the first holds.
-\ - The verification runs in a short-lived child, tools/check-verify-child.f,
-\   whose image is the engine's boot prefix plus the verifier: neither this
-\   process's words nor an earlier check's can stand in for, or collide with, a
-\   word of the subject. As check.f's run stage does, the child runs on the
-\   engine src/lib/engine-candidate.f names, a gate's HABU_UNDER_TEST or else the
-\   engine running this process, never a bin/hb of the working directory. The
-\   child is the tools/check-verify-child.f of the tree this file was loaded
-\   from, named absolutely, and runs in this process's working directory,
-\   whatever tree that holds.
+\ - The verification runs in a short-lived child whose image is the engine's
+\   boot prefix plus the verifier, so neither this process's words nor an
+\   earlier check's can stand in for, or collide with, a word of the subject.
+\   On the engine src/lib/engine-candidate.f names, when it is this process's
+\   own engine and can save an image, the child is the saved verifier image
+\   tools/check-verify-image.f keys in the build cache (built once per engine
+\   and closure); on any other engine, an HABU_UNDER_TEST naming another
+\   engine or one that cannot save, it is that engine running the
+\   tools/check-verify-child.f of the tree this file was loaded from, named
+\   absolutely. Either runs in this process's working directory, whatever tree
+\   that holds.
 \ - The verdict is the child's own result line. A child that ends without one -
 \   an exit, a signal, the deadline - is `incomplete` and carries that status,
 \   with the packets it wrote before; its exit status alone is never a verdict.
@@ -76,6 +78,7 @@ require tools/source-discovery.f
 require tools/check-all-errors-core.f
 require src/lib/verify-diagnostics.f
 require src/habu/verify-source.f
+require tools/check-verify-image.f
 
 package CHECK
 using SOURCE-ROOT
@@ -774,20 +777,6 @@ variable VFY-TARGET-U
    VFY-STOP-RC @ VFY-STOP-AT @ label labelu src srcu true STOP-RECORD$ drop ;
 
 
-\ The child's arguments.
-: VFY-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --load" CHK-ARG+
-   VFY-CHILD$ CHK-ARG+
-   s" --" CHK-ARG+
-   VFY-PATH$ CHK-ARG+
-   VFY-INDEX? @ if s" --index" CHK-ARG+ then
-   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
-   VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
-   VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
-   PROC-ENV-INHERIT-MISSING ;
-
-
 TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the check
 
 \ The engine a child of the check runs on, ENGINE-CANDIDATE:PATH$. A selection
@@ -801,6 +790,46 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
    false CHK-ENGINE-REFUSED ! ;
 
 
+\ The child's executable: the saved verifier image when the engine is this
+\ process's own and can save one (tools/check-verify-image.f CAPABLE?), else
+\ that engine, which then loads the source child. Resolved before the child's
+\ argv is staged: a build stages its own argv and environment in the same
+\ process-wide tables (tools/keyed-image.f BUILD-RUN). A build that fails
+\ throws or dies; nothing falls back.
+600000 constant VFY-BUILD-MS            \ as tools/hb-build-lib.f HBB-MAKER-DEFAULT-MS
+create VFY-EXE FS-PATH-CAP allot
+variable VFY-EXE-U
+TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the source child
+
+: VFY-EXE! ( -- )
+   CHK-ENGINE$ {: a:ptr u:n :}
+   a u CHECK-VERIFY-IMAGE:CAPABLE? dup VFY-IMAGE? !
+   if a u VFY-BUILD-MS CHECK-VERIFY-IMAGE:PATH$ else a u then
+   {: p:ptr pu:n :}
+   pu FS-PATH-CAP > if E-PROC-PATH throw then
+   p VFY-EXE pu BYTE-COPY
+   pu VFY-EXE-U ! ;
+
+: VFY-EXE$ ( -- ptr u8 n )
+   VFY-EXE VFY-EXE-U @ ;
+
+: VFY-LOAD-ARGS ( -- )
+   VFY-IMAGE? @ 0= if s" --load" CHK-ARG+ VFY-CHILD$ CHK-ARG+ then ;
+
+
+\ The child's arguments.
+: VFY-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   VFY-LOAD-ARGS
+   s" --" CHK-ARG+
+   VFY-PATH$ CHK-ARG+
+   VFY-INDEX? @ if s" --index" CHK-ARG+ then
+   VFY-PREPASS @ if VFY-LABEL-A @ VFY-LABEL-U @ CHK-ARG+ then
+   VFY-AT @ 0 >= if s" --at" CHK-ARG+  SB-RESET VFY-AT @ FMT:SB-U SB$ CHK-ARG+ then
+   VFY-OF-U @ 0 > if s" --of" CHK-ARG+  VFY-OF-A @ VFY-OF-U @ CHK-ARG+ then
+   PROC-ENV-INHERIT-MISSING ;
+
+
 \ VFY-OUT holding at least N bytes: its first.
 : VFY-OUT-ROOM ( n -- ptr u8 )
    VFY-OUT-RESERVE 0 VFY-OUT ;
@@ -811,11 +840,13 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 \ into VFY-LOG, their lengths and its end left where PROC-CAPTURE-OUTCOME@
 \ reads them. The end is read there, so the one returned here is dropped
 \ through the conversion that reads a deadline as a status rather than
-\ throwing it.
+\ throwing it. The executable is the one VFY-RUN resolved before the capture,
+\ so a throw from building the image is the build's, never the child's
+\ truncation.
 : VFY-CAPTURE ( -- )
    VFY-ARGV
    VFY-ERR-CAP VFY-LOG-RESERVE
-   CHK-ENGINE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
+   VFY-EXE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
    [: VFY-OUT-ROOM ;] 0 VFY-LOG VFY-ERR-CAP >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
@@ -1204,8 +1235,11 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 
 
 \ How the child ended. More stderr than the capture holds kills it, and its
-\ E-PROC-TRUNCATED is thrown on once what was captured is kept.
+\ E-PROC-TRUNCATED is thrown on once what was captured is kept. The executable
+\ is resolved before the capture, so a throw from building the image is the
+\ build's, never read as the child's truncation.
 : VFY-RUN ( -- outcome )
+   VFY-EXE!
    [: VFY-CAPTURE ;] catch {: rc:n :}
    rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
    PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
@@ -1402,8 +1436,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
 
 : VFY-BATCH-ARGV ( -- )
    PROC-ARGV-ENV-RESET
-   s" --load" CHK-ARG+
-   VFY-CHILD$ CHK-ARG+
+   VFY-LOAD-ARGS
    s" --" CHK-ARG+
    VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then CHK-ARG+
    VFY-OF-A @ VFY-OF-U @ CHK-ARG+
@@ -1416,7 +1449,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
    VFY-BATCH-ARGV
    VFY-ERR-CAP VFY-BATCH-N @ * {: errcap:n :}
    errcap VFY-LOG-RESERVE
-   CHK-ENGINE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
+   VFY-EXE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
    [: VFY-BATCH-ROOM ;] 0 VFY-LOG errcap >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
    PROC-OUTCOME>DEADLINE-RC drop 2drop ;
@@ -1630,8 +1663,7 @@ TASK:MIN-STACK TASK:TASK VFY-TASK11
 : VFY-LANE-COMMAND ( n -- )
    VFY-LANE-CMD {: cmd:ptr :}
    cmd CMD:RESET
-   cmd s" --load" CMD:ARG+
-   cmd VFY-CHILD$ CMD:ARG+
+   VFY-IMAGE? @ 0= if cmd s" --load" CMD:ARG+ cmd VFY-CHILD$ CMD:ARG+ then
    cmd s" --" CMD:ARG+
    cmd VFY-REF-BATCH @ if s" --batch-ref" else s" --batch" then CMD:ARG+
    cmd VFY-OF-A @ VFY-OF-U @ CMD:ARG+ ;
@@ -1772,7 +1804,7 @@ public
    0 VFY-LANE-META-TOP !
    0 VFY-LANE-OPEN-TOP !
    VFY-LANES 0 ?do 0 i VFY-LANE-STARTED ! loop
-   CHK-ENGINE$ {: a:ptr u:n :}
+   VFY-EXE! VFY-EXE$ {: a:ptr u:n :}
    u FS-PATH-CAP > if E-PROC-PATH throw then
    a VFY-LANE-ENGINE u BYTE-COPY
    u VFY-LANE-ENGINE-U ! ;
@@ -1815,6 +1847,7 @@ public
 : VERIFY-BATCH-RUN ( ms -- )
    VFY-DEADLINE !
    s" 0 0" VFY-IN+ s\" \n" VFY-IN+
+   VFY-EXE!
    [: VFY-BATCH-CAPTURE ;] catch {: rc:n :}
    rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
    PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}

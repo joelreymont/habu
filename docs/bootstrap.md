@@ -353,6 +353,10 @@ row, never loaded.
 The absolute entries `tools/lsp.f` and `tools/check-verify-child.f` load their
 implementation from the tree containing the entry, even when the caller is in
 another Habu tree. They restore the caller's root before checking its source.
+The saved verifier image (`tools/check-verify-save.f`) bakes the engine that
+built it and restores, at its entry, the root that engine's rule gives
+(`SOURCE-ROOT:ENGINE-FOR$`), since capture cleared the root and the image's own
+file lies in the build cache.
 
 After promoting a new verified release, move processes pinned to an older
 version onto `current`, then trash every other version directory. The installed
