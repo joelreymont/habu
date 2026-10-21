@@ -1,7 +1,8 @@
 \ Exercise direct whitebox publication, private-copy execution and reuse.
 \ The unified builder owns source invalidation; native-build-edit-e2e.f covers
-\ changed-source runtime behavior and cached/cold equivalence. Here an unloaded
-\ file preserves its artifact, and build failures leave no supplier or product.
+\ changed-source runtime behavior, unloaded files and cached/cold equivalence.
+\ Here direct publication shares the ordinary cache, and build failures leave
+\ no supplier or product.
 \ Run: bin/hb --load test/whitebox-engine-key-test.f
 
 require src/lib/test.f
@@ -12,6 +13,7 @@ require src/lib/fs-list.f
 require src/lib/process-cwd.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/build-cache.f
 require src/lib/engine-candidate.f
 require src/lib/tree-copy.f
 require src/os/script-argv.f
@@ -53,20 +55,32 @@ variable RC
    SHA ENGINE-CANDIDATE:PATH$ dst SHA256-FILE-IN dup 0<> if throw then drop ;
 
 : PREPARE ( -- )
+   SOURCE-ROOT:CWD$ SOURCE-ROOT:CANONICAL TTRUE
+   {: a:ptr u:n :}
+   a ROOT u BYTE-COPY u ROOT-U !
+   ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE
+   {: hb:ptr hbu:n :}
+   hb HB hbu BYTE-COPY hbu HB-U !
+   s" habu-whitebox-copy" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL TTRUE
+   {: tmp:ptr tmpu:n :}
+   tmp TMP tmpu BYTE-COPY tmpu TMP-U !
+   TMP$ s" whitebox" IMAGE JOIN-PATH IMAGE-U !
+   BUILD-CACHE:ROOT$ SOURCE-ROOT:CANONICAL TTRUE
+   {: cache:ptr cacheu:n :}
+   cache CACHE cacheu BYTE-COPY cacheu CACHE-U !
+   ENG-A ENGINE-DIGEST! ;
+
+: PREPARE-FAILURES ( -- )
    s" habu-whitebox-fresh" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" test" ROOT$ TREE-COPY:TREE
    ROOT$ s" bin/hb" HB JOIN-PATH HB-U !
-   ROOT$ s" src/core/internal-mark.f" PREFIX JOIN-PATH PREFIX-U !
-   ROOT$ s" whitebox" IMAGE JOIN-PATH IMAGE-U !
    ROOT$ s" tmp" TMP JOIN-PATH TMP-U !
-   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
    HB$ SOURCE-ROOT:DIRNAME MAKE-DIRS
    ENGINE-CANDIDATE:PATH$ HB$ COPY-FILE-STREAM
    HB$ CHMOD-X
-   TMP$ MAKE-DIR CACHE$ MAKE-DIR
-   ENG-A ENGINE-DIGEST! ;
+   TMP$ MAKE-DIR ;
 
 : ENV ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -86,28 +100,23 @@ variable RC
 : RESULT ( len len outcome -- ) RESULT-RC 0 T= ;
 
 : PROVIDER$ ( -- ptr u8 n )
-   S\" require test/whitebox-engine.f\nrequire src/lib/test.f\npackage WB-REQUEST\nFS-PATH-CAP BUFFER: SAVED\nvariable USED\n: SAVED$ ( -- ptr u8 n ) SAVED USED @ ;\n: RUN ( -- )\n T-RESET\n WHITEBOX-ENGINE:PATH$ {: a:ptr u:n :}\n a SAVED u BYTE-COPY u USED !\n s\" supplier: \" type SAVED$ type cr\n s\" BEGIN-REUSE\" type cr\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n s\" whitebox\" WHITEBOX-ENGINE:PROVIDE\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n SAVED$ EXECUTABLE? TTRUE\n s\" END-REUSE\" type cr\n T-REPORT ;\n' RUN\n;package\nexecute\n" ;
+   S\" require test/whitebox-engine.f\nrequire src/lib/test.f\nrequire src/os/script-argv.f\npackage WB-REQUEST\nFS-PATH-CAP BUFFER: SAVED\nvariable USED\n: SAVED$ ( -- ptr u8 n ) SAVED USED @ ;\n: RUN ( -- )\n T-RESET\n WHITEBOX-ENGINE:PATH$ {: a:ptr u:n :}\n a SAVED u BYTE-COPY u USED !\n s\" supplier: \" type SAVED$ type cr\n s\" BEGIN-REUSE\" type cr\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n 0 SCRIPT-ARGV$ WHITEBOX-ENGINE:PROVIDE\n SAVED$ WHITEBOX-ENGINE:PATH$ T$=\n SAVED$ EXECUTABLE? TTRUE\n s\" END-REUSE\" type cr\n T-REPORT ;\n' RUN\n;package\nexecute\n" ;
 
 : PROVIDE ( -- )
    ENV
+   s" --" >LEN PROC-ARGV+ IMAGE$ >LEN PROC-ARGV+
    HB$ >LEN ROOT$ >LEN PROVIDER$ >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME RESULT
    OUT OUT-U @ S\" BEGIN-REUSE\nEND-REUSE\n" CONTAINS? TTRUE ;
 
-: RUN-IMAGE ( ptr u8 n -- ) {: want:ptr wantu:n :}
+: RUN-IMAGE ( -- )
    ENV
-   IMAGE$ >LEN ROOT$ >LEN s" WHITEBOX-KEY-PROBE . cr" >LEN
+   IMAGE$ >LEN ROOT$ >LEN
+   s" USIGS drop ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX = . cr" >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME RESULT
-   OUT OUT-U @ want wantu T$= ;
-
-: ORIGINAL-PREFIX ( -- )
-   s" src/core/internal-mark.f" ROOT$ TREE-COPY:FILE ;
-
-: PREFIX-41 ( -- )
-   ORIGINAL-PREFIX
-   PREFIX$ S\" \n: WHITEBOX-KEY-PROBE ( -- n ) 41 ;\n" APPEND-FILE ;
+   OUT OUT-U @ S\" -1\n\n" T$= ;
 
 : NO-SUPPLIER ( ptr u8 n -- )
    s" hb-whitebox-" STARTS-WITH? TFALSE ;
@@ -125,6 +134,8 @@ variable RC
    CACHE$ [: NO-SUPPLIER ;] FS-LIST:EACH ;
 
 : FAILURE-CASES ( -- )
+   PREPARE-FAILURES
+   s" whitebox failure artifacts: " type ROOT$ type cr
    ROOT$ s" timeout-cache" CACHE JOIN-PATH CACHE-U !
    CACHE$ MAKE-DIR
    ROOT$ s" failed-whitebox" IMAGE JOIN-PATH IMAGE-U !
@@ -144,25 +155,18 @@ public
 
 : RUN ( -- )
    T-RESET PREPARE
-   s" whitebox freshness artifacts: " type ROOT$ type cr
+   s" whitebox private copy: " type IMAGE$ type cr
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" --timeout-only" STR= if
          FAILURE-CASES T-REPORT exit
       then
    then
-   s" the supplied whitebox runs its copied boot prefix" T-LABEL
-   PREFIX-41 PROVIDE S\" 41\n\n" RUN-IMAGE
-   s" an unloaded file does not invalidate the builder's artifact" T-LABEL
-   ROOT$ s" src/core/whitebox-key-unloaded.f" PREFIX JOIN-PATH PREFIX-U !
-   PREFIX$ s" unreachable fixture" WRITE-ALL
-   PROVIDE
-   OUT OUT-U @ s" engine artifact hit" CONTAINS? TTRUE
-   S\" 41\n\n" RUN-IMAGE
+   s" the direct supplier publishes a private unsealed engine" T-LABEL
+   PROVIDE RUN-IMAGE
    s" and bin/hb was never written" T-LABEL
    ENG-B ENGINE-DIGEST!
    ENG-A DIGEST-LEN ENG-B DIGEST-LEN T$=
    FAILURE-CASES
-   s" whitebox freshness artifacts: " type ROOT$ type cr
    T-REPORT ;
 
 ;package

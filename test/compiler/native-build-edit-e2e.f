@@ -957,6 +957,8 @@ variable ENGINE-WHITEBOX
    OUT$ s" support-B" CONTAINS? TFALSE
    OUT$ s" hb-build: engine artifact hit" CONTAINS? TFALSE
    SAVE-BASE-PRODUCT
+   \ A file outside the observed source closure preserves the warm artifact.
+   s" src/core/engine-key-unloaded.f" AT s" unreachable fixture" WRITE-ALL
    \ --engine forces a product child even when its caller asks for whitebox.
    true ENGINE-WHITEBOX !
    s" engine-hit" s" cached/hb" s" cache" false
