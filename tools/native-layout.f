@@ -1,6 +1,7 @@
 \ The fixed address-bearing engine slots that a native build may carry.
 \ This module loads once against the host layout and again in the target writer.
 require src/habu/layout.f
+require src/habu/aot-decl.f              \ AOT-WINDOW, the XT-offset rows TRANSLATE-ROWS rewrites
 require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-host-cells.f
@@ -91,7 +92,6 @@ public
          SLOTS i OFFSET unloop exit
       then
    loop
-   s" native-build: unknown fixed cell offset " type off .
    REFUSE ;
 
 : TRANSLATE-ROWS ( ptr n n -- ) {: host:ptr count:n :}
