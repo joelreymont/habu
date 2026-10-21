@@ -146,7 +146,8 @@ variable RC
    ASSERT-NO-PRODUCT
    s" an ordinary builder failure keeps exit 67" T-LABEL
    ROOT$ s" tools/native-build-support.f" PREFIX JOIN-PATH PREFIX-U !
-   PREFIX$ S\" \ns\" whitebox-missing-input.f\" FILE-SIZE drop\n" APPEND-FILE
+   \ Fail in the real support child before unrelated compiler initialization.
+   PREFIX$ S\" require src/lib/fs.f\ns\" whitebox-missing-input.f\" FILE-SIZE drop\n" WRITE-ALL
    ENV
    FAILURE-REQUEST 67 T=
    ASSERT-NO-PRODUCT ;
