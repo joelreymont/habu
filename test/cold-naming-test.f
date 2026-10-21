@@ -142,10 +142,22 @@ create ERR IO-CAP allot
 
 \ The Habu loop's checked bodies throw ENGINE-ERROR's `using` failure codes
 \ (src/habu/packages.f, src/habu/outer.f), constants src/core/engine-error.f
-\ defines before the hook, so it loads only while each has its row.
+\ defines before the hook, so it loads only while each has its row. Its REPL
+\ reads lines through src/habu/repl.f, which needs the host OS's terminal
+\ constants; the cold host has none, so the probe includes them first, as
+\ test/aot-wid-build.f does.
+: INTERPRETER-SRC$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if
+      S\" include src/os/linux-x86-64/repl-term.f\nrequire src/habu/interpret.f\n" exit
+   then
+   HB-TARGET-LINUX? if
+      S\" include src/os/linux/repl-term.f\nrequire src/habu/interpret.f\n" exit
+   then
+   S\" include src/os/macos/repl-term.f\nrequire src/habu/interpret.f\n" ;
+
 : INTERPRETER-CASE ( -- )
    s" the Habu loop, which names ENGINE-ERROR's using codes, loads on the cold host" T-LABEL
-   S\" require src/habu/interpret.f\n" LOAD nip 0 T= ;
+   INTERPRETER-SRC$ LOAD nip 0 T= ;
 
 public
 
