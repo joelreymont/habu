@@ -287,9 +287,6 @@ TYPED-VARIABLE FRAME-ARG ptr u8
 create REPL-QNL 63 c, 10 c,
 variable REPL-OK
 
-: REPL-READ ( -- ptr u8 n )
-   REPLH-PTR @ execute ;
-
 \ stack-clear is OUTER's own row (src/habu/prims.f).
 : REPL-STACK-CLEAR ( -- )
    stack-clear ;
@@ -336,8 +333,9 @@ variable REPL-OK
 
 public
 
-\ Read the hook anew for every line: genio may replace its reader during a
-\ session. Only EOF closes a pending definition or selected source unit.
+\ Each line calls the REPL-READ defer (src/habu/repl.f) anew: genio may replace
+\ its reader during a session. Only EOF closes a pending definition or selected
+\ source unit.
 : REPL ( -- )
    0 ENTRY-PEND !
    true REPL-OK !

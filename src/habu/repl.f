@@ -1,7 +1,7 @@
 \ repl.f — the terminal line reader for OUTER:REPL (src/habu/interpret.f).
 \ ENGINE-MAIN routes a tty to that session. INSTALL installs RD-LINE as the
 \ default REPL-READ defer and puts its xt in REPLH-CELL; genio may replace the
-\ defer, so OUTER:REPL reads the cell again before each line. The session owns
+\ defer, so OUTER:REPL calls the defer again before each line. The session owns
 \ prompts, pending definitions and recovery; this file owns terminal editing.
 \ The editor runs the tty RAW (per line; canonical is restored while the line
 \ executes): insert/backspace at a cursor, left/right arrows, ^A/^E home/end,
