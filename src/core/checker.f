@@ -10127,7 +10127,12 @@ variable PE-EFF-ID
    dup PE-SYM-ID ! CHECKER-REC-SYM !
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
-   PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD ;
+   PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD
+   \ A post-table PRIM: replaces a user declaration too. Forget that symbol's
+   \ old answer; publishing a user hit here would hide initial prim overloads.
+   HIDX-VALID @ IF
+      HIDX-EPOCH @ 1- PE-SYM-ID @ HT-EFF-E HIDX-CELL !
+   THEN ;
 
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
