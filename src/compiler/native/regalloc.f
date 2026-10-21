@@ -794,11 +794,6 @@ DYNAMIC-BUFFER CL-HI-BUF n
 : CL-HI ( -- ptr n ) 0 CL-HI-BUF ;
 DYNAMIC-BUFFER CL-SLOT-BUF n
 : CL-SLOT ( -- ptr n ) 0 CL-SLOT-BUF ;
-DYNAMIC-BUFFER SH-PRED-BUF n
-DYNAMIC-BUFFER SH-ORIGIN-BUF n
-DYNAMIC-BUFFER SH-USE-BUF n
-DYNAMIC-BUFFER SH-NEIGH-BUF n
-DYNAMIC-BUFFER SH-BAD-BUF n
 DYNAMIC-BUFFER CL-REMAT-BUF n
 : CL-REMAT ( -- ptr n ) 0 CL-REMAT-BUF ;
 \ Only evicted roots need temporary registers for their stores and reloads.
@@ -883,11 +878,6 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    VMAX CL-LO-BUF-RESERVE
    VMAX CL-HI-BUF-RESERVE
    VMAX CL-SLOT-BUF-RESERVE
-   BMAX SH-PRED-BUF-RESERVE
-   VMAX SH-ORIGIN-BUF-RESERVE
-   VMAX SH-USE-BUF-RESERVE
-   VMAX SH-NEIGH-BUF-RESERVE
-   VMAX SH-BAD-BUF-RESERVE
    VMAX CL-REMAT-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-LOAD-BUF-RESERVE
    OMAX BMAX + FILES-N * FR-STORE-BUF-RESERVE
@@ -2493,155 +2483,6 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       REFIT-AT @ TRAIL-UNWIND
    repeat ;
 
-\ ---- one frame slot for copies of one unchanged value -----------------------
-\ Register classes stay separate: this pass only gives an otherwise unspilled
-\ copy class the existing slot of its direct spilled neighbour. The one original
-\ definition must be in a predecessor-free entry block. Every other member is
-\ defined by a pure copy or by the single-successor argument map MB-EDGES-OF
-\ already unified. An unspilled class must be read only by those transports;
-\ a changed loop counter, call argument, return or conditional use cannot share.
-: SH-CLEAR ( -- )
-   BMAX 0 ?do 0 i SH-PRED-BUF ! loop
-   N-VALS @ 0 ?do
-      0 i SH-ORIGIN-BUF !
-      0 i SH-USE-BUF !
-      NOBODY i SH-NEIGH-BUF !
-      0 i SH-BAD-BUF !
-   loop ;
-
-: SH-PRED1 ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id SUCCS-OF {: n:n :}
-   n 0 ?do
-      id i SUCC-AT IR-ID:BLOCK-LOCAL {: b:n :}
-      n 1 = if
-         b SH-PRED-BUF @ 0= if 1 b SH-PRED-BUF ! then
-      else
-         -1 b SH-PRED-BUF !
-      then
-   loop ;
-
-: SH-PREDS ( -- )
-   N-FUNS @ 0 ?do
-      i FUN-AT {: f:IR-ID:ir-fun-id :}
-      f BLOCK-COUNT 0 ?do f i BLOCK-AT TERM-AT SH-PRED1 loop
-   loop ;
-
-: SH-ORIGIN+ ( n bool -- )
-   {: r:n entry:bool :}
-   entry r SH-ORIGIN-BUF @ 0= and if
-      1 r SH-ORIGIN-BUF !
-   else
-      -1 r SH-ORIGIN-BUF !
-   then ;
-
-: SH-ARG ( IR-ID:ir-value-id n n -- )
-   {: v:IR-ID:ir-value-id b:n idx:n :}
-   v SLOT UF-FIND {: r:n :}
-   idx SH-PRED-BUF @ {: pred:n :}
-   b 0= pred 0= and if r true SH-ORIGIN+ exit then
-   pred 1 <> if -1 r SH-ORIGIN-BUF ! then ;
-
-: SH-NEIGH+ ( n n -- )
-   {: r:n other:n :}
-   r SH-NEIGH-BUF @ {: prior:n :}
-   prior NOBODY = if other r SH-NEIGH-BUF ! exit then
-   prior other <> if -2 r SH-NEIGH-BUF ! then ;
-
-: SH-COPY ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-AT SLOT UF-FIND {: s:n :}
-   id 0 RESULT-AT SLOT UF-FIND {: d:n :}
-   s d = if exit then
-   s d SH-NEIGH+
-   d s SH-NEIGH+
-   s cells CL-SLOT + @ {: ss:n :}
-   d cells CL-SLOT + @ {: ds:n :}
-   ss NOSLOT <> ds NOSLOT <> and ss ds <> and if
-      1 s SH-BAD-BUF !
-      1 d SH-BAD-BUF !
-   then ;
-
-: SH-FORWARD? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id SUCCS-OF 1 <> if false exit then
-   id 0 SUCC-AT ARG-COUNT id OPERANDS-OF = ;
-
-: SH-OP ( IR-ID:ir-op-id bool -- )
-   {: id:IR-ID:ir-op-id entry:bool :}
-   id MB-COPY? if id SH-COPY else
-      id RESULTS-OF 0 ?do
-         id i RESULT-AT SLOT UF-FIND entry SH-ORIGIN+
-      loop
-   then
-   id MB-COPY? id SH-FORWARD? or if exit then
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT SLOT UF-FIND {: r:n :}
-      1 r SH-USE-BUF !
-   loop ;
-
-: SH-BLOCK ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id b:n :}
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk IR-ID:BLOCK-LOCAL {: idx:n :}
-   bk ARG-COUNT 0 ?do bk i ARG-AT b idx SH-ARG loop
-   b 0= idx SH-PRED-BUF @ 0= and {: entry:bool :}
-   bk OP-COUNT 0 ?do bk i OP-AT entry SH-OP loop ;
-
-: SH-FUNS ( -- )
-   N-FUNS @ 0 ?do
-      i FUN-AT {: f:IR-ID:ir-fun-id :}
-      f BLOCK-COUNT 0 ?do f i SH-BLOCK loop
-   loop ;
-
-: SH-TRANSPORT? ( n n -- bool )
-   {: r:n owner:n :}
-   r CLS-AT C-TOKEN = if false exit then
-   r cells CL-SLOT + @ NOSLOT <> if false exit then
-   r cells CL-REMAT + @ 0<> if false exit then
-   r SH-ORIGIN-BUF @ 0<> if false exit then
-   r SH-USE-BUF @ 0<> r SH-BAD-BUF @ 0<> or if false exit then
-   r SH-NEIGH-BUF @ owner = ;
-
-\ An incoming copy from another original value could overwrite the slot after
-\ a transport class had taken its earlier snapshot. Outgoing copies to call or
-\ arithmetic classes do not change the owner's value.
-: SH-INBOUND ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id MB-COPY? 0= if exit then
-   id 0 OPERAND-AT SLOT UF-FIND {: s:n :}
-   id 0 RESULT-AT SLOT UF-FIND {: d:n :}
-   s d = if exit then
-   d cells CL-SLOT + @ NOSLOT = if exit then
-   s d SH-TRANSPORT? 0= if 1 d SH-BAD-BUF ! then ;
-
-: SH-INBOUNDS ( -- )
-   N-FUNS @ 0 ?do
-      i FUN-AT {: f:IR-ID:ir-fun-id :}
-      f BLOCK-COUNT 0 ?do
-         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-         bk OP-COUNT 0 ?do bk i OP-AT SH-INBOUND loop
-      loop
-   loop ;
-
-: SH-CANDIDATE? ( n -- bool )
-   {: r:n :}
-   r UF-FIND r <> if false exit then
-   r SH-NEIGH-BUF @ {: owner:n :}
-   owner 0 < if false exit then
-   r owner SH-TRANSPORT? 0= if false exit then
-   owner SH-ORIGIN-BUF @ 1 <> if false exit then
-   owner SH-BAD-BUF @ 0<> if false exit then
-   owner cells CL-SLOT + @ NOSLOT <> ;
-
-: MB-SHARE-SLOTS ( -- )
-   SH-CLEAR SH-PREDS SH-FUNS SH-INBOUNDS
-   N-VALS @ 0 ?do
-      i SH-CANDIDATE? if
-         i SH-NEIGH-BUF @ cells CL-SLOT + @ i cells CL-SLOT + !
-      then
-   loop ;
-
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
 \ bound to a local, so it is unmade at entry.
@@ -2809,7 +2650,6 @@ public
    MB-DEF-INDEX
    MB-PIN-INDEX
    MB-FIT
-   MB-SHARE-SLOTS
    MB-FINISH
    PLAN-ALL ;
 
