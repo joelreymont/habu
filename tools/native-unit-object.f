@@ -470,6 +470,7 @@ variable DEF-HELD-SIZE
    ['] DEF-ABANDON-HOST catch
    over 0<> if drop else nip then
    NFILE-REF:END-CAPTURE
+   NFILE-REF:DISCARD-PREPARED
    DEF-RESET ;
 
 : DEF-READ-META ( -- )
