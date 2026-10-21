@@ -312,7 +312,7 @@ FUNCTION: MACH-REGION mach_vm_region_recurse ( n ptr u8 ptr u8 ptr u8 ptr u8 ptr
 \ The completed map lives in EXT-LO/HI/SELF/HEAP and EXT-READ. None of the
 \ parser or Mach query scratch belongs to it or to an image saved after it.
 : CLEAR-SCAN ( -- )
-   CHUNK-BUF CHUNK CLEAR-BYTES
+   SNAP-BYTES-RELEASE  0 SNAP-CAP !  0 SNAP-U !
    PATH-BUF MAPS-PATH-MAX CLEAR-BYTES
    EXE-BUF MAPS-PATH-MAX CLEAR-BYTES
    0 EXT-N !  0 ST !  0 ACC !
