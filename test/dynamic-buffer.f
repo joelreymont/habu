@@ -23,7 +23,8 @@ DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
-PTR-VARIABLE WIDTH-CTRL 0 , 0 , 0 , 0 ,
+\ A three-cell control record no definer generated, as a downstream table's is.
+PTR-VARIABLE RAW-CTRL 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
@@ -42,8 +43,8 @@ variable DB-EVAL-U
 
 : BAD-LOW ( -- ) -1 TOKENS drop ;
 : BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
-\ A negative index must fail before ADDRESS-FIXED reads its control record.
-: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR DYNAMIC-STORAGE:ADDRESS-FIXED drop ;
+\ A negative index is refused before the control record is read.
+: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR 8 DYNAMIC-STORAGE:ADDRESS drop ;
 : BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
 : BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
 : AFTER-RELEASE ( -- ) 0 TOKENS drop ;
@@ -84,8 +85,11 @@ variable DB-EVAL-U
 
 : WIDE-PAST ( -- ) 2 WIDE drop ;
 : WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
-: WIDTH-RESERVE ( -- ) 1 WIDTH-CTRL 24 DYNAMIC-STORAGE:RESERVE-FIXED ;
-: WIDTH-MISMATCH ( -- ) 3 WIDTH-CTRL 8 DYNAMIC-STORAGE:RESERVE-FIXED ;
+: FOREIGN-WIDTH ( -- ) 2048 WIDE#base 8 DYNAMIC-STORAGE:RESERVE ;
+: WIDE-2047 ( -- ) 2047 WIDE drop ;
+: WIDE-682 ( -- ) 682 WIDE drop ;
+: WIDE-100 ( -- ) 100 WIDE drop ;
+: RAW-RESERVE ( -- ) 3 RAW-CTRL 24 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
 
 : WIDE-ROWS ( -- )
@@ -95,9 +99,6 @@ variable DB-EVAL-U
    7 0 WIDE TRIPLE-A byte-view 63 + c!    \ fractional tail belongs to mapping
    1 WIDE drop
    ['] WIDE-PAST 7122 TTHROWS
-   WIDTH-RESERVE
-   ['] WIDTH-MISMATCH 7121 TTHROWS
-   WIDTH-CTRL byte-view 4 cells + cell-view @ 2 T=
    ['] WIDE-MAP-FAIL 7138 TTHROWS
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    ['] WIDE-PAST 7122 TTHROWS
@@ -105,12 +106,29 @@ variable DB-EVAL-U
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    4 WIDE drop
    ['] WIDE-PAST-GROWN 7122 TTHROWS
-   WIDE-RELEASE
-   ['] WIDE-PAST 7122 TTHROWS
+   \ A reserve through the generic entry with a foreign width is a byte request:
+   \ 2048 cells grow the capacity to 16384 bytes, which hold 682 complete
+   \ triples. The accessor still bounds by its declared width: 2047 would be
+   \ byte 49128 and 682 is the fractional one, while 681's last field is bytes
+   \ 16360..16367. The fractional tail survives the growth.
+   FOREIGN-WIDTH
+   ['] WIDE-2047 7122 TTHROWS
+   ['] WIDE-682 7122 TTHROWS
+   7 681 WIDE TRIPLE-C !
+   681 WIDE TRIPLE-C @ 7 T=
+   0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
+   \ The generic release empties the generated control for its accessor too.
+   WIDE#base DYNAMIC-STORAGE:RELEASE
+   ['] WIDE-100 7122 TTHROWS
    1 WIDE-RESERVE
    1 WIDE drop
    WIDE-RELEASE
-   WIDTH-CTRL DYNAMIC-STORAGE:RELEASE-FIXED ;
+   \ The downstream contract: a hand-made three-cell record reserves 72 bytes
+   \ and releases to empty, its capacity read behind the head.
+   RAW-RESERVE
+   RAW-CTRL byte-view CELL + cell-view @ 72 T=
+   RAW-CTRL DYNAMIC-STORAGE:RELEASE
+   RAW-CTRL byte-view CELL + cell-view @ 0 T= ;
 
 \ Every element admitted before the byte one keeps its old accessor: a bare
 \ cell's is `( n -- ptr n )` over whole cells.
