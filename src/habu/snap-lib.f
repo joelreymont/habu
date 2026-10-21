@@ -75,8 +75,6 @@ create PAD-ZEROS 16 allot
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
-: STB-CELL@ STB @ ;
-s" STB-CELL@" s" -- ptr n" TRUST
 : SDB@ SDB @ ;
 s" SDB@" s" -- ptr u8" TRUST
 
@@ -122,8 +120,7 @@ s" SDB@" s" -- ptr u8" TRUST
 \ already validated this trailer. Do not guess at older trailers inside the
 \ prefix of an image produced by a previous, nesting writer.
 : ENGINE-TEXT-SIZE ( -- n )
-   STB-CELL@ CODE-OFF - IMAGE-TEXT-SIZE-OFF + @
-   IMAGE-TEXT-CONTENT-ADJ - {: bytes:n :}
+   data-base TEXT-SIZE-CELL + @ {: bytes:n :}
    data-base SNAP-CELL + CELL-VIEW @ 0= if bytes exit then
    bytes SNAP-TRL-BYTES TEXT-CUT {: end:n :}
    STB@ end + {: trailer:ptr :}

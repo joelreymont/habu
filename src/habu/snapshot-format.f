@@ -34,10 +34,10 @@ CAST: VERSION-XT ( n -- [ -- n ] )
 : TEXT-BASE ( -- n )
    data-base RBASE-CELL + @ ;
 
-\ The engine text's size field, read through the text base cell's address.
+\ The engine text's content size, as its boot published it (layout.f
+\ TEXT-SIZE-CELL).
 : TEXT-SIZE ( -- n )
-   data-base RBASE-CELL + 0 ptr-field @
-   CODE-OFF - IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ IMAGE-TEXT-CONTENT-ADJ - ;
+   data-base TEXT-SIZE-CELL + @ ;
 
 public
 

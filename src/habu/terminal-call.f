@@ -4,11 +4,11 @@ require src/habu/layout.f
 
 package TERMINAL-CALL
 
-\ This engine's actual text extent authenticates the primitive binding; a
-\ source definition with the same global name must retain its continuation.
+\ This engine's actual text extent, as boot published it (layout.f
+\ TEXT-SIZE-CELL), authenticates the primitive binding; a source definition
+\ with the same global name must retain its continuation.
 : ENGINE-TEXT ( -- n n )
-   data-base RBASE-CELL + @
-   data-base RBASE-CELL + 0 ptr-field @ CODE-OFF - IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ IMAGE-TEXT-CONTENT-ADJ - ;
+   data-base RBASE-CELL + @  data-base TEXT-SIZE-CELL + @ ;
 
 public
 

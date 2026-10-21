@@ -24,13 +24,13 @@ CAST: KERNEL-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
 
 \ A source definition on an older host must not impersonate its absent
-\ kernel metadata primitive. The image text extent is the running host's.
+\ kernel metadata primitive. The text extent is the running engine's, as its
+\ boot published it (layout.f TEXT-SIZE-CELL): a build window for another OS
+\ loads that OS's header offsets, so no layout constant may enter this test.
 : ENGINE-TEXT? ( n -- bool )
    {: xt:n :}
    data-base RBASE-CELL + @ {: base:n :}
-   data-base RBASE-CELL + 0 ptr-field @
-      CODE-OFF - IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ IMAGE-TEXT-CONTENT-ADJ -
-      {: size:n :}
+   data-base TEXT-SIZE-CELL + @ {: size:n :}
    xt base >= xt base - size < and ;
 
 : KERNEL$ ( -- ptr u8 n bool )
