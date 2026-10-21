@@ -353,15 +353,25 @@ RMAX CWORK-SPAN RQ n
 \ ---- the return-stack transfers ----------------------------------------------
 \ The checker has already proved the return row at every join and loop edge, so
 \ the depth is a compile-time number.
-: VSTACK-CK ( n -- )
+
+\ Whether this target parks a layout value whole. x86-64 moves the value's
+\ measured width and refuses only a transfer that starts inside a value. Every
+\ other target moves one cell per operand and refuses any joined cell it would
+\ move, so no join ever reaches its return vector.
+: WHOLE-R? ( -- bool )
+   CTX IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
+   CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ;
+
+: TO-R-CK ( n -- )
    {: base:n :}
-   base VRUN-DOWN? if E-NELAB-BUNDLE throw then ;
+   WHOLE-R? if base VRUN-DOWN? else base VGLUE-ABOVE? then
+   if E-NELAB-BUNDLE throw then ;
 
 : TO-R ( n -- )
    {: cells:n :}
    cells VN @ > if E-NELAB-UNDER throw then
    VN @ cells - {: base:n :}
-   base VSTACK-CK
+   base TO-R-CK
    RN @ cells + RMAX > if E-NELAB-CAP throw then
    cells 0 ?do  base i + V-RPUSH  loop
    cells VDROP ;
@@ -385,11 +395,13 @@ RMAX CWORK-SPAN RQ n
    base RSTACK-CK
    cells 0 ?do  base i + R-VPUSH  loop ;
 
-\ The cells a transfer moves are its operands' whole widths, as the checker
-\ measured them at the token (NDICT:OPERAND-CELLS): a layout value parked by
-\ `>r` is as wide as its type, not one cell per operand. A direct tape has no
-\ checker facts and moves one cell per operand, as TOK-CELLS reads it.
+\ On a target that parks whole values (WHOLE-R?), the cells a transfer moves
+\ are its operands' whole widths, as the checker measured them at the token
+\ (NDICT:OPERAND-CELLS): a layout value parked by `>r` is as wide as its type.
+\ Every other target, and a direct tape, which has no checker facts, moves one
+\ cell per operand, as TOK-CELLS reads it.
 : RSTACK-CELLS ( n n -- n ) {: ix:n operands:n :}
+   WHOLE-R? 0= if operands exit then
    EXACT-SOURCE @ 0= if operands exit then
    VW ix TOK-OFF {: off:n :}
    0  operands 0 ?do off i NDICT:OPERAND-CELLS + loop ;
