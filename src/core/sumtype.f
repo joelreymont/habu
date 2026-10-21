@@ -55,6 +55,7 @@ public
 7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP (item 13 C2), or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
+7210 constant E-TDECL-UNCHECKED \ a constructor-generating declaration while checking is suspended
 
 private
 
@@ -220,11 +221,14 @@ private
 \ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
 \ any throw the registries roll back and the failure is reported; a multi-error
 \ load counts the reject and continues, otherwise the named code propagates as
-\ the refusal the report rendered (checker.f CHECKER-REFUSE).
+\ the refusal the report rendered (checker.f CHECKER-REFUSE). TDECL-OVERSIZE
+\ belongs to this declaration: a body that refuses before TDECL-REQUIRE-FIT
+\ reads it would otherwise leave it set for the next replay entry.
 : TDECL-RUN ( [ -- ] -- )
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
+   0 TDECL-OVERSIZE !
    TDECL-SEEN-CLEAR
    rc 0= IF EXIT THEN
    TDECL-RESTORE
@@ -252,11 +256,10 @@ private
 \ either a collection buffer capped an over-long body (TDECL-OVERSIZE, native
 \ TDECL-C,) or the collected body already exceeds TDECL-CAP (verify-source /
 \ check-core, whose larger buffers hand the full body across). Runs at the head
-\ of each body under TDECL-RUN, name already in the TDN context.
+\ of each body under TDECL-RUN, name already in the TDN context; TDECL-RUN
+\ clears the flag.
 : TDECL-REQUIRE-FIT ( -- )
-   TDECL-OVERSIZE @ {: over:n :}
-   0 TDECL-OVERSIZE !
-   over 0 <>  TDB-U @ TDECL-CAP >  or IF
+   TDECL-OVERSIZE @ 0 <>  TDB-U @ TDECL-CAP >  or IF
       TDN-A @ TDN-U @ s" declaration too long" E-TDECL-CAP TDECL-THROW
    THEN ;
 
@@ -2707,11 +2710,27 @@ public
 \ --- public defining words. NEWTYPE consumes family header; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
 
+\ SUMTYPE, PRODUCT, STRUCTURE and ENUM generate constructor words, which the
+\ checker certifies: with the hook suspended (`0 set-check`) a product's
+\ constructor plan is never consumed and a sum's constructors carry rows without
+\ authority. Each live definer refuses such a declaration through its
+\ declaration packet, after collecting the body and before registering
+\ anything: SUMTYPE and PRODUCT below, STRUCTURE and ENUM in DECL-FRONT:RUN. A
+\ NEWTYPE generates no word and is admitted. The replay entries (CHECKER-DEFSUM,
+\ *-REPLAY) define no word and stay open: src/habu/verify-source.f runs them
+\ hookless in the fixpoint's certify child (tools/build-fixpoint-certify.f).
+\ test/sumtype-unchecked-e2e.f.
+: TDECL-UNCHECKED$ ( -- ptr u8 n )
+   s" checking is suspended; declare it where checking is on" ;
+
 : TDECL-NEWTYPE ( -- )
    parse-name TDECL-DEFFAMILY ;
 
 
 private
+
+: TDECL-UNCHECKED-BODY ( -- )
+   TDN-A @ TDN-U @ TDECL-UNCHECKED$ E-TDECL-UNCHECKED TDECL-THROW ;
 
 create TDECL-BUF TDECL-CAP allot
 variable TDECL-U
@@ -2743,11 +2762,17 @@ variable TDECL-I
 
 public
 
+\ Under a multi-error load TDECL-RUN counts a refusal and returns, so each
+\ refusal exits here before the transaction opens.
 : TDECL-SUMTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
       na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
+   THEN
+   check@ 0= IF
+      s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+      [: TDECL-UNCHECKED-BODY ;] TDECL-RUN EXIT
    THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
@@ -2789,6 +2814,7 @@ public
    PRODUCT-COLLECT
    s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
    0= IF [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT THEN
+   check@ 0= IF [: TDECL-UNCHECKED-BODY ;] TDECL-RUN EXIT THEN
    [: TDECL-PRODUCT-GEN-TXN ;] TDECL-RUN ;
 
 ;package

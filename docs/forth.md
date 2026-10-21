@@ -1875,6 +1875,18 @@ sections above.
   checked. A `defer` before `: TRUST` in `src/core/checker.f` consumes one
   pre-trust slot; overflowing `PD-CAP` exits 72 at boot. Place new selectors
   after `: TRUST` or use an existing hook.
+- **A constructor-generating declaration needs checking on.** `SUMTYPE`,
+  `PRODUCT`, `STRUCTURE` and `ENUM` generate constructor words the checker
+  certifies, so with the hook suspended each is refused through its declaration
+  packet before anything registers: `--load` exits 70 with `habu: bad sumtype
+  declaration 'name': checking is suspended; declare it where checking is on at
+  'name'` (`E-TDECL-UNCHECKED`, 7210), and a multi-error load counts it, skips
+  to the terminator and continues. Unrefused, a product died 76 on its
+  unconsumed constructor plan and a sum's constructors carried rows without
+  authority. `NEWTYPE` and `DEFTYPE` generate no constructor and are admitted;
+  a declaration after `check@ 0 set-check … set-check` is ordinary. The replay
+  entries (`CHECKER-DEFSUM`, `ED-REPLAY`, `SD-REPLAY`) define no word and stay
+  open (`test/sumtype-unchecked-e2e.f`).
 - **A sealed from-source prefix needs external rows for pre-hook words.** A
   word defined before the check hook is internal without a `PRIM:` axiom or a
   `TRUSTED:` declaration after `src/core/checker.f` claiming it. A checked

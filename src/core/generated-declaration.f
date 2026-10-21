@@ -756,6 +756,7 @@ E-TDECL-NAME constant E-NAME        \ reserved or colliding family name
 E-TDECL-POLICY constant E-POLICY    \ unknown or not-yet-supported layout policy
 E-TDECL-DERIVE constant E-DERIVE    \ unknown or not-yet-supported derive feature
 E-TDECL-CAP constant E-CAP          \ a family, variant or field name longer than NAME-MAX
+E-TDECL-UNCHECKED constant E-UNCHECKED \ a constructor-generating declaration while checking is suspended
 E-TFAM-CASE constant E-CASE         \ family name is not a lowercase canonical tail
 E-TFAM-DUP constant E-DUP           \ duplicate family, variant or field tail, raised by
                                     \ TFAM-DECL / SUMV-ADD / the field-event path; named
@@ -960,12 +961,22 @@ private
    0 OUTCOME-NAMES !
    REPLAY-END ;
 
+\ The body DRIVE runs in place of the front end's while checking is suspended
+\ (sumtype.f TDECL-UNCHECKED$): it names the declaration and refuses it before
+\ the front end registers anything, and DRIVE skips to the terminator when a
+\ multi-error load swallows the reject. A replay defines no word and is not
+\ refused.
+: UNCHECKED ( -- )
+   NEXT DECL-REJECT:FAMILY!
+   TDECL-UNCHECKED$ E-UNCHECKED DECL-REJECT:REJECT throw ;
+
 public
 
 \ RUN ( kind terminator body -- ) : one live declaration.
 : RUN ( ptr u8 n ptr u8 n [ -- ] -- )
    {: ka:ptr ku:n ta:ptr tu:n body :}
    ka ku DECL-REJECT:OPEN
+   check@ 0= IF ta tu [: UNCHECKED ;] DRIVE DECL-REJECT:GUARD-CODE EXIT THEN
    ta tu body DRIVE DECL-REJECT:GUARD-CODE ;
 
 \ REPLAY-OUTCOME ( name body-text kind terminator body -- span bool ) : register

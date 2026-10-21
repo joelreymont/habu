@@ -43,7 +43,9 @@
 \ twin is what the checker costs, measured rather than inferred from which
 \ bucket a sample landed in - the profiler cannot split the engine's own
 \ unregistered text (the interpreter loop, the tokenizer, the tier-0 emitters
-\ and the publish step all land in `other`), and this can.
+\ and the publish step all land in `other`), and this can. A `-raw` mode refuses
+\ a corpus declaring a SUMTYPE, PRODUCT, STRUCTURE or ENUM, whose generated
+\ constructors need the checker.
 \
 \ MEASURE ON A QUIET MACHINE and pin the run (`taskset -c 8`): this is wall
 \ clock, and the sample counts are only comparable between runs taken at a
