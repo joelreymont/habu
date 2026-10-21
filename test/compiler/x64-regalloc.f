@@ -223,6 +223,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
    IR-BUILD:ADD-ATTR
    CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
+   CC BB  CC BB HIR:KEY-ORIGIN  CC BB -1 IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
    CLOSE-VALUE ;
 
 \ ---- the shapes --------------------------------------------------------------
