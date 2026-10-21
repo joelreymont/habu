@@ -230,6 +230,14 @@ variable SNAP-END
 : DATA-INIT, ( bool -- ) {: heap:bool :}
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
+   \ The text content size the source text-extent words read (layout.f
+   \ TEXT-SIZE-CELL), from the header as kernel-x64.f DLSYM, reads it. Every
+   \ entry (START, LINKED-START, SNAP-START,) passes here.
+   RAX RBASE-REG RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX X64LAYOUT:CODE-OFF >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX RAX X64LAYOUT:IMAGE-TEXT-SIZE-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX X64LAYOUT:IMAGE-TEXT-CONTENT-ADJ >IMM32 ASM-SINK ENC-SUB-RI32
+   RAX TEXT-SIZE-CELL CELL!
    \ A saved image carries DATA, but no process owns its old mutex or index.
    RAX ZERO-REG,
    RAX ADDRESS-CELLS:LOCK-CELL CELL!

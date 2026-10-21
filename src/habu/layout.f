@@ -1661,13 +1661,25 @@ $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's four header cells take the run past SUSP-PREFLIGHT-CELL
-\ ($2D88), swept for a claimant across src tools test bootstrap; $2D50..$2D60
+\ ($2D88), swept for a claimant across src tools test bootstrap; $2D58..$2D60
 \ stay for the master band's next cells and $2D78 is the unclaimed cell
 \ test/native-build-host-unknown-code.f relies on. JIT-RET-CELL records the
 \ innermost Habu tier-0 token call while it waits for the engine compile loop
 \ to return; the two shadow cells hold the native compiler's fixed and does>
 \ shadow callbacks; TASK-CHAIN-CELL heads the x86-64 task chain. No captured
 \ image keeps a live stack address.
+\ TEXT-SIZE-CELL: the running image's text content size in bytes from the base
+\ RBASE-CELL holds - the header's text-size field less IMAGE-TEXT-CONTENT-ADJ.
+\ Boot publishes it (habu2.f EM-TEXT-SIZE, boot-x64.f DATA-INIT,) so that the
+\ source words that bound the engine's text (src/core/source-producer.f
+\ ENGINE-TEXT?, src/habu/terminal-call.f ENGINE-TEXT, src/habu/snapshot-format.f
+\ TEXT-SIZE, src/habu/snap-lib.f ENGINE-TEXT-SIZE) ask the engine that runs
+\ them, not the layout constants they were loaded with: a build window for
+\ another OS loads that OS's header offsets. A size, not an address, so
+\ snapshots carry it unzeroed; every boot stores it before a word runs (ARM:
+\ the cold baseline ahead of the boot-run words and again after snapshot
+\ restore; x86-64: DATA-INIT, on every entry).
+$2D50 constant TEXT-SIZE-CELL
 package NCOMP-DISPATCH
 public
 $2D90 constant JIT-RET-CELL

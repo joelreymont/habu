@@ -323,6 +323,7 @@ $2818 constant EXIT-HOOK-CELL
 $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler resumes at; mirrors src/habu/layout.f
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
+$2D50 constant TEXT-SIZE-CELL      \ the running image's text content size; mirrors src/habu/layout.f
 $2CE8 constant DATA-FLOOR-CELL    \ published literal segments; mirrors src/habu/layout.f
 $2CF8 constant NCOMP-PUBLISHED-CELL
 $2D00 constant CODE-INVALIDATE-CELL
@@ -6559,6 +6560,9 @@ variable CFSK2
 : EMIT-MAIN-RUNTIME-LABELS ( n -- ) {: lmain :}
    9 LFLOORREC @ ADR,  9 DATA FLOORREC-CELL STR,     \ crash.fs C-CRASH-DATA-RECOVER's resume entry
    9 LSRC @ ADR,  9 DATA CODE-END-CELL STR,          \ and its engine-code bound
+   9 DATA RBASE-CELL LDR,  10 CODE-OFF LIT64,  9 9 10 SUB,   \ and its text content size (TEXT-SIZE-CELL)
+   9 9 IMAGE-TEXT-SIZE-OFF LDR,  10 IMAGE-TEXT-CONTENT-ADJ LIT64,  9 9 10 SUB,
+   9 DATA TEXT-SIZE-CELL STR,
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
    9 LCREATE @ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC @ ADR,  9 DATA RRECP-CELL STR,

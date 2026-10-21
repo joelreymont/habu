@@ -9026,11 +9026,21 @@ ardone LBL,
    poldone LBL,
    snomag LBL, ;
 
+\ The running image's text content size, read from its header as
+\ EM-SNAPSHOT-RESTORE reads it, for the source words that bound the engine's
+\ text (layout.f TEXT-SIZE-CELL). Stored with CODE-END-CELL at both of its sites.
+: EM-TEXT-SIZE ( -- )
+   9 DATA RBASE-CELL LDR,  10 CODE-OFF LIT64,  9 9 10 SUB,
+   9 9 IMAGE-TEXT-SIZE-OFF LDR,  10 IMAGE-TEXT-CONTENT-ADJ LIT64,  9 9 10 SUB,
+   9 DATA TEXT-SIZE-CELL STR, ;
+
 : EM-STARTUP-COLD-BASELINE ( -- )
    LBL LBL {: pwclr:label pwclrd:label :}
-   \ Seeded boot-run words need this bound before snapshot restore. Restore
-   \ replaces DATA, so EM-STARTUP-RUNTIME-STATE publishes it again afterward.
+   \ Seeded boot-run words need this bound and TEXT-SIZE-CELL before snapshot
+   \ restore. Restore replaces DATA, so EM-STARTUP-RUNTIME-STATE publishes both
+   \ again afterward.
    10 LSRC LABEL@ ADR,  10 DATA CODE-END-CELL STR,
+   EM-TEXT-SIZE
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
@@ -9116,6 +9126,7 @@ ardone LBL,
    9 LANCHOR LABEL@ ADR,  10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
    9 10 CODE-ORIGIN:NATIVE-RANGE,
+   EM-TEXT-SIZE
    9 0 MOVZ,
    \ This process owns no registration lock inherited from captured bytes.
    9 DATA ADDRESS-CELLS:LOCK-CELL STR,
