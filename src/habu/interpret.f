@@ -155,11 +155,12 @@ private
 \ `evaluate` keeps the frame the engine's evaluate pushes, field for field, in a
 \ mapping of its own, linked through EVAL-TOP-CELL and counted in EVALD-CELL, so
 \ a throw out of its buffer reaches habu2.f LEVALREC, which pops the frame and
-\ puts back what it holds: the input, the dictionary top, the stack extent, the
-\ package scope and the usings. The fields layout.f does not name sit at the
-\ offsets EVAL-ENTER stores them. The clean-exit continuation at $10 stays
-\ zero: only the engine's loop reads it (habu2.f EM-EVAL-CLEAN-EXIT), and that
-\ loop never reads a buffer this frame bounds.
+\ puts back what it holds: the input, the dictionary top, the checker's
+\ records, the stack extent, the package scope and the usings. The fields
+\ layout.f does not name sit at the offsets EVAL-ENTER stores them. The
+\ clean-exit continuation at $10 stays zero: only the engine's loop reads it
+\ (habu2.f EM-EVAL-CLEAN-EXIT), and that loop never reads a buffer this frame
+\ bounds.
 0 constant FR-INP                  \ the includer's input cursor
 8 constant FR-INE                  \ and the end of its input
 $18 constant FR-BOUND              \ the evaluate's own catch handler
@@ -177,10 +178,31 @@ TYPED-VARIABLE FRAME-ARG ptr u8
    TASKS-LIVE-CELL CELL@ 0= if exit then
    s" " RC-TASK-LIVE FAIL-CLOSED ;
 
+\ The source owner's record end and its cut, raw execution tokens in the owner
+\ record (layout.f EVAL-FRAME:ROWS).
+CAST: AS-ROWS-END ( n -- [ -- n ] )
+CAST: AS-ROWS-CUT ( n -- [ n -- ] )
+
+\ The checker's record end as a buffer begins, plus one, or 0 when no owner
+\ records rows (habu1.f DECL-OWNER:MARK-END).
+: ROWS-MARK ( -- n )
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
+   xt 0= if 0 exit then
+   xt AS-ROWS-END execute 1+ ;
+
+\ Cut the checker's records back to the frame's mark, so no definition the
+\ rollback drops keeps a record (habu1.f DECL-OWNER:RETRACT-TO).
+: ROWS-CUT ( ptr u8 -- ) {: f:ptr :}
+   f EVAL-FRAME:ROWS FR@ {: mark:n :}
+   mark 0= if exit then
+   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
+   xt 0= if exit then
+   mark 1- xt AS-ROWS-CUT execute ;
+
 \ The frame of a buffer whose caller leaves n cells on the data stack, all but
 \ its link: the includer's input, the dictionary top, the stack extent, the
-\ package scope, the using depth, which is also the buffer's using floor, and
-\ the includer's used publics.
+\ package scope, the using depth, which is also the buffer's using floor, the
+\ includer's used publics and the checker's record end.
 : FRAME-OPEN ( n -- ptr u8 ) {: cells-in:n :}
    EVAL-FRAME-SIZE MEM-ALLOC-PTR BYTE-VIEW {: f:ptr :}
    INP-CELL CELL@ f FR-INP FR!
@@ -206,6 +228,7 @@ TYPED-VARIABLE FRAME-ARG ptr u8
    USE-MAX 0 ?do
       i cells USE-WIDS-OFF + CELL@  f EVAL-FRAME:USE-WIDS i cells + FR!
    loop
+   ROWS-MARK f EVAL-FRAME:ROWS FR!
    f ;
 
 \ Link the frame as the innermost evaluate's. It runs first in the evaluate's
@@ -236,6 +259,7 @@ TYPED-VARIABLE FRAME-ARG ptr u8
 \ The top link is the ownership test: exactly one path performs the rollback.
 : FRAME-ROLLBACK-CODE ( ptr u8 -- ) {: f:ptr :}
    DEF-ABORT
+   f ROWS-CUT
    \ A buffer may start a task and throw without allocating a definition.
    \ Only changed cursors need their guarded mutation sinks during recovery.
    f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
