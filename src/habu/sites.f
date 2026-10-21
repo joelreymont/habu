@@ -17,10 +17,9 @@
 \   u64 count, then offset u32 and kind u8 rows in strictly ascending offset
 \   order. ROWS-EACH reads them.
 \
-\ Both arms are public and take the band - its first byte, SNAP-RELOC's
-\ CALLMAP-OFF - as bytes, so a caller can hand either one a band that is not the
-\ engine's own; test/sites-child.f does. EACH-IN-SPAN is the entry the rest of the
-\ tree calls: it picks the arm by target and hands it the engine's band.
+\ Both arms take the band - its first byte, SNAP-RELOC's CALLMAP-OFF - as
+\ bytes. EACH-IN-SPAN is the entry the rest of the tree calls: it picks the arm by
+\ target and hands it the engine's band.
 \
 \ A span is [off, off+len) and a site is inside it when its first byte is. Every
 \ refusal throws SNAP-RELOC:SITE-RC and precedes the first yield: a span that
@@ -102,8 +101,6 @@ SNAP-RELOC:SITE-ROWS-OFF SNAP-RELOC:SITE-N-CELL - constant ROWS-AT
 : BAND ( -- ptr u8 )
    data-base SNAP-RELOC:CALLMAP-OFF + ;
 
-public
-
 \ The two ARM64 bitmaps, the address map ADDR-MAP-AT bytes after the call map.
 : BITMAP-EACH ( ptr u8 n n [ n n -- ] -- ) {: band:ptr off:n len:n q :}
    off len SPAN-CK
@@ -122,6 +119,8 @@ public
    band ROWS-CK 0 ?do
       band i off off len + q ROW-YIELD
    loop ;
+
+public
 
 : EACH-IN-SPAN ( n n [ n n -- ] -- ) {: off:n len:n q :}
    HB-TARGET-LINUX-X86-64? if BAND off len q ROWS-EACH exit then

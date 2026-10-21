@@ -1662,7 +1662,7 @@ tree that already wrote an empty clause — `src/lib/string.f BUFFER:`,
 `src/lib/codegen.f BUFFER-E`, and `src/lib/task.f`'s `TASK` and `FACILITY` — get it
 without a source change, which is where the census movement comes from. A clause
 with a body still pays the dispatch, including one whose body
-is the identity, which is what `test/does-empty-clause.f` pins. The empty
+is the identity. The empty
 clause's own record and its three-instruction body are still published; nothing
 branches into them, and removing them would mean unwinding CP, the derived name
 and the frame cell at `;` in both compilers for twelve bytes and one dictionary

@@ -13,7 +13,7 @@
 \ src/lib/memory.f is required HERE and in no window prefix file, so through the
 \ checker handover NUM's families are host-only: the retained checker knows
 \ them and the window must not. A suite child that loads after the window's
-\ seal may require it (test/sites-child.f, src/lib/test/subject.f).
+\ seal may require it (src/lib/test/subject.f).
 
 require src/lib/errors.f
 require src/core/prefix-boundary.f

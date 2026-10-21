@@ -2608,6 +2608,7 @@ public
 \ DATA, so an empty sidecar is valid only for that captured owner and closure.
 : ACAP-ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 
+private
 : ACAP-MEMBER? ( ptr u8 n ptr u8 n -- bool )
    {: pkg:ptr pkgu:n name:ptr nameu:n :}
    \ A later window may give a previously queried WID a new package owner.
@@ -2625,6 +2626,7 @@ public
       else drop then
    loop
    0 0= 0= ;
+public
 
 : ACAP-PERSISTENT-OWNER ( -- )
    AOT-ARM:PAYLOAD-OWNER @ CHECKER-OWNER-ABI:BYTES
@@ -2673,6 +2675,7 @@ public
    0 ACAP-SIG-KNOWN ! 0 ACAP-SIG-EXEMPT !
    0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
 
+private
 \ The payload membership describes precisely the bytes and records copied by
 \ CAPTURE. The final DATA end may be updated after owner persistence, before
 \ WINDOW$ is read; callers cannot substitute another band at the copy seam.
@@ -2681,6 +2684,7 @@ public
    bstart AOT-ARM:B0 @ = bend AOT-ARM:B1 @ = and
    rstart AOT-ARM:R0 @ = and rend AOT-ARM:R1 @ = and
    d0 AOT-ARM:D0 @ = and d1 AOT-ARM:D1 @ = and ;
+public
 
 : CAPTURE-PREPARE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-PAYLOAD-BAND? 0= if

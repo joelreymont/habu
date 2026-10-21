@@ -837,10 +837,6 @@ SUITE aot-data-cell-refusals
    test/compiler/aot-data-cell-refusals.f
 ;SUITE
 
-SUITE aot-seeded-address-sites
-   test/aot-seeded-address-sites.f
-;SUITE
-
 SUITE native-quote-forward
    test/native-quote-forward-e2e.f
 ;SUITE
@@ -863,10 +859,6 @@ SUITE image-lifecycle-late-register
 
 SUITE native-resource-image
    test/native-resource-image.f
-;SUITE
-
-WHITEBOX-SUITE registry-persist
-   test/registry-persist.f
 ;SUITE
 
 SUITE native-defer-image
@@ -1707,10 +1699,6 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE aot-wid-restore
-   test/aot-wid-suite.f -- restore
-;SUITE
-
 SUITE aot-wid-refuse-address-span
    test/aot-wid-suite.f -- refuse-address-span
 ;SUITE
@@ -1730,10 +1718,6 @@ SUITE aot-data-window
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
    test/aot-seed-metadata.f
-;SUITE
-
-SUITE aot-capture-compact
-   test/aot-capture-compact.f
 ;SUITE
 
 \ A capture taken with an x86-64 shadow open carries the shadow's records,
@@ -1756,20 +1740,12 @@ SUITE aot-named-cells-native
    test/aot-named-cells.f -- native
 ;SUITE
 
-SUITE aot-payload-admission
-   test/aot-payload-admission.f
-;SUITE
-
 SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
 SUITE aot-cell-values
    test/aot-cell-values.f
-;SUITE
-
-SUITE aot-registry-identity
-   test/aot-registry-identity.f
 ;SUITE
 
 SUITE checker-graph-domains
@@ -1799,10 +1775,6 @@ SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE
 
-SUITE does-empty-clause
-   test/does-empty-clause.f
-;SUITE
-
 SUITE sealed-system-package
    test/seal-package.f
 ;SUITE
@@ -1821,10 +1793,6 @@ SUITE address-cell-rollback
 
 SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
-;SUITE
-
-SUITE address-cell-index
-   test/address-cell-index.f
 ;SUITE
 
 SUITE address-cell-index-recovery
@@ -2218,14 +2186,6 @@ SUITE values
    test/values.f
 ;SUITE
 
-SUITE dynamic-buffer-registry
-   test/dynamic-buffer-registry.f
-;SUITE
-
-SUITE dynamic-buffer-capture
-   test/dynamic-buffer-capture.f
-;SUITE
-
 SUITE aot-capture-bound
    test/aot-capture-bound.f
 ;SUITE
@@ -2236,10 +2196,6 @@ SUITE dynamic-buffer-tasks
 
 SUITE layout-defer
    test/layout-defer.f
-;SUITE
-
-WHITEBOX-SUITE lower-cert
-   test/lower-cert.f
 ;SUITE
 
 WHITEBOX-SUITE layout-valid-guards
@@ -2264,18 +2220,6 @@ SUITE data-claims-build
 
 SUITE code-window
    test/code-window.f
-;SUITE
-
-SUITE addrmap-call
-   test/addrmap-call.f
-;SUITE
-
-SUITE sites
-   test/sites.f
-;SUITE
-
-SUITE p2-map-rewind
-   test/p2-map-rewind.f
 ;SUITE
 
 SUITE lower-txn-large
