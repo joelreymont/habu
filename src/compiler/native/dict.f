@@ -295,7 +295,6 @@ private
 
 : REC-BINDING ( ptr n -- n n )
    true REC-CODE ;
-   start f DKIND:MASK and ;
 
 public
 
