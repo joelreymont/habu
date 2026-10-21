@@ -162,6 +162,11 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-REDIRECT$ ( -- ptr u8 n ) s" /redirect" ;
 : PATH-INTERIM$ ( -- ptr u8 n ) s" /interim" ;
 : PATH-RETRY$ ( -- ptr u8 n ) s" /retry" ;
+: PATH-ECHO$ ( -- ptr u8 n ) s" /echo" ;
+: PATH-FOUND$ ( -- ptr u8 n ) s" /found" ;
+: PATH-SEE-OTHER$ ( -- ptr u8 n ) s" /see-other" ;
+: PATH-TEMPORARY$ ( -- ptr u8 n ) s" /temporary" ;
+: FORM$ ( -- ptr u8 n ) s" a=1" ;
 : JSON$ ( -- ptr u8 n ) s" {}" ;
 : HEADERS$ ( -- ptr u8 n )
    S\" HTTP/1.0 200 OK\r\nCache-Control: max-age=60\r\nExpires: Wed, 21 Oct 2030 07:28:00 GMT\r\nAge: 7\r\nRetry-After: 9\r\nX-Duplicate: first\r\nX-Duplicate: second\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" ;
@@ -368,6 +373,21 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    again ;
 
 
+\ Reads on until `want` body bytes follow the head in REQ-BUF; false when the
+\ peer ends first or the body would not fit.
+: BODY-READ ( TCP4:connection n -- bool ) {: conn:TCP4:connection want:n :}
+   HEAD-U @ want + REQ-CAP > if false exit then
+   REQ-U @ HEAD-U @ want + < if
+      conn REQ-BUF REQ-U @ + HEAD-U @ want + REQ-U @ - TCP4:TRANSFER-BYTES TCP4:READ-EXACT
+      MATCH TCP4:read-result
+         data OF BLEN>N REQ-U @ + REQ-U ! ENDOF
+         closed OF drop false exit ENDOF
+         failed OF drop false exit ENDOF
+      ;MATCH
+   then
+   true ;
+
+
 \ The peer consumes the complete small POST body before it closes an already
 \ reused connection without sending a response. A missing byte would turn the
 \ close into a different failure, so check the exact payload before counting it.
@@ -375,16 +395,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" POST" METHOD-IS? 0= if false exit then
    PATH-RETRY$ PATH-IS? 0= if false exit then
    s" Content-Length: 3" REQ-HAS-CI? 0= if false exit then
-   HEAD-U @ 3 + REQ-CAP > if false exit then
-   REQ-U @ HEAD-U @ 3 + < if
-      conn REQ-BUF REQ-U @ + HEAD-U @ 3 + REQ-U @ - TCP4:TRANSFER-BYTES TCP4:READ-EXACT
-      MATCH TCP4:read-result
-         data OF BLEN>N REQ-U @ + REQ-U ! ENDOF
-         closed OF drop false exit ENDOF
-         failed OF drop false exit ENDOF
-      ;MATCH
-   then
-   REQ-BUF HEAD-U @ + 3 s" a=1" STR= ;
+   conn FORM$ nip BODY-READ 0= if false exit then
+   REQ-BUF HEAD-U @ + FORM$ nip FORM$ STR= ;
 
 
 : RETRY-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
@@ -559,6 +571,27 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    REDIRECT-RESPONSE conn SEND-RESPONSE ;
 
 
+: SERVE-MOVED ( TCP4:connection ptr u8 n -- ) {: conn:TCP4:connection text:ptr u:n :}
+   RES-RESET
+   text u STATUS-LINE
+   s" Location: " RES+ PATH-ECHO$ RES+ CRLF+
+   s" Content-Length: 0" RES+ CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+
+   conn SEND-RESPONSE ;
+
+
+\ The answer's body is the request exactly as read: its head, then the form
+\ body when the head declares one. The answer also sets the probe cookie.
+: SERVE-ECHO ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   s" Content-Length: 3" REQ-HAS-CI? if
+      conn FORM$ nip BODY-READ 0= if 1 SERVER-BAD +! then
+   then
+   1 SEND-COOKIE !
+   s" 200 OK" REQ-BUF REQ-U @ RESPOND
+   0 SEND-COOKIE !
+   conn SEND-RESPONSE ;
+
+
 : SERVE-INTERIM ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    S\" HTTP/1.1 100 Continue\r\nX-Interim: one\r\n\r\nHTTP/1.1 103 Early Hints\r\nCache-Control: no-store\r\n\r\n" RES+
@@ -641,6 +674,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       s" POST" METHOD-IS? if conn SERVE-RETRY-POST else conn SERVE-RETRY-PRIME then
       exit
    then
+   PATH-ECHO$ PATH-IS? if conn SERVE-ECHO exit then
+   PATH-FOUND$ PATH-IS? if conn s" 302 Found" SERVE-MOVED exit then
+   PATH-SEE-OTHER$ PATH-IS? if conn s" 303 See Other" SERVE-MOVED exit then
+   PATH-TEMPORARY$ PATH-IS? if conn s" 307 Temporary Redirect" SERVE-MOVED exit then
    s" POST" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    s" DELETE" METHOD-IS? if conn SERVE-UNIMPLEMENTED exit then
    PATH-STALL$ PATH-IS? if conn SERVE-STALL exit then
@@ -1161,6 +1198,64 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" a custom method reaches the server" T-LABEL
    LAST-KIND @ KIND-RESPONSE T=
    LAST-STATUS @ 501 T= ;
+
+
+\ Whether the echoed request holds `needle` anywhere.
+: ECHO-HAS? ( ptr u8 n -- bool ) {: needle:ptr needleu:n :}
+   LAST-LEN @ 0 ?do BODY$ needle needleu i TEXT-AT? if true unloop exit then loop
+   false ;
+
+
+: ECHO-STARTS? ( ptr u8 n -- bool ) {: line:ptr lineu:n :}
+   BODY$ line lineu STARTS-WITH? ;
+
+
+: FORM-TO ( CURL:handle ptr u8 n -- ) {: subject:CURL:handle path:ptr pathu:n :}
+   subject path pathu URL-FOR CURL:URL! EXPECT-OK
+   subject FORM$ CURL:BODY! EXPECT-OK ;
+
+
+: ECHO-FETCH ( CURL:handle -- ) {: subject:CURL:handle :}
+   subject BODY-CAP >LEN FETCH
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T= ;
+
+
+: NO-BODY-HEADERS ( -- )
+   s" Content-Length:" ECHO-HAS? TFALSE
+   s" Content-Type:" ECHO-HAS? TFALSE ;
+
+
+\ Every request goes through one handle, so each echoed request shows the state
+\ the earlier ones left on it. The first echo sets the probe cookie.
+: TEST-REDIRECT-VERBS ( -- )
+   PATH-ECHO$ GET-READY {: subject:CURL:handle :}
+   subject s" " CURL:COOKIE-FILE! EXPECT-OK
+   subject true CURL:FOLLOW! EXPECT-OK
+   subject PATH-SEE-OTHER$ FORM-TO
+   subject ECHO-FETCH
+   s" a form POST follows 303 as GET without its body" T-LABEL
+   s" GET /echo " ECHO-STARTS? TTRUE
+   NO-BODY-HEADERS
+   subject PATH-TEMPORARY$ FORM-TO
+   subject ECHO-FETCH
+   s" a form POST follows 307 as POST with its body" T-LABEL
+   s" POST /echo " ECHO-STARTS? TTRUE
+   s" Content-Length: 3" ECHO-HAS? TTRUE
+   BODY$ FORM$ ENDS-WITH? TTRUE
+   subject PATH-FOUND$ FORM-TO
+   subject s" POST" CURL:METHOD! EXPECT-OK
+   subject ECHO-FETCH
+   s" a METHOD! override is sent again on the request a 302 redirects" T-LABEL
+   s" POST /echo " ECHO-STARTS? TTRUE
+   subject PATH-ECHO$ URL-FOR CURL:URL! EXPECT-OK
+   subject CURL:GET! EXPECT-OK
+   subject ECHO-FETCH
+   s" GET! drops the override and the body and keeps the cookie" T-LABEL
+   s" GET /echo " ECHO-STARTS? TTRUE
+   NO-BODY-HEADERS
+   s" Cookie: probe=value1" ECHO-HAS? TTRUE
+   subject CURL:CLEANUP ;
 
 
 \ First request: no cookie is sent, the server sets one, and CLEANUP writes it
@@ -2236,7 +2331,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 85 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 92 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2300,6 +2395,7 @@ public
    TEST-HEADER
    TEST-POST
    TEST-METHOD
+   TEST-REDIRECT-VERBS
    TEST-COOKIES
    TEST-TRUNCATED
    TEST-RESPONSE-HEADERS

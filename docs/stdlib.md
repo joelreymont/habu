@@ -1762,8 +1762,8 @@ vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 
 `src/lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
 `FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `INIT` answers a typed handle;
-`URL!`, `METHOD!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`,
-`FOLLOW!` and `FRESH-CONNECT!` configure the request; `PERFORM` fills a
+`URL!`, `METHOD!`, `GET!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`,
+`TIMEOUT!`, `FOLLOW!` and `FRESH-CONNECT!` configure the request; `PERFORM` fills a
 caller-owned span and answers the HTTP status with the body length, a truncation
 carrying the whole body's length, or the `CURLcode` that failed. After `PERFORM`
 or `START`/`AWAIT`,
