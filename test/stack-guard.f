@@ -45,20 +45,19 @@ create LIT-SRC LIT-SRC-CAP allot
 \ makes the fall-through to `;` unreachable -- a bare tail call (`1 recurse ;`,
 \ no AGAIN) is rejected at 'recurse' for exactly that residual. Verified
 \ against the checker on the current engine. The legacy compiler stores return
-\ and DO frames in the guarded VM stacks. On Intel, Y's live >r value across
-\ recursion fills the guarded user return stack; native DO frames live in HIR,
-\ so Z exhausts the machine call stack and reports on its alternate signal
-\ stack.
+\ and DO frames in the guarded VM stacks. The x86-64 engine compiles natively,
+\ as ARM64 tier 1 does, so Y and Z exhaust the machine call stack first and end
+\ with the machine-stack report (docs/debugging.md, test/engine-stack-machine.f).
 : MACHINE-OVERFLOW ( ptr u8 n -- )
-   CHILD-RC 134 T=
-   ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
+   CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
+   ERR ERRLEN @ s" hb: stack bounds exceeded (machine)" T-PREFIX= ;
 
 : OVERFLOW-NAMES ( -- )
    s" unbounded data-stack recursion overflows (data)" T-LABEL
    s" : X ( n -- ) begin dup recurse again ; 0 X" REFUSED-DATA
    s" unbounded return-stack recursion overflows (return)" T-LABEL
    s" : Y ( -- ) 1 >r recurse r> drop ; Y"
-   REFUSED-RETURN
+   HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-RETURN then
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
    s" : Z ( -- ) 1 0 do recurse loop ; Z"
    HB-TARGET-LINUX-X86-64? if MACHINE-OVERFLOW else REFUSED-LOOP then ;
