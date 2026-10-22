@@ -71,9 +71,8 @@ private
 2 constant EV-LOAD
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
-\ count, wordlist counter), the require counter it opened with, and 1 once
-\ the retire hook moved while it was open. A child file's bytes follow its
-\ parent's and are dropped when the child closes.
+\ count, wordlist counter) and the require counter it opened with. A child
+\ file's bytes follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -86,8 +85,7 @@ private
 9 constant FO-SEG-REQ
 10 constant FO-SEG-WID
 11 constant FO-REQ-XT
-12 constant FO-HOOK
-13 constant FO-CELLS
+12 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists. LOAD: kind,
@@ -158,12 +156,24 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    INPUTS-U @ u + FILE-INPUTS-RESERVE
    a INPUTS-U @ FILE-INPUTS u BYTE-COPY
    u INPUTS-U +! ;
-: WHY+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
+\ The end of open file k's refusal reasons, where the next frame's begin.
+: WHY-END ( n -- n )
+   {: k:n :}
+   k 1+ FO-DEPTH @ < if k 1+ FO-WHY FRAME @ else WHY-U @ then ;
+\ Append a to open file k's refusal reasons; the later frames' reasons move
+\ up by its length.
+: FRAME-WHY+ ( ptr u8 n n -- )
+   {: a:ptr u:n k:n :}
    u 0= if exit then
+   k WHY-END {: at:n :}
    WHY-U @ u + FILE-WHY-RESERVE
-   a WHY-U @ FILE-WHY u BYTE-COPY
-   u WHY-U +! ;
+   WHY-U @ begin dup at > while
+      1- dup FILE-WHY c@ over u + FILE-WHY c!
+   repeat drop
+   a at FILE-WHY u BYTE-COPY
+   u WHY-U +!
+   FO-DEPTH @ k 1+ ?do u i FO-WHY FRAME +! loop ;
+: WHY+ ( ptr u8 n -- ) FO-DEPTH @ 1- FRAME-WHY+ ;
 : INDEX-N ( n -- )
    {: value:n :}
    INDEX-U @ 8 + FILE-INDEX-RESERVE
@@ -235,28 +245,47 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    xt 0= if 0 exit then
    xt REQ-COUNT-XT execute ;
 
+\ Whether open file k holds a refusal reason.
+: FRAME-REFUSED? ( n -- bool )
+   {: k:n :}
+   k WHY-END k FO-WHY FRAME @ > ;
+
+\ Open file k keeps its first refusal reason; it writes no object.
+: FRAME-REFUSE ( ptr u8 n n -- )
+   {: reason:ptr reasonu:n k:n :}
+   k FRAME-REFUSED? if exit then
+   reason reasonu k FRAME-WHY+ ;
+
 public
 
 : FILE-OPEN? ( -- bool ) FO-DEPTH @ 0 > ;
-: FILE-REFUSED? ( -- bool ) WHY-U @ FO-WHY FO @ > ;
+: FILE-REFUSED? ( -- bool ) FO-DEPTH @ 1- FRAME-REFUSED? ;
 
 \ The innermost file keeps its first refusal reason; it writes no object.
 : FILE-REFUSE ( ptr u8 n -- )
+   FILE-OPEN? 0= if 2drop exit then
+   FO-DEPTH @ 1- FRAME-REFUSE ;
+
+\ Every open file refuses.
+: REFUSE-ALL ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
-   FILE-OPEN? 0= if exit then
-   FILE-REFUSED? if exit then
-   reason reasonu WHY+ ;
+   FO-DEPTH @ 0 ?do reason reasonu i FRAME-REFUSE loop ;
 
 private
+
+\ FRAME-REFUSE of open file k naming the record the reason is about.
+: FRAME-REFUSE-WORD ( ptr u8 n ptr n n -- )
+   {: reason:ptr reasonu:n rec:ptr k:n :}
+   k FRAME-REFUSED? if exit then
+   reason reasonu k FRAME-WHY+
+   s"  word=" k FRAME-WHY+
+   rec XREF-NAME$ k FRAME-WHY+ ;
 
 \ FILE-REFUSE naming the record the reason is about.
 : REFUSE-WORD ( ptr u8 n ptr n -- )
    {: reason:ptr reasonu:n rec:ptr :}
    FILE-OPEN? 0= if exit then
-   FILE-REFUSED? if exit then
-   reason reasonu WHY+
-   s"  word=" WHY+
-   rec XREF-NAME$ WHY+ ;
+   reason reasonu rec FO-DEPTH @ 1- FRAME-REFUSE-WORD ;
 
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
@@ -284,13 +313,15 @@ private
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+ ;
 
-\ Record ord is the innermost file's own: in its open segment or one it
-\ closed.
-: OWN? ( n -- bool )
-   {: ord:n :}
-   ord 0 < if false exit then
-   ord FO-SEG-ORD FO @ >= if true exit then
-   EVENTS-N @ FO-EVENTS FO @ ?do
+\ The end of open file k's event rows, where the next frame's begin.
+: EV-HI ( n -- n )
+   {: k:n :}
+   k 1+ FO-DEPTH @ < if k 1+ FO-EVENTS FRAME @ else EVENTS-N @ then ;
+
+\ Record ord lies in one of open file k's closed segments.
+: SEGS-OWN? ( n n -- bool )
+   {: ord:n k:n :}
+   k EV-HI k FO-EVENTS FRAME @ ?do
       i 0 EV @ EV-SEGMENT = if
          ord i 1 EV @ >= ord i 1 EV @ i 2 EV @ + < and if
             true unloop exit
@@ -322,7 +353,6 @@ public
    EVENTS-N @ FO-EVENTS FO !
    NAMES-U @ FO-NAMES FO !
    REQ-XT FO-REQ-XT FO !
-   0 FO-HOOK FO !
    SEGMENT-OPEN
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
@@ -346,19 +376,23 @@ public
    -1 FO-DEPTH +!
    FILE-OPEN? if SEGMENT-OPEN then ;
 
-\ The retire hook (XREF:BEFORE-RETIRE!): a record the innermost file did not
-\ make, an earlier or a child file's, belongs to another object, which this
-\ one cannot change, so the file refuses.
+\ The retire hook (XREF:BEFORE-RETIRE!). An object's record rows carry no
+\ time: a replay makes a retired row retired where the row stands. So only a
+\ record of the innermost file's open segment may retire, with no load or
+\ closed segment between its making and its retirement. Any other record's
+\ object cannot hold the retirement in place: an earlier file's, a child's,
+\ or a closed segment of this or an open parent file, which what loaded since
+\ has seen live. The innermost file and every open file whose segments made
+\ the record refuse.
 : FILE-RETIRE ( ptr n -- )
    {: rec:ptr :}
    FILE-OPEN? 0= if exit then
-   rec NFILE-REF:REC-ORD OWN? if exit then
-   s" retires-earlier" rec REFUSE-WORD ;
-
-\ The retire hook moved to another XREF: every open file may have missed a
-\ retirement.
-: HOOK-CHANGED ( -- )
-   FO-DEPTH @ 0 ?do 1 i FO-HOOK FRAME ! loop ;
+   rec NFILE-REF:REC-ORD {: ord:n :}
+   ord FO-SEG-ORD FO @ >= if exit then
+   s" retires-earlier" rec REFUSE-WORD
+   FO-DEPTH @ 1- 0 ?do
+      ord i SEGS-OWN? if s" retires-earlier" rec i FRAME-REFUSE-WORD then
+   loop ;
 
 : REASON$ ( -- ptr u8 n )
    FO-WHY FO @ {: first:n :}
@@ -1334,12 +1368,11 @@ private
 public
 
 \ Encode the innermost file's records, DATA, requires, protection bytes and
-\ events into FILE-OUT, closing its last segment. A file whose retire hook
-\ moved while it was open, or whose records cannot all encode, refuses.
+\ events into FILE-OUT, closing its last segment. A file whose records
+\ cannot all encode refuses.
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
-   FO-HOOK FO @ 0<> if s" retire-hook-new" FILE-REFUSE then
    FILE-REFUSED? if exit then
    NFILE-REF:BEGIN-FILE-REFS
    0 OUT-U !
@@ -1384,31 +1417,40 @@ private
       used len +
    loop ;
 
-\ Whether a cut to kept retires a closed child load of the innermost file:
-\ its LOAD row, at the child's first ordinal, or a record of the child's
-\ range, which ends where the next event or the open segment begins. The
-\ child's object is written, and this file's would lose the load.
-: CUTS-CHILD? ( n -- bool ) {: kept:n :}
-   FILE-OPEN? 0= if false exit then
-   -1 EVENTS-N @ FO-EVENTS FO @ ?do i SEG? 0= if drop i then loop
-      {: last:n :}
-   last 0 < if false exit then
-   last 1+ EVENTS-N @ < if last 1+ 1 EV @ else FO-SEG-ORD FO @ then
-      {: end:n :}
-   kept last 1 EV @ <= kept end < or ;
+\ Whether a cut to kept drops a row of open file k: its last, as rows follow
+\ ordinal order.
+: ROWS-CUT? ( n n -- bool ) {: kept:n k:n :}
+   k EV-HI {: hi:n :}
+   hi k FO-EVENTS FRAME @ > 0= if false exit then
+   hi 1- 1 EV @ kept < 0= ;
+
+\ Whether a cut to kept reaches below the innermost file's open segment or
+\ drops an event row, such as the load of an open child whose first ordinal
+\ is the cut.
+: CUT-BELOW? ( n -- bool ) {: kept:n :}
+   kept FO-SEG-ORD FO @ < if true exit then
+   EVENTS-N @ 0= if false exit then
+   EVENTS-N @ 1- 1 EV @ kept < 0= ;
 
 public
 
 \ The kernel's capture cut notice: the dictionary count drops to kept, which
 \ retires every definition at or past it and gives its slot to the next
 \ definition. Index and event rows follow ordinal order across the open files,
-\ so the retired ones are a suffix; drop it, end a SEGMENT row the cut
-\ crosses at the cut, and pull back each frame's marks the cut crosses, its
-\ first ordinal and open segment included. A cut into a closed child load
-\ refuses the innermost file.
+\ so the retired ones are a suffix; drop it and pull back each frame's marks
+\ the cut crosses, its first ordinal and open segment included. Only a cut
+\ within the innermost file's open segment keeps the objects whole: any other
+\ refuses the innermost file and each open file whose rows it drops. A
+\ SEGMENT row the cut crosses stays as it was: its file's LOAD row at the
+\ segment's end follows it (FILE-BEGIN), so its file refuses.
 : FILE-CUT ( n -- )
    {: kept:n :}
-   kept CUTS-CHILD? if s" cut-below-child" FILE-REFUSE then
+   FILE-OPEN? if kept CUT-BELOW? if
+      s" cut-below-segment" FILE-REFUSE
+      FO-DEPTH @ 0 ?do
+         kept i ROWS-CUT? if s" cut-below-segment" i FRAME-REFUSE then
+      loop
+   then then
    kept NUNIT-DEP:DICT-CUT
    INDEX-U @ INDEX-BYTES / {: rows:n :}
    0 begin
@@ -1426,9 +1468,6 @@ public
       dup EVENTS-N @ < if dup 1 EV @ kept < else false then
    while 1+ repeat {: evcut:n :}
    evcut EVENTS-N !
-   evcut 0 > if evcut 1- SEG? else false then if
-      evcut 1- 2 EV @ kept evcut 1- 1 EV @ - min evcut 1- 2 EV !
-   then
    FO-DEPTH @ 0 ?do
       i FO-INDEX FRAME @ INDEX-U @ min i FO-INDEX FRAME !
       i FO-DEFS FRAME @ DEFS-U @ min i FO-DEFS FRAME !
@@ -1483,11 +1522,14 @@ private
    wids OPEN-WIDS +! 1 OPEN-SEGS +!
    first count + ;
 
-\ A LOAD event row: where the loading file's source stood, and the child's
-\ path and root in the names section.
+\ A LOAD event row: an include or a require, where the loading file's source
+\ stood, and the child's path and root in the names section.
 : LOAD-CK ( ptr u8 n -- )
    {: row:ptr namesu:n :}
-   row 1 U64-AT 0 < row 2 U64-AT 0 < or if BAD then
+   row 1 U64-AT {: kind:n :}
+   kind SOURCE-UNIT:LOAD-INCLUDE <> kind SOURCE-UNIT:LOAD-REQUIRE <> and
+      if BAD then
+   row 2 U64-AT 0 < if BAD then
    row 4 U64-AT 0= if BAD then
    row 3 U64-AT row 4 U64-AT namesu SPAN-CK
    row 5 U64-AT row 6 U64-AT namesu SPAN-CK
@@ -1506,39 +1548,53 @@ private
       then
    loop drop ;
 
+\ Reference ref names a row of kind in the reference section refs; a LOCAL
+\ row names the file's own item at most max, with no addend.
+: REF-ROW-CK ( ptr u8 n n n -- )
+   {: refs:ptr ref:n kind:n max:n :}
+   ref refs 0 U64-AT REF-CK? 0= if BAD then
+   refs 24 + ref 1- 32 * + {: row:ptr :}
+   row 0 U64-AT kind <> if BAD then
+   row 1 U64-AT NFILE-REF:LOCAL <> if exit then
+   row 2 U64-AT {: item:n :}
+   item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
+
 \ One record row: a known kind, its name in the names section, and the
-\ references and index row its kind names.
-: RECORD-CK ( ptr u8 n n n -- )
-   {: row:ptr namesu:n refs:n defs:n :}
+\ references and index row its kind names: its wordlists the file's own or
+\ earlier, an address a place in the file's DATA, its end included.
+: RECORD-CK ( ptr u8 n ptr u8 n -- )
+   {: row:ptr namesu:n refs:ptr defs:n :}
    row 0 U64-AT {: kind:n :}
    row 4 U64-AT {: wl:n :}
    row 5 U64-AT {: value:n :}
    row 6 U64-AT {: priv:n :}
    kind RK-BARE < kind RK-PACKAGE > or if BAD then
    row 2 U64-AT row 3 U64-AT namesu SPAN-CK
+   OPEN-WIDS @ 1- {: wmax:n :}
    kind RK-PACKAGE = if
-      wl 0<> value refs REF-CK? 0= or priv refs REF-CK? 0= or if BAD then
-      exit
+      wl 0<> if BAD then
+      refs value NFILE-REF:WID wmax REF-ROW-CK
+      refs priv NFILE-REF:WID wmax REF-ROW-CK exit
    then
-   wl refs REF-CK? 0= priv 0<> or if BAD then
+   priv 0<> if BAD then
+   refs wl NFILE-REF:WID wmax REF-ROW-CK
    kind RK-ADDR = kind RK-DEFER = or if
-      value refs REF-CK? 0= if BAD then exit
+      refs value NFILE-REF:DATA OPEN-DATA @ REF-ROW-CK exit
    then
    kind RK-COLON = if value 0 < value defs >= or if BAD then exit then
    kind RK-BARE = value 0<> and if BAD then ;
 
 \ The reference section: an NFILE-REF ENCODE header with no declarations
-\ and room for its reference rows; their count.
-: REFS-CK ( ptr u8 n -- n )
+\ and room for its reference rows.
+: REFS-CK ( ptr u8 n -- )
    {: refs:ptr refsu:n :}
    refsu 24 < if BAD then
    refs 2 U64-AT 0<> if BAD then
    refs 0 U64-AT {: cnt:n :}
-   cnt 0 < cnt refsu 24 - 32 / > or if BAD then
-   cnt ;
+   cnt 0 < cnt refsu 24 - 32 / > or if BAD then ;
 
-: RECORDS-CK ( ptr u8 n n n n -- )
-   {: recs:ptr recsu:n namesu:n refs:n defs:n :}
+: RECORDS-CK ( ptr u8 n n ptr u8 n -- )
+   {: recs:ptr recsu:n namesu:n refs:ptr defs:n :}
    recsu OPEN-RECS @ RECORD-BYTES * <> if BAD then
    OPEN-RECS @ 0 ?do
       recs i RECORD-BYTES * + namesu refs defs RECORD-CK
@@ -1569,7 +1625,8 @@ private
    0 OPEN-LOADS ! 0 OPEN-SEGS !
    3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
    12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
-   13 NUNIT-FILE:SECTION$ REFS-CK {: refs:n :}
+   13 NUNIT-FILE:SECTION$ {: refs:ptr refsu:n :}
+   refs refsu REFS-CK
    1 NUNIT-FILE:SECTION$ namesu refs defs RECORDS-CK
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
    4 NUNIT-FILE:SECTION$ PROT-CK
@@ -1605,7 +1662,8 @@ public
       ord prev <= if BAD then
       row SPAN-AT + LE:U64@ {: at:n :}
       row SPAN-END + LE:U64@ {: end:n :}
-      at 0 < at end > or end srcu > or if BAD then
+      at 0 < end srcu > or if BAD then
+      at end < at end or 0= or 0= if BAD then
       row defsu off - ROW-SIZE {: total:n :}
       DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
       PAYLOAD-CK

@@ -1309,10 +1309,8 @@ public
 : FILE-SCOPE-KEPT? ( -- bool )
    F-OFF FFIELD @ {: off:n :}
    off FBYTES FUSED @ off - {: deps:ptr depsu:n :}
-   CHECK-OFF @ {: saved:n :}
    deps depsu HEAD 0= if BAD then
    deps depsu ROW-AT {: kind:n key:ptr keyu:n data:ptr datau:n :}
-   saved CHECK-OFF !
    kind SCOPE <> if BAD then
    data datau NFILE-SCOPE:SCOPE-MATCH? ;
 

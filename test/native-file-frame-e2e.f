@@ -54,8 +54,13 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    s" app.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
-   s" tasks.f" LOAD+
    s" slot.f" LOAD+
+   s" ret-own.f" LOAD+
+   s" ret-parent.f" LOAD+
+   s" ret-late.f" LOAD+
+   s" incut.f" LOAD+
+   s" gp.f" LOAD+
+   s" q1.f" LOAD+
    s" diag.f" LOAD+
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
@@ -229,16 +234,34 @@ public
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
-   \ tasks.f loads TASK; slot.f then moves TASK's user-slot watermark at load
-   \ time through the cell TASK hands its claimants. TASK:+USER moves it too
+   \ slot.f moves the user-slot watermark of the TASK the builder loaded at
+   \ load time through the cell TASK hands its claimants. TASK:+USER moves it too
    \ and refuses its file for task-slots the same way.
    \ scope.f leaves its package open, the last load: a using it left open
    \ would not count, as usings end with their file (interpret.f CLEAN-END).
-   s" tasks.f" S\" require src/lib/task.f\n" PUT
    s" slot.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT
    s" scope.f" S\" package FRAME-SCOPE\n" PUT
    \ retire.f retires a record lib.f made.
    s" retire.f" S\" undefine FRAME-LIB:BUMP\n" PUT
+   \ ret-own.f retires its own record in the segment that made it.
+   \ ret-kid.f retires the record its parent ret-parent.f made before loading
+   \ it. ret-late.f retires its own record after a child that uses it.
+   s" ret-own.f" S\" : RET-OWN ( -- n ) 1 ;\nundefine RET-OWN\n" PUT
+   s" ret-kid.f" S\" undefine RET-KID\n" PUT
+   s" ret-parent.f" S\" : RET-KID ( -- n ) 2 ;\nrequire ret-kid.f\n" PUT
+   s" ret-use.f" S\" : RET-USER ( -- n ) RET-LATE ;\n" PUT
+   s" ret-late.f" S\" : RET-LATE ( -- n ) 3 ;\nrequire ret-use.f\nundefine RET-LATE\n" PUT
+   \ incut.f cuts back to its own second definition, within its open segment.
+   \ gc2.f cuts back to the first definition of gc1.f, which gp.f loaded
+   \ before it: below gc2.f's open segment, through gp.f's load of gc1.f.
+   \ k1.f cuts back to its own first definition, the ordinal of q1.f's load
+   \ of it.
+   s" incut.f" S\" : CA ( -- n ) 1 ;\n: CB ( -- n ) 2 ;\ns\" CB\" FORGET-DEFS-FROM\n" PUT
+   s" gc1.f" S\" : G1 ( -- n ) 1 ;\n" PUT
+   s" gc2.f" S\" s\" G1\" FORGET-DEFS-FROM\n" PUT
+   s" gp.f" S\" require gc1.f\nrequire gc2.f\n" PUT
+   s" k1.f" S\" : KA ( -- n ) 2 ;\ns\" KA\" FORGET-DEFS-FROM\n: KX ( -- n ) 3 ;\n" PUT
+   s" q1.f" S\" : Q1 ( -- n ) 1 ;\nrequire k1.f\n: Q2 ( -- n ) KX ;\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions.
    s" app.f" APP$ PUT
@@ -307,6 +330,28 @@ public
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
    s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
    s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
+   s" a file that retires its own record in the segment that made it stores it" T-LABEL
+   s" ret-own.f" KEY$ STORED
+   s" a child that retires its parent's record refuses both files" T-LABEL
+   s" ret-kid.f" s"  reason=" LINE$ s" ret-kid.f reason=retires-earlier word=RET-KID" T$=
+   s" ret-kid.f" NO-OBJECT
+   s" ret-parent.f" s"  reason=" LINE$ s" ret-parent.f reason=retires-earlier word=RET-KID" T$=
+   s" ret-parent.f" NO-OBJECT
+   s" a file that retires its record after a child that uses it refuses" T-LABEL
+   s" ret-late.f" s"  reason=" LINE$ s" ret-late.f reason=retires-earlier word=RET-LATE" T$=
+   s" ret-late.f" NO-OBJECT
+   s" a file that cuts within its open segment stores its object" T-LABEL
+   s" incut.f" KEY$ STORED
+   s" a cut below the innermost file's open segment refuses it and the file that loaded the cut records" T-LABEL
+   s" gc2.f" s"  reason=" LINE$ s" gc2.f reason=cut-below-segment" T$=
+   s" gc2.f" NO-OBJECT
+   s" gp.f" s"  reason=" LINE$ s" gp.f reason=cut-below-segment" T$=
+   s" gp.f" NO-OBJECT
+   s" a cut at a child's first ordinal refuses the child and the parent whose load it drops" T-LABEL
+   s" k1.f" s"  reason=" LINE$ s" k1.f reason=cut-below-segment" T$=
+   s" k1.f" NO-OBJECT
+   s" q1.f" s"  reason=" LINE$ s" q1.f reason=cut-below-segment" T$=
+   s" q1.f" NO-OBJECT
    s" a file that ends in another scope than it began in has no object" T-LABEL
    s" scope.f" s"  reason=" LINE$ s" scope.f reason=scope-exit" T$=
    s" scope.f" NO-OBJECT

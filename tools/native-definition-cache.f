@@ -108,10 +108,23 @@ variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
 PTR-VARIABLE CUT-CELL
-\ The XREF:BEFORE-RETIRE! bound to the file objects' retire hook, and its
-\ record ordinal.
-variable RETIRE-SETTER
-variable RETIRE-SETTER-ORD
+\ Each XREF:BEFORE-RETIRE! bound to the file objects' retire hook, the running
+\ kernel's and each XREF a build loads after it, with its record ordinal and
+\ whether that record was sealed when bound. Every bound setter is sealed or
+\ has a live record, hence live code: a cut notice (RETIRE-CUT) drops each
+\ unsealed setter whose record it removes before its code goes
+\ (src/habu/xref.f TRUNCATE), and a sealed setter's code is never truncated:
+\ the one cut below the seal, seed-ndict!, removes records and keeps code
+\ (src/habu/prefix-rewind.f), SEAL-DICT-GUARD dies on a FORGET or HIDE below
+\ the seal, and every rollback returns to a mark taken after it. Without the
+\ kernel's cut cell no setter is bound. Cells past RETIRE-N hold 0: a
+\ setter is a session's address, and an image saved after the session would
+\ keep it and differ from run to run.
+4 constant RETIRE-CAP
+RETIRE-CAP TYPED-BUFFER RETIRE-XTS n
+RETIRE-CAP TYPED-BUFFER RETIRE-ORDS n
+RETIRE-CAP TYPED-BUFFER RETIRE-SEALED bool
+variable RETIRE-N
 variable UNOBSERVE-XT
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -797,45 +810,97 @@ variable PENDING-KEY-U
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
 
-\ Clear the retire hook this session set, unless its XREF is gone or now
-\ answers another setter's record.
+\ Keep the first kept bound setters; clear the cells of the rest.
+: RETIRE-KEEP ( n -- )
+   {: kept:n :}
+   RETIRE-N @ kept ?do
+      0 i RETIRE-XTS !  0 i RETIRE-ORDS !  false i RETIRE-SEALED !
+   loop
+   kept RETIRE-N ! ;
+
+\ Clear the retire hook of each bound setter.
 : RETIRE-UNSET ( -- )
-   RETIRE-SETTER @ {: old:n :}
-   old 0= if exit then
-   0 RETIRE-SETTER !
-   RETIRE-SETTER-ORD @ ndict@ < 0= if exit then
-   RETIRE-SETTER-ORD @ XREF-REC XREF-START old <> if exit then
-   0 old RETIRE-SET-XT execute ;
+   RETIRE-N @ 0 ?do 0 i RETIRE-XTS @ RETIRE-SET-XT execute loop
+   0 RETIRE-KEEP ;
 
-\ The open file objects see every retirement through the running kernel's
+\ A cut to count, noticed while the records it removes and their code stand:
+\ clear and forget each unsealed bound setter whose record it removes. A
+\ sealed setter stays bound, as its code keeps retiring through its own hook
+\ after an engine build's rewind.
+: RETIRE-CUT ( n -- )
+   {: count:n :}
+   0 RETIRE-N @ 0 ?do
+      {: kept:n :}
+      i RETIRE-XTS @ {: xt:n :}
+      i RETIRE-SEALED @ 0= i RETIRE-ORDS @ count >= and if
+         0 xt RETIRE-SET-XT execute
+         kept
+      else
+         xt kept RETIRE-XTS !
+         i RETIRE-ORDS @ kept RETIRE-ORDS !
+         i RETIRE-SEALED @ kept RETIRE-SEALED !
+         kept 1+
+      then
+   loop RETIRE-KEEP ;
+
+\ Bind setter xt with its record ordinal, sealed when that record lies below a
+\ set image seal.
+: RETIRE-ADD ( n -- )
+   {: xt:n :}
+   s" XREF:BEFORE-RETIRE!" XREF-FIND NFILE-REF:REC-ORD {: ord:n :}
+   xt RETIRE-N @ RETIRE-XTS !
+   ord RETIRE-N @ RETIRE-ORDS !
+   ord SEAL-NDICT@ < SEAL-NDICT@ 0<> and RETIRE-N @ RETIRE-SEALED !
+   1 RETIRE-N +! ;
+
+: RETIRE-BOUND? ( n -- bool )
+   {: xt:n :}
+   RETIRE-N @ 0 ?do
+      i RETIRE-XTS @ xt = if true unloop exit then
+   loop false ;
+
+\ The open file objects see every retirement through each XREF's
 \ XREF:BEFORE-RETIRE!, looked up at the session's open and at each file's open
-\ and close: an engine build loads a new XREF, whose hook the old binding
-\ misses, so every file open while it moves refuses (NUNIT-OBJECT
-\ HOOK-CHANGED).
+\ and close. An engine build's rewind cuts the running kernel's records but not
+\ its code, which keeps retiring through its own hook, and the build then loads
+\ a new XREF: a setter stays bound while it is sealed or its record lives, so
+\ a bound xt is always a live setter. Every open file refuses when no setter
+\ is bound: its retirements would pass unseen. A new setter refuses every open
+\ file too, as its hook held nothing from its definition until now
+\ (src/habu/xref.f retires words through its own before it closes), and when
+\ the list is full it stays unbound, so the next open finds it new again.
+\ Without the cut cell nothing would drop a cut setter, and every file refuses
+\ cut-notice-absent: no setter is bound.
 : BIND-RETIRE ( -- )
+   CUT-CELL @ NULL-PTR = if exit then
    s" XREF:BEFORE-RETIRE!" TARGET-XT? {: xt:n :}
-   xt RETIRE-SETTER @ = if exit then
-   RETIRE-SETTER @ 0<> {: moved:bool :}
-   RETIRE-UNSET
-   xt 0<> if
-      ['] NUNIT-OBJECT:FILE-RETIRE RETIRE>N xt RETIRE-SET-XT execute
-      xt RETIRE-SETTER !
-      s" XREF:BEFORE-RETIRE!" XREF-FIND NFILE-REF:REC-ORD RETIRE-SETTER-ORD !
+   xt 0= if
+      RETIRE-N @ 0= if s" retire-hook-absent" NUNIT-OBJECT:REFUSE-ALL then
+      exit
    then
-   moved if NUNIT-OBJECT:HOOK-CHANGED then ;
+   xt RETIRE-BOUND? 0= if
+      s" retire-hook-new" NUNIT-OBJECT:REFUSE-ALL
+      RETIRE-N @ RETIRE-CAP = if exit then
+      xt RETIRE-ADD
+   then
+   ['] NUNIT-OBJECT:FILE-RETIRE RETIRE>N xt RETIRE-SET-XT execute ;
 
-\ The open file objects follow every dictionary cut through the running
-\ kernel's one capture cut cell, held for the session. A kernel without it
-\ leaves the cell unbound, and every file object refuses (NUNIT-OBJECT
-\ FILE-BEGIN).
+\ The kernel's capture cut notice, to count.
+: CUT-NOTICE ( n -- )
+   dup RETIRE-CUT NUNIT-OBJECT:FILE-CUT ;
+
+\ The open file objects and the bound setters follow every dictionary cut
+\ through the running kernel's one capture cut cell, held for the session. A
+\ kernel without it leaves the cell unbound, and every file object refuses
+\ (NUNIT-OBJECT FILE-BEGIN).
 : BIND-CUT ( -- )
-   BIND-RETIRE
    s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
       dup 0= if drop exit then
    CUT-CELL-XT execute {: cell:ptr :}
    cell CELL-VIEW @ 0<> if BAD then
-   ['] NUNIT-OBJECT:FILE-CUT cell CUT-SLOT xt!
-   cell CUT-CELL ! ;
+   ['] CUT-NOTICE cell CUT-SLOT xt!
+   cell CUT-CELL !
+   BIND-RETIRE ;
 
 : UNBIND-CUT ( -- )
    RETIRE-UNSET
@@ -967,10 +1032,13 @@ variable USER-SEEN
    USER-SEEN @ true ;
 
 \ Whether the innermost file took TASK user slots: a replay restores none.
+\ A file during which TASK came to be bound has no watermark to compare and
+\ counts as taking them.
 : SLOTS-MOVED? ( -- bool )
-   F-SLOTS-BOUND F@ 0= if false exit then
-   USER-MARK 0= if drop false exit then
-   F-SLOTS F@ <> ;
+   USER-MARK {: mark:n bound:bool :}
+   bound 0= if false exit then
+   F-SLOTS-BOUND F@ 0= if true exit then
+   mark F-SLOTS F@ <> ;
 
 \ Open the object of the file just pushed; its first row is its own source's
 \ content. Rows join an object only at ROWS-FLUSH, so the row recorded before
@@ -980,8 +1048,8 @@ variable USER-SEEN
    NFILE-INPUTS:MARK F-MARK F!
    USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
-   BIND-RETIRE
-   FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN ;
+   FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN
+   BIND-RETIRE ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
 \ file's defs definitions, in ordinal order.
