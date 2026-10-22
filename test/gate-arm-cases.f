@@ -71,6 +71,13 @@ SUITE compiler-native-vocab
    test/compiler/native-vocab.f
 ;SUITE
 
+\ The fixture must outgrow the AArch64 PC-relative literal load's 1 MiB
+\ reach; x86-64 loads data RIP-relative within 2 GiB, so no pool sits beyond
+\ reach there and its stripped images run in the shared stripped rows.
+SUITE stripped-pool-reach
+   test/stripped-pool-reach.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop

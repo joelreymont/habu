@@ -20,8 +20,8 @@ using TEST
 \ builds. check-cli-boundary, lsp-boundary, hb-build-aot-image,
 \ whitebox-engine-key and check-drivers need no keyed image, including their
 \ child load paths, and start at once. check-verify waits for the cold engine;
-\ stripped-pool-reach, hb-build-repl-image, dictionary-capacity,
-\ xml-owner-consumer and engine-stack-machine wait for a builder image: each
+\ hb-build-repl-image, dictionary-capacity, xml-owner-consumer and
+\ engine-stack-machine wait for a builder image: each
 \ steps aside until it settles and then starts ahead of every later row.
 SUITE check-cli-boundary
    tools/check-test.f
@@ -48,10 +48,6 @@ SUITE whitebox-engine-key
 \ TCP4; writes build/ws-transcript.txt and compares it whole.
 SUITE websocket
    src/lib/net/ws-test.f
-;SUITE
-
-SUITE stripped-pool-reach
-   test/stripped-pool-reach.f
 ;SUITE
 
 SUITE hb-build-repl-image
