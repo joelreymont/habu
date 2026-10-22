@@ -640,6 +640,39 @@ variable INCOMPLETE-SAVED
    RUN-APP SUCCESS OUT$ s" share" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
+\ ROLLED runs at load, so sdfail generates SDFAIL:MAKE inside the build and then
+\ fails at commit on the SDFAIL:A it would derive; the build catches the code.
+: GENERATED-SOURCE ( n -- )
+   {: last:n :}
+   0 INPUT-U !
+   S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
+      INPUT CAP INPUT-U BUF-APPEND
+   SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
+   s" app.f" INPUT INPUT-U @ PUT ;
+
+: GENERATED-CASE ( -- )
+   s" words a declaration generates store and reuse like other definitions" T-LABEL
+   1 DIAG? !
+   40 GENERATED-SOURCE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS
+   s" generated-cold.err" AT ERR$ WRITE-ALL
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=RED\n" CONTAINS? TTRUE
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
+   ERR$ s" reason=checker-busy" CONTAINS? TFALSE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n" CONTAINS? TTRUE
+   41 GENERATED-SOURCE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS
+   s" generated-warm.err" AT ERR$ WRITE-ALL
+   REUSED
+   \ Only MAIN's source changed, so every other word, generated or not, hits.
+   DIAG-LINES 1 T=
+   ERR$ s" name=MAIN path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n" CONTAINS? TTRUE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   DIAG-LINES 0 T=
+   0 DIAG? ! ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -648,6 +681,7 @@ public
    s" execute-cache" AT MAKE-DIR
    s" definition-cache" AT MAKE-DIR
    s" history-cache" AT MAKE-DIR
+   s" generated-cache" AT MAKE-DIR
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" primitive" STR= if
          PRIMITIVE-CASES
@@ -735,6 +769,12 @@ public
          s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
+      0 SCRIPT-ARGV$ s" generated" STR= if
+         GENERATED-CASE
+         T-REPORT
+         s" native file auto artifacts: " type ROOT$ type cr
+         exit
+      then
       0 SCRIPT-ARGV$ s" hook" STR= if
          HOOK-CASE
          T-REPORT
@@ -757,6 +797,7 @@ public
    BODY-EOF-CASE
    BODY-INCOMPLETE-CASE
    HOOK-CASE
+   GENERATED-CASE
    T-REPORT
    s" native file auto artifacts: " type ROOT$ type cr ;
 ;package

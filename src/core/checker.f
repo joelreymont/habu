@@ -24761,7 +24761,8 @@ variable CUR-OPEN   variable CUR-PSIG
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
 \ and UNMAKE have empty bodies. Their sealed plan queues the two symbols with a
 \ zero-cell delta; boundary unification then records the declared product effect
-\ without letting user source forge a layout bundle. SUM/ENUM constructors do
+\ without letting user source forge a layout bundle. A word installed from the
+\ cache takes its row at install (PENDING-CTOR-RESULT). SUM/ENUM constructors do
 \ not use this authority: their generated checked bodies spell the canonical
 \ `construct family variant` form, which owns both certification and lowering.
 4 constant CTOR-PEND-CAP-INIT
@@ -24842,13 +24843,18 @@ variable CTOR-PEND-I
    CTOR-PEND-CLEAR
    a u CHECKER-RECORD-SYM cells CTOR-PEND-SYM+ ;
 
-: CTOR-PEND-MATCH? ( -- bool )
-   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <  NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
-   NMA @ NMU @ CHECKER-RECORD-SYM
-      CTOR-PEND-POS @ CTOR-PEND-SYM @ <> IF RES-FALSE EXIT THEN
+\ Take the plan row at the cursor when it is SYM's; the row's width goes to
+\ CTOR-PEND-K for CTOR-EXPECTED-ROW.
+: CTOR-PEND-TAKE? ( n -- bool ) {: sym:n :}
+   CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF RES-FALSE EXIT THEN
+   CTOR-PEND-POS @ CTOR-PEND-SYM @ sym <> IF RES-FALSE EXIT THEN
    CTOR-PEND-POS @ CTOR-PEND-CELLS @ CTOR-PEND-K !
    CTOR-PEND-POS @ 1 + CTOR-PEND-POS !
    RES-TRUE ;
+
+: CTOR-PEND-MATCH? ( -- bool )
+   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <  NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   NMA @ NMU @ CHECKER-RECORD-SYM CTOR-PEND-TAKE? ;
 
 : CTOR-PEND-REQUIRE-DONE ( -- )
    CTOR-PEND-POS @ CTOR-PEND-COUNT @ <> IF
@@ -27396,9 +27402,15 @@ FILE-CON-RESET
    UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-PACKAGE?
    UNIT-MARK-BASE ;
 
+\ A declaration frame is not busy. A word the declaration generates is captured
+\ inside the frame: the family it references enters the unit as a contract over
+\ live rows (type-family.f REG-LIVE-COUNT), so its export has no provisional
+\ rows of its own; a rollback truncates the compiled or installed word with the
+\ rest of the declaration, and the stored entry stays valid because it is keyed
+\ by the word's inputs, which the next run of the same declaration reproduces.
 : CHECKER-PENDING-IDLE? ( -- bool )
    UNIT-PENDING @ UNIT-MARKED @ or UNIT-PREP-PENDING @ or
-   UNIT-PLAN-OPEN @ or RBF-DEPTH @ or CHK-CAND @ or
+   UNIT-PLAN-OPEN @ or CHK-CAND @ or
    CHECKER-VERIFY-PKG-DEPTH @ or 0=
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? 0= and
    MULTI-ERR? 0= and ;
@@ -27419,8 +27431,7 @@ FILE-CON-RESET
    UNIT-TFAM-N@ UNIT-TFAM @ < or LIN-NDECL @ UNIT-LIN @ < or
    VREC-N @ UNIT-VREC @ <> or PIMM-N @ UNIT-PIMM @ < or
    IF UNIT-BAD THEN
-   UNIT-RBF? UNIT-CAND? UNIT-VERIFY?
-   UNIT-RECOVERY? UNIT-MULTI? ;
+   UNIT-CAND? UNIT-VERIFY? UNIT-RECOVERY? UNIT-MULTI? ;
 
 : UNIT-BUF-ROOM ( n -- ) {: add:n :}
    add 0 < IF UNIT-BAD THEN
@@ -29155,6 +29166,18 @@ UNIT-CON-PROJECT-INSTALL
    ord RECORD-LINK-CELL RLINK.EFFECT cells + @
    ord CHECKER-RESOLVE:REC-AT CHECKER-RESOLVE:CK-REC-NAME$ LBUF-EFFECT-RESULT ;
 
+\ A hit inside a generated constructor set stands for the body check that
+\ would have taken the installed word's plan row (CHECK, CTOR-PEND-MATCH?),
+\ and TDECL-GEN-EVAL-BODY requires the whole plan taken. The stored effect is
+\ the one the cold check certified over that row: same source, same context.
+: PENDING-CTOR-RESULT ( -- )
+   CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF EXIT THEN
+   ndict@ 1- {: ord:n :}
+   ord RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
+   ord RECORD-LINK-CELL RLINK.EFFECT cells + @ {: effect:n :}
+   effect 0= IF EXIT THEN
+   effect 1- E-PTR ER.SYM @ CTOR-PEND-TAKE? drop ;
+
 : PENDING-CLOSED-RESULT ( n -- )
    0 CK-CLOSED-SYM !
    UP-PLAN UP.CLOSED UP@ 0= IF EXIT THEN
@@ -29170,7 +29193,8 @@ UNIT-CON-PROJECT-INSTALL
 : CHECKER-PENDING-INSTALL ( n -- ) {: idx:n :}
    UNIT-PREP-PENDING @ 0= IF UNIT-BAD THEN
    idx [: dup CHECKER-UNIT-INSTALL
-          dup PENDING-CLOSED-RESULT PENDING-ACCESSOR-RESULT ;] catch {: rc:n :}
+          dup PENDING-CLOSED-RESULT PENDING-ACCESSOR-RESULT
+          PENDING-CTOR-RESULT ;] catch {: rc:n :}
    drop
    CHECKER-PENDING-DISCARD
    rc 0 <> IF rc throw THEN ;

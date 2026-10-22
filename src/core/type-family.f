@@ -3693,6 +3693,14 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
 
+\ The rows a family contract covers: every live row. Inside a declaration
+\ that includes its provisional field rows [PF-COMMIT-N, PF-N); a word the
+\ declaration generates is captured there, and commit moves no row, so its
+\ contract equals the one a later word computes over the committed rows.
+: REG-LIVE-COUNT ( n -- n ) {: k:n :}
+   k 3 = IF PF-N @ EXIT THEN
+   k REG-AOT-COUNT ;
+
 : REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
    k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
    k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
@@ -5939,7 +5947,7 @@ private
       loop
    loop
    fam TFAM-FLD-COUNT@ 0 ?do
-      fam TFAM-FLD-START@ i + PF-REC@ PF.SCH @
+      fam TFAM-FLD-START@ i + PF-PENDING-SCH@
       SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
    loop ;
 
@@ -6585,8 +6593,11 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
          plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
          i REG-AOT-BASE-PTR plan i UFP-TBASE@ i REG-AOT-WIDTH * +
          bytes ARENA-COPY
+         \ Only a store the plan grows moves its count: the field store's
+         \ setter also moves PF-N, which inside a declaration would retire
+         \ that declaration's provisional rows.
+         i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
       THEN
-      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
    loop
    TFX-SNAP-RESET VNX-SNAP-RESET FVX-SNAP-RESET
    TFM-EPOCH+ 0 SVX-GEN ! ;
@@ -6650,7 +6661,7 @@ create UNIT-FAM-CON-CELL 8 allot
 : UNIT-FAM-CON-ROW ( n n -- ptr n ) {: k:n id:n :}
    UNIT-FAM-PROJECT-ON @ IF
       k id 1 UNIT-FAM-PROJECT-VIEW CELL-VIEW EXIT THEN
-   id 0 < id k REG-AOT-COUNT >= or IF
+   id 0 < id k REG-LIVE-COUNT >= or IF
       s" tfam: FILE contract row is outside the registry" REG-AOT-REFUSE THEN
    k REG-AOT-BASE-PTR id k REG-AOT-WIDTH * + CELL-VIEW ;
 
