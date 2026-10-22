@@ -101,6 +101,17 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
 
+\ A caller the profiler must name has to keep a frame. Tier 1 compiles
+\ `: OUTER ( -- ) BUSY ;` as a jump to BUSY, which leaves no frame, so x86-64,
+\ which runs tier 1 only, takes the first spelling, with a step after the call.
+\ ARM64 takes the second: its default tier 0 calls BUSY from a real frame, and
+\ GDB-PROF-LATE-SRC, its one tier-1 case, names no caller there.
+: GDB-CALLER-LINE ( ptr u8 n ptr u8 n -- ) {: x:ptr xu:n a:ptr au:n :}
+   HB-TARGET-LINUX-X86-64? if x xu else a au then GE-SRC-LINE ;
+
+: GDB-OUTER-LINE ( -- )
+   s" : OUTER ( -- ) BUSY 0 drop ;" s" : OUTER ( -- ) BUSY ;" GDB-CALLER-LINE ;
+
 \ A package whose inner word is only ever reached through the outer one, so the
 \ caller rows under the inner word's row have exactly one right answer.
 : GDB-PROF-PKG-SRC ( -- )
@@ -108,7 +119,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" package GDBPKG" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : OUTER ( -- ) BUSY ;" GE-SRC-LINE
+   GDB-OUTER-LINE
    s" ;package" GE-SRC-LINE ;
 
 \ --- dot habu-complete-queued-profiler-a5ce1ad4: the SIGALRM handler reads nothing
@@ -180,7 +191,8 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ has to rebuild and replay to name them. BUSY calls LEAF and then loops, so once
 \ LEAF has returned the interrupted x30 points back inside BUSY on ARM -
 \ which leaves a deferred sample with no caller. Intel's machine return stack
-\ instead identifies OUTER as BUSY's caller for this same execution.
+\ instead identifies OUTER as BUSY's caller, OUTER keeping its frame there
+\ (GDB-OUTER-LINE).
 \ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
 \ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
@@ -191,7 +203,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" public" GE-SRC-LINE
    s" : LEAF ( n -- n ) 1+ ;" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- LEAF 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : OUTER ( -- ) BUSY ;" GE-SRC-LINE
+   GDB-OUTER-LINE
    s" ;package" GE-SRC-LINE
    s" GDBLATE:OUTER prof-off prof-report" GE-SRC-LINE ;
 
@@ -363,7 +375,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" public" GE-SRC-LINE
    s" variable GDBPH-ACC" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : PHASE ( -- ) BUSY ;" GE-SRC-LINE
+   s" : PHASE ( -- ) BUSY 0 drop ;" s" : PHASE ( -- ) BUSY ;" GDB-CALLER-LINE
    s" : FIND-REC ( ptr u8 n -- n ) {: a:ptr u:n :}" GE-SRC-LINE
    s"    -1 GDBPH-ACC !" GE-SRC-LINE
    s"    ndict@ 0 ?do i XREF-REC {: rec:ptr :}" GE-SRC-LINE
