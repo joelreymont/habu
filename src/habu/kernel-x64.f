@@ -1807,14 +1807,210 @@ private
    EXIT-BOUNDS
    done X64CODE:LBL, ;
 
+\ ---- the source-exec observer (habu1.f BSOURCEEXEC*) ---------------------------
+\ source-exec-run's frame is SOURCE-EXEC-FRAME-BYTES on the machine stack at
+\ layout.f's SX-* offsets; SOURCE-EXEC-CTX-CELL names the innermost one. The
+\ Habu loop arms it and runs the callbacks (src/habu/outer.f OBSERVE-ARM,
+\ OBSERVE-BEFORE, OBSERVE-FINISH); these rows run the continuation and read
+\ the cut. SX-LR is unused: the return address sits above the frame.
+
+\ r = the data stack's depth in cells above S0-CELL, as `depth` answers it.
+: DEPTH-OF, ( r64 -- ) {: r:r64 :}
+   r DSP ASM-SINK ENC-MOV-RR
+   r DATA-REG S0-CELL MEM-OFF ASM-SINK ENC-SUB-RM
+   r 3 >IMM8 ASM-SINK ENC-SHR-RI8 ;
+
+\ Push -1 when control falls through, 0 when it arrives at the label.
+: VERDICT, ( label -- ) {: bad:label :}
+   X64CODE:LBL {: done:label :}
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32  done JMP,
+   bad X64CODE:LBL,
+   RAX ZERO-REG,
+   done X64CODE:LBL,
+   RAX PUSH, ;
+
+\ Leave the frame in rdx when the loop that owns it stands at a cut: the frame
+\ armed, its callback suspended and its evaluator the current one. Otherwise
+\ go to the label.
+: CUT-FRAME, ( label -- ) {: absent:label :}
+   RDX DATA-REG SOURCE-EXEC-CTX-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   RCX RDX SX-ARMED MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   RCX RDX SX-SUSPEND MOV-LOAD,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE absent JCC,
+   RCX RDX SX-EVAL MOV-LOAD,
+   RCX DATA-REG EVAL-TOP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-NE absent JCC, ;
+
+\ Go to the label unless the DATA cell at the offset is zero.
+: SHUT, ( n label -- ) {: off:n bad:label :}
+   RCX DATA-REG off MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE bad JCC, ;
+
+\ A loader cut may carry parent data cells across the cut, but all compiler
+\ state and the return stack must be closed there (habu1.f BSOURCEEXECCLEAN).
+\ The frame is in rdx; an open cell goes to the label.
+: CUT-CLEAN, ( label -- ) {: bad:label :}
+   PEND-CELL bad SHUT,  TXN-ACTIVE-CELL bad SHUT,  P2-CELL bad SHUT,
+   JIT-SNAP:SP-CELL bad SHUT,  DOESB-CELL bad SHUT,
+   RCX DBASE-REG CFSTK-OFF MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE bad JCC,
+   RCX RDX SX-RDEPTH MOV-LOAD,
+   RCX RDX SX-RFLOOR MEM-OFF ASM-SINK ENC-CMP-RM  C-NE bad JCC, ;
+
+\ A boundary is a clean cut whose data stack is back at the frame's floor.
+: CUT-BALANCED, ( label -- ) {: bad:label :}
+   bad CUT-CLEAN,
+   RCX RDX SX-DEPTH MOV-LOAD,
+   RCX RDX SX-FLOOR MEM-OFF ASM-SINK ENC-CMP-RM  C-NE bad JCC, ;
+
+\ The frame's offsets below the after callback's save of the input cells.
+0 constant FIN-TKA
+8 constant FIN-TKL
+16 constant FIN-INP
+24 constant FIN-INE
+32 constant FIN-INB
+40 constant FIN-BYTES
+: FIN-SX ( n -- n ) FIN-BYTES + ;
+
+\ The finish after a continuation threw with an action pending (habu2.f
+\ EMIT-SOURCE-EXEC-FINISH with x15 nonzero): the frame in rsp, the status in
+\ rax. That action's after callback runs under catch with ( unit ticket
+\ status ), the depths and the cursor's offset recorded first and the input
+\ cells put back after it; its own status is dropped, so the continuation's
+\ stands. A clean continuation has already finished in the loop. No PROT
+\ window is reopened: the throw closed it and the definers open their own.
+: SOURCE-EXEC-FINISH, ( -- )
+   X64CODE:LBL X64CODE:LBL {: done:label callback-ok:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RCX RSP SX-PENDING MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RSP FIN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RCX TKA-CELL CELL@,  RCX RSP FIN-TKA MOV-STORE,
+   RCX TKL-CELL CELL@,  RCX RSP FIN-TKL MOV-STORE,
+   RCX INP-CELL CELL@,  RCX RSP FIN-INP MOV-STORE,
+   RCX INE-CELL CELL@,  RCX RSP FIN-INE MOV-STORE,
+   RCX SRCLOC:INB-CELL CELL@,  RCX RSP FIN-INB MOV-STORE,
+   RCX ZERO-REG,  RCX RSP SX-PENDING FIN-SX MOV-STORE,
+   RCX DEPTH-OF,  RCX RSP SX-DEPTH FIN-SX MOV-STORE,
+   RCX RSP-CELL CELL@,  RCX RSP SX-RDEPTH FIN-SX MOV-STORE,
+   RCX INP-CELL CELL@,
+   RCX RSP SX-SRC FIN-SX MEM-OFF ASM-SINK ENC-SUB-RM
+   RCX RSP SX-POS FIN-SX MOV-STORE,
+   RCX 1 IMM32,  RCX RSP SX-SUSPEND FIN-SX MOV-STORE,
+   RCX RSP SX-UNIT FIN-SX MOV-LOAD,  RCX PUSH,
+   RCX RSP SX-TICKET FIN-SX MOV-LOAD,  RCX PUSH,
+   RAX PUSH,
+   RAX RSP SX-AFTER FIN-SX MOV-LOAD,  RAX PUSH,
+   CAUGHT,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E callback-ok JCC,
+   DSP 3 CELL * >IMM8 ASM-SINK ENC-SUB-RI8         \ catch restored its three args
+   callback-ok X64CODE:LBL,
+   RCX RSP FIN-TKA MOV-LOAD,  RCX TKA-CELL CELL!,
+   RCX RSP FIN-TKL MOV-LOAD,  RCX TKL-CELL CELL!,
+   RCX RSP FIN-INP MOV-LOAD,  RCX INP-CELL CELL!,
+   RCX RSP FIN-INE MOV-LOAD,  RCX INE-CELL CELL!,
+   RCX RSP FIN-INB MOV-LOAD,  RCX SRCLOC:INB-CELL CELL!,
+   RCX ZERO-REG,  RCX RSP SX-SUSPEND FIN-SX MOV-STORE,
+   RSP FIN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   done X64CODE:LBL, ;
+
+\ Pop a cell into the frame field at the offset.
+: FRAME-POP, ( n -- ) {: off:n :}  RAX POP,  RAX RSP off MOV-STORE, ;
+
+\ Go to the label unless the frame field at the offset lies in [DBASE, CP).
+: IN-DICT, ( n label -- ) {: off:n bad:label :}
+   RAX RSP off MOV-LOAD,
+   RAX DBASE-REG ASM-SINK ENC-CMP-RR  C-B bad JCC,
+   RAX ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-CMP-RR  C-AE bad JCC, ;
+
+\ source-exec-run ( unit src len before after cont -- n ): link a fresh frame
+\ and run cont under catch, answering its status. A negative length or a
+\ callback outside [DBASE, CP) answers 70 before the frame is linked. A
+\ parent frame's construction is marked open while this one runs.
+: SOURCE-EXEC-RUN, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: bad:label checked:label no-parent:label :}
+   RSP SOURCE-EXEC-FRAME-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
+   SX-CONT FRAME-POP,  SX-AFTER FRAME-POP,  SX-BEFORE FRAME-POP,
+   SX-LEN FRAME-POP,  SX-SRC FRAME-POP,  SX-UNIT FRAME-POP,
+   RAX RSP SX-LEN MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-L bad JCC,
+   SX-BEFORE bad IN-DICT,  SX-AFTER bad IN-DICT,  SX-CONT bad IN-DICT,
+   RAX DATA-REG SOURCE-EXEC-CTX-CELL MOV-LOAD,  RAX RSP SX-PREV MOV-STORE,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E no-parent JCC,
+   RCX -1 >IMM32 ASM-SINK ENC-MOV-RI32  RCX RAX SX-CONSTRUCTION MOV-STORE,
+   no-parent X64CODE:LBL,
+   RAX ZERO-REG,
+   RAX RSP SX-ARMED MOV-STORE,  RAX RSP SX-PENDING MOV-STORE,
+   RAX RSP SX-SUSPEND MOV-STORE,
+   RAX -1 >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX RSP SX-CONSTRUCTION MOV-STORE,  RAX RSP SX-POS MOV-STORE,
+   RSP DATA-REG SOURCE-EXEC-CTX-CELL MOV-STORE,
+   RAX RSP SX-CONT MOV-LOAD,  RAX PUSH,
+   CAUGHT,
+   RAX RSP SX-LEN MOV-STORE,                      \ the status; the extent is done
+   SOURCE-EXEC-FINISH,
+   RCX RSP SX-PREV MOV-LOAD,  RCX DATA-REG SOURCE-EXEC-CTX-CELL MOV-STORE,
+   RAX RSP SX-LEN MOV-LOAD,
+   checked JMP,
+   bad X64CODE:LBL,
+   RAX 70 IMM32,
+   checked X64CODE:LBL,
+   RSP SOURCE-EXEC-FRAME-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX PUSH, ;
+
+: SOURCE-EXEC-LIVE, ( -- )
+   X64CODE:LBL {: absent:label :}
+   RAX DATA-REG SOURCE-EXEC-CTX-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E absent JCC,
+   absent VERDICT, ;
+
+: SOURCE-EXEC-BOUNDARY, ( -- )
+   X64CODE:LBL {: bad:label :}
+   bad CUT-FRAME,  bad CUT-BALANCED,  bad VERDICT, ;
+
+: SOURCE-EXEC-LOADER-CUT, ( -- )
+   X64CODE:LBL {: bad:label :}
+   bad CUT-FRAME,  bad CUT-CLEAN,  bad VERDICT, ;
+
+\ ( -- pos flag ): the cut's offset into the owned source and whether it is
+\ balanced; 0 0 away from a cut.
+: SOURCE-EXEC-POSITION, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: absent:label bad:label done:label :}
+   absent CUT-FRAME,
+   RCX RDX SX-POS MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-L absent JCC,
+   RCX PUSH,
+   bad CUT-BALANCED,  bad VERDICT,  done JMP,
+   absent X64CODE:LBL,
+   RAX ZERO-REG,  RAX PUSH,  RAX PUSH,
+   done X64CODE:LBL, ;
+
 \ source-unit-run ( xt -- ): the callback's whole execution uses the caller's
 \ cursor as its floor. No evaluator frame or SOURCE state changes. The saved
 \ cursor is compared before any data-stack push, including when the callback
-\ returns with the guarded extent exactly full.
+\ returns with the guarded extent exactly full. Inside an owned loop's pending
+\ action, the frame first records the depths the action left after popping
+\ the xt, so a cut inside the callback reads them (habu1.f
+\ B-SOURCE-UNIT-RUN's snapshot).
 : SOURCE-UNIT-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
+   X64CODE:LBL {: no-snap:label :}
    TASK-LIVE-GUARD,
    RAX POP,  CALLABLE,
+   RDX DATA-REG SOURCE-EXEC-CTX-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E no-snap JCC,
+   RCX RDX SX-ARMED MOV-LOAD,
+   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE no-snap JCC,
+   RCX RDX SX-PENDING MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E no-snap JCC,
+   RCX RDX SX-SUSPEND MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE no-snap JCC,
+   RCX RDX SX-EVAL MOV-LOAD,
+   RCX DATA-REG EVAL-TOP-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-NE no-snap JCC,
+   RCX DEPTH-OF,  RCX RDX SX-DEPTH MOV-STORE,
+   RCX DATA-REG RSP-CELL MOV-LOAD,  RCX RDX SX-RDEPTH MOV-STORE,
+   no-snap X64CODE:LBL,
    RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    DSP RSP RUN-DSP MOV-STORE,
    RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RCX RSP RUN-BASE MOV-STORE,
@@ -2376,10 +2572,9 @@ public
 \ Habu supplies the interpreter-bound rows on x86-64. The provided evaluate
 \ and evaluate-range entries are installed by that evaluator
 \ (src/habu/interpret.f OUTER:INSTALL-EVALUATE); evaluate-closed gives the
-\ first a guarded stack. Rows still tied to ARM's interpreter refuse until
-\ supplied in Habu: the source-exec observer attaches to that interpreter's
-\ evaluator and token dispatch, and the checker overlay's six replay writers
-\ have no x86-64 body yet.
+\ first a guarded stack. The source-exec rows run and read the frame the Habu
+\ loop arms (src/habu/outer.f OBSERVE-ARM). The checker overlay's six replay
+\ writers have no x86-64 body yet and refuse by name.
 \ The source runs under the kernel catch frame while its guard owns the unit
 \ hook. A throw resumes here, so both return paths clear the hook before the
 \ caller sees the status. An occupied hook or a guard outside live code
@@ -2431,12 +2626,13 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
-   s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-boundary?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-loader-cut?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-position" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" source-exec-handler" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" source-exec-run" [: SOURCE-EXEC-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-live?" [: SOURCE-EXEC-LIVE, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-boundary?" [: SOURCE-EXEC-BOUNDARY, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-loader-cut?" [: SOURCE-EXEC-LOADER-CUT, ;]
+      ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-position" [: SOURCE-EXEC-POSITION, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-exec-handler" [: RAX ZERO-REG,  RAX PUSH, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    PROVIDED-XT:EVALUATE-CELL s" evaluate" [: REFUSE-BODY ;] PROVIDED-ROW
    s" evaluate-closed" [: EVAL-CLOSED, ;] PRIM
    PROVIDED-XT:EVALUATE-RANGE-CELL s" evaluate-range" [: REFUSE-BODY ;]

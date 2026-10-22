@@ -6,8 +6,9 @@
 \    hb-x64-kernel-control           76  evaluate refuses: its fd-2 line, then 76
 \    hb-x64-kernel-control-negative  21  the same, expecting the wrong depth
 \    hb-x64-kernel-eval-range       76  source-range evaluation needs the interpreter
-\    hb-x64-kernel-source-exec      76  replay needs an interpreter; the
-\                                        source-exec-run row refuses by name
+\    hb-x64-kernel-source-exec       0  source-exec-run answers 70 for
+\                                        callbacks outside [DBASE, CP) and
+\                                        links no frame
 \    hb-x64-kernel-execute            0  execute; 2>r, 2r@ and 2r>; both arms of
 \                                        execute-floor
 \    hb-x64-kernel-catch              0  catch with no throw, then a throw from a
@@ -264,6 +265,9 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    1 PUSH,  s" 1" X64HARNESS:PUSH-TEXT,
    NOTHING PUSH-XT,  NOTHING PUSH-XT,  NOTHING PUSH-XT,
    s" source-exec-run" ROW,
+   70 EXPECT-POP,  0 X64HARNESS:EXPECT-DEPTH,
+   s" source-exec-live?" ROW,  0 EXPECT-POP,
+   X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 : BUILD-EVAL-RANGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
