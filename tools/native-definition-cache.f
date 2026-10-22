@@ -738,6 +738,11 @@ variable PENDING-KEY-U
    path pathu root rootu SOURCE-ROOT:RELATIVE
    root rootu SOURCE-ROOT:ENGINE$ STR= if 0 else 1 then ;
 
+\ The file frame's dependency rows, while the cache diagnostics are on.
+: FRAME-REPORT ( -- )
+   DIAG? @ 0= if exit then
+   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:FILE-REPORT ;
+
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -763,8 +768,11 @@ variable PENDING-KEY-U
    rootu F-ROOT-U F!
    q Q>N F-Q F!
    prior UNIT>N F-PRIOR F!
+   NUNIT-DEP:BEGIN-UNIT
    ['] UNIT-RUN catch {: unit-rc:n :}
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
+   ['] FRAME-REPORT catch {: report-rc:n :}
+   NUNIT-DEP:CLOSE-UNIT
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
@@ -773,6 +781,7 @@ variable PENDING-KEY-U
    unit-rc 0<> if unit-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
+   report-rc 0<> if report-rc throw then
    pop-rc 0<> if pop-rc throw then ;
 
 : FILE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )

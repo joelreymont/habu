@@ -1,7 +1,9 @@
-\ Observed inputs to one native definition. Section 14 carries declaration identities,
-\ checked contracts, frozen primitive schemas and fixed values; anything it
-\ cannot re-verify is an ORDERED row. A nested child keeps a separate span in
-\ the same byte arena.
+\ Observed inputs to one native definition and to one source file. Section 14
+\ carries declaration identities, checked contracts, frozen primitive schemas
+\ and fixed values; anything it cannot re-verify is an ORDERED row. A nested
+\ definition keeps a separate span in the definition arena. A file frame holds
+\ one row per kind and key, only about records the file did not make itself:
+\ those before its first ordinal or made by a child file it loaded.
 
 require src/lib/errors.f
 require src/lib/le.f
@@ -34,14 +36,36 @@ private
 48 constant RES-ROW-BYTES
 32 constant RES-KEY-BYTES
 32 constant PRIMITIVE-HEAD
+\ A file frame's cells: its row offset, its first record ordinal, where its
+\ children's record ranges start, and where its first ORDERED reason starts.
+0 constant F-OFF
+1 constant F-FIRST
+2 constant F-RBASE
+3 constant F-WHY
+4 constant FRAME-CELLS
+1024 constant SLOTS-MIN
+$cbf29ce484222325 constant FNV-BASIS
+$100000001b3 constant FNV-PRIME
 
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER FRAMES n
-DYNAMIC-BUFFER FRAME-KINDS n
 DYNAMIC-BUFFER RES-KEY u8
 DYNAMIC-BUFFER PRIMITIVE-DATA u8
+\ File frames: rows, frame cells, closed child ranges (first, end) of every
+\ open frame, first ORDERED reasons, and the slots indexing the open rows.
+DYNAMIC-BUFFER FBYTES u8
+DYNAMIC-BUFFER FFRAMES n
+DYNAMIC-BUFFER FRANGES n
+DYNAMIC-BUFFER FWHY u8
+DYNAMIC-BUFFER FSLOTS n
 0 CWORK-VARIABLE USED n
 0 CWORK-VARIABLE DEPTH n
+0 CWORK-VARIABLE FUSED n
+0 CWORK-VARIABLE FDEPTH n
+0 CWORK-VARIABLE FRN n
+0 CWORK-VARIABLE WHYU n
+0 CWORK-VARIABLE FCAP n
+0 CWORK-VARIABLE FLIVE n
 0 CWORK-VARIABLE CHECK-OFF n
 0 CWORK-VARIABLE CHECK-OK bool
 0 CWORK-VARIABLE MISS-P ptr u8
@@ -80,40 +104,155 @@ INSTALL-DEFAULT
    DEPTH @ 0 <= if BAD then
    DEPTH @ 1- FRAMES @ ;
 
+\ Field n of the innermost file frame.
+: FFIELD ( n -- ptr n )
+   FDEPTH @ 0 <= if BAD then
+   FDEPTH @ 1- FRAME-CELLS * + FFRAMES ;
+
+: OPEN? ( -- bool ) DEPTH @ 0 > FDEPTH @ 0 > or ;
+
+\ A record the innermost file made itself: at or after its first ordinal and
+\ outside every child file it loaded. Rows about it are internal to the file.
+: OWN? ( n -- bool )
+   {: ord:n :}
+   FDEPTH @ 0= if false exit then
+   ord F-FIRST FFIELD @ < if false exit then
+   FRN @ F-RBASE FFIELD @ ?do
+      ord i FRANGES @ >= ord i 1+ FRANGES @ < and if false unloop exit then
+   2 +loop
+   true ;
+
+\ No open frame keeps a row about this record.
+: SKIP? ( n -- bool )
+   DEPTH @ 0 > if drop false exit then
+   OWN? FDEPTH @ 0= or ;
+
 : ROOM ( n -- n )
    {: need:n :}
    need 0 < need MEM-MAX-N USED @ - > or if BAD then
    USED @ need + BYTES-RESERVE
    USED @ dup need + USED ! ;
 
-: ADD-ROW ( n ptr u8 n ptr u8 n -- )
-   {: kind:n key:ptr keyu:n data:ptr datau:n :}
-   DEPTH @ 0= if BAD then
+: FROOM ( n -- n )
+   {: need:n :}
+   need 0 < need MEM-MAX-N FUSED @ - > or if BAD then
+   FUSED @ need + FBYTES-RESERVE
+   FUSED @ dup need + FUSED ! ;
+
+: ROW-SIZE ( n n n -- n )
+   {: kind:n keyu:n datau:n :}
    keyu 0 < datau 0 < or if BAD then
    kind ORDERED <> kind CHECKER-ROLE <> and kind COMPILER-ROLE <> and
       kind SCOPE <> and
       keyu 0= and if BAD then
    keyu MEM-MAX-N ROW-BYTES - > if BAD then
    datau MEM-MAX-N ROW-BYTES - keyu - > if BAD then
-   ROW-BYTES keyu + datau + ROOM {: off:n :}
-   kind off BYTES LE:U64!
-   keyu off 8 + BYTES LE:U64!
-   datau off 16 + BYTES LE:U64!
-   \ A zero-length field ends exactly at the reserved bound for a trailing
-   \ ORDERED row; forming BYTES at that one-past-end offset is invalid.
-   keyu 0 > if key off ROW-BYTES + BYTES keyu BYTE-COPY then
-   datau 0 > if data off ROW-BYTES keyu + + BYTES datau BYTE-COPY then
-   FRAME 8 + BYTES dup LE:U64@ 1+ swap LE:U64! ;
+   ROW-BYTES keyu + datau + ;
 
-: BINDING-ROW ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n contract:ptr contractu:n :}
+\ A zero-length field ends exactly at the reserved bound for a trailing
+\ ORDERED row; nothing is copied there.
+: ROW! ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: row:ptr kind:n key:ptr keyu:n data:ptr datau:n :}
+   kind row LE:U64!
+   keyu row 8 + LE:U64!
+   datau row 16 + LE:U64!
+   keyu 0 > if key row ROW-BYTES + keyu BYTE-COPY then
+   datau 0 > if data row ROW-BYTES keyu + + datau BYTE-COPY then ;
+
+: COUNT+ ( ptr u8 -- ) 8 + dup LE:U64@ 1+ swap LE:U64! ;
+
+: DEF-ROW ( n ptr u8 n ptr u8 n -- )
+   {: kind:n key:ptr keyu:n data:ptr datau:n :}
+   kind keyu datau ROW-SIZE ROOM {: off:n :}
+   off BYTES kind key keyu data datau ROW!
+   FRAME BYTES COUNT+ ;
+
+: KEY-HASH ( n ptr u8 n -- n )
+   {: kind:n key:ptr keyu:n :}
+   FNV-BASIS kind xor FNV-PRIME *
+   keyu 0 ?do key i + c@ xor FNV-PRIME * loop ;
+
+: ROW-SPAN ( ptr u8 -- n )
+   dup 8 + LE:U64@ swap 16 + LE:U64@ + ROW-BYTES + ;
+
+: SAME-ROW? ( n n ptr u8 n -- bool )
+   {: off:n kind:n key:ptr keyu:n :}
+   off FBYTES {: row:ptr :}
+   row LE:U64@ kind <> if false exit then
+   row 8 + LE:U64@ keyu <> if false exit then
+   keyu 0= if true exit then
+   row ROW-BYTES + keyu key keyu STR= ;
+
+\ Whether slot idx holds kind and key, and whether it ends the probe. A slot
+\ below the innermost frame belongs to an outer frame and never matches.
+: SLOT-END ( n n ptr u8 n -- bool bool )
+   {: idx:n kind:n key:ptr keyu:n :}
+   idx FSLOTS @ {: v:n :}
+   v 0= if false true exit then
+   v 1- F-OFF FFIELD @ < if false false exit then
+   v 1- kind key keyu SAME-ROW? dup ;
+
+\ The slot holding the innermost frame's row for kind and key, else the empty
+\ slot that ends its probe.
+: PROBE ( n ptr u8 n -- n bool )
+   {: kind:n key:ptr keyu:n :}
+   kind key keyu KEY-HASH FCAP @ 1- and
+   begin dup kind key keyu SLOT-END 0= while
+      drop 1+ FCAP @ 1- and
+   repeat ;
+
+\ Index the row at off in the first empty slot of its probe; the next row.
+: PLACE ( n -- n )
+   {: off:n :}
+   off FBYTES {: row:ptr :}
+   row LE:U64@ row ROW-BYTES + row 8 + LE:U64@ KEY-HASH FCAP @ 1- and
+   begin dup FSLOTS @ 0<> while 1+ FCAP @ 1- and repeat
+   off 1+ swap FSLOTS !
+   off row ROW-SPAN + ;
+
+: INDEX-FRAME ( n -- )
+   FRAME-CELLS * F-OFF + FFRAMES @ {: off:n :}
+   off HEADER-BYTES +
+   off FBYTES 8 + LE:U64@ 0 ?do PLACE loop
+   drop ;
+
+\ Outer frames first, so an outer row's probe never passes an inner slot and
+\ closing a frame can empty its slots alone.
+: REINDEX ( n -- )
+   {: cap:n :}
+   cap FSLOTS-RESERVE
+   cap FCAP !
+   cap 0 ?do 0 i FSLOTS ! loop
+   FDEPTH @ 0 ?do i INDEX-FRAME loop ;
+
+: FILE-ROW ( n ptr u8 n ptr u8 n -- )
+   {: kind:n key:ptr keyu:n data:ptr datau:n :}
+   FLIVE @ 1+ 2 * FCAP @ > if FCAP @ 2 * SLOTS-MIN max REINDEX then
+   kind key keyu PROBE {: idx:n found:bool :}
+   found if exit then
+   kind keyu datau ROW-SIZE FROOM {: off:n :}
+   off FBYTES kind key keyu data datau ROW!
+   off 1+ idx FSLOTS !
+   1 FLIVE +!
+   F-OFF FFIELD @ FBYTES COUNT+ ;
+
+\ The definition frame takes each observation; the file frame one row per
+\ kind and key about a record it did not make.
+: ADD-ROW ( n n ptr u8 n ptr u8 n -- )
+   {: ord:n kind:n key:ptr keyu:n data:ptr datau:n :}
+   OPEN? 0= if BAD then
+   DEPTH @ 0 > if kind key keyu data datau DEF-ROW then
+   FDEPTH @ 0 > ord OWN? 0= and if kind key keyu data datau FILE-ROW then ;
+
+: BINDING-ROW ( n ptr u8 n ptr u8 n -- )
+   {: ord:n key:ptr keyu:n contract:ptr contractu:n :}
    contractu 0= if BAD then
-   BINDING key keyu contract contractu ADD-ROW ;
+   ord BINDING key keyu contract contractu ADD-ROW ;
 
-: VALUE-ROW ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n result:ptr resultu:n :}
+: VALUE-ROW ( n ptr u8 n ptr u8 n -- )
+   {: ord:n key:ptr keyu:n result:ptr resultu:n :}
    resultu 8 <> if BAD then
-   VALUE key keyu result resultu ADD-ROW ;
+   ord VALUE key keyu result resultu ADD-ROW ;
 
 : REMEMBER-MISS ( ptr u8 n -- )
    MISS-P @ NULL-PTR = if
@@ -350,59 +489,66 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    pathu 0 > if s"  path=" DIAG-W2 DIAG-PATH @ pathu DIAG-W2 then
    S\" \n" DIAG-W2 ;
 
-: DIAG-ORDERED ( ptr u8 n n -- )
+: WHY+ ( ptr u8 n -- )
+   {: text:ptr textu:n :}
+   textu 0= if exit then
+   WHYU @ textu + FWHY-RESERVE
+   text WHYU @ FWHY textu BYTE-COPY
+   textu WHYU +! ;
+
+: FILE-ORDERED? ( -- bool ) WHYU @ F-WHY FFIELD @ > ;
+
+\ The definition frame reports its first ORDERED row now; the file frame keeps
+\ its first reason for FILE-REPORT.
+: ORDERED-AT ( ptr u8 n ptr u8 n n -- )
+   {: reason:ptr reasonu:n name:ptr nameu:n ord:n :}
+   DEPTH @ 0 > if reason reasonu name nameu ord DIAG-ORDERED-NAME then
+   FDEPTH @ 0 > ord OWN? 0= and if
+      FILE-ORDERED? 0= if
+         s"  reason=" WHY+ reason reasonu WHY+
+         nameu 0 > if s"  word=" WHY+ name nameu WHY+ then
+      then
+   then
+   ord ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
+
+: ORDERED-BY ( ptr u8 n n -- )
    {: reason:ptr reasonu:n ord:n :}
    reason reasonu
    ord 0 >= if ord XREF-REC XREF-NAME$ else NULL-PTR 0 then
-   ord DIAG-ORDERED-NAME ;
+   ord ORDERED-AT ;
 
 : CAPTURE-BIND ( n -- )
    {: ord:n :}
-   DEPTH @ 0= if exit then
+   ord SKIP? if exit then
    ord NFILE-REF:CURRENT-RECORD? if exit then
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
-   keyed 0= if
-      s" binding-key-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   keyed 0= if s" binding-key-unknown" ord ORDERED-BY exit then
    ord CONTRACT$ {: contract:ptr contractu:n known:bool :}
-   known 0= if
-      s" binding-contract-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
-   key keyu contract contractu BINDING-ROW ;
+   known 0= if s" binding-contract-unknown" ord ORDERED-BY exit then
+   ord key keyu contract contractu BINDING-ROW ;
 
 : CAPTURE-READER-FLAGS ( n n -- )
    {: ord:n flags:n :}
-   DEPTH @ 0= if exit then
+   ord SKIP? if exit then
    ord NFILE-REF:CURRENT-RECORD? if exit then
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
-   keyed 0= if
-      s" reader-key-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   keyed 0= if s" reader-key-unknown" ord ORDERED-BY exit then
    flags DNAME-IMM and CELL-BYTES LE:U64!
-   READER-FLAGS key keyu CELL-BYTES 8 ADD-ROW ;
+   ord READER-FLAGS key keyu CELL-BYTES 8 ADD-ROW ;
 
 : CAPTURE-VALUE ( n -- )
    {: ord:n :}
-   DEPTH @ 0= if exit then
+   ord SKIP? if exit then
    ord NFILE-REF:CURRENT-RECORD? if exit then
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
-   keyed 0= if
-      s" value-key-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   keyed 0= if s" value-key-unknown" ord ORDERED-BY exit then
    ord FIXED-RAW? {: value:n known:bool :}
-   known 0= if
-      s" fixed-value-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   known 0= if s" fixed-value-unknown" ord ORDERED-BY exit then
    value CELL-BYTES LE:U64!
-   key keyu CELL-BYTES 8 VALUE-ROW ;
+   ord key keyu CELL-BYTES 8 VALUE-ROW ;
 
-: ADD-RESOLUTION ( n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: role:n shape:n spelling:ptr spellingu:n namespace:ptr namespaceu:n
+: ADD-RESOLUTION ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ord:n role:n shape:n spelling:ptr spellingu:n namespace:ptr namespaceu:n
       key:ptr keyu:n :}
    spellingu 0 < namespaceu 0 < or if BAD then
    spellingu MEM-MAX-N RES-KEY-BYTES - > if BAD then
@@ -418,12 +564,12 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    namespaceu 0<> if
       namespace 32 spellingu + RES-KEY namespaceu BYTE-COPY
    then
-   RESOLUTION 0 RES-KEY RES-KEY-BYTES spellingu + namespaceu +
+   ord RESOLUTION 0 RES-KEY RES-KEY-BYTES spellingu + namespaceu +
       key keyu ADD-ROW ;
 
 : OBSERVE-RESOLUTION ( ptr u8 n -- )
    {: row:ptr rowu:n :}
-   DEPTH @ 0= if exit then
+   OPEN? 0= if exit then
    rowu RES-ROW-BYTES < if BAD then
    row LE:U64@ drop
    row 8 + LE:U64@ {: role:n :}
@@ -436,73 +582,40 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    spellingu rowu RES-ROW-BYTES - > if BAD then
    namespaceu rowu RES-ROW-BYTES spellingu + - <> if BAD then
    ord -1 < if
-      s" resolution-ambiguous" row RES-ROW-BYTES + spellingu -1
-         DIAG-ORDERED-NAME
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
+      s" resolution-ambiguous" row RES-ROW-BYTES + spellingu -1 ORDERED-AT
+      exit
    then
    ord 0 >= if
+      ord SKIP? if exit then
       ord NFILE-REF:CURRENT-RECORD? if exit then
       ord NFILE-REF:DECL-KEY? 0= if
-         2drop s" resolution-key-unknown" ord DIAG-ORDERED
-         ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
+         2drop s" resolution-key-unknown" ord ORDERED-BY exit
       then 2drop
    then
    ord -1 = if
-      role shape row RES-ROW-BYTES + spellingu
+      -1 role shape row RES-ROW-BYTES + spellingu
          row RES-ROW-BYTES spellingu + + namespaceu
          NULL-PTR 0 ADD-RESOLUTION
    else
       ord NFILE-REF:DECL-KEY$ {: key:ptr keyu:n :}
-      role shape row RES-ROW-BYTES + spellingu
+      ord role shape row RES-ROW-BYTES + spellingu
          row RES-ROW-BYTES spellingu + + namespaceu
          key keyu ADD-RESOLUTION
    then ;
 
-: ABSENCE-DECL ( n -- ) {: ord:n :}
-   ord XREF-REC {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if
-      rec XREF-NAME$ {: name:ptr nameu:n :}
-      8 name nameu name nameu NFILE-REF:RESOLVE-CANDIDATE
-         {: got:n shape:n :}
-      got -1 <> if
-         s" namespace-present" name nameu got DIAG-ORDERED-NAME
-         ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-      then
-      8 shape name nameu name nameu NULL-PTR 0 ADD-RESOLUTION
-      exit
-   then
-   rec NFILE-REF:PACKAGE-OF {: namespace:ptr namespaceu:n vis:n :}
-   vis 3 = if exit then
-   rec XREF-NAME$ {: name:ptr nameu:n :}
-   vis 0= if 0 else vis then {: role:n :}
-   role name nameu namespace namespaceu
-      NFILE-REF:RESOLVE-CANDIDATE {: got:n shape:n :}
-   got -1 <> if
-      s" declaration-present" name nameu got DIAG-ORDERED-NAME
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
-   role shape name nameu namespace namespaceu NULL-PTR 0
-      ADD-RESOLUTION ;
-
 : CAPTURE-CHECKER-ROLE ( -- )
-   DEPTH @ 0= if exit then
+   OPEN? 0= if exit then
    CHECKER-ROLE$ {: digest:ptr digestu:n known:bool :}
-   known 0= if
-      s" checker-producer-unknown" -1 DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   known 0= if s" checker-producer-unknown" -1 ORDERED-BY exit then
    digestu 32 <> if BAD then
-   CHECKER-ROLE NULL-PTR 0 digest digestu ADD-ROW ;
+   -1 CHECKER-ROLE NULL-PTR 0 digest digestu ADD-ROW ;
 
 : CAPTURE-COMPILER-ROLE ( -- )
-   DEPTH @ 0= if exit then
+   OPEN? 0= if exit then
    COMPILER-ROLE$ {: digest:ptr digestu:n known:bool :}
-   known 0= if
-      s" compiler-producer-unknown" -1 DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   known 0= if s" compiler-producer-unknown" -1 ORDERED-BY exit then
    digestu 32 <> if BAD then
-   COMPILER-ROLE NULL-PTR 0 digest digestu ADD-ROW ;
+   -1 COMPILER-ROLE NULL-PTR 0 digest digestu ADD-ROW ;
 
 : BOUND@ ( ptr u8 n -- n )
    {: row:ptr field:n :}
@@ -527,24 +640,18 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    {: row:ptr ord:n :}
    row CHECKER-OWNER-ABI:BOUND-SYM BOUND@ {: sym:n :}
    ord sym PRIMITIVE-STATE {: control:n known:bool :}
-   known 0= if
-      s" primitive-state-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   known 0= if s" primitive-state-unknown" ord ORDERED-BY exit then
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
-   keyed 0= if
-      s" primitive-key-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
+   keyed 0= if s" primitive-key-unknown" ord ORDERED-BY exit then
    sym control PRIMITIVE-DATA$ {: data:ptr datau:n :}
-   PRIMITIVE key keyu data datau ADD-ROW
+   ord PRIMITIVE key keyu data datau ADD-ROW
    CAPTURE-CHECKER-ROLE ;
 
 \ This row is the checker's exact resolution from the successful source scan.
 \ The tape's symbol interner is only a name; it is never a declaration key.
 : OBSERVE-BOUND ( ptr u8 n -- )
    {: row:ptr size:n :}
-   DEPTH @ 0= if exit then
+   OPEN? 0= if exit then
    size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if
       CHECKER-OWNER-ABI:BINDING-RC throw
    then
@@ -552,6 +659,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    kind CHECKER-OWNER-ABI:BOUND-DICT = if
       row CHECKER-OWNER-ABI:BOUND-RECORD BOUND@ {: ord:n :}
       ord 0 < if CHECKER-OWNER-ABI:BINDING-RC throw then
+      ord SKIP? if exit then
       row CHECKER-OWNER-ABI:BOUND-CTL BOUND@
          CHECKER-OWNER-ABI:BOUND-SEEDED and 0<> if
          row ord CAPTURE-PRIMITIVE
@@ -560,53 +668,109 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
       ord flags CAPTURE-READER-FLAGS
       flags DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then
       \ What an immediate ran while compiling cannot be re-verified.
-      flags DNAME-IMM and 0<> if
-         s" immediate-binding" ord DIAG-ORDERED
-         ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW
-      then
+      flags DNAME-IMM and 0<> if s" immediate-binding" ord ORDERED-BY then
       exit
    then
    kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = if
       CAPTURE-CHECKER-ROLE
    then ;
 
+\ The feed reads the source owner's candidates only after the scan. Enable
+\ their producer while a frame is open; top-level namespace actions still run.
+: OBSERVE ( -- )
+   ['] OBSERVE-BOUND NFEED:USE-BINDINGS
+   ['] OBSERVE-RESOLUTION NFEED:USE-RESOLUTIONS
+   [: 2drop ;] CHECKER-OWNER:RESOLUTION-NS-INSTALL ;
+
+: UNOBSERVE ( -- )
+   OPEN? if exit then
+   NFEED:BINDINGS-DEFAULT
+   NFEED:RESOLUTIONS-DEFAULT
+   CHECKER-OWNER:RESOLUTION-NS-DEFAULT ;
+
+: HEADER! ( ptr u8 -- )
+   {: head:ptr :}
+   s" HBFDEP02" drop head 8 BYTE-COPY
+   0 head 8 + LE:U64! ;
+
+: RANGE+ ( n n -- )
+   {: first:n end:n :}
+   FRN @ 2 + FRANGES-RESERVE
+   first FRN @ FRANGES !
+   end FRN @ 1+ FRANGES !
+   2 FRN +! ;
+
+: TALLY ( n n n -- n n )
+   {: tally:n off:n kind:n :}
+   off FBYTES {: row:ptr :}
+   row LE:U64@ kind = if tally 1+ else tally then
+   off row ROW-SPAN + ;
+
+: KIND-ROWS ( n -- n )
+   {: kind:n :}
+   F-OFF FFIELD @ {: off:n :}
+   0 off HEADER-BYTES +
+   off FBYTES 8 + LE:U64@ 0 ?do kind TALLY loop
+   drop ;
+
 public
 
+\ Open a file frame at the file's first record ordinal.
 : BEGIN-UNIT ( -- )
-   DEPTH @ 1+ FRAMES-RESERVE
-   DEPTH @ 1+ FRAME-KINDS-RESERVE
-   USED @ DEPTH @ FRAMES !
-   0 DEPTH @ FRAME-KINDS !
-   1 DEPTH +!
-   HEADER-BYTES ROOM {: off:n :}
-   off FRAME <> if BAD then
-   s" HBFDEP02" drop off BYTES 8 BYTE-COPY
-   0 off 8 + BYTES LE:U64!
+   FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
+   FDEPTH @ FRAME-CELLS * {: base:n :}
+   FUSED @ base F-OFF + FFRAMES !
+   ndict@ base F-FIRST + FFRAMES !
+   FRN @ base F-RBASE + FFRAMES !
+   WHYU @ base F-WHY + FFRAMES !
+   1 FDEPTH +!
+   HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
-   SCOPE NULL-PTR 0 scope scopeu ADD-ROW
-   ['] OBSERVE-BOUND NFEED:USE-BINDINGS
-   ['] OBSERVE-RESOLUTION NFEED:USE-RESOLUTIONS ;
+   SCOPE NULL-PTR 0 scope scopeu FILE-ROW
+   OBSERVE ;
+
+\ Close the innermost file frame. Its records become a child range of the
+\ enclosing file frame, whose rows may name them.
+: CLOSE-UNIT ( -- )
+   F-OFF FFIELD @ {: off:n :}
+   F-FIRST FFIELD @ {: first:n :}
+   off FBYTES 8 + LE:U64@ negate FLIVE +!
+   FCAP @ 0 ?do
+      i FSLOTS @ off > if 0 i FSLOTS ! then
+   loop
+   off FUSED !
+   F-RBASE FFIELD @ FRN !
+   F-WHY FFIELD @ WHYU !
+   -1 FDEPTH +!
+   FDEPTH @ 0 > if first ndict@ RANGE+ then
+   UNOBSERVE ;
+
+\ The innermost file frame's cache diagnostic line, on stderr.
+: FILE-REPORT ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   s" native-file: frame path=" DIAG-W2 path pathu DIAG-W2
+   s"  rows=" DIAG-W2 F-OFF FFIELD @ FBYTES 8 + LE:U64@ DIAG-N
+   s"  ordered=" DIAG-W2 FILE-ORDERED? if 1 else 0 then DIAG-N
+   s"  binding=" DIAG-W2 BINDING KIND-ROWS DIAG-N
+   s"  value=" DIAG-W2 VALUE KIND-ROWS DIAG-N
+   FILE-ORDERED? if
+      F-WHY FFIELD @ {: why:n :}
+      why FWHY WHYU @ why - DIAG-W2
+   then
+   S\" \n" DIAG-W2 ;
 
 : BEGIN-DEFINITION ( n -- )
    {: ord:n :}
    ord NFILE-REF:BEGIN-DEFINITION
-   BEGIN-UNIT
-   \ The feed reads the source owner's candidates only after the scan. Enable
-   \ their producer for this definition; top-level namespace actions still run.
-   [: 2drop ;] CHECKER-OWNER:RESOLUTION-NS-INSTALL
-   1 DEPTH @ 1- FRAME-KINDS ! ;
+   DEPTH @ 1+ FRAMES-RESERVE
+   USED @ DEPTH @ FRAMES !
+   1 DEPTH +!
+   HEADER-BYTES ROOM BYTES HEADER!
+   NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
+   SCOPE NULL-PTR 0 scope scopeu DEF-ROW
+   OBSERVE ;
 
-: BINDING+ ( ptr u8 n ptr u8 n -- ) BINDING-ROW ;
-: VALUE+ ( ptr u8 n ptr u8 n -- ) VALUE-ROW ;
-: ORDERED! ( -- )
-   s" ordered-source-action" -1 DIAG-ORDERED
-   ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
 : COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;
-: TOP-BOUND ( ptr u8 n -- ) OBSERVE-BOUND ;
-: TOP-RESOLUTION ( ptr u8 n -- ) OBSERVE-RESOLUTION ;
-: ABSENT-NEW ( n n -- ) {: first:n last:n :}
-   first 0 < last first < or last ndict@ > or if BAD then
-   last first ?do i ABSENCE-DECL loop ;
 
 \ The frame's rows, and whether the definition may be stored: an ORDERED row
 \ names a fact no later build can re-verify.
@@ -631,25 +795,27 @@ public
 
 : RESET ( -- )
    NFILE-REF:END-DEFINITION
-   CHECKER-OWNER:RESOLUTION-NS-DEFAULT
    0 DEPTH !
    0 USED !
-   NFEED:BINDINGS-DEFAULT
-   NFEED:RESOLUTIONS-DEFAULT
-   BYTES-RELEASE FRAMES-RELEASE FRAME-KINDS-RELEASE
+   0 FDEPTH !
+   0 FUSED !
+   0 FRN !
+   0 WHYU !
+   0 FCAP !
+   0 FLIVE !
+   UNOBSERVE
+   BYTES-RELEASE FRAMES-RELEASE
+   FBYTES-RELEASE FFRAMES-RELEASE FRANGES-RELEASE FWHY-RELEASE FSLOTS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
+\ Close the innermost definition frame.
 : CLOSE ( -- )
    FRAME {: off:n :}
-   DEPTH @ 1- FRAME-KINDS @ 0<> if NFILE-REF:END-DEFINITION then
+   NFILE-REF:END-DEFINITION
    off USED !
    -1 DEPTH +!
-   DEPTH @ 0= if
-      NFEED:BINDINGS-DEFAULT
-      NFEED:RESOLUTIONS-DEFAULT
-      CHECKER-OWNER:RESOLUTION-NS-DEFAULT
-   then ;
+   UNOBSERVE ;
 
 \ Installation is an explicit boundary: no owner field means no reusable
 \ checked binding, while an actual old object with no section is malformed.

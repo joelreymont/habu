@@ -66,7 +66,6 @@ CAST: AS-BOOL ( n -- [ -- bool ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
-CAST: AS-RESOLUTION-TOP ( n -- [ ptr u8 n -- ] )
 CAST: AS-RESOLUTION-NS-INSTALL ( n -- [ [ ptr u8 n -- ] -- ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
@@ -354,11 +353,6 @@ TRUSTED: DOES-COMMIT ( -- )
    CHECKER-OWNER-ABI:RESOLUTION-ROW-OFF s" source resolution row" FIELD
    dup 0= if drop CHECKER-RESOLUTION:ROW exit then
    AS-BINDING execute ;
-
-: RESOLUTION-TOP ( ptr u8 n -- )
-   CHECKER-OWNER-ABI:RESOLUTION-TOP-OFF s" top resolution" FIELD
-   dup 0= if drop CHECKER-RESOLUTION:TOP exit then
-   AS-RESOLUTION-TOP execute ;
 
 : RESOLUTION-NS-INSTALL ( [ ptr u8 n -- ] -- )
    CHECKER-OWNER-ABI:RESOLUTION-NS-INSTALL-OFF s" namespace observer" FIELD
