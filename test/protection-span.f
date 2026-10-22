@@ -47,14 +47,17 @@ create ERR CAP allot
    s" 1 set-tier TRUSTED: PST-P ( -- ptr n ) -4 ; : PST-S ( -- n ) 0 PST-P ! 1 ; PST-S drop" REJECTS
    s" 1 set-tier variable PST-C : PST-S ( -- n ) 19 PST-C ! PST-C @ ; : PST-CHECK ( -- ) PST-S 19 <> if 1 throw then ; PST-CHECK" ACCEPTS ;
 
+\ cp! admits only a code slot: a four-byte instruction word on ARM64 and a
+\ 16-byte slot on x86-64 (src/habu/prims.f), so PST-SLOT steps back by the
+\ host's width.
 : TEST-CODE ( -- )
    s" 0 set-check data-base TXN-STATE-OFF 1- + cp!" REJECTS
    s" dbase@ DICT-SIZE + cp!" ACCEPTS
-   s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp!" ACCEPTS
-   s" dbase@ REGION + 4 - cp! create PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
+   s" : PST-SLOT ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 4 then ; dbase@ REGION + $4000 - PST-SLOT - cp!" ACCEPTS
+   s" : PST-SLOT ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 4 then ; dbase@ REGION + PST-SLOT - cp!" ACCEPTS
+   s" : PST-SLOT ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 4 then ; dbase@ REGION + PST-SLOT - cp! create PST-END" REJECTS
+   s" : PST-SLOT ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 4 then ; dbase@ REGION + PST-SLOT - cp! 1 constant PST-END" REJECTS
+   s" : PST-SLOT ( -- n ) HB-TARGET-LINUX-X86-64? if 16 else 4 then ; dbase@ REGION + PST-SLOT - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
    s" 0 set-check data-base TXN-STATE-OFF 1 cells - + cp! : PST-CROSS ( -- n ) 1 ;" REJECTS ;
 
 : TEST-SYSCALL ( -- )
@@ -70,11 +73,12 @@ create ERR CAP allot
    s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 set-check 0 PST-OUT -4 ioctl drop" REJECTS
    s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 set-check 0 PST-IN -1 ioctl drop" ACCEPTS ;
 
+\ PST-RET writes the host's return instruction at CP and calls it there.
 : TEST-FFI ( -- )
-   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS
-   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-X8 ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 FFI:X8-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 0 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-X8 drop" REJECTS
-   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
-   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} HB-TARGET-LINUX-X86-64? if $C3 else $D65F03C0 then fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} HB-TARGET-LINUX-X86-64? if $C3 else $D65F03C0 then fn patch32 fn ; TRUSTED: PST-X8 ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 FFI:X8-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 0 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-X8 drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} HB-TARGET-LINUX-X86-64? if $C3 else $D65F03C0 then fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
+   s" require src/lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} HB-TARGET-LINUX-X86-64? if $C3 else $D65F03C0 then fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
 
 \ The task-user arena is USER-BAND, one declared run of the per-task header.
 \ The transaction band below it still rejects a store - $5000 is its first
