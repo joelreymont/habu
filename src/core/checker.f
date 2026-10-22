@@ -27572,8 +27572,9 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
    \ Keep the axiom for primitive call authority.
    sym USIG-NEWEST {: target:n :}
    target 0 <> if
-      packed XFER-FLAGS EFFECT-EXTERNAL and 0 <> if 0 0 exit then
-      sym target TRANSFER-PRIM? 0= if 0 0 exit then
+      \ Callers check against the kept row, so the source links bind to it too.
+      packed XFER-FLAGS EFFECT-EXTERNAL and 0 <> if target sym NORET-NEWEST exit then
+      sym target TRANSFER-PRIM? 0= if target sym NORET-NEWEST exit then
    then
    packed XFER-FLAGS sym CTL-FLAGS-SYM CTL-NOMINAL and or {: flags:n :}
    NEW rec EW.TVN @ rec EW.RVN @ E-INST-COUNTS
@@ -27687,15 +27688,17 @@ NULL-PTR ORDER-P !   0 ORDER-N !
       1 +
    repeat drop ;
 
-: ORDER-MAP ( n n n -- n )
+\ The target handle for a source handle, false when no copied or kept row
+\ carries it. A kept row may hold no control row: control 0, found.
+: ORDER-MAP ( n n n -- n bool )
    {: handle:n source:n target:n :}
-   handle 0= IF 0 EXIT THEN
+   handle 0= IF 0 RES-FALSE EXIT THEN
    ORDER-N @ 0 ?do
       i source ORDER-FIELD @ handle = IF
-         i target ORDER-FIELD @ unloop EXIT
+         i target ORDER-FIELD @ RES-TRUE unloop EXIT
       THEN
    loop
-   0 ;
+   0 RES-FALSE ;
 
 : TRANSFER-LINK ( n ptr n -- ) {: ord:n source:ptr :}
    source RLINK.GRID cells + @ 0 <> IF EXIT THEN
@@ -27709,13 +27712,13 @@ NULL-PTR ORDER-P !   0 ORDER-N !
       EXIT
    THEN
    source RLINK.EFFECT cells + @
-      ORDER-SOURCE-EFFECT ORDER-TARGET-EFFECT ORDER-MAP {: effect:n :}
-   effect 0= IF EXIT THEN
+      ORDER-SOURCE-EFFECT ORDER-TARGET-EFFECT ORDER-MAP 0= IF drop EXIT THEN
+      {: effect:n :}
    source RLINK.CONTROL cells + @ {: prior-control:n :}
    prior-control 0= IF 0 ELSE
       prior-control ORDER-SOURCE-CONTROL ORDER-TARGET-CONTROL ORDER-MAP
+      0= IF drop EXIT THEN
    THEN {: control:n :}
-   prior-control 0 <> control 0= and IF EXIT THEN
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
    ord RECORD-LINK-CAP @ < IF ord RECORD-LINK-CELL RECORD-GRID-DISCARD THEN
    ord effect control source RLINK.DEFER cells + @ 0 <>

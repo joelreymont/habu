@@ -261,6 +261,7 @@ SUITE native-file-replay
    test/native-file-inputs-format.f
    test/native-file-replay-e2e.f
    test/native-file-frame-e2e.f
+   test/native-file-nocontract-e2e.f
    test/native-file-path-shadow-e2e.f
 ;SUITE
 
