@@ -6,10 +6,11 @@
 \ do: each uses only words HIR models, the rows emit, map-anon and munmap, and
 \ one another.
 \
-\ DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE keep the five-cell contract of
-\ src/core/dynamic-storage.f, width tag and cached bound included, without its
-\ registry or lock: a module saves no image, so nothing releases its buffers
-\ before one.
+\ DYN-ADDRESS, DYN-RESERVE and DYN-RELEASE keep the record contract of
+\ src/core/dynamic-storage.f - a declared head and a numeric control block of
+\ capacity, slot, width tag and cached bound, both passed by the generated
+\ accessor - without its registry or lock: a module saves no image, so nothing
+\ releases its buffers before one, and the slot stays zero.
 \
 \ The printers are the engine's (src/habu/rt.f G-PRINT9, G-PRINTU9; habu1.f
 \ BFDOT): the digits, then a newline. f. prints the integer part of the real's
@@ -47,20 +48,15 @@ DYNAMIC-STORAGE:E-UNMAP constant E-UNMAP
    old MAX-BYTES 2 / > if need CELL-CEIL exit then
    need old 2 * 64 max max CELL-CEIL ;
 
-: CAP ( ptr ptr a -- ptr n )
-   {: cb:ptr :}
-   cb byte-view 8 + cell-view ;
+\ The control block's cells after the capacity, which is its first cell.
+16 constant TAG-OFF
+24 constant BOUND-OFF
 
-24 constant TAG-OFF
-32 constant BOUND-OFF
+: TAG ( ptr n -- ptr n )
+   TAG-OFF + ;
 
-: TAG ( ptr ptr a -- ptr n )
-   {: cb:ptr :}
-   cb byte-view TAG-OFF + cell-view ;
-
-: BOUND ( ptr ptr a -- ptr n )
-   {: cb:ptr :}
-   cb byte-view BOUND-OFF + cell-view ;
+: BOUND ( ptr n -- ptr n )
+   BOUND-OFF + ;
 
 \ A real's bits: a rename HIR models (hir-word.f DECLARE-BOUND-CAST), where
 \ IEEE754:F64>BITS would be a call the map does not answer.
@@ -122,48 +118,51 @@ public
    idx count >= if E-BOUNDS throw then
    idx ;
 
-: DYN-ADDRESS ( n ptr ptr a n -- ptr a )
-   {: idx:n cb:ptr width:n :}
+: DYN-ADDRESS ( n ptr ptr a ptr n n -- ptr a )
+   {: idx:n cb:ptr ctl:ptr width:n :}
    idx 0 < if E-BOUNDS throw then
-   cb byte-view TAG-OFF + cell-view @ width = if
-      idx cb byte-view BOUND-OFF + cell-view @ >= if E-BOUNDS throw then
+   ctl TAG-OFF + @ width = if
+      idx ctl BOUND-OFF + @ >= if E-BOUNDS throw then
    else
       width 0 <= if E-SIZE throw then
-      idx cb CAP @ width / >= if E-BOUNDS throw then
+      idx ctl @ width / >= if E-BOUNDS throw then
    then
    cb @ idx width * + ;
 
-: DYN-GROW ( n ptr ptr a n n -- )
-   {: need:n cb:ptr old:n width:n :}
+\ Every capacity is CELL-CEIL'd, so the old one is a cell multiple: copying
+\ whole cells keeps every byte, and moves the cells as `a`, pointers as pointers.
+: DYN-GROW ( n ptr ptr a ptr n n n -- )
+   {: need:n cb:ptr ctl:ptr old:n width:n :}
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
    old 0 > if
-      cb @ byte-view fresh byte-view old COPY-BYTES
-      cb @ old munmap 0< if
+      cb @ {: src:ptr :}
+      old CELL / 0 ?do src i CELL * + @ fresh i CELL * + ! loop
+      src old munmap 0< if
          fresh cap munmap drop E-UNMAP throw
       then
    then
    fresh cb !
-   cap cb CAP !
-   width cb TAG !
-   cap width / cb BOUND ! ;
+   cap ctl !
+   width ctl TAG !
+   cap width / ctl BOUND ! ;
 
-: DYN-RESERVE ( n ptr ptr a n -- )
-   {: count:n cb:ptr width:n :}
+: DYN-RESERVE ( n ptr ptr a ptr n n -- )
+   {: count:n cb:ptr ctl:ptr width:n :}
    count width EXTENT {: need:n :}
-   cb CAP @ {: old:n :}
+   ctl @ {: old:n :}
    need old <= if exit then
-   need cb old width DYN-GROW ;
+   need cb ctl old width DYN-GROW ;
 
-: DYN-RELEASE ( ptr ptr a -- )
-   {: cb:ptr :}
-   cb CAP @ {: cap:n :}
+: DYN-RELEASE ( ptr ptr a ptr n -- )
+   {: cb:ptr ctl:ptr :}
+   ctl @ {: cap:n :}
    cap 0= if exit then
    cb @ cap munmap 0< if E-UNMAP throw then
-   0 cb byte-view cell-view !
-   0 cb CAP !
-   0 cb TAG !
-   0 cb BOUND ! ;
+   NULL-PTR cb !
+   0 ctl !
+   0 ctl TAG !
+   0 ctl BOUND ! ;
 
 : NEWLINE ( -- )
    10 emit ;

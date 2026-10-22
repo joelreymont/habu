@@ -7,7 +7,7 @@ require src/lib/fs-list.f
 package FS-ANCHORED-TEST
 
 16 SPAN-BUFFER: OUT
-create TMP FS-PATH-CAP allot
+create TMP FS-PATHZ-CAP allot
 variable TMP-U
 variable ANCHOR
 variable OPEN-FDS
@@ -54,7 +54,7 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
 
 : SETUP ( -- )
    s" habu-anchored" HB-TMP-MKDIR {: a:ptr u:n :}
-   a u FS-PATHZ TMP FS-PATH-CAP realpath {: actual:n :}
+   a u FS-PATHZ TMP FS-PATHZ-CAP realpath {: actual:n :}
    actual 0 > TTRUE
    actual TMP-U !
    ROOT MAKE-DIR OUTSIDE MAKE-DIR CHILD MAKE-DIR DEEP MAKE-DIR DOT-DIR MAKE-DIR

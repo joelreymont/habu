@@ -109,7 +109,7 @@ public
    0 WIDE TRIPLE-A byte-view 63 + c@ .
    4 WIDE drop
    ['] WIDE-PAST-GROWN catch .
-   2048 WIDE#base 8 DYNAMIC-STORAGE:RESERVE
+   2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE
    ['] WIDE-2047 catch .
    ['] WIDE-682 catch .
    7 681 WIDE TRIPLE-C !
@@ -120,7 +120,7 @@ public
    ['] WIDE-2048 catch .
    681 WIDE TRIPLE-C @ .
    0 WIDE TRIPLE-A byte-view 63 + c@ .
-   WIDE#base DYNAMIC-STORAGE:RELEASE
+   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
    ['] WIDE-100 catch . ;
 
 : RECORD ( -- )

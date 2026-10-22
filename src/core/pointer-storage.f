@@ -68,6 +68,11 @@ REG-PROTECT
 : PERSISTED-PTR-U8-TABLE-VARIABLE ( -- )
    create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
 
+\ Its scratch sibling: a cell holding a PTR-U8-TABLE's base that never joins the
+\ relocation table, as PTR-VARIABLE is PERSISTED-PTR-VARIABLE's.
+: PTR-U8-TABLE-VARIABLE ( -- )
+   create 0 , does> ( -- ptr ptr ptr u8 ) ;
+
 \ A cell the ENGINE LAYOUT reserves, not the dictionary: `off
 \ RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell at
 \ `off`, declared as a `ptr ptr u8` the way the table definers above declare

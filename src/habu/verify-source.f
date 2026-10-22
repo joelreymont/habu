@@ -3367,8 +3367,8 @@ variable LOAD-U
 \ Whether a string loader's body load of LOAD$ loads its file: an `included`
 \ source the engine already provides waits until the body actually runs; other
 \ body loads keep their normal dependency validation. Also false when the
-\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2050
-\ bytes or more, relative and 2050 bytes or more joined as root, `/` and path
+\ resolver refuses the path (E-PATH-RANGE: holding a NUL, absolute and 2048
+\ bytes or more, relative and 2048 bytes or more joined as root, `/` and path
 \ to a root searched before one holds the file, or over PATH-CAP once
 \ normalized; src/core/include.f SOURCE-ROOT CHECK, SEARCH-ROOTS, JOIN! and
 \ NORMALIZE), as the engine's loader does when the
@@ -3707,6 +3707,7 @@ variable PTR-VARIABLE-XT s" PTR-VARIABLE" PTR-VARIABLE-XT LIBRARY-XT!
 variable PERSISTED-PTR-VARIABLE-XT s" PERSISTED-PTR-VARIABLE" PERSISTED-PTR-VARIABLE-XT LIBRARY-XT!
 variable PTR-U8-TABLE-XT s" PTR-U8-TABLE" PTR-U8-TABLE-XT LIBRARY-XT!
 variable PERSISTED-PTR-U8-TABLE-VARIABLE-XT s" PERSISTED-PTR-U8-TABLE-VARIABLE" PERSISTED-PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
+variable PTR-U8-TABLE-VARIABLE-XT s" PTR-U8-TABLE-VARIABLE" PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
 variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-XT LIBRARY-XT!
 
 : LIBRARY-DEFINER? ( ptr u8 n n ptr u8 n -- bool )
@@ -3772,6 +3773,8 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
    a u PTR-U8-TABLE-XT @ s" PTR-U8-TABLE" LIBRARY-DEFINER? IF
       s" -- ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u PERSISTED-PTR-U8-TABLE-VARIABLE-XT @ s" PERSISTED-PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
+      s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u PTR-U8-TABLE-VARIABLE-XT @ s" PTR-U8-TABLE-VARIABLE" LIBRARY-DEFINER? IF
       s" -- ptr ptr ptr u8" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    \ The reserved-offset cell: the offset token precedes the name, as the table
    \ count does, so the created word is still the NEXT token and the row is the

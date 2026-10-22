@@ -34,12 +34,15 @@ create OUTPUT FS-PATH-CAP allot variable OUTPUT-U
    s" frame slot production build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" frame slot executable" GE-FAIL then ;
 
+: EXPECTED$ ( -- ptr u8 n )
+   S\" PAIR\n20\n73\nMERGE\n8\n74\nCT\n12\nCT2\n-10\n10\nALT\n50\n50\n40\nCL\n14\n3\nJN\n27\n18\nNEST\n4\n4\n9\nEXIT-EARLY\n8\n3\n8\n2\nframe-slots: ok\n" ;
+
 : RUN-IMAGE ( -- )
    GE-HB-RESET
    IMAGE$ GE-TIMEOUT-MS GE-RUN-ENV
    OUTPUT$ GT-OUT$ WRITE-ALL
    s" frame slot image run" GE-EXPECT-OK
-   S\" frame-slots: ok\n" s" frame slot cases" GE-EXPECT-OUT ;
+   EXPECTED$ s" frame slot cases" GE-EXPECT-OUT ;
 
 public
 : RUN ( -- )

@@ -23,6 +23,7 @@ Byte spans are `ptr u8 n`; a response capacity is `ptr u8 len`.
 | `URL!` | Handle, borrowed URL text | `status`: `ok` or `failed code` |
 | `PROXY!` | Handle, borrowed proxy text | `status` |
 | `METHOD!` | Handle, borrowed method text | `status` |
+| `GET!` | Handle | `status` |
 | `HEADER+` | Handle, borrowed `Name: value` line | `status` |
 | `BODY!` | Handle, borrowed byte span | `status` |
 | `COOKIE-FILE!` | Handle, borrowed path | `status` |
@@ -51,6 +52,10 @@ initialised flag, because a restored image is a different process.
 
 `METHOD!` sets the request verb. Without it libcurl sends `GET`, or `POST` once
 `BODY!` has been used; `METHOD!` overrides the verb and changes nothing else.
+The override is sent on redirected requests too, so `METHOD! "POST"` stays POST
+across a 302 or 303; a POST that should follow one as GET uses `BODY!` alone.
+`GET!` returns a reused handle to plain `GET`, dropping the body and any
+override.
 
 `PROXY!` sets the proxy for this handle. An empty string explicitly disables
 proxies even when proxy environment variables are set:
@@ -197,7 +202,7 @@ marked a record; the loop holds one `AIO:POLL` on its read end, and a byte
 that arrives between the read and the scan costs one extra turn, never a missed
 record.
 
-Every per-handle option — `URL!`, `METHOD!`, `HEADER+`, `BODY!`,
+Every per-handle option — `URL!`, `METHOD!`, `GET!`, `HEADER+`, `BODY!`,
 `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`, `LOW-SPEED!`, `FOLLOW!`,
 `FRESH-CONNECT!` and the
 scheme restriction — is set before `START` and holds for that transfer alone, so

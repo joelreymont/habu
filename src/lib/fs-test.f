@@ -31,6 +31,7 @@ $61 constant FS-TEST-PAR-A-C
 $62 constant FS-TEST-PAR-B-C
 16 constant FS-TEST-PAR-A-N
 32 constant FS-TEST-PAR-B-N
+255 constant FS-TEST-NAME-MAX            \ NAME_MAX, Darwin and Linux
 
 variable FS-TEST-CASE
 variable FS-TEST-FAIL
@@ -62,6 +63,10 @@ variable FS-TEST-DEEP-CUR-U
 variable FS-TEST-IO-U
 variable FS-TEST-BIG-U
 variable FS-TEST-EMPTY-U
+variable FS-TEST-CAP-U
+variable FS-TEST-CAP-ROOT-U
+variable FS-TEST-CAP-PARENT-U
+variable FS-TEST-CAP-SEEN
 
 create FS-TEST-OUT FS-PATH-CAP allot
 create FS-TEST-PAR-A-BUF FS-PATH-CAP allot
@@ -87,6 +92,7 @@ create FS-TEST-IO-BUF FS-PATH-CAP allot
 create FS-TEST-BIG-BUF FS-PATH-CAP allot
 create FS-TEST-EMPTY-BUF FS-PATH-CAP allot
 create FS-TEST-LONG FS-PATH-CAP 1 + allot
+create FS-TEST-CAP-PATH FS-PATH-CAP 1 + allot
 create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 create FS-TEST-U16
    FS-TEST-U16-LO c, FS-TEST-U16-HI c,
@@ -467,6 +473,74 @@ create FS-TEST-U64
 : FS-TEST-WALK-NEST ( -- )
    FS-TEST-ROOT [: FS-TEST-WALK-NEST-CB ;] WALK-FILES ;
 
+\ ---- the longest path the gate admits is one the OS opens --------------------
+\ A path of exactly FS-PATH-CAP bytes, built under the base from names of at most
+\ NAME_MAX bytes, goes through stat, open, read, walk and remove; one byte more is
+\ the gate's E-FS-PATH with no OS cause. While the cap was 1024 on Darwin, whose
+\ PATH_MAX of 1024 counts the NUL, the gate admitted a path lstat answered with
+\ ENAMETOOLONG, which a caller that reads a failed lstat as missing took for a
+\ vanished entry.
+: FS-TEST-CAP ( -- ptr u8 n )
+   FS-TEST-CAP-PATH FS-TEST-CAP-U @ ;
+
+: FS-TEST-CAP-OVER ( -- ptr u8 n )
+   FS-TEST-CAP-PATH FS-TEST-CAP-U @ 1 + ;
+
+: FS-TEST-CAP-ROOT ( -- ptr u8 n )
+   FS-TEST-CAP-PATH FS-TEST-CAP-ROOT-U @ ;
+
+: FS-TEST-CAP-PARENT ( -- ptr u8 n )
+   FS-TEST-CAP-PATH FS-TEST-CAP-PARENT-U @ ;
+
+: FS-TEST-CAP-LEFT ( -- n )
+   FS-PATH-CAP FS-TEST-CAP-U @ - ;
+
+\ Append `/` and `k` filler bytes.
+: FS-TEST-CAP-NAME+ ( n -- ) {: k :}
+   FS-TEST-CAP-U @ {: u :}
+   FS-SLASH FS-TEST-CAP-PATH u + c!
+   FS-TEST-CAP-PATH u 1 + + k FS-TEST-FILL-C FS-TEST-FILL
+   u 1 + k + FS-TEST-CAP-U ! ;
+
+\ A directory name of NAME_MAX bytes, shorter when that would leave no room for
+\ a `/` and a one-byte last name.
+: FS-TEST-CAP-DIR+ ( -- )
+   FS-TEST-CAP-LEFT 3 - FS-TEST-NAME-MAX min FS-TEST-CAP-NAME+ ;
+
+: FS-TEST-CAP-BUILD ( -- )
+   FS-TEST-BASE FS-TEST-CAP-PATH FS-TEST-CAP-U FS-TEST-COPY!
+   FS-TEST-CAP-DIR+
+   FS-TEST-CAP-U @ FS-TEST-CAP-ROOT-U !
+   begin FS-TEST-CAP-LEFT FS-TEST-NAME-MAX 1 + > while FS-TEST-CAP-DIR+ repeat
+   FS-TEST-CAP-U @ FS-TEST-CAP-PARENT-U !
+   FS-TEST-CAP-LEFT 1 - FS-TEST-CAP-NAME+
+   FS-TEST-FILL-C FS-TEST-CAP-PATH FS-TEST-CAP-U @ + c! ;
+
+: FS-TEST-CAP-CB ( ptr u8 n -- )
+   FS-TEST-CAP-SEEN @ 1 + FS-TEST-CAP-SEEN !
+   FS-TEST-CAP FS-TEST$= ;
+
+: FS-TEST-PATH-CAP-EDGE ( -- )
+   T-RESET
+   FS-TEST-CAP-BUILD
+   FS-TEST-CAP-U @ FS-PATH-CAP FS-TEST=
+   FS-TEST-CAP-PARENT MAKE-DIRS
+   FS-TEST-CAP FS-TRY-LSTAT FS-TEST-FALSE  FS:ERRNO FS:ENOENT FS-TEST=
+   FS-TEST-CAP s" cap" WRITE-ALL
+   FS-TEST-CAP FS-TRY-LSTAT FS-TEST-TRUE  FS:ERRNO 0 FS-TEST=
+   FS-TEST-CAP FILE? FS-TEST-TRUE
+   FS-TEST-CAP FS-TEST-READ-BUF FS-TEST-READ-CAP READ-ALL FS-TEST-WRITE-LEN FS-TEST=
+   FS-TEST-READ-BUF FS-TEST-WRITE-LEN s" cap" FS-TEST$=
+   0 FS-TEST-CAP-SEEN !
+   FS-TEST-CAP-ROOT [: FS-TEST-CAP-CB ;] WALK-FILES
+   FS-TEST-CAP-SEEN @ 1 FS-TEST=
+   [: FS-TEST-CAP-OVER FS-TRY-LSTAT drop ;] E-FS-PATH TTHROWSQ  FS:ERRNO 0 FS-TEST=
+   [: FS-TEST-CAP-OVER s" cap" WRITE-ALL ;] E-FS-PATH TTHROWSQ  FS:ERRNO 0 FS-TEST=
+   [: FS-TEST-CAP-OVER MAKE-DIRS ;] E-FS-PATH TTHROWSQ  FS:ERRNO 0 FS-TEST=
+   FS-TEST-CAP-ROOT REMOVE-TREE
+   FS-TEST-CAP-ROOT EXISTS? FS-TEST-FALSE
+   T-FAILURES 0 FS-TEST= ;
+
 \ ---- the walk is the caller's bytes ------------------------------------------
 \ Two tasks walk two trees at once, each through a context of its own, and a
 \ callback walks a second tree through a second context while its own walk
@@ -479,7 +553,7 @@ create FS-TEST-U64
 20 constant FS-TEST-WALK-ROUNDS
 2 constant FS-TEST-WA-FILES
 3 constant FS-TEST-WB-FILES
-165144 constant FS-TEST-WALK-BYTES
+165112 constant FS-TEST-WALK-BYTES
 
 PTR-VARIABLE FS-TEST-CTX-A-P
 PTR-VARIABLE FS-TEST-CTX-B-P
@@ -967,6 +1041,7 @@ public
    FS-TEST-BASENAME
    FS-TEST-JOIN
    FS-TEST-WALK
+   FS-TEST-PATH-CAP-EDGE
    FS-TEST-CTXS!
    FS-TEST-WALK-CONTEXT
    FS-TEST-WALK-NESTED-CTX

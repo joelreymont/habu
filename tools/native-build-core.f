@@ -616,9 +616,6 @@ variable PRE-ROWS-N
    SOURCE-TAIL @ execute ;
 
 : OPEN-FILE-AND-COMPILE ( -- )
-   \ APP-IMAGE preserves the exact DATA cursor, including a trailing byte field.
-   \ The captured window starts on the cell grid used by address relocation.
-   align
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
    [: ['] LOAD-TARGET NDEF-CACHE:RUN ;] SOURCE-ROOT:WITH-CWD

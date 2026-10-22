@@ -81,6 +81,7 @@ OPT-LONG 20 + constant OPT-LOW-SPEED-TIME  \ CURLOPT_LOW_SPEED_TIME
 OPT-LONG 52 + constant OPT-FOLLOW         \ CURLOPT_FOLLOWLOCATION
 OPT-LONG 60 + constant OPT-BODY-SIZE      \ CURLOPT_POSTFIELDSIZE
 OPT-LONG 74 + constant OPT-FRESH-CONNECT  \ CURLOPT_FRESH_CONNECT
+OPT-LONG 80 + constant OPT-HTTPGET        \ CURLOPT_HTTPGET
 OPT-LONG 99 + constant OPT-NO-SIGNAL      \ CURLOPT_NOSIGNAL
 OPT-LONG 155 + constant OPT-TIMEOUT-MS    \ CURLOPT_TIMEOUT_MS
 OPT-LONG 181 + constant OPT-PROTOCOLS     \ CURLOPT_PROTOCOLS
@@ -451,11 +452,22 @@ public
    subject OPT-PROXY text u SET-TEXT ;
 
 
-\ libcurl picks GET by default and POST once BODY! has been used; this overrides
-\ the verb without changing anything else about the request.
+\ libcurl picks GET by default and POST once BODY! has been used. METHOD!
+\ overrides the verb without changing anything else about the request, and the
+\ override is sent on every request, redirected ones included: METHOD! "POST"
+\ stays POST across a 302 or 303. A POST that should follow 302 or 303 as GET
+\ uses BODY! alone. GET! returns a reused handle to plain GET.
 : METHOD! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
    u 1 MAX-TEXT WITHIN-RANGE
    subject OPT-METHOD text u SET-TEXT ;
+
+
+\ Plain GET again: no body, no Content-Length or form Content-Type, and no
+\ METHOD! override; a null CURLOPT_CUSTOMREQUEST is libcurl's way to drop one.
+\ The URL, headers, cookies and every other option stay.
+: GET! ( handle -- status ) {: subject:handle :}
+   subject OPT-HTTPGET 1 SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
+   subject OPT-METHOD 0 SET-NUM-RAW CODE>STATUS ;
 
 
 \ One "Name: value" line, appended to the list this handle already owns.
@@ -1436,7 +1448,7 @@ public
 
 
 \ Hands one prepared handle and one writable span to the loop and answers as
-\ soon as the record is queued. Every per-handle option - URL!, METHOD!,
+\ soon as the record is queued. Every per-handle option - URL!, METHOD!, GET!,
 \ PROXY!, HEADER+, BODY!, COOKIE-FILE!, COOKIE-JAR!, TIMEOUT!, LOW-SPEED!, FOLLOW!,
 \ FRESH-CONNECT! and the scheme restriction - is set before this and holds for
 \ that transfer alone.

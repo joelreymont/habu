@@ -355,13 +355,13 @@ them, so the packets it made before are kept and the record is the last, and
 - `E-LOADER-FORM`, repair class `literal_loader_form`, at a loader form
   discovery cannot follow: a loader word at top level with no literal path (a
   computed one, or a `c"` or `."` string before it) or with a path the
-  engine's resolver refuses (empty, holding a NUL, absolute and 2050 bytes or
-  more, relative and 2050 bytes or more joined as root, `/` and path to a root
+  engine's resolver refuses (empty, holding a NUL, absolute and 2048 bytes or
+  more, relative and 2048 bytes or more joined as root, `/` and path to a root
   searched before one holds the file: the requiring file's root (the root
   that resolved it; a command-line entry's directory), the working directory,
-  then the engine root; an escaped literal counted as decoded; or over 1024
+  then the engine root; an escaped literal counted as decoded; or over 1023
   bytes once normalized), `include` or `require` at top level or in a
-  definition with a path over 1024 bytes as written or as resolved, or a
+  definition with a path over 1023 bytes as written or as resolved, or a
   loader form discovery reads, at top level or in a definition, whose loader
   word the file has defined as any word (a definition, storage or a deferred
   word) or retired at top level before it: past that the walk, which holds no
@@ -677,8 +677,8 @@ refusal of the run, such as `hb: interpret stack underdepth: <word>` (70) or
 `hb: uncaught throw code <n>` (67), as that prose, with no packet. An engine
 selection `src/lib/engine-candidate.f` refuses (`HABU_UNDER_TEST`, else the running
 engine) exits 67 in every mode, whether its path names no executable or is one
-the file system refuses, such as one over 1024 bytes. Under `--json-errors`
-stdout says `check.f: the selected engine (HABU_UNDER_TEST, else the running
+the file system refuses, such as one over the path cap (1023 bytes), which is
+refused `E-FS-PATH`. Under `--json-errors` stdout says `check.f: the selected engine (HABU_UNDER_TEST, else the running
 engine) is not a usable executable` and stderr is empty; otherwise, by default
 and with `--verify-only` alone, stderr holds only `hb: uncaught throw code <n>`,
 the resolver's code (`E-FS-OPEN` -2102, `E-FS-PATH` -2100), naming neither the
@@ -1135,7 +1135,7 @@ text names the return-stack rule that refused. It does not replace the raw
 | `close_string` | `Close the string literal before the definition ends.` |
 | `fix_load_path` | `No file is at the path this loader word names. Correct the path, or create the file.` |
 | `make_source_readable` | `The file this loader word names cannot be read. Make it readable, or correct the path.` |
-| `literal_loader_form` | `Load a file by a literal path that resolves within 1024 bytes, written in at most 1024 bytes after include or require and otherwise in under 2050 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires.` |
+| `literal_loader_form` | `Load a file by a literal path that resolves within 1023 bytes, written in at most 1023 bytes after include or require and otherwise in under 2048 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires.` |
 | `close_primitive_row` | `Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM; or EPRIM: name effect... EPRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE, or EPPRIM: package name effect... ECLOSE-PRIVATE.` |
 | `fix_generates_row` | `This generates: row names no word here. Write it after the definer's definition, spelled as the definition spells it.` |
 | `delete_generates_row` | `This definer already states what it makes: its does> clause, an earlier generates: row or the definer it wraps. Delete the row.` |

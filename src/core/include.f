@@ -28,9 +28,12 @@ package REQUIRE-REG
 private
 
 \ FROZEN holds a DATA block of (offset,length) pairs followed by path bytes.
-\ Process rows use a movable pair table and path chunks that never move.
+\ Process rows use two movable columns, mapped and grown together at ROW-CAP
+\ cells: ROWS holds row i's path pointer at cell i and ROW-LENS its length at
+\ cell i. The paths live in chunks that never move.
 PERSISTED-PTR-VARIABLE FROZEN
 PERSISTED-PTR-U8-TABLE-VARIABLE ROWS
+PERSISTED-PTR-VARIABLE ROW-LENS
 variable ROW-CAP
 PERSISTED-PTR-U8-TABLE-VARIABLE CHUNK
 variable PREFIX-N
@@ -632,27 +635,6 @@ public
    0 JOIN-U ! 0 OWNER-U !
    0 ENGINE-U ! 0 ENGINE-READ ! ;
 
-: FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   \ The receiver's active source scope owns these paths and cursors. Public
-   \ ENGINE!, RESOLVED-ROOT$, policy, path-stack and require state stay live.
-   CWD-BUF BYTE-VIEW PATH-BYTES visit execute
-   CWD-U BYTE-VIEW CELL visit execute
-   CANON-BUF BYTE-VIEW PATH-BYTES visit execute
-   CANON-U BYTE-VIEW CELL visit execute
-   NORMAL-U BYTE-VIEW CELL visit execute
-   CANDIDATE-BUF BYTE-VIEW PATH-BYTES visit execute
-   CANDIDATE-U BYTE-VIEW CELL visit execute
-   JOIN-BUF BYTE-VIEW WORK-BYTES visit execute
-   JOIN-U BYTE-VIEW CELL visit execute
-   WORK-BUF BYTE-VIEW WORK-BYTES visit execute
-   ZBUF BYTE-VIEW WORK-BYTES visit execute
-   REQUEST-BUF BYTE-VIEW WORK-BYTES visit execute
-   REQUEST-U BYTE-VIEW CELL visit execute
-   OWNER-SAVE BYTE-VIEW PATH-BYTES visit execute
-   CURRENT-A BYTE-VIEW CELL visit execute
-   CURRENT-U BYTE-VIEW CELL visit execute
-   SCOPES BYTE-VIEW CELL visit execute ;
-
 ;package
 
 using SOURCE-ROOT
@@ -693,6 +675,10 @@ $7FFFFFFFFFFFFFFF 2 cells / constant ROW-LIMIT
 3 cells constant CHUNK-HEAD
 MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
+\ A mapped chunk's room and used counts are the two cells after its prev
+\ pointer, and its path bytes follow them at CHUNK-HEAD.
+CAST: CHUNK-COUNTS ( ptr ptr u8 -- ptr n )
+
 : SIZE-DIE ( -- )
    s" require: inventory size overflow" INCLUDE-DIE ;
 
@@ -706,42 +692,53 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
    FROZEN @ idx FROZEN-REC @ + ;
 
 : ROW-PTR ( n -- ptr ptr u8 )
-   2 * ROWS @ swap ptr-field ;
+   ROWS @ swap ptr-field ;
 
 : ROW-PTR@ ( n -- ptr u8 )
    ROW-PTR @ ;
 
 : ROW-LEN-ADDR ( n -- ptr n )
-   2 * 1+ cells ROWS @ BYTE-VIEW swap + CELL-VIEW ;
+   ROW-LENS @ swap cells + ;
 
 : ROW-LEN@ ( n -- n )
    ROW-LEN-ADDR @ ;
 
-: ROW-BYTES ( n -- n )
+\ FROZEN's DATA block opens with one (offset,length) pair per row.
+: FROZEN-BYTES ( n -- n )
    2 * cells ;
 
 : ROW-NEW-CAP ( n -- n ) {: need:n :}
    need $40 max
    ROW-CAP @ ROW-LIMIT 2 / <= if ROW-CAP @ 2 * max then ;
 
-: ROW-MAP ( n -- ptr ptr u8 )
-   ROW-BYTES map-anon 0 <> if
+: COL-MAP ( n -- ptr a )
+   cells map-anon 0 <> if
       drop s" require: cannot map the row table" INCLUDE-DIE
    then ;
 
+: COLS-UNMAP ( ptr ptr u8 ptr n n -- ) {: rows:ptr lens:ptr cap:n :}
+   rows cap cells munmap {: rowsrc:n :}
+   lens cap cells munmap {: lensrc:n :}
+   rowsrc 0 < lensrc 0 < or if
+      s" require: cannot release the row table" INCLUDE-DIE
+   then ;
+
+\ Both columns move to fresh mappings of CAP cells; each live cell is copied
+\ as its own type before the old pair is released.
 : ROW-GROW ( n -- ) {: need:n :}
    need ROW-LIMIT > if SIZE-DIE then
    need ROW-NEW-CAP {: cap:n :}
-   cap ROW-MAP
-   {: fresh:ptr :}
-   ROW-CAP @ 0 > if
-      ROWS @ BYTE-VIEW fresh BYTE-VIEW ROW-CAP @ ROW-BYTES BYTE-COPY
-      ROWS @ ROW-CAP @ ROW-BYTES munmap 0 < if
-         s" require: cannot release the row table" INCLUDE-DIE
-      then
-   then
-   fresh ROWS !
-   cap ROW-CAP ! ;
+   ROWS @ ROW-LENS @ ROW-CAP @ {: old:ptr oldlens:ptr oldcap:n :}
+   cap COL-MAP ROWS !
+   cap COL-MAP ROW-LENS !
+   cap ROW-CAP !
+   oldcap 0 > if
+      oldcap 0 ?do
+         old i ptr-field @ ROWS @ i ptr-field !
+         oldlens i cells + @ ROW-LENS @ i cells + !
+      loop
+      old oldlens oldcap COLS-UNMAP
+   then ;
 
 : ROW-ENSURE ( n -- ) {: need:n :}
    need ROW-LIMIT > if SIZE-DIE then
@@ -749,26 +746,25 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
 : ROWS-RELEASE ( -- )
    ROW-CAP @ 0= if exit then
-   ROWS @ ROW-CAP @ ROW-BYTES munmap 0 < if
-      s" require: cannot release the row table" INCLUDE-DIE
-   then
+   ROWS @ ROW-LENS @ ROW-CAP @ COLS-UNMAP
    NULL-PTR ROWS !
+   NULL-PTR ROW-LENS !
    0 ROW-CAP ! ;
 
 : CHUNK-PREV@ ( ptr ptr u8 -- ptr ptr u8 )
    0 ptr-field @ ;
 
 : CHUNK-ROOM@ ( ptr ptr u8 -- n )
-   BYTE-VIEW CELL + CELL-VIEW @ ;
+   CHUNK-COUNTS CELL + @ ;
 
 : CHUNK-USED@ ( ptr ptr u8 -- n )
-   BYTE-VIEW 2 cells + CELL-VIEW @ ;
+   CHUNK-COUNTS 2 cells + @ ;
 
 : CHUNK-USED! ( n ptr ptr u8 -- )
-   BYTE-VIEW 2 cells + CELL-VIEW ! ;
+   CHUNK-COUNTS 2 cells + ! ;
 
 : CHUNK-DATA ( ptr ptr u8 -- ptr u8 )
-   BYTE-VIEW CHUNK-HEAD + ;
+   CHUNK-COUNTS byte-view CHUNK-HEAD + ;
 
 : CHUNK-BYTES ( ptr ptr u8 -- n )
    CHUNK-ROOM@ CHUNK-HEAD + ;
@@ -788,7 +784,7 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
    {: fresh:ptr :}
    fresh CHUNK !
    prev CHUNK @ 0 ptr-field !
-   room CHUNK @ BYTE-VIEW CELL + CELL-VIEW !
+   room CHUNK @ CHUNK-COUNTS CELL + !
    0 CHUNK @ CHUNK-USED! ;
 
 : CHUNK-SPACE ( n -- ptr u8 ) {: u:n :}
@@ -845,7 +841,7 @@ MAX-BYTES CHUNK-HEAD - constant CHUNK-LIMIT
 
 : PACK-BYTES ( n -- n ) {: used:n :}
    REQUIRE-N @ ROW-LIMIT > if SIZE-DIE then
-   REQUIRE-N @ ROW-BYTES {: recs:n :}
+   REQUIRE-N @ FROZEN-BYTES {: recs:n :}
    used MAX-BYTES recs - > if SIZE-DIE then
    recs used + ;
 
@@ -965,7 +961,7 @@ public
    total allot
    total 0 ?do 0 start i + c! loop
    start pad + {: fresh:ptr :}
-   REQUIRE-N @ ROW-BYTES
+   REQUIRE-N @ FROZEN-BYTES
    REQUIRE-N @ 0 ?do
       {: cursor:n :}
       i LEN {: u:n :}
@@ -1612,6 +1608,16 @@ FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant FR-ACTPATH
 \ truncated nor refused before RESOLVE can normalize it.
 FR-ACTPATH WORK-BYTES + constant HEADER-BYTES
 $1000 constant ROOM-MIN
+\ A frame's FR-PREV, FR-OWNER, FR-EXEC-COPY and FR-EVAL-PTR cells hold
+\ addresses; its other header cells hold counts, flags and modes, and its bytes
+\ follow them.
+CAST: FRAME-CELLS ( ptr u8 -- ptr ptr u8 )
+: FRAME-PREV ( ptr u8 -- ptr ptr u8 ) FRAME-CELLS FR-PREV CELL / ptr-field ;
+: FRAME-OWNER ( ptr u8 -- ptr ptr u8 ) FRAME-CELLS FR-OWNER CELL / ptr-field ;
+: FRAME-EXEC-COPY ( ptr u8 -- ptr ptr u8 )
+   FRAME-CELLS FR-EXEC-COPY CELL / ptr-field ;
+: FRAME-EVAL-PTR ( ptr u8 -- ptr ptr u8 )
+   FRAME-CELLS FR-EVAL-PTR CELL / ptr-field ;
 PTR-VARIABLE TOP
 PTR-VARIABLE RANGE-OWNER
 variable LAST-LOAD-EVAL-OK
@@ -1624,7 +1630,7 @@ variable LAST-LOAD-EVAL-OK
 
 : FRAME-EXEC-SOURCE ( ptr u8 -- ptr u8 )
    {: frame:ptr :}
-   frame FR-EXEC-COPY CELL / ptr-field @ dup 0= if
+   frame FRAME-EXEC-COPY @ dup 0= if
       drop frame HEADER-BYTES +
    then ;
 
@@ -1660,15 +1666,15 @@ variable LAST-LOAD-EVAL-OK
 : PUSH ( -- )
    HEADER-BYTES ROOM-MIN + map-anon 0= 0= if drop s" include: cannot map a source frame" INCLUDE-DIE then
    {: frame:ptr :}
-   TOP@ frame FR-PREV ptr-field !
-   RANGE-OWNER @ frame FR-OWNER CELL / ptr-field !
+   TOP@ frame FRAME-PREV !
+   RANGE-OWNER @ frame FRAME-OWNER !
    SCRIPT-NAMED-PEND @ frame FR-NAMED + c!
    INCLUDE-PATH-U @ frame FR-PATHLEN + CELL-VIEW !
    ROOM-MIN frame FR-ROOM + CELL-VIEW !
    -1 frame FR-SIZE + CELL-VIEW !
    -1 frame FR-ACTMODE + CELL-VIEW !
    0 frame FR-ACTLEN + CELL-VIEW !
-   NULL-PTR frame FR-EXEC-COPY CELL / ptr-field !
+   NULL-PTR frame FRAME-EXEC-COPY !
    0 frame FR-EVAL-OK + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
@@ -1682,10 +1688,10 @@ variable LAST-LOAD-EVAL-OK
 : POP ( -- )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
-   frame FR-OWNER CELL / ptr-field @ RANGE-OWNER !
-   frame FR-EXEC-COPY CELL / ptr-field @ {: copy:ptr :}
+   frame FRAME-OWNER @ RANGE-OWNER !
+   frame FRAME-EXEC-COPY @ {: copy:ptr :}
    frame FR-SIZE + CELL-VIEW @ 1 max {: copyu:n :}
-   frame FR-PREV ptr-field @ TOP!
+   frame FRAME-PREV @ TOP!
    -1 INCLUDE-DEPTH +!
    PUBLISH-LOCATION
    copy 0= if 0 else copy copyu munmap then {: copyrc:n :}
@@ -1747,7 +1753,7 @@ TRUSTED: ACTION$ ( -- n ptr u8 n )
 
 TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n )
    CHECK-ACTIVE
-   TOP@ FR-PREV ptr-field @ {: frame:ptr :}
+   TOP@ FRAME-PREV @ {: frame:ptr :}
    frame 0= if INCLUDE-RANGE-RC throw then
    frame FR-ACTMODE + CELL-VIEW @
    frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
@@ -1818,7 +1824,7 @@ TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
 
 : EVALUATE-SAVED-RANGE ( -- )
    TOP@ {: frame:ptr :}
-   frame FR-EVAL-PTR CELL / ptr-field @
+   frame FRAME-EVAL-PTR @
    frame FR-EVAL-SIZE + CELL-VIEW @
    frame FR-EVAL-FIRST + CELL-VIEW @
    frame FR-EVAL-END + CELL-VIEW @
@@ -1827,7 +1833,7 @@ TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
 : CLOSED-RANGE ( ptr u8 n n n -- )
    {: source:ptr size:n first:n end:n :}
    TOP@ {: frame:ptr :}
-   source frame FR-EVAL-PTR CELL / ptr-field !
+   source frame FRAME-EVAL-PTR !
    size frame FR-EVAL-SIZE + CELL-VIEW !
    first frame FR-EVAL-FIRST + CELL-VIEW !
    end frame FR-EVAL-END + CELL-VIEW !
@@ -1893,7 +1899,7 @@ private
          {: copy:ptr :}
          a copy u BYTE-COPY
          copy u SHEBANG-COMMENT
-         copy TOP@ FR-EXEC-COPY CELL / ptr-field !
+         copy TOP@ FRAME-EXEC-COPY !
          PUBLISH-LOCATION
       then
    then ;

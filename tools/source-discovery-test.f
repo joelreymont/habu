@@ -458,7 +458,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    s" ././././././././" ;
 
 \ The engine's resolver alone caps a loader's path: it refuses an absolute one
-\ of 2050 bytes or more, a relative one that is 2050 bytes or more joined as
+\ of 2048 bytes or more, a relative one that is 2048 bytes or more joined as
 \ root, `/` and path to a root searched before one holds the file, and one over
 \ PATH-CAP once normalized (src/core/include.f SOURCE-ROOT CHECK,
 \ SEARCH-ROOTS, JOIN! and NORMALIZE). Paths of 1280

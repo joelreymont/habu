@@ -944,12 +944,13 @@ $47E0 constant HEAP-START-CELL
 \ mapping. Swept for a claimant across src lib tools test maki bootstrap before
 \ taking it, and read back as zero out of a booted engine. The run above
 \ BOOT-LAYOUT:HEAP-START-CELL that reads free in the source is NOT: src/habu/
-\ stack-abi.f already owns $47E8..$4810, and USER-BAND ($5300..$7BF8) is what
-\ src/lib/task.f `+USER` hands out. This band ends at $660 and leaves
-\ the word-frame lane's $7D0/$7D8 and the $3800 null cell untouched. Every cell
-\ is below $7FF8 -- the ceiling for a cell a compiled routine names directly as
-\ `DATA <off> LDR`, which the funnel's first instruction is -- and below
-\ DATA-START, so no compiled source can reach it and DATA-START does not move.
+\ stack-abi.f already owns $47E8..$4810, and USER-BAND (from $5300 up to
+\ FS-MUT-ABI:START) is what src/lib/task.f `+USER` hands out. This band ends at
+\ $660 and leaves the word-frame lane's $7D0/$7D8 and the $3800 null cell
+\ untouched. Every cell is below $7FF8 -- the ceiling for a cell a compiled
+\ routine names directly as `DATA <off> LDR`, which the funnel's first
+\ instruction is -- and below DATA-START, so no compiled source can reach it
+\ and DATA-START does not move.
 package GENIO-ABI
 public
 8 constant DEVICES                 \ device rows; a device index is 1..DEVICES
@@ -1418,6 +1419,7 @@ CHECKER-OWNER-ABI:MULTI-ERROR-OFF constant DECL-MULTI-ERROR-OFF
 CHECKER-OWNER-ABI:RESET-REPORT-OFF constant DECL-RESET-REPORT-OFF
 CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
 CHECKER-OWNER-ABI:RECOVERY-USED-OFF constant DECL-RECOVERY-USED-OFF
+CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
 \ Completion: the names a top-level cursor sees.
 CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
 CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF
@@ -1890,7 +1892,7 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ declaration and E-FS-BAND alone, then build the tree with it.
 \
 \ THE WALK STATE IS NOT HERE: the per-depth path slots and dirent blocks are
-\ FS-MAX-DEPTH deep, $8000 and $20000 bytes, fifteen times this whole band. A
+\ FS-MAX-DEPTH deep, $7FE0 and $20000 bytes, over a hundred times this band. A
 \ second task that must walk needs its own walker, not a wider per-task region,
 \ and it has one - src/lib/fs.f makes the whole walk CALLER-OWNED (FS-WALK-BYTES,
 \ WALK-FILES-IN, REMOVE-TREE-IN), so a task holds a context of its own and this
@@ -1900,7 +1902,7 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ Sized the way FMT-ABI above is: every member at its measured width, the five
 \ cells at the band base so they are cell-aligned whatever the buffers do, the
 \ buffers after them, and BYTES the member sum rounded up to the cell the base
-\ needs - 1330 bytes of members in a 1336-byte extent.
+\ needs - 1329 bytes of members in a 1336-byte extent.
 package FS-ABI
 public
 6 constant IO-CELLS                    \ ERRNO, FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR
@@ -1934,15 +1936,15 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ declaration alone.
 \
 \ TWO THINGS STAY PROCESS-WIDE ON PURPOSE. The 8 KiB copy buffer is not here:
-\ 3080 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
+\ 3072 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
 \ COPY-FILE-STREAM are the module's one single-task pair, which its header and
 \ docs/threads.md say. Neither is the cleanup registry, 64 paths of it: that is
 \ a PROCESS exit registry, not per-call scratch - every task registers into the
 \ one table and the process runs it once.
 \
 \ Sized the way FS-ABI above is: every member at its measured width, BYTES the
-\ member sum rounded up to the cell the base needs - 3073 bytes of members in a
-\ 3080-byte extent. No cell lives in this band, so nothing here needs the base's
+\ member sum rounded up to the cell the base needs - 3070 bytes of members in a
+\ 3072-byte extent. No cell lives in this band, so nothing here needs the base's
 \ alignment; the rounding is the band's only slack.
 package FS-MUT-ABI
 public

@@ -1310,7 +1310,6 @@ public
 
 : RUN ( -- )
    s" the fs-mutate band is carved directly below FS-ABI" T-LABEL
-   FS-MUT-ABI:BYTES 3080 T=
    FS-MUT-ABI:END FS-ABI:START T=
    FS-MUT-ABI:START USER-BAND:END T=
    PATHS!

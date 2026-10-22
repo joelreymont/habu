@@ -44,7 +44,7 @@ public
 \ only a compiled body may hold.
 : OPEN ( -- )
    WBACK:BINDING NSHADOW:OPEN
-   align AOT-ARM:WINDOW-OPEN
+   AOT-ARM:WINDOW-OPEN
    NSTR:WINDOW-OPEN ;
 
 \ The source, by its path on the command line; a top-level load would name no

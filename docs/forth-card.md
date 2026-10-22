@@ -149,6 +149,7 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH`, rc 70 |
 | a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after `src/core/checker.f`) in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a sealed from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
+| `0 set-check` then `SUMTYPE`, `PRODUCT`, `STRUCTURE` or `ENUM`, which generate constructors; `NEWTYPE` and `DEFTYPE` generate none and are admitted | `E-TDECL-UNCHECKED` (7210), `habu: bad sumtype declaration 'name': checking is suspended; declare it where checking is on at 'name'`, rc 70, nothing registered — close the window first (`test/sumtype-unchecked-e2e.f`) |
 | a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
 | `CHECK!`, `generates:`, a type registration (`CHECKER-DEFLINEAR`, `CHECKER-DEFFAMILY`, a `TYPE-FIELD-OWNER` phase) or another checker scan or store write in a compile callback (`NBACK:OBSERVE!`, `NPUB:WITH-UNIT`) | `E-NCOMP-STATE` (-8570), catchable, before anything changes |
 
@@ -327,8 +328,9 @@ with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
 that word's uses before the run; what no row states, such as `COMMAND`'s
 `NAME#VEC`, is left to the run (§ 3). `FUNCTION:` needs no row.
 
-`PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
-snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come
+`PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
+(`( -- ptr ptr ptr u8 )`); `PERSISTED-PTR-VARIABLE` and
+`PERSISTED-PTR-U8-TABLE-VARIABLE` are the snapshot-marked siblings. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 

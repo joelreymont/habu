@@ -934,7 +934,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
 
 
-\ A literal path within the 1024 bytes `require` takes that resolves past them
+\ A literal path within the 1023 bytes `require` takes that resolves past them
 \ refuses the subject, with a packet at the loader word.
 : LONG-RESOLVED ( -- )
    0 GEN-U !
@@ -1030,7 +1030,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" body-uncalled: effect at counted string" s" E-MISMATCH" s" included" s" 1" s" 29" AT-TOKEN
    0 GEN-U !
    s\" : CVT-LONG ( -- ) s\" " GEN+
-   1025 0 ?do s" a" GEN+ loop
+   1024 0 ?do s" a" GEN+ loop
    s\" \" included ;\n" GEN+
    0 GEN GEN-U @ s" body-long.f" VERIFIED ;
 
@@ -1115,7 +1115,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ loads its file: every source here loads. Read as the library's definer, the
 \ require is the name and the path an undefined word.
 : STORAGE-BINDING ( -- )
-   s\" package CVT-BIND\n: LAYOUT-BUFFER ( -- ) ;\n: DEFER-LAYOUT-BUFFER ( -- ) ;\n: TYPED-BUFFER ( -- ) ;\n: TYPED-VARIABLE ( -- ) ;\n: DYNAMIC-BUFFER ( -- ) ;\n: PTR-VARIABLE ( -- ) ;\n: PERSISTED-PTR-VARIABLE ( -- ) ;\n: PTR-U8-TABLE ( -- ) ;\n: PERSISTED-PTR-U8-TABLE-VARIABLE ( -- ) ;\n: RESERVED-PTR-U8-CELL ( -- ) ;\nLAYOUT-BUFFER require ld-inc.f\nDEFER-LAYOUT-BUFFER require ld-inc.f\nTYPED-BUFFER require ld-inc.f\nTYPED-VARIABLE require ld-inc.f\nDYNAMIC-BUFFER require ld-inc.f\nPTR-VARIABLE require ld-inc.f\nPERSISTED-PTR-VARIABLE require ld-inc.f\nPTR-U8-TABLE require ld-inc.f\nPERSISTED-PTR-U8-TABLE-VARIABLE require ld-inc.f\nRESERVED-PTR-U8-CELL require ld-inc.f\n;package\n"
+   s\" package CVT-BIND\n: LAYOUT-BUFFER ( -- ) ;\n: DEFER-LAYOUT-BUFFER ( -- ) ;\n: TYPED-BUFFER ( -- ) ;\n: TYPED-VARIABLE ( -- ) ;\n: DYNAMIC-BUFFER ( -- ) ;\n: PTR-VARIABLE ( -- ) ;\n: PERSISTED-PTR-VARIABLE ( -- ) ;\n: PTR-U8-TABLE ( -- ) ;\n: PTR-U8-TABLE-VARIABLE ( -- ) ;\n: PERSISTED-PTR-U8-TABLE-VARIABLE ( -- ) ;\n: RESERVED-PTR-U8-CELL ( -- ) ;\nLAYOUT-BUFFER require ld-inc.f\nDEFER-LAYOUT-BUFFER require ld-inc.f\nTYPED-BUFFER require ld-inc.f\nTYPED-VARIABLE require ld-inc.f\nDYNAMIC-BUFFER require ld-inc.f\nPTR-VARIABLE require ld-inc.f\nPERSISTED-PTR-VARIABLE require ld-inc.f\nPTR-U8-TABLE require ld-inc.f\nPTR-U8-TABLE-VARIABLE require ld-inc.f\nPERSISTED-PTR-U8-TABLE-VARIABLE require ld-inc.f\nRESERVED-PTR-U8-CELL require ld-inc.f\n;package\n"
    s" bind-package.f" VERIFIED
    s" bind-cx-x.f" s\" undefine PTR-VARIABLE\n: PTR-VARIABLE ( -- ) ;\n" FIXTURE
    s\" require bind-cx-x.f\nPTR-VARIABLE require ld-inc.f\n" s" bind-cx.f" VERIFIED

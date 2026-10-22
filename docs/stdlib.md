@@ -84,9 +84,8 @@ the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
 (a `TASK:+USER` row or a per-task DATA cell, so any number of tasks may use it
 at once), or **caller-owned** (the caller supplies the storage). A new module
 declares its class in its header; [threads.md](threads.md) carries the table
-and the size of the band a `TASK:+USER` row comes from, which is 6016 bytes
-for the whole image with 4320 free once the libraries above have claimed
-theirs.
+and how to read the budget of the band a `TASK:+USER` row comes from
+(`USER-BAND:END TASK:#USER -` after loading the task-local modules).
 
 | module | class |
 | --- | --- |
@@ -1762,8 +1761,8 @@ vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 
 `src/lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
 `FUNCTION:` declarer on macOS ARM64 and Linux AArch64. `INIT` answers a typed handle;
-`URL!`, `METHOD!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`,
-`FOLLOW!` and `FRESH-CONNECT!` configure the request; `PERFORM` fills a
+`URL!`, `METHOD!`, `GET!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`,
+`TIMEOUT!`, `FOLLOW!` and `FRESH-CONNECT!` configure the request; `PERFORM` fills a
 caller-owned span and answers the HTTP status with the body length, a truncation
 carrying the whole body's length, or the `CURLcode` that failed. After `PERFORM`
 or `START`/`AWAIT`,

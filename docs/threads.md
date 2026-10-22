@@ -329,7 +329,7 @@ Which of the two a library reaches for is forced, not preferred:
   `src/lib/fmt.f` could have taken rows - it has no cycle, and an engine built that
   way compiles - but `src/habu/habu2.f` requires it for number text, so a
   require would have pulled pthread, mmap and the FFI staging tables into the
-  base image for 52 bytes of scratch. `src/lib/fs.f` and `src/lib/fs-mutate.f` are not
+  base image for its scratch band. `src/lib/fs.f` and `src/lib/fs-mutate.f` are not
   baked at all, but `tools/native-build-core.f` requires both to BUILD the
   engine, so a require there loads the task runtime into the build tool ahead
   of the target.
@@ -352,17 +352,21 @@ and the third generation is byte-identical.
 ### The arena a task-local row comes from
 
 `TASK:+USER` hands out offsets from `USER-BAND:START` ($5300) up to
-`USER-BAND:END` — **6016 bytes for the whole image**. The band is one declared
-run of the per-task header with no engine cell inside it, which
-`src/habu/data-claims.f`'s assertion checks at engine build time, and
-the declared bands directly above it are `FS-MUT-ABI` (3080 bytes), `FS-ABI`
-(1336 bytes), `FMT-ABI` (56 bytes) and `STRING-ABI` (1032 bytes), none of which
-is part of it.
+`USER-BAND:END`, one band for the whole image: its size is `USER-BAND:END
+USER-BAND:START -`. The band is one declared run of the per-task header with no
+engine cell inside it, which `src/habu/data-claims.f`'s assertion checks at
+engine build time. The declared bands directly above it, `FS-MUT-ABI`,
+`FS-ABI`, `FMT-ABI` and `STRING-ABI` (each from its `:START` word), are not
+part of it.
 
 The libraries above allocate from this band as they load. `TASK:#USER` reports
-the next offset; the bytes between it and `USER-BAND:END` remain free. A row
-that would cross `USER-BAND:END` is `E-TASK-USER` at its definition, not a store
-into whatever lies above. Budget accordingly.
+the next offset; the bytes between it and `USER-BAND:END` remain free. Read the
+budget from the engine rather than from a figure here: load the task-local
+modules the program uses, then `USER-BAND:END TASK:#USER -` is what is left;
+the total depends on which modules load and in what order. A row that would
+cross `USER-BAND:END` is `E-TASK-USER` at its definition, not a store into
+whatever lies above, so a new task-local module that needs more than what is
+left must first shrink a neighbouring band or an existing row.
 
 ## Atomics
 

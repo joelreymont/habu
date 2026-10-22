@@ -58,7 +58,7 @@ public
 \ only a compiled body may hold.
 : OPEN ( -- )
    WBACK:BINDING NSHADOW:OPEN
-   align AOT-ARM:WINDOW-OPEN
+   AOT-ARM:WINDOW-OPEN
    NSTR:WINDOW-OPEN ;
 
 : CAPTURE ( -- )

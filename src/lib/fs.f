@@ -159,8 +159,8 @@ FS-BAND-AGREE
 \   NS       $100 at $218     per-depth bytes the last block read answered
 \   OFFS     $100 at $318     per-depth offset into that block
 \   RECS     $100 at $418     per-depth length of the record at that offset
-\   PATHS  $8000 at $518     FS-MAX-DEPTH path slots of FS-PATH-CAP
-\   DIRS  $20000 at $8518    FS-MAX-DEPTH dirent blocks of FS-DIR-CAP
+\   PATHS  $7FE0 at $518     FS-MAX-DEPTH path slots of FS-PATH-CAP
+\   DIRS  $20000 at $84F8    FS-MAX-DEPTH dirent blocks of FS-DIR-CAP
 \ THE SCALARS ARE CELLS, reached through CELL-VIEW (the declared view, as in
 \ src/core/sha256.f and src/core/checker.f SYM.PKG-U); the path and dirent
 \ slots stay byte regions, taken with ZPTR+ and narrowed with SPAN:SUB, so a

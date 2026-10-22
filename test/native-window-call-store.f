@@ -3,13 +3,15 @@
 package WINDOW-CALL-STORE
 
 \ The retired header must hold no transient pointer. The replacement owns a
-\ live allocation, and its normal call-fact readers still compile this body.
+\ live allocation and its capacity, and its normal call-fact readers still
+\ compile this body. A lost capacity would skip the old mapping's munmap.
 : ADOPTED ( -- )
-   CWIN-STATE CWIN-BOOT = if 77 throw then
+   CWIN-STATE drop drop CWIN-BOOT = if 77 throw then
    CWIN-BOOT @ 0= 0= if 77 throw then
-   CWIN-BOOT CELL + BYTE-VIEW CELL-VIEW @ 0 <> if 77 throw then
-   CWIN-BOOT 2 cells + BYTE-VIEW CELL-VIEW @ 0 <> if 77 throw then
-   CWIN-STATE @ 0= if 77 throw then ;
+   CWIN-BOOT-N @ 0 <> if 77 throw then
+   CWIN-BOOT-CAP @ 0 <> if 77 throw then
+   CWIN-STATE drop drop @ 0= if 77 throw then
+   CWIN-STATE nip nip @ 0= if 77 throw then ;
 ADOPTED
 
 ;package

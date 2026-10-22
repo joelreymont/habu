@@ -135,6 +135,31 @@ variable RC
    s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS
    s" ncomp: cannot compile HR-DEFINER at HR-NO-SUCH-WORD" SAYS ;
 
+\ A clause is checked in its definer's regime: here a hookless one, whose body
+\ may call a word defined with checking off, so its clause may too, as at tier
+\ 0. Checked with call authority, the clause was refused that call
+\ (E-CAP-TRUSTED) and the compiler died with E-NCOMP-VERDICT.
+: CLAUSE$ ( -- ptr u8 n )
+   s" 1 set-tier 0 set-check : HR-CELL ( -- n ) 5 ; : HR-MAKE ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE HR-X HR-X . cr" ;
+
+: SESSION-CLAUSE ( -- )
+   s" a hookless definer's clause calls what its body may" T-LABEL
+   CLAUSE$ SESSION
+   RC @ 0 T=
+   S\" 5\n" PRINTS ;
+
+\ The regime is the definer's own, not the last one seen: after a hookless
+\ definer's clause calling the unchecked word has compiled, a checked definer's
+\ clause calling it is still refused (E-CAP-TRUSTED) and cannot compile.
+: CHECKED-CLAUSE$ ( -- ptr u8 n )
+   s" 1 set-tier check@ 0 set-check : HR-CELL ( -- n ) 5 ; : HR-MAKE ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE HR-X set-check : HR-MAKE2 ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE2 HR-Y HR-Y . cr" ;
+
+: SESSION-CHECKED-CLAUSE ( -- )
+   s" a checked definer's clause is refused what a hookless one may call" T-LABEL
+   CHECKED-CLAUSE$ SESSION
+   RC @ RC-THROW T=
+   s" ncomp: cannot compile HR-MAKE2" SAYS ;
+
 \ The source pre-pass marks the wordlist a rendering statement runs in, and a
 \ word it never saw defined there is left to the run (checker verdict 2) rather
 \ than refused. An unsigned body naming one has no effect, and no declaration
@@ -387,6 +412,8 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-UNEVEN
    SESSION-UNDEFINED
    SESSION-DEFINER
+   SESSION-CLAUSE
+   SESSION-CHECKED-CLAUSE
    SESSION-UNSEEN
    SESSION-UNRECORDED
    SESSION-RECORDED

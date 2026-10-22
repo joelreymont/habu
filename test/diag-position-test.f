@@ -63,7 +63,7 @@ create BASE FS-PATH-CAP allot
 create FX-P FS-PATH-CAP allot
 create DEP CAP allot
 create DEP-P FS-PATH-CAP allot
-create CANON FS-PATH-CAP allot
+create CANON FS-PATHZ-CAP allot
 
 variable BASE-U
 variable FX-U
@@ -117,7 +117,7 @@ variable RC
 \ PATH with every link resolved: the checker names a required file so, and
 \ --verify-only its subject too.
 : CANON$ ( ptr u8 n -- ptr u8 n )
-   FS-PATHZ CANON FS-PATH-CAP realpath {: n:n :}
+   FS-PATHZ CANON FS-PATHZ-CAP realpath {: n:n :}
    n 0 <= IF E-FS-PATH throw THEN
    CANON n ;
 
@@ -1081,9 +1081,9 @@ variable RC
 \ Fixture NAME: `included` of an escaped literal of STEPS `.\x2F` escapes, each
 \ the step `./`, before inc-target.f, then a use of the word that file defines.
 \ A step is five bytes as written and two decoded, so with 250 steps the path
-\ is longer than the path capacity (PATH-CAP, 1024 bytes) as written but not
+\ is longer than the path capacity (PATH-CAP, 1023 bytes) as written but not
 \ decoded, and with 600 decoded too. The engine's resolver measures the path
-\ decoded and refuses it only at 2050 bytes or more, joined when relative to
+\ decoded and refuses it only at 2048 bytes or more, joined when relative to
 \ each root searched before one holds the file, or over PATH-CAP once
 \ normalized, so it loads both, 600 steps at
 \ 3012 bytes as written.
