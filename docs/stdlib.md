@@ -1684,13 +1684,16 @@ MEM-ALLOC-64K         ( -- ptr u8 n )
 
 MEM:ALLOC-BYTES       ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
 MEM:RELEASE-BYTES     ( ptr u8 NUM:alloc-byte-len -- )
+MEM:ALLOC-CELLS       ( NUM:alloc-cell-count -- ptr a )
+MEM:RELEASE-CELLS     ( ptr a NUM:alloc-cell-count -- )
 MEM:UNMAP             ( ptr u8 NUM:byte-len -- )
 MEM:WITH-BYTES        ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
 ```
 
-`MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`.
+`MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`,
+and `MEM:RELEASE-CELLS` the cell count given to `MEM:ALLOC-CELLS`.
 `MEM:UNMAP` releases a validated mapped byte range without fabricating an
-allocation extent. Both use one private `munmap` sink; kernel refusal writes
+allocation extent. All three use one private `munmap` sink; kernel refusal writes
 `memory: unmap failed` to standard error and exits 71, bypassing `catch`.
 `MEM:WITH-BYTES` releases after normal return or a body throw, restores its
 outer frame after successful release, then rethrows the body code.

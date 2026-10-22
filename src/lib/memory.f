@@ -182,7 +182,7 @@ CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 
-: RELEASE-RANGE ( ptr u8 n -- )
+: RELEASE-RANGE ( ptr a n -- )
    munmap 0 < if
       s" memory: unmap failed" UNMAP-EXIT die
    then ;
@@ -209,6 +209,9 @@ public
    swap ;
 : ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
+\ The typed inverse of ALLOC-CELLS.
+: RELEASE-CELLS ( ptr a NUM:alloc-cell-count -- )
+   ALLOC-CELLS>N cells RELEASE-RANGE ;
 : ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
@@ -260,6 +263,9 @@ private
 DYNAMIC-BUFFER WB-BUFFERS ptr u8
 DYNAMIC-BUFFER WB-LENGTHS NUM:alloc-byte-len
 variable WB-DEPTH
+
+\ a declared head cell as the bytes a span visitor reads; the consumer only reads (src/habu/aot-owned-cells.f CLAIM)
+CAST: HEAD-BYTES ( ptr ptr u8 -- ptr u8 )
 
 
 : WB-RESERVE ( -- )
@@ -314,9 +320,9 @@ public
 \ into the engine, its cells are private, and a private cell of a baked package
 \ stays private - so it hands out these and nothing else.
 : OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
-   WB-BUFFERS#base BYTE-VIEW CELL claim execute
+   WB-BUFFERS#base HEAD-BYTES CELL claim execute
    WB-BUFFERS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   WB-LENGTHS#base BYTE-VIEW CELL claim execute
+   WB-LENGTHS#base HEAD-BYTES CELL claim execute
    WB-LENGTHS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
    WB-DEPTH BYTE-VIEW CELL claim execute ;
 
