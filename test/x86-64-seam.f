@@ -78,7 +78,7 @@ $10000 constant WANT-PAGE-MAX
 $1400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
 $2300000 constant WANT-REGION
 $340000000 constant WANT-DATA-VA         \ the Linux target's, not a macOS host's
-$2000000 constant WANT-DATA-SIZE
+$4000000000 constant WANT-DATA-SIZE       \ 2^38, the lazy reservation
 \ The metadata past the six program headers, which end at $190.
 $190 constant WANT-INTERP-OFF
 $1B0 constant WANT-HASH-OFF

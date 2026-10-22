@@ -84,10 +84,11 @@ variable SNAP-END
    RSI len IMM,  RDX prot IMM,  R10 flags IMM,  R8 -1 IMM,  R9 ZERO-REG,
    NR-MMAP SYS, ;
 
-\ Map `len` read/write bytes exactly at rdi. A refusal returns -errno and a
-\ moved mapping another address, so one comparison catches both.
-: MAP-FIXED, ( n label -- ) {: len:n bad:label :}
-   len PROT-RW MAP-ANON-PRIVATE-FIXED MMAP,
+\ Map `len` read/write bytes exactly at rdi with `flags`. A refusal returns
+\ -errno (NOREPLACE's EEXIST among them) and a moved mapping another address,
+\ so one comparison catches both.
+: MAP-FIXED, ( n n label -- ) {: len:n flags:n bad:label :}
+   len PROT-RW flags MMAP,
    RAX RDI ASM-SINK ENC-CMP-RR
    C-NE bad JCC, ;
 
@@ -120,16 +121,17 @@ variable SNAP-END
 \ r14 = no records; rbx = 0. The twin of EM-MMAP-CODE-REGION and EM-SEED-DICT.
 : CODE-REGION, ( -- )
    RDI RBASE-REG REGION-OFF X64LAYOUT:CODE-OFF - MEM-OFF ASM-SINK ENC-LEA
-   REGION REGION-BAD @ >LABEL MAP-FIXED,
+   REGION MAP-ANON-PRIVATE-FIXED REGION-BAD @ >LABEL MAP-FIXED,
    DBASE-REG RDI ASM-SINK ENC-MOV-RR
    ENGINE-GPR:X64-CP >R64 DBASE-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
    ENGINE-GPR:X64-NDICT >R64 ZERO-REG,
    ENGINE-GPR:X64-INTERP >R64 ZERO-REG, ;
 
-\ rax = DATA, DATA-SIZE bytes at DATA-VA, as EM-MMAP-DATA-REGION maps it.
+\ rax = DATA, the DATA-SIZE reservation at DATA-VA, as EM-MMAP-DATA-REGION
+\ maps it.
 : DATA-REGION, ( -- )
    RDI X64LAYOUT:DATA-VA VA>N IMM,
-   X64LAYOUT:DATA-SIZE DATA-BAD @ >LABEL MAP-FIXED, ;
+   X64LAYOUT:DATA-SIZE MAP-DATA-RESERVE DATA-BAD @ >LABEL MAP-FIXED, ;
 
 \ A linked image carries its region and DATA in PT_LOADs. The records begin
 \ at r13 and the code pointer and record count are known at write time.
@@ -299,7 +301,7 @@ variable SNAP-END
 \ The width of the stub's one write: under PIPE_BUF, so a pipe takes it whole.
 4 constant SIGNO-BYTES
 
-\ The fd word's absolute address. DATA is MAP_FIXED at DATA-VA and DATA-REGION,
+\ The fd word's absolute address. DATA is mapped at DATA-VA and DATA-REGION,
 \ refuses a boot the kernel answered elsewhere, so this one address names the
 \ same word for the life of the process, whatever task is running.
 : FD-WORD-VA ( -- n ) X64LAYOUT:DATA-VA VA>N SIGNAL-ABI:FD-CELL + ;
@@ -639,8 +641,8 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    RAX RAX ASM-SINK ENC-TEST-RR  C-E dump JCC,
    RCX RAX ASM-SINK ENC-MOV-RR  RCX RDI ASM-SINK ENC-SUB-RR
    RCX CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE dump JCC,
-   RCX X64LAYOUT:DATA-SIZE CELL - >IMM32 ASM-SINK ENC-CMP-RI32
-      C-A dump JCC,
+   R8 X64LAYOUT:DATA-SIZE CELL - IMM,
+   RCX R8 ASM-SINK ENC-CMP-RR  C-A dump JCC,
    R8 RAX MEM-AT ASM-SINK ENC-MOV-RM
    RBP RSI ASM-SINK ENC-MOV-RR
    RSP TASK-FRAME-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
@@ -650,8 +652,8 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    R8 R8 ASM-SINK ENC-TEST-RR  C-E done JCC,
    RDI X64LAYOUT:DATA-VA VA>N IMM,
    RAX R8 ASM-SINK ENC-MOV-RR  RAX RDI ASM-SINK ENC-SUB-RR
-   RAX X64LAYOUT:DATA-SIZE TASK-ABI:TCB-BYTES CELL + - >IMM32
-      ASM-SINK ENC-CMP-RI32  C-A done JCC,
+   RCX X64LAYOUT:DATA-SIZE TASK-ABI:TCB-BYTES CELL + - IMM,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-A done JCC,
    R8 CELL 1- >IMM32 ASM-SINK ENC-TEST-RI32  C-NE done JCC,
    RAX R8 TASK-ABI:TCB-BYTES MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RSP TASK-NEXT-AT MEM-OFF ASM-SINK ENC-MOV-MR

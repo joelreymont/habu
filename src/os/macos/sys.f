@@ -5,6 +5,10 @@
 $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
 
+\ MAP-DATA-RESERVE maps the DATA window: Darwin's MAP_ANON|MAP_PRIVATE|MAP_FIXED
+\ is already lazy, charged only for touched pages.
+$1012 constant MAP-DATA-RESERVE
+
 $1   constant NR-EXIT
 $2   constant NR-FORK
 $3   constant NR-READ

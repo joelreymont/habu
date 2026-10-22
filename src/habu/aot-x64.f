@@ -44,6 +44,13 @@ variable X64-I  variable X64-J  variable X64-RUNS
    X64-WORD LE:U64!
    X64-WORD 8 BUF:N>BLEN X64-SINK BUF:APPEND-SPAN ;
 
+\ Run rows and address-cell rows carry DATA offsets in u32 fields, and Linux
+\ DATA spans 2^38 bytes: a value outside u32 is refused, never truncated by
+\ X64-U32,, as aot-link-arm.f XT-ROW-FIELD refuses the ARM rows.
+: X64-U32? ( n -- bool ) {: v:n :} v 0 >= v $FFFFFFFF <= and ;
+
+\ A run's end offset bounds both its offset and its length, so checking the
+\ end keeps both fields whole.
 : X64-RUNS, ( -- )
    X64-COUNT-RUNS X64-U32,
    0 X64-I !
@@ -51,6 +58,8 @@ variable X64-I  variable X64-J  variable X64-RUNS
       X64-I @ X64-BYTE? if
          X64-I @ X64-J !
          begin X64-IN-RUN? while 1 X64-I +! repeat
+         BLOB-SRC @ DATA-VA VA>N - X64-I @ + X64-U32? 0= if
+            s" aot: x86 DATA run ends past a u32 offset" 74 die then
          BLOB-SRC @ DATA-VA VA>N - X64-J @ + X64-U32,
          X64-I @ X64-J @ - X64-U32,
          BLOB-SRC@ X64-J @ + X64-I @ X64-J @ - BUF:N>BLEN
@@ -63,6 +72,8 @@ variable X64-I  variable X64-J  variable X64-RUNS
 : X64-XT-ROWS, ( -- )
    XTC-N @ X64-U32,
    XTC-N @ 0 ?do
+      i XTC-OFF@ X64-U32? 0= if
+         s" aot: x86 address cell lies past a u32 DATA offset" 74 die then
       i XTC-OFF@ X64-U32,
       i XT-CELL-TARGET X64-U32,
    loop ;

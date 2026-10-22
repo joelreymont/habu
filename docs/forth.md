@@ -1255,9 +1255,14 @@ by name with the count it saw and the ceiling, and none truncates.
   `trust` row's, a `TRUSTED:` definition's or a `defer`'s, is refused as a bad
   one: `E-BAD-STORED-SIGNATURE` under `fix_signature_size`, with the same
   reason. Pass bulk values in a buffer, not on the stack.
-- **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 33,030,088 bytes on
-  linux-aarch64 (`src/os/linux/layout-constants.f`, `src/habu/layout.f`;
-  `DATA-SIZE` is per host). `allot`, `align`, `,`, `c,`, `create`/`variable`/
+- **Data space: `DATA-SIZE - PROF-CNT-BYTES`**, 2^38 less the 1,048,632-byte
+  profiler band (274,876,858,312 bytes) on both Linux targets and 2^40 less it
+  (1,099,510,579,144) on macOS (`src/os/linux/layout-constants.f`,
+  `src/os/macos/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is per host).
+  DATA is a lazy reservation charged only for touched pages; on Linux an
+  engine with `vm.overcommit_memory=2`, or with `RLIMIT_AS` or `RLIMIT_DATA`
+  below the window, refuses at boot with `hb: cannot map fixed data region`,
+  rc 78. `allot`, `align`, `,`, `c,`, `create`/`variable`/
   `defer` and the interpret-mode string literals that keep their text (all but
   `."`) advance the DP through `DP-CHECK` (`src/habu/habu1.f`). Past it:
   `hb: data space out of

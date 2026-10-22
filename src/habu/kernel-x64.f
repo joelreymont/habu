@@ -1551,7 +1551,7 @@ private
    head DPBAD-HEAD$ nip STDERR-WRITE,
    RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
    of DPBAD-OF$ nip STDERR-WRITE,
-   RAX DP-CEILING IMM32,  DIAG-U,
+   RAX DP-CEILING IMM64,  DIAG-U,
    unit DPBAD-UNIT$ nip STDERR-WRITE,
    RAX DATA-REG SRCLOC:PATHLEN-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E no-path JCC,
@@ -3324,11 +3324,12 @@ private
 \ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
 \ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
 \ it with rdi in hand. The compares are signed, as the ARM64 ones are. It
-\ clobbers rax.
+\ clobbers rax. DP-CEILING exceeds a disp32 (DATA-SIZE is 2^38), so the upper
+\ bound is a 64-bit immediate added to DATA.
 : DP-CHECK, ( -- )
    RAX DATA-REG DATA-START MEM-OFF ASM-SINK ENC-LEA
    RDI RAX ASM-SINK ENC-CMP-RR  C-L DPBAD-LBL JCC,
-   RAX DATA-REG DP-CEILING MEM-OFF ASM-SINK ENC-LEA
+   RAX DP-CEILING IMM64,  RAX DATA-REG ASM-SINK ENC-ADD-RR
    RDI RAX ASM-SINK ENC-CMP-RR  C-G DPBAD-LBL JCC, ;
 
 \ The heap rows move DP, so each begins with the task-live guard, as the

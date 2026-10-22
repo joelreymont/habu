@@ -245,9 +245,10 @@ using X64RT
 
 public
 
-\ Push the address of the DATA cell at an offset.
+\ Push the address of the DATA cell at an offset. DATA spans 2^38 bytes, past a
+\ disp32, so the offset is a 64-bit immediate added to DATA.
 : PUSH-DATA, ( n -- ) {: off:n :}
-   RAX DATA-REG off MEM-OFF ASM-SINK ENC-LEA
+   RAX off IMM  RAX DATA-REG ASM-SINK ENC-ADD-RR
    0 G-PUSH ;
 
 \ Store the address n bytes into DATA into the DATA cell at an offset.

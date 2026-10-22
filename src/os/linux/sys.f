@@ -8,6 +8,16 @@ using A64ICODE
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 
+\ MAP-DATA-RESERVE maps the DATA window: MAP_PRIVATE $02 | MAP_ANONYMOUS $20 |
+\ MAP_NORESERVE $4000 | MAP_FIXED_NOREPLACE $100000. MAP_NORESERVE is Linux's
+\ lazy anonymous memory under overcommit modes 0 and 1: the window is charged
+\ only for touched pages, neither at mmap nor again at fork. NOREPLACE makes
+\ "DATA-VA is free" a checked fact: an occupied range fails with EEXIST instead
+\ of being replaced, which is why MAP_FIXED $10 (it overrides NOREPLACE) is not
+\ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
+\ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
+$104022 constant MAP-DATA-RESERVE
+
 93  constant NR-EXIT
 63  constant NR-READ
 64  constant NR-WRITE
