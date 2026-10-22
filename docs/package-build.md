@@ -43,7 +43,10 @@ behavior. [portability.md](portability.md) describes target and linker roles.
 
 A file's cache entry is named by what identifies the file, not by what was
 loaded before it: the engine, the target profile, the build mode, the canonical
-path and root, the load kind and the occurrence among the parent's loads.
+path and root, the load kind and the occurrence: how many earlier loads of the
+same path, root and kind the build made. Only `include` repeats a load; the
+count is session-wide because the parent is not part of the key, so two
+parents' first includes of one file stay distinct.
 Folding preceding files into the key makes an edit to the root file recompile
 every library it loads; that was the defect of the first whole-file cache.
 
