@@ -6153,8 +6153,11 @@ PTR-VARIABLE UNIT-FAM-KEY-AT
 
 : UFP@ ( ptr u8 n -- n ) cells + CELL-VIEW @ ;
 : UFP! ( n ptr u8 n -- ) cells + CELL-VIEW ! ;
-: UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + 0 ptr-field @ ;
-: UFP-PTR! ( ptr u8 ptr u8 n -- ) cells + 0 ptr-field ! ;
+\ A FILE family plan is a cell row in mapped storage whose UFP.NEXT, UFP.BLOB,
+\ UFP.SRC, UFP.KEYS, UFP.FMAP and UFP.CMAP cells hold byte addresses.
+CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
+: UFP-PTR@ ( ptr u8 n -- ptr u8 ) cells + UFP-CELLS @ ;
+: UFP-PTR! ( ptr u8 ptr u8 n -- ) cells + UFP-CELLS ! ;
 : UNIT-FAM-RAW@ ( n -- ptr u8 ) cells UNIT-FAM-RAW + 0 ptr-field @ ;
 : UNIT-FAM-RAW! ( ptr u8 n -- ) cells UNIT-FAM-RAW + 0 ptr-field ! ;
 : UFP-SBASE@ ( ptr u8 n -- n ) UFP.SBASE + UFP@ ;

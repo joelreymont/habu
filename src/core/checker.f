@@ -7070,17 +7070,25 @@ variable SYM-ID
 \ caller consumes it before asking for another row; capture clears the view.
 create SYM-XFER SYM-REC allot
 
-: SYM-XFER.PKG-A ( ptr u8 -- ptr ptr u8 ) SYM-PKG-A-CELL ptr-field ;
-: SYM-XFER.NAME-A ( ptr u8 -- ptr ptr u8 ) SYM-NAME-A-CELL ptr-field ;
-
 : SYM-XFER-CLEAR ( -- )
    SYM-XFER CELL-VIEW 0 SYM-REC CELL / ARENA-CELLS-ZERO ;
+
+package CHECKER-REG
+\ Cell rows whose pointer cells hold byte addresses: the wire row's
+\ SYM-PKG-A-CELL and SYM-NAME-A-CELL, and in a unit plan every cell
+\ UP-PTR@/! names and a chunk's cell 0 (UP-CH-NEXT).
+CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
+: SYM-XFER.PKG-A ( ptr u8 -- ptr ptr u8 )
+   REG-PTR-CELLS SYM-PKG-A-CELL ptr-field ;
+: SYM-XFER.NAME-A ( ptr u8 -- ptr ptr u8 )
+   REG-PTR-CELLS SYM-NAME-A-CELL ptr-field ;
 
 : SYM-XFER-ROW ( n -- ptr u8 ) {: id:n :}
    id SYM-PKG$ SYM-XFER SYM.PKG-U ! SYM-XFER SYM-XFER.PKG-A !
    id SYM-NAME$ SYM-XFER SYM.NAME-U ! SYM-XFER SYM-XFER.NAME-A !
    id SYM-ROW SYM.VIS @ SYM-XFER SYM.VIS !
    SYM-XFER ;
+;package
 
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
    {: pkg pkgu:n vis:n name nameu:n id:n :}
@@ -12685,23 +12693,13 @@ variable CK-PEND-IX      0 CK-PEND-IX !
    sym CK-SCOPE-PENDING? IF sym EXIT THEN
    0 ;
 
-\ A dictionary record's name (src/habu/layout.f DREC): the flags cell holds its
-\ length under DNAME-LEN-MASK, and the name sits inline from the name cell or,
-\ with DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
-\ XREF-NAME-A reads it. The pointer is read through `ptr-field`, the declared
-\ door, so no cast mints it.
+\ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
 $00007FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 $0004000000000000 constant CK-REC-VALUE     \ = layout.f DKIND:VAL
 $000C000000000000 constant CK-REC-KIND-MASK \ = layout.f DKIND:MASK
-: CK-REC-NAME$ ( ptr n -- ptr u8 n )
-   {: rec:ptr :}
-   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
-   flags CK-REC-LEN-MASK and {: u:n :}
-   flags CK-REC-EXT and 0 <> IF rec CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
-   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
 
 \ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
 \ (XREF:REC). This file cannot use XREF-REC: the boot prefix loads it before
@@ -12711,6 +12709,8 @@ $000C000000000000 constant CK-REC-KIND-MASK \ = layout.f DKIND:MASK
 \ bound window divides by to name a record's index.
 package CHECKER-RESOLVE
 CAST: N>REC ( n -- ptr n )
+\ A DNAME-EXT record's name cell holds the byte address of its name.
+CAST: REC-CELLS ( ptr n -- ptr ptr u8 )
 public
 : REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
 \ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
@@ -12720,6 +12720,16 @@ public
    {: rec:ptr :}
    rec NULL-PTR = IF -1 EXIT THEN
    rec BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
+\ A dictionary record's name: the flags cell holds its length under
+\ DNAME-LEN-MASK, and the name sits inline from the name cell or, with
+\ DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
+\ XREF-NAME-A reads it.
+: CK-REC-NAME$ ( ptr n -- ptr u8 n )
+   {: rec:ptr :}
+   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
+   flags CK-REC-LEN-MASK and {: u:n :}
+   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
+   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
 ;package
 
 \ The used slot whose public wordlist is wid, or -1. The engine's USE-WIDS and
@@ -21414,7 +21424,7 @@ variable PIMM-N
    ord CHECKER-RESOLVE:REC-AT {: rec:ptr :}
    rec CK-REC-WID 0= 0= IF 0 RES-FALSE EXIT THEN
    sym SYM-NAME$ {: tail:ptr tailu:n :}
-   rec CK-REC-NAME$ tail tailu SYM-STR=CI 0= IF 0 RES-FALSE EXIT THEN
+   rec CHECKER-RESOLVE:CK-REC-NAME$ tail tailu SYM-STR=CI 0= IF 0 RES-FALSE EXIT THEN
    tail tailu 0 CHECKER-RESOLVE:WL-PROBE rec <> IF 0 RES-FALSE EXIT THEN
    \ An ELAB primitive has a specification row but no PE effect row. Its
    \ actual seeded binding must still be the one this source scope selects.
@@ -21810,7 +21820,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ EXIT THEN
    qa qu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}   \ its namespace record (DICT-WL:NAMESPACE)
    rec NULL-PTR = IF qa qu EXIT THEN
-   rec CK-REC-NAME$ ;
+   rec CHECKER-RESOLVE:CK-REC-NAME$ ;
 
 \ The name a selection of SYM, REC1 and dictionary record DREC spells, from the
 \ selection alone, and where it was declared: the name and location REC1's
@@ -21822,7 +21832,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    {: sym:n rec1:n drec:ptr :}
    rec1 DL-ROW-OF {: i:n named:bool :}
    named IF i DL-NAME$  i DL-AT drop  EXIT THEN
-   drec NULL-PTR <> IF drec CK-REC-NAME$ 0 0 0 EXIT THEN
+   drec NULL-PTR <> IF drec CHECKER-RESOLVE:CK-REC-NAME$ 0 0 0 EXIT THEN
    sym SYM-NAME$ 0 0 0 ;
 
 \ The spelling a selection is offered as, and its location: its name, behind
@@ -21880,7 +21890,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    ndict@ 0 ?do
       i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
       rec CK-REC-WID wid = IF
-         rec CK-REC-NAME$ {: a:ptr u:n :}
+         rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
          u 0 <> IF qa qu a u VIS-QWORD THEN
       THEN
    loop ;
@@ -21890,7 +21900,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-PACKAGE ( ptr n -- )
    {: rec:ptr :}
    rec @ {: wid:n :}
-   rec CK-REC-NAME$ {: a:ptr u:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
    wid 0=  u 0=  or IF EXIT THEN
    a u VIS-PKG? 0= IF EXIT THEN
    a u wid VIS-WL ;
@@ -21918,7 +21928,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ for are asked too. The selection, not this record, spells what is offered.
 : VIS-RECS ( -- )
    ndict@ 0 ?do
-      i CHECKER-RESOLVE:REC-AT CK-REC-NAME$ {: a:ptr u:n :}
+      i CHECKER-RESOLVE:REC-AT CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
       u 0 <> IF a u VIS-WORD THEN
    loop ;
 
@@ -28182,8 +28192,8 @@ defer UNIT-IMPORT-PLAN-XT ( ptr u8 n -- )
 : UP-AT ( ptr u8 n -- ptr n ) cells + CELL-VIEW ;
 : UP@ ( ptr u8 n -- n ) UP-AT @ ;
 : UP! ( n ptr u8 n -- ) UP-AT ! ;
-: UP-PTR@ ( ptr u8 n -- ptr u8 ) cells + 0 ptr-field @ ;
-: UP-PTR! ( ptr u8 ptr u8 n -- ) cells + 0 ptr-field ! ;
+: UP-PTR@ ( ptr u8 n -- ptr u8 ) cells + REG-PTR-CELLS @ ;
+: UP-PTR! ( ptr u8 ptr u8 n -- ) cells + REG-PTR-CELLS ! ;
 : UP-SYM ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
    plan UP.SYMS UP-PTR@ idx UPS.CELLS * + ;
 : UP-EFF ( ptr u8 n -- ptr u8 ) {: plan:ptr idx:n :}
@@ -28225,8 +28235,8 @@ PTR-VARIABLE UP-CH-FIRST   NULL-PTR UP-CH-FIRST !
 PTR-VARIABLE UP-CH-CUR     NULL-PTR UP-CH-CUR !
 variable UP-CH-U          0 UP-CH-U !
 
-: UP-CH-NEXT ( ptr u8 -- ptr u8 ) 0 ptr-field @ ;
-: UP-CH-NEXT! ( ptr u8 ptr u8 -- ) 0 ptr-field ! ;
+: UP-CH-NEXT ( ptr u8 -- ptr u8 ) REG-PTR-CELLS @ ;
+: UP-CH-NEXT! ( ptr u8 ptr u8 -- ) REG-PTR-CELLS ! ;
 : UP-CH-CAP ( ptr u8 -- n ) cell+ CELL-VIEW @ ;
 
 : UP-CH-NEW ( n -- ptr u8 ) {: bytes:n :}
@@ -29089,7 +29099,7 @@ UNIT-CON-PROJECT-INSTALL
    \ The allocator still runs after a body hit. Give its armed eval the
    \ installed accessor's handle so it can bind the new allocation normally.
    ord RECORD-LINK-CELL RLINK.EFFECT cells + @
-   ord CHECKER-RESOLVE:REC-AT CK-REC-NAME$ LBUF-EFFECT-RESULT ;
+   ord CHECKER-RESOLVE:REC-AT CHECKER-RESOLVE:CK-REC-NAME$ LBUF-EFFECT-RESULT ;
 
 : PENDING-CLOSED-RESULT ( n -- )
    0 CK-CLOSED-SYM !
@@ -30126,6 +30136,9 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
    {: log:ptr i:n off:n :}
    log CK-DLOG-SLOTS-REL + i CK-DLOG-SLOT * + off + ;
 
+\ A slot's REC, PKG and SIG-A fields hold addresses (layout.f DECLARED-LOG).
+CAST: DLOG-CELL ( ptr n -- ptr ptr n )
+
 \ A logged record in neither the global wordlist nor the open package's own is
 \ a qualified definition, which no file before the claim makes. Its row would
 \ be keyed in a scope no lookup of the engine reaches, so the boot stops.
@@ -30137,15 +30150,15 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 \ XREF-PKG-PUBLIC, XREF-PKG-PRIVATE).
 : CK-DLOG-SYM ( ptr n ptr n -- n )
    {: rec:ptr ns:ptr :}
-   rec CK-REC-NAME$ {: a:ptr u:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
    rec CK-REC-WID {: wid:n :}
    wid 0= IF a u CHECKER-GLOBAL-SYM EXIT THEN
    ns NULL-PTR <> IF
       wid ns CK-NS-PUBLIC-SLOT cells + @ = IF
-         ns CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
+         ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
       THEN
       wid ns CK-NS-PRIVATE-SLOT cells + @ = IF
-         ns CK-REC-NAME$ SYM-PRIVATE a u CHECKER-PKG-SYM EXIT
+         ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PRIVATE a u CHECKER-PKG-SYM EXIT
       THEN
    THEN
    s" checker: qualified definition before the source claim" 76 die ;
@@ -30154,12 +30167,12 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 \ row wins, the question CHECKER-CERT-DUP? asks; no candidate is open here.
 : CK-DLOG-ROW ( ptr n n -- )
    {: log:ptr i:n :}
-   log i CK-DLOG-REC-OFF CK-DLOG-AT 0 ptr-field @ {: rec:ptr :}
+   log i CK-DLOG-REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
    rec CK-REC-WID CK-WL-RETIRED = IF EXIT THEN
-   rec log i CK-DLOG-PKG-OFF CK-DLOG-AT 0 ptr-field @ CK-DLOG-SYM {: sym:n :}
+   rec log i CK-DLOG-PKG-OFF CK-DLOG-AT DLOG-CELL @ CK-DLOG-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM IF EXIT THEN
    sym
-   log i CK-DLOG-SIG-A-OFF CK-DLOG-AT 0 ptr-field @
+   log i CK-DLOG-SIG-A-OFF CK-DLOG-AT DLOG-CELL 0 ptr-field @
    log i CK-DLOG-SIG-U-OFF CK-DLOG-AT @
    CK-DECLARED-SYM! ;
 
@@ -30194,7 +30207,7 @@ CLAIM-COLD-SOURCE
 \ It has no PRIM row and the prefix's internal-word gate keeps it unavailable to
 \ ordinary source. Only the control may-effect is added, never an effect row.
 : NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
-   rec CK-REC-NAME$ {: name:ptr nameu:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
    wid 0= IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
@@ -30202,11 +30215,11 @@ CLAIM-COLD-SOURCE
       i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
       ns CK-REC-WID -1 = IF
          wid ns @ = IF
-            ns CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
+            ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
             UNLOOP EXIT
          THEN
          wid ns CELL + @ = IF
-            ns CK-REC-NAME$ SYM-PRIVATE name nameu CHECKER-PKG-SYM
+            ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PRIVATE name nameu CHECKER-PKG-SYM
             UNLOOP EXIT
          THEN
       THEN
