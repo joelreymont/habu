@@ -9,10 +9,14 @@ require src/lib/errors.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/string.f
+require src/lib/sort.f
+require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/core/checker-owner-extension.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/habu/aot-data-cell.f
+require src/compiler/native/dict.f
 require src/compiler/native/host.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
@@ -24,6 +28,7 @@ private
 
 1 constant BINDING
 2 constant VALUE
+3 constant EXECUTED
 4 constant ORDERED
 5 constant CHECKER-ROLE
 6 constant SCOPE
@@ -31,18 +36,24 @@ private
 8 constant PRIMITIVE
 9 constant COMPILER-ROLE
 10 constant READER-FLAGS
+11 constant DATA
 16 constant HEADER-BYTES
 24 constant ROW-BYTES
 48 constant RES-ROW-BYTES
 32 constant RES-KEY-BYTES
 32 constant PRIMITIVE-HEAD
 \ A file frame's cells: its row offset, its first record ordinal, where its
-\ children's record ranges start, and where its first ORDERED reason starts.
+\ children's record ranges start, where its first ORDERED reason starts, and
+\ its entry here.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
 3 constant F-WHY
-4 constant FRAME-CELLS
+4 constant F-HERE
+5 constant FRAME-CELLS
+32 constant DIGEST-BYTES
+\ A DATA address read at compile time is an integer.
+CAST: N>U8 ( n -- ptr u8 )
 1024 constant SLOTS-MIN
 $cbf29ce484222325 constant FNV-BASIS
 $100000001b3 constant FNV-PRIME
@@ -58,6 +69,35 @@ DYNAMIC-BUFFER FFRAMES n
 DYNAMIC-BUFFER FRANGES n
 DYNAMIC-BUFFER FWHY u8
 DYNAMIC-BUFFER FSLOTS n
+\ Each open definition frame's ordinal and entry here, two cells per depth.
+DYNAMIC-BUFFER DLIMITS n
+\ A closure walk: the epoch stamp of each record it reached, its pending
+\ records, its members, and its digest context and result.
+DYNAMIC-BUFFER SEEN n
+DYNAMIC-BUFFER WSTACK n
+DYNAMIC-BUFFER MEMBERS n
+DYNAMIC-BUFFER HWORK u8
+\ A run's queue: the epoch stamp of each record queued, and the queue of the
+\ file's own records to walk through and the other records to capture.
+DYNAMIC-BUFFER RMARK n
+DYNAMIC-BUFFER RQUEUE n
+0 CWORK-VARIABLE SEEN-N n
+0 CWORK-VARIABLE EPOCH n
+0 CWORK-VARIABLE WSP n
+0 CWORK-VARIABLE MEM-N n
+0 CWORK-VARIABLE WCAPTURE bool
+0 CWORK-VARIABLE WOK bool
+0 CWORK-VARIABLE WTRANS bool
+0 CWORK-VARIABLE WROOT n
+0 CWORK-VARIABLE RMARK-N n
+0 CWORK-VARIABLE REPOCH n
+0 CWORK-VARIABLE RQ-N n
+0 CWORK-VARIABLE FAIL-P ptr u8
+0 CWORK-VARIABLE FAIL-U n
+0 CWORK-VARIABLE FAIL-ORD n
+0 CWORK-VARIABLE S-OWNER n
+0 CWORK-VARIABLE S-BASE n
+0 CWORK-VARIABLE S-END n
 0 CWORK-VARIABLE USED n
 0 CWORK-VARIABLE DEPTH n
 0 CWORK-VARIABLE FUSED n
@@ -265,6 +305,239 @@ INSTALL-DEFAULT
    ord NFILE-REF:RECORD-RETIRED? if rec ord false exit then
    rec ord true ;
 
+\ A word run at compile time reaches records through its result edges and
+\ through the addresses its data holds. The walk visits each record once,
+\ keeps the members whose results it compares, and hashes each data record
+\ it reaches; a capturing walk also makes that hash a DATA row. The first
+\ record it cannot account for stops it.
+: HCTX ( -- ptr u8 ) 0 HWORK ;
+: HOUT ( -- ptr u8 ) SHA256-CTX-BYTES HWORK ;
+: H-BYTES ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0 > if HCTX a u SHA256-FEED then ;
+: H-N ( n -- ) CELL-BYTES LE:U64! CELL-BYTES 8 H-BYTES ;
+: H-S ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u H-N a u H-BYTES ;
+
+: HERE-N ( -- n ) here BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+
+: FAIL ( ptr u8 n n -- )
+   {: why:ptr whyu:n ord:n :}
+   WOK @ 0= if exit then
+   false WOK ! why FAIL-P ! whyu FAIL-U ! ord FAIL-ORD ! ;
+
+: WALK-BEGIN ( bool -- )
+   {: capture:bool :}
+   ndict@ {: n:n :}
+   n SEEN-RESERVE
+   n SEEN-N @ ?do 0 i SEEN ! loop
+   n SEEN-N @ max SEEN-N !
+   SHA256-CTX-BYTES DIGEST-BYTES + HWORK-RESERVE
+   1 EPOCH +!
+   0 WSP ! 0 MEM-N !
+   capture WCAPTURE ! true WOK ! ;
+
+: VISIT ( n -- )
+   {: ord:n :}
+   ord 0 < ord ndict@ >= or if BAD then
+   ord SEEN @ EPOCH @ = if exit then
+   EPOCH @ ord SEEN !
+   WSP @ 1+ WSTACK-RESERVE
+   ord WSP @ WSTACK !
+   1 WSP +! ;
+
+\ The record ordinal and here bounding a DATA extent read while ord's frame
+\ compiles: the file's entry for a record from before the file, else the
+\ open definition's entry, else the live state a check runs at.
+: LIMITS ( n -- n n )
+   {: ord:n :}
+   FDEPTH @ 0 > if
+      ord F-FIRST FFIELD @ < if F-FIRST FFIELD @ F-HERE FFIELD @ exit then
+   then
+   DEPTH @ 0 > if
+      DEPTH @ 1- 2 * DLIMITS @ DEPTH @ 1- 2 * 1+ DLIMITS @ exit
+   then
+   ndict@ HERE-N ;
+
+\ Among the records below limit: the one with the greatest DATA origin at or
+\ below at (-1 when none), that origin, and the least origin above at, else
+\ lim-here.
+: SPAN ( n n n -- n n n )
+   {: at:n limit:n lim-here:n :}
+   -1 S-OWNER ! 0 S-BASE ! lim-here S-END !
+   limit 0 ?do
+      i NFILE-REF:DATA-ORIGIN-BASE {: o:n known:bool :}
+      known if
+         o at <= if
+            S-OWNER @ 0 < o S-BASE @ > or if i S-OWNER ! o S-BASE ! then
+         else
+            o S-END @ < if o S-END ! then
+         then
+      then
+   loop
+   S-OWNER @ S-BASE @ S-END @ ;
+
+\ A variable's slot and a defer's cell may hold an address.
+: POINTER-CELL? ( n -- bool )
+   XREF-REC {: rec:ptr :}
+   rec XREF-FLAGS DNAME-CELL and 0<> if true exit then
+   rec NDICT:REC-DEFER-CELL 0<> ;
+
+: H-REF ( n n n -- )
+   {: target:n addend:n holder:n :}
+   target NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
+   known 0= if s" executed-closure-unknown" holder FAIL exit then
+   1 H-N key keyu H-S addend H-N
+   target VISIT ;
+
+\ holder's pointer cell holds v: an address in the dictionary, code or the
+\ DATA before the limits is its record's key and the offset into it, and the
+\ walk follows that record. Another mapped address is process state no later
+\ build sees; any other value is a number.
+: H-POINTER ( n n n n -- )
+   {: v:n holder:n limit:n lim-here:n :}
+   v AOT-CELL:DICT-PTR? if
+      v dbase@ - {: off:n :}
+      off DREC / off DREC mod holder H-REF exit
+   then
+   v AOT-CELL:CODE-PTR? if
+      v NFILE-REF:IMPL-OWNER {: owner:n found:bool :}
+      found if owner v owner XREF-REC XREF-START - holder H-REF exit then
+   then
+   v AOT-CELL:DATA-ADDRESS? v lim-here < and if
+      v limit lim-here SPAN {: owner:n base:n end:n :}
+      end drop
+      owner 0 >= if owner v base - holder H-REF exit then
+   then
+   v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder FAIL exit then
+   0 H-N v H-N ;
+
+\ ord's DATA digest in HOUT: its extent up to the next record origin within
+\ its limits, the first cell through H-POINTER when it may hold an address.
+\ False when ord has no DATA origin or its extent is empty.
+: DATA-HASH ( n -- bool )
+   {: ord:n :}
+   ord NFILE-REF:DATA-ORIGIN-BASE {: origin:n known:bool :}
+   known 0= if false exit then
+   ord LIMITS {: limit:n lim-here:n :}
+   origin limit lim-here SPAN {: owner:n base:n end:n :}
+   owner drop base drop
+   end origin - {: size:n :}
+   size 0 <= if false exit then
+   HCTX SHA256-BEGIN
+   s" habu-data-v1" H-S
+   size H-N
+   ord POINTER-CELL? size 8 >= and if
+      origin N>U8 LE:U64@ ord limit lim-here H-POINTER
+      origin 8 +
+   else origin then {: start:n :}
+   start N>U8 end start - H-BYTES
+   HCTX HOUT SHA256-END
+   true ;
+
+: REACH-DATA ( n -- )
+   {: ord:n :}
+   ord DATA-HASH 0= if s" executed-closure-unknown" ord FAIL exit then
+   WOK @ 0= if exit then
+   ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
+   known 0= if s" executed-closure-unknown" ord FAIL exit then
+   WCAPTURE @ if ord DATA key keyu HOUT DIGEST-BYTES ADD-ROW then ;
+
+: MEMBER+ ( n -- )
+   MEM-N @ 1+ MEMBERS-RESERVE
+   MEM-N @ MEMBERS !
+   1 MEM-N +! ;
+
+\ Queue ord once per run.
+: QUEUE ( n -- )
+   {: ord:n :}
+   ord RMARK @ REPOCH @ = if exit then
+   REPOCH @ ord RMARK !
+   RQ-N @ 1+ RQUEUE-RESERVE
+   ord RQ-N @ RQUEUE !
+   1 RQ-N +! ;
+
+: EDGES ( n -- )
+   {: ord:n :}
+   ord NFILE-REF:RESULT-EDGES 0 ?do
+      ord i NFILE-REF:RESULT-EDGE {: kind:n target:n :}
+      kind drop
+      target 0 < if s" executed-closure-unknown" ord FAIL else target VISIT then
+   loop ;
+
+\ A record the file made is not in a closure: no row could be checked at the
+\ file's entry. A capturing walk queues it, and a walk through it (WTRANS)
+\ queues every record it reaches. A seed record is terminal; a defer is its
+\ cell; a definition with a result is a member; a constant is its VALUE row;
+\ a does> instance's clause has no result yet; anything else must be a data
+\ record.
+: REACH ( n -- )
+   {: ord:n :}
+   WTRANS @ if
+      ord WROOT @ <> if ord QUEUE exit then
+   else
+      ord OWN? if WCAPTURE @ if ord QUEUE then exit then
+   then
+   ord NFILE-REF:SEED-RECORD? if exit then
+   ord XREF-REC {: rec:ptr :}
+   rec NDICT:REC-DEFER-CELL 0<> if ord REACH-DATA exit then
+   ord NFILE-REF:RESULT-DIGEST {: digest:ptr known:bool :}
+   digest drop
+   known if ord MEMBER+ ord EDGES exit then
+   rec XREF-FLAGS {: flags:n :}
+   flags DKIND:MASK and DKIND:VAL = if exit then
+   flags DNAME-ALLOC and 0<> flags DKIND:MASK and 0= and if
+      s" executed-closure-unknown" ord FAIL exit
+   then
+   ord REACH-DATA ;
+
+: WALK ( n bool -- )
+   {: root:n capture:bool :}
+   capture WALK-BEGIN
+   root VISIT
+   begin WSP @ 0 > WOK @ and while
+      -1 WSP +!
+      WSP @ WSTACK @ REACH
+   repeat ;
+
+: KEY< ( n n -- bool )
+   {: a:n b:n :}
+   a NFILE-REF:DECL-KEY$ b NFILE-REF:DECL-KEY$ STR< ;
+
+\ The walk's members in key order, each with its result digest, into HOUT.
+: CLOSURE-HASH ( -- )
+   MEM-N @ 1 > if 0 MEMBERS MEM-N @ [: KEY< ;] SORT:SORT! then
+   HCTX SHA256-BEGIN
+   s" habu-executed-v1" H-S
+   MEM-N @ H-N
+   MEM-N @ 0 ?do
+      i MEMBERS @ {: m:n :}
+      m NFILE-REF:DECL-KEY$ H-S
+      m NFILE-REF:RESULT-DIGEST drop DIGEST-BYTES H-BYTES
+   loop
+   HCTX HOUT SHA256-END ;
+
+: CHECK-EXECUTED ( ptr u8 n ptr u8 n -- bool )
+   {: key:ptr keyu:n want:ptr wantu:n :}
+   key keyu CURRENT {: rec:ptr ord:n found:bool :}
+   rec drop
+   found if
+      ord false WALK
+      WOK @ if CLOSURE-HASH HOUT DIGEST-BYTES want wantu STR= else false then
+   else false then
+   dup 0= if s" executed closure changed" REMEMBER-MISS then ;
+
+: CHECK-DATA ( ptr u8 n ptr u8 n -- bool )
+   {: key:ptr keyu:n want:ptr wantu:n :}
+   key keyu CURRENT {: rec:ptr ord:n found:bool :}
+   rec drop
+   found if
+      false WALK-BEGIN
+      ord DATA-HASH WOK @ and if HOUT DIGEST-BYTES want wantu STR= else false then
+   else false then
+   dup 0= if s" data changed" REMEMBER-MISS then ;
+
 \ The owner retained this exact fixed result at publication. CHECK reads only
 \ its record fact; it never enters a definition to reconstruct the value.
 : FIXED-RAW? ( n -- n bool )
@@ -383,6 +656,14 @@ INSTALL-DEFAULT
    kind VALUE = if
       keyu 0= datau 8 <> or if MALFORMED then
       key keyu data datau CHECK-VALUE exit
+   then
+   kind EXECUTED = if
+      keyu 0= datau DIGEST-BYTES <> or if MALFORMED then
+      key keyu data datau CHECK-EXECUTED exit
+   then
+   kind DATA = if
+      keyu 0= datau DIGEST-BYTES <> or if MALFORMED then
+      key keyu data datau CHECK-DATA exit
    then
    kind CHECKER-ROLE = if
       keyu 0<> datau 32 <> or if MALFORMED then
@@ -699,8 +980,6 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
       row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
       ord flags CAPTURE-READER-FLAGS
       flags DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then
-      \ What an immediate ran while compiling cannot be re-verified.
-      flags DNAME-IMM and 0<> if s" immediate-binding" ord ORDERED-BY then
       exit
    then
    kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = if
@@ -745,6 +1024,52 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
    off FBYTES 8 + LE:U64@ 0 ?do kind TALLY loop
    drop ;
 
+\ What a run of ord reads: a constant's VALUE row; for a data word its DATA
+\ row; for a definition, defer or does> instance one EXECUTED row over the
+\ members its closure reached and a DATA row per data record. A seed record's
+\ RESOLUTION row is its only fact.
+: CAPTURE-ONE ( n -- )
+   {: ord:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE exit then
+   ord NFILE-REF:SEED-RECORD? if exit then
+   ord true WALK
+   WOK @ 0= if exit then
+   ord NFILE-REF:RESULT-DIGEST nip rec NDICT:REC-DEFER-CELL 0<> or if
+      CLOSURE-HASH
+      ord EXECUTED ord NFILE-REF:DECL-KEY$ HOUT DIGEST-BYTES ADD-ROW
+   then ;
+
+\ A walk through the file's own record ord, recording nothing: it queues each
+\ record ord reaches directly.
+: THROUGH ( n -- )
+   {: ord:n :}
+   ord WROOT ! true WTRANS !
+   ord false WALK
+   false WTRANS ! ;
+
+\ The run of ord as rows keyed by records that exist at the file's entry:
+\ each record the run reaches is captured as if run directly when the file
+\ did not make it, and walked through when it did. The first walk that
+\ cannot account for a record orders the frame.
+: CAPTURE-RUN ( n -- )
+   {: ord:n :}
+   ndict@ {: n:n :}
+   n RMARK-RESERVE
+   n RMARK-N @ ?do 0 i RMARK ! loop
+   n RMARK-N @ max RMARK-N !
+   1 REPOCH +!
+   0 RQ-N ! true WOK !
+   ord QUEUE
+   0 begin dup RQ-N @ < while
+      dup RQUEUE @ {: r:n :}
+      r OWN? if r THROUGH else r CAPTURE-ONE then
+      WOK @ 0= if
+         drop FAIL-P @ FAIL-U @ FAIL-ORD @ XREF-REC XREF-NAME$ r ORDERED-AT exit
+      then
+      1+
+   repeat drop ;
+
 public
 
 \ The running checker owner's CHECKER-OWNER:RESOLUTION-TOP, bound for the
@@ -756,7 +1081,7 @@ public
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
 \ without the name included, and then, when one of them holds the record that
-\ ran, the value a constant produced.
+\ ran, what the run read (CAPTURE-RUN).
 : OBSERVE-RUN ( n -- )
    {: ord:n :}
    OPEN? 0= if exit then
@@ -764,7 +1089,7 @@ public
    0 RUN-HITS !
    RUN-TOKEN$ ['] RUN-LEG TOP-XT @ AS-TOP execute
    RUN-HITS @ 0= if s" resolution-leg-unknown" ord ORDERED-BY exit then
-   ord XREF-REC XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then ;
+   ord CAPTURE-RUN ;
 
 \ Open a file frame at the file's first record ordinal.
 : BEGIN-UNIT ( -- )
@@ -774,6 +1099,7 @@ public
    ndict@ base F-FIRST + FFRAMES !
    FRN @ base F-RBASE + FFRAMES !
    WHYU @ base F-WHY + FFRAMES !
+   HERE-N base F-HERE + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -805,6 +1131,8 @@ public
    s"  binding=" DIAG-W2 BINDING KIND-ROWS DIAG-N
    s"  value=" DIAG-W2 VALUE KIND-ROWS DIAG-N
    s"  resolution=" DIAG-W2 RESOLUTION KIND-ROWS DIAG-N
+   s"  executed=" DIAG-W2 EXECUTED KIND-ROWS DIAG-N
+   s"  data=" DIAG-W2 DATA KIND-ROWS DIAG-N
    FILE-ORDERED? if
       F-WHY FFIELD @ {: why:n :}
       why FWHY WHYU @ why - DIAG-W2
@@ -816,6 +1144,9 @@ public
    ord NFILE-REF:BEGIN-DEFINITION
    DEPTH @ 1+ FRAMES-RESERVE
    USED @ DEPTH @ FRAMES !
+   DEPTH @ 1+ 2 * DLIMITS-RESERVE
+   ord DEPTH @ 2 * DLIMITS !
+   HERE-N DEPTH @ 2 * 1+ DLIMITS !
    1 DEPTH +!
    HEADER-BYTES ROOM BYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -872,6 +1203,9 @@ public
    BYTES-RELEASE FRAMES-RELEASE
    FBYTES-RELEASE FFRAMES-RELEASE FRANGES-RELEASE FWHY-RELEASE FSLOTS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
+   DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
+   RMARK-RELEASE RQUEUE-RELEASE
+   0 SEEN-N ! 0 RMARK-N ! 0 RQ-N !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

@@ -825,6 +825,16 @@ PENDING-CLEAR
    ord REC-OFF ROW@ 0 < if NULL-PTR 0 false exit then
    ord RECORD-KEY$ true ;
 
+\ ord was alive when the session opened: BIND-SEED keyed its declaration in
+\ the seed's file instance, the key's second field.
+: SEED-RECORD? ( n -- bool ) {: ord:n :}
+   ord DECL-KEY? {: key:ptr keyu:n known:bool :}
+   known 0= if false exit then
+   s" hb-seed" {: seed:ptr seedu:n :}
+   keyu 16 seedu + < if false exit then
+   key 8 + LE:U64@ seedu <> if false exit then
+   key 16 + seedu seed seedu STR= ;
+
 : INDEX-PREPARED-WIDS ( -- )
    PREP-REC-COUNT @ 0 ?do
       PREP-REC-BASE @ i + {: ord:n :}
