@@ -81,6 +81,15 @@ DYNAMIC-BUFFER HWORK u8
 \ file's own records to walk through and the other records to capture.
 DYNAMIC-BUFFER RMARK n
 DYNAMIC-BUFFER RQUEUE n
+\ The DATA origins of the records below OW, two cells an entry sorted by
+\ origin then ordinal; per ordinal below OW the greatest origin indexed at or
+\ below it; and the records that had no code yet or were retired when indexed.
+DYNAMIC-BUFFER OIDX n
+DYNAMIC-BUFFER OPMAX n
+DYNAMIC-BUFFER OPEND n
+0 CWORK-VARIABLE OI-N n
+0 CWORK-VARIABLE OW n
+0 CWORK-VARIABLE OPEND-N n
 0 CWORK-VARIABLE SEEN-N n
 0 CWORK-VARIABLE EPOCH n
 0 CWORK-VARIABLE WSP n
@@ -360,22 +369,121 @@ INSTALL-DEFAULT
    then
    ndict@ HERE-N ;
 
+\ The origin index. A record enters it once, when a query first covers its
+\ ordinal, so a query reads only the entries next to its address. Its facts
+\ are then fixed: an origin can only vanish, by retirement, and each answer
+\ re-reads the live origin of the entries it returns. A record with no code
+\ yet or retired waits in OPEND until a query finds it settled. A dictionary
+\ cut drops what it removed (DICT-CUT).
+$8000000000000000 constant ORIGIN-FLOOR
+
+: OI-O ( n -- n ) 2 * OIDX @ ;
+: OI-R ( n -- n ) 2 * 1+ OIDX @ ;
+: OI! ( n n n -- )
+   {: j:n o:n r:n :}
+   o j 2 * OIDX ! r j 2 * 1+ OIDX ! ;
+
+\ Entry j-1 moves up to j.
+: OI-SHIFT ( n -- )
+   {: j:n :}
+   j j 1- OI-O j 1- OI-R OI! ;
+
+\ Entry j sorts after origin o of record r.
+: OI-AFTER? ( n n n -- bool )
+   {: j:n o:n r:n :}
+   j OI-O o > if true exit then
+   j OI-O o = j OI-R r > and ;
+
+: OI-PUT ( n n -- )
+   {: o:n r:n :}
+   OI-N @ 1+ 2 * OIDX-RESERVE
+   OI-N @ begin dup 0 > if dup 1- o r OI-AFTER? else false then while
+      dup OI-SHIFT 1-
+   repeat {: j:n :}
+   j o r OI!
+   1 OI-N +!
+   OW @ r ?do i OPMAX @ o max i OPMAX ! loop ;
+
+\ ord's DATA origin may still appear.
+: UNSETTLED? ( n -- bool )
+   XREF-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if true exit then
+   rec XREF-START 0= if true exit then
+   rec XREF-RETIRED? ;
+
+: OI-ADD ( n -- )
+   {: ord:n :}
+   ord NFILE-REF:DATA-ORIGIN-BASE {: o:n known:bool :}
+   known if o ord OI-PUT exit then
+   ord UNSETTLED? if
+      OPEND-N @ 1+ OPEND-RESERVE
+      ord OPEND-N @ OPEND !
+      1 OPEND-N +!
+   then ;
+
+\ Index every record below limit that has settled.
+: EXTEND ( n -- )
+   {: limit:n :}
+   ndict@ OW @ < if BAD then
+   limit OW @ > if
+      limit OPMAX-RESERVE
+      limit OW @ ?do
+         i 0 > if i 1- OPMAX @ else ORIGIN-FLOOR then i OPMAX !
+         i 1+ OW !
+         i OI-ADD
+      loop
+   then
+   0 OPEND-N @ 0 ?do
+      i OPEND @ {: ord:n :}
+      ord limit < ord UNSETTLED? 0= and if ord OI-ADD
+      else ord over OPEND ! 1+ then
+   loop OPEND-N ! ;
+
+\ Entry j is a live origin of a record below limit.
+: LIVE? ( n n -- bool )
+   {: j:n limit:n :}
+   j OI-R {: r:n :}
+   r limit >= if false exit then
+   r NFILE-REF:DATA-ORIGIN-BASE {: o:n known:bool :}
+   known o j OI-O = and ;
+
+\ The first entry whose origin is above at.
+: ABOVE ( n -- n )
+   {: at:n :}
+   0 OI-N @ begin 2dup < while
+      2dup + 2 / dup OI-O at <= if 1+ rot drop swap else nip then
+   repeat drop ;
+
+\ Below entry up: the greatest live origin and its least record.
+: BELOW ( n n -- )
+   {: up:n limit:n :}
+   up 1- begin dup 0 >= if dup limit LIVE? 0= else false then while 1- repeat
+   {: j:n :}
+   j 0 < if exit then
+   j OI-O S-BASE ! j OI-R S-OWNER !
+   j 1- begin dup 0 >= if dup OI-O S-BASE @ = else false then while
+      dup limit LIVE? if dup OI-R S-OWNER ! then
+      1-
+   repeat drop ;
+
+\ From entry up: the least live origin, if below lim-here.
+: UPPER ( n n n -- )
+   {: up:n limit:n lim-here:n :}
+   OI-N @ up ?do
+      i limit LIVE? if i OI-O lim-here min S-END ! unloop exit then
+   loop ;
+
 \ Among the records below limit: the one with the greatest DATA origin at or
 \ below at (-1 when none), that origin, and the least origin above at, else
 \ lim-here.
 : SPAN ( n n n -- n n n )
    {: at:n limit:n lim-here:n :}
+   limit ndict@ min 0 max {: lim:n :}
+   lim EXTEND
+   at ABOVE {: up:n :}
    -1 S-OWNER ! 0 S-BASE ! lim-here S-END !
-   limit 0 ?do
-      i NFILE-REF:DATA-ORIGIN-BASE {: o:n known:bool :}
-      known if
-         o at <= if
-            S-OWNER @ 0 < o S-BASE @ > or if i S-OWNER ! o S-BASE ! then
-         else
-            o S-END @ < if o S-END ! then
-         then
-      then
-   loop
+   up lim BELOW
+   lim 0 > if lim 1- OPMAX @ at > if up lim lim-here UPPER then then
    S-OWNER @ S-BASE @ S-END @ ;
 
 \ A variable's slot and a defer's cell may hold an address.
@@ -1078,6 +1186,18 @@ public
 \ the word, so OBSERVE-RUN reaches it by execution token.
 : USE-TOP ( n -- ) TOP-XT ! ;
 
+\ A dictionary cut keeping kept records drops the origins it removed.
+: DICT-CUT ( n -- )
+   {: kept:n :}
+   kept OW @ >= if exit then
+   0 OI-N @ 0 ?do
+      i OI-R kept < if dup i OI-O i OI-R OI! 1+ then
+   loop OI-N !
+   0 OPEND-N @ 0 ?do
+      i OPEND @ kept < if i OPEND @ over OPEND ! 1+ then
+   loop OPEND-N !
+   kept OW ! ;
+
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
 \ without the name included, and then, when one of them holds the record that
@@ -1204,8 +1324,8 @@ public
    FBYTES-RELEASE FFRAMES-RELEASE FRANGES-RELEASE FWHY-RELEASE FSLOTS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
    DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
-   RMARK-RELEASE RQUEUE-RELEASE
-   0 SEEN-N ! 0 RMARK-N ! 0 RQ-N !
+   RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
+   0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

@@ -979,6 +979,7 @@ public
 \ crosses, its first ordinal included.
 : FILE-CUT ( n -- )
    {: kept:n :}
+   kept NUNIT-DEP:DICT-CUT
    INDEX-U @ INDEX-BYTES / {: rows:n :}
    0 begin
       dup rows < if dup FILE-ORDS @ kept < else false then
