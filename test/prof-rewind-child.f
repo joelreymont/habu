@@ -5,8 +5,8 @@
 variable REWIND-AT
 variable DONOR-PC
 variable DONOR-IX
-variable DONOR-CALLER-XT
-variable RETIRED-XT
+TYPED-VARIABLE DONOR-CALLER-XT [ -- n ]
+TYPED-VARIABLE RETIRED-XT [ -- ]
 variable TRIM-IX
 variable TRIM-PC
 ndict@ REWIND-AT !

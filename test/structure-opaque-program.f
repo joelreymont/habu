@@ -39,6 +39,12 @@ create ERR CAP allot
 : REFUSED? ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu:n why:ptr whyu:n :}
    src srcu 70 why whyu STATUS? ;
 
+\ Refused as an undefined word: tier 0 names it `E-UNDEFINED: W`, tier 1's
+\ checker `undefined word 'W'`.
+: UNDEFINED? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: src:ptr srcu:n why0:ptr why0u:n why1:ptr why1u:n :}
+   tier@ 0= if src srcu why0 why0u REFUSED? else src srcu why1 why1u REFUSED? then ;
+
 public
 
 : SIG ( OP:box -- OP:box ) ;
@@ -58,13 +64,13 @@ private
 : CALLS ( -- )
    s" the bare generated pair is undefined outside OP" T-LABEL
    s" package OPQA public : FA ( -- n ) 7 BOX-MAKE BOX-UNMAKE ; ;package"
-   s" E-UNDEFINED: BOX-MAKE" REFUSED? TTRUE
+   s" E-UNDEFINED: BOX-MAKE" s" undefined word 'BOX-MAKE'" UNDEFINED? TTRUE
    s" no constructor namespace is reserved" T-LABEL
    s" package OPQA public : FB ( -- n ) 7 OP-BOX:MAKE OP-BOX:UNMAKE ; ;package"
-   s" E-UNDEFINED: OP-BOX:MAKE" REFUSED? TTRUE
+   s" E-UNDEFINED: OP-BOX:MAKE" s" undefined word 'OP-BOX:MAKE'" UNDEFINED? TTRUE
    s" the generated pair is not a public word of OP" T-LABEL
    s" package OPQA public : FC ( -- n ) 7 OP:BOX-MAKE OP:BOX-UNMAKE ; ;package"
-   s" E-UNDEFINED: OP:BOX-MAKE" REFUSED? TTRUE ;
+   s" E-UNDEFINED: OP:BOX-MAKE" s" undefined word 'OP:BOX-MAKE'" UNDEFINED? TTRUE ;
 
 : REACH ( -- )
    s" another package cannot export the constructor" T-LABEL

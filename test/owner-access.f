@@ -26,6 +26,7 @@ create OUT IO-CAP allot
 create ERR IO-CAP allot
 
 70 constant REJECT-RC                  \ a compile reject and an internal engine word
+67 constant UNCAUGHT-RC                \ hb's exit status for an uncaught throw
 
 : OA-MARK$ ( -- ptr u8 n ) s" @" ;
 
@@ -55,14 +56,24 @@ create ERR IO-CAP allot
    src size rc RAN {: ea:ptr eu:n :}
    src size T-LABEL  ea eu want wantu CONTAINS? TTRUE ;
 
-\ A source the engine refuses before anything runs: the reject status and the
+\ A source the engine refuses before anything runs: its status rc and the
 \ diagnostic naming why.
-: REJECTS ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n want:ptr wantu:n :}
+: REFUSES ( ptr u8 n n ptr u8 n -- ) {: src:ptr size:n rc:n want:ptr wantu:n :}
    src size CHILD {: outu:len erru:len got:n :}
    ERR erru LEN>N {: ea:ptr eu:n :}
    ea eu want wantu CONTAINS? 0= if ea eu type then
-   src size T-LABEL  got REJECT-RC T=
+   src size T-LABEL  got rc T=
    src size T-LABEL  ea eu want wantu CONTAINS? TTRUE ;
+
+\ A source refused with the compile reject status.
+: REJECTS ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n want:ptr wantu:n :}
+   src size REJECT-RC want wantu REFUSES ;
+
+\ An unchecked call that ran. Tier 0 has no checker to report anything; tier
+\ 1 reports the verdict WANT on fd 2 and does not enforce it.
+: REACHES-UNJUDGED ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr size:n rc:n want:ptr wantu:n :}
+   tier@ 0= if src size rc REACHES else src size rc want wantu REACHES-REPORTED then ;
 
 public
 
@@ -76,12 +87,16 @@ private
 \ (record 0 is no namespace row; an empty name) with exit 83. Tier 1 reports
 \ the global trusted-only row's E-CAP-TRUSTED, as it reports every unjudged
 \ verdict, and compiles the call. The source prints the marker just before the
-\ call.
+\ call. The first two cases run at the engine's tier; the third selects tier 1.
 : UNCHECKED ( -- )
    s" 0 set-check : OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
-   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   ENGINE-ERROR:SEAL-VIOLATION
+   s" E-CAP-TRUSTED habu: in oa-scope: 'package-scope!' is a trust-boundary primitive"
+   REACHES-UNJUDGED
    s" 0 set-check : OA-NS ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS"
-   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   ENGINE-ERROR:SEAL-VIOLATION
+   s" E-CAP-TRUSTED habu: in oa-ns: 'namespace-record' is a trust-boundary primitive"
+   REACHES-UNJUDGED
    s" 1 set-tier 0 set-check : OA-NS1 ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS1"
    ENGINE-ERROR:SEAL-VIOLATION
    s" E-CAP-TRUSTED habu: in oa-ns1: 'namespace-record' is a trust-boundary primitive"
@@ -89,16 +104,24 @@ private
 
 \ OWNED comes from the rows, not a name list: source-unit-run's SOURCE-ROOT
 \ row makes it owned too, so unchecked tier-0 code compiles a call to it, and
-\ the call runs its callback, which prints the marker.
+\ the call runs its callback, which prints the marker. Tier 1's signature
+\ parser knows no type `xt` and would refuse the source before the call, so
+\ tier 1 spells the callback `[ -- ]`, as OUTSIDE's OA-SUR1 does, and reports
+\ the unjudged E-CAP-TRUSTED before the call runs.
 : UNIT-RUN ( -- )
-   s" 0 set-check : OA-UNIT ( xt -- ) source-unit-run ; ' OA-AT OA-UNIT"
-   0 REACHES ;
+   tier@ 0= if s" 0 set-check : OA-UNIT ( xt -- ) source-unit-run ; ' OA-AT OA-UNIT"
+   0 REACHES
+   else s" 0 set-check : OA-UNIT ( [ -- ] -- ) source-unit-run ; ' OA-AT OA-UNIT"
+   0 s" E-CAP-TRUSTED habu: in oa-unit: 'source-unit-run' is a trust-boundary primitive" REACHES-REPORTED then ;
 
 \ An internal primitive no package row types keeps the compile refusal, so
-\ unchecked code still needs a TRUSTED: boundary to call it.
+\ unchecked code still needs a TRUSTED: boundary to call it. Tier 0's compiler
+\ finds no such word; tier 1 reports the unjudged E-CAP-TRUSTED, then its
+\ native compiler refuses the call and the throw (E-HIR-UNMODELED) is uncaught.
 : INTERNAL-ONLY ( -- )
    s" 0 set-check : OA-MARK ( n -- ) int-mark ;"
-   s" E-UNDEFINED: int-mark" REJECTS ;
+   tier@ 0= if s" E-UNDEFINED: int-mark" REJECTS
+   else UNCAUGHT-RC s" ncomp: cannot compile OA-MARK at int-mark" REFUSES then ;
 
 \ OWNED opens nothing that DNAME-INT closes: the prompt and `'` refuse an owned
 \ primitive as they refuse every internal engine word.
