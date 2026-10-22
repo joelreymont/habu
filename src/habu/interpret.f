@@ -31,25 +31,13 @@ private
    NUMERAL? if PUSH-NUM exit then
    RUN-WORD ;
 
-\ The design seal admits its syntax tokens and numbers. Another top-level
+\ The design seal admits `:`, the design span and numbers. Another top-level
 \ token is resolved once here, before a parsing word can consume its operand;
 \ STEP then runs that same admitted record. Native compilation checks body
 \ tokens, and DEF-IMMEDIATE checks one it executes while capturing a body.
 : POLICY-SYNTAX? ( -- bool )
    s" :" TOKEN-IS? if true exit then
-   s" if" TOKEN-IS? if true exit then
-   s" else" TOKEN-IS? if true exit then
-   s" then" TOKEN-IS? if true exit then
-   s" {:" TOKEN-IS? if true exit then
-   s" :}" TOKEN-IS? if true exit then
-   S\" s\"" TOKEN-IS? if true exit then
-   S\" s\\\q" TOKEN-IS? if true exit then
-   s" package" TOKEN-IS? if true exit then
-   s" public" TOKEN-IS? if true exit then
-   s" private" TOKEN-IS? if true exit then
-   s" ;package" TOKEN-IS? if true exit then
-   s" using" TOKEN-IS? if true exit then
-   s" ;using" TOKEN-IS? ;
+   TOKEN$ DEF-DESIGN-KEYWORD? ;
 
 : POLICY-PRE ( -- bool )
    POLICY-NDICT-CELL CELL@ 0= if false exit then

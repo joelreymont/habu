@@ -251,6 +251,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" defname-interpret" s" hb: not in vocabulary: create at test/policy/defname-interpret.f:2" BOTH-REFUSE
    TIER0 s" defname-span" 70 s" hb: compile keyword cannot be a definition name: package" s" " RUNS
    TIER1 s" defname-span" 70 s" hb: compile keyword cannot be a definition name: package" s" " RUNS
+   TIER0 s" defname-escaped" 70 S\" hb: compile keyword cannot be a definition name: s\\\q" s" " RUNS
+   TIER1 s" defname-escaped" 70 S\" hb: compile keyword cannot be a definition name: s\\\q" s" " RUNS
    TIER0 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
    TIER1 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
    s" defname-kernel" s" hb: not in vocabulary: kernel: at test/policy/defname-kernel.f:4" BOTH-REFUSE

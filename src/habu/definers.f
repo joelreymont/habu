@@ -188,11 +188,18 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-KEYWORDS ( -- ptr u8 n )
    S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
-\ A design may define none of the engine's dispatch-row names. The twelve
-\ admitted syntax rows keep the ordinary reserved-name error; every other
-\ row is outside the vocabulary before dictionary duplicate checks run.
-: DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
-   S\" if else then {: :} s\q package public private ;package using ;using" ;
+\ The design span (habu2.f DESIGN-SPAN): the thirteen keyword spellings a
+\ sealed source may still use, split in two. A design may define none of the
+\ engine's dispatch-row names: these keep the ordinary reserved-name error, and
+\ every other row is outside the vocabulary before dictionary duplicate checks
+\ run. DESIGN-BODY holds the six a body's capture admits after its lookups miss
+\ (habu2.f, the capture's probe).
+: DESIGN-BODY ( -- ptr u8 n )
+   S\" if else then s\q s\\\q {:" ;
+
+\ The other seven: read at top level or closing a `{:` group.
+: DESIGN-TOP ( -- ptr u8 n )
+   s" :} package public private ;package using ;using" ;
 
 \ The interpret dispatch rows, plus kernel: and ;match, which the ARM row walk
 \ compares inside their constructs. Ordinary words such as require and include
@@ -226,8 +233,13 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-KEYWORD? ( ptr u8 n -- bool )
    DEF-KEYWORDS DEF-IN-TABLE? ;
 
+: DEF-DESIGN-BODY? ( ptr u8 n -- bool )
+   DESIGN-BODY DEF-IN-TABLE? ;
+
 : DEF-DESIGN-KEYWORD? ( ptr u8 n -- bool )
-   DEF-DESIGN-KEYWORDS DEF-IN-TABLE? ;
+   {: a:ptr u:n :}
+   a u DEF-DESIGN-BODY? if true exit then
+   a u DESIGN-TOP DEF-IN-TABLE? ;
 
 : DEF-ROW-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u DEF-KEYWORD? if true exit then
@@ -470,7 +482,7 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture. A miss reaches the six design body
+\ `;` is handled before the capture. A miss reaches the design span's body
 \ keywords only after local, dictionary and numeric lookup, as the native
 \ capture does.
 : BODY-POLICY ( -- )
@@ -483,12 +495,7 @@ private
    rec XREF-FOUND? if rec POLICY-CHECK-REC exit then
    TOKEN$ FIND {: used:ptr :}
    used XREF-FOUND? if used POLICY-CHECK-REC exit then
-   s" if" TOKEN-IS? if exit then
-   s" else" TOKEN-IS? if exit then
-   s" then" TOKEN-IS? if exit then
-   S\" s\q" TOKEN-IS? if exit then
-   S\" s\\\q" TOKEN-IS? if exit then
-   s" {:" TOKEN-IS? if exit then
+   TOKEN$ DEF-DESIGN-BODY? if exit then
    POLICY-REFUSE ;
 
 \ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
