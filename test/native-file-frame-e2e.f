@@ -45,7 +45,8 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 \ carries to the engine checker's own kept row (src/core/checker.f
 \ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
 \ keeps its declared row as a recovery fact; broken.f binds BROKEN under the
-\ same run.
+\ same run. after.f, the first file after the run ends, stores its definition:
+\ the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    0 INPUT-U !
@@ -59,6 +60,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
+   s" after.f" LOAD+
    s" retire.f" LOAD+
    s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
@@ -218,6 +220,7 @@ public
    s" " s" dup +" s" 3 TWICE drop" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
+   s" after.f" S\" : AFTER-ONE ( -- n ) 1 ;\n" PUT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
    \ peek.f's TRUSTED: PEEK reads its own data; run.f's top level runs it,
    \ safe.f's runs the checked SAFE-PEEK that calls it, and vread.f's reads
@@ -227,8 +230,8 @@ public
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
    \ tasks.f loads TASK; slot.f then moves TASK's user-slot watermark at load
-   \ time through the cell TASK hands its claimants. TASK:+USER moves it too,
-   \ but the slot word it evaluates refuses the file first (checker-busy).
+   \ time through the cell TASK hands its claimants. TASK:+USER moves it too
+   \ and refuses its file for task-slots the same way.
    \ scope.f leaves its package open, the last load: a using it left open
    \ would not count, as usings end with their file (interpret.f CLEAN-END).
    s" tasks.f" S\" require src/lib/task.f\n" PUT
@@ -253,6 +256,8 @@ public
    s" broken.f" FRAME$
       s"  ordered=1 binding=0 value=0 resolution=2 executed=0 data=0 reason=binding-contract-unknown word=BROKEN"
       ENDS-WITH? TTRUE
+   s" after.f, the first file after the run, stores its first definition" T-LABEL
+   s" after.f" DEFS$ s" 1" T$=
    s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value and MARK's run" T-LABEL
    s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=29 executed=1 data=0" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
