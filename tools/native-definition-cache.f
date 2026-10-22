@@ -381,24 +381,29 @@ variable PENDING-KEY-U
    ROOT$ NAME preu 64 + sufu + PATH-BUF JOIN-PATH
    PATH-BUF swap ;
 
-\ Read one cache file into ENTRY. A missing file is a miss; a short,
-\ foreign or damaged one is refused on fd 2 and is a miss too, which the
-\ next store replaces.
+\ Read one cache file into ENTRY through one descriptor, sized by that
+\ descriptor, so a same-key writer renaming a larger entry in or a pruner
+\ removing it mid-read cannot fail the build. A missing file is a miss; a
+\ short, foreign or damaged one is refused on fd 2 and is a miss too, which
+\ the next store replaces.
 : CACHE-READ ( ptr u8 n ptr u8 n n -- n bool )
    {: path:ptr pathu:n magic:ptr magicu:n head:n :}
-   path pathu FS-TRY-STAT 0= if 0 false exit then
-   FS-STAT-SIZE@ {: size:n :}
-   size head < if path pathu s" short" REFUSE 0 false exit then
+   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if 0 false exit then
+   size head < if
+      file FD>N close
+      path pathu s" short" REFUSE 0 false exit
+   then
+   \ A failed reserve leaves the descriptor open; its throw ends the build.
    size ENTRY-RESERVE
-   path pathu 0 ENTRY size READ-ALL {: got:n :}
-   got head < if path pathu s" short" REFUSE 0 false exit then
+   file 0 ENTRY size FS:READ-SIZED
    0 ENTRY 8 magic magicu STR= 0= if
       path pathu s" magic" REFUSE 0 false exit
    then
-   0 ENTRY 16 + got 16 - CHECKSUM 0 ENTRY 8 + LE:U64@ <> if
+   0 ENTRY 16 + size 16 - CHECKSUM 0 ENTRY 8 + LE:U64@ <> if
       path pathu s" checksum" REFUSE 0 false exit
    then
-   got true ;
+   size true ;
 
 \ Publish the image built in STORE-IMAGE under path, sealing its checksum.
 : IMAGE-WRITE ( ptr u8 n n -- )

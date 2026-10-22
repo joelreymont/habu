@@ -148,6 +148,12 @@ variable HBR-STRAY
    {: a:ptr u:n :}
    a u s" hb-maker-support-" STARTS-WITH? u 81 = and ;
 
+\ A definition entry, hb-def-<64 hex>.hbd, which the maker writes per compiled
+\ definition; it is neither a kind the build publishes nor a stray.
+: HBR-DEF? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" hb-def-" STARTS-WITH? a u s" .hbd" ENDS-WITH? and u 75 = and ;
+
 : HBR-MAP-SLOT ( n -- n )
    dup HBR-NONE <> if 1+ then ;
 
@@ -160,6 +166,7 @@ variable HBR-STRAY
 
 : HBR-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HBR-KNOWN? if exit then
+   a u HBR-DEF? if exit then
    a u s" .map" ENDS-WITH? if
       a u 4 - HBR-ART? if
          a u HBR-ART-SLOT @ HBR-MAP-SLOT HBR-TAKE exit
@@ -191,8 +198,8 @@ variable HBR-STRAY
 \ Name what a build added to the root: the slots for its artifact, object and
 \ index, HBR-NONE for a kind it must not publish, and how many it publishes.
 \ The first build also records one maker image and its support record.
-\ Another name of either kind is a stray.
-\ Any other name is a stray.
+\ Another name of either kind is a stray. Definition entries the maker writes
+\ are counted as neither, so `want` leaves them out. Any other name is a stray.
 : HBR-RECORD ( n n n n n -- )
    {: art:n obj:n idx:n inputs:n want:n :}
    art HBR-ART-SLOT !

@@ -32,6 +32,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
 require src/lib/span.f                              \ the module's own buffers carry their reach
+require src/lib/ffi-abi.f                           \ fstat on an open descriptor
 
 PATH-CAP constant FS-PATH-CAP                   \ the core's one path capacity (src/core/util.f)
 FS-PATH-CAP 1 + constant FS-PATHZ-CAP
@@ -90,6 +91,12 @@ public
 private
 : CAUSE! ( n -- )
    data-base FS-ABI:ERRNO-OFF + ! ;
+
+\ The one fstat binding: libc's struct stat, not the normalized stat64 layout.
+PROCESS-SYMBOLS
+FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
+   1 FS-STAT-CAP WRITES-BYTES
+;FUNCTION
 ;package
 
 : FS-CAUSE-CLEAR ( -- )
@@ -509,23 +516,81 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    n 0 < if E-FS-IO throw then
    n ;
 
+: FS-IO-FAIL ( -- )
+   FS-IO-FD @ close E-FS-IO throw ;
+
+\ Read FS-IO-FD into dst until cap bytes or end of file; the count read. A read
+\ error closes the descriptor and throws E-FS-IO.
+: FS-READ-FILL ( ptr u8 n -- n ) {: dst:ptr cap :}
+   0 FS-IO-LEN !
+   begin FS-IO-LEN @ cap < while
+      FS-IO-FD @ dst FS-IO-LEN @ + cap FS-IO-LEN @ - read FS-IO-RD !
+      FS-IO-RD @ 0 < if FS-IO-FAIL then
+      FS-IO-RD @ cap FS-IO-LEN @ - > if FS-IO-FAIL then
+      FS-IO-RD @ 0= if FS-IO-LEN @ exit then
+      FS-IO-LEN @ FS-IO-RD @ + FS-IO-LEN !
+   repeat
+   FS-IO-LEN @ ;
+
+\ True when FS-IO-FD holds a byte past what FS-READ-FILL read.
+: FS-READ-MORE? ( -- bool )
+   FS-IO-FD @ FS-READ-PROBE FS-READ-PROBE-CAP read FS-IO-RD !
+   FS-IO-RD @ 0 < if FS-IO-FAIL then
+   FS-IO-RD @ 0 > ;
+
 : READ-ALL ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu dst:ptr cap :}
    cap 0 < if FS-CAUSE-CLEAR E-FS-CAPACITY throw then
    pa pu FS-PATHZ open-rd FS-IO-FD !
    FS-IO-FD @ 0 < if E-FS-OPEN throw then
-   0 FS-IO-LEN !
-   begin FS-IO-LEN @ cap < while
-      FS-IO-FD @ dst FS-IO-LEN @ + cap FS-IO-LEN @ - read FS-IO-RD !
-      FS-IO-RD @ 0 < if FS-IO-FD @ close E-FS-IO throw then
-      FS-IO-RD @ cap FS-IO-LEN @ - > if FS-IO-FD @ close E-FS-IO throw then
-      FS-IO-RD @ 0= if FS-IO-FD @ close FS-IO-LEN @ exit then
-      FS-IO-LEN @ FS-IO-RD @ + FS-IO-LEN !
-   repeat
-   FS-IO-FD @ FS-READ-PROBE FS-READ-PROBE-CAP read FS-IO-RD !
-   FS-IO-RD @ 0 < if FS-IO-FD @ close E-FS-IO throw then
-   FS-IO-RD @ 0 > if FS-IO-FD @ close E-FS-CAPACITY throw then
+   dst cap FS-READ-FILL {: got :}
+   got cap = if FS-READ-MORE? if FS-IO-FD @ close E-FS-CAPACITY throw then then
    FS-IO-FD @ close
-   FS-IO-LEN @ ;
+   got ;
+
+package FS
+private
+\ The mode and size fields of libc's struct stat, which FSTAT-CALL writes.
+: LIBC-MODE@ ( ptr u8 -- n )
+   HB-TARGET-MACOS? if 4 + FS-U16@ exit then
+   HB-TARGET-LINUX-X86-64? if 24 + FS-U16@ exit then
+   16 + FS-U16@ ;
+
+: LIBC-SIZE@ ( ptr u8 -- n )
+   HB-TARGET-MACOS? if 96 + FS-U64@ exit then
+   48 + FS-U64@ ;
+
+: FSTAT-FAIL ( n n -- ) {: file cause :}
+   file close
+   cause CAUSE!
+   E-FS-STAT throw ;
+
+public
+\ Open a regular file for reading once and size it from that descriptor, so a
+\ writer renaming a new file over the path or a remover unlinking it cannot
+\ change what READ-SIZED reads. A missing file (ENOENT) is `fd 0 false` with no
+\ descriptor open; any other open failure is E-FS-OPEN, and a descriptor that
+\ is not a regular file is closed and E-FS-STAT. The open blocks, as READ-ALL's
+\ does, so a FIFO at the path waits for a writer: name files the caller owns.
+\ A true flag hands the caller an open descriptor that READ-SIZED closes.
+: OPEN-SIZED ( ptr u8 n -- fd n bool ) {: pa:ptr pu :}
+   pa pu FS-PATHZ open-rd {: file :}
+   file 0 < if
+      ERRNO ENOENT = if -1 >FD 0 FS-FALSE exit then
+      E-FS-OPEN throw
+   then
+   file FS-STAT-BUF FSTAT-CALL 0<> if file FFI:ERRNO FSTAT-FAIL then
+   FS-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if file 0 FSTAT-FAIL then
+   file >FD FS-STAT-BUF LIBC-SIZE@ FS-TRUE ;
+
+\ Read exactly the size OPEN-SIZED gave into dst, which holds at least that
+\ many bytes, then close the descriptor. Fewer bytes or more than that size
+\ mean the open file changed underneath: E-FS-IO, the descriptor closed.
+: READ-SIZED ( fd ptr u8 n -- ) {: file:fd dst:ptr size :}
+   file FD>N FS-IO-FD !
+   dst size FS-READ-FILL size <> if FS-IO-FAIL then
+   FS-READ-MORE? if FS-IO-FAIL then
+   FS-IO-FD @ close ;
+;package
 
 : FS-WRITE-BY-FLAGS ( ptr u8 n ptr u8 n n -- ) {: pa:ptr pu src:ptr u flags :}
    u 0 < if FS-CAUSE-CLEAR E-FS-CAPACITY throw then

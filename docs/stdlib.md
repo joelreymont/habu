@@ -1919,6 +1919,8 @@ JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
 JOIN-PATH-INTO          ( ptr u8 n ptr u8 n SPAN:span<u8> -- n )
 READ-LINK               ( ptr u8 n SPAN:span<u8> -- n )
 READ-ALL                ( ptr u8 n ptr u8 n -- n )
+FS:OPEN-SIZED           ( ptr u8 n -- fd n bool )
+FS:READ-SIZED           ( fd ptr u8 n -- )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
 APPEND-FILE             ( ptr u8 n ptr u8 n -- )
@@ -1984,6 +1986,11 @@ one-context forms over the static `FS-WALK-CTX0` and are single-task.
 `READ-ALL` reads a regular file into caller storage and returns the byte count.
 The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
+`FS:OPEN-SIZED` opens a regular file once and answers its descriptor and its
+size from that descriptor, or `false` when the file is missing; `FS:READ-SIZED`
+reads exactly that size into caller storage and closes the descriptor, throwing
+`E-FS-IO` if the open file changed size. A rename or unlink of the path between
+the two cannot change what is read.
 Use `FS-O-WRONLY` or `FS-O-RDWR` when a caller must pass access-mode flags
 directly to the checked `open` primitive.
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends

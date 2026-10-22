@@ -157,11 +157,29 @@ variable STALE-N
    {: name:ptr nameu:n :}
    CACHE-PATH CACHE-U @ name nameu ENTRY-PATH JOIN-PATH ENTRY-PATH swap ;
 
+: DEF? ( ptr u8 n -- bool )
+   {: name:ptr nameu:n :}
+   name nameu s" hb-def-" STARTS-WITH? name nameu s" .hbd" ENDS-WITH? and ;
+
+\ Count a definition entry still in the root, and whether it was last dated
+\ before SINCE.
+: TALLY ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu DEF? 0= if exit then
+   name nameu ENTRY$ FS-TRY-LSTAT 0= if exit then
+   1 DEF-N +!
+   FS-STAT-MTIME-SEC@ SINCE @ < if 1 STALE-N +! then ;
+
+: TALLY-RESET ( -- ) 0 DEF-N ! 0 STALE-N ! ;
+
+: TALLY-ROOT ( -- )
+   TALLY-RESET
+   CACHE-PATH CACHE-U @ [: TALLY ;] FS-LIST:EACH ;
+
 \ Flip the last byte of one cache entry, which its checksum covers.
 : FLIP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu s" hb-def-" STARTS-WITH? 0= if exit then
-   name nameu s" .hbd" ENDS-WITH? 0= if exit then
+   name nameu DEF? 0= if exit then
    name nameu ENTRY$ {: path:ptr u:n :}
    path u LOAD {: size:n :}
    size 1- BYTES dup c@ $FF xor swap c!
@@ -192,7 +210,8 @@ variable STALE-N
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
 
-\ 2. Another engine's build into the same root leaves this engine's entries.
+\ 2. Another engine, whose checker and kernel identity differ, writes its own
+\ entries beside this engine's in the same root and leaves this engine's.
 : ALTERNATE-CASE ( -- )
    s" another engine's build keeps this engine's entries" T-LABEL
    s" alternate" CASE-DIR
@@ -203,7 +222,9 @@ variable STALE-N
    HITS {: warm:n :}
    COMPILED {: warm-compiled:n :}
    warm 0 > TTRUE
+   TALLY-ROOT DEF-N @ {: first-defs:n :}
    s" alternate" WHITEBOX-CHILD:ENGINE$ DIRECT SUCCESS
+   TALLY-ROOT DEF-N @ first-defs > TTRUE
    s" alternate" ENGINE-CANDIDATE:PATH$ DIRECT SUCCESS
    HITS warm T=
    COMPILED warm-compiled T=
@@ -307,25 +328,6 @@ variable STALE-N
    s" --repl" ARG dir diru s" app.f" IN ARG
    s" -o" ARG dir diru s" app-hb" IN ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
-
-: DEF? ( ptr u8 n -- bool )
-   {: name:ptr nameu:n :}
-   name nameu s" hb-def-" STARTS-WITH? name nameu s" .hbd" ENDS-WITH? and ;
-
-\ Count a definition entry still in the root, and whether it was last dated
-\ before SINCE.
-: TALLY ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   name nameu DEF? 0= if exit then
-   name nameu ENTRY$ FS-TRY-LSTAT 0= if exit then
-   1 DEF-N +!
-   FS-STAT-MTIME-SEC@ SINCE @ < if 1 STALE-N +! then ;
-
-: TALLY-RESET ( -- ) 0 DEF-N ! 0 STALE-N ! ;
-
-: TALLY-ROOT ( -- )
-   TALLY-RESET
-   CACHE-PATH CACHE-U @ [: TALLY ;] FS-LIST:EACH ;
 
 \ Of the entries in COLD-NAMES, those still in the root.
 : TALLY-COLD ( -- )

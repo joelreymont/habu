@@ -2,7 +2,6 @@
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
-require src/lib/le.f
 require src/lib/span.f
 
 package FS
@@ -14,15 +13,12 @@ private
 3 cells constant A-PATH-OFF
 \ libc struct stat has cell alignment, independently of the byte path's length.
 A-PATH-OFF FS-PATHZ-CAP + CELL 1- + CELL negate and constant A-STAT-OFF
-A-STAT-OFF 256 + constant A-PROBE-OFF
+A-STAT-OFF FS-STAT-CAP + constant A-PROBE-OFF
 A-PROBE-OFF 1 + constant A-WORK-BYTES
 4 constant A-INTERRUPTED
 
 PROCESS-SYMBOLS
 FUNCTION: A-OPEN-AT-CALL openat ( n ptr u8 n -- i32 ) ;FUNCTION
-FUNCTION: A-FSTAT-CALL fstat ( n ptr u8 -- i32 )
-   1 256 WRITES-BYTES
-;FUNCTION
 FUNCTION: A-READ-CALL read ( n ptr u8 n -- n )
    1 2 WRITES-ARG
 ;FUNCTION
@@ -163,14 +159,9 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    path u start work anchor FD>N false A-WALK
    anchor src u work ;
 
-: A-MODE@ ( ptr u8 -- n )
-   \ libc struct stat, not the engine's normalized stat64 buffer layout.
-   HB-TARGET-MACOS? if 4 + LE:U16@ exit then
-   HB-TARGET-LINUX-X86-64? if 24 + LE:U32@ exit then
-   16 + LE:U32@ ;
 : A-REGULAR ( ptr u8 -- ) {: work:ptr :}
-   work A-CUR@ work A-STAT-BUF A-FSTAT-CALL 0<> if A-STAT-FAIL then
-   work A-STAT-BUF A-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
+   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if A-STAT-FAIL then
+   work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
 : A-READ-STEP ( ptr u8 ptr u8 n -- n ) {: work:ptr dst:ptr count:n :}
    begin
