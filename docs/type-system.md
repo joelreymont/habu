@@ -766,14 +766,15 @@ clause style, per pointee:
 
 ```forth
 : RESERVED-PTR-U8-CELL ( n -- )
-   create , does> ( -- ptr ptr u8 ) @ data-base swap + 0 ptr-field ;
+   create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;
 ```
 
-The field view at the end is not decoration: `data-base <off> +` answers the
-untyped `ptr n` view of the DATA region, and `0 ptr-field` is what says the cell
-there holds a `ptr u8`. A clause without it computes the same address with the
-wrong type and the engine's own check refuses the definition — measured as
-`E-NCOMP-VERDICT` out of the native build, which is where a pre-checker
+The typed view inside `DATA-CELL` is not decoration: `data-base <off> +` answers
+the untyped `ptr n` view of the DATA region, and `POINTER-STORAGE`'s private
+cast `DATA-PTR-U8-CELL`, which `NULL-PTR` reaches through its sibling
+`NULL-PTR-CELL`, is what says the cell there holds a `ptr u8`. A clause without
+a typed view computes the same address with the wrong type and the engine's own
+check refuses the definition — measured as `E-NCOMP-VERDICT` out of the native build, which is where a pre-checker
 definition is checked. Measured for the landed form: the clause certifies, the
 cell the created word answers sits at exactly the offset it was given from
 `data-base` (`test/pointer-storage-test.f`), and the declared pointee holds in
@@ -948,7 +949,7 @@ because `src/lib/task.f`'s TCB reaches its five pointer fields through the very 
    the pre-scan, while a use that disagrees with the registered effect is
    refused, and the private surface stays private; a pre-checker definer with
    both rows is reachable from checked source and its sibling with neither
-   (`NULL-PTR-CELL`, same file, same phase) is not. The seal runs when the engine
+   (`POINTER-STORAGE:DATA-CELL`, same file, same phase) is not. The seal runs when the engine
    is built, so the rowless half is measured on that real sibling rather than on
    a clone written in a test, which would be ordinary checked source.
 4. **`ptr-cell-mark` for a persisted record's pointer fields.** *Acceptance:* a

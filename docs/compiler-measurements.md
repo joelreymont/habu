@@ -662,11 +662,12 @@ through a call chain, and the compiler reaches a great many cells.
    one call — only make fewer of them.
 3. **The bulk copies go through the canonical slot words, cell by cell.**
    `CDIGEST:SLOT@`/`SLOT!` exist so a preimage is byte-canonical on any host;
-   each call asks `NATIVE-SLOT?`, which calls `NULL-PTR` → `NULL-PTR-CELL` →
-   `data-base` → `ptr-field` to re-derive a process constant. On the floor
-   workload that chain is `SLOT!` 1.3 + `SLOT@` 1.3 + `NATIVE-SLOT?` 1.8 +
-   `NULL-PTR` 1.4 + `NULL-PTR-CELL` 2.2 + `data-base` 2.1 = **10.1 percent
-   exclusive**, plus its shares of `ptr-field`, `cell-view` and `!`. The callers
+   each call asks `NATIVE-SLOT?`, which calls `NULL-PTR` →
+   `POINTER-STORAGE:NULL-PTR-CELL` → `data-base`, then `ptr-field`, to
+   re-derive a process constant. On the floor workload that chain is `SLOT!`
+   1.3 + `SLOT@` 1.3 + `NATIVE-SLOT?` 1.8 + `NULL-PTR` 1.4 + `NULL-PTR-CELL`
+   2.2 + `data-base` 2.1 = **10.1 percent exclusive**, plus its shares of
+   `ptr-field`, `cell-view` and `!`. The callers
    name exactly where: `IR-SYM:BUCKETS-CLONE`, `IR-ARENA:APPEND-SPAN`,
    `IR-ARENA:COPY-CELLS` and `IR-SYM:BUCKETS-ZERO` — the prototype clone every
    new builder takes — plus `IR-ARENA:PUSH` and `IR-CTX:HDR@`/`HDR!`.

@@ -1117,7 +1117,8 @@ $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 \ NULL-PTR-CELL-OFF: the engine's one permanently zero cell. Checked code cannot
 \ name a raw address, so it reads a pointer's NUMBER only by subtracting a null
-\ pointer, and src/core/pointer-storage.f NULL-PTR reads that zero from here.
+\ pointer, and src/core/pointer-storage.f NULL-PTR reads that zero from here
+\ through POINTER-STORAGE:NULL-PTR-CELL.
 \
 \ WHY IT IS A HEADER OFFSET AND NOT A `create`d BODY. It used to be one, in the
 \ DP heap, so every mention compiled an absolute movz/movk chain to a heap
@@ -1144,11 +1145,15 @@ $37F8 constant SNAP-CELL
 \ PROTECTION IS ADDRESS-CELLS:LOCK-CELL'S, no more and no less: a reserved header
 \ cell is below DATA-START, so allot/,/c, cannot reach it, but a store to a
 \ computed address can -- LOCK-CELL is written exactly that way, by atomic-cas,
-\ on purpose. What keeps checked source off THIS cell is the same thing that kept
-\ it off the heap body: pointer-storage.f REG-PROTECTs the NULL-PTR-CELL record,
-\ so the name is DNAME-INT and no checked source can compile a mention of it.
-\ test/internal-word-gate.f pins that, pins that the cell still reads zero, and
-\ pins this offset against the copy pointer-storage.f has to spell for itself.
+\ on purpose. The words that turn an offset into this cell are sealed:
+\ POINTER-STORAGE:DATA-CELL and POINTER-STORAGE:NULL-PTR-CELL have no checker
+\ row, so the seal marks each DNAME-INT and no checked source can compile a
+\ mention of either; test/internal-word-gate.f pins that. The definer built on
+\ DATA-CELL is not: the public RESERVED-PTR-U8-CELL
+\ takes any offset, so `$3800 RESERVED-PTR-U8-CELL N` reaches this cell from
+\ checked source, and dot habu-close-the-reserved-66521a8e tracks closing that
+\ door. pointer-storage.f spells this offset again as NULL-PTR-OFF, which must
+\ stay equal to it.
 $3800 constant NULL-PTR-CELL-OFF
 
 \ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's

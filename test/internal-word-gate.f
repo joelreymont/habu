@@ -169,6 +169,11 @@ create EMPTY 1 allot            \ zero-length stdin
    ERR$ s" E-UNDEFINED: " CONTAINS? TTRUE
    ERR$ a u CONTAINS? TTRUE ;
 
+: ASSERT-SEALED ( ptr u8 n -- ) {: a:ptr u:n :}   \ engine reserved-name guard: rc 84 naming the token
+   EXITED @ TTRUE
+   RC @ SEAL-RC T=
+   ERR$ a u CONTAINS? TTRUE ;
+
 : NEG-ABSENT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TOKEN$ RUN-SUBJECT
    a u ASSERT-UNDEF ;
@@ -236,40 +241,45 @@ create EMPTY 1 allot            \ zero-length stdin
 : SEED-RESET-SEARCH$ ( -- ptr u8 n )
    S\" s\" seed-ndict!\" 0 search-wl 0<> . cr" ;
 
-: NULL-PTR-BARE$ ( -- ptr u8 n )
+\ DATA-CELL and NULL-PTR-CELL are sealed publics of POINTER-STORAGE with no
+\ checker row: neither qualified spelling resolves outside the engine, at top
+\ level or in a checked body. A tick of a missing name is the same E-UNDEFINED,
+\ so it is not asserted.
+: DATA-CELL-QUAL$ ( -- ptr u8 n )
    SB-RESET
-   s" 1 NULL-PTR-CELL !" SB-APPEND LF
+   s" NULL-PTR $3800 POINTER-STORAGE:DATA-CELL !" SB-APPEND LF
    SB$ ;
 
-: NULL-PTR-TICK$ ( -- ptr u8 n )
+: DATA-CELL-FIXED-MUTATE$ ( -- ptr u8 n )
    SB-RESET
-   s" 1 ' NULL-PTR-CELL !" SB-APPEND LF
-   SB$ ;
-
-: NULL-PTR-SEARCH$ ( -- ptr u8 n )
-   S\" s\" NULL-PTR-CELL\" 0 search-wl . cr" ;
-
-: NULL-PTR-FIXED-MUTATE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : IWG-NULL-MUTATE ( -- ) 1 NULL-PTR-CELL ! ;" SB-APPEND LF
+   s" : IWG-NULL-MUTATE ( -- ) NULL-PTR $3800 POINTER-STORAGE:DATA-CELL ! ;" SB-APPEND LF
    s" IWG-NULL-MUTATE" SB-APPEND LF
    SB$ ;
 
-: NULL-PTR-CELL-CASES ( -- )
-   s" a bare NULL-PTR-CELL store rejects the internal cell" T-LABEL
-   NULL-PTR-BARE$ RUN-SUBJECT
-   s" NULL-PTR-CELL" ASSERT-INTERNAL
-   s" a tick of NULL-PTR-CELL leaves no address to store" T-LABEL
-   NULL-PTR-TICK$ RUN-SUBJECT
-   s" NULL-PTR-CELL" ASSERT-INTERNAL
-   s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
-   NULL-PTR-SEARCH$ RUN-SUBJECT
-   ASSERT-OK
-   OUT$ S\" 0\n\n" T$=
+: NULL-CELL-QUAL$ ( -- ptr u8 n )
+   SB-RESET
+   s" NULL-PTR POINTER-STORAGE:NULL-PTR-CELL !" SB-APPEND LF
+   SB$ ;
+
+: NULL-CELL-FIXED-MUTATE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : IWG-NULL-CELL-MUTATE ( -- ) NULL-PTR POINTER-STORAGE:NULL-PTR-CELL ! ;" SB-APPEND LF
+   s" IWG-NULL-CELL-MUTATE" SB-APPEND LF
+   SB$ ;
+
+: SEALED-CELL-CASES ( -- )
+   s" a qualified DATA-CELL store finds no record" T-LABEL
+   DATA-CELL-QUAL$ RUN-SUBJECT
+   s" POINTER-STORAGE:DATA-CELL" ASSERT-UNDEF
+   s" checked source cannot compile a DATA-CELL store" T-LABEL
+   DATA-CELL-FIXED-MUTATE$ RUN-SUBJECT
+   s" POINTER-STORAGE:DATA-CELL" ASSERT-UNDEF
+   s" a qualified NULL-PTR-CELL store finds no record" T-LABEL
+   NULL-CELL-QUAL$ RUN-SUBJECT
+   s" POINTER-STORAGE:NULL-PTR-CELL" ASSERT-UNDEF
    s" checked source cannot compile a NULL-PTR-CELL store" T-LABEL
-   NULL-PTR-FIXED-MUTATE$ RUN-SUBJECT
-   s" E-UNDEFINED" ASSERT-DIAG
-   ERR$ s" NULL-PTR-CELL" CONTAINS? TTRUE
+   NULL-CELL-FIXED-MUTATE$ RUN-SUBJECT
+   s" POINTER-STORAGE:NULL-PTR-CELL" ASSERT-UNDEF
    s" a compiled cell store respects the engine's protected span" T-LABEL
    s" TRUSTED: IWG-BAND-STORE ( -- ) 1 data-base FRIEND-ARENA + ! ; IWG-BAND-STORE" RUN-SUBJECT
    EXITED @ TTRUE
@@ -720,11 +730,6 @@ create QNAME QNAME-CAP allot
    SB-RESET
    xa xu SB-APPEND  pa pu ta tu QUAL-NAME$ SB-APPEND  sa su SB-APPEND LF
    SB$ ;
-
-: ASSERT-SEALED ( ptr u8 n -- ) {: a:ptr u:n :}   \ engine reserved-name guard: rc 84 naming the token
-   EXITED @ TTRUE
-   RC @ SEAL-RC T=
-   ERR$ a u CONTAINS? TTRUE ;
 
 : CELL-PUB ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}   \ sealed public control cell
    a u TOKEN$ RUN-SUBJECT                                a u ASSERT-UNDEF
@@ -1493,7 +1498,7 @@ create QNAME QNAME-CAP allot
    AUTHORITY-GATE-CASES
    NEG-SHAPES
    SEED-RESET-CASES
-   NULL-PTR-CELL-CASES
+   SEALED-CELL-CASES
    POSITIVES
    OPENER-CASES
    DEFER-CASES

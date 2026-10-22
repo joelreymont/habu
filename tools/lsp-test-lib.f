@@ -3111,9 +3111,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    s" 6" NOWHERE ;
 
 \ Generated constructors in aio.f's scanned declarations remain locatable.
-\ Its engine calls retain their bindings, but roles.f's NOMINAL-PROVIDER,
-\ cell.f's CELL-WIDTH-CHECK and pointer-storage.f's REG-PROTECT are dictionary
-\ calls, so their whole source indexes defer without claiming a Location.
+\ Its engine calls retain their bindings, but roles.f's NOMINAL-PROVIDER and
+\ cell.f's CELL-WIDTH-CHECK are dictionary calls, so their whole source indexes
+\ defer without claiming a Location.
 : AIO-PATH ( -- ptr u8 n )  s" src/lib/aio.f" IN-TREE ;
 : AIO-PTR-PATH ( -- ptr u8 n )  s" src/core/pointer-storage.f" IN-TREE ;
 

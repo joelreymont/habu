@@ -11,18 +11,33 @@
    create 0 , does> ( -- ptr ptr a ) ;
 
 \ Typed reset code needs a null value without pretending numeric zero inhabits
-\ every pointer family. A reserved DATA header cell, not a `create`d body whose
-\ absolute address chain the stripped AOT linker refuses; src/habu/layout.f
-\ NULL-PTR-CELL-OFF reserves the offset, says why, and internal-word-gate.f
-\ refuses a drift from this copy. Keep this file inside pointer-storage-test.f's
-\ SOURCE-CAP: it reads the whole file in.
+\ every pointer family. It lives in a reserved DATA header cell, not a `create`d
+\ body whose absolute address chain the stripped AOT linker refuses;
+\ src/habu/layout.f NULL-PTR-CELL-OFF reserves the offset, says why, and is the
+\ value this copy spells.
+\
+\ THE ONE ENGINE-LAYOUT AXIOM is the private cast below: that the DATA cell at a
+\ reserved offset holds a byte pointer is a fact of the engine layout, which the
+\ checker cannot derive, so an integer offset becomes a `ptr ptr u8` cell there
+\ and nowhere else. Its two callers, DATA-CELL and NULL-PTR-CELL, are public
+\ colon words with no checker row, so the seal (internal-mark.f
+\ IMK-CLASSIFY-PUB) marks each DNAME-INT, and checked source reaches the axiom
+\ only through NULL-PTR and the RESERVED-PTR-U8-CELL definer below.
+\ NULL-PTR-CELL spells its offset as an immediate because NULL-PTR is on the
+\ canonical-slot path (digest.f NATIVE-SLOT?), where an argument would cost it
+\ a stack round trip.
 $3800 constant NULL-PTR-OFF
-: NULL-PTR-CELL ( -- ptr n )
-   data-base NULL-PTR-OFF + ;
-REG-PROTECT
+package POINTER-STORAGE
+private
+CAST: DATA-PTR-U8-CELL ( ptr n -- ptr ptr u8 )     \ the DATA cell at a reserved offset holds a byte pointer
+public
+: DATA-CELL ( n -- ptr ptr u8 ) data-base + DATA-PTR-U8-CELL ;
+: NULL-PTR-CELL ( -- ptr ptr u8 ) data-base NULL-PTR-OFF + DATA-PTR-U8-CELL ;
+;package
 \ cell-effects.f restates this effect, kinded; that row is the one that answers.
-: NULL-PTR ( -- ptr a )
-   NULL-PTR-CELL 0 ptr-field @ ;
+\ The field of a declared pointer cell leaves its pointee free, so the one null
+\ cell serves every pointer family.
+: NULL-PTR ( -- ptr a ) POINTER-STORAGE:NULL-PTR-CELL 0 ptr-field @ ;
 
 \ Persistence is explicit: scratch pointer slots use PTR-VARIABLE and never join
 \ the relocation table; only a slot whose value must survive an image/capture uses
@@ -76,19 +91,14 @@ REG-PROTECT
 \ A cell the ENGINE LAYOUT reserves, not the dictionary: `off
 \ RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell at
 \ `off`, declared as a `ptr ptr u8` the way the table definers above declare
-\ theirs. The offset lives in the created body and is added to `data-base` on
-\ every read, so no absolute address is baked - the reason NULL-PTR-CELL above
-\ is a reserved offset rather than a `create`d body, now spelled once as a
-\ definer instead of per site.
+\ theirs. The offset lives in the created body and goes through
+\ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked and
+\ the private cast stays the only door from an offset to a pointer cell.
 \
 \ THIS DEFINER IS THE TWO-ROW RULE'S OWN EXAMPLE. It has both rows, so the seal
-\ leaves the name alone; NULL-PTR-CELL, in this same file and this same phase,
-\ has neither and is DNAME-INT (test/internal-word-gate.f). test/pointer-storage-test.f
-\ measures the pair.
-\ The clause ends in `0 ptr-field` for the reason NULL-PTR does: `data-base +`
-\ answers the untyped `ptr n` view of the DATA region, and the field view is what
-\ says the cell at that address holds a `ptr u8`. Without it the clause computes
-\ the right address with the wrong type and the engine's own check refuses the
-\ definition (measured: E-NCOMP-VERDICT during the native build).
+\ leaves the name alone; POINTER-STORAGE:DATA-CELL, in this same file and
+\ this same phase, has neither, is sealed, and does not resolve outside the
+\ engine (test/internal-word-gate.f).
+\ test/pointer-storage-test.f measures the pair.
 : RESERVED-PTR-U8-CELL ( n -- )
-   create , does> ( -- ptr ptr u8 ) @ data-base swap + 0 ptr-field ;
+   create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;

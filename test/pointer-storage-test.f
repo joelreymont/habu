@@ -30,8 +30,11 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 : ADDRESS ( -- ptr ptr n )
    SLOT ;
 
-: RSV-OFF-A ( -- n ) RSV-CELL-A BYTE-VIEW data-base BYTE-VIEW - ;
-: RSV-OFF-B ( -- n ) RSV-CELL-B BYTE-VIEW data-base BYTE-VIEW - ;
+\ An address is an integer through its distance from NULL-PTR; the offset is the
+\ cell's distance less the DATA base's, so no view of either pointer is taken.
+: DATA-OFF ( ptr ptr u8 -- n ) NULL-PTR - data-base NULL-PTR - - ;
+: RSV-OFF-A ( -- n ) RSV-CELL-A DATA-OFF ;
+: RSV-OFF-B ( -- n ) RSV-CELL-B DATA-OFF ;
 
 \ The definer answers `data-base + the offset it was given`, which is the whole
 \ of what it promises; the difference pins that the offset is the created
@@ -100,22 +103,21 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 \ is written in src/core/pointer-storage.f, before the checker exists, so the
 \ seal would mark it DNAME-INT on its own; src/core/cell-effects.f states the
 \ definer's effect and src/habu/verify-source.f states what it publishes for the
-\ created word. NULL-PTR-CELL is the control: same file, same phase, neither
-\ row, and checked source cannot name it. (The control is the real sibling
-\ rather than a clone of the definer because the seal runs when the engine is
-\ built - a clone written in this file is ordinary checked source and could
-\ never be sealed. test/internal-word-gate.f owns the `internal engine word`
-\ diagnostic itself.) The control candidate is spelled with NULL-PTR-CELL's OWN
-\ effect, so a type disagreement cannot be what fails it: the name is. The
-\ product image retains NULL-PTR-CELL's internal record and exact effect for
-\ its bound callers; that does not grant checked source authority to call it.
-\ The candidate therefore binds the internal record and is refused (0).
+\ created word. POINTER-STORAGE:DATA-CELL is the control: same file, same
+\ phase, neither row, and checked source cannot name it. (The control is the
+\ real sibling rather than a clone of the definer because the seal runs when the
+\ engine is built - a clone written in this file is ordinary checked source and
+\ could never be sealed. test/internal-word-gate.f owns what outside source
+\ sees of the sealed name.) The control candidate feeds the control an offset
+\ and declares what it returns, `( -- ptr ptr u8 )`, the created word's effect
+\ too, so a type disagreement cannot be what fails it: the name is. The sealed name does not resolve outside
+\ the engine at all, so the candidate is unresolvable (1), not merely refused.
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
    s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-SEALED ( -- ptr n ) NULL-PTR-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" RSV-SEALED ( -- ptr ptr u8 ) 0 POINTER-STORAGE:DATA-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
 
 \ The scanner's own row: the pre-scan sees the same definer and publishes the
 \ same effect for the word it creates, so a source file that declares a
