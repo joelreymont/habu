@@ -213,6 +213,9 @@ variable ARENA-CP-I   variable ARENA-UB-I
 
 : ARENA-ALLOC-BYTES ( n -- ptr u8 ) ARENA-ALLOC ;   \ the allocation as bytes
 
+\ An address's DATA offset, measured from the null so neither pointer is viewed.
+: DATA-OFF ( ptr a -- n ) NULL-PTR - data-base NULL-PTR - - ;
+
 \ The checker's byte copier: n bytes, src->dst, cell-wise with a byte tail. arm64
 \ and x86-64 both take an unaligned cell access, so a span may start at any byte.
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
@@ -14806,7 +14809,7 @@ public
    count 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 0= count 0= or IF EXIT THEN
    handle 1- E-PTR {: rec:ptr :}
-   base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   base DATA-OFF {: off:n :}
    off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off rec ER.STORAGE-OFF !
    count rec ER.STORAGE-N !
@@ -14817,7 +14820,7 @@ public
 : CHECKER-STORAGE-DEFER ( n ptr n -- )
    {: handle:n cb:ptr :}
    handle 0= IF EXIT THEN
-   cb BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   cb DATA-OFF {: off:n :}
    off 0 < IF E-CHECKER-LAYOUT-BUFFER throw THEN
    handle 1- E-PTR {: rec:ptr :}
    off rec ER.STORAGE-OFF !
@@ -14829,7 +14832,7 @@ public
    count 0 <= count $7FFFFFFFFFFFFFFF CELL / > or handle 0= or IF
       E-CHECKER-LAYOUT-BUFFER throw
    THEN
-   base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   base DATA-OFF {: off:n :}
    off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off count CELL * + here BYTE-VIEW data-base BYTE-VIEW - >
       IF E-CHECKER-LAYOUT-BUFFER throw THEN
@@ -26337,7 +26340,7 @@ package CHECKER-REG
    {: base:ptr count:n owner:ptr :}
    count 0 <= count $7FFFFFFFFFFFFFFF CELL / > or IF
       E-CHECKER-LAYOUT-BUFFER throw THEN
-   base BYTE-VIEW data-base BYTE-VIEW - {: off:n :}
+   base DATA-OFF {: off:n :}
    off 0 < off CELL mod 0 <> or IF E-CHECKER-LAYOUT-BUFFER throw THEN
    off count cells + here BYTE-VIEW data-base BYTE-VIEW - <>
       IF E-CHECKER-LAYOUT-BUFFER throw THEN

@@ -32,8 +32,8 @@ PTR-VARIABLE DP-MARK
 \ A literal segment opened inside the transaction outlives its rollback: DP stops
 \ at the DATA floor (src/habu/layout.f DATA-FLOOR-CELL).
 : DICTIONARY-DP! ( ptr a -- )
-   BYTE-VIEW NULL-PTR BYTE-VIEW -
-   data-base DATA-FLOOR-CELL + @ data-base BYTE-VIEW NULL-PTR BYTE-VIEW - + max
+   NULL-PTR -
+   data-base DATA-FLOOR-CELL + @ data-base NULL-PTR - + max
    data-base DP-CELL + ! ;
 
 public

@@ -90,7 +90,7 @@ variable FFI-LIB-CAP
    COUNT @ 1+ {: rows:n :}
    rows OFFS-RESERVE  rows KINDS-RESERVE
    rows LENS-RESERVE  rows DESTS-RESERVE
-   c BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N +  COUNT @ OFFS !
+   c NULL-PTR -  data-base NULL-PTR - -  DATA-VA VA>N +  COUNT @ OFFS !
    k COUNT @ KINDS !
    len COUNT @ LENS !
    0 COUNT @ DESTS !

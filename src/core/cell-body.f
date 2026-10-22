@@ -25,7 +25,7 @@ public
       IF E-EXTENT throw THEN
    rec XREF-FLAGS DNAME-ALLOC and 0= IF E-EXTENT throw THEN
    rec XREF-START CREATED-XT execute {: base:ptr :}
-   base BYTE-VIEW data-base BYTE-VIEW - CELL mod 0 <>
+   base DATA-OFF CELL mod 0 <>
       IF E-EXTENT throw THEN
    base count cells + here <> IF E-EXTENT throw THEN
    base count rec CHECKER-CELL-BODY-BIND ;
