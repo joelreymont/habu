@@ -596,7 +596,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 \ Darwin dirent64 stores d_type at byte 20; Linux getdents64 stores it at 18.
 \ Keep the kernel byte, including zero for DT_UNKNOWN.
 : FS-DIRENT-TYPE ( ptr u8 -- u8 )
-   HB-TARGET-LINUX? if 18 + c@ exit then
+   HB-TARGET-LINUX-KERNEL? if 18 + c@ exit then
    HB-TARGET-MACOS? if 20 + c@ exit then
    FS-TARGET-UNKNOWN ;
 
