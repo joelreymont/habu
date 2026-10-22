@@ -2425,6 +2425,60 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX PUSH,
    RSP 32 >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ The twin of habu1.f C-NUM-FLOAT-FINISH: r8 = the double nearest the
+\ decimal I + F/S, ties to even, rounded once. On entry r8 holds I (at most
+\ INT64-MAX), the frame's first cell F and its second S = 10^k, k <= 18, with
+\ F < S. rcx is the exponent, rsi the guard bit and r11 the sticky bits; rax
+\ carries the exact remainder below S, so doubling it stays inside a cell.
+\ A significand past 53 bits shifts right, keeping F whole as sticky;
+\ a shorter one shifts left, drawing each new bit from 2F against S.
+\ Zero leaves r8 zero for the caller's sign. Clobbers rax, rcx, rdx, rsi,
+\ rdi and r11.
+: DECIMAL-ROUND, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: right:label left:label shift:label kept:label
+      ready:label round:label pack:label zero:label :}
+   RAX RSP MEM-AT ASM-SINK ENC-MOV-RM
+   RDI RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX R8 ASM-SINK ENC-MOV-RR  RDX RAX ASM-SINK ENC-OR-RR  C-E zero JCC,
+   RCX 52 IMM32,  RSI ZERO-REG,  R11 ZERO-REG,
+   RDX $20000000000000 IMM64,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-B left JCC,
+   right X64CODE:LBL,
+      R11 RSI ASM-SINK ENC-OR-RR
+      RSI R8 ASM-SINK ENC-MOV-RR  RSI 1 >IMM8 ASM-SINK ENC-AND-RI8
+      R8 1 >IMM8 ASM-SINK ENC-SHR-RI8  RCX ASM-SINK ENC-INC
+      R8 RDX ASM-SINK ENC-CMP-RR  C-AE right JCC,
+   round JMP,
+   left X64CODE:LBL,
+   RDX $10000000000000 IMM64,
+   shift X64CODE:LBL,
+      R8 RDX ASM-SINK ENC-CMP-RR  C-AE ready JCC,
+      R8 1 >IMM8 ASM-SINK ENC-SHL-RI8  RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8
+      RAX RDI ASM-SINK ENC-CMP-RR  C-B kept JCC,
+      R8 ASM-SINK ENC-INC  RAX RDI ASM-SINK ENC-SUB-RR
+      kept X64CODE:LBL,
+      RCX ASM-SINK ENC-DEC  shift JMP,
+   ready X64CODE:LBL,
+   RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8
+   RAX RDI ASM-SINK ENC-CMP-RR  C-B round JCC,
+   RSI 1 IMM32,  RAX RDI ASM-SINK ENC-SUB-RR
+   round X64CODE:LBL,
+   R11 RAX ASM-SINK ENC-OR-RR                        \ the remainder is sticky
+   RSI RSI ASM-SINK ENC-TEST-RR  C-E pack JCC,
+   RDX R8 ASM-SINK ENC-MOV-RR  RDX 1 >IMM8 ASM-SINK ENC-AND-RI8
+   RDX R11 ASM-SINK ENC-OR-RR  C-E pack JCC,         \ ties retain an even low bit
+   R8 ASM-SINK ENC-INC
+   RDX $20000000000000 IMM64,
+   R8 RDX ASM-SINK ENC-CMP-RR  C-NE pack JCC,
+   R8 1 >IMM8 ASM-SINK ENC-SHR-RI8  RCX ASM-SINK ENC-INC  \ rounding carried out of 53 bits
+   pack X64CODE:LBL,
+   RCX 1023 >IMM32 ASM-SINK ENC-ADD-RI32  RCX 52 >IMM8 ASM-SINK ENC-SHL-RI8
+   RDX $FFFFFFFFFFFFF IMM64,  R8 RDX ASM-SINK ENC-AND-RR
+   R8 RCX ASM-SINK ENC-OR-RR
+   zero X64CODE:LBL, ;
+
 \ num-parse reads exactly the ARM reader's spelling: optional minus and hex
 \ prefix, then digits; decimal alone admits a dot with at least one fraction
 \ digit. The frame holds fraction, scale and dot state. Overflow is latched
@@ -2533,14 +2587,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RDX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E failed JCC,
    RDX $7FFFFFFFFFFFFFFF IMM64,
    R8 RDX ASM-SINK ENC-CMP-RR  C-A failed JCC,
-   XMM0 R8 ASM-SINK ENC-CVTSI2SD-RR
-   RAX RSP MEM-AT ASM-SINK ENC-MOV-RM
-   XMM1 RAX ASM-SINK ENC-CVTSI2SD-RR
-   RAX RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
-   XMM2 RAX ASM-SINK ENC-CVTSI2SD-RR
-   XMM1 XMM2 ASM-SINK ENC-DIVSD-RR
-   XMM0 XMM1 ASM-SINK ENC-ADDSD-RR
-   R8 XMM0 ASM-SINK ENC-MOVQ-RX
+   DECIMAL-ROUND,
    R10 R10 ASM-SINK ENC-TEST-RR  C-GE positive JCC,
    RDX $8000000000000000 IMM64,
    R8 RDX ASM-SINK ENC-XOR-RR
