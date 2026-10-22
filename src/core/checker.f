@@ -1715,20 +1715,19 @@ variable CALL-ARMED
 variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
 variable REC-ON
 defer CALL-FREEZE-XT ( -- )
-defer CWIN-STATE ( -- ptr ptr n )
+defer CWIN-STATE ( -- ptr ptr n ptr n ptr n )
 
 \ The bootstrap call-window store, and the reason the cell has one: the scan
 \ records a row per call site through CWIN-STATE, and src/core/cell-effects.f --
-\ which owns the CHECKED storage - loads after src/core/check-hook.f. An
-\ unset cell was invisible while nothing asked this checker to scan before then;
-\ the optimizing front end asks from the moment this checker owns the source
-\ (layout.f NCOMP-DISPATCH), so the store exists from this file's own load. Same
-\ three cells cell-effects.f installs - arena pointer, live rows, capacity. Its
-\ INSTALL transfers that header and clears this one without copying the arena.
-\ The arena pointer is DECLARED storage with the two counts allotted behind it,
-\ the same shape cell-effects.f uses (dot habu-refuse-a-ptr-5ad2734e).
-PTR-VARIABLE CWIN-BOOT 0 , 0 ,
-: CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT ;] is CWIN-STATE ;
+\ which owns the CHECKED storage - loads after src/core/check-hook.f. The
+\ optimizing front end asks this checker to scan from the moment it owns the
+\ source (layout.f NCOMP-DISPATCH), so the store exists from this file's own
+\ load. CWIN-STATE hands back three cells, each declared at its own type: the
+\ row arena's address (a PTR-VARIABLE), the live row count and the capacity.
+\ cell-effects.f INSTALL transfers all three and clears these without copying
+\ the arena.
+PTR-VARIABLE CWIN-BOOT  variable CWIN-BOOT-N  variable CWIN-BOOT-CAP
+: CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT CWIN-BOOT-N CWIN-BOOT-CAP ;] is CWIN-STATE ;
 CWIN-BOOT-DEFAULT
 
 : U-PUSH ( n -- )
@@ -13774,12 +13773,11 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
 \ cell-effects.f owns the checked storage after the bootstrap checker starts.
-\ CWIN-STATE hands back the DECLARED arena cell itself, so the pointer needs no
-\ field view; the two counts behind it are numbers and are read through an
-\ explicit cell view.
-: CWIN-P ( -- ptr ptr n ) CWIN-STATE ;
-: CWIN-N ( -- ptr n ) CWIN-STATE CELL + BYTE-VIEW CELL-VIEW ;
-: CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + BYTE-VIEW CELL-VIEW ;
+\ CWIN-STATE hands back the store's three declared cells: the arena pointer,
+\ the live row count and the capacity. Each reader takes its own cell.
+: CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
+: CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
+: CWIN-CAP ( -- ptr n ) CWIN-STATE nip nip ;
 
 : CWIN-AT ( n n -- ptr n )           \ field f of row i
    {: i:n f:n :}
