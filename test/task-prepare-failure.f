@@ -1,6 +1,11 @@
 \ A failed later stack allocation leaves no earlier task mappings behind.
-\ Linux's virtual-memory limit permits three guarded 64K stacks but refuses
-\ the next reserve; compare /proc/self/statm before and after the caught error.
+\ PREPARE maps three guarded 64K stacks and a 64K region (src/lib/task.f
+\ TASK-PREPARE-RESOURCES). Each stack reserves four STACK-ABI:PAGE-BYTES pages
+\ and keeps three, its capacity and two guards (src/lib/memory.f
+\ ALLOC-GUARDED), so a whole PREPARE peaks at ten pages. A virtual-memory
+\ limit of eight pages over the start admits the first two stacks and refuses
+\ the third's reserve; compare /proc/self/statm before and after the caught
+\ error.
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/fs.f
@@ -10,7 +15,7 @@ require src/habu/task-abi.f
 package TASK-PREP-FAIL-TEST
 
 9 constant RLIMIT-AS
-11 constant LIMIT-PAGES
+8 constant LIMIT-PAGES
 128 constant STATM-CAP
 
 create STATM STATM-CAP allot
