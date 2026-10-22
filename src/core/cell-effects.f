@@ -90,7 +90,8 @@ TRUSTED: names: ( -- )
    parse-name CHECKER-NAMES-ROW ;
 INTRINSIC-NAMES INTRINSIC
 
-\ Read finalized numeric call facts without exposing the unification graph.
+\ The checked call-window store. checker.f reads its call facts through its own
+\ readers (the owner record's CALL-*-OFF rows); this package only installs it.
 package CHECKER-CALLS
 
 \ The store is three cells, each declared at its own type: STATE holds the row
@@ -113,25 +114,6 @@ PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
    [: STATE STATE-N STATE-CAP ;] is CWIN-STATE ;
 INSTALL
 
-: FIELD ( n n -- ptr n ) {: row:n field:n :}
-   STATE @ row 4 * field + CELL * + CELL-VIEW ;
-
-: FIND ( n n -- n n ) {: ord:n kind:n :}
-   STATE-N @ 0 ?do
-      i 0 FIELD @ ord = i 3 FIELD @ kind = and if
-         i 1 FIELD @ i 2 FIELD @ unloop exit
-      then
-   loop
-   -1 -1 ;
-
 get-current prot-wid-add
-public
-
-: CELLS ( n -- n n ) 3 FIND ;
-: GLUE ( n -- n n ) 4 FIND ;
-: MATCH-PAYLOAD ( n -- n n ) -3 FIND ;
-: QUOT-IN ( n n -- n n ) 2 * 5 + FIND ;
-: QUOT-OUT ( n n -- n n ) 2 * 6 + FIND ;
-
-get-current prot-wid-add
+public get-current prot-wid-add
 ;package
