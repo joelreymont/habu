@@ -56,6 +56,21 @@ SUITE aot-effect-pool
    test/aot-effect-pool.f
 ;SUITE
 
+\ These probes decode emitted code as AArch64 instructions through
+\ src/arch/arm64/disasm.f and asm.f (tools/codegen-tail-probe.f,
+\ tools/codegen-combine-inventory.f); x86-64 code has no such decoder.
+SUITE compiler-codegen-tail-probe
+   test/compiler/codegen-tail-probe.f
+;SUITE
+
+SUITE compiler-native-fold
+   test/compiler/native-fold.f
+;SUITE
+
+SUITE compiler-native-vocab
+   test/compiler/native-vocab.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop

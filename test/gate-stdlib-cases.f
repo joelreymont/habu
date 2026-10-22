@@ -839,14 +839,6 @@ SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
 
-SUITE compiler-codegen-tail-probe
-   test/compiler/codegen-tail-probe.f
-;SUITE
-
-SUITE compiler-native-fold
-   test/compiler/native-fold.f
-;SUITE
-
 SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
@@ -1030,10 +1022,6 @@ SUITE compiler-native-wide-mem-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-wide-mem.f
-;SUITE
-
-SUITE compiler-native-vocab
-   test/compiler/native-vocab.f
 ;SUITE
 
 SUITE raw-storage-load-seal
