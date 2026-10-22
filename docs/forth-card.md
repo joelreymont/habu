@@ -364,7 +364,9 @@ the address it was declared for and refuses the address *of* one.
 
 An integer becomes an address or an xt only through a private `CAST:`
 (`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
-`E-CAST-MINT`); `NULL-PTR BYTE-VIEW -` is the address-to-integer distance.
+`E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any
+pointer `X`, with no view: a distance against `NULL-PTR` or `data-base` binds
+neither pointee, so `: D ( ptr a -- n ) NULL-PTR - ;` keeps `a` free.
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint, and one whose field holds
 another package's family is `E-CAST-OWNER` outside that package.

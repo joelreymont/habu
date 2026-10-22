@@ -415,10 +415,11 @@ TV-CLEAR
 \ uses are not the same.
 \
 \ TVK-NULL is `NULL-PTR`. Fenced in VALUE position, permissive inside a POINTEE:
-\ the tree's honest uses -- `ptr thing NULL-PTR =`, `NULL-PTR X !`, `NULL-PTR -`,
+\ the tree's honest uses -- `ptr thing NULL-PTR =`, `NULL-PTR X !`,
 \ `NULL-PTR 0=` -- each bind the pointee INSIDE a `ptr`, and the null is the one
 \ address every one of those shapes means literally. Nothing read THROUGH it is
-\ a nominal identity or an address.
+\ a nominal identity or an address. A distance `X NULL-PTR -` binds no pointee
+\ at all (TVK-BASE-ONLY below).
 \
 \ TVK-DBASE is `data-base`, the start of the running task's DATA region, and it
 \ is fenced at EVERY pointee depth. The first cut fenced only the first pointee,
@@ -443,6 +444,15 @@ TV-CLEAR
 7 constant TVK-SCOPE   \ a non-value scope parameter, never an allocation identity
 8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
 9 constant TVK-CELL    \ a declared or fetched physical cell; cannot later become wide
+\ TVK-BASE-ONLY is a PATTERN, not a fence: the base operand of a pointer-distance
+\ row (src/habu/prims.f PE-PTR-B-BASE). It binds only the pointee of a base
+\ address (BASE-KIND?) and refuses every other term, so that row matches
+\ `X NULL-PTR -` without equating X's pointee with the null's: a distance reads
+\ no storage, and X's pointee takes no kind from it. It never outlives its row:
+\ RAW-BLOCK? either binds it into the base address's class or raises it to that
+\ class's kind, and TRY-EFF fails the row when it did neither -- an unresolved
+\ operand bound to `ptr B` leaves B open, and the trial moves on.
+10 constant TVK-BASE-ONLY
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
@@ -456,6 +466,7 @@ TV-CLEAR
 : TVK-SCOPE! ( n -- ) TVK-SCOPE swap cells TVK + ! ;
 : TVK-REGION! ( n -- ) TVK-REGION swap cells TVK + ! ;
 : TVK-CELL! ( n -- ) TVK-CELL swap cells TVK + ! ;
+: TVK-BASE-ONLY! ( n -- ) TVK-BASE-ONLY swap cells TVK + ! ;
 
 \ The fence lattice: ANY < CELL < NULL < DBASE < RAW. A meet keeps the STRICTER of two
 \ kinds, so a null that meets a DATA-derived pointee comes out DBASE (the fence
@@ -565,7 +576,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 \ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
 \ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
 \ base-address fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
@@ -576,6 +587,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    dup 6 = IF drop TVK-OFF EXIT THEN
    dup 7 = IF drop TVK-SCOPE EXIT THEN
    dup 9 = IF drop TVK-REGION EXIT THEN
+   dup 11 = IF drop TVK-BASE-ONLY EXIT THEN
    10 = IF TVK-CELL ELSE TVK-ANY THEN ;
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
@@ -598,6 +610,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    dup TVK-NULL = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 5 EXIT THEN
    dup TVK-CELL = IF drop 10 EXIT THEN
+   dup TVK-BASE-ONLY = IF drop 11 EXIT THEN
    TVK-OFF = IF 6 ELSE 2 THEN ;
 : TVK-RAISE-TO ( n n -- ) {: id:n kind:n :}
    id TVK@ kind TVK-MEET
@@ -2944,9 +2957,10 @@ variable XT-DECL
 \ lands: `( -- ptr [ -- n ] ) NULL-PTR 8 +` is a pointee bind, not a value one
 \ (TVK-DBASE needs no such arm, since it blocks at every depth), and without
 \ this the fetched value is executed at address 8. The price is measured and
-\ deliberate: a DECLARED code cell may no longer be compared with or subtracted
-\ from the null (`HK NULL-PTR =`, `<>`, `-` certify before this rule and are
-\ refused after it). An empty code cell is read through a NUMBER-typed accessor
+\ deliberate: a DECLARED code cell may no longer be compared with the null
+\ (`HK NULL-PTR =` and `<>` certify before this rule and are refused after it;
+\ the distance `HK NULL-PTR -` never pairs the two pointees, see
+\ TVK-BASE-ONLY). An empty code cell is read through a NUMBER-typed accessor
 \ of the same address instead -- the two-accessor shape src/lib/genio.f already uses
 \ for its device rows, where a cleared row is spelled ZERO.
 \ It is latched as the RAW rule's own refusal (RAW-EXEC-HIT), not as a
@@ -3009,8 +3023,20 @@ variable XT-DECL
    THEN
    THEN THEN
    RES-FALSE ;
+\ A distance row's base operand (TVK-BASE-ONLY) pairs only with a base address's
+\ own pointee. Bound away, it joins that class and changes nothing; kept, it takes
+\ the base address's kind, so the class keeps its fence. Any other pairing fails
+\ the row, and the overload trial moves on to `ptr a ptr a -- n`.
+: BASE-ONLY-VAR? ( n -- bool ) T-RES dup ISVAR IF PAY TVK@ TVK-BASE-ONLY = ELSE drop RES-FALSE THEN ;
+: BASE-VAR? ( n -- bool ) T-RES dup ISVAR IF PAY TVK@ BASE-KIND? ELSE drop RES-FALSE THEN ;
+: BASE-ONLY-BLOCK? ( n n -- bool ) {: vid:n term:n :}
+   vid TVK@ TVK-BASE-ONLY = IF term BASE-VAR? 0= EXIT THEN
+   vid TVK@ BASE-KIND? 0= IF RES-TRUE EXIT THEN
+   term T-RES PAY vid TVK@ TVK-RAISE-TO RES-FALSE ;
+
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates a cell discipline?
    {: vid:n term:n :}
+   vid TVK@ TVK-BASE-ONLY =  term BASE-ONLY-VAR? or IF vid term BASE-ONLY-BLOCK? EXIT THEN
    vid term SCOPE-BLOCK? IF RES-TRUE EXIT THEN
    vid TVK@ TVK-CELL = IF
       term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
@@ -9755,6 +9781,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          r@ EN.B @ TVK-SCOPE = IF dup PAY TVK-SCOPE! THEN
          r@ EN.B @ TVK-REGION = IF dup PAY TVK-REGION! THEN
          r@ EN.B @ TVK-CELL = IF dup PAY TVK-CELL! THEN
+         r@ EN.B @ TVK-BASE-ONLY = IF dup PAY TVK-BASE-ONLY! THEN
          r@ EN.C @ 0 <> IF dup PAY NSCOPE! THEN
          r> drop
       endof
@@ -10266,6 +10293,9 @@ variable PE-EFF-ID
 \ why `( ptr a -- ptr a ) 8 +` still preserves its quantifier.
 : PE-OFF! ( n -- n ) dup PAY TVK-OFF! ;
 
+\ Marks the base operand's pointee of a pointer-distance row (TVK-BASE-ONLY).
+: PE-BASE-ONLY! ( n -- n ) dup PAY TVK-BASE-ONLY! ;
+
 \ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
 \ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
 \ accumulate the prim's, and `;PE-Q` closes them into one `[ in -- out ]` term
@@ -10398,6 +10428,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-OFF      = IF PE-SPEC-POP PE-OFF!   PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE-ONLY! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN
    code PRIM-SPEC:A-QUOT-IN  = IF PE-SPEC-POP PE-QIN EXIT THEN
    code PRIM-SPEC:A-QUOT-OUT = IF PE-SPEC-POP PE-QOUT EXIT THEN
@@ -17324,11 +17355,20 @@ variable SV-TRAIL
 
 variable TSEEN  variable TSOK  variable TFA
 
+\ Is a var the trial made, from `fv0` on, still an open distance-row base operand
+\ (TVK-BASE-ONLY, unbound)? Its pointee never met a base address's, so the row
+\ did not match a distance against one.
+: BASE-ONLY-OPEN? ( n -- bool ) {: fv0:n :}
+   FV @ fv0 ?do
+      i TV@ UNBOUND =  i TVK@ TVK-BASE-ONLY =  and IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
+
 : TRY-EFF ( ptr u8 -- bool ) {: h:ptr :}
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
    TRIAL-SAVE
    h EFF-APPLY
-   OK @ SGBAD @ 0= and IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
+   OK @ SGBAD @ 0= and  SV-FV @ BASE-ONLY-OPEN? 0= and
+   IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;     \ (stack-neutral; the bool stays on top)
 
 \ TRY-PRIMS ( n -- bool ) : try each prim overload for sym until one unifies.

@@ -79,6 +79,7 @@ public
 19 constant A-QUOT-IN
 20 constant A-QUOT-OUT
 21 constant A-C2-INVOKE
+22 constant A-BASE           \ the pending pointee binds only a base address's own pointee: a distance row's base operand
 
 private
 
@@ -180,6 +181,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
+: PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
 : PE-QOUT        A-QUOT-OUT CODE, ;
@@ -444,13 +446,19 @@ EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM;
 \ every pointee but the null: a null that rides one of these rows comes out a
 \ DATA-base pointer, because the address it answers is the caller's arithmetic
 \ and no longer the one literal address the null's permissive pointee arm is for
-\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer row below is a
-\ distance, not a step, and is deliberately left unmarked: `BYTE-VIEW ...
-\ NULL-PTR BYTE-VIEW -` is the sanctioned address-to-integer idiom.
+\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer rows below are a
+\ distance, not a step, and read no storage, so neither operand's pointee may
+\ take a kind from the other. Two pointers to elements still name one element
+\ type (`ptr a ptr a`), but a base address -- `NULL-PTR`, `data-base`, or one
+\ computed off them -- is the address OF nothing, so the PE-PTR-B-BASE rows,
+\ tried first, match its pointee alone and leave the other operand's free:
+\ `X NULL-PTR -` is the address-to-integer distance and publishes no null kind.
 EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM;
 EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: -      PE-PTR-A PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM;
 EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM;

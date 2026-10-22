@@ -478,13 +478,21 @@ never lowers one to another. Both refuse with `E-RAW-CELL-PTR`, repair class
 
 **`TVK-NULL`** is the null. It is fenced in **value** position and permissive
 inside a **pointee**, so a value *read through* the null is never a nominal type
-and never a pointer, while the pointer *itself* still compares, subtracts, tests
-and stores. That is every honest use the tree makes of a null:
-`ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell,
-`NULL-PTR -` and `NULL-PTR 0=` all keep certifying, because each binds the
-pointee inside a `ptr` — and each means this one literal address, so the caller
-learns nothing about an element from it. That arm is why a null still clears a
-cell declared `ptr ptr n`.
+and never a pointer, while the pointer *itself* still compares, tests and
+stores: `ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell and
+`NULL-PTR 0=` keep certifying, because each binds the pointee inside a `ptr` —
+and each means this one literal address, so the caller learns nothing about an
+element from it. That arm is why a null still clears a cell declared
+`ptr ptr n`.
+
+**A distance against a base address binds no pointee.** `X NULL-PTR -`,
+`X data-base -` and the same against a pointer computed off either read no
+storage, so `-`'s base rows (`src/habu/prims.f` `PE-PTR-B-BASE`, tried before
+`ptr a ptr a -- n`) match the base operand's pointee alone and `X`'s pointee
+takes no kind from it: `: D ( ptr a -- n ) NULL-PTR - ;` and the `data-base`
+twin certify, and a caller instantiates `a` with a quotation
+(`test/compiler/base-pointer-arith-refusals.f` `CASE-NULL-DIST-FREE`). Two
+pointers to elements still name one element type.
 
 **`TVK-DBASE`** is the DATA region's base, and it is fenced at **every pointee
 depth**. Nothing else works: strict pointee unification stops a nominal only at
@@ -494,10 +502,8 @@ certified and `F @ @` then minted the nominal out of engine DATA;
 `( -- ptr ptr ptr n )` certified and `F @ @ @` dereferenced whatever integer the
 DATA word held — measured end to end, it SIGSEGVed on the integer `1`. The fence
 therefore follows the whole chain: binding the DATA base's pointee to a nominal,
-to a pointer, or to a linear con is refused wherever it happens. The cost is one
-shape the tree does not use, `( ptr thing -- n ) data-base -`: the distance
-between the DATA base and a pointer to a nominal is no longer a distance between
-two pointers of one element type.
+to a pointer, or to a linear con is refused wherever it happens. A distance is
+outside the fence: `( ptr thing -- n ) data-base -` binds neither pointee.
 
 The reads the engine really makes are untouched. `data-base OFF + @` still
 answers the number, xt or role the cell holds, a DATA cell that really holds an

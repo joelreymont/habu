@@ -388,12 +388,8 @@ PTR-VARIABLE SND-A
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
 \ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
-\ pointers before the subtraction. `MBUF-A` is a PTR-VARIABLE, so the bare
-\ `MBUF-A data-base -` asked `-`'s `ptr a ptr a -- n` row to make the DATA base
-\ the address of an ADDRESS, which is the one thing a base address never is
-\ (dot habu-fence-a-base-c6c1d71d). `BYTE-VIEW` is the same door the AOT linker's
-\ DATA-PTR already takes: it names what the distance is measured in and says
-\ nothing about what either cell holds.
+\ pointers before the subtraction: `BYTE-VIEW` makes both operands `ptr u8`, as
+\ the AOT linker's DATA-PTR does, and says nothing about what either cell holds.
 : SND-ZERO-OFF ( ptr a -- n )
    BYTE-VIEW data-base BYTE-VIEW - ;
 
