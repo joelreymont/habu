@@ -33,7 +33,6 @@ variable FLIP-N
 variable CURSOR
 variable SINCE
 variable DEF-N
-variable BODY-N
 variable STALE-N
 
 : LIB-V1$ ( -- ptr u8 n )
@@ -313,20 +312,16 @@ variable STALE-N
    {: name:ptr nameu:n :}
    name nameu s" hb-def-" STARTS-WITH? name nameu s" .hbd" ENDS-WITH? and ;
 
-: BODY? ( ptr u8 n -- bool )
-   {: name:ptr nameu:n :}
-   name nameu s" hb-body-" STARTS-WITH? name nameu s" .hbb" ENDS-WITH? and ;
-
-\ Count a definition entry or body pointer still in the root, and whether it
-\ was last dated before SINCE.
+\ Count a definition entry still in the root, and whether it was last dated
+\ before SINCE.
 : TALLY ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu DEF? name nameu BODY? or 0= if exit then
+   name nameu DEF? 0= if exit then
    name nameu ENTRY$ FS-TRY-LSTAT 0= if exit then
-   name nameu DEF? if 1 DEF-N +! else 1 BODY-N +! then
+   1 DEF-N +!
    FS-STAT-MTIME-SEC@ SINCE @ < if 1 STALE-N +! then ;
 
-: TALLY-RESET ( -- ) 0 DEF-N ! 0 BODY-N ! 0 STALE-N ! ;
+: TALLY-RESET ( -- ) 0 DEF-N ! 0 STALE-N ! ;
 
 : TALLY-ROOT ( -- )
    TALLY-RESET
@@ -342,7 +337,7 @@ variable STALE-N
 
 : BACKDATE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu DEF? name nameu BODY? or 0= if exit then
+   name nameu DEF? 0= if exit then
    name nameu ENTRY$ ARG ;
 
 \ Date every entry in the root to 2020, as src/lib/build-cache-retain-test.f
@@ -356,8 +351,7 @@ variable STALE-N
 \ 5. After a build, hb-build removes the entries nothing has used for a day.
 \ A cold build's entries are dated to 2020, then an edit renames LIB-Y: the
 \ rebuild compiles LIB-W, hits the other three, and the prune takes LIB-Y's
-\ entry and body pointer and keeps the three hit, which their use dated, and
-\ the two stored.
+\ entry and keeps the three hit, which their use dated, and the one stored.
 : PRUNE-CASE ( -- )
    s" hb-build prunes the entries nothing used for a day" T-LABEL
    s" prune" CASE-DIR
@@ -369,17 +363,14 @@ variable STALE-N
    TIME:EPOCH-SECONDS SINCE !
    TALLY-COLD
    DEF-N @ 4 T=
-   BODY-N @ 4 T=
-   STALE-N @ 8 T=
+   STALE-N @ 4 T=
    s" prune" s" lib.f" LIB-V3$ WRITE-IN
    s" prune" HB-BUILD SUCCESS
    TALLY-COLD
    DEF-N @ 3 T=
-   BODY-N @ 3 T=
    STALE-N @ 0 T=
    TALLY-ROOT
    DEF-N @ 4 T=
-   BODY-N @ 4 T=
    STALE-N @ 0 T= ;
 
 public

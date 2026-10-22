@@ -75,7 +75,6 @@ variable DEF-FINISHED
 variable DEF-PREPARED
 variable DEF-CHECK-ID
 variable DEF-PLAN-ON
-variable DEF-REQUIRE-COMPLETE
 variable DEF-MODULE-DELTA
 variable DEF-GEN-DELTA
 variable DEF-EPOCH-DELTA
@@ -464,7 +463,7 @@ variable DEF-HELD-SIZE
    0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
    0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
    0 DEF-HELD-E ! 0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
-   0 DEF-PLAN-ON ! 0 DEF-REQUIRE-COMPLETE ! ;
+   0 DEF-PLAN-ON ! ;
 
 : DEF-DROP-PLAN ( -- n )
    DEF-SOURCE-END
@@ -594,9 +593,6 @@ variable DEF-HELD-SIZE
 
 : DEF-PREP-OPEN ( -- )
    DEF-CHECK-AVAILABLE? 0= if BAD then
-   DEF-REQUIRE-COMPLETE @ if
-      14 NUNIT-FILE:SECTION$ NUNIT-DEP:COMPLETE? 0= if BAD then
-   then
    14 NUNIT-FILE:SECTION$ NUNIT-DEP:CHECK 0= if BAD then
    DEF-READ-META
    0 NUNIT-FILE:SECTION$ {: source:ptr size:n :}
@@ -713,11 +709,10 @@ public
    deps depsu DEF-PACK-SECTIONS
    NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;
 
-: PREPARE-DEFINITION-KIND? ( ptr u8 n ptr u8 n bool -- bool )
-   {: bytes:ptr size:n key:ptr keyu:n complete:bool :}
+: PREPARE-DEFINITION? ( ptr u8 n ptr u8 n -- bool )
+   {: bytes:ptr size:n key:ptr keyu:n :}
    DEF-PLAN-ON @ if BAD then
    DEF-RESET
-   complete DEF-REQUIRE-COMPLETE !
    DEF-ELIGIBLE? 0= if false exit then
    DEF-CHECK-AVAILABLE? 0= if false exit then
    DEF-CHECK-IDLE? 0= if false exit then
@@ -732,12 +727,6 @@ public
       false exit
    then
    rc throw ;
-
-: PREPARE-DEFINITION? ( ptr u8 n ptr u8 n -- bool )
-   false PREPARE-DEFINITION-KIND? ;
-
-: PREPARE-DEFINITION-COMPLETE? ( ptr u8 n ptr u8 n -- bool )
-   true PREPARE-DEFINITION-KIND? ;
 
 : INSTALL-DEFINITION ( -- n )
    DEF-INSTALL ;

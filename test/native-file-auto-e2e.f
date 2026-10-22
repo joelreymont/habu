@@ -100,10 +100,6 @@ variable DIAG-START
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
 
-: BODY-SKIPPED ( -- )
-   OUT$ s" body skips " CONTAINS? TTRUE
-   OUT$ S\" body skips 0\n" CONTAINS? TFALSE ;
-
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
    s" hook-cache" AT MAKE-DIR
@@ -428,7 +424,7 @@ variable DIAG-START
    ;MATCH ;
 
 : BODY-EDIT-CASE ( -- )
-   s" unchanged neighbors skip across same-file body edits" T-LABEL
+   s" unchanged neighbors reuse across same-file body edits" T-LABEL
    s" body-edit-cache" AT MAKE-DIR
    s" body-edit-fresh-cache" AT MAKE-DIR
    -1 BODY-EDIT-SOURCE
@@ -438,13 +434,16 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 46" CONTAINS? TTRUE
    41 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 4\n" CONTAINS? TTRUE
+   \ LEFT, RIGHT, MAIN and CHECK-RIGHT-ORIGIN; only MIDDLE changed.
+   OUT$ S\" definition hits 4\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    101 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 3\n" CONTAINS? TTRUE
+   \ LEFT and the shifted RIGHT and MAIN; MIDDLE and CHECK-RIGHT-ORIGIN, which
+   \ spells RIGHT's offset, compile.
+   OUT$ S\" definition hits 3\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
@@ -457,7 +456,7 @@ variable DIAG-START
 : BODY-READER-CASE ( -- )
    s" a newly parsing binding cannot reuse an unchanged body" T-LABEL
    s" body-reader-cache" AT MAKE-DIR
-   \ Only READER-KEEP can contribute a skip; MIDDLE changes on each build.
+   \ Only READER-KEEP can be reused; MIDDLE changes on each build.
    s" reader.f"
       S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
       PUT
@@ -474,97 +473,9 @@ variable DIAG-START
       S\" require reader.f\n: READER-KEEP ( -- n ) 42 FILE-READER:STEP ;\n: MIDDLE ( -- n ) 3 ;\nTRUSTED: MAIN ( -- ) READER-KEEP MIDDLE + . cr ;\n"
       PUT
    s" body-reader-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TFALSE ;
-
-: BODY-DELIMITER-CASE ( -- )
-   s" delimiter, signature and trust changes miss early reuse" T-LABEL
-   s" body-delimiter-cache" AT MAKE-DIR
-   \ MAIN is trusted so only DELIMITER-KEEP can contribute a body skip.
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- n ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- cell ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" TRUSTED: DELIMITER-KEEP ( -- cell ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
-
-: BODY-EOF-CASE ( -- )
-   s" truncated and EOF-delimited bodies do not reuse a stale span" T-LABEL
-   s" body-eof-cache" AT MAKE-DIR
-   s" app.f"
-      S\" : MAIN ( -- ) 42 . cr ;\n: EOF-KEEP ( -- n ) 7 ;"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : MAIN ( -- ) 42 . cr ;\n: EOF-KEEP ( -- n ) 7"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN 0<> TTRUE
-   s" app.f"
-      S\" : MAIN ( -- ) 43 . cr ;\n: EOF-KEEP ( -- n ) 7 ;\n"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE ;
-
-variable INCOMPLETE-SAVED
-
-: INCOMPLETE-FILE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
-   path pathu s" .hbd" ENDS-WITH? 0= if exit then
-   path pathu FILE-SIZE {: size:n :}
-   size LITERAL-COLD-RESERVE
-   path pathu 0 LITERAL-COLD BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
-   0 LITERAL-COLD BYTE-VIEW size s" HBFDEP02" CONTAINS? if
-      1 INCOMPLETE-SAVED !
-   then ;
-
-: BODY-INCOMPLETE-CASE ( -- )
-   s" an incomplete object stays incomplete after a post-reader hit" T-LABEL
-   s" body-incomplete-cache" AT MAKE-DIR
-   s" body-incomplete-fresh-cache" AT MAKE-DIR
-   s" app.f"
-      S\" TRUSTED: DROP-READER ( -- ) 0 native-body-reader-cell CELL-VIEW xt! ;\nDROP-READER\n: MIDDLE ( -- n ) 1 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
-      PUT
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   0 INCOMPLETE-SAVED !
-   s" body-incomplete-cache" AT ['] INCOMPLETE-FILE WALK-FILES
-   INCOMPLETE-SAVED @ 0<> TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
-   \ With the reader dropped the body path stays closed; definition keys hit.
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   REUSED
-   s" app.f"
-      S\" s\" moved\" 2drop\n: MIDDLE ( -- n ) 333 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
-      PUT
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   REUSED
-   RUN-APP SUCCESS OUT$ s" 375" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAVE
-   s" body-incomplete-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 375" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAME? TTRUE ;
 
 : LITERAL-EVENT-CASE ( -- )
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
@@ -745,9 +656,6 @@ public
       0 SCRIPT-ARGV$ s" body" STR= if
          BODY-EDIT-CASE
          BODY-READER-CASE
-         BODY-DELIMITER-CASE
-         BODY-EOF-CASE
-         BODY-INCOMPLETE-CASE
          T-REPORT
          s" native file auto artifacts: " type ROOT$ type cr
          exit
@@ -760,18 +668,6 @@ public
       then
       0 SCRIPT-ARGV$ s" body-reader" STR= if
          BODY-READER-CASE
-         T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
-         exit
-      then
-      0 SCRIPT-ARGV$ s" body-delimiter" STR= if
-         BODY-DELIMITER-CASE
-         T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
-         exit
-      then
-      0 SCRIPT-ARGV$ s" body-incomplete" STR= if
-         BODY-INCOMPLETE-CASE
          T-REPORT
          s" native file auto artifacts: " type ROOT$ type cr
          exit
@@ -800,9 +696,6 @@ public
    HISTORY-CASE
    BODY-EDIT-CASE
    BODY-READER-CASE
-   BODY-DELIMITER-CASE
-   BODY-EOF-CASE
-   BODY-INCOMPLETE-CASE
    HOOK-CASE
    GENERATED-CASE
    T-REPORT

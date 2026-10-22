@@ -208,13 +208,12 @@ its normalized `BUILD-CACHE:ROOT$` as `HABU_BUILD_CACHE`
 same keyed products and definition entries across runs. The definition cache
 (`tools/native-definition-cache.f`) stores one checksummed `hb-def-*.hbd` entry
 per definition, keyed by what the definition was built from and the reading
-checker and kernel, and an `hb-body-*.hbb` pointer from the definition's source
-up to its body to that entry. A hit dates the entry and pointer it read to now
-(`BUILD-CACHE:USED`). An entry or pointer that is short, has the wrong magic or
-fails its checksum is refused with `native-cache: entry refused <path>: <reason>`
-on stderr and compiled again. Normal build-cache retention removes products
-unused for a day; hb-build prunes definition entries and pointers that way after
-each build whose children open the definition cache. Select a fresh
+checker and kernel. A hit dates the entry it read to now (`BUILD-CACHE:USED`).
+An entry that is short, has the wrong magic or fails its checksum is refused
+with `native-cache: entry refused <path>: <reason>` on stderr and compiled
+again. Normal build-cache retention removes products unused for a day;
+hb-build prunes definition entries that way after each build whose children
+open the definition cache. Select a fresh
 `HABU_BUILD_CACHE` only for a deliberate cold measurement. Compiler bundles,
 grants, private whitebox copies and mutable fixtures remain run-local.
 A keyed image's build

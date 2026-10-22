@@ -30,7 +30,6 @@ require tools/native-unit-object.f
 package NDEF-CACHE
 private
 
-CHECKER-OWNER-ABI:PARSE-IMM-OFF constant PARSE-IMM-OFF
 $4B8 constant LIVE-FIXED-OFF
 0 constant F-SRC
 8 constant F-SRC-U
@@ -40,35 +39,23 @@ $4B8 constant LIVE-FIXED-OFF
 40 constant F-INPUT
 48 constant F-INPUT-U
 56 constant F-PRIOR
-64 constant F-CONTEXT
-96 constant F-NAME-AT
-104 constant F-BODY-AT
-112 constant F-RESUME-AT
-120 constant F-STAGE-ORD
-128 constant F-STAGED
-136 constant F-SPAN-HASH
-168 constant F-READER-BYTES
-176 constant F-READER-U
-184 constant F-READER-CAP
-192 constant F-READER-VALID
-200 constant FRAME-BYTES
+64 constant FRAME-BYTES
+\ A cache file name: "hb-def-", 64 hex digits, ".hbd".
+75 constant NAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | producer (32)
 \ | the HBNUNIT2 definition object.
 48 constant ENTRY-HEAD
-\ A body pointer: magic | checksum | definition key (64 hex) | body-at and
-\ resume, each less name-at | span hash (32).
-128 constant POINTER-BYTES
 $cbf29ce484222325 constant FNV-BASIS
 $100000001b3 constant FNV-PRIME
 
-DYNAMIC-BUFFER FRAMES ptr u8
+\ One FRAME-BYTES record per open file depth.
+DYNAMIC-BUFFER FRAMES u8
 DYNAMIC-BUFFER PENDING-KEY u8
-\ One entry or pointer read and one image written at a time: DISPATCH-BUSY
-\ serialises every lookup and store.
+\ One entry read and one image written at a time: DISPATCH-BUSY serialises
+\ every lookup and store.
 DYNAMIC-BUFFER ENTRY u8
 DYNAMIC-BUFFER STORE-IMAGE u8
-create POINTER-PATH-BUF FS-PATH-CAP allot
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -78,7 +65,6 @@ variable DIAG?
 variable HIT-N
 variable EARLY-PREFIX-HIT-N
 variable COMPILE-N
-variable BODY-SKIP-N
 variable DISPATCH-BUSY
 variable DISPATCH-ORIGINAL
 variable BORROWED-ORIGINAL
@@ -97,9 +83,6 @@ variable CON-RESET-XT
 variable OPAQUE-XT
 PTR-VARIABLE BODY-RECORD
 variable BODY-GETTER
-variable BODY-READER-GETTER
-variable BODY-PASSIVE-ENTRY
-PTR-VARIABLE BODY-READER-CELL
 TYPED-VARIABLE TARGET-READ [ ptr u8 n ptr u8 n -- ptr u8 n ]
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -117,10 +100,9 @@ create HASH-RAW 32 allot
 create SOURCE-RAW 32 allot
 create KEY-HEX 64 allot
 create HASH-CELL CELL allot
-create NAME 76 allot
+create NAME NAME-BYTES allot
 create PATH-BUF FS-PATH-CAP allot
 create STORED-PRODUCER 32 allot
-create CONTEXT-RAW 32 allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
 CAST: DISPATCH>N ( [ ptr u8 n -- ] -- n )
@@ -131,11 +113,6 @@ CAST: ROLE-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: BODY-CELL-XT ( n -- [ -- ptr u8 ] )
-CAST: BODY-PASSIVE-XT ( n -- [ ptr u8 n -- bool ] )
-CAST: BODY-REUSE>N ( [ ptr u8 n n n -- n bool ] -- n )
-CAST: BODY-REUSE-CELL ( ptr u8 -- ptr [ ptr u8 n n n -- n bool ] )
-CAST: READER-CELL ( ptr u8 -- ptr [ ptr u8 n bool -- ] )
-CAST: READER>N ( [ ptr u8 n bool -- ] -- n )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -328,59 +305,9 @@ variable PENDING-KEY-U
    0 TFAM-RESET-XT ! 0 CON-RESET-XT ! ;
 
 : FRAME ( -- ptr u8 )
-   DEPTH @ 0= if BAD then DEPTH @ 1- FRAMES @ ;
+   DEPTH @ 0= if BAD then DEPTH @ 1- FRAME-BYTES * FRAMES ;
 : F@ ( n -- n ) FRAME + CELL-VIEW @ ;
 : F! ( n n -- ) FRAME + CELL-VIEW ! ;
-: RB ( -- ptr u8 ) FRAME F-READER-BYTES + 0 ptr-field @ ;
-: RB! ( ptr u8 -- ) FRAME F-READER-BYTES + 0 ptr-field ! ;
-
-: READER-CLEAR ( -- )
-   0 F-READER-U F! 0 F-READER-VALID F! ;
-
-: READER-RELEASE ( -- )
-   RB dup NULL-PTR <> if
-      F-READER-CAP F@ munmap 0<> if E-MEM-UNMAP throw then
-   else drop then
-   NULL-PTR RB! 0 F-READER-CAP F! READER-CLEAR ;
-
-: READER-ROOM ( n -- )
-   {: need:n :}
-   need 0 < need MEM-MAX-N F-READER-U F@ - > or if BAD then
-   F-READER-U F@ need + F-READER-CAP F@ <= if exit then
-   F-READER-U F@ need + F-READER-CAP F@ 2 * max 256 max
-      {: cap:n :}
-   cap MEM-ALLOC-BYTES drop {: fresh:ptr :}
-   F-READER-U F@ 0 > if RB fresh F-READER-U F@ BYTE-COPY then
-   RB dup NULL-PTR <> if
-      F-READER-CAP F@ munmap 0<> if E-MEM-UNMAP throw then
-   else drop then
-   fresh RB! cap F-READER-CAP F! ;
-
-: READER-OBSERVE ( ptr u8 n bool -- )
-   {: spelling:ptr spellingu:n passive:bool :}
-   DEPTH @ 0= if exit then
-   F-STAGED F@ 0= F-READER-VALID F@ 0= or if exit then
-   passive 0= spellingu 0= or if READER-CLEAR exit then
-   spellingu 8 + READER-ROOM
-   spellingu RB F-READER-U F@ + LE:U64!
-   spelling RB F-READER-U F@ 8 + + spellingu BYTE-COPY
-   F-READER-U F@ spellingu 8 + + F-READER-U F! ;
-
-: READER-OWNED? ( -- bool )
-   BODY-READER-CELL @ dup NULL-PTR = if drop false exit then
-   CELL-VIEW @ ['] READER-OBSERVE READER>N = ;
-
-: READER-TRANSFER ( -- )
-   F-STAGED F@ 0= F-READER-VALID F@ 0= or
-   READER-OWNED? 0= or if READER-CLEAR exit then
-   0 begin dup F-READER-U F@ < while
-      RB over + LE:U64@ {: len:n :}
-      RB over 8 + + len NUNIT-DEP:BODY-READER+
-      len 8 + +
-   repeat drop
-   NUNIT-DEP:READER-COMPLETE!
-   READER-CLEAR ;
-
 \ hb-build exports its resolved root as HABU_BUILD_CACHE to every child that
 \ opens the definition cache (build-support.f BF-PREPARE-ENV), so a maker
 \ whose image is saved never touches BUILD-CACHE's buffers; ENV-INPUT:CURRENT$
@@ -399,19 +326,6 @@ variable PENDING-KEY-U
 : HASH-START ( ptr u8 n -- )
    HASH-CTX SHA256-BEGIN HASH-S ;
 
-: HASH-SPAN ( ptr u8 n n n -- )
-   {: source:ptr sourceu:n first:n resume:n :}
-   first 0 < resume first < or resume sourceu > or if BAD then
-   s" habu-definition-span-v1" HASH-START
-   source first + resume first - HASH-S
-   resume sourceu = if
-      0 HASH-N
-   else
-      1 HASH-N
-      HASH-CTX source resume + 1 SHA256-FEED
-   then
-   HASH-CTX HASH-RAW SHA256-END ;
-
 : PIN-KERNEL ( -- )
    SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
       {: digest:ptr size:n known:bool :}
@@ -424,25 +338,6 @@ variable PENDING-KEY-U
 : ACTUAL-KERNEL$ ( -- ptr u8 n bool )
    KERNEL-ROLE KERNEL-ROLE-KNOWN @ if 32 else 0 then
       KERNEL-ROLE-KNOWN @ 0<> ;
-
-: CONTEXT-HASH? ( ptr u8 n -- bool )
-   {: pending:ptr pendingu:n :}
-   DISPATCH-ROLE-KNOWN @ 0= CHECKER-ROLE-KNOWN @ 0= or if false exit then
-   ACTUAL-KERNEL$
-      {: kernel:ptr kernelu:n known:bool :}
-   known 0= if false exit then
-   kernelu 32 <> if BAD then
-   s" habu-definition-reader-v5" HASH-START
-   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
-   data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
-   check@ 0= if 0 else 1 then HASH-N
-   BORROW-ACTIVE @ HASH-N
-   DISPATCH-ROLE 32 HASH-S
-   CHECKER-ROLE 32 HASH-S
-   kernel kernelu HASH-S
-   pending pendingu HASH-S
-   HASH-CTX CONTEXT-RAW SHA256-END
-   true ;
 
 : DIAG-W2 ( ptr u8 n -- )
    {: bytes:ptr size:n :}
@@ -470,33 +365,21 @@ variable PENDING-KEY-U
    whole 0 ?do bytes i + CELL-VIEW @ xor FNV-PRIME * CELL +loop
    size whole ?do bytes i + c@ xor FNV-PRIME * loop ;
 
-\ The cache file named prefix, hex(HASH-RAW), suffix, in the cache root.
-: CACHE-PATH ( ptr u8 n ptr u8 n ptr u8 -- ptr u8 n )
-   {: pre:ptr preu:n suf:ptr sufu:n buf:ptr :}
-   pre NAME preu BYTE-COPY
-   HASH-RAW NAME preu + SHA256>HEX
-   suf NAME preu + 64 + sufu BYTE-COPY
-   ROOT$ NAME preu 64 + sufu + buf JOIN-PATH
-   buf swap ;
-
-\ The object entry for a definition key, as this checker and kernel read it.
+\ The object entry for a definition key, as this checker and kernel read it:
+\ hb-def-, hex(HASH-RAW), .hbd in the cache root.
 : ENTRY-PATH ( ptr u8 n -- ptr u8 n )
    s" habu-definition-entry-v1" HASH-START
    HASH-S
    CHECKER-ROLE$ drop HASH-S
    ACTUAL-KERNEL$ drop HASH-S
    HASH-CTX HASH-RAW SHA256-END
-   s" hb-def-" s" .hbd" PATH-BUF CACHE-PATH ;
-
-\ The body pointer for the staged definition's reader context and its source
-\ from the name up to the body.
-: POINTER-PATH ( -- ptr u8 n )
-   s" habu-definition-body-v1" HASH-START
-   FRAME F-CONTEXT + 32 HASH-S
-   FRAME F-SRC + 0 ptr-field @ F-NAME-AT F@ +
-      F-BODY-AT F@ F-NAME-AT F@ - HASH-S
-   HASH-CTX HASH-RAW SHA256-END
-   s" hb-body-" s" .hbb" POINTER-PATH-BUF CACHE-PATH ;
+   s" hb-def-" {: pre:ptr preu:n :}
+   s" .hbd" {: suf:ptr sufu:n :}
+   pre NAME preu BYTE-COPY
+   HASH-RAW NAME preu + SHA256>HEX
+   suf NAME preu + 64 + sufu BYTE-COPY
+   ROOT$ NAME preu 64 + sufu + PATH-BUF JOIN-PATH
+   PATH-BUF swap ;
 
 \ Read one cache file into ENTRY. A missing file is a miss; a short,
 \ foreign or damaged one is refused on fd 2 and is a miss too, which the
@@ -534,33 +417,21 @@ variable PENDING-KEY-U
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
    key keyu ENTRY-PATH size IMAGE-WRITE ;
 
-\ Point the staged definition's name and body at the entry for key. The
-\ offsets are relative to the name, so the pointer survives a shift.
-: POINTER-WRITE ( ptr u8 n -- )
-   {: key:ptr keyu:n :}
-   keyu 64 <> if BAD then
-   POINTER-BYTES STORE-IMAGE-RESERVE
-   s" HBDPTR01" drop 0 STORE-IMAGE 8 BYTE-COPY
-   key 0 STORE-IMAGE 16 + 64 BYTE-COPY
-   F-BODY-AT F@ F-NAME-AT F@ - 0 STORE-IMAGE 80 + LE:U64!
-   F-RESUME-AT F@ F-NAME-AT F@ - 0 STORE-IMAGE 88 + LE:U64!
-   FRAME F-SPAN-HASH + 0 STORE-IMAGE 96 + 32 BYTE-COPY
-   POINTER-PATH POINTER-BYTES IMAGE-WRITE ;
+: ZERO-SCRATCH ( ptr u8 n -- )
+   {: bytes:ptr size:n :}
+   size 0 ?do 0 bytes i + c! loop ;
 
+\ Room for one more frame. The only fallible step of an open, taken before
+\ the file is pushed so a failure leaves nothing to undo.
+: FRAME-RESERVE ( -- ) DEPTH @ 1+ FRAME-BYTES * FRAMES-RESERVE ;
+
+\ Open the reserved frame, zeroed as a fresh one: a file closed at this
+\ depth left its record there.
 : FILE-OPEN ( -- )
-   DEPTH @ 1+ FRAMES-RESERVE
-   FRAME-BYTES MEM-ALLOC-BYTES drop {: frame:ptr :}
-   frame DEPTH @ FRAMES !
    1 DEPTH +!
-   NULL-PTR RB! 0 F-READER-CAP F! READER-CLEAR
-   0 F-STAGED F! ;
+   FRAME FRAME-BYTES ZERO-SCRATCH ;
 
-: FILE-CLOSE ( -- )
-   ['] READER-RELEASE catch {: reader-rc:n :}
-   FRAME FRAME-BYTES munmap {: frame-rc:n :}
-   -1 DEPTH +!
-   reader-rc 0<> if reader-rc throw then
-   frame-rc 0<> if E-MEM-UNMAP throw then ;
+: FILE-CLOSE ( -- ) -1 DEPTH +! ;
 
 : HASH-SOURCE ( ptr u8 n -- ptr u8 n )
    s" habu-definition-source-v1" HASH-START
@@ -570,7 +441,7 @@ variable PENDING-KEY-U
 
 : DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: source:ptr sourceu:n pending:ptr pendingu:n :}
-   s" habu-native-definition-v7" HASH-START
+   s" habu-native-definition-v8" HASH-START
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    s" HBNUNIT2-definition-v2" HASH-S
    data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
@@ -590,26 +461,6 @@ variable PENDING-KEY-U
    key 0 PENDING-KEY keyu BYTE-COPY
    keyu PENDING-KEY-U !
    0 PENDING-KEY keyu ;
-
-: STAGE-MATCH? ( n ptr u8 n -- bool )
-   {: ord:n pending:ptr pendingu:n :}
-   F-STAGED F@ 0= if false exit then
-   F-STAGE-ORD F@ ord <> if false exit then
-   pending pendingu CONTEXT-HASH? 0= if false exit then
-   FRAME F-CONTEXT + 32 CONTEXT-RAW 32 STR= ;
-
-: STAGE-RESUME ( -- )
-   F-STAGED F@ 0= if exit then
-   data-base INP-CELL + CELL-VIEW @ {: cursor:n :}
-   FRAME F-SRC + 0 ptr-field @ NULL-PTR BYTE-VIEW - {: source:n :}
-   cursor source < cursor source - F-SRC-U F@ > or if
-      0 F-STAGED F! exit
-   then
-   cursor source - F-BODY-AT F@ < if 0 F-STAGED F! exit then
-   cursor source - F-RESUME-AT F!
-   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
-      F-NAME-AT F@ F-RESUME-AT F@ HASH-SPAN
-   HASH-RAW FRAME F-SPAN-HASH + 32 BYTE-COPY ;
 
 : OPAQUE? ( -- bool )
    OPAQUE-XT @ dup 0= if drop true exit then
@@ -637,23 +488,6 @@ variable PENDING-KEY-U
       s" missing-pending-origin" exit
    then
    s" " ;
-
-: CANDIDATE? ( -- bool ) ADMISSION-REASON$ nip 0= ;
-
-: READER-READY? ( -- bool )
-   BORROW-ACTIVE @ if false exit then
-   check@ 0= if false exit then
-   data-base POLICY-NDICT-CELL + CELL-VIEW @ 0<> if false exit then
-   READER-OWNED? 0= if false exit then
-   BODY-PASSIVE-ENTRY @ 0= if false exit then
-   OWNER-STRUCTURAL? 0= if false exit then
-   s" NEUTRAL-PARSE-IMM?" TARGET-XT?
-      dup 0= if drop false exit then
-   OWNER PARSE-IMM-OFF + CELL-VIEW @ = ;
-
-: BODY-PASSIVE? ( ptr u8 n -- bool )
-   READER-READY? 0= if 2drop false exit then
-   BODY-PASSIVE-ENTRY @ BODY-PASSIVE-XT execute ;
 
 : ARM-NATIVE ( [ ptr u8 n -- ] -- bool )
    {: completion :}
@@ -692,69 +526,8 @@ variable PENDING-KEY-U
       NUNIT-ORIGIN:PENDING-AVAILABLE? 0= if 1 EARLY-PREFIX-HIT-N +! then
    then ;
 
-\ The body pointer for the staged name and body names the entry to install
-\ when the span it recorded hashes equal to today's source from the name.
-: FIND-BODY ( n -- n bool )
-   {: ord:n :}
-   POINTER-PATH {: pointer:ptr pointeru:n :}
-   pointer pointeru s" HBDPTR01" POINTER-BYTES CACHE-READ nip
-      0= if 0 false exit then
-   0 ENTRY 80 + LE:U64@ F-BODY-AT F@ F-NAME-AT F@ - <> if 0 false exit then
-   0 ENTRY 88 + LE:U64@ {: span:n :}
-   span 0 < span F-SRC-U F@ F-NAME-AT F@ - > or if 0 false exit then
-   F-NAME-AT F@ span + {: resume:n :}
-   resume F-BODY-AT F@ < if 0 false exit then
-   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
-      F-NAME-AT F@ resume HASH-SPAN
-   HASH-RAW 32 0 ENTRY 96 + 32 STR= 0= if 0 false exit then
-   0 ENTRY 16 + KEY-HEX 64 BYTE-COPY
-   KEY-HEX 64 ENTRY-PATH {: path:ptr pathu:n :}
-   path pathu s" HBDOBJ01" ENTRY-HEAD CACHE-READ {: objectu:n hit:bool :}
-   hit 0= if 0 false exit then
-   0 ENTRY 16 + STORED-PRODUCER 32 BYTE-COPY
-   0 ENTRY ENTRY-HEAD + objectu ENTRY-HEAD - KEY-HEX 64
-      NUNIT-OBJECT:PREPARE-DEFINITION-COMPLETE? 0= if
-      NUNIT-OBJECT:DISCARD-DEFINITION 0 false exit
-   then
-   path pathu ord NULL-PTR 0 INSTALL-ENTRY
-   pointer pointeru BUILD-CACHE:USED drop
-   1 BODY-SKIP-N +!
-   resume true ;
-
-\ Session buffers rely on one lookup at a time; a reader inside a dispatch
-\ compiles.
-: BODY-REUSE ( ptr u8 n n n -- n bool )
-   {: source:ptr sourceu:n name-at:n body-at:n :}
-   DEPTH @ 0= DISPATCH-BUSY @ 0<> or if 0 false exit then
-   source FRAME F-SRC + 0 ptr-field @ <>
-   sourceu F-SRC-U F@ <> or if 0 false exit then
-   name-at 0 < body-at name-at < or
-   body-at sourceu > or if 0 false exit then
-   CANDIDATE? 0= if 0 false exit then
-   ndict@ {: ord:n :}
-   PENDING-COPY {: pending:ptr pendingu:n :}
-   pending pendingu CONTEXT-HASH? 0= if
-      NFILE-REF:PENDING-RELEASE 0 false exit
-   then
-   CONTEXT-RAW FRAME F-CONTEXT + 32 BYTE-COPY
-   ord F-STAGE-ORD F!
-   name-at F-NAME-AT F!
-   body-at F-BODY-AT F!
-   -1 F-RESUME-AT F!
-   1 F-STAGED F!
-   READER-CLEAR
-   READER-READY? if
-      1 F-READER-VALID F!
-      ord FIND-BODY if
-         0 F-STAGED F! READER-CLEAR
-         true exit
-      then drop
-   then
-   NFILE-REF:PENDING-RELEASE 0 false ;
-
 \ The entry for key, checked against today's live bindings before it is
-\ installed. A staged definition read by passive words alone also gets the
-\ body pointer that lets the next load skip its body.
+\ installed.
 : FIND-HIT ( ptr u8 n n ptr u8 n -- bool )
    {: key:ptr keyu:n ord:n source:ptr sourceu:n :}
    keyu 64 <> if BAD then
@@ -767,7 +540,6 @@ variable PENDING-KEY-U
       NUNIT-OBJECT:DISCARD-DEFINITION false exit
    then
    path pathu ord source sourceu INSTALL-ENTRY
-   F-STAGED F@ 0<> F-READER-VALID F@ 0<> and if key keyu POINTER-WRITE then
    true ;
 
 : DIAG-PATH? ( -- bool )
@@ -804,9 +576,6 @@ variable PENDING-KEY-U
 : COLD-CANDIDATE ( ptr u8 n ptr u8 n n -- )
    {: source:ptr sourceu:n key:ptr keyu:n ord:n :}
    ord NUNIT-DEP:BEGIN-DEFINITION
-   \ READER-TRANSFER clears the reader; a pointer needs it valid until here.
-   F-STAGED F@ 0<> F-READER-VALID F@ 0<> and {: point:bool :}
-   READER-TRANSFER
    NUNIT-OBJECT:DEFINITION-BEGIN
    ['] COMPILE-STAGED catch {: rc:n :}
    rc 0<> if
@@ -827,7 +596,6 @@ variable PENDING-KEY-U
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
          key keyu object objectu producer produceru ENTRY-WRITE
-         point if key keyu POINTER-WRITE then
       else
          s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
          NFILE-REF:PENDING-RELEASE
@@ -846,7 +614,6 @@ variable PENDING-KEY-U
    1 DISPATCH-BUSY !
    ndict@ {: ord:n :}
    PENDING-COPY {: pending:ptr pendingu:n :}
-   ord pending pendingu STAGE-MATCH? 0= if 0 F-STAGED F! then
    source sourceu pending pendingu DEFINITION-KEY
       {: key:ptr keyu:n :}
    key keyu ord source sourceu FIND-HIT 0= if
@@ -873,10 +640,8 @@ variable PENDING-KEY-U
 : DISPATCH-GUARDED ( ptr u8 n -- )
    DISPATCH-BUSY @ if s" busy" COMPILE-ORIGINAL exit then
    DISPATCH-SOURCE-U ! DISPATCH-SOURCE !
-   DEPTH @ 0 > if STAGE-RESUME then
    ['] WRAPPED-DISPATCH catch {: rc:n :}
    0 DISPATCH-BUSY !
-   DEPTH @ 0 > if 0 F-STAGED F! READER-CLEAR then
    rc 0<> if NFILE-REF:PENDING-RELEASE rc throw then ;
 
 : BIND-OPAQUE ( -- )
@@ -886,48 +651,15 @@ variable PENDING-KEY-U
    OPAQUE-XT ! ;
 
 : PIN-BODY-GETTER ( -- )
-   0 BODY-GETTER ! 0 BODY-READER-GETTER ! 0 BODY-PASSIVE-ENTRY !
+   0 BODY-GETTER !
    s" native-body-reuse-cell" TARGET-XT?
       dup 0= if drop exit then
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
-   BODY-GETTER !
-   s" native-body-reader-cell" TARGET-XT?
-      dup 0= if drop exit then
-   dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
-   BODY-READER-GETTER !
-   s" native-body-passive?" TARGET-XT?
-      dup 0= if drop exit then
-   dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
-   BODY-PASSIVE-ENTRY ! ;
+   BODY-GETTER ! ;
 
-: BIND-BODY-REUSE ( -- )
-   NULL-PTR BODY-RECORD !
-   NULL-PTR BODY-READER-CELL !
-   BODY-GETTER @ dup 0= if drop exit then
-   BODY-CELL-XT execute dup BODY-RECORD !
-   dup NULL-PTR = if drop exit then
-   ['] BODY-REUSE swap NATIVE-BODY-ABI:REUSE cells +
-      BODY-REUSE-CELL xt!
-   BODY-READER-GETTER @ dup 0= if drop exit then
-   BODY-PASSIVE-ENTRY @ 0= if drop exit then
-   BODY-CELL-XT execute dup BODY-READER-CELL !
-   dup NULL-PTR = if drop exit then
-   ['] READER-OBSERVE swap READER-CELL xt!
-   ['] BODY-PASSIVE? NUNIT-DEP:USE-BODY-PASSIVE ;
-
-: UNBIND-BODY-REUSE ( -- )
-   BODY-READER-CELL @ dup NULL-PTR <> if
-      dup CELL-VIEW @ ['] READER-OBSERVE READER>N = if
-         0 swap CELL-VIEW !
-      else drop then
-   else drop then
-   NULL-PTR BODY-READER-CELL !
-   BODY-RECORD @ dup NULL-PTR = if drop exit then
-   dup NATIVE-BODY-ABI:REUSE cells + CELL-VIEW @
-      ['] BODY-REUSE BODY-REUSE>N = if
-      0 swap NATIVE-BODY-ABI:REUSE cells + CELL-VIEW !
-   else drop then
-   NULL-PTR BODY-RECORD ! ;
+: BIND-BODY-RECORD ( -- )
+   BODY-GETTER @ dup 0= if drop NULL-PTR BODY-RECORD ! exit then
+   BODY-CELL-XT execute BODY-RECORD ! ;
 
 : BIND-DISPATCH ( -- )
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ {: actual:n :}
@@ -938,10 +670,10 @@ variable PENDING-KEY-U
    actual 0= if 0 DISPATCH-ROLE-KNOWN ! exit then
    ['] COMPILER-ROLE$ NUNIT-DEP:USE-COMPILER-ROLE
    ['] DISPATCH-GUARDED NCOMP:DISPATCH!
-   BIND-BODY-REUSE ;
+   BIND-BODY-RECORD ;
 
 : UNBIND-DISPATCH ( -- )
-   UNBIND-BODY-REUSE
+   NULL-PTR BODY-RECORD !
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @
       ['] DISPATCH-GUARDED DISPATCH>N = if
       DISPATCH-ORIGINAL @ DISPATCH-XT NCOMP:DISPATCH!
@@ -1019,13 +751,9 @@ variable PENDING-KEY-U
          {: mode:n asked:ptr askedu:n :}
       asked drop askedu drop mode
    then {: kind:n :}
+   FRAME-RESERVE
    path pathu root rootu kind NFILE-REF:PUSH-FILE
-   ['] FILE-OPEN catch {: open-rc:n :}
-   open-rc 0<> if
-      \ The open failure owns the result; a failed open leaves no frame.
-      ['] NFILE-REF:POP-FILE catch drop
-      open-rc throw
-   then
+   FILE-OPEN
    path FRAME F-INPUT + 0 ptr-field !
    pathu F-INPUT-U F!
    source FRAME F-SRC + 0 ptr-field !
@@ -1039,12 +767,11 @@ variable PENDING-KEY-U
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
-   ['] FILE-CLOSE catch {: close-rc:n :}
+   FILE-CLOSE
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    unit-rc 0<> if unit-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
-   close-rc 0<> if close-rc throw then
    pop-rc 0<> if pop-rc throw then ;
 
 : FILE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
@@ -1112,16 +839,11 @@ variable PENDING-KEY-U
 
 : PRINT-COUNTS ( -- )
    s" definition hits " type HIT-N @ .
-   s" body skips " type BODY-SKIP-N @ .
    s" early prefix hits " type EARLY-PREFIX-HIT-N @ .
    s"  compiled " type COMPILE-N @ . ;
 
-: ZERO-SCRATCH ( ptr u8 n -- )
-   {: bytes:ptr size:n :}
-   size 0 ?do 0 bytes i + c! loop ;
-
 : CLEAR-SCRATCH ( -- )
-   0 HIT-N ! 0 BODY-SKIP-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N !
+   0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N !
    0 DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
@@ -1132,15 +854,14 @@ variable PENDING-KEY-U
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH SOURCE-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
-   NAME 76 ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH
-   STORED-PRODUCER 32 ZERO-SCRATCH CONTEXT-RAW 32 ZERO-SCRATCH
-   POINTER-PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
+   NAME NAME-BYTES ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH
+   STORED-PRODUCER 32 ZERO-SCRATCH ;
 
 : OPEN ( -- )
    1 SESSION !
    s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= DIAG? !
    0 SEEDED ! 0 DEPTH !
-   0 HIT-N ! 0 BODY-SKIP-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
+   0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
    0 DISPATCH-ORIGINAL ! 0 DISPATCH-ROLE-KNOWN !
    0 BORROWED-ORIGINAL ! 0 BORROW-ACTIVE ! 0 BORROW-ACCEPT !
    0 CHECKER-ROLE-KNOWN !
@@ -1208,7 +929,6 @@ variable PENDING-KEY-U
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
    0 KERNEL-ROLE-KNOWN ! 0 BODY-GETTER !
-   0 BODY-READER-GETTER ! 0 BODY-PASSIVE-ENTRY !
    0 OPAQUE-XT ! 0 PENDING-KEY-U !
    ['] SOURCE-ROOT:READ-OS TARGET-READ !
    REPORT? @ if PRINT-COUNTS then

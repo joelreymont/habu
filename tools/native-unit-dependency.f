@@ -31,7 +31,6 @@ private
 8 constant PRIMITIVE
 9 constant COMPILER-ROLE
 10 constant READER-FLAGS
-11 constant BODY-READER
 16 constant HEADER-BYTES
 24 constant ROW-BYTES
 48 constant RES-ROW-BYTES
@@ -71,8 +70,6 @@ defer ORIGIN-SYM ( ptr u8 n n ptr u8 n -- n )
    2drop drop 2drop 0 ;
 defer CLOSURE-EACH ( n [ n -- ] -- bool )
 : NO-CLOSURE ( n [ n -- ] -- bool ) 2drop false ;
-defer BODY-PASSIVE? ( ptr u8 n -- bool )
-: NO-BODY-PASSIVE ( ptr u8 n -- bool ) 2drop false ;
 : INSTALL-DEFAULT ( -- )
    ['] NO-CONTRACT is CONTRACT$
    ['] NO-ROLE is CHECKER-ROLE$
@@ -80,8 +77,7 @@ defer BODY-PASSIVE? ( ptr u8 n -- bool )
    ['] NO-PRIMITIVE is PRIMITIVE-STATE
    ['] NO-IDENTITY is SYM-IDENTITY
    ['] NO-ORIGIN is ORIGIN-SYM
-   ['] NO-CLOSURE is CLOSURE-EACH
-   ['] NO-BODY-PASSIVE is BODY-PASSIVE? ;
+   ['] NO-CLOSURE is CLOSURE-EACH ;
 INSTALL-DEFAULT
 
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
@@ -298,12 +294,6 @@ INSTALL-DEFAULT
    kind ORDERED = if
       keyu 0<> datau 0<> or if MALFORMED then
       s" ordered source action" REMEMBER-MISS false exit
-   then
-   kind BODY-READER = if
-      keyu 0= datau 0<> or if MALFORMED then
-      key keyu BODY-PASSIVE? dup 0= if
-         s" body reader changed" REMEMBER-MISS
-      then exit
    then
    MALFORMED ;
 
@@ -663,13 +653,6 @@ public
    s" ordered-source-action" -1 DIAG-ORDERED
    ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
 : COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;
-: BODY-READER+ ( ptr u8 n -- )
-   {: spelling:ptr spellingu:n :}
-   spellingu 0= if BAD then
-   BODY-READER spelling spellingu NULL-PTR 0 ADD-ROW ;
-: READER-COMPLETE! ( -- )
-   DEPTH @ 1- FRAME-KINDS @ 0= if BAD then
-   s" HBFDEP03" drop FRAME BYTES 8 BYTE-COPY ;
 : TOP-BOUND ( ptr u8 n -- ) OBSERVE-BOUND ;
 : TOP-RESOLUTION ( ptr u8 n -- ) OBSERVE-RESOLUTION ;
 : ABSENT-NEW ( n n -- ) {: first:n last:n :}
@@ -699,8 +682,7 @@ public
 : CHECK ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
    size HEADER-BYTES < if MALFORMED then
-   bytes 8 s" HBFDEP02" STR=
-   bytes 8 s" HBFDEP03" STR= or 0= if MALFORMED then
+   bytes 8 s" HBFDEP02" STR= 0= if MALFORMED then
    bytes 8 + LE:U64@ {: count:n :}
    count 0 < count size HEADER-BYTES - ROW-BYTES / > or if MALFORMED then
    HEADER-BYTES CHECK-OFF !
@@ -710,11 +692,6 @@ public
    CHECK-OFF @ size <> if MALFORMED then
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
-
-: COMPLETE? ( ptr u8 n -- bool )
-   {: bytes:ptr size:n :}
-   size 8 < if false exit then
-   bytes 8 s" HBFDEP03" STR= ;
 
 : RESET ( -- )
    NFILE-REF:END-DEFINITION
@@ -749,7 +726,6 @@ public
 : USE-SYM-IDENTITY ( [ n -- ptr u8 n ptr u8 n n ] -- ) is SYM-IDENTITY ;
 : USE-ORIGIN-SYM ( [ ptr u8 n n ptr u8 n -- n ] -- ) is ORIGIN-SYM ;
 : USE-CLOSURE ( [ n [ n -- ] -- bool ] -- ) is CLOSURE-EACH ;
-: USE-BODY-PASSIVE ( [ ptr u8 n -- bool ] -- ) is BODY-PASSIVE? ;
 : UNBIND ( -- ) INSTALL-DEFAULT ;
 
 \ The scanner supplies the exact resolved record ordinal, not a spelling or
