@@ -3223,8 +3223,8 @@ variable SITE-TRAP-CELL
 \ RAX is the new published count. Keep all caller scratch registers intact.
 \ The first mapped cell is the last number issued; slot cells follow it.
 : OCC-COUNT, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lower:label up:label up-done:label
-      down:label done:label exhausted:label end:label prof-next:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lower:label up:label up-done:label
+      down:label done:label exhausted:label end:label :}
    RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
    R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
    R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
@@ -3246,30 +3246,14 @@ variable SITE-TRAP-CELL
       R8 RDX MEM-AT ASM-SINK ENC-MOV-MR
       done JMP,
    lower X64CODE:LBL,
+      \ The profiler names deferred samples and retires the removed IDs
+      \ before their dictionary rows and slots can be reused.
+      X64PROF:TRIM-BODY
       RCX RAX ASM-SINK ENC-MOV-RR
       R11 ZERO-REG,
-      R8 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT IMM64,
-      R8 R8 PROF-ABI:PROF-ARENA MEM-OFF ASM-SINK ENC-MOV-RM
-      R8 R8 ASM-SINK ENC-TEST-RR  C-E down JCC,
-      R9 R8 PROF-ABI:ARN-IDS MEM-OFF ASM-SINK ENC-MOV-RM
-      R9 R9 ASM-SINK ENC-TEST-RR  C-NE down JCC,
-      R8 ZERO-REG,                                \ prof-rate alone has no initialized live map
    down X64CODE:LBL,
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       R11 RDX RCX CELL CELL MEM-IDX ASM-SINK ENC-MOV-MR
-      \ Seed rewind has already detached its retained donors. Ordinary
-      \ trimming excludes the removed IDs' spans before slots can be reused.
-      R8 R8 ASM-SINK ENC-TEST-RR  C-E prof-next JCC,
-      R9 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-RM
-      R9 R9 ASM-SINK ENC-TEST-RR  C-S prof-next JCC,
-      R10 -1 IMM64,
-      R10 R8 RCX CELL PROF-ABI:ARN-LIVE MEM-IDX ASM-SINK ENC-MOV-MR
-      R9 R9 PROF-ABI:PROF-ID-ENT >IMM8 ASM-SINK ENC-IMUL-RRI8
-      R9 R8 R9 1 PROF-ABI:ARN-RECS MEM-IDX ASM-SINK ENC-LEA
-      R10 R9 PROF-ABI:RID-OWNER MEM-OFF ASM-SINK ENC-MOV-MR
-      R11 R9 PROF-ABI:RID-START MEM-OFF ASM-SINK ENC-MOV-MR
-      R11 R9 PROF-ABI:RID-END MEM-OFF ASM-SINK ENC-MOV-MR
-   prof-next X64CODE:LBL,
       RCX ASM-SINK ENC-INC  down JMP,
    done X64CODE:LBL,
    NDICT-REG RAX ASM-SINK ENC-MOV-RR
@@ -3887,8 +3871,10 @@ private
    done X64CODE:LBL, ;
 
 \ A successful code rewind retires any published span that reaches its floor.
+\ The profiler first stops charging spans the new CP releases.
 : DEF-CODE-RECLAIM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label full:label done:label :}
+   X64PROF:RECLAIM-BODY
    RSI CP-REG ASM-SINK ENC-MOV-RR
    HOST-INVALIDATE,
    RCX ZERO-REG,

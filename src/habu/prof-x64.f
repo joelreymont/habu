@@ -84,6 +84,8 @@ variable ROW-CELL
 variable SNAP-CELL
 variable SESSION-CELL
 variable REWIND-CELL
+variable TRIM-CELL
+variable RECLAIM-CELL
 : HANDLER-LBL ( -- label ) HANDLER-CELL @ >LABEL ;
 : RESTORER-LBL ( -- label ) RESTORER-CELL @ >LABEL ;
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
@@ -99,9 +101,12 @@ variable REWIND-CELL
 : SNAP-LBL ( -- label ) SNAP-CELL @ >LABEL ;
 : SESSION-LBL ( -- label ) SESSION-CELL @ >LABEL ;
 : REWIND-LBL ( -- label ) REWIND-CELL @ >LABEL ;
+: TRIM-LBL ( -- label ) TRIM-CELL @ >LABEL ;
+: RECLAIM-LBL ( -- label ) RECLAIM-CELL @ >LABEL ;
 
 : DBASE-REG ( -- r64 ) ENGINE-GPR:X64-DBASE >R64 ;
 : NDICT-REG ( -- r64 ) ENGINE-GPR:X64-NDICT >R64 ;
+: CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
 : LOAD, ( r64 mem -- ) ASM-SINK ENC-MOV-RM ;
 : STORE, ( r64 mem -- ) ASM-SINK ENC-MOV-MR ;
@@ -1173,6 +1178,8 @@ public
 : EDGE, ( -- ) EDGE-LBL CALL, ;
 : INDEX, ( -- ) INDEX-LBL CALL, ;
 : REWIND-BODY ( -- ) REWIND-LBL CALL, ;
+: TRIM-BODY ( -- ) TRIM-LBL CALL, ;
+: RECLAIM-BODY ( -- ) RECLAIM-LBL CALL, ;
 
 private
 
@@ -1309,6 +1316,100 @@ private
    R13 ASM-SINK ENC-POP  R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
    RET, ;
 
+\ Retirement is reached from kernel helpers whose scratch registers still
+\ belong to their caller, the twin of prof.f C-PROF-RETIRE-OPEN: every
+\ scratch register and the rbx and r12 it borrows go on the machine stack,
+\ and r12 holds the arena. Profiling disabled takes no syscall. Clobbers rcx.
+: RETIRE-OPEN, ( label -- ) {: absent:label :}
+   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   RSI ASM-SINK ENC-PUSH  RDI ASM-SINK ENC-PUSH  R8 ASM-SINK ENC-PUSH
+   R9 ASM-SINK ENC-PUSH  R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
+   RBX ASM-SINK ENC-PUSH  R12 ASM-SINK ENC-PUSH
+   R12 BAND-VA IMM,  R12 R12 PROF-ARENA MEM-OFF LOAD,
+   R12 TEST,  C-E absent JCC,
+   RCX R12 ARN-IDS MEM-OFF LOAD,  RCX TEST,  C-E absent JCC, ;   \ prof-rate alone has no session
+
+: RETIRE-CLOSE, ( -- )
+   R12 ASM-SINK ENC-POP  RBX ASM-SINK ENC-POP
+   R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP  R9 ASM-SINK ENC-POP
+   R8 ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP  RSI ASM-SINK ENC-POP
+   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP
+   RET, ;
+
+\ r12 = arena, after a sync: rebuild the index without the IDs whose span was
+\ released, the twin of prof.f C-PROF-INDEX-PRUNE. The sync made every
+\ inclusive count durable, and BUILD skips an ID with no stored span.
+: PRUNE, ( -- )  RSI R12 COPY,  INDEX-LBL CALL, ;
+
+\ Ordinary NDICT lowering calls this with the new count in rax, the twin of
+\ prof.f LPROFTRIM. Deferred PCs are named while their dictionary rows still
+\ exist; then each live slot of [rax, r14) loses its ID's owner and span, so
+\ no report or sample charges the old identity. Seed rewind has already
+\ detached its slots and keeps its spans. It keeps every register.
+: TRIM-HELPER, ( -- )
+   TRIM-LBL LBL,
+   LBL LBL LBL LBL LBL {: absent:label scan:label sync:label turn:label next:label :}
+   LBL {: retired:label :}
+   absent RETIRE-OPEN,
+   RBX RAX COPY,                                                 \ the new count
+   RCX R12 ARN-DEFER MEM-OFF LOAD,  RCX TEST,  C-NE sync JCC,
+   R8 RBX COPY,
+   scan LBL,
+      R8 NDICT-REG CMP-REG,  C-AE absent JCC,
+      RCX R12 R8 CELL ARN-LIVE MEM-IDX LOAD,
+      RCX TEST,  C-NS sync JCC,
+      R8 INC,  scan JMP,
+   sync LBL,
+   DISARM,
+   SYNC-LBL CALL,
+   turn LBL,
+      RBX NDICT-REG CMP-REG,  C-AE retired JCC,
+      R8 R12 RBX CELL ARN-LIVE MEM-IDX LEA,
+      RAX R8 MEM-AT LOAD,
+      RAX TEST,  C-S next JCC,
+      RCX ALL-ONES,  RCX R8 MEM-AT STORE,
+      RAX RAX PROF-ID-ENT SCALE,
+      RDX R12 ARN-RECS MEM-OFF LEA,  RAX RDX ASM-SINK ENC-ADD-RR
+      RCX RAX RID-OWNER MEM-OFF STORE,
+      RCX ZERO-REG,
+      RCX RAX RID-START MEM-OFF STORE,  RCX RAX RID-END MEM-OFF STORE,
+   next LBL,  RBX INC,  turn JMP,
+   retired LBL,
+   PRUNE,
+   RESUME,
+   absent LBL,
+   RETIRE-CLOSE, ;
+
+\ A CP lowering calls this with the new CP in rdi and the old one in r15,
+\ the twin of prof.f LPROFRECLAIM: no raw PC may survive reuse of its bytes.
+\ After the sync names the old samples, every live or seed-retained span that
+\ meets [rdi, r15) loses its owner and span. A live ordinal keeps its slot,
+\ so the sync's snapshot does not give the released span a fresh ID before
+\ ordinary trimming drops the row. It keeps every register.
+: RECLAIM-HELPER, ( -- )
+   RECLAIM-LBL LBL,
+   LBL LBL LBL LBL {: absent:label turn:label next:label done:label :}
+   absent RETIRE-OPEN,
+   RDI CP-REG CMP-REG,  C-AE absent JCC,
+   RBX RDI COPY,                                                 \ the new CP
+   DISARM,
+   SYNC-LBL CALL,
+   R8 R12 ARN-RECS MEM-OFF LEA,  RCX ZERO-REG,
+   turn LBL,
+      RCX R12 ARN-IDS MEM-OFF CMP-MEM,  C-AE done JCC,
+      RAX R8 RID-START MEM-OFF LOAD,  RAX TEST,  C-E next JCC,
+      RAX CP-REG CMP-REG,  C-AE next JCC,                        \ starts at or above the old CP
+      RAX R8 RID-END MEM-OFF LOAD,  RAX RBX CMP-REG,  C-BE next JCC,  \ ends at or below the new one
+      RAX ALL-ONES,  RAX R8 RID-OWNER MEM-OFF STORE,
+      RAX ZERO-REG,
+      RAX R8 RID-START MEM-OFF STORE,  RAX R8 RID-END MEM-OFF STORE,
+   next LBL,  R8 PROF-ID-ENT ADDI,  RCX INC,  turn JMP,
+   done LBL,
+   PRUNE,
+   RESUME,
+   absent LBL,
+   RETIRE-CLOSE, ;
+
 public
 
 \ Make labels before any primitive section references them, then emit each
@@ -1319,10 +1420,11 @@ public
    LBL NUM-CELL !  LBL PCT-CELL !  LBL NAME-CELL !
    LBL DUMP-CELL !  LBL JSON-CELL !  LBL ROW-CELL !
    LBL SNAP-CELL !  LBL SESSION-CELL !  LBL REWIND-CELL !
+   LBL TRIM-CELL !  LBL RECLAIM-CELL !
    HANDLER,
    RESTORER-LBL X64BOOT:RESTORER,
    FIND-HELPER,  EDGE-HELPER,  SNAP-HELPER,  SESSION-HELPER,
-   INDEX-HELPER,  SYNC-HELPER,  REWIND-HELPER,
+   INDEX-HELPER,  SYNC-HELPER,  REWIND-HELPER,  TRIM-HELPER,  RECLAIM-HELPER,
    NUM-HELPER,  PCT-HELPER,  NAME-HELPER,
    false REPORT-HELPER,  true REPORT-HELPER,  ROW-HELPER, ;
 
