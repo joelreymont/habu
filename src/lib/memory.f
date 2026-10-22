@@ -301,22 +301,24 @@ public
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    WB-SCOPE ;
 
-\ THE THREE CELLS THE WITH-BYTES SCOPE STACK IS, handed one at a time to a claim
-\ the caller supplies. Depth zero, no cached mapping and no cached capacity is
-\ what every runtime instance starts at - the zero a fresh anonymous mapping
-\ already holds - so a stripped AOT image owns these three outright instead of
-\ being refused for naming them (src/habu/aot-owned-cells.f, dot
+\ THE CELLS THE WITH-BYTES SCOPE STACK IS, handed one span at a time, with its
+\ byte extent, to a claim the caller supplies. Depth zero, no cached mapping and
+\ no cached capacity is what every runtime instance starts at - the zero a fresh
+\ anonymous mapping already holds - so a stripped AOT image owns these outright
+\ instead of being refused for naming them (src/habu/aot-owned-cells.f, dot
 \ habu-give-a-stripped-c1a6664a). WB-BUFFERS and WB-LENGTHS are DYNAMIC-BUFFER
-\ declarations: the head cell is the only one code spells, because the accessor
-\ reaches capacity and slot by arithmetic from it (src/core/layout-buffer.f
-\ DBUF-SOURCE), and the head is where the reserve on first use starts.
+\ declarations: code spells each one's head cell and its control block, because
+\ the generated words pass `NAME#base NAME#ctl` (src/core/layout-buffer.f
+\ DBUF-SOURCE), and both start empty, where the reserve on first use starts.
 \ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE: this file is baked
 \ into the engine, its cells are private, and a private cell of a baked package
-\ stays private - so it hands out these three and nothing else.
-: OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
-   WB-BUFFERS#base BYTE-VIEW claim execute
-   WB-LENGTHS#base BYTE-VIEW claim execute
-   WB-DEPTH BYTE-VIEW claim execute ;
+\ stays private - so it hands out these and nothing else.
+: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
+   WB-BUFFERS#base BYTE-VIEW CELL claim execute
+   WB-BUFFERS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
+   WB-LENGTHS#base BYTE-VIEW CELL claim execute
+   WB-LENGTHS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
+   WB-DEPTH BYTE-VIEW CELL claim execute ;
 
 private
 

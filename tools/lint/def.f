@@ -29,7 +29,7 @@ public
 
 private
 
-58 constant FORM#
+59 constant FORM#
 
 : WORD? ( n -- bool )
    LINT-LEX:KIND@ LINT-LEX:WORD = ;
@@ -112,6 +112,7 @@ private
       55 of s" SPEC:" endof
       56 of s" RESERVED-PTR-U8-CELL" endof
       57 of s" LINEAR:" endof
+      58 of s" PTR-U8-TABLE-VARIABLE" endof
       E-TBL-BOUNDS throw
    endcase ;
 

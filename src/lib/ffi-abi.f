@@ -818,8 +818,9 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 \ made while loading the application; foreign addresses belong to the new
 \ process and must start unresolved. Keep the table private and hand its exact
 \ storage to the linker through the two callbacks.
-\ Retired rows drain before capture. Each dynamic buffer's generated #base is
-\ the control head named by its reserve path; a fresh runtime starts it empty.
+\ Retired rows drain before capture. Each dynamic buffer's generated #base and
+\ #ctl are the head and control block its generated words name; a fresh runtime
+\ starts both empty.
 : OWNED-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: carry fresh :}
    FN-N BYTE-VIEW CELL carry execute
@@ -835,7 +836,9 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    PIN-FN-CAP BYTE-VIEW CELL carry execute
    PIN-LIB-CAP BYTE-VIEW CELL carry execute
    RETIRED-BASE#base BYTE-VIEW CELL fresh execute
+   RETIRED-BASE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
+   RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
 
@@ -857,7 +860,9 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    PIN-FN-CAP BYTE-VIEW CELL fresh execute
    PIN-LIB-CAP BYTE-VIEW CELL fresh execute
    RETIRED-BASE#base BYTE-VIEW CELL fresh execute
+   RETIRED-BASE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
+   RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
 

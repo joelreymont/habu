@@ -23,10 +23,12 @@ DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER CELLROW n
 STRUCTURE triple DERIVE addr FIELD a n FIELD b n FIELD c n ;STRUCTURE
 DYNAMIC-BUFFER WIDE triple
-\ A control record no definer generated, as a downstream table's is. It is
-\ DYNAMIC-STORAGE:CONTROL-CELLS (five) cells wide: a shorter hand-made record
-\ would overlap its neighbour's cells.
-PTR-VARIABLE RAW-CTRL 0 , 0 , 0 , 0 ,
+\ A control record no definer generated, as a downstream table's is: a declared
+\ head and a control block of DYNAMIC-STORAGE:CONTROL-CELLS (four) cells, as
+\ the generated `NAME#base` and `NAME#ctl` are. A shorter hand-made block would
+\ overlap its neighbour's cells.
+PTR-VARIABLE RAW-CTRL
+create RAW-CTL 0 , 0 , 0 , 0 ,
 create MARK 8 allot
 variable RAW
 
@@ -46,7 +48,7 @@ variable DB-EVAL-U
 : BAD-LOW ( -- ) -1 TOKENS drop ;
 : BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
 \ A negative index is refused before the control record is read.
-: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR 8 DYNAMIC-STORAGE:ADDRESS drop ;
+: NEG-NULL-CONTROL ( -- ) -1 NULL-PTR RAW-CTL 8 DYNAMIC-STORAGE:ADDRESS drop ;
 : BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
 : BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
 : AFTER-RELEASE ( -- ) 0 TOKENS drop ;
@@ -87,12 +89,12 @@ variable DB-EVAL-U
 
 : WIDE-PAST ( -- ) 2 WIDE drop ;
 : WIDE-PAST-GROWN ( -- ) 5 WIDE drop ;
-: FOREIGN-WIDTH ( -- ) 2048 WIDE#base 8 DYNAMIC-STORAGE:RESERVE ;
+: FOREIGN-WIDTH ( -- ) 2048 WIDE#base WIDE#ctl 8 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-2047 ( -- ) 2047 WIDE drop ;
 : WIDE-682 ( -- ) 682 WIDE drop ;
 : WIDE-100 ( -- ) 100 WIDE drop ;
 : WIDE-2048 ( -- ) 2048 WIDE drop ;
-: RAW-RESERVE ( -- ) 3 RAW-CTRL 24 DYNAMIC-STORAGE:RESERVE ;
+: RAW-RESERVE ( -- ) 3 RAW-CTRL RAW-CTL 24 DYNAMIC-STORAGE:RESERVE ;
 : WIDE-MAP-FAIL ( -- ) $7FFFFFFFFFFFFFFF 24 / WIDE-RESERVE ;
 
 : WIDE-ROWS ( -- )
@@ -128,20 +130,20 @@ variable DB-EVAL-U
    681 WIDE TRIPLE-C @ 7 T=
    0 WIDE TRIPLE-A byte-view 63 + c@ 7 T=
    \ The generic release empties the generated control for its accessor too.
-   WIDE#base DYNAMIC-STORAGE:RELEASE
+   WIDE#base WIDE#ctl DYNAMIC-STORAGE:RELEASE
    ['] WIDE-100 7122 TTHROWS
    1 WIDE-RESERVE
    1 WIDE drop
    WIDE-RELEASE
    \ The downstream contract: a hand-made record reserves 72 bytes and releases
-   \ to empty, its capacity read behind the head. The reserve tags the record
-   \ with its width 24 and caches the bound 72 / 24.
+   \ to empty, its capacity read from the control block. The reserve tags the
+   \ record with its width 24 and caches the bound 72 / 24.
    RAW-RESERVE
-   RAW-CTRL byte-view CELL + cell-view @ 72 T=
-   RAW-CTRL byte-view 3 cells + cell-view @ 24 T=
-   RAW-CTRL byte-view 4 cells + cell-view @ 3 T=
-   RAW-CTRL DYNAMIC-STORAGE:RELEASE
-   RAW-CTRL byte-view CELL + cell-view @ 0 T= ;
+   RAW-CTL @ 72 T=
+   RAW-CTL 2 cells + @ 24 T=
+   RAW-CTL 3 cells + @ 3 T=
+   RAW-CTRL RAW-CTL DYNAMIC-STORAGE:RELEASE
+   RAW-CTL @ 0 T= ;
 
 \ Every element admitted before the byte one keeps its old accessor: a bare
 \ cell's is `( n -- ptr n )` over whole cells.
@@ -152,6 +154,59 @@ variable DB-EVAL-U
    0 CELLROW @ 5 T=
    3 CELLROW @ 6 T=
    CELLROW-RELEASE ;
+
+\ RELEASE-RANGE (src/habu/aot-capture.f's capture window) owns a record only
+\ when both its head and its control block lie inside the span; a span holding
+\ one part, or cutting either, is E-SIZE. Generated records sit head-then-ctl,
+\ so the record starts one cell before RNG-A#ctl.
+DYNAMIC-BUFFER RNG-A n
+DYNAMIC-BUFFER RNG-B n
+DYNAMIC-BUFFER RNG-C n
+: RNG-REC ( -- ptr u8 ) RNG-A#ctl byte-view CELL - ;
+: RNG-WHOLE ( -- ) RNG-REC 5 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-HEAD ( -- ) RNG-REC CELL DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CTL ( -- ) RNG-A#ctl byte-view 4 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CUT-HEAD ( -- ) RNG-REC 4 DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-CUT-CTL ( -- ) RNG-REC 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+\ Starts inside A's control block and ends at A's end: only the front cut refuses.
+: RNG-CUT-TAIL ( -- ) RNG-A#ctl byte-view CELL + 3 cells DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-BEFORE ( -- ) RNG-REC 64 - 64 DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-EMPTY ( -- ) RNG-REC 4 + 0 DYNAMIC-STORAGE:RELEASE-RANGE ;
+: RNG-NEG ( -- ) RNG-REC -1 DYNAMIC-STORAGE:RELEASE-RANGE ;
+variable RNG-BASE
+: RNG-N ( -- n ) DYNAMIC-STORAGE:REGISTERED-N RNG-BASE @ - ;
+: RNG-SLOT ( ptr n -- n ) CELL + @ RNG-BASE @ - ;
+
+: RANGE-ROWS ( -- )
+   DYNAMIC-STORAGE:REGISTERED-N RNG-BASE !
+   4 RNG-A-RESERVE 4 RNG-B-RESERVE 4 RNG-C-RESERVE
+   RNG-N 3 T=
+   ['] RNG-HEAD 7121 TTHROWS
+   ['] RNG-CTL 7121 TTHROWS
+   ['] RNG-CUT-HEAD 7121 TTHROWS
+   ['] RNG-CUT-CTL 7121 TTHROWS
+   ['] RNG-CUT-TAIL 7121 TTHROWS
+   ['] RNG-NEG 7121 TTHROWS
+   RNG-BEFORE RNG-EMPTY
+   RNG-N 3 T=
+   RNG-A#ctl @ 64 T=
+   \ Swap removal moves the last row into the freed slot and repairs its slot.
+   RNG-A-RELEASE RNG-N 2 T=
+   RNG-C#ctl RNG-SLOT 1 T=
+   RNG-C-RELEASE RNG-N 1 T=
+   RNG-B#ctl RNG-SLOT 1 T=
+   7 1 RNG-B !  1 RNG-B @ 7 T=
+   RNG-B-RELEASE RNG-N 0 T=
+   RNG-B#ctl CELL + @ 0 T=
+   \ A span holding the whole record releases exactly that record.
+   4 RNG-A-RESERVE 4 RNG-B-RESERVE
+   RNG-WHOLE
+   RNG-N 1 T=
+   RNG-A#ctl @ 0 T=
+   RNG-B#ctl @ 64 T=
+   RNG-B#ctl RNG-SLOT 1 T=
+   RNG-B-RELEASE
+   RNG-N 0 T= ;
 
 : RUN ( -- )
    T-RESET
@@ -197,6 +252,7 @@ variable DB-EVAL-U
    BYTE-ROWS
    CELL-ROWS
    WIDE-ROWS
+   RANGE-ROWS
    T-REPORT ;
 
 RUN

@@ -624,10 +624,12 @@ PRIM: TYPED-VARIABLE PRIM;
 \ no change at all: their accessors do pointer ARITHMETIC on the storage word and
 \ load counts, and never fetch a pointer out of it.
 \
-\ The head's cell is committed by the generated `PTR-VARIABLE` itself, so the
-\ definer allots the four count cells behind it (DBUF-ALLOT). Those counts are
-\ numbers, so DYNAMIC-STORAGE reads capacity through an explicit cell view of
-\ the head rather than through its pointer type.
+\ The record is a declared head and a numeric control block. The generated
+\ `PTR-VARIABLE NAME#base` commits the head's cell itself, and the generated
+\ `create NAME#ctl` right after it names the four count cells, which the definer
+\ allots behind the head (DBUF-ALLOT). Every generated call passes both words, so
+\ DYNAMIC-STORAGE reads the counts as numbers through NAME#ctl and never views
+\ the head's pointer cell as bytes or cells.
 \ THE DYNAMIC ELEMENT WIDTH IS BYTES, where LBUF-W holds cells: this definer
 \ allots no element storage, it scales the accessor's index and the reserve by
 \ the width, and DYNAMIC-STORAGE:RESERVE takes its width in bytes.
@@ -636,9 +638,18 @@ PRIM: TYPED-VARIABLE PRIM;
 \ definers admit keeps the generated source it had, since DBUF-W is then
 \ exactly LBUF-W cells.
 variable DBUF-W
-\ Head, exact byte capacity, registry slot + 1, width tag and element bound for
-\ that width: every dynamic control record (src/core/dynamic-storage.f).
+\ Every dynamic control record (src/core/dynamic-storage.f): the head cell, then
+\ the control block's exact byte capacity, registry slot + 1, width tag and
+\ element bound for that width.
 5 cells constant DBUF-CTRL-BYTES
+: DBUF-CTL$ ( -- ptr u8 n ) s" #ctl" ;
+
+: DBUF-CTL, ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu LBUF-APP  DBUF-CTL$ LBUF-APP ;
+
+\ The record's two words, as every generated call passes them.
+: DBUF-RECORD, ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu LBUF-BASE,  s"  " LBUF-APP  name nameu DBUF-CTL, ;
 
 : DBUF-VALIDATE ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n type:ptr typeu:n :}
    type typeu CHECKER-DYNAMIC-INFO 0= if
@@ -650,21 +661,23 @@ variable DBUF-W
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
    s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
+   s"  create " LBUF-APP name nameu DBUF-CTL,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
-   s"  ) " LBUF-APP name nameu LBUF-BASE,
+   s"  ) " LBUF-APP name nameu DBUF-RECORD,
    s"  " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  DYNAMIC-STORAGE:ADDRESS ; : " LBUF-APP name nameu LBUF-APP
-   s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
+   s" -RESERVE ( n -- ) " LBUF-APP name nameu DBUF-RECORD,
    s"  " LBUF-APP DBUF-W @ LBUF-DEC,
    s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
-   s" -RELEASE ( -- ) " LBUF-APP name nameu LBUF-BASE,
+   s" -RELEASE ( -- ) " LBUF-APP name nameu DBUF-RECORD,
    s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 \ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
-\ AND commits its cell, so the definer allots the four count cells behind it and
-\ zeroes the record it measured. The same transactional check — if anything else
+\ AND commits its cell, and the generated `create NAME#ctl` names the next cell
+\ without allotting it, so the definer allots the four count cells behind the
+\ head and zeroes the record it measured. The same transactional check — if anything else
 \ moved DP between the measurement and here, the accessor and the storage would
 \ name different places, so this refuses instead of allotting into the gap. A
 \ rejected accessor leaves the head's cell allotted and unnamed, like the
@@ -682,6 +695,7 @@ variable DBUF-W
    name nameu LBUF-NAMES-OK? 0= if exit then
    name nameu s" -RESERVE" LBUF-SUFFIX-OK? 0= if exit then
    name nameu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
+   name nameu DBUF-CTL$ LBUF-SUFFIX-OK? 0= if exit then
    name nameu type typeu DBUF-VALIDATE 0= if exit then
    DBUF-CTRL-BYTES LBUF-BYTES !
    LBUF-ALIGN

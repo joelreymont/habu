@@ -328,8 +328,9 @@ with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
 that word's uses before the run; what no row states, such as `COMMAND`'s
 `NAME#VEC`, is left to the run (§ 3). `FUNCTION:` needs no row.
 
-`PERSISTED-PTR-VARIABLE` and `PERSISTED-PTR-U8-TABLE-VARIABLE` are the
-snapshot-marked siblings, the table one `ptr` deeper. Runtime-sized buffers come
+`PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
+(`( -- ptr ptr ptr u8 )`); `PERSISTED-PTR-VARIABLE` and
+`PERSISTED-PTR-U8-TABLE-VARIABLE` are the snapshot-marked siblings. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 

@@ -789,16 +789,11 @@ of the same names and should gain it too, as a lint surface rather than a gate.
 
 Three T1 sites need a named answer beyond those two mechanisms:
 
-- **The DYNAMIC-BUFFER control record** is the only T1 record whose three cells
-  must be reachable from one pointer, because the registry stores that pointer.
-  It dissolves the same way: the generated declaration publishes
-  `NAME#base` (the declared head), `NAME#cap` and `NAME#slot` as separate
-  declared cells, `DYNAMIC-STORAGE:RESERVE` / `RELEASE` take the three, and the
-  registry keeps three parallel columns instead of one pointer to a record. The
-  cheaper alternative, if the build allows it, is to move
-  `src/core/dynamic-storage.f` after `src/core/include.f` in the prefix and
-  declare the control record properly; the migration dot decides which, and the
-  view narrowing lands after it either way.
+- **The DYNAMIC-BUFFER control record** is a declared head, `NAME#base`, and a
+  numeric control block, `NAME#ctl` (capacity, slot, width tag, bound). Every
+  generated call passes both, and each registry row holds both addresses in a
+  declared pointer table, so `src/core/dynamic-storage.f` never views a pointer
+  cell as bytes or cells.
 - **`ARENA-SNAP-BOOT`'s zero pass** views a `PTR-U8-TABLE` boot buffer as cells
   to zero it. The typed form writes `NULL-PTR` through the table's own accessor
   in a loop — a snapshot-time cost only.
