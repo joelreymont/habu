@@ -449,7 +449,8 @@ private
 
 \ The kernel body a name of the engine's own prefix names: the first global row
 \ of that name, folded, the record the image's index finds; or -1.
-: KERNEL-BODY ( ptr u8 n -- n ) {: a:ptr u:n :}
+: KERNEL-BODY ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
       i ENGINE-PRIMS:HELPER-WID 0= if
          i ENGINE-PRIMS:NAME$ a u CORE-STR=CI if i unloop exit then
@@ -490,6 +491,15 @@ private
 \ entry, or a kernel body by name.
 : TARGET-VA ( n -- n ) {: s:n :}
    s 8 SITE@ {: t:n :}
+   t SITE-TARGET-MASK invert and SITE-HELPER-TAG = if
+      s SITE-NAME$ {: a:ptr u:n :}
+      ENGINE-PRIMS:COUNT 0 ?do
+         i ENGINE-PRIMS:HELPER-WID OWNER-API-PRI-WID = if
+            i ENGINE-PRIMS:NAME$ a u CORE-STR=CI if i BODY-VA unloop exit then
+         then
+      loop
+      s UNCARRIED
+   then
    t SITE-SHADOW-TAG and SITE-SHADOW-TAG = if
       t SITE-TARGET-MASK and SHADOW-VA exit
    then

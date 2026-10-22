@@ -295,8 +295,10 @@ public
 
 \ Guard the span the registers hold: move it into the (PROT-SPAN) ABI, rdi the
 \ address and rsi the length, whichever registers hold them, then call it.
-\ The twin of habu1.f PROT-GUARD:CALL. The call clobbers rax rcx rdx rsi rdi
-\ and r8-r11, and the VM registers survive it.
+\ The twin of habu1.f PROT-GUARD:CALL. It writes rdi and rsi with the span; the
+\ helper then writes rax, rdx and the flags (SPAN-HELPER,) and keeps rdi, rsi
+\ and every other register, and a refused span exits the process. The x64ir.f
+\ guarded stores rely on that helper contract.
 : PROT-SPAN-CALL, ( r64 r64 -- ) {: addr:r64 len:r64 :}
    len RDI SAME? if
       addr RSI SAME? if

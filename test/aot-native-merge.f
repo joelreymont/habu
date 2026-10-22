@@ -58,11 +58,12 @@ CAST: DATA-N ( ptr u8 -- n )
    AOT-NAMES-BUF@ t SITE-TARGET-MASK and + {: p:ptr :}
    p 1+ p c@ ;
 
-: SITE-NAMED ( n ptr u8 n -- n ) {: kind:n a:ptr u:n :}
+: SITE-NAMED ( n n ptr u8 n -- n )
+   {: kind:n tag:n a:ptr u:n :}
    AOT-SHADOW:SITE-N @ 0 ?do
       i SITE 4 + LE:U32@ kind = if
          i SITE 8 + LE:U32@ {: t:n :}
-         t SITE-TARGET-MASK invert and SITE-NAME-TAG = if
+         t SITE-TARGET-MASK invert and tag = if
             t TARGET-NAME$ a u STR= if i unloop exit then
          then
       then
@@ -115,15 +116,16 @@ public
 
 : PART-CAPTURE ( -- )
    CAPTURE
+   AOT-SHADOW:CALL SITE-HELPER-TAG s" (PROT-SPAN)" SITE-NAMED 0 >= TTRUE
    AOT-REC-N @ P-RECS !
    AOT-SHADOW:REC-N @ P-SHRECS !
    AOT-SHADOW:CODE-LEN @ P-SHCODE !
    AOT-SHADOW:SITE-N @ P-SHSITES !
    AOT-SHADOW:XT-N @ P-SHXTS !
    XTOFF-N @ P-XTOFFS !
-   AOT-SHADOW:CALL s" AOT-MERGE-BASE:LEAF" SITE-NAMED P-CALLSITE !
+   AOT-SHADOW:CALL SITE-NAME-TAG s" AOT-MERGE-BASE:LEAF" SITE-NAMED P-CALLSITE !
    P-CALLSITE @ 0 >= if P-CALLSITE @ SITE LE:U32@ P-CALL-OFF ! then
-   AOT-SHADOW:CODE s" AOT-MERGE-BASE:LEAF" SITE-NAMED P-CODESITE !
+   AOT-SHADOW:CODE SITE-NAME-TAG s" AOT-MERGE-BASE:LEAF" SITE-NAMED P-CODESITE !
    s" AOT-MERGE-BASE:LEAF" CELL-NAMED P-NAMEDCELL !
    P-CALLSITE @ 0 >= TTRUE
    P-CODESITE @ 0 >= TTRUE
@@ -133,6 +135,8 @@ public
 private
 
 : CHECK ( -- )
+   \ A partial helper keeps its scope even beside a host global of that name.
+   AOT-SHADOW:CALL SITE-HELPER-TAG s" (PROT-SPAN)" SITE-NAMED 0 >= TTRUE
    AOT-REC-N @ H-RECS @ P-RECS @ + T=
    AOT-SHADOW:REC-N @ H-SHRECS @ P-SHRECS @ + T=
    AOT-SHADOW:CODE-LEN @ H-SHCODE @ P-SHCODE @ + T=
@@ -168,6 +172,7 @@ public
 1 set-tier
 AOT-NATIVE-MERGE:PREPARE
 AOT-NATIVE-MERGE:OPEN
+: (PROT-SPAN) ( -- n ) 777 ;
 package AOT-MERGE-BASE
 public
 : LEAF ( n -- n ) 7 + ;
@@ -189,6 +194,7 @@ private
 : HELPER ( n -- n ) 1+ ;
 public
 : CALLER ( n -- n ) HELPER AOT-MERGE-BASE:LEAF 1+ ;
+: STORE ( n ptr n -- n ) ! 7 ;
 : TICK ( -- [ n -- n ] ) ['] AOT-MERGE-BASE:LEAF ;
 : DATA-USER ( -- n ) DATA-CELL @ ;
 : SET-QUOTE ( -- ) [: 2 + ;] QUOTE-XT xt! ;

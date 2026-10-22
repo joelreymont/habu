@@ -189,6 +189,22 @@ public
 
 \ A guarded store whose span check is folded into its caller.
 : TIP-STORE ( n ptr n -- n ) ! 7 ;
+: TIP-BSTORE ( n ptr u8 -- n ) c! 7 ;
+
+\ Division fixes its results in the registers the span guard overwrites.
+: TIP-DIV-STORE ( n n ptr n -- n )
+   {: a:n b:n p:ptr :}
+   a b / p ! 7 ;
+
+
+: TIP-MOD-STORE ( n n ptr n -- n )
+   {: a:n b:n p:ptr :}
+   a b mod p ! 7 ;
+
+
+: TIP-DIV-BSTORE ( n n ptr u8 -- n )
+   {: a:n b:n p:ptr :}
+   a b / p c! 7 ;
 
 \ Keep the store address live over a real call before the guarded write.
 : TIP-CLOSE-CELL ( ptr n -- )
@@ -235,7 +251,10 @@ private
    s" TIER1-INLINE-PRIMS:TIP-STORE" s" !" CALLS-WORD 0 T=
    s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" guard CALLS-ENTRY 1 T=
    s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" s" close" CALLS-WORD 1 T=
-   s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" s" !" CALLS-WORD 0 T= ;
+   s" TIER1-INLINE-PRIMS:TIP-CLOSE-CELL" s" !" CALLS-WORD 0 T=
+   s" a byte store calls the sealed span guard" T-LABEL
+   s" TIER1-INLINE-PRIMS:TIP-BSTORE" guard CALLS-ENTRY 1 T=
+   s" TIER1-INLINE-PRIMS:TIP-BSTORE" s" c!" CALLS-WORD 0 T= ;
 
 : TEST-NO-CALLS ( -- )
    s" no tier-1 subject calls one of the lowered primitives" T-LABEL
@@ -269,7 +288,15 @@ private
    TIP-CELLS byte-view TIP-CELL-VIEW $1234 T=
    TIP-CELLS TIP-BYTE-VIEW $34 T=
    77 TIP-CELLS TIP-STORE 7 T=
-   TIP-CELLS @ 77 T= ;
+   TIP-CELLS @ 77 T=
+   91 TIP-CELLS byte-view TIP-BSTORE 7 T=
+   TIP-CELLS byte-view c@ 91 T=
+   100 3 TIP-CELLS TIP-DIV-STORE 7 T=
+   TIP-CELLS @ 33 T=
+   100 7 TIP-CELLS TIP-MOD-STORE 7 T=
+   TIP-CELLS @ 2 T=
+   100 3 TIP-CELLS byte-view TIP-DIV-BSTORE 7 T=
+   TIP-CELLS byte-view c@ 33 T= ;
 
 : TEST-STORE-AFTER-CALL ( -- )
    s" a guarded store keeps its address through a call" T-LABEL

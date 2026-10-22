@@ -211,8 +211,10 @@ variable SH-OUT-N
 \ ---- what a host address names -------------------------------------------------
 \ A shipped window record's entry, by its shipped row, or a word of the engine's
 \ own prefix, by the name the ARM64 named code sites carry (ACAP-TARGET-NAME?: the
-\ name resolves to exactly this entry below the prelude mark).
-: SH-TARGET ( n n -- n ) {: off:n v:n :}
+\ name resolves to exactly this entry below the prelude mark). Sealed kernel
+\ helpers use their existing name in OWNER-API-PRI-WID instead.
+: SH-TARGET ( n n -- n )
+   {: off:n v:n :}
    v ACAP-TGT>REC {: j:n :}
    j ACAP-W-R0 @ >= j ACAP-W-R1 @ < and if
       j SH-MAPPED dup -1 = if
@@ -220,6 +222,7 @@ variable SH-OUT-N
       then exit
    then
    j 0 < if v SH-QTARGET dup 0 >= if exit then drop then
+   v ACAP-X64-HELPER-NAME? if ACAP-POOL-ADD SITE-HELPER-TAG or exit then 2drop
    v ACAP-TARGET-NAME? if ACAP-POOL-ADD SITE-NAME-TAG or exit then 2drop
    off v SH-UNNAMED ;
 

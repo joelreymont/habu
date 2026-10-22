@@ -874,7 +874,7 @@ DYNAMIC-BUFFER SH-SEEN u8
 : ?SH-TARGET ( n n -- ) {: t:n recs:n :}
    t SITE-TARGET-MASK and {: v:n :}
    t SITE-TARGET-MASK invert and {: tag:n :}
-   tag SITE-NAME-TAG = if v 1+ ?NAMED-TARGET exit then
+   tag SITE-NAME-TAG = tag SITE-HELPER-TAG = or if v 1+ ?NAMED-TARGET exit then
    tag SITE-REC-TAG = v recs < and if exit then
    tag SITE-SHADOW-TAG = if
       v S-SHRECS ROW-LEN@ AOT-SHADOW:REC-ROW / < if
@@ -1438,6 +1438,9 @@ DYNAMIC-BUFFER HOST-REG n
 : SH-TARGET-MERGED ( n -- n ) {: t:n :}
    t SITE-TARGET-MASK invert and {: tag:n :}
    t SITE-TARGET-MASK and {: value:n :}
+   tag SITE-HELPER-TAG = if
+      value H-NAMES @ SITE-TARGET-MASK SH-ADD SITE-HELPER-TAG or exit
+   then
    tag SITE-NAME-TAG = if
       value IN-NAME$ HOST-NAMED-ROW dup 0 >= if
          SITE-REC-TAG or exit

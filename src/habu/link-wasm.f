@@ -302,6 +302,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 
 : MARK-TARGET ( n -- )
    8 SITE@ {: t:n :}
+   t SITE-TARGET-MASK invert and SITE-HELPER-TAG = if
+      s" wasmlink: no sealed engine helper provider" REFUSE
+   then
    t SITE-TARGET-MASK and {: v:n :}
    t SITE-NAME-TAG and 0<> if v POOL$ MARK-NAME exit then
    v MARK-REC ;
@@ -340,6 +343,9 @@ variable VAL-AT                      \ the next cell value in the capture's valu
 \ The function a call or a code literal names.
 : TARGET ( n -- n )
    8 SITE@ {: t:n :}
+   t SITE-TARGET-MASK invert and SITE-HELPER-TAG = if
+      s" wasmlink: no sealed engine helper provider" REFUSE
+   then
    t SITE-TARGET-MASK and {: v:n :}
    t SITE-NAME-TAG and 0<> if v POOL$ NAMED exit then
    v ENTERS ;

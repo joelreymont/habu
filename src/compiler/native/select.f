@@ -3873,11 +3873,6 @@ public
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
-: GLOBAL-STORE-ENTRY ( ptr u8 n -- n )
-   0 search-wl dup 0= if exit then
-   dup TERMINAL-CALL:IN-ENGINE-TEXT? if exit then
-   drop 0 ;
-
 \ A module with no such loop or no such pair is handed back untouched, because
 \ rebuilding renumbers values and would move registers for nothing.
 : SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
@@ -3897,8 +3892,8 @@ public
    r NEFF:CONTROL@ NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
    r NEFF:CONV@ NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
    r NEFF:TRAITS@ r NEFF:LINK@ A64FRAME:LINK-KEPT? if 1 else 0 then S-LSAVE !
-   s" !" GLOBAL-STORE-ENTRY S-STORE-ENTRY !
-   s" c!" GLOBAL-STORE-ENTRY S-BSTORE-ENTRY !
+   s" !" NDICT:GLOBAL-STORE-ENTRY S-STORE-ENTRY !
+   s" c!" NDICT:GLOBAL-STORE-ENTRY S-BSTORE-ENTRY !
    s" (PROT-SPAN)" NDICT:HELPER-TARGET S-GUARD-ENTRY !
    0 N-CALLS !
    0 N-TAILS !

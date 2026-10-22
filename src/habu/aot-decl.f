@@ -120,6 +120,7 @@ $FFFFFFFF constant SITE-COUNT-MASK
 $80000000 constant SITE-NAME-TAG
 $40000000 constant SITE-REC-TAG
 $C0000000 constant SITE-SHADOW-TAG
+0 constant SITE-HELPER-TAG             \ shadow-only: name in OWNER-API-PRI-WID
 $3FFFFFFF constant SITE-TARGET-MASK
 $FFFFFFFE constant WID-QUAL
 
@@ -431,7 +432,8 @@ variable N
 \ emission, the companion entering where the clause function starts. A SITE row
 \ is (byte offset in CODE, kind, target); a target is a shipped record tagged
 \ SITE-REC-TAG, an anonymous shadow row tagged SITE-SHADOW-TAG, or a word of the
-\ engine's own prefix tagged SITE-NAME-TAG. An XT row is (address-cell row,
+\ engine's own prefix tagged SITE-NAME-TAG. A sealed engine helper has its name
+\ pool offset tagged SITE-HELPER-TAG, preserving its private wordlist. An XT row is (address-cell row,
 \ shipped row or SITE-SHADOW-TAG plus anonymous shadow row): an address cell
 \ whose CODE target is a shadow routine's entry, keyed by
 \ the record and not by the ARM64 blob offset the address-cell row itself

@@ -256,6 +256,10 @@ variable S-DECL-IN                   \ how many values the contract declares the
 variable S-DECL-OUT                  \ and how many it declares it leaves
 variable S-TAIL                      \ whether control leaves through a callee
 variable S-DSTACK                    \ whether the data-stack convention is declared
+variable S-GPRS                      \ the general registers the routine may write
+variable S-STORE-ENTRY               \ the engine's `!`, or zero
+variable S-BSTORE-ENTRY              \ the engine's `c!`, or zero
+variable S-GUARD-ENTRY               \ the engine's span guard (PROT-SPAN), or zero
 variable N-CALLS
 variable N-TAILS
 variable TAIL-SITE                   \ the operation this function leaves through, or -1
@@ -688,6 +692,25 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id TAIL-OP? 0= if a r kk m exit then
    a r 0  kk m + ;
 
+\ The width a call to the engine's own `!` or `c!` stores, or zero for any other
+\ call: the one call selection inlines as a guarded store. Only the current
+\ global engine bindings have this ABI (NDICT:GLOBAL-STORE-ENTRY). The pool
+\ must hold the four registers the form fixes and one more for the value.
+: STORE-WIDTH ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-WORDCALL <> if 0 exit then
+   id TAIL-OP? if 0 exit then
+   S-GUARD-ENTRY @ 0= if 0 exit then
+   S-GPRS @ {: pool:n :}
+   pool X64IR:GUARD-GPRS and X64IR:GUARD-GPRS <> if 0 exit then
+   pool X64IR:GUARD-GPRS invert and 0= if 0 exit then
+   id WORD-SHAPE {: a:n r:n k:n m:n :}
+   a 2 <> r 0 <> or k 0<> or if 0 exit then
+   id WORD-ENTRY {: entry:n :}
+   entry S-STORE-ENTRY @ = S-STORE-ENTRY @ 0<> and if 8 exit then
+   entry S-BSTORE-ENTRY @ = S-BSTORE-ENTRY @ 0<> and if 1 exit then
+   0 ;
+
 : C2-STOW-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
    id 0 BND-KIND @ ATTR-INT-OF {: kind:n :}
@@ -798,6 +821,26 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
    id WORD-ENTRY EMIT-WORDCALL-OP
    id kk m r CALL-RESTORE ;
 
+\ ---- the guarded store --------------------------------------------------------
+\ The guard observes the original address in rdi. Give that pin its own value
+\ so a pointer reused after the store is not held in rdi across the call.
+: EMIT-PSTORE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id width:n :}
+   id 0 OPERAND TOK!
+   id  id 2 OPERAND  EMIT-COPY {: addr:IR-ID:ir-value-id :}
+   id width 8 = if X64IR-OPCODE:PSTORE else X64IR-OPCODE:PBSTORE then OPEN
+   id 1 OPERAND OPERAND+
+   addr OPERAND+
+   TOK OPERAND+
+   RESULT+ RESULT+ RESULT+ TOKEN+
+   CTX BLD CTX BLD X64IR:KEY-GUARD-ENTRY
+      CTX BLD S-GUARD-ENTRY @ X64IR:ENTRY-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD IR-BUILD:END-OP {: nid:IR-ID:ir-op-id :}
+   CTX BLD nid 3 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
+   tk TOK!
+   id 0 RESULT-AT tk VBIND
+   N-CALLS @ 1+ N-CALLS ! ;
+
 \ ---- leaving through the callee ----------------------------------------------
 \ The callee writes this routine's declared result row. Its input row may have
 \ another width, so the branch publishes the callee's own arguments.
@@ -833,6 +876,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
+   id STORE-WIDTH dup 0<> if id swap EMIT-PSTORE exit then drop
    id TAIL-OP? if id mask EMIT-TAIL-CALL exit then
    id mask EMIT-WORD-CALL ;
 
@@ -1779,6 +1823,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
 : DOP-XFER ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
+   id STORE-WIDTH 0<> if DKILL 0 exit then
    s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
    s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
    s O-C2-STOW = if id id C2-STOW-SHAPE DCALL-XFER exit then
@@ -1957,6 +2002,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    id DOP-XFER {: mask:n :}
    id OP-SLOT {: s:n :}
    s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   id STORE-WIDTH 0<> if id DNEED-OPERANDS exit then
    s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
    s O-C2-STOW = if id mask id C2-STOW-SHAPE DNEED-CALL exit then
    s O-TERMINAL = if id mask id OPERANDS-OF 1- 0 0 0 DNEED-CALL exit then
@@ -2387,7 +2433,10 @@ public
 
 \ ---- the pass ----------------------------------------------------------------
 : SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder NEFF:routine -- IR-BUILD:module )
-   NEFF:VALIDATE NEFF-ROUTINE:UNMAKE
+   NEFF:VALIDATE
+   {: r:NEFF:routine :}
+   r NEFF:GPR-WRITABLE NEFF:GPRS-N S-GPRS !
+   r NEFF-ROUTINE:UNMAKE
    {: cv:NEFF:conv gi:NEFF:placeseq gr:NEFF:placeseq gc:NEFF:gprs
       fi:NEFF:fprs fr:NEFF:fprs fc:NEFF:fprs
       z:NEFF:nzcv l:NEFF:link ct:NEFF:control
@@ -2405,6 +2454,9 @@ public
    size S-FRAME !
    ct NEFF-CONTROL:TAIL-CALL NEFF-CONTROL:EQ if 1 else 0 then S-TAIL !
    cv NEFF-CONV:DSTACK NEFF-CONV:EQ if 1 else 0 then S-DSTACK !
+   s" !" NDICT:GLOBAL-STORE-ENTRY S-STORE-ENTRY !
+   s" c!" NDICT:GLOBAL-STORE-ENTRY S-BSTORE-ENTRY !
+   s" (PROT-SPAN)" NDICT:HELPER-TARGET S-GUARD-ENTRY !
    0 N-CALLS !
    0 N-TAILS !
    -1 TAIL-SITE !

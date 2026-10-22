@@ -60,7 +60,24 @@
 \ root: bin/hb --load test/x86-64-link-records.f
 \ A child: bin/hb --load test/x86-64-link-records.f -- MODE, MODE one of shift
 \ stray strip export callee retired wid unresolved quot cellname pkgsite doessite
-\ xtless pkgcell
+\ xtless pkgcell collision targetcollision
+
+\ A legal global prefix word may share a sealed helper's spelling. Its caller
+\ must retain that global binding or be refused, never enter the kernel helper.
+package X64LT
+public
+: PREFIX$ ( -- ptr u8 n )
+   SCRIPT-ARGC 0 > if
+      0 SCRIPT-ARGV$ s" collision" STR= if
+         s" : (PROT-SPAN) ( -- n ) 777 ;" exit
+      then
+      0 SCRIPT-ARGV$ s" targetcollision" STR= if
+         s" : (X64-LSPAN) ( -- n ) 777 ;" exit
+      then
+   then
+   s" " ;
+;package
+X64LT:PREFIX$ evaluate
 
 package X64LT
 public
@@ -95,6 +112,12 @@ variable IMAGE-PATH-U
    s" " ;
 \ What a refusal child adds to the window.
 : EXTRA$ ( -- ptr u8 n )
+   s" collision" MODE? if
+      s" : GLOBAL-CALL ( -- n ) (PROT-SPAN) 1+ ; GLOBAL-CALL . cr" exit
+   then
+   s" targetcollision" MODE? if
+      s" : GLOBAL-CALL ( -- n ) (X64-LSPAN) 1+ ; GLOBAL-CALL . cr" exit
+   then
    s" stripimage" MODE? if
       s" private : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ; : IMAGE-ENTRY ( -- ) 6 USER 19 = if 42 . else 99 . then ; : IMAGE-ENTRY! ( -- ) ['] IMAGE-ENTRY data-base APP-ENTRY:XT-CELL + xt! ; IMAGE-ENTRY!"
       exit
@@ -162,6 +185,7 @@ get-current X64LT:PUB-WID !
 : CONST ( n -- ) create , does> ( -- n ) @ ;
 : SPELLED-PAST-SIXTEEN ( -- n ) 7 ;
 : SHOW ( n -- ) . ;
+: STORE ( n ptr n -- n ) ! 7 ;
 : TICK ( -- [ n n -- n ] ) ['] LEAF ;
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : GREET ( -- ptr u8 n ) s" linked" ;
@@ -405,7 +429,12 @@ using AOT-BUF
       then
    loop
    0 T=
-   4 >= TTRUE ;
+   4 >= TTRUE
+   s" X64LT-WIN:STORE" WIDX AOT-SHADOW:CALL SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 8 SITE@ SITE-TARGET-MASK invert and SITE-HELPER-TAG T=
+   s 8 SITE@ SITE-TARGET-MASK and POOL$ s" (PROT-SPAN)" T$=
+   s NAMED-OK? TTRUE ;
 
 : FUN-CASE ( -- )
    s" a quotation's code literal holds the address of its function inside its own routine" T-LABEL
@@ -655,6 +684,17 @@ variable RC
    s" stray" s" names window record BARE"
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
+: COLLISION-CASE ( -- )
+   s" a global prefix word cannot be linked to a different sealed helper" T-LABEL
+   s" collision" s" names (PROT-SPAN)"
+   s" x64link: a shadow site names a word the x86-64 kernel does not carry" REFUSED
+   OUT OUT-U @ s" 778" CONTAINS? TTRUE
+   \ This helper exists only in the target kernel on an ARM capture host.
+   s" a global prefix word cannot acquire a target-only helper's entry" T-LABEL
+   s" targetcollision" s" names (X64-LSPAN)"
+   s" x64link: a shadow site names a word the x86-64 kernel does not carry" REFUSED
+   OUT OUT-U @ s" 778" CONTAINS? TTRUE ;
+
 : EXPORT-CASE ( -- )
    s" a public EXPORT alias of a live private body lays out" T-LABEL
    s" export" RUN-CHILD
@@ -782,6 +822,7 @@ variable RC
 
 \ The children that end in a refusal, before the layout returns.
 : REFUSAL? ( -- bool )
+   s" collision" MODE? s" targetcollision" MODE? or if true exit then
    s" stray" MODE?  s" callee" MODE? or  s" retired" MODE? or
    s" wid" MODE? or  s" unresolved" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
@@ -831,6 +872,7 @@ public
    INDEX-IMAGE
    SHIFT-CASE
    STRAY-CASE
+   COLLISION-CASE
    STRIP-CASE
    EXPORT-CASE
    CALLEE-CASE

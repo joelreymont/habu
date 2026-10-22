@@ -127,6 +127,8 @@ ENUM opcode DERIVE eq
    fload
    fcmpset
    cmpunordsd
+   pstore
+   pbstore
 ;ENUM
 
 \ One condition per SOURCE relation, so a lowering is never an operand order in
@@ -201,13 +203,15 @@ X64ASM:C-NE X64ASM:CONDITION>N constant COND-NE
 \ general registers an operand field can name.
 4 constant R-RSP                     \ the machine stack pointer
 
-\ The three the fixed-register forms below name. Each number is TAKEN from the
+\ The five the fixed-register forms below name. Each number is TAKEN from the
 \ shipped assembler's own register word, the way the condition codes above are,
 \ so the dialect and the encoder cannot drift and no register number is written
 \ twice in this tree.
 X64ASM:RAX X64ASM:R64>N constant R-RAX
 X64ASM:RCX X64ASM:R64>N constant R-RCX
 X64ASM:RDX X64ASM:R64>N constant R-RDX
+X64ASM:RSI X64ASM:R64>N constant R-RSI
+X64ASM:RDI X64ASM:R64>N constant R-RDI
 
 : RESERVED-MASK ( -- n )
    ENGINE-GPR:X64-MASK  1 R-RSP lshift or ;
@@ -239,10 +243,16 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables. MINOR 2 added the scalar double forms;
 \ MINOR 3 added the tail callee's input and result counts; MINOR 4 added the
-\ rematerialization mark on `x64.movi`.
-\ MINOR 5 carries a literal's declaration or source-literal origin.
+\ rematerialization mark on `x64.movi`; MINOR 5 carries a literal origin;
+\ MINOR 6 adds the guarded stores `x64.pstore` and `x64.pbstore`.
 0 constant MAJOR
-5 constant MINOR
+6 constant MINOR
+
+\ The registers the guarded stores fix: the address in rdi, the width in rsi,
+\ and rax and rdx, which the span guard may write. A pool without all four
+\ cannot hold the form, and selection keeps the ordinary call there.
+1 R-RAX lshift  1 R-RDX lshift or  1 R-RSI lshift or  1 R-RDI lshift or
+constant GUARD-GPRS
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )        XBITS ;
@@ -447,6 +457,8 @@ private
       fload     OF s" x64.fload" ENDOF
       fcmpset   OF s" x64.fcmpset" ENDOF
       cmpunordsd OF s" x64.cmpunordsd" ENDOF
+      pstore    OF s" x64.pstore" ENDOF
+      pbstore   OF s" x64.pbstore" ENDOF
    ;MATCH ;
 
 public
@@ -454,7 +466,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ The ordinal is what the passes store in their own tables, so it is stated
 \ once here and never derived from the enum's declaration order.
-62 constant OPCODES
+64 constant OPCODES
 
 : ORD ( X64IR:opcode -- n )
    MATCH opcode
@@ -520,6 +532,8 @@ public
       fload     OF 59 ENDOF
       fcmpset   OF 60 ENDOF
       cmpunordsd OF 61 ENDOF
+      pstore    OF 62 ENDOF
+      pbstore   OF 63 ENDOF
    ;MATCH ;
 
 : NTH ( n -- X64IR:opcode )
@@ -586,6 +600,8 @@ public
       59 of X64IR-OPCODE:FLOAD endof
       60 of X64IR-OPCODE:FCMPSET endof
       61 of X64IR-OPCODE:CMPUNORDSD endof
+      62 of X64IR-OPCODE:PSTORE endof
+      63 of X64IR-OPCODE:PBSTORE endof
       E-X64IR-OPCODE throw
    endcase ;
 
@@ -611,7 +627,8 @@ private
 14 constant K-TAIL-OUT
 15 constant K-REMAT-MARK
 16 constant K-ORIGIN
-17 constant KEYS
+17 constant K-GUARD-ENTRY
+18 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -632,6 +649,7 @@ private
       K-TAIL-OUT of s" x64.tail-out" endof
       K-REMAT-MARK of s" x64.remat-mark" endof
       K-ORIGIN of s" x64.origin" endof
+      K-GUARD-ENTRY of s" x64.guard-entry" endof
       E-X64IR-DIALECT throw
    endcase ;
 
@@ -795,6 +813,12 @@ public
 \ a trap under `x64.entry` would BE one to both of them.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-TRAP-ENTRY KEY-BIND ;
+
+\ The guarded store's span guard, under its own key for the same reason: a form
+\ under `x64.entry` with no `x64.dback` is what the allocator reads as a tail
+\ branch (regalloc.f TAILBR-AT?).
+: KEY-GUARD-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-GUARD-ENTRY KEY-BIND ;
 
 \ An ordinal and not an address: there is no address until the emitter has laid
 \ the emission out. How many functions there are is the emitter's fact.
@@ -984,6 +1008,8 @@ private
       fload     OF s" x64.rule.fload" ENDOF
       fcmpset   OF s" x64.rule.fcmpset" ENDOF
       cmpunordsd OF s" x64.rule.cmpunordsd" ENDOF
+      pstore    OF s" x64.rule.pstore" ENDOF
+      pbstore   OF s" x64.rule.pbstore" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1051,6 +1077,8 @@ private
       fload     OF s" x64.render.fload" ENDOF
       fcmpset   OF s" x64.render.fcmpset" ENDOF
       cmpunordsd OF s" x64.render.cmpunordsd" ENDOF
+      pstore    OF s" x64.render.pstore" ENDOF
+      pbstore   OF s" x64.render.pbstore" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1584,6 +1612,35 @@ private
    c b X64IR-OPCODE:ABSTORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ A checked scalar store: the twin of a64ir.f DEF-PSTORE, and of kernel-x64.f
+\ STORE-BODY and CSTORE-BODY. It calls the span guard (PROT-SPAN) with the copied
+\ address in rdi and the width in rsi, then writes the value through rdi. The
+\ guard keeps rdi and rsi and may write rax and rdx (kernel-x64.f
+\ PROT-SPAN-CALL,); its refusal exits the process and never returns. Fixed
+\ results reserve rsi, rax and rdx even while this form reads its value, so the
+\ value survives the call. The guard entry is not an ordinary call's, so this
+\ form publishes no data-stack arguments or results.
+: DEF-PSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id X64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:X64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-SIDE:OPERAND 1 R-RDI IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT  0 R-RSI IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT  1 R-RAX IR-SCHEMA:ADD-FIXED
+   IR--SCHEMA-SIDE:RESULT  2 R-RDX IR-SCHEMA:ADD-FIXED
+   c b KEY-GUARD-ENTRY IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE ADDR-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the calls ---------------------------------------------------------------
 \ `call rel32` pushes the return address and costs the routine nothing else: the
 \ eight bytes it pushes are the whole of this machine's call frame, where ARM64
@@ -1770,6 +1827,8 @@ public
    c b t k DEF-ASTORE
    c b t k DEF-ABLOAD
    c b t k DEF-ABSTORE
+   c b t k X64IR-OPCODE:PSTORE DEF-PSTORE
+   c b t k X64IR-OPCODE:PBSTORE DEF-PSTORE
    c b k DEF-CALL
    c b k DEF-WORDCALL
    c b k DEF-TAILCALL
@@ -1860,6 +1919,8 @@ private
       fload     OF c b c b FPR-TYPE c b MEM-TYPE X64IR-OPCODE:FLOAD DEF-LOAD ENDOF
       fcmpset   OF c b c b FPR-TYPE c b GPR-TYPE DEF-FCMPSET ENDOF
       cmpunordsd OF c b c b FPR-TYPE X64IR-OPCODE:CMPUNORDSD DEF-BINARY ENDOF
+      pstore    OF c b c b GPR-TYPE c b MEM-TYPE X64IR-OPCODE:PSTORE DEF-PSTORE ENDOF
+      pbstore   OF c b c b GPR-TYPE c b MEM-TYPE X64IR-OPCODE:PBSTORE DEF-PSTORE ENDOF
    ;MATCH ;
 
 \ The form this dialect spells with a name. The table is the authority on the

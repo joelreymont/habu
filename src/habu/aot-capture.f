@@ -611,6 +611,20 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    loop
    NULL$ false ;
 
+\ x86 calls also reach sealed kernel helpers. Keep their names local to that
+\ call path: ordinary prefix names and ARM address literals retain their scope.
+: ACAP-X64-HELPER-NAME? ( n -- ptr u8 n bool )
+   {: target:n :}
+   target ACAP-TGT>REC {: j:n :}
+   j 0 < j ACAP-PRE-R @ >= or if NULL$ false exit then
+   j AOT-REC {: rec:ptr :}
+   rec AOT-RWID OWNER-API-PRI-WID <> if NULL$ false exit then
+   rec AOT-RNPTR rec AOT-RNLEN {: a:ptr u:n :}
+   a u OWNER-API-PRI-WID XREF-FIND-WL-INDEX {: k:n :}
+   k 0 < k ACAP-PRE-R @ >= or if NULL$ false exit then
+   k AOT-REC AOT-RXT target <> if NULL$ false exit then
+   a u true ;
+
 variable ACAP-P
 
 \ A callee is refused when no record carrying its entry sits in a scope the seed
@@ -2336,6 +2350,7 @@ variable ACAP-XFROM-LIVE  variable ACAP-XFROM-GONE
 \ and anything defined after the window are no target's.
 : ACAP-X64-OUT-CALL ( n n -- ) {: boff:n t:n :}
    t ACAP-TARGET-NAME? if 2drop exit then 2drop
+   t ACAP-X64-HELPER-NAME? if 2drop exit then 2drop
    s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
    s"  at blob offset " type boff .INT
    s"  calls " type t .INT

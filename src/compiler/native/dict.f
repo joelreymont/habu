@@ -345,6 +345,15 @@ public
    start TERMINAL-CALL:IN-ENGINE-TEXT? 0= if 0 exit then
    start ;
 
+\ The entry the global wordlist binds to an exact name, or zero unless that
+\ entry is inside the engine's text. A selector inlines a word's body only when
+\ a call binds the engine's own definition: a package shadow or a later
+\ redefinition has a different recorded entry and keeps the ordinary call.
+: GLOBAL-STORE-ENTRY ( ptr u8 n -- n )
+   0 search-wl dup 0= if exit then
+   dup TERMINAL-CALL:IN-ENGINE-TEXT? if exit then
+   drop 0 ;
+
 -1 constant ARITY-NONE
 
 \ Absent is tested as "not a count", not as a particular number: a width is a

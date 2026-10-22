@@ -230,6 +230,7 @@ X64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-GUARD-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-THROW-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
@@ -303,6 +304,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
 : ENTRY-OF ( IR-ID:ir-op-id -- n )   0 BND-ENTRY @ ATTR-INT ;
 : TRAP-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-TRAP-ENTRY @ ATTR-INT ;
+: GUARD-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-GUARD-ENTRY @ ATTR-INT ;
 : THROW-ENTRY-OF ( IR-ID:ir-op-id -- n ) 0 BND-THROW-ENTRY @ ATTR-INT ;
 : FUN-OF ( IR-ID:ir-op-id -- n )     0 BND-FUN @ ATTR-INT ;
 : SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
@@ -786,6 +788,18 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    id DBYTES-OF s PUT-DMOVE
    id TRAP-ENTRY-OF id s PUT-FAR-CALL ;
 
+\ ---- the guarded store --------------------------------------------------------
+\ The twin of kernel-x64.f STORE-BODY and CSTORE-BODY: the width into rsi, a
+\ call to the span guard with the address already in rdi, then the store the
+\ form names. The guard keeps rdi, rsi and the value's register; its refusal
+\ never returns.
+: PUT-PSTORE ( IR-ID:ir-op-id n ptr a -- )
+   {: id:IR-ID:ir-op-id width:n s:ptr :}
+   id 0 RES-R64  width >IMM32  s ENC-MOV-RI32
+   id GUARD-ENTRY-OF id s PUT-FAR-CALL
+   width 8 = if id s PUT-ASTORE exit then
+   id s PUT-ABSTORE ;
+
 \ ---- the divide --------------------------------------------------------------
 \ `idiv r64` divides rdx:rax and raises #DE on a zero divisor and on MIN-N -1,
 \ where Habu throws and wraps instead, so the divisor is screened first and the
@@ -1048,6 +1062,8 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
       astore   OF id s PUT-ASTORE ENDOF
       abload   OF id s PUT-ABLOAD ENDOF
       abstore  OF id s PUT-ABSTORE ENDOF
+      pstore   OF id 8 s PUT-PSTORE ENDOF
+      pbstore  OF id 1 s PUT-PSTORE ENDOF
       call     OF id s PUT-CALL ENDOF
       wordcall OF id s PUT-WORDCALL ENDOF
       tailcall OF id s PUT-TAILCALL ENDOF
@@ -1425,6 +1441,7 @@ public
    c b X64IR:KEY-DBACK  0 BND-DBACK !
    c b X64IR:KEY-ENTRY  0 BND-ENTRY !
    c b X64IR:KEY-TRAP-ENTRY 0 BND-TRAP-ENTRY !
+   c b X64IR:KEY-GUARD-ENTRY 0 BND-GUARD-ENTRY !
    c b X64IR:KEY-THROW-ENTRY 0 BND-THROW-ENTRY !
    c b X64IR:KEY-FUN    0 BND-FUN !
    c b X64IR:KEY-SLOT   0 BND-SLOT !
