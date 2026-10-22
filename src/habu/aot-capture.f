@@ -1,24 +1,31 @@
 \ aot-capture.f — host-only AOT-REPL capture (metabuild build step).
-\ CAPTURE-NATIVE shares the window, names and DATA work with the ARM capture,
-\ but takes x86 code reach from the native compiler's recorded routine graph.
+\ The capture records the window's words, names and DATA the same way on every
+\ engine; how it finds the window's code reach depends on the engine's machine.
 \
-\ The ARM path scans the metabuild host's freshly-compiled words for inter-word call sites
-\ (one direct `BL imm26` each, habu2.f LCEMITBL), reverse-looks-up each callee's
-\ dict NAME, and builds the four AOT buffers (src/habu/aot-decl.f) that EMIT-AOT-SEED bakes
-\ into bin/hb: a code blob, N dict records (xt/end blob-relative, inline name),
-\ a call-site relocation table (blob-offset -> callee name-pool ref), and a name
-\ pool. At boot EM-SEED-AOT copies the blob, registers the records, and re-encodes
-\ each call site's imm26 to the callee's address in THAT engine (via LFIND) —
-\ so the captured code needs no address to match host vs bin/hb.
+\ ARM64 scans the freshly compiled words for inter-word call sites (one direct
+\ `BL imm26` each, habu2.f LCEMITBL), reverse-looks-up each callee's dict NAME,
+\ reaches and compacts the blob, and builds the four AOT buffers
+\ (src/habu/aot-decl.f) that EMIT-AOT-SEED bakes into bin/hb: a code blob, N dict
+\ records (xt/end blob-relative, inline name), a call-site relocation table
+\ (blob-offset -> callee name-pool ref), and a name pool. At boot EM-SEED-AOT
+\ copies the blob, registers the records, and re-encodes each call site's imm26
+\ to the callee's address in THAT engine (via LFIND), so the captured code needs
+\ no address to match host vs bin/hb. After recording a call site the BL's imm26
+\ in the blob is ZEROED (bare `bl #0`), so the baked blob is deterministic across
+\ builds (the host address delta is ASLR-varying and is re-patched at boot).
 \
-\ Canonicalization: after recording a call site the BL's imm26 in the blob is ZEROED
-\ (bare `bl #0`), so the baked blob is deterministic across builds (the host address
-\ delta is ASLR-varying and is re-patched at boot anyway).
+\ x86-64 decodes no bytes: its reach walks the live band's recorded call and
+\ address sites (src/habu/sites.f, ACAP-X64-REACH), reads each through
+\ ADDRESS-CARRIER's codecs and keeps the blob uncompacted. Its link tables come
+\ from the native compiler's routine map (aot-shadow.f); CAPTURE-NATIVE takes
+\ reach from that map instead.
 \
-\ Loaded ONLY in the stdin metabuild (after habu2.f, before stdin.f). NOT baked
-\ into bin/hb — host build-time meta-words over the host dictionary. Raw dict/code
-\ boundary is confined to the TRUSTED:/TRUST casts below (no `0 set-check` span, so
-\ the checked build stays fail-closed through the image writer).
+\ Not baked into bin/hb — host build-time meta-words over the host dictionary.
+\ It loads in the stdin metabuild, which has no native shadow, so it requires
+\ neither shadow.f nor aot-shadow.f.
+\ Raw dict/code boundary is confined to the TRUSTED:/TRUST casts below (no
+\ `0 set-check` span, so the checked build stays fail-closed through the image
+\ writer).
 
 require src/habu/address-cells.f
 require src/habu/aot-arm.f
@@ -2197,6 +2204,230 @@ variable ACAP-SWORK-N
    loop
    -1 ACAP-GRAPH-READY ! ;
 
+\ --- the x86-64 reach ---------------------------------------------------------
+\ ON X86-64 THE REACH WALKS RECORDED SITES, NOT DECODED BYTES. The live band
+\ (src/habu/sites.f) holds a row for every `call rel32` and `jmp rel32` and
+\ every `mov r64, imm64` the region's code carries, a does> slot's patched jump
+\ included (src/habu/kernel-x64.f does-patch), so one sweep of the window's
+\ rows gives every edge out of window code; ADDRESS-CARRIER's codecs read each
+\ site's value. Nodes and roots are the ARM64 shadow reach's: a capture record,
+\ or a retired window record numbered ACAP-REC-ALL plus its window offset,
+\ written into ACAP-SMARK so ACAP-SHADOW-LIVE? answers either target. An
+\ address belongs to the lowest live and the lowest retired record whose code
+\ span covers it - a does> clause lies inside its definer's span, an EXPORT
+\ alias shares its body - and code no record covers is a gap whose edges are
+\ roots, as the ARM64 gap sweep has them. A record reaches the owners of its
+\ own entry, so a clause or an alias reaches the body it lies in.
+\ A call that leaves the window must name a word below the prelude mark, the
+\ rule ACAP-SITE-BAND keeps for ARM64; an address literal that leaves the
+\ window's code is DATA's, which the byte copy does not move.
+24 constant ACAP-X-SLOT-BITS           \ a span key: start offset, then window slot
+DYNAMIC-BUFFER ACAP-XKEY n             \ window code spans, sorted by start
+DYNAMIC-BUFFER ACAP-XMAX n             \ the furthest end of keys 0..i
+variable ACAP-XN
+DYNAMIC-BUFFER ACAP-XSRC n             \ edge: owner node ...
+DYNAMIC-BUFFER ACAP-XDST n             \ ... and the node it reaches
+variable ACAP-XEN
+DYNAMIC-BUFFER ACAP-XHEAD n            \ node -> its first edge in ACAP-XADJ
+DYNAMIC-BUFFER ACAP-XADJ n
+variable ACAP-XLIVE  variable ACAP-XGONE        \ owners of the last address
+variable ACAP-XFROM-LIVE  variable ACAP-XFROM-GONE
+
+: ACAP-X-SLOT ( n -- n ) 1 ACAP-X-SLOT-BITS lshift 1- and ;
+
+\ Window record idx's code span as blob offsets; empty when it has no code in
+\ the window. Package and namespace rows carry wordlists in [0]/[8].
+: ACAP-X64-SPAN ( n -- n n ) {: idx:n :}
+   idx AOT-REC AOT-RWID {: w:n :}
+   w -1 =  w DICT-WL:NAMESPACE =  or if 0 0 exit then
+   idx AOT-REC AOT-RXT ACAP-W-B0 @ - {: start:n :}
+   start idx AOT-REC AOT-RBYTES + {: end:n :}
+   start 0 >=  end AOT-BLOB-LEN @ <=  and if start end else 0 0 then ;
+
+: ACAP-X-END ( n -- n ) ACAP-W-R0 @ + ACAP-X64-SPAN nip ;
+
+: ACAP-X64-NODE ( n -- n ) {: idx:n :}
+   idx ACAP-DICT>CAP {: k:n :}
+   k 0 >= if k else idx ACAP-W-R0 @ - ACAP-REC-ALL @ + then ;
+
+\ Window slot s's key, when its record has code in the window.
+: ACAP-X64-KEY ( n -- ) {: s:n :}
+   s ACAP-W-R0 @ + ACAP-X64-SPAN {: start:n end:n :}
+   start end >= if exit then
+   start ACAP-X-SLOT-BITS lshift s or  ACAP-XN @ ACAP-XKEY !
+   1 ACAP-XN +! ;
+
+: ACAP-X64-INDEX ( -- )
+   ACAP-W-R1 @ ACAP-W-R0 @ - {: slots:n :}
+   slots 1 ACAP-X-SLOT-BITS lshift >= if
+      s" aot-capture: too many window records for the x86-64 span index" 74 die then
+   slots 1 max ACAP-XKEY-RESERVE
+   0 ACAP-XN !
+   slots 0 ?do i ACAP-X64-KEY loop
+   ACAP-XN @ 1 > if 0 ACAP-XKEY ACAP-XN @ [: < ;] SORT:SORT! then
+   ACAP-XN @ 1 max ACAP-XMAX-RESERVE
+   0  ACAP-XN @ 0 ?do  i ACAP-XKEY @ ACAP-X-SLOT ACAP-X-END max  dup i ACAP-XMAX !  loop
+   drop ;
+
+\ How many keys start at or below blob offset off.
+: ACAP-X64-ABOVE ( n -- n ) {: off:n :}
+   off 1+ ACAP-X-SLOT-BITS lshift {: bound:n :}
+   0 ACAP-XN @
+   begin 2dup < while
+      2dup + 2 / {: lo:n hi:n mid:n :}
+      mid ACAP-XKEY @ bound < if mid 1+ hi else lo mid then
+   repeat drop ;
+
+: ACAP-X64-COVER ( n n -- ) {: i:n off:n :}
+   i ACAP-XKEY @ ACAP-X-SLOT {: s:n :}
+   s ACAP-X-END off <= if exit then
+   s ACAP-W-R0 @ + ACAP-X64-NODE {: v:n :}
+   v ACAP-REC-ALL @ < if
+      ACAP-XLIVE @ 0<  v ACAP-XLIVE @ <  or if v ACAP-XLIVE ! then
+   else
+      ACAP-XGONE @ 0<  v ACAP-XGONE @ <  or if v ACAP-XGONE ! then
+   then ;
+
+\ The owners of blob offset off into ACAP-XLIVE and ACAP-XGONE, -1 for none.
+\ Only keys whose prefix reaches past off can cover it.
+: ACAP-X64-OWNERS ( n -- ) {: off:n :}
+   -1 ACAP-XLIVE !  -1 ACAP-XGONE !
+   off ACAP-X64-ABOVE
+   begin
+      dup 0 > if dup 1- ACAP-XMAX @ off > else false then
+   while
+      1- dup off ACAP-X64-COVER
+   repeat drop ;
+
+: ACAP-X64-EDGE ( n n -- ) {: s:n d:n :}
+   s 0<  d 0<  or if exit then
+   ACAP-XEN @ {: e:n :}
+   e 1+ ACAP-XSRC-RESERVE  e 1+ ACAP-XDST-RESERVE
+   s e ACAP-XSRC !  d e ACAP-XDST !
+   e 1+ ACAP-XEN ! ;
+
+: ACAP-X64-ROOT ( n -- )
+   dup 0< if drop exit then ACAP-SHADOW-NODE ;
+
+\ The source owners reach the target owners; a gap's targets are roots.
+: ACAP-X64-LINK ( -- )
+   ACAP-XFROM-LIVE @ 0<  ACAP-XFROM-GONE @ 0<  and if
+      ACAP-XLIVE @ ACAP-X64-ROOT  ACAP-XGONE @ ACAP-X64-ROOT exit then
+   ACAP-XFROM-LIVE @ ACAP-XLIVE @ ACAP-X64-EDGE
+   ACAP-XFROM-LIVE @ ACAP-XGONE @ ACAP-X64-EDGE
+   ACAP-XFROM-GONE @ ACAP-XLIVE @ ACAP-X64-EDGE
+   ACAP-XFROM-GONE @ ACAP-XGONE @ ACAP-X64-EDGE ;
+
+: ACAP-X64-REACHES ( n n -- ) {: from:n to:n :}
+   from ACAP-X64-OWNERS
+   ACAP-XLIVE @ ACAP-XFROM-LIVE !  ACAP-XGONE @ ACAP-XFROM-GONE !
+   to ACAP-X64-OWNERS
+   ACAP-X64-LINK ;
+
+\ Each record reaches what owns its entry.
+: ACAP-X64-ENTRIES ( -- )
+   ACAP-XN @ 0 ?do
+      i ACAP-XKEY @ {: key:n :}
+      key ACAP-X-SLOT ACAP-W-R0 @ + ACAP-X64-NODE {: v:n :}
+      key ACAP-X-SLOT-BITS rshift ACAP-X64-OWNERS
+      v ACAP-XLIVE @ ACAP-X64-EDGE  v ACAP-XGONE @ ACAP-X64-EDGE
+   loop ;
+
+: ACAP-X64-REFUSE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
+   s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
+   s"  at blob offset " type boff .INT
+   a u type cr ;
+
+: ACAP-X64-NOT-CALL ( n -- )
+   s" : its recorded call site is no call rel32 or jmp rel32" ACAP-X64-REFUSE
+   s" aot-capture: recorded call site is no rel32 call" 74 die ;
+
+: ACAP-X64-NOT-ADDR ( n -- )
+   s" : its recorded address site is no mov r64, imm64" ACAP-X64-REFUSE
+   s" aot-capture: recorded address site is no imm64 move" 74 die ;
+
+\ A call out of the window travels by the callee's name, so the callee must be a
+\ word of the booting engine (ACAP-TARGET-NAME?); the capturing tool's own band
+\ and anything defined after the window are no target's.
+: ACAP-X64-OUT-CALL ( n n -- ) {: boff:n t:n :}
+   t ACAP-TARGET-NAME? if 2drop exit then 2drop
+   s" aot-capture: window word " type boff ACAP-REC-AT ACAP-NAME.
+   s"  at blob offset " type boff .INT
+   s"  calls " type t .INT
+   s" , which is no window code and no word the booting engine names" type cr
+   s" aot-capture: window call to a target no seed can name" 74 die ;
+
+\ One recorded site, as SITES yields it: a region offset and a kind.
+: ACAP-X64-SITE ( n n -- ) {: off:n kind:n :}
+   off ACAP-SITE-BOFF {: boff:n :}
+   AOT-BLOB-BUF@ boff + {: p:ptr :}
+   kind SNAP-RELOC:SITE-CALL = if
+      boff ADDRESS-CARRIER:REL32-BYTES + AOT-BLOB-LEN @ > if boff ACAP-X64-NOT-CALL then
+      p ADDRESS-CARRIER:REL32-SITE? 0= if boff ACAP-X64-NOT-CALL then
+      p off AOT-DBASE-N + ADDRESS-CARRIER:REL32-TARGET {: t:n :}
+      t ACAP-W-B0 @ - {: to:n :}
+      to 0 >=  to AOT-BLOB-LEN @ <  and if boff to ACAP-X64-REACHES exit then
+      boff t ACAP-X64-OUT-CALL exit
+   then
+   boff ADDRESS-CARRIER:MOVABS-BYTES + AOT-BLOB-LEN @ > if boff ACAP-X64-NOT-ADDR then
+   p ADDRESS-CARRIER:MOVABS-SITE? 0= if boff ACAP-X64-NOT-ADDR then
+   p ADDRESS-CARRIER:MOVABSV ACAP-W-B0 @ - {: to:n :}
+   to 0 >=  to AOT-BLOB-LEN @ <  and if boff to ACAP-X64-REACHES then ;
+
+\ The edges as adjacency: count each source's edges, sum them to each source's
+\ end, then place every edge one slot down from its source's running end, which
+\ leaves each source's start in its own cell and its end in the next.
+: ACAP-X64-ADJ ( n -- ) {: nodes:n :}
+   nodes 1+ ACAP-XHEAD-RESERVE
+   nodes 1+ 0 ?do 0 i ACAP-XHEAD ! loop
+   ACAP-XEN @ 0 ?do 1 i ACAP-XSRC @ ACAP-XHEAD +! loop
+   nodes 1+ 1 ?do i 1- ACAP-XHEAD @ i ACAP-XHEAD +! loop
+   ACAP-XEN @ 1 max ACAP-XADJ-RESERVE
+   ACAP-XEN @ 0 ?do
+      i ACAP-XSRC @ {: s:n :}
+      -1 s ACAP-XHEAD +!
+      i ACAP-XDST @  s ACAP-XHEAD @ ACAP-XADJ !
+   loop ;
+
+: ACAP-X64-SCAN ( n -- ) {: v:n :}
+   v 1+ ACAP-XHEAD @ v ACAP-XHEAD @ ?do i ACAP-XADJ @ ACAP-SHADOW-NODE loop ;
+
+\ Roots: the records whose names ship and the declared code cells, as
+\ ACAP-GRAPH-ROOTS has them.
+: ACAP-X64-ROOTS ( -- )
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED?  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
+   loop
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ ACAP-GRAPH-CELL-OFF {: off:n :}
+      off 0 >= if
+         off ACAP-X64-OWNERS  ACAP-XLIVE @ ACAP-X64-ROOT  ACAP-XGONE @ ACAP-X64-ROOT
+      then
+   loop ;
+
+\ After the window's DATA is baked and AOT-CODE-B0 holds the live code base.
+: ACAP-X64-REACH ( n n -- ) {: bstart:n bend:n :}
+   ACAP-ALL-NAMES @ 0= if ACAP-ENTRY-BUILD then
+   ACAP-REC-ALL @ ACAP-W-R1 @ + ACAP-W-R0 @ - {: nodes:n :}
+   nodes 1 max ACAP-SMARK-RESERVE  nodes 1 max ACAP-SWORK-RESERVE
+   nodes 0 ?do 0 i ACAP-SMARK ! loop
+   0 ACAP-SWORK-N !
+   ACAP-X64-INDEX
+   0 ACAP-XEN !
+   ACAP-X64-ENTRIES
+   bstart bend [: ACAP-X64-SITE ;] ACAP-SWEEP
+   nodes ACAP-X64-ADJ
+   ACAP-X64-ROOTS
+   begin ACAP-SWORK-N @ 0 > while
+      ACAP-SWORK-N @ 1- ACAP-SWORK-N !
+      ACAP-SWORK-N @ ACAP-SWORK @ ACAP-X64-SCAN
+   repeat
+   [: ACAP-SMARK @ 0<> ;] ACAP-NATIVE-ROOTS
+   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N !
+   ACAP-XKEY-RELEASE ACAP-XMAX-RELEASE ACAP-XSRC-RELEASE ACAP-XDST-RELEASE
+   ACAP-XHEAD-RELEASE ACAP-XADJ-RELEASE ;
+
 : ACAP-GRAPH-REMAP-XTOFF ( -- )
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i ACAP-XTMETA@ {: meta:n :}
@@ -2769,8 +3000,21 @@ public
    ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
    AOT-ARM:PAYLOAD-MODE @ 1 = SITE-ROW AOT-SECTION:BYTES drop ;
 
+\ x86-64 keeps its window's code where it lies and takes reach from the
+\ recorded sites (ACAP-X64-REACH); ARM64 scans, reaches and compacts the blob.
 : CAPTURE-PREPARE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart bend rstart rend d0 d1 ACAP-START
+   HB-TARGET-LINUX-X86-64? if
+      -1 ACAP-NATIVE-MODE !
+      AOT-BLOB-LEN @ dup ACAP-GOLDLEN ! ACAP-GNEWLEN !
+      d0 AOT-DATA-D0 !
+      d1 d0 - AOT-DATA-SIZE !
+      bstart bend d0 d1 ACAP-RELEASE-DYNAMIC
+      bstart bend d0 d1 ACAP-BAKE-DATA
+      bstart AOT-CODE-B0 !
+      bstart bend ACAP-X64-REACH
+      exit
+   then
    ACAP-GRAPH-SITES
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
@@ -2798,11 +3042,13 @@ public
    else
       d0 ACAP-COPY-DATA
    then
-   ACAP-GRAPH-BUILD-MAP
-   ACAP-GRAPH-COPY-BLOB
-   ACAP-GRAPH-PATCH
-   ACAP-GRAPH-REMAP
-   ACAP-GRAPH-REMAP-XTOFF
+   HB-TARGET-LINUX-X86-64? 0= if
+      ACAP-GRAPH-BUILD-MAP
+      ACAP-GRAPH-COPY-BLOB
+      ACAP-GRAPH-PATCH
+      ACAP-GRAPH-REMAP
+      ACAP-GRAPH-REMAP-XTOFF
+   then
    ACAP-FINISH ;
 
 \ The native compiler supplies reach from its published x86 routine map. The
