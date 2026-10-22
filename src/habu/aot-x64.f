@@ -324,6 +324,7 @@ create X64-OBJ-HDR 8 allot
    root table X64-START,
    root X64-PACK
    X64-PATCH-SITES
+   X64CODE:ASM-LEN CODE-END !
    table X64CODE:LBL,
    X64CODE:ASM-LEN {: table-at:n :}
    X64-RUNS,

@@ -21,6 +21,9 @@ private
 
 DYNAMIC-BUFFER NEWOFF n   \ each member's offset in the emitted text
 DYNAMIC-BUFFER BLEN n     \ ... and the bytes planned for it
+\ Where the emitted code ends and non-code begins; each target's link sets it
+\ and the name map's last runtime row runs to it (tools/aot-code-map.f MAP-ROWS).
+variable CODE-END
 : PLAN-TABLES ( n -- ) {: rows:n :}
    rows 1 < IF s" aot: no closure members to plan" 74 die THEN
    rows NEWOFF-RESERVE  rows BLEN-RESERVE ;

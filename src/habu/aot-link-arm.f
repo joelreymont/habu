@@ -95,7 +95,6 @@ using A64ICODE
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL
-variable CODE-END
 \ The label at text offset zero: the image's own code base, which the declared
 \ xt cells are restored against. It costs no bytes and is placed by EMIT-ENTRY.
 variable LTEXT
