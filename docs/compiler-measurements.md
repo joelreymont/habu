@@ -1669,6 +1669,44 @@ branches into them, and removing them would mean unwinding CP, the derived name
 and the frame cell at `;` in both compilers for twelve bytes and one dictionary
 slot per definer.
 
+## 11. Where an engine build's time goes
+
+`hb --load tools/hb-build.f -- --engine -o …` on master 60ad9461 sources (which
+still had definition body-skip), sampled with `ps` every 0.1 s and
+`/usr/bin/time -l`; phases from temporary `mono-ns` wrappers in four `tools/`
+files, then reverted. The wrappers left cache keys unchanged: every warm run
+reproduced 13,856 hits and 93 compiled.
+
+**Warm, after a comment edit in `src/lib/memory.f`: 6.8 s real, 6.0 s user.**
+
+| Phase | Seconds |
+|---|---:|
+| Parent `hb-build`, of which compiling `tools/hb-build.f` from source | 0.53 (0.37) |
+| Checked prefix, of which the checker handover (`ORDER-KEY` per record) | 1.42 (0.35) |
+| Hit verification, 13,940 calls: object preparation | 1.55 |
+| … of which dependency-row checks (`NUNIT-DEP:CHECK`), 1,683,427 rows, 515 MB | 0.97 |
+| Installs | 0.36 |
+| Compiling the 93 that never cache (50 trusted, 35 defining words, 8 body hook) | 0.37 |
+| Parse and check of the rest | ~1.1 |
+| Capture | 0.67 |
+| Compiling the image writer `tools/native-emit.f` from source | 0.77 |
+| Writing the image | 0.55 |
+
+Dependency rows by kind: RESOLUTION 1,139,810 rows / 332 MB, BINDING 98,405 /
+97 MB, READER-FLAGS 140,658 / 47 MB, SCOPE 13,856 / 18 MB. Only 174,442
+resolution rows (15.3%) are distinct; the rest are per-definition copies,
+all re-verified each warm build, and each cache file is read whole (602 MB).
+
+**Cold: 85 s real, 83 s user.** The support-image child compiles the driver and
+the whole native compiler from source with no definition cache: 12 s. The
+product child: compile (checker plus tier-1 codegen) 60.2 s at 4.3 ms per
+definition for 13,949 definitions, bookkeeping around each compile (dependency
+recording, export, pack, publish) about 7.2 s, store 0.64 s, image finish 2.1 s.
+The split between checker and codegen inside the compile was not measured; §8
+has the tier-1 phase profile.
+
+The fixes are dots under `habu-make-incremental-builds-41fd3214`.
+
 ## Verdict and the ranked fixes
 
 On the current engine the optimizing tier pays for itself in size as well as in
