@@ -90,6 +90,13 @@ variable RC
    s" build.out" AT-A OUT OUT-U @ WRITE-ALL
    s" build.err" AT-A ERR ERR-U @ WRITE-ALL ;
 
+\ The stream the UNFILLED line reaches. An ARM64 host builds the x86-64
+\ `--target` in process, so the line stays on stdout. An x86-64 host takes the
+\ child build route, which forwards a failed maker's stdout to stderr
+\ (tools/hb-build-lib.f HBB-FINISH-MAKER-RC).
+: UNFILLED-STREAM ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if ERR ERR-U @ else OUT OUT-U @ then ;
+
 public
 
 : RUN ( -- )
@@ -98,7 +105,7 @@ public
    s" a build whose runtime leaves the evaluate cell empty refuses 76" T-LABEL
    RC @ 76 <> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 76 T=
-   OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
+   UNFILLED-STREAM S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
    ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
    s" the refused build promotes no product" T-LABEL
    s" hb" AT-A FILE? 0= TTRUE
