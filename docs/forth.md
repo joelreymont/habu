@@ -1261,8 +1261,10 @@ by name with the count it saw and the ceiling, and none truncates.
   `src/os/macos/layout.f`, `src/habu/layout.f`; `DATA-SIZE` is per host).
   DATA is a lazy reservation charged only for touched pages; on Linux an
   engine with `vm.overcommit_memory=2`, or with `RLIMIT_AS` or `RLIMIT_DATA`
-  below the window, refuses at boot with `hb: cannot map fixed data region`,
-  rc 78. `allot`, `align`, `,`, `c,`, `create`/`variable`/
+  below the window, or on an arm64 kernel that cannot place the window (the
+  expert-only 36-bit address space, or a 39-bit one in the legacy bottom-up
+  mmap layout, which places the loader inside it), refuses at boot with
+  `hb: cannot map fixed data region`, rc 78. `allot`, `align`, `,`, `c,`, `create`/`variable`/
   `defer` and the interpret-mode string literals that keep their text (all but
   `."`) advance the DP through `DP-CHECK` (`src/habu/habu1.f`). Past it:
   `hb: data space out of

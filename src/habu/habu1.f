@@ -3184,7 +3184,7 @@ public
 \ AND THE SNAPSHOT PASS ALREADY HANDLES BOTH. EMIT-ADDRS is called once per band
 \ with the band it is moving; a chain whose value lies outside that band is left
 \ alone rather than guessed at. A DATA address is outside both the region band and
-\ the text band in every run - DATA is mapped MAP_FIXED at DATA-VA, far above both -
+\ the text band in every run - DATA is mapped at the fixed DATA-VA, far above both -
 \ so a site recorded here for a DATA chain is visited by both calls and rewritten
 \ by neither, which is exactly right: DATA does not move.
 \

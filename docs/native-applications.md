@@ -443,7 +443,7 @@ Linux `[heap]` exemption. `mmap` is reached from `src/lib/memory.f`, `src/lib/ve
 `src/lib/aio.f` and more, and a foreign allocator calls the primitive without
 passing any of them — and `aot-data-cell.f MAPPED?` asks it, less the four
 areas a process already holds before its program runs. Three are where the image
-holds them too: the `MAP_FIXED` `DATA` mapping, the dictionary/code region
+holds them too: the fixed `DATA` mapping, the dictionary/code region
 whole, and the executable's own segments, because `bin/hb` and the image it
 links are both `EXEC`-type ELFs at the same fixed base and a cell holding a
 string's last three bytes lands in that band whenever the third byte is a letter

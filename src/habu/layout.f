@@ -834,7 +834,7 @@ $670 constant SPAN-BASE-CELL
 \ TASK-REGION-INIT copies only the cells it names - so `DATA FD-CELL LDR` would
 \ read a different word on every task and zero on a new one. The stub reaches
 \ the word by its ABSOLUTE address instead, DATA-VA + FD-CELL baked in as a
-\ literal: DATA-VA is a MAP_FIXED address (src/os/<target>/layout.f, and
+\ literal: DATA-VA is a fixed address (src/os/<target>/layout.f, and
 \ EM-MMAP-DATA-REGION refuses a boot the kernel answered elsewhere), so that one
 \ address names the SAME word for the life of the process whatever task is
 \ running. That is the LOCK-CELL class of process-wide cell, and it is why
@@ -2137,7 +2137,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ parameterised by band. habu2.f EMIT-ADDRS is called once per band and rewrites a
 \ chain only when the address it spells out falls inside that band, leaving one
 \ that names neither alone rather than guessing. Its bands are the JIT region and
-\ the engine's __text; DATA is mapped MAP_FIXED at DATA-VA, which is far above
+\ the engine's __text; DATA is mapped at the fixed DATA-VA, which is far above
 \ both in every run and at both ends of a snapshot - the writer folds the region
 \ to the RBASE-VA sentinel and the loader maps that sentinel onto the live region
 \ base. So a recorded DATA site is visited by both calls and rewritten by neither.
@@ -2145,7 +2145,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ WHICH KIND a recorded site is, is NOT in this band, and nothing stores it. A
 \ consumer holds the spans of the window it is working on, and a recorded site's
 \ value falls in exactly one of them - the DATA span lies inside the region mapped
-\ MAP_FIXED at DATA-VA, the code span inside the JIT region, and the two cannot
+\ at the fixed DATA-VA, the code span inside the JIT region, and the two cannot
 \ overlap. The kind is therefore DERIVED, by a total classification of a value
 \ already known to be a real address; what the old value-range scans guessed at
 \ was whether a word was a site at all, and this bit is now the only authority on

@@ -360,7 +360,7 @@ $25 constant BL-OP-HI
 \ chain only when the address it spells out lies inside that band; a chain naming
 \ neither band is left alone rather than guessed at. Its two calls are the live
 \ JIT region and the engine's loaded __text. A DATA address is in neither, in
-\ every run and at both ends of a snapshot: DATA is mapped MAP_FIXED at DATA-VA
+\ every run and at both ends of a snapshot: DATA is mapped at the fixed DATA-VA
 \ ($340000000 on Linux, $44000000000 on macOS), the writer canonicalises the
 \ region to the RBASE-VA sentinel ($300000000, span REGION = $800000, so the band
 \ ends at $300800000) and the loader maps the sentinel onto the live region base,
@@ -7074,7 +7074,7 @@ public
    done LBL, ;
 
 \ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
-\ at the current DP (the region is fixed MAP_FIXED, anon-mmap => zeroed => identical
+\ at the current DP (the region is fixed, anon-mmap => zeroed => identical
 \ to a source-compiled all-allot/variable region), then rebase every captured DATA
 \ address literal (movz/movk x9 chain) by delta = seedDP - captureD0, so create/
 \ variable buffer refs point at the seeded DATA. No name lookup; single delta.

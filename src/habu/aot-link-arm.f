@@ -346,7 +346,7 @@ variable FFI-BASE-INDEX
 \ admits exactly one of them in the startup and ends the reported code range at
 \ the blob, and rows placed past the blob are outside that range rather than read
 \ as instructions.
-\ The cell is x20-relative (DATA is mapped MAP_FIXED, so its offset is the same
+\ The cell is x20-relative (DATA is mapped at a fixed address, so its offset is the same
 \ number the declaration carries) and the value is relative to the image's own
 \ code base, which is the label at text offset zero.
 : EMIT-XT-CELLS ( -- )

@@ -459,7 +459,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 \ IT READS THE FD WORD BY ITS ABSOLUTE ADDRESS, never as `DATA <off>`: the
 \ handler runs on whichever thread the kernel picks and that thread's x20 is its
 \ own task region, so the offset form would read a different word per task and
-\ zero on a new one. DATA-VA is MAP_FIXED, so the literal names one word for the
+\ zero on a new one. DATA-VA is fixed, so the literal names one word for the
 \ life of the process (src/habu/layout.f package SIGNAL-ABI).
 \
 \ WHAT IT COSTS THE INTERRUPTED CONTEXT: x0, x1, x2 and the registers SYS, uses

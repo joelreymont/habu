@@ -27,7 +27,7 @@ public
 
 \ Write the exact initialized spans: the text and region at their fixed
 \ addresses and DATA's bytes in the read-only carrier the boot copies into
-\ DATA, so they must fit DATA. The ELF metadata and dynamic/GOT tail are
+\ DATA, so they must fit DATA and the carrier. The ELF metadata and dynamic/GOT tail are
 \ rebuilt here.
 : WRITE-FD ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: text:ptr text-len:n region:ptr region-len:n data:ptr data-len:n fd:n :}
@@ -35,6 +35,7 @@ public
    region-len REGION > or
    region-len 0 < or
    data-len X64LAYOUT:DATA-SIZE > or
+   data-len ELF-CARRIER-CAP > or
    data-len 0 < or if
       s" x64image: initialized span exceeds segment" IMAGE-RC die
    then

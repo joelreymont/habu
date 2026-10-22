@@ -870,7 +870,7 @@ variable DN-IX  variable DN-AT
 \ for PATH-CAP + 1 bytes, a program spelling PZB + 8 links and one spelling RDP
 \ - util.f's next record, at PZB + 1032 - is still refused by that name.
 \ Relocation preserves
-\ a claimed address because DATA is one MAP_FIXED mapping at DATA-VA in the
+\ a claimed address because DATA is one mapping at the fixed DATA-VA in the
 \ engine and in the image alike, and src/habu/aot-lib.f EMIT-OWNED-CELLS reads
 \ this same table to publish what each claim declares - so the two cannot
 \ disagree about one cell.

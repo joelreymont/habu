@@ -2301,8 +2301,14 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 \ Where the seed will find this cell: a window offset under the window tag for a
 \ cell the capture carries, and a plain DATA offset for a fixed engine cell.
+\ Readers take the low 31 bits as the offset and the top bit as the window tag,
+\ and DATA spans more than 2^31 bytes, so a fixed offset past the field is
+\ refused, never read back as a window cell.
 : ACAP-XTCELL-LOC ( n n n -- n ) {: woff:n celloff:n len:n :}
    woff 0 >= woff len < and if woff AOT-WINDOW:XTOFF-WINDOW-TAG or exit then
+   celloff AOT-WINDOW:XTOFF-LOC-MASK > if
+      s" aot-capture: fixed address cell lies past the row's 31-bit DATA offset"
+      74 die then
    celloff ;
 
 \ WHOSE CELL IT IS, and it is not always the window's. A cell INSIDE the captured

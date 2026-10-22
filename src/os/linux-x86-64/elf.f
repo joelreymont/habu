@@ -90,6 +90,9 @@ VMBASE REGION-OFF + constant ELF-REGION-VA
 \ copies these bytes in (src/habu/boot-x64.f CARRIER-COPY,), so the kernel
 \ neither commit-charges DATA as a loaded segment nor starts the brk past it.
 ELF-REGION-VA REGION + constant ELF-CARRIER-VA
+\ The carrier ends below DATA-VA, where the boot maps DATA, so it holds at
+\ most this many bytes.
+X64LAYOUT:DATA-VA ELF-CARRIER-VA - constant ELF-CARRIER-CAP
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;

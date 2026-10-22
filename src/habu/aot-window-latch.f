@@ -27,7 +27,7 @@ package AOT-LINK
 \ compilation to `here`; the source buffer and assembler CODE buffer are separate
 \ mmaps, so AOT-LINK never allots either into DATA. src/habu/aot-lib.f emits that
 \ span into __text and the entry maps DATA-VA and copies it back to the SAME
-\ absolute VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are
+\ absolute VA (DATA-VA is a fixed VA, so those addresses are
 \ load-stable). All other runtime cells stay zero from the fresh anonymous mmap,
 \ and that zero is a value only where something declares it one: x20, S0-CELL and
 \ DP-CELL get explicit init, and so does every cell named in
@@ -46,7 +46,7 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ AOT-CP-N get from their numeric primitives and this one has to compute: `here`
 \ is the only pointer-valued cursor, while the whole linker - the span bounds, the
 \ recorded chain values it compares them against, the offsets it records - works
-\ in the same absolute integer domain. DATA is mapped MAP_FIXED at DATA-VA, so the
+\ in the same absolute integer domain. DATA is mapped at the fixed DATA-VA, so the
 \ offset from data-base plus that base IS the address, by ordinary checked pointer
 \ arithmetic: NOT a trust row, and deliberately not one. src/habu/aot-arm.f carries
 \ the same one-liner for package AOT-ARM, which this file's package does not load.

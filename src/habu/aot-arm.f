@@ -26,7 +26,7 @@ public
 \ are: cp@, ndict@ and the wordlist counter are numeric primitives and `here` is
 \ the one pointer among the four, while every reader of the DATA coordinate -
 \ the capture's scans, the band audit, the literal-span check - compares and
-\ differences it as a number and never follows it. DATA is mapped MAP_FIXED at
+\ differences it as a number and never follows it. DATA is mapped at the fixed
 \ DATA-VA, so the offset from data-base plus that base IS the address; the
 \ subtraction is ordinary checked pointer arithmetic, so this needs no trust row
 \ and no pointer-to-integer cast. src/habu/aot-closure.f carries the same

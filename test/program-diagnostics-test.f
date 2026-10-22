@@ -97,7 +97,7 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
       s" address cell capacity diagnostic" GE-FAIL then ;
 
-\ These five fixtures open an AOT-ARM window and assert its boundary
+\ These six fixtures open an AOT-ARM window and assert its boundary
 \ diagnostics; x86-64 has a different resident source window.
 : AOT-ARM-NEGATIVES ( -- )
    s" test/aot-address-cell-lower-straddle-bad.f" 74
@@ -108,6 +108,8 @@ package PROGRAM-DIAGNOSTICS
       s" AOT-XTCELL-TARGET-OUT-ARMED" s" aot-capture: declared address target is not self-contained" NEGATIVE-DIAG
    s" test/aot-address-cell-off-grid-bad.f" 74
       s" AOT-XTCELL-OFF-GRID-ARMED" s" aot-capture: a declared DATA cell is not on the window cell grid" NEGATIVE-DIAG
+   s" test/aot-address-cell-far-bad.f" 74
+      s" AOT-XTCELL-FAR-ARMED" s" aot-capture: fixed address cell lies past the row's 31-bit DATA offset" NEGATIVE
    s" test/aot-window-base-off-grid-bad.f" 74
       s" AOT-WINDOW-BASE-OFF-GRID-ARMED" s" aot-capture: the captured DATA window base is not cell-aligned" NEGATIVE ;
 

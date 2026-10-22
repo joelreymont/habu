@@ -76,7 +76,7 @@ variable FFI-LIB-CAP
 \ A claim records the cell as a DATA ADDRESS IN THE LINKER'S INTEGER DOMAIN - the
 \ domain BLOB-SRC/BLOB-END and every recorded chain value live in
 \ (src/habu/aot-window-latch.f HERE-N computes a cursor the same way). DATA is one
-\ MAP_FIXED mapping based at DATA-VA, so the offset from data-base plus that base
+\ mapping fixed at DATA-VA, so the offset from data-base plus that base
 \ IS the address, by ordinary checked pointer arithmetic; nothing here holds a
 \ pointer in a raw cell (dot habu-refuse-a-ptr-5ad2734e).
 \

@@ -273,7 +273,7 @@ variable SITE-HIT
    loop false ;
 
 \ Ask the kernel first: almost every stored value misses its mapped extents.
-\ DATA is MAP_FIXED in both processes, and the whole code/dictionary region is
+\ DATA is fixed at DATA-VA in both processes, and the whole code/dictionary region is
 \ classified by the linker's live extents instead. Linux's fixed executable
 \ band catches ordinary small integers too; its own path tag exempts that band.
 \ The brk [heap] band likewise catches integers, and Habu allocates from mmap,

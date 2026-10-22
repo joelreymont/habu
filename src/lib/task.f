@@ -314,7 +314,7 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 : TASK-SELF-N ( -- n )
    data-base TASK-TCB-CELL + @ ;
 
-\ The main region, whichever task asks: DATA is mapped MAP_FIXED at DATA-VA. An
+\ The main region, whichever task asks: DATA is mapped at the fixed DATA-VA. An
 \ ordinary call, so every use computes the address at run time.
 : MAIN-BASE ( -- ptr n )
    DATA-VA VA>N TASK-N>PTR ;

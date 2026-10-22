@@ -56,7 +56,7 @@ private
 PROF-TARGET-OK
 
 \ ---- the band: its cells and the arena layout are PROF-ABI's (src/habu/prof-abi.f)
-DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is MAP_FIXED at DATA-VA
+DATA-VA VA>N DATA-SIZE PROF-BAND-AT constant PROF-BAND-VA   \ absolute: DATA is fixed at DATA-VA
 PROF-BAND-VA PROF-STATE-BYTES + constant PROF-CNT-VA        \ the counters
 $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
 
