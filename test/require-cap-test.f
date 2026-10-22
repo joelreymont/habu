@@ -49,10 +49,16 @@ variable EXITED?
    $61 i 26 mod + FORGE-C
    10 FORGE-C ;
 
+\ After the last growth every row must still be found: requiring them all again
+\ leaves the count alone, so each path and length survived the copies.
 : FORGE-GEN ( n -- ptr u8 n ) {: k:n :}
    0 FORGE-U !
    s" 0 REQUIRE-REG:TRUNCATE 0 REQUIRE-BASE ! DISCOVERY-ON" FORGE-APPEND  10 FORGE-C
    0 begin dup k < while dup FORGE-LINE 1+ repeat drop
+   S\" : SAME-COUNT ( n -- ) REQUIRE-REG:COUNT <> if s\" require-cap: a row was lost\" 3 die then ;" FORGE-APPEND  10 FORGE-C
+   s" REQUIRE-REG:COUNT" FORGE-APPEND  10 FORGE-C
+   0 begin dup k < while dup FORGE-LINE 1+ repeat drop
+   s" SAME-COUNT" FORGE-APPEND  10 FORGE-C
    FORGE$ ;
 
 \ ---- fork a child on the forge, capture its completion + stderr ---------------
