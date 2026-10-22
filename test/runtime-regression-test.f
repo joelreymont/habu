@@ -135,16 +135,23 @@ variable GE-SCRIPT-U
    SB-RESET s" 42" SB-APPEND GE-SB-LF
    SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
 
+\ Pass 2 is the tier-0 JIT's (src/habu/habu2.f). A child boots at this
+\ process's tier, so its pass-2 cases run when this process is at tier 0.
+: GE-PASS-2? ( -- bool ) tier@ 0= ;
+
 \ does>-split wide facts fail closed at the pass-2 trigger with a fixed
 \ label (previously a lone current-token write - unattributable; TFAM 12
 \ item 3 verdict: the checker cannot see across the does> split, so the
-\ labeled engine exit IS the permanent contract).
+\ labeled engine exit IS the permanent contract). Pass 2 is tier 0's; the
+\ native compiler carries the width facts across the split and accepts both
+\ definitions.
 : GE-DOES-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    GE-ILAYOUT-PRELUDE
    s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( -- n ) drop 5 ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
+   GE-PASS-2? 0= if s" tier 1 lowers does>-split wide facts" GE-EXPECT-OK exit then
    75 s" does>-split wide facts fail closed" GE-EXPECT-RC
    S\" hb: does>-split cannot lower layout width facts: ;\n"
       s" does>-split wide diagnostic" GE-EXPECT-ERR ;
@@ -153,9 +160,10 @@ variable GE-SCRIPT-U
    GE-HB-RESET
    GE-SRC-RESET
    GE-ILAYOUT-PRELUDE
-   s" 0 set-tier" GE-SRC-LINE
+   GE-PASS-2? if s" 0 set-tier" GE-SRC-LINE then
    s" TRUSTED: GE-TDOES ( -- ) create does> ( gewide<n,n> -- ) drop drop ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
+   GE-PASS-2? 0= if s" tier 1 lowers trusted does>-split wide facts" GE-EXPECT-OK exit then
    75 s" trusted does>-split wide facts fail closed" GE-EXPECT-RC
    S\" hb: does>-split cannot lower layout width facts: ;\n"
       s" trusted does>-split wide diagnostic" GE-EXPECT-ERR ;
@@ -163,7 +171,10 @@ variable GE-SCRIPT-U
 \ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
 \ closed naming the limit and the token that carved it. No one value may
 \ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
+\ Tier 1 refuses gep64 first (`bad product declaration 'gep64'`, -8611), so
+\ the case is pass 2's alone.
 : GE-P2-FRAME-WIDE ( -- )
+   GE-PASS-2? 0= if exit then
    GE-HB-RESET
    GE-SRC-RESET
    s" PRODUCT gep8" GE-SRC-LINE
@@ -229,9 +240,10 @@ variable GE-SCRIPT-U
    SB$ s" scalar does> word output" GE-EXPECT-OUT ;
 
 \ A definer may create through another definer and replace its clause. The
-\ newest signature owns the record's min-in and wide facts, at either tier.
+\ newest signature owns the record's min-in and wide facts at every tier from
+\ the current one up; a child boots at this process's tier.
 : GE-DOES-REPATCH ( -- )
-   2 0 do
+   2 tier@ do
       GE-HB-RESET GE-SRC-RESET
       GE-ILAYOUT-PRELUDE
       i GE-SRC-U+ s"  set-tier" GE-SRC-LINE
@@ -260,7 +272,7 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
-   HB-TARGET-LINUX-X86-64? 0= if GE-DOES-TRUSTED-WIDE then
+   GE-DOES-TRUSTED-WIDE
    GE-P2-FRAME-WIDE
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
@@ -1120,8 +1132,10 @@ variable GE-CF-BODY-U
 \ Build "<tier> set-tier", then a definition holding n values on the virtual
 \ stack in a counted loop that leaves on its second turn and reads its local
 \ after the loop, and print its answer for 100: each turn adds 1 + ... + n, so
-\ the answer is 100 + n(n+1).
+\ the answer is 100 + n(n+1). A child boots at this process's tier, and a tier
+\ below it is one this engine does not have (x86-64 runs tier 1 only).
 : GE-LEAVE-VS-CASE ( n n ptr u8 n -- ) {: n:n tier:n label:ptr labelu:n :}
+   tier tier@ < if exit then
    GE-HB-RESET
    GE-SRC-RESET
    tier GE-SRC-U+ s"  set-tier" GE-SRC-LINE
@@ -1150,7 +1164,7 @@ variable GE-CF-BODY-U
    15 1 s" hb leave under 15 values tier 1" GE-LEAVE-VS-CASE
    16 1 s" hb leave under 16 values tier 1" GE-LEAVE-VS-CASE
    VSMAX 1+ 1 s" hb leave past a full virtual stack tier 1" GE-LEAVE-VS-CASE
-   s" PASS: leave under a deep virtual stack keeps its frame at both tiers" type cr ;
+   s" PASS: leave under a deep virtual stack keeps its frame at each tier this engine runs" type cr ;
 
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
@@ -1725,9 +1739,11 @@ create GE-END-AT 16 allot
 \ source's last line, the refusal named the body's line, or a blank line past
 \ it; it names the line of the definition's name token. hb-end.f holds the tier
 \ line, `: GEEND` on line 2, its body on line 3 and nl newlines: 0 ends it
-\ without one, 2 leaves a blank line.
+\ without one, 2 leaves a blank line. A tier below this process's boot tier is
+\ one this engine does not have.
 : GE-HALF-CASE ( n n ptr u8 n -- )
    {: tier:n nl:n label:ptr labelu:n :}
+   tier tier@ < if exit then
    GE-SRC-RESET
    tier GE-SRC-U+  s"  set-tier" GE-SRC-LINE
    s" : GEEND ( -- )" GE-SRC-LINE
@@ -1751,6 +1767,7 @@ create GE-END-AT 16 allot
 
 : GE-END-OPENER ( -- )
    0 0 s" half body, no final newline" GE-HALF-CASE
+   1 0 s" half body, no final newline, tier 1" GE-HALF-CASE
    0 2 s" half body, a blank line" GE-HALF-CASE
    1 2 s" half body, a blank line, tier 1" GE-HALF-CASE
    GE-END-DEFOPEN ;

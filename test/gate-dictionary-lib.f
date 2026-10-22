@@ -153,6 +153,14 @@ variable CANDIDATE-VERDICT
    s" ;package" SB-LINE
    INC-DUP$ SB$ WRITE-ALL ;
 
+\ A case runs in this process, a fork of it, or (RUN-BAD-CHILD) a fresh child
+\ at the engine's boot tier.
+: TIER-0? ( -- bool ) tier@ 0= ;
+
+\ The checker reads a TRUSTED: word's declaration, never its body. At tier 0
+\ the body runs as written, so one that leaves two cells where it declares one
+\ prints both; the native compiler refuses that body (E-NELAB-ARITY), so at
+\ tier 1 the body keeps its declaration.
 : LONG-DICTIONARY-SOURCE ( -- )
    GE-SRC-RESET
    s" : LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;" GE-SRC-LINE
@@ -166,10 +174,18 @@ variable CANDIDATE-VERDICT
    s"  get-current search-wl 0= ." GE-SRC-LINE
    s" long-dictionary-name-addone" GE-SRC-S"
    s"  get-current search-wl 0= ." GE-SRC-LINE
-   s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
+   TIER-0? if
+      s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;"
+   else
+      s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) ;"
+   then GE-SRC-LINE
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
-   s" 9 LONG-DICTIONARY-TRUSTED . ." GE-SRC-LINE ;
+   TIER-0? if
+      s" 9 LONG-DICTIONARY-TRUSTED . ."
+   else
+      s" 9 LONG-DICTIONARY-TRUSTED ."
+   then GE-SRC-LINE ;
 
 : LONG-DICTIONARY ( -- )
    GE-HB-RESET
@@ -183,7 +199,7 @@ variable CANDIDATE-VERDICT
    s" 0" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
-   s" 9" GE-OUT-LINE
+   TIER-0? if s" 9" GE-OUT-LINE then
    s" 9" GE-OUT-LINE
    SB$ s" hb long dictionary names output" GE-EXPECT-OUT ;
 
@@ -281,11 +297,15 @@ variable CANDIDATE-VERDICT
    s" 7" GE-OUT-LINE
    SB$ s" hb trusted CREATE...DOES> effect recording output" GE-EXPECT-OUT ;
 
+\ BADARR's does> body leaves nothing of the ( n -- ptr a ) it declares. Tier 0
+\ names the does> clause; at tier 1 the native compiler refuses BADARR first
+\ (E-NCOMP-VERDICT, an uncaught throw).
 : BAD-DOES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   70 s" does>" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   TIER-0? if 70 s" does>" else 67 s" ncomp: cannot compile BADARR" then
+   s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
@@ -1095,7 +1115,13 @@ variable CANDIDATE-VERDICT
    s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : BAD ( -- n ) GD-PRIV ;" GE-SRC-LINE
-   $46 s" E-UNDEFINED: GD-PRIV" s" package rejects private checked call" RUN-BAD-CHILD
+   \ At tier 1 the refusal also names the definition the word is in.
+   $46
+   TIER-0? if
+      s" E-UNDEFINED: GD-PRIV"
+   else
+      s" E-UNDEFINED habu: in bad: undefined word 'GD-PRIV'"
+   then s" package rejects private checked call" RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE

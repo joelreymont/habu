@@ -319,7 +319,8 @@ $4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
 \ A text that throws takes back what it defined, and its frame cuts the
 \ checker's records back to where the text began, so a later word is checked
 \ against the word the engine binds. Each child sets the tier it compiles at,
-\ and the texts outrun a source line, so each is assembled in TEXT.
+\ from this process's boot tier up: an x86-64 engine has no tier 0. The texts
+\ outrun a source line, so each is assembled in TEXT.
 create TEXT IO-CAP allot
 variable TEXT-U
 variable OUT-U
@@ -345,11 +346,10 @@ variable ERR-U
 \ The hook records W-FORGET's row and then throws. To the engine, T-FORGET's
 \ bare W-FORGET is both the global and the used P-FORGET:W-FORGET, so T-FORGET
 \ is refused; typed against the thrown row ( -- n n ), it certified and ran one
-\ cell short. It runs at tier 0 alone: tier 1 refuses W-FORGET itself for that
-\ ambiguity before its hook runs.
-: HOOK-THROWN ( -- )
+\ cell short.
+: HOOK-THROWN ( n -- ) {: tier:n :}
    s" a definition its hook threw back keeps no row" T-LABEL
-   0 TIER-TEXT
+   tier TIER-TEXT
    s" : W-FORGET ( -- n ) 1 ; package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+
    s" : THROWER-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
    s" LOWER-CERT-HOOK:HOOK r> if 77 throw then ; ' THROWER-FORGET set-check " TEXT+
@@ -384,6 +384,7 @@ variable ERR-U
    s" habu: in t-forget: at 'X-FORGET' expected: n n actual: n" SAYS ;
 
 : THROWN-BACK ( n -- ) {: tier:n :}
+   tier HOOK-THROWN
    tier NAME-THROWN
    tier ROW-THROWN ;
 
@@ -400,8 +401,7 @@ variable ERR-U
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
    TOP-LEVEL
    UNFINISHED-LINE LIVE
-   HOOK-THROWN
-   2 0 do i THROWN-BACK loop
+   2 tier@ do i THROWN-BACK loop
    CHECKED
    T-REPORT ;
 

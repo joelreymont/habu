@@ -77,8 +77,15 @@ variable SPIN-U
 : QLINE ( ptr u8 n -- )
    Q+ GE-SRC-LF ;
 
+\ OI-UF takes a cell it does not declare. Its TRUSTED: body is not checked, so
+\ at tier 0 it runs and underflows; the native compiler refuses the body where
+\ it is defined (E-NELAB-UNDER), so at tier 1 the prelude leaves it out. A run
+\ loads the prelude at its engine's boot tier, which is this process's.
+: OI-UF$ ( -- ptr u8 n ) s" TRUSTED: OI-UF ( -- ) drop ;" ;
+: OI-UF-RUNS? ( -- bool ) tier@ 0= ;
+
 \ Words the cases call: a certified word of two inputs, a trusted one that
-\ drops a cell it does not declare, an immediate word, a wide one, a word
+\ drops a cell it does not declare (tier 0 only), an immediate word, a wide one, a word
 \ spelled as an out-of-range number, a top-row hook that logs each event and
 \ one that drops two cells more than its event carries, a word that prints a
 \ string's bytes in decimal, a package with a private word and a public one
@@ -104,7 +111,7 @@ variable SPIN-U
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
-   s" TRUSTED: OI-UF ( -- ) drop ;" GE-SRC-LINE
+   OI-UF-RUNS? if OI-UF$ GE-SRC-LINE then
    s" : OI-IMM ( -- ) ; immediate" GE-SRC-LINE
    s" SUMTYPE oiwide<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
@@ -293,6 +300,13 @@ variable WANT-RC
 
 : UNDERFLOW ( -- )
    GE-SRC-RESET
+   OI-UF-RUNS? 0= if
+      OI-UF$ GE-SRC-LINE
+      s" oi-underflow.f" BOTH
+      67 s" underflow" GE-EXPECT-RC
+      S\" ncomp: cannot compile OI-UF\nhb: uncaught throw code -8304\n" s" underflow" GE-EXPECT-ERR
+      exit
+   then
    s" OI-UF" GE-SRC-LINE
    s" oi-underflow.f" BOTH
    70 s" underflow" GE-EXPECT-RC
@@ -1888,9 +1902,12 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" 1\n28\n" CASE$ GE-EXPECT-OUT
    S\" hb: interpret stack underdepth: OI-X\n" CASE$ GE-EXPECT-ERR
-   s" 0 set-tier cast: OI-X ( n -- n ) 3 OI-X ." s" oi-cast-tier-0.f" LINE-CASE
-   CASE$ GE-EXPECT-OK
-   S\" 3\n" CASE$ GE-EXPECT-OUT
+   \ Tier 0 exists only on an engine that boots there (x86-64 runs tier 1 only).
+   tier@ 0= if
+      s" 0 set-tier cast: OI-X ( n -- n ) 3 OI-X ." s" oi-cast-tier-0.f" LINE-CASE
+      CASE$ GE-EXPECT-OK
+      S\" 3\n" CASE$ GE-EXPECT-OUT
+   then
    s" 1 set-tier package OI-CP public ;package cast: OI-CP:OI-Y ( n -- n ) 4 OI-CP:OI-Y . cast: OI-NS:OI-Q ( n -- n ) 5 OI-NS:OI-Q ."
    s" oi-cast-qualified.f" LINE-CASE
    CASE$ GE-EXPECT-OK
