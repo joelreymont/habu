@@ -174,36 +174,63 @@ variable RC     variable EXITED
    ERR$ s" set-tier" CONTAINS? TTRUE ;
 
 \ The JIT reaches its trusted tick gate before the closing checker scan;
-\ native compilation checks the body before it elaborates the tick.
+\ native compilation checks the body before it elaborates the tick. Intel has
+\ no JIT tier, so the tier 0 cases run on ARM only. Where no tier 1 case
+\ already runs the same program, Intel runs it at its default tier 1 and pins
+\ the checker failure native compilation reports instead. The provider cases
+\ stay ARM's: their subject, a tier change from 0 to 1 during require, cannot
+\ occur on Intel.
 : TEST-TRUSTED-TICK-ORDER ( -- )
-   s" the fresh tier 0 boundary has a trusted gate" T-LABEL
-   s" tick-order@ drop . cr" EXEC s" 1" ASSERT-OK
+   LEGACY? if
+      s" the fresh tier 0 boundary has a trusted gate" T-LABEL
+      s" tick-order@ drop . cr" EXEC s" 1" ASSERT-OK
+   then
    s" tier 1 starts with checking order" T-LABEL
    s" 1 set-tier tick-order@ drop . cr" EXEC s" 0" ASSERT-OK
-   s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
-   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   LEGACY? if
+      s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
+      s" : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+      REJECT-RC ASSERT-RC
+      ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   then
    s" tier 1 keeps the first checker failure at drop" T-LABEL
    s" 1 set-tier : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
    s" iwggpf" ASSERT-REJECTED
    ERR$ s" underflow" CONTAINS? TTRUE
-   s" a later undefined token cannot displace the tier 0 gate" T-LABEL
-   s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
-   s" a malformed signature cannot displace the tier 0 gate" T-LABEL
-   s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   LEGACY? if
+      s" a later undefined token cannot displace the tier 0 gate" T-LABEL
+      s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
+      REJECT-RC ASSERT-RC
+      ERR$ s" trusted-only tick" CONTAINS? TTRUE
+      s" a malformed signature cannot displace the tier 0 gate" T-LABEL
+      s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
+      REJECT-RC ASSERT-RC
+      ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   else
+      s" tier 1 reports a later undefined token after the tick" T-LABEL
+      s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
+      s" tick-late" ASSERT-REJECTED
+      ERR$ s" undefined word 'NO-SUCH-WORD'" CONTAINS? TTRUE
+      s" tier 1 reports a malformed signature before the tick" T-LABEL
+      s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
+      s" tick-sig" ASSERT-REJECTED
+      ERR$ s" unknown type 'zz' in signature" CONTAINS? TTRUE
+   then
    s" an earlier undefined token refuses before the tier 0 gate" T-LABEL
    s" : TICK-EARLY ( -- ) NO-SUCH-WORD ['] patch32 drop ;" EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" NO-SUCH-WORD" CONTAINS? TTRUE
-   s" an unsafe check before the tier 0 gate leaves the gate first" T-LABEL
-   s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   LEGACY? if
+      s" an unsafe check before the tier 0 gate leaves the gate first" T-LABEL
+      s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
+      REJECT-RC ASSERT-RC
+      ERR$ s" trusted-only tick" CONTAINS? TTRUE
+   else
+      s" tier 1 refuses an unsafe word before the tick" T-LABEL
+      s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
+      s" tick-unsafe" ASSERT-REJECTED
+      ERR$ s" in tick-unsafe: at 'evaluate'" CONTAINS? TTRUE
+   then
    s" a package-local ordinary shadow has no trusted gate" T-LABEL
    s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" EXEC
    0 ASSERT-RC
@@ -211,20 +238,27 @@ variable RC     variable EXITED
    s" package TICK-ALIAS public EXPORT patch32 ;package" EXEC
    UNCAUGHT-RC ASSERT-RC
    ERR$ s" 7120" CONTAINS? TTRUE
-   s" a does clause reaches the native trusted gate before its parent check" T-LABEL
-   s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
-   s" a replacement require leaves the tick to the loaded subject" T-LABEL
-   s" include test/tick-provider-replace.f" EXEC
-   REJECT-RC ASSERT-RC
-   OUT$ s" deferred-ok" CONTAINS? TTRUE
-   ERR$ s" underflow" CONTAINS? TTRUE
-   s" the original require may call a tier-changing source unit" T-LABEL
-   s" include test/tick-provider-unit.f" EXEC
-   REJECT-RC ASSERT-RC
-   OUT$ s" deferred-ok" CONTAINS? TTRUE
-   ERR$ s" underflow" CONTAINS? TTRUE ;
+   LEGACY? if
+      s" a does clause reaches the native trusted gate before its parent check" T-LABEL
+      s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" EXEC
+      REJECT-RC ASSERT-RC
+      ERR$ s" trusted-only tick" CONTAINS? TTRUE
+      s" a replacement require leaves the tick to the loaded subject" T-LABEL
+      s" include test/tick-provider-replace.f" EXEC
+      REJECT-RC ASSERT-RC
+      OUT$ s" deferred-ok" CONTAINS? TTRUE
+      ERR$ s" underflow" CONTAINS? TTRUE
+      s" the original require may call a tier-changing source unit" T-LABEL
+      s" include test/tick-provider-unit.f" EXEC
+      REJECT-RC ASSERT-RC
+      OUT$ s" deferred-ok" CONTAINS? TTRUE
+      ERR$ s" underflow" CONTAINS? TTRUE
+   else
+      s" tier 1 checks the parent of a does clause before the tick" T-LABEL
+      s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" EXEC
+      s" tick-does" ASSERT-REJECTED
+      ERR$ s" in tick-does: at 'drop' input underflow" CONTAINS? TTRUE
+   then ;
 
 \ ---- 2b. checked code reads the tier and selects it through TIER --------------
 \ Registering a primitive in the engine dictionary is only half of it. Without a
@@ -766,14 +800,16 @@ variable OR-U
    S\"  . cp@ 4 - cp@ code-origin .\n" OR+
    OR-BUF OR-U @ ;
 
-\ The x86-64 emitter still has a fixed table. Exercise its ordinary
-\ publications through the same real load path, including the refusal.
+\ The x86-64 emitter still has a fixed table. Intel publishes only native
+\ code, so adjacent definitions merge into one row; each patch32 invalidation
+\ inside a definition splits it into three, so every definition and its patch
+\ add two rows through the same real load path, up to the refusal.
 : OR-X64-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
    0 OR-U !
-   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n: OR-HEADROOM ( -- ) OR-COUNT TIER-PROV:SPANS 64 - > OR-COUNT TIER-PROV:SPANS <= and if s\q headroom-ok\q type else 70 throw then ;\n" OR+
+   S\" TRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\n: OR-HEADROOM ( -- ) OR-COUNT TIER-PROV:SPANS 64 - > OR-COUNT TIER-PROV:SPANS <= and if s\q headroom-ok\q type else 70 throw then ;\n" OR+
    count 0 ?do
-      s" variable OV" OR+ i OR-NUM+
-      S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- ) ;\n" OR+
+      s" : OD" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+
+      S\"  ;\n' OD" OR+ i OR-NUM+ S\"  OR-PATCH\n" OR+
    loop
    S\" OR-HEADROOM\n" OR+
    OR-BUF OR-U @ ;
@@ -870,7 +906,7 @@ variable OR-U
    OR-PATH$ REMOVE-FILE ;
 
 : TEST-ORIGIN-CAPACITY-X64 ( -- )
-   s" real publications use the declared capacity with headroom" T-LABEL
+   s" patch splits fill the declared capacity with headroom" T-LABEL
    OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-X64-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD s" headroom-ok" ASSERT-OK
    s" exhausting the interval store refuses before losing a row" T-LABEL
