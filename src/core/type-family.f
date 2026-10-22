@@ -6480,7 +6480,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
    u $7FFFFFFFFFFFFFFF REG-AOT-HDR - UFP.REC - 2 / > or IF
       s" tfam: FILE family delta is too large" REG-AOT-REFUSE THEN
    REG-AOT-HDR u 2 * + {: cap:n :}
-   UFP.REC cap + ARENA-ALLOC BYTE-VIEW {: plan:ptr :}
+   UFP.REC cap + ARENA-ALLOC-BYTES {: plan:ptr :}
    plan UNIT-FAM-OPEN !
    NULL-PTR plan UFP.NEXT UFP-PTR!  src plan UFP.SRC UFP-PTR!
    u plan UFP.U UFP!

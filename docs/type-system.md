@@ -798,10 +798,11 @@ Three T1 sites need a named answer beyond those two mechanisms:
 - **`ARENA-SNAP-BOOT`'s zero pass** views a `PTR-U8-TABLE` boot buffer as cells
   to zero it. The typed form writes `NULL-PTR` through the table's own accessor
   in a loop — a snapshot-time cost only.
-- **The byte-copy growers** (`ARENA-BYTES-GROW`, `TV-GROW-ONE`, `TVK-GROW-ONE`)
-  view buffers whose cells may hold `ptr u8`. The parametric cell copy already
-  in the tree — `src/core/dynamic-storage.f` `COPY ( ptr a ptr a n -- )` —
-  is the typed replacement.
+- **The byte-copy growers** (`ARENA-BYTES-GROW`, `TV-COPY-AT`, the UIX/CHX
+  entry growers, `render.f` `SEEN-GROW`) copied buffers whose cells may hold
+  `ptr u8` through byte views. They now copy cells with `src/core/checker.f`
+  `ARENA-CELLS-COPY ( ptr a ptr a n -- )`, the checker's twin of
+  `src/core/dynamic-storage.f` `COPY`, which loads after the checker.
 
 #### What `ptr-field` and the view rows become
 

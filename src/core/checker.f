@@ -211,7 +211,9 @@ variable ARENA-CP-I   variable ARENA-UB-I
 : ARENA-ALLOC ( n -- ptr a )
    map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
-\ The checker's one copier: n bytes, src->dst, cell-wise with a byte tail. arm64
+: ARENA-ALLOC-BYTES ( n -- ptr u8 ) ARENA-ALLOC ;   \ the allocation as bytes
+
+\ The checker's byte copier: n bytes, src->dst, cell-wise with a byte tail. arm64
 \ and x86-64 both take an unaligned cell access, so a span may start at any byte.
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
    0 ARENA-CP-I !
@@ -223,6 +225,15 @@ variable ARENA-CP-I   variable ARENA-UB-I
       src ARENA-CP-I @ + c@ dst ARENA-CP-I @ + c!
       ARENA-CP-I @ 1 + ARENA-CP-I !
    repeat ;
+
+\ ARENA-CELLS-COPY copies n cells, src->dst, of any element type, so neither
+\ side is viewed as bytes. A caller holding a byte count passes it rounded up
+\ to cells. The rounded read stays mapped because every source is a map-anon
+\ mapping (page-granular) or lies inside the fixed DATA region; the rounded
+\ write stays inside the destination because it is a fresh ARENA-ALLOC of at
+\ least the old byte count, and map-anon maps whole pages.
+: ARENA-CELLS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
+   n 0 ?do src i cells + @ dst i cells + ! loop ;
 
 : ARENA-CELLS-UNBOUND ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
    from ARENA-UB-I !
@@ -239,11 +250,11 @@ variable ARENA-CP-I   variable ARENA-UB-I
    repeat ;
 
 \ ARENA-BYTES-GROW ( ptr a n n -- ptr a ) : alloc newbytes, copy oldbytes from
-\ base, return the new base. For record/cell stores counted in raw elements the
+\ base rounded up to whole cells, return the new base. For record/cell stores counted in raw elements the
 \ callers reset counters per definition, so no tail init is needed.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
-   base BYTE-VIEW nb BYTE-VIEW oldbytes ARENA-COPY
+   base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
    nb ;
 
 \ REG-GROW1 ( pvar oldbytes newbytes -- ) : grow the buffer held in pvar in place,
@@ -316,12 +327,10 @@ PERSISTED-PTR-VARIABLE QCON-RIDS-P
 
 : TV-COPY-AT ( n ptr a ptr a n n -- )
    {: plane:n old:ptr next:ptr oc:n nc:n :}
-   old oc plane TV-PLANE BYTE-VIEW
-   next nc plane TV-PLANE BYTE-VIEW
-   oc cells ARENA-COPY ;
+   old oc plane TV-PLANE next nc plane TV-PLANE oc ARENA-CELLS-COPY ;
 
-: TV-FILL-AT ( ptr a n n n -- ) {: base:ptr cap:n plane:n from:n :}
-   base cap plane TV-PLANE BYTE-VIEW CELL-VIEW from cap ARENA-CELLS-UNBOUND ;
+: TV-FILL-AT ( ptr n n n n -- ) {: base:ptr cap:n plane:n from:n :}
+   base cap plane TV-PLANE from cap ARENA-CELLS-UNBOUND ;
 
 : TV-PUBLISH ( ptr n n -- ) {: base:ptr cap:n :}
    base cap 0 TV-PLANE TVT-P !       base cap 1 TV-PLANE RVT-P !
@@ -7889,7 +7898,7 @@ UIX-RESET
 : UIX-ENT-GROW ( -- )
    UIX-ENT-CAP @ 2 * {: nc:n :}
    nc UIX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
-   UIX-ENT BYTE-VIEW nb BYTE-VIEW UIX-ENT-CAP @ UIX-ENT-CELLS * cells ARENA-COPY
+   UIX-ENT nb UIX-ENT-CAP @ UIX-ENT-CELLS * ARENA-CELLS-COPY
    nb UIX-ENT-P !
    nc UIX-ENT-CAP ! ;
 
@@ -8369,7 +8378,7 @@ CHX-RESET
 : CHX-ENT-GROW ( -- )
    CHX-ENT-CAP @ 2 * {: nc:n :}
    nc CHX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
-   CHX-ENT BYTE-VIEW nb BYTE-VIEW CHX-ENT-CAP @ CHX-ENT-CELLS * cells ARENA-COPY
+   CHX-ENT nb CHX-ENT-CAP @ CHX-ENT-CELLS * ARENA-CELLS-COPY
    nb CHX-ENT-P !
    nc CHX-ENT-CAP ! ;
 
@@ -15661,7 +15670,7 @@ variable RECORD-PEND-EFF   0 RECORD-PEND-EFF !
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
    CK-DICT-CAP min {: cap:n :}
-   cap RECORD-LINK-ROW * ARENA-ALLOC BYTE-VIEW {: dst:ptr :}
+   cap RECORD-LINK-ROW * ARENA-ALLOC-BYTES {: dst:ptr :}
    dst CELL-VIEW 0 cap 7 * ARENA-CELLS-ZERO
    RECORD-LINK-CAP @ 0 <> IF
       RECORD-LINK-P @ {: old:ptr :}
@@ -15766,7 +15775,7 @@ variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
    PENDING-OWNER-P @ {: old:ptr :}
    PENDING-OWNER-CAP @ {: oldcap:n :}
    oldcap 0= IF 64 ELSE oldcap 2 * THEN {: cap:n :}
-   cap 2 cells * ARENA-ALLOC BYTE-VIEW {: dst:ptr :}
+   cap 2 cells * ARENA-ALLOC-BYTES {: dst:ptr :}
    dst CELL-VIEW 0 cap 2 * ARENA-CELLS-ZERO
    dst PENDING-OWNER-P ! cap PENDING-OWNER-CAP !
    0 PENDING-OWNER-N !
@@ -16126,7 +16135,7 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
       s" checker: source prefix anchor is not shipped" 76 die THEN
    RECORD-LINK-CAP @ 0= IF copy execute EXIT THEN
    RECORD-LINK-CAP @ RECORD-LINK-ROW * {: bytes:n :}
-   bytes ARENA-ALLOC BYTE-VIEW {: scratch:ptr :}
+   bytes ARENA-ALLOC-BYTES {: scratch:ptr :}
    RECORD-LINK-P @ {: original:ptr :}
    original scratch bytes ARENA-COPY
    original BYTE-VIEW NULL-PTR BYTE-VIEW - RECORD-CAPTURE-ORIGINAL-N !
@@ -27375,9 +27384,9 @@ FILE-CON-RESET
    UNIT-BUF-CAP @ <= IF EXIT THEN
    UNIT-BUF-CAP @ 0= IF UNIT-BUF-INIT ELSE UNIT-BUF-CAP @ THEN
    BEGIN dup UNIT-BUF-U @ add + < WHILE 2 * REPEAT {: cap:n :}
-   UNIT-BUF-P @ NULL-PTR = IF cap ARENA-ALLOC BYTE-VIEW
+   UNIT-BUF-P @ NULL-PTR = IF cap ARENA-ALLOC-BYTES
    ELSE
-      cap ARENA-ALLOC BYTE-VIEW {: dst:ptr :}
+      cap ARENA-ALLOC-BYTES {: dst:ptr :}
       UNIT-BUF-P @ dst UNIT-BUF-U @ ARENA-COPY
       UNIT-BUF-P @ UNIT-BUF-CAP @ ASIG-RELEASE
       dst
@@ -27586,7 +27595,7 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
    ASIG-STR-P @ UNIT-ASIG-P !
    ASIG-STR-U @ UNIT-ASIG-U !
    ASIG-STR-CAP-V @ UNIT-ASIG-CAP !
-   UNIT-BUF-INIT ARENA-ALLOC BYTE-VIEW ASIG-STR-P !
+   UNIT-BUF-INIT ARENA-ALLOC-BYTES ASIG-STR-P !
    UNIT-BUF-INIT ASIG-STR-CAP-V !
    0 ASIG-STR-U ! ;
 
@@ -27631,7 +27640,7 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    RECORD-BUF-U @ add + RECORD-BUF-CAP @ <= IF EXIT THEN
    RECORD-BUF-CAP @ 0= IF 256 ELSE RECORD-BUF-CAP @ THEN
    BEGIN dup RECORD-BUF-U @ add + < WHILE 2 * REPEAT {: cap:n :}
-   cap ARENA-ALLOC BYTE-VIEW {: dst:ptr :}
+   cap ARENA-ALLOC-BYTES {: dst:ptr :}
    RECORD-BUF-U @ 0 <> IF
       RECORD-BUF-P @ dst RECORD-BUF-U @ ARENA-COPY
    THEN
@@ -27659,7 +27668,7 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    ASIG-STR-U @ RECORD-GRAPH-SAVED-U !
    ASIG-STR-CAP-V @ RECORD-GRAPH-SAVED-CAP !
    RECORD-GRAPH-CAP @ 0= IF
-      UNIT-BUF-INIT ARENA-ALLOC BYTE-VIEW RECORD-GRAPH-P !
+      UNIT-BUF-INIT ARENA-ALLOC-BYTES RECORD-GRAPH-P !
       UNIT-BUF-INIT RECORD-GRAPH-CAP !
    THEN
    RECORD-GRAPH-P @ ASIG-STR-P !
@@ -28242,7 +28251,7 @@ variable UP-CH-U          0 UP-CH-U !
 
 : UP-CH-NEW ( n -- ptr u8 ) {: bytes:n :}
    bytes UNIT-BUF-INIT max {: cap:n :}
-   cap UP-CH-HEAD + ARENA-ALLOC BYTE-VIEW {: chunk:ptr :}
+   cap UP-CH-HEAD + ARENA-ALLOC-BYTES {: chunk:ptr :}
    NULL-PTR chunk UP-CH-NEXT!
    cap chunk cell+ CELL-VIEW !
    chunk ;
@@ -29245,7 +29254,7 @@ variable RECORD-CTL-MAP-N
 
 : RECORD-CTL-MAP-BEGIN ( n -- ) {: oldend:n :}
    oldend NORET-ENTRY / RECORD-CTL-MAP-N !
-   RECORD-CTL-MAP-N @ cells ARENA-ALLOC BYTE-VIEW RECORD-CTL-MAP-P !
+   RECORD-CTL-MAP-N @ cells ARENA-ALLOC-BYTES RECORD-CTL-MAP-P !
    RECORD-CTL-MAP-P @ CELL-VIEW 0 RECORD-CTL-MAP-N @ ARENA-CELLS-ZERO
    RECORD-LINK-CAP @ 0 ?do
       i RECORD-LINK-CURRENT? IF

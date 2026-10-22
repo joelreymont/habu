@@ -149,7 +149,7 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    need SEEN-GROW-CAP {: nc:n :}
    SEEN-CAP @ {: oc:n :}
    nc cells ARENA-ALLOC {: next:ptr :}
-   oc 0 > IF SEEN-P @ BYTE-VIEW next BYTE-VIEW oc cells ARENA-COPY THEN
+   oc 0 > IF SEEN-P @ next oc ARENA-CELLS-COPY THEN
    next oc nc ARENA-CELLS-UNBOUND
    SEEN-P @ oc SEEN-UNMAP-RC 0 <> IF
       next nc SEEN-UNMAP-RC 0 <> IF s" render: seen cleanup munmap failed" 76 die THEN
