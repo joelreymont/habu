@@ -229,10 +229,13 @@ DYNAMIC-BUFFER R-READ-BUF n
 \ ---- what the data-stack residency pass answers ------------------------------
 \ A slot of the caller's data stack holds a value of the source module, and this
 \ is the window that fact is tracked over: past it, never resident.
+\ A run's elision mask has a bit per position of a store run; runs are bounded
+\ by the IR op-list ceiling (op.f ARITY-MAX = 64), so one cell holds every bit.
+\ The verifier re-derives residency over the same 64 slots (regalloc-verify.f
+\ VDSLOTS).
 64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
 -1 constant DNONE                    \ this slot holds nothing this pass can name
 -2 constant DANY                     \ nothing has been said about this slot yet
-63 constant DELIDE-MAX               \ store positions one run's elision mask holds
 
 align
 DYNAMIC-BUFFER D-IN-BUF n
@@ -854,7 +857,6 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
 \ One bit per position of the store run, set where the cell already held it.
 : DBIT? ( n n -- bool )
    {: mask:n i:n :}
-   i DELIDE-MAX >= if false exit then
    mask 1 i lshift and 0<> ;
 
 \ ---- which transfer of a run carries the run's pointer move ------------------
@@ -2798,9 +2800,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    {: id:IR-ID:ir-op-id kk:n m:n a:n :}
    0
    kk a + 0 ?do
-      id kk m i DSAVE-VAL  i  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
+      id kk m i DSAVE-VAL  i  DPUT? if 1 i lshift or then
    loop ;
 
 \ Every slot the callee could have written stops holding anything this routine
@@ -2817,9 +2817,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
    id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
    0
    r 0 ?do
-      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
+      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if 1 i lshift or then
    loop ;
 
 : DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )

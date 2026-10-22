@@ -1829,10 +1829,17 @@ sections above.
   `VERIFY:CANDIDATE-IN-SCOPE` reports that scoped result. A generated
   `DER:HASH` may therefore call `DER:UNMAKE` before either is published
   (see **Naming**).
-- **Native widths have separate ceilings.** A 63-cell identity compiles in
-  AOT; the same 64-cell definition currently refuses `E-A64RAV-DKEEP`
-  (-8611). The IR signature list holds 64 cells; a 65th staged input or
-  output is `E-IR-TYPE-ARITY` (-6688), with one staged value per record cell.
+- **Native widths have separate ceilings.** A 64-cell identity compiles in
+  AOT, but at tier 1 (x86-64, or ARM64 after `1 set-tier`) a 64-cell call
+  inside a definition (`: P ( w64 -- w64 ) ID64 ;`) is `E-IR-OP-ARITY`
+  (-8026): an operation's staged lists hold at most 64 entries. A call's operand list is its token, every cell kept across the
+  call and its inputs; its result list is a memory token, the kept cells and
+  its outputs. With `MK8` returning an 8-cell record,
+  `TRUSTED: MK64 ( -- gep64 ) MK8 MK8 MK8 MK8 MK8 MK8 MK8 MK8 ;` refuses at
+  its last call: 56 kept + 8 outputs + the token is 65 entries. Seven calls
+  (57 entries) compile. A 65-cell definition, identity or constructor,
+  is `E-NELAB-ARITY` (-8303): the native elaborator holds at most 64 cells
+  per signature, one per record cell.
   Register pressure is separate: a 25-cell sum compiles on Darwin ARM64 with
   its 24-register pool by storing each entry value after loading it. A
   34-cell nested record roundtrip likewise compiles and runs.

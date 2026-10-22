@@ -141,10 +141,13 @@ DYNAMIC-BUFFER D-ORDER-SET-BUF n
 \ the ARM64 chain requires select.f alone and this file is its own package with
 \ its own buffers, so moving the machinery into one place would move the ARM64
 \ selector, which nothing here is allowed to do.
+\ A run's elision mask has a bit per position of a store run; runs are bounded
+\ by the IR op-list ceiling (op.f ARITY-MAX = 64), so one cell holds every bit.
+\ The verifier re-derives residency over the same 64 slots (regalloc-verify.f
+\ VDSLOTS).
 64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
 -1 constant DNONE                    \ this slot holds nothing this pass can name
 -2 constant DANY                     \ nothing has been said about this slot yet
-63 constant DELIDE-MAX               \ store positions one run's elision mask holds
 
 DYNAMIC-BUFFER D-IN-BUF n
 : D-IN ( -- ptr n ) 0 D-IN-BUF ;
@@ -709,7 +712,6 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ One bit per position of the store run, set where the cell already held it.
 : DBIT? ( n n -- bool )
    {: mask:n i:n :}
-   i DELIDE-MAX >= if false exit then
    mask 1 i lshift and 0<> ;
 
 \ ---- selecting a call --------------------------------------------------------
@@ -1740,9 +1742,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    {: id:IR-ID:ir-op-id kk:n m:n a:n :}
    0
    kk a + 0 ?do
-      id kk m i DSAVE-VAL  i  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
+      id kk m i DSAVE-VAL  i  DPUT? if 1 i lshift or then
    loop ;
 
 \ Every slot the callee could have written stops holding anything this routine
@@ -1759,9 +1759,7 @@ $43DFFFFFFFFFFFFF constant REALINT-TOP     \ every double above it is 2^63 or mo
    id OPERANDS-OF r <> if E-X64SEL-PLACE throw then
    0
    r 0 ?do
-      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if
-         i DELIDE-MAX < if 1 i lshift or then
-      then
+      id i OPERAND-AT  OUTS i NEFF:SEQ-SLOT@  DPUT? if 1 i lshift or then
    loop ;
 
 : DCALL-XFER ( IR-ID:ir-op-id n n n n -- n )
