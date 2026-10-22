@@ -72,8 +72,13 @@ public
    s" SOURCE-UNIT-RANGE-TEST:DIRECT-BUMP" dup >r 0 r>
       DIRECT-RANGE ;
 \ Deliberately carry an undeclared return-stack cell through a loader token.
-TRUSTED: PUSH-R ( -- ) 1 >r ;
-TRUSTED: POP-R ( -- ) r> drop ;
+\ Only tier 0 compiles these trusted bodies; tier 1, the only tier on x86-64,
+\ refuses a body that leaves the return stack unbalanced (E-NELAB-JOIN).
+: RETURN-CUT-WORDS$ ( -- ptr u8 n )
+   S\" TRUSTED: PUSH-R ( -- ) 1 >r ;\nTRUSTED: POP-R ( -- ) r> drop ;\n" ;
+: TIER-0? ( -- bool ) tier@ 0= ;
+: DEFINE-RETURN-CUT ( -- ) TIER-0? if RETURN-CUT-WORDS$ evaluate-closed then ;
+DEFINE-RETURN-CUT
 private
 
 : READ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -224,6 +229,9 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    s" SOURCE-UNIT-RANGE-CHILD:NUMBER 317 T=" evaluate-closed ;
 
 : CHECK-RETURN-CUT ( -- )
+   TIER-0? 0= if
+      [: RETURN-CUT-WORDS$ evaluate-closed ;] E-NELAB-JOIN TTHROWSQ exit
+   then
    0 RETURN-CUT !
    s" return-cut.f" included
    RETURN-CUT @ TTRUE
