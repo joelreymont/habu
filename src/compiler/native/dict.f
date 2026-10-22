@@ -167,7 +167,7 @@ public
 : REC-VALUE ( ptr n -- n )
    {: rec:ptr :}
    rec FIXED-ENTRY drop
-   rec NHOST:SELECT-REC READ-FIXED ;
+   rec XREF-START READ-FIXED ;
 
 \ The checker calls this once at the completed generated-word publication.
 \ It retains the exact record's fixed result; later dependency checks only
@@ -192,7 +192,7 @@ public
 : BOUND-VALUE ( n n -- n ) {: entry:n kind:n :}
    entry 0< entry 0= or if E-NDICT-NAME throw then
    kind FIXED-VAL <> kind FIXED-ADDR <> and if E-NDICT-KIND throw then
-   entry NHOST:ADMIT-ENTRY READ-FIXED ;
+   entry READ-FIXED ;
 
 \ ---- and how many cells a call to it moves --------------------------------
 \ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of

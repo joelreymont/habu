@@ -617,6 +617,24 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
          key keyu ADD-RESOLUTION
    then ;
 
+\ The token the interpreter resolved: the word it runs, or the name after a
+\ top-level tick (habu2.f C-TICK).
+: RUN-TOKEN-A ( -- ptr u8 ) data-base TKA-CELL + 0 ptr-field @ ;
+: RUN-TOKEN$ ( -- ptr u8 n ) RUN-TOKEN-A data-base TKL-CELL + @ ;
+
+variable RUN-ORD
+variable RUN-HITS
+variable TOP-XT
+
+CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
+
+\ One leg of the run's token: the row a compiled reference to the same
+\ spelling in the same scope adds, counted when it holds the record that ran.
+: RUN-LEG ( ptr u8 n -- )
+   {: row:ptr rowu:n :}
+   row rowu OBSERVE-RESOLUTION
+   row 16 + LE:U64@ RUN-ORD @ = if 1 RUN-HITS +! then ;
+
 : CAPTURE-CHECKER-ROLE ( -- )
    OPEN? 0= if exit then
    CHECKER-ROLE$ {: digest:ptr digestu:n known:bool :}
@@ -729,6 +747,25 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 public
 
+\ The running checker owner's CHECKER-OWNER:RESOLUTION-TOP, bound for the
+\ session by the definition cache before it installs the run observer, and 0
+\ after. A build tool resolves names against its host engine, which may predate
+\ the word, so OBSERVE-RUN reaches it by execution token.
+: USE-TOP ( n -- ) TOP-XT ! ;
+
+\ A word the source ran at top level, by an immediate or under a top-level
+\ tick: the checker's resolution rows for its token, one per leg, the legs
+\ without the name included, and then, when one of them holds the record that
+\ ran, the value a constant produced.
+: OBSERVE-RUN ( n -- )
+   {: ord:n :}
+   OPEN? 0= if exit then
+   ord RUN-ORD !
+   0 RUN-HITS !
+   RUN-TOKEN$ ['] RUN-LEG TOP-XT @ AS-TOP execute
+   RUN-HITS @ 0= if s" resolution-leg-unknown" ord ORDERED-BY exit then
+   ord XREF-REC XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then ;
+
 \ Open a file frame at the file's first record ordinal.
 : BEGIN-UNIT ( -- )
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
@@ -767,6 +804,7 @@ public
    s"  ordered=" DIAG-W2 FILE-ORDERED? if 1 else 0 then DIAG-N
    s"  binding=" DIAG-W2 BINDING KIND-ROWS DIAG-N
    s"  value=" DIAG-W2 VALUE KIND-ROWS DIAG-N
+   s"  resolution=" DIAG-W2 RESOLUTION KIND-ROWS DIAG-N
    FILE-ORDERED? if
       F-WHY FFIELD @ {: why:n :}
       why FWHY WHYU @ why - DIAG-W2

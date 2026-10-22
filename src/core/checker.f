@@ -11355,7 +11355,8 @@ PPRIM: CHECKER-TAPE K-PRINTED-STRING PE-N PE-OUT PPRIM;
 \ compiler the same explicit call authority as the tape observer above.
 PPRIM: CHECKER-RESOLUTION COUNT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-RESOLUTION ROW PE-N PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-PPRIM: CHECKER-RESOLUTION TOP PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
+PPRIM: CHECKER-RESOLUTION TOP PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-RESOLUTION NS-INSTALL
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-RESOLUTION NS-DEFAULT PPRIM;
@@ -24879,6 +24880,7 @@ public
 
 PTR-VARIABLE RWIN-P   variable RWIN-CAP   variable RWIN-U
 PTR-VARIABLE RWIN-OFF-P   variable RWIN-OFF-CAP   variable RWIN-N
+PTR-VARIABLE RWIN-FOLD-P   variable RWIN-FOLD-CAP
 variable RWIN-FILE-ON
 defer RWIN-NS-CB ( ptr u8 n -- )
 
@@ -24893,6 +24895,7 @@ RWIN-DEFAULT
 : RWIN-RELEASE ( -- )
    RWIN-P RWIN-CAP 1 ARENA-ROWS-RELEASE
    RWIN-OFF-P RWIN-OFF-CAP 1 ARENA-ROWS-RELEASE
+   RWIN-FOLD-P RWIN-FOLD-CAP 1 ARENA-ROWS-RELEASE
    RWIN-CLEAR
    RWIN-DEFAULT ;
 
@@ -25016,9 +25019,22 @@ package CHECKER-RESOLUTION
 public
 : COUNT ( -- n ) RWIN-N @ ;
 : ROW ( n -- ptr u8 n ) RWIN-ROW ;
-: TOP ( ptr u8 n -- ) {: spell:ptr su:n :}
-   RWIN-CLEAR
-   RWIN-FILE-ON @ IF spell su spell su -1 RWIN-NAME THEN ;
+\ Pass visit each row a top-level token of this spelling adds, one per leg
+\ RWIN-NAME enumerates, then drop them: a scan's pending rows stay as they were.
+\ The legs probe the token folded as the body walk's TOKFOLD folds it, in a
+\ buffer of its own because a run can fire while that walk holds TKF; a
+\ qualifier's namespace row then matches a compiled reference's.
+: TOP ( ptr u8 n [ ptr u8 n -- ] -- ) {: spell:ptr su:n visit :}
+   RWIN-FILE-ON @ 0= IF EXIT THEN
+   RWIN-FOLD-P RWIN-FOLD-CAP su CELL 1- + CELL / 1 ARENA-ROWS-ENSURE
+   RWIN-FOLD-P @ BYTE-VIEW {: fold:ptr :}
+   su 0 ?DO spell i + c@ CHECKER-FOLD-C fold i + c! LOOP
+   RWIN-N @ {: first:n :}
+   RWIN-U @ {: used:n :}
+   fold su spell su -1 RWIN-NAME
+   RWIN-N @ first ?DO i RWIN-ROW visit execute LOOP
+   first RWIN-N !
+   used RWIN-U ! ;
 : NS-INSTALL ( [ ptr u8 n -- ] -- )
    is RWIN-NS-CB
    -1 RWIN-FILE-ON !

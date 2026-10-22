@@ -101,6 +101,7 @@ variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
 PTR-VARIABLE CUT-CELL
+variable UNOBSERVE-XT
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
 variable TARGET-ENV-RESET
@@ -133,6 +134,7 @@ CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
+CAST: OBSERVE-XT ( n -- [ [ ptr n -- ] -- ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -774,6 +776,26 @@ variable PENDING-KEY-U
    0 cell CELL-VIEW !
    NULL-PTR CUT-CELL ! ;
 
+\ The open file objects see each word the source runs through the running
+\ kernel's run observer, held for the session, and read its resolution legs
+\ through the running checker owner. A kernel without either observes nothing,
+\ and every file object refuses (NUNIT-OBJECT FILE-BEGIN).
+: OBSERVE ( -- )
+   NUNIT-CAPTURE:RUN-OBSERVER? 0= if exit then
+   s" CHECKER-OWNER:RESOLUTION-TOP" NUNIT-CAPTURE:BOUND-PRODUCER-XT
+      NUNIT-DEP:USE-TOP
+   s" NHOST:UNOBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT {: undo:n :}
+   [: NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-RUN ;]
+      s" NHOST:OBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT OBSERVE-XT execute
+   undo UNOBSERVE-XT ! ;
+
+: UNOBSERVE ( -- )
+   UNOBSERVE-XT @ {: undo:n :}
+   undo 0= if exit then
+   0 UNOBSERVE-XT !
+   undo ACTION-XT execute
+   0 NUNIT-DEP:USE-TOP ;
+
 : BIND-ORIGIN-RECORD ( -- )
    ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
    ORIGIN-CELL-XT execute ORIGIN-RECORD ! ;
@@ -1104,7 +1126,8 @@ variable PENDING-KEY-U
    \ The engine build rewinds the dictionary before loading its prefix. Its
    \ namespace publications must already reach the retained source owner.
    BIND-OWNER
-   BIND-NOMINALS ;
+   BIND-NOMINALS
+   OBSERVE ;
 
 : CLOSE ( -- )
    BUILD-INPUT:RESET
@@ -1127,6 +1150,7 @@ variable PENDING-KEY-U
    \ Restore each loader before releasing its continuation from the host heap.
    ['] ORDINARY-UNIT PRIOR-UNIT !
    ['] ORDINARY-UNIT HOST-PRIOR-UNIT !
+   UNOBSERVE
    NUNIT-DEP:RESET NUNIT-DEP:UNBIND
    NUNIT-ORIGIN:RESET
    UNBIND-CUT

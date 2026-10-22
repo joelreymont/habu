@@ -711,7 +711,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 \ any of them runs.
 : RUN-FOUND ( -- )
    GATE
-   WORD-FLAGS REC @ NHOST:SELECT-REC {: flags:n xt:n :}
+   WORD-FLAGS REC @ NHOST:RUN-REC {: flags:n xt:n :}
    xt UNIT-EV-WORD UNIT-EVENT drop
    TOP-EV-WORD flags HOOK
    OBSERVE-WORD REC @ XREF-NULL - XREF-ADDR>INDEX xt OBSERVE-BEFORE
@@ -978,13 +978,16 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    SCOPE-ENTRY-GUARD
    TRUSTED-TICK? if s" hb: trusted-only tick: " REFUSE then ;
 
-\ The observer sees the tick's target before the xt is pushed (habu2.f C-TICK).
-: TICK-OBSERVE ( -- )
-   OBSERVE-TICK REC @ XREF-NULL - XREF-ADDR>INDEX REC @ XREF-START OBSERVE-BEFORE ;
+\ The host selection and then the source observer see the tick's target before
+\ the xt is pushed (habu2.f C-TICK).
+: TICK-OBSERVE ( -- n )
+   REC @ NHOST:RUN-REC {: xt:n :}
+   OBSERVE-TICK REC @ XREF-NULL - XREF-ADDR>INDEX xt OBSERVE-BEFORE
+   xt ;
 
 \ The hook sees the operand as the token and the record's flags.
 : PUSH-XT ( -- )
-   [: TICKED TICK-OBSERVE REC @ XREF-START TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
+   [: TICKED TICK-OBSERVE TOP-EV-TICK WORD-FLAGS HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ ---- the literal keywords -----------------------------------------------------------------
 \ The engine's EM-INTERPRET-STRING-KEYWORDS, with `'` and `char` from its

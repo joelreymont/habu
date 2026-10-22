@@ -534,7 +534,7 @@ private
    DEF-OCC:SELECT {: slot:n occurrence:n :}
    0 UNIT-EV-IMMEDIATE UNIT-EVENT drop
    DEF-PREFLIGHT
-   slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC
+   slot occurrence DEF-OCC:RESOLVE NHOST:RUN-REC
    -1 PEND-OPAQUE-CELL CELL!
    execute-floor FLOORED ;
 

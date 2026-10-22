@@ -124,6 +124,11 @@ public
    \ retired would stay in the object.
    s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= if
       s" cut-notice-absent" WHY+
+   then
+   \ A kernel without the run observer leaves the frame without the rows of
+   \ the words its source runs (NDEF-CACHE OPEN).
+   NUNIT-CAPTURE:RUN-OBSERVER? 0= if
+      s" run-observer-absent" WHY+
    then ;
 
 : FILE-END ( -- )

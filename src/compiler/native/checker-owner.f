@@ -67,6 +67,7 @@ CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
 CAST: AS-RESOLUTION-NS-INSTALL ( n -- [ [ ptr u8 n -- ] -- ] )
+CAST: AS-RESOLUTION-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
 CAST: AS-INIT-LAYOUT ( n -- [ n -- n n n ] )
 CAST: AS-QUOT-CELLS ( n -- [ n n -- n n ] )
 CAST: AS-DECLARATION ( n -- [ ptr u8 n ptr u8 n -- ] )
@@ -353,6 +354,13 @@ TRUSTED: DOES-COMMIT ( -- )
    CHECKER-OWNER-ABI:RESOLUTION-ROW-OFF s" source resolution row" FIELD
    dup 0= if drop CHECKER-RESOLUTION:ROW exit then
    AS-BINDING execute ;
+
+\ The rows a top-level token of the spelling resolves through, one per leg the
+\ engine searches, each passed to the visitor.
+: RESOLUTION-TOP ( ptr u8 n [ ptr u8 n -- ] -- )
+   CHECKER-OWNER-ABI:RESOLUTION-TOP-OFF s" top-level resolution" FIELD
+   dup 0= if drop CHECKER-RESOLUTION:TOP exit then
+   AS-RESOLUTION-TOP execute ;
 
 : RESOLUTION-NS-INSTALL ( [ ptr u8 n -- ] -- )
    CHECKER-OWNER-ABI:RESOLUTION-NS-INSTALL-OFF s" namespace observer" FIELD

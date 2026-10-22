@@ -96,6 +96,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 : KEY$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  key=" FIELD$ ;
 : DEFS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  defs=" FIELD$ ;
 : RESULTS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  results=" FIELD$ ;
+: RESOLUTIONS$ ( ptr u8 n -- ptr u8 n ) FRAME$ s"  resolution=" FIELD$ ;
 
 \ name's object holds count input rows.
 : INPUTS ( ptr u8 n ptr u8 n -- )
@@ -148,7 +149,8 @@ public
    s" " s" dup +" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
-   s" app.f" S\" require base.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
+   s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
+   s" app.f" S\" require base.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\nrequire exec.f\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
    PROBE {: rc:n :}
@@ -158,15 +160,21 @@ public
    OUT$ S\" use=67\n" CONTAINS? TTRUE
    OUT$ s" refused=1" CONTAINS? TTRUE
    s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
-   s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0" ENDS-WITH? TTRUE
+   s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=2" ENDS-WITH? TTRUE
    s" broken.f binds BROKEN's recovery record and stays ordered" T-LABEL
    s" broken.f" FRAME$
-      s"  ordered=1 binding=0 value=0 reason=binding-contract-unknown word=BROKEN"
+      s"  ordered=1 binding=0 value=0 resolution=2 reason=binding-contract-unknown word=BROKEN"
       ENDS-WITH? TTRUE
    s" app.f consumes ONE, TWICE, TEN, SEVEN and HITS once each, and SEVEN's value" T-LABEL
-   s" app.f" FRAME$ s"  ordered=0 binding=5 value=1" ENDS-WITH? TTRUE
+   s" app.f" FRAME$ s"  ordered=0 binding=5 value=1 resolution=24" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
-   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0" ENDS-WITH? TTRUE
+   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=18" ENDS-WITH? TTRUE
+   \ exec.f compiles nothing, so every resolution row is a run's: require and
+   \ drop 1 each (global), FRAME-LIB:SEVEN and the ticked FRAME-LIB:TWICE 2 each
+   \ (namespace, public), SEVEN under using 3 (namespace, public, global miss).
+   \ A run that recorded only the leg holding its record would leave 5.
+   s" exec.f only runs: SEVEN's value and every leg of each run's resolution" T-LABEL
+   s" exec.f" FRAME$ s"  ordered=0 binding=0 value=1 resolution=9" ENDS-WITH? TTRUE
    s" each file object holds its colon definitions, TRUSTED: BUMP included" T-LABEL
    s" base.f" DEFS$ s" 1" T$=
    s" deep.f" DEFS$ s" 1" T$=
@@ -176,7 +184,7 @@ public
    s" base.f" s" 1" INPUTS
    s" deep.f" s" 1" INPUTS
    s" lib.f" s" 4" INPUTS
-   s" app.f" s" 5" INPUTS
+   s" app.f" s" 7" INPUTS
    s" each object is stored under its key" T-LABEL
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP

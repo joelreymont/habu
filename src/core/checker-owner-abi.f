@@ -284,7 +284,7 @@ CHECKER-OWNER-EXT:ORIGIN-SYM-OFF constant ORIGIN-SYM-OFF \ ( pkg$ vis tail$ -- s
 \ namespace into each six-cell row before exposing it to the native feed.
 $480 constant RESOLUTION-COUNT-OFF       \ ( -- n )
 $488 constant RESOLUTION-ROW-OFF         \ ( n -- ptr u8 n )
-$490 constant RESOLUTION-TOP-OFF         \ ( ptr u8 n -- )
+$490 constant RESOLUTION-TOP-OFF         \ ( ptr u8 n [ ptr u8 n -- ] -- )
 $498 constant RESOLUTION-NS-INSTALL-OFF  \ ( [ ptr u8 n -- ] -- )
 $4A0 constant RESOLUTION-NS-DEFAULT-OFF  \ ( -- )
 CHECKER-OWNER-EXT:UNIT-SYM-OFF constant UNIT-SYM-OFF \ ( plan pkg$ vis tail$ -- bool )

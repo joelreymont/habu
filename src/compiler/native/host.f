@@ -87,15 +87,6 @@ CAST: AS-INVALIDATE ( n -- [ n n -- ] )
 CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM
 
-0 CWORK-VARIABLE WORK-N n
-DYNAMIC-BUFFER WORK n
-DYNAMIC-BUFFER SEEN n
-DYNAMIC-BUFFER PARENT n
-DYNAMIC-BUFFER VIA n
-
-0 CWORK-VARIABLE HOST-REQUIRED n
-0 CWORK-VARIABLE EXECUTION RTARGET:execution-platform
-
 : ROW ( n -- n )
    {: id:n :}
    id 1 < id IMPL-N @ > or if E-ROW throw then
@@ -122,11 +113,6 @@ DYNAMIC-BUFFER VIA n
    count EDGE-KIND-RESERVE
    count EDGE-LOC-RESERVE ;
 
-: RESERVE-WALK ( -- )
-   IMPL-N @ 1+ dup SEEN-RESERVE PARENT-RESERVE
-   IMPL-N @ 1+ VIA-RESERVE
-   EDGE-N @ 1+ WORK-RESERVE ;
-
 : REASON$ ( n -- ptr u8 n )
    {: reason:n :}
    reason CAST = if s" source cast" exit then
@@ -144,78 +130,11 @@ DYNAMIC-BUFFER VIA n
    s" host construction: " type reason REASON$ type
    s"  body offset " type loc . cr ;
 
-: PATH ( n -- )
-   {: id:n :}
-   id
-   begin dup 0<> while
-      dup REPORT-ENTRY
-      dup VIA @ dup 0<> if
-         1- {: edge:n :}
-         s"  call site " type edge EDGE-SITE @ .
-         s"  source offset " type edge EDGE-LOC @ .
-      else drop then
-      cr
-      PARENT @
-   repeat drop ;
-
 : REFUSE ( n n n -- )
    {: id:n reason:n loc:n :}
    reason loc REPORT-REASON
    id 0<> if id REPORT-ENTRY cr then
    E-UNSAFE throw ;
-
-\ Only closure checks have initialized traversal parents and call sites.
-: WALK-REFUSE ( n n n -- )
-   {: id:n reason:n loc:n :}
-   reason loc REPORT-REASON
-   id PATH
-   E-UNSAFE throw ;
-
-: CHECK-IMPL ( n CTARGET:contract -- )
-   {: id:n execution:CTARGET:contract :}
-   id ROW {: row:n :}
-   row IMPL-LIVE @ 0= if id UNKNOWN 0 WALK-REFUSE then
-   row IMPL-CONTRACT @ execution CTARGET:SAME? 0= if id UNKNOWN 0 WALK-REFUSE then
-   row IMPL-TYPE-FIRST @ 0< if id UNKNOWN 0 WALK-REFUSE then
-   row IMPL-REASON @ {: reason:n :}
-   reason SAFE <> if id reason row IMPL-LOC @ WALK-REFUSE then ;
-
-: PUSH ( n -- )
-   {: id:n :}
-   id 0= if E-ROW throw then
-   id ROW drop
-   id WORK-N @ WORK !
-   1 WORK-N +! ;
-
-: POP ( -- n )
-   -1 WORK-N +!
-   WORK-N @ WORK @ ;
-
-: FOLLOW ( n n -- )
-   {: from:n edge:n :}
-   edge EDGE-TO @ {: to:n :}
-   to 1 < to IMPL-N @ > or if from UNKNOWN edge EDGE-LOC @ WALK-REFUSE then
-   to SEEN @ 0<> if exit then
-   from to PARENT !
-   edge 1+ to VIA !
-   to PUSH ;
-
-: CLOSURE ( n CTARGET:contract -- )
-   {: root:n execution:CTARGET:contract :}
-   RESERVE-WALK
-   IMPL-N @ 1+ 0 ?do 0 i SEEN ! 0 i PARENT ! 0 i VIA ! loop
-   0 WORK-N !
-   root PUSH
-   begin WORK-N @ 0<> while
-      POP {: id:n :}
-      id SEEN @ 0= if
-         1 id SEEN !
-         id execution CHECK-IMPL
-         id ROW {: row:n :}
-         row IMPL-FIRST @ row IMPL-EDGES @ +
-         row IMPL-FIRST @ ?do id i FOLLOW loop
-      then
-   repeat ;
 
 public
 
@@ -498,18 +417,6 @@ private
    then
    y first IMPL-TYPES x IMPL-IN @ x IMPL-OUT @ MATCH-ROW? ;
 
-: ASSOCIATED-ID ( n -- n )
-   {: entry:n :}
-   ASSOC-N @
-   begin dup 0 > while
-      dup 1- {: row:n :}
-      row ASSOC-LIVE @ 0<> row ASSOC-ENTRY @ entry = and if
-         drop row ASSOC-IMPL @ exit
-      then
-      1-
-   repeat drop
-   entry ID-OF ;
-
 \ A host owner compares its local producer row with the active target owner's
 \ live row. The current owner supplies the full emitted extent for retirement.
 : TARGET-LEN? ( n n -- n bool )
@@ -597,69 +504,44 @@ private
    count EDGE-N !
    row IMPL-EDGES @ 1+ row IMPL-EDGES ! ;
 
+\ Each word the source runs passes its record here before its entry is chosen.
+defer RUN-OBSERVE ( ptr n -- )
+: NO-RUN-OBSERVE ( ptr n -- ) drop ;
+: DEFAULT-RUNS ( -- ) ['] NO-RUN-OBSERVE is RUN-OBSERVE ;
+DEFAULT-RUNS
+0 CWORK-VARIABLE PRIOR-SELECT n
+
 public
 
-\ The occurrence resolves before reading its record, including on alias and
-\ retired-name handles. Selection never asks the current spelling or target OS.
-: SELECT-ENTRY ( n n RTARGET:execution-platform -- n )
-   {: slot:n occurrence:n platform:RTARGET:execution-platform :}
-   data-base NATIVE-OBS-CELLS:HOST-INVALIDATE + @ 0= if
-      0 UNKNOWN 0 REFUSE
-   then
-   slot occurrence DEF-OCC:RESOLVE {: rec:ptr :}
-   rec XREF-START {: entry:n :}
-   entry ASSOCIATED-ID {: id:n :}
-   id 0= if 0 UNKNOWN 0 REFUSE then
-   id ROW IMPL-IN @ 0<> if id UNKNOWN 0 REFUSE then
-   platform RTARGET:EXECUTION-TARGET RTARGET:CORE
-   MATCH RTARGET:core-result
-      supported OF id swap CLOSURE ENDOF
-      unsupported OF id UNKNOWN 0 REFUSE ENDOF
-   ;MATCH
-   id ROW IMPL-ENTRY @ ;
-
-: REQUIRED? ( -- bool ) HOST-REQUIRED @ 0<> ;
-
-: SELECT-REC ( ptr n -- n )
+\ A word the source runs at top level, by an immediate or under a top-level
+\ tick. A compiler read of a fixed value selects its record without running it.
+: RUN-REC ( ptr n -- n )
    {: rec:ptr :}
-   REQUIRED? 0= if rec XREF-START exit then
-   rec DEF-OCC:SELECT EXECUTION @ SELECT-ENTRY ;
+   rec RUN-OBSERVE
+   rec XREF-START ;
 
-: ADMIT-ENTRY ( n -- n )
-   {: entry:n :}
-   REQUIRED? 0= if entry exit then
-   entry ID-OF {: id:n :}
-   id 0= if 0 UNKNOWN 0 REFUSE then
-   id ROW IMPL-IN @ 0<> if id UNKNOWN 0 REFUSE then
-   EXECUTION @ RTARGET:EXECUTION-TARGET RTARGET:CORE
-   MATCH RTARGET:core-result
-      supported OF id swap CLOSURE ENDOF
-      unsupported OF id UNKNOWN 0 REFUSE ENDOF
-   ;MATCH
-   entry ;
-
+\ The engine's selection callback: an already-bound code entry runs as it is.
 : SELECT-CALL ( ptr n n -- n )
    {: rec:ptr entry:n :}
-   rec 0= if entry ADMIT-ENTRY exit then
-   rec SELECT-REC ;
+   rec 0= if entry exit then
+   rec RUN-REC ;
 
-: WITH-REQUIRED ( RTARGET:execution-platform [ -- ] -- )
-   {: platform:RTARGET:execution-platform q :}
-   HOST-REQUIRED @ {: prior:n :}
-   EXECUTION @ {: previous:RTARGET:execution-platform :}
-   data-base NATIVE-HOST-CELLS:SELECT + @ {: callback:n :}
-   platform EXECUTION !
-   1 HOST-REQUIRED !
-   ['] SELECT-CALL data-base NATIVE-HOST-CELLS:SELECT + xt!
-   q catch {: rc:n :}
+\ observer sees every word the source runs, through the engine's selection
+\ cell, until UNOBSERVE-RUNS puts back the callback the cell held.
+: OBSERVE-RUNS ( [ ptr n -- ] -- )
+   is RUN-OBSERVE
+   data-base NATIVE-HOST-CELLS:SELECT + @ PRIOR-SELECT !
+   ['] SELECT-CALL data-base NATIVE-HOST-CELLS:SELECT + xt! ;
+
+: UNOBSERVE-RUNS ( -- )
+   PRIOR-SELECT @ {: callback:n :}
    callback 0<> if
       callback data-base NATIVE-HOST-CELLS:SELECT + xt!
    else
       0 data-base NATIVE-HOST-CELLS:SELECT + !
    then
-   previous EXECUTION !
-   prior HOST-REQUIRED !
-   rc 0<> if rc throw then ;
+   0 PRIOR-SELECT !
+   DEFAULT-RUNS ;
 
 ;package
 

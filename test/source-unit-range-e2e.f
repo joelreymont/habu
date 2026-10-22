@@ -88,6 +88,17 @@ private
    then
    path pathu root rootu SOURCE-ROOT:READ-OS ;
 
+\ A top-level resolution row on the open package's private leg that holds a
+\ record.
+: PRIVATE-LEG ( ptr u8 n -- )
+   drop {: row:ptr :}
+   row CHECKER-OWNER-ABI:RES-ROLE cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = if
+      row CHECKER-OWNER-ABI:RES-RECORD cells + CELL-VIEW @ 0< 0= if
+         -1 PRIVATE-HIT !
+      then
+   then ;
+
 : BEFORE ( n n n n ptr u8 n -- n bool ) {: unit:n op:n rec:n entry:n spelling:ptr spelling-u:n :}
    op rec entry SOURCE-UNIT:LOADER-KIND {: kind:n :}
    unit 20 = if
@@ -99,16 +110,7 @@ private
    unit 19 = if
       op SOURCE-EXEC:WORD = if
          spelling spelling-u s" HELPER" CORE-STR= if
-            spelling spelling-u CHECKER-RESOLUTION:TOP
-            CHECKER-RESOLUTION:COUNT 0 ?do
-               i CHECKER-RESOLUTION:ROW {: row:ptr size:n :}
-               row CHECKER-OWNER-ABI:RES-ROLE cells + CELL-VIEW @
-                  CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = if
-                  row CHECKER-OWNER-ABI:RES-RECORD cells + CELL-VIEW @ 0< 0= if
-                     -1 PRIVATE-HIT !
-                  then
-               then
-            loop
+            spelling spelling-u ['] PRIVATE-LEG CHECKER-RESOLUTION:TOP
          then
       then
    then

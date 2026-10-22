@@ -5970,17 +5970,18 @@ variable LCODEINV
    11 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL, ;
 
-\ The required construction scope installs a distinct callback. x5 is the
+\ A session that observes what the source runs installs a callback. x5 is the
 \ record selected by LFIND (zero for an already-bound code entry); x11 is the
-\ entry actually about to run. The callback decides the full closure first.
+\ entry actually about to run, and the callback returns the entry to run in
+\ x11. x5 and x13 survive it: every site reads them after the call.
 : C-HOST-SELECT ( -- )
    LBL {: ordinary:label :}
    9 DATA NATIVE-HOST-CELLS:SELECT LDR,  9 ordinary CBZ,
-   SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,
+   SP SP 32 SUBI,  30 SP 0 STR,  13 SP 8 STR,  5 SP 16 STR,
    5 G-PUSH  11 G-PUSH
    9 BLR,
    11 G-POP
-   13 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   5 SP 16 LDR,  13 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
    ordinary LBL, ;
 
 \ LTOPHOOK: shared top-row event trampoline, BL-called from the guarded event
@@ -9838,7 +9839,8 @@ public
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
    SP SP 16 SUBI,  5 SP 0 STR,                           \ keep LFIND's record while the guard uses x5 for protected entries
    C-SCOPE-ENTRY-GUARD
-   5 SP 0 LDR,  SP SP 16 ADDI,
+   5 SP 0 LDR,  C-HOST-SELECT                            \ a top-level tick is a run fact, as a word the loop runs
+   SP SP 16 ADDI,
    C-TRUSTED-TICK?
    17 LTRUSTTICK LABEL@ CBNZ,
    \ A source range observes the tick's actual target before the xt is pushed.

@@ -68,6 +68,9 @@ public
    s" NHOST:TAKEN-TYPE@" true BIND-ONE
    s" NHOST:PREPARE-IMPORT" true BIND-ONE
    s" NHOST:ABANDON-TAKEN" true BIND-ONE
+   s" NHOST:OBSERVE-RUNS" true BIND-ONE
+   s" NHOST:UNOBSERVE-RUNS" true BIND-ONE
+   s" CHECKER-OWNER:RESOLUTION-TOP" true BIND-ONE
    s" NPUB:IMPORT-PENDING" true BIND-ONE
    s" NCOMP:DEFINITION-CACHEABLE?" true BIND-ONE
    s" NCOMP:DEFINITION-HISTORY" true BIND-ONE
@@ -85,6 +88,12 @@ public
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;
+
+\ The run observer needs the kernel's hook and the checker owner's top-level
+\ resolution legs (NUNIT-DEP OBSERVE-RUN); a kernel without either has none.
+: RUN-OBSERVER? ( -- bool )
+   s" NHOST:OBSERVE-RUNS" BOUND-XT 0<>
+   s" CHECKER-OWNER:RESOLUTION-TOP" BOUND-XT 0<> and ;
 
 \ A unit object is written under NUNIT-FILE:ARCH-AARCH64 and carries the code
 \ and address sites of an AArch64 compiler. Check both the retained engine and
