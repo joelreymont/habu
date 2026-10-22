@@ -24,14 +24,27 @@ create LIB-KEY KEY-LEN allot
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
-\ The diagnostic builder session: app.f loads through NDEF-CACHE:LOAD with the
-\ cache diagnostics on, so every file frame and object prints its line on stderr.
+: LOAD+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   S\" s\" " IN+ name nameu AT IN+ S\" \" s\" repl\" NDEF-CACHE:LOAD\n" IN+ ;
+
+\ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
+\ the cache diagnostics on, so every file frame and object prints its line on
+\ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
+\ carries to the engine checker's own kept row (src/core/checker.f
+\ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
+\ keeps its declared row as a recovery fact; broken.f binds BROKEN under the
+\ same run.
 : PROBE ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    0 INPUT-U !
-   S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\ns\" " IN+
-   s" app.f" AT IN+
-   S\" \" s\" repl\" NDEF-CACHE:LOAD\ns\" use=\" type FRAME-USE . cr\n" IN+
+   S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+
+   s" app.f" LOAD+
+   S\" s\" use=\" type FRAME-USE . cr\n" IN+
+   s" diag.f" LOAD+
+   S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
+   s" broken.f" LOAD+
+   S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
@@ -121,6 +134,8 @@ public
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
    s" " s" dup +" LIB-SOURCE
+   s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
+   s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
    s" app.f" S\" require base.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n" PUT
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
@@ -129,6 +144,13 @@ public
    s" probe-err.log" ERR$ PUT
    rc SUCCESS
    OUT$ S\" use=67\n" CONTAINS? TTRUE
+   OUT$ s" refused=1" CONTAINS? TTRUE
+   s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
+   s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0" ENDS-WITH? TTRUE
+   s" broken.f binds BROKEN's recovery record and stays ordered" T-LABEL
+   s" broken.f" FRAME$
+      s"  ordered=1 binding=0 value=0 reason=binding-contract-unknown word=BROKEN"
+      ENDS-WITH? TTRUE
    s" app.f consumes ONE, TWICE, TEN and SEVEN once each, and SEVEN's value" T-LABEL
    s" app.f" FRAME$ s"  ordered=0 binding=4 value=1" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
