@@ -1409,7 +1409,7 @@ variable SZA-I
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
-: BNUNITRECLAIMCELL ( -- )
+: BNUNITCUTCELL ( -- )
    9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
 : BNATIVEORIGINCELL ( -- )
@@ -2940,8 +2940,21 @@ public
    done LBL, ;
 
 : HOST-INVALIDATE, ( -- )
-   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL,
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE INVALIDATE-CELL, ;
+   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
+
+\ x9 is the dictionary count NDICT is about to drop to. The capture owner
+\ ( n -- ) retires every captured definition at or past it. It runs inside
+\ the count change every lowering shares, so it preserves x0-x17.
+: CAPTURE-CUT, ( -- )
+   LBL {: done:label :}
+   12 DATA NATIVE-OBS-EXT:CAPTURE-INVALIDATE LDR,  12 done CBZ,
+   SP SP 160 SUBI,
+   18 0 ?do i SP i cells STR, loop
+   30 SP 144 STR,
+   9 G-PUSH  12 BLR,
+   18 0 ?do i SP i cells LDR, loop
+   30 SP 144 LDR,  SP SP 160 ADDI,
+   done LBL, ;
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
@@ -4792,7 +4805,7 @@ package ENGINE-EMIT
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
-   s" native-unit-reclaim-cell" ['] BNUNITRECLAIMCELL FPRIM-L
+   s" native-unit-cut-cell" ['] BNUNITCUTCELL FPRIM-L
    s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
@@ -5695,6 +5708,7 @@ variable LHIDXBUILD
          done B,
       lower LBL,
          PROF-ABI:LPROFTRIM LABEL@ BL,
+         CAPTURE-CUT,
          11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,

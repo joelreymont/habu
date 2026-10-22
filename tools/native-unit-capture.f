@@ -62,6 +62,7 @@ public
    s" NART:FUNCTION-OFFSET@" false BIND-ONE
    s" NART:CALL-IMPL@" false BIND-ONE
    s" NART:CALL-LOC@" false BIND-ONE
+   s" native-unit-cut-cell" true BIND-ONE
    s" NHOST:TAKEN-FUNCTIONS" true BIND-ONE
    s" NHOST:TAKEN-FACTS" true BIND-ONE
    s" NHOST:TAKEN-TYPE@" true BIND-ONE

@@ -101,7 +101,7 @@ variable CON-RESET-XT
 variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
-PTR-VARIABLE RECLAIM-CELL
+PTR-VARIABLE CUT-CELL
 TYPED-VARIABLE TARGET-READ [ ptr u8 n ptr u8 n -- ptr u8 n ]
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -132,8 +132,8 @@ CAST: ROLE-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
-CAST: RECLAIM-CELL-XT ( n -- [ -- ptr u8 ] )
-CAST: RECLAIM-SLOT ( ptr u8 -- ptr [ n n -- ] )
+CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
+CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -756,28 +756,23 @@ variable PENDING-KEY-U
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
 
-\ The kernel's capture reclaim notice ( first end -- ): the code in
-\ [first, end) is about to be rewritten. A rollback gives back everything from
-\ its floor to the free slot, which retires the definitions compiled there; a
-\ patch inside live code retires none.
-: CODE-RECLAIMED ( n n -- )
-   {: first:n end:n :}
-   end cp@ = if first NUNIT-OBJECT:FILE-CUT then ;
-
-\ The open file objects follow every rollback through the running kernel's
-\ one capture reclaim cell, held for the session.
-: BIND-RECLAIM ( -- )
-   s" native-unit-reclaim-cell" TARGET-XT RECLAIM-CELL-XT execute
-      {: cell:ptr :}
+\ The open file objects follow every dictionary cut through the running
+\ kernel's one capture cut cell, held for the session. A kernel without it
+\ leaves the cell unbound, and every file object refuses (NUNIT-OBJECT
+\ FILE-BEGIN).
+: BIND-CUT ( -- )
+   s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
+      dup 0= if drop exit then
+   CUT-CELL-XT execute {: cell:ptr :}
    cell CELL-VIEW @ 0<> if BAD then
-   ['] CODE-RECLAIMED cell RECLAIM-SLOT xt!
-   cell RECLAIM-CELL ! ;
+   ['] NUNIT-OBJECT:FILE-CUT cell CUT-SLOT xt!
+   cell CUT-CELL ! ;
 
-: UNBIND-RECLAIM ( -- )
-   RECLAIM-CELL @ {: cell:ptr :}
+: UNBIND-CUT ( -- )
+   CUT-CELL @ {: cell:ptr :}
    cell NULL-PTR = if exit then
    0 cell CELL-VIEW !
-   NULL-PTR RECLAIM-CELL ! ;
+   NULL-PTR CUT-CELL ! ;
 
 : BIND-ORIGIN-RECORD ( -- )
    ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
@@ -1106,7 +1101,7 @@ variable PENDING-KEY-U
    PIN-ORIGIN-GETTER
    BIND-DISPATCH
    BIND-OPAQUE
-   BIND-RECLAIM
+   BIND-CUT
    \ The engine build rewinds the dictionary before loading its prefix. Its
    \ namespace publications must already reach the retained source owner.
    BIND-OWNER
@@ -1135,7 +1130,7 @@ variable PENDING-KEY-U
    ['] ORDINARY-UNIT HOST-PRIOR-UNIT !
    NUNIT-DEP:RESET NUNIT-DEP:UNBIND
    NUNIT-ORIGIN:RESET
-   UNBIND-RECLAIM
+   UNBIND-CUT
    NUNIT-OBJECT:DEFINITIONS-CLOSE
    NUNIT-OBJECT:CLOSE
    CLEAR-NOMINALS

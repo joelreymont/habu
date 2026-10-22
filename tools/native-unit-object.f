@@ -52,9 +52,9 @@ DYNAMIC-BUFFER FILE-INDEX u8
 DYNAMIC-BUFFER FILE-INPUTS u8
 DYNAMIC-BUFFER FILE-WHY u8
 DYNAMIC-BUFFER FILE-FRAMES n
-\ Where each index row's routine starts in this process's code arena, so a
-\ rollback can find the rows it retired. Never written to an object.
-DYNAMIC-BUFFER FILE-STARTS n
+\ Each index row's dictionary ordinal, so a dictionary cut can find the rows
+\ it retired. Never written to an object.
+DYNAMIC-BUFFER FILE-ORDS n
 variable DEFS-U
 variable INDEX-U
 variable INPUTS-U
@@ -119,7 +119,12 @@ public
    INDEX-U @ FO-INDEX FO !
    INPUTS-U @ FO-INPUTS FO !
    WHY-U @ FO-WHY FO !
-   ndict@ FO-FIRST FO ! ;
+   ndict@ FO-FIRST FO !
+   \ A kernel without the cut notice lowers the count unseen, and a row it
+   \ retired would stay in the object.
+   s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= if
+      s" cut-notice-absent" WHY+
+   then ;
 
 : FILE-END ( -- )
    FO-DEFS FO @ DEFS-U !
@@ -151,7 +156,7 @@ public
    0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
-   FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-STARTS-RELEASE
+   FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
    NUNIT-FILE:CLOSE
    NFILE-SCOPE:SCOPE-CLOSE
    NFILE-INPUTS:CLOSE
@@ -902,8 +907,8 @@ public
    bytes size NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu
       NUNIT-FILE:READ-VIEW
    INDEX-U @ INDEX-BYTES / {: row:n :}
-   row 1+ FILE-STARTS-RESERVE
-   ord XREF-REC XREF-START row FILE-STARTS !
+   row 1+ FILE-ORDS-RESERVE
+   ord row FILE-ORDS !
    ord FO-FIRST FO @ - dup 0 < if BAD then INDEX-N
    17 0 ?do
       i NUNIT-FILE:SECTION$ {: a:ptr u:n :}
@@ -941,27 +946,29 @@ private
 
 public
 
-\ The code from floor up is given back: a rollback retired every definition
-\ whose routine starts there, and their dictionary slots go to the next
-\ definitions. Rows follow routine order across the open files, so the
-\ retired ones are a suffix; drop it, and pull back each frame that began
-\ inside it.
+\ The kernel's capture cut notice: the dictionary count drops to kept, which
+\ retires every definition at or past it and gives its slot to the next
+\ definition. Rows follow ordinal order across the open files, so the retired
+\ ones are a suffix; drop it, and pull back each frame's marks the cut
+\ crosses, its first ordinal included.
 : FILE-CUT ( n -- )
-   {: floor:n :}
+   {: kept:n :}
    INDEX-U @ INDEX-BYTES / {: rows:n :}
    0 begin
-      dup rows < if dup FILE-STARTS @ floor < else false then
+      dup rows < if dup FILE-ORDS @ kept < else false then
    while 1+ repeat {: cut:n :}
-   cut rows = if exit then
-   0 cut 0 ?do
-      {: off:n :}
-      i INDEX-BYTES * FILE-INDEX DEFS-U @ off - ROW-SIZE off +
-   loop {: off:n :}
-   cut INDEX-BYTES * INDEX-U !
-   off DEFS-U !
+   cut rows < if
+      0 cut 0 ?do
+         {: off:n :}
+         i INDEX-BYTES * FILE-INDEX DEFS-U @ off - ROW-SIZE off +
+      loop {: off:n :}
+      cut INDEX-BYTES * INDEX-U !
+      off DEFS-U !
+   then
    FO-DEPTH @ 0 ?do
       i FO-INDEX FRAME @ INDEX-U @ min i FO-INDEX FRAME !
       i FO-DEFS FRAME @ DEFS-U @ min i FO-DEFS FRAME !
+      i FO-FIRST FRAME @ kept min i FO-FIRST FRAME !
    loop ;
 
 private

@@ -2820,8 +2820,7 @@ variable SITE-TRAP-CELL
    done X64CODE:LBL, ;
 
 : HOST-INVALIDATE, ( -- )
-   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL,
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE INVALIDATE-CELL, ;
+   NATIVE-OBS-CELLS:HOST-INVALIDATE INVALIDATE-CELL, ;
 
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
@@ -2896,6 +2895,26 @@ variable SITE-TRAP-CELL
    RSI cp ASM-SINK ENC-MOV-RR  X64PROV:UNKNOWN-RANGE,
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ RAX is the dictionary count NDICT is about to drop to. The capture owner
+\ ( n -- ) retires every captured definition at or past it. It runs inside
+\ the count change every lowering shares, so it preserves every caller
+\ scratch register.
+: CAPTURE-CUT, ( -- )
+   X64CODE:LBL {: done:label :}
+   RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   RSI ASM-SINK ENC-PUSH  RDI ASM-SINK ENC-PUSH
+   R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
+   R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
+   RCX NATIVE-OBS-EXT:CAPTURE-INVALIDATE CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX PUSH,
+   RCX ASM-SINK ENC-CALL-REG
+   done X64CODE:LBL,
+   R11 ASM-SINK ENC-POP  R10 ASM-SINK ENC-POP
+   R9 ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
+   RDI ASM-SINK ENC-POP  RSI ASM-SINK ENC-POP
+   RDX ASM-SINK ENC-POP  RCX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP ;
+
 \ RAX is the new published count. Keep all caller scratch registers intact.
 \ The first mapped cell is the last number issued; slot cells follow it.
 : OCC-COUNT, ( -- )
@@ -2922,6 +2941,7 @@ variable SITE-TRAP-CELL
       R8 RDX MEM-AT ASM-SINK ENC-MOV-MR
       done JMP,
    lower X64CODE:LBL,
+      CAPTURE-CUT,
       RCX RAX ASM-SINK ENC-MOV-RR
       R11 ZERO-REG,
       R8 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT IMM64,
@@ -3734,7 +3754,7 @@ private
    s" cp@" [: CP-REG PUSH, ;] PRIM
    s" dbase@" [: DBASE-REG PUSH, ;] PRIM
    s" data-base" [: DATA-REG PUSH, ;] PRIM
-   s" native-unit-reclaim-cell" [:
+   s" native-unit-cut-cell" [:
       RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
       RAX PUSH, ;] PRIM
    \ This kernel has no origin record. The optional ABI reports absence.

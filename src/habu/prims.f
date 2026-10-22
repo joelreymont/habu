@@ -971,7 +971,7 @@ EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the 
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ Resolve the capture observer slot from the running kernel. Older retained
 \ engines lack this name and explicit export declines before arming a capture.
-EPRIM: native-unit-reclaim-cell PE-PTR-A PE-OUT EPRIM;
+EPRIM: native-unit-cut-cell PE-PTR-A PE-OUT EPRIM;
 ETRUSTED-ONLY!
 \ A null result means the running kernel has no origin record. Source reaches
 \ the three optional cells through this byte pointer and the running engine's

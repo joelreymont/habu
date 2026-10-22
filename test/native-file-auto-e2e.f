@@ -591,6 +591,27 @@ variable DIAG-START
    DIAG-LINES 0 T=
    0 DIAG? ! ;
 
+\ HIDE-DEFS-FROM lowers the dictionary count with no code reclaim, so CUT-NEW
+\ takes CUT-OLD's ordinal. The file's object drops CUT-OLD at the cut; a row
+\ left behind would repeat the ordinal and the object would not read back.
+: CUT-CASE ( -- )
+   s" a dictionary cut drops the hidden definition from the file object" T-LABEL
+   1 DIAG? !
+   s" cut-cache" AT MAKE-DIR
+   s" app.f"
+      S\" : CUT-OLD ( -- n ) 5 ;\ns\" CUT-OLD\" HIDE-DEFS-FROM\n: CUT-NEW ( -- n ) 6 ;\n: MAIN ( -- ) CUT-NEW . ;\n" PUT
+   s" cut-cache" AT RUN-SAVED-IN SUCCESS
+   s" cut-cold.err" AT ERR$ WRITE-ALL
+   ERR$ s" native-file: refused" CONTAINS? TFALSE
+   ERR$ s"  defs=2 " CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
+   s" cut-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   s" cut-warm.err" AT ERR$ WRITE-ALL
+   ERR$ s" native-file: refused" CONTAINS? TFALSE
+   ERR$ s"  defs=2 " CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
+   0 DIAG? ! ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -678,6 +699,12 @@ public
          s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
+      0 SCRIPT-ARGV$ s" cut" STR= if
+         CUT-CASE
+         T-REPORT
+         s" native file auto artifacts: " type ROOT$ type cr
+         exit
+      then
       0 SCRIPT-ARGV$ s" hook" STR= if
          HOOK-CASE
          T-REPORT
@@ -698,6 +725,7 @@ public
    BODY-READER-CASE
    HOOK-CASE
    GENERATED-CASE
+   CUT-CASE
    T-REPORT
    s" native file auto artifacts: " type ROOT$ type cr ;
 ;package
