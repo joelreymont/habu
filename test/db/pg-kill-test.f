@@ -191,11 +191,13 @@ PROC-NO-FD PIPE-WR !
    true ;
 
 \ The second field of the segment line; -1 when it holds no number there.
+\ Postgres pads the line with blanks before the first field as well as
+\ between the fields (`    40243        46`).
 : SHMID ( -- n )
-   0 begin dup SHM-U @ < if SHM over + c@ STR-SPACE <> else false then while 1+ repeat
-   begin dup SHM-U @ < if SHM over + c@ STR-SPACE = else false then while 1+ repeat
+   SHM SHM-U @ LTRIM {: a:ptr u:n :}
+   0 begin dup u < if a over + c@ STR-SPACE <> else false then while 1+ repeat
    {: at:n :}
-   SHM at + SHM-U @ at - STR>NUMBER? MATCH option
+   a at + u at - LTRIM STR>NUMBER? MATCH option
       none OF -1 ENDOF
       some OF ENDOF
    ;MATCH ;
