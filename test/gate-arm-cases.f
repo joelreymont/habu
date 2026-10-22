@@ -50,6 +50,12 @@ SUITE aot-seed-metadata
    test/aot-seed-metadata.f
 ;SUITE
 
+\ Stages the ARM seed emitter's signature payload (habu2.f AOT-SIG-PAYLOAD)
+\ through the ARM AOT writer; x86-64 images have no seed pass and no payload.
+SUITE aot-effect-pool
+   test/aot-effect-pool.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop

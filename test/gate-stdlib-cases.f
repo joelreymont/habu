@@ -1719,10 +1719,6 @@ SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
 ;SUITE
 
-SUITE aot-effect-pool
-   test/aot-effect-pool.f
-;SUITE
-
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
