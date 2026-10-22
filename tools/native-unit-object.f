@@ -651,7 +651,7 @@ variable DEF-HELD-SIZE
 0 CWORK-VARIABLE DEF-IN-KEY ptr u8
 0 CWORK-VARIABLE DEF-IN-KEY-U n
 : DEF-PREPARE-BODY ( -- )
-   \ NDEF-CACHE keeps its container stable through install and discard.
+   \ NDEF-CACHE keeps its entry buffer stable through install and discard.
    DEF-IN-BYTES @ DEF-IN-SIZE @
       NUNIT-FILE:ARCH-AARCH64 s" DEFINITION"
       DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-VIEW

@@ -16,7 +16,7 @@ package NATIVE-FILE-AUTO-TEST
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
 create TRACE CAP allot
-variable HISTORY-BYTES
+variable HISTORY-N
 DYNAMIC-BUFFER LITERAL-IMAGE u8
 DYNAMIC-BUFFER LITERAL-COLD u8
 variable LITERAL-IMAGE-U
@@ -122,14 +122,16 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 : HISTORY-FILE ( ptr u8 n -- )
-   2dup s" .hbd" ENDS-WITH? if
-      FILE-SIZE HISTORY-BYTES +!
-   else 2drop then ;
+   {: a:ptr u:n :}
+   a u s" .hbd" ENDS-WITH? a u s" /hb-def-" CONTAINS? and if
+      1 HISTORY-N +!
+   then ;
 
-: HISTORY-SIZE ( -- n )
-   0 HISTORY-BYTES !
+\ The definition entries in the history cache: one hb-def-<key>.hbd each.
+: HISTORY-ENTRIES ( -- n )
+   0 HISTORY-N !
    s" history-cache" AT ['] HISTORY-FILE WALK-FILES
-   HISTORY-BYTES @ ;
+   HISTORY-N @ ;
 
 : HISTORY-SOURCE ( n -- )
    {: value:n :}
@@ -142,25 +144,28 @@ variable DIAG-START
    s" app.f" INPUT INPUT-U @ PUT ;
 
 : HISTORY-CASE ( -- )
-   s" successful edits bound definition history and failure preserves it" T-LABEL
+   s" an edit adds entries only for what it compiled and failure preserves them" T-LABEL
    1 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS
    RUN-APP SUCCESS OUT$ s" 41" CONTAINS? TTRUE
-   HISTORY-SIZE {: initial:n :}
+   HISTORY-ENTRIES {: initial:n :}
    initial 0 > TTRUE
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   DIAG-COMPILED {: compiled:n :}
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-SIZE {: stable:n :}
-   stable initial <= TTRUE
+   HISTORY-ENTRIES {: stable:n :}
+   stable initial - {: added:n :}
+   added 0 > TTRUE
+   added compiled <= TTRUE
    s" app.f" S\" : HIST-KEEP ( -- n ) 40 ;\n: MAIN ( -- ) HIST-KEEP MISSING . ;\n" PUT
    s" history-cache" AT RUN-SAVED-IN 70 T=
-   HISTORY-SIZE stable T=
+   HISTORY-ENTRIES stable T=
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
    OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-SIZE stable T= ;
+   HISTORY-ENTRIES stable T= ;
 
 : TRACE$ ( -- ptr u8 n )
    s" trace" AT FILE-SIZE {: size:n :}
@@ -545,8 +550,10 @@ variable INCOMPLETE-SAVED
    s" body-incomplete-cache" AT ['] INCOMPLETE-FILE WALK-FILES
    INCOMPLETE-SAVED @ 0<> TTRUE
    RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
+   \ With the reader dropped the body path stays closed; definition keys hit.
    s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   BODY-SKIPPED
+   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
+   REUSED
    s" app.f"
       S\" s\" moved\" 2drop\n: MIDDLE ( -- n ) 333 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
       PUT

@@ -32,7 +32,8 @@ exact source tree before using it as a release candidate.
 An older native donor may lack `ENV-INPUT`. The engine build admits that only
 in its retained-host source phase; the first target rebind requires the hook
 from the replacement `env-base.f`. Before that rebind, the definition cache's
-environment reads select its cache directory (`HABU_BUILD_CACHE`) or diagnostics
+environment reads select its cache directory (`HABU_BUILD_CACHE`, else
+`BUILD-CACHE:ROOT$`, resolved when the session opens) or diagnostics
 (`HABU_NATIVE_CACHE_DIAG`), without selecting target source or target behavior.
 The loader reads its established source roots directly. Target class queries
 in `internal-mark.f` run from `native-runtime.f` after that rebind, so they are
@@ -98,17 +99,26 @@ older native host cannot first save the new builder support. For
 the same compiler preload above, then use the public command on that host:
 
 ```sh
-HABU_WHITEBOX_IMAGE=1 HB_TMP="$TMP" HABU_BUILD_CACHE="$TMP/cache" \
+HABU_WHITEBOX_IMAGE=1 HB_TMP="$TMP" \
   HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" \
   "$HOST" --load "$TMP/native-preload.f" tools/native-build.f \
   -- "$TMP/hb-whitebox" whitebox
-HB_TMP="$TMP" HABU_BUILD_CACHE="$TMP/cache" \
+HB_TMP="$TMP" \
   "$TMP/hb-whitebox" --load tools/hb-build.f -- --engine -o "$OUT"
 ```
 
 The first command requests a whitebox host and enables its target load with
 `HABU_WHITEBOX_IMAGE=1`. Keep that variable unset for the second command, which
 builds the ordinary sealed product and its matching `.map`.
+
+These builds, like every build and gate run from the checkout, share its one
+persistent build cache: the default `BUILD-CACHE:ROOT$`, or one
+`HABU_BUILD_CACHE` set the same for all of them. Each build there reuses the
+definition entries that earlier builds by the same checker and kernel stored:
+one checksummed entry per definition, dated by use and pruned by hb-build after
+a day. A refused entry prints `native-cache: entry refused <path>: <reason>`
+and is compiled again ([gate.md](gate.md)). Point `HABU_BUILD_CACHE` at a fresh
+directory only for a deliberate cold measurement.
 
 The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
 working ARM64 compiler with the x86-64 backend loaded to cross-build the

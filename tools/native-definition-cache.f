@@ -30,53 +30,45 @@ require tools/native-unit-object.f
 package NDEF-CACHE
 private
 
-8 constant MAGIC-U
-224 constant ROW-HEAD
-104 constant ROW-FILE-HASH
-136 constant ROW-CONTEXT
-168 constant ROW-NAME-AT
-176 constant ROW-BODY-AT
-184 constant ROW-RESUME-AT
-192 constant ROW-SPAN-HASH
 CHECKER-OWNER-ABI:PARSE-IMM-OFF constant PARSE-IMM-OFF
-32 constant INDEX-ROW-BYTES
-16 constant INDEX-USED-OFF
-24 constant INDEX-CONTEXT-OFF
-64 constant INDEX-CAP-BYTES
 $4B8 constant LIVE-FIXED-OFF
-FS-PATH-CAP 296 + constant FRAME-BYTES
-0 constant F-PATH-U
-8 constant F-BYTES
-16 constant F-CAP
-24 constant F-USED
-32 constant F-DIRTY
-40 constant F-SRC
-48 constant F-SRC-U
-56 constant F-ROOT
-64 constant F-ROOT-U
-72 constant F-Q
-80 constant F-INPUT
-88 constant F-INPUT-U
-96 constant F-PRIOR
-104 constant F-INDEX
-112 constant F-INDEX-CAP
-120 constant F-INDEX-N
-128 constant F-PATH
-FS-PATH-CAP 128 + constant F-FILE-HASH
-FS-PATH-CAP 160 + constant F-CONTEXT
-FS-PATH-CAP 192 + constant F-NAME-AT
-FS-PATH-CAP 200 + constant F-BODY-AT
-FS-PATH-CAP 208 + constant F-RESUME-AT
-FS-PATH-CAP 216 + constant F-STAGE-ORD
-FS-PATH-CAP 224 + constant F-STAGED
-FS-PATH-CAP 232 + constant F-SPAN-HASH
-FS-PATH-CAP 264 + constant F-READER-BYTES
-FS-PATH-CAP 272 + constant F-READER-U
-FS-PATH-CAP 280 + constant F-READER-CAP
-FS-PATH-CAP 288 + constant F-READER-VALID
+0 constant F-SRC
+8 constant F-SRC-U
+16 constant F-ROOT
+24 constant F-ROOT-U
+32 constant F-Q
+40 constant F-INPUT
+48 constant F-INPUT-U
+56 constant F-PRIOR
+64 constant F-CONTEXT
+96 constant F-NAME-AT
+104 constant F-BODY-AT
+112 constant F-RESUME-AT
+120 constant F-STAGE-ORD
+128 constant F-STAGED
+136 constant F-SPAN-HASH
+168 constant F-READER-BYTES
+176 constant F-READER-U
+184 constant F-READER-CAP
+192 constant F-READER-VALID
+200 constant FRAME-BYTES
+
+\ An object entry: magic | checksum over the bytes after it | producer (32)
+\ | the HBNUNIT2 definition object.
+48 constant ENTRY-HEAD
+\ A body pointer: magic | checksum | definition key (64 hex) | body-at and
+\ resume, each less name-at | span hash (32).
+128 constant POINTER-BYTES
+$cbf29ce484222325 constant FNV-BASIS
+$100000001b3 constant FNV-PRIME
 
 DYNAMIC-BUFFER FRAMES ptr u8
 DYNAMIC-BUFFER PENDING-KEY u8
+\ One entry or pointer read and one image written at a time: DISPATCH-BUSY
+\ serialises every lookup and store.
+DYNAMIC-BUFFER ENTRY u8
+DYNAMIC-BUFFER STORE-IMAGE u8
+create POINTER-PATH-BUF FS-PATH-CAP allot
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -120,10 +112,6 @@ variable HOST-UNIT-USE
 variable HOST-INPUT-USE
 variable HOST-ENV-USE
 variable HOST-ENV-RESET
-PTR-VARIABLE OPEN-PATH
-variable OPEN-PATH-U
-PTR-VARIABLE OPEN-ROOT
-variable OPEN-ROOT-U
 create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
 create SOURCE-RAW 32 allot
@@ -343,10 +331,6 @@ variable PENDING-KEY-U
    DEPTH @ 0= if BAD then DEPTH @ 1- FRAMES @ ;
 : F@ ( n -- n ) FRAME + CELL-VIEW @ ;
 : F! ( n n -- ) FRAME + CELL-VIEW ! ;
-: FPATH$ ( -- ptr u8 n ) FRAME F-PATH + F-PATH-U F@ ;
-: FB ( -- ptr u8 ) FRAME F-BYTES + 0 ptr-field @ ;
-: FB! ( ptr u8 -- ) FRAME F-BYTES + 0 ptr-field ! ;
-: FU ( -- n ) F-USED F@ ;
 : RB ( -- ptr u8 ) FRAME F-READER-BYTES + 0 ptr-field @ ;
 : RB! ( ptr u8 -- ) FRAME F-READER-BYTES + 0 ptr-field ! ;
 
@@ -415,11 +399,6 @@ variable PENDING-KEY-U
 : HASH-START ( ptr u8 n -- )
    HASH-CTX SHA256-BEGIN HASH-S ;
 
-: HASH-FILE ( ptr u8 n -- )
-   s" habu-definition-file-v1" HASH-START
-   HASH-S
-   HASH-CTX FRAME F-FILE-HASH + SHA256-END ;
-
 : HASH-SPAN ( ptr u8 n n n -- )
    {: source:ptr sourceu:n first:n resume:n :}
    first 0 < resume first < or resume sourceu > or if BAD then
@@ -465,269 +444,123 @@ variable PENDING-KEY-U
    HASH-CTX CONTEXT-RAW SHA256-END
    true ;
 
-\ One stable container per canonical source and target. Its name is unchanged
-\ when the source bytes change, so a later load can find surviving definitions.
-: CONTAINER-PATH ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n root:ptr rootu:n :}
-   s" habu-definitions-container-v3" HASH-START
-   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
-   path pathu HASH-S root rootu HASH-S
-   HASH-CTX HASH-RAW SHA256-END
-   s" hb-def-" drop NAME 7 BYTE-COPY
-   HASH-RAW NAME 7 + SHA256>HEX
-   s" .hbd" drop NAME 71 + 4 BYTE-COPY
-   ROOT$ NAME 75 PATH-BUF JOIN-PATH
-   PATH-BUF swap ;
-
-: FILE-FRESH ( -- )
-   8 MEM-ALLOC-BYTES drop FB!
-   8 F-CAP F! 8 F-USED F!
-   s" HBDEF004" drop FB 8 BYTE-COPY ;
-
-: FILE-DROP-BYTES ( -- )
-   FB dup NULL-PTR <> if
-      F-CAP F@ munmap 0<> if E-MEM-UNMAP throw then
-   else drop then
-   NULL-PTR FB! 0 F-CAP F! 0 F-USED F! ;
-
-: ROW-END ( n -- n bool )
-   {: at:n :}
-   FU at - ROW-HEAD < if 0 false exit then
-   FB at + 64 + LE:U64@ {: objectu:n :}
-   objectu 0 < objectu FU at ROW-HEAD + - > or if 0 false exit then
-   at ROW-HEAD + objectu + true ;
-
-: FILE-VALID? ( -- bool )
-   FU MAGIC-U < if false exit then
-   FB 8 s" HBDEF004" STR= 0= if false exit then
-   MAGIC-U begin dup FU < while
-      ROW-END 0= if drop false exit then
-   repeat FU = ;
-
-: INDEX-PTR ( -- ptr u8 )
-   FRAME F-INDEX + 0 ptr-field @ ;
-: INDEX-PTR! ( ptr u8 -- )
-   FRAME F-INDEX + 0 ptr-field ! ;
-: INDEX-CAP ( -- n ) F-INDEX-CAP F@ ;
-: INDEX-N ( -- n ) F-INDEX-N F@ ;
-: INDEX-ROW ( n -- ptr u8 )
-   INDEX-ROW-BYTES * INDEX-PTR + ;
-: INDEX-BUCKET ( n -- ptr u8 )
-   8 * INDEX-CAP INDEX-ROW-BYTES * + INDEX-PTR + ;
-: INDEX-CONTEXT-BUCKET ( n -- ptr u8 )
-   8 * INDEX-CAP INDEX-ROW-BYTES 16 + * + INDEX-PTR + ;
-
-: KEY-BUCKET ( ptr u8 -- n )
-   {: key:ptr :}
-   0 64 0 ?do 33 * key i + c@ + loop
-   INDEX-CAP 2 * 1- and ;
-
-: CONTEXT-BUCKET ( ptr u8 -- n )
-   {: context:ptr :}
-   0 32 0 ?do 33 * context i + c@ + loop
-   INDEX-CAP 2 * 1- and ;
-
-\ Context links retain reverse row order, including after a span is refreshed.
-: INDEX-CONTEXT+ ( ptr u8 -- )
-   {: row:ptr :}
-   INDEX-PTR {: index:ptr :}
-   row index - INDEX-ROW-BYTES / 1+ {: id:n :}
-   FB row LE:U64@ + ROW-CONTEXT + CONTEXT-BUCKET INDEX-CONTEXT-BUCKET
-   begin dup LE:U64@ id > while
-      LE:U64@ 1- INDEX-ROW-BYTES * index + INDEX-CONTEXT-OFF +
-   repeat
-   dup LE:U64@ row INDEX-CONTEXT-OFF + LE:U64!
-   id swap LE:U64! ;
-
-: INDEX-CONTEXT- ( ptr u8 -- )
-   {: row:ptr :}
-   INDEX-PTR {: index:ptr :}
-   row index - INDEX-ROW-BYTES / 1+ {: id:n :}
-   FB row LE:U64@ + ROW-CONTEXT + CONTEXT-BUCKET INDEX-CONTEXT-BUCKET
-   begin dup LE:U64@ id <> while
-      LE:U64@ 1- INDEX-ROW-BYTES * index + INDEX-CONTEXT-OFF +
-   repeat
-   row INDEX-CONTEXT-OFF + LE:U64@ swap LE:U64! ;
-
-: INDEX-ADD ( n -- )
-   {: off:n :}
-   FB off + KEY-BUCKET {: bucket:n :}
-   INDEX-N INDEX-ROW {: row:ptr :}
-   off row LE:U64!
-   bucket INDEX-BUCKET LE:U64@ row 8 + LE:U64!
-   0 row INDEX-USED-OFF + LE:U64!
-   INDEX-N 1+ bucket INDEX-BUCKET LE:U64!
-   row INDEX-CONTEXT+
-   INDEX-N 1+ F-INDEX-N F! ;
-
-: INDEX-ROOM ( -- )
-   INDEX-N INDEX-CAP < if exit then
-   INDEX-PTR {: old:ptr :}
-   INDEX-CAP {: oldcap:n :}
-   INDEX-N {: oldn:n :}
-   oldcap 0= if 16 else oldcap 2 * then {: cap:n :}
-   cap INDEX-CAP-BYTES * MEM-ALLOC-BYTES drop {: fresh:ptr :}
-   fresh INDEX-PTR! cap F-INDEX-CAP F! 0 F-INDEX-N F!
-   oldn 0 ?do
-      old i INDEX-ROW-BYTES * + LE:U64@ INDEX-ADD
-      old i INDEX-ROW-BYTES * + INDEX-USED-OFF + LE:U64@
-         i INDEX-ROW INDEX-USED-OFF + LE:U64!
-   loop
-   old NULL-PTR <> if
-      old oldcap INDEX-CAP-BYTES * munmap 0<> if E-MEM-UNMAP throw then
-   then ;
-
-: INDEX-OPEN ( -- )
-   INDEX-ROOM
-   MAGIC-U begin dup FU < while
-      dup ROW-END 0= if drop BAD then {: next:n :}
-      INDEX-ROOM dup INDEX-ADD
-      drop next
+: DIAG-W2 ( ptr u8 n -- )
+   {: bytes:ptr size:n :}
+   0 begin dup size < while
+      dup {: sent:n :}
+      2 bytes sent + size sent - write
+      dup 0 <= if drop E-FS-IO throw then
+      +
    repeat drop ;
 
-: INDEX-DROP ( -- )
-   INDEX-PTR dup NULL-PTR <> if
-      INDEX-CAP INDEX-CAP-BYTES * munmap 0<> if E-MEM-UNMAP throw then
-   else drop then
-   NULL-PTR INDEX-PTR!
-   0 F-INDEX-CAP F! 0 F-INDEX-N F! ;
+: REFUSE ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n reason:ptr reasonu:n :}
+   s" native-cache: entry refused " DIAG-W2
+   path pathu DIAG-W2
+   s" : " DIAG-W2
+   reason reasonu DIAG-W2
+   S\" \n" DIAG-W2 ;
 
-: FILE-OPEN-BODY ( -- )
-   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
-   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
-      CONTAINER-PATH {: cache:ptr cacheu:n :}
-   cacheu FS-PATH-CAP > if E-FS-PATH throw then
-   cache FRAME F-PATH + cacheu BYTE-COPY cacheu F-PATH-U F!
-   FPATH$ FILE? 0= if FILE-FRESH INDEX-OPEN exit then
-   FPATH$ FILE-SIZE {: size:n :}
-   size 0 <= if FILE-FRESH 1 F-DIRTY F! INDEX-OPEN exit then
-   size MEM-ALLOC-BYTES drop FB!
-   size F-CAP F! size F-USED F!
-   FPATH$ FB size READ-ALL size <> if E-FS-IO throw then
-   FILE-VALID? 0= if
-      FILE-DROP-BYTES FILE-FRESH 1 F-DIRTY F!
+\ FNV-1a 64 over whole cells, then the tail bytes. Every target is
+\ little-endian, so a cell read matches the bytes on disk on every host.
+: CHECKSUM ( ptr u8 n -- n )
+   {: bytes:ptr size:n :}
+   size CELL / CELL * {: whole:n :}
+   FNV-BASIS
+   whole 0 ?do bytes i + CELL-VIEW @ xor FNV-PRIME * CELL +loop
+   size whole ?do bytes i + c@ xor FNV-PRIME * loop ;
+
+\ The cache file named prefix, hex(HASH-RAW), suffix, in the cache root.
+: CACHE-PATH ( ptr u8 n ptr u8 n ptr u8 -- ptr u8 n )
+   {: pre:ptr preu:n suf:ptr sufu:n buf:ptr :}
+   pre NAME preu BYTE-COPY
+   HASH-RAW NAME preu + SHA256>HEX
+   suf NAME preu + 64 + sufu BYTE-COPY
+   ROOT$ NAME preu 64 + sufu + buf JOIN-PATH
+   buf swap ;
+
+\ The object entry for a definition key, as this checker and kernel read it.
+: ENTRY-PATH ( ptr u8 n -- ptr u8 n )
+   s" habu-definition-entry-v1" HASH-START
+   HASH-S
+   CHECKER-ROLE$ drop HASH-S
+   ACTUAL-KERNEL$ drop HASH-S
+   HASH-CTX HASH-RAW SHA256-END
+   s" hb-def-" s" .hbd" PATH-BUF CACHE-PATH ;
+
+\ The body pointer for the staged definition's reader context and its source
+\ from the name up to the body.
+: POINTER-PATH ( -- ptr u8 n )
+   s" habu-definition-body-v1" HASH-START
+   FRAME F-CONTEXT + 32 HASH-S
+   FRAME F-SRC + 0 ptr-field @ F-NAME-AT F@ +
+      F-BODY-AT F@ F-NAME-AT F@ - HASH-S
+   HASH-CTX HASH-RAW SHA256-END
+   s" hb-body-" s" .hbb" POINTER-PATH-BUF CACHE-PATH ;
+
+\ Read one cache file into ENTRY. A missing file is a miss; a short,
+\ foreign or damaged one is refused on fd 2 and is a miss too, which the
+\ next store replaces.
+: CACHE-READ ( ptr u8 n ptr u8 n n -- n bool )
+   {: path:ptr pathu:n magic:ptr magicu:n head:n :}
+   path pathu FS-TRY-STAT 0= if 0 false exit then
+   FS-STAT-SIZE@ {: size:n :}
+   size head < if path pathu s" short" REFUSE 0 false exit then
+   size ENTRY-RESERVE
+   path pathu 0 ENTRY size READ-ALL {: got:n :}
+   got head < if path pathu s" short" REFUSE 0 false exit then
+   0 ENTRY 8 magic magicu STR= 0= if
+      path pathu s" magic" REFUSE 0 false exit
    then
-   INDEX-OPEN ;
+   0 ENTRY 16 + got 16 - CHECKSUM 0 ENTRY 8 + LE:U64@ <> if
+      path pathu s" checksum" REFUSE 0 false exit
+   then
+   got true ;
 
-: FILE-ROOM ( n -- )
-   {: need:n :}
-   need 0 < need MEM-MAX-N FU - > or if BAD then
-   FU need + F-CAP F@ <= if exit then
-   FU {: used:n :}
-   FU need + F-CAP F@ 2 * max 4096 max {: cap:n :}
-   cap MEM-ALLOC-BYTES drop {: fresh:ptr :}
-   FB fresh used BYTE-COPY
-   FILE-DROP-BYTES
-   fresh FB! cap F-CAP F!
-   used F-USED F!
-   ;
+\ Publish the image built in STORE-IMAGE under path, sealing its checksum.
+: IMAGE-WRITE ( ptr u8 n n -- )
+   {: path:ptr pathu:n size:n :}
+   pathu FS-PATH-CAP > if E-FS-PATH throw then
+   0 STORE-IMAGE 16 + size 16 - CHECKSUM 0 STORE-IMAGE 8 + LE:U64!
+   path pathu 0 STORE-IMAGE size ATOMIC-WRITE-FILE ;
 
-: ROW-SIZE ( n -- n )
-   dup ROW-END 0= if drop BAD then swap - ;
+: ENTRY-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n object:ptr objectu:n producer:ptr produceru:n :}
+   keyu 64 <> produceru 32 <> or objectu 0 < or if BAD then
+   ENTRY-HEAD objectu + {: size:n :}
+   size STORE-IMAGE-RESERVE
+   s" HBDOBJ01" drop 0 STORE-IMAGE 8 BYTE-COPY
+   producer 0 STORE-IMAGE 16 + 32 BYTE-COPY
+   object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
+   key keyu ENTRY-PATH size IMAGE-WRITE ;
 
-: COPY-ROW ( n n -- n )
-   {: dest:n at:n :}
-   at ROW-SIZE {: size:n :}
-   dest at <> if FB at + FB dest + size BYTE-COPY then
-   dest size + ;
+\ Point the staged definition's name and body at the entry for key. The
+\ offsets are relative to the name, so the pointer survives a shift.
+: POINTER-WRITE ( ptr u8 n -- )
+   {: key:ptr keyu:n :}
+   keyu 64 <> if BAD then
+   POINTER-BYTES STORE-IMAGE-RESERVE
+   s" HBDPTR01" drop 0 STORE-IMAGE 8 BYTE-COPY
+   key 0 STORE-IMAGE 16 + 64 BYTE-COPY
+   F-BODY-AT F@ F-NAME-AT F@ - 0 STORE-IMAGE 80 + LE:U64!
+   F-RESUME-AT F@ F-NAME-AT F@ - 0 STORE-IMAGE 88 + LE:U64!
+   FRAME F-SPAN-HASH + 0 STORE-IMAGE 96 + 32 BYTE-COPY
+   POINTER-PATH POINTER-BYTES IMAGE-WRITE ;
 
-\ BYTE-COPY moves forward, so retained rows can move toward the header while
-\ their source bytes remain intact. No row offsets are used after file close.
-: FILE-COMPACT ( -- )
-   MAGIC-U INDEX-N 0 ?do
-      i INDEX-ROW INDEX-USED-OFF + LE:U64@ 0<> if
-         i INDEX-ROW LE:U64@ COPY-ROW
-      then
-   loop
-   dup FU <> if 1 F-DIRTY F! then
-   F-USED F! ;
-
-: FILE-WRITE ( -- )
-   FILE-COMPACT
-   F-DIRTY F@ 0= if exit then
-   FPATH$ FB FU ATOMIC-WRITE-FILE ;
-
-: FILE-CLOSE ( bool -- )
-   {: success:bool :}
-   success if ['] FILE-WRITE catch else 0 then {: write-rc:n :}
-   ['] FILE-DROP-BYTES catch {: bytes-rc:n :}
-   ['] INDEX-DROP catch {: index-rc:n :}
-   ['] READER-RELEASE catch {: reader-rc:n :}
-   FRAME FRAME-BYTES munmap {: frame-rc:n :}
-   -1 DEPTH +!
-   write-rc 0<> if write-rc throw then
-   bytes-rc 0<> if bytes-rc throw then
-   index-rc 0<> if index-rc throw then
-   reader-rc 0<> if reader-rc throw then
-   frame-rc 0<> if E-MEM-UNMAP throw then ;
-
-: FILE-ABORT ( -- ) false FILE-CLOSE ;
-
-: FILE-OPEN ( ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n root:ptr rootu:n :}
+: FILE-OPEN ( -- )
    DEPTH @ 1+ FRAMES-RESERVE
    FRAME-BYTES MEM-ALLOC-BYTES drop {: frame:ptr :}
    frame DEPTH @ FRAMES !
    1 DEPTH +!
-   path FRAME F-INPUT + 0 ptr-field !  pathu F-INPUT-U F!
-   root FRAME F-ROOT + 0 ptr-field !  rootu F-ROOT-U F!
-   0 F-PATH-U F!
-   NULL-PTR FB! 0 F-CAP F! 0 F-USED F! 0 F-DIRTY F!
-   NULL-PTR INDEX-PTR! 0 F-INDEX-CAP F! 0 F-INDEX-N F!
    NULL-PTR RB! 0 F-READER-CAP F! READER-CLEAR
-   0 F-STAGED F!
-   ['] FILE-OPEN-BODY catch {: rc:n :}
-   rc 0<> if
-      \ Release the partial frame while retaining the original open failure.
-      ['] FILE-ABORT catch drop
-      rc throw
-   then ;
+   0 F-STAGED F! ;
 
-: FILE-OPEN-STAGED ( -- )
-   OPEN-PATH @ OPEN-PATH-U @ OPEN-ROOT @ OPEN-ROOT-U @ FILE-OPEN ;
-
-: WRITE-ROW-SPAN ( ptr u8 -- )
-   {: row:ptr :}
-   FRAME F-FILE-HASH + row ROW-FILE-HASH + 32 BYTE-COPY
-   F-STAGED F@ 0<> if
-      FRAME F-CONTEXT + row ROW-CONTEXT + 32 BYTE-COPY
-      F-NAME-AT F@ row ROW-NAME-AT + LE:U64!
-      F-BODY-AT F@ row ROW-BODY-AT + LE:U64!
-      F-RESUME-AT F@ row ROW-RESUME-AT + LE:U64!
-      FRAME F-SPAN-HASH + row ROW-SPAN-HASH + 32 BYTE-COPY
-   else
-      32 0 ?do 0 row ROW-CONTEXT + i + c! loop
-      -1 row ROW-NAME-AT + LE:U64!
-      -1 row ROW-BODY-AT + LE:U64!
-      -1 row ROW-RESUME-AT + LE:U64!
-      32 0 ?do 0 row ROW-SPAN-HASH + i + c! loop
-   then ;
-
-: ROW-SPAN! ( ptr u8 -- )
-   {: row:ptr :}
-   row INDEX-CONTEXT-
-   FB row LE:U64@ + WRITE-ROW-SPAN
-   row INDEX-CONTEXT+ ;
-
-: STORE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n object:ptr objectu:n producer:ptr produceru:n :}
-   keyu 64 <> produceru 32 <> or if BAD then
-   ROW-HEAD objectu + {: size:n :}
-   FU {: at:n :}
-   size FILE-ROOM
-   \ FILE-ROOM may move storage but the payload and dependency buffers belong
-   \ to their own owners, not this container.
-   at F-USED F!
-   key FB at + 64 BYTE-COPY
-   objectu FB at 64 + + LE:U64!
-   producer FB at 72 + + 32 BYTE-COPY
-   FB at + WRITE-ROW-SPAN
-   FB at + ROW-HEAD + {: payload:ptr :}
-   object payload objectu BYTE-COPY
-   at size + F-USED F!
-   INDEX-ROOM at INDEX-ADD
-   1 INDEX-N 1- INDEX-ROW INDEX-USED-OFF + LE:U64!
-   1 F-DIRTY F! ;
+: FILE-CLOSE ( -- )
+   ['] READER-RELEASE catch {: reader-rc:n :}
+   FRAME FRAME-BYTES munmap {: frame-rc:n :}
+   -1 DEPTH +!
+   reader-rc 0<> if reader-rc throw then
+   frame-rc 0<> if E-MEM-UNMAP throw then ;
 
 : HASH-SOURCE ( ptr u8 n -- ptr u8 n )
    s" habu-definition-source-v1" HASH-START
@@ -807,17 +640,6 @@ variable PENDING-KEY-U
 
 : CANDIDATE? ( -- bool ) ADMISSION-REASON$ nip 0= ;
 
-: BODY-ROW? ( ptr u8 n n -- bool )
-   {: row:ptr name-at:n body-at:n :}
-   row ROW-NAME-AT + LE:U64@ name-at <>
-   row ROW-BODY-AT + LE:U64@ body-at <> or if false exit then
-   row ROW-RESUME-AT + LE:U64@ {: resume:n :}
-   resume body-at < resume F-SRC-U F@ > or if false exit then
-   row ROW-FILE-HASH + 32 FRAME F-FILE-HASH + 32 STR= 0= if
-      false exit
-   then
-   row ROW-CONTEXT + 32 FRAME F-CONTEXT + 32 STR= ;
-
 : READER-READY? ( -- bool )
    BORROW-ACTIVE @ if false exit then
    check@ 0= if false exit then
@@ -832,38 +654,6 @@ variable PENDING-KEY-U
 : BODY-PASSIVE? ( ptr u8 n -- bool )
    READER-READY? 0= if 2drop false exit then
    BODY-PASSIVE-ENTRY @ BODY-PASSIVE-XT execute ;
-
-: BODY-SHIFTED? ( ptr u8 n n -- n bool )
-   {: row:ptr name-at:n body-at:n :}
-   READER-READY? 0= if 0 false exit then
-   row ROW-CONTEXT + 32 FRAME F-CONTEXT + 32 STR= 0= if
-      0 false exit
-   then
-   row ROW-NAME-AT + LE:U64@ {: old-name:n :}
-   row ROW-BODY-AT + LE:U64@ {: old-body:n :}
-   row ROW-RESUME-AT + LE:U64@ {: old-resume:n :}
-   old-name 0 < old-body old-name < or
-   old-resume old-body < or if 0 false exit then
-   old-body old-name - body-at name-at - <> if 0 false exit then
-   old-resume old-name - {: span:n :}
-   span F-SRC-U F@ name-at - > if 0 false exit then
-   name-at span + {: resume:n :}
-   resume body-at < if 0 false exit then
-   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
-      name-at resume HASH-SPAN
-   HASH-RAW 32 row ROW-SPAN-HASH + 32 STR= 0= if
-      0 false exit
-   then
-   HASH-RAW FRAME F-SPAN-HASH + 32 BYTE-COPY
-   resume true ;
-
-: BODY-MATCH ( ptr u8 n n -- n bool bool )
-   {: row:ptr name-at:n body-at:n :}
-   row name-at body-at BODY-ROW? if
-      row ROW-RESUME-AT + LE:U64@ false true exit
-   then
-   row name-at body-at BODY-SHIFTED? if true true exit then
-   drop 0 false false ;
 
 : ARM-NATIVE ( [ ptr u8 n -- ] -- bool )
    {: completion :}
@@ -884,59 +674,58 @@ variable PENDING-KEY-U
    then
    ORIGIN-TAKE-XT ARM-NATIVE drop ;
 
-: INSTALL-ROW ( ptr u8 n ptr u8 n bool -- )
-   {: row:ptr ord:n source:ptr sourceu:n update:bool :}
-   row LE:U64@ {: at:n :}
-   FB at 72 + + STORED-PRODUCER 32 BYTE-COPY
+\ Install the prepared definition from the entry at path, which ENTRY holds
+\ until DISCARD-DEFINITION. USED dates the entry after the read; a prune
+\ that takes it in between costs nothing, since this session has its bytes.
+: INSTALL-ENTRY ( ptr u8 n n ptr u8 n -- )
+   {: path:ptr pathu:n ord:n source:ptr sourceu:n :}
    NUNIT-OBJECT:INSTALL-DEFINITION ord <> if BAD then
    BORROW-ACTIVE @ if
       source sourceu BORROW-ACCEPT @ BORROW-ACCEPT-XT execute
    else ARM-WARM-ORIGIN then
    ord 0 PENDING-KEY PENDING-KEY-U @ STORED-PRODUCER 32
       NFILE-REF:PUBLISH-DEFINITION
-   update if row ROW-SPAN! 1 F-DIRTY F! then
    NUNIT-OBJECT:DISCARD-DEFINITION
+   path pathu BUILD-CACHE:USED drop
    1 HIT-N +!
    BORROW-ACTIVE @ if
       NUNIT-ORIGIN:PENDING-AVAILABLE? 0= if 1 EARLY-PREFIX-HIT-N +! then
    then ;
 
-: BODY-TRY-ROW ( ptr u8 n n n -- n bool )
-   {: row:ptr ord:n name-at:n body-at:n :}
-   row LE:U64@ {: at:n :}
-   FB at + name-at body-at BODY-MATCH
-      {: resume:n edited:bool match:bool :}
-   match 0= if 0 false exit then
-   FB at 64 + + LE:U64@ {: objectu:n :}
-   FB at ROW-HEAD + + objectu FB at + 64
-      edited if NUNIT-OBJECT:PREPARE-DEFINITION-COMPLETE?
-      else NUNIT-OBJECT:PREPARE-DEFINITION? then
-   0= if
+\ The body pointer for the staged name and body names the entry to install
+\ when the span it recorded hashes equal to today's source from the name.
+: FIND-BODY ( n -- n bool )
+   {: ord:n :}
+   POINTER-PATH {: pointer:ptr pointeru:n :}
+   pointer pointeru s" HBDPTR01" POINTER-BYTES CACHE-READ nip
+      0= if 0 false exit then
+   0 ENTRY 80 + LE:U64@ F-BODY-AT F@ F-NAME-AT F@ - <> if 0 false exit then
+   0 ENTRY 88 + LE:U64@ {: span:n :}
+   span 0 < span F-SRC-U F@ F-NAME-AT F@ - > or if 0 false exit then
+   F-NAME-AT F@ span + {: resume:n :}
+   resume F-BODY-AT F@ < if 0 false exit then
+   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
+      F-NAME-AT F@ resume HASH-SPAN
+   HASH-RAW 32 0 ENTRY 96 + 32 STR= 0= if 0 false exit then
+   0 ENTRY 16 + KEY-HEX 64 BYTE-COPY
+   KEY-HEX 64 ENTRY-PATH {: path:ptr pathu:n :}
+   path pathu s" HBDOBJ01" ENTRY-HEAD CACHE-READ {: objectu:n hit:bool :}
+   hit 0= if 0 false exit then
+   0 ENTRY 16 + STORED-PRODUCER 32 BYTE-COPY
+   0 ENTRY ENTRY-HEAD + objectu ENTRY-HEAD - KEY-HEX 64
+      NUNIT-OBJECT:PREPARE-DEFINITION-COMPLETE? 0= if
       NUNIT-OBJECT:DISCARD-DEFINITION 0 false exit
    then
-   edited if
-      resume F-RESUME-AT F!
-   then
-   row ord NULL-PTR 0 edited INSTALL-ROW
+   path pathu ord NULL-PTR 0 INSTALL-ENTRY
+   pointer pointeru BUILD-CACHE:USED drop
    1 BODY-SKIP-N +!
    resume true ;
 
-: FIND-BODY ( n n n -- n bool )
-   {: ord:n name-at:n body-at:n :}
-   INDEX-PTR {: index:ptr :}
-   FRAME F-CONTEXT + CONTEXT-BUCKET INDEX-CONTEXT-BUCKET LE:U64@
-   begin dup 0<> while
-      1- INDEX-ROW-BYTES * index + {: row:ptr :}
-      row ord name-at body-at BODY-TRY-ROW if
-         1 row INDEX-USED-OFF + LE:U64!
-         true exit
-      then drop
-      row INDEX-CONTEXT-OFF + LE:U64@
-   repeat drop 0 false ;
-
+\ Session buffers rely on one lookup at a time; a reader inside a dispatch
+\ compiles.
 : BODY-REUSE ( ptr u8 n n n -- n bool )
    {: source:ptr sourceu:n name-at:n body-at:n :}
-   DEPTH @ 0= if 0 false exit then
+   DEPTH @ 0= DISPATCH-BUSY @ 0<> or if 0 false exit then
    source FRAME F-SRC + 0 ptr-field @ <>
    sourceu F-SRC-U F@ <> or if 0 false exit then
    name-at 0 < body-at name-at < or
@@ -954,51 +743,32 @@ variable PENDING-KEY-U
    -1 F-RESUME-AT F!
    1 F-STAGED F!
    READER-CLEAR
-   READER-READY? if 1 F-READER-VALID F! then
-   ord name-at body-at FIND-BODY
-   dup if
-      0 F-STAGED F! READER-CLEAR
-      exit
+   READER-READY? if
+      1 F-READER-VALID F!
+      ord FIND-BODY if
+         0 F-STAGED F! READER-CLEAR
+         true exit
+      then drop
    then
-   NFILE-REF:PENDING-RELEASE ;
+   NFILE-REF:PENDING-RELEASE 0 false ;
 
-\ All candidates in the stable source container are checked against today's
-\ live bindings before any installation. The last matching variant wins.
-: TRY-ROW ( ptr u8 ptr u8 n n ptr u8 n -- bool )
-   {: row:ptr key:ptr keyu:n ord:n source:ptr sourceu:n :}
-   row LE:U64@ {: at:n :}
-   keyu 64 <> if BAD then
-   FB at + 64 key keyu STR= 0= if false exit then
-   FB at 64 + + LE:U64@ {: objectu:n :}
-   FB at ROW-HEAD + + objectu key keyu
-      NUNIT-OBJECT:PREPARE-DEFINITION? 0= if
-      NUNIT-OBJECT:DISCARD-DEFINITION false exit
-   then
-   row ord source sourceu F-STAGED F@ 0<> INSTALL-ROW
-   true ;
-
+\ The entry for key, checked against today's live bindings before it is
+\ installed. A staged definition read by passive words alone also gets the
+\ body pointer that lets the next load skip its body.
 : FIND-HIT ( ptr u8 n n ptr u8 n -- bool )
    {: key:ptr keyu:n ord:n source:ptr sourceu:n :}
    keyu 64 <> if BAD then
-   INDEX-PTR {: index:ptr :}
-   key KEY-BUCKET INDEX-BUCKET LE:U64@
-   begin dup 0<> while
-      1- INDEX-ROW-BYTES * index + {: row:ptr :}
-      row key keyu ord source sourceu TRY-ROW if
-         1 row INDEX-USED-OFF + LE:U64!
-         true exit
-      then
-      row 8 + LE:U64@
-   repeat drop false ;
-
-: DIAG-W2 ( ptr u8 n -- )
-   {: bytes:ptr size:n :}
-   0 begin dup size < while
-      dup {: sent:n :}
-      2 bytes sent + size sent - write
-      dup 0 <= if drop E-FS-IO throw then
-      +
-   repeat drop ;
+   key keyu ENTRY-PATH {: path:ptr pathu:n :}
+   path pathu s" HBDOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
+   found 0= if false exit then
+   0 ENTRY 16 + STORED-PRODUCER 32 BYTE-COPY
+   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu
+      NUNIT-OBJECT:PREPARE-DEFINITION? 0= if
+      NUNIT-OBJECT:DISCARD-DEFINITION false exit
+   then
+   path pathu ord source sourceu INSTALL-ENTRY
+   F-STAGED F@ 0<> F-READER-VALID F@ 0<> and if key keyu POINTER-WRITE then
+   true ;
 
 : DIAG-PATH? ( -- bool )
    DEPTH @ 0= if false exit then
@@ -1034,6 +804,8 @@ variable PENDING-KEY-U
 : COLD-CANDIDATE ( ptr u8 n ptr u8 n n -- )
    {: source:ptr sourceu:n key:ptr keyu:n ord:n :}
    ord NUNIT-DEP:BEGIN-DEFINITION
+   \ READER-TRANSFER clears the reader; a pointer needs it valid until here.
+   F-STAGED F@ 0<> F-READER-VALID F@ 0<> and {: point:bool :}
    READER-TRANSFER
    NUNIT-OBJECT:DEFINITION-BEGIN
    ['] COMPILE-STAGED catch {: rc:n :}
@@ -1054,7 +826,8 @@ variable PENDING-KEY-U
             NFILE-REF:PUBLISH-DEFINITION
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
-         key keyu object objectu producer produceru STORE
+         key keyu object objectu producer produceru ENTRY-WRITE
+         point if key keyu POINTER-WRITE then
       else
          s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
          NFILE-REF:PENDING-RELEASE
@@ -1232,9 +1005,6 @@ variable PENDING-KEY-U
       NUNIT-CAPTURE:BIND-PRODUCER
    then ;
 
-: FILE-CLOSE-OK ( -- ) true FILE-CLOSE ;
-: FILE-CLOSE-FAIL ( -- ) false FILE-CLOSE ;
-
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -1250,11 +1020,9 @@ variable PENDING-KEY-U
       asked drop askedu drop mode
    then {: kind:n :}
    path pathu root rootu kind NFILE-REF:PUSH-FILE
-   path OPEN-PATH ! pathu OPEN-PATH-U !
-   root OPEN-ROOT ! rootu OPEN-ROOT-U !
-   ['] FILE-OPEN-STAGED catch {: open-rc:n :}
+   ['] FILE-OPEN catch {: open-rc:n :}
    open-rc 0<> if
-      \ The open failure owns the result; its frame has already been released.
+      \ The open failure owns the result; a failed open leaves no frame.
       ['] NFILE-REF:POP-FILE catch drop
       open-rc throw
    then
@@ -1262,7 +1030,6 @@ variable PENDING-KEY-U
    pathu F-INPUT-U F!
    source FRAME F-SRC + 0 ptr-field !
    sourceu F-SRC-U F!
-   source sourceu HASH-FILE
    root FRAME F-ROOT + 0 ptr-field !
    rootu F-ROOT-U F!
    q Q>N F-Q F!
@@ -1272,9 +1039,7 @@ variable PENDING-KEY-U
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
-   unit-rc 0= plan-rc 0= and finish-rc 0= and
-      if ['] FILE-CLOSE-OK else ['] FILE-CLOSE-FAIL then
-      catch {: close-rc:n :}
+   ['] FILE-CLOSE catch {: close-rc:n :}
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    unit-rc 0<> if unit-rc throw then
    finish-rc 0<> if finish-rc throw then
@@ -1360,8 +1125,6 @@ variable PENDING-KEY-U
    0 DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
-   NULL-PTR OPEN-PATH ! 0 OPEN-PATH-U !
-   NULL-PTR OPEN-ROOT ! 0 OPEN-ROOT-U !
    NULL-PTR APP-PATH ! 0 APP-PATH-U !
    NULL-PTR REQUEST-PATH ! 0 REQUEST-PATH-U !
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
@@ -1370,7 +1133,8 @@ variable PENDING-KEY-U
    HASH-RAW 32 ZERO-SCRATCH SOURCE-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
    NAME 76 ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH
-   STORED-PRODUCER 32 ZERO-SCRATCH CONTEXT-RAW 32 ZERO-SCRATCH ;
+   STORED-PRODUCER 32 ZERO-SCRATCH CONTEXT-RAW 32 ZERO-SCRATCH
+   POINTER-PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
 
 : OPEN ( -- )
    1 SESSION !
@@ -1416,7 +1180,7 @@ variable PENDING-KEY-U
    CLEAR-PUBLICATION
    UNBIND-DISPATCH
    begin DEPTH @ 0 > while
-      false FILE-CLOSE
+      FILE-CLOSE
       NFILE-REF:POP-FILE
    repeat
    TARGET-SOURCE-BOUND @ if
@@ -1439,6 +1203,7 @@ variable PENDING-KEY-U
    CLEAR-NOMINALS
    NFILE-REF:CLOSE
    FRAMES-RELEASE PENDING-KEY-RELEASE
+   ENTRY-RELEASE STORE-IMAGE-RELEASE
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !

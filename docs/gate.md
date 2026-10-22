@@ -199,12 +199,24 @@ child's environment itself — a value other than the pool process's own, which
 `PROC-ENV-INHERIT-MISSING` copies — is the caller's scratch to own and reap:
 the pool leaves the row and gives that slot no directory.
 
-Keyed images live in the selected build cache (`src/lib/build-cache.f`). Every
-row and build row gets its normalized `BUILD-CACHE:ROOT$` as `HABU_BUILD_CACHE`
+Keyed images and native definition entries live in the selected build cache
+(`src/lib/build-cache.f`). A checkout keeps one persistent build cache, the
+default `BUILD-CACHE:ROOT$` or one fixed `HABU_BUILD_CACHE`, shared by every
+gate run and every engine built from the checkout. Every row and build row gets
+its normalized `BUILD-CACHE:ROOT$` as `HABU_BUILD_CACHE`
 (`test/gate-stdlib-lib.f` `SUITE-ENV`), so children and nested gates reuse the
-same keyed products across runs. Normal build-cache retention removes products
-unused for a day. Select a fresh `HABU_BUILD_CACHE` for a cold run. Compiler
-bundles, grants, private whitebox copies and mutable fixtures remain run-local.
+same keyed products and definition entries across runs. The definition cache
+(`tools/native-definition-cache.f`) stores one checksummed `hb-def-*.hbd` entry
+per definition, keyed by what the definition was built from and the reading
+checker and kernel, and an `hb-body-*.hbb` pointer from the definition's source
+up to its body to that entry. A hit dates the entry and pointer it read to now
+(`BUILD-CACHE:USED`). An entry or pointer that is short, has the wrong magic or
+fails its checksum is refused with `native-cache: entry refused <path>: <reason>`
+on stderr and compiled again. Normal build-cache retention removes products
+unused for a day; hb-build prunes definition entries and pointers that way after
+each build whose children open the definition cache. Select a fresh
+`HABU_BUILD_CACHE` only for a deliberate cold measurement. Compiler bundles,
+grants, private whitebox copies and mutable fixtures remain run-local.
 A keyed image's build
 (below) works in a directory of the build cache instead of `HB_TMP`, beside
 the keyed path, so its publish is one rename within the cache

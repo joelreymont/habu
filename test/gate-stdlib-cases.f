@@ -263,6 +263,7 @@ SUITE native-file-stack
 
 SUITE native-file-auto
    test/native-file-auto-e2e.f
+   test/native-file-storage-e2e.f
    test/native-file-cwork-e2e.f
    test/native-file-fresh-region-e2e.f
    test/native-file-admission-e2e.f

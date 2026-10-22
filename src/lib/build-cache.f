@@ -380,7 +380,6 @@ TYPED-VARIABLE WORK-A ptr u8
 TYPED-VARIABLE KEEP-A ptr u8
 TYPED-VARIABLE DIR-A ptr u8
 TYPED-VARIABLE NAME-A ptr u8
-TYPED-VARIABLE USED-A ptr u8
 create CLAIM-BUF FS-PATH-CAP allot
 create SRC-BUF FS-PATH-CAP allot
 create DST-BUF FS-PATH-CAP allot
@@ -391,7 +390,6 @@ variable WORK-U
 variable KEEP-U
 variable DIR-U
 variable NAME-U
-variable USED-U
 variable CLAIM-U
 variable SRC-U
 variable DST-U
@@ -414,9 +412,6 @@ variable CUTOFF
 
 : NAME$ ( -- ptr u8 n )
    NAME-A @ NAME-U @ ;
-
-: USED$ ( -- ptr u8 n )
-   USED-A @ USED-U @ ;
 
 : CLAIM$ ( -- ptr u8 n )
    CLAIM-BUF CLAIM-U @ ;
@@ -596,11 +591,10 @@ public
 \ the caller builds it again. TRUE does not hold the entry: a pruner that read it
 \ stale before the date can still take it (see the header).
 : USED ( ptr u8 n -- bool )
-   USED-U ! USED-A !
-   [: USED$ TOUCH ;] catch {: code:n :}
+   [: 2dup TOUCH ;] catch {: a:ptr u:n code:n :}
    code 0= if TRUE exit then
-   USED$ FS-TRY-LSTAT 0= if FALSE exit then
-   s" date" USED$ code REPORT
+   a u FS-TRY-LSTAT 0= if FALSE exit then
+   s" date" a u code REPORT
    TRUE ;
 
 \ ---- work directories --------------------------------------------------------

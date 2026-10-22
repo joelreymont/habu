@@ -33,7 +33,7 @@ create NAMES NAMES-CAP allot
    s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
-\ The XDG root holds at least one definition cache container.
+\ The XDG root holds at least one definition cache entry.
 : DEF-CACHED? ( -- bool )
    s" xdg/habu-build" AT NAMES NAMES-CAP FS-LIST:NAMES {: u:n :}
    NAMES u s" hb-def-" CONTAINS? ;
