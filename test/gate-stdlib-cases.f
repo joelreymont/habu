@@ -1812,10 +1812,6 @@ SUITE cold-argv-separator
    test/cold-argv-separator.f
 ;SUITE
 
-SUITE cold-naming
-   test/cold-naming-test.f
-;SUITE
-
 SUITE tmp-path
    test/tmp-path-test.f
 ;SUITE

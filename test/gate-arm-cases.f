@@ -78,6 +78,15 @@ SUITE stripped-pool-reach
    test/stripped-pool-reach.f
 ;SUITE
 
+\ The cold host boots the core prefix from source in the ARM kernel's own
+\ outer interpreter before any checker exists (habu2.f EMIT-COLD-PREFIX).
+\ x86-64 has no cold route: its fixture host is a native-build engine that
+\ already holds the captured interpreter and the prefix's checker rows
+\ (docs/x86-64.md, test/native-fixture-write-x64.f).
+SUITE cold-naming
+   test/cold-naming-test.f
+;SUITE
+
 \ Its unchecked candidate and false-reject oracle require tier 0: the
 \ harness selects tier 0 before defining or running any generated case.
 WHITEBOX-SUITE prop
