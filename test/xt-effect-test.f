@@ -262,6 +262,15 @@ variable XE-CNT
       XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
    then ;
 
+\ The undefined tick: ARM64's tier 0 engine names the token; x86-64's tier 1
+\ checker refuses the body and names the definition, as ARM64 does at tier 1.
+: XE-UNDEF-SAID ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      XE-ERR$ s" E-UNDEFINED habu: in xeu-none: undefined word 'XEU-NOSUCH'" CONTAINS? TTRUE
+   else
+      XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE
+   then ;
+
 : XE-USING ( -- )
    XE-USING-PROG$ XE-RUN
    s" a body ticking a using-imported bare name runs to the end (rc 0)" T-LABEL
@@ -285,7 +294,7 @@ variable XE-CNT
    s" ['] of a name nothing resolves is undefined, never a silent no-op" T-LABEL
    s" : XEU-NONE ( -- n ) 7 ['] XEU-NOSUCH drop ;" XE-AMB-PROG$ XE-RUN
    XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
-   XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE ;
+   XE-UNDEF-SAID ;
 
 \ ---- tier-1 interop + tier-2 pre-arm (top-row tracker, unchanged) ------------
 : XE-EXEC$ ( -- ptr u8 n )               \ ' FOO2 execute on an empty stack
