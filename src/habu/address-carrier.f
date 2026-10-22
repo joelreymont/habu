@@ -157,4 +157,29 @@ $B8 constant MOVABS-OP
    MOVABS-IMM-BYTES 0 ?do
       val i 8 * rshift $FF and  p MOVABS-IMM-OFF + i + c!
    loop ;
+
+\ ---- the x86-64 call site ----------------------------------------------------
+\ A call is `call rel32` (E8 cd) and a tail branch `jmp rel32` (E9 cd), with no
+\ prefix: five bytes, the displacement at offset one, counted from the end of
+\ the instruction. REL32-FIELD is X64ASM:CALL-REL32-OFF; this file loads where
+\ the assembler may not follow, so test/x86-64-seam.f keeps the two equal.
+\ Only a recorded site is read: the opcode check confirms the row, it never
+\ finds one.
+$E8 constant CALL-OP
+$E9 constant TAIL-OP
+5 constant REL32-BYTES
+1 constant REL32-FIELD
+
+: REL32-SITE? ( ptr u8 -- bool ) {: p:ptr :}
+   p c@ CALL-OP =  p c@ TAIL-OP = or ;
+
+\ The absolute target of a site whose first byte lives at ADDR: the
+\ displacement is signed and counts from the next instruction.
+: REL32-TARGET ( ptr u8 n -- n ) {: p:ptr addr:n :}
+   p REL32-FIELD + W32@ {: d:n :}
+   d $80000000 and 0<> if d $100000000 - else d then
+   addr REL32-BYTES + + ;
+
+: SET-REL32 ( ptr u8 n -- ) {: p:ptr d:n :}
+   d $FFFFFFFF and  p REL32-FIELD + W32! ;
 ;package

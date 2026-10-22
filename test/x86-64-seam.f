@@ -283,6 +283,9 @@ create NEAR 16 allot
    s" the assembler names the same patch offset as the site kind" T-LABEL
    ADDRESS-CARRIER:MOVABS-IMM-OFF X64ASM:MOV-RI64-IMM-OFF T=
 
+   s" the assembler names the same call displacement offset as the call codec" T-LABEL
+   ADDRESS-CARRIER:REL32-FIELD X64ASM:CALL-REL32-OFF T=
+
    s" mov rax, imm64 reads back the immediate it carries" T-LABEL
    $48 $B8 $123456789ABCDEF BUILD-SITE
    SITE-PTR ADDRESS-CARRIER:MOVABS-SITE? TTRUE

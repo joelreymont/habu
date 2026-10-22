@@ -37,8 +37,8 @@
 
 require src/lib/prelude.f
 require src/lib/errors.f
-require src/lib/le.f
 require src/core/bytes.f
+require src/habu/address-carrier.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/session/emission.f
@@ -134,22 +134,19 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 \ A native emission is already placed. Keep its exact recorded rows, while
 \ returning only their carried fields to the unplaced form the shadow linker
 \ consumes. Internal relative calls need no row and retain their displacement.
-5 constant REL32-BYTES
-1 constant REL32-FIELD
-$E8 constant CALL-OP
-$E9 constant TAIL-OP
-
+\ The site's shape is ADDRESS-CARRIER's x86-64 call codec.
 : NATIVE-CALLS ( NART:emission -- ) {: a:NART:emission :}
    a NART:CALL-SITES 0 ?do
       a i NART:CALL-SITE@ {: off:n :}
-      off 0 < off REL32-BYTES + a NART:SIZE > or if E-NSHADOW-ROW throw then
+      off 0 <  off ADDRESS-CARRIER:REL32-BYTES + a NART:SIZE >  or
+      if E-NSHADOW-ROW throw then
       a i NART:CALL-KIND@ {: kind:n :}
-      kind NEMIT:CALL = if CALL-OP else
-         kind NEMIT:TAIL = if TAIL-OP else E-NSHADOW-ROW throw then
+      kind NEMIT:CALL = if ADDRESS-CARRIER:CALL-OP else
+         kind NEMIT:TAIL = if ADDRESS-CARRIER:TAIL-OP else E-NSHADOW-ROW throw then
       then {: opcode:n :}
       CODE-N @ off + CODE-BUF {: p:ptr :}
       p c@ opcode <> if E-NSHADOW-ROW throw then
-      0 p REL32-FIELD + LE:U32!
+      p 0 ADDRESS-CARRIER:SET-REL32
    loop ;
 
 : COPY-FUNS ( NART:emission -- )
