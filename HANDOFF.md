@@ -101,7 +101,7 @@ Prior handoff's known gaps, **not reverified in this session**:
 8. `intel-aot-wip@origin` (`97b4ddab`) retains unmerged AOT work with requested
    review corrections. Do not merge blindly.
 
-The merged checker owner is $550 bytes / 170 cells; the task TCB is master's
+The merged checker owner is $558 bytes / 171 cells; the task TCB is master's
 $170 bytes. Checker/compiler loads, retained-host layout, fixed/defer paths,
 boot/unit occurrence numbering, snapshots, pinned spills, multi-error recovery
 and sealed-source routing all need execution. The full original merge inventory

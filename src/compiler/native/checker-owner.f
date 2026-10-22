@@ -43,6 +43,7 @@ defer SOURCE-RETRACT-ROWS ( n -- )
 defer SOURCE-WRITE-WINDOW ( n -- )
 defer SOURCE-REPORT-RESET ( -- )
 defer SOURCE-JSON-REPORTED ( -- bool )
+defer SOURCE-DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -114,7 +115,8 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" SOURCE-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
-   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED ;
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -217,8 +219,17 @@ TRUSTED: RECOVERY-USED? ( -- bool )
    dup 0= if drop CHECKER-TAPE:ADVANCE exit then
    AS-ACTION execute ;
 
+\ A clause is scanned in its parent's regime (BIND-REGIME!, set by the parent's
+\ scan): unjudged under a TRUSTED: or hookless parent, so it binds and
+\ authorizes calls as that parent's body does (checker.f CHECK-DOES-UNJUDGED!).
+: DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" unjudged does> split" FIELD
+   dup 0= if drop SOURCE-DOES-UNJUDGED exit then
+   AS-DOES-CHECK execute ;
+
 \ CHECK-DOES! binds CHECKER-OWNER's private row (src/core/checker.f).
 : DOES-CHECK ( ptr u8 n ptr u8 n -- n )
+   BIND-UNJUDGED @ 0<> if DOES-UNJUDGED exit then
    NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
    dup 0= if drop CHECK-DOES! exit then
    AS-DOES-CHECK execute ;

@@ -44,7 +44,9 @@ $538 constant JSON-REPORTED-OFF
 \ compiler asks the live checker's record at the offsets it was built with, so
 \ the cell stays reserved and RECOVERY-USED-OFF keeps $548.
 $548 constant RECOVERY-USED-OFF
-RECOVERY-USED-OFF CELL + constant OWNER-BYTES
+\ A does> clause scanned in its parent's unjudged regime (TRUSTED: or hookless).
+$550 constant DOES-UNJUDGED-OFF
+DOES-UNJUDGED-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

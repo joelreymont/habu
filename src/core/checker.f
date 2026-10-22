@@ -154,6 +154,7 @@ create OWNER-STORAGE
    0 , 0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -171,7 +172,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:RECOVERY-USED-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10918,6 +10919,7 @@ PPRIM: CHECKER-OWNER-EXT MULTI-ERROR-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT RESET-REPORT-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT JSON-REPORTED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT RECOVERY-USED-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT DOES-UNJUDGED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT PRIMITIVE-STATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CONTRACT-MAGIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT FIXED-KIND-OFF PE-N PE-OUT PPRIM;
@@ -26401,6 +26403,31 @@ package CHECKER-REG
    ba bu sa su CHECK-DOES-RUN
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
 
+\ A CLAUSE IS CHECKED IN ITS PARENT'S REGIME. The native compiler scans the body
+\ of a TRUSTED: or hookless definer with CHECK-UNJUDGED! and reads both halves'
+\ call bindings from the unjudged window (src/compiler/native/checker-owner.f
+\ SOURCE-BINDING), so its clause is scanned the same way: unjudged bindings and
+\ no call authority, as tier 0 checks it. A clause scanned with authority was
+\ refused a call its parent's body may make (E-CAP-TRUSTED on a colon word
+\ defined with checking off). The compiler still requires the clause's verdict,
+\ so its diagnostic is not suppressed; the parent's window validity stands, as
+\ BWIN-VALID does for a clause CHECK-DOES! scans.
+PTR-VARIABLE UNJ-DOES-BA   variable UNJ-DOES-BU
+PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
+
+: UNJ-DOES-BODY ( -- )
+   UNJ-DOES-BA @ UNJ-DOES-BU @ UNJ-DOES-SA @ UNJ-DOES-SU @ CHECK-DOES-RUN
+   UNJ-DOES-VERDICT ! ;
+
+: CHECK-DOES-UNJUDGED! ( ptr u8 n ptr u8 n -- n ) {: ba:ptr bu:n sa:ptr su:n :}
+   ba UNJ-DOES-BA !  bu UNJ-DOES-BU !  sa UNJ-DOES-SA !  su UNJ-DOES-SU !
+   -1 BWIN-UNJUDGED !
+   [: UNJ-DOES-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
+   0 BWIN-UNJUDGED !
+   rc 0 <> IF rc throw THEN
+   sa su DOES-EFF-LATCH!
+   UNJ-DOES-VERDICT @ ;
+
 \ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
 \ body itself and the engine's callers of CHECK-DOES! report a refused clause
 \ their own way (src/habu/habu2.f C-DIE-DOES), but nothing after this entry
@@ -30069,6 +30096,7 @@ package CHECKER-REG
 ' CHECKER-REPORT-RESET DECLARATIONS CHECKER-OWNER-ABI:RESET-REPORT-OFF + xt!
 ' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
 ' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
+' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's
