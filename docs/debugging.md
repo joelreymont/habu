@@ -575,9 +575,9 @@ this die", and they are not interchangeable:
   read (`test/compiler/native-eval.f` XT-UNDER, TOP-LEVEL).
   A descriptor counts as a stack when its base is a cell boundary and its top
   a page boundary, and its low guard is the page under the base rounded down
-  to a page: `source-unit-run` raises the data base to the caller's cursor
-  inside the caller's mapping, so a callback's read of the caller's cells under
-  that floor does not fault, while an overflow is named as anywhere else.
+  to a page. `source-unit-run` runs each callback on a fresh guarded stack of
+  its own, as `evaluate-closed` does, so the cell under a callback's floor is
+  that stack's low guard page too, on ARM64 and x86-64 alike.
   Every other guard-page fault is `hb: stack bounds exceeded (data)` /
   `(return)` / `(loop)` (exit 102, `ENGINE-ERROR:STACK-BOUNDS`): an overflow
   (an overflow inside a closed text too, OVERFLOW), a jump into a guard page

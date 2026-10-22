@@ -2040,13 +2040,59 @@ private
    RAX ZERO-REG,  RAX PUSH,  RAX PUSH,
    done X64CODE:LBL, ;
 
-\ source-unit-run ( xt -- ): the callback's whole execution uses the caller's
-\ cursor as its floor. No evaluator frame or SOURCE state changes. The saved
-\ cursor is compared before any data-stack push, including when the callback
-\ returns with the guarded extent exactly full. Inside an owned loop's pending
-\ action, the frame first records the depths the action left after popping
-\ the xt, so a cut inside the callback reads them (habu1.f
-\ B-SOURCE-UNIT-RUN's snapshot).
+\ The pool CLOSED-FREE-CELL heads: idle PAGE-BYTES data stacks, each idle
+\ stack's first cell linking the next. CLOSED-TAKE, leaves one in rax and maps
+\ one when the pool is empty, as boot-x64's guarded allocation does: an
+\ inaccessible page lies on each side of the aligned 64 KiB data extent. The
+\ mmap clobbers rcx, rdx, rsi, rdi and r8-r11, so a caller keeps what it needs
+\ across the take in a machine frame. CLOSED-GIVE, links the stack in the
+\ register back in through rcx.
+: CLOSED-TAKE, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: have:label take:label map-fail:label :}
+   RAX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE have JCC,
+   RDI ZERO-REG,
+   RSI STACK-ABI:PAGE-BYTES 4 * IMM32,
+   RDX 0 IMM32,
+   R10 MAP-ANON-PRIVATE IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,  C-B map-fail JCC,
+   RDI RAX STACK-ABI:PAGE-BYTES 2 * 1- MEM-OFF ASM-SINK ENC-LEA
+   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI STACK-ABI:PAGE-BYTES IMM32,
+   RDX PROT-RW IMM32,
+   R10 MAP-ANON-PRIVATE-FIXED IMM32,
+   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
+   NR-MMAP SYS,
+   RAX RDI ASM-SINK ENC-CMP-RR  C-E take JCC,
+   map-fail X64CODE:LBL,
+   S\" hb: cannot map guarded VM stack\n" 78 STDERR-EXIT,
+   have X64CODE:LBL,
+   RCX RAX 0 MOV-LOAD,
+   RCX DATA-REG CLOSED-FREE-CELL MOV-STORE,
+   take X64CODE:LBL, ;
+
+: CLOSED-GIVE, ( r64 -- ) {: r:r64 :}
+   RCX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
+   RCX r 0 MOV-STORE,
+   r DATA-REG CLOSED-FREE-CELL MOV-STORE, ;
+
+\ source-unit-run's frame: run-in-stack's three cells, then the xt until the
+\ take and the callback's stack after it.
+RUN-BYTES constant UNIT-SEG
+UNIT-SEG CELL + constant UNIT-BYTES
+
+\ source-unit-run ( xt -- ): run one whole callback on a fresh guarded
+\ PAGE-BYTES data stack from the pool, as habu1.f B-SOURCE-UNIT-RUN does, so
+\ `depth` starts at 0 and the cell under its floor is that stack's low guard
+\ page. No evaluator frame or SOURCE state changes. The callback runs under a
+\ catch frame that pushes no status, so a clean callback may fill the stack
+\ exactly: it must return to the stack's base, above is residue and below is
+\ rc 70. Either way, thrown or clean, the stack goes back to the pool and the
+\ caller's descriptor and cursor come back before any code is rethrown.
+\ Inside an owned loop's pending action, the frame first records the depths
+\ the action left after popping the xt, so a cut inside the callback reads
+\ them (B-SOURCE-UNIT-RUN's snapshot).
 : SOURCE-UNIT-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    X64CODE:LBL {: no-snap:label :}
@@ -2065,27 +2111,31 @@ private
    RCX DEPTH-OF,  RCX RDX SX-DEPTH MOV-STORE,
    RCX DATA-REG RSP-CELL MOV-LOAD,  RCX RDX SX-RDEPTH MOV-STORE,
    no-snap X64CODE:LBL,
-   RSP RUN-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RSP UNIT-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    DSP RSP RUN-DSP MOV-STORE,
    RCX DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,  RCX RSP RUN-BASE MOV-STORE,
-   RDX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,   RDX RSP RUN-CAP MOV-STORE,
-   RSI DSP ASM-SINK ENC-MOV-RR
-   RSI RCX ASM-SINK ENC-SUB-RR
-   RDX RSI ASM-SINK ENC-SUB-RR
-   DSP DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RCX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,   RCX RSP RUN-CAP MOV-STORE,
+   RAX RSP UNIT-SEG MOV-STORE,
+   CLOSED-TAKE,
+   RCX RSP UNIT-SEG MOV-LOAD,
+   RAX RSP UNIT-SEG MOV-STORE,
+   RAX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
+   RDX STACK-ABI:PAGE-BYTES IMM32,
    RDX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
-   RAX ASM-SINK ENC-CALL-REG
-   RCX RSP RUN-DSP MOV-LOAD,
-   RAX ZERO-REG,
+   DSP RAX ASM-SINK ENC-MOV-RR
+   RCX PUSH,  CAUGHT,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE restore JCC,
+   RCX RSP UNIT-SEG MOV-LOAD,
    DSP RCX ASM-SINK ENC-CMP-RR  C-E restore JCC,
    RAX STACK-ABI:E-EVAL-RESIDUE >IMM32 ASM-SINK ENC-MOV-RI32
-   C-AE restore JCC,
-   RAX 70 >IMM32 ASM-SINK ENC-MOV-RI32
+   C-A restore JCC,
+   RAX 70 IMM32,
    restore X64CODE:LBL,
+   RDX RSP UNIT-SEG MOV-LOAD,  RDX CLOSED-GIVE,
    RDX RSP RUN-BASE MOV-LOAD,  RDX DATA-REG STACK-ABI:BASE-CELL MOV-STORE,
    RDX RSP RUN-CAP MOV-LOAD,   RDX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
-   DSP RCX ASM-SINK ENC-MOV-RR
-   RSP RUN-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
+   DSP RSP RUN-DSP MOV-LOAD,
+   RSP UNIT-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    THROW,
    done X64CODE:LBL, ;
@@ -2118,14 +2168,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    DSP RSP CLOSED-ARM-OFF CLOSED-INNER-DSP + MOV-STORE,
    ASM-SINK ENC-RET ;
 
-\ The idle stack's first cell links the pool. Mapping follows boot-x64's
-\ guarded allocation: an inaccessible page lies on each side of the aligned
-\ 64 KiB data extent. The source and caller descriptor wait in a machine frame
-\ across mmap and across the guarded call.
+\ The source and caller descriptor wait in a machine frame across the take
+\ (CLOSED-TAKE,) and across the guarded call.
 : EVAL-CLOSED, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: have:label take:label map-fail:label pool:label done:label :}
-   X64CODE:LBL {: arm:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: pool:label done:label arm:label :}
    TASK-LIVE-GUARD,
    RSP CLOSED-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    RAX POP,  RAX RSP CLOSED-U MOV-STORE,
@@ -2135,27 +2181,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX RSP CLOSED-BASE MOV-STORE,
    RAX DATA-REG STACK-ABI:CAP-CELL MOV-LOAD,
    RAX RSP CLOSED-CAP MOV-STORE,
-   RAX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
-   RAX RAX ASM-SINK ENC-TEST-RR  C-NE have JCC,
-   RDI ZERO-REG,
-   RSI STACK-ABI:PAGE-BYTES 4 * IMM32,
-   RDX 0 IMM32,
-   R10 MAP-ANON-PRIVATE IMM32,
-   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,  C-B map-fail JCC,
-   RDI RAX STACK-ABI:PAGE-BYTES 2 * 1- MEM-OFF ASM-SINK ENC-LEA
-   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
-   RSI STACK-ABI:PAGE-BYTES IMM32,
-   RDX PROT-RW IMM32,
-   R10 MAP-ANON-PRIVATE-FIXED IMM32,
-   R8 -1 >IMM32 ASM-SINK ENC-MOV-RI32  R9 ZERO-REG,
-   NR-MMAP SYS,
-   RAX RDI ASM-SINK ENC-CMP-RR  C-NE map-fail JCC,
-   take JMP,
-   have X64CODE:LBL,
-   RCX RAX 0 MOV-LOAD,
-   RCX DATA-REG CLOSED-FREE-CELL MOV-STORE,
-   take X64CODE:LBL,
+   CLOSED-TAKE,
    RAX RSP CLOSED-SEG MOV-STORE,
    RAX arm MOVABS,  RAX PUSH,
    CAUGHT,
@@ -2175,17 +2201,12 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RCX RSP CLOSED-CAP MOV-LOAD,
    RCX DATA-REG STACK-ABI:CAP-CELL MOV-STORE,
    DSP RSP CLOSED-DSP MOV-LOAD,
-   RDX RSP CLOSED-SEG MOV-LOAD,
-   RCX DATA-REG CLOSED-FREE-CELL MOV-LOAD,
-   RCX RDX 0 MOV-STORE,
-   RDX DATA-REG CLOSED-FREE-CELL MOV-STORE,
+   RDX RSP CLOSED-SEG MOV-LOAD,  RDX CLOSED-GIVE,
    RAX RSP CLOSED-CODE MOV-LOAD,
    RSP CLOSED-BYTES >IMM8 ASM-SINK ENC-ADD-RI8
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
    THROW,
    done JMP,
-   map-fail X64CODE:LBL,
-   S\" hb: cannot map guarded VM stack\n" 78 STDERR-EXIT,
    arm X64CODE:LBL,
    CLOSED-ARM,
    done X64CODE:LBL, ;
