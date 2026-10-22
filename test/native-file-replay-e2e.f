@@ -496,6 +496,13 @@ public
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ s" 621" CONTAINS? TTRUE
+   s" hb-build rebuilds an edited #! file and then finds the load up to date" T-LABEL
+   s" defs.f" S\" #!/usr/bin/env hb\npackage REVIEW-USING public : VALUE ( -- n ) 101 ; ;package\n" PUT
+   s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE ;\n" PUT
+   BUILD-APP SUCCESS
+   RUN-APP SUCCESS OUT$ s" 680" CONTAINS? TTRUE
+   BUILD-APP SUCCESS
+   OUT$ s" hb-build up to date: " CONTAINS? TTRUE
    SCOPE-CASES
    CANON-CASE
    SESSION-CASES

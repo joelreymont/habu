@@ -46,7 +46,11 @@ $4B8 constant LIVE-FIXED-OFF
 72 constant F-OCC
 \ The input rows below F-MARK belong to a file object already.
 80 constant F-MARK
-88 constant FRAME-BYTES
+\ The bytes as read. F-SRC is the copy the interpreter runs, which differs
+\ from them when the file starts with `#!` (include.f LOAD-BYTES).
+88 constant F-RAW
+96 constant F-RAW-U
+104 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
@@ -149,6 +153,7 @@ CAST: PRIMITIVE-XT ( n -- [ n n -- n bool ] )
 CAST: IDENTITY-XT ( n -- [ n -- ptr u8 n ptr u8 n n ] )
 CAST: ORIGIN-XT ( n -- [ ptr u8 n n ptr u8 n -- n ] )
 CAST: PARENT-ACTION-XT ( n -- [ -- n ptr u8 n ] )
+CAST: ACTIVE-SOURCE-XT ( n -- [ -- ptr u8 n ptr u8 n ptr u8 n ] )
 CAST: UNIT>N
    ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- n )
 CAST: N>UNIT
@@ -668,10 +673,11 @@ variable PENDING-KEY-U
    NUNIT-DEP:COMPILED!
    NUNIT-OBJECT:DEFINITION-END {: eligible:bool :}
    eligible if
-      store NUNIT-OBJECT:DEFINITION-CACHEABLE? 0= and if
+      NUNIT-OBJECT:DEFINITION-CACHEABLE? {: cacheable:bool :}
+      store cacheable 0= and if
          s" not-cacheable" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
       then
-      store NUNIT-OBJECT:DEFINITION-CACHEABLE? and {: admitted:bool :}
+      store cacheable and {: admitted:bool :}
       admitted if NUNIT-DEP:EXPORT else NULL-PTR 0 false then
          {: deps:ptr depsu:n storable:bool :}
       storable if
@@ -856,17 +862,17 @@ variable PENDING-KEY-U
    NFILE-INPUTS:MARK F-MARK F! ;
 
 : SOURCE-ROW ( -- )
-   FRAME-PATH FRAME-ROOT FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
+   FRAME-PATH FRAME-ROOT FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
       NFILE-INPUTS:ADD-ROOT ;
 
 \ Open the object of the file just pushed; its first row is its own source's
-\ content.
+\ content. Rows join an object only at ROWS-FLUSH, so the row recorded before
+\ FILE-BEGIN is still this file's, and a throw leaves no object to end.
 : OBJECT-OPEN ( -- )
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
    NFILE-INPUTS:MARK F-MARK F!
-   NUNIT-OBJECT:FILE-BEGIN
-   ['] SOURCE-ROW catch {: rc:n :}
-   rc 0<> if NUNIT-OBJECT:FILE-END rc throw then ;
+   SOURCE-ROW
+   NUNIT-OBJECT:FILE-BEGIN ;
 
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none.
@@ -912,6 +918,12 @@ variable PENDING-KEY-U
          {: mode:n asked:ptr askedu:n :}
       asked drop askedu drop mode
    then {: kind:n :}
+   \ The loader's frame still holds the bytes as read; `source` is the copy
+   \ the interpreter runs.
+   target if
+      s" SOURCE-ROOT:ACTIVE-SOURCE" TARGET-XT ACTIVE-SOURCE-XT execute
+   else SOURCE-ROOT:ACTIVE-SOURCE then
+      {: raw:ptr rawu:n :} 2drop 2drop
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
    DEPTH @ 0 > if ROWS-FLUSH then
@@ -922,6 +934,8 @@ variable PENDING-KEY-U
    pathu F-INPUT-U F!
    source FRAME F-SRC + 0 ptr-field !
    sourceu F-SRC-U F!
+   raw FRAME F-RAW + 0 ptr-field !
+   rawu F-RAW-U F!
    root FRAME F-ROOT + 0 ptr-field !
    rootu F-ROOT-U F!
    q Q>N F-Q F!
