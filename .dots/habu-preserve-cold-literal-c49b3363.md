@@ -1,6 +1,6 @@
 ---
 title: Preserve cold literal layout during reuse
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-10-16T13:45:48.575160+03:00"

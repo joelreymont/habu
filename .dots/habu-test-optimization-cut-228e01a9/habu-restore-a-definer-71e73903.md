@@ -1,9 +1,11 @@
 ---
 title: "Restore a definer row's signature on a frame pop"
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-10-02T18:39:44.828761+02:00"
+closed-at: "2026-10-22T12:36:34.818379+03:00"
+close-reason: "Triage 2026-10-22, DONE: The demonstrated member is fixed: UNDEFINE-WORD calls DEFINER-RETIRE (verify-source.f:2442), and undef.f is refused at preverify with rc 70. The rollback member was never reproduced, so drop it. 08fbc73848dd \"Rewind verify definer rows with the checker frame\"."
 ---
 
 Problem (lane 335 r4-inproc, reading): src/habu/verify-source.f:458 DEFINER-ADD rewrites a known definer's signature in place; if that row predates a checker rollback frame, popping the frame (VERIFY-DEFINER-N rewinds the count) does not restore the old signature. Narrowed by duplicate-definition refusals; not reproduced. Acceptance: reproduce through a rollback (a frame that redefines a definer's clause signature, then pops) or show it unreachable; if reachable, the row keeps its signature until the frame commits (append a new row instead of rewriting, as the count rewind expects). Files: src/habu/verify-source.f.

@@ -1,9 +1,11 @@
 ---
 title: Resolve x86 entry cells and dispatch the writer
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:29.008645+03:00"
+closed-at: "2026-10-22T12:36:34.339694+03:00"
+close-reason: "Triage 2026-10-22, DONE: ENGINE-MAIN:XT-CELL is resolved in boot-x64.f; tools/native-emit-x64.f is the x86 writer; 9cbf2e02 \"Run linked boot entries on Intel\". The Intel line booted captured MAIN (INTEL.md State)."
 blocks:
   - habu-compile-definer-bodies-1292d049
 ---

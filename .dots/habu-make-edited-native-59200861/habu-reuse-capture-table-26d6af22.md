@@ -1,6 +1,6 @@
 ---
 title: Reuse capture table spans
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-19T13:22:47.825677+03:00"

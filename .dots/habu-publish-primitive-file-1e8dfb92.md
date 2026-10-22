@@ -1,6 +1,6 @@
 ---
 title: Publish primitive FILE dependency contracts
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-15T07:53:30.464134+03:00"

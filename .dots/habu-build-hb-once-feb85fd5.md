@@ -1,6 +1,6 @@
 ---
 title: "Build hb once as the test suite's prelude"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-08T10:58:28.842931+02:00"
@@ -11,6 +11,6 @@ Ruling (Joel, 2026-10-08): build hb once as the prelude of the test suite and ru
 Acceptance: the suite builds hb once and every test uses it; tests whose subject is the builder move to an occasional integration set, the rest use the prelude's hb; docs/gate.md states the per-landing check (build once + suite) and when the integration set runs.
 Files: test/run.f, test/gate-stdlib-cases.f, the 13 tests, docs/gate.md.
 Verify: full suite wall time and its count of engine builds before and after.
-Depends: none. Ownership: unassigned. Claim: unassigned.
+Depends: none. Ownership: unassigned. Claim: unassigned (stale claim reset 2026-10-22).
 
 The native gate is a noninteractive batch command. Its child process groups can stop with SIGTTIN when stdin is an inherited PTY; stdlib-source-default and protection-span both passed unchanged with explicit EOF after such a stopped run. Keep qualification commands on non-PTY input with stdin closed, and preserve their actual read/input assertions; never increase deadlines to hide job-control stops.

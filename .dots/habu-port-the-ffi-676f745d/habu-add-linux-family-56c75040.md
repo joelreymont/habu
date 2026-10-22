@@ -1,9 +1,11 @@
 ---
 title: Add Linux-family predicates to the libraries
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.782660+03:00"
+closed-at: "2026-10-22T12:36:34.124325+03:00"
+close-reason: "Triage 2026-10-22, DONE: HB-TARGET-LINUX-KERNEL? is in all three target.f and used across signal/codesign/genio/fs-mutate/tcp4/udp4/serial/aio/engine-id; final sweep c56c98e8 \"Select Linux kernel paths on x86-64 too\"."
 blocks:
   - habu-run-bin-hb-6378f297
 ---

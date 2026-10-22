@@ -1,6 +1,6 @@
 ---
 title: Respect qualified name engine bounds
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-15T06:52:27.008111+03:00"

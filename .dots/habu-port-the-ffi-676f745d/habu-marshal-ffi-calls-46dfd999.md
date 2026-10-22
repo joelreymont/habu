@@ -1,9 +1,11 @@
 ---
 title: Marshal FFI calls for SysV AMD64
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.774308+03:00"
+closed-at: "2026-10-22T12:36:34.261853+03:00"
+close-reason: "Triage 2026-10-22, DONE: d3fa08e7 \"Marshal SysV FFI calls\", e224283a, 6c3aa999. ffi-abi.f:1-6 covers SysV 6+8 registers. The never-run float32 stubs (HANDOFF gap 6) are covered by pass-the-full."
 blocks:
   - habu-add-sysv-abi-75f86980
   - habu-run-bin-hb-6378f297

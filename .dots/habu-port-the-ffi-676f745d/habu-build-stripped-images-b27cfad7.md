@@ -1,9 +1,11 @@
 ---
 title: Build stripped images and tools for x86-64
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.808875+03:00"
+closed-at: "2026-10-22T12:36:34.150871+03:00"
+close-reason: "Triage 2026-10-22, DONE: x86 arm in aot-lib.f:6-9; hb-x86-64-v1 ABI key at hb-build-lib.f:1086; x86 imgdump/engine-size (5890e719, 4decec1c); 24f2bbc8 \"Bound Intel stripped image size\". ThinkPad row results belong to pass-the-full."
 blocks:
   - habu-resolve-x86-entry-cb671d4d
   - habu-run-bin-hb-6378f297

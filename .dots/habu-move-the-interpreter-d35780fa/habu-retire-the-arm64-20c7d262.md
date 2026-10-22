@@ -7,10 +7,6 @@ created-at: "2026-10-10T02:02:07.956141+03:00"
 blocks:
   - habu-refuse-a-user-53731ac9
   - habu-move-whole-values-6bcab743
-  - habu-compile-records-over-9e5f9ea6
-  - habu-compile-an-empty-2d88de28
-  - habu-refuse-an-unsigned-ea48c18b
-  - habu-refuse-a-second-382f76b5
   - habu-report-a-refused-de5d1404
   - habu-refuse-a-scanless-5c10d37f
   - habu-admit-a-pkg-0239019d

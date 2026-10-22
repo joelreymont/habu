@@ -1,9 +1,11 @@
 ---
 title: Call the unit hook from the Habu loop
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-30T14:52:44.697860+03:00"
+closed-at: "2026-10-22T12:36:34.458397+03:00"
+close-reason: "Triage 2026-10-22, DONE: the Habu loop calls the unit hook: src/habu/interpret.f:62-90 (UNIT-TOKEN, UNIT-END, does> refusal), packages.f:191, definers.f:529."
 blocks:
   - habu-move-pkgs-using-22f18b81
   - habu-compile-definer-bodies-1292d049

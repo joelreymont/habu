@@ -1,6 +1,6 @@
 ---
 title: Resolve declaration publication clobbers
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-16T15:56:45.248160+03:00"

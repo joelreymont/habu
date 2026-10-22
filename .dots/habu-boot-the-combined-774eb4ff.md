@@ -1,6 +1,6 @@
 ---
 title: Boot the combined recovery source
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-16T14:59:16.910976+03:00"

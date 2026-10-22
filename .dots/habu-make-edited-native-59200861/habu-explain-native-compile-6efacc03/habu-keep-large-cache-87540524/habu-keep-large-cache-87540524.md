@@ -1,6 +1,6 @@
 ---
 title: Keep large cache diagnostics usable
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-19T13:02:18.010733+03:00"

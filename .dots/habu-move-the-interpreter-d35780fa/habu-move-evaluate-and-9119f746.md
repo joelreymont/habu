@@ -1,9 +1,11 @@
 ---
 title: Re-enter evaluate from Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.689073+03:00"
+closed-at: "2026-10-22T12:36:34.314294+03:00"
+close-reason: "Triage 2026-10-22, OBSOLETE: x86 runs the Habu evaluate with frames (src/habu/interpret.f:154-200; 174460de). The FL-PREFIX-PROVIDED design it prescribes was dropped in eccbd28. ARM64 adoption goes to the parent."
 blocks:
   - habu-move-pkgs-using-22f18b81
   - habu-call-the-unit-ec148ccf

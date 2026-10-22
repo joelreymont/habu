@@ -1,6 +1,6 @@
 ---
 title: Make edited native rebuilds incremental
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:09:07.007563+02:00"

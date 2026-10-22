@@ -1,6 +1,6 @@
 ---
 title: Explain native compile fallbacks
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-19T11:38:59.599898+03:00"

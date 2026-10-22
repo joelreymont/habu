@@ -1,6 +1,6 @@
 ---
 title: Define private layouts once
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-16T11:17:41.726409+03:00"

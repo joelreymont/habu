@@ -1,6 +1,6 @@
 ---
 title: "Retire SUMTYPE and PRODUCT: one declaration system"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-30T16:15:45.305417+02:00"
@@ -14,4 +14,4 @@ Not part of this: binder heads (NAME<a,b>), a carrier NEWTYPE and an owner-const
 
 Child: habu-nest-generated-family-70b2f31a.
 
-Files: src/core/sumtype.f, src/core/enum-decl.f, src/core/structure-decl.f, the declaration sites. Verify: build, generation convergence and bin/hb --load test/run.f. Depends: none. Ownership: declaration front ends. Claim: unassigned.
+Files: src/core/sumtype.f, src/core/enum-decl.f, src/core/structure-decl.f, the declaration sites. Verify: build, generation convergence and bin/hb --load test/run.f. Depends: none. Ownership: declaration front ends. Claim: unassigned (stale claim reset 2026-10-22).
