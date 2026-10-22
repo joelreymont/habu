@@ -473,7 +473,7 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture. A miss reaches the five design body
+\ `;` is handled before the capture. A miss reaches the six design body
 \ keywords only after local, dictionary and numeric lookup, as the native
 \ capture does.
 : BODY-POLICY ( -- )
@@ -490,6 +490,7 @@ private
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
    S\" s\q" TOKEN-IS? if exit then
+   S\" s\\\q" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
 
