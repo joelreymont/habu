@@ -129,13 +129,10 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ ---- the head's room (habu2.f EM-INTERPRET-COLON, C-TRUSTED) -----------------
 \ CP at the code ceiling and no record slot left each refuse, naming the
 \ keyword. Both comparisons are signed, as the engine's head makes them.
-: DEF-CODE-ROOM ( -- )
+: DEF-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
       s" hb: code space full at: " SAY PKG-RC-CODE-FULL PKG-FAIL
-   then ;
-
-: DEF-ROOM ( -- )
-   DEF-CODE-ROOM
+   then
    ndict@ DICT-CAP >= if
       s" hb: dictionary full at: " SAY PKG-RC-DICT-FULL PKG-FAIL
    then ;
@@ -757,15 +754,16 @@ TRUSTED: DEF-HERE ( -- n ) here ;
    then
    def-create ;
 
-\ The head refuses as `:`'s does, at any tier, the tail publishes the word,
-\ DP rounded up to a cell. No record slot left is refused after the name,
-\ naming it, as the engine's `create` refuses it (C-QUALIFY-CAP, here
-\ DEF-RECORD). The engine's `create` writes at CP at the code ceiling, which
-\ def-open refuses, so the code room refuses first, naming the keyword, as
-\ `:`'s does.
+\ The head refuses a live task, as `:`'s does, at any tier; the tail publishes
+\ the word, DP rounded up to a cell. No record slot left is refused after the
+\ name, naming it, as the engine's `create` refuses it (C-QUALIFY-CAP, here
+\ DEF-RECORD). The engine's `create` has no code-room check: it refuses only
+\ its body's write past the region's end, 83 (habu1.f GUARD-CODE-WORD).
+\ def-open refuses CP at the code ceiling with the same code, as for
+\ `constant`, so between the ceiling and the region's end the engine creates
+\ and this loop refuses.
 : DEF-ADDR-ROW ( bool -- ) {: cell?:bool :}
    TASK-GUARD
-   DEF-CODE-ROOM
    s" create" OPERAND
    DKIND:ADDR cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
