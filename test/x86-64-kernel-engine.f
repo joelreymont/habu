@@ -59,8 +59,10 @@
 \   -drain-unset writes `trust-decl` on fd 2 and exits 70;
 \ - hb-x64-kernel-prot-wid, -wide-mark, -xt-store, -tier and -scope exit 0;
 \   -prot-wid-bound exits 84 with its fd-2 text, -xt-store-armed and
-\   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
-\   -snap-rebase exits 76 with the REFUSE text.
+\   -mark-armed exit 83, and -tier-zero exits 70 with its fd-2 text;
+\ - hb-x64-kernel-snap-rebase guards a span in the scratch cells, drops its six
+\   cells and exits 0, and -snap-rebase-armed exits 83 for a span that
+\   straddles the protected band.
 \ hb-x64-kernel-origin asks code-origin about the kernel's text and about spans
 \ code-publish wrote, each with its int3 fill to the next code slot, and
 \ -origin-patch about them once patch32 rewrote a word; both exit 0.
@@ -322,12 +324,6 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
    OTHER-WID X64HARNESS:PUSH,  s" set-current" ROW
    s" get-current" ROW  OTHER-WID X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ Boot, call one row and close: for a row that ends the image itself.
-: BUILD-CALL ( ptr u8 n ptr u8 n -- ) {: row:ptr rowu:n path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   row rowu ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the code pointer --------------------------------------------------------
@@ -688,6 +684,29 @@ $5A constant CALLER-TIER
    0 X64HARNESS:PUSH,  s" set-tier" ROW
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ snap-rebase ( base end count dbase dlen newbase -- ) guards [base, end): it
+\ admits two scratch cells, drops its six cells and leaves the cell below.
+: BUILD-SNAP-REBASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEAL,
+   CELL-VALUE X64HARNESS:PUSH,
+   0 X64HARNESS:PUSH-SCRATCH,  2 cells X64HARNESS:PUSH-SCRATCH,
+   0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,
+   s" snap-rebase" ROW
+   CELL-VALUE X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
+\ With the latch sealed, a span from below the protected band to past
+\ DATA-START straddles the whole band: the guard exits 83.
+: BUILD-SNAP-REBASE-ARMED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   SEAL,
+   TXN-STATE-OFF CELL - X64HARNESS:PUSH-DATA,  DATA-START CELL + X64HARNESS:PUSH-DATA,
+   0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,  0 X64HARNESS:PUSH,
+   s" snap-rebase" ROW
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 \ ---- code provenance ---------------------------------------------------------
 \ The spans the provenance images publish, as offsets into the region: CP
 \ starts at DICT-SIZE, each publication appends at CP, and CP moves to the
@@ -923,7 +942,8 @@ public
    11 s" hb-x64-kernel-number-11" TMP-PATH BUILD-NUM
    12 s" hb-x64-kernel-number-12" TMP-PATH BUILD-NUM
    13 s" hb-x64-kernel-number-13" TMP-PATH BUILD-NUM
-   s" snap-rebase" s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-CALL
+   s" hb-x64-kernel-snap-rebase" TMP-PATH BUILD-SNAP-REBASE
+   s" hb-x64-kernel-snap-rebase-armed" TMP-PATH BUILD-SNAP-REBASE-ARMED
    X64HARNESS:DISPOSE
    T-REPORT ;
 

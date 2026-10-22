@@ -3945,8 +3945,9 @@ private
 
 \ ---- persisted cells, the tier and the build scope ---------------------------
 \ The x86-64 image has fixed addresses, but capture still needs declarations
-\ for cells holding code and DATA addresses. snap-rebase, which moves a
-\ restored snapshot's cells, refuses. The twins of habu2.f
+\ for cells holding code and DATA addresses. snap-rebase keeps only the span
+\ guard of habu2.f BSNAPREBASE: its region copy already holds the canonical
+\ addresses, so it rewrites nothing. The twins of habu2.f
 \ RELOC-EMIT:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
 \ BBUILDENTER, BBUILDLEAVE, BSETTIER, BTIERFETCH and BCODEORIGIN.
 
@@ -4162,7 +4163,11 @@ variable MARK-CELL
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
    \ The x86-64 test kernel has no image writer to stamp implementation bytes.
    s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
-   s" snap-rebase" REFUSE
+   \ ( base end count dbase dlen newbase -- ): guard [base, end), then drop all six.
+   s" snap-rebase" [:
+      RDI 5 PEEK,  RSI 4 PEEK,  RSI RDI ASM-SINK ENC-SUB-RR
+      RDI RSI PROT-SPAN-CALL,
+      DSP 6 CELL * >IMM8 ASM-SINK ENC-SUB-RI8 ;] PRIM
    s" executable-build-enter" [: BUILD-ENTER-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM
