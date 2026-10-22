@@ -16,6 +16,8 @@ require src/lib/prelude.f
 require src/habu/verify-source.f
 require src/lib/test.f
 require src/lib/tier.f
+require src/lib/span.f
+require src/lib/test/runner.f
 
 T-RESET
 
@@ -275,6 +277,32 @@ s" : OPK-H ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKC public : OPK-H ( -- n ) 41 ; ;package" UCE-CATCH 0 T=
 s" package OPKC public : OPKC-R ( -- n ) OPK-H ; ;package" UCE-CATCH 0 T=
 OPKC:OPKC-R 41 T=
+
+\ A definition's own name is no use of it. Tier 1 reads the bare name's prior
+\ binding before compiling the body (src/compiler/native/compiler.f READ-PRIOR);
+\ that read must neither raise nor render the refusal a body token spelling the
+\ name gets. ZQY is a global a used public shadows; ZQZ is also exported by a
+\ second used package.
+: ZQY ( -- ) ;
+: ZQZ ( -- ) ;
+package UZA public : ZQY ( -- ) ; : ZQZ ( -- ) ; ;package
+package UZB public : ZQZ ( -- ) ; ;package
+: UZ-AMB ( -- )
+   s" package UZT3 using UZA using UZB private : ZQZ ( n -- ) drop ; ;package"
+   UCE-CATCH throw ;
+\ The ambiguity row's refusal would be rendered, so its fd 2 is captured.
+: UZ-QUIET ( -- )
+   s" habu-using-test" GT-START
+   [: UZ-AMB ;] GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
+   GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
+   GT-CLEANUP
+   rc 0 T=
+   erru LEN>N 0 T= ;
+1 TIER:SELECT
+s" package UZT1 using UZA private : ZQY ( n -- ) drop ; ;package" UCE-CATCH 0 T=
+s" package UZT2 using UZA private : ZQY ( n -- ) drop ZQY ; ;package" UCE-CATCH E-SHADOW T=
+UZ-QUIET
+USING-TEST:RESTORE-TIER
 
 \ Type imports use the same explicit package scope. A compiler-owned public
 \ cell-id must not prevent an application from importing its own cell-id.

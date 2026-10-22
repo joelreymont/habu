@@ -44,6 +44,7 @@ defer SOURCE-WRITE-WINDOW ( n -- )
 defer SOURCE-REPORT-RESET ( -- )
 defer SOURCE-JSON-REPORTED ( -- bool )
 defer SOURCE-DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
+defer SOURCE-QUIET-SYM ( ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -116,7 +117,8 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
    NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED
-   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED ;
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED
+   NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF s" source quiet symbol" SOURCE-FIELD AS-CHECK is SOURCE-QUIET-SYM ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -431,6 +433,15 @@ TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
    NCOMP-DISPATCH:DECL-PARSE-IMM-OFF s" parse-neutral immediate" FIELD
    dup 0= if drop NEUTRAL-PARSE-IMM? exit then
    AS-NAME-PREDICATE execute ;
+
+\ The symbol a bare name binds, or 0 when it binds none or the checker refuses
+\ it as a used public shadowing a global or a tail two used publics export.
+\ Those two refusals are neither raised nor rendered: the asker reads the name
+\ without using it (checker.f CHECKER-FIND-QUIET-SYM, compiler.f READ-PRIOR).
+: QUIET-SYM ( ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-VERIFY-FIND-SYM-OFF s" quiet symbol" FIELD
+   dup 0= if drop SOURCE-QUIET-SYM exit then
+   AS-CHECK execute ;
 
 
 \ ---- the effect-store query group. QUERY resolves a name into the instance's

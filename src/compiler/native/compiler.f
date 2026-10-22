@@ -212,11 +212,15 @@ private
 
 \ The pending record is not searchable yet.  Capture the word its bare name
 \ denotes while the dictionary and checker still agree about that prior entry.
+\ Reading it is no use of the name: a bare name the checker refuses here (a
+\ global a used public shadows, a tail two used publics export) has no prior
+\ effect to read, and its refusal belongs to a body token that spells it.
 : READ-PRIOR ( -- )
    PENDING-NAME$ {: a:ptr u:n :}
    a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry PRIOR-ENTRY !
    entry 0= if exit then
+   a u CHECKER-OWNER:QUIET-SYM 0= if exit then
    a u NDICT:SPELL-CALL {: in:n out:n glue:n :}
    in NDICT:ARITY-NONE = if exit then
    glue NDICT:GLUE-UNKNOWN = if exit then
@@ -225,7 +229,10 @@ private
    kind DKIND:CAST = PRIOR-CAST !
    1 PRIOR-CALLABLE ! ;
 
-\ An ambiguous bare name is no prior binding.  A qualified body token remains
+\ An ambiguous bare name is no prior binding: the engine's own lookup
+\ (NDICT:SCOPE-REC under CALL-BINDING) throws E-USING-AMBIGUOUS when two used
+\ publics export the tail and nothing earlier binds it.  The checker's verdict
+\ on the name is asked quietly in READ-PRIOR.  A qualified body token remains
 \ free to resolve its own unambiguous record after the check.
 : KEEP-PRIOR ( -- )
    0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  false PRIOR-CAST !
