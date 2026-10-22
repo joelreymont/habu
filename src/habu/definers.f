@@ -41,9 +41,12 @@ private
 
 \ Tier 1's capture reads locals before syntax. These cells describe lexical
 \ lifetime only; LOCF is the JIT's physical frame and CF its patch stack.
+\ BODY-RAW-NEXT is zero, or which parsing keyword owns the next token raw.
 LOC-RECS TYPED-BUFFER BODY-LOCAL-DEPTH n
 variable BODY-DEPTH
 variable BODY-RAW-NEXT
+1 constant RAW-OPERAND           \ any other parsing keyword's
+2 constant RAW-TICK-OPERAND      \ `[']`, whose operand meets the seal guard
 variable TOK-BODY-DEPTH
 variable TOK-BODY-RAW
 
@@ -678,6 +681,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    PEND-CELL CELL@ 0= if false exit then
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 0= if DEF-TIER-0 then
    BODY-RAW-NEXT @ if
+      \ `['] RESERVED:tail` ends the process before any lookup once the
+      \ engine is sealed, as tier 0's does (habu2.f C-BTICK calls
+      \ C-QUALIFY-SEAL-GUARD).
+      BODY-RAW-NEXT @ RAW-TICK-OPERAND = if SEAL-GUARD then
       0 BODY-RAW-NEXT !
       TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
    then
@@ -692,7 +699,9 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-IMMEDIATE? if true exit then
    DEF-DOES? if true exit then
    DEF-STRING-TEXT
-   TOKEN$ SOURCE-SYNTAX:PARSING-KEYWORD? if -1 BODY-RAW-NEXT ! then
+   TOKEN$ SOURCE-SYNTAX:PARSING-KEYWORD? if
+      s" [']" TOKEN-IS? if RAW-TICK-OPERAND else RAW-OPERAND then BODY-RAW-NEXT !
+   then
    DEF-PREFIX-BIND
    true ;
 
