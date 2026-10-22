@@ -1410,11 +1410,8 @@ variable SZA-I
 : BNUNITRECLAIMCELL ( -- )
    9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
-: BNATIVEBODYREUSECELL ( -- )
+: BNATIVEORIGINCELL ( -- )
    9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MOVZ,
-   9 DATA 9 ADD,  9 G-PUSH ;
-: BNATIVEBODYREADERCELL ( -- )
-   9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
@@ -4730,8 +4727,7 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" native-unit-reclaim-cell" ['] BNUNITRECLAIMCELL FPRIM-L
-   s" native-body-reuse-cell" ['] BNATIVEBODYREUSECELL FPRIM-L
-   s" native-body-reader-cell" ['] BNATIVEBODYREADERCELL FPRIM-L
+   s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" seed-ndict!" ['] BSEEDNDICTSET FPRIM

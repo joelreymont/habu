@@ -1189,8 +1189,8 @@ $3868 constant ARENA-CELL
 \ capture carries the cell as a fixed address row (tools/native-layout.f) and
 \ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
 \ An ARM64 record, and an x86-64 build with no captured runtime,
-\ keep the assembly body and never read the cell. EVALUATE-CELL is the
-\ first cell past the native body record's reader callback ($3840), in the run
+\ keep the assembly body and never read the cell. EVALUATE-CELL follows the
+\ three-cell origin record ($3820..$3837) and the free cells $3838..$3847, in the run
 \ ENGINE-MAIN:XT-CELL extends, swept for a claimant up to the FFI buffers at
 \ $3A00 the way that cell was.
 package PROVIDED-XT
@@ -1239,8 +1239,8 @@ $358 constant XT-CELL
 \ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
-\ The optional body-reader callback at $3840 follows the four-cell native body
-\ record at $3820..$383F. Older kernels expose only the four-cell getter.
+\ The optional three-cell origin record follows at $3820..$3837, read through
+\ the three-cell native-origin-cell getter; $3838..$3847 is free.
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \

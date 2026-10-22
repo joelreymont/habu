@@ -457,8 +457,6 @@ variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable
 variable LPADDRCELLS
 variable LPLAYOUTADDRESS
 variable LPHOOK         variable LPCELLEFF
-variable LBODYREUSECLOSE
-variable LREADERDECIDE
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSTACKABI
 variable LPSCRIPTARGV   variable LPINTMARK
@@ -2817,8 +2815,8 @@ package LOOP-EMIT
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-\ A definition can close only in the source frame that opened it. The
-\ cached-body path and both compiler loops use the same guard.
+\ A definition can close only in the source frame that opened it. Both
+\ compiler loops use the same guard.
 : C-DEF-SOURCE-CLOSE ( -- )
    LBL {: own:label :}
    10 DATA EVAL-TOP-CELL LDR,  10 own CBZ,
@@ -3053,37 +3051,6 @@ public
       UNSET
    ready LBL, ;
 
-\ A tier-1 opener has already read the name and optional signature. The
-\ callback sees the original name and the next unread body byte in one source
-\ buffer. It installs code/checker state before reporting a hit; only then may
-\ the engine move INP and use the ordinary native close.
-: TRY-BODY-REUSE ( -- )
-   LBL LBL LBL {: miss:label nohit:label known:label :}
-   9 DATA POLICY-NDICT-CELL LDR,  9 miss CBNZ,
-   11 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + LDR,
-   11 miss CBZ,
-   10 DATA HOOK-CELL LDR,  10 known CBZ,
-      12 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + LDR,
-      10 12 CMP,  C-NE miss BCOND,
-   known LBL,
-   PROT-EMIT:LCLOSE LABEL@ BL,
-   9 DATA SRCLOC:INB-CELL LDR,  9 G-PUSH
-   10 DATA INE-CELL LDR,  10 10 9 SUB,  10 G-PUSH
-   10 DATA DEF-TKA-CELL LDR,  10 10 9 SUB,  10 G-PUSH
-   10 DATA INP-CELL LDR,  10 10 9 SUB,  10 G-PUSH
-   11 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + LDR,
-   C-CALL-X11-SAVED
-   9 G-POP
-   9 nohit CBZ,
-      C-DEF-SOURCE-CLOSE
-      10 G-POP
-      11 DATA SRCLOC:INB-CELL LDR,  11 11 10 ADD,
-      11 DATA INP-CELL STR,
-      LBODYREUSECLOSE LABEL@ B,
-   nohit LBL,
-   10 G-POP
-   miss LBL, ;
-
 \ The tier fork the two `:` handlers share (the plain `:` in EM-INTERPRET-COLON
 \ and `:trusted` in C-TRUSTED). Both reach it having reset every legacy cell the
 \ JIT's closure reads, so the only thing left to decide is who compiles the body.
@@ -3100,7 +3067,6 @@ public
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    CODE-ORIGIN:OPEN,
    9 jit CBZ,
-      TRY-BODY-REUSE
       LOAD
       done B,
    jit LBL,
@@ -9058,11 +9024,9 @@ ardone LBL,
    9 DATA NATIVE-OBS-CELLS:INVALIDATE STR,
    9 DATA NATIVE-OBS-CELLS:HOST-INVALIDATE STR,
    9 DATA NATIVE-OBS-EXT:CAPTURE-INVALIDATE STR,
-   9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
-   9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + STR,
    9 DATA NATIVE-HOST-CELLS:SELECT STR,
    \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
    \ Stored rather than left to the zeroed DATA page, so the default is a line
@@ -9095,11 +9059,9 @@ ardone LBL,
    NATIVE-OBS-CELLS:INVALIDATE RELOC-EMIT:MARK-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE RELOC-EMIT:MARK-CELL
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE RELOC-EMIT:MARK-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + RELOC-EMIT:MARK-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + RELOC-EMIT:MARK-CELL
    NATIVE-HOST-CELLS:SELECT RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL RELOC-EMIT:MARK-CELL
@@ -9387,80 +9349,6 @@ public
    LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
-\ x13/x5/x11 are LFIND's selected result; x9/x10 are the original spelling.
-\ The query and the capture share this one decision. A non-immediate does>
-\ remains an ordinary captured token, while a neutral immediate executes now.
-: EMIT-READER-DECIDE ( -- )
-   LBL LBL LBL LBL {: passive:label spelling:label no-does:label done:label :}
-   LREADERDECIDE LABEL@ LBL,
-   SP SP 64 SUBI,
-   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
-   5 SP 24 STR,  11 SP 32 STR,  13 SP 40 STR,
-   16 0 MOVZ,
-   13 spelling CBZ,
-   12 13 2 ANDI,  12 passive CBZ,
-   PROT-EMIT:LCLOSE LABEL@ BL,
-   LNEUTRAL NEUTRAL$ nip C-FIND-GLOBAL
-   9 SP 8 LDR,  9 G-PUSH
-   9 SP 16 LDR,  9 G-PUSH
-   C-CALL-X11-SAVED
-   9 G-POP  9 spelling CBZ,
-   16 1 MOVZ,  done B,
-   passive LBL,
-   done B,
-   spelling LBL,
-   16 0 MOVZ,
-   10 SP 16 LDR,  10 5 CMPI,  C-NE no-does BCOND,
-   9 SP 8 LDR,
-   s" does>" {: word:ptr wordu:n :}
-   wordu 0 ?do
-      14 9 i LDRB,  14 14 $20 ORRI,
-      14 word i + c@ CMPI,  C-NE no-does BCOND,
-   loop
-   16 2 MOVZ,
-   no-does LBL,
-   done LBL,
-   5 SP 24 LDR,  11 SP 32 LDR,  13 SP 40 LDR,
-   9 SP 8 LDR,  10 SP 16 LDR,
-   30 SP 0 LDR,  SP SP 64 ADDI,  RET, ;
-
-: OBSERVE-READER ( -- )
-   LBL LBL {: absent:label passive:label :}
-   SP SP 64 SUBI,
-   30 SP 0 STR,  5 SP 8 STR,  11 SP 16 STR,
-   13 SP 24 STR,  16 SP 32 STR,
-   9 SP 40 STR,  10 SP 48 STR,
-   14 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + LDR,
-   14 absent CBZ,
-   PROT-EMIT:LCLOSE LABEL@ BL,
-   11 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + LDR,
-   9 SP 40 LDR,  9 G-PUSH
-   9 SP 48 LDR,  9 G-PUSH
-   9 0 MOVZ,  16 passive CBNZ,
-      9 0 MOVN,
-   passive LBL,
-   9 G-PUSH
-   C-CALL-X11-SAVED
-   absent LBL,
-   5 SP 8 LDR,  11 SP 16 LDR,
-   13 SP 24 LDR,  16 SP 32 LDR,
-   9 SP 40 LDR,  10 SP 48 LDR,
-   30 SP 0 LDR,  SP SP 64 ADDI, ;
-
-: B-NATIVE-BODY-PASSIVE ( -- )
-   LBL {: nonpassive:label :}
-   10 G-POP  9 G-POP
-   SP SP 32 SUBI,
-   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
-   LFIND LABEL@ BL,
-   9 SP 8 LDR,  10 SP 16 LDR,
-   LREADERDECIDE LABEL@ BL,
-   9 0 MOVZ,  16 nonpassive CBNZ,
-      9 0 MOVN,
-   nonpassive LBL,
-   30 SP 0 LDR,  SP SP 32 ADDI,
-   9 G-PUSH ;
-
 \ THE DESIGN SEAL GATES EVERY BODY TOKEN HERE, where tier 1 reads it, with tier
 \ 0's predicate, so a token outside the vocabulary is refused at its own line at
 \ both tiers and nothing is left for the native compiler to refuse. Under the
@@ -9483,19 +9371,48 @@ public
 : CAPTURE-IMMEDIATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: done:label execute-now:label parse-does:label probe:label gated:label lookup:label missed:label locals:label passive:label unbound:label :}
+   LBL LBL LBL
+   {: spelling:label no-does:label decided:label :}
    14 DATA POLICY-NDICT-CELL LDR,  14 lookup CBZ,
-   LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-LT lookup BCOND,
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
-      16 0 MOVZ,  OBSERVE-READER
-      LMAIN LABEL@ B,                                 \ local: already captured
+   LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LMAIN LABEL@ BCOND,    \ 1: a local is already captured
    lookup LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 probe CBZ,
    LPOLICYREC LABEL@ BL,
    gated LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
-   LREADERDECIDE LABEL@ BL,
-   OBSERVE-READER
+   \ Decide in x16: 0 passive, 1 execute now, 2 parse does>. x13/x5/x11 are
+   \ LFIND's selected result; x9/x10 are the original spelling. A non-immediate
+   \ does> remains an ordinary captured token, while a neutral immediate executes
+   \ now.
+   SP SP 64 SUBI,
+   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
+   5 SP 24 STR,  11 SP 32 STR,  13 SP 40 STR,
+   16 0 MOVZ,
+   13 spelling CBZ,
+   12 13 2 ANDI,  12 decided CBZ,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   LNEUTRAL NEUTRAL$ nip C-FIND-GLOBAL
+   9 SP 8 LDR,  9 G-PUSH
+   9 SP 16 LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   9 G-POP  9 spelling CBZ,
+   16 1 MOVZ,  decided B,
+   spelling LBL,
+   16 0 MOVZ,
+   10 SP 16 LDR,  10 5 CMPI,  C-NE no-does BCOND,
+   9 SP 8 LDR,
+   s" does>" {: word:ptr wordu:n :}
+   wordu 0 ?do
+      14 9 i LDRB,  14 14 $20 ORRI,
+      14 word i + c@ CMPI,  C-NE no-does BCOND,
+   loop
+   16 2 MOVZ,
+   no-does LBL,
+   decided LBL,
+   5 SP 24 LDR,  11 SP 32 LDR,  13 SP 40 LDR,
+   9 SP 8 LDR,  10 SP 16 LDR,
+   30 SP 0 LDR,  SP SP 64 ADDI,
    16 1 CMPI,  C-EQ execute-now BCOND,
    16 2 CMPI,  C-EQ parse-does BCOND,
    passive B,
@@ -9524,8 +9441,6 @@ public
    unbound LBL,
    13 0 MOVZ,  gated B,
    locals LBL,                                     \ each name up to `:}` is recorded, and still captured for NCOMP
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
-   16 0 MOVZ,  OBSERVE-READER
    C-LBRACE-PARSE-NAMES
    LMAIN LABEL@ B,
    done LBL, ;
@@ -9557,8 +9472,7 @@ public
    LBCAP LABEL@ BL,
    CAPTURE-IMMEDIATE
    CAPTURE-STRING
-   LMAIN LABEL@ B,
-   EMIT-READER-DECIDE ;
+   LMAIN LABEL@ B, ;
 
 ;package
 
@@ -13427,7 +13341,7 @@ package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
-   LBL LCODEINV !  LBL LBODYREUSECLOSE !  LBL LREADERDECIDE !
+   LBL LCODEINV !
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the
@@ -13438,9 +13352,6 @@ package ENGINE-EMIT
    \ worth relying on.
    LMAIN LABEL@ B,
    NCOMP-EMIT:EM-COMPILE
-   LBODYREUSECLOSE LABEL@ LBL,
-   DEFWRITE:NATIVE-CLOSE
-   LMAIN LABEL@ B,
    COMPILE-EMIT:EM-COMPILE-LEGACY
    EM-CODE-INVALIDATE
    EM-COMPILE-UNDEF
@@ -14119,7 +14030,6 @@ variable KERNEL-CODE-END
    s" record-wid!" ['] DEFWRITE:RECORD-WID ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-private" ['] DEFWRITE:REPLAY-PRIVATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" native-pending-opaque?" ['] B-NATIVE-PENDING-OPAQUE FPRIM
-   s" native-body-passive?" ['] NCOMP-EMIT:B-NATIVE-BODY-PASSIVE FPRIM
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM FPRIM

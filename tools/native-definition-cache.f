@@ -81,8 +81,8 @@ variable PUBLICATION-CLEAR-XT
 variable TFAM-RESET-XT
 variable CON-RESET-XT
 variable OPAQUE-XT
-PTR-VARIABLE BODY-RECORD
-variable BODY-GETTER
+PTR-VARIABLE ORIGIN-RECORD
+variable ORIGIN-GETTER
 TYPED-VARIABLE TARGET-READ [ ptr u8 n ptr u8 n -- ptr u8 n ]
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -112,7 +112,7 @@ CAST: ORIGIN-STATE-XT ( n -- [ -- bool bool ] )
 CAST: ROLE-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
-CAST: BODY-CELL-XT ( n -- [ -- ptr u8 ] )
+CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -471,23 +471,23 @@ variable PENDING-KEY-U
    OPAQUE-XT @ dup 0= if drop true exit then
    OPAQUE-XT-TYPE execute ;
 
-: BODY-HOOK-ALLOWED? ( -- bool )
+: ORIGIN-HOOK-ALLOWED? ( -- bool )
    check@ {: hook:n :}
    hook 0= if true exit then
-   BODY-RECORD @ dup NULL-PTR = if drop false exit then
+   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
    dup NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ hook =
    swap NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ 0<> and ;
 
 : ADMISSION-REASON$ ( -- ptr u8 n )
    DEPTH @ 0= if s" no-source-frame" exit then
    data-base TRUSTED-CELL + CELL-VIEW @ 0<> if s" trusted" exit then
-   BODY-RECORD @ NULL-PTR = if s" missing-body-capability" exit then
+   ORIGIN-RECORD @ NULL-PTR = if s" missing-origin-capability" exit then
    DISPATCH-ROLE-KNOWN @ 0= if s" unknown-role" exit then
    BORROW-ACTIVE @ if
       BORROW-OWNER-READY? 0= if s" unavailable-owner" exit then
    else OWNER-READY? 0= if s" unavailable-owner" exit then then
    OPAQUE? if s" opaque" exit then
-   BODY-HOOK-ALLOWED? 0= if s" incompatible-body-hook" exit then
+   ORIGIN-HOOK-ALLOWED? 0= if s" incompatible-origin-hook" exit then
    BORROW-ACTIVE @ if s" " exit then
    NUNIT-ORIGIN:PENDING-AVAILABLE? 0= if
       s" missing-pending-origin" exit
@@ -496,7 +496,7 @@ variable PENDING-KEY-U
 
 : ARM-NATIVE ( [ ptr u8 n -- ] -- bool )
    {: completion :}
-   BODY-RECORD @ dup NULL-PTR = if drop false exit then
+   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
    NATIVE-BODY-ABI:PENDING-TAKE cells + COMPLETION-CELL
       completion swap xt!
    true ;
@@ -504,7 +504,7 @@ variable PENDING-KEY-U
 : ARM-WARM-ORIGIN ( -- )
    BORROW-ACTIVE @ if exit then
    data-base TRUSTED-CELL + CELL-VIEW @ 0<> if exit then
-   BODY-RECORD @ dup NULL-PTR = if drop exit then
+   ORIGIN-RECORD @ dup NULL-PTR = if drop exit then
    {: record:ptr :}
    record NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ {: hook:n :}
    hook 0= check@ hook <> or if exit then
@@ -655,16 +655,16 @@ variable PENDING-KEY-U
    XREF-START dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop 0 then
    OPAQUE-XT ! ;
 
-: PIN-BODY-GETTER ( -- )
-   0 BODY-GETTER !
-   s" native-body-reuse-cell" TARGET-XT?
+: PIN-ORIGIN-GETTER ( -- )
+   0 ORIGIN-GETTER !
+   s" native-origin-cell" TARGET-XT?
       dup 0= if drop exit then
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
-   BODY-GETTER ! ;
+   ORIGIN-GETTER ! ;
 
-: BIND-BODY-RECORD ( -- )
-   BODY-GETTER @ dup 0= if drop NULL-PTR BODY-RECORD ! exit then
-   BODY-CELL-XT execute BODY-RECORD ! ;
+: BIND-ORIGIN-RECORD ( -- )
+   ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
+   ORIGIN-CELL-XT execute ORIGIN-RECORD ! ;
 
 : BIND-DISPATCH ( -- )
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ {: actual:n :}
@@ -675,10 +675,10 @@ variable PENDING-KEY-U
    actual 0= if 0 DISPATCH-ROLE-KNOWN ! exit then
    ['] COMPILER-ROLE$ NUNIT-DEP:USE-COMPILER-ROLE
    ['] DISPATCH-GUARDED NCOMP:DISPATCH!
-   BIND-BODY-RECORD ;
+   BIND-ORIGIN-RECORD ;
 
 : UNBIND-DISPATCH ( -- )
-   NULL-PTR BODY-RECORD !
+   NULL-PTR ORIGIN-RECORD !
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @
       ['] DISPATCH-GUARDED DISPATCH>N = if
       DISPATCH-ORIGINAL @ DISPATCH-XT NCOMP:DISPATCH!
@@ -872,7 +872,7 @@ variable PENDING-KEY-U
    0 CHECKER-ROLE-KNOWN !
    0 KERNEL-ROLE-KNOWN !
    NULL-PTR PUBLICATION-OWNER !
-   NULL-PTR BODY-RECORD !
+   NULL-PTR ORIGIN-RECORD !
    0 PUBLICATION-CLEAR-XT !
    0 TFAM-RESET-XT ! 0 CON-RESET-XT !
    0 HOST-SOURCE-BOUND ! 0 TARGET-SOURCE-BOUND !
@@ -893,7 +893,7 @@ variable PENDING-KEY-U
    PIN-HOST-CHECKER
    PIN-KERNEL
    PIN-HOST-SOURCE
-   PIN-BODY-GETTER
+   PIN-ORIGIN-GETTER
    BIND-DISPATCH
    BIND-OPAQUE
    \ The engine build rewinds the dictionary before loading its prefix. Its
@@ -933,7 +933,7 @@ variable PENDING-KEY-U
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
-   0 KERNEL-ROLE-KNOWN ! 0 BODY-GETTER !
+   0 KERNEL-ROLE-KNOWN ! 0 ORIGIN-GETTER !
    0 OPAQUE-XT ! 0 PENDING-KEY-U !
    ['] SOURCE-ROOT:READ-OS TARGET-READ !
    REPORT? @ if PRINT-COUNTS then
@@ -979,7 +979,7 @@ public
    BIND-TARGET-SOURCE
    BIND-OWNER
    PIN-TARGET-CHECKER
-   PIN-BODY-GETTER
+   PIN-ORIGIN-GETTER
    BIND-DISPATCH ;
 
 : HANDOVER-PREPARE ( -- )

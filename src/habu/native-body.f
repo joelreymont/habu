@@ -1,4 +1,4 @@
-\ The optional native-body-reuse-cell is a kernel primitive. A later source
+\ The optional native-origin-cell is a kernel primitive. A later source
 \ definition of the same name is not a capability.
 
 package NATIVE-BODY
@@ -7,7 +7,7 @@ CAST: BODY-CELLS-XT ( n -- [ -- ptr u8 ] )
 
 public
 : BODY-CAPABILITY ( -- ptr u8 )
-   s" native-body-reuse-cell" 0 search-wl
+   s" native-origin-cell" 0 search-wl
    dup 0= if drop NULL-PTR exit then
    {: entry:n :}
    data-base $1C0 + @ {: base:n :}

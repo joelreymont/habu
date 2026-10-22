@@ -1,11 +1,10 @@
-\ Relative cells in the optional native-body-reuse-cell capability record.
-\ This file loads on older kernels whose baked observer extension has no new
-\ absolute names.
+\ Relative cells in the optional native-origin-cell capability record.
+\ An engine bakes this file (src/habu/native-runtime.f provides it), so a
+\ `require` binds the running engine's own indices. Its path and package name
+\ are part of that ABI: do not rename them while older hosts still build.
 package NATIVE-BODY-ABI
 public
-0 constant REUSE
-1 constant ORIGIN-HOOK
-2 constant ORIGIN-TAKE
-3 constant PENDING-TAKE
-4 constant READER
+0 constant ORIGIN-HOOK
+1 constant ORIGIN-TAKE
+2 constant PENDING-TAKE
 ;package

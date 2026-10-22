@@ -69,6 +69,9 @@ variable PRIOR-ENGINE-ROOT-U
    \ Older hosts register the retired observer CODE cell even when it holds zero.
    \ Remove its declaration before translating the remaining fixed host rows.
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
+   \ Older hosts register the retired body-reuse reader cells after the
+   \ three-cell origin record.
+   $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
       i ADDR-ROW@ {: raw:n :}

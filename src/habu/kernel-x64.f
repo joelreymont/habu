@@ -3696,10 +3696,8 @@ private
    s" native-unit-reclaim-cell" [:
       RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
       RAX PUSH, ;] PRIM
-   \ This kernel has no pre-body reader. The optional ABI reports absence.
-   s" native-body-reuse-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   s" native-body-reader-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   s" native-body-passive?" [: DROP, DROP, RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
+   \ This kernel has no origin record. The optional ABI reports absence.
+   s" native-origin-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" native-pending-opaque?" [: RAX PEND-OPAQUE-CELL CELL@,  RAX PUSH, ;] PRIM

@@ -132,8 +132,6 @@ variable RX  variable RACC
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
    \ The source observer leaves the original or callback status in x15.
    a u s" Lsourceexecfinish" LINT-STR=CI if 0 15 CL-ADD exit then
-   \ The shared body reader returns PASSIVE, EXECUTE or DOES in x16.
-   a u s" Lreaderdecide" LINT-STR=CI if 0 16 CL-ADD exit then
    a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lrowwalk" LINT-STR=CI if 0 0 CL-ADD exit then
@@ -306,6 +304,14 @@ package CLOBBER
    a u s" vshuf-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" p2w-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" vun-entry" LINT-STR=CI ;
+\ A host loop word ends an operand span: in `n 0 ?do 14 9 i LDRB,` the 0 is the
+\ loop start, not the instruction's first register.
+: LOOP-WORD?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" ?do" LINT-STR=CI if LINT-TRUE exit then
+   a u s" do" LINT-STR=CI if LINT-TRUE exit then
+   a u s" loop" LINT-STR=CI if LINT-TRUE exit then
+   a u s" +loop" LINT-STR=CI ;
+
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
@@ -637,6 +643,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
          cidx ROUTINE-WRAP
       else
          DI @ TOK INSTR? if cidx ROUTINE-INSTR then
+         DI @ TOK LOOP-WORD? if DI @ 1+ OPLO ! then
       then
       DI @ 1+ DI !
    then ;
@@ -876,6 +883,7 @@ variable TRACK-LR
             DI @ TOK STOP-MN? LASTSTOP !
             DI @ 1+ OPLO !
          then
+         DI @ TOK LOOP-WORD? if DI @ 1+ OPLO ! then
       then
       DI @ 1+ DI !
    repeat ;

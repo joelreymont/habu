@@ -968,13 +968,10 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ engines lack this name and explicit export declines before arming a capture.
 EPRIM: native-unit-reclaim-cell PE-PTR-A PE-OUT EPRIM;
 ETRUSTED-ONLY!
-\ A null result means the running kernel has no pre-body reader. The four
-\ optional cells are addressed through this byte pointer, never baked offsets.
-EPRIM: native-body-reuse-cell PE-PTR-U8 PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: native-body-reader-cell PE-PTR-U8 PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: native-body-passive? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT EPRIM;
+\ A null result means the running kernel has no origin record. Source reaches
+\ the three optional cells through this byte pointer and the running engine's
+\ NATIVE-BODY-ABI indices; only the engine's own emitters bake their offsets.
+EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
