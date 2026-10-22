@@ -337,6 +337,26 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c ;
 
 
+\ The server quotes the bad input, so its message outgrows the 1024-byte copy
+\ kept for it; the leading 'x' puts that cap inside an e-acute, which the copy
+\ must not split: the copy keeps 1023 bytes and goes back as text.
+: LONG-MESSAGE-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a capped server message ends on a character and goes back as text" T-LABEL
+   c PARAMS
+   c s" select ('x' || repeat(chr(233), 700))::int" EXEC {: r :}
+   r FAILED-SQLSTATE$ s" 22P02" T$=
+   r FAILED-MESSAGE$ {: ma mu:n :}
+   mu 1023 T=
+   c PARAMS
+   c ma mu TEXT+
+   c s" select $1::text" EXEC {: back :}
+   back OUTCOME-TAG TAG-ROWS T=
+   back 0 >ROW 0 >COL TEXT$ ma mu T$=
+   back CLEAR
+   r CLEAR
+   c ;
+
+
 \ ---- prepared statements --------------------------------------------------
 : PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
@@ -1059,6 +1079,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    DDL-CASES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
+   LONG-MESSAGE-CASES
    PREPARED-CASES
    ROLLBACK-CASES
    COMMIT-CASES

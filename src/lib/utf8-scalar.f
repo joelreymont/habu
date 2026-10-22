@@ -9,6 +9,9 @@
 \ accepts ASCII directly and requires every non-ASCII NEXT step to be a SCALAR.
 \ An empty span is valid. A negative length is E-STR-BOUNDS, as for NEXT;
 \ malformed bytes are data and never throw.
+\
+\ FIT gives the longest length of a span, at most a cap, that does not end
+\ inside a character, so a valid span cut by it stays valid.
 
 require src/lib/errors.f
 
@@ -186,5 +189,16 @@ public
       then
    repeat
    drop YES ;
+
+\ A cap before a continuation byte backs up to its lead, and never more than a
+\ character's three trailing bytes, however many stray continuations precede it.
+: FIT ( ptr u8 n n -- n ) {: source:ptr length:n cap:n :}
+   length NONNEGATIVE  cap NONNEGATIVE
+   length cap <= if length exit then
+   cap begin
+      dup 0 > over cap FOUR-WIDTH - 1+ > and if
+         dup source + c@ CONTINUATION?
+      else NO then
+   while 1- repeat ;
 
 ;package

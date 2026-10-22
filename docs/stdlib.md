@@ -935,8 +935,9 @@ signed 64-bit range is supported.
 
 ## UTF-8 Scalar
 
-`src/lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, and a
-whole-span check built on it.
+`src/lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`, a
+whole-span check built on it, and a cut that keeps a span on a character
+boundary.
 `UTF8:NEXT` takes a counted byte span and an explicit absolute cursor. Its
 `UTF8:scalar-step` result has two exhaustive arms: `scalar` carries the valid
 Unicode scalar and next cursor, while `raw-byte` carries the exact lead byte and
@@ -955,6 +956,15 @@ are data and never throw.
 
 ```forth
 UTF8:VALID? ( ptr u8 n -- bool )
+```
+
+`UTF8:FIT` gives the longest length of a counted span, at most a cap, that does
+not end inside a character, so a valid span cut by it stays valid. A cap before
+a continuation byte backs up to its lead, never more than three bytes. A
+negative length or cap is `E-STR-BOUNDS`.
+
+```forth
+UTF8:FIT ( ptr u8 n n -- n )
 ```
 
 ## UTF-16 Units

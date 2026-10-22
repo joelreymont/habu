@@ -27,6 +27,7 @@
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 require src/lib/string.f
+require src/lib/utf8-scalar.f
 require src/lib/memory.f
 require src/lib/type/deftype.f
 require src/lib/task.f
@@ -111,7 +112,9 @@ $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 $0400 constant MESSAGE-CAP                \ copied primary server message
 $05 constant SQLSTATE-LEN
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
-MESSAGE-CAP constant SCAN-CAP             \ bound on a NUL scan of a libpq C string
+\ A NUL scan of a libpq C string reads one byte past the copied message, so
+\ MESSAGE! sees whether its cap falls inside a character.
+MESSAGE-CAP 1+ constant SCAN-CAP
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
 $7FFFFFFF constant GENERATION-MAX         \ positive signed handle, high 31 bits
@@ -213,7 +216,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    p FFI:>CELL 0= ;
 
 
-\ Bound scans to the diagnostic buffer; libpq gives these strings no extent.
+\ Bound scans by SCAN-CAP; libpq gives these strings no extent.
 : CSTR-LEN ( ptr u8 -- n ) {: p :}
    SCAN-CAP 0 ?do
       p i + c@ 0= if i unloop exit then
@@ -747,7 +750,7 @@ REGISTER-CHILD-RESET
 
 \ ---- server diagnostics ---------------------------------------------------
 : MESSAGE! ( n ptr u8 n -- ) {: slot:n a u:n :}
-   u MESSAGE-CAP > if MESSAGE-CAP else u then {: kept:n :}
+   a u MESSAGE-CAP UTF8:FIT {: kept:n :}
    a slot MESSAGE-BUF kept BYTE-COPY
    kept slot MESSAGE-U! ;
 
