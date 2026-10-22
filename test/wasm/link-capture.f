@@ -20,6 +20,8 @@
 package LINK-CAPTURE
 public
 ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+\ The caller's tier, put back after each window.
+tier@ constant PRIOR-TIER
 ;package
 
 require src/lib/string.f
@@ -77,7 +79,7 @@ DYNAMIC-BUFFER MODULE u8
    SB-RESET
    s" LINK-CAPTURE:OPEN 1 set-tier " SB-APPEND
    a u SB-APPEND
-   s"  0 set-tier LINK-CAPTURE:REFUSED-LINK" SB-APPEND
+   s"  LINK-CAPTURE:PRIOR-TIER set-tier LINK-CAPTURE:REFUSED-LINK" SB-APPEND
    SB$  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS  SUBJECT:RUN
    PROC-OUTCOME>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
@@ -148,6 +150,6 @@ public
 5 constant LCK
 : MAIN ( -- ) s" linked text" type ;
 ;package
-0 set-tier
+LINK-CAPTURE:PRIOR-TIER set-tier
 
 LINK-CAPTURE:RUN

@@ -35,7 +35,8 @@
 \ word of that name is undefined, by name, not a silent local. Section 5 runs
 \ section 1's body through the OTHER compiler: tier 1 elaborates from the same
 \ front-end resolution, and a tier that resolved names for itself would answer
-\ tier 0's old answer here.
+\ tier 0's old answer here. On x86-64, which has only tier 1, both sections
+\ compile at tier 1.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -45,7 +46,7 @@ require src/lib/test/outcome.f
 require src/lib/test/subject.f
 require src/compiler/native/compiler.f
 
-\ ---- section 1: the three incidents, compiled by tier 0 (the cold JIT) -------
+\ ---- section 1: the three incidents, compiled at the caller's tier ---------
 package LSP-JIT
 
 create TEXT 64 allot           \ the buffer the incident lost
@@ -156,9 +157,10 @@ variable ERR-U
 ;package
 
 \ ---- section 5: the same incident through the other compiler -----------------
-1 set-tier
-
 package LSP-NCOMP
+
+tier@ constant PRIOR-TIER
+1 set-tier
 
 create TEXT 64 allot
 
@@ -170,9 +172,9 @@ public
 : TEXT$ ( n -- ptr u8 n ) {: u:n :}
    TEXT u ;
 
-;package
+PRIOR-TIER set-tier
 
-0 set-tier
+;package
 
 \ ---- the cases ---------------------------------------------------------------
 package LSP-TEST
@@ -205,7 +207,13 @@ private
 : UNDEFINED-CASE ( -- )
    s" a differently-cased mention with no word of that name is undefined by name" T-LABEL
    s" : LSP-BAD ( n -- n ) {: zork:n :} ZORK ;" LSP-CHILD:RUN LSP-CHILD:UNDEF-RC T=
-   LSP-CHILD:ERR$ s" E-UNDEFINED: ZORK" CONTAINS? TTRUE ;
+   \ The child runs at the default tier: tier 0, or tier 1, the only one, on
+   \ x86-64, whose checker names the definition and the word.
+   HB-TARGET-LINUX-X86-64? if
+      LSP-CHILD:ERR$ s" E-UNDEFINED habu: in lsp-bad: undefined word 'ZORK'" CONTAINS? TTRUE
+   else
+      LSP-CHILD:ERR$ s" E-UNDEFINED: ZORK" CONTAINS? TTRUE
+   then ;
 
 : NCOMP-CASE ( -- )
    s" the tier-1 compiler reads the same two names the same way" T-LABEL

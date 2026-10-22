@@ -17,7 +17,9 @@
 \
 \ The native build requires the same scan's verdict for its hookless prefix.
 \ Tier-neutral by design: each session subject sets the tier it compiles at, and
-\ the window is built by the engine under test. The window cases build a private
+\ the window is built by the engine under test. The x86-64 engine has only tier
+\ 1 and refuses `0 set-tier`, so there the tier-0 cases give way to one session
+\ that asserts that refusal (NO-TIER-ZERO). The window cases build a private
 \ copy of src/, src/lib/ and tools/ whose src/core/util.f ends in one probe
 \ definition; the printed directory keeps the copy and the last build's
 \ temporary directory.
@@ -43,6 +45,7 @@ $4000 constant CAP
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
 67 constant RC-THROW                 \ a load's uncaught throw
 74 constant RC-BUILD                 \ a window build's failure status (tools/native-build-args.f BUILD-RC)
+70 constant RC-NO-TIER               \ x86-64's `0 set-tier` refusal (src/habu/kernel-x64.f HOOK-BAD-RC)
 
 create ROOT FS-PATH-CAP allot          variable ROOT-U
 create TREE FS-PATH-CAP allot          variable TREE-U
@@ -341,6 +344,14 @@ create TEXT CAP allot                  variable TEXT-U
    tier ZERO-USED-CAUGHT
    tier ZERO-REDEFINE ;
 
+\ ---- x86-64: no tier 0 -------------------------------------------------------
+: NO-TIER-ZERO ( -- )
+   s" the x86-64 engine refuses tier 0 at its set-tier" T-LABEL
+   s" 0 set-tier 1 . cr" SESSION
+   RC @ RC-NO-TIER T=
+   OUT-U @ 0 T=
+   s" set-tier: x86-64 runs tier 1 only" SAYS ;
+
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
 : ROOT-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    ROOT$ a u dst JOIN-PATH up ! ;
@@ -417,8 +428,12 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-UNSEEN
    SESSION-UNRECORDED
    SESSION-RECORDED
-   ZERO-CALL ZERO-TICK ZERO-SHAPE
-   2 0 do i ZERO-VERDICT loop
+   HB-TARGET-LINUX-X86-64? if
+      NO-TIER-ZERO  1 ZERO-VERDICT
+   else
+      ZERO-CALL ZERO-TICK ZERO-SHAPE
+      2 0 do i ZERO-VERDICT loop
+   then
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES

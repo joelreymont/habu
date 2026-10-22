@@ -32,6 +32,10 @@
 \ exits 0 and prints exactly the case's text at both tiers. A refused
 \ `generates:` row is a throw rather than a refusal to certify: it exits 67, the
 \ uncaught-throw code, with the row's diagnostic and the throw's code.
+\
+\ The x86-64 engine has only tier 1 and refuses `0 set-tier`
+\ (src/habu/kernel-x64.f), so there every case runs at tier 1 and one run
+\ asserts that refusal (NO-TIER-ZERO).
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -60,6 +64,10 @@ variable ERR-U
 : TIER-LINE ( n -- ptr u8 n )
    0= if S\" 0 set-tier\n" exit then
    S\" 1 set-tier\n" ;
+
+\ The first tier a case runs at: 0, or 1 on an engine without tier 0.
+: FIRST-TIER ( -- n )
+   HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
 
 \ The program a run feeds the engine: the tier line, then the case.
 : AT-TIER ( ptr u8 n n -- ptr u8 n ) {: src:ptr u:n tier:n :}
@@ -102,13 +110,13 @@ variable ERR-U
 
 : ADMITTED-BOTH ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr lu:n src:ptr u:n want:ptr wu:n :}
-   2 0 do
+   2 FIRST-TIER do
       label lu  src u i AT-TIER  want wu  ADMITTED
    loop ;
 
 : REFUSED-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: label:ptr lu:n src:ptr u:n diag:ptr du:n rc:n :}
-   2 0 do
+   2 FIRST-TIER do
       label lu  src u i AT-TIER  diag du  rc REFUSED
    loop ;
 
@@ -163,6 +171,11 @@ variable ERR-U
    S\" habu: in upop: at 'r>'\nhook: non-certified definition: upop at 'r>'\n"
    REFUSED-BOTH ;
 
+\ ---- x86-64: no tier 0 -------------------------------------------------------
+: NO-TIER-ZERO ( -- )
+   s" x86-64 refuses tier 0 at its set-tier"  S\" 1 . cr\n" 0 AT-TIER
+   S\" set-tier: x86-64 runs tier 1 only\n"  REFUSED-RC REFUSED ;
+
 \ ---- still admitted -----------------------------------------------------------
 : ADMISSIONS ( -- )
    s" a neutral clause at the top and in a quotation type"
@@ -176,6 +189,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   HB-TARGET-LINUX-X86-64? if NO-TIER-ZERO then
    REFUSALS
    ADMISSIONS
    T-REPORT

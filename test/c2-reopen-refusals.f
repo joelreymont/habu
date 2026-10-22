@@ -23,6 +23,12 @@ require src/lib/test/subject.f
 require src/lib/c2-owner.f
 require src/compiler/native/compiler.f
 
+package C2-REOPEN-REFUSALS
+public
+\ The caller's tier, put back after the probe below.
+tier@ constant PRIOR-TIER
+;package
+
 \ Rewriting a foldable loop must also copy the later C2 transfer's kind.
 \ This uses the owner's real carrier and primitive; compilation is the probe.
 1 set-tier
@@ -33,7 +39,7 @@ TRUSTED: STOW-WITH-LOOP ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    HEAD-FRAME c2-init-stow
    TASK:DEFER-LEAVE ;
 ;package
-0 set-tier
+C2-REOPEN-REFUSALS:PRIOR-TIER set-tier
 
 package C2-REOPEN-REFUSALS
 

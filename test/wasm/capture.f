@@ -10,12 +10,15 @@
 \ literal naming a window word, a window DATA literal, a call to a word of the
 \ engine's own prefix, a live private helper called by a public word, a `does>`
 \ definer, a quotation and a declared code cell holding a window word's entry.
-\ The window also holds a created word (WCELL) and a defer (HOOK), both tier 0,
-\ which carry routines like any fixed word; and a `does>` child (SEVEN), whose
-\ routine the capture leaves out because its Wasm body carries no slot for the
-\ clause, so it ships with no routine. It also holds three shadowed words that ship no record, a dead private word
-\ and two dead retired ones, the second calling the first, between two shadowed
-\ records: past them a record's window index and its shipped row differ.
+\ The window also holds two fixed words, a created word (WCELL) and a defer
+\ (HOOK), which carry routines; and a `does>` child (SEVEN), whose routine the
+\ capture leaves out because its Wasm body carries no slot for the clause, so it
+\ ships with no routine. It also holds three shadowed words that ship no record,
+\ a dead private word and two dead retired ones, the second calling the first,
+\ between two shadowed records: past them a record's window index and its
+\ shipped row differ. Last, ARM-HOOK binds HOOK at load (`is` is compile-only);
+\ it is private and dead, so it ships no record on either host, compiled at the
+\ caller's tier 0 on ARM64 or at tier 1, the only one, on x86-64.
 \
 \ WHAT IS ASKED. Every record is found by the name it carries in the capture's
 \ shipped record table, the row the shadow keys it by: the records and their
@@ -34,6 +37,8 @@ package WSHCAP
 public
 ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
 variable PRIVATE-WID
+\ The caller's tier, put back after the window's tier-1 definitions.
+tier@ constant PRIOR-TIER
 ;package
 
 require src/lib/string.f
@@ -86,12 +91,12 @@ undefine GONER
 : FACT ( n -- n ) dup 1 > if dup 1 - RECURSE * then ;
 : CONST ( n -- ) create , does> ( -- n ) @ ;
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
-0 set-tier
+WSHCAP:PRIOR-TIER set-tier
 
 7 CONST SEVEN
 
 defer HOOK ( n n -- n )
-: ARM-HOOK ( -- ) ['] LEAF is HOOK ;
+private : ARM-HOOK ( -- ) ['] LEAF is HOOK ;
 ARM-HOOK
 
 ;package

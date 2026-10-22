@@ -30,6 +30,10 @@ package UNDEFINE-BINDING-TEST
 
 private
 
+\ The caller's tier, put back after UB-BYTE-STORE; a constant, since `@` and
+\ `!` are redefined below.
+tier@ constant PRIOR-TIER
+
 \ Compiled while `dup` and `+` are the engine's words.
 : EARLY-PAIR ( -- n n ) 5 dup ;
 : EARLY-SUM ( -- n ) 5 3 + ;
@@ -89,7 +93,7 @@ s" UB-REC-STEP ( ptr ubrec -- ptr ubrec ) 0 record-at" CHECK-QUIET-CANDIDATE! 0 
 : UB-STORE ( -- n ) 2 3 ! ;
 1 set-tier
 : UB-BYTE-STORE ( -- u8 ) $22 UB-BYTE c! UB-BYTE c@ ;
-0 set-tier
+PRIOR-TIER set-tier
 : UB-QDUP ( -- n n ) 5 ?dup ;
 : UB-REC ( ptr ubrec -- n ) 0 record-at ;
 

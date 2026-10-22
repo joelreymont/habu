@@ -34,10 +34,11 @@ require src/compiler/native/shadow.f
 package WBACK-TEST
 private
 variable REC-BEFORE
+tier@ constant PRIOR-TIER
 ndict@ REC-BEFORE !
 1 set-tier
 : BK-SAME-BEFORE ( n n -- n ) 2dup < if swap then - 3 lshift ;
-0 set-tier
+PRIOR-TIER set-tier
 ;package
 
 require src/arch/wasm/leb.f
@@ -93,7 +94,7 @@ private
 : >N ( ptr u8 -- n )
    NULL-PTR BYTE-VIEW - ;
 
-\ ---- the words compiled with the Wasm shadow open ----------------------------
+\ ---- the window's record indexes and definers -------------------------------
 variable REC-LEAF
 variable REC-CALLER
 variable REC-SELF
@@ -106,6 +107,7 @@ variable REC-EMPTY
 variable REC-FULL
 variable REC-LAST
 variable REC-PX
+variable BUF-N                         \ BK-BUF's address
 
 : OPEN-WASM ( -- )
    WBACK:BINDING NSHADOW:OPEN ;
@@ -128,50 +130,6 @@ $0B constant OP-END
 8 constant HEAD-BYTES
 12 constant ROW-BYTES
 CAST: >CODE ( n -- ptr u8 )
-
-T-RESET
-WBACK:INSTALL
-OPEN-WASM
-ndict@ REC-BUF !
-create BK-BUF 16 allot
-1 set-tier
-ndict@ REC-LEAF !
-: BK-LEAF ( n n -- n ) + ;
-ndict@ REC-CALLER !
-: BK-CALLER ( n -- n ) dup BK-LEAF 1 + ;
-ndict@ REC-SELF !
-: BK-SELF ( n -- n ) dup 0= if drop 1 exit then 1 - RECURSE ;
-ndict@ REC-ADDR !
-: BK-ADDR ( -- ptr u8 ) BK-BUF ;
-ndict@ REC-BOOM !
-: BK-BOOM ( n -- ) throw ;
-ndict@ REC-TRAP !
-: BK-TRAP ( n -- ) BK-BOOM ;
-ndict@ REC-SAME !
-: BK-SAME-AFTER ( n n -- n ) 2dup < if swap then - 3 lshift ;
-0 set-tier
-ndict@ REC-EMPTY !
-8 EMPTYD BK-EMPTY
-ndict@ REC-FULL !
-7 FULLD BK-FULL
-ndict@ REC-PX !
-PB BK-PX
-1 set-tier
-ndict@ REC-LAST !
-: BK-LAST ( n -- n ) 2 * ;
-0 set-tier
-
-: HOST-CASE ( -- )
-   s" every word compiled with the Wasm shadow open runs on the host as before" T-LABEL
-   2 3 BK-LEAF 5 T=
-   4 BK-CALLER 9 T=
-   5 BK-SELF 1 T=
-   BK-ADDR >N  BK-BUF >N  T=
-   [: 7 BK-TRAP ;] 7 TTHROWSQ
-   9 2 BK-SAME-AFTER 56 T=
-   BK-EMPTY @ 8 T=
-   BK-FULL 7 T=
-   BK-PX @ 5 T= ;
 
 \ ---- reading the map ----------------------------------------------------------
 
@@ -294,10 +252,10 @@ ndict@ REC-LAST !
    s" an address row sits on the padded field after `i64.const` and holds the host address" T-LABEL
    REC-ADDR @ EM-OF {: addr:n :}
    addr NSHADOW:ADDR-SITES 1 T=
-   addr 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
+   addr 0 ADDR-ROW  BUF-N @ T=  WSTRUCT:ADDR-DATA T=
    REC-BUF @ EM-OF {: buf:n :}
    buf NSHADOW:ADDR-SITES 1 T=
-   buf 0 ADDR-ROW  BK-BUF >N T=  WSTRUCT:ADDR-DATA T=
+   buf 0 ADDR-ROW  BUF-N @ T=  WSTRUCT:ADDR-DATA T=
    s" a trap's message is a data address row" T-LABEL
    REC-TRAP @ EM-OF {: trap:n :}
    trap NSHADOW:ADDR-SITES 1 T=
@@ -354,12 +312,11 @@ ndict@ REC-LAST !
    s" the placed emission row is refused: there is no placed Wasm emission" T-LABEL
    [: EMIT-RUN ;] E-CTGT-UNLOADED TTHROWSQ ;
 
-public
-
-: RUN ( -- )
+\ Every case that reads the map, run while the shadow holds only the window's
+\ records; CLOSE then gives the map back.
+: SHADOW-CASES ( -- )
    SERVES-CASE
    INSTALL-CASE
-   HOST-CASE
    FILED-CASE
    BODY-CASE
    CALL-CASE
@@ -367,7 +324,63 @@ public
    RETIRED-CASE
    SAME-CASE
    EMIT-CASE
-   NSHADOW:CLOSE
+   NSHADOW:CLOSE ;
+
+\ ---- the window: the words compiled with the Wasm shadow open ----------------
+\ The shadow files every definition compiled at tier 1 while it is open, and the
+\ x86-64 engine compiles every definition at tier 1, so everything that reads
+\ the map is defined above and runs before any later definition.
+T-RESET
+WBACK:INSTALL
+OPEN-WASM
+ndict@ REC-BUF !
+create BK-BUF 16 allot
+BK-BUF >N BUF-N !
+1 set-tier
+ndict@ REC-LEAF !
+: BK-LEAF ( n n -- n ) + ;
+ndict@ REC-CALLER !
+: BK-CALLER ( n -- n ) dup BK-LEAF 1 + ;
+ndict@ REC-SELF !
+: BK-SELF ( n -- n ) dup 0= if drop 1 exit then 1 - RECURSE ;
+ndict@ REC-ADDR !
+: BK-ADDR ( -- ptr u8 ) BK-BUF ;
+ndict@ REC-BOOM !
+: BK-BOOM ( n -- ) throw ;
+ndict@ REC-TRAP !
+: BK-TRAP ( n -- ) BK-BOOM ;
+ndict@ REC-SAME !
+: BK-SAME-AFTER ( n n -- n ) 2dup < if swap then - 3 lshift ;
+PRIOR-TIER set-tier
+ndict@ REC-EMPTY !
+8 EMPTYD BK-EMPTY
+ndict@ REC-FULL !
+7 FULLD BK-FULL
+ndict@ REC-PX !
+PB BK-PX
+1 set-tier
+ndict@ REC-LAST !
+: BK-LAST ( n -- n ) 2 * ;
+PRIOR-TIER set-tier
+
+SHADOW-CASES
+
+: HOST-CASE ( -- )
+   s" every word compiled with the Wasm shadow open runs on the host as before" T-LABEL
+   2 3 BK-LEAF 5 T=
+   4 BK-CALLER 9 T=
+   5 BK-SELF 1 T=
+   BK-ADDR >N  BK-BUF >N  T=
+   [: 7 BK-TRAP ;] 7 TTHROWSQ
+   9 2 BK-SAME-AFTER 56 T=
+   BK-EMPTY @ 8 T=
+   BK-FULL 7 T=
+   BK-PX @ 5 T= ;
+
+public
+
+: RUN ( -- )
+   HOST-CASE
    T-REPORT ;
 
 ;package

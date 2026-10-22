@@ -301,8 +301,9 @@ NWM:MAIN
 
 \ Scoped store names remain ordinary calls; an earlier primitive call keeps
 \ its original binding after the package introduces a same-spelled word.
-1 set-tier
 package NWM-SHADOW
+tier@ constant PRIOR-TIER
+1 set-tier
 variable CELL-SLOT
 create BYTE-SLOT 1 allot
 : CELL! ( n -- ) CELL-SLOT ! ;
@@ -313,8 +314,8 @@ public
 : CHECK ( -- )
    7 CELL! 99 CELL-SLOT ! CELL-SLOT @ 7 T=
    $AB BYTE! $CD BYTE-SLOT c! BYTE-SLOT c@ $AB T= ;
+PRIOR-TIER set-tier
 ;package
-0 set-tier
 ' NWM-SHADOW:CHECK dup 4 + code-origin 1 T=
 NWM-SHADOW:CHECK
 T-REPORT
