@@ -71,6 +71,11 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    s" poke.f" LOAD+
    s" slot.f" LOAD+
    s" later.f" LOAD+
+   s" list.f" LOAD+
+   s" addr.f" LOAD+
+   s" upd.f" LOAD+
+   s" off.f" LOAD+
+   s" own.f" LOAD+
    s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
@@ -81,13 +86,14 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 
 \ The stderr line whose path ends in name followed by tag, from that tail to
 \ its newline: tag " rows=" finds the file frame, " key=" the file object.
+\ The match starts at the path's last "/", so own.f never finds ret-own.f.
 : LINE$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n tag:ptr tagu:n :}
    0 INPUT-U !
-   name nameu IN+ tag tagu IN+
+   s" /" IN+ name nameu IN+ tag tagu IN+
    ERR$ INPUT INPUT-U @ FIND-SUB MATCH option
      none OF T-FAIL s" " ENDOF
-     some OF IDX>N {: at:n :}
+     some OF IDX>N 1+ {: at:n :}
         ERR$ drop at +  ERR$ nip at -  {: a:ptr u:n :}
         a u 10 INDEX-OF MATCH option
           none OF a u ENDOF
@@ -284,6 +290,21 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ T, reached from U, so no run reads T; T-MID compiles a binding of T.
    s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
+   \ list.f's DATA holds two addresses of its own DATA; addr.f's holds the
+   \ address of lib.f's HITS; upd.f's TRUSTED: PIN-SET stores the address of
+   \ its child pina.f's PIN-A into PIN-A, an update, since a load changes only
+   \ the earlier DATA of its own session. off.f stores TEN into hooks.f's
+   \ second declared xt cell, eight bytes past PIN-HOOKS's start. own.f's DATA
+   \ holds its child pinb.f's PIN-B, the last record with DATA, and then an
+   \ address of its own DATA past PIN-B, which pins own.f's segment as well.
+   s" list.f" S\" create PIN-LIST here , here ,\n" PUT
+   s" addr.f" S\" require lib.f\ncreate PIN-HITS FRAME-LIB:HITS ,\n" PUT
+   s" pina.f" S\" variable PIN-A\n" PUT
+   s" upd.f" S\" require pina.f\nTRUSTED: PIN-SET ( -- ) PIN-A PIN-A ! ;\nPIN-SET\n" PUT
+   s" hooks.f" S\" 2 TYPED-BUFFER PIN-HOOKS [ -- n ]\n" PUT
+   s" off.f" S\" require hooks.f\nrequire deep.f\n' FRAME-DEEP:TEN 1 PIN-HOOKS xt!\n" PUT
+   s" pinb.f" S\" variable PIN-B\n" PUT
+   s" own.f" S\" require pinb.f\nPIN-B , here ,\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
@@ -388,6 +409,19 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" later.f" FRAME$ s"  data=" FIELD$ s" 1" T$=
    s" later.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
    s" later.f" FRAME$ s"  rows=" FIELD$ FIELD-N 1+ T=
+   s" list.f's addresses of its own DATA pin its one segment, and it stores" T-LABEL
+   s" list.f" s"  pins=" s" 1" OBJECT-HAS
+   s" list.f" KEY$ STORED
+   s" addr.f's raw address of lib.f's HITS pins HITS" T-LABEL
+   s" addr.f" s"  pins=" s" 1" OBJECT-HAS
+   s" upd.f's update holding PIN-A's address pins PIN-A" T-LABEL
+   s" upd.f" OBJECT$ s"  updates=" FIELD$ FIELD-N 0 > TTRUE
+   s" upd.f" s"  pins=" s" 1" OBJECT-HAS
+   s" lib.f" s"  pins=" s" 0" OBJECT-HAS
+   s" own.f's own address after PIN-B's pins its segment beside PIN-B" T-LABEL
+   s" own.f" s"  pins=" s" 2" OBJECT-HAS
+   s" off.f's slot site eight bytes into PIN-HOOKS refuses its object" T-LABEL
+   s" off.f" s"  reason=" LINE$ s" off.f reason=slot-site-offset" T$=
    s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
    s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
    s" a file that retires its own record in the segment that made it stores it" T-LABEL

@@ -1103,7 +1103,7 @@ variable USER-SEEN
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n :}
+         upds:n pins:n :}
    DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1117,6 +1117,7 @@ variable USER-SEEN
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  slots=" DIAG-W2 slots DIAG-N
    s"  updates=" DIAG-W2 upds DIAG-N
+   s"  pins=" DIAG-W2 pins DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    s"  src=" DIAG-W2
