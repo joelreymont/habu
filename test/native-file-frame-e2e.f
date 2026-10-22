@@ -1,7 +1,8 @@
 \ A file frame records each dependency the file consumes from earlier files
 \ once, and none of the records the file makes itself. Each file that compiles
 \ whole also writes one object under a key that names the file's place in the
-\ load, not its text, so an edit keeps the key.
+\ load, not its text, so an edit keeps the key. Its definitions' result
+\ digests change with their code and not with a comment or a relocation.
 \ bin/hb --load test/native-file-frame-e2e.f
 
 require src/lib/test.f
@@ -21,6 +22,11 @@ create INPUT CAP allot variable INPUT-U
 64 constant KEY-LEN
 create APP-KEY KEY-LEN allot
 create LIB-KEY KEY-LEN allot
+16 constant RES-LEN
+create APP-RES RES-LEN allot
+create LIB-RES RES-LEN allot
+24 constant AT-CAP
+create HITS-AT AT-CAP allot variable HITS-AT-U
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -41,6 +47,7 @@ create LIB-KEY KEY-LEN allot
    S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+
    s" app.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
+   S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
    s" diag.f" LOAD+
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
@@ -88,6 +95,7 @@ create LIB-KEY KEY-LEN allot
 
 : KEY$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  key=" FIELD$ ;
 : DEFS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  defs=" FIELD$ ;
+: RESULTS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  results=" FIELD$ ;
 
 \ name's object holds count input rows.
 : INPUTS ( ptr u8 n ptr u8 n -- )
@@ -101,10 +109,10 @@ create LIB-KEY KEY-LEN allot
    s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
    INPUT INPUT-U @ AT EXISTS? TTRUE ;
 
-: KEEP-KEY ( ptr u8 n ptr u8 -- )
-   {: key:ptr keyu:n dest:ptr :}
-   keyu KEY-LEN T=
-   key dest keyu KEY-LEN min BYTE-COPY ;
+: KEEP ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n dest:ptr destu:n :}
+   srcu destu T=
+   src dest srcu destu min BYTE-COPY ;
 
 : LIB-SOURCE ( ptr u8 n ptr u8 n -- )
    {: head:ptr headu:n twice:ptr twiceu:n :}
@@ -112,7 +120,7 @@ create LIB-KEY KEY-LEN allot
    head headu IN+
    S\" require base.f\nrequire deep.f\npackage FRAME-LIB\npublic\n: TWICE ( n -- n ) " IN+
    twice twiceu IN+
-   S\"  ;\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n;package\n" IN+
+   S\"  ;\nvariable HITS\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n;package\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
 
 \ A rebuild after an edit to lib.f: the app still runs, both files still
@@ -121,10 +129,14 @@ create LIB-KEY KEY-LEN allot
    T-LABEL
    PROBE SUCCESS
    OUT$ S\" use=67\n" CONTAINS? TTRUE
-   s" app.f" DEFS$ s" 2" T$=
+   s" app.f" DEFS$ s" 3" T$=
    s" lib.f" DEFS$ s" 3" T$=
    s" app.f" KEY$ APP-KEY KEY-LEN T$=
-   s" lib.f" KEY$ LIB-KEY KEY-LEN T$= ;
+   s" lib.f" KEY$ LIB-KEY KEY-LEN T$=
+   s" app.f" RESULTS$ APP-RES RES-LEN T$= ;
+
+\ HITS's address as the probe printed it, up to the space after it.
+: HITS$ ( -- ptr u8 n ) OUT$ s" hits=" FIELD$ ;
 
 public
 : MAIN ( -- )
@@ -136,7 +148,7 @@ public
    s" " s" dup +" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
-   s" app.f" S\" require base.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n" PUT
+   s" app.f" S\" require base.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
    PROBE {: rc:n :}
@@ -151,14 +163,14 @@ public
    s" broken.f" FRAME$
       s"  ordered=1 binding=0 value=0 reason=binding-contract-unknown word=BROKEN"
       ENDS-WITH? TTRUE
-   s" app.f consumes ONE, TWICE, TEN and SEVEN once each, and SEVEN's value" T-LABEL
-   s" app.f" FRAME$ s"  ordered=0 binding=4 value=1" ENDS-WITH? TTRUE
+   s" app.f consumes ONE, TWICE, TEN, SEVEN and HITS once each, and SEVEN's value" T-LABEL
+   s" app.f" FRAME$ s"  ordered=0 binding=5 value=1" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
    s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0" ENDS-WITH? TTRUE
    s" each file object holds its colon definitions, TRUSTED: BUMP included" T-LABEL
    s" base.f" DEFS$ s" 1" T$=
    s" deep.f" DEFS$ s" 1" T$=
-   s" app.f" DEFS$ s" 2" T$=
+   s" app.f" DEFS$ s" 3" T$=
    s" lib.f" DEFS$ s" 3" T$=
    s" each file object holds exactly its own input rows" T-LABEL
    s" base.f" s" 1" INPUTS
@@ -166,14 +178,32 @@ public
    s" lib.f" s" 4" INPUTS
    s" app.f" s" 5" INPUTS
    s" each object is stored under its key" T-LABEL
-   s" app.f" KEY$ APP-KEY KEEP-KEY
-   s" lib.f" KEY$ LIB-KEY KEEP-KEY
+   s" app.f" KEY$ APP-KEY KEY-LEN KEEP
+   s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
    APP-KEY KEY-LEN STORED
    LIB-KEY KEY-LEN STORED
-   S\" \\ edited\n" s" dup +" LIB-SOURCE
-   s" a comment line added to lib.f keeps both keys" REBUILT
+   s" app.f" RESULTS$ APP-RES RES-LEN KEEP
+   s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP
+   HITS$ {: at:ptr atu:n :}
+   atu AT-CAP > if T-FAIL else at HITS-AT atu BYTE-COPY atu HITS-AT-U ! then
+   \ A comment changes no definition's result, inside TWICE's body or as a
+   \ line that moves every later definition. base.f's new variable moves HITS
+   \ from here on.
+   s" base.f" S\" package FRAME-BASE\nvariable GAP\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
+   S\" \\ edited\n" s" ( note ) dup +" LIB-SOURCE
+   s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
+   \ TWICE's new code changes lib.f's results. An empty cache makes app.f
+   \ compile again against lib.f's moved code and HITS's moved address, so
+   \ new branch words land in its call sites and TALLY captures the new
+   \ address; masked, they keep app.f's results. A warm app.f would hand
+   \ back its stored bytes and prove nothing about the mask.
+   s" cache" AT REMOVE-TREE s" cache" AT MAKE-DIR
    s" " s" 2 *" LIB-SOURCE
-   s" a changed TWICE body keeps both keys" REBUILT
+   s" a changed TWICE body keeps both keys and app.f's results" REBUILT
+   s" lib.f" RESULTS$ LIB-RES RES-LEN STR= TFALSE
+   s" base.f's new variable moved HITS" T-LABEL
+   HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    T-REPORT
    s" file frame artifacts: " type ROOT$ type cr ;
 

@@ -119,6 +119,7 @@ create HASH-CELL CELL allot
 create NAME NAME-BYTES allot
 create OBJECT-NAME OBJECT-NAME-BYTES allot
 create FILE-KEY-HEX 64 allot
+create RESULTS-HEX 64 allot
 create PATH-BUF FS-PATH-CAP allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
@@ -874,6 +875,19 @@ variable PENDING-KEY-U
    SOURCE-ROW
    NUNIT-OBJECT:FILE-BEGIN ;
 
+\ The first 16 hex digits of SHA-256 over the result digests of the innermost
+\ file's defs definitions, in ordinal order.
+: RESULTS$ ( n -- ptr u8 n ) {: defs:n :}
+   HASH-CTX SHA256-BEGIN
+   defs 0 ?do
+      i NUNIT-OBJECT:FILE-ORD NFILE-REF:RESULT-DIGEST 0= if BAD then
+      {: digest:ptr :}
+      HASH-CTX digest 32 SHA256-FEED
+   loop
+   HASH-CTX HASH-RAW SHA256-END
+   HASH-RAW RESULTS-HEX SHA256>HEX
+   RESULTS-HEX 16 ;
+
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none.
 : OBJECT-CLOSE ( -- )
@@ -902,6 +916,7 @@ variable PENDING-KEY-U
    s"  rows=" DIAG-W2 rows DIAG-N
    s"  inputs=" DIAG-W2 inputs DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
+   s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    S\" \n" DIAG-W2 ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
@@ -1045,6 +1060,7 @@ variable PENDING-KEY-U
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
    NULL-PTR STAGED-REASON ! 0 STAGED-REASON-U !
    OBJECT-NAME OBJECT-NAME-BYTES ZERO-SCRATCH FILE-KEY-HEX 64 ZERO-SCRATCH
+   RESULTS-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH

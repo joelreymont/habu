@@ -6,9 +6,11 @@ require src/lib/errors.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/string.f
+require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require tools/native-unit-file.f
 
 package NFILE-REF
 private
@@ -1209,6 +1211,225 @@ public
    kind LITERAL <> owner LOCAL <> or if BAD then
    item addend ;
 
+private
+
+\ Result identity per definition, one row per ordinal for the session: a
+\ digest of everything that fixes the word's runtime behavior and nothing a
+\ comment or a relocation moves, and the edges its code and addresses name.
+\ A row is the occurrence of the record it was bound for (0 for none), its
+\ first edge row and its edge count. A cut that reuses the ordinal retires
+\ that occurrence, and with it the row.
+3 constant RESULT-CELLS
+\ An edge row: reference kind (CODE, DATA or LITERAL), then the key row of the
+\ declaration it imports. A LOCAL reference is the definition itself and needs
+\ no edge.
+2 constant EDGE-CELLS
+32 constant RESULT-BYTES
+\ Sections 2 and 3 hold one 40-byte row per site, its offset in section 0
+\ first; a call row's reference is at 16, an address row's at 24.
+40 constant SITE-BYTES
+DYNAMIC-BUFFER RESULT-ROWS n
+DYNAMIC-BUFFER RESULT-DIGESTS u8
+DYNAMIC-BUFFER EDGE-ROWS n
+DYNAMIC-BUFFER RESULT-IMPORT-OFF n
+DYNAMIC-BUFFER RESULT-CODE u8
+\ The hash context, then one cell of number bytes.
+DYNAMIC-BUFFER RESULT-WORK u8
+variable RESULT-N
+variable EDGE-N
+variable RESULT-IMPORT-N
+
+: RESULT@ ( n n -- n ) {: ord:n field:n :}
+   ord RESULT-CELLS * field + RESULT-ROWS @ ;
+: RESULT! ( n n n -- ) {: value:n ord:n field:n :}
+   value ord RESULT-CELLS * field + RESULT-ROWS ! ;
+: EDGE@ ( n n -- n ) {: row:n field:n :}
+   row EDGE-CELLS * field + EDGE-ROWS @ ;
+
+: RESULT-GROW ( n -- ) {: ord:n :}
+   ord RESULT-N @ < if exit then
+   ord 1+ {: want:n :}
+   want MEM-MAX-N RESULT-BYTES / > if BAD then
+   want RESULT-CELLS * RESULT-ROWS-RESERVE
+   want RESULT-BYTES * RESULT-DIGESTS-RESERVE
+   want RESULT-N @ ?do 0 i 0 RESULT! 0 i 1 RESULT! 0 i 2 RESULT! loop
+   want RESULT-N ! ;
+
+\ Whether ord's row was bound for the record live at ord now.
+: R-BOUND? ( n -- bool ) {: ord:n :}
+   ord 0 < ord RESULT-N @ >= or if false exit then
+   ord 0 RESULT@ {: occurrence:n :}
+   occurrence 0= if false exit then
+   ord occurrence LIVE-RECORD? nip ;
+
+: R-CTX ( -- ptr u8 ) 0 RESULT-WORK ;
+: R-N ( n -- )
+   SHA256-CTX-BYTES RESULT-WORK {: cell:ptr :}
+   cell LE:U64!
+   R-CTX cell 8 SHA256-FEED ;
+: R-S ( ptr u8 n -- ) {: a:ptr u:n :}
+   u R-N
+   u 0 > if R-CTX a u SHA256-FEED then ;
+
+: EDGE+ ( n n -- ) {: kind:n key:n :}
+   EDGE-N @ {: row:n :}
+   row 1+ EDGE-CELLS * EDGE-ROWS-RESERVE
+   kind row EDGE-CELLS * EDGE-ROWS !
+   key row EDGE-CELLS * 1+ EDGE-ROWS !
+   1 EDGE-N +! ;
+
+\ Index the import rows of section 13 as ENCODE wrote it: the counts, the
+\ reference rows, then each import's kind, key length, extent and alignment
+\ before its key.
+: R-IMPORTS ( ptr u8 n -- ) {: src:ptr size:n :}
+   size HEAD-BYTES < if BAD then
+   src LE:U64@ {: refs:n :}
+   src 8 + LE:U64@ {: imports:n :}
+   refs 0 < refs size HEAD-BYTES - REF-BYTES / > or if BAD then
+   imports 0 < imports size HEAD-BYTES - refs REF-BYTES * - 32 / > or
+      if BAD then
+   imports RESULT-IMPORT-OFF-RESERVE
+   imports RESULT-IMPORT-N !
+   HEAD-BYTES refs REF-BYTES * +
+   imports 0 ?do
+      {: off:n :}
+      off 32 + size > if BAD then
+      src off + 8 + LE:U64@ {: keyu:n :}
+      keyu 0 <= keyu size off 32 + - > or if BAD then
+      off i RESULT-IMPORT-OFF !
+      off 32 + keyu +
+   loop drop ;
+
+\ Reference idx of section 13: kind, owner, item and addend.
+: R-REF@ ( ptr u8 n -- n n n n ) {: src:ptr idx:n :}
+   idx 0 <= idx src LE:U64@ > or if BAD then
+   src HEAD-BYTES + idx 1- REF-BYTES * + {: row:ptr :}
+   row LE:U64@ row 8 + LE:U64@ row 16 + LE:U64@ row 24 + LE:U64@ ;
+
+: R-KEY$ ( ptr u8 n -- ptr u8 n ) {: src:ptr item:n :}
+   item 0 < item RESULT-IMPORT-N @ >= or if BAD then
+   src item RESULT-IMPORT-OFF @ + {: row:ptr :}
+   row 32 + row 8 + LE:U64@ ;
+
+\ Hash reference idx's target and return its addend. A LOCAL target is the
+\ definition itself, its own code or literal row; an EXTERNAL one is the
+\ declaration key, whose row KEY-PUT made when the record was bound, and an edge.
+: R-TARGET ( ptr u8 n -- n ) {: src:ptr idx:n :}
+   src idx R-REF@ {: kind:n owner:n item:n addend:n :}
+   kind CODE <> kind DATA <> and kind LITERAL <> and if BAD then
+   kind R-N owner R-N
+   owner LOCAL = if item R-N addend exit then
+   owner EXTERNAL <> if BAD then
+   src item R-KEY$ {: key:ptr keyu:n :}
+   key keyu R-S
+   key keyu KEY-FIND {: row:n :}
+   row 0 < if BAD then
+   kind row EDGE+ addend ;
+
+\ Section 0 with the branch word at every call site zeroed: a moved target
+\ rewrites it, the rows name it. Address carriers need no mask: capture already
+\ zeroed them (tools/native-unit-object.f DEF-CAPTURE-ADDRS).
+: R-MASK ( n n n -- ) {: site:n u:n size:n :}
+   site 0 < site u + size > or if BAD then
+   u 0 ?do 0 site i + RESULT-CODE c! loop ;
+
+: R-CODE ( ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n calls:ptr callsu:n :}
+   codeu 0 <= if BAD then
+   codeu RESULT-CODE-RESERVE
+   code 0 RESULT-CODE codeu BYTE-COPY
+   callsu SITE-BYTES / 0 ?do
+      calls i SITE-BYTES * + LE:U64@ 4 codeu R-MASK
+   loop
+   0 RESULT-CODE codeu R-S ;
+
+\ Each site row's offset, kind, and the target and addend of its reference
+\ at offset at (16 for a call row, 24 for an address row); a call's `loc` and
+\ `known` stay out.
+: R-SITES ( ptr u8 n ptr u8 n -- ) {: rows:ptr rowsu:n src:ptr at:n :}
+   rowsu SITE-BYTES mod 0<> if BAD then
+   rowsu SITE-BYTES / dup R-N 0 ?do
+      rows i SITE-BYTES * + {: row:ptr :}
+      row LE:U64@ R-N row 8 + LE:U64@ R-N
+      src row at + LE:U64@ R-TARGET R-N
+   loop ;
+
+\ Section 1's recorded length, wide flag and minimum input depth; its code
+\ length repeats section 0 and its history deltas stay out.
+: R-META ( ptr u8 n -- ) {: meta:ptr metau:n :}
+   metau 32 < if BAD then
+   meta LE:U64@ R-N meta 16 + LE:U64@ R-N meta 24 + LE:U64@ R-N ;
+
+\ Section 15: the function count, then each function's offset, length, depth
+\ in and out, reason, loc and type count, then its types; a negative count
+\ has none. Every cell but loc.
+: R-HOST ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 8 < if BAD then
+   a LE:U64@ {: funs:n :}
+   funs R-N
+   8 funs 0 ?do
+      {: off:n :}
+      off 56 + u > if BAD then
+      a off + {: row:ptr :}
+      5 0 ?do row i 8 * + LE:U64@ R-N loop
+      row 48 + LE:U64@ dup R-N 0 max {: types:n :}
+      types u off 56 + - 8 / > if BAD then
+      types 0 ?do row 56 + i 8 * + LE:U64@ R-N loop
+      off 56 + types 8 * +
+   loop
+   u <> if BAD then ;
+
+public
+
+\ Bind ord's result identity from the definition payload in the current
+\ NUNIT-FILE section view, once per live record. The digest covers sections 0
+\ (masked), 2 and 3 by target, 10, 15 without loc, and section 1's fields;
+\ sections 5, 13's declaration rows and 14 stay out.
+: BIND-RESULT ( n -- ) {: ord:n :}
+   ord 0 < ord ndict@ >= or if BAD then
+   ord R-BOUND? if BAD then
+   ord XREF-REC DEF-OCC:SELECT {: slot:n occurrence:n :}
+   slot ord <> occurrence 0= or if BAD then
+   ord RESULT-GROW
+   13 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
+   src size R-IMPORTS
+   EDGE-N @ {: first:n :}
+   SHA256-CTX-BYTES 8 + RESULT-WORK-RESERVE
+   R-CTX SHA256-BEGIN
+   s" habu-def-result-v1" R-S
+   1 NUNIT-FILE:SECTION$ R-META
+   0 NUNIT-FILE:SECTION$ 2 NUNIT-FILE:SECTION$ R-CODE
+   2 NUNIT-FILE:SECTION$ src 16 R-SITES
+   3 NUNIT-FILE:SECTION$ src 24 R-SITES
+   10 NUNIT-FILE:SECTION$ R-S
+   15 NUNIT-FILE:SECTION$ R-HOST
+   R-CTX ord RESULT-BYTES * RESULT-DIGESTS SHA256-END
+   occurrence ord 0 RESULT!
+   first ord 1 RESULT!
+   EDGE-N @ first - ord 2 RESULT! ;
+
+\ The closure walk compares this: ord's 32-byte result digest, or false for a
+\ record with no bound result. False is terminal only for a seed record; any
+\ other record without a result (does-pending, refused by capture, compiled
+\ with no file open) is unknown.
+: RESULT-DIGEST ( n -- ptr u8 bool ) {: ord:n :}
+   ord R-BOUND? 0= if NULL-PTR false exit then
+   ord RESULT-BYTES * RESULT-DIGESTS true ;
+
+\ The closure walk follows this many edges out of ord's result.
+: RESULT-EDGES ( n -- n ) {: ord:n :}
+   ord R-BOUND? 0= if 0 exit then
+   ord 2 RESULT@ ;
+
+\ The closure walk follows edge idx of ord's result: its kind (CODE, DATA or
+\ LITERAL) and the live record its target names now, -1 when none does.
+: RESULT-EDGE ( n n -- n n ) {: ord:n idx:n :}
+   idx 0 < idx ord RESULT-EDGES >= or if BAD then
+   ord 1 RESULT@ idx + {: row:n :}
+   row 0 EDGE@ {: kind:n :}
+   row 1 EDGE@ {: key:n :}
+   kind key 0 KEY@ KEY-ARENA key 1 KEY@ KEY-RECORD nip ;
+
 : CLOSE ( -- )
    0 FAMILY-IDENTITY ! 0 FAMILY-FIND !
    CONTRACT-DEFAULT
@@ -1224,6 +1445,9 @@ public
    ALLOC-ROWS-RELEASE
    REF-ROWS-RELEASE IMPORT-BYTES-RELEASE
    PREP-IMPORT-OFF-RELEASE OUTPUT-RELEASE
+   RESULT-ROWS-RELEASE RESULT-DIGESTS-RELEASE EDGE-ROWS-RELEASE
+   RESULT-IMPORT-OFF-RELEASE RESULT-CODE-RELEASE RESULT-WORK-RELEASE
+   0 RESULT-N ! 0 EDGE-N ! 0 RESULT-IMPORT-N !
    0 KEY-U ! 0 ARENA-U ! 0 REC-N ! 0 REF-N !
    0 GROUP-N ! 0 KEY-N ! 0 INDEX-READY ! 0 WID-CAP !
    0 IMPL-N ! 0 IMPL-CAP ! 0 EXACT-N ! 0 EXACT-READY !

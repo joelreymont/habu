@@ -911,13 +911,16 @@ public
 
 \ Definition ord of the innermost open file joins its object: the payload's
 \ sections in DEF-SLOTS order, and one index row. The payload's own dependency
-\ slot stays out; any other slot is a payload this format cannot hold.
+\ slot stays out; any other slot is a payload this format cannot hold. Its
+\ result digest is bound even when the file is refused, so the digest never
+\ depends on whether the file writes an object.
 : FILE-ADD-DEFINITION ( ptr u8 n ptr u8 n n -- )
    {: bytes:ptr size:n key:ptr keyu:n ord:n :}
    FILE-OPEN? 0= if exit then
-   FILE-REFUSED? if exit then
    bytes size NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu
       NUNIT-FILE:READ-VIEW
+   ord NFILE-REF:BIND-RESULT
+   FILE-REFUSED? if NUNIT-FILE:RESET-KEEP exit then
    INDEX-U @ INDEX-BYTES / {: row:n :}
    row 1+ FILE-ORDS-RESERVE
    ord row FILE-ORDS !
@@ -931,6 +934,12 @@ public
       then
    loop
    NUNIT-FILE:RESET-KEEP ;
+
+\ The dictionary ordinal of the innermost file's definition row n.
+: FILE-ORD ( n -- n ) {: row:n :}
+   FO-INDEX FO @ INDEX-BYTES / row + {: at:n :}
+   row 0 < at INDEX-U @ INDEX-BYTES / >= or if BAD then
+   at FILE-ORDS @ ;
 
 \ The innermost file's object bytes with its dependency rows deps.
 : PACK-FILE ( ptr u8 n ptr u8 n -- ptr u8 n )
