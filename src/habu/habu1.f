@@ -5490,7 +5490,7 @@ variable LHIDXBUILD
 \ (habu2.f DEFWRITE:RECORD-WID) calls it after it rewrites a published record's
 \ wid, because a rebuild keys every record on its cell as it stands: a record
 \ retired across a rebuild sits on RETIRED's chain, not on the chain of the wid
-\ it gets back. x86-64 refuses record-wid! (kernel-x64.f), so it has no twin.
+\ it gets back. Its x86-64 twin is kernel-x64.f REKEY,.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label

@@ -87,18 +87,17 @@ jj diff --from 5999ba5f --to 40f36d55 -- src/lib/policy.f src/lib/policy-test.f 
 
 Prior handoff's known gaps, **not reverified in this session**:
 
-1. x86 checker replay writers still refuse.
-2. `does-patch` does not refresh occurrence numbers for patched records/aliases.
-3. Throws inside Habu `evaluate` do not retract master's eval-frame rows.
-4. TARGET-CAPTURE does not copy ACAP-WHITEBOX? into ACAP-ALL-NAMES, so a
+1. `does-patch` does not refresh occurrence numbers for patched records/aliases.
+2. Throws inside Habu `evaluate` do not retract master's eval-frame rows.
+3. TARGET-CAPTURE does not copy ACAP-WHITEBOX? into ACAP-ALL-NAMES, so a
    whitebox cross-build may lose names.
-5. x86 FFI float32 stubs are unexecuted. Bundle/incremental/cached-object paths
+4. x86 FFI float32 stubs are unexecuted. Bundle/incremental/cached-object paths
    have gaps, and some old Intel test coverage was lost during reconciliation.
-6. `test/task-prepare-failure.f`'s page budget predates removal of the task
+5. `test/task-prepare-failure.f`'s page budget predates removal of the task
    altstack. Check its real refusal; do not raise budgets to hide failures.
-7. Earlier suite on frozen `1f98c905`: 614 suites, 68 red; checkpoint
+6. Earlier suite on frozen `1f98c905`: 614 suites, 68 red; checkpoint
    xt-effect-test F34/F36 also red. Neither result qualifies the merged tree.
-8. `intel-aot-wip@origin` (`97b4ddab`) retains unmerged AOT work with requested
+7. `intel-aot-wip@origin` (`97b4ddab`) retains unmerged AOT work with requested
    review corrections. Do not merge blindly.
 
 The merged checker owner is $558 bytes / 171 cells; the task TCB is master's

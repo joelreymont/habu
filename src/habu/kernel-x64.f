@@ -132,6 +132,9 @@ variable LCLOSE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
 variable SCOPE-KIND-CELL
+variable REPLAY-TRAP-CELL
+variable COMPILE-DIE-CELL
+variable OVERLAY-DIE-CELL
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
@@ -140,6 +143,9 @@ variable SCOPE-KIND-CELL
 : SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
 : SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
 : SCOPE-KIND-LBL ( -- label ) SCOPE-KIND-CELL @ >LABEL ;
+: REPLAY-TRAP-LBL ( -- label ) REPLAY-TRAP-CELL @ >LABEL ;
+: COMPILE-DIE-LBL ( -- label ) COMPILE-DIE-CELL @ >LABEL ;
+: OVERLAY-DIE-LBL ( -- label ) OVERLAY-DIE-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -270,6 +276,17 @@ public
    RAX RAX ASM-SINK ENC-TEST-RR
    C-NE LIVE-LBL JCC, ;
 
+\ The twin of habu1.f OVERLAY-EMIT:GUARD,: while a checker overlay is open
+\ (REPLAY-SCOPE:LATCH) a writer of a record or a wid refuses before it writes
+\ anything, through OVERLAY-DIE, because replay-close would drop what it wrote.
+\ The Habu loop's definers, package rows and EXPORT read the same latch
+\ (outer.f OVERLAY-GUARD); the kernel rows wordlist, def-open, alias-record,
+\ namespace-private and native-unit-publish run this. It clobbers rax and the
+\ flags.
+: OVERLAY-GUARD, ( -- )
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE OVERLAY-DIE-LBL JCC, ;
+
 \ Guard the span the registers hold: move it into the (PROT-SPAN) ABI, rdi the
 \ address and rsi the length, whichever registers hold them, then call it.
 \ The twin of habu1.f PROT-GUARD:CALL. The call clobbers rax rcx rdx rsi rdi
@@ -374,6 +391,15 @@ private
 : LIVE-HELPER, ( -- )
    LIVE-LBL X64CODE:LBL,
    TASK-LIVE-RC EXIT-GROUP, ;
+
+76 constant REPLAY-TRAP-RC             \ habu2.f DEFWRITE:EMIT-REPLAY-TRAP's exit
+
+\ The entry every replay record's code cell holds, the twin of habu2.f
+\ DEFWRITE:EMIT-REPLAY-TRAP: a replay record has no code, so executing one
+\ writes `hb: replay record executed` on fd 2 and exits REPLAY-TRAP-RC.
+: REPLAY-TRAP-HELPER, ( -- )
+   REPLAY-TRAP-LBL X64CODE:LBL,
+   S\" hb: replay record executed\n" REPLAY-TRAP-RC STDERR-EXIT, ;
 
 \ The machine-stack frame DIAG-U, writes digits into: room for any cell's.
 CELL 4 * constant DIAG-BYTES
@@ -1537,22 +1563,18 @@ private
    corrupt X64CODE:LBL,
    CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
 
-\ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then the source
-\ location from LCOMPILEDIE and a newline. An active catch receives code 76
-\ through the kernel's normal RX-restoring unwind; at top level it exits 76.
-\ The location is emitted here so an invalid DP never calls a Habu word.
-: DPBAD-HELPER, ( -- )
+\ The twin of habu2.f LCOMPILEDIE, entered with rax = the refusal's code after
+\ its site wrote the diagnostic without a newline: it writes the source
+\ location, ` at <path>:<line>` when a source file is open, and the newline,
+\ then throws the code to an active catch through the kernel's normal
+\ RX-restoring unwind, or at top level exits with it. The code rides on the
+\ machine stack across the writes, since a syscall clobbers rcx and r11.
+: COMPILE-DIE-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: head:label of:label unit:label at:label colon:label nl:label scan:label next:label line:label :}
-   X64CODE:LBL X64CODE:LBL {: no-path:label top:label :}
-   DPBAD-LBL X64CODE:LBL,
-   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
-   head DPBAD-HEAD$ nip STDERR-WRITE,
-   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
-   of DPBAD-OF$ nip STDERR-WRITE,
-   RAX DP-CEILING IMM64,  DIAG-U,
-   unit DPBAD-UNIT$ nip STDERR-WRITE,
+   {: at:label colon:label nl:label scan:label next:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: line:label no-path:label top:label :}
+   COMPILE-DIE-LBL X64CODE:LBL,
+   RAX ASM-SINK ENC-PUSH
    RAX DATA-REG SRCLOC:PATHLEN-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E no-path JCC,
    at DPBAD-AT$ nip STDERR-WRITE,
@@ -1574,23 +1596,55 @@ private
    RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
    no-path X64CODE:LBL,
    nl 1 STDERR-WRITE,
+   RAX ASM-SINK ENC-POP
    RDX DATA-REG HND-CELL MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E top JCC,
-   RAX DPBAD-RC IMM32,  THROW,
-   top X64CODE:LBL,  DPBAD-RC EXIT-GROUP,
-   head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
-   of X64CODE:LBL,  DPBAD-OF$ TEXT,
-   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT,
+   THROW,
+   top X64CODE:LBL,
+   RDI RAX ASM-SINK ENC-MOV-RR  NR-EXIT-GROUP SYS,
    at X64CODE:LBL,  DPBAD-AT$ TEXT,
    colon X64CODE:LBL,  DPBAD-COLON$ TEXT,
    nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE ;
 
+\ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then refuses with
+\ DPBAD-RC through COMPILE-DIE. The location is written there so an invalid DP
+\ never calls a Habu word.
+: DPBAD-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: head:label of:label unit:label :}
+   DPBAD-LBL X64CODE:LBL,
+   R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
+   head DPBAD-HEAD$ nip STDERR-WRITE,
+   RAX R8 ASM-SINK ENC-MOV-RR  DIAG-U,
+   of DPBAD-OF$ nip STDERR-WRITE,
+   RAX DP-CEILING IMM64,  DIAG-U,
+   unit DPBAD-UNIT$ nip STDERR-WRITE,
+   RAX DPBAD-RC IMM32,  COMPILE-DIE-LBL JMP,
+   head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
+   of X64CODE:LBL,  DPBAD-OF$ TEXT,
+   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT, ;
+
+\ The refusal habu1.f OVERLAY-EMIT:GUARD, sends a writer to (habu2.f
+\ OVERLAY-EMIT:LDIE, outer.f OVERLAY-GUARD the Habu loop's): it names the
+\ token in TKA/TKL, the word that ran `wordlist` or the writer primitive, and
+\ refuses with ENGINE-ERROR:OVERLAY-OPEN through COMPILE-DIE.
+: OVERLAY-DIE$ ( -- ptr u8 n ) s" hb: definition while a checker replay is open: " ;
+: OVERLAY-DIE-HELPER, ( -- )
+   X64CODE:LBL {: msg:label :}
+   OVERLAY-DIE-LBL X64CODE:LBL,
+   msg OVERLAY-DIE$ nip STDERR-WRITE,
+   RSI DATA-REG TKA-CELL MOV-LOAD,
+   RDX DATA-REG TKL-CELL MOV-LOAD,
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   RAX ENGINE-ERROR:OVERLAY-OPEN IMM32,  COMPILE-DIE-LBL JMP,
+   msg X64CODE:LBL,  OVERLAY-DIE$ TEXT, ;
+
 \ Make helper labels before the sections that branch to them.
 : HELPERS, ( -- )
    X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
-   X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
-   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS
+   X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !  X64CODE:LBL REPLAY-TRAP-CELL !
+   X64CODE:LBL COMPILE-DIE-CELL !  X64CODE:LBL OVERLAY-DIE-CELL !
+   SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  REPLAY-TRAP-HELPER,  INDEX-HELPERS,
+   COMPILE-DIE-HELPER,  DPBAD-HELPER,  OVERLAY-DIE-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS
    X64PROF:HELPERS, ;
 
 \ Native ARM selection on an x86 host still resolves the sealed `(DIV-ZERO)`
@@ -2689,12 +2743,6 @@ public
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
-   s" replay-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-close" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-widn!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
 \ ---- atomics and publication rows --------------------------------------------
@@ -3206,6 +3254,7 @@ variable SITE-TRAP-CELL
    {: fill:label filled:label recopy:label recopied:label :}
    X64CODE:LBL X64CODE:LBL {: index:label indexed:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    RSP UNIT-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    RAX POP,  RAX RSP UNIT-COUNT MOV-STORE,
    RAX POP,  RAX RSP UNIT-RECS MOV-STORE,
@@ -4176,6 +4225,7 @@ private
 
 : WORDLIST-ROWS, ( -- )
    s" wordlist" [:
+      OVERLAY-GUARD,
       RAX WIDN-CELL CELL@,  RAX PUSH,
       RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!, ;] PRIM
    s" get-current" [: RAX CUR-CELL CELL@,  RAX PUSH, ;] PRIM
@@ -5049,9 +5099,22 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RECORD-PUBLISHED,
    WINDOW-CLOSE, ;
 
+\ While a checker overlay is open, raise its high-water mark to NDICT: the
+\ records the overlay published, which replay-close zeroes, are [the saved
+\ NDICT, HW). The twin of habu2.f HW-RAISE,. Clobbers rax.
+: HW-RAISE, ( -- )
+   X64CODE:LBL {: keep:label :}
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E keep JCC,
+   RAX REPLAY-SCOPE:HW CELL@,
+   NDICT-REG RAX ASM-SINK ENC-CMP-RR  C-BE keep JCC,
+   NDICT-REG REPLAY-SCOPE:HW CELL!,
+   keep X64CODE:LBL, ;
+
 \ namespace-record ( ptr u8 n bool -- n ): record NDICT, [0] a fresh wid, [8]
 \ a second when the flag is set and else 0, [40] DICT-WL:NAMESPACE; a colon
-\ in the name is refused. It answers the row's index.
+\ in the name is refused. It raises an open overlay's HW and answers the
+\ row's index.
 : NAMESPACE-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label clean:label one:label :}
    TASK-LIVE-GUARD,
@@ -5086,12 +5149,14 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    PUBLISH-RECORD,
    FRAME-CLOSE,
+   HW-RAISE,                                          \ an overlay's row dies at replay-close
    RAX NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA  RAX PUSH, ;
 
 \ namespace-private ( n -- ): namespace row n, below NDICT, unsigned, whose [8]
 \ is 0, takes a fresh private wid.
 : NAMESPACE-PRIVATE-BODY ( -- )
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    RCX POP,
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
@@ -5115,6 +5180,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : ALIAS-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    FRAME-OPEN,
    DW-WID POP-TO,  DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RDX RSP DW-WID MOV-LOAD,
@@ -5188,6 +5254,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : DEF-OPEN-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label nolast:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RAX DKIND:MASK DNAME-CELL or invert IMM64,
@@ -5354,6 +5421,231 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
    RAX PEND-CELL CELL!, ;
+
+\ ---- the checker replay writers -------------------------------------------------
+\ The twins of habu2.f DEFWRITE:REPLAY-OPEN .. REPLAY-WIDN, in each twin's check
+\ order: the checker overlay (src/core/checker.f CHECKER-OVERLAY) opens a
+\ replay scope, publishes codeless replay records, retires and restores
+\ records and private wids, and closes the scope, which gives the dictionary,
+\ CP and the scope cells back as replay-open found them. The scope lives in
+\ the guarded band REPLAY-SCOPE (src/habu/layout.f), zero whenever no overlay
+\ is open. Each row exits TASK-LIVE-RC while a task is live and
+\ ENGINE-ERROR:SEAL-VIOLATION for every other refusal, all before the first
+\ store; every refusal but replay-open's needs the overlay open.
+
+\ An open overlay's latch: refuse a closed one.
+: LATCHED, ( -- )
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC, ;
+
+\ One scope cell into its band cell when the flag is true, and back out of it
+\ when it is false. Clobbers rax.
+: SCOPE-CELL, ( n n bool -- )
+   {: cell:n band:n save:bool :}
+   save if
+      RAX cell CELL@,  RAX band CELL!,
+   else
+      RAX band CELL@,  RAX cell CELL!,
+   then ;
+
+\ The scope replay-open saves and replay-close restores beside NDICT and CP,
+\ habu2.f DEFWRITE's SCOPE: WIDN, CURRENT, the open package's four cells, the
+\ using band's depth, the depth `package` saved and the used wids.
+\ USE-RPKG-SAVE is the REPL line's, not the scope's. Clobbers rax.
+: SCOPE-CELLS, ( bool -- )
+   {: save:bool :}
+   WIDN-CELL REPLAY-SCOPE:WIDN save SCOPE-CELL,
+   CUR-CELL REPLAY-SCOPE:CUR save SCOPE-CELL,
+   PKG-PUB-CELL REPLAY-SCOPE:PKG-PUB save SCOPE-CELL,
+   PKG-PRI-CELL REPLAY-SCOPE:PKG-PRI save SCOPE-CELL,
+   PKG-PARENT-CELL REPLAY-SCOPE:PKG-PARENT save SCOPE-CELL,
+   PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SCOPE-CELL,
+   USE-DEPTH-CELL REPLAY-SCOPE:USE-DEPTH save SCOPE-CELL,
+   USE-PKG-SAVE-CELL REPLAY-SCOPE:USE-PKG-SAVE save SCOPE-CELL,
+   USE-MAX 0 ?do
+      USE-WIDS-OFF i CELL * +  REPLAY-SCOPE:USE-WIDS i CELL * +  save SCOPE-CELL,
+   loop ;
+
+\ replay-open ( -- ): refuse an open overlay and a pending definition; save
+\ NDICT, CP and the scope, HW = NDICT, and set the latch.
+: REPLAY-OPEN-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   NOT-PENDING,
+   NDICT-REG REPLAY-SCOPE:NDICT CELL!,
+   CP-REG REPLAY-SCOPE:CP CELL!,
+   true SCOPE-CELLS,
+   NDICT-REG REPLAY-SCOPE:HW CELL!,
+   RAX 1 IMM32,  RAX REPLAY-SCOPE:LATCH CELL!, ;
+
+\ replay-record ( ptr u8 n n -- ) name, wid: record NDICT, codeless, [0] the
+\ trap, [8] 0, [40] the wid; count and index it and raise HW to NDICT. It
+\ refuses wid -1 or -2, a closed overlay, a pending definition, NDICT at
+\ DICT-CAP, an empty or overlong name and a live name in the wid. It needs no
+\ seal check: the record can only trap, and replay-close removes it.
+: REPLAY-RECORD-BODY ( -- )
+   TASK-LIVE-GUARD,
+   FRAME-OPEN,
+   DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
+   RDX RSP DW-WID MOV-LOAD,
+   REAL-WID,
+   LATCHED,
+   NOT-PENDING,
+   DICT-ROOM,
+   NAME-SIZE,
+   FRESH,
+   NAME-STORE,
+   R8 RSP DW-REC MOV-LOAD,
+   RAX REPLAY-TRAP-LBL MOVABS,  RAX R8 REC-CODE MOV-STORE,
+   RAX ZERO-REG,  RAX R8 REC-CODE CELL + MOV-STORE,
+   RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
+   PUBLISH-RECORD,
+   FRAME-CLOSE,
+   HW-RAISE, ;
+
+\ The twin of habu1.f HIDX-EMIT:LREKEY: with a table, index record rdi, which
+\ it keeps, under the key its cells hold now, unless its chain already holds
+\ it before the chain's first empty slot, the stretch every probe for the key
+\ walks; a new claim at HIDX:LOAD-MAX compacts the table. A record whose wid
+\ changed sits on its old key's chain only, which a compaction re-keys, so a
+\ probe for the new key misses it without this. Clobbers what INSERT, does.
+: REKEY, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: probe:label insert:label done:label :}
+   RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX RDI ASM-SINK ENC-MOV-RR  RAX ROW,
+   RCX RAX REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RDX R8 NAME-LEN,
+   RAX RSI R8 NAME-AT,
+   RSI RDX R8 R9 R10 R11 HASH,
+   R8 RCX SLOT,                                        \ r8 = the slot
+   R9 HIDX-SLOTS IMM32,                                \ r9 = slots left to walk
+   probe X64CODE:LBL,
+   R10 R8 SLOT@,
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E insert JCC,
+   R10 ASM-SINK ENC-DEC
+   R10 RDI ASM-SINK ENC-CMP-RR  C-E done JCC,          \ held
+   R9 ASM-SINK ENC-DEC  C-E insert JCC,
+   R8 NEXT-SLOT,
+   probe JMP,
+   insert X64CODE:LBL,
+   INSERT,
+   RAX DATA-REG HIDX:CLAIMS MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX HIDX:LOAD-MAX >IMM32 ASM-SINK ENC-CMP-RI32  C-L done JCC,
+   HIDX-REBUILD,
+   done X64CODE:LBL, ;
+
+\ record-wid! ( n n -- ) wid, index: the overlay retires a record with wid -2
+\ and later gives it back the wid it logged, in reverse order; after the store
+\ the record is indexed under the wid it now holds. It refuses a closed
+\ overlay, an index at or above NDICT, unsigned, a namespace row and the
+\ namespace wid.
+: RECORD-WID-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RCX POP,  RDX POP,                                 \ the index, the wid
+   LATCHED,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RDX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH       \ past the span call
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+   RDX ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
+   RDI RECORD-AT,
+   RDX R8 REC-WID MOV-STORE,
+   REKEY,
+   WINDOW-CLOSE, ;
+
+\ replay-private ( n bool -- ) namespace index, flag: true gives the row a
+\ fresh private wid, as `package` gives one; false takes back the one it
+\ gave. It refuses a closed overlay, an index at or above NDICT, unsigned, and
+\ a row that is not a namespace row; true refuses a row with a private wid,
+\ false one whose private wid is below the saved WIDN, unsigned, 0 included.
+: REPLAY-PRIVATE-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: give:label stored:label taken:label :}
+   TASK-LIVE-GUARD,
+   RDX POP,  RCX POP,                                 \ the flag, the index
+   LATCHED,
+   RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RCX RECORD-AT,
+   RAX R8 REC-WID MOV-LOAD,
+   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RAX R8 REC-CODE CELL + MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE give JCC,
+   RCX REPLAY-SCOPE:WIDN CELL@,
+   RAX RCX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RAX ZERO-REG,                                      \ the row's [8] to come
+   stored JMP,
+   give X64CODE:LBL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   RAX WIDN-CELL CELL@,
+   stored X64CODE:LBL,
+   R8 ASM-SINK ENC-PUSH  RAX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
+   RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+   RDX ASM-SINK ENC-POP  RAX ASM-SINK ENC-POP  R8 ASM-SINK ENC-POP
+   RAX R8 REC-CODE CELL + MOV-STORE,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E taken JCC,
+   RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!,
+   taken X64CODE:LBL,
+   WINDOW-CLOSE, ;
+
+\ replay-close ( -- ): refuse a closed overlay, a pending definition, NDICT
+\ below the saved count or above HW, CP below the saved CP and WIDN below the
+\ saved WIDN, all unsigned, and a saved CP CODE-SLOT-GUARD, refuses. Then
+\ NDICT goes back to the saved count, as a lowering ndict! moves it; CP goes
+\ back as cp! moves it, the host observers told of [saved CP, CP) first; the
+\ records [saved NDICT, HW) are zeroed, the scope restored and the band zeroed,
+\ the latch with it. A lowered count keeps the index, whose probe skips a
+\ record at or past the count.
+: REPLAY-CLOSE-BODY ( -- )
+   TASK-LIVE-GUARD,
+   LATCHED,
+   NOT-PENDING,
+   RCX REPLAY-SCOPE:NDICT CELL@,
+   NDICT-REG RCX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RCX REPLAY-SCOPE:HW CELL@,
+   NDICT-REG RCX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RSI REPLAY-SCOPE:CP CELL@,
+   CP-REG RSI ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RCX REPLAY-SCOPE:WIDN CELL@,  RDX WIDN-CELL CELL@,
+   RDX RCX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RSI CODE-SLOT-GUARD,
+   RAX REPLAY-SCOPE:NDICT CELL@,
+   OCC-COUNT,
+   LASTC-TRIM,
+   RDI REPLAY-SCOPE:CP CELL@,  RSI CP-REG ASM-SINK ENC-MOV-RR
+   HOST-INVALIDATE,
+   CP-REG REPLAY-SCOPE:CP CELL@,
+   RDI NDICT-REG DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI DBASE-REG ASM-SINK ENC-ADD-RR                  \ rdi = record saved NDICT
+   RSI REPLAY-SCOPE:HW CELL@,
+   RSI RSI DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RSI DBASE-REG ASM-SINK ENC-ADD-RR
+   RSI RDI ASM-SINK ENC-SUB-RR                        \ rsi = the records' bytes
+   RDI ASM-SINK ENC-PUSH  RSI ASM-SINK ENC-PUSH       \ past the span call
+   WINDOW-SPAN,
+   RCX ASM-SINK ENC-POP  RDI ASM-SINK ENC-POP
+   ZERO-BYTES,
+   WINDOW-CLOSE,
+   false SCOPE-CELLS,
+   RDI DATA-REG REPLAY-SCOPE:LATCH MEM-OFF ASM-SINK ENC-LEA
+   RCX REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - IMM32,
+   ZERO-BYTES, ;
+
+\ replay-widn! ( n -- ): WIDN = n, a mark the owner read while the overlay
+\ was open. It refuses a closed overlay, n below the saved WIDN and n above
+\ WIDN, both unsigned.
+: REPLAY-WIDN-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RCX POP,
+   LATCHED,
+   RAX REPLAY-SCOPE:WIDN CELL@,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RAX WIDN-CELL CELL@,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RCX WIDN-CELL CELL!, ;
 
 \ ---- does-patch -----------------------------------------------------------------
 \ A created word's routine ends `jmp rel32; ret`, its last six bytes
@@ -5565,9 +5857,8 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 public
 
-\ def-create and def-cast, the tails of the engine's interpret-mode `create`
-\ and `cast:`, refuse as those keywords do: the x86-64 kernel carries no
-\ interpreter.
+\ def-create, the tail of the engine's interpret-mode `create`, refuses as that
+\ keyword does: the x86-64 kernel carries no interpreter.
 : DEFINITION, ( -- )
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5583,6 +5874,12 @@ public
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-open" [: REPLAY-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-close" [: REPLAY-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-widn!" [: REPLAY-WIDN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-record" [: REPLAY-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" record-wid!" [: RECORD-WID-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-private" [: REPLAY-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ ---- pure rows ---------------------------------------------------------------
