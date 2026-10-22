@@ -54,7 +54,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    s" app.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
-   s" slot.f" LOAD+
+   s" watermark.f" LOAD+
    s" ret-own.f" LOAD+
    s" ret-parent.f" LOAD+
    s" ret-late.f" LOAD+
@@ -67,6 +67,9 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    s" after.f" LOAD+
    s" retire.f" LOAD+
+   s" raw.f" LOAD+
+   s" slot.f" LOAD+
+   s" later.f" LOAD+
    s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
@@ -109,6 +112,13 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
      ENDOF
    ;MATCH ;
 
+\ A field's decimal value.
+: FIELD-N ( ptr u8 n -- n )
+   STR>NUMBER? MATCH option
+     none OF T-FAIL 0 ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
 : KEY$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  key=" FIELD$ ;
 : DEFS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  defs=" FIELD$ ;
 : RESULTS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  results=" FIELD$ ;
@@ -144,7 +154,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    twice twiceu IN+
    S\"  ;\n: MARK ( -- ) " IN+
    mark marku IN+
-   S\"  ; immediate\nvariable HITS\ncreate T 16 allot\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
+   S\"  ; immediate\nvariable HITS\ncreate T 16 allot\nTYPED-VARIABLE HOOK [ n -- n ]\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n' TWICE HOOK xt!\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
 
 \ A rebuild after an edit to lib.f: the app still runs, both files still
@@ -154,7 +164,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    PROBE SUCCESS
    OUT$ S\" use=67\n" CONTAINS? TTRUE
    s" app.f" DEFS$ s" 4" T$=
-   s" lib.f" DEFS$ s" 4" T$=
+   s" lib.f" DEFS$ s" 5" T$=
    s" app.f" KEY$ APP-KEY KEY-LEN T$=
    s" lib.f" KEY$ LIB-KEY KEY-LEN T$=
    s" app.f" RESULTS$ APP-RES RES-LEN T$= ;
@@ -215,11 +225,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
      some OF drop T-FAIL ENDOF
    ;MATCH ;
 
-public
-: MAIN ( -- )
-   T-RESET
-   s" native-file-frame" TREE
-   s" cache" AT MAKE-DIR
+: FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
    s" " s" dup +" s" 3 TWICE drop" LIB-SOURCE
@@ -234,12 +240,12 @@ public
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
-   \ slot.f moves the user-slot watermark of the TASK the builder loaded at
+   \ watermark.f moves the user-slot watermark of the TASK the builder loaded at
    \ load time through the cell TASK hands its claimants. TASK:+USER moves it too
    \ and refuses its file for task-slots the same way.
    \ scope.f leaves its package open, the last load: a using it left open
    \ would not count, as usings end with their file (interpret.f CLEAN-END).
-   s" slot.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT
+   s" watermark.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT
    s" scope.f" S\" package FRAME-SCOPE\n" PUT
    \ retire.f retires a record lib.f made.
    s" retire.f" S\" undefine FRAME-LIB:BUMP\n" PUT
@@ -262,15 +268,21 @@ public
    s" gp.f" S\" require gc1.f\nrequire gc2.f\n" PUT
    s" k1.f" S\" : KA ( -- n ) 2 ;\ns\" KA\" FORGET-DEFS-FROM\n: KX ( -- n ) 3 ;\n" PUT
    s" q1.f" S\" : Q1 ( -- n ) 1 ;\nrequire k1.f\n: Q2 ( -- n ) KX ;\n" PUT
+   \ raw.f's TRUSTED: RAW-SET stores a code address into the plain variable
+   \ RAW-CELL, which declares no xt cell.
+   s" raw.f" S\" variable RAW-CELL\n: RAW-TARGET ( -- ) ;\nTRUSTED: RAW-SET ( -- ) ['] RAW-TARGET RAW-CELL ! ;\nRAW-SET\n" PUT
+   \ slot.f's declared xt cell holds deep.f's TEN, which nothing else in it
+   \ compiles.
+   s" slot.f" S\" TYPED-VARIABLE SLOT-HOOK [ -- n ]\n' FRAME-DEEP:TEN SLOT-HOOK xt!\n" PUT
+   \ later.f's declared pointer cell holds an address 8 bytes into earlier.f's
+   \ T, reached from U, so no run reads T; T-MID compiles a binding of T.
+   s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
+   s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions.
-   s" app.f" APP$ PUT
-   \ Each build below is its own builder process: a key that stays stable
-   \ across separate builds is the boundary under test.
-   PROBE {: rc:n :}
-   s" probe-out.log" OUT$ PUT
-   s" probe-err.log" ERR$ PUT
-   rc SUCCESS
+   s" app.f" APP$ PUT ;
+
+: FRAME-CHECKS ( -- )
    OUT$ S\" use=67\n" CONTAINS? TTRUE
    OUT$ s" refused=1" CONTAINS? TTRUE
    s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
@@ -284,7 +296,11 @@ public
    s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value and MARK's run" T-LABEL
    s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=29 executed=1 data=0" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
-   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=28 executed=0 data=0" ENDS-WITH? TTRUE
+   \ HOOK adds 12 resolution rows: TYPED-VARIABLE and xt! 3 each (global hit,
+   \ FRAME-LIB public and private misses), the generated body's HOOK#base 4 (global
+   \ and private misses, as spelled and folded) and the run of HOOK 2 (global and
+   \ private misses). Each public hit is lib.f's own record and adds none.
+   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=40 executed=0 data=0" ENDS-WITH? TTRUE
    \ exec.f compiles nothing, so every resolution row is a run's: require and
    \ drop 1 each (global), FRAME-LIB:SEVEN and the ticked FRAME-LIB:TWICE 2 each
    \ (namespace, public), SEVEN under using 3 (namespace, public, global miss).
@@ -298,12 +314,14 @@ public
    s" vread.f reads the data word STORE at top level" T-LABEL
    s" vread.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" vread.f" FRAME$ s"  executed=" FIELD$ s" 0" T$=
-   s" vread.f" FRAME$ s"  data=" FIELD$ s" 1" T$=
+   s" vread.f" FRAME$ s"  data=" FIELD$ s" 1" T$= ;
+
+: OBJECT-CHECKS ( -- )
    s" each file object holds its colon definitions, TRUSTED: BUMP included" T-LABEL
    s" base.f" DEFS$ s" 1" T$=
    s" deep.f" DEFS$ s" 1" T$=
    s" app.f" DEFS$ s" 4" T$=
-   s" lib.f" DEFS$ s" 4" T$=
+   s" lib.f" DEFS$ s" 5" T$=
    s" each file object holds exactly its own input rows" T-LABEL
    s" base.f" s" 1" INPUTS
    s" deep.f" s" 1" INPUTS
@@ -313,11 +331,11 @@ public
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
    APP-KEY KEY-LEN STORED
-   s" lib.f's object holds its records, HITS and T's data and deep.f's load" T-LABEL
-   s" lib.f" s"  records=" s" 8" OBJECT-HAS
-   \ DATA: HITS 8 bytes, T 16, and the 14 bytes of "FRAME-LIB:MARK" that its
-   \ interpreted s" copies to HERE.
-   s" lib.f" s"  data=" s" 38" OBJECT-HAS
+   s" lib.f's object holds its records, HITS, T and HOOK's data and deep.f's load" T-LABEL
+   s" lib.f" s"  records=" s" 10" OBJECT-HAS
+   \ DATA: HITS 8 bytes, T 16, HOOK 8, and the 14 bytes of "FRAME-LIB:MARK"
+   \ that its interpreted s" copies to HERE.
+   s" lib.f" s"  data=" s" 46" OBJECT-HAS
    s" lib.f" s"  requires=" s" 1" OBJECT-HAS
    s" lib.f" s"  loads=" s" 1" OBJECT-HAS
    s" lib.f" s"  segments=" s" 2" OBJECT-HAS
@@ -328,6 +346,27 @@ public
    s" app.f" s"  segments=" s" 7" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
+   s" lib.f's declared xt cell HOOK is its one slot; app.f declares none" T-LABEL
+   s" lib.f" s"  slots=" s" 1" OBJECT-HAS
+   s" app.f" s"  slots=" s" 0" OBJECT-HAS
+   s" raw.f's undeclared code address refuses its object, naming the cell" T-LABEL
+   s" raw.f" s"  reason=" LINE$
+      s" raw.f reason=raw-cell owner=RAW-CELL offset=0 value=0x" STARTS-WITH? TTRUE
+   ERR$ s" raw.f key=" CONTAINS? TFALSE
+   s" slot.f's slot names TEN, so its object binds TEN beyond its frame's rows" T-LABEL
+   s" slot.f" s"  slots=" s" 1" OBJECT-HAS
+   s" slot.f" FRAME$ s"  binding=" FIELD$ s" 0" T$=
+   s" slot.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
+   s" slot.f" FRAME$ s"  rows=" FIELD$ FIELD-N 1+ T=
+   \ The frame binds T and reads U's DATA. The slot adds T's DATA row, whose
+   \ digest covers T's extent, so an edit that moves T's end is stale; a
+   \ binding of T alone would add no row.
+   s" later.f's slot points into T, so its object reads T's DATA beyond its frame's rows" T-LABEL
+   s" later.f" s"  slots=" s" 1" OBJECT-HAS
+   s" later.f" FRAME$ s"  binding=" FIELD$ s" 1" T$=
+   s" later.f" FRAME$ s"  data=" FIELD$ s" 1" T$=
+   s" later.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
+   s" later.f" FRAME$ s"  rows=" FIELD$ FIELD-N 1+ T=
    s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
    s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
    s" a file that retires its own record in the segment that made it stores it" T-LABEL
@@ -356,10 +395,25 @@ public
    s" scope.f" s"  reason=" LINE$ s" scope.f reason=scope-exit" T$=
    s" scope.f" NO-OBJECT
    s" a file that takes a TASK user slot has no object" T-LABEL
-   s" slot.f" s"  reason=" LINE$ s" slot.f reason=task-slots" T$=
-   s" slot.f" NO-OBJECT
+   s" watermark.f" s"  reason=" LINE$ s" watermark.f reason=task-slots" T$=
+   s" watermark.f" NO-OBJECT
    s" app.f's object holds each definition's name span in app.f" T-LABEL
-   APP-SPANS
+   APP-SPANS ;
+
+public
+: MAIN ( -- )
+   T-RESET
+   s" native-file-frame" TREE
+   s" cache" AT MAKE-DIR
+   FIXTURES
+   \ Each build below is its own builder process: a key that stays stable
+   \ across separate builds is the boundary under test.
+   PROBE {: rc:n :}
+   s" probe-out.log" OUT$ PUT
+   s" probe-err.log" ERR$ PUT
+   rc SUCCESS
+   FRAME-CHECKS
+   OBJECT-CHECKS
    LIB-KEY KEY-LEN STORED
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP

@@ -1071,11 +1071,16 @@ variable USER-SEEN
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
    BIND-RETIRE
-   NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
-   storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
+   NUNIT-DEP:FILE-EXPORT nip nip 0= if
+      s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE
+   then
    NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
    SLOTS-MOVED? if s" task-slots" NUNIT-OBJECT:FILE-REFUSE then
+   \ Encoding binds the earlier records the file's slots name, so the rows
+   \ are exported again after it.
    NUNIT-OBJECT:FILE-ENCODE
+   NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
+   storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-OBJECT:FILE-REFUSED? if
       DIAG? @ 0= if exit then
       s" native-file: refused path=" DIAG-W2 FRAME-PATH DIAG-W2
@@ -1092,7 +1097,7 @@ variable USER-SEEN
    0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n :}
+      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n :}
    DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1104,6 +1109,7 @@ variable USER-SEEN
    s"  requires=" DIAG-W2 reqs DIAG-N
    s"  loads=" DIAG-W2 loads DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
+   s"  slots=" DIAG-W2 slots DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    s"  src=" DIAG-W2

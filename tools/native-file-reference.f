@@ -1093,7 +1093,7 @@ public
 \ A FILE object's own references, taken with no definition capture open.
 : BEGIN-FILE-REFS ( -- )
    CAP-READY @ if BAD then
-   0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! ;
+   0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! 0 CAP-CODE-U ! ;
 
 \ The reference to wordlist wid made before the file: builtin, or imported
 \ from the package record that owns it. 0 when no record owns it.

@@ -547,18 +547,19 @@ private
    v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder FAIL exit then
    0 H-N v H-N ;
 
-\ ord's DATA digest in HOUT: its extent up to the next record origin within
-\ its limits, the first cell through H-POINTER when it may hold an address.
-\ False when ord has no DATA origin or its extent is empty.
-: DATA-HASH ( n -- bool )
+\ ord's DATA digest in HOUT over its extent up to the next record origin
+\ within its limits, the first cell through H-POINTER when it may hold an
+\ address, and that extent in bytes; 0 when ord has no DATA origin or its
+\ extent is empty.
+: DATA-HASH ( n -- n )
    {: ord:n :}
    ord NFILE-REF:DATA-ORIGIN-BASE {: origin:n known:bool :}
-   known 0= if false exit then
+   known 0= if 0 exit then
    ord LIMITS {: limit:n lim-here:n :}
    origin limit lim-here SPAN {: owner:n base:n end:n :}
    owner drop base drop
    end origin - {: size:n :}
-   size 0 <= if false exit then
+   size 0 <= if 0 exit then
    HCTX SHA256-BEGIN
    s" habu-data-v1" H-S
    size H-N
@@ -568,7 +569,7 @@ private
    else origin then {: start:n :}
    start N>U8 end start - H-BYTES
    HCTX HOUT SHA256-END
-   true ;
+   size ;
 
 : REACH-DATA ( n -- )
    {: ord:n :}
@@ -668,7 +669,7 @@ private
    rec drop
    found if
       false WALK-BEGIN
-      ord DATA-HASH WOK @ and if HOUT DIGEST-BYTES want wantu STR= else false then
+      ord DATA-HASH 0<> WOK @ and if HOUT DIGEST-BYTES want wantu STR= else false then
    else false then
    dup 0= if s" data changed" REMEMBER-MISS then ;
 
@@ -1374,5 +1375,20 @@ public
 \ an interned name. A missing contract is visible as an ordered FILE.
 : BIND-ORD ( n -- )
    CAPTURE-BIND ;
+
+\ The file depends on the DATA of ord, a record it did not make, as a run
+\ that read it would: by ord's DATA row, whose digest covers ord's extent up
+\ to the next record origin, so an edit that moves that end is stale. The
+\ extent in bytes; 0, with no row, when ord has no DATA, no key, or a cell
+\ that holds an address no row can name.
+: DATA-ORD ( n -- n )
+   {: ord:n :}
+   false WALK-BEGIN
+   ord DATA-HASH {: size:n :}
+   size 0= WOK @ 0= or if 0 exit then
+   ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
+   known 0= if 0 exit then
+   ord DATA key keyu HOUT DIGEST-BYTES ADD-ROW
+   size ;
 
 ;package
