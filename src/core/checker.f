@@ -5,6 +5,8 @@ package CHECKER-REG
 \ TARGET-CELL is the one a replacement checker publishes itself into.
 $360 constant SOURCE-CELL
 $368 constant TARGET-CELL
+SOURCE-CELL RESERVED-PTR-U8-CELL SOURCE-OWNER-A
+TARGET-CELL RESERVED-PTR-U8-CELL TARGET-OWNER-A
 public
 $560 constant CK-LASTC-CELL             \ layout.f LASTC-CELL: last created record
 private
@@ -15627,7 +15629,7 @@ package CHECKER-REG
 CAST: AS-RECORD-FIXED-READ ( n -- [ ptr n -- n n bool ] )
 ' RECORD-FIXED-READ-XT DECLARATIONS CHECKER-OWNER-ABI:RECORD-FIXED-READ-OFF + xt!
 : RECORD-FIXED-SOURCE-INSTALL ( -- )
-   data-base SOURCE-CELL + 0 ptr-field @ {: owner:ptr :}
+   SOURCE-OWNER-A @ {: owner:ptr :}
    owner NULL-PTR = IF EXIT THEN
    owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
       CHECKER-OWNER-ABI:MAGIC <> IF EXIT THEN
@@ -16224,12 +16226,12 @@ CAST: PUBLICATION-CELL ( ptr u8 -- ptr [ n -- ] )
 
 public
 : PUBLICATION-CLEAR ( -- )
-   data-base TARGET-CELL + 0 ptr-field @ PUBLICATION-CLEAR-OWNER
-   data-base SOURCE-CELL + 0 ptr-field @ PUBLICATION-CLEAR-OWNER ;
+   TARGET-OWNER-A @ PUBLICATION-CLEAR-OWNER
+   SOURCE-OWNER-A @ PUBLICATION-CLEAR-OWNER ;
 
 : PUBLICATION-USE ( [ n -- ] -- )
    {: observer :}
-   data-base SOURCE-CELL + 0 ptr-field @ {: source:ptr :}
+   SOURCE-OWNER-A @ {: source:ptr :}
    source NULL-PTR = IF
       observer DECLARATIONS CHECKER-OWNER-EXT:PUBLICATION-USE-OFF +
          PUBLICATION-CELL xt! EXIT
@@ -16245,12 +16247,12 @@ private
    ord RECORD-PUBLISHED-LOCAL
    \ The source owner receives the engine event. A forwarded target call
    \ records its own facts but must not run the source observer a second time.
-   data-base SOURCE-CELL + 0 ptr-field @ DECLARATIONS = IF
+   SOURCE-OWNER-A @ DECLARATIONS = IF
       DECLARATIONS CHECKER-OWNER-EXT:PUBLICATION-USE-OFF + CELL-VIEW @
          dup 0 <> IF AS-RECORD-PUBLISHED ord swap execute
          ELSE drop THEN
    THEN
-   data-base TARGET-CELL + 0 ptr-field @ {: target:ptr :}
+   TARGET-OWNER-A @ {: target:ptr :}
    target NULL-PTR = target DECLARATIONS = or IF EXIT THEN
    target CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
       CHECKER-OWNER-ABI:MAGIC <> IF EXIT THEN
@@ -23091,11 +23093,11 @@ public
 $47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-CELLS:SIG-POOL-CELL
 $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 
-\ The pool base is a POINTER the seed stored, so it is read through `ptr-field`
-\ rather than through a plain `@`: the cell holds an address in __text and the
-\ role has to survive the read. The length is an ordinary count.
-: CK-AOT-SIG-POOL-FIELD ( -- ptr ptr u8 )
-   data-base CK-AOT-SIG-POOL-OFF CELL / ptr-field ;
+\ The pool base is a POINTER the seed stored, so its cell is declared as a
+\ reserved pointer cell rather than read through a plain `@`: the cell holds an
+\ address in __text and the role has to survive the read. The length is an
+\ ordinary count.
+CK-AOT-SIG-POOL-OFF RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 : CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
 : CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
 
@@ -26951,7 +26953,7 @@ variable TRANSFER-FACTS 0 TRANSFER-FACTS !
 \ The handover: the retained checker certifies the window only up to the
 \ transfer, and from here the window is the sole certifier for its own source.
 : CLAIM-SOURCE-OWNER ( -- )
-   DECLARATIONS data-base SOURCE-CELL + 0 ptr-field ! ;
+   DECLARATIONS SOURCE-OWNER-A ! ;
 
 \ The owner's two callbacks are stored as raw cells in its record; these casts
 \ are the one crossing from a stored execution token to the quotation each defer takes.
@@ -27223,7 +27225,7 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
 \ $48).
 public
 : HANDOVER ( -- )
-   data-base SOURCE-CELL + 0 ptr-field @ TRANSFER-CHECKED ;
+   SOURCE-OWNER-A @ TRANSFER-CHECKED ;
 ;package
 
 \ A package unit carries the checker's own ordered facts. The native artifact
@@ -30127,9 +30129,8 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 
 \ The cell holding the log's address while the log holds entries, 0 otherwise.
-\ It holds an address, so it is read and cleared through `ptr-field`.
-: CK-DLOG-FIELD ( -- ptr ptr n )
-   data-base CK-DECLARED-LOG-CELL CELL / ptr-field ;
+\ It holds an address, so it is declared as a reserved pointer cell.
+CK-DECLARED-LOG-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
 
 \ Field OFF of slot I of the log at LOG: a count cell, then the slots.
 : CK-DLOG-AT ( ptr n n n -- ptr n )
@@ -30181,7 +30182,7 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 \ The last row's wide and arity latches would mark the next definition the
 \ engine publishes (REC-WIDE-PUBLISH, REC-MIN-IN@), so they are cleared too.
 : CK-DECLARED-LOG-DRAIN ( -- )
-   CK-DLOG-FIELD @ {: log:ptr :}
+   CK-DLOG-FIELD @ CELL-VIEW {: log:ptr :}
    log NULL-PTR = IF EXIT THEN
    log @ {: n:n :}
    n 0 ?DO log i CK-DLOG-ROW LOOP
@@ -30194,7 +30195,7 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 \ logged while nothing owned the source. A replacement keeps the nonzero
 \ source owner until TRANSFER-CHECKED completes the explicit handover.
 : CLAIM-COLD-SOURCE ( -- )
-   data-base SOURCE-CELL + 0 ptr-field @ 0= if
+   SOURCE-OWNER-A @ 0= if
       CLAIM-SOURCE-OWNER CK-DECLARED-LOG-DRAIN
    then ;
 CLAIM-COLD-SOURCE
