@@ -139,7 +139,7 @@ variable FFI-MARK-INDEX
    [: CARRY-TASK-USER-CELL ;] TASK:OWNED-USER-NEXT ;
 
 \ TASK's carried base cell still needs its declared DATA relocation. FFI's
-\ table bases are fresh engine cells initialized by EMIT-FFI-BASES instead.
+\ table bases are fresh engine cells each entry initializes through FFI-BASES.
 : CARRY-TASK-BASE ( ptr u8 -- ) {: source:ptr :}
    source data-base BYTE-VIEW - DATA-VA VA>N + {: at:n :}
    at BLOB-SRC @ < IF
@@ -243,6 +243,33 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 
 : OWNED-PUBLISHED? ( n -- bool ) {: k:n :}
    k AOT-OWNED:IMAGE-BASE?  k AOT-OWNED:ENTRY-XT? or  k AOT-OWNED:TEXT-BASE? or ;
+
+\ A carried FFI table is at a different absolute DATA address in each maker's
+\ application window. Its base cell is a fresh engine cell, so every target's
+\ entry installs that mapped address after restoring DATA; the DATA blob carries
+\ only the identical table bytes. FFI:OWNED-BASES visits the function base, then
+\ the library base.
+variable FFI-BASE-INDEX
+
+: FFI-BASE-MARK@ ( -- ptr u8 )
+   FFI-BASE-INDEX @ 0= if FFI-FN-BASE-MARK @ else FFI-LIB-BASE-MARK @ then ;
+
+\ The base cell's DATA offset and the address the image stores there: the
+\ table's restored destination, or 0 for a table never allocated.
+: FFI-BASE ( ptr u8 -- n n ) {: source:ptr :}
+   FFI-BASE-MARK@ FFI:>CELL {: table:n :}
+   table 0= if 0 else
+      table MAPPED-DATA {: target:n ok:bool :}
+      ok 0= if s" aot: FFI table base has no restored destination" 74 die then
+      target
+   then {: target:n :}
+   1 FFI-BASE-INDEX +!
+   source data-base BYTE-VIEW - target ;
+
+\ Visit both base cells with the target's emitter, which calls FFI-BASE.
+: FFI-BASES ( [ ptr u8 -- ] -- )
+   0 FFI-BASE-INDEX !
+   FFI:OWNED-BASES ;
 
 \ The span in whole cells: the grid the bitmap covers. The last cell may reach
 \ above the latched span end, and the writer reads those bytes as the zeros they

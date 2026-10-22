@@ -217,30 +217,15 @@ variable LDPREFUSE-MSG  variable LDPREFUSE-OF  variable LDPREFUSE-UNIT
       THEN
    loop ;
 
-\ A carried FFI table is at a different absolute DATA address in each maker's
-\ application window. The entry installs that mapped address into the fresh
-\ engine control cell; the DATA blob carries only the identical table bytes.
-variable FFI-BASE-INDEX
-
-: FFI-BASE-MARK@ ( -- ptr u8 )
-   FFI-BASE-INDEX @ 0= if FFI-FN-BASE-MARK @ else FFI-LIB-BASE-MARK @ then ;
-
-: EMIT-FFI-BASE ( ptr u8 -- ) {: source:ptr :}
-   FFI-BASE-MARK@ FFI:>CELL {: table:n :}
-   table 0= if 0 else
-      table MAPPED-DATA {: target:n ok:bool :}
-      ok 0= if s" aot: FFI table base has no restored destination" 74 die then
-      target
-   then {: target:n :}
-   9 source data-base BYTE-VIEW - LIT64,
+\ Install this image's two FFI table bases (aot-common.f FFI-BASE).
+: EMIT-FFI-BASE ( ptr u8 -- )
+   FFI-BASE {: off:n target:n :}
+   9 off LIT64,
    9 DATA 9 ADD,
    11 target LIT64,
-   11 9 0 STR,
-   1 FFI-BASE-INDEX +! ;
+   11 9 0 STR, ;
 
-: EMIT-FFI-BASES ( -- )
-   0 FFI-BASE-INDEX !
-   [: EMIT-FFI-BASE ;] FFI:OWNED-BASES ;
+: EMIT-FFI-BASES ( -- ) [: EMIT-FFI-BASE ;] FFI-BASES ;
 
 \ ONE UNSIGNED LEB128 VARINT, INLINE: seven bits a byte from the cursor `cur`,
 \ low group first, until a byte arrives with its high bit clear. `acc` answers

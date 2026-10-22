@@ -128,6 +128,14 @@ variable X64-I  variable X64-J  variable X64-RUNS
    X64ASM:RAX BLOB-SRC @ SPAN-CELLS AOT-WINDOW:CELL-BYTES * + X64-IMM,
    X64ASM:RAX DP-CELL X64-CELL! ;
 
+\ Install this image's two FFI table bases (aot-common.f FFI-BASE).
+: X64-FFI-BASE, ( ptr u8 -- )
+   FFI-BASE {: off:n target:n :}
+   X64ASM:RAX target X64-IMM,
+   X64ASM:RAX off X64-CELL! ;
+
+: X64-FFI-BASES, ( -- ) [: X64-FFI-BASE, ;] FFI-BASES ;
+
 : X64-DECODE, ( label -- ) {: table:label :}
    X64ASM:RSI table X64CODE:MOVABS,
    X64ASM:R9 DATA-VA VA>N X64-IMM,
@@ -196,6 +204,7 @@ variable X64-I  variable X64-J  variable X64-RUNS
 : X64-START, ( label label -- ) {: root:label table:label :}
    0 ELF-REGION-VA DICT-SIZE + X64BOOT:LINKED-START,
    table X64-DECODE,
+   X64-FFI-BASES,
    X64-RESTORE-XT,
    root X64-OWNED,
    X64-SEED,
