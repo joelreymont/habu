@@ -76,11 +76,10 @@ create LIB-KEY KEY-LEN allot
 : KEY$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  key=" FIELD$ ;
 : DEFS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  defs=" FIELD$ ;
 
-\ name's object holds as many input rows as its frame records.
-: ROWS-MATCH ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   name nameu OBJECT$ s"  rows=" FIELD$
-   name nameu FRAME$ s"  rows=" FIELD$ T$= ;
+\ name's object holds count input rows.
+: INPUTS ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n count:ptr countu:n :}
+   name nameu OBJECT$ s"  inputs=" FIELD$ count countu T$= ;
 
 \ The object file the key names exists in the build cache.
 : STORED ( ptr u8 n -- )
@@ -139,11 +138,11 @@ public
    s" deep.f" DEFS$ s" 1" T$=
    s" app.f" DEFS$ s" 2" T$=
    s" lib.f" DEFS$ s" 3" T$=
-   s" each file object holds exactly its own frame's input rows" T-LABEL
-   s" base.f" ROWS-MATCH
-   s" deep.f" ROWS-MATCH
-   s" app.f" ROWS-MATCH
-   s" lib.f" ROWS-MATCH
+   s" each file object holds exactly its own input rows" T-LABEL
+   s" base.f" s" 1" INPUTS
+   s" deep.f" s" 1" INPUTS
+   s" lib.f" s" 4" INPUTS
+   s" app.f" s" 5" INPUTS
    s" each object is stored under its key" T-LABEL
    s" app.f" KEY$ APP-KEY KEEP-KEY
    s" lib.f" KEY$ LIB-KEY KEEP-KEY

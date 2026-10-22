@@ -378,6 +378,9 @@ variable DIAG-START
    DIAG-LINES DIAG-COMPILED T=
    ERR$ s" reason=trusted name=MAIN path=" CONTAINS? TTRUE
    ERR$ s" cache-store-refused reason=not-cacheable name=HELPER path=" CONTAINS? TTRUE
+   s" a definition the compiler keeps from the cache still joins its file's object" T-LABEL
+   ERR$ s" /app.f key=" CONTAINS? TTRUE
+   ERR$ s" /app.f reason=" CONTAINS? TFALSE
    LITERAL-IMAGE-SAME? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 

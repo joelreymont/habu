@@ -202,6 +202,7 @@ variable DEF-FINISHED
 variable DEF-PREPARED
 variable DEF-CHECK-ID
 variable DEF-PLAN-ON
+variable DEF-CACHEABLE
 variable DEF-MODULE-DELTA
 variable DEF-GEN-DELTA
 variable DEF-EPOCH-DELTA
@@ -277,11 +278,14 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
 \ Why the compiler's current definition is no unit capture can record, or
 \ nothing. DOESB marks a does> clause open in it, and an object holds only
-\ plain colon definitions; the compiler refuses the rest itself.
+\ plain colon definitions.
 : DEF-UNPACKABLE$ ( -- ptr u8 n )
    data-base DOESB-CELL + CELL-VIEW @ 0<> if s" does-pending" exit then
-   s" NCOMP:DEFINITION-CACHEABLE?" DEF-NUM 0= if s" not-cacheable" exit then
    s" " ;
+\ Whether the compiler would let the current definition stand alone in a
+\ cache entry. One it would not still joins its file's object.
+: DEF-CACHEABLE-NOW? ( -- bool )
+   s" NCOMP:DEFINITION-CACHEABLE?" DEF-NUM 0<> ;
 : DEF-HISTORY-CAPTURE ( -- )
    s" NCOMP:DEFINITION-HISTORY" DEF-TARGET DEF-HISTORY-XT execute
       DEF-BUILD-DELTA ! DEF-EPOCH-DELTA ! DEF-GEN-DELTA !
@@ -595,7 +599,7 @@ variable DEF-HELD-SIZE
 
 : DEF-RESET ( -- )
    0 DEF-ACTIVE ! 0 DEF-EMITTED ! 0 DEF-FINISHED !
-   0 DEF-PREPARED ! 0 DEF-REFUSED !
+   0 DEF-PREPARED ! 0 DEF-REFUSED ! 0 DEF-CACHEABLE !
    0 DEF-CODE-U ! 0 DEF-CALL-U ! 0 DEF-ADDR-U !
    0 DEF-LIT-U ! 0 DEF-HOST-U ! 0 DEF-CHECK-U !
    0 DEF-LIT-N ! 0 DEF-CALL-SITE-N ! 0 DEF-ADDR-SITE-N !
@@ -826,6 +830,7 @@ public
    DEF-CHECK-IDLE? 0= if s" checker-busy" ndict@ REFUSED exit then
    ndict@ DEF-PENDING !
    1 DEF-ACTIVE !
+   DEF-CACHEABLE-NOW? if 1 DEF-CACHEABLE ! then
    DEF-CHECK-MARK
    DEF-SOURCE-BEGIN ;
 
@@ -843,6 +848,7 @@ public
       NFILE-REF:END-CAPTURE false exit
    then
    ndict@ DEF-PENDING @ 1+ <> if BAD then
+   DEF-CACHEABLE-NOW? 0= if 0 DEF-CACHEABLE ! then
    DEF-FIELDS
    DEF-REGISTER-FUNCTIONS
    DEF-CHECK-EXPORT
@@ -852,6 +858,12 @@ public
    DEF-META!
    1 DEF-FINISHED !
    true ;
+
+\ Whether the compiler let the finished definition stand alone in a cache
+\ entry both before and after compiling it.
+: DEFINITION-CACHEABLE? ( -- bool )
+   DEF-FINISHED @ 0= if BAD then
+   DEF-CACHEABLE @ 0<> ;
 
 : PACK-DEFINITION ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: key:ptr keyu:n deps:ptr depsu:n :}

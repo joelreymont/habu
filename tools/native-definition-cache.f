@@ -69,11 +69,6 @@ DYNAMIC-BUFFER STORE-IMAGE u8
 \ One PLACE-BYTES digest of path, root and kind per file opened this session.
 DYNAMIC-BUFFER PLACES u8
 variable PLACES-U
-\ The last source READ-WITH read, and its content row's input span.
-PTR-VARIABLE READ-SRC
-variable READ-SRC-U
-variable READ-FIRST
-variable READ-END
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -102,7 +97,6 @@ variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
 PTR-VARIABLE CUT-CELL
-TYPED-VARIABLE TARGET-READ [ ptr u8 n ptr u8 n -- ptr u8 n ]
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
 variable TARGET-ENV-RESET
@@ -485,12 +479,6 @@ variable PENDING-KEY-U
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
-: PARENT-MARK ( -- n )
-   DEPTH @ 2 < if BAD then
-   DEPTH @ 2 - FRAME-BYTES * FRAMES F-MARK + CELL-VIEW @ ;
-: PARENT-MARK! ( n -- )
-   DEPTH @ 2 < if BAD then
-   DEPTH @ 2 - FRAME-BYTES * FRAMES F-MARK + CELL-VIEW ! ;
 
 \ How many files this session opened before at the same path, root and kind;
 \ the place is recorded for the next one.
@@ -662,8 +650,9 @@ variable PENDING-KEY-U
    s" busy" COMPILE-ORIGINAL ;
 
 \ Compile the staged definition under capture, for reason. With store it is
-\ admitted: a definition free of ordered dependencies is published and its
-\ entry written. Without, it is compiled only for its file's object.
+\ admitted: a definition the compiler calls cacheable and free of ordered
+\ dependencies is published and its entry written. Otherwise it is compiled
+\ only for its file's object.
 : COLD-CANDIDATE ( ptr u8 n n ptr u8 n bool -- )
    {: key:ptr keyu:n ord:n reason:ptr reasonu:n store:bool :}
    reason STAGED-REASON ! reasonu STAGED-REASON-U !
@@ -679,7 +668,11 @@ variable PENDING-KEY-U
    NUNIT-DEP:COMPILED!
    NUNIT-OBJECT:DEFINITION-END {: eligible:bool :}
    eligible if
-      store if NUNIT-DEP:EXPORT else NULL-PTR 0 false then
+      store NUNIT-OBJECT:DEFINITION-CACHEABLE? 0= and if
+         s" not-cacheable" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
+      then
+      store NUNIT-OBJECT:DEFINITION-CACHEABLE? and {: admitted:bool :}
+      admitted if NUNIT-DEP:EXPORT else NULL-PTR 0 false then
          {: deps:ptr depsu:n storable:bool :}
       storable if
          ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
@@ -691,7 +684,7 @@ variable PENDING-KEY-U
          object objectu key keyu ord NUNIT-OBJECT:FILE-ADD-DEFINITION
       then
       storable 0= if
-         store if
+         admitted if
             s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
          then
          NFILE-REF:PENDING-RELEASE
@@ -815,22 +808,6 @@ variable PENDING-KEY-U
    path pathu answer answeru found NFILE-INPUTS:ADD-CANON
    answer answeru found ;
 
-: READ-WITH ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- ptr u8 n )
-   {: path:ptr pathu:n root:ptr rootu:n reader :}
-   path pathu root rootu reader execute
-      {: source:ptr sourceu:n :}
-   NFILE-INPUTS:MARK READ-FIRST !
-   path pathu root rootu source sourceu NFILE-INPUTS:ADD-ROOT
-   NFILE-INPUTS:MARK READ-END !
-   source READ-SRC ! sourceu READ-SRC-U !
-   source sourceu ;
-
-: HOST-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   ['] SOURCE-ROOT:READ-OS READ-WITH ;
-
-: TARGET-READ-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n )
-   TARGET-READ @ READ-WITH ;
-
 : FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
 
 : UNIT-RUN ( -- )
@@ -872,40 +849,29 @@ variable PENDING-KEY-U
    DIAG? @ 0= if exit then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:FILE-REPORT ;
 
-\ Input rows [first, last) join the innermost open file object.
-: ROWS-FLUSH ( n n -- ) NFILE-INPUTS:SPAN NUNIT-OBJECT:FILE-INPUTS+ ;
+\ The input rows the innermost file recorded since its mark join its object.
+: ROWS-FLUSH ( -- )
+   F-MARK F@ NFILE-INPUTS:MARK NFILE-INPUTS:SPAN
+      NUNIT-OBJECT:FILE-INPUTS+
+   NFILE-INPUTS:MARK F-MARK F! ;
 
-: OWN-ROW ( -- ) READ-FIRST @ READ-END @ ROWS-FLUSH ;
+: SOURCE-ROW ( -- )
+   FRAME-PATH FRAME-ROOT FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
+      NFILE-INPUTS:ADD-ROOT ;
 
-\ Open the object of the file just pushed. The rows its parent recorded since
-\ the parent's mark join the parent's object first; the content row READ-WITH
-\ recorded for this file's own source joins this one's.
+\ Open the object of the file just pushed; its first row is its own source's
+\ content.
 : OBJECT-OPEN ( -- )
-   NFILE-INPUTS:MARK {: mark:n :}
-   FRAME F-SRC + 0 ptr-field @ READ-SRC @ =
-   F-SRC-U F@ READ-SRC-U @ = and
-   DEPTH @ 2 < if true else READ-FIRST @ PARENT-MARK >= then and
-      {: claimed:bool :}
-   DEPTH @ 1 > if
-      claimed if
-         PARENT-MARK READ-FIRST @ ROWS-FLUSH
-         READ-END @ mark ROWS-FLUSH
-      else PARENT-MARK mark ROWS-FLUSH then
-      mark PARENT-MARK!
-   then
-   NULL-PTR READ-SRC ! 0 READ-SRC-U !
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
-   mark F-MARK F!
+   NFILE-INPUTS:MARK F-MARK F!
    NUNIT-OBJECT:FILE-BEGIN
-   claimed if
-      ['] OWN-ROW catch {: rc:n :}
-      rc 0<> if NUNIT-OBJECT:FILE-END rc throw then
-   then ;
+   ['] SOURCE-ROW catch {: rc:n :}
+   rc 0<> if NUNIT-OBJECT:FILE-END rc throw then ;
 
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none.
 : OBJECT-CLOSE ( -- )
-   F-MARK F@ NFILE-INPUTS:MARK ROWS-FLUSH
+   ROWS-FLUSH
    NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
    storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-OBJECT:FILE-REFUSED? if
@@ -946,6 +912,9 @@ variable PENDING-KEY-U
          {: mode:n asked:ptr askedu:n :}
       asked drop askedu drop mode
    then {: kind:n :}
+   \ The rows the parent recorded so far join its object before the child's
+   \ opens.
+   DEPTH @ 0 > if ROWS-FLUSH then
    FRAME-RESERVE
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
@@ -1020,7 +989,7 @@ variable PENDING-KEY-U
    then
    \ An old donor's GETENV has no observer. Only the engine's retained-host
    \ phase admits its absence; target REBIND requires the replacement hook.
-   ['] CANON ['] HOST-READ HOST-INPUT-USE @ INPUT-USE-XT execute ;
+   ['] CANON ['] SOURCE-ROOT:READ-OS HOST-INPUT-USE @ INPUT-USE-XT execute ;
 
 : BIND-TARGET-SOURCE ( -- )
    s" SOURCE-UNIT:CURRENT" TARGET-XT UNIT-CURRENT-XT execute
@@ -1032,11 +1001,11 @@ variable PENDING-KEY-U
       prior PRIOR-UNIT !
       ['] FILE-UNIT TARGET-UNIT-USE @ UNIT-USE-XT execute
    then
-   s" SOURCE-ROOT:READ-OS" TARGET-XT SOURCE-READ-XT TARGET-READ !
    1 TARGET-SOURCE-BOUND !
    ['] NFILE-INPUTS:ADD-ENV s" ENV-INPUT:USE" ENV-XT
       ENV-USE-XT execute
-   ['] CANON ['] TARGET-READ-SOURCE s" SOURCE-INPUT:USE" TARGET-XT
+   ['] CANON s" SOURCE-ROOT:READ-OS" TARGET-XT SOURCE-READ-XT
+      s" SOURCE-INPUT:USE" TARGET-XT
       INPUT-USE-XT execute ;
 
 : SEED ( -- )
@@ -1138,13 +1107,11 @@ variable PENDING-KEY-U
    FRAMES-RELEASE PENDING-KEY-RELEASE
    ENTRY-RELEASE STORE-IMAGE-RELEASE
    PLACES-RELEASE 0 PLACES-U !
-   NULL-PTR READ-SRC ! 0 READ-SRC-U ! 0 READ-FIRST ! 0 READ-END !
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
    0 KERNEL-ROLE-KNOWN ! 0 ORIGIN-GETTER !
    0 OPAQUE-XT ! 0 PENDING-KEY-U !
-   ['] SOURCE-ROOT:READ-OS TARGET-READ !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH ;
 
