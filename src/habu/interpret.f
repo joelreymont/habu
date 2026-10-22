@@ -39,13 +39,33 @@ private
    s" :" TOKEN-IS? if true exit then
    TOKEN$ DEF-DESIGN-KEYWORD? ;
 
+\ The one extra record a confined source resolves, and only here at top level:
+\ the global ordinary `require` its root names (habu2.f EM-POLICY,
+\ LPOLICYTOPREC). A body, `'` and a captured immediate still refuse it.
+: TOP-REQUIRE? ( -- bool )
+   POLICY-REQUIRE-CELL CELL@ {: req:n :}
+   req 0= if false exit then
+   REC @ XREF-START req <> if false exit then
+   REC @ XREF-WORDLIST 0<> if false exit then
+   s" require" TOKEN-IS? ;
+
+: TOP-LOOKUP-GO ( -- )
+   TOKEN$ FIND REC !
+   REC @ XREF-FOUND? if TOP-REQUIRE? if SHADOW-GO exit then then
+   REC @ POLICY-CHECK-REC
+   SHADOW-GO ;
+
+: TOP-SEARCH ( -- )
+   XREF-NULL REC !
+   [: TOP-LOOKUP-GO ;] catch SEARCH-CODE ;
+
 : POLICY-PRE ( -- bool )
    POLICY-NDICT-CELL CELL@ 0= if false exit then
    PEND-CELL CELL@ 0<> if false exit then
    POLICY-SYNTAX? if false exit then
    TOKEN$ NUMBER {: v:n flt:bool num:bool range:bool :}
    num if false exit then
-   SEARCH
+   TOP-SEARCH
    true ;
 
 \ ---- the unit hook (habu2.f C-UNIT-DISPATCH, C-UNIT-SOURCE-END) -----------------

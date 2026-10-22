@@ -559,22 +559,28 @@ TYPED-VARIABLE REC ptr n
 \ INTERP-EMIT:FIND-SHADOW asks them: one that also exports the token refuses
 \ it, and two are the lookup's ambiguity. The lookup names the used publics'
 \ record whether or not LFIND bound the token.
-: LOOKUP-GO ( -- )
-   TOKEN$ FIND REC !
-   REC @ POLICY-CHECK-REC
+: SHADOW-GO ( -- )
    REC @ XREF-FOUND? 0= if exit then
    REC @ XREF-WORDLIST 0<> if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
    used XREF-FOUND? if SHADOWED then ;
 
-\ The token's record lands in REC, XREF-NULL on a miss. FIND's ambiguity is
-\ the engine's refusal.
-: SEARCH ( -- )
-   XREF-NULL REC !
-   [: LOOKUP-GO ;] catch {: code:n :}
+: LOOKUP-GO ( -- )
+   TOKEN$ FIND REC !
+   REC @ POLICY-CHECK-REC
+   SHADOW-GO ;
+
+\ A lookup's code, caught: FIND's ambiguity is the engine's refusal.
+: SEARCH-CODE ( n -- )
+   {: code:n :}
    code E-USING-AMBIGUOUS = if AMBIGUOUS then
    code 0<> if code throw then ;
+
+\ The token's record lands in REC, XREF-NULL on a miss.
+: SEARCH ( -- )
+   XREF-NULL REC !
+   [: LOOKUP-GO ;] catch SEARCH-CODE ;
 
 \ A word to run: a miss is undefined.
 : LOOKUP ( -- )

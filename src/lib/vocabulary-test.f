@@ -295,6 +295,8 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ Confined static require uses the original source paths through nested loads.
 \ A registry hit or a symlink still has to pass the resolved path boundary.
+\ The static require a confined root admits still meets the using-shadow check;
+\ it refuses before any tier-dependent step, so it runs under one harness.
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
@@ -329,7 +331,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" allow-root-scope-nested" HARNESS!
    s" " 0 s" hb: policy: source outside root: " S\" 107\n0\n0\n\n" RUNS
    s" allow-root-scope-seal" HARNESS!
-   s" " 0 s" hb: policy: sealed" S\" 107\n107\n107\n107\n\n" RUNS ;
+   s" " 0 s" hb: policy: sealed" S\" 107\n107\n107\n107\n\n" RUNS
+   s" allow-root-shadow" HARNESS!
+   s" confined/shadow-require" ENGINE-ERROR:USING-SHADOW-GLOBAL
+   s" hb: bare word a global and a used package both export: require at test/policy/confined/shadow-require.f:2"
+   s" " RUNS ;
 
 public
 
