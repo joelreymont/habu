@@ -54,9 +54,11 @@
 \ records than DICT-CAP, routines that pass the code ceiling, a site naming a
 \ record with no routine, a site or code cell naming a word no kernel body
 \ carries, a call or branch whose displacement does not fit its rel32, a code
-\ cell no xt row keys (a quotation's entry, which the capture refuses), and a
-\ code cell whose xt row names a record with no routine. A refusal dies, and
-\ LAYOUT writes only this file's buffers, so no byte leaves the process first.
+\ cell no xt row keys (a quotation's entry, which the capture refuses), a
+\ code cell whose xt row names a record with no routine, and a window with two
+\ global ENV-DATA-PTR records or one whose routine does not address one window
+\ DATA cell. A refusal dies, and LAYOUT writes only this file's buffers, so no
+\ byte leaves the process first.
 \
 \ LOAD ORDER. The x86-64 writer sizes image-bytes.f under `using X64CODE`,
 \ then src/habu/aot-decl.f reads ARM64's AOT-SECTION-CAP for the shared
@@ -120,6 +122,7 @@ variable REG-OUT
 variable CELL-CAP
 variable SPAN-COUNT
 variable SPAN-I
+variable ENV-AT                        \ the window's ENV-DATA-PTR cell, a DATA offset
 
 : REFUSE ( ptr u8 n -- ) REFUSE-RC die ;
 : SLOT-UP ( n -- n ) X64KERNEL:CODE-SLOT 1- + X64KERNEL:CODE-SLOT negate and ;
@@ -680,6 +683,51 @@ private
       then
    loop ;
 
+\ ---- the environment's DATA base ----------------------------------------------------
+\ src/habu/aot-owned-cells.f claims ENV-DATA-PTR as IMAGE-BASE: the cell holds
+\ its own image's DATA base. src/os/env-base.f stores `data-base` into it at top
+\ level, which runs on the build host while the window loads, so the captured
+\ cell holds the host's DATA base and DATA-BAND publishes the target's over it.
+\ The window loads its own env-base.f, so the cell is the window's, not this
+\ host's: the one window DATA cell its global ENV-DATA-PTR record's routine
+\ addresses. A window that does not load env-base.f (a fragment such as
+\ test/x86-64-link-records.f's) has no such cell and nothing that reads one.
+: ENV-REC ( -- n )
+   -1
+   AOT-REC-N @ 0 ?do
+      i PKG? 0= if
+         i 16 CREC@ 0= if
+            i CREC-NAME$ s" ENV-DATA-PTR" CORE-STR=CI if
+               dup 0 >= if s" x64link: two global ENV-DATA-PTR records" REFUSE then
+               drop i
+            then
+         then
+      then
+   loop ;
+
+
+\ The DATA offset of the window's ENV-DATA-PTR cell into ENV-AT, or -1 when
+\ the window has none.
+: ?ENV ( -- )
+   -1 ENV-AT !
+   ENV-REC {: k:n :}
+   k 0 < if exit then
+   k ROUTINE-OF SH-AT {: at:n :}
+   -1
+   AOT-SHADOW:SITE-N @ 0 ?do
+      i SITE-KIND AOT-SHADOW:DATA = if
+         i SITE-AT ROW-AT SH-AT at = if
+            dup 0 >= if s" x64link: ENV-DATA-PTR's routine addresses two DATA cells" REFUSE then
+            drop i
+         then
+      then
+   loop {: s:n :}
+   s 0 < if s" x64link: ENV-DATA-PTR's routine addresses no DATA cell" REFUSE then
+   s CAPTURED AOT-DATA-D0 @ - {: off:n :}
+   off 0 <  off AOT-DATA-SIZE @ CELL - > or if
+      s" x64link: ENV-DATA-PTR's cell lies outside the window DATA" REFUSE then
+   DATA-AT off + ENV-AT ! ;
+
 : WINDOW-CELLS ( -- )
    0 VAL-AT !
    AOT-WINDOW:BM-LEN @ AOT-WINDOW:CELL-BITS * 0 ?do
@@ -779,6 +827,7 @@ private
    INDEX$ INDEX-OFF DATA-BYTES!
    SPAN-TABLE
    WINDOW-CELLS
+   ENV-AT @ 0 >= if X64LAYOUT:DATA-VA VA>N ENV-AT @ DATA-CELL! then
    0 CUR !
    AOT-WINDOW:XTOFF-N @ 0 ?do i ROW-VALUE i CELL-AT DATA-CELL! loop
    ENGINE-MAIN:REPORT-CELL CELL / DATA-STORAGE @ {: reporter:n :}
@@ -810,6 +859,7 @@ public
    ?DATA
    ?SITES
    ?CELLS
+   ?ENV
    RESERVE
    ROUTINES
    PRIMS 0 ?do i PRIM! loop
