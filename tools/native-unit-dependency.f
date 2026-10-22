@@ -410,7 +410,9 @@ INSTALL-DEFAULT
    then
    MALFORMED ;
 
-: CHECK-NEXT ( ptr u8 n -- )
+\ The row at CHECK-OFF, its lengths checked against the bytes; CHECK-OFF
+\ moves past it.
+: ROW-AT ( ptr u8 n -- n ptr u8 n ptr u8 n )
    {: bytes:ptr size:n :}
    size CHECK-OFF @ - ROW-BYTES < if MALFORMED then
    bytes CHECK-OFF @ + {: row:ptr :}
@@ -419,10 +421,22 @@ INSTALL-DEFAULT
    keyu 0 < datau 0 < or if MALFORMED then
    keyu size CHECK-OFF @ - ROW-BYTES - > if MALFORMED then
    datau size CHECK-OFF @ - ROW-BYTES - keyu - > if MALFORMED then
+   CHECK-OFF @ ROW-BYTES keyu + datau + + CHECK-OFF !
    row LE:U64@ row ROW-BYTES + keyu
-      row ROW-BYTES keyu + + datau CHECK-ROW
-   0= if false CHECK-OK ! then
-   CHECK-OFF @ ROW-BYTES keyu + datau + + CHECK-OFF ! ;
+      row ROW-BYTES keyu + + datau ;
+
+: CHECK-NEXT ( ptr u8 n -- )
+   ROW-AT CHECK-ROW 0= if false CHECK-OK ! then ;
+
+\ The header's row count, bounded by the bytes; CHECK-OFF starts at row 0.
+: HEAD ( ptr u8 n -- n )
+   {: bytes:ptr size:n :}
+   size HEADER-BYTES < if MALFORMED then
+   bytes 8 s" HBFDEP02" STR= 0= if MALFORMED then
+   bytes 8 + LE:U64@ {: count:n :}
+   count 0 < count size HEADER-BYTES - ROW-BYTES / > or if MALFORMED then
+   HEADER-BYTES CHECK-OFF !
+   count ;
 
 : HAS-ORDERED? ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
@@ -779,19 +793,32 @@ public
    off BYTES USED @ off - {: deps:ptr depsu:n :}
    deps depsu deps depsu HAS-ORDERED? 0= ;
 
+\ The innermost file frame's rows, and whether its file may be stored: no
+\ ORDERED row and no ORDERED reason.
+: FILE-EXPORT ( -- ptr u8 n bool )
+   F-OFF FFIELD @ {: off:n :}
+   off FBYTES FUSED @ off - {: deps:ptr depsu:n :}
+   deps depsu
+   deps depsu HAS-ORDERED? 0= FILE-ORDERED? 0= and ;
+
 : CHECK ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
-   size HEADER-BYTES < if MALFORMED then
-   bytes 8 s" HBFDEP02" STR= 0= if MALFORMED then
-   bytes 8 + LE:U64@ {: count:n :}
-   count 0 < count size HEADER-BYTES - ROW-BYTES / > or if MALFORMED then
-   HEADER-BYTES CHECK-OFF !
+   bytes size HEAD {: count:n :}
    true CHECK-OK !
    NULL-PTR MISS-P ! 0 MISS-U !
    count 0 ?do bytes size CHECK-NEXT loop
    CHECK-OFF @ size <> if MALFORMED then
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
+
+\ The row count of well-framed dependency bytes, without checking any row
+\ against this session.
+: FORMAT ( ptr u8 n -- n )
+   {: bytes:ptr size:n :}
+   bytes size HEAD {: count:n :}
+   count 0 ?do bytes size ROW-AT 2drop 2drop drop loop
+   CHECK-OFF @ size <> if MALFORMED then
+   count ;
 
 : RESET ( -- )
    NFILE-REF:END-DEFINITION
@@ -831,8 +858,5 @@ public
 \ an interned name. A missing contract is visible as an ordered FILE.
 : BIND-ORD ( n -- )
    CAPTURE-BIND ;
-
-: VALUE-ORD ( n -- )
-   CAPTURE-VALUE ;
 
 ;package

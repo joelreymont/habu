@@ -27,9 +27,131 @@ private
 
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
 
+\ A FILE object holds every compiled colon definition of one source file with
+\ the file's input and dependency rows. Slot 0 holds the definitions' sections
+\ back to back; slot 2 one INDEX-BYTES row per definition: its ordinal past
+\ the file's first record, then the length of each DEF-SLOTS section in slot
+\ order; slot 11 the input rows; slot 14 the dependency rows. Every other slot
+\ is empty. A definition's own dependency slot stays out: the file's rows
+\ cover it.
+42031 constant DEF-SLOTS
+18437 constant FILE-SLOTS
+14 constant DEPS-SLOT
+72 constant INDEX-BYTES
+\ One frame per open file: the four buffers' used sizes when it opened, and
+\ its first record ordinal. A child file's bytes follow its parent's and are
+\ dropped when the child closes.
+0 constant FO-DEFS
+1 constant FO-INDEX
+2 constant FO-INPUTS
+3 constant FO-WHY
+4 constant FO-FIRST
+5 constant FO-CELLS
+DYNAMIC-BUFFER FILE-DEFS u8
+DYNAMIC-BUFFER FILE-INDEX u8
+DYNAMIC-BUFFER FILE-INPUTS u8
+DYNAMIC-BUFFER FILE-WHY u8
+DYNAMIC-BUFFER FILE-FRAMES n
+\ Where each index row's routine starts in this process's code arena, so a
+\ rollback can find the rows it retired. Never written to an object.
+DYNAMIC-BUFFER FILE-STARTS n
+variable DEFS-U
+variable INDEX-U
+variable INPUTS-U
+variable WHY-U
+variable FO-DEPTH
+variable OPEN-DEFS
+variable OPEN-ROWS
+variable OPEN-INPUTS
+
+\ Field n of file frame k, outermost first.
+: FRAME ( n n -- ptr n ) swap FO-CELLS * + FILE-FRAMES ;
+
+\ Field n of the innermost file frame.
+: FO ( n -- ptr n )
+   FO-DEPTH @ 0 <= if BAD then
+   FO-DEPTH @ 1- swap FRAME ;
+
+: DEFS+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   DEFS-U @ u + FILE-DEFS-RESERVE
+   a DEFS-U @ FILE-DEFS u BYTE-COPY
+   u DEFS-U +! ;
+: INPUTS+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   INPUTS-U @ u + FILE-INPUTS-RESERVE
+   a INPUTS-U @ FILE-INPUTS u BYTE-COPY
+   u INPUTS-U +! ;
+: WHY+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 0= if exit then
+   WHY-U @ u + FILE-WHY-RESERVE
+   a WHY-U @ FILE-WHY u BYTE-COPY
+   u WHY-U +! ;
+: INDEX-N ( n -- )
+   {: value:n :}
+   INDEX-U @ 8 + FILE-INDEX-RESERVE
+   value INDEX-U @ FILE-INDEX LE:U64!
+   8 INDEX-U +! ;
+
+: DEFS$ ( -- ptr u8 n )
+   FO-DEFS FO @ {: first:n :}
+   DEFS-U @ first = if NULL-PTR 0 exit then
+   first FILE-DEFS DEFS-U @ first - ;
+: INDEX$ ( -- ptr u8 n )
+   FO-INDEX FO @ {: first:n :}
+   INDEX-U @ first = if NULL-PTR 0 exit then
+   first FILE-INDEX INDEX-U @ first - ;
+: INPUTS$ ( -- ptr u8 n )
+   FO-INPUTS FO @ {: first:n :}
+   INPUTS-U @ first = if NULL-PTR 0 exit then
+   first FILE-INPUTS INPUTS-U @ first - ;
+
 public
 
+\ Open a file frame at the file's first record ordinal.
+: FILE-BEGIN ( -- )
+   FO-DEPTH @ 1+ FO-CELLS * FILE-FRAMES-RESERVE
+   1 FO-DEPTH +!
+   DEFS-U @ FO-DEFS FO !
+   INDEX-U @ FO-INDEX FO !
+   INPUTS-U @ FO-INPUTS FO !
+   WHY-U @ FO-WHY FO !
+   ndict@ FO-FIRST FO ! ;
+
+: FILE-END ( -- )
+   FO-DEFS FO @ DEFS-U !
+   FO-INDEX FO @ INDEX-U !
+   FO-INPUTS FO @ INPUTS-U !
+   FO-WHY FO @ WHY-U !
+   -1 FO-DEPTH +! ;
+
+: FILE-OPEN? ( -- bool ) FO-DEPTH @ 0 > ;
+: FILE-REFUSED? ( -- bool ) WHY-U @ FO-WHY FO @ > ;
+
+\ The innermost file keeps its first refusal reason; it writes no object.
+: FILE-REFUSE ( ptr u8 n -- )
+   {: reason:ptr reasonu:n :}
+   FILE-OPEN? 0= if exit then
+   FILE-REFUSED? if exit then
+   reason reasonu WHY+ ;
+
+: REASON$ ( -- ptr u8 n )
+   FO-WHY FO @ {: first:n :}
+   WHY-U @ first = if NULL-PTR 0 exit then
+   first FILE-WHY WHY-U @ first - ;
+
+: FILE-INPUTS+ ( ptr u8 n -- )
+   FILE-OPEN? 0= if 2drop exit then
+   INPUTS+ ;
+
 : CLOSE ( -- )
+   0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
+   0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
+   FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
+   FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-STARTS-RELEASE
    NUNIT-FILE:CLOSE
    NFILE-SCOPE:SCOPE-CLOSE
    NFILE-INPUTS:CLOSE
@@ -132,10 +254,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    DEF-TARGET DEF-NUM-XT execute ;
 : DEF-ELIGIBLE? ( -- bool )
    NUNIT-CAPTURE:AARCH64-PROFILE? 0= if false exit then
-   s" NCOMP:DEFINITION-CACHEABLE?"
-      NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop false exit then
-   DEF-NUM-XT execute 0= if false exit then
-   s" NCOMP:DEFINITION-HISTORY" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
+   s" NCOMP:DEFINITION-CACHEABLE?" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
+   s" NCOMP:DEFINITION-HISTORY" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NCOMP:REPLAY-DEFINITION" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:PREPARE-BEGIN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:PREPARE-INTERN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
@@ -150,6 +270,13 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NHOST:PREPARE-IMPORT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NHOST:ABANDON-TAKEN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
+\ Why the compiler's current definition is no unit capture can record, or
+\ nothing. DOESB marks a does> clause open in it, and an object holds only
+\ plain colon definitions; the compiler refuses the rest itself.
+: DEF-UNPACKABLE$ ( -- ptr u8 n )
+   data-base DOESB-CELL + CELL-VIEW @ 0<> if s" does-pending" exit then
+   s" NCOMP:DEFINITION-CACHEABLE?" DEF-NUM 0= if s" not-cacheable" exit then
+   s" " ;
 : DEF-HISTORY-CAPTURE ( -- )
    s" NCOMP:DEFINITION-HISTORY" DEF-TARGET DEF-HISTORY-XT execute
       DEF-BUILD-DELTA ! DEF-EPOCH-DELTA ! DEF-GEN-DELTA !
@@ -393,6 +520,15 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    1 DEF-EMITTED ! ;
 
 variable DEF-REFUSED
+
+\ The capture layer cannot hold definition ord: no cache entry, and no object
+\ for its file.
+: REFUSED ( ptr u8 n n -- )
+   {: reason:ptr reasonu:n ord:n :}
+   reason reasonu ord REPORT-STORE-REFUSED
+   reason reasonu FILE-REFUSE
+   1 DEF-REFUSED ! ;
+
 variable DEF-HELD-E
 variable DEF-HELD-IDX
 variable DEF-HELD-FN
@@ -408,8 +544,7 @@ variable DEF-HELD-SIZE
    ['] DEF-CAPTURE-HELD catch {: rc:n :}
    rc 0= if exit then
    rc E-NUNIT-PROFILE <> if rc throw then
-   s" capture-profile-unsupported" DEF-PENDING @ REPORT-STORE-REFUSED
-   1 DEF-REFUSED ! ;
+   s" capture-profile-unsupported" DEF-PENDING @ REFUSED ;
 
 : DEF-FIELDS ( -- )
    DEF-PENDING @ XREF-REC {: rec:ptr :}
@@ -474,15 +609,29 @@ variable DEF-HELD-SIZE
    NFILE-REF:DISCARD-PREPARED
    DEF-RESET ;
 
+\ The metadata row's own bounds, with no session state: the recorded length
+\ matches the code bytes, the code is whole instructions, the flags are in range.
+: META-CK ( ptr u8 n -- )
+   {: meta:ptr size:n :}
+   size DEF-META-BYTES <> if BAD then
+   meta 16 + LE:U64@ dup 0<> swap 1 <> and if BAD then
+   meta 40 + LE:U64@ 0<> if BAD then
+   meta LE:U64@ {: recorded:n :}
+   meta 8 + LE:U64@ {: code-u:n :}
+   recorded CODE-SPAN:VALID? 0= if BAD then
+   recorded CODE-SPAN:BYTES code-u <> if BAD then
+   code-u 0 <= code-u 3 and 0<> or if BAD then
+   meta 24 + LE:U64@ {: min-in:n :}
+   min-in 0 < min-in 255 > or if BAD then ;
+
 : DEF-READ-META ( -- )
    1 NUNIT-FILE:SECTION$ {: meta:ptr size:n :}
-   size DEF-META-BYTES <> if BAD then
+   meta size META-CK
    meta LE:U64@ DEF-RECORDED !
    meta 8 + LE:U64@ DEF-CODE-U !
-   meta 16 + LE:U64@ dup 0<> over 1 <> and if BAD then 0<> DEF-WIDE !
+   meta 16 + LE:U64@ 0<> DEF-WIDE !
    meta 24 + LE:U64@ DEF-MIN-IN !
    meta 32 + LE:U64@ DEF-LIT-N !
-   meta 40 + LE:U64@ 0<> if BAD then
    meta 48 + LE:U64@ DEF-MODULE-DELTA !
    meta 56 + LE:U64@ DEF-GEN-DELTA !
    meta 64 + LE:U64@ DEF-EPOCH-DELTA !
@@ -491,11 +640,18 @@ variable DEF-HELD-SIZE
    history-rc E-IR-MODULE-EXHAUSTED =
    history-rc E-IR-CTX-SERIALS = or
    history-rc E-IR-BUILD-SERIALS = or if BAD then
-   history-rc 0<> if history-rc throw then
-   DEF-RECORDED @ CODE-SPAN:VALID? 0= if BAD then
-   DEF-RECORDED @ CODE-SPAN:BYTES DEF-CODE-U @ <> if BAD then
-   DEF-CODE-U @ 0 <= DEF-CODE-U @ 3 and 0<> or if BAD then
-   DEF-MIN-IN @ 0 < DEF-MIN-IN @ 255 > or if BAD then ;
+   history-rc 0<> if history-rc throw then ;
+
+\ Literal row number row at off in the literal section: its byte length and
+\ the first row with the same address, both within bounds.
+: LIT-ROW ( ptr u8 n n n -- n n )
+   {: src:ptr size:n off:n row:n :}
+   size off - 16 < if BAD then
+   src off + LE:U64@ {: bytes:n :}
+   src off 8 + + LE:U64@ {: first:n :}
+   first 0 < first row > or if BAD then
+   bytes 0 < bytes size off 16 + - > or if BAD then
+   bytes first ;
 
 : DEF-READ-LITERALS ( -- )
    10 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
@@ -503,11 +659,7 @@ variable DEF-HELD-SIZE
    DEF-LIT-N @ DEF-LIT-ADDR-RESERVE
    DEF-LIT-N @ DEF-LIT-LEN-RESERVE
    DEF-LIT-N @ 0 ?do
-      size DEF-LIT-U @ - 16 < if BAD then
-      src DEF-LIT-U @ + LE:U64@ {: bytes:n :}
-      src DEF-LIT-U @ 8 + + LE:U64@ {: first:n :}
-      first 0 < first i > or if BAD then
-      bytes 0 < bytes size DEF-LIT-U @ 16 + - > or if BAD then
+      src size DEF-LIT-U @ i LIT-ROW {: bytes:n first:n :}
       bytes i DEF-LIT-LEN !
       src DEF-LIT-U @ 16 + + bytes DEF-PREP-INTERN
          {: address:n :}
@@ -660,18 +812,13 @@ public
 
 : DEFINITION-BEGIN ( -- )
    DEF-RESET
-   DEF-ELIGIBLE? 0= if
-      s" begin-ineligible" ndict@ REPORT-STORE-REFUSED
-      1 DEF-REFUSED ! exit
-   then
+   DEF-ELIGIBLE? 0= if s" begin-ineligible" ndict@ REFUSED exit then
+   DEF-UNPACKABLE$ {: why:ptr whyu:n :}
+   whyu 0 > if why whyu ndict@ REFUSED exit then
    DEF-CHECK-AVAILABLE? 0= if
-      s" checker-unavailable" ndict@ REPORT-STORE-REFUSED
-      1 DEF-REFUSED ! exit
+      s" checker-unavailable" ndict@ REFUSED exit
    then
-   DEF-CHECK-IDLE? 0= if
-      s" checker-busy" ndict@ REPORT-STORE-REFUSED
-      1 DEF-REFUSED ! exit
-   then
+   DEF-CHECK-IDLE? 0= if s" checker-busy" ndict@ REFUSED exit then
    ndict@ DEF-PENDING !
    1 DEF-ACTIVE !
    DEF-CHECK-MARK
@@ -680,13 +827,12 @@ public
 : DEFINITION-END ( -- bool )
    DEF-ACTIVE @ 0= if DEF-SOURCE-END false exit then
    0 DEF-ACTIVE !
-   DEF-ELIGIBLE? 0= if
-      s" end-ineligible" DEF-PENDING @ REPORT-STORE-REFUSED
-      1 DEF-REFUSED !
-   then
+   DEF-ELIGIBLE? 0= if s" end-ineligible" DEF-PENDING @ REFUSED then
+   DEF-UNPACKABLE$ {: why:ptr whyu:n :}
+   whyu 0 > if why whyu DEF-PENDING @ REFUSED then
    DEF-EMITTED @ 0= DEF-REFUSED @ 0<> or if
       DEF-REFUSED @ 0<> if s" capture-refused" else s" no-emission" then
-         DEF-PENDING @ REPORT-STORE-REFUSED
+         DEF-PENDING @ REFUSED
       DEF-SOURCE-END
       DEF-CHECK-DISCARD
       NFILE-REF:END-CAPTURE false exit
@@ -745,5 +891,134 @@ public
          DEF-ACTION-XT execute
       else drop then
    DEF-RESET ;
+
+\ Definition ord of the innermost open file joins its object: the payload's
+\ sections in DEF-SLOTS order, and one index row. The payload's own dependency
+\ slot stays out; any other slot is a payload this format cannot hold.
+: FILE-ADD-DEFINITION ( ptr u8 n ptr u8 n n -- )
+   {: bytes:ptr size:n key:ptr keyu:n ord:n :}
+   FILE-OPEN? 0= if exit then
+   FILE-REFUSED? if exit then
+   bytes size NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu
+      NUNIT-FILE:READ-VIEW
+   INDEX-U @ INDEX-BYTES / {: row:n :}
+   row 1+ FILE-STARTS-RESERVE
+   ord XREF-REC XREF-START row FILE-STARTS !
+   ord FO-FIRST FO @ - dup 0 < if BAD then INDEX-N
+   17 0 ?do
+      i NUNIT-FILE:SECTION$ {: a:ptr u:n :}
+      DEF-SLOTS i rshift 1 and 0<> if
+         a u DEFS+ u INDEX-N
+      else
+         i DEPS-SLOT <> u 0<> and if BAD then
+      then
+   loop
+   NUNIT-FILE:RESET-KEEP ;
+
+\ The innermost file's object bytes with its dependency rows deps.
+: PACK-FILE ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: key:ptr keyu:n deps:ptr depsu:n :}
+   FILE-REFUSED? if BAD then
+   NUNIT-FILE:RESET-KEEP
+   17 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
+   0 DEFS$ NUNIT-FILE:SECTION!
+   2 INDEX$ NUNIT-FILE:SECTION!
+   11 INPUTS$ NUNIT-FILE:SECTION!
+   DEPS-SLOT deps depsu NUNIT-FILE:SECTION!
+   NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:PACK ;
+
+private
+
+\ The summed section lengths of one index row, each within room bytes.
+: ROW-SIZE ( ptr u8 n -- n )
+   {: row:ptr room:n :}
+   0 8 0 ?do
+      {: used:n :}
+      row i 1+ 8 * + LE:U64@ {: len:n :}
+      len 0 < len room used - > or if BAD then
+      used len +
+   loop ;
+
+public
+
+\ The code from floor up is given back: a rollback retired every definition
+\ whose routine starts there, and their dictionary slots go to the next
+\ definitions. Rows follow routine order across the open files, so the
+\ retired ones are a suffix; drop it, and pull back each frame that began
+\ inside it.
+: FILE-CUT ( n -- )
+   {: floor:n :}
+   INDEX-U @ INDEX-BYTES / {: rows:n :}
+   0 begin
+      dup rows < if dup FILE-STARTS @ floor < else false then
+   while 1+ repeat {: cut:n :}
+   cut rows = if exit then
+   0 cut 0 ?do
+      {: off:n :}
+      i INDEX-BYTES * FILE-INDEX DEFS-U @ off - ROW-SIZE off +
+   loop {: off:n :}
+   cut INDEX-BYTES * INDEX-U !
+   off DEFS-U !
+   FO-DEPTH @ 0 ?do
+      i FO-INDEX FRAME @ INDEX-U @ min i FO-INDEX FRAME !
+      i FO-DEFS FRAME @ DEFS-U @ min i FO-DEFS FRAME !
+   loop ;
+
+private
+
+\ The framing of the definition payload in the current sections. References
+\ stay encoded: decoding them binds session records (NFILE-REF:PREPARE).
+: PAYLOAD-CK ( -- )
+   1 NUNIT-FILE:SECTION$ {: meta:ptr metau:n :}
+   meta metau META-CK
+   0 NUNIT-FILE:SECTION$ nip meta 8 + LE:U64@ <> if BAD then
+   2 NUNIT-FILE:SECTION$ nip DEF-CALL-BYTES mod 0<> if BAD then
+   3 NUNIT-FILE:SECTION$ nip DEF-ADDR-BYTES mod 0<> if BAD then
+   10 NUNIT-FILE:SECTION$ {: lits:ptr litsu:n :}
+   0 meta 32 + LE:U64@ 0 ?do
+      {: off:n :}
+      lits litsu off i LIT-ROW drop 16 + off +
+   loop
+   litsu <> if BAD then
+   13 NUNIT-FILE:SECTION$ nip 0= if BAD then ;
+
+public
+
+\ Check a FILE object's framing: only FILE-SLOTS hold bytes, the dependency
+\ and input rows are well formed, and each index row frames one definition
+\ payload, in increasing ordinal order, covering the definitions slot exactly.
+: OPEN-FILE ( ptr u8 n ptr u8 n -- )
+   {: bytes:ptr size:n key:ptr keyu:n :}
+   bytes size NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:READ-VIEW
+   17 0 ?do
+      FILE-SLOTS i rshift 1 and 0= if
+         i NUNIT-FILE:SECTION$ nip 0<> if BAD then
+      then
+   loop
+   DEPS-SLOT NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT OPEN-ROWS !
+   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:ROW-COUNT OPEN-INPUTS !
+   \ SECTIONS-VIEW replaces the table, so keep the FILE spans first.
+   0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
+   2 NUNIT-FILE:SECTION$ {: index:ptr indexu:n :}
+   indexu INDEX-BYTES mod 0<> if BAD then
+   indexu INDEX-BYTES / {: count:n :}
+   -1 0
+   count 0 ?do
+      {: prev:n off:n :}
+      index i INDEX-BYTES * + {: row:ptr :}
+      row LE:U64@ {: ord:n :}
+      ord prev <= if BAD then
+      row defsu off - ROW-SIZE {: total:n :}
+      DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
+      PAYLOAD-CK
+      ord off total +
+   loop
+   nip defsu <> if BAD then
+   count OPEN-DEFS !
+   NUNIT-FILE:RESET-KEEP ;
+
+\ The definitions, dependency rows and input rows OPEN-FILE found.
+: FILE-COUNTS ( -- n n n )
+   OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ ;
 
 ;package

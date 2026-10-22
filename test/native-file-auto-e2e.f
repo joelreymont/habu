@@ -377,7 +377,7 @@ variable DIAG-START
    DIAG-COMPILED 0 > TTRUE
    DIAG-LINES DIAG-COMPILED T=
    ERR$ s" reason=trusted name=MAIN path=" CONTAINS? TTRUE
-   ERR$ s" cache-store-refused reason=begin-ineligible name=HELPER path=" CONTAINS? TTRUE
+   ERR$ s" cache-store-refused reason=not-cacheable name=HELPER path=" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 

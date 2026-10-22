@@ -5,6 +5,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-input.f
 require src/lib/build-cache.f
+require src/lib/engine-id.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/os/env-base.f
@@ -39,9 +40,18 @@ $4B8 constant LIVE-FIXED-OFF
 40 constant F-INPUT
 48 constant F-INPUT-U
 56 constant F-PRIOR
-64 constant FRAME-BYTES
+\ The load kind that opened the file, and how many files before it this
+\ session opened at the same path, root and kind.
+64 constant F-KIND
+72 constant F-OCC
+\ The input rows below F-MARK belong to a file object already.
+80 constant F-MARK
+88 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
+\ A file object name: "hb-file-", 64 hex digits, ".hfo".
+76 constant OBJECT-NAME-BYTES
+32 constant PLACE-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ definition object.
@@ -56,6 +66,14 @@ DYNAMIC-BUFFER PENDING-KEY u8
 \ every lookup and store.
 DYNAMIC-BUFFER ENTRY u8
 DYNAMIC-BUFFER STORE-IMAGE u8
+\ One PLACE-BYTES digest of path, root and kind per file opened this session.
+DYNAMIC-BUFFER PLACES u8
+variable PLACES-U
+\ The last source READ-WITH read, and its content row's input span.
+PTR-VARIABLE READ-SRC
+variable READ-SRC-U
+variable READ-FIRST
+variable READ-END
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -83,6 +101,7 @@ variable CON-RESET-XT
 variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
+PTR-VARIABLE RECLAIM-CELL
 TYPED-VARIABLE TARGET-READ [ ptr u8 n ptr u8 n -- ptr u8 n ]
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -100,6 +119,8 @@ create HASH-RAW 32 allot
 create KEY-HEX 64 allot
 create HASH-CELL CELL allot
 create NAME NAME-BYTES allot
+create OBJECT-NAME OBJECT-NAME-BYTES allot
+create FILE-KEY-HEX 64 allot
 create PATH-BUF FS-PATH-CAP allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
@@ -111,6 +132,8 @@ CAST: ROLE-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
+CAST: RECLAIM-CELL-XT ( n -- [ -- ptr u8 ] )
+CAST: RECLAIM-SLOT ( ptr u8 -- ptr [ n n -- ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -150,6 +173,8 @@ PTR-VARIABLE REQUEST-MANIFEST
 variable REQUEST-MANIFEST-U
 PTR-VARIABLE DISPATCH-SOURCE
 variable DISPATCH-SOURCE-U
+PTR-VARIABLE STAGED-REASON
+variable STAGED-REASON-U
 variable PENDING-KEY-U
 
 : ORDINARY-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
@@ -346,6 +371,11 @@ variable PENDING-KEY-U
       +
    repeat drop ;
 
+: DIAG-N ( n -- )
+   {: value:n :}
+   value 10 >= if value 10 / recurse then
+   s" 0123456789" drop value 10 mod + 1 DIAG-W2 ;
+
 : REFUSE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n reason:ptr reasonu:n :}
    s" native-cache: entry refused " DIAG-W2
@@ -410,14 +440,32 @@ variable PENDING-KEY-U
    0 STORE-IMAGE 16 + size 16 - CHECKSUM 0 STORE-IMAGE 8 + LE:U64!
    path pathu 0 STORE-IMAGE size ATOMIC-WRITE-FILE ;
 
-: ENTRY-WRITE ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n object:ptr objectu:n :}
-   keyu 64 <> objectu 0 < or if BAD then
+: IMAGE ( ptr u8 n ptr u8 n -- n )
+   {: magic:ptr magicu:n object:ptr objectu:n :}
+   magicu 8 <> objectu 0 < or if BAD then
    ENTRY-HEAD objectu + {: size:n :}
    size STORE-IMAGE-RESERVE
-   s" HBDOBJ01" drop 0 STORE-IMAGE 8 BYTE-COPY
+   magic 0 STORE-IMAGE 8 BYTE-COPY
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
+   size ;
+
+: ENTRY-WRITE ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n object:ptr objectu:n :}
+   keyu 64 <> if BAD then
+   s" HBDOBJ01" object objectu IMAGE {: size:n :}
    key keyu ENTRY-PATH size IMAGE-WRITE ;
+
+\ The object file for a file key: hb-file-, the key, .hfo in the cache root.
+: FILE-PATH ( ptr u8 n -- ptr u8 n )
+   {: key:ptr keyu:n :}
+   keyu 64 <> if BAD then
+   s" hb-file-" {: pre:ptr preu:n :}
+   s" .hfo" {: suf:ptr sufu:n :}
+   pre OBJECT-NAME preu BYTE-COPY
+   key OBJECT-NAME preu + keyu BYTE-COPY
+   suf OBJECT-NAME preu + keyu + sufu BYTE-COPY
+   ROOT$ OBJECT-NAME OBJECT-NAME-BYTES PATH-BUF JOIN-PATH
+   PATH-BUF swap ;
 
 : ZERO-SCRATCH ( ptr u8 n -- )
    {: bytes:ptr size:n :}
@@ -434,6 +482,44 @@ variable PENDING-KEY-U
    FRAME FRAME-BYTES ZERO-SCRATCH ;
 
 : FILE-CLOSE ( -- ) -1 DEPTH +! ;
+
+: FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
+: FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
+: PARENT-MARK ( -- n )
+   DEPTH @ 2 < if BAD then
+   DEPTH @ 2 - FRAME-BYTES * FRAMES F-MARK + CELL-VIEW @ ;
+: PARENT-MARK! ( n -- )
+   DEPTH @ 2 < if BAD then
+   DEPTH @ 2 - FRAME-BYTES * FRAMES F-MARK + CELL-VIEW ! ;
+
+\ How many files this session opened before at the same path, root and kind;
+\ the place is recorded for the next one.
+: PLACE-OCC ( ptr u8 n ptr u8 n n -- n )
+   {: path:ptr pathu:n root:ptr rootu:n kind:n :}
+   s" habu-native-file-place-v1" HASH-START
+   path pathu HASH-S root rootu HASH-S kind HASH-N
+   HASH-CTX HASH-RAW SHA256-END
+   0 PLACES-U @ 0 ?do
+      HASH-RAW PLACE-BYTES i PLACES PLACE-BYTES STR= if 1+ then
+   PLACE-BYTES +loop
+   PLACES-U @ PLACE-BYTES + PLACES-RESERVE
+   HASH-RAW PLACES-U @ PLACES PLACE-BYTES BYTE-COPY
+   PLACE-BYTES PLACES-U +! ;
+
+\ The open file's object key names its place in the load, not its text: this
+\ engine and target, the path, root and kind that opened it, and its
+\ occurrence there.
+: FILE-KEY ( -- ptr u8 n )
+   ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
+   s" habu-native-file-v1" HASH-START
+   engine engineu HASH-S
+   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
+   NATIVE? @ HASH-N
+   FRAME-PATH HASH-S FRAME-ROOT HASH-S
+   F-KIND F@ HASH-N F-OCC F@ HASH-N
+   HASH-CTX HASH-RAW SHA256-END
+   HASH-RAW FILE-KEY-HEX SHA256>HEX
+   FILE-KEY-HEX 64 ;
 
 : DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: source:ptr sourceu:n pending:ptr pendingu:n :}
@@ -534,6 +620,8 @@ variable PENDING-KEY-U
       NUNIT-OBJECT:DISCARD-DEFINITION false exit
    then
    path pathu ord source sourceu INSTALL-ENTRY
+   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu ord
+      NUNIT-OBJECT:FILE-ADD-DEFINITION
    true ;
 
 : DIAG-PATH? ( -- bool )
@@ -565,10 +653,20 @@ variable PENDING-KEY-U
 
 : COMPILE-STAGED ( -- )
    DISPATCH-SOURCE @ DISPATCH-SOURCE-U @
-      s" eligible-cache-miss" COMPILE-ORIGINAL ;
+      STAGED-REASON @ STAGED-REASON-U @ COMPILE-ORIGINAL ;
 
-: COLD-CANDIDATE ( ptr u8 n n -- )
-   {: key:ptr keyu:n ord:n :}
+\ A definition another one's dispatch interrupts compiles uncaptured, so its
+\ file has no object.
+: BUSY ( ptr u8 n -- )
+   s" busy" NUNIT-OBJECT:FILE-REFUSE
+   s" busy" COMPILE-ORIGINAL ;
+
+\ Compile the staged definition under capture, for reason. With store it is
+\ admitted: a definition free of ordered dependencies is published and its
+\ entry written. Without, it is compiled only for its file's object.
+: COLD-CANDIDATE ( ptr u8 n n ptr u8 n bool -- )
+   {: key:ptr keyu:n ord:n reason:ptr reasonu:n store:bool :}
+   reason STAGED-REASON ! reasonu STAGED-REASON-U !
    ord NUNIT-DEP:BEGIN-DEFINITION
    NUNIT-OBJECT:DEFINITION-BEGIN
    ['] COMPILE-STAGED catch {: rc:n :}
@@ -581,25 +679,34 @@ variable PENDING-KEY-U
    NUNIT-DEP:COMPILED!
    NUNIT-OBJECT:DEFINITION-END {: eligible:bool :}
    eligible if
-      NUNIT-DEP:EXPORT {: deps:ptr depsu:n storable:bool :}
+      store if NUNIT-DEP:EXPORT else NULL-PTR 0 false then
+         {: deps:ptr depsu:n storable:bool :}
       storable if
          ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
+      then
+      storable NUNIT-OBJECT:FILE-OPEN? or if
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
-         key keyu object objectu ENTRY-WRITE
-      else
-         s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
+         storable if key keyu object objectu ENTRY-WRITE then
+         object objectu key keyu ord NUNIT-OBJECT:FILE-ADD-DEFINITION
+      then
+      storable 0= if
+         store if
+            s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
+         then
          NFILE-REF:PENDING-RELEASE
       then
    else NFILE-REF:PENDING-RELEASE then
    NUNIT-OBJECT:DISCARD-DEFINITION
    NUNIT-DEP:CLOSE ;
 
+\ A definition the cache does not admit still compiles under capture while
+\ its file has an object open; it is never looked up or stored.
 : DISPATCH-DEFINITION ( ptr u8 n -- )
    {: source:ptr sourceu:n :}
-   DISPATCH-BUSY @ if source sourceu s" busy" COMPILE-ORIGINAL exit then
+   DISPATCH-BUSY @ if source sourceu BUSY exit then
    ADMISSION-REASON$ {: reason:ptr reasonu:n :}
-   reasonu 0 > if
+   reasonu 0 > NUNIT-OBJECT:FILE-OPEN? 0= and if
       source sourceu reason reasonu COMPILE-ORIGINAL exit
    then
    1 DISPATCH-BUSY !
@@ -607,8 +714,12 @@ variable PENDING-KEY-U
    PENDING-COPY {: pending:ptr pendingu:n :}
    source sourceu pending pendingu DEFINITION-KEY
       {: key:ptr keyu:n :}
-   key keyu ord source sourceu FIND-HIT 0= if
-      key keyu ord COLD-CANDIDATE
+   reasonu 0 > if
+      key keyu ord reason reasonu false COLD-CANDIDATE
+   else
+      key keyu ord source sourceu FIND-HIT 0= if
+         key keyu ord s" eligible-cache-miss" true COLD-CANDIDATE
+      then
    then
    0 DISPATCH-BUSY ! ;
 
@@ -616,12 +727,9 @@ variable PENDING-KEY-U
    DISPATCH-SOURCE @ DISPATCH-SOURCE-U @ DISPATCH-DEFINITION ;
 
 : WRAPPED-DISPATCH ( -- )
-   DISPATCH-BUSY @ if
-      DISPATCH-SOURCE @ DISPATCH-SOURCE-U @ s" busy" COMPILE-ORIGINAL
-      exit
-   then
+   DISPATCH-BUSY @ if DISPATCH-SOURCE @ DISPATCH-SOURCE-U @ BUSY exit then
    ADMISSION-REASON$ {: reason:ptr reasonu:n :}
-   reasonu 0= if
+   reasonu 0= NUNIT-OBJECT:FILE-OPEN? or if
       ['] DISPATCH-STAGED NUNIT-OBJECT:WITH-DEFINITIONS
    else
       DISPATCH-SOURCE @ DISPATCH-SOURCE-U @ reason reasonu
@@ -629,7 +737,7 @@ variable PENDING-KEY-U
    then ;
 
 : DISPATCH-GUARDED ( ptr u8 n -- )
-   DISPATCH-BUSY @ if s" busy" COMPILE-ORIGINAL exit then
+   DISPATCH-BUSY @ if BUSY exit then
    DISPATCH-SOURCE-U ! DISPATCH-SOURCE !
    ['] WRAPPED-DISPATCH catch {: rc:n :}
    0 DISPATCH-BUSY !
@@ -647,6 +755,29 @@ variable PENDING-KEY-U
       dup 0= if drop exit then
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
+
+\ The kernel's capture reclaim notice ( first end -- ): the code in
+\ [first, end) is about to be rewritten. A rollback gives back everything from
+\ its floor to the free slot, which retires the definitions compiled there; a
+\ patch inside live code retires none.
+: CODE-RECLAIMED ( n n -- )
+   {: first:n end:n :}
+   end cp@ = if first NUNIT-OBJECT:FILE-CUT then ;
+
+\ The open file objects follow every rollback through the running kernel's
+\ one capture reclaim cell, held for the session.
+: BIND-RECLAIM ( -- )
+   s" native-unit-reclaim-cell" TARGET-XT RECLAIM-CELL-XT execute
+      {: cell:ptr :}
+   cell CELL-VIEW @ 0<> if BAD then
+   ['] CODE-RECLAIMED cell RECLAIM-SLOT xt!
+   cell RECLAIM-CELL ! ;
+
+: UNBIND-RECLAIM ( -- )
+   RECLAIM-CELL @ {: cell:ptr :}
+   cell NULL-PTR = if exit then
+   0 cell CELL-VIEW !
+   NULL-PTR RECLAIM-CELL ! ;
 
 : BIND-ORIGIN-RECORD ( -- )
    ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
@@ -693,7 +824,10 @@ variable PENDING-KEY-U
    {: path:ptr pathu:n root:ptr rootu:n reader :}
    path pathu root rootu reader execute
       {: source:ptr sourceu:n :}
+   NFILE-INPUTS:MARK READ-FIRST !
    path pathu root rootu source sourceu NFILE-INPUTS:ADD-ROOT
+   NFILE-INPUTS:MARK READ-END !
+   source READ-SRC ! sourceu READ-SRC-U !
    source sourceu ;
 
 : HOST-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -743,6 +877,66 @@ variable PENDING-KEY-U
    DIAG? @ 0= if exit then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:FILE-REPORT ;
 
+\ Input rows [first, last) join the innermost open file object.
+: ROWS-FLUSH ( n n -- ) NFILE-INPUTS:SPAN NUNIT-OBJECT:FILE-INPUTS+ ;
+
+: OWN-ROW ( -- ) READ-FIRST @ READ-END @ ROWS-FLUSH ;
+
+\ Open the object of the file just pushed. The rows its parent recorded since
+\ the parent's mark join the parent's object first; the content row READ-WITH
+\ recorded for this file's own source joins this one's.
+: OBJECT-OPEN ( -- )
+   NFILE-INPUTS:MARK {: mark:n :}
+   FRAME F-SRC + 0 ptr-field @ READ-SRC @ =
+   F-SRC-U F@ READ-SRC-U @ = and
+   DEPTH @ 2 < if true else READ-FIRST @ PARENT-MARK >= then and
+      {: claimed:bool :}
+   DEPTH @ 1 > if
+      claimed if
+         PARENT-MARK READ-FIRST @ ROWS-FLUSH
+         READ-END @ mark ROWS-FLUSH
+      else PARENT-MARK mark ROWS-FLUSH then
+      mark PARENT-MARK!
+   then
+   NULL-PTR READ-SRC ! 0 READ-SRC-U !
+   FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
+   mark F-MARK F!
+   NUNIT-OBJECT:FILE-BEGIN
+   claimed if
+      ['] OWN-ROW catch {: rc:n :}
+      rc 0<> if NUNIT-OBJECT:FILE-END rc throw then
+   then ;
+
+\ Write the innermost file's object and read it back on every build; the
+\ cache diagnostics only print what was written or why the file has none.
+: OBJECT-CLOSE ( -- )
+   F-MARK F@ NFILE-INPUTS:MARK ROWS-FLUSH
+   NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
+   storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
+   NUNIT-OBJECT:FILE-REFUSED? if
+      DIAG? @ 0= if exit then
+      s" native-file: refused path=" DIAG-W2 FRAME-PATH DIAG-W2
+      s"  reason=" DIAG-W2 NUNIT-OBJECT:REASON$ DIAG-W2
+      S\" \n" DIAG-W2 exit
+   then
+   FILE-KEY {: key:ptr keyu:n :}
+   key keyu deps depsu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
+   s" HBFOBJ01" obj obju IMAGE {: size:n :}
+   key keyu FILE-PATH size IMAGE-WRITE
+   key keyu FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ
+      {: got:n found:bool :}
+   found 0= got size <> or if BAD then
+   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu NUNIT-OBJECT:OPEN-FILE
+   NUNIT-OBJECT:FILE-COUNTS {: defs:n rows:n inputs:n :}
+   DIAG? @ 0= if exit then
+   s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  key=" DIAG-W2 key keyu DIAG-W2
+   s"  defs=" DIAG-W2 defs DIAG-N
+   s"  rows=" DIAG-W2 rows DIAG-N
+   s"  inputs=" DIAG-W2 inputs DIAG-N
+   s"  bytes=" DIAG-W2 size DIAG-N
+   S\" \n" DIAG-W2 ;
+
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -768,21 +962,31 @@ variable PENDING-KEY-U
    rootu F-ROOT-U F!
    q Q>N F-Q F!
    prior UNIT>N F-PRIOR F!
+   kind F-KIND F!
+   ['] OBJECT-OPEN catch {: open-rc:n :}
+   open-rc 0<> if FILE-CLOSE NFILE-REF:POP-FILE open-rc throw then
    NUNIT-DEP:BEGIN-UNIT
    ['] UNIT-RUN catch {: unit-rc:n :}
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
+   unit-rc 0= plan-rc 0= and
+      if ['] OBJECT-CLOSE catch else 0 then
+      {: object-rc:n :}
+   NUNIT-OBJECT:FILE-END
    NUNIT-DEP:CLOSE-UNIT
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
    FILE-CLOSE
+   \ The rows recorded so far belong to the closed file's object.
+   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    unit-rc 0<> if unit-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
    report-rc 0<> if report-rc throw then
-   pop-rc 0<> if pop-rc throw then ;
+   pop-rc 0<> if pop-rc throw then
+   object-rc 0<> if object-rc throw then ;
 
 : FILE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    PRIOR-UNIT @ true FILE-UNIT-WITH ;
@@ -861,6 +1065,8 @@ variable PENDING-KEY-U
    NULL-PTR REQUEST-PATH ! 0 REQUEST-PATH-U !
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
+   NULL-PTR STAGED-REASON ! 0 STAGED-REASON-U !
+   OBJECT-NAME OBJECT-NAME-BYTES ZERO-SCRATCH FILE-KEY-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
@@ -900,6 +1106,7 @@ variable PENDING-KEY-U
    PIN-ORIGIN-GETTER
    BIND-DISPATCH
    BIND-OPAQUE
+   BIND-RECLAIM
    \ The engine build rewinds the dictionary before loading its prefix. Its
    \ namespace publications must already reach the retained source owner.
    BIND-OWNER
@@ -928,12 +1135,15 @@ variable PENDING-KEY-U
    ['] ORDINARY-UNIT HOST-PRIOR-UNIT !
    NUNIT-DEP:RESET NUNIT-DEP:UNBIND
    NUNIT-ORIGIN:RESET
+   UNBIND-RECLAIM
    NUNIT-OBJECT:DEFINITIONS-CLOSE
    NUNIT-OBJECT:CLOSE
    CLEAR-NOMINALS
    NFILE-REF:CLOSE
    FRAMES-RELEASE PENDING-KEY-RELEASE
    ENTRY-RELEASE STORE-IMAGE-RELEASE
+   PLACES-RELEASE 0 PLACES-U !
+   NULL-PTR READ-SRC ! 0 READ-SRC-U ! 0 READ-FIRST ! 0 READ-END !
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !

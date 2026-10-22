@@ -245,10 +245,10 @@ public
    INPUT-FIRST @ off > if off INPUT-FIRST ! then
    off INPUT-U ! ;
 
-: VERIFY ( ptr u8 n bool [ ptr u8 n -- ptr u8 n ] -- )
+: VERIFY ( ptr u8 n bool [ ptr u8 n -- ptr u8 n ] -- n )
    {: bytes:ptr size:n fresh:bool current :}
    0 CHECK-OFF !
-   begin CHECK-OFF @ size < while
+   0 begin CHECK-OFF @ size < while
       size CHECK-OFF @ - ROW-BYTES < if MALFORMED then
       bytes CHECK-OFF @ + {: row:ptr :}
       row 8 + LE:U64@ {: pathu:n :}
@@ -274,12 +274,15 @@ public
          fresh if row path pathu current CHECK-ENV then
       else MALFORMED then then then then
       ROW-BYTES pathu + answeru + CHECK-OFF +!
+      1+
    repeat
    CHECK-OFF @ size <> if MALFORMED then ;
 
-: CHECK-WITH ( ptr u8 n [ ptr u8 n -- ptr u8 n ] -- ) true swap VERIFY ;
+: CHECK-WITH ( ptr u8 n [ ptr u8 n -- ptr u8 n ] -- ) true swap VERIFY drop ;
 : CHECK ( ptr u8 n -- ) ['] CURRENT$ CHECK-WITH ;
-: FORMAT ( ptr u8 n -- ) false ['] CURRENT$ VERIFY ;
+\ The row count of well-formed rows, none checked against today's sources.
+: ROW-COUNT ( ptr u8 n -- n ) false ['] CURRENT$ VERIFY ;
+: FORMAT ( ptr u8 n -- ) ROW-COUNT drop ;
 
 : CLOSE ( -- )
    INPUT-BUF-RELEASE

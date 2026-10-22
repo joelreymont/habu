@@ -1,8 +1,6 @@
-\ This object file owns only portable bytes. Its caller supplies seventeen semantic
-\ sections in order: code, dictionary records, calls, address sites, protected
-\ wordlists, checker state, DATA, preceding DATA updates, require/provided
-\ paths, typed address cells, literal rows, file inputs, retired prefix rows,
-\ references, dependencies, compiler work and source origins.
+\ This object file owns only portable bytes: a header and seventeen sections
+\ in slot order. Each caller names what its slots hold (NUNIT-OBJECT's
+\ DEFINITION and FILE objects); an unused slot is empty.
 \
 \ Version 10 header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
@@ -111,17 +109,20 @@ variable READY
    base 32 + nameu name nameu STR= 0= if BAD then
    base 96 + KEY-BYTES key keyu STR= 0= if BAD then ;
 
+: VIEW-SLOT ( ptr u8 n n n n -- n )
+   {: base:ptr size:n off:n bytes:n slot:n :}
+   bytes 0 < bytes size off - > or if BAD then
+   \ The validated offset may equal size for an empty trailing section.
+   base off + slot SECTION-PTR!
+   bytes slot SECTION-LEN!
+   off bytes SIZE+ ;
+
 : READ-SECTIONS ( ptr u8 n -- )
    {: base:ptr size:n :}
    HEADER-BYTES
    SECTION-COUNT 0 ?do
       {: off:n :}
-      base LENGTHS-OFF i FIELD-BYTES * + + LE:U64@ {: bytes:n :}
-      bytes size off - > if BAD then
-      off bytes SIZE+
-      \ The validated offset may equal size for an empty trailing section.
-      base off + i SECTION-PTR!
-      bytes i SECTION-LEN!
+      base size off base LENGTHS-OFF i FIELD-BYTES * + + LE:U64@ i VIEW-SLOT
    loop
    size <> if BAD then ;
 
@@ -181,6 +182,26 @@ ARCH-ARM64 constant ARCH-AARCH64
    RESET-KEEP
    arch name nameu key keyu bytes size READ-HEADER
    bytes size READ-SECTIONS
+   1 READY ! ;
+
+\ Sections over bytes packed back to back: one u64 length in lengths for each
+\ slot set in mask, in slot order; every other slot is empty. The caller keeps
+\ both spans immutable until the sections are reset or closed.
+: SECTIONS-VIEW ( n ptr u8 ptr u8 n -- )
+   {: mask:n lengths:ptr bytes:ptr size:n :}
+   mask 0 < mask 1 SECTION-COUNT lshift >= or if BAD then
+   RESET-KEEP
+   0 0
+   SECTION-COUNT 0 ?do
+      {: off:n row:n :}
+      mask i rshift 1 and 0<> if
+         bytes size off lengths row FIELD-BYTES * + LE:U64@ i VIEW-SLOT
+         row 1+
+      else
+         bytes size off 0 i VIEW-SLOT row
+      then
+   loop
+   drop size <> if BAD then
    1 READY ! ;
 
 : READ ( ptr u8 n n ptr u8 n ptr u8 n -- )
