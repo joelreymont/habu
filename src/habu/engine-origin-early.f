@@ -84,7 +84,7 @@ CAST: RECORD-PTR ( n -- ptr n )
    cap map-anon 0 <> if drop s" engine origin: early mmap failed" 76 die then
    {: fresh:ptr :}
    SCR-U @ 0 > if
-      SCR-P @ BYTE-VIEW fresh BYTE-VIEW SCR-U @ COPY
+      SCR-P @ BYTE-VIEW fresh SCR-U @ COPY
       SCR-P @ SCR-CAP @ munmap 0 <> if
          s" engine origin: early munmap failed" 76 die
       then

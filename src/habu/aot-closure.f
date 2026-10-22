@@ -35,7 +35,7 @@ using ADDRESS-CARRIER
 \ used to classify stripped-image cells.
 \ Retirement: habu-campaign-c2-mem-c3d7662b.
 : AOT-DBASE@ dbase@ ;
-s" AOT-DBASE@" s" -- ptr a" TRUST
+s" AOT-DBASE@" s" -- ptr u8" TRUST
 \ The dictionary base also names code offsets in diagnostics.
 : AOT-DBASE-N dbase@ ;
 s" AOT-DBASE-N" s" -- n" TRUST
@@ -58,9 +58,9 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 \ inside the quotation SITES:EACH-IN-SPAN executes, which cannot read the
 \ walker's locals, so each walk keeps its span's end and its question in cells.
 : SITE-OFF ( ptr u8 -- n ) {: p:ptr :}
-   p AOT-DBASE@ BYTE-VIEW - ;
+   p AOT-DBASE@ - ;
 : SITE-PTR ( n -- ptr u8 ) {: off:n :}
-   AOT-DBASE@ BYTE-VIEW off + ;
+   AOT-DBASE@ off + ;
 
 \ Each recorded site whose first byte lies in [p, e), as its region offset and
 \ kind, in ascending order.
@@ -81,8 +81,8 @@ TYPED-VARIABLE MEMBER-Q [ ptr u8 n -- ]
 \ REGION kinds 1/2 are call/address. Both yield the original field pointer.
 : EACH-MEMBER-SITE ( ptr u8 ptr u8 [ ptr u8 n -- ] -- )
    {: p:ptr e:ptr q :}
-   p AOT-DBASE@ BYTE-VIEW >=
-   e AOT-DBASE@ BYTE-VIEW REGION + <= and if
+   p AOT-DBASE@ >=
+   e AOT-DBASE@ REGION + <= and if
       q MEMBER-Q !
       p e [: MEMBER-REGION-SITE ;] EACH-SITE exit
    then
@@ -136,24 +136,24 @@ $2000000 constant SIGN
 : TARGET ( ptr u8 n -- ptr u8 ) {: p:ptr w:n :}
    p w DELTA-MASK and SIGNED 4 * + ;
 
-: REC {: k:n :} ( n -- ptr a )
-   AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
+: REC {: k:n :} ( n -- ptr n )
+   AOT-DBASE@ k 48 * + CELL-VIEW ;   \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
 : REC-BYTES ( ptr n -- n ) 8 + @ CODE-SPAN:BYTES ;
 : AOT-FOLD {: c:n :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
 \ A dict record is one raw 48-byte block that holds BOTH cells (code address,
 \ code length, name-length|flags) and — for a short name — the name BYTES. A
-\ single pointer cannot be a cell pointer and a byte pointer at once, so each
-\ view is minted separately: the name accessors work from the record INDEX and
-\ call REC once per view. REC>IX recovers the index for the callers that carry a
-\ record pointer. `REC-NAME-PTR ( ptr a -- ptr a )` previously declared the name
-\ pointer to have the record's element type, which is what let a cell pointer be
-\ read with c@.
+\ single pointer cannot be a cell pointer and a byte pointer at once, so REC
+\ yields the record as cells and IX-NAME-PTR views the name field as bytes; the
+\ name accessors work from the record INDEX. REC>IX recovers the index for the
+\ callers that carry a record pointer. `REC-NAME-PTR ( ptr a -- ptr a )`
+\ previously declared the name pointer to have the record's element type, which
+\ is what let a cell pointer be read with c@.
 : REC>IX {: r:ptr :} ( ptr a -- n )
-   r AOT-DBASE@ - 48 / ;
+   r NULL-PTR - AOT-DBASE-N - 48 / ;
 : IX-NAME-LEN {: k:n :} ( n -- n )
    k REC 16 + @ DNAME-LEN-MASK and ;
 : IX-NAME-PTR {: k:n :} ( n -- ptr u8 )
-   k REC 16 + @ DNAME-EXT and 0= IF k REC 24 + ELSE k REC 24 + AOT-PTR@ THEN ;
+   k REC 16 + @ DNAME-EXT and 0= IF k REC 24 + BYTE-VIEW ELSE k REC 24 + AOT-PTR@ BYTE-VIEW THEN ;
 
 : REC-NAME-LEN {: r:ptr :} ( ptr a -- n )
    r REC>IX IX-NAME-LEN ;
@@ -376,7 +376,7 @@ variable IX-CX
    BEGIN IX-CX @ rows 2 * < WHILE IX-CX @ 2 * IX-CX ! REPEAT
    IX-CX @ ;
 : IX-SLOT ( ptr u8 n -- n ) {: e:ptr mask:n :}   \ the first slot for a code entry
-   e AOT-DBASE@ BYTE-VIEW - 2 rshift  IX-MUL *  32 rshift  mask and ;
+   e AOT-DBASE@ - 2 rshift  IX-MUL *  32 rshift  mask and ;
 
 \ The members, indexed by entry. THE ENTRY IS THE IDENTITY (the table comment
 \ above): a second record naming one span asks the set about that span's entry
@@ -453,7 +453,7 @@ variable CLO-PROBE  variable CLO-RI
 \ only where a cell below the window was reached (`address refers to data
 \ outside the restored span`).
 : PRE-WINDOW? ( ptr n -- bool ) {: r:ptr :}
-   r BYTE-VIEW AOT-DBASE@ BYTE-VIEW - DREC / {: k:n :}
+   r BYTE-VIEW AOT-DBASE@ - DREC / {: k:n :}
    k data-base SEAL-NDICT-CELL + @ >= k OPENER-NDICT @ < and ;
 \ What a program can do about it: have its own require load the module inside
 \ the window, which only an engine that has not loaded it already does.
@@ -835,7 +835,7 @@ variable DN-IX  variable DN-AT
 : REFUSE-DATA-SPAN ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}
    s" aot: address refers to data outside the restored span caller=" AETXT
    owner site CODE-ADDR-TXT
-   s"  region-off=" AETXT site AOT-DBASE@ BYTE-VIEW - AEJNUM
+   s"  region-off=" AETXT site AOT-DBASE@ - AEJNUM
    s"  value=" AETXT v AEJNUM
    s"  target=" AETXT v TARGET-TXT
    s"  span=[" AETXT BLOB-SRC @ AEJNUM
@@ -1052,7 +1052,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 : REFUSE-ADDRESS-SITE ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
    s" aot: malformed recorded address chain caller=" AETXT
    caller AEJREC
-   s"  region-off=" AETXT p AOT-DBASE@ BYTE-VIEW - AEJNUM
+   s"  region-off=" AETXT p AOT-DBASE@ - AEJNUM
    s"  words=" AETXT
    e p - 4 / 4 min 0 max 0 ?do
       i 0<> if 32 AE1 then
@@ -1161,7 +1161,7 @@ variable WI
 \ code is mapped above that base, so this is checked arithmetic and not a cast,
 \ and the closure table's entries cross here too (aot-lib.f CLO-AT-N).
 : CODE-N ( ptr u8 -- n ) {: p:ptr :}
-   p AOT-DBASE@ BYTE-VIEW -  AOT-DBASE-N + ;
+   p AOT-DBASE@ -  AOT-DBASE-N + ;
 : REC-ENTRY-N ( ptr n -- n ) {: r:ptr :}
    r REC-CODE-PTR@ CODE-N ;
 : REC-END-N ( ptr n -- n ) {: r:ptr :}  r REC-ENTRY-N r REC-BYTES + ;

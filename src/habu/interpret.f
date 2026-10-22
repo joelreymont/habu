@@ -204,7 +204,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ package scope, the using depth, which is also the buffer's using floor, the
 \ includer's used publics and the checker's record end.
 : FRAME-OPEN ( n -- ptr u8 ) {: cells-in:n :}
-   EVAL-FRAME-SIZE MEM-ALLOC-PTR BYTE-VIEW {: f:ptr :}
+   EVAL-FRAME-SIZE MEM-ALLOC-PTR {: f:ptr :}
    INP-CELL CELL@ f FR-INP FR!
    INE-CELL CELL@ f FR-INE FR!
    SRCLOC:INB-CELL CELL@ f EVAL-INB FR!

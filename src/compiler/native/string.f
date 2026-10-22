@@ -45,7 +45,7 @@ $38 constant OWNER-BYTES
 
 \ The elaborator stages the arena address as an ordinary integer literal: its
 \ distance from the null pointer.
-: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+: PTR>N ( ptr a -- n ) NULL-PTR - ;
 
 \ Each owner owns its metadata as well as its bytes. Forward links leave a new
 \ capture free of references into the older owners excluded from that capture.

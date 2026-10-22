@@ -107,7 +107,7 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
    cap map-anon 0 <> if drop s" engine origin: mmap failed" 76 die then
    {: fresh:ptr :}
    SCR-U @ 0 > if
-      SCR-P @ BYTE-VIEW fresh BYTE-VIEW SCR-U @ BYTE-COPY
+      SCR-P @ BYTE-VIEW fresh SCR-U @ BYTE-COPY
       SCR-P @ SCR-CAP @ munmap 0 <> if
          s" engine origin: munmap failed" 76 die
       then
@@ -127,7 +127,7 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
       drop s" engine origin: lookup mmap failed" 76 die
    then {: fresh:ptr :}
    INDEX-CAP @ 0 > if
-      INDEX-P @ BYTE-VIEW fresh BYTE-VIEW INDEX-CAP @ cells BYTE-COPY
+      INDEX-P @ BYTE-VIEW fresh INDEX-CAP @ cells BYTE-COPY
       INDEX-P @ INDEX-CAP @ cells munmap 0 <> if
          s" engine origin: lookup munmap failed" 76 die
       then

@@ -17,7 +17,7 @@ using ADDRESS-CARRIER
 
 : DBASE-N ( -- n ) dbase@ ;
 : DBASE@ dbase@ ;
-s" DBASE@" s" -- ptr a" TRUST
+s" DBASE@" s" -- ptr u8" TRUST
 
 : DATA-ADDRESS? ( n -- bool ) {: v:n :}
    v DATA-VA VA>N >= v DATA-VA VA>N DATA-SIZE + <= and ;
@@ -161,7 +161,7 @@ names: OPTIONAL-XT
 variable SITE-HIT
 : ADDR-ROW ( n n -- ) nip SITE-ADDR = if 1 SITE-HIT ! then ;
 : ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
-   p DBASE@ BYTE-VIEW - {: off:n :}
+   p DBASE@ - {: off:n :}
    off DICT-SIZE < off REGION >= or if false exit then
    HB-TARGET-LINUX-X86-64? if
       0 SITE-HIT !
@@ -294,11 +294,11 @@ variable SITE-HIT
 PTR-VARIABLE ROW-END  variable ROW-V
 : ROW-CELL ( n n -- ) {: off:n kind:n :}
    kind SITE-ADDR <> if exit then
-   DBASE@ BYTE-VIEW off + ROW-END @ SITE-LITERAL {: size:n w:n :}
+   DBASE@ off + ROW-END @ SITE-LITERAL {: size:n w:n :}
    size 0<> w ROW-V @ = and if 1 SITE-HIT ! then ;
 : REC-ROW-SITE? ( ptr u8 n n -- bool ) {: p:ptr u:n v:n :}
-   p DBASE@ BYTE-VIEW - DICT-SIZE max {: lo:n :}
-   p u + DBASE@ BYTE-VIEW - REGION min {: hi:n :}
+   p DBASE@ - DICT-SIZE max {: lo:n :}
+   p u + DBASE@ - REGION min {: hi:n :}
    lo hi >= if false exit then
    0 SITE-HIT !  p u + ROW-END !  v ROW-V !
    lo hi lo - [: ROW-CELL ;] SITES:EACH-IN-SPAN
