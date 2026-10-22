@@ -51,7 +51,16 @@ TRUSTED: TRUSTED-MAKE ( n -- )
    if exit then
    does> ( -- n ) drop 7 ;
 
+\ An empty head makes no call and touches no memory before does>, yet the
+\ parent still calls does-patch on the word the last create made.
+: PATCH-CELL ( -- ) does> ( -- n ) @ ;
+TRUSTED: TRUSTED-PATCH-CELL ( -- ) does> ( -- n ) @ ;
+
 41 MAKE-CELL CREATED-CELL 42 T=
+create EMPTY-HEAD-CELL 61 ,
+PATCH-CELL
+create TRUSTED-EMPTY-HEAD-CELL 62 ,
+TRUSTED-PATCH-CELL
 50 MAKE-INERT-CELL INERT-CELL 51 T=
 5 MAKE-ADDER ADD5 6 T=
 73 MAKE-ADDRESS CREATED-ADDRESS
@@ -143,6 +152,10 @@ public
 
    s" an empty does> clause remains an address identity" T-LABEL
    CREATED-ADDRESS @ 73 T=
+
+   s" a definer with an empty head patches the last created word" T-LABEL
+   EMPTY-HEAD-CELL 61 T=
+   TRUSTED-EMPTY-HEAD-CELL 62 T=
 
    s" does> inside a string is not the defining-word split" T-LABEL
    INERT-CELL 50 T=
