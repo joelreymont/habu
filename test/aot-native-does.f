@@ -1,11 +1,13 @@
 \ Native x86 capture of a private does> definer reached through a public call.
 \ The clause has no created child to root it. Capture must retain its exact
-\ entry record and a shadow row while omitting the private parent's name.
+\ entry record and a shadow row, and retains the live private parent MAKER
+\ under its private WID.
 \ Run: bin/hb --load test/aot-native-does.f -- <artifact.aot>
 
 package AOTN
 public
 ndict@ here  variable PRE-R  variable PRE-D  PRE-D !  PRE-R !
+variable MAKER-WID
 ;package
 
 require src/lib/string.f
@@ -57,13 +59,13 @@ public
 : RUN ( -- )
    SCRIPT-ARGC 1 <> if s" aot-native-does: artifact path required" 64 die then
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$
-   ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
-   AOT-CAPTURE:CAPTURE-NATIVE
-   AOT-CAPTURE:SHADOW-CAPTURE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
    NSHADOW:CLOSE
-   s" MAKER" SHIPPED -1 <> if
-      s" aot-native-does: private parent shipped" 74 die then
+   s" MAKER" SHIPPED {: parent:n :}
+   parent 0 < if
+      s" aot-native-does: live private parent lost its private record" 74 die then
+   parent CREC 16 + LE:U32@  MAKER-WID @ AOT-ARM:W0 @ - 1+ <> if
+      s" aot-native-does: live private parent lost its private record" 74 die then
    s" USE-MAKER" SHIPPED 0 < if
       s" aot-native-does: public wrapper was lost" 74 die then
    s" MAKER;does" SHIPPED {: clause:n :}
@@ -85,7 +87,7 @@ AOT-ARM:WINDOW-OPEN
 NSTR:WINDOW-OPEN
 
 package AOTN-WINDOW
-private
+private get-current AOTN:MAKER-WID !
 : MAKER ( n -- ) create , does> ( -- n ) @ 1+ ;
 public
 : USE-MAKER ( n -- ) MAKER ;

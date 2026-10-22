@@ -71,10 +71,8 @@ DYNAMIC-BUFFER SH-QXT n              \ exact host entry of an anonymous function
 DYNAMIC-BUFFER SH-QEM n              \ its owning shadow emission
 DYNAMIC-BUFFER SH-QFUN n             \ its HIR function ordinal
 DYNAMIC-BUFFER SH-QROW n             \ its assigned anonymous shadow row
-DYNAMIC-BUFFER SH-LIVE n             \ capture row retained by native x86 reach
 variable SH-WORK-N
 variable SH-OUT-N
-variable SH-NATIVE-READY
 
 \ ---- refusals ------------------------------------------------------------------
 : SH-WHERE ( n -- ) {: off:n :}
@@ -333,41 +331,6 @@ variable SH-NATIVE-READY
       SH-WORK-N @ SH-WORK @ SH-SCAN
    repeat ;
 
-\ A does> companion is the next record of the same emission and enters its
-\ clause past the parent's entry. The parent's reach scan already covered that
-\ whole emission, but native capture has not named the private companion yet.
-\ Mark its row before CAPTURE-NATIVE asks which source records remain live.
-: SH-NATIVE-DOES ( -- )
-   NSHADOW:RECORDS {: count:n :}
-   count 1 <= if exit then
-   count 1 ?do
-      i NSHADOW:ENTRY@ 0 >  i 1- SH-MARK @ 0<> and if
-         i NSHADOW:RECORD@ i 1- NSHADOW:RECORD@ 1+ =
-         i NSHADOW:EMISSION@ i 1- NSHADOW:EMISSION@ = and if
-            1 i SH-MARK !
-         then
-      then
-   loop ;
-
-\ Native capture asks for reach before names and checker facts are finalized.
-\ Seed only named candidates, close the x86 graph once, and answer the later
-\ capture-row liveness query from its exact source-record mapping.
-: SH-PRE-NAMED ( -- )
-   ACAP-REC-ALL @ 0 ?do
-      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
-   loop ;
-
-: SH-NATIVE-LIVE-MAP ( -- )
-   ACAP-REC-ALL @ SH-LIVE-RESERVE
-   ACAP-REC-ALL @ 0 ?do 0 i SH-LIVE ! loop
-   ACAP-W-R1 @ ACAP-W-R0 @ ?do
-      i ACAP-DICT>CAP {: k:n :}
-      k 0 >= i AOT-REC AOT-RWID -1 <> and if
-         i AOT-REC AOT-RXT ACAP-TGT>REC SH-SOURCE@ {: row:n :}
-         row 0 >= if row SH-MARK @ k SH-LIVE ! then
-      then
-   loop ;
-
 \ Reserve each reached map row's place in publication order before copying any
 \ emission: a call can target a routine published later than its caller.
 : SH-QASSIGN ( n -- ) {: e:n :}
@@ -551,41 +514,15 @@ CELL 2 * constant SH-TRAILER-BYTES
 
 public
 
-\ The native x86 collector shares the ordinary shadow graph. Its first pass
-\ runs before CAPTURE-NATIVE settles names; the final v15 writer reuses these
-\ marks after the collector has added any live `;does` companion names.
-: SHADOW-PRE-REACH ( -- )
-   0 SH-NATIVE-READY !
-   NSHADOW:NATIVE? 0= if E-NSHADOW-STATE throw then
-   SH-ORDER
-   SH-PRE-NAMED
-   SH-NUMBER
-   SH-INDEX
-   SH-REACH
-   SH-NATIVE-DOES
-   SH-NATIVE-LIVE-MAP
-   1 SH-NATIVE-READY ! ;
-
-: SHADOW-LIVE? ( n -- bool ) {: k:n :}
-   SH-NATIVE-READY @ 0= if E-NSHADOW-STATE throw then
-   k 0 < k ACAP-REC-ALL @ >= or if E-NSHADOW-ROW throw then
-   k SH-LIVE @ 0<> ;
-
 \ Fill the shadow tables from an open shadow's map after capture completion and
 \ against the dictionary it captured.
 : SHADOW-CAPTURE ( -- )
    ACAP-TIDX-ND @ ndict@ <> if
       s" aot-capture: the shadow is read only right after the capture it belongs to" 74 die
    then
-   SH-NATIVE-READY @ {: prepared:bool :}
-   0 SH-NATIVE-READY !
    AOT-SHADOW:RESET
    NSHADOW:OPEN? 0= if exit then
-   prepared if
-      SH-NUMBER SH-REHEAD
-   else
-      SH-ORDER SH-NUMBER SH-INDEX SH-REACH
-   then
+   SH-ORDER SH-NUMBER SH-INDEX SH-REACH
    SH-ASSIGN
    SH-WALK
    AOT-WINDOW:XTOFF-N @ 0 ?do i SH-XTCELL loop ;
@@ -596,6 +533,9 @@ public
    SH-KEEP-PRIVATE
    bstart bend d0 CAPTURE-COMPLETE
    SHADOW-CAPTURE ;
+
+: TARGET-CAPTURE-WITH-NAMES ( n n n n n n bool -- )
+   ACAP-ALL-NAMES ! TARGET-CAPTURE ;
 
 ;using
 ;package

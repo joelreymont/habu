@@ -260,8 +260,10 @@ twice otherwise: once to run on the host and once for the product.
 **Now:** the ARM64 codegen emits only placed code
 (`src/arch/arm64/passes.f:315`, `UNPLACED-UNSUPPORTED`), and the ARM64 capture
 finds call sites again by decoding branches and address chains in the placed
-bytes (`src/habu/aot-capture.f` `ACAP-TGT`, `ACAP-CHAIN@`). x86-64 and Wasm
-emit unplaced code only in a second compile beside the placed one
+bytes (`src/habu/aot-capture.f` `ACAP-TGT`, `ACAP-CHAIN@`). The x86-64 capture
+reads the rows the engine recorded where it built the code (the live band,
+`ACAP-X64-REACH`) and decodes no bytes. x86-64 and Wasm emit unplaced code only
+in a second compile beside the placed one
 (`src/compiler/native/compiler.f:537-580`).
 
 **Build-time data is product data.** While a build loads the product's

@@ -17,8 +17,8 @@
 \ x86-64 decodes no bytes: its reach walks the live band's recorded call and
 \ address sites (src/habu/sites.f, ACAP-X64-REACH), reads each through
 \ ADDRESS-CARRIER's codecs and keeps the blob uncompacted. Its link tables come
-\ from the native compiler's routine map (aot-shadow.f); CAPTURE-NATIVE takes
-\ reach from that map instead.
+\ from the native compiler's routine map, which aot-shadow.f's TARGET-CAPTURE
+\ reads after this capture completes.
 \
 \ Not baked into bin/hb — host build-time meta-words over the host dictionary.
 \ It loads in the stdin metabuild, which has no native shadow, so it requires
@@ -2188,22 +2188,6 @@ variable ACAP-SWORK-N
       then
    loop ;
 
-\ A native x86 capture keeps the source window's byte offsets unchanged. Its
-\ recorded routine graph answers which source records remain live; no AArch64
-\ instruction word or four-byte code map participates in this decision.
-: ACAP-NATIVE-ROOTS ( [ n -- bool ] -- ) {: live :}
-   ACAP-REC-ALL @ ACAP-GMARK-RESERVE
-   ACAP-REC-ALL @ 0 ?do
-      i live execute if 1 else 0 then i ACAP-GMARK !
-      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
-   loop
-   ACAP-REC-ALL @ 0 ?do
-      i ACAP-DOES-COMPANION? if
-         i 1- ACAP-GMARK @ 0<> if 1 i ACAP-NAMED-BIT ! then
-      then
-   loop
-   -1 ACAP-GRAPH-READY ! ;
-
 \ --- the x86-64 reach ---------------------------------------------------------
 \ ON X86-64 THE REACH WALKS RECORDED SITES, NOT DECODED BYTES. The live band
 \ (src/habu/sites.f) holds a row for every `call rel32` and `jmp rel32` and
@@ -2218,9 +2202,10 @@ variable ACAP-SWORK-N
 \ alias shares its body - and code no record covers is a gap whose edges are
 \ roots, as the ARM64 gap sweep has them. A record reaches the owners of its
 \ own entry, so a clause or an alias reaches the body it lies in.
-\ A call that leaves the window must name a word below the prelude mark, the
-\ rule ACAP-SITE-BAND keeps for ARM64; an address literal that leaves the
-\ window's code is DATA's, which the byte copy does not move.
+\ A call that leaves the window must enter a word below the prelude mark that
+\ its own name resolves to (ACAP-TARGET-NAME?), the rules ACAP-SITE-BAND and
+\ ACAP-?SITE keep for ARM64; an address literal that leaves the window's code
+\ is DATA's, which the byte copy does not move.
 24 constant ACAP-X-SLOT-BITS           \ a span key: start offset, then window slot
 DYNAMIC-BUFFER ACAP-XKEY n             \ window code spans, sorted by start
 DYNAMIC-BUFFER ACAP-XMAX n             \ the furthest end of keys 0..i
@@ -2393,10 +2378,15 @@ variable ACAP-XFROM-LIVE  variable ACAP-XFROM-GONE
    v 1+ ACAP-XHEAD @ v ACAP-XHEAD @ ?do i ACAP-XADJ @ ACAP-SHADOW-NODE loop ;
 
 \ Roots: the records whose names ship and the declared code cells, as
-\ ACAP-GRAPH-ROOTS has them.
+\ ACAP-GRAPH-ROOTS has them. The names are worked out once, here.
 : ACAP-X64-ROOTS ( -- )
+   ACAP-ALL-NAMES @ 0= if ACAP-ENTRY-BUILD then
    ACAP-REC-ALL @ 0 ?do
-      i ACAP-NAMED?  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
+      i ACAP-NAMED? if 1 else 0 then i ACAP-NAMED-BIT !
+   loop
+   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N !
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-NAMED-BIT @ 0<>  i ACAP-GRAPH-CODE?  and if i ACAP-SHADOW-NODE then
    loop
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
    count 0 ?do
@@ -2406,9 +2396,23 @@ variable ACAP-XFROM-LIVE  variable ACAP-XFROM-GONE
       then
    loop ;
 
+\ The reached capture records are the live ones, and a live definer's does>
+\ clause keeps its name, as ACAP-GRAPH-NAME-DOES has it on ARM64. The window's
+\ byte offsets stay; no four-byte code map takes part.
+: ACAP-X64-LIVE ( -- )
+   ACAP-REC-ALL @ ACAP-GMARK-RESERVE
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-SMARK @ 0<> if 1 else 0 then i ACAP-GMARK !
+   loop
+   ACAP-REC-ALL @ 0 ?do
+      i ACAP-DOES-COMPANION? if
+         i 1- ACAP-GMARK @ 0<> if 1 i ACAP-NAMED-BIT ! then
+      then
+   loop
+   -1 ACAP-GRAPH-READY ! ;
+
 \ After the window's DATA is baked and AOT-CODE-B0 holds the live code base.
 : ACAP-X64-REACH ( n n -- ) {: bstart:n bend:n :}
-   ACAP-ALL-NAMES @ 0= if ACAP-ENTRY-BUILD then
    ACAP-REC-ALL @ ACAP-W-R1 @ + ACAP-W-R0 @ - {: nodes:n :}
    nodes 1 max ACAP-SMARK-RESERVE  nodes 1 max ACAP-SWORK-RESERVE
    nodes 0 ?do 0 i ACAP-SMARK ! loop
@@ -2423,8 +2427,7 @@ variable ACAP-XFROM-LIVE  variable ACAP-XFROM-GONE
       ACAP-SWORK-N @ 1- ACAP-SWORK-N !
       ACAP-SWORK-N @ ACAP-SWORK @ ACAP-X64-SCAN
    repeat
-   [: ACAP-SMARK @ 0<> ;] ACAP-NATIVE-ROOTS
-   ACAP-ENTRY-OFF-RELEASE 0 ACAP-ENTRY-N !
+   ACAP-X64-LIVE
    ACAP-XKEY-RELEASE ACAP-XMAX-RELEASE ACAP-XSRC-RELEASE ACAP-XDST-RELEASE
    ACAP-XHEAD-RELEASE ACAP-XADJ-RELEASE ;
 
@@ -3049,26 +3052,6 @@ public
       ACAP-GRAPH-REMAP
       ACAP-GRAPH-REMAP-XTOFF
    then
-   ACAP-FINISH ;
-
-\ The native compiler supplies reach from its published x86 routine map. The
-\ callback runs after declared address cells are classified, so both shipped
-\ records and code cells can root that graph. The live query takes a capture
-\ record index, not a dictionary index; the recorder owns that translation.
-\ Main code bytes remain at their copied offsets for the x86 shadow linker.
-: CAPTURE-NATIVE ( n n n n n n [ -- ] [ n -- bool ] -- )
-   {: bstart:n bend:n rstart:n rend:n d0:n d1:n prepare live :}
-   bstart bend rstart rend d0 d1 ACAP-START
-   -1 ACAP-NATIVE-MODE !
-   AOT-BLOB-LEN @ dup ACAP-GOLDLEN ! ACAP-GNEWLEN !
-   d0 AOT-DATA-D0 !
-   d1 d0 - AOT-DATA-SIZE !
-   bstart bend d0 d1 ACAP-RELEASE-DYNAMIC
-   bstart bend d0 d1 ACAP-BAKE-DATA
-   prepare execute
-   live ACAP-NATIVE-ROOTS
-   bstart bend ACAP-CHECKER-STRIP
-   d0 ACAP-COPY-DATA
    ACAP-FINISH ;
 
 : CAPTURE-WITH-NAMES ( n n n n n n bool -- )

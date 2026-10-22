@@ -46,10 +46,7 @@ public
 : RUN ( -- )
    SCRIPT-ARGC 1 <> if s" aot-native-export-fixed: artifact path required" 64 die then
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$
-   ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
-   AOT-CAPTURE:CAPTURE-NATIVE
-   AOT-CAPTURE:SHADOW-CAPTURE
+   AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
    NSHADOW:CLOSE
    s" USE-FIX" SHIPPED 0= if
       s" aot-native-export-fixed: public caller was lost" 74 die then

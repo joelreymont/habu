@@ -785,24 +785,17 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
    s" ENGINE-ORIGIN:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
 
 \ An x86-64 target's routines are the shadow the pre-window writer opened
-\ (NATIVE-EMIT:OPEN-SHADOW). A native shadow reuses the placed emission, so
-\ its capture walks the shadow's reach. An ARM64 host's dual-emission shadow
-\ goes through TARGET-CAPTURE, which names a live emitted private routine with
-\ its private WID before compaction; x86-only routines travel unnamed. With no
-\ shadow open this is the plain capture. The shadow closes with the capture.
+\ (NATIVE-EMIT:OPEN-SHADOW): a native shadow on an x86-64 host, a dual-emission
+\ one on an ARM64 host. Either goes through TARGET-CAPTURE, which names a live
+\ emitted private routine with its private WID before the capture completes and
+\ reads the routines; x86-only routines travel unnamed. With no shadow open this
+\ is the plain capture. The shadow closes with the capture.
 : CAPTURE ( -- )
    CAPTURE-START
-   NSHADOW:NATIVE? if
-      AOT-ARM:WINDOW$
-      ['] AOT-CAPTURE:SHADOW-PRE-REACH ['] AOT-CAPTURE:SHADOW-LIVE?
-      AOT-CAPTURE:CAPTURE-NATIVE
-      AOT-CAPTURE:SHADOW-CAPTURE
+   NSHADOW:OPEN? if
+      AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
    else
-      NSHADOW:OPEN? if
-         AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
-      else
-         AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-      then
+      AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    then
    NSHADOW:CLOSE
    NAMES-SOURCE-ALIGN
@@ -814,7 +807,11 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
 : CAPTURE-NAMED ( bool -- )
    {: all:bool :}
    CAPTURE-START
-   AOT-ARM:WINDOW$ all AOT-CAPTURE:CAPTURE-WITH-NAMES
+   NSHADOW:OPEN? if
+      AOT-ARM:WINDOW$ all AOT-CAPTURE:TARGET-CAPTURE-WITH-NAMES
+   else
+      AOT-ARM:WINDOW$ all AOT-CAPTURE:CAPTURE-WITH-NAMES
+   then
    NAMES-SOURCE-ALIGN
    CHECK-FIXED-ROWS ;
 
