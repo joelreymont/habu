@@ -239,37 +239,46 @@ create TEXT CAP allot                  variable TEXT-U
 
 \ With a global W-FORGET and a used P-FORGET:W-FORGET, a bare W-FORGET is
 \ ambiguous to the engine: tier 0 refuses T-FORGET, which named it. A row of
-\ the dropped Q-FORGET:W-FORGET would bind T-FORGET's call instead. These run
-\ at tier 0 alone: tier 1 refuses the definition of W-FORGET itself for that
-\ ambiguity before its hook runs.
-: SHADOWED ( -- )
-   RC @ RC-REJECT T=
-   s" E-USING-SHADOW-GLOBAL" SAYS
-   OUT-U @ 0 T= ;
+\ the dropped Q-FORGET:W-FORGET would bind T-FORGET's call instead. Tier 1
+\ refuses the dropped definition itself: the name it defines is no reference,
+\ so the ambiguity is not its refusal, and its hook runs.
+: SHADOWED ( n -- ) {: tier:n :}
+   tier 0= if
+      RC @ RC-REJECT T=
+      s" E-USING-SHADOW-GLOBAL" SAYS
+      OUT-U @ 0 T=
+   else REFUSED-W then ;
 
-: ZERO-CALL ( -- )
+: ZERO-CALL ( n -- ) {: tier:n :}
    s" a dropped definition leaves a call to the engine's shadowed word" T-LABEL
-   0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
+   tier TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
    s" : W-FORGET 3 ; : T-FORGET ( -- n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  SHADOWED ;
+   TEXT$ SESSION  tier SHADOWED ;
 
+\ At tier 1 this and ZERO-SHAPE end at W-FORGET, as ZERO-CALL does.
 : ZERO-TICK ( -- )
    s" a dropped definition leaves a tick to the engine's shadowed word" T-LABEL
    0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
    s" : W-FORGET 3 ; : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;package " TEXT+
    s" Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  SHADOWED ;
+   TEXT$ SESSION  0 SHADOWED ;
 
 \ Two used packages and a global: the engine's bare W-FORGET is ambiguous.
+\ Tier 1 refuses the dropped definition without naming that ambiguity.
 : AMBIGUOUS-TEXT ( n -- ) {: tier:n :}
    tier TIER-TEXT GLOBAL-W+ P-W+ R-W+ LIAR+ Q-USING-P+
    s" using R-FORGET : W-FORGET 3 ; " TEXT+ ;
 
 : AMBIGUOUS ( n -- ) {: tier:n :}
-   RC @ RC-THROW T=
-   s" E-USING-AMBIGUOUS" SAYS
    OUT-U @ 0 T=
-   tier 0= if s" hb: uncaught throw code 7144" SAYS else REFUSED-W then ;
+   tier 0= if
+      RC @ RC-THROW T=
+      s" E-USING-AMBIGUOUS" SAYS
+      s" hb: uncaught throw code 7144" SAYS
+   else
+      REFUSED-W
+      s" E-USING-AMBIGUOUS" SAYS-NOT
+   then ;
 
 : ZERO-AMBIGUOUS-CALL ( n -- ) {: tier:n :}
    s" a dropped definition leaves a call to the engine's ambiguous word" T-LABEL
@@ -291,7 +300,7 @@ create TEXT CAP allot                  variable TEXT-U
    0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
    s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
    s" Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT$ SESSION  SHADOWED
+   TEXT$ SESSION  0 SHADOWED
    s" interpret stack underdepth" SAYS-NOT ;
 
 \ With no global, T-FORGET's W-FORGET is the used P-FORGET:W-FORGET ( -- n ):
@@ -335,6 +344,7 @@ create TEXT CAP allot                  variable TEXT-U
    else REFUSED-W then ;
 
 : ZERO-VERDICT ( n -- ) {: tier:n :}
+   tier ZERO-CALL
    tier ZERO-AMBIGUOUS-CALL
    tier ZERO-AMBIGUOUS-TICK
    tier ZERO-USED
@@ -417,7 +427,7 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-UNSEEN
    SESSION-UNRECORDED
    SESSION-RECORDED
-   ZERO-CALL ZERO-TICK ZERO-SHAPE
+   ZERO-TICK ZERO-SHAPE
    2 0 do i ZERO-VERDICT loop
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr

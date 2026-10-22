@@ -225,13 +225,16 @@ private
    kind DKIND:CAST = PRIOR-CAST !
    1 PRIOR-CALLABLE ! ;
 
-\ An ambiguous bare name is no prior binding.  A qualified body token remains
-\ free to resolve its own unambiguous record after the check.
+\ A bare name a using refuses is no prior binding: it names no word, and the
+\ definition is admitted as at tier 0 (docs/forth.md: shadowing a global from
+\ inside a package is legal; the using refusal belongs to a reference). Asked
+\ before READ-PRIOR, whose effect query would raise that refusal for the name
+\ being defined. A qualified body token remains free to resolve its own
+\ unambiguous record after the check.
 : KEEP-PRIOR ( -- )
    0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  false PRIOR-CAST !
-   [: READ-PRIOR ;] catch {: rc:n :}
-   rc E-USING-AMBIGUOUS = if exit then
-   rc 0<> if rc throw then ;
+   PENDING-NAME$ NDICT:USING-REFUSED? if exit then
+   READ-PRIOR ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )
