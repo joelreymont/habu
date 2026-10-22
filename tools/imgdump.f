@@ -170,7 +170,7 @@ variable HV  variable HP
    ELF-PHOFF-OFF I@ swap ELF-PHDR-BYTES * + ;
 
 \ A file-backed VA is found through a PT_LOAD, including the x86 dictionary
-\ region and DATA segments whose VAs are far from the ordinary ELF text.
+\ region and DATA carrier segments whose VAs are far from the ordinary ELF text.
 : ELF-VA-SPAN>OFF ( n n -- n ) {: va:n len:n :}
    len 1 < if -1 exit then
    ELF-PHDRS? 0= if -1 exit then
@@ -192,13 +192,24 @@ variable HV  variable HP
 
 : ELF-VA>OFF ( n -- n ) 1 ELF-VA-SPAN>OFF ;
 
-: X64-REG-PHDR ( -- n )
+\ The x86 PT_LOAD at the text's VA plus `delta`, or -1.
+: X64-FIXED-PHDR ( n -- n ) {: delta:n :}
    ELF-PHDRS? 0= if -1 exit then
-   0 ELF-PHDR 16 + I@ REGION-OFF + {: va:n :}
+   0 ELF-PHDR 16 + I@ delta + {: va:n :}
    ELF-PHNUM-OFF I@ $FFFF and 0 ?do
       i ELF-PHDR {: p:n :}
       p I@ $FFFFFFFF and 1 = p 16 + I@ va = and if p unloop exit then
    loop -1 ;
+
+: X64-REG-PHDR ( -- n ) REGION-OFF X64-FIXED-PHDR ;
+
+\ The read-only carrier at the region's end holds DATA's leading bytes, which
+\ the boot copies to the start of DATA, so DATA's bytes [off, off + len) are
+\ the carrier's at the same offset: their file offset, or -1.
+: X64-DATA-SPAN>OFF ( n n -- n ) {: off:n len:n :}
+   REGION-OFF REGION + X64-FIXED-PHDR {: p:n :}
+   p 0 < off 0 < or if -1 exit then
+   p 16 + I@ off + len ELF-VA-SPAN>OFF ;
 : E-E {: o :} ( n -- n )
    o 8 + I@ ;
 : E-F {: o :} ( n -- n )
@@ -276,7 +287,7 @@ variable OKV
       p 0 < if IMG-FALSE exit then
       p 32 + I@ o SNAP-TRL-REGLEN + I@ < if IMG-FALSE exit then
       p 16 + I@ ELF-VA>OFF 0 < if IMG-FALSE exit then
-      X64LAYOUT:DATA-VA DATA-START ELF-VA-SPAN>OFF 0 < if IMG-FALSE exit then
+      0 DATA-START X64-DATA-SPAN>OFF 0 < if IMG-FALSE exit then
       0 0= exit
    then
    o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
@@ -325,6 +336,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
          size textlen p - <= if p X64LAYOUT:CODE-OFF + exit then
          -1 exit
       then
+   then
+   p X64LAYOUT:DATA-VA >= p X64LAYOUT:DATA-VA X64LAYOUT:DATA-SIZE + < and if
+      p X64LAYOUT:DATA-VA - size X64-DATA-SPAN>OFF exit
    then
    p size ELF-VA-SPAN>OFF ;
 
@@ -697,7 +711,7 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 : X64-DATA-BYTE ( n -- n ) {: off:n :}
    off DATA-START < if
-      X64LAYOUT:DATA-VA off + ELF-VA>OFF
+      off 1 X64-DATA-SPAN>OFF
    else
       TOFF @ TDATA @ DATA-START - - off DATA-START - +
    then

@@ -23,8 +23,10 @@
 \ THE FILE. The ELF src/os/linux-x86-64/elf.f builds, then the region's records
 \ (X64LINK:DICT$) at ELF-REGION-AT and its code band (X64LINK:CODE$) DICT-SIZE
 \ past them, then the DATA (X64LINK:DATA$) at ELF-DATA-AT up to its last nonzero
-\ byte, every gap zero. Each fixed segment's memsz keeps its whole span, which
-\ the kernel maps zero past the bytes the file carries.
+\ byte, every gap zero. The region's memsz keeps its whole span, which the
+\ kernel maps zero past the bytes the file carries; DATA's bytes ride a
+\ read-only carrier exactly their size, which the boot copies into the DATA it
+\ maps.
 require src/lib/byte-buffer.f
 require src/lib/fs.f
 require src/lib/le.f

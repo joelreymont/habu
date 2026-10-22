@@ -5,7 +5,8 @@ require src/habu/image-x64.f
 package SNAP
 
 \ RX retains the original engine text, then holds the encoded heap and trailer.
-\ REGION and DATA are populated PT_LOADs; the heap is decoded by snapshot boot.
+\ REGION is a populated PT_LOAD and DATA's DATA-START prefix rides the read-only
+\ carrier the snapshot boot copies into DATA; the heap is decoded by that boot.
 : X64-FRAME ( -- )
    STSZ @ SHL @ + SNAP-TRL-BYTES + {: bytes:n :}
    X64LAYOUT:CODE-OFF bytes + PROT-PAGE-MAX 1- +

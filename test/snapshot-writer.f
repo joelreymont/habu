@@ -96,9 +96,10 @@ variable IMGU
 : TRAILER-OFF ( -- n )
    IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - ;
 
-\ The x86 writer keeps REGION and the DATA control prefix in fixed PT_LOADs.
-\ The fifth and sixth program headers name their file offsets; the first four
-\ are RX, dynamic RW, interpreter and dynamic metadata.
+\ The x86 writer keeps REGION in a fixed PT_LOAD and the DATA control prefix in
+\ the read-only carrier PT_LOAD the boot copies into DATA. The fifth and sixth
+\ program headers name their file offsets; the first four are RX, dynamic RW,
+\ interpreter and dynamic metadata.
 : X64-PHDR ( n -- n ) 56 * 32 U64@ + ;
 : X64-REGION-OFF ( -- n ) 4 X64-PHDR 8 + U64@ ;
 : X64-DATA-OFF ( -- n ) 5 X64-PHDR 8 + U64@ ;

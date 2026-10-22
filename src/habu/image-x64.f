@@ -25,8 +25,10 @@ create ZEROS ZERO-BYTES allot
 
 public
 
-\ Write the exact initialized spans at the target's fixed text, region and
-\ DATA addresses. The ELF metadata and dynamic/GOT tail are rebuilt here.
+\ Write the exact initialized spans: the text and region at their fixed
+\ addresses and DATA's bytes in the read-only carrier the boot copies into
+\ DATA, so they must fit DATA. The ELF metadata and dynamic/GOT tail are
+\ rebuilt here.
 : WRITE-FD ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: text:ptr text-len:n region:ptr region-len:n data:ptr data-len:n fd:n :}
    text-len 0 <

@@ -68,8 +68,9 @@
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
 \
-\ x86 ELF images put the dictionary REGION and fixed DATA prefix in separate
-\ PT_LOADs. Their snapshot heap follows immutable RX text; a text-site footer
+\ x86 ELF images put the dictionary REGION in a PT_LOAD and DATA's initialized
+\ prefix in a read-only carrier PT_LOAD at the region's end, which the boot
+\ copies into the DATA it maps. Their snapshot heap follows immutable RX text; a text-site footer
 \ marks executable code, and the trailer recovers the donor text boundary.
 \ The x86 path measures those physical segments and validates raw/grid heap
 \ framing. A stripped x86 image locates its sparse DATA runs and XT rows through
@@ -292,11 +293,11 @@ variable X64-DATA-PH
    0= if s" image-size: invalid x86 text or RW LOAD segment" RC die then
    rwph 40 + U64@ RW-BYTES < if E-ES-WALK throw then
    textph 16 + U64@ REGION-OFF + ELF-LOAD-VA X64-REG-PH !
-   X64LAYOUT:DATA-VA ELF-LOAD-VA X64-DATA-PH !
+   textph 16 + U64@ REGION-OFF + REGION + ELF-LOAD-VA X64-DATA-PH !
    X64-REG-PH @ 4 + U32@ 6 =
-   X64-DATA-PH @ 4 + U32@ 6 = and
+   X64-DATA-PH @ 4 + U32@ 4 = and
    X64-REG-PH @ 40 + U64@ REGION = and
-   X64-DATA-PH @ 40 + U64@ X64LAYOUT:DATA-SIZE = and
+   X64-DATA-PH @ 40 + U64@ X64-DATA-BYTES = and
    0= if s" image-size: invalid x86 fixed LOAD segment" RC die then
    X64-REG-BYTES 0 < X64-DATA-BYTES 0 < or if E-ES-WALK throw then
    RW-OFF TEXT-SIZE <> if E-ES-WALK throw then
@@ -312,7 +313,7 @@ variable X64-DATA-PH
       X64-DATA-OFF X64-DATA-BYTES + ILEN @ <> if
          s" image-size: x86 file length does not end at fixed DATA" RC die
       then
-      X64LAYOUT:DATA-VA ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then
+      X64-DATA-PH @ 16 + U64@ ELF-VA>OFF X64-DATA-OFF <> if E-ES-WALK throw then
    else
       X64-LAST-END X64-PAGE-END ILEN @ <> if
          s" image-size: x86 empty DATA has wrong page padding" RC die

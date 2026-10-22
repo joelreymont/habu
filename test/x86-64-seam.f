@@ -12,12 +12,12 @@
 \ and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
 \ and the engine refuses a duplicate definition - so the writer reads CODE-OFF
-\ and the DATA segment, which a macOS host places elsewhere, qualified from the
-\ package that replays them (X64LAYOUT, src/os/linux-x86-64/target-layout.f),
-\ and reads the host's identical PROT-PAGE-MAX, REGION and REGION-OFF.
+\ qualified from the package that replays it (X64LAYOUT,
+\ src/os/linux-x86-64/target-layout.f), and reads the host's identical
+\ PROT-PAGE-MAX, REGION and REGION-OFF. DATA is no segment: the boot maps it
+\ and copies in the bytes of the read-only carrier at the region's end.
 \ Every address and size is pinned here as a literal, so this test fails rather
-\ than drifts if either target moves one, and fails on a macOS host if the
-\ writer reads that host's DATA.
+\ than drifts if either target moves one.
 \
 \ THE RELOCATION SITE KIND. The mov r64, imm64 site (package SNAP-RELOC) is
 \ recognised, read and rewritten here over hand-built fixtures, including the
@@ -77,8 +77,7 @@ $1000 constant WANT-CODE-OFF
 $10000 constant WANT-PAGE-MAX
 $1400000 constant WANT-REGION-VA        \ VMBASE plus REGION-OFF
 $2300000 constant WANT-REGION
-$340000000 constant WANT-DATA-VA         \ the Linux target's, not a macOS host's
-$4000000000 constant WANT-DATA-SIZE       \ 2^38, the lazy reservation
+$3700000 constant WANT-CARRIER-VA       \ the region's end
 \ The metadata past the six program headers, which end at $190.
 $190 constant WANT-INTERP-OFF
 $1B0 constant WANT-HASH-OFF
@@ -163,12 +162,13 @@ $228 constant WANT-RELA-OFF
    3 PH-FILESZ@ $B0 T=
    3 PH-ALIGN@ 8 T= ;
 
-\ The code region and DATA are loadable segments the file carries no bytes of,
-\ after the read-write tail and in ascending order, as ELF orders loadable
-\ segments: the kernel maps each zeroed and read-write at its address.
-: CHECK-FIXED-PHDR ( n n n -- ) {: i:n va:n memsz:n :}
+\ The code region and the DATA carrier are loadable segments this file carries
+\ no bytes of, after the read-write tail and in ascending order, as ELF orders
+\ loadable segments: the kernel maps the region zeroed and read-write at its
+\ address, and the carrier, as large as the bytes it holds, not at all.
+: CHECK-FIXED-PHDR ( n n n n -- ) {: i:n flags:n va:n memsz:n :}
    i PH-TYPE@ 1 T=                        \ PT_LOAD
-   i PH-FLAGS@ 6 T=                       \ PF_R | PF_W
+   i PH-FLAGS@ flags T=
    i PH-OFF@ 0 T=
    i PH-VADDR@ va T=
    i PH-PADDR@ va T=
@@ -178,11 +178,11 @@ $228 constant WANT-RELA-OFF
 
 : CHECK-REGION-PHDR ( -- )
    s" program header 4 maps the code region at the image base plus REGION-OFF" T-LABEL
-   4 WANT-REGION-VA WANT-REGION CHECK-FIXED-PHDR ;
+   4 6 WANT-REGION-VA WANT-REGION CHECK-FIXED-PHDR ;   \ PF_R | PF_W
 
-: CHECK-DATA-PHDR ( -- )
-   s" program header 5 maps the target's DATA at its fixed address" T-LABEL
-   5 WANT-DATA-VA WANT-DATA-SIZE CHECK-FIXED-PHDR ;
+: CHECK-CARRIER-PHDR ( -- )
+   s" program header 5 is the read-only DATA carrier at the region's end" T-LABEL
+   5 4 WANT-CARRIER-VA 0 CHECK-FIXED-PHDR ;            \ PF_R
 
 : CHECK-INTERP-BYTES ( -- )
    s" the interpreter string is /lib64/ld-linux-x86-64.so.2 and is terminated" T-LABEL
@@ -245,7 +245,7 @@ $228 constant WANT-RELA-OFF
    CHECK-INTERP-PHDR
    textsz CHECK-DYNAMIC-PHDR
    CHECK-REGION-PHDR
-   CHECK-DATA-PHDR
+   CHECK-CARRIER-PHDR
    CHECK-INTERP-BYTES
    textsz CHECK-DYNAMIC-TABLES
    textsz CHECK-RELA

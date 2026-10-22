@@ -7,15 +7,17 @@
 \ What differs from the aarch64 writer is what the architecture owns - e_machine,
 \ the interpreter the dynamic loader is named by (one byte longer, which is why
 \ ELF-INTERP-SZ is 28 and not 27) and the GOT relocation type - and two fixed
-\ segments: this image maps its code region and DATA by PT_LOAD, where the
-\ aarch64 boot maps both itself (docs/x86-64.md "Fixed segments"). Its six
-\ program headers end at $190, so the metadata behind them starts there and not
-\ at the aarch64 writer's $120.
+\ segments: this image maps its code region by PT_LOAD, where the aarch64 boot
+\ maps it itself, and carries DATA's initialized bytes in a read-only PT_LOAD
+\ at the region's end, which the boot copies into the DATA it maps itself, as
+\ the aarch64 boot does (docs/x86-64.md "Fixed segments"). Its six program
+\ headers end at $190, so the metadata behind them starts there and not at the
+\ aarch64 writer's $120.
 \ Everything else here is ELF64 format, and reads the same under both machines.
 \ The code stream it wraps is package X64CODE's (src/arch/x86-64/icode.f).
 \ src/os/image-bytes.f sizes MSIZE from a bare CODE-CAP-BYTES at load, so this
 \ file requires it under `using X64CODE`, which supplies the x86-64 capacity.
-\ The fixed DATA segment and CODE-OFF are the target's, read qualified from
+\ CODE-OFF is the target's, read qualified from
 \ package X64LAYOUT (src/os/linux-x86-64/target-layout.f), whose `using` below
 \ is the guard that refuses a bare one and closes before this file ends. The
 \ require below opens a package, and packages do not nest, so this file loads
@@ -83,6 +85,11 @@ CODE-CAP-BYTES X64LAYOUT:CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 VMBASE REGION-OFF + constant ELF-REGION-VA
+\ The DATA carrier: the read-only segment holding DATA's initialized bytes,
+\ right past the code region. DATA itself is no segment: the boot maps it and
+\ copies these bytes in (src/habu/boot-x64.f CARRIER-COPY,), so the kernel
+\ neither commit-charges DATA as a loaded segment nor starts the brk past it.
+ELF-REGION-VA REGION + constant ELF-CARRIER-VA
 
 : ELF-PAGE-UP ( n -- n )
    PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
@@ -93,13 +100,14 @@ VMBASE REGION-OFF + constant ELF-REGION-VA
    IF s" elf: MSIZE below max image" 73 die THEN ;
 ELF-MSIZE-CHECK
 
-\ The region starts past the largest text and its RW tail, and DATA past the
-\ region, so the loadable segments ascend by address, as ELF orders them, and
-\ never overlap.
+\ The region starts past the largest text and its RW tail, and the carrier at
+\ the region's end on a PROT-PAGE-MAX boundary, so the loadable segments ascend
+\ by address, as ELF orders them, never overlap, and each starts where a LOAD
+\ of that alignment may.
 : ELF-FIXED-CHECK ( -- )
    MPAGE ELF-PAGE-UP ELF-RW-SZ + REGION-OFF >
-   ELF-REGION-VA REGION + X64LAYOUT:DATA-VA > or
-   IF s" elf: fixed segments overlap the image" 73 die THEN ;
+   ELF-CARRIER-VA ELF-PAGE-UP ELF-CARRIER-VA <> or
+   IF s" elf: fixed segments overlap or misalign" 73 die THEN ;
 ELF-FIXED-CHECK
 
 : ASM-CODELEN! ( -- )
@@ -166,32 +174,34 @@ ELF-FIXED-CHECK
 : ELF-DYNAMIC-PHDR, ( -- )
    PT-DYNAMIC PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-DYNAMIC-SZ dup 8 ELF-PHDR, ;
 
-\ A linked image carries leading region and DATA bytes; a bare image has
-\ zero-filled fixed segments which its boot maps itself.
+\ A linked image carries leading region and DATA bytes; a bare image has a
+\ zero-filled region and an empty carrier, and its boot maps both itself.
 variable ELF-REGION-BYTES
 variable ELF-DATA-BYTES
 
 : ELF-REGION-AT ( -- n ) ELF-TEXT-SIZE @ ELF-RW-SZ + ELF-PAGE-UP ;
 : ELF-DATA-AT ( -- n ) ELF-REGION-AT ELF-REGION-BYTES @ + ELF-PAGE-UP ;
 
-: ELF-FIXED-PHDR, ( n n n n -- ) {: off:n va:n filesz:n memsz:n :}
+: ELF-FIXED-PHDR, ( n n n n n -- ) {: flags:n off:n va:n filesz:n memsz:n :}
    filesz 0= if 0 else off then {: at:n :}
-   PT-LOAD PF-RW at va filesz memsz PROT-PAGE-MAX ELF-PHDR, ;
+   PT-LOAD flags at va filesz memsz PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-REGION-PHDR, ( -- )
-   ELF-REGION-AT ELF-REGION-VA ELF-REGION-BYTES @ REGION ELF-FIXED-PHDR, ;
+   PF-RW ELF-REGION-AT ELF-REGION-VA ELF-REGION-BYTES @ REGION ELF-FIXED-PHDR, ;
 
-: ELF-DATA-PHDR, ( -- )
-   ELF-DATA-AT X64LAYOUT:DATA-VA ELF-DATA-BYTES @ X64LAYOUT:DATA-SIZE ELF-FIXED-PHDR, ;
+\ The carrier maps exactly the bytes the file holds, so no LOAD reserves
+\ DATA's span and its memory size never exceeds the file's.
+: ELF-CARRIER-PHDR, ( -- )
+   PF-R ELF-DATA-AT ELF-CARRIER-VA ELF-DATA-BYTES @ dup ELF-FIXED-PHDR, ;
 
-\ The loadable segments ascend by address: text, RW tail, region, DATA.
+\ The loadable segments ascend by address: text, RW tail, region, carrier.
 : ELF-PHDRS, ( -- )
    ELF-RX-PHDR,
    ELF-RW-PHDR,
    ELF-INTERP-PHDR,
    ELF-DYNAMIC-PHDR,
    ELF-REGION-PHDR,
-   ELF-DATA-PHDR, ;
+   ELF-CARRIER-PHDR, ;
 
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF

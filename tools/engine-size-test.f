@@ -17,11 +17,11 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 \ A stripped image as AOT-LINK's X64-TABLE-FOOTER, and X64IMAGE:WRITE-FD lay
 \ it out: page-rounded text ending in the X64AOT table footer, then the RW
-\ tail, an empty region LOAD and the fixed DATA LOAD. The table at text offset
-\ $800 is the empty one the writer emits for a window with no nonzero byte and
-\ no XT cell: a zero run count and a zero XT count, 8 bytes, which the zeroed
-\ buffer already holds. Unlike the writer's, this DATA LOAD carries $20 file
-\ bytes, so its row is file-backed.
+\ tail, an empty region LOAD and the read-only DATA carrier LOAD at the
+\ region's end. The table at text offset $800 is the empty one the writer
+\ emits for a window with no nonzero byte and no XT cell: a zero run count and
+\ a zero XT count, 8 bytes, which the zeroed buffer already holds. Unlike the
+\ writer's, this carrier holds $20 file bytes, so its row is file-backed.
 $2000 constant EST-X64-TEXT
 $800 constant EST-X64-TABLE
 8 constant EST-X64-TABLE-BYTES
@@ -51,7 +51,7 @@ $800 constant EST-X64-TABLE
    0 0 $400000 EST-X64-TEXT EST-X64-TEXT 5 EST-X64-PHDR
    1 EST-X64-TEXT $400000 EST-X64-TEXT + $20 $20 6 EST-X64-PHDR
    2 0 $400000 REGION-OFF + 0 REGION 6 EST-X64-PHDR
-   3 $4000 X64LAYOUT:DATA-VA $20 X64LAYOUT:DATA-SIZE 6 EST-X64-PHDR
+   3 $4000 $400000 REGION-OFF + REGION + $20 $20 4 EST-X64-PHDR
    $90 EST-X64-BUF X64LAYOUT:CODE-OFF + c!
    EST-X64-TEXT X64AOT-FORMAT:FOOTER-BYTES - {: footer:n :}
    EST-X64-TABLE EST-X64-BUF footer + !
@@ -63,10 +63,10 @@ $800 constant EST-X64-TABLE
 \ Expected rows, in file order: header page $1000 other; text $800 code up to
 \ the table; run count 4 and XT count 4 other; table gap $1FF0 - $1808 = $7E8
 \ pad; footer 16 other; RW tail $20 other; segment gap $4000 - $2020 = $1FE0
-\ pad; fixed DATA $20, 2 written and 30 zero. Other is $1000 + 8 + 16 + $20 =
+\ pad; DATA carrier $20, 2 written and 30 zero. Other is $1000 + 8 + 16 + $20 =
 \ $1038.
 : EST-X64-SEGMENTS ( -- )
-   s" x86 fixed DATA PT_LOAD has its own file-backed row" T-LABEL
+   s" x86 DATA carrier PT_LOAD has its own file-backed row" T-LABEL
    CLEANUP-RESET
    s" habu-engine-size-x64" HB-TMP-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
@@ -84,7 +84,7 @@ $800 constant EST-X64-TABLE
    OTHER-BYTES $1038 T=
    CLEANUP-RUN ;
 
-\ With the DATA LOAD empty the file ends at the page after the RW tail: no
+\ With the carrier empty the file ends at the page after the RW tail: no
 \ data is written, and padding is the table gap $7E8 plus $3000 - $2020 = $FE0.
 : EST-X64-EMPTY ( -- )
    s" empty x86 fixed LOADs leave a page-rounded file" T-LABEL
@@ -94,7 +94,7 @@ $800 constant EST-X64-TABLE
    root rootu s" stripped" EST-X64-PATH JOIN-PATH EST-X64-PATH-U !
    EST-X64-IMAGE
    0 EST-X64-BUF $F0 + !
-   0 EST-X64-BUF $108 + !
+   0 EST-X64-BUF $108 + !  0 EST-X64-BUF $110 + !
    EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
    EST-X64-PATH EST-X64-PATH-U @ MEASURE
    CLASS$ s" stripped" T$=
@@ -102,10 +102,10 @@ $800 constant EST-X64-TABLE
    DATA-WRITTEN 0 T=
    PAD-BYTES $17C8 T=
    s" a negative fixed LOAD size is not an empty segment" T-LABEL
-   -1 EST-X64-BUF $108 + !
+   -1 EST-X64-BUF $108 + !  -1 EST-X64-BUF $110 + !
    EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
    [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
-   0 EST-X64-BUF $108 + !
+   0 EST-X64-BUF $108 + !  0 EST-X64-BUF $110 + !
    -1 EST-X64-BUF $D0 + !
    EST-X64-PATH EST-X64-PATH-U @ EST-X64-BUF $3000 WRITE-ALL
    [: EST-X64-PATH EST-X64-PATH-U @ MEASURE ;] E-ES-WALK TTHROWSQ
