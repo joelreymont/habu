@@ -1304,6 +1304,18 @@ public
    deps depsu
    deps depsu HAS-ORDERED? 0= FILE-ORDERED? 0= and ;
 
+\ Whether the innermost file stands in the scope it began in: its first row
+\ is the SCOPE row BEGIN-UNIT recorded.
+: FILE-SCOPE-KEPT? ( -- bool )
+   F-OFF FFIELD @ {: off:n :}
+   off FBYTES FUSED @ off - {: deps:ptr depsu:n :}
+   CHECK-OFF @ {: saved:n :}
+   deps depsu HEAD 0= if BAD then
+   deps depsu ROW-AT {: kind:n key:ptr keyu:n data:ptr datau:n :}
+   saved CHECK-OFF !
+   kind SCOPE <> if BAD then
+   data datau NFILE-SCOPE:SCOPE-MATCH? ;
+
 : CHECK ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
    bytes size HEAD {: count:n :}

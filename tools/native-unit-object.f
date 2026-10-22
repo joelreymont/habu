@@ -31,7 +31,9 @@ private
 \ the file's input and dependency rows, and what the file adds to the
 \ dictionary and DATA. Slot 0 holds the definitions' sections back to back;
 \ slot 2 one INDEX-BYTES row per definition: its ordinal past the file's first
-\ record, then the length of each DEF-SLOTS section in slot order; slot 11 the
+\ record, the length of each DEF-SLOTS section in slot order, then the span of
+\ its name token in the file's source, start and end offsets, 0 0 when the
+\ name came from other text: what the origin journal records; slot 11 the
 \ input rows; slot 14 the dependency rows. The file's own records fall in
 \ segments, each a maximal run between child loads: slot 12 holds one
 \ EVENT-BYTES row per segment and per child load, in load order. Over the
@@ -46,7 +48,10 @@ private
 \ Slots 0 1 2 3 4 6 8 11 12 13 14 16.
 96607 constant FILE-SLOTS
 14 constant DEPS-SLOT
-72 constant INDEX-BYTES
+\ An index row's name span: after the ordinal and the eight section lengths.
+72 constant SPAN-AT
+80 constant SPAN-END
+88 constant INDEX-BYTES
 \ A record row: kind, flags, name offset and length in slot 3, wordlist
 \ reference, then by kind the value, DATA reference, index row or public
 \ wordlist reference, and a package's private wordlist reference.
@@ -1126,12 +1131,12 @@ public
    DEF-RESET ;
 
 \ Definition ord of the innermost open file joins its object: the payload's
-\ sections in DEF-SLOTS order, and one index row. The payload's own dependency
-\ slot stays out; any other slot is a payload this format cannot hold. Its
-\ result digest is bound even when the file is refused, so the digest never
-\ depends on whether the file writes an object.
-: FILE-ADD-DEFINITION ( ptr u8 n ptr u8 n n -- )
-   {: bytes:ptr size:n key:ptr keyu:n ord:n :}
+\ sections in DEF-SLOTS order, and one index row with its name span at end.
+\ The payload's own dependency slot stays out; any other slot is a payload
+\ this format cannot hold. Its result digest is bound even when the file is
+\ refused, so the digest never depends on whether the file writes an object.
+: FILE-ADD-DEFINITION ( ptr u8 n ptr u8 n n n n -- )
+   {: bytes:ptr size:n key:ptr keyu:n ord:n at:n end:n :}
    FILE-OPEN? 0= if exit then
    bytes size NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu
       NUNIT-FILE:READ-VIEW
@@ -1149,13 +1154,26 @@ public
          i DEPS-SLOT <> u 0<> and if BAD then
       then
    loop
+   at INDEX-N end INDEX-N
    NUNIT-FILE:RESET-KEEP ;
 
-\ The dictionary ordinal of the innermost file's definition row n.
-: FILE-ORD ( n -- n ) {: row:n :}
+private
+
+\ The index of the innermost file's definition row n among all index rows.
+: INDEX-ROW ( n -- n ) {: row:n :}
    FO-INDEX FO @ INDEX-BYTES / row + {: at:n :}
    row 0 < at INDEX-U @ INDEX-BYTES / >= or if BAD then
-   at FILE-ORDS @ ;
+   at ;
+
+public
+
+\ The dictionary ordinal of the innermost file's definition row n.
+: FILE-ORD ( n -- n ) INDEX-ROW FILE-ORDS @ ;
+
+\ The name span of the innermost file's definition row n.
+: FILE-SPAN ( n -- n n )
+   INDEX-ROW INDEX-BYTES * {: off:n :}
+   off SPAN-AT + FILE-INDEX LE:U64@ off SPAN-END + FILE-INDEX LE:U64@ ;
 
 private
 
@@ -1366,6 +1384,19 @@ private
       used len +
    loop ;
 
+\ Whether a cut to kept retires a closed child load of the innermost file:
+\ its LOAD row, at the child's first ordinal, or a record of the child's
+\ range, which ends where the next event or the open segment begins. The
+\ child's object is written, and this file's would lose the load.
+: CUTS-CHILD? ( n -- bool ) {: kept:n :}
+   FILE-OPEN? 0= if false exit then
+   -1 EVENTS-N @ FO-EVENTS FO @ ?do i SEG? 0= if drop i then loop
+      {: last:n :}
+   last 0 < if false exit then
+   last 1+ EVENTS-N @ < if last 1+ 1 EV @ else FO-SEG-ORD FO @ then
+      {: end:n :}
+   kept last 1 EV @ <= kept end < or ;
+
 public
 
 \ The kernel's capture cut notice: the dictionary count drops to kept, which
@@ -1373,9 +1404,11 @@ public
 \ definition. Index and event rows follow ordinal order across the open files,
 \ so the retired ones are a suffix; drop it, end a SEGMENT row the cut
 \ crosses at the cut, and pull back each frame's marks the cut crosses, its
-\ first ordinal and open segment included.
+\ first ordinal and open segment included. A cut into a closed child load
+\ refuses the innermost file.
 : FILE-CUT ( n -- )
    {: kept:n :}
+   kept CUTS-CHILD? if s" cut-below-child" FILE-REFUSE then
    kept NUNIT-DEP:DICT-CUT
    INDEX-U @ INDEX-BYTES / {: rows:n :}
    0 begin
@@ -1547,9 +1580,9 @@ public
 \ Check a FILE object's framing: only FILE-SLOTS hold bytes, the dependency
 \ and input rows are well formed, the segment sections agree, and each index
 \ row frames one definition payload, in increasing ordinal order, covering the
-\ definitions slot exactly.
-: OPEN-FILE ( ptr u8 n ptr u8 n -- )
-   {: bytes:ptr size:n key:ptr keyu:n :}
+\ definitions slot exactly, and spans a name within the source's srcu bytes.
+: OPEN-FILE ( ptr u8 n ptr u8 n n -- )
+   {: bytes:ptr size:n key:ptr keyu:n srcu:n :}
    bytes size NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:READ-VIEW
    17 0 ?do
       FILE-SLOTS i rshift 1 and 0= if
@@ -1570,6 +1603,9 @@ public
       index i INDEX-BYTES * + {: row:ptr :}
       row LE:U64@ {: ord:n :}
       ord prev <= if BAD then
+      row SPAN-AT + LE:U64@ {: at:n :}
+      row SPAN-END + LE:U64@ {: end:n :}
+      at 0 < at end > or end srcu > or if BAD then
       row defsu off - ROW-SIZE {: total:n :}
       DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
       PAYLOAD-CK

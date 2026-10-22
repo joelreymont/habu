@@ -19,6 +19,7 @@ package NATIVE-FILE-FRAME-TEST
 
 $8000 constant CAP
 create INPUT CAP allot variable INPUT-U
+create WANT CAP allot variable WANT-U
 64 constant KEY-LEN
 create APP-KEY KEY-LEN allot
 create LIB-KEY KEY-LEN allot
@@ -34,6 +35,10 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    {: name:ptr nameu:n :}
    S\" s\" " IN+ name nameu AT IN+ S\" \" s\" repl\" NDEF-CACHE:LOAD\n" IN+ ;
 
+\ app.f's text, which its object's source spans are checked against.
+: APP$ ( -- ptr u8 n )
+   S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -48,11 +53,14 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    s" app.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
+   s" tasks.f" LOAD+
+   s" slot.f" LOAD+
    s" diag.f" LOAD+
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    s" retire.f" LOAD+
+   s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
@@ -154,6 +162,52 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 \ HITS's address as the probe printed it, up to the space after it.
 : HITS$ ( -- ptr u8 n ) OUT$ s" hits=" FIELD$ ;
 
+20 constant DIGITS-CAP
+create DIGITS DIGITS-CAP allot variable DIGITS-AT
+
+\ n in decimal, appended to INPUT.
+: N+ ( n -- )
+   DIGITS-CAP DIGITS-AT !
+   begin
+      -1 DIGITS-AT +!
+      dup 10 mod 48 + DIGITS DIGITS-AT @ + c!
+      10 / dup 0=
+   until drop
+   DIGITS DIGITS-AT @ + DIGITS-CAP DIGITS-AT @ - IN+ ;
+
+\ The span of definition name's name token in app.f, as "at-end", appended
+\ to INPUT: what the origin journal records for it.
+: SPAN+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   INPUT-U @ {: mark:n :}
+   s" : " IN+ name nameu IN+ s"  " IN+
+   APP$ INPUT mark + INPUT-U @ mark - FIND-SUB MATCH option
+     none OF T-FAIL 0 ENDOF
+     some OF IDX>N 2 + ENDOF
+   ;MATCH {: at:n :}
+   mark INPUT-U !
+   at N+ s" -" IN+ at nameu + N+ ;
+
+\ The source spans app.f's object holds, one per definition in order.
+: APP-SPANS ( -- )
+   0 INPUT-U !
+   s" PRE" SPAN+ s" ," IN+
+   s" IMM-USER" SPAN+ s" ," IN+
+   s" FRAME-USE" SPAN+ s" ," IN+
+   s" TALLY" SPAN+
+   INPUT WANT INPUT-U @ BYTE-COPY INPUT-U @ WANT-U !
+   s" app.f" OBJECT$ s"  src=" FIELD$ WANT WANT-U @ T$= ;
+
+\ name's load wrote no object.
+: NO-OBJECT ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   0 INPUT-U !
+   name nameu IN+ s"  key=" IN+
+   ERR$ INPUT INPUT-U @ FIND-SUB MATCH option
+     none OF ENDOF
+     some OF drop T-FAIL ENDOF
+   ;MATCH ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -172,11 +226,19 @@ public
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
+   \ tasks.f loads TASK; slot.f then moves TASK's user-slot watermark at load
+   \ time through the cell TASK hands its claimants. TASK:+USER moves it too,
+   \ but the slot word it evaluates refuses the file first (checker-busy).
+   \ scope.f leaves its package open, the last load: a using it left open
+   \ would not count, as usings end with their file (interpret.f CLEAN-END).
+   s" tasks.f" S\" require src/lib/task.f\n" PUT
+   s" slot.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT
+   s" scope.f" S\" package FRAME-SCOPE\n" PUT
    \ retire.f retires a record lib.f made.
    s" retire.f" S\" undefine FRAME-LIB:BUMP\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions.
-   s" app.f" S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
+   s" app.f" APP$ PUT
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
    PROBE {: rc:n :}
@@ -240,6 +302,14 @@ public
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
    s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
    s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
+   s" a file that ends in another scope than it began in has no object" T-LABEL
+   s" scope.f" s"  reason=" LINE$ s" scope.f reason=scope-exit" T$=
+   s" scope.f" NO-OBJECT
+   s" a file that takes a TASK user slot has no object" T-LABEL
+   s" slot.f" s"  reason=" LINE$ s" slot.f reason=task-slots" T$=
+   s" slot.f" NO-OBJECT
+   s" app.f's object holds each definition's name span in app.f" T-LABEL
+   APP-SPANS
    LIB-KEY KEY-LEN STORED
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP

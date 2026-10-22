@@ -87,6 +87,7 @@ public
    s" REQUIRE-REG:COUNT" true BIND-ONE
    s" REQUIRE-REG:LEN" true BIND-ONE
    s" REQUIRE-REG:SLOT" true BIND-ONE
+   s" TASK:OWNED-USER-NEXT" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;

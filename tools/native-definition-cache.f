@@ -53,7 +53,11 @@ $4B8 constant LIVE-FIXED-OFF
 \ Where the loading file's source stood when it loaded this one; -1 for
 \ the outermost file or a load from outside that source.
 104 constant F-AT
-112 constant FRAME-BYTES
+\ TASK's user-slot watermark when the file opened, and 1 when TASK was bound
+\ to read it.
+112 constant F-SLOTS
+120 constant F-SLOTS-BOUND
+128 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
@@ -140,6 +144,7 @@ CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
+CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
 CAST: RETIRE-SET-XT ( n -- [ n -- ] )
 CAST: RETIRE>N ( [ ptr n -- ] -- n )
@@ -595,6 +600,24 @@ variable PENDING-KEY-U
    then
    ORIGIN-TAKE-XT ARM-NATIVE drop ;
 
+\ The span of the current definition's name token in the innermost file's
+\ source, read where the origin journal reads it (ENGINE-ORIGIN SOURCE-NAME);
+\ 0 0 when the name came from other text.
+: DEF-SPAN ( -- n n )
+   DEPTH @ 0= if 0 0 exit then
+   FRAME F-SRC + 0 ptr-field @ {: src:ptr :}
+   src NULL-PTR = if 0 0 exit then
+   F-SRC-U F@ {: size:n :}
+   data-base PEND-CELL + @ 0= if DEF-TKA-CELL else PENDTKA-CELL then
+      data-base + CELL-VIEW @ {: token:n :}
+   token src NULL-PTR BYTE-VIEW - - {: at:n :}
+   at 0 < at size >= or if 0 0 exit then
+   at begin
+      dup size < if src over + c@ 32 > else false then
+   while 1+ repeat {: end:n :}
+   end at = if 0 0 exit then
+   at end ;
+
 \ Install the prepared definition from the entry at path, which ENTRY holds
 \ until DISCARD-DEFINITION. USED dates the entry after the read; a prune
 \ that takes it in between costs nothing, since this session has its bytes.
@@ -625,7 +648,7 @@ variable PENDING-KEY-U
       NUNIT-OBJECT:DISCARD-DEFINITION false exit
    then
    path pathu ord source sourceu INSTALL-ENTRY
-   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu ord
+   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu ord DEF-SPAN
       NUNIT-OBJECT:FILE-ADD-DEFINITION
    true ;
 
@@ -705,7 +728,8 @@ variable PENDING-KEY-U
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
          storable if key keyu object objectu ENTRY-WRITE then
-         object objectu key keyu ord NUNIT-OBJECT:FILE-ADD-DEFINITION
+         object objectu key keyu ord DEF-SPAN
+            NUNIT-OBJECT:FILE-ADD-DEFINITION
       then
       storable 0= if
          admitted if
@@ -932,12 +956,29 @@ variable PENDING-KEY-U
    FRAME-PATH FRAME-ROOT FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
       NFILE-INPUTS:ADD-ROOT ;
 
+variable USER-SEEN
+: USER-SEEN! ( ptr u8 -- ) CELL-VIEW @ USER-SEEN ! ;
+
+\ TASK's user-slot watermark, and whether TASK is bound to read it.
+: USER-MARK ( -- n bool )
+   s" TASK:OWNED-USER-NEXT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
+      dup 0= if drop 0 false exit then
+   ['] USER-SEEN! swap USER-NEXT-XT execute
+   USER-SEEN @ true ;
+
+\ Whether the innermost file took TASK user slots: a replay restores none.
+: SLOTS-MOVED? ( -- bool )
+   F-SLOTS-BOUND F@ 0= if false exit then
+   USER-MARK 0= if drop false exit then
+   F-SLOTS F@ <> ;
+
 \ Open the object of the file just pushed; its first row is its own source's
 \ content. Rows join an object only at ROWS-FLUSH, so the row recorded before
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
 : OBJECT-OPEN ( -- )
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
    NFILE-INPUTS:MARK F-MARK F!
+   USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
    BIND-RETIRE
    FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN ;
@@ -956,12 +997,16 @@ variable PENDING-KEY-U
    RESULTS-HEX 16 ;
 
 \ Write the innermost file's object and read it back on every build; the
-\ cache diagnostics only print what was written or why the file has none.
+\ cache diagnostics only print what was written or why the file has none. A
+\ file that leaves its scope or takes TASK user slots changes state a replay
+\ does not restore, so it has none.
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
    BIND-RETIRE
    NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
    storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
+   NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
+   SLOTS-MOVED? if s" task-slots" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-OBJECT:FILE-ENCODE
    NUNIT-OBJECT:FILE-REFUSED? if
       DIAG? @ 0= if exit then
@@ -976,7 +1021,8 @@ variable PENDING-KEY-U
    key keyu FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ
       {: got:n found:bool :}
    found 0= got size <> or if BAD then
-   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu NUNIT-OBJECT:OPEN-FILE
+   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
+      NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n :}
    DIAG? @ 0= if exit then
@@ -992,6 +1038,11 @@ variable PENDING-KEY-U
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
+   s"  src=" DIAG-W2
+   defs 0 ?do
+      i 0 > if s" ," DIAG-W2 then
+      i NUNIT-OBJECT:FILE-SPAN swap DIAG-N s" -" DIAG-W2 DIAG-N
+   loop
    S\" \n" DIAG-W2 ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )

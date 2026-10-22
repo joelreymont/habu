@@ -757,16 +757,32 @@ PENDING-CLEAR
       rec XREF-START rec XREF-CODE-BYTES ord REGISTER-IMPL-RANGE
    then ;
 
-: PUBLISH-DEFINITION ( n ptr u8 n -- )
-   {: ord:n key:ptr keyu:n :}
+private
+
+\ The pending definition ord is the one being published.
+: PUBLISH-CHECK ( n -- ) {: ord:n :}
    ord 0 < ord ndict@ >= or if BAD then
-   PENDING-ORD @ ord <> if BAD then
-   ord key keyu BIND-DECL
+   PENDING-ORD @ ord <> if BAD then ;
+
+: PUBLISH-LIVE ( n -- ) {: ord:n :}
    ord BIND-LIVE
    ord LIVE-CONTRACT$ if
       ord -rot BIND-CONTRACT
    else 2drop then
    PENDING-CLEAR ;
+
+public
+
+: PUBLISH-DEFINITION ( n ptr u8 n -- )
+   {: ord:n key:ptr keyu:n :}
+   ord PUBLISH-CHECK
+   ord key keyu BIND-DECL
+   ord PUBLISH-LIVE ;
+
+\ Publish the pending definition ord whose declaration a file object already
+\ bound: PUBLISH-DEFINITION without its key.
+: PUBLISH-PREPARED ( n -- )
+   dup PUBLISH-CHECK PUBLISH-LIVE ;
 
 : ALLOC-KEY$ ( n -- ptr u8 n ) {: row:n :}
    row 0 < row ALLOC-N @ >= or if BAD then
