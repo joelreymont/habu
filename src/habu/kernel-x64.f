@@ -2720,18 +2720,32 @@ public
    RAX 70 IMM32,  RAX PUSH,
    done X64CODE:LBL, ;
 
+: FLOORMSG$ ( -- ptr u8 n ) s" hb: interpret stack underdepth: " ;
+
+\ The underdepth throw entry the crash handler resumes a data access below the
+\ base at (boot-x64.f DATA-RECOVER,): reset the cursor to the base, name the
+\ token being interpreted on fd 2 and throw 70, as habu2.f LFLOORREC does. The
+\ texts follow the throw, which never falls through.
 : CONTROL, ( -- )
    FLOORREC-PENDING @ if
       false FLOORREC-PENDING !
    else
       X64CODE:LBL FLOORREC-ENTRY !
    then
-   X64CODE:LBL {: after-floor:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: after-floor:label head:label nl:label :}
    after-floor JMP,
    FLOORREC-LBL X64CODE:LBL,
    DSP DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
+   head FLOORMSG$ nip STDERR-WRITE,
+   RDI STDERR IMM32,
+   RSI DATA-REG TKA-CELL MOV-LOAD,
+   RDX DATA-REG TKL-CELL MOV-LOAD,
+   NR-WRITE SYS,
+   nl 1 STDERR-WRITE,
    RAX 70 IMM32,
    THROW,
+   head X64CODE:LBL,  FLOORMSG$ TEXT,
+   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
    after-floor X64CODE:LBL,
    s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM
