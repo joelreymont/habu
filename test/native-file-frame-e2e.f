@@ -37,7 +37,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 
 \ app.f's text, which its object's source spans are checked against.
 : APP$ ( -- ptr u8 n )
-   S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" ;
+   S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\nTALLY\n' FRAME-LIB:QUAD FRAME-LIB:HOOK xt!\n" ;
 
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
@@ -68,6 +68,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    s" after.f" LOAD+
    s" retire.f" LOAD+
    s" raw.f" LOAD+
+   s" poke.f" LOAD+
    s" slot.f" LOAD+
    s" later.f" LOAD+
    s" scope.f" LOAD+
@@ -271,6 +272,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ raw.f's TRUSTED: RAW-SET stores a code address into the plain variable
    \ RAW-CELL, which declares no xt cell.
    s" raw.f" S\" variable RAW-CELL\n: RAW-TARGET ( -- ) ;\nTRUSTED: RAW-SET ( -- ) ['] RAW-TARGET RAW-CELL ! ;\nRAW-SET\n" PUT
+   \ poke.f's TRUSTED: POKE stores a code address 8 bytes into board.f's
+   \ 16-byte BOARD, an earlier cell no address row declares: the update check
+   \ refuses it there. board.f loads in poke.f's session, above its image floor.
+   s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
+   s" poke.f" S\" require board.f\nTRUSTED: POKE ( -- ) ['] BOARD-GO BOARD 8 + ! ;\nPOKE\n" PUT
    \ slot.f's declared xt cell holds deep.f's TEN, which nothing else in it
    \ compiles.
    s" slot.f" S\" TYPED-VARIABLE SLOT-HOOK [ -- n ]\n' FRAME-DEEP:TEN SLOT-HOOK xt!\n" PUT
@@ -279,7 +285,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
-   \ exec.f between its own definitions.
+   \ exec.f between its own definitions, and its top level runs TALLY, which
+   \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
+   \ xt cell HOOK.
    s" app.f" APP$ PUT ;
 
 : FRAME-CHECKS ( -- )
@@ -293,8 +301,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
       ENDS-WITH? TTRUE
    s" after.f, the first file after the run, stores its first definition" T-LABEL
    s" after.f" DEFS$ s" 1" T$=
-   s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value and MARK's run" T-LABEL
-   s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=29 executed=1 data=0" ENDS-WITH? TTRUE
+   s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value, MARK's run, HITS's data through TALLY's run and HOOK's run and data" T-LABEL
+   \ The xt! line adds 5 resolution rows (FRAME-LIB:QUAD and FRAME-LIB:HOOK 2
+   \ each, namespace and public, xt! 1 global), HOOK's run and its generated
+   \ body's, and HOOK's data.
+   s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=34 executed=3 data=2" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
    \ HOOK adds 12 resolution rows: TYPED-VARIABLE and xt! 3 each (global hit,
    \ FRAME-LIB public and private misses), the generated body's HOOK#base 4 (global
@@ -346,13 +357,23 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" app.f" s"  segments=" s" 7" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
-   s" lib.f's declared xt cell HOOK is its one slot; app.f declares none" T-LABEL
+   s" lib.f's declared xt cell HOOK is its one slot" T-LABEL
    s" lib.f" s"  slots=" s" 1" OBJECT-HAS
-   s" app.f" s"  slots=" s" 0" OBJECT-HAS
+   s" app.f's store into lib.f's HOOK is its one slot, binding HOOK and QUAD beyond its frame's rows" T-LABEL
+   s" app.f" s"  slots=" s" 1" OBJECT-HAS
+   s" app.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
+   s" app.f" FRAME$ s"  rows=" FIELD$ FIELD-N 2 + T=
+   s" app.f's run of TALLY changes one byte of lib.f's HITS; lib.f writes no earlier DATA" T-LABEL
+   s" app.f" s"  updates=" s" 1" OBJECT-HAS
+   s" lib.f" s"  updates=" s" 0" OBJECT-HAS
    s" raw.f's undeclared code address refuses its object, naming the cell" T-LABEL
    s" raw.f" s"  reason=" LINE$
       s" raw.f reason=raw-cell owner=RAW-CELL offset=0 value=0x" STARTS-WITH? TTRUE
    ERR$ s" raw.f key=" CONTAINS? TFALSE
+   s" poke.f's code address in earlier DATA refuses its object, naming the cell" T-LABEL
+   s" poke.f" s"  reason=" LINE$
+      s" poke.f reason=raw-cell owner=BOARD offset=8 value=0x" STARTS-WITH? TTRUE
+   ERR$ s" poke.f key=" CONTAINS? TFALSE
    s" slot.f's slot names TEN, so its object binds TEN beyond its frame's rows" T-LABEL
    s" slot.f" s"  slots=" s" 1" OBJECT-HAS
    s" slot.f" FRAME$ s"  binding=" FIELD$ s" 0" T$=

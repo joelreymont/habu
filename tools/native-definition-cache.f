@@ -1071,6 +1071,11 @@ variable USER-SEEN
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
    BIND-RETIRE
+   DIAG? @ if
+      s" native-file: image path=" DIAG-W2 FRAME-PATH DIAG-W2
+      s"  copied=" DIAG-W2 NUNIT-OBJECT:IMAGE-BYTES DIAG-N
+      S\" \n" DIAG-W2
+   then
    NUNIT-DEP:FILE-EXPORT nip nip 0= if
       s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE
    then
@@ -1097,7 +1102,8 @@ variable USER-SEEN
    0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n :}
+      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
+         upds:n :}
    DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1110,6 +1116,7 @@ variable USER-SEEN
    s"  loads=" DIAG-W2 loads DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  slots=" DIAG-W2 slots DIAG-N
+   s"  updates=" DIAG-W2 upds DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    s"  src=" DIAG-W2
@@ -1160,7 +1167,11 @@ variable USER-SEEN
    at F-AT F!
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if FILE-CLOSE NFILE-REF:POP-FILE open-rc throw then
+   \ The before-image follows BEGIN-UNIT's observer hooks, and the parent's
+   \ reopened segment's follows CLOSE-UNIT's, which may unhook them, so the
+   \ capture's own writes are never a file's change to earlier DATA.
    NUNIT-DEP:BEGIN-UNIT
+   NUNIT-OBJECT:SEGMENT-IMAGE
    ['] UNIT-RUN catch {: unit-rc:n :}
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
@@ -1169,6 +1180,7 @@ variable USER-SEEN
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
    NUNIT-DEP:CLOSE-UNIT
+   NUNIT-OBJECT:SEGMENT-IMAGE
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}

@@ -88,12 +88,15 @@ public
    s" REQUIRE-REG:LEN" true BIND-ONE
    s" REQUIRE-REG:SLOT" true BIND-ONE
    s" TASK:OWNED-USER-NEXT" true BIND-ONE
-   \ The storage owners a FILE object's DATA scan skips (AOT-CELL).
+   \ The storage owners a FILE object's DATA scan and updates skip.
    s" NSTR:CELL-SPANS" true BIND-ONE
    s" NSTR:OWNER-ROW" true BIND-ONE
    s" FFI:SCAN-SPANS" true BIND-ONE
    s" FFI-DECL:SCAN-SPANS" true BIND-ONE
    s" TASK:OWNED-CALLBACK-ROWS" true BIND-ONE
+   s" TASK:OWNED-CELLS" true BIND-ONE
+   s" DYNAMIC-STORAGE:OWNED-CELLS" true BIND-ONE
+   s" REQUIRE-REG:CELL-SPANS" true BIND-ONE
    s" FFI-CB:SCAN-SPANS" true BIND-ONE
    s" FFI:FORGET-CACHE" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE ;

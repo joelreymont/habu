@@ -47,11 +47,14 @@ private
 \ namespace at the file's end. Slot 9 holds one SLOT-BYTES row per declared
 \ address cell the segments declared, and slot 10 the literal bodies slot
 \ rows point into, in definition literal framing; a slot cell in the file's
-\ DATA is zero in slot 6. Every other slot is empty. A definition's own
+\ DATA is zero in slot 6. A write to an earlier file's address cell is a slot
+\ row too, and slot 7 holds one UPDATE-BYTES row per other earlier DATA byte
+\ the segments changed outside the storage owners' spans. Every other slot is
+\ empty. A definition's own
 \ dependency slot stays out: the file's rows cover it.
 42031 constant DEF-SLOTS
-\ Slots 0 1 2 3 4 6 8 9 10 11 12 13 14 16.
-98143 constant FILE-SLOTS
+\ Slots 0 1 2 3 4 6 7 8 9 10 11 12 13 14 16.
+98271 constant FILE-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
 72 constant SPAN-AT
@@ -70,6 +73,8 @@ private
 24 constant SLOT-BYTES
 0 constant SLOT-XT
 1 constant SLOT-DATA
+\ An update row: the changed byte's reference and its value at the close.
+16 constant UPDATE-BYTES
 \ Record row kinds; 1 to 3 are the fixed kinds NCOMP:COMPILE-FIXED takes.
 0 constant RK-BARE
 1 constant RK-VAL
@@ -82,8 +87,10 @@ private
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
-\ with, and the address cell row before the open segment's first. A child
-\ file's bytes follow its parent's and are dropped when the child closes.
+\ with, the address cell row before the open segment's first, the bytes its
+\ segments' before-images copied, and the earlier DATA sites recorded when it
+\ opened. A child file's bytes and sites follow its parent's and are dropped
+\ when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -98,7 +105,9 @@ private
 11 constant FO-REQ-XT
 12 constant FO-SEG-SLOT
 13 constant FO-SEG-PREV
-14 constant FO-CELLS
+14 constant FO-IMAGE
+15 constant FO-SITES
+16 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -129,6 +138,29 @@ variable LITS-AT
 variable OPEN-SLOTS
 \ The target's NSTR:OWNER-ROW while the closing file encodes, 0 when absent.
 variable OWNER-ROW-XT
+\ The before-image of earlier DATA: the session's DATA from IMAGE-FLOOR,
+\ HERE at its first image, to HERE when the open segment's image was taken.
+\ Taken once the segment opens (SEGMENT-IMAGE), only while a file compiles,
+\ and compared at the segment's close.
+DYNAMIC-BUFFER IMAGE u8
+variable IMAGE-FLOOR
+variable IMAGE-U
+\ The earlier DATA bytes the open files' segments changed, each once per
+\ file and ascending within it, innermost file last. Encoding drops the closing file's own DATA, address
+\ cells and the storage owners' spans, and keeps the rest as updates.
+DYNAMIC-BUFFER FILE-SITES n
+variable SITES-N
+\ The address cell rows the closing file's earlier-DATA writes emitted.
+DYNAMIC-BUFFER FILE-SLOTW n
+variable SLOTW-N
+\ The storage owners' spans while the closing file encodes, base and end.
+DYNAMIC-BUFFER OWNER-SPANS n
+variable OWNER-N
+\ Each of the closing file's sites' owning record and that record's DATA
+\ start, two cells per site.
+DYNAMIC-BUFFER SITE-OWNS n
+variable UPDS-AT
+variable OPEN-UPDS
 variable DEFS-U
 variable INDEX-U
 variable INPUTS-U
@@ -324,6 +356,66 @@ private
    idx count >= if false exit then
    rows idx cells + @ raw = ;
 
+\ Copy the session's DATA from its floor to HERE as the open segment's
+\ before-image, counting the bytes against the innermost file. A refused file
+\ takes none. The floor is HERE at the session's first image.
+: IMAGE-TAKE ( -- )
+   AOT-ARM:HERE-N {: top:n :}
+   IMAGE-FLOOR @ 0= if top IMAGE-FLOOR ! then
+   top IMAGE-FLOOR @ - {: bytes:n :}
+   0 IMAGE-U !
+   FILE-REFUSED? bytes 0 <= or if exit then
+   bytes IMAGE-RESERVE
+   IMAGE-FLOOR @ DATA-PTR 0 IMAGE bytes BYTE-COPY
+   bytes IMAGE-U !
+   bytes FO-IMAGE FO +! ;
+
+\ The first index from lo below hi whose site is not below va, hi when none.
+: SITE-AT ( n n n -- n )
+   {: va:n :}
+   begin 2dup < while
+      2dup + 2 / dup FILE-SITES @ va < if rot drop 1+ swap else nip then
+   repeat drop ;
+
+\ Record the earlier DATA byte at va as changed, once per innermost file,
+\ keeping its sites ascending. A segment's sites arrive ascending, so an
+\ insertion moves only the later segments' sites above it.
+: SITE+ ( n -- )
+   {: va:n :}
+   FO-SITES FO @ SITES-N @ va SITE-AT {: at:n :}
+   at SITES-N @ < if at FILE-SITES @ va = if exit then then
+   SITES-N @ 1+ FILE-SITES-RESERVE
+   SITES-N @ begin dup at > while
+      dup 1- FILE-SITES @ over FILE-SITES ! 1-
+   repeat drop
+   va at FILE-SITES !
+   1 SITES-N +! ;
+
+\ Record each byte of width bytes at offset off past floor that differs
+\ between live and before.
+: BYTE-SITES ( n n n ptr u8 ptr u8 -- )
+   {: floor:n off:n width:n live:ptr before:ptr :}
+   width 0 ?do
+      live off + i + c@ before off + i + c@ <> if floor off + i + SITE+ then
+   loop ;
+
+\ Record each earlier DATA byte that differs from the open segment's
+\ before-image, comparing a cell at a time.
+: IMAGE-DIFF ( -- )
+   IMAGE-U @ {: size:n :}
+   0 IMAGE-U !
+   size 0= if exit then
+   IMAGE-FLOOR @ {: floor:n :}
+   floor DATA-PTR {: live:ptr :}
+   0 IMAGE {: before:ptr :}
+   size CELL / CELL * {: bulk:n :}
+   bulk 0 ?do
+      live i + CELL-VIEW @ before i + CELL-VIEW @ <> if
+         floor i CELL live before BYTE-SITES
+      then
+   CELL +loop
+   floor bulk size bulk - live before BYTE-SITES ;
+
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
    ndict@ FO-SEG-ORD FO !
@@ -332,14 +424,16 @@ private
    AOT-ARM:WIDN FO-SEG-WID FO !
    SLOT-COUNT {: slot:n :}
    slot FO-SEG-SLOT FO !
-   slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO ! ;
+   slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO !
+   0 IMAGE-U ! ;
 
 \ Close the innermost file's open segment as one SEGMENT row, or none when
 \ it added no record, DATA, require, wordlist or address cell row. HERE or
 \ the wordlist counter going back, a require counter other than the one the
 \ file opened with, or an address cell row removed below the segment's first
 \ refuses it. The row records the values of its first and last address cell
-\ rows, which the file's encoding checks again.
+\ rows, which the file's encoding checks again. The earlier DATA bytes the
+\ segment changed are recorded whether or not it adds a row.
 : SEGMENT-CLOSE ( -- )
    FO-SEG-ORD FO @ {: first:n :}
    ndict@ first - {: count:n :}
@@ -357,6 +451,7 @@ private
          s" slots-rewound" FILE-REFUSE exit
       then
    then
+   FILE-REFUSED? 0= if IMAGE-DIFF then
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= if exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
@@ -408,6 +503,8 @@ public
    EVENTS-N @ FO-EVENTS FO !
    NAMES-U @ FO-NAMES FO !
    REQ-XT FO-REQ-XT FO !
+   0 FO-IMAGE FO !
+   SITES-N @ FO-SITES FO !
    SEGMENT-OPEN
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
@@ -428,6 +525,7 @@ public
    FO-WHY FO @ WHY-U !
    FO-EVENTS FO @ EVENTS-N !
    FO-NAMES FO @ NAMES-U !
+   FO-SITES FO @ SITES-N !
    -1 FO-DEPTH +!
    FILE-OPEN? if SEGMENT-OPEN then ;
 
@@ -449,6 +547,16 @@ public
       ord i SEGS-OWN? if s" retires-earlier" rec i FRAME-REFUSE-WORD then
    loop ;
 
+\ Take the before-image of the innermost file's open segment, against which
+\ the segment's close finds the earlier DATA it changed. The caller takes it
+\ after setting its own hooks for the segment, so their writes fall outside
+\ the compared interval (NDEF-CACHE FILE-UNIT-WITH); a segment without one
+\ records no changes.
+: SEGMENT-IMAGE ( -- ) FILE-OPEN? if IMAGE-TAKE then ;
+
+\ The bytes the innermost file's before-images copied.
+: IMAGE-BYTES ( -- n ) FO-IMAGE FO @ ;
+
 : REASON$ ( -- ptr u8 n )
    FO-WHY FO @ {: first:n :}
    WHY-U @ first = if NULL-PTR 0 exit then
@@ -465,6 +573,10 @@ public
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
+   0 IMAGE-FLOOR ! 0 IMAGE-U ! 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
+   0 OPEN-UPDS !
+   IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
+   SITE-OWNS-RELEASE
    FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
    FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
@@ -1440,6 +1552,13 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
 
 : LIT-HIT? ( n -- bool ) OWNER-ROW? {: body:ptr size:n found:bool :} found ;
 
+\ The DATA record ord's origin names, and whether it names any, while the
+\ record is live.
+: REC-DATA? ( n -- n bool )
+   {: ord:n :}
+   ord NFILE-REF:DATA-ORIGIN-BASE {: base:n known:bool :}
+   base known ord XREF-REC XREF-RETIRED? 0= and ;
+
 \ The live record whose DATA starts nearest at or below va, and that start;
 \ -1 when none does.
 : OWNER-AT ( n -- n n )
@@ -1447,9 +1566,8 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    -1 0
    ndict@ 0 ?do
       {: best:n at:n :}
-      i NFILE-REF:DATA-ORIGIN-BASE {: base:n known:bool :}
-      known i XREF-REC XREF-RETIRED? 0= and
-      base va <= and base at >= best 0 < or and
+      i REC-DATA? {: base:n known:bool :}
+      known base va <= and base at >= best 0 < or and
       if i base else best at then
    loop ;
 
@@ -1463,15 +1581,23 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ord NFILE-REF:DECL-KEY? nip nip 0= if -1 0 exit then
    ord va base - ;
 
-\ A slot site in an earlier file's DATA as a reference through the
-\ declaration that owns it, 0 when no keyed declaration does. The file
-\ depends on that declaration as a compiled reference to it would
+\ An earlier file's DATA at va, owned by record ord whose DATA starts at
+\ base, as a reference through that declaration, 0 when it is not keyed.
+\ The file depends on that declaration as a compiled reference to it would
 \ (DEF-ADDR-REF).
-: EARLIER-SITE ( n -- n )
-   EARLIER-AT {: ord:n addend:n :}
+: REF-AT ( n n n -- n )
+   {: va:n ord:n base:n :}
    ord 0 < if 0 exit then
+   ord NFILE-REF:DECL-KEY? nip nip 0= if 0 exit then
    ord NUNIT-DEP:BIND-ORD
-   ord addend 0 1 NFILE-REF:REF-DECL-DATA ;
+   ord va base - 0 1 NFILE-REF:REF-DECL-DATA ;
+
+\ A slot site in an earlier file's DATA as a reference through the
+\ declaration that owns it, 0 when no keyed declaration does.
+: EARLIER-SITE ( n -- n )
+   {: va:n :}
+   va AOT-CELL:DATA-ADDRESS? 0= if 0 exit then
+   va va OWNER-AT REF-AT ;
 
 \ A slot value into an earlier file's DATA as a reference through the
 \ declaration that owns it, 0 when no keyed declaration does or the offset
@@ -1484,6 +1610,32 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ord NUNIT-DEP:DATA-ORD addend <= if 0 exit then
    ord addend 0 1 NFILE-REF:REF-DECL-DATA ;
 
+\ OWNER-AT for each of the closing file's sites, in one pass over the
+\ dictionary instead of one per site. A record is a candidate at the first
+\ site its DATA start does not exceed; a later site's candidate starts above
+\ every earlier site, so a running maximum carries each owner upward.
+: SITE-OWNERS ( -- )
+   FO-SITES FO @ {: first:n :}
+   SITES-N @ first - {: count:n :}
+   count 0= if exit then
+   count 2 * SITE-OWNS-RESERVE
+   count 0 ?do -1 i 2 * SITE-OWNS ! 0 i 2 * 1+ SITE-OWNS ! loop
+   ndict@ 0 ?do
+      i REC-DATA? if
+         {: base:n :}
+         first SITES-N @ base SITE-AT first - {: at:n :}
+         at count < if
+            at 2 * SITE-OWNS @ 0 < base at 2 * 1+ SITE-OWNS @ >= or if
+               i at 2 * SITE-OWNS ! base at 2 * 1+ SITE-OWNS !
+            then
+         then
+      else drop then
+   loop
+   -1 0 count 0 ?do
+      i 2 * SITE-OWNS @ 0 >= if 2drop i 2 * SITE-OWNS @ i 2 * 1+ SITE-OWNS @ then
+      2dup i 2 * 1+ SITE-OWNS ! i 2 * SITE-OWNS !
+   loop 2drop ;
+
 : WHY-N ( n -- )
    {: value:n :}
    value 10 >= if value 10 / recurse then
@@ -1494,16 +1646,22 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    value 4 rshift 0<> if value 4 rshift recurse then
    s" 0123456789abcdef" drop value 15 and + 1 WHY+ ;
 
+\ The record that owns the byte at site and the byte's offset in it, or -
+\ and its offset in DATA when no record does.
+: WHY-SITE ( n -- )
+   {: site:n :}
+   s" owner=" WHY+
+   site OWNER-AT {: ord:n base:n :}
+   ord 0 < if s" -" WHY+ site DATA-VA VA>N -
+   else ord XREF-REC XREF-NAME$ WHY+ site base - then {: off:n :}
+   s"  offset=" WHY+ off WHY-N ;
+
 \ The closing file keeps a raw address its DATA holds at site, so it
 \ refuses, naming the record that owns the cell and the cell's offset in it.
 : DECLINE-CELL ( n n -- )
    {: site:n value:n :}
    FILE-REFUSED? if exit then
-   s" raw-cell owner=" WHY+
-   site OWNER-AT {: ord:n base:n :}
-   ord 0 < if s" -" WHY+ site DATA-VA VA>N -
-   else ord XREF-REC XREF-NAME$ WHY+ site base - then {: off:n :}
-   s"  offset=" WHY+ off WHY-N
+   s" raw-cell " WHY+ site WHY-SITE
    s"  value=0x" WHY+ value WHY-HEX ;
 
 \ The literal row of the body at body, bytes long: an earlier row of the
@@ -1641,6 +1799,15 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    {: va:n :}
    0 CELL 0 ?do 8 lshift va CELL 1- + i - SEG-BYTE or loop ;
 
+\ The cell window at holds value: a code or mapped address there that no
+\ owner declares refuses the file.
+: ADMIT-AT ( n n -- )
+   {: at:n value:n :}
+   value AOT-CELL:TEXT-PTR? value AOT-CELL:MAPPED? or 0= if exit then
+   at AOT-CELL:NONCELL-WINDOW? if exit then
+   at [: LIT-HIT? ;] AOT-CELL:LITERAL-OVERLAP? if exit then
+   at value DECLINE-CELL ;
+
 \ Every cell window reaching into the segment at va, bytes long, whose DATA
 \ starts at base in the file's DATA section: from the window starting CELL-1
 \ bytes before it to the last inside it. A code or mapped address there that
@@ -1652,20 +1819,159 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       i {: at:n :}
       at va >= if DATA-AT @ base + at + va - FILE-OUT LE:U64@
       else at WINDOW@ then {: value:n :}
-      value AOT-CELL:TEXT-PTR? value AOT-CELL:MAPPED? or if
-         at AOT-CELL:NONCELL-WINDOW? 0=
-         at [: LIT-HIT? ;] AOT-CELL:LITERAL-OVERLAP? 0= and if
-            at value DECLINE-CELL unloop exit
+      at value ADMIT-AT
+      FILE-REFUSED? if unloop exit then
+   loop ;
+
+\ Every whole cell holding an earlier DATA byte the closing file updates,
+\ each once while the bytes ascend: the cell at the cell-aligned offset in
+\ the declaration that owns the byte (SITE-OWNERS), never a window across
+\ two cells.
+: ADMIT-UPDATES ( -- )
+   -1 SITES-N @ FO-SITES FO @ ?do
+      {: last:n :}
+      i FILE-SITES @ {: va:n :}
+      va 0= if last else
+         i FO-SITES FO @ - 2 * 1+ SITE-OWNS @ {: base:n :}
+         va base - CELL / CELL * base + {: at:n :}
+         at last <> if
+            at at WINDOW@ ADMIT-AT
+            FILE-REFUSED? if unloop exit then
+         then
+         at
+      then
+   loop drop ;
+
+: PX ( ptr u8 n -- n ) NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT ;
+
+CAST: OWNER-PAIR-FN ( n -- [ [ ptr u8 n -- ] [ ptr u8 n -- ] -- ] )
+CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
+
+\ Keep span p, size bytes, as one a storage owner restores itself.
+: OWNER+ ( ptr u8 n -- )
+   {: p:ptr size:n :}
+   size 0= if exit then
+   p NULL-PTR BYTE-VIEW - {: base:n :}
+   OWNER-N @ 1+ 2 * OWNER-SPANS-RESERVE
+   base OWNER-N @ 2 * OWNER-SPANS !
+   base size + OWNER-N @ 2 * 1+ OWNER-SPANS !
+   1 OWNER-N +! ;
+
+: CELL-OWNER ( n -- )
+   {: xt:n :}
+   xt 0= if exit then
+   [: OWNER+ ;] xt CELL-OWNERS-FN execute ;
+
+: PAIR-OWNER ( n -- )
+   {: xt:n :}
+   xt 0= if exit then
+   [: OWNER+ ;] [: OWNER+ ;] xt OWNER-PAIR-FN execute ;
+
+: ONE-CELL-OWNER ( n -- )
+   {: xt:n :}
+   xt 0= if exit then
+   [: CELL OWNER+ ;] xt OWNER-CELL-FN execute ;
+
+\ The spans the storage owners restore themselves, each owner the session's
+\ bound producer. An absent owner excludes nothing, so a write there stays an
+\ update. The checker's storage is program state: a later file's store into
+\ it is an update or, in an address cell, a slot row (EARLIER-SLOTS).
+: OWNERS-GATHER ( -- )
+   0 OWNER-N !
+   s" NSTR:CELL-SPANS" PX CELL-OWNER
+   s" FFI:SCAN-SPANS" PX PAIR-OWNER
+   s" FFI-DECL:SCAN-SPANS" PX PAIR-OWNER
+   s" FFI-CB:SCAN-SPANS" PX PAIR-OWNER
+   s" TASK:OWNED-CELLS" PX PAIR-OWNER
+   s" TASK:OWNED-CALLBACK-ROWS" PX CELL-OWNER
+   s" DYNAMIC-STORAGE:OWNED-CELLS" PX ONE-CELL-OWNER
+   s" REQUIRE-REG:CELL-SPANS" PX CELL-OWNER ;
+
+\ DATA address va lies in a storage owner's span.
+: OWNED? ( n -- bool )
+   {: va:n :}
+   OWNER-N @ 0 ?do
+      va i 2 * OWNER-SPANS @ >= va i 2 * 1+ OWNER-SPANS @ < and if
+         true unloop exit
+      then
+   loop false ;
+
+\ The live address cell row whose cell holds va, -1 when none does.
+: CELL-ROW ( n -- n )
+   {: va:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N +
+         {: site:n :}
+      va site >= va site CELL + < and if i unloop exit then
+   loop -1 ;
+
+\ Address cell row idx is one the closing file's segments declared.
+: OWN-ROW? ( n -- bool )
+   {: idx:n :}
+   EVENTS-N @ FO-EVENTS FO @ ?do
+      i SEG? if
+         idx i 9 EV @ >= idx i 9 EV @ i 10 EV @ + < and if
+            true unloop exit
+         then
+      then
+   loop false ;
+
+\ Address cell row idx already has an earlier-DATA slot row.
+: SLOTW? ( n -- bool )
+   {: idx:n :}
+   SLOTW-N @ 0 ?do
+      i FILE-SLOTW @ idx = if true unloop exit then
+   loop false ;
+
+: SLOTW+ ( n -- )
+   {: idx:n :}
+   SLOTW-N @ 1+ FILE-SLOTW-RESERVE
+   idx SLOTW-N @ FILE-SLOTW !
+   1 SLOTW-N +! ;
+
+\ Drop each changed earlier DATA site that is the closing file's own DATA
+\ or lies in an excluded owner's span, which holds no program state. A
+\ changed address cell another file declared is a slot row, once per cell;
+\ the remaining sites are updates.
+: EARLIER-SLOTS ( -- )
+   0 SLOTW-N !
+   OWNERS-GATHER
+   SITES-N @ FO-SITES FO @ ?do
+      i FILE-SITES @ {: va:n :}
+      va 1 OWN-OFF 0 >= va OWNED? or if
+         0 i FILE-SITES !
+      else
+         va CELL-ROW {: row:n :}
+         row 0 >= if
+            0 i FILE-SITES !
+            row OWN-ROW? 0= row SLOTW? 0= and if
+               row SLOTW+
+               ADDRESS-CELLS:LIVE-SPAN drop row cells + @ SLOT-ROW
+               FILE-REFUSED? if unloop exit then
+            then
          then
       then
    loop ;
 
-: PX ( ptr u8 n -- n ) NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT ;
+\ One UPDATE-BYTES row per remaining site: its reference through the
+\ declaration that owns it, and its byte now. A site no keyed declaration
+\ owns refuses the file.
+: UPDATES-OUT ( -- )
+   SITES-N @ FO-SITES FO @ ?do
+      i FILE-SITES @ {: va:n :}
+      va 0<> if
+         i FO-SITES FO @ - 2 * {: at:n :}
+         va at SITE-OWNS @ at 1+ SITE-OWNS @ REF-AT {: ref:n :}
+         ref 0= if s" update-unowned " WHY+ va WHY-SITE unloop exit then
+         ref OUT-N va DATA-PTR c@ OUT-N
+      then
+   loop ;
 
-\ Refuse the closing file when its DATA, slot cells zeroed, holds an address
-\ no storage owner declares.
+\ Refuse the closing file when its DATA, slot cells zeroed, or a cell holding
+\ a byte it updates, holds an address no storage owner declares.
 : ADMIT-FILE ( -- )
-   DATA-AT @ REQS-AT @ = if exit then
+   DATA-AT @ REQS-AT @ = UPDS-AT @ OUT-U @ = and if exit then
    CHECKER-CELLS {: checker:n known:bool :}
    s" NSTR:CELL-SPANS" PX {: lit:n :}
    s" FFI:SCAN-SPANS" PX {: ffi:n :}
@@ -1690,14 +1996,15 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       else base then
       FILE-REFUSED? if drop 0 leave then
    loop drop
+   FILE-REFUSED? 0= if ADMIT-UPDATES then
    AOT-CELL:RESET ;
 
 public
 
 \ Encode the innermost file's records, DATA, requires, protection bytes,
-\ events, slots and slot literals into FILE-OUT, closing its last segment. A
-\ file whose records or slots cannot all encode, or whose DATA holds an
-\ undeclared address, refuses.
+\ events, slots, slot literals and updates into FILE-OUT, closing its last
+\ segment. A file whose records, slots or updates cannot all encode, or whose
+\ DATA or updated cells hold an undeclared address, refuses.
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
@@ -1714,8 +2021,11 @@ public
    s" NSTR:OWNER-ROW" PX OWNER-ROW-XT !
    0 LITS-U ! 0 LITS-N !
    OUT-U @ SLOTS-AT ! SLOTS-OUT
+   FILE-REFUSED? 0= if SITE-OWNERS EARLIER-SLOTS then
    OUT-U @ LITS-AT !
    LITS-U @ 0<> if 0 FILE-LITS LITS-U @ OUT-S then
+   OUT-U @ UPDS-AT !
+   FILE-REFUSED? 0= if UPDATES-OUT then
    FILE-REFUSED? 0= if ADMIT-FILE then ;
 
 \ The innermost file's object bytes with its dependency rows deps, after
@@ -1734,7 +2044,8 @@ public
    8 REQS-AT @ PROT-AT @ OUT$ NUNIT-FILE:SECTION!
    11 INPUTS$ NUNIT-FILE:SECTION!
    9 SLOTS-AT @ LITS-AT @ OUT$ NUNIT-FILE:SECTION!
-   10 LITS-AT @ OUT-U @ OUT$ NUNIT-FILE:SECTION!
+   10 LITS-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
+   7 UPDS-AT @ OUT-U @ OUT$ NUNIT-FILE:SECTION!
    12 EVS-AT @ SLOTS-AT @ OUT$ NUNIT-FILE:SECTION!
    13 0 0 NFILE-REF:ENCODE NUNIT-FILE:SECTION!
    DEPS-SLOT deps depsu NUNIT-FILE:SECTION!
@@ -1979,13 +2290,27 @@ private
    loop
    count OPEN-SLOTS ! ;
 
-\ The FILE object's segment framing: events, records, DATA, protection
-\ bytes, requires and slots agree with one another, given its defs index
+\ Each update row: a byte's reference and its value, given refs reference
 \ rows.
+: UPDATES-CK ( ptr u8 n n -- )
+   {: upds:ptr updsu:n refs:n :}
+   updsu UPDATE-BYTES mod 0<> if BAD then
+   updsu UPDATE-BYTES / {: count:n :}
+   count 0 ?do
+      upds i UPDATE-BYTES * + {: row:ptr :}
+      row 0 U64-AT refs REF-CK? 0= if BAD then
+      row 1 U64-AT {: byte:n :}
+      byte 0 < byte 255 > or if BAD then
+   loop
+   count OPEN-UPDS ! ;
+
+\ The FILE object's segment framing: events, records, DATA, protection
+\ bytes, requires, slots and updates agree with one another, given its defs
+\ index rows.
 : SEGMENTS-CK ( n -- )
    {: defs:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
-   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS !
+   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS !
    3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
    12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
@@ -1996,7 +2321,8 @@ private
    4 NUNIT-FILE:SECTION$ PROT-CK
    8 NUNIT-FILE:SECTION$ REQUIRES-CK
    9 NUNIT-FILE:SECTION$ refs SLOTS-CK
-   10 NUNIT-FILE:SECTION$ SLOT-LITS-CK ;
+   10 NUNIT-FILE:SECTION$ SLOT-LITS-CK
+   7 NUNIT-FILE:SECTION$ refs UPDATES-CK ;
 
 public
 
@@ -2040,9 +2366,9 @@ public
    NUNIT-FILE:RESET-KEEP ;
 
 \ What OPEN-FILE found: definitions, dependency rows, input rows, records,
-\ DATA bytes, requires, loads, segments and slots.
-: FILE-COUNTS ( -- n n n n n n n n n )
+\ DATA bytes, requires, loads, segments, slots and updates.
+: FILE-COUNTS ( -- n n n n n n n n n n )
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
-   OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ ;
+   OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @ ;
 
 ;package
