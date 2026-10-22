@@ -4495,21 +4495,28 @@ $A0 constant CBT-OWNER-CLAIM
 $A8 constant CBT-OUTER
 $B0 constant CBT-SELF
 $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
-16 constant CBT-STUB-BYTES
+5 CELL * constant CB-DESC-BYTES     \ one descriptor row: src/lib/ffi-callback.f ROW-BYTES
 
 \ These exits have the same messages and status as the ARM callback thunk.
 : CB-DIE, ( ptr u8 n label -- ) {: a:ptr u:n at:label :}
    at X64CODE:LBL,
    a u ENGINE-ERROR:CALLBACK STDERR-EXIT, ;
 
+\ The twin of habu1.f BCALLBACK-THUNK, entered with the slot in r10. A thread C
+\ started has no alternate signal stack, so an entry that claims the owner
+\ queries before the call and carves one below the frame when none is
+\ registered (X64BOOT:SIGNAL-STACK,); a 16-byte cell at the call's rsp records
+\ the carve, so the way out disables the band and gives it back before it
+\ reads the frame.
 : CB-THUNK, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: row-read:label row-wait:label row-held:label owner-held:label
       owner-kept:label row-kept:label no-table:label row-busy:label
       unbound:label owner-busy:label no-frame:label no-xt:label
-      defined:label done:label row-claimed:label :}
+      defined:label done:label row-claimed:label signal-had:label
+      signal-kept:label :}
    SAVE-VM,
    RSP CBT-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RDI RSP CBT-INTEGER MEM-OFF ASM-SINK ENC-MOV-MR
@@ -4527,7 +4534,7 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    R11 R11 CB-ROWS MEM-OFF ASM-SINK ENC-MOV-RM
    R11 R11 ASM-SINK ENC-TEST-RR  C-E no-table JCC,
    R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
-   R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R10 R10 CB-ROW-BYTES >IMM8 ASM-SINK ENC-IMUL-RRI8
    R11 R10 ASM-SINK ENC-ADD-RR
    R11 RSP CBT-ROW MEM-OFF ASM-SINK ENC-MOV-MR
    R8 R11 CB-ROW-OWNER MEM-OFF ASM-SINK ENC-LEA
@@ -4564,7 +4571,8 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    R8 R8 CB-XTS MEM-OFF ASM-SINK ENC-MOV-RM
    R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
    R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
-   R8 R8 R10 CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+   R10 R10 CB-DESC-BYTES >IMM8 ASM-SINK ENC-IMUL-RRI8
+   R8 R8 R10 1 0 MEM-IDX ASM-SINK ENC-MOV-RM
    R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
    R10 R11 CB-FRAME MEM-OFF ASM-SINK ENC-MOV-RM
    R10 RSP CBT-OUTER MEM-OFF ASM-SINK ENC-MOV-MR
@@ -4575,7 +4583,22 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    NDICT-REG R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
    CP-REG R11 CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
    INTERP-REG ZERO-REG,
+   R10 ZERO-REG,
+   RAX RSP CBT-OWNER-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E signal-had JCC,
+      X64BOOT:SIGNAL-STACK-ABSENT>R10,
+      R10 R10 ASM-SINK ENC-TEST-RR  C-E signal-had JCC,
+      X64BOOT:SIGNAL-STACK,                    \ rsp drops below the band
+   signal-had X64CODE:LBL,
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8           \ nonzero when the band below is this entry's
+   R10 RSP MEM-AT ASM-SINK ENC-MOV-MR
    R8 ASM-SINK ENC-CALL-REG
+   R10 RSP MEM-AT ASM-SINK ENC-MOV-RM
+   RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E signal-kept JCC,
+      X64BOOT:SIGNAL-STACK-OFF,
+      RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-ADD-RI32   \ the band back
+   signal-kept X64CODE:LBL,
    R11 RSP CBT-REGION MEM-OFF ASM-SINK ENC-MOV-RM
    R10 R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
    R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-NE defined JCC,
@@ -4608,25 +4631,46 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    S\" hb: callback: slot has no dispatch\n" no-xt CB-DIE,
    S\" hb: callback: the body defined\n" defined CB-DIE, ;
 
-\ Each fixed-size stub provides its immutable slot number to the shared thunk.
-\ A pointer returned by this row is a C entry, never a checked execution token.
+\ The shared thunk's entry, made before callback-entry so its -1 arm and the
+\ boot stubs can name it, and bound by THUNK-HELPER, after that record.
+variable CB-THUNK-CELL
+: CB-THUNK-LBL ( -- label ) CB-THUNK-CELL @ >LABEL ;
+
+\ The twin of habu1.f BCALLBACK-ENTRY. -1 answers the shared C thunk, which a
+\ compiler-owned stub (src/compiler/native/emit-x64.f WRITE-STUB) enters with
+\ its slot in r10. Other indices answer the boot stubs kept for seed
+\ compatibility. A pointer returned by this row is a C entry, never a checked
+\ execution token.
 : CALLBACK-ENTRY-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: stubs:label thunk:label done:label bad:label :}
+   {: stubs:label done:label bad:label direct:label :}
    RAX POP,
+   RAX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E direct JCC,
    RAX CB-POOL >IMM8 ASM-SINK ENC-CMP-RI8  C-AE bad JCC,
    RDX stubs MOVABS,
    RAX 4 >IMM8 ASM-SINK ENC-SHL-RI8
    RAX RDX ASM-SINK ENC-ADD-RR
    RAX PUSH,
    done JMP,
+   direct X64CODE:LBL,
+   RAX CB-THUNK-LBL MOVABS,  RAX PUSH,
+   done JMP,
    S\" hb: callback: slot out of range\n" bad CB-DIE,
    stubs X64CODE:LBL,
    CB-POOL 0 ?do
-      R10 i IMM32,  thunk JMP,
+      R10 i IMM32,  CB-THUNK-LBL JMP,
       5 0 do ASM-SINK ENC-NOP loop
    loop
-   thunk X64CODE:LBL,
+   done X64CODE:LBL, ;
+
+\ The twin of habu1.f EMIT-CALLBACK-THUNK: the thunk is its own sealed helper
+\ record after callback-entry's, so a native stub's code address names a
+\ record entry that FILE and image builds carry and relocate.
+: THUNK-HELPER, ( -- )
+   X64CODE:LBL {: done:label :}
+   s" (CALLBACK-THUNK)" CB-THUNK-LBL LABEL>N done LABEL>N
+      ENGINE-PRIMS:HELPER-REGISTER
+   CB-THUNK-LBL X64CODE:LBL,
    CB-THUNK,
    done X64CODE:LBL, ;
 
@@ -4634,7 +4678,9 @@ public
 
 : TASK, ( -- )
    s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
-   s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
+   X64CODE:LBL CB-THUNK-CELL !
+   s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM
+   THUNK-HELPER, ;
 
 \ ---- definition writers ------------------------------------------------------
 \ The twelve rows an interpreter written in Habu publishes definitions,

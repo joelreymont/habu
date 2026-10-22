@@ -73,6 +73,7 @@ require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/emission.f
 require src/compiler/native/host.f
+require src/compiler/native/callback-stub.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/machine.f
 require src/habu/arith-abi.f            \ E-DIV-ZERO, the divide's refusal
@@ -131,6 +132,7 @@ variable N-FUNS
 variable N-SITES
 variable N-CALLS
 variable CH-AT                          \ the pass-through chase's cursor
+variable STUB-START                     \ the callback C entry's first byte
 
 0 CWORK-VARIABLE SCRATCH-BLOCKS n
 0 CWORK-VARIABLE SCRATCH-FUNS n
@@ -191,8 +193,9 @@ DYNAMIC-BUFFER CLOC-BUF n               \ source body offset
    NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
 
 \ One operation opens at most one site, so the module's own operation count is
-\ the ceiling and no number is chosen here.
-: SITE-CEIL ( -- n ) OMAX ;
+\ the ceiling and no number is chosen here. A callback C entry adds its own.
+: SITE-CEIL ( -- n )
+   OMAX NCBSTUB:ARMED? if 1+ then ;
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -1368,6 +1371,22 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    loop
    CUR MCUR @ <> if E-X64EMIT-LAYOUT throw then ;
 
+\ ---- the callback accessor's C entry -----------------------------------------
+\ The twin of emit.f WRITE-STUB: an anonymous function after the accessor that
+\ loads the full slot ID into r10 and branches to the shared thunk, whose
+\ address `callback-entry -1` gave (src/habu/kernel-x64.f CALLBACK-ENTRY-BODY).
+\ That address is a CODE site, so an image writer relocates it. r10 and r11 are
+\ SysV scratch registers at a C call's entry.
+: WRITE-STUB ( -- )
+   NCBSTUB:ARMED? 0= if exit then
+   PLACED? 0= if E-X64EMIT-PLACE throw then
+   CUR STUB-START !
+   PLACE-AT-N @ CUR + NCBSTUB:ENTRY!
+   R10 NCBSTUB:SLOT@ >IMM64 EM-SINK ENC-MOV-RI64
+   CUR X64IR:ADDR-CODE SITE+
+   R11 NCBSTUB:THUNK@ >IMM64 EM-SINK ENC-MOV-RI64
+   R11 EM-SINK ENC-JMP-REG ;
+
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-X64EMIT-STATE throw then ;
 
@@ -1454,6 +1473,7 @@ public
    m ACCEPT-CK
    MEASURE
    WRITE-ALL
+   WRITE-STUB
    ST-SEALED ST ! ;
 
 \ Retiring one definition is deliberately nonthrowing. The compiler calls it on
@@ -1509,12 +1529,16 @@ public
    SEAL-CK START-AT ;
 
 \ How many functions share the routine: FUNCTION-OFFSET@ answers each ordinal
-\ below it.
+\ below it. A callback C entry is the last one.
 : FUNS ( -- n )
-   SEAL-CK N-FUNS @ ;
+   SEAL-CK N-FUNS @ NCBSTUB:ARMED? if 1+ then ;
 
 : FUNCTION-OFFSET@ ( n -- n )
-   SEAL-CK FUN-START ;
+   SEAL-CK
+   NCBSTUB:ARMED? if
+      dup N-FUNS @ = if drop STUB-START @ exit then
+   then
+   FUN-START ;
 
 : ADDR-SITES ( -- n )
    SEAL-CK N-SITES @ ;

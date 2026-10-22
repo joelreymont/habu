@@ -487,6 +487,18 @@ $08000000 constant SA-ONSTACK
    RDI RSP ASM-SINK ENC-MOV-RR  RSI ZERO-REG,  NR-SIGALTSTACK SYS,
    RSP SS-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
+\ The twin of crash.f C-SIGNAL-STACK-ABSENT>R12: r10 is nonzero when this
+\ thread has no alternate stack registered, which the query
+\ sigaltstack(NULL, old) answers as SS_DISABLE in old's flags. A query cannot
+\ be refused: its one error is an unwritable buffer, and the buffer is this
+\ frame. It clobbers rax rcx rdi rsi r11.
+: SIGNAL-STACK-ABSENT>R10, ( -- )
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI ZERO-REG,  RSI RSP ASM-SINK ENC-MOV-RR  NR-SIGALTSTACK SYS,
+   R10 RSP SS-FLAGS MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 SS-DISABLE >IMM8 ASM-SINK ENC-AND-RI8
+   RSP SS-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
 private
 
 \ ---- the crash handler -------------------------------------------------------

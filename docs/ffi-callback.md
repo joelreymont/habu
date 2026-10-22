@@ -303,10 +303,10 @@ A stripped application therefore binds in its entry word.
 
 ## Untested
 
-Every run so far is macOS 27 on arm64. The Linux arm64 path (`TPIDR_EL0`,
-`exit_group`) is written but has never run. x86-64 has neither half.
-`callback-entry` is a refused row there (exit 76), and the SysV cores publish
-no frame ([x86-64.md](x86-64.md#task-entry)).
+The arm64 runs are macOS 27. The Linux arm64 path (`TPIDR_EL0`,
+`exit_group`) is written but has never run. Linux x86-64 has both halves: the
+kernel's `callback-entry` and shared SysV thunk, and each declaration's native C
+entry from `emit-x64.f` ([x86-64.md](x86-64.md#task-entry)).
 
 ## Tests
 
