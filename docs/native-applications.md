@@ -84,10 +84,12 @@ producer, a new nearer file, or a missing image selects support again. The
 application's own input sidecar is still checked before this lookup.
 
 REPL and stripped rebuilds use the ordinary source loader with the native
-definition cache in `HABU_BUILD_CACHE`. File-level initialization runs in order,
-including in unchanged files. Individual definitions reuse native emission and
-checker facts only while their construction dependencies still match; other
-definitions compile normally.
+definition cache. It lives in the build cache root (`BUILD-CACHE:ROOT$`,
+`src/lib/build-cache.f`), which hb-build exports as `HABU_BUILD_CACHE` to
+every child that opens the definition cache. File-level initialization runs in
+order, including in unchanged files. Individual definitions reuse native
+emission and checker facts only while their construction dependencies still
+match; other definitions compile normally.
 
 Set `HABU_NATIVE_CACHE_DIAG=1` to print one stderr line immediately before each
 native definition falls back to compilation. A line begins

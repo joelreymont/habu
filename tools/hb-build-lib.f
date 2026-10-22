@@ -1847,7 +1847,8 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-BUILD-REST ;
 
 : HBB-PREPARE-CACHE-CLI ( -- )
-   [: HBB-PREPARE-ARTIFACT-CACHE ;] catch {: rc:n :}
+   [: HBB-REPL @ if HBB-PREPARE-CACHE else HBB-PREPARE-ARTIFACT-CACHE then ;]
+   catch {: rc:n :}
    rc 0= if exit then
    rc E-BUILD-PATH = if
       HBB-CLEANUP
@@ -1875,8 +1876,8 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
    HBB-ENGINE @ if [: HBB-BUILD-ENGINE ;] catch HBB-CLI-MAKER-CODE exit then
-   HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-PREPARE-CACHE-CLI
+   HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
 
 : HBB-MAIN ( -- )

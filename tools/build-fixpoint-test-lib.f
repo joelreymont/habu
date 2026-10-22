@@ -46,12 +46,14 @@ variable BFT-NOTDIR-U
 variable BFT-ENG-A-U
 variable BFT-ENG-B-U
 variable BFT-CERT-U
+variable BFT-CACHE-U
 variable BFT-STALE-U
 variable BFT-STALE-HB-U
 variable BFT-STALE-TMP-U
 variable BFT-STALE-STAMP-U
 variable BFT-STALE-PAYLOAD-U
 variable BFT-STALE-MARK-U
+variable BFT-STALE-CACHE-U
 variable BFT-CP-U
 TYPED-VARIABLE BFT-BIG-OUT-A ptr u8
 TYPED-VARIABLE BFT-BIG-ERR-A ptr u8
@@ -69,12 +71,14 @@ create BFT-NOTDIR-BUF FS-PATH-CAP allot
 create BFT-ENG-A-BUF FS-PATH-CAP allot
 create BFT-ENG-B-BUF FS-PATH-CAP allot
 create BFT-CERT-BUF FS-PATH-CAP allot
+create BFT-CACHE-BUF FS-PATH-CAP allot
 create BFT-STALE-BUF FS-PATH-CAP allot
 create BFT-STALE-HB-BUF FS-PATH-CAP allot
 create BFT-STALE-TMP-BUF FS-PATH-CAP allot
 create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
 create BFT-STALE-PAYLOAD-BUF FS-PATH-CAP allot
 create BFT-STALE-MARK-BUF FS-PATH-CAP allot
+create BFT-STALE-CACHE-BUF FS-PATH-CAP allot
 create BFT-CP-BUF FS-PATH-CAP allot
 create BFT-NL 10 c,
 create BFT-OUT BFT-CAPTURE-CAP allot
@@ -132,6 +136,11 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-CERT ( -- ptr u8 n )
    BFT-CERT-BUF BFT-CERT-U @ ;
 
+\ Each fixpoint child gets a build cache root under this fixture's scratch: its
+\ env is stripped, and build-fixpoint refuses to run without one (BF-PREPARE-ENV).
+: BFT-CACHE ( -- ptr u8 n )
+   BFT-CACHE-BUF BFT-CACHE-U @ ;
+
 : BFT-STALE ( -- ptr u8 n )
    BFT-STALE-BUF BFT-STALE-U @ ;
 
@@ -149,6 +158,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-STALE-MARK ( -- ptr u8 n )
    BFT-STALE-MARK-BUF BFT-STALE-MARK-U @ ;
+
+: BFT-STALE-CACHE ( -- ptr u8 n )
+   BFT-STALE-CACHE-BUF BFT-STALE-CACHE-U @ ;
 
 : BFT-BIG-OUT ( -- ptr u8 )
    BFT-BIG-OUT-A @ ;
@@ -184,6 +196,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ROOT s" engine-a" BFT-ENG-A-BUF BFT-ENG-A-U BFT-PATH!
    BFT-ROOT s" engine-b" BFT-ENG-B-BUF BFT-ENG-B-U BFT-PATH!
    BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
+   BFT-ROOT s" cache" BFT-CACHE-BUF BFT-CACHE-U BFT-PATH!
    BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
 
 : BFT-ARGV-LOAD-LIBS ( -- )   \ the --load prefix through build-fixpoint.f, WITHOUT the CLI entry companion
@@ -236,7 +249,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
    BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
    BFT-STALE s" src/arch/arm64/mnem.f" BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U BFT-PATH!
-   BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH! ;
+   BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH!
+   BFT-STALE s" cache" BFT-STALE-CACHE-BUF BFT-STALE-CACHE-U BFT-PATH! ;
 
 \ The sandbox needs every tools/ file the refresh loads. That list used to be
 \ written out by hand and went stale the moment build-fixpoint.f grew a require:
@@ -282,6 +296,7 @@ variable IX
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
    s" HABU_FIXPOINT_STAMP" >LEN BFT-STALE-STAMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN BFT-STALE-CACHE >LEN PROC-ENV+
    BFT-ARGV-LOAD-FILES
    s" --" BFT-ARG+
    s" install" BFT-ARG+

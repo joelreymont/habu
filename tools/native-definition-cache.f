@@ -4,6 +4,7 @@ require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-input.f
+require src/lib/build-cache.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/os/env-base.f
@@ -396,10 +397,14 @@ variable PENDING-KEY-U
    NUNIT-DEP:READER-COMPLETE!
    READER-CLEAR ;
 
-: FILE-ROOT$ ( -- ptr u8 n )
-   \ Cache storage belongs to the loader, not the application's input record.
+\ hb-build exports its resolved root as HABU_BUILD_CACHE to every child that
+\ opens the definition cache (build-support.f BF-PREPARE-ENV), so a maker
+\ whose image is saved never touches BUILD-CACHE's buffers; ENV-INPUT:CURRENT$
+\ stores nothing and is not observed. A top-level run started without the
+\ variable resolves the same tiers through BUILD-CACHE itself.
+: ROOT$ ( -- ptr u8 n )
    s" HABU_BUILD_CACHE" ENV-INPUT:CURRENT$ dup 0 > if exit then
-   2drop s" .out" ;
+   2drop BUILD-CACHE:ROOT$ ;
 
 : HASH-N ( n -- )
    HASH-CELL ! HASH-CTX HASH-CELL CELL SHA256-FEED ;
@@ -471,7 +476,7 @@ variable PENDING-KEY-U
    s" hb-def-" drop NAME 7 BYTE-COPY
    HASH-RAW NAME 7 + SHA256>HEX
    s" .hbd" drop NAME 71 + 4 BYTE-COPY
-   FILE-ROOT$ NAME 75 PATH-BUF JOIN-PATH
+   ROOT$ NAME 75 PATH-BUF JOIN-PATH
    PATH-BUF swap ;
 
 : FILE-FRESH ( -- )
@@ -1389,7 +1394,10 @@ variable PENDING-KEY-U
    0 TARGET-UNIT-USE !
    NFILE-INPUTS:RESET
    ['] FILE-INPUT BUILD-INPUT:USE
-   FILE-ROOT$ MAKE-DIRS
+   \ Resolved here, before RUN and APP-LOAD bind the ENV-INPUT observers, so
+   \ the cache root never becomes a build input. BUILD-CACHE:ROOT$ creates
+   \ the directory it selects; an exported root may not exist yet.
+   ROOT$ MAKE-DIRS
    ['] XREF-REC NFILE-REF:RECORD-AT!
    NUNIT-CAPTURE:BIND-PRODUCER
    PIN-HOST-CHECKER

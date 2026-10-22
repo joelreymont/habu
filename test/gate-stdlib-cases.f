@@ -268,6 +268,10 @@ SUITE native-file-auto
    test/native-file-admission-e2e.f
 ;SUITE
 
+SUITE native-file-root
+   test/native-file-root-e2e.f
+;SUITE
+
 SUITE native-file-replay
    test/native-file-inputs-format.f
    test/native-file-replay-e2e.f
