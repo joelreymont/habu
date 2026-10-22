@@ -11,7 +11,8 @@ PTR-VARIABLE SLOT0
 PTR-VARIABLE SLOT1
 PTR-VARIABLE SLOT2
 
-: LIVE ( -- ptr u8 ) SLOT0 BYTE-VIEW ;
+create LIVE-BYTES 1 allot
+: LIVE ( -- ptr u8 ) LIVE-BYTES ;
 : ADJACENT ( -- )
    SLOT0 cell+ SLOT1 <> SLOT1 cell+ SLOT2 <> or if
       s" pointer slots are not contiguous" 76 die then ;

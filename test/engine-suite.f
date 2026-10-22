@@ -1020,9 +1020,9 @@ variable TR-S-LC variable TR-S-STRLC
 : TR-SYMS-WHITEBOX ( -- )
    \ This probe restores the original store; growth now clears its retired bytes.
    SYM-CAP-V @ SYM-REC * {: bytes:n :}
-   bytes ARENA-ALLOC {: saved:ptr :}
+   bytes ARENA-ALLOC-BYTES {: saved:ptr :}
    SYMS-P @ {: prior:ptr :}
-   prior saved BYTE-VIEW bytes ARENA-COPY
+   prior saved bytes ARENA-COPY
    SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-SSU !
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
@@ -1049,7 +1049,7 @@ variable TR-S-LC variable TR-S-STRLC
    SYMS-P @ mark >= TTRUE
    s" syms-persist-find" T-LABEL
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
-   saved BYTE-VIEW prior bytes ARENA-COPY
+   saved prior bytes ARENA-COPY
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    HIDX-RESET

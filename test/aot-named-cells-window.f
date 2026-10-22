@@ -36,7 +36,8 @@ create GAP-CELLS GAP-COUNT 2 * cells allot
 : CALL-UNASSIGNED ( -- ) UNASSIGNED ;
 
 \ Reading a null quotation as data checks preservation without executing it.
-: NULL-CODE? ( -- bool ) NULL-SLOT byte-view cell-view @ 0= ;
+private  CAST: NULL-SLOT>N ( ptr [ n -- n ] -- ptr n )
+: NULL-CODE? ( -- bool ) NULL-SLOT NULL-SLOT>N @ 0= ;  public
 : NULL-DATA? ( -- bool ) NULL-DATA-SLOT @ 0= ;
 : CHECK ( -- )
    65 GLOBAL 0= if 79 throw then

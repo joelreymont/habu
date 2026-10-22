@@ -18,8 +18,8 @@
 \                                      scenario, the expected answer
 \     PN-P NP-P PP-N PP-F ( n n n -- ) two inputs, the expected result
 \     P-P ( n n -- )                   one input, the expected result
-\   where a pointer column or result is a byte offset into one declared byte
-\   fixture (`ptr-field` refuses a raw `create` base);
+\   where a pointer column or result is a byte offset into the includer's
+\   fixture (prim-parity.f, for example, measures `ptr-field` in a pointer table);
 \ - `MAX-N` and `MIN-N`, the extreme cells, and `E-DIV-ZERO`;
 \ - a `+!` scenario that adds 3 to the stored cell.
 
