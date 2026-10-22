@@ -388,9 +388,15 @@ private
    NR-MPROTECT SYS,
    ASM-SINK ENC-RET ;
 
+\ TASK-LIVE-GUARD,'s exit, out of line where habu1.f B-TASK-LIVE-GUARD inlines
+\ it. Registered as an engine helper so a guarded row's branch here is an edge
+\ the ahead-of-time closure follows and carries.
 : LIVE-HELPER, ( -- )
+   X64CODE:LBL {: end:label :}
+   s" (X64-TASK-LIVE)" LIVE-LBL LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    LIVE-LBL X64CODE:LBL,
-   TASK-LIVE-RC EXIT-GROUP, ;
+   TASK-LIVE-RC EXIT-GROUP,
+   end X64CODE:LBL, ;
 
 76 constant REPLAY-TRAP-RC             \ habu2.f DEFWRITE:EMIT-REPLAY-TRAP's exit
 
@@ -1609,8 +1615,13 @@ private
 \ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then refuses with
 \ DPBAD-RC through COMPILE-DIE. The location is written there so an invalid DP
 \ never calls a Habu word.
+\ Registered as the (LDPBAD) engine helper under habu2.f's name, so the
+\ ahead-of-time closure treats DP-CHECK's branch here as the ARM64 one: the
+\ helper is not carried and a stripped image's link redirects the branch to
+\ its own refusal (aot-closure.f AOT-DP-REFUSAL?, aot-x64.f X64-DP-REFUSAL,).
 : DPBAD-HELPER, ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: head:label of:label unit:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: head:label of:label unit:label end:label :}
+   s" (LDPBAD)" DPBAD-LBL LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    DPBAD-LBL X64CODE:LBL,
    R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
    head DPBAD-HEAD$ nip STDERR-WRITE,
@@ -1621,7 +1632,8 @@ private
    RAX DPBAD-RC IMM32,  COMPILE-DIE-LBL JMP,
    head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
    of X64CODE:LBL,  DPBAD-OF$ TEXT,
-   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT, ;
+   unit X64CODE:LBL,  DPBAD-UNIT$ TEXT,
+   end X64CODE:LBL, ;
 
 \ The refusal habu1.f OVERLAY-EMIT:GUARD, sends a writer to (habu2.f
 \ OVERLAY-EMIT:LDIE, outer.f OVERLAY-GUARD the Habu loop's): it names the

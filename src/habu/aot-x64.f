@@ -6,6 +6,7 @@ require src/habu/aot-x64-format.f
 require src/habu/boot-x64.f
 require src/habu/patch-x64.f
 require src/habu/image-x64.f
+require src/arch/x86-64/rt.f
 
 package AOT-LINK
 
@@ -202,6 +203,55 @@ variable X64-I  variable X64-J  variable X64-RUNS
    X64ASM:RAX X64-SINK X64ASM:ENC-CALL-REG
    X64-EXIT, ;
 
+\ DP-CHECK still uses its engine diagnostic and catch unwind in a native
+\ process. In a stripped image its branch to (LDPBAD) is redirected here, the
+\ twin of aot-link-arm.f EMIT-DP-REFUSAL: the same candidate and ceiling are
+\ printed, then the process exits 76. X64-DP-REF holds its code offset.
+variable X64-DP-REF
+
+: X64-DP-MSG$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
+: X64-DP-OF$ ( -- ptr u8 n ) s"  of " ;
+: X64-DP-UNIT$ ( -- ptr u8 n ) S\"  bytes\n" ;
+
+\ The kernel's DP ceiling (kernel-x64.f DP-CEILING), as an offset from DATA.
+: X64-DP-CEILING ( -- n ) X64LAYOUT:DATA-SIZE PROF-CNT-BYTES - ;
+
+: X64-ERR-WRITE, ( label n -- ) {: msg:label len:n :}
+   X64ASM:RDI 2 X64-IMM,
+   X64ASM:RSI msg X64CODE:MOVABS,
+   X64ASM:RDX len X64-IMM,
+   NR-WRITE SYS, ;
+
+: X64-TEXT, ( label ptr u8 n -- ) {: at:label a:ptr u:n :}
+   at X64CODE:LBL,  a u BUF:N>BLEN X64-SINK BUF:APPEND-SPAN ;
+
+\ rdi is the refused DP. num writes rax in unsigned decimal on fd 2 from a
+\ 32-byte machine-stack frame; it keeps r8.
+: X64-DP-REFUSAL, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+      {: num:label msg:label of:label unit:label :}
+   X64CODE:ASM-LEN X64-DP-REF !
+   X64ASM:R8 X64ASM:RDI X64-SINK X64ASM:ENC-MOV-RR
+   X64ASM:R8 ENGINE-GPR:X64-RBASE X64ASM:>R64 X64-SINK X64ASM:ENC-SUB-RR
+   msg X64-DP-MSG$ nip X64-ERR-WRITE,
+   X64ASM:RAX X64ASM:R8 X64-SINK X64ASM:ENC-MOV-RR  num X64CODE:CALL,
+   of X64-DP-OF$ nip X64-ERR-WRITE,
+   X64ASM:RAX X64-DP-CEILING X64-IMM,  num X64CODE:CALL,
+   unit X64-DP-UNIT$ nip X64-ERR-WRITE,
+   X64ASM:RDI 76 X64-IMM,  NR-EXIT-GROUP SYS,
+   num X64CODE:LBL,
+   X64ASM:RSP 32 X64ASM:>IMM8 X64-SINK X64ASM:ENC-SUB-RI8
+   X64ASM:RSI X64ASM:RSP 32 X64ASM:MEM-OFF X64-SINK X64ASM:ENC-LEA
+   X64RT:DIGITS,
+   X64ASM:RDX X64ASM:RSP 32 X64ASM:MEM-OFF X64-SINK X64ASM:ENC-LEA
+   X64ASM:RDX X64ASM:RSI X64-SINK X64ASM:ENC-SUB-RR
+   X64ASM:RDI 2 X64-IMM,  NR-WRITE SYS,
+   X64ASM:RSP 32 X64ASM:>IMM8 X64-SINK X64ASM:ENC-ADD-RI8
+   X64-SINK X64ASM:ENC-RET
+   msg X64-DP-MSG$ X64-TEXT,
+   of X64-DP-OF$ X64-TEXT,
+   unit X64-DP-UNIT$ X64-TEXT, ;
+
 variable X64-MEMBER
 
 : X64-SIGNED32 ( n -- n ) {: v:n :}
@@ -258,8 +308,12 @@ variable X64-MEMBER
          then
       then
    then
-   X64-MEMBER @ target MAP-TARGET!
-   X64-TEXT-VA TNEW @ + p X64-DEST-VA width + - {: rel:n :}
+   target DP-REFUSAL-TARGET? if
+      X64-DP-REF @
+   else
+      X64-MEMBER @ target MAP-TARGET!  TNEW @
+   then
+   X64-TEXT-VA + p X64-DEST-VA width + - {: rel:n :}
    width 1 = if
       rel -128 < rel 127 > or if
          s" aot: copied x86 rel8 target out of reach" 74 die then
@@ -323,6 +377,7 @@ create X64-OBJ-HDR 8 allot
    X64CODE:LBL X64CODE:LBL {: root:label table:label :}
    root table X64-START,
    root X64-PACK
+   X64-DP-REFUSAL,
    X64-PATCH-SITES
    X64CODE:ASM-LEN CODE-END !
    table X64CODE:LBL,
