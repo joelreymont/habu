@@ -279,7 +279,6 @@ CHECKER-OWNER-EXT:GRID-REVOKE-OFF constant GRID-REVOKE-OFF               \ ( n -
 CHECKER-OWNER-EXT:GRID-RETIRE-OFF constant GRID-RETIRE-OFF               \ ( ptr n -- )
 CHECKER-OWNER-EXT:RECORD-RESTORE-OFF constant RECORD-RESTORE-OFF         \ ( -- )
 CHECKER-OWNER-EXT:UNIT-SCRATCH-RELEASE-OFF constant UNIT-SCRATCH-RELEASE-OFF \ ( -- )
-CHECKER-OWNER-EXT:UNIT-STATE-SPANS-OFF constant UNIT-STATE-SPANS-OFF \ ( [ ptr u8 n -- ] -- )
 CHECKER-OWNER-EXT:ORIGIN-SYM-OFF constant ORIGIN-SYM-OFF \ ( pkg$ vis tail$ -- sym-or-0 )
 \ Borrowed FILE name-resolution rows. The source owner copies the spelling and
 \ namespace into each six-cell row before exposing it to the native feed.

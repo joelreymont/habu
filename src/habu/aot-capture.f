@@ -899,7 +899,6 @@ variable ACAP-ENTRY-N
    a u s" FILE-RESTORE" CORE-STR=CI or
    a u s" FILE-HOOK?" CORE-STR=CI or
    a u s" FILE-PENDING?" CORE-STR=CI or
-   a u s" FILE-STATE-SPANS" CORE-STR=CI or
    a u s" INSTALL" CORE-STR=CI or
    k s" ENGINE-ORIGIN-EARLY" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-ROWS" CORE-STR=CI
@@ -910,7 +909,6 @@ variable ACAP-ENTRY-N
    a u s" FILE-RESTORE" CORE-STR=CI or
    a u s" FILE-ACCEPT-USE" CORE-STR=CI or
    a u s" FILE-ACCEPT-CLEAR" CORE-STR=CI or
-   a u s" FILE-STATE-SPANS" CORE-STR=CI or
    a u s" INSTALL" CORE-STR=CI or
    k s" ENGINE-ORIGIN" ACAP-KEEP-PKG? and ;
 

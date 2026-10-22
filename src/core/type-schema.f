@@ -379,12 +379,4 @@ public
    SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
    SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
 
-: UNIT-STATE-ROOTS ( [ ptr u8 n -- ] -- ) {: visit :}
-   SCH-A-P BYTE-VIEW CELL visit execute
-   SCH-CAP-V BYTE-VIEW CELL visit execute
-   SCH-N BYTE-VIEW CELL visit execute
-   SCH-ROOT-P BYTE-VIEW CELL visit execute
-   SCH-ROOT-CAP-V BYTE-VIEW CELL visit execute
-   SCH-ROOT-N BYTE-VIEW CELL visit execute ;
-
 ;package

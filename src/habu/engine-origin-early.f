@@ -175,14 +175,6 @@ public
    armed if 1 else 0 then FILE-ARMED ! ;
 : FILE-PENDING? ( -- bool ) SCR-U @ 0 > ;
 
-: FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   SCR-P BYTE-VIEW CELL visit execute
-   SCR-U BYTE-VIEW CELL visit execute
-   SCR-CAP BYTE-VIEW CELL visit execute
-   FILE-SERIAL BYTE-VIEW CELL visit execute
-   FILE-PHASE BYTE-VIEW CELL visit execute
-   FILE-ARMED BYTE-VIEW CELL visit execute ;
-
 : FILE-NEXT-SERIAL ( -- n ) 1 FILE-SERIAL +! FILE-SERIAL @ ;
 : FILE-FULL ( -- ) 1 FILE-PHASE ! ;
 : FILE-ARM ( -- ) 1 FILE-ARMED ! ;

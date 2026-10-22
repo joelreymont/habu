@@ -334,20 +334,6 @@ INSTALL
 
 variable XREF-QI
 
-: XREF-FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   \ These are lookup cursors; retired rows and package/index state stay live.
-   XREF-A BYTE-VIEW CELL visit execute
-   XREF-B BYTE-VIEW CELL visit execute
-   XREF-U BYTE-VIEW CELL visit execute
-   XREF-V BYTE-VIEW CELL visit execute
-   XREF-SN BYTE-VIEW CELL visit execute
-   XREF-SU BYTE-VIEW CELL visit execute
-   XREF-FN BYTE-VIEW CELL visit execute
-   XREF-FU BYTE-VIEW CELL visit execute
-   XREF-IDX BYTE-VIEW CELL visit execute
-   XREF-NV BYTE-VIEW CELL visit execute
-   XREF-QI BYTE-VIEW CELL visit execute ;
-
 : XREF-QUAL-INDEX ( ptr u8 n -- n )
    XREF-SU ! XREF-SN!
    -1 XREF-QI !

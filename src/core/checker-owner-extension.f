@@ -18,7 +18,7 @@ $450 constant GRID-REVOKE-OFF
 $458 constant GRID-RETIRE-OFF
 $460 constant RECORD-RESTORE-OFF
 $468 constant UNIT-SCRATCH-RELEASE-OFF
-$470 constant UNIT-STATE-SPANS-OFF
+\ $470 is retired and stays zero so later offsets keep their positions.
 $478 constant ORIGIN-SYM-OFF
 $4A8 constant UNIT-SYM-OFF
 $4B0 constant PRIMITIVE-STATE-OFF

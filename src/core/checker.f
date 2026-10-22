@@ -27286,7 +27286,6 @@ defer UNIT-TFAM-PREPARE ( ptr u8 n -- ptr u8 )
 defer UNIT-TFAM-TAKE ( ptr u8 -- )
 defer UNIT-TFAM-END ( -- )
 defer UNIT-TFAM-VIEW ( ptr u8 -- ptr u8 n )
-defer UNIT-TFAM-STATE-SPANS ( [ ptr u8 n -- ] -- )
 defer UNIT-TFAM-EXPORT-RESET ( -- )
 defer UNIT-CON-KEY$ ( n -- ptr u8 n bool )
 defer UNIT-CON-BIND ( n ptr u8 n -- )
@@ -29140,118 +29139,6 @@ UNIT-CON-PROJECT-INSTALL
    [: UNIT-IMPORT-PLAN ;] is UNIT-IMPORT-PLAN-XT ;
 UNIT-IMPORT-HOOK
 
-private
-: UNIT-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   \ UNIT import reconstructs these roots and their live backing stores.
-   \ A definition starts with NEW, which resets these parse arenas before use.
-   CP-BOOT BYTE-VIEW CP-INIT 32 * visit execute
-   CP-P BYTE-VIEW CELL visit execute
-   CP-CAP BYTE-VIEW CELL visit execute
-   CP-P @ BYTE-VIEW CP-CAP @ 32 * visit execute
-   QEA-BOOT BYTE-VIEW MAXQE-INIT 32 * visit execute
-   QXDA-BOOT BYTE-VIEW MAXQE-INIT cells visit execute
-   QXRA-BOOT BYTE-VIEW MAXQE-INIT cells visit execute
-   QXHA-BOOT BYTE-VIEW MAXQE-INIT cells visit execute
-   QXNA-BOOT BYTE-VIEW MAXQE-INIT cells visit execute
-   QEA-P BYTE-VIEW CELL visit execute
-   QXDA-P BYTE-VIEW CELL visit execute
-   QXRA-P BYTE-VIEW CELL visit execute
-   QXHA-P BYTE-VIEW CELL visit execute
-   QXNA-P BYTE-VIEW CELL visit execute
-   QE-CAP BYTE-VIEW CELL visit execute
-   QEA-P @ BYTE-VIEW QE-CAP @ 32 * visit execute
-   QXDA-P @ BYTE-VIEW QE-CAP @ cells visit execute
-   QXRA-P @ BYTE-VIEW QE-CAP @ cells visit execute
-   QXHA-P @ BYTE-VIEW QE-CAP @ cells visit execute
-   QXNA-P @ BYTE-VIEW QE-CAP @ cells visit execute
-   PTRA-BOOT BYTE-VIEW MAXPTR-INIT cells visit execute
-   PTRA-P BYTE-VIEW CELL visit execute
-   PTR-CAP BYTE-VIEW CELL visit execute
-   PTRN BYTE-VIEW CELL visit execute
-   PTRA-P @ BYTE-VIEW PTR-CAP @ cells visit execute
-   TRAIL-BOOT BYTE-VIEW TRAIL-INIT cells visit execute
-   TRAIL-P BYTE-VIEW CELL visit execute
-   TRAIL-CAP BYTE-VIEW CELL visit execute
-   TRAIL-N BYTE-VIEW CELL visit execute
-   \ A replayed high-water would leave live type bindings beyond the next reset.
-   FV BYTE-VIEW CELL visit execute
-   EC-TVN BYTE-VIEW CELL visit execute
-   EC-RVN BYTE-VIEW CELL visit execute
-   EC-TV-HW BYTE-VIEW CELL visit execute
-   EC-RV-HW BYTE-VIEW CELL visit execute
-   TRAIL-P @ BYTE-VIEW TRAIL-CAP @ cells visit execute
-   LOCLN BYTE-VIEW LOC-CAP cells visit execute
-   LOCTV BYTE-VIEW LOC-CAP cells visit execute
-   LOCVAL BYTE-VIEW LOC-CAP cells visit execute
-   \ CHECK-RESET retires control frames; transport and row views are consumed in place.
-   CFS BYTE-VIEW 32 CFS-REC * visit execute
-   XG-TERMS BYTE-VIEW XG-TCAP cells visit execute
-   XG-NODES BYTE-VIEW XG-TCAP cells visit execute
-   XG-START BYTE-VIEW XG-GCAP cells visit execute
-   XG-LEN BYTE-VIEW XG-GCAP cells visit execute
-   EFFECT-XFER BYTE-VIEW EFF-WIRE visit execute
-   SB BYTE-VIEW CELL visit execute
-   SL BYTE-VIEW CELL visit execute
-   SI BYTE-VIEW CELL visit execute
-   SS BYTE-VIEW CELL visit execute
-   CHECKER-QA BYTE-VIEW CELL visit execute
-   CHECKER-QU BYTE-VIEW CELL visit execute
-   CHECKER-TA BYTE-VIEW CELL visit execute
-   CHECKER-TU BYTE-VIEW CELL visit execute
-   CHECKER-QBAD-TOK BYTE-VIEW CELL visit execute
-   USIGS-P BYTE-VIEW CELL visit execute
-   USIGS-CAP-U BYTE-VIEW CELL visit execute
-   UEND BYTE-VIEW CELL visit execute
-   USIGS-P @ USIGS-CAP-U @ visit execute
-
-   SYMS-P BYTE-VIEW CELL visit execute
-   SYM-STR-P BYTE-VIEW CELL visit execute
-   SYM-CAP-V BYTE-VIEW CELL visit execute
-   SYM-STR-CAP-V BYTE-VIEW CELL visit execute
-   SYM-N BYTE-VIEW CELL visit execute
-   SYM-STR-U BYTE-VIEW CELL visit execute
-   SYMS-P @ BYTE-VIEW SYM-CAP-V @ SYM-REC * visit execute
-   SYM-STR-P @ SYM-STR-CAP-V @ visit execute
-
-   CT-NAME-A-P BYTE-VIEW CELL visit execute
-   CT-NAME-U-P BYTE-VIEW CELL visit execute
-   CT-CLASS-P BYTE-VIEW CELL visit execute
-   CT-WIDTH-P BYTE-VIEW CELL visit execute
-   CT-SIGN-P BYTE-VIEW CELL visit execute
-   CT-PKG-A-P BYTE-VIEW CELL visit execute
-   CT-PKG-U-P BYTE-VIEW CELL visit execute
-   CT-STR-P BYTE-VIEW CELL visit execute
-   CT-CAP-V BYTE-VIEW CELL visit execute
-   CT-STR-CAP-V BYTE-VIEW CELL visit execute
-   CTN BYTE-VIEW CELL visit execute
-   CT-STR-U BYTE-VIEW CELL visit execute
-   LIN-NDECL BYTE-VIEW CELL visit execute
-   CT-NAME-A-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-NAME-U-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-CLASS-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-WIDTH-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-SIGN-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-PKG-A-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-PKG-U-P @ BYTE-VIEW CT-CAP-V @ cells visit execute
-   CT-STR-P @ CT-STR-CAP-V @ visit execute
-
-   NORET-P BYTE-VIEW CELL visit execute
-   NORET-CAP-U BYTE-VIEW CELL visit execute
-   NORET-END BYTE-VIEW CELL visit execute
-   NORET-P @ NORET-CAP-U @ visit execute
-   DFER-END BYTE-VIEW CELL visit execute
-   DFERS BYTE-VIEW DFER-CAP visit execute
-   PIMM-N BYTE-VIEW CELL visit execute
-   PIMM-SYMS BYTE-VIEW PIMM-CAP cells visit execute
-   PIMM-NS BYTE-VIEW PIMM-CAP cells visit execute
-   RECORD-LINK-P BYTE-VIEW CELL visit execute
-   RECORD-LINK-CAP BYTE-VIEW CELL visit execute
-   RECORD-LINK-EFFECT-HI BYTE-VIEW CELL visit execute
-   RECORD-LINK-CONTROL-HI BYTE-VIEW CELL visit execute
-   RECORD-LINK-P @ BYTE-VIEW RECORD-LINK-CAP @ RECORD-LINK-ROW * visit execute
-   BWIN-EPOCH BYTE-VIEW CELL visit execute
-   visit UNIT-TFAM-STATE-SPANS ;
-
 public
 : UNIT-SCRATCH-RELEASE-CHECKER ( -- )
    UNIT-PREP-PENDING @ UNIT-PLAN-OPEN @ and 0 <> IF
@@ -29302,7 +29189,6 @@ private
 ' CHECKER-UNIT-MARK DECLARATIONS CHECKER-OWNER-ABI:UNIT-MARK-OFF + xt!
 ' CHECKER-UNIT-EXPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-EXPORT-OFF + xt!
 ' UNIT-SCRATCH-RELEASE DECLARATIONS CHECKER-OWNER-ABI:UNIT-SCRATCH-RELEASE-OFF + xt!
-' UNIT-STATE-SPANS DECLARATIONS CHECKER-OWNER-ABI:UNIT-STATE-SPANS-OFF + xt!
 ' CHECKER-UNIT-EXPORT-REFS DECLARATIONS CHECKER-OWNER-ABI:UNIT-EXPORT-REFS-OFF + xt!
 ' CHECKER-UNIT-IMPORT DECLARATIONS CHECKER-OWNER-ABI:UNIT-IMPORT-OFF + xt!
 ' CHECKER-UNIT-PREPARE-BEGIN DECLARATIONS CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF + xt!

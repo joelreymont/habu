@@ -293,21 +293,6 @@ public
    if 1 else 0 then ARMED ! ;
 : FILE-DRAIN ( -- ) DRAIN-EARLY ;
 
-: FILE-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   SCR-P BYTE-VIEW CELL visit execute
-   SCR-U BYTE-VIEW CELL visit execute
-   SCR-CAP BYTE-VIEW CELL visit execute
-   SCR-HEAD BYTE-VIEW CELL visit execute
-   ROW-P BYTE-VIEW CELL visit execute
-   ROW-U BYTE-VIEW CELL visit execute
-   ROW-HEAD BYTE-VIEW CELL visit execute
-   INDEX-P BYTE-VIEW CELL visit execute
-   INDEX-CAP BYTE-VIEW CELL visit execute
-   ARMED BYTE-VIEW CELL visit execute
-   FILE-VISIT-P BYTE-VIEW CELL visit execute
-   FILE-VISIT-U BYTE-VIEW CELL visit execute
-   FILE-VISIT-N BYTE-VIEW CELL visit execute ;
-
 private
 
 : FILE-ROW ( ptr n [ n n n n ptr u8 n ptr u8 n n n -- ] -- )

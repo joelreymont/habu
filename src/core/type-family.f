@@ -3693,16 +3693,6 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
 
-: REG-AOT-CAP ( n -- n ) {: k:n :}
-   k 0 = IF TF-CAP-V @ EXIT THEN
-   k 1 = IF TF-PK-CAP-V @ EXIT THEN
-   k 2 = IF SUMV-CAP-V @ EXIT THEN
-   k 3 = IF PF-CAP-V @ EXIT THEN
-   k 4 = IF LAY-CAP-V @ EXIT THEN
-   k 5 = IF TF-STR-CAP-V @ EXIT THEN
-   k 6 = IF SCH-CAP-V @ EXIT THEN
-   SCH-ROOT-CAP-V @ ;
-
 : REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
    k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
    k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
@@ -6938,37 +6928,6 @@ UNIT-FAM-RESET-INSTALL
    THEN
    name nameu src u UNIT-FAMILY-NAME-IN ;
 
-: UNIT-FAM-STATE-SPANS ( [ ptr u8 n -- ] -- ) {: visit :}
-   \ UNIT-FAM-TAKE advances the epoch; producer memo bytes are never imported.
-   TFM-BOOT BYTE-VIEW TF-CAP-INIT TFM-REC * visit execute
-   TFM-P BYTE-VIEW CELL visit execute
-   TFM-CAP BYTE-VIEW CELL visit execute
-   TFM-EPOCH BYTE-VIEW CELL visit execute
-   TFM-P @ BYTE-VIEW TFM-CAP @ TFM-REC * visit execute
-   TF-A-P BYTE-VIEW CELL visit execute
-   TF-CAP-V BYTE-VIEW CELL visit execute
-   TFAM-N BYTE-VIEW CELL visit execute
-   TF-PK-P BYTE-VIEW CELL visit execute
-   TF-PK-CAP-V BYTE-VIEW CELL visit execute
-   TF-PK-N BYTE-VIEW CELL visit execute
-   SUMV-A-P BYTE-VIEW CELL visit execute
-   SUMV-CAP-V BYTE-VIEW CELL visit execute
-   SUMV-N BYTE-VIEW CELL visit execute
-   PF-A-P BYTE-VIEW CELL visit execute
-   PF-CAP-V BYTE-VIEW CELL visit execute
-   PF-N BYTE-VIEW CELL visit execute
-   PF-COMMIT-N BYTE-VIEW CELL visit execute
-   LAY-A-P BYTE-VIEW CELL visit execute
-   LAY-CAP-V BYTE-VIEW CELL visit execute
-   LAY-N BYTE-VIEW CELL visit execute
-   TF-STR-P BYTE-VIEW CELL visit execute
-   TF-STR-CAP-V BYTE-VIEW CELL visit execute
-   TF-STR-U BYTE-VIEW CELL visit execute
-   visit SCHEMA-REG:UNIT-STATE-ROOTS
-   REG-AOT-N 0 ?do
-      i REG-AOT-BASE-PTR i REG-AOT-CAP i REG-AOT-WIDTH * visit execute
-   loop ;
-
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
@@ -6980,7 +6939,6 @@ UNIT-FAM-RESET-INSTALL
    [: UNIT-FAM-PREPARE ;] is CHECKER-REG:UNIT-TFAM-PREPARE
    [: UNIT-FAM-VIEW ;] is CHECKER-REG:UNIT-TFAM-VIEW
    [: UNIT-FAM-TAKE ;] is CHECKER-REG:UNIT-TFAM-TAKE
-   [: UNIT-FAM-STATE-SPANS ;] is CHECKER-REG:UNIT-TFAM-STATE-SPANS
    [: UNIT-FAM-EXPORT-RESET ;] is CHECKER-REG:UNIT-TFAM-EXPORT-RESET
    [: UNIT-FAM-END ;] is CHECKER-REG:UNIT-TFAM-END
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
