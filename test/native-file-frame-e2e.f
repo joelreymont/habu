@@ -52,6 +52,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
+   s" retire.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
@@ -98,6 +99,11 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 : RESULTS$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  results=" FIELD$ ;
 : RESOLUTIONS$ ( ptr u8 n -- ptr u8 n ) FRAME$ s"  resolution=" FIELD$ ;
 
+\ name's object line holds field with the value expected.
+: OBJECT-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n field:ptr fieldu:n want:ptr wantu:n :}
+   name nameu OBJECT$ field fieldu FIELD$ want wantu T$= ;
+
 \ name's object holds count input rows.
 : INPUTS ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n count:ptr countu:n :}
@@ -123,7 +129,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    twice twiceu IN+
    S\"  ;\n: MARK ( -- ) " IN+
    mark marku IN+
-   S\"  ; immediate\nvariable HITS\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
+   S\"  ; immediate\nvariable HITS\ncreate T 16 allot\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
 
 \ A rebuild after an edit to lib.f: the app still runs, both files still
@@ -166,8 +172,11 @@ public
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
-   \ IMM-USER runs lib.f's immediate MARK while it compiles.
-   s" app.f" S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\nrequire exec.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
+   \ retire.f retires a record lib.f made.
+   s" retire.f" S\" undefine FRAME-LIB:BUMP\n" PUT
+   \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
+   \ exec.f between its own definitions.
+   s" app.f" S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\n" PUT
    \ Each build below is its own builder process: a key that stays stable
    \ across separate builds is the boundary under test.
    PROBE {: rc:n :}
@@ -185,7 +194,7 @@ public
    s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value and MARK's run" T-LABEL
    s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=29 executed=1 data=0" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
-   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=25 executed=0 data=0" ENDS-WITH? TTRUE
+   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=28 executed=0 data=0" ENDS-WITH? TTRUE
    \ exec.f compiles nothing, so every resolution row is a run's: require and
    \ drop 1 each (global), FRAME-LIB:SEVEN and the ticked FRAME-LIB:TWICE 2 each
    \ (namespace, public), SEVEN under using 3 (namespace, public, global miss).
@@ -214,6 +223,23 @@ public
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
    APP-KEY KEY-LEN STORED
+   s" lib.f's object holds its records, HITS and T's data and deep.f's load" T-LABEL
+   s" lib.f" s"  records=" s" 8" OBJECT-HAS
+   \ DATA: HITS 8 bytes, T 16, and the 14 bytes of "FRAME-LIB:MARK" that its
+   \ interpreted s" copies to HERE.
+   s" lib.f" s"  data=" s" 38" OBJECT-HAS
+   s" lib.f" s"  requires=" s" 1" OBJECT-HAS
+   s" lib.f" s"  loads=" s" 1" OBJECT-HAS
+   s" lib.f" s"  segments=" s" 2" OBJECT-HAS
+   s" app.f's object holds six loads, the last between its own definitions" T-LABEL
+   s" app.f" s"  records=" s" 4" OBJECT-HAS
+   s" app.f" s"  requires=" s" 6" OBJECT-HAS
+   s" app.f" s"  loads=" s" 6" OBJECT-HAS
+   s" app.f" s"  segments=" s" 7" OBJECT-HAS
+   s" base.f" s"  loads=" s" 0" OBJECT-HAS
+   s" base.f" s"  segments=" s" 1" OBJECT-HAS
+   s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
+   s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
    LIB-KEY KEY-LEN STORED
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP

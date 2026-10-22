@@ -84,6 +84,9 @@ public
    s" NSTR:SOURCE-END" true BIND-ONE
    s" NSTR:SOURCE-COUNT" true BIND-ONE
    s" NSTR:SOURCE@" true BIND-ONE
+   s" REQUIRE-REG:COUNT" true BIND-ONE
+   s" REQUIRE-REG:LEN" true BIND-ONE
+   s" REQUIRE-REG:SLOT" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;

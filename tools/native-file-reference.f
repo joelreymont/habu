@@ -467,10 +467,14 @@ EXPORT REGISTER-IMPL
 
 1 constant CODE
 2 constant RECORD
+3 constant WID
 4 constant DATA
 5 constant LITERAL
 0 constant LOCAL
 1 constant EXTERNAL
+\ A wordlist no record owns: item 0 the global wordlist (wid 0), item 1 the
+\ retired one.
+2 constant BUILTIN
 
 \ The loader supplies the FILE-instance key: its parent instance, the load
 \ kind, whether the file lies under the engine's source root or another one,
@@ -1066,6 +1070,24 @@ public
 : REF-LITERAL ( n n -- n ) {: ordinal:n addend:n :}
    ordinal 0 < addend 0 < or if BAD then
    LITERAL ordinal addend REF-LOCAL ;
+
+\ The fixed kind and value the owner records for live record ord.
+: FIXED@ ( n -- n n bool ) FIXED-READ ;
+
+\ A FILE object's own references, taken with no definition capture open.
+: BEGIN-FILE-REFS ( -- )
+   CAP-READY @ if BAD then
+   0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! ;
+
+\ The reference to wordlist wid made before the file: builtin, or imported
+\ from the package record that owns it. 0 when no record owns it.
+: REF-WID ( n -- n ) {: wid:n :}
+   wid 0= if WID BUILTIN 0 0 REF! exit then
+   wid XREF-RETIRED-WL = if WID BUILTIN 1 0 REF! exit then
+   wid WID-OWNER 0= if 2drop 0 exit then
+   {: ord:n vis:n :}
+   WID ord IMPORT-DECL {: row:n :}
+   WID row vis 1- REF-IMPORT ;
 
 \ Declarations carry exact publication contracts beside their stable identity.
 : ENCODE ( n n -- ptr u8 n ) {: first:n last:n :}

@@ -50,7 +50,10 @@ $4B8 constant LIVE-FIXED-OFF
 \ from them when the file starts with `#!` (include.f LOAD-BYTES).
 88 constant F-RAW
 96 constant F-RAW-U
-104 constant FRAME-BYTES
+\ Where the loading file's source stood when it loaded this one; -1 for
+\ the outermost file or a load from outside that source.
+104 constant F-AT
+112 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
@@ -101,6 +104,10 @@ variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
 PTR-VARIABLE CUT-CELL
+\ The XREF:BEFORE-RETIRE! bound to the file objects' retire hook, and its
+\ record ordinal.
+variable RETIRE-SETTER
+variable RETIRE-SETTER-ORD
 variable UNOBSERVE-XT
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -134,6 +141,8 @@ CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
+CAST: RETIRE-SET-XT ( n -- [ n -- ] )
+CAST: RETIRE>N ( [ ptr n -- ] -- n )
 CAST: OBSERVE-XT ( n -- [ [ ptr n -- ] -- ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
@@ -620,13 +629,19 @@ variable PENDING-KEY-U
       NUNIT-OBJECT:FILE-ADD-DEFINITION
    true ;
 
-: DIAG-PATH? ( -- bool )
-   DEPTH @ 0= if false exit then
-   F-INPUT-U F@ 0= F-SRC-U F@ 0= or if false exit then
-   FRAME F-SRC + 0 ptr-field @ NULL-PTR = if false exit then
+: SOURCE-AT ( -- n )
+   DEPTH @ 0= if -1 exit then
+   F-SRC-U F@ 0= if -1 exit then
+   FRAME F-SRC + 0 ptr-field @ NULL-PTR = if -1 exit then
    data-base INP-CELL + CELL-VIEW @ {: cursor:n :}
    FRAME F-SRC + 0 ptr-field @ NULL-PTR BYTE-VIEW - {: source:n :}
-   cursor source >= if cursor source - F-SRC-U F@ <= else false then ;
+   cursor source - {: at:n :}
+   at 0 >= at F-SRC-U F@ <= and if at else -1 then ;
+
+: DIAG-PATH? ( -- bool )
+   DEPTH @ 0= if false exit then
+   F-INPUT-U F@ 0= if false exit then
+   SOURCE-AT 0 >= ;
 
 : DIAG-FALLBACK ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
@@ -758,11 +773,39 @@ variable PENDING-KEY-U
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
 
+\ Clear the retire hook this session set, unless its XREF is gone or now
+\ answers another setter's record.
+: RETIRE-UNSET ( -- )
+   RETIRE-SETTER @ {: old:n :}
+   old 0= if exit then
+   0 RETIRE-SETTER !
+   RETIRE-SETTER-ORD @ ndict@ < 0= if exit then
+   RETIRE-SETTER-ORD @ XREF-REC XREF-START old <> if exit then
+   0 old RETIRE-SET-XT execute ;
+
+\ The open file objects see every retirement through the running kernel's
+\ XREF:BEFORE-RETIRE!, looked up at the session's open and at each file's open
+\ and close: an engine build loads a new XREF, whose hook the old binding
+\ misses, so every file open while it moves refuses (NUNIT-OBJECT
+\ HOOK-CHANGED).
+: BIND-RETIRE ( -- )
+   s" XREF:BEFORE-RETIRE!" TARGET-XT? {: xt:n :}
+   xt RETIRE-SETTER @ = if exit then
+   RETIRE-SETTER @ 0<> {: moved:bool :}
+   RETIRE-UNSET
+   xt 0<> if
+      ['] NUNIT-OBJECT:FILE-RETIRE RETIRE>N xt RETIRE-SET-XT execute
+      xt RETIRE-SETTER !
+      s" XREF:BEFORE-RETIRE!" XREF-FIND NFILE-REF:REC-ORD RETIRE-SETTER-ORD !
+   then
+   moved if NUNIT-OBJECT:HOOK-CHANGED then ;
+
 \ The open file objects follow every dictionary cut through the running
 \ kernel's one capture cut cell, held for the session. A kernel without it
 \ leaves the cell unbound, and every file object refuses (NUNIT-OBJECT
 \ FILE-BEGIN).
 : BIND-CUT ( -- )
+   BIND-RETIRE
    s" native-unit-cut-cell" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
       dup 0= if drop exit then
    CUT-CELL-XT execute {: cell:ptr :}
@@ -771,6 +814,7 @@ variable PENDING-KEY-U
    cell CUT-CELL ! ;
 
 : UNBIND-CUT ( -- )
+   RETIRE-UNSET
    CUT-CELL @ {: cell:ptr :}
    cell NULL-PTR = if exit then
    0 cell CELL-VIEW !
@@ -895,7 +939,8 @@ variable PENDING-KEY-U
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
    NFILE-INPUTS:MARK F-MARK F!
    SOURCE-ROW
-   NUNIT-OBJECT:FILE-BEGIN ;
+   BIND-RETIRE
+   FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
 \ file's defs definitions, in ordinal order.
@@ -914,8 +959,10 @@ variable PENDING-KEY-U
 \ cache diagnostics only print what was written or why the file has none.
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
+   BIND-RETIRE
    NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
    storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
+   NUNIT-OBJECT:FILE-ENCODE
    NUNIT-OBJECT:FILE-REFUSED? if
       DIAG? @ 0= if exit then
       s" native-file: refused path=" DIAG-W2 FRAME-PATH DIAG-W2
@@ -930,13 +977,19 @@ variable PENDING-KEY-U
       {: got:n found:bool :}
    found 0= got size <> or if BAD then
    0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu NUNIT-OBJECT:OPEN-FILE
-   NUNIT-OBJECT:FILE-COUNTS {: defs:n rows:n inputs:n :}
+   NUNIT-OBJECT:FILE-COUNTS
+      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n :}
    DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
    s"  defs=" DIAG-W2 defs DIAG-N
    s"  rows=" DIAG-W2 rows DIAG-N
    s"  inputs=" DIAG-W2 inputs DIAG-N
+   s"  records=" DIAG-W2 recs DIAG-N
+   s"  data=" DIAG-W2 data DIAG-N
+   s"  requires=" DIAG-W2 reqs DIAG-N
+   s"  loads=" DIAG-W2 loads DIAG-N
+   s"  segments=" DIAG-W2 segs DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    S\" \n" DIAG-W2 ;
@@ -964,6 +1017,7 @@ variable PENDING-KEY-U
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
    DEPTH @ 0 > if ROWS-FLUSH then
+   DEPTH @ 0 > if SOURCE-AT else -1 then {: at:n :}
    FRAME-RESERVE
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
@@ -978,6 +1032,7 @@ variable PENDING-KEY-U
    q Q>N F-Q F!
    prior UNIT>N F-PRIOR F!
    kind F-KIND F!
+   at F-AT F!
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if FILE-CLOSE NFILE-REF:POP-FILE open-rc throw then
    NUNIT-DEP:BEGIN-UNIT
