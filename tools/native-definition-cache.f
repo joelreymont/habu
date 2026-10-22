@@ -43,9 +43,9 @@ $4B8 constant LIVE-FIXED-OFF
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 
-\ An object entry: magic | checksum over the bytes after it | producer (32)
-\ | the HBNUNIT2 definition object.
-48 constant ENTRY-HEAD
+\ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
+\ definition object.
+16 constant ENTRY-HEAD
 $cbf29ce484222325 constant FNV-BASIS
 $100000001b3 constant FNV-PRIME
 
@@ -97,12 +97,10 @@ variable HOST-ENV-USE
 variable HOST-ENV-RESET
 create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
-create SOURCE-RAW 32 allot
 create KEY-HEX 64 allot
 create HASH-CELL CELL allot
 create NAME NAME-BYTES allot
 create PATH-BUF FS-PATH-CAP allot
-create STORED-PRODUCER 32 allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
 CAST: DISPATCH>N ( [ ptr u8 n -- ] -- n )
@@ -412,13 +410,12 @@ variable PENDING-KEY-U
    0 STORE-IMAGE 16 + size 16 - CHECKSUM 0 STORE-IMAGE 8 + LE:U64!
    path pathu 0 STORE-IMAGE size ATOMIC-WRITE-FILE ;
 
-: ENTRY-WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n object:ptr objectu:n producer:ptr produceru:n :}
-   keyu 64 <> produceru 32 <> or objectu 0 < or if BAD then
+: ENTRY-WRITE ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n object:ptr objectu:n :}
+   keyu 64 <> objectu 0 < or if BAD then
    ENTRY-HEAD objectu + {: size:n :}
    size STORE-IMAGE-RESERVE
    s" HBDOBJ01" drop 0 STORE-IMAGE 8 BYTE-COPY
-   producer 0 STORE-IMAGE 16 + 32 BYTE-COPY
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
    key keyu ENTRY-PATH size IMAGE-WRITE ;
 
@@ -438,15 +435,9 @@ variable PENDING-KEY-U
 
 : FILE-CLOSE ( -- ) -1 DEPTH +! ;
 
-: HASH-SOURCE ( ptr u8 n -- ptr u8 n )
-   s" habu-definition-source-v1" HASH-START
-   HASH-S
-   HASH-CTX SOURCE-RAW SHA256-END
-   SOURCE-RAW 32 ;
-
 : DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: source:ptr sourceu:n pending:ptr pendingu:n :}
-   s" habu-native-definition-v8" HASH-START
+   s" habu-native-definition-v9" HASH-START
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    s" HBNUNIT2-definition-v2" HASH-S
    data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
@@ -522,8 +513,7 @@ variable PENDING-KEY-U
    BORROW-ACTIVE @ if
       source sourceu BORROW-ACCEPT @ BORROW-ACCEPT-XT execute
    else ARM-WARM-ORIGIN then
-   ord 0 PENDING-KEY PENDING-KEY-U @ STORED-PRODUCER 32
-      NFILE-REF:PUBLISH-DEFINITION
+   ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
    NUNIT-OBJECT:DISCARD-DEFINITION
    path pathu BUILD-CACHE:USED drop
    1 HIT-N +!
@@ -539,7 +529,6 @@ variable PENDING-KEY-U
    key keyu ENTRY-PATH {: path:ptr pathu:n :}
    path pathu s" HBDOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
    found 0= if false exit then
-   0 ENTRY 16 + STORED-PRODUCER 32 BYTE-COPY
    0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu
       NUNIT-OBJECT:PREPARE-DEFINITION? 0= if
       NUNIT-OBJECT:DISCARD-DEFINITION false exit
@@ -578,8 +567,8 @@ variable PENDING-KEY-U
    DISPATCH-SOURCE @ DISPATCH-SOURCE-U @
       s" eligible-cache-miss" COMPILE-ORIGINAL ;
 
-: COLD-CANDIDATE ( ptr u8 n ptr u8 n n -- )
-   {: source:ptr sourceu:n key:ptr keyu:n ord:n :}
+: COLD-CANDIDATE ( ptr u8 n n -- )
+   {: key:ptr keyu:n ord:n :}
    ord NUNIT-DEP:BEGIN-DEFINITION
    NUNIT-OBJECT:DEFINITION-BEGIN
    ['] COMPILE-STAGED catch {: rc:n :}
@@ -592,15 +581,12 @@ variable PENDING-KEY-U
    NUNIT-DEP:COMPILED!
    NUNIT-OBJECT:DEFINITION-END {: eligible:bool :}
    eligible if
-      NUNIT-DEP:EXPORT {: deps:ptr depsu:n :}
-      source sourceu HASH-SOURCE NUNIT-DEP:FINAL-PRODUCER$
-         {: producer:ptr produceru:n known:bool :}
-      known if
-         ord 0 PENDING-KEY PENDING-KEY-U @ producer produceru
-            NFILE-REF:PUBLISH-DEFINITION
+      NUNIT-DEP:EXPORT {: deps:ptr depsu:n storable:bool :}
+      storable if
+         ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
-         key keyu object objectu producer produceru ENTRY-WRITE
+         key keyu object objectu ENTRY-WRITE
       else
          s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
          NFILE-REF:PENDING-RELEASE
@@ -622,7 +608,7 @@ variable PENDING-KEY-U
    source sourceu pending pendingu DEFINITION-KEY
       {: key:ptr keyu:n :}
    key keyu ord source sourceu FIND-HIT 0= if
-      source sourceu key keyu ord COLD-CANDIDATE
+      key keyu ord COLD-CANDIDATE
    then
    0 DISPATCH-BUSY ! ;
 
@@ -857,10 +843,9 @@ variable PENDING-KEY-U
    NULL-PTR REQUEST-MANIFEST ! 0 REQUEST-MANIFEST-U !
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
-   HASH-RAW 32 ZERO-SCRATCH SOURCE-RAW 32 ZERO-SCRATCH
+   HASH-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
-   NAME NAME-BYTES ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH
-   STORED-PRODUCER 32 ZERO-SCRATCH ;
+   NAME NAME-BYTES ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
 
 : OPEN ( -- )
    1 SESSION !
