@@ -28,6 +28,9 @@ create APP-RES RES-LEN allot
 create LIB-RES RES-LEN allot
 24 constant AT-CAP
 create HITS-AT AT-CAP allot variable HITS-AT-U
+$10000 constant OBJ-CAP
+create OBJ OBJ-CAP allot
+16 constant OBJ-HEAD
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -51,7 +54,7 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    0 INPUT-U !
    S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+
-   s" app.f" LOAD+
+   s" top.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
    s" watermark.f" LOAD+
@@ -163,6 +166,48 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
    mark marku IN+
    S\"  ; immediate\nvariable HITS\ncreate T 16 allot\nTYPED-VARIABLE HOOK [ n -- n ]\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n' TWICE HOOK xt!\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
+
+\ check.f, which top.f requires after app.f, checks the first build's app.f
+\ dependency rows, kept in app-cold.obj, while the session that loaded app.f
+\ is still open: the rows' record keys exist only there. It first undoes
+\ app.f's two writes to lib.f's DATA, TALLY's to HITS and the store of QUAD
+\ into HOOK, so lib.f's DATA stands as app.f found it, as it does where a
+\ build checks the rows, before app.f. For each split k it prints one digit,
+\ 1 when rows [0,k) still hold plus 2 when rows [k,n) do, then for each row
+\ i a 1 when row i holds, else 0.
+\ Section 14 is the object's dependency rows (NUNIT-OBJECT's DEPS-SLOT).
+: CHECKER ( -- )
+   0 INPUT-U !
+   S\" -1 FRAME-LIB:HITS +!\n' FRAME-LIB:TWICE FRAME-LIB:HOOK xt!\n" IN+
+   S\" : SPLITS ( ptr u8 n -- ) {: deps:ptr depsu:n :}\n   deps depsu NUNIT-DEP:FORMAT {: rows:n :}\n   s\" split=\" type\n   rows 1+ 0 ?do\n      deps depsu 0 i NUNIT-DEP:CHECK-ROWS if 1 else 0 then\n      deps depsu i rows NUNIT-DEP:CHECK-ROWS if 2 else 0 then + 48 + emit\n   loop cr\n   s\" held=\" type\n   rows 0 ?do\n      deps depsu i i 1+ NUNIT-DEP:CHECK-ROWS if 49 else 48 then emit\n   loop cr ;\ns\" " IN+
+   s" app-cold.obj" AT IN+
+   S\" \" NUNIT-FILE:ARCH-AARCH64 s\" FILE\" s\" " IN+
+   APP-KEY KEY-LEN IN+
+   S\" \" NUNIT-FILE:READ\n14 NUNIT-FILE:SECTION$ SPLITS\n" IN+
+   s" check.f" INPUT INPUT-U @ PUT ;
+
+\ Keep the stored app.f object, past its cache entry head, as app-cold.obj.
+: KEEP-OBJECT ( -- )
+   0 INPUT-U !
+   s" cache/hb-file-" IN+ APP-KEY KEY-LEN IN+ s" .hfo" IN+
+   INPUT INPUT-U @ AT OBJ OBJ-CAP READ-ALL {: size:n :}
+   size OBJ-CAP < TTRUE
+   size OBJ-HEAD > TTRUE
+   s" app-cold.obj" OBJ OBJ-HEAD + size OBJ-HEAD - PUT ;
+
+\ The digits the session printed after tag, and how many of them are c.
+: DIGITS$ ( ptr u8 n -- ptr u8 n )
+   {: tag:ptr tagu:n :}
+   OUT$ tag tagu FIELD$ {: a:ptr u:n :}
+   a u 10 INDEX-OF MATCH option
+     none OF a u ENDOF
+     some OF IDX>N a swap ENDOF
+   ;MATCH ;
+: DIGIT-COUNT ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
+   0 u 0 ?do a i + c@ c = if 1+ then loop ;
+: SPLIT$ ( -- ptr u8 n ) s" split=" DIGITS$ ;
+: SPLIT-COUNT ( n -- n ) {: c:n :} SPLIT$ c DIGIT-COUNT ;
+: HELD-COUNT ( n -- n ) {: c:n :} s" held=" DIGITS$ c DIGIT-COUNT ;
 
 \ A rebuild after an edit to lib.f: the app still runs, both files still
 \ write objects with every colon definition, under the keys of the first build.
@@ -309,7 +354,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
    \ xt cell HOOK.
-   s" app.f" APP$ PUT ;
+   s" app.f" APP$ PUT
+   s" top.f" S\" require app.f\nrequire check.f\n" PUT
+   s" check.f" S\" \\ the first build has no object to check\n" PUT ;
 
 : FRAME-CHECKS ( -- )
    OUT$ S\" use=67\n" CONTAINS? TTRUE
@@ -470,6 +517,8 @@ public
    FRAME-CHECKS
    OBJECT-CHECKS
    LIB-KEY KEY-LEN STORED
+   KEEP-OBJECT
+   CHECKER
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP
    HITS$ {: at:ptr atu:n :}
@@ -481,6 +530,9 @@ public
    S\" \\ edited\n" s" ( note ) dup +" s" 3 ( note ) TWICE drop" LIB-SOURCE
    s" comments in lib.f keep both keys and both files' results" REBUILT
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
+   s" every split of the first build's app.f rows still holds" T-LABEL
+   SPLIT$ nip 1 > TTRUE
+   51 SPLIT-COUNT SPLIT$ nip T=
    \ TWICE's new code changes lib.f's results. An empty cache makes app.f
    \ compile again against lib.f's moved code and HITS's moved address, so
    \ new branch words land in its call sites and TALLY captures the new
@@ -490,6 +542,19 @@ public
    s" " s" 2 *" s" 3 TWICE drop" LIB-SOURCE
    s" a changed TWICE body keeps both keys and app.f's results" REBUILT
    s" lib.f" RESULTS$ LIB-RES RES-LEN STR= TFALSE
+   \ app.f ran MARK, which calls TWICE, and two runs on its HOOK line reach
+   \ HOOK's DATA, which holds TWICE: those three executed rows are stale.
+   \ Splits before the first hold below and fail above (1), splits past the
+   \ last the reverse (2), splits between fail on both sides (0).
+   s" app.f's three rows that reach TWICE are stale, and only ranges holding one fail" T-LABEL
+   48 HELD-COUNT 3 T=
+   49 SPLIT-COUNT 0 > TTRUE
+   50 SPLIT-COUNT 0 > TTRUE
+   51 SPLIT-COUNT 0 T=
+   SPLIT$ s" 21" CONTAINS? TFALSE
+   SPLIT$ s" 01" CONTAINS? TFALSE
+   SPLIT$ s" 20" CONTAINS? TFALSE
+   ERR$ s" dependency miss: executed closure changed" CONTAINS? TTRUE
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    T-REPORT

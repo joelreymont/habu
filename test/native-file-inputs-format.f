@@ -1,4 +1,5 @@
 \ A truncated answer in a query row must refuse before reading past its bytes.
+\ A source row's stat stands for its bytes; only a changed stat hashes them.
 \ bin/hb --load test/native-file-inputs-format.f
 
 require src/lib/test.f
@@ -21,6 +22,8 @@ variable INNER-CALLS
 4096 constant CAP
 create OUT CAP allot
 create ERR CAP allot
+create SROWS 256 allot
+variable SROWS-U
 
 PROCESS-SYMBOLS
 FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
@@ -75,6 +78,31 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    rc 0<> if OUT outu LEN>N type ERR erru LEN>N type then
    rc 0 T= ;
 
+\ SROWS holds a copy of the recorded source row, to change its stat or digest.
+: SROWS$ ( -- ptr u8 n ) SROWS SROWS-U @ ;
+: SROWS-COPY ( -- )
+   NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
+   rowsu 256 > if T-FAIL exit then
+   rows SROWS rowsu BYTE-COPY rowsu SROWS-U ! ;
+
+: SOURCE-CASE ( -- )
+   s" a source row whose stat matches is fresh without hashing" T-LABEL
+   SOURCE$ s" : A 1 ;" WRITE-ALL
+   NFILE-INPUTS:RESET
+   SOURCE$ s" : A 1 ;" NFILE-INPUTS:ADD-SOURCE
+   SROWS-COPY
+   32 0 ?do 0 SROWS 64 SOURCE-U @ + + i + c! loop
+   SROWS$ NFILE-INPUTS:FRESH? TTRUE
+   s" a changed stat over equal bytes is fresh" T-LABEL
+   SROWS-COPY
+   SROWS 32 + LE:U64@ 1+ SROWS 32 + LE:U64!
+   SROWS$ NFILE-INPUTS:FRESH? TTRUE
+   s" changed bytes are stale" T-LABEL
+   SOURCE$ s" : A 22 ;" WRITE-ALL
+   NFILE-INPUTS:BYTES$ NFILE-INPUTS:FRESH? TFALSE
+   s" a truncated source row is malformed, not stale" T-LABEL
+   [: SROWS SROWS-U @ 1- NFILE-INPUTS:FRESH? drop ;] E-NUNIT-FILE TTHROWSQ ;
+
 public
 : MAIN ( -- )
    SCRIPT-ARGC 0 > if
@@ -99,6 +127,7 @@ public
    [: NFILE-INPUTS:BYTES$ NFILE-INPUTS:CHECK ;] E-NUNIT-PROFILE TTHROWSQ
    s" a scoped source callback returns to its caller after a throw" T-LABEL
    CALLBACK-SCOPE
+   SOURCE-CASE
    s" a recorded content path replaced by a FIFO is stale" T-LABEL
    FIFO-STALE
    NFILE-INPUTS:CLOSE

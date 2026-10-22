@@ -1361,6 +1361,28 @@ public
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
 
+\ The innermost file frame's dependency row count so far.
+: FILE-ROWS ( -- n ) F-OFF FFIELD @ FBYTES 8 + LE:U64@ ;
+
+\ Whether rows [done, mark) of a file object's dependency bytes still hold;
+\ rows below done are framed, not checked. Each call restarts at HEAD and
+\ keeps nothing after it returns, so a caller may load child files, which
+\ check their own objects, between ranges.
+: CHECK-ROWS ( ptr u8 n n n -- bool )
+   {: bytes:ptr size:n done:n mark:n :}
+   bytes size HEAD {: count:n :}
+   done 0 < mark done < or mark count > or if MALFORMED then
+   NULL-PTR MISS-P ! 0 MISS-U !
+   mark 0 ?do
+      bytes size ROW-AT {: kind:n key:ptr keyu:n data:ptr datau:n :}
+      i done >= if
+         kind key keyu data datau CHECK-ROW 0= if
+            REPORT-MISS false unloop exit
+         then
+      then
+   loop
+   true ;
+
 \ The row count of well-framed dependency bytes, without checking any row
 \ against this session.
 : FORMAT ( ptr u8 n -- n )

@@ -18,6 +18,9 @@ private
 2 constant QUERY-ROW
 3 constant CONTENT-ROW
 4 constant ENV-ROW
+\ A file's own source: the stat at capture (sec, ns, size at row+32) and, as
+\ the answer, the SHA-256 of the bytes that ran.
+5 constant SOURCE-ROW
 64 constant ROW-BYTES
 create CONTENT-SHA SHA256-FILE-CTX-BYTES allot
 create CONTENT-DIGEST 32 allot
@@ -58,15 +61,20 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
    answer dst ROW-BYTES pathu + + answeru BYTE-COPY
    dst ;
 
+\ Whether the file's stat equals the one row recorded.
+: STAT= ( ptr u8 ptr u8 n -- bool )
+   {: row:ptr path:ptr pathu:n :}
+   path pathu FILE-META {: size:n sec:n ns:n csec:n cns:n :}
+   csec drop cns drop
+   sec row 32 + LE:U64@ =
+   ns row 40 + LE:U64@ = and
+   size row 48 + LE:U64@ = and ;
+
 : CHECK-FILE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
    row 24 + LE:U64@ 1 <> if MALFORMED then
    path pathu FILE? 0= if BAD then
-   path pathu FILE-META {: size:n sec:n ns:n csec:n cns:n :}
-   csec drop cns drop
-   sec row 32 + LE:U64@ <>
-   ns row 40 + LE:U64@ <> or
-   size row 48 + LE:U64@ <> or if BAD then ;
+   row path pathu STAT= 0= if BAD then ;
 
 : STAMP-FILE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
@@ -89,6 +97,16 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
    CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN
       dup 0<> if BAD then drop
    row 32 + 32 CONTENT-DIGEST 32 STR= 0= if BAD then ;
+
+\ An unchanged stat stands for unchanged bytes without reading them; a changed
+\ one is fresh only when the file still hashes to the bytes that ran.
+: CHECK-SOURCE ( ptr u8 ptr u8 n -- )
+   {: row:ptr path:ptr pathu:n :}
+   path pathu FILE? 0= if BAD then
+   row 24 + LE:U64@ 1 = row path pathu STAT= and if exit then
+   CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN
+      dup 0<> if BAD then drop
+   row ROW-BYTES + row 8 + LE:U64@ + 32 CONTENT-DIGEST 32 STR= 0= if BAD then ;
 
 : CHECK-QUERY ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
@@ -120,6 +138,12 @@ private
    {: path:ptr pathu:n source:ptr sourceu:n :}
    CONTENT-ROW path pathu s" " true ROW {: row:ptr :}
    CONTENT-SHA source sourceu row 32 + SHA256-IN ;
+
+: STORE-OWN ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n source:ptr sourceu:n :}
+   CONTENT-SHA source sourceu CONTENT-DIGEST SHA256-IN
+   SOURCE-ROW path pathu CONTENT-DIGEST 32 true ROW
+   path pathu STAMP-FILE ;
 
 : STORE-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n :}
@@ -182,6 +206,10 @@ public
 \ Readers, reset and cleanup run after the source's workers have joined.
 : ADD ( ptr u8 n ptr u8 n -- )
    LOCK ['] STORE-SOURCE ['] UNLOCK finally ;
+
+\ A loaded file's own source row: its path stamped now, its bytes hashed.
+: ADD-SOURCE ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-OWN ['] UNLOCK finally ;
 
 : ADD-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
    LOCK ['] STORE-ROOT ['] UNLOCK finally ;
@@ -272,7 +300,10 @@ public
          row 24 + LE:U64@ 1 > if MALFORMED then
          row 24 + LE:U64@ 0= answeru 0<> and if MALFORMED then
          fresh if row path pathu current CHECK-ENV then
-      else MALFORMED then then then then
+      else kind SOURCE-ROW = if
+         row 24 + LE:U64@ 1 > answeru 32 <> or if MALFORMED then
+         fresh if row path pathu CHECK-SOURCE then
+      else MALFORMED then then then then then
       ROW-BYTES pathu + answeru + CHECK-OFF +!
       1+
    repeat
@@ -280,6 +311,21 @@ public
 
 : CHECK-WITH ( ptr u8 n [ ptr u8 n -- ptr u8 n ] -- ) true swap VERIFY drop ;
 : CHECK ( ptr u8 n -- ) ['] CURRENT$ CHECK-WITH ;
+
+private
+PTR-VARIABLE FRESH-BYTES
+variable FRESH-U
+: CHECK-HELD ( -- ) FRESH-BYTES @ FRESH-U @ CHECK ;
+public
+
+\ Whether every row still holds: a stale row is false, a malformed one throws.
+: FRESH? ( ptr u8 n -- bool )
+   FRESH-U ! FRESH-BYTES !
+   ['] CHECK-HELD catch {: code:n :}
+   code 0= if true exit then
+   code E-NUNIT-PROFILE <> if code throw then
+   false ;
+
 \ The row count of well-formed rows, none checked against today's sources.
 : ROW-COUNT ( ptr u8 n -- n ) false ['] CURRENT$ VERIFY ;
 : FORMAT ( ptr u8 n -- ) ROW-COUNT drop ;

@@ -1018,8 +1018,8 @@ variable PENDING-KEY-U
    NFILE-INPUTS:MARK F-MARK F! ;
 
 : SOURCE-ROW ( -- )
-   FRAME-PATH FRAME-ROOT FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
-      NFILE-INPUTS:ADD-ROOT ;
+   FRAME-PATH FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
+      NFILE-INPUTS:ADD-SOURCE ;
 
 variable USER-SEEN
 : USER-SEEN! ( ptr u8 -- ) CELL-VIEW @ USER-SEEN ! ;
@@ -1041,7 +1041,7 @@ variable USER-SEEN
    mark F-SLOTS F@ <> ;
 
 \ Open the object of the file just pushed; its first row is its own source's
-\ content. Rows join an object only at ROWS-FLUSH, so the row recorded before
+\ stat and digest. Rows join an object only at ROWS-FLUSH, so the row recorded before
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
 : OBJECT-OPEN ( -- )
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
