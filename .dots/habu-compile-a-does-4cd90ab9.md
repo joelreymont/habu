@@ -1,0 +1,14 @@
+---
+title: Compile a does> definer with an empty head at tier 1
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-10T07:38:37.590695+03:00"
+---
+
+Problem: a definer whose head before `does>` is empty is admitted by tier 0 and tools/check.f, but native tier 1 refuses it with an internal code and no diagnostic: dc5 (`: MK ( -- ) does> ( -- n ) @ ;  1 . cr`) and dc6 (the same with `trusted:`) print `1` at tier 0 and under tools/check.f, and `ncomp: cannot compile MK`, uncaught -8550 (E-NELAB-CALL), rc 67, under the Habu loop at tier 1 (`bin/hb --load test/outer-loop-on.f test/gforth/tier-1.f <file>`). Found by the hand-the-rest lane's clause-record probes.
+Acceptance: at tier 1, under both loops, a definer with an empty head compiles as at tier 0; dc5 and dc6 print `1`, rc 0, and join a native tier-1 test.
+Files: src/compiler/native/ (the does> head's elaboration), a native tier-1 test.
+Verify: native build per docs/gate.md; `bin/hb --load test/run.f`.
+Depends: none. Worker: worker-max.
+Fix now (decision 2026-10-22): dc5 still throws -8550 at tier 1. The reproducers are also waiting cases of habu-replace-tier-1-dafb8d2c (one-pass codegen campaign).

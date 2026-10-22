@@ -1,0 +1,9 @@
+---
+title: Cut build-cache test cruft
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-22T12:40:59.729577+03:00"
+---
+
+Problem (review lane D, ~/.cache/tmp/carl-incr-review/laneD.md): (1) test/compiler/native-build-edit-e2e.f MAIN (:1285-1317) has subcommands kernel, division, writer, engine-artifact, handover, prefix, prefix-facts, emitter-role, emitter-live, emitter-probe, source-copy, legacy, emitter that no gate or driver runs; each repeats PREPARE BASELINE WARM (tree copy + cold + warm engine build), several add cold donor engines (DIVISION-BOUNDARY 10 builds, EMITTER-ROLE-BOUNDARY 8, qualify 9 :778-831); implementation mirrors EARLY-PREFIX-HITS (:456-460) and ENGINE-JSON-SUCCESS (:919-934, use CHECK-REPORT). (2) test/source-root-exe-test.f:623-668 spawns two children that each compile src/habu/app-image.f from source (SAVE-PUSHED and CAPTURE are one boundary; one child can do both). (3) Format mirrors: test/native-file-types-e2e.f PARTIAL-PROJECTION :30-101 (hand-assembled rows), test/native-file-auto-e2e.f:532 HBFDEP02 magic scan, tools/hb-build-test-lib.f CHECK-REPORT :527-529 version pin. (4) Duplicates: tools/hb-build-retain-test.f:252-291 vs src/lib/build-cache-retain-test.f:352-370 basic rules; test/native-file-stripped-path-e2e.f:48-53 cold/warm pair; three 1 ms deadline cases (test/compiler/native-build-edit-e2e.f:936-942, test/whitebox-engine-key-test.f:142-146, tools/hb-build-timeout-test.f; keep the CLI one). Acceptance: behaviours of (1) not covered by the gate row of habu-gate-the-recompile-2ec826c7 folded into one registered chain with one cold comparison, the rest deleted; (2)-(4) removed or merged keeping each distinct claim; docs/gate.md updated; affected rows pass; row wall/CPU before and after. Absorbs habu-fold-or-delete-c3d05471 and habu-cut-duplicate-and-eed0637c. Depends: habu-gate-the-recompile-2ec826c7 for (1). Claim: unassigned.
