@@ -421,10 +421,28 @@ $8000000000000000 constant ORIGIN-FLOOR
       1 OPEND-N +!
    then ;
 
+public
+
+\ A dictionary cut keeping kept records drops the origins it removed.
+: DICT-CUT ( n -- )
+   {: kept:n :}
+   kept OW @ >= if exit then
+   0 OI-N @ 0 ?do
+      i OI-R kept < if dup i OI-O i OI-R OI! 1+ then
+   loop OI-N !
+   0 OPEND-N @ 0 ?do
+      i OPEND @ kept < if i OPEND @ over OPEND ! 1+ then
+   loop OPEND-N !
+   kept OW ! ;
+
+private
+
 \ Index every record below limit that has settled.
 : EXTEND ( n -- )
    {: limit:n :}
-   ndict@ OW @ < if BAD then
+   \ A kernel without the cut notice lowers the count unseen; it writes no
+   \ file object (NUNIT-OBJECT FILE-BEGIN), and the index drops what the cut did.
+   ndict@ OW @ < if ndict@ DICT-CUT then
    limit OW @ > if
       limit OPMAX-RESERVE
       limit OW @ ?do
@@ -499,10 +517,14 @@ $8000000000000000 constant ORIGIN-FLOOR
    1 H-N key keyu H-S addend H-N
    target VISIT ;
 
+\ v lies in the dictionary and code region (AOT-CELL keeps its own test
+\ private, and a host built before an export must still load this file).
+: REGION? ( n -- bool ) {: v:n :} v dbase@ >= v dbase@ REGION + < and ;
+
 \ holder's pointer cell holds v: an address in the dictionary, code or the
 \ DATA before the limits is its record's key and the offset into it, and the
-\ walk follows that record. Another mapped address is process state no later
-\ build sees; any other value is a number.
+\ walk follows that record. An address there that no record owns, or another
+\ mapped address, is state no row can name; any other value is a number.
 : H-POINTER ( n n n n -- )
    {: v:n holder:n limit:n lim-here:n :}
    v AOT-CELL:DICT-PTR? if
@@ -511,12 +533,16 @@ $8000000000000000 constant ORIGIN-FLOOR
    then
    v AOT-CELL:CODE-PTR? if
       v NFILE-REF:IMPL-OWNER {: owner:n found:bool :}
-      found if owner v owner XREF-REC XREF-START - holder H-REF exit then
+      found 0= if s" executed-closure-unknown" holder FAIL exit then
+      owner v owner XREF-REC XREF-START - holder H-REF exit
    then
    v AOT-CELL:DATA-ADDRESS? v lim-here < and if
       v limit lim-here SPAN {: owner:n base:n end:n :}
       end drop
       owner 0 >= if owner v base - holder H-REF exit then
+   then
+   v AOT-CELL:DATA-ADDRESS? v REGION? or if
+      s" executed-closure-unknown" holder FAIL exit
    then
    v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder FAIL exit then
    0 H-N v H-N ;
@@ -576,10 +602,10 @@ $8000000000000000 constant ORIGIN-FLOOR
 
 \ A record the file made is not in a closure: no row could be checked at the
 \ file's entry. A capturing walk queues it, and a walk through it (WTRANS)
-\ queues every record it reaches. A seed record is terminal; a defer is its
-\ cell; a definition with a result is a member; a constant is its VALUE row;
-\ a does> instance's clause has no result yet; anything else must be a data
-\ record.
+\ queues every record it reaches. A defer is its cell, a seed one included,
+\ since an earlier file may rebind it; any other seed record is terminal; a
+\ definition with a result is a member; a constant is its VALUE row; a does>
+\ instance's clause has no result yet; anything else must be a data record.
 : REACH ( n -- )
    {: ord:n :}
    WTRANS @ if
@@ -587,9 +613,9 @@ $8000000000000000 constant ORIGIN-FLOOR
    else
       ord OWN? if WCAPTURE @ if ord QUEUE then exit then
    then
-   ord NFILE-REF:SEED-RECORD? if exit then
    ord XREF-REC {: rec:ptr :}
    rec NDICT:REC-DEFER-CELL 0<> if ord REACH-DATA exit then
+   ord NFILE-REF:SEED-RECORD? if exit then
    ord NFILE-REF:RESULT-DIGEST {: digest:ptr known:bool :}
    digest drop
    known if ord MEMBER+ ord EDGES exit then
@@ -1140,7 +1166,7 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
    rec XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE exit then
-   ord NFILE-REF:SEED-RECORD? if exit then
+   ord NFILE-REF:SEED-RECORD? rec NDICT:REC-DEFER-CELL 0= and if exit then
    ord true WALK
    WOK @ 0= if exit then
    ord NFILE-REF:RESULT-DIGEST nip rec NDICT:REC-DEFER-CELL 0<> or if
@@ -1185,18 +1211,6 @@ public
 \ after. A build tool resolves names against its host engine, which may predate
 \ the word, so OBSERVE-RUN reaches it by execution token.
 : USE-TOP ( n -- ) TOP-XT ! ;
-
-\ A dictionary cut keeping kept records drops the origins it removed.
-: DICT-CUT ( n -- )
-   {: kept:n :}
-   kept OW @ >= if exit then
-   0 OI-N @ 0 ?do
-      i OI-R kept < if dup i OI-O i OI-R OI! 1+ then
-   loop OI-N !
-   0 OPEND-N @ 0 ?do
-      i OPEND @ kept < if i OPEND @ over OPEND ! 1+ then
-   loop OPEND-N !
-   kept OW ! ;
 
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
