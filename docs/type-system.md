@@ -795,9 +795,10 @@ Three T1 sites need a named answer beyond those two mechanisms:
   generated call passes both, and each registry row holds both addresses in a
   declared pointer table, so `src/core/dynamic-storage.f` never views a pointer
   cell as bytes or cells.
-- **`ARENA-SNAP-BOOT`'s zero pass** views a `PTR-U8-TABLE` boot buffer as cells
-  to zero it. The typed form writes `NULL-PTR` through the table's own accessor
-  in a loop — a snapshot-time cost only.
+- **`ARENA-SNAP-BOOT`'s zero pass** never views a `PTR-U8-TABLE` boot buffer
+  as cells: `ARENA-SNAP-BOOT-PTRS` empties `ATOMA-BOOT` and `PARAMA-BOOT` by
+  storing `NULL-PTR` in each cell with `REG-POINTERS-CLEAR`, a snapshot-time
+  cost only.
 - **The byte-copy growers** (`ARENA-BYTES-GROW`, `TV-COPY-AT`, the UIX/CHX
   entry growers, `render.f` `SEEN-GROW`) copied buffers whose cells may hold
   `ptr u8` through byte views. They now copy cells with `src/core/checker.f`

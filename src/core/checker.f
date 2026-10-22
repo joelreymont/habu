@@ -12730,7 +12730,7 @@ public
 : REC>INDEX ( ptr n -- n )
    {: rec:ptr :}
    rec NULL-PTR = IF -1 EXIT THEN
-   rec BYTE-VIEW NULL-PTR BYTE-VIEW - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
+   rec NULL-PTR - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
 \ A dictionary record's name: the flags cell holds its length under
 \ DNAME-LEN-MASK, and the name sits inline from the name cell or, with
 \ DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
@@ -15228,14 +15228,19 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ buffer AND empty that buffer, in one step so neither can be done without the
 \ other. Capture copies these DATA buffers into the image; the last checked
 \ definition's scratch is dead by the caller's quiescent-capture contract.
-\ The pointee is a quantifier, not `n`: a store whose boot buffer is a declared
-\ PTR-U8-TABLE (ATOMA-BOOT, PARAMA-BOOT) repoints its head through this word too,
-\ and its cells hold `ptr u8` rather than numbers. Zeroing is a byte-level act on
-\ any store, so the cell view is taken explicitly - `byte-view` is the polymorphic
-\ direction and `cell-view` only accepts `ptr u8`, so the pair leaves `a` alone
-\ where a bare `cell-view` would specialize it to `u8` (E-NONPARAMETRIC-EFFECT).
-: ARENA-SNAP-BOOT ( ptr ptr a ptr a n -- ) {: pv:ptr boot:ptr cells:n :}
-   boot BYTE-VIEW CELL-VIEW 0 cells ARENA-CELLS-ZERO
+: ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
+   boot 0 cells ARENA-CELLS-ZERO
+   boot pv ! ;
+
+\ REG-POINTERS-CLEAR ( base from to -- ) : store NULL-PTR, the zero of a pointer
+\ cell, in cells [from, to).
+: REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
+   from to >= IF EXIT THEN
+   to from ?do NULL-PTR base i cells + ! loop ;
+
+\ ARENA-SNAP-BOOT for a declared PTR-U8-TABLE boot (ATOMA-BOOT, PARAMA-BOOT).
+: ARENA-SNAP-BOOT-PTRS ( ptr ptr ptr u8 ptr ptr u8 n -- ) {: pv:ptr boot:ptr count:n :}
+   boot 0 count REG-POINTERS-CLEAR
    boot pv ! ;
 
 \ DECOUPLED-ARENA-SNAP-RESET ( -- ) : release the owned push arena and repoint
@@ -15257,9 +15262,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
-   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
+   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT-PTRS  ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
-   PARAMA-P PARAMA-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMU-P PARAMU-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
+   PARAMA-P PARAMA-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT-PTRS  PARAMU-P PARAMU-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
    PARAMC-P PARAMC-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMFAM-P PARAMFAM-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
    PARAMOFF-P PARAMOFF-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
    PARAMHID-P PARAMHID-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
@@ -15286,10 +15291,6 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ reader in a restored image, so it needs no cell at all.
 
 \ Registry persistence copies bytes through the byte-pool view of each slot.
-: REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
-   from to >= IF EXIT THEN
-   to from ?do NULL-PTR base i cells + ! loop ;
-
 : REG-PERSIST-REFUSE ( -- )
    s" checker: invalid registry storage span" 76 die ;
 
@@ -16138,8 +16139,8 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
    bytes ARENA-ALLOC-BYTES {: scratch:ptr :}
    RECORD-LINK-P @ {: original:ptr :}
    original scratch bytes ARENA-COPY
-   original BYTE-VIEW NULL-PTR BYTE-VIEW - RECORD-CAPTURE-ORIGINAL-N !
-   scratch NULL-PTR BYTE-VIEW - RECORD-CAPTURE-SCRATCH-N !
+   original NULL-PTR - RECORD-CAPTURE-ORIGINAL-N !
+   scratch NULL-PTR - RECORD-CAPTURE-SCRATCH-N !
    bytes RECORD-CAPTURE-BYTES !
    shipped copy [: RECORD-CAPTURE-BODY ;] [: RECORD-CAPTURE-CLEAN ;] finally ;
 
