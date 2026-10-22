@@ -717,7 +717,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ and with no target's either the process ends naming it; with neither an
 \ owner's nor a hook, 0 (LASTC-TRUST:FIND-ACTIVE, FIND-RAW).
 : DEF-RAW-ACTIVE ( -- n )
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION {: own:n :}
    own 0<> if own exit then
    HOOK-CELL CELL@ 0= if 0 exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
@@ -735,7 +735,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    NCOMP-DISPATCH:DECL-CELL CELL@ 0= if exit then
    NCOMP-DISPATCH:DECL-RAW-OFF PKG-TARGET {: target:n :}
    target 0= if exit then
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RAW-OFF PKG-OPERATION target = if exit then
    sig su target DEF-DECLARE ;
 
 \ A created word's effect is a cell of raw dictionary storage.
@@ -834,11 +834,11 @@ variable DEF-VALUE
 \ (habu2.f DEF-TRUST:REGISTER-IDENTITY). A row the checker refuses throws
 \ before def-cast counts the record, so no callable name is left.
 : DEF-REGISTER-IDENTITY ( ptr u8 n n -- ) {: sig:ptr su:n off:n :}
-   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION {: own:n :}
+   NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    own 0<> if sig su own DEF-DECLARE then
    off PKG-TARGET {: target:n :}
    target 0= if exit then
-   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION target = if exit then
+   NCOMP-DISPATCH:DECL-A off PKG-OPERATION target = if exit then
    sig su target DEF-DECLARE ;
 
 : DEF-REGISTER-CAST ( -- )
@@ -971,7 +971,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ The active owner's operation at off, then the target owner's, 0 when the
 \ active owner's field holds the same one (DECL-OWNER:FIND, SKIP-SAME).
 : DEF-OWNERS ( n -- n n ) {: off:n :}
-   NCOMP-DISPATCH:DECL-CELL off PKG-OPERATION {: own:n :}
+   NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    off PKG-TARGET {: target:n :}
    own  target own = if 0 else target then ;
 

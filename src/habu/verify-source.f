@@ -1153,7 +1153,7 @@ TRUSTED: CHECK-BODY ( ptr u8 n -- n )
 \ Replay-only checker queries use the live declaration owner. The verifier is
 \ source loaded, so the sealed image need not publish these checker names.
 : OWNER-XT ( n -- n ) {: off:n :}
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:DECL-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
    off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
 
@@ -2956,7 +2956,7 @@ DYNAMIC-BUFFER PRS-LEN n                   \ their bytes; 0 for a `parses:` row
 DYNAMIC-BUFFER PRS-TERMS u8
 
 : PRS-OWNER-BASE ( -- n )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+   NCOMP-DISPATCH:DECL-A @ BYTE-VIEW NULL-PTR BYTE-VIEW - ;
 
 CAST: BINDING-ACTION ( n -- [ ptr u8 n -- n n n ] )
 \ The binding the load's top-level find selects for a token, asked quietly of

@@ -186,7 +186,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 \ The checker's record end as a buffer begins, plus one, or 0 when no owner
 \ records rows (habu1.f DECL-OWNER:MARK-END).
 : ROWS-MARK ( -- n )
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-ROWS-END-OFF PKG-OPERATION {: xt:n :}
    xt 0= if 0 exit then
    xt AS-ROWS-END execute 1+ ;
 
@@ -195,7 +195,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : ROWS-CUT ( ptr u8 -- ) {: f:ptr :}
    f EVAL-FRAME:ROWS FR@ {: mark:n :}
    mark 0= if exit then
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF PKG-OPERATION {: xt:n :}
    xt 0= if exit then
    mark 1- xt AS-ROWS-CUT execute ;
 

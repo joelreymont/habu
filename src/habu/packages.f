@@ -95,8 +95,9 @@ $4000 constant PKG-CODE-RESERVE
 \ The operation at off in the owner record a dispatch cell names, 0 when there
 \ is no record or the field is empty: the engine then skips the call, where
 \ src/compiler/native/checker-owner.f FIELD would refuse.
-: PKG-OPERATION ( n n -- n ) {: cell:n off:n :}
-   data-base cell + 0 ptr-field @ {: rec:ptr :}
+: PKG-OPERATION ( ptr ptr u8 n -- n )
+   {: cell:ptr off:n :}
+   cell @ {: rec:ptr :}
    rec 0= if 0 exit then
    rec off + CELL-VIEW @ ;
 
@@ -109,7 +110,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 \ `package`, `public`, `private` and `;package` notify the target checker
 \ alone (habu2.f C-CALL-CHECKER-PACKAGE and its siblings).
 : PKG-TARGET ( n -- n )
-   NCOMP-DISPATCH:TARGET-DECL-CELL swap PKG-OPERATION ;
+   NCOMP-DISPATCH:TARGET-DECL-A swap PKG-OPERATION ;
 
 : PKG-NOTIFY ( n -- )
    PKG-TARGET {: xt:n :}
@@ -125,7 +126,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 \ operation is the same one (habu2.f C-CALL-CHECKER-USING). Each records the
 \ name at the using depth before it grows.
 : PKG-NOTIFY-USING ( -- )
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-USING-OFF PKG-OPERATION
    {: own:n :}
    own 0<> if TOKEN$ own PKG-AS-NAME-ACTION execute then
    NCOMP-DISPATCH:DECL-USING-OFF PKG-TARGET {: target:n :}
@@ -136,14 +137,14 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 \ An actual export names the source checker's declaration callback. A direct
 \ CHECKER-EXPORT call only adds a checker row and has no engine alias to bind.
 : PKG-CHECK-EXPORT ( -- )
-   NCOMP-DISPATCH:DECL-CELL NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
+   NCOMP-DISPATCH:DECL-A NCOMP-DISPATCH:DECL-EXPORT-OFF PKG-OPERATION
       {: xt:n :}
    xt 0= if s" checker-export" RC-REJECT FAIL-CLOSED then
    TOKEN$ xt PKG-AS-NAME-ACTION execute ;
 
 : PKG-NOTIFY-EXPORT ( ptr u8 n n -- )
    {: operand:ptr operand-u:n ord:n :}
-   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:TARGET-DECL-A @
       dup NULL-PTR = if drop exit then {: owner:ptr :}
    owner 8 - CELL-VIEW @ CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF CELL + < if exit then
    owner CHECKER-OWNER-ABI:EXPORT-ACCEPT-OFF + CELL-VIEW @ {: xt:n :}

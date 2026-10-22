@@ -16,7 +16,7 @@ package CHECKER-OWNER
 
 \ The live source owner. Zero until an engine publishes one.
 : RECORD ( -- ptr u8 )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+   NCOMP-DISPATCH:DECL-A @ ;
 
 \ Set by this module's load, cleared before the compiler is captured.
 variable SOURCE-LOADED   -1 SOURCE-LOADED !

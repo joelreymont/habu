@@ -60,7 +60,7 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
    N-ACCEPT execute ;
 
 : RECORD-SYM ( ptr u8 n -- n )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:DECL-A @
    ENGINE-ORIGIN-EARLY:RECORD-SYM-OFF + CELL-VIEW @
    SYM-XT execute ;
 
@@ -265,7 +265,7 @@ CAST: N-ACCEPT ( n -- [ n n -- ] )
 
 : ROW-RECORD ( ptr n -- ptr n ) {: row:ptr :}
    row O-SYM CELL-AT @ 0= if XREF-NULL exit then
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:DECL-A @
    ENGINE-ORIGIN-EARLY:ORIGIN-REC-OFF + CELL-VIEW @
    row O-SYM CELL-AT @ swap REC-XT execute
       {: rec:ptr :}

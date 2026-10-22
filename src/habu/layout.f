@@ -1281,6 +1281,9 @@ $690 constant RECOVER-CELL
 \ checker operations, with no new checked-callable trust alias.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
+\ The two cells as declared names: each holds an owner record pointer.
+DECL-CELL RESERVED-PTR-U8-CELL DECL-A
+TARGET-DECL-CELL RESERVED-PTR-U8-CELL TARGET-DECL-A
 CHECKER-OWNER-ABI:RAW-OFF constant DECL-RAW-OFF
 CHECKER-OWNER-ABI:EFFECT-OFF constant DECL-EFFECT-OFF
 CHECKER-OWNER-ABI:DEFER-OFF constant DECL-DEFER-OFF

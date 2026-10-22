@@ -526,9 +526,9 @@ CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
    action 0 <> IF rec action GRID-RETIRE-XT execute THEN ;
 
 : GRID-RETIRE ( ptr n -- ) {: rec:ptr :}
-   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:TARGET-DECL-A @
       {: target:ptr :}
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   NCOMP-DISPATCH:DECL-A @
       {: source:ptr :}
    rec target GRID-RETIRE-OWNER
    source target <> IF rec source GRID-RETIRE-OWNER THEN ;
