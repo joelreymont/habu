@@ -20,6 +20,7 @@ require src/compiler/session/emission.f
 require src/compiler/native/shadow.f
 require src/compiler/native/host-publish.f
 require src/habu/code-span.f
+require src/habu/address-carrier.f
 
 package NPUB
 
@@ -271,6 +272,15 @@ create TRAILER TRAILER-BYTES allot
 : HOOKED? ( -- bool )
    data-base HOOK-CELL + @ 0<> ;
 
+: X64? ( -- bool )
+   NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ ;
+
+: IMPORT-SITE ( ptr u8 n n n -- ptr u8 )
+   {: code:ptr size:n site:n width:n :}
+   site 0 < width size > or if E-NPUB-RELOC throw then
+   site size width - > if E-NPUB-RELOC throw then
+   code site + ;
+
 public
 
 : PUBLISH-PENDING ( NART:emission -- )
@@ -317,20 +327,31 @@ public
       addrs:ptr addrn:n wide:bool minin:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
-   size 0 <= size 3 and 0<> or if E-NPUB-RELOC throw then
+   size 0 <= if E-NPUB-RELOC throw then
+   X64? 0= if size 3 and 0<> if E-NPUB-RELOC throw then then
    recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
    recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
    minin 0 < minin 255 > or if E-NPUB-RELOC throw then
    calln 0 < addrn 0 < or if E-NPUB-RELOC throw then
    calln 0 ?do
       calls i cells + @ {: site:n :}
-      site 0 < site 3 and 0<> or
-      site size 4 - > or if E-NPUB-RELOC throw then
+      X64? if
+         code size site ADDRESS-CARRIER:REL32-BYTES IMPORT-SITE
+            ADDRESS-CARRIER:REL32-SITE? 0= if E-NPUB-RELOC throw then
+      else
+         site 0 < site 3 and 0<> or
+         site size 4 - > or if E-NPUB-RELOC throw then
+      then
    loop
    addrn 0 ?do
       addrs i cells + @ {: site:n :}
-      site 0 < site 3 and 0<> or
-      site size 4 - > or if E-NPUB-RELOC throw then
+      X64? if
+         code size site ADDRESS-CARRIER:MOVABS-BYTES IMPORT-SITE
+            ADDRESS-CARRIER:MOVABS-SITE? 0= if E-NPUB-RELOC throw then
+      else
+         site 0 < site 3 and 0<> or
+         site size 4 - > or if E-NPUB-RELOC throw then
+      then
    loop
    size ROOM-CK {: fn:n :}
    code fn size CODE-WINDOW

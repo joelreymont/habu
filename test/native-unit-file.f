@@ -63,6 +63,15 @@ create RAW 512 allot variable RAW-U
 : READ-GOOD ( -- )
    ART$ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ ;
 
+: CHECK-X86 ( -- )
+   s" x86 objects retain their architecture and refuse an ARM reader" T-LABEL
+   SECTIONS
+   ART$ NUNIT-FILE:ARCH-X86-64 s" NBR" KEY$ NUNIT-FILE:WRITE
+   ART$ NUNIT-FILE:ARCH-X86-64 s" NBR" KEY$ NUNIT-FILE:READ
+   0 NUNIT-FILE:SECTION$ s" code" T$=
+   [: READ-GOOD ;] E-NUNIT-FILE TTHROWSQ
+   NUNIT-FILE:CLOSE ;
+
 : CHECK-ROUNDTRIP ( -- )
    WRITE-GOOD
    READ-GOOD
@@ -205,6 +214,7 @@ public
    CHECK-EMPTY-TAIL
    CHECK-LONG-INPUT
    CHECK-LARGE
+   CHECK-X86
    T-REPORT
    s" native unit artifact: " type ART$ type cr ;
 

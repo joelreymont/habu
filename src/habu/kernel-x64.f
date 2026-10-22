@@ -27,12 +27,14 @@
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/string.f
+require src/core/sha256.f
 require src/habu/prof-x64.f
 require src/core/does-clause.f
 require src/core/util.f
 require src/core/engine-error.f
 require src/habu/layout.f
 require src/habu/native-observer-extension.f
+require src/habu/native-body-abi.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f
 require src/habu/arith-abi.f
@@ -135,6 +137,9 @@ variable SCOPE-KIND-CELL
 variable REPLAY-TRAP-CELL
 variable COMPILE-DIE-CELL
 variable OVERLAY-DIE-CELL
+variable DIGEST-CELL
+variable DIGEST-OFF
+create DIGEST-CTX SHA256-CTX-BYTES allot
 : SPAN-LBL ( -- label ) SPAN-CELL @ >LABEL ;
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
@@ -146,6 +151,7 @@ variable OVERLAY-DIE-CELL
 : REPLAY-TRAP-LBL ( -- label ) REPLAY-TRAP-CELL @ >LABEL ;
 : COMPILE-DIE-LBL ( -- label ) COMPILE-DIE-CELL @ >LABEL ;
 : OVERLAY-DIE-LBL ( -- label ) OVERLAY-DIE-CELL @ >LABEL ;
+: DIGEST-LBL ( -- label ) DIGEST-CELL @ >LABEL ;
 
 \ ---- the definer -------------------------------------------------------------
 \ The row being registered. Every body registers under a name src/habu/prims.f
@@ -3644,6 +3650,9 @@ private
 
 : CP-REG ( -- r64 ) ENGINE-GPR:X64-CP >R64 ;
 
+\ The DATA offset of cell n of the native body record (src/habu/native-body-abi.f).
+: BODY-CELL ( n -- n ) cells NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + + ;
+
 \ The twin of habu1.f DP-CHECK, before every store of a new DP: rdi, the new
 \ DP, must lie in [DATA + DATA-START, DATA + DP-CEILING], or LDPBAD refuses
 \ it with rdi in hand. The compares are signed, as the ARM64 ones are. It
@@ -3742,7 +3751,11 @@ private
    RAX HOOK-CELL CELL!,  RAX COMPILE-PREFLIGHT-CELL CELL!,
    done JMP,
    bad X64CODE:LBL,  S\" set-check: invalid checker xt\n" HOOK-BAD-RC STDERR-EXIT,
-   done X64CODE:LBL, ;
+   done X64CODE:LBL,
+   \ Each successful install invalidates the observer identity, including
+   \ suspension and same-xt rearming: habu1.f BSETCHECK.
+   RCX ZERO-REG,  RCX NATIVE-BODY-ABI:ORIGIN-HOOK BODY-CELL CELL!,
+   RCX NATIVE-BODY-ABI:ORIGIN-TAKE BODY-CELL CELL!, ;
 
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
 \ inert and any other refused; with it empty, as `0 set-check` leaves it, the
@@ -4050,10 +4063,13 @@ private
    s" native-unit-reclaim-cell" [:
       RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
       RAX PUSH, ;] PRIM
-   \ This kernel has no pre-body reader. The optional ABI reports absence.
-   s" native-body-reuse-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   s" native-body-reader-cell" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
-   s" native-body-passive?" [: DROP, DROP, RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
+   s" native-body-reuse-cell" [:
+      RAX DATA-REG NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MEM-OFF ASM-SINK ENC-LEA
+      RAX PUSH, ;] PRIM
+   s" native-body-reader-cell" [:
+      RAX DATA-REG NATIVE-BODY-ABI:READER BODY-CELL MEM-OFF ASM-SINK ENC-LEA
+      RAX PUSH, ;] PRIM
+   PROVIDED-XT:BODY-PASSIVE-CELL s" native-body-passive?" [: REFUSE-BODY ;] PROVIDED-ROW
    s" rbase" [: RAX RBASE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" native-pending-opaque?" [: RAX PEND-OPAQUE-CELL CELL@,  RAX PUSH, ;] PRIM
@@ -4513,8 +4529,11 @@ variable MARK-CELL
    s" addr-cells-abi" [:
       RAX ADDRESS-CELLS:ABI-VERSION IMM32,  RAX PUSH, ;] PRIM
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
-   \ The x86-64 test kernel has no image writer to stamp implementation bytes.
-   s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM
+   \ The writer stamps the immutable text after linking every label site.
+   s" kernel-producer$" [:
+      RAX DIGEST-LBL MOVABS,  RAX PUSH,
+      RAX 32 IMM32,  RAX PUSH,
+      RAX -1 IMM64,  RAX PUSH, ;] PRIM
    \ ( base end count dbase dlen newbase -- ): guard [base, end), then drop all six.
    s" snap-rebase" [:
       RDI 5 PEEK,  RSI 4 PEEK,  RSI RDI ASM-SINK ENC-SUB-RR
@@ -5346,6 +5365,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL!,
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
    WINDOW-CLOSE,
@@ -5396,14 +5416,26 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-close ( -- ): the pending definition of the native tier ends, as the
 \ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
-\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL
-\ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+\ closes native; a pending take (NATIVE-BODY-ABI:PENDING-TAKE) clears and runs on
+\ the captured body ( ptr u8 n -- ) while the record is still pending; then
+\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL clear.
+\ Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )
+   X64CODE:LBL {: notake:label :}
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
    RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
    1 X64PROV:CLOSE,
+   R11 NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL@,
+   R11 R11 ASM-SINK ENC-TEST-RR  C-E notake JCC,
+   WINDOW-CLOSE,                                      \ habu2.f NATIVE-CLOSE's LCLOSE; clobbers r8-r11
+   R11 NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL@,
+   RAX ZERO-REG,  RAX NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL!,
+   RAX DATA-REG BODYBUF-OFF MEM-OFF ASM-SINK ENC-LEA  RAX PUSH,
+   RAX BODYLEN-CELL CELL@,  RAX PUSH,
+   R11 ASM-SINK ENC-CALL-REG
+   notake X64CODE:LBL,
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
@@ -5430,6 +5462,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL!,
    RAX 8191 >IMM32 ASM-SINK ENC-MOV-RI32
    RAX REGALLOC-ABI:VRFREE-CELL CELL!, ;
 
@@ -5479,6 +5512,7 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX NATIVE-BODY-ABI:PENDING-TAKE BODY-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
 \ ---- the checker replay writers -------------------------------------------------
@@ -6329,6 +6363,7 @@ public
 \ refuses a provided row whose cell the capture leaves empty, so a row this
 \ kernel does not carry is a REFUSE, never an absence a captured program meets.
 : KERNEL, ( -- )
+   X64CODE:LBL DIGEST-CELL !
    X64CODE:LBL LCLOSE-CELL !
    HELPERS,
    X64CODE:LBL SCOPE-SEED-CELL !
@@ -6353,6 +6388,20 @@ public
    ASM-SINK ENC-RET
    SCOPE-SEED-END-LBL X64CODE:LBL,
    ENGINE-PRIMS:SCALAR-ROW@ X64BOOT:SCALAR-ROW, ;
+
+\ Keep the digest after all native text. It describes exactly the linked
+\ bytes preceding its slot, as ENGINE-EMIT:FILL-KERNEL-DIGEST does on ARM.
+: DIGEST, ( -- )
+   ASM-LEN DIGEST-OFF !
+   DIGEST-LBL X64CODE:LBL,
+   32 0 ?do 0 ASM-SINK BUF:APPEND-BYTE loop ;
+
+: STAMP-DIGEST ( -- )
+   DIGEST-CTX SHA256-BEGIN
+   DIGEST-CTX s" native-kernel-bytes-v1" SHA256-FEED
+   DIGEST-CTX s" linux-x86-64" SHA256-FEED
+   DIGEST-CTX CODE DIGEST-OFF @ SHA256-FEED
+   DIGEST-CTX CODE DIGEST-OFF @ + SHA256-END ;
 
 ;using   \ X64LAYOUT
 ;using

@@ -1200,6 +1200,10 @@ $3848 constant EVALUATE-CELL
 \ (src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE). It follows
 \ ENGINE-MAIN:REPORT-CELL ($3858) in the same swept run below $3A00.
 $3860 constant EVALUATE-RANGE-CELL
+\ A seeded x86-64 native-body-passive? jumps through its own cell the same way
+\ (src/habu/definers.f OUTER:BODY-PASSIVE?). It follows ENGINE-MAIN:ARENA-CELL
+\ ($3868) in the swept run below the FFI buffers at $3A00.
+$3870 constant BODY-PASSIVE-CELL
 ;package
 
 \ The x86-64 policy writer calls the checked interpreter's dispatch-keyword

@@ -71,6 +71,7 @@ require src/habu/layout.f
 require src/habu/code-span.f
 require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f
+require src/habu/native-body-abi.f
 require src/habu/aot-decl.f
 require src/habu/address-cells.f
 
@@ -767,6 +768,12 @@ private
    UNCGH-CELL false CELL-DECL
    PROVIDED-XT:EVALUATE-CELL false CELL-DECL
    PROVIDED-XT:EVALUATE-RANGE-CELL false CELL-DECL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + false CELL-DECL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + false CELL-DECL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + false CELL-DECL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + false CELL-DECL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + false CELL-DECL
+   PROVIDED-XT:BODY-PASSIVE-CELL false CELL-DECL
    NCOMP-DISPATCH:DECL-CELL true CELL-DECL
    NCOMP-DISPATCH:TARGET-DECL-CELL true CELL-DECL ;
 

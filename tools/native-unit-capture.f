@@ -85,19 +85,24 @@ public
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;
 
-\ A unit object is written under NUNIT-FILE:ARCH-AARCH64 and carries the code
-\ and address sites of an AArch64 compiler. Check both the retained engine and
-\ a selected body target: another profile caches no definition.
+\ A definition is published into the running engine's native code region.
+\ Only supported matching host and body architectures can share these bytes.
 : AARCH64-PROFILE? ( -- bool )
    RTARGET:HOST-TARGET RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
    BUILD-TARGET:CURRENT RTARGET:ARCH@ CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
    and ;
 
-\ The refusal behind AARCH64-PROFILE?. DEF-ELIGIBLE? answers it quietly so a
-\ build for another target simply caches no definition; capturing, packing or
-\ installing a unit body under another profile is a caller error and throws.
+: X86-64-PROFILE? ( -- bool )
+   RTARGET:HOST-TARGET RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ
+   BUILD-TARGET:CURRENT RTARGET:ARCH@ CTARGET-ARCH:X86-64 CTARGET-ARCH:EQ
+   and ;
+
+: PROFILE? ( -- bool )
+   AARCH64-PROFILE? X86-64-PROFILE? or ;
+
+\ Eligibility answers quietly; capture, pack and install require this profile.
 : PROFILE-CK ( -- )
-   AARCH64-PROFILE? 0= if E-NUNIT-PROFILE throw then ;
+   PROFILE? 0= if E-NUNIT-PROFILE throw then ;
 
 : WITH-OBSERVER ( [ n n n n -- ] [ -- ] -- )
    s" NPUB:WITH-UNIT" TARGET-XT WITH-UNIT-XT execute ;

@@ -4,7 +4,7 @@
 \ paths, typed address cells, literal rows, file inputs, retired prefix rows,
 \ references, dependencies, compiler work and source origins.
 \
-\ Version 10 header (all integers are little-endian u64): magic at 0, version at
+\ Version 11 header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
 \ bytes), source key at 96 (64 bytes), and seventeen section lengths at 160.
 
@@ -28,6 +28,7 @@ private
 296 constant HEADER-BYTES
 11 constant FORMAT-VERSION
 1 constant ARCH-ARM64
+2 constant ARCH-X64
 
 DYNAMIC-BUFFER FILE-BUF u8
 DYNAMIC-BUFFER SECTION-A ptr u8
@@ -44,7 +45,7 @@ variable READY
 \ A package name past the header's field is one this format cannot represent.
 : META-CK ( n ptr u8 n ptr u8 n -- )
    {: arch:n name:ptr nameu:n key:ptr keyu:n :}
-   arch ARCH-ARM64 <> if BAD then
+   arch ARCH-ARM64 <> arch ARCH-X64 <> and if BAD then
    nameu 1 < if BAD then
    nameu NAME-CAP > if E-NUNIT-PROFILE throw then
    keyu KEY-BYTES <> if BAD then ;
@@ -128,6 +129,7 @@ variable READY
 public
 
 ARCH-ARM64 constant ARCH-AARCH64
+ARCH-X64 constant ARCH-X86-64
 
 : CLOSE ( -- )
    0 READY ! 0 SECTION-MASK !

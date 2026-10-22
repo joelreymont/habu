@@ -212,7 +212,8 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
 
 : ADDR-ROWS ( -- )
    X64EMIT:ADDR-SITES 0 ?do
-      i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@  -1 NEMIT:ADDR-SITE+
+      i X64EMIT:ADDR-SITE@  i X64EMIT:ADDR-SITE-KIND@
+      i X64EMIT:ADDR-SITE-ORIGIN@ NEMIT:ADDR-SITE+
    loop ;
 
 : OPEN-ROWS ( -- )

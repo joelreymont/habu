@@ -161,6 +161,7 @@ DYNAMIC-BUFFER SITES-BUF n              \ byte offset of a relocatable literal
 : SITES ( -- ptr n ) 0 SITES-BUF ;
 DYNAMIC-BUFFER SKIND-BUF n              \ and which kind of address it carries
 : SKIND ( -- ptr n ) 0 SKIND-BUF ;
+DYNAMIC-BUFFER SORIGIN-BUF n            \ declaration or source-literal identity
 DYNAMIC-BUFFER CSITES-BUF n             \ byte offset of a call or branch out
 : CSITES ( -- ptr n ) 0 CSITES-BUF ;
 DYNAMIC-BUFFER CKIND-BUF n              \ NEMIT:CALL or NEMIT:TAIL
@@ -207,6 +208,7 @@ DYNAMIC-BUFFER CLOC-BUF n               \ source body offset
    FMAX F-START-BUF-RESERVE
    SITE-CEIL SITES-BUF-RESERVE
    SITE-CEIL SKIND-BUF-RESERVE
+   SITE-CEIL SORIGIN-BUF-RESERVE
    SITE-CEIL CSITES-BUF-RESERVE
    SITE-CEIL CKIND-BUF-RESERVE
    SITE-CEIL CTARGET-BUF-RESERVE
@@ -220,6 +222,7 @@ DYNAMIC-BUFFER CLOC-BUF n               \ source body offset
 X64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ORIGIN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SHIFT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
@@ -443,6 +446,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
    N-SITES @ SITE-CEIL >= if E-X64EMIT-BOUND throw then
    off  N-SITES @ cells SITES + !
    kind N-SITES @ cells SKIND + !
+   -1 N-SITES @ SORIGIN-BUF !
    N-SITES @ 1+ N-SITES ! ;
 
 \ ---- where this emission leaves for another word's entry ---------------------
@@ -465,7 +469,10 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 : PUT-MOVI ( IR-ID:ir-op-id ptr a -- )
    {: id:IR-ID:ir-op-id s:ptr :}
    id ADDR-OF {: kind:n :}
-   MEAS @ 0=  kind X64IR:ADDR-NONE <>  and if CUR kind SITE+ then
+   MEAS @ 0=  kind X64IR:ADDR-NONE <>  and if
+      CUR kind SITE+
+      id 0 BND-ORIGIN @ ATTR-INT N-SITES @ 1- SORIGIN-BUF !
+   then
    id 0 RES-R64  id IMM-OF >IMM64  s ENC-MOV-RI64 ;
 
 : PUT-MOV ( IR-ID:ir-op-id ptr a -- )
@@ -1410,6 +1417,7 @@ public
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b X64IR:KEY-IMM    0 BND-IMM !
    c b X64IR:KEY-ADDR   0 BND-ADDR !
+   c b X64IR:KEY-ORIGIN 0 BND-ORIGIN !
    c b X64IR:KEY-SHIFT  0 BND-SHIFT !
    c b X64IR:KEY-COND   0 BND-COND !
    c b X64IR:KEY-DSLOT  0 BND-DSLOT !
@@ -1551,6 +1559,9 @@ public
 
 : ADDR-SITE-KIND@ ( n -- n )
    SEAL-CK SITE-ORD-CK cells SKIND + @ ;
+
+: ADDR-SITE-ORIGIN@ ( n -- n )
+   SEAL-CK SITE-ORD-CK SORIGIN-BUF @ ;
 
 \ The rows of the sites that leave for another word's entry, in the order they
 \ were written.

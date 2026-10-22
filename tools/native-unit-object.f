@@ -27,6 +27,11 @@ private
 
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
 
+: X64? ( -- bool ) NUNIT-CAPTURE:X86-64-PROFILE? ;
+
+: ARCH ( -- n )
+   X64? if NUNIT-FILE:ARCH-X86-64 else NUNIT-FILE:ARCH-AARCH64 then ;
+
 public
 
 : CLOSE ( -- )
@@ -132,7 +137,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
 : DEF-NUM ( ptr u8 n -- n )
    DEF-TARGET DEF-NUM-XT execute ;
 : DEF-ELIGIBLE? ( -- bool )
-   NUNIT-CAPTURE:AARCH64-PROFILE? 0= if false exit then
+   NUNIT-CAPTURE:PROFILE? 0= if false exit then
    s" NCOMP:DEFINITION-CACHEABLE?"
       NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0= if drop false exit then
    DEF-NUM-XT execute 0= if false exit then
@@ -287,25 +292,77 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    0 dst 32 + LE:U64!
    DEF-ADDR-BYTES DEF-ADDR-U +! ;
 
+\ Site offsets name instruction starts, not immediate fields. Validate the
+\ recorded instruction before reading or rewriting its carried address.
+: DEF-CALL-AT ( n n n -- ptr u8 )
+   {: site:n kind:n size:n :}
+   kind NEMIT:CALL <> kind NEMIT:TAIL <> and if BAD then
+   X64? if ADDRESS-CARRIER:REL32-BYTES else NBR:INSN-BYTES then
+      {: width:n :}
+   site 0 < width size > or if BAD then
+   site size width - > if BAD then
+   site DEF-CODE {: at:ptr :}
+   X64? if
+      kind NEMIT:CALL = if ADDRESS-CARRIER:CALL-OP
+      else ADDRESS-CARRIER:TAIL-OP then at c@ <> if BAD then
+   else
+      site NBR:INSN-BYTES mod 0<> if BAD then
+      at LE:U32@ kind NEMIT:CALL = if NBR:BL? else NBR:B? then
+         0= if BAD then
+   then
+   at ;
+
+: DEF-SET-CALL ( ptr u8 n n n -- )
+   {: at:ptr site:n kind:n target:n :}
+   X64? if
+      target DEF-CODE-BASE @ site + ADDRESS-CARRIER:REL32-BYTES + -
+         {: delta:n :}
+      delta -2147483648 < delta 2147483647 > or if BAD then
+      at delta ADDRESS-CARRIER:SET-REL32
+   else
+      DEF-CODE-BASE @ site + target
+      kind NEMIT:CALL = if NBR:BL-WORD else NBR:B-WORD then at LE:U32!
+   then ;
+
+: DEF-ADDR-WIDTH ( n -- n )
+   {: kind:n :}
+   kind A64IR:ADDR-CODE <> kind A64IR:ADDR-DATA <> and if BAD then
+   X64? if ADDRESS-CARRIER:MOVABS-BYTES exit then
+   kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+   else ADDRESS-CARRIER:DATA-CHAIN-BYTES then ;
+
+: DEF-ADDR-AT ( n n n -- ptr u8 )
+   {: site:n width:n size:n :}
+   site 0 < width size > or if BAD then
+   site size width - > if BAD then
+   site DEF-CODE {: carrier:ptr :}
+   X64? if
+      carrier ADDRESS-CARRIER:MOVABS-SITE? 0= if BAD then
+   else
+      site NBR:INSN-BYTES mod 0<> if BAD then
+      carrier 0 DEF-CODE size + ADDRESS-CARRIER:CHAIN-SIZE
+         width <> if BAD then
+   then
+   carrier ;
+
+: DEF-SET-ADDR ( ptr u8 n n -- )
+   X64? if drop ADDRESS-CARRIER:SET-MOVABS
+   else ADDRESS-CARRIER:SET-CHAIN-VALUE then ;
+
 : DEF-CAPTURE-CALLS ( n n n -- )
    {: emission:n fn:n size:n :}
    emission s" NART:CALL-SITES" DEF-ONE 0 ?do
       emission i s" NART:CALL-SITE@" DEF-TWO {: site:n :}
       emission i s" NART:CALL-KIND@" DEF-TWO {: kind:n :}
       emission i s" NART:CALL-TARGET@" DEF-TWO {: target:n :}
-      site 0 < site 4 + size > or if BAD then
+      site kind size DEF-CALL-AT {: at:ptr :}
       target NFILE-REF:REF-CODE {: ref:n :}
       emission i s" NART:CALL-LOC@" DEF-TWO {: loc:n :}
       emission i s" NART:CALL-IMPL@" DEF-TWO 0<> if 1 else 0 then
          {: known:n :}
       site kind ref loc known DEF-CALL+
       target fn < target fn size + >= or if
-         site DEF-CODE {: at:ptr :}
-         kind NEMIT:CALL = if
-            fn site + target NBR:BL-WORD at LE:U32!
-         else
-            fn site + target NBR:B-WORD at LE:U32!
-         then
+         at site kind target DEF-SET-CALL
       then
    loop ;
 
@@ -332,17 +389,13 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       emission i s" NART:ADDR-SITE@" DEF-TWO {: site:n :}
       emission i s" NART:ADDR-SITE-KIND@" DEF-TWO {: kind:n :}
       emission i s" NART:ADDR-SITE-ORIGIN@" DEF-TWO {: owner:n :}
-      kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-      else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
-      else BAD then then {: width:n :}
-      site 0 < site width + size > or if BAD then
-      site DEF-CODE {: carrier:ptr :}
-      carrier 0 DEF-CODE size + ADDRESS-CARRIER:CHAIN-SIZE
-         width <> if BAD then
-      carrier width ADDRESS-CARRIER:CHAIN-VALUE {: target:n :}
+      kind DEF-ADDR-WIDTH {: width:n :}
+      site width size DEF-ADDR-AT {: carrier:ptr :}
+      carrier X64? if ADDRESS-CARRIER:MOVABSV
+      else width ADDRESS-CARRIER:CHAIN-VALUE then {: target:n :}
       kind target owner DEF-ADDR-REF {: ref:n :}
       site kind ref DEF-ADDR+
-      carrier 0 width ADDRESS-CARRIER:SET-CHAIN-VALUE
+      carrier 0 width DEF-SET-ADDR
    loop ;
 
 : DEF-CAPTURE-HOST ( n -- )
@@ -495,7 +548,8 @@ variable DEF-HELD-SIZE
    history-rc 0<> if history-rc throw then
    DEF-RECORDED @ CODE-SPAN:VALID? 0= if BAD then
    DEF-RECORDED @ CODE-SPAN:BYTES DEF-CODE-U @ <> if BAD then
-   DEF-CODE-U @ 0 <= DEF-CODE-U @ 3 and 0<> or if BAD then
+   DEF-CODE-U @ 0 <= if BAD then
+   X64? 0= if DEF-CODE-U @ 3 and 0<> if BAD then then
    DEF-MIN-IN @ 0 < DEF-MIN-IN @ 255 > or if BAD then ;
 
 : DEF-READ-LITERALS ( -- )
@@ -523,24 +577,18 @@ variable DEF-HELD-SIZE
    2 NUNIT-FILE:SECTION$ drop row DEF-CALL-BYTES * + {: src:ptr :}
    src LE:U64@ {: site:n :}
    src 8 + LE:U64@ {: kind:n :}
-   site 0 < DEF-CODE-U @ 4 < or if BAD then
-   site DEF-CODE-U @ 4 - > if BAD then
-   kind NEMIT:CALL <> kind NEMIT:TAIL <> and if BAD then
+   site kind DEF-CODE-U @ DEF-CALL-AT {: at:ptr :}
    src 16 + LE:U64@ NFILE-REF:REF>CODE {: target:n :}
    row DEF-CALL-BYTES * DEF-CALL {: dst:ptr :}
    src dst DEF-CALL-BYTES BYTE-COPY
    target dst 16 + LE:U64!
-   site DEF-CODE {: at:ptr :}
-   kind NEMIT:CALL = if
-      at LE:U32@ NBR:BL? 0= if BAD then
-      DEF-CODE-BASE @ site + target NBR:BL-WORD at LE:U32!
-      target dbase@ < target dbase@ REGION + >= or if
-         site DEF-CALL-SITE-N @ DEF-CALL-SITES !
-         1 DEF-CALL-SITE-N +!
-      then
-   else
-      at LE:U32@ NBR:B? 0= if BAD then
-      DEF-CODE-BASE @ site + target NBR:B-WORD at LE:U32!
+   at site kind target DEF-SET-CALL
+   X64? if true else
+      kind NEMIT:CALL =
+      target dbase@ < target dbase@ REGION + >= or and
+   then if
+      site DEF-CALL-SITE-N @ DEF-CALL-SITES !
+      1 DEF-CALL-SITE-N +!
    then ;
 
 : DEF-PREP-CALLS ( -- )
@@ -564,11 +612,8 @@ variable DEF-HELD-SIZE
    3 NUNIT-FILE:SECTION$ drop row DEF-ADDR-BYTES * + {: src:ptr :}
    src LE:U64@ {: site:n :}
    src 8 + LE:U64@ {: kind:n :}
-   kind A64IR:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-   else kind A64IR:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
-   else BAD then then {: width:n :}
-   site 0 < width DEF-CODE-U @ > or if BAD then
-   site DEF-CODE-U @ width - > if BAD then
+   kind DEF-ADDR-WIDTH {: width:n :}
+   site width DEF-CODE-U @ DEF-ADDR-AT {: carrier:ptr :}
    src 16 + LE:U64@ 0<> src 32 + LE:U64@ 0<> or if BAD then
    src 24 + LE:U64@ {: ref:n :}
    kind A64IR:ADDR-CODE = if ref NFILE-REF:REF>CODE else
@@ -576,10 +621,7 @@ variable DEF-HELD-SIZE
          ref DEF-LIT-REF
       else ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - then
    then {: target:n :}
-   site DEF-CODE {: carrier:ptr :}
-   carrier 0 DEF-CODE DEF-CODE-U @ + ADDRESS-CARRIER:CHAIN-SIZE
-      width <> if BAD then
-   carrier target width ADDRESS-CARRIER:SET-CHAIN-VALUE
+   carrier target width DEF-SET-ADDR
    site row DEF-ADDR-SITES ! ;
 
 : DEF-PREP-ADDRS ( -- )
@@ -653,7 +695,7 @@ variable DEF-HELD-SIZE
 : DEF-PREPARE-BODY ( -- )
    \ NDEF-CACHE keeps its container stable through install and discard.
    DEF-IN-BYTES @ DEF-IN-SIZE @
-      NUNIT-FILE:ARCH-AARCH64 s" DEFINITION"
+      ARCH s" DEFINITION"
       DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-VIEW
    DEF-PREP-OPEN ;
 
@@ -711,7 +753,7 @@ public
    NUNIT-CAPTURE:PROFILE-CK
    DEF-FINISHED @ 0= if BAD then
    deps depsu DEF-PACK-SECTIONS
-   NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;
+   ARCH s" DEFINITION" key keyu NUNIT-FILE:PACK ;
 
 : PREPARE-DEFINITION-KIND? ( ptr u8 n ptr u8 n bool -- bool )
    {: bytes:ptr size:n key:ptr keyu:n complete:bool :}

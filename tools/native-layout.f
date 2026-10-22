@@ -55,6 +55,7 @@ create SLOTS
    $3850 ,                             0 ,   \ POLICY-ABI:KEYWORD-CELL
    $3858 ,                             0 ,   \ ENGINE-MAIN:REPORT-CELL
    $3860 ,                             0 ,   \ PROVIDED-XT:EVALUATE-RANGE-CELL
+   $3870 ,                             0 ,   \ PROVIDED-XT:BODY-PASSIVE-CELL
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

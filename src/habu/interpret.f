@@ -34,7 +34,7 @@ private
 \ The design seal admits `:`, the design span and numbers. Another top-level
 \ token is resolved once here, before a parsing word can consume its operand;
 \ STEP then runs that same admitted record. Native compilation checks body
-\ tokens, and DEF-IMMEDIATE checks one it executes while capturing a body.
+\ tokens, and definers.f COMPILING? checks one it executes while capturing a body.
 : POLICY-SYNTAX? ( -- bool )
    s" :" TOKEN-IS? if true exit then
    TOKEN$ DEF-DESIGN-KEYWORD? ;

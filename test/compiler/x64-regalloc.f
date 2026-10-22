@@ -572,6 +572,8 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 : M-MOVI ( n -- IR-ID:ir-value-id )
    {: imm:n :}
    X64IR-OPCODE:MOVI M-OPEN
+   CC BB  CC BB X64IR:KEY-ORIGIN
+   CC BB -1 IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
    M-RESULT+
    CC BB  CC BB X64IR:KEY-IMM   CC BB imm X64IR:IMM-ATTR  IR-BUILD:ADD-ATTR
    CC BB  CC BB X64IR:KEY-ADDR

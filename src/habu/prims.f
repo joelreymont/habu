@@ -977,6 +977,7 @@ EPRIM: native-body-reader-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: native-body-passive? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT EPRIM;
 ETRUSTED-ONLY!
+EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/definers.f OUTER:BODY-PASSIVE?, through PROVIDED-XT:BODY-PASSIVE-CELL
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 \ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md): admit a

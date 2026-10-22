@@ -278,7 +278,7 @@ private
 : MOVE-CASE ( -- )
    s" the literal carries its value, address kind and origin; the copy ties nothing" T-LABEL
    BND [: MOVE-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 1 T= 1 T= 3 T= 1 T= 0 T= ;
+   0 T= 1 T= 1 T= 4 T= 1 T= 0 T= ;
 
 \ Every two-address form declares one tie, and the tie names the operand the
 \ instruction overwrites: operand 0 for the arithmetic, operand 2 for the

@@ -240,8 +240,9 @@ public
 \ without are two different tables. MINOR 2 added the scalar double forms;
 \ MINOR 3 added the tail callee's input and result counts; MINOR 4 added the
 \ rematerialization mark on `x64.movi`.
+\ MINOR 5 carries a literal's declaration or source-literal origin.
 0 constant MAJOR
-4 constant MINOR
+5 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )        XBITS ;
@@ -609,7 +610,8 @@ private
 13 constant K-TAIL-IN
 14 constant K-TAIL-OUT
 15 constant K-REMAT-MARK
-16 constant KEYS
+16 constant K-ORIGIN
+17 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -629,6 +631,7 @@ private
       K-TAIL-IN of s" x64.tail-in" endof
       K-TAIL-OUT of s" x64.tail-out" endof
       K-REMAT-MARK of s" x64.remat-mark" endof
+      K-ORIGIN of s" x64.origin" endof
       E-X64IR-DIALECT throw
    endcase ;
 
@@ -754,6 +757,9 @@ public
 \ rewrite that drops it stops the compilation.
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ADDR KEY-BIND ;
+
+: KEY-ORIGIN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-ORIGIN KEY-BIND ;
 
 : KEY-SHIFT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-SHIFT KEY-BIND ;
@@ -1064,6 +1070,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    c b KEY-IMM IR-SCHEMA:ADD-ATTR
    c b KEY-ADDR IR-SCHEMA:ADD-ATTR
+   c b KEY-ORIGIN IR-SCHEMA:ADD-ATTR
    c b KEY-REMAT-MARK IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    TOTAL

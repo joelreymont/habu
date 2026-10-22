@@ -104,6 +104,7 @@ variable BOOT-AT
    text start X64PROV:TEXT-NATIVE,
    BOOTRUN,
    X64BOOT:ENTRY,
+   X64KERNEL:DIGEST,
    X64CODE:TEXT-SITES, TEXT-CODE-END !
    X64BOOT:TEXT-END, ;
 
@@ -113,6 +114,7 @@ variable BOOT-AT
    FS-MODE-0644 open {: fd:n :}
    fd 0 < if s" native-emit: cannot open image" REFUSE-RC die then
    X64LINK:TEXT-VA X64CODE:ASM-LINK
+   X64KERNEL:STAMP-DIGEST
    X64LINK:REGION$ {: region:ptr region-len:n :}
    X64LINK:DATA$ {: data:ptr data-len:n :}
    X64LINK:TEXT-VA TEXT-CODE-END @ + data CODE-END-CELL + LE:U64!

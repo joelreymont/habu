@@ -316,15 +316,19 @@ public
    site MOV-RI64-IMM-OFF + IMM64-N STAGED {: p:ptr :}
    p IMM64-N LE@ moved +  p IMM64-N LE! ;
 
-\ Write the staged stream as it stands: byte 0 is the ELF entry.
-: WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   ASM-CODE BUILD-IMAGE
+\ Write an already linked stream: byte 0 is the ELF entry.
+: WRITE-LINKED ( asm ptr u8 n -- ) {: path:ptr pathu:n :}
+   BUILD-IMAGE
    s" x64-peer" SET-SIGID CODESIG2
    path pathu DRV-WRITE-IMAGE
    s" ELF names x86-64 and enters this fixture's code" T-LABEL
    $12 M-OFF M-LE32@ $FFFF and 62 T=
    $18 M-OFF M-LE32@ VMBASE X64LAYOUT:CODE-OFF + T=
    $1C M-OFF M-LE32@ 0 T= ;
+
+\ Write the staged stream as it stands: byte 0 is the ELF entry.
+: WRITE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   ASM-CODE path pathu WRITE-LINKED ;
 
 \ Close a peer image with the exit syscall every check reaches, then write it.
 : WRITE-ELF ( ptr u8 n -- ) EXIT, WRITE ;

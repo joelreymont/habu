@@ -112,7 +112,10 @@ Each cached definition is one `HBNUNIT2` native unit (`tools/native-unit-file.f`
 dictionary records, code relocations, wordlists, retired dictionary rows, initialized DATA,
 writes to earlier DATA, typed pointer and execution-token cells, literals, require/provided
 paths, checker effects and recorded inputs. A reused definition restores that compilation
-state; the source actions around it run again. The current native codec stores AArch64 code.
+state; the source actions around it run again. The native codec stores AArch64 or x86-64
+code under distinct architecture tags, and reuses definitions only when host and target
+architectures match. Recorded x86 calls carry rel32 displacements; address sites carry
+movabs immediates and retain their declaration or literal origins.
 
 `test/native-file-state-e2e.f` and `test/native-file-types-e2e.f` build small applications
 cold and warm through the ordinary loader and compile a new downstream client against the warm
