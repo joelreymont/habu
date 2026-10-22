@@ -27816,8 +27816,10 @@ $4842554E49543031 constant UNIT-MAGIC
 12 constant UNIT-VERSION
 15 constant PENDING-VERSION
 10 cells constant UNIT-HEADER
+public
 7159 constant E-UNIT-FORMAT   \ 7161-7164 are decl-event.f's E-DEV block
 7160 constant E-UNIT-STATE
+private
 
 variable UNIT-MARKED
 variable UNIT-MARK-SERIAL

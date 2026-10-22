@@ -31,6 +31,8 @@ create HITS-AT AT-CAP allot variable HITS-AT-U
 $10000 constant OBJ-CAP
 create OBJ OBJ-CAP allot
 16 constant OBJ-HEAD
+512 constant LINE-CAP
+create APP-LINE LINE-CAP allot variable APP-LINE-U
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -67,6 +69,7 @@ create OBJ OBJ-CAP allot
    s" diag.f" LOAD+
    S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
    s" broken.f" LOAD+
+   s" multi.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    s" after.f" LOAD+
    s" retire.f" LOAD+
@@ -79,6 +82,7 @@ create OBJ OBJ-CAP allot
    s" upd.f" LOAD+
    s" off.f" LOAD+
    s" own.f" LOAD+
+   s" pkgload.f" LOAD+
    s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
@@ -284,6 +288,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
    s" after.f" S\" : AFTER-ONE ( -- n ) 1 ;\n" PUT
+   s" multi.f" S\" : MULTI-NINE ( -- n ) 9 ;\n" PUT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
    \ peek.f's TRUSTED: PEEK reads its own data; run.f's top level runs it,
    \ safe.f's runs the checked SAFE-PEEK that calls it, and vread.f's reads
@@ -350,6 +355,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" off.f" S\" require hooks.f\nrequire deep.f\n' FRAME-DEEP:TEN 1 PIN-HOOKS xt!\n" PUT
    s" pinb.f" S\" variable PIN-B\n" PUT
    s" own.f" S\" require pinb.f\nPIN-B , here ,\n" PUT
+   \ pkgload.f requires pkgchild.f inside its package, so the checker cannot
+   \ mark either file's start.
+   s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
+   s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
@@ -425,6 +434,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" app.f" s"  segments=" s" 7" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
+   s" each object holds one checker slice per load and one for itself" T-LABEL
+   s" base.f" s"  checks=" s" 1" OBJECT-HAS
+   s" lib.f" s"  checks=" s" 2" OBJECT-HAS
+   s" app.f" s"  checks=" s" 7" OBJECT-HAS
    s" lib.f's declared xt cell HOOK is its one slot" T-LABEL
    s" lib.f" s"  slots=" s" 1" OBJECT-HAS
    s" app.f's store into lib.f's HOOK is its one slot, binding HOOK and QUAD beyond its frame's rows" T-LABEL
@@ -500,7 +513,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" watermark.f" s"  reason=" LINE$ s" watermark.f reason=task-slots" T$=
    s" watermark.f" NO-OBJECT
    s" app.f's object holds each definition's name span in app.f" T-LABEL
-   APP-SPANS ;
+   APP-SPANS
+   s" a file closed inside a multi-error run refuses the checker export" T-LABEL
+   s" multi.f" s"  reason=" LINE$ s" multi.f reason=checker-export" T$=
+   s" a file loaded inside a package refuses the checker mark" T-LABEL
+   s" pkgchild.f" s"  reason=" LINE$ s" pkgchild.f reason=checker-mark" T$=
+   s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=checker-mark" T$= ;
 
 public
 : MAIN ( -- )
@@ -523,6 +541,13 @@ public
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP
    HITS$ {: at:ptr atu:n :}
    atu AT-CAP > if T-FAIL else at HITS-AT atu BYTE-COPY atu HITS-AT-U ! then
+   \ A second builder process over the same sources writes the same app.f
+   \ object: checker slices must not depend on the process that exported them.
+   s" app.f" OBJECT$ {: line:ptr lineu:n :}
+   lineu LINE-CAP > if T-FAIL else line APP-LINE lineu BYTE-COPY lineu APP-LINE-U ! then
+   s" a second build writes the same app.f object" T-LABEL
+   PROBE SUCCESS
+   s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
    \ A comment changes no definition's result, inside TWICE's body or as a
    \ line that moves every later definition. base.f's new variable moves HITS
    \ from here on.

@@ -49,14 +49,17 @@ private
 \ rows point into, in definition literal framing; a slot cell in the file's
 \ DATA is zero in slot 6. A write to an earlier file's address cell is a slot
 \ row too, and slot 7 holds one UPDATE-BYTES row per other earlier DATA byte
-\ the segments changed outside the storage owners' spans. Slot 5 holds one
+\ the segments changed outside the storage owners' spans. Slot 15 holds one
 \ PIN-BYTES row per owner of a DATA address a stored cell holds raw: the
 \ owner's reference, the closing file's segment or an earlier declaration,
-\ then its DATA base at capture. Every other slot is empty. A definition's own
+\ then its DATA base at capture. Slot 5 holds the checker state the file
+\ added, one slice before each child load and one at its end: the slice
+\ count, the count of slot 13 references the slices name, those references,
+\ then each slice's length and bytes padded to a cell. A definition's own
 \ dependency slot stays out: the file's rows cover it.
 42031 constant DEF-SLOTS
-\ Slots 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 16.
-98303 constant FILE-SLOTS
+\ Slots 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16.
+131071 constant FILE-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
 72 constant SPAN-AT
@@ -90,9 +93,10 @@ private
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
 \ with, the address cell row before the open segment's first, the bytes its
-\ segments' before-images copied, and the earlier DATA sites recorded when it
-\ opened. A child file's bytes and sites follow its parent's and are dropped
-\ when the child closes.
+\ segments' before-images copied, the earlier DATA sites recorded when it
+\ opened, the checker slice bytes and reference entries when it opened, its
+\ checker slice count, and 1 while a checker mark is open. A child file's
+\ bytes and sites follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -109,7 +113,11 @@ private
 13 constant FO-SEG-PREV
 14 constant FO-IMAGE
 15 constant FO-SITES
-16 constant FO-CELLS
+16 constant FO-CHECK
+17 constant FO-CKORD
+18 constant FO-SLICES
+19 constant FO-CKMARK
+20 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -133,6 +141,15 @@ DYNAMIC-BUFFER FILE-ORDS n
 \ The closing file's slot literal rows, and each row's body address.
 DYNAMIC-BUFFER FILE-LITS u8
 DYNAMIC-BUFFER FILE-LIT-ADDRS n
+\ The open files' checker slices, each its length, then its bytes padded to
+\ a cell, and the references they name: two cells per entry, a record's
+\ ordinal and -1, or a DATA address and its byte count.
+DYNAMIC-BUFFER FILE-CHECK u8
+DYNAMIC-BUFFER FILE-CKORD n
+variable CHECK-U
+variable CKORD-N
+variable CHECK-AT
+variable OPEN-CHECKS
 variable LITS-U
 variable LITS-N
 variable SLOTS-AT
@@ -488,6 +505,111 @@ private
       then
    loop false ;
 
+: DEF-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+
+CAST: DEF-ACTION-XT ( n -- [ -- ] )
+CAST: DEF-NUM-XT ( n -- [ -- n ] )
+CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
+
+: OWNER-CELL ( n -- n ) DEF-OWNER + CELL-VIEW @ ;
+: CHECK-XT ( n -- n ) OWNER-CELL dup 0= if BAD then ;
+\ The checker unit code the retained compiler names, 0 when absent.
+: UNIT-CODE-XT ( ptr u8 n -- n ) NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT ;
+: UNIT-CODE ( ptr u8 n -- n ) UNIT-CODE-XT DEF-NUM-XT execute ;
+
+\ The engine's checker marks, exports and imports file checker state, and
+\ names the codes it throws when it cannot.
+: FILE-CHECK-AVAILABLE? ( -- bool )
+   DEF-OWNER {: owner:ptr :}
+   owner NULL-PTR = if false exit then
+   owner 16 - CELL-VIEW @ CHECKER-OWNER-ABI:MAGIC <> if false exit then
+   owner 8 - CELL-VIEW @ CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF CELL + <
+      if false exit then
+   CHECKER-OWNER-ABI:UNIT-MARK-OFF OWNER-CELL 0=
+   CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF OWNER-CELL 0= or
+   CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF OWNER-CELL 0= or
+   CHECKER-OWNER-ABI:UNIT-INSTALL-OFF OWNER-CELL 0= or
+   CHECKER-OWNER-ABI:UNIT-EXPORT-REFS-OFF OWNER-CELL 0= or
+   CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF OWNER-CELL 0= or
+   if false exit then
+   s" CHECKER-REG:E-UNIT-STATE" UNIT-CODE-XT 0<>
+   s" CHECKER-REG:E-UNIT-FORMAT" UNIT-CODE-XT 0<> and ;
+
+\ rc is a checker unit code: the checker cannot mark or export this state.
+: CHECK-CODE? ( n -- bool )
+   {: rc:n :}
+   rc s" CHECKER-REG:E-UNIT-STATE" UNIT-CODE =
+   rc s" CHECKER-REG:E-UNIT-FORMAT" UNIT-CODE = or ;
+
+: CHECK-MARK-RUN ( -- )
+   CHECKER-OWNER-ABI:UNIT-MARK-OFF CHECK-XT DEF-ACTION-XT execute ;
+
+\ Mark the checker state where the innermost file's next slice starts; a
+\ state the checker cannot mark refuses the file.
+: CHECK-MARK ( -- )
+   FILE-CHECK-AVAILABLE? 0= if s" checker-unavailable" FILE-REFUSE exit then
+   ['] CHECK-MARK-RUN catch {: rc:n :}
+   rc 0= if 1 FO-CKMARK FO ! exit then
+   rc s" CHECKER-REG:E-UNIT-STATE" UNIT-CODE = if
+      s" checker-mark" FILE-REFUSE exit
+   then
+   rc throw ;
+
+\ The 1-based index of the innermost file's reference entry key bytes,
+\ appended when new.
+: CHECK-ENTRY ( n n -- n )
+   {: key:n bytes:n :}
+   FO-CKORD FO @ {: first:n :}
+   CKORD-N @ first ?do
+      i 2 * FILE-CKORD @ key = i 2 * 1+ FILE-CKORD @ bytes = and if
+         i first - 1+ unloop exit
+      then
+   loop
+   CKORD-N @ {: row:n :}
+   row 1+ 2 * FILE-CKORD-RESERVE
+   key row 2 * FILE-CKORD ! bytes row 2 * 1+ FILE-CKORD !
+   1 CKORD-N +!
+   row first - 1+ ;
+
+\ The checker's export callback: a dictionary record as its ordinal, any
+\ other storage as its DATA address and size.
+: CHECK-REF ( ptr u8 n -- n )
+   {: at:ptr bytes:n :}
+   at NULL-PTR BYTE-VIEW - dbase@ - {: off:n :}
+   bytes DREC = off 0 >= and off ndict@ DREC * < and if
+      off DREC mod 0<> if BAD then
+      off DREC / -1 CHECK-ENTRY exit
+   then
+   at data-base BYTE-VIEW - DATA-VA VA>N + bytes CHECK-ENTRY ;
+
+\ Append the checker state since the mark as one slice: its length, then
+\ its bytes padded to a cell. The checker's buffer is shared, so the bytes
+\ are copied before anything else runs.
+: CHECK-EXPORT-RUN ( -- )
+   ['] CHECK-REF CHECKER-OWNER-ABI:UNIT-EXPORT-REFS-OFF CHECK-XT
+      CK-EXPORT-XT execute {: source:ptr bytes:n :}
+   bytes 0 < if BAD then
+   bytes 7 + -8 and {: padded:n :}
+   CHECK-U @ {: at:n :}
+   at CELL + padded + FILE-CHECK-RESERVE
+   bytes at FILE-CHECK LE:U64!
+   bytes 0<> if source at CELL + FILE-CHECK bytes BYTE-COPY then
+   padded bytes ?do 0 at CELL + i + FILE-CHECK c! loop
+   CELL padded + CHECK-U +!
+   1 FO-SLICES FO +! ;
+
+\ Close the innermost file's open mark as a slice. A refused file exports
+\ nothing; state the checker cannot export refuses it.
+: CHECK-EXPORT ( -- )
+   FO-CKMARK FO @ 0= if exit then
+   0 FO-CKMARK FO !
+   FILE-REFUSED? if exit then
+   ['] CHECK-EXPORT-RUN catch {: rc:n :}
+   rc 0= if exit then
+   rc CHECK-CODE? if s" checker-export" FILE-REFUSE exit then
+   rc throw ;
+
 public
 
 \ Open a file frame at the file's first record ordinal. A child's load ends
@@ -501,6 +623,7 @@ public
       at 0 < if s" load-outside-source" FILE-REFUSE then
       EV-LOAD ndict@ kind at path pathu NAMES+ pathu
          root rootu NAMES+ rootu 0 EV+
+      CHECK-EXPORT
    then
    FO-DEPTH @ 1+ FO-CELLS * FILE-FRAMES-RESERVE
    1 FO-DEPTH +!
@@ -514,6 +637,10 @@ public
    REQ-XT FO-REQ-XT FO !
    0 FO-IMAGE FO !
    SITES-N @ FO-SITES FO !
+   CHECK-U @ FO-CHECK FO !
+   CKORD-N @ FO-CKORD FO !
+   0 FO-SLICES FO !
+   0 FO-CKMARK FO !
    SEGMENT-OPEN
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
@@ -524,7 +651,8 @@ public
    \ the words its source runs (NDEF-CACHE OPEN).
    NUNIT-CAPTURE:RUN-OBSERVER? 0= if
       s" run-observer-absent" WHY+
-   then ;
+   then
+   CHECK-MARK ;
 
 \ Close the innermost frame; its parent's next segment opens.
 : FILE-END ( -- )
@@ -535,8 +663,10 @@ public
    FO-EVENTS FO @ EVENTS-N !
    FO-NAMES FO @ NAMES-U !
    FO-SITES FO @ SITES-N !
+   FO-CHECK FO @ CHECK-U !
+   FO-CKORD FO @ CKORD-N !
    -1 FO-DEPTH +!
-   FILE-OPEN? if SEGMENT-OPEN then ;
+   FILE-OPEN? if SEGMENT-OPEN CHECK-MARK then ;
 
 \ The retire hook (XREF:BEFORE-RETIRE!). An object's record rows carry no
 \ time: a replay makes a retired row retired where the row stands. So only a
@@ -584,9 +714,10 @@ public
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
    0 IMAGE-FLOOR ! 0 IMAGE-U ! 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
+   0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
    SITE-OWNS-RELEASE PIN-OWNS-RELEASE
-   FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE
+   FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE FILE-CHECK-RELEASE FILE-CKORD-RELEASE
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
    FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
    FILE-EVENTS-RELEASE FILE-NAMES-RELEASE FILE-OUT-RELEASE
@@ -609,7 +740,6 @@ DYNAMIC-BUFFER DEF-CALL u8
 DYNAMIC-BUFFER DEF-ADDR u8
 DYNAMIC-BUFFER DEF-LIT u8
 DYNAMIC-BUFFER DEF-HOST u8
-DYNAMIC-BUFFER DEF-CHECK u8
 DYNAMIC-BUFFER DEF-CALL-SITES n
 DYNAMIC-BUFFER DEF-ADDR-SITES n
 DYNAMIC-BUFFER DEF-LIT-ADDR n
@@ -620,7 +750,6 @@ variable DEF-CALL-U
 variable DEF-ADDR-U
 variable DEF-LIT-U
 variable DEF-HOST-U
-variable DEF-CHECK-U
 variable DEF-LIT-N
 variable DEF-CALL-SITE-N
 variable DEF-ADDR-SITE-N
@@ -633,7 +762,6 @@ variable DEF-ACTIVE
 variable DEF-EMITTED
 variable DEF-FINISHED
 variable DEF-PREPARED
-variable DEF-CHECK-ID
 variable DEF-PLAN-ON
 variable DEF-CACHEABLE
 variable DEF-MODULE-DELTA
@@ -669,14 +797,9 @@ private
 CAST: DEF-ONE-XT ( n -- [ n -- n ] )
 CAST: DEF-TWO-XT ( n -- [ n n -- n ] )
 CAST: DEF-PTR-XT ( n -- [ n -- ptr u8 ] )
-CAST: DEF-NUM-XT ( n -- [ -- n ] )
 CAST: DEF-FACTS-XT ( n -- [ n -- n n n n n n ] )
 CAST: DEF-PREP-HOST-XT ( n -- [ n n ptr u8 n ptr u8 n -- ] )
 CAST: DEF-PUBLISH-XT ( n -- [ ptr u8 n n ptr n n ptr n n bool n -- n ] )
-CAST: DEF-ACTION-XT ( n -- [ -- ] )
-CAST: DEF-CHECK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
-CAST: DEF-CHECK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
-CAST: DEF-CHECK-INSTALL-XT ( n -- [ n -- ] )
 CAST: DEF-HOST-ABANDON-XT ( n -- [ -- ] )
 CAST: DEF-PREP-BEGIN-XT ( n -- [ n -- ] )
 CAST: DEF-LITERAL-XT ( n -- [ ptr u8 n -- n ] )
@@ -756,49 +879,6 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    DEF-HOST-ABANDON-XT execute ;
 : DEF-BYTES ( n -- ptr u8 )
    s" NART:BYTES" DEF-TARGET DEF-PTR-XT execute ;
-
-: DEF-OWNER ( -- ptr u8 )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
-: DEF-CHECK-AVAILABLE? ( -- bool )
-   DEF-OWNER {: owner:ptr :}
-   owner NULL-PTR = if false exit then
-   owner 16 - CELL-VIEW @ CHECKER-OWNER-ABI:MAGIC <> if false exit then
-   owner 8 - CELL-VIEW @ $508 < if false exit then
-   5 0 ?do
-      owner $4D0 i cells + + CELL-VIEW @ 0= if false unloop exit then
-   loop
-   owner $500 + CELL-VIEW @ 0<> ;
-: DEF-CHECK-XT ( n -- n )
-   DEF-OWNER + CELL-VIEW @ dup 0= if BAD then ;
-: DEF-CHECK-IDLE? ( -- bool )
-   $500 DEF-CHECK-XT DEF-NUM-XT execute 0<> ;
-: DEF-CHECK-MARK ( -- )
-   $4D0 DEF-CHECK-XT DEF-ACTION-XT execute ;
-: DEF-CHECK-DISCARD ( -- )
-   DEF-CHECK-AVAILABLE? if $4F0 DEF-CHECK-XT DEF-ACTION-XT execute then ;
-
-: DEF-CHECK-REF ( ptr u8 n -- n )
-   {: rec:ptr bytes:n :}
-   bytes DREC <> if BAD then
-   rec NULL-PTR BYTE-VIEW - dbase@ - {: off:n :}
-   off 0 < off DREC mod 0<> or if BAD then
-   off DREC / NFILE-REF:REF-RECORD ;
-: DEF-CHECK-RESOLVE ( n n -- ptr u8 )
-   {: ref:n bytes:n :}
-   bytes DREC <> if BAD then
-   ref NFILE-REF:REF>RECORD XREF-REC BYTE-VIEW ;
-: DEF-CHECK-EXPORT ( -- )
-   ['] DEF-CHECK-REF $4D8 DEF-CHECK-XT
-      DEF-CHECK-EXPORT-XT execute {: source:ptr bytes:n :}
-   bytes 0 < if BAD then
-   bytes DEF-CHECK-RESERVE
-   source 0 DEF-CHECK bytes BYTE-COPY
-   bytes DEF-CHECK-U ! ;
-: DEF-CHECK-PREPARE ( ptr u8 n -- n )
-   ['] DEF-CHECK-RESOLVE $4E0 DEF-CHECK-XT
-      DEF-CHECK-PREP-XT execute ;
-: DEF-CHECK-INSTALL ( n -- )
-   $4E8 DEF-CHECK-XT DEF-CHECK-INSTALL-XT execute ;
 
 : DEF-HOST-N ( n -- )
    {: value:n :}
@@ -1019,9 +1099,6 @@ variable DEF-HELD-SIZE
    DEF-ADDR-U @ 0 > if
       3 0 DEF-ADDR DEF-ADDR-U @ NUNIT-FILE:SECTION!
    then
-   DEF-CHECK-U @ 0 > if
-      5 0 DEF-CHECK DEF-CHECK-U @ NUNIT-FILE:SECTION!
-   then
    DEF-LIT-U @ 0 > if
       10 0 DEF-LIT DEF-LIT-U @ NUNIT-FILE:SECTION!
    then
@@ -1034,9 +1111,9 @@ variable DEF-HELD-SIZE
    0 DEF-ACTIVE ! 0 DEF-EMITTED ! 0 DEF-FINISHED !
    0 DEF-PREPARED ! 0 DEF-REFUSED ! 0 DEF-CACHEABLE !
    0 DEF-CODE-U ! 0 DEF-CALL-U ! 0 DEF-ADDR-U !
-   0 DEF-LIT-U ! 0 DEF-HOST-U ! 0 DEF-CHECK-U !
+   0 DEF-LIT-U ! 0 DEF-HOST-U !
    0 DEF-LIT-N ! 0 DEF-CALL-SITE-N ! 0 DEF-ADDR-SITE-N !
-   0 DEF-PENDING ! 0 DEF-CODE-BASE ! 0 DEF-CHECK-ID !
+   0 DEF-PENDING ! 0 DEF-CODE-BASE !
    0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
    0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
    0 DEF-HELD-E ! 0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
@@ -1044,9 +1121,7 @@ variable DEF-HELD-SIZE
 
 : DEF-DROP-PLAN ( -- n )
    DEF-SOURCE-END
-   ['] DEF-CHECK-DISCARD catch
    ['] DEF-ABANDON-HOST catch
-   over 0<> if drop else nip then
    NFILE-REF:END-CAPTURE
    NFILE-REF:DISCARD-PREPARED
    DEF-RESET ;
@@ -1185,30 +1260,6 @@ variable DEF-HELD-SIZE
    size DEF-ADDR-BYTES / DEF-ADDR-SITE-N !
    size DEF-ADDR-BYTES / 0 ?do i DEF-PREP-ADDR loop ;
 
-: DEF-PREP-OPEN ( -- )
-   DEF-CHECK-AVAILABLE? 0= if BAD then
-   14 NUNIT-FILE:SECTION$ NUNIT-DEP:CHECK 0= if BAD then
-   DEF-READ-META
-   0 NUNIT-FILE:SECTION$ {: source:ptr size:n :}
-   size DEF-CODE-U @ <> if BAD then
-   size DEF-CODE-RESERVE
-   source 0 DEF-CODE size BYTE-COPY
-   cp@ DEF-CODE-BASE !
-   ['] XREF-REC NFILE-REF:RECORD-AT!
-   13 NUNIT-FILE:SECTION$
-      ndict@ DEF-CODE-BASE @ DEF-CODE-U @ NFILE-REF:PREPARE
-   AOT-ARM:HERE-N DEF-PREP-BEGIN
-   1 DEF-PLAN-ON !
-   DEF-READ-LITERALS
-   DEF-PREP-DATA-END DATA-VA VA>N - DATA-SIZE > if BAD then
-   DEF-PREP-CALLS DEF-PREP-ADDRS
-   15 NUNIT-FILE:SECTION$ {: funcs:ptr funcu:n :}
-   DEF-CODE-BASE @ DEF-CODE-U @ funcs funcu
-      DEF-CALL-U @ 0= if NULL-PTR else 0 DEF-CALL then DEF-CALL-U @
-      s" NHOST:PREPARE-IMPORT" DEF-TARGET DEF-PREP-HOST-XT execute
-   5 NUNIT-FILE:SECTION$ DEF-CHECK-PREPARE DEF-CHECK-ID !
-   1 DEF-PREPARED ! ;
-
 : DEF-COPY-LITERALS ( -- )
    10 NUNIT-FILE:SECTION$ drop {: src:ptr :}
    0
@@ -1220,33 +1271,6 @@ variable DEF-HELD-SIZE
       cursor bytes 16 + +
    loop drop ;
 
-: DEF-INSTALL ( -- n )
-   NUNIT-CAPTURE:PROFILE-CK
-   DEF-PREPARED @ 0= if BAD then
-   DEF-HISTORY-REPLAY
-   DEF-COPY-LITERALS
-   0 DEF-CODE DEF-CODE-U @ DEF-RECORDED @
-      DEF-CALL-SITE-N @ 0= if NULL-PTR else 0 DEF-CALL-SITES then
-      DEF-CALL-SITE-N @
-      DEF-ADDR-SITE-N @ 0= if NULL-PTR else 0 DEF-ADDR-SITES then
-      DEF-ADDR-SITE-N @
-      DEF-WIDE @ DEF-MIN-IN @
-      s" NPUB:IMPORT-PENDING" DEF-TARGET DEF-PUBLISH-XT execute
-      {: ord:n :}
-   DEF-CHECK-ID @ DEF-CHECK-INSTALL
-   ord ;
-
-0 CWORK-VARIABLE DEF-IN-BYTES ptr u8
-0 CWORK-VARIABLE DEF-IN-SIZE n
-0 CWORK-VARIABLE DEF-IN-KEY ptr u8
-0 CWORK-VARIABLE DEF-IN-KEY-U n
-: DEF-PREPARE-BODY ( -- )
-   \ NDEF-CACHE keeps its entry buffer stable through install and discard.
-   DEF-IN-BYTES @ DEF-IN-SIZE @
-      NUNIT-FILE:ARCH-AARCH64 s" DEFINITION"
-      DEF-IN-KEY @ DEF-IN-KEY-U @ NUNIT-FILE:READ-VIEW
-   DEF-PREP-OPEN ;
-
 public
 
 : WITH-DEFINITIONS ( [ -- ] -- )
@@ -1257,14 +1281,9 @@ public
    DEF-ELIGIBLE? 0= if s" begin-ineligible" ndict@ REFUSED exit then
    DEF-UNPACKABLE$ {: why:ptr whyu:n :}
    whyu 0 > if why whyu ndict@ REFUSED exit then
-   DEF-CHECK-AVAILABLE? 0= if
-      s" checker-unavailable" ndict@ REFUSED exit
-   then
-   DEF-CHECK-IDLE? 0= if s" checker-busy" ndict@ REFUSED exit then
    ndict@ DEF-PENDING !
    1 DEF-ACTIVE !
    DEF-CACHEABLE-NOW? if 1 DEF-CACHEABLE ! then
-   DEF-CHECK-MARK
    DEF-SOURCE-BEGIN ;
 
 : DEFINITION-END ( -- bool )
@@ -1277,14 +1296,12 @@ public
       DEF-REFUSED @ 0<> if s" capture-refused" else s" no-emission" then
          DEF-PENDING @ REFUSED
       DEF-SOURCE-END
-      DEF-CHECK-DISCARD
       NFILE-REF:END-CAPTURE false exit
    then
    ndict@ DEF-PENDING @ 1+ <> if BAD then
    DEF-CACHEABLE-NOW? 0= if 0 DEF-CACHEABLE ! then
    DEF-FIELDS
    DEF-REGISTER-FUNCTIONS
-   DEF-CHECK-EXPORT
    DEF-CAPTURE-LITERALS
    DEF-SOURCE-END
    DEF-HISTORY-CAPTURE
@@ -1304,28 +1321,6 @@ public
    DEF-FINISHED @ 0= if BAD then
    deps depsu DEF-PACK-SECTIONS
    NUNIT-FILE:ARCH-AARCH64 s" DEFINITION" key keyu NUNIT-FILE:PACK ;
-
-: PREPARE-DEFINITION? ( ptr u8 n ptr u8 n -- bool )
-   {: bytes:ptr size:n key:ptr keyu:n :}
-   DEF-PLAN-ON @ if BAD then
-   DEF-RESET
-   DEF-ELIGIBLE? 0= if false exit then
-   DEF-CHECK-AVAILABLE? 0= if false exit then
-   DEF-CHECK-IDLE? 0= if false exit then
-   bytes DEF-IN-BYTES ! size DEF-IN-SIZE !
-   key DEF-IN-KEY ! keyu DEF-IN-KEY-U !
-   ['] DEF-PREPARE-BODY catch {: rc:n :}
-   rc 0= if true exit then
-   DEF-DROP-PLAN {: cleanup:n :}
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or
-   rc TFAM:E-UNIT-FAMILY-CHANGED = or if
-      cleanup 0<> if cleanup throw then
-      false exit
-   then
-   rc throw ;
-
-: INSTALL-DEFINITION ( -- n )
-   DEF-INSTALL ;
 
 : DISCARD-DEFINITION ( -- )
    DEF-DROP-PLAN dup 0<> if throw then drop
@@ -1753,6 +1748,58 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       else base then
    loop drop -1 0 ;
 
+\ The closing file's record row of its own record ord, -1 when another file
+\ made it.
+: OWN-ROW ( n -- n )
+   {: ord:n :}
+   0 EVENTS-N @ FO-EVENTS FO @ ?do
+      {: base:n :}
+      i SEG? if
+         i 1 EV @ {: first:n :}
+         ord first >= ord first i 2 EV @ + < and if
+            base ord + first - unloop exit
+         then
+         base i 2 EV @ +
+      else base then
+   loop drop -1 ;
+
+\ Checker reference entry key bytes as a FILE object reference, 0 after it
+\ refuses the closing file: a record it made, retired or not (its object
+\ makes the record again), or a live record an earlier file made, else
+\ storage in its own or an earlier declaration's DATA.
+: CHECK-TARGET ( n n -- n )
+   {: key:n bytes:n :}
+   bytes 0 < if
+      key ndict@ >= if s" checker-ref-retired" FILE-REFUSE 0 exit then
+      key OWN-ROW {: row:n :}
+      row 0 >= if row key NFILE-REF:FILE-REF-RECORD exit then
+      key XREF-REC XREF-RETIRED? if
+         s" checker-ref-retired" FILE-REFUSE 0 exit
+      then
+      key NUNIT-DEP:BIND-ORD
+      row key NFILE-REF:FILE-REF-RECORD exit
+   then
+   key bytes OWN-OFF {: off:n :}
+   off 0 >= if NFILE-REF:DATA off 0 NFILE-REF:REF-LOCAL exit then
+   key EARLIER-REF {: ref:n :}
+   ref 0= if s" checker-ref-unowned" FILE-REFUSE then
+   ref ;
+
+\ The closing file's checker section: its slice count, its reference
+\ count, each reference, then its slices.
+: CHECK-OUT ( -- )
+   FO-CKORD FO @ {: first:n :}
+   FO-SLICES FO @ OUT-N
+   CKORD-N @ first - OUT-N
+   CKORD-N @ first ?do
+      i 2 * FILE-CKORD @ i 2 * 1+ FILE-CKORD @ CHECK-TARGET {: ref:n :}
+      ref 0= if unloop exit then
+      ref OUT-N
+   loop
+   FO-CHECK FO @ {: from:n :}
+   CHECK-U @ from - {: bytes:n :}
+   bytes 0<> if from FILE-CHECK bytes OUT-S then ;
+
 \ An xt cell's value as a reference, and whether it has one. Code of an
 \ earlier record makes the file depend on that record. REF-CODE's local
 \ branch never applies here: BEGIN-FILE-REFS zeroes CAP-CODE-U, so the
@@ -2066,13 +2113,18 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
 public
 
 \ Encode the innermost file's records, DATA, requires, protection bytes,
-\ events, slots, slot literals, updates and pins into FILE-OUT, closing its
-\ last segment. A file whose records, slots or updates cannot all encode, or
-\ whose DATA or updated cells hold an undeclared address, refuses.
+\ events, slots, slot literals, checker slices, updates and pins into
+\ FILE-OUT, closing its last segment. A file that lacks a checker slice per
+\ load, whose records, slots, checker references or updates cannot all
+\ encode, or whose DATA or updated cells hold an undeclared address, refuses.
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
+   CHECK-EXPORT
    FILE-REFUSED? if exit then
+   0 EVENTS-N @ FO-EVENTS FO @ ?do i 0 EV @ EV-LOAD = if 1+ then loop
+      {: loads:n :}
+   FO-SLICES FO @ loads 1+ <> if s" checker-slices" FILE-REFUSE exit then
    NFILE-REF:BEGIN-FILE-REFS
    0 OUT-U !
    FO-INDEX FO @ INDEX-BYTES / ROW-AT !
@@ -2088,6 +2140,9 @@ public
    FILE-REFUSED? 0= if SITE-OWNERS EARLIER-SLOTS then
    OUT-U @ LITS-AT !
    LITS-U @ 0<> if 0 FILE-LITS LITS-U @ OUT-S then
+   OUT-U @ CHECK-AT !
+   FILE-REFUSED? if exit then
+   CHECK-OUT
    OUT-U @ UPDS-AT !
    FILE-REFUSED? 0= if UPDATES-OUT then
    OUT-U @ PINS-AT ! 0 PINS-N !
@@ -2109,9 +2164,10 @@ public
    8 REQS-AT @ PROT-AT @ OUT$ NUNIT-FILE:SECTION!
    11 INPUTS$ NUNIT-FILE:SECTION!
    9 SLOTS-AT @ LITS-AT @ OUT$ NUNIT-FILE:SECTION!
-   10 LITS-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
+   10 LITS-AT @ CHECK-AT @ OUT$ NUNIT-FILE:SECTION!
+   5 CHECK-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
    7 UPDS-AT @ PINS-AT @ OUT$ NUNIT-FILE:SECTION!
-   5 PINS-AT @ OUT-U @ OUT$ NUNIT-FILE:SECTION!
+   15 PINS-AT @ OUT-U @ OUT$ NUNIT-FILE:SECTION!
    12 EVS-AT @ SLOTS-AT @ OUT$ NUNIT-FILE:SECTION!
    13 0 0 NFILE-REF:ENCODE NUNIT-FILE:SECTION!
    DEPS-SLOT deps depsu NUNIT-FILE:SECTION!
@@ -2381,6 +2437,32 @@ private
    loop
    count OPEN-PINS ! ;
 
+\ The checker section: one slice per load and one for the file, each
+\ reference one of refs reference rows, and slices of at least two cells,
+\ zero padded to a cell, covering the section exactly.
+: CHECKS-CK ( ptr u8 n n -- )
+   {: sec:ptr secu:n refs:n :}
+   secu 16 < if BAD then
+   sec 0 U64-AT {: slices:n :}
+   sec 1 U64-AT {: nrefs:n :}
+   slices OPEN-LOADS @ 1+ <> if BAD then
+   nrefs 0 < nrefs secu 16 - 8 / > or if BAD then
+   nrefs 0 ?do sec i 2 + U64-AT refs REF-CK? 0= if BAD then loop
+   nrefs 2 + 8 *
+   slices 0 ?do
+      {: at:n :}
+      secu at - 8 - {: room:n :}
+      room 0 < if BAD then
+      sec at + LE:U64@ {: len:n :}
+      len 16 < len room > or if BAD then
+      len 7 + -8 and {: padded:n :}
+      padded room > if BAD then
+      padded len ?do sec at 8 + i + + c@ 0<> if BAD then loop
+      at 8 + padded +
+   loop
+   secu <> if BAD then
+   slices OPEN-CHECKS ! ;
+
 \ The FILE object's segment framing: events, records, DATA, protection
 \ bytes, requires, slots, updates and pins agree with one another, given its defs
 \ index rows.
@@ -2388,6 +2470,7 @@ private
    {: defs:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
+   0 OPEN-CHECKS !
    3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
    12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
@@ -2399,8 +2482,9 @@ private
    8 NUNIT-FILE:SECTION$ REQUIRES-CK
    9 NUNIT-FILE:SECTION$ refs SLOTS-CK
    10 NUNIT-FILE:SECTION$ SLOT-LITS-CK
+   5 NUNIT-FILE:SECTION$ refs CHECKS-CK
    7 NUNIT-FILE:SECTION$ refs UPDATES-CK
-   5 NUNIT-FILE:SECTION$ refs PINS-CK ;
+   15 NUNIT-FILE:SECTION$ refs PINS-CK ;
 
 public
 
@@ -2444,10 +2528,11 @@ public
    NUNIT-FILE:RESET-KEEP ;
 
 \ What OPEN-FILE found: definitions, dependency rows, input rows, records,
-\ DATA bytes, requires, loads, segments, slots, updates and pins.
-: FILE-COUNTS ( -- n n n n n n n n n n n )
+\ DATA bytes, requires, loads, segments, slots, updates, pins and checker
+\ slices.
+: FILE-COUNTS ( -- n n n n n n n n n n n n )
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
-   OPEN-PINS @ ;
+   OPEN-PINS @ OPEN-CHECKS @ ;
 
 ;package

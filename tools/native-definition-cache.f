@@ -631,40 +631,6 @@ variable PENDING-KEY-U
    end at = if 0 0 exit then
    at end ;
 
-\ Install the prepared definition from the entry at path, which ENTRY holds
-\ until DISCARD-DEFINITION. USED dates the entry after the read; a prune
-\ that takes it in between costs nothing, since this session has its bytes.
-: INSTALL-ENTRY ( ptr u8 n n ptr u8 n -- )
-   {: path:ptr pathu:n ord:n source:ptr sourceu:n :}
-   NUNIT-OBJECT:INSTALL-DEFINITION ord <> if BAD then
-   BORROW-ACTIVE @ if
-      source sourceu BORROW-ACCEPT @ BORROW-ACCEPT-XT execute
-   else ARM-WARM-ORIGIN then
-   ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
-   NUNIT-OBJECT:DISCARD-DEFINITION
-   path pathu BUILD-CACHE:USED drop
-   1 HIT-N +!
-   BORROW-ACTIVE @ if
-      NUNIT-ORIGIN:PENDING-AVAILABLE? 0= if 1 EARLY-PREFIX-HIT-N +! then
-   then ;
-
-\ The entry for key, checked against today's live bindings before it is
-\ installed.
-: FIND-HIT ( ptr u8 n n ptr u8 n -- bool )
-   {: key:ptr keyu:n ord:n source:ptr sourceu:n :}
-   keyu 64 <> if BAD then
-   key keyu ENTRY-PATH {: path:ptr pathu:n :}
-   path pathu s" HBDOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
-   found 0= if false exit then
-   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu
-      NUNIT-OBJECT:PREPARE-DEFINITION? 0= if
-      NUNIT-OBJECT:DISCARD-DEFINITION false exit
-   then
-   path pathu ord source sourceu INSTALL-ENTRY
-   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu ord DEF-SPAN
-      NUNIT-OBJECT:FILE-ADD-DEFINITION
-   true ;
-
 : SOURCE-AT ( -- n )
    DEPTH @ 0= if -1 exit then
    F-SRC-U F@ 0= if -1 exit then
@@ -771,9 +737,7 @@ variable PENDING-KEY-U
    reasonu 0 > if
       key keyu ord reason reasonu false COLD-CANDIDATE
    else
-      key keyu ord source sourceu FIND-HIT 0= if
-         key keyu ord s" eligible-cache-miss" true COLD-CANDIDATE
-      then
+      key keyu ord s" eligible-cache-miss" true COLD-CANDIDATE
    then
    0 DISPATCH-BUSY ! ;
 
@@ -1103,7 +1067,7 @@ variable USER-SEEN
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n pins:n :}
+         upds:n pins:n checks:n :}
    DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1118,6 +1082,7 @@ variable USER-SEEN
    s"  slots=" DIAG-W2 slots DIAG-N
    s"  updates=" DIAG-W2 upds DIAG-N
    s"  pins=" DIAG-W2 pins DIAG-N
+   s"  checks=" DIAG-W2 checks DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
    s"  src=" DIAG-W2

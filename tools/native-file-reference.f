@@ -1031,6 +1031,13 @@ public
    RECORD ord IMPORT-DECL {: row:n :}
    RECORD row 0 REF-IMPORT ;
 
+\ Record ord as a FILE object reference: row, its row among the object's own
+\ records, else below zero for an earlier file's record, which it imports.
+: FILE-REF-RECORD ( n n -- n ) {: row:n ord:n :}
+   row 0 >= if RECORD row 0 REF-LOCAL exit then
+   RECORD ord IMPORT-DECL {: decl:n :}
+   RECORD decl 0 REF-IMPORT ;
+
 : IMPL-SEARCH ( n n n n n -- n bool )
    {: entry:n node:n first:n last:n upper:n :}
    first upper >= if -1 false exit then

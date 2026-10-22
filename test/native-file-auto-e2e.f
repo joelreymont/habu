@@ -580,7 +580,6 @@ variable DIAG-START
    s" generated-cold.err" AT ERR$ WRITE-ALL
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=RED\n" CONTAINS? TTRUE
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
-   ERR$ s" reason=checker-busy" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n" CONTAINS? TTRUE
    41 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS

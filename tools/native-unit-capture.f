@@ -71,6 +71,9 @@ public
    s" NHOST:OBSERVE-RUNS" true BIND-ONE
    s" NHOST:UNOBSERVE-RUNS" true BIND-ONE
    s" CHECKER-OWNER:RESOLUTION-TOP" true BIND-ONE
+   \ The checker unit codes a FILE object's checker mark and export answer.
+   s" CHECKER-REG:E-UNIT-STATE" true BIND-ONE
+   s" CHECKER-REG:E-UNIT-FORMAT" true BIND-ONE
    s" NPUB:IMPORT-PENDING" true BIND-ONE
    s" NCOMP:DEFINITION-CACHEABLE?" true BIND-ONE
    s" NCOMP:DEFINITION-HISTORY" true BIND-ONE

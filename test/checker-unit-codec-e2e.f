@@ -13,8 +13,6 @@ require src/habu/xref.f
 package CHECKER-UNIT-CODEC-TEST
 
 $40000 constant ART-CAP
-7159 constant E-UNIT-FORMAT   \ src/core/checker.f CHECKER-REG's, private there
-7160 constant E-UNIT-STATE
 create ART ART-CAP allot
 create BAD ART-CAP allot
 variable ART-U
@@ -216,7 +214,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    \ EW.SYM is graph-header cell nine; $10000 marks defer metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
+   [: BAD ART-U @ IMPORT ;] catch CHECKER-REG:E-UNIT-FORMAT T= ;
 
 : CHECK-ROOT-GRAPH ( -- )
    ART BAD ART-U @ BYTE-COPY
@@ -224,7 +222,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    \ CTL-GRAPH-FLAGS) cannot be imported as graph control metadata.
    BAD FIRST-GRAPH-OFF + 9 cells + CELL-VIEW
    dup @ CTL-GRAPH-FLAGS invert dup negate and or swap !
-   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
+   [: BAD ART-U @ IMPORT ;] catch CHECKER-REG:E-UNIT-FORMAT T= ;
 
 : CHECK-DEFER-CONTROL ( -- )
    ART 5 cells + CELL-VIEW @ 0 > TTRUE
@@ -232,21 +230,21 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    \ A control row stores its symbol ordinal, then packed flags and masks.
    BAD FIRST-CONTROL-OFF + CELL + CELL-VIEW
    dup @ $10000 or swap !
-   [: BAD ART-U @ IMPORT ;] catch E-UNIT-FORMAT T= ;
+   [: BAD ART-U @ IMPORT ;] catch CHECKER-REG:E-UNIT-FORMAT T= ;
 
 : CHECK-FAILED-IMPORTS ( -- )
    SERIAL BASE-SERIAL !
    ART BAD ART-U @ BYTE-COPY
    1 BAD CELL + CELL-VIEW !
-   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ IMPORT ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T=
    ART BAD ART-U @ BYTE-COPY
    6 cells BAD 2 cells + CELL-VIEW !
-   [: BAD 6 cells IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD 6 cells IMPORT ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T=
    ART BAD ART-U @ BYTE-COPY
    -1 BAD 6 cells + CELL-VIEW !
-   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ IMPORT ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T=
    ART BAD ART-U @ BYTE-COPY
    0 NAME-OFF {: first:n :}
@@ -254,12 +252,12 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    ART first CELL - + CELL-VIEW @
       ART second CELL - + CELL-VIEW @ T=
    ART first + BAD second + ART first CELL - + CELL-VIEW @ BYTE-COPY
-   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ IMPORT ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T=
    ART BAD ART-U @ BYTE-COPY
    ART 3 cells + CELL-VIEW @
       BAD FIRST-GRAPH-OFF 7 cells - + CELL-VIEW !
-   [: BAD ART-U @ IMPORT ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ IMPORT ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T= ;
 
 : CHECK-BOUNDARIES ( -- )
@@ -286,7 +284,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    ART ART-U @ 0 0 PREPARE drop
    ART BAD ART-U @ BYTE-COPY
    1 BAD CELL + CELL-VIEW !
-   [: BAD ART-U @ 0 0 PREPARE drop ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ 0 0 PREPARE drop ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    SERIAL BASE-SERIAL @ T=
    PREPARE-END
    SERIAL BASE-SERIAL @ T=
@@ -323,7 +321,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    OWNER-RESET:SOURCE MARK
    SERIAL BASE-SERIAL !
    PREPARE-BEGIN
-   [: BAD ART-U @ 0 0 PREPARE drop ;] E-UNIT-FORMAT TTHROWSQ
+   [: BAD ART-U @ 0 0 PREPARE drop ;] CHECKER-REG:E-UNIT-FORMAT TTHROWSQ
    PREPARE-END
    SERIAL BASE-SERIAL @ T=
    UNIT-EXPORT drop {: delta:ptr :}
@@ -371,7 +369,7 @@ public
    SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
    CHECK-STALE
    s" a consumed mark cannot reserve twice" T-LABEL
-   [: ART ART-U @ IMPORT ;] E-UNIT-STATE TTHROWSQ
+   [: ART ART-U @ IMPORT ;] CHECKER-REG:E-UNIT-STATE TTHROWSQ
    SERIAL BASE-SERIAL @ ART 6 cells + CELL-VIEW @ + T=
    CHECK-CLIENT
    s" unit exporter accepts deferred declaration state" T-LABEL
