@@ -189,7 +189,10 @@ variable ENGINE-WHITEBOX
    s" src/core/util.f" AT
    SB-RESET value FMT:SB-INT SB$ APPEND-FILE
    s" src/core/util.f" AT
-   S\"  ;\n;package\n" APPEND-FILE ;
+   S\"  ;\n;package\n" APPEND-FILE
+   s" src/core/engine-error-effects.f" ROOT$ TREE-COPY:FILE
+   s" src/core/engine-error-effects.f" AT
+   S\" PPRIM: BUILD-EDIT-PREFIX VALUE PE-N PE-OUT PPRIM;\n" APPEND-FILE ;
 
 : PREFIX-REJECT ( -- )
    s" src/core/util.f" AT
