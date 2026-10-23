@@ -1,11 +1,9 @@
 ---
 title: If-convert diamonds in the x86 selector
-status: closed
+status: open
 priority: 3
 issue-type: task
 created-at: "2026-10-01T18:17:44.368186+03:00"
-closed-at: "2026-10-14T19:16:22.757772+03:00"
-close-reason: "Superseded by the one-pass checked-event codegen in docs/architecture.md: this task targeted the old x86 selector, which is to be deleted; optimize the replacement only against current measurements."
 ---
 
 Problem: the x86 selector is correct and unfused (`src/compiler/native/select-x64.f:12-17`): no selection becomes `x64.cmpsel` or `x64.selz`, so the renders habu-render-x86-cmpsel-279135be landed (`DEF-CMPSEL` `x64ir.f:1252`, `DEF-SELZ` `1270`) run only from staged machine IR. ARM64 if-converts a diamond into a select inline (`REGION-PICK`, `src/compiler/native/select.f:3268-3276`): `: S1 ( n n -- n ) 2dup < if drop else nip then ;` compiles to `cmp`, `csel`.
@@ -16,4 +14,3 @@ Depends: none (off the path to X6).
 Route: direct.
 Ownership: krait (Intel lane).
 Claim: unassigned.
-Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

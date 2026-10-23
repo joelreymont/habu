@@ -11,4 +11,3 @@ Acceptance: at tier 1, under both loops, a definition a program hook answers 0 f
 Files: src/core/lower-cert-base.f, src/compiler/native/compiler.f, the native test that holds the zero-verdict cases (test/compiler/native-hookless-reject.f).
 Verify: native build per docs/gate.md; `bin/hb --load test/run.f`; `bin/hb --load test/outer-interpret.f`.
 Depends: none. Worker: worker-max.
-Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

@@ -145,18 +145,6 @@ definition still open at the end of a line continues on the next.
 platform's codegen. Hand-written code per platform is only the kernel's
 primitives.
 
-**The codegen is one pass over the checked events.** It does four things:
-- it keeps a definition's stack values in registers, and leaves its constants
-  unemitted until a label or a call needs them in place;
-- it folds a comparison into the branch that reads it;
-- it inlines each primitive from that primitive's body in the primitive table,
-  and the primitive's callable form wraps the same body;
-- it maps Wasm's structured control straight from the nested constructs.
-
-Locals live in the return-stack frame, and `>r` moves a value to the return
-stack. There is no IR and no optimizing pass. A pass is added only when a
-benchmark shows that the code it produces pays for it.
-
 ### Cross-compilation
 
 **A build names the platform it runs on and the platform it produces.** Any

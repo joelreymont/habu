@@ -12,4 +12,3 @@ Files: src/compiler/native/hir-word.f, src/compiler/native/elaborate.f, src/lib/
 Verify: rebuild bin/hb per docs/gate.md; each reproducer under `bin/hb --load test/outer-loop-on.f <file holding 1 set-tier> <case>`; `bin/hb --load test/compiler/native-rstack.f` and `bin/hb --load test/compiler/native-rename-rows.f`; `bin/hb --load test/run.f`; two-generation build converges.
 Depends: none.
 Worker: worker.
-Superseded: the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events") deletes the tier-1 code this fixes; its reproducers become that codegen's cases. Do not start.

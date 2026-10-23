@@ -11,4 +11,3 @@ Acceptance: at tier 1, under both loops, a checked definer whose clause the chec
 Files: src/compiler/native/compiler.f (CHECK-DOES-SPLIT, the clause's verdict), src/core/checker.f (the clause's view of its pending definer), src/habu/definers.f, test/outer-interpret.f.
 Verify: native build per docs/gate.md; `bin/hb --load test/outer-interpret.f`; `bin/hb --load test/run.f`.
 Depends: none. Worker: worker-max.
-Partly superseded: the tier-1 part goes with the one-pass codegen (docs/architecture.md, "The codegen is one pass over the checked events"); the checker part stands. Do not start the tier-1 part.
