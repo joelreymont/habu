@@ -195,6 +195,76 @@ CAST: KIND>N ( XML:kind -- n )
 : BAD-COPY ( -- )
    6 MEM:BYTES-ALLOC-LEN [: BAD-COPY-ROOT ;] C2-MEM:WITH-MUT ;
 
+: NS-DOC$ ( -- ptr u8 n ) s" <p:r xmlns:p='urn:p' xmlns:q='urn:q' q:a='v'/>" ;
+: DUP-DOC$ ( -- ptr u8 n ) s" <r xmlns:a='u' xmlns:b='u' a:x='1' b:x='2'/>" ;
+
+\ Whether a view holds exactly the bytes of text.
+: VIEW= ( read-view<p,q,u8> ptr u8 n -- bool read-view<p,q,u8> )
+   {: text size:n :}
+   C2-BYTES:LENGTH {: len:n view :}
+   len size = view
+   len size min 0 ?do
+      i C2-MEM:BYTE@ swap text i + c@ = rot and swap
+   loop ;
+
+\ Whether the first count bytes of a destination are exactly text.
+: MUT= ( mut-view<x,y,z,u8> n ptr u8 n -- mut-view<x,y,z,u8> bool )
+   {: count:n text size:n :}
+   count size = swap
+   count size min 0 ?do
+      i C2-MEM:MUT-BYTE@ swap text i + c@ = rot and swap
+   loop
+   swap ;
+
+: NS-URI ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,y,z,u8> -- bool mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,y,z,u8> )
+   XML-C2:URI s" urn:p" MUT= -rot ;
+
+: NS-ATTR-URI ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,y,z,u8> -- bool mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,y,z,u8> )
+   XML-C2:ATTR-URI s" urn:q" MUT= -rot ;
+
+\ The prefixed element and its third attribute resolve through the bindings.
+: NS-READER ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- bool mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> )
+   XML-C2:NEXT KIND>N XML-KIND:START KIND>N T=
+   XML-C2:NAME$ s" p:r" VIEW= drop >r
+   XML-C2:LOCAL$ s" r" VIEW= drop r> and >r
+   16 MEM:BYTES-ALLOC-LEN [: NS-URI ;] C2-MEM:WITH-MUT swap r> and >r
+   XML-C2:ATTR-NEXT TTRUE XML-C2:ATTR-NEXT TTRUE XML-C2:ATTR-NEXT TTRUE
+   XML-C2:ATTR-NAME$ s" q:a" VIEW= drop r> and >r
+   XML-C2:ATTR-LOCAL$ s" a" VIEW= drop r> and >r
+   XML-C2:ATTR-VALUE$ s" v" VIEW= drop r> and >r
+   16 MEM:BYTES-ALLOC-LEN [: NS-ATTR-URI ;] C2-MEM:WITH-MUT swap r> and swap ;
+
+: NS-STORAGE ( read-view<p,q,u8> mut-view<b,l,a,u8> -- bool mut-view<b,l,a,u8> )
+   swap [: NS-READER ;] XML-C2:WITH-READER ;
+
+: NS-SOURCE ( read-view<p,q,u8> -- bool read-view<p,q,u8> )
+   dup 4 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   [: NS-STORAGE ;] C2-MEM:WITH-MUT swap ;
+
+: NS-ROOT ( mut-view<x,y,z,u8> -- bool mut-view<x,y,z,u8> )
+   NS-DOC$ C2-BYTES:COPY$ drop
+   [: NS-SOURCE ;] C2-MEM:WITH-READ ;
+
+: NS-RESULT ( -- bool )
+   NS-DOC$ nip MEM:BYTES-ALLOC-LEN [: NS-ROOT ;] C2-MEM:WITH-MUT ;
+
+: DUP-READER ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> )
+   XML-C2:NEXT drop ;
+
+: DUP-STORAGE ( read-view<p,q,u8> mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
+   swap [: DUP-READER ;] XML-C2:WITH-READER ;
+
+: DUP-SOURCE ( read-view<p,q,u8> -- read-view<p,q,u8> )
+   dup 4 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   [: DUP-STORAGE ;] C2-MEM:WITH-MUT ;
+
+: DUP-ROOT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> )
+   DUP-DOC$ C2-BYTES:COPY$ drop
+   [: DUP-SOURCE ;] C2-MEM:WITH-READ ;
+
+: DUP-NAMES ( -- )
+   DUP-DOC$ nip MEM:BYTES-ALLOC-LEN [: DUP-ROOT ;] C2-MEM:WITH-MUT ;
+
 public
 : RUN ( -- )
    T-RESET
@@ -221,6 +291,10 @@ public
    [: BAD-MAX ;] E-SPAN-RANGE TTHROWSQ
    s" view copy refuses a destination shorter than the source" T-LABEL
    [: BAD-COPY ;] E-SPAN-CAPACITY TTHROWSQ
+   s" a prefixed element and attribute resolve their xmlns bindings" T-LABEL
+   NS-RESULT TTRUE
+   s" two prefixes bound to one URI refuse a repeated expanded name" T-LABEL
+   [: DUP-NAMES ;] XML:E-NAMESPACE TTHROWSQ
    T-REPORT
    s" c2-xml-consumer-program: ok" type cr ;
 ;package

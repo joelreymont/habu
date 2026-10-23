@@ -7,8 +7,9 @@ require src/lib/c2-memory.f
 package XML-C2
 public
 
-\ XML/state.f's 26-cell header. The two wire pointers are null for INIT's
+\ XML/state.f's 28-cell header. The two wire pointers are null for INIT's
 \ caller-owned UTF-8 source; INIT-SOURCE's converted storage is excluded here.
+\ The last two cells are the reader's secret SipHash key.
 STRUCTURE reader-state<a,b>
    FIELD source read-view<a,b,u8>
    FIELD position n
@@ -35,6 +36,8 @@ STRUCTURE reader-state<a,b>
    FIELD wire-original-len n
    FIELD wire-storage ptr u8
    FIELD wire-storage-len n
+   FIELD hash-k0 n
+   FIELD hash-k1 n
 ;STRUCTURE
 
 private
@@ -54,7 +57,7 @@ TRUSTED: BYTE-UNPACK ( mut-view<b,l,a,u8> -- ptr n n ) ;
 ndict@ 1- constant BYTE-UNPACK-ID
 
 \ XML:INIT validates extent, aliasing, BOM and capacity, then writes exactly
-\ XML/state.f's 26-cell header. WITH-INIT copies that header into the same
+\ XML/state.f's 28-cell header. WITH-INIT copies that header into the same
 \ storage before the caller sees a typed cursor.
 \ The native allocator reads the fixed header in two bounded groups.
 TRUSTED: HEADER-LOW ( ptr n -- n n n n n n n n n n n n n ) {: state:ptr :}
@@ -73,7 +76,7 @@ TRUSTED: HEADER-LOW ( ptr n -- n n n n n n n n n n n n n ) {: state:ptr :}
    state 12 cells + @ ;
 ndict@ 1- constant HEADER-LOW-ID
 
-TRUSTED: HEADER-HIGH ( ptr n -- n n n n n n n n n n n n n ) {: state:ptr :}
+TRUSTED: HEADER-HIGH ( ptr n -- n n n n n n n n n n n n n n n ) {: state:ptr :}
    state 13 cells + @
    state 14 cells + @
    state 15 cells + @
@@ -86,7 +89,9 @@ TRUSTED: HEADER-HIGH ( ptr n -- n n n n n n n n n n n n n ) {: state:ptr :}
    state 22 cells + @
    state 23 cells + @
    state 24 cells + @
-   state 25 cells + @ ;
+   state 25 cells + @
+   state 26 cells + @
+   state 27 cells + @ ;
 ndict@ 1- constant HEADER-HIGH-ID
 
 TRUSTED: INIT-HEADER ( mut-view<b,l,a,u8> read-view<p,q,u8> -- mut-view<b,l,a,u8> reader-state<p,q> )

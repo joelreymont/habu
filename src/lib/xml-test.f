@@ -294,12 +294,41 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <p:a:b/>" E-NAMESPACE BAD
    s" <a q='1' q='2'/>" E-NAMESPACE BAD
    s" <a xmlns:p='u' xmlns:p='v'/>" E-NAMESPACE BAD
-   s" <a xmlns:p='u' xmlns:q='&#117;' p:x='1' q:x='2'/>" E-NAMESPACE BAD
+   s" <a xmlns:p='u0' xmlns:q='u&#48;' p:x='1' q:x='2'/>" E-NAMESPACE BAD
    s" <a xmlns:p=''/>" E-NAMESPACE BAD
    s" <a xmlns:xml='other'/>" E-NAMESPACE BAD
    s" <a xmlns:xmlns='u'/>" E-NAMESPACE BAD
    s" <a xmlns='http://www.w3.org/XML/1998/namespace'/>" E-NAMESPACE BAD
    s" <a xmlns:p='http://www.w3.org/2000/xmlns/'/>" E-NAMESPACE BAD ;
+
+\ Each start tag reuses the attribute table: a sibling with fewer or more
+\ attributes than the one before still finds its own duplicates, and only them.
+: SIBLING-ATTRIBUTES ( -- )
+   s" <r><a x='1' y='2' z='3'/><b z='1' w='2'/></r>" OPEN DRAIN XML:CLOSE
+   s" <r><a x='1' y='2' z='3'/><b y='1' y='2'/></r>" E-NAMESPACE BAD
+   s" <r><a x='1'/><b y='1' z='2' y='3'/></r>" E-NAMESPACE BAD
+   s" <r xmlns:p='u' xmlns:q='u'><a p:x='1' q:y='2' z='3'/><b z='1' p:x='2' q:x='3'/></r>"
+      E-NAMESPACE BAD ;
+
+\ A child's rebinding is seen by its descendants and ends with it, whether it
+\ closes with an end tag or self-closes.
+: NAMESPACE-SHADOWING ( -- )
+   s" <a xmlns:p='urn:outer'><b xmlns:p='urn:inner'><p:c p:x='1'/></b><p:m/><d xmlns:p='urn:self' p:x='2'/><p:e p:x='3'/></a>" OPEN
+   XML-KIND:START NEXT= s" p" s" urn:outer" PREFIX=
+   XML-KIND:START NEXT= s" p" s" urn:inner" PREFIX=
+   XML-KIND:START NEXT= s" urn:inner" URI= ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
+   XML-KIND:END NEXT=
+   XML-KIND:END NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
+   XML-KIND:START NEXT= s" urn:outer" URI= s" p" s" urn:outer" PREFIX=
+   XML-KIND:END NEXT=
+   XML-KIND:START NEXT= s" p" s" urn:self" PREFIX=
+   ATTR-NEXT TTRUE ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
+   XML-KIND:END NEXT= s" d" NAME=
+   XML-KIND:START NEXT= s" urn:outer" URI= s" p" s" urn:outer" PREFIX=
+   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   XML-KIND:END NEXT=
+   XML-KIND:END NEXT= s" a" NAME= s" p" s" urn:outer" PREFIX=
+   XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : BAD-ENCODINGS ( -- )
    s\" \xFF\xFE<\z" E-ENCODING BAD-INIT
@@ -420,6 +449,22 @@ CAST: TOKEN>N ( XML:kind -- n )
    ['] ATTR-NAME-READ catch E-STATE T=
    XML:CLOSE ;
 
+\ A namespace error once bindings exist fails the reader. INIT again on the
+\ same storage starts with none of them.
+: NAMESPACE-FAILURE ( -- )
+   s" <a xmlns:p='urn:stale'><b xmlns:q='urn:q' q:x='1' x='2' x='3'/></a>" OPEN
+   XML-KIND:START NEXT=
+   ['] NEXT-ONE catch E-NAMESPACE T=
+   ['] PREFIX-READ catch E-STATE T=
+   ['] NAME-READ catch E-STATE T=
+   ['] NEXT-ONE catch E-STATE T=
+   XML:CLOSE
+   s" <c xmlns:r='urn:r'><d/></c>" OPEN
+   XML-KIND:START NEXT=
+   s" p" PREFIX-MISSING s" q" PREFIX-MISSING s" r" s" urn:r" PREFIX=
+   XML-KIND:START NEXT= s" p" PREFIX-MISSING s" r" s" urn:r" PREFIX=
+   XML-KIND:END NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
 : NESTED+ ( ptr u8 n -- )
    {: source size:n :}
    source NESTED NESTED-LEN @ + size >LEN BYTE-COPY-LEN
@@ -497,6 +542,93 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" long&text" ATTR-TEXT=
    ATTR-VALUE$ s" long&amp;text" T$=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+\ One tag of WIDE-PREFIXES declarations and as many attributes p0:a, p1:a, ...
+\ URI i has URI-SCALARS scalars, U+0061 or U+20061 by the bits of i. The two
+\ differ only in bit 17, so under an unkeyed multiplicative hash such as FNV
+\ every such URI, and every expanded name over it, shares the low 17 bits and
+\ all the attributes fall in one bucket. The duplicate checks and prefix
+\ lookups must stay linear in the tag, or this row runs out of its CPU budget.
+\ A duplicate raw name, or an expanded name whose URI is spelled with character
+\ references, placed last must still be found among them.
+15 constant URI-SCALARS
+1 URI-SCALARS lshift constant WIDE-PREFIXES
+WIDE-PREFIXES 1- constant WIDE-LAST
+WIDE-PREFIXES 2 * 2 + constant WIDE-CAP
+$300000 constant WIDE-DOC-CAP
+PTR-VARIABLE WIDE-DOC
+PTR-VARIABLE WIDE-STORE
+variable WIDE-LEN
+variable URI-LEN
+
+: WIDE+ ( ptr u8 n -- )
+   {: source size:n :}
+   source WIDE-DOC @ WIDE-LEN @ + size >LEN BYTE-COPY-LEN
+   size WIDE-LEN +! ;
+
+: WIDE-N+ ( n -- )
+   {: value:n :}
+   value 10 >= if value 10 / recurse then
+   value 10 mod $30 + WIDE-DOC @ WIDE-LEN @ + c!
+   1 WIDE-LEN +! ;
+
+: URI+ ( ptr u8 n -- )
+   {: source size:n :}
+   source OTHER-BUF URI-LEN @ + size >LEN BYTE-COPY-LEN
+   size URI-LEN +! ;
+
+\ Emit URI index, its U+20061 scalars as UTF-8 or as character references.
+: WIDE-URI ( n bool [ ptr u8 n -- ] -- )
+   {: index:n refs:bool emit :}
+   URI-SCALARS 0 ?do
+      index i rshift 1 and 0= if
+         s" a" emit execute
+      else
+         refs if s" &#x20061;" else s\" \xF0\xA0\x81\xA1" then emit execute
+      then
+   loop ;
+
+: EXPECTED-URI$ ( n -- ptr u8 n )
+   0 URI-LEN !
+   false [: URI+ ;] WIDE-URI
+   OTHER-BUF URI-LEN @ ;
+
+: WIDE-BUILD ( ptr u8 n -- )
+   {: tail size:n :}
+   0 WIDE-LEN !
+   s" <r" WIDE+
+   WIDE-PREFIXES 0 ?do
+      s"  xmlns:p" WIDE+ i WIDE-N+ s" ='" WIDE+
+      i false [: WIDE+ ;] WIDE-URI s" '" WIDE+
+   loop
+   WIDE-PREFIXES 0 ?do s"  p" WIDE+ i WIDE-N+ s" :a='1'" WIDE+ loop
+   tail size WIDE+
+   s" />" WIDE+ ;
+
+: WIDE-OPEN ( -- XML:reader )
+   WIDE-STORE @ CELL-VIEW WIDE-CAP STORAGE-BYTES
+   WIDE-DOC @ WIDE-LEN @ INIT ;
+
+: WIDE-BAD ( ptr u8 n -- )
+   WIDE-BUILD
+   [: WIDE-OPEN DRAIN XML:CLOSE ;] catch E-NAMESPACE T= ;
+
+: WIDE-ELEMENT ( -- )
+   WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop WIDE-DOC !
+   WIDE-CAP STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop WIDE-STORE !
+   s" " WIDE-BUILD
+   WIDE-OPEN XML-KIND:START NEXT=
+   s" p0" s" aaaaaaaaaaaaaaa" PREFIX=
+   s" p32767" WIDE-LAST EXPECTED-URI$ PREFIX=
+   WIDE-PREFIXES 2 * 0 ?do ATTR-NEXT drop loop
+   s" p32767:a" ATTR-NAME= WIDE-LAST EXPECTED-URI$ ATTR-URI=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
+   s"  p0:a='2'" WIDE-BAD
+   0 URI-LEN !
+   s"  xmlns:q='" URI+ WIDE-LAST true [: URI+ ;] WIDE-URI s" ' q:a='2'" URI+
+   OTHER-BUF URI-LEN @ WIDE-BAD
+   WIDE-STORE @ WIDE-CAP STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   WIDE-DOC @ WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : ESCAPING ( -- )
    s\" A<&>\r\n\q'😀" TEXT-BUF TEXT-CAP ESCAPE-TEXT
@@ -618,6 +750,47 @@ CAST: TOKEN>N ( XML:kind -- n )
    XML-KIND:END NEXT= XML-KIND:END NEXT=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
+\ Each NEXT of an input reader moves the live frames' and bindings' strings into
+\ a fresh scope buffer and drops the consumed bytes, and one-byte fills grow the
+\ lexical buffer within a tag. Shadowed prefixes must resolve and restore across
+\ both, after ordinary and self-closing children, and the duplicate checks must
+\ find a moved binding's URI equal to a fresh one spelled another way.
+: INPUT-NAMESPACE-SCOPES ( -- )
+   s" <a xmlns:p='urn:outer' xmlns='urn:d'><b xmlns:p='urn:inner'><p:c p:x='1'/><e xmlns:p='urn:self' p:y='2'/><p:f/></b><p:g p:z='3'/><h a0='0' a1='1' a2='2' a3='3' a4='4' a5='5' a6='6' a7='7' a8='8' a9='9' p:a0='x' xmlns:q='urn:outer' q:a1='y'/><i p:a0='1' a0='2'/></a>"
+   1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT= s" urn:d" URI= s" p" s" urn:outer" PREFIX=
+   XML-KIND:START NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
+   XML-KIND:START NEXT= s" urn:inner" URI=
+   ATTR-NEXT TTRUE s" urn:inner" ATTR-URI=
+   XML-KIND:END NEXT= s" p:c" NAME= s" urn:inner" URI=
+   XML-KIND:START NEXT= s" e" NAME= s" urn:d" URI= s" p" s" urn:self" PREFIX=
+   ATTR-NEXT TTRUE ATTR-NEXT TTRUE s" urn:self" ATTR-URI=
+   XML-KIND:END NEXT= s" e" NAME= s" p" s" urn:self" PREFIX=
+   XML-KIND:START NEXT= s" p:f" NAME= s" urn:inner" URI=
+   s" p" s" urn:inner" PREFIX=
+   XML-KIND:END NEXT=
+   XML-KIND:END NEXT= s" b" NAME= s" p" s" urn:inner" PREFIX=
+   XML-KIND:START NEXT= s" p:g" NAME= s" urn:outer" URI=
+   s" p" s" urn:outer" PREFIX=
+   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   XML-KIND:END NEXT=
+   XML-KIND:START NEXT= s" h" NAME= s" q" s" urn:outer" PREFIX=
+   s" " s" urn:d" PREFIX=
+   12 0 ?do ATTR-NEXT drop loop
+   ATTR-NEXT TTRUE s" q:a1" ATTR-NAME= s" urn:outer" ATTR-URI=
+   ATTR-NEXT TFALSE
+   XML-KIND:END NEXT=
+   XML-KIND:START NEXT= s" i" NAME= s" q" PREFIX-MISSING
+   ATTR-NEXT TTRUE s" urn:outer" ATTR-URI=
+   ATTR-NEXT TTRUE s" a0" ATTR-NAME= s" " ATTR-URI=
+   XML-KIND:END NEXT=
+   XML-KIND:END NEXT= s" a" NAME= s" urn:d" URI= s" p" s" urn:outer" PREFIX=
+   XML-KIND:EOF NEXT= XML:CLOSE
+   s" <a xmlns:p='urn:u'><b xmlns:r='urn:v'><c xmlns:q='urn:&#117;' r:x='0' p:x='1' q:x='2'/></b></a>"
+      E-NAMESPACE INPUT-BAD
+   s" <a xmlns:p='urn:u' xmlns:q='urn:u'><b><c p:x='1' q:x='2'/></b></a>"
+      E-NAMESPACE INPUT-BAD ;
+
 : INPUT-FAILURES ( -- )
    s" <a><b></a>" E-MALFORMED INPUT-BAD
    s" <a/>x" E-MALFORMED INPUT-BAD
@@ -665,15 +838,19 @@ UNICODE-NAMES
 MALFORMED-INPUT
 BAD-ENTITIES
 BAD-NAMESPACES
+SIBLING-ATTRIBUTES
+NAMESPACE-SHADOWING
 BAD-ENCODINGS
 ASCII-WIRE
 CAPACITY-AND-STATE
+NAMESPACE-FAILURE
 CALLER-SIZED-STORAGE
 NO-PARTIAL-DECODE
 URI-CAPACITY-RECOVERY
 PREFIX-RECOVERY
 PREFIX-READERS
 ATTRIBUTE-CAPACITY-RECOVERY
+WIDE-ELEMENT
 ESCAPING
 CHECKED-OWNERSHIP
 INPUT-BOUNDARIES
@@ -682,6 +859,7 @@ INPUT-NEWLINE
 INPUT-ALIAS-CHECK
 INPUT-LARGE-TEXT
 INPUT-LARGE-SCOPE
+INPUT-NAMESPACE-SCOPES
 INPUT-FAILURES
 BEFORE @ CANARY T=
 AFTER @ CANARY T=

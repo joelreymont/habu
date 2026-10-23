@@ -108,7 +108,7 @@ private
 
 : POP-FRAME ( ptr n -- )
    {: state :}
-   state CURRENT-FRAME 2 cells + @ state NS-COUNT + !
+   state state CURRENT-FRAME 2 cells + @ POP-BINDINGS
    -1 state OPEN-DEPTH + +!
    0 state PENDING + ! ;
 

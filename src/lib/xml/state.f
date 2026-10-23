@@ -13,6 +13,8 @@
 
 require src/lib/xml/source.f
 require src/lib/byte-buffer.f
+require src/lib/siphash.f
+require src/lib/entropy.f
 
 package XML
 public
@@ -23,10 +25,24 @@ private
 CAST: KIND>N ( kind -- n )
 CAST: >KIND ( n -- kind )
 
-26 constant HEADER-CELLS
+\ The header ends with the reader's SipHash key, drawn by INIT-STATE. A SipHash
+\ state follows the header as scratch for src/lib/xml/names.f, then the frame,
+\ attribute and namespace tables.
+28 constant HEADER-CELLS
+HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
 5 constant FRAME-CELLS
-8 constant ATTR-CELLS
-4 constant NS-CELLS
+\ An attribute is name, value and raw spans and URI, then its name hash, the
+\ older attribute in its bucket, and the head of the bucket its own index
+\ numbers. A binding is prefix and URI spans, then the URI hash, the older
+\ binding in its prefix bucket and that head. src/lib/xml/names.f fills them.
+11 constant ATTR-CELLS
+8 cells constant ATTR-HASH
+9 cells constant ATTR-LINK
+10 cells constant ATTR-HEAD
+7 constant NS-CELLS
+4 cells constant NS-HASH
+5 cells constant NS-LINK
+6 cells constant NS-HEAD
 FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 0 constant SOURCE-IDX
 1 cells constant SOURCE-LEN
@@ -54,6 +70,9 @@ FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 23 cells constant WIRE-ORIGINAL-LEN
 24 constant WIRE-STORAGE-IDX
 25 cells constant WIRE-STORAGE-LEN
+26 cells constant HASH-K0
+27 cells constant HASH-K1
+HEADER-CELLS cells constant SIP-STATE
 
 0 constant LEGACY-UTF8
 1 constant SOURCE-UTF8
@@ -155,28 +174,28 @@ LINEAR: ERASE ( XML:reader -- ptr n )
 
 : CAP-CHECK ( n -- )
    dup 0 < if E-CAPACITY throw then
-   MAX-SIZE HEADER-CELLS cells - CAP-CELLS cells / > if
+   MAX-SIZE FIXED-CELLS cells - CAP-CELLS cells / > if
       E-CAPACITY throw
    then ;
 
 public
 : STORAGE-BYTES ( n -- n )
    dup CAP-CHECK
-   CAP-CELLS * HEADER-CELLS + cells ;
+   CAP-CELLS * FIXED-CELLS + cells ;
 
 private
 : FRAME ( ptr n n -- ptr n )
    {: state index:n :}
-   state HEADER-CELLS index FRAME-CELLS * + cells + ;
+   state FIXED-CELLS index FRAME-CELLS * + cells + ;
 
 : ATTRIBUTE ( ptr n n -- ptr n )
    {: state index:n :}
-   state HEADER-CELLS state CAPACITY + @ FRAME-CELLS * +
+   state FIXED-CELLS state CAPACITY + @ FRAME-CELLS * +
    index ATTR-CELLS * + cells + ;
 
 : NAMESPACE ( ptr n n -- ptr n )
    {: state index:n :}
-   state HEADER-CELLS state CAPACITY + @ FRAME-CELLS ATTR-CELLS + * +
+   state FIXED-CELLS state CAPACITY + @ FRAME-CELLS ATTR-CELLS + * +
    index NS-CELLS * + cells + ;
 
 : SOURCE$ ( ptr n -- ptr u8 n )
@@ -451,9 +470,11 @@ private
 : INIT-STATE ( ptr n n ptr u8 n -- )
    {: storage cap:n source size:n :}
    HEADER-CELLS 0 ?do 0 storage i cells + ! loop
+   storage HASH-K0 + BYTE-VIEW 2 cells ENTROPY:FILL
    source storage SOURCE-IDX ptr-field !
    size storage SOURCE-LEN + !
-   cap HEADER-CELLS cells - CAP-CELLS cells / storage CAPACITY + !
+   cap FIXED-CELLS cells - CAP-CELLS cells / storage CAPACITY + !
+   storage CAPACITY + @ 0 ?do -1 storage i NAMESPACE NS-HEAD + ! loop
    cap storage STORAGE-LEN + !
    -1 storage ATTR-INDEX + !
    XML-KIND:EOF KIND>N storage TOKEN-KIND + ! ;
@@ -482,8 +503,8 @@ public
    input SPAN:$ {: bytes size:n :}
    bytes size SPAN-CHECK
    storage BYTE-VIEW cap bytes size OVERLAP? if E-ALIAS throw then
-   ctx fill input STREAM-OPEN {: stream :}
    storage cap NULL-PTR 0 INIT-STATE
+   ctx fill input STREAM-OPEN {: stream :}
    INPUT-UTF8 storage SOURCE-MODE + !
    stream STREAM>BYTES storage WIRE-STORAGE-IDX ptr-field !
    storage MINT ;

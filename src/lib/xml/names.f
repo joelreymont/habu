@@ -14,6 +14,7 @@
 \ (src/lib/xml.f).
 
 require src/lib/xml/state.f
+require src/lib/siphash.f
 
 package XML
 private
@@ -93,6 +94,29 @@ $10000 $EFFFF 14 RANGE!
       then
    loop
    drop ;
+
+\ One tag's attributes and the live bindings are hashed into buckets, so the
+\ duplicate checks and each prefix lookup compare only within one bucket. The
+\ hash is SipHash-2-4 under the reader's secret key, drawn per reader at INIT,
+\ so a document cannot aim its names at one bucket: an element is expected to
+\ cost time linear in its attributes and bindings. That is an expectation over
+\ the key, not a worst-case guarantee. A collision costs only time: a full-hash
+\ match is confirmed by comparing the names.
+: KEY@ ( ptr n -- n n )
+   {: state :}
+   state HASH-K0 + @ state HASH-K1 + @ ;
+
+: BYTES-HASH ( ptr n ptr u8 n -- n )
+   {: state source size:n :}
+   state KEY@ source size SIPHASH:BYTES ;
+
+: HASH-START ( ptr n -- ptr n )
+   {: state :}
+   state SIP-STATE + {: sip :}
+   sip state KEY@ SIPHASH:INIT
+   sip ;
+
+: BUCKET ( n n -- n ) {: hash:n count:n :} hash 1 rshift count mod ;
 
 : QUOTE? ( n -- bool )
    dup $22 = swap $27 = or ;
@@ -182,68 +206,156 @@ $10000 $EFFFF 14 RANGE!
    then
    size 0 > attr 3 cells + @ 0= and if E-NAMESPACE throw then ;
 
+\ A URI hashes its decoded scalars, one word each: the units NORMAL-EQUAL?
+\ compares, so URIs it calls equal hash equal however they are spelled.
+: URI-HASH ( ptr n ptr u8 n -- n )
+   {: state source size:n :}
+   state HASH-START {: sip :}
+   0
+   begin dup size < while
+      {: cursor:n :}
+      source size cursor DECODE-ATTR DECODE-AT
+      {: scalar:n next:n :}
+      sip scalar SIPHASH:ABSORB-WORD next
+   repeat
+   drop
+   sip SIPHASH:FINISH ;
+
+\ An expanded name hashes its URI's hash, then its local name's bytes. Each
+\ binding keeps its URI's hash, so an attribute costs its local name, not its
+\ URI, and equal expanded names hash equal.
+: EXPANDED-HASH ( ptr n n ptr u8 n -- n )
+   {: state uri:n local size:n :}
+   state HASH-START {: sip :}
+   sip uri SIPHASH:ABSORB-WORD
+   size 0 ?do sip local i + c@ SIPHASH:ABSORB-BYTE loop
+   sip SIPHASH:FINISH ;
+
+: EMPTY-URI-HASH ( ptr n -- n ) s" " URI-HASH ;
+
+: PREFIX-HEAD ( ptr n ptr u8 n -- ptr n )
+   {: state prefix size:n :}
+   state state prefix size BYTES-HASH state CAPACITY + @ BUCKET
+   NAMESPACE NS-HEAD + ;
+
+: BINDING-PREFIX$ ( ptr n ptr n -- ptr u8 n )
+   {: state binding :}
+   state binding @ binding CELL + @ SPAN$ ;
+
 : SAVE-NAMESPACE ( ptr n ptr n -- )
    {: state attr :}
    state NS-COUNT + @ state CAPACITY + @ >= if E-NAMESPACES throw then
    state attr NS-BINDING-CHECK
-   state state NS-COUNT + @ NAMESPACE {: binding :}
+   state NS-COUNT + @ {: index:n :}
+   state index NAMESPACE {: binding :}
    state attr NS-PREFIX
    binding CELL + ! binding !
    attr 2 cells + @ binding 2 cells + !
    attr 3 cells + @ binding 3 cells + !
+   state state attr ATTRIBUTE-VALUE$ URI-HASH binding NS-HASH + !
+   state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
+   head @ binding NS-LINK + !
+   index head !
    1 state NS-COUNT + +! ;
 
-: DUPLICATE-NAME-CHECK ( ptr n n -- )
-   {: state index:n :}
+\ Drop the bindings above count, newest first: each is its bucket's head.
+: POP-BINDINGS ( ptr n n -- )
+   {: state count:n :}
+   begin state NS-COUNT + @ count > while
+      -1 state NS-COUNT + +!
+      state state NS-COUNT + @ NAMESPACE {: binding :}
+      binding NS-LINK + @
+      state state binding BINDING-PREFIX$ PREFIX-HEAD !
+   repeat ;
+
+: CLEAR-ATTR-HEADS ( ptr n -- )
+   {: state :}
+   state ATTR-COUNT + @ 0 ?do -1 state i ATTRIBUTE ATTR-HEAD + ! loop ;
+
+\ Throw E-NAMESPACE when an earlier attribute in hash's bucket is the same
+\ name as attribute index by same, else make index that bucket's head.
+: ATTR-ENTER ( ptr n n n [ ptr n ptr n ptr n -- bool ] -- )
+   {: state index:n hash:n same :}
    state index ATTRIBUTE {: attr :}
-   index 0 ?do
-      state attr ATTRIBUTE-NAME$
-      state state i ATTRIBUTE ATTRIBUTE-NAME$ BYTES= if E-NAMESPACE throw then
-   loop ;
+   hash attr ATTR-HASH + !
+   state hash state ATTR-COUNT + @ BUCKET ATTRIBUTE ATTR-HEAD + {: head :}
+   head @
+   begin dup 0 >= while
+      state swap ATTRIBUTE {: other :}
+      other ATTR-HASH + @ hash = if
+         state attr other same execute if E-NAMESPACE throw then
+      then
+      other ATTR-LINK + @
+   repeat
+   drop
+   head @ attr ATTR-LINK + !
+   index head ! ;
+
+: SAME-RAW-NAME? ( ptr n ptr n ptr n -- bool )
+   {: state first second :}
+   state first ATTRIBUTE-NAME$ state second ATTRIBUTE-NAME$ BYTES= ;
 
 : COLLECT-NAMESPACES ( ptr n -- )
    {: state :}
+   state CLEAR-ATTR-HEADS
    state ATTR-COUNT + @ 0 ?do
-      state i DUPLICATE-NAME-CHECK
       state i ATTRIBUTE {: attr :}
+      state state attr ATTRIBUTE-NAME$ BYTES-HASH {: hash:n :}
+      state i hash [: SAME-RAW-NAME? ;] ATTR-ENTER
       state attr NS-ATTRIBUTE? if state attr SAVE-NAMESPACE then
    loop ;
 
-: BOUND-URI ( ptr n ptr u8 n -- n n bool )
+: BINDING-INDEX ( ptr n ptr u8 n -- n )
    {: state prefix size:n :}
-   prefix size s" xml" BYTES= if XML-URI 0 true exit then
-   prefix size s" xmlns" BYTES= if 0 0 false exit then
-   state NS-COUNT + @
-   begin dup 0 > while
-      1-
+   state prefix size PREFIX-HEAD @
+   begin dup 0 >= while
       state over NAMESPACE {: binding :}
-      prefix size state binding @ binding CELL + @ SPAN$ BYTES= if
-         drop binding 2 cells + @ binding 3 cells + @ true exit
-      then
-   repeat
-   drop
-   0 0 size 0= ;
+      prefix size state binding BINDING-PREFIX$ BYTES= if exit then
+      drop binding NS-LINK + @
+   repeat ;
 
-: LOOKUP-URI ( ptr n n n -- n n )
+\ The URI span and hash a prefix is bound to, and whether it is bound.
+: PREFIX-BINDING ( ptr n ptr u8 n -- n n n bool )
+   {: state prefix size:n :}
+   prefix size s" xml" BYTES= if
+      XML-URI 0 state state XML-URI 0 URI$ URI-HASH true exit
+   then
+   prefix size s" xmlns" BYTES= if 0 0 0 false exit then
+   state prefix size BINDING-INDEX {: index:n :}
+   index 0 >= if
+      state index NAMESPACE {: binding :}
+      binding 2 cells + @ binding 3 cells + @ binding NS-HASH + @ true exit
+   then
+   0 0 state EMPTY-URI-HASH size 0= ;
+
+: BOUND-URI ( ptr n ptr u8 n -- n n bool )
+   PREFIX-BINDING {: start:n size:n hash:n bound:bool :}
+   start size bound ;
+
+: LOOKUP-URI ( ptr n n n -- n n n )
    {: state prefix:n size:n :}
-   state state prefix size SPAN$ BOUND-URI if exit then
+   state state prefix size SPAN$ PREFIX-BINDING if exit then
    E-NAMESPACE throw ;
 
-: RESOLVE-NAME ( ptr n n n bool -- n n )
+: RESOLVE-NAME ( ptr n n n bool -- n n n )
    {: state name:n size:n attr:bool :}
    state name size SPAN$ PREFIX-SIZE {: prefix-size:n :}
-   prefix-size 0= attr and if 0 0 exit then
+   prefix-size 0= attr and if 0 0 state EMPTY-URI-HASH exit then
    state name prefix-size SPAN$ s" xmlns" BYTES= if E-NAMESPACE throw then
    state name prefix-size LOOKUP-URI ;
 
-: RESOLVE-ATTRIBUTE ( ptr n ptr n -- )
+\ Store the attribute's URI and answer that URI's hash.
+: RESOLVE-ATTRIBUTE ( ptr n ptr n -- n )
    {: state attr :}
    state attr NS-ATTRIBUTE? if
-      XMLNS-URI 0
+      XMLNS-URI 0 state state XMLNS-URI 0 URI$ URI-HASH
    else
       state attr @ attr CELL + @ true RESOLVE-NAME
    then
-   attr 7 cells + ! attr 6 cells + ! ;
+   {: start:n size:n hash:n :}
+   start attr 6 cells + !
+   size attr 7 cells + !
+   hash ;
 
 : ATTRIBUTE-URI$ ( ptr n ptr n -- ptr u8 n )
    {: state attr :}
@@ -255,26 +367,20 @@ $10000 $EFFFF 14 RANGE!
    state second ATTRIBUTE-NAME$ LOCAL-SPAN BYTES= 0= if false exit then
    state first ATTRIBUTE-URI$ state second ATTRIBUTE-URI$ NORMAL-EQUAL? ;
 
-: EXPANDED-NAME-CHECK ( ptr n n -- )
-   {: state index:n :}
-   state index ATTRIBUTE {: attr :}
-   index 0 ?do
-      state attr state i ATTRIBUTE SAME-EXPANDED-NAME? if
-         E-NAMESPACE throw
-      then
-   loop ;
-
 : RESOLVE-ATTRIBUTES ( ptr n -- )
    {: state :}
+   state CLEAR-ATTR-HEADS
    state ATTR-COUNT + @ 0 ?do
-      state state i ATTRIBUTE RESOLVE-ATTRIBUTE
-      state i EXPANDED-NAME-CHECK
+      state i ATTRIBUTE {: attr :}
+      state state attr RESOLVE-ATTRIBUTE
+      state attr ATTRIBUTE-NAME$ LOCAL-SPAN EXPANDED-HASH {: hash:n :}
+      state i hash [: SAME-EXPANDED-NAME? ;] ATTR-ENTER
    loop ;
 
 : RESOLVE-ELEMENT ( ptr n -- )
    {: state :}
    state COLLECT-NAMESPACES
-   state state NAME-OFF + @ state NAME-LEN + @ false RESOLVE-NAME
+   state state NAME-OFF + @ state NAME-LEN + @ false RESOLVE-NAME drop
    state URI-LEN + ! state URI-OFF + !
    state RESOLVE-ATTRIBUTES ;
 
