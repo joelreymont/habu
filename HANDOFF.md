@@ -39,9 +39,11 @@ Done only when command output shows all of:
   `~/.cache/tmp/jerry-c/` on pulsar (`lane-recipe.md` first). The recipe was
   written for a Mac lead driving pulsar over ssh; on pulsar run its pulsar
   steps locally.
-- The pulsar seed in `~/Work/habu/bin/hb` (built from 20b75344) cannot build
-  trees that contain `zlzpkqkt`: build an engine from `zlzpkqkt`'s tree
-  first, then use it.
+- Pulsar's `~/Work/habu/bin/hb` (+ map) is self-built on pulsar from c848c7d7
+  by an engine cross-built on the Mac from the same commit; two-gen there
+  prints "ok gen 5 matches gen 4". No Intel bootstrap exists, so never lose
+  the x86 engines: the older seed (built from 20b75344, which cannot build
+  trees containing `zlzpkqkt`) is kept at `bin/hb.20b75344` (+ map).
 
 ## Rules
 
