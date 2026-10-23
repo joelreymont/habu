@@ -88,6 +88,13 @@ variable FILL-POOL
    {: root:ptr rootu:n :}
    S\" s\" " IN+ root rootu IN+ S\" \" SOURCE-ROOT:ENGINE!\n" IN+ ;
 
+\ A forward keeps the fault its device latched: PDEV's write latches fault 5,
+\ then forwards to the terminal, whose fault is none. fwd= prints the first
+\ write's code, PDEV's fault after it, and the second write's code less
+\ E-GENIO-IO. Kept apart from PROBE for its body text limit (BODYBUF-CAP).
+: FWD-CASE ( -- )
+   S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -227,6 +234,32 @@ variable FILL-POOL
    S\" s\" rw=\" type RW-GAP . cr\n" IN+
    s" rwp.f" LOAD+
    S\" s\" rwp=\" type RWP-B NULL-PTR - RWP-A NULL-PTR - - . cr\n" IN+
+   \ The tee in front of a non-terminal device. Each device logs every
+   \ operation it is handed, its kind and length, on the terminal (an emit or
+   \ type inside an operation reaches it), and keeps no state, as a DATA
+   \ update would refuse the printing file: LDEV logs writes and emits, FDEV
+   \ logs a write and latches fault 5, XDEV's flush latches fault 5 and throws
+   \ 123. The lines from <tee to tee> are the cases' whole output, the same
+   \ cold and warm but for the reused counts. pout.f and say.f print through
+   \ LDEV. fx.f prints through FDEV: fpar.f reads the tee's fault after it,
+   \ and a GENIO:WRITE there and in the session raises E-GENIO-IO. fq.f opens
+   \ the tee over FDEV already faulted; fy.f prints under it. fl.f flushes
+   \ XDEV through the tee. cap.f's capture fails on BOOM after the tee's own
+   \ cleanup, and capo.f prints through the next tee.
+   S\" package FRAME-DEV\nvariable BOOMED\npublic\n: L-WRITE ( ptr u8 n -- ) {: b:ptr u:n :} s\" [W\" type u . b u type s\" ]\" type ;\n: L-EMIT ( n -- ) s\" [E\" type . s\" ]\" type ;\n: F-WRITE ( ptr u8 n -- ) nip s\" [F\" type . s\" ]\" type 5 GENIO:FAULT! ;\n: X-FLUSH ( -- ) 5 GENIO:FAULT! 123 throw ;\n: NO-EMIT ( n -- ) drop ;\n: NO-KEY ( -- n ) 0 ;\n: NO-READY ( -- bool ) false ;\n: NO-READ ( ptr u8 n -- n ) drop drop 0 ;\n: NOTHING ( -- ) ;\n: LDEV ( -- device ) [: L-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: L-WRITE ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: FDEV ( -- device ) [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: F-WRITE ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: XDEV ( -- device ) [: L-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: L-WRITE ;] [: NO-READ ;] [: X-FLUSH ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: WCODE ( -- n ) [: s\" w\" GENIO:WRITE ;] catch ;\n: BOOM ( -- ) BOOMED @ 0<> if exit then 1 BOOMED ! 99 throw ;\n: ARM ( -- ) [: BOOM ;] IMAGE-LIFECYCLE:REGISTER ;\n;package\nGENIO:TERMINAL GENIO:OUTPUT! s\" <tee\" type cr\nFRAME-DEV:LDEV GENIO:OUTPUT!\n" IN+
+   s" pout.f" LOAD+
+   S\" GENIO:TERMINAL GENIO:OUTPUT!\nFRAME-DEV:FDEV GENIO:OUTPUT!\n" IN+
+   s" fpar.f" LOAD+
+   S\" GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:TERMINAL GENIO:OUTPUT! s\" fault=\" type swap . s\" wcode=\" type GENIO:E-IO - . s\" fpar=\" type FPAR-FAULT . FPAR-CODE GENIO:E-IO - . cr\nFRAME-DEV:FDEV GENIO:OUTPUT! s\" x\" type\n" IN+
+   s" fq.f" LOAD+
+   S\" GENIO:TERMINAL GENIO:OUTPUT! s\" fq=\" type FQ-FAULT . FQ-CODE GENIO:E-IO - . cr\nFRAME-DEV:XDEV GENIO:OUTPUT!\n" IN+
+   s" fl.f" LOAD+
+   S\" GENIO:TERMINAL GENIO:OUTPUT! s\" fl=\" type FL-CODE . FL-FAULT . FL-WCODE GENIO:E-IO - . cr\nIMAGE-LIFECYCLE:PREPARE\nFRAME-DEV:LDEV GENIO:OUTPUT!\nFRAME-DEV:ARM\n" IN+
+   s" cap.f" LOAD+
+   S\" s\" s\" type cr\n" IN+
+   s" capo.f" LOAD+
+   S\" GENIO:TERMINAL GENIO:OUTPUT! s\" cap=\" type CAP-CODE . cr s\" tee>\" type cr\n" IN+
+   FWD-CASE
    \ jrn.f loads before scope.f, the last load, under the early origin
    \ journal, armed, with its own check hook or, once MOVED,
    \ LOWER-CERT-HOOK's; ek= counts the rows its load recorded. The hooks stay
@@ -287,6 +320,28 @@ variable FILL-POOL
 
 : FRAME$ ( ptr u8 n -- ptr u8 n ) s"  rows=" LINE$ ;
 : OBJECT$ ( ptr u8 n -- ptr u8 n ) s"  key=" LINE$ ;
+
+\ The session's stdout from its "<tee" line through its "tee>" line.
+: TEE$ ( -- ptr u8 n )
+   OUT$ S\" <tee\n" FIND-SUB MATCH option
+     none OF T-FAIL s" " ENDOF
+     some OF IDX>N {: at:n :}
+        OUT$ drop at +  OUT$ nip at -  {: a:ptr u:n :}
+        a u S\" tee>\n" FIND-SUB MATCH option
+          none OF T-FAIL s" " ENDOF
+          some OF IDX>N 5 + a swap ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
+\ TEE$ on the cold build: each operation as its device logs it, kind and
+\ length, with each top-level load's count report between the cases.
+: TEE-COLD ( -- ptr u8 n )
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
+
+\ TEE$ on the warm build: the same operations, with the warm counts.
+: TEE-WARM ( -- ptr u8 n )
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n2\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
 
 \ The value of field (" name=") in line, up to the next space or the end.
 : FIELD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -547,6 +602,22 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
    s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT ;
 
+\ say.f's, pout.f's, fx.f's, fy.f's and capo.f's top levels print: the tee
+\ records each output operation, which a hit issues again. fpar.f, fq.f,
+\ fl.f and cap.f run words no trace accounts for, so they run cold on every
+\ build and print what they read.
+\ Kept apart from FIXTURES for its body text limit (BODYBUF-CAP).
+: TEE-FIXTURES ( -- )
+   s" say.f" S\" s\" said\" type cr\n66 GENIO:EMIT\n2 constant SAY-K\n" PUT
+   s" pout.f" S\" s\" a\" type cr\nrequire say.f\ns\" c\" type cr\n" PUT
+   s" fx.f" S\" s\" fx\" type cr\n1 constant FX-K\n" PUT
+   s" fpar.f" S\" require fx.f\n: FP-CODE ( -- n ) [: s\" w\" GENIO:WRITE ;] catch ;\nFP-CODE constant FPAR-CODE\nGENIO:OUTPUT@ GENIO:FAULT@ constant FPAR-FAULT\n" PUT
+   s" fy.f" S\" s\" y\" type cr\n3 constant FY-K\n" PUT
+   s" fq.f" S\" require fy.f\nGENIO:OUTPUT@ GENIO:FAULT@ constant FQ-FAULT\n: FQ-W ( -- n ) [: s\" q\" GENIO:WRITE ;] catch ;\nFQ-W constant FQ-CODE\n" PUT
+   s" fl.f" S\" : FL-F ( -- n ) [: GENIO:FLUSH ;] catch ;\nFL-F constant FL-CODE\nGENIO:OUTPUT@ GENIO:FAULT@ constant FL-FAULT\n: FL-W ( -- n ) [: s\" z\" GENIO:WRITE ;] catch ;\nFL-W constant FL-WCODE\n" PUT
+   s" cap.f" S\" require src/lib/image-lifecycle.f\n: CAP-RUN ( -- n ) [: IMAGE-LIFECYCLE:PREPARE ;] catch ;\nCAP-RUN constant CAP-CODE\n" PUT
+   s" capo.f" S\" s\" o\" type cr\n4 constant CAPO-K\n" PUT ;
+
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
@@ -758,6 +829,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" newtype.f" S\" package FRAME-NEWTYPE\nNEWTYPE frnt\n;package\n" PUT
    FFI-FIXTURES
    NEST-FIXTURES
+   TEE-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
@@ -1073,6 +1145,20 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" out.f" s"  reason=" LINE$ s" out.f reason=run-reaches-kernel-word word=emit" T$=
    s" out.f" NO-OBJECT
    OUT$ s" A" CONTAINS? TTRUE
+   s" a top level that prints through a non-terminal device stores its output" T-LABEL
+   s" say.f" KEY$ STORED
+   s" say.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" pout.f" KEY$ STORED
+   s" fx.f" KEY$ STORED
+   s" fpar.f" NO-OBJECT
+   s" a file opened over a faulted device stores its output" T-LABEL
+   s" fy.f" KEY$ STORED
+   s" capo.f" KEY$ STORED
+   s" cap.f" NO-OBJECT
+   s" the device sees each operation, fault and flush error as it would without the tee" T-LABEL
+   TEE$ TEE-COLD T$=
+   s" a forward keeps the fault its device latched" T-LABEL
+   OUT$ S\" fwd=0\n5\n0\n" CONTAINS? TTRUE
    s" a run whose body names data and then executes refuses by its worst reason" T-LABEL
    s" mask.f" s"  reason=" LINE$ s" mask.f reason=run-host-indirect word=MX-RUN" T$=
    s" mask.f" NO-OBJECT
@@ -1197,7 +1283,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ aftrun.f's stored executed row over AFT-ONE compares the digest the
    \ cold compile bound with the one the warm install of aftone.f binds.
    s" aftone.f" REUSED s" aftrun.f" REUSED
+   s" a warm build issues each recorded output operation as the cold one did" T-LABEL
+   s" pout.f" REUSED s" say.f" REUSED s" fx.f" REUSED s" fy.f" REUSED
+   s" capo.f" REUSED
+   TEE$ TEE-WARM T$=
+
    s" a warm build installs newtype.f with the type family it declares" T-LABEL
+
    s" newtype.f" REUSED
    s" con-dep.f, which requires con.f, replays its object over con.f's installed records" T-LABEL
    OUT$ S\" dep=5\n" CONTAINS? TTRUE

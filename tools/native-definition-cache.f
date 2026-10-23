@@ -3,6 +3,8 @@
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/genio-core.f
+require src/lib/image-lifecycle.f
 require src/lib/build-input.f
 require src/lib/build-cache.f
 require src/lib/engine-id.f
@@ -527,9 +529,106 @@ private
    {: bytes:ptr size:n :}
    size 0 ?do 0 bytes i + c! loop ;
 
-\ Room for one more frame. The only fallible step of an open, taken before
-\ the file is pushed so a failure leaves nothing to undo.
+\ Room for one more frame. With TEE-OPEN, the only fallible step of an open,
+\ taken before the file is pushed so a failure leaves nothing to undo.
 : FRAME-RESERVE ( -- ) DEPTH @ 1+ FRAME-BYTES * FRAMES-RESERVE ;
+
+\ The tee: the output device while a file is open, the DEVICE>N of its
+\ handle, 0 when none. It records each output operation the open files' top
+\ levels issue (NUNIT-OBJECT:OUTPUT+ and EMIT+), which a hit issues again,
+\ and forwards it to the device that was the output as the outermost file
+\ opened, TEE-TO's DEVICE>N. A hit issues its operations to that device
+\ directly (REPLAY-OUT), so a parent records a child's output only through
+\ the child's LOAD row.
+variable TEE
+variable TEE-TO
+\ 1 while TEE-FORGET waits on the next image capture.
+variable TEE-HOOKED
+\ The first code a recording threw, raised as the outermost file closes.
+variable TEE-ERR
+
+\ The device the tee forwards to, or the terminal once it was closed.
+: TEE-PRIOR ( -- device ) TEE-TO @ GENIO:>DEVICE GENIO:LIVE-DEVICE ;
+
+\ A recording that threw leaves every open file's output incomplete: the
+\ first code waits for TEE-CLOSE, since an output operation never throws
+\ (GENIO), and each open file refuses as it closes (OBJECT-CLOSE).
+: KEEP-ERR ( n -- ) {: code:n :}
+   code 0= if exit then
+   TEE-ERR @ 0<> if exit then
+   code TEE-ERR ! ;
+
+: RECORD-WRITE ( ptr u8 n -- ptr u8 n ) 2dup NUNIT-OBJECT:OUTPUT+ ;
+: RECORD-EMIT ( n -- n ) dup NUNIT-OBJECT:EMIT+ ;
+
+\ The prior device's operation runs as it would were that device current,
+\ and the tee latches its fault: the caller's next GENIO:WRITE, EMIT
+\ or FLUSH raises what it would raise cold.
+: TEE-WRITE ( ptr u8 n -- )
+   {: bytes:ptr len:n :}
+   bytes len [: RECORD-WRITE ;] catch {: code:n :} 2drop code KEEP-ERR
+   bytes len TEE-PRIOR GENIO:FORWARD ;
+: TEE-EMIT ( n -- ) {: c:n :}
+   c [: RECORD-EMIT ;] catch {: code:n :} drop code KEEP-ERR
+   c TEE-PRIOR GENIO:FORWARD-EMIT ;
+\ The tee is never an input device.
+: TEE-KEY ( -- n ) GENIO:E-IO throw ;
+: TEE-READY? ( -- bool ) false ;
+: TEE-READ ( ptr u8 n -- n ) GENIO:E-IO throw ;
+: TEE-NOTHING ( -- ) ;
+: PRIOR-FLUSH ( -- ) GENIO:INPUT@ TEE-PRIOR [: GENIO:FLUSH ;] GENIO:WITH-IO ;
+\ GENIO:FLUSH of the prior device, which raises its fault, and that fault
+\ state carried to the tee.
+: TEE-FLUSH ( -- )
+   [: PRIOR-FLUSH ;] catch {: code:n :}
+   TEE-PRIOR GENIO:FAULT@ GENIO:FAULT!
+   code 0 <> if code throw then ;
+
+\ Output routed to the tee goes to the prior device again, or the terminal
+\ once that device was closed.
+: TEE-UNROUTE ( n -- ) {: tee:n :}
+   GENIO:OUTPUT@ GENIO:DEVICE>N tee = if TEE-PRIOR GENIO:OUTPUT! then ;
+
+\ A capture's routing reset (GENIO) frees the tee's row and routes output to
+\ the terminal: no capture carries the tee, and no close follows. A cleanup
+\ hook that threw first stops the capture before that reset, so a tee still
+\ live is unrouted and closed here.
+: TEE-FORGET ( -- )
+   TEE @ {: tee:n :}
+   0 TEE ! 0 TEE-HOOKED !
+   tee 0= if exit then
+   tee GENIO:>DEVICE GENIO:LIVE-DEVICE GENIO:DEVICE>N tee <> if exit then
+   tee TEE-UNROUTE
+   tee GENIO:>DEVICE GENIO:CLOSE ;
+
+\ Make the tee the output device as the outermost file opens, in front of the
+\ current one. The tee starts with that device's fault, so the caller's next
+\ write over a faulted device raises what it raises cold.
+: TEE-OPEN ( -- )
+   GENIO:OUTPUT@ {: prior:device :}
+   TEE-HOOKED @ 0= if
+      [: TEE-FORGET ;] IMAGE-LIFECYCLE:REGISTER 1 TEE-HOOKED !
+   then
+   prior GENIO:DEVICE>N TEE-TO !
+   [: TEE-EMIT ;] [: TEE-KEY ;] [: TEE-READY? ;] [: TEE-READ ;]
+   [: TEE-WRITE ;] [: TEE-READ ;] [: TEE-FLUSH ;] [: TEE-NOTHING ;]
+   0 GENIO:DEVICE {: tee:device :}
+   prior GENIO:FAULT@ tee GENIO:LATCH
+   tee GENIO:OUTPUT! tee GENIO:DEVICE>N TEE ! ;
+
+\ Remove the tee as the outermost file closes, then raise the first code a
+\ recording threw.
+: TEE-CLOSE ( -- )
+   TEE-ERR @ {: code:n :}
+   0 TEE-ERR !
+   TEE @ {: tee:n :}
+   tee 0<> if
+      0 TEE !
+      tee TEE-UNROUTE
+      tee GENIO:>DEVICE GENIO:CLOSE
+   then
+   code 0<> if code throw then ;
+
 
 \ Open the reserved frame, zeroed as a fresh one: a file closed at this
 \ depth left its record there. Its object region starts at the top.
@@ -539,7 +638,8 @@ private
    OBJECTS-U @ F-OBJ F! ;
 
 \ Close the innermost frame and drop its object region.
-: FILE-CLOSE ( -- ) F-OBJ F@ OBJECTS-U ! -1 DEPTH +! ;
+: FILE-CLOSE ( -- )
+   F-OBJ F@ OBJECTS-U ! -1 DEPTH +! ;
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
@@ -932,6 +1032,7 @@ private
    s" CHECKER-OWNER:RESOLUTION-TOP" NUNIT-CAPTURE:BOUND-PRODUCER-XT
       NUNIT-DEP:USE-TOP
    [: NUNIT-OBJECT:REFUSE-WORD ;] NUNIT-DEP:USE-REFUSE
+   [: NUNIT-OBJECT:OUTPUT-MARK ;] NUNIT-DEP:USE-OUT
    s" NHOST:UNOBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT {: undo:n :}
    [: NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-RUN ;]
       s" NHOST:OBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT OBSERVE-XT execute
@@ -943,7 +1044,8 @@ private
    0 UNOBSERVE-XT !
    undo ACTION-XT execute
    0 NUNIT-DEP:USE-TOP
-   NUNIT-DEP:DROP-REFUSE ;
+   NUNIT-DEP:DROP-REFUSE
+   NUNIT-DEP:DROP-OUT ;
 
 : BIND-ORIGIN-RECORD ( -- )
    ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
@@ -1304,6 +1406,9 @@ variable USER-SEEN
    then
    NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
    SLOTS-MOVED? if s" task-slots" NUNIT-OBJECT:FILE-REFUSE then
+   \ Here, where a refusal may throw, and not inside the output operation
+   \ that failed: every file open then closes before TEE-CLOSE clears it.
+   TEE-ERR @ 0<> if s" output-record" NUNIT-OBJECT:FILE-REFUSE then
    ORIGIN-HARVEST
    \ Encoding binds the earlier records the file's slots name, so the rows
    \ are exported again after it.
@@ -1332,7 +1437,7 @@ variable USER-SEEN
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n pins:n checks:n ffi:n :}
+         upds:n pins:n checks:n ffi:n out:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1348,6 +1453,7 @@ variable USER-SEEN
    s"  updates=" DIAG-W2 upds DIAG-N
    s"  pins=" DIAG-W2 pins DIAG-N
    s"  ffi=" DIAG-W2 ffi DIAG-N
+   s"  out=" DIAG-W2 out DIAG-N
    s"  checks=" DIAG-W2 checks DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
@@ -1598,9 +1704,27 @@ variable IMPORT-AT
    then
    rc throw ;
 
+\ OUT row k's operations, issued again in their order: an emit to the output
+\ device's emit operation, as GENIO:EMIT reached it, and a write through the
+\ output funnel, as type, emit and GENIO:WRITE reach its write operation.
+: REPLAY-OPS ( n -- ) [: GENIO:EMIT ;] [: type ;] NUNIT-OBJECT:OUT-EACH ;
+
+\ OUT row k's operations, issued as the file's top level issued them. Behind
+\ the tee they go to its prior device directly, so nothing records a hit's
+\ output, and the tee takes that device's fault as a forward gives it.
+: REPLAY-OUT ( n -- ) {: k:n :}
+   GENIO:OUTPUT@ {: out:device :}
+   TEE @ 0= out GENIO:DEVICE>N TEE @ <> or if k REPLAY-OPS exit then
+   TEE-PRIOR GENIO:OUTPUT!
+   k [: dup REPLAY-OPS ;] catch {: rc:n :} drop
+   out GENIO:OUTPUT!
+   TEE-PRIOR GENIO:FAULT@ out GENIO:LATCH
+   rc 0<> if rc throw then ;
+
 \ Install the viewed object in place of running the file: its segments and
 \ its child loads in their order, each checker slice before the load that
-\ follows it. A segment after a load is checked, and its checker slice
+\ follows it, and the output each segment's top level wrote, after the
+\ segment. A segment after a load is checked, and its checker slice
 \ prepared, on the state the loads left; one stale there ends the run for
 \ a rerun without this object (REPLAY-STALE). The session manifest keeps the
 \ input rows the skipped load would have recorded.
@@ -1619,6 +1743,7 @@ variable IMPORT-AT
          i REPLAY-LOAD
          loads 1+
       else loads then
+      kind NUNIT-OBJECT:EV-OUT = if i REPLAY-OUT then
    loop {: all:n :}
    \ Rows bound after a trailing load are checked once it ran; a stale one
    \ is named as the segment past the last event.
@@ -1631,12 +1756,13 @@ variable IMPORT-AT
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n pins:n checks:n ffi:n :}
+         upds:n pins:n checks:n ffi:n out:n :}
    s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  records=" DIAG-W2 recs DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  loads=" DIAG-W2 loads DIAG-N
    s"  ffi=" DIAG-W2 ffi DIAG-N
+   s"  out=" DIAG-W2 out DIAG-N
    S\" \n" DIAG-W2 ;
 
 \ Rule: after each child load, the parent file stands in the scope it began
@@ -1675,6 +1801,7 @@ variable IMPORT-AT
    DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST then
    DEPTH @ 0 > if SOURCE-AT else -1 then {: at:n :}
    FRAME-RESERVE
+   DEPTH @ 0= if TEE-OPEN then
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
    path FRAME F-INPUT + 0 ptr-field !
@@ -1690,7 +1817,10 @@ variable IMPORT-AT
    kind F-KIND F!
    at F-AT F!
    ['] OBJECT-OPEN catch {: open-rc:n :}
-   open-rc 0<> if FILE-CLOSE NFILE-REF:POP-FILE open-rc throw then
+   open-rc 0<> if
+      FILE-CLOSE DEPTH @ 0= if TEE-CLOSE then
+      NFILE-REF:POP-FILE open-rc throw
+   then
    \ The before-image follows BEGIN-UNIT's observer hooks, and the parent's
    \ reopened segment's follows CLOSE-UNIT's, which may unhook them, so the
    \ capture's own writes are never a file's change to earlier DATA.
@@ -1717,6 +1847,7 @@ variable IMPORT-AT
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
    FILE-CLOSE
+   DEPTH @ 0= if ['] TEE-CLOSE catch else 0 then {: tee-rc:n :}
    \ The rows recorded so far belong to the closed file's object.
    DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
@@ -1725,7 +1856,8 @@ variable IMPORT-AT
    plan-rc 0<> if plan-rc throw then
    report-rc 0<> if report-rc throw then
    pop-rc 0<> if pop-rc throw then
-   object-rc 0<> if object-rc throw then ;
+   object-rc 0<> if object-rc throw then
+   tee-rc 0<> if tee-rc throw then ;
 
 : FILE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    PRIOR-UNIT @ true FILE-UNIT-WITH ;
@@ -1867,6 +1999,9 @@ variable IMPORT-AT
       FILE-CLOSE
       NFILE-REF:POP-FILE
    repeat
+   \ A push that threw after TEE-OPEN left no frame to close the tee.
+   ['] TEE-CLOSE catch {: tee-rc:n :}
+
    TARGET-SOURCE-BOUND @ if
       PRIOR-UNIT @ TARGET-UNIT-USE @ UNIT-USE-XT execute
       TARGET-INPUT-RESET @ ACTION-XT execute
@@ -1898,7 +2033,8 @@ variable IMPORT-AT
    0 HARVEST-N ! 0 HARVEST-FED !
    0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECTS-U ! 0 EXCLUDED-U !
    REPORT? @ if PRINT-COUNTS then
-   CLEAR-SCRATCH ;
+   CLEAR-SCRATCH
+   tee-rc 0<> if tee-rc throw then ;
 
 : OUTER-RUN ( -- )
    OPEN OUTER-BODY @ execute ;

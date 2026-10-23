@@ -66,8 +66,12 @@ private
 \ in the order its segments recorded them: its ordinal past the file's
 \ first record, its name token's span, and the
 \ name's and path's offsets and lengths in slot 3, a zero span and path when
-\ the row is unlocated. A definition's own dependency slot stays out: the
-\ file's rows cover it.
+\ the row is unlocated. Slot 19 holds the output operations the file's top
+\ level issued, segment after segment, one record each: its kind (OUT-EMIT or
+\ OUT-WRITE) and byte length, then its bytes, an emit's character as one
+\ cell. A segment that issued one adds one OUT row after its SEGMENT and FFI
+\ rows, also when it adds no SEGMENT row. A definition's own dependency slot
+\ stays out: the file's rows cover it.
 42031 constant DEF-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
@@ -87,8 +91,8 @@ private
 \ index. FFI-FN: kind, symbol offset and length, library index, argument and
 \ spill counts, the function's index. FFI-SCOPE: kind, role (0 the
 \ declarer's selection when the segment opened, 1 when it closed), library
-\ index, the scope wordlist's reference and 1 when a scope was stated.
-\ Unused cells are 0.
+\ index, the scope wordlist's reference and 1 when a scope was stated. OUT:
+\ kind, the bytes' offset in slot 19 and their length. Unused cells are 0.
 64 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
 \ length.
@@ -123,9 +127,11 @@ private
 
 public
 
-\ An event row's kind: a segment of the file's own records, or a child load.
+\ An event row's kind: a segment of the file's own records, a child load, or
+\ the output a segment's top level wrote.
 1 constant EV-SEGMENT
 2 constant EV-LOAD
+7 constant EV-OUT
 
 private
 
@@ -146,9 +152,9 @@ private
 \ FFI registry marks: the selected bank's next function index, the tables'
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
 \ was stated), the origin bytes when it opened, its sink cell first, the
-\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened. A child
-\ file's bytes and sites follow its parent's and are dropped when the child
-\ closes.
+\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, and the
+\ output bytes when it and its open segment opened. A child file's bytes and
+\ sites follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -177,7 +183,9 @@ private
 25 constant FO-ORIGIN
 26 constant FO-SEGB
 27 constant FO-SEG-POOL
-28 constant FO-CELLS
+28 constant FO-OUTPUT
+29 constant FO-SEG-OUT
+30 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -185,7 +193,8 @@ private
 \ dependency row count at its close and its DATA bytes' offset in SEG-DATA.
 \ LOAD: kind, the child's first ordinal,
 \ load kind, source offset, path offset and length, root offset and length
-\ in FILE-NAMES, then zeros.
+\ in FILE-NAMES, then zeros. OUT: kind, the segment's first ordinal, the
+\ bytes' offset in FILE-OUTPUT and their length, then zeros.
 15 constant EV-CELLS
 DYNAMIC-BUFFER FILE-DEFS u8
 DYNAMIC-BUFFER FILE-INDEX u8
@@ -197,6 +206,9 @@ DYNAMIC-BUFFER FILE-NAMES u8
 \ The open files' slot 18 bytes back to back.
 DYNAMIC-BUFFER FILE-ORIGIN u8
 variable ORIGIN-U
+\ The open files' slot 19 bytes back to back.
+DYNAMIC-BUFFER FILE-OUTPUT u8
+variable OUTPUT-U
 \ The closing file's record, DATA, require, protection and event sections,
 \ back to back.
 DYNAMIC-BUFFER FILE-OUT u8
@@ -293,6 +305,7 @@ variable OBS-N
 3 constant OBS-SCOPE
 variable OBS-ON
 variable OPEN-FFI
+variable OPEN-OUT
 variable DEFS-U
 variable INDEX-U
 variable INPUTS-U
@@ -500,6 +513,10 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
 : ORIGIN$ ( -- ptr u8 n )
    FO-ORIGIN FO @ {: first:n :}
    first FILE-ORIGIN ORIGIN-U @ first - ;
+: OUTPUT$ ( -- ptr u8 n )
+   FO-OUTPUT FO @ {: first:n :}
+   OUTPUT-U @ first = if NULL-PTR 0 exit then
+   first FILE-OUTPUT OUTPUT-U @ first - ;
 : ORIGIN-N ( n -- )
    {: value:n :}
    ORIGIN-U @ 8 + FILE-ORIGIN-RESERVE
@@ -569,6 +586,43 @@ public
 : REFUSE-ALL ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
    FO-DEPTH @ 0 ?do reason reasonu i FRAME-REFUSE loop ;
+
+private
+
+\ A slot 19 record's kind: the output operation the top level issued.
+1 constant OUT-EMIT
+2 constant OUT-WRITE
+16 constant OUT-HEAD-BYTES
+
+\ Room for a record of u bytes, and its header. The reserve is the only
+\ fallible step, taken before anything is written.
+: OUT-HEAD ( n n -- )
+   {: kind:n u:n :}
+   OUTPUT-U @ OUT-HEAD-BYTES + u + FILE-OUTPUT-RESERVE
+   kind OUTPUT-U @ FILE-OUTPUT LE:U64!
+   u OUTPUT-U @ 8 + FILE-OUTPUT LE:U64!
+   OUT-HEAD-BYTES OUTPUT-U +! ;
+
+public
+
+\ Record a write the top level issued, in the innermost open file.
+: OUTPUT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FILE-OPEN? 0= if exit then
+   OUT-WRITE u OUT-HEAD
+   a OUTPUT-U @ FILE-OUTPUT u BYTE-COPY
+   u OUTPUT-U +! ;
+
+\ Record an emit the top level issued, in the innermost open file.
+: EMIT+ ( n -- )
+   {: c:n :}
+   FILE-OPEN? 0= if exit then
+   OUT-EMIT 8 OUT-HEAD
+   c OUTPUT-U @ FILE-OUTPUT LE:U64!
+   8 OUTPUT-U +! ;
+
+\ The output bytes the open files hold: a run that wrote moves it.
+: OUTPUT-MARK ( -- n ) OUTPUT-U @ ;
 
 private
 
@@ -723,6 +777,7 @@ private
    ndict@ FO-SEG-ORD FO !
    AOT-ARM:HERE-N FO-SEG-HERE FO !
    POOL-FLOOR FO-SEG-POOL FO !
+   OUTPUT-U @ FO-SEG-OUT FO !
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO !
    AOT-ARM:WIDN FO-SEG-WID FO !
    0 IMAGE-U ! 0 KCELLS-HELD !
@@ -806,6 +861,14 @@ private
       i 0 EV @ EV-SEGMENT = if drop i 3 EV @ i 4 EV @ + then
    loop ;
 
+\ The open segment's OUT row, first its first ordinal, when its top level
+\ wrote output.
+: OUTPUT-ROW+ ( n -- )
+   {: first:n :}
+   OUTPUT-U @ FO-SEG-OUT FO @ - {: u:n :}
+   u 0= if exit then
+   EV-OUT first FO-SEG-OUT FO @ u 0 0 0 0 0 EV+ ;
+
 \ Close the innermost file's open segment as one SEGMENT row, or none when
 \ it added no record, DATA, require, wordlist or address cell row. HERE or
 \ an address record going back, the segment opening below the end of the
@@ -816,7 +879,7 @@ private
 \ records the values of its first and last address cell rows, which the
 \ file's encoding checks again. The earlier DATA bytes the segment changed
 \ are recorded whether or not it adds a row; a kernel cell it left changed
-\ refuses it.
+\ refuses it. Output its top level wrote adds an OUT row after the rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
    FO-SEG-ORD FO @ {: first:n :}
@@ -843,7 +906,7 @@ private
    FFI-BOUND? if FFI-SEG-CK else false then {: sel:bool :}
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= OBS-N @ 0= and sel 0= and
-      if exit then
+      if first OUTPUT-ROW+ exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
@@ -859,7 +922,7 @@ private
       FO-SEG-HERE FO @ DATA-PTR at SEG-DATA bytes BYTE-COPY
       bytes SEG-DATA-U +!
    then
-   first sel FFI-ROWS+ ;
+   first sel FFI-ROWS+ first OUTPUT-ROW+ ;
 
 \ The end of open file k's event rows, where the next frame's begin.
 : EV-HI ( n -- n )
@@ -1017,6 +1080,7 @@ public
    EVENTS-N @ FO-EVENTS FO !
    NAMES-U @ FO-NAMES FO !
    ORIGIN-U @ FO-ORIGIN FO !
+   OUTPUT-U @ FO-OUTPUT FO !
    SEG-DATA-U @ FO-SEGB FO !
    ORIGIN-U @ 8 + FILE-ORIGIN-RESERVE
    SINK-NONE ORIGIN-U @ FILE-ORIGIN LE:U64!
@@ -1054,6 +1118,7 @@ public
    FO-EVENTS FO @ EVENTS-N !
    FO-NAMES FO @ NAMES-U !
    FO-ORIGIN FO @ ORIGIN-U !
+   FO-OUTPUT FO @ OUTPUT-U !
    FO-SEGB FO @ SEG-DATA-U !
    FO-SITES FO @ SITES-N !
    FO-CHECK FO @ CHECK-U !
@@ -1121,6 +1186,7 @@ public
    OBS-CLEAR 0 OBS-N ! 0 OPEN-FFI ! FFI-OBS-RELEASE
    0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
    0 EVENTS-N ! 0 NAMES-U ! 0 ORIGIN-U ! 0 OUT-U ! 0 ROW-AT ! 0 SEG-DATA-U !
+   0 OUTPUT-U ! 0 OPEN-OUT !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
@@ -1146,6 +1212,7 @@ public
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
    FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
    FILE-EVENTS-RELEASE FILE-NAMES-RELEASE FILE-ORIGIN-RELEASE FILE-OUT-RELEASE
+   FILE-OUTPUT-RELEASE
    NUNIT-FILE:CLOSE
    NFILE-SCOPE:SCOPE-CLOSE
    NFILE-INPUTS:CLOSE
@@ -2046,6 +2113,10 @@ CAST: N>U8 ( n -- ptr u8 )
       kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N ref OUT-N
       row 5 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
+   kind EV-OUT = if
+      kind OUT-N row 2 EV @ FO-OUTPUT FO @ - OUT-N row 3 EV @ OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+   then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
    row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N 0 OUT-N ;
@@ -2672,6 +2743,7 @@ public
    8 REQS-AT @ PROT-AT @ OUT$ NUNIT-FILE:SECTION!
    11 INPUTS$ NUNIT-FILE:SECTION!
    18 ORIGIN$ NUNIT-FILE:SECTION!
+   19 OUTPUT$ NUNIT-FILE:SECTION!
    9 SLOTS-AT @ LITS-AT @ OUT$ NUNIT-FILE:SECTION!
    10 LITS-AT @ CHECK-AT @ OUT$ NUNIT-FILE:SECTION!
    5 CHECK-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
@@ -2872,10 +2944,12 @@ private
       kind EV-SEGMENT <> row 7 U64-AT 0<> and if BAD then
       kind EV-SEGMENT = if row end SEGMENT-CK else
          kind EV-LOAD = if row namesu LOAD-CK end else
-            kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
-            \ FFI rows follow their segment's row.
-            prev EV-LOAD = if BAD then
-            row names namesu refs FFI-CK end
+            kind EV-OUT = if end else
+               kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
+               \ FFI rows follow their segment's row.
+               prev EV-LOAD = if BAD then
+               row names namesu refs FFI-CK end
+            then
          then
       then
       kind
@@ -3616,6 +3690,14 @@ private
    loop
    OBJ-EVS ;
 
+\ The event row after event row seg's FFI rows and its OUT row.
+: SEG-NEXT ( n -- n )
+   FFI-END {: next:n :}
+   next OBJ-EVS < if
+      next OBJ-EV 0 U64-AT EV-OUT = if next 1+ exit then
+   then
+   next ;
+
 \ The offset in slot 8 of require row k.
 : REQ-OFF ( n -- n )
    {: k:n :}
@@ -3627,7 +3709,7 @@ private
 \ `required` stored before that load, which the load stores again.
 : INSTALL-REQUIRES ( n n n -- )
    {: seg:n base:n reqs:n :}
-   seg FFI-END {: next:n :}
+   seg SEG-NEXT {: next:n :}
    next OBJ-EVS < if
       next OBJ-EV {: ev:ptr :}
       ev 0 U64-AT EV-LOAD = ev 1 U64-AT SOURCE-UNIT:LOAD-REQUIRE = and
@@ -3787,11 +3869,11 @@ public
 
 \ What OPEN-FILE found: definitions, dependency rows, input rows, records,
 \ DATA bytes, requires, loads, segments, slots, updates, pins, checker
-\ slices and FFI rows.
-: FILE-COUNTS ( -- n n n n n n n n n n n n n )
+\ slices, FFI rows and output bytes.
+: FILE-COUNTS ( -- n n n n n n n n n n n n n n )
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
-   OPEN-PINS @ OPEN-CHECKS @ OPEN-FFI @ ;
+   OPEN-PINS @ OPEN-CHECKS @ OPEN-FFI @ OPEN-OUT @ ;
 
 \ Segment row seg's first record row whose name is live in the wordlist the
 \ install would define it into, and true; NULL-PTR 0 false when none.
@@ -3929,14 +4011,16 @@ public
          ev 2 U64-AT OPEN-RECS +! ev 3 U64-AT OPEN-DATA +!
          ev 4 U64-AT OPEN-REQS +! ev 5 U64-AT OPEN-WIDS +! 1 OPEN-SEGS +!
       else
-         kind EV-LOAD = if 1 OPEN-LOADS +! else 1 OPEN-FFI +! then
+         kind EV-LOAD = if 1 OPEN-LOADS +! then
+         kind EV-FFI-LIB < kind EV-FFI-SCOPE > or 0= if 1 OPEN-FFI +! then
       then
    loop
    5 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-CHECKS !
    9 NUNIT-FILE:SECTION$ nip SLOT-BYTES / OPEN-SLOTS !
    7 NUNIT-FILE:SECTION$ nip UPDATE-BYTES / OPEN-UPDS !
    15 NUNIT-FILE:SECTION$ nip PIN-BYTES / OPEN-PINS !
-   18 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-SINK ! ;
+   18 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-SINK !
+   19 NUNIT-FILE:SECTION$ nip OPEN-OUT ! ;
 
 \ The viewed object's event rows: their count, row k's kind, a SEGMENT
 \ row's dependency row mark, and whether no SEGMENT or LOAD row follows
@@ -3958,6 +4042,23 @@ public
    3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
    ev 1 U64-AT names ev 3 U64-AT + ev 4 U64-AT
    names ev 5 U64-AT + ev 6 U64-AT ;
+
+\ Issue OUT row k's recorded operations again, in their order: each emit's
+\ character to qemit, each write's bytes to qwrite.
+: OUT-EACH ( n [ n -- ] [ ptr u8 n -- ] -- )
+   {: k:n qemit qwrite :}
+   k OBJ-EV {: ev:ptr :}
+   19 NUNIT-FILE:SECTION$ drop ev 1 U64-AT + {: a:ptr :}
+   ev 2 U64-AT {: u:n :}
+   0 begin dup u < while
+      {: at:n :}
+      a at + {: rec:ptr :}
+      rec 8 + LE:U64@ {: len:n :}
+      rec OUT-HEAD-BYTES + {: bytes:ptr :}
+      rec LE:U64@ OUT-EMIT =
+         if bytes LE:U64@ qemit execute else bytes len qwrite execute then
+      at OUT-HEAD-BYTES + len +
+   repeat drop ;
 
 \ The FILE object OPEN-FILE found has a well formed slot 18; only then is its
 \ origin sink kind ORIGIN-KIND.

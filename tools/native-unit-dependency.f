@@ -59,7 +59,8 @@ private
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
-\ checker's unit facts before it, and whether it opened a child file.
+\ checker's unit facts before it, whether it opened a child file, and the
+\ output bytes the open files held before it (RUN-OUT).
 0 constant R-ORD
 1 constant R-END
 2 constant R-N
@@ -68,7 +69,8 @@ private
 5 constant R-K0
 9 constant R-FACTS
 10 constant R-CHILD
-11 constant RUN-CELLS
+11 constant R-OUT
+12 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -1250,6 +1252,13 @@ defer RUN-REFUSE ( ptr u8 n ptr n -- )
 : DEFAULT-REFUSE ( -- ) ['] NO-RUN-REFUSE is RUN-REFUSE ;
 DEFAULT-REFUSE
 
+\ The output bytes the open files hold (NUNIT-OBJECT:OUTPUT-MARK), bound by
+\ the definition cache beside RUN-REFUSE; 0 while unbound.
+defer RUN-OUT ( -- n )
+: NO-RUN-OUT ( -- n ) 0 ;
+: DEFAULT-OUT ( -- ) ['] NO-RUN-OUT is RUN-OUT ;
+DEFAULT-OUT
+
 \ One leg of the run's token: the row a compiled reference to the same
 \ spelling in the same scope adds, counted when it holds the record that ran.
 : RUN-LEG ( ptr u8 n -- )
@@ -1442,6 +1451,10 @@ public
 : USE-REFUSE ( [ ptr u8 n ptr n -- ] -- ) is RUN-REFUSE ;
 : DROP-REFUSE ( -- ) DEFAULT-REFUSE ;
 
+\ The open files' output mark, bound and dropped the same way.
+: USE-OUT ( [ -- n ] -- ) is RUN-OUT ;
+: DROP-OUT ( -- ) DEFAULT-OUT ;
+
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
 \ without the name included, and then, when one of them holds the record that
@@ -1483,14 +1496,16 @@ public
    4 0 ?do i KCELL@ run R-K0 i + RFIELD ! loop
    FACTS run R-FACTS RFIELD !
    0 run R-CHILD RFIELD !
+   RUN-OUT run R-OUT RFIELD !
    run 1+ FRUN-N !
    run 1+ false ;
 
 \ A closed run's judgment: a seed word's run that consumed no source past its
 \ token, changed no record count, here, wordlist count, kernel cell or unit
-\ fact count and opened no child file left nothing the object carries.
+\ fact count, wrote no output the open file records (its OUT row carries it)
+\ and opened no child file left nothing the object carries.
 \ The rule is residual: a run admitted by its trace may also touch state the
-\ object does not carry, as `.(` reads its text and prints it. `data-base`
+\ object does not carry, as `.(` reads its text. `data-base`
 \ refuses, so a file aligning with `here data-base - negate 7 and allot`
 \ refuses where `align` stores. A deliberate offset below the floor computed
 \ from `here` is outside this judgment.
@@ -1506,6 +1521,8 @@ public
    run R-FACTS RFIELD @ {: facts:n :}
    facts 0 >= if FACTS facts <> if exit then then
    run R-CHILD RFIELD @ 0<> if exit then
+   RUN-OUT run R-OUT RFIELD @ <> if exit then
+
    s" run-unaccounted" run R-ORD RFIELD @ ORDERED-BY ;
 
 \ The source observer's after callback. A failed run fails the file. after(t)

@@ -28,12 +28,14 @@
 \ row and reads its state from there. Every dispatcher below publishes that cell
 \ before it executes an operation; the engine funnel publishes it too.
 \
-\ A WRITE OPERATION MUST NOT THROW. The engine reaches it from inside `emit`
-\ and `type`, where a throw would unwind through engine internals with the
-\ funnel's re-entrancy guard still set. A device that fails a write latches the
-\ failure instead, and the next KEY, READ, ACCEPT or FLUSH on that device raises
-\ E-GENIO-IO. Every other operation is called from ordinary Habu code and
-\ reports at once.
+\ A WRITE OR EMIT OPERATION MUST NOT THROW. The engine reaches a write from
+\ inside `emit` and `type`, where a throw would unwind through engine internals
+\ with the funnel's re-entrancy guard still set. An emit is reached only from
+\ EMIT and FORWARD-EMIT, which raise that guard around it with no catch, so a
+\ throw would leave the guard and the active row set. A device that fails a
+\ write or an emit latches the failure instead, and the next KEY, READ, ACCEPT
+\ or FLUSH on that device raises E-GENIO-IO. Every other operation is called
+\ from ordinary Habu code and reports at once.
 \
 \ HANDLES. A handle is a row and a generation: 0 is the terminal, and the
 \ GENIO-ABI:DEVICES further rows are a pool. CLOSE frees the row and moves its
@@ -239,6 +241,12 @@ CAST: >ENGINE-ROW ( n -- ptr [ ptr u8 n -- ] )
 : ACTIVE-ROW ( -- n )
    ACTIVE-PTR @ BOUNDED ;
 
+\ A zero is no failure, and a latched failure stays (FAULT-CHECK).
+: LATCH-ROW ( n n -- ) {: errno:n idx:n :}
+   errno 0= if exit then
+   idx SLOT-FAULT @ 0 <> if exit then
+   errno idx SLOT-FAULT ! ;
+
 \ ---- the device a running operation belongs to -------------------------------
 
 public
@@ -252,10 +260,13 @@ public
 : SELF-STATE ( -- n )
    ACTIVE-ROW SLOT-STATE @ ;
 
-private
+\ Latch a failed write on the device whose operation is running: the write
+\ operation's way to report, since it must not throw. A zero is ignored, and
+\ a failure already latched is kept.
+: FAULT! ( n -- )
+   ACTIVE-ROW LATCH-ROW ;
 
-: FAULT! ( n -- ) {: errno:n :}
-   errno ACTIVE-ROW SLOT-FAULT ! ;
+private
 
 \ A latched write failure STAYS latched: a device whose write failed is broken,
 \ and every later operation on it says so until the row is built again.
@@ -411,6 +422,25 @@ public
 : INPUT! ( device -- )
    ROW IN-PTR ! ;
 
+\ The write failure the device latched, 0 when healthy.
+: FAULT@ ( device -- n )
+   ROW SLOT-FAULT @ ;
+
+\ Latch a failure on the device from outside its operations, as FAULT! does
+\ inside one: a device standing in front of another starts with, or catches
+\ up to, that device's fault.
+: LATCH ( n device -- )
+   ROW LATCH-ROW ;
+
+\ The device, or the terminal once its row was closed: the device the output
+\ funnel writes to for it.
+: LIVE-DEVICE ( device -- device ) {: dev:device :}
+   dev DEVICE>N {: h:n :}
+   h ROW-MASK and {: idx:n :}
+   idx STATUS@ LIVE <> if TERMINAL-ROW ROW-HANDLE exit then
+   h GEN-SHIFT rshift idx SLOT-GEN @ <> if TERMINAL-ROW ROW-HANDLE exit then
+   dev ;
+
 private
 
 \ Restoring cannot fail over the body's own result: if the body closed the
@@ -440,8 +470,8 @@ private
 
 \ ---- dispatch ---------------------------------------------------------------
 \ Each dispatcher publishes the row it is about to run for and puts the
-\ caller's back. A throw abandons that restore, which is harmless: every
-\ dispatcher publishes the cell before anything reads it.
+\ caller's back, also when the operation throws. Only EMIT, WRITE, FORWARD and
+\ FORWARD-EMIT skip that catch, because their operations do not throw.
 
 : BUSY-PTR ( -- ptr n )
    data-base GENIO-ABI:BUSY-CELL + ;
@@ -470,6 +500,21 @@ private
 \ one (docs/forth.md), and the operation has to run under `catch`.
 : RUN-CLOSE-OP ( -- )
    ACTIVE-ROW OP-CLOSE @ execute ;
+
+\ The operations that may throw run the same way, so the dispatcher puts the
+\ caller's ACTIVE-CELL back before the error leaves it: an operation of the
+\ caller's device that runs afterwards must still see itself as SELF.
+: RUN-FLUSH-OP ( -- )
+   ACTIVE-ROW OP-FLUSH @ execute ;
+: RUN-KEY-OP ( n -- n )
+   drop ACTIVE-ROW OP-KEY @ execute ;
+: RUN-READY-OP ( bool -- bool )
+   drop ACTIVE-ROW OP-READY @ execute ;
+\ The buffer stays under the count read, so the catch preserves the shape.
+: RUN-READ-OP ( ptr u8 n -- ptr u8 n )
+   over swap ACTIVE-ROW OP-READ @ execute ;
+: RUN-ACCEPT-OP ( ptr u8 n -- ptr u8 n )
+   over swap ACTIVE-ROW OP-ACCEPT @ execute ;
 
 \ Everything the row was, undone, ending with the release: the generation has
 \ to be visible before another task can take the row.
@@ -506,12 +551,41 @@ public
    bytes len idx OP-WRITE @ execute
    busy BUSY-PTR !  prev ACTIVE-PTR ! ;
 
+\ From inside a device's write operation, hand the bytes to another device's
+\ write operation as the output funnel would, with no fault check, then latch
+\ that device's fault on the running device (SELF) as FAULT! does: SELF's next
+\ EMIT, WRITE or FLUSH raises what the other device's would, and a fault SELF
+\ latched stays. A closed device answers the terminal. Like any write
+\ operation, it does not throw.
+: FORWARD ( ptr u8 n device -- ) {: bytes:ptr len:n dev:device :}
+   ACTIVE-ROW {: self:n :}
+   dev LIVE-DEVICE ROW {: idx:n :}
+   BUSY-PTR @ {: busy:n :}
+   idx ACTIVE-PTR !  1 BUSY-PTR !
+   bytes len idx OP-WRITE @ execute
+   busy BUSY-PTR !  self ACTIVE-PTR !
+   idx SLOT-FAULT @ self LATCH-ROW ;
+
+\ FORWARD's twin for one emit: the other device's emit operation runs, and
+\ SELF latches that device's fault.
+: FORWARD-EMIT ( n device -- ) {: c:n dev:device :}
+   ACTIVE-ROW {: self:n :}
+   dev LIVE-DEVICE ROW {: idx:n :}
+   BUSY-PTR @ {: busy:n :}
+   idx ACTIVE-PTR !  1 BUSY-PTR !
+   c idx OP-EMIT @ execute
+   busy BUSY-PTR !  self ACTIVE-PTR !
+   idx SLOT-FAULT @ self LATCH-ROW ;
+
+\ FLUSH, KEY, KEY?, READ and ACCEPT put the caller's ACTIVE-CELL back whether
+\ the operation returns or throws, and raise its error afterwards.
 : FLUSH ( -- )
    OUT-ROW {: idx:n :}
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   idx OP-FLUSH @ execute
+   [: RUN-FLUSH-OP ;] catch {: code:n :}
    prev ACTIVE-PTR !
+   code 0<> if code throw then
    idx FAULT-CHECK ;
 
 : KEY ( -- n )
@@ -519,24 +593,28 @@ public
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   idx OP-KEY @ execute
-   prev ACTIVE-PTR ! ;
+   0 [: RUN-KEY-OP ;] catch {: code:n :}
+   prev ACTIVE-PTR !
+   code 0<> if code throw then ;
 
 : KEY? ( -- bool )
    IN-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   idx OP-READY @ execute
-   prev ACTIVE-PTR ! ;
+   false [: RUN-READY-OP ;] catch {: code:n :}
+   prev ACTIVE-PTR !
+   code 0<> if code throw then ;
 
 : READ ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
    IN-ROW {: idx:n :}
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   bytes cap idx OP-READ @ execute
-   prev ACTIVE-PTR ! ;
+   bytes cap [: RUN-READ-OP ;] catch {: code:n :}
+   prev ACTIVE-PTR !
+   code 0<> if code throw then
+   nip ;
 
 \ One line without its terminator. A zero length is the end of input -- the
 \ terminal answers it on ^D and a stream answers it when the peer closes -- so
@@ -546,8 +624,10 @@ public
    idx FAULT-CHECK
    ACTIVE-PTR @ {: prev:n :}
    idx ACTIVE-PTR !
-   bytes cap idx OP-ACCEPT @ execute
-   prev ACTIVE-PTR ! ;
+   bytes cap [: RUN-ACCEPT-OP ;] catch {: code:n :}
+   prev ACTIVE-PTR !
+   code 0<> if code throw then
+   nip ;
 
 \ Release the device's own resource and give its row back. The handle is dead
 \ afterwards: the row's generation moves on, so a later device that takes the
