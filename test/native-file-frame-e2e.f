@@ -29,9 +29,11 @@ create LIB-RES RES-LEN allot
 24 constant AT-CAP
 create HITS-AT AT-CAP allot variable HITS-AT-U
 DYNAMIC-BUFFER OBJ u8
+DYNAMIC-BUFFER WARM u8
 16 constant OBJ-HEAD
 512 constant LINE-CAP
 create APP-LINE LINE-CAP allot variable APP-LINE-U
+create DEP-LINE LINE-CAP allot variable DEP-LINE-U
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -59,6 +61,16 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
    s" top.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
+   s" con-dep.f" LOAD+
+   S\" s\" con=\" type CON-USE . cr\n" IN+
+   S\" s\" dep=\" type CON-DEP . cr\n" IN+
+   s" w.f" LOAD+
+   S\" s\" w=\" type wordlist W - . s\" k=\" type K . cr\n" IN+
+   S\" 0 set-tier\n" IN+
+   s" tier0.f" LOAD+
+   S\" 1 set-tier\ns\" tier=\" type TIER-K . cr\n" IN+
+   s" td.f" LOAD+
+   S\" s\" td=\" type TD-K . cr\n" IN+
    s" watermark.f" LOAD+
    s" ret-own.f" LOAD+
    s" ret-parent.f" LOAD+
@@ -87,7 +99,7 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
    s" evx.f" LOAD+
    s" evr.f" LOAD+
    s" ev2.f" LOAD+
-   s" tier.f" LOAD+
+   s" tierpar.f" LOAD+
    S\" 1 set-tier\n" IN+
    s" tierback.f" LOAD+
    s" pkgload.f" LOAD+
@@ -200,16 +212,19 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
    S\" \" NUNIT-FILE:READ\n14 NUNIT-FILE:SECTION$ SPLITS\n" IN+
    s" check.f" INPUT INPUT-U @ PUT ;
 
-\ Keep the stored app.f object, past its cache entry head, as app-cold.obj.
-: KEEP-OBJECT ( -- )
+\ Keep the object stored under key, past its cache entry head, as file name.
+: KEEP-OBJ ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n name:ptr nameu:n :}
    0 INPUT-U !
-   s" cache/hb-file-" IN+ APP-KEY KEY-LEN IN+ s" .hfo" IN+
+   s" cache/hb-file-" IN+ key keyu IN+ s" .hfo" IN+
    INPUT INPUT-U @ AT {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
    size OBJ-HEAD > dup TTRUE 0= if exit then
    size OBJ-RESERVE
    path pathu 0 OBJ BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
-   s" app-cold.obj" 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
+   name nameu 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
+
+: KEEP-OBJECT ( -- ) APP-KEY KEY-LEN s" app-cold.obj" KEEP-OBJ ;
 
 \ The digits the session printed after tag, and how many of them are c.
 : DIGITS$ ( ptr u8 n -- ptr u8 n )
@@ -296,6 +311,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
+   \ con.f makes only constants, records a warm build installs from its object.
+   s" con.f" S\" 3 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
+   \ con-dep.f compiles against con.f's records, installed on a warm build.
+   \ It loads con.f itself: an earlier top-level load's records have no key.
+   s" con-dep.f" S\" require con.f\n: CON-DEP ( -- n ) CON-USE 1+ ;\n" PUT
+   \ w.f makes a wordlist no package record owns: the next one is W's next.
+   s" w.f" S\" wordlist constant W\n3 constant K\n" PUT
+   \ tier0.f loads at tier 0, where an install's writers do not run.
+   s" tier0.f" S\" 6 constant TIER-K\n" PUT
+   \ td.f changes the tier and restores it.
+   s" td.f" S\" 0 set-tier\n4 constant TD-K\n1 set-tier\n" PUT
    s" " s" dup +" s" 3 TWICE drop" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" brokendef.f" S\" 0 set-tier\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" PUT
@@ -386,6 +412,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ its definition, since a definition the tier-0 compiler makes is a record
    \ of unknown kind.
    s" tier.f" S\" 0 set-tier\n" PUT
+   \ tierpar.f's own segments leave the tier as they found it, but its key's
+   \ tier is not the one its child left.
+   s" tierpar.f" S\" require tier.f\n" PUT
    s" tierback.f" S\" 0 set-tier\n1 set-tier\n: TIER-T1 ( -- ) ;\n" PUT
    \ pkgc.f closes the package its loader opened. Its load opened inside a
    \ package, so the checker mark refuses it first; scope-exit would too. The
@@ -406,6 +435,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 : FRAME-CHECKS ( -- )
    OUT$ S\" use=67\n" CONTAINS? TTRUE
    OUT$ s" refused=1" CONTAINS? TTRUE
+   OUT$ S\" con=4\n" CONTAINS? TTRUE
+   OUT$ S\" dep=5\n" CONTAINS? TTRUE
+   OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
+   s" w.f writes its object" T-LABEL
+   ERR$ s" /w.f key=" CONTAINS? TTRUE
+   s" tier0.f, loaded at tier 0, writes no object" T-LABEL
+   OUT$ S\" tier=6\n" CONTAINS? TTRUE
+   s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
+   s" td.f restores the tier it changed and writes its object" T-LABEL
+   OUT$ S\" td=4\n" CONTAINS? TTRUE
+   ERR$ s" /td.f key=" CONTAINS? TTRUE
    s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
    s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=2 executed=0 data=0" ENDS-WITH? TTRUE
    s" broken.f binds BROKEN's recovery record and stays ordered" T-LABEL
@@ -443,6 +483,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 : OBJECT-CHECKS ( -- )
    s" each file object holds its colon definitions, TRUSTED: BUMP included" T-LABEL
+   ERR$ s" native-file: reused" CONTAINS? TFALSE
+   s" con.f" s"  records=" s" 2" OBJECT-HAS
    s" base.f" DEFS$ s" 1" T$=
    s" deep.f" DEFS$ s" 1" T$=
    s" app.f" DEFS$ s" 4" T$=
@@ -563,6 +605,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a file that leaves the compiler tier changed refuses, naming the cell" T-LABEL
    s" tier.f" s"  reason=" LINE$ s" tier.f reason=kernel-cell-changed cell=tier" T$=
    s" tier.f" NO-OBJECT
+   s" a file whose child leaves the compiler tier changed refuses" T-LABEL
+   s" tierpar.f" s"  reason=" LINE$ s" tierpar.f reason=ambient-changed" T$=
+   s" tierpar.f" NO-OBJECT
    s" a file that restores the tier it changed stores" T-LABEL
    s" tierback.f" DEFS$ s" 1" T$=
    s" tierback.f" KEY$ STORED
@@ -590,6 +635,78 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=checker-mark" T$=
    s" pkgc.f" NO-OBJECT ;
 
+\ A warm build installed name's object: its reused line, the only one with
+\ " records=" right after the path, and no object written for it.
+: REUSED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu s"  records=" LINE$ {: line:ptr lineu:n :}
+   0 INPUT-U !
+   name nameu IN+ s"  records=" IN+
+   line lineu INPUT INPUT-U @ STARTS-WITH? TTRUE
+   name nameu NO-OBJECT ;
+
+
+\ The second build over the same cache runs as the first and installs the
+\ object of each file whose records it can install.
+: WARM-CHECKS ( -- )
+   s" probe-warm-out.log" OUT$ PUT
+   s" probe-warm-err.log" ERR$ PUT
+   s" a warm build runs as the cold one and reuses con.f's object" T-LABEL
+   OUT$ S\" use=67\n" CONTAINS? TTRUE
+   OUT$ s" refused=1" CONTAINS? TTRUE
+   OUT$ S\" con=4\n" CONTAINS? TTRUE
+   HITS$ HITS-AT HITS-AT-U @ T$=
+   s" con.f" REUSED
+   s" con-dep.f binds the installed records and writes its object" T-LABEL
+   OUT$ S\" dep=5\n" CONTAINS? TTRUE
+   ERR$ s" /con-dep.f reason=" CONTAINS? TFALSE
+   s" con-dep.f" DEFS$ s" 1" T$=
+   s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U @ T$=
+   s" a warm build compiles w.f, whose wordlist no package record owns" T-LABEL
+   OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
+   ERR$ s" /w.f records=" CONTAINS? TFALSE
+   s" a warm build compiles tier0.f at tier 0 again" T-LABEL
+   OUT$ S\" tier=6\n" CONTAINS? TTRUE
+   ERR$ s" /tier0.f records=" CONTAINS? TFALSE
+   s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
+   s" a warm build installs td.f" T-LABEL
+   OUT$ S\" td=4\n" CONTAINS? TTRUE
+   s" td.f" REUSED ;
+
+\ A changed constant leaves con.f's object supported but stale: the warm build
+\ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
+: STALE-CON ( -- )
+   s" con.f" S\" 4 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
+   s" a warm build compiles a stale con.f again" T-LABEL
+   PROBE
+   s" probe-stale-out.log" OUT$ PUT
+   s" probe-stale-err.log" ERR$ PUT
+   SUCCESS
+   OUT$ S\" con=5\n" CONTAINS? TTRUE
+   ERR$ s" /con.f records=" CONTAINS? TFALSE
+   s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ ;
+
+\ The freshness check left no row: a cold build of the edited con.f writes
+\ the object the stale warm build rewrote, kept as con-cold.obj.
+: COLD-CON ( -- )
+   s" a cold build writes the stale build's con.f object" T-LABEL
+   s" con.f" KEY$ s" con-cold.obj" KEEP-OBJ
+   s" con-warm.obj" AT {: warm:ptr warmp:n :}
+   warm warmp FILE-SIZE {: warmu:n :}
+   warmu WARM-RESERVE
+   warm warmp 0 WARM BYTE-VIEW warmu READ-ALL warmu <> if E-FS-IO throw then
+   s" con-cold.obj" AT {: cold:ptr coldp:n :}
+   cold coldp FILE-SIZE {: coldu:n :}
+   coldu OBJ-RESERVE
+   cold coldp 0 OBJ BYTE-VIEW coldu READ-ALL coldu <> if E-FS-IO throw then
+   0 OBJ BYTE-VIEW coldu 0 WARM BYTE-VIEW warmu T$= ;
+
+\ Keep line in a LINE-CAP buffer and its length in a cell.
+: KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
+   {: line:ptr lineu:n buf:ptr bufu:ptr :}
+   lineu LINE-CAP > if T-FAIL exit then
+   line buf lineu BYTE-COPY lineu bufu ! ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -614,10 +731,10 @@ public
    atu AT-CAP > if T-FAIL else at HITS-AT atu BYTE-COPY atu HITS-AT-U ! then
    \ A second builder process over the same sources writes the same app.f
    \ object: checker slices must not depend on the process that exported them.
-   s" app.f" OBJECT$ {: line:ptr lineu:n :}
-   lineu LINE-CAP > if T-FAIL else line APP-LINE lineu BYTE-COPY lineu APP-LINE-U ! then
-   s" a second build writes the same app.f object" T-LABEL
-   PROBE SUCCESS
+   s" app.f" OBJECT$ APP-LINE APP-LINE-U KEEP-LINE
+   s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U KEEP-LINE
+   s" a second build writes the same app.f and con-dep.f objects" T-LABEL
+   PROBE SUCCESS WARM-CHECKS
    s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
    \ A comment changes no definition's result, inside TWICE's body or as a
    \ line that moves every later definition. base.f's new variable moves HITS
@@ -629,6 +746,7 @@ public
    s" every split of the first build's app.f rows still holds" T-LABEL
    SPLIT$ nip 1 > TTRUE
    51 SPLIT-COUNT SPLIT$ nip T=
+   STALE-CON
    \ TWICE's new code changes lib.f's results. An empty cache makes app.f
    \ compile again against lib.f's moved code and HITS's moved address, so
    \ new branch words land in its call sites and TALLY captures the new
@@ -653,6 +771,7 @@ public
    ERR$ s" dependency miss: executed closure changed" CONTAINS? TTRUE
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
+   COLD-CON
    T-REPORT
    s" file frame artifacts: " type ROOT$ type cr ;
 

@@ -14,8 +14,11 @@ require src/habu/code-span.f
 require src/habu/address-carrier.f
 require src/habu/address-cells.f
 require src/habu/aot-data-cell.f
+require src/habu/aot-arm.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/branch.f
+require src/compiler/native/dict.f
+require src/compiler/native/compiler.f
 require src/compiler/workspace.f
 require tools/native-unit-capture.f
 require tools/native-file-reference.f
@@ -227,6 +230,20 @@ variable OPEN-REQS
 variable OPEN-WIDS
 variable OPEN-LOADS
 variable OPEN-SEGS
+\ One bit per record kind the open FILE object's rows hold.
+variable OPEN-KINDS
+\ The file's wordlists its package rows own, in the order they made them, -1
+\ once a row owns others.
+variable OPEN-OWNED
+\ The object being installed and its key, and the file's first record.
+PTR-VARIABLE OBJ-BYTES
+variable OBJ-SIZE
+PTR-VARIABLE OBJ-KEY
+variable OBJ-KEY-U
+variable INS-FIRST
+\ The checker section and its count of references while a slice imports.
+PTR-VARIABLE IMPORT-SEC
+variable IMPORT-NREFS
 CAST: REQ-COUNT-XT ( n -- [ -- n ] )
 CAST: REQ-LEN-XT ( n -- [ n -- n ] )
 CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
@@ -778,7 +795,9 @@ public
    0 EVENTS-N ! 0 NAMES-U ! 0 OUT-U ! 0 ROW-AT !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
-   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS !
+   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
+   NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
+   0 INS-FIRST ! NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
@@ -863,7 +882,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
 public
 : REPORT-STORE-REFUSED ( ptr u8 n n -- )
    {: reason:ptr reasonu:n ord:n :}
-   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-cache: cache-store-refused reason=" DEF-DIAG-W2
    reason reasonu DEF-DIAG-W2
    s"  name=" DEF-DIAG-W2 ord XREF-REC XREF-NAME$ DEF-DIAG-W2
@@ -2407,6 +2426,21 @@ private
    row 2 U64-AT {: item:n :}
    item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
 
+\ Reference ref of the reference section refs is the file's own wordlist item.
+: LOCAL-WID? ( ptr u8 n n -- bool )
+   {: refs:ptr ref:n item:n :}
+   refs 24 + ref 1- 32 * + {: row:ptr :}
+   row 1 U64-AT NFILE-REF:LOCAL = row 2 U64-AT item = and ;
+
+\ A package row whose checked wordlist references value and priv: as
+\ namespace-record makes them, the file's next wordlist and the one after.
+: OWNED+ ( ptr u8 n n -- )
+   {: refs:ptr value:n priv:n :}
+   OPEN-OWNED @ {: next:n :}
+   next 0 < if exit then
+   refs value next LOCAL-WID? refs priv next 1+ LOCAL-WID? and
+   if next 2 + else -1 then OPEN-OWNED ! ;
+
 \ One record row: a known kind, its name in the names section, and the
 \ references and index row its kind names: its wordlists the file's own or
 \ earlier, an address a place in the file's DATA, its end included.
@@ -2417,12 +2451,14 @@ private
    row 5 U64-AT {: value:n :}
    row 6 U64-AT {: priv:n :}
    kind RK-BARE < kind RK-PACKAGE > or if BAD then
+   1 kind lshift OPEN-KINDS @ or OPEN-KINDS !
    row 2 U64-AT row 3 U64-AT namesu SPAN-CK
    OPEN-WIDS @ 1- {: wmax:n :}
    kind RK-PACKAGE = if
       wl 0<> if BAD then
       refs value NFILE-REF:WID wmax REF-ROW-CK
-      refs priv NFILE-REF:WID wmax REF-ROW-CK exit
+      refs priv NFILE-REF:WID wmax REF-ROW-CK
+      refs value priv OWNED+ exit
    then
    priv 0<> if BAD then
    refs wl NFILE-REF:WID wmax REF-ROW-CK
@@ -2550,7 +2586,7 @@ private
    {: defs:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
-   0 OPEN-CHECKS !
+   0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
    3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
    12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
@@ -2564,6 +2600,142 @@ private
    5 NUNIT-FILE:SECTION$ refs CHECKS-CK
    7 NUNIT-FILE:SECTION$ refs UPDATES-CK
    15 NUNIT-FILE:SECTION$ refs PINS-CK ;
+
+\ Install: the hit path. Every engine writer is reached by name through this
+\ TRUSTED: block, the install boundary.
+
+\ The engine word name's xt, 0 when this engine lacks it.
+: ENGINE-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if drop 0 exit then
+   dup XREF-RETIRED? if drop 0 exit then
+   XREF-START dup cp@ >= if drop 0 then ;
+
+: NEED-XT ( ptr u8 n -- n ) ENGINE-XT dup 0= if BAD then ;
+
+CAST: REC-OPEN-XT ( n -- [ ptr u8 n n n -- ] )
+CAST: REC-NAMESPACE-XT ( n -- [ ptr u8 n bool -- n ] )
+CAST: REC-PROTECT-XT ( n -- [ n -- ] )
+
+\ name, wid and kind: open the pending record at ndict@ (prims.f def-open).
+TRUSTED: REC-OPEN ( ptr u8 n n n -- )
+   s" def-open" NEED-XT REC-OPEN-XT execute ;
+\ End the pending record as the engine's `constant` and `;` end one.
+TRUSTED: REC-CLOSE ( -- ) s" def-close" NEED-XT DEF-ACTION-XT execute ;
+TRUSTED: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
+\ name and private?: publish a namespace row; its ordinal.
+TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
+   s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
+TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
+
+\ View the object's FILE sections again; READ-VIEW keeps the caller's bytes.
+: FILE-VIEW ( -- )
+   OBJ-BYTES @ OBJ-SIZE @ NUNIT-FILE:ARCH-AARCH64 s" FILE"
+   OBJ-KEY @ OBJ-KEY-U @ NUNIT-FILE:READ-VIEW ;
+
+\ Make the file's own references the prepared table.
+: FILE-REFS ( -- )
+   13 NUNIT-FILE:SECTION$ INS-FIRST @ OPEN-RECS @ NFILE-REF:PREPARE-FILE ;
+
+\ The checker's import callback: reference idx of the slice as the storage
+\ the export named, a dictionary record (bytes DREC) or a DATA span.
+: CHECK-RESOLVE ( n n -- ptr u8 )
+   {: idx:n bytes:n :}
+   idx 0 <= idx IMPORT-NREFS @ > or if BAD then
+   IMPORT-SEC @ idx 1+ U64-AT {: ref:n :}
+   ref NFILE-REF:REF-KIND NFILE-REF:RECORD = if
+      bytes DREC <> if BAD then
+      ref NFILE-REF:REF>RECORD XREF-REC BYTE-VIEW exit
+   then
+   ref bytes NFILE-REF:REF>DATA ;
+
+CAST: CK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
+CAST: CK-INSTALL-XT ( n -- [ n -- ] )
+
+\ Prepare and install the file's slice: past the slice count, the reference
+\ count and the references, its length and bytes.
+: IMPORT-RUN ( -- )
+   IMPORT-SEC @ {: sec:ptr :}
+   IMPORT-NREFS @ 2 + 8 * {: at:n :}
+   sec at + LE:U64@ {: len:n :}
+   sec at 8 + + len ['] CHECK-RESOLVE
+      CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF CHECK-XT CK-PREP-XT execute
+      {: plan:n :}
+   plan CHECKER-OWNER-ABI:UNIT-INSTALL-OFF CHECK-XT CK-INSTALL-XT execute ;
+
+: IMPORT-END ( -- )
+   CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF CHECK-XT DEF-ACTION-XT execute ;
+
+: IMPORT-BODY ( -- )
+   CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF CHECK-XT DEF-ACTION-XT execute
+   ['] IMPORT-RUN ['] IMPORT-END finally ;
+
+\ Install checker slice k on the state the file's mark saw; a state the
+\ checker refuses is a malformed object.
+: IMPORT-CHECKER ( n -- )
+   {: k:n :}
+   5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
+   sec IMPORT-SEC ! sec 1 U64-AT IMPORT-NREFS !
+   k sec 0 U64-AT >= if BAD then
+   ['] IMPORT-BODY catch {: rc:n :}
+   rc CHECK-CODE? if BAD then
+   rc 0<> if rc throw then ;
+
+\ A package row: its namespace record and the wordlists its references name.
+\ RECORD-CK requires the private reference.
+: INSTALL-PACKAGE ( ptr u8 n n n -- )
+   {: name:ptr nameu:n value:n priv:n :}
+   name nameu true REC-NAMESPACE XREF-REC {: rec:ptr :}
+   rec XREF-PKG-PUBLIC value NFILE-REF:REF>WID <> if BAD then
+   rec XREF-PKG-PRIVATE priv NFILE-REF:REF>WID <> if BAD then ;
+
+\ A constant row, compiled as the engine's `constant` compiles one. It leaves
+\ the definition-head scratch (BODYBUF/BODYLEN, DEF-TKA, DEF-TKL, DEF-WL) as
+\ the previous head left it. Every head rewrites them before reading; across
+\ definitions only `package`'s dictionary-full message reads DEF-TKA/DEF-TKL,
+\ and an image saved next keeps that BODYBUF prefix (snap-lib.f
+\ SND-ZERO-BODY-TAIL), which the booted image's next head rewrites unread.
+: INSTALL-VAL ( ptr u8 n n n -- )
+   {: name:ptr nameu:n wl:n value:n :}
+   name nameu wl DKIND:VAL REC-OPEN
+   value NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
+   REC-CLOSE ;
+
+\ Record row k at the next ordinal, the file's k-th record.
+: INSTALL-RECORD ( n -- )
+   {: k:n :}
+   1 NUNIT-FILE:SECTION$ drop k RECORD-BYTES * + {: row:ptr :}
+   row 0 U64-AT {: kind:n :}
+   row 1 U64-AT {: flags:n :}
+   3 NUNIT-FILE:SECTION$ drop row 2 U64-AT + {: name:ptr :}
+   row 3 U64-AT {: nameu:n :}
+   ndict@ INS-FIRST @ k + <> if BAD then
+   kind RK-PACKAGE = if
+      name nameu row 5 U64-AT row 6 U64-AT INSTALL-PACKAGE
+   else
+      kind RK-VAL <> if BAD then
+      name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT INSTALL-VAL
+   then
+   flags DNAME-IMM and 0<> if REC-IMM then ;
+
+\ Event row seg, a segment: its records, the wordlists they make and their
+\ protection, then its checker slice.
+: INSTALL-SEGMENT ( n -- )
+   {: seg:n :}
+   12 NUNIT-FILE:SECTION$ drop seg EVENT-BYTES * + {: ev:ptr :}
+   ev 0 U64-AT EV-SEGMENT <> if BAD then
+   ev 1 U64-AT {: first:n :}
+   ev 2 U64-AT {: count:n :}
+   ev 5 U64-AT {: wids:n :}
+   INS-FIRST @ first + ndict@ <> if BAD then
+   AOT-ARM:WIDN {: widbase:n :}
+   widbase wids NFILE-REF:WID-BASE!
+   FILE-REFS
+   first count + first ?do i INSTALL-RECORD loop
+   AOT-ARM:WIDN widbase wids + <> if BAD then
+   \ A leaf's only segment owns the protection bytes from the first.
+   4 NUNIT-FILE:SECTION$ drop {: prot:ptr :}
+   wids 0 ?do prot i + c@ 1 = if widbase i + REC-PROTECT then loop
+   0 IMPORT-CHECKER ;
 
 public
 
@@ -2608,5 +2780,37 @@ public
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
    OPEN-PINS @ OPEN-CHECKS @ ;
+
+\ Install the FILE object bytes holds under key at the next ordinal: a leaf,
+\ one segment and no loads, as OPEN-FILE found it.
+: INSTALL-OBJECT ( ptr u8 n ptr u8 n -- )
+   {: bytes:ptr size:n key:ptr keyu:n :}
+   bytes OBJ-BYTES ! size OBJ-SIZE ! key OBJ-KEY ! keyu OBJ-KEY-U !
+   FILE-VIEW
+   OPEN-LOADS @ 0<> OPEN-SEGS @ 1 <> or if BAD then
+   ndict@ INS-FIRST !
+   0 INSTALL-SEGMENT
+   ndict@ INS-FIRST @ OPEN-RECS @ + <> if BAD then
+   NUNIT-FILE:RESET-KEEP ;
+
+\ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package and
+\ constant records only, on a checker that imports. 4b-1a ii adds RK-COLON,
+\ 4b-1b widens the rest. Slot 12 holds no row for a run that added nothing to
+\ the dictionary or DATA, so a file that added nothing has no segment for the
+\ install to replay and loads from source. The install makes wordlists only
+\ through package rows, so every wordlist the file made must be one they own.
+: SUPPORTED? ( -- bool )
+   OPEN-SEGS @ 1 <> OPEN-LOADS @ 0<> or OPEN-DATA @ 0<> or OPEN-REQS @ 0<> or
+   OPEN-SLOTS @ 0<> or OPEN-UPDS @ 0<> or OPEN-PINS @ 0<> or
+   OPEN-OWNED @ OPEN-WIDS @ <> or
+      if false exit then
+   FILE-CHECK-AVAILABLE? 0= if false exit then
+   OPEN-KINDS @ 1 RK-PACKAGE lshift 1 RK-VAL lshift or invert and 0= ;
+
+\ This engine has every record writer the install block executes.
+: DEF-OPEN? ( -- bool )
+   s" def-open" ENGINE-XT 0<> s" def-close" ENGINE-XT 0<> and
+   s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
+   s" prot-wid-add" ENGINE-XT 0<> and ;
 
 ;package

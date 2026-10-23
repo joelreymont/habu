@@ -361,17 +361,32 @@ variable DIAG-START
    s" app-hb" AT 0 LITERAL-COLD BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
    0 LITERAL-IMAGE BYTE-VIEW size 0 LITERAL-COLD BYTE-VIEW size STR= ;
 
+
+\ app.f's object line on the diagnostic build's stderr, from its path on.
+: APP-OBJECT$ ( -- ptr u8 n )
+   ERR$ s" /app.f key=" FIND-SUB MATCH option
+     none OF T-FAIL s" " ENDOF
+     some OF IDX>N {: at:n :} ERR$ drop at + ERR$ nip at - ENDOF
+   ;MATCH {: line:ptr lineu:n :}
+   line lineu 10 INDEX-OF MATCH option
+     none OF line lineu ENDOF
+     some OF IDX>N line swap ENDOF
+   ;MATCH ;
+
+
 : DIAG-CASE ( -- )
    s" opt-in fallback diagnostics follow actual compile attempts" T-LABEL
    s" diag-cache" AT MAKE-DIR
+   s" diag-on-cache" AT MAKE-DIR
    s" app.f" S\" TRUSTED: WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\n: HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
    0 DIAG? !
    s" diag-cache" AT RUN-SAVED-IN SUCCESS
    ERR$ s" native-cache: compile-attempt " CONTAINS? TFALSE
    ERR$ s" native-cache: cache-store-refused " CONTAINS? TFALSE
    LITERAL-IMAGE-SAVE
+   \ A second, empty cache: the build with diagnostics on captures app.f too.
    1 DIAG? !
-   s" diag-cache" AT RUN-SAVED-IN SUCCESS
+   s" diag-on-cache" AT RUN-SAVED-IN SUCCESS
    0 DIAG? !
    s" diag.err" AT ERR$ WRITE-ALL
    DIAG-COMPILED 0 > TTRUE
@@ -382,6 +397,10 @@ variable DIAG-START
    ERR$ s" /app.f key=" CONTAINS? TTRUE
    ERR$ s" /app.f reason=" CONTAINS? TFALSE
    LITERAL-IMAGE-SAME? TTRUE
+   \ The cache reads its diagnostic setting once per session: app.f's one
+   \ input is its own source, whatever HABU_NATIVE_CACHE_DIAG holds.
+   s" the diagnostic setting is no input of app.f's object" T-LABEL
+   APP-OBJECT$ s"  inputs=1 " CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 \ The origin journal names only files under the engine root (engine-origin.f

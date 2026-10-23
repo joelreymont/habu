@@ -901,6 +901,16 @@ private
    repeat
    false ;
 
+public
+
+\ Whether this session prints cache diagnostics. NDEF-CACHE's OPEN sets it
+\ from HABU_NATIVE_CACHE_DIAG and its close clears it. A diagnostic reads this
+\ flag, never the environment: GETENV records an input row in the file being
+\ loaded, and the cache's own diagnostics are no input of any file.
+variable DIAG?
+
+private
+
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 : DIAG-W2 ( ptr u8 n -- )
@@ -913,7 +923,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    repeat drop ;
 
 : REPORT-MISS ( -- )
-   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= 0= if exit then
+   DIAG? @ 0= if exit then
    MISS-P @ NULL-PTR = if exit then
    s" native-file: dependency miss: " DIAG-W2
    MISS-P @ MISS-U @ DIAG-W2
@@ -941,7 +951,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 \ The existing frame supplies the first-row test; diagnostics keep no state.
 : DIAG-ORDERED-NAME ( ptr u8 n ptr u8 n n -- )
    {: reason:ptr reasonu:n name:ptr nameu:n ord:n :}
-   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= 0= if exit then
+   DIAG? @ 0= if exit then
    FRAME {: off:n :}
    off BYTES USED @ off - HAS-ORDERED? if exit then
    s" native-cache: ordered-dependency reason=" DIAG-W2

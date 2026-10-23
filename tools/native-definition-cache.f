@@ -27,6 +27,7 @@ require tools/native-file-reference.f
 require tools/native-unit-dependency.f
 require tools/native-unit-origin.f
 require tools/native-unit-object.f
+require tools/native-unit-file.f
 
 package NDEF-CACHE
 private
@@ -57,7 +58,9 @@ $4B8 constant LIVE-FIXED-OFF
 \ to read it.
 112 constant F-SLOTS
 120 constant F-SLOTS-BOUND
-128 constant FRAME-BYTES
+\ The file's object key, taken when it opened: 64 hex digits.
+128 constant F-KEY
+192 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
@@ -92,7 +95,6 @@ variable BOOT-N
 BOOT-N NUNIT-OBJECT:PROCESS-CELL
 variable NATIVE?
 variable REPORT?
-variable DIAG?
 variable HIT-N
 variable EARLY-PREFIX-HIT-N
 variable COMPILE-N
@@ -521,6 +523,7 @@ variable PENDING-KEY-U
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
+: KEPT-KEY ( -- ptr u8 n ) FRAME F-KEY + 64 ;
 
 \ How many files this session opened before at the same path, root and kind;
 \ the place is recorded for the next one.
@@ -536,15 +539,24 @@ variable PENDING-KEY-U
    HASH-RAW PLACES-U @ PLACES PLACE-BYTES BYTE-COPY
    PLACE-BYTES PLACES-U +! ;
 
+\ The ambient compile state both keys hash: the tier, whether checking is on,
+\ the open borrow and the dispatch role.
+: AMBIENT-HASH ( -- )
+   data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
+   check@ 0= if 0 else 1 then HASH-N
+   BORROW-ACTIVE @ HASH-N
+   DISPATCH-ROLE 32 HASH-S ;
+
 \ The open file's object key names its place in the load, not its text: this
-\ engine and target, the path, root and kind that opened it, and its
-\ occurrence there.
+\ engine and target, the ambient compile state, the path, root and kind that
+\ opened it, and its occurrence there.
 : FILE-KEY ( -- ptr u8 n )
    ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
-   s" habu-native-file-v1" HASH-START
+   s" habu-native-file-v2" HASH-START
    engine engineu HASH-S
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    NATIVE? @ HASH-N
+   AMBIENT-HASH
    FRAME-PATH HASH-S FRAME-ROOT HASH-S
    F-KIND F@ HASH-N F-OCC F@ HASH-N
    HASH-CTX HASH-RAW SHA256-END
@@ -556,10 +568,7 @@ variable PENDING-KEY-U
    s" habu-native-definition-v9" HASH-START
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    s" HBNUNIT2-definition-v2" HASH-S
-   data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
-   check@ 0= if 0 else 1 then HASH-N
-   BORROW-ACTIVE @ HASH-N
-   DISPATCH-ROLE 32 HASH-S
+   AMBIENT-HASH
    pending pendingu HASH-S
    source sourceu HASH-S
    HASH-CTX HASH-RAW SHA256-END
@@ -654,7 +663,7 @@ variable PENDING-KEY-U
 
 : DIAG-FALLBACK ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
-   DIAG? @ 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-cache: compile-attempt reason=" DIAG-W2
    reason reasonu DIAG-W2
    ndict@ XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
@@ -944,12 +953,6 @@ variable PENDING-KEY-U
 : FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
 
 : UNIT-RUN ( -- )
-   NATIVE? @ if
-      FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
-      FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
-      FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
-         BUILD-PRODUCER:OBSERVE
-   then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
    FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
    FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
@@ -979,7 +982,7 @@ variable PENDING-KEY-U
 
 \ The file frame's dependency rows, while the cache diagnostics are on.
 : FRAME-REPORT ( -- )
-   DIAG? @ 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:FILE-REPORT ;
 
 \ The input rows the innermost file recorded since its mark join its object.
@@ -1016,10 +1019,19 @@ variable USER-SEEN
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
 : OBJECT-OPEN ( -- )
    FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
+   FILE-KEY {: key:ptr keyu:n :}
+   key FRAME F-KEY + keyu BYTE-COPY
    NFILE-INPUTS:MARK F-MARK F!
    USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
    FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN
+   NUNIT-OBJECT:DEF-OPEN? 0= if
+      s" def-open-absent" NUNIT-OBJECT:FILE-REFUSE
+   then
+   \ The install's writers are tier-1-only (prims.f def-open/def-close).
+   data-base NCOMP-DISPATCH:TIER-CELL + @ 1 <> if
+      s" tier" NUNIT-OBJECT:FILE-REFUSE
+   then
    BIND-RETIRE ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
@@ -1042,7 +1054,7 @@ variable USER-SEEN
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
    BIND-RETIRE
-   DIAG? @ if
+   NUNIT-DEP:DIAG? @ if
       s" native-file: image path=" DIAG-W2 FRAME-PATH DIAG-W2
       s"  copied=" DIAG-W2 NUNIT-OBJECT:IMAGE-BYTES DIAG-N
       S\" \n" DIAG-W2
@@ -1055,15 +1067,19 @@ variable USER-SEEN
    \ Encoding binds the earlier records the file's slots name, so the rows
    \ are exported again after it.
    NUNIT-OBJECT:FILE-ENCODE
+   \ A file that leaves the key's ambient state changed has an effect past
+   \ its end the install does not replay. Encoding closes the last segment
+   \ first, so a kernel cell that segment left changed is the reason named.
+   FILE-KEY KEPT-KEY STR= 0= if s" ambient-changed" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
    storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
    NUNIT-OBJECT:FILE-REFUSED? if
-      DIAG? @ 0= if exit then
+      NUNIT-DEP:DIAG? @ 0= if exit then
       s" native-file: refused path=" DIAG-W2 FRAME-PATH DIAG-W2
       s"  reason=" DIAG-W2 NUNIT-OBJECT:REASON$ DIAG-W2
       S\" \n" DIAG-W2 exit
    then
-   FILE-KEY {: key:ptr keyu:n :}
+   KEPT-KEY {: key:ptr keyu:n :}
    key keyu deps depsu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
    s" HBFOBJ01" obj obju IMAGE {: size:n :}
    key keyu FILE-PATH size IMAGE-WRITE
@@ -1075,7 +1091,7 @@ variable USER-SEEN
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
          upds:n pins:n checks:n :}
-   DIAG? @ 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
    s"  defs=" DIAG-W2 defs DIAG-N
@@ -1097,6 +1113,59 @@ variable USER-SEEN
       i 0 > if s" ," DIAG-W2 then
       i NUNIT-OBJECT:FILE-SPAN swap DIAG-N s" -" DIAG-W2 DIAG-N
    loop
+   S\" \n" DIAG-W2 ;
+
+\ The size of the object image CACHE-READ left in ENTRY, header included.
+variable OBJECT-U
+
+: OBJECT-BYTES ( -- ptr u8 n ) 0 ENTRY ENTRY-HEAD + OBJECT-U @ ENTRY-HEAD - ;
+
+\ Check the object's framing, then view its FILE sections: OPEN-FILE ends
+\ by releasing its view.
+: OPEN-OBJECT ( -- )
+   OBJECT-BYTES KEPT-KEY F-SRC-U F@ NUNIT-OBJECT:OPEN-FILE
+   OBJECT-BYTES NUNIT-FILE:ARCH-AARCH64 s" FILE" KEPT-KEY
+      NUNIT-FILE:READ-VIEW ;
+
+\ Read the innermost file's object and view it; a missing, damaged or
+\ malformed one is a miss.
+: OBJECT-READ? ( -- bool )
+   KEPT-KEY FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
+   found 0= if false exit then
+   size OBJECT-U !
+   ['] OPEN-OBJECT catch {: rc:n :}
+   rc 0= if true exit then
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if false exit then
+   rc throw ;
+
+\ The viewed object's input and dependency rows hold for this session.
+: OBJECT-FRESH? ( -- bool )
+   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FRESH? 0= if false exit then
+   14 NUNIT-FILE:SECTION$ 2dup NUNIT-DEP:FORMAT 0 swap NUNIT-DEP:CHECK-ROWS ;
+
+\ The innermost file has a fresh object this session can install.
+: OBJECT-HIT? ( -- bool )
+   NUNIT-OBJECT:FILE-REFUSED? if false exit then
+   OBJECT-READ? 0= if false exit then
+   \ Freshness is checked only for an object the session can install: the
+   \ check reads files and records rows into the innermost file's object.
+   NUNIT-OBJECT:SUPPORTED? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   true ;
+
+\ Install the viewed object in place of running the file. The session
+\ manifest keeps the input rows the skipped load would have recorded.
+: INSTALL-OBJECT ( -- )
+   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:APPEND
+   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-OBJECT
+   KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   NUNIT-OBJECT:FILE-COUNTS
+      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
+         upds:n pins:n checks:n :}
+   s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  records=" DIAG-W2 recs DIAG-N
+   s"  segments=" DIAG-W2 segs DIAG-N
    S\" \n" DIAG-W2 ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
@@ -1145,10 +1214,14 @@ variable USER-SEEN
    \ capture's own writes are never a file's change to earlier DATA.
    NUNIT-DEP:BEGIN-UNIT
    NUNIT-OBJECT:SEGMENT-IMAGE
-   ['] UNIT-RUN catch {: unit-rc:n :}
+   \ Both paths observe the file's source: an engine build that installs it
+   \ keeps the producer digests a run would.
+   NATIVE? @ if path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE then
+   OBJECT-HIT? {: hit:bool :}
+   hit if ['] INSTALL-OBJECT else ['] UNIT-RUN then catch {: unit-rc:n :}
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
-   unit-rc 0= plan-rc 0= and
+   unit-rc 0= plan-rc 0= and hit 0= and
       if ['] OBJECT-CLOSE catch else 0 then
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
@@ -1238,7 +1311,7 @@ variable USER-SEEN
 
 : CLEAR-SCRATCH ( -- )
    0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N !
-   0 DIAG? !
+   0 NUNIT-DEP:DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
    NULL-PTR APP-PATH ! 0 APP-PATH-U !
@@ -1261,7 +1334,7 @@ variable USER-SEEN
 : OPEN ( -- )
    1 SESSION !
    BOOT-TAKE
-   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= DIAG? !
+   s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= NUNIT-DEP:DIAG? !
    0 SEEDED ! 0 DEPTH !
    0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
    0 DISPATCH-ORIGINAL ! 0 DISPATCH-ROLE-KNOWN !
@@ -1336,7 +1409,7 @@ variable USER-SEEN
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
    0 KERNEL-ROLE-KNOWN ! 0 ORIGIN-GETTER !
-   0 OPAQUE-XT ! 0 PENDING-KEY-U !
+   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECT-U !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH ;
 

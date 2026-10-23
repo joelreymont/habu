@@ -91,6 +91,9 @@ variable PREP-CODE-BASE
 variable PREP-CODE-U
 variable PREP-WIDS-INDEXED
 variable PREP-CURSOR
+\ The wordlists a file's segment makes: LOCAL wid item i is WID-BASE + i.
+variable WID-BASE
+variable WID-COUNT
 variable CAP-CODE
 variable CAP-CODE-U
 variable CAP-REC
@@ -1153,23 +1156,17 @@ public
    loop
    0 OUTPUT OUTPUT-U @ ;
 
-\ A prepared object keeps its copied section bytes alive through installation.
-\ This parse registers projected declarations before any consumer resolves an
-\ import, and checks every length before advancing into variable rows.
-: PREPARE ( ptr u8 n n n n -- )
-   {: src:ptr size:n recbase:n codebase:n codeu:n :}
-   0 PREP-REC-COUNT !
+private
+
+\ Check the header, reference and import rows of a prepared table and make it
+\ current; the cursor ends at the declarations, whose count is returned.
+: PREPARE-ROWS ( ptr u8 n -- n ) {: src:ptr size:n :}
    size HEAD-BYTES < if BAD then
-   recbase PREP-REC-BASE ! codebase PREP-CODE-BASE !
-   codeu PREP-CODE-U !
    src LE:U64@ {: refs:n :}
    src 8 + LE:U64@ {: imports:n :}
-   src 16 + LE:U64@ {: decls:n :}
    refs 0 < refs size HEAD-BYTES - REF-BYTES / > or if BAD then
    imports 0 < imports size HEAD-BYTES - refs REF-BYTES * - 32 / > or
       if BAD then
-   \ Definition capture exports exactly its one pending dictionary record.
-   decls 1 <> if BAD then
    refs PREP-REF-N !
    src PREP-SRC !
    src HEAD-BYTES + PREP-REFS !
@@ -1185,6 +1182,21 @@ public
       32 keyu + PREP-CURSOR +!
    loop
    0 PREP-WIDS-INDEXED !
+   src 16 + LE:U64@ ;
+
+public
+
+\ A prepared object keeps its copied section bytes alive through installation.
+\ This parse registers projected declarations before any consumer resolves an
+\ import, and checks every length before advancing into variable rows.
+: PREPARE ( ptr u8 n n n n -- )
+   {: src:ptr size:n recbase:n codebase:n codeu:n :}
+   0 PREP-REC-COUNT !
+   recbase PREP-REC-BASE ! codebase PREP-CODE-BASE !
+   codeu PREP-CODE-U !
+   src size PREPARE-ROWS {: decls:n :}
+   \ Definition capture exports exactly its one pending dictionary record.
+   decls 1 <> if BAD then
    decls 0 ?do
       DECL-HEAD size PREP-ROOM
       src PREP-CURSOR @ + {: row:ptr :}
@@ -1206,6 +1218,22 @@ public
       contractu PREP-CURSOR +!
    loop
    PREP-CURSOR @ size <> if BAD then ;
+
+\ A FILE object's own references: no declarations; its LOCAL records are the
+\ reccount rows from recbase, installed in order.
+: PREPARE-FILE ( ptr u8 n n n -- )
+   {: src:ptr size:n recbase:n reccount:n :}
+   src size PREPARE-ROWS 0<> if BAD then
+   PREP-CURSOR @ size <> if BAD then
+   recbase 0 < reccount 0 < or if BAD then
+   recbase reccount + GROW-RECS
+   recbase PREP-REC-BASE ! reccount PREP-REC-COUNT !
+   0 PREP-CODE-BASE ! 0 PREP-CODE-U !
+   \ A file's records publish through ON-PUBLISHED (WID-BIND-REC); nothing is
+   \ projected, so INDEX-PREPARED-WIDS has nothing to index.
+   1 PREP-WIDS-INDEXED ! ;
+
+: WID-BASE! ( n n -- ) WID-COUNT ! WID-BASE ! ;
 
 \ A refused import may have published projected keys before its later sections
 \ were checked. Installed records have live occurrences and no longer project.
@@ -1286,6 +1314,30 @@ public
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
    kind LITERAL <> owner LOCAL <> or if BAD then
    item addend ;
+
+\ The wordlist a WID reference names: builtin, one the file's segment made, or
+\ a public (addend 0) or private (addend 1) wordlist of an imported package.
+: REF>WID ( n -- n ) {: idx:n :}
+   idx 0= if BAD then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind WID <> if BAD then
+   owner BUILTIN = if
+      addend 0<> if BAD then
+      item 0= if 0 exit then
+      item 1 = if XREF-RETIRED-WL exit then
+      BAD
+   then
+   owner LOCAL = if
+      addend 0<> item 0 < or item WID-COUNT @ >= or if BAD then
+      WID-BASE @ item + exit
+   then
+   owner EXTERNAL = if
+      WID item PREP-DECL-ORD RECORD-AT @ execute {: rec:ptr :}
+      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
+      addend 0= if rec XREF-PKG-PUBLIC exit then
+      addend 1 = if rec XREF-PKG-PRIVATE exit then
+   then
+   BAD ;
 
 private
 
@@ -1535,6 +1587,7 @@ public
    NULL-PTR PREP-SRC ! 0 PREP-REC-BASE ! 0 PREP-REC-COUNT !
    0 PREP-CODE-BASE ! 0 PREP-CODE-U !
    0 PREP-WIDS-INDEXED ! 0 PREP-CURSOR !
+   0 WID-BASE ! 0 WID-COUNT !
    0 CAP-CODE ! 0 CAP-CODE-U ! 0 CAP-REC ! 0 CAP-REC-U !
    0 CAP-READY !
    -1 DEFINITION-ORD ! PENDING-CLEAR ;
