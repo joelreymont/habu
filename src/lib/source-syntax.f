@@ -1,4 +1,6 @@
 \ Pure source token classes shared by the loader and the native outer reader.
+\ STORAGE CLASS. CALLER-OWNED: pure predicates over the caller's bytes; no
+\ module state.
 require src/lib/string.f
 
 package SOURCE-SYNTAX

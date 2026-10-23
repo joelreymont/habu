@@ -1,4 +1,13 @@
 \ object-index.f - checked source-to-object key index.
+\
+\ SOURCE-KEY-HEX hashes the 64-byte source digest with the target, checker and
+\ compiler ABI strings. STORE validates both keys and atomically writes
+\ <root>/<source-key>.idx; LOAD answers SOME object key on a hit and NONE on
+\ a miss, including a record a prune removed mid-read. A malformed key or
+\ index file is E-OBJ-FIELD.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the root, name, path, record and key buffers are
+\ module storage; single-task.
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -2,9 +2,11 @@
 \ or boot a tree without touching the checkout. A checkout file is named
 \ relative to the working directory, the checkout, or by its absolute path under
 \ it, as a source closure lists it; its copy keeps the checkout-relative path
-\ under the root it is copied into.
-\ Storage: process-wide (the root and destination cells, the src/lib/fs.f walk
-\ stack and the src/lib/fs-mutate.f copy buffer), so a copy is single-task.
+\ under the root it is copied into. A name that resolves outside the checkout
+\ is refused with E-FS-PATH before its copy is written.
+\
+\ STORAGE CLASS. PROCESS-WIDE (the root and destination cells, the src/lib/fs.f
+\ walk stack and the src/lib/fs-mutate.f copy buffer), so a copy is single-task.
 
 require src/lib/errors.f
 require src/lib/fs.f

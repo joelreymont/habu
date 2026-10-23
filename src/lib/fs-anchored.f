@@ -1,4 +1,30 @@
 \ Descriptor-anchored lookup. Each call owns one mapping and at most two fds.
+\
+\ OPEN-DIR starts at / for an absolute path or . for a relative one (the whole
+\ paths / and . are valid) and returns an owned directory descriptor the
+\ caller retires with CLOSE. OPEN-DIR-AT and READ-FILE-AT borrow the anchor,
+\ never close it, and refuse absolute paths. Every path is copied to private
+\ storage first; an empty, negative or over-FS-PATH-CAP path and an empty,
+\ repeated, trailing, . or .. component throw E-FS-PATH, a NUL E-FS-PATH-UNSAFE
+\ (.cache and a..b are ordinary names).
+\
+\ Each component opens relative to the live parent descriptor with O_NOFOLLOW,
+\ directories also with O_DIRECTORY, so a replaced symlink cannot redirect a
+\ lookup and an opened directory stays the anchor across a rename. READ-FILE-AT
+\ opens the last component O_NONBLOCK|O_NOCTTY, fstats that descriptor for a
+\ regular file and reads the same descriptor into the caller's span, probing
+\ one byte past a full span (a zero-length one too); the span's contents are
+\ unspecified after a throw. Not covered: whether the anchor inode is the root
+\ the caller meant, concurrent cross-root renames, hard links, mounts, and
+\ content changes (one descriptor keeps identity, not a snapshot).
+\
+\ Errors: open E-FS-OPEN; failed fstat or a nonregular inode E-FS-STAT; excess
+\ bytes E-FS-CAPACITY; read or close E-FS-IO. A failed syscall leaves its errno
+\ in FS:ERRNO, a semantic refusal zero. Cleanup closes every owned descriptor
+\ and keeps the first failure and its cause.
+\
+\ STORAGE CLASS. CALLER-OWNED: each call allocates and releases its own MEM
+\ mapping; descriptors OPEN-DIR returns are the caller's. No module state.
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f

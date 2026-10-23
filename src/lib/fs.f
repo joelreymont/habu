@@ -12,8 +12,27 @@
 \ WALK-FILES and WALK-FILES-IF use the static FS-WALK-CTX0 and are
 \ therefore SINGLE-TASK, as is REMOVE-TREE (src/lib/fs-mutate.f), which stands on
 \ the same context; a task that walks or removes a tree beside another one
-\ takes WALK-FILES-IN / REMOVE-TREE-IN with a context of its own. See
-\ docs/threads.md.
+\ takes WALK-FILES-IN / REMOVE-TREE-IN with a context of its own.
+\
+\ FS:ERRNO IS THE CAUSE. It answers the positive host errno the last
+\ filesystem primitive in the running task saved; read it at once after
+\ catching an E-FS-* or E-FS-LIST-* throw, since any later primitive, even a
+\ successful one, replaces it, and a nested call replaces the outer call's.
+\ A semantic refusal (path capacity, a malformed path) leaves zero. The
+\ guarantee covers fs.f, fs-list.f and fs-anchored.f; the identity, lock and
+\ mutation helpers do not join it. The throws stay the primary contract.
+\
+\ THE WALK visits regular files only, depth-first, in the order the platform
+\ directory stream returns (a caller that needs lexical order sorts); it skips
+\ .git, .jj, .jj-ws and .dots and closes every descriptor it opened however
+\ it ends. The path a callback gets is valid only during that callback.
+\ Re-entering a context that is walking is E-FS-WALK-ACTIVE. Two walks in
+\ flight cover disjoint trees: getdirentries64 on a directory removed
+\ meanwhile answers -1 and the walk reports E-FS-DIR.
+\
+\ READ-ALL refuses a file larger than the caller's cap with E-FS-CAPACITY.
+\ OPEN-SIZED and READ-SIZED read one regular file through one descriptor, so a
+\ rename or unlink of the path between them cannot change what is read.
 \
 \ THE BUFFERS THIS MODULE OWNS ARE SPANS (src/lib/span.f): the NUL-padded path
 \ buffer, the per-depth walk path slot and the per-depth dirent block publish a
@@ -155,7 +174,7 @@ FS-BAND-AGREE
 \ callback walks a second tree - or removes a subtree - through a SECOND
 \ context while the first walk stands on its own. The state is 161 KiB,
 \ fifteen times the whole per-task DATA region, so caller-owned is the only
-\ class it can have (src/habu/layout.f, docs/threads.md).
+\ class it can have (src/habu/layout.f).
 \
 \ THE LAYOUT, by byte offset into the span:
 \   DEPTH       8 at $000     the depth being walked

@@ -2,6 +2,9 @@
 \ an absolute path; ordinary source loading has no collector and does nothing.
 \ hb-build --repl records these inputs, and so does the native definition
 \ cache, which lives in the BUILD-CACHE root (src/lib/build-cache.f).
+\
+\ STORAGE CLASS. PROCESS-WIDE: one deferred COLLECT, set by USE and reset to
+\ ignore by RESET.
 
 package BUILD-INPUT
 private

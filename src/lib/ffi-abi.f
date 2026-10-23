@@ -8,8 +8,29 @@
 \ Marshalling uses task-DATA scratch buffers. Integer/pointer args are
 \ cells in FFI-BUF; FP args are float cells in FFI-FBUF; stack spill slots are
 \ prepacked cells in FFI-STACK-BUF. Kernel params are a `void**` pointer array
-\ plus library-owned value cells for scalar params. Do not nest CALLk or
-\ FFI-CALL* calls in one task; finish one foreign call before preparing the next.
+\ plus library-owned value cells for scalar params.
+\
+\ STORAGE CLASS. TASK-LOCAL: FFI-BUF, FFI-FBUF, FFI-STACK-BUF, the x0..x8 and
+\ stack extent tables, the kernel params and the DLSYM loader block are task
+\ DATA, so a task may pause after staging without another corrupting its call.
+\ Calls do not nest in one task, except that a C callback's body may call C
+\ from inside the outer call and shares its scratch (src/lib/ffi-callback.f).
+\ PROCESS-WIDE: the descriptor rows and resolved addresses, cleared by one
+\ IMAGE-LIFECYCLE hook before each capture so a restored image re-resolves.
+\
+\ CONTRACT. FUNCTION: is the only checked call surface: its word names a row,
+\ never an address, and the raw trampolines stay TRUSTED-only. A result states
+\ the C width: `n` takes the whole register, a C int is `i32` (sign-extends)
+\ and an unsigned int `u32` (masks). VERSIONED-LIBRARY, LIBRARY and
+\ PROCESS-SYMBOLS select for the declarations after them in their own scope,
+\ with no default: a declaration without one is E-FFI-LIBRARY, as is a LIBRARY
+\ literal in the other target's soname spelling. Rows open with FFI:NOW alone:
+\ on Linux that is RTLD_LOCAL, so a PROCESS-SYMBOLS call cannot see the
+\ library (pass FFI:GLOBAL to FFI:DLOPEN for that); on macOS it is global. An
+\ absent symbol or library is E-FFI-DLSYM at the first call, never at the
+\ declaration. An `f32` in a variadic position is refused (C promotes it;
+\ declare `r`). FFI's wordlists are protected after its last definition, so
+\ later source cannot add a call or redirect a symbol.
 
 s" src/lib/errors.f" required
 s" src/lib/string.f" required

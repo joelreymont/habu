@@ -6,7 +6,11 @@
 \ before reading either. The two age apart - one record's object can be another
 \ source's too, and a prune can take one and not the other - so a source whose
 \ index record or object is gone is a miss, and the build that follows stores
-\ both again.
+\ both again. An index naming a malformed, wrong-key or wrong-ABI object fails
+\ closed with a filesystem error or E-OBJ-SCHEMA.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the source-key buffer here and the OBJIDX and
+\ OBJSTORE buffers beneath; single-task.
 
 require src/lib/errors.f
 require src/lib/string.f

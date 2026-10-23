@@ -1,4 +1,6 @@
 \ zip-raw.f - byte-preserving ZIP framing; libzip only decompresses members.
+\ STORAGE CLASS. CALLER-OWNED: works on the archive handle's own buffers; no
+\ module state.
 require src/lib/zip-ffi.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

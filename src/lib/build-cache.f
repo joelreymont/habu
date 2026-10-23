@@ -1,10 +1,23 @@
 \ build-cache.f - the checked build cache: the root every build shares, and the
 \ retention that bounds what builds leave in it.
 \
-\ ROOT$ is the root, selected once per process (docs/stdlib.md). The rest of
-\ this header is the retention: USED and PRUNE, which every writer into the
-\ cache calls, and the work directories WORK-OPEN gives builds that publish by
-\ rename.
+\ STORAGE CLASS. PROCESS-WIDE: the root is selected once per process, and the
+\ selection evidence and retention state are module variables; single-task.
+\
+\ ROOT$ IS THE ROOT. ROOT! sets it explicitly (build clients, isolated
+\ fixtures; source `explicit`). Otherwise the first non-empty tier wins:
+\ HABU_BUILD_CACHE (also `explicit`), XDG_CACHE_HOME/habu-build,
+\ HOME/.cache/habu-build, TMPDIR/habu-build; an empty variable does not select
+\ its tier. No tier throws E-BUILD-PATH with source `none`. The selected
+\ directory is made recursively; an existing non-directory, an unwritable
+\ directory or a creation failure throws E-BUILD-PATH without trying a lower
+\ tier. A failed selection keeps its source, the whole attempted root and the
+\ filesystem cause, even when the root is too long to use: SELECTED-* and
+\ CAUSE* read that evidence without resolving again.
+\
+\ The rest of this header is the retention: USED and PRUNE, which every writer
+\ into the cache calls, and the work directories WORK-OPEN gives builds that
+\ publish by rename.
 \
 \ EVERY ENTRY IS KEYED. A writer publishes <prefix><key><suffix>, the key 64 hex
 \ digits covering what the entry was made from: hb-build its artifacts,

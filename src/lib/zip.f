@@ -1,4 +1,40 @@
 \ zip.f - indexed ZIP reading and byte-preserving replacement.
+\
+\ Decompression uses libzip (VERSIONED-LIBRARY zip 5, src/lib/zip-ffi.f).
+\ Archives and entries are distinct checked identities: every operation checks
+\ the archive is live and the entry is its own, and entries are zero-based
+\ indices, so duplicate names stay distinct. OPEN is read-only; EDIT opens an
+\ existing archive (copy the input first for a new output). Both copy the input
+\ once to a private snapshot under $TMPDIR (or /tmp); failure to make it, or an
+\ input without an end record, throws ZIP:E-OPEN and releases what it made.
+\ There is no in-memory fallback, and later changes to the input path change
+\ nothing. All-stored unencrypted archives read members from the snapshot;
+\ otherwise OPEN opens libzip. SOURCE$, NAME$ and READ return archive-owned
+\ copies valid until a successful COMMIT or CLOSE; SOURCE$ is the original
+\ snapshot, which pending changes do not alter.
+\
+\ REPLACE copies its input at once (an empty member too); REPLACE-WITH hands a
+\ callback an archive-owned span of exactly the length asked. READ sees a
+\ pending replacement. REMOVE stages omission on an EDIT handle, idempotently;
+\ until COMMIT or CLOSE, COUNT, indices, names and reads keep the opened view,
+\ and replacing a removed entry throws ZIP:E-ENTRY. COMMIT writes a compact
+\ archive to a temporary in the destination directory and renames it over,
+\ keeping permissions and untouched local records byte-for-byte; replacements
+\ are STORE with fresh CRC and sizes, ZIP64 fields rebuilt as needed. On success
+\ it retires the archive and its entries; on ZIP:E-COMMIT the archive stays live
+\ for a retry or CLOSE. CLOSE discards pending changes. A stale handle or a
+\ repeated close throws ZIP:E-HANDLE; a foreign, negative or out-of-range entry
+\ ZIP:E-ENTRY. OPEN-ENTRY and OPEN-SOURCE give inputs with their own cursors;
+\ READ-IN checks length and CRC through EOF and on failure retires the input
+\ and throws ZIP:E-READ; CLOSE-ENTRY drains and verifies an unfinished member.
+\ ARCHIVE-SLOT and INPUT-SLOT only retype a caller cell. Diagnostics carry no
+\ member contents; there is no fixed entry limit.
+\
+\ STORAGE CLASS. TASK-LOCAL: the stat block and EOF probe byte libzip writes
+\ are one TASK:+USER row per task. Archive buffers, entries and inputs are owned by
+\ their handle, and each handle has one task owner: separate tasks use distinct
+\ handles concurrently and coordinate any transfer. PROCESS-WIDE: the identity
+\ registry and serial, under one atomic lock (src/lib/zip-state.f).
 require src/lib/zip-raw.f
 
 package ZIP

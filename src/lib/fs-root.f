@@ -1,4 +1,9 @@
 \ fs-root.f - checked filesystem root readiness predicates.
+\
+\ FS:WRITABLE-ROOT? is true only for an existing directory the process can both
+\ write and search; a write-only directory is unusable as a cache root.
+\
+\ STORAGE CLASS. CALLER-OWNED: the path is the caller's; no module state.
 
 require src/lib/errors.f
 require src/lib/string.f

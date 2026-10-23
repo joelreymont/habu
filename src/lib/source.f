@@ -1,5 +1,17 @@
 \ source.f - checked source materialization helpers.
 \
+\ Callers supply output buffers and capacities: appending past one throws
+\ E-FS-CAPACITY, and file or stdin I/O failures throw named filesystem errors.
+\ READ-STDIN-ALL probes one byte past a full buffer, so overflow fails closed
+\ instead of truncating. READ-WHOLE-FILE, READ-WHOLE-SAMPLED and READ-WHOLE-FD
+\ read to the end into the caller's growing storage, so a source of any size,
+\ or one that grows while read, is read whole. SOURCE-APPEND-QPATH refuses a
+\ path it cannot quote with E-FS-PATH-UNSAFE. The token-class words are the
+\ ones LINT-LEX (src/lib/source-lex.f) and the loader share.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the stdin probe byte and READ-STDIN-ALL's
+\ SOURCE-LEN/SOURCE-RD are module variables; single-task.
+\
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f

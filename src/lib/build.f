@@ -7,6 +7,19 @@
 \ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
 \ The source scanner, buffers and state variables are private.
 \
+\ STORAGE CLASS. PROCESS-WIDE: the source and path buffers and scanner state
+\ are module storage; single-task, and ARTIFACT's path lives until the next call.
+\
+\ Errors: CHECK throws E-BUILD-SOURCE for a missing, empty or malformed file,
+\ a file with no colon definition, or one CHECK! refuses; a file over 64 KiB
+\ throws READ-ALL's E-FS-CAPACITY.
+\ ARTIFACT throws E-BUILD-PATH for an empty or too-long component. STEP and RUN
+\ throw E-BUILD-COMMAND for an empty name (RUN also for a command that is not a
+\ file) and E-BUILD-STATUS for a nonzero rc or a signal; RUN then throws
+\ E-BUILD-PATH when the expected artifact file is absent. Build children get
+\ /dev/null as stdin. Raw process exits belong only at the final CLI or
+\ script boundary.
+\
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f

@@ -1,4 +1,14 @@
 \ object-cache.f - checked content-addressed object file store.
+\
+\ STORE validates the current OBJ record, keys it with OBJ:KEY-HEX, makes the
+\ root directory tree and atomically writes <root>/<64-hex>.hbo. LOAD reads by
+\ key, validates through OBJ:LOAD and recomputes the key. A missing file throws
+\ E-FS-OPEN; a malformed key is E-OBJ-FIELD, an oversized object
+\ E-OBJ-CAPACITY, malformed or wrong-key bytes E-OBJ-SCHEMA. Kept apart from
+\ the codec and from build integration.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the root, name, path, key and read buffers are
+\ module storage; single-task.
 
 require src/lib/errors.f
 require src/lib/string.f

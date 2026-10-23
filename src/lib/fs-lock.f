@@ -3,6 +3,11 @@
 \ TRY does not own or close the descriptor. The caller holds the exclusive
 \ flock until close (or process death). OPEN-DIR gives long-lived directory
 \ holds an O_CLOEXEC descriptor, so an exec child cannot prolong ownership.
+\ TRY answers false only when another holder blocks the lock; any other flock
+\ failure throws E-FS-IO, and an OPEN-DIR failure E-FS-OPEN. The lock binds
+\ only cooperating processes on the same kernel.
+\
+\ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
 require src/lib/errors.f
 require src/lib/fs.f

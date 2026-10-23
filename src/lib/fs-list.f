@@ -12,6 +12,17 @@
 \ during an operation. A context admits one listing at a time; distinct contexts
 \ allow nested and concurrent listings. The convenience words allocate and
 \ release a private context for one call. NAMES writes only to the caller buffer.
+\
+\ INIT refuses a span shorter than STORAGE-BYTES or not cell-aligned with
+\ E-FS-LIST-CAPACITY; do not INIT a context that is listing. Re-entering or
+\ sharing a context mid-listing throws E-FS-LIST-ACTIVE and leaves the first
+\ listing undisturbed; a context is reusable after success, an open or read
+\ failure, or a callback throw. NAMES refuses a buffer too small for every name
+\ with E-FS-LIST-CAPACITY. EACH-TYPED passes d_type unchanged: a filesystem may
+\ omit it, so a caller handles DT-UNKNOWN. A name is valid only during its
+\ callback. Semantic refusals clear FS:ERRNO; on Darwin a regular file opens for
+\ listing and getdirentries64 then fails EINVAL, which E-FS-LIST-READ keeps as
+\ its cause through descriptor cleanup.
 
 require src/lib/errors.f
 require src/lib/span.f
