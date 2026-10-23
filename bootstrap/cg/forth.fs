@@ -383,6 +383,7 @@ $4841425543455254 constant MAGIC
 1 constant VERSION-CELL
 2 constant TOTAL-BYTES-CELL
 3 constant NEEDS-CELL
+2 constant INCOMPLETE-NEEDS   \ the NEEDS-CELL value of incomplete width facts
 4 constant WF-COUNT-CELL
 5 constant BIND-COUNT-CELL
 6 constant FETCH-COUNT-CELL
@@ -724,6 +725,8 @@ variable LP2COPY variable LP2DROPN variable LP2REV variable LP2ROT variable LP2R
 variable LP2VEXEC variable LP2VEMIT variable LVPBADMSG
 variable LRECWPUB variable LP2CLAUSE
 variable LCERTBYTES variable LCERTKEEP variable LCERTKEPT variable LP2CWAT variable LP2CDESC variable LP2NEST
+variable LINCOMPMSG
+: INCOMPMSG$ ( -- a u ) s" hb: incomplete layout facts: " ;   \ VALIDATE appends the definition and the newline
 
 \ Gforth recovery-host mirror of Habu's LOWER-TXN-CODE package. Keep these
 \ code labels out of the global wordlist; callers select the vocabulary.
@@ -7248,6 +7251,7 @@ previous previous definitions
    LCERTBYTES @ LBL, s" lower-cert:bytes" BYTES,
    LVPBADMSG @ LBL, s" hb: bad layout tag" BYTES,
    LP2NEST @ LBL, s" hb: nested definition in pass 2: " BYTES,
+   LINCOMPMSG @ LBL, INCOMPMSG$ BYTES,
    [ also LOWER-TXN-CODE ] BAD-LABEL [ previous ] @ LBL, s" hb: malformed lowering certificate" BYTES,
    [ also LOWER-TXN-CODE ] MEM-LABEL [ previous ] @ LBL, s" hb: lowering transaction memory failed" BYTES,
    [ also LOWER-TXN-CODE ] FULL-LABEL [ previous ] @ LBL, s" hb: lowering transaction full" BYTES,
@@ -7493,7 +7497,7 @@ also LOWER-CERT also LOWER-TXN definitions
    12 11 NEEDS-CELL cells LDR,  12 9 CMP,  C-NE bad BCOND, ;
 
 : VALIDATE ( f -- ) {: clause :}
-   LBL LBL {: bad done :}
+   LBL LBL LBL {: bad done complete :}
    10 HEADER-CELLS cells CMPI,  C-CC bad BCOND,
    13 11 MAGIC-CELL cells LDR,
    14 MAGIC LIT64,  13 14 CMP,  C-NE bad BCOND,
@@ -7502,6 +7506,16 @@ also LOWER-CERT also LOWER-TXN definitions
    13 11 TOTAL-BYTES-CELL cells LDR,
    13 10 CMP,  C-NE bad BCOND,
    13 10 7 ANDI,  13 bad CBNZ,
+   \ Mirrors src/habu/habu2.f VALIDATE: incomplete width facts name the
+   \ definition and exit 75 before any table is read.
+   13 11 NEEDS-CELL cells LDR,
+   13 INCOMPLETE-NEEDS CMPI,  C-NE complete BCOND,
+      0 2 MOVZ,  1 LINCOMPMSG @ ADR,  2 INCOMPMSG$ nip MOVZ,  NR-WRITE SYS,
+      C-DEF-NAME
+      0 2 MOVZ,  1 9 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   complete LBL,
    13 11 BODY-LEN-CELL cells LDR,
    14 12 clause SPAN-LEN  13 14 CMP,  C-NE bad BCOND,
    clause HASH-BODY
@@ -8800,7 +8814,7 @@ variable P2SK
    LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS !
    LBL LKWAT2 !  LBL LKWSTORE2 !
    LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !
-   LBL LVPBADMSG !  LBL LP2CLAUSE !  LBL LP2NEST !
+   LBL LVPBADMSG !  LBL LP2CLAUSE !  LBL LP2NEST !  LBL LINCOMPMSG !
    LBL [ also LOWER-TXN-CODE ] BAD-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] MEM-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] FULL-LABEL [ previous ] !

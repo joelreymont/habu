@@ -62,6 +62,7 @@ $4000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
 75 constant NEST-RC                \ jit.f EMIT-SNAP-NEST-CHECK: BEGIN past the bound
+75 constant INCOMPLETE-RC          \ habu2.f VALIDATE: a certificate with incomplete width facts
 67 constant UNCAUGHT-RC            \ hb's exit status for an uncaught throw
 
 create OUT CAP allot
@@ -451,6 +452,29 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
    S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n" ;
 
+\ TRUSTED: bodies whose scans meet a token they cannot apply while a two-cell
+\ value is live: an unchecked word with no row, and `evaluate`. The widths
+\ after it are unknown, the certificate says its facts are incomplete, and tier
+\ 0 names the definition and exits before anything runs.
+: INCOMPLETE-RAW$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" variable IC-OLD check@ IC-OLD ! 0 set-check : IC-RAW swap ; IC-OLD @ set-check " LN+
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE IC-RAW swap ; " LN+
+   s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
+
+: INCOMPLETE-EVAL$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   S\" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE s\" \" evaluate swap ; " LN+
+   s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
+
+\ The whole of tier 0's refusal of an incomplete certificate, and no output.
+: ASSERT-INCOMPLETE ( -- )
+   INCOMPLETE-RC ASSERT-RC
+   OUT-U @ 0 T=
+   ERR$ S\" hb: incomplete layout facts: INCOMPLETE\n" STR= TTRUE ;
+
 \ The first body checked: the same scan still refuses it at `*`, and nothing runs.
 : REJECT-CHECKED$ ( n -- ptr u8 n )
    0 TIER-OPEN
@@ -554,6 +578,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
       s" the checked twin is refused at its token on tier 0" T-LABEL
       0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
+      \ One process each: the refusal ends the process it happens in.
+      s" an unchecked word over a two-cell value is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-RAW$ RUN  ASSERT-INCOMPLETE
+      s" evaluate over a two-cell value is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-EVAL$ RUN  ASSERT-INCOMPLETE
    then
    s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
    1 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
@@ -561,6 +590,10 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    1 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
    s" the checked twin is refused at its token on tier 1" T-LABEL
    1 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
+   s" an unchecked word over a two-cell value is refused on tier 1" T-LABEL
+   1 INCOMPLETE-RAW$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
+   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
 
    LEGACY? if
       s" a caller of a 7900-byte name runs on tier 0" T-LABEL

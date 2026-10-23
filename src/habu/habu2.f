@@ -212,6 +212,7 @@ variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
 variable LSEMIQMSG   \ `;` with a quotation open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-f0a4c0e6)
 variable LSEMICFMSG  \ `;` with a control structure open (EM-COMPILE-SEMI); the definition follows (dot habu-refuse-with-a-3cf9a606)
+variable LINCOMPMSG  \ a lowering certificate whose width facts are incomplete (LOWER-TXN VALIDATE); the definition follows
 variable LSRCEND   variable LSRCENDMSG   \ a source buffer ended inside a definition it opened (C-DEF-SOURCE-END, LRBYE); LDIAGDEF names it
 variable LCOMEND   variable LCOMENDMSG   \ a source buffer ended inside a `(` comment (EM-COMMENT)
 variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an outer buffer opened (C-DEF-SOURCE-CLOSE); LDIAGDEF names it
@@ -228,6 +229,7 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
 : SEMIQ-MSG$ ( -- ptr u8 n )     s" hb: ; with a quotation open: " ;
 : SEMICF-MSG$ ( -- ptr u8 n )    s" hb: ; with a control structure open: " ;
+: INCOMP-MSG$ ( -- ptr u8 n )    s" hb: incomplete layout facts: " ;
 : SRCEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside definition: " ;
 : COMEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside a ( comment" ;
 : SRCCLOSE-MSG$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: " ;
@@ -247,6 +249,7 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
 : SEMIQ-MSG-LEN ( -- n )     SEMIQ-MSG$ nip ;
 : SEMICF-MSG-LEN ( -- n )    SEMICF-MSG$ nip ;
+: INCOMP-MSG-LEN ( -- n )    INCOMP-MSG$ nip ;
 : SRCEND-MSG-LEN ( -- n )    SRCEND-MSG$ nip ;
 : COMEND-MSG-LEN ( -- n )    COMEND-MSG$ nip ;
 : SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
@@ -742,6 +745,7 @@ here BPL-KW - constant BPL-LEN
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
    LSEMIQMSG LABEL@ LBL, SEMIQ-MSG$ BYTES,                               \ EM-COMPILE-SEMI appends the definition
    LSEMICFMSG LABEL@ LBL, SEMICF-MSG$ BYTES,
+   LINCOMPMSG LABEL@ LBL, INCOMP-MSG$ BYTES,                             \ VALIDATE appends the definition and the newline
    LSRCENDMSG LABEL@ LBL, SRCEND-MSG$ BYTES,                             \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location
    LCOMENDMSG LABEL@ LBL, COMEND-MSG$ BYTES,                             \ LCOMPILEDIE appends the location of the `(`
    LSRCCLOSEMSG LABEL@ LBL, SRCCLOSE-MSG$ BYTES,                         \ EM-SOURCE-END-DIE appends the definition; LCOMPILEDIE the location of the `;`
@@ -11390,7 +11394,7 @@ private
    12 11 LOWER-CERT:NEEDS-CELL cells LDR,  12 9 CMP,  C-NE bad BCOND, ;
 
 : VALIDATE ( bool -- ) {: clause:bool :}
-   LBL LBL {: bad:label done:label :}
+   LBL LBL LBL {: bad:label done:label complete:label :}
    10 LOWER-CERT:HEADER-CELLS cells CMPI,  C-CC bad BCOND,
    13 11 LOWER-CERT:MAGIC-CELL cells LDR,
    14 LOWER-CERT:MAGIC LIT64,  13 14 CMP,  C-NE bad BCOND,
@@ -11399,6 +11403,16 @@ private
    13 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,
    13 10 CMP,  C-NE bad BCOND,
    13 10 7 ANDI,  13 bad CBNZ,
+   \ The scan lost a width fact past a token it could not apply, so there is
+   \ nothing to lower from: name the definition and exit 75 before any table
+   \ is read or anything is published. Fail-closed like the malformed tail.
+   13 11 LOWER-CERT:NEEDS-CELL cells LDR,
+   13 LOWER-CERT:INCOMPLETE-NEEDS CMPI,  C-NE complete BCOND,
+      0 2 MOVZ,  1 LINCOMPMSG LABEL@ ADR,  2 INCOMP-MSG-LEN MOVZ,  NR-WRITE SYS,
+      LDIAGDEF LABEL@ BL,
+      0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   complete LBL,
    13 11 LOWER-CERT:BODY-LEN-CELL cells LDR,
    14 12 clause SPAN-LEN
    13 14 CMP,  C-NE bad BCOND,
@@ -13568,7 +13582,7 @@ package LABELS
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
    LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
-   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !
+   LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !  LBL LINCOMPMSG !
    LBL LSRCEND !  LBL LSRCENDMSG !  LBL LCOMEND !  LBL LCOMENDMSG !
    LBL LSRCCLOSE !  LBL LSRCCLOSEMSG !
    LBL LCOMPILEDIE !
