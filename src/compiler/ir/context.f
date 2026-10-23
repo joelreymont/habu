@@ -1,6 +1,6 @@
 \ context.f - the owned compiler context: one explicit owner per compilation.
 \
-\ docs/compiler-ir-design.md section 6.2. Every compilation gets exactly one
+\ Every compilation gets exactly one
 \ context, and the context is the single owner of the compilation's target and
 \ numerical policy, its module serial allocation, and its scratch memory. It
 \ stores the validated binding in its own transient storage.
@@ -320,7 +320,7 @@ private
    mark base HEADER-PTR HEADER-MARK !
    binding base HEADER-PTR HEADER-BINDING ! ;
 
-\ ---- leaving, on both paths ---------------------------------------------------
+\ ---- leaving, on both paths --------------------------------------------------
 \ Retire ONE named slot: announce its dying serial to the child registries,
 \ release the region back to the mark this context took, and clear its row. The
 \ slot is the one its owner took and never "the deepest one" - a row taken
@@ -352,7 +352,7 @@ private
       at DEPTH !
    then ;
 
-\ ---- which slot a scope took --------------------------------------------------
+\ ---- which slot a scope took -------------------------------------------------
 \ A cleanup quotation cannot read its word's locals, so a scope that must give
 \ back the slot it took records it here and the cleanup reads it back. The stack
 \ is the SCOPES', not the registry's: `finally` nests them strictly, while the

@@ -190,9 +190,10 @@ X64ASM:C-E X64ASM:CONDITION>N constant COND-EQ
 X64ASM:C-NE X64ASM:CONDITION>N constant COND-NE
 
 \ ---- the registers the virtual machine holds ---------------------------------
-\ Six are the running engine's - rbx, rbp and r12..r15, the ones docs/x86-64.md
-\ fixes - and src/habu/layout.f ENGINE-GPR:X64-MASK is the one statement of
-\ them. It is read by name and not through the target-selected ENGINE-GPR:MASK,
+\ Six are the running engine's - rbx, rbp and r12..r15, the ones docs/xcomp.md
+\ "Machine model" fixes - and src/habu/layout.f ENGINE-GPR:X64-MASK is the one
+\ statement of them. It is read by name and not through the target-selected
+\ ENGINE-GPR:MASK,
 \ because the engine that loads this dialect to cross-build x86-64 is an ARM64
 \ one, whose MASK is ARM64's. The seventh is rsp, which the machine holds and
 \ the engine does not: `call` pushes the return address through it, so a

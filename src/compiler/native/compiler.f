@@ -15,6 +15,14 @@
 \ The engine leaves the definition pending. Only a chain emission that passes
 \ every stage publishes it, so a refusal leaves no word behind.
 \
+\ THE CHAIN, IN ORDER. RECORD opens the source tape (tape.f) that the checker's
+\ reader fills (feed.f) and END-RECORDED seals it; the elaborator (elaborate.f)
+\ builds the definition's HIR functions from the sealed tape; NBACK:FREEZE folds
+\ shared HIR and freezes the module; an open shadow runs its chain from that
+\ frozen module; then NBACK:DECLARE, NBACK:SELECT into the target's machine
+\ dialect, NBACK:FIXPOINT (allocation, lowering spills until every value fits),
+\ NBACK:EMIT into the next code slot, and publication (publish.f).
+\
 \ NO BACKEND IS NAMED HERE. Every stage that turns an elaborated definition into
 \ instructions goes through src/compiler/native/backend.f, at the row the
 \ definition's own target contract resolves to, and an architecture with no

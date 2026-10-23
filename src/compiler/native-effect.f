@@ -600,7 +600,7 @@ public
    REG-CK SEQ-PUT ;
 
 \ The list with one more DATA-STACK SLOT place after its last position. This is
-\ the whole of what design section 7.6's convention needs to be sayable: argument
+\ the whole of what the calling convention needs to be sayable: argument
 \ i arrives in slot i, result j leaves in slot j.
 : SEQ-WITH-SLOT ( NEFF:placeseq n -- NEFF:placeseq )
    dup 0 < over PAY-MASK > or if E-NEFF-SEQ throw then

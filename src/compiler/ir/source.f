@@ -1,9 +1,6 @@
 \ source.f - the compiler source registry: module-local source identities,
 \ byte spans, and origin chains.
 \
-\ docs/compiler-ir-design.md sections 6.2 (the context's source registry
-\ member), 6.3 (the source table in the canonical serialization order), and
-\ plan item IR-0.2.
 \ One registry serves one module. Its rows live on one IR-ARENA arena owned by
 \ the compilation context, so the registry dies with its context, freezes with
 \ its arena, and adds no storage mechanism of its own. Source identities are
@@ -29,8 +26,8 @@
 \ bytes, validated against the registered byte length only: negative bounds,
 \ overflowing sums, and spans crossing their source's end reject with
 \ E-IR-SRC-SPAN. This layer knows nothing about UTF-8 or any other encoding;
-\ the design places text validation at the stage N0 source-tape/lexer
-\ boundary (section 7.1), not in the registry.
+\ text validation belongs at the source-tape/lexer boundary
+\ (src/compiler/native/tape.f), not in the registry.
 \
 \ ORIGIN CHAINS ARE ACYCLIC BY CONSTRUCTION. An origin (include or expansion
 \ parent) is recorded at registration and must name an already registered

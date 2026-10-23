@@ -1,6 +1,6 @@
 \ binding.f - the compiler target and numerical policy bound together.
 \
-\ docs/compiler-ir-design.md sections 5.4 and 5.5. A target contract says what
+\ A target contract says what
 \ machine the compilation is for; a numerical policy says what the compiler may
 \ assume about arithmetic. Neither is complete on its own, and some combinations
 \ of the two are not realisable even though each side is coherent by itself. This

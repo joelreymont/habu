@@ -2,8 +2,8 @@
 \ build the frozen X64IR module its operations select to. It is to
 \ src/compiler/native/x64ir.f what src/compiler/native/select.f is to a64ir.f,
 \ and it is a SEPARATE pass and not a parameterisation of that one, for the
-\ reason docs/x86-64.md gives for the emitter: what the two passes share is the
-\ walk, and what they do not share is every rule in it.
+\ reason docs/xcomp.md "The emitter's sink" gives for the emitter: what the two
+\ passes share is the walk, and what they do not share is every rule in it.
 \
 \ WHAT THIS PASS LOWERS, AND WHAT IT LEAVES TO THE NEXT SLICE. The straight-line
 \ and branching core: literals, the two-address arithmetic and its immediate
@@ -68,7 +68,7 @@
 \ with the two answers this pass cannot give: the branch that hands a zero
 \ divisor to the entry above, and `MIN-N / -1`, which raises #DE on this machine
 \ where Habu's `/` wraps to MIN-N, so the render screens the divisor before it
-\ divides (docs/x86-64.md "Division semantics"). It renders every double form
+\ divides (docs/xcomp.md "The machine dialect"). It renders every double form
 \ this pass selects, and reads the flags of `x64.fcmpset` the one way ucomisd
 \ leaves them for each of its two conditions.
 \

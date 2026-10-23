@@ -4,8 +4,19 @@
 \ Build live, read frozen: NEW and the appends are the only live
 \ operations, because readers need a complete token stream.
 \
-\ An origin ordinal is strictly below its child's, which is what makes the
-\ expansion relation acyclic; every walk re-verifies that decrease.
+\ A token's resolved spelling is an interned IR-SYM symbol, not a second byte
+\ slice: the span already says where it was read, and the symbol lets a reader
+\ compare names without re-lexing. A string literal's spelling is its body.
+\
+\ A token's origin is its expansion parent TOKEN, the token-level twin of
+\ IR-SOURCE's parent source, so a diagnostic walks back to the token the
+\ programmer wrote. An origin ordinal is strictly below its child's, which is
+\ what makes the expansion relation acyclic; every walk re-verifies that
+\ decrease.
+\
+\ Whether a token carries a literal is a property of its kind, with one
+\ minting word per kind and no stored flag to contradict it: LIT@ on a kind
+\ that carries none throws E-NTAPE-KIND rather than answer the stored zero.
 
 require src/lib/prelude.f
 require src/lib/errors.f

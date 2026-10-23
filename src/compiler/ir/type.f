@@ -1,9 +1,7 @@
 \ type.f - the compiler type table: canonical, structurally interned type
 \ records shared by every dialect.
 \
-\ docs/compiler-ir-design.md section 6.3 (the type table), sections 5.4/5.5
-\ (target and numeric-policy authority), section 7.5 (the scalar vocabulary
-\ the native pipeline consumes), and plan item IR-0.4. One table serves one
+\ One table serves one
 \ module as two coupled stores, both IR-ARENA arenas owned by the compilation
 \ context: a list pool holding function-type parameter/result lists and a row
 \ table holding one fixed-shape record per distinct type. Type identities are
@@ -16,12 +14,10 @@
 \ row. Rows persist the closed families as stable wire codes; every decoder is
 \ an exact case whose unmatched code throws E-IR-TYPE-STATE, so a
 \ bypass-forged row rejects at first touch instead of decoding as some other
-\ type. The kinds are the section 6.3 entries this substrate stage owns:
+\ type. The kinds are:
 \ integer(width, sign), float(fmt), pointer(space, pointee),
 \ quotation(params, results), code-ref(params, results),
-\ memory-token(domain), mask, opaque. The remaining section 6.3 kinds
-\ (tuple/layout, register-class, tensor/memref) need the attribute/layout
-\ substrate and land with their owning stages.
+\ memory-token(domain), mask, opaque.
 \
 \ STORE SHAPES. Each arena carries a three-cell header (format tag, owning
 \ module serial, committed capacity). The row table stores one four-cell row
@@ -74,10 +70,10 @@
 \ "[ p... -- r... ]" for quotations, "( p... -- r... )" for code references,
 \ "token<domain>", "mask", "opaque". It depends only on the structural
 \ content, never on interning history or ordinals, and is never parsed by the
-\ compiler (design section 6.6).
+\ compiler.
 \
 \ CANONICAL ORDER MUST RENUMBER STORED REFERENCES. Insertion-ordered ordinals
-\ are stable but not canonical, so the section 6.6 encoder is free to emit the
+\ are stable but not canonical, so a canonical encoder is free to emit the
 \ rows in a structural order of its own choosing. That is strictly more work
 \ here than it is for symbols. A symbol row's identity-bearing content is its
 \ bytes, and bytes do not move when the row order moves, so for the symbol

@@ -399,7 +399,7 @@ public
 \ separate readers already meant by answering ARITY-NONE and GLUE-NONE.
 \
 \ THERE IS NO RETURN-STACK ANSWER: no declaration may move a return-stack cell
-\ (docs/effects.md "The return-stack clause"), so every call leaves the
+\ (docs/forth.md "The return-stack clause"), so every call leaves the
 \ caller's return stack as it found it.
 \
 \ IT ANSWERS THE RESULT GLUE ONLY. SPELL-GLUE's first answer is the ARGUMENT

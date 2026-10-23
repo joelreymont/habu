@@ -1,11 +1,10 @@
 \ arena.f - the one generic compiler IR arena: disposable append-only typed
 \ cell storage with geometric growth under a committed ceiling.
 \
-\ docs/compiler-ir-design.md sections 6.2-6.3 and the section 10.2 arena
-\ obligations. Every dialect table (function, block, operation, value, type,
-\ attribute, span) is an instance of this arena, and this package's private
-\ CAST: window is the single raw index conversion authority the design demands
-\ (design line 341): no dialect repeats trusted casts, no raw converter and no
+\ Every dialect table (function, block, operation, value, type, attribute,
+\ span) is an instance of this arena, and this package's private CAST: window
+\ is the single raw index conversion authority of the compiler IR: no dialect
+\ repeats trusted casts, no raw converter and no
 \ pointer is public, and readers validate their nominal arena or view.
 \
 \ OWNERSHIP SHAPE. An arena is created against a live IR-CTX context and both

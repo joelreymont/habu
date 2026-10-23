@@ -2,9 +2,7 @@
 \ identities backed by content bytes, with byte equality and no pointer
 \ identity.
 \
-\ docs/compiler-ir-design.md section 6.3 (the symbol table), section 6.6 (the
-\ string and symbol tables in the canonical serialization order), and plan
-\ item IR-0.3. One interner serves one module as two coupled stores, both
+\ One interner serves one module as two coupled stores, both
 \ IR-ARENA arenas owned by the compilation context: a byte pool holding the
 \ symbol bytes and a row table holding one record per distinct symbol. Both
 \ die with their context, freeze with their arenas, geometric growth under the
@@ -62,7 +60,7 @@
 \ misuse, as it is for the source registry.
 \
 \ INSERTION ORDER AND CANONICALIZATION. Local ordinals are insertion-ordered
-\ and stable; the section 6.6 canonical encoding must not depend on that
+\ and stable; no canonical encoding may depend on that
 \ order. What canonicalization needs from this file is a deterministic,
 \ byte-faithful iteration surface, and that is SYMBOLS plus the
 \ ordinal-packed identities resolved through LEN@ and COPY: the encoder sorts
@@ -260,7 +258,7 @@ private
 \
 \ WHY A NONCRYPTOGRAPHIC HASH IS THE RIGHT ONE. The value never leaves this
 \ file: it does not serialize, no canonical preimage or persisted digest
-\ contains it, and the section 6.6 encoder reaches symbols through
+\ contains it, and canonicalization reaches symbols through
 \ SYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
 \ above). Nothing outside ROW-MATCH? can observe which function produced it, so
 \ changing it moves no digest anyone has stored. It cheaply rejects candidates;
@@ -275,7 +273,7 @@ private
    dup 32 rshift xor
    dup 16 rshift xor ;
 
-\ ---- matching --------------------------------------------------------------------
+\ ---- matching ----------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n p u:n f:n :}
    rr l OFF-FLT RC@ f <> if false exit then
@@ -687,7 +685,7 @@ public
    hit 0 < if key 0 IR-ID:PACK-SYMBOL false exit then
    key hit IR-ID:PACK-SYMBOL true ;
 
-\ ---- carrying a symbol between modules ----------------------------------------
+\ ---- carrying a symbol between modules ---------------------------------------
 \ A pass that rebuilds a frozen module names what it builds with the old
 \ module's symbols, and the two modules number their symbols separately, so the
 \ new one interns the same bytes. They cross through a span of the context's
