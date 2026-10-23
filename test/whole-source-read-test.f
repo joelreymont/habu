@@ -4,10 +4,11 @@
 \ file), diag-origin and the language server's read of
 \ a file its packets name each read a source whole through src/lib/source.f
 \ READ-WHOLE-FILE or READ-WHOLE-SAMPLED: the file's size is only the first
-\ room, and the read goes on to the end of the file. Each case is a child
-\ engine (test/whole-source-read-child.f) whose FILE-SIZE appends blank lines
-\ past every first room to the file it grows each time it answers for it, and
-\ a require of grown.f to the subject the first time, so every reader meets
+\ room, and the read goes on to the end of the file. This process loads the
+\ readers once behind a FILE-SIZE (test/whole-source-read-child.f) that appends
+\ blank lines past every first room to the file a case grows each time it
+\ answers for it, and a require of grown.f to the subject the first time. Each
+\ case runs in a fork child of it (src/lib/test/subject.f), so every reader meets
 \ bytes past the size it sampled and grows to hold them, and each case shows
 \ the readers acted on them. In one case the stat refuses with a code that is
 \ not about the file, which diag-origin passes on unchanged; in the last the
@@ -20,9 +21,8 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/process-argv.f
-require src/lib/process-env.f
-require src/lib/engine-candidate.f
+require src/lib/test/subject.f
+require test/whole-source-read-child.f
 
 package WHOLE-SOURCE-READ-TEST
 private
@@ -67,18 +67,10 @@ create ERR IO-CAP allot
    SUBJECT$ S\" \\ grows each time its size is taken\n" WRITE-ALL ;
 
 : RUN ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}   \ outu erru rc
-   ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
-   PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   s" test/whole-source-read-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   mode modeu >LEN PROC-ARGV+
-   SUBJECT$ >LEN PROC-ARGV+
-   GROW$ >LEN PROC-ARGV+
-   engine engineu >LEN s" " >LEN OUT OUT-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   mode modeu SUBJECT$ GROW$ WHOLE-SOURCE-READ-CHILD:CASE!
+   s" WHOLE-SOURCE-READ-CHILD:MAIN"
+   OUT OUT-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 

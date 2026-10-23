@@ -12,7 +12,8 @@
 \   does;
 \ - a source canon (SOURCE-INPUT:USE) under which no directory above a path
 \   resolves;
-\ - an image save inside a top-level SOURCE-ROOT:WITH, which writes no image;
+\ - an image save inside a top-level SOURCE-ROOT:WITH, which writes no image,
+\   run on the engine with the saver loaded (test/app-image-engine.f);
 \ - a bundle's ?ENGINE-PROVIDES of a file the engine does not carry.
 \ Each child's program, stdout and stderr stay in the case tree's cases/, whose
 \ path is printed: a program there has cases/ as its root, and no missing path
@@ -27,6 +28,7 @@ require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
+require test/app-image-engine.f
 
 using SOURCE-ROOT
 package INCLUDE-REFUSAL-E2E
@@ -35,8 +37,6 @@ private
 $4000 constant IO-CAP
 \ Guards against a hung child, not budgets: the host runs loaded.
 120000 constant TIMEOUT-MS
-\ A save compiles src/habu/app-image.f from source, which a loaded host makes slow.
-600000 constant SAVE-TIMEOUT-MS
 create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot
 create PROG IO-CAP allot variable PROG-U
@@ -171,10 +171,12 @@ variable RC
    ERR$ S\" bundle: this engine does not provide src/lib/absent.f\n" T$= ;
 
 \ The program on stdin, at the top level a save runs at, with the image path as
-\ its argument.
+\ its argument. The saver's image starts at tier 0, where APP-IMAGE:SAVE refuses
+\ retained code, so the program sets tier 1: only the root scope can refuse it.
 : SAVE-IN-WITH ( -- )
+   APP-IMAGE-ENGINE:PATH$ {: eng:ptr engu:n :}
    0 PROG-U !
-   s" require src/habu/app-image.f" PLINE
+   s" 1 set-tier" PLINE
    s" package INCLUDE-REFUSAL-SAVE" PLINE
    s" public" PLINE
    S\" : RUN ( -- ) s\q " PROG+ ROOT$ PROG+
@@ -186,8 +188,8 @@ variable RC
    s" --" >LEN PROC-ARGV+
    s" image" AT >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN CWD$ >LEN PROG$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN SAVE-TIMEOUT-MS >MS
+   eng engu >LEN CWD$ >LEN PROG$ >LEN
+   OUT IO-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE RESULT!
    s" save-in-with" KEEP
    s" an image save inside SOURCE-ROOT:WITH exits 74 by name" T-LABEL

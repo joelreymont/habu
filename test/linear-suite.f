@@ -17,19 +17,20 @@
 \                       row tails beneath the operand of an identity
 \ `cast:` still carries no linear type (E-CAST-LINEAR), in the owner too. Every
 \ front end runs: the engine's keyword evaluated as source, the source pre-pass,
-\ tools/check.f on written fixtures, and an application image saved after its
-\ type table grew past the boot store, then reopened to mint for the owner it
-\ restored.
+\ the check tool on written fixtures, each checked in a fork child of this
+\ process (src/lib/test/subject.f) with tools/check-core.f loaded once, and an
+\ application image saved after its type table grew past the boot store, then
+\ reopened to mint for the owner it restored.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
-require src/lib/engine-candidate.f
 require src/lib/test/subject.f
 require src/habu/verify-source.f
 require test/app-image-engine.f
 require test/pcap-result.f
+require tools/check-core.f
 
 \ Expected refusals are asserted, not printed.
 package LIN-DIAG
@@ -272,18 +273,21 @@ variable PROG-U
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT-BUF ROOT-U @ CLEANUP-TREE+ ;
 
-\ Write PROG to the fixture NAME under the root and run tools/check.f on it.
+\ The fork child's check of PATH, ending as tools/check.f does: a refusal's
+\ status is the child's exit code.
+: CHECK-CHILD ( -- )
+   CHECK:RESET
+   PATH$ CHECK:FILE
+   CHECK:RUN dup 0 <> if throw then drop ;
+
+\ Write PROG to the fixture NAME under the root and check it in a fork child.
 : CHECK ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   ENGINE-CANDIDATE:PATH$ {: hb:ptr hbu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF JOIN-PATH PATH-U !
    PATH$ PROG$ WRITE-ALL
    0 PROG-U !
-   PROC-ARGV-ENV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   PATH$ >LEN PROC-ARGV+
-   hb hbu CHECK-MS RUN ;
+   s" CHECK-CHILD" OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
 : OK-FIXTURE ( -- )
    0 PROG-U !
