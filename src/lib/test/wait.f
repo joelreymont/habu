@@ -1,6 +1,8 @@
 \ wait.f - a test's own bounded wait. A deadline that expires is no assertion
 \ result (docs/gate.md): the wait names itself on stdout and throws
 \ E-PROC-TIMEOUT, so the row ends as a timeout and not as a FAIL.
+\
+\ STORAGE CLASS. CALLER-OWNED: no module state.
 
 require src/lib/errors.f
 require src/lib/task.f

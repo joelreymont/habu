@@ -22,6 +22,9 @@
 \ the Linux TCGETS on macOS kills the process (measured: exit 83) - so the
 \ request is selected by the engine's own target predicate, and an unrecognised
 \ host throws rather than guesses.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the terminal-attribute and marker buffers are
+\ static; one task reports at a time.
 
 require src/lib/errors.f
 require src/lib/string.f

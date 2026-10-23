@@ -1,4 +1,31 @@
-\ font.f - one selected font face and one LTR SVG glyph run.
+\ font.f - one selected font face and one LTR SVG glyph run, in `package FONT`.
+\
+\ FONT shapes a short UTF-8 label with HarfBuzz (14.2 or newer, with both
+\ libharfbuzz and libharfbuzz-vector) and returns an SVG glyph run. It is not
+\ a text layout engine: the caller selects one face from its own font bytes,
+\ and FONT never searches for a font, replaces a missing glyph or splits a run.
+\ OPEN copies the font bytes, so the caller may release its input on return.
+\ SVG$ borrows bytes the image owns, valid until FREE; BOUNDS use SVG's
+\ downward Y axis. The em size is 1..$1FFFFFF and the scale uses 26.6
+\ coordinates; a whitespace-only run is a valid zero-size SVG.
+\ A run is one left-to-right script with its common punctuation and combining
+\ marks. Malformed UTF-8, controls and format characters, mixed or
+\ right-to-left scripts throw E-TEXT; a missing glyph or one drawn only from
+\ COLR, SVG or sbix/CBDT color data throws E-GLYPH; a malformed font E-OPEN; a
+\ closed or unknown handle E-HANDLE.
+\ HarfBuzz's ink extents can fall inside its decimal path, so the viewBox is
+\ the union of the first render's absolute M/L/Q/C points (rounded outward to
+\ whole units) and the ink extents, and the run is rendered again with it; an
+\ unexpected path syntax or a box outside exact binary32 integers throws
+\ E-RENDER.
+\ The font file and HarfBuzz version are inputs to the SVG bytes: pin both
+\ when replay must be byte-identical. Tests: test/font-native.f and
+\ test/font-image-subject.f (capture and reopen).
+\
+\ STORAGE CLASS. TASK-LOCAL: render, open and hull scratch are three
+\ TASK:+USER rows. PROCESS-WIDE: the FONTS and IMAGES registries and SERIAL,
+\ under LOCK-CELL (an atomic-cas spin), freed by one IMAGE-LIFECYCLE hook
+\ before an image captures.
 require src/lib/ffi-abi.f
 require src/lib/utf8-scalar.f
 require src/lib/float32.f

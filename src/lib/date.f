@@ -1,16 +1,15 @@
-\ date.f - checked Gregorian UTC date helpers.
+\ date.f - checked Gregorian UTC date helpers, in `package DATE`, the one date
+\ module for the stdlib and the tool CLIs.
 \
-\ The module lives in `package DATE`; `tools/date.f` was a duplicate and is gone,
-\ so this is the one date module for both the stdlib and the tool CLIs. External
-\ callers use the qualified public API: DATE:PARSE-YMD parses YYYY-MM-DD into a
-\ Unix epoch day, DATE:FORMAT-YMD / DATE:FORMAT-EPOCH-UTC write YYYY-MM-DD /
-\ YYYY-MM-DDTHH:MM:SSZ into a caller buffer (throwing E-TIME-CAPACITY when the
-\ buffer is too small and E-TIME-RANGE for a negative epoch), DATE:YMD>DAYS /
-\ DATE:DAYS>YMD convert between a calendar date and the epoch day, and
-\ DATE:LEAP-YEAR? / DATE:MONTH-DAYS / DATE:VALID-YMD? / DATE:DIGIT? / DATE:N /
-\ DATE:WIDTH! expose the calendar predicates and the field parse/format
-\ primitives. DATE:LEN / DATE:TIME-LEN / DATE:SECONDS-DAY are the buffer-size and
-\ seconds-per-day constants callers need. Other calendar constants are private.
+\ DATE:PARSE-YMD accepts exactly YYYY-MM-DD and returns SOME Unix epoch day,
+\ NONE on malformed input; DATE:N returns SOME field or NONE on a non-digit.
+\ DATE:FORMAT-YMD / DATE:FORMAT-EPOCH-UTC write YYYY-MM-DD /
+\ YYYY-MM-DDTHH:MM:SSZ into a caller buffer and throw E-TIME-CAPACITY when it is
+\ too small; FORMAT-EPOCH-UTC also throws E-TIME-RANGE for negative epoch
+\ seconds. DATE:LEN / DATE:TIME-LEN are those buffer sizes.
+\
+\ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module
+\ state.
 
 require src/lib/errors.f
 require src/lib/adt/option.f                      \ option<n> for DATE-N (switchover wave A)

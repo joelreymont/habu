@@ -1,4 +1,21 @@
-\ runner.f - checked native test runner foundation.
+\ runner.f - checked process-fixture helpers for native test scripts.
+\
+\ GT-START makes a cleanup-tracked temporary root under HB_TMP. GT-RUN runs a
+\ prepared argv capture into bounded stdout and stderr buffers (output past
+\ them throws E-PROC-TRUNCATED, never a silent cut) and records whether it
+\ exited, was signalled or timed out. GT-FAIL+ records a named failure so a
+\ script reports every local failure; GT-REPORT then exits GT-EX-FAIL.
+\ GT-CAPTURE-ACTION captures an action run in this process (below).
+\ Call GT-PROGRESS-RUN before a long subcheck and GT-PROGRESS-PASS after it; a
+\ long poll caps its timeout at GT-PROGRESS-SLICE-MS and calls
+\ GT-PROGRESS-WAIT when quiet, so a silent child still yields heartbeat lines.
+\ A caller that forwards child output routes it through GT-FLUSH-LINES-FD
+\ while polling and GT-FLUSH-REMAINDER-FD at exit: a heartbeat never splits a
+\ child line, and a final unterminated fragment prints before PASS/FAIL.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the root, capture buffers, failure table and
+\ capture frames are static; the standard streams are the process's, so two
+\ tasks never capture at once.
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -1,4 +1,29 @@
-\ Completed in-memory SVGs become PDF pages through native librsvg/Cairo.
+\ svg-pdf.f - completed in-memory SVGs become PDF pages through native
+\ librsvg/Cairo, in `package SVG-PDF`.
+\
+\ WRITE takes the destination path, then one SVG; WRITE-PAGES takes the path,
+\ a borrowed array of SPAN:span<u8> pages (two cells each, array order is page
+\ order) and a positive count. The array and every SVG byte must stay valid
+\ and unchanged until the synchronous call returns; nothing is retained.
+\ Needs librsvg 2.52 or newer, Cairo with PDF support, GLib and GObject (the
+\ VERSIONED-LIBRARY rows below).
+\ Each SVG loads with no base URI, so supply it self-contained: embedded data:
+\ resources resolve, external files do not, and librsvg may omit a missing
+\ resource silently. DPI is 96; both intrinsic dimensions must resolve to
+\ finite positive CSS pixels (a percentage or a lone viewBox does not), and
+\ the page is CSS px * 72/96 points with no rounding or crop. A page side over
+\ MAX-PAGE-PT (14,400 pt, 200 in, the PDF 1.7 Appendix C limit, no UserUnit)
+\ throws E-SIZE before that page draws; nothing is clamped or rescaled.
+\ The destination is replaced by one REPLACE-STAGED only after every page
+\ rendered and the surface finished cleanly, so any failure leaves it intact
+\ and removes the staged sibling; every call releases its GError, handles,
+\ contexts and surface on success or throw.
+\ E-OPEN: malformed input or a nonpositive page count. E-SIZE: unresolved,
+\ nonfinite, nonpositive or oversized dimensions. E-RENDER: a librsvg or Cairo
+\ rendering failure. E-FINISH: page emission or finalization/output failure.
+\ Filesystem and FFI errors keep their own codes. Test: test/svg-pdf-e2e.f
+\ (needs qpdf, pdfinfo and pdfimages on PATH).
+\
 \ STORAGE CLASS. TASK-LOCAL: foreign handles and the viewport live in STATE.
 require src/lib/ffi-abi.f
 require src/lib/fs.f

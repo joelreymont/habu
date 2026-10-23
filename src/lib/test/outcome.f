@@ -11,6 +11,9 @@
 \ An exit by another code prints the same program and capture after the failed
 \ assertion.
 \ T-OUTCOME-TIMEOUT is the assert for a test that expects the deadline.
+\
+\ STORAGE CLASS. CALLER-OWNED: assertions over the caller's outcome and
+\ capture; no module state.
 
 require src/lib/errors.f
 require src/lib/fmt.f

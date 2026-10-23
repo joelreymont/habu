@@ -1,4 +1,17 @@
-\ assert.f - checked stdlib test assertions.
+\ assert.f - checked stdlib test assertions, loaded by src/lib/test.f.
+\
+\ Every assertion counts one case and never throws on a mismatch: a failure
+\ prints `F<case>`, the case label, a TFAIL record (src/lib/test/record.f) and
+\ an `assert:` detail line, counts a failure and the run continues. T-REPORT
+\ prints `test: ok`, or the failure count and exits T-EX-FAIL. A numeric
+\ mismatch is one line (`assert: expected 3 got 9`); a string mismatch prints
+\ both strings whole, embedded newlines kept. T-LABEL names the next assertion
+\ (at most T-LABEL-CAP bytes, a longer one exits T-EX-FAIL) and that assertion
+\ clears it. TTHROWSQ and TTHROWS assert that a quotation or execution token
+\ throws the expected code.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the counters, label and report are static (the
+\ concurrency note below says which accept concurrent tasks).
 
 require src/lib/errors.f
 require src/lib/string.f

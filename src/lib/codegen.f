@@ -1,12 +1,9 @@
 \ codegen.f - a shared bounded byte buffer for building generated Forth source.
 \
-\ Several definers in the tree build a "( ... ) ;" / "TRUSTED: ... ;" text and
-\ hand it to an audited `evaluate`: EXTENT:/TENSOR:/SPEC: in maki (the XG-* buffer)
-\ and DEFTYPE in src/lib/type/deftype.f (the NG-* buffer). Each grew its own
-\ near-identical private byte-append buffer (reset / append-byte / append-string /
-\ append-decimal / contents) plus a capacity guard. Package CODEGEN factors that
-\ mechanism out once so each definer keeps only its own audited `evaluate` wrapper
-\ (the trust boundary stays per package) and shares the untrusted text-building.
+\ A definer that builds source text and hands it to an audited `evaluate`
+\ (DEFTYPE in src/lib/type/deftype.f, task.f's SLOT-GEN, generator tools) uses
+\ one of these buffers for the untrusted text-building and keeps only its own
+\ `evaluate` wrapper, so the trust boundary stays per package.
 \
 \ A buffer is a descriptor minted by the `CODEGEN:BUFFER` defining word. The
 \ descriptor word pushes the address of a fixed header laid out as four cells
@@ -20,7 +17,7 @@
 \ dictionary storage, so nothing here is trusted: cells are read with `@`, and the
 \ byte storage is read/written through the core `BYTE-VIEW` byte pointer.
 \
-\ The definer has no trailing colon (unlike EXTENT:) because a package word
+\ The definer has no trailing colon because a package word
 \ ending in `:` cannot be resolved through a `CODEGEN:` qualifier - the trailing colon
 \ is read as a name edge, not a package separator. It reads like `create`/`variable`:
 \ `256 CODEGEN:BUFFER NAME` defines NAME as the descriptor word.
@@ -28,10 +25,12 @@
 \ CAPACITY ERROR CODES. The module owns one named capacity error, E-CG-CAP, and one
 \ named decimal-value error, E-CG-VALUE; the plain `CODEGEN:BUFFER` definer stamps
 \ those into a new buffer. `CODEGEN:BUFFER-E` takes explicit `cap-err`/`val-err`
-\ codes instead, so a package migrating an existing hand-rolled buffer onto this
-\ module preserves the exact throw code its callers already see (maki keeps
-\ E-EXT-CAP / E-EXT-NAME / E-EXT-VALUE; value-nominal keeps E-VNOM-CAP) without a
-\ catch-and-remap wrapper. New codegen buffers should use the plain definer.
+\ codes instead, so a package keeps the exact throw code its callers already
+\ see (deftype.f keeps E-VNOM-CAP) without a catch-and-remap wrapper. New
+\ codegen buffers should use the plain definer.
+\
+\ STORAGE CLASS. CALLER-OWNED: each CODEGEN:BUFFER is its definer's dictionary
+\ storage; the module keeps no state.
 
 require src/lib/prelude.f
 

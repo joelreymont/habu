@@ -1,4 +1,17 @@
-\ subject.f - isolated evaluation of the running test subject.
+\ subject.f - isolated evaluation of the running test subject, in package
+\ SUBJECT.
+\
+\ RUN evaluates one counted source in a fork child, captures bounded stdout
+\ and stderr into the caller's spans, enforces a deadline and returns the
+\ process outcome. Copy-on-write keeps the child's dictionary and engine-state
+\ changes out of the parent. The child runs the source under
+\ `evaluate-closed`, so a source that leaves cells fails with E-EVAL-RESIDUE.
+\ EXITED? and REFUSED? are probes over RUN; TIMED-OUT and RC-TIMED-OUT report
+\ a deadline. The child's raw stack and handler setup (STACK-ARM) is an
+\ audited boundary.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the source cells, child stack and status
+\ buffers are static; RUN is synchronous, so one task runs a subject at a time.
 
 require src/lib/errors.f
 require src/lib/string.f

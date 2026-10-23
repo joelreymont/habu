@@ -1,4 +1,20 @@
-\ A typed, fixed-cell append/read collection owned by one trusted load scope.
+\ values.f - a typed, fixed-cell append/read collection owned by one trusted
+\ load scope.
+\
+\ VALUES:MAKE reserves a known capacity (zero allowed), ADD appends one typed
+\ value, GET reads a zero-based index in the initialized prefix and never
+\ exposes unused capacity. The checker keeps the element's nominal type and
+\ refuses wider by-value layouts; representation, pointer and owner are not
+\ reachable through package VALUES.
+\ VALUE-SCOPE:WITH is for the trusted source loader only: one scope at a time,
+\ and it releases every collection on return or throw. A collection that
+\ outlives its scope is stale, and ADD and GET refuse it before touching its
+\ former allocation, even while a later scope is active. The loader admits
+\ only VALUES to untrusted source, never VALUE-SCOPE, raw memory or
+\ representation access. Errors are the E-VALUES-* constants below.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the scope's block tables, ACTIVE and EPOCH are
+\ static, for a single source-load process with no concurrent tasks.
 require src/lib/memory.f
 
 -9480 constant E-VALUES-FIRST

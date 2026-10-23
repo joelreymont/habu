@@ -1,19 +1,24 @@
-\ argv.f -- checked argv parser for `bin/hb script.f args...` scripts.
+\ argv.f -- checked argv parser for `bin/hb script.f args...` scripts, in
+\ `package ARGV`, shared by the tool CLIs and the stdlib.
 \
-\ The module lives in `package ARGV`; the tool CLIs and the stdlib share this one
-\ packaged module. External callers drive
-\ it through the qualified public API: ARGV:USAGE! / ARGV:QUIET! configure the
-\ usage text and diagnostic writes, ARGV:PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$
-\ (or a mock set installed with ARGV:MOCK-CLEAR / ARGV:MOCK+ / ARGV:USE-SCRIPT),
-\ and the accessors ARGV:POS# / ARGV:POS$ / ARGV:LABEL$ / ARGV:OUT$ / ARGV:JSON?
-\ and the other flag predicates read the parsed result. ARGV:EXPECT-POS /
-\ ARGV:EXPECT-POS-EXACT / ARGV:REQUIRE-OUT / ARGV:REQUIRE-LABEL validate arity and
-\ required options, ARGV:FAIL throws a caller-worded usage failure, ARGV:RESET
-\ clears parser state, and ARGV:POSZ / ARGV:OUTZ / ARGV:PATHZ / ARGV:ZCOPY produce
-\ NUL-terminated path copies in the module path buffer. A usage failure throws the
-\ public code ARGV:E-USAGE after emitting the usage text, and a capacity failure
-\ throws ARGV:E-INTERNAL. Every buffer, parser-state cell, and internal helper
-\ (ARGV-FAIL-DONE, ARGV-PARSE-OPT, ARGV-TAKE-NEXT, ...) is package-private.
+\ ARGV:PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$, which start after the `--` that
+\ ends `bin/hb --load a.f b.f -- args` (file-source mode, so non-tty stdin is
+\ left for the tool), or the mock set ARGV:MOCK-CLEAR / MOCK+ installs until
+\ ARGV:USE-SCRIPT. Options: --json, --json-errors, --label NAME, --all-errors,
+\ --strict-boundary, -o OUT; tokens after `--` are positionals even when they
+\ start with a dash. PARSE validates the whole input before it replaces the
+\ published result, so a refusal leaves the previous positionals, options and
+\ flags intact. EXPECT-POS takes lo hi, hi < 0 meaning unbounded.
+\ An unknown option, a missing option value, an arity or required-option
+\ failure, ARGV:FAIL and an out-of-range TOK$/POS$ index throw ARGV:E-USAGE
+\ (64, the process exit when uncaught) after printing the usage text unless
+\ ARGV:QUIET! is set. A copy that does not fit with its NUL, a negative mock
+\ length or a full mock list throws ARGV:E-INTERNAL (76) before any change.
+\ POSZ / OUTZ / PATHZ return NUL-terminated copies in the one module path
+\ buffer, valid until the next copy; ZCOPY copies into the caller's buffer.
+\
+\ STORAGE CLASS. PROCESS-WIDE: parser state, mock list and path buffer are
+\ static; one task parses at a time.
 
 package ARGV
 
