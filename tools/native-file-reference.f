@@ -92,13 +92,14 @@ variable PREP-CODE-BASE
 variable PREP-CODE-U
 variable PREP-WIDS-INDEXED
 variable PREP-CURSOR
-\ The wordlists a file's segment makes: LOCAL wid item i is WID-BASE + i.
-variable WID-BASE
-variable WID-COUNT
-\ The DATA a file's segment allots: LOCAL DATA item i is the address
-\ DATA-BASE + i, a DATA-COUNT byte span.
-variable DATA-BASE
-variable DATA-COUNT
+\ While a FILE object's references are prepared (PREP-MAPPED 1), its LOCAL
+\ record, wordlist and DATA references resolve through LOCAL-AT: kind, item
+\ and addend to the live ordinal, wordlist or address. The object's
+\ installer supplies it when the session opens, as it does RECORD-AT, so a
+\ build that replays an object holds the hook a cold build does, and refuses
+\ an item it has not installed.
+TYPED-VARIABLE LOCAL-AT [ n n n -- n ]
+variable PREP-MAPPED
 variable CAP-CODE
 variable CAP-CODE-U
 variable CAP-REC
@@ -1023,6 +1024,7 @@ public
    key keyu DECL-BY-KEY ;
 
 : RECORD-AT! ( [ n -- ptr n ] -- ) RECORD-AT ! ;
+: LOCAL-AT! ( [ n n n -- n ] -- ) LOCAL-AT ! ;
 
 \ Reference index zero is the only null value. The fixed row format is
 \ kind/owner/item/addend in little-endian u64, never a live process address.
@@ -1196,7 +1198,7 @@ public
 \ import, and checks every length before advancing into variable rows.
 : PREPARE ( ptr u8 n n n n -- )
    {: src:ptr size:n recbase:n codebase:n codeu:n :}
-   0 PREP-REC-COUNT !
+   0 PREP-REC-COUNT ! 0 PREP-MAPPED !
    recbase PREP-REC-BASE ! codebase PREP-CODE-BASE !
    codeu PREP-CODE-U !
    src size PREPARE-ROWS {: decls:n :}
@@ -1224,23 +1226,22 @@ public
    loop
    PREP-CURSOR @ size <> if BAD then ;
 
-\ A FILE object's own references: no declarations; its LOCAL records are the
-\ reccount rows from recbase, installed in order.
-: PREPARE-FILE ( ptr u8 n n n -- )
-   {: src:ptr size:n recbase:n reccount:n :}
+\ A FILE object's own references: no declarations; its LOCAL records,
+\ wordlists and DATA resolve through LOCAL-AT.
+: PREPARE-FILE ( ptr u8 n -- )
+   {: src:ptr size:n :}
    src size PREPARE-ROWS 0<> if BAD then
    PREP-CURSOR @ size <> if BAD then
-   recbase 0 < reccount 0 < or if BAD then
-   recbase reccount + GROW-RECS
-   recbase PREP-REC-BASE ! reccount PREP-REC-COUNT !
+   0 PREP-REC-BASE ! 0 PREP-REC-COUNT !
    0 PREP-CODE-BASE ! 0 PREP-CODE-U !
+   1 PREP-MAPPED !
    \ A file's records publish through ON-PUBLISHED (WID-BIND-REC); nothing is
    \ projected, so INDEX-PREPARED-WIDS has nothing to index.
    1 PREP-WIDS-INDEXED ! ;
 
-: WID-BASE! ( n n -- ) WID-COUNT ! WID-BASE ! ;
-\ The segment's DATA address and its byte count.
-: DATA-BASE! ( n n -- ) DATA-COUNT ! DATA-BASE ! ;
+\ A FILE object's install ended, on its normal or throwing path: its LOCAL
+\ references resolve no more, as in a build that replays no object.
+: FILE-DONE ( -- ) 0 PREP-MAPPED ! ;
 
 \ A refused import may have published projected keys before its later sections
 \ were checked. Installed records have live occurrences and no longer project.
@@ -1276,6 +1277,7 @@ public
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
    kind RECORD <> addend 0<> or if BAD then
    owner LOCAL = if
+      PREP-MAPPED @ if RECORD item 0 LOCAL-AT @ execute exit then
       item 0 < item PREP-REC-COUNT @ >= or if BAD then
       PREP-REC-BASE @ item + exit
    then
@@ -1319,15 +1321,12 @@ public
    then
    BAD ;
 
-\ The DATA address a LOCAL DATA reference names in the installing segment.
-\ The segment's end is its own, as the capture's OWN-SEG counts it: a word
-\ made after the last allotment names it.
+\ The DATA address a LOCAL DATA reference of a prepared FILE object names.
 : REF>LOCAL-DATA ( n -- n ) {: idx:n :}
    idx 0= if BAD then
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
-   kind DATA <> owner LOCAL <> or if BAD then
-   item 0 < addend 0 < or item addend + DATA-COUNT @ > or if BAD then
-   DATA-BASE @ item + addend + ;
+   kind DATA <> owner LOCAL <> or PREP-MAPPED @ 0= or if BAD then
+   DATA item addend LOCAL-AT @ execute ;
 
 : REF>LITERAL ( n -- n n ) {: idx:n :}
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
@@ -1335,7 +1334,7 @@ public
    item addend ;
 
 \ The wordlist a WID reference names and true: builtin, one the file's
-\ segment made, or a public (addend 0) or private (addend 1) wordlist of an
+\ object made, or a public (addend 0) or private (addend 1) wordlist of an
 \ imported package. 0 false when no live record has the import's key: the
 \ package is gone. A malformed reference is BAD.
 : REF>WID? ( n -- n bool ) {: idx:n :}
@@ -1349,8 +1348,8 @@ public
       BAD
    then
    owner LOCAL = if
-      addend 0<> item 0 < or item WID-COUNT @ >= or if BAD then
-      WID-BASE @ item + true exit
+      addend 0<> PREP-MAPPED @ 0= or if BAD then
+      WID item 0 LOCAL-AT @ execute true exit
    then
    owner EXTERNAL <> addend 0 < or addend 1 > or if BAD then
    item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
@@ -1645,7 +1644,7 @@ public
    NULL-PTR PREP-SRC ! 0 PREP-REC-BASE ! 0 PREP-REC-COUNT !
    0 PREP-CODE-BASE ! 0 PREP-CODE-U !
    0 PREP-WIDS-INDEXED ! 0 PREP-CURSOR !
-   0 WID-BASE ! 0 WID-COUNT ! 0 DATA-BASE ! 0 DATA-COUNT !
+   0 PREP-MAPPED !
    0 CAP-CODE ! 0 CAP-CODE-U ! 0 CAP-REC ! 0 CAP-REC-U !
    0 CAP-READY !
    -1 DEFINITION-ORD ! PENDING-CLEAR ;

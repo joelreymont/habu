@@ -67,7 +67,14 @@ $4B8 constant LIVE-FIXED-OFF
 200 constant F-OCUR
 208 constant F-OSER
 216 constant F-OFIRST
-224 constant FRAME-BYTES
+\ The file's object bytes as OBJECT-READ? copied them: their offset in
+\ OBJECTS and their length.
+224 constant F-OBJ
+232 constant F-OBJ-U
+\ The object's dependency rows checked so far: a replay checks them segment
+\ by segment, and a child loaded between two checks its own object.
+240 constant F-DONE
+248 constant FRAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
 76 constant OBJECT-NAME-BYTES
 
@@ -84,6 +91,12 @@ DYNAMIC-BUFFER PENDING-KEY u8
 \ every lookup and store.
 DYNAMIC-BUFFER ENTRY u8
 DYNAMIC-BUFFER STORE-IMAGE u8
+\ The open files' object bytes as a stack, each file's region above its
+\ loader's, 8-aligned: a replay loads children between its segments, and
+\ their reads must leave the loader's bytes in place. Growth moves the
+\ buffer, so a frame keeps its region's offset; OBJECTS-U is the top.
+DYNAMIC-BUFFER OBJECTS u8
+variable OBJECTS-U
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -502,12 +515,14 @@ private
 : FRAME-RESERVE ( -- ) DEPTH @ 1+ FRAME-BYTES * FRAMES-RESERVE ;
 
 \ Open the reserved frame, zeroed as a fresh one: a file closed at this
-\ depth left its record there.
+\ depth left its record there. Its object region starts at the top.
 : FILE-OPEN ( -- )
    1 DEPTH +!
-   FRAME FRAME-BYTES ZERO-SCRATCH ;
+   FRAME FRAME-BYTES ZERO-SCRATCH
+   OBJECTS-U @ F-OBJ F! ;
 
-: FILE-CLOSE ( -- ) -1 DEPTH +! ;
+\ Close the innermost frame and drop its object region.
+: FILE-CLOSE ( -- ) F-OBJ F@ OBJECTS-U ! -1 DEPTH +! ;
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
@@ -1282,10 +1297,8 @@ variable USER-SEEN
    loop
    S\" \n" DIAG-W2 ;
 
-\ The size of the object image CACHE-READ left in ENTRY, header included.
-variable OBJECT-U
-
-: OBJECT-BYTES ( -- ptr u8 n ) 0 ENTRY ENTRY-HEAD + OBJECT-U @ ENTRY-HEAD - ;
+\ The innermost file's object bytes in its OBJECTS region.
+: OBJECT-BYTES ( -- ptr u8 n ) F-OBJ F@ OBJECTS F-OBJ-U F@ ;
 
 \ Check the object's framing, then view its FILE sections: OPEN-FILE ends
 \ by releasing its view.
@@ -1294,21 +1307,44 @@ variable OBJECT-U
    OBJECT-BYTES NUNIT-FILE:ARCH-AARCH64 s" FILE" KEPT-KEY
       NUNIT-FILE:READ-VIEW ;
 
-\ Read the innermost file's object and view it; a missing, damaged or
-\ malformed one is a miss.
+\ Read the innermost file's object into its OBJECTS region and view it; a
+\ missing, damaged, empty or malformed one is a miss.
 : OBJECT-READ? ( -- bool )
    KEPT-KEY FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
    found 0= if false exit then
-   size OBJECT-U !
+   size ENTRY-HEAD - {: u:n :}
+   u 0= if false exit then
+   F-OBJ F@ {: at:n :}
+   at u + 7 + -8 and {: top:n :}
+   top OBJECTS-RESERVE
+   0 ENTRY ENTRY-HEAD + at OBJECTS u BYTE-COPY
+   u F-OBJ-U F!
+   top OBJECTS-U !
    ['] OPEN-OBJECT catch {: rc:n :}
    rc 0= if true exit then
    rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if false exit then
    rc throw ;
 
-\ The viewed object's input and dependency rows hold for this session.
-: OBJECT-FRESH? ( -- bool )
-   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FRESH? 0= if false exit then
-   14 NUNIT-FILE:SECTION$ 2dup NUNIT-DEP:FORMAT 0 swap NUNIT-DEP:CHECK-ROWS ;
+\ The viewed object's input rows hold for this session. Its dependency rows
+\ are checked segment by segment, as SEGMENT-FRESH?.
+: OBJECT-FRESH? ( -- bool ) 11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FRESH? ;
+
+\ The viewed object's dependency rows from the last one checked up to mark
+\ hold for this session; true makes mark the checked count.
+: SEGMENT-FRESH? ( n -- bool )
+   {: mark:n :}
+   14 NUNIT-FILE:SECTION$ F-DONE F@ mark NUNIT-DEP:CHECK-ROWS 0= if false exit then
+   mark F-DONE F! true ;
+
+\ The viewed object's dependency row count.
+: ALL-ROWS ( -- n ) 14 NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT ;
+
+\ The dependency rows segment row k checks up to: its mark, or every row for
+\ the last segment, since rows bound in FILE-ENCODE come after its mark.
+: SEGMENT-END ( n -- n )
+   {: k:n :}
+   k NUNIT-OBJECT:LAST-SEGMENT? if ALL-ROWS exit then
+   k NUNIT-OBJECT:SEGMENT-MARK ;
 
 \ A fresh object's record name is live where the install would define it:
 \ the file compiles live, and the language refuses the duplicate.
@@ -1336,6 +1372,27 @@ variable OBJECT-U
    s"  reason=" DIAG-W2 why whyu DIAG-W2
    S\" \n" DIAG-W2 ;
 
+\ Segment row k of the viewed object can install on the state its loads
+\ left: its dependency rows hold, its FFI rows hold and no record name it
+\ defines is live. A failed check prints its miss.
+: SEGMENT-HOLDS? ( n -- bool )
+   {: k:n :}
+   k SEGMENT-END SEGMENT-FRESH? 0= if false exit then
+   k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS false exit then
+   k NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE false exit then
+   2drop true ;
+
+\ Every child the viewed object loads has this file's root: the replay loads
+\ it by path under the root it runs in.
+: LOAD-ROOTS? ( -- bool )
+   NUNIT-OBJECT:EVENT-COUNT 0 ?do
+      i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if
+         i NUNIT-OBJECT:LOAD-ROW {: root:ptr rootu:n :} 2drop drop
+         root rootu FRAME-ROOT STR= 0= if false unloop exit then
+      then
+   loop
+   true ;
+
 \ The target journal word an installed row of sink kind is imported
 \ through; 0 for the other kinds or when the target lacks it.
 : IMPORT-XT ( n -- n )
@@ -1358,7 +1415,7 @@ variable OBJECT-U
    fed 0= OWNER-READY? 0= and if false exit then
    kind IMPORT-XT 0<> ;
 
-\ The viewed object's checker slice is prepared and its plan kept for the
+\ The viewed object's checker slice 0 is prepared and its plan kept for the
 \ install; false when the checker refuses the slice, which keeps no plan.
 \ Every other code is not the object's and leaves.
 : CHECKER-PREPARED? ( -- bool )
@@ -1367,9 +1424,10 @@ variable OBJECT-U
    rc E-NUNIT-PROFILE <> if rc throw then
    false ;
 
-\ The innermost file has a fresh object this session can install. The
-\ checker slice is prepared last: everything the checker refuses about it is
-\ a miss decided before any install side effect, so a hit never throws.
+\ The innermost file has a fresh object this session can install. Checker
+\ slice 0 is prepared last: everything the checker refuses about it is a
+\ miss decided before any install side effect. A later slice is prepared by
+\ the replay, on the state the loads before it left.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
    OBJECT-READ? 0= if false exit then
@@ -1378,10 +1436,13 @@ variable OBJECT-U
    \ Freshness is checked only for an object the session can install: the
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:UNSUPPORTED$ dup 0<> if OBJECT-MISS false exit then 2drop
+   LOAD-ROOTS? 0= if s" load-root" OBJECT-MISS false exit then
    OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
-   NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS NUNIT-FILE:RESET-KEEP false exit then
-   NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
-   2drop
+   \ A leading segment installs before any load, on the state this check
+   \ sees; one after a load is checked by the replay.
+   0 NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = if
+      0 SEGMENT-HOLDS? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   then
    CHECKER-PREPARED? 0= if s" checker-prepare" OBJECT-MISS false exit then
    true ;
 
@@ -1415,12 +1476,46 @@ variable IMPORT-AT
    kind IMPORT-XT IMPORT-AT !
    ['] ORIGIN-IMPORT NUNIT-OBJECT:ORIGIN-EACH ;
 
-\ Install the viewed object in place of running the file. The session
-\ manifest keeps the input rows the skipped load would have recorded.
-: INSTALL-OBJECT ( -- )
+\ Run LOAD row k of the viewed object again, as the file ran it. The
+\ child's lookup and install take the install place and the view, so both
+\ are kept across it; the loader copies the path before the child's object
+\ read can move OBJECTS.
+: REPLAY-LOAD ( n -- )
+   NUNIT-OBJECT:LOAD-ROW 2drop {: kind:n path:ptr pathu:n :}
+   NUNIT-OBJECT:INSTALL-SAVE {: row:n off:n at:n segs:n slice:n :}
+   kind path pathu SOURCE-UNIT:LOAD-PATH
+   row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
+   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE ;
+
+\ Install the viewed object in place of running the file: its segments and
+\ its child loads in their order, each checker slice before the load that
+\ follows it. A segment after a load is checked, and its checker slice
+\ prepared, on the state the loads left; one stale there is a profile
+\ error. The session manifest keeps the input rows the skipped load would
+\ have recorded.
+: REPLAY-OBJECT ( -- )
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:APPEND
-   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-OBJECT
+   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-BEGIN
+   0 NUNIT-OBJECT:EVENT-COUNT 0 ?do
+      {: loads:n :}
+      i NUNIT-OBJECT:EVENT-KIND {: kind:n :}
+      kind NUNIT-OBJECT:EV-SEGMENT = if
+         i 0 > if i SEGMENT-HOLDS? 0= if BAD then then
+         i NUNIT-OBJECT:INSTALL-SEGMENT
+      then
+      kind NUNIT-OBJECT:EV-LOAD = if
+         loads NUNIT-OBJECT:INSTALL-CHECKS
+         i REPLAY-LOAD
+         loads 1+
+      else loads then
+   loop {: all:n :}
+   \ Rows bound after a trailing load are checked once it ran.
+   ALL-ROWS SEGMENT-FRESH? 0= if BAD then
+   all NUNIT-OBJECT:INSTALL-CHECKS
+   \ Origin rows map their ordinals through the segment map INSTALL-END
+   \ drops.
    ORIGIN-INSTALL
+   NUNIT-OBJECT:INSTALL-END
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    1 REUSED-N +!
    NUNIT-DEP:DIAG? @ 0= if exit then
@@ -1430,6 +1525,7 @@ variable IMPORT-AT
    s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  records=" DIAG-W2 recs DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
+   s"  loads=" DIAG-W2 loads DIAG-N
    s"  ffi=" DIAG-W2 ffi DIAG-N
    S\" \n" DIAG-W2 ;
 
@@ -1483,10 +1579,12 @@ variable IMPORT-AT
    \ keeps the producer digests a run would.
    NATIVE? @ if path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE then
    OBJECT-HIT? {: hit:bool :}
-   hit if ['] INSTALL-OBJECT else ['] OBSERVED-RUN then catch {: unit-rc:n :}
-   \ A hit's install ends the plan OBJECT-HIT? kept; one that threw before
-   \ it leaves the plan for this release.
+   hit if ['] REPLAY-OBJECT else ['] OBSERVED-RUN then catch {: unit-rc:n :}
+   \ A replay installs each checker plan it keeps; one that threw between a
+   \ preparation and its install leaves that plan for this release.
    NUNIT-OBJECT:RELEASE-CHECKER
+   \ A replay that threw ends its object's references as INSTALL-END does.
+   hit unit-rc 0<> and if NFILE-REF:FILE-DONE then
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
    unit-rc 0= plan-rc 0= and hit 0= and
@@ -1625,6 +1723,7 @@ variable IMPORT-AT
    \ the directory it selects; an exported root may not exist yet.
    ROOT$ MAKE-DIRS
    ['] XREF-REC NFILE-REF:RECORD-AT!
+   NUNIT-OBJECT:BIND-LOCAL
    NUNIT-CAPTURE:BIND-PRODUCER
    PIN-HOST-CHECKER
    PIN-HOST-SOURCE
@@ -1668,12 +1767,12 @@ variable IMPORT-AT
    CLEAR-NOMINALS
    NFILE-REF:CLOSE
    FRAMES-RELEASE PENDING-KEY-RELEASE
-   ENTRY-RELEASE STORE-IMAGE-RELEASE
+   ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
    0 ORIGIN-GETTER !
-   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECT-U !
+   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECTS-U !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH ;
 

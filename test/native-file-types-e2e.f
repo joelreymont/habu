@@ -305,7 +305,8 @@ variable EXPECT-U
 \ (SCHEMA-APP). Each is stored as start 0 count 0; the sums are private, so
 \ they publish no constructor word and b.f stays reusable. Editing a.f shifts
 \ those stores under b.f's reused object, down and then up from its capture:
-\ each warm build reuses b.f without a throw, its app prints what a
+\ each warm build reuses b.f without a throw (and replays app.f, which loads
+\ a.f and b.f, around them), its app prints what a
 \ fresh-cache build's app prints, and its image holds the same bytes: an
 \ image depends only on persistent program state. An empty range stored at
 \ the store's high-water instead makes the warm build throw 76.
@@ -319,7 +320,7 @@ variable EXPECT-U
    {: k:n out:ptr outu:n fresh:ptr freshu:n :}
    k WIDTH-SOURCE
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
    WARM-HASH HASH-APP
    s" shift-warm-hb" SAVE-APP
@@ -342,12 +343,11 @@ variable EXPECT-U
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
    \ The first build ran on an empty cache, so it is the fresh-cache build
-   \ the build that reuses every file is compared against. app.f's requires
-   \ keep it from reuse (unsupported-segments), so a.f and b.f are every file.
+   \ the build that reuses every file, app.f, a.f and b.f, is compared against.
    COLD-HASH HASH-APP
    s" hit-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 3\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
    WARM-HASH HASH-APP
    s" hit-warm-hb" SAVE-APP
@@ -456,9 +456,16 @@ DYNAMIC-BUFFER ENTRY u8
      ENDOF
    ;MATCH ;
 
+\ app.f loads c.f, so a warm build would replay its object around c.f's. A
+\ case whose app.f must compile from source against what c.f left edits a
+\ comment into it first: the new bytes give app.f a key no object holds.
+: EDIT-APP ( -- )
+   s" app.f" AT S\" \\ edited\n" APPEND-FILE ;
+
 \ c.f declares private products, whose MAKE and UNMAKE are words of package
 \ FCTOR (a public family's constructor package would keep c.f from reuse:
-\ unsupported-wordlists). app.f, never reused, reopens FCTOR and gives the
+\ unsupported-wordlists). app.f, compiled from source in every build (each
+\ warm build edits it first), reopens FCTOR and gives the
 \ generic box the two-cell pair. Only the typed construct step admits that
 \ call (TFAM-CTOR-STEP?: a direct layout argument), and the step finds the
 \ variant through the constructor word's symbol. A reused c.f must leave each
@@ -479,6 +486,7 @@ DYNAMIC-BUFFER ENTRY u8
    KEEP-KEY
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE
+   EDIT-APP
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
@@ -489,7 +497,8 @@ DYNAMIC-BUFFER ENTRY u8
 \ family rows then name a constructor the file does not own, which the capture
 \ cannot carry: the checker export refuses c.f in both builds. a.f's object is
 \ stored, but its undefine leaves it unsupported for reuse, so the warm build
-\ misses it too, reuses no file, loads a.f and c.f from source, and the app
+\ misses it too; with app.f edited first it reuses no file, loads app.f, a.f
+\ and c.f from source, and the app
 \ runs as the cold build's does. A capture refusal that throws instead fails
 \ the cold build (rc 76).
 : CTOR-PREFIX-CASE ( -- )
@@ -505,6 +514,7 @@ DYNAMIC-BUFFER ENTRY u8
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
+   EDIT-APP
    s" app-hb" BUILD SUCCESS
    false NATIVE-FILE-APP:DIAG? !
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -523,6 +533,7 @@ DYNAMIC-BUFFER ENTRY u8
 : SLICE-CASE ( -- )
    s" a cached checker slice the engine refuses is a named miss" T-LABEL
    CORRUPT-SLICE
+   EDIT-APP
    s" app-hb" DIAG-BUILD SUCCESS
    ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -539,6 +550,7 @@ DYNAMIC-BUFFER ENTRY u8
 : LINK-CASE ( -- )
    s" a cached link with neither effect nor grid is a named miss" T-LABEL
    EMPTY-LINK
+   EDIT-APP
    s" app-hb" DIAG-BUILD SUCCESS
    ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE

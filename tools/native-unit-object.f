@@ -79,14 +79,16 @@ private
 \ reference.
 56 constant RECORD-BYTES
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
-\ records, DATA bytes, requires, wordlists, 0. LOAD: kind, load kind, source
-\ offset in the loading file, path offset and length, root offset and length.
-\ FFI-LIB: kind, path offset and length, the library's index. FFI-FN: kind,
-\ symbol offset and length, library index, argument and spill counts, the
-\ function's index. FFI-SCOPE: kind, role (0 the declarer's selection when
-\ the segment opened, 1 when it closed), library index, the scope wordlist's
-\ reference and 1 when a scope was stated. Unused cells are 0.
-56 constant EVENT-BYTES
+\ records, DATA bytes, requires, wordlists, where in a cell HERE stood at its
+\ open, and the file's dependency row count at its close. LOAD: kind, load
+\ kind, source offset in the loading file, path offset and length, root
+\ offset and length. FFI-LIB: kind, path offset and length, the library's
+\ index. FFI-FN: kind, symbol offset and length, library index, argument and
+\ spill counts, the function's index. FFI-SCOPE: kind, role (0 the
+\ declarer's selection when the segment opened, 1 when it closed), library
+\ index, the scope wordlist's reference and 1 when a scope was stated.
+\ Unused cells are 0.
+64 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
 \ length.
 56 constant ORIGIN-BYTES
@@ -117,8 +119,15 @@ private
 3 constant RK-DEFER
 4 constant RK-COLON
 5 constant RK-PACKAGE
+
+public
+
+\ An event row's kind: a segment of the file's own records, or a child load.
 1 constant EV-SEGMENT
 2 constant EV-LOAD
+
+private
+
 \ After a SEGMENT row, in order: the declarer's selection at the segment's
 \ open, one row per library or function
 \ declaration it made, reused rows included, and the selection at its close
@@ -135,9 +144,9 @@ private
 \ checker slice count, 1 while a checker mark is open, the open segment's
 \ FFI registry marks: the selected bank's next function index, the tables'
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
-\ was stated), and the origin bytes when it opened, its sink cell first. A
-\ child file's bytes and sites follow its parent's and are dropped when the
-\ child closes.
+\ was stated), the origin bytes when it opened, its sink cell first, and the
+\ segment DATA bytes when it opened. A child file's bytes and sites follow
+\ its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -164,14 +173,17 @@ private
 23 constant FO-SEG-SEL-WID
 24 constant FO-SEG-SEL-SET
 25 constant FO-ORIGIN
-26 constant FO-CELLS
+26 constant FO-SEGB
+27 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
-\ address cell row, rows, and the first and last rows' values. LOAD: kind,
-\ the child's first ordinal, load kind, source offset, path offset and
-\ length, root offset and length in FILE-NAMES, then zeros.
-13 constant EV-CELLS
+\ address cell row, rows, the first and last rows' values, the file's
+\ dependency row count at its close and its DATA bytes' offset in SEG-DATA.
+\ LOAD: kind, the child's first ordinal,
+\ load kind, source offset, path offset and length, root offset and length
+\ in FILE-NAMES, then zeros.
+15 constant EV-CELLS
 DYNAMIC-BUFFER FILE-DEFS u8
 DYNAMIC-BUFFER FILE-INDEX u8
 DYNAMIC-BUFFER FILE-INPUTS u8
@@ -185,6 +197,11 @@ variable ORIGIN-U
 \ The closing file's record, DATA, require, protection and event sections,
 \ back to back.
 DYNAMIC-BUFFER FILE-OUT u8
+\ Each closed segment's DATA bytes as its close found them, innermost file
+\ last: a child or a later segment writes an earlier segment's DATA after it
+\ closes, and the object carries the bytes the segment left.
+DYNAMIC-BUFFER SEG-DATA u8
+variable SEG-DATA-U
 \ Each index row's dictionary ordinal, so a dictionary cut can find the rows
 \ it retired. Never written to an object.
 DYNAMIC-BUFFER FILE-ORDS n
@@ -238,7 +255,7 @@ variable IMAGE-U
 KCELLS TYPED-BUFFER KCELL-WAS n
 variable KCELLS-HELD
 \ The earlier DATA bytes the open files' segments changed, each once per
-\ file and ascending within it, innermost file last. Encoding drops the closing file's own DATA, address
+\ file and ascending within it, innermost file last. Encoding drops address
 \ cells and the storage owners' spans, and keeps the rest as updates.
 DYNAMIC-BUFFER FILE-SITES n
 variable SITES-N
@@ -299,6 +316,8 @@ variable OPEN-REQS
 variable OPEN-WIDS
 variable OPEN-LOADS
 variable OPEN-SEGS
+\ The open object's last SEGMENT row's dependency row mark.
+variable OPEN-MARK
 \ One bit per record kind the open FILE object's rows hold.
 variable OPEN-KINDS
 \ The file's wordlists its package rows own, in the order they made them, -1
@@ -324,9 +343,36 @@ variable INS-DEFS-OFF
 variable INS-DATA
 variable INS-DATA-U
 variable INS-DATA-AT
+\ The installing files' segment map, MAP-CELLS cells per installed SEGMENT
+\ row, innermost file last: the row's event index; its first own record row
+\ and record count; its first wordlist and count among the file's own; its
+\ first byte and count in the file's DATA section; its first ordinal past
+\ the file's first record; then where the install put them: its first
+\ record's ordinal, its first wordlist and its DATA address. The installing
+\ file's rows start at INS-MAP-AT and INS-SEGS of them are installed. A
+\ child file's rows follow its parent's.
+11 constant MAP-CELLS
+0 constant M-SEG
+1 constant M-ROW
+2 constant M-ROWS
+3 constant M-WID
+4 constant M-WIDS
+5 constant M-DATA
+6 constant M-BYTES
+7 constant M-ORD
+8 constant M-LIVE-ORD
+9 constant M-LIVE-WID
+10 constant M-LIVE-DATA
+DYNAMIC-BUFFER INS-MAP n
+variable INS-MAP-AT
+variable INS-SEGS
+\ The installing file's next checker slice.
+variable INS-SLICE
 \ The checker section and its count of references while a slice imports.
 PTR-VARIABLE IMPORT-SEC
 variable IMPORT-NREFS
+\ The importing slice's offset in the checker section.
+variable IMPORT-OFF
 CAST: REQ-COUNT-XT ( n -- [ -- n ] )
 CAST: DEF-ACTION-XT ( n -- [ -- ] )
 CAST: DEF-NUM-XT ( n -- [ -- n ] )
@@ -350,6 +396,10 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
 
 \ Field n of event row k.
 : EV ( n n -- ptr n ) swap EV-CELLS * + FILE-EVENTS ;
+
+\ Field n of segment map row m, and of the installing segment's row.
+: INS-CELL ( n n -- ptr n ) swap MAP-CELLS * + INS-MAP ;
+: CUR@ ( n -- n ) {: c:n :} INS-MAP-AT @ INS-SEGS @ + 1- c INS-CELL @ ;
 
 : DEFS+ ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -417,7 +467,8 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    row 1+ EV-CELLS * FILE-EVENTS-RESERVE
    kind row 0 EV ! ord row 1 EV ! c2 row 2 EV ! c3 row 3 EV !
    c4 row 4 EV ! c5 row 5 EV ! c6 row 6 EV ! c7 row 7 EV ! c8 row 8 EV !
-   0 row 9 EV ! 0 row 10 EV ! 0 row 11 EV ! 0 row 12 EV !
+   0 row 9 EV ! 0 row 10 EV ! 0 row 11 EV ! 0 row 12 EV ! 0 row 13 EV !
+   0 row 14 EV !
    1 EVENTS-N +! ;
 
 : DEFS$ ( -- ptr u8 n )
@@ -749,10 +800,17 @@ private
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
-   slot row 9 EV ! slots row 10 EV !
+   slot row 9 EV ! slots row 10 EV ! NUNIT-DEP:FILE-ROWS row 13 EV !
    slots 0 > if
       slot ADDRESS-CELLS:ROW@ row 11 EV !
       slot slots + 1- ADDRESS-CELLS:ROW@ row 12 EV !
+   then
+   SEG-DATA-U @ {: at:n :}
+   at row 14 EV !
+   bytes 0 > if
+      at bytes + SEG-DATA-RESERVE
+      FO-SEG-HERE FO @ DATA-PTR at SEG-DATA bytes BYTE-COPY
+      bytes SEG-DATA-U +!
    then
    first sel FFI-ROWS+ ;
 
@@ -889,12 +947,15 @@ public
 \ Open a file frame at the file's first record ordinal. A child's load ends
 \ its parent's segment with a LOAD row: the load kind, where the parent's
 \ source stood, below zero outside it, which refuses the parent, and the
-\ child's path and root.
+\ child's path and root. The replay loads the child in the scope the parent
+\ opened with, so a parent whose search order, current wordlist or package
+\ at the load differs from it is refused.
 : FILE-BEGIN ( ptr u8 n ptr u8 n n n -- )
    {: path:ptr pathu:n root:ptr rootu:n kind:n at:n :}
    FILE-OPEN? if
       SEGMENT-CLOSE
       at 0 < if s" load-outside-source" FILE-REFUSE then
+      NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
       EV-LOAD ndict@ kind at path pathu NAMES+ pathu
          root rootu NAMES+ rootu 0 EV+
       CHECK-EXPORT
@@ -909,6 +970,7 @@ public
    EVENTS-N @ FO-EVENTS FO !
    NAMES-U @ FO-NAMES FO !
    ORIGIN-U @ FO-ORIGIN FO !
+   SEG-DATA-U @ FO-SEGB FO !
    ORIGIN-U @ 8 + FILE-ORIGIN-RESERVE
    SINK-NONE ORIGIN-U @ FILE-ORIGIN LE:U64!
    8 ORIGIN-U +!
@@ -945,6 +1007,7 @@ public
    FO-EVENTS FO @ EVENTS-N !
    FO-NAMES FO @ NAMES-U !
    FO-ORIGIN FO @ ORIGIN-U !
+   FO-SEGB FO @ SEG-DATA-U !
    FO-SITES FO @ SITES-N !
    FO-CHECK FO @ CHECK-U !
    FO-CKORD FO @ CKORD-N !
@@ -1014,20 +1077,24 @@ public
 : CLOSE ( -- )
    OBS-CLEAR 0 OBS-N ! 0 OPEN-FFI ! FFI-OBS-RELEASE
    0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
-   0 EVENTS-N ! 0 NAMES-U ! 0 ORIGIN-U ! 0 OUT-U ! 0 ROW-AT !
+   0 EVENTS-N ! 0 NAMES-U ! 0 ORIGIN-U ! 0 OUT-U ! 0 ROW-AT ! 0 SEG-DATA-U !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
-   0 OPEN-REM !
+   0 OPEN-REM ! 0 OPEN-MARK !
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
    0 INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
    0 INS-DATA ! 0 INS-DATA-U ! 0 INS-DATA-AT !
-   NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
+   0 INS-MAP-AT ! 0 INS-SEGS ! 0 INS-SLICE ! INS-MAP-RELEASE
+   NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS ! 0 IMPORT-OFF !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT ! 0 VALS-U ! 0 OPEN-VALS !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
    0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
+   0 DATA-AT ! 0 REQS-AT ! 0 PROT-AT ! 0 EVS-AT ! 0 SLOTS-AT ! 0 LITS-AT !
+   0 UPDS-AT ! 0 PINS-AT !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
+   SEG-DATA-RELEASE
    SITE-OWNS-RELEASE PIN-OWNS-RELEASE
    FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE FILE-VALS-RELEASE
    FILE-CHECK-RELEASE FILE-CKORD-RELEASE
@@ -1866,7 +1933,7 @@ CAST: N>U8 ( n -- ptr u8 )
 
 : DATA-OUT ( -- )
    EVENTS-N @ FO-EVENTS FO @ ?do
-      i SEG? if i 3 EV @ DATA-PTR i 4 EV @ OUT-S then
+      i SEG? if i 4 EV @ 0 > if i 14 EV @ SEG-DATA i 4 EV @ OUT-S then then
    loop ;
 
 \ Require idx as its length and path.
@@ -1899,25 +1966,27 @@ CAST: N>U8 ( n -- ptr u8 )
       then
    loop ;
 
-\ Event row k as its EVENT-BYTES row. A SEGMENT row ends with where in a
-\ cell HERE stood at the segment's open: `align` and every definer that
-\ aligns its body pad from there, so the DATA bytes hold that remainder's
-\ padding.
+\ Event row k as its EVENT-BYTES row. A SEGMENT row holds where in a cell
+\ HERE stood at the segment's open: `align` and every definer that aligns
+\ its body pad from there, so the DATA bytes hold that remainder's padding.
+\ Its last cell is the file's dependency row count at its close, the rows a
+\ replay checks before installing it.
 : EVENT-OUT ( n -- )
    {: row:n :}
    row SEG? if
       EV-SEGMENT OUT-N row 1 EV @ FO-FIRST FO @ - OUT-N
       row 2 EV @ OUT-N row 4 EV @ OUT-N row 6 EV @ OUT-N
-      row 8 EV @ OUT-N row 3 EV @ 1 cells mod OUT-N exit
+      row 8 EV @ OUT-N row 3 EV @ 1 cells mod OUT-N row 13 EV @ OUT-N exit
    then
    row 0 EV @ {: kind:n :}
    kind EV-FFI-LIB = if
       kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
-      row 4 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+      row 4 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    kind EV-FFI-FN = if
       kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
-      row 4 EV @ OUT-N row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N exit
+      row 4 EV @ OUT-N row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N
+      0 OUT-N exit
    then
    \ The scope's reference is taken here: BEGIN-FILE-REFS resets the
    \ references after the segments close. It binds no owner: FFI-ROWS-HOLD?
@@ -1926,11 +1995,11 @@ CAST: N>U8 ( n -- ptr u8 )
       row 4 EV @ WID-REF {: ref:n :}
       ref 0= if s" ffi-scope-unknown" FILE-REFUSE then
       kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N ref OUT-N
-      row 5 EV @ OUT-N 0 OUT-N 0 OUT-N exit
+      row 5 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
-   row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N ;
+   row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N 0 OUT-N ;
 
 CAST: OWNER-ROW-FN ( n -- [ n -- ptr u8 n bool ] )
 CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
@@ -2222,13 +2291,15 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    site ord base REF-AT ;
 
 \ One SLOT-BYTES row for the declaration raw. A cell in the file's own DATA
-\ is zeroed in its DATA section, since the row restores it.
+\ holds the value its segment's close left, which its DATA section carries,
+\ and is zeroed there, since the row restores it.
 : SLOT-ROW ( n -- )
    {: raw:n :}
    raw SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N + {: site:n :}
    raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> {: data:bool :}
-   site DATA-PTR LE:U64@ {: value:n :}
    site CELL OWN-OFF {: off:n :}
+   off 0 >= if DATA-AT @ off + FILE-OUT LE:U64@
+   else site DATA-PTR LE:U64@ then {: value:n :}
    off 0 >= if NFILE-REF:DATA off 0 NFILE-REF:REF-LOCAL
    else site SLOT-SITE then {: sref:n :}
    FILE-REFUSED? if exit then
@@ -2326,7 +2397,10 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
          i FO-SITES FO @ - 2 * 1+ SITE-OWNS @ {: base:n :}
          va base - CELL / CELL * base + {: at:n :}
          at last <> if
-            at at WINDOW@ ADMIT-AT
+            \ An own site's update carries the live byte, past its segment's.
+            va 1 OWN-OFF 0 >= if at DATA-PTR LE:U64@ else at WINDOW@ then
+               {: value:n :}
+            at value ADMIT-AT
             FILE-REFUSED? if unloop exit then
          then
          at
@@ -2421,16 +2495,18 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    idx SLOTW-N @ FILE-SLOTW !
    1 SLOTW-N +! ;
 
-\ Drop each changed earlier DATA site that is the closing file's own DATA
-\ or lies in an excluded owner's span, which holds no program state. A
-\ changed address cell another file declared is a slot row, once per cell;
-\ the remaining sites are updates.
+\ Drop each changed earlier DATA site that lies in an excluded owner's span,
+\ which holds no program state. A site in the closing file's own DATA is a
+\ later segment's write into an earlier one, whose bytes and slot cells the
+\ object carries as that segment's close left them: an update. A changed
+\ address cell another file declared is a slot row, once per cell; the
+\ remaining sites are updates.
 : EARLIER-SLOTS ( -- )
    0 SLOTW-N !
    OWNERS-GATHER
    SITES-N @ FO-SITES FO @ ?do
       i FILE-SITES @ {: va:n :}
-      va 1 OWN-OFF 0 >= va OWNED? or if
+      va 1 OWN-OFF 0 < if va OWNED? if
          0 i FILE-SITES !
       else
          va CELL-ROW {: row:n :}
@@ -2442,18 +2518,19 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
                FILE-REFUSED? if unloop exit then
             then
          then
-      then
+      then then
    loop ;
 
-\ One UPDATE-BYTES row per remaining site: its reference through the
-\ declaration that owns it, and its byte now. A site no keyed declaration
-\ owns refuses the file.
+\ One UPDATE-BYTES row per remaining site: its reference into the file's own
+\ DATA or through the declaration that owns it, and its byte now. A site no
+\ keyed declaration owns refuses the file.
 : UPDATES-OUT ( -- )
    SITES-N @ FO-SITES FO @ ?do
       i FILE-SITES @ {: va:n :}
       va 0<> if
          i FO-SITES FO @ - 2 * {: at:n :}
-         va at SITE-OWNS @ at 1+ SITE-OWNS @ REF-AT {: ref:n :}
+         va 1 OWN-OFF 0 >= if va DATA-REF
+         else va at SITE-OWNS @ at 1+ SITE-OWNS @ REF-AT then {: ref:n :}
          ref 0= if s" update-unowned " WHY+ va WHY-SITE unloop exit then
          ref OUT-N va DATA-PTR c@ OUT-N
       then
@@ -2672,7 +2749,9 @@ private
    item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
 
 \ A SEGMENT event row starting at or past end, the previous segment's last
-\ ordinal; the new end.
+\ ordinal, with a dependency row mark no lower than the previous segment's
+\ and within the file's rows; the new end. The first segment's remainder is
+\ the object's.
 : SEGMENT-CK ( ptr u8 n -- n )
    {: row:ptr end:n :}
    row 1 U64-AT {: first:n :}
@@ -2681,9 +2760,12 @@ private
    row 4 U64-AT {: reqs:n :}
    row 5 U64-AT {: wids:n :}
    row 6 U64-AT {: rem:n :}
+   row 7 U64-AT {: mark:n :}
    first end < count 0 < or bytes 0 < or reqs 0 < or wids 0 < or if BAD then
    rem 0 < rem 1 cells >= or if BAD then
-   rem OPEN-REM !
+   mark OPEN-MARK @ < mark OPEN-ROWS @ > or if BAD then
+   mark OPEN-MARK !
+   OPEN-SEGS @ 0= if rem OPEN-REM ! then
    count OPEN-RECS +! bytes OPEN-DATA +! reqs OPEN-REQS +!
    wids OPEN-WIDS +! 1 OPEN-SEGS +!
    first count + ;
@@ -2738,6 +2820,7 @@ private
       {: end:n prev:n :}
       evs i EVENT-BYTES * + {: row:ptr :}
       row 0 U64-AT {: kind:n :}
+      kind EV-SEGMENT <> row 7 U64-AT 0<> and if BAD then
       kind EV-SEGMENT = if row end SEGMENT-CK else
          kind EV-LOAD = if row namesu LOAD-CK end else
             kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
@@ -2837,7 +2920,7 @@ private
       {: off:n :}
       reqsu off - 8 < if BAD then
       reqs off + LE:U64@ {: len:n :}
-      len 0 <= len reqsu off - 8 - > or if BAD then
+      len 0 <= len PATH-CAP > or len reqsu off - 8 - > or if BAD then
       off 8 + len +
    loop
    reqsu <> if BAD then ;
@@ -2924,6 +3007,21 @@ private
    {: off:n u:n size:n :}
    off 0 >= u 0 >= and off size <= and u size off - <= and ;
 
+\ Ordinal ord past the file's first record is one of the viewed object's own
+\ records: inside some SEGMENT row's span.
+: OWN-ORD? ( n -- bool )
+   {: ord:n :}
+   12 NUNIT-FILE:SECTION$ {: evs:ptr evsu:n :}
+   evsu EVENT-BYTES / 0 ?do
+      evs i EVENT-BYTES * + {: row:ptr :}
+      row 0 U64-AT EV-SEGMENT = if
+         ord row 1 U64-AT >= ord row 1 U64-AT row 2 U64-AT + < and if
+            true unloop exit
+         then
+      then
+   loop
+   false ;
+
 \ Slot 18's framing: a sink kind, then whole rows, none without a sink, each naming one of the
 \ file's records, a name and path within namesu bytes of slot 3, and an
 \ ordered span, zero when the row has no path.
@@ -2937,7 +3035,7 @@ private
    secu 8 - ORIGIN-BYTES / 0 ?do
       sec 8 + i ORIGIN-BYTES * + {: row:ptr :}
       row 0 U64-AT {: ord:n :}
-      ord 0 < ord OPEN-RECS @ >= or if unloop false exit then
+      ord OWN-ORD? 0= if unloop false exit then
       row 1 U64-AT {: at:n :}
       row 2 U64-AT {: end:n :}
       at 0 < at end > or if unloop false exit then
@@ -2962,7 +3060,7 @@ private
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
    0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED ! 0 OPEN-VALS !
-   0 OPEN-FFI ! 0 OPEN-REM !
+   0 OPEN-FFI ! 0 OPEN-REM ! 0 OPEN-MARK !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
@@ -3012,17 +3110,55 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
    OBJ-BYTES @ OBJ-SIZE @ NUNIT-FILE:ARCH-AARCH64 s" FILE"
    OBJ-KEY @ OBJ-KEY-U @ NUNIT-FILE:READ-VIEW ;
 
-\ Make the file's own references the prepared table.
+\ Capture index at as the installing file's map rows place it, latest row
+\ first: the row whose span, cells base and span, holds it, its end too when
+\ end is true, gives cell live plus the offset. An index no installed row
+\ holds is malformed.
+: MAP-THROUGH ( n n n n bool -- n )
+   {: at:n base:n span:n live:n end:bool :}
+   INS-SEGS @ 0 ?do
+      INS-MAP-AT @ INS-SEGS @ + 1- i - {: m:n :}
+      at m base INS-CELL @ - {: off:n :}
+      m span INS-CELL @ {: u:n :}
+      off 0 >= off u < end off u = and or and if
+         m live INS-CELL @ off + unloop exit
+      then
+   loop
+   BAD ;
+
+\ A LOCAL reference's kind, item and addend as the live record ordinal,
+\ wordlist or DATA address: own record rows, the file's wordlists and its
+\ DATA section map through the segments the install made. A DATA offset at
+\ one segment's end and the next one's start is the later segment's, the one
+\ that installs an address body there.
+: MAP-LOCAL ( n n n -- n )
+   {: kind:n item:n addend:n :}
+   item 0 < addend 0 < or if BAD then
+   kind NFILE-REF:DATA = if
+      item addend + M-DATA M-BYTES M-LIVE-DATA true MAP-THROUGH exit
+   then
+   addend 0<> if BAD then
+   kind NFILE-REF:RECORD = if item M-ROW M-ROWS M-LIVE-ORD false MAP-THROUGH exit then
+   kind NFILE-REF:WID = if item M-WID M-WIDS M-LIVE-WID false MAP-THROUGH exit then
+   BAD ;
+
+\ An ordinal past the file's first record, as an index or origin row holds
+\ it, as the live ordinal of the record the install made.
+: ORD>LIVE ( n -- n ) M-ORD M-ROWS M-LIVE-ORD false MAP-THROUGH ;
+
+\ Make the file's own references the prepared table, resolved through the
+\ segment map.
 : FILE-REFS ( -- )
-   13 NUNIT-FILE:SECTION$ INS-FIRST @ OPEN-RECS @ NFILE-REF:PREPARE-FILE ;
+   13 NUNIT-FILE:SECTION$ NFILE-REF:PREPARE-FILE ;
 
 \ The checker's import callback: reference idx of the slice as the storage
 \ the export named, a dictionary record (bytes DREC) or a DATA span. It runs
-\ before the install makes the file's records: a LOCAL record reference is
-\ the ordinal the install gives that record (the prepared table's base is the
-\ ndict@ INSTALL-OBJECT takes for INS-FIRST), and its address is the record
-\ slot's by arithmetic (XREF-REC reads nothing). The checker turns it back
-\ into that ordinal (UP-READ-LINKS, REC>INDEX) and the plan keeps the ordinal.
+\ before the install makes the records of the segment the slice follows: a
+\ LOCAL record reference is the ordinal the install gives that record (the
+\ segment's map row places it at the ndict@ the install takes), and its
+\ address is the record slot's by arithmetic (XREF-REC reads nothing). The
+\ checker turns it back into that ordinal (UP-READ-LINKS, REC>INDEX) and the
+\ plan keeps the ordinal.
 : CHECK-RESOLVE ( n n -- ptr u8 )
    {: idx:n bytes:n :}
    idx 0 <= idx IMPORT-NREFS @ > or if BAD then
@@ -3036,18 +3172,17 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
 CAST: CK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
 CAST: CK-INSTALL-XT ( n -- [ n -- ] )
 
-\ The plan PREPARE-CHECKER keeps open for INSTALL-CHECKER; -1 when none is.
+\ The plan PREPARE-SLICE keeps open for INSTALL-CHECKER; -1 when none is.
 variable CHECK-PLAN
 -1 CHECK-PLAN !
 
 : IMPORT-END ( -- )
    CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF CHECK-XT DEF-ACTION-XT execute ;
 
-\ Prepare slice 0: past the slice count, the reference count and the
-\ references, its length and bytes.
+\ Prepare the slice at IMPORT-OFF: its length and bytes.
 : PREPARE-RUN ( -- )
    IMPORT-SEC @ {: sec:ptr :}
-   IMPORT-NREFS @ 2 + 8 * {: at:n :}
+   IMPORT-OFF @ {: at:n :}
    sec at + LE:U64@ {: len:n :}
    sec at 8 + + len ['] CHECK-RESOLVE
       CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF CHECK-XT CK-PREP-XT execute
@@ -3067,31 +3202,41 @@ public
 
 \ End the kept checker plan, which will not be installed; nothing when none
 \ is kept. The checker's PREPARE-END resets every projection and plan row the
-\ preparation set, so the state is the one before PREPARE-CHECKER.
+\ preparation set, so the state is the one before PREPARE-SLICE.
 : RELEASE-CHECKER ( -- )
    CHECK-PLAN @ 0 < if exit then
    -1 CHECK-PLAN !
    IMPORT-END ;
 
-\ Prepare the viewed object's checker slice 0 on the state the file's mark
-\ saw, before any install side effect, and keep the plan for INSTALL-CHECKER.
-\ The file's references are prepared at the ordinal the install takes, as
-\ LIVE-NAME? prepares them. A slice the checker refuses (its unit codes, a
-\ type-family plan refusal, a FILE dependency whose family contract changed)
-\ is BAD, and a refusal keeps no plan. The object checksum is the integrity
-\ boundary: an object that passes it was written by this engine's writer, so
-\ the checker's own refusals are misses, while its fail-stop validators
-\ (checker.f ASIG-GRAPH-DIE, type-family.f REG-AOT-PARAM?) stay fail-stop for
-\ an object altered and resealed.
-: PREPARE-CHECKER ( -- )
-   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
+private
+
+\ Prepare the viewed object's checker slice k on the state the file's mark
+\ saw, before the install side effects of the segment it follows, and keep
+\ the plan for INSTALL-CHECKER. The file's references are prepared as
+\ INSTALL-SEGMENT prepares them, through the segment map, which holds the
+\ row of the segment the slice follows at the cursors its install takes. A
+\ slice the checker refuses (its unit codes, a type-family plan refusal, a
+\ FILE dependency whose family contract changed) is BAD, and a refusal
+\ keeps no plan. The object checksum is the integrity boundary: an object
+\ that passes it was written by this engine's writer, so the checker's own
+\ refusals are misses, while its fail-stop validators (checker.f
+\ ASIG-GRAPH-DIE, type-family.f REG-AOT-PARAM?) stay fail-stop for an object
+\ altered and resealed.
+: PREPARE-SLICE ( n -- )
+   {: k:n :}
+   FILE-REFS
    5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
    sec IMPORT-SEC ! sec 1 U64-AT IMPORT-NREFS !
+   k sec 0 U64-AT >= if BAD then
+   \ Past the slice count, the reference count and the references, each
+   \ slice is its length and bytes padded to a cell.
+   sec 1 U64-AT 2 + 8 * k 0 ?do
+      {: at:n :}
+      sec at + LE:U64@ 7 + -8 and at + 8 +
+   loop IMPORT-OFF !
    ['] PREPARE-BODY catch {: rc:n :}
    rc CHECK-CODE? rc FAMILY-CODE? or if BAD then
    rc 0<> if rc throw then ;
-
-private
 
 \ Install the kept plan on the records INSTALL-SEGMENT made, then end it. A
 \ state the checker refuses here is a malformed object.
@@ -3102,6 +3247,27 @@ private
    ['] INSTALL-BODY catch {: rc:n :}
    rc CHECK-CODE? if BAD then
    rc 0<> if rc throw then ;
+
+public
+
+\ Bind the segment map as the resolver of FILE objects' own references.
+: BIND-LOCAL ( -- ) ['] MAP-LOCAL NFILE-REF:LOCAL-AT! ;
+
+\ Install the checker slices from the next one through slice n, the one the
+\ file left before its load n, or at its end when n is its load count. A
+\ slice that follows a segment was prepared before that segment installed,
+\ slice 0 by PREPARE-CHECKER, and is the plan kept; one that follows no
+\ segment is prepared here, on the state the loads before it left.
+: INSTALL-CHECKS ( n -- )
+   {: n:n :}
+   INS-SLICE @ n > if exit then
+   n 1+ INS-SLICE @ ?do
+      CHECK-PLAN @ 0 < if i PREPARE-SLICE then
+      INSTALL-CHECKER
+   loop
+   n 1+ INS-SLICE ! ;
+
+private
 
 \ A package row: its namespace record and the wordlists its references name.
 \ RECORD-CK requires the private reference.
@@ -3134,8 +3300,8 @@ private
 
 \ Fill the segment's DATA from the cursor up to offset off: the object's
 \ bytes copied to here and allotted. No install writer allots DATA between
-\ fills, so here stands at the cursor. A leaf's only segment owns slot 6
-\ from its first byte.
+\ fills, so here stands at the cursor. The segment's bytes start in slot 6
+\ where its map row places them.
 : DATA-FILL ( n -- )
    {: off:n :}
    INS-DATA-AT @ {: at:n :}
@@ -3144,7 +3310,7 @@ private
    AOT-ARM:HERE-N va <> if BAD then
    off at - {: u:n :}
    u allot
-   6 NUNIT-FILE:SECTION$ drop at + va DATA-PTR u BYTE-COPY
+   6 NUNIT-FILE:SECTION$ drop M-DATA CUR@ + at + va DATA-PTR u BYTE-COPY
    off INS-DATA-AT ! ;
 
 \ An address row: the segment's DATA filled up to its body, then its record
@@ -3260,14 +3426,14 @@ private
    then {: wid:n :}
    row ROW-NAME$ wid search-wl 0<> ;
 
-\ Record row k at the next ordinal, the file's k-th record.
+\ Own record row k at the next ordinal, the one the segment map gives it.
 : INSTALL-RECORD ( n -- )
    {: k:n :}
    k OBJ-ROW {: row:ptr :}
    row 0 U64-AT {: kind:n :}
    row 1 U64-AT {: flags:n :}
    row ROW-NAME$ {: name:ptr nameu:n :}
-   ndict@ INS-FIRST @ k + <> if BAD then
+   ndict@ NFILE-REF:RECORD k 0 MAP-LOCAL <> if BAD then
    kind RK-PACKAGE = if
       name nameu row 5 U64-AT row 6 U64-AT INSTALL-PACKAGE
    else
@@ -3344,34 +3510,135 @@ private
    loop
    on if OBS-SET then ;
 
-\ Event row seg, a segment: its records with its DATA bytes, the wordlists
-\ they make and their protection, its FFI rows, then the checker plan
-\ PREPARE-CHECKER kept.
+\ The sums over the viewed object's event rows before row seg: its SEGMENT
+\ rows' records, wordlists, DATA bytes and requires, and its LOAD rows.
+: SEG-BASES ( n -- n n n n n )
+   {: seg:n :}
+   0 0 0 0 0 seg 0 ?do
+      {: rows:n wids:n bytes:n reqs:n loads:n :}
+      i OBJ-EV {: ev:ptr :}
+      ev 0 U64-AT {: kind:n :}
+      kind EV-SEGMENT = if
+         rows ev 2 U64-AT + wids ev 5 U64-AT + bytes ev 3 U64-AT +
+         reqs ev 4 U64-AT + loads
+      else
+         rows wids bytes reqs loads kind EV-LOAD = if 1+ then
+      then
+   loop ;
+
+\ Whether segment row ev, its records from own row rows, installs as its
+\ load did: DATA bytes and address bodies match the cold load's only while
+\ HERE sits where in a cell it sat at the segment's open.
+: SEG-ALIGNED? ( ptr u8 n -- bool )
+   {: ev:ptr rows:n :}
+   ev 3 U64-AT 0<>
+   ev 2 U64-AT 0 ?do rows i + OBJ-ROW 0 U64-AT RK-ADDR = or loop
+   AOT-ARM:HERE-N 1 cells mod ev 6 U64-AT <> and 0= ;
+
+\ The event row after event row seg's FFI rows.
+: FFI-END ( n -- n )
+   {: seg:n :}
+   OBJ-EVS seg 1+ ?do
+      i OBJ-EV 0 U64-AT {: kind:n :}
+      kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if i unloop exit then
+   loop
+   OBJ-EVS ;
+
+\ The offset in slot 8 of require row k.
+: REQ-OFF ( n -- n )
+   {: k:n :}
+   8 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
+   0 k 0 ?do {: off:n :} sec off + LE:U64@ off + 8 + loop ;
+
+\ The require rows of segment row seg, reqs from row base, provided again.
+\ When a require load follows the segment, its last row is the one
+\ `required` stored before that load, which the load stores again.
+: INSTALL-REQUIRES ( n n n -- )
+   {: seg:n base:n reqs:n :}
+   seg FFI-END {: next:n :}
+   next OBJ-EVS < if
+      next OBJ-EV {: ev:ptr :}
+      ev 0 U64-AT EV-LOAD = ev 1 U64-AT SOURCE-UNIT:LOAD-REQUIRE = and
+   else false then {: required:bool :}
+   required if reqs 1- else reqs then {: n:n :}
+   n 0 < if BAD then
+   8 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
+   base REQ-OFF n 0 ?do
+      {: off:n :}
+      sec off + LE:U64@ {: len:n :}
+      sec off + 8 + len SOURCE-UNIT:PROVIDED-RESOLVED
+      off 8 + len +
+   loop drop ;
+
+\ Add segment row seg's map row, its own records from row rows, its
+\ wordlists from wbase and its DATA from dbase among the file's, at the
+\ cursors where its install puts them.
+: MAP-ROW ( n n n n -- )
+   {: seg:n rows:n wbase:n dbase:n :}
+   seg OBJ-EV {: ev:ptr :}
+   INS-MAP-AT @ INS-SEGS @ + {: m:n :}
+   m 1+ MAP-CELLS * INS-MAP-RESERVE
+   seg m M-SEG INS-CELL ! rows m M-ROW INS-CELL !
+   ev 2 U64-AT m M-ROWS INS-CELL !
+   wbase m M-WID INS-CELL ! ev 5 U64-AT m M-WIDS INS-CELL !
+   dbase m M-DATA INS-CELL ! ev 3 U64-AT m M-BYTES INS-CELL !
+   ev 1 U64-AT m M-ORD INS-CELL !
+   ndict@ m M-LIVE-ORD INS-CELL ! AOT-ARM:WIDN m M-LIVE-WID INS-CELL !
+   AOT-ARM:HERE-N m M-LIVE-DATA INS-CELL !
+   1 INS-SEGS +! ;
+
+public
+
+\ Prepare the viewed object's checker slice 0 before any install side
+\ effect, as PREPARE-SLICE does, and keep its plan for the install. A
+\ leading segment's records resolve through its map row at the present
+\ cursors, where the install puts them, in a map frame past the installing
+\ parent's rows as INSTALL-BEGIN opens the file's; the parent's frame is
+\ restored, so a refusal leaves the map as it found it.
+: PREPARE-CHECKER ( -- )
+   INS-MAP-AT @ {: at:n :}
+   INS-SEGS @ {: segs:n :}
+   at segs + INS-MAP-AT ! 0 INS-SEGS !
+   0 OBJ-EV 0 U64-AT EV-SEGMENT = if 0 0 0 0 MAP-ROW then
+   [: 0 PREPARE-SLICE ;] catch {: rc:n :}
+   at INS-MAP-AT ! segs INS-SEGS !
+   rc 0<> if rc throw then ;
+
+\ Event row seg, a segment: its map row, its checker slice prepared when a
+\ load precedes it, its records with its DATA bytes, the wordlists they
+\ make and their protection, its require rows, its FFI rows, then the
+\ checker slices through its own. The file's first segment starts at the
+\ file's first ordinal; one after a load starts wherever the loads left
+\ the dictionary, and its data alignment and checker slice were not checked
+\ before the install, so a different one or a refused slice is a stale
+\ object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
    seg OBJ-EV {: ev:ptr :}
    ev 0 U64-AT EV-SEGMENT <> if BAD then
+   seg SEG-BASES {: rows:n wbase:n dbase:n rbase:n loads:n :}
    ev 1 U64-AT {: first:n :}
    ev 2 U64-AT {: count:n :}
    ev 3 U64-AT {: bytes:n :}
+   ev 4 U64-AT {: reqs:n :}
    ev 5 U64-AT {: wids:n :}
-   INS-FIRST @ first + ndict@ <> if BAD then
-   AOT-ARM:WIDN {: widbase:n :}
-   widbase wids NFILE-REF:WID-BASE!
-   AOT-ARM:HERE-N {: database:n :}
-   database INS-DATA ! bytes INS-DATA-U ! 0 INS-DATA-AT !
-   database bytes NFILE-REF:DATA-BASE!
+   loads 0= if
+      INS-FIRST @ first + ndict@ <> if BAD then
+   else
+      ev rows SEG-ALIGNED? 0= if BAD then
+   then
+   seg rows wbase dbase MAP-ROW
+   loads 0 > if loads PREPARE-SLICE then
+   AOT-ARM:HERE-N INS-DATA ! bytes INS-DATA-U ! 0 INS-DATA-AT !
    FILE-REFS
-   first count + first ?do i INSTALL-RECORD loop
+   count 0 ?do rows i + INSTALL-RECORD loop
    bytes DATA-FILL
-   AOT-ARM:WIDN widbase wids + <> if BAD then
-   \ A leaf's only segment owns the protection bytes from the first.
-   4 NUNIT-FILE:SECTION$ drop {: prot:ptr :}
-   wids 0 ?do prot i + c@ 1 = if widbase i + REC-PROTECT then loop
+   AOT-ARM:WIDN M-LIVE-WID CUR@ wids + <> if BAD then
+   4 NUNIT-FILE:SECTION$ drop wbase + {: prot:ptr :}
+   wids 0 ?do prot i + c@ 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then loop
+   seg rbase reqs INSTALL-REQUIRES
    seg INSTALL-FFI
-   INSTALL-CHECKER ;
-
-public
+   loads INSTALL-CHECKS ;
 
 \ Check a FILE object's framing: the dependency and input rows are well
 \ formed, the segment sections agree, and each index row frames one
@@ -3415,19 +3682,24 @@ public
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
    OPEN-PINS @ OPEN-CHECKS @ OPEN-FFI @ ;
 
-\ The viewed object's first record row whose name is live in the wordlist
-\ the install would define it into, and true; NULL-PTR 0 false when none.
+\ Segment row seg's first record row whose name is live in the wordlist the
+\ install would define it into, and true; NULL-PTR 0 false when none.
 \ def-open and namespace-record refuse a live name with exit 83 and no message
 \ (habu2.f FRESH,), where the live compile gives the language's own refusal,
 \ so such an object is a miss decided before any install side effect. The
-\ file's references are prepared at the ordinal the install takes, as
-\ INSTALL-SEGMENT prepares them first; nothing is written to the dictionary or
-\ the manifest. A BAD from REF>WID is the object's malformation: its record
-\ rows passed OBJECT-FRESH? and its scope rows FFI-ROWS-HOLD?.
-: LIVE-NAME? ( -- ptr u8 n bool )
-   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
-   OPEN-RECS @ 0 ?do
-      i ROW-LIVE? if i OBJ-ROW ROW-NAME$ true unloop exit then
+\ file's references are prepared as INSTALL-SEGMENT prepares them; a row
+\ into one of the file's own wordlists resolves none. Nothing is written to
+\ the dictionary or the manifest. A BAD from REF>WID is the object's
+\ malformation: its record rows passed OBJECT-FRESH? and its scope rows
+\ FFI-ROWS-HOLD?.
+: LIVE-NAME? ( n -- ptr u8 n bool )
+   {: seg:n :}
+   seg OBJ-EV {: ev:ptr :}
+   ev 0 U64-AT EV-SEGMENT <> if BAD then
+   seg SEG-BASES 2drop 2drop {: rows:n :}
+   FILE-REFS
+   ev 2 U64-AT 0 ?do
+      rows i + ROW-LIVE? if rows i + OBJ-ROW ROW-NAME$ true unloop exit then
    loop
    NULL-PTR 0 false ;
 
@@ -3439,22 +3711,30 @@ public
 \ else the next new one. A function's library must be one DECLARE-SPILLED
 \ takes at the replay, and every scope row's imported wordlist must still
 \ have its package, which no dependency row checks, so a hit never throws.
-\ The references are prepared as LIVE-NAME? prepares them.
-: FFI-ROWS-HOLD? ( -- bool )
+\ Only the FFI rows after segment row seg are checked, after the segments
+\ before it installed. A selection its open found in one of the file's own
+\ wordlists resolves through the segments the install made; the first
+\ segment's predates them. The references are prepared as LIVE-NAME?
+\ prepares them.
+: FFI-ROWS-HOLD? ( n -- bool )
+   {: seg:n :}
    OPEN-FFI @ 0= if true exit then
-   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
+   seg SEG-BASES drop drop drop nip {: wids:n :}
+   FILE-REFS
    s" FFI:NEXT-LIB" FFI-N {: nextlib:n :}
    s" FFI:NEXT-FN" FFI-N {: nextfn:n :}
    s" FFI:MAKER-BANK" FFI-N {: bank:n :}
-   0 0 OBJ-EVS 0 ?do
+   0 0 seg FFI-END seg 1+ ?do
       {: libs:n fns:n :}
       i OBJ-EV {: row:ptr :}
       row 0 U64-AT {: kind:n :}
       kind EV-FFI-SCOPE = if
          row 1 U64-AT 0= {: entry:bool :}
          row 3 U64-AT {: ref:n :}
-         ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
-            \ A segment's opening selection predates the file's wordlists.
+         ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = entry 0= wids 0= or and if
+            \ A segment's closing selection may be a wordlist it makes,
+            \ which no live fact checks; an opening one before the file made
+            \ any wordlist cannot hold.
             entry if false unloop exit then
          else
             ref NFILE-REF:REF>WID? 0= if drop false unloop exit then
@@ -3493,26 +3773,88 @@ public
    loop
    2drop true ;
 
-\ Install the FILE object bytes holds under key at the next ordinal: a leaf,
-\ one segment and no loads, as OPEN-FILE found it.
-: INSTALL-OBJECT ( ptr u8 n ptr u8 n -- )
+\ Begin installing the FILE object bytes holds under key at the next
+\ ordinal, its segment map rows after the installing parent's.
+: INSTALL-BEGIN ( ptr u8 n ptr u8 n -- )
    {: bytes:ptr size:n key:ptr keyu:n :}
    bytes OBJ-BYTES ! size OBJ-SIZE ! key OBJ-KEY ! keyu OBJ-KEY-U !
    FILE-VIEW
-   OPEN-LOADS @ 0<> OPEN-SEGS @ 1 <> or if BAD then
-   ndict@ INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
-   0 INSTALL-SEGMENT
-   ndict@ INS-FIRST @ OPEN-RECS @ + <> if BAD then
-   INS-ROW @ OPEN-DEFS @ <> if BAD then
-   NUNIT-FILE:RESET-KEEP ;
+   INS-MAP-AT @ INS-SEGS @ + INS-MAP-AT ! 0 INS-SEGS !
+   ndict@ INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF ! 0 INS-SLICE ! ;
+
+\ End the install: the checker slices left, every segment and definition
+\ installed, the view released, the file's map rows dropped and its
+\ references ended.
+: INSTALL-END ( -- )
+   OPEN-LOADS @ INSTALL-CHECKS
+   INS-SEGS @ OPEN-SEGS @ <> INS-ROW @ OPEN-DEFS @ <> or if BAD then
+   NUNIT-FILE:RESET-KEEP
+   0 INS-MAP-AT ! 0 INS-SEGS !
+   NFILE-REF:FILE-DONE ;
+
+\ The installing file's place, kept across a child load: its next index row
+\ and payload offset, its map rows and its next checker slice.
+: INSTALL-SAVE ( -- n n n n n )
+   INS-ROW @ INS-DEFS-OFF @ INS-MAP-AT @ INS-SEGS @ INS-SLICE @ ;
+: INSTALL-RESTORE ( n n n n n -- )
+   INS-SLICE ! INS-SEGS ! INS-MAP-AT ! INS-DEFS-OFF ! INS-ROW ! ;
+
+\ View the FILE object bytes holds under key again after a child load, with
+\ the counts OPEN-FILE found for it: the object passed OPEN-FILE before.
+: VIEW-FILE ( ptr u8 n ptr u8 n -- )
+   {: bytes:ptr size:n key:ptr keyu:n :}
+   bytes OBJ-BYTES ! size OBJ-SIZE ! key OBJ-KEY ! keyu OBJ-KEY-U !
+   FILE-VIEW
+   DEPS-SLOT NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT OPEN-ROWS !
+   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:ROW-COUNT OPEN-INPUTS !
+   2 NUNIT-FILE:SECTION$ nip INDEX-BYTES / OPEN-DEFS !
+   0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
+   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-FFI ! 0 OPEN-REM !
+   OBJ-EVS 0 ?do
+      i OBJ-EV {: ev:ptr :}
+      ev 0 U64-AT {: kind:n :}
+      kind EV-SEGMENT = if
+         OPEN-SEGS @ 0= if ev 6 U64-AT OPEN-REM ! then
+         ev 2 U64-AT OPEN-RECS +! ev 3 U64-AT OPEN-DATA +!
+         ev 4 U64-AT OPEN-REQS +! ev 5 U64-AT OPEN-WIDS +! 1 OPEN-SEGS +!
+      else
+         kind EV-LOAD = if 1 OPEN-LOADS +! else 1 OPEN-FFI +! then
+      then
+   loop
+   5 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-CHECKS !
+   9 NUNIT-FILE:SECTION$ nip SLOT-BYTES / OPEN-SLOTS !
+   7 NUNIT-FILE:SECTION$ nip UPDATE-BYTES / OPEN-UPDS !
+   15 NUNIT-FILE:SECTION$ nip PIN-BYTES / OPEN-PINS !
+   18 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-SINK ! ;
+
+\ The viewed object's event rows: their count, row k's kind, a SEGMENT
+\ row's dependency row mark, and whether no SEGMENT or LOAD row follows
+\ row k.
+: EVENT-COUNT ( -- n ) OBJ-EVS ;
+: EVENT-KIND ( n -- n ) OBJ-EV 0 U64-AT ;
+: SEGMENT-MARK ( n -- n ) OBJ-EV 7 U64-AT ;
+: LAST-SEGMENT? ( n -- bool )
+   {: k:n :}
+   OBJ-EVS k 1+ ?do
+      i EVENT-KIND {: kind:n :}
+      kind EV-SEGMENT = kind EV-LOAD = or if false unloop exit then
+   loop
+   true ;
+
+\ LOAD row k's load kind, the child's path and its root.
+: LOAD-ROW ( n -- n ptr u8 n ptr u8 n )
+   OBJ-EV {: ev:ptr :}
+   3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
+   ev 1 U64-AT names ev 3 U64-AT + ev 4 U64-AT
+   names ev 5 U64-AT + ev 6 U64-AT ;
 
 \ The FILE object OPEN-FILE found has a well formed slot 18; only then is its
 \ origin sink kind ORIGIN-KIND.
 : ORIGIN-FORMED? ( -- bool ) OPEN-ORIGIN-OK @ 0<> ;
 : ORIGIN-KIND ( -- n ) OPEN-SINK @ ;
 
-\ Visit each origin row of the FILE object INSTALL-OBJECT installed, in row
-\ order: its ordinal, name token span, path and name.
+\ Visit each origin row of the FILE object being installed, in row order:
+\ its record's live ordinal, name token span, path and name.
 : ORIGIN-EACH ( [ n n n ptr u8 n ptr u8 n -- ] -- )
    {: each :}
    FILE-VIEW
@@ -3521,27 +3863,25 @@ public
    NUNIT-FILE:RESET-KEEP
    secu 8 - ORIGIN-BYTES / 0 ?do
       sec 8 + i ORIGIN-BYTES * + {: row:ptr :}
-      row 0 U64-AT INS-FIRST @ + row 1 U64-AT row 2 U64-AT
+      row 0 U64-AT ORD>LIVE row 1 U64-AT row 2 U64-AT
       names row 5 U64-AT + row 6 U64-AT
       names row 3 U64-AT + row 4 U64-AT
       each execute
    loop ;
 
-\ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package,
-\ constant, address and colon records and the segment's DATA bytes, on a
-\ checker that imports. Later lanes widen the rest. DATA bytes and address
-\ bodies match the cold load's only while HERE sits where in a cell it sat
-\ at the segment's open, else the miss names data-alignment. Slot 12 holds
-\ no row for a run that added nothing to
-\ the dictionary or DATA, so a file that added nothing has no segment for the
-\ install to replay and loads from source. The install makes wordlists only
-\ through package rows, so every wordlist the file made must be one they own.
-\ The answer names the first part it cannot replay, for the miss; empty when
-\ it can install the whole object.
+\ The FILE object OPEN-FILE found is one the install replays: package,
+\ constant, address and colon records, DATA bytes and require rows in
+\ segments between child loads, on a checker that imports. Later lanes widen
+\ the rest. Slot 12 holds no SEGMENT row for a run that added nothing to the
+\ dictionary, DATA or the require registry, so a file whose runs added
+\ nothing has no segment to replay and loads from source. The install makes
+\ wordlists only through package rows, so every wordlist the file made must
+\ be one they own. The first segment's data alignment is checked here, when
+\ it opens the file; a later one's at its install. The answer names the
+\ first part it cannot replay, for the miss; empty when it can install the
+\ whole object.
 : UNSUPPORTED$ ( -- ptr u8 n )
-   OPEN-SEGS @ 1 <> if s" unsupported-segments" exit then
-   OPEN-LOADS @ 0<> if s" unsupported-loads" exit then
-   OPEN-REQS @ 0<> if s" unsupported-requires" exit then
+   OPEN-SEGS @ 0= if s" empty-file" exit then
    OPEN-SLOTS @ 0<> if s" unsupported-slots" exit then
    OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then
@@ -3552,9 +3892,9 @@ public
       if s" unsupported-import-pending" exit then
    OPEN-KINDS @ 1 RK-BARE lshift and 0<> if s" unsupported-bare" exit then
    OPEN-KINDS @ 1 RK-DEFER lshift and 0<> if s" unsupported-defer" exit then
-   OPEN-DATA @ 0<> OPEN-KINDS @ 1 RK-ADDR lshift and 0<> or
-   AOT-ARM:HERE-N 1 cells mod OPEN-REM @ <> and
-      if s" data-alignment" exit then
+   0 EVENT-KIND EV-SEGMENT = if
+      0 OBJ-EV 0 SEG-ALIGNED? 0= if s" data-alignment" exit then
+   then
    s" " ;
 
 \ This engine has every record writer the install block executes.

@@ -630,7 +630,9 @@ variable DIAG-START
    s" cut-cache" AT RUN-SAVED-IN SUCCESS REUSED
    s" cut-warm.err" AT ERR$ WRITE-ALL
    ERR$ s" native-file: refused" CONTAINS? TFALSE
-   ERR$ s"  defs=2 " CONTAINS? TTRUE
+   \ A reused app.f prints no object line; its record count proves the cut
+   \ dropped CUT-OLD (a leftover gives records=3).
+   ERR$ s"  records=2 " CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
    0 DIAG? ! ;
 

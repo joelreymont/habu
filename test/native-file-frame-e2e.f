@@ -109,6 +109,8 @@ variable MOVED
    s" con-dep.f" LOAD+
    S\" s\" con=\" type CON-USE . cr\n" IN+
    S\" s\" dep=\" type CON-DEP . cr\n" IN+
+   s" rp.f" LOAD+
+   S\" s\" rp=\" type RP-B . cr\n" IN+
    s" w.f" LOAD+
    S\" s\" w=\" type wordlist W - . s\" k=\" type K . cr\n" IN+
    S\" 0 set-tier\n" IN+
@@ -494,6 +496,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ con-dep.f compiles against con.f's records, installed on a warm build.
    \ It loads con.f itself: an earlier top-level load's records have no key.
    s" con-dep.f" S\" require con.f\n: CON-DEP ( -- n ) CON-USE 1+ ;\n" PUT
+   \ rp.f requires rc.f between its two definitions: its object holds two
+   \ segments and the load between them.
+   s" rc.f" S\" : RC-N ( -- n ) 2 ;\n" PUT
+   s" rp.f" S\" : RP-A ( -- n ) 1 ;\nrequire rc.f\n: RP-B ( -- n ) RP-A RC-N + ;\n" PUT
    \ w.f makes a wordlist no package record owns: the next one is W's next.
    s" w.f" S\" wordlist constant W\n3 constant K\n" PUT
    \ tier0.f loads at tier 0, where an install's writers do not run.
@@ -683,8 +689,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ package, so the checker mark refuses it first; scope-exit would too. The
    \ builder made that package between loads, so its frame cannot name it.
    s" pkgc.f" S\" ;package\n" PUT
-   \ pkgload.f requires pkgchild.f inside its package, so the checker cannot
-   \ mark either file's start.
+   \ pkgload.f requires pkgchild.f inside its package: the checker cannot mark
+   \ the child's start, and the replay would load the child in the scope
+   \ pkgload.f began in, so the load refuses pkgload.f first.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
    \ newtype.f declares a type family beside a package record: the record
@@ -884,7 +891,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" multi.f" s"  reason=" LINE$ s" multi.f reason=checker-export" T$=
    s" a file loaded inside a package refuses the checker mark" T-LABEL
    s" pkgchild.f" s"  reason=" LINE$ s" pkgchild.f reason=checker-mark" T$=
-   s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=checker-mark" T$= ;
+   s" a file that loads a child in another scope than it began in has no object" T-LABEL
+   s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=scope-at-load" T$=
+   s" pkgload.f" NO-OBJECT ;
 
 \ Effects on state below the file's own DATA: kernel cells, an earlier
 \ top-level load's records and its DATA, and the loader's package.
@@ -1131,11 +1140,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" aftone.f" REUSED s" aftrun.f" REUSED
    s" a warm build installs newtype.f with the type family it declares" T-LABEL
    s" newtype.f" REUSED
-   s" con-dep.f, which requires con.f, misses by name, binds the installed records and writes its object" T-LABEL
+   s" con-dep.f, which requires con.f, replays its object over con.f's installed records" T-LABEL
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
-   s" con-dep.f" s"  reason=" LINE$ s" con-dep.f reason=unsupported-segments" T$=
-   s" con-dep.f" DEFS$ s" 1" T$=
-   s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U @ T$=
+   s" con-dep.f" REUSED
+   s" a warm build replays rp.f, which requires rc.f between its definitions" T-LABEL
+   OUT$ S\" rp=3\n" CONTAINS? TTRUE
+   s" rc.f" REUSED s" rp.f" REUSED
    s" a warm build compiles w.f, whose wordlist no package record owns" T-LABEL
    OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
    ERR$ s" /w.f records=" CONTAINS? TFALSE
@@ -1253,6 +1263,19 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ret-use.f" s"  reason=" LINE$ s" ret-use.f reason=name-live word=RET-USER" T$=
    ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
 
+\ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
+\ the replay has installed RP-A and loaded rc.f, so the build stops with
+\ E-NUNIT-PROFILE (a stale later segment is not yet cut and compiled).
+: RC-INTERFACE ( -- )
+   s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
+   s" an effect edit of rc.f stops rp.f's replay at its stale second segment" T-LABEL
+   PROBE
+   s" rc-interface-out.log" OUT$ PUT
+   s" rc-interface-err.log" ERR$ PUT
+   0 T<>
+   ERR$ s" -8597" CONTAINS? TTRUE
+   OUT$ s" rp=" CONTAINS? TFALSE ;
+
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
    {: line:ptr lineu:n buf:ptr bufu:ptr :}
@@ -1302,6 +1325,9 @@ public
    OUT$ S\" pce=0\n" CONTAINS? TTRUE
    s" pcf.f" KEY$ STORED s" pcz.f" KEY$ STORED s" pcd.f" KEY$ STORED s" pce.f" KEY$ STORED
    s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U KEEP-LINE
+   s" a cold build runs rp.f and stores the objects of rp.f and rc.f" T-LABEL
+   OUT$ S\" rp=3\n" CONTAINS? TTRUE
+   s" rp.f" KEY$ STORED s" rc.f" KEY$ STORED
    OTHER-LOADER
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
    PROBE SUCCESS WARM-CHECKS
@@ -1325,7 +1351,13 @@ public
    s" wra.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
    \ wca.f now selects libz, which wcb.f's PREPARE keeps.
    s" wca.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
+   \ RC-N's new body keeps its effect: rp.f's rows do not read it.
+   s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
    s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" a body edit of rc.f compiles rc.f and replays rp.f around it" T-LABEL
+   OUT$ S\" rp=3\n" CONTAINS? TTRUE
+   ERR$ s" /rc.f records=" CONTAINS? TFALSE
+   s" rp.f" REUSED
    s" a byte allotted before dv.f misses its object and loads it as a cold build" T-LABEL
    s" dv.f" s"  reason=" LINE$ s" dv.f reason=data-alignment" T$=
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
@@ -1394,6 +1426,7 @@ public
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    COLD-CON
    LOADER-FIRST
+   RC-INTERFACE
    T-REPORT
    s" file frame artifacts: " type ROOT$ type cr ;
 
