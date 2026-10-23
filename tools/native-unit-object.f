@@ -160,9 +160,10 @@ private
 4 constant EV-FFI-FN
 5 constant EV-FFI-SCOPE
 \ Last of the rows after a SEGMENT row whose segment moved TASK's user-slot
-\ watermark, before its OUT row: the watermark at its open, which the slot offsets it baked assume, and at
-\ its close, which a replay leaves. A segment that leaves it in place has
-\ none, so a parent is not charged with the slots its children took.
+\ watermark, before its OUT row: the watermark at its open, which the slot
+\ offsets it baked assume, and at its close, which a replay leaves. A
+\ segment that leaves it in place has none, so a parent is not charged with
+\ the slots its children took.
 6 constant EV-TASK
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
@@ -828,6 +829,7 @@ private
    AOT-ARM:WIDN FO-SEG-WID FO !
    0 IMAGE-U ! 0 KCELLS-HELD !
    USER-MARK if 1 else 0 then FO-SEG-USER-BOUND FO ! FO-SEG-USER FO !
+   0 NUNIT-DEP:USER-READ !
    FFI-BOUND? 0= if exit then
    s" FFI:NEXT-FN" FFI-N FO-SEG-FN FO !
    s" FFI:MARK" FFI-N FO-SEG-ROOM FO !
@@ -925,12 +927,13 @@ private
 \ address cell row removed below the segment's first refuses it. The row
 \ records the values of its first and last address cell rows, which the
 \ file's encoding checks again; a segment that moved TASK's user-slot
-\ watermark, either way, adds its TASK row. The earlier DATA bytes the
-\ segment changed are recorded whether or not it adds a row; a kernel cell it
-\ left changed refuses it. Output its top level wrote adds an OUT row after
-\ the rest.
+\ watermark, either way, or ran a reader of it adds its TASK row. The earlier
+\ DATA bytes the segment changed are recorded whether or not it adds a row; a
+\ kernel cell it left changed refuses it. Output its top level wrote adds an
+\ OUT row after the rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
+   NUNIT-DEP:USER-READ @ 0<>  0 NUNIT-DEP:USER-READ ! {: read:bool :}
    FO-SEG-ORD FO @ {: first:n :}
    ndict@ first - {: count:n :}
    count 0 < if BAD then
@@ -950,15 +953,18 @@ private
          s" slots-rewound" FILE-REFUSE exit
       then
    then
+   \ A segment that ran a TASK watermark reader or moved the watermark, with
+   \ TASK bound at its open and close, records it; a read leaves exit = entry.
    FO-SEG-USER FO @ {: entry:n :}
    USER-MARK {: user:n bound:bool :}
-   bound FO-SEG-USER-BOUND FO @ 1 = and user entry <> and {: moved:bool :}
+   bound FO-SEG-USER-BOUND FO @ 1 = and
+      user entry <> read or and {: task:bool :}
    KCELLS-CHECK
    FILE-REFUSED? 0= if IMAGE-DIFF then
    FFI-BOUND? if FFI-SEG-CK else false then {: sel:bool :}
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= OBS-N @ 0= and sel 0= and
-      moved 0= and if first OUTPUT-ROW+ exit then
+      task 0= and if first OUTPUT-ROW+ exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
@@ -975,7 +981,7 @@ private
       bytes SEG-DATA-U +!
    then
    first sel FFI-ROWS+
-   moved if EV-TASK first entry user 0 0 0 0 0 EV+ then
+   task if EV-TASK first entry user 0 0 0 0 0 EV+ then
    first OUTPUT-ROW+ ;
 
 \ The end of open file k's event rows, where the next frame's begin.
@@ -4407,8 +4413,8 @@ public
 
 \ Whether TASK's user-slot watermark stands where segment row seg's TASK
 \ row found it at the segment's open: the slot offsets the segment baked
-\ assume it. A segment that left the watermark in place has no row and
-\ holds.
+\ assume it. A segment that neither read nor moved the watermark has no row
+\ and holds.
 : TASK-ROW-HOLDS? ( n -- bool )
    TASK-ROW {: row:n :}
    row 0 < if true exit then

@@ -97,6 +97,7 @@ public
    s" REQUIRE-REG:LEN" true BIND-ONE
    s" REQUIRE-REG:SLOT" true BIND-ONE
    s" TASK:OWNED-USER-NEXT" true BIND-ONE
+   s" TASK:OWNED-USER-READERS" true BIND-ONE
    \ The storage owners a FILE object's DATA scan and updates skip.
    s" NSTR:CELL-SPANS" true BIND-ONE
    s" NSTR:OWNER-ROW" true BIND-ONE

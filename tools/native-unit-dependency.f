@@ -555,6 +555,10 @@ variable RUN-CLASS-XT
 CAST: AS-CLASS ( n -- [ -- n ] )
 variable FACTS-XT
 CAST: AS-FACTS ( n -- [ -- n bool ] )
+variable READERS-XT
+CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
+variable READ-AT
+variable READ-HIT
 
 \ The checker's unit-export fact count, -1 when the owner answers none.
 : FACTS ( -- n )
@@ -635,6 +639,20 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
    ord PRIM-REACH 0<> if 3 exit then
    ord ENGINE-HELPER? if 3 exit then
    0 ;
+
+\ Whether seed record ord is a word TASK names a reader of its user-slot
+\ watermark (TASK:OWNED-USER-READERS), matched by the execution token TASK
+\ hands out. READ-AT and READ-HIT carry the match into READER-MATCH and rest
+\ at 0 after it.
+: READER-MATCH ( n -- ) READ-AT @ = if 1 READ-HIT ! then ;
+: USER-READER? ( n -- bool )
+   {: ord:n :}
+   READERS-XT @ {: xt:n :}
+   xt 0= if false exit then
+   ord XREF-REC XREF-START READ-AT !
+   0 READ-HIT !
+   ['] READER-MATCH xt AS-READERS execute
+   READ-HIT @ 0<>  0 READ-AT !  0 READ-HIT ! ;
 
 \ The refusal a reached member's host reason names; an admitted one has none.
 : REASON-WHY$ ( n -- ptr u8 n )
@@ -1448,6 +1466,11 @@ DEFAULT-OUT
 
 public
 
+\ Whether the open segment ran a TASK watermark reader that RUN-JUDGE
+\ accounted: NUNIT-OBJECT clears it when a segment opens and, at its close,
+\ records the watermark the segment read.
+variable USER-READ
+
 \ The running checker owner's CHECKER-OWNER:RESOLUTION-TOP, bound for the
 \ session by the definition cache before it installs the run observer, and 0
 \ after. A build tool resolves names against its host engine, which may predate
@@ -1519,7 +1542,8 @@ public
 \ object does not carry, as `.(` reads its text. `data-base`
 \ refuses, so a file aligning with `here data-base - negate 7 and allot`
 \ refuses where `align` stores. A deliberate offset below the floor computed
-\ from `here` is outside this judgment.
+\ from `here` is outside this judgment. A run of a TASK watermark reader is
+\ accounted by the watermark its segment records (USER-READ).
 : RUN-JUDGE ( n -- )
    {: run:n :}
    SOURCE-EXEC:POSITION {: off:n balanced:bool :}
@@ -1533,8 +1557,9 @@ public
    facts 0 >= if FACTS facts <> if exit then then
    run R-CHILD RFIELD @ 0<> if exit then
    RUN-OUT run R-OUT RFIELD @ <> if exit then
-
-   s" run-unaccounted" run R-ORD RFIELD @ ORDERED-BY ;
+   run R-ORD RFIELD @ {: ord:n :}
+   ord USER-READER? if true USER-READ ! exit then
+   s" run-unaccounted" ord ORDERED-BY ;
 
 \ The source observer's after callback. A failed run fails the file. after(t)
 \ closes every ticket opened after t: those runs threw to a catch inside t's
@@ -1561,6 +1586,7 @@ public
    s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
    s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
    s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
+   s" TASK:OWNED-USER-READERS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT READERS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
    FDEPTH @ FRAME-CELLS * {: base:n :}

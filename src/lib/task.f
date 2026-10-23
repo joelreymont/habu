@@ -225,6 +225,9 @@ CAST: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n )
 \ below uses its declared empty stack effect.
 CAST: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] )
 
+\ A watermark reader's execution token, as OWNED-USER-READERS hands it out.
+CAST: READER>N ( [ -- n ] -- n )
+
 : TCB.XT ( ptr n -- ptr [ -- ] )
    TCB.XT-CELL TASK-CELL>XT-SLOT ;
 
@@ -2125,6 +2128,14 @@ TASK-MIN-STACK constant MIN-STACK
 : OWNED-USER-NEXT ( [ ptr u8 -- ] -- )
    {: claim :}
    TASK-USER-NEXT BYTE-VIEW claim execute ;
+
+\ The words whose answer is that watermark, each handed to claim as its
+\ execution token: a claimant that records the watermark a run read
+\ accounts for that run. The qualified tick names the public #USER; the bare
+\ one would name the private word it calls.
+: OWNED-USER-READERS ( [ n -- ] -- )
+   {: claim :}
+   ['] TASK:#USER READER>N claim execute ;
 
 \ A copied ROW-TABLE control points into its carried row allocation. The
 \ linker marks the copy so ordinary DATA relocation maps it to that copy.

@@ -8,7 +8,6 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
-require tools/image-size-lib.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 
@@ -16,17 +15,11 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-STATE-TEST
 
 $8000 constant CAP
-create EXPORT-PATH FS-PATH-CAP allot
-create IMPORT-PATH FS-PATH-CAP allot
 create FRESH-CACHE FS-PATH-CAP allot
 create FRESH-SOURCE FS-PATH-CAP allot
 DYNAMIC-BUFFER CUT u8  variable CUT-U
-DYNAMIC-BUFFER IMAGE-A u8
-DYNAMIC-BUFFER IMAGE-B u8
-variable EXPORT-U
-variable IMPORT-U
-variable CODE-A-O  variable CODE-A-U
-variable CODE-B-O  variable CODE-B-U
+DYNAMIC-BUFFER PRODUCT-A u8
+DYNAMIC-BUFFER PRODUCT-B u8
 create EXPECT 512 allot  variable EXPECT-U
 
 \ The diagnostic line head of file name's reuse.
@@ -36,6 +29,16 @@ create EXPECT 512 allot  variable EXPECT-U
    s" native-file: reused path=" EXPECT 512 EXPECT-U BUF-APPEND
    name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
    s"  records=" EXPECT 512 EXPECT-U BUF-APPEND
+   EXPECT EXPECT-U @ ;
+
+\ The diagnostic line of file name's miss for reason why.
+: MISS$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n why:ptr whyu:n :}
+   0 EXPECT-U !
+   s" native-file: miss path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  reason=" EXPECT 512 EXPECT-U BUF-APPEND
+   why whyu EXPECT 512 EXPECT-U BUF-APPEND
    EXPECT EXPECT-U @ ;
 
 : BUILD ( ptr u8 n -- n )
@@ -77,6 +80,37 @@ create EXPECT 512 allot  variable EXPECT-U
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    ERR$ s" expected: ptr a actual: ptr u8" CONTAINS? TTRUE ;
 
+\ root/a and root/b hold the same non-empty bytes. AT shares one path buffer,
+\ so each file is read before the other is named.
+: SAME-FILE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr au:n b:ptr bu:n :}
+   a au AT {: apath:ptr apathu:n :}
+   apath apathu FILE-SIZE {: asize:n :}
+   asize 0 > TTRUE
+   asize PRODUCT-A-RESERVE
+   apath apathu 0 PRODUCT-A asize READ-ALL asize T=
+   b bu AT {: bpath:ptr bpathu:n :}
+   bpath bpathu FILE-SIZE {: bsize:n :}
+   bsize asize T=
+   bsize PRODUCT-B-RESERVE
+   bpath bpathu 0 PRODUCT-B bsize READ-ALL bsize T=
+   0 PRODUCT-A asize 0 PRODUCT-B bsize STR= TTRUE ;
+
+\ root/product built from app.f with the empty cache root/cache of its own: it
+\ is the product a warm build of the same sources must equal.
+create COLD-CACHE FS-PATH-CAP allot  variable COLD-CACHE-U
+create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
+: COLD-BUILD ( ptr u8 n ptr u8 n -- n )
+   {: product:ptr productu:n cache:ptr cacheu:n :}
+   cache cacheu AT {: c:ptr cu:n :}
+   c cu MAKE-DIR
+   c COLD-CACHE cu BYTE-COPY cu COLD-CACHE-U !
+   s" app.f" AT {: a:ptr au:n :}
+   a COLD-SRC au BYTE-COPY au COLD-SRC-U !
+   COLD-SRC COLD-SRC-U @ product productu AT COLD-CACHE COLD-CACHE-U @
+      NATIVE-FILE-APP:BUILD
+   NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
+
 : TASK-FILES ( -- )
    s" cache" AT MAKE-DIR
    s" prefix.f"
@@ -114,9 +148,14 @@ create EXPECT 512 allot  variable EXPECT-U
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    \ app.f moves no TASK user slot itself: the slots its children take are
-   \ theirs, so it is reused.
+   \ theirs, so it is reused. prefix.f reads the watermark it moves, which
+   \ its TASK row records, so it is reused too.
    ERR$ s" app.f" REUSED$ CONTAINS? TTRUE
+   ERR$ s" prefix.f" REUSED$ CONTAINS? TTRUE
    s" task-warm-hb" RUN-TASK-STATE
+   s" task-fresh-hb" s" fresh-cache" COLD-BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" task-fresh-hb" s" task-warm-hb" SAME-FILE
    \ prefix.f and app.f change, and unit.f and downstream.f baked slot
    \ offsets the grown prefix moves: no file is reused.
    s" a grown prefix reservation moves the cached leaf slot" T-LABEL
@@ -206,61 +245,12 @@ create EXPECT 512 allot  variable EXPECT-U
    name nameu AT s" " CAPTURE SUCCESS
    OUT$ want wantu CONTAINS? TTRUE ;
 
-\ The comparisons read the product at EXPORT-PATH against the one at IMPORT-PATH.
-: PATH-A! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a EXPORT-PATH u BYTE-COPY u EXPORT-U ! ;
-: PATH-B! ( ptr u8 n -- )
-   {: b:ptr v:n :}
-   b IMPORT-PATH v BYTE-COPY v IMPORT-U ! ;
-: PAIR-PATHS ( -- ) s" cold-hb" AT PATH-A! s" warm-hb" AT PATH-B! ;
-
-\ Both products' whole files, read into IMAGE-A and IMAGE-B; leaves their sizes.
-: READ-PAIR ( -- n n )
-   EXPORT-PATH EXPORT-U @ FILE-SIZE {: asize:n :}
-   IMPORT-PATH IMPORT-U @ FILE-SIZE {: bsize:n :}
-   asize IMAGE-A-RESERVE
-   bsize IMAGE-B-RESERVE
-   EXPORT-PATH EXPORT-U @ 0 IMAGE-A BYTE-VIEW asize READ-ALL asize <> if E-FS-IO throw then
-   IMPORT-PATH IMPORT-U @ 0 IMAGE-B BYTE-VIEW bsize READ-ALL bsize <> if E-FS-IO throw then
-   asize bsize ;
-
-: SAME-CODE? ( -- bool )
-   EXPORT-PATH EXPORT-U @ IMAGE-SIZE:MEASURE
-   IMAGE-SIZE:CODE-BLOB-RANGE CODE-A-U ! CODE-A-O !
-   IMPORT-PATH IMPORT-U @ IMAGE-SIZE:MEASURE
-   IMAGE-SIZE:CODE-BLOB-RANGE CODE-B-U ! CODE-B-O !
-   CODE-A-U @ CODE-B-U @ <> if false exit then
-   READ-PAIR 2drop
-   0 IMAGE-A BYTE-VIEW CODE-A-O @ BYTE+ CODE-A-U @
-   0 IMAGE-B BYTE-VIEW CODE-B-O @ BYTE+ CODE-B-U @ STR= ;
-
-\ The two products' whole files are equal.
-: SAME-IMAGE? ( -- bool )
-   READ-PAIR {: asize:n bsize:n :}
-   0 IMAGE-A BYTE-VIEW asize 0 IMAGE-B BYTE-VIEW bsize STR= ;
-
 \ The first child's output, grown to its length; an empty one has no byte.
 : CUT! ( ptr u8 n -- )
    {: a:ptr u:n :}
    u CUT-U ! u 0= if exit then
    u CUT-RESERVE a 0 CUT u BYTE-COPY ;
 : CUT$ ( -- ptr u8 n ) CUT-U @ 0= if s" " exit then 0 CUT CUT-U @ ;
-
-\ root/product built from app.f with the empty cache root/cache of its own: it
-\ is the product a warm build of the same sources must equal.
-create COLD-CACHE FS-PATH-CAP allot  variable COLD-CACHE-U
-create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
-: COLD-BUILD ( ptr u8 n ptr u8 n -- n )
-   {: product:ptr productu:n cache:ptr cacheu:n :}
-   cache cacheu AT {: c:ptr cu:n :}
-   c cu MAKE-DIR
-   c COLD-CACHE cu BYTE-COPY cu COLD-CACHE-U !
-   s" app.f" AT {: a:ptr au:n :}
-   a COLD-SRC au BYTE-COPY au COLD-SRC-U !
-   COLD-SRC COLD-SRC-U @ product productu AT COLD-CACHE COLD-CACHE-U @
-      NATIVE-FILE-APP:BUILD
-   NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : DOES-CASE ( -- )
    s" a warm hit installs a does> definer byte-equal to cold" T-LABEL
@@ -274,7 +264,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    false NATIVE-FILE-APP:DIAG? !
    ERR$ s" /does.f records=" CONTAINS? TTRUE
    warm s" warm-hb" S\" 5\n7\n" RUN-DOES
-   cold warm or 0= if PAIR-PATHS SAME-IMAGE? TTRUE then
+   cold warm or 0= if s" cold-hb" s" warm-hb" SAME-FILE then
    \ The definer's clause starts later. The cold reference is built in the
    \ same tree, with a fresh cache, because a product records its source paths.
    s" an edited does> definer misses, and so does the file that executed it, giving cold's product and output" T-LABEL
@@ -284,20 +274,70 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    s" moved-cold-hb" s" moved-cache" COLD-BUILD dup SUCCESS {: ref:n :}
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    ref s" moved-cold-hb" S\" 6\n7\n" RUN-DOES
-   ref moved or 0<> if exit then
-   s" moved-cold-hb" AT PATH-A!
-   s" moved-hb" AT PATH-B!
-   SAME-IMAGE? TTRUE ;
+   ref moved or 0= if s" moved-cold-hb" s" moved-hb" SAME-FILE then ;
 
-: SAME-CUT? ( -- bool )
+\ first.f and later.f each read the TASK user-slot watermark and reserve a
+\ slot; saved.f only reads it, in its one segment. MAIN prints the distance
+\ from first.f's slot to later.f's, then saved.f's reading.
+: READ-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" first.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-READ-FIRST\npublic\nTASK:#USER CELL TASK:+USER SLOT-A drop\n;package\n" PUT
+   s" later.f"
+   S\" require first.f\npackage FILE-TASK-READ-LATER\npublic\nTASK:#USER CELL TASK:+USER SLOT-B drop\n;package\n" PUT
+   s" saved.f"
+   S\" package FILE-TASK-READ-SAVED\npublic\nTASK:#USER constant SAVED\n;package\n" PUT
+   s" app.f"
+   S\" require first.f\nrequire later.f\nrequire saved.f\n: MAIN ( -- ) FILE-TASK-READ-LATER:SLOT-B NULL-PTR - FILE-TASK-READ-FIRST:SLOT-A NULL-PTR - - . FILE-TASK-READ-SAVED:SAVED . ;\n" PUT ;
+
+: GROWN-FIRST ( -- )
+   s" first.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-READ-FIRST\npublic\nTASK:#USER CELL TASK:+USER SLOT-A drop\nTASK:#USER CELL TASK:+USER SLOT-A2 drop\n;package\n" PUT ;
+
+\ The product built with code succeeds and its first output line, newline
+\ included, is want: SAVED's digits on the next line cannot stand in for the
+\ distance. A failed build left no product to run.
+: RUN-READ ( n ptr u8 n ptr u8 n -- )
+   {: code:n exe:ptr exeu:n want:ptr wantu:n :}
+   code 0<> if exit then
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   EXPORT-PATH EXPORT-U @ s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ."
-      CAPTURE SUCCESS
-   OUT$ CUT!
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   IMPORT-PATH IMPORT-U @ s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ."
-      CAPTURE SUCCESS
-   CUT$ OUT$ STR= ;
+   exe exeu s" " CAPTURE SUCCESS
+   OUT$ want wantu STARTS-WITH? TTRUE ;
+
+: TASK-READ-CASE ( -- )
+   s" files that read the TASK watermark reuse while it stands" T-LABEL
+   s" native-file-task-read" TREE
+   READ-FILES
+   s" read-v1-hb" BUILD dup SUCCESS {: v1:n :}
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   v1 s" read-v1-hb" AT S\" 8\n" RUN-READ
+   s" app.f" AT S\" \\ task read comment\n" APPEND-FILE
+   true NATIVE-FILE-APP:DIAG? !
+   s" read-reuse-hb" BUILD dup SUCCESS {: reuse:n :}
+   false NATIVE-FILE-APP:DIAG? !
+   ERR$ s" first.f" REUSED$ CONTAINS? TTRUE
+   ERR$ s" later.f" REUSED$ CONTAINS? TTRUE
+   ERR$ s" saved.f" REUSED$ CONTAINS? TTRUE
+   reuse s" read-reuse-hb" AT S\" 8\n" RUN-READ
+   s" read-cold-hb" s" read-cold-cache" COLD-BUILD dup SUCCESS {: rcold:n :}
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   rcold reuse or 0= if s" read-cold-hb" s" read-reuse-hb" SAME-FILE then
+   \ The grown first.f leaves the watermark past the one later.f's TASK row
+   \ recorded at its entry: later.f misses before any install and runs, so
+   \ its slot follows both of first.f's. saved.f's row records the value it
+   \ read, so it misses too and reads the moved watermark.
+   s" a grown earlier reservation misses the later reader" T-LABEL
+   GROWN-FIRST
+   true NATIVE-FILE-APP:DIAG? !
+   s" warm-hb" BUILD dup SUCCESS {: warm:n :}
+   false NATIVE-FILE-APP:DIAG? !
+   ERR$ s" later.f" s" task-slots" MISS$ CONTAINS? TTRUE
+   ERR$ s" later.f" REUSED$ CONTAINS? TFALSE
+   ERR$ s" saved.f" s" task-slots" MISS$ CONTAINS? TTRUE
+   warm s" warm-hb" AT S\" 16\n" RUN-READ
+   s" cold-hb" s" cold-cache" COLD-BUILD dup SUCCESS {: cold:n :}
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   cold warm or 0= if s" cold-hb" s" warm-hb" SAME-FILE then ;
 
 \ Records with no compiled body of their own: lib.f declares casts, redef.f
 \ retires a word before its redefinition. app.f calls the public cast and the
@@ -399,9 +439,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    ERR$ s" native-file: reused path=" CONTAINS? TTRUE
    ERR$ s" lib.f records=" CONTAINS? TTRUE
    ERR$ s" redef.f reason=unsupported-retired" CONTAINS? TTRUE
-   PAIR-PATHS
-   SAME-CODE? TTRUE
-   SAME-CUT? TTRUE
+   s" cold-hb" s" warm-hb" SAME-FILE
    s" warm-hb" RUN-BARE
    s" the reused cast refuses a misuse as the cold one does" T-LABEL
    BARE-MISUSE
@@ -426,17 +464,15 @@ public
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
-   PAIR-PATHS
-   SAME-CODE? TTRUE
-   SAME-CUT? TTRUE
-   EXPORT-PATH EXPORT-U @ RUN-STATE
-   IMPORT-PATH IMPORT-U @ RUN-STATE
+   s" cold-hb" s" warm-hb" SAME-FILE
+   s" warm-hb" AT RUN-STATE
    FRESH-DOWNSTREAM
    s" fresh-hb" BUILD SUCCESS
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    s" fresh-hb" AT RUN-STATE
    REJECT-TYPED-CLIENT
    TASK-STATE-CASE
+   TASK-READ-CASE
    FFI-CASE
    HOOKS-CASE
    BARE-CASE
