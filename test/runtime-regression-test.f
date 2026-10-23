@@ -2320,6 +2320,23 @@ variable GE-KIND-N
 : GE-KIND-LABEL ( bool -- ptr u8 n )
    if s" closer kinds caught, checked" else s" closer kinds caught, unchecked" then ;
 
+\ The throw that ends a tier-1 load the native compiler refused.
+: GE-KIND-THROW+ ( n -- )
+   s" hb: uncaught throw code " SB-APPEND  FMT:SB-INT  GE-SB-LF ;
+
+\ At tier 1 the load ends at the first macro: the native elaborator has no
+\ rule for the quotation `catch` takes, so GEKC0 does not compile, rc 67, and
+\ no row runs.
+: GE-KIND-EVAL-T1 ( bool ptr u8 n -- )
+   {: chk:bool l:ptr lu:n :}
+   67 l lu GE-EXPECT-RC
+   s" " l lu GE-EXPECT-OUT
+   SB-RESET
+   chk if else s" habu: in gekc0: at 'evaluate'" SB-APPEND  GE-SB-LF then
+   s" ncomp: cannot compile GEKC0 at catch" SB-APPEND  GE-SB-LF
+   E-NELAB-QUOT GE-KIND-THROW+
+   SB$ l lu GE-EXPECT-ERR ;
+
 \ Every closer against every opener it neither closes nor continues, inside a
 \ caught evaluate at tier 0: each prints the catch code, 70, and its word
 \ maps 5 to 13. Then a `;` refused inside the evaluate that opened its
@@ -2346,6 +2363,7 @@ variable GE-KIND-N
    S\" 70\n6\n0\n" GE-KIND-WANT+
    GE-END-SAVE
    GE-END-TOP
+   tier@ 0<> if chk l lu GE-KIND-EVAL-T1 exit then
    l lu GE-EXPECT-OK
    GE-KIND-WANT GE-KIND-WANT-U @ l lu GE-EXPECT-OUT
    GE-KIND$ l lu GE-EXPECT-ERR-HAS
@@ -2368,6 +2386,59 @@ variable GE-KIND-N
    GE-SB-LF
    SB$ ;
 
+\ Tier 1's `does>` refusal: the token and GEKT's location.
+: GE-KIND-DOES-LINE$ ( bool -- ptr u8 n )
+   {: chk:bool :}
+   SB-RESET
+   s" does> at " SB-APPEND
+   GE-END-PATH GE-END-U @ SOURCE-ROOT:CANONICAL drop SB-APPEND
+   s" :" SB-APPEND
+   chk if 1 else 2 then FMT:SB-U
+   GE-SB-LF
+   SB$ ;
+
+\ The word tier 1 names for closer c: its token, or for `;` the `1+` before
+\ it, where the elaborator meets the open `if`.
+: GE-KIND-T1-AT ( n -- ptr u8 n )
+   dup 13 = if drop s" 1+" exit then
+   GE-KIND-TOK ;
+
+\ The native elaborator's throw for closer c: `;` finds no binding for the
+\ body, `;]` no quotation rule, `endof`, `endcase` and `of` no tag-dispatch
+\ form, and the rest no structure to close.
+: GE-KIND-T1-THROW ( n -- n )
+   {: c:n :}
+   c 13 = if E-NCOMP-BINDING exit then
+   c 12 = if E-NELAB-QUOT exit then
+   c 7 > if E-NELAB-MATCH exit then
+   E-NELAB-CTRL ;
+
+\ Closer c straight in a definition at tier 1. Checked, the hook refuses the
+\ body at the word, rc 70; unchecked, the native compiler refuses it, rc 67,
+\ and the load ends on its throw. `does>` fails its own signature, rc 76.
+: GE-KIND-TOP-T1 ( n bool -- )
+   {: c:n chk:bool :}
+   c GE-KIND-TOK {: t:ptr tu:n :}
+   c 11 = if
+      76 t tu GE-EXPECT-RC
+      chk GE-KIND-DOES-LINE$ t tu GE-EXPECT-ERR exit
+   then
+   chk if 70 else 67 then t tu GE-EXPECT-RC
+   c GE-KIND-T1-AT {: a:ptr au:n :}
+   SB-RESET
+   s" habu: in gekt: at '" SB-APPEND  a au SB-APPEND  s" '" SB-APPEND  GE-SB-LF
+   chk if
+      s" hook: non-certified definition: gekt at '" SB-APPEND
+      a au SB-APPEND  s" '" SB-APPEND  GE-SB-LF
+      s" ncomp: cannot compile GEKT" SB-APPEND  GE-SB-LF
+   else
+      s" ncomp: cannot compile GEKT" SB-APPEND
+      c 12 = if s"  at ;]" SB-APPEND then
+      GE-SB-LF
+      c GE-KIND-T1-THROW GE-KIND-THROW+
+   then
+   SB$ t tu GE-EXPECT-ERR ;
+
 \ Closer c straight in a definition at tier 0: rc 70, and the refusal naming
 \ its token is the whole of stderr.
 : GE-KIND-TOP ( n bool -- )
@@ -2378,6 +2449,7 @@ variable GE-KIND-N
    s" 5 GEKT ." GE-SRC-LINE
    GE-END-SAVE
    GE-END-TOP
+   tier@ 0<> if c chk GE-KIND-TOP-T1 exit then
    c GE-KIND-TOK {: t:ptr tu:n :}
    70 t tu GE-EXPECT-RC
    c 13 = if chk GE-KIND-SEMI-LINE$ t tu GE-EXPECT-ERR exit then
@@ -2390,6 +2462,9 @@ variable GE-KIND-N
       i true GE-KIND-TOP
       i false GE-KIND-TOP
    loop
+   tier@ 0<> if
+      s" PASS: a control-flow word whose open entry is another structure's is refused at tier 1" type cr exit
+   then
    s" PASS: a control-flow word whose open entry is another structure's is refused at its token at tier 0" type cr ;
 
 \ Source on stdin has no file to name: the same refusals, unlocated.
