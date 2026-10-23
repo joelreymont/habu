@@ -2,8 +2,9 @@
 \
 \ The same discipline as src/arch/arm32/asm.f and src/arch/arm64/asm.f: operands
 \ are nominal types, every encoder screens an operand BEFORE it packs a bit, and
-\ a refusal is this package's E-OPERAND. docs/embedded-encoders.md states the
-\ operand order these constructors share with the ARM32 and C66x sets.
+\ a refusal is this package's E-OPERAND. Operands come in the ARM32 and C66x
+\ sets' order: destination first, then sources, and a memory form takes the
+\ data register first and the memory operand second, stores included.
 \
 \ ONE DIFFERENCE FORCED BY THE ARCHITECTURE. An ARM32, ARM64 or C66x instruction
 \ IS a 32-bit value, so those files encode to a value and a separate layer
@@ -63,7 +64,8 @@ E-X64ASM-OPERAND constant E-OPERAND
 \ `mov r64, imm64` is REX.W B8+r io, and its REX byte is always present, so the
 \ eight immediate bytes always begin at this offset from the first byte of the
 \ instruction. It is the one relocatable literal form the x86_64 design names
-\ (docs/x86-64.md), and the relocation writer patches at this offset.
+\ (docs/xcomp.md "Machine model"), and the relocation writer patches at this
+\ offset.
 2 constant MOV-RI64-IMM-OFF
 
 \ `call rel32` is E8 cd and `jmp rel32` E9 cd, with no prefix, so the

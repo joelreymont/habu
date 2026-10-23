@@ -1,8 +1,10 @@
-\ sign2.fs — ad-hoc self-signing post-pass for the FULL Mach-O builder (macho.fs):
-\ insert LC_CODE_SIGNATURE into header slack, grow
-\ __LINKEDIT, append a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
-\ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN@/LE-OFF in place.
-\ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.
+\ sign2.f - the ad-hoc signing post-pass for src/os/macos/macho.f's images:
+\ CODESIG2 inserts LC_CODE_SIGNATURE into the header slack, grows __LINKEDIT
+\ and appends a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
+\ (version $20400, adhoc, one SHA-256 hash per $1000-byte page, a partial last
+\ page hashed at its length). It works in place on MBUF, MLEN and LE-OFF once
+\ SHA256 (src/core/sha256.f, in the engine) and macho.f are loaded. Signature
+\ integers are big-endian; the header patches little-endian.
 PTR-VARIABLE SIGA  variable SIGU
 : SIGA@ ( -- ptr u8 )
    SIGA @ ;

@@ -1,12 +1,13 @@
 \ kernel.f - WKERNEL, the engine primitives a Wasm module calls: the six whose
 \ bodies read or write the context, hand-built as WSTRUCT functions, and the map
 \ from each engine-prefix name a module may call to its provider, one of those
-\ rows or a word of src/arch/wasm/kernel-words.f (docs/wasm-backend.md 10.1).
+\ rows or a word of src/arch/wasm/kernel-words.f (docs/xcomp.md "Linking").
 \
 \ THE ROWS. ENCODE builds them as one module under WBACK's binding, so the Wasm
 \ backend is installed first, and leaves it as WENC's emission
 \ (src/arch/wasm/encode.f): function k is the row the map answers as k. Each
-\ takes the Habu call's row (section 7.1) with the lanes its primitive has.
+\ takes the Habu call's row (select.f THE CALL) with the lanes its primitive
+\ has.
 \ - emit ( c -- ) stores c's low byte at WPROF's OUT base plus ctx.out-len and
 \   counts it; with OUT full it traps instead.
 \ - depth ( -- n ) answers the cells from ctx.stack-base to ctx.stack-top: the

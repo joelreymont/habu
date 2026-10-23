@@ -1,6 +1,6 @@
 \ dynamic.f - WDYN, the Wasm backend's dynamic calls: the adapter that puts a
 \ function of the link in a table slot, and the runtime functions execute and
-\ catch that call through one (docs/wasm-backend.md 7.2, 8.1, 9).
+\ catch that call through one (docs/xcomp.md "Calls", "Execution tokens").
 \
 \ AN XT IS A TABLE SLOT. ADAPTER+ gives a function of the link an adapter of
 \ type (i32 ctx) -> (i32 status), puts it in the table's next slot and answers
@@ -27,8 +27,8 @@
 \ function, and on a slot past the table. execute answers the adapter's
 \ status. catch answers 0: it restores the depth it began with less the xt,
 \ and pushes the code, the full 64-bit ctx.throw-code after a status 1 and zero
-\ after a 0. A trap passes through both (section 8.2), and restoring the depth
-\ restores no cell a throw overwrote (8.1).
+\ after a 0. A trap passes through both, and restoring the depth restores no
+\ cell a throw overwrote (docs/xcomp.md "Exceptions and fatal failures").
 \
 \ Each body is Wasm written here through WENC's opcode bytes, as WLINK writes
 \ its wrappers: none is selected from HIR, and WENC refuses call_indirect.

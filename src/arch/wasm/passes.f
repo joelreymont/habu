@@ -8,7 +8,7 @@
 \ module NBACK:FREEZE froze, and ends in EMIT-UNPLACED (src/compiler/native/
 \ compiler.f SHADOW-WORK). DECLARE and SELECT are WSEL's: SELECT selects into a
 \ fresh WSTRUCT builder and freezes it with WSTRUCT:FREEZE, the full
-\ IR-BUILD:FREEZE (docs/wasm-backend.md 17.2). The lowering FIXPOINT
+\ IR-BUILD:FREEZE (src/arch/wasm/wstruct.f). The lowering FIXPOINT
 \ hands that module back as it is: Wasm has no registers to allocate and no
 \ spills to lower, and rebuilding renumbers values. EMIT is refused, as there
 \ is no placed Wasm emission.

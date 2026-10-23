@@ -1,10 +1,26 @@
-\ macho.fs — the FULL Mach-O builder for the native engine: header + 6 load
-\ commands (PAGEZERO, TEXT+__text, LINKEDIT,
-\ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, and TEXT sized
-\ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
-\ The self-rebuild gate proves deterministic output. Code comes from icode's CODE.
-\ Snapshot extras name the staged DATA_CONST/fixups tail and its derived byte size.
-\ Retirement: habu-campaign-c2-mem-c3d7662b.
+\ macho.f - the Mach-O writer for macOS ARM64: the canonical unsigned image of
+\ the program in icode's CODE (BUILD-IMAGE) or of a snapshot (BUILD-SNAP-HDR),
+\ which src/os/macos/sign2.f then signs ad hoc.
+\
+\ DYNAMIC, WITH NO C. AMFI kills a static arm64 executable, so the image is
+\ dyld-loaded and links libSystem, yet its code is all emitted machine code.
+\ The header is MH_EXECUTE for ARM64 with NOUNDEFS, DYLDLINK, TWOLEVEL and,
+\ while PIE? is set, PIE. The load commands, in order: __PAGEZERO, 4 GiB with
+\ no file bytes; __TEXT at VMBASE, sized to its content in 16 KB pages, __text
+\ at CODE-OFF; __DATA_CONST, whose __got holds the two cells dyld binds to
+\ libSystem's _dlopen and _dlsym (src/os/macos/layout.f DLOPEN-SLOT,
+\ DLSYM-SLOT), then the stripped DATA payload; __LINKEDIT, the chained-fixups
+\ blob, which the signer grows; LC_DYLD_CHAINED_FIXUPS, whose starts name the
+\ __DATA_CONST segment offset so dyld rewrites the GOT before LC_MAIN runs;
+\ /usr/lib/dyld; LC_MAIN at CODE-OFF; libSystem; and two Homebrew runpaths.
+\ sign2.f adds LC_CODE_SIGNATURE in the header slack.
+\
+\ DETERMINISTIC. The self-rebuild gate compares successive images, so none
+\ carries LC_UUID, a timestamp or another optional command a clang link adds
+\ (exports trie, symbol tables, build and source version, function starts,
+\ data in code). A snapshot stages its __DATA_CONST and fixups tail in MBUF at
+\ CODE-OFF, but the fixups name the final segment offset, so dyld binds the
+\ mapped page.
 \ Mach-O constants
 require src/arch/arm64/icode.f
 using A64ICODE

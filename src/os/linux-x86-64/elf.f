@@ -10,7 +10,7 @@
 \ segments: this image maps its code region by PT_LOAD, where the aarch64 boot
 \ maps it itself, and carries DATA's initialized bytes in a read-only PT_LOAD
 \ at the region's end, which the boot copies into the DATA it maps itself, as
-\ the aarch64 boot does (docs/x86-64.md "Fixed segments"). Its six program
+\ the aarch64 boot does (docs/xcomp.md "Fixed segments"). Its six program
 \ headers end at $190, so the metadata behind them starts there and not at the
 \ aarch64 writer's $120.
 \ Everything else here is ELF64 format, and reads the same under both machines.

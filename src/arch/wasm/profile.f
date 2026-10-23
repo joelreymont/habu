@@ -17,7 +17,7 @@ public
    s" multi-value,saturating-float-to-int,bulk-memory" ;
 
 \ The most input and output lanes a direct call passes; past either a function
-\ takes the aligned frame (docs/wasm-backend.md section 7.3).
+\ takes the aligned frame (docs/xcomp.md "Calls").
 16 constant PARAMS-MAX
 16 constant RESULTS-MAX
 
@@ -25,7 +25,7 @@ public
 $10000 constant PAGE-BYTES
 $10000 constant PAGES-MAX
 
-\ Section 17.5's layout: null [0,$10000), ctx [$10000,$11000), output
+\ The memory32 layout: null [0,$10000), ctx [$10000,$11000), output
 \ [$11000,$21000), data stack [$21000,$31000), the single-task DATA ABI
 \ region after it, then the captured static image. The DATA region covers the
 \ shared layout's complete reserved band through DATA-START. Dynamic mappings

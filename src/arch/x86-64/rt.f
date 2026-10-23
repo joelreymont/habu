@@ -73,7 +73,7 @@ public
 \ Entered with rdi the OUT-CELL index, rsi the span and rdx its length; it
 \ writes fd 1 while GENIO-ABI:BUSY-CELL is set, for an index past DEVICES and
 \ for a device row that is empty, and otherwise calls the row's xt with the
-\ span on the data stack (docs/x86-64.md "Engine-state rows").
+\ span on the data stack (src/habu/kernel-x64.f (GENIO-OUT)).
 variable LGENIOOUT
 
 \ Write the span rsi, rdx to the current output device: the twin of G-OUT.

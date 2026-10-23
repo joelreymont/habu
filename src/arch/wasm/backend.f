@@ -36,7 +36,7 @@ public
 
 \ The binding a Wasm definition compiles under. Overflow wraps, as i64 add,
 \ sub and mul do, and the selector refuses a trapping unit; reals are IEEE 754,
-\ bit-exact, with contraction forbidden (docs/wasm-backend.md 8.4).
+\ bit-exact, with contraction forbidden (docs/xcomp.md "Floating point").
 : BINDING ( -- CBIND:binding )
    CTARGET-ARCH:WASM CTARGET-ABI:HABU-WASM-CELL64-V1 CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS32
