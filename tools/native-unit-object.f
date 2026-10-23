@@ -1612,20 +1612,16 @@ variable DEF-HELD-SIZE
    history-rc E-IR-BUILD-SERIALS = or if BAD then
    history-rc 0<> if history-rc throw then ;
 
-\ The most bytes one literal pool row holds: a pool segment's arena.
-: POOL-CAP ( -- n )
-   0 s" NSTR:SOURCE-SPAN" DEF-TARGET DEF-SOURCE-XT execute nip ;
-
 \ Literal row number row at off in the literal section: its byte length,
-\ within the section and the pool's capacity, and the first row with the
-\ same address, within bounds.
+\ within the section, and the first row with the same address, within
+\ bounds.
 : LIT-ROW ( ptr u8 n n n -- n n )
    {: src:ptr size:n off:n row:n :}
    size off - 16 < if BAD then
    src off + LE:U64@ {: bytes:n :}
    src off 8 + + LE:U64@ {: first:n :}
    first 0 < first row > or if BAD then
-   bytes 0 < bytes size off 16 + - > or bytes POOL-CAP > or if BAD then
+   bytes 0 < bytes size off 16 + - > or if BAD then
    bytes first ;
 
 : DEF-READ-LITERALS ( -- )
@@ -2996,7 +2992,7 @@ private
       {: off:n :}
       reqsu off - 8 < if BAD then
       reqs off + LE:U64@ {: len:n :}
-      len 0 <= len PATH-CAP > or len reqsu off - 8 - > or if BAD then
+      len 0 <= len reqsu off - 8 - > or if BAD then
       off 8 + len +
    loop
    reqsu <> if BAD then ;
