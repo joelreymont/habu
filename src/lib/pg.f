@@ -34,6 +34,30 @@
 \ OUTCOME; CONNECT's `refused` text lasts until the next CONNECT; TEXT$ and
 \ NAME$ answer libpq's memory, valid until CLEAR.
 \
+\ DESCRIBE prepares a text as the unnamed statement and describes it without
+\ running it: the result answers COLS, NAME$ and OID (the column's type)
+\ and has no rows. A SQL rejection is its `failed` outcome, as for EXEC. It
+\ takes no parameters (a pending list is E-STATEMENT) and replaces the
+\ connection's unnamed statement; only DESCRIBE names that statement, since
+\ PREPARE and EXEC-PREPARED refuse an empty name.
+\
+\ DEADLINE! bounds every later EXEC, SCRIPT, PREPARE, EXEC-PREPARED, DESCRIBE
+\ and transaction verb on the connection: each operation's whole wait ends that
+\ many milliseconds after it starts, and 0, the default, sets no bound; a bound
+\ outside 0..$7FFFFFFF ms is E-BOUND. CONNECT and AWAIT are not bounded. On
+\ expiry the connection closes and the operation throws E-DEADLINE. While a
+\ connection's bound is nonzero, every close but an explicit CLOSE and image
+\ preparation (FORGET-HANDLES), which still send the native cancel - expiry, a
+\ transport or readiness failure, an exception caught while waiting, a failed
+\ ROLLBACK under a body's throw - finishes it WITHOUT the cancel, since a
+\ cancel to an unreachable server would stretch the bound, and the primary
+\ exception stands. The server may go on running the abandoned statement: its
+\ own statement_timeout bounds that work. A WITH-TRANSACTION whose body closed
+\ the connection rethrows without a ROLLBACK, and one whose body returned on a
+\ closed connection is E-HANDLE. One whose ROLLBACK fails after the body threw
+\ closes the connection, whose transaction state is then unknown, and rethrows
+\ the body's code.
+\
 \ EXEC runs exactly one statement on the extended protocol. SCRIPT runs several
 \ on the simple-query protocol, which takes no parameters (a pending list is
 \ E-STATEMENT) and runs them as one implicit transaction: a failing statement
@@ -75,6 +99,10 @@ require src/lib/fork-child.f
 \ beside the package its codes belong to (docs/forth-card.md § 6).
 -9250 constant E-PG-FIRST
 -9259 constant E-PG-LAST
+\ That block is full, so PG's later codes take a second, separately named
+\ region, -9560..-9569, the decade after OS-CPU (src/lib/errors.f).
+-9560 constant E-PG-GROWTH-FIRST
+-9569 constant E-PG-GROWTH-LAST
 
 package PG
 
@@ -90,6 +118,8 @@ public
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
+-9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
+-9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms
 
 NEWTYPE connection
 NEWTYPE result
@@ -160,6 +190,9 @@ $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 -1 constant NO-CONN                       \ RES-CONN of a free or half-claimed slot
 10 constant DEC-BASE
 $30 constant DIGIT-ZERO
+0 constant NO-DEADLINE                    \ an operation on a connection with no bound
+1000000 constant NS-PER-MS
+$7FFFFFFF constant WAIT-MAX               \ the longest bound, in ms: the longest a readiness poll takes
 
 TYPED-VARIABLE CONN-CAPACITY n
 TYPED-VARIABLE RESULT-CAPACITY n
@@ -184,6 +217,7 @@ DYNAMIC-BUFFER CONN-PARAM-OFF n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-MESSAGE n
 DYNAMIC-BUFFER CONN-SQLSTATE n
+DYNAMIC-BUFFER CONN-BOUND n
 
 DYNAMIC-BUFFER RES-PG ptr u8
 DYNAMIC-BUFFER RES-GEN n
@@ -229,6 +263,8 @@ FUNCTION: LIB-SEND-PREPARE PQsendPrepare
    ( ptr u8 ptr u8 ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SEND-QUERY-PREPARED PQsendQueryPrepared
    ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: LIB-SEND-DESCRIBE-PREPARED PQsendDescribePrepared
+   ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FLUSH PQflush ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-CONSUME-INPUT PQconsumeInput ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- i32 ) ;FUNCTION
@@ -238,6 +274,7 @@ FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNC
 FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-FTYPE PQftype ( ptr u8 n -- u32 ) ;FUNCTION
 FUNCTION: LIB-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- i32 ) ;FUNCTION
@@ -323,6 +360,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
 : SQLSTATE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-SQLSTATE-U @ ;
 : SQLSTATE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-SQLSTATE-U ! ;
+: BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
+: BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
 
 : VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
 : MESSAGE-BUF ( n -- ptr u8 ) {: slot:n :}
@@ -598,6 +637,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-VERB-RELEASE
    CONN-MESSAGE-RELEASE
    CONN-SQLSTATE-RELEASE
+   CONN-BOUND-RELEASE
    RES-PG-RELEASE
    RES-GEN-RELEASE
    RES-LIVE-RELEASE
@@ -628,6 +668,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP MESSAGE-CAP * CELL / CONN-MESSAGE-RESERVE
    CONN-CAP SQLSTATE-LEN * CELL 1- + CELL / CONN-SQLSTATE-RESERVE
+   CONN-CAP CONN-BOUND-RESERVE
    RESULT-CAP RES-PG-RESERVE
    RESULT-CAP RES-GEN-RESERVE
    RESULT-CAP RES-LIVE-RESERVE
@@ -735,6 +776,7 @@ REGISTER-CHILD-RESET
    0 slot CONN-TX!
    0 slot MESSAGE-U!
    0 slot SQLSTATE-U!
+   0 slot BOUND!
    slot RESET-PARAMS ;
 
 
@@ -772,9 +814,11 @@ REGISTER-CHILD-RESET
    0 slot RES-LIVE! ;
 
 
-: CLOSE-SLOT ( n -- n )
+\ Clears the connection's results and finishes it. A pending statement gets no
+\ cancel here: CLOSE-SLOT sends one first, ABANDON-SLOT on a bounded connection
+\ does not.
+: FINISH-SLOT ( n -- )
    {: slot:n :}
-   slot ['] CANCEL-PENDING catch nip {: code:n :}
    RESULT-CAP 0 ?do
       i RES-LIVE@ 0<> i RES-CONN@ slot = and if
          i RES-PG@ LIB-CLEAR
@@ -783,8 +827,23 @@ REGISTER-CHILD-RESET
    loop
    slot DRAIN-LAST@ NULL-ADDR? 0= if slot DRAIN-LAST@ LIB-CLEAR then
    slot CONN-PG@ LIB-FINISH
-   slot RETIRE-CONN-SLOT
+   slot RETIRE-CONN-SLOT ;
+
+
+: CLOSE-SLOT ( n -- n )
+   {: slot:n :}
+   slot ['] CANCEL-PENDING catch nip {: code:n :}
+   slot FINISH-SLOT
    code ;
+
+
+\ A close the caller did not ask for, made under another failure that stays
+\ primary. A bounded connection gets no native cancel, which could block on an
+\ unreachable server past the bound.
+: ABANDON-SLOT ( n -- )
+   {: slot:n :}
+   slot BOUND@ 0<> if slot FINISH-SLOT exit then
+   slot CLOSE-SLOT drop ;
 
 
 \ ---- server diagnostics ---------------------------------------------------
@@ -838,7 +897,7 @@ REGISTER-CHILD-RESET
 
 : FAIL-CONNECTION ( n -- ) {: slot:n :}
    slot COPY-CONN-MESSAGE
-   slot CLOSE-SLOT drop ;                    \ the transport error stays primary
+   slot ABANDON-SLOT ;
 
 
 : WAITING ( n n -- progress ) {: slot:n events:n :}
@@ -916,25 +975,47 @@ REGISTER-CHILD-RESET
    slot POLL-QUERY ;
 
 
+\ ---- wait deadlines -------------------------------------------------------
+\ An operation's deadline on the monotonic clock, fixed when it starts so one
+\ bound covers every wait the operation makes.
+: OP-DEADLINE ( n -- n )
+   {: slot:n :}
+   slot BOUND@ {: bound:n :}
+   bound 0= if NO-DEADLINE exit then
+   mono-ns bound NS-PER-MS * + ;
+
+
+\ The poll timeout left, rounded up to a whole millisecond so the poll cannot
+\ end before the deadline. A deadline already passed is E-DEADLINE.
+: REMAINING ( n -- ms )
+   {: deadline:n :}
+   deadline NO-DEADLINE = if -1 >MS exit then
+   deadline mono-ns - {: left:n :}
+   left 0 <= if E-DEADLINE throw then
+   left NS-PER-MS 1- + NS-PER-MS / >MS ;
+
+
 \ Only the convenience words wait. A dispatcher consumes progress directly.
 \ Habu's AWAIT parks the calling pthread, so this is not a coroutine suspension.
-: WAIT-EVENT ( fd n -- fd n ) {: socket:fd events:n :}
-   socket events -1 >MS AIO:POLL AIO:AWAIT
+: WAIT-EVENT ( fd n n -- fd n n )
+   {: socket:fd events:n deadline:n :}
+   socket events deadline REMAINING AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
       ready OF drop ENDOF
-      timed-out OF E-EXEC throw ENDOF
+      timed-out OF deadline NO-DEADLINE = if E-EXEC else E-DEADLINE then throw ENDOF
       cancelled OF E-EXEC throw ENDOF
       refused OF drop E-EXEC throw ENDOF
    ;MATCH
-   socket events ;
+   socket events deadline ;
 
 
-: WAIT-PROGRESS ( n -- progress ) {: slot:n :}
+: WAIT-PROGRESS ( n n -- progress )
+   {: slot:n deadline:n :}
    begin
       slot POLL-SLOT MATCH progress
          waiting OF
-            [: WAIT-EVENT ;] catch {: code:n :} 2drop   \ the waiting payload is stale after a caught throw and unused
-            code 0<> if slot CLOSE-SLOT drop code throw then
+            deadline [: WAIT-EVENT ;] catch {: code:n :} 2drop drop   \ the waiting payload is stale after a caught throw and unused
+            code 0<> if slot ABANDON-SLOT code throw then
          ENDOF
          connected OF PG-PROGRESS:connected exit ENDOF
          completed OF PG-PROGRESS:completed exit ENDOF
@@ -943,7 +1024,7 @@ REGISTER-CHILD-RESET
    again ;
 
 
-: WAIT-QUERY ( n -- result )
+: WAIT-QUERY ( n n -- result )
    WAIT-PROGRESS MATCH progress
       completed OF ENDOF
       connected OF drop E-EXEC throw ENDOF
@@ -993,15 +1074,33 @@ REGISTER-CHILD-RESET
    slot RESET-PARAMS ;
 
 
-: PREPARE-START ( n ptr u8 n ptr u8 n -- ) {: slot:n na nu:n sa su:n :}
+\ The empty name is the unnamed statement, which only DESCRIBE sends.
+: PREPARE-SEND ( n ptr u8 n ptr u8 n -- )
+   {: slot:n na nu:n sa su:n :}
    slot IDLE-CHECK
-   nu 0 <= if E-STATEMENT throw then
    su 0 <= if E-STATEMENT throw then
    na nu slot ARENA-CSTR {: name-off:n :}
    sa su slot ARENA-CSTR {: sql-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
+   sent 0= if slot res SEND-FAILED then
+   slot res ARM-QUERY
+   slot RESET-PARAMS ;
+
+
+: PREPARE-START ( n ptr u8 n ptr u8 n -- )
+   {: slot:n na nu:n sa su:n :}
+   nu 0 <= if E-STATEMENT throw then
+   slot na nu sa su PREPARE-SEND ;
+
+
+: DESCRIBE-START ( n -- )
+   {: slot:n :}
+   slot IDLE-CHECK
+   s" " slot ARENA-CSTR {: name-off:n :}
+   CLAIM-RES-SLOT {: res:n :}
+   slot CONN-PG@ slot ARENA-BASE name-off + LIB-SEND-DESCRIBE-PREPARED {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
@@ -1044,7 +1143,9 @@ REGISTER-CHILD-RESET
    slot VERB-BUF ;
 
 
-: RUN-VERB ( n ptr u8 n -- n ) {: slot:n a u:n :}
+: RUN-VERB ( n ptr u8 n -- n )
+   {: slot:n a u:n :}
+   slot OP-DEADLINE {: deadline:n :}
    slot IDLE-CHECK
    slot a u VERB-TEXT! {: sql :}
    CLAIM-RES-SLOT {: res:n :}
@@ -1052,7 +1153,7 @@ REGISTER-CHILD-RESET
    LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
-   slot WAIT-QUERY RESULT-SLOT ;
+   slot deadline WAIT-QUERY RESULT-SLOT ;
 
 
 \ A transaction verb must succeed or the caller's framing is a lie, so a server
@@ -1103,6 +1204,16 @@ REGISTER-CHILD-RESET
 
 : CELL-NULL? ( n n n -- bool ) {: slot:n ri:n ci:n :}
    slot RES-PG@ ri ci LIB-GETISNULL 0 <> ;
+
+
+\ A column of the result's descriptor: the PGresult and the column index.
+: COLUMN-AT ( result col -- ptr u8 n )
+   {: handle:result c:col :}
+   handle RESULT-SLOT RES-PG@ {: res :}
+   c COL>N {: ci:n :}
+   ci 0 < if E-COLUMN throw then
+   ci res LIB-NFIELDS >= if E-COLUMN throw then
+   res ci ;
 
 
 : CMD-COUNT ( n -- n ) {: slot:n :}
@@ -1168,7 +1279,7 @@ public
 
 
 : AWAIT ( connection -- progress )
-   CONN-SLOT WAIT-PROGRESS ;
+   CONN-SLOT NO-DEADLINE WAIT-PROGRESS ;
 
 
 : CONNECT ( ptr u8 n -- connect-result )
@@ -1255,9 +1366,12 @@ public
    handle CONN-SLOT a u PREPARED-START ;
 
 
-: EXEC ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle a u SEND
-   handle CONN-SLOT WAIT-QUERY ;
+: EXEC ( connection ptr u8 n -- result )
+   {: handle:connection a u:n :}
+   handle CONN-SLOT {: slot:n :}
+   slot OP-DEADLINE {: deadline:n :}
+   slot a u EXEC-START
+   slot deadline WAIT-QUERY ;
 
 
 \ SCRIPT runs a whole script - a migration file, several statements in one
@@ -1266,32 +1380,85 @@ public
 \ second command with 42601. libpq returns the LAST statement's result and a
 \ failing statement abandons the rest, so the outcome ADT covers it unchanged.
 \ EXEC stays the default, because it is the one that takes parameters.
-: SCRIPT ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle a u SEND-SCRIPT
-   handle CONN-SLOT WAIT-QUERY ;
+: SCRIPT ( connection ptr u8 n -- result )
+   {: handle:connection a u:n :}
+   handle CONN-SLOT {: slot:n :}
+   slot OP-DEADLINE {: deadline:n :}
+   slot a u SCRIPT-START
+   slot deadline WAIT-QUERY ;
 
 
 : PREPARE ( connection ptr u8 n ptr u8 n -- result )
    {: handle:connection na nu:n sa su:n :}
-   handle na nu sa su SEND-PREPARE
-   handle CONN-SLOT WAIT-QUERY ;
+   handle CONN-SLOT {: slot:n :}
+   slot OP-DEADLINE {: deadline:n :}
+   slot na nu sa su PREPARE-START
+   slot deadline WAIT-QUERY ;
 
 
-: EXEC-PREPARED ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
-   handle a u SEND-PREPARED
-   handle CONN-SLOT WAIT-QUERY ;
+: EXEC-PREPARED ( connection ptr u8 n -- result )
+   {: handle:connection a u:n :}
+   handle CONN-SLOT {: slot:n :}
+   slot OP-DEADLINE {: deadline:n :}
+   slot a u PREPARED-START
+   slot deadline WAIT-QUERY ;
+
+
+\ Two round trips under one deadline: the prepare, then the describe. A
+\ rejected prepare is the answer, with its `failed` outcome.
+: DESCRIBE ( connection ptr u8 n -- result )
+   {: handle:connection a u:n :}
+   handle CONN-SLOT {: slot:n :}
+   slot OP-DEADLINE {: deadline:n :}
+   slot PARAM-N@ 0 <> if E-STATEMENT throw then
+   slot s" " a u PREPARE-SEND
+   slot deadline WAIT-QUERY {: prepared:result :}
+   prepared RESULT-SLOT {: res:n :}
+   res RESULT-STATUS PGRES-COMMAND-OK <> if prepared exit then
+   res CLEAR-SLOT
+   slot DESCRIBE-START
+   slot deadline WAIT-QUERY ;
+
+
+\ The bound covers each later operation from its start; one in flight keeps
+\ the deadline it started with.
+: DEADLINE! ( connection ms -- )
+   {: handle:connection bound:ms :}
+   handle CONN-SLOT {: slot:n :}
+   bound MS>N {: v:n :}
+   v 0 < v WAIT-MAX > or if E-BOUND throw then
+   v slot BOUND! ;
+
+
+private
+
+\ The ROLLBACK under a body's throw, which stays primary: a ROLLBACK that fails
+\ leaves the transaction's state unknown, so the connection is abandoned. The
+\ handle, not the slot, is checked after it, since a ROLLBACK that expired has
+\ already closed the connection and freed the slot for another task.
+: ABORT-TX ( connection -- )
+   {: handle:connection :}
+   handle LIVE? 0= if exit then
+   handle CONN-SLOT [: dup ROLLBACK-TX ;] catch {: stale:n code:n :}
+   code 0= if exit then
+   handle LIVE? if handle CONN-SLOT ABANDON-SLOT then ;
+
+public
 
 
 \ The body receives the connection and returns it, which is what lets it cross
-\ the catch boundary. A throw rolls back and reaches the caller unchanged.
+\ the catch boundary. A throw rolls back and reaches the caller unchanged. The
+\ handle is resolved again after the body, which may have closed the connection
+\ and let another CONNECT reuse its slot: a closed one gets no ROLLBACK, and a
+\ COMMIT on one is E-HANDLE.
 : WITH-TRANSACTION ( connection [ connection -- connection ] -- )
    {: handle:connection body :}
    handle CONN-SLOT {: slot:n :}
    slot CONN-TX@ 0 <> if E-TRANSACTION throw then
    slot BEGIN-TX
    handle body catch {: leftover:connection code:n :}
-   code 0= if slot COMMIT-TX exit then
-   slot ROLLBACK-TX
+   code 0= if handle CONN-SLOT COMMIT-TX exit then
+   handle ABORT-TX
    code throw ;
 
 
@@ -1312,14 +1479,15 @@ public
    RESULT-SLOT CMD-COUNT >COUNT ;
 
 
-: NAME$ ( result col -- ptr u8 n ) {: handle:result c:col :}
-   handle RESULT-SLOT RES-PG@ {: res :}
-   c COL>N {: ci:n :}
-   ci 0 < if E-COLUMN throw then
-   ci res LIB-NFIELDS >= if E-COLUMN throw then
-   res ci LIB-FNAME {: p :}
+: NAME$ ( result col -- ptr u8 n )
+   COLUMN-AT LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;
+
+
+\ The column's type OID, as pg_type numbers it.
+: OID ( result col -- u32 )
+   COLUMN-AT LIB-FTYPE ;
 
 
 \ The span is libpq's own bytes inside the result and stays valid until CLEAR.

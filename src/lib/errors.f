@@ -10,7 +10,8 @@
 \ yet: tools/error-code-lint.f reports any other file that claims a code inside
 \ someone else's declared range. A subsystem that outgrows one block takes a
 \ second, separately named region rather than renumbering the codes it already
-\ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case.
+\ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case,
+\ package PG at -9250..-9259 and -9560..-9569 the second.
 \
 \ This file declares no package. A block with codes in a package (JR:E-SOURCE)
 \ is minted in the file that owns that package, bounds and all, and a comment
@@ -1347,6 +1348,7 @@
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl, minted by
 \ src/lib/pg.f, which owns package PG. -9240..-9249 is tools/image-size-lib.f.
+\ The block is full; PG's second region is -9560..-9569, listed below.
 
 \ Process signals on a self-pipe (package SIGNAL): -9280..-9289. The decade
 \ after CRYPTO.
@@ -1466,6 +1468,8 @@
 \ package ENTROPY.
 \ Online processor count: -9550..-9559, minted in src/lib/os-cpu.f, which owns
 \ package OS-CPU.
+\ PostgreSQL's growth region: -9560..-9569, minted by src/lib/pg.f once
+\ -9250..-9259 filled.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

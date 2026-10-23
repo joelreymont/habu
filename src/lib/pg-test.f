@@ -382,6 +382,170 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c ;
 
 
+\ ---- statement descriptors ------------------------------------------------
+\ Type OIDs from pg_type.dat; they are fixed for the built-in types.
+2278 constant VOID-OID
+1016 constant INT8-ARRAY-OID
+25 constant TEXT-OID
+\ Far inside the five-second sleep the described statement would run.
+1000 constant PROMPT-MS
+
+
+: ELAPSED-MS ( n -- n )
+   mono-ns swap - PROC-NS-PER-MS / ;
+
+
+: OID-PAST ( PG:result -- PG:result )
+   dup 3 >COL PG:OID drop ;
+
+: OID-BEFORE ( PG:result -- PG:result )
+   dup -1 >COL PG:OID drop ;
+
+: DESCRIBE-PENDING ( PG:connection -- PG:connection )
+   dup s" select $1::int8" DESCRIBE CLEAR ;
+
+
+: DESCRIBE-CASES ( PG:connection -- PG:connection )
+   {: c :}
+   s" describe answers ordered names and type OIDs without executing" T-LABEL
+   c PARAMS
+   mono-ns {: started:n :}
+   c s" select pg_sleep(5) as nap, array[1::int8] as ids, 'x'::text as label"
+   DESCRIBE {: r :}
+   started ELAPSED-MS PROMPT-MS < TTRUE
+   r OUTCOME-TAG TAG-OK T=
+   r ROWS COUNT>N 0 T=
+   r COLS COUNT>N 3 T=
+   r 0 >COL NAME$ s" nap" T$=
+   r 1 >COL NAME$ s" ids" T$=
+   r 2 >COL NAME$ s" label" T$=
+   r 0 >COL PG:OID VOID-OID T=
+   r 1 >COL PG:OID INT8-ARRAY-OID T=
+   r 2 >COL PG:OID TEXT-OID T=
+   r [: OID-PAST ;] catch {: stale-past past-code:n :}
+   past-code E-COLUMN T=
+   r [: OID-BEFORE ;] catch {: stale-before before-code:n :}
+   before-code E-COLUMN T=
+   r CLEAR
+   s" describe of invalid SQL is a failed outcome on a usable connection" T-LABEL
+   c s" selec 1" DESCRIBE {: bad :}
+   bad OUTCOME-TAG TAG-FAILED T=
+   bad FAILED-SQLSTATE$ s" 42601" T$=
+   bad CLEAR
+   c s" select 1" EXEC-TAG TAG-ROWS T=
+   s" describe refuses a pending parameter list" T-LABEL
+   c 1 INT+
+   c [: DESCRIBE-PENDING ;] catch {: stale-pending pending-code:n :}
+   pending-code E-STATEMENT T=
+   c PARAMS
+   c ;
+
+
+\ ---- wait deadlines -------------------------------------------------------
+200 constant BOUND-MS
+2000 constant ROOMY-MS
+
+: SLEEP-PAST ( PG:connection -- PG:connection )
+   dup s" select pg_sleep(5)" EXEC CLEAR ;
+
+: NEGATIVE-BOUND ( PG:connection -- PG:connection )
+   dup -1 >MS DEADLINE! ;
+
+: HUGE-BOUND ( PG:connection -- PG:connection )
+   dup $80000000 >MS DEADLINE! ;
+
+: TX-SLEEP ( PG:connection -- PG:connection )
+   dup [: SLEEP-PAST ;] WITH-TRANSACTION ;
+
+: ROWS-OF ( PG:result -- PG:result )
+   dup ROWS drop ;
+
+\ Two rows of 200 kB, each 150 ms apart: every wait for the next bytes is
+\ shorter than BOUND-MS, the whole statement longer.
+: SPLIT-WAITS ( PG:connection -- PG:connection )
+   dup s" select repeat($$x$$, 200000), pg_sleep(0.15) from generate_series(1,2)"
+   EXEC CLEAR ;
+
+\ The backend still running the abandoned five-second sleep.
+: SLEEPING ( PG:connection n -- n )
+   {: w pid:n :}
+   w PARAMS
+   w pid INT+
+   w s" select count(*) from pg_stat_activity where pid = $1 and state = 'active' and query like '%pg_sleep(5)%'"
+   EXEC {: r :}
+   r 0 >ROW 0 >COL INT {: found:n :}
+   r CLEAR
+   found ;
+
+: OPEN-BOUNDED ( -- PG:connection )
+   OPEN {: c :}
+   \ The client abandons the sleep without a cancel; the server's
+   \ statement_timeout is what ends it.
+   c s" set statement_timeout='1s'" EXEC-OK
+   c BOUND-MS >MS DEADLINE!
+   c ;
+
+
+: DEADLINE-CASES ( -- )
+   s" a wait past its deadline closes the connection and throws" T-LABEL
+   OPEN-BOUNDED {: c :}
+   c s" select pg_backend_pid()" EXEC {: kept :}
+   kept 0 >ROW 0 >COL INT {: backend:n :}
+   mono-ns {: started:n :}
+   c [: SLEEP-PAST ;] catch {: stale code:n :}
+   started ELAPSED-MS {: took:n :}
+   code E-DEADLINE T=
+   took BOUND-MS >= TTRUE
+   took PROMPT-MS < TTRUE
+   c PG:LIVE? TFALSE
+   s" an expiry sends no cancel, so the server still runs the statement" T-LABEL
+   OPEN {: w :}
+   w backend SLEEPING 1 T=
+   w PG:CLOSE
+   s" a result taken before the expiry is cleared with its connection" T-LABEL
+   kept [: ROWS-OF ;] catch {: stale-kept kept-code:n :}
+   kept-code E-CLEARED T=
+   s" one bound covers every wait of an operation" T-LABEL
+   OPEN-BOUNDED {: whole :}
+   whole [: SPLIT-WAITS ;] catch {: stale-whole whole-code:n :}
+   whole-code E-DEADLINE T=
+   s" an expiry inside a transaction body skips the rollback" T-LABEL
+   OPEN-BOUNDED {: t :}
+   t [: TX-SLEEP ;] catch {: stale-tx tx-code:n :}
+   tx-code E-DEADLINE T=
+   t PG:LIVE? TFALSE
+   OPEN {: u :}
+   u s" select 1" EXEC-TAG TAG-ROWS T=
+   u IDLE? TTRUE
+   u PG:CLOSE
+   s" describe under a deadline does not run the statement" T-LABEL
+   OPEN-BOUNDED {: v :}
+   mono-ns {: described:n :}
+   v s" select pg_sleep(5)" DESCRIBE {: r :}
+   described ELAPSED-MS BOUND-MS < TTRUE
+   r OUTCOME-TAG TAG-OK T=
+   r CLEAR
+   v PG:LIVE? TTRUE
+   v PG:CLOSE
+   s" work inside its deadline, or with none, completes" T-LABEL
+   OPEN {: d :}
+   d ROOMY-MS >MS DEADLINE!
+   d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
+   d BOUND-MS >MS DEADLINE!
+   d 0 >MS DEADLINE!
+   d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
+   d PG:LIVE? TTRUE
+   s" a negative deadline bound is a caller error" T-LABEL
+   d [: NEGATIVE-BOUND ;] catch {: stale-bound bound-code:n :}
+   bound-code E-BOUND T=
+   s" the widest bound is accepted and one past it is a caller error" T-LABEL
+   d $7FFFFFFF >MS DEADLINE!
+   d s" select 1" EXEC-TAG TAG-ROWS T=
+   d [: HUGE-BOUND ;] catch {: stale-huge huge-code:n :}
+   huge-code E-BOUND T=
+   d PG:CLOSE ;
+
+
 \ ---- transactions ---------------------------------------------------------
 : TX-BODY ( PG:connection -- PG:connection )
    dup s" insert into pqt (id, label, note) values (900, 'rolled', null)" EXEC
@@ -438,6 +602,63 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c ;
 
 
+\ A body that closes its connection and opens another, which takes the freed
+\ slot, in a transaction of its own.
+1 TYPED-BUFFER REOPENED PG:connection
+
+: REOPEN-BODY ( PG:connection -- PG:connection )
+   dup PG:CLOSE
+   OPEN dup 0 REOPENED !
+   s" begin" EXEC-OK ;
+
+
+: REOPEN-RUN ( PG:connection -- PG:connection )
+   dup [: REOPEN-BODY ;] WITH-TRANSACTION ;
+
+
+\ The same body throwing: its connection's own transaction gets no ROLLBACK.
+: REOPEN-THROW-BODY ( PG:connection -- PG:connection ) REOPEN-BODY BOOM throw ;
+
+
+: REOPEN-THROW-RUN ( PG:connection -- PG:connection )
+   dup [: REOPEN-THROW-BODY ;] WITH-TRANSACTION ;
+
+
+\ A body that throws with a statement in flight, which the ROLLBACK refuses.
+: PENDING-BODY ( PG:connection -- PG:connection )
+   dup s" select pg_sleep(5)" SEND
+   BOOM throw ;
+
+
+: PENDING-RUN ( PG:connection -- PG:connection )
+   dup [: PENDING-BODY ;] WITH-TRANSACTION ;
+
+
+: LEFT-BODY-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a body that closed its connection commits nothing on the slot's next one" T-LABEL
+   OPEN {: t :}
+   t [: REOPEN-RUN ;] catch {: stale-reopen reopen-code:n :}
+   reopen-code E-HANDLE T=
+   0 REOPENED @ {: u :}
+   u IDLE? TFALSE
+   u s" rollback" EXEC-OK
+   u PG:CLOSE
+   s" a body that closed its connection and threw rolls back nothing on the slot's next one" T-LABEL
+   OPEN {: w :}
+   w [: REOPEN-THROW-RUN ;] catch {: stale-throw throw-code:n :}
+   throw-code BOOM T=
+   0 REOPENED @ {: v :}
+   v IDLE? TFALSE
+   v s" rollback" EXEC-OK
+   v PG:CLOSE
+   s" a failed rollback closes the connection and the body's throw stands" T-LABEL
+   OPEN {: p :}
+   p [: PENDING-RUN ;] catch {: stale-pending pending-code:n :}
+   pending-code BOOM T=
+   p PG:LIVE? TFALSE
+   c ;
+
+
 \ ---- failure arms ---------------------------------------------------------
 : UNIQUE-CASES ( PG:connection -- PG:connection ) {: c :}
    c PARAMS
@@ -474,6 +695,10 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 
 
 : PREPARE-UNNAMED ( PG:connection -- PG:connection )
+   dup s" " s" select 1" PREPARE CLEAR ;
+
+
+: EXEC-PREPARED-UNNAMED ( PG:connection -- PG:connection )
    dup s" " EXEC-PREPARED CLEAR ;
 
 
@@ -509,7 +734,9 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 : EMPTY-STATEMENT-CASES ( PG:connection -- PG:connection ) {: c :}
    c [: EXEC-EMPTY ;] catch {: stale-exec code:n :}
    code E-STATEMENT T=
-   c [: PREPARE-UNNAMED ;] catch {: stale-name name-code:n :}
+   c [: PREPARE-UNNAMED ;] catch {: stale-prepare prepare-code:n :}
+   prepare-code E-STATEMENT T=
+   c [: EXEC-PREPARED-UNNAMED ;] catch {: stale-name name-code:n :}
    name-code E-STATEMENT T=
    c ;
 
@@ -1087,8 +1314,10 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    TEXT-BOUNDARY-CASES
    LONG-MESSAGE-CASES
    PREPARED-CASES
+   DESCRIBE-CASES
    ROLLBACK-CASES
    COMMIT-CASES
+   LEFT-BODY-CASES
    UNIQUE-CASES
    BAD-COLUMN-CASES
    EMPTY-STATEMENT-CASES
@@ -1107,6 +1336,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    EXIT-CASES
    CANCEL-CASES
    LOST-CONNECTION-CASES
+   DEADLINE-CASES
    RECYCLE-CASES
    PG:CLOSE
    CLOSE-CLEARS-CASES
