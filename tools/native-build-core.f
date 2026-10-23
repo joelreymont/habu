@@ -401,31 +401,51 @@ variable PRE-ROWS-N
    off u + PRE-BYTES-N !
    off ;
 
-: PRE-ROW+ ( ptr u8 n n ptr u8 -- )
-   {: name:ptr nameu:n raw:n token:ptr :}
-   raw 0= nameu 0 <= or if exit then
+\ Append a prefix row: the definition at ord, its name token's span at to
+\ end in the file at path, and its name.
+: PRE-IMPORT ( n n n ptr u8 n ptr u8 n -- )
+   {: ord:n at:n end:n path:ptr pathu:n name:ptr nameu:n :}
    PRE-ROWS-N @ {: id:n :}
    id 1+ PRE-CELLS * PRE-ROWS-RESERVE
-   raw XREF-ADDR>INDEX id 0 PRE-ROW!
-   0 id 1 PRE-ROW!  0 id 2 PRE-ROW!
-   0 id 3 PRE-ROW!  0 id 4 PRE-ROW!
-   data-base SRCLOC:PATH-CELL + 0 ptr-field @ {: path:ptr :}
-   data-base SRCLOC:PATHLEN-CELL + @ {: pathu:n :}
-   data-base OWNED-SOURCE-CELL + 0 ptr-field @ {: source:ptr :}
-   data-base OWNED-SOURCE-SIZE-CELL + @ {: sourceu:n :}
-   token source - {: at:n :}
-   pathu 0 > sourceu 0 > and
-   at 0 >= at sourceu <= and and
-   nameu sourceu at - <= and if
-      token nameu name nameu CORE-STR= if
-         at id 1 PRE-ROW!  at nameu + id 2 PRE-ROW!
-         path pathu PRE-BYTES+ id 3 PRE-ROW!
-         pathu id 4 PRE-ROW!
-      then
-   then
+   ord id 0 PRE-ROW!
+   at id 1 PRE-ROW!  end id 2 PRE-ROW!
+   pathu 0= if 0 else path pathu PRE-BYTES+ then id 3 PRE-ROW!
+   pathu id 4 PRE-ROW!
    name nameu PRE-BYTES+ id 5 PRE-ROW!
    nameu id 6 PRE-ROW!
    id 1+ PRE-ROWS-N ! ;
+
+\ The row cursor, and true while rows go to the prefix rows rather than the
+\ early journal.
+: PRE-MARK ( -- n bool ) PRE-ROWS-N @ PREFIX-TAKE @ 0= ;
+
+\ Visit each prefix row past mark, oldest first.
+: PRE-EACH ( n [ n n n ptr u8 n ptr u8 n -- ] -- )
+   {: mark:n each :}
+   PRE-ROWS-N @ mark ?do
+      i 0 PRE-ROW@ i 1 PRE-ROW@ i 2 PRE-ROW@
+      i 3 PRE-ROW@ PRE-BYTES i 4 PRE-ROW@
+      i 5 PRE-ROW@ PRE-BYTES i 6 PRE-ROW@
+      each execute
+   loop ;
+
+: PRE-ROW+ ( ptr u8 n n ptr u8 -- )
+   {: name:ptr nameu:n raw:n token:ptr :}
+   raw 0= nameu 0 <= or if exit then
+   data-base SRCLOC:PATH-CELL + 0 ptr-field @ {: file:ptr :}
+   data-base SRCLOC:PATHLEN-CELL + @ {: fileu:n :}
+   data-base OWNED-SOURCE-CELL + 0 ptr-field @ {: source:ptr :}
+   data-base OWNED-SOURCE-SIZE-CELL + @ {: sourceu:n :}
+   token source - {: off:n :}
+   raw XREF-ADDR>INDEX {: ord:n :}
+   fileu 0 > sourceu 0 > and
+   off 0 >= off sourceu <= and and
+   nameu sourceu off - <= and if
+      token nameu name nameu CORE-STR= if
+         ord off off nameu + file fileu name nameu PRE-IMPORT exit
+      then
+   then
+   ord 0 0 NULL-PTR 0 name nameu PRE-IMPORT ;
 
 : PREFIX-RECORD ( ptr u8 n n ptr u8 -- )
    PREFIX-TAKE @ dup 0= if drop PRE-ROW+ exit then
@@ -515,6 +535,7 @@ variable PRE-ROWS-N
 \ target's own NCOMP:INSTALL later replaces this dispatch after its source load.
 : LOAD-CHECKED-PREFIX ( -- )
    0 PREFIX-TAKE !
+   ['] PRE-MARK ['] PRE-EACH ['] PRE-IMPORT NDEF-CACHE:PREFIX-ORIGIN-USE
    BIND-PREFIX-RAW
    s" src/core/util.f" included
    s" src/core/cell.f" included
@@ -560,6 +581,7 @@ variable PRE-ROWS-N
    ['] PREFIX-COMPILE ['] PREFIX-ARM NDEF-CACHE:BORROW
    [: LOAD-CHECKED-PREFIX ;]
       [: RESTORE-PREFIX-RAW
+         NDEF-CACHE:PREFIX-ORIGIN-CLEAR
          PRE-RELEASE
          NDEF-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
 

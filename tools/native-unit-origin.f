@@ -25,6 +25,10 @@ public
    s" ENGINE-ORIGIN:ACCEPT-PENDING" PENDING-TARGET-XT? 0<>
    s" ENGINE-ORIGIN-EARLY:PREFIX-TAKE" PENDING-TARGET-XT? 0<> or ;
 
+\ The target's word name above the floor, 0 when absent: the origin journal
+\ a file's rows go to, never the host engine's own.
+: JOURNAL-XT ( ptr u8 n -- n ) PENDING-TARGET-XT? ;
+
 : BIND ( n -- ) {: floor:n :}
    floor 0 < if BAD then
    floor FLOOR ! ;

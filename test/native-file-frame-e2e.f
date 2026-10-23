@@ -35,12 +35,28 @@ DYNAMIC-BUFFER WARM u8
 512 constant LINE-CAP
 create APP-LINE LINE-CAP allot variable APP-LINE-U
 create DEP-LINE LINE-CAP allot variable DEP-LINE-U
+create OG-LINE LINE-CAP allot variable OG-LINE-U
+create OG-MOVED LINE-CAP allot variable OG-MOVED-U
+\ Nonzero from the first build after the warm one on: og.f loads under the
+\ fixture tree's engine root instead of the repository's, jrn.f under
+\ LOWER-CERT-HOOK's check hook with the early origin journal still armed, and
+\ pcf.f, pcz.f, pcd.f and pce.f where a journal records outside every sink.
+variable MOVED
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
 : LOAD+ ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    S\" s\" " IN+ name nameu AT IN+ S\" \" s\" repl\" NDEF-CACHE:LOAD\n" IN+ ;
+
+\ Load name between two reads of the early journal's serial, and print tag
+\ and how many rows the load recorded. A full journal row takes its serial
+\ from the early journal too.
+: EK-LOAD+ ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n tag:ptr tagu:n :}
+   S\" FRAME-EK-PROBE:EK-SER\n" IN+
+   name nameu LOAD+
+   S\" FRAME-EK-PROBE:EK-SER swap - s\" " IN+ tag tagu IN+ S\" \" type . cr\n" IN+ ;
 
 \ app.f's text, which its object's source spans are checked against.
 : APP$ ( -- ptr u8 n )
@@ -62,6 +78,11 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    builder builderu INPUT INPUT-U @ CAPTURE ;
+
+\ Set the builder's engine root to root.
+: ROOT+ ( ptr u8 n -- )
+   {: root:ptr rootu:n :}
+   S\" s\" " IN+ root rootu IN+ S\" \" SOURCE-ROOT:ENGINE!\n" IN+ ;
 
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
@@ -89,6 +110,17 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    S\" s\" td=\" type TD-K . cr\n" IN+
    s" pkroot.f" LOAD+
    S\" s\" pk=\" type FRAME-PK:PK-VAL . cr\n" IN+
+   \ og.f and ogw.f load under the full origin journal, which the capture
+   \ preparation above disarmed. The row it holds for each of their words:
+   \ its name, whether it exists and its name token span. Their tree lies
+   \ outside the engine root, so no row has a path.
+   MOVED @ if ROOT$ else SOURCE-ROOT:CWD$ then ROOT+
+   S\" ENGINE-ORIGIN:ARM\n" IN+
+   s" og.f" LOAD+
+   s" ogw.f" LOAD+
+   S\" ENGINE-ORIGIN:DISARM\n" IN+
+   SOURCE-ROOT:CWD$ ROOT+
+   S\" package FRAME-OG-PROBE\nCAST: OG-SYM-XT ( n -- [ ptr u8 n n ptr u8 n -- n ] )\n: OG-ROW ( ptr u8 n n ptr u8 n -- )\n   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:ORIGIN-SYM-OFF + CELL-VIEW @ OG-SYM-XT execute\n   ENGINE-ORIGIN:TARGET drop {: at:n end:n name:ptr nameu:n :} 2drop\n   space name nameu type s\" :\" type nameu 0<> if 1 else 0 then . at . end . ;\ns\" origins=\" type s\" FRAME-OG\" 2 s\" OG-P\" OG-ROW s\" \" 0 s\" OG-G\" OG-ROW s\" \" 0 s\" OG-W\" OG-ROW s\" ;origins\" type cr\n;package\n" IN+
    s" watermark.f" LOAD+
    s" ret-own.f" LOAD+
    s" ret-parent.f" LOAD+
@@ -167,6 +199,38 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    s" nest-parent.f" LOAD+
    s" act.f" LOAD+
    S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\n" IN+
+   \ jrn.f loads before scope.f, the last load, under the early origin
+   \ journal, armed, with its own check hook or, once MOVED,
+   \ LOWER-CERT-HOOK's; ek= counts the rows its load recorded. The hooks stay
+   \ installed for scope.f. pcf.f, pcz.f, pcd.f and pce.f first load where
+   \ no journal records; once MOVED, where one records outside every sink.
+   \ Both exports load with checking off, as both keys require: another hook
+   \ refuses the file by itself. pcf.f's export goes to the full journal,
+   \ armed; pce.f's to the early journal, armed and installed. pcz.f's
+   \ constant loads in pcf.f's state and records nothing, so only the open
+   \ refuses it. pcd.f's constant loads under the early journal's hook with
+   \ that journal disarmed. pcf= and the others count the rows each load
+   \ recorded.
+   S\" package FRAME-EK-PROBE\nprivate\nCAST: EK-ACT ( n -- [ -- ] )\nCAST: EK-MARK ( n -- [ -- n n bool ] )\nCAST: EK-REST ( n -- [ n bool -- ] )\npublic\n: EK-SER ( -- n ) s\" ENGINE-ORIGIN-EARLY:FILE-MARK\" NUNIT-ORIGIN:JOURNAL-XT EK-MARK execute drop drop ;\n: EK-SET ( bool -- ) {: on:bool :} s\" ENGINE-ORIGIN-EARLY:FILE-MARK\" NUNIT-ORIGIN:JOURNAL-XT EK-MARK execute drop nip on s\" ENGINE-ORIGIN-EARLY:FILE-RESTORE\" NUNIT-ORIGIN:JOURNAL-XT EK-REST execute ;\n: EK-DO ( ptr u8 n -- ) NUNIT-ORIGIN:JOURNAL-XT EK-ACT execute ;\n;package\n" IN+
+   MOVED @ if
+      S\" 0 set-check ENGINE-ORIGIN:ARM\n" IN+
+      s" pcf.f" s" pcf=" EK-LOAD+
+      s" pcz.f" s" pcz=" EK-LOAD+
+      S\" ENGINE-ORIGIN:DISARM\ns\" ENGINE-ORIGIN-EARLY:INSTALL\" FRAME-EK-PROBE:EK-DO 0 set-check true FRAME-EK-PROBE:EK-SET\n" IN+
+      s" pce.f" s" pce=" EK-LOAD+
+      S\" s\" ENGINE-ORIGIN-EARLY:INSTALL\" FRAME-EK-PROBE:EK-DO false FRAME-EK-PROBE:EK-SET\n" IN+
+   else
+      S\" 0 set-check\n" IN+
+      s" pcf.f" s" pcf=" EK-LOAD+
+      s" pcz.f" s" pcz=" EK-LOAD+
+      s" pce.f" s" pce=" EK-LOAD+
+      S\" s\" ENGINE-ORIGIN:INSTALL\" FRAME-EK-PROBE:EK-DO\n" IN+
+   then
+   s" pcd.f" s" pcd=" EK-LOAD+
+   S\" s\" ENGINE-ORIGIN-EARLY:INSTALL\" FRAME-EK-PROBE:EK-DO\n" IN+
+   MOVED @ if S\" s\" LOWER-CERT-HOOK:INSTALL\" FRAME-EK-PROBE:EK-DO\n" IN+ then
+   S\" true FRAME-EK-PROBE:EK-SET\n" IN+
+   s" jrn.f" s" ek=" EK-LOAD+
    s" scope.f" LOAD+
    RUN-INPUT ;
 
@@ -619,6 +683,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
    \ xt cell HOOK.
+   \ og.f's constants install on a warm build; ogw.f's colon word compiles
+   \ again.
+   s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
+   s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
+   s" jrn.f" S\" 3 constant EK-K\n" PUT
+   s" pcf.f" S\" 3 constant PC-F3\npackage PCF\npublic\nexport PC-F3\n;package\n" PUT
+   s" pcz.f" S\" 3 constant PC-Z3\n" PUT
+   s" pcd.f" S\" 3 constant PC-D3\n" PUT
+   s" pce.f" S\" 3 constant PC-K3\npackage PCE\npublic\nexport PC-K3\n;package\n" PUT
    s" app.f" APP$ PUT
    s" top.f" S\" require app.f\nrequire check.f\n" PUT
    s" check.f" S\" \\ the first build has no object to check\n" PUT ;
@@ -971,6 +1044,20 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" no other file's run names a run reason" T-LABEL
    RUNS-ADMITTED ;
 
+\ The origin rows PROBE printed, up to their end mark.
+: ORIGINS$ ( -- ptr u8 n )
+   OUT$ {: out:ptr outu:n :}
+   out outu s" origins=" FIND-SUB MATCH option
+     none OF T-FAIL s" " ENDOF
+     some OF IDX>N {: at:n :}
+        out at +  outu at -  {: a:ptr u:n :}
+        a u s" ;origins" FIND-SUB MATCH option
+          none OF a u ENDOF
+          some OF IDX>N a swap ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
 \ A warm build installed name's object: its reused line, the only one with
 \ " records=" right after the path, and no object written for it.
 : REUSED ( ptr u8 n -- )
@@ -980,6 +1067,28 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    name nameu IN+ s"  records=" IN+
    line lineu INPUT INPUT-U @ STARTS-WITH? TTRUE
    name nameu NO-OBJECT ;
+
+\ name loaded where a journal records outside every sink: the open refuses
+\ it, so it installs no object and writes none, and its load records the
+\ rows (rows, OUT$'s line) a cold load records.
+: SINK-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n rows:ptr rowsu:n :}
+   OUT$ rows rowsu CONTAINS? TTRUE
+   0 INPUT-U !
+   s" /" IN+ name nameu IN+ s"  records=" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TFALSE
+   \ LINE$ builds its pattern in INPUT; the line it returns lies in ERR$.
+   name nameu s"  reason=" LINE$ {: line:ptr lineu:n :}
+   0 INPUT-U !
+   name nameu IN+ s"  reason=origin-sink" IN+
+   line lineu INPUT INPUT-U @ T$=
+   name nameu NO-OBJECT ;
+
+: SINK-CHECKS ( -- )
+   s" pcf.f" S\" pcf=1\n" SINK-REFUSED
+   s" pcz.f" S\" pcz=0\n" SINK-REFUSED
+   s" pcd.f" S\" pcd=1\n" SINK-REFUSED
+   s" pce.f" S\" pce=1\n" SINK-REFUSED ;
 
 
 \ The second build over the same cache runs as the first and installs the
@@ -1017,6 +1126,18 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs td.f" T-LABEL
    OUT$ S\" td=4\n" CONTAINS? TTRUE
    s" td.f" REUSED
+   s" a warm build installs og.f and holds the cold build's origin rows" T-LABEL
+   s" og.f" REUSED
+   ORIGINS$ OG-LINE OG-LINE-U @ T$=
+   s" a warm build installs jrn.f and imports its early origin row" T-LABEL
+   s" jrn.f" REUSED
+   OUT$ S\" ek=1\n" CONTAINS? TTRUE
+   s" a warm build installs the files loaded where no journal records" T-LABEL
+   OUT$ S\" pcf=0\n" CONTAINS? TTRUE
+   OUT$ S\" pcz=0\n" CONTAINS? TTRUE
+   OUT$ S\" pcd=0\n" CONTAINS? TTRUE
+   OUT$ S\" pce=0\n" CONTAINS? TTRUE
+   s" pcf.f" REUSED s" pcz.f" REUSED s" pcd.f" REUSED s" pce.f" REUSED
    s" a warm build installs the stored FFI files, replaying their rows and selection" T-LABEL
    OUT$ S\" pid=-1\n" CONTAINS? TTRUE
    OUT$ S\" crc=0\n" CONTAINS? TTRUE
@@ -1139,6 +1260,17 @@ public
    \ A second builder process over the same sources writes the same app.f
    \ object: checker slices must not depend on the process that exported them.
    s" app.f" OBJECT$ APP-LINE APP-LINE-U KEEP-LINE
+   s" a cold build records an origin row for each of og.f's and ogw.f's words" T-LABEL
+   ORIGINS$ s" :0" CONTAINS? TFALSE
+   ORIGINS$ OG-LINE OG-LINE-U KEEP-LINE
+   s" a cold build records jrn.f's early origin row under the journal's own hook" T-LABEL
+   OUT$ S\" ek=1\n" CONTAINS? TTRUE
+   s" files loaded where no journal records store their objects" T-LABEL
+   OUT$ S\" pcf=0\n" CONTAINS? TTRUE
+   OUT$ S\" pcz=0\n" CONTAINS? TTRUE
+   OUT$ S\" pcd=0\n" CONTAINS? TTRUE
+   OUT$ S\" pce=0\n" CONTAINS? TTRUE
+   s" pcf.f" KEY$ STORED s" pcz.f" KEY$ STORED s" pcd.f" KEY$ STORED s" pce.f" KEY$ STORED
    s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U KEEP-LINE
    OTHER-LOADER
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
@@ -1150,6 +1282,7 @@ public
    s" base.f" S\" package FRAME-BASE\nvariable GAP\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" pkpre.f" S\" package FRAME-PK\n: PK-SEVEN ( -- n ) 70 ;\n;package\n" PUT
    s" pkroot.f" S\" require pkglob.f\nrequire pkpre.f\nrequire pk.f\n" PUT
+   1 MOVED !
    S\" \\ edited\n" s" ( note ) dup +" s" 3 ( note ) TWICE drop" LIB-SOURCE
    \ sel.f now declares getgid: selc.f's stored getuid reuse row no longer
    \ names a live row.
@@ -1185,6 +1318,13 @@ public
    s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
    ERR$ s" /wcb.f records=" CONTAINS? TFALSE
    OUT$ S\" wcb=0\n0\n1\n" CONTAINS? TTRUE
+   s" og.f under another engine root and jrn.f under another hook compile again" T-LABEL
+   ERR$ s" /og.f records=" CONTAINS? TFALSE
+   ERR$ s" /jrn.f records=" CONTAINS? TFALSE
+   OUT$ S\" ek=0\n" CONTAINS? TTRUE
+   ORIGINS$ OG-MOVED OG-MOVED-U KEEP-LINE
+   s" a file stored where no journal records does not install where one records outside every sink" T-LABEL
+   SINK-CHECKS
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
    s" every split of the first build's app.f rows still holds" T-LABEL
    SPLIT$ nip 1 > TTRUE
@@ -1198,6 +1338,11 @@ public
    s" cache" AT REMOVE-TREE s" cache" AT MAKE-DIR
    s" " s" 2 *" s" 3 TWICE drop" LIB-SOURCE
    s" a changed TWICE body keeps both keys and app.f's results" REBUILT
+   s" a cold build holds the moved og.f's and jrn.f's origin rows" T-LABEL
+   ORIGINS$ OG-MOVED OG-MOVED-U @ T$=
+   OUT$ S\" ek=0\n" CONTAINS? TTRUE
+   s" a cold build refuses the files loaded where a journal records outside every sink" T-LABEL
+   SINK-CHECKS
    s" lib.f" RESULTS$ LIB-RES RES-LEN STR= TFALSE
    \ app.f ran MARK, which calls TWICE, and two runs on its HOOK line reach
    \ HOOK's DATA, which holds TWICE: those three executed rows are stale.

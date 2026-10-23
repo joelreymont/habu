@@ -59,7 +59,15 @@ $4B8 constant LIVE-FIXED-OFF
 112 constant F-SLOTS-BOUND
 \ The file's object key, taken when it opened: 64 hex digits.
 120 constant F-KEY
-184 constant FRAME-BYTES
+\ The origin sink the file opened under (NUNIT-OBJECT SINK-*), 1 when the
+\ builder fed its rows to the early journal, the builder's prefix row count
+\ and the early journal's serial when it opened, and its first record.
+184 constant F-OSINK
+192 constant F-OFED
+200 constant F-OCUR
+208 constant F-OSER
+216 constant F-OFIRST
+224 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
@@ -198,6 +206,27 @@ CAST: N>Q ( n -- [ n n -- ] )
 TYPED-VARIABLE PRIOR-UNIT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE HOST-PRIOR-UNIT [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE OUTER-BODY [ -- ]
+\ The builder's prefix rows while it loads the checked prefix (PRE-BOUND 1):
+\ its row cursor and whether rows stay its own, its row visitor, its append.
+TYPED-VARIABLE PRE-MARK-HOOK [ -- n bool ]
+TYPED-VARIABLE PRE-EACH-HOOK [ n [ n n n ptr u8 n ptr u8 n -- ] -- ]
+TYPED-VARIABLE PRE-IMPORT-HOOK [ n n n ptr u8 n ptr u8 n -- ]
+variable PRE-BOUND
+\ The closing file's journal rows read so far, and 1 when its rows were fed.
+variable HARVEST-N
+variable HARVEST-FED
+CAST: MARK-XT ( n -- [ -- n n bool ] )
+CAST: HOOK-XT ( n -- [ -- bool ] )
+CAST: ROOT-XT ( n -- [ -- ptr u8 n ] )
+CAST: ROWS-XT ( n -- [ n [ n n n n ptr u8 n ptr u8 n n n -- ] -- ] )
+CAST: EARLY-IMPORT-XT ( n -- [ n n n n ptr u8 n ptr u8 n -- ] )
+CAST: FULL-IMPORT-XT ( n -- [ n n ptr u8 n ptr u8 n n n -- ] )
+\ NFILE-REF:PACKAGE-OF visibilities and the checker's.
+1 constant PKG-PUBLIC
+2 constant PKG-PRIVATE
+3 constant PKG-RETIRED
+1 constant SYM-PRIVATE
+2 constant SYM-PUBLIC
 PTR-VARIABLE APP-PATH
 variable APP-PATH-U
 PTR-VARIABLE REQUEST-PATH
@@ -540,25 +569,6 @@ variable PENDING-KEY-U
    CHECK-STATE HASH-N
    BORROW-ACTIVE @ HASH-N
    DISPATCH-ROLE 32 HASH-S ;
-
-\ The open file's object key names its place in the load as its records'
-\ keys name it, not its text: this engine and target, the ambient compile
-\ state, and the file's instance key (NFILE-REF:PUSH-FILE): the loader chain,
-\ the kind, path and root that opened it, and its occurrence under that
-\ loader. The object's stored declaration and import keys start with the
-\ instance key, so a key that omitted the loader would find an object whose
-\ keys this load cannot reproduce.
-: FILE-KEY ( -- ptr u8 n )
-   ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
-   s" habu-native-file-v3" HASH-START
-   engine engineu HASH-S
-   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
-   NATIVE? @ HASH-N
-   AMBIENT-HASH
-   NFILE-REF:INSTANCE-KEY$ HASH-S
-   HASH-CTX HASH-RAW SHA256-END
-   HASH-RAW FILE-KEY-HEX SHA256>HEX
-   FILE-KEY-HEX 64 ;
 
 : DEFINITION-KEY ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: source:ptr sourceu:n pending:ptr pendingu:n :}
@@ -1016,6 +1026,178 @@ variable USER-SEEN
    F-SLOTS-BOUND F@ 0= if true exit then
    mark F-SLOTS F@ <> ;
 
+\ The early journal's serial, and whether it records rows; 0 false without
+\ the target's journal.
+: EARLY-MARK ( -- n bool )
+   s" ENGINE-ORIGIN-EARLY:FILE-MARK" NUNIT-ORIGIN:JOURNAL-XT
+   dup 0= if drop 0 false exit then
+   MARK-XT execute {: serial:n phase:n armed:bool :}
+   serial armed ;
+
+\ Whether the target's early journal's hook is the installed check hook, so
+\ an armed journal records the file's definitions; false without it.
+: EARLY-HOOK? ( -- bool )
+   s" ENGINE-ORIGIN-EARLY:FILE-HOOK?" NUNIT-ORIGIN:JOURNAL-XT
+   dup 0= if drop false exit then
+   HOOK-XT execute ;
+
+\ The full journal's arm flag and whether its hook is the installed check
+\ hook; false false without the target's journal.
+: FULL-STATE ( -- bool bool )
+   s" ENGINE-ORIGIN:FILE-STATE" NUNIT-ORIGIN:JOURNAL-XT
+   dup 0= if drop false false exit then
+   ORIGIN-STATE-XT execute ;
+
+\ The sink of a file loaded while a journal can record a row no sink holds:
+\ the open refuses the file and the hit check misses. It is never stored.
+-1 constant SINK-UNSUPPORTED
+
+\ Where a definition's origin row goes now (NUNIT-OBJECT SINK-*, or
+\ SINK-UNSUPPORTED), and true when the builder feeds it to the early journal
+\ with no symbol. The journals gate their observers differently: the early
+\ hook records every checked definition whether or not the early journal is
+\ armed, its export observer records while that journal is armed, and its
+\ CAST: observer always records; the full journal's hook, export and CAST:
+\ observers record while the full journal is armed. Full ARM arms the early
+\ journal too. A sink holds rows from one journal only, so a state where
+\ any other observer can record has none. The arm flags and the hooks are
+\ read; the installed CAST: observer is not. It records only for a CAST:
+\ declaration, whose file's object is never installed
+\ (NUNIT-OBJECT:SUPPORTED?), so admitting that kind must first make SINK
+\ read it.
+: SINK ( -- n bool )
+   PRE-BOUND @ 0<> if
+      PRE-MARK-HOOK @ execute nip if NUNIT-OBJECT:SINK-PREFIX false exit then
+      NUNIT-OBJECT:SINK-EARLY true exit
+   then
+   FULL-STATE {: full:bool full-hook:bool :}
+   EARLY-MARK nip {: early:bool :}
+   EARLY-HOOK? {: early-hook:bool :}
+   full 0= early 0= and early-hook 0= and if NUNIT-OBJECT:SINK-NONE false exit then
+   full full-hook and if NUNIT-OBJECT:SINK-FULL false exit then
+   full 0= early and early-hook and if NUNIT-OBJECT:SINK-EARLY false exit then
+   SINK-UNSUPPORTED false ;
+
+\ The open file's object key names its place in the load as its records'
+\ keys name it, not its text: this engine and target, the ambient compile
+\ state, and the file's instance key (NFILE-REF:PUSH-FILE): the loader chain,
+\ the kind, path and root that opened it, and its occurrence under that
+\ loader. The object's stored declaration and import keys start with the
+\ instance key, so a key that omitted the loader would find an object whose
+\ keys this load cannot reproduce.
+: FILE-KEY ( -- ptr u8 n )
+   ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
+   s" habu-native-file-v3" HASH-START
+   engine engineu HASH-S
+   BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
+   NATIVE? @ HASH-N
+   AMBIENT-HASH
+   NFILE-REF:INSTANCE-KEY$ HASH-S
+   \ A full journal's rows locate definitions relative to the target's engine
+   \ root; a target without SOURCE-ROOT hashes a fixed marker instead.
+   SINK drop NUNIT-OBJECT:SINK-FULL = if
+      s" SOURCE-ROOT:ENGINE$" NUNIT-ORIGIN:JOURNAL-XT
+      dup 0= if drop s" no-engine-root" else ROOT-XT execute then HASH-S
+   then
+   HASH-CTX HASH-RAW SHA256-END
+   HASH-RAW FILE-KEY-HEX SHA256>HEX
+   FILE-KEY-HEX 64 ;
+
+: ORIGIN-SINK-REFUSE ( -- ) s" origin-sink" NUNIT-OBJECT:FILE-REFUSE ;
+
+\ The open file's sink, cursors and first record, stored as it opens. A file
+\ opened with no sink is refused.
+: ORIGIN-OPEN ( -- )
+   SINK {: kind:n fed:bool :}
+   kind F-OSINK F!
+   fed if 1 else 0 then F-OFED F!
+   PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
+   EARLY-MARK drop F-OSER F!
+   ndict@ F-OFIRST F!
+   kind SINK-UNSUPPORTED = if ORIGIN-SINK-REFUSE exit then
+   kind NUNIT-OBJECT:ORIGIN-SINK! ;
+
+\ The checker symbol of the record at ord under name, derived from the
+\ record; false for a retired package or without a ready checker owner.
+: ROW-SYM ( n ptr u8 n -- n bool )
+   {: ord:n name:ptr nameu:n :}
+   OWNER-READY? 0= if 0 false exit then
+   ord XREF-REC NFILE-REF:PACKAGE-OF {: pkg:ptr pkgu:n vis:n :}
+   vis PKG-RETIRED = if 0 false exit then
+   vis PKG-PUBLIC = if SYM-PUBLIC else
+      vis PKG-PRIVATE = if SYM-PRIVATE else 0 then
+   then {: sym:n :}
+   pkg pkgu sym name nameu LIVE-ORIGIN true ;
+
+\ The one record of the closing file whose code starts at xt.
+: FULL-ORD ( n -- n bool )
+   {: xt:n :}
+   0 0
+   ndict@ F-OFIRST F@ ?do
+      i XREF-REC XREF-START xt = if drop i swap 1+ swap then
+   loop
+   {: hits:n ord:n :}
+   ord hits 1 = ;
+
+: ORIGIN-REFUSE ( -- ) s" origin-record" NUNIT-OBJECT:FILE-REFUSE ;
+
+: PREFIX-ROW ( n n n ptr u8 n ptr u8 n -- )
+   1 HARVEST-N +! NUNIT-OBJECT:ORIGIN+ ;
+
+\ An early journal row: a fed row has no symbol, any other the record's.
+: EARLY-ROW ( n n n n ptr u8 n ptr u8 n n n -- )
+   {: serial:n phase:n ord:n sym:n path:ptr pathu:n name:ptr nameu:n
+      at:n end:n :}
+   1 HARVEST-N +!
+   HARVEST-FED @ 0<> if
+      sym 0<> if ORIGIN-REFUSE exit then
+   else
+      ord name nameu ROW-SYM {: derived:n known:bool :}
+      known 0= derived sym <> or if ORIGIN-REFUSE exit then
+   then
+   ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ ;
+
+\ A full journal row names its definition by xt: the file's one record there.
+: FULL-ROW ( n n n n ptr u8 n ptr u8 n n n -- )
+   {: serial:n phase:n xt:n sym:n path:ptr pathu:n name:ptr nameu:n
+      at:n end:n :}
+   1 HARVEST-N +!
+   xt FULL-ORD {: ord:n unique:bool :}
+   unique 0= if ORIGIN-REFUSE exit then
+   ord name nameu ROW-SYM {: derived:n known:bool :}
+   known 0= derived sym <> or if ORIGIN-REFUSE exit then
+   ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ ;
+
+\ Visit the journal rows of word name past serial mark.
+: JOURNAL-ROWS ( n [ n n n n ptr u8 n ptr u8 n n n -- ] ptr u8 n -- )
+   NUNIT-ORIGIN:JOURNAL-XT {: mark:n visit rows:n :}
+   rows 0= if exit then
+   mark visit rows ROWS-XT execute ;
+
+\ Store the closing file's origin rows: those its sink recorded since it
+\ opened, under the same sink. A file with child loads keeps only its sink
+\ kind: the install replays only leaves. The journal's serial advances once
+\ per row it recorded, and not at all for a file whose rows go elsewhere.
+: ORIGIN-HARVEST ( -- )
+   NUNIT-OBJECT:FILE-LEAF? 0= if exit then
+   SINK {: kind:n fed:bool :}
+   fed if 1 else 0 then {: fedn:n :}
+   kind F-OSINK F@ <> fedn F-OFED F@ <> or if ORIGIN-SINK-REFUSE exit then
+   0 HARVEST-N !
+   fedn HARVEST-FED !
+   kind NUNIT-OBJECT:SINK-PREFIX = if
+      PRE-MARK-HOOK @ execute drop F-OCUR F@ < if ORIGIN-SINK-REFUSE exit then
+      F-OCUR F@ ['] PREFIX-ROW PRE-EACH-HOOK @ execute
+   then
+   kind NUNIT-OBJECT:SINK-EARLY = if
+      F-OSER F@ ['] EARLY-ROW s" ENGINE-ORIGIN-EARLY:FILE-ROWS" JOURNAL-ROWS
+   then
+   kind NUNIT-OBJECT:SINK-FULL = if
+      F-OSER F@ ['] FULL-ROW s" ENGINE-ORIGIN:FILE-ROWS" JOURNAL-ROWS
+   then
+   kind NUNIT-OBJECT:SINK-EARLY >= if HARVEST-N @ else 0 then
+   EARLY-MARK drop F-OSER F@ - <> if ORIGIN-SINK-REFUSE then ;
+
 \ Open the object of the file just pushed; its first row is its own source's
 \ stat and digest. Rows join an object only at ROWS-FLUSH, so the row recorded before
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
@@ -1026,6 +1208,7 @@ variable USER-SEEN
    USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
    FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN
+   ORIGIN-OPEN
    NUNIT-OBJECT:DEF-OPEN? 0= if
       s" def-open-absent" NUNIT-OBJECT:FILE-REFUSE
    then
@@ -1067,6 +1250,7 @@ variable USER-SEEN
    then
    NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
    SLOTS-MOVED? if s" task-slots" NUNIT-OBJECT:FILE-REFUSE then
+   ORIGIN-HARVEST
    \ Encoding binds the earlier records the file's slots name, so the rows
    \ are exported again after it.
    NUNIT-OBJECT:FILE-ENCODE
@@ -1091,6 +1275,7 @@ variable USER-SEEN
    found 0= got size <> or if BAD then
    0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
       NUNIT-OBJECT:OPEN-FILE
+   NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
          upds:n pins:n checks:n ffi:n :}
@@ -1163,10 +1348,44 @@ variable OBJECT-U
    s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
    S\"  reason=ffi-rows\n" DIAG-W2 ;
 
+\ A miss the hit check names: the viewed object is dropped and the file
+\ loads from source.
+: OBJECT-MISS ( ptr u8 n -- )
+   {: why:ptr whyu:n :}
+   NUNIT-FILE:RESET-KEEP
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  reason=" DIAG-W2 why whyu DIAG-W2
+   S\" \n" DIAG-W2 ;
+
+\ The target journal word an installed row of sink kind is imported
+\ through; 0 for the other kinds or when the target lacks it.
+: IMPORT-XT ( n -- n )
+   {: kind:n :}
+   kind NUNIT-OBJECT:SINK-EARLY = if
+      s" ENGINE-ORIGIN-EARLY:FILE-IMPORT" NUNIT-ORIGIN:JOURNAL-XT exit
+   then
+   kind NUNIT-OBJECT:SINK-FULL = if
+      s" ENGINE-ORIGIN:FILE-IMPORT" NUNIT-ORIGIN:JOURNAL-XT exit
+   then
+   0 ;
+
+\ The viewed object's origin rows can go to the active sink: it is the one
+\ they were stored under, and a journal sink has its import and, for rows
+\ that carry a symbol, a ready checker owner to derive it.
+: ORIGIN-SINK? ( -- bool )
+   SINK {: kind:n fed:bool :}
+   NUNIT-OBJECT:ORIGIN-KIND kind <> if false exit then
+   kind NUNIT-OBJECT:SINK-EARLY < if true exit then
+   fed 0= OWNER-READY? 0= and if false exit then
+   kind IMPORT-XT 0<> ;
+
 \ The innermost file has a fresh object this session can install.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
    OBJECT-READ? 0= if false exit then
+   NUNIT-OBJECT:ORIGIN-FORMED? 0= if s" origin-format" OBJECT-MISS false exit then
+   ORIGIN-SINK? 0= if s" origin-sink" OBJECT-MISS false exit then
    \ Freshness is checked only for an object the session can install: the
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:SUPPORTED? 0= if NUNIT-FILE:RESET-KEEP false exit then
@@ -1175,11 +1394,42 @@ variable OBJECT-U
    NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
    2drop true ;
 
+\ The installed object's sink kind, 1 when its rows are fed, and the
+\ journal import its rows go through.
+variable IMPORT-KIND
+variable IMPORT-FED
+variable IMPORT-AT
+
+\ Append one installed origin row through its sink, as the run would have.
+\ The hit check found a ready checker owner for a row that carries a
+\ symbol, and ord's record is one the install just made in a live
+\ wordlist, so its symbol is known.
+: ORIGIN-IMPORT ( n n n ptr u8 n ptr u8 n -- )
+   {: ord:n at:n end:n path:ptr pathu:n name:ptr nameu:n :}
+   IMPORT-KIND @ NUNIT-OBJECT:SINK-PREFIX = if
+      ord at end path pathu name nameu PRE-IMPORT-HOOK @ execute exit
+   then
+   IMPORT-FED @ 0<> if 0 else ord name nameu ROW-SYM drop then {: sym:n :}
+   IMPORT-KIND @ NUNIT-OBJECT:SINK-EARLY = if
+      ord sym at end path pathu name nameu IMPORT-AT @ EARLY-IMPORT-XT execute
+      exit
+   then
+   sym ord path pathu name nameu at end IMPORT-AT @ FULL-IMPORT-XT execute ;
+
+\ Append the installed object's origin rows once, in their stored order.
+: ORIGIN-INSTALL ( -- )
+   NUNIT-OBJECT:ORIGIN-KIND {: kind:n :}
+   kind IMPORT-KIND !
+   SINK nip if 1 else 0 then IMPORT-FED !
+   kind IMPORT-XT IMPORT-AT !
+   ['] ORIGIN-IMPORT NUNIT-OBJECT:ORIGIN-EACH ;
+
 \ Install the viewed object in place of running the file. The session
 \ manifest keeps the input rows the skipped load would have recorded.
 : INSTALL-OBJECT ( -- )
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:APPEND
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-OBJECT
+   ORIGIN-INSTALL
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
@@ -1451,6 +1701,11 @@ variable OBJECT-U
 public
 
 : ARM-NATIVE-ACCEPT ( [ ptr u8 n -- ] -- bool ) ARM-NATIVE ;
+
+\ Bind the builder's prefix rows while it loads the checked prefix.
+: PREFIX-ORIGIN-USE ( [ -- n bool ] [ n [ n n n ptr u8 n ptr u8 n -- ] -- ] [ n n n ptr u8 n ptr u8 n -- ] -- )
+   PRE-IMPORT-HOOK ! PRE-EACH-HOOK ! PRE-MARK-HOOK ! 1 PRE-BOUND ! ;
+: PREFIX-ORIGIN-CLEAR ( -- ) 0 PRE-BOUND ! ;
 
 : WITH ( ptr u8 n [ -- ] -- )
    {: mode:ptr modeu:n body :}

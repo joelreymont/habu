@@ -61,8 +61,12 @@ private
 \ count, the count of slot 13 references the slices name, those references,
 \ then each slice's length and bytes padded to a cell. Slot 17 holds the body
 \ of each constant record row, in row order: its recorded code length, then
-\ the code bytes its load emitted. A definition's own dependency slot stays
-\ out: the file's rows cover it.
+\ the code bytes its load emitted. Slot 18 holds the origin sink the file
+\ loaded under, then one ORIGIN-BYTES row per definition the sink recorded:
+\ its ordinal past the file's first record, its name token's span, and the
+\ name's and path's offsets and lengths in slot 3, a zero span and path when
+\ the row is unlocated. A definition's own dependency slot stays out: the
+\ file's rows cover it.
 42031 constant DEF-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
@@ -83,6 +87,21 @@ private
 \ the segment opened, 1 when it closed), library index, the scope wordlist's
 \ reference and 1 when a scope was stated. Unused cells are 0.
 56 constant EVENT-BYTES
+\ An origin row: ordinal, start, end, name offset and length, path offset and
+\ length.
+56 constant ORIGIN-BYTES
+
+public
+
+\ Where a file's origin rows went as it loaded: no sink, the builder's prefix
+\ rows, the early journal, the full journal.
+0 constant SINK-NONE
+1 constant SINK-PREFIX
+2 constant SINK-EARLY
+3 constant SINK-FULL
+
+private
+
 \ A slot row: the cell's DATA reference, its kind, and its value's
 \ reference, 0 for a null value.
 24 constant SLOT-BYTES
@@ -113,11 +132,12 @@ private
 \ with, the address cell row before the open segment's first, the bytes its
 \ segments' before-images copied, the earlier DATA sites recorded when it
 \ opened, the checker slice bytes and reference entries when it opened, its
-\ checker slice count, 1 while a checker mark is open, and the open segment's
+\ checker slice count, 1 while a checker mark is open, the open segment's
 \ FFI registry marks: the selected bank's next function index, the tables'
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
-\ was stated). A child file's
-\ bytes and sites follow its parent's and are dropped when the child closes.
+\ was stated), and the origin bytes when it opened, its sink cell first. A
+\ child file's bytes and sites follow its parent's and are dropped when the
+\ child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -143,7 +163,8 @@ private
 22 constant FO-SEG-SEL-LIB
 23 constant FO-SEG-SEL-WID
 24 constant FO-SEG-SEL-SET
-25 constant FO-CELLS
+25 constant FO-ORIGIN
+26 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -158,6 +179,9 @@ DYNAMIC-BUFFER FILE-WHY u8
 DYNAMIC-BUFFER FILE-FRAMES n
 DYNAMIC-BUFFER FILE-EVENTS n
 DYNAMIC-BUFFER FILE-NAMES u8
+\ The open files' slot 18 bytes back to back.
+DYNAMIC-BUFFER FILE-ORIGIN u8
+variable ORIGIN-U
 \ The closing file's record, DATA, require, protection and event sections,
 \ back to back.
 DYNAMIC-BUFFER FILE-OUT u8
@@ -280,6 +304,10 @@ variable OPEN-KINDS
 variable OPEN-OWNED
 \ The end of the slot 17 entries the open FILE object's rows have framed.
 variable OPEN-VALS
+\ The open FILE object's origin sink kind, and whether its slot 18 is well
+\ formed: a malformed one is a miss the hit check names.
+variable OPEN-SINK
+variable OPEN-ORIGIN-OK
 \ The object being installed and its key, the file's first record, and the
 \ next definition index row and its payload's offset in the definitions slot.
 PTR-VARIABLE OBJ-BYTES
@@ -401,6 +429,14 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    FO-NAMES FO @ {: first:n :}
    NAMES-U @ first = if NULL-PTR 0 exit then
    first FILE-NAMES NAMES-U @ first - ;
+: ORIGIN$ ( -- ptr u8 n )
+   FO-ORIGIN FO @ {: first:n :}
+   first FILE-ORIGIN ORIGIN-U @ first - ;
+: ORIGIN-N ( n -- )
+   {: value:n :}
+   ORIGIN-U @ 8 + FILE-ORIGIN-RESERVE
+   value ORIGIN-U @ FILE-ORIGIN LE:U64!
+   8 ORIGIN-U +! ;
 : VALS$ ( -- ptr u8 n )
    VALS-U @ 0= if NULL-PTR 0 exit then
    0 FILE-VALS VALS-U @ ;
@@ -856,6 +892,10 @@ public
    ndict@ FO-FIRST FO !
    EVENTS-N @ FO-EVENTS FO !
    NAMES-U @ FO-NAMES FO !
+   ORIGIN-U @ FO-ORIGIN FO !
+   ORIGIN-U @ 8 + FILE-ORIGIN-RESERVE
+   SINK-NONE ORIGIN-U @ FILE-ORIGIN LE:U64!
+   8 ORIGIN-U +!
    REQ-XT FO-REQ-XT FO !
    0 FO-IMAGE FO !
    SITES-N @ FO-SITES FO !
@@ -888,12 +928,35 @@ public
    FO-WHY FO @ WHY-U !
    FO-EVENTS FO @ EVENTS-N !
    FO-NAMES FO @ NAMES-U !
+   FO-ORIGIN FO @ ORIGIN-U !
    FO-SITES FO @ SITES-N !
    FO-CHECK FO @ CHECK-U !
    FO-CKORD FO @ CKORD-N !
    -1 FO-DEPTH +!
    \ A hit or a throw pops a file without its segment's close.
    FILE-OPEN? if SEGMENT-OPEN CHECK-MARK else OBS-CLEAR then ;
+
+\ The innermost file has loaded no child file so far.
+: FILE-LEAF? ( -- bool )
+   0 EVENTS-N @ FO-EVENTS FO @ ?do i 0 EV @ EV-LOAD = if 1+ then loop 0= ;
+
+\ The innermost file loaded under origin sink kind.
+: ORIGIN-SINK! ( n -- ) FO-ORIGIN FO @ FILE-ORIGIN LE:U64! ;
+
+\ The innermost file's origin row: the definition at ord, its name token's
+\ span at to end in the file at path, and its name. A row naming no record
+\ of the file refuses the file.
+: ORIGIN+ ( n n n ptr u8 n ptr u8 n -- )
+   {: ord:n at:n end:n path:ptr pathu:n name:ptr nameu:n :}
+   ord FO-FIRST FO @ < ord ndict@ >= or if
+      s" origin-record" FILE-REFUSE exit
+   then
+   FO-NAMES FO @ {: names:n :}
+   ord FO-FIRST FO @ - ORIGIN-N
+   at ORIGIN-N end ORIGIN-N
+   name nameu NAMES+ names - ORIGIN-N nameu ORIGIN-N
+   pathu 0= if 0 else path pathu NAMES+ names - then ORIGIN-N
+   pathu ORIGIN-N ;
 
 \ The retire hook (XREF:BEFORE-RETIRE!). An object's record rows carry no
 \ time: a replay makes a retired row retired where the row stands. So only a
@@ -935,7 +998,7 @@ public
 : CLOSE ( -- )
    OBS-CLEAR 0 OBS-N ! 0 OPEN-FFI ! FFI-OBS-RELEASE
    0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
-   0 EVENTS-N ! 0 NAMES-U ! 0 OUT-U ! 0 ROW-AT !
+   0 EVENTS-N ! 0 NAMES-U ! 0 ORIGIN-U ! 0 OUT-U ! 0 ROW-AT !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
@@ -952,7 +1015,7 @@ public
    FILE-CHECK-RELEASE FILE-CKORD-RELEASE
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
    FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
-   FILE-EVENTS-RELEASE FILE-NAMES-RELEASE FILE-OUT-RELEASE
+   FILE-EVENTS-RELEASE FILE-NAMES-RELEASE FILE-ORIGIN-RELEASE FILE-OUT-RELEASE
    NUNIT-FILE:CLOSE
    NFILE-SCOPE:SCOPE-CLOSE
    NFILE-INPUTS:CLOSE
@@ -2461,6 +2524,7 @@ public
    6 DATA-AT @ REQS-AT @ OUT$ NUNIT-FILE:SECTION!
    8 REQS-AT @ PROT-AT @ OUT$ NUNIT-FILE:SECTION!
    11 INPUTS$ NUNIT-FILE:SECTION!
+   18 ORIGIN$ NUNIT-FILE:SECTION!
    9 SLOTS-AT @ LITS-AT @ OUT$ NUNIT-FILE:SECTION!
    10 LITS-AT @ CHECK-AT @ OUT$ NUNIT-FILE:SECTION!
    5 CHECK-AT @ UPDS-AT @ OUT$ NUNIT-FILE:SECTION!
@@ -2832,6 +2896,41 @@ private
    secu <> if BAD then
    slices OPEN-CHECKS ! ;
 
+\ off and u frame bytes within size bytes.
+: SPAN-IN? ( n n n -- bool )
+   {: off:n u:n size:n :}
+   off 0 >= u 0 >= and off size <= and u size off - <= and ;
+
+\ Slot 18's framing: a sink kind, then whole rows, none without a sink, each naming one of the
+\ file's records, a name and path within namesu bytes of slot 3, and an
+\ ordered span, zero when the row has no path.
+: ORIGIN-FRAMED? ( ptr u8 n n -- bool )
+   {: sec:ptr secu:n namesu:n :}
+   secu 8 < if false exit then
+   secu 8 - ORIGIN-BYTES mod 0<> if false exit then
+   sec LE:U64@ {: kind:n :}
+   kind SINK-NONE < kind SINK-FULL > or if false exit then
+   kind SINK-NONE = secu 8 > and if false exit then
+   secu 8 - ORIGIN-BYTES / 0 ?do
+      sec 8 + i ORIGIN-BYTES * + {: row:ptr :}
+      row 0 U64-AT {: ord:n :}
+      ord 0 < ord OPEN-RECS @ >= or if unloop false exit then
+      row 1 U64-AT {: at:n :}
+      row 2 U64-AT {: end:n :}
+      at 0 < at end > or if unloop false exit then
+      row 3 U64-AT row 4 U64-AT namesu SPAN-IN? 0= if unloop false exit then
+      row 5 U64-AT row 6 U64-AT {: pathoff:n pathu:n :}
+      pathoff pathu namesu SPAN-IN? 0= if unloop false exit then
+      pathu 0= at end or 0<> and if unloop false exit then
+   loop
+   true ;
+
+: ORIGIN-CK ( ptr u8 n n -- )
+   {: sec:ptr secu:n namesu:n :}
+   sec secu namesu ORIGIN-FRAMED? if
+      1 OPEN-ORIGIN-OK !  sec LE:U64@ OPEN-SINK !
+   else 0 OPEN-ORIGIN-OK !  SINK-NONE OPEN-SINK ! then ;
+
 \ The FILE object's segment framing: events, records, DATA, protection
 \ bytes, requires, slots, updates and pins agree with one another, given its defs
 \ index rows.
@@ -2854,7 +2953,8 @@ private
    10 NUNIT-FILE:SECTION$ SLOT-LITS-CK
    5 NUNIT-FILE:SECTION$ refs CHECKS-CK
    7 NUNIT-FILE:SECTION$ refs UPDATES-CK
-   15 NUNIT-FILE:SECTION$ refs PINS-CK ;
+   15 NUNIT-FILE:SECTION$ refs PINS-CK
+   18 NUNIT-FILE:SECTION$ namesu ORIGIN-CK ;
 
 \ Install: the hit path. Every engine writer is reached by name through this
 \ TRUSTED: block, the install boundary.
@@ -3303,6 +3403,27 @@ public
    ndict@ INS-FIRST @ OPEN-RECS @ + <> if BAD then
    INS-ROW @ OPEN-DEFS @ <> if BAD then
    NUNIT-FILE:RESET-KEEP ;
+
+\ The FILE object OPEN-FILE found has a well formed slot 18; only then is its
+\ origin sink kind ORIGIN-KIND.
+: ORIGIN-FORMED? ( -- bool ) OPEN-ORIGIN-OK @ 0<> ;
+: ORIGIN-KIND ( -- n ) OPEN-SINK @ ;
+
+\ Visit each origin row of the FILE object INSTALL-OBJECT installed, in row
+\ order: its ordinal, name token span, path and name.
+: ORIGIN-EACH ( [ n n n ptr u8 n ptr u8 n -- ] -- )
+   {: each :}
+   FILE-VIEW
+   18 NUNIT-FILE:SECTION$ {: sec:ptr secu:n :}
+   3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
+   NUNIT-FILE:RESET-KEEP
+   secu 8 - ORIGIN-BYTES / 0 ?do
+      sec 8 + i ORIGIN-BYTES * + {: row:ptr :}
+      row 0 U64-AT INS-FIRST @ + row 1 U64-AT row 2 U64-AT
+      names row 5 U64-AT + row 6 U64-AT
+      names row 3 U64-AT + row 4 U64-AT
+      each execute
+   loop ;
 
 \ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package,
 \ constant and colon records only, on a checker that imports. 4b-1b widens
