@@ -622,7 +622,7 @@ DOES-COMPANION-INSTALL
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
-\ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the namespace watermark
+\ Sealed-dictionary truncation guard. Once the namespace watermark
 \ is set, a dictionary FORGET/HIDE that lowers
 \ ndict below the seal-time watermark would retire engine definitions and (FORGET)
 \ rewind CP into engine code. Reject it fail-closed with ENGINE-ERROR:SEAL-VIOLATION. The

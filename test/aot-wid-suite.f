@@ -1,4 +1,4 @@
-\ aot-wid-suite.f - protected-WID boot-integration regression (TFAM 2b-v(f)).
+\ aot-wid-suite.f - protected-WID boot-integration regression.
 \
 \ What this locks: the protected-WID bitmap that an engine bakes into its
 \ ahead-of-time (AOT) section must be restored at engine STARTUP, before any

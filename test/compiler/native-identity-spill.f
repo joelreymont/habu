@@ -6,7 +6,7 @@
 \ and store its result back, both naming the one slot that class owns, so each
 \ live local cost an `ldr xN,[sp,#K]` standing directly in front of an
 \ `str xN,[sp,#K]` at every join - 43,153 pairs in the baked engine and 9.3% of
-\ the self-build (LESSONS.md 2026-09-16). A64RA plans neither row for a copy
+\ the self-build. A64RA plans neither row for a copy
 \ whose ends share a slot and A64SPILL leaves the copy out of the rewrite: T4
 \ below went from 112 instructions holding 16 such pairs to 80 holding none.
 \

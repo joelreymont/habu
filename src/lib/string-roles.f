@@ -32,7 +32,7 @@ require src/lib/num-arithmetic.f
 \ captured before the package words shadow their global names) and only
 \ STR:SPLIT-NEXT adds a check the raw word cannot express: the largest field
 \ boundary it can report is one past the string end, so the offset advance
-\ (end + 1) is proven through the B5.2 NUM:ADVANCE-BYTE-OFF BEFORE the scan,
+\ (end + 1) is proven through NUM:ADVANCE-BYTE-OFF BEFORE the scan,
 \ turning an offset-space overflow into an E-STR-BOUNDS throw instead of a
 \ silent wrap.
 
@@ -101,7 +101,7 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
       some OF IDX>N N>INDEX OPTION:SOME ENDOF
    ;MATCH ;
 
-\ ---- one-past-end offset advance guard (B5.2 offset algebra) -------------------
+\ ---- one-past-end offset advance guard (offset algebra) ------------------------
 : ONE-BYTE-LEN ( -- NUM:byte-len )   1 NUM:BYTE-LEN OK-BYTE-LEN ;
 : SPLIT-SENTINEL-OK ( NUM:byte-len -- )
    \ the raw scan's largest reported boundary is (length + 1); prove that offset

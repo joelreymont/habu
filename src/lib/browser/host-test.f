@@ -45,8 +45,9 @@ variable HEAD-U
 \ failed transfer. Every failed transfer names its libcurl code on stderr.
 \ libcurl answers 28 only when a wall-clock limit expired; these handles set
 \ none, so it is libcurl's default 300 s connect timeout, met by a starved or
-\ stopped process. A deadline is no assertion result (docs/gate.md): the wait
-\ names itself on stdout and throws E-PROC-TIMEOUT.
+\ stopped process. A deadline is no assertion result (docs/gate.md
+\ "How a suite runs, and what that demands of its files"): the wait names itself
+\ on stdout and throws E-PROC-TIMEOUT.
 : PERFORM ( CURL:handle -- n )
    BODY CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result

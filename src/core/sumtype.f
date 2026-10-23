@@ -48,9 +48,9 @@ public
 7108 constant E-TDECL-ARITY     \ malformed type parameter header
 7109 constant E-TDECL-PAYLOAD   \ unknown variant payload type
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
-7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
-7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1)
-7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP (item 13 C2), or a declared name past TF-NAME-MAX
+7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
+7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
+7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP, or a declared name past TF-NAME-MAX
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 7210 constant E-TDECL-UNCHECKED \ a constructor-generating declaration while checking is suspended
@@ -144,7 +144,7 @@ PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
 PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
 PTR-VARIABLE TDT-A   variable TDT-U   \ offending token (diagnostics)
 PTR-VARIABLE TDW-A   variable TDW-U   \ short reason (diagnostics)
-variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body (item 13 C2)
+variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body
 variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
@@ -377,7 +377,7 @@ variable TDECL-FAM-ARITY
    THEN
    SCHEMA-PARAM ;
 
-\ item 16 boxed sub-slice 1: a DIRECT self-family reference is a payload token
+\ A DIRECT self-family reference is a payload token
 \ whose tail is the family being declared (TDN-A/TDN-U). An inline or ptr-wrapped
 \ self-reference makes the family recursive, which only the boxed policy can lay
 \ out (its pointer indirection breaks the width cycle); under any non-boxed policy
@@ -738,14 +738,14 @@ create TDV-BADLETTER 1 allot
       2drop fam TDECL-VARIANT
    AGAIN ;
 
-\ --- constructor metadata (item 8): a PUBLIC family derives its reserved
+\ --- constructor metadata: a PUBLIC family derives its reserved
 \ constructor package (Package Shape) once and records it in every variant's
 \ SV.CTOR-PKG slot, keyed by family id so same-tail families in different
 \ packages get disjoint constructor namespaces. A PRIVATE family reserves no
 \ namespace, so the slot stays empty and the early exit below is the whole rule:
 \ a private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
 \ declaring package's private wordlist instead, and a private SUM or ENUM still
-\ publishes no word at all and constructs through item 9's `construct` form.
+\ publishes no word at all and constructs through the `construct` form.
 \ The derived name is interned AFTER the escaped spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
 
@@ -760,7 +760,7 @@ public
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 
-\ --- optional layout-policy header clause (item 16, docs/design.md "Families and layout policies"): `POLICY <name>`
+\ --- optional layout-policy header clause (docs/design.md "Families and layout policies"): `POLICY <name>`
 \ after the arity (sum/product) or the name (enum), before the first VARIANT /
 \ FIELD. A missing clause leaves the TFAM-DECL default (TL-STACK-CELL-TAG, the
 \ universal M-payload + tag stack representation, type-family.f header). `stack-cell-tag`
@@ -809,16 +809,16 @@ public
 \ --- optional derived-word header clause (derive S1+S2, dot habu-checker-
 \ capability-derive): `DERIVE <feature>` after the POLICY position, before the
 \ variants/fields. Accepts exactly `eq` on a PUBLIC arity-0 ENUM, SUMTYPE, or
-\ PRODUCT; `order`/`hash` are recognised but deferred (their slices land
-\ later), anything else is unknown. One feature per clause keeps the grammar
-\ unambiguous against bare variant names; a later slice may repeat the clause
-\ for more features. Payload roles are validated per variant/field after the
-\ block parses (TDECL-DERIVE-REQUIRE below): integer scalars compare with `=`;
-\ pointer payloads have NO derived equality (identity-eq needs a checked
+\ PRODUCT; `order`/`hash` are recognised but deferred (their slices land later),
+\ anything else is unknown. One feature per clause keeps the grammar unambiguous
+\ against bare variant names; a later slice may repeat the clause for more
+\ features. Payload roles are validated per variant/field after the block parses
+\ (TDECL-DERIVE-REQUIRE below): integer scalars compare with `=`; pointer
+\ payloads have NO derived equality (identity-eq needs a checked
 \ pointer-equality surface that does not exist — fail closed, documented);
 \ non-integer/linear scalars reject (comparing a linear value consumes it;
-\ deferred to TFAM-11); a product's enum-typed field requires that family to
-\ also derive eq (its PKG:TAG is the field comparator).
+\ deferred until whole-bundle linear accounting); a product's enum-typed field
+\ requires that family to also derive eq (its PKG:TAG is the field comparator).
 
 private
 
@@ -943,7 +943,7 @@ public
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
-\ --- enum families (item 14, type-family.f header) are no longer declared here. The global
+\ --- enum families (type-family.f header) are no longer declared here. The global
 \ ENUM keyword is the unified front end (src/core/enum-decl.f, ENUM-DECL:ED-RUN),
 \ which registers the same TK-ENUM family for a compact body and additionally
 \ accepts the full named-variant payload grammar this file never had. The compact
@@ -952,7 +952,7 @@ public
 \ through ENUM-DECL:ED-REPLAY instead. SUMTYPE and PRODUCT below are unchanged and
 \ still own their own bodies until their own migrations.
 
-\ --- product families (item 15, type-family.f header): a `PRODUCT name[<params>] FIELD f t ..
+\ --- product families (type-family.f header): a `PRODUCT name[<params>] FIELD f t ..
 \ ;PRODUCT` block is a single-shape record registered as TK-PRODUCT (no tag, no
 \ variants). Each `FIELD name type` becomes one PF-* row (fam, field tail, field
 \ schema root, physical slot) plus one cell of width; TFAM-SLOTS = field count, so
@@ -1158,7 +1158,7 @@ public
    s" newtype" na nu s" " TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
-\ --- runtime constructor generation (item 8, docs/forth.md "Structures And Enums"). Only the engine's
+\ --- runtime constructor generation (docs/forth.md "Structures And Enums"). Only the engine's
 \ SUMTYPE word below generates dictionary words; the direct TDECL-DEFSUM
 \ entry stays metadata-only, so preverify/all-errors dispatch never mutates
 \ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
@@ -1943,7 +1943,7 @@ private
    vid TDGEN-NAME
    TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT ;
 
-\ product generated words (item 15): `: PKG:MAKE ( fields -- fam<..> ) ;` and
+\ product generated words: `: PKG:MAKE ( fields -- fam<..> ) ;` and
 \ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending
 \ window is armed with k=0: a product bundle is its field cells in slot order
 \ (no pads, no tag), so the body must contribute exactly nothing and the
@@ -2610,7 +2610,7 @@ private
    ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
    fam TFAM-PRODUCT? IF
       fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
-   \ parametric (arity > 0) families publish too (item 11 slice 1): a
+   \ parametric (arity > 0) families publish too: a
    \ constructor's parametric result stays one conservative logical cell while
    \ its args are unresolved, expands to hidden fields where instantiation
    \ proves the args non-linear (checker.f LOGHID coercion), and genuinely

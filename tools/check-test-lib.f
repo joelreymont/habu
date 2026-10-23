@@ -586,7 +586,7 @@ variable START-NS
    s" SUMTYPE cksnoend<a> VARIANT ok a ;VARIANT" SB-APPEND
    SB$ ;
 
-: ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
+: ENUM-GOOD$ ( -- ptr u8 n )   \ enum declaration + signature use
    SB-RESET
    s" ENUM eck red green ;ENUM" SB-APPEND
    $0a SB-APPEND-C
@@ -600,7 +600,7 @@ variable START-NS
    s" : CKT-AFTER-EBAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
-: PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
+: PROD-GOOD$ ( -- ptr u8 n )   \ product declaration + signature use
    SB-RESET
    s" PRODUCT pck" SB-APPEND
    $0a SB-APPEND-C

@@ -1,4 +1,4 @@
-\ seal-package.f - sealed system-package regressions (TFAM 2b-ii, 2b-iii).
+\ seal-package.f - sealed system-package regressions.
 \
 \ Proves that once the friend latch is sealed (every user-source entry), the
 \ compiler rejects opening or reopening a reserved system package
@@ -7,14 +7,14 @@
 \ Ordinary (non-reserved) packages and qualified definitions still compile, and a
 \ trailing-colon ordinary name (`PRIM:`-shaped) is never treated as qualified.
 \
-\ TFAM 2b-iii extends the same reserved-name seal (C-QUALIFY-SEAL-GUARD) to the
-\ token sinks that resolve a qualified name without defining it: `'` (tick)
-\ and `[']` (bracket-tick). A user `' TFAM:tail` or `['] TYPE:tail` rejects
-\ fail-closed (ENGINE-ERROR:SEAL-PACKAGE) exactly like the define path,
-\ case-insensitively, while
-\ non-reserved, non-qualified, trailing-colon, and reserved-prefix-but-longer
-\ names resolve normally. `[']` is checker-rejected in checked code independently
-\ of the seal, so its inert positive runs under `0 set-check`.
+\ The same reserved-name seal (C-QUALIFY-SEAL-GUARD) extends to the token sinks
+\ that resolve a qualified name without defining it: `'` (tick) and `[']`
+\ (bracket-tick). A user `' TFAM:tail` or `['] TYPE:tail` rejects fail-closed
+\ (ENGINE-ERROR:SEAL-PACKAGE) exactly like the define path, case-insensitively,
+\ while non-reserved, non-qualified, trailing-colon, and
+\ reserved-prefix-but-longer names resolve normally. `[']` is checker-rejected
+\ in checked code independently of the seal, so its inert positive runs under
+\ `0 set-check`.
 \
 \ Semantic cases run in disposable SUBJECT forks of the sealed candidate. Exact
 \ outcome/stdout/stderr parity against direct `--load` and stdin executions is
@@ -147,7 +147,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" : TASK:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 
-\ --- tick / bracket-tick reserved-name forges (TFAM 2b-iii) ---
+\ --- tick / bracket-tick reserved-name forges ---
 
 : SPK-TICK-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `' <NAME>:X drop` at top level (tick is checker-legal)
    SB-RESET
@@ -365,7 +365,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" reserved-prefix-but-longer package name allowed" T-LABEL
    SPK-OK-PREFIX-FORGE$ SPK-SUBJECT SPK-ASSERT-OK ;
 
-\ --- TFAM 2b-iii: tick / bracket-tick token sinks ---
+\ --- tick / bracket-tick token sinks ---
 
 : SPK-TICK-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SPK-TICK-FORGE$ SPK-SUBJECT SPK-ASSERT-SEAL ;

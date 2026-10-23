@@ -198,7 +198,7 @@ variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-nam
 : DEFKWMSG$ ( -- ptr u8 n )   s" hb: compile keyword cannot be a definition name: " ;   \ LDEFKWMSG
 : DEFKWMSG-LEN ( -- n )   DEFKWMSG$ nip ;
 \ Capacity refusals that have a COUNT to state. A ceiling reached with nothing
-\ but an exit code costs the caller the whole measurement (LESSONS 2026-09-17):
+\ but an exit code costs the caller the whole measurement:
 \ one line naming what filled up, the ceiling and the count is the fix, and
 \ src/lib/ffi-abi.f REPORT-FULL has the shape. LDIAGU writes a number on fd 2 and
 \ LDIAGDEF writes the definition being compiled, so a tail below composes a
@@ -1325,7 +1325,7 @@ here BPL-KW - constant BPL-LEN
 
 : SEEDED-RUNTIME? ( -- bool ) AOT-RUNTIME:COMPLETE? ;
 
-\ Seal the friend arena (TFAM 2b-i): latch := FRIEND-ARENA-LEN. Emitted at the
+\ Seal the friend arena: latch := FRIEND-ARENA-LEN. Emitted at the
 \ END of the cold prefix — after the engine's own canonical source is loaded and
 \ before ANY user token (--load file, stdin pipe, baked LSRC, or REPL) is
 \ evaluated — so every raw write into the arena from user source is trapped
@@ -1629,15 +1629,15 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-LOAD-DECL-FILES
    PFX-LOAD-CORE-FILES ;
 
-\ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
-\ LAST engine-prefix source token, after every engine file and the provide
-\ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
-\ after xref.f, so a watermark frozen there left the argv tail FORGET/HIDEable.
-\ The capture must be a SOURCE token, not a native store: at cold-prefix
-\ assembly time nothing has evaluated yet - ndict is still the native-prim
-\ boundary and only grows as the interpret loop chews the concatenated source.
-\ Cold boots only: a snapshot restores its bake-time watermark from the
-\ persisted friend band (same gate as PFX-LOAD-SCRIPT-ARGV-COLD).
+\ Append `SEAL-CAPTURE` as the LAST engine-prefix source token, after every
+\ engine file and the provide rows. xref.f's in-file call is only the baseline:
+\ src/os/script-argv.f loads after xref.f, so a watermark frozen there left the
+\ argv tail FORGET/HIDEable. The capture must be a SOURCE token, not a native
+\ store: at cold-prefix assembly time nothing has evaluated yet - ndict is still
+\ the native-prim boundary and only grows as the interpret loop chews the
+\ concatenated source. Cold boots only: a snapshot restores its bake-time
+\ watermark from the persisted friend band (same gate as
+\ PFX-LOAD-SCRIPT-ARGV-COLD).
 \ Freeze the count of paths the ENGINE provides, as the last prefix token
 \ alongside SEAL-CAPTURE and for the same reason: everything recorded up to
 \ here is the engine's own surface, everything after it belongs to whoever is
@@ -2245,12 +2245,12 @@ public
 variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 : NEUTRAL$ ( -- ptr u8 n )   s" NEUTRAL-PARSE-IMM?" ;
 ;package
-\ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
+\ ADT lowering keywords: `construct` and MATCH dispatch
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
 \ CLI positives, negatives, forged-tag diagnostic, and checked round-trips.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
-variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
+variable LRESTAB    \ sealed system-package name table
 
 \ Keyword spellings a diagnostic writes: the row below that bakes each one and
 \ every write of it take the bytes and the length from the same literal.
@@ -2270,7 +2270,7 @@ variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ points into, plus the sealed reserved-name table it embeds.
 package KWDATA
 
-\ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
+\ Sealed system-package names. Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
 \ This ONE native table is the reserved-name set: the guards fold each candidate
 \ byte and compare against it. It lives in the compiler (habu1/habu2 CHECK-OFF
@@ -2480,14 +2480,14 @@ public
 : J-CASE ( -- )
    9 0 MOVZ,  CFK-CASE C-CF-PUSH ;
 
-\ construct keyword (TFAM 10 slice 2): arm the operand capture (CMM=1). CFN
+\ construct keyword: arm the operand capture (CMM=1). CFN
 \ entry — no spill: construct only ADDS VS constants on top, exactly like the
 \ literal tokens of a generated-constructor body; tracked payload cells stay
 \ wherever the VS has them.
 : J-CONSTRUCT ( -- )
    12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
-\ match keyword (TFAM 10 slice 3, docs §16): CF-ENTRY spills the width-expanded
+\ match keyword: CF-ENTRY spills the width-expanded
 \ scrutinee bundle to the physical stack first, then J-MATCH pushes a CF sentinel
 \ (x9=0, J-CASE shape, so ;MATCH's J-ENDCASE-style join loop stops at it), opens a
 \ match-frame nesting level (the family id is filled at the family token), and
@@ -4661,7 +4661,7 @@ public
    nend LBL,
    done LBL, ;
 
-\ TFAM 2b-ii: sealed system-package guard. The offending token sits in
+\ Sealed system-package guard. The offending token sits in
 \ TKA/TKL when either emitter runs, so the shared fail writes it and exits with
 \ the distinct named code ENGINE-ERROR:SEAL-PACKAGE. Both guards read the REAL friend latch
 \ (FRIEND-LATCH-CELL) natively: latch 0 = engine cold load (friend) allows the
@@ -4839,7 +4839,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ One shared guarded-name-publication helper (dot habu-emit-one-shared).
 \ Formerly inlined at every definer plus EXPORT; now emitted once at
 \ LSTOREDEFNAME and reached by branch-with-link.
-\ Publish guard (TFAM 2b-v): a new record's WID is DEF-WL-CELL (from CUR-CELL, which
+\ Publish guard: a new record's WID is DEF-WL-CELL (from CUR-CELL, which
 \ a user can redirect with `set-current`, or a resolved package WID). Reject
 \ publishing into a protected WID once the namespace watermark is sealed -- so user source
 \ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
@@ -4930,11 +4930,11 @@ package INTERP-EMIT
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `constant` pops ONE physical cell and records the one-cell `-- a` trust
-\ (LASTC-TRUST:PUBLISH-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
-\ the interpret stack is untyped, so no shape source exists here, and a
-\ wider-than-cell layout value never lands on it (DNAME-WIDE dispatch gate).
-\ Parity with verify-source / public-signatures / all-errors is locked by the
-\ check-all-errors-test const-layout-narrow fixture.
+\ (LASTC-TRUST:PUBLISH-A) — the permanent contract: the interpret stack is
+\ untyped, so no shape source exists here, and a wider-than-cell layout value
+\ never lands on it (DNAME-WIDE dispatch gate). Parity with verify-source /
+\ public-signatures / all-errors is locked by the check-all-errors-test
+\ const-layout-narrow fixture.
 : C-CONSTANT ( -- )
    C-TASK-LIVE-GUARD
    1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,  LTOK LABEL@ BL,
@@ -5110,7 +5110,7 @@ package INTERP-EMIT
 \ identity declarers, and the reason each is a reader keyword and not a word: a
 \ word would have to read its own name and signature off the live input and
 \ drive them back through `evaluate`, which src/core/roles.f did and which no
-\ file loading before src/core/include.f can do (LESSONS 2026-08-19). As a
+\ file loading before src/core/include.f can do. As a
 \ keyword the whole form is read here, where the engine already has the token
 \ reader.
 \
@@ -5617,7 +5617,7 @@ public
 
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LSNAPRBD
-variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
+variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine
 variable LAOTPROT      \ cold-start window-relative protected-WID restore
 
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
@@ -5941,7 +5941,7 @@ variable LCODEINV
    0 named CBNZ,
       LKWBTICK LABEL@ BTICK-LEN C-DIE-KEYWORD-NAME
    named LBL,
-   C-QUALIFY-SEAL-GUARD                                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
+   C-QUALIFY-SEAL-GUARD                                 \ reject `['] RESERVED:tail` once sealed
    LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (`['] W` under a `using`)
@@ -5967,7 +5967,7 @@ variable LCODEINV
       found B,
    bk LBL, ;
 
-\ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
+\ ---- pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
 \ re-run from a sealed copy of its source with width-aware transport lowering.
 \ These meta words emit the compile-loop plumbing shared by transport ops and
@@ -6919,7 +6919,7 @@ public
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 pnf CBZ,
    pgate LBL,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: the one sealed-WID rule, shared with the other two passes (reads x5/x11; x24 survives)
+      LAOTWIDGATE LABEL@ BL,                         \ the one sealed-WID rule, shared with the other two passes (reads x5/x11; x24 survives)
    ppatch LBL,
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26, masked
@@ -7473,7 +7473,7 @@ variable LCOUNT   variable LROWS
       9 21 1 ADDI,                                   \ x9 = name ptr = cursor + 1
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
       13 bnf CBZ,
-      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject bootrun into a protected WID (reads LFIND's x5/x11)
+      LAOTWIDGATE LABEL@ BL,                         \ reject bootrun into a protected WID (reads LFIND's x5/x11)
       11 BLR,                                        \ call the entry word
       21 SP 0 LDR,  10 SP 8 LDR,  SP SP 16 ADDI,
       21 21 1 ADDI,  21 21 10 ADD,                   \ advance past [len][name]
@@ -8299,7 +8299,7 @@ ardone LBL,
 
 ;package
 
-\ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). Entry is LFIND's answer
+\ Sealed-WID reject for the AOT boot passes. Entry is LFIND's answer
 \ as LFIND left it: x5 = the record the baked name resolved to, x11 = its xt. A
 \ callee the engine's own rules would not let checked source CALL fails the boot
 \ closed (exit ENGINE-ERROR:SEAL-PACKAGE), so a captured relocation callee or
@@ -9549,7 +9549,7 @@ public
    0 named CBNZ,
       LKWTICK LABEL@ TICK-LEN C-DIE-KEYWORD-NAME
    named LBL,
-   C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
+   C-QUALIFY-SEAL-GUARD                                 \ reject `' RESERVED:tail` once sealed
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
    INTERP-EMIT:LFINDSHADOW LABEL@ BL,                    \ a global a used public also exports refuses (105)
@@ -10609,7 +10609,7 @@ public
 : EM-COMPILE-DROP-LOCALS ( -- )
    12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12 ;
 
-\ ---- item 12 slice 3b: pass-2 width-aware transport lowering ---------------
+\ ---- pass-2 width-aware transport lowering ---------------
 \ ONE mechanism for every transport tier (register shuffle, inline rs keyword,
 \ dictionary leaf prim): at a pass-2 transport token whose operands include a
 \ wider-than-cell group, force LVSPILL and emit fixed-shape memory cell loops
@@ -11650,7 +11650,7 @@ public
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       C-CALL-HOOK  10 rejected CBZ,
       \ certified sig-less definition: same pass-2 dispatch as the sig'd
-      \ publish path (item 12 slice 3b).
+      \ publish path.
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
       publish B,
@@ -12561,7 +12561,8 @@ public
    \ token it was given: the definition's name, the package's, the EXPORT
    \ operand, or the word that ran `wordlist` or a writer primitive. The code is
    \ a literal so the host that emits this need not carry the new constant
-   \ (docs/bootstrap.md, a name a pre-window build file calls).
+   \ (a pre-window build file calls it: docs/bootstrap.md
+   \ "Generation Chain Check").
    OVERLAY-EMIT:LDIE LABEL@ LBL,
    0 2 MOVZ,  1 omsg ADR,  2 omu MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -12949,7 +12950,7 @@ public
    ufdie LBL,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ construct operand steps (TFAM 10 slice 2, docs §16 Constructors). CMM=1: the
+\ construct operand steps. CMM=1: the
 \ token is the FAMILY operand — resolve eagerly through tfl-con-fam? (owner-only
 \ scope, sum/enum gate) so no operand string must survive a REPL line refill;
 \ stash the id in CMFAM-CELL, arm CMM=2. CMM=2: the token is the VARIANT operand
@@ -13046,7 +13047,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
 
-\ MATCH lowering legs (TFAM 10 slice 3, docs §16). CMM=3/4/5 continue the token
+\ MATCH lowering legs. CMM=3/4/5 continue the token
 \ machine J-MATCH armed at `match`: 3 = want family, 4 = want variant-or-`;match`,
 \ 5 = want `of`. Like the construct legs each opens an RX window (LPROT 5) only
 \ around the checker-friend bridge call (the bridge targets are checker words
@@ -13200,7 +13201,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
 
-\ EM-COMPILE-ADT-MODE (TFAM 10 slices 1-3): fail-closed head of the compile
+\ EM-COMPILE-ADT-MODE: fail-closed head of the compile
 \ dispatch. CMM-CELL mirrors the checker's construct+match token machine; the
 \ operand tokens are consumed HERE — before the semi/local/keyword/literal/call/
 \ undefined path — so captured family/variant/of/;match tokens never reach

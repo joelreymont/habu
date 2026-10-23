@@ -20,8 +20,8 @@
 \
 \ WHAT IT CANNOT PROVE. No x86_64 instruction executes here. The carry polarity
 \ SYS, is built around, and a linked label's address against the loaded image,
-\ are observed by the peer images test/x86-64-peer-image.f builds
-\ (docs/bootstrap.md). A rel32 site out of reach needs a two-gigabyte stream and
+\ are observed by the peer images test/x86-64-peer-image.f builds.
+\ A rel32 site out of reach needs a two-gigabyte stream and
 \ is not built.
 \
 \ Its own suite, because it loads the x86-64 seam's sys.f, which spells the same

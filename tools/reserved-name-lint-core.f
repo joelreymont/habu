@@ -142,9 +142,9 @@ private
    a u s" of" LINT-STR=CI if LINT-TRUE exit then
    a u s" endof" LINT-STR=CI if LINT-TRUE exit then
    a u s" endcase" LINT-STR=CI if LINT-TRUE exit then
-   a u s" match" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 9: MATCH eliminator control form
-   a u s" ;match" LINT-STR=CI if LINT-TRUE exit then     \ TFAM 9: MATCH block close (;FOO convention)
-   a u s" construct" LINT-STR=CI if LINT-TRUE exit then  \ TFAM 9: private constructor token form
+   a u s" match" LINT-STR=CI if LINT-TRUE exit then      \ MATCH eliminator control form
+   a u s" ;match" LINT-STR=CI if LINT-TRUE exit then     \ MATCH block close (;FOO convention)
+   a u s" construct" LINT-STR=CI if LINT-TRUE exit then  \ private constructor token form
    a u s" do" LINT-STR=CI if LINT-TRUE exit then
    a u s" ?do" LINT-STR=CI if LINT-TRUE exit then
    a u s" loop" LINT-STR=CI if LINT-TRUE exit then
@@ -191,11 +191,11 @@ private
    a u s" variant" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;variant" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;sumtype" LINT-STR=CI if LINT-TRUE exit then
-   a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ TFAM 14: enum block definer
-   a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 14: enum block close (;FOO)
-   a u s" product" LINT-STR=CI if LINT-TRUE exit then    \ TFAM 15: product block definer
-   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 15: product field keyword
-   a u s" ;product" LINT-STR=CI if LINT-TRUE exit then   \ TFAM 15: product block close (;FOO)
+   a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ enum block definer
+   a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ enum block close (;FOO)
+   a u s" product" LINT-STR=CI if LINT-TRUE exit then    \ product block definer
+   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ product field keyword
+   a u s" ;product" LINT-STR=CI if LINT-TRUE exit then   \ product block close (;FOO)
    a u s" undefine" LINT-STR=CI ;
 
 : RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}

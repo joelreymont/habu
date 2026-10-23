@@ -1,7 +1,7 @@
 \ render.fs — RENDER-EFFECT: resolved effect -> canonical signature text.
 \ =GENERALIZE: free type vars named a b c… and row vars R S T… by first
 \ appearance across the whole effect. Output is re-parseable by PARSE-SIG and
-\ matches the surface grammar in PLAN. Shared with diagnostics.
+\ matches the grammar in docs/forth.md "Grammar". Shared with diagnostics.
 \
 \ Grammar emitted, single space between tokens:
 \   <eff>   = <din> -- <dout> [ SPACE | SPACE <rin> -- <rout> ]

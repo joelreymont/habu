@@ -325,16 +325,18 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ refusals, REPL CLI spawns (HBT-ARGV-BASE-REPL) and HBT-RUN-APP run on
 \ ENGINE-CANDIDATE:PATH$. The keyed builders those children select are the
 \ family images the row's load closure grants (aot-builder, linker-builder,
-\ app-builder; docs/gate.md), each built once and found in the process's cache
-\ root: under the gate the run's, standalone the user's (test/image-grant.f).
-\ No row overrides that root except where a case owns a cache miss or a damaged
-\ entry, and says so beside it. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on
-\ the engine, which compiles the linker above the application: for a subject
-\ whose closure reaches a word, or an unclaimed cell, of a module of the
-\ linker's lib closure the engine does not bake, which the linker image refuses
-\ by name (test/preloaded-engine.f rule 3), and for a case about that order. A
-\ subject that only requires such a module links on the image. A row that
-\ records no image builds every program on the engine.
+\ app-builder; docs/gate.md
+\ "How a suite runs, and what that demands of its files"), each built once and
+\ found in the process's cache root: under the gate the run's, standalone the
+\ user's (test/image-grant.f). No row overrides that root except where a case
+\ owns a cache miss or a damaged entry, and says so beside it.
+\ HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the engine, which compiles the
+\ linker above the application: for a subject whose closure reaches a word, or
+\ an unclaimed cell, of a module of the linker's lib closure the engine does not
+\ bake, which the linker image refuses by name (test/preloaded-engine.f rule 3),
+\ and for a case about that order. A subject that only requires such a module
+\ links on the image. A row that records no image builds every program on the
+\ engine.
 : HBT-KEYED! ( ptr u8 n -- )
    HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
 

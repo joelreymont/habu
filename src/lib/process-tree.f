@@ -702,8 +702,8 @@ public
 \ init or a group rather than a process, and the caller cannot be its own tree.
 \ Whatever the walk throws - a process table it could not read, a tree past
 \ MEMBER-MAX - every member found by then is still killed, so none is left
-\ stopped. A SIGKILL of the caller runs no finally: what the walk had stopped
-\ is left stopped (docs/gate.md).
+\ stopped. A SIGKILL of the caller runs no finally: what the walk had stopped is
+\ left stopped (docs/gate.md "Signals and servers").
 : KILL-TREE ( pid -- ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET

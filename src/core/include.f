@@ -1401,7 +1401,7 @@ variable GEN
 
 SOURCE-UNIT:RESET
 
-\ ---- Ordered source-composition event log (TFAM 5, item 5) --------------
+\ ---- Ordered source-composition event log -------------------------------
 \ The loader words append one event per source-composition act so a restricted
 \ discovery pass can reconstruct include multiplicity and require/provided
 \ canonical registry state in order. Recording is gated by EVENT-ON? so a
@@ -2185,7 +2185,7 @@ public
 
 ;package
 
-\ ---- Fresh discovery registry (TFAM 5, item 5) --------------------------
+\ ---- Fresh discovery registry -------------------------------------------
 \ A restricted discovery pass must see a fresh require/provided registry so a
 \ tool's own preloaded paths cannot dedup-hide a later user require/provided.
 \ Raising REQUIRE-BASE to the current count makes REQUIRE-KNOWN? ignore the

@@ -11,12 +11,12 @@ Use this skill for `bin/hb` recovery and self-refresh.
 
 - Run from the repository root.
 - Prefer a trusted native seed from the same OS and architecture when
-  available; see docs/seed.md.
+  available; see docs/bootstrap.md "Recovery from a trusted native seed".
 - The no-binary ARM64 route uses Gforth 0.7.9 or newer with locals
   support. Gforth 0.7.3 is too old. A known-good release is
   0.7.9_20260610.
 - With no Gforth installed, use the complang dist tarball named in
-  docs/bootstrap.md. Its prebuilt kernel images allow a cold build.
+  docs/bootstrap.md "Requirements". Its prebuilt kernel images allow a cold build.
 
 Verify locals support:
 
@@ -45,6 +45,6 @@ HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
 
 Build again with `$OUT` as `HOST` and compare successive products. Gate the
 converged product with its matching source tree before replacing `bin/hb`;
-see `docs/gate.md`. `tools/build-fixpoint-refresh.f -- install` produces the
+see `docs/gate.md` "Qualifying a candidate". `tools/build-fixpoint-refresh.f -- install` produces the
 source-only recovery engine, not the gated native product.
 

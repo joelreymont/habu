@@ -1,6 +1,6 @@
 \ sys.fs -- OS seam selected by HABU_TARGET. Engine emitters say
 \ `NR-WRITE SYS,`; target files keep that call surface stable.
-\ See docs/porting.md for the full target contract.
+\ docs/xcomp.md "Porting" states the full target contract.
 
 require icode.fs
 
@@ -14,10 +14,10 @@ HB-TARGET-LINUX? HB-TARGET-MACOS? or HB-TARGET-LINUX-X86-64? or 0= [IF]
 [THEN]
 
 \ The third target is a NAME here and nothing more: every emitter in this
-\ directory writes ARM64 instructions, so the flag exists for forth.fs's
-\ prefix selector to resolve and the chain stops rather than emitting an
-\ aarch64 engine that claims to be an x86_64 one. Recovery for linux-x86-64
-\ is a cross-build from a working arm64 engine (docs/bootstrap.md).
+\ directory writes ARM64 instructions, so the flag exists for forth.fs's prefix
+\ selector to resolve and the chain stops rather than emitting an aarch64 engine
+\ that claims to be an x86_64 one. Recovery for linux-x86-64 is a cross-build
+\ from a working arm64 engine (docs/bootstrap.md "No-Binary Recovery").
 HB-TARGET-LINUX-X86-64? [IF]
 .( the gforth recovery chain emits ARM64 code; cross-build linux-x86-64 from a working arm64 engine ) cr bye
 [THEN]
@@ -52,7 +52,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
    8 swap MOVZ,  0 SVC,
    16 -4095 LIT64,  0 16 CMP, ;
 
-\ Runtime-emit syscall stencils (TFAM 10 slice 3; mirrors src/os/linux/sys.f):
+\ Runtime-emit syscall stencils (mirrors src/os/linux/sys.f):
 \ the MATCH bad-tag die is emitted INTO the user word, so its write+exit words
 \ are baked here. Linux syscall number in x8; die never inspects the write
 \ return, so no errno reconciliation.
@@ -116,7 +116,7 @@ $49 constant NR-MUNMAP
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 
-\ Runtime-emit syscall stencils (TFAM 10 slice 3; mirrors src/os/macos/sys.f):
+\ Runtime-emit syscall stencils (mirrors src/os/macos/sys.f):
 \ the MATCH bad-tag die is emitted INTO the user word, so its write+exit words
 \ are baked here. macOS syscall number in x16, call svc #0x80.
 $D2800010 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x16, #NR-WRITE

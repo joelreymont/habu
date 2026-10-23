@@ -1,7 +1,7 @@
 # tools — commands, build drivers, checks
 
 Every tool is checked Habu run as `bin/hb --load tools/<name>.f -- <args>`.
-`bootstrap.sh` is the one shell file: no-binary recovery (`docs/bootstrap.md`).
+`bootstrap.sh` is the one shell file: no-binary recovery (`docs/bootstrap.md` "No-Binary Recovery").
 `<name>.f` is the command; `<name>-main.f` is the entry where `<name>.f` is
 also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 `-test.f` is its focused test.

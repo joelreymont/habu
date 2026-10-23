@@ -1,6 +1,7 @@
 \ macho.fs — dynamic macOS ARM64 seed image. Mirrors src/os/macos/macho.f:
 \ __TEXT, a __DATA_CONST page with dlopen/dlsym slots, and chained fixups in
-\ __LINKEDIT. sign.fs appends the ad-hoc signature. See docs/macho.md.
+\ __LINKEDIT. sign.fs appends the ad-hoc signature. macho.f's header states
+\ the layout.
 
 require asm.fs
 require image.fs

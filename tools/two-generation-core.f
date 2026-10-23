@@ -28,8 +28,7 @@
 \ per-process addresses. The residue reaches its own fixpoint at generation 4,
 \ where f(B4) = B4 exactly. A byte difference in the last pair is therefore a
 \ real defect - a clock, a pid, an unpinned address or an unordered walk in the
-\ build - and this is the check that names it. docs/bootstrap.md records the
-\ measurement and the counts per pair.
+\ build - and this is the check that names it.
 \
 \ Invocation and today's lines: docs/bootstrap.md, "Generation Chain Check".
 

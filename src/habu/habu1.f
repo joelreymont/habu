@@ -4154,16 +4154,16 @@ public
    msg LBL,  ma mu BYTES,
    done LBL, ;
 
-\ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
+\ Capture the seal-time dictionary-truncation watermark. Called from
 \ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
 \ assembler's token at the true engine-prefix end (habu2.f
 \ EMIT-SEAL-CAPTURE-TOKEN, after script-argv.f) - always after engine
-\ definitions and before any user token. The friend latch is already sealed (it is
-\ set much earlier, before the engine source is evaluated), so a raw ! would trap;
-\ this direct STR from NDICT (x27) is the engine's sanctioned bypass, mirroring how
-\ BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only grows once the
-\ engine is loaded (its records cannot be forgotten past this mark), so re-running
-\ the capture is monotonic and never lowers the watermark.
+\ definitions and before any user token. The friend latch is already sealed (it
+\ is set much earlier, before the engine source is evaluated), so a raw ! would
+\ trap; this direct STR from NDICT (x27) is the engine's sanctioned bypass,
+\ mirroring how BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only
+\ grows once the engine is loaded (its records cannot be forgotten past this
+\ mark), so re-running the capture is monotonic and never lowers the watermark.
 \ Undrained pre-trust defer backstop (dot habu-engine-pre-trust-77410827): the
 \ pending table (layout.f PD-*) must be empty by the engine-prefix seal — checker.f
 \ drains it after `: TRUST`, and SEAL-CAPTURE only ever runs after checker.f. A
@@ -4954,7 +4954,7 @@ package ENGINE-EMIT
    LBL BCAP-CP !
    LBL BCAP-CD !
    LBL BCAP-GO !
-   \ pass 2 re-runs the already-captured body: never re-capture (item 12 3b)
+   \ pass 2 re-runs the already-captured body: never re-capture
    14 DATA P2-CELL LDR,  14 BCAP-GO LABEL@ CBZ,  RET,
    BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
@@ -5308,7 +5308,7 @@ package ENGINE-EMIT
 
 ;package
 
-\ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
+\ Protected-WID membership. BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is a protected wordlist, else 0. The two engine-reserved OWNER-API
 \ wordlists (public=1, private=2) are ALWAYS protected: they are the sealed
 \ engine API and the registered-helper marker (OWNER-API-PRI-WID stamps the AOT

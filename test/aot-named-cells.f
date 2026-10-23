@@ -1,6 +1,7 @@
-\ Actual captured cells, then byte-exact file/owned and malformed rows.
-\ The harness loads before the tier selection: only the subject below it is
-\ compiled at the requested tier (docs/gate.md).
+\ Actual captured cells, then byte-exact file/owned and malformed rows. The
+\ harness loads before the tier selection: only the subject below it is compiled
+\ at the requested tier (docs/gate.md
+\ "How a suite runs, and what that demands of its files").
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

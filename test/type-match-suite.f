@@ -1,5 +1,5 @@
-\ type-match-suite.f — checked MATCH eliminator suite (PLAN item 9,
-\ docs/forth.md "Structures And Enums"). Run BY THE ENGINE over stdin, like
+\ type-match-suite.f — checked MATCH eliminator suite (docs/forth.md
+\ "Structures And Enums"). Run BY THE ENGINE over stdin, like
 \ the other type suites:  bin/hb < test/type-match-suite.f
 \ MATCH is a checker control form: `MATCH family  variant OF ... ENDOF ...
 \ ;MATCH` pops the scrutinee's hidden-field bundle, refines each branch with
@@ -70,10 +70,10 @@ SUMTYPE mwv
   VARIANT dup  n ;VARIANT
   VARIANT swap n ;VARIANT
 ;SUMTYPE
-\ a genuine ENUM-declared family (item 14, kind TK-ENUM, not a SUMTYPE 0): MATCH
-\ must eliminate it exactly like the enum-SHAPED sum `men` above, since the
-\ family-kind gate is sum OR enum (docs §14). Its generated constructors are
-\ MECOLOR:RED / MECOLOR:GREEN / MECOLOR:BLUE.
+\ a genuine ENUM-declared family (kind TK-ENUM, not a SUMTYPE 0): MATCH must
+\ eliminate it exactly like the enum-SHAPED sum `men` above, since the
+\ family-kind gate is sum OR enum (docs/forth.md "Structures And Enums"). Its
+\ generated constructors are MECOLOR:RED / MECOLOR:GREEN / MECOLOR:BLUE.
 ENUM mecolor
   red
   green
@@ -158,7 +158,7 @@ s" ML12=" type s" K12 ( mlin<TMLIN:mtok,n> -- n ) MATCH mlin ok OF >r 0 ENDOF er
 s" MATCH-LINEAR" type cr
 
 \ ---------------------------------------------------------------------------
-\ ENUM-declared family under MATCH (item 14): a real TK-ENUM eliminates,
+\ ENUM-declared family under MATCH: a real TK-ENUM eliminates,
 \ round-trips through its generated constructor, and enforces exhaustiveness +
 \ no-duplicate arms just like a sum.
 \ ---------------------------------------------------------------------------
@@ -185,7 +185,8 @@ s" MB5=" type s" B5 ( n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK
 s" MB6=" type s" B6 ( mmix -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MB7=" type s" B7 ( mres n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=   \ scrutinee not on top
 s" MB8=" type s" B8 ( span<g,n,n> -- n ) MATCH span ok OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=   \ cell family: kind-gated
-\ branch-output join mismatch (docs §25.4 rejected branch join).
+\ branch-output join mismatch (E-MATCH-BRANCH-JOIN, docs/forth.md
+\ "Structures And Enums").
 SUMTYPE mjoin
   VARIANT ok  ptr u8 ;VARIANT
   VARIANT err n ;VARIANT
@@ -286,10 +287,10 @@ s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CH
 s" MATCH-SCOPE" type cr
 
 \ ---------------------------------------------------------------------------
-\ item 9 slice 4: §24 diagnostics. Every match/construct reject class carries
-\ a stable code, repair class, reason, and suggestion; nonexhaustive lists the
-\ missing variant NAMES. Captured through the render diag buffer in JSON mode
-\ (the type-decl-suite pattern); one prose case pins the §24 text shape.
+\ Diagnostics. Every match/construct reject class carries a stable code, repair
+\ class, reason, and suggestion; nonexhaustive lists the missing variant NAMES.
+\ Captured through the render diag buffer in JSON mode (the type-decl-suite
+\ pattern); one prose case pins the `bad match: missing variants` text.
 \ ---------------------------------------------------------------------------
 create MDG-BUF 8192 allot
 : MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
@@ -349,9 +350,9 @@ s" G16 ( mres -- n ) construct mres nope" MDG<
 s\" \"code\":\"E-CONSTRUCT-UNKNOWN-VARIANT\"" MDG?
 s" G17 ( n -- mres ) construct mres" MDG<
 s\" \"code\":\"E-CONSTRUCT-UNTERMINATED\"" MDG?
-\ item 15: products are not eliminable or constructible through the token
-\ forms — the family-kind gate is sum/enum only (docs §14); the product
-\ surface is its generated PKG:MAKE/PKG:UNMAKE words.
+\ Products are not eliminable or constructible through the token forms — the
+\ family-kind gate is sum/enum only (docs/forth.md "Structures And Enums"); the
+\ product surface is its generated PKG:MAKE/PKG:UNMAKE words.
 PRODUCT mprod
   FIELD v n
 ;PRODUCT
@@ -363,7 +364,7 @@ s\" \"code\":\"E-CONSTRUCT-FAMILY-KIND\"" MDG?
 s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
 s\" \"repair_class\":\"factor_match_nesting\"" MDG?
 MDG-END
-\ prose shape: the §24 text with the missing-variant names, prose mode.
+\ prose shape: the `bad match: missing variants` text, prose mode.
 MDG-BUF 8192 DIAG-BUFFER!
 s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" bad match: missing variants: aa cc" CONTAINS? TTRUE

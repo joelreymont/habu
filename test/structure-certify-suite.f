@@ -13,7 +13,7 @@
 \     end-to-end MAKE/UNMAKE seam for cell/byte/generic fields;
 \   - the generator's field-kind/role/arity matrix is sections 1-5 here;
 \ Everything here is verified against the checker as it types the LEGACY product
-\ path (test/type-ctor-suite.f item 15, sumtype.f TDECL-PROD-WORDS): a STRUCTURE
+\ path (test/type-ctor-suite.f, sumtype.f TDECL-PROD-WORDS): a STRUCTURE
 \ is a single-shape PRODUCT, so its generated FAMILY:MAKE/UNMAKE type through the
 \ same shared ctor machinery — this suite proves the STRUCTURE grammar reaches it
 \ IDENTICALLY across the slices type-ctor-suite pins for PRODUCT, on the field

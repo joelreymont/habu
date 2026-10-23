@@ -617,12 +617,12 @@ $2710 constant PARK-MS            \ far past every stop bound
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
 
-\ Every failed transfer names its libcurl code on stderr, so a recurrence can
-\ be reduced. libcurl answers 28 only when a wall-clock limit expired; these
+\ Every failed transfer names its libcurl code on stderr, so a recurrence can be
+\ reduced. libcurl answers 28 only when a wall-clock limit expired; these
 \ handles set none, so it is libcurl's default 300 s connect timeout, met by a
-\ starved or stopped process. A deadline is no assertion result (docs/gate.md):
-\ the wait names itself on stdout and throws E-PROC-TIMEOUT. Every other
-\ failure answers -2, a fault.
+\ starved or stopped process. A deadline is no assertion result (docs/gate.md
+\ "How a suite runs, and what that demands of its files"): the wait names itself
+\ on stdout and throws E-PROC-TIMEOUT. Every other failure answers -2, a fault.
 : TAKE-RESPONSE ( CURL:handle -- n ) {: subject:CURL:handle :}
    subject RES-BUF RES-CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -732,7 +732,7 @@ $7D0 constant COLLECT-MS          \ a loopback answer that slow is a hang
 \ Waits until a read on the connection would not block: bytes, the end of the
 \ stream or a failure. The server ends the wait, so past COLLECT-MS the wait
 \ names itself and throws E-PROC-TIMEOUT rather than hang the suite
-\ (docs/gate.md).
+\ (docs/gate.md "How a suite runs, and what that demands of its files").
 : RAW-AWAIT ( TCP4:connection -- )
    [: dup TCP4:READABLE?
       MATCH TCP4:ready-result
@@ -2173,11 +2173,12 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
 
 \ A task killed inside a wait leaves its record in flight until the loop drains
 \ the kernel's cancel completion, and AIO:STOP is E-AIO-BUSY until it does, so
-\ the stop after the last join is retried to a bound rather than asserted on
-\ the first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound
-\ is a deadline, not a failure: the wait names itself on stdout and throws
-\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md).
-\ Any other code from AIO:STOP is a fault and is rethrown at once.
+\ the stop after the last join is retried to a bound rather than asserted on the
+\ first try (src/lib/aio-test.f STOP-LOOP). A ring still busy past the bound is
+\ a deadline, not a failure: the wait names itself on stdout and throws
+\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md
+\ "Reading a red run"). Any other code from AIO:STOP is a fault and is rethrown
+\ at once.
 : AIO-STOP ( -- )
    mono-ns DRAIN-MS NS-PER-MS * + {: deadline:n :}
    begin

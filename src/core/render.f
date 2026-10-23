@@ -573,7 +573,7 @@ variable DSUGE  variable DSUGA
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    JCLOSE ;
-\ --- item 9 slice 4: match/construct reason surface (docs/forth.md "Structures And Enums"). The checker
+\ --- match/construct reason surface (docs/forth.md "Structures And Enums"). The checker
 \ latches an MDIAG reason code with the token pin; these words map it to a
 \ stable JSON code, repair class, suggestion, and reason prose. MD-NONEXH also
 \ walks the latched (family, seen-bitset, count) to the missing variant NAMES
@@ -1119,7 +1119,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    DF-ACT @ 0 <>  DEXP @ 0= and IF
      s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN ;
 
-\ ADT family field (item 13): the exact failed type pair captured by U-FAIL.
+\ ADT family field: the exact failed type pair captured by U-FAIL.
 \ Expected takes precedence over actual; unrelated matched row cells cannot leak
 \ into the diagnostic, and a scalar pair emits no family. The hint carries the
 \ interned qualified spelling (FAM-QNAME-REND: pkg:tail for a foreign package,
@@ -1130,7 +1130,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
    T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
    drop -1 ;
-\ ADT variant field (item 13): the sum-variant/tag captured by the checker at the
+\ ADT variant field: the sum-variant/tag captured by the checker at the
 \ mismatch point (DVAR = SUMV id, -1 = none). A `construct family variant` payload
 \ mismatch latches the variant being built; a pure-scalar or non-construct
 \ mismatch leaves DVAR -1 and emits no variant/tag.
@@ -1139,7 +1139,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    efam 0 >= IF efam EXIT THEN
    afam 0 >= IF afam EXIT THEN
    DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
-\ Payload slot (item 13): the checker's DPOS is the slot-from-top of the failed
+\ Payload slot: the checker's DPOS is the slot-from-top of the failed
 \ expected-row element; the packet reports the declaration-order payload index
 \ (0-based, first declared payload = 0). Absent when the position is unknown or
 \ the failure was not inside the variant's payload cells.
@@ -1226,7 +1226,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
        ELSE drop THEN
      THEN
    THEN
-   k RF-SIG =  SGBAD-ARITY? and IF                        \ item 13: E-WRONG-ARITY counts
+   k RF-SIG =  SGBAD-ARITY? and IF                        \ E-WRONG-ARITY counts
      44 EMIT1 s" arity_expected" JKEY SGBAD-AR-DECL @ JNUM
      44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
    44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR

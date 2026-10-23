@@ -524,7 +524,7 @@ variable SELF-SRC-U
       s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr
    then ;
 
-\ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
+\ A preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
 \ stripped image starts at the helper and reaches its inline invalid-tag die

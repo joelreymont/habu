@@ -195,7 +195,7 @@ variable ENTRY-SCRATCH-U
    7 2 ROW-FIELD$ s" 0000000000000005" T$= ;
 
 \ A selected non-MAIN entry row (name, test mode, forged seed hex) emits, and
-\ re-parses from a serialized copy with a stable content key (item 10 slice 5).
+\ re-parses from a serialized copy with a stable content key.
 : ENTRY-ROW ( -- )
    ENTRY-BUILD
    ENTRY-ASSERT-ROW

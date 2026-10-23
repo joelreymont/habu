@@ -125,7 +125,7 @@ variable SCH-I        \ private scan index
 
 public
 
-: SCHEMA-RESET ( -- )           \ base state (item 3 will add high-water rollback)
+: SCHEMA-RESET ( -- )           \ base state
    1 SCH-N !
    0 SCH-ROOT-N ! ;
 SCHEMA-RESET

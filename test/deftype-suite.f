@@ -11,7 +11,7 @@
 \   - same nominal   vs same nominal   ACCEPT
 \   - one nominal    vs other nominal  REJECT (distinctness)
 \   - nominal        vs generic int n  REJECT, BOTH directions (no auto-collapse,
-\       no n-satisfies-nominal) - MISSING.md's non-negotiable invariant
+\       no n-satisfies-nominal)
 \   - the ONLY boundary crossing is the generated converter pair (>NAME / NAME>N)
 \   - a converter for ONE nominal never launders into another nominal
 \   - a demanded nominal INPUT rejects a plain n (input-direction unification)

@@ -52,9 +52,8 @@ variable OUTPUT-U
 : OUT-PATH-NAMED ( -- )
    OUTPUT-U @ 0= if s" snap: persist has no output path" 74 die then ;
 
-\ Snapshot trailer format version (item 12 slice 3b, dot
-\ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
-\ persisted effect-node arena, a pre-3b engine restoring such an image would
+\ Snapshot trailer format version: the persisted effect-node arena carries
+\ hidden-field counts, and an older-format engine restoring such an image would
 \ misread hidden fields as logical params. The trailer grows 40->48 bytes with
 \ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
 \ rejects any image whose version is not the current format with a distinct

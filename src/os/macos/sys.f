@@ -58,7 +58,7 @@ $1   constant NR-EXIT-GROUP
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 
-\ Runtime-emit syscall stencils (TFAM 10 slice 3): the MATCH bad-tag die is
+\ Runtime-emit syscall stencils: the MATCH bad-tag die is
 \ EMITTED into the user word, so its write+exit syscall words are baked here at
 \ engine-build time rather than assembled by SYS, at build time. The macOS
 \ syscall number goes in x16 (movz x16,#NR = $D2800010 + NR*32; Rd and the imm

@@ -3,8 +3,8 @@
 \
 \ `ptr-field`, `cell+`, `cell-view`, `byte-view`, `tuck`, `max` and `mod` were
 \ compiled as calls into the engine's own primitive bodies, and 22 per cent of
-\ the self-build's samples were inside bodies a BL had entered (LESSONS.md, the
-\ 2026-09-16 profile). src/compiler/native/hir-word.f now carries a row for each
+\ the self-build's samples were inside bodies a BL had entered.
+\ src/compiler/native/hir-word.f now carries a row for each
 \ of them, so this file pins the property those rows exist for: a tier-1 word
 \ that uses one of these ops contains no call into that primitive's body.
 \

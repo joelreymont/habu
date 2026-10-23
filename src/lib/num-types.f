@@ -73,9 +73,9 @@
 -5400 constant E-NUM-NEGATIVE       \ a role rejected a negative raw cell
 -5401 constant E-NUM-ZERO           \ a positive/allocation role rejected zero
 -5402 constant E-NUM-OVERFLOW       \ an allocation count would exceed MAX-CELL-N
--5403 constant E-NUM-UNDERFLOW      \ a subtraction/retreat went below zero (B5.2)
+-5403 constant E-NUM-UNDERFLOW      \ a subtraction/retreat went below zero
 -5404 constant E-NUM-BAD-ALIGNMENT  \ alignment raw cell is not a positive power of two
--5405 constant E-NUM-MISALIGNED     \ a byte extent/offset is not a whole cell count (B5.2)
+-5405 constant E-NUM-MISALIGNED     \ a byte extent/offset is not a whole cell count
 
 package NUM
 public

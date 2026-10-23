@@ -8,7 +8,6 @@
 \ one positive image into $HB_TMP/x64-routines, and each compare fixture one per
 \ relation; diff also writes a negative harness image whose first case expects
 \ a wrong answer. The manifest lists each file with its expected status;
-\ docs/bootstrap.md gives the peer's comparison.
 \
 \ The same directory takes the signal image, which installs a handler through
 \ src/habu/boot-x64.f, raises a real SIGUSR1 and checks the frame the kernel

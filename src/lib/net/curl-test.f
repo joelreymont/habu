@@ -929,9 +929,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 \ A code-28 result is a transfer bound this file set expiring, which is no
 \ assertion result: TEST-WAIT:EXPIRED names it on stdout and throws
-\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md). A
-\ case that expects its bound to end a transfer records it through FETCH-LIMIT
-\ or AWAIT-LIMIT, or matches it inline unguarded, and asserts 28 itself.
+\ E-PROC-TIMEOUT, which the pool reads as TIMEOUT-UNDER-LOAD (docs/gate.md
+\ "Reading a red run"). A case that expects its bound to end a transfer records
+\ it through FETCH-LIMIT or AWAIT-LIMIT, or matches it inline unguarded, and
+\ asserts 28 itself.
 : NOT-TIMEOUT ( n -- n )
    {: code:n :}
    code CURLE-TIMED-OUT = if s" curl-test NOT-TIMEOUT" TEST-WAIT:EXPIRED then

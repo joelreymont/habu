@@ -559,9 +559,10 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 : GT-HB-TMP-MAX ( n -- n )
    TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
 
-\ An HB_TMP longer than that is refused once, here, before anything is made:
-\ a named failure with its length and the limit, then the report's exit. A
-\ row's own deeper paths are its business: docs/gate.md bounds the full gate.
+\ An HB_TMP longer than that is refused once, here, before anything is made: a
+\ named failure with its length and the limit, then the report's exit. A row's
+\ own deeper paths are its business: docs/gate.md "Scratch and cache" bounds the
+\ full gate.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
    s" HB_TMP" GETENV nip {: tmpu:n :}
    prefixu GT-HB-TMP-MAX {: max:n :}

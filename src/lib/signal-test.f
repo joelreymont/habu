@@ -336,10 +336,11 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
 \ TASK:JOIN would park the main task forever on a worker that never ends, so the
 \ wait owns a deadline. A worker that never ends ends the row as that deadline,
-\ not as an assertion result (docs/gate.md): the join names itself and throws
-\ E-PROC-TIMEOUT, so the asserts after a join read a finished task. The window
-\ closes once less than a whole millisecond of TASK-JOIN-MS is left, the cutoff
-\ a PROC-LEFT-MS reading gives.
+\ not as an assertion result (docs/gate.md
+\ "How a suite runs, and what that demands of its files"): the join names itself
+\ and throws E-PROC-TIMEOUT, so the asserts after a join read a finished task.
+\ The window closes once less than a whole millisecond of TASK-JOIN-MS is left,
+\ the cutoff a PROC-LEFT-MS reading gives.
 : JOIN-TASK ( ptr n -- )
    [: dup TASK:DONE? ;] TASK-JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
    s" signal-test JOIN-TASK" TEST-WAIT:POLL

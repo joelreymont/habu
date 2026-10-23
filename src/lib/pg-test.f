@@ -155,8 +155,9 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 \ that waits cannot let that task release the lock. CHECK-PROGRESS also ends
 \ each turn of EXIT-CASES's wait, while the loop and the exit worker are active.
 \ A wait that passes its PROGRESS-NS deadline is no assertion result
-\ (docs/gate.md): CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the
-\ case engine exits with as PROC-TIMEOUT-RC (RUN).
+\ (docs/gate.md "How a suite runs, and what that demands of its files"):
+\ CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the case engine exits
+\ with as PROC-TIMEOUT-RC (RUN).
 : CHECK-PROGRESS ( n -- )
    {: deadline:n :}
    mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then

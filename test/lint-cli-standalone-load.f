@@ -23,7 +23,7 @@
 \ their own verdict below. A timeout is the row's deadline, not a failure: it names
 \ the entry and the budget it burned, prints the capture drained before the
 \ deadline and throws E-PROC-TIMEOUT, so the pool reports the row as
-\ TIMEOUT-UNDER-LOAD (docs/gate.md).
+\ TIMEOUT-UNDER-LOAD (docs/gate.md "Reading a red run").
 \
 \ The entry list is DERIVED each run by walking tools/ and keeping the flat
 \ tools/<name>-lint.f entries. Nested tools/lint/<name>-lint.f helpers are library

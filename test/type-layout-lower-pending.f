@@ -1,6 +1,6 @@
-\ type-layout-lower-pending.f — TFAM 12 width-aware lowering suite
-\ (habu-tfam-12-layout, docs/design.md "Families and layout policies"). Run BY
-\ THE ENGINE over stdin, standalone or through the native registry:
+\ type-layout-lower-pending.f — width-aware lowering suite (habu-tfam-12-layout,
+\ docs/design.md "Families and layout policies"). Run BY THE ENGINE over stdin,
+\ standalone or through the native registry:
 \     bin/hb < test/type-layout-lower-pending.f
 \ Generated constructors seed bundles which cross the stack, return stack,
 \ locals and typed storage before their values are checked.
@@ -35,7 +35,7 @@ SUMTYPE tlp-mix<a,b>
 
 \ ---------------------------------------------------------------------------
 \ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL
-\ generated constructors (item 8/11: `tlp-res` derives package TLP--RES,
+\ generated constructors (`tlp-res` derives package TLP--RES,
 \ `tlp-mix` derives TLP--MIX — tail hyphens escape as `--`), so the physical
 \ cells (payload, zero pads, tag) come from checked constructor bodies, not
 \ trusted raw pushes. TLP-MK2 = 7 TLP--RES:ERR -> (7, tag 1); TLP-MK4 =

@@ -1,7 +1,7 @@
 # bootstrap — the Gforth seed
 
 Recovery only: `tools/bootstrap.sh` runs it when no `bin/hb` exists; the
-procedure is `docs/bootstrap.md`.
+procedure is `docs/bootstrap.md` "No-Binary Recovery".
 
 - `cg/*.fs` — the seed: `cg/forth.fs` writes `hb-stage0`, an ARM64 engine with
   its own copy of the ARM64 primitive bodies (`FPRIM`) and the engine's

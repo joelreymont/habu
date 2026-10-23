@@ -65,7 +65,7 @@ $100 constant AT-SYMLINK-NOFOLLOW
    8 swap MOVZ,  0 SVC,
    16 -4095 LIT64,  0 16 CMP, ;
 
-\ Runtime-emit syscall stencils (TFAM 10 slice 3): the MATCH bad-tag die is
+\ Runtime-emit syscall stencils: the MATCH bad-tag die is
 \ EMITTED into the user word, so its write+exit syscall words are baked here at
 \ engine-build time rather than assembled by SYS, at build time. The Linux
 \ syscall number goes in x8 (movz x8,#NR = $D2800008 + NR*32; Rd and the imm

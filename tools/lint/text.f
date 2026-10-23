@@ -77,9 +77,8 @@ variable RPATH-U
    0 u PATHBUF + c!
    u RPATH-U ! ;
 
-\ capacity/IO exits must name the offending file (LESSONS: label every
-\ capacity exit) — a bare "file exceeds buffer" hides which source outgrew
-\ which lint buffer.
+\ capacity/IO exits must name the offending file — a bare "file exceeds buffer"
+\ hides which source outgrew which lint buffer.
 : LINT-READ-DIE ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    2 msg msgu LINT-FD-WRITE
    PATHBUF RPATH-U @ 1 die ;

@@ -963,7 +963,7 @@ public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
-\ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
+\ generated-constructor metadata. A PUBLIC sum/enum family stores its
 \ derived constructor package name (interned offset+len) in every variant; the
 \ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
 \ families export nothing, so both stay zero. All three cells are integers /
@@ -1195,7 +1195,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 public
 
-\ generated-constructor protection predicates (item 8 slice 3). Names are
+\ generated-constructor protection predicates. Names are
 \ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
 \ folded alias cannot reopen a constructor package, extend it with a new
 \ tail, or undefine a generated word through any case variant. Installed into
@@ -5229,7 +5229,7 @@ REG-EXT-PERSIST-INSTALL
 public
 
 \ ---------------------------------------------------------------------------
-\ construct form (item 9, docs/forth.md "Structures And Enums"): resolution + step effect for the checker's
+\ construct form (docs/forth.md "Structures And Enums"): resolution + step effect for the checker's
 \ reserved `construct family variant` token protocol. The ownership predicate
 \ is package identity: the family must live in the ACTIVE checker package (top
 \ level owns the global "" package), public or private — cross-package
@@ -5713,7 +5713,7 @@ private
    RES-TRUE ;
 
 \ ---------------------------------------------------------------------------
-\ MATCH resolution + payload instantiation (item 9 slice 3, docs/forth.md "Structures And Enums"). MATCH
+\ MATCH resolution + payload instantiation (docs/forth.md "Structures And Enums"). MATCH
 \ resolution follows SIGNATURE scope, not construct's owner-only rule:
 \ eliminability = nameability. You may match any family you could name in a
 \ stack signature (own package private+public, else the unique public family,
@@ -5849,7 +5849,7 @@ public
 private
 
 \ ---------------------------------------------------------------------------
-\ item 10 slice 1: compiler-facing lowering surface (dot
+\ compiler-facing lowering surface (dot
 \ habu-tfam-10-native design A). Pure resolution + metadata for the native
 \ construct/MATCH emitters, called by NAME through the engine's C-FIND-GLOBAL
 \ friend bridge at the captured token positions: same registry and scope rules
@@ -6971,14 +6971,14 @@ UNIT-FAM-RESET-INSTALL
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
-   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
-   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
-   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject
+   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ constructor-package reopen reject
+   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine reject
+   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra-tail reject
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
-   [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
+   [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
-   [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
+   [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
    [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
    [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
@@ -6986,15 +6986,15 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
    [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
    [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
-   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)
-   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ item 9: construct variant resolve + inline constructor effect
+   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
+   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
-   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ item 9: MATCH family resolution (signature scope)
-   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ item 9: MATCH branch variant resolve
-   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
+   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
+   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
+   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)
    [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
-   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
+   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
+   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ branch payload row from the scrutinee's args
    [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
 TFAM-HOOK-INSTALL
 

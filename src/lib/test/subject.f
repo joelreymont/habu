@@ -139,9 +139,10 @@ public
 private
 
 \ src run as the subject: the lengths of what it wrote to STATUS-OUT and
-\ STATUS-ERR, and whether it exited with code want; a signal is not an exit.
-\ A deadline is no verdict (docs/gate.md): TIMED-OUT prints the program and
-\ its capture and throws E-PROC-TIMEOUT.
+\ STATUS-ERR, and whether it exited with code want; a signal is not an exit. A
+\ deadline is no verdict (docs/gate.md
+\ "How a suite runs, and what that demands of its files"): TIMED-OUT prints the
+\ program and its capture and throws E-PROC-TIMEOUT.
 : STATUS ( ptr u8 n n -- len len bool )
    {: src:ptr srcu:n want:n :}
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN

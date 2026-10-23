@@ -96,7 +96,7 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 \ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
 \ `n`. Package MEM re-states the same sizing as CHECKED words over NUM roles:
 \ the scalar words (CELLS>BYTES, 64K-BYTES, 64K-COUNT-FOR, 64K-SPAN-BYTES) are
-\ typed compositions of the closed B5.2 algebra that return `numeric-result<a>`
+\ typed compositions of the closed NUM algebra that return `numeric-result<a>`
 \ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
 \ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
 \ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
@@ -199,7 +199,7 @@ $47 constant UNMAP-EXIT
 
 public
 
-\ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
+\ ---- scalar sizing: typed compositions of the closed NUM algebra --------------
 : CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
    NUM:CELLS>BYTES ;
 : 64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> )

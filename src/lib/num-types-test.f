@@ -1,8 +1,8 @@
-\ num-types-test.f - the NUM B5.1 boundary + static-rejection matrix
+\ num-types-test.f - the NUM boundary + static-rejection matrix
 \ (dot habu-implement-cad-num-962bf5d9). Run:
 \   bin/hb --load src/lib/num-types-test.f
 \
-\ Focused direct-loaded gate home for the B5.1 contract. Production modules load
+\ Focused direct-loaded gate home for the NUM contract. Production modules load
 \ these types transitively through src/lib/num-arithmetic.f; this file owns the
 \ validator boundary matrix, not library authority. The canonical native registry
 \ schedules it through test/gate-stdlib-cases.f.

@@ -136,8 +136,8 @@ variable GE-SCRIPT-U
    SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
 
 \ does>-split wide facts fail closed at the pass-2 trigger with a fixed
-\ label (previously a lone current-token write - unattributable; TFAM 12
-\ item 3 verdict: the checker cannot see across the does> split, so the
+\ label (previously a lone current-token write - unattributable;
+\ the checker cannot see across the does> split, so the
 \ labeled engine exit IS the permanent contract).
 : GE-DOES-WIDE ( -- )
    GE-HB-RESET

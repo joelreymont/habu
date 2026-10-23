@@ -37,11 +37,10 @@ bin/hb --load test/run.f
 
 Build a source file into a WebAssembly module whose `run` export calls its
 word `MAIN` (`PKG:NAME` names a package's public word);
-`bun test/wasm/run.mjs program.wasm` runs it, with bun installed as
-[docs/bootstrap.md](docs/bootstrap.md) describes. The build replays the
-portable standard libraries under the Wasm backend, so the source can use
-captured runtime words such as the JSON writer. Current limits are in
-[docs/wasm-backend.md](docs/wasm-backend.md):
+`bun test/wasm/run.mjs program.wasm` runs it. The build replays the portable
+standard libraries under the Wasm backend, so the source can use captured
+runtime words such as the JSON writer. The backend's design is in
+[docs/xcomp.md](docs/xcomp.md#wasm), "Wasm":
 
 ```sh
 bin/hb --load tools/wasm-build.f -- path/to/program.f MAIN program.wasm
@@ -83,14 +82,17 @@ documents native scoped-root loading against Habu's shared libraries.
 
 ## Documentation
 
+- [`docs/forth-card.md`](docs/forth-card.md) — the language on one card.
 - [`docs/forth.md`](docs/forth.md) — Forth conventions and checker rules.
-- [`docs/type-system.md`](docs/type-system.md) — the checked effect system.
-- [`docs/type-families.md`](docs/type-families.md) — nominal and algebraic types.
+- [`docs/design.md`](docs/design.md) — why the type system and language are shaped as they are.
+- [`docs/architecture.md`](docs/architecture.md) — the parts Habu is made of and their rules.
+- [`docs/compilation.md`](docs/compilation.md) — from source to native code and an image.
+- [`docs/xcomp.md`](docs/xcomp.md) — cross-compilation, targets and porting.
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
 - [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
-- [`docs/stdlib.md`](docs/stdlib.md) — standard library reference.
 - [`docs/gate.md`](docs/gate.md) — the native test suite and what it demands of a test file.
-- [`docs/font.md`](docs/font.md) — native HarfBuzz shaping and SVG outline runs.
+
+Each library module's header states its contract and storage class.
 
 ## License
 
