@@ -63,8 +63,6 @@ variable INDEX-READY
 variable WID-CAP
 variable IMPL-N
 variable IMPL-CAP
-variable IMPL-LO
-variable IMPL-HI
 variable EXACT-N
 variable EXACT-READY
 variable PENDING-ORD
@@ -318,14 +316,13 @@ variable FAMILY-FIND
    repeat drop ;
 
 : IMPL-TREE-APPEND ( n -- ) {: row:n :}
-   row IMPL-CAP @ + IMPL-LO !
-   row 1 IMPL@ IMPL-LO @ IMPL-TREE !
-   begin IMPL-LO @ 1 > while
-      IMPL-LO @ 2 / IMPL-LO !
-      IMPL-LO @ 2 * IMPL-TREE @
-      IMPL-LO @ 2 * 1+ IMPL-TREE @ max
-         IMPL-LO @ IMPL-TREE !
-   repeat ;
+   row 1 IMPL@ row IMPL-CAP @ + IMPL-TREE !
+   row IMPL-CAP @ +
+   begin dup 1 > while
+      2 /
+      dup 2 * IMPL-TREE @ over 2 * 1+ IMPL-TREE @ max
+      over IMPL-TREE !
+   repeat drop ;
 
 : IMPL-TREE-REFRESH ( n n -- ) {: row:n old:n :}
    IMPL-N @ IMPL-CAP @ > row old < or if
@@ -377,25 +374,30 @@ variable FAMILY-FIND
    row 2 IMPL@ row 3 IMPL@ LIVE-RECORD?
       if drop true else drop false then ;
 
+\ The first row whose start lies past the address: every row before it starts
+\ at or before it. The bounds live on the stack, so a search leaves no state
+\ in the image.
+: IMPL-UPPER ( n -- n )
+   {: entry:n :}
+   0 IMPL-N @
+   begin 2dup < while
+      2dup + 2 / {: mid:n :}
+      mid 0 IMPL@ entry <= if nip mid 1+ swap else drop mid then
+   repeat drop ;
+
 : REGISTER-IMPL-RANGE ( n n n -- )
    {: entry:n size:n ord:n :}
    size 0 <= if exit then
    entry 0 < ord 0 < ord ndict@ >= or or if BAD then
    ord LIVE-TOKEN {: occurrence:n :}
-   0 IMPL-LO ! IMPL-N @ IMPL-HI !
-   begin IMPL-LO @ IMPL-HI @ < while
-      IMPL-LO @ IMPL-HI @ + 2 / {: mid:n :}
-      mid 0 IMPL@ entry <= if mid 1+ IMPL-LO !
-      else mid IMPL-HI ! then
-   repeat
-   IMPL-LO @ 0 ?do
-      IMPL-LO @ 1- i - {: prior:n :}
+   entry IMPL-UPPER {: row:n :}
+   row 0 ?do
+      row 1- i - {: prior:n :}
       prior 0 IMPL@ entry <> if leave then
       prior 1 IMPL@ entry size + =
       prior 2 IMPL@ ord = and
       prior 3 IMPL@ occurrence = and if unloop exit then
    loop
-   IMPL-LO @ {: row:n :}
    IMPL-N @ {: old:n :}
    old 1+ 4 * IMPL-ROWS-RESERVE
    old row - 0 ?do
@@ -1024,7 +1026,7 @@ public
    rec XREF-NULL = if 0 false exit then
    rec ord DATA-ORIGIN-RECORD {: base:n known:bool :}
    known 0= if 0 false exit then
-   addend 0<> requested 0<> or extent 0<> or if 0 false exit then
+   requested 0<> extent 0<> or if 0 false exit then
    base addend + alignment mod 0<> if 0 false exit then
    base addend + true ;
 
@@ -1107,13 +1109,7 @@ public
          3 EXACT@
       repeat drop
    then
-   0 IMPL-LO ! IMPL-N @ IMPL-HI !
-   begin IMPL-LO @ IMPL-HI @ < while
-      IMPL-LO @ IMPL-HI @ + 2 / {: mid:n :}
-      mid 0 IMPL@ entry <= if mid 1+ IMPL-LO !
-      else mid IMPL-HI ! then
-   repeat
-   entry 1 0 IMPL-CAP @ IMPL-LO @ IMPL-SEARCH ;
+   entry 1 0 IMPL-CAP @ entry IMPL-UPPER IMPL-SEARCH ;
 
 : REF-CODE ( n -- n ) {: target:n :}
    target CAP-CODE @ >= target CAP-CODE @ CAP-CODE-U @ + < and if
@@ -1339,6 +1335,17 @@ public
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
    kind DATA <> owner LOCAL <> or PREP-MAPPED @ 0= or if BAD then
    DATA item addend LOCAL-AT @ execute ;
+
+\ The code address a LOCAL CODE reference of a prepared FILE object names:
+\ its record row, through LOCAL-AT, the live record, and the addend inside
+\ that record's code.
+: REF>LOCAL-CODE ( n -- n ) {: idx:n :}
+   idx 0= if BAD then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind CODE <> owner LOCAL <> or PREP-MAPPED @ 0= or if BAD then
+   RECORD item 0 LOCAL-AT @ execute RECORD-AT @ execute {: rec:ptr :}
+   addend 0 < addend rec XREF-CODE-BYTES >= or if BAD then
+   rec XREF-START addend + ;
 
 : REF>LITERAL ( n -- n n ) {: idx:n :}
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}

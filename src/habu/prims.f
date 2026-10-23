@@ -134,7 +134,6 @@ variable ROW-N
 variable NAME-U
 variable CODE-U
 variable BI
-variable FI
 variable IN-N
 variable IN-DEPTH
 
@@ -384,14 +383,15 @@ public
    CODES row F-CODE-OFF ROW-FIELD @ + idx + c@ ;
 
 \ The row index for a name, -1 when the table has none. Exact spelling: a body
-\ registered under a different case is a different row and must say so.
+\ registered under a different case is a different row and must say so. The
+\ index lives on the stack: a lookup leaves no state in the image.
 : FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 FI !
-   BEGIN FI @ ROW-N @ < WHILE
-      FI @ NAME$ a u CORE-STR= IF FI @ EXIT THEN
-      FI @ 1 + FI !
+   0
+   BEGIN dup ROW-N @ < WHILE
+      dup NAME$ a u CORE-STR= IF EXIT THEN
+      1 +
    REPEAT
-   -1 ;
+   drop -1 ;
 
 private
 

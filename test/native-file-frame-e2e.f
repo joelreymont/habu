@@ -1311,8 +1311,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
    OUT$ S\" dvs=lit\n" CONTAINS? TTRUE
    s" dv.f" REUSED
-   s" a warm build compiles df.f again: a defer's dispatch cell is a slot" T-LABEL
-   s" df.f" s"  reason=" LINE$ s" df.f reason=unsupported-slots" T$=
+   s" a warm build compiles df.f again: it holds a defer record" T-LABEL
+   s" df.f" s"  reason=" LINE$ s" df.f reason=unsupported-defer" T$=
    s" a warm build installs og.f and holds the cold build's origin rows" T-LABEL
    s" og.f" REUSED
    ORIGINS$ OG-LINE OG-LINE-U @ T$=

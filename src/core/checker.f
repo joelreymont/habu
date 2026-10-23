@@ -16252,9 +16252,12 @@ variable PENDING-MARKED      0 PENDING-MARKED !
    kind CHECKER-OWNER-ABI:RECORD-FIXED-NONE <
    kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR > or IF
       s" checker: fixed reader returned an invalid kind" 76 die THEN
+   \ An address record keeps only its kind: address reads use the live
+   \ owner, so its value never enters a contract, a unit or an image.
    ord RECORD-LINK-CELL {: row:ptr :}
    kind row RLINK.FIXED-KIND cells + !
-   value row RLINK.FIXED-VALUE cells + !
+   kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF value ELSE 0 THEN
+      row RLINK.FIXED-VALUE cells + !
    ord PENDING-DIRTY+ ;
 
 : RECORD-LINK-REWIND-EFFECT ( n -- ) {: end:n :}
@@ -16474,11 +16477,6 @@ CAST: RECORD-CAPTURE-PTR ( n -- ptr u8 )
             scratch i RECORD-LINK-ROW * +
                dest RECORD-LINK-ROW ARENA-COPY
             1 dest RLINK.OCC cells + CELL-VIEW !
-            \ Address reads use the live owner; this row keeps only its kind.
-            dest RLINK.FIXED-KIND cells + CELL-VIEW @
-               CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = IF
-               0 dest RLINK.FIXED-VALUE cells + CELL-VIEW !
-            THEN
          THEN
       THEN
    loop
@@ -27727,14 +27725,23 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    loop
    0 RES-FALSE ;
 
+\ Copy source's fixed kind into target, and its value only for a fixed
+\ value, as RECORD-LINK-FIXED! keeps it: a pre-change source can still
+\ hold an address record's live value.
+: TRANSFER-FIXED ( ptr n ptr n -- ) {: source:ptr target:ptr :}
+   source RLINK.FIXED-KIND cells + @ {: kind:n :}
+   kind target RLINK.FIXED-KIND cells + !
+   kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF
+      source RLINK.FIXED-VALUE cells + @
+   ELSE 0 THEN target RLINK.FIXED-VALUE cells + ! ;
+
 : TRANSFER-LINK ( n ptr n -- ) {: ord:n source:ptr :}
    source RLINK.GRID cells + @ 0 <> IF EXIT THEN
    ord RECORD-LINK-CURRENT? IF
       ord RECORD-LINK-CELL {: target:ptr :}
       target RLINK.FIXED-KIND cells + @ 0<
       source RLINK.FIXED-KIND cells + @ 0 >= and IF
-         source RLINK.FIXED-KIND cells + @ target RLINK.FIXED-KIND cells + !
-         source RLINK.FIXED-VALUE cells + @ target RLINK.FIXED-VALUE cells + !
+         source target TRANSFER-FIXED
       THEN
       EXIT
    THEN
@@ -27750,9 +27757,7 @@ NULL-PTR ORDER-P !   0 ORDER-N !
    ord RECORD-LINK-CAP @ < IF ord RECORD-LINK-CELL RECORD-GRID-DISCARD THEN
    ord effect control source RLINK.DEFER cells + @ 0 <>
       source RLINK.OCC cells + @ RECORD-LINK-WRITE
-   ord RECORD-LINK-CELL {: target:ptr :}
-   source RLINK.FIXED-KIND cells + @ target RLINK.FIXED-KIND cells + !
-   source RLINK.FIXED-VALUE cells + @ target RLINK.FIXED-VALUE cells + ! ;
+   source ord RECORD-LINK-CELL TRANSFER-FIXED ;
 
 : TRANSFER-LINKS ( -- )
    TRANSFER-FACTS @ 0= IF EXIT THEN
@@ -28356,12 +28361,7 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    THEN
    RECORD-GRAPH-BEGIN
    effect control row RLINK.DEFER cells + @
-   fixed-kind
-   fixed-kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = IF
-      0
-   ELSE
-      row RLINK.FIXED-VALUE cells + @
-   THEN
+   fixed-kind row RLINK.FIXED-VALUE cells + @
    grid
    [: RECORD-CONTRACT-BUILD ;] [: RECORD-GRAPH-END ;] finally
    RECORD-BUF-P @ RECORD-BUF-U @ RES-TRUE ;

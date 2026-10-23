@@ -49,7 +49,7 @@ private
 \ names record and load rows point at, slot 13 the references record and slot
 \ rows name, in NFILE-REF ENCODE format with no declarations, and slot 16 the
 \ namespace at the file's end. Slot 9 holds one SLOT-BYTES row per declared
-\ address cell the segments declared, and slot 10 the literal bodies slot
+\ address cell the segments declared, in registration order, and slot 10 the literal bodies slot
 \ rows point into, in definition literal framing; a slot cell in the file's
 \ DATA is zero in slot 6. A write to an earlier file's address cell is a slot
 \ row too, and slot 7 holds one UPDATE-BYTES row per other earlier DATA byte
@@ -109,9 +109,11 @@ public
 
 private
 
-\ A slot row: the cell's DATA reference, its kind, and its value's
-\ reference, 0 for a null value.
-24 constant SLOT-BYTES
+\ A slot row: the cell's DATA reference, its kind, its value's reference,
+\ 0 for a null value, and the slot 12 row of the segment that declared the
+\ cell, NO-SEGMENT for a cell an earlier file declared.
+32 constant SLOT-BYTES
+-1 constant NO-SEGMENT
 0 constant SLOT-XT
 1 constant SLOT-DATA
 \ An update row: the changed byte's reference and its value at the close.
@@ -1059,11 +1061,15 @@ public
 \ source stood, below zero outside it, which refuses the parent, and the
 \ child's path and root. The replay loads the child in the scope the parent
 \ opened with, so a parent whose search order, current wordlist or package
-\ at the load differs from it is refused.
+\ at the load differs from it is refused. The object carries the earlier
+\ DATA a file changed as it stood at the file's end, where the child saw it
+\ as it stood at the load, so a parent that changed earlier DATA before a
+\ load is refused.
 : FILE-BEGIN ( ptr u8 n ptr u8 n n n -- )
    {: path:ptr pathu:n root:ptr rootu:n kind:n at:n :}
    FILE-OPEN? if
       SEGMENT-CLOSE
+      SITES-N @ FO-SITES FO @ > if s" earlier-write-before-load" FILE-REFUSE then
       at 0 < if s" load-outside-source" FILE-REFUSE then
       NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
       EV-LOAD ndict@ kind at path pathu NAMES+ pathu
@@ -2384,8 +2390,28 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ord NUNIT-DEP:BIND-ORD
    v NFILE-REF:REF-CODE true ;
 
+\ DATA address va is the end of a closing file's segment that a child load
+\ follows: the child's first DATA starts there too, or, when it allotted
+\ none, the file's next segment or its here after its last load. A
+\ segment closes only at a load (FILE-BEGIN) or the file's end, so a LOAD row
+\ lies between any two SEGMENT rows and each LOAD row tests the end of the
+\ segment before it.
+: LOAD-BOUNDARY? ( n -- bool )
+   {: va:n :}
+   0
+   EVENTS-N @ FO-EVENTS FO @ ?do
+      {: end:n :}
+      i SEG? if i 3 EV @ i 4 EV @ + else
+         i 0 EV @ EV-LOAD = va end = and if unloop true exit then
+         end
+      then
+   loop drop false ;
+
 \ A data cell's value as a reference, and whether it has one: a literal
-\ body by its bytes, the file's own DATA, or an earlier declaration's.
+\ body by its bytes, the file's own DATA, or an earlier declaration's. The
+\ file's DATA ends where a child it loads starts, and its reference would
+\ name the file's DATA after the load, or its here after its last load, so
+\ such a value refuses the file.
 : DATA-TARGET ( n -- n bool )
    {: v:n :}
    v 0= if 0 true exit then
@@ -2395,7 +2421,10 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
          NFILE-REF:REF-LITERAL true exit
    then
    v DATA-REF {: own:n :}
-   own 0<> if own true exit then
+   own 0<> if
+      v LOAD-BOUNDARY? if s" slot-boundary" FILE-REFUSE then
+      own true exit
+   then
    v EARLIER-REF {: ref:n :}
    ref ref 0<> ;
 
@@ -2410,11 +2439,12 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ord 0 >= base site <> and if s" slot-site-offset" FILE-REFUSE 0 exit then
    site ord base REF-AT ;
 
-\ One SLOT-BYTES row for the declaration raw. A cell in the file's own DATA
-\ holds the value its segment's close left, which its DATA section carries,
-\ and is zeroed there, since the row restores it.
-: SLOT-ROW ( n -- )
-   {: raw:n :}
+\ One SLOT-BYTES row for the declaration raw, which the segment at slot 12
+\ row seg declared. A cell in the file's own DATA holds the value its
+\ segment's close left, which its DATA section carries, and is zeroed there,
+\ since the row restores it.
+: SLOT-ROW ( n n -- )
+   {: raw:n seg:n :}
    raw SNAP-RELOC:XTCELL-OFF-MASK and DATA-VA VA>N + {: site:n :}
    raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> {: data:bool :}
    site CELL OWN-OFF {: off:n :}
@@ -2425,8 +2455,9 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    FILE-REFUSED? if exit then
    sref 0= if s" slot-site-unowned " WHY+ site WHY-SITE exit then
    data if value DATA-TARGET else value XT-TARGET then {: tref:n known:bool :}
+   FILE-REFUSED? if exit then
    known 0= if site value DECLINE-CELL exit then
-   sref OUT-N data if SLOT-DATA else SLOT-XT then OUT-N tref OUT-N
+   sref OUT-N data if SLOT-DATA else SLOT-XT then OUT-N tref OUT-N seg OUT-N
    off 0 >= if 0 DATA-AT @ off + FILE-OUT LE:U64! then ;
 
 \ The rows each of the closing file's segments declared. A segment whose
@@ -2436,6 +2467,7 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    ADDRESS-CELLS:LIVE-SPAN drop {: rows:ptr :}
    EVENTS-N @ FO-EVENTS FO @ ?do
       i SEG? if
+         i FO-EVENTS FO @ - {: seg:n :}
          i 9 EV @ {: first:n :}
          i 10 EV @ {: held:n :}
          held 0 > if
@@ -2444,7 +2476,7 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
                s" slots-rewound" FILE-REFUSE unloop exit
             then
             first held + first ?do
-               rows i cells + @ SLOT-ROW
+               rows i cells + @ seg SLOT-ROW
                FILE-REFUSED? if unloop unloop exit then
             loop
          then
@@ -2634,7 +2666,7 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
             0 i FILE-SITES !
             row OWN-ROW? 0= row SLOTW? 0= and if
                row SLOTW+
-               ADDRESS-CELLS:LIVE-SPAN drop row cells + @ SLOT-ROW
+               ADDRESS-CELLS:LIVE-SPAN drop row cells + @ NO-SEGMENT SLOT-ROW
                FILE-REFUSED? if unloop exit then
             then
          then
@@ -3304,7 +3336,8 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
 \ segment's map row places it at the ndict@ the install takes), and its
 \ address is the record slot's by arithmetic (XREF-REC reads nothing). The
 \ checker turns it back into that ordinal (UP-READ-LINKS, REC>INDEX) and the
-\ plan keeps the ordinal.
+\ plan keeps the ordinal. A LOCAL DATA span is where the segment's map row
+\ places the file's DATA, as the install then lays it out.
 : CHECK-RESOLVE ( n n -- ptr u8 )
    {: idx:n bytes:n :}
    idx 0 <= idx IMPORT-NREFS @ > or if BAD then
@@ -3312,6 +3345,9 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
    ref NFILE-REF:REF-KIND NFILE-REF:RECORD = if
       bytes DREC <> if BAD then
       ref NFILE-REF:REF>RECORD XREF-REC BYTE-VIEW exit
+   then
+   ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+      ref NFILE-REF:REF>LOCAL-DATA N>U8 exit
    then
    ref bytes NFILE-REF:REF>DATA ;
 
@@ -3470,6 +3506,105 @@ private
    name nameu wl DKIND:ADDR flags DNAME-CELL and or REC-OPEN
    REC-CREATE
    AOT-ARM:HERE-N body <> if BAD then ;
+
+\ The body of the viewed FILE object's slot literal row row; SLOT-LITS-CK
+\ framed the rows.
+: SLOT-LIT$ ( n -- ptr u8 n )
+   {: row:n :}
+   10 NUNIT-FILE:SECTION$ {: src:ptr size:n :}
+   0
+   row 0 ?do
+      {: off:n :}
+      src size off i LIT-ROW drop off 16 + +
+   loop {: off:n :}
+   src size off row LIT-ROW drop {: bytes:n :}
+   src off 16 + + bytes ;
+
+\ Slot row row's value: 0, or its value reference resolved by kind and owner.
+\ The file's own code and DATA map through the segments the install made;
+\ an earlier record's through its declaration. A literal body is interned
+\ into the pool, where OPEN-FILE found room for it, plus the addend.
+: SLOT-VALUE ( ptr u8 -- n )
+   {: row:ptr :}
+   row 2 U64-AT {: ref:n :}
+   ref 0= if 0 exit then
+   ref NFILE-REF:REF-KIND {: kind:n :}
+   ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = {: local:bool :}
+   kind NFILE-REF:CODE = if
+      local if ref NFILE-REF:REF>LOCAL-CODE else ref NFILE-REF:REF>CODE then
+      exit
+   then
+   kind NFILE-REF:DATA = if
+      local if ref NFILE-REF:REF>LOCAL-DATA exit then
+      ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - exit
+   then
+   ref NFILE-REF:REF>LITERAL {: item:n addend:n :}
+   item SLOT-LIT$ DEF-INTERN addend + ;
+
+\ Address cell site and slot kind: declare the cell as the engine's writers
+\ do, ptr-cell-mark for a DATA cell, xt! for an xt cell, the only xt
+\ declarer, storing the value the cell holds.
+TRUSTED: SLOT-DECLARE ( n n -- )
+   {: site:n kind:n :}
+   kind SLOT-DATA = if site ptr-cell-mark else site @ site xt! then ;
+
+\ value, address cell site and slot kind: store value at site as the
+\ engine's writers do, declaring the cell first: ptr-cell-mark then the
+\ store for a DATA cell, xt! for an xt cell. Declaring a cell the registry
+\ already holds adds no row.
+TRUSTED: SLOT-STORE ( n n n -- )
+   {: value:n site:n kind:n :}
+   kind SLOT-DATA = if
+      site ptr-cell-mark
+      value site !
+   else
+      value site xt!
+   then ;
+
+\ The address of slot row row's cell: a LOCAL one in the file's DATA as the
+\ segments placed it, an EXTERNAL one through the declaration that owns it.
+: SLOT-CELL ( ptr u8 -- n )
+   {: row:ptr :}
+   row 0 U64-AT {: ref:n :}
+   ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+      ref NFILE-REF:REF>LOCAL-DATA exit
+   then
+   ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - ;
+
+\ Install slot row row: its value stored in its cell.
+: SLOT-ROW! ( ptr u8 -- )
+   {: row:ptr :}
+   row SLOT-VALUE row SLOT-CELL row 1 U64-AT SLOT-STORE ;
+
+\ The viewed object's slot row k.
+: SLOT-AT ( n -- ptr u8 ) 9 NUNIT-FILE:SECTION$ drop swap SLOT-BYTES * + ;
+: SLOT-ROWS ( -- n ) 9 NUNIT-FILE:SECTION$ nip SLOT-BYTES / ;
+
+\ Declare, in registration order, the slot rows the segment at slot 12 row
+\ seg declared, as its cold load did: a cell in the file's DATA with its
+\ value, an earlier file's cell with the value it holds, since the value
+\ the row carries is the one at the file's end (EARLIER-SLOTS!).
+: SEGMENT-SLOTS ( n -- )
+   {: seg:n :}
+   SLOT-ROWS 0 ?do
+      i SLOT-AT {: row:ptr :}
+      row 3 U64-AT seg = if
+         row 0 U64-AT NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+            row SLOT-ROW!
+         else
+            row SLOT-CELL row 1 U64-AT SLOT-DECLARE
+         then
+      then
+   loop ;
+
+\ Store, in row order, the slot rows whose cell is an earlier file's: the
+\ value it held at the file's end. A segment declared the cell, or an
+\ earlier file did.
+: EARLIER-SLOTS! ( -- )
+   SLOT-ROWS 0 ?do
+      i SLOT-AT {: row:ptr :}
+      row 0 U64-AT NFILE-REF:REF-OWNER NFILE-REF:EXTERNAL = if row SLOT-ROW! then
+   loop ;
 
 \ View definition index row row's payload, the next in the definitions slot:
 \ index rows pair with colon records in ordinal order.
@@ -3787,6 +3922,7 @@ public
    FILE-REFS
    count 0 ?do rows i + INSTALL-RECORD loop
    bytes DATA-FILL
+   seg SEGMENT-SLOTS
    AOT-ARM:WIDN M-LIVE-WID CUR@ wids + <> if BAD then
    4 NUNIT-FILE:SECTION$ drop wbase + {: prot:ptr :}
    wids 0 ?do prot i + c@ 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then loop
@@ -3811,16 +3947,9 @@ private
 
 \ Frame count index rows: each frames one payload of defs, in increasing
 \ ordinal order, and spans a name within srcu source bytes; the end of the
-\ last payload. Each payload's literals are planned into the live pool,
-\ writing nothing, and OPEN-POOL-ROOM says whether the pool takes them all
-\ without opening a segment, which would land at HERE, inside the DATA the
-\ file's cold load laid out. A child loaded between the object's segments
-\ can still use the room up; that later segment is then stale at its
-\ install. The caller closes the plan.
+\ last payload. Each payload's literals are planned into the open plan.
 : DEFS-CK ( ptr u8 n ptr u8 n n -- n )
    {: defs:ptr defsu:n index:ptr count:n srcu:n :}
-   AOT-ARM:HERE-N {: start:n :}
-   start DEF-PREP-BEGIN
    -1 0
    count 0 ?do
       {: prev:n off:n :}
@@ -3836,14 +3965,42 @@ private
       PAYLOAD-CK
       PAYLOAD-PLAN
       ord off total +
-   loop nip
+   loop nip ;
+
+
+\ Plan the viewed FILE object's slot literal rows lits into the open plan
+\ as SLOT-VALUE interns them; SLOT-LITS-CK framed the rows.
+: SLOT-LITS-PLAN ( ptr u8 n -- )
+   {: lits:ptr litsu:n :}
+   0 begin dup litsu < while
+      {: off:n :}
+      lits off + LE:U64@ {: bytes:n :}
+      lits off 16 + + bytes DEF-PREP-INTERN drop
+      off 16 + bytes +
+   repeat drop ;
+
+
+\ Plan the file's literals into the live pool, writing nothing: its slot
+\ literal rows lits, then each payload's as DEFS-CK frames them; the end of
+\ the last payload. OPEN-POOL-ROOM says whether the pool takes them all
+\ without opening a segment, which would land at HERE, inside the DATA the
+\ file's cold load laid out. A child loaded between the object's segments
+\ can still use the room up; that later segment is then stale at its
+\ install. The caller closes the plan.
+: POOL-PLAN ( ptr u8 n ptr u8 n ptr u8 n n -- n )
+   {: lits:ptr litsu:n defs:ptr defsu:n index:ptr count:n srcu:n :}
+   AOT-ARM:HERE-N {: start:n :}
+   start DEF-PREP-BEGIN
+   lits litsu SLOT-LITS-PLAN
+   defs defsu index count srcu DEFS-CK
    DEF-PREP-DATA-END start = OPEN-POOL-ROOM ! ;
 
 public
 
 \ Check a FILE object's framing: the dependency and input rows are well
 \ formed, the segment sections agree, and the index rows frame the
-\ definitions slot exactly (DEFS-CK). A FILE object with definitions comes
+\ definitions slot exactly (DEFS-CK), and plans the file's literals
+\ (POOL-PLAN). A FILE object with definitions or slot literal rows comes
 \ only from a capture that had the literal planners (DEF-ELIGIBLE?), so the
 \ object write path has them; an engine without them misses at read on
 \ E-NUNIT-PROFILE.
@@ -3855,13 +4012,15 @@ public
    \ SECTIONS-VIEW replaces the table, so keep the FILE spans first.
    0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
    2 NUNIT-FILE:SECTION$ {: index:ptr indexu:n :}
+   10 NUNIT-FILE:SECTION$ {: lits:ptr litsu:n :}
    indexu INDEX-BYTES mod 0<> if BAD then
    indexu INDEX-BYTES / {: count:n :}
    count SEGMENTS-CK
-   count 0= if
+   count 0= litsu 0= and if
       true OPEN-POOL-ROOM ! 0
    else
-      defs defsu index count srcu ['] DEFS-CK ['] DEF-PREP-CLOSE finally
+      lits litsu defs defsu index count srcu
+         ['] POOL-PLAN ['] DEF-PREP-CLOSE finally
    then
    defsu <> if BAD then
    count OPEN-DEFS !
@@ -3981,6 +4140,7 @@ public
 \ rows end: a sibling's rows start there again, and the parent's own rows
 \ stay as INSTALL-RESTORE finds them.
 : INSTALL-END ( -- )
+   FILE-REFS EARLIER-SLOTS!
    INS-SEGS @ OPEN-SEGS @ <> INS-ROW @ OPEN-DEFS @ <> or if BAD then
    NUNIT-FILE:RESET-KEEP
    0 INS-SEGS ! ;
@@ -4088,11 +4248,11 @@ public
    loop ;
 
 \ The FILE object OPEN-FILE found is one the install replays: package,
-\ constant, address and colon records, DATA bytes and require rows in
-\ segments between child loads, on a checker that imports. Later lanes widen
-\ the rest. Slot 12 holds no SEGMENT row for a run that added nothing to the
-\ dictionary, DATA or the require registry, so a file whose runs added
-\ nothing has no segment to replay and loads from source. The install makes
+\ constant, address and colon records, DATA bytes, slot rows and require
+\ rows in segments between child loads, on a checker that imports. Later
+\ lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
+\ nothing to the dictionary, DATA or the require registry, so a file whose
+\ runs added nothing has no segment to replay and loads from source. The install makes
 \ wordlists only through package rows, so every wordlist the file made must
 \ be one they own. The first segment's data alignment is checked here, when
 \ it opens the file; a later one's at its install. The answer names the
@@ -4100,7 +4260,6 @@ public
 \ whole object.
 : UNSUPPORTED$ ( -- ptr u8 n )
    OPEN-SEGS @ 0= if s" empty-file" exit then
-   OPEN-SLOTS @ 0<> if s" unsupported-slots" exit then
    OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then
    OPEN-OWNED @ OPEN-WIDS @ <> if s" unsupported-wordlists" exit then
