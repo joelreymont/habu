@@ -167,7 +167,7 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
-   DEV-A-P  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1
+   DEV-A-P DEV-A-BOOT  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  ARENA-BOOT-GROW
    nc DEV-CAP-V ! ;
 : DEV-ENSURE ( -- )               \ room for the next event id (DEV-N)
    DEV-N @ DEV-CAP-V @ < IF exit THEN
@@ -218,7 +218,7 @@ variable DEV-TX-SERIAL
 : DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
-   DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  REG-GROW1
+   DEV-TX-P DEV-TX-BOOT  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  ARENA-BOOT-GROW
    nc DEV-TX-CAP-V ! ;
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
@@ -665,9 +665,9 @@ private
 \ above. PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
 \ module to be written into a persisted engine IMAGE.
 \
-\ Both arenas here grow through REG-GROW1, which re-allocates from the
-\ host process's allocator, so a grown base is a live address of THIS process and
-\ nothing else. The snapshot writer copies the DP heap verbatim, so a grown base
+\ Both arenas here grow through ARENA-BOOT-GROW, which maps fresh pages in
+\ this process, so a grown base is a live address of THIS process and nothing
+\ else. The snapshot writer copies the DP heap verbatim, so a grown base
 \ left in place is persisted as a number that means nothing in the process that
 \ restores it: the restored image's first declaration reads DEV-BASE and stores
 \ through it. Measured, before this word existed: a warm image stored 1 into an
@@ -685,8 +685,10 @@ private
    DECLARATION-TRANSACTION:ACTIVE? DEV-TX-DEPTH @ 0 <> or IF
       s" decl-event: snapshot inside declaration transaction" DEV-BUG-RC die
    THEN
-   DEV-A-BOOT DEV-A-P !                DEV-CAP-INIT DEV-CAP-V !
-   DEV-TX-BOOT DEV-TX-P !              DEV-TX-CAP-INIT DEV-TX-CAP-V !
+   DEV-A-P DEV-A-BOOT DEV-CAP-V @ DEV-REC * ARENA-BOOT-RESTORE
+   DEV-CAP-INIT DEV-CAP-V !
+   DEV-TX-P DEV-TX-BOOT DEV-TX-CAP-V @ DEV-TX-REC * ARENA-BOOT-RESTORE
+   DEV-TX-CAP-INIT DEV-TX-CAP-V !
    DEV-A-BOOT 0 DEV-CAP-INIT DEV-REC * CELL / ARENA-CELLS-ZERO
    DEV-TX-BOOT 0 DEV-TX-CAP-INIT DEV-TX-REC * CELL / ARENA-CELLS-ZERO
    DEV-RESET ;

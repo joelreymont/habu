@@ -2266,6 +2266,15 @@ PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
+\ PF-TX-ENSURE ( -- ) : room for one more field-transaction frame, doubling the
+\ store and giving back the grown mapping it replaces. Here because only this
+\ package sees PF-TX-BOOT.
+: PF-TX-ENSURE ( -- )
+   PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
+   PF-TX-CAP-V @ 2 * {: nc:n :}
+   PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * ARENA-BOOT-GROW
+   nc PF-TX-CAP-V ! ;
+
 \ Multi-frame cleanup seam. A declaration participant that finds frames opened
 \ above its own has to retire them, but only this owner may walk its own frame
 \ stack, and the walk must stay unreachable from ordinary source. So the entry
@@ -2297,13 +2306,6 @@ package TYPE-FIELD-OWNER
 1 constant STATE-COMMITTED
 
 : TX-BASE ( -- ptr n ) PF-TX-P @ ;
-: TX-GROW ( -- )
-   PF-TX-CAP-V @ 2 * {: nc:n :}
-   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
-   nc PF-TX-CAP-V ! ;
-: TX-ENSURE ( -- )
-   PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
-   TX-GROW ;
 : TX-AT ( n -- ptr n ) PF-TX-REC * TX-BASE + ;
 : TX-TOP ( -- ptr n )
    PF-TX-DEPTH @ 0= IF E-PF-TX throw THEN
@@ -2350,7 +2352,7 @@ public
    TX-PARENT-REQUIRE
    PF-TX-SERIAL @ 1 + dup 0 <= IF drop E-PF-TX throw THEN
    {: tok:n :}
-   TX-ENSURE
+   PF-TX-ENSURE
    tok PF-TX-SERIAL !
    PF-TX-DEPTH @ TX-AT {: r:ptr :}
    PF-N @ r PFTX.PFN !

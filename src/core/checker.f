@@ -278,6 +278,15 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
    boot pv ! ;
 
+\ ARENA-BOOT-GROW ( pvar boot oldbytes newbytes -- ) : grow the store pvar
+\ holds, which starts on its boot buffer, to NEWBYTES, keeping its bytes, and
+\ give back the grown mapping, OLDBYTES long, it replaces.
+: ARENA-BOOT-GROW ( ptr ptr n ptr n n n -- )
+   {: pv:ptr boot:ptr ob:n nb:n :}
+   pv @ ob nb ARENA-BYTES-GROW {: next:ptr :}
+   pv @ boot <> IF pv @ ob ARENA-UNMAP THEN
+   next pv ! ;
+
 \ ARENA-ROWS-ENSURE ( pvar capvar need row -- ) : grow the table of ROW-cell
 \ rows pvar holds, capvar rows long, to NEED rows, keeping its rows, and give
 \ the old mapping back. A table that holds none starts at 64 rows.
@@ -25323,8 +25332,8 @@ variable CTOR-PEND-POS
 : CTOR-PEND-ENSURE ( -- )
    CTOR-PEND-COUNT @ CTOR-PEND-CAP @ < IF EXIT THEN
    CTOR-PEND-NEXT-CAP {: cap:n :}
-   CTOR-PEND-P @ CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
-      cap CTOR-PEND-ROWS>BYTES ARENA-BYTES-GROW CTOR-PEND-P !
+   CTOR-PEND-P CTOR-PEND-BOOT CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
+      cap CTOR-PEND-ROWS>BYTES ARENA-BOOT-GROW
    cap CTOR-PEND-CAP ! ;
 
 : CTOR-PEND-CLEAR ( -- )

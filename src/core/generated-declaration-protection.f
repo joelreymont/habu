@@ -44,14 +44,11 @@ variable BASE         \ STAGE-N when the declaration took its savepoint
    cap CELL-CAP-MAX 2 / <= IF cap 2 * need max EXIT THEN
    need ;
 
-: GROW ( ptr ptr a n n -- ) {: pvar:ptr oldcap:n newcap:n :}
-   pvar @ oldcap cells newcap cells ARENA-BYTES-GROW pvar ! ;
-
 : STAGE-ENSURE ( -- )
    STAGE-N @ STAGE-CAP @ < IF EXIT THEN
    STAGE-N @ CELL-CAP-MAX >= IF E-PROTECTION-CAP throw THEN
    STAGE-N @ 1 + STAGE-CAP @ GROW-CAP {: cap:n :}
-   STAGE-P STAGE-CAP @ cap GROW
+   STAGE-P STAGE-BOOT STAGE-CAP @ cells cap cells ARENA-BOOT-GROW
    cap STAGE-CAP ! ;
 
 : STAGE@ ( n -- n )
@@ -131,7 +128,7 @@ private
 \ address is a wild pointer in the process that restores the image.
 : SNAPSHOT-RESET ( -- )
    DECLARATION-TRANSACTION:ACTIVE? STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
-   STAGE-BOOT STAGE-P !
+   STAGE-P STAGE-BOOT STAGE-CAP @ cells ARENA-BOOT-RESTORE
    CAP-INIT STAGE-CAP !
    GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
    DECL-EVENT:SNAPSHOT-RESET
