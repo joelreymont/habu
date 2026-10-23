@@ -1484,7 +1484,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ index is outside 1..DEVICES, or the row is empty because nothing registered
 \ it. Output has to keep working while a device is being built or has just gone
 \ away; a device that wants a failure REPORTED latches it and answers on its
-\ next checked operation (src/lib/genio.f), because a throw out of `emit` would
+\ next checked operation (src/lib/genio-core.f), because a throw out of `emit` would
 \ unwind through engine internals.
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
@@ -13033,7 +13033,7 @@ public
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
 \ twin of prof.f LPROFNUM, which writes fd 1 and pads a column: a diagnostic
-\ never leaves through the output device (src/lib/genio.f), so a refusal with a
+\ never leaves through the output device (src/lib/genio-core.f), so a refusal with a
 \ count to state calls this rather than `u.`/G-PRINTU9. Zero prints "0" — the
 \ digit loop runs once before its test. Clobbers x0-x2, x9-x13, x16 (SYS,'s errno
 \ reconciliation) and x30, plus 32 bytes of sp scratch; x14, x15 and x17 survive,

@@ -372,7 +372,7 @@ emulated. No target tasker exists in the tree yet.
 
 **Devices.** `EMIT`, `KEY`, `TYPE` and `ACCEPT` reach the current task's
 input and output device through a small table of operations
-(`src/lib/genio.f`), as VFX's generic I/O devices do. A socket or serial port
+(`src/lib/genio-core.f`), as VFX's generic I/O devices do. A socket or serial port
 can then become the REPL's console without changes to the REPL, which keeps a
 running server or microcontroller inspectable and correctable from a distance.
 The device record stays small enough to be the per-task vector table SwiftX

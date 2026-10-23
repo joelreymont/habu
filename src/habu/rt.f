@@ -170,7 +170,7 @@ public
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
-\ ---- the engine's one output funnel (src/lib/genio.f) --------------------------
+\ ---- the engine's one output funnel (src/lib/genio-core.f) ---------------------
 \ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
 \ `.`, `u.` and `f.` (G-PRINT9/G-PRINTU9 below, habu1.f BFDOT),
 \ `emit`/`cr`/`space` (G-EMITC),

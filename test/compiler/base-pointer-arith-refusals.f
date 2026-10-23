@@ -574,7 +574,7 @@ create DIAG-BUF 8192 allot
 \ permissive arm costs the null COMPARISON on a declared code cell: it certified
 \ before this rule and is refused after it, with the same reason as the cell
 \ shapes above. An empty code cell is read through a NUMBER-typed accessor of
-\ the same address instead -- the two-accessor shape src/lib/genio.f already uses
+\ the same address instead -- the two-accessor shape src/lib/genio-core.f already uses
 \ for its device rows, where a cleared row is spelled ZERO.
 : CASE-NULL-XT-COMPARE ( -- )
    s" comparing a code cell against the null is refused, and says why" T-LABEL

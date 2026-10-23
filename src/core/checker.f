@@ -2998,7 +2998,7 @@ variable XT-DECL
 \ (`HK NULL-PTR =` and `<>` certify before this rule and are refused after it;
 \ the distance `HK NULL-PTR -` never pairs the two pointees, see
 \ TVK-BASE-ONLY). An empty code cell is read through a NUMBER-typed accessor
-\ of the same address instead -- the two-accessor shape src/lib/genio.f already uses
+\ of the same address instead -- the two-accessor shape src/lib/genio-core.f already uses
 \ for its device rows, where a cleared row is spelled ZERO.
 \ It is latched as the RAW rule's own refusal (RAW-EXEC-HIT), not as a
 \ base-address one, because the answer is the same at every base and at an

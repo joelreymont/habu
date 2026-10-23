@@ -927,7 +927,7 @@ $47E0 constant HEAP-START-CELL
 ;package
 
 
-\ GENIO-ABI: where the generic I/O layer (src/lib/genio.f) keeps the
+\ GENIO-ABI: where the generic I/O layer (src/lib/genio-core.f) keeps the
 \ routing the ENGINE itself has to read. Everything else about a device -- its
 \ eight operations, its private state, its handle -- belongs to the library and
 \ lives in ordinary dictionary storage; only these cells cross into engine code.
@@ -944,11 +944,11 @@ $47E0 constant HEAP-START-CELL
 \
 \ THE WRITE TABLE is the one place an execution token does appear, and it is
 \ in the engine header, where SNAP-RELOC already canonicalises declared cells:
-\ src/lib/genio.f publishes a device's write operation into its row through `xt!`,
-\ exactly as src/habu/repl.f publishes its line reader into REPLH-CELL, and
-\ clears every row again through IMAGE-LIFECYCLE before a capture is taken. The
-\ engine reads a row only to reach a device write; it never learns what a device
-\ is. DEVICES is deliberately small: a process has a terminal, perhaps a
+\ src/lib/genio-core.f publishes a device's write operation into its row
+\ through QUOTATION-STORAGE:STORE, as src/habu/repl.f publishes its line reader
+\ into REPLH-CELL, and clears every row again through IMAGE-LIFECYCLE before a
+\ capture is taken. The engine reads a row only to reach a device write; it
+\ never learns what a device is. DEVICES is deliberately small: a process has a terminal, perhaps a
 \ connection or two and a capture buffer, and a fixed table costs no allocation
 \ on a microcontroller. TASK-REGION-INIT copies the rows into a task's region as
 \ well, which is sound for the reason RBASE-CELL's copy is: a task region lives
@@ -965,7 +965,7 @@ $47E0 constant HEAP-START-CELL
 \ eight quotations over two different connections, and a quotation cannot
 \ capture the device it belongs to (docs/forth.md refuses a local inside one).
 \ An operation therefore asks this cell for its own row and reads its state
-\ there. The funnel publishes it around the write it calls, and src/lib/genio.f
+\ there. The funnel publishes it around the write it calls, and src/lib/genio-core.f
 \ publishes and restores it around every other operation.
 \
 \ WHERE THEY HAD TO GO: the $600..$800 header hole BODYBUF-OFF below names as

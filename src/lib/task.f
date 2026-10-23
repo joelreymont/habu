@@ -1202,7 +1202,7 @@ variable SWEEP-ARMED
    \ (src/os/script-argv.f SCRIPT-ARG-START); left at the region's zero, a
    \ task in an application read the engine's and lost argument 0.
    data-base reg APP-ENTRY:XT-CELL TASK-COPY-CELL
-   \ A task starts on its creator's I/O devices (src/lib/genio.f). These cells
+   \ A task starts on its creator's I/O devices (src/lib/genio-core.f). These cells
    \ hold a device INDEX, not an address, which is what makes copying them into
    \ a freshly mapped region sound: nothing here needs relocating. The funnel's
    \ re-entrancy guard and the active-device cell start clear, because the new

@@ -8,7 +8,7 @@
 \ which reads the pattern left by the negate as the magnitude it is.
 \
 \ HOW THE TEXT COMES BACK. `.` and `u.` write through the engine's output funnel
-\ (src/lib/genio.f), so a genio device makes them readable: the sink below is a
+\ (src/lib/genio-core.f), so a genio device makes them readable: the sink below is a
 \ write-only device that appends to a buffer, and each case installs it, prints
 \ one number, restores the terminal and only THEN asserts — a failing assertion
 \ has to reach the terminal, not the buffer it is complaining about.
@@ -19,7 +19,7 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/genio.f
+require src/lib/genio-core.f
 
 package PRINT-MIN-INT
 private
@@ -36,7 +36,7 @@ variable SINK-OVER                      \ a write past the buffer, latched
 variable SINK-DEV
 
 \ ---- the sink device ---------------------------------------------------------
-\ A write operation may not throw (src/lib/genio.f), so an overrun is latched and
+\ A write operation may not throw (src/lib/genio-core.f), so an overrun is latched and
 \ checked once at the end instead.
 : SINK-RESET ( -- )
    0 SINK-N !  0 SINK-OVER ! ;
