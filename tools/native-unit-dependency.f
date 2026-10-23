@@ -1241,6 +1241,12 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
       1+
    repeat drop ;
 
+\ The frame's SCOPE row names a package an earlier session made, whose
+\ declaration has no key, so no later build can verify it: refuse.
+: SCOPE-KNOWN ( -- )
+   NFILE-SCOPE:SCOPE-UNKEYED {: ord:n :}
+   ord 0 >= if s" scope-key-unknown" ord ORDERED-BY then ;
+
 public
 
 \ The running checker owner's CHECKER-OWNER:RESOLUTION-TOP, bound for the
@@ -1275,6 +1281,7 @@ public
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
    SCOPE NULL-PTR 0 scope scopeu FILE-ROW
+   SCOPE-KNOWN
    OBSERVE ;
 
 \ Close the innermost file frame. Its records become a child range of the
@@ -1322,6 +1329,7 @@ public
    HEADER-BYTES ROOM BYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
    SCOPE NULL-PTR 0 scope scopeu DEF-ROW
+   SCOPE-KNOWN
    OBSERVE ;
 
 : COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;

@@ -2214,6 +2214,18 @@ sections above.
   mutation. The window closes on every exit, including throws, so a refused
   definition cannot leave an orphaned type or row. This applies to certified
   and hookless compilation.
+- **A file object refuses an effect below its file it cannot replay.** A
+  file that leaves the compiler tier, the executable-build depth or saved tier,
+  or the optimizer dispatch changed is `native-file: refused ...
+  reason=kernel-cell-changed cell=tier` (`build-depth`, `build-tier`,
+  `dispatch`); `0 set-tier` alone refuses, `0 set-tier` then `1 set-tier`
+  stores. Only records the running binary held when the process first opened
+  the definition cache are seeded. A record an earlier top-level load in the
+  same process made has no key, so a later load that reads it is ordered
+  (`resolution-key-unknown`, `binding-key-unknown`; the object refuses
+  `ordered-dependency`), and a file loaded inside such a package is
+  `scope-key-unknown word=<package>`. A dependency the file's own load
+  `require`s is tracked as usual. `test/native-file-frame-e2e.f` measures each line.
 - **`catch` requires a callable with a known effect.** Literal quotations,
   callable ticks, quotation parameters already on the stack and fetched
   typed quotations are admitted. A callback whose effect does not preserve

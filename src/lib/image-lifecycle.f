@@ -13,6 +13,9 @@ variable N
 \ Declaration-time hooks survive captures; typed DATA cells own relocation.
 64 TYPED-BUFFER PERSISTENT [ -- ]
 variable PERSISTENT-N
+\ Declaration-time DATA cells whose values belong to the running process.
+64 TYPED-BUFFER PROCESS ptr n
+variable PROCESS-N
 \ Atomic cells require native cell alignment. This dictionary storage is shared
 \ by every task, unlike the engine's per-task DATA header.
 here data-base - negate 7 and allot
@@ -32,6 +35,10 @@ variable MUTEX
    PERSISTENT-N @ PERSISTENT !
    1 PERSISTENT-N +! ;
 
+: APPEND-PROCESS ( ptr n -- )
+   PROCESS-N @ PROCESS !
+   1 PROCESS-N +! ;
+
 public
 
 \ Register when acquiring process-local state. Serialize growth and append;
@@ -43,6 +50,18 @@ public
 \ across PREPARE and image restore; a full table refuses E-LAYOUT-BOUNDS.
 : REGISTER-PERSISTENT ( [ -- ] -- )
    LOCK [: APPEND-PERSISTENT ;] [: UNLOCK ;] finally ;
+
+\ Declare a DATA cell whose value belongs to the running process: the image
+\ writer stores it as 0, and the live process keeps its value through every
+\ capture, one that throws included. 64 slots; a full table refuses
+\ E-LAYOUT-BOUNDS.
+: PROCESS-CELL ( ptr n -- )
+   LOCK [: APPEND-PROCESS ;] [: UNLOCK ;] finally ;
+
+\ Visit every declared process cell, in declaration order. The image writer
+\ runs this after application tasks stop, as PREPARE does.
+: PROCESS-CELLS ( [ ptr n -- ] -- ) {: visit :}
+   PROCESS-N @ 0 ?do i PROCESS @ visit execute loop ;
 
 \ Number of hooks currently registered, read under the lock REGISTER takes so
 \ a concurrent registration is either counted or not, never half-applied. A
@@ -100,26 +119,27 @@ public
    begin dup 0 > while 1- dup PERSISTENT @ execute repeat drop
    N @ 0 > if E-LIFECYCLE-LATE throw then ;
 
-\ THE SIX SPANS A STRIPPED IMAGE REACHES THIS REGISTRY THROUGH, handed one at a
+\ THE EIGHT SPANS A STRIPPED IMAGE REACHES THIS REGISTRY THROUGH, handed one at a
 \ time to a claim the caller supplies. This file is baked into the engine, so
 \ every cell it declares sits below any capture window; COUNT above takes the
 \ lock and reads both counters, so its compiled code spells the first three
-\ addresses, and REGISTER, REGISTER-PERSISTENT and PREPARE spell the two buffer
-\ bases and HOOKS's control block. That is the refusal every Tender entry point
+\ addresses, REGISTER, REGISTER-PERSISTENT and PREPARE spell the two buffer
+\ bases and HOOKS's control block, and PROCESS-CELL and PROCESS-CELLS spell
+\ PROCESS-N and PROCESS's base. That is the refusal every Tender entry point
 \ stopped at once the path scratch let it open a file (measured: `caller=<unknown> value=13964713400
 \ target=<unknown>`, the same integer from a program whose only call was
 \ UNICODE:CASEFOLD=, which then registered its cleanup on first use).
-\ THE ZERO OF A FRESH MAPPING IS THE CORRECT START FOR ALL SIX. A new process
-\ has registered nothing: an open lock, two zero counts, no hook mapping, no hook
-\ capacity and an empty persistent table. Declaration-time registrations belong
+\ THE ZERO OF A FRESH MAPPING IS THE CORRECT START FOR ALL EIGHT. A new process
+\ has registered nothing: an open lock, three zero counts, no hook mapping, no
+\ hook capacity and empty persistent and process tables. Declaration-time registrations belong
 \ to the process that made them - the builder ran them while it loaded the
 \ program - so an image that starts with an empty registry is not missing state, it is a new
 \ instance of it.
 \ ONLY THE CELLS CODE SPELLS ARE NAMED. HOOKS is a DYNAMIC-BUFFER, whose
 \ generated words pass its head cell and its control block, `HOOKS#base
 \ HOOKS#ctl` (src/core/layout-buffer.f DBUF-SOURCE), so both are claimed, the
-\ block with its extent. PERSISTENT's generated accessor is
-\ `PERSISTENT#base i 8 * +` (LBUF-SOURCE), so the 64 cells behind its base are
+\ block with its extent. PERSISTENT's and PROCESS's generated accessors are
+\ `PERSISTENT#base i 8 * +` (LBUF-SOURCE), so the 64 cells behind each base are
 \ reached at a computed offset and never named in code.
 \ A STRIPPED IMAGE CAN REGISTER NOW. APPEND stores a quotation into a declared
 \ cell, which lowers through `xt!`: `xt!` stores and then declares the cell to
@@ -138,6 +158,8 @@ public
    MUTEX BYTE-VIEW CELL claim execute
    HOOKS#base BYTE-VIEW CELL claim execute
    HOOKS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   PERSISTENT#base BYTE-VIEW CELL claim execute ;
+   PERSISTENT#base BYTE-VIEW CELL claim execute
+   PROCESS-N BYTE-VIEW CELL claim execute
+   PROCESS#base BYTE-VIEW CELL claim execute ;
 
 ;package

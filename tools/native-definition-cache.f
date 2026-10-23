@@ -83,6 +83,13 @@ variable PLACES-U
 variable DEPTH
 variable SESSION
 variable SEEDED
+\ The dictionary count when the process's first session opened. The records
+\ below it are the seed's; CLOSE leaves it, so a later session's files cannot
+\ name an earlier session's records as the seed's. It is a process cell, as
+\ NUNIT-OBJECT's image floor is: an image stores it as 0, so the process
+\ booted from it takes its own at its first session.
+variable BOOT-N
+BOOT-N NUNIT-OBJECT:PROCESS-CELL
 variable NATIVE?
 variable REPORT?
 variable DIAG?
@@ -1219,7 +1226,7 @@ variable USER-SEEN
 
 : SEED ( -- )
    SEEDED @ if exit then
-   NFILE-REF:BIND-SEED
+   BOOT-N @ NFILE-REF:BIND-SEED
    1 SEEDED !
    NATIVE? @ if AOT-ARM:B0 @ else 0 then NUNIT-ORIGIN:BIND
    BIND-OWNER ;
@@ -1246,8 +1253,14 @@ variable USER-SEEN
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
    NAME NAME-BYTES ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
 
+\ The process's first session takes the seed's record count.
+: BOOT-TAKE ( -- )
+   BOOT-N @ 0<> if exit then
+   ndict@ BOOT-N ! ;
+
 : OPEN ( -- )
    1 SESSION !
+   BOOT-TAKE
    s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= DIAG? !
    0 SEEDED ! 0 DEPTH !
    0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !

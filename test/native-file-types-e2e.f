@@ -26,6 +26,10 @@ variable LIVE-KEY-U
 variable PENDING-KEY-U
 variable LIVE-ORD
 variable REFS-U
+create PROBE-IN 1024 allot
+variable PROBE-IN-U
+create EXPECT 512 allot
+variable EXPECT-U
 
 : REFS-RESET ( -- )
    1024 0 ?do 0 PARTIAL-REFS i + c! loop
@@ -165,6 +169,88 @@ variable REFS-U
    s" warm-hb" AT s" " CAPTURE SUCCESS
    OUT$ S\" 9\n456\n" CONTAINS? TTRUE ;
 
+: IN+ ( ptr u8 n -- ) PROBE-IN 1024 PROBE-IN-U BUF-APPEND ;
+
+\ A REPL line that loads the tree's named file through the cache.
+: LOAD-LINE ( ptr u8 n -- )
+   S\" s\" " IN+ AT IN+ S\" \" s\" repl\" NDEF-CACHE:LOAD\n" IN+ ;
+
+\ An app is a snapshot of its builder, which ran a cache session, and boots
+\ to a REPL; the boot is the boundary under test, so each run is a process.
+: PROBE-RUN ( ptr u8 n -- )
+   {: exe:ptr exeu:n :}
+   PROC-ARGV-ENV-RESET
+   s" HABU_BUILD_CACHE" >LEN s" probe-cache" AT >LEN PROC-ENV+
+   s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   exe exeu AT PROBE-IN PROBE-IN-U @ CAPTURE SUCCESS ;
+
+\ The named file compiled in a session that took this process's own seed and
+\ image floor: nothing refused, no earlier DATA copied, its object stored. A
+\ seed or floor inherited from the image's builder refuses the file instead.
+: STORED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   ERR$ s" refused path=" CONTAINS? TFALSE
+   ERR$ S\"  copied=0\n" CONTAINS? TTRUE
+   0 EXPECT-U !
+   s" native-file: object path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  key=" EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE ;
+
+\ The app's session stores probe.f, then the app saves itself; the second image
+\ boots and stores probe2.f, which calls probe.f's word.
+: BOOTED-SESSION ( -- )
+   s" a booted app's sessions take their own seed and image floor" T-LABEL
+   s" probe.f"
+      S\" package FILE-PROBE\npublic\nvariable CELLV\n: VALUE ( -- n ) FILE-SHAPE:SIZE 61 + ;\n;package\nFILE-PROBE:VALUE . cr\n"
+      PUT
+   s" probe2.f"
+      S\" package FILE-PROBE2\npublic\n: V2 ( -- n ) FILE-PROBE:VALUE 1+ ;\n;package\nFILE-PROBE2:V2 . cr\n"
+      PUT
+   0 PROBE-IN-U !
+   S\" 1 set-tier\n" IN+
+   s" probe.f" LOAD-LINE
+   S\" s\" " IN+ s" app2" AT IN+ S\" \" APP-IMAGE:SAVE\n" IN+
+   s" app-hb" PROBE-RUN
+   OUT$ S\" 77\n" CONTAINS? TTRUE
+   s" probe.f" STORED
+   0 PROBE-IN-U !
+   S\" 1 set-tier\n" IN+
+   s" probe2.f" LOAD-LINE
+   s" app2" PROBE-RUN
+   OUT$ S\" 78\n" CONTAINS? TTRUE
+   s" probe2.f" STORED ;
+
+\ A capture whose one-shot hook throws returns to the REPL with the process's
+\ seed and image floor intact: probe3.f writes probe.f's cell, an earlier
+\ session's DATA, so it is refused and its image copies that DATA. A seed and
+\ floor lost to the failed capture would take probe.f as seed and store it.
+: FAILED-CAPTURE ( -- )
+   s" a capture that throws keeps the process's seed and image floor" T-LABEL
+   s" probe3.f"
+      S\" package FILE-PROBE3\npublic\n99 FILE-PROBE:CELLV !\n: V3 ( -- n ) FILE-PROBE:CELLV @ ;\n;package\nFILE-PROBE3:V3 . cr\n"
+      PUT
+   0 PROBE-IN-U !
+   S\" 1 set-tier\n: BOOM ( -- ) 5 throw ;\n' BOOM IMAGE-LIFECYCLE:REGISTER\n" IN+
+   s" probe.f" LOAD-LINE
+   S\" : SAVE3 ( -- ) [: s\" " IN+ s" app3" AT IN+
+   S\" \" APP-IMAGE:SAVE ;] catch 5 = if s\" save-refused\" type cr then ;\nSAVE3\n" IN+
+   s" probe3.f" LOAD-LINE
+   s" app-hb" PROBE-RUN
+   OUT$ S\" save-refused\n" CONTAINS? TTRUE
+   s" app3" AT EXISTS? TFALSE
+   OUT$ S\" 99\n" CONTAINS? TTRUE
+   0 EXPECT-U !
+   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   s" probe3.f" AT EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
+   0 EXPECT-U !
+   s" native-file: image path=" EXPECT 512 EXPECT-U BUF-APPEND
+   s" probe3.f" AT EXPECT 512 EXPECT-U BUF-APPEND
+   S\"  copied=0\n" EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TFALSE ;
+
 : REJECT-TYPED-CLIENT ( -- )
    s" app.f" S\" require prefix.f\nrequire unit.f\nrequire bad.f\n: MAIN ( -- ) ;\n" PUT
    s" bad-hb" BUILD 70 T=
@@ -232,6 +318,8 @@ public
    OUT$ S\" 9\n456\n" CONTAINS? TTRUE
    REJECT-TYPED-CLIENT
    SHAPE-CASE
+   BOOTED-SESSION
+   FAILED-CAPTURE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

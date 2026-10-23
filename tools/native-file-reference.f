@@ -813,22 +813,31 @@ public
    1 ALLOC-N +!
    row ;
 
-: BIND-SEED ( -- )
+\ Key every record below boot, the dictionary the process held when its
+\ first session opened, as the seed's. A record an earlier session or the
+\ code between sessions made is no file's the session can name: it stays
+\ unkeyed, so a read of it is an unknown dependency and a write to it an
+\ unowned update. Binding a package's wordlists is not keying: every
+\ package record binds them, so PACKAGE-OF names the package of a record a
+\ later file defines into it.
+: BIND-SEED ( n -- ) {: boot:n :}
    s" hb-seed" FILE-INSTANCE!
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-RETIRED? if
-         \ A retired row no longer has a wordlist to name its declaration.
-         0 KEY-U ! SEED-DECL K-N INSTANCE-KEY$ K-S i K-N
-         i KEY$ BIND-DECL
-         i BIND-LIVE
-      else
-         i BIND-RECORD
+      i boot < if
+         rec XREF-RETIRED? if
+            \ A retired row no longer has a wordlist to name its declaration.
+            0 KEY-U ! SEED-DECL K-N INSTANCE-KEY$ K-S i K-N
+            i KEY$ BIND-DECL
+            i BIND-LIVE
+         else
+            i BIND-RECORD
+         then
+         rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+            rec XREF-START rec XREF-CODE-BYTES i REGISTER-IMPL-RANGE
+         then
       then
       i WID-BIND-REC
-      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
-         rec XREF-START rec XREF-CODE-BYTES i REGISTER-IMPL-RANGE
-      then
    loop
    here BYTE-VIEW data-base BYTE-VIEW - {: bytes:n :}
    bytes 0 > if
@@ -881,6 +890,15 @@ public
       vis 1 = if 2 else 3 then K-N
       ord RECORD-KEY$ K-S KEY$ exit
    then 2drop BAD ;
+
+\ Whether WID-KEY$ can name wordlist wid, and else the package record that
+\ owns it, whose declaration has no key: a package an earlier session made.
+: WID-KEYED? ( n -- n bool ) {: wid:n :}
+   wid WID-OWNER dup 0= if drop 2drop MAYBE-INDEX-PREPARED-WIDS
+      wid WID-OWNER then
+   if drop {: ord:n :}
+      ord ord DECL-KEY? nip nip exit
+   then 2drop -1 true ;
 
 : CONTRACT$ ( n -- ptr u8 n bool ) {: ord:n :}
    ord 0 < ord REC-N @ >= or if NULL-PTR 0 false exit then
@@ -1103,12 +1121,15 @@ public
    0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! 0 CAP-CODE-U ! ;
 
 \ The reference to wordlist wid made before the file: builtin, or imported
-\ from the package record that owns it. 0 when no record owns it.
+\ from the package record that owns it. 0 when no keyed record owns it.
 : REF-WID ( n -- n ) {: wid:n :}
    wid 0= if WID BUILTIN 0 0 REF! exit then
    wid XREF-RETIRED-WL = if WID BUILTIN 1 0 REF! exit then
    wid WID-OWNER 0= if 2drop 0 exit then
    {: ord:n vis:n :}
+   \ A package an earlier session made has no key; its 0 refuses the record
+   \ as an unowned one does.
+   ord DECL-KEY? nip nip 0= if 0 exit then
    WID ord IMPORT-DECL {: row:n :}
    WID row vis 1- REF-IMPORT ;
 

@@ -155,13 +155,31 @@ variable LITS-AT
 variable OPEN-SLOTS
 \ The target's NSTR:OWNER-ROW while the closing file encodes, 0 when absent.
 variable OWNER-ROW-XT
-\ The before-image of earlier DATA: the session's DATA from IMAGE-FLOOR,
-\ HERE at its first image, to HERE when the open segment's image was taken.
-\ Taken once the segment opens (SEGMENT-IMAGE), only while a file compiles,
-\ and compared at the segment's close.
+\ The before-image of earlier DATA: DATA from IMAGE-FLOOR to HERE when the
+\ open segment's image was taken. Taken once the segment opens
+\ (SEGMENT-IMAGE), only while a file compiles, and compared at the
+\ segment's close. The floor belongs to the process, not the session: HERE
+\ at the process's first image, so a top-level load sees its writes to every
+\ earlier load's DATA. Every file frame takes its first image as it opens
+\ (NDEF-CACHE FILE-UNIT-WITH), before its source runs or its object installs,
+\ so a warm build takes the cold build's floor. Below it lie the kernel's and
+\ the tools' cells, which the tools write while a file compiles; only the
+\ cells KCELL names are observed there. Any other cell below the floor that
+\ a file changes through a trusted or foreign word is not observed, and its
+\ object is stored without that effect. The floor is a process cell
+\ (PROCESS-CELL below): an image stores it as 0, so the process booted from it
+\ takes its own floor at its first image.
 DYNAMIC-BUFFER IMAGE u8
 variable IMAGE-FLOOR
+CAST: PROCESS-CELL-XT ( n -- [ ptr n -- ] )
+\ Set when this engine's registry declares no process cells.
+variable PROCESS-ABSENT
 variable IMAGE-U
+\ The kernel cells below the floor as the open segment's image found them,
+\ and whether it took them.
+4 constant KCELLS
+KCELLS TYPED-BUFFER KCELL-WAS n
+variable KCELLS-HELD
 \ The earlier DATA bytes the open files' segments changed, each once per
 \ file and ascending within it, innermost file last. Encoding drops the closing file's own DATA, address
 \ cells and the storage owners' spans, and keeps the rest as updates.
@@ -380,15 +398,66 @@ private
    idx count >= if false exit then
    rows idx cells + @ raw = ;
 
-\ Copy the session's DATA from its floor to HERE as the open segment's
-\ before-image, counting the bytes against the innermost file. A refused file
-\ takes none. The floor is HERE at the session's first image.
+\ Kernel cell k below the floor that a file may change only in passing: its
+\ DATA offset and its name. A file that leaves one changed refuses. These are
+\ the compiler tier selection, the executable-build scope's depth and saved
+\ tier, and the optimizing compiler's dispatch.
+: KCELL ( n -- n ptr u8 n )
+   {: k:n :}
+   k 0 = if NCOMP-DISPATCH:TIER-CELL s" tier" exit then
+   k 1 = if NCOMP-DISPATCH:BUILD-DEPTH-CELL s" build-depth" exit then
+   k 2 = if NCOMP-DISPATCH:BUILD-TIER-CELL s" build-tier" exit then
+   k 3 = if NCOMP-DISPATCH:XT-CELL s" dispatch" exit then
+   BAD ;
+
+: KCELL@ ( n -- n )
+   KCELL 2drop {: off:n :}
+   data-base off + CELL-VIEW @ ;
+
+: KCELLS-TAKE ( -- )
+   KCELLS 0 ?do i KCELL@ i KCELL-WAS ! loop
+   1 KCELLS-HELD ! ;
+
+\ Refuse the innermost file when the open segment left a kernel cell other
+\ than its image found it, naming the first such cell.
+: KCELLS-CHECK ( -- )
+   KCELLS-HELD @ 0= if exit then
+   0 KCELLS-HELD !
+   KCELLS 0 ?do
+      i KCELL@ i KCELL-WAS @ <> if
+         FILE-REFUSED? 0= if
+            s" kernel-cell-changed cell=" WHY+ i KCELL WHY+ drop
+         then unloop exit
+      then
+   loop ;
+
+\ Forget the kernel cells the last image found: the dispatch cell holds a code
+\ address, which a saved image must not carry from one build process.
+: KCELLS-RELEASE ( -- )
+   KCELLS 0 ?do 0 i KCELL-WAS ! loop
+   0 KCELLS-HELD ! ;
+
+\ Mark the innermost file's open segment's first address cell row and the
+\ value of the row before it.
+: SLOTS-MARK ( -- )
+   SLOT-COUNT {: slot:n :}
+   slot FO-SEG-SLOT FO !
+   slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO ! ;
+
+\ Copy DATA from the process floor to HERE as the open segment's
+\ before-image, counting the bytes against the innermost file, and mark the
+\ segment's address cell rows and kernel cells, after the hooks the caller
+\ set for the segment, so their writes are never the file's. A refused file
+\ takes no image. The floor is HERE at the process's first image, lowered to
+\ HERE when a rewound dictionary leaves HERE below it.
 : IMAGE-TAKE ( -- )
+   SLOTS-MARK
+   KCELLS-TAKE
    AOT-ARM:HERE-N {: top:n :}
-   IMAGE-FLOOR @ 0= if top IMAGE-FLOOR ! then
+   IMAGE-FLOOR @ 0= top IMAGE-FLOOR @ < or if top IMAGE-FLOOR ! then
    top IMAGE-FLOOR @ - {: bytes:n :}
    0 IMAGE-U !
-   FILE-REFUSED? bytes 0 <= or if exit then
+   FILE-REFUSED? bytes 0= or if exit then
    bytes IMAGE-RESERVE
    IMAGE-FLOOR @ DATA-PTR 0 IMAGE bytes BYTE-COPY
    bytes IMAGE-U !
@@ -446,10 +515,7 @@ private
    AOT-ARM:HERE-N FO-SEG-HERE FO !
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO !
    AOT-ARM:WIDN FO-SEG-WID FO !
-   SLOT-COUNT {: slot:n :}
-   slot FO-SEG-SLOT FO !
-   slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO !
-   0 IMAGE-U ! ;
+   0 IMAGE-U ! 0 KCELLS-HELD ! ;
 
 \ Close the innermost file's open segment as one SEGMENT row, or none when
 \ it added no record, DATA, require, wordlist or address cell row. HERE or
@@ -457,7 +523,8 @@ private
 \ file opened with, or an address cell row removed below the segment's first
 \ refuses it. The row records the values of its first and last address cell
 \ rows, which the file's encoding checks again. The earlier DATA bytes the
-\ segment changed are recorded whether or not it adds a row.
+\ segment changed are recorded whether or not it adds a row; a kernel cell
+\ it left changed refuses it.
 : SEGMENT-CLOSE ( -- )
    FO-SEG-ORD FO @ {: first:n :}
    ndict@ first - {: count:n :}
@@ -475,6 +542,7 @@ private
          s" slots-rewound" FILE-REFUSE exit
       then
    then
+   KCELLS-CHECK
    FILE-REFUSED? 0= if IMAGE-DIFF then
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= if exit then
@@ -650,6 +718,8 @@ public
    NUNIT-CAPTURE:RUN-OBSERVER? 0= if
       s" run-observer-absent" WHY+
    then
+   \ Without process cells the seed and the floor would survive into an image.
+   PROCESS-ABSENT @ if s" process-cell-absent" WHY+ then
    CHECK-MARK ;
 
 \ Close the innermost frame; its parent's next segment opens.
@@ -710,7 +780,7 @@ public
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
-   0 IMAGE-FLOOR ! 0 IMAGE-U ! 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
+   0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
    0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
@@ -724,6 +794,18 @@ public
    NFILE-INPUTS:CLOSE
    NFILE-REF:CLOSE
    NUNIT-CAPTURE:CLOSE ;
+
+\ Declare a cell whose value belongs to this process through
+\ IMAGE-LIFECYCLE:PROCESS-CELL. It is looked up: the previous-generation host's
+\ baked registry has none, and then every file refuses process-cell-absent.
+: PROCESS-CELL ( ptr n -- )
+   s" IMAGE-LIFECYCLE" -1 search-wl {: wid:n :}
+   wid 0= if drop 1 PROCESS-ABSENT ! exit then
+   s" PROCESS-CELL" wid search-wl {: xt:n :}
+   xt 0= if drop 1 PROCESS-ABSENT ! exit then
+   xt PROCESS-CELL-XT execute ;
+
+IMAGE-FLOOR PROCESS-CELL
 
 private
 
@@ -1769,6 +1851,11 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
          s" checker-ref-retired" FILE-REFUSE 0 exit
       then
       key NUNIT-DEP:BIND-ORD
+      \ A record an earlier session made has no key to import: BIND-ORD has
+      \ ordered the file on it.
+      key NFILE-REF:DECL-KEY? nip nip 0= if
+         s" ordered-dependency" FILE-REFUSE 0 exit
+      then
       row key NFILE-REF:FILE-REF-RECORD exit
    then
    key bytes OWN-OFF {: off:n :}
@@ -1843,7 +1930,7 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    off 0 >= if NFILE-REF:DATA off 0 NFILE-REF:REF-LOCAL
    else site SLOT-SITE then {: sref:n :}
    FILE-REFUSED? if exit then
-   sref 0= if s" slot-site-unowned" FILE-REFUSE exit then
+   sref 0= if s" slot-site-unowned " WHY+ site WHY-SITE exit then
    data if value DATA-TARGET else value XT-TARGET then {: tref:n known:bool :}
    known 0= if site value DECLINE-CELL exit then
    sref OUT-N data if SLOT-DATA else SLOT-XT then OUT-N tref OUT-N

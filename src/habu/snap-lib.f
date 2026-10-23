@@ -417,6 +417,26 @@ PTR-VARIABLE SND-A
    OUTPUT SND-ZERO-OFF {: out:n :}
    FS-PATH-CAP 0 ?do out i + SND-ZERO-CELL CELL +loop ;
 
+CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
+
+: SND-ZERO-PROCESS-CELL ( ptr n -- )
+   SND-ZERO-OFF {: off:n :}
+   off 0 < off CELL + SDL @ > or if
+      s" snap: process cell outside copied data" 74 die
+   then
+   off SND-ZERO-CELL ;
+
+\ A cell IMAGE-LIFECYCLE:PROCESS-CELL declared holds the running process's
+\ value; the image stores it as 0. The visitor is looked up because the
+\ previous-generation host loads this writer over a baked registry that has no
+\ process cells, and so declares none.
+: SND-ZERO-PROCESS ( -- )
+   s" IMAGE-LIFECYCLE" -1 search-wl {: wid:n :}
+   wid 0= if exit then
+   s" PROCESS-CELLS" wid search-wl {: xt:n :}
+   xt 0= if exit then
+   [: SND-ZERO-PROCESS-CELL ;] xt PROCESS-CELLS-XT execute ;
+
 \ PERSIST admitted the complete retained code interval before copying. Freeze
 \ exactly that interval, excluding abandoned rows and the old engine's ASLR
 \ coordinates. The restoring engine supplies its own primitive-text evidence.
@@ -443,6 +463,7 @@ PTR-VARIABLE SND-A
    SND-ZERO-BODY-TAIL
    SND-ZERO-POLICY
    SND-ZERO-WRITER
+   SND-ZERO-PROCESS
    SND-CANON-ORIGIN
    HB-TARGET-LINUX-X86-64? 0= if SND-CANON-XT-CELLS then ;
 

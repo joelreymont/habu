@@ -28,8 +28,7 @@ create APP-RES RES-LEN allot
 create LIB-RES RES-LEN allot
 24 constant AT-CAP
 create HITS-AT AT-CAP allot variable HITS-AT-U
-$10000 constant OBJ-CAP
-create OBJ OBJ-CAP allot
+DYNAMIC-BUFFER OBJ u8
 16 constant OBJ-HEAD
 512 constant LINE-CAP
 create APP-LINE LINE-CAP allot variable APP-LINE-U
@@ -50,7 +49,8 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
 \ carries to the engine checker's own kept row (src/core/checker.f
 \ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
 \ keeps its declared row as a recovery fact; broken.f binds BROKEN under the
-\ same run. after.f, the first file after the run ends, stores its definition:
+\ same run. BROKEN is made by broken.f's child brokendef.f, since a record
+\ made between top-level loads has no key a file can name. after.f, the first file after the run ends, stores its definition:
 \ the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
@@ -67,7 +67,7 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
    s" gp.f" LOAD+
    s" q1.f" LOAD+
    s" diag.f" LOAD+
-   S\" 0 set-tier\nMULTI-ERR-BEGIN\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" IN+
+   S\" MULTI-ERR-BEGIN\n" IN+
    s" broken.f" LOAD+
    s" multi.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
@@ -82,7 +82,17 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
    s" upd.f" LOAD+
    s" off.f" LOAD+
    s" own.f" LOAD+
+   s" ev.f" LOAD+
+   s" evw.f" LOAD+
+   s" evx.f" LOAD+
+   s" evr.f" LOAD+
+   s" ev2.f" LOAD+
+   s" tier.f" LOAD+
+   S\" 1 set-tier\n" IN+
+   s" tierback.f" LOAD+
    s" pkgload.f" LOAD+
+   S\" package FRAME-P3\n" IN+
+   s" pkgc.f" LOAD+
    s" scope.f" LOAD+
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
@@ -194,10 +204,12 @@ create APP-LINE LINE-CAP allot variable APP-LINE-U
 : KEEP-OBJECT ( -- )
    0 INPUT-U !
    s" cache/hb-file-" IN+ APP-KEY KEY-LEN IN+ s" .hfo" IN+
-   INPUT INPUT-U @ AT OBJ OBJ-CAP READ-ALL {: size:n :}
-   size OBJ-CAP < TTRUE
-   size OBJ-HEAD > TTRUE
-   s" app-cold.obj" OBJ OBJ-HEAD + size OBJ-HEAD - PUT ;
+   INPUT INPUT-U @ AT {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   size OBJ-HEAD > dup TTRUE 0= if exit then
+   size OBJ-RESERVE
+   path pathu 0 OBJ BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
+   s" app-cold.obj" 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
 
 \ The digits the session printed after tag, and how many of them are c.
 : DIGITS$ ( ptr u8 n -- ptr u8 n )
@@ -286,7 +298,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
    s" " s" dup +" s" 3 TWICE drop" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
-   s" broken.f" S\" : NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
+   s" brokendef.f" S\" 0 set-tier\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" PUT
+   s" broken.f" S\" require brokendef.f\n: NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
    s" after.f" S\" : AFTER-ONE ( -- n ) 1 ;\n" PUT
    s" multi.f" S\" : MULTI-NINE ( -- n ) 9 ;\n" PUT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
@@ -333,28 +346,51 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ refuses it there. board.f loads in poke.f's session, above its image floor.
    s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
    s" poke.f" S\" require board.f\nTRUSTED: POKE ( -- ) ['] BOARD-GO BOARD 8 + ! ;\nPOKE\n" PUT
-   \ slot.f's declared xt cell holds deep.f's TEN, which nothing else in it
-   \ compiles.
-   s" slot.f" S\" TYPED-VARIABLE SLOT-HOOK [ -- n ]\n' FRAME-DEEP:TEN SLOT-HOOK xt!\n" PUT
+   \ slot.f's declared xt cell holds its child sdeep.f's TEN, which nothing
+   \ else in it compiles. A record of an earlier top-level load is no file's
+   \ record a later object can name, so each file here that needs a stored
+   \ object loads its dependencies in its own session.
+   s" sdeep.f" S\" package FRAME-SDEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
+   s" slot.f" S\" require sdeep.f\nTYPED-VARIABLE SLOT-HOOK [ -- n ]\n' FRAME-SDEEP:TEN SLOT-HOOK xt!\n" PUT
    \ later.f's declared pointer cell holds an address 8 bytes into earlier.f's
    \ T, reached from U, so no run reads T; T-MID compiles a binding of T.
    s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ list.f's DATA holds two addresses of its own DATA; addr.f's holds the
-   \ address of lib.f's HITS; upd.f's TRUSTED: PIN-SET stores the address of
+   \ address of its child hits.f's HITS; upd.f's TRUSTED: PIN-SET stores the address of
    \ its child pina.f's PIN-A into PIN-A, an update, since a load changes only
-   \ the earlier DATA of its own session. off.f stores TEN into hooks.f's
+   \ the earlier DATA of its own session. off.f stores odeep.f's TEN into hooks.f's
    \ second declared xt cell, eight bytes past PIN-HOOKS's start. own.f's DATA
    \ holds its child pinb.f's PIN-B, the last record with DATA, and then an
    \ address of its own DATA past PIN-B, which pins own.f's segment as well.
    s" list.f" S\" create PIN-LIST here , here ,\n" PUT
-   s" addr.f" S\" require lib.f\ncreate PIN-HITS FRAME-LIB:HITS ,\n" PUT
+   s" hits.f" S\" package FRAME-HITS\npublic\nvariable HITS\n;package\n" PUT
+   s" addr.f" S\" require hits.f\ncreate PIN-HITS FRAME-HITS:HITS ,\n" PUT
    s" pina.f" S\" variable PIN-A\n" PUT
    s" upd.f" S\" require pina.f\nTRUSTED: PIN-SET ( -- ) PIN-A PIN-A ! ;\nPIN-SET\n" PUT
    s" hooks.f" S\" 2 TYPED-BUFFER PIN-HOOKS [ -- n ]\n" PUT
-   s" off.f" S\" require hooks.f\nrequire deep.f\n' FRAME-DEEP:TEN 1 PIN-HOOKS xt!\n" PUT
+   s" odeep.f" S\" package FRAME-ODEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
+   s" off.f" S\" require hooks.f\nrequire odeep.f\n' FRAME-ODEEP:TEN 1 PIN-HOOKS xt!\n" PUT
    s" pinb.f" S\" variable PIN-B\n" PUT
    s" own.f" S\" require pinb.f\nPIN-B , here ,\n" PUT
+   \ ev.f's records belong to its own top-level load. evw.f's store into EV0,
+   \ evx.f's code address in EV-T and evr.f's read of EV0 reach them from
+   \ later loads; ev2.f's store into its child ev3.f's EV3 is an update.
+   s" ev.f" S\" variable EV0\ncreate EV-T 16 allot\n: EV-GO ( -- ) ;\n" PUT
+   s" evw.f" S\" 9 EV0 !\n" PUT
+   s" evx.f" S\" TRUSTED: EV-SET ( -- ) ['] EV-GO EV-T 8 + ! ;\nEV-SET\n" PUT
+   s" evr.f" S\" EV0 @ constant EV-SEEN\n" PUT
+   s" ev3.f" S\" variable EV3\n" PUT
+   s" ev2.f" S\" require ev3.f\n9 EV3 !\n" PUT
+   \ tier.f leaves the compiler tier at 0; tierback.f restores it before
+   \ its definition, since a definition the tier-0 compiler makes is a record
+   \ of unknown kind.
+   s" tier.f" S\" 0 set-tier\n" PUT
+   s" tierback.f" S\" 0 set-tier\n1 set-tier\n: TIER-T1 ( -- ) ;\n" PUT
+   \ pkgc.f closes the package its loader opened. Its load opened inside a
+   \ package, so the checker mark refuses it first; scope-exit would too. The
+   \ builder made that package between loads, so its frame cannot name it.
+   s" pkgc.f" S\" ;package\n" PUT
    \ pkgload.f requires pkgchild.f inside its package, so the checker cannot
    \ mark either file's start.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
@@ -373,8 +409,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
    s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=2 executed=0 data=0" ENDS-WITH? TTRUE
    s" broken.f binds BROKEN's recovery record and stays ordered" T-LABEL
+   \ Its require of brokendef.f is the third resolution row.
    s" broken.f" FRAME$
-      s"  ordered=1 binding=0 value=0 resolution=2 executed=0 data=0 reason=binding-contract-unknown word=BROKEN"
+      s"  ordered=1 binding=0 value=0 resolution=3 executed=0 data=0 reason=binding-contract-unknown word=BROKEN"
       ENDS-WITH? TTRUE
    s" after.f, the first file after the run, stores its first definition" T-LABEL
    s" after.f" DEFS$ s" 1" T$=
@@ -472,7 +509,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" list.f's addresses of its own DATA pin its one segment, and it stores" T-LABEL
    s" list.f" s"  pins=" s" 1" OBJECT-HAS
    s" list.f" KEY$ STORED
-   s" addr.f's raw address of lib.f's HITS pins HITS" T-LABEL
+   s" addr.f's raw address of hits.f's HITS pins HITS" T-LABEL
    s" addr.f" s"  pins=" s" 1" OBJECT-HAS
    s" upd.f's update holding PIN-A's address pins PIN-A" T-LABEL
    s" upd.f" OBJECT$ s"  updates=" FIELD$ FIELD-N 0 > TTRUE
@@ -520,6 +557,39 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" pkgchild.f" s"  reason=" LINE$ s" pkgchild.f reason=checker-mark" T$=
    s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=checker-mark" T$= ;
 
+\ Effects on state below the file's own DATA: kernel cells, an earlier
+\ top-level load's records and its DATA, and the loader's package.
+: FLOOR-CHECKS ( -- )
+   s" a file that leaves the compiler tier changed refuses, naming the cell" T-LABEL
+   s" tier.f" s"  reason=" LINE$ s" tier.f reason=kernel-cell-changed cell=tier" T$=
+   s" tier.f" NO-OBJECT
+   s" a file that restores the tier it changed stores" T-LABEL
+   s" tierback.f" DEFS$ s" 1" T$=
+   s" tierback.f" KEY$ STORED
+   s" ev.f" KEY$ STORED
+   \ Every store into an earlier load's DATA names its target, and the name
+   \ resolves to a record with no key, which orders the file first.
+   s" a store into an earlier load's variable refuses" T-LABEL
+   s" evw.f" FRAME$ s"  reason=resolution-key-unknown word=EV0" ENDS-WITH? TTRUE
+   s" evw.f" s"  reason=" LINE$ s" evw.f reason=ordered-dependency" T$=
+   s" evw.f" NO-OBJECT
+   \ EV-SET's compiled address of EV-T binds a record with no key, and its
+   \ capture cannot import one.
+   s" a code address stored into an earlier load's DATA refuses" T-LABEL
+   s" evx.f" FRAME$ s"  reason=binding-key-unknown word=EV-T" ENDS-WITH? TTRUE
+   s" evx.f" s"  reason=" LINE$ s" evx.f reason=capture-profile-unsupported" T$=
+   s" evx.f" NO-OBJECT
+   s" a read of an earlier load's variable is an unknown dependency" T-LABEL
+   s" evr.f" FRAME$ s"  reason=resolution-key-unknown word=EV0" ENDS-WITH? TTRUE
+   s" evr.f" s"  reason=" LINE$ s" evr.f reason=ordered-dependency" T$=
+   s" evr.f" NO-OBJECT
+   s" a store into a child's variable in the same load is an update" T-LABEL
+   s" ev2.f" s"  updates=" s" 1" OBJECT-HAS
+   s" a file that closes its loader's package has no object" T-LABEL
+   s" pkgc.f" FRAME$ s"  reason=scope-key-unknown word=FRAME-P3" ENDS-WITH? TTRUE
+   s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=checker-mark" T$=
+   s" pkgc.f" NO-OBJECT ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -534,6 +604,7 @@ public
    rc SUCCESS
    FRAME-CHECKS
    OBJECT-CHECKS
+   FLOOR-CHECKS
    LIB-KEY KEY-LEN STORED
    KEEP-OBJECT
    CHECKER

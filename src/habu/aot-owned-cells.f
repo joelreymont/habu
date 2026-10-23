@@ -293,14 +293,15 @@ private
 \ itself keeps no mutable cell below the window.
 \ THE IMAGE-LIFECYCLE REGISTRY (src/lib/image-lifecycle.f) is the second site a
 \ stripped image is refused at, once the path scratch below lets it open a file:
-\ its private lock, its two counters and the bases of its two hook tables,
-\ claimed fresh for the reason the DYNAMIC-STORAGE registry's four cells are - a
-\ new process has registered nothing, so an open lock, two zero counts, no hook
-\ mapping and an empty persistent table are its correct start, and that is the
-\ zero a fresh anonymous mapping holds. IMAGE-LIFECYCLE:COUNT takes the lock and
-\ reads both counters; REGISTER, REGISTER-PERSISTENT and PREPARE spell the two
-\ bases, and nothing spells a cell behind either base, because both accessors
-\ compute the slot by arithmetic. Registering stores a quotation through `xt!`,
+\ its private lock, its three counters and the bases of its hook, persistent
+\ and process-cell tables, claimed fresh for the reason the DYNAMIC-STORAGE
+\ registry's four cells are - a new process has registered nothing, so an open
+\ lock, three zero counts, no hook mapping and empty persistent and process
+\ tables are its correct start, and that is the zero a fresh anonymous mapping
+\ holds. IMAGE-LIFECYCLE:COUNT takes the lock and reads two counters; REGISTER,
+\ REGISTER-PERSISTENT, PROCESS-CELL, PROCESS-CELLS and PREPARE spell the bases,
+\ and nothing spells a cell behind a base, because the accessors compute the
+\ slot by arithmetic. Registering stores a quotation through `xt!`,
 \ whose declaration half a stripped image drops at link (aot-closure.f
 \ AOT-DECLARATION?); before that drop the claims below would have admitted the
 \ cells and the build was still refused at `site=xt!`.
