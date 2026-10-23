@@ -1,7 +1,7 @@
 \ ZLIB cases for one stripped application: literal RFC 1951 streams, CRC-32
-\ vectors, refusals made before C is called, failures after libz has a live
+\ vectors, zlib-framed (RFC 1950) streams and their header and trailer checks, refusals made before C is called, failures after libz has a live
 \ stream (each followed by a successful operation), and a deterministic 10 MiB
-\ payload written to the directory given as the first argument after `--`:
+\ payload, raw and framed, with the raw one written to the directory given as the first argument after `--`:
 \ original.bin, compressed.bin (raw DEFLATE) and decoded.bin.
 \ Built and run by test/zlib-e2e.f.
 require src/lib/zlib.f
@@ -26,6 +26,10 @@ create PATH FS-PATH-CAP allot
 : EMPTY-STREAM$ ( -- ptr u8 n ) s\" \x03\x00" ;
 : STORED-HELLO$ ( -- ptr u8 n ) s\" \x01\x05\x00\xFA\xFFhello" ;
 : FIXED-HELLO$ ( -- ptr u8 n ) s\" \xCB\x48\xCD\xC9\xC9\x07\x00" ;
+\ FIXED-HELLO$ in the zlib wrapper: header 78 9C, then the big-endian Adler-32
+\ of "hello", 062C0215.
+: FRAMED-HELLO$ ( -- ptr u8 n ) s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15" ;
+: EMPTY-FRAMED$ ( -- ptr u8 n ) s\" \x78\x9C\x03\x00\x00\x00\x00\x01" ;
 
 \ Resolved while the builder loads this file; MAIN calls it again in the saved
 \ application, whose FFI cache capture has cleared.
@@ -136,22 +140,28 @@ $100000000 constant U32-OVER
 PTR-VARIABLE FIT-SRC variable FIT-SRC-U
 PTR-VARIABLE FIT-DST variable FIT-CAP
 
+defer FIT-CODEC ( ptr u8 n ptr u8 n -- n )
+
 : FIT ( n -- n ) {: cap:n :}
-   FIT-SRC @ FIT-SRC-U @ FIT-DST @ cap ZLIB:DEFLATE-RAW ;
+   FIT-SRC @ FIT-SRC-U @ FIT-DST @ cap FIT-CODEC ;
 : FIT-SHORT ( -- ) FIT-CAP @ 1- FIT drop ;
 
-\ The stream src compresses to, packed bytes long, fits a destination of
-\ exactly that size, which it then holds, and not one byte less.
-: EXACT-FIT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n dst:ptr packed:n :}
+\ The stream the codec compresses src to, packed bytes long, fits a
+\ destination of exactly that size, which it then holds, and not one byte less.
+\ The destination is zeroed before the exact call, so the caller's decode
+\ checks bytes that call wrote, not an earlier call's.
+: EXACT-FIT ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- n ] -- )
+   is FIT-CODEC {: src:ptr srcu:n dst:ptr packed:n :}
    src FIT-SRC ! srcu FIT-SRC-U ! dst FIT-DST ! packed FIT-CAP !
    [: FIT-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ
+   packed 0 ?do 0 dst i + c! loop
    packed FIT packed T= ;
 
 \ Compress SMALL-IN's first n bytes into SMALL-OUT, again at exactly their
 \ compressed size, then decode them back into SMALL-IN's upper half.
 : SMALL-ROUND ( n -- ) {: n:n :}
    SMALL-IN n SMALL-OUT SMALL-CAP ZLIB:DEFLATE-RAW {: packed:n :}
-   SMALL-IN n SMALL-OUT packed EXACT-FIT
+   SMALL-IN n SMALL-OUT packed [: ZLIB:DEFLATE-RAW ;] EXACT-FIT
    SMALL-OUT packed SMALL-IN 32 + 32 ZLIB:INFLATE-RAW n T=
    SMALL-IN 32 + n SMALL-IN n T$= ;
 
@@ -173,6 +183,67 @@ PTR-VARIABLE FIT-DST variable FIT-CAP
    s" the empty bound holds the empty stream" T-LABEL
    0 ZLIB:RAW-BOUND 2 >= TTRUE ;
 
+\ Decode a framed stream into SMALL-OUT with the given capacity.
+: FRAMED-DECODE ( ptr u8 n n -- n ) {: src:ptr srcu:n cap:n :}
+   src srcu SMALL-OUT cap ZLIB:INFLATE-FRAMED ;
+
+\ Compress text, then compress it again at exactly its compressed size, then
+\ decode it back; lit is its literal framed stream, whose trailer it shares.
+: FRAMED-ROUND ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n lit:ptr litu:n :}
+   src srcu SMALL-OUT srcu ZLIB:FRAMED-BOUND ZLIB:DEFLATE-FRAMED {: packed:n :}
+   SMALL-OUT c@ $78 T=
+   SMALL-OUT packed + 4 - 4 lit litu + 4 - 4 T$=
+   src srcu SMALL-OUT packed [: ZLIB:DEFLATE-FRAMED ;] EXACT-FIT
+   SMALL-OUT packed SMALL-IN SMALL-CAP ZLIB:INFLATE-FRAMED srcu T=
+   srcu 0<> if SMALL-IN srcu src srcu T$= then ;
+
+: BAD-ADLER ( -- )
+   s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x16" SMALL-CAP FRAMED-DECODE drop ;
+: BAD-FCHECK ( -- )
+   s\" \x78\x9D\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15" SMALL-CAP FRAMED-DECODE drop ;
+\ FDICT set, FCHECK valid (0x78BB is 31 * 997), dictionary id 1, an empty body.
+: PRESET-DICT ( -- )
+   s\" \x78\xBB\x00\x00\x00\x01\x03\x00\x00\x00\x00\x01" SMALL-CAP FRAMED-DECODE drop ;
+: RAW-AS-FRAMED ( -- ) FIXED-HELLO$ SMALL-CAP FRAMED-DECODE drop ;
+: FRAMED-AS-RAW ( -- ) FRAMED-HELLO$ SMALL-CAP DECODE drop ;
+: FRAMED-TRAILING ( -- )
+   s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15\x00" SMALL-CAP FRAMED-DECODE drop ;
+\ Every plaintext byte fits, so the missing trailer is found past a full
+\ destination.
+: FRAMED-CUT ( -- ) FRAMED-HELLO$ 2 - 5 FRAMED-DECODE drop ;
+: FRAMED-SHORT ( -- ) FRAMED-HELLO$ 4 FRAMED-DECODE drop ;
+: FRAMED-OVERLAP ( -- ) SMALL-IN 8 SMALL-IN 4 + 8 ZLIB:INFLATE-FRAMED drop ;
+: FRAMED-BOUND-WIDE ( -- ) $FFFFFFFF ZLIB:FRAMED-BOUND drop ;
+
+: FRAMED-CASES ( -- )
+   s" a zlib-framed fixed-Huffman stream decodes" T-LABEL
+   FRAMED-HELLO$ SMALL-CAP FRAMED-DECODE OUT$ HELLO$ T$=
+   s" an empty zlib-framed stream decodes into zero capacity" T-LABEL
+   EMPTY-FRAMED$ 0 FRAMED-DECODE 0 T=
+   s" a corrupt Adler-32 trailer is refused" T-LABEL
+   [: BAD-ADLER ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" a header that fails its check is refused" T-LABEL
+   [: BAD-FCHECK ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" a stream that asks for a preset dictionary is refused" T-LABEL
+   [: PRESET-DICT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" raw and framed streams are not interchangeable" T-LABEL
+   [: RAW-AS-FRAMED ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   [: FRAMED-AS-RAW ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" a byte after the trailer is refused" T-LABEL
+   [: FRAMED-TRAILING ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" a stream cut inside its trailer is refused" T-LABEL
+   [: FRAMED-CUT ;] ZLIB:E-DATA TTHROWSQ STILL-WORKS
+   s" an understated framed expanded size is a capacity error" T-LABEL
+   [: FRAMED-SHORT ;] ZLIB:E-CAPACITY TTHROWSQ STILL-WORKS
+   s" framed overlap and a framed bound past 32 bits are refused" T-LABEL
+   [: FRAMED-OVERLAP ;] ZLIB:E-SIZE TTHROWSQ
+   [: FRAMED-BOUND-WIDE ;] ZLIB:E-SIZE TTHROWSQ
+   STILL-WORKS
+   s" framed text round-trips at its exact size, with header and Adler-32" T-LABEL
+   HELLO$ FRAMED-HELLO$ FRAMED-ROUND
+   s" framed empty input round-trips at its exact size" T-LABEL
+   HELLO$ drop 0 EMPTY-FRAMED$ FRAMED-ROUND ;
+
 \ A deterministic mix: runs of one byte, a repeating text and an LCG's bytes,
 \ so both literal and match coding are exercised.
 : FILL ( ptr u8 n -- ) {: p:ptr u:n :}
@@ -191,6 +262,7 @@ PTR-VARIABLE PLAIN
 PTR-VARIABLE PACKED
 PTR-VARIABLE BACK
 variable PACKED-BOUND
+variable PACKED-CAP
 variable PACKED-SIZE
 
 : PLAIN$ ( -- ptr u8 n ) PLAIN @ PAYLOAD-BYTES ;
@@ -198,13 +270,17 @@ variable PACKED-SIZE
 : BACK$ ( -- ptr u8 n ) BACK @ PAYLOAD-BYTES ;
 : RELEASE ( ptr u8 n -- ) MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+: BACK-CLEAR ( -- )
+   PAYLOAD-BYTES 0 ?do 0 BACK @ i + c! loop ;
+
 : DECODE-SHORT ( -- )
    PACKED$ BACK @ PAYLOAD-BYTES 1- ZLIB:INFLATE-RAW drop ;
 
 : ALLOCATE ( -- )
    PAYLOAD-BYTES MEM-ALLOC-BYTES drop PLAIN !
    PAYLOAD-BYTES ZLIB:RAW-BOUND PACKED-BOUND !
-   PACKED-BOUND @ MEM-ALLOC-BYTES drop PACKED !
+   PAYLOAD-BYTES ZLIB:FRAMED-BOUND PACKED-CAP !
+   PACKED-CAP @ MEM-ALLOC-BYTES drop PACKED !
    PAYLOAD-BYTES MEM-ALLOC-BYTES drop BACK ! ;
 
 : LARGE ( -- )
@@ -214,7 +290,7 @@ variable PACKED-SIZE
    PLAIN$ PACKED @ PACKED-BOUND @ ZLIB:DEFLATE-RAW PACKED-SIZE !
    PACKED-SIZE @ PACKED-BOUND @ <= TTRUE
    s" a 10 MiB payload compresses at exactly its size, not one byte less" T-LABEL
-   PLAIN$ PACKED$ EXACT-FIT
+   PLAIN$ PACKED$ [: ZLIB:DEFLATE-RAW ;] EXACT-FIT
    PACKED$ BACK$ ZLIB:INFLATE-RAW PAYLOAD-BYTES T=
    BACK$ PLAIN$ STR= TTRUE
    BACK$ ZLIB:CRC32 PLAIN$ ZLIB:CRC32 T=
@@ -223,13 +299,18 @@ variable PACKED-SIZE
    s" original.bin" ARTIFACT$ PLAIN$ WRITE-ALL
    s" compressed.bin" ARTIFACT$ PACKED$ WRITE-ALL
    s" decoded.bin" ARTIFACT$ BACK$ WRITE-ALL
-   PLAIN$ RELEASE PACKED @ PACKED-BOUND @ RELEASE BACK$ RELEASE ;
+   s" a 10 MiB payload round-trips framed through the framed bound" T-LABEL
+   BACK-CLEAR
+   PLAIN$ PACKED @ PACKED-CAP @ ZLIB:DEFLATE-FRAMED PACKED-SIZE !
+   PACKED$ BACK$ ZLIB:INFLATE-FRAMED PAYLOAD-BYTES T=
+   BACK$ PLAIN$ STR= TTRUE
+   PLAIN$ RELEASE PACKED @ PACKED-CAP @ RELEASE BACK$ RELEASE ;
 
 public
 : MAIN ( -- )
    T-RESET
    CRC-CASES LITERAL-CASES STREAM-FAILURES SPAN-REFUSALS
-   SMALL-DEFLATE LARGE
+   SMALL-DEFLATE FRAMED-CASES LARGE
    T-REPORT
    s" zlib-source: ok" type cr ;
 ;package

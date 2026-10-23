@@ -1,4 +1,5 @@
-\ zlib.f - raw DEFLATE (RFC 1951) and CRC-32 over caller-owned buffers, by libz.
+\ zlib.f - raw DEFLATE (RFC 1951), zlib-framed DEFLATE (RFC 1950) and CRC-32
+\ over caller-owned buffers, by libz.
 \
 \ Each codec word takes source, source bytes, destination and destination
 \ capacity, and answers the bytes it wrote. It borrows both buffers and keeps
@@ -38,6 +39,7 @@ $FFFFFFFF constant U32-MAX
 
 0 constant Z-OK
 1 constant Z-STREAM-END
+2 constant Z-NEED-DICT
 -3 constant Z-DATA-ERROR
 -4 constant Z-MEM-ERROR
 -5 constant Z-BUF-ERROR
@@ -45,6 +47,7 @@ $FFFFFFFF constant U32-MAX
 -1 constant Z-DEFAULT-COMPRESSION
 8 constant Z-DEFLATED
 -15 constant RAW-WINDOW     \ negative window bits select raw framing
+15 constant FRAMED-WINDOW   \ positive window bits select the RFC 1950 header and Adler-32 trailer
 8 constant MEM-LEVEL
 0 constant Z-DEFAULT-STRATEGY
 
@@ -104,9 +107,11 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
    src srcu SPAN-CHECK dst cap SPAN-CHECK
    src srcu dst cap DISJOINT-CHECK ;
 
-\ A status no successful path accepts.
+\ A status no successful path accepts. A framed stream that asks for a preset
+\ dictionary is data no caller can supply one for.
 : FAIL ( n -- )
    dup Z-DATA-ERROR = if drop E-DATA throw then
+   dup Z-NEED-DICT = if drop E-DATA throw then
    Z-MEM-ERROR = if E-MEMORY throw then
    E-ABI throw ;
 
@@ -125,12 +130,12 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 \ code is the report: abandoning an unfinished deflater ends with Z_DATA_ERROR.
 : END-CHECK ( n -- ) Z-OK <> if E-ABI throw then ;
 
-: DEFLATE-OPEN ( -- )
-   STREAM Z-DEFAULT-COMPRESSION Z-DEFLATED RAW-WINDOW MEM-LEVEL
+: DEFLATE-OPEN ( n -- ) {: window:n :}
+   STREAM Z-DEFAULT-COMPRESSION Z-DEFLATED window MEM-LEVEL
    Z-DEFAULT-STRATEGY C-VERSION STREAM-BYTES C-DEFLATE-INIT INIT-CHECK ;
 
-: INFLATE-OPEN ( -- )
-   STREAM RAW-WINDOW C-VERSION STREAM-BYTES C-INFLATE-INIT INIT-CHECK ;
+: INFLATE-OPEN ( n -- ) {: window:n :}
+   STREAM window C-VERSION STREAM-BYTES C-INFLATE-INIT INIT-CHECK ;
 
 : BOUND ( n -- n ) STREAM swap C-BOUND ;
 
@@ -189,27 +194,47 @@ FUNCTION: C-BOUND deflateBound ( ptr u8 n -- n ) ;FUNCTION
 
 \ Each session runs on a staged stream: init, the work under catch, End once
 \ init has succeeded, then the work's code before End's status. The public
-\ word clears the scratch after it on every exit.
-: BOUND-SESSION ( n -- n )
+\ word clears the scratch after it on every exit. Each takes the window bits
+\ that select the framing.
+: BOUND-SESSION ( n n -- n )
    CLEAR DEFLATE-OPEN
    [: BOUND ;] catch {: rc:n :}
    STREAM C-DEFLATE-END {: status:n :}
    rc 0<> if rc throw then
    status END-CHECK ;
 
-: DEFLATE-SESSION ( -- n )
+: DEFLATE-SESSION ( n -- n )
    DEFLATE-OPEN
    0 [: drop DEFLATE-RUN ;] catch {: rc:n :}
    STREAM C-DEFLATE-END {: status:n :}
    rc 0<> if rc throw then
    status END-CHECK ;
 
-: INFLATE-SESSION ( -- n )
+: INFLATE-SESSION ( n -- n )
    INFLATE-OPEN
    0 [: drop INFLATE-RUN ;] catch {: rc:n :}
    STREAM C-INFLATE-END {: status:n :}
    rc 0<> if rc throw then
    status END-CHECK ;
+
+\ The checks and sessions every public codec word shares, for window bits.
+: BOUND-FOR ( n n -- n ) {: n:n window:n :}
+   n 0 < if E-SIZE throw then
+   n U32-MAX > if E-SIZE throw then
+   n window [: BOUND-SESSION ;] [: CLEAR ;] finally
+   dup U32-MAX > if E-SIZE throw then ;
+
+\ Every stream is at least one byte, so zero capacity cannot hold one.
+: DEFLATE-FOR ( ptr u8 n ptr u8 n n -- n )
+   {: src:ptr srcu:n dst:ptr cap:n window:n :}
+   src srcu dst cap PAIR-CHECK
+   cap 0= if E-CAPACITY throw then
+   window src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
+
+: INFLATE-FOR ( ptr u8 n ptr u8 n n -- n )
+   {: src:ptr srcu:n dst:ptr cap:n window:n :}
+   src srcu dst cap PAIR-CHECK
+   window src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
 
 public
 
@@ -219,25 +244,25 @@ public
    0 p u C-CRC32 U32-MAX and ;
 
 \ A capacity DEFLATE-RAW always completes in, for n source bytes.
-: RAW-BOUND ( n -- n ) {: n:n :}
-   n 0 < if E-SIZE throw then
-   n U32-MAX > if E-SIZE throw then
-   n [: BOUND-SESSION ;] [: CLEAR ;] finally
-   dup U32-MAX > if E-SIZE throw then ;
+: RAW-BOUND ( n -- n ) RAW-WINDOW BOUND-FOR ;
 
 \ Default compression, method 8, window bits -15, memory level 8, default
-\ strategy. Every raw stream is at least one byte, so zero capacity cannot
-\ hold one.
-: DEFLATE-RAW ( ptr u8 n ptr u8 n -- n )
-   {: src:ptr srcu:n dst:ptr cap:n :}
-   src srcu dst cap PAIR-CHECK
-   cap 0= if E-CAPACITY throw then
-   src srcu dst cap [: STAGE DEFLATE-SESSION ;] [: CLEAR ;] finally ;
+\ strategy.
+: DEFLATE-RAW ( ptr u8 n ptr u8 n -- n ) RAW-WINDOW DEFLATE-FOR ;
 
 \ Exactly one complete raw stream that uses the whole source.
-: INFLATE-RAW ( ptr u8 n ptr u8 n -- n )
-   {: src:ptr srcu:n dst:ptr cap:n :}
-   src srcu dst cap PAIR-CHECK
-   src srcu dst cap [: STAGE INFLATE-SESSION ;] [: CLEAR ;] finally ;
+: INFLATE-RAW ( ptr u8 n ptr u8 n -- n ) RAW-WINDOW INFLATE-FOR ;
+
+\ A capacity DEFLATE-FRAMED always completes in, for n source bytes.
+: FRAMED-BOUND ( n -- n ) FRAMED-WINDOW BOUND-FOR ;
+
+\ DEFLATE-RAW's settings in the zlib wrapper, window bits +15: a 78 header,
+\ no dictionary and a big-endian Adler-32 trailer.
+: DEFLATE-FRAMED ( ptr u8 n ptr u8 n -- n ) FRAMED-WINDOW DEFLATE-FOR ;
+
+\ Exactly one complete zlib stream that uses the whole source; libz checks
+\ its method, window, header check and Adler-32. A preset dictionary is
+\ refused.
+: INFLATE-FRAMED ( ptr u8 n ptr u8 n -- n ) FRAMED-WINDOW INFLATE-FOR ;
 
 ;package
