@@ -422,11 +422,15 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ TRUSTED: bodies whose scans refuse a token while a two-cell value is live:
 \ a ptr-times-zero before the pair moves, after it, inside a quotation, over a
-\ callee's pair, in a branch that exits, `depth`, `over` the pair, and two
-\ refusals before the pair binds a local. The scan applies each refused
-\ token's declared effect to the rows it found, so the widths after it stay
-\ stated and both tiers move the pair whole. The bodies are independent: one
-\ process runs them all.
+\ callee's pair, in a branch that exits, `depth`, `over` the pair, two
+\ refusals before the pair binds a local, a ptr bound into an `n` local
+\ over the pair, unread and read, and under it, and a pair-typed local bound
+\ beside a refused `n` local, from two loose cells, and under a refused `n`
+\ local, an undeclared local beside a refused `n` local, a pair-typed local
+\ under an undeclared one, and a linear local over the pair. The scan applies
+\ each refused token's declared effect to the rows it found, so the widths
+\ after it stay stated and both tiers move the pair whole. The bodies are
+\ independent: one process runs them all.
 : REJECT-TRUST$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" STRUCTURE rjpair FIELD a n FIELD b n ;STRUCTURE " LN+
@@ -443,14 +447,29 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" TRUSTED: RJ-LOCAL ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop 0 * drop " LN+
    S\" s\" y\" drop 0 * drop {: p :} p swap ; " LN+
    S\" TRUSTED: RJ-Q2 ( -- n ) 1 2 RJPAIR:MAKE 5 s\" x\" drop 0 * drop swap drop ; " LN+
+   S\" TRUSTED: RJ-BS1 ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop {: q:n :} swap ; " LN+
+   S\" TRUSTED: RJ-BS2 ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop {: q:n :} q drop swap ; " LN+
+   S\" TRUSTED: RJ-BS3 ( n -- n rjpair ) s\" x\" drop {: q:n :} 1 2 RJPAIR:MAKE q drop ; " LN+
+   S\" TRUSTED: RJ-LP1 ( n -- n rjpair ) 1 2 RJPAIR:MAKE s\" x\" drop {: p:rjpair q:n :} p ; " LN+
+   s" TRUSTED: RJ-LP2 ( -- rjpair ) 1 2 {: p:rjpair :} p ; " LN+
+   S\" TRUSTED: RJ-LP3 ( n -- n rjpair ) s\" x\" drop 1 2 RJPAIR:MAKE {: q:n p:rjpair :} p ; " LN+
+   S\" TRUSTED: RJ-UB1 ( -- n rjpair ) s\" x\" drop 5 {: q:n p :} 1 2 RJPAIR:MAKE p swap ; " LN+
+   S\" TRUSTED: RJ-UB2 ( n -- n rjpair ) s\" x\" drop 1 2 RJPAIR:MAKE 5 {: q:n p:rjpair r :} p ; " LN+
+   s" package RJLP public DEFLINEAR RJLP:own ;package " LN+
+   s" TRUSTED: RJ-MK-OWN ( n -- RJLP:own ) ;  TRUSTED: RJ-FREE-OWN ( RJLP:own -- n ) ; " LN+
+   s" TRUSTED: RJ-LL1 ( n -- rjpair n ) 1 2 RJPAIR:MAKE 5 RJ-MK-OWN {: x:RJLP:own :} x RJ-FREE-OWN drop swap ; " LN+
    s" : RJ-ALL ( -- ) 7 RJ-P15 . RJPAIR:UNMAKE . .  7 RJ-R3 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-R4 . RJPAIR:UNMAKE . .  7 RJ-R5 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-P09 . RJPAIR:UNMAKE . .  7 RJ-P01 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-AFTER . RJPAIR:UNMAKE . .  7 RJ-IF . RJPAIR:UNMAKE . . " LN+
-   s" 0 RJ-IF . RJPAIR:UNMAKE . .  7 RJ-LOCAL . RJPAIR:UNMAKE . .  RJ-Q2 . cr ; RJ-ALL" LN+
+   s" 0 RJ-IF . RJPAIR:UNMAKE . .  7 RJ-LOCAL . RJPAIR:UNMAKE . .  RJ-Q2 . " LN+
+   s" 7 RJ-BS1 . RJPAIR:UNMAKE . .  7 RJ-BS2 . RJPAIR:UNMAKE . . " LN+
+   s" 7 RJ-BS3 RJPAIR:UNMAKE . . .  7 RJ-LP1 RJPAIR:UNMAKE . . .  RJ-LP2 RJPAIR:UNMAKE . . " LN+
+   s" 7 RJ-LP3 RJPAIR:UNMAKE . . .  RJ-UB1 RJPAIR:UNMAKE . . .  7 RJ-UB2 RJPAIR:UNMAKE . . . " LN+
+   s" 7 RJ-LL1 . RJPAIR:UNMAKE . . cr ; RJ-ALL" LN+
    LN$ ;
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
-   S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n" ;
+   S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n" ;
 
 \ TRUSTED: bodies whose scans meet a token they cannot apply while a two-cell
 \ value is live: an unchecked word with no row, and `evaluate`. The widths
@@ -469,11 +488,38 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE s\" \" evaluate swap ; " LN+
    s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
 
+\ A refused bind that cuts a live pair: the pair-typed `q` takes the ptr and
+\ the pair's top cell, so the undeclared `p` lies over half a pair. What the
+\ runtime binds into `p` is unknown, so the facts after it are incomplete.
+: INCOMPLETE-BIND$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   S\" TRUSTED: U1 ( n -- n icpair ) 1 2 ICPAIR:MAKE s\" x\" drop {: p q:icpair :} q ; " LN+
+   s" : IC-SHOW ( -- ) 7 U1 ICPAIR:UNMAKE . . . cr ; IC-SHOW" LN+ LN$ ;
+
+\ A refused bind past the known row over one-cell values: the undeclared `p`
+\ binds a cell of the caller's frame, so the scan cannot read the row the
+\ locals bind, yet the pair-typed `q` binds two cells. What the runtime binds
+\ into `q` is unknown, so the facts after it are incomplete.
+: INCOMPLETE-LOST$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: U2 ( n n -- ) {: p q:icpair :} p . q ICPAIR:UNMAKE . . ; " LN+
+   s" TRUSTED: IC-SHOW ( -- ) 1 10 20 U2 cr ; IC-SHOW" LN+ LN$ ;
+
+\ `--` in a bind is a local like any other name, as the engine binds it, so the
+\ pair-typed `q` binds the top two cells and `--` the 9 beneath them.
+: DASH-BIND$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE dbpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: DB-T ( n n n -- ) {: -- q:dbpair :} q DBPAIR:UNMAKE . . ; " LN+
+   s" TRUSTED: DB-SHOW ( -- ) 9 1 2 DB-T cr ; DB-SHOW" LN+ LN$ ;
+
 \ The whole of tier 0's refusal of an incomplete certificate, and no output.
-: ASSERT-INCOMPLETE ( -- )
+: ASSERT-INCOMPLETE ( ptr u8 n -- ) {: want:ptr want-u:n :}
    INCOMPLETE-RC ASSERT-RC
    OUT-U @ 0 T=
-   ERR$ S\" hb: incomplete layout facts: INCOMPLETE\n" STR= TTRUE ;
+   ERR$ want want-u STR= TTRUE ;
 
 \ The first body checked: the same scan still refuses it at `*`, and nothing runs.
 : REJECT-CHECKED$ ( n -- ptr u8 n )
@@ -580,9 +626,16 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
       \ One process each: the refusal ends the process it happens in.
       s" an unchecked word over a two-cell value is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-RAW$ RUN  ASSERT-INCOMPLETE
+      0 INCOMPLETE-RAW$ RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
       s" evaluate over a two-cell value is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-EVAL$ RUN  ASSERT-INCOMPLETE
+      0 INCOMPLETE-EVAL$ RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
+      s" a refused bind leaving an undeclared local over half a pair is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-BIND$ RUN  S\" hb: incomplete layout facts: U1\n" ASSERT-INCOMPLETE
+      s" a refused bind past the known row with a pair-typed local is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-LOST$ RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
+      \ Tier 0 only: tier 1 carves this bind at the wrong cells (dot habu-tier-1-binds-c45e8e92).
+      s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
+      0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
    then
    s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
    1 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK

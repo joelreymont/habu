@@ -4079,9 +4079,10 @@ variable QDEPTH
 \ TRY-EFF trial), or a failed token no step settled, applies its declared
 \ effect to the pre-token rows: pop exactly the input's physical cells, push
 \ the declared outputs over the remainder. A failure that cannot be spliced
-\ while a row holds a wide or open-width cell sets SCAN-INCOMPLETE, and the
-\ certificate says NEEDS-INCOMPLETE (lower-cert-base.f). Over one-cell rows the
-\ unspliced result stands: every cell lowers at the default width.
+\ while a row holds a wide or open-width cell sets SCAN-INCOMPLETE, and so does
+\ a lost local bind with a local declared wide (LOC-UNJ-BIND); the certificate
+\ then says NEEDS-INCOMPLETE (lower-cert-base.f). Otherwise the unspliced
+\ result stands: every cell lowers at the default width.
 variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
@@ -4157,8 +4158,12 @@ variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
    dout terms rest SPLICE-PUSH DCUR !
    rpre RCUR ! ;
 
-: CHECKER-STEP {: din dout :}
-   UNJ-TOK @ 0 <>  TRIAL-DEPTH @ 0=  and {: unj:bool :}
+: UNJ-ARMED? ( -- bool )   \ a committed step of an unjudged token: its failure splices
+   UNJ-TOK @ 0 <>  TRIAL-DEPTH @ 0=  and ;
+
+\ unj: a failure splices the pre-token rows; a caller that settles its own
+\ failure (LOC-BIND) steps unarmed.
+: CHECKER-STEP-UNJ {: din dout unj:bool :}
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}
    unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
    din dout LIN-EXPLICIT? LINEXP !
@@ -4174,6 +4179,8 @@ variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
    unj 0= IF EXIT THEN
    fit 0= IF pre rpre cells dout terms UNJ-SPLICE EXIT THEN
    STEP-R @ 0= IF -1 UNJ-SPLICED ! THEN ;
+: CHECKER-STEP {: din dout :}
+   din dout UNJ-ARMED? CHECKER-STEP-UNJ ;
 
 \ Record a complete token effect while its input row is unified. Memory
 \ tokens construct these rows directly instead of instantiating a named word.
@@ -19413,14 +19420,16 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
       UF-CAPTURE
    THEN
    OK @ and OK ! ;
+: LOC-WIDTH! ( n n -- ) {: w:n idx:n :}   \ local idx holds w cells
+   w idx cells LOCW + !
+   w  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
 : LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
    idx cells LOCTV + @ T-RES ISVAR 0= IF
       gi idx LOC-ANN-BIND-CHECK    \ annotated local: the annotation term must accept
       OK @ 0= IF EXIT THEN         \ this bundle's tag term (scalar annotations reject)
    THEN
    gi XG-TERM0@ T-RES idx cells LOCTV + !
-   XG-LEN gi cells + @ idx cells LOCW + !
-   XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
+   XG-LEN gi cells + @ idx LOC-WIDTH! ;
 
 : LOC-CAPTURE-GROUP ( n n -- ) {: gi:n idx:n :}
    0 LOC-CAP-HEAD !
@@ -19463,6 +19472,104 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
    XG-ROW @ DCUR !
    OK @ IF LIN-CHECK THEN ;
 
+\ A rejected local bind in an unjudged scan still binds at runtime (the
+\ splice header above CHECKER-STEP): each local takes the cells the runtime
+\ binds into it. A declared local takes its type's cells, a layout its full
+\ group (LOCTV holds an expanded layout's tag term, LOC-ANN-TERM, which is one
+\ cell); an undeclared local takes the pre-token cell group it lies over, a
+\ one-cell term or a whole hidden group, as XG-READ-GROUP would read it.
+\ LOC-DECL-ROW reads that row from the top local down, before the bind unifies
+\ anything, and is 0 when a width is unknown: a declared layout whose width is
+\ open, or an undeclared local over an open-width cell, part of a hidden
+\ group, or the pre row's open tail. `at` is the pre row below the locals
+\ above, 0 once that is unknown.
+: PRE-SKIP ( n n -- n ) {: at:n w:n :}   \ `at` less its top w cells
+   at 0= IF 0 EXIT THEN
+   w 0= IF at EXIT THEN
+   at R-RES {: node:n :}
+   node TAG S-PUSH <> IF 0 EXIT THEN
+   node P>TYPE {: t:n :}
+   t SPLICE-OPEN? IF 0 EXIT THEN
+   t ROW-TERM-CELLS {: tw:n :}
+   tw w > IF 0 EXIT THEN
+   node P>REST  w tw -  RECURSE ;
+: PRE-HID-RUN? ( n n n -- bool ) {: at:n fam:n slot:n :}   \ fam's cells slot..0 from `at` down
+   slot 0 < IF RES-TRUE EXIT THEN
+   at R-RES {: node:n :}
+   node TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t CELL>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot <> IF RES-FALSE EXIT THEN
+   node P>REST fam  slot 1 -  RECURSE ;
+: PRE-GROUP ( n -- n ) {: at:n :}   \ cells of the whole group on top of `at`; 0 unknown
+   at 0= IF 0 EXIT THEN
+   at R-RES {: node:n :}
+   node TAG S-PUSH <> IF 0 EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF t LAYOUT-PARAM? IF 0 ELSE 1 THEN EXIT THEN
+   t T-WIDTH {: w:n :}
+   at  t CELL>FAM  w 1 -  PRE-HID-RUN? IF w ELSE 0 THEN ;
+: PRE-PUSH ( n n n -- n ) {: row:n at:n w:n :}   \ the top w cells of `at` onto row, deepest first
+   w 0= IF row EXIT THEN
+   at R-RES {: node:n :}
+   node  row node P>REST  w 1 -  RECURSE  P-COPY ;
+: LOC-DECL-TERM ( n -- n ) {: t:n :}   \ the logical term a declared local type pushes
+   t HIDDEN-PARAM? IF t MK-LOGICAL ELSE t THEN ;
+: LOC-DECL-CELLS ( n n -- n ) {: at:n t:n :}   \ cells local type t binds over `at`; 0 unknown
+   t ISVAR IF at PRE-GROUP EXIT THEN
+   t SPLICE-OPEN? IF 0 EXIT THEN
+   t T-WIDTH ;
+: LOC-DECL-FROM ( n n -- n ) {: at:n idx:n :}   \ the row locals LGRP..idx bind, idx over `at`
+   idx LGRP @ < IF FRESH MK-ROW EXIT THEN
+   idx cells LOCTV + @ T-RES {: t:n :}
+   at t LOC-DECL-CELLS {: w:n :}
+   w 0= IF 0 EXIT THEN
+   at w PRE-SKIP  idx 1 -  RECURSE
+   dup 0= IF EXIT THEN
+   t ISVAR IF at w PRE-PUSH ELSE t LOC-DECL-TERM swap PUSH-LOGICAL THEN ;
+: LOC-DECL-ROW ( n -- n )   \ the pre-token row -> the row the locals bind
+   #LOC @ 1 - LOC-DECL-FROM ;
+
+\ Each local takes its declared group, so a later reference pushes the cells
+\ the runtime bound and the lowering binds the widths recorded here; the
+\ token's width facts, recorded from the row from mark wf0 on, state the
+\ declared groups instead, as the pass-2 carve cross-checks them against those
+\ widths (habu2.f EM-P2-CARVE). The one splice pops the declared row's
+\ physical cells off the pre-token rows. A bind with an unknown width is
+\ lost: what the runtime bound is unknown. A lost bind is incomplete where a
+\ width is at stake: a wide cell in the pre-token rows (UNJ-LOST), or a local
+\ declared wide, hidden or open-width, which binds more cells than the row
+\ shows. An undeclared local is one cell unless the pre rows hold a wide one.
+: WF-TOKEN-CUT ( n -- ) {: wf0:n :}   \ drop this token's facts, the table's last rows
+   WF-N @ wf0 ?do
+      i WF-OFF@ TSTART @ <> IF s" checker: width fact past the current token" 76 die THEN
+   loop
+   wf0 WF-N ! ;
+: LOC-DECL-GROUP ( n -- ) {: gi:n :}
+   #LOC @ 1 - gi - {: idx:n :}
+   gi idx LOC-CAPTURE-GROUP
+   XG-LEN gi cells + @ idx LOC-WIDTH! ;
+: LOC-DECL-GROUPS ( n n -- ) {: decl:n wf0:n :}
+   wf0 WF-TOKEN-CUT
+   decl  #LOC @ LGRP @ -  WF-ROW-SCAN
+   decl  #LOC @ LGRP @ -  XG-READ 0= IF s" checker: declared local row unreadable" 76 die THEN
+   0 BEGIN dup #LOC @ LGRP @ - < WHILE
+      dup LOC-DECL-GROUP
+      1 +
+   REPEAT drop ;
+: LOC-WIDE-FROM? ( n -- bool ) {: idx:n :}   \ a local LGRP..idx is declared wide
+   idx LGRP @ < IF RES-FALSE EXIT THEN
+   idx cells LOCTV + @ CELL-WIDE? IF RES-TRUE EXIT THEN
+   idx 1 - RECURSE ;
+: LOC-UNJ-BIND ( n n n n -- ) {: decl:n pre:n rpre:n wf0:n :}
+   decl 0= IF
+      #LOC @ 1 - LOC-WIDE-FROM? IF -1 SCAN-INCOMPLETE ! THEN
+      pre rpre -1 0 0 UNJ-SPLICE EXIT
+   THEN
+   decl wf0 LOC-DECL-GROUPS
+   pre rpre  decl ROW-CELLS  0 0 UNJ-SPLICE ;
+
 : LOC-CAPTURE-SCALARS ( -- )
    WAS @ R-RES
    #LOC @ 1 -
@@ -19481,15 +19588,21 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
    tail MK-ROW LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @ rot MK-PUSH swap 1+
    REPEAT drop
-   DCUR @  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
-   DCUR @  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
+   UNJ-ARMED? {: unj:bool :}
+   DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}  WF-N @ {: wf0:n :}
+   unj IF pre LOC-DECL-ROW ELSE 0 THEN {: decl:n :}
+   pre  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
+   pre  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
       drop
       LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
    ELSE
       1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
-      tail MK-ROW CHECKER-STEP
+      tail MK-ROW RES-FALSE CHECKER-STEP-UNJ   \ a failure settles below, by declared widths
       0 LAYOUT-XPORT !
       OK @ IF LOC-CAPTURE-SCALARS THEN
+   THEN
+   unj IF   \ a bind that held leaves whole rows: a later refusal of this token splices nothing
+      OK @ IF -1 UNJ-SPLICED ! ELSE decl pre rpre wf0 LOC-UNJ-BIND THEN
    THEN
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
@@ -19497,8 +19610,8 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
 : LOC-TOK
    {: ra a u :}
    a u s" :}" CORE-STR= IF CHECKER-TAPE:K-LOCAL-CLOSE 0 0 EVENT!  0 LMODE ! LOC-BIND ELSE
-   a u s" --" CORE-STR= IF EV-OPERAND  -1 UNCK ! ELSE
-   ra a u LOC-ADD THEN THEN ;
+   a u s" --" CORE-STR= IF -1 UNCK ! THEN   \ the engine binds `--` as a local too
+   ra a u LOC-ADD THEN ;
 
 : LOC-BEGIN ( -- )
    EV-OPERAND
