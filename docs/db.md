@@ -125,6 +125,7 @@ PG:SCRIPT           ( PG:connection ptr u8 n -- PG:result )
 PG:PREPARE          ( PG:connection ptr u8 n ptr u8 n -- PG:result )
 PG:EXEC-PREPARED    ( PG:connection ptr u8 n -- PG:result )
 PG:WITH-TRANSACTION ( PG:connection [ PG:connection -- PG:connection ] -- )
+PG:IDLE?            ( PG:connection -- bool )
 
 PG:OUTCOME          ( PG:result -- PG:outcome )
 PG:ROWS             ( PG:result -- count )
@@ -266,6 +267,12 @@ code. The quotation takes the connection and returns it, which is what lets it
 cross the `catch` boundary. A `PG:WITH-TRANSACTION` inside another one on the
 same connection is `PG:E-TRANSACTION`, because a nested `BEGIN` is a no-op in
 PostgreSQL and the inner `COMMIT` would end the outer transaction.
+
+`PG:IDLE?` is true when the session is idle outside any transaction block, as
+libpq's `PQtransactionStatus` reports it. It sees a transaction opened by plain
+`BEGIN` text as well as one opened by `PG:WITH-TRANSACTION`, and is false while
+a command is in flight or a failed transaction awaits `ROLLBACK`. A caller whose
+write must commit on its own refuses a non-idle connection with it.
 
 The three transaction verbs leave the connection's parameter list exactly as
 they found it. That matters because a quotation may not read the caller's

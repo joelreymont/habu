@@ -99,6 +99,7 @@ CAST: RESULT>N ( result -- n )
 1 constant CONNECTION-BAD
 1 constant CONNECT-FIRST
 2 constant CONNECT-POLLING
+0 constant TRANS-IDLE                     \ PGTransactionStatusType
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
@@ -177,6 +178,7 @@ VERSIONED-LIBRARY pq 5
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-TRANSACTION-STATUS PQtransactionStatus ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
@@ -1154,6 +1156,13 @@ public
    slot CONN-GEN@ raw HANDLE-GEN <> if false exit then
    slot CONN-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
    true ;
+
+
+\ IDLE? is libpq's own view of the session, so it covers a transaction opened
+\ by plain BEGIN text as well as WITH-TRANSACTION. It is false while a command
+\ is in flight, inside a transaction block and after a failed statement there.
+: IDLE? ( connection -- bool )
+   CONN-SLOT CONN-PG@ LIB-TRANSACTION-STATUS TRANS-IDLE = ;
 
 
 \ CLOSE cancels pending SQL, clears owned results and retires the handle even

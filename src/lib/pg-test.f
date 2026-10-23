@@ -413,6 +413,7 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 \ into a body that may not read the caller's locals: BEGIN must leave the
 \ pending list alone.
 : COMMIT-BODY ( PG:connection -- PG:connection )
+   dup IDLE? TFALSE
    dup s" insert into pqt (id, label, note) values ($1, $2, null)" EXEC
    dup OUTCOME-TAG TAG-OK T=
    CLEAR ;
@@ -423,6 +424,10 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c 901 INT+
    c s" kept" TEXT+
    c [: COMMIT-BODY ;] WITH-TRANSACTION
+   c IDLE? TTRUE
+   c s" begin" EXEC-OK
+   c IDLE? TFALSE
+   c s" rollback" EXEC-OK
    c 901 COUNT-ID 1 T=
    c PARAMS
    c 901 INT+
