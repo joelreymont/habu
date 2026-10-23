@@ -1793,6 +1793,14 @@ $2DA8 constant TASK-CHAIN-CELL
 $4898 constant POLICY-NDICT-CELL
 $48A0 constant POLICY-BITS-OFF
 $4CA0 constant POLICY-REQUIRE-CELL  \ ordinary require xt; zero unless opted in
+\ CLAUSE-CELL: nonzero once the pending definition has a `;does` clause - set by
+\ the `does>` keyword and by does-record, which an imported definer reaches with
+\ no keyword - and cleared wherever the engine clears DOESB-CELL. habu1.f BNDAPPEND and its x86-64
+\ twin read it to append the clause record; DOESB-CELL stays the clause's
+\ offset into BODYBUF, which an imported definer never fills. It takes the cell
+\ after POLICY-REQUIRE-CELL, swept for a claimant the same way and claimed in
+\ data-claims.f.
+$4CA8 constant CLAUSE-CELL
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

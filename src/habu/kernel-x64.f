@@ -3249,6 +3249,7 @@ variable SITE-TRAP-CELL
    RAX DATA-REG PEND-CELL MOV-LOAD,
    RAX RAX REC-WID MOV-LOAD,  RAX RDI REC-WID MOV-STORE,
    cp RSP DR-PAD MEM-OFF ASM-SINK ENC-ADD-RM
+   RAX 1 IMM64,  RAX CLAUSE-CELL CELL!,                \ an imported definer had no `does>`
    LCLOSE-LBL CALL,
    RSP DR-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
@@ -3729,12 +3730,12 @@ private
    RCX RDX ASM-SINK ENC-CMP-RR  C-E parent JCC,
    RCX DREC >IMM8 ASM-SINK ENC-ADD-RI8
    RCX RDX ASM-SINK ENC-CMP-RR  C-NE bad JCC,
-   RCX DOESB-CELL CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-LE bad JCC,
+   RCX CLAUSE-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
    owner JMP,
    parent X64CODE:LBL,
-   RCX DOESB-CELL CELL@,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-LE owner JCC,
+   RCX CLAUSE-CELL CELL@,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E owner JCC,
    R9 DEF-OCC:PTR-CELL CELL@,
    R10 R9 MEM-AT ASM-SINK ENC-MOV-RM
    R11 -1 IMM64,  R11 R10 ASM-SINK ENC-SUB-RR
@@ -4954,7 +4955,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record;
-\ TSIG, TCSIG, PEND-OPAQUE, DOESB and TRUSTED clear; DEF-TIER-CELL takes
+\ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
 \ TIER-CELL and the provenance window opens at that CP. At tier 0 it opens the
 \ record only. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's,
 \ as habu2.f DEFWRITE:DEF-OPEN admits it.
@@ -4986,7 +4987,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX PEND-OPAQUE-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    X64PROV:OPEN,
    WINDOW-CLOSE,
@@ -5037,7 +5038,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-close ( -- ): the pending definition of the native tier ends, as the
 \ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
-\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL
+\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL
 \ clear; before they clear, LASTC-CELL takes the record for a nonzero kind other
 \ than DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )
@@ -5058,7 +5059,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX PEND-OPAQUE-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
 \ A caught compiler failure leaves its handler, return and loop state to the
@@ -5078,7 +5079,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX CRSIG-A-CELL CELL!,  RAX CRSIG-U-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX 8191 >IMM32 ASM-SINK ENC-MOV-RI32
    RAX REGALLOC-ABI:VRFREE-CELL CELL!, ;
 
@@ -5127,7 +5128,7 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
-   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,
+   RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX PEND-CELL CELL!, ;
 
 \ ---- does-patch -----------------------------------------------------------------

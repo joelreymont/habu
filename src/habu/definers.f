@@ -583,7 +583,8 @@ private
    DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
    DEF-DOES-NAME
    DEF-CREATED
-   BODYLEN-CELL CELL@ DOESB-CELL CELL! ;
+   BODYLEN-CELL CELL@ DOESB-CELL CELL!
+   1 CLAUSE-CELL CELL! ;
 
 \ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
 \ LFIND finds a word of that spelling that is not immediate, which the body

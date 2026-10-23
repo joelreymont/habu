@@ -159,6 +159,7 @@ align
 0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
 0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
+0 CWORK-VARIABLE M-DOES-OFF n                  \ published clause's byte offset, or zero
 0 CWORK-VARIABLE DEF-MODULE-BEFORE n
 0 CWORK-VARIABLE DEF-GEN-BEFORE n
 0 CWORK-VARIABLE DEF-EPOCH-BEFORE n
@@ -677,7 +678,10 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    e ;
 
 : PUBLISH-IT ( NART:emission -- )
-   M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
+   M-DOES @ 0<> if
+      dup M-DOES-FUN @ NART:FUNCTION-OFFSET@ M-DOES-OFF !
+      M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit
+   then
    NPUB:PUBLISH-PENDING ;
 
 : ELABORATE ( IR-ARENA:arena IR-ARENA:arena -- )
@@ -1085,6 +1089,7 @@ INSTALL-FORGET
    false M-HEAD-RECOVERY !
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
+   0 M-DOES-OFF !
    -1 M-DOES-ROW !
    NDICT:FIXED-NONE M-FIXED !
    -1 M-FIXED-REC !
@@ -1127,7 +1132,7 @@ private
    then
    idx M-FIXED-REC !
    val M-FIXED-VAL !  kind M-FIXED !
-   0 M-DOES !  -1 M-DOES-FUN !
+   0 M-DOES !  -1 M-DOES-FUN !  0 M-DOES-OFF !
    true M-SHADOW-ONLY !  1 M-OPEN !  0 M-RC !
    [: IN-CONTEXT ;] catch {: rc:n :}
    false M-SHADOW-ONLY !  0 M-OPEN !
@@ -1186,6 +1191,10 @@ public
 : DEFINITION-HISTORY ( -- n n n n )
    DEF-MODULE-DELTA @ DEF-GEN-DELTA @ DEF-EPOCH-DELTA @
    DEF-BUILD-DELTA @ ;
+
+\ Where the last published `does>` definer's clause starts in its body, or 0.
+: DEFINITION-DOES-OFFSET ( -- n )
+   M-DOES-OFF @ ;
 
 : REPLAY-DEFINITION-LEASED ( NLEASE:lease -- )
    M-LEASE !

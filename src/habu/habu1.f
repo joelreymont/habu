@@ -1517,8 +1517,8 @@ variable LDIE
 \ Append the completed native pending record at the caller's expected index.
 \ NPUB proves the emission and record shape; this sink owns the live count and
 \ index, so it independently checks pending ownership before either changes.
-\ DOES> publishes its parent and then its one prepared companion. No other row
-\ is eligible, and the ordinary ndict! restore/rebuild contract stays intact.
+\ DOES> publishes its parent and then its one prepared companion, which
+\ CLAUSE-CELL admits. No other row is eligible, and the ordinary ndict! restore/rebuild contract stays intact.
 : BNDAPPEND ( -- ) B-TASK-LIVE-GUARD  A G-POP                  \ ( expected-index -- )
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
@@ -1528,10 +1528,10 @@ variable LDIE
    14 DATA PEND-CELL LDR,  14 bad CBZ,
    14 B CMP,  C-EQ parent BCOND,
    14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
-   14 DATA DOESB-CELL LDR,  14 0 CMPI,  C-LE bad BCOND,
+   14 DATA CLAUSE-CELL LDR,  14 bad CBZ,
    owner B,
    parent LBL,
-   14 DATA DOESB-CELL LDR,  14 0 CMPI,  C-LE owner BCOND,
+   14 DATA CLAUSE-CELL LDR,  14 owner CBZ,
    9 2 MOVZ,  EM-DEF-OCC:LROOM LABEL@ BL,
    9 NDICT 0 ADDI,
    owner LBL,

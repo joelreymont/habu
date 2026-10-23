@@ -119,9 +119,11 @@ private
 \ An update row: the changed byte's reference and its value at the close.
 16 constant UPDATE-BYTES
 \ Record row kinds; 1 to 3 are the fixed kinds: a constant, an address, a
-\ deferred word. The last three have no body of their own: a record retired
-\ in place, one with no code, and a cast, whose code is the engine's empty
-\ checked body. No row holds RK-NONE, the kind of a record that refuses.
+\ deferred word. RK-RETIRED, RK-CODELESS and RK-CAST have no body of their
+\ own: a record retired in place, one with no code, and a cast, whose code is
+\ the engine's empty checked body. A does> definer's clause row follows its
+\ colon row, and a word a does> definer made is an address patched to run
+\ that clause. No row holds RK-NONE, the kind of a record that refuses.
 0 constant RK-NONE
 1 constant RK-VAL
 2 constant RK-ADDR
@@ -131,6 +133,8 @@ private
 6 constant RK-RETIRED
 7 constant RK-CODELESS
 8 constant RK-CAST
+9 constant RK-CLAUSE
+10 constant RK-DOES-WORD
 
 public
 
@@ -1286,6 +1290,7 @@ variable DEF-CODE-BASE
 variable DEF-RECORDED
 variable DEF-WIDE
 variable DEF-MIN-IN
+variable DEF-DOES-OFF
 variable DEF-ACTIVE
 variable DEF-EMITTED
 variable DEF-FINISHED
@@ -1328,6 +1333,7 @@ CAST: DEF-PTR-XT ( n -- [ n -- ptr u8 ] )
 CAST: DEF-FACTS-XT ( n -- [ n -- n n n n n n ] )
 CAST: DEF-PREP-HOST-XT ( n -- [ n n ptr u8 n ptr u8 n -- ] )
 CAST: DEF-PUBLISH-XT ( n -- [ ptr u8 n n ptr n n ptr n n bool n -- n ] )
+CAST: DEF-PUBLISH-DOES-XT ( n -- [ ptr u8 n n ptr n n ptr n n bool n n -- n ] )
 CAST: DEF-HOST-ABANDON-XT ( n -- [ -- ] )
 CAST: DEF-PREP-BEGIN-XT ( n -- [ n -- ] )
 CAST: DEF-LITERAL-XT ( n -- [ ptr u8 n -- n ] )
@@ -1360,13 +1366,9 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NSTR:SOURCE-CLOSE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NHOST:PREPARE-IMPORT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NHOST:ABANDON-TAKEN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
-   s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
-\ Why the compiler's current definition is no unit capture can record, or
-\ nothing. DOESB marks a does> clause open in it, and an object holds only
-\ plain colon definitions.
-: DEF-UNPACKABLE$ ( -- ptr u8 n )
-   data-base DOESB-CELL + CELL-VIEW @ 0<> if s" does-pending" exit then
-   s" " ;
+   s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NCOMP:DEFINITION-DOES-OFFSET" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NPUB:IMPORT-PENDING-DOES" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
 \ Whether the compiler would let the current definition stand alone in a
 \ cache entry. One it would not still joins its file's object.
 : DEF-CACHEABLE-NOW? ( -- bool )
@@ -1543,6 +1545,15 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       then
    loop ;
 
+\ Register each hidden function's entry under the record whose code holds it:
+\ a does> definer's clause record, the one after it, spans the body from the
+\ clause on, so a reference to the clause or to code inside it names that
+\ record, as an imported definer's published spans resolve it.
+: DEF-FUNCTION-OWNER ( n -- n )
+   {: off:n :}
+   DEF-DOES-OFF @ 0<> off DEF-DOES-OFF @ >= and if DEF-PENDING @ 1+ exit then
+   DEF-PENDING @ ;
+
 : DEF-REGISTER-FUNCTIONS ( -- )
    0 DEF-HOST LE:U64@ {: funs:n :}
    8
@@ -1550,8 +1561,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       {: cursor:n :}
       cursor DEF-HOST {: row:ptr :}
       i 0<> if
-         DEF-CODE-BASE @ row LE:U64@ +
-            DEF-PENDING @ NFILE-REF:REGISTER-IMPL
+         row LE:U64@ {: off:n :}
+         DEF-CODE-BASE @ off + off DEF-FUNCTION-OWNER NFILE-REF:REGISTER-IMPL
       then
       cursor 7 cells + row 48 + LE:U64@ 0 max cells +
    loop drop ;
@@ -1612,7 +1623,7 @@ variable DEF-HELD-SIZE
    DEF-WIDE @ if 1 else 0 then DEF-META 16 + LE:U64!
    DEF-MIN-IN @ DEF-META 24 + LE:U64!
    DEF-LIT-N @ DEF-META 32 + LE:U64!
-   0 DEF-META 40 + LE:U64!
+   DEF-DOES-OFF @ DEF-META 40 + LE:U64!
    DEF-MODULE-DELTA @ DEF-META 48 + LE:U64!
    DEF-GEN-DELTA @ DEF-META 56 + LE:U64!
    DEF-EPOCH-DELTA @ DEF-META 64 + LE:U64!
@@ -1644,7 +1655,7 @@ variable DEF-HELD-SIZE
    0 DEF-CODE-U ! 0 DEF-CALL-U ! 0 DEF-ADDR-U !
    0 DEF-LIT-U ! 0 DEF-HOST-U !
    0 DEF-LIT-N ! 0 DEF-CALL-SITE-N ! 0 DEF-ADDR-SITE-N !
-   0 DEF-PENDING ! 0 DEF-CODE-BASE !
+   0 DEF-PENDING ! 0 DEF-CODE-BASE ! 0 DEF-DOES-OFF !
    0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
    0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
    0 DEF-HELD-E ! 0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
@@ -1663,7 +1674,6 @@ variable DEF-HELD-SIZE
    {: meta:ptr size:n :}
    size DEF-META-BYTES <> if BAD then
    meta 16 + LE:U64@ dup 0<> swap 1 <> and if BAD then
-   meta 40 + LE:U64@ 0<> if BAD then
    meta LE:U64@ {: recorded:n :}
    meta 8 + LE:U64@ {: code-u:n :}
    recorded CODE-SPAN:VALID? 0= if BAD then
@@ -1680,6 +1690,7 @@ variable DEF-HELD-SIZE
    meta 16 + LE:U64@ 0<> DEF-WIDE !
    meta 24 + LE:U64@ DEF-MIN-IN !
    meta 32 + LE:U64@ DEF-LIT-N !
+   meta 40 + LE:U64@ DEF-DOES-OFF !
    meta 48 + LE:U64@ DEF-MODULE-DELTA !
    meta 56 + LE:U64@ DEF-GEN-DELTA !
    meta 64 + LE:U64@ DEF-EPOCH-DELTA !
@@ -1811,8 +1822,6 @@ public
 : DEFINITION-BEGIN ( -- )
    DEF-RESET
    DEF-ELIGIBLE? 0= if s" begin-ineligible" ndict@ REFUSED exit then
-   DEF-UNPACKABLE$ {: why:ptr whyu:n :}
-   whyu 0 > if why whyu ndict@ REFUSED exit then
    ndict@ DEF-PENDING !
    1 DEF-ACTIVE !
    DEF-CACHEABLE-NOW? if 1 DEF-CACHEABLE ! then
@@ -1822,15 +1831,15 @@ public
    DEF-ACTIVE @ 0= if DEF-SOURCE-END false exit then
    0 DEF-ACTIVE !
    DEF-ELIGIBLE? 0= if s" end-ineligible" DEF-PENDING @ REFUSED then
-   DEF-UNPACKABLE$ {: why:ptr whyu:n :}
-   whyu 0 > if why whyu DEF-PENDING @ REFUSED then
    DEF-EMITTED @ 0= DEF-REFUSED @ 0<> or if
       DEF-REFUSED @ 0<> if s" capture-refused" else s" no-emission" then
          DEF-PENDING @ REFUSED
       DEF-SOURCE-END
       NFILE-REF:END-CAPTURE false exit
    then
-   ndict@ DEF-PENDING @ 1+ <> if BAD then
+   s" NCOMP:DEFINITION-DOES-OFFSET" DEF-NUM DEF-DOES-OFF !
+   \ A does> definer published its clause as the next record.
+   ndict@ DEF-PENDING @ 1+ DEF-DOES-OFF @ 0<> if 1+ then <> if BAD then
    DEF-CACHEABLE-NOW? 0= if 0 DEF-CACHEABLE ! then
    DEF-FIELDS
    DEF-REGISTER-FUNCTIONS
@@ -2006,15 +2015,74 @@ CAST: N>U8 ( n -- ptr u8 )
    at 8 + size + VALS-U !
    at ;
 
+\ The closing file's record row of its own record ord, -1 when another file
+\ made it.
+: OWN-ROW ( n -- n )
+   {: ord:n :}
+   0 EVENTS-N @ FO-EVENTS FO @ ?do
+      {: base:n :}
+      i SEG? if
+         i 1 EV @ {: first:n :}
+         ord first >= ord first i 2 EV @ + < and if
+            base ord + first - unloop exit
+         then
+         base i 2 EV @ +
+      else base then
+   loop drop -1 ;
+
+\ Record key as a FILE object reference, 0 after it refuses the closing file:
+\ a record the file made, retired or not (its object makes the record again),
+\ or a live record an earlier file made under a declaration key.
+: RECORD-TARGET ( n -- n )
+   {: key:n :}
+   key ndict@ >= if s" checker-ref-retired" FILE-REFUSE 0 exit then
+   key OWN-ROW {: row:n :}
+   row 0 >= if row key NFILE-REF:FILE-REF-RECORD exit then
+   key XREF-REC XREF-RETIRED? if
+      s" checker-ref-retired" FILE-REFUSE 0 exit
+   then
+   key NUNIT-DEP:BIND-ORD
+   \ A record an earlier session made has no key to import: BIND-ORD has
+   \ ordered the file on it.
+   key NFILE-REF:DECL-KEY? nip nip 0= if
+      s" ordered-dependency" FILE-REFUSE 0 exit
+   then
+   row key NFILE-REF:FILE-REF-RECORD ;
+
+\ The does> definer whose clause starts at address d, searched back from
+\ record ord, -1 when none: the clause record follows its definer as the
+\ definer's companion.
+: DOES-DEFINER ( n n -- n )
+   {: ord:n d:n :}
+   0 ord 1- ?do
+      i 0 > if
+         i XREF-REC XREF-START d = if
+            i 1- XREF-DOES-COMPANION? if i 1- unloop exit then
+         then
+      then
+   -1 +loop -1 ;
+
+\ A word a does> definer made: its address body, and the definer that the
+\ branch ending its code reaches through the definer's clause.
+: DOES-SHAPE ( n ptr n -- n n n bool )
+   {: ord:n rec:ptr :}
+   rec XREF-START rec XREF-CODE-BYTES + 4 - {: slot:n :}
+   slot N>U8 LE:U32@ {: w:n :}
+   w NBR:B? if ord slot w NBR:B-TARGET DOES-DEFINER else -1 then {: def:n :}
+   def 0 < if s" does-clause-unknown" rec REFUSE-WORD RK-NONE 0 0 false exit then
+   rec AOT-CELL:ALLOC-BASE DATA-REF {: body:n :}
+   def RECORD-TARGET {: ref:n :}
+   RK-DOES-WORD body ref body 0<> ref 0<> and ;
+
 \ Record ord's row kind, value and private wordlist reference, and whether
-\ they encode. A does> clause or instance refuses the file.
+\ they encode.
 : RECORD-SHAPE ( n -- n n n bool )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec PACKAGE-SHAPE exit then
    rec XREF-RETIRED? if RK-RETIRED 0 0 true exit then
    ord 0 > if ord 1- XREF-DOES-COMPANION? else false then if
-      s" does-pending" rec REFUSE-WORD RK-NONE 0 0 false exit
+      RK-CLAUSE 0 0 true exit
    then
    rec XREF-START 0= if RK-CODELESS 0 0 true exit then
    rec XREF-FLAGS DKIND:MASK and DKIND:CAST = if RK-CAST 0 0 true exit then
@@ -2030,6 +2098,7 @@ CAST: N>U8 ( n -- ptr u8 )
    rec NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0<> if RK-DEFER cell ADDR-SHAPE exit then
    rec XREF-FLAGS DNAME-ALLOC and 0<> if
+      rec XREF-FLAGS DKIND:MASK and 0= if ord rec DOES-SHAPE exit then
       s" does-pending" rec REFUSE-WORD RK-NONE 0 0 false exit
    then
    ord ORD-ROW {: row:n :}
@@ -2324,42 +2393,13 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       else base then
    loop drop -1 0 ;
 
-\ The closing file's record row of its own record ord, -1 when another file
-\ made it.
-: OWN-ROW ( n -- n )
-   {: ord:n :}
-   0 EVENTS-N @ FO-EVENTS FO @ ?do
-      {: base:n :}
-      i SEG? if
-         i 1 EV @ {: first:n :}
-         ord first >= ord first i 2 EV @ + < and if
-            base ord + first - unloop exit
-         then
-         base i 2 EV @ +
-      else base then
-   loop drop -1 ;
-
 \ Checker reference entry key bytes as a FILE object reference, 0 after it
 \ refuses the closing file: a record it made, retired or not (its object
 \ makes the record again), or a live record an earlier file made, else
 \ storage in its own or an earlier declaration's DATA.
 : CHECK-TARGET ( n n -- n )
    {: key:n bytes:n :}
-   bytes 0 < if
-      key ndict@ >= if s" checker-ref-retired" FILE-REFUSE 0 exit then
-      key OWN-ROW {: row:n :}
-      row 0 >= if row key NFILE-REF:FILE-REF-RECORD exit then
-      key XREF-REC XREF-RETIRED? if
-         s" checker-ref-retired" FILE-REFUSE 0 exit
-      then
-      key NUNIT-DEP:BIND-ORD
-      \ A record an earlier session made has no key to import: BIND-ORD has
-      \ ordered the file on it.
-      key NFILE-REF:DECL-KEY? nip nip 0= if
-         s" ordered-dependency" FILE-REFUSE 0 exit
-      then
-      row key NFILE-REF:FILE-REF-RECORD exit
-   then
+   bytes 0 < if key RECORD-TARGET exit then
    key bytes OWN-OFF {: off:n :}
    off 0 >= if NFILE-REF:DATA off 0 NFILE-REF:REF-LOCAL exit then
    key EARLIER-REF {: ref:n :}
@@ -3026,15 +3066,16 @@ private
 \ references, body and index row its kind names: its wordlists the file's
 \ own or earlier, a constant's body in slot 17, an address a place in its own
 \ segment's DATA, its end included, at or past the address before it, a
-\ deferred word's cell a place in the file's DATA, and no value for a record
-\ with no body of its own.
+\ does> word's the same with its definer's record, a deferred word's cell a
+\ place in the file's DATA, a clause row nothing past its name, and no value
+\ for a record with no body of its own.
 : RECORD-CK ( ptr u8 n ptr u8 n -- )
    {: row:ptr namesu:n refs:ptr defs:n :}
    row 0 U64-AT {: kind:n :}
    row 4 U64-AT {: wl:n :}
    row 5 U64-AT {: value:n :}
    row 6 U64-AT {: priv:n :}
-   kind RK-VAL < kind RK-CAST > or if BAD then
+   kind RK-VAL < kind RK-DOES-WORD > or if BAD then
    1 kind lshift OPEN-KINDS @ or OPEN-KINDS !
    row 2 U64-AT row 3 U64-AT namesu SPAN-CK
    OPEN-WIDS @ 1- {: wmax:n :}
@@ -3044,10 +3085,12 @@ private
       refs priv NFILE-REF:WID wmax REF-ROW-CK
       refs value priv OWNED+ exit
    then
-   priv 0<> if BAD then
    refs wl NFILE-REF:WID wmax REF-ROW-CK
+   kind RK-DOES-WORD = if
+      refs priv NFILE-REF:RECORD OPEN-RECS @ 1- REF-ROW-CK
+   else priv 0<> if BAD then then
    kind RK-VAL = if value VAL-CK exit then
-   kind RK-ADDR = if
+   kind RK-ADDR = kind RK-DOES-WORD = or if
       refs value NFILE-REF:DATA OPEN-SEG-END @ REF-ROW-CK
       refs 24 + value 1- 32 * + {: ref:ptr :}
       ref 1 U64-AT NFILE-REF:LOCAL <> if BAD then
@@ -3059,7 +3102,7 @@ private
       refs value NFILE-REF:DATA OPEN-DATA @ REF-ROW-CK exit
    then
    kind RK-COLON = if value 0 < value defs >= or if BAD then exit then
-   kind RK-RETIRED >= value 0<> and if BAD then ;
+   kind RK-RETIRED >= kind RK-CLAUSE <= and value 0<> and if BAD then ;
 
 \ The reference section: an NFILE-REF ENCODE header with no declarations
 \ and room for its reference rows; their count.
@@ -3276,6 +3319,7 @@ private
 CAST: REC-OPEN-XT ( n -- [ ptr u8 n n n -- ] )
 CAST: REC-NAMESPACE-XT ( n -- [ ptr u8 n bool -- n ] )
 CAST: REC-PROTECT-XT ( n -- [ n -- ] )
+CAST: REC-PATCH-XT ( n -- [ n ptr u8 n -- ] )
 CAST: REC-MIN-IN-XT ( n -- [ n n -- ] )
 
 \ name, wid and kind: open the pending record at ndict@ (prims.f def-open).
@@ -3296,6 +3340,10 @@ TRUSTED: REC-CAST ( -- ) s" def-cast" NEED-XT DEF-ACTION-XT execute ;
 TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
    s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
 TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
+\ Patch the word `create` just ended to run the clause at entry as `does>`
+\ does, with no signature: the file's checker slice carries its contract.
+TRUSTED: REC-PATCH ( n -- )
+   NULL-PTR 0 s" does-patch" NEED-XT REC-PATCH-XT execute ;
 
 \ View the object's FILE sections again; READ-VIEW keeps the caller's bytes.
 : FILE-VIEW ( -- )
@@ -3620,6 +3668,15 @@ TRUSTED: SLOT-STORE ( n n n -- )
       row 0 U64-AT NFILE-REF:REF-OWNER NFILE-REF:EXTERNAL = if row SLOT-ROW! then
    loop ;
 
+\ A does> word: its address row installed, then patched to run its definer's
+\ clause, the record after the definer, with the flags the patch set.
+: INSTALL-DOES ( n n -- )
+   {: priv:n flags:n :}
+   priv NFILE-REF:REF>RECORD 1+ XREF-REC XREF-START REC-PATCH
+   flags DNAME-WIDE and 0<> if REC-WIDE then
+   flags DNAME-MIN-IN-MASK and 52 rshift {: minin:n :}
+   minin 0<> if ndict@ 1- minin REC-MIN-IN then ;
+
 \ View definition index row row's payload, the next in the definitions slot:
 \ index rows pair with colon records in ordinal order.
 : PAYLOAD-VIEW ( n -- )
@@ -3680,7 +3737,11 @@ TRUSTED: SLOT-STORE ( n n n -- )
       DEF-ADDR-SITE-N @ 0= if NULL-PTR else 0 DEF-ADDR-SITES then
       DEF-ADDR-SITE-N @
       DEF-WIDE @ DEF-MIN-IN @
-      s" NPUB:IMPORT-PENDING" DEF-TARGET DEF-PUBLISH-XT execute ;
+   DEF-DOES-OFF @ 0= if
+      s" NPUB:IMPORT-PENDING" DEF-TARGET DEF-PUBLISH-XT execute exit
+   then
+   DEF-DOES-OFF @
+      s" NPUB:IMPORT-PENDING-DOES" DEF-TARGET DEF-PUBLISH-DOES-XT execute ;
 
 \ A colon row and its index row, opened, published and ended as `:` and `;`
 \ do. Binding the pending key advances its group's occurrence as a live
@@ -3739,6 +3800,10 @@ TRUSTED: SLOT-STORE ( n n n -- )
    row 0 U64-AT {: kind:n :}
    row 1 U64-AT {: flags:n :}
    row ROW-NAME$ {: name:ptr nameu:n :}
+   \ The definer's install published its clause row.
+   kind RK-CLAUSE = if
+      ndict@ 1- NFILE-REF:RECORD k 0 MAP-LOCAL <> if BAD then exit
+   then
    ndict@ NFILE-REF:RECORD k 0 MAP-LOCAL <> if BAD then
    kind RK-PACKAGE = if
       name nameu row 5 U64-AT row 6 U64-AT INSTALL-PACKAGE
@@ -3747,8 +3812,11 @@ TRUSTED: SLOT-STORE ( n n n -- )
       kind RK-VAL = if INSTALL-VAL else
       kind RK-ADDR = if flags INSTALL-ADDR else
       kind RK-CAST = if drop flags INSTALL-CAST else
+      kind RK-DOES-WORD = if
+         flags INSTALL-ADDR  row 6 U64-AT flags INSTALL-DOES
+      else
          kind RK-COLON <> if BAD then INSTALL-COLON
-      then then then
+      then then then then
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
@@ -3839,7 +3907,10 @@ TRUSTED: SLOT-STORE ( n n n -- )
 : SEG-ALIGNED? ( ptr u8 n -- bool )
    {: ev:ptr rows:n :}
    ev 3 U64-AT 0<>
-   ev 2 U64-AT 0 ?do rows i + OBJ-ROW 0 U64-AT RK-ADDR = or loop
+   ev 2 U64-AT 0 ?do
+      rows i + OBJ-ROW 0 U64-AT {: kind:n :}
+      kind RK-ADDR = kind RK-DOES-WORD = or or
+   loop
    AOT-ARM:HERE-N 1 cells mod ev 6 U64-AT <> and 0= ;
 
 \ The event row after event row seg's FFI rows.
@@ -4308,6 +4379,7 @@ public
    s" def-create" ENGINE-XT 0<> and
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
    s" prot-wid-add" ENGINE-XT 0<> and s" def-cast" ENGINE-XT 0<> and
-   s" wide-mark" ENGINE-XT 0<> and s" min-in-mark" ENGINE-XT 0<> and ;
+   s" does-patch" ENGINE-XT 0<> and s" wide-mark" ENGINE-XT 0<> and
+   s" min-in-mark" ENGINE-XT 0<> and ;
 
 ;package

@@ -424,21 +424,21 @@ REGION SLOT-BYTES - constant TOP-SLOT
    5 DREC * PEND-CELL X64HARNESS:REGION-ADDR!,
    s" delta" 0 0 X64HARNESS:RECORD,  5 NDICT!, ;
 
-\ ndict-append counts the pending record and then, with a does> body pending,
-\ its companion one record past it; the index learns each as it lands.
+\ ndict-append counts the pending record and then, with a clause pending
+\ (CLAUSE-CELL), its companion one record past it; the index learns each as it lands.
 : BUILD-APPEND ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING,
    5 APPEND,  6 NDICT?,
    s" delta" 0 SEARCH,  6 X64HARNESS:EXPECT-POP,
-   1 DOESB-CELL X64HARNESS:CELL!,
+   1 CLAUSE-CELL X64HARNESS:CELL!,
    s" echo" 0 0 X64HARNESS:RECORD,  6 NDICT!,
    6 APPEND,  7 NDICT?,
    s" echo" 0 SEARCH,  7 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
-\ The companion's place with no does> body pending exits 83.
+\ The companion's place with no clause pending exits 83.
 : BUILD-APPEND-FOREIGN ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    PENDING,  6 NDICT!,  6 APPEND,

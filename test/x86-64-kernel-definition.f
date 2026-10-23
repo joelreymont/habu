@@ -23,7 +23,7 @@
 \ - hb-x64-kernel-def-open, after the seal, opens a definition whose name
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
-\   length cell 0, TSIG, TCSIG, DOESB and TRUSTED clear, DEF-TIER-CELL taking
+\   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL taking
 \   TIER-CELL and the provenance window open at CP, which an inline name leaves.
 \ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP, the entry and
 \   the open window move 32 bytes, the pad over poisoned cells is 0 and
@@ -35,7 +35,7 @@
 \   signature span.
 \ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
 \   and whose CP moved: the provenance window closed with code-origin 1 over
-\   the span, and DEF-TIER, the six signature and clause cells and PEND clear.
+\   the span, and DEF-TIER, the seven signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
 \   other bits, and leaves the record before it alone.
 \ - hb-x64-kernel-def-abort closes a failed definition's window with unknown
@@ -161,17 +161,17 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    PKG-PARENT-CELL OR-CELL,  PKG-REC-CELL OR-CELL,
    0 G-PUSH ;
 
-\ The six signature and clause cells def-open clears, or'd together.
+\ The seven signature and clause cells def-open clears, or'd together.
 : PUSH-SIGS, ( -- )
    RAX ZERO-REG,
    TSIG-A-CELL OR-CELL,  TSIG-U-CELL OR-CELL,
    TCSIG-A-CELL OR-CELL,  TCSIG-U-CELL OR-CELL,
-   DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,
+   DOESB-CELL OR-CELL,  TRUSTED-CELL OR-CELL,  CLAUSE-CELL OR-CELL,
    0 G-PUSH ;
 
 \ The long name's second slot less its last byte: 0 when that byte opens the
 \ slot and the fifteen bytes past it are zero.
-\ The tier-1 definition def-close ends: its six signature and clause cells
+\ The tier-1 definition def-close ends: its seven signature and clause cells
 \ set and CP 32 bytes past the open window.
 : TIER-1-OPEN, ( -- )
    1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
@@ -180,6 +180,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
+   7 CLAUSE-CELL X64HARNESS:CELL!,
    DICT-SIZE 32 + CP-AT, ;
 
 : PUSH-PAD, ( -- )
@@ -274,6 +275,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
+   7 CLAUSE-CELL X64HARNESS:CELL!,
    1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
    s" w" 0 DKIND:CAST DEF-OPEN,

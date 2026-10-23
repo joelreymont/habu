@@ -165,13 +165,48 @@ variable CODE-B-O  variable CODE-B-U
    OUT$ s" task-hooks-unit-ran" CONTAINS? TTRUE
    s" hooks-warm-hb" RUN-HOOKS ;
 
-: PAIR-PATHS ( -- )
-   s" cold-hb" AT {: a:ptr u:n :}
-   a EXPORT-PATH u BYTE-COPY
-   u EXPORT-U !
-   s" warm-hb" AT {: b:ptr v:n :}
-   b IMPORT-PATH v BYTE-COPY
-   v IMPORT-U ! ;
+\ A warm hit on a file holding a `does>` definer installs the definer and its
+\ clause record as the cold compile published them. use.f calls the trusted
+\ clause by name and app.f makes a word with the definer.
+: DOES-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" does.f"
+   S\" package FILE-DOES-STATE\npublic\n: MAKE ( n -- ) create , does> ( -- n ) @ ;\ns\" MAKE;does\" s\" ptr n -- n\" trust\n;package\n" PUT
+   s" use.f"
+   S\" require does.f\npackage FILE-DOES-USE\npublic\ncreate SEVEN 7 ,\n: SEVEN@ ( -- n ) SEVEN FILE-DOES-STATE:MAKE;does ;\n;package\n" PUT
+   s" app.f" S\" require does.f\nrequire use.f\n5 FILE-DOES-STATE:MAKE FIVE\n: MAIN ( -- ) FIVE . FILE-DOES-USE:SEVEN@ . ;\n" PUT ;
+
+\ The definer's prelude grows, so its clause starts later in its body.
+: DOES-MOVED ( -- )
+   s" does.f"
+   S\" package FILE-DOES-STATE\npublic\n: MAKE ( n -- ) dup 1 + create , drop does> ( -- n ) @ ;\ns\" MAKE;does\" s\" ptr n -- n\" trust\n;package\n" PUT ;
+
+\ The product built with code prints want; a failed build left no product to run.
+: RUN-DOES ( n ptr u8 n ptr u8 n -- )
+   {: code:n name:ptr nameu:n want:ptr wantu:n :}
+   code 0<> if exit then
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   name nameu AT s" " CAPTURE SUCCESS
+   OUT$ want wantu CONTAINS? TTRUE ;
+
+\ The comparisons read the product at EXPORT-PATH against the one at IMPORT-PATH.
+: PATH-A! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a EXPORT-PATH u BYTE-COPY u EXPORT-U ! ;
+: PATH-B! ( ptr u8 n -- )
+   {: b:ptr v:n :}
+   b IMPORT-PATH v BYTE-COPY v IMPORT-U ! ;
+: PAIR-PATHS ( -- ) s" cold-hb" AT PATH-A! s" warm-hb" AT PATH-B! ;
+
+\ Both products' whole files, read into IMAGE-A and IMAGE-B; leaves their sizes.
+: READ-PAIR ( -- n n )
+   EXPORT-PATH EXPORT-U @ FILE-SIZE {: asize:n :}
+   IMPORT-PATH IMPORT-U @ FILE-SIZE {: bsize:n :}
+   asize IMAGE-A-RESERVE
+   bsize IMAGE-B-RESERVE
+   EXPORT-PATH EXPORT-U @ 0 IMAGE-A BYTE-VIEW asize READ-ALL asize <> if E-FS-IO throw then
+   IMPORT-PATH IMPORT-U @ 0 IMAGE-B BYTE-VIEW bsize READ-ALL bsize <> if E-FS-IO throw then
+   asize bsize ;
 
 : SAME-CODE? ( -- bool )
    EXPORT-PATH EXPORT-U @ IMAGE-SIZE:MEASURE
@@ -179,14 +214,14 @@ variable CODE-B-O  variable CODE-B-U
    IMPORT-PATH IMPORT-U @ IMAGE-SIZE:MEASURE
    IMAGE-SIZE:CODE-BLOB-RANGE CODE-B-U ! CODE-B-O !
    CODE-A-U @ CODE-B-U @ <> if false exit then
-   EXPORT-PATH EXPORT-U @ FILE-SIZE {: asize:n :}
-   IMPORT-PATH IMPORT-U @ FILE-SIZE {: bsize:n :}
-   asize IMAGE-A-RESERVE
-   bsize IMAGE-B-RESERVE
-   EXPORT-PATH EXPORT-U @ 0 IMAGE-A BYTE-VIEW asize READ-ALL asize <> if E-FS-IO throw then
-   IMPORT-PATH IMPORT-U @ 0 IMAGE-B BYTE-VIEW bsize READ-ALL bsize <> if E-FS-IO throw then
+   READ-PAIR 2drop
    0 IMAGE-A BYTE-VIEW CODE-A-O @ BYTE+ CODE-A-U @
    0 IMAGE-B BYTE-VIEW CODE-B-O @ BYTE+ CODE-B-U @ STR= ;
+
+\ The two products' whole files are equal.
+: SAME-IMAGE? ( -- bool )
+   READ-PAIR {: asize:n bsize:n :}
+   0 IMAGE-A BYTE-VIEW asize 0 IMAGE-B BYTE-VIEW bsize STR= ;
 
 \ The first child's output, grown to its length; an empty one has no byte.
 : CUT! ( ptr u8 n -- )
@@ -194,6 +229,49 @@ variable CODE-B-O  variable CODE-B-U
    u CUT-U ! u 0= if exit then
    u CUT-RESERVE a 0 CUT u BYTE-COPY ;
 : CUT$ ( -- ptr u8 n ) CUT-U @ 0= if s" " exit then 0 CUT CUT-U @ ;
+
+\ root/product built from app.f with the empty cache root/cache of its own: it
+\ is the product a warm build of the same sources must equal.
+create COLD-CACHE FS-PATH-CAP allot  variable COLD-CACHE-U
+create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
+: COLD-BUILD ( ptr u8 n ptr u8 n -- n )
+   {: product:ptr productu:n cache:ptr cacheu:n :}
+   cache cacheu AT {: c:ptr cu:n :}
+   c cu MAKE-DIR
+   c COLD-CACHE cu BYTE-COPY cu COLD-CACHE-U !
+   s" app.f" AT {: a:ptr au:n :}
+   a COLD-SRC au BYTE-COPY au COLD-SRC-U !
+   COLD-SRC COLD-SRC-U @ product productu AT COLD-CACHE COLD-CACHE-U @
+      NATIVE-FILE-APP:BUILD
+   NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
+
+: DOES-CASE ( -- )
+   s" a warm hit installs a does> definer byte-equal to cold" T-LABEL
+   s" native-file-does" TREE
+   DOES-FILES
+   s" cold-hb" BUILD dup SUCCESS {: cold:n :}
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   cold s" cold-hb" S\" 5\n7\n" RUN-DOES
+   true NATIVE-FILE-APP:DIAG? !
+   s" warm-hb" BUILD dup SUCCESS {: warm:n :}
+   false NATIVE-FILE-APP:DIAG? !
+   ERR$ s" /does.f records=" CONTAINS? TTRUE
+   warm s" warm-hb" S\" 5\n7\n" RUN-DOES
+   cold warm or 0= if PAIR-PATHS SAME-IMAGE? TTRUE then
+   \ The definer's clause starts later. The cold reference is built in the
+   \ same tree, with a fresh cache, because a product records its source paths.
+   s" an edited does> definer misses, and so does the file that executed it, giving cold's product and output" T-LABEL
+   DOES-MOVED
+   s" moved-hb" BUILD dup SUCCESS {: moved:n :}
+   moved s" moved-hb" S\" 6\n7\n" RUN-DOES
+   s" moved-cold-hb" s" moved-cache" COLD-BUILD dup SUCCESS {: ref:n :}
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   ref s" moved-cold-hb" S\" 6\n7\n" RUN-DOES
+   ref moved or 0<> if exit then
+   s" moved-cold-hb" AT PATH-A!
+   s" moved-hb" AT PATH-B!
+   SAME-IMAGE? TTRUE ;
+
 : SAME-CUT? ( -- bool )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    EXPORT-PATH EXPORT-U @ s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ."
@@ -345,6 +423,7 @@ public
    FFI-CASE
    HOOKS-CASE
    BARE-CASE
+   DOES-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

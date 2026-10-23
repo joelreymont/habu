@@ -744,10 +744,10 @@ EPRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ clears metadata over reclaimed code
 \ FORGET's code reclamation (src/habu/xref.f) is the engine's one caller.
 EPPRIM: CODE-RECLAIM reloc-maps-clear PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH dict
 ETRUSTED-ONLY!                       \ native defining-word runtime patch
 \ `does-record ( entry len -- )` records the pending definition's `;does`
-\ clause and writes its name at CP, zero-padded to a code slot.
+\ clause, writes its name at CP, zero-padded to a code slot, and sets CLAUSE-CELL.
 EPPRIM: NPUB does-record PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 EPRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
@@ -895,7 +895,7 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
 \ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
-\ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB and TRUSTED clear;
+\ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
 \ DEF-TIER-CELL takes TIER-CELL and the TIER-PROV open cell takes CP; LASTC-CELL
 \ waits for the body (def-close, def-create). It refuses another kind, wid -1
 \ or -2 and CP at or past the code ceiling. At tier 0 it opens the record only: the JIT's
@@ -922,7 +922,7 @@ EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-close ( -- ): end the pending definition the native compiler compiled,
 \ as the engine's tier-1 `;` ends one: the TIER-PROV window def-open opened
 \ closes native, origin 1 over [open, CP), and the state def-open set clears:
-\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL. Before
+\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
 \ no definition is pending and when the pending one is not the native tier's

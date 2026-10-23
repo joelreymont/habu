@@ -309,18 +309,18 @@ public
 : IN-REGION? ( n -- bool )
    EXTERNAL? 0= ;
 
-\ A prepared definition reuses the interpreter's pending row.  Its name and
-\ wordlist were already written when the source definition opened.  All
-\ references and implementation facts have been prepared before this call.
-: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
+private
+
+\ Place a prepared body after the pending row's checks; `pad` is room the
+\ caller writes past the body.
+: IMPORT-CODE ( ptr u8 n n ptr n n ptr n n n -- n n )
    {: code:ptr size:n recorded:n calls:ptr calln:n
-      addrs:ptr addrn:n wide:bool minin:n :}
+      addrs:ptr addrn:n pad:n :}
    PENDING-IDX {: idx:n :}
    idx PENDING-CK
    size 0 <= size 3 and 0<> or if E-NPUB-RELOC throw then
    recorded CODE-SPAN:VALID? 0= if E-NPUB-RELOC throw then
    recorded CODE-SPAN:BYTES size <> if E-NPUB-RELOC throw then
-   minin 0 < minin 255 > or if E-NPUB-RELOC throw then
    calln 0 < addrn 0 < or if E-NPUB-RELOC throw then
    calln 0 ?do
       calls i cells + @ {: site:n :}
@@ -332,16 +332,53 @@ public
       site 0 < site 3 and 0<> or
       site size 4 - > or if E-NPUB-RELOC throw then
    loop
-   size ROOM-CK {: fn:n :}
+   size pad + ROOM-CK {: fn:n :}
    code fn size CODE-WINDOW
    calln 0 ?do fn calls i cells + @ + RELOC-EXTERNAL loop
    addrn 0 ?do fn addrs i cells + @ + RELOC-ADDR loop
    fn recorded idx PUBLISH-REC
-   idx APPEND-PENDING
+   idx fn ;
+
+: IMPORT-MARKS ( n bool n -- ) {: idx:n wide:bool minin:n :}
    wide if WIDE-REC then
-   minin 0<> if idx minin MIN-IN-REC then
+   minin 0<> if idx minin MIN-IN-REC then ;
+
+: MIN-IN-CK ( n -- ) {: minin:n :}
+   minin 0 < minin 255 > or if E-NPUB-RELOC throw then ;
+
+public
+
+\ A prepared definition reuses the interpreter's pending row.  Its name and
+\ wordlist were already written when the source definition opened.  All
+\ references and implementation facts have been prepared before this call.
+: IMPORT-PENDING ( ptr u8 n n ptr n n ptr n n bool n -- n )
+   {: code:ptr size:n recorded:n calls:ptr calln:n
+      addrs:ptr addrn:n wide:bool minin:n :}
+   minin MIN-IN-CK
+   code size recorded calls calln addrs addrn 0 IMPORT-CODE drop {: idx:n :}
+   idx APPEND-PENDING
+   idx wide minin IMPORT-MARKS
    NHOST:PUBLISH-TAKEN
    idx ;
+
+\ A prepared `does>` definer: its `;does` clause starts `off` bytes into the
+\ body and publishes as the next record, as PUBLISH-PENDING-DOES lays it out.
+\ The checker slice installed beside it carries the clause's checker facts.
+: IMPORT-PENDING-DOES ( ptr u8 n n ptr n n ptr n n bool n n -- n )
+   {: code:ptr size:n recorded:n calls:ptr calln:n
+      addrs:ptr addrn:n wide:bool minin:n off:n :}
+   minin MIN-IN-CK
+   off 0 <= off size >= or off 3 and 0<> or if E-NPUB-RELOC throw then
+   PENDING-IDX {: idx:n :}
+   idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
+   code size recorded calls calln addrs addrn idx DOES-NAME-PAD IMPORT-CODE
+      {: at:n fn:n :}
+   fn off + recorded off - DOES-RECORD
+   at APPEND-PENDING
+   at wide minin IMPORT-MARKS
+   at 1+ APPEND-PENDING
+   NHOST:PUBLISH-TAKEN
+   at ;
 
 private
 get-current prot-wid-add

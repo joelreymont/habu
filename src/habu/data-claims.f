@@ -281,6 +281,7 @@ create TAB
    POLICY-NDICT-CELL                  1 cells                 CLAIM POLICY-NDICT-CELL
    POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
+   CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
    0 ,  0 ,

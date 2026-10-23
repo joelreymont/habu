@@ -96,7 +96,7 @@ variable SPIN-U
 \ definition and rolled it back. OI-ROOM is the data space left below its
 \ ceiling, and OI-ALIAS gives the last record a second name. OI-ENDED. prints
 \ the cells a definition's end clears or'd together, 0 when all are: PEND, the
-\ provenance window, TSIG, TCSIG, DOESB, TRUSTED and the definition's tier. OI-DX holds a
+\ provenance window, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and the definition's tier. OI-DX holds a
 \ private does> definer whose clause name is longer than DNAME-INL bytes, and
 \ OI-DX. prints whether the record above its public export is that export's
 \ clause, and the clause's name. OI-DH holds a private definer and, in its
@@ -157,7 +157,7 @@ variable SPIN-U
    s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
    s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
    s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
-   s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
+   s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ CLAUSE-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
    s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
    s" TYPED-VARIABLE OI-SHOWN [ -- ]" GE-SRC-LINE
    s" : OI-SHOW ( -- ) OI-SHOWN @ execute ; immediate  s~ OI-SHOW~ 0 parse-imm" QLINE
