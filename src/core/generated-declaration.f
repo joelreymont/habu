@@ -304,6 +304,14 @@ public
    a u SLOTS REASONS @ + SLOT!
    1 REASONS +! ;
 
+\ The last declaration's packet slots back to zero at a file boundary or image
+\ capture (generated-declaration-protection.f SNAPSHOT-RESET), so a cached load
+\ and a fresh one capture the same bytes. The reason rows past SLOTS are load
+\ state and stay.
+: SNAPSHOT-RESET ( -- )
+   SLOTS SPAN-CAP * 0 ?do 0 SPAN-BUF i + c! loop
+   SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop ;
+
 private
 
 \ The codes of the owners loaded before this file: sumtype.f's grammar codes,

@@ -90,19 +90,18 @@ package STRUCTURE-MAKE
 \ sets the variant range, and derives the constructor package.
 \ GENERATE has already validated its local preconditions; any evaluator or checker
 \ rejection propagates to DECLARATION-TRANSACTION:RUN for full rollback.
-variable SM-RSTART   variable SM-VSTART
 : SM-EMIT-ROWS ( n n n n -- )
    {: tok:n fam:n fs:n fc:n :}
-   SCHEMA-ROOT-N@ SM-RSTART !
+   SCHEMA-ROOT-N@ {: rstart:n :}
    0 BEGIN dup fc < WHILE
       dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
       1 +
    REPEAT drop
-   SUMV-N@ SM-VSTART !
-   fam s" make"   0 SM-RSTART @ fc  fam TFAM-SLOTS@ SUMV-ADD drop
-   fam s" unmake" 1 SM-RSTART @ fc  fam TFAM-SLOTS@ SUMV-ADD drop
-   fam SM-VSTART @ 2 TFAM-VAR-RANGE!
-   fam SM-VSTART @ 2 TDECL-CTOR-PUBLISH ;
+   SUMV-N@ {: vstart:n :}
+   fam s" make"   0 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam s" unmake" 1 rstart fc  fam TFAM-SLOTS@ SUMV-ADD drop
+   fam vstart 2 TFAM-VAR-RANGE!
+   fam vstart 2 TDECL-CTOR-PUBLISH ;
 
 \ --- validation pass (checked; no registry write). A reject here leaves every
 \ registry byte-identical, so publication is attempted only after it wholly passes.

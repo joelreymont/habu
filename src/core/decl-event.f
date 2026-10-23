@@ -164,8 +164,6 @@ variable DEV-BASE-FLD \ field-record committed count captured at the OUTER open
 variable DEV-FLD-ORD  \ running field-event ordinal within the outer transaction
 variable DEV-VAR-ORD  \ running variant tag ordinal within the outer transaction
 variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-VARIANT
-variable DEV-I        \ private scan index (dedup)
-variable DEV-FOUND    \ private dedup-scan hit marker
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
@@ -301,26 +299,20 @@ variable DEV-TX-SERIAL
 : DEV-PROV-FLD@ ( n -- n ) DEV-ROW DEV.FLD @ ;
 : DEV-PROV-OWNER@ ( n -- n ) DEV-ROW DEV.OWNER @ ;
 : DEV-CUR-HAS-KIND? ( n -- bool ) {: k:n :}
-   0 DEV-FOUND !
-   DEV-CUR-START DEV-I !
-   BEGIN DEV-I @ DEV-N @ < WHILE
-      DEV-I @ DEV-PROV-KIND@ k =
-      DEV-I @ DEV-PROV-OWNER@ DEV-CUR-OWNER = and
-         IF -1 DEV-FOUND ! THEN
-      DEV-I @ 1 + DEV-I !
-   REPEAT
-   DEV-FOUND @ 0 <> ;
+   0
+   DEV-N @ DEV-CUR-START ?do
+      i DEV-PROV-KIND@ k =
+      i DEV-PROV-OWNER@ DEV-CUR-OWNER = and IF 1 + THEN
+   loop
+   0 <> ;
 : DEV-CUR-HAS-KIND-VAR? ( n n -- bool ) {: k:n v:n :}
-   0 DEV-FOUND !
-   DEV-CUR-START DEV-I !
-   BEGIN DEV-I @ DEV-N @ < WHILE
-      DEV-I @ DEV-PROV-KIND@ k =
-      DEV-I @ DEV-PROV-VAR@ v = and
-      DEV-I @ DEV-PROV-OWNER@ DEV-CUR-OWNER = and
-         IF -1 DEV-FOUND ! THEN
-      DEV-I @ 1 + DEV-I !
-   REPEAT
-   DEV-FOUND @ 0 <> ;
+   0
+   DEV-N @ DEV-CUR-START ?do
+      i DEV-PROV-KIND@ k =
+      i DEV-PROV-VAR@ v = and
+      i DEV-PROV-OWNER@ DEV-CUR-OWNER = and IF 1 + THEN
+   loop
+   0 <> ;
 
 \ --- declaration open + header clauses.
 : DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
@@ -684,6 +676,8 @@ private
 \ instead. The three cursors go back to zero with the arenas because the boot
 \ stores they point at are the small baked ones. Event scratch has no durable
 \ contents; declarations publish their consequences into separate registries.
+\ The boot stores clear whole as well: rows the last declaration left in them
+\ would differ between a build that reuses its files and a fresh one.
 \
 \ It runs at depth 0 or not at all: an image captured mid-declaration would carry
 \ frames whose field-owner and checker savepoints no one will ever close.
@@ -693,6 +687,8 @@ private
    THEN
    DEV-A-BOOT DEV-A-P !                DEV-CAP-INIT DEV-CAP-V !
    DEV-TX-BOOT DEV-TX-P !              DEV-TX-CAP-INIT DEV-TX-CAP-V !
+   DEV-A-BOOT 0 DEV-CAP-INIT DEV-REC * CELL / ARENA-CELLS-ZERO
+   DEV-TX-BOOT 0 DEV-TX-CAP-INIT DEV-TX-REC * CELL / ARENA-CELLS-ZERO
    DEV-RESET ;
 
 \ ---------------------------------------------------------------------------

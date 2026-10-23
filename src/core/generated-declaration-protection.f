@@ -121,7 +121,8 @@ private
    STAGE-ENSURE ;
 
 \ The generated-declaration participants' image-snapshot reset: protection
-\ (this file), then dictionary, then the event transaction. This word is the
+\ (this file), then dictionary, the event transaction, the STRUCTURE front end
+\ and the reject packet. This word is the
 \ chain's anchor because this file is the last participant to load and therefore
 \ the one that owns TDECL-OWNER-SNAPSHOT-XT, the hook CHECKER-CAPTURE-PREPARE
 \ reaches all of them through; an earlier participant cannot name a later one,
@@ -133,7 +134,9 @@ private
    STAGE-BOOT STAGE-P !
    CAP-INIT STAGE-CAP !
    GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
-   DECL-EVENT:SNAPSHOT-RESET ;
+   DECL-EVENT:SNAPSHOT-RESET
+   STRUCTURE-DECL:SNAPSHOT-RESET
+   DECL-REJECT:SNAPSHOT-RESET ;
 
 : INSTALL ( -- )
    0 STAGE-N !
@@ -263,6 +266,8 @@ undefine GENERATED-DECL-DICTIONARY:SNAPSHOT
 undefine GENERATED-DECL-DICTIONARY:ROLLBACK
 undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
 undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
+undefine STRUCTURE-DECL:SNAPSHOT-RESET
+undefine DECL-REJECT:SNAPSHOT-RESET
 undefine GENERATED-DECL-PROTECTION:SNAPSHOT
 undefine GENERATED-DECL-PROTECTION:PREPARE
 undefine GENERATED-DECL-PROTECTION:PUBLISH

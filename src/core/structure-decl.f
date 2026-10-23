@@ -90,7 +90,6 @@ variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
-variable SD-TI         \ byte index within one field type token
 
 $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
@@ -182,61 +181,67 @@ SD-RESET
 : SD-DELIM? ( n -- bool )
    dup 60 = over 44 = or swap 62 = or ;
 
-: SD-ATOM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SD-TI @ {: start:n :}
+\ The field type parser threads its byte cursor: each word takes the index it
+\ starts at and answers the index after what it consumed.
+: SD-ATOM ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}
+   start
    BEGIN
-      SD-TI @ u < IF a SD-TI @ + c@ SD-DELIM? 0= ELSE NO THEN
+      dup u < IF a over + c@ SD-DELIM? 0= ELSE NO THEN
    WHILE
-      SD-TI @ 1 + SD-TI !
-   REPEAT
-   SD-TI @ start = IF
-      s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   a start + SD-TI @ start - ;
-
-defer SD-PARSE-NODE ( ptr u8 n n -- n )
-
-: SD-APP ( ptr u8 n n -- n ) {: a:ptr u:n fam:n :}
-   SD-ARG-N @ {: base:n :}
-   0
-   BEGIN
-      dup fam TFAM-ARITY@ >= IF
-         s" field type has too many arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-      dup fam swap TFAM-PK@ a u rot SD-PARSE-NODE SD-ARG+
       1 +
-      SD-TI @ u >= IF
-         s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-      a SD-TI @ + c@ dup 44 = IF
-         drop SD-TI @ 1 + SD-TI !
-      ELSE 62 = IF
-         SD-TI @ 1 + SD-TI !
-         dup fam TFAM-ARITY@ <> IF
-            s" field type has wrong arity" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-         FIELD-MISS @ IF base SD-ARG-N ! drop 0 EXIT THEN
-         SCHEMA-ROOT-N@ {: start:n :}
-         base BEGIN dup SD-ARG-N @ < WHILE
-            dup cells SD-ARGS + @ SCHEMA-ROOT+ drop 1 +
-         REPEAT drop
-         base SD-ARG-N !
-         fam start rot SCHEMA-APP EXIT
-      ELSE
-         s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw
-      THEN THEN
-   AGAIN ;
+   REPEAT {: j:n :}
+   j start = IF
+      s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a start + j start - j ;
 
-defer SD-LOOSE-NODE ( ptr u8 n -- )
-: SD-LOOSE-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   SD-TI @ u >= IF
+defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
+
+\ Argument K of FAM's application at cursor I and every one after it, each
+\ pushed as an argument row; answers the argument count and the cursor past `>`.
+: SD-APP-ARGS ( ptr u8 n n n n -- n n ) {: a:ptr u:n fam:n k:n i:n :}
+   k fam TFAM-ARITY@ >= IF
+      s" field type has too many arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a u i  fam k TFAM-PK@  SD-PARSE-NODE {: node:n j:n :}
+   node SD-ARG+
+   j u >= IF
       s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   a SD-TI @ + c@ 62 = IF SD-TI @ 1 + SD-TI ! EXIT THEN
-   BEGIN
-      a u SD-LOOSE-NODE
-      SD-TI @ u >= IF
-         s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-      a SD-TI @ + c@ dup 62 = IF drop SD-TI @ 1 + SD-TI ! EXIT THEN
-      44 <> IF
-         s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-      SD-TI @ 1 + SD-TI !
-   AGAIN ;
+   a j + c@ {: c:n :}
+   c 44 = IF a u fam k 1 + j 1 + RECURSE EXIT THEN
+   c 62 = IF k 1 + j 1 + EXIT THEN
+   s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw ;
+
+: SD-APP ( ptr u8 n n n -- n n ) {: a:ptr u:n fam:n i:n :}
+   SD-ARG-N @ {: base:n :}
+   a u fam 0 i SD-APP-ARGS {: k:n j:n :}
+   k fam TFAM-ARITY@ <> IF
+      s" field type has wrong arity" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   FIELD-MISS @ IF base SD-ARG-N ! 0 j EXIT THEN
+   SCHEMA-ROOT-N@ {: start:n :}
+   base BEGIN dup SD-ARG-N @ < WHILE
+      dup cells SD-ARGS + @ SCHEMA-ROOT+ drop 1 +
+   REPEAT drop
+   base SD-ARG-N !
+   fam start k SCHEMA-APP j ;
+
+defer SD-LOOSE-NODE ( ptr u8 n n -- n )
+
+\ The loose arguments at cursor I and every one after it; answers the cursor
+\ past `>`.
+: SD-LOOSE-ARGS ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   a u i SD-LOOSE-NODE {: j:n :}
+   j u >= IF
+      s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a j + c@ {: c:n :}
+   c 62 = IF j 1 + EXIT THEN
+   c 44 <> IF
+      s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a u j 1 + RECURSE ;
+
+: SD-LOOSE-APP ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   i u >= IF
+      s" unclosed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
+   a i + c@ 62 = IF i 1 + EXIT THEN
+   a u i SD-LOOSE-ARGS ;
 
 : SD-LOOSE-ATOM ( ptr u8 n -- ) {: a:ptr u:n :}
    u 1 = IF
@@ -257,47 +262,43 @@ defer SD-LOOSE-NODE ( ptr u8 n -- )
    a u TYPE-MAY-ARRIVE-XT IF SD-MISSING! EXIT THEN
    s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
-: SD-LOOSE-NODE-IMPL ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SD-ATOM {: na:ptr nu:n :}
-   SD-TI @ u < IF a SD-TI @ + c@ 60 = ELSE NO THEN IF
+: SD-LOOSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
+   a u i SD-ATOM {: na:ptr nu:n j:n :}
+   j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? IF
          {: fam:n :}
-         SD-TI @ 1 + SD-TI !
-         a u fam SD-APP drop EXIT
+         a u fam j 1 + SD-APP nip EXIT
       THEN drop
       na nu TYPE-MAY-ARRIVE-XT 0= IF
          s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
       SD-MISSING!
-      SD-TI @ 1 + SD-TI !
-      a u SD-LOOSE-APP EXIT
+      a u j 1 + SD-LOOSE-APP EXIT
    THEN
-   na nu SD-LOOSE-ATOM ;
+   na nu SD-LOOSE-ATOM j ;
 : SD-LOOSE-INSTALL ( -- ) [: SD-LOOSE-NODE-IMPL ;] is SD-LOOSE-NODE ;
 SD-LOOSE-INSTALL
 
-: SD-PARSE-NODE-IMPL ( ptr u8 n n -- n ) {: a:ptr u:n want:n :}
-   a u SD-ATOM {: na:ptr nu:n :}
-   SD-TI @ u < IF a SD-TI @ + c@ 60 = ELSE NO THEN IF
+: SD-PARSE-NODE-IMPL ( ptr u8 n n n -- n n ) {: a:ptr u:n i:n want:n :}
+   a u i SD-ATOM {: na:ptr nu:n j:n :}
+   j u < IF a j + c@ 60 = ELSE NO THEN IF
       na nu FIELD-FAM? 0= IF
          drop
          na nu TYPE-MAY-ARRIVE-XT 0= IF
             s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
          SD-MISSING!
-         SD-TI @ 1 + SD-TI !
-         a u SD-LOOSE-APP 0 EXIT
+         0 a u j 1 + SD-LOOSE-APP EXIT
       THEN
       {: fam:n :}
-      SD-TI @ 1 + SD-TI !
-      a u fam SD-APP EXIT
+      a u fam j 1 + SD-APP EXIT
    THEN
-   nu 1 = IF na nu want LETTER-TYPE EXIT THEN
-   na nu CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
+   nu 1 = IF na nu want LETTER-TYPE j EXIT THEN
+   na nu CON-OF dup 0 <> IF SCHEMA-CON j EXIT THEN drop
    na nu FIELD-FAM? IF {: fam:n :}
       fam TFAM-ARITY@ 0 <> IF
          s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-      fam 0 0 SCHEMA-APP EXIT
+      fam 0 0 SCHEMA-APP j EXIT
    THEN drop
-   na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 EXIT THEN
+   na nu TYPE-MAY-ARRIVE-XT IF SD-MISSING! 0 j EXIT THEN
    s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SD-PARSER-INSTALL ( -- ) [: SD-PARSE-NODE-IMPL ;] is SD-PARSE-NODE ;
@@ -315,9 +316,9 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
       2drop NEXT RECURSE
       FIELD-MISS @ IF drop 0 EXIT THEN
       REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
-   0 SD-TI ! 0 SD-ARG-N !
-   2dup PK-CELL SD-PARSE-NODE {: node:n :}
-   SD-TI @ over <> IF
+   0 SD-ARG-N !
+   2dup 0 PK-CELL SD-PARSE-NODE {: node:n j:n :}
+   j over <> IF
       2drop s" malformed field type application" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    2drop node ;
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
@@ -502,6 +503,13 @@ SD-QUOT-INSTALL
    s" structure" s" ;structure" [: SD-RESET DRIVE ;] ;
 
 public
+
+\ The last declaration's parse state back to zero at a file boundary or image
+\ capture (generated-declaration-protection.f SNAPSHOT-RESET), so a cached load
+\ and a fresh one capture the same bytes.
+: SNAPSHOT-RESET ( -- )
+   SD-RESET
+   0 FAM !  0 FLDBASE !  0 NFLD !  0 SD-CELLS ! ;
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
