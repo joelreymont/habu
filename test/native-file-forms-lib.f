@@ -121,10 +121,10 @@ variable CODE-B-O  variable CODE-B-U
 : BUILD-PAIR ( ptr u8 n ptr u8 n -- )
    {: export:ptr exportu:n imported:ptr importu:n :}
    export exportu BUILD SUCCESS
-   OUT$ s" definition hits 0" CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TTRUE
    imported importu BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ s" definition hits 0" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE
    export exportu AT-A {: a:ptr au:n :}
    imported importu AT-B {: b:ptr bu:n :}
    \ Compare emitted code and live extents, then run both applications below.

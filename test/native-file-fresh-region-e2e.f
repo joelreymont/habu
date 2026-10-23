@@ -37,8 +37,8 @@ public
    s" app.f" S\" require unit.f\n: TP ( -- ) RQ:USE-INF drop ;\n: MAIN ( -- ) ;\n" PUT
    s" warm client of one call builds from the cached record" T-LABEL
    s" warm-hb" BUILD 0 T=
-   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" files reused 0" CONTAINS? TFALSE
    s" app.f" S\" require unit.f\n: T3 ( -- ) RQ:USE-INF RQ:USE-INF RQ:SAME-ID ;\n: MAIN ( -- ) ;\n" PUT
    s" warm client comparing two calls as one region refuses" T-LABEL
    s" refused-hb" BUILD 70 T=

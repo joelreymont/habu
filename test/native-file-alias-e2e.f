@@ -42,13 +42,13 @@ public
    s" direct-cache" AT MAKE-DIR
    SOURCE ALIAS CONSUMER
    RUN-DIRECT SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n42\n" CONTAINS? TTRUE
    CHANGED-CONSUMER
    RUN-DIRECT SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE
    RUN-APP SUCCESS
    OUT$ S\" 44\n44\n" CONTAINS? TTRUE
    BUILD-APP SUCCESS

@@ -29,14 +29,14 @@ variable IMAGE-U
    GT-OUT$ s" callback declaration source ran" CONTAINS? 0= if
       s" callback initializer execution" GE-FAIL
    then
-   s" definition hits " s" definition cache counts" GE-EXPECT-OUT-HAS
+   s" files reused " s" file reuse counts" GE-EXPECT-OUT-HAS
    hit if
-      GT-OUT$ s" definition hits 0" CONTAINS? if
-         s" callback definition reuse" GE-FAIL
+      GT-OUT$ s" files reused 0" CONTAINS? if
+         s" callback file reuse" GE-FAIL
       then
    else
-      GT-OUT$ s" definition hits 0" CONTAINS? 0= if
-         s" cold callback definition build" GE-FAIL
+      GT-OUT$ s" files reused 0" CONTAINS? 0= if
+         s" cold callback file build" GE-FAIL
       then
    then
    IMAGE$ EXECUTABLE? 0= if s" callback FILE image missing" GE-FAIL then ;

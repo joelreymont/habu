@@ -58,12 +58,12 @@ public
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
-   \ The failed cold build still cached definitions, so the warm build refuses
-   \ the raw pointer against cached code.
+   \ The failed cold build still stored app.f's object, so the warm build reuses
+   \ it and refuses the raw pointer against reused code.
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE
    s" undeclared code/dict pointer" SAID? TTRUE
    s" unaligned pointer declines" T-LABEL
    COLD-UNALIGNED
@@ -98,8 +98,8 @@ public
    OUT$ S\" 5\n456\n" CONTAINS? TTRUE
    BUILD 0 T=
    OUT$ s" strict-source-ran" CONTAINS? TTRUE
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE
    RUN-IMAGE 0 T=
    OUT$ S\" 5\n456\n" CONTAINS? TTRUE
    T-REPORT

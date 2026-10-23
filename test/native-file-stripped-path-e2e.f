@@ -37,9 +37,9 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    AT s" " CAPTURE SUCCESS
    OUT$ S\" 42\n" T$= ;
 
-: HITS ( -- )
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
+: REUSED ( -- )
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE ;
 
 public
 : MAIN ( -- )
@@ -50,10 +50,10 @@ public
    s" leaf.f" S\" package FILE-PATH-LEAF\npublic\n: VALUE ( -- n ) 42 ;\n;package\n" PUT
    s" app.f" S\" require leaf.f\n: MAIN ( -- ) FILE-PATH-LEAF:VALUE . ;\n" PUT
    s" cache" MAKER SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TTRUE
    s" app.f" S\" require leaf.f\n\n: MAIN ( -- ) FILE-PATH-LEAF:VALUE . ;\n" PUT
    s" cache" MAKER SUCCESS
-   HITS
+   REUSED
    s" hb-aot-got" CHECK-RUN
    \ Keep the simple leaf above free of library requirements: its linker loads
    \ them after the capture window. This app loads them inside the window.

@@ -117,11 +117,11 @@ public
    a ROOT u BYTE-COPY u ROOT-U !
    PREPARE
    s" cold-hb" FULL-BUILD SUCCESS
-   OUT OUT-U @ s" definition hits 0" CONTAINS? TTRUE
+   OUT OUT-U @ s" files reused 0" CONTAINS? TTRUE
    s" cold-hb" S\" 8\n12582912\n0\n2\n" CHECK-RUN
    s" warm-hb" FULL-BUILD SUCCESS
-   OUT OUT-U @ s" definition hits " CONTAINS? TTRUE
-   OUT OUT-U @ s" definition hits 0" CONTAINS? TFALSE
+   OUT OUT-U @ s" files reused " CONTAINS? TTRUE
+   OUT OUT-U @ s" files reused 0" CONTAINS? TFALSE
    s" warm-hb" S\" 8\n12582912\n0\n2\n" CHECK-RUN
    STRIPPED-APP
    BUILD SUCCESS
