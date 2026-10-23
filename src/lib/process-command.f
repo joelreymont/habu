@@ -11,7 +11,15 @@
 \ static context, CTX0, so every caller that shares them is single-task, as it
 \ always was. Neither package writes the process-wide argv/env staging of
 \ src/lib/process-argv.f and src/lib/process-env.f: an owned run spawns from the
-\ context's own vectors. See docs/threads.md.
+\ context's own vectors.
+\
+\ CANCELLATION. CMD:CANCEL-FD! lends a pipe's read end to the next run. A byte
+\ or a closed writer cancels it: the run kills the child's tree, reaps the
+\ child, closes its captures and throws E-PROC-CANCELLED, which OUTCOME@ and
+\ RC@ throw again until the next run or reset. A completion already collected
+\ wins, and PROC-STOP is answered first. The lent descriptor is never read or
+\ closed, so a byte left from one request cancels the next run: drain or
+\ replace the pipe before lending it again.
 \
 \ External callers use the qualified public API: the command-builder words
 \ (PROC-CMD:RESET, PROC-CMD:WIPE, PROC-CMD:ARG+, PROC-CMD:ENV+,

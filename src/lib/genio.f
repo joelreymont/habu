@@ -9,9 +9,8 @@
 \ device table itself - the rows and the eight operations in them - is
 \ PROCESS-WIDE and shared, which is what lets a task inherit its creator's
 \ devices; installing or removing a device is not a per-task act.
-\ See docs/threads.md.
 \
-\ THE SHAPE (docs/genio.md, docs/socket-models.md section 2). A device is eight
+\ THE SHAPE (docs/design.md "Models taken from other Forths"). A device is eight
 \ operations and one cell of its own data. The terminal is device 0 and is
 \ built in; every other device takes a row of a small fixed table, so a device
 \ handle is a row number and nothing that routes I/O is ever an address. The
@@ -32,6 +31,23 @@
 \ failure instead, and the next KEY, READ, ACCEPT or FLUSH on that device raises
 \ E-GENIO-IO. Every other operation is called from ordinary Habu code and
 \ reports at once.
+\
+\ HANDLES. A handle is a row and a generation: 0 is the terminal, and the
+\ GENIO-ABI:DEVICES further rows are a pool. CLOSE frees the row and moves its
+\ generation on, so an older handle is E-GENIO-STATE at CLOSE, OUTPUT!, INPUT!
+\ and WITH-IO; a close operation that throws still frees the row, then raises.
+\ Rows are claimed by compare-and-swap (FREE -> LIVE, LIVE -> CLOSING), so two
+\ tasks closing one handle cannot both run its close. One task builds and
+\ closes a device: its write row lives in that task's DATA.
+\
+\ ROUTING. emit, type, ., cr and the REPL's ok funnel through src/habu/rt.f
+\ G-OUT to the current output device, and requiring this file installs
+\ READ-LINE as REPL-READ. Diagnostics (crash reports, die, E-* lines) stay on
+\ descriptor 2. The funnel falls back to descriptor 1 for a write that
+\ re-entered type, a routing cell outside 1..DEVICES and an unregistered row.
+\
+\ IMAGES. The IMAGE-LIFECYCLE reset routes back to the terminal, frees every
+\ row and moves every generation on, so no capture carries a device.
 require src/lib/errors.f
 require src/lib/prelude.f
 require src/lib/num-types.f
@@ -350,8 +366,8 @@ public
 
 \ ---- building and choosing devices -------------------------------------------
 
-\ Build a device from its table. The operations are given in the order
-\ docs/socket-models.md section 2 lists them -- emit, key, key?, read, write,
+\ Build a device from its table. The operations are given in this order --
+\ emit, key, key?, read, write,
 \ accept, flush, close -- and the final cell is the device's own data: a TCP4
 \ connection, a descriptor, a buffer identity. The write operation is also
 \ published to the engine's output funnel, which is what makes `.`, `type` and
@@ -612,7 +628,7 @@ private
    SCRATCH 1 TCP-RECEIVE drop
    SCRATCH c@ ;
 
-\ TCP4's readiness question runs on the AIO loop (docs/aio.md), so a program
+\ TCP4's readiness question runs on the AIO loop (src/lib/aio.f), so a program
 \ that asks a TCP device whether a byte is waiting starts the loop first; the
 \ other operations of this device are transfers and need no loop.
 : TCP-READY? ( -- bool )

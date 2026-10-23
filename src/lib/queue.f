@@ -1,4 +1,9 @@
 \ queue.f - a bounded cell queue for many producers and many consumers.
+\
+\ STORAGE CLASS. PROCESS-WIDE: every queue is shared by all tasks, the main
+\ thread included, and safe for any number of them; a live queue holds three
+\ semaphores from src/lib/task.f's pool. Elements are cells: a pointer pushed
+\ through a queue stays the sender's to keep alive.
 
 s" src/lib/errors.f" required
 s" src/lib/task.f" required

@@ -37,6 +37,9 @@
 \
 \ The child inherits the registrations with the rest of the process: it runs the
 \ same loaded code, so they are its own.
+\
+\ STORAGE CLASS. PROCESS-WIDE: one registry for the image, appended under an
+\ atomic lock.
 
 require src/lib/errors.f
 \ HOOKS below is a checked quotation store; the optimizing tier lowers such a

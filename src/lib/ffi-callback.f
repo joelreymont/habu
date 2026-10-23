@@ -1,4 +1,4 @@
-\ ffi-callback.f - C callbacks into checked Habu (docs/ffi-callback.md).
+\ ffi-callback.f - C callbacks into checked Habu.
 \
 \ CALLBACK: NAME ( in -- out ) clauses ;CALLBACK declares a C entry and generates
 \   NAME           ( -- FFI-CB:callback )  the descriptor;
@@ -17,6 +17,28 @@
 \ function pointer; UNBIND releases it. A call arriving on an unbound slot, on
 \ a context busy on another thread or on one with no outbound call in flight
 \ fails closed: the thunk exits 106 (ENGINE-ERROR:CALLBACK).
+\
+\ CONTEXTS. A context admits one thread at a time; a second is refused, never
+\ made to wait. TASK:SELF-CONTEXT is the calling task's region (C calls back
+\ inside a foreign call it made), TASK:CONTEXT an exposed task's (a foreign
+\ thread enters), TASK:MAIN-BASE FFI:>CELL the main region (main thread only).
+\
+\ THE BODY may call C again, but a nested call shares the task's FFI scratch,
+\ so a scratch area C reads through a pointer is not safe across it. It may
+\ not UNBIND its own slot, keep a ptr u8 argument past its return, or define:
+\ exit $4F with a task live, exit 106 otherwise. TASK:PAUSE inside it only
+\ yields, so TASK:HALT and TASK:KILL take effect after C returns.
+\
+\ LIFETIME. A binding lasts until UNBIND, UNEXPOSE, the end of the task whose
+\ region it names, or a capture; the caller drains C's calls first. A capture
+\ drops idle bindings and ends on a slot with a thread inside, so a stripped
+\ application binds in its entry word. A declaration defines words: declare
+\ every callback before the first task starts.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the slots, descriptor and dispatch tables and
+\ fault cells are one set for the image. The tables grow contiguously and a
+\ slot is never given back, so a C pointer stays valid; the binding rows are
+\ src/lib/task.f's.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/codegen.f

@@ -1,4 +1,9 @@
 \ process-argv.f - checked argv process helpers.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the argv table and its byte buffer are one set
+\ for the image, so a task preparing a spawn through them holds them until the
+\ spawn resets them. An owned CMD run (src/lib/process-command.f) passes its
+\ own vectors and touches none of this.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required

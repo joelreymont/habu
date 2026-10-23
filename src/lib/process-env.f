@@ -21,6 +21,10 @@
 \
 \ Every capacity refusal writes one line to stderr naming what filled up, the
 \ count it saw and the ceiling, then throws E-PROC-ENV.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the environment table and buffer and the
+\ inherited-default table are one set for the image, held by the task that
+\ prepares a spawn until the spawn resets them; an owned CMD run uses none.
 
 require src/lib/errors.f
 require src/lib/string.f

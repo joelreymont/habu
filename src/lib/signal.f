@@ -13,7 +13,11 @@
 \ share SA-ACT, SA-OLD and the caught set, so they answer to that task alone.
 \ FD, PENDING?, WAIT and TAKE touch none of the three and are callable from any
 \ task; the four-byte staging span WAIT and TAKE read into is a TASK:+USER row,
-\ so two tasks reading the read end never share it. See docs/signal.md.
+\ so two tasks reading the read end never share it.
+\
+\ WAIT and PENDING? wait on the AIO loop: AIO:START first, else E-AIO-STATE.
+\ TAKE reads without waiting and runs no loop, for a program with a poll of
+\ its own.
 \
 \ HOSTS. Linux and macOS. The signal numbers, SA_RESTART and the
 \ struct sigaction layout all differ between the two and are selected here the
@@ -446,7 +450,7 @@ public
 \ SIGTERM, SIGINT and SIGHUP ask a process to stop. Under the default action a
 \ program that runs children or makes scratch ends where it stands, and what it
 \ started and made outlives it: a spawned child leads a process group of its
-\ own (docs/process-pty.md) and runs on under init, and nothing removes the
+\ own (src/lib/process.f) and runs on under init, and nothing removes the
 \ scratch. Such a program calls CATCH-STOPS before it starts either, asks TAKE
 \ wherever it waits, and answers a signal by ending what it started and
 \ removing what it made, then DIE-OF. The gate root (test/gate-pool.f), the pg

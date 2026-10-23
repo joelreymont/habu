@@ -10,7 +10,15 @@
 \ each is one installed policy, not per-call state. A capture that ends its
 \ child early walks the process table through src/lib/process-tree.f, whose
 \ storage is process-wide and taken one walk at a time.
-\ See docs/threads.md.
+\
+\ SPAWN. A spawned child leads a process group of its own before it execs:
+\ macOS spawns with POSIX_SPAWN_SETPGROUP, and on Linux the child calls
+\ setpgid(0,0) and the parent answers a pid only once a close-on-exec pipe
+\ reports the exec or its failure. A parent-side setpgid would race; the
+\ gate pool's reaper relies on this. A negative fd leaves that stream as it
+\ is, and a stdio fd stays on 0, 1 or 2 even when marked close-on-exec. Mark
+\ parent-only pipe and pty ends close-on-exec, or a child holds a writer and
+\ the parent never sees EOF.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-WAIT-BOUNDED's deadline

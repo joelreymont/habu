@@ -4,10 +4,22 @@
 \ struct and the saved termios are one task-local row, so each task drives
 \ its own port, and the byte spans READ and WRITE take are caller-owned. The
 \ libc bindings are FUNCTION: rows in package FFI's PROCESS-WIDE table, which
-\ resolves each symbol at its first call.
-\ See docs/threads.md.
+\ resolves each symbol at its first call and forgets it when an image is
+\ prepared. Separate tasks may drive separate ports; calls must not nest
+\ within one task.
 \
-\ The wait is the AIO loop's (docs/aio.md): every READ and WRITE readiness
+\ CONTRACT. OPEN8N1 opens a nonblocking, close-on-exec, O_NOCTTY raw 8N1
+\ stream (Linux: N_TTY, numeric termios2 rates; macOS: numeric termios
+\ speeds), keeps HUPCL, and reads the settings back: anything short of the
+\ contract is `unsupported`. A failed configure restores the old settings
+\ best-effort and closes. CLOSE consumes the handle even when it fails; the
+\ terminal's settings persist after it. READ and WRITE move one available
+\ chunk, possibly short; a zero-byte request is refused. Ordinary OS failures
+\ are result variants; operands, an unsupported OS and impossible foreign
+\ results throw. A successful write does not prove the peer received it.
+\ Live descriptors are not captured: close them before an image is prepared.
+\
+\ The wait is the AIO loop's (src/lib/aio.f): every READ and WRITE readiness
 \ question is one POLL for the time left on its deadline and one AWAIT, so
 \ no thread parks in poll(2) and a signal no longer cuts the wait short. A
 \ program calls AIO:START before its first READ or WRITE; a wait with no

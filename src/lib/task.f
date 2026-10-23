@@ -1,4 +1,56 @@
-\ task.f - checked CPU tasking over pthread.
+\ task.f - checked CPU tasking over pthread, package TASK.
+\
+\ A task runs an already-compiled xt on its own OS thread, with its own TCB,
+\ data stack and data/user region (TASK:+USER cells), over the shared
+\ dictionary and code. TASK:ACTIVATE takes the xt rather than parsing a body as
+\ SwiftForth's ACTIVATE does, so the body is checked before a worker runs it;
+\ SwiftForth's CONSTRUCT is TASK:PREPARE because `construct` is a keyword.
+\
+\ NO COMPILATION WHILE A TASK IS LIVE. A definition, `allot`, `,`, `c,`, `align`,
+\ an interpret-mode string literal that keeps its text, `evaluate`, `cp!` and
+\ `ndict!` exit $4F while TASKS-LIVE-CELL (the main region's count) is nonzero,
+\ every exposed task and the AIO loop task included. A definition holds the
+\ code band writable from its colon to `;`, flipped in PROT-PAGE-MAX units
+\ (src/habu/layout.f), so a task running any word in that 64K unit faults; a
+\ forget frees code a task may be running. Define everything, then start tasks,
+\ the AIO loop last. A remote REPL therefore cannot evaluate while a task runs.
+\
+\ ENDINGS. A worker `die` ends the process (Linux uses exit_group). An uncaught
+\ worker throw ends only that task: THROW@ keeps the code and JOIN answers it.
+\ TASK:HALT is cooperative and observed at TASK:PAUSE; a task parked in STOP,
+\ WAIT, SLEEP or a host call observes it only when released, so TASK:KILL waits
+\ for it. KILL discards the outcome, JOIN collects it; both release the task.
+\ KILL of an activated task joins it whatever state it reaches first, so an
+\ owner may KILL a body that signalled its own end and is still finishing.
+\ Every ending runs the AT-EXIT chain in the task's thread, drops the callback
+\ bindings naming its region, then signals the join. POSIX leaves destroying a
+\ semaphore with blocked waiters undefined: end a task's joiners, senders and
+\ waiters before it ends. DONE is release-published and DONE? acquire-reads it,
+\ so an owner that sees it true sees every write the body made.
+\
+\ CHANNELS. A facility excludes (owner-tracked mutex; GET is idempotent for its
+\ owner, RELEASE a no-op for anyone else); a semaphore counts; a mailbox is a
+\ one-cell rendezvous between two tasks carrying the sender; src/lib/queue.f
+\ buffers cells between any tasks, the main thread included. None substitutes
+\ for another. Atomic cells shared across tasks are 8-byte aligned.
+\
+\ CAPTURE AND FORK. A capture (IMAGE-LIFECYCLE:PREPARE) releases every prepared
+\ task and drops idle callback bindings; an activated or exposed task, or a
+\ callback slot with a thread inside, ends the capture. Kill tasks before a
+\ build captures. Tasks do not cross a fork: CHILD-RESET is what a forked
+\ child runs (src/lib/fork-child.f says who registers it).
+\
+\ TASK-LOCAL STORAGE. A module the engine bakes or the engine build loads takes
+\ a declared band of the DATA header in src/habu/layout.f (string, fmt, fs and
+\ fs-mutate: requiring this file there would cycle or pull pthread into the
+\ base image or the build tool). A module loaded later takes TASK:+USER rows
+\ from USER-BAND; a row past USER-BAND:END is E-TASK-USER at its definition,
+\ and USER-BAND:END TASK:#USER - is what remains. A new band reaches only an
+\ engine built after it: an older engine dies E-UNDEFINED on its constants.
+\
+\ STORAGE CLASS. TASK-LOCAL for SLEEP's two timespecs (one TASK:+USER row).
+\ PROCESS-WIDE for the semaphore pool, the AT-EXIT rows, the TCB chain and the
+\ callback binding rows; each row move is one compare-and-swap.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
@@ -575,10 +627,11 @@ variable MAIN-PARK-READY
    tcb TASK-PARK-SEM SEM-SIGNAL ;
 
 \ ---- the per-task mailbox ----------------------------------------------------
-\ VFX's one-cell mailbox (docs/tasking-models.md section 3) with the semaphores
-\ above in place of its PAUSE loop: the slot-free semaphore holds the single
-\ unread slot, the message-present semaphore holds the deposited message, and
-\ the pending cell is the status bit MSG? reads without blocking.
+\ VFX's one-cell mailbox (docs/design.md "Models taken from other Forths")
+\ with the semaphores above in place of its PAUSE loop: the slot-free
+\ semaphore holds the single unread slot, the message-present semaphore holds
+\ the deposited message, and the pending cell is the status bit MSG? reads
+\ without blocking.
 : MBOX-FREE ( ptr n -- sem )
    TCB.MSG-FREE SEM-AT ;
 
@@ -632,8 +685,8 @@ variable MAIN-PARK-READY
    TCB.MSG-PENDING atomic@ 0 <> ;
 
 \ ---- the task's outcome ------------------------------------------------------
-\ VFX's task exit code and its AtTaskExit cleanup (docs/tasking-models.md
-\ sections 3 and 5), answered as src/lib/adt/result.f's result<ok,err> rather than as
+\ VFX's task exit code and its AtTaskExit cleanup (docs/design.md "Models
+\ taken from other Forths"), answered as src/lib/adt/result.f's result<ok,err> rather than as
 \ a bare code. The rows below live in the TCB, which outlives the thread and its
 \ memory, so the answer survives the release the join performs - the same reason
 \ TASK:THROW@ still answers after a TASK:KILL.
@@ -780,7 +833,7 @@ TYPED-VARIABLE TASK-EXIT-SCRATCH [ -- ]
    repeat
    drop ;
 
-\ ---- callback bindings: one row per slot (docs/ffi-callback.md) --------------
+\ ---- callback bindings: one row per slot (src/lib/ffi-callback.f) ----------
 \ A row names the region a C call through its slot enters (CB-ROW-REGION, 0
 \ unbound) and the thread inside through it (CB-ROW-OWNER: 0 idle, a thread
 \ pointer, or CB-ROW-BUSY while a bind, unbind, claim or drop moves the row).
@@ -1146,7 +1199,7 @@ variable SWEEP-ARMED
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
-   \ A task starts on its creator's I/O devices (docs/genio.md). These cells
+   \ A task starts on its creator's I/O devices (src/lib/genio.f). These cells
    \ hold a device INDEX, not an address, which is what makes copying them into
    \ a freshly mapped region sound: nothing here needs relocating. The funnel's
    \ re-entrancy guard and the active-device cell start clear, because the new
@@ -1775,7 +1828,7 @@ TASK-MIN-STACK constant MIN-STACK
 : SELF-N ( -- n )
    TASK-SELF-N ;
 
-\ ---- callback contexts (docs/ffi-callback.md) ----------------------------------
+\ ---- callback contexts (src/lib/ffi-callback.f) ------------------------------
 \ The main region, from any task.
 : MAIN-BASE ( -- ptr n )
    MAIN-BASE ;

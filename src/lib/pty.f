@@ -11,9 +11,13 @@
 \ for the name. A host that is neither is E-PROC-HOST. The request numbers are
 \ private: a caller that needs a pair calls OPEN instead of repeating them.
 \ Only the raw open, ioctl, read, write and close primitives are involved; no
-\ libc symbol is borrowed.
+\ libc symbol is borrowed. The caller opens the slave itself, O_RDWR |
+\ O_NOCTTY; Linux hosts need /dev/ptmx and a mounted /dev/pts.
 \
-\ READ waits on the AIO loop (docs/aio.md): one POLL for the window it was
+\ STORAGE CLASS. PROCESS-WIDE: OPEN stages its ioctl arguments in this file's
+\ cells, so one task opens a pair at a time.
+\
+\ READ waits on the AIO loop (src/lib/aio.f): one POLL for the window it was
 \ given and one AWAIT, so no thread parks in poll(2). A program calls
 \ AIO:START before its first READ; a wait with no loop is E-AIO-STATE.
 
