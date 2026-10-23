@@ -1597,7 +1597,7 @@ public
 
 \ The frame's rows, and whether the definition may be stored: an ORDERED row
 \ names a fact no later build can re-verify.
-: EXPORT ( -- ptr u8 n bool )
+: DEFINITION-EXPORT ( -- ptr u8 n bool )
    FRAME {: off:n :}
    off BYTES USED @ off - {: deps:ptr depsu:n :}
    deps depsu deps depsu HAS-ORDERED? 0= ;

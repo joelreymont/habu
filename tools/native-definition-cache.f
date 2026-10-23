@@ -674,7 +674,7 @@ variable PENDING-KEY-U
          s" not-cacheable" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
       then
       store cacheable and {: admitted:bool :}
-      admitted if NUNIT-DEP:EXPORT else NULL-PTR 0 false then
+      admitted if NUNIT-DEP:DEFINITION-EXPORT else NULL-PTR 0 false then
          {: deps:ptr depsu:n storable:bool :}
       storable if
          ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
