@@ -38,7 +38,8 @@
 \ occurrence of old (as COUNT-SUB counts them) replaced by new and answers the
 \ count; a dead buffer is E-BUF-STATE, a negative length E-STR-BOUNDS and an
 \ operand overlapping the buffer's storage E-BUF-BOUNDS, each before a byte
-\ moves.
+\ moves. BORROWED? answers whether a nonempty span overlaps the buffer's whole
+\ mapping, unused capacity included, for a caller that appends input piecewise.
 \
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; the buffer owns
 \ its mapping.
@@ -226,10 +227,12 @@ private
 
 \ ---- append with substitution ------------------------------------------------
 \ An operand overlapping the owned mapping would dangle once an append grew it.
+public
 : BORROWED? ( ptr u8 n ptr a -- bool )
    {: p:ptr u:n buf:ptr :}
    p buf DATA@ - {: off:n :}
    u 0 > off buf CAP-RAW@ < and off u + 0 > and ;
+private
 
 \ Appends text[at, hit) and new for the first old at or after at and answers
 \ the offset past that old and true; with no old left, appends the rest and

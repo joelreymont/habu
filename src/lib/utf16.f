@@ -1,4 +1,4 @@
-\ utf16.f - UTF-16 code units of UTF-8 text.
+\ utf16.f - UTF-16 code units of UTF-8 text, and strict UTF-16LE conversion.
 \
 \ UNITS answers how many UTF-16 code units a UTF-8 byte span encodes to, the
 \ measure LSP positions take by default. It reads the span with UTF8:NEXT
@@ -21,15 +21,55 @@
 \ length, or a negative unit index, is E-STR-BOUNDS, as UTF8:NEXT refuses a
 \ negative length.
 \
+\ APPEND-LE>UTF8 and APPEND-UTF8>LE convert a span between UTF-16LE and UTF-8,
+\ appending to an initialised BUF without clearing it. LE>UTF8 reads two-byte
+\ little-endian units and writes a high-then-low surrogate pair as its one
+\ scalar; an odd byte length or an unpaired surrogate, high (at the span's end
+\ included) or low, is E-UTF16. UTF8>LE reads scalars with UTF8:NEXT and writes
+\ one at or above U+10000 as a surrogate pair; every byte NEXT answers as
+\ `raw-byte` - malformed, overlong, an encoded surrogate, past U+10FFFF or
+\ truncated - is E-UTF8. Both are strict: no replacement character, BOM,
+\ terminator or normalisation, and NUL is an ordinary scalar. A negative length
+\ is E-STR-BOUNDS, and input overlapping the destination's storage, which an
+\ append may move, is BUF's E-BUF-BOUNDS; both before a byte moves. A throw
+\ while converting may leave part of the append in the buffer; the caller
+\ discards it.
+\
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f
+require src/lib/le.f
+require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f
 
 package UTF16
+public
+
+-9530 constant E-FIRST
+-9539 constant E-LAST
+-9530 constant E-UTF16      \ UTF-16LE of odd byte length or with an unpaired surrogate
+-9531 constant E-UTF8       \ UTF-8 that UTF8:NEXT reads as a raw byte
+
 private
 
 $10000 constant PAIR-FIRST        \ the first scalar UTF-16 writes as a surrogate pair
+$D800 constant HIGH-FIRST         \ the first high (leading) surrogate
+$DC00 constant LOW-FIRST          \ the first low (trailing) surrogate
+$E000 constant LOW-END            \ the first unit past the low surrogates
+10 constant PAIR-SHIFT            \ the scalar bits each surrogate carries
+$3FF constant PAIR-MASK
+2 constant UNIT-BYTES
+8 constant BYTE-SHIFT
+$FF constant BYTE-MASK
+
+$80 constant ONE-LIMIT            \ the first scalar UTF-8 writes in two bytes
+$800 constant TWO-LIMIT           \ the first scalar UTF-8 writes in three bytes
+$C0 constant TWO-LEAD
+$E0 constant THREE-LEAD
+$F0 constant FOUR-LEAD
+$80 constant CONT-TAG
+$3F constant CONT-MASK
+6 constant CONT-SHIFT
 
 : SCALAR-UNITS ( n -- n )
    PAIR-FIRST < if 1 else 2 then ;
@@ -60,5 +100,98 @@ public
    unit 0 < if E-STR-BOUNDS throw then
    0 0 begin over unit < over u < and while a u STEP repeat
    nip ;
+
+private
+
+: HIGH? ( n -- bool )
+   {: unit:n :}
+   unit HIGH-FIRST >= unit LOW-FIRST < and ;
+
+: LOW? ( n -- bool )
+   {: unit:n :}
+   unit LOW-FIRST >= unit LOW-END < and ;
+
+: PAIR>SCALAR ( n n -- n )
+   {: high:n low:n :}
+   high HIGH-FIRST - PAIR-SHIFT lshift  low LOW-FIRST - or  PAIR-FIRST + ;
+
+
+\ A lead byte holding the scalar's high bits, then TAIL continuation bytes of
+\ six bits each, highest first.
+: APPEND-ENCODED ( n n n ptr a -- )
+   {: scalar:n lead:n tail:n buf:ptr :}
+   scalar tail CONT-SHIFT * rshift lead or buf BUF:APPEND-BYTE
+   tail 0 ?do
+      scalar tail 1- i - CONT-SHIFT * rshift CONT-MASK and CONT-TAG or
+      buf BUF:APPEND-BYTE
+   loop ;
+
+
+: APPEND-SCALAR ( n ptr a -- )
+   {: scalar:n buf:ptr :}
+   scalar ONE-LIMIT < if scalar buf BUF:APPEND-BYTE exit then
+   scalar TWO-LIMIT < if scalar TWO-LEAD 1 buf APPEND-ENCODED exit then
+   scalar PAIR-FIRST < if scalar THREE-LEAD 2 buf APPEND-ENCODED exit then
+   scalar FOUR-LEAD 3 buf APPEND-ENCODED ;
+
+
+\ The pair at AT, whose high surrogate is HIGH, appended as one scalar; the
+\ cursor after it.
+: APPEND-PAIR ( n n ptr u8 n ptr a -- n )
+   {: high:n at:n a:ptr u:n buf:ptr :}
+   at UNIT-BYTES + u >= if E-UTF16 throw then
+   a at UNIT-BYTES + + LE:U16@ {: low:n :}
+   low LOW? 0= if E-UTF16 throw then
+   high low PAIR>SCALAR buf APPEND-SCALAR
+   at UNIT-BYTES 2 * + ;
+
+
+\ The unit or pair at AT appended as UTF-8; the cursor after it.
+: DECODE-STEP ( n ptr u8 n ptr a -- n )
+   {: at:n a:ptr u:n buf:ptr :}
+   a at + LE:U16@ {: unit:n :}
+   unit HIGH? if unit at a u buf APPEND-PAIR exit then
+   unit LOW? if E-UTF16 throw then
+   unit buf APPEND-SCALAR
+   at UNIT-BYTES + ;
+
+: APPEND-UNIT ( n ptr a -- )
+   {: unit:n buf:ptr :}
+   unit BYTE-MASK and buf BUF:APPEND-BYTE
+   unit BYTE-SHIFT rshift buf BUF:APPEND-BYTE ;
+
+
+: APPEND-SCALAR-LE ( n ptr a -- )
+   {: scalar:n buf:ptr :}
+   scalar PAIR-FIRST < if scalar buf APPEND-UNIT exit then
+   scalar PAIR-FIRST - {: bits:n :}
+   bits PAIR-SHIFT rshift HIGH-FIRST + buf APPEND-UNIT
+   bits PAIR-MASK and LOW-FIRST + buf APPEND-UNIT ;
+
+
+\ The scalar at AT appended as UTF-16LE; the cursor after it.
+: ENCODE-STEP ( n ptr u8 n ptr a -- n )
+   {: at:n a:ptr u:n buf:ptr :}
+   a u at UTF8:NEXT MATCH UTF8:scalar-step
+      scalar OF swap buf APPEND-SCALAR-LE ENDOF
+      raw-byte OF 2drop E-UTF8 throw ENDOF
+   ;MATCH ;
+
+public
+
+: APPEND-LE>UTF8 ( ptr u8 n ptr a -- )
+   {: a:ptr u:n buf:ptr :}
+   u 0 < if E-STR-BOUNDS throw then
+   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
+   u UNIT-BYTES mod 0<> if E-UTF16 throw then
+   0 begin dup u < while a u buf DECODE-STEP repeat
+   drop ;
+
+: APPEND-UTF8>LE ( ptr u8 n ptr a -- )
+   {: a:ptr u:n buf:ptr :}
+   u 0 < if E-STR-BOUNDS throw then
+   a u buf BUF:BORROWED? if E-BUF-BOUNDS throw then
+   0 begin dup u < while a u buf ENCODE-STEP repeat
+   drop ;
 
 ;package
