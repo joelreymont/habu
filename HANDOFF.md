@@ -2,7 +2,13 @@
 
 State: 2026-10-23. Last lead: Claude, Herdr name jerry. Hosts: pulsar-ua-106
 (Linux x86-64, 22 cores, where work continues) and Joel's Mac (ARM64, the
-ARM gate).
+ARM gate; pulsar cannot reach it). This file is tracked on `intel`: keep it
+current as work lands instead of deleting it.
+
+Pulsar has `bun` and `wasm-tools` (the versions the Mac uses) and `uv` from
+`~/.config/mise/conf.d/host.toml`, on PATH through mise shims in `~/.profile`
+and `~/.bashrc`, so Wasm rows that fail there are x86 reds. `trash` is
+trash-cli; `agent-clean` comes from Dotfiles. Pushes use gh's HTTPS token.
 
 ## Goal (Joel)
 
@@ -83,5 +89,8 @@ Done only when command output shows all of:
   kernel, ABI and codegen; Opus for focused fixes and tests).
 - On pulsar, kill only PIDs your own commands started; never `pkill -f`.
 - A gate and its push never share one command chain.
+- Codex Astra, the stand-in when Fable is unavailable, overengineers (Joel):
+  put that warning in every Astra prompt and cut its designs to the smallest
+  mechanism that closes a concrete failure before a worker gets them.
 
 Port design background: `INTEL.md`, `docs/x86-64.md`, `docs/gate.md`.
