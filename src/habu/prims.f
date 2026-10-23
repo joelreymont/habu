@@ -55,6 +55,19 @@ public
 2 constant K-ELAB            \ the checker elaborates this primitive's effect
 3 constant K-UNROWED         \ no checker row anywhere; no checked caller exists
 
+\ ---- reach classes -----------------------------------------------------------
+\ What a primitive touches besides the data and return stacks, stated by a
+\ row's REACH clause. A tool that judges a top-level run reads the running
+\ host's own class through FIND and REACH@; a row with no clause is R-NONE and
+\ its run is accountable to nothing the tool observes.
+0 constant R-NONE            \ unclassed: output, files, execution, engine state
+1 constant R-STACK           \ the stacks and arithmetic over its operands only
+2 constant R-MEMORY          \ memory at an address its operands supply
+3 constant R-DATA            \ reads or moves the DATA pointer
+4 constant R-SOURCE          \ reads the input after its token
+5 constant R-DICT            \ records and wordlist state an object carries
+6 constant R-BUILD           \ the tracked kernel cells: tier, build scope, dispatch
+
 \ ---- atom codes --------------------------------------------------------------
 \ One code per checker row constructor. A composite atom is a short sequence:
 \ PE-PTR-A is A-VAR-A A-PTR, PE-PTR-A-RAW is A-VAR-A A-RAW A-PTR.
@@ -90,7 +103,7 @@ $4C constant SPEC-RC
 \ byte spans in NAMES; atoms are bytes in CODES. Offsets, not addresses, so the
 \ table can be walked by index from any consumer.
 $180 constant ROW-CAP        \ 384 rows; 223 are used today
-11 constant ROW-CELLS
+12 constant ROW-CELLS
 $1000 constant NAME-CAP
 $1000 constant CODE-CAP
 
@@ -105,6 +118,7 @@ $1000 constant CODE-CAP
 8 constant F-REF-OFF
 9 constant F-REF-LEN
 10 constant F-MIN-IN
+11 constant F-REACH
 
 1 constant FL-TRUSTED-ONLY
 2 constant FL-FIXED-ABI
@@ -231,6 +245,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    CUR-REF-OFF @   ROW-N @ F-REF-OFF SLOT !
    CUR-REF-LEN @   ROW-N @ F-REF-LEN SLOT !
    IN-COUNT        ROW-N @ F-MIN-IN SLOT !
+   R-NONE          ROW-N @ F-REACH SLOT !
    ROW-N @ 1 + ROW-N ! ;
 
 : EPRIM: ( -- )
@@ -297,6 +312,24 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
       IF s" prims: min-in on a row whose atoms state its inputs" SPEC-RC die THEN
    depth ROW-N @ 1 - F-MIN-IN ROW-FIELD ! ;
 
+\ The just-written row's reach class, one token among the spellings below. A
+\ row states it once: a second clause on the row dies, as does a spelling no
+\ class has.
+: REACH-CODE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" stack" CORE-STR= IF R-STACK EXIT THEN
+   a u s" memory" CORE-STR= IF R-MEMORY EXIT THEN
+   a u s" data" CORE-STR= IF R-DATA EXIT THEN
+   a u s" source" CORE-STR= IF R-SOURCE EXIT THEN
+   a u s" dict" CORE-STR= IF R-DICT EXIT THEN
+   a u s" build" CORE-STR= IF R-BUILD EXIT THEN
+   s" prims: unknown reach" SPEC-RC die ;
+
+: REACH ( -- )
+   ROW-N @ 0 <= IF s" prims: reach before any row" SPEC-RC die THEN
+   ROW-N @ 1 - F-REACH ROW-FIELD @ R-NONE <>
+      IF s" prims: second reach on one row" SPEC-RC die THEN
+   parse-name REACH-CODE ROW-N @ 1 - F-REACH ROW-FIELD ! ;
+
 : ELAB: ( -- )
    K-ELAB ROW-OPEN ROW-NAME ROW-WRITE ;
 
@@ -336,6 +369,10 @@ public
 \ The inputs a row's atoms state, or the depth its EMIN-IN! marker states.
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
+
+\ The row's reach class (R-NONE .. R-BUILD), R-NONE for a row with no clause.
+: REACH@ ( n -- n )
+   F-REACH ROW-FIELD @ ;
 
 : CODE-LEN@ ( n -- n )
    F-CODE-LEN ROW-FIELD @ ;
@@ -419,28 +456,28 @@ ETRUSTED-ONLY!                       \ closes one whole source unit without an e
 \ Checked caller: test/closed-unit-suite.f CU-RUN, on the whitebox engine.
 EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 
-EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM;
-EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM;
-EPRIM: swap  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT REF PRIM-REF:S-SWAP EPRIM;
+EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM; REACH stack
+EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM; REACH stack
+EPRIM: swap  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT REF PRIM-REF:S-SWAP EPRIM; REACH stack
 EPRIM: over  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT
-            REF PRIM-REF:S-OVER EPRIM;
-EPRIM: nip   PE-A PE-IN PE-B PE-IN  PE-B PE-OUT REF PRIM-REF:S-NIP EPRIM;
+            REF PRIM-REF:S-OVER EPRIM; REACH stack
+EPRIM: nip   PE-A PE-IN PE-B PE-IN  PE-B PE-OUT REF PRIM-REF:S-NIP EPRIM; REACH stack
 EPRIM: tuck  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT
-            REF PRIM-REF:S-TUCK EPRIM;
+            REF PRIM-REF:S-TUCK EPRIM; REACH stack
 EPRIM: rot   PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-B PE-OUT PE-C PE-OUT PE-A PE-OUT
-            REF PRIM-REF:S-ROT EPRIM;
+            REF PRIM-REF:S-ROT EPRIM; REACH stack
 EPRIM: -rot  PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-C PE-OUT PE-A PE-OUT PE-B PE-OUT
-            REF PRIM-REF:S-UNROT EPRIM;
+            REF PRIM-REF:S-UNROT EPRIM; REACH stack
 EPRIM: 2dup  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT
-            REF PRIM-REF:S-2DUP EPRIM;
-EPRIM: 2drop PE-A PE-IN PE-B PE-IN REF PRIM-REF:S-2DROP EPRIM;
+            REF PRIM-REF:S-2DUP EPRIM; REACH stack
+EPRIM: 2drop PE-A PE-IN PE-B PE-IN REF PRIM-REF:S-2DROP EPRIM; REACH stack
 EPRIM: 2swap PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
-            PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT REF PRIM-REF:S-2SWAP EPRIM;
+            PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT REF PRIM-REF:S-2SWAP EPRIM; REACH stack
 EPRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
             PE-A PE-OUT PE-B PE-OUT PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT
-            REF PRIM-REF:S-2OVER EPRIM;
+            REF PRIM-REF:S-2OVER EPRIM; REACH stack
 
-EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM;
+EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM; REACH stack
 \ THE INTEGER-OFFSET ROWS carry PE-PTR-A-OFF on the pointee they step (the same
 \ `a` the result keeps, so the pointee is still preserved). The mark is inert for
 \ every pointee but the null: a null that rides one of these rows comes out a
@@ -453,61 +490,61 @@ EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM;
 \ computed off them -- is the address OF nothing, so the PE-PTR-B-BASE rows,
 \ tried first, match its pointee alone and leave the other operand's free:
 \ `X NULL-PTR -` is the address-to-integer distance and publishes no null kind.
-EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM;
-EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: -      PE-PTR-A PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM;
-EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM;
-EPRIM: and    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BAND-F EPRIM;
-EPRIM: or     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BOR EPRIM;
-EPRIM: or     PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BOR-F EPRIM;
-EPRIM: xor    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BXOR EPRIM;
-EPRIM: xor    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BXOR-F EPRIM;
-EPRIM: 1+     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:INC EPRIM;
-EPRIM: 1+     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: 1-     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DEC EPRIM;
-EPRIM: 1-     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: negate PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:NEG EPRIM;
-EPRIM: invert PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BNOT EPRIM;
-EPRIM: 0=     PE-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: 0<     PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:ZERO-NEG? EPRIM;
-EPRIM: =      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:EQ EPRIM;
-EPRIM: =      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: <      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:LT EPRIM;
-EPRIM: <      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: >      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GT EPRIM;
-EPRIM: >      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: <>     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:NEQ EPRIM;
-EPRIM: <>     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: <=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:LE EPRIM;
-EPRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GE EPRIM;
-EPRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM;
+EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM; REACH stack
+EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-A PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM; REACH stack
+EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM; REACH stack
+EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM; REACH stack
+EPRIM: and    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BAND-F EPRIM; REACH stack
+EPRIM: or     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BOR EPRIM; REACH stack
+EPRIM: or     PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BOR-F EPRIM; REACH stack
+EPRIM: xor    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BXOR EPRIM; REACH stack
+EPRIM: xor    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT REF PRIM-REF:BXOR-F EPRIM; REACH stack
+EPRIM: 1+     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:INC EPRIM; REACH stack
+EPRIM: 1+     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: 1-     PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DEC EPRIM; REACH stack
+EPRIM: 1-     PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: negate PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:NEG EPRIM; REACH stack
+EPRIM: invert PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BNOT EPRIM; REACH stack
+EPRIM: 0=     PE-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: 0<     PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:ZERO-NEG? EPRIM; REACH stack
+EPRIM: =      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:EQ EPRIM; REACH stack
+EPRIM: =      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: <      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:LT EPRIM; REACH stack
+EPRIM: <      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: >      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GT EPRIM; REACH stack
+EPRIM: >      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: <>     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:NEQ EPRIM; REACH stack
+EPRIM: <>     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: <=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:LE EPRIM; REACH stack
+EPRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT REF PRIM-REF:GE EPRIM; REACH stack
+EPRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT EPRIM; REACH stack
 \ The three dividing rows. Their effects say nothing about the zero divisor
 \ because a throw is not an output: each body refuses it with ARITH-ABI:E-DIV-ZERO
 \ and MIN-N -1 wraps, the two contracts docs/forth.md states and
 \ test/prim-parity.f pins on both the body and the reference.
-EPRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DIV EPRIM;
-EPRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:REM EPRIM;
-EPRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT REF PRIM-REF:DIVREM EPRIM;
-EPRIM: abs    PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ABSOLUTE EPRIM;
-EPRIM: min    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MINIMUM EPRIM;
-EPRIM: max    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MAXIMUM EPRIM;
-EPRIM: lshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHL EPRIM;
-EPRIM: rshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHR EPRIM;
-EPRIM: cells  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-BYTES EPRIM;
-EPRIM: cell+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: cell+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-STEP EPRIM;
-EPRIM: chars  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-BYTES EPRIM;
-EPRIM: char+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
-EPRIM: char+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-STEP EPRIM;
+EPRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:DIV EPRIM; REACH stack
+EPRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:REM EPRIM; REACH stack
+EPRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT REF PRIM-REF:DIVREM EPRIM; REACH stack
+EPRIM: abs    PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ABSOLUTE EPRIM; REACH stack
+EPRIM: min    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MINIMUM EPRIM; REACH stack
+EPRIM: max    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MAXIMUM EPRIM; REACH stack
+EPRIM: lshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHL EPRIM; REACH stack
+EPRIM: rshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SHR EPRIM; REACH stack
+EPRIM: cells  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-BYTES EPRIM; REACH stack
+EPRIM: cell+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: cell+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CELL-STEP EPRIM; REACH stack
+EPRIM: chars  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-BYTES EPRIM; REACH stack
+EPRIM: char+  PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM; REACH stack
+EPRIM: char+  PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:CHAR-STEP EPRIM; REACH stack
 
-EPRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;
-EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
+EPRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT EPRIM; REACH memory
+EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 \ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
 \ address, for a persisted cell whose address the caller works out at run time
 \ from a table base and a row index (dot habu-declare-persisted-cb-b150b5d5).
@@ -522,23 +559,23 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM;
 \ (E-RAW-CELL-PTR, the raw rule's FENCE-EXEC arm in src/core/checker.f RAW-OK?;
 \ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
 \ cells).
-EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; EFIXED-ABI!
+EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
 EPRIM: kernel-producer$ PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT EPRIM;
-EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM;
+EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM; REACH stack
 \ Explicit memory views preserve address bits while changing the access type.
-EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM;
-EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM;
-EPRIM: +!         PE-N PE-IN PE-PTR-N PE-IN REF PRIM-REF:ADD-TO EPRIM;
-EPRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT EPRIM;
-EPRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN EPRIM;
-EPRIM: atomic@    PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;
-EPRIM: atomic!    PE-A PE-IN PE-PTR-A PE-IN EPRIM;
-EPRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT EPRIM;
-EPRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT EPRIM;
-EPRIM: fence      EPRIM;
+EPRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT EPRIM; REACH stack
+EPRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT EPRIM; REACH stack
+EPRIM: +!         PE-N PE-IN PE-PTR-N PE-IN REF PRIM-REF:ADD-TO EPRIM; REACH memory
+EPRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT EPRIM; REACH memory
+EPRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN EPRIM; REACH memory
+EPRIM: atomic@    PE-PTR-A PE-IN  PE-A PE-OUT EPRIM; REACH memory
+EPRIM: atomic!    PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
+EPRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT EPRIM; REACH memory
+EPRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT EPRIM; REACH memory
+EPRIM: fence      EPRIM; REACH memory
 EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ `evaluate-closed` runs its text on a data stack of its own and
 \ throws E-EVAL-RESIDUE when the text leaves cells, so whatever the text does
@@ -550,18 +587,18 @@ ETRUSTED-ONLY!
 EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
 EPPRIM: SOURCE-ROOT evaluate-range
    PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM;
+EPRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT REF PRIM-REF:COUNTED$ EPRIM; REACH memory
 
 EPRIM: .            PE-N PE-IN EPRIM;
 EPRIM: .s           EPRIM;
-EPRIM: depth        PE-N PE-OUT EPRIM;
-EPRIM: here         PE-PTR-A-RAW PE-OUT EPRIM;
+EPRIM: depth        PE-N PE-OUT EPRIM; REACH stack
+EPRIM: here         PE-PTR-A-RAW PE-OUT EPRIM; REACH data
 EPRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 EPRIM: scope-kind?  PE-N PE-IN PE-N PE-OUT EPRIM;
-EPRIM: allot        PE-N PE-IN EPRIM;
-EPRIM: align        EPRIM;
-EPRIM: ,            PE-N PE-IN EPRIM;
-EPRIM: c,           PE-N PE-IN EPRIM;
+EPRIM: allot        PE-N PE-IN EPRIM; REACH data
+EPRIM: align        EPRIM; REACH data
+EPRIM: ,            PE-N PE-IN EPRIM; REACH data
+EPRIM: c,           PE-N PE-IN EPRIM; REACH data
 EPRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: throw        PE-N PE-IN EPRIM;
 EPRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
@@ -723,7 +760,7 @@ EPRIM: dbase@         PE-N PE-OUT EPRIM;
 EPRIM: check@         PE-N PE-OUT EPRIM;
 \ Reading the selected compiler tier decides nothing and mutates nothing, so it
 \ is an ordinary reader like check@ beside it.
-EPRIM: tier@          PE-N PE-OUT EPRIM;
+EPRIM: tier@          PE-N PE-OUT EPRIM; REACH build
 \ The compiler's prospective trusted-tick order and the owner whose installed
 \ query established it. Order 0 is checking first; 1 is trusted gate first.
 EPRIM: tick-order@    PE-N PE-OUT PE-PTR-U8 PE-OUT EPRIM;
@@ -733,8 +770,8 @@ EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 \ the checked caller every other scope calls, and a checked body outside
 \ EXECUTABLE-BUILD does not find the names. No TRUSTED: body outside it calls
 \ either, so no global row is kept for one.
-EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE
-EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE
+EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE REACH build
+EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE REACH build
 \ Compiler hook installation is an explicit engine boundary.
 EPRIM: set-check     PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
@@ -758,7 +795,7 @@ EPPRIM: TOP-ROW set-top-check
 \ top-level `1 set-tier` runs unchecked. No TRUSTED: body outside TIER calls it,
 \ so no global row is kept for one (tier 1 builds such a caller's call window
 \ from a global row; addrmap-set keeps its row for that).
-EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE
+EPPRIM: TIER set-tier PE-N PE-IN ECLOSE-PRIVATE REACH build
 EPRIM: ndict@         PE-N PE-OUT EPRIM;
 \ The running engine owns capture-time construction state. A cache driver
 \ queries this word only while a definition is pending; absence means an old
@@ -979,16 +1016,16 @@ ETRUSTED-ONLY!
 \ NATIVE-BODY-ABI indices; only the engine's own emitters bake their offsets.
 EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
+EPRIM: prot-wid-add   PE-N PE-IN EPRIM; REACH dict
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
 \ The design seal's two writers (src/lib/vocabulary.f): admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: policy-seal    EPRIM;
-EPRIM: wordlist       PE-N PE-OUT EPRIM;
-EPRIM: get-current    PE-N PE-OUT EPRIM;
-EPRIM: set-current    PE-N PE-IN EPRIM;
+EPRIM: wordlist       PE-N PE-OUT EPRIM; REACH dict
+EPRIM: get-current    PE-N PE-OUT EPRIM; REACH dict
+EPRIM: set-current    PE-N PE-IN EPRIM; REACH dict
 EPRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
@@ -1009,7 +1046,7 @@ ETRUSTED-ONLY!                       \ XREF's newest-row indexed-record boundary
 EPPRIM: XREF xref-wl-newest PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT ECLOSE-PRIVATE
 EPRIM: scope-find     PE-PTR-U8 PE-IN PE-N PE-IN
                       PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-PTR-N PE-OUT PE-N PE-OUT EPRIM;
-EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
+EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
 \ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile
 \ dispatches call for every literal token (habu1.f BNUMPARSE, at LNUM). It
@@ -1017,7 +1054,7 @@ EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM;
 \ bytes were a number at all. A checked stage that has to know what cell a
 \ literal spelling stands for asks this rather than reading the spelling back
 \ with a second decoder (src/compiler/native/feed.f).
-EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM;
+EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM; REACH memory
 EPRIM: wide-mark EPRIM;
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
@@ -1071,27 +1108,27 @@ EPPRIM: FFI ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                                    PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                                    PE-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 
-EPRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: f*      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: f/      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: fnegate PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: fabs    PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: fsqrt   PE-R PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: f<      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: f>      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: f=      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: f0<     PE-R PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: f0=     PE-R PE-IN  PE-F PE-OUT EPRIM;
-EPRIM: s>f     PE-N PE-IN  PE-R PE-OUT EPRIM;
-EPRIM: f>s     PE-R PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: f*      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: f/      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: fnegate PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: fabs    PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: fsqrt   PE-R PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: f<      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: f>      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: f=      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: f0<     PE-R PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: f0=     PE-R PE-IN  PE-F PE-OUT EPRIM; REACH stack
+EPRIM: s>f     PE-N PE-IN  PE-R PE-OUT EPRIM; REACH stack
+EPRIM: f>s     PE-R PE-IN  PE-N PE-OUT EPRIM; REACH stack
 EPRIM: f.      PE-R PE-IN EPRIM;
 EPRIM: emit   PE-N PE-IN EPRIM;
 EPRIM: cr     EPRIM;
 EPRIM: space  EPRIM;
 EPRIM: u.     PE-N PE-IN EPRIM;
 
-EPRIM: create   EPRIM;
+EPRIM: create   EPRIM; REACH dict
 EPRIM: getpid   PE-N PE-OUT EPRIM;   \ ( -- pid ) process-identity syscall
 EPRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT EPRIM;   \ ( pid -- fd|-errno ) process-lifetime watch
 EPRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
@@ -1122,12 +1159,12 @@ ELAB: catch
 ELAB: evaluate
 2 EMIN-IN!
 EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED, through PROVIDED-XT:EVALUATE-CELL
-ELAB: ?dup
+ELAB: ?dup REACH stack
 1 EMIN-IN!
-ELAB: 2>r
+ELAB: 2>r REACH stack
 2 EMIN-IN!
-ELAB: 2r>
-ELAB: 2r@
+ELAB: 2r> REACH stack
+ELAB: 2r@ REACH stack
 
 \ ---- primitives with no checker row at all -----------------------------------
 \ Bodies with no declaration anywhere, so no checked program can name one: a

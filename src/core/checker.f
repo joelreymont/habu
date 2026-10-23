@@ -159,6 +159,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -176,7 +177,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:CERT-KEPT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:UNIT-FACTS-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -11246,6 +11247,7 @@ PPRIM: CHECKER-OWNER-EXT NATIVE-DOES-REPORT-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CERT-BYTES-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CERT-KEEP-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CERT-KEPT-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT UNIT-FACTS-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT PRIMITIVE-STATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CONTRACT-MAGIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT FIXED-KIND-OFF PE-N PE-OUT PPRIM;
@@ -11502,12 +11504,22 @@ PPRIM: PRIM-SPEC CODE-LEN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC CODE@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC MIN-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC REACH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ The row kinds, whole rather than in part: classifying a row means telling all
 \ four apart, and the table is the one place that says what they are.
 PPRIM: PRIM-SPEC K-PRIM PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-PKG-PRIVATE PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-ELAB PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC K-UNROWED PE-N PE-OUT PPRIM;
+\ The reach classes, whole for the same reason: a tool judging a top-level run
+\ tells every class apart.
+PPRIM: PRIM-SPEC R-NONE PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-STACK PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-MEMORY PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-DATA PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-SOURCE PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-DICT PE-N PE-OUT PPRIM;
+PPRIM: PRIM-SPEC R-BUILD PE-N PE-OUT PPRIM;
 \ The builder's scalar marker checks the public n -- n atom sequence.
 PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
@@ -28569,6 +28581,18 @@ private
    rc 0 <> IF rc throw THEN
    UNIT-BUF-P @ UNIT-BUF-U @ ;
 
+\ The checker facts a unit export carries, summed: a tool compares the sum
+\ around a top-level run to learn whether the run declared anything. Each term
+\ only grows inside a unit (UNIT-BASE? refuses one that shrank). Effects come
+\ from UEND, constants from CTN and LIN-NDECL, controls from NORET-END (the
+\ export writes UNIT-NEND..NORET-END, per-symbol facts appended by NORET-APPEND),
+\ then dfers, pimms and type families. SYM-N and ndict are left out: any token
+\ interns a symbol and any record grows ndict. VREC-N is left out because the
+\ export carries no section for it and UNIT-BASE? refuses any change to it.
+: CHECKER-UNIT-FACTS ( -- n )
+   UEND @ CTN @ + DFER-END @ + PIMM-N @ + UNIT-TFAM-N@ + LIN-NDECL @ +
+   NORET-END @ + ;
+
 : CHECKER-PENDING-EXPORT-REFS ( [ ptr u8 n -- n ] -- ptr u8 n )
    UNIT-PENDING @ 0= IF UNIT-BAD THEN
    ndict@ UNIT-NDICT @ - 1 <> IF UNIT-BAD THEN
@@ -30992,6 +31016,7 @@ package CHECKER-REG
 ' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
 ' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
 ' CHECKER-NATIVE-DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
+' CHECKER-UNIT-FACTS DECLARATIONS CHECKER-OWNER-EXT:UNIT-FACTS-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's

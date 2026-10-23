@@ -574,6 +574,21 @@ private
       CI @ 1+ CI !
    REPEAT ;
 
+\ A reference is checked Habu over the stacks and memory, so a row that names
+\ one cannot claim a reach that reference does not express: its REACH clause
+\ (src/habu/prims.f) is stack or memory.
+: REF-REACH ( -- )
+   0 CI !
+   BEGIN CI @ PRIM-SPEC:COUNT < WHILE
+      CI @ PRIM-SPEC:REF$ nip 0= 0= IF
+         CI @ PRIM-SPEC:NAME$ SUBJ!
+         s" REF row reaches the stack or memory" LBL
+         CI @ PRIM-SPEC:REACH@ {: r:n :}
+         r PRIM-SPEC:R-STACK = r PRIM-SPEC:R-MEMORY = or TTRUE
+      THEN
+      CI @ 1+ CI !
+   REPEAT ;
+
 : TALLY ( -- )
    0 NCOVER !  0 NREF !  0 NPRIM-ROWS !
    0 CI !
@@ -644,6 +659,7 @@ s" c@" MARK-PAIRED                      \ fetched by the `c!` round trip
 s" test/prim-float-cases.f" included
 
 REF-RESOLVES
+REF-REACH
 REPORT
 T-REPORT
 

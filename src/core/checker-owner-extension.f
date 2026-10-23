@@ -55,7 +55,9 @@ $558 constant NATIVE-DOES-REPORT-OFF
 $560 constant CERT-BYTES-OFF
 $568 constant CERT-KEEP-OFF
 $570 constant CERT-KEPT-OFF
-CERT-KEPT-OFF CELL + constant OWNER-BYTES
+\ ( -- n ) the unit-export fact count (checker.f CHECKER-UNIT-FACTS).
+$578 constant UNIT-FACTS-OFF
+UNIT-FACTS-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF
