@@ -2,7 +2,25 @@
 \ address, a fixed pool of request workers taking connections from a queue, and
 \ one handler per request inside a catch boundary, so a handler that throws
 \ answers 500 with the request id and the worker lives to take the next
-\ connection. See docs/http.md.
+\ connection. Requiring this file loads http-arena.f, http-request.f,
+\ http-response.f, http-router.f and http-static.f.
+\
+\ A caller relies on these:
+\ - AIO:START comes before START, which is E-AIO-STATE without the loop. The
+\   loop is a live task, so AIO:START, HTTP:START, HTTP:STOP and AIO:STOP run
+\   from one word: an interpreted s" after AIO:START ends the process.
+\ - Route strings must outlive the server. Body limits persist across STOP and
+\   failed starts.
+\ - With BODY-TIMEOUT zero, START's deadline covers a request's head and body.
+\   A positive one starts a fresh absolute deadline once the head and Host are
+\   valid. Progress renews neither. A request past its deadline gets no answer:
+\   its connection is closed plainly, so a peer still sending reads a reset.
+\ - Every refusal half-closes and reads for LINGER-MS before it closes, so a
+\   peer mid-upload still receives the answer.
+\ - A start hook that throws fails START once every started worker has run its
+\   exit hooks and been joined: the listener is closed, RUNNING? is false and
+\   the same port can start again. Hooks stay registered for every later
+\   server.
 \
 \ STORAGE CLASS. PROCESS-WIDE: one server per image. The routes, the static
 \ tree, the hooks and the rules are written before START and only read while it
@@ -10,7 +28,7 @@
 \ (src/lib/net/http-arena.f).
 \
 \ Every word a task runs is defined here, before START activates anything:
-\ Habu forbids dictionary mutation while a task is live (docs/threads.md).
+\ Habu forbids dictionary mutation while a task is live (src/lib/task.f).
 \
 \ A package whose per-worker resource belongs to the worker task itself - a
 \ database connection each worker holds, say - registers it with
@@ -123,8 +141,8 @@ private
 \ The last thing every task of this server does: count itself out of the server's
 \ own work, then hint at the task that raised STOPPING, so a stop parks in the
 \ kernel rather than polling. The count moves before the hint, which is what lets
-\ the stopper trust one hint - WAKE is a hint and not a message (habu
-\ docs/threads.md), so it re-reads the count after each one. A hint posted
+\ the stopper trust one hint - WAKE is a hint and not a message
+\ (src/lib/task.f), so it re-reads the count after each one. A hint posted
 \ outside a stop - a listener whose accept failed raises the flag itself - only
 \ returns the stopper's thread to a check it repeats.
 : LEAVING ( -- )
@@ -444,7 +462,7 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
 \ ---- the worker lifecycle hooks ---------------------------------------------
 
 \ The quotations live in rows declared to hold quotations, which is the
-\ checker's proven-quotation store (docs/threads.md); an xt in a cell
+\ checker's proven-quotation store (src/lib/task.f); an xt in a cell
 \ would lose the effect this table is named by.
 MAX-HOOKS TYPED-BUFFER START-HOOK [ -- ]
 MAX-HOOKS TYPED-BUFFER EXIT-HOOK [ -- ]
@@ -684,7 +702,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 
 \ The bound's timer is cancelled and then awaited: a cancel does not wait, and a
-\ record nobody awaits is one the ring still holds (docs/aio.md), which
+\ record nobody awaits is one the ring still holds (src/lib/aio.f), which
 \ would refuse the LOOP-STOP that follows this server.
 : DROP-TIMER ( AIO:ticket -- ) {: timer:AIO:ticket :}
    timer AIO:CANCEL
@@ -699,9 +717,9 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
 \ Waits for the tasks to leave their own bodies, to the bound. The only wake-ups
 \ are each task's own LEAVING and one AIO:TIMEOUT for the bound - the loop wakes
-\ the record's owner when the timer completes (docs/aio.md) - so nothing
+\ the record's owner when the timer completes (src/lib/aio.f) - so nothing
 \ here polls a clock, and the stopper re-reads the count after every hint, as the
-\ hint protocol requires (docs/threads.md).
+\ hint protocol requires (src/lib/task.f).
 : AWAIT-TASKS ( -- )
    STOP-BOUND-MS >MS AIO:TIMEOUT {: timer:AIO:ticket :}
    STOP-BOUND-MS DEADLINE-AT {: deadline:n :}

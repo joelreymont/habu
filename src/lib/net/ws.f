@@ -41,7 +41,7 @@
 \ however many bytes the peer goes on taking.
 \
 \ An application's own task inside a send is joined, never killed, as
-\ docs/threads.md asks of a task in TASK:WAIT: killed at the write's pause it
+\ src/lib/task.f asks of a task in TASK:WAIT: killed at the write's pause it
 \ leaves the slot's lock held, so the worker's next take of the lock blocks
 \ and the stop never returns.
 \
@@ -121,7 +121,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 \ change another task may make - a send that loses the connection, a CLOSE -
 \ stores the status first and publishes the phase with atomic!, and RECEIVE,
 \ which reads both without the lock, reads the phase with atomic@ before the
-\ status (docs/threads.md, Atomics). PHASE and STATUS are rows of cells whose
+\ status (src/lib/task.f). PHASE and STATUS are rows of cells whose
 \ base TYPED-BUFFER aligns to a cell, so every element is 8-byte aligned.
 0 constant PHASE-NONE             \ no socket: before a slot's first, after the worker lets one go or the slot is retired
 1 constant PHASE-OPEN             \ frames go both ways

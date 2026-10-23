@@ -6,7 +6,7 @@
 \
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by the worker's own slot: every
 \ per-request cell below is a row of a typed buffer, never a bare global,
-\ because ordinary storage is one copy for every task (docs/threads.md). The
+\ because ordinary storage is one copy for every task. The
 \ running worker's slot itself is a TASK:+USER row.
 \
 \ A worker's region is one span (src/lib/span.f): the base and the reach travel

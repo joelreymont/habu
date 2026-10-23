@@ -1460,7 +1460,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 \ True when the server ends the stream: the read answers the end of the stream
 \ or a reset, not data and not another failure. A server that closes with
 \ request bytes still unread, a timed-out or stopped body, is reset by the
-\ kernel. It promises no answer there (docs/http.md), so the reset is its close
+\ kernel. It promises no answer there (src/lib/net/http.f), so the reset is its close
 \ too. Past COLLECT-MS with nothing to read it throws E-PROC-TIMEOUT.
 : CLOSED-WITHIN? ( TCP4:connection -- bool ) {: conn:TCP4:connection :}
    conn RAW-AWAIT

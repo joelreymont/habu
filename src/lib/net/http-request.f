@@ -9,7 +9,7 @@
 \ a configured body timeout starts after a valid head, otherwise that same
 \ deadline also bounds the body. Every wait for the peer is a readiness poll on
 \ the AIO loop
-\ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, docs/aio.md),
+\ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, src/lib/aio.f),
 \ which parks the task and not its thread until the peer speaks or that
 \ deadline passes.
 require src/lib/net/http-arena.f

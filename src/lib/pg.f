@@ -5,9 +5,47 @@
 \ owns it and a generation. The generation is what makes the result owner
 \ linear - CLEAR retires the slot, so the handle a caller still holds refuses
 \ every later use with E-CLEARED instead of reaching a freed PGresult. The same
-\ registry carries the concurrency rule from docs/database-models.md: a
-\ connection and its results belong to the task that created them and a handle
-\ presented by any other task is E-HANDLE.
+\ registry carries the concurrency rule (docs/design.md "Models taken from other
+\ Forths"): a connection and its results belong to the task that created them
+\ and a handle presented by any other task is E-HANDLE. A task that needs two
+\ databases opens two connections.
+\
+\ STORAGE CLASS. PROCESS-WIDE registry sized by CONFIGURE. The same declaration
+\ again is harmless from any task; a different one is refused until image
+\ preparation releases the registry. The parameter list, call arena and
+\ diagnostic buffers belong to each connection.
+\
+\ CLOSE also clears the connection's results. Closing a pending query first
+\ sends a native cancel, which may block up to the connection's connect_timeout
+\ (with none set, PG imposes no deadline) and cannot undo SQL already completed;
+\ idle and connecting handles send none. LIVE? tells the owning task whether its
+\ handle is still the slot's live generation, so cleanup closes only what lives.
+\
+\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
+\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
+\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
+\ a numeric hostaddr so DNS cannot block startup. CONNECT, EXEC and the other
+\ conveniences wait through AIO:AWAIT and need AIO:START. One operation may be
+\ pending per connection; a send copies its statement and parameters. A
+\ transport failure closes the connection and throws E-EXEC; a SQL rejection is
+\ the result's `failed` outcome with SQLSTATE and message.
+\
+\ OUTCOME's `failed` spans are the connection's copies, valid until its next
+\ OUTCOME; CONNECT's `refused` text lasts until the next CONNECT; TEXT$ and
+\ NAME$ answer libpq's memory, valid until CLEAR.
+\
+\ EXEC runs exactly one statement on the extended protocol. SCRIPT runs several
+\ on the simple-query protocol, which takes no parameters (a pending list is
+\ E-STATEMENT) and runs them as one implicit transaction: a failing statement
+\ rolls back the earlier ones. EXEC consumes the parameter list; BEGIN, COMMIT
+\ and ROLLBACK leave it untouched, which is how a WITH-TRANSACTION body carries
+\ its caller's values in. A nested WITH-TRANSACTION is E-TRANSACTION, since
+\ PostgreSQL ignores a nested BEGIN and the inner COMMIT would end the outer
+\ transaction.
+\
+\ Handles do not survive image capture: preparation retires every slot and
+\ frees its libpq resources and arenas. Stop the AIO loop before capture (a
+\ live task at PREPARE ends the process) and CONFIGURE again in the new one.
 \
 \ Statement and parameter text have no fixed ceiling. Each connection builds one
 \ call in an arena it allocates from src/lib/memory.f, sized to that call: the
@@ -21,8 +59,6 @@
 \ and paramFormats are all NULL: the server infers each type, lengths are
 \ ignored for text, and a NULL formats array means text. Only paramValues is
 \ built here.
-\
-\ See docs/db.md for the vocabulary, the buffer lifetimes and a worked example.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f

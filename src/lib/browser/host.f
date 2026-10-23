@@ -1,5 +1,5 @@
-\ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server
-\ (docs/browser-host.md).
+\ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server.
+\ The turn protocol between the page and a module is the header of turn.js.
 \
 \ The page is three files beside this one: index.html, host.js and turn.js.
 \ Each is read as this file loads, from the tree that resolved it, into a

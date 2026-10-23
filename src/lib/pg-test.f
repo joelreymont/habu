@@ -1036,7 +1036,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 
 \ A capture runs after the program's tasks stop: PREPARE ends the process on a
-\ task still activated (docs/threads.md), and the AIO loop is one. CAPTURE stops
+\ task still activated (src/lib/task.f), and the AIO loop is one. CAPTURE stops
 \ it, prepares, and starts it again however PREPARE ends, so the loop is live
 \ for the connections opened afterwards and for MAIN's cleanup.
 : CAPTURE ( -- )
