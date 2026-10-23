@@ -1525,7 +1525,7 @@ variable USER-SEEN
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:UNSUPPORTED$ dup 0<> if OBJECT-MISS false exit then 2drop
    LOAD-ROOTS? 0= if s" load-root" OBJECT-MISS false exit then
-   OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   OBJECT-FRESH? 0= if s" input-stale" OBJECT-MISS false exit then
    \ A leading segment installs before any load, on the state this check
    \ sees; one after a load is checked by the replay.
    0 NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = if

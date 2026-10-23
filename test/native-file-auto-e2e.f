@@ -342,8 +342,13 @@ variable DIAG-START
    OUT$ S\" 42\n0\n" CONTAINS? TTRUE
    s" app.f"
       S\" require step.f\n: APPLY ( n -- n ) [: DEF-STEP:STEP ;] execute ;\n: MAIN ( -- ) 40 APPLY . 7 . depth . ;\n" PUT
+   1 DIAG? !
    RUN-DEFINITION SUCCESS
+   0 DIAG? !
+   s" definition-edit.err" AT ERR$ WRITE-ALL
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   \ The edit leaves app.f's stored object stale: a named miss, not a silent one.
+   ERR$ s" /app.f reason=input-stale" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n7\n0\n" CONTAINS? TTRUE ;
 
