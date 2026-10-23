@@ -473,8 +473,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ TRUSTED: bodies whose scans meet a token they cannot apply while a two-cell
 \ value is live: an unchecked word with no row, and `evaluate`. The widths
-\ after it are unknown, the certificate says its facts are incomplete, and tier
-\ 0 names the definition and exits before anything runs.
+\ after it are unknown, the certificate says its facts are incomplete, tier 0
+\ names the definition and exits before anything runs, and tier 1 refuses to
+\ compile it.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" variable IC-OLD check@ IC-OLD ! 0 set-check : IC-RAW swap ; IC-OLD @ set-check " LN+
@@ -487,6 +488,13 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
    S\" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE s\" \" evaluate swap ; " LN+
    s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
+
+\ A hookless body whose unjudged scan lost a width fact while a pair was live:
+\ the verdict is not enforced, but the lowering still needs the facts.
+: INCOMPLETE-HOOKLESS$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE 0 set-check " LN+
+   s" : IC-HOOKLESS ( -- ) 1 2 ICPAIR:MAKE 5 + . . cr ; IC-HOOKLESS" LN+ LN$ ;
 
 \ A refused bind that cuts a live pair: the pair-typed `q` takes the ptr and
 \ the pair's top cell, so the undeclared `p` lies over half a pair. What the
@@ -646,6 +654,14 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" an unchecked word over a two-cell value is refused on tier 1" T-LABEL
    1 INCOMPLETE-RAW$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
    ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
+   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
+   s" evaluate over a two-cell value is refused on tier 1" T-LABEL
+   1 INCOMPLETE-EVAL$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
+   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
+   s" a hookless body with incomplete width facts is refused on tier 1" T-LABEL
+   1 INCOMPLETE-HOOKLESS$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile IC-HOOKLESS\n" CONTAINS? TTRUE
    ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
 
    LEGACY? if

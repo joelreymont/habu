@@ -1,4 +1,5 @@
 \ Copy source-bound frozen fetch descriptors before another checker scan runs.
+require src/lib/errors.f
 require src/lib/prelude.f
 require src/compiler/digest.f
 require src/compiler/native/fetch-owner.f
@@ -104,10 +105,18 @@ public
 \ Each split body contributes its own complete snapshot under its source base.
 \ Only NSTR-owned immutable bytes survive this call; no live certificate or
 \ checker mapping is retained by the compiler or the emitted routine.
+\ A scan that lost a width fact past a token it could not apply while a wide
+\ value was live (checker.f SCAN-INCOMPLETE) leaves nothing to place that
+\ value's cells from, so the definition is refused E-NELAB-BUNDLE before
+\ anything is lowered, as tier 0 refuses it (habu2.f VALIDATE). The refusal
+\ holds in every regime that scans, a hookless body's included: an unenforced
+\ verdict still needs complete width facts to lower from.
 : CAPTURE ( ptr u8 n n -- ) {: source:ptr size:n base:n :}
    source size HASH CHECKER-OWNER:CERTIFICATE {: data:ptr bytes:n :}
    data bytes size HEADER-CK
    bytes CELL / {: count:n :}
+   data count LOWER-CERT:NEEDS-CELL CELL@ LOWER-CERT:INCOMPLETE-NEEDS =
+   if E-NELAB-BUNDLE throw then
    data count TABLES-CK
    data count FETCH-START {: start:n :}
    data count LOWER-CERT:FETCH-COUNT-CELL CELL@ 0 ?do
