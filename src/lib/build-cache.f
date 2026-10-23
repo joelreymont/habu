@@ -404,6 +404,17 @@ public
 \ How often one kind of sweep runs in one directory.
 RETAIN-SECONDS 24 / constant SWEEP-SECONDS
 
+\ ---- stale replay rerun --------------------------------------------------------
+
+\ A maker whose replay of a cached file object refused after the object began
+\ installing cannot continue in that session. The file EXCLUDE-ENV$ names holds
+\ one line per refused object: its 64-byte kept key and a line feed. The maker
+\ appends the refused key there and throws RETRY-RC, which as an uncaught code
+\ below 256 is also its exit status; hb-build reruns it while a run added a
+\ line, and the rerun treats every listed key as a miss.
+65 constant RETRY-RC
+: EXCLUDE-ENV$ ( -- ptr u8 n ) s" HABU_FILE_EXCLUDE" ;
+
 private
 
 64 constant KEY-HEX-LEN

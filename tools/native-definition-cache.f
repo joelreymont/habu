@@ -97,6 +97,14 @@ DYNAMIC-BUFFER STORE-IMAGE u8
 \ buffer, so a frame keeps its region's offset; OBJECTS-U is the top.
 DYNAMIC-BUFFER OBJECTS u8
 variable OBJECTS-U
+\ The keys the build's exclusion file lists, as read at OPEN: each line a
+\ kept key and a line feed (BUILD-CACHE:EXCLUDE-ENV$). EXCLUDE-LINE is the
+\ one line REPLAY-STALE appends.
+65 constant EXCLUDE-STRIDE
+$0A constant LINE-FEED
+DYNAMIC-BUFFER EXCLUDED u8
+variable EXCLUDED-U
+create EXCLUDE-LINE EXCLUDE-STRIDE allot
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -415,6 +423,10 @@ variable PENDING-KEY-U
    s" HABU_BUILD_CACHE" ENV-INPUT:CURRENT$ dup 0 > if exit then
    2drop BUILD-CACHE:ROOT$ ;
 
+\ hb-build exports the build's exclusion file to every maker it may rerun;
+\ empty when the variable is unset. Read as ROOT$ is, so never a build input.
+: EXCLUDE-PATH$ ( -- ptr u8 n ) BUILD-CACHE:EXCLUDE-ENV$ ENV-INPUT:CURRENT$ ;
+
 : HASH-N ( n -- )
    HASH-CELL ! HASH-CTX HASH-CELL CELL SHA256-FEED ;
 : HASH-S ( ptr u8 n -- )
@@ -532,6 +544,45 @@ private
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
 : KEPT-KEY ( -- ptr u8 n ) FRAME F-KEY + 64 ;
+
+\ Read the exclusion file into EXCLUDED. No variable or no file lists no
+\ key; a file that is not whole lines of a key and a line feed is refused.
+: EXCLUDE-LOAD ( -- )
+   0 EXCLUDED-U !
+   EXCLUDE-PATH$ {: path:ptr pathu:n :}
+   pathu 0= if exit then
+   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if exit then
+   size 0= if file FD>N close exit then
+   size EXCLUDE-STRIDE mod 0<> if file FD>N close E-NUNIT-FILE throw then
+   size EXCLUDED-RESERVE
+   file 0 EXCLUDED size FS:READ-SIZED
+   size EXCLUDE-STRIDE / 0 ?do
+      i EXCLUDE-STRIDE * 64 + EXCLUDED c@ LINE-FEED <> if E-NUNIT-FILE throw then
+   loop
+   size EXCLUDED-U ! ;
+
+\ The innermost file's kept key is listed in the exclusion file.
+: EXCLUDED? ( -- bool )
+   EXCLUDED-U @ EXCLUDE-STRIDE / 0 ?do
+      i EXCLUDE-STRIDE * EXCLUDED 64 KEPT-KEY STR= if true unloop exit then
+   loop
+   false ;
+
+\ The replay of the innermost file's object refused after its install
+\ began: the session is half installed and cannot go on. The exclusion
+\ file, when hb-build named one, gets the object's key, so the maker's
+\ rerun compiles the file from source. BUILD-CACHE:RETRY-RC is thrown as is:
+\ uncaught, a code below 256 is the process's exit status.
+: REPLAY-STALE ( -- )
+   EXCLUDE-PATH$ {: path:ptr pathu:n :}
+   pathu 0 > if
+      KEPT-KEY {: key:ptr keyu:n :}
+      key EXCLUDE-LINE keyu BYTE-COPY
+      LINE-FEED EXCLUDE-LINE keyu + c!
+      path pathu EXCLUDE-LINE EXCLUDE-STRIDE APPEND-FILE
+   then
+   BUILD-CACHE:RETRY-RC throw ;
 
 : ORIGIN-HOOK-ALLOWED? ( -- bool )
    check@ {: hook:n :}
@@ -1356,11 +1407,7 @@ variable USER-SEEN
    k NUNIT-OBJECT:LAST-SEGMENT? if ALL-ROWS exit then
    k NUNIT-OBJECT:SEGMENT-MARK ;
 
-\ Segment row k's refusal prints: a leading one's miss under diagnostics, a
-\ later one's always, since it fails the build.
-: SEGMENT-SAY? ( n -- bool ) 0 > NUNIT-DEP:DIAG? @ or ;
-
-\ The head of the line that fails the build at event row k of the replay.
+\ The head of the line that names a stale replay at event row k.
 : STALE-HEAD ( n -- )
    {: k:n :}
    s" native-file: stale path=" DIAG-W2 FRAME-PATH DIAG-W2
@@ -1369,7 +1416,8 @@ variable USER-SEEN
 \ The head of segment row k's refusal line. A leading segment is checked
 \ before anything installs: its refusal is a miss and the file compiles
 \ live. A later one is checked after the replay installed what precedes it:
-\ the file is half installed, so its refusal is stale and the build fails.
+\ the file is half installed, so its refusal is stale and the maker reruns
+\ without the object (REPLAY-STALE). Both print under diagnostics only.
 : SEGMENT-HEAD ( n -- )
    {: k:n :}
    k 0= if s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2 exit then
@@ -1379,7 +1427,7 @@ variable USER-SEEN
 \ the language refuses the duplicate.
 : SEGMENT-NAME-LIVE ( ptr u8 n n -- )
    {: name:ptr nameu:n k:n :}
-   k SEGMENT-SAY? 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    k SEGMENT-HEAD
    s"  reason=name-live word=" DIAG-W2 name nameu DIAG-W2
    S\" \n" DIAG-W2 ;
@@ -1388,7 +1436,7 @@ variable USER-SEEN
 \ longer gives.
 : SEGMENT-FFI-ROWS ( n -- )
    {: k:n :}
-   k SEGMENT-SAY? 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    k SEGMENT-HEAD
    S\"  reason=ffi-rows\n" DIAG-W2 ;
 
@@ -1397,6 +1445,7 @@ variable USER-SEEN
 : SEGMENT-STALE-ROWS ( n -- )
    {: k:n :}
    k 0= if exit then
+   NUNIT-DEP:DIAG? @ 0= if exit then
    k SEGMENT-HEAD
    S\" \n" DIAG-W2 ;
 
@@ -1468,6 +1517,7 @@ variable USER-SEEN
 \ the replay, on the state the loads before it left.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
+   EXCLUDED? if s" excluded" OBJECT-MISS false exit then
    OBJECT-READ? 0= if false exit then
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if s" origin-format" OBJECT-MISS false exit then
    ORIGIN-SINK? 0= if s" origin-sink" OBJECT-MISS false exit then
@@ -1536,21 +1586,24 @@ variable IMPORT-AT
 : END-STEP ( n -- n ) CHECKS-STEP NUNIT-OBJECT:INSTALL-END ;
 
 \ Run replay step q on arg at event row k. The install has begun, so a
-\ refusal there fails the build with the file half installed: its stale
-\ line names row k before the refusal leaves.
+\ refusal there leaves the file half installed: under diagnostics its stale
+\ line names row k, and REPLAY-STALE ends the run for a rerun.
 : NAMED-STEP ( n [ n -- n ] n -- )
    {: arg:n q k:n :}
    arg q catch {: rc:n :} drop
    rc 0= if exit then
-   rc E-NUNIT-PROFILE = if k STALE-HEAD S\"  reason=install\n" DIAG-W2 then
+   rc E-NUNIT-PROFILE = if
+      NUNIT-DEP:DIAG? @ if k STALE-HEAD S\"  reason=install\n" DIAG-W2 then
+      REPLAY-STALE
+   then
    rc throw ;
 
 \ Install the viewed object in place of running the file: its segments and
 \ its child loads in their order, each checker slice before the load that
 \ follows it. A segment after a load is checked, and its checker slice
-\ prepared, on the state the loads left; one stale there is a profile
-\ error. The session manifest keeps the input rows the skipped load would
-\ have recorded.
+\ prepared, on the state the loads left; one stale there ends the run for
+\ a rerun without this object (REPLAY-STALE). The session manifest keeps the
+\ input rows the skipped load would have recorded.
 : REPLAY-OBJECT ( -- )
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:APPEND
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-BEGIN
@@ -1558,7 +1611,7 @@ variable IMPORT-AT
       {: loads:n :}
       i NUNIT-OBJECT:EVENT-KIND {: kind:n :}
       kind NUNIT-OBJECT:EV-SEGMENT = if
-         i 0 > if i SEGMENT-HOLDS? 0= if BAD then then
+         i 0 > if i SEGMENT-HOLDS? 0= if REPLAY-STALE then then
          i ['] SEGMENT-STEP i NAMED-STEP
       then
       kind NUNIT-OBJECT:EV-LOAD = if
@@ -1570,7 +1623,7 @@ variable IMPORT-AT
    \ Rows bound after a trailing load are checked once it ran; a stale one
    \ is named as the segment past the last event.
    ALL-ROWS SEGMENT-FRESH? 0= if
-      NUNIT-OBJECT:EVENT-COUNT SEGMENT-STALE-ROWS BAD
+      NUNIT-OBJECT:EVENT-COUNT SEGMENT-STALE-ROWS REPLAY-STALE
    then
    all ['] END-STEP NUNIT-OBJECT:EVENT-COUNT NAMED-STEP
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
@@ -1744,7 +1797,8 @@ variable IMPORT-AT
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
-   PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
+   PATH-BUF FS-PATH-CAP ZERO-SCRATCH
+   EXCLUDE-LINE EXCLUDE-STRIDE ZERO-SCRATCH ;
 
 \ The process's first session takes the seed's record count.
 : BOOT-TAKE ( -- )
@@ -1777,6 +1831,7 @@ variable IMPORT-AT
    \ the cache root never becomes a build input. BUILD-CACHE:ROOT$ creates
    \ the directory it selects; an exported root may not exist yet.
    ROOT$ MAKE-DIRS
+   EXCLUDE-LOAD
    ['] XREF-REC NFILE-REF:RECORD-AT!
    NUNIT-OBJECT:BIND-LOCAL
    NUNIT-CAPTURE:BIND-PRODUCER
@@ -1822,14 +1877,14 @@ variable IMPORT-AT
    CLEAR-NOMINALS
    NFILE-REF:CLOSE
    FRAMES-RELEASE PENDING-KEY-RELEASE
-   ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE
+   ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE EXCLUDED-RELEASE
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
    0 ORIGIN-GETTER !
    0 IMPORT-KIND ! 0 IMPORT-FED ! 0 IMPORT-AT !
    0 HARVEST-N ! 0 HARVEST-FED !
-   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECTS-U !
+   0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECTS-U ! 0 EXCLUDED-U !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH ;
 

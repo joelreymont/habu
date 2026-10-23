@@ -6,6 +6,7 @@ require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/build-cache.f
 require test/native-file-e2e.f
 require test/native-file-app-lib.f
 
@@ -16,6 +17,7 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
    {: builder:ptr builderu:n :}
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   BUILD-CACHE:EXCLUDE-ENV$ >LEN s" exclude" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
    builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
@@ -53,7 +55,13 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
    s" app.f" S\" require loader.f\n: MAIN ( -- ) SHARED:ANSWER . ;\n" PUT
    s" a" AT ENV-BUILD SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n" T$=
+   \ Under b, app.f's replay loads b/type.f, and MAIN, compiled against a's
+   \ ANSWER, is a stale later segment: the builder lists app.f's key and
+   \ exits for a rerun, which compiles app.f from source.
+   s" b" AT ENV-BUILD BUILD-CACHE:RETRY-RC T=
+   s" exclude" AT FILE-SIZE 65 T=
    s" b" AT ENV-BUILD SUCCESS
+   s" exclude" AT REMOVE-FILE
    RUN-APP SUCCESS OUT$ S\" 99\n" T$=
    s" b" AT ENV-BUILD SUCCESS
    REUSED

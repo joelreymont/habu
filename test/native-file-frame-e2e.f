@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/lib/build-cache.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 
@@ -78,6 +79,7 @@ variable FILL-POOL
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
+   BUILD-CACHE:EXCLUDE-ENV$ >LEN s" exclude" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    builder builderu INPUT INPUT-U @ CAPTURE ;
 
@@ -1253,18 +1255,51 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
    RUNS-ADMITTED ;
 
+\ A session exited RETRY-RC when name's replay went stale at the segment
+\ row seg names, and listed one key in the exclusion file RUN-INPUT names
+\ (BUILD-CACHE:EXCLUDE-ENV$); hb-build would run it again.
+: WENT-STALE ( n ptr u8 n ptr u8 n -- )
+   {: rc:n name:ptr nameu:n seg:ptr segu:n :}
+   rc BUILD-CACHE:RETRY-RC T=
+   0 INPUT-U !
+   s" native-file: stale path=" IN+ name nameu AT IN+ s"  segment=" IN+
+   seg segu IN+ S\" \n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   s" exclude" AT FILE-SIZE 65 T= ;
+
+\ The rerun of a stale session missed name's excluded object and compiled it
+\ from source; the exclusion file goes, so the cases after start without it.
+: EXCLUDED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu s"  reason=" LINE$ {: line:ptr lineu:n :}
+   0 INPUT-U !
+   name nameu IN+ s"  reason=excluded" IN+
+   line lineu INPUT INPUT-U @ T$=
+   s" exclude" AT REMOVE-FILE ;
+
 \ A changed constant leaves con.f's object supported but stale: the warm build
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
+\ con-dep.f's replay, past con.f's load, then finds its second segment stale,
+\ so the session exits for a rerun, which compiles con-dep.f from source over
+\ the con.f object the first run wrote.
 : STALE-CON ( -- )
    s" con.f" S\" 4 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
    s" a warm build compiles a stale con.f again" T-LABEL
    PROBE
    s" probe-stale-out.log" OUT$ PUT
    s" probe-stale-err.log" ERR$ PUT
+   s" con-dep.f" s" 2" WENT-STALE
+   ERR$ s" /con.f records=" CONTAINS? TFALSE
+   s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
+   s" the rerun compiles con-dep.f from source over con.f's new object" T-LABEL
+   PROBE
+   s" probe-rerun-out.log" OUT$ PUT
+   s" probe-rerun-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" con=5\n" CONTAINS? TTRUE
-   ERR$ s" /con.f records=" CONTAINS? TFALSE
-   s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ ;
+   OUT$ S\" dep=6\n" CONTAINS? TTRUE
+   s" con.f" REUSED
+   s" con-dep.f" EXCLUDED ;
 
 \ The freshness check left no row: a cold build of the edited con.f writes
 \ the object the stale warm build rewrote, kept as con-cold.obj.
@@ -1323,21 +1358,25 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
 
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
-\ the replay has installed RP-A and loaded rc.f, so the build stops with
-\ E-NUNIT-PROFILE (a stale later segment is not yet cut and compiled) and
-\ names the segment row it stopped at: event 2, after rc.f's load.
+\ the replay has installed RP-A and loaded rc.f, so the session stops for a
+\ rerun and names the segment row it stopped at: event 2, after rc.f's load.
+\ The rerun compiles rp.f from source over rc.f's new object.
 : RC-INTERFACE ( -- )
    s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
    s" an effect edit of rc.f stops rp.f's replay at its stale second segment" T-LABEL
    PROBE
    s" rc-interface-out.log" OUT$ PUT
    s" rc-interface-err.log" ERR$ PUT
-   0 T<>
-   ERR$ s" -8597" CONTAINS? TTRUE
-   0 INPUT-U !
-   s" native-file: stale path=" IN+ s" rp.f" AT IN+ S\"  segment=2\n" IN+
-   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   OUT$ s" rp=" CONTAINS? TFALSE ;
+   s" rp.f" s" 2" WENT-STALE
+   OUT$ s" rp=" CONTAINS? TFALSE
+   s" the rerun compiles rp.f from source, its object excluded" T-LABEL
+   PROBE
+   s" rc-rerun-out.log" OUT$ PUT
+   s" rc-rerun-err.log" ERR$ PUT
+   SUCCESS
+   OUT$ S\" rp=3\n" CONTAINS? TTRUE
+   s" rc.f" REUSED
+   s" rp.f" EXCLUDED ;
 
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
@@ -1526,8 +1565,10 @@ public
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    COLD-CON
-   LOADER-FIRST
+   \ RC-INTERFACE's rerun runs the whole probe, which LOADER-FIRST's ret-late.f
+   \ would refuse.
    RC-INTERFACE
+   LOADER-FIRST
    T-REPORT
    s" file frame artifacts: " type ROOT$ type cr ;
 
