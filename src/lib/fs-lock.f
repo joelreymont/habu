@@ -1,11 +1,13 @@
-\ fs-lock.f - advisory, nonblocking ownership of caller-held descriptors.
+\ fs-lock.f - advisory exclusive ownership of caller-held descriptors.
 \
-\ TRY does not own or close the descriptor. The caller holds the exclusive
+\ TRY takes the exclusive flock without waiting; WAIT blocks until the holder
+\ releases it and then takes it, retrying a wait a signal interrupts (EINTR).
+\ Neither owns nor closes the descriptor. The caller holds the exclusive
 \ flock until close (or process death). OPEN-DIR gives long-lived directory
 \ holds an O_CLOEXEC descriptor, so an exec child cannot prolong ownership.
 \ TRY answers false only when another holder blocks the lock; any other flock
-\ failure throws E-FS-IO, and an OPEN-DIR failure E-FS-OPEN. The lock binds
-\ only cooperating processes on the same kernel.
+\ failure throws E-FS-IO from either word, and an OPEN-DIR failure E-FS-OPEN.
+\ The lock binds only cooperating processes on the same kernel.
 \
 \ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
@@ -17,6 +19,7 @@ package FS-LOCK
 
 2 constant LOCK-EX
 4 constant LOCK-NB
+4 constant EINTR                 \ both targets' errno.h
 35 constant WOULD-BLOCK-MACOS
 11 constant WOULD-BLOCK-LINUX
 
@@ -47,5 +50,12 @@ public
    FD>N LOCK-EX LOCK-NB or FLOCK-CALL 0= if true exit then
    FFI:ERRNO WOULD-BLOCK = if false exit then
    E-FS-IO throw ;
+
+: WAIT ( fd -- )
+   {: f:fd :}
+   begin
+      f FD>N LOCK-EX FLOCK-CALL 0= if exit then
+      FFI:ERRNO EINTR <> if E-FS-IO throw then
+   again ;
 
 ;package

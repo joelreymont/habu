@@ -1869,6 +1869,10 @@ SUITE fs-lock
    src/lib/fs-lock-test.f
 ;SUITE
 
+SUITE os-cpu
+   src/lib/os-cpu-test.f
+;SUITE
+
 SUITE fs-list
    src/lib/fs-list-test.f
    src/lib/fs-cause-test.f
