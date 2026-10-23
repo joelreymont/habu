@@ -1,7 +1,8 @@
 \ Production AOT subject for frame slots of values copied through loops and for
 \ data-stack moves merged across link-frame restoration. CASES checks the loop
 \ shapes by throw; SHAPES prints each word's name and then its results, one per
-\ line, and the caller compares the output byte for byte.
+\ line, and the caller compares the output byte for byte. Its MAIN is
+\ test/compiler/native-frame-slot-e2e.f's, which joins this subject to others.
 package FRAME-SLOT-IMAGE
 private
 variable COUNT
@@ -102,5 +103,3 @@ public
    SHAPES
    s" frame-slots: ok" type cr ;
 ;package
-
-: MAIN ( -- ) FRAME-SLOT-IMAGE:CASES ;

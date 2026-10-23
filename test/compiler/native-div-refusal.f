@@ -27,9 +27,8 @@
 \ THE STRIPPED IMAGE is the helper's third reader. tools/hb-build.f compiles
 \ test/compiler/native-div-image.f at tier 1 and keeps only what its closure
 \ reaches, so the image catches the zero divide only if the closure followed the
-\ guard's branch into the helper. The directory the case prints keeps the image.
-\ The subject requires nothing, so the build's maker is the AOT builder settled
-\ on the keyed linker image (test/linker-builder-engine.f).
+\ guard's branch into the helper. test/compiler/native-frame-slot-e2e.f builds
+\ and runs it in its shared production image.
 \
 \ The runtime cases run in a child process: `set-tier` is engine-global state,
 \ and a child's own source names its tier. ARM returns to tier 0 for the catch
@@ -41,11 +40,8 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
-require src/lib/engine-candidate.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
-require test/gate-common.f
-require test/linker-builder-engine.f
 
 package NDIVREF-TEST
 
@@ -61,7 +57,6 @@ private
 
 $1000 constant CAP
 20000 constant TIMEOUT-MS
-600000 constant BUILD-MS             \ one stripped build on a loaded box
 
 create OUT CAP allot
 create ERR CAP allot
@@ -192,47 +187,6 @@ variable DIV-AT                           \ where the last sdiv found stands
    DIV-AT @ 4 - CODE@ BL-MASK and BL-OP T=
    DIV-AT @ 4 - BL-DEST  HELPER T= ;
 
-\ ---- the stripped image -------------------------------------------------------
-create SUBJECT FS-PATH-CAP allot variable SUBJECT-U
-create IMAGE FS-PATH-CAP allot
-variable IMAGE-U
-
-: IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
-
-: BUILD-IMAGE ( -- )
-   LINKER-BUILDER-ENGINE:ENSURE
-   LINKER-BUILDER-ENGINE:HOST$ {: linker:ptr linkeru:n :}
-   s" ndiv-image" HB-TMP-MKDIR GT-COPY-ROOT!
-   s" ndiv-image" IMAGE GT-PATH IMAGE-U !
-   \ A subject under this run's fresh root keys a new artifact, so every run links.
-   s" ndiv-image.f" SUBJECT GT-PATH SUBJECT-U !
-   s" test/compiler/native-div-image.f" SUBJECT SUBJECT-U @ COPY-FILE-STREAM
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   s" tools/hb-build.f" GE-ARG+
-   s" --" GE-ARG+
-   SUBJECT SUBJECT-U @ GE-ARG+
-   s" -o" GE-ARG+
-   IMAGE$ GE-ARG+
-   s" HABU_FIXPOINT_ENGINE" >LEN linker linkeru >LEN PROC-ENV+
-   ENGINE-CANDIDATE:PATH$ BUILD-MS GE-RUN-ENV ;
-
-: IMAGE-CASES ( -- )
-   BUILD-IMAGE
-   s" tools/hb-build.f builds the stripped division image" T-LABEL
-   T-LABEL$ GE-RC@ 0 T=
-   GT-ERR$ nip 0 T=
-   IMAGE$ EXECUTABLE? {: built:bool :}
-   built TTRUE
-   built 0= if GT-ERR$ type exit then
-
-   GE-HB-RESET
-   IMAGE$ TIMEOUT-MS GE-RUN-ENV
-   s" the stripped image catches its compiled zero divide by the code" T-LABEL
-   T-LABEL$ GE-RC@ 0 T=
-   GT-OUT$ S\" -6400\n-1\n0\n0\n1\n0\n0\n1\n-1\n-7\n0\n-2\n-1\n" T$=
-   s" artifacts: " type GT-ROOT type cr ;
-
 public
 
 : RUN-ALL ( -- )
@@ -282,7 +236,6 @@ public
       CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
       GUARD-CASES
    then
-   IMAGE-CASES
 
    T-REPORT
    s" native-div-refusal: ok" type cr ;

@@ -1,5 +1,8 @@
 \ The sidecar's count belongs to framing; only its padded runs belong to the
 \ sidecar row. Exercise both payload shapes on a private copy of bin/hb.
+\ EST-MAIN measures that copy once: the reading cases run first, a case that
+\ alters it restores what it wrote, and the payload case, which grows it, runs
+\ last among them.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f
@@ -128,6 +131,8 @@ $800 constant EST-X64-TABLE
    $1000 COUNTED-RUN 1 T= ;
 
 : EST-SUM ( -- )
+   s" the engine's budget rows sum to its file length" T-LABEL
+   CLASS$ s" engine" T$=
    TOTAL-BYTES ILEN @ T=
    CODE-BYTES NAME-BYTES + DATA-WRITTEN + DATA-ZERO + PAD-BYTES + OTHER-BYTES +
    ILEN @ T= ;
@@ -143,14 +148,14 @@ $800 constant EST-X64-TABLE
 
 : EST-TILING ( -- )
    s" equal-size overlap and gap cannot pass the budget identity" T-LABEL
-   s" bin/hb" MEASURE [: EST-OVERLAP ;] E-ES-WALK TTHROWSQ
-   s" bin/hb" MEASURE [: EST-GAP ;] E-ES-WALK TTHROWSQ
+   SITE0 @ {: site:n :}
+   [: EST-OVERLAP ;] E-ES-WALK TTHROWSQ  site SITE0 !
+   [: EST-GAP ;] E-ES-WALK TTHROWSQ  site SITE0 !
    s" an overflowing range is refused before any image access" T-LABEL
    [: EST-OVERFLOW ;] E-ES-WALK TTHROWSQ
    0 QUIET ! ;
 
 : EST-METADATA ( -- )
-   s" bin/hb" MEASURE
    \ RELA and the dynamic table are ELF-specific. The general tiling tests
    \ above exercise both containers, including all Mach-O load-command spans.
    MACHO @ if exit then
@@ -160,16 +165,15 @@ $800 constant EST-X64-TABLE
    \ Alter the last metadata byte in this private copy. Its declared extent
    \ remains the same for both values; only the zero count may change.
    ELF-META-END 1- {: last:n :}
+   IMG@ last + c@ {: byte:n :}
    1 IMG@ last + c! ELF-META-END last 1+ T=
    0 IMG@ last + c! ELF-META-END last 1+ T=
+   byte IMG@ last + c!
    s" dynamic metadata lengths cannot wrap or run into the code page" T-LABEL
    [: $4001B8 $7FFFFFFFFFFFFFFF META-VA-END drop ;] E-ES-WALK TTHROWSQ
    [: $4001B8 CODE-OFF META-VA-END drop ;] E-ES-WALK TTHROWSQ ;
 
 : EST-SIDECAR ( -- )
-   s" bin/hb" MEASURE
-   CLASS$ s" engine" T$=
-   EST-SUM
    \ The payload rows below are the ARM packed AOT trailer. Intel records
    \ text sites in its ELF footer and dictionary rows in a fixed PT_LOAD.
    X64 @ if exit then
@@ -220,19 +224,21 @@ $800 constant EST-X64-TABLE
 \ pointer being accepted. The build tests exercise the full new image path.
 : EST-MACHO-BLOB-PLACE ( -- )
    HB-TARGET-MACOS? 0= if exit then
-   s" bin/hb" MEASURE
    MACHO-READ:TEXT-END 8 - {: old:n :}
+   MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + {: now:n :}
+   old U32@ old 4 + U32@ now U32@ now 4 + U32@ {: o0:n o1:n n0:n n1:n :}
    0 old EST-W32!  0 old 4 + EST-W32!
    s" the prior Mach-O text payload is bounded by its text section" T-LABEL
    old BLOB-AT? TTRUE
    BLOB-LIMIT MACHO-READ:TEXT-END T=
    old 4 + BLOB-AT? TFALSE
-   MACHO-READ:DATA-OFF MACHO-READ:GOT-BYTES + {: now:n :}
+   o0 old EST-W32!  o1 old 4 + EST-W32!
    0 now EST-W32!  0 now 4 + EST-W32!
    s" the current Mach-O payload starts immediately after the GOT" T-LABEL
    now BLOB-AT? TTRUE
    BLOB-LIMIT MACHO-READ:DATA-OFF MACHO-READ:DATA-BYTES + T=
-   now 4 + BLOB-AT? TFALSE ;
+   now 4 + BLOB-AT? TFALSE
+   n0 now EST-W32!  n1 now 4 + EST-W32! ;
 
 \ Three one-instruction bodies: call/jump to the third, return, return.
 \ A BL returns into the second body; the same displacement in B does not.
@@ -260,7 +266,6 @@ $800 constant EST-X64-TABLE
    REACH-SN @ 2 T= FALL-N @ 1 T= ;
 
 : EST-SPAN-REACH ( -- )
-   s" bin/hb" MEASURE
    \ The reachability sweep decodes AArch64 calls in the packed AOT blob.
    X64 @ if exit then
    BUILD-CODE-INDEX
@@ -282,7 +287,6 @@ create EST-MAP FS-PATH-CAP allot
 variable EST-MAP-U
 
 : EST-SPAN-SIDECAR ( -- )
-   s" bin/hb" MEASURE
    \ This synthetic span row uses the ARM packed AOT code index.
    X64 @ if exit then
    BUILD-CODE-INDEX
@@ -318,7 +322,6 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
    w 1 >= w WID-SPAN @ <= and 0= if 1 EST-WID-BAD +! then ;
 
 : EST-WID-FORM ( -- )
-   s" bin/hb" MEASURE
    \ This is the ARM packed AOT wid table; Intel keeps live dictionary rows.
    X64 @ if exit then
    WID-W0 @ 1 T=
@@ -339,14 +342,16 @@ variable EST-WID-SEEN                   \ ... and the non-zero ones walked
    EST-X64-SEGMENTS
    EST-X64-EMPTY
    EST-DATA-CARRIER
-   EST-MACHO-BLOB-PLACE
+   s" bin/hb" MEASURE
+   EST-SUM
    EST-WID-FORM
-   EST-TILING
-   EST-METADATA
-   EST-SIDECAR
-   EST-FALLTHROUGH
    EST-SPAN-REACH
    EST-SPAN-SIDECAR
+   EST-TILING
+   EST-METADATA
+   EST-MACHO-BLOB-PLACE
+   EST-SIDECAR
+   EST-FALLTHROUGH
    T-REPORT ;
 
 EST-MAIN
