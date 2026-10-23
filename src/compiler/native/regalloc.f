@@ -495,8 +495,8 @@ DYNAMIC-BUFFER F-RET-BUF n
    V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-OPERAND@ ;
 
 \ The same authority on which register fields a form FIXES to one register of
-\ the machine. A form that fixes none - which is every ARM64 form - answers
-\ zero, and the walks below do nothing at all.
+\ the machine. A form that fixes none - every ARM64 form but PSTORE and PBSTORE
+\ (a64ir.f DEF-PSTORE) - answers zero, and the walks below do nothing at all.
 : FIXES-AT ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FFIXED-COUNT@ ;
@@ -845,6 +845,8 @@ DYNAMIC-BUFFER FIXP-POS-BUF n
 : FIXP-POS ( -- ptr n ) 0 FIXP-POS-BUF ;
 DYNAMIC-BUFFER FIXP-MASK-BUF n
 : FIXP-MASK ( -- ptr n ) 0 FIXP-MASK-BUF ;
+DYNAMIC-BUFFER FIXP-OPERANDS-BUF n
+: FIXP-OPERANDS ( -- ptr n ) 0 FIXP-OPERANDS-BUF ;
 0 CWORK-VARIABLE N-FIXP n
 \ Every PINNED class - one the contract or a form declares into a register - in
 \ the order its hull opens, with that opening. The pin is placed where the class
@@ -898,6 +900,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    OMAX CALL-POS-BUF-RESERVE
    OMAX FIXP-POS-BUF-RESERVE
    OMAX FIXP-MASK-BUF-RESERVE
+   OMAX FIXP-OPERANDS-BUF-RESERVE
    VMAX PIN-POS-BUF-RESERVE
    VMAX PIN-ROOT-BUF-RESERVE
    ;
@@ -1792,21 +1795,20 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
 \ the count. A value this operation READS may therefore not be in any register
 \ its form fixes, with the one exception the form itself states: the operand
 \ declared INTO that register, which is where the instruction wants it and
-\ nowhere else. The exception is asked of the CLASS and not of the operand
-\ ordinal, which is as exact as one declaration per class makes it
-\ (MB-ONE-DECL): a class a routine CONTRACT declares into a fixed register would
-\ be exempt at an operation that reads it for another operand, and no convention
-\ of either machine declares a place a form also fixes.
+\ nowhere else. The exemption is the class's declared register, and only where
+\ this operation fixes that register as an OPERAND: a remainder declared into
+\ rdx by one division is still forbidden rdx as the divisor of the next, whose
+\ form fixes rdx only as a result.
 \
 \ Both rules are asked at the OPERATION. Where a pinned operand's class OPENS is
 \ MB-FORBID-PINS's question, because a copy coalesced into the value it reads
 \ opens at that value's definition, further up than any operation this index
 \ names.
-: MB-FIXED-BITS ( n n n -- n )
-   {: r:n p:n m:n :}
+: MB-FIXED-BITS ( n n n n -- n )
+   {: r:n p:n m:n o:n :}
    r p MB-CROSSES? if m exit then
    r p MB-READS? 0= if 0 exit then
-   m  r MB-DECL-BIT invert  and ;
+   m  o r MB-DECL-BIT and  invert and ;
 
 : MB-FORBID-FIXED ( n n n n -- n )
    {: r:n first:n limit:n acc:n :}
@@ -1814,7 +1816,7 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    N-FIXP @  first MB-FIX-FROM  ?do
       i cells FIXP-POS + @ {: p:n :}
       p limit >= if unloop exit then
-      r p  i cells FIXP-MASK + @  MB-FIXED-BITS or
+      r p  i cells FIXP-MASK + @  i cells FIXP-OPERANDS + @  MB-FIXED-BITS or
    loop ;
 
 \ A PIN IS PLACED WHERE ITS CLASS OPENS, so the register it names has to be free
@@ -2368,13 +2370,15 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
    loop ;
 
 \ The registers one operation's form fixes, for its results and its operands
-\ alike, as a mask. An operation that fixes none answers zero and takes no row in
-\ the index.
-: MB-FIX-MASK ( IR-ID:ir-op-id -- n )
+\ alike, and those it fixes on the operand side alone, as two masks. An
+\ operation that fixes none answers zero for both and takes no row in the index.
+: MB-FIX-MASKS ( IR-ID:ir-op-id -- n n )
    {: id:IR-ID:ir-op-id :}
-   0
+   0 0
    id FIXES-AT 0 ?do
-      1  id i FIX-REG-AT  lshift or
+      1  id i FIX-REG-AT  lshift {: b:n :}
+      id i FIX-SIDE-AT FIX-RESULT? 0= if b or then
+      swap b or swap
    loop ;
 
 \ Built beside the call index and read by the same scan, for the same reason:
@@ -2388,10 +2392,11 @@ DYNAMIC-BUFFER PIN-ROOT-BUF n
       N-BLKS @ 0 ?do
          f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
          bk OP-COUNT 0 ?do
-            bk i OP-AT MB-FIX-MASK {: m:n :}
+            bk i OP-AT MB-FIX-MASKS {: m:n o:n :}
             m 0<> if
                j i OP-POS  N-FIXP @ cells FIXP-POS + !
                m  N-FIXP @ cells FIXP-MASK + !
+               o  N-FIXP @ cells FIXP-OPERANDS + !
                N-FIXP @ 1+ N-FIXP !
             then
          loop

@@ -459,12 +459,16 @@ $400 constant CALLEE-ENTRY           \ the address the tail case leaves through
 \ caller, reserves no frame and calls nothing. It names no place, so the
 \ selector adds no entry and no exit and the module is the body alone. The
 \ flags are declared CLOBBERED because every arithmetic form of this machine
-\ writes them - there is no add here that does not.
-: LEAF ( -- NEFF:routine )
+\ writes them - there is no add here that does not. A lowered module that
+\ stores to the frame is allocated under the same leaf with that frame's size.
+: LEAF-SIZED ( n -- NEFF:routine )
+   {: size:n :}
    NEFF-CONV:REGISTER NEFF:SEQ-NONE NEFF:SEQ-NONE X64ABI:SCRATCH
    NEFF:FPR-NONE NEFF:FPR-NONE NEFF:FPR-NONE
    NEFF-NZCV:CLOBBERED NEFF-LINK:ABSENT NEFF-CONTROL:RETURNS
-   NEFF:TRAITS-NONE 0 0 X64M:MACHINE NEFF:ROUTINE ;
+   NEFF:TRAITS-NONE size 0 X64M:MACHINE NEFF:ROUTINE ;
+
+: LEAF ( -- NEFF:routine )   0 LEAF-SIZED ;
 
 \ Bind the source dialect to the module being read and the machine dialect to
 \ the module about to be written, then select. Both the allocator and the
@@ -685,6 +689,39 @@ $1000 constant THROW-STAND
    2 A64RAV:REG@
    3 A64RAV:REG@
    4 A64RAV:REG@
+   A64RAV:ACCEPTED? ;
+
+\ A REMAINDER DIVIDED BY. The first division's remainder is the second's divisor,
+\ so its class is declared into rdx by the first form, and the second form fixes
+\ rdx only as a result: its cqo writes rdx before the divide reads its divisor.
+\ The declaration exempts the class only where a form fixes rdx as an OPERAND, so
+\ the second division forbids it rdx; the class goes the way of a value the pool
+\ cannot hold, the spill pass stores it to the frame and gives the second
+\ division a divisor of its own, and the lowered module allocates with nothing
+\ planned and is accepted. Value 6 of the lowered module is that divisor, the
+\ remainder loaded back from the frame.
+: REM-DIVISOR-BODY ( IR-CTX:ctx -- n n bool )
+   X64-MOD
+   CC BB  CC BB X64IR:LOWERING  [: X64IR:ENSURE-NAMED ;] A64SPILL:BIND-DIALECT
+   0 1 OPEN-FUN
+   100 M-MOVI {: d:IR-ID:ir-value-id :}
+   7 M-MOVI {: v:IR-ID:ir-value-id :}
+   d v M-IDIV {: q1:IR-ID:ir-value-id r1:IR-ID:ir-value-id :}
+   q1 r1 M-IDIV {: q2:IR-ID:ir-value-id r2:IR-ID:ir-value-id :}
+   q2 r2 M-ADD M-RET
+   CLOSE-FUN
+   CC BB IR-BUILD:FREEZE {: m0:IR-BUILD:module :}
+   CC m0 LEAF A64RA:ALLOCATE
+   A64RA:FRAME {: size:n :}
+   X64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb X64M:MACHINE  CC nb X64IR:VOCABULARY  A64RA:BIND-DIALECT
+   CC nb  CC nb X64IR:VOCABULARY  A64RAV:BIND-DIALECT
+   CC m0 nb  CC nb X64IR:LOWERING  A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 size LEAF-SIZED A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m1 size LEAF-SIZED A64RAV:ACCEPT
+   6 A64RAV:REG@
+   A64RA:PLAN-N
    A64RAV:ACCEPTED? ;
 
 \ Two counts, both fixed to rcx, live over one interval: the second is made
@@ -1066,6 +1103,12 @@ public
    s" the divisor is kept out of rdx as well, because the form writes rdx before it reads its divisor: it takes rsi where rdx was free" T-LABEL
    WBND [: EARLY-CLOBBER-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 2 T= 0 T= 6 T= 0 T= 1 T=
+
+   s" a remainder divided by is kept out of rdx at the second division, whose cqo writes rdx before it reads its divisor, although the first division declared it there: the lowered module allocates with nothing planned and is accepted" T-LABEL
+   WBND [: REM-DIVISOR-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T=
+   dup X64ASM:RAX X64ASM:R64>N T<>
+   X64ASM:RDX X64ASM:R64>N T<>
 
    s" a variable shift the selector lowered places the count's copy in rcx and coalesces the copy into the count nothing else reads" T-LABEL
    WBND [: VAR-SHIFT-BODY ;] IR-CTX:WITH-CONTEXT
