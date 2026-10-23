@@ -282,6 +282,20 @@ variable MAKER-FN-N
 variable MAKER-LIB-N
 variable MAKER-DEPTH
 $4000000000000000 constant MAKER-TAG
+\ 0, or the xt OBSERVE stored; NOTIFY hands it a kind and an index: each
+\ completed library (OBS-LIB) or function (OBS-FN) declaration with its row,
+\ and each selection write, a declaring word's, SELECT's or CLEAR-SCOPE's
+\ (OBS-SCOPE, index 0), an unchanged one included. An install's SELECT runs
+\ with no observer.
+variable OBSERVER
+CAST: OBSERVER-FN ( n -- [ n n -- ] )
+CAST: OBSERVER-N ( [ n n -- ] -- n )
+1 constant OBS-LIB
+2 constant OBS-FN
+3 constant OBS-SCOPE
+
+: NOTIFY ( n n -- ) {: kind:n idx:n :}
+   OBSERVER @ dup 0<> if kind idx rot OBSERVER-FN execute else drop then ;
 variable FN-REGISTERED
 PERSISTED-PTR-VARIABLE PIN-FN
 PERSISTED-PTR-VARIABLE PIN-LIB
@@ -489,14 +503,21 @@ variable DLCLOSE-FN-CELL
    dup 0= if E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
-: NAME-ROOM ( n -- n ) {: u:n :}
+\ dlsym and dlopen take C strings and FN-ROW@ stops at the first NUL, so a NUL
+\ inside a span would bind, and replay as, a different name.
+: NUL-CHECK ( ptr u8 n -- ) {: s:ptr u:n :}
+   u 0 ?do s i + c@ 0= if E-FFI-SYNTAX throw then loop ;
+
+: NAME-ROOM ( ptr u8 n -- n ) {: s:ptr u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
    u FN-NAME-CAP 1 - > if E-FFI-SYNTAX throw then
+   s u NUL-CHECK
    u ;
 
-: PATH-ROOM ( n -- n ) {: u:n :}
+: PATH-ROOM ( ptr u8 n -- n ) {: s:ptr u:n :}
    u 0 <= if E-FFI-SYNTAX throw then
    u LIB-PATH-CAP 1 - > if E-FFI-SYNTAX throw then
+   s u NUL-CHECK
    u ;
 
 \ LIBRARY-NAME$'s two inputs, refused by the same code an over-long path is.
@@ -627,23 +648,32 @@ public
    buf CODEGEN:CONTENTS ;
 
 
-\ Path identity is the complete byte span, including its length. Reusing an
-\ occupied row leaves its resolved handle in place. Only a new path consumes a
-\ row; new paths grow the table only when its current capacity fills.
-: LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
-   u PATH-ROOM drop
+\ Path identity is the complete byte span, including its length. The selected
+\ bank's library index of the path, or 0 when no row holds it.
+: LIB-INDEX ( ptr u8 n -- n ) {: path:ptr u:n :}
    DECL-TAG {: tag:n :}
    tag LIB-N-CELL @ 0 ?do
       i tag or LIB-LEN@ u = if
          path u i tag or LIB-PATH u STR= if i 1+ tag or unloop exit then
       then
    loop
+   0 ;
+
+\ Reusing an occupied row leaves its resolved handle in place. Only a new path
+\ consumes a row; new paths grow the table only when its current capacity fills.
+: LIBRARY-PATH ( ptr u8 n -- n ) {: path:ptr u:n :}
+   path u PATH-ROOM drop
+   DECL-TAG {: tag:n :}
+   path u LIB-INDEX dup 0<> if OBS-LIB over NOTIFY exit then drop
    LIB-NEW
    tag LIB-N-CELL @ 1+ tag LIB-N-CELL !
-   path u tag LIB-N-CELL @ 1- tag or LIB-PATH CSTR
-   u tag LIB-N-CELL @ 1- tag or LIB-LEN!
-   0 tag LIB-N-CELL @ 1- tag or LIB-HANDLE!
-   tag LIB-N-CELL @ tag or ;
+   tag LIB-N-CELL @ {: row:n :}
+   path u row 1- tag or LIB-PATH CSTR
+   u row 1- tag or LIB-LEN!
+   0 row 1- tag or LIB-HANDLE!
+   \ Keep the row: an observer that declares rows of its own moves the count.
+   OBS-LIB row tag or NOTIFY
+   row tag or ;
 
 private
 
@@ -875,6 +905,17 @@ private
 
 public
 
+\ The selected bank's index of the first row matching the descriptor, or -1
+\ when none does.
+: FN-INDEX ( ptr u8 n n n n n -- n )
+   {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
+   name u NAME-ROOM drop
+   DECL-TAG {: tag:n :}
+   tag FN-N-CELL @ 0 ?do
+      name u lib argc spills reloc i tag or SAME-FN? if i tag or unloop exit then
+   loop
+   -1 ;
+
 \ Validate before reading a row's name. A match retains its cached address;
 \ only a new descriptor appends metadata to the selected bank.
 \ Declaring registers too. A process that loads this file declares the errno row
@@ -898,25 +939,60 @@ public
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
    reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
-   u NAME-ROOM drop
-   tag FN-N-CELL @ 0 ?do
-      name u lib argc spills reloc i tag or SAME-FN? if
-         REGISTER-CLEANUP
-         i tag or unloop exit
-      then
-   loop
+   name u lib argc spills reloc FN-INDEX dup 0 >= if REGISTER-CLEANUP OBS-FN over NOTIFY exit then drop
    REGISTER-CLEANUP
    FN-NEW
    tag FN-N-CELL @ 1+ tag FN-N-CELL !
-   spills tag FN-N-CELL @ 1- tag or FN-SPILL-OFF FN-FIELD !
-   reloc tag FN-N-CELL @ 1- tag or FN-RELOC-OFF FN-FIELD !
-   name u tag FN-N-CELL @ 1- tag or FN-NAME CSTR
-   lib tag FN-N-CELL @ 1- tag or FN-LIB-OFF FN-FIELD !
-   argc tag FN-N-CELL @ 1- tag or FN-ARGC-OFF FN-FIELD !
-   0 tag FN-N-CELL @ 1- tag or FN-ADDR!
-   tag FN-N-CELL @ 1- tag or ;
+   tag FN-N-CELL @ 1- tag or {: idx:n :}
+   spills idx FN-SPILL-OFF FN-FIELD !
+   reloc idx FN-RELOC-OFF FN-FIELD !
+   name u idx FN-NAME CSTR
+   lib idx FN-LIB-OFF FN-FIELD !
+   argc idx FN-ARGC-OFF FN-FIELD !
+   0 idx FN-ADDR!
+   \ Keep the row: an observer that declares rows of its own moves the count.
+   OBS-FN idx NOTIFY
+   idx ;
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
+
+\ The rows every bank has room for. A file object's segment takes it when it
+\ opens and compares it when it closes: the observer journals the rows, grown
+\ room refuses `ffi-grown` (tools/native-unit-object.f SEGMENT-CLOSE).
+: MARK ( -- n )
+   FN-CAP @ LIB-CAP @ + MAKER-FN-CAP @ + MAKER-LIB-CAP @ + ;
+
+\ The index the selected bank's next new function or library row gets.
+: NEXT-FN ( -- n ) DECL-TAG dup FN-N-CELL @ or ;
+: NEXT-LIB ( -- n ) DECL-TAG dup LIB-N-CELL @ 1+ or ;
+
+\ Row idx's descriptor: symbol, library index, argument and spill counts.
+: FN-ROW@ ( n -- ptr u8 n n n n )
+   {: idx:n :}
+   idx FN-NAME {: name:ptr :}
+   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat {: u:n :}
+   name u idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ ;
+\ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
+: LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
+: MAX-ARGS ( -- n ) FFI-MAX-ARGS ;
+\ The bit a builder-support row's index carries.
+: MAKER-BANK ( -- n ) MAKER-TAG ;
+: SYMBOL-CAP ( -- n ) FN-NAME-CAP 1- ;
+
+\ Hand every completed declaration, reused or appended, to an xt as
+\ `( kind idx )`: kind 1 = library (LIBRARY-PATH), 2 = function (DECLARE),
+\ 3 = a selection write (NOTIFY-SCOPE), idx 0.
+\ The tools' file object journals every declaration a file's code makes
+\ (tools/native-unit-object.f SEGMENT-OPEN/SEGMENT-CLOSE); a captured image
+\ holds 0.
+: OBSERVE ( [ n n -- ] -- ) OBSERVER-N OBSERVER ! ;
+: UNOBSERVE ( -- ) 0 OBSERVER ! ;
+\ FFI-DECL's RECORD-SCOPE, SELECT and CLEAR-SCOPE report each selection they
+\ write.
+: NOTIFY-SCOPE ( -- ) OBS-SCOPE 0 NOTIFY ;
+\ The observer's cell. The tools declare it a process cell at their load, as
+\ they do IMAGE-FLOOR (tools/native-unit-object.f).
+: OBSERVER-CELL ( -- ptr n ) OBSERVER ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
@@ -956,6 +1032,7 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
    RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
+   OBSERVER BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
 
 \ A stripped entry publishes the two table bases after restoring DATA. Their
@@ -980,6 +1057,7 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
    RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
    RETIRED-COUNT BYTE-VIEW CELL fresh execute
+   OBSERVER BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
 
 \ FILE and a complete saved image retain compiler-support rows as well. The
@@ -1781,7 +1859,8 @@ private
 \ source is closed before capture, and its host wordlist id is not an image id.
 : CLEAR-SCOPE ( -- )
    0 SCOPE-WID !
-   0 SCOPE-SET ! ;
+   0 SCOPE-SET !
+   FFI:NOTIFY-SCOPE ;
 
 : ENSURE-SCOPE-HOOK ( -- )
    SCOPE-HOOK @ 0= if
@@ -1792,7 +1871,8 @@ private
 : RECORD-SCOPE ( -- )
    ENSURE-SCOPE-HOOK
    get-current SCOPE-WID !
-   1 SCOPE-SET ! ;
+   1 SCOPE-SET !
+   FFI:NOTIFY-SCOPE ;
 
 : CHECK-SCOPE ( -- )
    SCOPE-SET @ 0= if E-FFI-LIBRARY throw then
@@ -1825,6 +1905,18 @@ public
 \ continue with FUNCTION:. Install the matching cleanup before capture; the
 \ hook flag itself belongs to the live registry, not the serialized bytes.
 : ARM-SCOPE ( -- ) ENSURE-SCOPE-HOOK ;
+
+\ The declarer's selection as a file object carries it: the library index,
+\ the wordlist it was stated in, and whether one is stated. SELECT restores
+\ it at an install as RECORD-SCOPE made it, hook included. Like
+\ RECORD-SCOPE it reports the write, an unchanged one included: a file's
+\ object must record the selection a write replaced.
+: SELECTION ( -- n n bool ) CUR-LIB @ SCOPE-WID @ SCOPE-SET @ 0<> ;
+: SELECT ( n n bool -- )
+   {: lib:n wid:n set:bool :}
+   lib CUR-LIB ! wid SCOPE-WID !
+   set if ENSURE-SCOPE-HOOK 1 else 0 then SCOPE-SET !
+   FFI:NOTIFY-SCOPE ;
 
 \ The parser's context, generated-text descriptors and token arrays are one
 \ declared cell grid or byte span apiece.
