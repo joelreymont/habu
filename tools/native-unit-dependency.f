@@ -16,6 +16,7 @@ require src/core/checker-owner-extension.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/aot-data-cell.f
+require src/habu/address-cells.f
 require src/compiler/native/dict.f
 require src/compiler/native/host.f
 require src/compiler/native/checker-owner.f
@@ -77,6 +78,9 @@ DYNAMIC-BUFFER SEEN n
 DYNAMIC-BUFFER WSTACK n
 DYNAMIC-BUFFER MEMBERS n
 DYNAMIC-BUFFER HWORK u8
+\ The declared address cells inside one DATA extent, as offsets into it.
+DYNAMIC-BUFFER PTRS n
+variable PTR-N
 \ A run's queue: the epoch stamp of each record queued, and the queue of the
 \ file's own records to walk through and the other records to capture.
 DYNAMIC-BUFFER RMARK n
@@ -547,10 +551,31 @@ private
    v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder FAIL exit then
    0 H-N v H-N ;
 
+\ The cells in [start, end) the engine declared address cells
+\ (TYPED-VARIABLE, PTR-VARIABLE, a TYPED-BUFFER of code), ascending in PTRS
+\ as offsets from start; their count.
+: DECLARED ( n n -- n )
+   {: start:n end:n :}
+   0 PTR-N !
+   data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: data:n :}
+   ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ SNAP-RELOC:XTCELL-OFF-MASK and data + {: site:n :}
+      site start >= site CELL + end <= and if
+         PTR-N @ 1+ PTRS-RESERVE
+         site start - PTR-N @ PTRS !
+         1 PTR-N +!
+      then
+   loop
+   PTR-N @ 1 > if 0 PTRS PTR-N @ [: < ;] SORT:SORT! then
+   PTR-N @ ;
+
 \ ord's DATA digest in HOUT over its extent up to the next record origin
-\ within its limits, the first cell through H-POINTER when it may hold an
-\ address, and that extent in bytes; 0 when ord has no DATA origin or its
-\ extent is empty.
+\ within its limits, and that extent in bytes; 0 when ord has no DATA origin
+\ or its extent is empty. A cell that may hold an address goes through
+\ H-POINTER: a variable's or defer's first cell and each declared address
+\ cell. Its raw bytes hold a process address. The declared cells' count and
+\ offsets precede the bytes, so each extent state has one stream layout.
 : DATA-HASH ( n -- n )
    {: ord:n :}
    ord NFILE-REF:DATA-ORIGIN-BASE {: origin:n known:bool :}
@@ -561,13 +586,24 @@ private
    end origin - {: size:n :}
    size 0 <= if 0 exit then
    HCTX SHA256-BEGIN
-   s" habu-data-v1" H-S
+   s" habu-data-v2" H-S
    size H-N
    ord POINTER-CELL? size 8 >= and if
       origin N>U8 LE:U64@ ord limit lim-here H-POINTER
       origin 8 +
    else origin then {: start:n :}
-   start N>U8 end start - H-BYTES
+   start end DECLARED {: ptrs:n :}
+   ptrs H-N
+   ptrs 0 ?do start i PTRS @ + origin - H-N loop
+   start
+   ptrs 0 ?do
+      {: run:n :}
+      start i PTRS @ + {: site:n :}
+      run N>U8 site run - H-BYTES
+      site N>U8 LE:U64@ ord limit lim-here H-POINTER
+      site CELL +
+   loop {: run:n :}
+   run N>U8 end run - H-BYTES
    HCTX HOUT SHA256-END
    size ;
 
