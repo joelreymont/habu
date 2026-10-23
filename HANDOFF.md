@@ -1,7 +1,7 @@
 # Handoff: finish the Intel port
 
-State: 2026-10-23. Last lead: Claude (jerry) on the Mac; the next lead is
-Codex on pulsar-ua-106 (Linux x86-64, 22 cores). Joel's Mac (ARM64) runs the
+State: 2026-10-23. Current lead: Codex on pulsar-ua-106 (Linux x86-64,
+22 cores), following Claude (jerry)'s Mac handoff. Joel's Mac (ARM64) runs the
 ARM gate; pulsar never accesses the Mac (Joel). Pulsar pushes `intel` and
 lane branches only; `master` moves only after the Mac's ARM gate. This file
 is tracked on `intel`: read it at session start instead of `$pickup` (which
@@ -36,7 +36,7 @@ Done only when command output shows all of:
   x86-64 integration stack on master") under `habu-finish-the-linux-57cb3952`
   on master (see Next, step 1). Each child names its lane
   workspace, change ids, what is proven, what is open and its acceptance.
-- Unlanded lanes are pushed as branches `intel-proflate`, `intel-bodyabi`
+- Unlanded lanes are pushed as branches `intel-bodyabi`
   and `intel-pstore`. Each tip is the lane's last commit. Their bases are
   older points of this stack: land one with
   `jj rebase -s <first lane commit> -d <stack tip>`. The WIP lanes carry
@@ -56,6 +56,20 @@ Done only when command output shows all of:
   build an engine from `zlzpkqkt`'s own tree first, then build with it.
 
 ## Next on pulsar
+
+Active lanes use `.jj-ws.noindex/pulsar-intel-{images,bodyabi,pstore,breakpoints,throws}`;
+the dots workspace is `pulsar-intel-dots` on master. The initial image-build
+failure is now reduced: the bundle path reaches `E-LAYOUT-BOUNDS` (7122)
+because it uses ARM-oriented names/writer steps on x86; outer rollback masks
+that with `E-LIVE` (7179). Reuse the ordinary x86 placement/writer path.
+No lane is complete until its proof and independent review finish. Shared
+changes retain an open Mac ARM check in their dot.
+
+Landed on intel: `ruypmwwq` / `e65e0176`, "Retire x86 profiler spans on trim
+and reclaim". Independent adversarial review found no defects; native build,
+`test/prof-rewind.f` and `test/prof-index.f` exit 0; native two-generation
+check exits 0 with "ok gen 5 matches gen 4 byte for byte". Only x86 source
+files changed. The full native census still needs the image-build fix.
 
 1. The dots live on master, not on this branch. From the repo root:
    `jj workspace add .jj-ws.noindex/<name>-dots -r master@origin`, then
@@ -94,8 +108,7 @@ Done only when command output shows all of:
      `KERNEL-BODY` admitting registered helper rows. Design:
      `~/.cache/tmp/jerry-c/oracle/pstore.txt`; cut it to the smallest
      mechanism before a worker gets it.
-4. Pulsar owns the x86-only lanes: proflate
-   (`habu-review-and-land-5ce7ebe9`), breakpoints
+4. Pulsar owns the x86-only lanes: breakpoints
    (`habu-implement-x86-native-261ee8bb`), throws
    (`habu-recover-x86-throws-b66ec686`) and the remaining rows
    (`habu-fix-remaining-x86-5a0c47fd`, after capreach lands). After capreach
