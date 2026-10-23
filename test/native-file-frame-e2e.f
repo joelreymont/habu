@@ -207,6 +207,7 @@ variable FILL-POOL
    s" pkgc.f" LOAD+
    s" cread.f" LOAD+
    s" act-ok.f" LOAD+
+   s" exit.f" LOAD+
    s" fw-def.f" LOAD+
    s" out.f" LOAD+
    s" reach.f" LOAD+
@@ -724,6 +725,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ class covers refuses its file: reach.f's TOOL-POKE reaches the compiler's
    \ SESSION-LIVE?, fw-def.f's FW the builder's WRITE-ALL, out.f's OUT-A emit.
    s" act-ok.f" S\" variable AK\n: AK-INIT ( -- ) 7 AK ! ;\nAK-INIT\n3 constant AK-K\n" PUT
+   \ exit.f's run of EX-GUARD reaches die, which ends the process: a run
+   \ that dies leaves no result to store, so the closure admits it.
+   s" exit.f" S\" : EX-GUARD ( n -- ) 0< if s\" neg\" 3 die then ;\n1 EX-GUARD\n1 constant EX-K\n" PUT
    s" tool-def.f" S\" : TOOL-POKE ( -- ) NCOMP:SESSION-LIVE? drop ;\n" PUT
    s" reach.f" S\" require tool-def.f\n1 constant REACH-K\nTOOL-POKE\n" PUT
    0 INPUT-U !
@@ -1165,6 +1169,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ret-own.f" NO-RUN-REASON
    s" cread.f" NO-RUN-REASON
    s" act-ok.f" NO-RUN-REASON
+   s" exit.f" NO-RUN-REASON
    s" off.f" NO-RUN-REASON
    s" hooks.f" NO-RUN-REASON
    s" raw.f" NO-RUN-REASON
@@ -1183,6 +1188,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" act-ok.f's run reaches the store guard (PROT-SPAN), and it stores" T-LABEL
    s" act-ok.f" KEY$ STORED
    s" act-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" exit.f's run reaches die, which ends the process, and it stores" T-LABEL
+   s" exit.f" KEY$ STORED
+   s" exit.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" a run that reaches a compiler word refuses its file" T-LABEL
    s" reach.f" FRAME$ s"  reason=run-reaches-kernel-word word=SESSION-LIVE?" ENDS-WITH? TTRUE
    s" reach.f" NO-OBJECT

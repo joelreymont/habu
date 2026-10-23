@@ -71,6 +71,7 @@ public
 7 constant R-RUN             \ runs its xt or text operand; the effect is the
                              \ operand's, accounted by the operand's own edges
                              \ and the nested runs it makes
+8 constant R-EXIT            \ ends the process; no result follows its run
 
 \ ---- atom codes --------------------------------------------------------------
 \ One code per checker row constructor. A composite atom is a short sequence:
@@ -326,6 +327,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    a u s" dict" CORE-STR= IF R-DICT EXIT THEN
    a u s" build" CORE-STR= IF R-BUILD EXIT THEN
    a u s" run" CORE-STR= IF R-RUN EXIT THEN
+   a u s" exit" CORE-STR= IF R-EXIT EXIT THEN
    s" prims: unknown reach" SPEC-RC die ;
 
 : REACH ( -- )
@@ -374,7 +376,7 @@ public
 : MIN-IN ( n -- n )
    F-MIN-IN ROW-FIELD @ ;
 
-\ The row's reach class (R-NONE .. R-BUILD), R-NONE for a row with no clause.
+\ The row's reach class (R-NONE .. R-EXIT), R-NONE for a row with no clause.
 : REACH@ ( n -- n )
    F-REACH ROW-FIELD @ ;
 
@@ -610,7 +612,7 @@ EPRIM: ,            PE-N PE-IN EPRIM; REACH data
 EPRIM: c,           PE-N PE-IN EPRIM; REACH data
 EPRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 EPRIM: throw        PE-N PE-IN EPRIM; REACH stack
-EPRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
+EPRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM; REACH exit
 
 EPRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
