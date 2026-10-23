@@ -360,9 +360,12 @@ variable CHECKS
    HEADER, WIDTH-FACTS, BIND-WIDTHS, FETCH-INDEX, FETCH-DATA,
    BUF-N @ TOTAL-CELLS <> if s" lowering certificate size mismatch" 76 die then ;
 
+\ An unjudged scan (checker.f CHECK-UNJUDGED!, a TRUSTED: body) states the
+\ body's widths whatever its verdict: nothing enforces that verdict, and tier 1
+\ lowers from the scan's tape either way.
 : FULL-PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    MULTI-ERR? if a u EMPTY exit then
-   verdict -1 = if a u MAKE exit then
+   verdict -1 = BWIN-UNJUDGED @ 0 <> or if a u MAKE exit then
    a u EMPTY ;
 
 \ SNAP-RESET ( -- ) : the certificate is dead when REG-CERT-SNAP-XT runs.

@@ -409,6 +409,18 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    TIER-OPEN
    s" TRUSTED: " LN+ NAME+ s"  ( -- n ) 7 ; " LN+ NAME+ s"  . cr" LN+ LN$ ;
 
+\ A TRUSTED: body whose row carries a two-cell value; with rejected set the body
+\ ends in a ptr-times-zero its scan refuses. Tier 0 lowers it from the certificate of
+\ a scan that enforces nothing, whatever its verdict; without that certificate
+\ the pair moves one cell wide and its cells come back out of order.
+: WIDE-TRUST$ ( n bool -- ptr u8 n )
+   {: tier:n rejected:bool :}
+   tier 0 TIER-OPEN
+   s" STRUCTURE twpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: TW-TB ( n -- twpair n ) 1 2 TWPAIR:MAKE swap " LN+
+   rejected if S\" s\" x\" drop 0 * + " LN+ then
+   s" ; : TW-SHOW ( -- ) 7 TW-TB . TWPAIR:UNMAKE . . cr ; TW-SHOW" LN+ LN$ ;
+
 : CALL$ ( n n -- ptr u8 n )
    TIER-OPEN
    s" : " LN+ NAME+ s"  ( n -- n ) 1 + ; : LN-CALLER ( -- n ) 4 " LN+ NAME+
@@ -497,6 +509,15 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    then
    s" a 7900-byte TRUSTED: name runs on tier 1" T-LABEL
    1 7900 TRUST$ RUN  s" 7" ASSERT-OK
+
+   LEGACY? if
+      s" a TRUSTED: body moves a two-cell value on tier 0" T-LABEL
+      0 0 0<> WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+      s" a rejected TRUSTED: body moves a two-cell value on tier 0" T-LABEL
+      0 0 0= WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+   then
+   s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
+   1 0 0<> WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
 
    LEGACY? if
       s" a caller of a 7900-byte name runs on tier 0" T-LABEL

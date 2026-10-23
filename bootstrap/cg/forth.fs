@@ -295,12 +295,13 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 \ The live source owner's record, a replacement checker's record, and the
 \ fields of them the publish arms call (C-CALL-OWNER-DECLARATION,
 \ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
-\ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF and
-\ DECLARED-ROW-OFF.
+\ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF,
+\ CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 $0 constant DECL-RAW-OFF
 $8 constant DECL-EFFECT-OFF
+$1A8 constant DECL-CHECK-UNJUDGED-OFF
 $390 constant DECL-DECLARED-ROW-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
@@ -4691,21 +4692,45 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       C-DIE-DOES
    good LBL, ;
 
-: C-CALL-CHECK-DEFINER ( -- )
-   LBL LBL LBL LBL {: nohook fulllen lenok good :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+: C-PUSH-DEFINER-BODY ( -- )                     \ MIRROR of src/habu/habu2.f
+   LBL LBL {: fulllen lenok :}
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
    10 DATA DOESB-CELL LDR,  10 fulllen CBZ,
       10 10 6 SUBI,  lenok B,
    fulllen LBL,
       10 DATA BODYLEN-CELL LDR,
    lenok LBL,
-   10 G-PUSH
+   10 G-PUSH ;
+
+: C-CALL-CHECK-DEFINER ( -- )
+   LBL LBL {: nohook good :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   C-PUSH-DEFINER-BODY
    9 DATA HOOK-CELL LDR,
    SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
    10 G-POP  10 good CBNZ,
       C-DIE-DOES
    good LBL,
+   nohook LBL, ;
+
+\ MIRROR of src/habu/habu2.f C-CALL-CHECK-UNJUDGED: a TRUSTED: body's scan,
+\ for the lowering certificate only; its verdict is not enforced. The scan is
+\ the source owner's, reached through its record; a set hook with no such field
+\ exits 70.
+: C-CALL-CHECK-UNJUDGED ( -- )
+   S\" hb: the source owner carries no unjudged scan\n"
+   LBL LBL LBL LBL {: ma mu nohook absent msg ready :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   11 DATA DECL-CELL LDR,  11 absent CBZ,
+   11 11 DECL-CHECK-UNJUDGED-OFF LDR,  11 ready CBNZ,
+   absent LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
+   ready LBL,
+   C-PUSH-DEFINER-BODY
+   C-CALL-X11-SAVED
+   10 G-POP
    nohook LBL, ;
 
 : C-EMIT-DATA-X16! ( n -- ) {: off :}
@@ -7582,10 +7607,10 @@ previous previous definitions
    lmain B,
    nowide LBL, ;
 
-: EM-P2-CHECK-DEFINER ( n -- ) {: lmain :}
+: EM-P2-CHECK-DEFINER ( f n -- ) {: trusted lmain :}
    LBL {: p2sk :}
    9 DATA P2-CELL LDR,  9 p2sk CBNZ,
-      C-CALL-CHECK-DEFINER
+      trusted if C-CALL-CHECK-UNJUDGED else C-CALL-CHECK-DEFINER then
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
    p2sk LBL, ;
@@ -7737,6 +7762,7 @@ variable P2SK
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
    C-PARSE-TRUST-SIG
+   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
    C-COLON-RESET-COMPILE-STATE
    C-COLON-WORD-PROLOGUE ;
 
@@ -7829,9 +7855,10 @@ variable P2SK
       C-CALL-CHECK-DOES
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      lmain EM-P2-CHECK-DEFINER
+      0 0<> lmain EM-P2-CHECK-DEFINER
       publish B,
    ttrusted LBL,
+   0 0= lmain EM-P2-CHECK-DEFINER
    C-CALL-TRUST-PEND
    publish LBL,
    C-DOES-OCC-ROOM

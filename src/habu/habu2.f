@@ -3157,20 +3157,43 @@ public
    kept LBL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-: C-CALL-CHECK-DEFINER ( -- )
-   LBL LBL LBL LBL {: nohook fulllen lenok good :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+: C-PUSH-DEFINER-BODY ( -- )                     \ the body, or its head before `does> `
+   LBL LBL {: fulllen lenok :}
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
    10 DATA DOESB-CELL LDR,  10 fulllen CBZ,
       10 10 6 SUBI,  lenok B,
    fulllen LBL,
       10 DATA BODYLEN-CELL LDR,
    lenok LBL,
-   10 G-PUSH
+   10 G-PUSH ;
+
+: C-CALL-CHECK-DEFINER ( -- )
+   LBL LBL {: nohook good :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   C-PUSH-DEFINER-BODY
    C-CALL-HOOK  10 good CBNZ,
       C-DIE-DOES
    good LBL,
    nohook LBL, ;
+
+\ A TRUSTED: body is scanned as tier 1 scans it (compiler.f CHECK-PARENT): by
+\ checker.f CHECK-UNJUDGED!, whose verdict nobody enforces and whose diagnostics
+\ are suppressed. The scan exists for the lowering certificate it leaves, which
+\ states the body's wide values whatever the verdict (layout-valid.f
+\ FULL-PRODUCE); the declaration stays the definition's effect. The scan is the
+\ source owner's, reached through its record as tier 1 reaches it
+\ (checker-owner.f CHECK-UNJUDGED); a set hook with no such field exits 70.
+: C-CALL-CHECK-UNJUDGED ( -- )
+   LBL LBL {: msg:label ready:label :}
+   S\" hb: the source owner carries no unjudged scan\n" {: ma:ptr mu:n :}
+   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF DECL-OWNER:FIND  11 ready CBNZ,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
+   ready LBL,
+   C-PUSH-DEFINER-BODY
+   C-CALL-X11-SAVED
+   10 G-POP ;                                         \ the verdict, unenforced
 
 : C-EMIT-DATA-X16! ( n -- ) {: off :}
    16 20 off W-STRX C-EMITW ;
@@ -5041,6 +5064,7 @@ package INTERP-EMIT
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
    C-PARSE-TRUST-SIG
+   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
    12 0 MOVZ,  12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,
@@ -11536,17 +11560,18 @@ public
    LMAIN LABEL@ B,
    nowide LBL, ;
 
-\ EM-P2-CHECK-DEFINER: the sig'd-definition publish gate. Pass 1 runs the hook
-\ (which registers the certified signature) and then the pass-2 trigger. The
+\ EM-P2-CHECK-DEFINER: the publish gate of a definition with a body. Pass 1
+\ runs the hook (which registers the certified signature), or for a TRUSTED:
+\ body the unjudged scan, and then the pass-2 trigger. The
 \ pass-2 second ';' must NOT re-run the hook — a second CHECK! of the same name
 \ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
 \ $4E) — so it publishes the verified effect from pass 1 without recording a
 \ second, textual effect that would erase inferred cells and types.
-: EM-P2-CHECK-DEFINER ( -- )
+: EM-P2-CHECK-DEFINER ( bool -- ) {: trusted:bool :}
    LBL {: p2sk:label :}
    9 DATA P2-CELL LDR,  9 p2sk CBNZ,
    9 DATA HOOK-CELL LDR,  9 p2sk CBZ,
-      C-CALL-CHECK-DEFINER
+      trusted if C-CALL-CHECK-UNJUDGED else C-CALL-CHECK-DEFINER then
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
    p2sk LBL, ;
@@ -11587,9 +11612,10 @@ public
       EM-DOES-WIDE-REFUSE
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      EM-P2-CHECK-DEFINER
+      0 0<> EM-P2-CHECK-DEFINER
       publish B,
    ttrusted LBL,
+   0 0= EM-P2-CHECK-DEFINER
    \ Only an explicit TRUSTED: declaration publishes its textual effect.
    \ Checked definitions already own the graph certified by the hook.
    DEF-TRUST:REGISTER
