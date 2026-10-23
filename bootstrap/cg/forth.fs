@@ -4823,7 +4823,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ then exits; D (the does-body) follows with its own prologue and shares `;`'s
 \ epilogue. The patch itself runs in LDOESPATCH (ENGINE text): flipping the
 \ region to RW would un-map EXECUTE from the page the defining word runs on.
-\ Locals BEFORE does> are refused (the shared teardown wouldn't match).
+\ The head's locals end at does>: their frame is dropped ahead of the opener and
+\ the clause starts with none, so the shared `;` drops only the clause's own.
 \ The clause gets a dictionary record of its own, named PARENT;does in the
 \ parent's wordlist, so the `b D` LDOESPATCH plants at a created word's RET aims
 \ at a record ENTRY rather than at an interior address no AOT seed can name.
@@ -4932,15 +4933,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    none LBL, ;
 
 : J-DOES ( -- )
-   LBL {: dok :}
-   12 DATA LOCF-CELL LDR,  12 dok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
-   dok LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
    C-EMIT-CRSIG-SET
+   12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12        \ the head's locals end ahead of the opener
    C-DOES-NAME$  C-DOES-ROOM
+   9 0 MOVZ,  9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,   \ the clause sees no head local
    C-DOES-ADR                            \ adr x10, D = past word 4 and the name bytes
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16

@@ -4614,20 +4614,21 @@ public
 ;package
 
 : J-DOES ( -- )
-   LBL {: dok:label :}
-   12 DATA LOCF-CELL LDR,  12 dok CBZ,                    \ does> with locals active: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-DOES emits any does-patch code; only DOESB/compile-state set -> rollback drops it
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
-   dok LBL,
    DOES-REC:REJECT-DUP
    C-CF-NONE                             \ a structure open across the split would branch into the clause
    C-PARSE-CREATED-SIG
    C-EMIT-CRSIG-SET
+   \ The head's locals end here. Their frame is dropped ahead of the opener, so
+   \ word 4 stays one word, and the scope is emptied once nothing below can
+   \ refuse: the clause cannot name a head local, and the shared `;` drops only
+   \ the frame the clause opens itself. No quotation is open: C-CF-NONE.
+   12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12
    DOES-REC:NAME$  DOES-REC:ROOM
    \ DOESB marks the clause only once nothing above can refuse: set before the
    \ signature, a refusal caught inside an immediate word's evaluate left it on
    \ a definition with no clause, and its `;` refused the `does>` (rc 70).
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   9 0 MOVZ,  9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,
    DOES-REC:ENTRY-ADR                    \ adr x10, D = past word 4 and the name bytes
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
    $D63F0200 C-EMITW                     \ blr x16

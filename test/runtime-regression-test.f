@@ -1213,7 +1213,7 @@ variable GE-CF-BODY-U
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
 
 \ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
-\ The out-of-inventory recoverable die sites (J-DOES/J-QUOT/J-SEMIQUOT 75,
+\ The out-of-inventory recoverable die sites (J-QUOT/J-SEMIQUOT 75,
 \ C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74, counted-string 76,
 \ and export-undefined 70) now route through the same LCOMPILEDIE tail: catchable
 \ inside evaluate, byte-identical fail-closed at top level. C-LBRACE-STORE-ONE's
@@ -1356,8 +1356,6 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ One caught-inside-evaluate + top-level pair per converted site. The eval-catch
    \ leg proves catchable code + usable session (GEC-RXOK -> 12321); the top leg
    \ proves byte-identical fail-closed exit + diagnostic.
-   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" 75" s" does>" GE-RXE-CATCH-USABLE
-   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" 75 s" does>" GE-RXE-TOP
    GE-RXE-QNEST-BUILD
    GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
    GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP

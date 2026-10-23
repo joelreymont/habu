@@ -596,6 +596,15 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       \ The JIT's frame sequences must not touch pooled loop registers.
       s" tier 0 keeps loop values across a local bound in the body" T-LABEL
       s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
+
+      \ The head's frame is dropped once, on its own exit: the clause runs with
+      \ none, and the shared `;` drops nothing of the head's.
+      s" tier 0 runs a does> definer whose head binds a local" T-LABEL
+      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) @ 1 + ; 7 MKV W : SHOW ( -- ) W . cr ; SHOW" RUN  s" 8" ASSERT-OK
+
+      s" tier 0 refuses a does> clause that names a head local" T-LABEL
+      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  REJECT-RC ASSERT-RC
+      ERR$ s" E-UNDEFINED: v" CONTAINS? TTRUE
    then
 
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL

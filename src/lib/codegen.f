@@ -53,10 +53,7 @@ private
 : CB-LEN!  ( n ptr n -- )  3 cells + ! ;
 : CB-DATA  ( ptr n -- ptr u8 )  4 cells + BYTE-VIEW ;   \ byte storage past the header
 
-\ Compile the four header cells and leave cap for the trailing `allot`. A `{: :}`
-\ locals group inside a `create ... does>` definer body wedges the definer, so the
-\ three inputs are shuffled on the stack (cap kept underneath for allot) rather than
-\ bound to locals.
+\ Compile the four header cells and leave cap underneath for the trailing `allot`.
 : CB-HEADER, ( n n n -- n )   \ cap cap-err val-err -- cap
    >r >r dup , r> , r> , 0 , ;
 
