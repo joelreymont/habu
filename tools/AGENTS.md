@@ -12,5 +12,4 @@ also a library; `-core.f` and `-lib.f` hold what tests and other tools reuse;
 - Checks: `check.f`, the `*-lint.f` entries over `lint/`, `lsp.f` and `lsp-*.f`.
 - Inspection: `engine-size.f`, `imagedisasm.f`, `jitdump.f`, `why-threw.f`.
 - `unicode/` generates and verifies `src/lib/unicode/class-data.f`.
-- `perf/boot-census.f -- LOGFILE CMD [ARGS...]` (macOS): follows CMD's process
-  tree and classifies each child as fork or exec.
+- `perf/` — process-tree measurement (`boot-census.f`).

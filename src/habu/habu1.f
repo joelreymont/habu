@@ -98,6 +98,8 @@ variable DIVISION-PRIM-ROW
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
+\ FPRIM-L only for a body that emits no BL or BLR of its own; any other body
+\ uses FPRIM, whose frame preserves the caller's return address in x30.
 : FPRIM-L ( ptr u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    LBL FPL !  LBL FPE !

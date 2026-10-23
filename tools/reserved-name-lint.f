@@ -1,6 +1,10 @@
 \ reserved-name-lint.f - CLI wrapper for reserved definition-name lint.
 \ This is a standalone entry point: it loads its own dependencies, so
 \ `bin/hb --load tools/reserved-name-lint.f` works on its own.
+\ Run it after any generated rename that strips prefixes (`CC-I` becomes `IX`,
+\ `CC-J` becomes `JX`); tools/check.f runs it before spawning the checker child,
+\ so a reserved name is E-RESERVED-DEFINITION with file, line and token instead
+\ of a silent rc 70.
 
 require src/lib/errors.f
 require src/lib/string.f

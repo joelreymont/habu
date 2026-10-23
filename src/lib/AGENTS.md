@@ -11,5 +11,5 @@ it as `<name>-test.f`.
   (connections and row readers over `pg.f`), `xml/`, `unicode/`, `adt/` (option,
   result), `type/` (`deftype.f`), `secret/` (per-OS backends of `secret.f`),
   `browser/` (the browser host and its JavaScript peers), `c2-memory/`.
-- A module the engine bakes or its build loads takes a declared band in
-  `src/habu/layout.f`; any other task-local module takes `TASK:+USER` rows.
+- Task-local storage follows `task.f`'s header: a module the engine bakes takes
+  a band in `src/habu/layout.f`, any other takes rows from `task.f`.

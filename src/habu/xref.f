@@ -637,6 +637,8 @@ DOES-COMPANION-INSTALL
       s" seal: cannot FORGET/HIDE sealed engine definitions" ENGINE-ERROR:SEAL-VIOLATION die
    then ;
 
+\ A snapshot builder truncates a refresh tail with HIDE-DEFS-FROM and retires
+\ one word with `undefine NAME`; it never replays baked sources to hide one.
 : HIDE-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}

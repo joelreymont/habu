@@ -125,7 +125,10 @@ exact pair.
 The run removes its temporary root whether it is green or red, so the printed
 tail is what a finished red run leaves. To keep a run's trees, give it its own
 `HB_TMP`: every maker goes under it when it is set, and under `TMPDIR` or
-`/tmp` when it is not. Every gate run gets its own `HB_TMP` root.
+`/tmp` when it is not. Every gate run gets its own `HB_TMP` root. Keep
+`HB_TMP` short: nothing refuses a long one up front (`GT-ROOM-CHECK` checks
+only the root's own room), and the deepest row path under it must still fit
+Habu's path capacity.
 
 A checkout keeps one persistent build cache for keyed images and native
 definition entries, the default or one fixed `HABU_BUILD_CACHE`, shared by

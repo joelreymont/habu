@@ -1,11 +1,11 @@
 # src/core — the checked core
 
-Load order is `PFX-FILES` in `src/habu/habu2.f`.
+Load order is the `--load` prefix in `src/habu/habu2.f`.
 
 - `checker.f` — the stack-effect checker: effect grammar, the primitive rows it
   replays from `src/habu/prims.f`, unification; `check-hook.f` installs it.
 - `type-schema.f`, `type-family.f` — the schema arena and the family, variant,
-  field and layout registries (package TFAM).
+  field and layout registries.
 - `sumtype.f`, `structure-decl.f`, `enum-decl.f` — typed declaration definers,
   over `decl-event.f`, `structure-make.f` and `generated-declaration*.f`.
 - `structures.f`, `enums.f`, `layout-buffer*.f`, `pointer-storage.f`,

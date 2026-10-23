@@ -76,6 +76,10 @@ public
 
 \ Capture runs after application tasks stop. Reverse order releases dependents
 \ first; cleanup can register again, and a failed callback remains for retry.
+\ A refusing callback must not clear its owner's registered flag before it
+\ rethrows. The owner sets that flag only after REGISTER completes, or the next
+\ REGISTER adds a second entry (`src/lib/f64-text.f CLEANUP-NATIVE,
+\ REGISTER-CLEANUP`).
 \ A ONE-SHOT HOOK REGISTERED BY A PERSISTENT ONE IS REFUSED, E-LIFECYCLE-LATE.
 \ The one-shot phase has ended and its table is released, so nothing runs that
 \ hook before the capture; running it now would put cleanup that may call

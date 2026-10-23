@@ -169,15 +169,10 @@ driver names no backend, and `bin/hb` for one host does not carry the other.
 
 ### Machine model
 
-- **VM registers.** Seven of the sixteen general registers are reserved: `rbp`
-  user area, `r12` data stack, `r13` data base (the code region holding the
-  dictionary records), `r14` record count, `r15` code pointer, `rbx`
-  interpreter, and `rsp`, because `call` pushes the return address through it.
-  The nine allocatable registers are all caller-saved internally. SysV's
-  callee-saved set is exactly the reserved set less `rsp`, so a foreign call
-  preserves the VM with no save block. `src/habu/layout.f` declares the
-  engine's six once; compiler code running on the ARM64 engine names the
-  x86-64 set from there.
+- **VM registers.** SysV's callee-saved set is exactly the reserved VM set
+  less `rsp`, so a foreign call preserves the VM with no save block.
+  `src/habu/layout.f` declares the reserved set once; compiler code running on
+  the ARM64 engine names the x86-64 set from there.
 - **Calls between compiled words** use the ARM64 internal convention: stack
   cells in memory, live values in registers within a routine.
 - **Literals.** `mov r64, imm64` is the one relocatable literal, one site to

@@ -11,7 +11,8 @@
 \ static context, CTX0, so every caller that shares them is single-task, as it
 \ always was. Neither package writes the process-wide argv/env staging of
 \ src/lib/process-argv.f and src/lib/process-env.f: an owned run spawns from the
-\ context's own vectors.
+\ context's own vectors. A run inherits this process's environment unless
+\ ENV-HERMETIC turns that off.
 \
 \ CANCELLATION. CMD:CANCEL-FD! lends a pipe's read end to the next run. A byte
 \ or a closed writer cancels it: the run kills the child's tree, reaps the
@@ -506,7 +507,7 @@ public
 \ holds the row to the word the text really defines. No row states NAME#VEC or
 \ NAME#BUF: the pre-pass learns that COMMAND renders, so a later definition
 \ naming either in the same wordlist is left to tools/check.f's run, which
-\ certifies it (docs/forth.md, the INCLUDE-EVALUATE rule);
+\ certifies it (docs/forth-card.md § 3, renderers);
 \ `tools/check.f -- src/lib/process-command-test.f` passes.
 : COMMAND ( -- )
    COMMAND-NAME {: name:ptr nameu:n :}

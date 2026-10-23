@@ -2080,6 +2080,10 @@ CT-ARENA-BOOT
    0 code cells CT-PKG-U + !
    code CT-ADVANCE ;
 
+\ The built-in type table. A new type token needs a checker-only bootstrap
+\ stage: an older bin/hb rejects an unknown stack-comment token, so add the
+\ parser, renderer and CC-* support, refresh the native binary, then use the
+\ token in axioms and definitions.
 : CT-INIT ( -- )
    s" n"       CC-N      CT-INT   64 CS-GENERIC CT-SET
    s" f"       CC-F      CT-BOOL   1 CS-NONE    CT-SET
@@ -27104,13 +27108,12 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
 \ it holds a PRIM: row for ahead of all others. Walked by source id, a host with
 \ one row fewer than this tree moved that word's record and rows, and a host
 \ with one row more renumbered every symbol interned after its name, in the
-\ engine built from the same source (docs/bootstrap.md
-\ "Generation Chain Check"). The host
-\ certified the prefix in source order after CHECKER-RESET-SOURCE rewound its
-\ user records, so the store offset just past each record, EW.NEXT, orders the
-\ copies the same way on every host. ORDER-P holds source order and the exact
-\ handle associations from copied rows. It is a private mapping that
-\ TRANSFER-CHECKED releases on every way out: none of it reaches the image.
+\ engine built from the same source. The host certified the prefix in source
+\ order after CHECKER-RESET-SOURCE rewound its user records, so the store offset
+\ just past each record, EW.NEXT, orders the copies the same way on every host.
+\ ORDER-P holds source order and the exact handle associations from copied rows.
+\ It is a private mapping that TRANSFER-CHECKED releases on every way out: none
+\ of it reaches the image.
 6 cells constant ORDER-ROW
 2 constant ORDER-SOURCE-EFFECT
 3 constant ORDER-TARGET-EFFECT

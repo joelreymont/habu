@@ -9,7 +9,9 @@ dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
 $FFFF + $10000 / $10000 * constant MSIZE
 75 constant M-BOUNDS-RC
 \ Four image cursors hold addresses inside the mapped image buffer, so they are
-\ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e).
+\ declared pointer cells (dot habu-refuse-a-ptr-5ad2734e). They belong to the
+\ creating process: a snapshot builder clears them in a named reset before
+\ fresh image emission, never by replay or redefinition.
 PTR-VARIABLE MBUF-A
 PTR-VARIABLE MP
 variable MLEN

@@ -8,10 +8,9 @@
 \ no-return row per copy, a defer row for a deferred word, and interns every
 \ name it does not hold yet. A host numbers the names it holds a PRIM: row for
 \ ahead of all others, so copies taken in the host's symbol order put the host's
-\ primitive table into the image (docs/bootstrap.md, "Generation Chain
-\ Check"): a word without its row moved its own
-\ record, and a word with an extra row renumbered every symbol interned after
-\ it. The prefix defines CHECKER-STORAGE-INFO, which has a row, and
+\ primitive table into the image: a word without its row moved its own record,
+\ and a word with an extra row renumbered every symbol interned after it. The
+\ prefix defines CHECKER-STORAGE-INFO, which has a row, and
 \ CHECKER-CAPTURE-PREPARE, which has none; the host here is this tree's engine
 \ built from a copy whose checker.f gives the first word's row to the second.
 \

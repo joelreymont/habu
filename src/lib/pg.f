@@ -660,7 +660,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ are gone and its mappings are not its own. Retiring every slot makes the
 \ surviving handles refuse instead of reaching a freed pointer, and releases
 \ the call arenas the image must not carry. The flag is set only after REGISTER
-\ returns, so a throwing registration stays retryable (docs/forth.md rule).
+\ returns, so a throwing registration stays retryable
+\ (`src/lib/image-lifecycle.f PREPARE`).
 : FORGET-HANDLES ( -- )
    0
    CONFIGURED @ if

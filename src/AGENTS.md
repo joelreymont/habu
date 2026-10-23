@@ -2,7 +2,7 @@
 
 Everything `hb` is made of, in checked Habu; each module has a real package and
 states its contract in its header comment. Every program starts from the
-`--load` prefix `PFX-FILES` in `habu/habu2.f`.
+`--load` prefix in `habu/habu2.f`.
 
 - `habu/` — the engine: primitive table, engine builders, interpreter, images.
 - `core/` — the checker, type families, typed definers and source loading; the
