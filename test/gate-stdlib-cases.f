@@ -1130,6 +1130,10 @@ SUITE utf16-units
    src/lib/utf16-test.f
 ;SUITE
 
+SUITE be-integers
+   src/lib/be-test.f
+;SUITE
+
 SUITE file-uri
    src/lib/uri-test.f
 ;SUITE
