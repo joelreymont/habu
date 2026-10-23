@@ -1,23 +1,40 @@
-\ secret.f - native desktop credential lookup, in `package SECRET`.
+\ secret.f - native desktop credential storage, in `package SECRET`.
 \
 \ SECRET:READ ( service$ account$ destination -- n found? ) looks up one item in
 \ the OS store: a found item writes exactly n bytes into the caller's
 \ SPAN:span<u8> and returns true (0 true for an empty value); a missing item
 \ returns 0 false. The destination is unchanged on a miss or a throw, and the
-\ caller owns the bytes and their lifetime. No key material enters diagnostics.
-\ Empty, NUL-containing or malformed UTF-8 identifiers throw E-CONFIG; a failed
-\ store access E-ACCESS; no native support (an absent symbol, macOS
-\ errSecNotAvailable) E-UNAVAILABLE; a value larger than the destination
-\ E-CAPACITY, before any byte is copied. There is no plaintext fallback.
-\ The calls are synchronous and may block while the desktop store responds.
+\ caller owns the bytes and their lifetime.
+\ SECRET:WRITE ( service$ account$ value$ -- ) stores value$ as the item's
+\ value, replacing the value of an existing item in place (on macOS its access
+\ control stays) or creating the item. The value may be empty or hold NULs; a
+\ negative length or a null address throws E-CONFIG.
+\ SECRET:ERASE ( service$ account$ -- found? ) removes the item and returns
+\ true, or false when there is none.
+\ No key material enters diagnostics. Habu wipes the mutable copies of a value
+\ that it allocates (the backends allocate none: WRITE borrows the caller's
+\ bytes and READ copies straight into the destination); copies inside the
+\ native store and framework-internal copies, such as the CFData
+\ Security.framework returns to READ, are outside that guarantee, and the
+\ caller's borrowed buffer is never wiped.
+\ Empty or NUL-containing identifiers throw E-CONFIG on every word, and
+\ malformed UTF-8 identifiers on every word except Linux WRITE and ERASE,
+\ which throw E-UNAVAILABLE once the empty, NUL and value checks pass. A failed
+\ store access throws E-ACCESS; no native support (an absent symbol, macOS
+\ errSecNotAvailable) E-UNAVAILABLE; a value larger than READ's
+\ destination E-CAPACITY, before any byte is copied. There is no plaintext
+\ fallback. The calls are synchronous and may block while the desktop store
+\ responds.
 \ Backends: secret/macos.f (generic password by service and account,
-\ SecItemCopyMatching) and secret/linux.f (libsecret item search by `service`
-\ and `account` attributes, so a dismissed unlock is an access failure; the
-\ value is read by length, keeping embedded NULs). src/lib/secret-test.f writes
-\ dummy items to the real store and removes them.
+\ SecItemCopyMatching, SecItemUpdate then SecItemAdd, SecItemDelete) and
+\ secret/linux.f (libsecret item search by `service` and `account` attributes,
+\ so a dismissed unlock is an access failure; the value is read by length,
+\ keeping embedded NULs). Linux supports READ only: WRITE and ERASE throw
+\ E-UNAVAILABLE there. src/lib/secret-test.f writes dummy items to the real
+\ store with these words and removes them.
 \
-\ STORAGE CLASS. CALLER-OWNED: each READ allocates and frees its own request
-\ record; the backend is a deferred pair bound once at load.
+\ STORAGE CLASS. CALLER-OWNED: each call allocates and frees its own request
+\ record; the backend is a set of deferred words bound once at load.
 require src/lib/errors.f
 require src/lib/span.f
 require src/lib/memory.f
@@ -35,15 +52,17 @@ public
 
 private
 
-\ This mapping exists for one lookup. Opaque native handles are never dereferenced.
+\ This mapping exists for one call. Opaque native handles are never dereferenced.
+\ data/capacity are READ's destination or WRITE's value, borrowed from the caller.
 STRUCTURE request DERIVE addr
    FIELD service ptr u8
    FIELD service-len n
    FIELD account ptr u8
    FIELD account-len n
-   FIELD dest ptr u8
+   FIELD data ptr u8
    FIELD capacity n
    FIELD query n
+   FIELD attrs n
    FIELD list n
    FIELD service-obj n
    FIELD account-obj n
@@ -68,11 +87,13 @@ CAST: >BYTES ( n -- ptr u8 )
    {: p:ptr u:n req:ptr :}
    u 0 < if E-ACCESS throw then
    u req REQUEST-CAPACITY @ > if E-CAPACITY throw then
-   p u req REQUEST-DEST @ req REQUEST-CAPACITY @ SPAN:MAKE SPAN:COPY
+   p u req REQUEST-DATA @ req REQUEST-CAPACITY @ SPAN:MAKE SPAN:COPY
    u req REQUEST-SIZE !
    true req REQUEST-FOUND ! ;
 
 defer NATIVE-READ ( ptr request -- )
+defer NATIVE-WRITE ( ptr request -- )
+defer NATIVE-ERASE ( ptr request -- )
 defer NATIVE-CLOSE ( ptr request -- )
 
 : UNAVAILABLE ( ptr request -- )
@@ -82,8 +103,32 @@ defer NATIVE-CLOSE ( ptr request -- )
    dup E-FFI-DLSYM = if drop E-UNAVAILABLE then ;
 : INSTALL-DEFAULT ( -- )
    ['] UNAVAILABLE is NATIVE-READ
+   ['] UNAVAILABLE is NATIVE-WRITE
+   ['] UNAVAILABLE is NATIVE-ERASE
    ['] NO-CLOSE is NATIVE-CLOSE ;
 INSTALL-DEFAULT
+
+
+\ A zeroed request for valid identifiers; REQ-FREE releases it.
+: REQ-OPEN ( ptr u8 n ptr u8 n -- ptr request )
+   {: service:ptr su:n account:ptr au:n :}
+   service su INPUT account au INPUT
+   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN SPAN:$ drop >REQUEST {: req:ptr :}
+   service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
+   account req REQUEST-ACCOUNT ! au req REQUEST-ACCOUNT-LEN !
+   req ;
+
+
+\ Closes the native handles after an operation that ended with code n, then
+\ returns the error to throw: the operation's own failure first, else the close's.
+: REQ-CLOSE ( ptr request n -- n )
+   {: req:ptr code:n :}
+   req [: dup NATIVE-CLOSE ;] catch {: close-code:n :}
+   drop
+   code 0 <> if code else close-code then NATIVE-ERROR ;
+
+: REQ-FREE ( ptr request -- )
+   REQUEST>BYTES REQUEST-BYTES SPAN:MAKE MEM:FREE-SPAN ;
 
 public
 
@@ -91,22 +136,38 @@ public
 \ Errors leave the destination untouched; successful reads write exactly n bytes.
 : READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
    {: service:ptr su:n account:ptr au:n dest:SPAN:span<u8> :}
-   service su INPUT account au INPUT
-   REQUEST-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: storage:SPAN:span<u8> :}
-   storage SPAN:$ drop >REQUEST {: req:ptr :}
-   service req REQUEST-SERVICE ! su req REQUEST-SERVICE-LEN !
-   account req REQUEST-ACCOUNT ! au req REQUEST-ACCOUNT-LEN !
-   dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DEST !
+   service su account au REQ-OPEN {: req:ptr :}
+   dest SPAN:$ req REQUEST-CAPACITY ! req REQUEST-DATA !
    req [: dup NATIVE-READ ;] catch {: code:n :}
    drop
-   req [: dup NATIVE-CLOSE ;] catch {: close-code:n :}
-   drop
+   req code REQ-CLOSE {: error:n :}
    req REQUEST-SIZE @ req REQUEST-FOUND @
-   storage MEM:FREE-SPAN
-   code NATIVE-ERROR {: read-error:n :}
-   read-error 0 <> if 2drop read-error throw then
-   close-code NATIVE-ERROR {: cleanup-error:n :}
-   cleanup-error 0 <> if 2drop cleanup-error throw then ;
+   req REQ-FREE
+   error 0 <> if 2drop error throw then ;
+
+
+\ Creates the item or replaces an existing item's value; the caller keeps the bytes.
+: WRITE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: service:ptr su:n account:ptr au:n value:ptr vu:n :}
+   vu 0 < value 0= or if E-CONFIG throw then
+   service su account au REQ-OPEN {: req:ptr :}
+   value req REQUEST-DATA ! vu req REQUEST-CAPACITY !
+   req [: dup NATIVE-WRITE ;] catch {: code:n :}
+   drop
+   req code REQ-CLOSE {: error:n :}
+   req REQ-FREE
+   error 0 <> if error throw then ;
+
+
+\ Removes the item; a missing item returns false.
+: ERASE ( ptr u8 n ptr u8 n -- bool )
+   REQ-OPEN {: req:ptr :}
+   req [: dup NATIVE-ERASE ;] catch {: code:n :}
+   drop
+   req code REQ-CLOSE {: error:n :}
+   req REQUEST-FOUND @
+   req REQ-FREE
+   error 0 <> if drop error throw then ;
 
 ;package
 
