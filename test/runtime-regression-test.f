@@ -1237,7 +1237,7 @@ variable GE-CF-BODY-U
    15 1 s" hb leave under 15 values tier 1" GE-LEAVE-VS-CASE
    16 1 s" hb leave under 16 values tier 1" GE-LEAVE-VS-CASE
    VSMAX 1+ 1 s" hb leave past a full virtual stack tier 1" GE-LEAVE-VS-CASE
-   s" PASS: leave under a deep virtual stack keeps its frame at each tier this engine runs" type cr ;
+   tier@ 1 = if s" PASS: leave under a deep virtual stack keeps its frame at tier 1" else s" PASS: leave under a deep virtual stack keeps its frame at both tiers" then type cr ;
 
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
@@ -1913,6 +1913,27 @@ create GE-END-AT 16 allot
    S\" 74\n12321\n" s" caught refusal" GE-EXPECT-OUT
    GE-END-DEF$ s" caught refusal" GE-EXPECT-ERR-HAS ;
 
+\ Tier 1 compiles an immediate word natively, and the native compiler refuses
+\ a `TRUSTED:` one that catches a quotation (E-NELAB-QUOT) and a `:` one under
+\ `0 set-check` that runs evaluate (E-HIR-UNMODELED): rc 67, before the word
+\ runs. err is the whole stderr.
+: GE-CAT-NCOMP$ ( -- ptr u8 n )
+   S\" ncomp: cannot compile GEENDCAT at catch\nhb: uncaught throw code -8651\n" ;
+: GE-EVAL-NCOMP$ ( -- ptr u8 n )
+   S\" habu: in geendcat: at 'evaluate'\nncomp: cannot compile GEENDCAT\nhb: uncaught throw code -8286\n" ;
+
+: GE-NCOMP-EXPECT ( ptr u8 n ptr u8 n -- )
+   {: err:ptr erru:n label:ptr labelu:n :}
+   GE-UNCAUGHT-RC label labelu GE-EXPECT-RC
+   s" " label labelu GE-EXPECT-OUT
+   err erru label labelu GE-EXPECT-ERR ;
+
+\ The source built so far as hb-end.f, run and refused as GE-NCOMP-EXPECT.
+: GE-NCOMP-RUN ( ptr u8 n ptr u8 n -- )
+   GE-END-SAVE
+   GE-END-TOP
+   GE-NCOMP-EXPECT ;
+
 \ A definition open as a buffer begins is an outer buffer's: an immediate
 \ word's evaluate compiles into it and returns. The control for EVAL-FRAME:PEND.
 : GE-END-MACRO ( -- )
@@ -1920,6 +1941,10 @@ create GE-END-AT 16 allot
       S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
       GE-LOC-FIXTURE
    GE-LOC-LOAD
+   tier@ 1 = if
+      S\" habu: in geendmac: at 'evaluate'\nncomp: cannot compile GEENDMAC\nhb: uncaught throw code -8286\n"
+      s" macro evaluate" GE-NCOMP-EXPECT exit
+   then
    s" macro evaluate" GE-EXPECT-OK
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
 
@@ -1985,6 +2010,7 @@ create GE-END-AT 16 allot
    s" GEEND" GE-SRC-LINE
    GE-END-SAVE
    GE-END-TOP
+   tier@ 1 = if GE-CAT-NCOMP$ mac macu GE-NCOMP-EXPECT exit then
    mac macu GE-EXPECT-OK
    out outu mac macu GE-EXPECT-OUT
    s" habu-crash" mac macu GE-EXPECT-ERR-LACKS ;
@@ -2001,16 +2027,18 @@ create GE-END-AT 16 allot
    s" GEEND ." GE-SRC-LINE
    GE-END-SAVE
    GE-END-TOP
+   tier@ 1 = if GE-CAT-NCOMP$ s" caught locals refusal" GE-NCOMP-EXPECT exit then
    s" caught locals refusal" GE-EXPECT-OK
    S\" 70\n5\n" s" caught locals refusal" GE-EXPECT-OUT
    s" habu-crash" s" caught locals refusal" GE-EXPECT-ERR-LACKS ;
 
 \ An undefined word refuses at tier 0 only: tier 1 resolves the body at `;`,
 \ outside the catch. The `;` and an unterminated string refuse at both tiers.
+\ A process at tier 1 runs each row at tier 1 only, where GEENDCAT is refused.
 : GE-END-CATCH ( -- )
    S\" TRUSTED: GEENDCAT ( -- ) [: s\" nosuchword\" evaluate ;] catch . ; immediate"
       0 S\" 70\n2\n" GE-CATCH-CASE
-   2 0 do
+   2 tier@ do
       S\" TRUSTED: GEENDCAT ( -- ) [: s\" ;\" evaluate ;] catch . ; immediate"
          i S\" 74\n2\n" GE-CATCH-CASE
       S\" TRUSTED: GEENDCAT ( -- ) [: S\\\" s\\q abc\" evaluate ;] catch . ; immediate"
@@ -2075,6 +2103,9 @@ create GE-END-AT 16 allot
    n CFSTK-DEPTH-MAX <> if S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE then
    s" : GEEND ( n -- n ) GEENDCAT ;" GE-SRC-LINE
    s" 5 GEEND . depth ." GE-SRC-LINE
+   tier@ 1 = if
+      n CFSTK-DEPTH-MAX = if GE-EVAL-NCOMP$ else GE-CAT-NCOMP$ then ref refu GE-NCOMP-RUN exit
+   then
    S\" 70\n70\n12\n0\n" ref refu GE-EMIT-EXPECT ;
 
 : GE-EMIT-FAMILIES ( -- )
@@ -2104,6 +2135,7 @@ create GE-END-AT 16 allot
    s" 42 ;] execute" GE-SRC-S"  s"  evaluate ; immediate" GE-SRC-LINE
    s" : GEEND ( -- n ) GEENDCAT ;" GE-SRC-LINE
    s" GEEND . depth ." GE-SRC-LINE
+   tier@ 1 = if GE-EVAL-NCOMP$ s" caught quotation capacity refusal" GE-NCOMP-RUN exit then
    S\" 70\n42\n0\n" s" caught quotation capacity refusal" GE-EMIT-EXPECT ;
 
 \ A refusal two evaluates down, caught one level up, keeps what the inner
@@ -2121,6 +2153,7 @@ create GE-END-AT 16 allot
    tier GE-END-TIER
    s" : GEEND ( n -- n ) GEENDCAT + ;" GE-SRC-LINE
    s" 5 GEEND . depth ." GE-SRC-LINE
+   tier@ 1 = if GE-CAT-NCOMP$ s" nested evaluate" GE-NCOMP-RUN exit then
    S\" 74\n12\n0\n" s" nested evaluate" GE-EMIT-EXPECT ;
 
 \ A structure that an evaluate two levels down opens before its refusal, which
@@ -2137,6 +2170,7 @@ create GE-END-AT 16 allot
 \ holds the tier-1 case.
 : GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n mode:n out:ptr outu:n :}
+   0 tier@ < if exit then
    GE-SRC-RESET
    s" TRUSTED: GEENDIN ( -- ) " GE-SRC+  ev evu GE-SRC-S"  s"  evaluate" GE-SRC+
    aft aftu GE-SRC+  s"  ; immediate" GE-SRC-LINE
@@ -2175,6 +2209,7 @@ create GE-END-AT 16 allot
    tier GE-END-TIER
    s" : GEEND ( -- n ) GEENDCAT 9 ;" GE-SRC-LINE
    s" GEEND . depth ." GE-SRC-LINE
+   tier@ 1 = if GE-CAT-NCOMP$ s" malformed does> signature" GE-NCOMP-RUN exit then
    S\" 76\n9\n0\n" s" malformed does> signature" GE-EMIT-EXPECT ;
 
 : GE-END-EMIT ( -- )
@@ -2182,7 +2217,7 @@ create GE-END-AT 16 allot
    GE-EMIT-FAMILIES
    GE-EMIT-QUOT-ROOM
    GE-EMIT-DEEP
-   2 0 do
+   2 tier@ do
       i GE-EMIT-NEST
       i GE-EMIT-DOES
    loop ;
@@ -2329,13 +2364,11 @@ variable GE-KIND-N
 \ no row runs.
 : GE-KIND-EVAL-T1 ( bool ptr u8 n -- )
    {: chk:bool l:ptr lu:n :}
-   67 l lu GE-EXPECT-RC
-   s" " l lu GE-EXPECT-OUT
    SB-RESET
    chk if else s" habu: in gekc0: at 'evaluate'" SB-APPEND  GE-SB-LF then
    s" ncomp: cannot compile GEKC0 at catch" SB-APPEND  GE-SB-LF
    E-NELAB-QUOT GE-KIND-THROW+
-   SB$ l lu GE-EXPECT-ERR ;
+   SB$ l lu GE-NCOMP-EXPECT ;
 
 \ Every closer against every opener it neither closes nor continues, inside a
 \ caught evaluate at tier 0: each prints the catch code, 70, and its word
@@ -2530,12 +2563,18 @@ variable GE-KIND-N
    S\" 42\n" s" " s" pass 2 immediate undefining on a rerun" GE-P2-EXPECT
    S\" TRUSTED: GEP2SAY ( -- ) [: s\" ;\" evaluate ;] catch . ; immediate\ns\" GEP2SAY\" 0 parse-imm"
       s" GEP2SAY 1 +" s" GEP2RUN" tier GE-P2-RUN
-   s" pass 2 immediate printing a caught refusal" GE-EXPECT-OK
-   S\" 74\n42\n" s" pass 2 immediate printing a caught refusal" GE-EXPECT-OUT
-   s" hb: source closed a definition it did not open: GEP2W at "
-      s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
-   \ GEP2SAY's caught refusal is located on line 1 of the string it evaluates.
-   1 GE-END-AT$ s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+   \ A process at tier 1 compiles GEP2SAY natively, which refuses its catch.
+   tier@ 1 = if
+      S\" ncomp: cannot compile GEP2SAY at catch\nhb: uncaught throw code -8651\n"
+      s" pass 2 immediate printing a caught refusal" GE-NCOMP-EXPECT
+   else
+      s" pass 2 immediate printing a caught refusal" GE-EXPECT-OK
+      S\" 74\n42\n" s" pass 2 immediate printing a caught refusal" GE-EXPECT-OUT
+      s" hb: source closed a definition it did not open: GEP2W at "
+         s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+      \ GEP2SAY's caught refusal is located on line 1 of the string it evaluates.
+      1 GE-END-AT$ s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+   then
    S\" variable GEP2RUNS\nvariable GEP2AT\nTRUSTED: GEP2GRAB ( -- ) GEP2RUNS @ 1+ GEP2RUNS ! here GEP2AT ! 77 , ; immediate\ns\" GEP2GRAB\" 0 parse-imm"
       s" GEP2GRAB 1 +" s" create GEP2NEXT 99 , GEP2RUN GEP2RUNS @ . GEP2AT @ @ ." tier GE-P2-RUN
    S\" 42\n1\n77\n" s" " s" pass 2 immediate allotting" GE-P2-EXPECT
@@ -2544,8 +2583,8 @@ variable GE-KIND-N
    S\" 0\n0\n42\n" s" " s" pass 2 immediate and the lowering transaction" GE-P2-EXPECT ;
 
 : GE-PASS2-IMMEDIATE ( -- )
-   2 0 do i GE-P2-SHAPES loop
-   s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at both tiers" type cr ;
+   2 tier@ do i GE-P2-SHAPES loop
+   tier@ 1 = if s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at tier 1" else s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at both tiers" then type cr ;
 
 public
 
