@@ -611,8 +611,9 @@ PFTX @ PTID @ PF-NO-VARIANT s" valid-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLA
 PFTX @ TF-FIELD:ROLLBACK
 
 \ A zero-arity APP has no argument-root range, so its only canonical start is
-\ zero. The canonical form remains accepted.
-CLID @ 1 0 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
+\ zero. SCHEMA-APP writes that form, so the bad node is built raw, as a
+\ SCHEMA-NEW caller could. The canonical form remains accepted.
+SCH-APP CLID @ 1 0 SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
 : TFC27 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" zero-app-start" PFBAD @
    20 1 20 cells CELL CELL PF-FLAGS-NONE

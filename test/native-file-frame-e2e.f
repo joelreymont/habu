@@ -154,6 +154,7 @@ variable MOVED
    S\" 1 set-tier\n" IN+
    s" tierback.f" LOAD+
    s" pkgload.f" LOAD+
+   s" newtype.f" LOAD+
    s" ffl.f" LOAD+
    S\" s\" crc=\" type 0 NULL-PTR 0 FF-CRC . cr\n" IN+
    s" ffl2.f" LOAD+
@@ -678,6 +679,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ mark either file's start.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
+   \ newtype.f declares a type family beside a package record: the record
+   \ gives it a segment to install, and the install must import the family.
+   s" newtype.f" S\" package FRAME-NEWTYPE\nNEWTYPE frnt\n;package\n" PUT
    FFI-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
@@ -1111,6 +1115,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ aftrun.f's stored executed row over AFT-ONE compares the digest the
    \ cold compile bound with the one the warm install of aftone.f binds.
    s" aftone.f" REUSED s" aftrun.f" REUSED
+   s" a warm build installs newtype.f with the type family it declares" T-LABEL
+   s" newtype.f" REUSED
    s" con-dep.f, which requires con.f, misses by name, binds the installed records and writes its object" T-LABEL
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
    s" con-dep.f" s"  reason=" LINE$ s" con-dep.f reason=unsupported-segments" T$=

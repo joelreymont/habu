@@ -184,7 +184,9 @@ public
 : SCHEMA-APP ( n n n -- n )                \ family application node
    {: fam:n start:n count:n :}
    count 0 < IF E-SCHEMA-BAD throw THEN
-   SCH-APP fam start count SCHEMA-NEW ;
+   \ A nullary application (`fam<>`) has an empty argument range: start 0,
+   \ as for SCHEMA-ROW.
+   SCH-APP fam count 0= IF 0 ELSE start THEN count SCHEMA-NEW ;
 
 : SCHEMA-TAG@ ( n -- n ) SCH-REC@ SCH.TAG @ ;
 : SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
@@ -219,9 +221,11 @@ public
 \ reaches them (as its four side roots), and PF-NODE-KIND? walks into them there.
 : SCHEMA-NODE-OK? ( n -- bool ) {: node:n :}
    node 0 > node SCH-N @ < and ;
+\ An empty row (count 0) is start 0, never the root store's high-water: it
+\ names no root, so its start is the same whatever an earlier file left.
 : SCHEMA-ROW ( n n -- n ) {: start:n count:n :}   \ row over [start,start+count) element roots
    count 0 < IF E-SCHEMA-BAD throw THEN
-   SCH-ROW start count 0 SCHEMA-NEW ;
+   SCH-ROW count 0= IF 0 ELSE start THEN count 0 SCHEMA-NEW ;
 : SCHEMA-ROW? ( n -- bool ) SCHEMA-TAG@ SCH-ROW = ;
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
 : SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;

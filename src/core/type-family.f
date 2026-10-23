@@ -576,11 +576,16 @@ public
    p id TF-REC@ TF.LAYOUT !
    TFM-EPOCH+ ;
 : TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS !  TFM-EPOCH+ ;
+\ An empty range (count 0) is stored as start 0 count 0, never at the
+\ store's high-water: it names no row, so its start is the same whatever
+\ an earlier file left in the store.
 : TFAM-VAR-RANGE! ( n n n -- ) {: id:n s:n c:n :}
-   s id TF-REC@ TF.VAR-START !  c id TF-REC@ TF.VAR-COUNT !
+   c 0= IF 0 ELSE s THEN id TF-REC@ TF.VAR-START !
+   c id TF-REC@ TF.VAR-COUNT !
    TFM-EPOCH+ ;
 : TFAM-FLD-RANGE! ( n n n -- ) {: id:n s:n c:n :}
-   s id TF-REC@ TF.FLD-START !  c id TF-REC@ TF.FLD-COUNT !
+   c 0= IF 0 ELSE s THEN id TF-REC@ TF.FLD-START !
+   c id TF-REC@ TF.FLD-COUNT !
    TFM-EPOCH+ ;
 : TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
 : TFAM-SCHEMA-ROOT! ( n n -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
@@ -1316,7 +1321,9 @@ public
    id 1 + SUMV-N !
    id SUMV-REC@ {: r:ptr :}
    fam r SV.FAM !   noff r SV.NAME-OFF !   nu r SV.NAME-U !
-   tag r SV.TAG !   ss r SV.SCH-START !   sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
+   \ An empty schema range is start 0 count 0, as for TFAM-VAR-RANGE!.
+   tag r SV.TAG !   sc 0= IF 0 ELSE ss THEN r SV.SCH-START !
+   sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
    0 r SV.CTOR-SYM !   0 r SV.CTOR-PKG-OFF !   0 r SV.CTOR-PKG-U !
    id VNX-PUSH   SUMV-N @ VNX-HI !
    TFM-EPOCH+
@@ -6448,12 +6455,16 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
 : UNIT-FAM-ROW-ID! ( ptr u8 n ptr n -- ) {: plan:ptr k:n field:ptr :}
    plan k field @ UNIT-FAM-SUBID field ! ;
 
+\ An empty range (count 0) names no row; its writers store start 0, which
+\ needs no translation.
 : UNIT-FAM-REBASE ( ptr u8 -- ) {: plan:ptr :}
    plan 0 UFP-COUNT@ 0 ?do
       plan 0 i UNIT-FAM-ROW {: row:ptr :}
       plan 1 row TF.PK-START UNIT-FAM-ROW-ID!
-      plan 2 row TF.VAR-START UNIT-FAM-ROW-ID!
-      plan 3 row TF.FLD-START UNIT-FAM-ROW-ID!
+      row TF.VAR-COUNT @ 0 > IF
+         plan 2 row TF.VAR-START UNIT-FAM-ROW-ID! THEN
+      row TF.FLD-COUNT @ 0 > IF
+         plan 3 row TF.FLD-START UNIT-FAM-ROW-ID! THEN
       row TF.SCHEMA-ROOT @ 0 <> IF
          plan 7 row TF.SCHEMA-ROOT UNIT-FAM-ROW-ID! THEN
       0 row TF.TAILNEXT !
@@ -6461,7 +6472,8 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
    plan 2 UFP-COUNT@ 0 ?do
       plan 2 i UNIT-FAM-ROW {: row:ptr :}
       row SV.FAM @ UNIT-FAM-MAP-ID row SV.FAM !
-      plan 7 row SV.SCH-START UNIT-FAM-ROW-ID!
+      row SV.SCH-COUNT @ 0 > IF
+         plan 7 row SV.SCH-START UNIT-FAM-ROW-ID! THEN
       0 row SV.CTOR-SYM !
    loop
    plan 3 UFP-COUNT@ 0 ?do

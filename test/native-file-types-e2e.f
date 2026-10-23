@@ -131,10 +131,12 @@ variable EXPECT-U
    ROOT$ s" app-hb" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
    name nameu AT 0 NATIVE-FILE-APP:COPY-SKIP-LINES ;
 
-: BUILD-FRESH ( -- n )
+: BUILD-FRESH ( ptr u8 n -- n )
+   {: cache:ptr cacheu:n :}
+   cache cacheu AT MAKE-DIR
    ROOT$ s" app.f" SOURCE-PATH JOIN-PATH SOURCE-PATH swap
    ROOT$ s" app-hb" PRODUCT-PATH JOIN-PATH PRODUCT-PATH swap
-   s" fresh-cache" AT NATIVE-FILE-APP:BUILD
+   cache cacheu AT NATIVE-FILE-APP:BUILD
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : BUILD ( ptr u8 n -- n )
@@ -268,7 +270,6 @@ variable EXPECT-U
    s" a nested family edit invalidates generated storage definitions" T-LABEL
    s" native-file-types-shape" TREE
    s" cache" AT MAKE-DIR
-   s" fresh-cache" AT MAKE-DIR
    false SHAPE-SOURCE
    \ Width frames, checked deferred binding and logical-immediate encoding must
    \ leave the same captured bytes when their bodies are reused from the cache.
@@ -291,10 +292,50 @@ variable EXPECT-U
    WARM-HASH HASH-APP
    COLD-HASH 32 WARM-HASH 32 T$=
    s" warm-app-hb" SAVE-APP
-   BUILD-FRESH SUCCESS
+   s" fresh-cache" BUILD-FRESH SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
    COLD-HASH HASH-APP
    WARM-HASH 32 COLD-HASH 32 T$= ;
+
+\ b.f declares empty ranges after a.f, whose field and schema stores take k
+\ rows: a fieldless STRUCTURE's field range (TFAM-FLD-RANGE!; it has no MAKE
+\ or UNMAKE), a nullary variant's schema range (SUMV-ADD), the four empty
+\ sides of `[ -- ]` (SCHEMA-ROW) and the empty argument range of `mark<>`
+\ (SCHEMA-APP). Each is stored as start 0 count 0; the sums are private, so
+\ they publish no constructor word and b.f stays reusable. Editing a.f shifts
+\ those stores under b.f's reused object, down and then up from its capture:
+\ each warm build reuses b.f without a throw and its app prints what a
+\ fresh-cache build's app prints. An empty range stored at the store's
+\ high-water instead makes the warm build throw 76.
+: WIDTH-SOURCE ( n -- ) {: k:n :}
+   s" a.f" S\" package FILE-WIDE public\nSTRUCTURE wide OPAQUE DERIVE addr FIELD a n\n" PUT
+   k 1 > if s" a.f" AT S\" FIELD b n\n" APPEND-FILE then
+   k 2 > if s" a.f" AT S\" FIELD c n\n" APPEND-FILE then
+   s" a.f" AT S\" ;STRUCTURE\n: SIZE ( -- n ) WIDE-BYTES ;\n;package\n" APPEND-FILE ;
+
+: EMPTY-STEP ( n ptr u8 n ptr u8 n -- )
+   {: k:n out:ptr outu:n fresh:ptr freshu:n :}
+   k WIDTH-SOURCE
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
+   fresh freshu BUILD-FRESH SUCCESS
+   RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE ;
+
+: EMPTY-RANGE-CASE ( -- )
+   s" a reused empty family range survives store shifts in an earlier file" T-LABEL
+   s" native-file-types-empty" TREE
+   s" cache" AT MAKE-DIR
+   s" b.f"
+      S\" package FILE-TAGS\nSUMTYPE mark VARIANT none ;VARIANT ;SUMTYPE\nSUMTYPE hook VARIANT call [ -- ] ;VARIANT VARIANT wrap mark<> ;VARIANT ;SUMTYPE\npublic\nSTRUCTURE empty ;STRUCTURE\n: KEEP ( ptr empty -- ptr empty ) ;\n: CODE ( -- n ) 32 ;\n;package\n"
+      PUT
+   s" app.f" S\" require a.f\nrequire b.f\n: MAIN ( -- ) FILE-WIDE:SIZE . FILE-TAGS:CODE . ;\n" PUT
+   2 WIDTH-SOURCE
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
+   1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
+   3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
 public
 : MAIN ( -- )
@@ -327,6 +368,7 @@ public
    SHAPE-CASE
    BOOTED-SESSION
    FAILED-CAPTURE
+   EMPTY-RANGE-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package
