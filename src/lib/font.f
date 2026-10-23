@@ -6,8 +6,8 @@
 \ and FONT never searches for a font, replaces a missing glyph or splits a run.
 \ OPEN copies the font bytes, so the caller may release its input on return.
 \ SVG$ borrows bytes the image owns, valid until FREE; BOUNDS use SVG's
-\ downward Y axis. The em size is 1..$1FFFFFF and the scale uses 26.6
-\ coordinates; a whitespace-only run is a valid zero-size SVG.
+\ downward Y axis. The em size is 1..$1FFFFFF, else E-TEXT, and the scale uses
+\ 26.6 coordinates; a whitespace-only run is a valid zero-size SVG.
 \ A run is one left-to-right script with its common punctuation and combining
 \ marks. Malformed UTF-8, controls and format characters, mixed or
 \ right-to-left scripts throw E-TEXT; a missing glyph or one drawn only from

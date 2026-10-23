@@ -1839,14 +1839,13 @@ backend answers alike.
   may reuse blocks. Re-export an existing error through its owner's constant.
   This is an allocation convention: the checker does not enforce it, and Habu's
   error-code lint scans this repository, not external dependency trees.
-- Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
-  `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
-  `CATCH-STACK` 87, `CODE-CERT` 88, and `OVERLAY-OPEN` 108 for a definition,
-  a new package, a wordlist or an `undefine` while a checker overlay is open.
-  No global `E-*` aliases; native and no-binary recovery consume the same
-  qualified names and values.
-- **Fallible words `throw` a named code** (`src/config.fs`, e.g. `E-MISMATCH`),
-  never a silent failure or an out-of-band flag.
+- Engine process failures use only the sealed `ENGINE-ERROR` package ABI,
+  whose names and values are `src/core/engine-error.f`. No global `E-*`
+  aliases; native and no-binary recovery consume the same qualified names and
+  values.
+- **Fallible words `throw` a named code** (`src/lib/errors.f` or the owning
+  module's package, e.g. `E-FS-PATH`), never a silent failure or an
+  out-of-band flag.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.
@@ -1982,8 +1981,9 @@ by name with the count it saw and the ceiling, and none truncates.
 
 ## Constants
 
-- **Named constants, no magic numbers.** Limits and codes live in
-  `src/config.fs`; a literal is acceptable only for a true primitive of the
+- **Named constants, no magic numbers.** Limits and codes are named
+  constants in the module that owns them, stdlib throw codes in
+  `src/lib/errors.f`; a literal is acceptable only for a true primitive of the
   encoding (the `3`/`7` of the 3-bit tag), with a comment.
 - **Default to `$hex`**: byte values, masks, addresses, memory, struct and byte
   offsets, field strides, syscall and exit constants, instruction encodings,

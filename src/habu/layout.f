@@ -1977,8 +1977,9 @@ FS-MUT-ABI:START constant END
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
 \ `defer NAME ( E )` declared in src/core/checker.f BEFORE `: TRUST`
-\ (checker.f:7685) cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which
-\ LFIND `trust`/`checker-defer` (undefined until 5208/7687) and die exit 70. When
+\ cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which LFIND
+\ `trust`/`checker-defer` (undefined until TRUST and CHECKER-DEFER are defined)
+\ and die exit 70. When
 \ they are absent C-DEFER, and the Habu loop's `defer` (src/habu/definers.f
 \ PD-HOLD), instead COPY the defer's qualified name + effect
 \ signature into a slot of this fixed table; DRAIN-PRETRUST (called once in

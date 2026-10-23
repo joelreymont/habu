@@ -133,13 +133,7 @@ The first command requests a whitebox host and enables its target load with
 builds the ordinary sealed product and its matching `.map`.
 
 These builds, like every build and gate run from the checkout, share its one
-persistent build cache: the default `BUILD-CACHE:ROOT$`, or one
-`HABU_BUILD_CACHE` set the same for all of them. Each build there reuses the
-definition entries that earlier builds by the same checker and kernel stored:
-one checksummed entry per definition, dated by use and pruned by hb-build after
-a day. A refused entry prints `native-cache: entry refused <path>: <reason>`
-and is compiled again ([gate.md](gate.md)). Point `HABU_BUILD_CACHE` at a fresh
-directory only for a deliberate cold measurement.
+persistent build cache ([gate.md](gate.md#scratch-and-cache)).
 
 The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
 working ARM64 compiler with the x86-64 backend loaded to cross-build the
@@ -294,13 +288,8 @@ image against its matching source tree as described in [gate.md](gate.md).
 Promote the verified product to `bin/hb` only after the gate passes.
 
 If the checkout's `bin/hb` is missing or too old to load current source, use a
-trusted installed native engine as `HOST` and build from the checkout root:
-
-```sh
-HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$TMP" \
-  "$HOST" --load tools/native-build.f -- "$OUT"
-```
-
+trusted installed native engine as `HOST` and build from the checkout root
+with the candidate command in [gate.md](gate.md#qualifying-a-candidate).
 Build a second product with `$OUT` as `HOST`; if those bytes differ, build
 another generation until successive products match. Keep each output private,
 with its paired `.map` file, and run the [native gate](gate.md) on the
@@ -386,24 +375,13 @@ library sources, with `~/.local/bin/hb` pointing to its `bin/hb`. Update that
 installation when needed. Do not create per-revision release directories;
 ordinary development does not require installation or publication.
 
-Libraries loaded from source must match the installed engine. Habu resolves
-application paths from the application's root, then the working directory,
-then the engine's source root: the tree two levels above the executable,
-resolved through `~/.local/bin/hb` and any installation symlinks. An installed
-engine therefore runs source-based tools from any directory:
+Libraries loaded from source must match the installed engine. Relative paths
+resolve by the source-root rule in [forth.md](forth.md#packages), so an
+installed engine runs source-based tools from any directory:
 
 ```sh
 ~/.local/bin/hb --load /absolute/path/to/etch/etch.f
 ```
-
-A working directory that is itself a Habu tree (it holds `src/core/util.f`) is
-the root instead, so inside a checkout the checkout's sources load
-(`test/source-root-exe-test.f`). The working directory is searched before the
-root, so while the root is the executable's tree, one that is not a tree must
-not hold copies of engine files: its `src/lib/errors.f` loads as an application
-file beside the engine's, a duplicate definition, exit 78. With no tree at
-either place the working directory is the root, and its copy is the engine's
-row, never loaded.
 
 The absolute entries `tools/lsp.f` and `tools/check-verify-child.f` load their
 implementation from the tree containing the entry, even when the caller is in
@@ -419,9 +397,9 @@ long-running source-loading tools against the updated installation.
 
 ## Warm Dev Snapshot
 
-For a hot edit/check loop, build a warm snapshot engine with the same command
-but `-- snap`: it writes `$HB_TMP/hb-new`, a snapshot image that boots warm
-(~0.02s vs ~0.07s) and checks user source at least as fast as `bin/hb`. The
+For a hot edit/check loop, build a warm snapshot engine with
+`bin/hb --load tools/build-fixpoint-refresh.f -- snap`: it writes
+`$HB_TMP/hb-new`, a snapshot image that boots warm and checks user source at least as fast as `bin/hb`. The
 snapshot build retires the image-writer/compiler tail before writing, so the
 image carries only the dev surface (checker, stdlib prefix, REPL);
 the checker stays fail-closed (a bad definition exits 70). `hb-new` is a

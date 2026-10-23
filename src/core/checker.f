@@ -2474,13 +2474,13 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
 
 \ --- layout cells (type-family.f header, reject-only): a logical
-\ sum/enum/product layout value is ONE T-PARAM cell in a signature; only a
-\ non-linear one expands to hidden physical fields (layout expansion below), and
-\ an ordinary one-cell primitive (dup/drop/swap/over/nip/>r/...) that would bind
-\ or consume a logical layout cell fails closed in U-TYPE. Layout identity is
-\ the resolved family-id, so a layout cell unifying with the SAME family (the
-\ PARAM-PAIR-ARGS arm) flows fine; only a var/con/ptr/atom pairing reaches this
-\ guard.
+\ sum/enum/product layout value whose width is known, linear or not, expands to
+\ hidden physical fields (layout expansion below); one whose width reads an open
+\ argument is ONE T-PARAM cell in a signature. An ordinary one-cell primitive
+\ (dup/drop/swap/over/nip/>r/...) that would bind or consume a logical layout
+\ cell fails closed in U-TYPE. Layout identity is the resolved family-id, so a
+\ layout cell unifying with the SAME family (the PARAM-PAIR-ARGS arm) flows
+\ fine; only a var/con/ptr/atom pairing reaches this guard.
 : LAYOUT-PARAM? ( n -- bool ) {: t:n :}
    t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
@@ -2644,17 +2644,18 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
    h1 h2 = ;
 
-\ --- layout expansion (type-family.f header): a NON-linear layout value expands to
-\ its W hidden physical fields (PUSH-LOGICAL), and whole-bundle transports move
-\ the group by direct row surgery (XPORT-STEP?). A POSSIBLY-LINEAR layout stays
-\ ONE logical T-PARAM cell (type-family.f header); for it, a whole-bundle
-\ transport op (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
-\ >r/r>/r@ and friends, and locals capture) would move the value through its
-\ fresh transport var — LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while
-\ checking such an op, and LAYOUT-XPORT-ALLOW? still rejects the possibly-linear
-\ bind, so it stays fail-closed. Every OTHER touch (value-inspecting prims,
-\ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) fails
-\ closed through the same guards.
+\ --- layout expansion (type-family.f header): a layout value whose width is
+\ known, linear included, expands to its W hidden physical fields (PUSH-LOGICAL),
+\ and whole-bundle transports move the group by direct row surgery (XPORT-STEP?).
+\ A layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays ONE
+\ logical T-PARAM cell; for it, a whole-bundle transport op
+\ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
+\ friends, and locals capture) moves the value through its fresh transport var —
+\ LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while checking such an op, and
+\ LAYOUT-XPORT-ALLOW? rejects the bind when the layout may be linear, so that
+\ case stays fail-closed. Every OTHER touch (value-inspecting prims, ?dup,
+\ control predicates, higher-order apply, con/ptr/atom pairings) fails closed
+\ through the same guards.
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
 \ --- field-projection armed window (dot habu-checker-type-structure). A sealed,
@@ -3254,17 +3255,18 @@ variable FORALL-INPUT-ROOT
    ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ --- logical<->hidden bundle coercion (type-family.f header). A stored
-\ effect keeps a parametric layout value as ONE logical cell whenever an arg is
-\ an unresolved var or linear con (PUSH-LOGICAL's possibly-linear rule). At a
-\ boundary or call site that cell can meet the W-cell hidden expansion of the
-\ SAME family whose args are, by the PUSH-LOGICAL invariant, always fully
-\ resolved and non-linear. Unifying the two proves the logical side's args
-\ non-linear (they bind pairwise to the hidden side's), so the logical cell
-\ expands to its hidden fields and the rows re-pair cell for cell. Genuinely
-\ linear instantiations never reach here: linear-arg layout sigs reject at the
-\ sig/borrow layer and PARAM-ARG-LIN-BLOCK? below refuses a var~linear-con arg
-\ bind, so no hidden group can ever absorb a linear payload. Transport mode
-\ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
+\ effect keeps a layout value as ONE logical cell only when its width reads an
+\ open argument (PUSH-LOGICAL, LAYOUT-WIDTH-OPEN?). At a boundary or call site
+\ that cell can meet the W-cell hidden expansion of the SAME family, whose width
+\ is known and whose args may be linear. The logical cell expands to hidden
+\ fields at its own width (an open argument measures one cell) and the rows
+\ re-pair cell for cell: the hidden pairs bind its args to the group's, and a
+\ width that disagrees fails the slot pairing (PARAM-HID-OK?). Binding an arg to
+\ a linear payload is ordinary linear accounting: LIN-TYPE-COUNT counts the
+\ bundle once at its tag for each step's LIN-CHECK, and LIN-EFF-PASS rejects an
+\ effect var that resolves to a linear con with unequal in/out multiplicity
+\ (EN-MULT walks family args). Transport mode (LAYOUT-XPORT) keeps its own group
+\ surgery and is excluded.
 : LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
    LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
    rh P>TYPE T-RES {: th:n :}
@@ -18681,8 +18683,9 @@ variable CHECKER-PREFIX-ROLLBACK
 
 \ WF-POS-RECORD ( n -- n ) : one LOGICAL operand at a resolved S-PUSH node —
 \ record a width fact when it is a layout value (an expanded hidden group, whose
-\ width = group cell count = registry width, or a non-expanded possibly-linear
-\ logical cell) and return the row below the whole operand.
+\ width = group cell count = registry width, or the one logical cell of a layout
+\ whose width reads an open argument, LAYOUT-WIDTH-OPEN?) and return the row
+\ below the whole operand.
 : WF-POS-RECORD ( n -- n ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
@@ -18782,9 +18785,11 @@ variable CHECKER-PREFIX-ROLLBACK
 \ normal FRESH+UNIFY mechanism, exactly as the prim effect would — underflow
 \ against a short concrete row is the normal UNIFY reject), then write the op's
 \ output permutation with MK-PUSH from the group lists. Pure-scalar rows never
-\ reach this path: the prim/RS effects stay byte-for-byte. A non-expanded
-\ logical layout cell (possibly-linear, type-family.f header) rejects here
-\ exactly as the one-cell transport guard rejects it (TDLIN-* unchanged).
+\ reach this path: the prim/RS effects stay byte-for-byte. A logical layout
+\ cell (its width reads an open argument, LAYOUT-WIDTH-OPEN?) among the operands
+\ rejects here (XG-READ-GROUP); without a hidden group or proof/lost metadata
+\ among the operands (XPORT-STEP?) it takes the one-cell path, which LAYOUT-XPORT-ALLOW? refuses when the layout may be linear
+\ (TDLIN-VAR-TOR, TDLIN-VAR-DUP).
 64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
@@ -18895,8 +18900,12 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 \ a var-typed scalar group copied or dropped by the permutation is a potential
 \ linear launder: taint it, exactly as LIN-EFF-PASS taints a prim-effect var
-\ with unequal in/out multiplicity. Hidden groups carry no linears (linear
-\ layouts never expand) and a concrete linear con hits LIN-CHECK conservation.
+\ with unequal in/out multiplicity. A concrete linear con and a hidden group's
+\ linear payload, which LIN-TYPE-COUNT counts once at the tag, hit XPORT-APPLY's
+\ LIN-CHECK conservation. An argument still open in an expanded group is one the
+\ width does not read (LAYOUT-WIDTH-OPEN?): it occurs only under a pointer, a
+\ quotation or an unread slot, owns no payload (OWN-TYPE-N), and has nothing
+\ to launder.
 : XG-TAINT-SEQ ( ptr u8 n -- ) {: a:ptr u:n :}
    LIN-ANY? 0= IF EXIT THEN
    0 BEGIN dup XG-N @ < WHILE
@@ -19074,11 +19083,13 @@ variable XG-N   variable XG-TN   variable XG-ROW
 16 constant LOC-NAME-W         \ max local-name bytes (the name field of a compiler LOC-REC, src/habu/layout.f LOC-NAME-CAP)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
 create LOCSHOW LOC-CAP cells allot
-\ LOCW: logical width of each local's binding. 1 = scalar (LOCTV holds the type
-\ var, exactly as before). >1 = a whole hidden-field bundle:
+\ LOCW: logical width of each local's binding. 1 = one cell: LOCTV holds a
+\ scalar's type var or a one-cell bundle's tag term (an enum). >1 = a whole
+\ hidden-field bundle:
 \ LOCTV holds the group's TAG term and a reference re-expands slot0..tag from it
-\ via MK-HIDDEN (LOC-PUSH-REF). Linear layouts never expand, so no linear bundle
-\ can reach a local; the bind-time linear check is unchanged.
+\ via MK-HIDDEN (LOC-PUSH-REF). A linear bundle captured into a local leaves the
+\ counted rows, so LOC-BIND-GROUPS's LIN-CHECK rejects the bind
+\ (test/type-linear-suite.f R5).
 create LOCW LOC-CAP cells allot
 create LOCVAL LOC-CAP cells allot   \ per-local chain of captured physical cells
 variable LOC-CAP-HEAD
@@ -20220,9 +20231,9 @@ variable QTMP
 \ silent-uncheckable path: every structural failure latches MREJ, which
 \ CHECK-VERDICT ranks as a hard reject above UNCK, and the CFS headroom check
 \ (two frames per match) rejects instead of tripping CF-PUSH's UNCK overflow.
-\ v1 scrutinee rule: only a width-expanded bundle matches; an open-arg
-\ parametric value (one conservative logical cell, possibly linear) rejects
-\ until whole-bundle MATCH consumption lands.
+\ v1 scrutinee rule: only a width-expanded bundle matches, linear included; a
+\ layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) is one logical
+\ cell with no payload cells to place and rejects (MD-OPEN-ARGS).
 $0 constant MF.FAM-OFF
 $8 constant MF.TERM-OFF
 $10 constant MF.BASE-OFF
@@ -22301,10 +22312,12 @@ variable IS-PEND-U                   \ and its length
    THEN ;
 
 \ --- layout stack-op typing (type-family.f header) -------------------
-\ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
-\ moves by direct row surgery (XPORT-STEP? above); for a non-expanded
-\ possibly-linear layout cell the op's effect var may absorb the one cell,
-\ gated by LAYOUT-XPORT-ALLOW? (which rejects the possibly-linear bind). ?dup
+\ Whole-bundle transport tokens. For an EXPANDED layout (width known, linear
+\ included) the group moves by direct row surgery (XPORT-STEP? above), whose
+\ LIN-CHECK conserves a linear bundle; for the one logical cell of a layout
+\ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) the op's effect var
+\ may absorb the cell, gated by LAYOUT-XPORT-ALLOW? (which rejects the bind
+\ when the layout may be linear). ?dup
 \ is excluded on purpose — it branches on the top (tag) cell, width-breaking
 \ for a sum whose tag 0 is a valid variant.
 \ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs

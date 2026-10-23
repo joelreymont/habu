@@ -214,10 +214,10 @@ an engine hook cell.
 platform's codegen. Hand-written code per platform is only the kernel's
 primitives.
 **Now:** ARM64 has a second codegen beside its platform codegen, the tier-0 JIT
-(`src/habu/jit.f`). The platform codegen compiles a trivial definition in
-524 µs against the JIT's 28 µs (`tools/compile-floor.f`, its `trivial-t1` and
-`trivial-t0` fields). `--load` and the REPL run the JIT; an executable never
-contains its code. The process that captures an image opens
+(`src/habu/jit.f`). The platform codegen compiles a trivial definition far
+slower than the JIT (`tools/compile-floor.f`, its `trivial-t1` and `trivial-t0`
+fields), so `--load` and the REPL run the JIT; an executable never contains its
+code. The process that captures an image opens
 `EXECUTABLE-BUILD:WITH` (`src/lib/executable-build.f`) before it loads the code
 it captures (`tools/aot-builder.f`, `tools/native-build.f`); the scope selects
 tier 1 through every include, `evaluate` and immediate word, and a tier-0
@@ -241,21 +241,18 @@ module from the tape (`NELAB`, `HIR`), the module is frozen, verified
 (`IR-VERIFY`) and its loops folded (`NBACK:FREEZE`), and the target's pass row
 selects, allocates registers, verifies the allocation, spills and emits
 (`src/arch/arm64/passes.f`: `A64SEL`, `A64RA`, `A64RAV`, `A64SPILL`,
-`A64EMIT`). `src/compiler/ir/` and `src/compiler/native/` hold 48,826 lines
-(`cat src/compiler/ir/*.f src/compiler/native/*.f | wc -l`). It costs the
-524 µs above for a trivial word, and its selection and emission proper are
-about a tenth of that: `A64SEL:SELECT` takes 7.3% and `A64EMIT:EMIT` 2.5% of
-the exclusive samples of the tier-1 profile below. Its code runs 1.0 to 9.1
-times as fast as tier 0's (the median ratios per benchmark of
-`tools/tier-bench.f` at tier 0 and tier 1) through what this pass keeps:
-inlined primitives, stack values in registers, constants as immediates and
-comparisons folded into branches. Over the corpus below tier 1 emits 54.0%
-fewer `bl`, 28.5% fewer stack-pointer loads, 27.9% fewer stack-pointer stores
-and 10.56% fewer bytes (`tools/tier-census-join.f`). Tier 0 compiles a trivial
-word in 9.0 µs with checking off (`tools/tier0-profile.f`, the `ns-per-def` of
-its `trivial-raw` mode).
+`A64EMIT`). Selection and emission proper are a small share of its compile
+time (`A64SEL:SELECT` and `A64EMIT:EMIT` in the exclusive samples of the
+tier-1 profile below). Its code runs at least as fast as tier 0's (the median
+ratio per benchmark of `tools/tier-bench.f` at tier 0 and tier 1), through
+what this pass keeps: inlined primitives, stack values in registers, constants as immediates and
+comparisons folded into branches. Over the corpus below tier 1 emits fewer
+`bl`, fewer stack-pointer loads and stores and fewer bytes
+(`tools/tier-census-join.f`). Checking is most of a tier-0 compile
+(`tools/tier0-profile.f`, the `ns-per-def` of its `trivial` mode against its
+`trivial-raw` twin).
 
-The figures reproduce with these runs in POSIX sh (zsh needs `${=C}`). Timings
+These runs measure each claim now, in POSIX sh (zsh needs `${=C}`). Timings
 are wall clock, so pin each run to one performance core where the host allows
 (`taskset -c 8` on Linux):
 
@@ -270,6 +267,7 @@ bin/hb --load tools/tier-bench.f -- 1 src/core/checker.f
 bin/hb --load tools/tier-census.f -- 0 t0.txt $C
 bin/hb --load tools/tier-census.f -- 1 t1.txt $C
 bin/hb --load tools/tier-census-join.f -- t0.txt t1.txt
+bin/hb --load tools/tier0-profile.f -- trivial 50 4000
 bin/hb --load tools/tier0-profile.f -- trivial-raw 50 4000
 ```
 

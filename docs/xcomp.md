@@ -514,14 +514,10 @@ it near a hint. DATA is no segment on either target: both boots map it at
 `MAP-DATA-RESERVE`) and copy in the bytes the image carries, which an x86-64
 image holds in a read-only carrier `LOAD` at the region's end.
 
-| # | type | address | flags |
-|---|---|---|---|
-| 0 | LOAD | `VMBASE`, text rounded to `PROT-PAGE-MAX` | R X |
-| 1 | LOAD | after text, `$C0` bytes | R W |
-| 2 | INTERP | `VMBASE + $190`, `/lib64/ld-linux-x86-64.so.2` | R |
-| 3 | DYNAMIC | after text, `$B0` bytes | R W |
-| 4 | LOAD | `VMBASE + REGION-OFF`, memory size `REGION` | R W |
-| 5 | LOAD | `ELF-CARRIER-VA`, DATA's file bytes | R |
+`src/os/linux-x86-64/elf.f` writes the six program headers: the text, the
+read-write tail, the interpreter and the dynamic table it shares with the
+aarch64 writer `src/os/linux/elf.f`, then the code region (header 4) and the
+DATA carrier (header 5). `test/x86-64-seam.f` pins each one.
 
 - **The carrier.** No `LOAD` reserves DATA, so the kernel neither commit-charges
   it nor starts the brk inside it: the brk starts past the carrier, below
@@ -629,6 +625,10 @@ Cross-build first, self-host second.
 - A native x86-64 build records the emission it published and reaches the same
   byte fixpoint, engine and names sidecar, across three generations before a
   product is promoted.
+
+The x86-64 kernel refuses the six `source-exec-*` words by name
+(`src/habu/kernel-x64.f`, the `REFUSE-WID` rows `source-exec-run` ..
+`source-exec-handler`), so no source range is observed there.
 
 ### Build target
 
@@ -1005,9 +1005,7 @@ After `bin/hb` exists on the target, run only native validation on the target
 machine:
 
 ```sh
-bin/hb --load src/lib/errors.f src/lib/string.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
-  src/lib/process-argv.f src/lib/process-env.f src/lib/memory.f src/lib/codesign.f \
-  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
+bin/hb --load tools/build-fixpoint-refresh.f -- install --force
 
 bin/hb --load test/run.f
 ```

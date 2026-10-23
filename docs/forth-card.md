@@ -488,7 +488,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
 | Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 255-byte family and package names, effect 4096 deep, input row 255 cells |
-| Constants | hex versus decimal, `src/config.fs` |
+| Constants | hex versus decimal, where codes live |
 | Testing | groups, hooks, runner rules |
 | Diagnosing a checker miss | find the layer that is wrong |
 | Verification before committing | what to rebuild and run |

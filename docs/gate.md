@@ -147,31 +147,9 @@ against 77 s at default priority, and its row can meet the budget there.
 
 The Linux x86-64 engine has only tier 1: `0 set-tier` exits with
 `set-tier: x86-64 runs tier 1 only`. The registry includes
-`test/gate-arm-cases.f` only on an ARM host. Its eleven whole rows require
-the ARM host, its source recovery, JIT, or tier 0:
-
-- `compiler-shadow`, `x86-64-link-records`, `aot-shadow-capture`: these fixtures
-  use the ARM source window and observe x86-64 as a second target. On an x86-64
-  host the resident shadow map is different (29 records instead of the six
-  expected by `compiler-shadow`).
-- `engine-stack-debugger`, `debugger-resume`: the ARM BRK debugger fixtures
-  select tier 0; the x86-64 engine refuses that selection.
-- `prop`: its candidate compilation, untyped measurement, and false-reject
-  oracle require the unchecked tier 0; the harness selects that tier before
-  running any generated case.
-- `build-fixpoint-sandbox`: both cases alter the ARM recovery assembler and
-  install its source-built engine. Intel's native generation chain uses
-  `tools/native-build.f`; its recovery cross-builds from ARM.
-- `compiler-native-identity-spill`, `compiler-native-wide-frame`: these
-  fixtures assert AArch64 instruction, register and frame layouts. Intel
-  selection, allocation and emission have their own shared rows.
-- `aot-chain-capture`: its live-window mutation, capture and
-  instruction-chain compaction checks need an ARM host. The capture format's
-  inert metadata transfer, extent, capacity and refusal cases run in the shared
-  `aot-chain-storage` row.
-- `aot-seed-metadata`: its signed-image mutations target the ARM boot reader's
-  packed ULEB record and site tables. `aot-seed-batch` still builds and runs the
-  ordinary candidate on both targets.
+`test/gate-arm-cases.f` only on an ARM host; its rows require the ARM host,
+its source recovery, JIT, or tier 0, and its comments state each row's
+reason.
 
 Mixed rows, including `tier`, both compile-floor rows, and `outer-interpret`,
 remain registered on x86-64. Their eligible tier-1 cases must run; a fixture
@@ -204,11 +182,12 @@ pool root, each spawned child's scratch, `hb-build`'s private build directory)
 goes under it when it is set, and under `TMPDIR` or `/tmp` when it is not.
 Every gate run gets its own `HB_TMP` root.
 
-Keep a gate `HB_TMP` at most 675 bytes. The deepest row path,
-`streaming-sha256`'s deep file (`tools/sha256-file-test.f`), adds at most 348
-bytes under it, and Darwin's `PATH_MAX` is 1023. `GT-START`
-(`src/lib/test/runner.f`) refuses only an `HB_TMP` that leaves its own root no
-room; a row's deeper paths only this bound keeps.
+Keep a gate `HB_TMP` short enough that the deepest row path under it,
+`streaming-sha256`'s deep file (`tools/sha256-file-test.f`), fits Habu's path
+capacity `FS-PATH-CAP` (`src/lib/fs.f`), which `FS-PATHZ-INTO` enforces on every
+file-system path on every host. `GT-START` (`src/lib/test/runner.f` `GT-ROOM-CHECK`) refuses only
+an `HB_TMP` that leaves its own root no room; a row's deeper paths only this
+rule keeps.
 
 Each spawned child gets its own scratch directory as `HB_TMP`, removed when its
 slot retires, and whatever the child or its children put there goes with it.

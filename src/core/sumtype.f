@@ -2611,11 +2611,10 @@ private
    fam TFAM-PRODUCT? IF
       fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
    \ parametric (arity > 0) families publish too: a
-   \ constructor's parametric result stays one conservative logical cell while
-   \ its args are unresolved, expands to hidden fields where instantiation
-   \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
-   \ linear instantiations stay rejected at the sig/param-arg layers until
-   \ whole-bundle linear counting lands.
+   \ constructor's parametric result expands to hidden fields wherever its
+   \ width is known, linear included (checker.f PUSH-LOGICAL), and stays one
+   \ logical cell only while its width reads an open argument, expanding at
+   \ the boundary through the checker.f LOGHID coercion.
    TDPLAN-BEGIN
    0 TDGEN-M !
    BEGIN TDGEN-M @ fam TFAM-VAR-COUNT@ < WHILE

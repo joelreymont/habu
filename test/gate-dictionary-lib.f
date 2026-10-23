@@ -263,7 +263,7 @@ variable CANDIDATE-VERDICT
 
 \ The clause hands back a cell of raw allot'd storage, so both it and the checked
 \ consumer declare `ptr n`: a parametric pointee over raw storage is
-\ E-NONPARAMETRIC-EFFECT (docs/forth.md, "Use real types, not reflexive n").
+\ E-NONPARAMETRIC-EFFECT (docs/forth.md "Real types, not reflexive `n`.").
 : TRUSTED-DOES-SOURCE ( -- )
    GE-SRC-RESET
    s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ptr n ) swap 0 ?do cell+ loop ;" GE-SRC-LINE

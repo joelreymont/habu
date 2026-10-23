@@ -6,7 +6,7 @@
 \ without input, the option-NONE shape), pass-through and deeper-row flow
 \ conserve it, and every copy/drop/transport/local-capture/unconsumed path
 \ rejects. Width stays truthful: linear-arg layouts expand to hidden fields
-\ exactly like non-linear ones (LAYOUT-ARGS-OPEN?), so checker rows and runtime
+\ exactly like non-linear ones (LAYOUT-WIDTH-OPEN?), so checker rows and runtime
 \ cells agree.
 \
 \ The closing TC/TK/TM section (package TLIN) covers the OTHER way a bundle

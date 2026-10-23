@@ -10255,12 +10255,12 @@ public
 package INTERP-EMIT
 public
 \ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of the
-\ E-USING-SHADOW-GLOBAL rule (docs/forth.md "Importing ... with `using`"), which
-\ the checker enforces in checked bodies. Called on LFIND's hit path with LFIND's
-\ outputs live, for the token in TKA/TKL. When the hit is a global (record wid 0)
-\ and a used public also exports the token, the token is refused by name with
-\ 105, through the compile-die tail: a throw inside evaluate, an exit at top
-\ level. Otherwise it returns with x5 and x11-x13 as LFIND left them; it clobbers
+\ E-USING-SHADOW-GLOBAL rule (docs/forth.md "Importing a package's public words
+\ with `using`"), which the checker enforces in checked bodies. Called on
+\ LFIND's hit path with LFIND's outputs live, for the token in TKA/TKL. When the
+\ hit is a global (record wid 0) and a used public also exports the token, the
+\ token is refused by name with 105, through the compile-die tail: a throw
+\ inside evaluate, an exit at top level. Otherwise it returns with x5 and x11-x13 as LFIND left them; it clobbers
 \ what LFINDUSED does. Without it the global bound silently: `using PS` then a
 \ top-level `SHW` ran the global.
 : FIND-SHADOW ( -- )

@@ -124,8 +124,8 @@ private
 : LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ptr u8 n ) s\q create\q ;" evaluate-closed ;
 : LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" evaluate-closed ;
 \ `here` hands back a raw storage address, so its wrapper declares `ptr n`: a
-\ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md,
-\ "Use real types, not reflexive n"). What this case measures is the arity.
+\ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md
+\ "Real types, not reflexive `n`."). What this case measures is the arity.
 : LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" evaluate-closed ;
 \ The definer's runtime `create` gives the word it makes `-- ptr a`, so a checked
 \ body can name it, and a package's public reader can name one its private

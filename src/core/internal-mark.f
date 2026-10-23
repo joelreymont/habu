@@ -94,7 +94,7 @@ variable IMK-BUNDLE-MODE
 \
 \ THE QUESTION IS THE SAME QUESTION, spelled the way the token is: source arity of
 \ "PKG:TAIL". checker.f CHECKER-FIND-ACTIVE-SYM routes a qualified name straight
-\ to CHECKER-PUBLIC-SYM? -> SYM-FIND (checker.f:4212) keyed on (package,
+\ to CHECKER-PUBLIC-SYM? -> SYM-FIND keyed on (package,
 \ SYM-PUBLIC, tail), which is the key PPRIM; interns and the key the checker
 \ itself uses at a reference site. So a package public the checker can type stays
 \ callable only when that effect carries authority, by the same rule as a global.

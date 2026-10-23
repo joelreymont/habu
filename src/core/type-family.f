@@ -18,10 +18,10 @@
 \ is one cell. packed keeps the stack cells and adds only a memory descriptor
 \ (PACKED-DESC) that narrows the tag. TFAM-WIDTH@ is the declared width, every
 \ parameter one cell; TFAM-INST-WIDTH is the width of an instantiated term. In
-\ the checker (checker.f PUSH-LOGICAL) a non-linear layout type expands to its W
-\ hidden physical terms and generic stack words move whole bundles; a
-\ possibly-linear one stays one logical cell, and a sum whose payload may be
-\ linear is linear. render.f compacts a hidden run back to family<args>. Every
+\ the checker (checker.f PUSH-LOGICAL) a layout type whose width is known, linear
+\ included, expands to its W hidden physical terms and generic stack words move
+\ whole bundles; one whose width reads an open argument stays one logical cell.
+\ A sum whose payload may be linear is linear. render.f compacts a hidden run back to family<args>. Every
 \ registry here rolls back through the checker's frame stack (RBF-PUSH /
 \ RBF-POP) and persists through REG-EXT-PERSIST (TFAM-SNAPSHOT-PERSIST); the
 \ frames are process-local and reset at a snapshot.
@@ -5241,9 +5241,10 @@ public
 \ themselves), the family output term carries those vars, and CHECKER-STEP
 \ applies din/dout with the same unification, diagnostics capture, and linear
 \ conservation as any word call. PUSH-LOGICAL keeps declared-sig parity:
-\ resolved-arg bundles (incl. every arity-0 family) expand to hidden fields at
-\ the step; open-arg parametric results stay one conservative logical cell and
-\ expand at the boundary through the LOGHID coercion.
+\ bundles whose width is known (incl. every arity-0 family) expand to hidden
+\ fields at the step; a parametric result whose width reads an open argument
+\ (checker.f LAYOUT-WIDTH-OPEN?) stays one logical cell and expands at the
+\ boundary through the LOGHID coercion.
 \ ---------------------------------------------------------------------------
 
 private
