@@ -46,7 +46,10 @@ $538 constant JSON-REPORTED-OFF
 $548 constant RECOVERY-USED-OFF
 \ A does> clause scanned in its parent's unjudged regime (TRUSTED: or hookless).
 $550 constant DOES-UNJUDGED-OFF
-DOES-UNJUDGED-OFF CELL + constant OWNER-BYTES
+\ The report of a does> clause the native compiler's split refused, named for
+\ the definer it belongs to.
+$558 constant NATIVE-DOES-REPORT-OFF
+NATIVE-DOES-REPORT-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

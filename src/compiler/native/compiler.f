@@ -355,6 +355,13 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    SRC$ 0 NFETCH:CAPTURE ;
 
 
+\ A refused clause is reported as the check hook reports a refused body: the
+\ checker's reason, then the hook's reject status, which RUN names the
+\ definition under. NAME$ is set only after the unit seals, so the clause is
+\ named from the open unit's first row.
+: CLAUSE-CK ( n -- )
+   NFEED:UNIT-NAME$ CHECKER-OWNER:DOES-REPORT -1 <> if RC-REJECT throw then ;
+
 \ RECORD opened this unit with NFEED:BEGIN-DOES-UNIT, which refused a cut that
 \ is not just past a `does> ` in this source (E-NFEED-CUT).
 : CHECK-DOES-SPLIT ( -- n )
@@ -366,7 +373,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-SRC @ cut 6 - 0 NFETCH:CAPTURE
    NFEED:DOES-CLAUSE M-DOES-ROW !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
-   CHECKER-OWNER:DOES-CHECK -1 <> if E-NCOMP-VERDICT throw then
+   CHECKER-OWNER:DOES-CHECK CLAUSE-CK
    M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
    CHECKER-OWNER:DOES-IN M-DOES-IN !
    CHECKER-OWNER:DOES-OUT M-DOES-OUT !

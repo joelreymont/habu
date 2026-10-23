@@ -54,6 +54,8 @@ align
 0 CWORK-VARIABLE F-VERDICT n
 0 CWORK-VARIABLE F-DOES n                        \ byte split after `does> `, or zero
 0 CWORK-VARIABLE F-BASE n                        \ start of the scan now being recorded
+0 CWORK-VARIABLE F-NAME-OFF n                    \ row 0's span in the kept text: the name
+0 CWORK-VARIABLE F-NAME-U n
 variable OBSERVER-ID                   \ address identifies this producer instance
 1 CWORK-BUFFER PRODUCED-VIEW IR-ARENA:view
 0 CWORK-VARIABLE PRODUCED-VALID n
@@ -245,6 +247,7 @@ using NTAPE
    kind STRING-KIND? kind K-CHAR = or
    if u goff ru SPAN-CK else a u goff BYTES-CK then
    a u goff ru kind first APPEND ORDER-CK
+   F-N @ 0= if goff F-NAME-OFF !  u F-NAME-U ! then
    F-N @ 1+ F-N ! ;
 
 ;using
@@ -269,7 +272,7 @@ using NTAPE
 \ Clears this producer's hold on the caller's buffer, not its contents.
 : CLEAR ( -- )
    0 F-N !  0 F-LEN !  0 F-CAP !  0 F-VERDICT !
-   0 F-DOES !  0 F-BASE !
+   0 F-DOES !  0 F-BASE !  0 F-NAME-OFF !  0 F-NAME-U !
    NULL-PTR TXT!
    ST-IDLE F-STATE ! ;
 
@@ -283,7 +286,7 @@ using NTAPE
    tp 0 F-TAPE !
    txt TXT!  cap F-CAP !
    0 F-N !  0 F-LEN !  0 F-VERDICT !
-   0 F-DOES !  0 F-BASE ! ;
+   0 F-DOES !  0 F-BASE !  0 F-NAME-OFF !  0 F-NAME-U ! ;
 
 \ Three events, one authority: the scan's text, each token, and the verdict.
 \
@@ -401,6 +404,13 @@ public
    F-DOES @ F-BASE !
    ST-ARMED F-STATE !
    row ;
+
+\ The open unit's row 0, the definition's name, as the kept text spells it. A
+\ defining word's clause is checked before the unit seals, so this is the name
+\ a refused clause is reported under (compiler.f CLAUSE-CK).
+: UNIT-NAME$ ( -- ptr u8 n )
+   F-STATE @ ST-IDLE = F-N @ 0= or if E-NFEED-STATE throw then
+   TXT@ F-NAME-OFF @ +  F-NAME-U @ ;
 
 \ Sealing here is where the digest becomes worth sharing: after it the tape
 \ refuses every append. The source is not answered separately - every span names it.

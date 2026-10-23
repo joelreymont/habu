@@ -4,6 +4,8 @@ require src/lib/test.f
 require src/compiler/native/compiler.f
 require src/habu/verify-source.f
 
+70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
+
 1 set-tier
 
 package NATIVE-CREATE-DOES-PUBLIC
@@ -113,7 +115,7 @@ public
    s" a refused native clause publishes no definer" T-LABEL
    [: s\" : NATIVE-DOES-BAD ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- n ) ;\n"
       evaluate-closed ;]
-      E-NCOMP-VERDICT TTHROWSQ
+      RC-REJECT TTHROWSQ
    s" a refused clause leaves no parent signature" T-LABEL
    s" NB0 ( n -- ) NATIVE-DOES-BAD" VERIFY:CANDIDATE-IN-SCOPE 1 T=
    CHECKER-SCOPE-START-NEUTRAL

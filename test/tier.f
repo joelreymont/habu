@@ -765,6 +765,17 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    SB-RESET s" 1 set-tier " SB-APPEND CDS-SHADOW$ SB-APPEND SB$ RUN  s" 8" ASSERT-OK
    OUT$ s" SHADOW" CONTAINS? TFALSE
 
+   \ Tier 0's reader refuses the token before the checker sees the clause; tier
+   \ 1 compiles the whole definition and the checker refuses the clause, which
+   \ reports as a refused body does: the reason, naming the definer, and 70.
+   s" tier 1 refuses a does> clause that names a head local" T-LABEL
+   s" 1 set-tier : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
+   ERR$ s" undefined word 'v'" CONTAINS? TTRUE
+
+   \ A load stops at its first refused clause, so a second refusal needs its own run.
+   s" tier 1 refuses a does> clause whose body breaks its effect" T-LABEL
+   s" 1 set-tier : MKW ( n -- ) create , does> ( -- n n ) @ ;" RUN  s" mkw;does" ASSERT-REJECTED
+
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 

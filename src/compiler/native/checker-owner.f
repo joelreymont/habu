@@ -44,6 +44,7 @@ defer SOURCE-WRITE-WINDOW ( n -- )
 defer SOURCE-REPORT-RESET ( -- )
 defer SOURCE-JSON-REPORTED ( -- bool )
 defer SOURCE-DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
+defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -58,6 +59,7 @@ CAST: AS-CHECK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-TAPE-INSTALL ( n -- [ n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- ] )
 CAST: AS-ACTION ( n -- [ -- ] )
 CAST: AS-DOES-CHECK ( n -- [ ptr u8 n ptr u8 n -- n ] )
+CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
 CAST: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
@@ -116,7 +118,8 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
    NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
    NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
    NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED
-   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED ;
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED
+   NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" source does> report" SOURCE-FIELD AS-DOES-REPORT is SOURCE-DOES-REPORT ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -233,6 +236,14 @@ TRUSTED: RECOVERY-USED? ( -- bool )
    NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
    dup 0= if drop CHECK-DOES! exit then
    AS-DOES-CHECK execute ;
+
+\ The split's scan renders nothing, so the reason for a clause it refused is
+\ rendered here, under the clause name of the definer NAME (checker.f
+\ CHECKER-NATIVE-DOES-REPORT), while the owner still holds that scan.
+: DOES-REPORT ( n ptr u8 n -- n )
+   NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" does> report" FIELD
+   dup 0= if drop SOURCE-DOES-REPORT exit then
+   AS-DOES-REPORT execute ;
 
 TRUSTED: DOES-FINISH ( ptr u8 n bool -- )
    CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF s" does> publication" FIELD

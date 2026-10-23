@@ -157,6 +157,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -174,7 +175,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -11082,6 +11083,7 @@ PPRIM: CHECKER-OWNER-EXT RESET-REPORT-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT JSON-REPORTED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT RECOVERY-USED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT DOES-UNJUDGED-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT NATIVE-DOES-REPORT-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT PRIMITIVE-STATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CONTRACT-MAGIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT FIXED-KIND-OFF PE-N PE-OUT PPRIM;
@@ -26769,10 +26771,9 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    UNJ-DOES-VERDICT @ ;
 
 \ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
-\ body itself and the engine's callers of CHECK-DOES! report a refused clause
-\ their own way (src/habu/habu2.f C-DIE-DOES), but nothing after this entry
-\ does, so a clause it refused ended tools/check.f's pre-pass with no
-\ diagnostic. It is reported as CHECK reports a body: rendered unless the scope
+\ body itself, but CHECK-DOES-RUN renders nothing: tier 0 reports a refused
+\ clause its own way (src/habu/habu2.f C-DIE-DOES), and a clause this entry
+\ refused ended tools/check.f's pre-pass with no diagnostic. It is reported as CHECK reports a body: rendered unless the scope
 \ is quiet, and counted in a multi-error load, rejected or uncheckable, under
 \ the name of the record the clause publishes - the definer's, folded as a
 \ definition's name is, with the companion suffix (CLAUSE-NAME). An uncheckable
@@ -26789,6 +26790,17 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    DIAG-QUIET @ 0= IF DIAGXT THEN
    MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
    v ;
+
+\ The native compiler reports a clause its split refused the same way
+\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT), but it names the definer
+\ only after the scan, so the token buffers are sized for the clause name here.
+\ A grown buffer starts empty and the old one stays mapped, so the refused token
+\ is carried over from it.
+: CHECKER-NATIVE-DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}
+   FAILTK {: tk:ptr :}
+   nu DOES-CLAUSE:SUFFIX$ nip + TOKBUF-ENSURE
+   FAILTK tk <> IF tk FAILTK FAILTU @ CCOPY THEN
+   v na nu DOES-REPORT ;
 
 \ A clause is inside its definer's definition, so a refusal of the definition
 \ (REFUSE-DEF) that leaves the clause's walk by a throw is, in a multi-error
@@ -30340,6 +30352,7 @@ package CHECKER-REG
 ' CHECKER-JSON-REPORTED? DECLARATIONS CHECKER-OWNER-ABI:JSON-REPORTED-OFF + xt!
 ' CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? DECLARATIONS CHECKER-OWNER-ABI:RECOVERY-USED-OFF + xt!
 ' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
+' CHECKER-NATIVE-DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's

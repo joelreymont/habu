@@ -157,7 +157,7 @@ variable RC
 : SESSION-CHECKED-CLAUSE ( -- )
    s" a checked definer's clause is refused what a hookless one may call" T-LABEL
    CHECKED-CLAUSE$ SESSION
-   RC @ RC-THROW T=
+   RC @ RC-REJECT T=
    s" ncomp: cannot compile HR-MAKE2" SAYS ;
 
 \ The source pre-pass marks the wordlist a rendering statement runs in, and a
