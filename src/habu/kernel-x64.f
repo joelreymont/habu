@@ -1815,7 +1815,8 @@ private
 \ source-unit-run ( xt -- ): the callback's whole execution uses the caller's
 \ cursor as its floor. No evaluator frame or SOURCE state changes. The saved
 \ cursor is compared before any data-stack push, including when the callback
-\ returns with the guarded extent exactly full.
+\ returns with the guarded extent exactly full. It also runs source-file-run:
+\ this kernel refuses source-exec-run, so it has no observer to suspend.
 : SOURCE-UNIT-RUN, ( -- )
    X64CODE:LBL X64CODE:LBL {: restore:label done:label :}
    TASK-LIVE-GUARD,
@@ -2445,6 +2446,7 @@ public
    s" die" [: DIE, ;] PRIM
    s" unit-compile-run" [: UNIT-COMPILE-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-unit-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" source-file-run" [: SOURCE-UNIT-RUN, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" source-exec-run" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-exec-live?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" source-exec-boundary?" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID

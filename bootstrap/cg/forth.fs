@@ -206,7 +206,7 @@ $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
 $130 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below) and the $128 slot held for WIDN
-$140 constant STACK-ABI:EVAL-BYTES
+$160 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself
@@ -2052,6 +2052,7 @@ HB-TARGET-LINUX? [IF]
    done LBL, ;
 
 \ Mirror of habu1.f B-SOURCE-UNIT-RUN: direct callback with a closed floor.
+\ It also runs source-file-run: this engine has no source observer to suspend.
 : B-SOURCE-UNIT-RUN ( -- )
    LBL LBL {: restore done :}
    A G-POP  BCALLABLE
@@ -2452,6 +2453,7 @@ HB-TARGET-LINUX? [IF]
    s" evaluate-range" ['] B-EVAL-RANGE PRIM-OWNED-WID FPRIM-L-WID
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
    s" source-unit-run" ['] B-SOURCE-UNIT-RUN PRIM-OWNED-WID FPRIM-WID
+   s" source-file-run" ['] B-SOURCE-UNIT-RUN PRIM-OWNED-WID FPRIM-WID
    s" unit-compile-run" ['] B-NO-UNIT PRIM-OWNED-WID FPRIM-WID ;
 
 : EMIT-ENGINE-PRIMS ( -- )

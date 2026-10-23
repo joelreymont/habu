@@ -374,19 +374,25 @@ variable DIAG-START
    ;MATCH ;
 
 
+\ The builder session, not app.f, sets a publication observer, so the compiler
+\ keeps every definition from the cache. An observer set at a file's top level
+\ leaves no trace its object could carry, so that file would store no object.
+: RUN-WATCHED-IN ( ptr u8 n -- n )
+   S\" 1 set-tier\n: WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
+
 : DIAG-CASE ( -- )
    s" opt-in fallback diagnostics follow actual compile attempts" T-LABEL
    s" diag-cache" AT MAKE-DIR
    s" diag-on-cache" AT MAKE-DIR
-   s" app.f" S\" : WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\n: HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
+   s" app.f" S\" : HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
    0 DIAG? !
-   s" diag-cache" AT RUN-SAVED-IN SUCCESS
+   s" diag-cache" AT RUN-WATCHED-IN SUCCESS
    ERR$ s" native-cache: compile-attempt " CONTAINS? TFALSE
    ERR$ s" native-cache: cache-store-refused " CONTAINS? TFALSE
    LITERAL-IMAGE-SAVE
    \ A second, empty cache: the build with diagnostics on captures app.f too.
    1 DIAG? !
-   s" diag-on-cache" AT RUN-SAVED-IN SUCCESS
+   s" diag-on-cache" AT RUN-WATCHED-IN SUCCESS
    0 DIAG? !
    s" diag.err" AT ERR$ WRITE-ALL
    DIAG-COMPILED 0 > TTRUE

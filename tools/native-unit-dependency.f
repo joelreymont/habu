@@ -14,6 +14,8 @@ require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/core/checker-owner-extension.f
 require src/habu/layout.f
+require src/habu/source-exec.f
+require src/habu/aot-arm.f
 require src/habu/xref.f
 require src/habu/aot-data-cell.f
 require src/habu/address-cells.f
@@ -46,13 +48,27 @@ private
 32 constant PRIMITIVE-HEAD
 \ A file frame's cells: its row offset, its first record ordinal, where its
 \ children's record ranges start, where its first ORDERED reason starts, and
-\ its entry here.
+\ its entry here, and the pending run count (FRUN-N) when it opened.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
 3 constant F-WHY
 4 constant F-HERE
-5 constant FRAME-CELLS
+5 constant F-RUNS
+6 constant FRAME-CELLS
+\ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
+\ run, the source position past its token in the token's buffer, then the
+\ record count, here, the wordlist count, the four kernel cells and the
+\ checker's unit facts before it, and whether it opened a child file.
+0 constant R-ORD
+1 constant R-END
+2 constant R-N
+3 constant R-HERE
+4 constant R-WID
+5 constant R-K0
+9 constant R-FACTS
+10 constant R-CHILD
+11 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -71,6 +87,8 @@ DYNAMIC-BUFFER FFRAMES n
 DYNAMIC-BUFFER FRANGES n
 DYNAMIC-BUFFER FWHY u8
 DYNAMIC-BUFFER FSLOTS n
+\ The pending seed word runs, RUN-CELLS cells each, innermost last.
+DYNAMIC-BUFFER FRUNS n
 \ Each open definition frame's ordinal and entry here, two cells per depth.
 DYNAMIC-BUFFER DLIMITS n
 \ A closure walk: the epoch stamp of each record it reached, its pending
@@ -120,6 +138,7 @@ DYNAMIC-BUFFER OPEND n
 0 CWORK-VARIABLE WHYU n
 0 CWORK-VARIABLE FCAP n
 0 CWORK-VARIABLE FLIVE n
+0 CWORK-VARIABLE FRUN-N n
 0 CWORK-VARIABLE CHECK-OFF n
 0 CWORK-VARIABLE CHECK-OK bool
 0 CWORK-VARIABLE MISS-P ptr u8
@@ -162,6 +181,9 @@ INSTALL-DEFAULT
 : FFIELD ( n -- ptr n )
    FDEPTH @ 0 <= if BAD then
    FDEPTH @ 1- FRAME-CELLS * + FFRAMES ;
+
+\ Cell f of pending run i.
+: RFIELD ( n n -- ptr n ) swap RUN-CELLS * + FRUNS ;
 
 : OPEN? ( -- bool ) DEPTH @ 0 > FDEPTH @ 0 > or ;
 
@@ -528,6 +550,29 @@ variable REACH-XT
 variable FIND-XT
 CAST: AS-FIND ( n -- [ ptr u8 n -- n ] )
 CAST: AS-REACH ( n -- [ n -- n ] )
+variable FACTS-XT
+CAST: AS-FACTS ( n -- [ -- n bool ] )
+
+\ The checker's unit-export fact count, -1 when the owner answers none.
+: FACTS ( -- n )
+   FACTS-XT @ 0= if -1 exit then
+   FACTS-XT @ AS-FACTS execute {: n:n known:bool :}
+   known 0= if -1 exit then
+   n ;
+
+\ The DATA offset of kernel cell k, the cells NUNIT-OBJECT KCELL names: tier,
+\ build depth, build tier and the optimizing compiler's dispatch.
+: KCELL-OFF ( n -- n )
+   {: k:n :}
+   k 0 = if NCOMP-DISPATCH:TIER-CELL exit then
+   k 1 = if NCOMP-DISPATCH:BUILD-DEPTH-CELL exit then
+   k 2 = if NCOMP-DISPATCH:BUILD-TIER-CELL exit then
+   k 3 = if NCOMP-DISPATCH:XT-CELL exit then
+   BAD ;
+
+: KCELL@ ( n -- n )
+   KCELL-OFF {: off:n :}
+   data-base off + CELL-VIEW @ ;
 \ The scope-find flag "the bound record is a seeded primitive"
 \ (src/compiler/native/dict.f, NDICT-private); SCOPE-FIND-AMBIGUOUS is the
 \ global one (src/core/util.f).
@@ -1409,10 +1454,81 @@ public
    RUN-HITS @ 0= if s" resolution-leg-unknown" ord ORDERED-BY exit then
    ord CAPTURE-RUN ;
 
-\ Open a file frame at the file's first record ordinal.
+\ The source observer's before callback (NDEF-CACHE wraps a file's run in
+\ SOURCE-EXEC:RUN): a seed code word run at this file's top level, or in a
+\ text a pending run evaluates, is judged by the trace its run leaves, read by
+\ RUN-AFTER. It pushes a pending run, whose ticket is its index plus one; 0
+\ when the run is not judged.
+: RUN-BEFORE ( n n n n ptr u8 n -- n bool )
+   2drop {: unit:n op:n rec:n entry:n :}
+   unit drop entry drop
+   op SOURCE-EXEC:WORD <> FDEPTH @ 0= or DEPTH @ 0 > or rec 0 < or if
+      0 false exit
+   then
+   rec NFILE-REF:SEED-RECORD? 0= if 0 false exit then
+   rec SEED-KIND 0<> if 0 false exit then
+   FRUN-N @ {: run:n :}
+   run 1+ RUN-CELLS * FRUNS-RESERVE
+   SOURCE-EXEC:POSITION {: end:n balanced:bool :}
+   balanced drop
+   rec run R-ORD RFIELD !
+   end run R-END RFIELD !
+   ndict@ run R-N RFIELD !
+   HERE-N run R-HERE RFIELD !
+   AOT-ARM:WIDN run R-WID RFIELD !
+   4 0 ?do i KCELL@ run R-K0 i + RFIELD ! loop
+   FACTS run R-FACTS RFIELD !
+   0 run R-CHILD RFIELD !
+   run 1+ FRUN-N !
+   run 1+ false ;
+
+\ A closed run's judgment: a seed word's run that consumed no source past its
+\ token, changed no record count, here, wordlist count, kernel cell or unit
+\ fact count and opened no child file left nothing the object carries.
+\ The rule is residual: a run admitted by its trace may also touch state the
+\ object does not carry, as `.(` reads its text and prints it. `data-base`
+\ refuses, so a file aligning with `here data-base - negate 7 and allot`
+\ refuses where `align` stores. A deliberate offset below the floor computed
+\ from `here` is outside this judgment.
+: RUN-JUDGE ( n -- )
+   {: run:n :}
+   SOURCE-EXEC:POSITION {: off:n balanced:bool :}
+   balanced drop
+   off run R-END RFIELD @ > if exit then
+   ndict@ run R-N RFIELD @ <> if exit then
+   HERE-N run R-HERE RFIELD @ <> if exit then
+   AOT-ARM:WIDN run R-WID RFIELD @ <> if exit then
+   4 0 ?do i KCELL@ run R-K0 i + RFIELD @ <> if unloop exit then loop
+   run R-FACTS RFIELD @ {: facts:n :}
+   facts 0 >= if FACTS facts <> if exit then then
+   run R-CHILD RFIELD @ 0<> if exit then
+   s" run-unaccounted" run R-ORD RFIELD @ ORDERED-BY ;
+
+\ The source observer's after callback. A failed run fails the file. after(t)
+\ closes every ticket opened after t: those runs threw to a catch inside t's
+\ run, and the catch restored here and the source position, so nothing they
+\ left can be read. Each refuses run-abandoned, innermost first. Then t is
+\ judged. A run in an evaluated text is judged like the file's own.
+: RUN-AFTER ( n n n -- )
+   {: unit:n ticket:n rc:n :}
+   unit drop
+   ticket 0= if exit then
+   ticket 1- {: run:n :}
+   run FRUN-N @ >= if BAD then
+   begin FRUN-N @ 1- dup run > while
+      dup FRUN-N ! R-ORD RFIELD @ s" run-abandoned" rot ORDERED-BY
+   repeat
+   FRUN-N !
+   rc 0<> if exit then
+   run RUN-JUDGE ;
+
+\ Open a file frame at the file's first record ordinal. Every pending run
+\ opened this one.
 : BEGIN-UNIT ( -- )
    s" PRIM-SPEC:REACH@" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT REACH-XT !
    s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
+   s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
+   FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
    FDEPTH @ FRAME-CELLS * {: base:n :}
    FUSED @ base F-OFF + FFRAMES !
@@ -1420,6 +1536,7 @@ public
    FRN @ base F-RBASE + FFRAMES !
    WHYU @ base F-WHY + FFRAMES !
    HERE-N base F-HERE + FFRAMES !
+   FRUN-N @ base F-RUNS + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -1439,6 +1556,7 @@ public
    off FUSED !
    F-RBASE FFIELD @ FRN !
    F-WHY FFIELD @ WHYU !
+   F-RUNS FFIELD @ FRUN-N !
    -1 FDEPTH +!
    FDEPTH @ 0 > if first ndict@ RANGE+ then
    UNOBSERVE ;
@@ -1553,14 +1671,16 @@ public
    0 WHYU !
    0 FCAP !
    0 FLIVE !
+   0 FRUN-N !
    UNOBSERVE
    BYTES-RELEASE FRAMES-RELEASE
    FBYTES-RELEASE FFRAMES-RELEASE FRANGES-RELEASE FWHY-RELEASE FSLOTS-RELEASE
+   FRUNS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
    DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
-   0 REACH-XT ! 0 FIND-XT !
+   0 REACH-XT ! 0 FIND-XT ! 0 FACTS-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

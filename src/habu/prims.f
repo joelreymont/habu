@@ -61,7 +61,8 @@ public
 \ host's own class through FIND and REACH@; a row with no clause is R-NONE and
 \ its run is accountable to nothing the tool observes.
 0 constant R-NONE            \ unclassed: output, files, execution, engine state
-1 constant R-STACK           \ the stacks and arithmetic over its operands only
+1 constant R-STACK           \ the stacks and arithmetic over its operands only;
+                             \ a throw unwinds them to its catch
 2 constant R-MEMORY          \ memory at an address its operands supply
 3 constant R-DATA            \ reads or moves the DATA pointer
 4 constant R-SOURCE          \ reads the input after its token
@@ -455,6 +456,10 @@ EPRIM: source-unit-run PE-Q ;PE-Q PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ closes one whole source unit without an evaluator frame
 \ Checked caller: test/closed-unit-suite.f CU-RUN, on the whitebox engine.
 EPPRIM: SOURCE-ROOT source-unit-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
+EPRIM: source-file-run PE-Q ;PE-Q PE-IN EPRIM;
+ETRUSTED-ONLY!                       \ runs a file the loader opened as its own source unit
+\ Checked caller: src/core/include.f SOURCE-ROOT LOAD-UNIT.
+EPPRIM: SOURCE-ROOT source-file-run PE-Q ;PE-Q PE-IN ECLOSE-PRIVATE
 
 EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT REF PRIM-REF:S-DUP EPRIM; REACH stack
 EPRIM: drop  PE-A PE-IN REF PRIM-REF:S-DROP EPRIM; REACH stack
@@ -600,7 +605,7 @@ EPRIM: align        EPRIM; REACH data
 EPRIM: ,            PE-N PE-IN EPRIM; REACH data
 EPRIM: c,           PE-N PE-IN EPRIM; REACH data
 EPRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
-EPRIM: throw        PE-N PE-IN EPRIM;
+EPRIM: throw        PE-N PE-IN EPRIM; REACH stack
 EPRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 
 EPRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;

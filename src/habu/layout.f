@@ -587,9 +587,10 @@ $48 constant EVAL-PKG
 \ EVAL-PKG..$80 (its last cell, PKGSNAP:FLOOR, is $78) and STACK-ABI:EVAL-BASE
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
-\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130 and
-\ EVAL-FRAME:ROWS $138, filling the frame to STACK-ABI:EVAL-BYTES ($140), which
-\ keeps the native stack 16-byte aligned.
+\ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130,
+\ EVAL-FRAME:ROWS $138 and EVAL-FRAME:SX-CTX..SX-SRC $140..$158; $158 pads the
+\ frame to STACK-ABI:EVAL-BYTES ($160), which keeps the native stack 16-byte
+\ aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -619,6 +620,16 @@ $120 constant PEND
 \ the dictionary back (habu2.f EM-EVAL-THROW-RECOVER), so no definition the
 \ rollback drops keeps a record or a pending window.
 $138 constant ROWS
+\ SX-CTX: the source observer this buffer adopted, 0 when it adopted none. An
+\ observed word that evaluates a buffer hands the observer to that buffer
+\ (habu1.f EMIT-EVAL-BODY, outer.f OBSERVE-ARM): SX-TICKET and SX-SRC keep the
+\ word's ticket and its source start, which the clean exit and the throw
+\ recovery put back with the word's run pending again (habu1.f
+\ ENGINE-EMIT:SX-RESTORE,, outer.f OBSERVE-RESTORE). The observer's frame needs
+\ no cell: adoption requires it to be the frame this buffer nests in, EVAL-PREV.
+$140 constant SX-CTX
+$148 constant SX-TICKET
+$150 constant SX-SRC
 ;package
 
 \ --- refusal location band (dot habu-name-the-file-70acbf10) --------------------

@@ -6,8 +6,8 @@
 \ EPPRIM: ... ECLOSE-PRIVATE) also carries DNAME-OWNED (src/habu/layout.f):
 \ hidden exactly as before, while a compiled call to it is the checker's
 \ decision through its rows. package-scope! and namespace-record are
-\ CHECKER-OVERLAY's, source-unit-run is SOURCE-ROOT's; int-mark has no package
-\ row.
+\ CHECKER-OVERLAY's, source-unit-run and source-file-run are SOURCE-ROOT's;
+\ int-mark has no package row.
 \
 \ Each case forks a child that hands its source to `evaluate`, the engine's own
 \ interpret loop, and judges the child by its status and its streams. The
@@ -125,7 +125,11 @@ private
    s" : OA-SUR0 ( [ -- ] -- ) source-unit-run ;"
    s" E-CAP-TRUSTED habu: in oa-sur0: 'source-unit-run' is a trust-boundary primitive" REJECTS
    s" 1 set-tier : OA-SUR1 ( [ -- ] -- ) source-unit-run ;"
-   s" E-CAP-TRUSTED habu: in oa-sur1: 'source-unit-run' is a trust-boundary primitive" REJECTS ;
+   s" E-CAP-TRUSTED habu: in oa-sur1: 'source-unit-run' is a trust-boundary primitive" REJECTS
+   s" : OA-SFR0 ( [ -- ] -- ) source-file-run ;"
+   s" E-CAP-TRUSTED habu: in oa-sfr0: 'source-file-run' is a trust-boundary primitive" REJECTS
+   s" 1 set-tier : OA-SFR1 ( [ -- ] -- ) source-file-run ;"
+   s" E-CAP-TRUSTED habu: in oa-sfr1: 'source-file-run' is a trust-boundary primitive" REJECTS ;
 
 public
 

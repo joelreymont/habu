@@ -215,6 +215,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    STACK-ABI:BASE-CELL CELL@ f STACK-ABI:EVAL-BASE FR!
    STACK-ABI:CAP-CELL CELL@ f STACK-ABI:EVAL-CAP FR!
    0 f STACK-ABI:EVAL-SEG FR!
+   0 f EVAL-FRAME:SX-CTX FR!
    PEND-CELL CELL@ f EVAL-FRAME:PEND FR!
    f EVAL-PKG + {: snap:ptr :}
    CUR-CELL CELL@ snap PKGSNAP-CUR FR!
@@ -379,8 +380,9 @@ public
 \ floor and the record the step that ran the word looked up (outer.f REC).
 \ The input base stays the buffer's first byte, so a refusal's line counts
 \ from the start of the whole source. An owned source range arms the observer
-\ here, as the engine's evaluate does (habu1.f EMIT-EVAL-BODY), and LOOP-EVAL
-\ names this frame while its loop reads.
+\ here, and a buffer an observed word evaluates adopts it until the catch, as
+\ the engine's evaluate does (habu1.f EMIT-EVAL-BODY), and LOOP-EVAL names
+\ this frame while its loop reads.
 : EVAL-FRAMED-RANGE ( ptr u8 n n n -- ) {: a:ptr u:n first:n end:n :}
    EVAL-TASK-GUARD
    depth FRAME-OPEN {: f:ptr :}
@@ -397,6 +399,7 @@ public
    f NULL-PTR - LOOP-EVAL !
    [: FRAME-ARG @ FRAME-LINK RUN ;] catch {: code:n :}
    reading LOOP-EVAL !
+   f OBSERVE-RESTORE
    code 0= if
       f FRAME-LEAVE
    else

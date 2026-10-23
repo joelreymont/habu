@@ -151,6 +151,22 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    s" reach.f" LOAD+
    s" mask.f" LOAD+
    s" own-trust.f" LOAD+
+   s" parse-ok.f" LOAD+
+   s" tier-ok.f" LOAD+
+   s" fwrite.f" LOAD+
+   s" fenv.f" LOAD+
+   s" dbase.f" LOAD+
+   s" nestev.f" LOAD+
+   s" nestdef.f" LOAD+
+   s" nest2.f" LOAD+
+   s" nestafter.f" LOAD+
+   s" nestlit.f" LOAD+
+   s" nestthrow.f" LOAD+
+   s" exec-xt.f" LOAD+
+   s" act2.f" LOAD+
+   s" nest-parent.f" LOAD+
+   s" act.f" LOAD+
+   S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\n" IN+
    s" scope.f" LOAD+
    RUN-INPUT ;
 
@@ -339,15 +355,63 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    INPUT WANT INPUT-U @ BYTE-COPY INPUT-U @ WANT-U !
    s" app.f" OBJECT$ s"  src=" FIELD$ WANT WANT-U @ T$= ;
 
-\ name's load wrote no object.
+\ name's load wrote no object. The match starts at the path's last "/", so
+\ run.f never finds aftrun.f.
 : NO-OBJECT ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    0 INPUT-U !
-   name nameu IN+ s"  key=" IN+
+   s" /" IN+ name nameu IN+ s"  key=" IN+
    ERR$ INPUT INPUT-U @ FIND-SUB MATCH option
      none OF ENDOF
      some OF drop T-FAIL ENDOF
    ;MATCH ;
+
+\ name's frame ends in the run reason given, and its load wrote no object.
+: RUN-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n why:ptr whyu:n :}
+   name nameu FRAME$ why whyu ENDS-WITH? TTRUE
+   name nameu NO-OBJECT ;
+
+\ The FFI fixtures, kept apart from FIXTURES: together their body text
+\ passes the 8000 bytes one definition captures (BODYBUF-CAP).
+: FFI-FIXTURES ( -- )
+   \ A file that grows a registry table refuses. ffl.f, the first FFI file,
+   \ declares functions until the table grows, from any count: the rest fit.
+   \ ffl2.f reuses its library row. ffn.f runs PROCESS-SYMBOLS before its
+   \ FUNCTION: appends a row.
+   s" ffl.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n4 BUFFER: GROW-SYM\n: GROW-NAME ( n -- ) 102 GROW-SYM c! 4 1 do dup 26 mod 97 + GROW-SYM i + c! 26 / loop drop ;\n: GROW ( -- ) FFI:MARK {: room:n :} 0 begin dup GROW-NAME GROW-SYM 4 FFI:PROCESS 0 FFI:DECLARE drop 1+ FFI:MARK room <> until drop ;\nGROW\n" PUT
+   s" ffn.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: FF-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
+   s" ffl2.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC2 crc32 ( n ptr u8 n -- n ) ;FUNCTION\n" PUT
+   \ sel.f declares getuid under the process selection; selc.f, which does not
+   \ require sel.f, declares the same row: a reuse row and the entry selection.
+   s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
+   s" selc.f" S\" require src/lib/ffi-abi.f\nFUNCTION: SELC-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
+   \ ffb.f declares into the maker bank, which its segment's open mark did not
+   \ select.
+   s" ffb.f" S\" require src/lib/ffi-abi.f\n: FFB ( -- ) s\" getppid\" FFI:PROCESS 0 FFI:DECLARE drop ;\n' FFB FFI:WITH-MAKER-DECLARATIONS\n1 constant FFB-K\n" PUT
+   \ sela.f selects what was selected; selb.f selects it again and declares
+   \ nothing. Each top-level PROCESS-SYMBOLS refuses its file.
+   s" sela.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" selb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n17 constant SELB-K\n" PUT
+   \ scopea.f leaves its package's wordlist selected; scopeb.f, which does
+   \ not require scopea.f, opens with that selection. A package an earlier
+   \ session made has no key, so scpar.f loads both in its own.
+   s" scpar.f" S\" require scopea.f\nrequire scopeb.f\n" PUT
+   s" scopea.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SCA\nPROCESS-SYMBOLS\n;package\n" PUT
+   s" scopeb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SCB-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
+   \ sesa.f, a session of its own, leaves its package's wordlist selected;
+   \ the next session has no key for it. plain.f, in that session, neither
+   \ reads nor changes the selection, so it stores all the same.
+   s" sesa.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SESA\nPROCESS-SYMBOLS\n;package\n" PUT
+   s" plain.f" S\" 17 constant PLAIN-K\n" PUT
+   \ wrb.f's only FFI action, an FFI-DECL:SELECT, writes the selection wra.f
+   \ left as it found it.
+   s" wra.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" wrb.f" S\" require src/lib/ffi-abi.f\n0 0 true FFI-DECL:SELECT\n17 constant WRB-K\n" PUT
+   \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI-DECL's CLEAR-SCOPE hook, which
+   \ clears the scope and keeps the library wca.f selected.
+   s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT ;
 
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
@@ -416,6 +480,47 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ own-trust.f runs its own unchecked OT at top level and is refused by name.
    s" mask.f" S\" variable MX\n: MX-ONE ( -- n ) 1 ;\n: MX-RUN ( -- n ) MX @ drop [: MX-ONE ;] execute ;\nMX-RUN constant MX-K\n" PUT
    s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
+   \ A seed word run at top level is admitted only by the trace its run leaves.
+   \ parse-ok.f's parse-imm adds a unit fact, cells is a stack primitive and
+   \ allot a data one; tier-ok.f's set-tier is a build primitive. fwrite.f's
+   \ WRITE-ALL, fenv.f's GETENV, dbase.f's data-base, exec-xt.f's execute and
+   \ act2.f's SESSION-LIVE? leave no trace. The tick of EX is a resolution,
+   \ not a run. nest-parent.f's include opens nest-child.f,
+   \ a trace; its SESSION-LIVE? after the child leaves none. act.f closes the
+   \ compiler session, so a warm build that installs it instead of running it
+   \ prints session=-1. It loads before scope.f, which must stay the last load.
+   s" parse-ok.f" S\" : PO ( -- ) ;\ns\" PO\" 0 parse-imm\ncreate PK 4 cells allot\n2 constant PK-K\n" PUT
+   s" tier-ok.f" S\" 1 set-tier\n5 constant TO-K\n" PUT
+   0 INPUT-U !
+   S\" 1 constant FW-K\ns\" " IN+ s" fwrite.txt" AT IN+ S\" \" s\" x\" WRITE-ALL\n" IN+
+   s" fwrite.f" INPUT INPUT-U @ PUT
+   s" fenv.f" S\" 1 constant FE-K\ns\" HOME\" GETENV nip constant FE-N\n" PUT
+   s" dbase.f" S\" 1 constant DB-K\ndata-base DB-K + drop\n" PUT
+   \ nestev.f's top level evaluates a text whose seed runs write a kernel cell
+   \ below the DATA floor, then define a record: each run the nested text makes
+   \ is judged as the file's own. nestdef.f's STRUCTURE evaluates the text its
+   \ definer generates, and stores.
+   s" nestev.f" S\" s\" data-base ARGC-CELL + @ data-base ARGC-CELL + ! 1 constant NE-K\" evaluate\n" PUT
+   s" nestdef.f" S\" STRUCTURE nd-pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n" PUT
+   \ nest2.f makes nestev.f's store two evaluates deep. nestafter.f's top level
+   \ runs a trace-free data-base after a nested evaluate returns: the file's
+   \ own tokens are observed again.
+   s" nest2.f" S\" S\\\" s\\\" data-base ARGC-CELL + @ data-base ARGC-CELL + ! 1 constant N2-K\\\" evaluate\" evaluate\n" PUT
+   s" nestafter.f" S\" s\" 1 constant NA-K\" evaluate\ndata-base NA-K + drop\n" PUT
+   \ nestlit.f evaluates the name the engine holds for data-base, a buffer
+   \ below the file's source: the nested run's token end is read in its own
+   \ buffer, never as an offset into the file's. NL$'s own run reaches a
+   \ kernel word, so only the frame's reason tells the two apart.
+   s" nestlit.f" S\" : NL$ ( -- ptr u8 n ) s\" data-base\" XREF-FIND XREF-NAME$ ;\nNL$ evaluate drop\n" PUT
+   \ nestthrow.f's top-level catch runs a text that allots, then evaluates a
+   \ text that throws: the catch restores here, so the trace the abandoned
+   \ runs left is gone and they refuse, though here moved before the throw.
+   s" nestthrow.f" S\" : NT-Q ( -- ptr u8 n ) s\" 5 throw\" ;\n: NT$ ( -- ptr u8 n ) s\" 8 allot 0 set-tier NT-Q evaluate\" ;\nNT$ ' evaluate catch constant NT-RC 2drop\n1 set-tier\n" PUT
+   s" exec-xt.f" S\" : EX ( -- ) ;\n' EX execute\n" PUT
+   s" act2.f" S\" NCOMP:SESSION-LIVE? drop\n1 constant ACT-K2\n" PUT
+   s" nest-child.f" S\" 2 constant NC-K\n" PUT
+   s" nest-parent.f" S\" : NP ( -- ) ;\ninclude nest-child.f\nNCOMP:SESSION-LIVE? drop\n" PUT
+   s" act.f" S\" 1 constant ACT-K\nIR-CTX:SESSION-CLOSE\n" PUT
    \ watermark.f moves the user-slot watermark of the TASK the builder loaded at
    \ load time through the cell TASK hands its claimants. TASK:+USER moves it too
    \ and refuses its file for task-slots the same way.
@@ -509,45 +614,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ mark either file's start.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
-   \ A file that grows a registry table refuses. ffl.f, the first FFI file,
-   \ declares functions until the table grows, from any count: the rest fit.
-   \ ffl2.f reuses its library row. ffn.f's FUNCTION: appends a row its object
-   \ carries and a warm install replays at the same index.
-   s" ffl.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n4 BUFFER: GROW-SYM\n: GROW-NAME ( n -- ) 102 GROW-SYM c! 4 1 do dup 26 mod 97 + GROW-SYM i + c! 26 / loop drop ;\n: GROW ( -- ) FFI:MARK {: room:n :} 0 begin dup GROW-NAME GROW-SYM 4 FFI:PROCESS 0 FFI:DECLARE drop 1+ FFI:MARK room <> until drop ;\nGROW\n" PUT
-   s" ffn.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: FF-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
-   s" ffl2.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC2 crc32 ( n ptr u8 n -- n ) ;FUNCTION\n" PUT
-   \ sel.f declares getuid under the process selection; selc.f, which does not
-   \ require sel.f, declares the same row: a reuse row and the entry selection.
-   s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
-   s" selc.f" S\" require src/lib/ffi-abi.f\nFUNCTION: SELC-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
-   \ ffb.f declares into the maker bank, which its segment's open mark did not
-   \ select.
-   s" ffb.f" S\" require src/lib/ffi-abi.f\n: FFB ( -- ) s\" getppid\" FFI:PROCESS 0 FFI:DECLARE drop ;\n' FFB FFI:WITH-MAKER-DECLARATIONS\n1 constant FFB-K\n" PUT
-   \ sela.f selects what was selected and stores only the selection it opened
-   \ with; selb.f selects it again and declares nothing, so only its opening
-   \ selection records that it found the process selected.
-   s" sela.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
-   s" selb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n17 constant SELB-K\n" PUT
-   \ scopea.f leaves its package's wordlist selected; scopeb.f, which does
-   \ not require scopea.f, opens with that selection. A package an earlier
-   \ session made has no key, so scpar.f loads both in its own.
-   s" scpar.f" S\" require scopea.f\nrequire scopeb.f\n" PUT
-   s" scopea.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SCA\nPROCESS-SYMBOLS\n;package\n" PUT
-   s" scopeb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SCB-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
-   \ sesa.f, a session of its own, leaves its package's wordlist selected;
-   \ the next session has no key for it. plain.f, in that session, neither
-   \ reads nor changes the selection, so it stores all the same.
-   s" sesa.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SESA\nPROCESS-SYMBOLS\n;package\n" PUT
-   s" plain.f" S\" 17 constant PLAIN-K\n" PUT
-   \ wrb.f's only FFI action, an FFI-DECL:SELECT, writes the selection wra.f
-   \ left as it found it: its object records that opening selection.
-   s" wra.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
-   s" wrb.f" S\" require src/lib/ffi-abi.f\n0 0 true FFI-DECL:SELECT\n17 constant WRB-K\n" PUT
-   \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI-DECL's CLEAR-SCOPE hook, which
-   \ clears the scope and keeps the library wca.f selected: its object
-   \ records the selection it opened with and the cleared one.
-   s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
-   s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT
+   FFI-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
@@ -717,7 +784,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" scope.f" s"  reason=" LINE$ s" scope.f reason=scope-exit" T$=
    s" scope.f" NO-OBJECT
    s" a file that takes a TASK user slot has no object" T-LABEL
-   s" watermark.f" s"  reason=" LINE$ s" watermark.f reason=task-slots" T$=
+   s" watermark.f" FRAME$ s"  reason=run-unaccounted word=OWNED-USER-NEXT" ENDS-WITH? TTRUE
+   s" watermark.f" s"  reason=" LINE$ s" watermark.f reason=ordered-dependency" T$=
    s" watermark.f" NO-OBJECT
    s" app.f's object holds each definition's name span in app.f" T-LABEL
    APP-SPANS
@@ -764,37 +832,37 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=checker-mark" T$=
    s" pkgc.f" NO-OBJECT ;
 
-\ A file's writes to the seed FFI registry: carried rows store; a grown table
-\ or a row in the bank the file did not select refuses.
+\ A file's writes to the seed FFI registry: carried rows store. A seed word
+\ the top level runs is judged by the trace it leaves, and a selection or
+\ scope change is no trace: PROCESS-SYMBOLS and IMAGE-LIFECYCLE:PREPARE
+\ refuse their files, and wrb.f refuses at `true`, the first seed word its
+\ SELECT line runs. A run that reaches FFI:DECLARE refuses by that reach.
 : FFI-CHECKS ( -- )
-   s" a FUNCTION: file stores its object carrying the new row" T-LABEL
+   s" a FUNCTION: file whose top level runs PROCESS-SYMBOLS refuses" T-LABEL
    OUT$ S\" pid=-1\n" CONTAINS? TTRUE
-   s" ffn.f" KEY$ STORED
-   s" ffn.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a file that grows the registry's tables refuses" T-LABEL
+   s" ffn.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" a file whose run reaches FFI:DECLARE refuses by that reach" T-LABEL
    OUT$ S\" crc=0\n" CONTAINS? TTRUE
-   ERR$ s" /ffl.f reason=ffi-grown" CONTAINS? TTRUE
+   s" ffl.f" s"  reason=" LINE$ s" ffl.f reason=run-reaches-kernel-word word=DECLARE" T$=
    s" ffl.f" NO-OBJECT
    s" a file reusing that library row stores its object" T-LABEL
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
    s" ffl2.f" KEY$ STORED
-   s" a declaring file stores, and so does one reusing its row" T-LABEL
-   s" sel.f" KEY$ STORED
+   s" a declaring file that runs PROCESS-SYMBOLS refuses; one reusing its row stores" T-LABEL
+   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    s" selc.f" KEY$ STORED
-   s" a declaration into the bank not selected refuses" T-LABEL
-   ERR$ s" /ffb.f reason=ffi-bank" CONTAINS? TTRUE
+   s" a declaration into the bank not selected refuses by its run's reach" T-LABEL
+   s" ffb.f" s"  reason=" LINE$ s" ffb.f reason=run-reaches-kernel-word word=DECLARE" T$=
    s" ffb.f" NO-OBJECT
    s" a file that touches no FFI state stores under a selection it cannot key" T-LABEL
    s" plain.f" s"  records=" s" 1" OBJECT-HAS
    s" plain.f" KEY$ STORED
-   s" a file whose only FFI action rewrites the selection stores it" T-LABEL
+   s" a file whose top level rewrites the selection refuses" T-LABEL
    OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
-   s" wrb.f" s"  ffi=" s" 1" OBJECT-HAS
-   s" wrb.f" KEY$ STORED
-   s" a file whose only FFI action clears the scope stores both selections" T-LABEL
+   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
+   s" a file whose top level clears the scope refuses" T-LABEL
    OUT$ S\" wcb=0\n0\n0\n" CONTAINS? TTRUE
-   s" wcb.f" s"  ffi=" s" 2" OBJECT-HAS
-   s" wcb.f" KEY$ STORED ;
+   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED ;
 
 \ Neither name's frame nor a refused line of name names a run reason.
 : NO-RUN-REASON ( ptr u8 n -- )
@@ -829,8 +897,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" off.f" NO-RUN-REASON
    s" hooks.f" NO-RUN-REASON
    s" raw.f" NO-RUN-REASON
-   s" poke.f" NO-RUN-REASON
-   s" watermark.f" NO-RUN-REASON ;
+   s" poke.f" NO-RUN-REASON ;
 
 \ What a top-level run reaches: a checked definition and a classed
 \ primitive are admitted; a seed word no REACH class covers refuses.
@@ -857,6 +924,50 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a run of the file's own unchecked word refuses it by name" T-LABEL
    s" own-trust.f" s"  reason=" LINE$ s" own-trust.f reason=run-host-unchecked word=OT" T$=
    s" own-trust.f" NO-OBJECT
+   s" a seed word run whose trace is the source, a unit fact or a class stores" T-LABEL
+   s" parse-ok.f" KEY$ STORED
+   s" parse-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" tier-ok.f" KEY$ STORED
+   s" tier-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a seed word run that leaves no trace refuses its file" T-LABEL
+   s" fwrite.f" FRAME$ s"  reason=run-unaccounted word=WRITE-ALL" ENDS-WITH? TTRUE
+   s" fwrite.f" NO-OBJECT
+   s" fwrite.txt" AT EXISTS? TTRUE
+   s" fenv.f" FRAME$ s"  reason=run-unaccounted word=GETENV" ENDS-WITH? TTRUE
+   s" fenv.f" NO-OBJECT
+   s" dbase.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
+   s" dbase.f" NO-OBJECT
+   s" a seed word run in a text the top level evaluates is judged" T-LABEL
+   s" nestev.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
+   s" nestev.f" NO-OBJECT
+   s" a definer that evaluates its generated text stores its file" T-LABEL
+   s" nestdef.f" KEY$ STORED
+   s" nestdef.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a seed word run two evaluates deep is judged" T-LABEL
+   s" nest2.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
+   s" nest2.f" NO-OBJECT
+   s" the top level is judged again after a nested evaluate returns" T-LABEL
+   s" nestafter.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
+   s" nestafter.f" NO-OBJECT
+   s" a seed word run in a text outside the file's source is judged" T-LABEL
+   s" nestlit.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
+   s" nestlit.f" NO-OBJECT
+   s" a nested run a throw abandons refuses" T-LABEL
+   s" nestthrow.f" FRAME$ s"  reason=run-abandoned" CONTAINS? TTRUE
+   s" nestthrow.f" NO-OBJECT
+   s" exec-xt.f" FRAME$ s"  reason=run-unaccounted word=execute" ENDS-WITH? TTRUE
+   s" exec-xt.f" NO-OBJECT
+   s" act2.f" FRAME$ s"  reason=run-unaccounted word=SESSION-LIVE?" ENDS-WITH? TTRUE
+   s" act2.f" NO-OBJECT
+   s" a run that opens a child is its trace; a later run in the parent is judged" T-LABEL
+   s" nest-parent.f" FRAME$ s"  reason=run-unaccounted word=SESSION-LIVE?" ENDS-WITH? TTRUE
+   s" nest-parent.f" NO-OBJECT
+   s" nest-child.f" KEY$ STORED
+   s" nest-child.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a run that closes the compiler session refuses its file" T-LABEL
+   s" act.f" FRAME$ s"  reason=run-unaccounted word=SESSION-CLOSE" ENDS-WITH? TTRUE
+   s" act.f" NO-OBJECT
+   OUT$ S\" session=0\n" CONTAINS? TTRUE
    s" no other file's run names a run reason" T-LABEL
    RUNS-ADMITTED ;
 
@@ -885,7 +996,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build reuses every leaf object of constant and colon records" T-LABEL
    OUT$ S\" pk=7\n" CONTAINS? TTRUE
    s" base.f" REUSED s" deep.f" REUSED s" sdeep.f" REUSED s" odeep.f" REUSED
-   s" pk.f" REUSED s" safe.f" REUSED s" vread.f" REUSED s" exec.f" REUSED
+   s" pk.f" REUSED s" vread.f" REUSED s" exec.f" REUSED
    s" ret-use.f" REUSED s" gc1.f" REUSED s" diag.f" REUSED
    s" after.f" REUSED s" tierback.f" REUSED
    \ aftrun.f's stored executed row over AFT-ONE compares the digest the
@@ -906,19 +1017,23 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs td.f" T-LABEL
    OUT$ S\" td=4\n" CONTAINS? TTRUE
    s" td.f" REUSED
-   s" a warm build installs the FFI files, replaying their rows and selection" T-LABEL
-   s" ffn.f" REUSED
+   s" a warm build installs the stored FFI files, replaying their rows and selection" T-LABEL
    OUT$ S\" pid=-1\n" CONTAINS? TTRUE
    OUT$ S\" crc=0\n" CONTAINS? TTRUE
    s" ffl2.f" REUSED
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
-   s" sel.f" REUSED
    s" selc.f" REUSED
-   s" selb.f" REUSED
-   s" scopeb.f" REUSED
    s" plain.f" REUSED
-   s" wrb.f" REUSED
-   s" wcb.f" REUSED
+   s" a warm build refuses each refused FFI file again by its run reason" T-LABEL
+   s" ffn.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" selb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" scopeb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
+   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
+   s" a warm build runs act.f again, which closes the compiler session" T-LABEL
+   s" act.f" NO-OBJECT
+   OUT$ S\" session=0\n" CONTAINS? TTRUE
    s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
    RUNS-ADMITTED ;
 
@@ -1055,19 +1170,19 @@ public
    s" a changed selection is a named miss for the file that consumed it" T-LABEL
    ERR$ s" /selc.f reason=ffi-rows" CONTAINS? TTRUE
    ERR$ s" /selc.f records=" CONTAINS? TFALSE
-   s" sel.f" KEY$ STORED
-   s" a file that selects the selection it found misses once that changes" T-LABEL
-   ERR$ s" /selb.f reason=ffi-rows" CONTAINS? TTRUE
+   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" a file that selects the selection it found refuses on every build" T-LABEL
+   s" selb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    ERR$ s" /selb.f records=" CONTAINS? TFALSE
-   s" a selection naming a removed package is a named miss" T-LABEL
-   ERR$ s" /scopeb.f reason=ffi-rows" CONTAINS? TTRUE
+   s" a file opening with a removed package's selection refuses on every build" T-LABEL
+   s" scopeb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    ERR$ s" /scopeb.f records=" CONTAINS? TFALSE
-   s" a SELECT over a changed selection misses and selects as a cold load" T-LABEL
-   ERR$ s" /wrb.f reason=ffi-rows" CONTAINS? TTRUE
+   s" a SELECT over a changed selection refuses and selects as a cold load" T-LABEL
+   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
    ERR$ s" /wrb.f records=" CONTAINS? TFALSE
    OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
-   s" a scope clear over a changed library misses and keeps it as a cold load" T-LABEL
-   ERR$ s" /wcb.f reason=ffi-rows" CONTAINS? TTRUE
+   s" a scope clear over a changed library refuses and keeps it as a cold load" T-LABEL
+   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
    ERR$ s" /wcb.f records=" CONTAINS? TFALSE
    OUT$ S\" wcb=0\n0\n1\n" CONTAINS? TTRUE
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=

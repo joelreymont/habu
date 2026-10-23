@@ -1981,7 +1981,7 @@ create RESIDUE-DIGIT 1 allot
 : LOAD-UNIT ( -- )
    LOAD-BYTES
    TOP@ RANGE-OWNER !
-   [: CALL-UNIT ;] source-unit-run ;
+   [: CALL-UNIT ;] source-file-run ;
 
 : LOAD-CURRENT ( -- )
    PUSH

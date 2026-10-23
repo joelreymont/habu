@@ -9803,6 +9803,8 @@ public
    10 SP 8 LDR,  15 SP 16 LDR,  16 SP 24 LDR,  17 SP 32 LDR,
    9 DATA S0-CELL LDR,  9 XDS 9 SUB,  9 9 3 LSRI,  9 10 SX-DEPTH STR,
    9 DATA RSP-CELL LDR,  9 10 SX-RDEPTH STR,
+   9 DATA INP-CELL LDR,  11 10 SX-SRC LDR,  9 9 11 SUB,  \ the token's end, for source-exec-position
+   9 10 SX-POS STR,
    15 10 SX-OP STR,  16 10 SX-REC STR,  17 10 SX-ENTRY STR,
    9 1 MOVZ,  9 10 SX-SUSPEND STR,
    9 10 SX-UNIT LDR,  9 G-PUSH
@@ -12585,6 +12587,7 @@ public
       9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
+      13 9 10 ENGINE-EMIT:SX-RESTORE,                   \ an adopted observer gets the evaluating word's run back
       12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
@@ -13178,6 +13181,7 @@ public
    10 9 CMP,  C-LS floor BCOND,                    \ floor <= restored depth -> keep it
    9 15 0 STR,
    floor LBL,
+   14 9 10 ENGINE-EMIT:SX-RESTORE,                    \ an adopted observer gets the evaluating word's run back
    9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR,

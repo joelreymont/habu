@@ -74,9 +74,10 @@ $88 constant EVAL-CAP
 \ The data stack the frame owns: evaluate-closed's pooled stack, which the clean
 \ return and the throw recovery give back to the pool; 0 for evaluate. $138 is
 \ layout.f's EVAL-FRAME:ROWS, the checker's record end as the buffer began, and
-\ fills the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
+\ $140..$158 its source-observer cells (EVAL-FRAME:SX-CTX, SX-TICKET, SX-SRC);
+\ $158 pads the frame to EVAL-BYTES, a multiple of 16 for the machine stack.
 $130 constant EVAL-SEG
-$140 constant EVAL-BYTES
+$160 constant EVAL-BYTES
 
 \ THE MACHINE STACK IS THE OS THREAD'S OWN, so its guard is the kernel's and its
 \ overflow faults with sp at or in that guard, where the kernel cannot build a

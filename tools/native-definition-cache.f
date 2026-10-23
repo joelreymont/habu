@@ -16,6 +16,7 @@ require src/core/checker-owner-abi.f
 require src/core/checker-owner-extension.f
 require src/habu/aot-arm.f
 require src/habu/layout.f
+require src/habu/source-exec.f
 require src/habu/terminal-call.f
 require src/habu/xref.f
 require src/habu/native-body-abi.f
@@ -949,6 +950,16 @@ variable PENDING-KEY-U
    FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
    F-Q F@ N>Q F-PRIOR F@ N>UNIT execute ;
 
+\ The file's source runs under the engine's source observer, whose callbacks
+\ judge each seed word the top level runs (NUNIT-DEP RUN-BEFORE, RUN-AFTER).
+\ The frame arms when the loader evaluates exactly the source span; a child
+\ load pushes its own frame.
+: OBSERVED-RUN ( -- )
+   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@ {: source:ptr sourceu:n :}
+   DEPTH @ source sourceu ['] NUNIT-DEP:RUN-BEFORE ['] NUNIT-DEP:RUN-AFTER
+      [: UNIT-RUN ;] SOURCE-EXEC:RUN {: rc:n :}
+   rc 0<> if rc throw then ;
+
 : FILE-SUCCESS ( -- )
    NATIVE? @ 0= if exit then
    FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
@@ -1230,7 +1241,7 @@ variable OBJECT-U
    \ keeps the producer digests a run would.
    NATIVE? @ if path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE then
    OBJECT-HIT? {: hit:bool :}
-   hit if ['] INSTALL-OBJECT else ['] UNIT-RUN then catch {: unit-rc:n :}
+   hit if ['] INSTALL-OBJECT else ['] OBSERVED-RUN then catch {: unit-rc:n :}
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
    unit-rc 0= plan-rc 0= and hit 0= and

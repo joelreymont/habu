@@ -1599,6 +1599,21 @@ public
 : USE-WIDS-RESTORE, ( n n n n -- ) {: base:n off:n band:n tmp:n :}
    band USE-WIDS-OFF LIT64,  band DATA band ADD,
    USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
+
+\ Give the observer the evaluate frame in x<f> adopted (EMIT-EVAL-BODY) back
+\ its frame (the one x<f> nests in, which adoption required), the evaluating
+\ word's ticket and its source start, with that
+\ word's run pending again and no callback open (habu2.f EM-EVAL-CLEAN-EXIT,
+\ LEVALREC). Nothing when the frame adopted none. ctx and tmp are scratch.
+: SX-RESTORE, ( n n n -- ) {: f:n ctx:n tmp:n :}
+   LBL {: kept:label :}
+   ctx f EVAL-FRAME:SX-CTX LDR,  ctx kept CBZ,
+   tmp f EVAL-PREV LDR,  tmp ctx SX-EVAL STR,
+   tmp f EVAL-FRAME:SX-TICKET LDR,  tmp ctx SX-TICKET STR,
+   tmp f EVAL-FRAME:SX-SRC LDR,  tmp ctx SX-SRC STR,
+   tmp 1 MOVZ,  tmp ctx SX-PENDING STR,
+   tmp 0 MOVZ,  tmp ctx SX-SUSPEND STR,
+   kept LBL, ;
 ;package
 
 \ The source checker's operations and the record mark EVAL-ENTER takes; habu2.f
@@ -1663,7 +1678,7 @@ variable LSOURCEEXECFINISH
    LEVALBODY LABEL@ B, ;
 
 : EMIT-EVAL-BODY ( -- )
-   LBL LBL {: end:label sx-done:label :}
+   LBL LBL LBL {: end:label sx-done:label sx-adopt:label :}
    s" (EVALUATE)" LEVALBODY LABEL@ LABEL>N
       end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    LEVALBODY LABEL@ LBL,
@@ -1682,14 +1697,34 @@ variable LSOURCEEXECFINISH
    11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
    11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
    13 14 STACK-ABI:EVAL-SEG STR,
+   \ The source observer. An unarmed one arms when this range is the owned one.
+   \ An armed one whose reading frame is the one this buffer nests in, with a
+   \ word's run pending, no callback open and no definition open, is adopted:
+   \ that word evaluates this buffer, so its tokens are observed in their own
+   \ right, their offsets relative to this buffer's first byte, until the clean
+   \ exit or the throw recovery gives the word's run back
+   \ (ENGINE-EMIT:SX-RESTORE,). Only x11, x12 and x15 are free here.
+   15 0 MOVZ,  15 14 EVAL-FRAME:SX-CTX STR,
    11 DATA SOURCE-EXEC-CTX-CELL LDR,  11 sx-done CBZ,
-   12 11 SX-ARMED LDR,  12 sx-done CBNZ,
+   12 11 SX-ARMED LDR,  12 sx-adopt CBNZ,
    12 11 SX-SRC LDR,  15 9 6 ADD,  12 15 CMP,  C-NE sx-done BCOND,
    12 11 SX-LEN LDR,  15 7 6 SUB,  12 15 CMP,  C-NE sx-done BCOND,
    14 11 SX-EVAL STR,
    12 DATA S0-CELL LDR,  12 XDS 12 SUB,  12 12 3 LSRI,  12 11 SX-FLOOR STR,
    12 DATA RSP-CELL LDR,  12 11 SX-RFLOOR STR,
    12 1 MOVZ,  12 11 SX-ARMED STR,
+   sx-done B,
+   sx-adopt LBL,
+   12 11 SX-EVAL LDR,  15 14 EVAL-PREV LDR,  12 15 CMP,  C-NE sx-done BCOND,
+   12 11 SX-PENDING LDR,  12 sx-done CBZ,
+   12 11 SX-SUSPEND LDR,  12 sx-done CBNZ,
+   12 DATA PEND-CELL LDR,  12 sx-done CBNZ,
+   11 14 EVAL-FRAME:SX-CTX STR,
+   12 11 SX-TICKET LDR,  12 14 EVAL-FRAME:SX-TICKET STR,
+   12 11 SX-SRC LDR,  12 14 EVAL-FRAME:SX-SRC STR,
+   14 11 SX-EVAL STR,
+   15 9 6 ADD,  15 11 SX-SRC STR,
+   12 0 MOVZ,  12 11 SX-PENDING STR,
    sx-done LBL,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
@@ -3701,24 +3736,42 @@ public
 \ SOURCE. A callback that throws unwinds through the caller's existing catch;
 \ a clean callback must return to the saved cursor. Compare before any data
 \ stack push so a callback that fills the physical extent reports residue.
-: B-SOURCE-UNIT-RUN ( -- )
-   LBL LBL LBL LBL LBL LBL
-      {: have:label take:label caught:label restore:label done:label no-snap:label :}
+\ source-file-run ( xt -- ) runs the unit of a file the loader opened
+\ (src/core/include.f LOAD-UNIT) the same way. That file is not the text of the
+\ observed word whose run is pending (the include or require): the run is not
+\ pending while the file runs, so no evaluate inside adopts the observer
+\ (EMIT-EVAL-BODY), and it is pending again when the file returns or throws.
+\ Text a word evaluates through source-unit-run (RUN-CLOSED, RUN-EVAL-RANGE)
+\ is that word's own and stays observed. The frame keeps the suspended
+\ observer at 32, 0 when the file suspended none.
+: B-UNIT-RUN ( bool -- ) {: file:bool :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+      {: have:label take:label caught:label restore:label done:label no-snap:label
+         other:label unpended:label :}
+   file if 48 else 32 then {: bytes:n :}
    B-TASK-LIVE-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
    10 DATA SOURCE-EXEC-CTX-CELL LDR,  10 no-snap CBZ,
-   11 10 SX-ARMED LDR,  11 1 CMPI,  C-NE no-snap BCOND,
-   11 10 SX-PENDING LDR,  11 no-snap CBZ,
-   11 10 SX-SUSPEND LDR,  11 no-snap CBNZ,
+   11 10 SX-ARMED LDR,  11 1 CMPI,  C-NE other BCOND,
+   11 10 SX-PENDING LDR,  11 other CBZ,
+   11 10 SX-SUSPEND LDR,  11 other CBNZ,
    11 10 SX-EVAL LDR,  12 DATA EVAL-TOP-CELL LDR,
-   11 12 CMP,  C-NE no-snap BCOND,
+   11 12 CMP,  C-NE other BCOND,
    11 DATA S0-CELL LDR,  11 XDS 11 SUB,  11 11 3 LSRI,
    11 10 SX-DEPTH STR,
    11 DATA RSP-CELL LDR,  11 10 SX-RDEPTH STR,
+   file if
+      11 0 MOVZ,  11 10 SX-PENDING STR,
+      no-snap B,
+      other LBL,  10 0 MOVZ,
+   else
+      other LBL,
+   then
    no-snap LBL,
-   SP SP 32 SUBI,
+   SP SP bytes SUBI,
+   file if  10 SP 32 STR,  then
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
    12 DATA STACK-ABI:CAP-CELL LDR,   12 SP 8 STR,
    XDS SP 16 STR,
@@ -3763,10 +3816,18 @@ public
    12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
    12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
    12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   XDS SP 16 LDR,  SP SP 32 ADDI,
+   file if
+      12 SP 32 LDR,  12 unpended CBZ,
+      11 1 MOVZ,  11 12 SX-PENDING STR,
+      unpended LBL,
+   then
+   XDS SP 16 LDR,  SP SP bytes ADDI,
    9 done CBZ,
    9 G-PUSH  BTHROW
    done LBL, ;
+
+: B-SOURCE-UNIT-RUN ( -- ) false B-UNIT-RUN ;
+: B-SOURCE-FILE-RUN ( -- ) true B-UNIT-RUN ;
 
 : BSOURCEEXECRUN ( -- )
    LBL LBL LBL LBL {: bad:label checked:label done:label no-parent:label :}
@@ -3816,8 +3877,13 @@ public
 
 \ A loader cut may carry parent data cells across the child's guarded stack.
 \ All compiler state and the return stack must still be closed at that cut.
+\ The floors are the owned range's, so a loop reading a buffer an observed
+\ word evaluates (its frame's EVAL-FRAME:SX-CTX set, EMIT-EVAL-BODY) is never
+\ clean: no boundary, no cut and no balanced position there. x10 = the
+\ observer, whose SX-EVAL every caller has matched to EVAL-TOP-CELL.
 : BSOURCEEXECCLEAN ( -- )
    LBL LBL {: bad:label done:label :}
+   9 10 SX-EVAL LDR,  9 9 EVAL-FRAME:SX-CTX LDR,  9 bad CBNZ,
    9 DATA PEND-CELL LDR,  9 bad CBNZ,
    9 DATA TXN-ACTIVE-CELL LDR,  9 bad CBNZ,
    9 DATA P2-CELL LDR,  9 bad CBNZ,
@@ -4775,6 +4841,7 @@ public
    s" evaluate-range" ['] B-EVAL-RANGE FPRIM-L
    s" evaluate-closed" ['] B-EVAL-CLOSED FPRIM
    s" source-unit-run" ['] B-SOURCE-UNIT-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" source-file-run" ['] B-SOURCE-FILE-RUN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" source-exec-run" ['] BSOURCEEXECRUN FPRIM
    s" source-exec-live?" ['] BSOURCEEXECLIVE FPRIM
    s" source-exec-boundary?" ['] BSOURCEEXECBOUNDARY FPRIM

@@ -616,7 +616,9 @@ TYPED-VARIABLE REC ptr n
 \ source-exec-run (habu1.f BSOURCEEXECRUN) pushes one frame on the native
 \ stack, named by SOURCE-EXEC-CTX-CELL, and runs a continuation that evaluates
 \ the owned range. The engine's evaluate arms the frame when the range it
-\ opens is the owned one (habu1.f EMIT-EVAL-BODY); its loop calls the before
+\ opens is the owned one, and adopts it for a buffer an observed word
+\ evaluates until that buffer returns or throws (habu1.f EMIT-EVAL-BODY,
+\ layout.f EVAL-FRAME:SX-CTX); its loop calls the before
 \ callback for a word about to run and for a tick's target (SOURCE-EXEC:WORD,
 \ SOURCE-EXEC:TICK; numbers, strings and characters have no event) and the
 \ after callback at the top of the next pass, and BSOURCEEXECRUN runs the
@@ -646,17 +648,49 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    ctx SX-ARMED FR@ 0= if false exit then
    ctx SX-EVAL FR@ LOOP-EVAL @ = ;
 
+\ Adopt the armed observer when the word this loop runs evaluates the buffer
+\ frame f bounds: the loop reading is the observed one and the frame f links
+\ in (EVAL-TOP-CELL until FRAME-LINK makes it f's EVAL-PREV), the word's run
+\ is pending, no callback and no definition is open. f keeps the observer, the
+\ word's ticket and its source start; the buffer's tokens are observed with
+\ offsets relative to src (habu1.f EMIT-EVAL-BODY).
+: OBSERVE-ADOPT ( ptr u8 ptr u8 ptr u8 -- ) {: ctx:ptr src:ptr f:ptr :}
+   ctx SX-EVAL FR@ LOOP-EVAL @ <> if exit then
+   ctx SX-EVAL FR@ EVAL-TOP-CELL CELL@ <> if exit then
+   ctx SX-PENDING FR@ 0= if exit then
+   ctx SX-SUSPEND FR@ 0<> if exit then
+   PEND-CELL CELL@ 0<> if exit then
+   ctx NULL-PTR - f EVAL-FRAME:SX-CTX FR!
+   ctx SX-TICKET FR@ f EVAL-FRAME:SX-TICKET FR!
+   ctx SX-SRC FR@ f EVAL-FRAME:SX-SRC FR!
+   f NULL-PTR - ctx SX-EVAL FR!
+   src NULL-PTR - ctx SX-SRC FR!
+   0 ctx SX-PENDING FR! ;
+
 \ Arm the frame when the range this evaluate opens is the owned one: the
 \ frame, the depth floor and the return-stack floor (habu1.f EMIT-EVAL-BODY).
 : OBSERVE-ARM ( ptr u8 n ptr u8 -- ) {: src:ptr len:n f:ptr :}
    OBSERVER dup NULL-PTR = if drop exit then {: ctx:ptr :}
-   ctx SX-ARMED FR@ 0<> if exit then
+   ctx SX-ARMED FR@ 0<> if ctx src f OBSERVE-ADOPT exit then
    ctx SX-SRC FR@ src NULL-PTR - <> if exit then
    ctx SX-LEN FR@ len <> if exit then
    f NULL-PTR - ctx SX-EVAL FR!
    depth ctx SX-FLOOR FR!
    RSP-CELL CELL@ ctx SX-RFLOOR FR!
    1 ctx SX-ARMED FR! ;
+
+\ Give the observer frame f adopted back its frame (f's EVAL-PREV, which
+\ adoption required), the evaluating word's ticket and its source start, with
+\ that word's run pending again and no callback open (habu1.f
+\ ENGINE-EMIT:SX-RESTORE,).
+: OBSERVE-RESTORE ( ptr u8 -- ) {: f:ptr :}
+   f EVAL-FRAME:SX-CTX + 0 ptr-field @ {: ctx:ptr :}
+   ctx NULL-PTR = if exit then
+   f EVAL-PREV FR@ ctx SX-EVAL FR!
+   f EVAL-FRAME:SX-TICKET FR@ ctx SX-TICKET FR!
+   f EVAL-FRAME:SX-SRC FR@ ctx SX-SRC FR!
+   1 ctx SX-PENDING FR!
+   0 ctx SX-SUSPEND FR! ;
 
 \ Before an action (habu2.f C-SOURCE-EXEC-BEFORE): the depths, the before
 \ callback with the token and input cells put back after it, then the action
@@ -671,6 +705,7 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
    {: tka:n tkl:n inp:n ine:n inb:n :}
    depth ctx SX-DEPTH FR!
    RSP-CELL CELL@ ctx SX-RDEPTH FR!
+   inp ctx SX-SRC FR@ - ctx SX-POS FR!
    1 ctx SX-SUSPEND FR!
    ctx SX-UNIT FR@ op rec entry TOKEN$ ctx SX-BEFORE FR@ BEFORE-CALL execute
    drop ctx SX-TICKET FR!
