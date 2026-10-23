@@ -492,8 +492,7 @@ variable SELF-SRC-U
 \ address and SIGSEGVs at load unless the linker relocates it (dot
 \ habu-relocate-absolute-helper-dbb53aef); reaching the fetch proves the
 \ guarded store completed.
-: LAYOUT-FETCH-SOURCE ( -- )
-   GE-SRC-RESET
+: LAYOUT-FETCH-LINES ( -- )
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
    s" SUMTYPE res<a,b>" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
@@ -502,27 +501,7 @@ variable SELF-SRC-U
    s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : ROUND-TRIP ( -- n ) 37 construct res ok 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) AOT-LAYOUT-FETCH:ROUND-TRIP . ;" GE-SRC-LINE ;
-
-: LAYOUT-FETCH-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" 37" GE-OUT-LINE
-   SB$ ;
-
-: LAYOUT-FETCH ( -- )
-   s" hb-aot-layout-fetch.f" s" hb-aot-layout-fetch" s" hb-aot-layout-fetch-report.json" PATHS
-   LAYOUT-FETCH-SOURCE
-   s" hb-build AOT layout-bundle fetch build" GB-HBB-BUILD
-   LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   then
-   HB-TARGET-LINUX-X86-64? if
-      s" PASS: hb-build AOT layout-bundle store and fetch via relocated calls" type cr
-   else
-      s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr
-   then ;
+   s" ;package" GE-SRC-LINE ;
 
 \ A preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
@@ -670,20 +649,13 @@ variable SELF-SRC-U
 \ The forged row proves the cells are still a checked family value where they
 \ are consumed: tag 5 is outside gwfn's range, and the stripped image dies at
 \ the fetch with NFETCH-CHECK's diagnostic, not at the trusted return.
-: TRUSTED-MAKE-SRC ( -- )
-   GE-SRC-RESET
+: TRUSTED-MAKE-LINES ( -- )
    s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
    s" package AOT-TRUSTED-MAKE" GE-SRC-LINE
    s" TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    S\" : RUN ( -- ) GWN-MAKE MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH s\" gns=\" type . ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) AOT-TRUSTED-MAKE:RUN ;" GE-SRC-LINE ;
-
-: TRUSTED-MAKE-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" gns=7" GE-OUT-LINE
-   SB$ ;
+   s" ;package" GE-SRC-LINE ;
 
 : TRUSTED-FORGE-SRC ( -- )
    GE-SRC-RESET
@@ -697,15 +669,40 @@ variable SELF-SRC-U
    s" : MAIN ( -- ) AOT-TRUSTED-FORGE:RUN ;" GE-SRC-LINE ;
 
 : TRUSTED-ROW ( -- )
-   s" hb-aot-trusted-make.f" s" hb-aot-trusted-make" s" hb-aot-trusted-make-report.json" PATHS
-   TRUSTED-MAKE-SRC
-   s" hb-build AOT trusted family-row build" GB-HBB-BUILD
-   TRUSTED-MAKE-EXPECT s" hb-build AOT trusted family-row output" GB-RUN-EXPECT
    s" hb-aot-trusted-forge.f" s" hb-aot-trusted-forge" s" hb-aot-trusted-forge-report.json" PATHS
    TRUSTED-FORGE-SRC
    s" hb-build AOT trusted forged-tag build" GB-HBB-BUILD
    s" hb-build AOT trusted forged-tag run" FETCH-RUN-BAD
-   s" PASS: hb-build AOT trusted family row (loose cells take the declared grouping; a forged tag still dies at the fetch, rc 85)" type cr ;
+   s" PASS: hb-build AOT trusted family row (a forged tag still dies at the fetch, rc 85)" type cr ;
+
+\ The layout fetch and the trusted family row build as one program: their
+\ declarations are disjoint, and MAIN prints each one's line in turn.
+: LAYOUT-TRUSTED-SOURCE ( -- )
+   GE-SRC-RESET
+   LAYOUT-FETCH-LINES
+   TRUSTED-MAKE-LINES
+   s" : MAIN ( -- ) AOT-LAYOUT-FETCH:ROUND-TRIP . AOT-TRUSTED-MAKE:RUN ;" GE-SRC-LINE ;
+
+: LAYOUT-TRUSTED-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 37" GE-OUT-LINE
+   s" gns=7" GE-OUT-LINE
+   SB$ ;
+
+: LAYOUT-FETCH ( -- )
+   s" hb-aot-layout-fetch.f" s" hb-aot-layout-fetch" s" hb-aot-layout-fetch-report.json" PATHS
+   LAYOUT-TRUSTED-SOURCE
+   s" hb-build AOT layout-bundle fetch and trusted family-row build" GB-HBB-BUILD
+   LAYOUT-TRUSTED-EXPECT s" hb-build AOT layout-bundle fetch and trusted family-row output" GB-RUN-EXPECT
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
+   then
+   HB-TARGET-LINUX-X86-64? if
+      s" PASS: hb-build AOT layout-bundle store and fetch via relocated calls" type cr
+   else
+      s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr
+   then
+   s" PASS: hb-build AOT trusted family row (loose cells take the declared grouping)" type cr ;
 
 public
 

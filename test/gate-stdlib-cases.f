@@ -171,10 +171,6 @@ SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
 ;SUITE
 
-SUITE hb-build-large-source
-   tools/hb-build-large-source-test.f
-;SUITE
-
 SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
@@ -190,10 +186,6 @@ SUITE hb-build-stripped-chain
 
 SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
-;SUITE
-
-SUITE hb-build-stripped-quotation-field
-   tools/hb-build-stripped-quotation-field-test.f
 ;SUITE
 
 SUITE hb-build-cli-errors
@@ -255,10 +247,6 @@ SUITE cell-body-image
 
 SUITE native-file-types
    test/native-file-types-e2e.f
-;SUITE
-
-SUITE native-file-stack
-   test/native-file-stack-e2e.f
 ;SUITE
 
 SUITE native-file-auto

@@ -12,9 +12,11 @@ require src/lib/string.f
 package HB-BUILD-CLI
 
 variable HBT-FRESH-DEP-U
+variable HBT-FRESH-ASSET-U
 variable HBT-FRESH-OTHER-U
 variable HBT-FRESH-SHADOW-FILE-U
 create HBT-FRESH-DEP-BUF FS-PATH-CAP allot
+create HBT-FRESH-ASSET-BUF FS-PATH-CAP allot
 create HBT-FRESH-OTHER-BUF FS-PATH-CAP allot
 create HBT-FRESH-SHADOW-FILE-BUF FS-PATH-CAP allot
 create HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U allot
@@ -25,6 +27,9 @@ variable HBT-FRESH-NS
 : HBT-FRESH-DEP ( -- ptr u8 n )
    HBT-FRESH-DEP-BUF HBT-FRESH-DEP-U @ ;
 
+: HBT-FRESH-ASSET-FILE ( -- ptr u8 n )
+   HBT-FRESH-ASSET-BUF HBT-FRESH-ASSET-U @ ;
+
 : HBT-FRESH-OTHER ( -- ptr u8 n )
    HBT-FRESH-OTHER-BUF HBT-FRESH-OTHER-U @ ;
 
@@ -34,23 +39,16 @@ variable HBT-FRESH-NS
 : HBT-FRESH-SHADOW-SOURCE$ ( -- ptr u8 n )
    S\" : CHECK-ARGS ( -- ) SCRIPT-ARGC 2 <> if -9001 throw then ; CHECK-ARGS\n: LOAD-SHADOW ( -- ) s\" tools/hb-build-fresh-shadow.f\" required ;\nLOAD-SHADOW\n: MAIN ( -- ) HBT-FRESH:VALUE . cr ;\n" ;
 
+\ The application embeds an asset and loads a dynamic child, and prints both.
 : HBT-FRESH-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" : CHECK-ARGS ( -- ) SCRIPT-ARGC 2 <> if -9001 throw then ; CHECK-ARGS"
       SB-APPEND HBB-LF SB-APPEND-C
-   S\" : LOAD-CHILD ( -- ) s\" " SB-APPEND
-   HBT-FRESH-DEP SB-APPEND
-   S\" \" required ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" LOAD-CHILD" SB-APPEND HBB-LF SB-APPEND-C
-   s" : MAIN ( -- ) HBT-FRESH:VALUE . cr ;" SB-APPEND HBB-LF SB-APPEND-C
-   SB$ ;
-
-: HBT-FRESH-ASSET-SOURCE$ ( -- ptr u8 n )
-   SB-RESET
    S\" require src/lib/fs.f\nrequire src/lib/build-input.f\n4 BUFFER: CONTENT\n: LOAD-ASSET ( -- ) s\" " SB-APPEND
+   HBT-FRESH-ASSET-FILE SB-APPEND
+   S\" \" 2dup BUILD-INPUT:FILE CONTENT 4 READ-ALL 4 <> if E-FS-IO throw then ;\nLOAD-ASSET\n: LOAD-CHILD ( -- ) s\" " SB-APPEND
    HBT-FRESH-DEP SB-APPEND
-   S\" \" 2dup BUILD-INPUT:FILE CONTENT 4 READ-ALL 4 <> if E-FS-IO throw then ;\nLOAD-ASSET\n: MAIN ( -- ) CONTENT 4 type cr ;\n" SB-APPEND
+   S\" \" required ;\nLOAD-CHILD\n: MAIN ( -- ) CONTENT 4 type HBT-FRESH:VALUE . cr ;\n" SB-APPEND
    SB$ ;
 
 : HBT-FRESH-DEP! ( n -- )
@@ -117,23 +115,20 @@ variable HBT-FRESH-NS
    SB-RESET expected FS-MUT-SB-U
    out outu SB$ HBT-FRESH-RUN$ ;
 
-: HBT-FRESH-ASSET ( -- )
-   s" embedded asset freshness" T-LABEL
-   HBT-FRESH-DEP s" AAAA" WRITE-ALL
-   HBT-FRESH-OTHER HBT-FRESH-ASSET-SOURCE$ WRITE-ALL
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-REPL-OUT s" AAAA" HBT-FRESH-RUN$
-   HBT-FRESH-MARK
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-FRESH-SAME? TTRUE
-   HBT-REPL-OUT s" AAAA" HBT-FRESH-RUN$
-   HBT-FRESH-DEP s" BBBB" WRITE-ALL
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-REPL-OUT s" BBBB" HBT-FRESH-RUN$
-   HBT-FRESH-DEP REMOVE-FILE
+\ The application's output: its asset's bytes, then its child's value.
+: HBT-FRESH-RUN-BOTH ( ptr u8 n n -- )
+   {: asset:ptr assetu:n expected:n :}
+   SB-RESET asset assetu SB-APPEND expected FS-MUT-SB-U
+   HBT-REPL-OUT SB$ HBT-FRESH-RUN$ ;
+
+\ Runs while the output is fresh for the unchanged source, so only the deleted
+\ asset can make the build run, and the build refuses it.
+: HBT-FRESH-ASSET-GONE ( -- )
+   s" a deleted asset fails the build" T-LABEL
+   HBT-FRESH-ASSET-FILE REMOVE-FILE
    HBT-ARGV-BASE-REPL
    s" --repl" >LEN PROC-ARGV+
-   HBT-FRESH-OTHER >LEN PROC-ARGV+
+   HBT-REPL-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+
    HBT-RUN-HB-BUILD {: outn:n errn:n rc:n :}
@@ -178,14 +173,16 @@ public
    APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-ROOT s" child.f" HBT-FRESH-DEP-BUF HBT-FRESH-DEP-U HBT-PATH!
+   HBT-ROOT s" asset.txt" HBT-FRESH-ASSET-BUF HBT-FRESH-ASSET-U HBT-PATH!
    HBT-ROOT s" other.f" HBT-FRESH-OTHER-BUF HBT-FRESH-OTHER-U HBT-PATH!
    HBT-ROOT s" tools/hb-build-fresh-shadow.f"
       HBT-FRESH-SHADOW-FILE-BUF HBT-FRESH-SHADOW-FILE-U HBT-PATH!
-   HBT-FRESH-ASSET
+   s" asset and dynamic child freshness" T-LABEL
+   HBT-FRESH-ASSET-FILE s" AAAA" WRITE-ALL
    111 HBT-FRESH-DEP!
    HBT-REPL-SRC HBT-FRESH-SOURCE$ WRITE-ALL
    HBT-REPL-OUT HBT-FRESH-CLI
-   HBT-REPL-OUT 111 HBT-FRESH-RUN
+   s" AAAA" 111 HBT-FRESH-RUN-BOTH
    HBT-FRESH-MARK
    \ Another process can date the shared keyed builder while this output is fresh.
    APP-BUILDER-ENGINE:PATH$ 2drop
@@ -193,9 +190,13 @@ public
    HBT-FRESH-SAME? TTRUE
    HBT-FRESH-SIZE-REPORT
    HBT-FRESH-SAME? TTRUE
+   HBT-FRESH-ASSET-FILE s" BBBB" WRITE-ALL
+   HBT-REPL-OUT HBT-FRESH-CLI
+   s" BBBB" 111 HBT-FRESH-RUN-BOTH
    222 HBT-FRESH-DEP!
    HBT-REPL-OUT HBT-FRESH-CLI
-   HBT-REPL-OUT 222 HBT-FRESH-RUN
+   s" BBBB" 222 HBT-FRESH-RUN-BOTH
+   HBT-FRESH-ASSET-GONE
    HBT-FRESH-OTHER s" : MAIN ( -- ) 333 . cr ;" WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 333 HBT-FRESH-RUN

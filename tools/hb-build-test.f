@@ -1,8 +1,9 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f: the REPL build
 \ and its report through the CLI, an install that fails, the report a failed
-\ build invalidates, the cache keys, the rejected inputs and the size of a
-\ snapshot and a stripped image. tools/hb-build-test-lib.f lists the other
-\ hb-build rows.
+\ build invalidates, the cache keys, the rejected inputs, sources of
+\ HBT-LARGE-INPUT-U bytes, a string literal's body declared text while the same
+\ bytes in a `create` cell are refused, and the size of a snapshot and a
+\ stripped image. tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
@@ -32,6 +33,12 @@ variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
 variable HBT-SEQ-N       \ how many the image holds
 variable HBT-SEQ-IP      \ that scan's cursor
 
+\ The REPL and AOT sources are padded with spaces to this many bytes, so both
+\ builds read an input that large.
+4096 constant HBT-LARGE-CHUNK-U
+$40000 1 - constant HBT-LARGE-INPUT-U
+create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
+
 \ The failed install's -o and the directory it sits in, and the files that
 \ directory holds.
 variable HBT-INST-DIR-U
@@ -42,6 +49,16 @@ variable HBT-INST-FILES
 
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
+
+: HBT-WRITE-LARGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n src:ptr srcu:n :}
+   HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop
+   path pathu src srcu WRITE-ALL
+   HBT-LARGE-INPUT-U srcu - {: spaces:n :}
+   spaces HBT-LARGE-CHUNK-U / 0 ?do
+      path pathu HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U APPEND-FILE
+   loop
+   spaces HBT-LARGE-CHUNK-U mod {: rem:n :}
+   rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
 
 : HBT-APPEND-CACHE-MUTATION ( -- )
    SB-RESET
@@ -139,7 +156,7 @@ variable HBT-INST-FILES
    HBT-INST-FILES@ 0 T= ;
 
 \ A build that fails invalidates the report the last one left: this runs after
-\ HBT-SIZE-AOT-LOST-BLOB, whose in-process build left a valid one. It is the
+\ HBT-STRIPPED-IMAGE, whose in-process build left a valid one. It is the
 \ last case, since it leaves the cache root naming a file.
 : HBT-REPORT-INVALIDATION ( -- )
    HB-BUILD:VALID? TTRUE
@@ -257,13 +274,8 @@ variable HBT-INST-FILES
       IMAGE-SIZE:DATA-OWNERS 0 > TTRUE
    then ;
 
-\ Builds its own image, because this case reads the file rather than a report
-\ about it.
+\ Reads the image file rather than a report about it.
 : HBT-SIZE-AOT ( -- )
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   HBB-BUILD
    HBT-AOT-OUT HBT-SIZE-MEASURE
    IMAGE-SIZE:CLASS$ s" stripped" T$=
    \ The other half of the same fact: a stripped image encodes its window as
@@ -279,10 +291,7 @@ variable HBT-INST-FILES
    IMAGE-SIZE:REGION-CODE 0 T=
    IMAGE-SIZE:REGION-NAMES 0 T=
    IMAGE-SIZE:REGION-UNOWNED 0 T=
-   IMAGE-SIZE:DATA-OWNERS 0 T=
-   HBT-REMOVE-ARTIFACT
-   HBT-REMOVE-AOT-OUT
-   BF-TMP-RESET ;
+   IMAGE-SIZE:DATA-OWNERS 0 T= ;
 
 \ ---- a damaged stripped DATA table ---------------------------------------------
 \ x86 stores sparse DATA runs in RX text and locates them with a footer. The
@@ -390,14 +399,27 @@ variable HBT-INST-FILES
    HBT-ERR erru4 s" image-size: x86 stripped table footer is missing"
       CONTAINS? TTRUE ;
 
-: HBT-SIZE-AOT-LOST-BLOB ( -- )
+\ The stripped image's program: a nonzero DATA byte MAIN prints, so its output
+\ proves MAIN ran and read the restored byte.
+: HBT-IMAGE-SRC$ ( -- ptr u8 n )
+   s" create HBT-DATA 41 c, : MAIN ( -- ) HBT-DATA c@ . cr ;" ;
+
+\ One stripped image, built from a padded source, runs and is measured before
+\ its in-memory copy is damaged.
+: HBT-STRIPPED-IMAGE ( -- )
    HBT-ROOT s" lostcopy" HBT-LOST-CPY-BUF HBT-LOST-CPY-U HBT-PATH!
    HBT-ROOT s" lostblob" HBT-LOST-OUT-BUF HBT-LOST-OUT-U HBT-PATH!
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-IMAGE-SRC$ HBT-WRITE-LARGE
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    -1 HBB-REPORT-JSON !
    HBB-BUILD
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn S\" 41\n\n" T$=
+   HBT-SIZE-AOT
    HBT-AOT-IMAGE$ {: a:ptr u:n :}
    HB-TARGET-LINUX-X86-64? if
       a u HBT-SIZE-AOT-LOST-RUN
@@ -423,6 +445,68 @@ variable HBT-INST-FILES
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
+
+: HBT-LITB-SRC ( -- ptr u8 n )
+   HBT-LITB-SRC-BUF HBT-LITB-SRC-U @ ;
+
+: HBT-LITB-OUT ( -- ptr u8 n )
+   HBT-LITB-OUT-BUF HBT-LITB-OUT-U @ ;
+
+: HBT-LITC-SRC ( -- ptr u8 n )
+   HBT-LITC-SRC-BUF HBT-LITC-SRC-U @ ;
+
+\ A STRING LITERAL'S BODY IS DECLARED TEXT, and the span scan skips its cells by
+\ that declaration the way it skips a declared address cell by the engine's
+\ address-cell table: src/compiler/native/string.f writes one row per interned
+\ body when it places the bytes, and src/habu/aot-closure.f CELL-LITERAL? reads
+\ those rows - never the bytes - for every cell src/habu/aot-lib.f SCAN-DATA-CELL
+\ is about to refuse. Tender's stripped server is the case: `s" {pm}"` and the
+\ 01 byte after it, read as one aligned cell, spelled an address inside the
+\ emitted code span and the build refused the word that owns the body (AUTH
+\ ROLE-LITERAL$, dot habu-link-int-cells-45328a4d).
+\ The child derives its bytes from a live code address; a fixed Linux address
+\ does not establish this property in a Mach-O builder with ASLR.
+: HBT-LITB-SRC$ ( -- ptr u8 n )
+   S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:BODY-SOURCE evaluate\n" ;
+
+\ MAIN verifies the length and bytes before printing this witness.
+: HBT-LITB-EXPECTED$ ( -- ptr u8 n )
+   S\" literal\n" ;
+
+\ ... and THE SAME EIGHT BYTES IN A `create` CELL are refused as before. This is
+\ the control that keeps the row above honest: raw storage carries no declaration
+\ about its contents, so the value is still read as the code pointer it spells,
+\ and a build that stopped refusing it would say the pattern had drifted out of
+\ the emitted code span - in which case the row above proves nothing and this one
+\ goes red instead of both passing on a value nothing classifies.
+: HBT-LITC-SRC$ ( -- ptr u8 n )
+   S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:RAW\n: MAIN ( -- ) STRIPPED-LITERAL:VALUE . cr ;\n" ;
+
+\ THE CONTROL FIRST, then the body: the refusal is what proves the pattern lands
+\ in the emitted code span of a build on this image, and the link that follows
+\ is then a statement about the declaration and not about the value. The
+\ subject requires src/lib/codegen.f, which the engine bakes, so every maker carries
+\ its words below the band, and neither program reaches anything of the
+\ linker's load, so both builds link on the image (test/preloaded-engine.f
+\ rule 3).
+: HBT-STRIPPED-LITERAL-BODY ( -- )
+   HBT-LITC-SRC HBT-LITC-SRC$ WRITE-ALL
+   HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
+   crc 70 T=
+   HBB-ERR-BUF cerr s" holds an undeclared code/dict pointer" CONTAINS? TTRUE
+   HBB-ERR-BUF cerr s" word=LIT-CELL" CONTAINS? TTRUE
+
+   HBT-LITB-SRC HBT-LITB-SRC$ WRITE-ALL
+   HBT-LITB-OUT HBT-REMOVE-FILE?
+   HBT-LITB-SRC HBT-LITB-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-LITB-OUT FILE? TTRUE
+   HBT-LITB-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn HBT-LITB-EXPECTED$ T$=
+   HBT-LITB-OUT HBT-REMOVE-FILE? ;
 
 \ imgdump prints one line per dictionary record of the image it reads, so its
 \ output is the size of that image's dictionary - 407,041 bytes for the REPL
@@ -473,6 +557,7 @@ public
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
+   HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE
    CLI-REPORT
    HBT-INSTALL-FAIL
    HBT-CACHE-KEY-CHANGES
@@ -482,8 +567,8 @@ public
    HBT-SIZE-REPL
    HBT-BUILD-REPL-BAD
    HBT-BUILD-MISSING-TMP
-   HBT-SIZE-AOT
-   HBT-SIZE-AOT-LOST-BLOB
+   HBT-STRIPPED-LITERAL-BODY
+   HBT-STRIPPED-IMAGE
    HBT-REPORT-INVALIDATION
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

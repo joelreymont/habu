@@ -10,7 +10,7 @@
 \   the subject's top-level code runs, or a dependency's                  no-run
 \   the copy on disk is checked instead of the bytes, or positions
 \   are counted in it                                                     buffer-not-disk
-\   a dependency that requires PATH back meets the copy on disk           requires-back
+\   a dependency that requires PATH back meets the copy on disk           identity-subject
 \   a require of an absent PATH falls back to another file                absent-path
 \   an included child lowers the source using floor, then leaves an
 \   import visible after clean return                                     load-using-floor
@@ -629,12 +629,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" buffer-not-disk: the packet names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" buffer-not-disk: line in the bytes" T-LABEL p s" line" NUMBER$ s" 4" T$=
    s" buffer-not-disk: byte in the bytes" T-LABEL p s" byte_start" NUMBER$ s" 24" T$= ;
-
-
-\ back.f requires loop.f, whose disk copy discovery refuses; the bytes are clean.
-: REQUIRES-BACK ( -- )
-   s\" require back.f\n: CVT-LOOP ( -- n ) CVT-BACK ;\n" s" loop.f" GUARD-MS CHECK-AS
-   0 s" requires-back: the dependency meets the bytes" EXPECT-KIND ;
 
 
 \ PATH is absent: a require of it, the subject's own or a dependency's, meets
@@ -3506,8 +3500,9 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s" files: included again" s" files-inc.f" s" disk" NEXT-FILE ;
 
 
-\ The subject reached again through a loader is still supplied text. The
-\ loader's dependency has a disk visit.
+\ The subject reached again through a loader is still supplied text: back.f
+\ requires loop.f, whose disk copy discovery refuses, and the clean bytes
+\ verify. The loader's dependency has a disk visit.
 : IDENTITY-SUBJECT ( -- )
    0 GEN-U !
    s\" require back.f\n: CVT-LOOP ( -- n ) CVT-BACK ;\n" GEN+
@@ -4800,7 +4795,6 @@ public
    s" two-in-turn" [: TWO-IN-TURN ;] RUN-CASE
    s" no-run" [: NO-RUN ;] RUN-CASE
    s" buffer-not-disk" [: BUFFER-NOT-DISK ;] RUN-CASE
-   s" requires-back" [: REQUIRES-BACK ;] RUN-CASE
    s" absent-path" [: ABSENT-PATH ;] RUN-CASE
    s" failing-dependency" [: FAILING-DEPENDENCY ;] RUN-CASE
    s" engine-provided" [: ENGINE-PROVIDED ;] RUN-CASE

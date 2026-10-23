@@ -218,22 +218,6 @@ variable REMOVED
    OUT$ s" number=5" CONTAINS? TTRUE
    OUT$ s" keep=7" CONTAINS? TTRUE ;
 
-: PREPARED-CODE-CASE ( -- )
-   s" prepared FILE code and origin rows remain runnable after a warm import" T-LABEL
-   s" cache-prepared-code" AT MAKE-DIR
-   s" prepared-code.f"
-      S\" package REVIEW-PREPARED public\n: ANSWER ( -- n ) 91 ;\n;package\n" PUT
-   s" " s" prepared-code.f" s" cache-prepared-code"
-      S\" s\" answer=\" type REVIEW-PREPARED:ANSWER . cr\n"
-      SESSION-PROBE
-   REPORT
-   OUT$ s" answer=91" CONTAINS? TTRUE
-   s" " s" prepared-code.f" s" cache-prepared-code"
-      S\" s\" answer=\" type REVIEW-PREPARED:ANSWER . cr\n"
-      SESSION-PROBE
-   HITS
-   OUT$ s" answer=91" CONTAINS? TTRUE ;
-
 : DEFER-SOURCE$ ( -- ptr u8 n )
    S\" : INSTALL ( -- ) ['] TWO is SLOT ;\n" ;
 
@@ -482,7 +466,7 @@ variable REMOVED
 
 : SESSION-CASES ( -- )
    SESSION-CLOSE-CASE FOREIGN-CASE ROOT-REGISTRY-CASE
-   SYMBOL-CASE PREPARED-CODE-CASE EVICTED-CHILD-CASE
+   SYMBOL-CASE EVICTED-CHILD-CASE
    DEFER-CASE DEFER-PUBLISHED-CASE DEFER-REPLACEMENT-CASE DEFER-ALIAS-CASE
    DEFER-EFFECT-CASE DEFER-RETIRED-CASE
    EMPTY-CHILD-CASE TRAILING-COLON-CASE
@@ -492,25 +476,26 @@ variable REMOVED
 public
 : MAIN ( -- )
    T-RESET
-   s" FILE selection preserves carried values and using scope" T-LABEL
+   s" FILE selection preserves carried values, from include and from included with an argument, and using scope" T-LABEL
    s" native-file-replay" TREE
    s" cache" AT MAKE-DIR
    s" defs.f" S\" package REVIEW-USING public : VALUE ( -- n ) 41 ; ;package\n" PUT
    s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE ;\n" PUT
+   s" arg.f" S\" \\ no definitions\n" PUT
    MUTATOR
-   s" app.f" S\" require defs.f\nusing REVIEW-USING\n123 include mutate.f\ninclude child.f\nconstant CARRIED\n;using\n: MAIN ( -- ) REVIEW-CHILD CARRIED + . ;\n" PUT
+   s" app.f" S\" require defs.f\nusing REVIEW-USING\n123 include mutate.f\ninclude child.f\nconstant CARRIED\n;using\n456 s\" arg.f\" included constant ARG-CARRIED\n: MAIN ( -- ) REVIEW-CHILD CARRIED + ARG-CARRIED + . ;\n" PUT
    0 EDIT ! BUILD SUCCESS
    OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 164" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 620" CONTAINS? TTRUE
    s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE 0 + ;\n" PUT
    0 EDIT ! BUILD SUCCESS
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
-   RUN-APP SUCCESS OUT$ s" 164" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 620" CONTAINS? TTRUE
    1 EDIT ! BUILD SUCCESS
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
-   RUN-APP SUCCESS OUT$ s" 165" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 621" CONTAINS? TTRUE
    SCOPE-CASES
    CANON-CASE
    SESSION-CASES

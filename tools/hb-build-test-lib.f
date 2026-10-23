@@ -3,7 +3,8 @@
 \ build report check. It defines no MAIN; each row file loads it and runs the
 \ groups it owns:
 \   tools/hb-build-test.f                     CLI REPL build and report, cache
-\                                             keys, rejected inputs, image size
+\                                             keys, rejected inputs, image size,
+\                                             large sources, literal bodies
 \   tools/hb-build-cli-errors-test.f          cache path error, refused paths
 \                                             and entry names, MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
@@ -14,12 +15,11 @@
 \                                             publication
 \   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
-\                                             ptr mark
+\                                             quotation fields, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
-\   tools/hb-build-large-source-test.f        literal bodies, large source
 \   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
@@ -125,8 +125,6 @@ variable HBT-CHAIN-OUT-U
 variable HBT-PTRC-SRC-U
 variable HBT-PTRC-OUT-U
 variable HBT-PTRU-SRC-U
-variable HBT-OPENP-SRC-U
-variable HBT-OPENP-OUT-U
 variable HBT-LIFE-SRC-U
 variable HBT-LIFE-OUT-U
 variable HBT-HOOK-SRC-U
@@ -154,8 +152,6 @@ create HBT-CHAIN-OUT-BUF FS-PATH-CAP allot
 create HBT-PTRC-SRC-BUF FS-PATH-CAP allot
 create HBT-PTRC-OUT-BUF FS-PATH-CAP allot
 create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
-create HBT-OPENP-SRC-BUF FS-PATH-CAP allot
-create HBT-OPENP-OUT-BUF FS-PATH-CAP allot
 create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
 create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
 create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
@@ -299,8 +295,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" ptrcell.f" HBT-PTRC-SRC-BUF HBT-PTRC-SRC-U HBT-PATH!
    HBT-ROOT s" ptrcell" HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U HBT-PATH!
    HBT-ROOT s" ptrunowned.f" HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U HBT-PATH!
-   HBT-ROOT s" openpath.f" HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U HBT-PATH!
-   HBT-ROOT s" openpath" HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U HBT-PATH!
    HBT-ROOT s" lifecycle.f" HBT-LIFE-SRC-BUF HBT-LIFE-SRC-U HBT-PATH!
    HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
    HBT-ROOT s" lifehook.f" HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U HBT-PATH!

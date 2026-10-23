@@ -1,5 +1,7 @@
 \ A stripped image must capture the final value of each fixed quotation field.
 \ Whole-record stores replace both sum alternatives before the native link.
+\ tools/hb-build-stripped-test.f HBT-STRIPPED-PTR-MARK's program requires this
+\ and calls STRIPPED-QUOT-FIELD:CHECK from its MAIN.
 package STRIPPED-QUOT-FIELD
 
 STRUCTURE entry DERIVE addr
@@ -70,5 +72,3 @@ public
 
 INIT
 ;package
-
-: MAIN ( -- ) STRIPPED-QUOT-FIELD:CHECK ;
