@@ -462,11 +462,15 @@ private
    s"  word=" k FRAME-WHY+
    rec XREF-NAME$ k FRAME-WHY+ ;
 
+public
+
 \ FILE-REFUSE naming the record the reason is about.
 : REFUSE-WORD ( ptr u8 n ptr n -- )
    {: reason:ptr reasonu:n rec:ptr :}
    FILE-OPEN? 0= if exit then
    reason reasonu rec FO-DEPTH @ 1- FRAME-REFUSE-WORD ;
+
+private
 
 \ The live address cell declarations.
 : SLOT-COUNT ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;

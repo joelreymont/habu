@@ -23,6 +23,7 @@ require src/compiler/native/checker-owner.f
 require src/compiler/native/feed.f
 require tools/native-file-reference.f
 require tools/native-file-scope.f
+require tools/native-unit-capture.f
 
 package NUNIT-DEP
 private
@@ -523,6 +524,72 @@ private
    rec XREF-FLAGS DNAME-CELL and 0<> if true exit then
    rec NDICT:REC-DEFER-CELL 0<> ;
 
+variable REACH-XT
+variable FIND-XT
+CAST: AS-FIND ( n -- [ ptr u8 n -- n ] )
+CAST: AS-REACH ( n -- [ n -- n ] )
+\ The scope-find flag "the bound record is a seeded primitive"
+\ (src/compiler/native/dict.f, NDICT-private); SCOPE-FIND-AMBIGUOUS is the
+\ global one (src/core/util.f).
+1 constant SCOPE-SEEDED
+
+\ The REACH class of a seed primitive's row (PRIM-SPEC:REACH@), 0 for any
+\ other record. The spelling must bind this very record as a seeded
+\ primitive: NDICT:SPELL-PRIM? answers true for a spelling that binds
+\ nothing, and a package word whose tail spells a primitive binds its own
+\ record. The producers are bound by name: `require src/habu/prims.f` is a
+\ no-op on every host, and a retained host lacks REACH@.
+: PRIM-REACH ( n -- n )
+   {: ord:n :}
+   REACH-XT @ 0= FIND-XT @ 0= or if 0 exit then
+   ord XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
+   name nameu scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
+   used drop used2 drop
+   flags SCOPE-FIND-AMBIGUOUS and 0<> if 0 exit then
+   rec XREF-FOUND? 0= if 0 exit then
+   rec NFILE-REF:REC-ORD ord <> if 0 exit then
+   flags SCOPE-SEEDED and 0= if 0 exit then
+   name nameu FIND-XT @ AS-FIND execute {: row:n :}
+   row 0 < if 0 exit then
+   row REACH-XT @ AS-REACH execute ;
+
+\ Whether seed record ord is a sealed engine helper (src/habu/
+\ primitive-registry.f HELPER-REGISTER): a routine a primitive's lowering
+\ branches to, with no row and no effect of its own. The compiler emits
+\ two (src/compiler/native/select.f): (PROT-SPAN), the guard of a store
+\ whose body reason is MEMORY, and (DIV-ZERO), the trap of a division
+\ whose body reason is UNKNOWN. The op's host reason classes the body, so
+\ the edge to its helper is admitted. NDICT:HELPER-TARGET answers only a
+\ record of the sealed wordlist inside the engine's text, by exact name;
+\ the entry must be this record's own.
+: ENGINE-HELPER? ( n -- bool )
+   {: ord:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-NAME$ NDICT:HELPER-TARGET {: entry:n :}
+   entry 0<> entry rec XREF-START = and ;
+
+\ A seed record's kind: 0 code, 1 data, 2 value, 3 admitted: a primitive with a
+\ REACH class or the engine helper a primitive's lowering branches to.
+: SEED-KIND ( n -- n )
+   {: ord:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-FLAGS {: flags:n :}
+   flags DKIND:MASK and DKIND:VAL = if 2 exit then
+   flags DNAME-CELL and 0<> flags DNAME-ALLOC and 0<> or
+      flags DKIND:MASK and DKIND:ADDR = or rec NDICT:REC-DEFER-CELL 0<> or if 1 exit then
+   ord PRIM-REACH 0<> if 3 exit then
+   ord ENGINE-HELPER? if 3 exit then
+   0 ;
+
+\ The refusal a reached member's host reason names; SAFE and MEMORY have none.
+: REASON-WHY$ ( n -- ptr u8 n )
+   {: reason:n :}
+   reason NHOST:CAST = if s" run-host-cast" exit then
+   reason NHOST:INDIRECT = if s" run-host-indirect" exit then
+   reason NHOST:UNCHECKED = if s" run-host-unchecked" exit then
+   reason NHOST:FOREIGN = if s" run-host-foreign" exit then
+   s" run-host-unknown" ;
+
 : H-REF ( n n n -- )
    {: target:n addend:n holder:n :}
    target NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
@@ -646,25 +713,43 @@ private
       target 0 < if s" executed-closure-unknown" ord FAIL else target VISIT then
    loop ;
 
+\ A seed record lies below the floor: a seed value is terminal, a classed
+\ primitive or an engine helper is admitted, and any other seed record
+\ refuses, a seed defer's cell among them (the `is` keyword that rebinds
+\ one is a later lane).
+: SEED-REACH ( n -- )
+   {: ord:n :}
+   ord SEED-KIND {: k:n :}
+   k 2 = k 3 = or if exit then
+   k 1 = if s" run-reaches-kernel-data" else s" run-reaches-kernel-word" then ord FAIL ;
+
 \ A record the file made is not in a closure: no row could be checked at the
 \ file's entry. A capturing walk queues it, and a walk through it (WTRANS)
-\ queues every record it reaches. A defer is its cell, a seed one included,
-\ since an earlier file may rebind it; any other seed record is terminal; a
-\ definition with a result is a member; a constant is its VALUE row; a does>
-\ instance's clause has no result yet; anything else must be a data record.
+\ queues every record it reaches but a seed record, which it classes as a
+\ walk from the file's entry does (SEED-REACH). A defer made after the seed
+\ is its cell, since an earlier file may rebind it; a definition with a
+\ result is a member when its host reason is admitted (SAFE, MEMORY, FIXED)
+\ and refuses otherwise; a constant is its VALUE row; a does> instance's
+\ clause has no result yet; anything else must be a data record.
 : REACH ( n -- )
    {: ord:n :}
    WTRANS @ if
-      ord WROOT @ <> if ord QUEUE exit then
+      ord WROOT @ <> if
+         ord NFILE-REF:SEED-RECORD? if ord SEED-REACH else ord QUEUE then exit
+      then
    else
       ord OWN? if WCAPTURE @ if ord QUEUE then exit then
    then
    ord XREF-REC {: rec:ptr :}
+   ord NFILE-REF:SEED-RECORD? if ord SEED-REACH exit then
    rec NDICT:REC-DEFER-CELL 0<> if ord REACH-DATA exit then
-   ord NFILE-REF:SEED-RECORD? if exit then
    ord NFILE-REF:RESULT-DIGEST {: digest:ptr known:bool :}
    digest drop
-   known if ord MEMBER+ ord EDGES exit then
+   known if
+      ord NFILE-REF:RESULT-REASON drop {: reason:n :}
+      reason NFILE-REF:REASON-ADMITTED? 0= if reason REASON-WHY$ ord FAIL exit then
+      ord MEMBER+ ord EDGES exit
+   then
    rec XREF-FLAGS {: flags:n :}
    flags DKIND:MASK and DKIND:VAL = if exit then
    flags DNAME-ALLOC and 0<> flags DKIND:MASK and 0= and if
@@ -703,6 +788,7 @@ private
    key keyu CURRENT {: rec:ptr ord:n found:bool :}
    rec drop
    found if
+      \ REACH's refusals fail this walk too: a warm walk that meets one misses.
       ord false WALK
       WOK @ if CLOSURE-HASH HOUT DIGEST-BYTES want wantu STR= else false then
    else false then
@@ -1110,6 +1196,14 @@ variable TOP-XT
 
 CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
 
+\ The refusal of the open file for a run of its own record whose walk reached
+\ what it cannot account for (reason, the record it failed on). NUNIT-OBJECT
+\ requires this file, so the definition cache binds it, as it binds TOP-XT.
+defer RUN-REFUSE ( ptr u8 n ptr n -- )
+: NO-RUN-REFUSE ( ptr u8 n ptr n -- ) drop 2drop BAD ;
+: DEFAULT-REFUSE ( -- ) ['] NO-RUN-REFUSE is RUN-REFUSE ;
+DEFAULT-REFUSE
+
 \ One leg of the run's token: the row a compiled reference to the same
 \ spelling in the same scope adds, counted when it holds the record that ran.
 : RUN-LEG ( ptr u8 n -- )
@@ -1228,13 +1322,19 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
 
 \ What a run of ord reads: a constant's VALUE row; for a data word its DATA
 \ row; for a definition, defer or does> instance one EXECUTED row over the
-\ members its closure reached and a DATA row per data record. A seed record's
-\ RESOLUTION row is its only fact.
+\ members its closure reached and a DATA row per data record. A seed value is
+\ its VALUE row; a seed data record refuses; a classed primitive or an
+\ engine helper is admitted and a seed code root records nothing here (its
+\ RESOLUTION row is its only fact; its trace judges it). A seed record
+\ reaches here only as the run's root: a walk through an own record classes
+\ the seed records it reaches.
 : CAPTURE-ONE ( n -- )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
    rec XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE exit then
-   ord NFILE-REF:SEED-RECORD? rec NDICT:REC-DEFER-CELL 0= and if exit then
+   ord NFILE-REF:SEED-RECORD? if
+      ord SEED-KIND 1 = if s" run-reaches-kernel-data" ord FAIL then exit
+   then
    ord true WALK
    WOK @ 0= if exit then
    ord NFILE-REF:RESULT-DIGEST nip rec NDICT:REC-DEFER-CELL 0<> or if
@@ -1253,7 +1353,9 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
 \ The run of ord as rows keyed by records that exist at the file's entry:
 \ each record the run reaches is captured as if run directly when the file
 \ did not make it, and walked through when it did. The first walk that
-\ cannot account for a record orders the frame.
+\ cannot account for a record decides: under an own root it refuses the file
+\ by the failing record's name, under an earlier file's root it orders the
+\ frame.
 : CAPTURE-RUN ( n -- )
    {: ord:n :}
    ndict@ {: n:n :}
@@ -1267,7 +1369,10 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
       dup RQUEUE @ {: r:n :}
       r OWN? if r THROUGH else r CAPTURE-ONE then
       WOK @ 0= if
-         drop FAIL-P @ FAIL-U @ FAIL-ORD @ XREF-REC XREF-NAME$ r ORDERED-AT exit
+         drop
+         FAIL-P @ FAIL-U @ FAIL-ORD @ XREF-REC {: why:ptr whyu:n rec:ptr :}
+         r OWN? if why whyu rec RUN-REFUSE else why whyu rec XREF-NAME$ r ORDERED-AT then
+         exit
       then
       1+
    repeat drop ;
@@ -1286,6 +1391,11 @@ public
 \ the word, so OBSERVE-RUN reaches it by execution token.
 : USE-TOP ( n -- ) TOP-XT ! ;
 
+\ The open file's refusal for a failed run of its own record, bound for the
+\ session by the definition cache beside USE-TOP, and the default after.
+: USE-REFUSE ( [ ptr u8 n ptr n -- ] -- ) is RUN-REFUSE ;
+: DROP-REFUSE ( -- ) DEFAULT-REFUSE ;
+
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
 \ without the name included, and then, when one of them holds the record that
@@ -1301,6 +1411,8 @@ public
 
 \ Open a file frame at the file's first record ordinal.
 : BEGIN-UNIT ( -- )
+   s" PRIM-SPEC:REACH@" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT REACH-XT !
+   s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
    FDEPTH @ FRAME-CELLS * {: base:n :}
    FUSED @ base F-OFF + FFRAMES !
@@ -1448,6 +1560,7 @@ public
    DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
+   0 REACH-XT ! 0 FIND-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

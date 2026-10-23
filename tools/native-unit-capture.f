@@ -102,6 +102,9 @@ public
    s" REQUIRE-REG:CELL-SPANS" true BIND-ONE
    s" FFI-CB:SCAN-SPANS" true BIND-ONE
    s" FFI:FORGET-CACHE" true BIND-ONE
+   \ A primitive's REACH class, which admits a top-level run's reach.
+   s" PRIM-SPEC:REACH@" true BIND-ONE
+   s" PRIM-SPEC:FIND" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE
    \ The FFI registry's marks and rows a FILE object's segments carry.
    s" FFI:MARK" true BIND-ONE

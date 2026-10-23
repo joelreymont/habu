@@ -10,6 +10,7 @@ require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
+require src/compiler/native/host.f
 require tools/native-unit-file.f
 
 package NFILE-REF
@@ -1352,9 +1353,10 @@ private
 \ digest of everything that fixes the word's runtime behavior and nothing a
 \ comment or a relocation moves, and the edges its code and addresses name.
 \ A row is the occurrence of the record it was bound for (0 for none), its
-\ first edge row and its edge count. A cut that reuses the ordinal retires
-\ that occurrence, and with it the row.
-3 constant RESULT-CELLS
+\ first edge row, its edge count and the worst host reason over its
+\ functions. A cut that reuses the ordinal retires that occurrence, and with
+\ it the row.
+4 constant RESULT-CELLS
 \ An edge row: reference kind (CODE, DATA or LITERAL), then the key row of the
 \ declaration it imports. A LOCAL reference is the definition itself and needs
 \ no edge.
@@ -1371,6 +1373,8 @@ DYNAMIC-BUFFER RESULT-CODE u8
 \ The hash context, then one cell of number bytes.
 DYNAMIC-BUFFER RESULT-WORK u8
 variable RESULT-N
+\ The worst host reason over the functions R-HOST has read for one result.
+variable HOST-WORST
 variable EDGE-N
 variable RESULT-IMPORT-N
 
@@ -1387,7 +1391,7 @@ variable RESULT-IMPORT-N
    want MEM-MAX-N RESULT-BYTES / > if BAD then
    want RESULT-CELLS * RESULT-ROWS-RESERVE
    want RESULT-BYTES * RESULT-DIGESTS-RESERVE
-   want RESULT-N @ ?do 0 i 0 RESULT! 0 i 1 RESULT! 0 i 2 RESULT! loop
+   want RESULT-N @ ?do 0 i 0 RESULT! 0 i 1 RESULT! 0 i 2 RESULT! 0 i 3 RESULT! loop
    want RESULT-N ! ;
 
 \ Whether ord's row was bound for the record live at ord now.
@@ -1495,9 +1499,31 @@ variable RESULT-IMPORT-N
    metau 32 < if BAD then
    meta LE:U64@ R-N meta 16 + LE:U64@ R-N meta 24 + LE:U64@ R-N ;
 
+public
+
+\ NHOST:FIXED, the class of a definition naming a fixed record. Named here
+\ because NHOST is baked and a retained host's NHOST lacks it.
+7 constant HOST-FIXED
+
+\ The reasons whose body the published facts account for (host.f's rule):
+\ SAFE, MEMORY and FIXED. Every other reason, a future one included, refuses.
+: REASON-ADMITTED? ( n -- bool )
+   {: reason:n :}
+   reason NHOST:SAFE = reason NHOST:MEMORY = or reason HOST-FIXED = or ;
+
+private
+
+\ The worse of two host reasons: one that is not admitted, the first such,
+\ else the greater, SAFE < MEMORY < HOST-FIXED among the admitted. The
+\ reasons are not ordered by risk: CAST lies below MEMORY.
+: WORSE ( n n -- n ) {: a:n b:n :}
+   a REASON-ADMITTED? 0= if a exit then
+   b REASON-ADMITTED? 0= if b exit then
+   a b max ;
+
 \ Section 15: the function count, then each function's offset, length, depth
 \ in and out, reason, loc and type count, then its types; a negative count
-\ has none. Every cell but loc.
+\ has none. Every cell but loc. Each reason folds into HOST-WORST.
 : R-HOST ( ptr u8 n -- ) {: a:ptr u:n :}
    u 8 < if BAD then
    a LE:U64@ {: funs:n :}
@@ -1507,6 +1533,7 @@ variable RESULT-IMPORT-N
       off 56 + u > if BAD then
       a off + {: row:ptr :}
       5 0 ?do row i 8 * + LE:U64@ R-N loop
+      HOST-WORST @ row 32 + LE:U64@ WORSE HOST-WORST !
       row 48 + LE:U64@ dup R-N 0 max {: types:n :}
       types u off 56 + - 8 / > if BAD then
       types 0 ?do row 56 + i 8 * + LE:U64@ R-N loop
@@ -1537,11 +1564,13 @@ public
    2 NUNIT-FILE:SECTION$ src 16 R-SITES
    3 NUNIT-FILE:SECTION$ src 24 R-SITES
    10 NUNIT-FILE:SECTION$ R-S
+   NHOST:SAFE HOST-WORST !
    15 NUNIT-FILE:SECTION$ R-HOST
    R-CTX ord RESULT-BYTES * RESULT-DIGESTS SHA256-END
    occurrence ord 0 RESULT!
    first ord 1 RESULT!
-   EDGE-N @ first - ord 2 RESULT! ;
+   EDGE-N @ first - ord 2 RESULT!
+   HOST-WORST @ ord 3 RESULT! ;
 
 \ The closure walk compares this: ord's 32-byte result digest, or false for a
 \ record with no bound result. False is terminal only for a seed record; any
@@ -1564,6 +1593,12 @@ public
    row 0 EDGE@ {: kind:n :}
    row 1 EDGE@ {: key:n :}
    kind key 0 KEY@ KEY-ARENA key 1 KEY@ KEY-RECORD nip ;
+
+\ The worst host reason over the functions of ord's result (NHOST:SAFE,
+\ MEMORY, HOST-FIXED, CAST, ...), or false for a record with no bound result.
+: RESULT-REASON ( n -- n bool ) {: ord:n :}
+   ord R-BOUND? 0= if 0 false exit then
+   ord 3 RESULT@ true ;
 
 : CLOSE ( -- )
    0 FAMILY-IDENTITY ! 0 FAMILY-FIND !

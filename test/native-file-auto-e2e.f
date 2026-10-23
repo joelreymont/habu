@@ -378,7 +378,7 @@ variable DIAG-START
    s" opt-in fallback diagnostics follow actual compile attempts" T-LABEL
    s" diag-cache" AT MAKE-DIR
    s" diag-on-cache" AT MAKE-DIR
-   s" app.f" S\" TRUSTED: WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\n: HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
+   s" app.f" S\" : WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\n: HELPER ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) HELPER . cr ;\n" PUT
    0 DIAG? !
    s" diag-cache" AT RUN-SAVED-IN SUCCESS
    ERR$ s" native-cache: compile-attempt " CONTAINS? TFALSE

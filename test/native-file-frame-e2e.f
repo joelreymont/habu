@@ -144,6 +144,13 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    S\" s\" wcb=\" type FFI-DECL:SELECTION . . . cr\n" IN+
    S\" package FRAME-P3\n" IN+
    s" pkgc.f" LOAD+
+   s" cread.f" LOAD+
+   s" act-ok.f" LOAD+
+   s" fw-def.f" LOAD+
+   s" out.f" LOAD+
+   s" reach.f" LOAD+
+   s" mask.f" LOAD+
+   s" own-trust.f" LOAD+
    s" scope.f" LOAD+
    RUN-INPUT ;
 
@@ -258,7 +265,7 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    path pathu 0 OBJ BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
    name nameu 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
 
-: KEEP-OBJECT ( -- ) APP-KEY KEY-LEN s" app-cold.obj" KEEP-OBJ ;
+: KEEP-OBJECT ( -- ) s" app.f" KEY$ s" app-cold.obj" KEEP-OBJ ;
 
 \ The digits the session printed after tag, and how many of them are c.
 : DIGITS$ ( ptr u8 n -- ptr u8 n )
@@ -381,11 +388,34 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
    \ peek.f's TRUSTED: PEEK reads its own data; run.f's top level runs it,
    \ safe.f's runs the checked SAFE-PEEK that calls it, and vread.f's reads
-   \ the data word STORE itself.
+   \ the data word STORE itself. A run that reaches the unchecked PEEK refuses
+   \ its file.
    s" peek.f" S\" package FRAME-PEEK\npublic\nvariable STORE\nTRUSTED: PEEK ( -- n ) STORE @ ;\n: SAFE-PEEK ( -- n ) PEEK ;\n;package\n" PUT
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
    s" vread.f" S\" require peek.f\nFRAME-PEEK:STORE @ constant STORE-SEEN\n" PUT
+   \ cread.f's top level runs its child cpeek.f's checked CPEEK, which reads
+   \ CSTORE. peek.f's records belong to top.f's load, which no later file can
+   \ name, so the reader is cread.f's own child.
+   s" cpeek.f" S\" package FRAME-CPEEK\npublic\nvariable CSTORE\n: CPEEK ( -- n ) CSTORE @ ;\n;package\n" PUT
+   s" cread.f" S\" require cpeek.f\nFRAME-CPEEK:CPEEK constant CREAD-SEEN\n" PUT
+   \ act-ok.f's run of AK-INIT stores with `!`, whose lowering branches to the
+   \ engine helper (PROT-SPAN): the body's MEMORY reason accounts for the store,
+   \ so the closure admits the helper. A run that reaches a seed word no REACH
+   \ class covers refuses its file: reach.f's TOOL-POKE reaches the compiler's
+   \ SESSION-LIVE?, fw-def.f's FW the builder's WRITE-ALL, out.f's OUT-A emit.
+   s" act-ok.f" S\" variable AK\n: AK-INIT ( -- ) 7 AK ! ;\nAK-INIT\n3 constant AK-K\n" PUT
+   s" tool-def.f" S\" : TOOL-POKE ( -- ) NCOMP:SESSION-LIVE? drop ;\n" PUT
+   s" reach.f" S\" require tool-def.f\n1 constant REACH-K\nTOOL-POKE\n" PUT
+   0 INPUT-U !
+   S\" : FW ( -- ) s\" " IN+ s" fw.txt" AT IN+ S\" \" s\" x\" WRITE-ALL ;\nFW\n" IN+
+   s" fw-def.f" INPUT INPUT-U @ PUT
+   s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
+   \ mask.f's run of MX-RUN names data first, then runs a quotation through
+   \ execute: its worst reason, INDIRECT, refuses, not the data mention.
+   \ own-trust.f runs its own unchecked OT at top level and is refused by name.
+   s" mask.f" S\" variable MX\n: MX-ONE ( -- n ) 1 ;\n: MX-RUN ( -- n ) MX @ drop [: MX-ONE ;] execute ;\nMX-RUN constant MX-K\n" PUT
+   s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
    \ watermark.f moves the user-slot watermark of the TASK the builder loaded at
    \ load time through the cell TASK hands its claimants. TASK:+USER moves it too
    \ and refuses its file for task-slots the same way.
@@ -414,14 +444,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" gp.f" S\" require gc1.f\nrequire gc2.f\n" PUT
    s" k1.f" S\" : KA ( -- n ) 2 ;\ns\" KA\" FORGET-DEFS-FROM\n: KX ( -- n ) 3 ;\n" PUT
    s" q1.f" S\" : Q1 ( -- n ) 1 ;\nrequire k1.f\n: Q2 ( -- n ) KX ;\n" PUT
-   \ raw.f's TRUSTED: RAW-SET stores a code address into the plain variable
-   \ RAW-CELL, which declares no xt cell.
-   s" raw.f" S\" variable RAW-CELL\n: RAW-TARGET ( -- ) ;\nTRUSTED: RAW-SET ( -- ) ['] RAW-TARGET RAW-CELL ! ;\nRAW-SET\n" PUT
-   \ poke.f's TRUSTED: POKE stores a code address 8 bytes into board.f's
+   \ raw.f's top level stores RAW-TARGET's code address into the plain variable
+   \ RAW-CELL, which declares no xt cell; the tick is a run of the SAFE
+   \ RAW-TARGET.
+   s" raw.f" S\" variable RAW-CELL\n: RAW-TARGET ( -- ) ;\n' RAW-TARGET RAW-CELL !\n" PUT
+   \ poke.f's top level stores BOARD-GO's code address 8 bytes into board.f's
    \ 16-byte BOARD, an earlier cell no address row declares: the update check
    \ refuses it there. board.f loads in poke.f's session, above its image floor.
    s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
-   s" poke.f" S\" require board.f\nTRUSTED: POKE ( -- ) ['] BOARD-GO BOARD 8 + ! ;\nPOKE\n" PUT
+   s" poke.f" S\" require board.f\n' BOARD-GO BOARD 8 + !\n" PUT
    \ slot.f's declared xt cell holds its child sdeep.f's TEN, which nothing
    \ else in it compiles. A record of an earlier top-level load is no file's
    \ record a later object can name, so each file here that needs a stored
@@ -433,20 +464,24 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ list.f's DATA holds two addresses of its own DATA; addr.f's holds the
-   \ address of its child hits.f's HITS; upd.f's TRUSTED: PIN-SET stores the address of
+   \ address of its child hits.f's HITS; upd.f's top level stores the address of
    \ its child pina.f's PIN-A into PIN-A, an update, since a load changes only
-   \ the earlier DATA of its own session. off.f stores odeep.f's TEN into hooks.f's
-   \ second declared xt cell, eight bytes past PIN-HOOKS's start. own.f's DATA
-   \ holds its child pinb.f's PIN-B, the last record with DATA, and then an
-   \ address of its own DATA past PIN-B, which pins own.f's segment as well.
+   \ the earlier DATA of its own session. off.f stores odeep.f's TEN with xt!,
+   \ which declares the cell it writes, eight bytes into hooks.f's 16-byte
+   \ PIN-HOOKS. PIN-HOOKS is a create, not a TYPED-BUFFER: that definer's
+   \ accessor calls the engine's DYNAMIC-STORAGE:BOUNDS, a seed code record no
+   \ REACH class covers, so a run of it is refused run-reaches-kernel-word
+   \ word=BOUNDS and would order off.f's frame before the slot check. own.f's
+   \ DATA holds its child pinb.f's PIN-B, the last record with DATA, and then
+   \ an address of its own DATA past PIN-B, which pins own.f's segment as well.
    s" list.f" S\" create PIN-LIST here , here ,\n" PUT
    s" hits.f" S\" package FRAME-HITS\npublic\nvariable HITS\n;package\n" PUT
    s" addr.f" S\" require hits.f\ncreate PIN-HITS FRAME-HITS:HITS ,\n" PUT
    s" pina.f" S\" variable PIN-A\n" PUT
-   s" upd.f" S\" require pina.f\nTRUSTED: PIN-SET ( -- ) PIN-A PIN-A ! ;\nPIN-SET\n" PUT
-   s" hooks.f" S\" 2 TYPED-BUFFER PIN-HOOKS [ -- n ]\n" PUT
+   s" upd.f" S\" require pina.f\nPIN-A PIN-A !\n" PUT
+   s" hooks.f" S\" create PIN-HOOKS 16 allot\n" PUT
    s" odeep.f" S\" package FRAME-ODEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
-   s" off.f" S\" require hooks.f\nrequire odeep.f\n' FRAME-ODEEP:TEN 1 PIN-HOOKS xt!\n" PUT
+   s" off.f" S\" require hooks.f\nrequire odeep.f\n' FRAME-ODEEP:TEN PIN-HOOKS 8 + xt!\n" PUT
    s" pinb.f" S\" variable PIN-B\n" PUT
    s" own.f" S\" require pinb.f\nPIN-B , here ,\n" PUT
    \ ev.f's records belong to its own top-level load. evw.f's store into EV0,
@@ -562,10 +597,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ recorded only the leg holding its record would leave 6.
    s" exec.f only runs: SEVEN's value, TWICE's run and every leg of each run's resolution" T-LABEL
    s" exec.f" FRAME$ s"  ordered=0 binding=0 value=1 resolution=10 executed=1 data=0" ENDS-WITH? TTRUE
-   s" run.f runs the trusted PEEK, which reads STORE: one run, one data read" T-LABEL
-   s" run.f" RAN
-   s" safe.f runs the checked SAFE-PEEK, which reaches PEEK and STORE" T-LABEL
-   s" safe.f" RAN
+   s" run.f's run of the trusted PEEK refuses it" T-LABEL
+   s" run.f" FRAME$ s"  reason=run-host-unchecked word=PEEK" ENDS-WITH? TTRUE
+   s" run.f" NO-OBJECT
+   s" safe.f's run of the checked SAFE-PEEK reaches PEEK and refuses it" T-LABEL
+   s" safe.f" FRAME$ s"  reason=run-host-unchecked word=PEEK" ENDS-WITH? TTRUE
+   s" safe.f" NO-OBJECT
    s" vread.f reads the data word STORE at top level" T-LABEL
    s" vread.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" vread.f" FRAME$ s"  executed=" FIELD$ s" 0" T$=
@@ -588,7 +625,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
    s" ret-use.f" KEY$ RU-KEY KEY-LEN KEEP
-   APP-KEY KEY-LEN STORED
+   s" app.f" KEY$ STORED
    s" lib.f's object holds its records, HITS, T and HOOK's data and deep.f's load" T-LABEL
    s" lib.f" s"  records=" s" 10" OBJECT-HAS
    \ DATA: HITS 8 bytes, T 16, HOOK 8, and the 14 bytes of "FRAME-LIB:MARK"
@@ -759,6 +796,70 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wcb.f" s"  ffi=" s" 2" OBJECT-HAS
    s" wcb.f" KEY$ STORED ;
 
+\ Neither name's frame nor a refused line of name names a run reason.
+: NO-RUN-REASON ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu FRAME$ s"  reason=run-" FIND-SUB MATCH option
+     none OF ENDOF
+     some OF drop T-FAIL ENDOF
+   ;MATCH
+   0 INPUT-U !
+   s" /" IN+ name nameu IN+ s"  reason=run-" IN+
+   ERR$ INPUT INPUT-U @ FIND-SUB MATCH option
+     none OF ENDOF
+     some OF drop T-FAIL ENDOF
+   ;MATCH ;
+
+\ The files whose runs reach only what a closure admits.
+: RUNS-ADMITTED ( -- )
+   s" exec.f" NO-RUN-REASON
+   s" list.f" NO-RUN-REASON
+   s" own.f" NO-RUN-REASON
+   s" lib.f" NO-RUN-REASON
+   s" app.f" NO-RUN-REASON
+   s" vread.f" NO-RUN-REASON
+   s" addr.f" NO-RUN-REASON
+   s" con-dep.f" NO-RUN-REASON
+   s" slot.f" NO-RUN-REASON
+   s" later.f" NO-RUN-REASON
+   s" incut.f" NO-RUN-REASON
+   s" ret-own.f" NO-RUN-REASON
+   s" cread.f" NO-RUN-REASON
+   s" act-ok.f" NO-RUN-REASON
+   s" off.f" NO-RUN-REASON
+   s" hooks.f" NO-RUN-REASON
+   s" raw.f" NO-RUN-REASON
+   s" poke.f" NO-RUN-REASON
+   s" watermark.f" NO-RUN-REASON ;
+
+\ What a top-level run reaches: a checked definition and a classed
+\ primitive are admitted; a seed word no REACH class covers refuses.
+: RUN-CHECKS ( -- )
+   s" cread.f runs the checked CPEEK, which reads CSTORE: one run, one data read" T-LABEL
+   s" cread.f" RAN
+   s" act-ok.f's run reaches the store guard (PROT-SPAN), and it stores" T-LABEL
+   s" act-ok.f" KEY$ STORED
+   s" act-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a run that reaches a compiler word refuses its file" T-LABEL
+   s" reach.f" FRAME$ s"  reason=run-reaches-kernel-word word=SESSION-LIVE?" ENDS-WITH? TTRUE
+   s" reach.f" NO-OBJECT
+   s" a run that reaches the builder's WRITE-ALL refuses its file and still writes" T-LABEL
+   s" fw-def.f" s"  reason=" LINE$ s" fw-def.f reason=run-reaches-kernel-word word=WRITE-ALL" T$=
+   s" fw-def.f" NO-OBJECT
+   s" fw.txt" AT EXISTS? TTRUE
+   s" a run that reaches the unclassed emit refuses its file and still prints" T-LABEL
+   s" out.f" s"  reason=" LINE$ s" out.f reason=run-reaches-kernel-word word=emit" T$=
+   s" out.f" NO-OBJECT
+   OUT$ s" A" CONTAINS? TTRUE
+   s" a run whose body names data and then executes refuses by its worst reason" T-LABEL
+   s" mask.f" s"  reason=" LINE$ s" mask.f reason=run-host-indirect word=MX-RUN" T$=
+   s" mask.f" NO-OBJECT
+   s" a run of the file's own unchecked word refuses it by name" T-LABEL
+   s" own-trust.f" s"  reason=" LINE$ s" own-trust.f reason=run-host-unchecked word=OT" T$=
+   s" own-trust.f" NO-OBJECT
+   s" no other file's run names a run reason" T-LABEL
+   RUNS-ADMITTED ;
+
 \ A warm build installed name's object: its reused line, the only one with
 \ " records=" right after the path, and no object written for it.
 : REUSED ( ptr u8 n -- )
@@ -817,7 +918,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" scopeb.f" REUSED
    s" plain.f" REUSED
    s" wrb.f" REUSED
-   s" wcb.f" REUSED ;
+   s" wcb.f" REUSED
+   s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
+   RUNS-ADMITTED ;
 
 \ A changed constant leaves con.f's object supported but stale: the warm build
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
@@ -910,7 +1013,8 @@ public
    OBJECT-CHECKS
    FLOOR-CHECKS
    FFI-CHECKS
-   LIB-KEY KEY-LEN STORED
+   RUN-CHECKS
+   s" lib.f" KEY$ STORED
    KEEP-OBJECT
    CHECKER
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP

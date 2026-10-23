@@ -185,23 +185,30 @@ variable EXPECT-U
    PROC-ENV-INHERIT-MISSING
    exe exeu AT PROBE-IN PROBE-IN-U @ CAPTURE SUCCESS ;
 
-\ The named file compiled in a session that took this process's own seed and
-\ image floor: nothing refused, no earlier DATA copied, its object stored. A
-\ seed or floor inherited from the image's builder refuses the file instead.
-: STORED ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   ERR$ s" refused path=" CONTAINS? TFALSE
+\ Each boot takes its own image floor, but running a new definition that
+\ reaches an unclassified checked image seed refuses storage: the named file
+\ is refused at word, no earlier DATA copied, no object stored.
+: SEED-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n word:ptr wordu:n :}
+   0 EXPECT-U !
+   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  reason=run-reaches-kernel-word word=" EXPECT 512 EXPECT-U BUF-APPEND
+   word wordu EXPECT 512 EXPECT-U BUF-APPEND
+   S\" \n" EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
    ERR$ S\"  copied=0\n" CONTAINS? TTRUE
    0 EXPECT-U !
    s" native-file: object path=" EXPECT 512 EXPECT-U BUF-APPEND
    name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
    s"  key=" EXPECT 512 EXPECT-U BUF-APPEND
-   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE ;
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TFALSE ;
 
-\ The app's session stores probe.f, then the app saves itself; the second image
-\ boots and stores probe2.f, which calls probe.f's word.
+\ The app's session runs probe.f, then the app saves itself; the second image
+\ boots and runs probe2.f, which calls probe.f's word. Each boot takes its own
+\ image floor; both runs reach a checked seed of the booted image.
 : BOOTED-SESSION ( -- )
-   s" a booted app's sessions take their own seed and image floor" T-LABEL
+   s" a booted app's session refuses a file that reaches an image seed" T-LABEL
    s" probe.f"
       S\" package FILE-PROBE\npublic\nvariable CELLV\n: VALUE ( -- n ) FILE-SHAPE:SIZE 61 + ;\n;package\nFILE-PROBE:VALUE . cr\n"
       PUT
@@ -214,13 +221,13 @@ variable EXPECT-U
    S\" s\" " IN+ s" app2" AT IN+ S\" \" APP-IMAGE:SAVE\n" IN+
    s" app-hb" PROBE-RUN
    OUT$ S\" 77\n" CONTAINS? TTRUE
-   s" probe.f" STORED
+   s" probe.f" s" SIZE" SEED-REFUSED
    0 PROBE-IN-U !
    S\" 1 set-tier\n" IN+
    s" probe2.f" LOAD-LINE
    s" app2" PROBE-RUN
    OUT$ S\" 78\n" CONTAINS? TTRUE
-   s" probe2.f" STORED ;
+   s" probe2.f" s" VALUE" SEED-REFUSED ;
 
 \ A capture whose one-shot hook throws returns to the REPL with the process's
 \ seed and image floor intact: probe3.f writes probe.f's cell, an earlier
