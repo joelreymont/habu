@@ -1,9 +1,11 @@
 # Handoff: finish the Intel port
 
-State: 2026-10-23. Last lead: Claude, Herdr name jerry. Hosts: pulsar-ua-106
-(Linux x86-64, 22 cores, where work continues) and Joel's Mac (ARM64, the
-ARM gate; pulsar cannot reach it). This file is tracked on `intel`: keep it
-current as work lands instead of deleting it.
+State: 2026-10-23. Last lead: Claude (jerry) on the Mac; the next lead is
+Codex on pulsar-ua-106 (Linux x86-64, 22 cores). Joel's Mac (ARM64) runs the
+ARM gate; pulsar never accesses the Mac (Joel). Pulsar pushes `intel` and
+lane branches only; `master` moves only after the Mac's ARM gate. This file
+is tracked on `intel`: read it at session start instead of `$pickup` (which
+would trash it), and keep it current as work lands.
 
 Pulsar has `bun` and `wasm-tools` (the versions the Mac uses) and `uv` from
 `~/.config/mise/conf.d/host.toml`, on PATH through mise shims in `~/.profile`
@@ -43,8 +45,9 @@ Done only when command output shows all of:
   their `lane-handoff*.md` files.
 - Lane recipe, designs, review/plan briefs and probe scripts are in
   `~/.cache/tmp/jerry-c/` on pulsar (`lane-recipe.md` first). The recipe was
-  written for a Mac lead driving pulsar over ssh; on pulsar run its pulsar
-  steps locally.
+  written for a Mac lead driving pulsar over ssh: on pulsar, edit and test in
+  `.jj-ws.noindex/<lead>-<lane>` workspaces with the recipe's build and run
+  commands, and skip its Mac and rsync steps.
 - Pulsar's `~/Work/habu/bin/hb` (+ map) is self-built on pulsar from c848c7d7
   by an engine cross-built on the Mac from the same commit; two-gen there
   prints "ok gen 5 matches gen 4". No Intel bootstrap exists, so never lose
@@ -71,11 +74,14 @@ Done only when command output shows all of:
    After capreach lands, self-build `bin/hb` again (native build plus
    two-gen) so later trees build in one stage.
 4. Then gep64 and bodyabi (their dots), the design-first dots (pstore,
-   breakpoints, throws: Fable Plan first), the tier-1 branches dot and the
+   breakpoints, throws: design first), the tier-1 branches dot and the
    remaining rows. A dot step that says "x86 cross-build" is a native
-   build here.
-5. ARM steps wait for the Mac: gep64's ARM native-build and tests, the tier0
-   review's ARM engine, and goal (A) in `habu-rebase-gate-and-62c0a60f`.
+   build here; "Fable" or "Opus" review or Plan means the Codex reviewer
+   or the lead's design.
+5. ARM steps go to the Mac: gep64's ARM native-build and tests, the tier0
+   review's ARM engine, the ARM check of every change to shared (non-x86)
+   code, and goal (A) in `habu-rebase-gate-and-62c0a60f`. Record each one in
+   its dot as open for the Mac session; never mark it done from pulsar.
 
 ## Rules
 
@@ -85,12 +91,13 @@ Done only when command output shows all of:
 - x86-64 runs tier 1 only. Tier-0-dependent tests select by `tier@`, keep the
   ARM tier-0 assertion byte-identical, and assert ARM's `1 set-tier` output
   on the tier-1 branch.
-- Each lane gets an independent review before landing (Fable for capture,
-  kernel, ABI and codegen; Opus for focused fixes and tests).
+- Each lane gets an independent read-only review before landing, given the
+  requirements and the code, not the implementation discussion.
 - On pulsar, kill only PIDs your own commands started; never `pkill -f`.
 - A gate and its push never share one command chain.
-- Codex Astra, the stand-in when Fable is unavailable, overengineers (Joel):
-  put that warning in every Astra prompt and cut its designs to the smallest
-  mechanism that closes a concrete failure before a worker gets them.
+- Beware of overengineering with Astra (Joel): each design is the smallest
+  mechanism that closes a concrete failure. Every new word, cell or row kind
+  needs a failure it fixes; run `$complexity` on a design before a worker
+  gets it, and do not let Astra's own critique be the only check.
 
 Port design background: `INTEL.md`, `docs/x86-64.md`, `docs/gate.md`.
