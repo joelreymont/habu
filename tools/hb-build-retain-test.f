@@ -24,7 +24,7 @@
 \   of them is gone;
 \ - a prune that takes a recent entry, or the one just published: it is gone;
 \ - a publish that leaves its work directory, or a prune its claim: the root
-\   holds a name that is none of the entries;
+\   holds a name that is none of the entries or the sweep stamps' directory;
 \ - a prune that fails its build: the build throws.
 \ The builds run in this process, as tools/hb-build-test-lib.f says a row builds
 \ where the CLI is not the subject; src/lib/build-cache-retain-test.f holds what a
@@ -166,6 +166,7 @@ variable HBR-STRAY
 
 : HBR-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HBR-KNOWN? if exit then
+   a u s" build-cache-meta" STR= if exit then
    a u HBR-DEF? if exit then
    a u s" .map" ENDS-WITH? if
       a u 4 - HBR-ART? if
@@ -223,7 +224,10 @@ variable HBR-STRAY
    HBR-SRC$ text textu WRITE-ALL ;
 
 \ One build of the current source into the cache root; json? is --json-errors.
+\ A prune runs at most once per SWEEP-SECONDS (src/lib/build-cache.f, SWEEPS
+\ ARE THROTTLED), so the stamps go first: every build's prune here sweeps.
 : HBR-BUILD ( ptr u8 n bool -- ) {: out:ptr outu:n json:bool :}
+   s" build-cache-meta" HBR-AT$ REMOVE-TREE
    HBT-ROOT out outu HBR-OUT-BUF HBR-OUT-U HBT-PATH!
    HBR-SRC$ HBR-OUT$ HBT-HBB-PREPARE-AOT
    json if -1 HBB-JSON ! then

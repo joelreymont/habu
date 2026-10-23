@@ -343,12 +343,14 @@ variable STALE-N
    name nameu ENTRY$ ARG ;
 
 \ Date every entry in the root to 2020, as src/lib/build-cache-retain-test.f
-\ dates its planted entries.
+\ dates its planted entries, and remove the sweep stamps: a prune runs at
+\ most once per SWEEP-SECONDS (src/lib/build-cache.f, SWEEPS ARE THROTTLED).
 : BACKDATE-ALL ( -- )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" -t" ARG s" 202001010000" ARG
    CACHE-PATH CACHE-U @ [: BACKDATE ;] FS-LIST:EACH
-   s" /usr/bin/touch" s" " CAPTURE SUCCESS ;
+   s" /usr/bin/touch" s" " CAPTURE SUCCESS
+   s" build-cache-meta" ENTRY$ REMOVE-TREE ;
 
 \ 5. After a build, hb-build removes the entries nothing has used for a day.
 \ A cold build's entries are dated to 2020, then an edit renames LIB-Y: the

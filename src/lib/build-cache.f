@@ -32,7 +32,7 @@
 \ only the key just published would pull entries out from under them. Instead
 \ every caller that finds an entry dates it to now through USED, so its mtime is
 \ the last time anything used it, and PRUNE takes only entries RETAIN-SECONDS
-\ old: a day, far beyond any build's deadline or any gate's run, so an entry in
+\ old, in the first sweep after they reach that age: a day, far beyond any build's deadline or any gate's run, so an entry in
 \ use is never that old. Only a caller that last used an entry a day ago and
 \ uses it again can lose it. When a prune renames the entry away before USED
 \ dates it, USED answers FALSE and the caller builds the entry again. A prune
@@ -58,7 +58,7 @@
 \ every child's that inherited it, such as the builder that writes into the
 \ directory. A build removes its own before it lets go (WORK-CLOSE, or the exit
 \ registry after a die), and a reboot drops every lock, so a directory nobody
-\ holds is a killed build's, and WORK-OPEN first removes every such directory.
+\ holds is a killed build's, and WORK-OPEN's reap removes such directories.
 \ No pid is read: a reused one proves nothing either way.
 \
 \ A CACHE ROOT IS ONE KERNEL'S. A lock is seen only by the kernel that keeps
@@ -73,7 +73,9 @@
 \ E-FS-IO, since a build there would be unprotected; a reaper reports such a
 \ directory and leaves it.
 \
-\ CLAIMED BY RENAME. Two publishers can prune one family at once. PRUNE makes a
+\ CLAIMED BY RENAME. A pruner that does not take the sweep lock - another
+\ engine release sharing the root - can prune a family beside one that does,
+\ and two such pruners can prune one family at once. PRUNE makes a
 \ claim directory, build-cache-claim-<seed>-<attempt>, beside the family and
 \ renames each stale entry into it before removing it there. A rename is atomic,
 \ so exactly one pruner owns each entry; the other finds the source gone and
@@ -88,6 +90,23 @@
 \ what could not be removed; the rest of it, stale and ours, is gone.
 \ A cache root is per-user: an entry USED cannot date, such as another user's
 \ file, keeps its old mtime, so any publisher's prune can still take it.
+\
+\ SWEEPS ARE THROTTLED. A sweep lists the whole directory and reads the mtime
+\ of every name of its family, which costs seconds where the cache holds many
+\ entries, so each kind runs at most once per SWEEP-SECONDS in one directory: a
+\ family's PRUNE, and REAP over the root. Each kind keeps a stamp under
+\ build-cache-meta/ in the directory it sweeps: swept-<SHA-256 of the
+\ family's length-prefixed prefix, suffix and work stem> for PRUNE, reaped for
+\ REAP. A caller whose stamp is dated within the last SWEEP-SECONDS skips the
+\ sweep. Otherwise it takes a nonblocking flock on build-cache-meta itself,
+\ skipping the sweep when another process holds it, checks the stamp again,
+\ dates it, and sweeps while it holds the lock. The stamp dates the attempt,
+\ not a finished sweep: a sweep killed midway waits out the interval like one
+\ that finished. Cleanup runs only when a later caller finds the interval
+\ past, so a root nothing publishes into keeps its stale entries. A metadata
+\ directory, lock or stamp that fails is reported and skips the sweep, so a
+\ broken stamp never costs every publish a full sweep. Every name that starts
+\ build-cache- is this module's; no family may use that prefix.
 \
 \ PRUNE NEVER FAILS ITS CALLER. It runs after a successful publish, and a build
 \ that has its entry must not fail over housekeeping. Each entry it cannot
@@ -382,6 +401,9 @@ public
 \ How long an entry stays after its last use.
 86400 constant RETAIN-SECONDS
 
+\ How often one kind of sweep runs in one directory.
+RETAIN-SECONDS 24 / constant SWEEP-SECONDS
+
 private
 
 64 constant KEY-HEX-LEN
@@ -572,12 +594,119 @@ variable CUTOFF
    [: CLAIM$ REMOVE-DIR ;] catch {: code:n :}
    code 0<> if s" remove" CLAIM$ code REPORT then ;
 
+: PRUNE-SWEEP ( -- )
+   0 CLAIM-U !
+   TIME:EPOCH-SECONDS RETAIN-SECONDS - CUTOFF !
+   [: SWEEP ;] catch {: code:n :}
+   CLOSE-CLAIM
+   code 0= if exit then
+   s" sweep" DIR$ code REPORT ;
+
+\ ---- sweep throttle ------------------------------------------------------------
+
+64 constant HEX-LEN
+6 constant SWEPT-STEM-LEN
+
+create META-BUF FS-PATH-CAP allot
+create STAMP-BUF FS-PATH-CAP allot
+create SWEPT-BUF SWEPT-STEM-LEN HEX-LEN + allot
+create FAMILY-CTX SHA256-CTX-BYTES allot
+create FAMILY-DG 32 allot
+create LEN-BUF 8 allot
+TYPED-VARIABLE GATE-A ptr u8
+
+variable META-U
+variable STAMP-U
+variable GATE-U
+variable GO
+
+\ The descriptor holding the sweep lock, -1 when none.
+variable META-FD
+-1 META-FD !
+
+: META$ ( -- ptr u8 n )
+   META-BUF META-U @ ;
+
+: STAMP$ ( -- ptr u8 n )
+   STAMP-BUF STAMP-U @ ;
+
+: GATE$ ( -- ptr u8 n )
+   GATE-A @ GATE-U @ ;
+
+: SWEPT$ ( -- ptr u8 n )
+   SWEPT-BUF SWEPT-STEM-LEN HEX-LEN + ;
+
+\ A field of the family's stamp hash: its length in eight bytes, then itself.
+: FEED-FIELD ( ptr u8 n -- ) {: a:ptr u:n :}
+   8 0 ?do u i 8 * rshift $FF and LEN-BUF i + c! loop
+   FAMILY-CTX LEN-BUF 8 SHA256-FEED
+   FAMILY-CTX a u SHA256-FEED ;
+
+\ swept-<hash of the family's prefix, suffix and work stem>.
+: SWEPT! ( -- )
+   FAMILY-CTX SHA256-BEGIN
+   PREFIX$ FEED-FIELD
+   SUFFIX$ FEED-FIELD
+   WORK$ FEED-FIELD
+   FAMILY-CTX FAMILY-DG SHA256-END
+   s" swept-" SWEPT-BUF swap BYTE-COPY
+   FAMILY-DG SWEPT-BUF SWEPT-STEM-LEN + SHA256>HEX ;
+
+\ The stamp dated within the last SWEEP-SECONDS and not after now.
+: FRESH? ( -- bool )
+   STAMP$ FS-TRY-LSTAT 0= if FALSE exit then
+   FS-STAT-MTIME-SEC@ {: m:n :}
+   TIME:EPOCH-SECONDS {: now:n :}
+   m now SWEEP-SECONDS - > m now <= and ;
+
+\ Another process can make the directory between the check and the mkdir.
+: META-MAKE ( -- )
+   META$ DIR? if exit then
+   [: META$ MAKE-DIR ;] catch {: code:n :}
+   code 0= if exit then
+   META$ DIR? 0= if code throw then ;
+
+: STAMP-DATE ( -- )
+   STAMP$ FS-TRY-LSTAT if STAMP$ TOUCH else STAMP$ MAKE-DIR then ;
+
+: UNGATE ( -- )
+   META-FD @ 0 >= if META-FD @ close then
+   -1 META-FD ! ;
+
+\ GO is TRUE when this sweep is due and this process now holds the lock with
+\ the stamp dated.
+: TRY-GATE ( -- )
+   FALSE GO !
+   DIR$ s" build-cache-meta" META-BUF JOIN-PATH META-U !
+   META$ GATE$ STAMP-BUF JOIN-PATH STAMP-U !
+   FRESH? if exit then
+   META-MAKE
+   META$ FS-LOCK:OPEN-DIR FD>N META-FD !
+   META-FD @ >FD FS-LOCK:TRY 0= if exit then
+   FRESH? if exit then
+   STAMP-DATE
+   TRUE GO ! ;
+
+\ Whether to run the sweep the named stamp throttles in DIR$. TRUE leaves the
+\ lock held for UNGATE; a failure is reported and skips the sweep.
+: GATE ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a GATE-A !
+   u GATE-U !
+   0 META-U !
+   [: TRY-GATE ;] catch {: code:n :}
+   code 0= GO @ 0<> and if TRUE exit then
+   UNGATE
+   code 0= if FALSE exit then
+   META-U @ 0= if s" throttle" DIR$ code REPORT else s" throttle" META$ code REPORT then
+   FALSE ;
+
 public
 
 \ Remove every entry of one family that nothing has used for RETAIN-SECONDS,
 \ from the directory holding the entry just published, which stays: the prefix
 \ and suffix around a key, and the stem MAKE-TEMP-DIR made its builds' work
-\ directories with (empty when they make none). Failures are reported, never
+\ directories with (empty when they make none). At most one sweep of the
+\ family runs in the directory per SWEEP-SECONDS. Failures are reported, never
 \ thrown.
 : PRUNE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n suf:ptr sufu:n work:ptr worku:n keep:ptr keepu:n :}
@@ -590,12 +719,9 @@ public
    keep keepu BASENAME KEEP-U ! KEEP-A !
    keep DIR-A !
    keepu KEEP-U @ - 1- 0 max DIR-U !
-   0 CLAIM-U !
-   TIME:EPOCH-SECONDS RETAIN-SECONDS - CUTOFF !
-   [: SWEEP ;] catch {: code:n :}
-   CLOSE-CLAIM
-   code 0= if exit then
-   s" sweep" DIR$ code REPORT ;
+   SWEPT!
+   SWEPT$ GATE 0= if exit then
+   [: PRUNE-SWEEP ;] [: UNGATE ;] finally ;
 
 \ Mark an entry found on disk as in use by dating it to now, which is what keeps
 \ PRUNE from taking it. TRUE when the hit stands: dated, or kept although it
@@ -727,15 +853,19 @@ variable HOLD-FD
 : REAP-SWEEP ( -- )
    DIR$ [: REAP-VISIT ;] FS-LIST:EACH ;
 
-\ Failures are reported, never thrown: a build does not fail over another's
-\ leftovers.
+: REAP-RUN ( -- )
+   [: REAP-SWEEP ;] catch {: code:n :}
+   code 0= if exit then
+   s" reap" DIR$ code REPORT ;
+
+\ At most once per SWEEP-SECONDS. Failures are reported, never thrown: a build
+\ does not fail over another's leftovers.
 : REAP ( -- )
    ROOT$ {: r:ptr ru:n :}
    r DIR-A !
    ru DIR-U !
-   [: REAP-SWEEP ;] catch {: code:n :}
-   code 0= if exit then
-   s" reap" DIR$ code REPORT ;
+   s" reaped" GATE 0= if exit then
+   [: REAP-RUN ;] [: UNGATE ;] finally ;
 
 \ Hold the directory just made and register it for removal at exit.
 : SETTLE ( -- )
@@ -756,7 +886,7 @@ variable HOLD-FD
 public
 
 \ Make a work directory in the root for a build of the family that publishes by
-\ rename, after removing every work directory that nothing holds. The path
+\ rename, after the throttled reap of work directories nothing holds. The path
 \ stays valid until the next WORK-OPEN; the descriptor is the hold, which this
 \ process's children inherit. The directory is registered for removal at exit,
 \ and WORK-CLOSE removes it and releases the hold.

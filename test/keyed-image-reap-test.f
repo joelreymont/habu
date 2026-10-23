@@ -30,6 +30,9 @@
 \ - a partial directory, from a crash before the lock, during the build or
 \   during a removal: mkdir is atomic, and from then on either a live process
 \   holds the lock or none does, so the next reaper takes whatever is left.
+\ - a reap skipped as throttled: B runs within SWEEP-SECONDS of A's reap, and C
+\   and D each run theirs with the last reap's stamp removed (src/lib/build-cache.f,
+\   SWEEPS ARE THROTTLED).
 \ - a filesystem that cannot lock a directory: the build refuses it rather
 \   than work unprotected, and a reaper reports such a directory and leaves it.
 \ - a build of no family: nothing would stand between the stem and the tail of
@@ -48,6 +51,8 @@
 \ - leaves a killed build's directory: A's is still there after D;
 \ - takes the live build's: it is gone, or B fails to publish;
 \ - leaves a recent directory nothing holds: it is still there after C;
+\ - reaps although the last reap is recent: that directory, planted after A's
+\   reap, is gone after B;
 \ - takes the unlocked shape: it is gone;
 \ - reports what it passes over (a held directory, a vanished one): a build's
 \   output holds a build-cache report;
@@ -318,8 +323,14 @@ variable ENTRIES
 : REPORTED? ( n -- bool )
    LOG-READ s" build-cache: cannot" CONTAINS? ;
 
+\ The sweep throttle's metadata directory is not an entry.
 : COUNT+ ( ptr u8 n -- )
-   2drop 1 ENTRIES +! ;
+   s" build-cache-meta" STR= 0= if 1 ENTRIES +! then ;
+
+\ A reap runs at most once per SWEEP-SECONDS, so the stamp the last one dated
+\ goes before each build whose reap is checked.
+: UNSTAMP ( -- )
+   s" build-cache-meta/reaped" AT$ 2dup EXISTS? if REMOVE-DIR else 2drop then ;
 
 : ENTRIES# ( -- n )
    0 ENTRIES !
@@ -354,7 +365,6 @@ variable ENTRIES
    WRITE-ALL
    NEXT RELEASE$ s" go" WRITE-ALL
    LAST RELEASE$ s" go" WRITE-ALL
-   UNHELD$ PLANT
    UNLOCKED$ PLANT ;
 
 \ Kill the build once its builder runs, so nothing of it runs its cleanup, and
@@ -383,11 +393,16 @@ variable ENTRIES
    s" and leaves its work directory" T-LABEL
    KILLED$ EXISTS? TTRUE ;
 
+\ The unheld directory is planted after A's reap dated its stamp, so B's reap,
+\ throttled, leaves it and C's takes it.
 : START-LIVE ( -- )
+   UNHELD$ PLANT
    LIVE SPAWN {: b:pid :}
    b PID>N LIVE-PID !
    LIVE MARKED? 0= if b UNMARKED then
-   LIVE LIVE-BUF LIVE-U MARK-READ drop ;
+   LIVE LIVE-BUF LIVE-U MARK-READ drop
+   s" the live build's reap, throttled, leaves a directory nothing holds" T-LABEL
+   UNHELD$ AT$ EXISTS? TTRUE ;
 
 \ The live build's directory is observed while the other builds run and checked
 \ once the live build's own end is classified: a live build whose builder met a
@@ -398,6 +413,7 @@ variable ENTRIES
 : NEXT-BUILD ( -- n bool bool )
    AGE {: aged:n :}
    s" the next build, of another family, exits 0" T-LABEL
+   UNSTAMP
    NEXT SPAWN NEXT EXITED 0 T=
    s" and publishes its image" T-LABEL
    NEXT IMAGE$ EXECUTABLE? TTRUE
@@ -428,6 +444,7 @@ variable ENTRIES
 \ Whether the live build's directory stays goes to FINISH-LIVE.
 : LAST-BUILD ( -- bool )
    s" the last build exits 0" T-LABEL
+   UNSTAMP
    LAST SPAWN LAST EXITED 0 T=
    s" the killed build's work directory is gone" T-LABEL
    KILLED$ EXISTS? TFALSE

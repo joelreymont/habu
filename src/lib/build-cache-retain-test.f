@@ -24,10 +24,16 @@
 \ - leaves its claim behind: the root holds more entries than it should.
 \
 \ Two child engines then publish and prune one family at once over a root of
-\ stale entries, starting their sweeps together, so each finds entries the
-\ other claimed between its listing and its rename, and publishes the other
-\ must leave alone. A pruner that reports a vanished entry, takes a live claim
-\ or a fresh publish, or leaves a stale entry fails the race.
+\ stale entries, starting their sweeps together: one takes the sweep lock and
+\ the stale entries, and every other prune is throttled, so the publishes the
+\ other makes are left alone. A pruner that reports anything, takes a fresh
+\ publish, or leaves a stale entry fails the race.
+\
+\ The throttle runs one family's prune at most once per SWEEP-SECONDS in a
+\ directory. A prune within the interval leaves a stale entry that one after
+\ the stamp ages takes; a prune while another process holds the sweep lock
+\ leaves it too and does not date the stamp; and a metadata path that is not a
+\ directory is reported and skips the sweep without failing the caller.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -41,6 +47,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/time.f
+require src/lib/fs-lock.f
 require src/lib/build-cache.f
 
 package BUILD-CACHE-RETAIN-TEST
@@ -79,6 +86,7 @@ variable ERR-U
 variable ENTRIES
 variable TOUCHES
 variable T0
+variable LOCK-FD
 
 : TMP$ ( -- ptr u8 n )
    TMP-BUF TMP-U @ ;
@@ -201,8 +209,9 @@ variable T0
    AT$ FS-TRY-LSTAT 0= if 0 exit then
    FS-STAT-MTIME-SEC@ ;
 
+\ The sweep throttle's metadata directory is not an entry.
 : COUNT+ ( ptr u8 n -- )
-   2drop 1 ENTRIES +! ;
+   s" build-cache-meta" STR= 0= if 1 ENTRIES +! then ;
 
 : ENTRIES# ( -- n )
    0 ENTRIES !
@@ -564,6 +573,104 @@ variable T0
    s" no claim or leftover remains" T-LABEL
    ENTRIES# RACE-PUBLISHES 2 * T= ;
 
+\ ---- the throttle ----------------------------------------------------------------
+
+: META$ ( -- ptr u8 n )
+   s" build-cache-meta" ;
+
+\ An old entry of the family, n distinguishing it.
+: STALE+ ( n -- ) {: n:n :}
+   TOUCH-BEGIN
+   $41 n NTH$ FILE+
+   $41 n NTH$ OLD
+   TOUCH-RUN ;
+
+: STALE? ( n -- bool ) {: n:n :}
+   $41 n NTH$ HELD? ;
+
+: STAMP+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" swept-" STARTS-WITH? 0= if exit then
+   NAME-RESET
+   META$ NAME+
+   s" /" NAME+
+   a u NAME+ ;
+
+\ build-cache-meta/swept-<hash>, the family's stamp, in NAME-BUF; empty
+\ when there is none.
+: STAMP$ ( -- ptr u8 n )
+   NAME-RESET
+   META$ AT$ [: STAMP+ ;] FS-LIST:EACH
+   NAME$ ;
+
+: AGE-STAMP ( -- )
+   TOUCH-BEGIN
+   STAMP$ OLD
+   TOUCH-RUN ;
+
+: QUIET-PRUNE ( -- )
+   s" the prune returns normally" T-LABEL
+   PRUNE-RUN 0 T=
+   s" and reports nothing" T-LABEL
+   ERR-U @ 0 T= ;
+
+: HOLD-META ( -- )
+   META$ AT$ FS-LOCK:OPEN-DIR {: fd:fd :}
+   fd FD>N LOCK-FD !
+   s" the test holds the sweep lock" T-LABEL
+   fd FS-LOCK:TRY TTRUE ;
+
+: DROP-META ( -- )
+   LOCK-FD @ close ;
+
+: HELD-PRUNE ( -- )
+   [: HOLD-META QUIET-PRUNE ;] [: DROP-META ;] finally ;
+
+: THROTTLE-CHECKS ( -- )
+   1 STALE+
+   QUIET-PRUNE
+   s" the first prune sweeps" T-LABEL
+   1 STALE? TFALSE
+   s" and dates the family's stamp" T-LABEL
+   STAMP$ nip 0 > TTRUE
+   2 STALE+
+   QUIET-PRUNE
+   s" a prune within the interval leaves a stale entry" T-LABEL
+   2 STALE? TTRUE
+   AGE-STAMP
+   QUIET-PRUNE
+   s" once the stamp ages a prune takes it" T-LABEL
+   2 STALE? TFALSE
+   3 STALE+
+   AGE-STAMP
+   HELD-PRUNE
+   s" a prune while another holds the sweep lock leaves a stale entry" T-LABEL
+   3 STALE? TTRUE
+   s" and leaves the stamp undated" T-LABEL
+   STAMP$ MTIME T0 @ < TTRUE
+   QUIET-PRUNE
+   s" the next prune once the lock is free takes it" T-LABEL
+   3 STALE? TFALSE ;
+
+: BROKEN-CHECKS ( -- )
+   4 STALE+
+   META$ FILE+
+   s" a prune whose metadata path is a file returns normally" T-LABEL
+   PRUNE-RUN 0 T=
+   s" and leaves a stale entry" T-LABEL
+   4 STALE? TTRUE
+   s" and reports the metadata path" T-LABEL
+   ERR$ s" build-cache: cannot throttle " CONTAINS?
+   ERR$ META$ AT$ CONTAINS? and TTRUE ;
+
+: THROTTLE-PHASE ( -- )
+   s" throttle" ROOT-BUF ROOT-U UNDER!
+   ROOT$ MAKE-DIRS
+   TIME:EPOCH-SECONDS T0 !
+   THROTTLE-CHECKS
+   s" broken" ROOT-BUF ROOT-U UNDER!
+   ROOT$ MAKE-DIRS
+   BROKEN-CHECKS ;
+
 public
 
 : MAIN ( -- )
@@ -575,6 +682,7 @@ public
    TMP$ CLEANUP-TREE+
    FAMILY-PHASE
    RACE-PHASE
+   THROTTLE-PHASE
    CLEANUP-RUN
    T-REPORT
    s" build-cache-retain-test: ok" type cr ;
