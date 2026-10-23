@@ -551,7 +551,7 @@ $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
 $36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF
-$36C0 constant BPA-CELL
+$36C0 constant BPA-CELL          \ x86: persistent breakpoint slot pending one TF step
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL

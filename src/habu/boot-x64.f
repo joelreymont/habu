@@ -38,6 +38,7 @@ require src/habu/snapshot-format.f
 require src/habu/snap-decode-x64.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
+require src/arch/x86-64/rt.f
 require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/target-layout.f
 
@@ -409,6 +410,7 @@ public
 \ rip's lies past the sixteen general registers.
 $28 constant UC-GREGS
 UC-GREGS 16 CELL * + constant UC-RIP
+UC-GREGS 17 CELL * + constant UC-FLAGS
 
 \ The ucontext offset of the slot that holds a register as the signal
 \ interrupted it. The kernel restores every register from its slot when the
@@ -784,6 +786,147 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    CELL negate hex CODE-LINE,  0 hex CODE-LINE,  CELL hex CODE-LINE,
    RDI CRASH-RC IMM,  NR-EXIT-GROUP SYS, ;
 
+\ INT3 replaces only the entry's first byte. R14 holds its breakpoint slot;
+\ restore the saved byte or replant INT3 between target-page W^X flips. The
+\ initial DEBUG patch32 invalidated native evidence before publishing the trap;
+\ restoration and rearming cannot create new evidence.
+: BP-BYTE, ( bool -- )
+   R8 R14 MEM-AT ASM-SINK ENC-MOV-RM
+   if R9 R14 CELL MEM-OFF ASM-SINK ENC-MOV-RM else R9 $CC IMM, then
+   RDI R8 ASM-SINK ENC-MOV-RR
+   RDI STACK-ABI:PAGE-BYTES negate >IMM32 ASM-SINK ENC-AND-RI32
+   RSI STACK-ABI:PAGE-BYTES IMM,  RDX PROT-RW IMM,  NR-MPROTECT SYS,
+   R9 R64>N >R8 R8 MEM-AT ASM-SINK ENC-MOV8-MR
+   RDX PROT-RX IMM,  NR-MPROTECT SYS, ;
+
+\ Write a diagnostic's label to stderr. Its bytes follow the write, out of
+\ the execution path, just as the crash header does.
+: BP-TEXT, ( ptr u8 n -- )
+   {: text:ptr len:n :}
+   X64CODE:LBL X64CODE:LBL {: msg:label next:label :}
+   RDI STDERR IMM,  RSI msg MOVABS,  RDX len IMM,  NR-WRITE SYS,
+   next JMP,
+   msg X64CODE:LBL, text len TEXT-BYTES,
+   next X64CODE:LBL, ;
+
+\ The interrupted DATA is RBP and its cursor is saved R12. Admit that cursor
+\ before reading either the top or the full stack. R12 keeps the admitted end,
+\ R13 walks the stack and then the watch table; the hex printer preserves both.
+: BP-DISPLAY, ( label -- )
+   {: hex:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+      {: bad:label empty:label stack:label watches:label :}
+   X64CODE:LBL X64CODE:LBL {: watch:label done:label :}
+   R13 RBP STACK-ABI:BASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX RBP STACK-ABI:CAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R12 UC-REG R12 UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+   R13 RDX R12 0 bad X64RT:CHECK-CURSOR
+   R12 R13 ASM-SINK ENC-ADD-RR
+   S\" habu-bp:\n" BP-TEXT,
+   RAX R15 ASM-SINK ENC-MOV-RR  hex VALUE-ORDER PRINT,
+   R12 R13 ASM-SINK ENC-CMP-RR  C-E empty JCC,
+   RAX R12 CELL negate MEM-OFF ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
+   empty X64CODE:LBL,
+   S\" habu-bp-lr:\n" BP-TEXT,
+   RAX UC-REG RSP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
+   S\" habu-bp-stack:\n" BP-TEXT,
+   stack X64CODE:LBL,
+   R13 R12 ASM-SINK ENC-CMP-RR  C-AE watches JCC,
+   RAX R13 MEM-AT ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
+   R13 CELL >IMM8 ASM-SINK ENC-ADD-RI8  stack JMP,
+   watches X64CODE:LBL,
+   R12 RBP BPWN-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R12 R12 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   R13 RBP BPWBASE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R13 R13 ASM-SINK ENC-TEST-RR  C-E done JCC,
+   S\" habu-bp-watch:\n" BP-TEXT,
+   watch X64CODE:LBL,
+   RAX R13 MEM-AT ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
+   RAX R13 MEM-AT ASM-SINK ENC-MOV-RM
+   RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
+   R13 CELL >IMM8 ASM-SINK ENC-ADD-RI8
+   R12 ASM-SINK ENC-DEC  C-NE watch JCC,
+   done JMP,
+   bad X64CODE:LBL, X64RT:EXIT-BOUNDS
+   done X64CODE:LBL, ;
+
+\ A persistent hit resumes on the original instruction with TF set. The next
+\ TRAP_TRACE arrives before the following instruction executes, even when the
+\ stepped instruction calls, jumps or returns. Consume only our pending step;
+\ other traps retain the crash path. SIGTRAP stays blocked throughout this
+\ handler and sigreturn restores the interrupted signal mask.
+: BP-TRAPS, ( label label -- )
+   {: dump:label hex:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+      {: done:label region:label owned:label scan:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+      {: next:label hit:label quiet:label once:label :}
+   X64CODE:LBL {: find:label :}
+   SIG-REG SIGTRAP >IMM8 ASM-SINK ENC-CMP-RI8  C-NE done JCC,
+   R9 UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM
+   R9 TEXT-REG ASM-SINK ENC-CMP-RR  C-B region JCC,
+   RAX X64LAYOUT:DATA-VA VA>N IMM,
+   RAX RAX CODE-END-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R9 RAX ASM-SINK ENC-CMP-RR  C-B owned JCC,
+   region X64CODE:LBL,
+   RAX REGION-REG DICT-SIZE MEM-OFF ASM-SINK ENC-LEA
+   R9 RAX ASM-SINK ENC-CMP-RR  C-B dump JCC,
+   RAX REGION-REG REGION MEM-OFF ASM-SINK ENC-LEA
+   R9 RAX ASM-SINK ENC-CMP-RR  C-AE dump JCC,
+   owned X64CODE:LBL,
+   RBP UC-REG RBP UC-GREG MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX R64>N >R32 INFO-REG 8 MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX 2 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE scan JCC,
+   R8 RBP BPA-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   R8 R8 ASM-SINK ENC-TEST-RR  C-E dump JCC,
+   RAX UC-REG UC-FLAGS MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX $100 >IMM32 ASM-SINK ENC-TEST-RI32  C-E dump JCC,
+   R14 R8 ASM-SINK ENC-MOV-RR
+   RAX $100 invert >IMM32 ASM-SINK ENC-AND-RI32
+   RAX UC-REG UC-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX ZERO-REG,  RAX RBP BPA-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   false BP-BYTE,
+   ASM-SINK ENC-RET
+   scan X64CODE:LBL,
+   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-E find JCC,
+   RAX 128 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE dump JCC,
+   find X64CODE:LBL,
+   R9 ASM-SINK ENC-DEC
+   R8 RBP BPTAB-OFF MEM-OFF ASM-SINK ENC-LEA
+   RCX 8 IMM,
+   next X64CODE:LBL,
+   RAX R8 MEM-AT ASM-SINK ENC-MOV-RM
+   RAX R9 ASM-SINK ENC-CMP-RR  C-E hit JCC,
+   R8 32 >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX ASM-SINK ENC-DEC  C-NE next JCC,
+   dump JMP,
+   hit X64CODE:LBL,
+   \ An existing TF belongs to its original owner, not this debugger.
+   RAX UC-REG UC-FLAGS MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX $100 >IMM32 ASM-SINK ENC-TEST-RI32  C-NE dump JCC,
+   R14 R8 ASM-SINK ENC-MOV-RR  R15 R9 ASM-SINK ENC-MOV-RR
+   RAX R14 16 MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX ASM-SINK ENC-INC  RAX R14 16 MEM-OFF ASM-SINK ENC-MOV-MR
+   RDX R14 24 MEM-OFF ASM-SINK ENC-MOV-RM
+   RDX 1 >IMM8 ASM-SINK ENC-SHR-RI8
+   RAX RDX ASM-SINK ENC-CMP-RR  C-BE quiet JCC,
+   hex BP-DISPLAY,
+   quiet X64CODE:LBL,
+   true BP-BYTE,
+   R15 UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX R14 24 MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX 1 >IMM32 ASM-SINK ENC-TEST-RI32  C-E once JCC,
+   R14 RBP BPA-CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   RAX UC-REG UC-FLAGS MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX $100 >IMM32 ASM-SINK ENC-OR-RI32
+   RAX UC-REG UC-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET
+   once X64CODE:LBL,
+   RAX ZERO-REG,  RAX R14 MEM-AT ASM-SINK ENC-MOV-MR
+   ASM-SINK ENC-RET
+   done X64CODE:LBL, ;
+
 \ Bind the handler at the label, then the printer and the header it writes,
 \ where no control falls in.
 : CRASH-HANDLER, ( label -- ) {: at:label :}
@@ -794,6 +937,7 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    UC-REG RDX ASM-SINK ENC-MOV-RR
    TEXT-REG TEXT-BASE,
    REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
+   dump hex BP-TRAPS,
    dump GUARDS,
    dump X64CODE:LBL,
    head hex DUMP,

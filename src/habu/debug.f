@@ -1,8 +1,8 @@
-\ debug.f — breakpoints on compiled words. Plant a BRK #0 at a word's entry;
+\ debug.f — breakpoints on compiled words. Plant a native trap at a word's entry;
 \ hitting it prints habu-bp: + pc + the stack top, then either resumes (one-shot,
 \ removed) or re-arms (persistent) — the engine's SIGTRAP handler does the work.
 \   ' WORD BP+      one-shot   (fires once, then gone)
-\   ' WORD BP*      persistent (fires every call; emulates the entry prologue)
+\   ' WORD BP*      persistent (fires every call, then resumes the target)
 \   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
 \ Up to 8 at once. The product bakes it, the stepper and the shared watch cells
@@ -58,7 +58,13 @@ private
 : BP-NULL ( -- ptr u8 )
    NULL-PTR ;
 
-: BP-PATCH32 ( n ptr u8 -- ) patch32 ;
+: BP-PATCH32 ( n ptr u8 -- )
+   {: instr addr:ptr :}
+   HB-TARGET-LINUX-X86-64? if
+      \ INT3 replaces one byte. Keep the neighboring instruction bytes intact.
+      addr W32@ $FFFFFF00 and instr $FF and or addr patch32 exit
+   then
+   instr addr patch32 ;
 
 \ The instruction word at an xt: CODE-BYTES:AT is the one bounded view of a code
 \ address, and it dies on one outside the code region.
@@ -82,7 +88,7 @@ private
    xt FIND 0 < 0= IF exit THEN                \ already set
    FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
    xt ctrl rot BP-SET-SLOT
-   BRK0 xt BP-PATCH32 ;
+   HB-TARGET-LINUX-X86-64? if $CC else BRK0 then xt BP-PATCH32 ;
 
 : BPADD ( n n -- ) {: xt ctrl :}
    \ patch32 runs in engine text while opening the target's pages RW. An
