@@ -8,7 +8,7 @@ closed-at: "2026-09-16T14:34:49.466534+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Native fixture paths are still passed as unquoted shell text; keep the complete-argument fix with the recovery fixtures."
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own test/nf.fs HB_TMP paths/process invocation. Quote/escape complete shell arguments including redirections and size encoded combined command, or reuse structured argv if available. Space path fails today;97-byte root fits individual128 but exceeds command256. Preserve per-run isolation. Verify spaces/metacharacters/quotes, long valid root, clear overflow refusal and concurrent real gforth/native fixtures. No new runner framework.
 

@@ -10,7 +10,7 @@ blocks:
   - habu-keep-a-row-f2c4f3d4
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own test/type-ctor-suite.f namespace fixture; touch generated constructor publication owner only if this real behavior fails. Current zpl test pins inconsistent body/effect without publication/execution. Publish checked constructor in package, execute/observe payload, add other-package same-tail type/constructor and wrong-type rejection. Coverage gap, not established runtime defect. Verify type-ctor/namespace/effect suites; no new language construct or weakened effect.
 

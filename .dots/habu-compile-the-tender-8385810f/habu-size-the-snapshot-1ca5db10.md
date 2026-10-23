@@ -10,7 +10,7 @@ blocks:
   - habu-build-engine-layout-abdd0188
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Claim: Cedar.
+Claim: Cedar.
 
 Own layout.f XTCELL/AOT capacity, habu2.f capacity refusal and fixture only. Rebase reviewed pending0d78b97f; it is not integrated. Measure runner-inclusive closure/headroom before65536 bound; old19088 comment is stale. Verify40000 declarations exceed old32768, exact capacity refusal count/cap/newline, first-generation actual versus advertised limit and complete Tender build. Corrected native layout is prerequisite; ancient seed refresh is not. Registrar index follows this layout contract.
 

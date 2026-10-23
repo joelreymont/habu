@@ -535,7 +535,7 @@ intended surface through `habu-declare-the-surface-89e9aed0`.
 Capture also conservatively retains 33,696 bytes outside indexed bodies;
 their removability is unproved.
 
-`docs/engine-size.md` and `tools/image-size-lib.f` now distinguish the native
+`tools/image-size-lib.f` now distinguishes the native
 closure walk from the historical Linux samples. Old tier-1-growth examples
 must not override current measurements.
 
@@ -563,8 +563,7 @@ landing: mask and shift immediates f082dbf3, shifted index and msub c57b5f1b,
 callee clobber summaries db11d4c1, persisted summaries 890d67ea, DATA literal
 pools d65bdc94, (RETURNED) 2ddb20af, colon inlining 2ca2438f and the
 proven span-check slice of 22af10b0. (STORE-CELLS) 458c9100 was closed below
-its break-even. `docs/engine-size.md`, "ARM64 code-generation changes that
-were removed", carries the measurement for each.
+its break-even.
 
 Joel's decisions (2026-09-30): no no-check build mode; HR1, the private
 register ABI, stays parked. Confirmed drops: inline guarded scalar stores (12

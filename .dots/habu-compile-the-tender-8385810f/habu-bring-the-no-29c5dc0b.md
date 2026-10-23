@@ -13,7 +13,7 @@ blocks:
   - habu-pass-native-fixture-deafcd5a
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own final recovery integration/docs and mirror alignment not owned by prefix/code-cell primitive leaves. Run the complete HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh in an isolated checkout without installed binary dependency, after retiring the pre-record bridge. CHECK_ONLY stops at hb-stdin before the final native refresh and is only a focused intermediate check. Require final native refresh, product boot/provenance and pre-trust-defer. Do not duplicate primitive/table patches. Remaining failure needs named reducer, not closure because failure moved. Keep off current-native selfbuild critical path and replace stale LAOTNREC diagnosis.
 

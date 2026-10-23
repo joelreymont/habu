@@ -10,7 +10,7 @@ blocks:
   - habu-build-engine-layout-abdd0188
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: Cedar, `.jj-ws/cedar-closure-identity`.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: Cedar, `.jj-ws/cedar-closure-identity`.
 
 Own app-image.f first-action selection, hb-build-lib.f/build-fixpoint.f generated build entries and image fixture routing; consume native-build API without competing driver edits. Current APP-IMAGE tail selection leaves helper JIT spans. Hold executable-build mode through require/include/evaluate/immediates/generated words. Preserve ordinary --load/REPL JIT. Verify documented direct APP-IMAGE, stripped/REPL hb-build, native-build and child captures with JIT compiler entry forbidden before dependencies. Earlier retained JIT must refuse; fixture-only tier prelude cannot hide public API failure. No interpreter or replay workaround.
 

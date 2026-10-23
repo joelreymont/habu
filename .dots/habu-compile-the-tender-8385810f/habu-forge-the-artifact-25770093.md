@@ -11,7 +11,7 @@ blocks:
   - habu-wire-the-checker-eec26aea
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own aot-chain-capture-suite.f negatives and artifact header documentation;258c0288 owns correct rows/MERGE, eec26aea payload. Mutate actual artifact for truncated payload, malformed section table, changed chain source, version and producer key. Assert existing named error/child exit. Begin with independent correct rows/payload, not write-read-write equality. Correct nonexistent-test claims. No generalized fuzz framework.
 

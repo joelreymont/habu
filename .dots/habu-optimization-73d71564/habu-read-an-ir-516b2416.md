@@ -12,7 +12,7 @@ blocks:
   - habu-make-spill-rewrite-ca192310
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Claim: Cedar reader lane; root owns independent
+Claim: Cedar reader lane; root owns independent
 review and integrated full gate. Existing per-field checked readers remain intact.
 
 Measured on actual append-B (`1d7b2b71`, SHA

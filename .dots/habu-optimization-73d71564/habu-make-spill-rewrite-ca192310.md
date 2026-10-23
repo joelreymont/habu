@@ -10,7 +10,7 @@ blocks:
   - habu-walk-the-dynamic-e03edf85
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: Cedar, `.jj-ws/cedar-combine-plan`.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: Cedar, `.jj-ws/cedar-combine-plan`.
 
 Own native/combine.f/spill.f and focused tests/chain-scale cases. Rebase172fc17d on current lifecycle; duplicate REWRITES/FUSIONS versus REWRITE planning is defect, module already rebuilds at most once. Seal plan for exact input, consume once, invalidate release/refusal, preserve fold precedence/use/order/immediate checks. Keep four spill maps/descending work already landed. Count F-NEED visits on all-AOT baseline; if material use once-enqueued predecessor reachability for Boolean fixed point. Preserve allocation/rewrite fixed point and validator. Test stale/no-plan, no-change identity, real/call/quotation/control/KEEP spills and negatives. Require established slopes<=1.1; load12 reading is invalid.
 

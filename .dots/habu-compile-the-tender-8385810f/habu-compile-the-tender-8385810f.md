@@ -40,7 +40,7 @@ blocks:
   - habu-deliver-standalone-native-a86d4699
 ---
 
-Plan: [PLAN.md](../../PLAN.md) "Required result". Claim: unassigned.
+Claim: unassigned.
 
 Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Etch/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
 

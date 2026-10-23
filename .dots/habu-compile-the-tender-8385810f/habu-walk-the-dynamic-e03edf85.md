@@ -8,7 +8,7 @@ closed-at: "2026-09-16T14:34:48.803821+03:00"
 close-reason: "done: The dynamic-buffer registry owns transient storage across capture and snapshot, with the lifecycle and its tests in the tree [src/core/dynamic-storage.f plus test/dynamic-buffer-registry.f, -capture.f, -tasks.f; docs/bootstrap.md documents RESERVE/RELEASE and the capture/persist release points]"
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Claim: Astra implementation complete in `cedar-transient`; Cedar independently reviewed and ran capture/concurrency regressions; integrated gate pending.
+Claim: Astra implementation complete in `cedar-transient`; Cedar independently reviewed and ran capture/concurrency regressions; integrated gate pending.
 
 Own dynamic-storage.f, layout-buffer.f DBUF control-record generation, snap.f/snap-lib.f lifecycle entry and aot-capture.f dynamic-release hooks; exclude capture interface/signatures. Register first live allocation and unregister release; reserve after restore registers again. Use private handle/generation in control record for bounded lookup/removal, reserve registry capacity before allocation publication and update handles on removal. Writer buffers survive outside captured value until write. Remove redundant per-pass lists only after coverage. Verify precompiled reserve after first/second restore, dirty buffer absent from manual lists, failure/empty/double cleanup, registry/snapshot/app-image tests.
 
