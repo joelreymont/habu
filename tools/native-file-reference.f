@@ -661,6 +661,14 @@ EXPORT REGISTER-IMPL
    -1 ord REC-CON-OFF ROW! 0 ord REC-CON-U ROW!
    0 ord REC-TOKEN ROW! 0 ord REC-PROJECTED ROW! ;
 
+\ A dictionary slot is reused only after a cut, and DICT-CUT has already
+\ cleared the row of every record a cut removes. A bound row whose occurrence
+\ went stale is therefore the same declaration re-stamped in place: a does>
+\ reissues the occurrence of the record it patches and publishes it again. It
+\ keeps its key and name occurrence and takes the live occurrence. A row past
+\ the count is a record a cut removed, reported or not: it is cleared. A row
+\ with no occurrence was declared but never published, and stays only for
+\ the pending definition or a projected record.
 : RETIRE-REUSED ( n -- ) {: ord:n :}
    ord REC-OFF ROW@ 0 < if exit then
    ord REC-TOKEN ROW@ {: token:n :}
@@ -669,7 +677,8 @@ EXPORT REGISTER-IMPL
       ord CLEAR-RECORD exit
    then
    ord token LIVE-RECORD? if drop exit then drop
-   ord CLEAR-RECORD ;
+   ord ndict@ >= if ord CLEAR-RECORD exit then
+   ord BIND-LIVE ;
 
 : BASE-KEY$ ( n -- ptr u8 n ) {: ord:n :}
    CURRENT-INSTANCE @ {: instance:n :}
@@ -765,6 +774,13 @@ PENDING-CLEAR
    rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
       rec XREF-START rec XREF-CODE-BYTES ord REGISTER-IMPL-RANGE
    then ;
+
+\ The kernel's capture cut, noticed before the count drops to kept: the
+\ records from kept to the count go, and a later record in one of their slots
+\ is another declaration, which binds its own key. Rows past the count, the
+\ pending definition's and projected ones, are no record the cut removes.
+: DICT-CUT ( n -- ) {: kept:n :}
+   ndict@ REC-N @ min kept ?do i CLEAR-RECORD loop ;
 
 private
 

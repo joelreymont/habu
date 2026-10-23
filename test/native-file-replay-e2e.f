@@ -464,6 +464,24 @@ variable REMOVED
    REPORT
    OUT$ s" opens=48" CONTAINS? TTRUE ;
 
+\ PTR-VARIABLE's does> re-stamps the record it created, which reissues the
+\ record's occurrence and publishes it again. The cold object must name the slot
+\ by the key a warm install, which publishes it once, gives it.
+: PTR-RESTAMP-CASE ( -- )
+   s" a FILE reading a does> record it defines reuses its stored key" T-LABEL
+   s" cache-restamp" AT MAKE-DIR
+   s" restamp.f"
+      S\" package REVIEW-RESTAMP\npublic\nPTR-VARIABLE SLOT\n: READ ( -- ptr u8 ) SLOT @ ;\n;package\n" PUT
+   S\" s\" restamp\" drop REVIEW-RESTAMP:SLOT !\ns\" restamp=\" type REVIEW-RESTAMP:READ 7 type cr\n"
+      {: tail:ptr tailu:n :}
+   s" " s" restamp.f" s" cache-restamp" tail tailu SESSION-PROBE
+   REPORT
+   OUT$ s" restamp=restamp" CONTAINS? TTRUE
+   s" " s" restamp.f" s" cache-restamp" tail tailu SESSION-PROBE
+   REUSED
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUT$ s" restamp=restamp" CONTAINS? TTRUE ;
+
 : SESSION-CASES ( -- )
    SESSION-CLOSE-CASE FOREIGN-CASE ROOT-REGISTRY-CASE
    SYMBOL-CASE EVICTED-CHILD-CASE
@@ -471,7 +489,7 @@ variable REMOVED
    DEFER-EFFECT-CASE DEFER-RETIRED-CASE
    EMPTY-CHILD-CASE TRAILING-COLON-CASE
    QUALIFIED-GLOBAL-CASE NESTED-SCOPE-CASE
-   CHILD-CLOSES-PACKAGE-CASE CHILD-OPENS-PACKAGE-CASE ;
+   CHILD-CLOSES-PACKAGE-CASE CHILD-OPENS-PACKAGE-CASE PTR-RESTAMP-CASE ;
 
 public
 : MAIN ( -- )

@@ -365,9 +365,14 @@ variable PENDING-KEY-U
    ['] LIVE-ORIGIN NUNIT-DEP:USE-ORIGIN-SYM
    ['] LIVE-FIXED NFILE-REF:USE-FIXED-READ ;
 
+\ ON-PUBLISHED keeps a re-published row's key because every cut clears the rows
+\ it removes (CUT-NOTICE). A kernel without the cut cell lowers the count
+\ unseen, so the observer stays unbound; every file object refuses then
+\ (NUNIT-OBJECT FILE-BEGIN).
 : BIND-OWNER ( -- )
    OWNER-READY? 0= if exit then
    BIND-OWNER-FACTS
+   CUT-CELL @ NULL-PTR = if exit then
    ['] NFILE-REF:ON-PUBLISHED PUB-USE ;
 
 : CLEAR-PUBLICATION ( -- )
@@ -845,7 +850,7 @@ private
 
 \ The kernel's capture cut notice, to count.
 : CUT-NOTICE ( n -- )
-   dup RETIRE-CUT NUNIT-OBJECT:FILE-CUT ;
+   dup RETIRE-CUT dup NUNIT-OBJECT:FILE-CUT NFILE-REF:DICT-CUT ;
 
 \ The open file objects and the bound setters follow every dictionary cut
 \ through the running kernel's one capture cut cell, held for the session. A
