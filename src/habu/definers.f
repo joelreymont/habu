@@ -362,8 +362,8 @@ private
 \ own. A throw out of the buffer, these refusals included, puts the entry
 \ record back in PEND-CELL (OUTER:INTERPRET): the buffer's own definition is
 \ abandoned, so no later `;` publishes it, and an outer one stays pending, as
-\ habu2.f EM-EVAL-THROW-RECOVER leaves them. Unlike the engine's, this loop
-\ puts no CP, NDICT or DP back (habu-roll-back-failed-64bf2ba5).
+\ habu2.f EM-EVAL-THROW-RECOVER leaves them. The evaluate frame restores the
+\ cursors owned by an escaped buffer (interpret.f FRAME-ROLLBACK-CODE).
 variable ENTRY-PEND
 
 \ A `;` that would close the record pending as the buffer began, one an outer

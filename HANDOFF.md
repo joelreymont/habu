@@ -36,8 +36,8 @@ Done only when command output shows all of:
   x86-64 integration stack on master") under `habu-finish-the-linux-57cb3952`
   on master (see Next, step 1). Each child names its lane
   workspace, change ids, what is proven, what is open and its acceptance.
-- Unlanded lanes are pushed as branches `intel-bodyabi`
-  and `intel-pstore`. Each tip is the lane's last commit. Their bases are
+- The remaining original lane is pushed as `intel-pstore`. Its tip is the
+  lane's last commit. The original lane bases are
   older points of this stack: land one with
   `jj rebase -s <first lane commit> -d <stack tip>`. The WIP lanes carry
   their `lane-handoff*.md` files; drop those files from the commit that
@@ -57,13 +57,13 @@ Done only when command output shows all of:
 
 ## Next on pulsar
 
-Active lanes use `.jj-ws.noindex/pulsar-intel-{images,bodyabi,pstore,throws,sessions}`;
-the dots workspace is `pulsar-intel-dots` on master. The initial image-build
-failure is now reduced: the bundle path reaches `E-LAYOUT-BOUNDS` (7122)
-because it uses ARM-oriented names/writer steps on x86; outer rollback masks
-that with `E-LIVE` (7179). Reuse the ordinary x86 placement/writer path.
-No lane is complete until its proof and independent review finish. Shared
-changes retain an open Mac ARM check in their dot.
+Active lanes use `.jj-ws.noindex/pulsar-intel-{images,pstore,sessions,image-state,app-extent}`;
+the dots workspace is `pulsar-intel-dots` on master. The unchanged image
+producer now exits 0, producing all three executable/map pairs and the merged
+seed image. Its fix includes x86 placement/writer ordering, publication across
+compiler replacement, boot contract seeding/restoration, native window capture
+and the structural shadow-row bound. Final delta review and convergence remain
+open before integration. Shared changes retain an open Mac ARM check.
 
 Landed on intel: `ruypmwwq` / `e65e0176`, "Retire x86 profiler spans on trim
 and reclaim". Independent adversarial review found no defects; native build,
@@ -78,6 +78,30 @@ combined profiler/breakpoint engine also passes `prof-rewind`, `prof-index`
 and `gate-debug` in one process. No master tests changed. Shared DEBUG's
 Mac ARM check remains OPEN in `habu-implement-x86-native-261ee8bb`; its
 pulsar workspace is retired.
+
+Landed on intel: `kwttvzym` / `d0024147`, "Restore evaluate cursors with
+live tasks". Independent adversarial review found no defects; native build,
+generation 5/4 byte identity and all 220 `outer-interpret` cases pass. The
+combined profiler/debug/recovery engine passes all four focused files in one
+process. Public mutator guards remain intact; no tests changed. Its five
+shared source files still need the Mac ARM check in
+`habu-recover-x86-throws-b66ec686`.
+
+Landed on intel: `rvmtmsrk` / `140a8c27`, "Enable x86 definition cache body
+reuse". Independent adversarial review found no defects. The lane proves
+cold 0 hits/0 skips/7 compiled, warm 7 hits/7 skips/0 compiled, native build
+and generation 5/4 byte identity. The combined engine passes forms-zero,
+state, admission, AOT cache, provider refusal, DATA claims and x86 seam in
+one process. Mechanical IR/harness fixture updates and x86 unit-format cases
+are listed in `habu-finish-the-x86-5a565370`; its Mac ARM check remains OPEN.
+Remaining auto byte differences belong to image-state, session close to
+sessions, and missing seeded contracts to the image boot fix.
+
+Joel decisions are pending for whitebox classification of FMT/byte-buffer
+tests and a tier-1 PTY diagnostic expectation. No master assertions have been
+changed for these requests. The image-state lane removes measured transient
+DATA differences from seven native-file-auto image comparisons; it preserves
+all original comparisons.
 
 1. The dots live on master, not on this branch. From the repo root:
    `jj workspace add .jj-ws.noindex/<name>-dots -r master@origin`, then
