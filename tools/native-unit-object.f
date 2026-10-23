@@ -11,6 +11,7 @@ require src/core/type-family.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/code-span.f
+require src/habu/sites.f
 require src/habu/address-carrier.f
 require src/habu/address-cells.f
 require src/habu/aot-data-cell.f
@@ -18,7 +19,6 @@ require src/habu/aot-arm.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
-require src/compiler/native/compiler.f
 require src/compiler/workspace.f
 require tools/native-unit-capture.f
 require tools/native-file-reference.f
@@ -59,8 +59,10 @@ private
 \ then its DATA base at capture. Slot 5 holds the checker state the file
 \ added, one slice before each child load and one at its end: the slice
 \ count, the count of slot 13 references the slices name, those references,
-\ then each slice's length and bytes padded to a cell. A definition's own
-\ dependency slot stays out: the file's rows cover it.
+\ then each slice's length and bytes padded to a cell. Slot 17 holds the body
+\ of each constant record row, in row order: its recorded code length, then
+\ the code bytes its load emitted. A definition's own dependency slot stays
+\ out: the file's rows cover it.
 42031 constant DEF-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
@@ -68,8 +70,9 @@ private
 80 constant SPAN-END
 88 constant INDEX-BYTES
 \ A record row: kind, flags, name offset and length in slot 3, wordlist
-\ reference, then by kind the value, DATA reference, index row or public
-\ wordlist reference, and a package's private wordlist reference.
+\ reference, then by kind the body's offset in slot 17, DATA reference, index
+\ row or public wordlist reference, and a package's private wordlist
+\ reference.
 56 constant RECORD-BYTES
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
 \ records, DATA bytes, requires, wordlists, 0. LOAD: kind, load kind, source
@@ -87,7 +90,8 @@ private
 1 constant SLOT-DATA
 \ An update row: the changed byte's reference and its value at the close.
 16 constant UPDATE-BYTES
-\ Record row kinds; 1 to 3 are the fixed kinds NCOMP:COMPILE-FIXED takes.
+\ Record row kinds; 1 to 3 are the fixed kinds: a constant, an address, a
+\ deferred word.
 0 constant RK-BARE
 1 constant RK-VAL
 2 constant RK-ADDR
@@ -163,6 +167,11 @@ DYNAMIC-BUFFER FILE-ORDS n
 \ The closing file's slot literal rows, and each row's body address.
 DYNAMIC-BUFFER FILE-LITS u8
 DYNAMIC-BUFFER FILE-LIT-ADDRS n
+\ The closing file's constant bodies, slot 17, and the count of relocation
+\ sites in the body being stored.
+DYNAMIC-BUFFER FILE-VALS u8
+variable VALS-U
+variable VAL-SITES
 \ The open files' checker slices, each its length, then its bytes padded to
 \ a cell, and the references they name: two cells per entry, a record's
 \ ordinal and -1, or a DATA address and its byte count.
@@ -269,6 +278,8 @@ variable OPEN-KINDS
 \ The file's wordlists its package rows own, in the order they made them, -1
 \ once a row owns others.
 variable OPEN-OWNED
+\ The end of the slot 17 entries the open FILE object's rows have framed.
+variable OPEN-VALS
 \ The object being installed and its key, the file's first record, and the
 \ next definition index row and its payload's offset in the definitions slot.
 PTR-VARIABLE OBJ-BYTES
@@ -390,6 +401,9 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    FO-NAMES FO @ {: first:n :}
    NAMES-U @ first = if NULL-PTR 0 exit then
    first FILE-NAMES NAMES-U @ first - ;
+: VALS$ ( -- ptr u8 n )
+   VALS-U @ 0= if NULL-PTR 0 exit then
+   0 FILE-VALS VALS-U @ ;
 : OUT$ ( n n -- ptr u8 n )
    {: first:n last:n :}
    last first = if NULL-PTR 0 exit then
@@ -928,13 +942,14 @@ public
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
    0 INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
    NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
-   0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
+   0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT ! 0 VALS-U ! 0 OPEN-VALS !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
    0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
    SITE-OWNS-RELEASE PIN-OWNS-RELEASE
-   FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE FILE-CHECK-RELEASE FILE-CKORD-RELEASE
+   FILE-LITS-RELEASE FILE-LIT-ADDRS-RELEASE FILE-VALS-RELEASE
+   FILE-CHECK-RELEASE FILE-CKORD-RELEASE
    FILE-DEFS-RELEASE FILE-INDEX-RELEASE FILE-INPUTS-RELEASE
    FILE-WHY-RELEASE FILE-FRAMES-RELEASE FILE-ORDS-RELEASE
    FILE-EVENTS-RELEASE FILE-NAMES-RELEASE FILE-OUT-RELEASE
@@ -1332,7 +1347,7 @@ variable DEF-HELD-SIZE
 : DEF-PACK-SECTIONS ( ptr u8 n -- )
    {: deps:ptr depsu:n :}
    NUNIT-FILE:RESET-KEEP
-   17 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
+   NUNIT-FILE:SECTION-COUNT 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
    0 0 DEF-CODE DEF-CODE-U @ NUNIT-FILE:SECTION!
    1 DEF-META DEF-META-BYTES NUNIT-FILE:SECTION!
    DEF-CALL-U @ 0 > if
@@ -1595,7 +1610,7 @@ public
    row 1+ FILE-ORDS-RESERVE
    ord row FILE-ORDS !
    ord FO-FIRST FO @ - dup 0 < if BAD then INDEX-N
-   17 0 ?do
+   NUNIT-FILE:SECTION-COUNT 0 ?do
       i NUNIT-FILE:SECTION$ {: a:ptr u:n :}
       DEF-SLOTS i rshift 1 and 0<> if
          a u DEFS+ u INDEX-N
@@ -1695,6 +1710,27 @@ private
    va DATA-REF {: ref:n :}
    kind ref 0 ref 0<> ;
 
+\ Code memory read as bytes, the one address a stored body is copied from.
+CAST: N>U8 ( n -- ptr u8 )
+\ Store rec's constant body in FILE-VALS as one slot 17 entry: its recorded
+\ length, then the code bytes its load emitted, copied back on a hit. The
+\ body is position independent unless it holds a relocation site, which a
+\ byte copy cannot carry: then -1, else the entry's offset.
+: VAL-SITE ( n n -- ) 2drop 1 VAL-SITES +! ;
+: VAL-ENTRY ( ptr n -- n )
+   {: rec:ptr :}
+   rec XREF-START {: start:n :}
+   rec XREF-CODE-BYTES {: size:n :}
+   0 VAL-SITES !
+   start dbase@ - size [: VAL-SITE ;] SITES:EACH-IN-SPAN
+   VAL-SITES @ 0<> if -1 exit then
+   VALS-U @ {: at:n :}
+   at 8 + size + FILE-VALS-RESERVE
+   rec XREF-RAW-LEN at FILE-VALS LE:U64!
+   start N>U8 at 8 + FILE-VALS size BYTE-COPY
+   at 8 + size + VALS-U !
+   at ;
+
 \ Record ord's row kind, value and private wordlist reference, and whether
 \ they encode. A does> clause or instance refuses the file.
 : RECORD-SHAPE ( n -- n n n bool )
@@ -1709,7 +1745,9 @@ private
    rec XREF-FLAGS DKIND:MASK and DKIND:CAST = if RK-BARE 0 0 true exit then
    ord NFILE-REF:FIXED@ {: fkind:n fvalue:n known:bool :}
    known fkind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = and if
-      RK-VAL fvalue 0 true exit
+      rec VAL-ENTRY {: at:n :}
+      at 0 < if s" val-sites" rec REFUSE-WORD RK-BARE 0 0 false exit then
+      RK-VAL at 0 true exit
    then
    known fkind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = and if
       RK-ADDR fvalue ADDR-SHAPE exit
@@ -2387,6 +2425,7 @@ public
    NFILE-REF:BEGIN-FILE-REFS
    0 OUT-U !
    FO-INDEX FO @ INDEX-BYTES / ROW-AT !
+   0 VALS-U !
    0 RECS-AT ! RECORDS-OUT
    OUT-U @ DATA-AT ! DATA-OUT
    OUT-U @ REQS-AT ! REQS-OUT
@@ -2413,7 +2452,7 @@ public
    {: key:ptr keyu:n deps:ptr depsu:n :}
    FILE-REFUSED? if BAD then
    NUNIT-FILE:RESET-KEEP
-   17 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
+   NUNIT-FILE:SECTION-COUNT 0 ?do i NULL-PTR 0 NUNIT-FILE:SECTION! loop
    0 DEFS$ NUNIT-FILE:SECTION!
    1 RECS-AT @ DATA-AT @ OUT$ NUNIT-FILE:SECTION!
    2 INDEX$ NUNIT-FILE:SECTION!
@@ -2431,6 +2470,7 @@ public
    13 0 0 NFILE-REF:ENCODE NUNIT-FILE:SECTION!
    DEPS-SLOT deps depsu NUNIT-FILE:SECTION!
    16 NFILE-SCOPE:SCOPE-INPUT$ NUNIT-FILE:SECTION!
+   17 VALS$ NUNIT-FILE:SECTION!
    NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:PACK ;
 
 private
@@ -2637,9 +2677,25 @@ private
    refs value next LOCAL-WID? refs priv next 1+ LOCAL-WID? and
    if next 2 + else -1 then OPEN-OWNED ! ;
 
+\ A constant row's slot 17 entry at offset at: it starts where the row
+\ before left off, and its recorded length is a valid code span whose
+\ bytes, whole instructions, follow within the slot. NPUB:IMPORT-PENDING
+\ refuses anything else, so an install never throws on it.
+: VAL-CK ( n -- )
+   {: at:n :}
+   17 NUNIT-FILE:SECTION$ {: vals:ptr valsu:n :}
+   at OPEN-VALS @ <> at 8 + valsu > or if BAD then
+   vals at + LE:U64@ {: recorded:n :}
+   recorded CODE-SPAN:VALID? 0= if BAD then
+   recorded CODE-SPAN:BYTES {: size:n :}
+   size 0 <= size 3 and 0<> or if BAD then
+   size valsu at - 8 - > if BAD then
+   at 8 + size + OPEN-VALS ! ;
+
 \ One record row: a known kind, its name in the names section, and the
-\ references and index row its kind names: its wordlists the file's own or
-\ earlier, an address a place in the file's DATA, its end included.
+\ references, body and index row its kind names: its wordlists the file's
+\ own or earlier, a constant's body in slot 17, an address a place in the
+\ file's DATA, its end included.
 : RECORD-CK ( ptr u8 n ptr u8 n -- )
    {: row:ptr namesu:n refs:ptr defs:n :}
    row 0 U64-AT {: kind:n :}
@@ -2658,6 +2714,7 @@ private
    then
    priv 0<> if BAD then
    refs wl NFILE-REF:WID wmax REF-ROW-CK
+   kind RK-VAL = if value VAL-CK exit then
    kind RK-ADDR = kind RK-DEFER = or if
       refs value NFILE-REF:DATA OPEN-DATA @ REF-ROW-CK exit
    then
@@ -2782,13 +2839,14 @@ private
    {: defs:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
-   0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
+   0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED ! 0 OPEN-VALS !
    0 OPEN-FFI !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
    12 NUNIT-FILE:SECTION$ names namesu rows EVENTS-CK
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
+   17 NUNIT-FILE:SECTION$ nip OPEN-VALS @ <> if BAD then
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
    4 NUNIT-FILE:SECTION$ PROT-CK
    8 NUNIT-FILE:SECTION$ REQUIRES-CK
@@ -2885,16 +2943,25 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    rec XREF-PKG-PUBLIC value NFILE-REF:REF>WID <> if BAD then
    rec XREF-PKG-PRIVATE priv NFILE-REF:REF>WID <> if BAD then ;
 
-\ A constant row, compiled as the engine's `constant` compiles one. It leaves
+\ A constant row at slot 17 entry at: its record, and the body its load
+\ emitted copied back through NPUB:IMPORT-PENDING. The cold AArch64 load
+\ compiles `constant` in the kernel (habu2.f C-CONSTANT, C-LIT): a MOVZ/MOVK
+\ chain, a push and a return, position independent, so the copy is that
+\ load's code; VAL-ENTRY stored no body with a relocation site, and
+\ RECORD-CK and SUPPORTED? checked what the import refuses. It leaves
 \ the definition-head scratch (BODYBUF/BODYLEN, DEF-TKA, DEF-TKL, DEF-WL) as
 \ the previous head left it. Every head rewrites them before reading; across
 \ definitions only `package`'s dictionary-full message reads DEF-TKA/DEF-TKL,
 \ and an image saved next keeps that BODYBUF prefix (snap-lib.f
 \ SND-ZERO-BODY-TAIL), which the booted image's next head rewrites unread.
 : INSTALL-VAL ( ptr u8 n n n -- )
-   {: name:ptr nameu:n wl:n value:n :}
+   {: name:ptr nameu:n wl:n at:n :}
+   17 NUNIT-FILE:SECTION$ drop at + {: entry:ptr :}
+   entry LE:U64@ {: recorded:n :}
    name nameu wl DKIND:VAL REC-OPEN
-   value NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
+   entry 8 + recorded CODE-SPAN:BYTES recorded NULL-PTR 0 NULL-PTR 0 false 0
+      s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
+      DEF-PUBLISH-XT execute drop
    REC-CLOSE ;
 
 \ View definition index row row's payload, the next in the definitions slot:
@@ -3249,6 +3316,9 @@ public
    OPEN-OWNED @ OPEN-WIDS @ <> or
       if false exit then
    FILE-CHECK-AVAILABLE? 0= if false exit then
+   OPEN-KINDS @ 1 RK-VAL lshift and 0<>
+   s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= and
+      if false exit then
    OPEN-KINDS @
       1 RK-PACKAGE lshift 1 RK-VAL lshift or 1 RK-COLON lshift or
       invert and 0= ;

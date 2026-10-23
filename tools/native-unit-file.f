@@ -1,10 +1,10 @@
-\ This object file owns only portable bytes: a header and seventeen sections
+\ This object file owns only portable bytes: a header and eighteen sections
 \ in slot order. Each caller names what its slots hold (NUNIT-OBJECT's
 \ DEFINITION and FILE objects); an unused slot is empty.
 \
-\ Version 10 header (all integers are little-endian u64): magic at 0, version at
+\ Version 12 header (all integers are little-endian u64): magic at 0, version at
 \ 8, architecture at 16, package-name length at 24, package name at 32 (64
-\ bytes), source key at 96 (64 bytes), and seventeen section lengths at 160.
+\ bytes), source key at 96 (64 bytes), and eighteen section lengths at 160.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -15,16 +15,19 @@ require src/lib/memory.f
 
 package NUNIT-FILE
 
+public
+
+18 constant SECTION-COUNT
+
 private
 
 8 constant MAGIC-BYTES
 8 constant FIELD-BYTES
 64 constant NAME-CAP
 64 constant KEY-BYTES
-17 constant SECTION-COUNT
 160 constant LENGTHS-OFF
-296 constant HEADER-BYTES
-11 constant FORMAT-VERSION
+304 constant HEADER-BYTES
+12 constant FORMAT-VERSION
 1 constant ARCH-ARM64
 
 DYNAMIC-BUFFER FILE-BUF u8
@@ -71,7 +74,7 @@ variable READY
    total size + ;
 
 : WRITE-SIZE ( -- n )
-   SECTION-MASK @ 131071 <> if BAD then
+   SECTION-MASK @ 1 SECTION-COUNT lshift 1- <> if BAD then
    HEADER-BYTES
    SECTION-COUNT 0 ?do
       i SECTION-LEN SIZE+
