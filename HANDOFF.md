@@ -36,13 +36,12 @@ Done only when command output shows all of:
   x86-64 integration stack on master") under `habu-finish-the-linux-57cb3952`
   on master (see Next, step 1). Each child names its lane
   workspace, change ids, what is proven, what is open and its acceptance.
-- Unlanded lanes are pushed as branches `intel-capreach`, `intel-proflate`,
-  `intel-gep64`, `intel-tier0`, `intel-bodyabi` and `intel-pstore`. Each tip
-  is the lane's last commit; the dots name the earlier commits in a chain
-  (capreach is three commits, starting at `zlzpkqkt`). Their bases are older
-  points of this stack: land one with
+- Unlanded lanes are pushed as branches `intel-proflate`, `intel-bodyabi`
+  and `intel-pstore`. Each tip is the lane's last commit. Their bases are
+  older points of this stack: land one with
   `jj rebase -s <first lane commit> -d <stack tip>`. The WIP lanes carry
-  their `lane-handoff*.md` files.
+  their `lane-handoff*.md` files; drop those files from the commit that
+  lands.
 - Lane recipe, designs, review/plan briefs and probe scripts are in
   `~/.cache/tmp/jerry-c/` on pulsar (`lane-recipe.md` first). The recipe was
   written for a Mac lead driving pulsar over ssh: on pulsar, edit and test in
@@ -68,14 +67,33 @@ Done only when command output shows all of:
    `/usr/lib/postgresql/18/bin`, `nohup` into a log). The last census (159
    red of 491) ran on an older stack; give each red to a child dot or to
    `habu-fix-remaining-x86-5a0c47fd`.
-3. Lanes are split by who can prove them. The Mac (jerry) owns every lane
-   with ARM work and lands it on `intel`: capreach
+3. The Mac's ARM lanes are all on `intel`: capreach
    (`habu-review-and-land-2437d9b0`), gep64 (`habu-land-the-64-1111310e`),
-   tier0 (`habu-review-and-land-d6a57b7c`), the tier-1 branches
-   (`habu-give-runtime-regression-cf20fae7`), bodyabi
-   (`habu-finish-the-x86-5a565370`) and pstore's shared allocator fix
-   (`habu-unblock-x86-inline-a7682014`). Do not edit their files; take
-   their commits by rebasing onto `intel@origin` as they land.
+   tier0 (`habu-review-and-land-d6a57b7c`), the four tier-1 branch commits
+   of runtime-regression-test.f (`habu-give-runtime-regression-cf20fae7`)
+   and pstore's shared allocator fix ("Restrict fixed-register read
+   exemptions", `habu-unblock-x86-inline-a7682014`). Two lanes move to
+   pulsar, because what is left in them is x86 work that only pulsar can
+   prove:
+   - bodyabi (`habu-finish-the-x86-5a565370`, branch `intel-bodyabi`). Its
+     ARM side is done: ARM build, two-gen and its 9 rows pass. Its
+     requirement is positive x86 definition-cache hits, and x86 cannot
+     cache a definition yet: `tools/native-unit-capture.f` (about line 91)
+     requires an AArch64 host and target, `tools/native-unit-object.f`
+     rejects a non-`AARCH64-PROFILE?` profile, writes and reads
+     `ARCH-AARCH64` at its pack/read words, and relocates calls by decoding
+     ARM `BL`/`B`. Port that capture/import path to x86 (architecture tag,
+     instruction lengths, call and address relocations) first, then land
+     the body-reuse ABI with it: without the port the ABI has no x86
+     caller. Review: `~/.cache/tmp/jerry-c/oracle/bodyabi.txt`. The Mac
+     re-checks ARM byte identity afterwards (step 5).
+   - pstore (`habu-unblock-x86-inline-a7682014`, branch `intel-pstore`).
+     Blocker 1 (the allocator exemption) is fixed on `intel`. Blocker 2 is
+     the cross-capture guard resolution: the `aot-shadow.f` `SH-TARGET`
+     fallback for `OWNER-API-PRI-WID` helper rows, and `link-x64.f`
+     `KERNEL-BODY` admitting registered helper rows. Design:
+     `~/.cache/tmp/jerry-c/oracle/pstore.txt`; cut it to the smallest
+     mechanism before a worker gets it.
 4. Pulsar owns the x86-only lanes: proflate
    (`habu-review-and-land-5ce7ebe9`), breakpoints
    (`habu-implement-x86-native-261ee8bb`), throws
@@ -88,6 +106,52 @@ Done only when command output shows all of:
    Mac can run: record it in the lane's dot as open for the Mac session and
    never mark it done from pulsar. Goal (A) in
    `habu-rebase-gate-and-62c0a60f` runs on the Mac at the final tip.
+
+## ARM state of this tip
+
+On the Mac, the engine built from "Restrict fixed-register read
+exemptions" (the later commits change tests only): two-gen prints "ok gen
+5 matches gen 4 byte for byte"; `bin/hb --load test/run.f` ran 501 of 501
+with one red, compiler-native-hookless-reject (see Rebasing onto master).
+On x86, the four tier-1 commits leave runtime-regression-test.f with only
+GE-PROCESS-PTY's two FAILs expected (213 before); each lane measured its
+own helpers, so pulsar's census confirms the total.
+
+## x86 reds the Mac lanes found
+
+Each is x86 work for pulsar; a fix that touches shared code needs the Mac's
+ARM check (step 5).
+
+- `test/compiler/native-identity-spill.f` F6/F8 decode ARM64 encodings:
+  move the file to the ARM-only cases or give it an x86 path.
+- `test/outer-interpret.f`: `oi-live-too-long.f` exits 79, not 76 (about
+  line 1171).
+- runtime-regression-test.f `GE-PROCESS-PTY`: x86 crashes (SIGSEGV) at
+  case 54, `' SQB BP+` then `7 SQB .`; later cases see an empty buffer.
+  ARM with the REPL at tier 1 passes 1-64 and then times out at case 65:
+  `BP*` does not fire at tier 1 (`6 PB .` prints 12 with no `habu-bp:`
+  hit). Both belong to the breakpoints lane.
+- The ARM regalloc validator (A64RAV) accepts a value in a register that
+  its own op overwrites before reading it. ARM allocation never produces
+  that today; the validator gap stays open.
+
+The tier-1 branches assert ARM's `1 set-tier` output. x86's `evaluate` is
+the Habu loop (`src/habu/definers.f`), so where ARM's engine loop and the
+Habu loop differ at tier 1, ARM tier 1 through the Habu loop
+(`test/outer-loop-on.f` loaded before `1 set-tier`) is the oracle. The
+65-locals case (RXTML) is one: both print master's tier-0 text, so it
+stays unbranched.
+
+## Rebasing onto master
+
+- `test/compiler/native-hookless-reject.f` is red on ARM at this tip: its
+  tier-1 AMBIGUOUS sessions print no E-USING-AMBIGUOUS. Master's "Admit a
+  package definition a using shadows" (`569dc3bf`) changed `KEEP-PRIOR`
+  (src/compiler/native/compiler.f), added `NDICT:USING-REFUSED?` (dict.f)
+  and rewrote the tier-1 SHADOWED/AMBIGUOUS expectations; this branch has
+  the older test.
+  Resolve the conflict to master's test and code, then keep this branch's
+  x86 `NO-TIER-ZERO` session and `HB-TARGET-LINUX-X86-64?` selection.
 
 ## Rules
 
