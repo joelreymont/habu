@@ -296,11 +296,12 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 \ fields of them the publish arms call (C-CALL-OWNER-DECLARATION,
 \ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
 \ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF,
-\ CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF.
+\ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 $0 constant DECL-RAW-OFF
 $8 constant DECL-EFFECT-OFF
+$A8 constant DECL-DOES-CHECK-OFF
 $1A8 constant DECL-CHECK-UNJUDGED-OFF
 $390 constant DECL-DECLARED-ROW-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
@@ -709,7 +710,7 @@ variable LKWCHAR variable LKWBCHAR
 variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
-variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
+variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWKERNEL
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME variable LKEYNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWEXPORT
@@ -4214,7 +4215,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKEYNONAME @ LBL, s" hb: reader keyword needs a name: " BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW @ LBL, s" trust-raw" BYTES,
-   LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
    LKWEXPORT @ LBL, s" export" BYTES,
@@ -4677,20 +4677,26 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ MIRROR of src/habu/habu2.f C-CALL-CHECK-DOES: the does> clause check is the
+\ source owner's, reached through its record; an owner with no such field
+\ exits 70.
 : C-CALL-CHECK-DOES ( -- )
-   LBL LBL {: found good :}
-   9 LKWCHKDOES @ ADR,  10 11 MOVZ,  LFIND @ BL,
-   13 found CBNZ,
-      0 2 MOVZ,  1 LKWCHKDOES @ ADR,  2 11 MOVZ,  NR-WRITE SYS,
+   S\" hb: the source owner carries no does> check\n"
+   LBL LBL LBL LBL {: ma mu absent msg ready good :}
+   11 DATA DECL-CELL LDR,  11 absent CBZ,
+   11 11 DECL-DOES-CHECK-OFF LDR,  11 ready CBNZ,
+   absent LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   found LBL,
+   msg LBL,  ma mu BYTES,
+   ready LBL,
    9 DATA BODYBUF-OFF ADDI,
    10 DATA DOESB-CELL LDR,
    9 9 10 ADD,  9 G-PUSH
    12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
    9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
    9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
-   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   C-CALL-X11-SAVED
    10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
       C-DIE-DOES
    good LBL, ;
@@ -8746,7 +8752,7 @@ variable P2SK
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWKERNEL !
    LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !  LBL LKEYNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWEXPORT !

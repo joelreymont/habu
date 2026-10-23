@@ -708,6 +708,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
+\ A definer whose package holds a private word named `check-does!` that would
+\ approve any clause, printing SHADOW.
+: CDS-SHADOW$ ( -- ptr u8 n )
+   s\" package CDS private : check-does! ( ptr u8 n ptr u8 n -- n ) 2drop 2drop .\q SHADOW\q cr -1 ; public : MK ( n -- ) create , does> ( -- n ) @ 1 + ; ;package 7 CDS:MK W : SHOW ( -- ) W . cr ; SHOW" ;
+
 : TEST-TIER0-CONSTRUCTS ( -- )
    LEGACY? if
       s" tier 0 compiles a quotation" T-LABEL
@@ -748,7 +753,17 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       s" tier 0 lowers a TRUSTED: definer whose head binds locals in a branch" T-LABEL
       s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE TRUSTED: MKW ( n -- ) dup 0 > if 1 2 PR:MAKE {: p:pr :} p PR:UNMAKE + + else 1 - then create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MKW WW : SHOWW ( -- ) WW . PR:UNMAKE . . cr ; SHOWW"
       RUN  S\" 10\n2\n1\n" ASSERT-OK
+
+      \ The clause check is the source owner's, reached through its record: a
+      \ word of the same name in the definer's package is not called for it.
+      s" tier 0 checks a does> clause with the owner's check, not a package's" T-LABEL
+      CDS-SHADOW$ RUN  s" 8" ASSERT-OK
+      OUT$ s" SHADOW" CONTAINS? TFALSE
    then
+
+   s" tier 1 checks a does> clause with the owner's check, not a package's" T-LABEL
+   SB-RESET s" 1 set-tier " SB-APPEND CDS-SHADOW$ SB-APPEND SB$ RUN  s" 8" ASSERT-OK
+   OUT$ s" SHADOW" CONTAINS? TFALSE
 
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
