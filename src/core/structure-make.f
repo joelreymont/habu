@@ -4,7 +4,7 @@
 \ declaration transaction, generate the
 \ sealed FAMILY:MAKE and FAMILY:UNMAKE checked words from that family's
 \ declaration-order provisional field schemas. A STRUCTURE is a single-shape
-\ record (docs/type-families.md §9.4, §18) — exactly the PRODUCT kind — so this
+\ record (type-family.f header) — exactly the PRODUCT kind — so this
 \ reuses the shared sum/product constructor-seal machinery (sumtype.f
 \ TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS, the ordered constructor plan, the one
 \ audited complete-plan eval crossing, the CHECKER-RECORD-SYM records, and the
@@ -34,7 +34,7 @@
 \ metadata; nothing is recomputed here. The generated MAKE effect is
 \ (declaration-order field values -- family value); UNMAKE is (family value --
 \ declaration-order field values). A product bundle IS its field cells in slot
-\ order (no tag, docs §18), so both bodies are physical no-ops the checker
+\ order (no tag, type-family.f header), so both bodies are physical no-ops the checker
 \ certifies against the field-derived metadata row; the generated text never
 \ contains TRUST, TRUSTED:, or set-check.
 \ Where the pair lands is the generator's choice, not this file's: a public

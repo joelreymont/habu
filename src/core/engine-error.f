@@ -25,7 +25,12 @@ public
 \ 103 belongs to SNAP-RELOC:SITE-RC, the x86-64 site-row band (layout.f).
 104 constant USING-OUTER       \ `;using` in a package would close a using opened before it
 105 constant USING-SHADOW-GLOBAL \ an interpreted or ticked bare global a used public also exports
-106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable (docs/ffi-callback.md)
+\ 106: a callback thunk runs on C's stack with no catch frame above it, so it
+\ cannot throw. Every refusal (the CB-DIE rows in habu1.f and kernel-x64.f) and an
+\ outbound FFI call on a context another thread owns write `hb: callback: <reason>`
+\ to fd 2 and exit_group 106 without touching the region; a busy context refuses,
+\ never waits. An uncaught E-NBR-RANGE (-8598) also exits 106, silently.
+106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)
 ;package

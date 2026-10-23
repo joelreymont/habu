@@ -953,8 +953,8 @@ defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar 
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
-defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
-defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
+defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (type-family.f header)
+defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (type-family.f header)
 defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
 defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> a scope parameter
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
@@ -1510,7 +1510,7 @@ variable WRITE-WINDOW   0 WRITE-WINDOW !   \ 0 shut, else the code a write throw
 REG-PROTECT
 
 \ --- BTC-7 extent-role product/factorization role registry (dot
-\ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
+\ habu-extent-role-product-8e364885, docs/design.md "Type substrate", BTC-7).
 \ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
 \ captured by type-family.f after registration (0 = registry not loaded => no
 \ detection; the engine self-check never uses these families). The free-set records
@@ -2473,7 +2473,7 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    THEN THEN
    id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
 
-\ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
+\ --- item 7 (type-family.f header, reject-only): a logical
 \ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
 \ expanded to hidden physical fields until item 12's width-aware lowering can
 \ preserve whole bundles across generic stack ops. Until then an ordinary
@@ -2504,7 +2504,7 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    TFAM-ARITY* 0 = ;
 
 \ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
-\ (docs §18 WIDTH function). Every non-layout term is one cell; a layout-family
+\ (type-family.f header WIDTH function). Every non-layout term is one cell; a layout-family
 \ T-PARAM asks the INSTANTIATED width (arg-aware): the registry walks the term's
 \ variant/product schemas substituting each param slot by its resolved arg width,
 \ so a layout arg widens the sum payload / product body. Every cell-kinded
@@ -2522,13 +2522,13 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
    r TFAM-INST-WIDTH-XT ;
 
-\ --- item 12 slice-3a/3b: hidden physical-field substrate (docs §10-11, §17-18).
+\ --- item 12 slice-3a/3b: hidden physical-field substrate (type-family.f header).
 \ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
-\ physical field terms: payload slots 0..W-2 then the tag at W-1 (docs §5). Each
+\ physical field terms: payload slots 0..W-2 then the tag at W-1 (type-family.f header). Each
 \ hidden term reuses the logical family-id, name string, and arg terms, but
 \ carries a slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it
 \ pairs only with the SAME family AND slot and never binds a var/con/ptr/atom
-\ (docs §10), enforced in U-TYPE below. Whole-bundle transports move the W-cell
+\ (type-family.f header), enforced in U-TYPE below. Whole-bundle transports move the W-cell
 \ group by direct row surgery (XPORT-STEP?, further down).
 \ THE PHYSICAL QUESTIONS SEE THROUGH A STALE WRAPPER, AND THE TYPE QUESTION DOES
 \ NOT. `catch` wraps each window cell it cannot vouch for one cell at a time
@@ -2609,7 +2609,7 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    t ;
 \ MK-LOGICAL ( n -- n ) : the logical family term for a resolved hidden field —
 \ same name/family-id/arg terms, PARAMHID 0. Renderer compaction folds a full
-\ hidden run back to this logical type (docs §20); checking never consumes it.
+\ hidden run back to this logical type (type-family.f header); checking never consumes it.
 \ A STALE cell's logical type is stale: the wrapper belongs to the value, not to
 \ the physical cell, so a group `catch` left stale prints stale<option<pt>> and
 \ never three cells.
@@ -2624,7 +2624,7 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: lg:n :}
    src0 T-RES TAG T-STALE = IF lg MK-STALE ELSE lg THEN ;
 \ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
-\ in physical order — slot0 deepest, tag (W-1) on top (docs §5). Slice 3b calls
+\ in physical order — slot0 deepest, tag (W-1) on top (type-family.f header). Slice 3b calls
 \ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
 : LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
    type T-RES {: src:n :}
@@ -2644,10 +2644,10 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
    h1 h2 = ;
 
-\ --- item 12 (docs/type-families.md §17): a NON-linear layout value expands to
+\ --- item 12 (type-family.f header): a NON-linear layout value expands to
 \ its W hidden physical fields (PUSH-LOGICAL), and whole-bundle transports move
 \ the group by direct row surgery (XPORT-STEP?). A POSSIBLY-LINEAR layout stays
-\ ONE logical T-PARAM cell (docs §19); for it, a whole-bundle transport op
+\ ONE logical T-PARAM cell (type-family.f header); for it, a whole-bundle transport op
 \ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
 \ friends, and locals capture) would move the value through its fresh transport
 \ var — LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while checking such an op,
@@ -3252,7 +3252,7 @@ variable FORALL-INPUT-ROOT
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
    ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
-\ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
+\ --- logical<->hidden bundle coercion (item 11 slice 1, type-family.f header). A stored
 \ effect keeps a parametric layout value as ONE logical cell whenever an arg is
 \ an unresolved var or linear con (PUSH-LOGICAL's possibly-linear rule). At a
 \ boundary or call site that cell can meet the W-cell hidden expansion of the
@@ -3405,7 +3405,7 @@ variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
-\ ADT variant capture (item 13, docs/type-families.md §13): the sum-variant/tag
+\ ADT variant capture (item 13, docs/forth.md "Structures And Enums"): the sum-variant/tag
 \ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
 \ `construct family variant` step is applying (its payload row is what
 \ CHECKER-STEP unifies); UF>DIAG latches it into DVAR exactly when the first
@@ -3579,7 +3579,7 @@ variable LTC-P
 : LIN-CHECK ( -- )
    DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
 
-\ --- reject reasons (docs §24, item 9 slice 4). A failure site latches a reason
+\ --- reject reasons (docs/forth.md "Structures And Enums", item 9 slice 4). A failure site latches a reason
 \ code alongside the token pin; render.f maps it to a stable code, repair class,
 \ suggestion, and prose. First reason wins, and only while the token pin is
 \ still open (FAILSET clear), so the reason always describes the pinned token.
@@ -5413,7 +5413,7 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 \ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
 \ (0 false) — always two items, so every caller drops the id on the false path.
-\ Resolution is package-scoped (PLAN item 6): an active package resolves its own
+\ Resolution is package-scoped: an active package resolves its own
 \ (private+public) families first, then the unique public tail; top level uses
 \ the global scope, where every built-in cell family lives public. Qualified
 \ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
@@ -5896,10 +5896,10 @@ variable SG-ROWS-PUBLISH
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
 \ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
-\ row — the single seam for logical-vs-physical layout (docs/type-families.md
-\ §10-11, item 12 slice 3b). Every ordinary type and cell family pushes one
+\ row — the single seam for logical-vs-physical layout (type-family.f header,
+\ item 12 slice 3b). Every ordinary type and cell family pushes one
 \ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
-\ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
+\ expands to its W hidden physical fields — slot0 deepest, tag on top (type-family.f header);
 \ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
 \ discipline then keep the group intact. The one layout that stays ONE logical
 \ cell is the one whose WIDTH is not yet known: an open argument the width reads
@@ -5916,7 +5916,7 @@ variable SG-ROWS-PUBLISH
    THEN
    t row MK-PUSH ;
 
-\ A source signature declares no return-stack cell (docs/effects.md "The
+\ A source signature declares no return-stack cell (docs/forth.md "The
 \ return-stack clause"): a `|` clause, at the top or in a quotation type,
 \ carries one row, the same on both sides. A cell after `|`, two different rows,
 \ or a bar on one side only that pairs a written row with the implicit one
@@ -11567,7 +11567,7 @@ variable DEF-REFUSAL
 \ (stage builders, which never see user declarations). Guards: a recorded
 \ constructor package cannot be opened/reopened by `package`; a generated
 \ constructor word cannot be undefined; a new tail cannot certify into a
-\ constructor package (closed-but-callable, PLAN Package Shape).
+\ constructor package (closed-but-callable).
 7111 constant E-CTOR-PROTECTED
 7121 constant E-CHECKER-LAYOUT-BUFFER
 7202 constant E-CHECKER-STORAGE-UNRESOLVED
@@ -17469,7 +17469,7 @@ defer C2-STOW-BORROW-HOOK ( -- )
 : ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
-\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
+\ --- item 12 width facts (the emitter fact surface, type-family.f header) -------------
 \ Per checked definition the checker records one row for every operation whose
 \ lowering needs a logical layout width. Transport/locals rows use logical
 \ operand positions; layout-memory rows use position 0 as the operation's
@@ -18770,7 +18770,7 @@ variable CHECKER-PREFIX-ROLLBACK
       1 +
    REPEAT drop 1 ;
 
-\ --- item 12 slice 3b: whole-bundle transport row surgery (docs §17) ----------
+\ --- item 12 slice 3b: whole-bundle transport row surgery (type-family.f header) ----------
 \ With hidden-field expansion a layout value is W consecutive hidden cells (tag
 \ on top, slot0 deepest). A transport op whose top-k logical operands include
 \ such a group cannot use the var-based prim effect (a hidden field never binds
@@ -18782,7 +18782,7 @@ variable CHECKER-PREFIX-ROLLBACK
 \ against a short concrete row is the normal UNIFY reject), then write the op's
 \ output permutation with MK-PUSH from the group lists. Pure-scalar rows never
 \ reach this path: the prim/RS effects stay byte-for-byte. A non-expanded
-\ logical layout cell (possibly-linear, docs §19 / TFAM 11) rejects here
+\ logical layout cell (possibly-linear, type-family.f header / TFAM 11) rejects here
 \ exactly as the one-cell transport guard rejects it (TDLIN-* unchanged).
 64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
@@ -19053,7 +19053,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 \ depth/.s report raw physical cells: over a row holding hidden fields they
 \ would expose the physical expansion of a logical value, so they fail closed
-\ PERMANENTLY (TFAM 12 item-5 verdict 2026-07-09; docs §17 sanctions reject
+\ PERMANENTLY (TFAM 12 item-5 verdict 2026-07-09; type-family.f header sanctions reject
 \ over logical-shape reporting).
 : HIDROW-STEP? ( -- bool )
    DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
@@ -19397,7 +19397,7 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
 
 \ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
 \ re-expands its whole group — slot0 deepest up to the stored tag term on top
-\ (docs §5); a scalar local pushes its var/term with the deferred-linear taint.
+\ (type-family.f header); a scalar local pushes its var/term with the deferred-linear taint.
 \ A STALE bundle re-pushes stale in EVERY cell: the captured cells were all
 \ wrapped, MK-HIDDEN mints from the family term the wrapper hides, and a payload
 \ cell minted plain would launder the value a throw path may have overwritten.
@@ -19433,7 +19433,7 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
        -1 LRF ! THEN
    REPEAT  LRF @ ;
 \ --- control flow: branch states saved on a CF stack and unified at joins.
-\ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
+\ Both rows are snapshot: A/B = data, RA/RB = return (net growth on
 \ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
 \        7 case  8 case-of  9 match  10 match-branch (item 9; MF side arena)
@@ -20204,7 +20204,7 @@ variable QTMP
      CF-LOC-REST
      CF-DROP THEN ;
 
-\ --- MATCH eliminator (item 9 slice 3, docs/type-families.md §13-14). `MATCH
+\ --- MATCH eliminator (item 9 slice 3, docs/forth.md "Structures And Enums"). `MATCH
 \ family  variant OF ... ENDOF ...  ;MATCH` is a checker control form: the
 \ family and variant tokens are captured in DO-TOK1 before locals/control/word
 \ dispatch (the construct discipline), OF/ENDOF are shared with CASE and
@@ -20396,7 +20396,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
       MTCH-I @ 1 + MTCH-I !
    REPEAT RES-TRUE ;
 
-: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}   \ classify a failed scrutinee for §24
+: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}   \ classify a failed scrutinee for its diagnostic
    QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
    DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
    DCUR @ R-RES P>TYPE T-RES {: t:n :}
@@ -21217,7 +21217,7 @@ REG-PROTECT
 
 
 \ TRUST: declare a word's effect without checking its body — the native escape
-\ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
+\ hatch (TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
 \ ---- what a `trust` row may assert ------------------------------------------
 \ A row is a CLAIM that a word exists, so the dictionary gets to answer it.
@@ -22299,7 +22299,7 @@ variable IS-PEND-U                   \ and its length
       OPAQUE-XT BTICK-PUSH
    THEN ;
 
-\ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
+\ --- item 12 layout stack-op typing (type-family.f header) -------------------
 \ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
 \ moves by direct row surgery (XPORT-STEP? above); for a non-expanded
 \ possibly-linear layout cell the op's effect var may absorb the one cell,
@@ -22341,10 +22341,10 @@ variable IS-PEND-U                   \ and its length
       -1 UNDEFERR !  -1 UNCK !                   \ scalar ?dup unmodeled (pre-existing gap; dotted)
    THEN ;
 
-\ --- construct form (item 9, docs/type-families.md §12): `construct family
+\ --- construct form (item 9, docs/forth.md "Structures And Enums"): `construct family
 \ variant` is a reserved checker token protocol, not a word lookup. The two
 \ operand tokens are captured in DO-TOK1 BEFORE locals reference, control
-\ dispatch, and dictionary lookup (PLAN item 9: family/variant tokens must not
+\ dispatch, and dictionary lookup (family/variant tokens must not
 \ collide with locals or words) and resolved through the registry xts installed
 \ by type-family.f: the family in the ACTIVE package only (the ownership
 \ predicate — cross-package construction never resolves), the variant within
@@ -22381,8 +22381,8 @@ variable CONFAM    \ resolved family id while CONM = 2
    THEN
    0 CONM ! ;
 
-\ --- field-projection op (dot habu-checker-type-structure, docs/type-families.md
-\ §2.2). `field-project` is a reserved checker operation: inside the sealed armed
+\ --- field-projection op (dot habu-checker-type-structure, structure-decl.f
+\ header). `field-project` is a reserved checker operation: inside the sealed armed
 \ window it consumes `ptr family<args>` plus a baked byte-offset literal and
 \ produces `ptr <instantiated field type>`, deriving the field's family, offset,
 \ byte extent, role, and schema from the committed field id via TYPE-FIELD
@@ -22427,7 +22427,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FIELD-PROJ-MATCH? 0= IF RES-FALSE EXIT THEN
    FIELD-PROJ-STEP RES-TRUE ;
 
-\ --- record-at (docs/type-system.md §10.4). The second half of the record
+\ --- record-at (structure-decl.f header). The second half of the record
 \ address surface, and the one that needs NO window: it consumes `ptr F` and a
 \ cell count and answers `ptr F`, preserving the family. Preserving it is what
 \ makes it safe — nothing is retyped, bounds stay the caller's, and the contract
@@ -22949,8 +22949,8 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    NP-MINT-CHECK ;
 
 \ ---- the source-tape observer (dot habu-feed-the-src-f7ed8733) ---------------
-\ docs/compiler-ir-design.md section 7.1 wants checking, elaboration,
-\ diagnostics and code generation to talk about the same tokens. CHECK-SCAN
+\ The compiler's source tape (src/compiler/native/tape.f) needs checking,
+\ elaboration, diagnostics and code generation to talk about the same tokens. CHECK-SCAN
 \ below is the reader that turns a checked definition's text into tokens, so it
 \ is where the stage N0 source tape has to be filled: any other producer would
 \ be a second lexer, and the certificate would bind a token stream the checker
@@ -24757,7 +24757,7 @@ variable CUR-OPEN   variable CUR-PSIG
    UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
-\ --- generated-product certification (item 15, docs/type-families.md §9.4).
+\ --- generated-product certification (item 15, type-family.f header).
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
 \ and UNMAKE have empty bodies. Their sealed plan queues the two symbols with a
 \ zero-cell delta; boundary unification then records the declared product effect

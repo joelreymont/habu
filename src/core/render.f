@@ -291,7 +291,7 @@ REG-SCRATCH-SNAP-INSTALL
 
 \ PARAM-HEAD renders a family application's name; QREND adds the argument list.
 \ A hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
-\ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
+\ '@family.tag<args>' form (type-family.f header) and sets RQM so REC-SIG never records a
 \ sig containing a lone hidden cell. Full runs never reach here: row rendering
 \ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
 : PARAM-HEAD {: t:n :}
@@ -377,7 +377,7 @@ create RBIND QDEPTH-MAX cells allot
 : QREND ( n n n -- ) {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF                 \ ( node )
-         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (docs §20)
+         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (type-family.f header)
             dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
                swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
                HRS @ IF MK-STALE THEN              \ ( rest logical )
@@ -485,7 +485,7 @@ variable RSHOW-DST
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
 
 \ REND-COLLECT compacts each full hidden-field run to ONE logical family term
-\ (docs §20); a lone/malformed hidden cell stays and renders as its '@' form.
+\ (type-family.f header); a lone/malformed hidden cell stays and renders as its '@' form.
 : REND-COLLECT {: s:n :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
      dup P>TYPE T-RES HIDDEN-PARAM? IF
@@ -573,9 +573,9 @@ variable DSUGE  variable DSUGA
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    JCLOSE ;
-\ --- item 9 slice 4: match/construct reason surface (docs §24). The checker
+\ --- item 9 slice 4: match/construct reason surface (docs/forth.md "Structures And Enums"). The checker
 \ latches an MDIAG reason code with the token pin; these words map it to a
-\ stable JSON code, repair class, suggestion, and §24 prose. MD-NONEXH also
+\ stable JSON code, repair class, suggestion, and reason prose. MD-NONEXH also
 \ walks the latched (family, seen-bitset, count) to the missing variant NAMES
 \ (declaration-order tags index the family's contiguous SUMV rows).
 variable MDV-I   variable MDV-F
@@ -1245,7 +1245,7 @@ DIAG-PRINT-INSTALL
 \ signature's (SGBAD-CLASS$, SGBAD-SUGGEST$). A row that parsed but is too deep
 \ or too wide to record has a class of its own and a reason naming the bound it
 \ passed, with its count and limit. The JSON is a refused record
-\ (docs/repair-diagnostics.md): the row's name is its token, placed where the
+\ (shape: its tools/diag-code.f row): the row's name is its token, placed where the
 \ declaring name AT lies in the checked text, and the signature as written is
 \ the field its code adds.
 : BADSIG-REASON ( -- )
@@ -1273,11 +1273,11 @@ DIAG-PRINT-INSTALL
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
-\ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
+\ --- top-level type-family declaration diagnostics. A bad
 \ NEWTYPE/SUMTYPE reports a declaration-shaped packet: decl kind, family,
 \ offending token, and reason — with NO invented definition fields (no
-\ declared_effect, definition_source, or return_stack; docs/type-families.md
-\ §24). The token's position follows `file` when it locates in the file.
+\ declared_effect, definition_source, or return_stack). The
+\ token's position follows `file` when it locates in the file.
 : TDECL-SUGGEST$ ( -- ptr u8 n )
    s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
 : TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -1317,8 +1317,10 @@ BADSIG-DIAG-INSTALL
    s" habu: in " DTXT  na nu DTXT
    s" : effect not recorded: " DTXT  wa wu DTXT ;
 
-\ A warning, outside the repair contract (docs/repair-diagnostics.md): the word
-\ loaded, so the JSON carries no verdict or repair class.
+\ W-EFFECT-NOT-RECORDED is a warning, outside the repair contract: the word
+\ certified and loaded, but its inferred effect cannot be recorded (the reasons
+\ above), so a later call refuses it as undefined. The JSON carries no verdict,
+\ repair class or suggestion, and the run's status stands.
 : REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    s" W-EFFECT-NOT-RECORDED" JSTART
    s" word" JKEY na nu JSTR 44 EMIT1

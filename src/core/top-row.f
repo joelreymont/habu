@@ -1,27 +1,28 @@
-\ top-row.f - tier-1 top-level row tracker (warnings only).
-\ dot habu-typed-top-checker-82cf8b84 ; docs/typed-top-level.md §5 sub-dot 3.
+\ top-row.f - the typed top level: a checker row over the interpret stream.
 \
-\ The engine emits one per-token event to the installed top-row hook (habu2.f
-\ LTOPHOOK, dot habu-typed-top-engine-2b2e88aa): ( token-a token-u class flags ).
-\ This file keeps ONE live checker-side row shadowing the interpret data stack
-\ and warns (rc unchanged, stderr) on the value/xt residuals a depth floor
-\ cannot reach (docs §1 p1/p2/p3): an xt executed/caught below its target arity,
-\ a non-xt handed to execute/catch, and a byte pointer flowing into a scalar
-\ consumer. `depth` is the ground-truth anchor: every event resyncs row length to
-\ live depth, so a sig-less word, a throw-recovery, or an unmodeled step degrades
-\ to honest gray cells (depth still enforced) instead of a false warning.
+\ The engine emits one event per interpreted token to the installed top-row hook
+\ (habu2.f LTOPHOOK; a WORD event fires before the word runs, C-TOPHOOK-CALL):
+\ ( token-a token-u class flags ). Per token, not per line, because top-level
+\ tokens resolve as they execute: a line may define a word a later token calls.
+\ This file keeps ONE live checker-side row shadowing the interpret data stack,
+\ above the native depth floor (DNAME-MIN-IN, DNAME-INT, DNAME-WIDE), and
+\ diagnoses the value/xt residuals that floor cannot reach: an xt executed or
+\ caught below its target arity, a non-xt handed to execute/catch, and a byte
+\ pointer flowing into a scalar consumer. `depth` is the ground-truth anchor:
+\ every event resyncs row length to live depth, so a sig-less word, a
+\ throw-recovery, or an unmodeled step degrades to honest gray cells (depth
+\ still enforced) instead of a false warning.
 \
-\ Tier-1 scope: value knowledge is a coarse family (scalar / byte-pointer / xt /
-\ gray) carried from literals, ticks and the pointer-arithmetic family only; every
-\ other word grays its outputs. Tier-1.5 (this file) reads a certified word's
-\ fixed dout term count through the checker's minimal effect-read export API
-\ (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N, dot
-\ habu-expose-checker-effect-95e853eb) - used here only for the zero-risk
-\ pure-consumer precise pop below, whose din width comes from the event flags.
-\ Full effect-record row unification with precise OUTPUT family propagation (real
-\ per-word din/dout apply) is not built; dot habu-unify-a-certified-e16b3f8d owns
-\ it. This file loads from the checkout at boot; the raw effect-store internals
-\ stay hidden behind the export API's coarse family projection.
+\ Tier 1, the default, warns `hb: top-row: <token> expected: <e> actual: <a>` on
+\ stderr and leaves rc and execution unchanged; tier 2 is below. Value knowledge
+\ is a coarse family (scalar / byte-pointer / xt / gray) carried from literals,
+\ ticks and the pointer-arithmetic family only; every other word grays its
+\ outputs. A certified word's fixed dout term count comes from the checker's
+\ effect-read export (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N), used
+\ only for the pure-consumer precise pop below, whose din width comes from the
+\ event flags. Per-word din/dout row unification is not built (dot
+\ habu-unify-a-certified-e16b3f8d). This file loads from the checkout at boot.
+\ Rationale: docs/design.md "Typed top level".
 
 package TOP-ROW
 
@@ -106,9 +107,9 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ the same RC-REJECT the native DNAME-MIN-IN underdepth reject uses). The reject
 \ fires from the WORD event, which the engine emits PRE-BLR (habu2.f
 \ C-TOPHOOK-CALL), so the word never runs, the interpret stack is untouched, and
-\ REPL/evaluate recovery reseeds the row from live depth at the next event (docs
-\ §2.3). The 0 set-check window (TR-SUSP) still suspends ALL enforcement - inside
-\ the audited escape window tier-2 degrades to silence (docs §2.4), never a reject.
+\ REPL/evaluate recovery reseeds the row from live depth at the next event. The
+\ 0 set-check window (TR-SUSP) still suspends ALL enforcement - inside
+\ the audited escape window tier-2 degrades to silence, never a reject.
 \ Trusted sites are the raw effect query and dynamic top-row hook install described
 \ below. Retirement: habu-sweep-trusted-out-41e973ce.
 2 constant TR-TIER2                      \ reject pre-execution (rc 70 diagnostic)
@@ -144,8 +145,8 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
    TR-REJECT ;
 
 \ ---- pointer-arithmetic family propagation -----------------------------------
-\ + / - keep byte-pointer identity so a downstream scalar consumer still sees it
-\ (docs §1 p3). ptr - ptr is a scalar difference; one ptr operand stays a ptr.
+\ + / - keep byte-pointer identity so a downstream scalar consumer still sees it.
+\ ptr - ptr is a scalar difference; one ptr operand stays a ptr.
 : TR-ANY-PTR? ( n n -- bool ) TR-POINTER = swap TR-POINTER = or ;
 : TR-BOTH-PTR? ( n n -- bool ) TR-POINTER = swap TR-POINTER = and ;
 

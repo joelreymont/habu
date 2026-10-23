@@ -1,7 +1,8 @@
 \ type-schema.f — persistent type-schema node arena for the checker's type-family
 \ system (package TFAM). Schema nodes are a generic type tree that families,
-\ variants, and product fields reference as "schema roots" (see
-\ docs/type-families.md §6-7, §21). Every node field holds only integers
+\ variants, and product fields reference as "schema roots": a family stores
+\ schemas, never live checker type variables, and the checker instantiates them
+\ per use. Every node field holds only integers
 \ (con codes, family ids, root indices) — never a relocating pointer — so a grow
 \ is a plain cell copy and snapshot persist bakes stores verbatim with no rebase.
 \ Loaded unchecked in the checker prefix, right after checker.f, mirroring the
@@ -39,7 +40,7 @@ public
 2 constant SCH-CON        \ A = concrete con code
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
 4 constant SCH-QUOT       \ A = hasr flag, B = side-row-root start, C = SCH-QUOT-ROWS
-5 constant SCH-PTR        \ A = pointee schema node (docs §8 SC-PTR)
+5 constant SCH-PTR        \ A = pointee schema node
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
 
 private
@@ -263,7 +264,7 @@ public
 : SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
 
-\ --- SCH-PTR pointer payload node (docs §8 SC-PTR): a `ptr T` variant payload
+\ --- SCH-PTR pointer payload node: a `ptr T` variant payload
 \ element. A malformed child (nil / out-of-range) throws E-SCHEMA-BAD so the
 \ declaration parser and unit tests can trap it with `catch`.
 : SCHEMA-PTR ( n -- n )
