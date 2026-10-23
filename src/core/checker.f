@@ -274,6 +274,13 @@ variable ARENA-CP-I   variable ARENA-UB-I
    bytes 0= IF EXIT THEN
    base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
 
+\ ARENA-BOOT-RESTORE ( pvar boot bytes -- ) : point pvar back at its boot
+\ buffer, giving back the grown mapping, BYTES long, it holds instead.
+: ARENA-BOOT-RESTORE ( ptr ptr n ptr n n -- )
+   {: pv:ptr boot:ptr bytes:n :}
+   pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
+   boot pv ! ;
+
 \ ARENA-ROWS-ENSURE ( pvar capvar need row -- ) : grow the table of ROW-cell
 \ rows pvar holds, capvar rows long, to NEED rows, keeping its rows, and give
 \ the old mapping back. A table that holds none starts at 64 rows.
@@ -15705,10 +15712,14 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
 \ shape the checker already uses for the source-check hook (`set-check`).
 defer REG-EXT-PERSIST-XT ( -- )
+\ Scratch hooks, one per owning file (render.f, sumtype.f, type-family.f). Each
+\ runs at every file boundary (FILE-SCRATCH-RETIRE) and once at image capture
+\ (CHECKER-QUIESCE-END), so it resets only state no later read depends on.
 defer REG-SCRATCH-SNAP-XT ( -- )
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
-\ REG-CERT-SNAP-XT is a FOURTH cell rather than a share of one above it because
-\ each of those three already has an owner that loads earlier (type-family.f,
+defer REG-EXT-SCRATCH-XT ( -- )
+\ REG-CERT-SNAP-XT is a cell of its own rather than a share of one above it because
+\ each of those already has an owner that loads earlier (type-family.f,
 \ render.f, sumtype.f), and a second `is` on one cell silently RETIRES the first
 \ file's reset - no diagnostic, just a scratch store that stops being reset. The
 \ lowering-certificate producer (src/core/lower-cert-base.f +
@@ -15722,6 +15733,7 @@ defer REG-CERT-SNAP-XT ( -- )
    [: ;] is REG-EXT-PERSIST-XT
    [: ;] is REG-SCRATCH-SNAP-XT
    [: ;] is REG-LATE-SCRATCH-SNAP-XT
+   [: ;] is REG-EXT-SCRATCH-XT
    [: ;] is REG-CERT-SNAP-XT ;
 REG-EXT-DEFAULTS
 
@@ -15806,6 +15818,23 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
+\ The AOT signature pool is live across file loads: AOT-ARM:WINDOW-OPEN arms
+\ it, files loaded inside the window record into it, and WINDOW-CLOSE freezes
+\ it for CHECKER-PAYLOAD-LOOKUP until capture. So only image capture
+\ (CHECKER-QUIESCE-CORE) releases it, never a file boundary.
+: ASIG-POOL-RELEASE ( -- )
+   CHECKER-ASIG-DISARM
+   0 ASIG-FROZEN !
+   ASIG-ROW-P @ ASIG-ROW-CAP-V @ ASIG-RELEASE
+   ASIG-STR-P @ ASIG-STR-CAP-V @ ASIG-RELEASE
+   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells ASIG-RELEASE
+   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells ASIG-RELEASE
+   0 ASIG-MAPPED !
+   NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
+   NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
+   NULL-PTR ASIG-DIST-P !  0 ASIG-DIST-N !  0 ASIG-DIST-CAP-V !
+   NULL-PTR ASIG-LAST-P !  0 ASIG-LAST-CAP-V ! ;
+
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
    \ Closed definitions and candidate scopes leave host dictionary record counts
    \ in these inactive fields. A captured engine begins with neither pending.
@@ -15817,17 +15846,6 @@ REG-EXT-AOT-DEFAULTS
    TOKBUF-SNAP-ZERO
    NULL-PTR TOK-EFF !  NULL-PTR TOK-REC !  NULL-PTR BIND-REC !
    NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
-   CHECKER-ASIG-DISARM
-   0 ASIG-FROZEN !
-   ASIG-ROW-P @ ASIG-ROW-CAP-V @ ASIG-RELEASE
-   ASIG-STR-P @ ASIG-STR-CAP-V @ ASIG-RELEASE
-   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells ASIG-RELEASE
-   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells ASIG-RELEASE
-   0 ASIG-MAPPED !
-   NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
-   NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
-   NULL-PTR ASIG-DIST-P !  0 ASIG-DIST-N !  0 ASIG-DIST-CAP-V !
-   NULL-PTR ASIG-LAST-P !  0 ASIG-LAST-CAP-V !
    NULL-PTR SIGSCOPE-P !  0 SIGSCOPE-U !  0 SIGSCOPE-ON !
    NULL-PTR PE-NA !  0 PE-NU !  NULL-PTR PE-PKG-A !  0 PE-PKG-U !
 
@@ -30845,6 +30863,7 @@ public
    DECOUPLED-ARENA-SNAP-RESET
    LOC-SNAP-RESET                       \ the local tables and their width arena
    CHECKER-CAPTURE-SCRATCH-PREPARE
+   ASIG-POOL-RELEASE
    CHECKER-PERSIST-PRIMS
    PES-BOOT-RETIRE
    CHECKER-PERSIST-CORE
@@ -30857,6 +30876,7 @@ public
    NRX-RESET
    NP-SNAP-RESET
    REG-EXT-PERSIST-XT
+   REG-EXT-SCRATCH-XT
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT
    REG-CERT-SNAP-XT
@@ -30892,6 +30912,19 @@ public
    CHECKER-QUIESCE-CORE
    NORET-COMPACT
    CHECKER-QUIESCE-END ;
+
+\ A file object compares DATA at every file boundary (tools/native-definition-
+\ cache.f FILE-UNIT-WITH), so the scratch a check leaves rests there as it rests
+\ in an image: the capture seam's scratch retirement, without the index resets
+\ and persistence only an image needs.
+package CHECKER-REG
+public
+: FILE-SCRATCH-RETIRE ( -- )
+   CHECKER-CAPTURE-SCRATCH-PREPARE
+   REG-EXT-SCRATCH-XT
+   REG-SCRATCH-SNAP-XT
+   REG-LATE-SCRATCH-SNAP-XT ;
+;package
 
 package CHECKER-REG
 ' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!

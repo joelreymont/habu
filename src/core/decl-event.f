@@ -712,6 +712,12 @@ private
 \ ---------------------------------------------------------------------------
 public
 
+\ In a native build a transaction cannot span a file load: every file boundary
+\ runs CHECKER-REG:FILE-SCRATCH-RETIRE, whose chain refuses an open frame
+\ (generated-declaration-protection.f SNAPSHOT-RESET throws inside RUN,
+\ DEV-SNAPSHOT-RESET dies after a standalone OPEN), since resetting the event
+\ stores would drop the frame's savepoints. The declaration forms parse to
+\ their terminators and load nothing.
 : OPEN ( -- n ) DEV-OPEN ;
 : CURRENT ( -- n )
    DEV-PART-OPEN? 0= IF E-DEV-TX throw THEN

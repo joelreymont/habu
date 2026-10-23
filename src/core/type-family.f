@@ -3495,7 +3495,7 @@ package TFAM
 
 : PF-TX-SNAP-RESET ( -- )
    PF-TX-DEPTH @ IF s" checker: snapshot inside field transaction" 76 die THEN
-   PF-TX-BOOT PF-TX-P !
+   PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * ARENA-BOOT-RESTORE
    PF-TX-CAP-INIT PF-TX-CAP-V ! ;
 
 \ ---- the core-prefix boundary: this file's half -------------------------------
@@ -5220,6 +5220,14 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
+   UNIT-FAM-EXPORT-RESET ;
+
+: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
+REG-EXT-PERSIST-INSTALL
+
+\ This file's scratch: each cell is written and read within one call, so a
+\ file boundary or image capture resets it with no later read depending on it.
+: TFAM-SCRATCH-RETIRE ( -- )
    \ A caught FILE dependency refusal leaves only an invocation diagnostic.
    NULL-PTR REG-AOT-ERROR-A ! 0 REG-AOT-ERROR-U !
    TFQ-CAP 0 ?do 0 TFQ-BUF i + c! loop
@@ -5227,11 +5235,10 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    NULL-PTR TFSR-PA !  0 TFSR-PU !
    NULL-PTR TFSR-NA !  0 TFSR-NU !
    TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
-   0 TFC-I !  0 TFC-J !  0 TFC-ROW !
-   UNIT-FAM-EXPORT-RESET ;
+   0 TFC-I !  0 TFC-J !  0 TFC-ROW ! ;
 
-: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
-REG-EXT-PERSIST-INSTALL
+: TFAM-SCRATCH-INSTALL ( -- ) [: TFAM-SCRATCH-RETIRE ;] is REG-EXT-SCRATCH-XT ;
+TFAM-SCRATCH-INSTALL
 
 public
 

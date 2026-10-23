@@ -1157,6 +1157,17 @@ variable USER-SEEN
    kind NUNIT-OBJECT:SINK-EARLY >= if HARVEST-N @ else 0 then
    EARLY-MARK drop F-OSER F@ - <> if ORIGIN-SINK-REFUSE then ;
 
+\ Retire the checker's scratch at a file boundary (CHECKER-REG:FILE-SCRATCH-
+\ RETIRE), so a file's DATA comparison and pin scan never see it and a hit,
+\ which runs nothing, leaves the state a compile leaves. The live dictionary's
+\ word is the target's from the point its checker.f defines it, before the
+\ handover: the target's PRIM: declarations already run its signature parser.
+\ Before that point the target has no checker scratch, and nothing is retired.
+: SCRATCH-RETIRE ( -- )
+   s" CHECKER-REG:FILE-SCRATCH-RETIRE" TARGET-XT?
+   dup 0= if drop exit then
+   ACTION-XT execute ;
+
 \ Open the object of the file just pushed; its first row is its own source's
 \ stat and digest. Rows join an object only at ROWS-FLUSH, so the row recorded before
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
@@ -1166,6 +1177,9 @@ variable USER-SEEN
    NFILE-INPUTS:MARK F-MARK F!
    USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
+   \ The parent's segment closes in FILE-BEGIN, and this file's before-image
+   \ follows it: both start from rested scratch.
+   SCRATCH-RETIRE
    FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN
    ORIGIN-OPEN
    NUNIT-OBJECT:DEF-OPEN? 0= if
@@ -1197,6 +1211,7 @@ variable USER-SEEN
 \ file that leaves its scope or takes TASK user slots changes state a replay
 \ does not restore, so it has none.
 : OBJECT-CLOSE ( -- )
+   SCRATCH-RETIRE                  \ before the segment's DATA comparison
    ROWS-FLUSH
    BIND-RETIRE
    NUNIT-DEP:DIAG? @ if
