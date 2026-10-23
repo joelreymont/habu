@@ -413,7 +413,7 @@ variable N
 
 \ THE SHADOW: A SECOND TARGET'S ROUTINES FOR THE WINDOW'S RECORDS. A cross-build
 \ compiles every tier-1 definition twice, the host's routine into the live region
-\ and the target's into src/compiler/native/shadow.f's map (docs/x86-64.md "Dual
+\ and the target's into src/compiler/native/shadow.f's map (docs/xcomp.md "Dual
 \ emission"), and the target's image is written from the capture, so the capture
 \ carries that map. src/habu/aot-shadow.f fills these tables; a capture taken with
 \ no shadow open leaves all four empty, and the ARM64 seed reads none of them.

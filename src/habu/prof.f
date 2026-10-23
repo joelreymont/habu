@@ -45,7 +45,7 @@ private
 \ instructions that load them. Those are AArch64 and Darwin/Linux facts, and a
 \ third target matches none of them - reading them under another machine would
 \ attribute samples from a frame that is not there. Signal handlers are target
-\ ABI boundaries (docs/porting.md), so this file refuses a target whose frame it
+\ ABI boundaries (docs/xcomp.md "Syscalls And Signals"), so this file refuses a target whose frame it
 \ does not model, at load, rather than emitting the aarch64 one for it. The
 \ refusal is a die and not src/lib/errors.f's E-PLATFORM because this file loads
 \ inside the engine-build window, which has no src/lib/ in it.

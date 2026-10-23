@@ -16,7 +16,7 @@
 \ interrupted rsp, whose first cell is a leaf's return address, and searches
 \ each code cell one byte back, inside the call that pushed it.
 \
-\ THE CALL CONTRACTS (docs/x86-64.md "Profiler rows"). FIND, EDGE and INDEX
+\ THE CALL CONTRACTS. FIND, EDGE and INDEX
 \ keep every VM register (rbx rbp r12-r15) and clobber only the scratch
 \ registers each names, as the kernel's helpers do, so a body calls them
 \ without a frame. The handler owns every register: rt_sigreturn restores the

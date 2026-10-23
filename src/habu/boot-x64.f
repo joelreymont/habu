@@ -4,9 +4,7 @@
 \ loads the six VM registers (layout.f ENGINE-GPR), fills the DATA cells the
 \ ARM64 boot fills, publishes the signal stub it carries out of line, registers
 \ a separate crash signal stack and installs the crash handler, then falls
-\ through into whatever the stream emits
-\ next. docs/x86-64.md "Kernel inventory" lists each register and cell beside
-\ its ARM64 twin.
+\ through into whatever the stream emits next.
 \
 \ It is straight-line code that never calls or pushes, so rsp stays where the
 \ kernel left it, at argc, until the DATA cells take the argument vector. Each

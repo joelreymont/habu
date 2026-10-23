@@ -53,7 +53,7 @@ public
 1 CP lshift or
 constant A64-MASK
 
-\ docs/x86-64.md fixes these six, and this is their one statement:
+\ docs/xcomp.md "Machine model" fixes these six, and this is their one statement:
 \ src/compiler/native/x64ir.f RESERVED-MASK reads X64-MASK and adds rsp, which
 \ the machine holds and the engine does not. X64-DSTACK is A64-DSTACK's twin;
 \ each of the four after rbx is the twin of the ARM64 constant at the head of
@@ -452,7 +452,7 @@ FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN =
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 
 \ ENGINE-ERROR:BAD-TAG is the runtime exit status when a compiled MATCH reaches its invalid-tag
-\ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
+\ fallback (TFAM 10 slice 3, docs/forth.md "Structures And Enums"). The compiler emits a
 \ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
 \ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
 \ reaches it; a forged tag (TRUSTED constructor) exits deterministically with this
@@ -898,7 +898,7 @@ $47E0 constant HEAP-START-CELL
 ;package
 
 
-\ GENIO-ABI: where the generic I/O layer (docs/genio.md, src/lib/genio.f) keeps the
+\ GENIO-ABI: where the generic I/O layer (src/lib/genio.f) keeps the
 \ routing the ENGINE itself has to read. Everything else about a device -- its
 \ eight operations, its private state, its handle -- belongs to the library and
 \ lives in ordinary dictionary storage; only these cells cross into engine code.
@@ -1050,7 +1050,7 @@ PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitm
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
-\ ---- the callback band: C calling back into checked code (docs/ffi-callback.md)
+\ ---- the callback band: C calling back into checked code (src/lib/ffi-callback.f)
 \ Eight cells every region carries at the same offset, in the run between the
 \ FFI length buffers ($40C8..$41C8) and APP-ENTRY:XT-CELL ($43A0). Every cell is
 \ correct at zero, which is what a fresh task region, a fresh DATA mapping and a
@@ -1157,7 +1157,7 @@ $37F8 constant SNAP-CELL
 $3800 constant NULL-PTR-CELL-OFF
 
 \ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's
-\ MAIN through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell
+\ MAIN through (docs/xcomp.md "Build and bootstrap"). It is a separate cell
 \ from APP-ENTRY:XT-CELL because that one also switches the argv and stdin
 \ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
 \ MAIN there; only the x86-64 boot reads it, and an ARM64 boot, which reaches
@@ -1480,7 +1480,7 @@ $7D0 constant FRAME-CELL
 $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-\ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
+\ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/forth.md "Structures And Enums"),
 \ mirroring the checker's match-mode token machine: 0 = off; slices 2-3 arm it at a
 \ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
 \ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
@@ -1505,7 +1505,7 @@ $27A8 constant CMM-CELL
 $27E8 constant COMPILE-PREFLIGHT-CELL
 \ The retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
 \ TOP-HOOK-CELL: top-row token hook xt (dot habu-typed-top-engine-2b2e88aa,
-\ docs/typed-top-level.md §2.1). 0 = no hook: the interpret dispatch is
+\ src/core/top-row.f). 0 = no hook: the interpret dispatch is
 \ byte-for-byte today's behavior (tier 0). Installed only through the
 \ fail-closed `set-top-check` prim (habu1.f BSETTOPCHECK), which mirrors
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
@@ -1719,7 +1719,7 @@ $2DA0 constant DOES-SHADOW-CELL
 2 constant FIXED-ADDR-KIND
 ;package
 $2DA8 constant TASK-CHAIN-CELL
-\ The design seal (src/lib/vocabulary.f, docs/vocabulary.md): a cell and bitmap that confine a
+\ The design seal (src/lib/vocabulary.f): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
 \ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped
@@ -1945,8 +1945,8 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \
 \ TWO THINGS STAY PROCESS-WIDE ON PURPOSE. The 8 KiB copy buffer is not here:
 \ 3072 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
-\ COPY-FILE-STREAM are the module's one single-task pair, which its header and
-\ docs/threads.md say. Neither is the cleanup registry, 64 paths of it: that is
+\ COPY-FILE-STREAM are the module's one single-task pair, which its header
+\ says. Neither is the cleanup registry, 64 paths of it: that is
 \ a PROCESS exit registry, not per-call scratch - every task registers into the
 \ one table and the process runs it once.
 \

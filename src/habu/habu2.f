@@ -1294,7 +1294,7 @@ here BPL-KW - constant BPL-LEN
 \ internal-mark's own top-level `0 set-check` window (whose re-arm lives inside a
 \ word body and is invisible to a token hook), so the tracker starts armed and
 \ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
-\ internal-mark above; snapshot/AOT re-install is docs/typed-top-level.md §5.6.
+\ internal-mark above.
 : PFX-LOAD-TOPROW ( -- )
    PFX-TOPROW ['] PFX-LOAD-ROW PFX-FILES ;
 
@@ -1409,7 +1409,7 @@ here BPL-KW - constant BPL-LEN
 \ index is outside 1..DEVICES, or the row is empty because nothing registered
 \ it. Output has to keep working while a device is being built or has just gone
 \ away; a device that wants a failure REPORTED latches it and answers on its
-\ next checked operation (docs/genio.md), because a throw out of `emit` would
+\ next checked operation (src/lib/genio.f), because a throw out of `emit` would
 \ unwind through engine internals.
 : EMIT-GENIO-OUT ( -- )
    LBL LBL LBL {: term:label done:label end:label :}
@@ -6838,8 +6838,8 @@ public
 \ every site to a position in the dictionary this boot builds - LNCOUNT seeded
 \ primitives then LAOTNREC payload records, in that order - so this pass reads
 \ no name, searches no wordlist and needs no pool. It was a hash lookup per site
-\ and is now an indexed load; docs/engine-size.md has the measurement that says
-\ what that is worth.
+\ and is now an indexed load; tools/engine-size.f measures what that is
+\ worth.
 \ WHAT IT CHECKS INSTEAD. The index space is a structural invariant of this boot
 \ path, so it is checked once rather than assumed: NDICT must be LNCOUNT +
 \ LAOTNREC when this pass starts. Then each row is bounded against NDICT and
@@ -12641,7 +12641,7 @@ public
 
 \ LDIAGU ( x9 = value ): unsigned decimal on fd 2, no newline. The diagnostic
 \ twin of prof.f LPROFNUM, which writes fd 1 and pads a column: a diagnostic
-\ never leaves through the output device (docs/genio.md), so a refusal with a
+\ never leaves through the output device (src/lib/genio.f), so a refusal with a
 \ count to state calls this rather than `u.`/G-PRINTU9. Zero prints "0" — the
 \ digit loop runs once before its test. Clobbers x0-x2, x9-x13, x16 (SYS,'s errno
 \ reconciliation) and x30, plus 32 bytes of sp scratch; x14, x15 and x17 survive,

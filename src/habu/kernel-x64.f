@@ -9,7 +9,12 @@
 \ refusal LDPBAD, the output device arm (GENIO-OUT) and the code-provenance
 \ band's set and query (src/habu/code-origin-x64.f).
 \
-\ A BODY'S CONTRACT (docs/x86-64.md "Kernel inventory"). rbp is DATA, r12 the
+\ WHAT THE TEXT HOLDS. The image's text window (X64CODE:CODE-CAP-BYTES) holds
+\ this hand-written kernel alone: _start (src/habu/boot-x64.f START,), the
+\ helpers and every row. The captured engine is the code region, a mapping of
+\ its own at the image base plus REGION-OFF, never text.
+\
+\ A BODY'S CONTRACT. rbp is DATA, r12 the
 \ data stack, rbx and r13-r15 the other VM registers; rax rcx rdx rsi rdi and
 \ r8-r11 are scratch. A body is entered by `call` and leaves by the `ret` PRIM
 \ appends, so the return address stays on the machine stack and a body calls a
@@ -23,7 +28,10 @@
 \ does.
 \
 \ One section per group of rows. KERNEL, emits the helpers and every section;
-\ a group's rows land in its section word, which KERNEL, calls.
+\ a group's rows land in its section word, which KERNEL, calls. A row the
+\ kernel does not carry is registered by REFUSE or REFUSE-WID, never left out
+\ (KERNEL, states why). A test/x86-64-kernel-<section>.f file runs a section's
+\ rows on a booted image through test/x86-64-boot-harness.f.
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/string.f
@@ -733,9 +741,6 @@ public
 : HIDX-ADD, ( -- ) ADD-LBL CALL, ;
 : HIDX-REBUILD, ( -- ) REBUILD-LBL CALL, ;
 
-\ Each section's rows are tabled in docs/x86-64.md under the heading of its
-\ name.
-
 \ ---- syscall rows ------------------------------------------------------------
 \ The twins of habu1.f's file, memory, time and identity bodies. A row pops its
 \ arguments into the syscall registers, rdi rsi rdx r10 r8 r9 (the order
@@ -1301,8 +1306,7 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 
 public
 
-\ The rows, one line each, in the order docs/x86-64.md "Syscall rows" tables
-\ them.
+\ The rows, one line each.
 : SYSCALLS, ( -- )
    s" open" [: OPEN-ROW ;] PRIM
    s" read" [: 1 0 SPAN-GUARD,  RDX POP, RSI POP, RDI POP,  NR-READ FS-SYS-PUSH, ;] PRIM
@@ -4419,7 +4423,7 @@ public
 \ entry, not a Habu execution token: a SysV function whose one argument, in
 \ rdi, is the TASK-ABI descriptor, and which enters that task's VM state. It
 \ saves rbx rbp r12-r15, the SysV callee-saved set, which is exactly the VM's
-\ registers (docs/x86-64.md "Machine model"), so no vector register needs
+\ registers (docs/xcomp.md "Machine model"), so no vector register needs
 \ BTASK-ENTRY's d8..d15 save. The thread's alternate signal stack is registered
 \ below the pushes before the body and disabled and given back after it
 \ (X64BOOT:SIGNAL-STACK,). It writes two cells of the task's own: the TCB
@@ -4635,7 +4639,7 @@ public
    s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
 
 \ ---- definition writers ------------------------------------------------------
-\ The twelve rows an interpreter written in Habu publishes definitions,
+\ The rows an interpreter written in Habu publishes definitions,
 \ namespace rows, aliases and package scope through and marks a word immediate
 \ with (src/habu/prims.f, "the definition writers"): the twins of habu2.f
 \ DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE, in each twin's check
@@ -5269,9 +5273,10 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 
 public
 
-\ def-create and def-cast, the tails of the engine's interpret-mode `create`
-\ and `cast:`, refuse as those keywords do: the x86-64 kernel carries no
-\ interpreter.
+\ def-create, the tail of the engine's interpret-mode `create`, refuses as
+\ that keyword does: the x86-64 kernel carries no interpreter. def-cast has a
+\ body: it publishes a cast's identity slot at CP and the pending record that
+\ names it.
 : DEFINITION, ( -- )
    s" namespace-record" [: NAMESPACE-RECORD-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" namespace-private" [: NAMESPACE-PRIVATE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5612,7 +5617,7 @@ public
 \ ---- profiler rows -----------------------------------------------------------
 \ habu1.f's profiler rows: src/habu/prof-x64.f emits the SIGALRM handler, its
 \ restorer, the index helpers, the sync, the printers and the reports once,
-\ then each body (docs/x86-64.md "Profiler rows").
+\ then each body.
 
 private
 

@@ -420,7 +420,7 @@ public
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
-\ so emitting one for any other target fails closed (docs/porting.md).
+\ so emitting one for any other target fails closed (docs/xcomp.md "Source Selection").
 package ENGINE-EMIT
 public
 : TARGET-UNKNOWN ( -- )
@@ -2157,7 +2157,7 @@ variable LSOURCEEXECFINISH
       10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL, \ guard x8 = argbuf[8] indirect result
    nosret LBL, ;
 
-\ ---- the VM frame an outbound call leaves for C (docs/ffi-callback.md) ----
+\ ---- the VM frame an outbound call leaves for C (src/lib/ffi-callback.f) ----
 \ This thread's pointer, the value CB-OWNER and a slot row are compared with.
 \ It has to be one value for the life of a thread and a different one in every
 \ other live thread. Linux: TPIDR_EL0, the TLS base clone gives each thread.
@@ -2436,7 +2436,7 @@ variable LSOURCEEXECFINISH
    SP SP $A0 ADDI, RET,
    done LBL, ;
 
-\ ---- callback-entry: CB-POOL C entries into checked code (docs/ffi-callback.md)
+\ ---- callback-entry: CB-POOL C entries into checked code (src/lib/ffi-callback.f)
 \ The thunk's frame on C's stack: C's callee-saved set at [sp..$A0) as
 \ BTASK-ENTRY keeps it, the marshal frame CB-FRAME names (x0..x7, then d0..d7
 \ from CB-FRAME-FLOATS), and the thunk's own state. Checked code may hold state
@@ -4131,7 +4131,7 @@ public
    done LBL, ;
 
 \ set-top-check ( xt -- ): install the top-row token hook (dot
-\ habu-typed-top-engine-2b2e88aa, docs/typed-top-level.md §2.1), fail-closed
+\ habu-typed-top-engine-2b2e88aa, src/core/top-row.f), fail-closed
 \ at install with exactly BSETCHECK's window: 0 uninstalls (tier 0, today's
 \ dispatch byte for byte); a non-zero argument must be a live JIT code entry,
 \ DBASE <= xt < CP, or the install dies with a named rc-70 diagnostic instead
@@ -4293,7 +4293,7 @@ private
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
-\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md). The harness
+\ The design seal's two writers (src/lib/vocabulary.f). The harness
 \ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
 \ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
 \ so nothing the design can reach widens its own vocabulary. Each refusal is one

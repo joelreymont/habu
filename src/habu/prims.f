@@ -1,22 +1,14 @@
 \ prims.f — the engine primitive specification, in one machine-independent table.
 \
-\ An engine primitive used to be two things in two files that nothing tied
-\ together: an ARM64 body registered in src/habu/habu1.f (`s" dup" ['] BDUP
-\ FPRIM-L`) and a `PRIM:` row in src/core/checker.f stating its effect. A second
-\ backend would have forked that list, and the drift was already there —
-\ `run-rc` and `top-check@` have engine bodies and no checker row at all, so no
-\ checked program can call either and nothing said so.
-\
-\ This file is the single specification. Each row names one primitive, states
+\ This file is the single specification of the engine primitives. Each row names one primitive, states
 \ its checker effect once, and carries the two attachment points a backend and a
 \ reference implementation bind to BY NAME:
 \
 \   EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT  REF PRIM-REF:S-DUP  EPRIM;
 \   EPRIM: +     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT   REF PRIM-REF:ADD    EPRIM;
 \
-\ - src/core/checker.f replays the table onto its own `PE-*` row constructors at
-\   the point its table used to hold these rows, so the effects exist here and
-\   nowhere else.
+\ - src/core/checker.f replays the table onto its own `PE-*` row constructors,
+\   so the effects exist here and nowhere else.
 \ - each backend registers a body under the row's name; src/habu/primitive-registry.f
 \   refuses a body whose name has no row (ENGINE-PRIMS:SPEC-CHECK) and a row that
 \   no body answers (ENGINE-PRIMS:COMPLETE).
@@ -27,6 +19,14 @@
 \   the semantics can be written WITHOUT the primitive it answers for and where
 \   the gate exercises it; the overloads of a name state it on the row whose
 \   instantiation the gate runs.
+\
+\ THE ROWS ARE THE CHECKER'S AXIOMS. A primitive has no Habu body to infer an
+\ effect from, so the checker takes each row on faith, and everything a checked
+\ program proves derives from these rows. An overloaded name has one row per
+\ pointer, integer or bool variant. A row with a REF is held to its reference by
+\ test/prim-parity.f; a row with none (every syscall, control, defining-word,
+\ image, FFI and atomic row among them) is held only by the engine rebuilding
+\ itself through these rows and by the programs the gate runs on it.
 \
 \ WHY IT IS DATA AND WHY IT LOADS BEFORE THE CHECKER. A row must be registered
 \ before checker.f's `PTABLE-END`: that word sets `USIGS-USER-OFF`, and a row
@@ -975,7 +975,7 @@ EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
-\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md): admit a
+\ The design seal's two writers (src/lib/vocabulary.f): admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
