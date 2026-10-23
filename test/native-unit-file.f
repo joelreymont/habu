@@ -24,6 +24,9 @@ create RAW 512 allot variable RAW-U
 : KEY$ ( -- ptr u8 n )
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
 
+\ The header ends after its section-length table, which starts at byte 160.
+: HEADER ( -- n ) 160 NUNIT-FILE:SECTION-COUNT 8 * + ;
+
 : ART$ ( -- ptr u8 n ) PATH PATH-U @ ;
 : LONG-SOURCE$ ( -- ptr u8 n ) LONG-SOURCE LONG-SOURCE-U @ ;
 : LONG-CONTENT$ ( -- ptr u8 n ) s" : LONG-SOURCE ( -- n ) 42 ;" ;
@@ -54,7 +57,9 @@ create RAW 512 allot variable RAW-U
    13 s" refs" NUNIT-FILE:SECTION!
    14 s" deps" NUNIT-FILE:SECTION!
    15 s" compiler" NUNIT-FILE:SECTION!
-   16 s" origins" NUNIT-FILE:SECTION! ;
+   16 s" scope" NUNIT-FILE:SECTION!
+   17 s" values" NUNIT-FILE:SECTION!
+   18 s" origins" NUNIT-FILE:SECTION! ;
 
 : WRITE-GOOD ( -- )
    SECTIONS
@@ -104,11 +109,11 @@ create RAW 512 allot variable RAW-U
    RAW RAW-U @ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW
    0 NUNIT-FILE:SECTION$ s" code" T$=
    1 NUNIT-FILE:SECTION$ ROW 80 T$=
-   0 NUNIT-FILE:SECTION$ drop RAW 296 + = TTRUE
+   0 NUNIT-FILE:SECTION$ drop RAW HEADER + = TTRUE
    NUNIT-FILE:RESET-KEEP
    [: FIRST-SECTION ;] E-NUNIT-FILE TTHROWSQ
    RAW RAW-U @ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-BYTES
-   0 RAW 296 + c!
+   0 RAW HEADER + c!
    0 NUNIT-FILE:SECTION$ s" code" T$=
    NUNIT-FILE:CLOSE
    RESTORE ;
@@ -124,7 +129,7 @@ create RAW 512 allot variable RAW-U
    81 RAW 168 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    1 RAW 160 + c! 4 RAW 163 + c! ART$ RAW RAW-U @ WRITE-ALL REFUSE
    ART$ RAW RAW-U @ 1- WRITE-ALL REFUSE
-   ART$ RAW 295 WRITE-ALL REFUSE
+   ART$ RAW HEADER 1- WRITE-ALL REFUSE
    ART$ RAW RAW-U @ 1+ WRITE-ALL REFUSE ;
 
 : CHECK-EMPTY-TAIL ( -- )
@@ -132,15 +137,15 @@ create RAW 512 allot variable RAW-U
    NUNIT-FILE:RESET
    0 s" code1234" NUNIT-FILE:SECTION!
    1 ROW 80 NUNIT-FILE:SECTION!
-   17 2 ?do i s" " NUNIT-FILE:SECTION! loop
+   NUNIT-FILE:SECTION-COUNT 2 ?do i s" " NUNIT-FILE:SECTION! loop
    ART$ NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:WRITE
    READ-GOOD
    0 NUNIT-FILE:SECTION$ s" code1234" T$=
-   17 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
+   NUNIT-FILE:SECTION-COUNT 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
    NUNIT-FILE:CLOSE
    ART$ RAW 512 READ-ALL {: size:n :}
    RAW size NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW
-   17 2 ?do
+   NUNIT-FILE:SECTION-COUNT 2 ?do
       i NUNIT-FILE:SECTION$ 0 T= RAW size + = TTRUE
    loop
    NUNIT-FILE:CLOSE ;
