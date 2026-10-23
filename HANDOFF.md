@@ -26,7 +26,7 @@ Done only when command output shows all of:
   (`jj rebase -s vznuxmnw -d master@origin`; never `-b`).
 - The task list is the dot tree `habu-land-the-x86-a91100c2` ("Land the
   x86-64 integration stack on master") under `habu-finish-the-linux-57cb3952`
-  on master: `dot show <id>` for each child. Each child names its lane
+  on master (see Next, step 1). Each child names its lane
   workspace, change ids, what is proven, what is open and its acceptance.
 - Unlanded lanes are pushed as branches `intel-capreach`, `intel-proflate`,
   `intel-gep64`, `intel-tier0`, `intel-bodyabi` and `intel-pstore`. Each tip
@@ -42,8 +42,34 @@ Done only when command output shows all of:
 - Pulsar's `~/Work/habu/bin/hb` (+ map) is self-built on pulsar from c848c7d7
   by an engine cross-built on the Mac from the same commit; two-gen there
   prints "ok gen 5 matches gen 4". No Intel bootstrap exists, so never lose
-  the x86 engines: the older seed (built from 20b75344, which cannot build
-  trees containing `zlzpkqkt`) is kept at `bin/hb.20b75344` (+ map).
+  the x86 engines: the older seed (built from 20b75344) is kept at
+  `bin/hb.20b75344` (+ map). Neither engine builds a tree containing
+  `zlzpkqkt` (E-UNDEFINED `ADDRESS-CARRIER:REL32-BYTES` in ACAP-X64-SITE):
+  build an engine from `zlzpkqkt`'s own tree first, then build with it.
+
+## Next on pulsar
+
+1. The dots live on master, not on this branch. From the repo root:
+   `jj workspace add .jj-ws.noindex/<name>-dots -r master@origin`, then
+   `dot tree habu-land-the-x86-a91100c2` and `dot show <id>` there; dot
+   updates are committed from that workspace to master. The dots name the
+   Mac lane workspaces `.jj-ws.noindex/jerry-x86-<lane>`; on pulsar start a
+   lane from its branch `intel-<lane>@origin` in a new workspace.
+2. Census this tip: `bin/hb --load test/run.f` (PATH with
+   `/usr/lib/postgresql/18/bin`, `nohup` into a log). The last census (159
+   red of 491) ran on an older stack; give each red to a child dot or to
+   `habu-fix-remaining-x86-5a0c47fd`.
+3. Land the lanes that wait only for review first: capreach
+   (`habu-review-and-land-2437d9b0`, staged build above), proflate
+   (`habu-review-and-land-5ce7ebe9`), tier0 (`habu-review-and-land-d6a57b7c`).
+   After capreach lands, self-build `bin/hb` again (native build plus
+   two-gen) so later trees build in one stage.
+4. Then gep64 and bodyabi (their dots), the design-first dots (pstore,
+   breakpoints, throws: Fable Plan first), the tier-1 branches dot and the
+   remaining rows. A dot step that says "x86 cross-build" is a native
+   build here.
+5. ARM steps wait for the Mac: gep64's ARM native-build and tests, the tier0
+   review's ARM engine, and goal (A) in `habu-rebase-gate-and-62c0a60f`.
 
 ## Rules
 
