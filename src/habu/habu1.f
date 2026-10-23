@@ -3986,6 +3986,14 @@ public
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + STR,
       10 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR, ;
 
+\ discard-check ( -- ): drop the hook `0 set-check` parked, with its preflight,
+\ so no later `set-check` resumes it. It clears the SUSP-HOOK pair and nothing
+\ else; while a hook is armed the pair is already empty, so it is a no-op then.
+\ A driver that rewinds the dictionary below the parked hook's checker and
+\ reloads over its bytes (tools/bootstrap.sh emit_boot_hide) discards it here.
+: BDISCARDCHECK ( -- )
+   10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR, ;
+
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
 \ 0 = tier 0, the legacy JIT; 1 = tier 1, the IR pipeline behind
 \ NCOMP-DISPATCH:XT-CELL. See layout.f NCOMP-DISPATCH:TIER-CELL for the rule.
@@ -4800,6 +4808,7 @@ package ENGINE-EMIT
    s" xref-search-wl" ['] BCOMPILERSWL ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" xref-wl-newest" ['] BXREFNEWEST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" discard-check" ['] BDISCARDCHECK FPRIM-L
    s" set-tier" ['] BSETTIER FPRIM     s" tier@" ['] BTIERFETCH FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

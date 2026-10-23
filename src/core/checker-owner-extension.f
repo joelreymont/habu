@@ -49,7 +49,13 @@ $550 constant DOES-UNJUDGED-OFF
 \ The report of a does> clause the native compiler's split refused, named for
 \ the definer it belongs to.
 $558 constant NATIVE-DOES-REPORT-OFF
-NATIVE-DOES-REPORT-OFF CELL + constant OWNER-BYTES
+\ The lowering certificate the owner's last scan produced, the keep of a does>
+\ clause's certificate while its definer's head is scanned, and the kept one.
+\ Tier 0 freezes them from the owner that scanned (habu2.f LOWER-TXN FREEZE).
+$560 constant CERT-BYTES-OFF
+$568 constant CERT-KEEP-OFF
+$570 constant CERT-KEPT-OFF
+CERT-KEPT-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

@@ -158,6 +158,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 , 0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -175,7 +176,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-ABI:CERT-KEPT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10475,11 +10476,11 @@ variable PE-QDOUT
 \ private row. That is why package FFI carried a TRUSTED: PTR>CELL body and why
 \ src/lib/net/udp4.f had to wrap its errno pointer in another one.
 \
-\ These two are identity words: the retype IS the declaration, and their effects
-\ are the axiom rows near the end of this table, where only package FFI's private
-\ row admits a checked caller. They are defined HERE, before PTABLE-START, for
-\ the same reason type-family.f's registry readers are: a pre-hook file records no
-\ signature, so the axiom is the single authority on what they do.
+\ These two are identity words: the retype IS the declaration, and their typed
+\ effects are the axiom rows near the end of this table, in package FFI's
+\ private section. They carry no signature, so no declaration types them; a
+\ window that parks the host hook scans each empty body into an ABI-only
+\ `( -- )` global row, which refuses outside checked callers after the seal.
 : FFI-PTR>CELL ;                         \ ( ptr a -- n ) by axiom
 : FFI-CELL>PTR ;                         \ ( n -- ptr u8 ) by axiom
 
@@ -11084,6 +11085,9 @@ PPRIM: CHECKER-OWNER-EXT JSON-REPORTED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT RECOVERY-USED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT DOES-UNJUDGED-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT NATIVE-DOES-REPORT-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT CERT-BYTES-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT CERT-KEEP-OFF PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-OWNER-EXT CERT-KEPT-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT PRIMITIVE-STATE-OFF PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT CONTRACT-MAGIC PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-OWNER-EXT FIXED-KIND-OFF PE-N PE-OUT PPRIM;

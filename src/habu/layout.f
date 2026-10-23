@@ -1435,6 +1435,9 @@ CHECKER-OWNER-ABI:JSON-REPORTED-OFF constant DECL-JSON-REPORTED-OFF
 CHECKER-OWNER-ABI:RECOVERY-USED-OFF constant DECL-RECOVERY-USED-OFF
 CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF constant DECL-DOES-UNJUDGED-OFF
 CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF constant DECL-NATIVE-DOES-REPORT-OFF
+CHECKER-OWNER-ABI:CERT-BYTES-OFF constant DECL-CERT-BYTES-OFF
+CHECKER-OWNER-ABI:CERT-KEEP-OFF constant DECL-CERT-KEEP-OFF
+CHECKER-OWNER-ABI:CERT-KEPT-OFF constant DECL-CERT-KEPT-OFF
 \ Completion: the names a top-level cursor sees.
 CHECKER-OWNER-ABI:VERIFY-EACH-VISIBLE-OFF constant DECL-VERIFY-EACH-VISIBLE-OFF
 CHECKER-OWNER-ABI:WITH-TICK-ORDER-OFF constant DECL-WITH-TICK-ORDER-OFF
@@ -1531,8 +1534,9 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 \ SUSP-HOOK-CELL, SUSP-PREFLIGHT-CELL: the (hook, preflight) pair `0 set-check`
 \ suspends until `set-check` of the same hook resumes it (the rule is
 \ docs/forth.md's "`0 set-check` suspends the armed hook"). Boot zeroes both;
-\ after the seal the set-check prims (habu1.f BSETCHECK, kernel-x64.f
-\ SET-CHECK-BODY) are their only writers. The pair is a PROT-GUARD band of its
+\ after the seal the set-check and discard-check prims (habu1.f BSETCHECK and
+\ BDISCARDCHECK, kernel-x64.f SET-CHECK-BODY and DISCARD-CHECK-BODY) are their
+\ only writers. The pair is a PROT-GUARD band of its
 \ own: a resume copies SUSP-PREFLIGHT-CELL
 \ into COMPILE-PREFLIGHT-CELL without set-preflight's window check, so a raw
 \ post-seal store here would be a second, unchecked preflight installer. Both

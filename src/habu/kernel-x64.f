@@ -3425,6 +3425,11 @@ private
    bad X64CODE:LBL,  S\" set-check: invalid checker xt\n" HOOK-BAD-RC STDERR-EXIT,
    done X64CODE:LBL, ;
 
+\ discard-check ( -- ): clears the SUSP-HOOK pair and nothing else, so no later
+\ `set-check` resumes the parked hook. The rule is habu1.f BDISCARDCHECK's.
+: DISCARD-CHECK-BODY ( -- )
+   RCX ZERO-REG,  RCX SUSP-HOOK-CELL CELL!,  RCX SUSP-PREFLIGHT-CELL CELL!, ;
+
 \ set-preflight ( xt -- ): installs once. With the cell set, the same xt is
 \ inert and any other refused; with it empty, as `0 set-check` leaves it, the
 \ xt must lie in the window.
@@ -3460,6 +3465,7 @@ private
 : HOOKS, ( -- )
    s" set-check" [: SET-CHECK-BODY ;] PRIM
    s" check@" [: RAX HOOK-CELL CELL@,  RAX PUSH, ;] PRIM
+   s" discard-check" [: DISCARD-CHECK-BODY ;] PRIM
    s" set-preflight" [: SET-PREFLIGHT-BODY ;] PRIM
    s" set-top-check" [: SET-TOP-CHECK-BODY ;] PRIM
    s" top-check@" [: RAX TOP-HOOK-CELL CELL@,  RAX PUSH, ;] PRIM ;

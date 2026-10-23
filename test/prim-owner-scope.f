@@ -87,8 +87,8 @@ variable EXP-U
 : AXIOM-LINES ( -- )
    s" axiom inside owner"   s" unresolvable" CASE+ ;
 
-\ A private-only row: the owner compiles a checked caller, a reopened owner too,
-\ and `rejected` is the compile-reject rc 70 everywhere else.
+\ An owner-private typed row: the owner compiles a checked caller, a reopened
+\ owner too, and `rejected` is the compile-reject rc 70 everywhere else.
 : PRIVATE-T0-LINES ( -- )
    s" t0 ptr>cell inside owner"   s" compiled" CASE+
    s" t0 cell>ptr inside owner"   s" compiled" CASE+
@@ -102,7 +102,8 @@ variable EXP-U
    s" t1 cell>ptr inside owner" s" compiled" CASE+
    s" t1 ptr>cell top level"    s" rejected" CASE+ ;
 
-\ A tick of a private-only row is admitted where the call is and nowhere else.
+\ A tick of an owner-private typed row is admitted where the call is and nowhere
+\ else.
 : TICK-T0-LINES ( -- )
    s" t0 tick ptr>cell inside owner"  s" compiled" CASE+
    s" t0 tick cell>ptr inside owner"  s" compiled" CASE+
@@ -334,29 +335,19 @@ variable EXP-U
    rc 0 T=
    s" owner-scope transcript" T-LABEL
    oa ou EXPECT$ T$=
-   \ A private-only row refuses outside callers and ticks. The ARM tier-0
-   \ window has no prefix ABI row there; Intel's tier-1 prefix has one, so its
-   \ outside FFI refusal names the trust boundary instead.
+   \ Outside callers and ticks are refused by the global row: the window
+   \ compiles the prefix with the host hook parked, at tier 0 on ARM and tier 1
+   \ on x86-64, and the scan gives the FFI identity bodies an ABI-only global
+   \ row, so the outside FFI refusal names the trust boundary.
    T0? if
-      ea eu s" E-UNDEFINED habu: in pos-p2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-      ea eu s" E-UNDEFINED habu: in pos-c2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-p2c0-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-c2p0-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-tp2c0-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+      ea eu s" E-CAP-TRUSTED habu: in pos-tc2p0-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
    then
-   HB-TARGET-LINUX-X86-64? if
-      ea eu s" E-CAP-TRUSTED habu: in pos-p2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
-   else
-      ea eu s" E-UNDEFINED habu: in pos-p2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-   then
-   T0? if
-      ea eu s" E-UNDEFINED habu: in pos-tp2c0-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-      ea eu s" E-UNDEFINED habu: in pos-tc2p0-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
-   then
-   HB-TARGET-LINUX-X86-64? if
-      ea eu s" E-CAP-TRUSTED habu: in pos-tp2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
-      ea eu s" E-CAP-TRUSTED habu: in pos-tc2p1-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
-   else
-      ea eu s" E-UNDEFINED habu: in pos-tp2c1-top: undefined word 'FFI-PTR>CELL'" ERR-HAS
-      ea eu s" E-UNDEFINED habu: in pos-tc2p1-oth: undefined word 'FFI-CELL>PTR'" ERR-HAS
-   then
+   ea eu s" E-CAP-TRUSTED habu: in pos-p2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-tp2c1-top: 'FFI-PTR>CELL' is a trust-boundary primitive" ERR-HAS
+   ea eu s" E-CAP-TRUSTED habu: in pos-tc2p1-oth: 'FFI-CELL>PTR' is a trust-boundary primitive" ERR-HAS
    T0? if
       ea eu s" E-UNDEFINED habu: in pos-st0-top: undefined word 'set-tier'" ERR-HAS
       ea eu s" E-UNDEFINED habu: in pos-st0-oth: undefined word 'set-tier'" ERR-HAS
@@ -381,11 +372,11 @@ variable EXP-U
 \ this suite. Each runs in its own fork, so a refusal ends only that fork. RUN is
 \ called at top level, so a case is top-level source and may open a package.
 \
-\ THE SHIPPED ANSWER IS A DIFFERENT CODE, still naming the word. The FFI pair
-\ are words of the engine prefix, and a build's tier-1 window records every
-\ prefix word's declaration as an ABI-only global row (the tier-0 window above
-\ does not; test/field-proj-boundary-prepare.f replays one for that reason). A
-\ checked caller that binds such a row, with no primitive row behind it, gets
+\ THE SHIPPED ANSWER IS THE WINDOW'S. The FFI pair are words of the engine
+\ prefix, and a window that compiles the prefix with the host hook parked - the
+\ build's, as the one above - scans their empty bodies into ABI-only global
+\ rows; a cold boot or the Gforth reload, holding no parked hook, records none.
+\ A checked caller that binds such a row, with no primitive row behind it, gets
 \ the trust-boundary reject. A checked tick gets the same answer as the call, so
 \ neither record yields an xt outside its owner. Nor does an EXPORT alias: it
 \ carries its source's row under its source's tail, and its call and its tick

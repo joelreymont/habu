@@ -2170,7 +2170,8 @@ sections above.
   other hook discards the suspension and starts without a preflight until
   `set-preflight` installs one; an armed checker without one refuses the
   first source-defined immediate with `hb: compile preflight hook missing`.
-  `0 set-check` while already off keeps the suspension, so windows nest. Use
+  `0 set-check` while already off keeps the suspension, so windows nest.
+  `discard-check` drops a suspended hook so no later `set-check` resumes it. Use
   a `PRIM: … PRIM;` axiom for a genuine missing primitive model so later
   definitions remain checked.
 - **A constructor-generating declaration needs checking on.** `SUMTYPE`,

@@ -475,10 +475,14 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 \ value is live: an unchecked word with no row, and `evaluate`. The widths
 \ after it are unknown, the certificate says its facts are incomplete, tier 0
 \ names the definition and exits before anything runs, and tier 1 refuses to
-\ compile it.
+\ compile it. A body compiled under `0 set-check` is still scanned by the
+\ parked hook, which gives it a row, so IC-RAW is compiled after
+\ `discard-check` drops that hook, with no checker at all; the saved hook is
+\ then armed afresh. Tier 0 only: tier 1 scans IC-RAW itself and gives it a
+\ row, so no rowless call exists there.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
-   s" variable IC-OLD check@ IC-OLD ! 0 set-check : IC-RAW swap ; IC-OLD @ set-check " LN+
+   s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+
    s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
    s" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE IC-RAW swap ; " LN+
    s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
@@ -641,6 +645,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 INCOMPLETE-BIND$ RUN  S\" hb: incomplete layout facts: U1\n" ASSERT-INCOMPLETE
       s" a refused bind past the known row with a pair-typed local is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-LOST$ RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
+      s" a hookless body with incomplete width facts is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-HOOKLESS$ RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
       \ Tier 0 only: tier 1 carves this bind at the wrong cells (dot habu-tier-1-binds-c45e8e92).
       s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
       0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
@@ -651,10 +657,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    1 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
    s" the checked twin is refused at its token on tier 1" T-LABEL
    1 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
-   s" an unchecked word over a two-cell value is refused on tier 1" T-LABEL
-   1 INCOMPLETE-RAW$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
-   ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
-   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
    s" evaluate over a two-cell value is refused on tier 1" T-LABEL
    1 INCOMPLETE-EVAL$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
    ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
@@ -896,6 +898,35 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 1 set-tier TRUSTED: TB-BAD ( n -- no-such-type ) drop drop ;" RUN
    REJECT-RC ASSERT-RC
    ERR$ E-BAD-STORED-SIGNATURE UNCAUGHT$ CONTAINS? TTRUE ;
+
+\ ---- 7c. checking off still lowers wide values ------------------------------
+\ `0 set-check` empties the hook cell: the verdict is not enforced, but each
+\ tier still scans a body unjudged, signed or not, to learn its cell widths. A
+\ tier that compiled the body one cell per value moved the pair as 1 2 7.
+: UW-PROGRAM$ ( n ptr u8 n -- ptr u8 n ) {: tier:n head:ptr hu:n :}
+   0 LN-OPEN
+   tier 1 = if s" 1 set-tier " LN+ else s" 0 set-tier " LN+ then
+   s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE 0 set-check " LN+
+   head hu LN+
+   s"  1 2 PR:MAKE swap ; : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
+   LN$ ;
+
+: UW-CASE ( n ptr u8 n -- ) {: tier:n head:ptr hu:n :}
+   tier head hu UW-PROGRAM$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
+
+: TEST-UNCHECKED-WIDTHS ( -- )
+   LEGACY? if
+      s" tier 0 lowers a wide value in an unchecked : body" T-LABEL
+      0 s" : TB ( n -- pr n )" UW-CASE
+      s" tier 0 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
+      0 s" TRUSTED: TB ( n -- pr n )" UW-CASE
+      s" tier 0 lowers a wide value in an unchecked signature-less body" T-LABEL
+      0 s" : TB" UW-CASE
+   then
+   s" tier 1 lowers a wide value in an unchecked : body" T-LABEL
+   1 s" : TB ( n -- pr n )" UW-CASE
+   s" tier 1 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
+   1 s" TRUSTED: TB ( n -- pr n )" UW-CASE ;
 
 : TEST-ORIGIN ( -- )
    s" known primitive text has positive native origin" T-LABEL
@@ -1176,6 +1207,7 @@ public
    LEGACY? if TEST-NESTING-BOUND then
    TEST-EVAL-RECOVERY
    TEST-TRUSTED-NO-ROW
+   TEST-UNCHECKED-WIDTHS
    T-REPORT
    s" tier: ok" type cr ;
 

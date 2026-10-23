@@ -296,7 +296,9 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 \ fields of them the publish arms call (C-CALL-OWNER-DECLARATION,
 \ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
 \ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF,
-\ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF.
+\ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF, and of
+\ src/core/checker-owner-extension.f CERT-BYTES-OFF, CERT-KEEP-OFF and
+\ CERT-KEPT-OFF (C-OWNER-FIELD).
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 $0 constant DECL-RAW-OFF
@@ -304,6 +306,9 @@ $8 constant DECL-EFFECT-OFF
 $A8 constant DECL-DOES-CHECK-OFF
 $1A8 constant DECL-CHECK-UNJUDGED-OFF
 $390 constant DECL-DECLARED-ROW-OFF
+$560 constant DECL-CERT-BYTES-OFF
+$568 constant DECL-CERT-KEEP-OFF
+$570 constant DECL-CERT-KEPT-OFF
 $27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
 COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 2 cells constant ENGINE-HOOK-LEN
@@ -725,7 +730,7 @@ variable LKW2TOR3 variable LKW2RFROM3 variable LKW2RFET3
 variable LP2COPY variable LP2DROPN variable LP2REV variable LP2ROT variable LP2RS
 variable LP2VEXEC variable LP2VEMIT variable LVPBADMSG
 variable LRECWPUB variable LP2CLAUSE
-variable LCERTBYTES variable LCERTKEEP variable LCERTKEPT variable LP2CWAT variable LP2CDESC variable LP2NEST
+variable LP2CWAT variable LP2CDESC variable LP2NEST
 variable LINCOMPMSG
 : INCOMPMSG$ ( -- a u ) s" hb: incomplete layout facts: " ;   \ VALIDATE appends the definition and the newline
 
@@ -2130,6 +2135,9 @@ HB-TARGET-LINUX? [IF]
       A DATA HOOK-CELL STR,  A DATA COMPILE-PREFLIGHT-CELL STR,
    done LBL, ;   \ ( xt -- ): install check hook; 0 parks the armed hook with its preflight, re-arming that hook resumes both (src/habu/habu1.f BSETCHECK)
 
+: BDISCARDCHECK ( -- )
+   10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR, ;   \ ( -- ): drop the parked hook pair (src/habu/habu1.f BDISCARDCHECK)
+
 : BSETPREFLIGHT ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: bad invalid empty emit done msg invalid-msg :}
    A G-POP
@@ -2463,6 +2471,7 @@ HB-TARGET-LINUX? [IF]
    s" xref-wl-newest" ['] BCOMPILERSWL PRIM-OWNED-WID FPRIM-WID
    s" scope-find" ['] BSCOPEFIND FPRIM
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" discard-check" ['] BDISCARDCHECK FPRIM-L
    s" tick-order@" ['] BTICKORDER FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM
@@ -4722,25 +4731,31 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    good LBL,
    nohook LBL, ;
 
-\ MIRROR of src/habu/habu2.f C-CALL-CHECK-UNJUDGED: a TRUSTED: body's scan,
-\ for the lowering certificate only; its verdict is not enforced. The scan is
-\ the source owner's, reached through its record; a set hook with no such field
-\ exits 70.
-: C-CALL-CHECK-UNJUDGED ( -- )
-   S\" hb: the source owner carries no unjudged scan\n"
-   LBL LBL LBL LBL {: ma mu nohook absent msg ready :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+\ MIRROR of src/habu/habu2.f C-OWNER-FIELD: x11 = the operation at OFF in the
+\ source owner's record; an owner whose record ends before OFF or holds 0 there
+\ writes the line MA MU and exits 70.
+: C-OWNER-FIELD ( off ma mu -- ) {: off ma mu :}
+   LBL LBL LBL {: absent msg ready :}
    11 DATA DECL-CELL LDR,  11 absent CBZ,
-   11 11 DECL-CHECK-UNJUDGED-OFF LDR,  11 ready CBNZ,
+   10 11 8 SUBI,  10 10 0 LDR,
+   10 off 8 + CMPI,  C-LT absent BCOND,
+   11 11 off LDR,  11 ready CBNZ,
    absent LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
-   ready LBL,
+   ready LBL, ;
+
+\ MIRROR of src/habu/habu2.f C-CALL-CHECK-UNJUDGED: a TRUSTED: or hookless
+\ body's scan, for the lowering certificate only; its verdict is not enforced.
+\ The scan is the source owner's, reached through its record; an owner with no
+\ such field exits 70.
+: C-CALL-CHECK-UNJUDGED ( -- )
+   DECL-CHECK-UNJUDGED-OFF
+   S\" hb: the source owner carries no unjudged scan\n" C-OWNER-FIELD
    C-PUSH-DEFINER-BODY
    C-CALL-X11-SAVED
-   10 G-POP
-   nohook LBL, ;
+   10 G-POP ;
 
 : C-EMIT-DATA-X16! ( n -- ) {: off :}
    16 20 off W-STRX C-EMITW ;
@@ -7254,7 +7269,6 @@ previous previous definitions
    EMIT-P2-STORE ;
 
 : EMIT-P2KW ( -- )
-   LCERTBYTES @ LBL, s" lower-cert:bytes" BYTES,
    LVPBADMSG @ LBL, s" hb: bad layout tag" BYTES,
    LP2NEST @ LBL, s" hb: nested definition in pass 2: " BYTES,
    LINCOMPMSG @ LBL, INCOMPMSG$ BYTES,
@@ -7269,9 +7283,7 @@ previous previous definitions
    LKW2OVER3 @ LBL, s" 2over" BYTES,  LKW2TOR3 @ LBL, s" 2>r" BYTES,
    LKW2RFROM3 @ LBL, s" 2r>" BYTES,  LKW2RFET3 @ LBL, s" 2r@" BYTES,
    LKWAT2 @ LBL,    s" @" BYTES,
-   LKWSTORE2 @ LBL, s" !" BYTES,
-   LCERTKEEP @ LBL, s" lower-cert:keep" BYTES,
-   LCERTKEPT @ LBL, s" lower-cert:kept" BYTES, ;
+   LKWSTORE2 @ LBL, s" !" BYTES, ;
 
 also LOWER-CERT also LOWER-TXN-CODE definitions
 
@@ -7573,7 +7585,8 @@ also LOWER-CERT also LOWER-TXN definitions
 : FREEZE ( -- )
    LBL LBL LBL LBL LBL {: nodoes skip copy full alloc :}
    SP SP 48 SUBI,
-   LCERTBYTES 16 C-P2-FIND-GLOBAL
+   DECL-CERT-BYTES-OFF
+   S\" hb: the source owner carries no lowering certificate\n" C-OWNER-FIELD
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP
    0 0<> VALIDATE
@@ -7582,7 +7595,8 @@ also LOWER-CERT also LOWER-TXN definitions
    11 SP 0 STR,  10 SP 8 STR,  13 SP 32 STR,
    11 0 MOVZ,  11 SP 16 STR,  11 SP 24 STR,
    13 DATA DOESB-CELL LDR,  13 nodoes CBZ,
-      LCERTKEPT 15 C-P2-FIND-GLOBAL
+      DECL-CERT-KEPT-OFF
+      S\" hb: the source owner carries no kept certificate\n" C-OWNER-FIELD
       C-CALL-X11-SAVED
       10 G-POP  11 G-POP
       0 0= VALIDATE
@@ -7931,7 +7945,8 @@ variable P2SK
    ndhas LBL,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
-      LCERTKEEP 15 C-P2-FIND-GLOBAL
+      DECL-CERT-KEEP-OFF
+      S\" hb: the source owner carries no certificate keep\n" C-OWNER-FIELD
       C-CALL-X11-SAVED
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
@@ -7953,19 +7968,32 @@ variable P2SK
 
 \ Mirror habu2.f: with the hook cell empty the declaration is the definition's
 \ row, a TRUSTED: one with authority and any other without it; before
-\ checker.f claims the source the latter goes to the declared-row log.
+\ checker.f claims the source the latter goes to the declared-row log. With a
+\ hook parked by `0 set-check`, an owner and no does> clause, pass 1 scans the
+\ body unjudged, signed or not, and lowers from its certificate; a signed
+\ declaration records on the publishing pass. The cold prefix parks no hook, so it never
+\ scans before the certificate producer is installed.
 : EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
-   LBL LBL LBL LBL LBL {: nohook declared owned publish rejected :}
-   9 DATA P2-CELL LDR,  9 publish CBNZ,
+   LBL LBL LBL LBL LBL LBL {: nohook scanned declared owned publish rejected :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   9 DATA P2-CELL LDR,  9 publish CBNZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
+      9 DATA HOOK-CELL LDR,
       SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
       10 G-POP  10 rejected CBZ,
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
       publish B,
    nohook LBL,
+   9 DATA SUSP-HOOK-CELL LDR,  9 scanned CBZ,
+   9 DATA P2-CELL LDR,  9 scanned CBNZ,
+   9 DATA DECL-CELL LDR,  9 scanned CBZ,
+   9 DATA DOESB-CELL LDR,  9 scanned CBNZ,
+      C-CALL-CHECK-UNJUDGED
+      [ also LOWER-TXN ] FREEZE [ previous ]
+      lmain EM-P2-TRIGGER
+   scanned LBL,
    9 DATA TSIG-U-CELL LDR,  9 publish CBZ,
    9 DATA TRUSTED-CELL LDR,  9 declared CBZ,
       DECL-EFFECT-OFF C-CALL-OWNER-DECLARATION
@@ -8812,7 +8840,7 @@ variable P2SK
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
 : EMIT-LABEL-P2 ( -- )
-   LBL LCERTBYTES !  LBL LCERTKEEP !  LBL LCERTKEPT !  LBL LP2CWAT !  LBL LP2CDESC !
+   LBL LP2CWAT !  LBL LP2CDESC !
    LBL LRECWPUB !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !

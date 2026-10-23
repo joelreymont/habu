@@ -153,8 +153,11 @@ SRC_COMMON=(
 emit_boot_hide() {
   local top_hook="${2:-native}"
   cat src/habu/hide.f >> "$1"
+  # The reload rewinds below the startup checker and reuses its bytes, so its
+  # parked hook is dropped, not resumed or scanned; the owner claim stays for HANDOVER.
   cat >> "$1" <<'EOF'
 0 set-check
+discard-check
 EOF
   if [[ "$top_hook" == "native" ]]; then
     printf '0 set-top-check\n' >> "$1"

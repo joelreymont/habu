@@ -738,6 +738,8 @@ EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE
 \ Compiler hook installation is an explicit engine boundary.
 EPRIM: set-check     PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
+EPRIM: discard-check EPRIM;
+ETRUSTED-ONLY!
 EPRIM: set-preflight PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPRIM: set-top-check PE-N PE-IN EPRIM;

@@ -3183,21 +3183,34 @@ public
    good LBL,
    nohook LBL, ;
 
+\ x11 = the operation at OFF in the source owner's record. An owner whose record
+\ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
+\ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
+\ by name: the scan and the certificate it leaves are one owner's, also in
+\ tools/bootstrap.sh's reload window, where the owner stays claimed while its
+\ names are rewound.
+: C-OWNER-FIELD ( n ptr u8 n -- ) {: off:n ma:ptr mu:n :}
+   LBL LBL LBL {: absent:label msg:label ready:label :}
+   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
+   10 11 8 SUBI,  10 10 0 LDR,
+   10 off CELL + CMPI,  C-LT absent BCOND,
+   11 11 off LDR,  11 ready CBNZ,
+   absent LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
+   ready LBL, ;
+
 \ A TRUSTED: body is scanned as tier 1 scans it (compiler.f CHECK-PARENT): by
 \ checker.f CHECK-UNJUDGED!, whose verdict nobody enforces and whose diagnostics
 \ are suppressed. The scan exists for the lowering certificate it leaves, which
 \ states the body's wide values whatever the verdict (layout-valid.f
 \ FULL-PRODUCE); the declaration stays the definition's effect. The scan is the
 \ source owner's, reached through its record as tier 1 reaches it
-\ (checker-owner.f CHECK-UNJUDGED); a set hook with no such field exits 70.
+\ (checker-owner.f CHECK-UNJUDGED); an owner with no such field exits 70.
 : C-CALL-CHECK-UNJUDGED ( -- )
-   LBL LBL {: msg:label ready:label :}
-   S\" hb: the source owner carries no unjudged scan\n" {: ma:ptr mu:n :}
-   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF DECL-OWNER:FIND  11 ready CBNZ,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
-   ready LBL,
+   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF
+   S\" hb: the source owner carries no unjudged scan\n" C-OWNER-FIELD
    C-PUSH-DEFINER-BODY
    C-CALL-X11-SAVED
    10 G-POP ;                                         \ the verdict, unenforced
@@ -6017,10 +6030,7 @@ variable LCODEINV
 \ locals carve/reference paths. Width, bind, and fetch facts come only from the
 \ immutable LOWER-CERT artifact copied into the lowering transaction; pass 2
 \ never calls the checker or reads its mutable tables.
-variable LCERTBYTES  variable LCERTKEEP  variable LCERTKEPT  variable LP2CWAT  variable LP2CDESC
-: CERTBYTES$ ( -- ptr u8 n )   s" lower-cert:bytes" ;
-: CERTKEEP$ ( -- ptr u8 n )    s" lower-cert:keep" ;
-: CERTKEPT$ ( -- ptr u8 n )    s" lower-cert:kept" ;
+variable LP2CWAT  variable LP2CDESC
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
 variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
@@ -10968,12 +10978,9 @@ public
    LOWER-TXN-LOOKUP:EMIT-LOOKUPS
    EMIT-P2-VALID-EXEC  EMIT-P2-VALID-EMIT  EMIT-P2-FETCH  EMIT-P2-STORE ;
 
-\ keyword/certificate-name bytes for the pass-2 dispatch (the shuffle-op and rs
+\ keyword and message bytes for the pass-2 dispatch (the shuffle-op and rs
 \ keyword names reuse the jit.f/loop-keyword labels).
 : EMIT-P2KW ( -- )
-   LCERTBYTES LABEL@ LBL, CERTBYTES$ BYTES,
-   LCERTKEEP LABEL@ LBL, CERTKEEP$ BYTES,
-   LCERTKEPT LABEL@ LBL, CERTKEPT$ BYTES,
    LP2NEST LABEL@ LBL, P2NEST-MSG$ BYTES,
    LP2SLOT LABEL@ LBL, P2SLOT-MSG$ BYTES,
    LOWER-TXN-CODE:BAD LABEL@ LBL, LOWER-TXN-CODE:BAD$ BYTES,
@@ -11480,7 +11487,8 @@ public
 : FREEZE ( -- )
    LBL LBL LBL LBL LBL {: nodoes:label skip:label copy:label full:label alloc:label :}
    SP SP 48 SUBI,
-   LCERTBYTES CERTBYTES$ nip C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-CERT-BYTES-OFF
+   S\" hb: the source owner carries no lowering certificate\n" C-OWNER-FIELD
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP                              \ x11=certificate, x10=bytes
    0 0<> VALIDATE
@@ -11489,7 +11497,8 @@ public
    11 SP 0 STR,  10 SP 8 STR,  13 SP 32 STR,
    11 0 MOVZ,  11 SP 16 STR,  11 SP 24 STR,
    13 DATA DOESB-CELL LDR,  13 nodoes CBZ,
-      LCERTKEPT CERTKEPT$ nip C-FIND-GLOBAL
+      NCOMP-DISPATCH:DECL-CERT-KEPT-OFF
+      S\" hb: the source owner carries no kept certificate\n" C-OWNER-FIELD
       C-CALL-X11-SAVED
       10 G-POP  11 G-POP
       0 0= VALIDATE
@@ -11686,7 +11695,8 @@ public
    ndhas LBL,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
-      LCERTKEEP CERTKEEP$ nip C-FIND-GLOBAL
+      NCOMP-DISPATCH:DECL-CERT-KEEP-OFF
+      S\" hb: the source owner carries no certificate keep\n" C-OWNER-FIELD
       C-CALL-X11-SAVED
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
@@ -11746,11 +11756,21 @@ public
 \ arm cannot fail recoverably, as the DECLARED-ROW call here already assumes,
 \ so no logged record is ever rolled back and reused. A definition with no
 \ signature records nothing.
+\ Unjudged, the body still states its widths: while `0 set-check` holds a
+\ parked hook (SUSP-HOOK-CELL), with an owner and no does> clause, pass 1
+\ scans it as a TRUSTED: body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's
+\ compiler.f CHECK-HOOKLESS), with or without a signature, and lowers from that
+\ certificate, so a wide value is not moved one cell wide. The verdict is not
+\ enforced. A signed declaration records once, on the pass that publishes. The gate is the parked
+\ hook, not the owner: the cold prefix claims the owner in checker.f before
+\ lower-cert-base.f and layout-valid.f install the certificate producer, and
+\ no hook is armed before check-hook.f, which loads after both, so a cold boot
+\ never scans.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
-   LBL LBL LBL LBL LBL LBL {: nohook:label declared:label owned:label rejected:label inl:label done:label :}
-   9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
+   LBL LBL LBL LBL LBL LBL LBL {: nohook:label scanned:label declared:label owned:label rejected:label inl:label done:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       C-CALL-HOOK  10 rejected CBZ,
@@ -11760,6 +11780,14 @@ public
       EM-P2-TRIGGER
       publish B,
    nohook LBL,
+   9 DATA SUSP-HOOK-CELL LDR,  9 scanned CBZ,         \ never checked: no scan
+   9 DATA P2-CELL LDR,  9 scanned CBNZ,               \ pass 1 scanned it
+   9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 scanned CBZ,
+   9 DATA DOESB-CELL LDR,  9 scanned CBNZ,
+      C-CALL-CHECK-UNJUDGED
+      LOWER-TXN:FREEZE
+      EM-P2-TRIGGER
+   scanned LBL,
    9 DATA TSIG-U-CELL LDR,  9 publish CBZ,
    9 DATA TRUSTED-CELL LDR,  9 declared CBZ,
       NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
@@ -13650,7 +13678,7 @@ package LABELS
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
 : P2 ( -- )
-   LBL LCERTBYTES !  LBL LCERTKEEP !  LBL LCERTKEPT !  LBL LP2CWAT !  LBL LP2CDESC !
+   LBL LP2CWAT !  LBL LP2CDESC !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !

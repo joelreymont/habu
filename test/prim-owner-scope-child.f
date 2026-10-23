@@ -14,14 +14,16 @@
 \    record (src/core/checker.f CK-REC-BIND), so a row for a word the dictionary
 \    does not carry binds nowhere, inside its owner too. Owner-only admission is
 \    measured on the real records below.
-\ 2. A primitive whose ONLY row is owner-private: FFI-PTR>CELL and FFI-CELL>PTR
+\ 2. A primitive whose TYPED row is owner-private: FFI-PTR>CELL and FFI-CELL>PTR
 \    (package FFI, records of the re-included checker.f that the seal
 \    classifies). The owner compiles a CHECKED caller at both tiers, a reopened
-\    owner too, and every other scope misses the name (E-UNDEFINED). This is the
-\    seal's case: a pass that read only the top-level row would mark each record
-\    DNAME-INT, and the engine would then refuse the owner's call as well. A
-\    checked `[']` of the name is admitted exactly where the call is, and
-\    refused by name where it is not.
+\    owner too. The window's scan of their empty bodies leaves an ABI-only
+\    global row, so every other scope gets the trust-boundary reject
+\    (E-CAP-TRUSTED). This is the seal's case: that row grants nothing, so a
+\    pass that read only the top-level row would mark each record DNAME-INT,
+\    and the engine would then refuse the owner's call as well. A checked `[']`
+\    of the name is admitted exactly where the call is, and refused by name
+\    where it is not.
 \ 3. A row a package declares for its OWN word: util.f's global CORE-FOLD-C is
 \    still an internal engine word, because no row types that record.
 \ 4. A global PRIM-TRUSTED-ONLY! row beside the owner-private one, on two seed
@@ -120,7 +122,7 @@ $0A constant LF-C
    s" POS-AX-IN ( n -- ) PRIM-OWNER-AXIOM" CAND
    PKG-CLOSE ;
 
-\ ---- private-only rows: the owner and nobody else -----------------------------
+\ ---- owner-private typed rows: the owner and nobody else ----------------------
 \ Every definition name is used once: a candidate records a signature under its
 \ name, and a second definition of that name is a duplicate, not a second
 \ measurement of the same question. The first `package` of FFI and NPUB in this
@@ -160,7 +162,7 @@ $0A constant LF-C
    s" : POS-P2C1-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
    RESTORE-T0 ;
 
-\ ---- ticks of private-only rows: where the call is admitted, and nowhere else --
+\ ---- ticks of owner-private typed rows: where the call is admitted, nowhere else
 \ A checked `[']` of the name compiles where a checked call of it compiles, and
 \ elsewhere it gets the call's refusal of the name. Every owner block here
 \ reopens its package, which the cases above created.
