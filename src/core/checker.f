@@ -27915,7 +27915,6 @@ FILE-CON-RESET
 : UNIT-RBF? ( -- ) RBF-DEPTH @ IF UNIT-BAD THEN ;
 : UNIT-CAND? ( -- ) CHK-CAND @ IF UNIT-BAD THEN ;
 : UNIT-VERIFY? ( -- ) CHECKER-VERIFY-PKG-DEPTH @ IF UNIT-BAD THEN ;
-: UNIT-PACKAGE? ( -- ) CHECKER-AUTH-PACKAGE-ACTIVE? IF UNIT-BAD THEN ;
 \ Only a multi-error run binds a recovery row (RECOVERY-ROW?), so a frame tests
 \ the run. CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? describes only the last scan
 \ and outlives MULTI-ERR-END; the frame guards test MULTI-ERR?, never it.
@@ -27933,10 +27932,13 @@ FILE-CON-RESET
    0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN !
    -1 UNIT-MARKED ! ;
 
+\ An open package does not stop a mark: the export names each symbol's package
+\ and visibility (UNIT-EXPORT-SYMS) and the import interns those, never the live
+\ mode; the build tool keys the package scope the unit was compiled in.
 : CHECKER-UNIT-MARK ( -- )
    UNIT-PENDING @ UNIT-PREP-PENDING @ or UNIT-PLAN-OPEN @ or
       0 <> IF UNIT-BAD THEN
-   UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-PACKAGE?
+   UNIT-RBF? UNIT-CAND? UNIT-VERIFY?
    UNIT-MARK-BASE ;
 
 \ A declaration frame is not busy. A word the declaration generates is captured
@@ -28957,7 +28959,7 @@ variable UP-CH-U          0 UP-CH-U !
 
 : CHECKER-UNIT-PREPARE-BEGIN ( -- )
    UNIT-PENDING @ UNIT-PREP-PENDING @ or 0 <> IF UNIT-BAD THEN
-   UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-PACKAGE? UNIT-MULTI?
+   UNIT-RBF? UNIT-CAND? UNIT-VERIFY? UNIT-MULTI?
    UNIT-PREPARE-BASE ;
 
 : UP-APPEND ( ptr u8 -- ) {: plan:ptr :}

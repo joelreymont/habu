@@ -1639,6 +1639,17 @@ variable IMPORT-AT
    s"  ffi=" DIAG-W2 ffi DIAG-N
    S\" \n" DIAG-W2 ;
 
+\ Rule: after each child load, the parent file stands in the scope it began
+\ in (its SCOPE row). A hit replays no source action, so a parent whose own
+\ source restores the scope a child left would replay in the child's scope.
+\ Such a parent refuses `scope-after-load` and writes no object; the test
+\ compares recorded and live scope state only, so the refusal is deterministic.
+: SCOPE-AFTER-LOAD ( -- )
+   NUNIT-OBJECT:FILE-OPEN? 0= if exit then
+   NUNIT-DEP:FILE-SCOPE-KEPT? 0= if
+      s" scope-after-load" NUNIT-OBJECT:FILE-REFUSE
+   then ;
+
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -1700,6 +1711,7 @@ variable IMPORT-AT
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
    NUNIT-DEP:CLOSE-UNIT
+   SCOPE-AFTER-LOAD
    NUNIT-OBJECT:SEGMENT-IMAGE
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then

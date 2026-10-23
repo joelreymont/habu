@@ -744,13 +744,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ tier is not the one its child left.
    s" tierpar.f" S\" require tier.f\n" PUT
    s" tierback.f" S\" 0 set-tier\n1 set-tier\n: TIER-T1 ( -- ) ;\n" PUT
-   \ pkgc.f closes the package its loader opened. Its load opened inside a
-   \ package, so the checker mark refuses it first; scope-exit would too. The
-   \ builder made that package between loads, so its frame cannot name it.
+   \ pkgc.f closes the package its loader opened. The builder made that
+   \ package between loads, so its frame cannot name it and orders the file
+   \ first; scope-exit would refuse it too.
    s" pkgc.f" S\" ;package\n" PUT
-   \ pkgload.f requires pkgchild.f inside its package: the checker cannot mark
-   \ the child's start, and the replay would load the child in the scope
-   \ pkgload.f began in, so the load refuses pkgload.f first.
+   \ pkgload.f requires pkgchild.f inside its package: the child's object
+   \ records that scope, and the replay would load the child in the scope
+   \ pkgload.f began in, so the load refuses pkgload.f.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
    \ newtype.f declares a type family beside a package record: the record
@@ -943,8 +943,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    APP-SPANS
    s" a file closed inside a multi-error run refuses the checker export" T-LABEL
    s" multi.f" s"  reason=" LINE$ s" multi.f reason=checker-export" T$=
-   s" a file loaded inside a package refuses the checker mark" T-LABEL
-   s" pkgchild.f" s"  reason=" LINE$ s" pkgchild.f reason=checker-mark" T$=
+   s" a file loaded inside a package stores" T-LABEL
+   s" pkgchild.f" DEFS$ s" 1" T$=
+   s" pkgchild.f" KEY$ STORED
    s" a file that loads a child in another scope than it began in has no object" T-LABEL
    s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=scope-at-load" T$=
    s" pkgload.f" NO-OBJECT ;
@@ -983,7 +984,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ev2.f" s"  updates=" s" 1" OBJECT-HAS
    s" a file that closes its loader's package has no object" T-LABEL
    s" pkgc.f" FRAME$ s"  reason=scope-key-unknown word=FRAME-P3" ENDS-WITH? TTRUE
-   s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=checker-mark" T$=
+   s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=ordered-dependency" T$=
    s" pkgc.f" NO-OBJECT ;
 
 \ A file's writes to the seed FFI registry: carried rows store. A seed word

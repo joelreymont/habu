@@ -17,16 +17,40 @@ $8000 constant CAP
 create INPUT CAP allot variable INPUT-U
 create CANON-EXPECT FS-PATH-CAP allot variable CANON-EXPECT-U
 variable EDIT
+\ Set while a probe must name why its file missed (HABU_NATIVE_CACHE_DIAG).
+variable DIAG
+DYNAMIC-BUFFER COLD-PRODUCT u8
+DYNAMIC-BUFFER WARM-PRODUCT u8
 
-: BUILD ( -- n )
+\ A saved build of root/app into root/product with root/cache as its cache.
+: BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: app:ptr appu:n product:ptr productu:n cache:ptr cacheu:n :}
    NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    EDIT @ if s" HABU_REVIEW_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
-   s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
+   s" --" ARG app appu AT ARG product productu AT ARG
    builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
+
+: BUILD ( -- n ) s" app.f" s" app-hb" s" cache" BUILD-IN ;
+
+\ root/a and root/b hold the same non-empty bytes. AT shares one path buffer,
+\ so each file is read before the other is named.
+: SAME-FILE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr au:n b:ptr bu:n :}
+   a au AT {: apath:ptr apathu:n :}
+   apath apathu FILE-SIZE {: asize:n :}
+   asize 0 > TTRUE
+   asize COLD-PRODUCT-RESERVE
+   apath apathu 0 COLD-PRODUCT asize READ-ALL asize T=
+   b bu AT {: bpath:ptr bpathu:n :}
+   bpath bpathu FILE-SIZE {: bsize:n :}
+   bsize asize T=
+   bsize WARM-PRODUCT-RESERVE
+   bpath bpathu 0 WARM-PRODUCT bsize READ-ALL bsize T=
+   0 COLD-PRODUCT asize 0 WARM-PRODUCT bsize STR= TTRUE ;
 
 : REPORT ( -- ) OUT$ s" files reused " CONTAINS? TTRUE ;
 : REUSED ( -- )
@@ -74,6 +98,7 @@ variable REMOVED
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN cache cacheu AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   DIAG @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    builder builderu INPUT INPUT-U @ CAPTURE ;
 
@@ -230,6 +255,61 @@ variable REMOVED
 : DEFER-MOVED-PREFIX$ ( -- ptr u8 n )
    S\" defer SLOT ( n -- n )\n: GLOBAL-IMPL ( n -- n ) 100 + ;\n: SET-GLOBAL ( -- ) ['] GLOBAL-IMPL is SLOT ;\nSET-GLOBAL\ncreate REVIEW-PAD 256 allot\npackage REVIEW-DEFER\nprivate\ndefer SLOT ( n -- n )\n: TWO ( n -- n ) 2 + ;\n" ;
 
+: DEFER-OUTSIDE$ ( -- ptr u8 n )
+   S\" ;package\n: OUTSIDE ( -- ) REVIEW-DEFER:INSTALL ;\nOUTSIDE\ns\" outside=reached\" type cr\n" ;
+
+: DEFER-PUBLIC-PREFIX$ ( -- ptr u8 n )
+   S\" defer SLOT ( n -- n )\n: GLOBAL-IMPL ( n -- n ) 100 + ;\n: SET-GLOBAL ( -- ) ['] GLOBAL-IMPL is SLOT ;\nSET-GLOBAL\ncreate REVIEW-PAD 256 allot\npackage REVIEW-DEFER\nprivate\ndefer SLOT ( n -- n )\n: TWO ( n -- n ) 2 + ;\npublic\n" ;
+
+\ An outside reference to the private INSTALL the file defined dies.
+: OUTSIDE-REJECTED ( n -- )
+   70 T=
+   ERR$ s" undefined word 'REVIEW-DEFER:INSTALL'" CONTAINS? TTRUE
+   OUT$ s" outside=reached" CONTAINS? TFALSE ;
+
+\ A saved app whose defer.f loads inside the private package section.
+: DEFER-APP ( -- )
+   0 INPUT-U !
+   DEFER-MOVED-PREFIX$ INPUT CAP INPUT-U BUF-APPEND
+   S\" include defer.f\nINSTALL\n;package\n: MAIN ( -- ) 40 SLOT . ;\n"
+      INPUT CAP INPUT-U BUF-APPEND
+   s" defer-app.f" INPUT INPUT-U @ PUT ;
+
+\ The package scope a file loads in is part of its key: the reused file's
+\ INSTALL stays private, a load in the package's public section misses and
+\ makes INSTALL public, the next public load hits that public object, and the
+\ private load after it misses back and refuses the outside reference as the
+\ hit did. A warm build reusing the package-loaded file saves the cold bytes.
+: DEFER-VISIBILITY-CASE ( -- )
+   DEFER-MOVED-PREFIX$ s" defer.f" s" cache-defer" DEFER-OUTSIDE$
+      s" " SESSION-PROBE-RC-WITH
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUTSIDE-REJECTED
+   -1 DIAG !
+   DEFER-PUBLIC-PREFIX$ s" defer.f" s" cache-defer" DEFER-OUTSIDE$
+      SESSION-PROBE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   ERR$ s" native-file: dependency miss: scope changed" CONTAINS? TTRUE
+   OUT$ s" outside=reached" CONTAINS? TTRUE
+   DEFER-PUBLIC-PREFIX$ s" defer.f" s" cache-defer" DEFER-OUTSIDE$
+      SESSION-PROBE
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUT$ s" outside=reached" CONTAINS? TTRUE
+   DEFER-MOVED-PREFIX$ s" defer.f" s" cache-defer" DEFER-OUTSIDE$
+      s" " SESSION-PROBE-RC-WITH
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   ERR$ s" native-file: dependency miss: scope changed" CONTAINS? TTRUE
+   OUTSIDE-REJECTED
+   0 DIAG !
+   s" a warm build reusing a file loaded inside a package saves the cold product" T-LABEL
+   s" cache-defer-app" AT MAKE-DIR
+   DEFER-APP
+   s" defer-app.f" s" defer-hb" s" cache-defer-app" BUILD-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" defer-app.f" s" defer-warm-hb" s" cache-defer-app" BUILD-IN SUCCESS
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   s" defer-hb" s" defer-warm-hb" SAME-FILE ;
+
 : DEFER-CASE ( -- )
    s" FILE replay relocates a private defer cell from its exact declaration" T-LABEL
    s" cache-defer" AT MAKE-DIR
@@ -242,7 +322,8 @@ variable REMOVED
    REUSED
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" private=42" CONTAINS? TTRUE
-   OUT$ s" global=140" CONTAINS? TTRUE ;
+   OUT$ s" global=140" CONTAINS? TTRUE
+   DEFER-VISIBILITY-CASE ;
 
 : DEFER-PUBLISHED-CASE ( -- )
    s" a FILE source defer publishes its contract before caching its users" T-LABEL
@@ -438,6 +519,25 @@ variable REMOVED
    REPORT
    OUT$ s" closes=42" CONTAINS? TTRUE ;
 
+\ The diagnostic refusal line for the file name (a path's last component)
+\ names exactly reason, and no object line names the file.
+: REFUSED-ONLY ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n reason:ptr reasonu:n :}
+   0 INPUT-U !
+   s" /" INPUT CAP INPUT-U BUF-APPEND
+   name nameu INPUT CAP INPUT-U BUF-APPEND
+   s"  reason=" INPUT CAP INPUT-U BUF-APPEND
+   reason reasonu INPUT CAP INPUT-U BUF-APPEND
+   S\" \n" INPUT CAP INPUT-U BUF-APPEND
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   0 INPUT-U !
+   s" /" INPUT CAP INPUT-U BUF-APPEND
+   name nameu INPUT CAP INPUT-U BUF-APPEND
+   s"  key=" INPUT CAP INPUT-U BUF-APPEND
+   ERR$ INPUT INPUT-U @ CONTAINS? TFALSE ;
+
+\ opens-parent.f closes the package its child left open, which a hit would not
+\ replay, so it refuses scope-after-load on every build.
 : CHILD-OPENS-PACKAGE-CASE ( -- )
    s" a child opening a package leaves later sibling dependencies live" T-LABEL
    s" cache-child-opens" AT MAKE-DIR
@@ -449,14 +549,18 @@ variable REMOVED
       S\" : REVIEW-INDEPENDENT ( -- n ) 5 ;\n" PUT
    s" opens-parent.f"
       S\" include opens-child.f\n;package\ninclude opens-sibling.f\ninclude opens-independent.f\n: REVIEW-OPEN-RESULT ( -- n ) REVIEW-SIBLING REVIEW-INDEPENDENT + ;\n" PUT
+   -1 DIAG !
    s" " s" opens-parent.f" s" cache-child-opens"
       S\" s\" opens=\" type REVIEW-OPEN-RESULT . cr\n" SESSION-PROBE
    REPORT
    OUT$ s" opens=47" CONTAINS? TTRUE
+   s" opens-parent.f" s" scope-after-load" REFUSED-ONLY
    s" " s" opens-parent.f" s" cache-child-opens"
       S\" s\" opens=\" type REVIEW-OPEN-RESULT . cr\n" SESSION-PROBE
    REPORT
    OUT$ s" opens=47" CONTAINS? TTRUE
+   s" opens-parent.f" s" scope-after-load" REFUSED-ONLY
+   0 DIAG !
    s" opens-child.f"
       S\" package REVIEW-OPEN public\n: VALUE ( -- n ) 41 ;\n" PUT
    s" " s" opens-parent.f" s" cache-child-opens"

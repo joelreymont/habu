@@ -990,7 +990,8 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
    then
    kind SCOPE = if
       keyu 0<> datau 0= or if MALFORMED then
-      data datau NFILE-SCOPE:SCOPE-MATCH? exit
+      data datau NFILE-SCOPE:SCOPE-MATCH?
+      dup 0= if s" scope changed" REMEMBER-MISS then exit
    then
    kind RESOLUTION = if
       keyu RES-KEY-BYTES < if MALFORMED then
