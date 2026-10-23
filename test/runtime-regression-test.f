@@ -1288,15 +1288,30 @@ variable GE-CF-BODY-U
    s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" 78 s" duplicate definition:" GE-RXE-TOP
    s" public" s" 75" s" public" GE-RXE-CATCH-USABLE
    s" public" 75 s" public" GE-RXE-TOP
-   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 75" s" local cannot be inside quotation" GE-RXE-CATCH-USABLE
-   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 75 s" local cannot be inside quotation" GE-RXE-TOP
-   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
-   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
-   \ An inner quotation's `;]` reopens the enclosing quotation, not the definition.
-   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
-   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
-   s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" does>" GE-RXE-CATCH-USABLE
-   s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
+   \ Tier 1 refuses a local inside a quotation in its checker hook
+   \ (E-BAD-LOCAL-SHAPE, rc 70), and a does> body it cannot compile with
+   \ E-NCOMP-VERDICT (-8572): caught inside evaluate, uncaught at top level
+   \ (rc GE-UNCAUGHT-RC).
+   tier@ 0= if
+      s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 75" s" local cannot be inside quotation" GE-RXE-CATCH-USABLE
+      s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 75 s" local cannot be inside quotation" GE-RXE-TOP
+      s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
+      s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
+      \ An inner quotation's `;]` reopens the enclosing quotation, not the definition.
+      s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
+      s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
+      s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" does>" GE-RXE-CATCH-USABLE
+      s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
+   else
+      s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqlb: at '{:'" GE-RXE-CATCH-USABLE
+      s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqlb: at '{:'" GE-RXE-TOP
+      s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqlr: at 'myloc'" GE-RXE-CATCH-USABLE
+      s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqlr: at 'myloc'" GE-RXE-TOP
+      s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqln: at 'myloc'" GE-RXE-CATCH-USABLE
+      s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqln: at 'myloc'" GE-RXE-TOP
+      s" : RXMK ( -- ) create does> ( -- n ) ;" s" -8572" s" ncomp: cannot compile RXMK" GE-RXE-CATCH-USABLE
+      s" : RXMK ( -- ) create does> ( -- n ) ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXMK" GE-RXE-TOP
+   then
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
 
 \ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
@@ -1443,33 +1458,61 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ One caught-inside-evaluate + top-level pair per converted site. The eval-catch
    \ leg proves catchable code + usable session (GEC-RXOK -> 12321); the top leg
    \ proves byte-identical fail-closed exit + diagnostic.
-   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" 75" s" does>" GE-RXE-CATCH-USABLE
-   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" 75 s" does>" GE-RXE-TOP
-   GE-RXE-QNEST-BUILD
-   GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
-   GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
-   s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
-   s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
-   \ The mirror: `;` with one or two quotations open. Published, the body's
-   \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
-   \ hook, so the engine's own refusal at `;` is the one that stops it.
-   s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
-   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
-   \ `;` with a control structure open. Published, the forward branch that
-   \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
-   \ word spins when called; `do` leaves its loop frame behind. An `if` left
-   \ open inside a closed quotation is still on the control stack at `;`. A
-   \ checked body is refused the same way, before the checker hook.
-   s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: control-flow word does not match the open structure: ;]" GE-RXE-TOP
-   s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   \ Tier 1 has none of these die sites. A does> body, or a `;` with a
+   \ quotation or control structure open, is a definition the native compiler
+   \ cannot compile: E-NCOMP-VERDICT (-8572) or E-NCOMP-BINDING (-8575), caught
+   \ inside evaluate and uncaught at top level (rc GE-UNCAUGHT-RC). A stray `;]`
+   \ and a checked open `begin` are checker refusals (rc 70). No quotation cap
+   \ stops the `[:` past JIT-QUOT:LEVELS, so the source ends inside RXQ (rc 74).
+   tier@ 0= if
+      s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" 75" s" does>" GE-RXE-CATCH-USABLE
+      s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" 75 s" does>" GE-RXE-TOP
+      GE-RXE-QNEST-BUILD
+      GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
+      GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
+      s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
+      s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
+      \ The mirror: `;` with one or two quotations open. Published, the body's
+      \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
+      \ hook, so the engine's own refusal at `;` is the one that stops it.
+      s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+      s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
+      \ `;` with a control structure open. Published, the forward branch that
+      \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
+      \ word spins when called; `do` leaves its loop frame behind. An `if` left
+      \ open inside a closed quotation is still on the control stack at `;`. A
+      \ checked body is refused the same way, before the checker hook.
+      s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: control-flow word does not match the open structure: ;]" GE-RXE-TOP
+      s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   else
+      s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" -8572" s" ncomp: cannot compile RXDOES" GE-RXE-CATCH-USABLE
+      s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXDOES" GE-RXE-TOP
+      GE-RXE-QNEST-BUILD
+      GE-RXE-QNEST$ s" 74" s" hb: source ended inside definition: RXQ" GE-RXE-CATCH-USABLE
+      GE-RXE-QNEST$ 74 s" hb: source ended inside definition: RXQ" GE-RXE-TOP
+      s" : RXSQ ( -- ) 5 ;] drop ;" s" 70" s" habu: in rxsq: at ';]'" GE-RXE-CATCH-USABLE
+      s" : RXSQ ( -- ) 5 ;] drop ;" 70 s" habu: in rxsq: at ';]'" GE-RXE-TOP
+      s" TRUSTED: RXSC ( -- ) [: 1 ;" s" -8575" s" ncomp: cannot compile RXSC" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSC ( -- ) [: 1 ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXSC" GE-RXE-TOP
+      s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" -8575" s" ncomp: cannot compile RXSC" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSC ( -- ) [: [: 1 ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXSC" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) 0 if ;" s" -8575" s" ncomp: cannot compile RXSF" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSF ( -- ) 0 if ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) begin 0 while ;" GE-UNCAUGHT-RC S\" ncomp: cannot compile RXSF\nhb: uncaught throw code -8575" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" GE-UNCAUGHT-RC S\" ncomp: cannot compile RXSF\nhb: uncaught throw code -8575" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" -8575" s" ncomp: cannot compile RXSF" GE-RXE-CATCH-USABLE
+      s" TRUSTED: RXSF ( -- ) 1 0 do ;" GE-UNCAUGHT-RC s" ncomp: cannot compile RXSF" GE-RXE-TOP
+      s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" GE-UNCAUGHT-RC S\" ncomp: cannot compile RXSF\nhb: uncaught throw code -8575" GE-RXE-TOP
+      s" : RXSF ( -- ) begin ;" 70 s" habu: in rxsf: at 'begin'" GE-RXE-TOP
+   then
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE
@@ -1521,8 +1564,15 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    0 s" quotation nesting at the level ceiling compiles" GE-EXPECT-RC
    s" 42" s" quotation nesting at the level ceiling runs" GE-EXPECT-OUT-HAS
    JIT-QUOT:LEVELS 1+ GE-QNEST-RUN
-   75 s" quotation-nesting exit rc" GE-EXPECT-RC
-   GE-QNEST-DIAG$ s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   \ Tier 1 has no JIT-QUOT frames: its checker hook refuses the next level
+   \ (rc 70) without naming the depth.
+   tier@ 0= if
+      75 s" quotation-nesting exit rc" GE-EXPECT-RC
+      GE-QNEST-DIAG$ s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   else
+      70 s" quotation-nesting exit rc" GE-EXPECT-RC
+      s" habu: in geqdeep: at '[:'" s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   then
    s" habu-crash" s" quotation-nesting no-crash" GE-EXPECT-ERR-LACKS
    s" PASS: quotations nest to the level ceiling and one more is named with its depth" type cr ;
 
