@@ -293,6 +293,8 @@ variable OPEN-ROWS
 variable OPEN-INPUTS
 variable OPEN-RECS
 variable OPEN-DATA
+\ Where in a cell HERE stood when the open object's segment opened.
+variable OPEN-REM
 variable OPEN-REQS
 variable OPEN-WIDS
 variable OPEN-LOADS
@@ -317,6 +319,11 @@ variable OBJ-KEY-U
 variable INS-FIRST
 variable INS-ROW
 variable INS-DEFS-OFF
+\ The installing segment's DATA address, its byte count and how many of
+\ them are filled.
+variable INS-DATA
+variable INS-DATA-U
+variable INS-DATA-AT
 \ The checker section and its count of references while a slice imports.
 PTR-VARIABLE IMPORT-SEC
 variable IMPORT-NREFS
@@ -1011,8 +1018,10 @@ public
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
+   0 OPEN-REM !
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
    0 INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
+   0 INS-DATA ! 0 INS-DATA-U ! 0 INS-DATA-AT !
    NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT ! 0 VALS-U ! 0 OPEN-VALS !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
@@ -1890,13 +1899,16 @@ CAST: N>U8 ( n -- ptr u8 )
       then
    loop ;
 
-\ Event row k as its EVENT-BYTES row.
+\ Event row k as its EVENT-BYTES row. A SEGMENT row ends with where in a
+\ cell HERE stood at the segment's open: `align` and every definer that
+\ aligns its body pad from there, so the DATA bytes hold that remainder's
+\ padding.
 : EVENT-OUT ( n -- )
    {: row:n :}
    row SEG? if
       EV-SEGMENT OUT-N row 1 EV @ FO-FIRST FO @ - OUT-N
       row 2 EV @ OUT-N row 4 EV @ OUT-N row 6 EV @ OUT-N
-      row 8 EV @ OUT-N 0 OUT-N exit
+      row 8 EV @ OUT-N row 3 EV @ 1 cells mod OUT-N exit
    then
    row 0 EV @ {: kind:n :}
    kind EV-FFI-LIB = if
@@ -2668,8 +2680,10 @@ private
    row 3 U64-AT {: bytes:n :}
    row 4 U64-AT {: reqs:n :}
    row 5 U64-AT {: wids:n :}
+   row 6 U64-AT {: rem:n :}
    first end < count 0 < or bytes 0 < or reqs 0 < or wids 0 < or if BAD then
-   row 6 U64-AT 0<> if BAD then
+   rem 0 < rem 1 cells >= or if BAD then
+   rem OPEN-REM !
    count OPEN-RECS +! bytes OPEN-DATA +! reqs OPEN-REQS +!
    wids OPEN-WIDS +! 1 OPEN-SEGS +!
    first count + ;
@@ -2948,7 +2962,7 @@ private
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
    0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED ! 0 OPEN-VALS !
-   0 OPEN-FFI !
+   0 OPEN-FFI ! 0 OPEN-REM !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
@@ -2985,6 +2999,8 @@ TRUSTED: REC-OPEN ( ptr u8 n n n -- )
    s" def-open" NEED-XT REC-OPEN-XT execute ;
 \ End the pending record as the engine's `constant` and `;` end one.
 TRUSTED: REC-CLOSE ( -- ) s" def-close" NEED-XT DEF-ACTION-XT execute ;
+\ End the pending DKIND:ADDR record as the engine's `create` ends one.
+TRUSTED: REC-CREATE ( -- ) s" def-create" NEED-XT DEF-ACTION-XT execute ;
 TRUSTED: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
 \ name and private?: publish a namespace row; its ordinal.
 TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
@@ -3116,6 +3132,33 @@ private
       DEF-PUBLISH-XT execute drop
    REC-CLOSE ;
 
+\ Fill the segment's DATA from the cursor up to offset off: the object's
+\ bytes copied to here and allotted. No install writer allots DATA between
+\ fills, so here stands at the cursor. A leaf's only segment owns slot 6
+\ from its first byte.
+: DATA-FILL ( n -- )
+   {: off:n :}
+   INS-DATA-AT @ {: at:n :}
+   off at < off INS-DATA-U @ > or if BAD then
+   INS-DATA @ at + {: va:n :}
+   AOT-ARM:HERE-N va <> if BAD then
+   off at - {: u:n :}
+   u allot
+   6 NUNIT-FILE:SECTION$ drop at + va DATA-PTR u BYTE-COPY
+   off INS-DATA-AT ! ;
+
+\ An address row: the segment's DATA filled up to its body, then its record
+\ ended as `create` ends one, DNAME-CELL kept for a `variable`. def-create
+\ rounds DP up to a cell and its code pushes that address, so the body is
+\ the one the row names only while DP stays put.
+: INSTALL-ADDR ( ptr u8 n n n n -- )
+   {: name:ptr nameu:n wl:n value:n flags:n :}
+   value NFILE-REF:REF>LOCAL-DATA {: body:n :}
+   body INS-DATA @ - DATA-FILL
+   name nameu wl DKIND:ADDR flags DNAME-CELL and or REC-OPEN
+   REC-CREATE
+   AOT-ARM:HERE-N body <> if BAD then ;
+
 \ View definition index row row's payload, the next in the definitions slot:
 \ index rows pair with colon records in ordinal order.
 : PAYLOAD-VIEW ( n -- )
@@ -3230,8 +3273,9 @@ private
    else
       name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT
       kind RK-VAL = if INSTALL-VAL else
+      kind RK-ADDR = if flags INSTALL-ADDR else
          kind RK-COLON <> if BAD then INSTALL-COLON
-      then
+      then then
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
@@ -3300,20 +3344,26 @@ private
    loop
    on if OBS-SET then ;
 
-\ Event row seg, a segment: its records, the wordlists they make and their
-\ protection, its FFI rows, then the checker plan PREPARE-CHECKER kept.
+\ Event row seg, a segment: its records with its DATA bytes, the wordlists
+\ they make and their protection, its FFI rows, then the checker plan
+\ PREPARE-CHECKER kept.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
    seg OBJ-EV {: ev:ptr :}
    ev 0 U64-AT EV-SEGMENT <> if BAD then
    ev 1 U64-AT {: first:n :}
    ev 2 U64-AT {: count:n :}
+   ev 3 U64-AT {: bytes:n :}
    ev 5 U64-AT {: wids:n :}
    INS-FIRST @ first + ndict@ <> if BAD then
    AOT-ARM:WIDN {: widbase:n :}
    widbase wids NFILE-REF:WID-BASE!
+   AOT-ARM:HERE-N {: database:n :}
+   database INS-DATA ! bytes INS-DATA-U ! 0 INS-DATA-AT !
+   database bytes NFILE-REF:DATA-BASE!
    FILE-REFS
    first count + first ?do i INSTALL-RECORD loop
+   bytes DATA-FILL
    AOT-ARM:WIDN widbase wids + <> if BAD then
    \ A leaf's only segment owns the protection bytes from the first.
    4 NUNIT-FILE:SECTION$ drop {: prot:ptr :}
@@ -3478,8 +3528,11 @@ public
    loop ;
 
 \ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package,
-\ constant and colon records only, on a checker that imports. 4b-1b widens
-\ the rest. Slot 12 holds no row for a run that added nothing to
+\ constant, address and colon records and the segment's DATA bytes, on a
+\ checker that imports. Later lanes widen the rest. DATA bytes and address
+\ bodies match the cold load's only while HERE sits where in a cell it sat
+\ at the segment's open, else the miss names data-alignment. Slot 12 holds
+\ no row for a run that added nothing to
 \ the dictionary or DATA, so a file that added nothing has no segment for the
 \ install to replay and loads from source. The install makes wordlists only
 \ through package rows, so every wordlist the file made must be one they own.
@@ -3488,7 +3541,6 @@ public
 : UNSUPPORTED$ ( -- ptr u8 n )
    OPEN-SEGS @ 1 <> if s" unsupported-segments" exit then
    OPEN-LOADS @ 0<> if s" unsupported-loads" exit then
-   OPEN-DATA @ 0<> if s" unsupported-data" exit then
    OPEN-REQS @ 0<> if s" unsupported-requires" exit then
    OPEN-SLOTS @ 0<> if s" unsupported-slots" exit then
    OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
@@ -3499,13 +3551,16 @@ public
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= and
       if s" unsupported-import-pending" exit then
    OPEN-KINDS @ 1 RK-BARE lshift and 0<> if s" unsupported-bare" exit then
-   OPEN-KINDS @ 1 RK-ADDR lshift and 0<> if s" unsupported-addr" exit then
    OPEN-KINDS @ 1 RK-DEFER lshift and 0<> if s" unsupported-defer" exit then
+   OPEN-DATA @ 0<> OPEN-KINDS @ 1 RK-ADDR lshift and 0<> or
+   AOT-ARM:HERE-N 1 cells mod OPEN-REM @ <> and
+      if s" data-alignment" exit then
    s" " ;
 
 \ This engine has every record writer the install block executes.
 : DEF-OPEN? ( -- bool )
    s" def-open" ENGINE-XT 0<> s" def-close" ENGINE-XT 0<> and
+   s" def-create" ENGINE-XT 0<> and
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
    s" prot-wid-add" ENGINE-XT 0<> and ;
 

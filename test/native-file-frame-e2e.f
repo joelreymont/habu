@@ -95,6 +95,14 @@ variable MOVED
 \ the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
    SESSION
+   \ dv.f loads first: check.f, which top.f requires, allots its object's
+   \ path, so what follows it stands elsewhere in a cell on each build. The
+   \ moved builds allot a byte before it, which leaves its DATA padded for
+   \ another place in a cell.
+   MOVED @ if S\" 1 allot\n" IN+ then
+   s" dv.f" LOAD+
+   S\" s\" dv=\" type DV-SUM . cr\ns\" dvs=\" type DV-S type cr\n" IN+
+   s" df.f" LOAD+
    s" top.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
@@ -691,6 +699,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ again.
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
+   \ dv.f's variable and created table install with their DATA bytes, the
+   \ top level's store and commas among them; DV-S's string literal between
+   \ them lives in the build's literal pool, not at here. df.f holds a defer
+   \ alone.
+   s" dv.f" S\" variable DV-V 7 DV-V !\n: DV-S ( -- ptr u8 n ) s\" lit\" ;\ncreate DV-T 3 , 4 ,\n: DV-SUM ( -- n ) DV-V @ DV-T @ + DV-T cell+ @ + ;\n" PUT
+   s" df.f" S\" defer DF-D ( -- n )\n" PUT
    s" jrn.f" S\" 3 constant EK-K\n" PUT
    s" pcf.f" S\" 3 constant PC-F3\npackage PCF\npublic\nexport PC-F3\n;package\n" PUT
    s" pcz.f" S\" 3 constant PC-Z3\n" PUT
@@ -1132,6 +1146,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs td.f" T-LABEL
    OUT$ S\" td=4\n" CONTAINS? TTRUE
    s" td.f" REUSED
+   s" a warm build installs dv.f's variable, table and DATA bytes" T-LABEL
+   OUT$ S\" dv=14\n" CONTAINS? TTRUE
+   OUT$ S\" dvs=lit\n" CONTAINS? TTRUE
+   s" dv.f" REUSED
+   s" a warm build compiles df.f again: a defer's dispatch cell is a slot" T-LABEL
+   s" df.f" s"  reason=" LINE$ s" df.f reason=unsupported-slots" T$=
    s" a warm build installs og.f and holds the cold build's origin rows" T-LABEL
    s" og.f" REUSED
    ORIGINS$ OG-LINE OG-LINE-U @ T$=
@@ -1257,6 +1277,10 @@ public
    FFI-CHECKS
    RUN-CHECKS
    s" lib.f" KEY$ STORED
+   s" a cold build runs dv.f and stores its object" T-LABEL
+   OUT$ S\" dv=14\n" CONTAINS? TTRUE
+   OUT$ S\" dvs=lit\n" CONTAINS? TTRUE
+   s" dv.f" KEY$ STORED
    KEEP-OBJECT
    CHECKER
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
@@ -1302,6 +1326,9 @@ public
    \ wca.f now selects libz, which wcb.f's PREPARE keeps.
    s" wca.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
    s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" a byte allotted before dv.f misses its object and loads it as a cold build" T-LABEL
+   s" dv.f" s"  reason=" LINE$ s" dv.f reason=data-alignment" T$=
+   OUT$ S\" dv=14\n" CONTAINS? TTRUE
    s" an earlier file that now makes FRAME-PK refuses pk.f's object: PK-SEVEN binds its private word" T-LABEL
    OUT$ S\" pk=70\n" CONTAINS? TTRUE
    ERR$ s" /pk.f records=" CONTAINS? TFALSE

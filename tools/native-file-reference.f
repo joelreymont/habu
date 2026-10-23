@@ -95,6 +95,10 @@ variable PREP-CURSOR
 \ The wordlists a file's segment makes: LOCAL wid item i is WID-BASE + i.
 variable WID-BASE
 variable WID-COUNT
+\ The DATA a file's segment allots: LOCAL DATA item i is the address
+\ DATA-BASE + i, a DATA-COUNT byte span.
+variable DATA-BASE
+variable DATA-COUNT
 variable CAP-CODE
 variable CAP-CODE-U
 variable CAP-REC
@@ -1235,6 +1239,8 @@ public
    1 PREP-WIDS-INDEXED ! ;
 
 : WID-BASE! ( n n -- ) WID-COUNT ! WID-BASE ! ;
+\ The segment's DATA address and its byte count.
+: DATA-BASE! ( n n -- ) DATA-COUNT ! DATA-BASE ! ;
 
 \ A refused import may have published projected keys before its later sections
 \ were checked. Installed records have live occurrences and no longer project.
@@ -1312,6 +1318,16 @@ public
       N>U8 exit
    then
    BAD ;
+
+\ The DATA address a LOCAL DATA reference names in the installing segment.
+\ The segment's end is its own, as the capture's OWN-SEG counts it: a word
+\ made after the last allotment names it.
+: REF>LOCAL-DATA ( n -- n ) {: idx:n :}
+   idx 0= if BAD then
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind DATA <> owner LOCAL <> or if BAD then
+   item 0 < addend 0 < or item addend + DATA-COUNT @ > or if BAD then
+   DATA-BASE @ item + addend + ;
 
 : REF>LITERAL ( n -- n n ) {: idx:n :}
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
@@ -1629,7 +1645,7 @@ public
    NULL-PTR PREP-SRC ! 0 PREP-REC-BASE ! 0 PREP-REC-COUNT !
    0 PREP-CODE-BASE ! 0 PREP-CODE-U !
    0 PREP-WIDS-INDEXED ! 0 PREP-CURSOR !
-   0 WID-BASE ! 0 WID-COUNT !
+   0 WID-BASE ! 0 WID-COUNT ! 0 DATA-BASE ! 0 DATA-COUNT !
    0 CAP-CODE ! 0 CAP-CODE-U ! 0 CAP-REC ! 0 CAP-REC-U !
    0 CAP-READY !
    -1 DEFINITION-ORD ! PENDING-CLEAR ;
