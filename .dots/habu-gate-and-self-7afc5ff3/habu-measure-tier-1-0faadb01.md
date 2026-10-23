@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-09-29T13:15:14.875927+03:00"
 closed-at: "2026-10-22T12:36:34.287643+03:00"
-close-reason: "Triage 2026-10-22, OBSOLETE: The decision it would inform is made: docs/compilation.md decision 7 (B1 withdrawn, tier-1-only on both architectures), carried out by habu-retire-the-arm64-20c7d262."
+close-reason: "OBSOLETE: B2 is rejected; ARM64 keeps tier 0 beside tier 1 (Joel, 2026-10-23)."
 blocks:
   - habu-run-bin-hb-6378f297
 ---

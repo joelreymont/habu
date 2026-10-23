@@ -141,9 +141,10 @@ definition still open at the end of a line continues on the next.
 
 ## Platforms and code generation
 
-**One codegen per platform.** Each definition compiles through the current
-platform's codegen. Hand-written code per platform is only the kernel's
-primitives.
+**Two tiers on ARM64.** A definition compiles through the current platform's
+codegen. ARM64 has two: tier 0 compiles fast, tier 1 emits faster code, and
+`set-tier` chooses. x86-64 and Wasm have tier 1 only. Hand-written code per
+platform is only the kernel's primitives.
 
 ### Cross-compilation
 

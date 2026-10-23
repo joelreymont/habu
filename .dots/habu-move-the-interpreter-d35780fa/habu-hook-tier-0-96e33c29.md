@@ -1,11 +1,9 @@
 ---
 title: Hook tier-0 compilation into the Habu loop
-status: closed
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.663677+03:00"
-closed-at: "2026-10-14T19:14:39.509456+03:00"
-close-reason: Withdrawn by the one-interpreter, one-codegen decision in docs/compilation.md; ARM64 tier-0 JIT is to be retired under habu-retire-the-arm64-20c7d262. No implementation is accepted from this plan.
 ---
 
 Problem: B1 (chosen): the ARM64 product keeps tier 0, so the Habu compile loop needs the JIT, but the `LCOMPILE` dispatch's J-* handlers end in `lmainlbl B,` (`habu2.f:5005-5060`), so Habu cannot call it.
@@ -21,4 +19,4 @@ Lead note (2026-09-30, from the I8/I5a design): `jit-open` does the JIT half of 
 
 Lead note (2026-10-01, from I5a): nothing writes TIER-CELL at x86 boot (`boot-x64.f` has no tier store and DATA maps zeroed), so it reads 0 and the Habu head refuses with the tier-0 message on x86 until something stores 1; x86 `set-tier` stores only 1 (`kernel-x64.f` SET-TIER-BODY), and `executable-build-enter` also sets it. The x86 boot must select tier 1 when this dot makes x86 refuse tier 0.
 
-Ruling (Joel, 2026-10-08; docs/compilation.md decision 7): one interpreter, one codegen per platform. The Habu loop compiles every definition through the current platform's codegen on ARM64 and x86-64 alike; ARM64's tier-0 JIT (src/habu/jit.f) and machine-code interpreter are not kept in the product. B1 is withdrawn.
+Ruling (Joel, 2026-10-23): one interpreter; ARM64 keeps tier 0 beside tier 1. The 2026-10-08 one-codegen rule and its tier-0 retirement are withdrawn.
