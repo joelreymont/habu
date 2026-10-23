@@ -25,6 +25,7 @@ Planned module files:
 - `src/lib/ffi-abi.f`
 - `src/lib/ffi-callback.f`
 - `src/lib/zip.f`
+- `src/lib/zlib.f`
 - `src/lib/svg-pdf.f` ([SVG to PDF](svg-pdf.md))
 - `src/lib/net/udp4.f`
 - `src/lib/net/ws-frame.f`
@@ -501,6 +502,51 @@ librsvg and Cairo preserve each page's fractional intrinsic dimensions at
 96 DPI and replace the entire destination only after PDF finalization
 succeeds. See [svg-pdf.md](svg-pdf.md) for dependencies,
 resource policy, errors, precision and the native E2E check.
+
+## Raw DEFLATE and CRC-32
+
+`require src/lib/zlib.f` loads package `ZLIB`, raw DEFLATE
+([RFC 1951](https://www.rfc-editor.org/info/rfc1951/)) and CRC-32 through the
+system libz (`libz.so.1` on Linux, `libz.1.dylib` on macOS):
+
+```forth
+ZLIB:CRC32       ( ptr u8 n -- u32 )
+ZLIB:RAW-BOUND   ( n -- n )
+ZLIB:DEFLATE-RAW ( ptr u8 n ptr u8 n -- n )
+ZLIB:INFLATE-RAW ( ptr u8 n ptr u8 n -- n )
+```
+
+The codec arguments are source, source bytes, destination and destination
+capacity; the result is the bytes written. `CRC32` is the finalized IEEE
+CRC-32, zero for no bytes. `RAW-BOUND` is a capacity in which `DEFLATE-RAW`
+always completes. `DEFLATE-RAW` uses default compression, method 8, window
+bits -15, memory level 8 and the default strategy; the bytes it writes are
+libz's and are not promised to match another encoder's. `INFLATE-RAW` accepts
+exactly one complete raw stream that uses the whole source: zero source bytes
+are truncated input, `03 00` is a valid empty stream, and a byte after the
+final block is an error. A caller that knows the expanded size passes it as the
+capacity and checks the returned length and its own CRC.
+
+Every length and capacity must fit libz's 32-bit counters, and a source and a
+destination must not overlap; both are refused before any C call. The library
+borrows both buffers and allocates no result storage. libz's own allocations
+last from its init call to the matching end call, which every path reaches.
+Each task has one stream and a one-byte overflow probe as scratch, cleared
+after every call, so no address survives into a saved image. A failed codec
+call may have written a destination prefix and answers no length.
+
+| Constant | Value | Thrown for |
+|---|---:|---|
+| `ZLIB:E-FIRST` / `ZLIB:E-LAST` | -9520 / -9529 | the reserved block |
+| `ZLIB:E-SIZE` | -9520 | a negative length, a nonempty span at address zero, overlap, or a length or bound past `$FFFFFFFF` |
+| `ZLIB:E-CAPACITY` | -9521 | a destination that cannot hold the result |
+| `ZLIB:E-DATA` | -9522 | invalid, truncated or trailing compressed data |
+| `ZLIB:E-MEMORY` | -9523 | libz's `Z_MEM_ERROR` |
+| `ZLIB:E-ABI` | -9524 | a version, layout or state error, or a status no path expects |
+
+A missing libz is the FFI's `E-FFI-*` loader error, unchanged.
+`test/zlib-e2e.f` builds `test/zlib-source.f` as a stripped application and
+keeps its executable with a 10 MiB original, compressed and decoded payload.
 
 ## ZIP Archives
 

@@ -1186,6 +1186,12 @@ SUITE ffi-cabi
    src/lib/ffi-test.f
 ;SUITE
 
+\ Raw DEFLATE and CRC-32 through libz in one stripped application; keeps its
+\ executable and 10 MiB original, compressed and decoded payloads.
+SUITE zlib
+   test/zlib-e2e.f
+;SUITE
+
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.
