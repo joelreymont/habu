@@ -2,8 +2,9 @@
 \ and its report through the CLI, an install that fails, the report a failed
 \ build invalidates, the cache keys, the rejected inputs, sources of
 \ HBT-LARGE-INPUT-U bytes, a string literal's body declared text while the same
-\ bytes in a `create` cell are refused, and the size of a snapshot and a
-\ stripped image. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ bytes in a `create` cell are refused, a maker that prints more than the
+\ fixed capture holds, and the size of a snapshot and a stripped image.
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-test.f
 
 require tools/hb-build-test-lib.f
@@ -508,6 +509,42 @@ variable HBT-INST-FILES
    HBT-RUN-OUT outn HBT-LITB-EXPECTED$ T$=
    HBT-LITB-OUT HBT-REMOVE-FILE? ;
 
+\ A program that prints more than HBB-CAPTURE-CAP bytes while it compiles: a
+\ fixed capture of that size fails closed when it fills (E-PROC-TRUNCATED) and
+\ took the build down with it, so the maker's stdout capture grows instead. The
+\ program prints HBT-LOUD-LINES lines of HBT-LOUD-LINE-U bytes, one line past
+\ the cap, then HBT-LOUD-LAST$: the line a capture that stopped short loses.
+64 constant HBT-LOUD-LINE-U
+HBB-CAPTURE-CAP HBT-LOUD-LINE-U / 1 + constant HBT-LOUD-LINES
+variable HBT-LOUD-SRC-U
+create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
+
+: HBT-LOUD-SRC ( -- ptr u8 n )
+   HBT-LOUD-SRC-BUF HBT-LOUD-SRC-U @ ;
+
+: HBT-LOUD-LAST$ ( -- ptr u8 n )
+   s" hbt-loud-last" ;
+
+: HBT-LOUD-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : LOUD ( -- ) " SB-APPEND
+   HBT-LOUD-LINES FMT:SB-U
+   S\"  0 ?do s\" " SB-APPEND
+   HBT-LOUD-LINE-U 1 - 0 ?do s" x" SB-APPEND loop
+   S\" \" type cr loop ;\nLOUD\n: LOUD-LAST ( -- ) s\" " SB-APPEND
+   HBT-LOUD-LAST$ SB-APPEND
+   S\" \" type cr ;\nLOUD-LAST\n: MAIN ( -- ) ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-LOUD-MAKER ( -- )
+   HBT-ROOT s" loud.f" HBT-LOUD-SRC-BUF HBT-LOUD-SRC-U HBT-PATH!
+   HBT-LOUD-SRC HBT-LOUD-SRC$ WRITE-ALL
+   HBT-LOUD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
+   rc 0 <> if erru HBB-ERR-ROOM erru type then
+   rc 0 T=
+   outu HBB-CAPTURE-CAP > TTRUE
+   outu HBB-OUT-ROOM outu HBT-LOUD-LAST$ CONTAINS? TTRUE ;
+
 \ imgdump prints one line per dictionary record of the image it reads, so its
 \ output is the size of that image's dictionary - 407,041 bytes for the REPL
 \ application this case builds, and growing with the engine. A bounded capture
@@ -566,6 +603,7 @@ public
    HBT-IMGDUMP-REPL
    HBT-SIZE-REPL
    HBT-BUILD-REPL-BAD
+   HBT-LOUD-MAKER
    HBT-BUILD-MISSING-TMP
    HBT-STRIPPED-LITERAL-BODY
    HBT-STRIPPED-IMAGE
