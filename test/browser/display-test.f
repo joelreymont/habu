@@ -1,7 +1,7 @@
 \ display-test.f - checked Wasm fixture through the foreign display peer.
 \ bin/hb --load test/browser/display-test.f
 \ The printed directory retains the module and exact CLI output. The peer's
-\ --chrome option additionally runs the real browser (docs/browser-host.md).
+\ --chrome option additionally runs the real browser (src/lib/browser/host.f).
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

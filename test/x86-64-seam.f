@@ -6,10 +6,10 @@
 \ x86-64 code layer's stream (src/arch/x86-64/icode.f) and writes bytes into the
 \ shared image cursor (src/os/image-bytes.f), so an aarch64 engine can write an
 \ x86_64 executable header as readily as its own. That is the cross-build step
-\ docs/x86-64.md names, reduced to the part that exists: BUILD-ELF over an empty
-\ code stream, read back FIELD BY FIELD rather than compared against a recorded
-\ blob, because a blob says "these bytes changed" where a field says which one
-\ and to what.
+\ docs/xcomp.md "Build and bootstrap" names, reduced to the part that exists:
+\ BUILD-ELF over an empty code stream, read back FIELD BY FIELD rather than
+\ compared against a recorded blob, because a blob says "these bytes changed"
+\ where a field says which one and to what.
 \ The seam's layout.f cannot be loaded beside the host's - both spell CODE-OFF
 \ and the engine refuses a duplicate definition - so the writer reads CODE-OFF
 \ qualified from the package that replays it (X64LAYOUT,

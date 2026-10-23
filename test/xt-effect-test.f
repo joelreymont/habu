@@ -1,5 +1,5 @@
 \ xt-effect-test.f - xt<effect> value regressions (dot habu-typed-top-xt-096a8f1b,
-\ docs/typed-top-level.md §5 sub-dot 4).
+\ docs/design.md "Typed top level").
 \
 \ `['] W` retypes from a plain n to xt<effect(W)>: a T-QUOT of W's certified
 \ effect that execute/catch/is fit-check by the existing RSEXEC/RSCATCH/IS-APPLY

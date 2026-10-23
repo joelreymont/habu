@@ -2,7 +2,7 @@
 \ return-stack cell, at either tier.
 \
 \ A definition reads only the return-stack cells it pushed with `>r`; a written
-\ `|` clause carries one row variable, the same on both sides (docs/effects.md
+\ `|` clause carries one row variable, the same on both sides (docs/forth.md
 \ "The return-stack clause"). The checker refuses any other clause at
 \ the declaration, so tier 0 and tier 1 refuse the same program with the same
 \ diagnostic before either runs it.

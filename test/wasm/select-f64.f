@@ -1,5 +1,5 @@
 \ select-f64.f - WSEL's f64 rows: src/arch/wasm/select.f under Habu's NaN rule
-\ (docs/wasm-backend.md 17.3, src/compiler/native/hir-word.f DEF-FLOAT).
+\ (docs/xcomp.md "Floating point", src/compiler/native/hir-word.f DEF-FLOAT).
 \
 \ Each row compiles Habu source, selects it and compares function zero's shape
 \ (test/wasm/select-lib.f) with every operation's operands: `[a,b]` names the

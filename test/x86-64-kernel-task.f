@@ -5,7 +5,7 @@
 \ publishes DONE. Every image hands it the same descriptor and body. The body
 \ records the registers it starts with and the status it finds through the TCB
 \ its region holds, then pushes one cell through rax and zeroes every other
-\ scratch register, as an xt may (docs/x86-64.md "Control rows"), so an entry
+\ scratch register, as an xt may (src/habu/kernel-x64.f), so an entry
 \ that reads the descriptor from one after the call faults. Each image is one
 \ case, and the peer that runs it must see its status:
 \

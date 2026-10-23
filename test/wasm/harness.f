@@ -1,7 +1,8 @@
 \ harness.f - WASM-HARNESS: a module file checked by two engines independent of
 \ Habu, wasm-tools validating it and bun running it through test/wasm/run.mjs
-\ (docs/wasm-backend.md 17.6). Both are found on PATH and run from the tree's
-\ root; a missing tool or a passed deadline throws src/lib/process.f's code.
+\ (docs/xcomp.md "Validation and proof"). Both are found on PATH and run from
+\ the tree's root; a missing tool or a passed deadline throws
+\ src/lib/process.f's code.
 \
 \ VALID? answers wasm-tools validate's verdict under core Wasm and WPROF's
 \ features. RUN answers run.mjs's exit status: 0 or 1, the entry's status, 2 for

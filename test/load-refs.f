@@ -62,7 +62,7 @@ TYPED-VARIABLE VISIT [ ptr u8 n n n -- ]
 \ escape throws; no cell or one is PATH!'s underdepth, 70; more is the closed
 \ residue, E-EVAL-RESIDUE. The decoded bytes stay in data space, as an
 \ interpret-mode `s\"` keeps them, and evaluation exits while a task is live
-\ (docs/threads.md), so EACH and OPAQUE-EACH run before any task starts.
+\ (src/habu/interpret.f), so EACH and OPAQUE-EACH run before any task starts.
 
 PTR-VARIABLE TEXT-A
 variable TEXT-U

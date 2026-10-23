@@ -12,8 +12,8 @@
 \ THE WAYS THIS CAN FAIL, written down before the fix:
 \
 \  1. AN ORPHANED GRANDCHILD. Every spawned child leads its own process group
-\     (docs/process-pty.md), so killing a row's group ends the row and nothing
-\     the row spawned: its children go on building, reparented to init.
+\     (src/lib/process-tree.f), so killing a row's group ends the row and
+\     nothing the row spawned: its children go on building, reparented to init.
 \     Asserted: every process under the root inherits the write end of one
 \     pipe, and the read end reports end of file only when the last is gone.
 \  2. A ROW MID-SPAWN. A child that appears after the row's descendants were
@@ -60,12 +60,12 @@
 \ processes that reported, the writers nobody could name end on their own
 \ after 20 s, and the case waits for that before it returns. The one case is a
 \ root killed in the middle of a walk: what the walk had stopped stays stopped
-\ unless the kernel resumes it (docs/gate.md), and a writer it does not resume
-\ - the helper's, whose group was orphaned already - outlives the wait and is
-\ left. The scratch is under this process's runner root, which its registered
-\ cleanup removes. A passing case costs none of it: the pipe is already at end
-\ of file. When that wait runs out, the case still closes its descriptors and
-\ SIGNAL-END still clears the scratch.
+\ unless the kernel resumes it (test/gate-pool.f header), and a writer it does
+\ not resume - the helper's, whose group was orphaned already - outlives the
+\ wait and is left. The scratch is under this process's runner root, which its
+\ registered cleanup removes. A passing case costs none of it: the pipe is
+\ already at end of file. When that wait runs out, the case still closes its
+\ descriptors and SIGNAL-END still clears the scratch.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -139,7 +139,7 @@ PROC-NO-FD ROOT-WATCH !
    PAUSE-PFD 0 ms poll drop ;
 
 \ Failure mode 8. RELEASE restores the default action for every signal CATCH
-\ installed (docs/signal.md), whatever this process inherited for it.
+\ installed, whatever this process inherited for it.
 : SIGNALS-DEFAULT ( -- )
    SIGNAL:INIT
    SIGNAL:SIGTERM SIGNAL:CATCH

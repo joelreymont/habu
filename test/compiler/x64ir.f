@@ -17,12 +17,12 @@
 \ value with no refusal anywhere. Each tied form is therefore read back by
 \ ordinal - the result AND the operand it names - and not merely counted.
 \
-\ WHY THE STACK POINTER IS ASSERTED RESERVED. docs/x86-64.md lists six virtual
-\ machine registers (rbp, rbx, r12..r15) and rsp is not among them, because
-\ ARM64's stack pointer is not one of the registers an operand field can name
-\ and the transcription carried that over. On x86-64 it is register 4: `call`
-\ pushes through it, so a routine that allocated it would destroy its own
-\ return. Nine registers are allocatable here and not ten.
+\ WHY THE STACK POINTER IS ASSERTED RESERVED. docs/xcomp.md "Machine model"
+\ lists six virtual machine registers (rbp, rbx, r12..r15) and rsp is not among
+\ them, because ARM64's stack pointer is not one of the registers an operand
+\ field can name and the transcription carried that over. On x86-64 it is
+\ register 4: `call` pushes through it, so a routine that allocated it would
+\ destroy its own return. Nine registers are allocatable here and not ten.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so each group below runs in its own context.

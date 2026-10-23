@@ -1,5 +1,6 @@
 \ type-linear-suite.f — whole-bundle linear accounting for layout values
-\ (PLAN item 11, docs/type-families.md §19). Run BY THE ENGINE over stdin:
+\ (PLAN item 11, docs/design.md "Families and layout policies"). Run BY THE
+\ ENGINE over stdin:
 \     bin/hb < test/type-linear-suite.f
 \ A sum whose type args include a linear con is ONE linear unit: constructors
 \ consume linear payloads and mint the bundle (empty-payload variants mint

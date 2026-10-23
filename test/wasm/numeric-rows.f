@@ -1,6 +1,5 @@
 \ numeric-rows.f - the numeric golden rows a Wasm build must print as native
-\ does: N01-N06 of docs/portability.md §25.3 and the three `?do` rows of W32
-\ (§25.5), as data.
+\ does: N01-N06 and the three `?do` rows of W32, as data.
 \
 \ A row is three strings and the runner's ROW word:
 \
@@ -73,7 +72,8 @@ s" : N05-SPECIAL-TO-INT ( -- ) 1 s>f 0 s>f f/ f>s -1 s>f 0 s>f f/ f>s 0 s>f 0 s>
 s\" 3\n9223372036854775807\n-9223372036854775808\n0\n" ROW
 
 \ ---- N06 NaNs, signed zero, infinities, subnormals, contraction --------------
-\ Every operation that makes a NaN answers $7FF8000000000000 (portability.md §10.1).
+\ Every operation that makes a NaN answers $7FF8000000000000
+\ (docs/xcomp.md "Numeric admission").
 s" N06-MADE-NAN"
 s" : N06-MADE-NAN-INF ( -- r ) 1 s>f 0 s>f f/ ; : N06-MADE-NAN ( -- ) -1 s>f fsqrt 0 s>f 0 s>f f/ N06-MADE-NAN-INF N06-MADE-NAN-INF f- 0 s>f N06-MADE-NAN-INF f* N06-MADE-NAN-INF N06-MADE-NAN-INF f/ N06-MADE-NAN-INF fnegate N06-MADE-NAN-INF f+ depth . .s fdrop fdrop fdrop fdrop fdrop fdrop ;"
 s\" 6\n9221120237041090560\n9221120237041090560\n9221120237041090560\n9221120237041090560\n9221120237041090560\n9221120237041090560\n" ROW

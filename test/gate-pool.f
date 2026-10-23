@@ -1,4 +1,33 @@
 \ gate-pool.f - checked bounded process pool for native tests.
+\
+\ A caller starts rows - an executable spawned with the argv and environment it
+\ prepared (GT-POOL-START, GT-POOL-START-STDIN) or a forked quotation
+\ (GT-POOL-START-FORK) - each with a wall deadline in ms, and GT-POOL-DRAIN
+\ waits for every one: a red row's report, then exit 1. At most GT-POOL-SLOTS!
+\ rows run at once, GT-POOL-MAX at most, six by default on Linux and eight on
+\ macOS. A row's stdout and stderr go to capture files; its red line keeps the
+\ tail of each.
+\
+\ A SPAWNED ROW gets its own scratch directory as HB_TMP, which the pool
+\ removes when the slot retires, whatever the row left in it; a scratch that
+\ will not go turns the row red. A row whose caller set HB_TMP itself owns that
+\ directory. It also gets a short directory for Unix-domain sockets as
+\ HB_SOCK_TMP, under one socket root per pool session in TMPDIR.
+\
+\ A ROW ENDS WITH ITS WHOLE TREE. At its deadline (kind=TIMEOUT-UNDER-LOAD), at
+\ its CPU budget (GT-POOL-CPU-BUDGET!, kind=CPU-BUDGET) or when the run ends,
+\ the kill reaches every process descended from the row
+\ (src/lib/process-tree.f); a row that catches SIGTERM is sent it first and
+\ given GT-POOL-GRACE-MS.
+\
+\ A program that calls GT-POOL-CATCH-SIGNALS answers SIGTERM, SIGINT and SIGHUP
+\ at its next GT-POOL-STEP: it ends every live row, removes its roots and dies
+\ of the same signal. A SIGKILL of the pool leaves what its rows spawned, its
+\ temporary root and its socket root; one that lands during a tree walk leaves
+\ what the walk had stopped stopped. Only an orphaned process group is resumed:
+\ POSIX has the kernel send each member SIGHUP and then SIGCONT when a death
+\ orphans a group with a stopped member, which ends a member that does not
+\ ignore SIGHUP. test/gate-signal-test.f checks these.
 
 require src/lib/string.f
 require src/lib/fmt.f
@@ -422,7 +451,7 @@ GT-POOL-ABORT-BARE!
 
 \ A SLOT ENDS WITH EVERYTHING DESCENDED FROM ITS CHILD. The group kill below
 \ reaches the child and what it forked. What it spawned leads groups of its own
-\ (docs/process-pty.md) - for a gate row, the engines it builds and runs - and
+\ - for a gate row, the engines it builds and runs - and
 \ used to outlive the row, reparented to init. src/lib/process-tree.f stops and
 \ lists those first, so they end here with it. A walk that throws is named and
 \ the slot is ended the old way all the same: the kill has to go on to the
@@ -483,7 +512,7 @@ GT-POOL-ABORT-BARE!
 \ with the runner's root. A session's root is made at its first spawn, and
 \ made again if a GT-CLEANUP removed it. GT-POOL-RESET removes the one before:
 \ no live slot's directory is in it by then, and a GT-START since may have
-\ reset its entry away. A SIGKILL of this process leaves it (docs/gate.md).
+\ reset its entry away. A SIGKILL of this process leaves it.
 variable GT-POOL-SOCK-ROOT-U
 0 GT-POOL-SOCK-ROOT-U !
 
@@ -1380,7 +1409,8 @@ false GT-POOL-CATCHING !
 \ ---- a row bounded by its own work --------------------------------------------
 \
 \ A SLOT'S DEADLINE IS WALL TIME, and on a saturated host most of a row's wall
-\ time is other processes' turns (docs/gate.md has the measurement). A row given
+\ time is other processes' turns: on an M2 Max at load average 93 the unsealed
+\ engine build ran 77 s of CPU in 214 s. A row given
 \ a CPU budget (GT-POOL-CPU-BUDGET!) is ended once its process tree has run
 \ that much CPU time, user and system, with what its members reaped
 \ (src/lib/process-tree.f CPU-NS), and its wall deadline is then only a hang guard:

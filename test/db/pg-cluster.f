@@ -49,7 +49,7 @@
 \ first line of <root>/data/postmaster.pid, then remove the two directories;
 \ the postmaster's command line names both (-D and -k). A server that was
 \ SIGKILLed as well has left its segment: `ipcs -m` lists it with no process
-\ attached and `ipcrm -m <id>` removes it (docs/db.md).
+\ attached and `ipcrm -m <id>` removes it.
 \
 \ THE SOCKET DIRECTORY IS NOT UNDER HB_TMP. sun_path holds 104 bytes on macOS
 \ and 108 on Linux, and a pool slot's HB_TMP takes about 100 of them: a socket

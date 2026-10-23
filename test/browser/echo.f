@@ -1,6 +1,6 @@
-\ echo.f - ECHO, the browser host's fixture module (docs/browser-host.md), built
-\ by tools/wasm-build.f with the entry ECHO:TURN; test/browser/echo-test.f runs
-\ it under src/lib/browser/host-cli.mjs.
+\ echo.f - ECHO, the browser host's fixture module (src/lib/browser/host.f),
+\ built by tools/wasm-build.f with the entry ECHO:TURN; test/browser/echo-test.f
+\ runs it under src/lib/browser/host-cli.mjs.
 \
 \ Each run reads the event the host wrote. Start, the zero event the first run
 \ finds, answers hello with the event's address, a fetch of `fixture` and then

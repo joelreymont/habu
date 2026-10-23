@@ -1,5 +1,5 @@
-\ type-ctor-suite.f — generated-constructor suite (PLAN item 8, docs
-\ /type-families.md §12). A WHITEBOX-SUITE row, like the type-decl suite: the
+\ type-ctor-suite.f — generated-constructor suite (PLAN item 8, docs/forth.md
+\ "Structures And Enums"). A WHITEBOX-SUITE row, like the type-decl suite: the
 \ record queries are checker internals, which the unsealed engine binds by their
 \ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
 \ builds, and tools/bootstrap.sh runs it on the recovery chain's hb-stdin:

@@ -1,8 +1,8 @@
 \ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration
-\ grammar (src/core/sumtype.f; docs/type-families.md §9, PLAN item 6). A
-\ WHITEBOX-SUITE row, like test/type-family-suite.f: the registry probes are
-\ checker internals, which the unsealed engine binds by their recorded rows. The
-\ gate runs it on that engine, which test/whitebox-engine.f builds:
+\ grammar (src/core/sumtype.f; docs/forth.md "Structures And Enums", PLAN item
+\ 6). A WHITEBOX-SUITE row, like test/type-family-suite.f: the registry probes
+\ are checker internals, which the unsealed engine binds by their recorded rows.
+\ The gate runs it on that engine, which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/type-decl-suite.f
 \ TFAM, TYPE and MATCH are reserved system-package names in the engine's native
 \ RESTAB (src/habu/habu2.f, TFAM 2b-ii), so `package TFAM` exits 84 on this
@@ -347,7 +347,7 @@ TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 \ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
 \ closed: ?dup (branches on the tag cell), control predicates, higher-order
 \ apply, arithmetic/compare/store, and hidden '@' field names in a public
-\ signature. See docs/type-families.md §17.
+\ signature. See docs/design.md "Families and layout policies".
 \ ---------------------------------------------------------------------------
 \ a layout value flows through untouched (identity is fine).
 s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=

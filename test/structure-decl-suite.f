@@ -163,7 +163,7 @@ SUMVN@ SV0 !
 s" STRUCTURE badf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=  \ duplicate field rejects
 SUMVN@ SV0 @ T=                                       \ no ctor words from a rejected declaration
 SUMVN@ SV0 !
-s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
+s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/forth.md "Structures And Enums")
 SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
 
 \ ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ SUMVN@ SV0 @ T=                                       \ an opaque family owns no
 \     definition to the namespace's PUBLIC wid and the checker records any
 \     single-colon name as that package's public symbol — which is why the two
 \     spellings differ. Dot habu-generate-a-private-80272413,
-\     docs/type-system.md §10.4.
+\     src/core/structure-decl.f.
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
 package SDPRIVTEST
@@ -753,12 +753,12 @@ DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
 \ 15. DERIVE addr: the ADDRESS SURFACE (dot habu-generate-typed-field-ba63866e,
-\     docs/type-system.md 10.4). One accessor per field plus AT / BYTES / CELLS,
-\     in the family's own spelling and wordlist, generated at COMMIT because an
-\     accessor is armed with a COMMITTED field id. The words are ordinary checked
-\     text over the production `field-project` and `record-at` rows; the checker
-\     derives the family, offset, extent, role and schema from the field id, so
-\     the declared output type is judged rather than believed.
+\     src/core/structure-decl.f). One accessor per field plus AT / BYTES /
+\     CELLS, in the family's own spelling and wordlist, generated at COMMIT
+\     because an accessor is armed with a COMMITTED field id. The words are
+\     ordinary checked text over the production `field-project` and `record-at`
+\     rows; the checker derives the family, offset, extent, role and schema from
+\     the field id, so the declared output type is judged rather than believed.
 \ ---------------------------------------------------------------------------
 DECL-DIAG:PROSE                                       \ this section rejects too: keep the output clean
 STRUCTURE sdaddr

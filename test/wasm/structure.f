@@ -1,6 +1,6 @@
 \ structure.f - WCTL, src/arch/wasm/structure.f, on the product engine.
 \
-\ Proves W01 and W02 of docs/portability.md section 25 as structural rows (the
+\ Proves W01 and W02 as structural rows (the
 \ rows dot executes them): a loop edge that swaps two arguments, fans one out
 \ and rotates three doubles is written as parallel copies through one
 \ temporary per type, and an argument it hands back unchanged is not copied;

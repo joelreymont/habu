@@ -1,6 +1,6 @@
-\ type-match-suite.f — checked MATCH eliminator suite (PLAN item 9, docs
-\ /type-families.md §13-14). Run BY THE ENGINE over stdin, like the other
-\ type suites:  bin/hb < test/type-match-suite.f
+\ type-match-suite.f — checked MATCH eliminator suite (PLAN item 9,
+\ docs/forth.md "Structures And Enums"). Run BY THE ENGINE over stdin, like
+\ the other type suites:  bin/hb < test/type-match-suite.f
 \ MATCH is a checker control form: `MATCH family  variant OF ... ENDOF ...
 \ ;MATCH` pops the scrutinee's hidden-field bundle, refines each branch with
 \ that variant's instantiated payload, joins branch outputs, and enforces

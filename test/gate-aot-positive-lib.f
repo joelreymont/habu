@@ -258,7 +258,7 @@ variable BLR-CNT
 \ to be spliced into the APPLICATION source, which worked only while the maker
 \ loaded the linker before the application. The capture window forbids that -
 \ nothing the application can require may be loaded when the window opens
-\ (docs/native-applications.md) - so an application naming a linker word now
+\ (docs/architecture.md "Images") - so an application naming a linker word now
 \ dies with `E-UNDEFINED ... undefined word 'CLO'`, and these run where the
 \ application and the linker first coexist instead: a file the maker's stdin
 \ requires after tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.

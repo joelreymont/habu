@@ -486,7 +486,7 @@ TYPED-VARIABLE SPLICE-LEN len
 
 \ A refused record names its token and any known position, under the shape
 \ and repair class its code names
-\ (docs/repair-diagnostics.md). tools/check.f runs as a child: the packet comes
+\ (tools/diag-code.f). tools/check.f runs as a child: the packet comes
 \ from its own load child, whose capture would replace the one an in-process
 \ CHECK-CAPTURE holds open.
 : RECORD-ARGS ( ptr u8 n -- ) {: src:ptr srcu:n :}
