@@ -280,13 +280,13 @@ variable EXPECT-U
    RUN-APP SUCCESS OUT$ S\" 42\n8\n43\n" CONTAINS? TTRUE
    true SHAPE-SOURCE
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
    COLD-HASH HASH-APP
    s" cold-app-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
    WARM-HASH HASH-APP
    COLD-HASH 32 WARM-HASH 32 T$=
@@ -304,11 +304,11 @@ public
    s" native-file-types" TREE
    PREPARE
    s" cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    s" warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" types-unit-source-ran" CONTAINS? TTRUE
    RUN-IMPORTED
    FRESH-DOWNSTREAM

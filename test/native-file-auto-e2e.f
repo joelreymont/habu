@@ -97,8 +97,8 @@ variable DIAG-START
    s" hook-cache" AT source sourceu RUN-SAVED-SOURCE ;
 
 : REUSED ( -- )
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE ;
 
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
@@ -118,12 +118,12 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 : HISTORY-FILE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u s" .hbd" ENDS-WITH? a u s" /hb-def-" CONTAINS? and if
+   BASENAME {: a:ptr u:n :}
+   a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and u 76 = and if
       1 HISTORY-N +!
    then ;
 
-\ The definition entries in the history cache: one hb-def-<key>.hbd each.
+\ The file objects in the history cache: one hb-file-<64 hex>.hfo each.
 : HISTORY-ENTRIES ( -- n )
    0 HISTORY-N !
    s" history-cache" AT ['] HISTORY-FILE WALK-FILES
@@ -159,7 +159,7 @@ variable DIAG-START
    HISTORY-ENTRIES stable T=
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
-   OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    HISTORY-ENTRIES stable T= ;
 
@@ -213,7 +213,7 @@ variable DIAG-START
    s" trace" s" " PUT
    41 LEAF-SOURCE VALUE-SOURCE false false APP-SOURCE
    RUN-DIRECT SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" compiled " CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
@@ -233,7 +233,6 @@ variable DIAG-START
    RUN-APP SUCCESS
    OUT$ S\" 102\n9\n103\n101\n7\n" CONTAINS? TTRUE
    TRACE$ s" LVALVALVALVA" STR= TTRUE
-   \ Only the two colon neighbors can hit after MAIN changes; BOX is a create.
    s" app.f"
       S\" package FILE-NEIGHBOR public\n: LEFT ( -- n ) 40 ;\ncreate BOX 9 ,\n: RIGHT ( -- n ) 2 ;\n;package\n: MAIN ( -- ) FILE-NEIGHBOR:LEFT . FILE-NEIGHBOR:BOX @ . FILE-NEIGHBOR:RIGHT . ;\n" PUT
    RUN-DIRECT SUCCESS
@@ -242,7 +241,7 @@ variable DIAG-START
    s" app.f"
       S\" package FILE-NEIGHBOR public\n: LEFT ( -- n ) 40 ;\ncreate BOX 9 ,\n: RIGHT ( -- n ) 2 ;\n;package\n: MAIN ( -- ) FILE-NEIGHBOR:LEFT . FILE-NEIGHBOR:BOX @ . FILE-NEIGHBOR:RIGHT . 7 . ;\n" PUT
    RUN-DIRECT SUCCESS
-   OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 40\n9\n2\n7\n" CONTAINS? TTRUE ;
 
@@ -304,7 +303,7 @@ variable DIAG-START
    s" app.f"
       S\" package FILE-NUM public\n: 1+ ( n -- n ) 2 + ;\n;package\nrequire number.f\n: MAIN ( -- ) 41 FILE-NUM:STEP . ;\n" PUT
    RUN-DIRECT SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ s" 43" CONTAINS? TTRUE ;
 
@@ -315,7 +314,7 @@ variable DIAG-START
    s" app.f"
       S\" require apply.f\n: MAIN ( -- ) 41 [: 1+ ;] FILE-ELAB:APPLY . ;\n" PUT
    RUN-EXECUTE SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n" CONTAINS? TTRUE
    s" app.f"
@@ -327,7 +326,7 @@ variable DIAG-START
    s" app.f"
       S\" package FILE-ELAB private\n: execute ( n [ n -- n ] -- n ) drop 2 + ;\n;package\nrequire apply.f\n: MAIN ( -- ) 41 [: 1+ ;] FILE-ELAB:APPLY . 7 . ;\n" PUT
    RUN-EXECUTE SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 43\n7\n" CONTAINS? TTRUE ;
 
@@ -338,13 +337,13 @@ variable DIAG-START
    s" app.f"
       S\" require step.f\n: APPLY ( n -- n ) [: DEF-STEP:STEP ;] execute ;\n: MAIN ( -- ) 40 APPLY . depth . ;\n" PUT
    RUN-DEFINITION SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n0\n" CONTAINS? TTRUE
    s" app.f"
       S\" require step.f\n: APPLY ( n -- n ) [: DEF-STEP:STEP ;] execute ;\n: MAIN ( -- ) 40 APPLY . 7 . depth . ;\n" PUT
    RUN-DEFINITION SUCCESS
-   OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n7\n0\n" CONTAINS? TTRUE ;
 
@@ -462,22 +461,19 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 46" CONTAINS? TTRUE
    41 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   \ LEFT, RIGHT, MAIN and CHECK-RIGHT-ORIGIN; only MIDDLE changed.
-   OUT$ S\" definition hits 4\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    101 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   \ LEFT and the shifted RIGHT and MAIN; MIDDLE and CHECK-RIGHT-ORIGIN, which
-   \ spells RIGHT's offset, compile.
-   OUT$ S\" definition hits 3\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
    LITERAL-IMAGE-SAVE
    s" body-edit-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
@@ -535,14 +531,13 @@ variable DIAG-START
    OUT$ s" address-loop-folded 0" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" oldBBBB\nloop-ok\n" CONTAINS? TTRUE
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" changed-prefix\" ;\n;package\n" PUT
-   \ Only BODY-LOOP keeps its source: OLD and MAIN change, and CAST: is a declaration.
    s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr 7 drop ;\n" PUT
    RUN-LITERAL-LOOP SUCCESS
-   OUT$ S\" definition hits 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" changed-prefix\nloop-ok\n" CONTAINS? TTRUE
    LITERAL-IMAGE-SAVE
    RUN-LITERAL-LOOP-FRESH SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" changed-prefix\nloop-ok\n" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 

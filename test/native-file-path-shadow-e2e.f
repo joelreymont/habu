@@ -57,22 +57,22 @@ public
       S\" require test/fixtures/native-file-state-dependency.f\n" PUT
    0 EDIT ! PUT-APP
    BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" 42" CONTAINS? TTRUE
    1 EDIT ! PUT-APP
    BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" 44" CONTAINS? TTRUE
    BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    s" childdir/test" AT MAKE-DIR
    s" childdir/test/fixtures" AT MAKE-DIR
    s" childdir/test/fixtures/native-file-state-dependency.f"
       S\" package FILE-STATE-DEPENDENCY public : INCREMENT ( n -- n ) 2 + ; ;package\n" PUT
    BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" 45" CONTAINS? TTRUE
    T-REPORT
    s" native file path shadow artifacts: " type ROOT$ type cr ;

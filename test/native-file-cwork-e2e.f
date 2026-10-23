@@ -49,7 +49,7 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
    s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . 5 . ;\n" PUT
    s" defaults-warm-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" default unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 0\n5\n" CONTAINS? TTRUE ;
 
@@ -65,13 +65,13 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
    s" prefix.f" S\" package CWORK-PREFIX public\n3 constant CELL-COUNT\n3 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-grow-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
    s" prefix.f" S\" package CWORK-PREFIX public\n2 constant CELL-COUNT\n2 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-shrink-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE ;
 
@@ -102,7 +102,7 @@ public
    s" changed parent reuses CWORK child FILE" T-LABEL
    s" warm-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" cwork unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" definition hits " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n43\n" CONTAINS? TTRUE
    CHECK-DEFAULT-ORDER

@@ -39,9 +39,9 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
    then
    RUN-BUILD ;
 
-: HITS ( -- )
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
+: REUSED ( -- )
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE ;
 
 : ENVIRONMENT ( -- )
    s" cached definitions preserve environment-selected loads" T-LABEL
@@ -56,7 +56,7 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
    s" b" AT ENV-BUILD SUCCESS
    RUN-APP SUCCESS OUT$ S\" 99\n" T$=
    s" b" AT ENV-BUILD SUCCESS
-   HITS
+   REUSED
    RUN-APP SUCCESS OUT$ S\" 99\n" T$=
    s" cached source distinguishes unset and empty environment values" T-LABEL
    s" app.f" S\" : EMPTY-QUERY ( -- ) s\" \" GETENV 2drop ;\nEMPTY-QUERY\n: PRESENT? ( -- bool ) s\" HABU_FILE_EMPTY_INPUT\" GETENV drop NULL-PTR <> ;\nPRESENT? constant PRESENT\n: MAIN ( -- ) PRESENT . ;\n" PUT
@@ -75,22 +75,22 @@ public
    s" b.f" S\" package B public : VALUE ( -- n ) 1 ; ;package\n" PUT
    s" app.f" S\" : LOAD-BOTH ( -- ) s\" a.f\" required s\" b.f\" required ;\nLOAD-BOTH\n: MAIN ( -- ) A:VALUE B:VALUE + . ;\n" PUT
    BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    BUILD SUCCESS
-   HITS
+   REUSED
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    s" b.f" S\" package B public : VALUE ( -- n ) 3 ; ;package\n" PUT
    BUILD SUCCESS
-   HITS
+   REUSED
    RUN-APP SUCCESS OUT$ s" 44" CONTAINS? TTRUE
    s" bump.f" S\" 1 N +!\n" PUT
    s" app.f" S\" variable N\ninclude bump.f\ninclude bump.f\n: MAIN ( -- ) N @ . ;\n" PUT
    BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 2" CONTAINS? TTRUE
    BUILD SUCCESS
-   HITS
+   REUSED
    RUN-APP SUCCESS OUT$ s" 2" CONTAINS? TTRUE
    ENVIRONMENT
    T-REPORT ;
