@@ -4753,9 +4753,13 @@ variable LREPLAYTRAP
 
 \ def-close ( -- )
 : DEF-CLOSE ( -- )
-   LBL LBL {: bad done :}
+   LBL LBL LBL {: bad done nolast :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
-   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 1 CMPI,  C-NE bad BCOND,
+   10 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  10 1 CMPI,  C-NE bad BCOND,
+   10 9 16 LDR,  10 10 DKIND:MASK ANDI,  10 nolast CBZ,   \ a published body that pushes a cell is the slot `does>` patches (LDOESPATCH), set after the body as the kernel's definers set it
+   11 DKIND:CAST LIT64,  10 11 CMP,  C-EQ nolast BCOND,
+   9 DATA LASTC-CELL STR,
+   nolast LBL,
    NATIVE-CLOSE
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT

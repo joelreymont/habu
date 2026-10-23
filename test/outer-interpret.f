@@ -10,11 +10,11 @@
 \ it exercised, so two runs failing alike do not pass.
 \
 \ The prelude defines with keywords the Habu loop does not read yet
-\ (`SUMTYPE`, `constant`), so it loads before the switch, and a case holds
+\ (`SUMTYPE`), so it loads before the switch, and a case holds
 \ only numbers, comments, the literal keywords (`s"`, `c"`, `."`, their
 \ escaped forms, `char` and `'`), the package keywords (`package`, `public`,
 \ `private`, `;package`, `using`, `;using` and `export`), words, `create`,
-\ `variable`, `cast:` and `immediate`, and definitions (`:`, `kernel:` or
+\ `variable`, `constant`, `cast:` and `immediate`, and definitions (`:`, `kernel:` or
 \ `trusted:`) that end at `;` or refuse, at the latest where the input ends
 \ inside them. A case defines with the other keywords through evaluate, which
 \ the engine's loop reads.
@@ -1882,7 +1882,7 @@ variable WANT-RC
       76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0-nested.f:1\n" DIED-AT
    then ;
 
-\ ---- `create` and `variable` -------------------------------------------------------
+\ ---- `create`, `variable` and `constant` -------------------------------------------
 \ A created word pushes its cell, and a checked word reads it through the
 \ effect the checker was given; a variable's cell is its own.
 : CREATED ( -- )
@@ -1927,6 +1927,36 @@ variable WANT-RC
    s" oi-create-hook.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" OI-B create \nOI-V create \n5\n" CASE$ GE-EXPECT-OUT ;
+
+\ A constant is the record a later `does>` patches, as a variable is: the
+\ clause acts on the constant, not on the variable before it.
+: CONSTANT-DOES ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier variable OI-AV 3 constant OI-KC" GE-SRC-LINE
+   s" : OI-BEHAVE ( -- ) does> ( -- n ) drop 9 ;" GE-SRC-LINE
+   s" OI-BEHAVE OI-KC ." GE-SRC-LINE
+   s" oi-constant-does.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 9\n" CASE$ GE-EXPECT-OUT ;
+
+\ A constant refused after its record opened is no record a later `does>`
+\ patches: the clause acts on the variable before it. Each loop is held to
+\ the output alone: the engine names the refusal at the file's floor
+\ (`interpret stack underdepth`), the Habu loop's constant E-UNDERFLOW.
+: CONSTANT-REFUSED-DOES ( -- )
+   GE-SRC-RESET
+   s" constant OI-KC" GE-SRC-LINE
+   s" oi-nested-constant.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 1 set-tier variable OI-AV s~ oi-nested-constant.f~ ' included catch . 2drop" QLINE
+   s" : OI-BEHAVE ( -- ) does> ( -- n ) drop 9 ;" GE-SRC-LINE
+   s" OI-BEHAVE OI-AV ." GE-SRC-LINE
+   s" oi-constant-refused-does.f" CASE-BUF GT-PATH CASE-U !
+   CASE$ SRC>FILE
+   false RUN  CASE$ GE-EXPECT-OK  S\" 70\n9\n" CASE$ GE-EXPECT-OUT
+   true RUN   CASE$ GE-EXPECT-OK  S\" 70\n9\n" CASE$ GE-EXPECT-OUT
+   1 CASES +! ;
 
 \ ---- `immediate` and `cast:` ---------------------------------------------------------
 \ `immediate` marks the newest record, as spelled in any case, and after a
@@ -2215,6 +2245,8 @@ private
    CREATED-NO-NAME
    CREATED-DICT-FULL
    CREATED-HOOK
+   CONSTANT-DOES
+   CONSTANT-REFUSED-DOES
    MARKED
    CAST-DECLARED
    CAST-PRIVATE

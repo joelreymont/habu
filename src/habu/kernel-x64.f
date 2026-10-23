@@ -4949,13 +4949,13 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: record NDICT unpublished, [0]
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
-\ PEND-CELL the record, and LASTC-CELL too for DKIND:VAL or DKIND:ADDR;
+\ PEND-CELL the record;
 \ TSIG, TCSIG, PEND-OPAQUE, DOESB and TRUSTED clear; DEF-TIER-CELL takes
 \ TIER-CELL and the provenance window opens at that CP. At tier 0 it opens the
 \ record only. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's,
 \ as habu2.f DEFWRITE:DEF-OPEN admits it.
 : DEF-OPEN-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label nolast:label :}
+   X64CODE:LBL X64CODE:LBL {: prot:label done:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -4978,12 +4978,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    R8 PEND-CELL CELL!,
    RAX TKA-CELL CELL@,  RAX PENDTKA-CELL CELL!,  \ keep the name token for source-end location
-   RAX RSP DW-ARG MOV-LOAD,                           \ a body that pushes a cell is the slot `does>` patches
-   RAX RAX ASM-SINK ENC-TEST-RR  C-E nolast JCC,
-   RCX DKIND:CAST IMM64,
-   RAX RCX ASM-SINK ENC-CMP-RR  C-E nolast JCC,
-   R8 LASTC-CELL CELL!,
-   nolast X64CODE:LBL,
    RAX ZERO-REG,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
@@ -5040,12 +5034,20 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ def-close ( -- ): the pending definition of the native tier ends, as the
 \ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
 \ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, TRUSTED and PEND-CELL
-\ clear. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+\ clear; before they clear, LASTC-CELL takes the record for a nonzero kind other
+\ than DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )
+   X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
    RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RCX RDX REC-FLAGS MOV-LOAD,                        \ a published body that pushes a cell is the slot `does>` patches, set after the body as the kernel's definers set it
+   RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E nolast JCC,
+   RAX DKIND:CAST IMM64,  RCX RAX ASM-SINK ENC-CMP-RR  C-E nolast JCC,
+   RDX LASTC-CELL CELL!,
+   nolast X64CODE:LBL,
    1 X64PROV:CLOSE,
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
