@@ -210,7 +210,18 @@ variable FILL-POOL
    s" fw-def.f" LOAD+
    s" out.f" LOAD+
    s" reach.f" LOAD+
-   s" mask.f" LOAD+
+   s" mxp.f" LOAD+
+   S\" s\" mx=\" type MX-K . cr\n" IN+
+   s" xpar.f" LOAD+
+   S\" s\" xk=\" type X-K . cr\n" IN+
+   s" ixp.f" LOAD+
+   S\" s\" ixl=\" type IXL-K . cr\ns\" ixt=\" type IXT-K . cr\n" IN+
+   s" dxpar.f" LOAD+
+   S\" s\" dxk=\" type DX-K . cr\n" IN+
+   s" rk-ind.f" LOAD+
+   s" rk-base.f" LOAD+
+   s" rk-rev.f" LOAD+
+   s" rebind.f" LOAD+
    s" own-trust.f" LOAD+
    s" parse-ok.f" LOAD+
    s" tier-ok.f" LOAD+
@@ -618,6 +629,41 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" cap.f" S\" require src/lib/image-lifecycle.f\n: CAP-RUN ( -- n ) [: IMAGE-LIFECYCLE:PREPARE ;] catch ;\nCAP-RUN constant CAP-CODE\n" PUT
    s" capo.f" S\" s\" o\" type cr\n4 constant CAPO-K\n" PUT ;
 
+\ mask.f's run of MX-RUN names data first, then runs a quotation through
+\ execute: INDIRECT is admitted, and the closure walk follows the
+\ quotation to its sibling mxone.f's MX-ONE, whose body the third build
+\ edits; MX-ONE is not a child of mask.f, since an edited child makes
+\ mask.f's replay stale and the builder exits with the retry code.
+\ xrun.f's XGO executes the typed xt its sibling xset.f stores in XHOOK,
+\ and the third build edits XA's body under the same key. dxrun.f's DXGO
+\ executes the xt dxset.f stores in DXHOOK, a data cell with no colon
+\ accessor whose closure would protect DXA; the third build edits DXA's
+\ body. ixl.f's and
+\ ixt.f's bodies run evaluate-closed on a literal: the third build edits
+\ ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text stores
+\ into its own file's variable: a store into an earlier file's data is an
+\ update, and an object with updates is not installed. The rk-*.f runs
+\ divide, unclassed, before or after an indirect run, and refuse alike;
+\ rebind.f's RB-B compiles `is`, which rebinds a defer and refuses.
+: INDIRECT-FIXTURES ( -- )
+   s" mxone.f" S\" : MX-ONE ( -- n ) 1 ;\n" PUT
+   s" mask.f" S\" variable MX\n: MX-RUN ( -- n ) MX @ drop [: MX-ONE ;] execute ;\nMX-RUN constant MX-K\n" PUT
+   s" mxp.f" S\" require mxone.f\nrequire mask.f\n" PUT
+   s" xset.f" S\" : XA ( -- n ) 1 ;\nTYPED-VARIABLE XHOOK [ -- n ]\n' XA XHOOK xt!\n" PUT
+   s" xrun.f" S\" : XGO ( -- n ) XHOOK @ execute ;\nXGO constant X-K\n" PUT
+   s" xpar.f" S\" require xset.f\nrequire xrun.f\n" PUT
+   s" dxset.f" S\" : XT-CELL: ( -- ) create 0 , does> ( -- ptr [ -- n ] ) ;\n: DXA ( -- n ) 1 ;\nXT-CELL: DXHOOK\n' DXA DXHOOK xt!\n" PUT
+   s" dxrun.f" S\" : DXGO ( -- n ) DXHOOK @ execute ;\nDXGO constant DX-K\n" PUT
+   s" dxpar.f" S\" require dxset.f\nrequire dxrun.f\n" PUT
+   s" rk-ind.f" S\" : RK-IND ( n n -- n ) [: ;] execute / ;\n6 3 RK-IND constant RK-IND-K\n" PUT
+   s" rk-base.f" S\" : RK-BASE ( n n -- n ) / ;\n6 3 RK-BASE constant RK-BASE-K\n" PUT
+   s" rk-rev.f" S\" : RK-REV ( n n -- n ) / [: ;] execute ;\n6 3 RK-REV constant RK-REV-K\n" PUT
+   s" rebind.f" S\" defer RB-D ( -- )\n: RB-B ( -- ) [: ;] is RB-D ;\nRB-B\n" PUT
+   s" ixw.f" S\" : IX-TEN ( -- n ) 10 ;\n" PUT
+   s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 3 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT
+   s" ixt.f" S\" variable IXT-V\n: IXT-RUN ( -- ) s\" IX-TEN IXT-V !\" evaluate-closed ;\nIXT-RUN\nIXT-V @ constant IXT-K\n" PUT
+   s" ixp.f" S\" require ixw.f\nrequire ixl.f\nrequire ixt.f\n" PUT ;
+
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
@@ -684,10 +730,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    S\" : FW ( -- ) s\" " IN+ s" fw.txt" AT IN+ S\" \" s\" x\" WRITE-ALL ;\nFW\n" IN+
    s" fw-def.f" INPUT INPUT-U @ PUT
    s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
-   \ mask.f's run of MX-RUN names data first, then runs a quotation through
-   \ execute: its worst reason, INDIRECT, refuses, not the data mention.
+   INDIRECT-FIXTURES
    \ own-trust.f runs its own unchecked OT at top level and is refused by name.
-   s" mask.f" S\" variable MX\n: MX-ONE ( -- n ) 1 ;\n: MX-RUN ( -- n ) MX @ drop [: MX-ONE ;] execute ;\nMX-RUN constant MX-K\n" PUT
    s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
    \ A seed word run at top level is admitted only by the trace its run leaves.
    \ parse-ok.f's parse-imm adds a unit fact, cells is a stack primitive and
@@ -1124,7 +1168,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" off.f" NO-RUN-REASON
    s" hooks.f" NO-RUN-REASON
    s" raw.f" NO-RUN-REASON
-   s" poke.f" NO-RUN-REASON ;
+   s" poke.f" NO-RUN-REASON
+   s" mask.f" NO-RUN-REASON
+   s" xrun.f" NO-RUN-REASON
+   s" dxrun.f" NO-RUN-REASON
+   s" ixl.f" NO-RUN-REASON
+   s" ixt.f" NO-RUN-REASON ;
 
 \ What a top-level run reaches: a checked definition and a classed
 \ primitive are admitted; a seed word no REACH class covers refuses.
@@ -1159,12 +1208,36 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    TEE$ TEE-COLD T$=
    s" a forward keeps the fault its device latched" T-LABEL
    OUT$ S\" fwd=0\n5\n0\n" CONTAINS? TTRUE
-   s" a run whose body names data and then executes refuses by its worst reason" T-LABEL
-   s" mask.f" s"  reason=" LINE$ s" mask.f reason=run-host-indirect word=MX-RUN" T$=
-   s" mask.f" NO-OBJECT
+   s" a run whose body names data and then executes a quotation stores" T-LABEL
+   s" mask.f" KEY$ STORED
+   s" mask.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   OUT$ S\" mx=1\n" CONTAINS? TTRUE
+   s" a run that executes an earlier file's typed xt cell stores" T-LABEL
+   s" xrun.f" KEY$ STORED
+   s" xrun.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   OUT$ S\" xk=1\n" CONTAINS? TTRUE
+   s" a run that executes an earlier file's data xt cell stores" T-LABEL
+   s" dxrun.f" KEY$ STORED
+   s" dxrun.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   OUT$ S\" dxk=1\n" CONTAINS? TTRUE
+   s" runs whose bodies evaluate a closed literal store" T-LABEL
+   s" ixl.f" KEY$ STORED
+   s" ixl.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" ixt.f" KEY$ STORED
+   s" ixt.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   OUT$ S\" ixl=3\n" CONTAINS? TTRUE
+   OUT$ S\" ixt=10\n" CONTAINS? TTRUE
    s" a run of the file's own unchecked word refuses it by name" T-LABEL
    s" own-trust.f" s"  reason=" LINE$ s" own-trust.f reason=run-host-unchecked word=OT" T$=
    s" own-trust.f" NO-OBJECT
+   s" a division refuses its file before or after an indirect run" T-LABEL
+   s" rk-ind.f" s"  reason=" LINE$ s" rk-ind.f reason=run-host-unknown word=RK-IND" T$=
+   s" rk-base.f" s"  reason=" LINE$ s" rk-base.f reason=run-host-unknown word=RK-BASE" T$=
+   s" rk-rev.f" s"  reason=" LINE$ s" rk-rev.f reason=run-host-unknown word=RK-REV" T$=
+   s" rk-ind.f" NO-OBJECT
+   s" a compiled is refuses its file as a rebinding" T-LABEL
+   s" rebind.f" s"  reason=" LINE$ s" rebind.f reason=run-host-rebind word=RB-B" T$=
+   s" rebind.f" NO-OBJECT
    s" a seed word run whose trace is the source, a unit fact or a class stores" T-LABEL
    s" parse-ok.f" KEY$ STORED
    s" parse-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
@@ -1478,6 +1551,42 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    line buf lineu BYTE-COPY lineu bufu ! ;
 
 public
+\ The warm build reuses the files whose runs execute an xt or a closed text.
+: INDIRECT-WARM ( -- )
+   s" a warm build installs the objects of files whose runs execute an xt or a closed text" T-LABEL
+   s" mask.f" REUSED s" xrun.f" REUSED s" dxrun.f" REUSED
+   s" ixl.f" REUSED s" ixt.f" REUSED
+   OUT$ S\" mx=1\n" CONTAINS? TTRUE
+   OUT$ S\" xk=1\n" CONTAINS? TTRUE
+   OUT$ S\" dxk=1\n" CONTAINS? TTRUE
+   OUT$ S\" ixl=3\n" CONTAINS? TTRUE
+   OUT$ S\" ixt=10\n" CONTAINS? TTRUE ;
+
+\ The third build's edits: MX-ONE's, XA's and DXA's bodies, IX-TEN's body and
+\ ixl.f's literal.
+: INDIRECT-EDITS ( -- )
+   s" mxone.f" S\" : MX-ONE ( -- n ) 2 ;\n" PUT
+   s" xset.f" S\" : XA ( -- n ) 5 ;\nTYPED-VARIABLE XHOOK [ -- n ]\n' XA XHOOK xt!\n" PUT
+   s" dxset.f" S\" : XT-CELL: ( -- ) create 0 , does> ( -- ptr [ -- n ] ) ;\n: DXA ( -- n ) 5 ;\nXT-CELL: DXHOOK\n' DXA DXHOOK xt!\n" PUT
+   s" ixw.f" S\" : IX-TEN ( -- n ) 20 ;\n" PUT
+   s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 4 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT ;
+
+\ Each edit misses the file whose run reached it, and the rerun's values are
+\ those a cold build of the edited sources computes.
+: INDIRECT-REBUILT ( -- )
+   s" an edit of the body a run executes compiles the running file again" T-LABEL
+   ERR$ s" /mask.f records=" CONTAINS? TFALSE
+   OUT$ S\" mx=2\n" CONTAINS? TTRUE
+   ERR$ s" /xrun.f records=" CONTAINS? TFALSE
+   OUT$ S\" xk=5\n" CONTAINS? TTRUE
+   ERR$ s" /dxrun.f records=" CONTAINS? TFALSE
+   OUT$ S\" dxk=5\n" CONTAINS? TTRUE
+   s" an edit of a closed literal or of a word its text runs compiles the file again" T-LABEL
+   ERR$ s" /ixl.f records=" CONTAINS? TFALSE
+   ERR$ s" /ixt.f records=" CONTAINS? TFALSE
+   OUT$ S\" ixl=4\n" CONTAINS? TTRUE
+   OUT$ S\" ixt=20\n" CONTAINS? TTRUE ;
+
 : MAIN ( -- )
    T-RESET
    s" native-file-frame" TREE
@@ -1550,6 +1659,7 @@ public
    s" rw.f" NO-OBJECT
    OUT$ S\" lf=lf-pool-probe\n" CONTAINS? TTRUE
    s" lf.f" REUSED
+   INDIRECT-WARM
    \ pf.f fills the literal pool's write segment, so lp.f's literal needs a
    \ new one: lp.f's object, stored with room, misses before it installs
    \ anything, and its compile opens that segment inside lp.f, so it stores
@@ -1582,7 +1692,9 @@ public
    \ RC-N's new body keeps its effect: rp.f's rows do not read it.
    s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
    s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
+   INDIRECT-EDITS
    s" comments in lib.f keep both keys and both files' results" REBUILT
+   INDIRECT-REBUILT
    s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
    OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
    ERR$ s" /hch.f records=" CONTAINS? TFALSE

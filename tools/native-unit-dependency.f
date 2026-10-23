@@ -551,6 +551,8 @@ variable REACH-XT
 variable FIND-XT
 CAST: AS-FIND ( n -- [ ptr u8 n -- n ] )
 CAST: AS-REACH ( n -- [ n -- n ] )
+variable RUN-CLASS-XT
+CAST: AS-CLASS ( n -- [ -- n ] )
 variable FACTS-XT
 CAST: AS-FACTS ( n -- [ -- n bool ] )
 
@@ -599,6 +601,13 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
    row 0 < if 0 exit then
    row REACH-XT @ AS-REACH execute ;
 
+\ ord is a primitive that runs its xt or text operand (PRIM-SPEC:R-RUN). A
+\ host without the class has no such primitive.
+: RUNS-OPERAND? ( n -- bool )
+   {: ord:n :}
+   RUN-CLASS-XT @ 0= if false exit then
+   ord PRIM-REACH RUN-CLASS-XT @ AS-CLASS execute = ;
+
 \ Whether seed record ord is a sealed engine helper (src/habu/
 \ primitive-registry.f HELPER-REGISTER): a routine a primitive's lowering
 \ branches to, with no row and no effect of its own. The compiler emits
@@ -627,13 +636,13 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
    ord ENGINE-HELPER? if 3 exit then
    0 ;
 
-\ The refusal a reached member's host reason names; SAFE and MEMORY have none.
+\ The refusal a reached member's host reason names; an admitted one has none.
 : REASON-WHY$ ( n -- ptr u8 n )
    {: reason:n :}
    reason NHOST:CAST = if s" run-host-cast" exit then
-   reason NHOST:INDIRECT = if s" run-host-indirect" exit then
    reason NHOST:UNCHECKED = if s" run-host-unchecked" exit then
    reason NHOST:FOREIGN = if s" run-host-foreign" exit then
+   reason NFILE-REF:HOST-REBIND = if s" run-host-rebind" exit then
    s" run-host-unknown" ;
 
 : H-REF ( n n n -- )
@@ -772,8 +781,8 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
 \ queues every record it reaches but a seed record, which it classes as a
 \ walk from the file's entry does (SEED-REACH). A defer made after the seed
 \ is its cell, since an earlier file may rebind it; a definition with a
-\ result is a member when its host reason is admitted (SAFE, MEMORY, FIXED)
-\ and refuses otherwise; a constant is its VALUE row; a does> instance's
+\ result is a member when its host reason is admitted
+\ (NFILE-REF:REASON-ADMITTED?) and refuses otherwise; a constant is its VALUE row; a does> instance's
 \ clause has no result yet; anything else must be a data record.
 : REACH ( n -- )
    {: ord:n :}
@@ -1372,9 +1381,11 @@ DEFAULT-OUT
    off FBYTES 8 + LE:U64@ 0 ?do kind TALLY loop
    drop ;
 
-\ What a run of ord reads: a constant's VALUE row; for a data word its DATA
-\ row; for a definition, defer or does> instance one EXECUTED row over the
-\ members its closure reached and a DATA row per data record. A seed value is
+\ What a run of ord reads: a constant's VALUE row; for a definition, defer or
+\ does> instance, and for a data word whose cells name code (a typed xt cell
+\ a body may execute), one EXECUTED row over the members its closure reached
+\ and a DATA row per data record. The DATA row keys a pointee alone, so the
+\ EXECUTED row is what misses when that pointee's body changes. A seed value is
 \ its VALUE row; a seed data record refuses; a classed primitive or an
 \ engine helper is admitted and a seed code root records nothing here (its
 \ RESOLUTION row is its only fact; its trace judges it). A seed record
@@ -1389,7 +1400,7 @@ DEFAULT-OUT
    then
    ord true WALK
    WOK @ 0= if exit then
-   ord NFILE-REF:RESULT-DIGEST nip rec NDICT:REC-DEFER-CELL 0<> or if
+   MEM-N @ 0 > rec NDICT:REC-DEFER-CELL 0<> or if
       CLOSURE-HASH
       ord EXECUTED ord NFILE-REF:DECL-KEY$ HOUT DIGEST-BYTES ADD-ROW
    then ;
@@ -1480,7 +1491,10 @@ public
       0 false exit
    then
    rec NFILE-REF:SEED-RECORD? 0= if 0 false exit then
-   rec SEED-KIND 0<> if 0 false exit then
+   \ A primitive that runs its operand is judged too: in a body its operand is
+   \ an edge the closure walk follows, but at top level it comes off the
+   \ stack, and the run of a seed word it ticked is judged only by this trace.
+   rec SEED-KIND 0<> rec RUNS-OPERAND? 0= and if 0 false exit then
    FRUN-N @ {: run:n :}
    run 1+ RUN-CELLS * FRUNS-RESERVE
    SOURCE-EXEC:POSITION {: end:n balanced:bool :}
@@ -1545,6 +1559,7 @@ public
 : BEGIN-UNIT ( -- )
    s" PRIM-SPEC:REACH@" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT REACH-XT !
    s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
+   s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
    s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
@@ -1699,7 +1714,7 @@ public
    PTRS-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
-   0 REACH-XT ! 0 FIND-XT ! 0 FACTS-XT !
+   0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

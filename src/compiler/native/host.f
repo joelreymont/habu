@@ -25,10 +25,13 @@ public
 \ MEMORY: memory operations and address-forming words (operand addresses,
 \ views, string literals), admitted by provenance. FIXED: a fixed record
 \ mention: a constant value compiled as an immediate, or a data address the
-\ address sites carry. CAST, INDIRECT, UNCHECKED and FOREIGN: an
-\ effect the facts cannot name. UNKNOWN: an op, expansion or literal the
-\ classification does not model, or no facts at all. SAFE, MEMORY and FIXED
-\ are admitted. Objects publish these values in section 15: append, never
+\ address sites carry. INDIRECT: a run of an xt or text operand, which a
+\ file's closure walk and source observer account for. CAST, UNCHECKED and
+\ FOREIGN: an effect the facts cannot name. UNKNOWN: an op, expansion or literal the
+\ classification does not model, or no facts at all. REBIND: a compiled `is`,
+\ which rebinds a defer rather than running a typed xt. SAFE, MEMORY, INDIRECT
+\ and FIXED are admitted (tools/native-file-reference.f REASON-ADMITTED?).
+\ Objects publish these values in section 15: append, never
 \ renumber.
 0 constant SAFE
 1 constant CAST
@@ -38,6 +41,7 @@ public
 5 constant FOREIGN
 6 constant UNKNOWN
 7 constant FIXED
+8 constant REBIND
 
 private
 
@@ -320,14 +324,15 @@ public
 
 private
 
-\ The admitted reasons rank SAFE < MEMORY < FIXED; every refusing reason ranks
-\ above them, alike.
+\ The admitted reasons rank SAFE < MEMORY < INDIRECT < FIXED; every refusing
+\ reason ranks above them, alike.
 : RANK ( n -- n )
    {: reason:n :}
    reason SAFE = if 0 exit then
    reason MEMORY = if 1 exit then
-   reason FIXED = if 2 exit then
-   3 ;
+   reason INDIRECT = if 2 exit then
+   reason FIXED = if 3 exit then
+   4 ;
 
 public
 

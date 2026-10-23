@@ -68,6 +68,9 @@ public
 4 constant R-SOURCE          \ reads the input after its token
 5 constant R-DICT            \ records and wordlist state an object carries
 6 constant R-BUILD           \ the tracked kernel cells: tier, build scope, dispatch
+7 constant R-RUN             \ runs its xt or text operand; the effect is the
+                             \ operand's, accounted by the operand's own edges
+                             \ and the nested runs it makes
 
 \ ---- atom codes --------------------------------------------------------------
 \ One code per checker row constructor. A composite atom is a short sequence:
@@ -322,6 +325,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
    a u s" source" CORE-STR= IF R-SOURCE EXIT THEN
    a u s" dict" CORE-STR= IF R-DICT EXIT THEN
    a u s" build" CORE-STR= IF R-BUILD EXIT THEN
+   a u s" run" CORE-STR= IF R-RUN EXIT THEN
    s" prims: unknown reach" SPEC-RC die ;
 
 : REACH ( -- )
@@ -396,7 +400,7 @@ public
 private
 
 \ ---- the table ---------------------------------------------------------------
-EPRIM: finally PE-FINALLY EPRIM;
+EPRIM: finally PE-FINALLY EPRIM; REACH run
 2 EMIN-IN!                           \ the body xt and the cleanup xt
 EPRIM: c2-invoke PE-C2-INVOKE EPRIM;
 3 EMIN-IN!                           \ body, cleanup, and result-code finisher
@@ -586,7 +590,7 @@ EPRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 \ throws E-EVAL-RESIDUE when the text leaves cells, so whatever the text does
 \ its net effect is ( -- ) and the row states the string alone. `evaluate`,
 \ whose effect is the text's, stays elaborated below and unsafe in a body.
-EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
+EPRIM: evaluate-closed PE-PTR-U8 PE-IN PE-N PE-IN EPRIM; REACH run
 EPRIM: evaluate-range PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE, through PROVIDED-XT:EVALUATE-RANGE-CELL
@@ -1157,9 +1161,9 @@ EPPRIM: OUTER execute-floor PE-N PE-IN  PE-F PE-OUT ECLOSE-PRIVATE
 \ reading one from the table (RSEXEC, RSCATCH, RS2->R, RS2R>, RS2R@ in CF-TOK?,
 \ `evaluate`'s dynamic rule, and `?dup`'s branch-shaped result). A row here
 \ states that, so the completeness gate accepts the body without an effect.
-ELAB: execute
+ELAB: execute REACH run
 1 EMIN-IN!
-ELAB: catch
+ELAB: catch REACH run
 1 EMIN-IN!
 ELAB: evaluate
 2 EMIN-IN!

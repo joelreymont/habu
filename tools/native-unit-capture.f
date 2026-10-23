@@ -109,6 +109,7 @@ public
    \ A primitive's REACH class, which admits a top-level run's reach.
    s" PRIM-SPEC:REACH@" true BIND-ONE
    s" PRIM-SPEC:FIND" true BIND-ONE
+   s" PRIM-SPEC:R-RUN" true BIND-ONE
    \ The checker's unit facts, one trace a top-level run may leave.
    s" CHECKER-OWNER:UNIT-FACTS" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE

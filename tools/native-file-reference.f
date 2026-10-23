@@ -1535,21 +1535,28 @@ variable RESULT-IMPORT-N
 
 public
 
-\ NHOST:FIXED, the class of a definition naming a fixed record. Named here
-\ because NHOST is baked and a retained host's NHOST lacks it.
+\ NHOST:FIXED, the class of a definition naming a fixed record, and
+\ NHOST:REBIND, of one compiling `is`. Named here because NHOST is baked and
+\ a retained host's NHOST lacks them.
 7 constant HOST-FIXED
+8 constant HOST-REBIND
 
 \ The reasons whose body the published facts account for (host.f's rule):
-\ SAFE, MEMORY and FIXED. Every other reason, a future one included, refuses.
+\ SAFE, MEMORY and FIXED, and INDIRECT: checked code executes only a typed
+\ xt, a quotation or tick the result's edges name or one a defer or declared
+\ code cell holds, which the closure walk follows, and the runs a text it
+\ evaluates makes are observed as the file's own. Every other reason, a
+\ future one included, refuses.
 : REASON-ADMITTED? ( n -- bool )
    {: reason:n :}
-   reason NHOST:SAFE = reason NHOST:MEMORY = or reason HOST-FIXED = or ;
+   reason NHOST:SAFE = reason NHOST:MEMORY = or reason HOST-FIXED = or
+   reason NHOST:INDIRECT = or ;
 
 private
 
 \ The worse of two host reasons: one that is not admitted, the first such,
-\ else the greater, SAFE < MEMORY < HOST-FIXED among the admitted. The
-\ reasons are not ordered by risk: CAST lies below MEMORY.
+\ else the greater, SAFE < MEMORY < INDIRECT < HOST-FIXED among the
+\ admitted. The reasons are not ordered by risk: CAST lies below MEMORY.
 : WORSE ( n n -- n ) {: a:n b:n :}
    a REASON-ADMITTED? 0= if a exit then
    b REASON-ADMITTED? 0= if b exit then
