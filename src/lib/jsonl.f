@@ -7,6 +7,21 @@
 \ or CLOSE, and the caller closes that reader first. At the end of input and
 \ after any throw the cursor releases everything and is closed. SPLIT-LINE
 \ frames memory input statelessly and owns nothing.
+\
+\ The line limit is inclusive and counts CR but not LF. NEXT skips empty lines,
+\ keeps CR, returns a final unterminated line and invents none after a final
+\ LF; at the end of input it releases everything and answers false once, after
+\ which NEXT is E-STATE. A line over the limit is E-LIMIT and a failed read
+\ E-FS-IO; open, path and allocation failures keep their owners' codes. A failed
+\ descriptor close kills the process ("jsonl: close failed", exit 71): macOS and
+\ Linux release the descriptor before close reports, so a retry could close a
+\ reused one. CLOSE is idempotent. SPLIT-LINE answers the line at pos (CR kept),
+\ the position after its LF and true, or an empty span, pos and false at the
+\ end; a bad span or a negative pos is E-SOURCE. Neither form trims or parses;
+\ each caller decides whether blank, malformed or non-object rows are errors.
+\
+\ STORAGE CLASS. CALLER-OWNED: the cursor, and what it owns between OPEN and the
+\ end of input or CLOSE; SPLIT-LINE owns nothing.
 
 require src/lib/byte-buffer.f
 require src/lib/json-read.f

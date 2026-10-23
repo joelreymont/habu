@@ -12,6 +12,11 @@
 \
 \ FIT gives the longest length of a span, at most a cap, that does not end
 \ inside a character, so a valid span cut by it stays valid.
+\ A cap before a continuation byte backs up to its lead, never more than three
+\ bytes; a negative length or cap is E-STR-BOUNDS. Malformed, truncated,
+\ non-shortest, surrogate and out-of-range sequences are all RAW-BYTE.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/errors.f
 

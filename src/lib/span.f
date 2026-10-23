@@ -18,7 +18,7 @@
 \ reach the same call stays inside 64 bytes: SPAN:CELL-AT checks `i < reach/CELL`
 \ and every other accessor checks bytes too, so a widened element type is a
 \ semantic surprise and never an out-of-bounds access. Closing the widening
-\ itself is a checker question (the campaign's band 3), not a declaration's.
+\ itself is a checker question, not a declaration's.
 \
 \ WHO MAY CALL SPAN:MAKE. It is the one crossing where an address and a number
 \ become a reach, so it is where a wrong number becomes an overrun. Only src/lib/
@@ -39,6 +39,14 @@
 \ changing the generated accessor set at the sealed generative storage boundary
 \ (src/core/layout-buffer.f). A span over a nominal element is already reachable
 \ today - hand a TYPED-BUFFER accessor result to SPAN:MAKE.
+\
+\ A narrowing or an index outside the reach throws E-SPAN-RANGE, a copy longer
+\ than the destination E-SPAN-CAPACITY and moves nothing, and a negative reach
+\ or source length E-SPAN-LENGTH. MEM:ALLOC-SPAN, MEM:ALLOCATION>SPAN and
+\ MEM:FREE-SPAN live in src/lib/memory.f, which owns MEM.
+\
+\ STORAGE CLASS. CALLER-OWNED: a span names its producer's storage; SPAN-BUFFER:
+\ and SPAN-CELLS: allot theirs when they define the name.
 
 require src/lib/errors.f
 

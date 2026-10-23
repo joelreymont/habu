@@ -5,6 +5,20 @@
 \ FORMAT writes a shortest round-trip plain decimal without a terminator;
 \ equally close shortest decimals resolve away from zero, as Rust Display does.
 \ The immutable C numeric locale lives until the process image is prepared.
+\ Failures answer F64-TEXT:fault: bytes left after a complete decimal are
+\ `trailing`; nan, inf or infinity and a decimal that overflows are `nonfinite`;
+\ a negative capacity or a text longer than it is `capacity`; a failed library
+\ load or native call is `runtime`; anything else is `malformed`. A MAX-BYTES
+\ buffer (the negative least subnormal's length) always suffices for FORMAT.
+\ PARSE passes the locale to strtod_l and FORMAT switches the thread to it; both
+\ restore the rounding mode, and FORMAT the locale, before answering, failure
+\ included. An IMAGE-LIFECYCLE hook frees the locale and closes the library
+\ when the image is prepared; the restored image reacquires them on its next
+\ call.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the library and the C locale, made by the first
+\ call and only read after it; no conversion yields, so any task may convert.
+
 require src/lib/ffi-abi.f
 require src/lib/image-lifecycle.f
 require src/lib/ieee754.f

@@ -1,16 +1,11 @@
-\ string-roles.f - the string words over NUM's numeric roles.
+\ string-roles.f - the string words over NUM's numeric roles (package STR).
 \
-\ WHY IT IS ITS OWN FILE. The engine bakes src/lib/string.f, because the compiler,
-\ the JIT and the REPL use the raw byte-string words. They do not use the ROLES,
-\ and while package STR sat in src/lib/string.f its `require` of
-\ src/lib/num-arithmetic.f put NUM's types and its whole arithmetic table
-\ into every image for callers that are all in src/lib/, tools/ and test/ - eighteen
-\ files, none of them under src/compiler or src/habu (dot
-\ habu-bake-only-what-4039004a: only what the compiler, JIT and REPL require is
-\ baked). A file of its own is what keeps it out of the image: src/lib/string.f keeps
-\ exactly the raw words it had, and a caller that wants STR: requires this.
-\ Every word below is the one that was in src/lib/string.f, with its effect, its
-\ checks and its comments unchanged.
+\ A file of its own because the engine bakes src/lib/string.f for the compiler,
+\ the JIT and the REPL, which use only the raw words, while STR requires
+\ src/lib/num-arithmetic.f; keeping STR here keeps NUM's types and arithmetic
+\ out of the image. A caller that wants STR: requires this file.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/string.f
 require src/lib/num-arithmetic.f

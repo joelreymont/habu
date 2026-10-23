@@ -10,6 +10,8 @@
 \ therefore intentionally NOT wrapped in a package: a PRELUDE: qualifier would
 \ break every bare true/false call and the --repl export directives. Do not
 \ package this module.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 \ The `export NAME` lines below are hb-build --repl export directives (they
 \ keep these words callable in a --repl bundle). At top level the engine's

@@ -28,6 +28,19 @@
 \ JSON-WRITE:$ returns the accumulated output bytes. The record accessors, the
 \ capacity/length refinement helpers, the single-byte and escape emitters, and
 \ every constant are package-private.
+\
+\ OPEN-BUF clears the BUF and grows it as needed, including when an emitter
+\ reads bytes already in it; CLOSE leaves the bytes to the caller, who disposes
+\ the BUF after their last use. The span JSON-WRITE:$ answers stays valid until
+\ the next write. A byte outside 0..255 is E-JW-BYTE, a null or negative output
+\ E-JW-OUTPUT, and a negative or null-with-bytes span E-JW-SOURCE, which also
+\ covers a span inside a growable writer's capacity but outside its written
+\ bytes. U refuses a negative number with E-JW-BYTE; INT writes every cell, the
+\ minimum from STR-MIN-I64$; both reserve the number's whole width first.
+\ FIELD-RAW is only for a known-valid JSON fragment. Size fixed output for the
+\ worst case: one byte escapes to six (\u00XX).
+\
+\ STORAGE CLASS. CALLER-OWNED: the writer record and its output; no module state.
 
 require src/lib/errors.f
 require src/lib/string.f

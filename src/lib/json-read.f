@@ -3,7 +3,7 @@
 \ STORAGE CLASS. CALLER-OWNED, so this module is safe from any number of
 \ tasks. The reader holds no module state at all: the caller allots
 \ JR:STORAGE-BYTES and owns both that storage and the source span, so two
-\ tasks parsing two documents share nothing. See docs/threads.md.
+\ tasks parsing two documents share nothing.
 \
 \ The parser is a cursor over the caller's source buffer and fixed storage. INIT
 \ returns a linear reader; every operation threads that reader and CLOSE consumes
@@ -26,6 +26,19 @@
 \ LINEAR: mint and erase, cursor state, and scan/decode helpers -
 \ including the bounds-checked source reader AT - are package-private and sealed
 \ after the module is assembled.
+\
+\ INIT refuses null or misaligned storage (E-STORAGE), too little (E-CAPACITY),
+\ and a negative source length or a null source with bytes (E-SOURCE) before it
+\ mints the reader. The checker cannot prove the extent, lifetime or exclusivity
+\ of host storage; those stay the caller's promise. FINISH reads the rest of the
+\ document from wherever the cursor stands, so a caller that took only the
+\ members it needs still learns the document is well formed. SPAN$ borrows the
+\ raw lexeme, escapes encoded; STR decodes into non-null caller storage (a
+\ negative or short capacity is E-JR-STATE). VALUE-SPAN$ on an opener answers
+\ the source bytes through the matching close and moves past the value.
+\ FIND-KEY searches only the current object, skipping each unmatched value, and
+\ stops at its close; it and STR-EQ? compare decoded bytes without a buffer, so
+\ key length is not bounded by reader storage.
 \
 \ Cursor state machine (STATE): a value token drives one transition each.
 \  ST-VALUE   value required (doc start / after ':' / after ',' in an array)

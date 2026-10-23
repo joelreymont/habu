@@ -15,6 +15,8 @@
 \ This file declares no package. A block with codes in a package (JR:E-SOURCE)
 \ is minted in the file that owns that package, bounds and all, and a comment
 \ here says where (docs/forth-card.md § 6).
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state (constants only).
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST

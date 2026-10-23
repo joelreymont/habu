@@ -5,7 +5,17 @@
 \ and the module keeps nothing about it. The one exception is WITH-BYTES: its
 \ quotation-scoped mapping stack (WB-DEPTH and the two dynamic buffers beside
 \ it) is PROCESS-WIDE, so WITH-BYTES scopes nest per image and not per task.
-\ See docs/threads.md.
+\
+\ These mappings are for runtime-sized storage (source bundles, JSONL streams,
+\ report tables, 64K scratch buffers); `create ... allot` is for
+\ dictionary-sized static storage. Sizes are validated before mmap, a failure
+\ throws E-MEM-SIZE or E-MEM-MAP, and a mapping becomes typed storage only at
+\ the private MEM-ALLOC-PTR boundary. RELEASE-BYTES takes the exact extent
+\ ALLOC-BYTES gave and RELEASE-CELLS the count ALLOC-CELLS took; UNMAP releases
+\ a validated range. A kernel munmap refusal writes "memory: unmap failed" and
+\ exits 71, bypassing catch. WITH-BYTES releases after a return or a throw and
+\ then rethrows the body's code. MEM-ALLOC-64K-SPAN rounds a byte need up to
+\ whole 64K buffers; no caller encodes a maximum buffer count.
 
 s" src/lib/errors.f" required
 require src/lib/num-arithmetic.f

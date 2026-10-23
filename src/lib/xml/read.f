@@ -1,3 +1,6 @@
+\ read.f - the XML event scanner: NEXT, CONTENT and TEXT. Part of package XML
+\ (src/lib/xml.f).
+
 require src/lib/xml/names.f
 
 package XML

@@ -1,5 +1,16 @@
-\ Exact signed i64 conversion of decimal text. No floating-point operation or
-\ allocation is involved. The whole mantissa is validated before conversion.
+\ decimal.f - exact signed i64 conversion of decimal text (package DECIMAL).
+\
+\ No floating-point operation or allocation is involved, and the whole mantissa
+\ is validated before conversion. EXACT accepts an optional sign, digits with
+\ single interior underscores, an optional point with a digit on at least one
+\ side (`1.` and `.5`), and an optional signed exponent whose digits take single
+\ interior underscores too (`1e1_0`); it answers SOME only for an integer value
+\ in i64 range. INTEGER accepts signed digits with any interior underscores
+\ (`1__2`) and no point or exponent. Both answer NONE for malformed or
+\ out-of-range text, take no surrounding whitespace, and throw E-SOURCE for a
+\ negative length or a null span with bytes.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/adt/option.f
 require src/lib/string.f

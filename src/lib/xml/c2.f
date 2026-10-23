@@ -1,4 +1,6 @@
-\ Scoped UTF-8 XML pull reader. The lexical source is a borrowed C2 view.
+\ c2.f - scoped UTF-8 XML pull reader (package XML-C2) over a borrowed C2 view.
+\
+\ STORAGE CLASS. CALLER-OWNED: the view and the reader storage are the caller's.
 require src/lib/xml.f
 require src/lib/c2-memory.f
 

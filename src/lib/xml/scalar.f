@@ -1,4 +1,5 @@
 \ XML 1.0 scalar/entity decoding retains byte offsets in its input view.
+\ Part of package XML; contract and storage class in src/lib/xml.f.
 require src/lib/prelude.f
 require src/lib/utf8-scalar.f
 require src/lib/string.f

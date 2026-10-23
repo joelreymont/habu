@@ -17,7 +17,7 @@
 \ but "the base lives in the header's POINTER FIELD (DATA-FIELD's `ptr-field`)
 \ and the reach lives in the capacity cell". Storing a minted span by writing its
 \ two cells into the header instead would put a base address in a raw cell, which
-\ docs/effects.md "Raw storage never holds an address" refuses, and it would
+\ docs/forth.md "Raw storage never holds an address" refuses, and it would
 \ change HDR-BYTES, a published footprint every caller allots. So the header
 \ layout is UNCHANGED and BUF-SPAN projects the pair into a span at each use: the
 \ capacity cell is the ownership token, a live mapping of exactly that many bytes,
@@ -26,6 +26,22 @@
 \ then goes through SPAN:U8! / SPAN:COPY and is bounds-checked against the owned
 \ reach, so the module has no unchecked byte copy left. DATA-FIELD's cast is the
 \ pointer field's, unchanged and still BUF-private.
+\
+\ N>BLEN throws E-BUF-BOUNDS on a negative count. RESERVE grows to exactly the
+\ requested capacity and ENSURE by checked doubling; both keep the active bytes.
+\ SPAN, and the pointer SPAN$ answers, borrow exactly the active prefix until
+\ the next mutation or disposal: the span enforces neither that lifetime nor
+\ read-only use, and the borrower never frees it. Appends keep saved offsets
+\ valid; CLEAR and REPLACE do not. APPEND-SPAN accepts input borrowed from the
+\ buffer's own bytes, because growth copies the input before releasing the old
+\ mapping. APPEND-REPLACED appends the text with each non-overlapping
+\ occurrence of old (as COUNT-SUB counts them) replaced by new and answers the
+\ count; a dead buffer is E-BUF-STATE, a negative length E-STR-BOUNDS and an
+\ operand overlapping the buffer's storage E-BUF-BOUNDS, each before a byte
+\ moves.
+\
+\ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; the buffer owns
+\ its mapping.
 
 require src/lib/errors.f
 require src/lib/memory.f

@@ -1,4 +1,9 @@
 \ float32-buffer.f - raw little-endian F32 byte-buffer conversion.
+\
+\ STORE, LOAD, PACK and UNPACK trust the caller for the capacity each needs;
+\ bounded marshalling belongs to src/lib/span.f's checked spans.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/float32.f
 

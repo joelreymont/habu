@@ -3,6 +3,15 @@
 \ This package owns the two unavoidable Habu f64 bit-reinterpretation
 \ boundaries and the width-independent round-to-nearest-even right shift used
 \ by F32, F16, and BF16 encoders.
+\
+\ F64>BITS and BITS>F64 are bit casts, not conversions: every bit survives,
+\ signed zero and NaN payloads included. They wrap the private F64>BITS-RAW and
+\ BITS>F64-RAW casts because the checker has no typed primitive that moves a
+\ cell between the float and integer stacks. ROUND-SHIFT-EVEN answers its
+\ input for a zero shift and zero for a shift above 63; a negative significand
+\ or shift throws E-ROUND-DOMAIN.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 package IEEE754
 
