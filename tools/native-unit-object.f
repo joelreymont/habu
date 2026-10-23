@@ -145,9 +145,10 @@ private
 \ checker slice count, 1 while a checker mark is open, the open segment's
 \ FFI registry marks: the selected bank's next function index, the tables'
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
-\ was stated), the origin bytes when it opened, its sink cell first, and the
-\ segment DATA bytes when it opened. A child file's bytes and sites follow
-\ its parent's and are dropped when the child closes.
+\ was stated), the origin bytes when it opened, its sink cell first, the
+\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened. A child
+\ file's bytes and sites follow its parent's and are dropped when the child
+\ closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -175,7 +176,8 @@ private
 24 constant FO-SEG-SEL-SET
 25 constant FO-ORIGIN
 26 constant FO-SEGB
-27 constant FO-CELLS
+27 constant FO-SEG-POOL
+28 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -321,6 +323,13 @@ variable OPEN-SEGS
 variable OPEN-MARK
 \ One bit per record kind the open FILE object's rows hold.
 variable OPEN-KINDS
+\ The lowest DATA offset the next address record row may name, and the end of
+\ its segment's DATA.
+variable OPEN-ADDR
+variable OPEN-SEG-END
+\ Whether the live literal pool takes every literal of the open FILE
+\ object's colon bodies without opening a segment.
+variable OPEN-POOL-ROOM
 \ The file's wordlists its package rows own, in the order they made them, -1
 \ once a row owns others.
 variable OPEN-OWNED
@@ -704,10 +713,16 @@ private
    CELL +loop
    floor bulk size bulk - live before BYTE-SITES ;
 
+\ The engine's DATA floor. The literal pool raises it past each segment it
+\ opens at HERE (src/compiler/native/string.f PUBLISH), so a segment that
+\ leaves it changed holds pool bytes a replay cannot put back.
+: POOL-FLOOR ( -- n ) data-base DATA-FLOOR-CELL + CELL-VIEW @ ;
+
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
    ndict@ FO-SEG-ORD FO !
    AOT-ARM:HERE-N FO-SEG-HERE FO !
+   POOL-FLOOR FO-SEG-POOL FO !
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO !
    AOT-ARM:WIDN FO-SEG-WID FO !
    0 IMAGE-U ! 0 KCELLS-HELD !
@@ -766,14 +781,42 @@ private
    FFI-SELECTION {: lib:n wid:n stated:bool :}
    EV-FFI-SCOPE first 1 lib wid stated if 1 else 0 then 0 0 0 EV+ ;
 
+\ Whether the live address records among the count ordinals from first stand
+\ at or past the segment's start, each at or past the one before: a replay
+\ fills the segment's DATA forward, up to each record in turn.
+: ADDR-ORDERED? ( n n -- bool )
+   {: first:n count:n :}
+   FO-SEG-HERE FO @
+   first count + first ?do
+      i XREF-REC XREF-RETIRED? 0= if
+         i NFILE-REF:FIXED@ {: kind:n va:n known:bool :}
+         known kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = and if
+            va over < if drop false unloop exit then
+            drop va
+         then
+      then
+   loop
+   drop true ;
+
+\ The end of the DATA the innermost file's last SEGMENT row holds, or the
+\ open segment's start when it has none.
+: ROWS-END ( -- n )
+   FO-SEG-HERE FO @
+   EVENTS-N @ FO-EVENTS FO @ ?do
+      i 0 EV @ EV-SEGMENT = if drop i 3 EV @ i 4 EV @ + then
+   loop ;
+
 \ Close the innermost file's open segment as one SEGMENT row, or none when
 \ it added no record, DATA, require, wordlist or address cell row. HERE or
-\ the wordlist counter going back, a require counter other than the one the
-\ file opened with, or an address cell row removed below the segment's first
-\ refuses it. The row records the values of its first and last address cell
-\ rows, which the file's encoding checks again. The earlier DATA bytes the
-\ segment changed are recorded whether or not it adds a row; a kernel cell
-\ it left changed refuses it.
+\ an address record going back, the segment opening below the end of the
+\ file's last SEGMENT row (a child rewound DATA into it), the DATA floor
+\ moving (a literal pool segment opened at HERE), the wordlist counter going
+\ back, a require counter other than the one the file opened with, or an
+\ address cell row removed below the segment's first refuses it. The row
+\ records the values of its first and last address cell rows, which the
+\ file's encoding checks again. The earlier DATA bytes the segment changed
+\ are recorded whether or not it adds a row; a kernel cell it left changed
+\ refuses it.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
    FO-SEG-ORD FO @ {: first:n :}
@@ -782,6 +825,9 @@ private
    AOT-ARM:HERE-N FO-SEG-HERE FO @ - {: bytes:n :}
    AOT-ARM:WIDN FO-SEG-WID FO @ - {: wids:n :}
    bytes 0 < if s" data-rewound" FILE-REFUSE exit then
+   FO-SEG-HERE FO @ ROWS-END < if s" data-rewound" FILE-REFUSE exit then
+   first count ADDR-ORDERED? 0= if s" data-rewound" FILE-REFUSE exit then
+   POOL-FLOOR FO-SEG-POOL FO @ <> if s" literal-pool" FILE-REFUSE exit then
    wids 0 < if s" wordlist-rewound" FILE-REFUSE exit then
    REQ-XT FO-REQ-XT FO @ <> if s" requires-unknown" FILE-REFUSE exit then
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO @ - {: reqs:n :}
@@ -1078,7 +1124,8 @@ public
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
-   0 OPEN-REM ! 0 OPEN-MARK !
+   0 OPEN-REM ! 0 OPEN-MARK ! 0 OPEN-ADDR ! 0 OPEN-SEG-END !
+   false OPEN-POOL-ROOM !
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
    0 INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
    0 INS-DATA ! 0 INS-DATA-U ! 0 INS-DATA-AT !
@@ -1225,7 +1272,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NSTR:PREPARE-INTERN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:PREPARE-DATA-END" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:PREPARE-CLOSE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
-   s" NSTR:INTERN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:SOURCE-SPAN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NSTR:INTERN"NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:SOURCE-BEGIN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:SOURCE-END" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
    s" NSTR:SOURCE-COUNT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
@@ -1263,6 +1311,8 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    s" NSTR:PREPARE-INTERN" DEF-TARGET DEF-LITERAL-XT execute ;
 : DEF-PREP-DATA-END ( -- n )
    s" NSTR:PREPARE-DATA-END" DEF-NUM ;
+: DEF-PREP-CLOSE ( -- )
+   s" NSTR:PREPARE-CLOSE" DEF-TARGET DEF-ACTION-XT execute ;
 : DEF-INTERN ( ptr u8 n -- n )
    s" NSTR:INTERN" DEF-TARGET DEF-LITERAL-XT execute ;
 : DEF-SOURCE-BEGIN ( -- )
@@ -1561,15 +1611,20 @@ variable DEF-HELD-SIZE
    history-rc E-IR-BUILD-SERIALS = or if BAD then
    history-rc 0<> if history-rc throw then ;
 
-\ Literal row number row at off in the literal section: its byte length and
-\ the first row with the same address, both within bounds.
+\ The most bytes one literal pool row holds: a pool segment's arena.
+: POOL-CAP ( -- n )
+   0 s" NSTR:SOURCE-SPAN" DEF-TARGET DEF-SOURCE-XT execute nip ;
+
+\ Literal row number row at off in the literal section: its byte length,
+\ within the section and the pool's capacity, and the first row with the
+\ same address, within bounds.
 : LIT-ROW ( ptr u8 n n n -- n n )
    {: src:ptr size:n off:n row:n :}
    size off - 16 < if BAD then
    src off + LE:U64@ {: bytes:n :}
    src off 8 + + LE:U64@ {: first:n :}
    first 0 < first row > or if BAD then
-   bytes 0 < bytes size off 16 + - > or if BAD then
+   bytes 0 < bytes size off 16 + - > or bytes POOL-CAP > or if BAD then
    bytes first ;
 
 : DEF-READ-LITERALS ( -- )
@@ -2861,8 +2916,9 @@ private
 
 \ One record row: a known kind, its name in the names section, and the
 \ references, body and index row its kind names: its wordlists the file's
-\ own or earlier, a constant's body in slot 17, an address a place in the
-\ file's DATA, its end included.
+\ own or earlier, a constant's body in slot 17, an address a place in its own
+\ segment's DATA, its end included, at or past the address before it, and a
+\ deferred word's cell a place in the file's DATA.
 : RECORD-CK ( ptr u8 n ptr u8 n -- )
    {: row:ptr namesu:n refs:ptr defs:n :}
    row 0 U64-AT {: kind:n :}
@@ -2882,7 +2938,15 @@ private
    priv 0<> if BAD then
    refs wl NFILE-REF:WID wmax REF-ROW-CK
    kind RK-VAL = if value VAL-CK exit then
-   kind RK-ADDR = kind RK-DEFER = or if
+   kind RK-ADDR = if
+      refs value NFILE-REF:DATA OPEN-SEG-END @ REF-ROW-CK
+      refs 24 + value 1- 32 * + {: ref:ptr :}
+      ref 1 U64-AT NFILE-REF:LOCAL <> if BAD then
+      ref 2 U64-AT {: item:n :}
+      item OPEN-ADDR @ < if BAD then
+      item OPEN-ADDR ! exit
+   then
+   kind RK-DEFER = if
       refs value NFILE-REF:DATA OPEN-DATA @ REF-ROW-CK exit
    then
    kind RK-COLON = if value 0 < value defs >= or if BAD then exit then
@@ -2898,12 +2962,26 @@ private
    cnt 0 < cnt refsu 24 - 32 / > or if BAD then
    cnt ;
 
+\ Each segment's record rows, in the order of the SEGMENT rows EVENTS-CK
+\ counted, with the span of that segment's DATA in the file's.
 : RECORDS-CK ( ptr u8 n n ptr u8 n -- )
    {: recs:ptr recsu:n namesu:n refs:ptr defs:n :}
    recsu OPEN-RECS @ RECORD-BYTES * <> if BAD then
-   OPEN-RECS @ 0 ?do
-      recs i RECORD-BYTES * + namesu refs defs RECORD-CK
-   loop ;
+   12 NUNIT-FILE:SECTION$ {: evs:ptr evsu:n :}
+   0 0
+   evsu EVENT-BYTES / 0 ?do
+      {: rec:n at:n :}
+      evs i EVENT-BYTES * + {: ev:ptr :}
+      ev 0 U64-AT EV-SEGMENT = if
+         ev 2 U64-AT {: count:n :}
+         at OPEN-ADDR !
+         at ev 3 U64-AT + OPEN-SEG-END !
+         count 0 ?do
+            recs rec i + RECORD-BYTES * + namesu refs defs RECORD-CK
+         loop
+         rec count + OPEN-SEG-END @
+      else rec at then
+   loop 2drop ;
 
 : PROT-CK ( ptr u8 n -- )
    {: prot:ptr protu:n :}
@@ -3637,21 +3715,33 @@ public
    seg INSTALL-FFI
    loads INSTALL-CHECKS ;
 
-\ Check a FILE object's framing: the dependency and input rows are well
-\ formed, the segment sections agree, and each index row frames one
-\ definition payload, in increasing ordinal order, covering the definitions
-\ slot exactly, and spans a name within the source's srcu bytes.
-: OPEN-FILE ( ptr u8 n ptr u8 n n -- )
-   {: bytes:ptr size:n key:ptr keyu:n srcu:n :}
-   bytes size NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:READ-VIEW
-   DEPS-SLOT NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT OPEN-ROWS !
-   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:ROW-COUNT OPEN-INPUTS !
-   \ SECTIONS-VIEW replaces the table, so keep the FILE spans first.
-   0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
-   2 NUNIT-FILE:SECTION$ {: index:ptr indexu:n :}
-   indexu INDEX-BYTES mod 0<> if BAD then
-   indexu INDEX-BYTES / {: count:n :}
-   count SEGMENTS-CK
+private
+
+\ Plan the viewed payload's literals into the open literal plan as the
+\ install does (DEF-READ-LITERALS); PAYLOAD-CK framed their rows.
+: PAYLOAD-PLAN ( -- )
+   1 NUNIT-FILE:SECTION$ drop 32 + LE:U64@ {: lits:n :}
+   10 NUNIT-FILE:SECTION$ drop {: src:ptr :}
+   0
+   lits 0 ?do
+      {: cursor:n :}
+      src cursor + LE:U64@ {: bytes:n :}
+      src cursor 16 + + bytes DEF-PREP-INTERN drop
+      cursor bytes 16 + +
+   loop drop ;
+
+\ Frame count index rows: each frames one payload of defs, in increasing
+\ ordinal order, and spans a name within srcu source bytes; the end of the
+\ last payload. Each payload's literals are planned into the live pool,
+\ writing nothing, and OPEN-POOL-ROOM says whether the pool takes them all
+\ without opening a segment, which would land at HERE, inside the DATA the
+\ file's cold load laid out. A child loaded between the object's segments
+\ can still use the room up; that later segment is then stale at its
+\ install. The caller closes the plan.
+: DEFS-CK ( ptr u8 n ptr u8 n n -- n )
+   {: defs:ptr defsu:n index:ptr count:n srcu:n :}
+   AOT-ARM:HERE-N {: start:n :}
+   start DEF-PREP-BEGIN
    -1 0
    count 0 ?do
       {: prev:n off:n :}
@@ -3665,9 +3755,36 @@ public
       row defsu off - ROW-SIZE {: total:n :}
       DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
       PAYLOAD-CK
+      PAYLOAD-PLAN
       ord off total +
-   loop
-   nip defsu <> if BAD then
+   loop nip
+   DEF-PREP-DATA-END start = OPEN-POOL-ROOM ! ;
+
+public
+
+\ Check a FILE object's framing: the dependency and input rows are well
+\ formed, the segment sections agree, and the index rows frame the
+\ definitions slot exactly (DEFS-CK). A FILE object with definitions comes
+\ only from a capture that had the literal planners (DEF-ELIGIBLE?), so the
+\ object write path has them; an engine without them misses at read on
+\ E-NUNIT-PROFILE.
+: OPEN-FILE ( ptr u8 n ptr u8 n n -- )
+   {: bytes:ptr size:n key:ptr keyu:n srcu:n :}
+   bytes size NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:READ-VIEW
+   DEPS-SLOT NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT OPEN-ROWS !
+   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:ROW-COUNT OPEN-INPUTS !
+   \ SECTIONS-VIEW replaces the table, so keep the FILE spans first.
+   0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
+   2 NUNIT-FILE:SECTION$ {: index:ptr indexu:n :}
+   indexu INDEX-BYTES mod 0<> if BAD then
+   indexu INDEX-BYTES / {: count:n :}
+   count SEGMENTS-CK
+   count 0= if
+      true OPEN-POOL-ROOM ! 0
+   else
+      defs defsu index count srcu ['] DEFS-CK ['] DEF-PREP-CLOSE finally
+   then
+   defsu <> if BAD then
    count OPEN-DEFS !
    NUNIT-FILE:RESET-KEEP ;
 
@@ -3900,6 +4017,7 @@ public
    0 EVENT-KIND EV-SEGMENT = if
       0 OBJ-EV 0 SEG-ALIGNED? 0= if s" data-alignment" exit then
    then
+   OPEN-POOL-ROOM @ 0= if s" literal-pool" exit then
    s" " ;
 
 \ This engine has every record writer the install block executes.

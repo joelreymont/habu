@@ -42,6 +42,8 @@ create OG-MOVED LINE-CAP allot variable OG-MOVED-U
 \ LOWER-CERT-HOOK's check hook with the early origin journal still armed, and
 \ pcf.f, pcz.f, pcd.f and pce.f where a journal records outside every sink.
 variable MOVED
+\ Nonzero on the second build only: pf.f loads before lp.f.
+variable FILL-POOL
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -217,6 +219,12 @@ variable MOVED
    s" nest-parent.f" LOAD+
    s" act.f" LOAD+
    S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\n" IN+
+   s" lf.f" LOAD+
+   S\" s\" lf=\" type LF-S type cr\n" IN+
+   s" rw.f" LOAD+
+   S\" s\" rw=\" type RW-GAP . cr\n" IN+
+   s" rwp.f" LOAD+
+   S\" s\" rwp=\" type RWP-B NULL-PTR - RWP-A NULL-PTR - - . cr\n" IN+
    \ jrn.f loads before scope.f, the last load, under the early origin
    \ journal, armed, with its own check hook or, once MOVED,
    \ LOWER-CERT-HOOK's; ek= counts the rows its load recorded. The hooks stay
@@ -249,6 +257,11 @@ variable MOVED
    MOVED @ if S\" s\" LOWER-CERT-HOOK:INSTALL\" FRAME-EK-PROBE:EK-DO\n" IN+ then
    S\" true FRAME-EK-PROBE:EK-SET\n" IN+
    s" jrn.f" s" ek=" EK-LOAD+
+   \ The pool-full stage loads last but for scope.f, whose open scope refuses
+   \ every file after it: pf.f moves DATA for every later file.
+   FILL-POOL @ if s" pf.f" LOAD+ then
+   s" lp.f" LOAD+
+   S\" s\" lp=\" type LP-S type cr\n" IN+
    s" scope.f" LOAD+
    RUN-INPUT ;
 
@@ -467,6 +480,29 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ hop.f loads hoc.f between its definitions under the full origin journal.
    s" hoc.f" S\" : HO-PC ( -- n ) 3 ;\n" PUT
    s" hop.f" S\" : HO-PA ( -- n ) 1 ;\nrequire hoc.f\n: HO-PB ( -- n ) 2 ;\n" PUT ;
+
+\ The DATA layout fixtures, kept apart from FIXTURES for the same reason as
+\ FFI-FIXTURES.
+: DATA-FIXTURES ( -- )
+   \ dv.f's variable and created table install with their DATA bytes, the
+   \ top level's store and commas among them; DV-S's string literal between
+   \ them lives in the build's literal pool, not at here. df.f holds a defer
+   \ alone.
+   s" dv.f" S\" variable DV-V 7 DV-V !\n: DV-S ( -- ptr u8 n ) s\" lit\" ;\ncreate DV-T 3 , 4 ,\n: DV-SUM ( -- n ) DV-V @ DV-T @ + DV-T cell+ @ + ;\n" PUT
+   s" df.f" S\" defer DF-D ( -- n )\n" PUT
+   \ rw.f's RY rewinds DATA into RX, so RZ stands below RY although its
+   \ DATA ends past both: a replay would fill backward to RZ.
+   s" rw.f" S\" create RX 16 allot\ncreate RY -8 allot\ncreate RZ 8 allot\n: RW-GAP ( -- n ) RZ NULL-PTR - RX NULL-PTR - - ;\n" PUT
+   \ rwc.f rewinds DATA into rwp.f's RWP-A, so rwp.f's segment after it
+   \ reopens inside the one before: RWP-B lies in both segments' spans.
+   s" rwp.f" S\" create RWP-A 32 allot\nrequire rwc.f\ncreate RWP-B 8 allot\n" PUT
+   s" rwc.f" S\" -16 allot\n" PUT
+   \ pf.f interns one body as long as a pool segment's arena, segment 0's own
+   \ bytes: it opens the pool's next segment and fills it to the edge, so
+   \ lp.f's literal needs the segment after that.
+   s" pf.f" S\" : PF-FILL ( -- ) 0 NSTR:SOURCE-SPAN NSTR:INTERN drop ;\nPF-FILL\n" PUT
+   s" lf.f" S\" : LF-S ( -- ptr u8 n ) s\" lf-pool-probe\" ;\n" PUT
+   s" lp.f" S\" : LP-S ( -- ptr u8 n ) s\" lp-pool-probe\" ;\n" PUT ;
 
 \ The FFI fixtures, kept apart from FIXTURES: together their body text
 \ passes the 8000 bytes one definition captures (BODYBUF-CAP).
@@ -727,12 +763,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ og.f's constants and ogw.f's colon word install on a warm build.
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
-   \ dv.f's variable and created table install with their DATA bytes, the
-   \ top level's store and commas among them; DV-S's string literal between
-   \ them lives in the build's literal pool, not at here. df.f holds a defer
-   \ alone.
-   s" dv.f" S\" variable DV-V 7 DV-V !\n: DV-S ( -- ptr u8 n ) s\" lit\" ;\ncreate DV-T 3 , 4 ,\n: DV-SUM ( -- n ) DV-V @ DV-T @ + DV-T cell+ @ + ;\n" PUT
-   s" df.f" S\" defer DF-D ( -- n )\n" PUT
+   DATA-FIXTURES
    s" jrn.f" S\" 3 constant EK-K\n" PUT
    s" pcf.f" S\" 3 constant PC-F3\npackage PCF\npublic\nexport PC-F3\n;package\n" PUT
    s" pcz.f" S\" 3 constant PC-Z3\n" PUT
@@ -1332,6 +1363,17 @@ public
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
    OUT$ S\" dvs=lit\n" CONTAINS? TTRUE
    s" dv.f" KEY$ STORED
+   s" a cold build runs rw.f, whose DATA rewinds between creates, and stores no object" T-LABEL
+   OUT$ S\" rw=8\n" CONTAINS? TTRUE
+   s" rw.f" s"  reason=" LINE$ s" rw.f reason=data-rewound" T$=
+   s" rw.f" NO-OBJECT
+   s" a cold build runs rwp.f, whose segment after rwc.f reopens inside the one before, and stores no object" T-LABEL
+   OUT$ S\" rwp=16\n" CONTAINS? TTRUE
+   s" rwp.f" s"  reason=" LINE$ s" rwp.f reason=data-rewound" T$=
+   s" rwp.f" NO-OBJECT
+   s" a cold build with room in the literal pool stores lf.f's object" T-LABEL
+   OUT$ S\" lf=lf-pool-probe\n" CONTAINS? TTRUE
+   s" lf.f" KEY$ STORED
    KEEP-OBJECT
    CHECKER
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
@@ -1362,8 +1404,26 @@ public
    s" rp.f" KEY$ STORED s" rc.f" KEY$ STORED
    OTHER-LOADER
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
-   PROBE SUCCESS WARM-CHECKS
+   1 FILL-POOL !
+   PROBE
+   0 FILL-POOL !
+   SUCCESS WARM-CHECKS
    s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
+   s" a warm build compiles rw.f again and installs lf.f's object" T-LABEL
+   OUT$ S\" rw=8\n" CONTAINS? TTRUE
+   s" rw.f" NO-OBJECT
+   OUT$ S\" lf=lf-pool-probe\n" CONTAINS? TTRUE
+   s" lf.f" REUSED
+   \ pf.f fills the literal pool's write segment, so lp.f's literal needs a
+   \ new one: lp.f's object, stored with room, misses before it installs
+   \ anything, and its compile opens that segment inside lp.f, so it stores
+   \ no object.
+   s" a warm build misses lp.f's object where the literal pool has no room for its literal" T-LABEL
+   0 INPUT-U !
+   s" native-file: miss path=" IN+ s" lp.f" AT IN+ s"  reason=literal-pool" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   OUT$ S\" lp=lp-pool-probe\n" CONTAINS? TTRUE
+   s" lp.f" NO-OBJECT
    \ A comment changes no definition's result, inside TWICE's body or as a
    \ line that moves every later definition. base.f's new variable moves HITS
    \ from here on.
