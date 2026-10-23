@@ -3927,9 +3927,8 @@ private
 \ SEAL-VIOLATION. A lowered count keeps the index, whose probe skips a record
 \ at or past the count; a raised one re-exposes records whose slots a later
 \ insert may have reused, so the index is rebuilt over the raised count.
-: NDICT-SET-BODY ( -- )
+: NDICT-RESTORE-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: bounded:label lower:label done:label :}
-   TASK-LIVE-GUARD,
    RAX 0 PEEK,
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-BE bounded JCC,
    S\" hb: dictionary count out of range\n" COUNT-RC STDERR-EXIT,
@@ -3947,6 +3946,36 @@ private
    lower X64CODE:LBL,
    LASTC-TRIM,
    done X64CODE:LBL, ;
+
+: NDICT-SET-BODY ( -- )
+   TASK-LIVE-GUARD,
+   NDICT-RESTORE-BODY ;
+
+: CP-RESTORE-BODY ( -- )
+   RCX POP,  RCX CODE-SLOT-GUARD,
+   RDI RCX ASM-SINK ENC-MOV-RR
+   DEF-CODE-RECLAIM-BODY
+   CP-REG RDI ASM-SINK ENC-MOV-RR ;
+
+\ An evaluate frame owns the suffix after its saved cursors. Its surviving
+\ records therefore precede its code floor, as in ARM EM-EVAL-THROW-RECOVER.
+\ The source observer runs before records disappear; host/capture observers
+\ and occurrence retirement remain in the ordinary CP restore body.
+: FRAME-REWIND-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL {: source:label kept:label :}
+   RDI 0 PEEK,  RDI CODE-SLOT-GUARD,
+   RDI CP-REG ASM-SINK ENC-CMP-RR  C-AE kept JCC,
+   RAX NATIVE-OBS-CELLS:INVALIDATE CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E source JCC,
+   RDI PUSH,  RAX ASM-SINK ENC-CALL-REG
+   source X64CODE:LBL,
+   RDI 0 PEEK,  RSI CP-REG ASM-SINK ENC-MOV-RR
+   RSI RDI ASM-SINK ENC-SUB-RR  DROP-SITES-LBL CALL,
+   kept X64CODE:LBL,
+   RAX POP,  RAX ASM-SINK ENC-PUSH
+   NDICT-RESTORE-BODY
+   RAX ASM-SINK ENC-POP  RAX PUSH,
+   CP-RESTORE-BODY ;
 
 \ seed-ndict! ( n -- ): lower the count below the live one, rebuild the index
 \ and clear the seal floor; the build rewinds call it from top-level text or
@@ -4029,10 +4058,7 @@ private
    s" ndict@" [: NDICT-REG PUSH, ;] PRIM
    s" native-pending-opaque?" [: RAX PEND-OPAQUE-CELL CELL@,  RAX PUSH, ;] PRIM
    s" cp!" [:
-      TASK-LIVE-GUARD,  RCX POP,  RCX CODE-SLOT-GUARD,
-      RDI RCX ASM-SINK ENC-MOV-RR
-      DEF-CODE-RECLAIM-BODY
-      CP-REG RDI ASM-SINK ENC-MOV-RR ;] PRIM
+      TASK-LIVE-GUARD,  CP-RESTORE-BODY ;] PRIM
    s" ndict!" [: NDICT-SET-BODY ;] PRIM
    s" seed-ndict!" [: SEED-NDICT-BODY ;] PRIM
    s" ndict-append" [: NDICT-APPEND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
@@ -5904,6 +5930,7 @@ public
    s" def-close" [: DEF-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-create" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" def-abort" [: DEF-ABORT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" frame-rewind" [: FRAME-REWIND-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID

@@ -1462,8 +1462,9 @@ variable LDIE
 \ like the raw-store guards — not via the incidental word-creation bounds check.
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
-: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD
+: BCPRESTORE ( -- ) A G-POP  A GUARD-CODE-WORD
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
+: BCPSET ( -- ) B-TASK-LIVE-GUARD BCPRESTORE ;
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
 \ does> patches that record (habu2.f DOESPATCH). A record at or above NDICT is
 \ retired, and the next definition reuses its slot, so every motion that lowers
@@ -1490,7 +1491,7 @@ variable LDIE
 \ callers: a raise rebuilds the table from the raised [0,NDICT) in place
 \ (HIDX-EMIT:LREBUILD), so the index stays authoritative instead of being silently
 \ dropped for the rest of the process (CG-25).
-: BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+: BNDRESTORE ( -- ) A G-POP                                             \ ( n -- ) set NDICT — forget dict entries past a mark
    LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
    S\" hb: dictionary count out of range\n" {: ma:ptr mu:n :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
@@ -1514,6 +1515,8 @@ variable LDIE
    A B LASTC-TRIM,
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+: BNDSET ( -- ) B-TASK-LIVE-GUARD BNDRESTORE ;
 
 \ Append the completed native pending record at the caller's expected index.
 \ NPUB proves the emission and record shape; this sink owns the live count and

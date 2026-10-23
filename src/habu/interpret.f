@@ -269,10 +269,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : FRAME-ROLLBACK-CODE ( ptr u8 -- ) {: f:ptr :}
    DEF-ABORT
    f ROWS-CUT
-   \ A buffer may start a task and throw without allocating a definition.
-   \ Only changed cursors need their guarded mutation sinks during recovery.
-   f FR-NDICT FR@ dup ndict@ <> if ndict! else drop then
-   f FR-CP FR@ dup cp@ <> if CODE-RECLAIM:TRUNCATE else drop then
+   f FR-NDICT FR@ f FR-CP FR@ frame-rewind
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max {: cut:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
@@ -283,7 +280,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    TOKLOCN-CELL CELL@ LOCN-CELL CELL!
    TOK-BODY-DEPTH @ BODY-DEPTH !
    TOK-BODY-RAW @ BODY-RAW-NEXT !
-   dbase@ TOKCP-CELL CELL@ + CODE-RECLAIM:TRUNCATE
+   ndict@ dbase@ TOKCP-CELL CELL@ + frame-rewind
    TOKVSP-CELL CELL@ VSP-CELL CELL!
    TOKVRF-CELL CELL@ REGALLOC-ABI:VRFREE-CELL CELL!
    TOKFRF-CELL CELL@ REGALLOC-ABI:FRFREE-CELL CELL! ;

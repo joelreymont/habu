@@ -874,6 +874,15 @@ EPPRIM: OUTER def-close ECLOSE-PRIVATE
 EPRIM: def-abort EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-abort ECLOSE-PRIVATE
+\ frame-rewind ( saved-ndict saved-cp -- ): restore an escaped evaluate's
+\ owned dictionary suffix, including observers, relocation maps and retired
+\ references. Recovery may run after the buffer started a task; public cursor
+\ setters retain their live-task refusal. Like ARM's native recovery, saved
+\ cursors may restore a mark the buffer itself lowered; observers and map
+\ removal apply only when CP actually drops.
+EPRIM: frame-rewind PE-N PE-IN PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
+EPPRIM: OUTER frame-rewind PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ stack-clear ( -- ): the REPL's caught-line boundary discards the user's
 \ arbitrary stack residue after a refusal. It leaves handler, return and loop
 \ state intact so the catching interpreter can continue.
