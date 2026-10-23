@@ -57,6 +57,12 @@ variable PAYLOAD-EXPORTED
 
 private
 
+\ Recovery and ARM windows have no native compiler dependency. The native
+\ x86 source extension installs its opener before this module returns.
+defer WINDOW-NATIVE ( -- )
+: INIT-NATIVE ( -- ) [: ;] is WINDOW-NATIVE ;
+INIT-NATIVE
+
 : PAYLOAD-BAD ( -- )
    s" aot-arm: missing, changed or unfrozen checker payload owner" 74 die ;
 
@@ -135,6 +141,7 @@ private
 \ never travels; an opener whose DP is already aligned gets no pad, so a build
 \ that met an aligned DP writes the same bytes as before.
 : LATCH-OPEN ( -- )
+   WINDOW-NATIVE
    CANCEL
    align
    cp@ B0 ! ndict@ R0 ! HERE-N D0 ! WIDN W0 ! ;
@@ -168,4 +175,11 @@ public
 : WINDOW$ ( -- n n n n n n )
    B0 @ B1 @  R0 @ R1 @  D0 @ D1 @ ;
 
+private
+
+: LOAD-NATIVE ( -- )
+   HB-TARGET-LINUX-X86-64? if s" src/habu/aot-native-window.f" required then ;
+
+' LOAD-NATIVE
 ;package
+execute

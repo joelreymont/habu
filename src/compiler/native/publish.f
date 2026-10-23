@@ -30,6 +30,9 @@ $4000 constant CODE-RESERVE
 TYPED-VARIABLE UNIT-OBSERVER [ NART:emission n n n -- ]
 TYPED-VARIABLE UNIT-PRIOR-OBSERVER [ NART:emission n n n -- ]
 variable UNIT-ARMED
+TYPED-VARIABLE SHADOW-TAKE [ NART:emission n n n -- ]
+TYPED-VARIABLE SHADOW-COMMIT [ n -- ]
+variable SHADOW-ARMED
 
 \ Inside NPUB the publication primitives bind this package's private rows
 \ (src/habu/prims.f), so their callers here are checked. Anywhere else a
@@ -185,7 +188,18 @@ create TRAILER TRAILER-BYTES allot
 
 : UNIT-NOTIFY ( NART:emission n n n -- )
    {: e:NART:emission idx:n fn:n size:n :}
-   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then ;
+   UNIT-ARMED @ if e idx fn size UNIT-OBSERVER @ execute then
+   SHADOW-ARMED @ if e idx fn size SHADOW-TAKE @ execute then ;
+
+\ A retained native shadow can collect a newly installed compiler's output.
+\ Its precommit callback reserves the copy; only this commit point claims it.
+: PUBLISH-SHADOW ( n -- )
+   {: idx:n :}
+   SHADOW-ARMED @ if
+      E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
+      idx SHADOW-COMMIT @ [: 0 CHECKER-OWNER:WRITE-WINDOW ;] finally
+   then
+   idx NSHADOW:PUBLISH ;
 
 : COMMIT-HELD ( -- )
    HELD-DEFER @ 0<> if
@@ -265,7 +279,7 @@ create TRAILER TRAILER-BYTES allot
    e PENDING-PROVE {: idx:n fn:n size:n :}
    e fn NSHADOW:SOURCE-FUNS
    e idx fn size COMMIT-OWNED
-   idx NSHADOW:PUBLISH
+   idx PUBLISH-SHADOW
    idx APPEND-PENDING
    idx ;
 
@@ -296,7 +310,7 @@ public
    e fn NSHADOW:SOURCE-FUNS
    cell HELD-DEFER !
    e idx fn size COMMIT-OWNED
-   idx NSHADOW:PUBLISH
+   idx PUBLISH-SHADOW
    idx APPEND-PENDING
    HOOKED? if idx PENDING-FACTS then ;
 
@@ -305,7 +319,7 @@ public
    e fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    e fn NSHADOW:SOURCE-FUNS
    e idx fn size COMMIT-OWNED
-   idx NSHADOW:PUBLISH
+   idx PUBLISH-SHADOW
    fn off + e size off - RECORDED-LEN DOES-RECORD
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
@@ -381,6 +395,18 @@ public
    q catch {: rc:n :}
    0 UNIT-ARMED !
    UNIT-PRIOR-OBSERVER @ UNIT-OBSERVER !
+   rc 0<> if rc throw then ;
+
+: WITH-SHADOW ( [ NART:emission n n n -- ] [ n -- ] [ -- ] -- )
+   {: take committed q :}
+   SHADOW-ARMED @ if E-NPUB-PENDING throw then
+   SHADOW-TAKE @ {: prior-take :}
+   SHADOW-COMMIT @ {: prior-commit :}
+   take SHADOW-TAKE ! committed SHADOW-COMMIT !
+   1 SHADOW-ARMED !
+   q catch {: rc:n :}
+   0 SHADOW-ARMED !
+   prior-take SHADOW-TAKE ! prior-commit SHADOW-COMMIT !
    rc 0<> if rc throw then ;
 get-current prot-wid-add
 

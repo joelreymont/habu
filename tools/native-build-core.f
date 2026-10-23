@@ -4,6 +4,7 @@ require tools/native-build-deps.f
 require src/lib/executable-build.f
 require src/lib/tier.f
 require src/lib/sort.f
+require tools/native-shadow-tail.f
 
 package NATIVE-BUILD
 
@@ -613,7 +614,8 @@ variable PRE-ROWS-N
       s" included" OPEN-TARGET-XT SOURCE-INCLUDED-XT execute
    PREFIX-COMPILER-FINISH
    NDEF-CACHE:REBIND
-   SOURCE-TAIL @ execute ;
+   X64-TARGET? NSHADOW:NATIVE? and if SOURCE-TAIL @ NSHADOW-TAIL:WITH
+   else SOURCE-TAIL @ execute then ;
 
 : OPEN-FILE-AND-COMPILE ( -- )
    AOT-ARM:WINDOW-OPEN-PERSISTENT
@@ -1348,6 +1350,7 @@ create BUNDLE-PATH OUTPUT-CAP allot
 variable BUNDLE-PATH-U
 TYPED-VARIABLE BUNDLE-DIR ptr u8
 variable BUNDLE-DIR-U
+TYPED-VARIABLE BUNDLE-X64-WRITE [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
 TYPED-VARIABLE WHITE-NAMES-A ptr u8
 variable WHITE-NAMES-U
 TYPED-VARIABLE SEALED-NAMES-A ptr u8
@@ -1372,6 +1375,10 @@ variable SEALED-NAMES-U
       unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
    ;MATCH
    CHECK-HOST-LAYOUT
+   X64-TARGET? if
+      HOLD-X64
+      s" NATIVE-EMIT:WRITE" HELD-XT WRITER-XT BUNDLE-X64-WRITE !
+   then
    RETAIN-HOST-PRODUCERS ;
 
 : FILE-LOAD ( -- )
@@ -1395,14 +1402,27 @@ variable SEALED-NAMES-U
    NAMES-SOURCES
    PREPARE-WINDOW
    true CAPTURE-NAMED
-   BUILD-NAMES
-   NAMES-A@ WHITE-NAMES-A !  NAMES-U @ WHITE-NAMES-U !
+   X64-TARGET? if NAMES-X64-PLAN else
+      BUILD-NAMES
+      NAMES-A@ WHITE-NAMES-A !  NAMES-U @ WHITE-NAMES-U !
+   then
    OWN-CAPTURE {: white:AOT-OWNED:capture :}
+   \ The white capture's map still owns these source rows. Link it before the
+   \ sealed capture replaces them, then read the writer's final placement.
+   X64-TARGET? if
+      BUNDLE-DIR @ BUNDLE-DIR-U @ s" hb-whitebox-source" BUNDLE-OUTPUT
+      white HELD-WRITER @ WRITE-BUNDLE-CAPTURE
+      BUILD-NAMES WRITE-NAMES
+   then
    plan count APPLY-SEAL-PLAN
    PREPARE-TARGET
    false CAPTURE-NAMED
-   BUILD-NAMES
-   NAMES-A@ SEALED-NAMES-A !  NAMES-U @ SEALED-NAMES-U !
+   X64-TARGET? if
+      NAMES-X64-PLAN NSHADOW:CLOSE
+   else
+      BUILD-NAMES
+      NAMES-A@ SEALED-NAMES-A !  NAMES-U @ SEALED-NAMES-U !
+   then
    OWN-CAPTURE {: sealed:AOT-OWNED:capture :}
    white sealed plan count ;
 
@@ -1410,6 +1430,15 @@ variable SEALED-NAMES-U
    {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
    BUNDLE-DIR @ BUNDLE-DIR-U @ {: dir:ptr diru:n :}
    WRITER-MACHINE-CK
+   X64-TARGET? if
+      dir diru s" hb-root" BUNDLE-OUTPUT
+      sealed HELD-WRITER @ WRITE-BUNDLE-CAPTURE
+      BUILD-NAMES WRITE-NAMES
+      dir diru s" hb-ordinary" BUNDLE-OUTPUT
+      sealed BUNDLE-X64-WRITE @ WRITE-BUNDLE-CAPTURE
+      BUILD-NAMES WRITE-NAMES
+      white sealed plan count exit
+   then
    LOAD-SOURCE-WRITER
    dir diru s" hb-whitebox-source" BUNDLE-OUTPUT
    white s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE

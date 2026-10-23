@@ -21,8 +21,8 @@
 \ reads after this capture completes.
 \
 \ Not baked into bin/hb — host build-time meta-words over the host dictionary.
-\ It loads in the stdin metabuild, which has no native shadow, so it requires
-\ neither shadow.f nor aot-shadow.f.
+\ It loads in the ARM stdin metabuild without a native compiler. A native x86
+\ host loads aot-shadow.f after this core to carry its recorded emissions.
 \ Raw dict/code boundary is confined to the TRUSTED:/TRUST casts below (no
 \ `0 set-check` span, so the checked build stays fail-closed through the image
 \ writer).
@@ -3069,13 +3069,30 @@ public
    then
    ACAP-FINISH ;
 
-: CAPTURE-WITH-NAMES ( n n n n n n bool -- )
+private
+
+: PLAIN-CAPTURE ( n n n n n n bool -- )
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
    all ACAP-ALL-NAMES !
    bstart bend rstart rend d0 d1 CAPTURE-PREPARE
    bstart bend d0 CAPTURE-COMPLETE ;
 
+public
+
+defer CAPTURE-WITH-NAMES ( n n n n n n bool -- )
+private
+: INIT-CAPTURE ( -- ) [: PLAIN-CAPTURE ;] is CAPTURE-WITH-NAMES ;
+INIT-CAPTURE
+public
+
 : CAPTURE ( n n n n n n -- )
    ACAP-WHITEBOX? CAPTURE-WITH-NAMES ;
 
+private
+
+: LOAD-NATIVE ( -- )
+   HB-TARGET-LINUX-X86-64? if s" src/habu/aot-shadow.f" required then ;
+
+' LOAD-NATIVE
 ;package
+execute

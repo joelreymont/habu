@@ -505,6 +505,10 @@ SUITE compiler-native-colon
    test/compiler/native-colon.f
 ;SUITE
 
+SUITE compiler-native-shadow-callback
+   test/compiler/native-shadow-callback.f
+;SUITE
+
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. It is the acceptance suite
 \ habu-bind-compiler-target-b3dfa307 is answered by, and a suite that answers a

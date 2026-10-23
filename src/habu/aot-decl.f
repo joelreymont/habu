@@ -460,11 +460,12 @@ public
 $80000000 constant ANON-REC
 $FFFFFFFF constant RETIRED-REC
 \ An emission is code the window's own region held, so the blob's bound is its
-\ bound; reached routines and shipped aliases share the record-table bound;
-\ a site is a call or a ten-byte MOVABS,
+\ bound. Shadow records include anonymous functions as well as dictionary
+\ entries, so their bound is the artifact's byte budget divided by row size.
+\ A site is a call or a ten-byte MOVABS,
 \ so a byte can start at most one in five; one XT row per address-cell row.
 AOT-BUF:AOT-BLOB-CAP constant CODE-CAP
-AOT-BUF:AOT-REC-MAX constant REC-MAX
+A64ICODE:AOT-SECTION-CAP REC-ROW / constant REC-MAX
 CODE-CAP 5 / constant SITE-MAX
 AOT-WINDOW:XTOFF-MAX constant XT-MAX
 

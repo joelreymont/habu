@@ -540,5 +540,14 @@ public
 : TARGET-CAPTURE-WITH-NAMES ( n n n n n n bool -- )
    ACAP-ALL-NAMES ! TARGET-CAPTURE ;
 
+private
+
+: NATIVE-CAPTURE ( n n n n n n bool -- )
+   ['] TARGET-CAPTURE-WITH-NAMES [: NSHADOW:CLOSE-AUTO ;] finally ;
+
+: INSTALL-NATIVE ( -- )
+   HB-TARGET-LINUX-X86-64? if [: NATIVE-CAPTURE ;] is CAPTURE-WITH-NAMES then ;
+INSTALL-NATIVE
+
 ;using
 ;package

@@ -29,6 +29,7 @@ require src/lib/byte-buffer.f
 require src/lib/string.f
 require src/core/cell.f
 require src/core/engine-error.f
+require src/core/checker-owner-extension.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/native-host-cells.f
@@ -977,6 +978,36 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    FRAME-STACKS,
    crash rest INSTALL-CRASH, ;
 
+\ An appended checker operation is optional on an older retained owner.
+\ Native calls preserve the VM registers; no startup scratch survives the call.
+: OWNER-CALL, ( n n -- )
+   {: owner:n field:n :}
+   X64CODE:LBL {: done:label :}
+   RAX RBASE-REG owner MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RCX RAX CELL negate MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX field CELL + >IMM32 ASM-SINK ENC-CMP-RI32  C-B done JCC,
+   RAX RAX field MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
+   RAX ASM-SINK ENC-CALL-REG
+   done X64CODE:LBL, ;
+
+\ Capture makes checker links prefix-relative. Cold boot rebases them;
+\ restored DATA already has ordinals and only needs fresh occurrence identities.
+: RECORD-LINKS, ( -- )
+   X64CODE:LBL X64CODE:LBL {: cold:label done:label :}
+   RAX RBASE-REG SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E cold JCC,
+   NCOMP-DISPATCH:TARGET-DECL-CELL CHECKER-OWNER-EXT:RECORD-RESTORE-OFF OWNER-CALL,
+   RAX RBASE-REG NCOMP-DISPATCH:DECL-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RCX RBASE-REG NCOMP-DISPATCH:TARGET-DECL-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RCX ASM-SINK ENC-CMP-RR  C-E done JCC,
+   NCOMP-DISPATCH:DECL-CELL CHECKER-OWNER-EXT:RECORD-RESTORE-OFF OWNER-CALL,
+   done JMP,
+   cold X64CODE:LBL,
+   NCOMP-DISPATCH:DECL-CELL CHECKER-OWNER-EXT:RECORD-SEED-OFF OWNER-CALL,
+   done X64CODE:LBL, ;
+
 : STUBS, ( label label label -- ) {: crash:label rest:label stub:label :}
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
@@ -1064,6 +1095,7 @@ public
    ready X64CODE:LBL,
    floor PUBLISH-FLOOR,
    crash rest stub SETTLE,
+   RECORD-LINKS,
    booted JMP,
    bad S\" hb: snapshot trailer corrupt\n" 79 FAIL,
    badver S\" hb: snapshot format version unsupported\n" 80 FAIL,

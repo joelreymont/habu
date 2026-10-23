@@ -51,6 +51,7 @@ TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
 
 variable OPENED                      \ a shadow is open
 variable NATIVE                      \ its source already emitted for this binding
+variable AUTO-OPENED                 \ owned by the public native capture window
 TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
 TYPED-VARIABLE NATIVE-ADDRS-XT [ NART:emission ptr u8 -- ]
 variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
@@ -272,9 +273,10 @@ public
 \ ---- opening and closing -----------------------------------------------------
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
    NLEASE:IDLE-CK
-   OPENED @ 0<> if E-NSHADOW-STATE throw then
+   OPENED @ 0<> AUTO-OPENED @ 0= and if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
+   0 AUTO-OPENED !
    0 NATIVE !
    1 OPENED ! ;
 
@@ -292,13 +294,26 @@ public
    OPEN
    1 NATIVE ! ;
 
+\ An explicit open replaces automatic recording at its own chosen boundary.
+\ A new automatic window replaces only its predecessor, preserving an
+\ explicitly opened native or cross-target shadow.
+: OPEN-AUTO-NATIVE ( CBIND:binding -- )
+   {: b:CBIND:binding :}
+   OPENED @ 0<> AUTO-OPENED @ 0= and if NLEASE:IDLE-CK exit then
+   b OPEN-NATIVE
+   1 AUTO-OPENED ! ;
+
 \ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
    NLEASE:IDLE-CK
    0 OPENED !
    0 NATIVE !
+   0 AUTO-OPENED !
    CLEAR
    RELEASE-ROWS ;
+
+: CLOSE-AUTO ( -- )
+   AUTO-OPENED @ if CLOSE then ;
 
 : OPEN? ( -- bool )
    OPENED @ 0<> ;
