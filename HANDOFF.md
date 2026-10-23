@@ -63,10 +63,10 @@ Done only when command output shows all of:
    updates are committed from that workspace to master. The dots name the
    Mac lane workspaces `.jj-ws.noindex/jerry-x86-<lane>`; on pulsar start a
    lane from its branch `intel-<lane>@origin` in a new workspace.
-2. Census this tip: `bin/hb --load test/run.f` (PATH with
-   `/usr/lib/postgresql/18/bin`, `nohup` into a log). The last census (159
-   red of 491) ran on an older stack; give each red to a child dot or to
-   `habu-fix-remaining-x86-5a0c47fd`.
+2. Give each red of the x86 census below ("x86 state of this tip") to a
+   child dot or to `habu-fix-remaining-x86-5a0c47fd`. Rerun the census with
+   `bin/hb --load test/run.f` (PATH with `/usr/lib/postgresql/18/bin`,
+   `nohup` into a log).
 3. The Mac's ARM lanes are all on `intel`: capreach
    (`habu-review-and-land-2437d9b0`), gep64 (`habu-land-the-64-1111310e`),
    tier0 (`habu-review-and-land-d6a57b7c`), the four tier-1 branch commits
@@ -122,6 +122,40 @@ output (213 before the tier-1 commits). The engine is kept at
 containing capreach in one stage. The census log is
 `~/.cache/tmp/jerry-c/tier1/rr-census-b63e453c.log`.
 
+## x86 state of this tip
+
+On pulsar, at the tree of "Record the x86 runtime-regression census": the
+x86 engine self-built from that tree (rc 0); two-gen prints "ok gen 5
+matches gen 4 byte for byte"; `bin/hb --load test/run.f` ran 485 of 485
+with 97 red. Logs and the red list (`reds.txt`: name, kind, code) are in
+`~/.cache/tmp/jerry-c/x86-49af42cc/`. Against the older census (174 red), 77
+rows turned green and none turned red: every red here was red before.
+
+Each red was attributed by building an x86 engine at `4124c31f` (this
+branch before any Mac lane) and rerunning the suspect rows there:
+
+- compiler-images-build is red before the Mac lanes: at `4124c31f` it exits
+  83 (`ENGINE-ERROR:SEAL-VIOLATION`, a kernel-x64 seal trap); at this tip it
+  throws 7179 (`E-LIVE`, src/habu/xref.f, code reclaim refuses a floor with
+  a live routine above it). Both fail at the same point, after the build's
+  "compiled" line and before any image is written, and no Mac commit touches
+  code reclaim or the seal. The 45 rows that exit 75 depend on its images.
+- check-verify is red before the Mac lanes. Run alone
+  (`bin/hb --load tools/check-verify-test.f`), base and tip fail the same
+  four asserts: uses-visit counts 11 calls, not 10 (F930), and
+  trusted-tick-order reports `E-UNDEFINED` on `CVT-NOT-DEFINED` at column
+  41 instead of `E-CAP-TRUSTED` on `patch32` at column 28 (F2575-F2578).
+  It spends 1202 s user at base and 1082 s at the tip; the suite stops it
+  at its 360 s CPU budget (cli-usage alone takes about 120 s).
+- capreach's x86 rows pass: aot-native-merge, trust-row-refusal,
+  name-length, and its two artifact probes run by hand
+  (`bin/hb --load test/aot-native-does.f -- <dir>/x.aot`, the same for
+  `aot-native-export-fixed.f`; no suite row runs them) print "captured".
+  aot-wid-refuse-address-span, aot-wid-rebase, aot-wid-capture-refusal,
+  aot-data-window, aot-payload-graph, aot-payload-unsupported and
+  aot-named-cells-image (CPU budget) were red in the older census too.
+- engine-runtime-regressions is red only for process/pty (see below).
+
 ## x86 reds the Mac lanes found
 
 Each is x86 work for pulsar; a fix that touches shared code needs the Mac's
@@ -157,6 +191,14 @@ stays unbranched.
   the older test.
   Resolve the conflict to master's test and code, then keep this branch's
   x86 `NO-TIER-ZERO` session and `HB-TARGET-LINUX-X86-64?` selection.
+- Master `e1220a95` folded `docs/x86-64.md` and `docs/porting.md` into
+  `docs/xcomp.md` (its "x86-64" and porting sections) and dissolved
+  `docs/vocabulary.md` and `docs/policy.md` into code headers and
+  `docs/design.md`. This branch still edits `docs/x86-64.md`: carry each
+  edit into `docs/xcomp.md`, or into the header of the code it describes
+  (a doc passage that restates code moves to that file's header or is
+  dropped), delete the old files, and repoint the links in `INTEL.md` and
+  this file.
 
 ## Rules
 
