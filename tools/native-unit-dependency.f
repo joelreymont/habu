@@ -1451,7 +1451,10 @@ public
    ord RUN-ORD !
    0 RUN-HITS !
    RUN-TOKEN$ ['] RUN-LEG TOP-XT @ AS-TOP execute
-   RUN-HITS @ 0= if s" resolution-leg-unknown" ord ORDERED-BY exit then
+   \ RUN-ORD and RUN-HITS carry one run into RUN-LEG; they rest at 0 after it,
+   \ so an image holds no run's ordinal.
+   RUN-HITS @ 0=  0 RUN-ORD !  0 RUN-HITS !
+   if s" resolution-leg-unknown" ord ORDERED-BY exit then
    ord CAPTURE-RUN ;
 
 \ The source observer's before callback (NDEF-CACHE wraps a file's run in

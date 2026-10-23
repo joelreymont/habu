@@ -191,7 +191,6 @@ public
 
 private
 
-variable TF-I                 \ private scan/copy index
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
 
 \ ---------------------------------------------------------------------------
@@ -261,11 +260,11 @@ public
 : TF-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}   \ copy bytes into the pool -> offset
    u TF-STR-ENSURE                        \ grow first, then cache a stable base
    TF-STR-U @ {: off:n :}
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@   TF-STR off + TF-I @ + c!
-      TF-I @ 1 + TF-I !
-   REPEAT
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@   TF-STR off + i + c!
+      i 1 +
+   REPEAT drop
    TF-STR-U @ u + TF-STR-U !
    off ;
 : TF-OFF$ ( n n -- ptr u8 n ) {: off:n u:n :}   \ interned (offset,len) -> string
@@ -304,19 +303,19 @@ public
 : TF-CANON? ( ptr u8 n -- bool ) {: a:ptr u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
    a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN      \ a length no name has is no tail
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
-      a TF-I @ + c@ 45 = IF
-         a u TF-I @ TF-HYPHEN-BAD? IF RES-FALSE EXIT THEN
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
+      a i + c@ 45 = IF
+         a u i TF-HYPHEN-BAD? IF RES-FALSE EXIT THEN
       THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE                            \ require at least one letter
-      a TF-I @ + c@ TF-LOWER? IF RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+      i 1 +
+   REPEAT drop
+   0 BEGIN dup u < WHILE                             \ require at least one letter
+      {: i:n :}
+      a i + c@ TF-LOWER? IF RES-TRUE EXIT THEN
+      i 1 +
+   REPEAT drop
    RES-FALSE ;
 : TF-REQUIRE-CANON ( ptr u8 n -- )   \ reject uppercase/mixed-case at declaration
    TF-CANON? 0= IF E-TFAM-CASE throw THEN ;
@@ -774,13 +773,13 @@ public
 \ registry. test/checker-scan-index-suite.f differentials the two.
 : TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
-   0 TF-I !
-   BEGIN TF-I @ TFAM-N @ < WHILE
-      pa pu TF-I @ TFAM-PKG-MATCH? IF
-         na nu TF-I @ TFAM-NAME-MATCH? IF TF-I @ RES-TRUE EXIT THEN
+   0 BEGIN dup TFAM-N @ < WHILE
+      {: i:n :}
+      pa pu i TFAM-PKG-MATCH? IF
+         na nu i TFAM-NAME-MATCH? IF i RES-TRUE EXIT THEN
       THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+      i 1 +
+   REPEAT drop
    0 RES-FALSE ;
 
 \ PUBLIC package family with this tail. Global rows are lexical and are resolved
@@ -850,11 +849,10 @@ private
 
 : TFAM-KIND-VALID? ( n -- bool ) {: k:n :} k 0 >= k TK-MAX <= and ;
 : TFAM-PK-RESERVE ( n -- ) {: k:n :}        \ default every parameter to PK-CELL
-   0 TF-I !
-   BEGIN TF-I @ k < WHILE
+   0 BEGIN dup k < WHILE
       PK-CELL TF-PK+
-      TF-I @ 1 + TF-I !
-   REPEAT ;
+      1 +
+   REPEAT drop ;
 
 public
 
@@ -990,8 +988,11 @@ public
 \ the lowest id for a symbol is the first to go, so a head pointing at a retired
 \ row means the symbol has no row left. SVX-TRUNCATE therefore needs no
 \ back-link — it clears the heads the retired rows own and nothing else.
-\ SVX-HI catches a rewind performed outside those seams; SVX-GEN catches the
-\ shared mapping being dropped or re-laid-out under it.
+\ SVX-HI is the SUMV-N the index covers, and every seam that moves SUMV-N moves
+\ it too (SUMV-ADD, SVX-TRUNCATE, the unit imports, TFAM-RESET), so it differs
+\ from SUMV-N only after a rewind performed outside those seams, which it
+\ catches; SVX-GEN catches the shared mapping being dropped or re-laid-out
+\ under it.
 
 private
 
@@ -1013,8 +1014,6 @@ private
 : SVX-SYNC ( -- )
    SUMV-N @ SVX-HI @ < IF 0 SVX-GEN ! THEN ;
 
-variable SVX-I
-
 \ First writer wins, matching SUMV-FROM-CTOR-SYM's lowest-id answer. Under the
 \ store's one-constructor-per-variant rule (SUMV-CTOR-SYM! refuses a second
 \ write) a symbol can key at most one row, so no test can tell first from last;
@@ -1027,11 +1026,7 @@ variable SVX-I
 
 : SVX-BUILD ( -- )
    HT-SVX IDX-HEADS-CLEAR
-   0 SVX-I !
-   BEGIN SVX-I @ SUMV-N @ < WHILE
-      SVX-I @ dup SUMV-CTOR-SYM@ SVX-LINK
-      SVX-I @ 1 + SVX-I !
-   REPEAT
+   SUMV-N @ 0 ?do i dup SUMV-CTOR-SYM@ SVX-LINK loop
    SVX-STAMP
    HIDX-GEN @ SVX-GEN ! ;
 
@@ -1052,14 +1047,12 @@ private
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
    SVX-GEN @ HIDX-GEN @ <> IF EXIT THEN
    SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" 76 die THEN
-   newn SVX-I !
-   BEGIN SVX-I @ SUMV-N @ < WHILE
-      SVX-I @ SUMV-CTOR-SYM@ {: sym:n :}
+   SUMV-N @ newn ?do
+      i SUMV-CTOR-SYM@ {: sym:n :}
       sym 0 <> IF
-         sym SVX@ SVX-I @ 1 + = IF 0 sym SVX! THEN
+         sym SVX@ i 1 + = IF 0 sym SVX! THEN
       THEN
-      SVX-I @ 1 + SVX-I !
-   REPEAT
+   loop
    newn SVX-HI ! ;
 
 \ A variant owns exactly one generated constructor. Rewriting the cell would
@@ -1078,11 +1071,9 @@ public
 \ the lowest variant id (+1) with this constructor symbol, by walking the store.
 \ test/checker-scan-index-suite.f differentials the indexed answer against it.
 : SUMV-CTOR-FIRST-LINEAR ( n -- n ) {: sym:n :}
-   0 SVX-I !
-   BEGIN SVX-I @ SUMV-N @ < WHILE
-      SVX-I @ SUMV-CTOR-SYM@ sym = IF SVX-I @ 1 + EXIT THEN
-      SVX-I @ 1 + SVX-I !
-   REPEAT
+   SUMV-N @ 0 ?do
+      i SUMV-CTOR-SYM@ sym = IF i 1 + unloop EXIT THEN
+   loop
    0 ;
 
 \ --- variant tail index (VNX) ---------------------------------------------------
@@ -1303,11 +1294,11 @@ public
 \ answers, by walking the store. test/checker-scan-index-suite.f differentials
 \ the two.
 : SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
-   0 TF-I !
-   BEGIN TF-I @ SUMV-N @ < WHILE
-      fam na nu TF-I @ SUMV-MATCH? IF TF-I @ RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+   0 BEGIN dup SUMV-N @ < WHILE
+      {: i:n :}
+      fam na nu i SUMV-MATCH? IF i RES-TRUE EXIT THEN
+      i 1 +
+   REPEAT drop
    0 RES-FALSE ;
 : SUMV-ADD ( n ptr u8 n n n n n -- n )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
@@ -1316,6 +1307,7 @@ public
    fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
    VNX-ENSURE                             \ size the index before the slot is committed
+   SVX-SYNC                               \ catch an outside rewind before the stamp moves
    SUMV-N @ {: id:n :}
    na nu TF-INTERN {: noff:n :}
    id 1 + SUMV-N !
@@ -1326,6 +1318,7 @@ public
    sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
    0 r SV.CTOR-SYM !   0 r SV.CTOR-PKG-OFF !   0 r SV.CTOR-PKG-U !
    id VNX-PUSH   SUMV-N @ VNX-HI !
+   SVX-STAMP                              \ a new row has no constructor symbol, so no head
    TFM-EPOCH+
    id ;
 
@@ -1378,19 +1371,19 @@ private
    TF-CTOR-BUF TF-CTOR-U @ + c!
    TF-CTOR-U @ 1 + TF-CTOR-U ! ;
 : TF-CTOR-ESC ( ptr u8 n -- ) {: a:ptr u:n :}   \ one uppercased '-'->'--' escaped segment
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ dup 45 = IF
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ dup 45 = IF
          drop 45 TF-CTOR-C, 45 TF-CTOR-C,
       ELSE TF-UPPER-C TF-CTOR-C, THEN
-      TF-I @ 1 + TF-I !
-   REPEAT ;
+      i 1 +
+   REPEAT drop ;
 : TF-CTOR-TAIL ( ptr u8 n -- ) {: a:ptr u:n :}      \ raw uppercased private tail
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ TF-UPPER-C TF-CTOR-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ TF-UPPER-C TF-CTOR-C,
+      i 1 +
+   REPEAT drop ;
 : TF-CTOR-BUILD-ESCAPED ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
    {: pa:ptr pu:n ta:ptr tu:n :}
    0 TF-CTOR-U !
@@ -1463,14 +1456,13 @@ private
    i 0= IF s" make" EXIT THEN
    s" unmake" ;
 
-variable TF-CM              \ member scan index
 : TF-PRIV-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ = a member of THIS family?
-   0 TF-CM !
-   BEGIN TF-CM @ TF-PRIV-MEMBER-N < WHILE
-      a u  fam TFAM-NAME$ TF-CM @ TF-PRIV-MEMBER$ TF-CTOR-PRIV$  CORE-STR=CI
+   0 BEGIN dup TF-PRIV-MEMBER-N < WHILE
+      {: m:n :}
+      a u  fam TFAM-NAME$ m TF-PRIV-MEMBER$ TF-CTOR-PRIV$  CORE-STR=CI
          IF RES-TRUE EXIT THEN
-      TF-CM @ 1 + TF-CM !
-   REPEAT RES-FALSE ;
+      m 1 +
+   REPEAT drop RES-FALSE ;
 
 public
 
@@ -2214,20 +2206,20 @@ TFAM-WIDTH-SLOT-INSTALL
 public
 
 : PF-FIND ( n n ptr u8 n -- n bool ) {: fam:n var:n na:ptr nu:n :}
-   0 TF-I !
-   BEGIN TF-I @ PF-COMMIT-N @ < WHILE
-      fam var na nu TF-I @ PF-MATCH? IF TF-I @ RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+   0 BEGIN dup PF-COMMIT-N @ < WHILE
+      {: i:n :}
+      fam var na nu i PF-MATCH? IF i RES-TRUE EXIT THEN
+      i 1 +
+   REPEAT drop
    0 RES-FALSE ;
 : PF-EACH ( n n n -- n bool ) {: fam:n var:n start:n :}
    start 0 < IF 0 RES-FALSE EXIT THEN
-   start TF-I !
-   BEGIN TF-I @ PF-COMMIT-N @ < WHILE
-      TF-I @ PF-REC@ {: r:ptr :}
-      fam var r PF-ROW-OWNER? IF TF-I @ RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+   start BEGIN dup PF-COMMIT-N @ < WHILE
+      {: i:n :}
+      i PF-REC@ {: r:ptr :}
+      fam var r PF-ROW-OWNER? IF i RES-TRUE EXIT THEN
+      i 1 +
+   REPEAT drop
    0 RES-FALSE ;
 
 \ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
@@ -2346,7 +2338,8 @@ public
 \ wrapped serial mint token 0 or a negative token, which every phase compares by
 \ equality — a stale token could then alias a live frame, the one failure the
 \ whole token scheme exists to prevent. It is a cheap always-on precondition on
-\ the sole mutator of the serial, so it is kept unexercised and deliberately not
+\ the serial's one minting site (a FILE import only advances it by a delta
+\ UNIT-FAM-PLAN-OPEN bounds), so it is kept unexercised and deliberately not
 \ re-exposed through a TRUSTED boundary.
 : OPEN ( -- n )
    WRITE-WINDOW-CK
@@ -2931,8 +2924,6 @@ package TFAM
 
 private
 
-variable TF-CJ              \ accessor scan index
-
 : TFAM-ADDR-FIELD-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ tail names a COMMITTED field of fam
    fam TFAM-FLD-START@ {: fs:n :}
    fam TFAM-FLD-COUNT@ 0 ?do
@@ -2990,18 +2981,18 @@ private
 \ STRUCTURE with fields always has its make/unmake pair, so a family is reached
 \ through either row; visiting it twice is free).
 : TFAM-ADDR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 TF-CJ !
-   BEGIN TF-CJ @ SUMV-N @ < WHILE
-      a u TF-CJ @ TFAM-ADDR-AT? IF RES-TRUE EXIT THEN
-      TF-CJ @ 1 + TF-CJ !
-   REPEAT RES-FALSE ;
+   0 BEGIN dup SUMV-N @ < WHILE
+      {: j:n :}
+      a u j TFAM-ADDR-AT? IF RES-TRUE EXIT THEN
+      j 1 +
+   REPEAT drop RES-FALSE ;
 
 : TFAM-ADDR-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 TF-CJ !
-   BEGIN TF-CJ @ SUMV-N @ < WHILE
-      a u TF-CJ @ TFAM-ADDR-PRIV-AT? IF RES-TRUE EXIT THEN
-      TF-CJ @ 1 + TF-CJ !
-   REPEAT RES-FALSE ;
+   0 BEGIN dup SUMV-N @ < WHILE
+      {: j:n :}
+      a u j TFAM-ADDR-PRIV-AT? IF RES-TRUE EXIT THEN
+      j 1 +
+   REPEAT drop RES-FALSE ;
 
 public
 
@@ -3077,18 +3068,18 @@ private
    loop RES-FALSE ;
 
 : TFAM-INIT-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 TF-CJ !
-   BEGIN TF-CJ @ SUMV-N @ < WHILE
-      a u TF-CJ @ TFAM-INIT-QUAL-AT? IF RES-TRUE EXIT THEN
-      TF-CJ @ 1 + TF-CJ !
-   REPEAT RES-FALSE ;
+   0 BEGIN dup SUMV-N @ < WHILE
+      {: j:n :}
+      a u j TFAM-INIT-QUAL-AT? IF RES-TRUE EXIT THEN
+      j 1 +
+   REPEAT drop RES-FALSE ;
 
 : TFAM-INIT-PRIV-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 TF-CJ !
-   BEGIN TF-CJ @ SUMV-N @ < WHILE
-      a u TF-CJ @ TFAM-INIT-PRIV-AT? IF RES-TRUE EXIT THEN
-      TF-CJ @ 1 + TF-CJ !
-   REPEAT RES-FALSE ;
+   0 BEGIN dup SUMV-N @ < WHILE
+      {: j:n :}
+      a u j TFAM-INIT-PRIV-AT? IF RES-TRUE EXIT THEN
+      j 1 +
+   REPEAT drop RES-FALSE ;
 
 public
 
@@ -3216,11 +3207,11 @@ public
 : LAY-N@ ( -- n ) LAY-N @ ;
 
 : LAY-FIND ( n -- n bool ) {: fam:n :}
-   0 TF-I !
-   BEGIN TF-I @ LAY-N @ < WHILE
-      TF-I @ LAY-FAM@ fam = IF TF-I @ RES-TRUE EXIT THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+   0 BEGIN dup LAY-N @ < WHILE
+      {: i:n :}
+      i LAY-FAM@ fam = IF i RES-TRUE EXIT THEN
+      i 1 +
+   REPEAT drop
    0 RES-FALSE ;
 : LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    WRITE-WINDOW-CK
@@ -3329,7 +3320,7 @@ public
    0 FVX-READY !                         \ ... and every row the field owner index chains
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
-   0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
+   0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
@@ -4759,7 +4750,7 @@ REG-AOT-FAM-W-INSTALL
    VNX-SNAP-RESET
    FVX-SNAP-RESET
    TFM-EPOCH+
-   0 SVX-GEN ! ;
+   0 SVX-GEN !   SVX-STAMP ;
 
 : REG-AOT-TAKE ( ptr u8 n n -- ) {: src:ptr u:n state:n :}
    state 1 = IF src u REG-AOT-APPEND THEN ;
@@ -5025,11 +5016,11 @@ variable TFQ-COLON
 
 : TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}   \ folded qualifier -> TFQ-BUF
    u TFQ-CAP > IF s" tfam: qualifier too long" 76 die THEN
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ CORE-FOLD-C  TFQ-BUF TF-I @ + c!
-      TF-I @ 1 + TF-I !
-   REPEAT
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ CORE-FOLD-C  TFQ-BUF i + c!
+      i 1 +
+   REPEAT drop
    u TFQ-U ! ;
 
 \ TFQ-SPLIT? ( ptr u8 n -- bool ) : one non-edge ':' splits qualifier/tail
@@ -5037,14 +5028,14 @@ variable TFQ-COLON
 \ and neither does a qualifier longer than TFQ-BUF, which no package name is.
 : TFQ-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    -1 TFQ-COLON !
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ 58 = IF
+   0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ 58 = IF
          TFQ-COLON @ 0 < 0= IF RES-FALSE EXIT THEN   \ second ':' -> malformed
-         TF-I @ TFQ-COLON !
+         i TFQ-COLON !
       THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
+      i 1 +
+   REPEAT drop
    TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
    TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
    TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
@@ -5129,9 +5120,15 @@ private
 create UNIT-FAM-MARKS REG-AOT-N cells allot
 create UNIT-FAM-STABLE REG-AOT-N cells allot
 PTR-VARIABLE UNIT-FAM-AT
+\ PF-TX-SERIAL where the slice starts. Tokens outlive their declaration (see
+\ TFAM-RESET), so a slice records the serials it opened and an import advances
+\ PF-TX-SERIAL by that delta, as the cold compile's OPENs do.
+variable UNIT-FAM-SERIAL-MARK
 TFAM-N @ constant UNIT-FAM-STABLE-N
 $54464D44454C5433 constant UNIT-FAM-MAGIC
-16 REG-AOT-N 24 * + constant UNIT-FAM-HDR
+\ Magic, store count, the transaction serial delta, then base, count and
+\ stable count per store.
+24 REG-AOT-N 24 * + constant UNIT-FAM-HDR
 PTR-VARIABLE UNIT-FAM-REFS
 variable UNIT-FAM-REFS-CAP
 PTR-VARIABLE UNIT-CON-REFS
@@ -5179,6 +5176,7 @@ defer UNIT-FAM-SCRATCH-RESET ( -- )
 : UNIT-FAM-EXPORT-RESET ( -- )
    UNIT-FAM-MARKS 0 REG-AOT-N ARENA-CELLS-ZERO
    NULL-PTR UNIT-FAM-AT ! 0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N !
+   0 UNIT-FAM-SERIAL-MARK !
    UNIT-FAM-REFS-RELEASE UNIT-CON-REFS-RELEASE
    UNIT-FAM-SEEN-RELEASE 0 UNIT-FAM-SEEN-EPOCH !
    UNIT-FAM-SCRATCH-RESET ;
@@ -5251,7 +5249,12 @@ REG-EXT-PERSIST-INSTALL
    NULL-PTR TFSR-PA !  0 TFSR-PU !
    NULL-PTR TFSR-NA !  0 TFSR-NU !
    TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
-   0 TFC-I !  0 TFC-J !  0 TFC-ROW ! ;
+   0 TFC-I !  0 TFC-J !  0 TFC-ROW !
+   TF-CTOR-CAP 0 ?do 0 TF-CTOR-BUF i + c!  0 TF-INIT-TAIL i + c! loop
+   0 TF-CTOR-U !
+   \ Rows above the open frames were released; the open frames keep theirs.
+   PF-TX-P @ PF-TX-DEPTH @ PF-TX-REC * CELL /
+   PF-TX-CAP-V @ PF-TX-REC * CELL / ARENA-CELLS-ZERO ;
 
 : TFAM-SCRATCH-INSTALL ( -- ) [: TFAM-SCRATCH-RETIRE ;] is REG-EXT-SCRATCH-XT ;
 TFAM-SCRATCH-INSTALL
@@ -5782,32 +5785,26 @@ private
 \ Lives here because the field/schema registries and TFC-SCH-TERM (which
 \ checker.f loads before) are this module's; the checker reaches it only through
 \ the sealed friend hook, exactly like TFAM-MATCH-PAY / TFAM-CONSTRUCT-STEP.
-variable FPRJ-TERM   variable FPRJ-OK
-variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
-variable FPRJ-FFAM
-\ Inner validation reads the request from the FPRJ-* cells (so the caught
-\ quotation stays stack-neutral for `catch`). Only the committed field-family
-\ lookup is caught below; an E-PF-ID there means the expected absent field, and
-\ every other error propagates. The body publishes the instantiated field type
-\ + verdict into FPRJ-TERM / FPRJ-OK.
-: TFAM-FIELD-PROJ-DO ( n -- )
-   {: ffam:n :}
-   ffam FPRJ-FAM @ PARAM>FAM <> IF EXIT THEN                    \ field not owned by the input family
-   FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTE-OFF@ <> IF EXIT THEN   \ baked offset disagrees with the committed offset (forged access)
-   FPRJ-FID @ TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
-   FPRJ-FAM @ PARAM>ARGC ffam TFAM-ARITY@ <> IF EXIT THEN       \ generic arity mismatch
-   FPRJ-FAM @ TFAM-INST-WIDTH@ ffam TFAM-SLOTS@ <> IF EXIT THEN \ a wide instantiation moves every field past the first: the committed offsets no longer describe it (see the note below)
-   FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF EXIT THEN   \ field extent past the family width
-   FPRJ-FAM @ TFC-ARGS!
-   FPRJ-FID @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM FPRJ-TERM !   \ root index -> node -> instantiate the field schema over the input args
-   -1 FPRJ-OK ! ;
+\ Validate the request against the field's committed family FFAM and answer the
+\ instantiated field type, or 0 and false.
+: TFAM-FIELD-PROJ-DO ( n n n n -- n bool )   \ fid off famterm ffam -- fieldterm ok
+   {: fid:n off:n fam:n ffam:n :}
+   ffam fam PARAM>FAM <> IF 0 RES-FALSE EXIT THEN                \ field not owned by the input family
+   off fid TYPE-FIELD:BYTE-OFF@ <> IF 0 RES-FALSE EXIT THEN      \ baked offset disagrees with the committed offset (forged access)
+   fid TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF 0 RES-FALSE EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
+   fam PARAM>ARGC ffam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN   \ generic arity mismatch
+   fam TFAM-INST-WIDTH@ ffam TFAM-SLOTS@ <> IF 0 RES-FALSE EXIT THEN   \ a wide instantiation moves every field past the first: the committed offsets no longer describe it (see the note below)
+   off fid TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF 0 RES-FALSE EXIT THEN   \ field extent past the family width
+   fam TFC-ARGS!
+   fid TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM RES-TRUE ;   \ root index -> node -> instantiate the field schema over the input args
+\ Only the committed field-family lookup is caught: an E-PF-ID there means the
+\ expected absent field, and every other error propagates.
 : TFAM-FIELD-PROJ ( n n n -- n bool )   \ fid off famterm -- fieldterm ok
-   FPRJ-FAM !  FPRJ-OFF !  FPRJ-FID !
-   0 FPRJ-OK !  0 FPRJ-TERM !
-   [: FPRJ-FID @ TYPE-FIELD:FAMILY@ FPRJ-FFAM ! ;] catch
-   dup 0= IF drop FPRJ-FFAM @ TFAM-FIELD-PROJ-DO
-   ELSE dup E-PF-ID = IF drop ELSE throw THEN THEN
-   FPRJ-TERM @ FPRJ-OK @ 0= 0= ;                  \ ok as a boolean flag
+   {: fid:n off:n fam:n :}
+   fid [: TYPE-FIELD:FAMILY@ ;] catch
+   dup 0= IF drop {: ffam:n :} fid off fam ffam TFAM-FIELD-PROJ-DO EXIT THEN
+   nip dup E-PF-ID <> IF throw THEN
+   drop 0 RES-FALSE ;
 
 \ The width condition above is fail-closed defence on the ARMING boundary, like
 \ the forged-offset and role conditions beside it: those cannot be reached by a
@@ -5956,7 +5953,13 @@ private
 
 : UNIT-FAM-MARK ( -- )
    REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop
+   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK !
    0 UNIT-FAM-REF-N ! 0 UNIT-CON-REF-N ! ;
+
+\ The transaction serials the slice opened since its mark.
+: UNIT-FAM-SERIAL-DELTA ( -- n )
+   PF-TX-SERIAL @ UNIT-FAM-SERIAL-MARK @ - dup 0 < IF
+      drop s" tfam: FILE transaction serial moved backward" REG-AOT-REFUSE THEN ;
 
 : UNIT-FAM-BASE@ ( n -- n ) cells UNIT-FAM-MARKS + @ ;
 
@@ -6046,7 +6049,7 @@ defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
 
 : UNIT-FAM-SIZE ( -- n )
    UNIT-FAM-SCAN
-   UNIT-FAM-REF-N @ UNIT-CON-REF-N @ or
+   UNIT-FAM-REF-N @ UNIT-CON-REF-N @ or UNIT-FAM-SERIAL-DELTA or
    REG-AOT-N 0 ?do
       i 5 <> IF i REG-AOT-COUNT i UNIT-FAM-BASE@ - or THEN
    loop
@@ -6160,7 +6163,8 @@ defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
    size 0= IF 0 EXIT THEN
    UNIT-FAM-TILED
    UNIT-FAM-MAGIC dst UNIT-FAM-U64+
-   REG-AOT-N swap UNIT-FAM-U64+ UNIT-FAM-AT !
+   REG-AOT-N swap UNIT-FAM-U64+
+   UNIT-FAM-SERIAL-DELTA swap UNIT-FAM-U64+ UNIT-FAM-AT !
    REG-AOT-N 0 ?do
       i UNIT-FAM-BASE@ {: base:n :}
       i REG-AOT-COUNT {: end:n :}
@@ -6236,7 +6240,8 @@ defer UNIT-CON-CONTRACT-CHECK-XT ( n ptr u8 n ptr u8 n -- )
 10 constant UFP.SBASE
 18 constant UFP.COUNT
 26 constant UFP.TBASE
-34 cells constant UFP.REC
+34 constant UFP.SERIAL
+35 cells constant UFP.REC
 REG-AOT-N PTR-U8-TABLE UNIT-FAM-RAW
 PTR-VARIABLE UNIT-FAM-FIRST
 PTR-VARIABLE UNIT-FAM-LAST
@@ -6327,6 +6332,14 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       dup k UFP-COUNT@ UNIT-FAM-ACC +!
       UFP.NEXT UFP-PTR@
    REPEAT drop UNIT-FAM-ACC @ ;
+
+\ PF-TX-SERIAL once the plans prepared so far install.
+: UNIT-FAM-TARGET-SERIAL ( -- n )
+   PF-TX-SERIAL @ UNIT-FAM-FIRST @
+   BEGIN dup NULL-PTR <> WHILE
+      dup UFP.SERIAL UFP@ rot + swap
+      UFP.NEXT UFP-PTR@
+   REPEAT drop ;
 
 : UNIT-FAM-ROW ( ptr u8 n n -- ptr n ) {: plan:ptr k:n i:n :}
    plan UFP.BLOB UFP-PTR@ k REG-AOT-BLOB-STORE
@@ -6652,6 +6665,12 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       s" tfam: FILE family delta has an invalid format" REG-AOT-REFUSE THEN
    UNIT-FAM-CELL REG-AOT-N <> IF
       s" tfam: FILE family delta has an invalid store count" REG-AOT-REFUSE THEN
+   UNIT-FAM-CELL {: serial:n :}
+   serial 0 < IF
+      s" tfam: FILE family delta has a negative transaction serial" REG-AOT-REFUSE THEN
+   serial $7FFFFFFFFFFFFFFF UNIT-FAM-TARGET-SERIAL - > IF
+      s" tfam: FILE family transaction serial overflows" REG-AOT-REFUSE THEN
+   serial plan UFP.SERIAL UFP!
    REG-AOT-N 0 ?do
       UNIT-FAM-CELL {: base:n :}
       UNIT-FAM-CELL {: count:n :}
@@ -6752,6 +6771,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
          s" tfam: FILE family installation order changed" REG-AOT-REFUSE THEN
       i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-ROOM
    loop
+   plan UFP.SERIAL UFP@ PF-TX-SERIAL +!
    REG-AOT-N 0 ?do
       plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
       bytes 0 > IF
@@ -6765,7 +6785,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       THEN
    loop
    TFX-SNAP-RESET VNX-SNAP-RESET FVX-SNAP-RESET
-   TFM-EPOCH+ 0 SVX-GEN ! ;
+   TFM-EPOCH+ 0 SVX-GEN ! SVX-STAMP ;
 
 : UNIT-FAM-END ( -- )
    0 UNIT-FAM-PROJECT-ON ! NULL-PTR UNIT-FAM-CUR !

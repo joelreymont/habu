@@ -209,8 +209,6 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ regrow copies each store O(log n) times over a load, not once per grain.
 \ `map-anon` answers the mapping as a pointer whose element type the caller
 \ picks, so no refinement turns a syscall result into an address.
-variable ARENA-CP-I   variable ARENA-UB-I
-
 : ARENA-ALLOC ( n -- ptr a )
    map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
@@ -222,15 +220,16 @@ variable ARENA-CP-I   variable ARENA-UB-I
 \ The checker's byte copier: n bytes, src->dst, cell-wise with a byte tail. arm64
 \ and x86-64 both take an unaligned cell access, so a span may start at any byte.
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
-   0 ARENA-CP-I !
-   begin ARENA-CP-I @ CELL + n <= while
-      src ARENA-CP-I @ + CELL-VIEW @ dst ARENA-CP-I @ + CELL-VIEW !
-      ARENA-CP-I @ CELL + ARENA-CP-I !
+   0
+   begin dup CELL + n <= while
+      src over + CELL-VIEW @  over dst swap + CELL-VIEW !
+      CELL +
    repeat
-   begin ARENA-CP-I @ n < while
-      src ARENA-CP-I @ + c@ dst ARENA-CP-I @ + c!
-      ARENA-CP-I @ 1 + ARENA-CP-I !
-   repeat ;
+   begin dup n < while
+      src over + c@  over dst swap + c!
+      1 +
+   repeat
+   drop ;
 
 \ ARENA-CELLS-COPY copies n cells, src->dst, of any element type, so neither
 \ side is viewed as bytes. A caller holding a byte count passes it rounded up
@@ -242,18 +241,16 @@ variable ARENA-CP-I   variable ARENA-UB-I
    n 0 ?do src i cells + @ dst i cells + ! loop ;
 
 : ARENA-CELLS-UNBOUND ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
-   from ARENA-UB-I !
-   begin ARENA-UB-I @ to < while
-      UNBOUND ARENA-UB-I @ cells base + !
-      ARENA-UB-I @ 1 + ARENA-UB-I !
-   repeat ;
+   from begin dup to < while {: i:n :}
+      UNBOUND i cells base + !
+      i 1 +
+   repeat drop ;
 
 : ARENA-CELLS-ZERO ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
-   from ARENA-UB-I !
-   begin ARENA-UB-I @ to < while
-      0 ARENA-UB-I @ cells base + !
-      ARENA-UB-I @ 1 + ARENA-UB-I !
-   repeat ;
+   from begin dup to < while {: i:n :}
+      0 i cells base + !
+      i 1 +
+   repeat drop ;
 
 \ ARENA-BYTES-GROW ( ptr a n n -- ptr a ) : alloc newbytes, copy oldbytes from
 \ base rounded up to whole cells, return the new base. For record/cell stores counted in raw elements the
@@ -2706,7 +2703,7 @@ variable FIELD-PROJ-OFF REG-PROTECT   \ baked byte offset (cross-checked against
 \ The retained owner enforces these cells' policy during a native rebuild too.
 \ Keep raw state access here; the matching and schema checks remain checked.
 TRUSTED: FIELD-PROJ-SCRATCH-RESET ( -- )
-   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U ! ;
+   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !  0 FIELD-PROJ-FID !  0 FIELD-PROJ-OFF ! ;
 REG-PROTECT
 TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
 REG-PROTECT
@@ -25282,14 +25279,14 @@ variable CUR-OPEN   variable CUR-PSIG
 
 \ --- generated-product certification (type-family.f header).
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
-\ and UNMAKE have empty bodies. Their sealed plan queues the two symbols with a
-\ zero-cell delta; boundary unification then records the declared product effect
+\ and UNMAKE have empty bodies. Their sealed plan queues the two symbols;
+\ boundary unification then records the declared product effect
 \ without letting user source forge a layout bundle. A word installed from the
 \ cache takes its row at install (PENDING-CTOR-RESULT). SUM/ENUM constructors do
 \ not use this authority: their generated checked bodies spell the canonical
 \ `construct family variant` form, which owns both certification and lowering.
 4 constant CTOR-PEND-CAP-INIT
-2 cells constant CTOR-PEND-REC
+1 cells constant CTOR-PEND-REC
 $7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
 CTOR-PEND-BYTE-MAX CTOR-PEND-REC / constant CTOR-PEND-ROW-MAX
 create CTOR-PEND-BOOT CTOR-PEND-CAP-INIT CTOR-PEND-REC * allot
@@ -25297,20 +25294,12 @@ PERSISTED-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
 variable CTOR-PEND-CAP     CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
 variable CTOR-PEND-COUNT
 variable CTOR-PEND-POS
-variable CTOR-PEND-K
-variable CTOR-PEND-I
 
-: CTOR-PEND-ROW ( n -- ptr n )
+: CTOR-PEND-SYM ( n -- ptr n )
    dup 0 < over CTOR-PEND-CAP @ >= or IF
       s" checker: generated constructor plan capacity overflow" 76 die
    THEN
    CTOR-PEND-REC * CTOR-PEND-P @ + ;
-
-: CTOR-PEND-SYM ( n -- ptr n )
-   CTOR-PEND-ROW ;
-
-: CTOR-PEND-CELLS ( n -- ptr n )
-   CTOR-PEND-ROW CELL + ;
 
 : CTOR-PEND-ROWS>BYTES ( n -- n )
    dup 0 < over CTOR-PEND-ROW-MAX > or IF
@@ -25340,15 +25329,12 @@ variable CTOR-PEND-I
 
 : CTOR-PEND-CLEAR ( -- )
    0 CTOR-PEND-COUNT !
-   0 CTOR-PEND-POS !
-   0 CTOR-PEND-K ! ;
+   0 CTOR-PEND-POS ! ;
 
 : CTOR-PEND-REWIND ( -- )
-   0 CTOR-PEND-POS !
-   0 CTOR-PEND-K ! ;
+   0 CTOR-PEND-POS ! ;
 
-: CTOR-PEND-SYM+ ( n n -- ) {: sym:n cells:n :}
-   cells 0 < IF s" checker: negative generated constructor width" 76 die THEN
+: CTOR-PEND-SYM+ ( n -- ) {: sym:n :}
    CTOR-PEND-ENSURE
    0
    BEGIN dup CTOR-PEND-COUNT @ < WHILE
@@ -25359,19 +25345,12 @@ variable CTOR-PEND-I
    REPEAT
    drop
    sym CTOR-PEND-COUNT @ CTOR-PEND-SYM !
-   cells CTOR-PEND-COUNT @ CTOR-PEND-CELLS !
    CTOR-PEND-COUNT @ 1 + CTOR-PEND-COUNT ! ;
 
-: CTOR-PEND! ( ptr u8 n n -- ) {: a:ptr u:n cells:n :}
-   CTOR-PEND-CLEAR
-   a u CHECKER-RECORD-SYM cells CTOR-PEND-SYM+ ;
-
-\ Take the plan row at the cursor when it is SYM's; the row's width goes to
-\ CTOR-PEND-K for CTOR-EXPECTED-ROW.
+\ Take the plan row at the cursor when it is SYM's.
 : CTOR-PEND-TAKE? ( n -- bool ) {: sym:n :}
    CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF RES-FALSE EXIT THEN
    CTOR-PEND-POS @ CTOR-PEND-SYM @ sym <> IF RES-FALSE EXIT THEN
-   CTOR-PEND-POS @ CTOR-PEND-CELLS @ CTOR-PEND-K !
    CTOR-PEND-POS @ 1 + CTOR-PEND-POS !
    RES-TRUE ;
 
@@ -25383,14 +25362,6 @@ variable CTOR-PEND-I
    CTOR-PEND-POS @ CTOR-PEND-COUNT @ <> IF
       s" checker: incomplete generated constructor plan" 76 die
    THEN ;
-
-: CTOR-EXPECTED-ROW ( -- n )          \ SGIN + planned raw cells on top
-   SGIN @
-   0 CTOR-PEND-I !
-   BEGIN CTOR-PEND-I @ CTOR-PEND-K @ < WHILE
-      CC-N MK-CON swap MK-PUSH
-      CTOR-PEND-I @ 1 + CTOR-PEND-I !
-   REPEAT ;
 
 \ --- checked nominal/family cast certification (dot habu-checked-cast-primitive).
 \ `cast: NAME ( in -- out )` is a DECLARATION: the engine's own reader keyword
@@ -25777,8 +25748,9 @@ variable CAST-PATH-N
    CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
          \ Matching consumes exactly one row from the sealed constructor plan.
-         \ TDECL-GEN-EVAL's catch boundary clears it on every exit.
-         CTOR-EXPECTED-ROW SUNI-COERCE
+         \ TDECL-GEN-EVAL's catch boundary clears it on every exit. The
+         \ product bundle is its field cells, so the body leaves SGIN.
+         SGIN @ SUNI-COERCE
       ELSE
          LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
