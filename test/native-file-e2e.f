@@ -19,21 +19,26 @@ private
 $8000 constant CAP
 create ROOT FS-PATH-CAP allot  variable ROOT-U
 create PATH FS-PATH-CAP allot
-create OUT CAP allot  variable OUT-U
-create ERR CAP allot  variable ERR-U
+DYNAMIC-BUFFER OUT u8  variable OUT-U
+DYNAMIC-BUFFER ERR u8  variable ERR-U
 create PROGRAM CAP allot  variable PROGRAM-U
+
+\ A child's streams grow to what it writes.
+: OUT-ROOM ( n -- ptr u8 ) OUT-RESERVE 0 OUT ;
+: ERR-ROOM ( n -- ptr u8 ) ERR-RESERVE 0 ERR ;
 
 public
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+\ An empty stream reserved nothing, so it has no byte to view.
+: OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
+: ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
 
 \ out and err become OUT$ and ERR$, as a capture leaves a child's streams.
 : STREAMS! ( ptr u8 n ptr u8 n -- )
    {: out:ptr outu:n err:ptr erru:n :}
-   0 OUT-U ! out outu OUT CAP OUT-U BUF-APPEND
-   0 ERR-U ! err erru ERR CAP ERR-U BUF-APPEND ;
+   outu OUT-U ! outu 0<> if out outu OUT-ROOM outu BYTE-COPY then
+   erru ERR-U ! erru 0<> if err erru ERR-ROOM erru BYTE-COPY then ;
 
 \ The root named n under HB_TMP.
 : TREE ( ptr u8 n -- )
@@ -58,8 +63,8 @@ public
    {: exe:ptr exeu:n stdin:ptr stdinu:n :}
    0 PROGRAM-U ! exe exeu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
    exe exeu >LEN stdin stdinu >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
+   [: OUT-ROOM ;] [: ERR-ROOM ;] 600000 >MS
+   RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT

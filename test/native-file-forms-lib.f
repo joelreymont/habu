@@ -20,8 +20,8 @@ create AT-BUF FS-PATH-CAP allot
 create AT-A-BUF FS-PATH-CAP allot
 create AT-B-BUF FS-PATH-CAP allot
 create PUT-BUF FS-PATH-CAP allot
-create OUT CAP allot  variable OUT-U
-create ERR CAP allot  variable ERR-U
+DYNAMIC-BUFFER OUT u8  variable OUT-U
+DYNAMIC-BUFFER ERR u8  variable ERR-U
 create PROGRAM CAP allot  variable PROGRAM-U
 create CUT CAP allot  variable CUT-U
 DYNAMIC-BUFFER IMAGE-A u8
@@ -40,36 +40,45 @@ DYNAMIC-BUFFER IMAGE-B u8
 : PUT ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n body:ptr bodyu:n :}
    ROOT$ name nameu PUT-BUF JOIN-PATH PUT-BUF swap body bodyu WRITE-ALL ;
+\ An empty stream reserved nothing, so it has no byte to view.
+: OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
+: ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
+\ A copied stream grows OUT or ERR to its length.
+: OUT! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u OUT-U ! u 0= if exit then
+   u OUT-RESERVE a 0 OUT u BYTE-COPY ;
+: ERR! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u ERR-U ! u 0= if exit then
+   u ERR-RESERVE a 0 ERR u BYTE-COPY ;
 : CAPTURE ( ptr u8 n ptr u8 n -- n )
    {: exe:ptr exeu:n stdin:ptr stdinu:n :}
    0 PROGRAM-U ! s" cwd: " PROGRAM CAP PROGRAM-U BUF-APPEND
    ROOT$ PROGRAM CAP PROGRAM-U BUF-APPEND STR-LF PROGRAM CAP PROGRAM-U BUF-APPEND-C
    exe exeu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
    exe exeu >LEN ROOT$ >LEN stdin stdinu >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
+   CAP OUT-RESERVE CAP ERR-RESERVE 0 OUT CAP >LEN 0 ERR CAP >LEN 600000 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
-   PROGRAM PROGRAM-U @ OUT OUT-U @ ERR ERR-U @ rc SUBJECT:RC-TIMED-OUT
+   PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT
    rc ;
 : SUCCESS ( n -- )
-   dup 0<> if OUT OUT-U @ type ERR ERR-U @ type then
+   dup 0<> if OUT$ type ERR$ type then
    0 T= ;
 
 : BUILD ( ptr u8 n -- n )
    {: product:ptr productu:n :}
    ROOT$ s" app.f" product productu NATIVE-FILE-APP:BUILD-AT {: rc:n :}
-   NATIVE-FILE-APP:OUT$ {: out:ptr outu:n :}
-   NATIVE-FILE-APP:ERR$ {: err:ptr erru:n :}
-   out OUT outu BYTE-COPY outu OUT-U !
-   err ERR erru BYTE-COPY erru ERR-U !
+   NATIVE-FILE-APP:OUT$ OUT! NATIVE-FILE-APP:ERR$ ERR!
    rc ;
 
 : RUN-PRODUCT ( ptr u8 n ptr u8 n -- )
    {: product:ptr productu:n expected:ptr expectu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    product productu AT s" " CAPTURE SUCCESS
-   OUT OUT-U @ expected expectu CONTAINS? TTRUE ;
+   OUT$ expected expectu CONTAINS? TTRUE ;
 
 : PREFIX ( -- )
    s" dep.f" S\" package FORMS-DEP\npublic\n: NUMBER ( -- n ) 6 ;\n;package\n" PUT
@@ -104,18 +113,18 @@ variable CODE-B-O  variable CODE-B-U
    {: a:ptr au:n b:ptr bu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    a au s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ." CAPTURE SUCCESS
-   OUT CUT OUT-U @ BYTE-COPY OUT-U @ CUT-U !
+   OUT$ {: out:ptr outu:n :} out CUT outu BYTE-COPY outu CUT-U !
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    b bu s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ." CAPTURE SUCCESS
-   CUT CUT-U @ OUT OUT-U @ STR= ;
+   CUT CUT-U @ OUT$ STR= ;
 
 : BUILD-PAIR ( ptr u8 n ptr u8 n -- )
    {: export:ptr exportu:n imported:ptr importu:n :}
    export exportu BUILD SUCCESS
-   OUT OUT-U @ s" definition hits 0" CONTAINS? TTRUE
+   OUT$ s" definition hits 0" CONTAINS? TTRUE
    imported importu BUILD SUCCESS
-   OUT OUT-U @ s" definition hits " CONTAINS? TTRUE
-   OUT OUT-U @ s" definition hits 0" CONTAINS? TFALSE
+   OUT$ s" definition hits " CONTAINS? TTRUE
+   OUT$ s" definition hits 0" CONTAINS? TFALSE
    export exportu AT-A {: a:ptr au:n :}
    imported importu AT-B {: b:ptr bu:n :}
    \ Compare emitted code and live extents, then run both applications below.
@@ -162,8 +171,8 @@ public
    s" global-import" s" 43" RUN-PRODUCT
    S\" package FORMS-CLIENT\npublic\n: RESULT ( -- n ) NUMBER @ ;\n;package\n" DOWNSTREAM
    s" global-bad" BUILD 70 T=
-   OUT OUT-U @ s" global-unit-source-ran" CONTAINS? TTRUE
-   ERR ERR-U @ s" expected: ptr n actual: n" CONTAINS? TTRUE
+   OUT$ s" global-unit-source-ran" CONTAINS? TTRUE
+   ERR$ s" expected: ptr n actual: n" CONTAINS? TTRUE
    FINISH ;
 
 : REPEATED-FILE ( -- )

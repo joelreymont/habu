@@ -10,8 +10,8 @@ require test/app-builder-engine.f
 package NATIVE-FILE-APP
 
 $8000 constant CAP
-create OUT CAP allot variable OUT-U
-create ERR CAP allot variable ERR-U
+DYNAMIC-BUFFER OUT u8 variable OUT-U
+DYNAMIC-BUFFER ERR u8 variable ERR-U
 create PROGRAM CAP allot variable PROGRAM-U
 create BUILDER FS-PATH-CAP allot variable BUILDER-U
 create SRC-PATH FS-PATH-CAP allot
@@ -30,6 +30,9 @@ variable SOURCE-START
    repeat
    E-FS-IO throw ;
 
+\ A child's streams grow to what it writes.
+: OUT-ROOM ( n -- ptr u8 ) OUT-RESERVE 0 OUT ;
+: ERR-ROOM ( n -- ptr u8 ) ERR-RESERVE 0 ERR ;
 public
 \ These cases keep the parent host, builder support and cache fixed; they
 \ mutate private app inputs. Copy the builder path before another image lookup
@@ -54,8 +57,9 @@ public
    lines 0 ?do size SKIP-LINE loop
    into intou 0 SOURCE BYTE-VIEW SOURCE-START @ +
       size SOURCE-START @ - WRITE-ALL ;
-: OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-: ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
+\ An empty stream reserved nothing, so it has no byte to view.
+: OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
+: ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n cache:ptr cacheu:n :}
    BUILDER$ {: builder:ptr builderu:n :}
@@ -66,8 +70,8 @@ public
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" {: stdin:ptr stdinu:n :}
    0 PROGRAM-U ! builder builderu stdin stdinu PROGRAM CAP PROGRAM-U PROC-ARGV-PROGRAM+
    builder builderu >LEN stdin stdinu >LEN
-   OUT CAP >LEN ERR CAP >LEN 600000 >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
+   [: OUT-ROOM ;] [: ERR-ROOM ;] 600000 >MS
+   RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT

@@ -18,7 +18,7 @@ package NATIVE-FILE-STATE-TEST
 $8000 constant CAP
 create EXPORT-PATH FS-PATH-CAP allot
 create IMPORT-PATH FS-PATH-CAP allot
-create CUT CAP allot  variable CUT-U
+DYNAMIC-BUFFER CUT u8  variable CUT-U
 DYNAMIC-BUFFER IMAGE-A u8
 DYNAMIC-BUFFER IMAGE-B u8
 variable EXPORT-U
@@ -186,15 +186,21 @@ variable CODE-B-O  variable CODE-B-U
    0 IMAGE-A BYTE-VIEW CODE-A-O @ BYTE+ CODE-A-U @
    0 IMAGE-B BYTE-VIEW CODE-B-O @ BYTE+ CODE-B-U @ STR= ;
 
+\ The first child's output, grown to its length; an empty one has no byte.
+: CUT! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u CUT-U ! u 0= if exit then
+   u CUT-RESERVE a 0 CUT u BYTE-COPY ;
+: CUT$ ( -- ptr u8 n ) CUT-U @ 0= if s" " exit then 0 CUT CUT-U @ ;
 : SAME-CUT? ( -- bool )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    EXPORT-PATH EXPORT-U @ s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ."
       CAPTURE SUCCESS
-   OUT$ {: out:ptr outu:n :} out CUT outu BYTE-COPY outu CUT-U !
+   OUT$ CUT!
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    IMPORT-PATH IMPORT-U @ s" cp@ dbase@ - . ndict@ . wordlist . here data-base - ."
       CAPTURE SUCCESS
-   CUT CUT-U @ OUT$ STR= ;
+   CUT$ OUT$ STR= ;
 
 public
 : MAIN ( -- )
