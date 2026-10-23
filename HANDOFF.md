@@ -57,7 +57,7 @@ Done only when command output shows all of:
 
 ## Next on pulsar
 
-Active lanes use `.jj-ws.noindex/pulsar-intel-{images,bodyabi,pstore,breakpoints,throws}`;
+Active lanes use `.jj-ws.noindex/pulsar-intel-{images,bodyabi,pstore,throws,sessions}`;
 the dots workspace is `pulsar-intel-dots` on master. The initial image-build
 failure is now reduced: the bundle path reaches `E-LAYOUT-BOUNDS` (7122)
 because it uses ARM-oriented names/writer steps on x86; outer rollback masks
@@ -70,6 +70,14 @@ and reclaim". Independent adversarial review found no defects; native build,
 `test/prof-rewind.f` and `test/prof-index.f` exit 0; native two-generation
 check exits 0 with "ok gen 5 matches gen 4 byte for byte". Only x86 source
 files changed. The full native census still needs the image-build fix.
+
+Landed on intel: `pwsnnpqn` / `4407e672`, "Resume x86 native breakpoints
+with INT3". Independent adversarial review found no defects; native build,
+full `test/gate-debug.f` and generation 5/4 byte convergence exit 0. The
+combined profiler/breakpoint engine also passes `prof-rewind`, `prof-index`
+and `gate-debug` in one process. No master tests changed. Shared DEBUG's
+Mac ARM check remains OPEN in `habu-implement-x86-native-261ee8bb`; its
+pulsar workspace is retired.
 
 1. The dots live on master, not on this branch. From the repo root:
    `jj workspace add .jj-ws.noindex/<name>-dots -r master@origin`, then
@@ -108,8 +116,7 @@ files changed. The full native census still needs the image-build fix.
      `KERNEL-BODY` admitting registered helper rows. Design:
      `~/.cache/tmp/jerry-c/oracle/pstore.txt`; cut it to the smallest
      mechanism before a worker gets it.
-4. Pulsar owns the x86-only lanes: breakpoints
-   (`habu-implement-x86-native-261ee8bb`), throws
+4. Pulsar owns the x86-only lanes: throws
    (`habu-recover-x86-throws-b66ec686`) and the remaining rows
    (`habu-fix-remaining-x86-5a0c47fd`, after capreach lands). After capreach
    lands, self-build `bin/hb` again (native build plus two-gen) so later
