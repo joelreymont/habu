@@ -80,9 +80,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
     `LOGICAL-RESET` `included`s `src/habu/window-rewind.f`, whose top level
     runs `0 set-check`, `0 set-top-check` and the rewind, as a build
     includes `src/habu/prefix-rewind.f`.
-- Existing TRUST forms are legacy awaiting removal, tracked in [Campaign
-  C2](../.dots/habu-campaign-c2-mem-c3d7662b/habu-campaign-c2-mem-c3d7662b.md);
-  mentions below describe legacy syntax only.
+- Existing TRUST forms are legacy awaiting removal; mentions below describe
+  legacy syntax only.
 
 ## Naming
 
@@ -147,7 +146,8 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   and `.0` are floats; `5.` and `..5` are words. A decimal shape whose
   integer magnitude, fractional numerator or power-of-ten scale exceeds its
   signed-cell accumulator remains claimed and rejects before dictionary lookup;
-  `99999999999999999999` is `E-UNDEFINED-TOP-LEVEL` at top level.
+  `99999999999999999999` is `E-UNDEFINED-TOP-LEVEL` at top level. There is
+  no `BASE`, `HEX` or `DECIMAL`: write `$ff` for hex, and `.` prints decimal.
 - **Engine-provided sources are exempt from the reserved-word rule.** They
   implement the language, and several define the reserved words themselves:
   `TRUST` and `CHECK-DOES!` (`src/core/checker.f`), the loaders
@@ -398,8 +398,8 @@ public
   `VOCABULARY:RESTRICT` (`src/lib/vocabulary.f`) the source the engine reads may name only its
   own definitions, the public words of the packages given to `VOCABULARY:ALLOW-PACKAGE`,
   and the built-in vocabulary; any other token is `hb: not in vocabulary: <token> at
-  <path>:<line>`, exit code 107. [vocabulary.md](vocabulary.md) has the vocabulary and
-  the refusals.
+  <path>:<line>`, exit code 107. The `src/lib/vocabulary.f` header states the
+  vocabulary and the refusals.
 
 #### Importing a package's public words with `using`
 
@@ -444,7 +444,7 @@ and always available, for a one-off call or to escape a collision.
   resolver of an otherwise-unresolved name, or a hard error.
 - In a definition `tools/check.f` refuses an ambiguous tail at the reference
   site (checker 7144), naming each used package it resolves in
-  (`used_packages`, docs/repair-diagnostics.md; `ga:TOK`, `gb:TOK` in the line
+  (`used_packages`, the `tools/diag-code.f` header; `ga:TOK`, `gb:TOK` in the line
   `--all-errors` prints without `--json-errors`); qualify the one meant or
   rename the collision. It refuses that definition, a definer when the tail
   is in its `does>` clause, as an `E-UNDEFINED` does and exits 70: plainly
@@ -549,6 +549,19 @@ ENUM color red green blue ;ENUM
 ;package
 ```
 
+The grammar; every type, field and variant name is lowercase:
+
+```text
+structure-decl  = STRUCTURE type-header header-clause* field* ;STRUCTURE
+enum-decl       = ENUM type-header (full-enum | compact-enum) ;ENUM
+full-enum       = header-clause* variant-block+
+compact-enum    = header-clause* compact-variant+
+header-clause   = POLICY policy-name | DERIVE derive-name+ | OPAQUE
+field           = FIELD field-name type-expr
+variant-block   = VARIANT variant-name field* ;VARIANT
+compact-variant = variant-name
+```
+
 A multi-cell record is one logical value and lives inside checked definitions.
 The interpreter prompt refuses words with multi-cell inputs or outputs (`hb:
 interpret-mode layout value`), including a word whose `does>` clause effect is
@@ -596,9 +609,8 @@ only a local has is `{: p:ptr :}`: an annotation is a single token, so the bare
 `ptr` means an INFERRED pointee, and `{: p:ptr n :}` is two locals, not a
 pointee. The annotation is asserted, not decoration: a wrong family, a scalar
 spelling (`{: p:n :}` is `E-MISMATCH`, expected: n actual: @pt.tag), a wrong
-family argument and a bare tail of a family of arity > 0 are all refused. See
-[the multi-cell type
-rules](type-system.md#5-families-records-alternatives-and-generics).
+family argument and a bare tail of a family of arity > 0 are all refused. The
+multi-cell type rationale is `docs/design.md` "Types".
 
 - `NEWTYPE name` registers an opaque nominal cell family (`TK-CELL`), with no
   closer. `NEWTYPE name<a,b>` declares two type parameters. `SUMTYPE`,
@@ -640,10 +652,76 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   generates typed field-address accessors plus `AT`, `BYTES` and `CELLS`: a
   global public `point` with `FIELD x n` gains `POINT:X ( ptr point -- ptr n )`,
   read and written with the field type's ordinary checked operations
-  ([type-families.md](type-families.md) has layout policies and the generated
-  storage interface). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
+  (`docs/design.md` "Families and layout policies" gives the layout
+  policies). `DERIVE eq`/`DERIVE hash` on a public arity-0 family
   generate those operations; compare an enum with its family's derived `EQ`,
-  never raw `=`.
+  never raw `=`. A public `STRUCTURE`'s `MAKE`/`UNMAKE` let any package
+  rebuild it with any field values; an owner that validates its fields
+  declares `OPAQUE`.
+- `POLICY` takes `stack-cell-tag` (the default) or `packed-tag`;
+  `niche-null` and `boxed` are `E-TDECL-POLICY` ("layout policy not yet
+  supported"). A payload naming the family being declared (inline, through
+  `ptr` or bare) is `E-TDECL-RECURSIVE` under either accepted policy, and a
+  payload naming a family not yet declared is `E-TDECL-PAYLOAD`, which also
+  keeps mutual recursion out.
+- **`construct family variant` builds a variant inside the owning package.**
+  Its two operands are read before locals and dictionary lookup, so they never
+  resolve as either, and fold case like other body tokens. The family must
+  belong to the active package (top level owns the global one), public or
+  private, and be a sum or enum; a `PKG:family` operand and any other
+  package's family are refused (`hb: construct: unknown family:
+  SHAPE:result`), so other packages use the generated words. The effect is the
+  generated constructor's. At run time a constructor leaves its payload cells,
+  pushes `M-p` zero cells (`M` the family's widest payload, `p` this
+  variant's), then the tag.
+- **`MATCH family` is the only eliminator.** Each variant is named in exactly
+  one `OF … ENDOF` arm, which starts with that variant's payload on the stack;
+  there is no default arm (`E-MATCH-NONEXHAUSTIVE`, `bad match: missing
+  variants: blue`, with a `missing_variants` JSON field), and the outputs of
+  the arms that continue must unify (`E-MATCH-BRANCH-JOIN`). The scrutinee's
+  whole bundle must be on top of the data stack (`E-MATCH-SCRUTINEE`); a value
+  whose family arguments are still open is `E-MATCH-OPEN-ARGS`; and `MATCH` in
+  a `[: ;]` quotation is `E-MATCH-QUOTATION` ("quotation rows cannot carry a
+  scrutinee"), because a quotation's row is inferred forward. The family
+  resolves as in a signature (own package, then the unique public family,
+  `PKG:tail` accepted): whatever is nameable can be matched, unlike
+  `construct`. Every compiled `MATCH` ends in a die a well-typed value never
+  reaches: a tag forged through a `TRUSTED:` constructor writes `hb: bad
+  <family> tag` and exits 85 (`ENGINE-ERROR:BAD-TAG`, `src/habu/layout.f`).
+  This program prints 5, 4 and 3:
+
+  ```forth
+  package SHAPE
+  public
+  ENUM result<a,b>
+     VARIANT ok  FIELD value a ;VARIANT
+     VARIANT err FIELD error b ;VARIANT
+  ;ENUM
+  : CHECK ( n -- result<n,n> )
+     dup 0< IF SHAPE-RESULT:err ELSE construct result ok THEN ;
+  : >CODE ( result<n,n> -- n )
+     MATCH result
+        ok OF ENDOF
+        err OF negate ENDOF
+     ;MATCH ;
+  ;package
+  : SHOW ( n -- ) SHAPE:CHECK SHAPE:>CODE . ;
+  : VIA ( -- SHAPE:result<n,n> ) 3 SHAPE-RESULT:ok ;
+  : T ( -- ) VIA SHAPE:>CODE . ;
+  5 SHOW -4 SHOW T
+  ```
+- The other match and construct codes: `E-MATCH-UNKNOWN-FAMILY`,
+  `E-MATCH-FAMILY-KIND`, `E-MATCH-FAMILY-MISMATCH`, `E-MATCH-UNKNOWN-VARIANT`,
+  `E-MATCH-DUPLICATE-VARIANT`, `E-MATCH-MISSING-OF`, `E-MATCH-STRAY`,
+  `E-MATCH-UNTERMINATED`, `E-MATCH-DEPTH`, `E-CONSTRUCT-UNKNOWN-FAMILY`,
+  `E-CONSTRUCT-FAMILY-KIND`, `E-CONSTRUCT-UNKNOWN-VARIANT`,
+  `E-CONSTRUCT-UNTERMINATED`. Each carries a repair class.
+- **A linear payload makes the sum linear**, transitively through nesting:
+  `lopt<lq2<ltok,n>>` is one linear unit (`test/type-linear-suite.f` NL1-NL7).
+  Constructing consumes the payload once; copying or dropping the sum, or
+  losing the payload (`LOPT:NONE` where it was live), rejects. `MATCH`
+  consumes the sum and gives the arm the payload once, which the arm must
+  consume: re-mint it or call its destructor.
 - **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
   in the family name doubled**: an `ENUM read-result` in `package TCP4`
   constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE
@@ -761,24 +839,10 @@ rules](type-system.md#5-families-records-alternatives-and-generics).
   a reopened application image.
 - Type, field and variant names are lowercase; generated and project words are
   uppercase.
-- **Raw storage never holds an address.** A `variable`, `create` or `constant`
-  cell, and any cell a `create … does>` definer makes, holds scalars, roles and
-  atoms. Storing a pointer into one, fetching one out, or `ptr-field` over one
-  is `E-RAW-CELL-PTR` (repair class `declare_pointer_cell`): `variable V : PEEK
-  ( n -- n ) V ! V @ @ ;` does not certify. The declared forms: `PTR-VARIABLE`
-  (effect `( -- ptr ptr a )`, in place of `variable` plus `0 ptr-field`),
-  `PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t`, `TYPED-BUFFER NAME ptr
-  t`. See [effects.md](effects.md) "Raw storage never holds an address" for the
-  open hole.
-- **Nor an execution token.** The same cell, and either base address, refuses a
-  quotation: `variable ZQW : ZQWQ ( -- ptr [ -- n ] ) ZQW ;` and `( -- ptr [ --
-  n ] ) data-base 8 +` are `E-RAW-CELL-PTR` with the reason "an undeclared cell
-  cannot hold an execution token / a quotation" and repair class
-  `declare_xt_cell`. The declared forms: `TYPED-VARIABLE NAME [ in -- out ]`, a
-  `TYPED-BUFFER`/`DYNAMIC-BUFFER` of `[ in -- out ]`, `defer`/`is`, and `xt!`,
-  which declares the cell it writes. The null comparison on a declared code cell
-  (`HK NULL-PTR =`) is refused; read such a cell's emptiness through a
-  number-typed accessor of the same address.
+- **Raw storage holds neither an address nor an execution token**: a
+  `variable`, `create` or `constant` cell refuses both (`E-RAW-CELL-PTR`); see
+  **Raw storage never holds an address** and **An undeclared cell holds no
+  execution token** for the declared forms.
 - **A definer that only wants a type writes an EMPTY `does>` clause**: on a
   fresh word it is elided at both tiers, so a read costs one load; `0 ptr-field`
   in the clause is a body and pays a call, a branch and a frame per read.
@@ -846,8 +910,9 @@ Factor raw compiler and emitter code to the same standard.
   only at the later call.
 - Prefer a classification table and named transitions to long `dup`/`over`
   token ladders. Split multi-pass work into named cursor, classification,
-  validation, update and rendering words, then one orchestration word. `ROT`,
-  `-ROT`, `PICK` and `ROLL` chains call for factoring or locals.
+  validation, update and rendering words, then one orchestration word. `ROT`
+  and `-ROT` chains call for factoring or locals. `PICK`, `ROLL`, `?DUP` and
+  `WITHIN` do not exist (`E-UNDEFINED`): name the value with a local.
 - About five or six input values is a useful upper bound for a word, counting
   a typed pointer as one value and its length as another. Pass each stage's
   result onward; derive metadata from its owner. A record should represent a
@@ -943,19 +1008,9 @@ Factor raw compiler and emitter code to the same standard.
   even under `public`; a `VARIANT` named by a reserved or taken word fails "name
   is reserved or already taken" (`VARIANT x`). Pick names that collide with
   nothing visible (`horizontal`, `vertical`).
-- **Declare application nominals with `DEFTYPE`** (`require
-  src/lib/type/deftype.f`): top-level `DEFTYPE NAME` mints a package-scoped type
-  with converters `>NAME ( n -- name )` and `NAME>N ( name -- n )`, the only
-  crossing; the type tail is the lowercase fold (`SERIAL` → `serial`, so `(
-  serial -- n )`); `DEFTYPE SERIAL` in `CAMERA` and in `FRAME` are distinct;
-  unknown tokens stay errors. Substrate: `docs/value-nominal-substrate.md`.
-- **`DEFLINEAR` for owner and lifetime tokens.** A linear token is nominal and
-  noncopyable: `dup`/`over`/`2dup`, `drop`, `@`, `!` and by-value record
-  duplication reject when they would duplicate, discard, load or store it; only
-  words whose effect names the linear type create or consume it, and in checked
-  code only the declaring package's private `LINEAR:` rows make one from a
-  payload or erase one (**Structures And Enums**); a `TRUSTED:` word whose
-  effect names the type is asserted, not checked.
+- **Declare application nominals with `DEFTYPE`, owner and lifetime tokens
+  with `DEFLINEAR`.** Spelling, scope, converters and the linear rules are in
+  **Declaring your own scalar types** below.
 - **Raw role casts are not validators.** `>LEN`, `>IDX`, `>COUNT`, `>OFF`,
   `>ASM`, `>IMG`, `>SNAP` are trusted identity boundaries; libraries expose
   checked constructors and role helpers so swaps fail under `CHECK!`.
@@ -964,10 +1019,554 @@ Factor raw compiler and emitter code to the same standard.
   Standard notation: `x` cell, `n`/`u` signed/unsigned, `d` double, `c-addr u`
   string, `xt`, `nt`, `f`/`bool` flag, `?` maybe-present.
 
+## Stack effects
+
+A checked definition declares its effect in the `( … )` immediately after the
+name: `: SQUARE ( i64 -- i64 ) DUP * ;`. The checker infers the body's effect
+and unifies it with the declaration; a mismatch refuses the definition. Source
+comments and `TRUST` rows are parsed by the checker boundary adapter in
+`src/core/checker.f` (`PSIG`, `PSIDE`, `PSTACK`, `SIG-TYPE`); primitive,
+literal, memory and control-flow effects are built structurally.
+
+### Grammar
+
+```
+sig      = side '--' side
+side     = stack ( '|' stack )?
+stack    = rowvar? type*
+type     = conname | role | linear-name | family | tyvar
+         | 'ptr' type
+         | '[' quot-sig ']'
+quot-sig = stack '--' stack ( '|' stack '--' stack )?
+family   = ( package ':' )? tail ( '<' type ( ',' type )* '>' )?
+conname  = n f r i64 u8 u16 u32 cell char bool addr str f32
+role     = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
+linear-name = the exact token given to `DEFLINEAR`
+tyvar    = a..z, except the reserved `n`, `f`, `r`
+rowvar   = A..Z          (same letter → same row var; leading position only)
+```
+
+Primitive effects are the `PRIM:` rows in `src/core/checker.f` and
+`src/habu/prims.f`; the combinators are checked definitions in
+`src/core/combinators.f`:
+
+```
+DUP    ( R a -- R a a )
++      ( R n n -- R n )            \ also ( R ptr a n -- R ptr a ) and ( R n ptr a -- R ptr a )
+<      ( R n n -- R bool )         \ comparisons yield bool
+@      ( R ptr a -- R a )
+EXECUTE( R [ R -- S ] -- S )
+DIP    ( R a [ R -- S ] -- S a )
+KEEP   ( R a [ R a -- S ] -- S a )
+BI     ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
+TIMES  ( R i64 [ R -- R ] -- R )
+EACH   ( R ptr a i64 [ R a -- R ] -- R )
+FOLD   ( R ptr a i64 b [ R b a -- R b ] -- R b )
+```
+
+The arithmetic and comparison axioms are declared over `n`, so a diagnostic
+prints `n`. `>R`/`R>` have no row: the checker models the return-stack transfer
+inside one definition. `WITHIN`, `?DUP`, `PICK`, `ROLL` and `EFFECT-OF` are not
+defined in `bin/hb` (`E-UNDEFINED`); they exist only in the Gforth bootstrap
+word set. Write the shuffle with `DUP`/`OVER`/`SWAP`/`ROT` or locals, and branch
+on an explicit comparison instead of `?DUP`.
+
+### The return-stack clause
+
+A definition reads only the return-stack cells it pushed with `>r` and leaves
+the return stack as it found it, so no signature declares a return-stack cell.
+A `|` clause may name one row variable, the same on both sides: the word leaves
+its caller's return stack alone, which is what a signature with no bar says.
+Any other clause is refused at the declaration, at both tiers, before the body
+is checked: `habu: in NAME: return-stack effect in signature '<sig>'; after '|'
+write one row variable, the same on both sides, or no '|'` (`E-BAD-SIGNATURE`,
+repair class `fix_return_stack`, exit 70). A stored signature — a `TRUSTED:`
+definition's, a `defer`'s, a `trust` row's or a `CAST:` — is refused as
+`E-BAD-STORED-SIGNATURE` with the same repair class. To keep a value across
+other work, park it with `>r` and take it back with `r>` in the same
+definition.
+
+The clause is written in two places, and they are not the same shape.
+
+**Top level — the bar goes inside each side.** `PSIDE` parses one side as
+`data-stack ( '|' return-stack )?`, and the top-level `--` separates the two
+sides:
+
+```
+( Din | U -- Dout | U )
+( R n | U -- S n | U )          \ certifies: neutral
+( n | -- | n )                  \ refused: a cell on the output side
+( | n -- n | )                  \ refused: a cell on the input side
+```
+
+A bar on one side only, `( R n | S -- R )`, pairs the written row with a fresh
+one for the missing end and is refused like any other clause that moves the
+return stack.
+
+**Quotations — the bar separates two full `in -- out` pairs.** Inside `[ … ]`,
+`SIG-PARSE-QUOT` parses `in -- out` and then optionally `| rin -- rout`, under
+the same rule:
+
+```
+[ in -- out ]                   \ return-stack neutral
+[ in -- out | U -- U ]          \ the same, spelled out
+( R n [ R n -- S n | U -- U ] | U -- S n | U )    \ certifies
+( n [ n -- | U -- U n ] | U -- n | U )            \ refused
+```
+
+**Do not write the quotation shape at the top level.** `( R a -- R | S -- S a )`
+reads `Din = R a`, `--`, `Dout = R`, `Rout = S`, and nothing may follow the
+output side, so the trailing `-- S a` is a syntax reject at that token
+(`fix_signature_syntax`, exit 70). The top-level shape inside a quotation,
+`[ R a | S -- R | S a ]`, is the same hard reject, at the `|` in a definition
+and as `E-BAD-STORED-SIGNATURE` in a stored signature.
+
+### Rows, variables, and lexing
+
+- A **row var** (`R`, `S`, …) at the front of a stack stands for the rest of
+  the stack below. It is recognised only in leading position; an upper-case
+  token anywhere else is looked up as a type name and rejects with `unknown
+  type 'R' in signature`. Row vars and type vars are separate namespaces (case
+  decides), both scoped to one signature. Stacks with no leading row var share
+  one implicit data row and one implicit return row.
+- The implicit data row is sealed for the body: callees may preserve it but
+  may not bind it by consuming below the declared inputs. That call is refused
+  at its own token with the cells it needed and the cells the declaration left
+  (`E-INPUT-UNDERFLOW`, `supply_missing_input`); a call that is short *and*
+  mistyped reports the type mismatch instead.
+- The implicit return row is sealed the same way, with or without a signature:
+  `r>`, `r@`, `2r>` and `2r@` reach only cells this definition pushed, even
+  when a later `>r` restores the balance, so `: X r@ ;` and `: X r> ;` are
+  refused (`fix_return_stack`) at both tiers. A quotation literal's return row
+  is sealed at its `;]`: `[: >r ;] execute r>` and `>r [: r> ;] execute` are
+  refused there.
+- A **type var** (`a`, `b`, …) is a fresh polymorphic type; one letter in one
+  signature is one type. `n`, `f` and `r` are concrete types, not type vars.
+- Type, role and family names are lower case and case-sensitive: `I64` and
+  `IDX` reject as bad signatures.
+- `<`, `>` and `,` are single-token delimiters, so `pkg:result<pkg:index>` and
+  `pkg:result < pkg:index >` parse identically. Do not nest `( )`: the inner
+  `)` closes the comment.
+
+### Types
+
+The built-in table is `CT-INIT` in `src/core/checker.f`.
+
+- `n` is the unconstrained integer, interchangeable with every integer type in
+  both directions; `cell` is the machine word; `i64`, `u8`, `u16`, `u32`,
+  `char` are sized integers; `addr` is a raw address in a sign class of its own,
+  used only for a value checked code never dereferences.
+- `bool` is a flag; comparisons return it. `f` is an alias for `bool`, not a
+  type variable, and renders as `bool`.
+- `r` is a 64-bit float; `f32` is a 32-bit float and does not unify or widen
+  with `r`.
+- `str` is declarable, but no primitive produces or consumes it; a string is
+  `ptr u8 n`.
+- The seventeen roles are nominal one-cell types, distinct from each other and
+  from every integer type.
+- `ptr τ` is a typed pointer; `@`/`!` move `τ`. `[ in -- out ]` is a quotation
+  or execution token carrying its effect (prose writes `xt<E>`; the parser does
+  not). `pkg:tail<arg,…>` is a declared family (`NEWTYPE`, `ENUM`, `STRUCTURE`,
+  `SUMTYPE`, `PRODUCT`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
+  linear cell type.
+
+An unknown type token is never interned: it rejects with `unknown type 'tok' in
+signature` (`E-UNKNOWN-SIGNATURE-TYPE`). The other signature codes are
+`E-BARE-PTR-SIGNATURE` (`ptr` with no element), `E-WRONG-ARITY` (a family with
+the wrong argument count) and `E-BAD-SIGNATURE` (a missing or misplaced `--`,
+`|` or `]`). A new built-in type token needs a checker-only bootstrap stage
+(**Checker & type model**).
+
+### Integer widening
+
+Widening (`INT-WIDENS?`, `CON-OK?`) applies only to integer-class types, only
+at the top level of a stack cell, and only in an input or coercion position —
+never inside a `ptr` pointee, never between roles, never between `bool` and an
+integer, never between `r` and `f32`.
+
+`n` unifies with every integer type unconditionally. For the others, `got`
+flows into `want` when `width(got) <= width(want)` and one of: either sign
+class is generic (`cell`); the sign classes are equal; or `got` is unsigned,
+`want` is signed and `got` is strictly narrower. `addr` has its own sign class,
+so `n` and `cell` reach it but `u8`, `u16`, `u32`, `char` and `i64` do not, and
+an address cannot drift into `i64`. `Y` = the row type is accepted where the
+column type is declared:
+
+```
+got \ want   n  i64  u8  u16  u32  cell  char  addr
+n            Y   Y   Y    Y    Y    Y     Y     Y
+i64          Y   Y   .    .    .    Y     .     .
+u8           Y   Y   Y    Y    Y    Y     Y     .
+u16          Y   Y   .    Y    Y    Y     .     .
+u32          Y   Y   .    .    Y    Y     .     .
+cell         Y   Y   .    .    .    Y     .     Y
+char         Y   Y   Y    Y    Y    Y     Y     .
+addr         Y   .   .    .    .    Y     .     Y
+```
+
+Nothing else widens: every role, family, linear type, `str`, `r` and `f32`
+unifies only with itself. Roles keep same-representation values apart (indexes
+and lengths, descriptors and return codes, milliseconds and nanoseconds,
+registers and labels, image-build phases). Enter and leave a role only through
+an explicit converter or an audited boundary effect; unchecked native emitters
+still publish roles in their `TRUST` effects so checked callers reject swaps.
+
+### Declaring your own scalar types
+
+`DEFTYPE` and `DEFLINEAR` differ in substrate, scope, spelling and diagnostics.
+
+**`DEFTYPE NAME` — a package-scoped value nominal.** `src/lib/type/deftype.f`
+(package `VNOM`) must be required first. The type is a package-scoped arity-0
+family, the substrate of `NEWTYPE`:
+
+- The signature spells the lower-case fold: `DEFTYPE FRAME-IDX` is `frame-idx`
+  inside the package and `PKG:frame-idx` outside it. `DEFTYPE SERIAL` in
+  `CAMERA` and in `FRAME` are unrelated types.
+- A mismatch names the type as source spells it: `: F ( n -- frame-idx ) ;`
+  rejects with `expected: frame-idx actual: n`.
+- It derives the converters `>NAME ( n -- name )` and `NAME>N ( name -- n )`,
+  no-op casts and the only crossing. They follow package visibility: declared
+  without `public`, `PKG:>NAME` is `E-UNDEFINED` outside.
+- The name cannot be a built-in type, a role, an atom prefix, a one-letter type
+  variable or `ptr`: `DEFTYPE IDX`, `DEFTYPE A` and `DEFTYPE PTR` reject with
+  `bad newtype declaration '…': reserved name` (7110, exit 70). A family the
+  scope already has is `duplicate family` (7102); a package may shadow a global
+  or another package's family. `tools/check.f` reports each refusal as
+  `E-BAD-NOMINAL-TYPE`.
+
+**`DEFLINEAR name` — a global linear cell type.** A core word
+(`src/core/roles.f`, `CHECKER-DEFLINEAR`) that appends a `CT-LINEAR` row to the
+built-in table; it is top-level only and rejected inside a checked body.
+
+- The signature spells the token exactly as declared, case-sensitively;
+  declare it lower case, or as `PKG:tail` (`DEFLINEAR LIN-OWN:tok`). A mismatch
+  renders the bare name.
+- It is global. A second declaration, a name already in the type table, or a
+  name a signature reads as something else is `checker: bad or duplicate
+  signature type` (exit 70): a one-letter type or row variable; `--`, `|`,
+  `[`, `]` or `field`; a `VALUE-RECORD` name; a name with an atom prefix
+  (`space-`, `extent-`, `mask-`, `block-`, `geom-`, `parity-`, `align-`,
+  `fresh-region-`, `fresh-extent-`, `fresh-gen-`, `fresh-mask-`); a family tail
+  any package declares; and a token holding `<`, `>`, `,`, `)`, `(`, `"` or
+  `\` (source names the type again, where those bytes open a comment, string
+  or line comment for `tools/check.f`). `CELL` is legal beside `cell`.
+- No converters are derived. `DEFLINEAR` records the package it runs in; only
+  that package's private `LINEAR:` rows mint and erase the token
+  (**Structures And Enums**). One declared at top level has no owner and no
+  mint.
+
+A linear type is used exactly once. The checker enforces **conservation**: at
+every step whose declared effect does not itself name a linear type, the number
+of live linear values on the combined data and return stacks may not change.
+So `dup`, `over`, `tuck`, `2dup`, `drop`, `nip`, `@`, `!`, `c@`, `c!` and a
+by-value record copy reject on a linear, through control flow (both `IF` arms
+and stack-neutral loop bodies agree) and through quotation application
+(`[: dup ;] execute`). A move — `( own -- own )`, `swap`, `rot`, `>r`/`r>` — is
+fine. A word that acquires a frame and forgets to release it fails its output
+balance; releasing twice underflows.
+
+Conservation is backed by a kind discipline (`LIN-EFF-PASS`, `LIN-TAINT` in
+`src/core/checker.f`): a type variable that binds a linear con must occur
+equally on the input and output sides of the whole applied effect, quotation
+rows included, so `[: FREE ;] KEEP` and `BI`/`TRI` fan-outs reject; and a
+variable copied or dropped while still polymorphic is tainted, so
+`[: dup FREE FREE ;] execute` rejects once `FREE` binds it to the linear.
+Non-linear polymorphic code is unaffected. A linear value cannot be bound to a
+local (`E-LINEAR-LOCAL`); keep it on the stack and factor the consumer.
+
+`VALUE-RECORD name field type … END-VALUE-RECORD` is the legacy by-value
+record: its token expands to touchable `field<rec,name,t>` cells that ordinary
+primitives destructure, so `( n n -- point )` certifies with an empty body.
+New records use `STRUCTURE`.
+
+### Pointer types and arithmetic
+
+`ptr τ` records the element addressed. Arithmetic is pointee-polymorphic: `+`,
+`-`, `1+`, `1-`, `cell+` and `char+` step a `ptr τ` by an integer and keep `τ`;
+`n + ptr a` is `ptr a`; `ptr a - ptr a` is the distance `n`. Adding two
+pointers or scaling one is refused.
+
+A **byte view** re-reads a pointer as bytes: `: NAME ( ptr a -- ptr u8 ) ;`
+certifies, because the input pointee stays generalized. A `ptr u8` uses
+`c@`/`c!`; cell `@`/`!` on it is refused.
+
+A pointee is **invariant**: widening never applies inside a `ptr`, so
+`ptr u8` never satisfies `ptr cell` or `ptr u32`, at any depth. A byte pointer
+cannot be laundered into a cell pointer and cell-loaded.
+
+#### Raw storage never holds an address
+
+Strict pointee unification fences only a pointer that stays a pointer; an
+integer could become one by passing through memory, so an undeclared cell is
+fenced too.
+
+`variable`, `create`, `constant`, `here` and every `create … does>` definer
+publish **raw storage**: `-- ptr a` whose pointee is sealed RAW (`TVK-RAW`) and
+re-freshened at every mention. A RAW cell admits a scalar, a role and an atom;
+it refuses a pointer in either direction (`E-RAW-CELL-PTR`,
+`declare_pointer_cell`), a nominal family or layout value, and an execution
+token (below). `variable V : PEEK ( n -- n ) V ! V @ @ ;` is refused at the
+fetch, `V ! V @ !` at the store, `$1234 constant K : F ( -- n ) K @ ;` with no
+store in sight, and `: G ( ptr a -- ) V ! ;`. `create BUF 256 allot BUF 4 type`
+certifies: the pointee binds `u8`.
+
+`ptr-field`'s row `( ptr a n -- ptr ptr b )` cannot carry the refusal, so its
+base is checked first: a base whose pointee is still RAW is refused at the
+`ptr-field` token (`V ! V 0 ptr-field @ @`).
+
+The seal is applied where the cell is published, so it holds on every load
+path: the engine registers every raw-storage word through `TRUST-RAW`
+(`src/core/checker.f`), which mints each type variable `TVK-RAW`, at the three
+publication sites in `src/habu/habu2.f` (`LASTC-TRUST:PUBLISH-PTR-A` for
+`create` and `variable`, `PUBLISH-A` for `constant`, `PUBLISH` for a
+`does>`-declared effect). `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` rejects
+under `bin/hb --load` with `expected: cad-kind:region actual: a`.
+
+**A cell that holds an address is declared.** `PTR-VARIABLE`,
+`PERSISTED-PTR-VARIABLE`, `TYPED-VARIABLE NAME ptr t`, `TYPED-BUFFER NAME ptr
+t`, and the `create … does>` definers of `src/core/pointer-storage.f` that spell
+their pointee. A declared cell takes the address it was declared for and
+refuses an address of one: `PTR-VARIABLE X : F ( -- ptr u8 ) X @ ;` certifies
+while `( -- ptr ptr u8 )` does not.
+
+Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
+(**Structures And Enums**). Two launders remain open and certify today:
+`ptr-field`'s free result pointee reached through a parameter
+(`: F ( ptr a -- ptr ptr u8 ) 0 ptr-field ;` over a `create`d cell, or
+`NULL-PTR swap ptr-field @ @`), and a scalar store through a view of a
+declared pointer cell (`V BYTE-VIEW CELL-VIEW !`). The reach is not closed
+either: `ptr a n + -- ptr a` admits any offset, so a bounded reach needs a span
+(**Spans: a pointer that carries its reach**).
+
+#### An undeclared cell holds no execution token
+
+Admissibility is about provenance, not what the store instruction carries. A
+quotation met by a RAW cell or by either base address is refused:
+`E-RAW-CELL-PTR`, reason "an undeclared cell cannot hold an execution token / a
+quotation", repair class `declare_xt_cell`. It is judged at the accessor's own
+declaration, so `variable ZQW : ZQWQ ( -- ptr [ -- n ] ) ZQW ;` dies before any
+`execute` (certified, `1 ZQW ! ZQWQ @ execute` branched to address 1). The store
+`[: 1 ;] V !` is refused at the same binding.
+
+**A cell that holds code is declared**: `TYPED-VARIABLE NAME [ in -- out ]`, a
+`TYPED-BUFFER` or `DYNAMIC-BUFFER` of `[ in -- out ]`, and `defer`/`is`. Each
+mints the quotation type at the storage word: `HK @` recovers `xt<E>`, a store
+`[: W ;] HK !` or `['] W HK !` (and `['] W idx HKB !` for a buffer slot)
+fit-checks `W`'s effect against `E`, and `HK @ execute` fit-checks the row. A
+tick whose sink is a scalar (`['] W +`) is refused.
+
+**`xt!` is the sanctioned mint** for a persisted cell whose address is computed
+at run time from a table base and a row index (`' W DECLARATIONS <off> + xt!`):
+the window opens on the `xt!` token and closes with it. An accessor that hands
+out a code cell at a fixed image-ABI offset declares the retype once as a
+package-private `CAST:` (`src/lib/genio.f` `>ENGINE-ROW` under `ENGINE-ROW`).
+A borrower stores through the owner's certified store (`NCOMP:DISPATCH! ( [
+ptr u8 n -- ] -- )`, ended by `NCOMP:INSTALL`).
+
+A declared code cell may not be compared with or subtracted from the null
+(`HK NULL-PTR =` is refused); read its emptiness through a number-typed
+accessor of the same address (`ENGINE-ROW-CLEAR`).
+
+**Executing an xt of unknown provenance is refused (`E-EXEC-OPAQUE-XT`,
+`fix_opaque_execute`).** An xt fetched from an untyped cell is a bare type
+variable whose effect was erased at the store, so `execute` and `catch` of it
+(`RSEXEC`/`RSCATCH`) reject and point at the typed routes: a quotation
+parameter, a `defer` bound with `is`, or a typed code cell. Two named
+`TRUSTED:` boundaries remain: `FP-EMIT` (`src/habu/habu1.f`) and
+`TASK-RUN-USER` (`src/lib/task.f`).
+
+#### A base address addresses no declared element
+
+`data-base` (the start of the task's DATA region) and `NULL-PTR` are not the
+address of anything. Two pointee kinds fence them, on the lattice
+`ANY < NULL < DBASE < RAW` (a meet keeps the stricter); both refuse with
+`E-RAW-CELL-PTR`, `declare_pointer_cell`, each with its own reason.
+
+- **`TVK-NULL`** is fenced in value position and permissive inside a pointee:
+  a value read through the null is never a nominal or a pointer, while
+  `ptr thing NULL-PTR =`, `NULL-PTR X !` into a declared pointer cell (also
+  `ptr ptr n`) and `NULL-PTR 0=` certify.
+- **`TVK-DBASE`** is fenced at every pointee depth: binding the DATA base's
+  pointee, at any depth, to a nominal, a pointer or a linear con is refused
+  (`( -- ptr ptr ptr n ) data-base 8 +` then `F @ @ @` dereferenced an integer).
+- **An offset null is a DATA-base pointer.** The rows that step a pointer by an
+  integer (`+`, `-` with `n`, `1+`, `1-`, `cell+`, `char+`; `PE-PTR-A-OFF` in
+  `src/habu/prims.f`) mark the stepped pointee `TVK-OFF`, and a null that rides
+  one comes out `TVK-DBASE`: `: F ( -- ptr ptr n ) NULL-PTR OFF + ;` is
+  refused. `TVK-OFF` is provenance only: against any other kind the meet answers
+  that kind, so `( ptr thing -- thing ) 8 + @` still certifies.
+- **A distance binds no pointee.** `X NULL-PTR -` and `X data-base -` match the
+  base's pointee alone (`PE-PTR-B-BASE`), so `: D ( ptr a -- n ) NULL-PTR - ;`
+  certifies; so does `V BYTE-VIEW NULL-PTR BYTE-VIEW -`.
+
+`data-base OFF + @` still answers the number, xt or role the cell holds; a DATA
+cell that holds an address is reached with `ptr-field`; the linker's `DATA-PTR`
+and `DATA-CELL@` take `data-base BYTE-VIEW` first, which erases the kind.
+
+**The wrapper is refused where it is written.** A declared quantifier the body
+restricts to a base address is `E-NONPARAMETRIC-EFFECT` ("restricted to a base
+address -- the DATA region, or a pointer computed off NULL-PTR", or "restricted
+to the null address"): `: SB-LEN ( -- ptr a ) data-base STRING-ABI:SB-LEN-OFF +
+;` let its caller choose the element type of engine DATA. Name the pointee the
+cell holds (`ptr n`, `ptr u8`). A quantifier restricted through an input-only
+position is excused for the null only (`: RELEASE ( ptr ptr a -- ) … NULL-PTR
+cb ! ;`); one named on both sides is still published (`: LEAK ( ptr a -- ptr a )
+drop data-base 8 + ;` is refused). The DATA base has no such excuse:
+`: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` and `: FEED ( [ ptr a -- ] --
+) data-base 8 + swap execute ;` are refused. To read one DATA offset at two
+types, write two accessors, each naming what it reaches (`FFI-BUF`/`FFI-FBUF`,
+`FFI-STACK-BUF`/`FFI-STACK-FBUF`, `ENGINE-ROW`/`ENGINE-ROW-CLEAR`).
+`test/compiler/base-pointer-arith-refusals.f` pins the refusals and controls.
+
+#### Reading code bytes
+
+A code address reaches checked code as a number. Reading the bytes there goes
+through `CODE-BYTES:AT ( n n -- ptr u8 n )` (`src/habu/code-bytes.f`) alone: it
+checks the span lies wholly inside one of the image's code extents (the baked
+text at `rbase`, or the region's code band from `dbase@ + DICT-SIZE` to `cp@`)
+and answers the bytes, or refuses with `hb: span outside the code region`, exit
+74. Its pointer comes from a package-private `CAST: N>U8` applied only to a
+bounded span; `test/compiler/code-bytes.f` tests the bound. A site that only
+carries a code address keeps it a number.
+
+### Declared polymorphic effects stay parametric
+
+A quantifier in a declared effect promises the word works for every type
+there. After the body checks, `NP-CHECK` (`src/core/checker.f`) rejects two
+shapes with `E-NONPARAMETRIC-EFFECT` (`fix_parametric_effect`):
+
+1. **Specialization to a sealed family.** A body that forces a quantifier to an
+   arity-0 nominal or a layout family is refused, naming it: `: F ( a -- a )
+   EFF-ID ;` with `EFF-ID ( region -- region )`. Scalar widening (`a := n`) stays
+   legal, so `( ptr a -- n ) @` is untouched.
+2. **Quantifier aliasing.** A body that unifies two declared quantifiers is
+   refused, naming both: `: F ( a b -- a ) MERGE ;` with `MERGE ( g g -- g )`.
+
+The pass makes no bindings, so a rejected signature never persists.
+
+### Exceptional control flow
+
+The signature describes the normal effect. The checker also tracks a separate
+exceptional edge for catchable `throw` paths:
+
+- `die` is process no-return; a wrapper whose every path reaches `die` is
+  recorded as non-returning.
+- `throw` consumes the code, records an exceptional edge and kills only the
+  current normal path. A word may have a normal effect and throw paths; a word
+  whose every path throws kills its caller's normal path, and the edge stays
+  catchable.
+- `catch` consumes a quotation that preserves both stacks, then pushes a throw
+  code (`0` on normal completion). Its exceptional path restores the depth of
+  both stacks, not their contents, so a cell of the quotation's declared input
+  window that a throw path may have overwritten comes back as `stale<t>`: it may
+  be moved, dropped or bound to an untyped local; reading it is `E-STALE-READ`
+  (`keep_value_before_catch`). A cell every throw path left untouched keeps its
+  type (**Rules learned by refusal**; `test/catch-stale-suite.f`).
+
+A guard may therefore throw directly, with no dummy value for the join:
+
+```forth
+: REQUIRE-NONEMPTY ( len -- ) LEN>N 0 <= if E-A-EMPTY throw then ;
+: HEAD ( ptr i64 len -- i64 ) REQUIRE-NONEMPTY @ ;
+```
+
+`<=` is declared over `n` and `len` is a role, so the guard crosses through
+`LEN>N`; `dup 0 <=` rejects with `expected: a n n actual: len len n`. Tokens
+after a terminated path (`throw`, `die`, `exit`, `leave`, an unconditional back
+edge) are refused unless they are structural closers (`else`, `then`, `loop`,
+`+loop`, `repeat`, `again`, `;]`).
+
+### Escape hatches
+
+- `TRUSTED: NAME ( eff ) body ;` records `eff` without checking the body, then
+  compiles it. `s" name" s" eff" TRUST` charts an already-defined word's effect
+  so the checker can use it as a leaf. A body that reaches a word the checker
+  cannot model (`evaluate` and other metaprogramming) is `E-UNCHECKABLE`;
+  checked build paths treat that as a refusal unless the call sits behind a
+  named, tested `TRUSTED:` boundary.
+- Roles are entered and left through no-op conversions: `>IDX IDX>N`, `>LEN
+  LEN>N`, `>COUNT COUNT>N`, `>OFF OFF>N`, `>FD FD>N`, `>RC RC>N`, `>PID PID>N`,
+  `>MS MS>N`, `>NS NS>N`, `>TOK TOK>N`, `>REG REG>N`, `>LABEL LABEL>N`, `>VA
+  VA>N`, `>SYMIDX SYMIDX>N` (`src/core/roles.f`). Library boundaries prefer
+  checked refinement constructors that reject negative, overflowing or
+  out-of-capacity input: `A-LEN`, `A-IDX`, `A-COUNT`, `VEC-LEN`, `VEC-IDX`,
+  `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `M-LEN`, `M-OFF`.
+- Phase roles `asm`, `img`, `snap` are ordering cells whose payload is
+  ignored: `ASM-CODE` produces `asm`; `BUILD-IMAGE` consumes it and produces
+  `img`; `CODESIG2` preserves `img`; `DRV-WRITE-IMAGE` consumes it.
+  `BUILD-SNAP-HDR` produces `snap`, which `src/habu/snap-lib.f` `WRITE-IMAGE`
+  consumes.
+- A trusted defining word is `TRUSTED: NAME ( definer-eff ) create … does> (
+  created-eff ) body ;`; the created effect must follow `does>` immediately.
+  For a checked `CREATE … DOES>` with created effect `( in -- out )`, the
+  `DOES>` body is checked as `( in ptr a -- out )`; step through the data field
+  with `cell+`, not raw `+`.
+- `0 set-check` disables the check hook for the rest of the load, so `:` is the
+  plain native colon; `check@ 0 set-check … set-check` resumes the saved hook;
+  `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`) installs the checker
+  afresh. There is no `CHECKING-ON?`.
+
+### Rigid host-allocation identity domains
+
+`ptr T` and ordinary type vars cannot tell two equal-sized allocations, or a
+recreated owner, apart, so a stale index could regain authority over reused
+storage. Three checker domains name these rigidly (`src/core/checker.f`):
+
+- **host region**, which allocation: an output spelled `fresh-region-*` mints a
+  fresh region per call, shared across that call's outputs; an inferred effect
+  records its body's identities as template slots, so callers mint per call.
+- **extent**, the bounds identity: `fresh-extent-*`.
+- **mutation generation**: `fresh-gen-*`. A mutation that invalidates
+  outstanding indices yields a new generation, so an old index no longer
+  matches.
+
+Each domain has a private per-check counter that never reuses an id and throws
+`E-RIGID-EXHAUST` at `RIGID-MAX` rather than wrapping. Ids are qualified by
+domain (`ATOM-OK?`), so equal numbers in two domains do not unify. Mismatches
+are distinct: `E-RIGID-REGION-MISMATCH` (`fix_host_region`),
+`E-RIGID-EXTENT-MISMATCH` (`fix_host_extent`), `E-RIGID-STALE-GENERATION`
+(`fix_stale_generation`), `E-RIGID-DOMAIN-CONFUSION` (`fix_rigid_domain`). No
+runtime counter or address becomes persistent authority.
+`test/rigid-region-suite.f` pins them.
+
+### Checked assertions
+
+Assertions run inside a checked test word; consume and compare the top result
+first, and the word's effect ensures every result is used:
+
+```forth
+require src/lib/test.f
+
+package PAIR-TEST
+: PAIR ( -- n n ) 3 4 ;
+: RUN ( -- )
+   T-RESET
+   PAIR 4 T= 3 T=
+   T-REPORT ;
+RUN
+;package
+```
+
+### Replay versus reconstruction
+
+A live compile sees the records that exist at that moment, so a package word
+declared later cannot shadow the global a body named. A warm verifier
+(`src/habu/verify-source.f`, the build's certify step, `--all-errors`) reads
+recorded source in an engine that already holds it and everything after. There
+`CHECK` latches the definition's own record as a binding horizon and binds each
+body token to the newest record before it, package first, used publics
+included: a used public exported later is neither a candidate nor a shadow, and
+a later global does not shadow the used public a body named. A check outside
+that scope binds against the whole store. The horizon bounds the body walk
+only; what the pass itself has recorded stays visible. Two limits: a seeded
+record stays visible under any horizon (its offset is not its place in source),
+and an `undefine`d spelling defined again binds its earlier text against the
+whole store.
+
 ## Checker & type model
 
-- **C2 views carry checked lifetimes and access authority.** The
-  [ownership model](ownership-model.md) defines shared `read-view<p,q,T>` and
+- **C2 views carry checked lifetimes and access authority.** **Owners and
+  views** below defines shared `read-view<p,q,T>` and
   exclusive `mut-view<p,q,a,T>` values, lexical loans, initialized fields and
   task-local cleanup. A view occupies two cells and travels as one value through
   stack permutations. Ordinary `ptr T` and `SPAN` remain lifetime-free.
@@ -1013,13 +1612,6 @@ Factor raw compiler and emitter code to the same standard.
   `E-CAST-LINEAR`). Without a lifetime to prove, a public `STRUCTURE` plus a
   `TYPED-VARIABLE` or `TYPED-BUFFER` in the caller trades it for a runtime
   refusal off the definer's zero image (`src/lib/json-write.f`).
-- **Concrete integers widen, roles do not.** `u8 -> u16 -> u32 -> cell/i64`
-  widens implicitly when lossless; concrete narrowing and same-width sign
-  changes need an explicit conversion. Generic `n` accepts structural integer
-  stack cells in either direction: an `n` input can pass to a `u32` parameter,
-  while an `i64` input cannot. This generic rule does not relax pointer
-  pointees. Nominal roles (`idx`, `len`, `fd`, `rc`, `pid`, `asm`, `img`,
-  `snap`, …) never widen to each other or to bare integers.
 - **Pointer-valued cells use cell-indexed `ptr-field`**: `ptr-field` builds a
   `ptr ptr x` field whose index is a cell slot, not a byte offset, so `@`/`!`
   keep nested pointer types; never multiply by cell size. Raw byte offsets need
@@ -1101,6 +1693,111 @@ Factor raw compiler and emitter code to the same standard.
 - **Seal the implicit row under declared inputs**: a stack-preserving trusted
   effect (`img -- img`, `fd -- fd`) must not satisfy output by binding an
   implicit base row that hides underflow.
+
+## Owners and views
+
+A C2 view is a checked borrow: `read-view<p,q,T>` is shared read access and
+`mut-view<p,q,a,T>` exclusive access to elements of type `T`, where `p` is the
+owner scope, `q` the loan ceiling (a root view has `q = p`) and `a` the
+allocation provenance. Bounds, scope and authority are part of the type, not a
+runtime address heuristic; an aggregate carries the union of its fields' scope
+dependencies, nested generic and sum payloads included.
+
+### The public owner recipe
+
+Load `src/lib/c2-owner.f` and `src/lib/c2-bytes.f`. `C2-MEM:OWNER-SIZE` is the
+byte length of an owner header; `C2-MEM:WITH-MUT` owns those bytes for one
+callback. Inside it, pass `C2-MEM:SEED-OWNER` to `C2-MEM:WITH-INIT`; its
+callback receives a unique `owner-state` view, `C2-MEM:BIND` turns that view
+into the linear owner handle, and `C2-MEM:UNBIND` returns it before the
+callback ends. This certifies and runs:
+
+```forth
+require src/lib/c2-owner.f
+require src/lib/c2-bytes.f
+require src/lib/memory.f
+
+package C2-EXAMPLE
+private
+: ADD ( C2-MEM:owner<p,i,a> -- C2-MEM:owner<p,i,a> )
+   16 MEM:BYTES-ALLOC-LEN C2-MEM:ALLOC
+   s" hi" C2-BYTES:COPY$ drop
+   C2-MEM:PUBLISH drop ;
+: OWNED ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+   C2-MEM:BIND ADD C2-MEM:UNBIND ;
+: ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+   C2-MEM:SEED-OWNER [: OWNED ;] C2-MEM:WITH-INIT ;
+public
+: RUN ( -- )
+   C2-MEM:OWNER-SIZE [: ROOT ;] C2-MEM:WITH-MUT ;
+;package
+```
+
+- `C2-MEM:ALLOC` appends zeroed bytes to the **named** owner, even while an
+  inner owner is active, so a later allocation typed for `p` stays owned by `p`
+  after the inner scope ends.
+- `C2-MEM:ALLOC-DISPOSE` ties an allocation to a foreign acquisition: its
+  checked `[ mut-view<p,p,a,u8> -- ]` disposer consumes the unique view and
+  completes the foreign release before reporting an error. The owner runs it
+  once at close; a failed allocation runs none. `test/c2-owner-dispose.f`
+  covers return, throw, nested owners, task halt and disposal errors.
+- `C2-BYTES` gives bounded copy, slice and length operations on live byte
+  views. `XML-C2:WITH-READER` (`src/lib/xml/c2.f`) takes a shared source view
+  and unique cursor storage; `XML-C2:NAME$` keeps the source lifetime after the
+  cursor callback ends.
+- At most 32 owner or initialization frames are live in one task: the 33rd
+  open throws `E-C2-CAPACITY` (-9360) before acquisition, and capacity returns
+  as frames close. Capturing an image while an owner or loan is live throws
+  `E-C2-CAPTURE` (-9364). These are runtime boundaries; escape is refused by
+  the checker.
+
+### View and scope rules
+
+A scoped owner combinator gives its callback a fresh rigid scope. Ordinary
+calls may return views that depend on still-active input scopes; the
+combinator's own result may hold only values independent of the scope it
+closes. Independently owned scalar or document results may escape.
+
+| Operation | Rule |
+| --- | --- |
+| Copy shared read view | Allowed while the owner scope is active. |
+| Copy exclusive view | Refused; a move or a bounded reborrow transfers access. |
+| Read through shared view | Allowed within bounds; writes are refused. |
+| Reborrow exclusive view | The parent is suspended for the lexical child loan and restored after it; no parent use or overlapping sibling loan meanwhile. |
+| Shared loan from exclusive access | Mutation is suspended for the whole shared-loan scope, copies included. |
+| Return a view from an ordinary callee | Allowed; the effect keeps the scope dependency. |
+| Export a view as its owner combinator's result | Refused, through nested fields, generic wrappers and quotation payloads; handing a control handle back for cleanup is not export. |
+| Store into a typed scoped record | Allowed only if the value cannot outlive the borrowed owner; the record keeps the field's dependency. |
+| Store into globals, task slots or raw cells | Refused for a scoped value. |
+| Install into defer/XT state, enqueue or spawn a task | Refused if it carries a scoped dependency out of its lexical scope. |
+| Close a scoped owner explicitly | Refused; only leaving its combinator ends the scope, after dependent values and loans end. |
+| End an exclusive loan or initialized reader scope | Ends its child loans, consumes its authority and invalidates its fields; an enclosing source owner stays open. |
+
+A unique view is consumed by a scope end or an end-loan operation; it is never
+duplicated or turned into a raw shared pointer. Exclusive views and mutable
+scoped aggregates are stack-only: a local refuses them, wrappers holding
+exclusive authority included. Shared read views may be locals and keep their
+dependencies. Local lookup never reborrows. Task transport needs separately
+owned data.
+
+### Binders
+
+A child reborrow introduces a fresh ceiling `q` inside its parent's and keeps
+both dependencies; ending `q` invalidates every child copy before parent access
+resumes. Exclusive authority also keeps its allocation provenance: two values
+of one nominal type are no evidence of disjoint storage. Rigid region
+identities and declared separate fields supply that evidence; unknown overlap
+rejects. Scope, region, extent and generation are distinct domains.
+
+The callback binder `forall<…>` appears only in the callback input of an
+authenticated scope operation (`XML-C2:WITH-READER`'s effect shows one). The
+operation checks the callback with a fresh rigid scope atom and closes it at
+return or unwind; the rows around the binder cannot acquire the atom, through
+stored fields, quotation payloads or the return stack. Ordinary helpers
+quantify over scopes their inputs supply and cannot return one no input or
+live binder supplies. No ordinary declaration, `fresh-region-*` included, mints
+scope authority: an annotation alone is not authentication, and a higher-order
+wrapper must keep the scope operation and its whole callback contract.
 
 ## Integer arithmetic
 
@@ -1274,7 +1971,7 @@ by name with the count it saw and the ceiling, and none truncates.
   Repair: hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map
   their own pages, not in the dictionary. While a task is live every one of
   these sinks exits `$4F` before it writes, as do `evaluate` and
-  `evaluate-closed` ([threads.md](threads.md)): the definers name their token
+  `evaluate-closed` (the `src/lib/task.f` header): the definers name their token
   on stderr, the rest print nothing.
   Tier 1 keeps every string literal body and trap message in DATA too
   (`src/compiler/native/string.f`): when the store's last segment cannot take
@@ -1414,7 +2111,7 @@ any suite fails. Documentation-only edits need no rebuild.
   refused definition, one with an undefined word included, as a schema-1 JSON
   diagnostic under `--json-errors` and always under `--verify-only`, and check
   each later definition against a refused one's declared effect
-  ([repair-diagnostics.md](repair-diagnostics.md)). A duplicate definition
+  (the `tools/diag-code.f` header). A duplicate definition
   ends `--all-errors`, as it ends the load; `--verify-only` reports it with the
   same record and goes on past it. Without them check.f stops at the first
   refusal. Under `--json-errors` or `--verify-only` its prose goes to stdout
@@ -2014,5 +2711,4 @@ were handed with `SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen
 it. `SPAN:MAKE`, the one place an address and a number become a reach, is
 admitted in `src/` except `src/examples/`; `tools/lint/bare-copy-lint.f` reports it
 (and bare `BYTE-COPY`) anywhere else. A read-only source stays the `( ptr u8 n
-)` string idiom. The reach is counted in bytes whatever the element type;
-`docs/type-system.md` § 11 has the measurement.
+)` string idiom. The reach is counted in bytes whatever the element type.

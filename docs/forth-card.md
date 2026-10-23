@@ -110,7 +110,7 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`, rc 75) —
   pass the value on the stack or through a cell.
 
-forth.md: **Stack comments**, **Words & factoring**.
+forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
 
 ## 3 What the checker refuses, and what it admits
 
@@ -160,8 +160,7 @@ exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
 throw. A child cannot escape its callback. `C2-MEM:ALLOC` appends zeroed storage
 to an explicit owner. Build that owner with `OWNER-SIZE` / `WITH-MUT`,
 `SEED-OWNER` / `WITH-INIT`, then `BIND` and `UNBIND` inside the initialized
-callback; [ownership-model.md](ownership-model.md#public-owner-recipe) has a
-checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
+callback; forth.md **Owners and views** has a checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
 the new unique view at that owner's close, including when an inner owner is
 active. `PUBLISH` consumes a mutable view to make it shared.
 A view on either side of `CAST:` is `E-CAST-SCOPE`, except a view representation
@@ -178,8 +177,7 @@ fixed-cell record. Its callback uses `forall<i inside [l,T],[ ... ]>`: the fresh
 initialization scope is inside both the parent scope `l` and the scope
 dependencies of `T`. The callback receives `mut-view<p,i,a,init<i,T>>`; its
 result cannot let `i` escape. The original byte view returns after the record
-is cleared. See forth.md **Rules learned by refusal** and
-[ownership-model.md](ownership-model.md) **Typed storage and checker authority**.
+is cleared. See forth.md **Rules learned by refusal** and **Owners and views**.
 
 `C2-MEM:WITH-RECORDS` takes a unique byte view, a nonnegative count, and a
 committed `DERIVE init` fixed-cell product seed. One scope owns `count` copies
@@ -382,8 +380,8 @@ pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
 operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
 are `E-CAST-ARITY`.
 
-forth.md: **Structures And Enums**; the rule is `docs/effects.md` "Raw storage
-never holds an address".
+forth.md: **Structures And Enums**; the rule is forth.md **Raw storage never
+holds an address**.
 
 ## 6 Errors
 
@@ -480,11 +478,13 @@ forth.md: **Testing**, **Verification before committing**.
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
 | Importing … with `using` | ambiguity, scope end, the 16 limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `CAST:`, `LINEAR:` |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
-| Stack comments | the token list, `DEFTYPE`, `DEFLINEAR` |
+| Stack comments | the token list, real types |
+| Stack effects | the effect grammar, the return-stack clause, types, widening, `DEFTYPE`/`DEFLINEAR`, pointers, escape hatches |
 | Checker & type model | loop frames, higher-order effects, `defer` |
+| Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
 | Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 255-byte family and package names, effect 4096 deep, input row 255 cells |
