@@ -1111,9 +1111,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ aftrun.f's stored executed row over AFT-ONE compares the digest the
    \ cold compile bound with the one the warm install of aftone.f binds.
    s" aftone.f" REUSED s" aftrun.f" REUSED
-   s" con-dep.f binds the installed records and writes its object" T-LABEL
+   s" con-dep.f, which requires con.f, misses by name, binds the installed records and writes its object" T-LABEL
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
-   ERR$ s" /con-dep.f reason=" CONTAINS? TFALSE
+   s" con-dep.f" s"  reason=" LINE$ s" con-dep.f reason=unsupported-segments" T$=
    s" con-dep.f" DEFS$ s" 1" T$=
    s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U @ T$=
    s" a warm build compiles w.f, whose wordlist no package record owns" T-LABEL

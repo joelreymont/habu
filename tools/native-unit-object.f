@@ -3048,7 +3048,7 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
 \ compiles `constant` in the kernel (habu2.f C-CONSTANT, C-LIT): a MOVZ/MOVK
 \ chain, a push and a return, position independent, so the copy is that
 \ load's code; VAL-ENTRY stored no body with a relocation site, and
-\ RECORD-CK and SUPPORTED? checked what the import refuses. It leaves
+\ RECORD-CK and UNSUPPORTED$ checked what the import refuses. It leaves
 \ the definition-head scratch (BODYBUF/BODYLEN, DEF-TKA, DEF-TKL, DEF-WL) as
 \ the previous head left it. Every head rewrites them before reading; across
 \ definitions only `package`'s dictionary-full message reads DEF-TKA/DEF-TKL,
@@ -3431,18 +3431,25 @@ public
 \ the dictionary or DATA, so a file that added nothing has no segment for the
 \ install to replay and loads from source. The install makes wordlists only
 \ through package rows, so every wordlist the file made must be one they own.
-: SUPPORTED? ( -- bool )
-   OPEN-SEGS @ 1 <> OPEN-LOADS @ 0<> or OPEN-DATA @ 0<> or OPEN-REQS @ 0<> or
-   OPEN-SLOTS @ 0<> or OPEN-UPDS @ 0<> or OPEN-PINS @ 0<> or
-   OPEN-OWNED @ OPEN-WIDS @ <> or
-      if false exit then
-   FILE-CHECK-AVAILABLE? 0= if false exit then
+\ The answer names the first part it cannot replay, for the miss; empty when
+\ it can install the whole object.
+: UNSUPPORTED$ ( -- ptr u8 n )
+   OPEN-SEGS @ 1 <> if s" unsupported-segments" exit then
+   OPEN-LOADS @ 0<> if s" unsupported-loads" exit then
+   OPEN-DATA @ 0<> if s" unsupported-data" exit then
+   OPEN-REQS @ 0<> if s" unsupported-requires" exit then
+   OPEN-SLOTS @ 0<> if s" unsupported-slots" exit then
+   OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
+   OPEN-PINS @ 0<> if s" unsupported-pins" exit then
+   OPEN-OWNED @ OPEN-WIDS @ <> if s" unsupported-wordlists" exit then
+   FILE-CHECK-AVAILABLE? 0= if s" checker-unavailable" exit then
    OPEN-KINDS @ 1 RK-VAL lshift and 0<>
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= and
-      if false exit then
-   OPEN-KINDS @
-      1 RK-PACKAGE lshift 1 RK-VAL lshift or 1 RK-COLON lshift or
-      invert and 0= ;
+      if s" unsupported-import-pending" exit then
+   OPEN-KINDS @ 1 RK-BARE lshift and 0<> if s" unsupported-bare" exit then
+   OPEN-KINDS @ 1 RK-ADDR lshift and 0<> if s" unsupported-addr" exit then
+   OPEN-KINDS @ 1 RK-DEFER lshift and 0<> if s" unsupported-defer" exit then
+   s" " ;
 
 \ This engine has every record writer the install block executes.
 : DEF-OPEN? ( -- bool )

@@ -1022,7 +1022,7 @@ variable USER-SEEN
 \ any other observer can record has none. The arm flags and the hooks are
 \ read; the installed CAST: observer is not. It records only for a CAST:
 \ declaration, whose file's object is never installed
-\ (NUNIT-OBJECT:SUPPORTED?), so admitting that kind must first make SINK
+\ (NUNIT-OBJECT:UNSUPPORTED$), so admitting that kind must first make SINK
 \ read it.
 : SINK ( -- n bool )
    PRE-BOUND @ 0<> if
@@ -1347,7 +1347,7 @@ variable OBJECT-U
    ORIGIN-SINK? 0= if s" origin-sink" OBJECT-MISS false exit then
    \ Freshness is checked only for an object the session can install: the
    \ check reads files and records rows into the innermost file's object.
-   NUNIT-OBJECT:SUPPORTED? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   NUNIT-OBJECT:UNSUPPORTED$ dup 0<> if OBJECT-MISS false exit then 2drop
    OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
    NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS NUNIT-FILE:RESET-KEEP false exit then
    NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
