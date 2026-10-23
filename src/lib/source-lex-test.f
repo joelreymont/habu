@@ -294,6 +294,20 @@ variable REG-I
    5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
    6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
 
+\ The same rule for a string opener: `: s\" ( -- ) ;` DEFINES a word spelled
+\ `s\"` (test/policy/defname-escaped.f), so it opens no literal and the
+\ `( -- )` after it is the definition's stack comment.
+: TEST-LEXER-STRING-NAME-POS ( -- )
+   ROW-RESET  s" : s" ROW+ ROW-BS ROW-Q  s"  ( -- ) ; dup" ROW+
+   ROW$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
+   1 LINT-LEX:LITERAL? 0= ASSERT
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- " ASSERT$
+   3 LINT-LEX:TOKEN s" ;" ASSERT$
+   4 LINT-LEX:TOKEN s" dup" ASSERT$ ;
+
 \ An operand is data and names nothing: after `' :` the `:` defines nothing, so
 \ the `.(` after it opens a printing comment.
 : TEST-LEXER-OPERAND-NAMES-NOTHING ( -- )
@@ -894,6 +908,7 @@ variable REG-I
    TEST-LEXER-PAREN-CALL
    TEST-LEXER-PRINT-PAREN
    TEST-LEXER-PRINT-NAME-POS
+   TEST-LEXER-STRING-NAME-POS
    TEST-LEXER-OPERAND-NAMES-NOTHING
    TEST-LEXER-PARSER-OPERAND
    TEST-LEXER-LOCAL-NAMES

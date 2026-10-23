@@ -718,9 +718,12 @@ private
    a u SOURCE:ESC-STRING-OPENER? if true exit then
    a u SOURCE:NORMAL-STRING-OPENER? ;
 
-\ A string opener opens a literal unless a live local has its spelling.
+\ A string opener opens a literal unless it is a name - `: s\" ( -- ) ;`
+\ defines a word spelled `s\"`, by the rule PRINT-START? obeys - or a live
+\ local has its spelling.
 : LITERAL-START? ( ptr u8 n -- bool )
    STRING-OPENER? 0= if false exit then
+   NAME-POS? if false exit then
    LOCAL-START? 0= ;
 
 \ A string-literal token carries its payload in CONTENT, exactly as a paren
