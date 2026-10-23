@@ -92,6 +92,15 @@ public
 : CDD-GD4 ( n -- ) CDD-GD4 ;
 ;package
 
+\ A global and a package public under one tail: a bare call of it under
+\ `using CDD-SHP` is E-USING-SHADOW-GLOBAL, the throw section 8's abandoned
+\ trusted definer takes in its scan.
+: CDD-SHX ( -- n ) 2 ;
+package CDD-SHP
+public
+: CDD-SHX ( -- n ) 1 ;
+;package
+
 package CERTIFY-DOES-DEFINER
 
 \ The rest of section 5's fixtures, also compiled by the engine here: this
@@ -370,6 +379,21 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" and refuses the bare cell" T-LABEL
    s" C44 ( -- n ) CDD-TRES-LIVE" CDD-LIVE-VERDICT REFUSED T= ;
 
+\ A trusted definer whose unjudged scan throws is abandoned, and so is the
+\ clause tier 0 certified before that scan: the plain definition published
+\ next must not take its effect. Both are live definitions, so they run
+\ between two scopes, as section 6's refused clause does.
+: CDD-SECTION-TRUSTED-ABORT ( -- )
+   s" a trusted definer whose scan throws is refused" T-LABEL
+   [: s\" using CDD-SHP\nTRUSTED: CDD-TAB-D ( n -- ) CDD-SHX drop create , does> ( -- ptr n ) ;\n;using\n" evaluate-closed ;]
+      E-USING-SHADOW-GLOBAL TTHROWSQ
+   s\" : CDD-TAB-P ( n -- ) drop ;\n" evaluate-closed ;
+
+: CDD-SECTION-TRUSTED-ABORT-AFTER ( -- )
+   s\" 5 CDD-TAB-P CDD-TAB-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
+   s" and leaves its clause for no later definition to inherit" T-LABEL
+   s" C44A ( -- ptr n ) CDD-TAB-MADE" CDD-VERDICT UNRESOLVED T= ;
+
 \ ---- 9. a definer that writes its word as text ------------------------------
 \ CDD-GEN:MAKE leaves nothing a scanner can read: its word exists only once the
 \ text it builds is evaluated, which the pre-pass never does. The row states the
@@ -522,6 +546,8 @@ CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-LATCH-AFTER
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-WRAP-LATCH ;package CHECKER-SCOPE-DONE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-TRUSTED ;package CHECKER-SCOPE-DONE
 CDD-SECTION-TRUSTED-LIVE
+CDD-SECTION-TRUSTED-ABORT
+CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-TRUSTED-ABORT-AFTER ;package CHECKER-SCOPE-DONE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-NOT-A-WRAPPER ;package CHECKER-SCOPE-DONE
 CDD-SECTION-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-RESIDENT ;package CHECKER-SCOPE-DONE

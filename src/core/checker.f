@@ -9233,7 +9233,10 @@ CUR-DEFAULT
 \ source-order clause never reaches a record. The record step takes state 2 and
 \ clears (DOES-EFF-TAKE, the E-ADD-EFFECT publish tail), a refused clause clears
 \ instead of arming, and REC-WIDE-PUBLISH below clears whatever a definition's
-\ publication left, so no latch outlives the definition that set it.
+\ publication left, so no latch outlives the definition that set it. The
+\ unjudged scan (CHECK-UNJUDGED!) is no body check here: when it returns it puts
+\ the machine back as it found it, and a TRUSTED: definer's publication steps it
+\ (TRUST-DECL); when it throws the definition is abandoned, and it clears.
 variable DOESEFF   0 DOESEFF !
 variable DOESPEND  0 DOESPEND !
 
@@ -23640,7 +23643,7 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 2 constant CK-AOT-S-REG
 CK-AOT-SEC-N 16 * 8 + constant CK-AOT-TBL-END
 
-variable CK-AOT-STATE                   \ 0 unread, 1 usable, -1 nothing seeded
+variable CK-AOT-STATE                   \ 0 not validated, 1 usable
 variable CK-AOT-RETRY-ARMED             \ a retry loop is driving this pass
 variable CK-AOT-RETRY-DUE               \ ... and this pass is not the last one
 variable CK-AOT-I   variable CK-AOT-J   variable CK-AOT-K
@@ -24184,9 +24187,14 @@ ASIG-GRAPH-CHECK-INSTALL
 
 \ Validation may reserve scratch, but publishes no symbol/effect/registry.
 \ The existing catch boundary releases that scratch on a thrown refusal.
+\ AN EMPTY POOL IS NOT LATCHED: a partial capture's cold boot compiles the
+\ engine prefix with this checker live and publishes the pool only at the end of
+\ that prefix (habu2.f AOT-SIG PUBLISH,), so a prefix TRUSTED: body whose
+\ unjudged scan misses a name asks here before the cells are written. Latching
+\ that answer left every later reference E-UNDEFINED against a published pool.
 : CK-AOT-READY? ( -- bool )
-   CK-AOT-STATE @ 0 <> IF CK-AOT-STATE @ 0 > EXIT THEN
-   CK-AOT-SIG-LEN 0 <= IF -1 CK-AOT-STATE ! RES-FALSE EXIT THEN
+   CK-AOT-STATE @ 0 <> IF RES-TRUE EXIT THEN
+   CK-AOT-SIG-LEN 0 <= IF RES-FALSE EXIT THEN
    0 CK-GRAPH-WIDTH-BAD !
    [: CK-AOT-CONTENTS? ;] catch
    CK-GRAPH-RELEASE
@@ -26369,6 +26377,17 @@ variable DEF-STOPPED
 \ the source - so the suppression landed on one instance and the render on the
 \ other, and a product-hosted build printed a rejection for every trusted body in
 \ the window it was rebuilding.
+\
+\ A SCAN THAT RETURNS LEAVES THE CLAUSE LATCH AS IT FOUND IT. Its record grants
+\ no authority, so it is not the record a `does>` clause's created effect belongs
+\ to: that is the definition's own publication, which steps the latch
+\ (TRUST-DECL). Tier 0 certifies a trusted definer's clause BEFORE this scan
+\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED); the scan's CHECK-RESET step and its own
+\ record's take would consume that effect first, and the definer would create
+\ nothing. Tier 1 scans before the clause, where the latch is already clear. A
+\ scan that throws abandons the definition at either tier and nothing after it
+\ steps the latch, so it clears the latch: a restored arm would be stepped by
+\ the next body check into the record of whatever is defined next.
 PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 
 : CHECK-UNJUDGED-BODY ( -- )
@@ -26377,12 +26396,14 @@ PTR-VARIABLE UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    a UNJ-A !  u UNJ-U !
+   DOESEFF @ DOESPEND @ {: eff:n pend:n :}
    -1 BWIN-UNJUDGED !
    1 DIAG-QUIET +!
    [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
    -1 DIAG-QUIET +!
    0 BWIN-UNJUDGED !
-   rc 0 <> IF rc throw THEN
+   rc 0 <> IF DOES-EFF-CLEAR rc throw THEN
+   eff DOESEFF !  pend DOESPEND !
    CHECKER-TAPE:ARMED @ 0= 0=  LMODE @ 0= and  #CFC @ 0= and
    CONM @ 0= and  CHECKER-MATCH-MODE @ 0= and  MF-DEPTH @ 0= and
    FIELD-LOAN-PENDING @ 0= and PARSE-COMPLETE @ 0= 0= and UWIN-VALID !
