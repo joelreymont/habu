@@ -87,6 +87,8 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    S\" 1 set-tier\ns\" tier=\" type TIER-K . cr\n" IN+
    s" td.f" LOAD+
    S\" s\" td=\" type TD-K . cr\n" IN+
+   s" pkroot.f" LOAD+
+   S\" s\" pk=\" type FRAME-PK:PK-VAL . cr\n" IN+
    s" watermark.f" LOAD+
    s" ret-own.f" LOAD+
    s" ret-parent.f" LOAD+
@@ -334,6 +336,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" tier0.f" S\" 6 constant TIER-K\n" PUT
    \ td.f changes the tier and restores it.
    s" td.f" S\" 0 set-tier\n4 constant TD-K\n1 set-tier\n" PUT
+   \ pk.f's `require pkglob.f` is a no-op in pkroot.f's session, so pk.f stays
+   \ a leaf, as exec.f does; PK-SEVEN is a sibling child's keyed record.
+   s" pkglob.f" S\" : PK-SEVEN ( -- n ) 7 ;\n" PUT
+   s" pk.f" S\" require pkglob.f\npackage FRAME-PK\npublic\n: PK-VAL ( -- n ) PK-SEVEN ;\n;package\n" PUT
+   s" pkroot.f" S\" require pkglob.f\nrequire pk.f\n" PUT
    s" " s" dup +" s" 3 TWICE drop" LIB-SOURCE
    s" diag.f" S\" : NOCONTRACT-DIAG ( -- ) DIAGXT ;\n" PUT
    s" brokendef.f" S\" 0 set-tier\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" PUT
@@ -457,6 +464,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 : FRAME-CHECKS ( -- )
    OUT$ S\" use=67\n" CONTAINS? TTRUE
+   OUT$ S\" pk=7\n" CONTAINS? TTRUE
    OUT$ s" refused=1" CONTAINS? TTRUE
    OUT$ S\" con=4\n" CONTAINS? TTRUE
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
@@ -484,17 +492,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ body's, and HOOK's data.
    s" app.f" FRAME$ s"  ordered=0 binding=6 value=1 resolution=34 executed=3 data=2" ENDS-WITH? TTRUE
    s" lib.f consumes ONE only, none of its own or deep.f's records" T-LABEL
-   \ HOOK adds 12 resolution rows: TYPED-VARIABLE and xt! 3 each (global hit,
-   \ FRAME-LIB public and private misses), the generated body's HOOK#base 4 (global
-   \ and private misses, as spelled and folded) and the run of HOOK 2 (global and
-   \ private misses). Each public hit is lib.f's own record and adds none.
-   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=40 executed=0 data=0" ENDS-WITH? TTRUE
+   \ A lookup in FRAME-LIB adds none: lib.f made the package and loads no child
+   \ after it, so its own source decides every public and private hit or miss.
+   \ That FRAME-LIB did not exist before lib.f is its `package` decision, 1 row.
+   s" lib.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=20 executed=0 data=0" ENDS-WITH? TTRUE
    \ exec.f compiles nothing, so every resolution row is a run's: require and
    \ drop 1 each (global), FRAME-LIB:SEVEN and the ticked FRAME-LIB:TWICE 2 each
-   \ (namespace, public), SEVEN under using 3 (namespace, public, global miss).
-   \ A run that recorded only the leg holding its record would leave 5.
+   \ (namespace, public), SEVEN under using 3 (namespace, public, global miss),
+   \ and `using FRAME-LIB`'s decision 1, keyed to lib.f's record. A run that
+   \ recorded only the leg holding its record would leave 6.
    s" exec.f only runs: SEVEN's value, TWICE's run and every leg of each run's resolution" T-LABEL
-   s" exec.f" FRAME$ s"  ordered=0 binding=0 value=1 resolution=9 executed=1 data=0" ENDS-WITH? TTRUE
+   s" exec.f" FRAME$ s"  ordered=0 binding=0 value=1 resolution=10 executed=1 data=0" ENDS-WITH? TTRUE
    s" run.f runs the trusted PEEK, which reads STORE: one run, one data read" T-LABEL
    s" run.f" RAN
    s" safe.f runs the checked SAFE-PEEK, which reaches PEEK and STORE" T-LABEL
@@ -683,10 +691,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    HITS$ HITS-AT HITS-AT-U @ T$=
    s" con.f" REUSED
    s" a warm build reuses every leaf object of constant and colon records" T-LABEL
-   \ base.f, deep.f, sdeep.f and odeep.f are such leaves too, but stale: each
-   \ body's number token leaves a resolution row in the file's own package,
-   \ which does not exist yet when the warm build checks the row.
-   s" safe.f" REUSED s" vread.f" REUSED s" exec.f" REUSED
+   OUT$ S\" pk=7\n" CONTAINS? TTRUE
+   s" base.f" REUSED s" deep.f" REUSED s" sdeep.f" REUSED s" odeep.f" REUSED
+   s" pk.f" REUSED s" safe.f" REUSED s" vread.f" REUSED s" exec.f" REUSED
    s" ret-use.f" REUSED s" gc1.f" REUSED s" diag.f" REUSED
    s" after.f" REUSED s" tierback.f" REUSED
    \ aftrun.f's stored executed row over AFT-ONE compares the digest the
@@ -817,8 +824,14 @@ public
    \ line that moves every later definition. base.f's new variable moves HITS
    \ from here on.
    s" base.f" S\" package FRAME-BASE\nvariable GAP\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
+   s" pkpre.f" S\" package FRAME-PK\n: PK-SEVEN ( -- n ) 70 ;\n;package\n" PUT
+   s" pkroot.f" S\" require pkglob.f\nrequire pkpre.f\nrequire pk.f\n" PUT
    S\" \\ edited\n" s" ( note ) dup +" s" 3 ( note ) TWICE drop" LIB-SOURCE
    s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" an earlier file that now makes FRAME-PK refuses pk.f's object: PK-SEVEN binds its private word" T-LABEL
+   OUT$ S\" pk=70\n" CONTAINS? TTRUE
+   ERR$ s" /pk.f records=" CONTAINS? TFALSE
+   ERR$ s" dependency miss: namespace shape changed" CONTAINS? TTRUE
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
    s" every split of the first build's app.f rows still holds" T-LABEL
    SPLIT$ nip 1 > TTRUE

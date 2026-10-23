@@ -180,6 +180,15 @@ INSTALL-DEFAULT
    DEPTH @ 0 > if drop false exit then
    OWN? FDEPTH @ 0= or ;
 
+\ A package record the file made and loaded no child file since: every
+\ lookup in it is decided by the file's own source. Its absence before the
+\ file is the `package` decision row's fact (OBSERVE-RESOLUTION).
+: OWN-NAMESPACE? ( n -- bool )
+   {: ns:n :}
+   ns OWN? 0= if false exit then
+   FRN @ F-RBASE FFIELD @ = if true exit then
+   ns FRN @ 1- FRANGES @ >= ;
+
 : ROOM ( n -- n )
    {: need:n :}
    need 0 < need MEM-MAX-N USED @ - > or if BAD then
@@ -1043,6 +1052,16 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    ord RESOLUTION 0 RES-KEY RES-KEY-BYTES spellingu + namespaceu +
       key keyu ADD-ROW ;
 
+\ The record whose ownership decides whether the file frame keeps a
+\ resolution row (ADD-ROW): the namespace record when the file owns that
+\ package, else the candidate, -1 when there is none. A global leg has no
+\ namespace.
+: ROW-OWNER ( n n ptr u8 n -- n )
+   {: ord:n role:n namespace:ptr namespaceu:n :}
+   role 0= if ord exit then
+   namespace namespaceu NFILE-REF:FIND-NAMESPACE {: ns:n :}
+   ns OWN-NAMESPACE? if ns else ord then ;
+
 : OBSERVE-RESOLUTION ( ptr u8 n -- )
    {: row:ptr rowu:n :}
    OPEN? 0= if exit then
@@ -1068,13 +1087,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
          2drop s" resolution-key-unknown" ord ORDERED-BY exit
       then 2drop
    then
+   ord role row RES-ROW-BYTES spellingu + + namespaceu ROW-OWNER {: owner:n :}
    ord -1 = if
-      -1 role shape row RES-ROW-BYTES + spellingu
+      owner role shape row RES-ROW-BYTES + spellingu
          row RES-ROW-BYTES spellingu + + namespaceu
          NULL-PTR 0 ADD-RESOLUTION
    else
       ord NFILE-REF:DECL-KEY$ {: key:ptr keyu:n :}
-      ord role shape row RES-ROW-BYTES + spellingu
+      owner role shape row RES-ROW-BYTES + spellingu
          row RES-ROW-BYTES spellingu + + namespaceu
          key keyu ADD-RESOLUTION
    then ;
@@ -1167,12 +1187,13 @@ CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
       CAPTURE-CHECKER-ROLE
    then ;
 
-\ The feed reads the source owner's candidates only after the scan. Enable
-\ their producer while a frame is open; top-level namespace actions still run.
+\ The feed reads the source owner's candidates after each scan; `package` and
+\ `using` send their namespace decision as they run (checker.f
+\ RWIN-NAMESPACE). Enable both while a frame is open.
 : OBSERVE ( -- )
    ['] OBSERVE-BOUND NFEED:USE-BINDINGS
    ['] OBSERVE-RESOLUTION NFEED:USE-RESOLUTIONS
-   [: 2drop ;] CHECKER-OWNER:RESOLUTION-NS-INSTALL ;
+   ['] OBSERVE-RESOLUTION CHECKER-OWNER:RESOLUTION-NS-INSTALL ;
 
 : UNOBSERVE ( -- )
    OPEN? if exit then
