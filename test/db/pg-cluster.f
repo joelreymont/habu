@@ -48,8 +48,15 @@
 \ parent and both directories stay. Recover with `kill -QUIT` to the pid on the
 \ first line of <root>/data/postmaster.pid, then remove the two directories;
 \ the postmaster's command line names both (-D and -k). A server that was
-\ SIGKILLed as well has left its segment: `ipcs -m` lists it with no process
-\ attached and `ipcrm -m <id>` removes it.
+\ SIGKILLed as well has left its segment: `ipcs -m -p` lists it with NATTCH 0
+\ and a creator pid that no longer runs, line 7 of a postmaster.pid that still
+\ exists names it as `<key> <id>`, and `ipcrm -m <id>` removes it.
+\ initdb leads a process group of its own (src/lib/process.f SPAWN), so a
+\ SIGKILL to this process or its row's group while initdb runs leaves initdb
+\ running to its end with init for a parent, logging to <root>/initdb.log; its
+\ backends remove their segments and no server starts. Both directories stay:
+\ wait for initdb, or send it SIGTERM (it then ends its step and removes
+\ <root>/data), then remove them.
 \
 \ THE SOCKET DIRECTORY IS NOT UNDER HB_TMP. sun_path holds 104 bytes on macOS
 \ and 108 on Linux, and a pool slot's HB_TMP takes about 100 of them: a socket

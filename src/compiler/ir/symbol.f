@@ -59,12 +59,9 @@
 \ row is touched. Creating a second store pair under one key is the owner's
 \ misuse, as it is for the source registry.
 \
-\ INSERTION ORDER AND CANONICALIZATION. Local ordinals are insertion-ordered
-\ and stable; no canonical encoding may depend on that
-\ order. What canonicalization needs from this file is a deterministic,
-\ byte-faithful iteration surface, and that is SYMBOLS plus the
-\ ordinal-packed identities resolved through LEN@ and COPY: the encoder sorts
-\ symbols by their bytes and emits its own permutation. The filter cell is an
+\ INSERTION ORDER. Local ordinals are insertion-ordered and stable. The
+\ deterministic, byte-faithful iteration surface is SYMBOLS plus the
+\ ordinal-packed identities resolved through LEN@ and COPY. The filter cell is an
 \ in-memory lookup filter only and never serializes. Mutable buckets are private
 \ context scratch, cleared on arena retirement and copied independently on clone.
 \
@@ -257,10 +254,9 @@ private
 \ filter stay two symbols.
 \
 \ WHY A NONCRYPTOGRAPHIC HASH IS THE RIGHT ONE. The value never leaves this
-\ file: it does not serialize, no canonical preimage or persisted digest
-\ contains it, and canonicalization reaches symbols through
-\ SYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
-\ above). Nothing outside ROW-MATCH? can observe which function produced it, so
+\ file: it does not serialize, no persisted digest contains it, and readers
+\ reach symbols through SYMBOLS, LEN@ and COPY (see INSERTION ORDER above).
+\ Nothing outside ROW-MATCH? can observe which function produced it, so
 \ changing it moves no digest anyone has stored. It cheaply rejects candidates;
 \ a cryptographic digest per intern was a steep price for sixteen bits of
 \ reject power that FNV-1a delivers in a few instructions per byte.

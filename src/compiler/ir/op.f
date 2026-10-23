@@ -15,8 +15,7 @@
 \ operation count to validate a defining operation, the operation table needs the
 \ value count to validate an operand - and would break the single all-or-nothing
 \ append this file guarantees. They therefore share one package and one file, and
-\ the file keeps them in separate row tables so a later canonical encoder can
-\ order and renumber each independently.
+\ the file keeps them in separate row tables.
 \
 \ IDENTITY COMES FROM IR-ID. Operations are the existing IR-ID ir-op-id family
 \ and values the ir-value-id family, both packed under this module's key. This
@@ -225,7 +224,7 @@ private
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant DK-RESULT
 1 constant DK-BLOCK
 

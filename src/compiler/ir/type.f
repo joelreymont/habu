@@ -71,30 +71,6 @@
 \ "token<domain>", "mask", "opaque". It depends only on the structural
 \ content, never on interning history or ordinals, and is never parsed by the
 \ compiler.
-\
-\ CANONICAL ORDER MUST RENUMBER STORED REFERENCES. Insertion-ordered ordinals
-\ are stable but not canonical, so a canonical encoder is free to emit the
-\ rows in a structural order of its own choosing. That is strictly more work
-\ here than it is for symbols. A symbol row's identity-bearing content is its
-\ bytes, and bytes do not move when the row order moves, so for the symbol
-\ table a permutation of the rows is the whole job. A type row can store
-\ another row's module-local ordinal instead: POINTER stores its pointee's
-\ ordinal, and a function type's row names a window of ordinals in the list
-\ pool. Permuting this table therefore changes stored row content, and a
-\ canonical type encoder must sort structurally AND renumber every embedded
-\ reference under the permutation it chose. Sorting the rows and emitting them
-\ unchanged is not canonicalization. What two orders agree on is the
-\ denotation of a row - the row unfolded into the structure it references -
-\ never the row content itself, and the denotation is what an encoder has to
-\ preserve. For example, [i8; i16; ptr->0] and [i16; i8; ptr->1] denote the
-\ same types, but their stored row lists are not permutations of each other.
-\
-\ One premise of that statement is easy to miss: not every build order exists.
-\ Because POINTER rejects a pointee ordinal that is not already below the live
-\ count (the acyclicity paragraph above), a type can only be interned after
-\ everything it references. The admissible build orders are exactly the
-\ topological orders of the reference graph, so "any two build orders" means
-\ "any two topological orders" for this table.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -186,7 +162,7 @@ private
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family, mirroring CTARGET: a code may be added but
-\ never renumbered without a schema bump in the canonical encoder.
+\ never renumbered without a schema bump.
 0 constant K-INT
 1 constant K-FLT
 2 constant K-PTR

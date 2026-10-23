@@ -290,7 +290,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant EF-PURE
 1 constant EF-READ
 2 constant EF-WRITE

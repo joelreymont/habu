@@ -1,11 +1,21 @@
-\ render.fs — render the checker's inferred residual stack (DCUR) back to readable
+\ render.f — render the checker's inferred residual stack (DCUR) back to readable
 \ type names. Type variables get canonical letters a,b,c… (assigned bottom-to-top),
 \ generic int=n, old flag=f, float=r; concrete types render by name. The "render"
 \ half of the native sigparse/checker. Needs
-\ checker.fs. Standalone has no emit/+!; chars go through a 1-byte buffer + type.
+\ checker.f. Standalone has no emit/+!; chars go through a 1-byte buffer + type.
 \ Also the checker's sig RECORDER: certified words render "in -- out" to a buffer
 \ and append it to USIGS (installed via RECXT), so callers of certified words
 \ certify too.
+\
+\ REPAIR CLASSES. A refused definition's JSON packet names one refusal
+\ (checker.f REFUSAL@) with its code, verdict, repair_class and suggestion.
+\ repair_class is the stable machine name a consumer keys its repair on:
+\ REPAIR-CLASS picks it here for checker refusals, and tools/check-core.f and
+\ tools/diag-code.f pick it for the refusals the check tool finds itself. A
+\ class means what the suggestion beside it says (SUGGEST-TEXT and the
+\ *-SUGGEST$ words): short prose for choosing the action, which may name the
+\ rule that refused; the raw evidence stays in the expected, actual and
+\ return_stack fields.
 using TFAM
 
 create ECH 1 allot

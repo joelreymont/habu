@@ -3,8 +3,7 @@
 \ family within SPRAB89's Table 8-9 register sets, memcpy/memset under the
 \ standard convention, and bit-exact float division. Each helper is written as
 \ a sequential program; the builder packs it into parallel execute packets and
-\ supplies the load and branch delays itself. Radar's docs/c6x-eabi-helpers.md
-\ records the contracts and decisions.
+\ supplies the load and branch delays itself.
 require src/lib/errors.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f

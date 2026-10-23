@@ -13,7 +13,11 @@
 \ The build prints its output path, or that the image is up to date;
 \ --size-report adds the size table and --report-json writes one JSON report
 \ object instead, with the same numbers in its `size` field
-\ (tools/hb-build-size.f). --preseed-entry, --preseed-seed and --preseed-mode
+\ (tools/hb-build-size.f). That object is schema hb-build-report, version 1
+\ (tools/hb-build-report.f); package HB-BUILD gives checked in-process clients
+\ the same captured state, and its accessors throw E-BUILD-STATUS from the
+\ build's RESET until the build completes, so a failed build never reports an
+\ earlier success. --preseed-entry, --preseed-seed and --preseed-mode
 \ are test entries (tools/hb-build-lib.f). HB_BUILD_TIMEOUT_MS sets the child
 \ builder's elapsed-time deadline, 1 to 2147483647 ms, default 600000; it is
 \ wall time, not a CPU budget, and applies to builders started after it is set.

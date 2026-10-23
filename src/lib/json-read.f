@@ -38,7 +38,9 @@
 \ the source bytes through the matching close and moves past the value.
 \ FIND-KEY searches only the current object, skipping each unmatched value, and
 \ stops at its close; it and STR-EQ? compare decoded bytes without a buffer, so
-\ key length is not bounded by reader storage.
+\ key length is not bounded by reader storage. Nesting past MAX-DEPTH (64) open
+\ containers is E-JR-DEPTH: a capacity failure of the fixed storage, not a
+\ malformed document.
 \
 \ Cursor state machine (STATE): a value token drives one transition each.
 \  ST-VALUE   value required (doc start / after ':' / after ',' in an array)
@@ -65,7 +67,7 @@ require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-O
 -3901 constant E-JR-STRING      \ unterminated string or unescaped control byte in a string
 -3902 constant E-JR-ESCAPE      \ invalid backslash or \uXXXX escape sequence
 -3903 constant E-JR-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
--3904 constant E-JR-DEPTH       \ container nesting exceeds JR-MAX-DEPTH
+-3904 constant E-JR-DEPTH       \ container nesting exceeds MAX-DEPTH
 -3905 constant E-JR-TRAILING    \ non-whitespace after the top-level value
 -3906 constant E-JR-NUMBER      \ malformed number token or integer overflow
 -3907 constant E-JR-EOF         \ input ended while a value/container/key was expected

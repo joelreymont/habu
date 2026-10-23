@@ -17,8 +17,7 @@
 \ function table's count - so splitting them across two files would make each
 \ depend on the other and break the single all-or-nothing append each of them
 \ guarantees. They therefore share one package and one file, and the file keeps
-\ them in separate row tables so a later canonical encoder can order and
-\ renumber each independently.
+\ them in separate row tables.
 \
 \ IDENTITY COMES FROM IR-ID. Functions are the existing IR-ID ir-fun-id family
 \ and blocks the ir-block-id family, both packed under this module's key. This
@@ -246,7 +245,7 @@ private
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant LK-DEFINED
 1 constant LK-REPLACEABLE
 2 constant LK-IMPORTED
