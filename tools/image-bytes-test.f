@@ -107,26 +107,14 @@ s" MSIZE" s" -- n" TRUST
    M-RESET
    s" 12345678901234567" M-LEN M-NAME16-LEN ;
 
-\ Regression for the silent maker-build failure: an image cursor past MSIZE
-\ must throw M-BOUNDS-RC (and M-FAIL now reports the site to stderr instead
-\ of swallowing its message).
-: IBT-CURSOR-OVER ( -- )
-   M-RESET
-   MSIZE M-OFF M-PAD-OFF
-   1 IMG-M8 ;
+: IBT-FILL-OVER ( -- )
+   s" xy" M-LEN M-BYTES-LEN ;
 
-\ A write is measured against the room left: `>LEN` is a cast and not a
-\ validator, and a length near the maximum cell would wrap the sum back under
-\ MSIZE. A refused write leaves the cursor where it was.
 : IBT-FILL-EXACT ( -- )
-   M-RESET
-   MSIZE 1- M-OFF M-PAD-OFF
    s" x" M-LEN M-BYTES-LEN ;
 
-: IBT-FILL-OVER ( -- )
-   M-RESET
-   MSIZE 1- M-OFF M-PAD-OFF
-   s" xy" M-LEN M-BYTES-LEN ;
+: IBT-CURSOR-OVER ( -- )
+   1 IMG-M8 ;
 
 : IBT-WRITE-NEG ( -- )
    M-RESET 1 IMG-M8
@@ -136,9 +124,18 @@ s" MSIZE" s" -- n" TRUST
    M-RESET 1 IMG-M8
    s" x" drop -1 1 rshift >LEN M-BYTES-LEN ;
 
+\ One pad to the last byte serves the three room boundaries in turn. A write is
+\ measured against the room left: `>LEN` is a cast and not a validator, and a
+\ length near the maximum cell would wrap the sum back under MSIZE. A refused
+\ write leaves the cursor where it was, so the exact write that follows fills
+\ the buffer. Regression for the silent maker-build failure: a cursor at MSIZE
+\ must throw M-BOUNDS-RC (and M-FAIL now reports the site to stderr instead of
+\ swallowing its message).
 : IBT-TEST-ROOM ( -- )
-   IBT-FILL-EXACT M-HERE MSIZE T=
+   M-RESET  MSIZE 1- M-OFF M-PAD-OFF
    [: IBT-FILL-OVER ;] M-BOUNDS-RC TTHROWSQ
+   IBT-FILL-EXACT M-HERE MSIZE T=
+   [: IBT-CURSOR-OVER ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-WRITE-NEG ;] M-BOUNDS-RC TTHROWSQ
    M-HERE 1 T=
    [: IBT-WRITE-MAX ;] M-BOUNDS-RC TTHROWSQ
@@ -149,7 +146,6 @@ s" MSIZE" s" -- n" TRUST
    [: IBT-OFF-NEG ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-PAD-BACK ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-NAME-LONG ;] M-BOUNDS-RC TTHROWSQ
-   [: IBT-CURSOR-OVER ;] M-BOUNDS-RC TTHROWSQ
    s" BAD-M-LE32 ( len -- n ) M-LE32@" IBT-CHECK-REJECTS
    s" BAD-M-PAD ( len -- ) M-PAD-OFF" IBT-CHECK-REJECTS ;
 

@@ -17,13 +17,16 @@
 \      the tier, and a borrow that is not returned is invisible to every
 \      exit-code check: the process still exits 0, and every definition the
 \      caller compiles afterwards is counted by a tool that has finished
-\      running. Cases 4 and 5 are the only ones that can see it.
+\      running. The two restore cases are the only ones that can see it.
 \
-\ Cases 1 to 3 are REAL `bin/hb` children, because the tool moves engine-global
-\ state and a suite that ran them in-process would be measuring whatever the
-\ rest of the suite left behind. Cases 4 and 5 must be the opposite - the
-\ borrow is only observable from inside the process that lent it - so they call
-\ COMPILE-FLOOR:MAIN here and read the cell and the tier back afterwards.
+\ The ratchet cases are REAL `bin/hb` children, because the tool moves
+\ engine-global state and a suite that ran them in-process would be measuring
+\ whatever the rest of the suite left behind. The report-only child is
+\ test/compile-floor-gate.f's floor case, which asserts its exit and count
+\ lines before judging its numbers. The borrow cases must be the opposite - the
+\ borrow is only observable from inside the process that lent it - so they read
+\ the cell and the tier back after the load-time run and after a refused
+\ COMPILE-FLOOR:MAIN here.
 \
 \ BOTH CONTROLS RUN FROM TIER 1, and that is the whole point of them. On ARM
 \ the tool measures its tier-0 contrast last, so a MAIN that restored nothing
@@ -79,12 +82,11 @@ variable RC     variable EXITED
 
 : ARG+ ( ptr u8 n -- )  >LEN PROC-ARGV+ ;
 
-\ An empty argument means "no floor": the reporting invocation.
 : RUN-FLOOR ( ptr u8 n -- ) {: arg:ptr au :}
    PROC-ARGV-RESET
    s" --load" ARG+
    TOOL$ ARG+
-   au 0 > if s" --" ARG+  arg au ARG+ then
+   s" --" ARG+  arg au ARG+
    HB$ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME STORE! ;
 
@@ -101,12 +103,6 @@ variable RC     variable EXITED
       OUT$ s" trivial-t0 " CONTAINS? TTRUE
    then
    OUT$ s" compiled 1000 " CONTAINS? TTRUE ;
-
-: TEST-REPORTS ( -- )
-   s" without a floor the tool reports and exits 0" T-LABEL
-   s" " RUN-FLOOR
-   ASSERT-COUNTED
-   RC @ 0 T= ;
 
 : TEST-RATCHET-REFUSES ( -- )
    s" a floor of 0 refuses, names the number, and exits nonzero" T-LABEL
@@ -133,7 +129,8 @@ variable RC     variable EXITED
 \ snapshot taken after the load passes and this one fails.)
 \
 \ The tier is the opposite case and is snapshotted per control, because each
-\ control deliberately moves to tier 1 first.
+\ control deliberately moves to tier 1 first: the load-time run's before the
+\ require, the refusal's in its case.
 
 variable ORIG-XT
 variable PRIOR-TIER
@@ -149,9 +146,13 @@ variable ENTRY-TIER
 : TIER-KEPT? ( -- bool )  tier@ PRIOR-TIER @ = ;
 
 DISPATCH-WORD @ ORIG-XT !
+tier@ ENTRY-TIER !
 
-\ Requiring the tool RUNS it. Empty the mock argv first so that load-time run
-\ is the reporting one whatever argv this file itself was given.
+\ Requiring the tool RUNS it: that run is the success control. Empty the mock
+\ argv first so that load-time run is the reporting one whatever argv this
+\ file itself was given.
+1 TIER:SELECT
+tier@ PRIOR-TIER !
 ARGV:MOCK-CLEAR
 
 ;package
@@ -172,19 +173,15 @@ private
    TIER-KEPT? TTRUE
    tier@ 1 T= ;
 
-\ That these two cases run AT ALL is also the teardown's test. They are the
-\ second and third MAIN of this process (the load-time run was the first), and
-\ the engine refuses a redefinition outright - so a MAIN that left its 300
-\ measurement names behind would not fail an assertion here, it would fail to
-\ reach one, with `duplicate definition: T1`.
-: TEST-RESTORES-AFTER-SUCCESS ( -- )
-   s" a completed in-process run gives the dispatch and the tier back" T-LABEL
-   1 TIER:SELECT
-   tier@ PRIOR-TIER !
-   ARGV:MOCK-CLEAR
-   CATCH-MAIN 0 T=
+: TEST-RESTORES-AFTER-LOAD ( -- )
+   s" the completed load-time run gives the dispatch and the tier back" T-LABEL
    ASSERT-GAVE-BACK ;
 
+\ That the refusal case runs AT ALL is also the teardown's test. It is the
+\ second MAIN of this process (the load-time run was the first), and the
+\ engine refuses a redefinition outright - so a MAIN that left its 300
+\ measurement names behind would not fail an assertion here, it would fail to
+\ reach one, with `duplicate definition: T1`.
 : TEST-RESTORES-AFTER-REFUSAL ( -- )
    s" a refused in-process run gives both back on the way out" T-LABEL
    1 TIER:SELECT
@@ -196,12 +193,10 @@ private
 public
 
 : RUN-ALL ( -- )
-   tier@ ENTRY-TIER !
    T-RESET
-   TEST-REPORTS
+   TEST-RESTORES-AFTER-LOAD
    TEST-RATCHET-REFUSES
    TEST-RATCHET-PASSES
-   TEST-RESTORES-AFTER-SUCCESS
    TEST-RESTORES-AFTER-REFUSAL
    ENTRY-TIER @ TIER:SELECT
    ARGV:USE-SCRIPT

@@ -1,6 +1,9 @@
 \ parse-name walks the live source cursor, including its end-of-input answer.
 \ tok-imm? follows the primary name binding and ignores used publics.
-\ The emitted ELFs remain in HB_TMP as hb-x64-kernel-token and -tok-imm.
+\ Runtime CREATE dispatches through the captured handler. A defining word
+\ calls it with an existing user stack and source; the call must return with
+\ that stack intact. The emitted ELFs remain in HB_TMP as hb-x64-kernel-token,
+\ -tok-imm and -create.
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
 
@@ -64,6 +67,23 @@ using X64LAYOUT
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-kernel-tok-imm" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
 
+: HANDLER, ( -- label )
+   [: RAX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-RM
+      RAX ASM-SINK ENC-INC
+      RAX DATA-REG X64HARNESS:SCRATCH-OFF MEM-OFF ASM-SINK ENC-MOV-MR ;]
+   X64HARNESS:ROUTINE, ;
+
+: BUILD-CREATE ( -- )
+   false X64HARNESS:BOOT-OPEN,
+   HANDLER, CREATEP-CELL X64HARNESS:LABEL-CELL!,
+   41 X64HARNESS:PUSH,
+   s" create" X64HARNESS:CALL-ROW,
+   1 0 X64HARNESS:EXPECT-SCRATCH,
+   41 X64HARNESS:EXPECT-POP,
+   0 X64HARNESS:EXPECT-DEPTH,
+   X64HARNESS:EXPECT-BALANCED,
+   s" hb-x64-kernel-create" TMP-PATH X64HARNESS:BOOT-CLOSE, ;
+
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
@@ -77,6 +97,7 @@ using X64LAYOUT
    X64HARNESS:EXPECT-BALANCED,
    s" hb-x64-kernel-token" TMP-PATH X64HARNESS:BOOT-CLOSE,
    BUILD-IMM
+   BUILD-CREATE
    X64HARNESS:DISPOSE
    T-REPORT ;
 
