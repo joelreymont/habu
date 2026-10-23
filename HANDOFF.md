@@ -128,18 +128,27 @@ On pulsar, at the tree of "Record the x86 runtime-regression census": the
 x86 engine self-built from that tree (rc 0); two-gen prints "ok gen 5
 matches gen 4 byte for byte"; `bin/hb --load test/run.f` ran 485 of 485
 with 97 red. Logs and the red list (`reds.txt`: name, kind, code) are in
-`~/.cache/tmp/jerry-c/x86-49af42cc/`. Against the older census (174 red), 77
-rows turned green and none turned red: every red here was red before.
+`~/.cache/tmp/jerry-c/x86-49af42cc/`.
 
-Each red was attributed by building an x86 engine at `4124c31f` (this
-branch before any Mac lane) and rerunning the suspect rows there:
+The same suite on an x86 engine self-built at `4124c31f` (this branch
+before any Mac lane; `base-4124c31f-suite.log` and `-reds.txt` there) ran
+485 of 485 with 110 red. No row is red here and green there. 96 of the 97
+reds fail there with the same kind and exit code; rows were matched by
+kind and code, not by their inner assertions. The 13 rows red only there
+are fixed by the Mac lanes: aot-named-cells, aot-named-cells-native,
+bare-copy-lint, build-fixpoint-source, compiler-native-eval,
+compiler-native-prefix-declarations, dictionary-capacity,
+error-code-lint-fixtures, gate-pool, name-length, trust-row-refusal,
+wasm-capture and wasm-link-capture. Details:
 
-- compiler-images-build is red before the Mac lanes: at `4124c31f` it exits
+- compiler-images-build is red before the Mac lanes, with a different
+  code: at `4124c31f` it exits 74 in the suite and, run alone, exits
   83 (`ENGINE-ERROR:SEAL-VIOLATION`, a kernel-x64 seal trap); at this tip it
   throws 7179 (`E-LIVE`, src/habu/xref.f, code reclaim refuses a floor with
-  a live routine above it). Both fail at the same point, after the build's
-  "compiled" line and before any image is written, and no Mac commit touches
-  code reclaim or the seal. The 45 rows that exit 75 depend on its images.
+  a live routine above it). Run alone, both fail at the same point, after
+  the build's "compiled" line and before any image is written, and no Mac
+  commit touches code reclaim or the seal. The 45 rows that exit 75
+  depend on its images.
 - check-verify is red before the Mac lanes. Run alone
   (`bin/hb --load tools/check-verify-test.f`), base and tip fail the same
   four asserts: uses-visit counts 11 calls, not 10 (F930), and
@@ -153,7 +162,8 @@ branch before any Mac lane) and rerunning the suspect rows there:
   `aot-native-export-fixed.f`; no suite row runs them) print "captured".
   aot-wid-refuse-address-span, aot-wid-rebase, aot-wid-capture-refusal,
   aot-data-window, aot-payload-graph, aot-payload-unsupported and
-  aot-named-cells-image (CPU budget) were red in the older census too.
+  aot-named-cells-image (CPU budget) fail with the same kind and code at
+  `4124c31f`.
 - engine-runtime-regressions is red only for process/pty (see below).
 
 ## x86 reds the Mac lanes found
@@ -191,11 +201,11 @@ stays unbranched.
   the older test.
   Resolve the conflict to master's test and code, then keep this branch's
   x86 `NO-TIER-ZERO` session and `HB-TARGET-LINUX-X86-64?` selection.
-- Master `e1220a95` folded `docs/x86-64.md` and `docs/porting.md` into
-  `docs/xcomp.md` (its "x86-64" and porting sections) and dissolved
-  `docs/vocabulary.md` and `docs/policy.md` into code headers and
-  `docs/design.md`. This branch still edits `docs/x86-64.md`: carry each
-  edit into `docs/xcomp.md`, or into the header of the code it describes
+- Master, as of `e1220a95`, has folded `docs/x86-64.md` and
+  `docs/porting.md` into `docs/xcomp.md` (its "x86-64" and "Porting"
+  sections) and dissolved `docs/vocabulary.md` and `docs/policy.md` into
+  code headers and `docs/design.md`. This branch still edits
+  `docs/x86-64.md`: carry each edit into `docs/xcomp.md`, or into the header of the code it describes
   (a doc passage that restates code moves to that file's header or is
   dropped), delete the old files, and repoint the links in `INTEL.md` and
   this file.
