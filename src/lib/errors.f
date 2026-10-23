@@ -1462,6 +1462,8 @@
 \ package ZLIB.
 \ Strict UTF-16LE conversion: -9530..-9539, minted in src/lib/utf16.f, which
 \ owns package UTF16.
+\ OS random bytes: -9540..-9549, minted in src/lib/entropy.f, which owns
+\ package ENTROPY.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

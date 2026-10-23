@@ -1259,6 +1259,10 @@ SUITE hashmap
    src/lib/hashmap-test.f
 ;SUITE
 
+SUITE siphash
+   src/lib/siphash-test.f
+;SUITE
+
 SUITE prelude
    src/lib/prelude-test.f
 ;SUITE
