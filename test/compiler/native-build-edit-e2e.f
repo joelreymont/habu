@@ -436,12 +436,9 @@ variable ENGINE-WHITEBOX
 
 : COUNTS ( bool n -- )
    {: hit:bool compiled:n :}
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   hit if
-      OUT$ s" definition hits 0" CONTAINS? TFALSE
-   else
-      OUT$ s" definition hits 0" CONTAINS? TTRUE
-   then
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS?
+      hit if TFALSE else TTRUE then
    compiled 0 > if
       OUT$ s"  compiled 0" CONTAINS? TFALSE
    then
@@ -449,15 +446,9 @@ variable ENGINE-WHITEBOX
       OUT$ s"  compiled 0" CONTAINS? TTRUE
    then ;
 
-: DEFINITION-REUSE ( -- )
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ s" definition hits 0" CONTAINS? TFALSE ;
-
-: EARLY-PREFIX-HITS ( bool -- )
-   {: hit:bool :}
-   OUT$ s" early prefix hits " CONTAINS? TTRUE
-   OUT$ s" early prefix hits 0" CONTAINS?
-      hit if TFALSE else TTRUE then ;
+: FILE-REUSE ( -- )
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ s" files reused 0" CONTAINS? TFALSE ;
 
 : DEFINITION-COMPILE ( -- )
    OUT$ s" compiled " CONTAINS? TTRUE
@@ -1184,7 +1175,7 @@ variable ENGINE-WHITEBOX
    101 201 301 RUN-IMAGE
    PATCH-WRITER
    s" writer" s" cached/hb" s" cache" BUILD SUCCESS
-   DEFINITION-REUSE
+   FILE-REUSE
    DEFINITION-COMPILE
    101 201 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
@@ -1229,12 +1220,10 @@ variable ENGINE-WHITEBOX
    411 PREFIX-WANT ! 411 PREFIX-FILE
    s" prefix-edited" s" cached/hb" s" cache" BUILD SUCCESS
    true 1 COUNTS
-   true EARLY-PREFIX-HITS
    101 201 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
    s" prefix-cold" s" cold/hb" s" cold-cache-prefix" BUILD SUCCESS
    false 1 COUNTS
-   false EARLY-PREFIX-HITS
    101 201 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    NEXT-ROLES COLD-ROLES SAME-ROLES? TTRUE

@@ -1235,12 +1235,12 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-ARTIFACT$ HBB-MAP-DST!
    HBB-ARTIFACT-PREFIX$ s" .map" HBB-ARTIFACT-STEM$ HBB-MAP-DST$ BUILD-CACHE:PRUNE ;
 
-\ A child that opens the definition cache stores its hb-def- entries in this
-\ root and prunes nothing: its dictionary is saved as a product image, so
-\ retention belongs here, in the parent, which is never saved. keep is an
-\ entry this build published or used in the root, which names the directory.
-: HBB-PRUNE-ENTRIES ( ptr u8 n -- ) {: keep:ptr keepu:n :}
-   s" hb-def-" s" .hbd" s" " keep keepu BUILD-CACHE:PRUNE ;
+\ A child that opens the file cache stores its hb-file- objects in this root
+\ and prunes nothing: its dictionary is saved as a product image, so retention
+\ belongs here, in the parent, which is never saved. keep is an entry this
+\ build published or used in the root, which names the directory.
+: HBB-PRUNE-OBJECTS ( ptr u8 n -- ) {: keep:ptr keepu:n :}
+   s" hb-file-" s" .hfo" s" " keep keepu BUILD-CACHE:PRUNE ;
 
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
@@ -1306,7 +1306,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-STORE-OBJECT
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
-   HBB-ARTIFACT$ HBB-PRUNE-ENTRIES
+   HBB-ARTIFACT$ HBB-PRUNE-OBJECTS
    HBB-FINISH ;
 
 \ The selector records separate support and product input spans. Its name is
@@ -1529,7 +1529,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-ENGINE-INPUTS-READ
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
-   HBB-ARTIFACT$ HBB-PRUNE-ENTRIES
+   HBB-ARTIFACT$ HBB-PRUNE-OBJECTS
    HBB-ENGINE-SELECT-WRITE
    HBB-FINISH ;
 
@@ -1766,7 +1766,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-INVALIDATE-DEPS
    HBB-INSTALL-OUT
    HBB-REPL-SAVE-INPUTS
-   HBB-REPL-SUPPORT-PATH$ HBB-PRUNE-ENTRIES
+   HBB-REPL-SUPPORT-PATH$ HBB-PRUNE-OBJECTS
    HBB-FINISH ;
 
 : HBB-BUILD ( -- )

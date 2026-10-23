@@ -132,7 +132,7 @@ only the root's own room), and the deepest row path under it must still fit
 Habu's path capacity.
 
 A checkout keeps one persistent build cache for keyed images and native
-definition entries, the default or one fixed `HABU_BUILD_CACHE`, shared by
+file objects, the default or one fixed `HABU_BUILD_CACHE`, shared by
 every gate run and every engine built from the checkout. Select a fresh
 `HABU_BUILD_CACHE` only for a deliberate cold measurement.
 

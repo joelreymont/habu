@@ -68,13 +68,11 @@ $4B8 constant LIVE-FIXED-OFF
 208 constant F-OSER
 216 constant F-OFIRST
 224 constant FRAME-BYTES
-\ A cache file name: "hb-def-", 64 hex digits, ".hbd".
-75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
 76 constant OBJECT-NAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
-\ definition object.
+\ file object.
 16 constant ENTRY-HEAD
 $cbf29ce484222325 constant FNV-BASIS
 $100000001b3 constant FNV-PRIME
@@ -98,8 +96,8 @@ variable BOOT-N
 BOOT-N NUNIT-OBJECT:PROCESS-CELL
 variable NATIVE?
 variable REPORT?
-variable HIT-N
-variable EARLY-PREFIX-HIT-N
+\ Files installed from their objects in place of being run this session.
+variable REUSED-N
 variable COMPILE-N
 variable DISPATCH-BUSY
 variable DISPATCH-ORIGINAL
@@ -110,8 +108,6 @@ variable DISPATCH-ROLE-KNOWN
 create DISPATCH-ROLE 32 allot
 variable CHECKER-ROLE-KNOWN
 create CHECKER-ROLE 32 allot
-variable KERNEL-ROLE-KNOWN
-create KERNEL-ROLE 32 allot
 PTR-VARIABLE PUBLICATION-OWNER
 variable PUBLICATION-CLEAR-XT
 variable TFAM-RESET-XT
@@ -153,7 +149,6 @@ create HASH-CTX SHA256-CTX-BYTES allot
 create HASH-RAW 32 allot
 create KEY-HEX 64 allot
 create HASH-CELL CELL allot
-create NAME NAME-BYTES allot
 create OBJECT-NAME OBJECT-NAME-BYTES allot
 create FILE-KEY-HEX 64 allot
 create RESULTS-HEX 64 allot
@@ -411,19 +406,6 @@ variable PENDING-KEY-U
 : HASH-START ( ptr u8 n -- )
    HASH-CTX SHA256-BEGIN HASH-S ;
 
-: PIN-KERNEL ( -- )
-   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
-      {: digest:ptr size:n known:bool :}
-   known if
-      size 32 <> if BAD then
-      digest KERNEL-ROLE 32 BYTE-COPY
-   then
-   known KERNEL-ROLE-KNOWN ! ;
-
-: ACTUAL-KERNEL$ ( -- ptr u8 n bool )
-   KERNEL-ROLE KERNEL-ROLE-KNOWN @ if 32 else 0 then
-      KERNEL-ROLE-KNOWN @ 0<> ;
-
 : DIAG-W2 ( ptr u8 n -- )
    {: bytes:ptr size:n :}
    0 begin dup size < while
@@ -454,22 +436,6 @@ variable PENDING-KEY-U
    FNV-BASIS
    whole 0 ?do bytes i + CELL-VIEW @ xor FNV-PRIME * CELL +loop
    size whole ?do bytes i + c@ xor FNV-PRIME * loop ;
-
-\ The object entry for a definition key, as this checker and kernel read it:
-\ hb-def-, hex(HASH-RAW), .hbd in the cache root.
-: ENTRY-PATH ( ptr u8 n -- ptr u8 n )
-   s" habu-definition-entry-v1" HASH-START
-   HASH-S
-   CHECKER-ROLE$ drop HASH-S
-   ACTUAL-KERNEL$ drop HASH-S
-   HASH-CTX HASH-RAW SHA256-END
-   s" hb-def-" {: pre:ptr preu:n :}
-   s" .hbd" {: suf:ptr sufu:n :}
-   pre NAME preu BYTE-COPY
-   HASH-RAW NAME preu + SHA256>HEX
-   suf NAME preu + 64 + sufu BYTE-COPY
-   ROOT$ NAME preu 64 + sufu + PATH-BUF JOIN-PATH
-   PATH-BUF swap ;
 
 \ Read one cache file into ENTRY through one descriptor, sized by that
 \ descriptor, so a same-key writer renaming a larger entry in or a pruner
@@ -510,12 +476,6 @@ variable PENDING-KEY-U
    magic 0 STORE-IMAGE 8 BYTE-COPY
    object 0 STORE-IMAGE ENTRY-HEAD + objectu BYTE-COPY
    size ;
-
-: ENTRY-WRITE ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n object:ptr objectu:n :}
-   keyu 64 <> if BAD then
-   s" HBDOBJ01" object objectu IMAGE {: size:n :}
-   key keyu ENTRY-PATH size IMAGE-WRITE ;
 
 \ The object file for a file key: hb-file-, the key, .hfo in the cache root.
 : FILE-PATH ( ptr u8 n -- ptr u8 n )
@@ -692,8 +652,8 @@ variable PENDING-KEY-U
 
 \ Compile the staged definition under capture, for reason. With store it is
 \ admitted: a definition the compiler calls cacheable and free of ordered
-\ dependencies is published and its entry written. Otherwise it is compiled
-\ only for its file's object.
+\ dependencies is published. It is packed into its file's object while one
+\ is open.
 : COLD-CANDIDATE ( ptr u8 n n ptr u8 n bool -- )
    {: key:ptr keyu:n ord:n reason:ptr reasonu:n store:bool :}
    reason STAGED-REASON ! reasonu STAGED-REASON-U !
@@ -719,10 +679,9 @@ variable PENDING-KEY-U
       storable if
          ord 0 PENDING-KEY PENDING-KEY-U @ NFILE-REF:PUBLISH-DEFINITION
       then
-      storable NUNIT-OBJECT:FILE-OPEN? or if
+      NUNIT-OBJECT:FILE-OPEN? if
          key keyu deps depsu NUNIT-OBJECT:PACK-DEFINITION
             {: object:ptr objectu:n :}
-         storable if key keyu object objectu ENTRY-WRITE then
          object objectu key keyu ord DEF-SPAN
             NUNIT-OBJECT:FILE-ADD-DEFINITION
       then
@@ -1431,6 +1390,7 @@ variable IMPORT-AT
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-OBJECT
    ORIGIN-INSTALL
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
+   1 REUSED-N +!
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
@@ -1578,12 +1538,11 @@ variable IMPORT-AT
    BIND-OWNER ;
 
 : PRINT-COUNTS ( -- )
-   s" definition hits " type HIT-N @ .
-   s" early prefix hits " type EARLY-PREFIX-HIT-N @ .
+   s" files reused " type REUSED-N @ .
    s"  compiled " type COMPILE-N @ . ;
 
 : CLEAR-SCRATCH ( -- )
-   0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N !
+   0 REUSED-N ! 0 COMPILE-N !
    0 NUNIT-DEP:DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
@@ -1597,7 +1556,7 @@ variable IMPORT-AT
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
    HASH-RAW 32 ZERO-SCRATCH
    KEY-HEX 64 ZERO-SCRATCH HASH-CELL CELL ZERO-SCRATCH
-   NAME NAME-BYTES ZERO-SCRATCH PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
+   PATH-BUF FS-PATH-CAP ZERO-SCRATCH ;
 
 \ The process's first session takes the seed's record count.
 : BOOT-TAKE ( -- )
@@ -1609,11 +1568,10 @@ variable IMPORT-AT
    BOOT-TAKE
    s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= NUNIT-DEP:DIAG? !
    0 SEEDED ! 0 DEPTH !
-   0 HIT-N ! 0 EARLY-PREFIX-HIT-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
+   0 REUSED-N ! 0 COMPILE-N ! 0 DISPATCH-BUSY !
    0 DISPATCH-ORIGINAL ! 0 DISPATCH-ROLE-KNOWN !
    0 BORROWED-ORIGINAL ! 0 BORROW-ACTIVE ! 0 BORROW-ACCEPT !
    0 CHECKER-ROLE-KNOWN !
-   0 KERNEL-ROLE-KNOWN !
    NULL-PTR PUBLICATION-OWNER !
    NULL-PTR ORIGIN-RECORD !
    0 PUBLICATION-CLEAR-XT !
@@ -1634,7 +1592,6 @@ variable IMPORT-AT
    ['] XREF-REC NFILE-REF:RECORD-AT!
    NUNIT-CAPTURE:BIND-PRODUCER
    PIN-HOST-CHECKER
-   PIN-KERNEL
    PIN-HOST-SOURCE
    PIN-ORIGIN-GETTER
    BIND-DISPATCH
@@ -1680,7 +1637,7 @@ variable IMPORT-AT
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
-   0 KERNEL-ROLE-KNOWN ! 0 ORIGIN-GETTER !
+   0 ORIGIN-GETTER !
    0 OPAQUE-XT ! 0 PENDING-KEY-U ! 0 OBJECT-U !
    REPORT? @ if PRINT-COUNTS then
    CLEAR-SCRATCH ;
