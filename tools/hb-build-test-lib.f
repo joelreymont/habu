@@ -345,7 +345,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    u 0= if BF-ENGINE-RESET exit then
    a u BF-ENGINE! ;
 
-\ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
+\ The CLI as tools/hb-build.f's header documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs. Its maker
 \ or app-build child runs the engine named second, unless that is empty. The
 \ child uses the process's cache root, made absolute because the child may run

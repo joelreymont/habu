@@ -529,8 +529,7 @@ variable GJA-DIRECT
    s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code." GJA-ASSERT-STR ;
 
 \ The repair class a storage record's reason takes: the renderer's eleven
-\ reasons under their documented class (docs/repair-diagnostics.md, the
-\ storage table), empty for a reason the renderer never writes.
+\ reasons under their class, empty for a reason the renderer never writes.
 : GJA-STORAGE-CLASS$ ( ptr u8 n -- ptr u8 n )
    s" unknown type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" malformed type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN

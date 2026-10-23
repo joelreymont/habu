@@ -62,7 +62,7 @@ variable TARGET-EXPLICIT
 \ sources the build window loads; without it the build is for the engine doing
 \ the building. The window's code runs on this engine while it loads, so an
 \ image for another machine is a second emission this engine makes as it
-\ compiles (docs/x86-64.md "Build and bootstrap"), and a target is only
+\ compiles (docs/xcomp.md "x86-64", "Build and bootstrap"), and a target is only
 \ buildable when this engine has a backend for its machine: the target
 \ architecture's row must be registered here (NBACK:REGISTERED? in
 \ src/compiler/native/backend.f). This entry does

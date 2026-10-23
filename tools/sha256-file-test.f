@@ -206,7 +206,7 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    0 T=
    0 T= ;
 
-\ R3. Two tasks are two pthreads (docs/threads.md): each hashes its own
+\ R3. Two tasks are two pthreads (src/lib/task.f): each hashes its own
 \ 5000-byte pattern a byte at a time through its own context, so the two digests
 \ are interleaved inside every block the scheduler lets them share. A cell shared
 \ anywhere on the streaming path shows up as a digest that is not its bytes'.
