@@ -55,13 +55,17 @@ private
       then
    loop ;
 
+\ A function row's facts: its arity, then the definition's host reason and
+\ location. The reason is the elaborator's whenever the arity is known; a
+\ contract (HOST-ROOT-CONTRACT, the exact constructors a construction call
+\ matches) is a separate fact, absent as a negative type count for a row whose
+\ declaration holds a pointer, a quotation or a variable. An unknown arity, a
+\ body whose facts were abandoned, forces UNKNOWN; else the reason stands.
 : FACTS ( n -- n n n n )
    {: ordinal:n :}
    SOURCE-REASON@ {: reason:n loc:n :}
    ordinal SOURCE-ARITY@ {: din:n dout:n :}
-   din 0 < dout 0 < or ordinal SOURCE-CONTRACT? 0= or if
-      din dout UNKNOWN 0 exit
-   then
+   din 0 < dout 0 < or if din dout UNKNOWN 0 exit then
    din dout reason loc ;
 
 : TAKE-ONE ( NART:emission n n -- )
