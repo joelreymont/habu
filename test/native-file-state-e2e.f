@@ -92,19 +92,19 @@ variable CODE-B-O  variable CODE-B-U
    s" native-file-task-state" TREE
    TASK-FILES
    s" task-cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
    s" task-cold-hb" RUN-TASK-STATE
    s" downstream.f" AT S\" \\ task consumer comment\n" APPEND-FILE
    s" task-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    s" task-warm-hb" RUN-TASK-STATE
    s" a grown prefix reservation moves the cached leaf slot" T-LABEL
    GROWN-PREFIX
    s" task-grown-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
    s" task-grown-hb" RUN-TASK-STATE ;
 
@@ -128,12 +128,12 @@ variable CODE-B-O  variable CODE-B-U
    s" native-file-ffi" TREE
    FFI-FILES
    s" ffi-cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" ffi-unit-source-ran" CONTAINS? TTRUE
    s" ffi-cold-hb" RUN-FFI
    s" ffi-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" ffi-unit-source-ran" CONTAINS? TTRUE
    s" ffi-warm-hb" RUN-FFI ;
 
@@ -154,12 +154,12 @@ variable CODE-B-O  variable CODE-B-U
    s" native-file-task-hooks" TREE
    HOOKS-FILES
    s" hooks-cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" task-hooks-unit-ran" CONTAINS? TTRUE
    s" hooks-cold-hb" RUN-HOOKS
    s" hooks-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" task-hooks-unit-ran" CONTAINS? TTRUE
    s" hooks-warm-hb" RUN-HOOKS ;
 
@@ -209,11 +209,11 @@ public
    s" native-file-state" TREE
    PREPARE
    s" cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    s" warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    PAIR-PATHS
    SAME-CODE? TTRUE

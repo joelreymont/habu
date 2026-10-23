@@ -28,10 +28,10 @@ variable EDIT
    s" --" ARG s" app.f" AT ARG s" app-hb" AT ARG
    builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
 
-: REPORT ( -- ) OUT$ s" definition hits " CONTAINS? TTRUE ;
-: HITS ( -- )
+: REPORT ( -- ) OUT$ s" files reused " CONTAINS? TTRUE ;
+: REUSED ( -- )
    REPORT
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE ;
 
 : MUTATOR ( -- )
    0 INPUT-U !
@@ -44,7 +44,7 @@ variable EDIT
 
 variable REMOVED
 : REMOVE-CONTAINER ( ptr u8 n -- )
-   2dup s" .hbd" ENDS-WITH? if
+   2dup s" .hfo" ENDS-WITH? if
       REMOVE-FILE 1 REMOVED +! exit
    then 2drop ;
 
@@ -213,7 +213,7 @@ variable REMOVED
       S\" s\" number=\" type REVIEW-SYMBOL:NUMBER . cr\ns\" keep=\" type REVIEW-SYMBOL:KEEP . cr\n"
       s" "
       SESSION-PROBE-WITH
-   HITS
+   REUSED
    OUT$ s" symbol-source-ran" CONTAINS? TTRUE
    OUT$ s" number=5" CONTAINS? TTRUE
    OUT$ s" keep=7" CONTAINS? TTRUE ;
@@ -239,8 +239,8 @@ variable REMOVED
    OUT$ s" private=42" CONTAINS? TTRUE
    OUT$ s" global=140" CONTAINS? TTRUE
    DEFER-MOVED-PREFIX$ s" defer.f" s" cache-defer" DEFER-TAIL$ SESSION-PROBE
-   HITS
-   OUT$ S\" definition hits 1\n" CONTAINS? TTRUE
+   REUSED
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" private=42" CONTAINS? TTRUE
    OUT$ s" global=140" CONTAINS? TTRUE ;
 
@@ -260,8 +260,8 @@ variable REMOVED
    OUT$ s" published=42" CONTAINS? TTRUE
    prefix prefixu s" published-defer.f" s" cache-defer-published" tail tailu
       SESSION-PROBE
-   HITS
-   OUT$ S\" definition hits 3\n" CONTAINS? TTRUE
+   REUSED
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" contract=-1" CONTAINS? TTRUE
    OUT$ s" published=42" CONTAINS? TTRUE ;
 
@@ -296,7 +296,7 @@ variable REMOVED
       s" alias-defer.f" s" cache-defer-alias"
       S\" ALIAS-INSTALL\ns\" alias=\" type 40 REVIEW-ALIAS:SLOT . cr\n"
       SESSION-PROBE
-   HITS
+   REUSED
    OUT$ s" alias=42" CONTAINS? TTRUE ;
 
 : DEFER-EFFECT-CASE ( -- )
@@ -326,8 +326,8 @@ variable REMOVED
    OUT$ s" new=140" CONTAINS? TTRUE
    prefix prefixu s" retired.f" s" cache-defer-retired" tail tailu
       SESSION-PROBE
-   HITS
-   OUT$ S\" definition hits 1\n" CONTAINS? TTRUE
+   REUSED
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" old=42" CONTAINS? TTRUE
    OUT$ s" new=140" CONTAINS? TTRUE ;
 
@@ -485,16 +485,16 @@ public
    MUTATOR
    s" app.f" S\" require defs.f\nusing REVIEW-USING\n123 include mutate.f\ninclude child.f\nconstant CARRIED\n;using\n456 s\" arg.f\" included constant ARG-CARRIED\n: MAIN ( -- ) REVIEW-CHILD CARRIED + ARG-CARRIED + . ;\n" PUT
    0 EDIT ! BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 620" CONTAINS? TTRUE
    s" child.f" S\" : REVIEW-CHILD ( -- n ) REVIEW-USING:VALUE 0 + ;\n" PUT
    0 EDIT ! BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ s" 620" CONTAINS? TTRUE
    1 EDIT ! BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ s" 621" CONTAINS? TTRUE
    s" hb-build rebuilds an edited #! file and then finds the load up to date" T-LABEL
    s" defs.f" S\" #!/usr/bin/env hb\npackage REVIEW-USING public : VALUE ( -- n ) 101 ; ;package\n" PUT

@@ -33,10 +33,10 @@ create NAMES NAMES-CAP allot
    s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
-\ The XDG root holds at least one definition cache entry.
-: DEF-CACHED? ( -- bool )
+\ The XDG root holds at least one file object.
+: FILE-CACHED? ( -- bool )
    s" xdg/habu-build" AT NAMES NAMES-CAP FS-LIST:NAMES {: u:n :}
-   NAMES u s" hb-def-" CONTAINS? ;
+   NAMES u s" hb-file-" CONTAINS? ;
 
 public
 : MAIN ( -- )
@@ -48,7 +48,7 @@ public
    BUILD SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 42\n" T$=
-   DEF-CACHED? TTRUE
+   FILE-CACHED? TTRUE
    T-REPORT
    s" native file root artifacts: " type ROOT$ type cr ;
 ;package

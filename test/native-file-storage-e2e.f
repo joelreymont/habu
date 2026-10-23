@@ -32,7 +32,7 @@ DYNAMIC-BUFFER PRODUCT-B u8  variable PRODUCT-B-U
 variable FLIP-N
 variable CURSOR
 variable SINCE
-variable DEF-N
+variable OBJECT-N
 variable STALE-N
 
 : LIB-V1$ ( -- ptr u8 n )
@@ -121,7 +121,7 @@ variable STALE-N
       some OF ENDOF
    ;MATCH ;
 
-: HITS ( -- n ) s" definition hits " COUNT ;
+: REUSED ( -- n ) s" files reused " COUNT ;
 : COMPILED ( -- n ) s" compiled " COUNT ;
 
 : REFUSED? ( -- bool ) ERR$ s" native-cache: entry refused " CONTAINS? ;
@@ -157,20 +157,22 @@ variable STALE-N
    {: name:ptr nameu:n :}
    CACHE-PATH CACHE-U @ name nameu ENTRY-PATH JOIN-PATH ENTRY-PATH swap ;
 
-: DEF? ( ptr u8 n -- bool )
+\ A file object: hb-file-, 64 hex digits, .hfo.
+: OBJECT? ( ptr u8 n -- bool )
    {: name:ptr nameu:n :}
-   name nameu s" hb-def-" STARTS-WITH? name nameu s" .hbd" ENDS-WITH? and ;
+   name nameu s" hb-file-" STARTS-WITH? name nameu s" .hfo" ENDS-WITH? and
+   nameu 76 = and ;
 
-\ Count a definition entry still in the root, and whether it was last dated
+\ Count a file object still in the root, and whether it was last dated
 \ before SINCE.
 : TALLY ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu DEF? 0= if exit then
+   name nameu OBJECT? 0= if exit then
    name nameu ENTRY$ FS-TRY-LSTAT 0= if exit then
-   1 DEF-N +!
+   1 OBJECT-N +!
    FS-STAT-MTIME-SEC@ SINCE @ < if 1 STALE-N +! then ;
 
-: TALLY-RESET ( -- ) 0 DEF-N ! 0 STALE-N ! ;
+: TALLY-RESET ( -- ) 0 OBJECT-N ! 0 STALE-N ! ;
 
 : TALLY-ROOT ( -- )
    TALLY-RESET
@@ -179,7 +181,7 @@ variable STALE-N
 \ Flip the last byte of one cache entry, which its checksum covers.
 : FLIP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu DEF? 0= if exit then
+   name nameu OBJECT? 0= if exit then
    name nameu ENTRY$ {: path:ptr u:n :}
    path u LOAD {: size:n :}
    size 1- BYTES dup c@ $FF xor swap c!
@@ -205,7 +207,9 @@ variable STALE-N
    s" keep" s" app.f" APP-EDITED$ WRITE-IN
    s" keep" SAVED-APP SUCCESS
    ERR$ s" name=LIB-" CONTAINS? TFALSE
-   HITS 4 T=
+   \ A file key names the file's place in the load, not its text: the second
+   \ build stored lib.f's V2 object under V1's name, and app.f is edited.
+   REUSED 0 T=
    COMPILED 0 T=
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
@@ -219,14 +223,14 @@ variable STALE-N
    s" alternate" s" app.f" APP$ WRITE-IN
    s" alternate" ENGINE-CANDIDATE:PATH$ DIRECT SUCCESS
    s" alternate" ENGINE-CANDIDATE:PATH$ DIRECT SUCCESS
-   HITS {: warm:n :}
+   REUSED {: warm:n :}
    COMPILED {: warm-compiled:n :}
    warm 0 > TTRUE
-   TALLY-ROOT DEF-N @ {: first-defs:n :}
+   TALLY-ROOT OBJECT-N @ {: first-objects:n :}
    s" alternate" WHITEBOX-CHILD:ENGINE$ DIRECT SUCCESS
-   TALLY-ROOT DEF-N @ first-defs > TTRUE
+   TALLY-ROOT OBJECT-N @ first-objects > TTRUE
    s" alternate" ENGINE-CANDIDATE:PATH$ DIRECT SUCCESS
-   HITS warm T=
+   REUSED warm T=
    COMPILED warm-compiled T=
    s" alternate" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
@@ -277,12 +281,12 @@ variable STALE-N
    s" race" s" a-hb" IN KEEP-A
    s" race" s" b-hb" IN KEEP-B
    s" race" s" app-a.f" s" a-hb" SAVED SUCCESS
-   HITS 6 T=
+   REUSED 3 T=
    COMPILED 0 T=
    s" race" s" a-hb" RUN-IN SUCCESS
    OUT$ s" 11" CONTAINS? TTRUE
    s" race" s" app-b.f" s" b-hb" SAVED SUCCESS
-   HITS 6 T=
+   REUSED 3 T=
    COMPILED 0 T=
    s" race" s" b-hb" RUN-IN SUCCESS
    OUT$ s" 25" CONTAINS? TTRUE
@@ -301,8 +305,8 @@ variable STALE-N
    s" flip" SAVED-APP SUCCESS
    COMPILED {: cold:n :}
    s" flip" SAVED-APP SUCCESS
-   HITS cold T=
-   FLIP-ALL cold T=
+   REUSED 2 T=
+   FLIP-ALL 2 T=
    s" flip" s" app.f" APP-EDITED$ WRITE-IN
    s" flip" SAVED-APP SUCCESS
    REFUSED? TTRUE
@@ -312,7 +316,7 @@ variable STALE-N
    OUT$ s" 4" CONTAINS? TTRUE
    s" flip" SAVED-APP SUCCESS
    REFUSED? TFALSE
-   HITS cold T=
+   REUSED 2 T=
    COMPILED 0 T= ;
 
 \ tools/hb-build.f on the candidate engine, as BUILD-APP: dir/app.f into
@@ -339,7 +343,7 @@ variable STALE-N
 
 : BACKDATE ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu DEF? 0= if exit then
+   name nameu OBJECT? 0= if exit then
    name nameu ENTRY$ ARG ;
 
 \ Date every entry in the root to 2020, as src/lib/build-cache-retain-test.f
@@ -366,15 +370,18 @@ variable STALE-N
    BACKDATE-ALL
    TIME:EPOCH-SECONDS SINCE !
    TALLY-COLD
-   DEF-N @ 4 T=
-   STALE-N @ 4 T=
+   OBJECT-N @ 2 T=
+   STALE-N @ 2 T=
    s" prune" s" lib.f" LIB-V3$ WRITE-IN
    s" prune" HB-BUILD SUCCESS
+   \ A file key names the file's place in the load, not its text: lib.f's
+   \ edit restores its object under the cold name, and app.f's is reused or
+   \ restored there too, so both cold names stay, newly dated.
    TALLY-COLD
-   DEF-N @ 3 T=
+   OBJECT-N @ 2 T=
    STALE-N @ 0 T=
    TALLY-ROOT
-   DEF-N @ 4 T=
+   OBJECT-N @ 2 T=
    STALE-N @ 0 T= ;
 
 public

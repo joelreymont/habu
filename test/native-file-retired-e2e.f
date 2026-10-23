@@ -65,19 +65,19 @@ public
    s" native-file-retired" TREE
    PREPARE
    s" app.f" s" cold-hb" BUILD SUCCESS
-   OUT$ S\" definition hits 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" retire-source-ran" CONTAINS? TTRUE
    s" app.f" s" warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" retire-source-ran" CONTAINS? TTRUE
    s" cold-hb" S\" 2\n1\n" RUN-PRODUCT
    s" warm-hb" S\" 2\n1\n" RUN-PRODUCT
    s" absent-app.f" s" absent-cold-hb" BUILD SUCCESS
    OUT$ s" prefix-retire-source-ran" CONTAINS? TTRUE
    s" absent-app.f" s" absent-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" prefix-retire-source-ran" CONTAINS? TTRUE
    s" absent-cold-hb" S\" 0\n1\n" RUN-PRODUCT
    s" absent-warm-hb" S\" 0\n1\n" RUN-PRODUCT
@@ -85,8 +85,8 @@ public
    s" late-app.f" s" late-cold-hb" BUILD SUCCESS
    OUT$ s" late-retire-source-ran" CONTAINS? TTRUE
    s" late-app.f" s" late-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" late-retire-source-ran" CONTAINS? TTRUE
    s" late-cold-hb" S\" 1\n" RUN-PRODUCT
    s" late-warm-hb" S\" 1\n" RUN-PRODUCT
@@ -112,8 +112,8 @@ public
    s" failed-origin-app.f" s" failed-origin-cold-hb" BUILD SUCCESS
    OUT$ s" failed-origin-ran" CONTAINS? TTRUE
    s" failed-origin-app.f" s" failed-origin-warm-hb" BUILD SUCCESS
-   OUT$ s" definition hits " CONTAINS? TTRUE
-   OUT$ S\" definition hits 0\n" CONTAINS? TFALSE
+   OUT$ s" files reused " CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    OUT$ s" failed-origin-ran" CONTAINS? TTRUE
    s" failed-origin-cold-hb" S\" 4\n5\n" RUN-PRODUCT
    s" failed-origin-warm-hb" S\" 4\n5\n" RUN-PRODUCT
