@@ -41,7 +41,8 @@ private
 \ name came from other text: what the origin journal records; slot 11 the
 \ input rows; slot 14 the dependency rows. The file's own records fall in
 \ segments, each a maximal run between child loads: slot 12 holds one
-\ EVENT-BYTES row per segment and per child load, in load order. Over the
+\ EVENT-BYTES row per segment and per child load, in load order, each
+\ segment row followed by the FFI registry rows its code declared. Over the
 \ segments in order, slot 1 holds one RECORD-BYTES row per record, slot 6 the
 \ DATA they allotted, slot 8 their require rows (length, then path) and slot
 \ 4 one byte per wordlist they made, 1 when it is protected. Slot 3 holds the
@@ -73,6 +74,11 @@ private
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
 \ records, DATA bytes, requires, wordlists, 0. LOAD: kind, load kind, source
 \ offset in the loading file, path offset and length, root offset and length.
+\ FFI-LIB: kind, path offset and length, the library's index. FFI-FN: kind,
+\ symbol offset and length, library index, argument and spill counts, the
+\ function's index. FFI-SCOPE: kind, role (0 the declarer's selection when
+\ the segment opened, 1 when it closed), library index, the scope wordlist's
+\ reference and 1 when a scope was stated. Unused cells are 0.
 56 constant EVENT-BYTES
 \ A slot row: the cell's DATA reference, its kind, and its value's
 \ reference, 0 for a null value.
@@ -90,13 +96,23 @@ private
 5 constant RK-PACKAGE
 1 constant EV-SEGMENT
 2 constant EV-LOAD
+\ After a SEGMENT row, in order: the declarer's selection at the segment's
+\ open, one row per library or function
+\ declaration it made, reused rows included, and the selection at its close
+\ when that differs.
+3 constant EV-FFI-LIB
+4 constant EV-FFI-FN
+5 constant EV-FFI-SCOPE
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
 \ with, the address cell row before the open segment's first, the bytes its
 \ segments' before-images copied, the earlier DATA sites recorded when it
 \ opened, the checker slice bytes and reference entries when it opened, its
-\ checker slice count, and 1 while a checker mark is open. A child file's
+\ checker slice count, 1 while a checker mark is open, and the open segment's
+\ FFI registry marks: the selected bank's next function index, the tables'
+\ room and the declarer's selection (library, scope wordlist, 1 when a scope
+\ was stated). A child file's
 \ bytes and sites follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
@@ -118,7 +134,12 @@ private
 17 constant FO-CKORD
 18 constant FO-SLICES
 19 constant FO-CKMARK
-20 constant FO-CELLS
+20 constant FO-SEG-FN
+21 constant FO-SEG-ROOM
+22 constant FO-SEG-SEL-LIB
+23 constant FO-SEG-SEL-WID
+24 constant FO-SEG-SEL-SET
+25 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -206,6 +227,19 @@ DYNAMIC-BUFFER PIN-OWNS n
 variable PINS-N
 variable PINS-AT
 variable OPEN-PINS
+\ The open segment's FFI declarations, reused or appended, and its
+\ declarers' selection writes, as the registry's observer reports them: kind
+\ and index pairs in order. Segments never nest (FILE-BEGIN closes the
+\ parent's before the child's opens), so one journal serves. The observer is
+\ set exactly while a segment is open.
+DYNAMIC-BUFFER FFI-OBS n
+variable OBS-N
+\ FFI:OBSERVE's kinds: a library, a function, a selection write (index 0).
+1 constant OBS-LIB
+2 constant OBS-FN
+3 constant OBS-SCOPE
+variable OBS-ON
+variable OPEN-FFI
 variable DEFS-U
 variable INDEX-U
 variable INPUTS-U
@@ -248,6 +282,15 @@ variable INS-DEFS-OFF
 PTR-VARIABLE IMPORT-SEC
 variable IMPORT-NREFS
 CAST: REQ-COUNT-XT ( n -- [ -- n ] )
+CAST: DEF-ACTION-XT ( n -- [ -- ] )
+CAST: DEF-NUM-XT ( n -- [ -- n ] )
+CAST: FFI-OBSERVE-XT ( n -- [ [ n n -- ] -- ] )
+CAST: FFI-SELECTION-XT ( n -- [ -- n n bool ] )
+CAST: FFI-LIB-ROW-XT ( n -- [ n -- ptr u8 n ] )
+CAST: FFI-FN-ROW-XT ( n -- [ n -- ptr u8 n n n n ] )
+CAST: FFI-PATH-XT ( n -- [ ptr u8 n -- n ] )
+CAST: FFI-FN-XT ( n -- [ ptr u8 n n n n -- n ] )
+CAST: FFI-SELECT-XT ( n -- [ n n bool -- ] )
 CAST: REQ-LEN-XT ( n -- [ n -- n ] )
 CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
 
@@ -363,6 +406,25 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
    {: xt:n :}
    xt 0= if 0 exit then
    xt REQ-COUNT-XT execute ;
+
+\ Whether this engine's FFI registry reports its declarations. The observer
+\ decides for every FFI producer: they land together.
+: FFI-BOUND? ( -- bool ) s" FFI:OBSERVE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> ;
+: FFI-XT ( ptr u8 n -- n ) NUNIT-CAPTURE:BOUND-PRODUCER-XT ;
+: FFI-N ( ptr u8 n -- n ) FFI-XT DEF-NUM-XT execute ;
+: FFI-SELECTION ( -- n n bool ) s" FFI-DECL:SELECTION" FFI-XT FFI-SELECTION-XT execute ;
+
+\ The registry's observer: journal one declaration of the open segment.
+: OBS+ ( n n -- )
+   {: kind:n idx:n :}
+   OBS-N @ 1+ 2 * FFI-OBS-RESERVE
+   kind OBS-N @ 2 * FFI-OBS ! idx OBS-N @ 2 * 1+ FFI-OBS !
+   1 OBS-N +! ;
+: OBS-SET ( -- ) ['] OBS+ s" FFI:OBSERVE" FFI-XT FFI-OBSERVE-XT execute 1 OBS-ON ! ;
+\ OBS-ON guards it: before the producers bind, FFI-BOUND? would throw.
+: OBS-CLEAR ( -- )
+   OBS-ON @ 0= if exit then
+   s" FFI:UNOBSERVE" FFI-XT DEF-ACTION-XT execute 0 OBS-ON ! ;
 
 \ Whether open file k holds a refusal reason.
 : FRAME-REFUSED? ( n -- bool )
@@ -535,7 +597,61 @@ private
    AOT-ARM:HERE-N FO-SEG-HERE FO !
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO !
    AOT-ARM:WIDN FO-SEG-WID FO !
-   0 IMAGE-U ! 0 KCELLS-HELD ! ;
+   0 IMAGE-U ! 0 KCELLS-HELD !
+   FFI-BOUND? 0= if exit then
+   s" FFI:NEXT-FN" FFI-N FO-SEG-FN FO !
+   s" FFI:MARK" FFI-N FO-SEG-ROOM FO !
+   FFI-SELECTION if 1 else 0 then FO-SEG-SEL-SET FO !
+   FO-SEG-SEL-WID FO ! FO-SEG-SEL-LIB FO !
+   0 OBS-N ! OBS-SET ;
+
+\ The open segment's FFI declarations against its open marks: a row in the
+\ bank the segment did not select refuses ffi-bank, and that names the
+\ cause, so it goes first; a table that grew refuses ffi-grown. A selection
+\ write names no row. Whether the declarer's selection changed.
+: FFI-SEG-CK ( -- bool )
+   s" FFI:MAKER-BANK" FFI-N {: bank:n :}
+   FO-SEG-FN FO @ bank and {: own:n :}
+   OBS-N @ 0 ?do
+      i 2 * FFI-OBS @ OBS-SCOPE <> if
+         i 2 * 1+ FFI-OBS @ bank and own <> if s" ffi-bank" FILE-REFUSE then
+      then
+   loop
+   s" FFI:MARK" FFI-N FO-SEG-ROOM FO @ <> if s" ffi-grown" FILE-REFUSE then
+   FFI-SELECTION {: lib:n wid:n stated:bool :}
+   stated if 1 else 0 then FO-SEG-SEL-SET FO @ <>
+   wid FO-SEG-SEL-WID FO @ <> or lib FO-SEG-SEL-LIB FO @ <> or ;
+
+\ The open segment's FFI rows after its SEGMENT row, whose first ordinal
+\ they carry. A segment that declared or wrote the selection records the
+\ selection it opened with: a selecting word that leaves the selection as it
+\ found it adds no other row, and a hit must find that selection live to
+\ leave the one a cold run would. A segment with no FFI event depends on no
+\ FFI state, so it records none: an ambient selection it cannot key would
+\ refuse it (EVENT-OUT). A selection write carries no row of its own.
+: FFI-ROWS+ ( n bool -- )
+   {: first:n sel:bool :}
+   FFI-BOUND? 0= if exit then
+   OBS-N @ 0<> if
+      EV-FFI-SCOPE first 0 FO-SEG-SEL-LIB FO @ FO-SEG-SEL-WID FO @
+         FO-SEG-SEL-SET FO @ 0 0 0 EV+
+   then
+   OBS-N @ 0 ?do
+      i 2 * FFI-OBS @ {: kind:n :}
+      i 2 * 1+ FFI-OBS @ {: idx:n :}
+      kind OBS-LIB = if
+         idx s" FFI:LIB-ROW@" FFI-XT FFI-LIB-ROW-XT execute {: path:ptr u:n :}
+         EV-FFI-LIB first path u NAMES+ u idx 0 0 0 0 EV+
+      then
+      kind OBS-FN = if
+         idx s" FFI:FN-ROW@" FFI-XT FFI-FN-ROW-XT execute
+            {: name:ptr u:n lib:n argc:n spills:n :}
+         EV-FFI-FN first name u NAMES+ u lib argc spills idx 0 EV+
+      then
+   loop
+   sel 0= if exit then
+   FFI-SELECTION {: lib:n wid:n stated:bool :}
+   EV-FFI-SCOPE first 1 lib wid stated if 1 else 0 then 0 0 0 EV+ ;
 
 \ Close the innermost file's open segment as one SEGMENT row, or none when
 \ it added no record, DATA, require, wordlist or address cell row. HERE or
@@ -546,6 +662,7 @@ private
 \ segment changed are recorded whether or not it adds a row; a kernel cell
 \ it left changed refuses it.
 : SEGMENT-CLOSE ( -- )
+   OBS-CLEAR
    FO-SEG-ORD FO @ {: first:n :}
    ndict@ first - {: count:n :}
    count 0 < if BAD then
@@ -564,8 +681,10 @@ private
    then
    KCELLS-CHECK
    FILE-REFUSED? 0= if IMAGE-DIFF then
+   FFI-BOUND? if FFI-SEG-CK else false then {: sel:bool :}
    SLOT-COUNT slot - {: slots:n :}
-   count bytes or reqs or wids or slots or 0= if exit then
+   count bytes or reqs or wids or slots or 0= OBS-N @ 0= and sel 0= and
+      if exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
@@ -573,7 +692,8 @@ private
    slots 0 > if
       slot ADDRESS-CELLS:ROW@ row 11 EV !
       slot slots + 1- ADDRESS-CELLS:ROW@ row 12 EV !
-   then ;
+   then
+   first sel FFI-ROWS+ ;
 
 \ The end of open file k's event rows, where the next frame's begin.
 : EV-HI ( n -- n )
@@ -594,8 +714,6 @@ private
 : DEF-OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
 
-CAST: DEF-ACTION-XT ( n -- [ -- ] )
-CAST: DEF-NUM-XT ( n -- [ -- n ] )
 CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
 
 : OWNER-CELL ( n -- n ) DEF-OWNER + CELL-VIEW @ ;
@@ -740,6 +858,8 @@ public
    then
    \ Without process cells the seed and the floor would survive into an image.
    PROCESS-ABSENT @ if s" process-cell-absent" WHY+ then
+   \ Without the registry's observer a declaration would leave no row.
+   FFI-BOUND? 0= if s" ffi-mark-absent" WHY+ then
    CHECK-MARK ;
 
 \ Close the innermost frame; its parent's next segment opens.
@@ -754,7 +874,8 @@ public
    FO-CHECK FO @ CHECK-U !
    FO-CKORD FO @ CKORD-N !
    -1 FO-DEPTH +!
-   FILE-OPEN? if SEGMENT-OPEN CHECK-MARK then ;
+   \ A hit or a throw pops a file without its segment's close.
+   FILE-OPEN? if SEGMENT-OPEN CHECK-MARK else OBS-CLEAR then ;
 
 \ The retire hook (XREF:BEFORE-RETIRE!). An object's record rows carry no
 \ time: a replay makes a retired row retired where the row stands. So only a
@@ -794,6 +915,7 @@ public
    INPUTS+ ;
 
 : CLOSE ( -- )
+   OBS-CLEAR 0 OBS-N ! 0 OPEN-FFI ! FFI-OBS-RELEASE
    0 DEFS-U ! 0 INDEX-U ! 0 INPUTS-U ! 0 WHY-U ! 0 FO-DEPTH !
    0 EVENTS-N ! 0 NAMES-U ! 0 OUT-U ! 0 ROW-AT !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
@@ -831,6 +953,19 @@ public
 IMAGE-FLOOR PROCESS-CELL
 
 private
+
+CAST: OBSERVER-CELL-XT ( n -- [ -- ptr n ] )
+\ The registry's observer belongs to the open segment: a process cell, so an
+\ image captured inside one stores 0 while this builder keeps it. Looked up
+\ as PROCESS-CELL is: an engine without it reports no declarations.
+: FFI-OBSERVER-CELL ( -- )
+   s" FFI" -1 search-wl {: wid:n :}
+   wid 0= if exit then
+   s" OBSERVER-CELL" wid search-wl {: xt:n :}
+   xt 0= if exit then
+   xt OBSERVER-CELL-XT execute PROCESS-CELL ;
+
+FFI-OBSERVER-CELL
 
 \ A definition payload uses the same outer envelope as FILE but owns no FILE
 \ rows or DATA prefix. Section 1 is one 80-byte metadata row;
@@ -1649,6 +1784,24 @@ private
       row 2 EV @ OUT-N row 4 EV @ OUT-N row 6 EV @ OUT-N
       row 8 EV @ OUT-N 0 OUT-N exit
    then
+   row 0 EV @ {: kind:n :}
+   kind EV-FFI-LIB = if
+      kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
+      row 4 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+   then
+   kind EV-FFI-FN = if
+      kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
+      row 4 EV @ OUT-N row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N exit
+   then
+   \ The scope's reference is taken here: BEGIN-FILE-REFS resets the
+   \ references after the segments close. It binds no owner: FFI-ROWS-HOLD?
+   \ misses when an imported wordlist's package is gone.
+   kind EV-FFI-SCOPE = if
+      row 4 EV @ WID-REF {: ref:n :}
+      ref 0= if s" ffi-scope-unknown" FILE-REFUSE then
+      kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N ref OUT-N
+      row 5 EV @ OUT-N 0 OUT-N 0 OUT-N exit
+   then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
    row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N ;
@@ -2378,6 +2531,17 @@ private
    {: ref:n refs:n :}
    ref 0 > ref refs <= and ;
 
+\ Reference ref names a row of kind in the reference section refs; a LOCAL
+\ row names the file's own item at most max, with no addend.
+: REF-ROW-CK ( ptr u8 n n n -- )
+   {: refs:ptr ref:n kind:n max:n :}
+   ref refs 0 U64-AT REF-CK? 0= if BAD then
+   refs 24 + ref 1- 32 * + {: row:ptr :}
+   row 0 U64-AT kind <> if BAD then
+   row 1 U64-AT NFILE-REF:LOCAL <> if exit then
+   row 2 U64-AT {: item:n :}
+   item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
+
 \ A SEGMENT event row starting at or past end, the previous segment's last
 \ ordinal; the new end.
 : SEGMENT-CK ( ptr u8 n -- n )
@@ -2406,29 +2570,53 @@ private
    row 5 U64-AT row 6 U64-AT namesu SPAN-CK
    1 OPEN-LOADS +! ;
 
-: EVENTS-CK ( ptr u8 n n -- )
-   {: evs:ptr evsu:n namesu:n :}
+\ An FFI row after a segment: a library path or symbol a span of the names
+\ section without a 0 byte, both of which the engine refuses, counts within
+\ its limits, and a scope row's wordlist a reference the file names.
+: FFI-CK ( ptr u8 ptr u8 n ptr u8 -- )
+   {: row:ptr names:ptr namesu:n refs:ptr :}
+   FFI-BOUND? 0= if BAD then
+   1 OPEN-FFI +!
+   row 0 U64-AT {: kind:n :}
+   kind EV-FFI-SCOPE = if
+      row 1 U64-AT {: role:n :}
+      row 4 U64-AT {: stated:n :}
+      role 0 < role 1 > or stated 0 < or stated 1 > or if BAD then
+      refs row 3 U64-AT NFILE-REF:WID OPEN-WIDS @ 1- REF-ROW-CK
+      row 5 U64-AT row 6 U64-AT or 0<> if BAD then exit
+   then
+   row 1 U64-AT {: off:n :}
+   row 2 U64-AT {: len:n :}
+   off len namesu SPAN-CK
+   len 0 ?do names off + i + c@ 0= if BAD then loop
+   kind EV-FFI-LIB = if
+      \ FFI's PATH-ROOM: a path of 1 to PATH-CAP bytes.
+      len 1 < len PATH-CAP > or if BAD then
+      row 4 U64-AT row 5 U64-AT or row 6 U64-AT or 0<> if BAD then exit
+   then
+   len 1 < len s" FFI:SYMBOL-CAP" FFI-N > or if BAD then
+   s" FFI:MAX-ARGS" FFI-N {: cap:n :}
+   row 4 U64-AT {: argc:n :}
+   row 5 U64-AT {: spills:n :}
+   argc 0 < argc cap > or spills 0 < or spills cap > or if BAD then ;
+
+: EVENTS-CK ( ptr u8 n ptr u8 n ptr u8 -- )
+   {: evs:ptr evsu:n names:ptr namesu:n refs:ptr :}
    evsu EVENT-BYTES mod 0<> if BAD then
-   0 evsu EVENT-BYTES / 0 ?do
-      {: end:n :}
+   0 EV-LOAD evsu EVENT-BYTES / 0 ?do
+      {: end:n prev:n :}
       evs i EVENT-BYTES * + {: row:ptr :}
       row 0 U64-AT {: kind:n :}
       kind EV-SEGMENT = if row end SEGMENT-CK else
-         kind EV-LOAD <> if BAD then
-         row namesu LOAD-CK end
+         kind EV-LOAD = if row namesu LOAD-CK end else
+            kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
+            \ FFI rows follow their segment's row.
+            prev EV-LOAD = if BAD then
+            row names namesu refs FFI-CK end
+         then
       then
-   loop drop ;
-
-\ Reference ref names a row of kind in the reference section refs; a LOCAL
-\ row names the file's own item at most max, with no addend.
-: REF-ROW-CK ( ptr u8 n n n -- )
-   {: refs:ptr ref:n kind:n max:n :}
-   ref refs 0 U64-AT REF-CK? 0= if BAD then
-   refs 24 + ref 1- 32 * + {: row:ptr :}
-   row 0 U64-AT kind <> if BAD then
-   row 1 U64-AT NFILE-REF:LOCAL <> if exit then
-   row 2 U64-AT {: item:n :}
-   item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
+      kind
+   loop 2drop ;
 
 \ Reference ref of the reference section refs is the file's own wordlist item.
 : LOCAL-WID? ( ptr u8 n n -- bool )
@@ -2591,10 +2779,11 @@ private
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
    0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
-   3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
-   12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
+   0 OPEN-FFI !
+   3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
+   12 NUNIT-FILE:SECTION$ names namesu rows EVENTS-CK
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
    4 NUNIT-FILE:SECTION$ PROT-CK
@@ -2823,11 +3012,76 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
+\ The viewed object's event row k and the rows in slot 12.
+: OBJ-EV ( n -- ptr u8 ) {: k:n :} 12 NUNIT-FILE:SECTION$ drop k EVENT-BYTES * + ;
+: OBJ-EVS ( -- n ) 12 NUNIT-FILE:SECTION$ nip EVENT-BYTES / ;
+\ An FFI-LIB or FFI-FN row's path or symbol, and the index it stores.
+: FFI-NAME$ ( ptr u8 -- ptr u8 n )
+   {: row:ptr :}
+   3 NUNIT-FILE:SECTION$ drop row 1 U64-AT + row 2 U64-AT ;
+: FFI-IDX ( ptr u8 -- n )
+   {: row:ptr :}
+   row 0 U64-AT EV-FFI-LIB = if row 3 U64-AT else row 6 U64-AT then ;
+
+
+\ The index event row k's first earlier row of its kind with the same
+\ descriptor stores, or -1: within one install the earlier row declares it.
+: EARLIER-IDX ( n -- n )
+   {: k:n :}
+   k OBJ-EV {: row:ptr :}
+   row 0 U64-AT {: kind:n :}
+   row FFI-NAME$ {: name:ptr u:n :}
+   k 0 ?do
+      i OBJ-EV {: prev:ptr :}
+      prev 0 U64-AT kind = if
+         prev FFI-NAME$ name u STR=
+         kind EV-FFI-FN = if
+            prev 3 U64-AT row 3 U64-AT = and
+            prev 4 U64-AT row 4 U64-AT = and
+            prev 5 U64-AT row 5 U64-AT = and
+         then
+         if prev FFI-IDX unloop exit then
+      then
+   loop
+   -1 ;
+
+: FFI-LIB-INDEX ( ptr u8 n -- n ) s" FFI:LIB-INDEX" FFI-XT FFI-PATH-XT execute ;
+: FFI-FN-INDEX ( ptr u8 n n n n -- n ) s" FFI:FN-INDEX" FFI-XT FFI-FN-XT execute ;
+
+\ The FFI rows after event row seg, replayed: each library and function
+\ declared again answers the index it stores, as FFI-ROWS-HOLD? found, and
+\ the declarer's selection the segment left is selected. The replay is the
+\ install's own, so the open segment's observer does not journal it.
+: INSTALL-FFI ( n -- )
+   {: seg:n :}
+   OPEN-FFI @ 0= if exit then
+   OBS-ON @ 0<> {: on:bool :}
+   OBS-CLEAR
+   OBJ-EVS seg 1+ ?do
+      i OBJ-EV {: row:ptr :}
+      row 0 U64-AT {: kind:n :}
+      kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if leave then
+      kind EV-FFI-LIB = if
+         row FFI-NAME$ s" FFI:LIBRARY-PATH" FFI-XT FFI-PATH-XT execute
+         row FFI-IDX <> if BAD then
+      then
+      kind EV-FFI-FN = if
+         row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT
+         s" FFI:DECLARE-SPILLED" FFI-XT FFI-FN-XT execute
+         row FFI-IDX <> if BAD then
+      then
+      kind EV-FFI-SCOPE = row 1 U64-AT 1 = and if
+         row 2 U64-AT row 3 U64-AT NFILE-REF:REF>WID row 4 U64-AT 0<>
+         s" FFI-DECL:SELECT" FFI-XT FFI-SELECT-XT execute
+      then
+   loop
+   on if OBS-SET then ;
+
 \ Event row seg, a segment: its records, the wordlists they make and their
-\ protection, then its checker slice.
+\ protection, its FFI rows, then its checker slice.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
-   12 NUNIT-FILE:SECTION$ drop seg EVENT-BYTES * + {: ev:ptr :}
+   seg OBJ-EV {: ev:ptr :}
    ev 0 U64-AT EV-SEGMENT <> if BAD then
    ev 1 U64-AT {: first:n :}
    ev 2 U64-AT {: count:n :}
@@ -2841,6 +3095,7 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    \ A leaf's only segment owns the protection bytes from the first.
    4 NUNIT-FILE:SECTION$ drop {: prot:ptr :}
    wids 0 ?do prot i + c@ 1 = if widbase i + REC-PROTECT then loop
+   seg INSTALL-FFI
    0 IMPORT-CHECKER ;
 
 public
@@ -2880,12 +3135,12 @@ public
    NUNIT-FILE:RESET-KEEP ;
 
 \ What OPEN-FILE found: definitions, dependency rows, input rows, records,
-\ DATA bytes, requires, loads, segments, slots, updates, pins and checker
-\ slices.
-: FILE-COUNTS ( -- n n n n n n n n n n n n )
+\ DATA bytes, requires, loads, segments, slots, updates, pins, checker
+\ slices and FFI rows.
+: FILE-COUNTS ( -- n n n n n n n n n n n n n )
    OPEN-DEFS @ OPEN-ROWS @ OPEN-INPUTS @ OPEN-RECS @ OPEN-DATA @
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
-   OPEN-PINS @ OPEN-CHECKS @ ;
+   OPEN-PINS @ OPEN-CHECKS @ OPEN-FFI @ ;
 
 \ The viewed object's first record row whose name is live in the wordlist
 \ the install would define it into, and true; NULL-PTR 0 false when none.
@@ -2894,14 +3149,76 @@ public
 \ so such an object is a miss decided before any install side effect. The
 \ file's references are prepared at the ordinal the install takes, as
 \ INSTALL-SEGMENT prepares them first; nothing is written to the dictionary or
-\ the manifest. A BAD from REF>WID is the object's malformation: its rows
-\ passed OBJECT-FRESH?.
+\ the manifest. A BAD from REF>WID is the object's malformation: its record
+\ rows passed OBJECT-FRESH? and its scope rows FFI-ROWS-HOLD?.
 : LIVE-NAME? ( -- ptr u8 n bool )
    13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
    OPEN-RECS @ 0 ?do
       i ROW-LIVE? if i OBJ-ROW ROW-NAME$ true unloop exit then
    loop
    NULL-PTR 0 false ;
+
+
+\ Whether the facts the viewed object's FFI rows consumed still hold, declaring
+\ nothing: the index each declaration would answer, like a resolution row, and
+\ the declarer's selection the segment opened with. A row expects the index
+\ of an earlier row of the object with its descriptor, else the live row's,
+\ else the next new one. A function's library must be one DECLARE-SPILLED
+\ takes at the replay, and every scope row's imported wordlist must still
+\ have its package, which no dependency row checks, so a hit never throws.
+\ The references are prepared as LIVE-NAME? prepares them.
+: FFI-ROWS-HOLD? ( -- bool )
+   OPEN-FFI @ 0= if true exit then
+   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
+   s" FFI:NEXT-LIB" FFI-N {: nextlib:n :}
+   s" FFI:NEXT-FN" FFI-N {: nextfn:n :}
+   s" FFI:MAKER-BANK" FFI-N {: bank:n :}
+   0 0 OBJ-EVS 0 ?do
+      {: libs:n fns:n :}
+      i OBJ-EV {: row:ptr :}
+      row 0 U64-AT {: kind:n :}
+      kind EV-FFI-SCOPE = if
+         row 1 U64-AT 0= {: entry:bool :}
+         row 3 U64-AT {: ref:n :}
+         ref NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+            \ A segment's opening selection predates the file's wordlists.
+            entry if false unloop exit then
+         else
+            ref NFILE-REF:REF>WID? 0= if drop false unloop exit then
+            {: want:n :}
+            entry if
+               FFI-SELECTION {: lib:n wid:n stated:bool :}
+               lib row 2 U64-AT <> wid want <> or
+                  stated if 1 else 0 then row 4 U64-AT <> or
+                  if false unloop exit then
+            then
+         then
+      then
+      kind EV-FFI-FN = if
+         row 3 U64-AT {: lib:n :}
+         lib 0<> if
+            lib 0 < lib bank and nextlib bank and <> or
+               lib bank invert and 1 < or lib nextlib libs + >= or
+               if false unloop exit then
+         then
+      then
+      kind EV-FFI-LIB = kind EV-FFI-FN = or if
+         i EARLIER-IDX {: earlier:n :}
+         earlier 0 >= if earlier libs fns else
+            kind EV-FFI-LIB = if
+               row FFI-NAME$ FFI-LIB-INDEX {: live:n :}
+               live 0<> if live libs fns else nextlib libs + libs 1+ fns then
+            else
+               row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT FFI-FN-INDEX
+                  {: live:n :}
+               live 0 >= if live libs fns else nextfn fns + libs fns 1+ then
+            then
+         then {: want:n libs2:n fns2:n :}
+         want row FFI-IDX <> if false unloop exit then
+         libs2 fns2
+      else libs fns then
+   loop
+   2drop true ;
 
 \ Install the FILE object bytes holds under key at the next ordinal: a leaf,
 \ one segment and no loads, as OPEN-FILE found it.

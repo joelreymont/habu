@@ -102,7 +102,24 @@ public
    s" REQUIRE-REG:CELL-SPANS" true BIND-ONE
    s" FFI-CB:SCAN-SPANS" true BIND-ONE
    s" FFI:FORGET-CACHE" true BIND-ONE
-   s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
+   s" NSTR:SOURCE-CLOSE" true BIND-ONE
+   \ The FFI registry's marks and rows a FILE object's segments carry.
+   s" FFI:MARK" true BIND-ONE
+   s" FFI:NEXT-FN" true BIND-ONE
+   s" FFI:NEXT-LIB" true BIND-ONE
+   s" FFI:FN-INDEX" true BIND-ONE
+   s" FFI:LIB-INDEX" true BIND-ONE
+   s" FFI:FN-ROW@" true BIND-ONE
+   s" FFI:LIB-ROW@" true BIND-ONE
+   s" FFI:MAX-ARGS" true BIND-ONE
+   s" FFI:SYMBOL-CAP" true BIND-ONE
+   s" FFI-DECL:SELECTION" true BIND-ONE
+   s" FFI-DECL:SELECT" true BIND-ONE
+   s" FFI:LIBRARY-PATH" true BIND-ONE
+   s" FFI:DECLARE-SPILLED" true BIND-ONE
+   s" FFI:OBSERVE" true BIND-ONE
+   s" FFI:UNOBSERVE" true BIND-ONE
+   s" FFI:MAKER-BANK" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;

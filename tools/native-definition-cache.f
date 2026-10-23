@@ -1080,7 +1080,7 @@ variable USER-SEEN
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n pins:n checks:n :}
+         upds:n pins:n checks:n ffi:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  key=" DIAG-W2 key keyu DIAG-W2
@@ -1095,6 +1095,7 @@ variable USER-SEEN
    s"  slots=" DIAG-W2 slots DIAG-N
    s"  updates=" DIAG-W2 upds DIAG-N
    s"  pins=" DIAG-W2 pins DIAG-N
+   s"  ffi=" DIAG-W2 ffi DIAG-N
    s"  checks=" DIAG-W2 checks DIAG-N
    s"  bytes=" DIAG-W2 size DIAG-N
    s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
@@ -1142,6 +1143,13 @@ variable OBJECT-U
    s"  reason=name-live word=" DIAG-W2 name nameu DIAG-W2
    S\" \n" DIAG-W2 ;
 
+\ A fresh object's FFI rows expect an index or a selection the registry no
+\ longer gives: the file compiles live against the registry as it stands.
+: MISS-FFI-ROWS ( -- )
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
+   S\"  reason=ffi-rows\n" DIAG-W2 ;
+
 \ The innermost file has a fresh object this session can install.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
@@ -1150,6 +1158,7 @@ variable OBJECT-U
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:SUPPORTED? 0= if NUNIT-FILE:RESET-KEEP false exit then
    OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
+   NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS NUNIT-FILE:RESET-KEEP false exit then
    NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
    2drop true ;
 
@@ -1162,10 +1171,11 @@ variable OBJECT-U
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
       {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
-         upds:n pins:n checks:n :}
+         upds:n pins:n checks:n ffi:n :}
    s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  records=" DIAG-W2 recs DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
+   s"  ffi=" DIAG-W2 ffi DIAG-N
    S\" \n" DIAG-W2 ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )

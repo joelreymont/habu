@@ -122,6 +122,26 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    S\" 1 set-tier\n" IN+
    s" tierback.f" LOAD+
    s" pkgload.f" LOAD+
+   s" ffl.f" LOAD+
+   S\" s\" crc=\" type 0 NULL-PTR 0 FF-CRC . cr\n" IN+
+   s" ffl2.f" LOAD+
+   S\" s\" crc2=\" type 0 NULL-PTR 0 FF-CRC2 . cr\n" IN+
+   s" ffn.f" LOAD+
+   S\" s\" pid=\" type FF-PID 0 > . cr\n" IN+
+   s" sel.f" LOAD+
+   s" selc.f" LOAD+
+   s" ffb.f" LOAD+
+   s" sela.f" LOAD+
+   s" selb.f" LOAD+
+   s" scpar.f" LOAD+
+   s" sesa.f" LOAD+
+   s" plain.f" LOAD+
+   s" wra.f" LOAD+
+   s" wrb.f" LOAD+
+   S\" s\" wrb=\" type FFI-DECL:SELECTION . . . cr\n" IN+
+   s" wca.f" LOAD+
+   s" wcb.f" LOAD+
+   S\" s\" wcb=\" type FFI-DECL:SELECTION . . . cr\n" IN+
    S\" package FRAME-P3\n" IN+
    s" pkgc.f" LOAD+
    s" scope.f" LOAD+
@@ -454,6 +474,45 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ mark either file's start.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
+   \ A file that grows a registry table refuses. ffl.f, the first FFI file,
+   \ declares functions until the table grows, from any count: the rest fit.
+   \ ffl2.f reuses its library row. ffn.f's FUNCTION: appends a row its object
+   \ carries and a warm install replays at the same index.
+   s" ffl.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n4 BUFFER: GROW-SYM\n: GROW-NAME ( n -- ) 102 GROW-SYM c! 4 1 do dup 26 mod 97 + GROW-SYM i + c! 26 / loop drop ;\n: GROW ( -- ) FFI:MARK {: room:n :} 0 begin dup GROW-NAME GROW-SYM 4 FFI:PROCESS 0 FFI:DECLARE drop 1+ FFI:MARK room <> until drop ;\nGROW\n" PUT
+   s" ffn.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: FF-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
+   s" ffl2.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC2 crc32 ( n ptr u8 n -- n ) ;FUNCTION\n" PUT
+   \ sel.f declares getuid under the process selection; selc.f, which does not
+   \ require sel.f, declares the same row: a reuse row and the entry selection.
+   s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
+   s" selc.f" S\" require src/lib/ffi-abi.f\nFUNCTION: SELC-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
+   \ ffb.f declares into the maker bank, which its segment's open mark did not
+   \ select.
+   s" ffb.f" S\" require src/lib/ffi-abi.f\n: FFB ( -- ) s\" getppid\" FFI:PROCESS 0 FFI:DECLARE drop ;\n' FFB FFI:WITH-MAKER-DECLARATIONS\n1 constant FFB-K\n" PUT
+   \ sela.f selects what was selected and stores only the selection it opened
+   \ with; selb.f selects it again and declares nothing, so only its opening
+   \ selection records that it found the process selected.
+   s" sela.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" selb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n17 constant SELB-K\n" PUT
+   \ scopea.f leaves its package's wordlist selected; scopeb.f, which does
+   \ not require scopea.f, opens with that selection. A package an earlier
+   \ session made has no key, so scpar.f loads both in its own.
+   s" scpar.f" S\" require scopea.f\nrequire scopeb.f\n" PUT
+   s" scopea.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SCA\nPROCESS-SYMBOLS\n;package\n" PUT
+   s" scopeb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SCB-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
+   \ sesa.f, a session of its own, leaves its package's wordlist selected;
+   \ the next session has no key for it. plain.f, in that session, neither
+   \ reads nor changes the selection, so it stores all the same.
+   s" sesa.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SESA\nPROCESS-SYMBOLS\n;package\n" PUT
+   s" plain.f" S\" 17 constant PLAIN-K\n" PUT
+   \ wrb.f's only FFI action, an FFI-DECL:SELECT, writes the selection wra.f
+   \ left as it found it: its object records that opening selection.
+   s" wra.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" wrb.f" S\" require src/lib/ffi-abi.f\n0 0 true FFI-DECL:SELECT\n17 constant WRB-K\n" PUT
+   \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI-DECL's CLEAR-SCOPE hook, which
+   \ clears the scope and keeps the library wca.f selected: its object
+   \ records the selection it opened with and the cleared one.
+   s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
+   s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
@@ -668,6 +727,38 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=checker-mark" T$=
    s" pkgc.f" NO-OBJECT ;
 
+\ A file's writes to the seed FFI registry: carried rows store; a grown table
+\ or a row in the bank the file did not select refuses.
+: FFI-CHECKS ( -- )
+   s" a FUNCTION: file stores its object carrying the new row" T-LABEL
+   OUT$ S\" pid=-1\n" CONTAINS? TTRUE
+   s" ffn.f" KEY$ STORED
+   s" ffn.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a file that grows the registry's tables refuses" T-LABEL
+   OUT$ S\" crc=0\n" CONTAINS? TTRUE
+   ERR$ s" /ffl.f reason=ffi-grown" CONTAINS? TTRUE
+   s" ffl.f" NO-OBJECT
+   s" a file reusing that library row stores its object" T-LABEL
+   OUT$ S\" crc2=0\n" CONTAINS? TTRUE
+   s" ffl2.f" KEY$ STORED
+   s" a declaring file stores, and so does one reusing its row" T-LABEL
+   s" sel.f" KEY$ STORED
+   s" selc.f" KEY$ STORED
+   s" a declaration into the bank not selected refuses" T-LABEL
+   ERR$ s" /ffb.f reason=ffi-bank" CONTAINS? TTRUE
+   s" ffb.f" NO-OBJECT
+   s" a file that touches no FFI state stores under a selection it cannot key" T-LABEL
+   s" plain.f" s"  records=" s" 1" OBJECT-HAS
+   s" plain.f" KEY$ STORED
+   s" a file whose only FFI action rewrites the selection stores it" T-LABEL
+   OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
+   s" wrb.f" s"  ffi=" s" 1" OBJECT-HAS
+   s" wrb.f" KEY$ STORED
+   s" a file whose only FFI action clears the scope stores both selections" T-LABEL
+   OUT$ S\" wcb=0\n0\n0\n" CONTAINS? TTRUE
+   s" wcb.f" s"  ffi=" s" 2" OBJECT-HAS
+   s" wcb.f" KEY$ STORED ;
+
 \ A warm build installed name's object: its reused line, the only one with
 \ " records=" right after the path, and no object written for it.
 : REUSED ( ptr u8 n -- )
@@ -713,7 +804,20 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
    s" a warm build installs td.f" T-LABEL
    OUT$ S\" td=4\n" CONTAINS? TTRUE
-   s" td.f" REUSED ;
+   s" td.f" REUSED
+   s" a warm build installs the FFI files, replaying their rows and selection" T-LABEL
+   s" ffn.f" REUSED
+   OUT$ S\" pid=-1\n" CONTAINS? TTRUE
+   OUT$ S\" crc=0\n" CONTAINS? TTRUE
+   s" ffl2.f" REUSED
+   OUT$ S\" crc2=0\n" CONTAINS? TTRUE
+   s" sel.f" REUSED
+   s" selc.f" REUSED
+   s" selb.f" REUSED
+   s" scopeb.f" REUSED
+   s" plain.f" REUSED
+   s" wrb.f" REUSED
+   s" wcb.f" REUSED ;
 
 \ A changed constant leaves con.f's object supported but stale: the warm build
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
@@ -805,6 +909,7 @@ public
    FRAME-CHECKS
    OBJECT-CHECKS
    FLOOR-CHECKS
+   FFI-CHECKS
    LIB-KEY KEY-LEN STORED
    KEEP-OBJECT
    CHECKER
@@ -827,11 +932,40 @@ public
    s" pkpre.f" S\" package FRAME-PK\n: PK-SEVEN ( -- n ) 70 ;\n;package\n" PUT
    s" pkroot.f" S\" require pkglob.f\nrequire pkpre.f\nrequire pk.f\n" PUT
    S\" \\ edited\n" s" ( note ) dup +" s" 3 ( note ) TWICE drop" LIB-SOURCE
+   \ sel.f now declares getgid: selc.f's stored getuid reuse row no longer
+   \ names a live row.
+   s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getgid ( -- i32 ) ;FUNCTION\n" PUT
+   \ sela.f now selects libz, which selb.f selects over; scopea.f's package,
+   \ whose wordlist scopeb.f's object names, is now FRAME-SCB.
+   s" sela.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
+   s" scopea.f" S\" require src/lib/ffi-abi.f\npackage FRAME-SCB\nPROCESS-SYMBOLS\n;package\n" PUT
+   \ wra.f now selects libz, which wrb.f's SELECT replaces.
+   s" wra.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
+   \ wca.f now selects libz, which wcb.f's PREPARE keeps.
+   s" wca.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
    s" comments in lib.f keep both keys and both files' results" REBUILT
    s" an earlier file that now makes FRAME-PK refuses pk.f's object: PK-SEVEN binds its private word" T-LABEL
    OUT$ S\" pk=70\n" CONTAINS? TTRUE
    ERR$ s" /pk.f records=" CONTAINS? TFALSE
    ERR$ s" dependency miss: namespace shape changed" CONTAINS? TTRUE
+   s" a changed selection is a named miss for the file that consumed it" T-LABEL
+   ERR$ s" /selc.f reason=ffi-rows" CONTAINS? TTRUE
+   ERR$ s" /selc.f records=" CONTAINS? TFALSE
+   s" sel.f" KEY$ STORED
+   s" a file that selects the selection it found misses once that changes" T-LABEL
+   ERR$ s" /selb.f reason=ffi-rows" CONTAINS? TTRUE
+   ERR$ s" /selb.f records=" CONTAINS? TFALSE
+   s" a selection naming a removed package is a named miss" T-LABEL
+   ERR$ s" /scopeb.f reason=ffi-rows" CONTAINS? TTRUE
+   ERR$ s" /scopeb.f records=" CONTAINS? TFALSE
+   s" a SELECT over a changed selection misses and selects as a cold load" T-LABEL
+   ERR$ s" /wrb.f reason=ffi-rows" CONTAINS? TTRUE
+   ERR$ s" /wrb.f records=" CONTAINS? TFALSE
+   OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
+   s" a scope clear over a changed library misses and keeps it as a cold load" T-LABEL
+   ERR$ s" /wcb.f reason=ffi-rows" CONTAINS? TTRUE
+   ERR$ s" /wcb.f records=" CONTAINS? TFALSE
+   OUT$ S\" wcb=0\n0\n1\n" CONTAINS? TTRUE
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
    s" every split of the first build's app.f rows still holds" T-LABEL
    SPLIT$ nip 1 > TTRUE

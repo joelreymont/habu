@@ -1317,29 +1317,34 @@ public
    kind LITERAL <> owner LOCAL <> or if BAD then
    item addend ;
 
-\ The wordlist a WID reference names: builtin, one the file's segment made, or
-\ a public (addend 0) or private (addend 1) wordlist of an imported package.
-: REF>WID ( n -- n ) {: idx:n :}
+\ The wordlist a WID reference names and true: builtin, one the file's
+\ segment made, or a public (addend 0) or private (addend 1) wordlist of an
+\ imported package. 0 false when no live record has the import's key: the
+\ package is gone. A malformed reference is BAD.
+: REF>WID? ( n -- n bool ) {: idx:n :}
    idx 0= if BAD then
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
    kind WID <> if BAD then
    owner BUILTIN = if
       addend 0<> if BAD then
-      item 0= if 0 exit then
-      item 1 = if XREF-RETIRED-WL exit then
+      item 0= if 0 true exit then
+      item 1 = if XREF-RETIRED-WL true exit then
       BAD
    then
    owner LOCAL = if
       addend 0<> item 0 < or item WID-COUNT @ >= or if BAD then
-      WID-BASE @ item + exit
+      WID-BASE @ item + true exit
    then
-   owner EXTERNAL = if
-      WID item PREP-DECL-ORD RECORD-AT @ execute {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
-      addend 0= if rec XREF-PKG-PUBLIC exit then
-      addend 1 = if rec XREF-PKG-PRIVATE exit then
-   then
-   BAD ;
+   owner EXTERNAL <> addend 0 < or addend 1 > or if BAD then
+   item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
+   extent drop alignment drop
+   rowkind WID <> if BAD then
+   key keyu KEY-RECORD drop {: rec:ptr :}
+   rec XREF-NULL = if 0 false exit then
+   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
+   addend 0= if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then true ;
+
+: REF>WID ( n -- n ) REF>WID? 0= if BAD then ;
 
 private
 
