@@ -1030,11 +1030,32 @@ variable OR-U
    S\" OR-COUNT TIER-PROV:SPANS > . 1 set-tier OR-FINISH\n" OR+
    OR-BUF OR-U @ ;
 
-: OR-PATH$ ( -- ptr u8 n ) s" hb-code-origin-capacity.f" TMP-PATH ;
-: OR-IMAGE-PATH$ ( -- ptr u8 n ) s" hb-code-origin-grown-image" TMP-PATH ;
+\ Each case writes its files into a directory of its own, so runs sharing one
+\ HB_TMP never overwrite each other's source or image. The exit registry
+\ removes the directory if the case dies before its own removal.
+create OR-DIR-BUF FS-PATH-CAP allot
+create OR-PATH-BUF FS-PATH-CAP allot
+create OR-IMAGE-BUF FS-PATH-CAP allot
+variable OR-DIR-U  variable OR-PATH-U  variable OR-IMAGE-U
+
+: OR-DIR$ ( -- ptr u8 n ) OR-DIR-BUF OR-DIR-U @ ;
+: OR-PATH$ ( -- ptr u8 n ) OR-PATH-BUF OR-PATH-U @ ;
+: OR-IMAGE-PATH$ ( -- ptr u8 n ) OR-IMAGE-BUF OR-IMAGE-U @ ;
+
+: OR-DIR-MAKE ( -- )
+   s" hb-code-origin" HB-TMP-MKDIR {: a:ptr u:n :}
+   a OR-DIR-BUF u BYTE-COPY  u OR-DIR-U !
+   OR-DIR$ CLEANUP-TREE+
+   OR-DIR$ s" capacity.f" OR-PATH-BUF JOIN-PATH OR-PATH-U !
+   OR-DIR$ s" grown-image" OR-IMAGE-BUF JOIN-PATH OR-IMAGE-U ! ;
+
+: OR-DIR-REMOVE ( -- )
+   OR-DIR$ REMOVE-TREE
+   OR-DIR$ CLEANUP-FORGET ;
 
 \ A timeout names the loaded file as the program instead of printing thousands
-\ of generated lines; the case removes the file only after both loads return.
+\ of generated lines; the case removes its directory only after both loads
+\ return.
 : OR-LOAD ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -1057,6 +1078,7 @@ variable OR-U
    RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-PATH$ STORE! ;
 
 : TEST-ORIGIN-GROWTH ( -- )
+   OR-DIR-MAKE
    s" real alternating publications grow beyond the inline table" T-LABEL
    OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD 0 ASSERT-RC
@@ -1081,10 +1103,10 @@ variable OR-U
    OR-IMAGE-PATH$ EXECUTABLE? TTRUE
    OR-IMAGE-RUN 0 ASSERT-RC
    OUT$ S\" 84\n1\n86\n1\n85\n1\n" STR= TTRUE
-   OR-IMAGE-PATH$ REMOVE-FILE
-   OR-PATH$ REMOVE-FILE ;
+   OR-DIR-REMOVE ;
 
 : TEST-ORIGIN-CAPACITY-X64 ( -- )
+   OR-DIR-MAKE
    s" real publications use the declared capacity with headroom" T-LABEL
    OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-X64-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD s" headroom-ok" ASSERT-OK
@@ -1092,7 +1114,7 @@ variable OR-U
    OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-X64-SOURCE$ ATOMIC-WRITE-FILE
    OR-LOAD ENGINE-ERROR:CODE-ORIGIN-FULL ASSERT-RC
    ERR$ S\" hb: code-origin table capacity\n" STR= TTRUE
-   OR-PATH$ REMOVE-FILE ;
+   OR-DIR-REMOVE ;
 
 : TEST-BUILD-SCOPE ( -- )
    s" build scope selects native and restores the incoming tier through nested scopes" T-LABEL
