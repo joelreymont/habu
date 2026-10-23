@@ -62,6 +62,8 @@ create SCX-WIRE EFF-WIRE allot
 \ a rollback that did NOT leaves it above, and the next lookup is forced to
 \ rebuild the whole index from the store. Both answer correctly, so the mark is
 \ the only thing that tells them apart — and it is the whole point of the seam.
+\ The constructor index is the exception at a stale generation: SVX-TRUNCATE
+\ moves its mark with the store, since SVX-GEN already forces the rebuild.
 \ An index no lookup has built yet carries mark 0, which passes vacuously, so a
 \ row runs the differential below — it builds all five — before any rollback
 \ case reads the marks.

@@ -310,7 +310,8 @@ public
 \ state and stay.
 : SNAPSHOT-RESET ( -- )
    SLOTS SPAN-CAP * 0 ?do 0 SPAN-BUF i + c! loop
-   SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop ;
+   SLOTS 0 ?do 0 i cells SPAN-LEN + ! loop
+   NO-CODE ARMED ! ;
 
 private
 

@@ -509,7 +509,8 @@ public
 \ and a fresh one capture the same bytes.
 : SNAPSHOT-RESET ( -- )
    SD-RESET
-   0 FAM !  0 FLDBASE !  0 NFLD !  0 SD-CELLS ! ;
+   0 FAM !  0 FLDBASE !  0 NFLD !  0 SD-CELLS !
+   SD-ARG-CAP 0 ?do 0 i cells SD-ARGS + ! loop  0 SD-ARG-N ! ;
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
 

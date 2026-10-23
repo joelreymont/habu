@@ -1041,11 +1041,15 @@ public
 \ run after the fact for the reason TFX-RETIRE gives: SVX-HI above SUMV-N means
 \ the store already shrank under the index, and stamping SVX-HI down then would
 \ throw away the rewind SVX-SYNC exists to catch.
+\ An index at a stale generation has nothing to retire and no rewind left for
+\ SVX-SYNC to catch (SVX-GEN already forces SVX-BUILD), so its mark follows the
+\ store: a cache hit leaves the index stale where a cold load leaves it current,
+\ and both must end at the same SVX-HI.
 
 private
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
-   SVX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   SVX-GEN @ HIDX-GEN @ <> IF newn SVX-HI ! EXIT THEN
    SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" 76 die THEN
    SUMV-N @ newn ?do
       i SUMV-CTOR-SYM@ {: sym:n :}
