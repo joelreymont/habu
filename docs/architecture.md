@@ -216,7 +216,13 @@ primitives.
 **Now:** ARM64 has a second codegen beside its platform codegen, the tier-0 JIT
 (`src/habu/jit.f`). The platform codegen compiles a trivial definition in
 524 µs against the JIT's 28 µs (`tools/compile-floor.f`, its `trivial-t1` and
-`trivial-t0` fields).
+`trivial-t0` fields). `--load` and the REPL run the JIT; an executable never
+contains its code. The process that captures an image opens
+`EXECUTABLE-BUILD:WITH` (`src/lib/executable-build.f`) before it loads the code
+it captures (`tools/aot-builder.f`, `tools/native-build.f`); the scope selects
+tier 1 through every include, `evaluate` and immediate word, and a tier-0
+compile or `0 set-tier` inside that scope refuses with `hb: executable build
+requires native tier 1` (`src/habu/habu1.f` `EXECUTABLE-JIT-GUARD`).
 
 **The codegen is one pass over the checked events.** It does four things:
 - it keeps a definition's stack values in registers, and leaves its constants
