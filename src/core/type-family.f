@@ -28,10 +28,9 @@
 \
 \ THE WHOLE FILE IS package TFAM (dot habu-tfam-2b-sealed-1b77662c). The split is
 \ measured, not chosen: a name something outside this package references is
-\ `public`, everything else is `private`, and no name was renamed to fit. 221
-\ public, 345 private. "Outside this package" counts three kinds of caller and
-\ they were all swept: the 46 consumer files elsewhere in the tree, the checker's
-\ own PRIM: axiom rows (24 of them moved to `PPRIM: TFAM`), and the five inner
+\ `public`, everything else is `private`, and no name was renamed to fit.
+\ "Outside this package" counts three kinds of caller: consumer files elsewhere
+\ in the tree, the checker's own `PPRIM: TFAM` axiom rows, and the inner
 \ packages this file itself opens — TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER,
 \ CHECKER-DECL-FRAME and SCHEMA-REG. Packages do not nest (habu2.f C-PACKAGE
 \ exits $4B on an open-inside-open), so each inner block closes TFAM and reopens
@@ -79,13 +78,14 @@ defer CON-KEY-XT ( n -- ptr u8 n bool )
 defer CON-BY-KEY-XT ( ptr u8 n -- n bool )
 defer CON-BIND-XT ( n ptr u8 n -- )
 defer UNIT-FAM-RESET-XT ( -- )
+76 constant E-REG-AOT-REFUSED \ a type-registry capture or plan is refused (REG-AOT-REFUSE)
 
 private
 : FAMILY-KEY-ABSENT ( n -- ptr u8 n bool ) drop NULL-PTR 0 RES-FALSE ;
 : FAMILY-BY-KEY-ABSENT ( ptr u8 n -- n bool ) 2drop 0 RES-FALSE ;
 : FAMILY-KEY-MATCH-ABSENT ( ptr u8 n ptr u8 n ptr u8 n -- bool )
    2drop 2drop 2drop RES-FALSE ;
-: FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop 76 throw ;
+: FAMILY-BIND-ABSENT ( n ptr u8 n -- ) 2drop drop E-REG-AOT-REFUSED throw ;
 : FAMILY-HOOK-DEFAULTS ( -- )
    [: FAMILY-KEY-ABSENT ;] is FAMILY-KEY-XT
    [: FAMILY-BY-KEY-ABSENT ;] is FAMILY-BY-KEY-XT
@@ -3849,7 +3849,7 @@ PTR-VARIABLE REG-AOT-ERROR-A
 variable REG-AOT-ERROR-U
 
 : REG-AOT-REFUSE ( ptr u8 n -- )
-   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! 76 throw ;
+   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-REG-AOT-REFUSED throw ;
 
 : REG-AOT-BASE-BAD ( n n n -- )
    drop 2drop

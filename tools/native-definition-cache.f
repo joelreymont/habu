@@ -428,6 +428,8 @@ variable PENDING-KEY-U
    reason reasonu DIAG-W2
    S\" \n" DIAG-W2 ;
 
+public
+
 \ FNV-1a 64 over whole cells, then the tail bytes. Every target is
 \ little-endian, so a cell read matches the bytes on disk on every host.
 : CHECKSUM ( ptr u8 n -- n )
@@ -436,6 +438,8 @@ variable PENDING-KEY-U
    FNV-BASIS
    whole 0 ?do bytes i + CELL-VIEW @ xor FNV-PRIME * CELL +loop
    size whole ?do bytes i + c@ xor FNV-PRIME * loop ;
+
+private
 
 \ Read one cache file into ENTRY through one descriptor, sized by that
 \ descriptor, so a same-key writer renaming a larger entry in or a pruner
@@ -1354,7 +1358,18 @@ variable OBJECT-U
    fed 0= OWNER-READY? 0= and if false exit then
    kind IMPORT-XT 0<> ;
 
-\ The innermost file has a fresh object this session can install.
+\ The viewed object's checker slice is prepared and its plan kept for the
+\ install; false when the checker refuses the slice, which keeps no plan.
+\ Every other code is not the object's and leaves.
+: CHECKER-PREPARED? ( -- bool )
+   ['] NUNIT-OBJECT:PREPARE-CHECKER catch {: rc:n :}
+   rc 0= if true exit then
+   rc E-NUNIT-PROFILE <> if rc throw then
+   false ;
+
+\ The innermost file has a fresh object this session can install. The
+\ checker slice is prepared last: everything the checker refuses about it is
+\ a miss decided before any install side effect, so a hit never throws.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
    OBJECT-READ? 0= if false exit then
@@ -1366,7 +1381,9 @@ variable OBJECT-U
    OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
    NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS NUNIT-FILE:RESET-KEEP false exit then
    NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
-   2drop true ;
+   2drop
+   CHECKER-PREPARED? 0= if s" checker-prepare" OBJECT-MISS false exit then
+   true ;
 
 \ The installed object's sink kind, 1 when its rows are fed, and the
 \ journal import its rows go through.
@@ -1467,6 +1484,9 @@ variable IMPORT-AT
    NATIVE? @ if path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE then
    OBJECT-HIT? {: hit:bool :}
    hit if ['] INSTALL-OBJECT else ['] OBSERVED-RUN then catch {: unit-rc:n :}
+   \ A hit's install ends the plan OBJECT-HIT? kept; one that threw before
+   \ it leaves the plan for this release.
+   NUNIT-OBJECT:RELEASE-CHECKER
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
    unit-rc 0= plan-rc 0= and hit 0= and

@@ -9,6 +9,7 @@ require src/lib/process-env.f
 require src/core/sha256.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
+require tools/native-definition-cache.f
 require tools/native-unit-object.f
 
 using NATIVE-FILE-E2E
@@ -354,6 +355,107 @@ variable EXPECT-U
    1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
+create SLICE-KEY 64 allot
+DYNAMIC-BUFFER ENTRY u8
+
+\ BUILD with the cache diagnostics on: each file's object, reuse and miss
+\ prints its line on stderr.
+: DIAG-BUILD ( ptr u8 n -- n )
+   {: product:ptr productu:n :}
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
+   PROC-ARGV-ENV-RESET
+   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --" ARG s" app.f" AT ARG product productu AT ARG
+   builder builderu S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" CAPTURE ;
+
+
+\ c.f's object key, from the object line its cold build printed.
+: KEEP-KEY ( -- )
+   ERR$ s" /c.f key=" FIND-SUB MATCH option
+     none OF T-FAIL ENDOF
+     some OF IDX>N 9 + {: at:n :}
+        ERR$ nip at - 64 >= dup TTRUE
+        if ERR$ drop at + SLICE-KEY 64 BYTE-COPY then
+     ENDOF
+   ;MATCH ;
+
+
+\ c.f's cached object path, in PROBE-IN.
+: OBJECT-PATH ( -- ptr u8 n )
+   0 PROBE-IN-U !
+   s" cache/hb-file-" IN+ SLICE-KEY 64 IN+ s" .hfo" IN+
+   PROBE-IN PROBE-IN-U @ AT ;
+
+
+\ Read c.f's cached object into ENTRY and answer its checker slice 0's unit.
+\ The checker section (slot 5) holds the slice count, the reference count, the
+\ references, then slice 0's length and its unit (native-unit-object.f
+\ IMPORT-RUN).
+: OPEN-UNIT ( -- ptr u8 n )
+   OBJECT-PATH {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   size ENTRY-RESERVE
+   0 ENTRY BYTE-VIEW {: e:ptr :}
+   path pathu e size READ-ALL size <> if E-FS-IO throw then
+   e 16 + size 16 - NUNIT-FILE:ARCH-AARCH64 s" FILE" SLICE-KEY 64
+      NUNIT-FILE:READ-VIEW
+   5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
+   sec 8 + LE:U64@ 3 + 8 * sec + {: unit:ptr :}
+   NUNIT-FILE:RESET-KEEP
+   unit  unit 8 - LE:U64@ ;
+
+
+\ Reseal the entry OPEN-UNIT read, so the entry and the object's framing still
+\ read, and write it back over c.f's object.
+: RESEAL-UNIT ( -- )
+   OBJECT-PATH {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   0 ENTRY BYTE-VIEW {: e:ptr :}
+   e 16 + size 16 - NDEF-CACHE:CHECKSUM e 8 + LE:U64!
+   path pathu e size WRITE-ALL ;
+
+
+\ Flip the low bit of the unit magic, the unit's first cell, of c.f's checker
+\ slice 0 and reseal the entry; only the checker's unit header read refuses it.
+: CORRUPT-SLICE ( -- )
+   OPEN-UNIT drop {: magic:ptr :}
+   magic c@ 1 xor magic c!
+   RESEAL-UNIT ;
+
+
+\ Empty the last link row of c.f's checker slice 0 and reseal the entry: its
+\ effect becomes tag 0 and reference 0 beside a grid already tag 0. The link
+\ rows close the unit, ten cells each: the record reference, the tag and
+\ reference of its effect, control and grid, the deferred flag, the fixed kind
+\ and value (checker.f UNIT-EXPORT-LINK). They follow ordinal order, so the
+\ last row links a record c.f defines.
+: EMPTY-LINK ( -- )
+   OPEN-UNIT {: unit:ptr len:n :}
+   unit len + 80 - {: row:ptr :}
+   row 8 + LE:U64@ 0 <> TTRUE
+   row 40 + LE:U64@ 0= TTRUE
+   0 row 8 + LE:U64!
+   0 row 16 + LE:U64!
+   RESEAL-UNIT ;
+
+
+\ The reason the diagnostics name for c.f's miss; empty when none is named.
+: MISS-REASON$ ( -- ptr u8 n )
+   0 PROBE-IN-U !
+   s" native-file: miss path=" IN+ s" c.f" AT IN+ s"  reason=" IN+
+   ERR$ PROBE-IN PROBE-IN-U @ FIND-SUB MATCH option
+     none OF s" " ENDOF
+     some OF IDX>N PROBE-IN-U @ + {: at:n :}
+        ERR$ drop at +  ERR$ nip at -  {: a:ptr u:n :}
+        a u 10 INDEX-OF MATCH option
+          none OF a u ENDOF
+          some OF IDX>N a swap ENDOF
+        ;MATCH
+     ENDOF
+   ;MATCH ;
+
 \ c.f declares private products, whose MAKE and UNMAKE are words of package
 \ FCTOR (a public family's constructor package would keep c.f from reuse:
 \ unsupported-wordlists). app.f, never reused, reopens FCTOR and gives the
@@ -372,7 +474,9 @@ variable EXPECT-U
    s" app.f"
       S\" require c.f\npackage FCTOR\n: SOME2 ( n n -- box<pair> ) PAIR-MAKE BOX-MAKE ;\n: GET ( box<pair> -- n ) BOX-UNMAKE PAIR-UNMAKE + ;\npublic\n: RUN ( -- n ) 3 4 SOME2 GET ;\n;package\n: MAIN ( -- ) FCTOR:RUN . FCTOR:CODE . ;\n"
       PUT
-   s" app-hb" BUILD SUCCESS
+   \ The diagnostics name c.f's object key for LINK-CASE and SLICE-CASE.
+   s" app-hb" DIAG-BUILD SUCCESS
+   KEEP-KEY
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE
    s" app-hb" BUILD SUCCESS
@@ -411,6 +515,36 @@ variable EXPECT-U
    ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE ;
 
+\ A cache hit never throws. LINK-CASE's miss rewrote c.f's object from source;
+\ with its checker slice corrupted where only the checker's unit read refuses it,
+\ the object is a miss decided before any install side effect, the miss names
+\ its reason, c.f compiles from source and the app prints what the first
+\ build's app printed. No entry refusal: the reseal holds.
+: SLICE-CASE ( -- )
+   s" a cached checker slice the engine refuses is a named miss" T-LABEL
+   CORRUPT-SLICE
+   s" app-hb" DIAG-BUILD SUCCESS
+   ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   MISS-REASON$ nip 0 > TTRUE
+   MISS-REASON$ s" checker-prepare" T$=
+   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
+
+
+\ A cache hit never throws. CTOR-CASE's warm build reused c.f's object; a link
+\ row with neither effect nor grid, which the writer never exports, would
+\ leave the installed record unlinked. Preparation refuses the row, so the
+\ object is a named miss decided before any install side effect, c.f compiles
+\ from source and the app prints what the first build's app printed.
+: LINK-CASE ( -- )
+   s" a cached link with neither effect nor grid is a named miss" T-LABEL
+   EMPTY-LINK
+   s" app-hb" DIAG-BUILD SUCCESS
+   ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   MISS-REASON$ s" checker-prepare" T$=
+   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -444,6 +578,8 @@ public
    FAILED-CAPTURE
    EMPTY-RANGE-CASE
    CTOR-CASE
+   LINK-CASE
+   SLICE-CASE
    CTOR-PREFIX-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;

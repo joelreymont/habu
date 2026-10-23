@@ -74,6 +74,9 @@ public
    \ The checker unit codes a FILE object's checker mark and export answer.
    s" CHECKER-REG:E-UNIT-STATE" true BIND-ONE
    s" CHECKER-REG:E-UNIT-FORMAT" true BIND-ONE
+   \ The type-family codes a FILE object's checker preparation answers.
+   s" TFAM:E-REG-AOT-REFUSED" true BIND-ONE
+   s" TFAM:E-UNIT-FAMILY-CHANGED" true BIND-ONE
    s" NPUB:IMPORT-PENDING" true BIND-ONE
    s" NCOMP:DEFINITION-CACHEABLE?" true BIND-ONE
    s" NCOMP:DEFINITION-HISTORY" true BIND-ONE

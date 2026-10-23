@@ -792,13 +792,22 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
    CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF OWNER-CELL 0= or
    if false exit then
    s" CHECKER-REG:E-UNIT-STATE" UNIT-CODE-XT 0<>
-   s" CHECKER-REG:E-UNIT-FORMAT" UNIT-CODE-XT 0<> and ;
+   s" CHECKER-REG:E-UNIT-FORMAT" UNIT-CODE-XT 0<> and
+   s" TFAM:E-REG-AOT-REFUSED" UNIT-CODE-XT 0<> and
+   s" TFAM:E-UNIT-FAMILY-CHANGED" UNIT-CODE-XT 0<> and ;
 
 \ rc is a checker unit code: the checker cannot mark or export this state.
 : CHECK-CODE? ( n -- bool )
    {: rc:n :}
    rc s" CHECKER-REG:E-UNIT-STATE" UNIT-CODE =
    rc s" CHECKER-REG:E-UNIT-FORMAT" UNIT-CODE = or ;
+
+\ rc is a type-family code a preparation throws: a plan refusal, or a FILE
+\ dependency whose family contract changed since the object was built.
+: FAMILY-CODE? ( n -- bool )
+   {: rc:n :}
+   rc s" TFAM:E-REG-AOT-REFUSED" UNIT-CODE =
+   rc s" TFAM:E-UNIT-FAMILY-CHANGED" UNIT-CODE = or ;
 
 : CHECK-MARK-RUN ( -- )
    CHECKER-OWNER-ABI:UNIT-MARK-OFF CHECK-XT DEF-ACTION-XT execute ;
@@ -2992,7 +3001,12 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
    13 NUNIT-FILE:SECTION$ INS-FIRST @ OPEN-RECS @ NFILE-REF:PREPARE-FILE ;
 
 \ The checker's import callback: reference idx of the slice as the storage
-\ the export named, a dictionary record (bytes DREC) or a DATA span.
+\ the export named, a dictionary record (bytes DREC) or a DATA span. It runs
+\ before the install makes the file's records: a LOCAL record reference is
+\ the ordinal the install gives that record (the prepared table's base is the
+\ ndict@ INSTALL-OBJECT takes for INS-FIRST), and its address is the record
+\ slot's by arithmetic (XREF-REC reads nothing). The checker turns it back
+\ into that ordinal (UP-READ-LINKS, REC>INDEX) and the plan keeps the ordinal.
 : CHECK-RESOLVE ( n n -- ptr u8 )
    {: idx:n bytes:n :}
    idx 0 <= idx IMPORT-NREFS @ > or if BAD then
@@ -3006,32 +3020,70 @@ TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
 CAST: CK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
 CAST: CK-INSTALL-XT ( n -- [ n -- ] )
 
-\ Prepare and install the file's slice: past the slice count, the reference
-\ count and the references, its length and bytes.
-: IMPORT-RUN ( -- )
+\ The plan PREPARE-CHECKER keeps open for INSTALL-CHECKER; -1 when none is.
+variable CHECK-PLAN
+-1 CHECK-PLAN !
+
+: IMPORT-END ( -- )
+   CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF CHECK-XT DEF-ACTION-XT execute ;
+
+\ Prepare slice 0: past the slice count, the reference count and the
+\ references, its length and bytes.
+: PREPARE-RUN ( -- )
    IMPORT-SEC @ {: sec:ptr :}
    IMPORT-NREFS @ 2 + 8 * {: at:n :}
    sec at + LE:U64@ {: len:n :}
    sec at 8 + + len ['] CHECK-RESOLVE
       CHECKER-OWNER-ABI:UNIT-PREPARE-REFS-OFF CHECK-XT CK-PREP-XT execute
-      {: plan:n :}
-   plan CHECKER-OWNER-ABI:UNIT-INSTALL-OFF CHECK-XT CK-INSTALL-XT execute ;
+   CHECK-PLAN ! ;
 
-: IMPORT-END ( -- )
-   CHECKER-OWNER-ABI:UNIT-PREPARE-END-OFF CHECK-XT DEF-ACTION-XT execute ;
-
-: IMPORT-BODY ( -- )
+\ A begun plan the preparation refuses is ended before the refusal leaves.
+: PREPARE-BODY ( -- )
    CHECKER-OWNER-ABI:UNIT-PREPARE-BEGIN-OFF CHECK-XT DEF-ACTION-XT execute
-   ['] IMPORT-RUN ['] IMPORT-END finally ;
+   ['] PREPARE-RUN catch {: rc:n :}
+   rc 0<> if IMPORT-END rc throw then ;
 
-\ Install checker slice k on the state the file's mark saw; a state the
-\ checker refuses is a malformed object.
-: IMPORT-CHECKER ( n -- )
-   {: k:n :}
+: INSTALL-RUN ( -- )
+   CHECK-PLAN @ CHECKER-OWNER-ABI:UNIT-INSTALL-OFF CHECK-XT CK-INSTALL-XT
+      execute ;
+
+public
+
+\ End the kept checker plan, which will not be installed; nothing when none
+\ is kept. The checker's PREPARE-END resets every projection and plan row the
+\ preparation set, so the state is the one before PREPARE-CHECKER.
+: RELEASE-CHECKER ( -- )
+   CHECK-PLAN @ 0 < if exit then
+   -1 CHECK-PLAN !
+   IMPORT-END ;
+
+\ Prepare the viewed object's checker slice 0 on the state the file's mark
+\ saw, before any install side effect, and keep the plan for INSTALL-CHECKER.
+\ The file's references are prepared at the ordinal the install takes, as
+\ LIVE-NAME? prepares them. A slice the checker refuses (its unit codes, a
+\ type-family plan refusal, a FILE dependency whose family contract changed)
+\ is BAD, and a refusal keeps no plan. The object checksum is the integrity
+\ boundary: an object that passes it was written by this engine's writer, so
+\ the checker's own refusals are misses, while its fail-stop validators
+\ (checker.f ASIG-GRAPH-DIE, type-family.f REG-AOT-PARAM?) stay fail-stop for
+\ an object altered and resealed.
+: PREPARE-CHECKER ( -- )
+   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
    5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
    sec IMPORT-SEC ! sec 1 U64-AT IMPORT-NREFS !
-   k sec 0 U64-AT >= if BAD then
-   ['] IMPORT-BODY catch {: rc:n :}
+   ['] PREPARE-BODY catch {: rc:n :}
+   rc CHECK-CODE? rc FAMILY-CODE? or if BAD then
+   rc 0<> if rc throw then ;
+
+private
+
+\ Install the kept plan on the records INSTALL-SEGMENT made, then end it. A
+\ state the checker refuses here is a malformed object.
+: INSTALL-BODY ( -- ) ['] INSTALL-RUN ['] RELEASE-CHECKER finally ;
+
+: INSTALL-CHECKER ( -- )
+   CHECK-PLAN @ 0 < if BAD then
+   ['] INSTALL-BODY catch {: rc:n :}
    rc CHECK-CODE? if BAD then
    rc 0<> if rc throw then ;
 
@@ -3249,7 +3301,7 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    on if OBS-SET then ;
 
 \ Event row seg, a segment: its records, the wordlists they make and their
-\ protection, its FFI rows, then its checker slice.
+\ protection, its FFI rows, then the checker plan PREPARE-CHECKER kept.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
    seg OBJ-EV {: ev:ptr :}
@@ -3267,7 +3319,7 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    4 NUNIT-FILE:SECTION$ drop {: prot:ptr :}
    wids 0 ?do prot i + c@ 1 = if widbase i + REC-PROTECT then loop
    seg INSTALL-FFI
-   0 IMPORT-CHECKER ;
+   INSTALL-CHECKER ;
 
 public
 

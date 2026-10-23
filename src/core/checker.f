@@ -29396,6 +29396,9 @@ UNIT-CON-PROJECT-INSTALL
       ELSE gref THEN {: ghandle:n :}
       gtag ghandle UP-GRID?
       gtag row UPL.GTAG UP! ghandle row UPL.GREF UP!
+      \ UNIT-EXPORT-LINKS writes current links only, and a current link holds
+      \ an effect or a grid: the install would refuse this row after it began.
+      etag 0= gtag 0= and IF UNIT-FORMAT-BAD THEN
       UNIT-READ-CELL dup 0 <> over 1 <> and IF UNIT-FORMAT-BAD THEN
          row UPL.DEFER UP!
       UNIT-READ-CELL {: kind:n :}
