@@ -23,6 +23,7 @@ create WANT CAP allot variable WANT-U
 64 constant KEY-LEN
 create APP-KEY KEY-LEN allot
 create LIB-KEY KEY-LEN allot
+create RU-KEY KEY-LEN allot
 16 constant RES-LEN
 create APP-RES RES-LEN allot
 create LIB-RES RES-LEN allot
@@ -45,6 +46,23 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
 : APP$ ( -- ptr u8 n )
    S\" require base.f\nrequire run.f\nrequire safe.f\nrequire vread.f\n: PRE ( -- n ) FRAME-BASE:ONE ;\nrequire lib.f\n: IMM-USER ( -- n ) FRAME-LIB:MARK 5 ;\n: FRAME-USE ( -- n )\n   FRAME-LIB:SEVEN FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-LIB:TWICE FRAME-BASE:ONE + FRAME-DEEP:TEN + ;\nrequire exec.f\n: TALLY ( -- ) 1 FRAME-LIB:HITS +! ;\nTALLY\n' FRAME-LIB:QUAD FRAME-LIB:HOOK xt!\n" ;
 
+\ A builder session's first lines: the tier its loads compile at and the
+\ capture's preparation. LOAD+ lines follow, then RUN-INPUT.
+: SESSION ( -- )
+   0 INPUT-U !
+   S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+ ;
+
+\ Run the session INPUT holds on the builder over the build cache, with the
+\ cache diagnostics on; its exit code.
+: RUN-INPUT ( -- n )
+   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
+   PROC-ARGV-ENV-RESET
+   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   builder builderu INPUT INPUT-U @ CAPTURE ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -55,9 +73,7 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
 \ made between top-level loads has no key a file can name. after.f, the first file after the run ends, stores its definition:
 \ the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
-   NATIVE-FILE-APP:BUILDER$ {: builder:ptr builderu:n :}
-   0 INPUT-U !
-   S\" 1 set-tier\nNATIVE-RUNTIME:CAPTURE-PREPARE\n" IN+
+   SESSION
    s" top.f" LOAD+
    S\" s\" use=\" type FRAME-USE . cr\n" IN+
    S\" s\" hits=\" type FRAME-LIB:HITS NULL-PTR - . space cr\n" IN+
@@ -84,6 +100,7 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    s" multi.f" LOAD+
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    s" after.f" LOAD+
+   s" aftpar.f" LOAD+
    s" retire.f" LOAD+
    s" raw.f" LOAD+
    s" poke.f" LOAD+
@@ -106,12 +123,7 @@ create DEP-LINE LINE-CAP allot variable DEP-LINE-U
    S\" package FRAME-P3\n" IN+
    s" pkgc.f" LOAD+
    s" scope.f" LOAD+
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   builder builderu INPUT INPUT-U @ CAPTURE ;
+   RUN-INPUT ;
 
 \ The stderr line whose path ends in name followed by tag, from that tail to
 \ its newline: tag " rows=" finds the file frame, " key=" the file object.
@@ -327,6 +339,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" brokendef.f" S\" 0 set-tier\n: BROKEN ( -- n ) 1 2 ;\n1 set-tier\n" PUT
    s" broken.f" S\" require brokendef.f\n: NOCONTRACT-BROKEN ( -- n ) BROKEN ;\n" PUT
    s" after.f" S\" : AFTER-ONE ( -- n ) 1 ;\n" PUT
+   \ aftrun.f's one dependency row is the run of its sibling aftone.f's
+   \ AFT-ONE: both leaves load under aftpar.f, since an earlier top-level
+   \ load's record has no key aftrun.f's row could name.
+   s" aftone.f" S\" : AFT-ONE ( -- n ) 1 ;\n" PUT
+   s" aftrun.f" S\" AFT-ONE constant AFTER-K\n" PUT
+   s" aftpar.f" S\" require aftone.f\nrequire aftrun.f\n" PUT
+   \ alt.f loads ret-use.f under another loader than ret-late.f, and aftone.f
+   \ under another than aftpar.f. k.f's CON-K, an earlier top-level load's
+   \ record, shares its name with con.f's.
+   s" alt.f" S\" : RET-LATE ( -- n ) 5 ;\nrequire ret-use.f\nrequire aftone.f\n" PUT
+   s" k.f" S\" 3 constant CON-K\n" PUT
    s" multi.f" S\" : MULTI-NINE ( -- n ) 9 ;\n" PUT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
    \ peek.f's TRUSTED: PEEK reads its own data; run.f's top level runs it,
@@ -497,6 +520,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" each object is stored under its key" T-LABEL
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
+   s" ret-use.f" KEY$ RU-KEY KEY-LEN KEEP
    APP-KEY KEY-LEN STORED
    s" lib.f's object holds its records, HITS, T and HOOK's data and deep.f's load" T-LABEL
    s" lib.f" s"  records=" s" 10" OBJECT-HAS
@@ -611,6 +635,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a file that restores the tier it changed stores" T-LABEL
    s" tierback.f" DEFS$ s" 1" T$=
    s" tierback.f" KEY$ STORED
+   s" aftrun.f" KEY$ STORED
    s" ev.f" KEY$ STORED
    \ Every store into an earlier load's DATA names its target, and the name
    \ resolves to a record with no key, which orders the file first.
@@ -657,6 +682,16 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" con=4\n" CONTAINS? TTRUE
    HITS$ HITS-AT HITS-AT-U @ T$=
    s" con.f" REUSED
+   s" a warm build reuses every leaf object of constant and colon records" T-LABEL
+   \ base.f, deep.f, sdeep.f and odeep.f are such leaves too, but stale: each
+   \ body's number token leaves a resolution row in the file's own package,
+   \ which does not exist yet when the warm build checks the row.
+   s" safe.f" REUSED s" vread.f" REUSED s" exec.f" REUSED
+   s" ret-use.f" REUSED s" gc1.f" REUSED s" diag.f" REUSED
+   s" after.f" REUSED s" tierback.f" REUSED
+   \ aftrun.f's stored executed row over AFT-ONE compares the digest the
+   \ cold compile bound with the one the warm install of aftone.f binds.
+   s" aftone.f" REUSED s" aftrun.f" REUSED
    s" con-dep.f binds the installed records and writes its object" T-LABEL
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
    ERR$ s" /con-dep.f reason=" CONTAINS? TFALSE
@@ -701,6 +736,47 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    cold coldp 0 OBJ BYTE-VIEW coldu READ-ALL coldu <> if E-FS-IO throw then
    0 OBJ BYTE-VIEW coldu 0 WARM BYTE-VIEW warmu T$= ;
 
+\ ret-use.f's object names its place under ret-late.f, so under alt.f it is
+\ no hit: it compiles and writes a second object under its own key. So does
+\ aftone.f, whose stored declaration key names aftpar.f: a hit there could
+\ not bind it. con.f's object is fresh under con-dep.f, but k.f made CON-K
+\ live first: a named miss, and the live compile refuses the duplicate. The
+\ warm build after it still reuses all three objects.
+: OTHER-LOADER ( -- )
+   s" another loader's leaves compile; a live CON-K makes con.f a named miss" T-LABEL
+   SESSION
+   s" alt.f" LOAD+ s" k.f" LOAD+ s" con-dep.f" LOAD+
+   RUN-INPUT
+   s" other-loader-out.log" OUT$ PUT
+   s" other-loader-err.log" ERR$ PUT
+   78 T=
+   0 INPUT-U !
+   s" duplicate definition: CON-K at " IN+ s" con.f" AT IN+ s" :1" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   s" con.f" s"  reason=" LINE$ s" con.f reason=name-live word=CON-K" T$=
+   ERR$ s" /con.f records=" CONTAINS? TFALSE
+   ERR$ s" /ret-use.f records=" CONTAINS? TFALSE
+   s" ret-use.f" KEY$ RU-KEY KEY-LEN STR= TFALSE
+   ERR$ s" /aftone.f key=" CONTAINS? TTRUE ;
+
+\ ret-late.f defines RET-USER before it requires ret-use.f, whose fresh
+\ object would define it: a named miss, and the live compile refuses the
+\ duplicate at ret-use.f's definition.
+: LOADER-FIRST ( -- )
+   s" ret-late.f" S\" : RET-LATE ( -- n ) 3 ;\n: RET-USER ( -- n ) 4 ;\nrequire ret-use.f\nundefine RET-LATE\n" PUT
+   s" a colon object whose name its loader defined first is a named miss" T-LABEL
+   SESSION
+   s" ret-late.f" LOAD+
+   RUN-INPUT
+   s" loader-first-out.log" OUT$ PUT
+   s" loader-first-err.log" ERR$ PUT
+   78 T=
+   0 INPUT-U !
+   s" duplicate definition: RET-USER at " IN+ s" ret-use.f" AT IN+ s" :1" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   s" ret-use.f" s"  reason=" LINE$ s" ret-use.f reason=name-live word=RET-USER" T$=
+   ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
+
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
    {: line:ptr lineu:n buf:ptr bufu:ptr :}
@@ -733,6 +809,7 @@ public
    \ object: checker slices must not depend on the process that exported them.
    s" app.f" OBJECT$ APP-LINE APP-LINE-U KEEP-LINE
    s" con-dep.f" OBJECT$ DEP-LINE DEP-LINE-U KEEP-LINE
+   OTHER-LOADER
    s" a second build writes the same app.f and con-dep.f objects" T-LABEL
    PROBE SUCCESS WARM-CHECKS
    s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
@@ -772,6 +849,7 @@ public
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    COLD-CON
+   LOADER-FIRST
    T-REPORT
    s" file frame artifacts: " type ROOT$ type cr ;
 

@@ -330,8 +330,19 @@ public
 : ROW-COUNT ( ptr u8 n -- n ) false ['] CURRENT$ VERIFY ;
 : FORMAT ( ptr u8 n -- ) ROW-COUNT drop ;
 
+private
+: ZERO ( ptr u8 n -- ) {: bytes:ptr size:n :}
+   size 0 ?do 0 bytes i + c! loop ;
+public
+
+\ A file digest leaves the path and the file's bytes in CONTENT-SHA, and a
+\ freshness check leaves the object's address in FRESH-BYTES: close clears
+\ them, so an image saved after a warm build holds what a cold one does.
 : CLOSE ( -- )
    INPUT-BUF-RELEASE
-   0 INPUT-U ! 0 INPUT-FIRST ! 0 CHECK-OFF ! ;
+   0 INPUT-U ! 0 INPUT-FIRST ! 0 CHECK-OFF ! 0 QUERY-OFF !
+   CONTENT-SHA SHA256-FILE-CTX-BYTES ZERO
+   CONTENT-DIGEST 32 ZERO
+   NULL-PTR FRESH-BYTES ! 0 FRESH-U ! ;
 
 ;package

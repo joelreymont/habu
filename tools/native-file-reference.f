@@ -1261,6 +1261,8 @@ public
    row 16 + LE:U64@ row 24 + LE:U64@ ;
 
 : REF-KIND ( n -- n ) PREP-REF@ 2drop drop ;
+\ The owner of reference idx: LOCAL, EXTERNAL or BUILTIN.
+: REF-OWNER ( n -- n ) PREP-REF@ 2drop nip ;
 
 : REF>RECORD ( n -- n ) {: idx:n :}
    idx 0= if -1 exit then

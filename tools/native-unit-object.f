@@ -235,12 +235,15 @@ variable OPEN-KINDS
 \ The file's wordlists its package rows own, in the order they made them, -1
 \ once a row owns others.
 variable OPEN-OWNED
-\ The object being installed and its key, and the file's first record.
+\ The object being installed and its key, the file's first record, and the
+\ next definition index row and its payload's offset in the definitions slot.
 PTR-VARIABLE OBJ-BYTES
 variable OBJ-SIZE
 PTR-VARIABLE OBJ-KEY
 variable OBJ-KEY-U
 variable INS-FIRST
+variable INS-ROW
+variable INS-DEFS-OFF
 \ The checker section and its count of references while a slice imports.
 PTR-VARIABLE IMPORT-SEC
 variable IMPORT-NREFS
@@ -797,7 +800,8 @@ public
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
-   0 INS-FIRST ! NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
+   0 INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
+   NULL-PTR IMPORT-SEC ! 0 IMPORT-NREFS !
    0 LITS-U ! 0 LITS-N ! 0 OWNER-ROW-XT !
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
@@ -2700,20 +2704,122 @@ CAST: CK-INSTALL-XT ( n -- [ n -- ] )
    value NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
    REC-CLOSE ;
 
+\ View definition index row row's payload, the next in the definitions slot:
+\ index rows pair with colon records in ordinal order.
+: PAYLOAD-VIEW ( n -- )
+   {: row:n :}
+   row INS-ROW @ <> if BAD then
+   2 NUNIT-FILE:SECTION$ drop row INDEX-BYTES * + {: ix:ptr :}
+   0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
+   ix defsu INS-DEFS-OFF @ - ROW-SIZE {: total:n :}
+   DEF-SLOTS ix 8 + defs INS-DEFS-OFF @ + total NUNIT-FILE:SECTIONS-VIEW
+   total INS-DEFS-OFF +! 1 INS-ROW +! ;
+
+\ Prepare the viewed payload against the pending record def-open made: its
+\ code, literals, calls, addresses and host facts. A payload carries no
+\ checker slice; the file's segment imports one.
+: PREPARE-DEFINITION-BODY ( -- )
+   5 NUNIT-FILE:SECTION$ nip 0<> if BAD then
+   DEF-READ-META
+   0 NUNIT-FILE:SECTION$ {: source:ptr size:n :}
+   size DEF-CODE-U @ <> if BAD then
+   size DEF-CODE-RESERVE
+   source 0 DEF-CODE size BYTE-COPY
+   cp@ DEF-CODE-BASE !
+   ['] XREF-REC NFILE-REF:RECORD-AT!
+   \ def-open does not advance ndict@: the pending record is the payload's.
+   13 NUNIT-FILE:SECTION$
+      ndict@ DEF-CODE-BASE @ DEF-CODE-U @ NFILE-REF:PREPARE
+   AOT-ARM:HERE-N DEF-PREP-BEGIN
+   1 DEF-PLAN-ON !
+   DEF-READ-LITERALS
+   DEF-PREP-DATA-END DATA-VA VA>N - DATA-SIZE > if BAD then
+   DEF-PREP-CALLS DEF-PREP-ADDRS
+   15 NUNIT-FILE:SECTION$ {: funcs:ptr funcu:n :}
+   DEF-CODE-BASE @ DEF-CODE-U @ funcs funcu
+      DEF-CALL-U @ 0= if NULL-PTR else 0 DEF-CALL then DEF-CALL-U @
+      s" NHOST:PREPARE-IMPORT" DEF-TARGET DEF-PREP-HOST-XT execute
+   1 DEF-PREPARED ! ;
+
+\ Prepare index row row's payload. It was read back when its object was
+\ written and OBJECT-FRESH? passed, so one that does not prepare is malformed.
+: PREPARE-FILE-DEFINITION ( n -- )
+   {: row:n :}
+   DEF-PLAN-ON @ if BAD then
+   DEF-RESET
+   DEF-ELIGIBLE? 0= if BAD then
+   row PAYLOAD-VIEW
+   ['] PREPARE-DEFINITION-BODY catch {: rc:n :}
+   rc 0<> if DEF-DROP-PLAN drop rc throw then ;
+
+\ Publish the prepared payload's code at the pending record; its ordinal.
+: INSTALL-FILE-DEFINITION ( -- n )
+   NUNIT-CAPTURE:PROFILE-CK
+   DEF-PREPARED @ 0= if BAD then
+   DEF-HISTORY-REPLAY
+   DEF-COPY-LITERALS
+   0 DEF-CODE DEF-CODE-U @ DEF-RECORDED @
+      DEF-CALL-SITE-N @ 0= if NULL-PTR else 0 DEF-CALL-SITES then
+      DEF-CALL-SITE-N @
+      DEF-ADDR-SITE-N @ 0= if NULL-PTR else 0 DEF-ADDR-SITES then
+      DEF-ADDR-SITE-N @
+      DEF-WIDE @ DEF-MIN-IN @
+      s" NPUB:IMPORT-PENDING" DEF-TARGET DEF-PUBLISH-XT execute ;
+
+\ A colon row and its index row, opened, published and ended as `:` and `;`
+\ do. Binding the pending key advances its group's occurrence as a live
+\ definition does, and the payload's declaration must match it. The live
+\ record binds its result from the payload's sections, the bytes the
+\ compiled definition bound from, so its digest, edges and result row are
+\ the compiled record's. The payload view and its prepared table replaced
+\ the file's, so both are viewed again.
+: INSTALL-COLON ( ptr u8 n n n -- )
+   {: name:ptr nameu:n wl:n row:n :}
+   name nameu wl 0 REC-OPEN
+   NFILE-REF:PENDING-KEY$ 2drop
+   row PREPARE-FILE-DEFINITION
+   INSTALL-FILE-DEFINITION {: ord:n :}
+   ord NFILE-REF:PUBLISH-PREPARED
+   ord NFILE-REF:BIND-RESULT
+   REC-CLOSE
+   DEF-DROP-PLAN dup 0<> if throw then drop
+   FILE-VIEW FILE-REFS ;
+
+\ The viewed object's record row k, and its name.
+: OBJ-ROW ( n -- ptr u8 ) 1 NUNIT-FILE:SECTION$ drop swap RECORD-BYTES * + ;
+: ROW-NAME$ ( ptr u8 -- ptr u8 n )
+   {: row:ptr :}
+   3 NUNIT-FILE:SECTION$ drop row 2 U64-AT + row 3 U64-AT ;
+
+\ Whether record row k's name is live in the wordlist the install would
+\ define it into. A row into a LOCAL wordlist names one the install makes,
+\ with nothing in it before then.
+: ROW-LIVE? ( n -- bool )
+   OBJ-ROW {: row:ptr :}
+   row 0 U64-AT RK-PACKAGE = if XREF-NAMESPACE-WL
+   else
+      row 4 U64-AT dup NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+         drop false exit
+      then
+      NFILE-REF:REF>WID
+   then {: wid:n :}
+   row ROW-NAME$ wid search-wl 0<> ;
+
 \ Record row k at the next ordinal, the file's k-th record.
 : INSTALL-RECORD ( n -- )
    {: k:n :}
-   1 NUNIT-FILE:SECTION$ drop k RECORD-BYTES * + {: row:ptr :}
+   k OBJ-ROW {: row:ptr :}
    row 0 U64-AT {: kind:n :}
    row 1 U64-AT {: flags:n :}
-   3 NUNIT-FILE:SECTION$ drop row 2 U64-AT + {: name:ptr :}
-   row 3 U64-AT {: nameu:n :}
+   row ROW-NAME$ {: name:ptr nameu:n :}
    ndict@ INS-FIRST @ k + <> if BAD then
    kind RK-PACKAGE = if
       name nameu row 5 U64-AT row 6 U64-AT INSTALL-PACKAGE
    else
-      kind RK-VAL <> if BAD then
-      name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT INSTALL-VAL
+      name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT
+      kind RK-VAL = if INSTALL-VAL else
+         kind RK-COLON <> if BAD then INSTALL-COLON
+      then
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
@@ -2781,6 +2887,22 @@ public
    OPEN-REQS @ OPEN-LOADS @ OPEN-SEGS @ OPEN-SLOTS @ OPEN-UPDS @
    OPEN-PINS @ OPEN-CHECKS @ ;
 
+\ The viewed object's first record row whose name is live in the wordlist
+\ the install would define it into, and true; NULL-PTR 0 false when none.
+\ def-open and namespace-record refuse a live name with exit 83 and no message
+\ (habu2.f FRESH,), where the live compile gives the language's own refusal,
+\ so such an object is a miss decided before any install side effect. The
+\ file's references are prepared at the ordinal the install takes, as
+\ INSTALL-SEGMENT prepares them first; nothing is written to the dictionary or
+\ the manifest. A BAD from REF>WID is the object's malformation: its rows
+\ passed OBJECT-FRESH?.
+: LIVE-NAME? ( -- ptr u8 n bool )
+   13 NUNIT-FILE:SECTION$ ndict@ OPEN-RECS @ NFILE-REF:PREPARE-FILE
+   OPEN-RECS @ 0 ?do
+      i ROW-LIVE? if i OBJ-ROW ROW-NAME$ true unloop exit then
+   loop
+   NULL-PTR 0 false ;
+
 \ Install the FILE object bytes holds under key at the next ordinal: a leaf,
 \ one segment and no loads, as OPEN-FILE found it.
 : INSTALL-OBJECT ( ptr u8 n ptr u8 n -- )
@@ -2788,14 +2910,15 @@ public
    bytes OBJ-BYTES ! size OBJ-SIZE ! key OBJ-KEY ! keyu OBJ-KEY-U !
    FILE-VIEW
    OPEN-LOADS @ 0<> OPEN-SEGS @ 1 <> or if BAD then
-   ndict@ INS-FIRST !
+   ndict@ INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF !
    0 INSTALL-SEGMENT
    ndict@ INS-FIRST @ OPEN-RECS @ + <> if BAD then
+   INS-ROW @ OPEN-DEFS @ <> if BAD then
    NUNIT-FILE:RESET-KEEP ;
 
-\ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package and
-\ constant records only, on a checker that imports. 4b-1a ii adds RK-COLON,
-\ 4b-1b widens the rest. Slot 12 holds no row for a run that added nothing to
+\ The FILE object OPEN-FILE found is one INSTALL-OBJECT installs: package,
+\ constant and colon records only, on a checker that imports. 4b-1b widens
+\ the rest. Slot 12 holds no row for a run that added nothing to
 \ the dictionary or DATA, so a file that added nothing has no segment for the
 \ install to replay and loads from source. The install makes wordlists only
 \ through package rows, so every wordlist the file made must be one they own.
@@ -2805,7 +2928,9 @@ public
    OPEN-OWNED @ OPEN-WIDS @ <> or
       if false exit then
    FILE-CHECK-AVAILABLE? 0= if false exit then
-   OPEN-KINDS @ 1 RK-PACKAGE lshift 1 RK-VAL lshift or invert and 0= ;
+   OPEN-KINDS @
+      1 RK-PACKAGE lshift 1 RK-VAL lshift or 1 RK-COLON lshift or
+      invert and 0= ;
 
 \ This engine has every record writer the install block executes.
 : DEF-OPEN? ( -- bool )

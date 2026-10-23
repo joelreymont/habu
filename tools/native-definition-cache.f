@@ -41,31 +41,28 @@ $4B8 constant LIVE-FIXED-OFF
 40 constant F-INPUT
 48 constant F-INPUT-U
 56 constant F-PRIOR
-\ The load kind that opened the file, and how many files before it this
-\ session opened at the same path, root and kind.
+\ The load kind that opened the file.
 64 constant F-KIND
-72 constant F-OCC
 \ The input rows below F-MARK belong to a file object already.
-80 constant F-MARK
+72 constant F-MARK
 \ The bytes as read. F-SRC is the copy the interpreter runs, which differs
 \ from them when the file starts with `#!` (include.f LOAD-BYTES).
-88 constant F-RAW
-96 constant F-RAW-U
+80 constant F-RAW
+88 constant F-RAW-U
 \ Where the loading file's source stood when it loaded this one; -1 for
 \ the outermost file or a load from outside that source.
-104 constant F-AT
+96 constant F-AT
 \ TASK's user-slot watermark when the file opened, and 1 when TASK was bound
 \ to read it.
-112 constant F-SLOTS
-120 constant F-SLOTS-BOUND
+104 constant F-SLOTS
+112 constant F-SLOTS-BOUND
 \ The file's object key, taken when it opened: 64 hex digits.
-128 constant F-KEY
-192 constant FRAME-BYTES
+120 constant F-KEY
+184 constant FRAME-BYTES
 \ A cache file name: "hb-def-", 64 hex digits, ".hbd".
 75 constant NAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
 76 constant OBJECT-NAME-BYTES
-32 constant PLACE-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ definition object.
@@ -80,9 +77,6 @@ DYNAMIC-BUFFER PENDING-KEY u8
 \ every lookup and store.
 DYNAMIC-BUFFER ENTRY u8
 DYNAMIC-BUFFER STORE-IMAGE u8
-\ One PLACE-BYTES digest of path, root and kind per file opened this session.
-DYNAMIC-BUFFER PLACES u8
-variable PLACES-U
 variable DEPTH
 variable SESSION
 variable SEEDED
@@ -525,40 +519,42 @@ variable PENDING-KEY-U
 : FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
 : KEPT-KEY ( -- ptr u8 n ) FRAME F-KEY + 64 ;
 
-\ How many files this session opened before at the same path, root and kind;
-\ the place is recorded for the next one.
-: PLACE-OCC ( ptr u8 n ptr u8 n n -- n )
-   {: path:ptr pathu:n root:ptr rootu:n kind:n :}
-   s" habu-native-file-place-v1" HASH-START
-   path pathu HASH-S root rootu HASH-S kind HASH-N
-   HASH-CTX HASH-RAW SHA256-END
-   0 PLACES-U @ 0 ?do
-      HASH-RAW PLACE-BYTES i PLACES PLACE-BYTES STR= if 1+ then
-   PLACE-BYTES +loop
-   PLACES-U @ PLACE-BYTES + PLACES-RESERVE
-   HASH-RAW PLACES-U @ PLACES PLACE-BYTES BYTE-COPY
-   PLACE-BYTES PLACES-U +! ;
+: ORIGIN-HOOK-ALLOWED? ( -- bool )
+   check@ {: hook:n :}
+   hook 0= if true exit then
+   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
+   dup NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ hook =
+   swap NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ 0<> and ;
 
-\ The ambient compile state both keys hash: the tier, whether checking is on,
-\ the open borrow and the dispatch role.
+\ The checker the compile runs under: 0 checking off, 1 the owner's hook, 2
+\ any other hook. Another hook is process code no key can name.
+: CHECK-STATE ( -- n )
+   check@ 0= if 0 exit then
+   ORIGIN-HOOK-ALLOWED? if 1 else 2 then ;
+
+\ The ambient compile state both keys hash: the tier, the checker state, the
+\ open borrow and the dispatch role.
 : AMBIENT-HASH ( -- )
    data-base NCOMP-DISPATCH:TIER-CELL + @ HASH-N
-   check@ 0= if 0 else 1 then HASH-N
+   CHECK-STATE HASH-N
    BORROW-ACTIVE @ HASH-N
    DISPATCH-ROLE 32 HASH-S ;
 
-\ The open file's object key names its place in the load, not its text: this
-\ engine and target, the ambient compile state, the path, root and kind that
-\ opened it, and its occurrence there.
+\ The open file's object key names its place in the load as its records'
+\ keys name it, not its text: this engine and target, the ambient compile
+\ state, and the file's instance key (NFILE-REF:PUSH-FILE): the loader chain,
+\ the kind, path and root that opened it, and its occurrence under that
+\ loader. The object's stored declaration and import keys start with the
+\ instance key, so a key that omitted the loader would find an object whose
+\ keys this load cannot reproduce.
 : FILE-KEY ( -- ptr u8 n )
    ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
-   s" habu-native-file-v2" HASH-START
+   s" habu-native-file-v3" HASH-START
    engine engineu HASH-S
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    NATIVE? @ HASH-N
    AMBIENT-HASH
-   FRAME-PATH HASH-S FRAME-ROOT HASH-S
-   F-KIND F@ HASH-N F-OCC F@ HASH-N
+   NFILE-REF:INSTANCE-KEY$ HASH-S
    HASH-CTX HASH-RAW SHA256-END
    HASH-RAW FILE-KEY-HEX SHA256>HEX
    FILE-KEY-HEX 64 ;
@@ -586,13 +582,6 @@ variable PENDING-KEY-U
 : OPAQUE? ( -- bool )
    OPAQUE-XT @ dup 0= if drop true exit then
    OPAQUE-XT-TYPE execute ;
-
-: ORIGIN-HOOK-ALLOWED? ( -- bool )
-   check@ {: hook:n :}
-   hook 0= if true exit then
-   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
-   dup NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ hook =
-   swap NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ 0<> and ;
 
 : ADMISSION-REASON$ ( -- ptr u8 n )
    DEPTH @ 0= if s" no-source-frame" exit then
@@ -1018,7 +1007,6 @@ variable USER-SEEN
 \ stat and digest. Rows join an object only at ROWS-FLUSH, so the row recorded before
 \ FILE-BEGIN is still this file's, and a throw leaves no object to end.
 : OBJECT-OPEN ( -- )
-   FRAME-PATH FRAME-ROOT F-KIND F@ PLACE-OCC F-OCC F!
    FILE-KEY {: key:ptr keyu:n :}
    key FRAME F-KEY + keyu BYTE-COPY
    NFILE-INPUTS:MARK F-MARK F!
@@ -1032,6 +1020,8 @@ variable USER-SEEN
    data-base NCOMP-DISPATCH:TIER-CELL + @ 1 <> if
       s" tier" NUNIT-OBJECT:FILE-REFUSE
    then
+   \ A hit would skip what another hook refuses, so the file compiles live.
+   CHECK-STATE 2 = if s" checker-hook" NUNIT-OBJECT:FILE-REFUSE then
    BIND-RETIRE ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
@@ -1143,6 +1133,15 @@ variable OBJECT-U
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:FRESH? 0= if false exit then
    14 NUNIT-FILE:SECTION$ 2dup NUNIT-DEP:FORMAT 0 swap NUNIT-DEP:CHECK-ROWS ;
 
+\ A fresh object's record name is live where the install would define it:
+\ the file compiles live, and the language refuses the duplicate.
+: MISS-NAME-LIVE ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  reason=name-live word=" DIAG-W2 name nameu DIAG-W2
+   S\" \n" DIAG-W2 ;
+
 \ The innermost file has a fresh object this session can install.
 : OBJECT-HIT? ( -- bool )
    NUNIT-OBJECT:FILE-REFUSED? if false exit then
@@ -1151,7 +1150,8 @@ variable OBJECT-U
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:SUPPORTED? 0= if NUNIT-FILE:RESET-KEEP false exit then
    OBJECT-FRESH? 0= if NUNIT-FILE:RESET-KEEP false exit then
-   true ;
+   NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE NUNIT-FILE:RESET-KEEP false exit then
+   2drop true ;
 
 \ Install the viewed object in place of running the file. The session
 \ manifest keeps the input rows the skipped load would have recorded.
@@ -1404,7 +1404,6 @@ variable OBJECT-U
    NFILE-REF:CLOSE
    FRAMES-RELEASE PENDING-KEY-RELEASE
    ENTRY-RELEASE STORE-IMAGE-RELEASE
-   PLACES-RELEASE 0 PLACES-U !
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
