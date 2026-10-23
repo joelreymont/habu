@@ -765,6 +765,38 @@ public
 : CALL-ABI-F32 ( n -- r )
    CALL-ABI-R IEEE754:F64>BITS $FFFFFFFF and F32:WIDEN ;
 
+\ A struct-returning declaration resolves its row before staging: a first-call
+\ dlopen can run constructors that call C through this task's scratch.
+: RESOLVE-ROW ( n -- ) FN-RESOLVE drop ;
+
+\ The caller's result storage rides x8, AAPCS64's indirect-result register,
+\ with its whole extent guarded. A record returned in x0/x1 ignores x8, and
+\ the guard still covers the stores made from them. Storage C writes through
+\ x8 is 16-byte aligned, the strictest a supported record can need; a
+\ register record stores into eight-byte-aligned storage.
+: RESULT-DEST! ( ptr u8 n -- ) {: dst:ptr len:n :}
+   dst PTR>CELL {: addr:n :}
+   len 16 > if 15 else 7 then {: mask:n :}
+   addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
+   dst len X8-WRITABLE! ;
+
+\ The raw x0 and x1 after the call, in address order.
+: CALL-STRUCT ( n -- n n ) {: idx:n :}
+   idx FN-RESOLVE {: fn:n :}
+   FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
+   idx FN-SPILL@ fn ffi-call-struct-bounded ;
+
+\ The low len bytes of a register, little-endian.
+: REG-STORE ( n ptr u8 n -- ) {: v:n dst:ptr len:n :}
+   len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
+
+\ A record of len bytes returned in x0 then x1 lands at exactly its width;
+\ one larger than 16 bytes is already in place through x8.
+: STORE-RESULT ( n n ptr u8 n -- ) {: lo:n hi:n dst:ptr len:n :}
+   len 16 > if exit then
+   lo dst len 8 min REG-STORE
+   len 8 > if hi dst 8 + len 8 - REG-STORE then ;
+
 \ C int return registers define only their low 32 bits.
 : I32-RESULT ( n -- n )
    $FFFFFFFF and $80000000 xor $80000000 - ;
@@ -1045,6 +1077,24 @@ get-current prot-wid-add
 \ as $FFFFFFFF. `i32` sign-extends the low half and reads `n` to the checker,
 \ which has no signed 32-bit type; `u32` masks it and keeps its own type.
 \
+\ `bytes STRUCT-RESULT` declares a C struct of `bytes`, any positive count,
+\ returned by value. The last input is a `ptr u8` to caller-owned storage of
+\ at least `bytes`, which stays the caller's and must not alias memory the
+\ callee reaches; it is no C argument, and the output row is empty. The
+\ record is an aggregate that is not a homogeneous floating-point aggregate
+\ (HFA): integer, pointer or mixed members, which the declaration asserts as
+\ it asserts scalar widths. An HFA, a struct of one to four floats or doubles
+\ alone, returns in v0-v3, which no byte count distinguishes: it is
+\ unsupported and must not be declared with STRUCT-RESULT. AAPCS64 returns up
+\ to 8 bytes in x0 and 9..16 in x0 then x1, stored at exactly `bytes`; a
+\ larger record C writes through x8. The storage is eight-byte aligned, and
+\ 16-byte aligned for a record over 16 bytes; a record type aligned beyond 16
+\ bytes is excluded. The whole extent is guarded. The other inputs take x0-x7
+\ and the float registers as any declaration's do, with no VARIADIC, no write
+\ clause on the storage, and no x86-64 declaration. The symbol resolves
+\ before staging. A null or misaligned destination is E-FFI-SYNTAX at the
+\ call.
+\
 \ Arguments take integer and float registers in declaration order.
 \ A C float occupies the low 32 bits of an FP slot; a float result reads only
 \ those bits and widens to Habu `r`. Variadic positions use C default promotions,
@@ -1108,6 +1158,7 @@ PATH-CAP 128 + constant DIAG-CAP
 1 constant C-POINTER
 2 constant C-ABI
 3 constant C-ABI-R
+4 constant C-STRUCT
 
 -1 constant NO-EXT
 
@@ -1135,6 +1186,7 @@ variable FLT-N
 variable RES-KIND
 variable CALL-KIND
 variable VAR-START
+variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
 variable STACK-N
 variable CUR-LIB
 variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
@@ -1302,7 +1354,16 @@ variable SCOPE-HOOK
    loop
    REG-ROOM ;
 
+\ The result destination is the last input and no C argument; the rest fill
+\ x0-x7 and v0-v7 (SET-STRUCT-RESULT admits no variadic or x86-64 shape).
+: PLAN-STRUCT ( -- )
+   -1 INT-N +!
+   0 STACK-N !
+   REG-ROOM
+   C-STRUCT CALL-KIND ! ;
+
 : PLAN-CALL ( -- )
+   STRUCT-BYTES @ 0 > if PLAN-STRUCT exit then
    HB-TARGET-LINUX-X86-64? if PLAN-X86 else
       HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS
       else E-FFI-LIBRARY throw then
@@ -1466,10 +1527,22 @@ variable SCOPE-HOOK
    RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
    RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
 
+\ Resolve first, then stage every C argument and the destination, call, and
+\ store the record.
+: STRUCT-BODY ( -- )
+   SLOT {: slot:n :}
+   LOCALS
+   slot GEN-N s"  FFI:RESOLVE-ROW FFI:RESET " GEN+
+   ARG-N @ 1- 0 ?do i true STAGE-ONE loop
+   ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
+   slot GEN-N s"  FFI:CALL-STRUCT " GEN+
+   ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ ;
+
 : EMIT ( -- )
    GEN CODEGEN:RESET
    s" : " GEN+ NAME-BUF NAME-U @ GEN+
    s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
+   CALL-KIND @ C-STRUCT = if STRUCT-BODY s"  ;" GEN+ exit then
    NEEDS-LOCALS? {: named:bool :}
    named if LOCALS then
    \ The mixed ABI guard visits all nine register extents. Bounded calls guard
@@ -1527,7 +1600,8 @@ variable SCOPE-HOOK
    INT-N BYTE-VIEW CELL keep execute
    FLT-N BYTE-VIEW CELL keep execute
    RES-KIND BYTE-VIEW CELL keep execute
-   VAR-START BYTE-VIEW CELL keep execute ;
+   VAR-START BYTE-VIEW CELL keep execute
+   STRUCT-BYTES BYTE-VIEW CELL keep execute ;
 
 public
 
@@ -1567,7 +1641,7 @@ public
 : OPEN-FUNCTION ( -- )
    CHECK-SCOPE
    OPEN @ 0 <> if E-FFI-SYNTAX throw then
-   0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N !
+   0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N ! 0 STRUCT-BYTES !
    R-NONE RES-KIND !
    TOK@ NAME!
    TOK@ SYM!
@@ -1594,11 +1668,13 @@ public
    idx ARG-N @ >= if REFUSE then
    idx ARG-KIND@ K-POINTER <> if REFUSE then
    idx ARG-EXT@ NO-EXT <> if REFUSE then
-   idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then ;
+   idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then
+   STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
 
 : SET-VARIADIC ( n -- ) {: fixed:n :}
    OPEN @ 0= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
+   STRUCT-BYTES @ 0 <> if REFUSE then
    fixed 1 < fixed ARG-N @ > or if REFUSE then
    ARG-N @ fixed ?do
       i ARG-KIND@ K-FLOAT32 = if REFUSE then
@@ -1618,6 +1694,19 @@ public
    src ARG-N @ >= if REFUSE then
    src ARG-KIND@ K-VALUE <> if REFUSE then
    src idx ARG-EXT-ARG! ;
+
+\ The last input, a `ptr u8` no write clause names, receives a C struct of
+\ bytes returned by value; the declaration has no output. AAPCS64 only.
+: SET-STRUCT-RESULT ( n -- ) {: bytes:n :}
+   OPEN @ 0= if REFUSE then
+   HB-TARGET-LINUX-X86-64? if REFUSE then
+   STRUCT-BYTES @ 0 <> if REFUSE then
+   bytes 0 <= if REFUSE then
+   RES-KIND @ R-NONE <> if REFUSE then
+   VAR-START @ -1 <> if REFUSE then
+   ARG-N @ 0= if REFUSE then
+   ARG-N @ 1- CLAUSE-TARGET
+   bytes STRUCT-BYTES ! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
@@ -1663,6 +1752,8 @@ public
    FFI-DECL:WRITE-LENGTH-ARG ;
 
 : VARIADIC ( n -- ) FFI-DECL:SET-VARIADIC ;
+
+: STRUCT-RESULT ( n -- ) FFI-DECL:SET-STRUCT-RESULT ;
 
 : ;FUNCTION ( -- )
    FFI-DECL:CLOSE-FUNCTION ;

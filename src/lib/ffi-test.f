@@ -782,6 +782,11 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 FFI-RUN
 
+\ Struct results by value are AAPCS64 against macOS system libraries.
+: FFI-T-STRUCT-LOAD ( -- )
+   HB-TARGET-MACOS? if s" test/ffi-struct-result.f" required then ;
+FFI-T-STRUCT-LOAD
+
 T-REPORT
 
 ;package

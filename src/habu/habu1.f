@@ -2653,6 +2653,12 @@ $150 constant CBT-BYTES
    BFFI-CALL-ABI-BOUNDED-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
+\ A C struct returned by value: x0 then x1, both intact through BCB-LEAVE.
+\ FFI stores the record they hold; an x8-indirect record is already written.
+: BFFI-CALL-STRUCT-BOUNDED ( -- )
+   BFFI-CALL-ABI-BOUNDED-CORE
+   0 G-PUSH  1 G-PUSH ;
+
 : BOPENRD ( -- )
    A G-POP  A OS-OPEN-RD  FS-SYS-PUSH ;
 
@@ -4775,6 +4781,7 @@ package ENGINE-EMIT
    EMIT-CALLBACK-THUNK
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
+   s" ffi-call-struct-bounded" ['] BFFI-CALL-STRUCT-BOUNDED FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L

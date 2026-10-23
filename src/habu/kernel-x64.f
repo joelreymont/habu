@@ -4422,7 +4422,8 @@ public
    s" ffi-call-abi" [: FFI-CALL-ABI-BODY  RAX PUSH, ;] PRIM
    s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
    s" ffi-call-abi-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH, ;] PRIM
-   s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM ;
+   s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM
+   s" ffi-call-struct-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
 
 \ ---- task entry --------------------------------------------------------------
 \ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
