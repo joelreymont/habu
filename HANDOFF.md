@@ -113,9 +113,14 @@ On the Mac, the engine built from "Restrict fixed-register read
 exemptions" (the later commits change tests only): two-gen prints "ok gen
 5 matches gen 4 byte for byte"; `bin/hb --load test/run.f` ran 501 of 501
 with one red, compiler-native-hookless-reject (see Rebasing onto master).
-On x86, the four tier-1 commits leave runtime-regression-test.f with only
-GE-PROCESS-PTY's two FAILs expected (213 before); each lane measured its
-own helpers, so pulsar's census confirms the total.
+On pulsar, an x86 engine built from this tip (the seed built capreach's
+first commit, that engine built the tip) runs runtime-regression-test.f
+to its first FAIL, process/pty; with GE-FAIL made non-throwing in a
+scratch copy it reports exactly two FAILs, process/pty and process/pty
+output (213 before the tier-1 commits). The engine is kept at
+`~/.cache/tmp/jerry-c/x86-engine-b63e453c/` (+ map): it builds trees
+containing capreach in one stage. The census log is
+`~/.cache/tmp/jerry-c/tier1/rr-census-b63e453c.log`.
 
 ## x86 reds the Mac lanes found
 
