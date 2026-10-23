@@ -354,6 +354,63 @@ variable EXPECT-U
    1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
+\ c.f declares private products, whose MAKE and UNMAKE are words of package
+\ FCTOR (a public family's constructor package would keep c.f from reuse:
+\ unsupported-wordlists). app.f, never reused, reopens FCTOR and gives the
+\ generic box the two-cell pair. Only the typed construct step admits that
+\ call (TFAM-CTOR-STEP?: a direct layout argument), and the step finds the
+\ variant through the constructor word's symbol. A reused c.f must leave each
+\ variant naming its live constructor word as compiling c.f does; one naming
+\ none refuses SOME2 at BOX-MAKE (expected: a actual: pair).
+: CTOR-CASE ( -- )
+   s" a reused product keeps its constructor for a later file's typed call" T-LABEL
+   s" native-file-types-ctor" TREE
+   s" cache" AT MAKE-DIR
+   s" c.f"
+      S\" package FCTOR\nPRODUCT pair FIELD x n FIELD y n ;PRODUCT\nPRODUCT box<a> FIELD v a ;PRODUCT\npublic\n: CODE ( -- n ) 5 ;\n;package\n"
+      PUT
+   s" app.f"
+      S\" require c.f\npackage FCTOR\n: SOME2 ( n n -- box<pair> ) PAIR-MAKE BOX-MAKE ;\n: GET ( box<pair> -- n ) BOX-UNMAKE PAIR-UNMAKE + ;\npublic\n: RUN ( -- n ) 3 4 SOME2 GET ;\n;package\n: MAIN ( -- ) FCTOR:RUN . FCTOR:CODE . ;\n"
+      PUT
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
+
+
+\ a.f interns FCTOR's private PAIR-MAKE and undefines it; the symbol stays, so
+\ c.f's PRODUCT pair takes that earlier symbol for its constructor word. c.f's
+\ family rows then name a constructor the file does not own, which the capture
+\ cannot carry: the checker export refuses c.f in both builds. a.f's object is
+\ stored, but its undefine leaves it unsupported for reuse, so the warm build
+\ misses it too, reuses no file, loads a.f and c.f from source, and the app
+\ runs as the cold build's does. A capture refusal that throws instead fails
+\ the cold build (rc 76).
+: CTOR-PREFIX-CASE ( -- )
+   s" a constructor word interned before its file refuses that file's capture" T-LABEL
+   s" native-file-types-ctor-prefix" TREE
+   s" cache" AT MAKE-DIR
+   s" a.f" S\" package FCTOR\n: PAIR-MAKE ( -- ) ;\nundefine PAIR-MAKE\n;package\n" PUT
+   s" c.f"
+      S\" package FCTOR\nPRODUCT pair FIELD x n FIELD y n ;PRODUCT\npublic\n: RUN ( -- n ) 3 4 PAIR-MAKE PAIR-UNMAKE + ;\n;package\n"
+      PUT
+   s" app.f" S\" require a.f\nrequire c.f\n: MAIN ( -- ) FCTOR:RUN . ;\n" PUT
+   true NATIVE-FILE-APP:DIAG? !
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
+   s" app-hb" BUILD SUCCESS
+   false NATIVE-FILE-APP:DIAG? !
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   0 EXPECT-U !
+   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   s" c.f" AT EXPECT 512 EXPECT-U BUF-APPEND
+   S\"  reason=checker-export\n" EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -386,6 +443,8 @@ public
    BOOTED-SESSION
    FAILED-CAPTURE
    EMPTY-RANGE-CASE
+   CTOR-CASE
+   CTOR-PREFIX-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

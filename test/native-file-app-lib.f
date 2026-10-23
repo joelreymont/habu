@@ -60,11 +60,14 @@ public
 \ An empty stream reserved nothing, so it has no byte to view.
 : OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
+\ While DIAG? holds true, BUILD turns its builder's cache diagnostics on.
+variable DIAG?
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n cache:ptr cacheu:n :}
    BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
+   DIAG? @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --" ARG source sourceu ARG product productu ARG
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" {: stdin:ptr stdinu:n :}

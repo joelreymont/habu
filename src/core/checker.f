@@ -27879,7 +27879,9 @@ variable UNIT-BUF-CAP   0 UNIT-BUF-CAP !
 variable UNIT-BUF-U     0 UNIT-BUF-U !
 $10000 constant UNIT-BUF-INIT
 
+public
 : UNIT-BAD ( -- ) E-UNIT-STATE throw ;
+private
 : UNIT-FORMAT-BAD ( -- ) E-UNIT-FORMAT throw ;
 : UNIT-REF-UNAVAILABLE ( ptr u8 n -- n ) 2drop UNIT-BAD ;
 : UNIT-REF-RESET ( -- )
@@ -27895,6 +27897,7 @@ defer UNIT-TFAM-MAP ( n -- n )
 defer UNIT-TFAM-BEGIN ( -- )
 defer UNIT-TFAM-PREPARE ( ptr u8 n -- ptr u8 )
 defer UNIT-TFAM-TAKE ( ptr u8 -- )
+defer UNIT-TFAM-CTORS ( ptr u8 ptr u8 [ ptr u8 n -- n ] -- )
 defer UNIT-TFAM-END ( -- )
 defer UNIT-TFAM-VIEW ( ptr u8 -- ptr u8 n )
 defer UNIT-TFAM-EXPORT-RESET ( -- )
@@ -28079,6 +28082,15 @@ FILE-CON-RESET
    sym UNIT-PREFIX-N @ cells UNIT-PREFIX-SYMS @ + CELL-VIEW !
    SYM-N @ UNIT-SYMN @ - UNIT-PREFIX-N @ +
    1 UNIT-PREFIX-N +! ;
+
+public
+\ The ordinal of a symbol this unit defined, which UNIT-EXPORT-SYMS always
+\ writes. Any other symbol has no ordinal the unit owns.
+: UNIT-OWN-SYM-ORD ( n -- n bool ) {: sym:n :}
+   sym UNIT-SYMN @ < sym SYM-N @ >= or IF 0 RES-FALSE EXIT THEN
+   sym SYM-RETIRED? IF 0 RES-FALSE EXIT THEN
+   sym UNIT-SYMN @ - RES-TRUE ;
+private
 
 : UNIT-SOURCE-SYMS ( -- )
    SYM-N @ UNIT-SYMN @ ?do
@@ -29465,6 +29477,11 @@ UNIT-CON-PROJECT-INSTALL
    loop
    plan UP.NPIMMS UP@ UNIT-PROJ-PIMM-N +! ;
 
+\ An imported variant's constructor cell holds one of the unit's symbol
+\ ordinals + 1 (type-family.f UNIT-FAM-CTOR-ORDS).
+: UP-CTOR-ORD ( ptr u8 n -- n ) {: plan:ptr v:n :}
+   v 1 < v plan UP.NSYMS UP@ > or IF UNIT-FORMAT-BAD THEN v ;
+
 : UP-READ-BLOB ( ptr u8 -- ) {: plan:ptr :}
    UNIT-READ-TFAM-U @ UNIT-TAKE {: reg:ptr :}
    reg plan UP.TFAM UP-PTR!
@@ -29475,6 +29492,7 @@ UNIT-CON-PROJECT-INSTALL
       UNIT-PREP-REG-U ! UNIT-PREP-REG !
    plan UP-CHECK-CONS-FAMILY
    plan UP-READ-SYMS
+   plan UP.TFAM-STATE UP-PTR@ plan [: UP-CTOR-ORD ;] UNIT-TFAM-CTORS
    UNIT-PROJ-EFF-N @ UNIT-PLAN-EFF-BASE !
    plan UP-READ-EFFECTS
    UNIT-PROJ-CTL-N @ UNIT-PLAN-CTL-BASE !
@@ -29689,10 +29707,17 @@ UNIT-CON-PROJECT-INSTALL
       1 PIMM-N +!
    loop ;
 
+\ The live symbol an imported variant's constructor ordinal names.
+: UP-CTOR-SYM ( ptr u8 n -- n ) {: plan:ptr v:n :}
+   plan v 1 - UP-SYM-ID@ UP-ACTUAL-SYM ;
+
+\ The symbols install first: the imported variants name their constructor
+\ words by live symbol before UNIT-TFAM-TAKE copies them.
 : UP-INSTALL-BODY ( ptr u8 -- ) {: plan:ptr :}
+   plan UP-INSTALL-SYMS
+   plan UP.TFAM-STATE UP-PTR@ plan [: UP-CTOR-SYM ;] UNIT-TFAM-CTORS
    plan UP.TFAM-STATE UP-PTR@ UNIT-TFAM-TAKE
    plan UP-INSTALL-CONS
-   plan UP-INSTALL-SYMS
    plan UP-INSTALL-EFFECTS
    plan UP-INSTALL-CONTROLS
    plan UP-INSTALL-LINKS
