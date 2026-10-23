@@ -1,7 +1,7 @@
 # Debugging the self-hosted standalone
 
-The standalone is JIT-compiled native ARM64; blind `.`-printing was the recurring
-pain. Toolkit:
+Tools and procedures for diagnosing native engine failures, from a load
+refusal to a profile.
 
 ## Where a load refusal happened — read the message
 
@@ -203,8 +203,7 @@ than one) with the offset into each, or says plainly that no record owns it.
 
 It must run inside the engine under study, for the same reason
 `tools/snap-heap-owner.f` must: that is the only process where those records
-exist. This is what turned an anonymous return address into `owner=PATHZ off=384`
-during the merged-engine crash hunt (dot habu-merged-engine-nmigrate-c970bf04).
+exist.
 
 ## Dictionary / xref inspection
 Semantic dictionary inspection is a live-image Forth surface, not external text
@@ -244,10 +243,9 @@ HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
 } | HB_TMP=<private-root> <private-root>/hb-native > owners.txt
 ```
 
-The heap map that produced the owner table in dot
-`habu-fix-persisted-dangling-a520f7b4` had 1793 owners; pairing it against the
-offsets `cmp -l` reports between two images built from one `hb-stdin` and one
-`hb-snap-src` named every drifting cell above the engine-reserved band.
+Pair the heap map against the offsets `cmp -l` reports between two images
+built from one `hb-stdin` and one `hb-snap-src` to name every drifting cell
+above the engine-reserved band.
 
 It reads the live dictionary through the engine's `src/habu/xref.f` surface and
 loads the pure grammar from `src/habu/address-carrier.f`; image inspection does
@@ -287,14 +285,12 @@ proves the engine reached its REPL.
 Run the same intersect against an image built from a known-good tree and compare
 the two sets **by owner name** (`SNAP-HEAP-OWNER:DUMP`, above): what the suspect
 image carries and the good one does not is the regression, and everything in both
-is a pre-existing cell the good image already ships green. That comparison is
-what named `DEV-A-P` in dot `habu-single-prefix-load-17a8c792` — the arena base
-of `src/core/decl-event.f`, `malloc`ed by the build and persisted, so the warm
-image's first `ENUM` stored its event at `stale base + DEV-N * DEV-REC` and died
-`EXC_BAD_ACCESS` on an unmapped page. Note that it did NOT die on every run: when
-ASLR happened to leave that address mapped, the store landed in live memory and
-the program "passed". A nondeterministic pass rate is itself a symptom of this
-class, not noise to be re-run away.
+is a pre-existing cell the good image already ships green. A persisted
+`malloc`ed arena base makes the warm image's first store through it die
+`EXC_BAD_ACCESS` on an unmapped page, but not on every run: when ASLR leaves
+that address mapped, the store lands in live memory and the program "passes".
+A nondeterministic pass rate is itself a symptom of this class, not noise to be
+re-run away.
 
 Two ways this class hides:
 
@@ -316,8 +312,8 @@ installed `bin/hb`. `bootstrap/cg/forth.fs` is the Gforth-hosted mirror that
 builds `hb-stage0` during recovery. The mirror is meant to stay byte-for-byte
 equivalent to the native engine, and nothing currently proves that it does.
 
-This matters because `tools/bootstrap.sh` builds `hb-stage0` with the mirror at
-line 315 and runs it at line 318. That run is the first time a native binary
+This matters because `tools/bootstrap.sh` builds `hb-stage0` with the mirror
+(its `FORTH-BUILD-EXE` step) and then runs it. That run is the first time a native binary
 loads the prefix, and it happens before any natively built engine exists. So a
 mirror-only defect stops the bootstrap outright, while every test that boots a
 child engine from an installed `bin/hb` keeps passing — those tests exercise the
@@ -325,8 +321,8 @@ native engine and structurally cannot see the mirror.
 
 When a failure appears during `tools/bootstrap.sh` but the matching test suite is
 green, suspect this split before suspecting the checker. Identify the engine by
-where the failure lands: a diagnostic printed by `hb-stage0` (bootstrap.sh line
-318, before any `stage2:` message) is the mirror; the same source failing under
+where the failure lands: a diagnostic printed by the `hb-stage0` run, before
+any `stage2:` message, is the mirror; the same source failing under
 `bin/hb --load` is the native engine.
 
 ### Reproducing a mirror-only prefix defect
@@ -335,8 +331,7 @@ Patch the working tree and let `tools/bootstrap.sh` drive it. No separate seed
 builder is needed — the script already assembles the prefix in the right order,
 and the failure surfaces about five seconds in, at the `hb-stage0` run.
 
-The worked example below is the pre-trust deferred-word replay (dot
-`habu-fix-stage0-pre-88a4297e`). A `defer` declared before `: TRUST` in
+The worked example below is the pre-trust deferred-word replay. A `defer` declared before `: TRUST` in
 `src/core/checker.f` is copied into the pending table described in
 `src/habu/layout.f` (the `PD-*` constants) and replayed by `DRAIN-PRETRUST`. The
 replay is what teaches the checker the name, so a later checked `is` on that
@@ -368,26 +363,26 @@ mirror replay is broken it exits 70 in about five seconds with
 
 `is NAME` needs two separate checker rows: the deferred-word row that
 `CHECKER-FIND-ACTIVE-DEFER` reports, and the signature row that
-`CHECKER-DEFINED?` reports. `DRAIN-PRETRUST` is supposed to produce the first
+`CHECKER-RESOLVES?` reports. `DRAIN-PRETRUST` is supposed to produce the first
 through `checker-defer` and the second through `trust`. Ask for both by name
 immediately after the bare `DRAIN-PRETRUST` token in `src/core/checker.f`:
 
     s" NAME dfr=" type s" NAME" CHECKER-FIND-ACTIVE-DEFER .
-    s" sig="      type s" NAME" CHECKER-DEFINED? .
+    s" sig="      type s" NAME" CHECKER-RESOLVES? .
 
 Use the lower-case spelling; the lookup folds the token. Run the same census
 under both engines and compare — an installed `bin/hb` re-reads the prefix from
 disk at boot, so patching `src/core/checker.f` and running any
 `bin/hb --load <file>` prints the native answer without a rebuild.
 
-On 2026-07-28 that census read `dfr=-1 sig=-1` for every pre-trust deferred word
-under the native engine and `dfr=0 sig=0` under the mirror. The conclusion drawn
-at the time — that the mirror's replay of `trust` produces no signature row —
-was WRONG, and it cost a lane. Both halves of the replay run and both reach the
-checker; what differed was WHICH checker they reached. Read the next section
-before trusting a census: a recovery engine loads `src/core/checker.f` twice in
-one process, so a census printed right after `DRAIN-PRETRUST` answers about
-whichever load is running, and the two loads give opposite answers.
+A census that reads `dfr=-1 sig=-1` for every pre-trust deferred word under the
+native engine and `dfr=0 sig=0` under the mirror does not show that the
+mirror's replay of `trust` produces no signature row. Both halves of the replay
+run and both reach the checker; what differs is WHICH checker they reach. Read
+the next section before trusting a census: a recovery engine loads
+`src/core/checker.f` twice in one process, so a census printed right after
+`DRAIN-PRETRUST` answers about whichever load is running, and the two loads
+give opposite answers.
 
 ### Reading the replay from inside the engine
 
@@ -408,8 +403,8 @@ prefix; that message is success for this purpose.
 
 ### The recovery engine reads the prefix twice
 
-This is the fact that made the 2026-07-28 census misleading, so keep it in mind
-for any probe placed in the boot prefix. The emitted engine reads every prefix
+This is why such a census misleads, so keep it in mind for any probe placed in
+the boot prefix. The emitted engine reads every prefix
 file from disk when it starts — `PFX-LOAD-CHECKER-FILES` and its siblings in
 `bootstrap/cg/forth.fs` emit `LSRCRD` calls on baked path strings — and then
 interprets its baked program, which for a `FORTH-BUILD-EXE` binary is the whole
@@ -428,7 +423,7 @@ while `checker.f` is being re-read, so `C-PRETRUST-READY?` says "ready" and
 every defer declared before `: TRUST` publishes into the checker that is being
 replaced; nothing is captured, the drain replays nothing, and the first checked
 `is` on such a defer fails with `hook: non-certified definition: ... at 'is'`
-and exit 70 (dot habu-fix-stage0-pre-88a4297e).
+and exit 70.
 
 To see this directly, put the engine-side probe and the checker-side probe on
 the SAME file descriptor so their order is evidence: write the slot name from
@@ -512,8 +507,6 @@ the reason before theorising about the launcher.
   rc, and the captured stdout/stderr, and prints all of it plus the launch
   context. Wire every child-rc assertion in a fixture through a helper that
   calls it on a mismatch.
-  The exit-70-vs-73 disagreement that stood for a day was one line of the
-  child's own stderr.
 - `bin/hb --load tools/launch-context.f` prints only the context, so the same
   report can be taken under different launchers and diffed. Every line starts
   `ctx `: pid, script argv, whether `bin/hb` is reachable from the process's cwd
@@ -532,8 +525,8 @@ tty-ness is read with the host's own terminal-attributes ioctl, selected by
 interchangeable — issuing Linux `TCGETS` on macOS kills the process (exit 83) —
 so an unrecognised host throws `E-PROC-HOST` instead of trying both.
 
-Before concluding "environment", check the cheaper explanations the same way
-this class was mis-filed once already: the test may not be registered in
+Before concluding "environment", check the cheaper explanations: the test may
+not be registered in
 `test/gate-stdlib-cases.f`, and a fixture that asserts a specific exit code may
 simply be asserting a code the tree stopped producing.
 
@@ -541,7 +534,7 @@ simply be asserting a code the tree stopped producing.
 Every VM stack (the boot data stack, a task's own data/return/loop stacks, a
 run-in-stack callback's stack) is a mapping with an inaccessible page on each
 side (`STACK-ABI:PAGE-BYTES`, `src/habu/rt.f` EMIT-MAP). Compiled code carries
-no bounds check at all any more — capacity is enforced by the MMU, not by a
+no bounds check — capacity is enforced by the MMU, not by a
 check at every push and pop — so three independent mechanisms answer "why did
 this die", and they are not interchangeable:
 - `hb: interpret stack underdepth: <token>` and `E-UNDERFLOW: <token>` (both
@@ -588,11 +581,8 @@ this die", and they are not interchangeable:
   below the base also keeps exit 102 where no throw entry exists: on a task's
   own stack (a task region's `FLOORREC-CELL` reads zero), in a stripped AOT
   image and on the x86-64 engine. The parenthetical names the stack, not the
-  operation. This is what a per-transfer bounds check used to report
-  generically; the message and exit code are unchanged from before guard
-  pages, only the `(name)` suffix is new, so match it as a prefix
-  (`hb: stack bounds exceeded`) rather than the whole line if the specific
-  stack does not matter to the assertion.
+  operation, so match it as a prefix (`hb: stack bounds exceeded`) rather
+  than the whole line if the specific stack does not matter to the assertion.
 - A machine-stack overflow: the OS thread's own stack, which every call and
   local frame uses, runs into the kernel's guard, with sp already in it, where
   no signal frame fits. So every thread that runs Habu code registers
@@ -633,8 +623,8 @@ this die", and they are not interchangeable:
   DATA-REGION-REFUSAL uses `data-base` itself). In practice
   `MEM:ALLOC-GUARDED` is the only thing that returns an extent all six
   clauses accept. Because a guarded mapping only comes in whole-page sizes,
-  there is no way to hand run-in-stack a "slightly too small" guarded stack
-  any more: a request is either refused up front with `E-STACK-UNGUARDED`, or
+  there is no way to hand run-in-stack a "slightly too small" guarded stack:
+  a request is either refused up front with `E-STACK-UNGUARDED`, or
   it runs on a full page and any real overflow is a guard-page fault instead.
   Nothing malformed reaches the older descriptor check behind this one:
   `GUARDED-EXTENT?` runs strictly before it at the same switch and, for a
@@ -682,44 +672,6 @@ first crosses the guard page.
   checker/compiler RCA before editing downstream code.
 - The dictionary search returns the newest definition; use the checker and
   shadow lint when a new word appears to change built-in behavior.
-
-## Performance measurement tools (tools/perf/)
-
-- **"Where does boot time go" for a protection change — measure the real
-  workload; there is no tool row here on purpose.** Two cheaper instruments
-  were tried and both refuted on the same landing (2026-08-14), so neither
-  gets a shortcut in this file. `sample(1)` bucketed by mprotect stub
-  under-reports syscall time about 5x (`tools/perf/protcost.py` read 12.5ms
-  where wall/sys said 67-80ms; the tool was deleted rather than left as a
-  wrong number with a trustworthy interface). Replaying the syscall
-  sequence against a fresh bare mapping under-predicts about 4x in the
-  other direction, because nothing executes inside the replayed region and
-  the real cost is not the syscall at all — a wide RW→RX→RW flip drops the
-  PTEs of the JIT code the engine is executing, which showed up as 93,691
-  minor faults per boot. Price a protection change by running the actual
-  workload and reading wall/sys time and the minor-fault count together
-  (`/usr/bin/time -l` on macOS); attribute it by moving the fault count,
-  not by attributing samples to a stub.
-- `bin/hb --load tools/perf/boot-census.f -- LOGFILE CMD [ARGS...]` (macOS) —
-  run CMD, follow its whole process tree via kqueue `EVFILT_PROC`, log every
-  process to LOGFILE and print a census that classifies every child
-  fork-vs-exec by image path and argv (fork children keep the parent's argv).
-  Start here for any "how many engines does this run actually start" question.
-  The census brackets path/argv reads with `proc_pidinfo`'s exec version and
-  counts each observed version once. The `PROC_PIDUNIQIDENTIFIERINFO` record
-  is 56 bytes with `p_idversion` at byte 32, as specified by Apple's
-  [API structure](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h);
-  Apple's [exec regression test](https://github.com/apple-oss-distributions/xnu/blob/main/tests/exec-race-128791723.c)
-  verifies that the version changes across exec. This preserves same-image
-  reexecs while avoiding a queued exec notification counting an image already
-  read at registration twice. An inherited child counts as a fork only at
-  exit without an observed exec. Unavailable or changing image reads are
-  reported as incomplete and retried at an event or sweep; exited processes
-  may never yield a coherent image. A child with no comparable parent image
-  remains unclassified until that comparison is possible; an earlier exit
-  logs `INCOMPLETE` instead of fabricating an exec or fork. Notifications can
-  coalesce, so the census counts observed generations and cannot reconstruct
-  unseen rapid execs.
 
 ## Sampling profiler
 
@@ -957,16 +909,13 @@ a shared library, resolve to nothing and stay hex.
 
 ### Limits
 
-- A profiled program that spawns and captures a child used to die, and no longer
-  does. `poll(2)` is never restarted by `SA_RESTART`, so every tick that lands in
-  it returns EINTR; the `poll` primitive used to collapse that to -1, so
-  `src/lib/process.f` could not tell it from a real failure and raised
-  `E-PROC-OUTPUT` — which stopped a `tools/native-build.f` run under `prof-on` at
-  its final child-spawn phase. The primitive now returns `-errno` and the capture
-  loop restarts on `-EINTR` against its existing deadline, so a profiled
-  self-build runs end to end and needs no sample-limit workaround. A `prof-on`
-  limit still reports and exits 99 at that many samples, so give a whole
-  self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
+- A profiled program may spawn and capture children. `poll(2)` is never
+  restarted by `SA_RESTART`, so every tick that lands in it returns EINTR; the
+  `poll` primitive returns `-errno` and the capture loop in `src/lib/process.f`
+  restarts on `-EINTR` against its existing deadline, so a profiled self-build
+  runs end to end. A `prof-on` limit reports and exits 99 at that many samples,
+  so give a whole self-build a limit it cannot reach (or `0`) and call
+  `prof-report` yourself.
 - The handler runs on the thread's alternate signal stack, the crash
   handler's, which every thread that runs Habu code registers
   (`src/habu/crash.f` C-SIGNAL-STACK; on x86-64 the boot registers the main

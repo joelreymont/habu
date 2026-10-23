@@ -19,11 +19,11 @@ change to the seed or to anything it mirrors runs the
 ## Recovery routes
 
 Use a trusted native hb from the same OS and architecture when one is
-available; [seed.md](seed.md) gives that route. On ARM64 macOS or Linux with
-no native binary, tools/bootstrap.sh uses the Gforth seed in bootstrap/cg
-to build a small recovery engine, then refreshes it from current source.
-The recovery engine is a host for a native product build. Qualification
-of that product is in [gate.md](gate.md).
+available ([below](#recovery-from-a-trusted-native-seed)). On ARM64 macOS or
+Linux with no native binary, tools/bootstrap.sh uses the Gforth seed in
+bootstrap/cg to build a small recovery engine, then refreshes it from current
+source. The recovery engine is a host for a native product build.
+Qualification of that product is in [gate.md](gate.md).
 
 The installed release, a copied seed and a newly recovered source-only
 engine are different artifacts. Build and test a native product from the
@@ -39,6 +39,27 @@ The loader reads its established source roots directly. Target class queries
 in `internal-mark.f` run from `native-runtime.f` after that rebind, so they are
 observed. Application builds require environment observation immediately and
 refuse an engine without the hook.
+
+## Recovery from a trusted native seed
+
+A trusted native hb (a previous release asset, or a seed copied from a trusted
+checkout) is a recovery seed, not a qualified product. It runs the checked
+recovery command, its own `--load` path selecting its host core/checker/env
+source prefix:
+
+```sh
+HABU_SEED_SHA256=<hex> /path/to/hb-seed --load tools/seed-main.f \
+  -- /path/to/hb-seed
+```
+
+`HABU_SEED_SHA256` is optional. `tools/seed.f` validates it when set, installs
+the seed to `bin/hb`, makes it executable, ensures ad-hoc code signing, runs a
+stdin smoke program, then runs `tools/build-fixpoint-main.f -- install --force`.
+The `--force` is deliberate: this is a proof flow, so the content-key stamp
+skip must not stand in for a rebuild. The installed binary is refreshed from
+current source and must pass the self-rebuild fixpoint. After that, refresh
+`bin/hb` as [Refresh `bin/hb`](#refresh-binhb) describes; the seed is not
+needed again.
 
 ## Requirements
 
@@ -122,8 +143,9 @@ directory only for a deliberate cold measurement.
 
 The Gforth seed cannot emit an x86-64 engine. For Linux x86-64, use a
 working ARM64 compiler with the x86-64 backend loaded to cross-build the
-native engine, then execute and qualify it on an x86-64 host. See
-[x86-64.md](x86-64.md) for the target-specific build and execution path.
+native engine, then execute and qualify it on an x86-64 host;
+`docs/xcomp.md` "Build and bootstrap" gives the target-specific build and
+execution path.
 
 A seed primitive used by the cold prefix must also exist in
 bootstrap/cg/forth.fs. The normal native gate does not build that seed,
@@ -177,10 +199,28 @@ was compiled by the old host. Other source changes usually reach generation
 one. Compare successive products, not an arbitrary seed and product. A
 pre-window build file resolves names against its host, so a newly called
 engine primitive or fixed layout declaration may require a staged host.
-The window's captured records and cells must not retain the host's record
-numbers or process addresses; test/host-checker-row-e2e.f checks a changed
-host primitive table. For a reserved-layout transition, use the cold source
-writer described below.
+The window's captured records and cells must not retain the host's process
+addresses or record numbers (below). For a reserved-layout transition, use the
+cold source writer described below.
+
+### A record number is the host's
+
+A host whose checker differs from the tree's numbers its records and symbols
+differently (below), so a record number left in DATA names a host record, not
+the product's. A pass keeps none:
+`src/core/internal-mark.f` holds its cursors as loop indices and its first
+record as a local.
+
+### The checker's records do not follow the host's symbol numbering
+
+A host numbers every name it holds a `PRIM:` row for ahead of all others, so
+copies of the certified prefix taken in the host's symbol order would put the
+host's primitive table into the image: a word without its row moves its own
+record, and a word with an extra row renumbers every symbol interned after it.
+`TRANSFER-CHECKED` (`src/core/checker.f`) copies in source order instead.
+`test/host-checker-row-e2e.f` builds the tree on a host whose checker gives one
+word's row to another and requires the same engine and `.map` as a host of
+this tree builds.
 
 ## Landing a Reserved-Layout Change
 
@@ -218,8 +258,6 @@ both compiler bundle captures scope their cleanup to the donor's header offset,
 then restore the target offset before each capture. Run
 `test/native-layout-transition.f` with a saved same-machine donor whose
 reserved layout differs to check these first-product boundaries.
-The PD64 transition passed the first-product pre-trust, using and protection
-checks; its five-generation chain converged byte for byte.
 
 **A direct saved writer retains its builder's layout.** Its emitter was compiled
 when the builder image was saved. Rebuild that builder from matching source for
@@ -393,28 +431,7 @@ or candidate launcher, and must be rebuilt after source changes.
 If a tool fails on a missing native primitive such as `ffi-call-abi`, rebuild
 and qualify the native product against its matching sources.
 
-Run the gate after bootstrap or refresh:
-
-```sh
-bin/hb --load test/run.f
-```
-
-This is the native port gate. It runs every entry in the one native registry
-through the installed `bin/hb`, using a bounded process pool and one private
-capture root.
-It intentionally does not run LLM benchmark fixtures or require JavaScript,
-Python, Rust, TypeScript, or model runtimes.
-
-The test suite runs directly in the product `bin/hb` engine; it does not bake a
-top-level test-suite snapshot and it does not use checker/tool snapshot images
-as launchers. Build the exact tree first with `tools/native-build.f` and follow
-[gate.md](gate.md). Generated snapshot images are local artifacts and must not
-be committed.
-
-## Future ports
-
-The Gforth seed currently emits ARM64 only. Bring up another host by
-cross-building with an existing Habu compiler and executing the product
-on the new host. Keep target-specific requirements and qualification in
-[portability.md](portability.md) and the target's own document. Extend
-the no-binary seed only when native recovery on that host is needed.
+Run the gate after bootstrap or refresh (`bin/hb --load test/run.f`,
+[gate.md](gate.md)). It runs in the product `bin/hb` engine, never through a
+snapshot image; generated snapshot images are local artifacts and are never
+committed.
