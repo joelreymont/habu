@@ -35,9 +35,9 @@
 \ record's routine one byte past the shadow code, a site and a code cell naming
 \ the record one past the last shipped one, each refused by READ by name; and the
 \ unchanged artifact, refused by MERGE into a host written without its shadow. A
-\ refusal ends the process that reads, so a child - this file, handed the paths
-\ - does the reading, and the parent asks for the reader's exit code and its
-\ sentence. And the capture itself, in children whose windows reach the first
+\ refusal ends the process that reads, so a child - test/aot-shadow-reader.f,
+\ handed the paths - does the reading, and the parent asks for the reader's exit
+\ code and its sentence. And the capture itself, in children whose windows reach the first
 \ retired word: a public tier-0 word calling the second reaches it only from
 \ tier-0 code, which needs no x86 routine; a public alias of it in another
 \ package carries the routine it shares; a dead retired word reaching it through
@@ -51,9 +51,7 @@
 \
 \ Registered as `SUITE aot-shadow-capture`. Run standalone from the repository
 \ root: bin/hb --load test/aot-shadow-capture.f
-\ The reader child: bin/hb --load test/aot-shadow-capture.f -- read <artifact>
-\              or: bin/hb --load test/aot-shadow-capture.f -- merge <host> <artifact>
-\ The capturing child: bin/hb --load test/aot-shadow-capture.f -- retired|alias|bridge|helper|export
+\ The capturing child: bin/hb --load test/aot-shadow-capture.f -- retired|alias|bridge|helper|export|closed
 
 package AOTSH
 public
@@ -157,17 +155,16 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/address-carrier.f
 require src/habu/aot-file.f
+require test/aot-shadow-key.f
 require test/pcap-result.f
 
 package AOTSH
 using AOT-BUF
 
 32 constant SHA-BYTES
-create KEY SHA-BYTES allot           \ the producer key: any 32 bytes READ is handed back
 create DIR FS-PATH-CAP allot    variable DIR-U       \ where the artifacts go
 create ART FS-PATH-CAP allot    variable ART-U       \ the capture's own
 create FORGED FS-PATH-CAP allot    variable FORGED-U \ one with a field changed
@@ -394,14 +391,6 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    SHA-CTX k TABLE$ SHA256-FEED
    SHA-CTX out SHA256-END ;
 
-\ What the writer and every reader child agree on: the producer key, and the
-\ chain sources the header digests.
-: IDENT! ( -- )
-   SHA-BYTES 0 ?do 0 KEY i + c! loop
-   AOT-IDENT:RESET
-   s" src/habu/aot-decl.f" AOT-IDENT:PATH+
-   s" src/habu/aot-shadow.f" AOT-IDENT:PATH+ ;
-
 \ The path of `name` in the artifacts' directory, into `dst`.
 : IN-DIR ( ptr u8 n ptr u8 -- n ) {: na:ptr nu:n dst:ptr :}
    DIR DIR-U @ na nu dst JOIN-PATH ;
@@ -411,33 +400,33 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    a u CLEANUP-TREE+
    a DIR u BYTE-COPY  u DIR-U !
    s" shadow.aot" ART IN-DIR ART-U !
-   IDENT! ;
+   AOTSH-KEY:IDENT! ;
 
 : ROUND-CASE ( -- )
    s" WRITE and READ carry the four shadow tables byte for byte, and a second WRITE is the same file" T-LABEL
    ARTIFACT!
    4 0 ?do i DIGESTS i SHA-BYTES * + DIGEST loop
-   KEY ART$ AOT-FILE:WRITE
+   AOTSH-KEY:KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ drop FIRST SHA-BYTES BYTE-COPY
    AOT-SHADOW:RESET
-   KEY ART$ AOT-FILE:READ
+   AOTSH-KEY:KEY ART$ AOT-FILE:READ
    AOT-SHADOW:REC-N @ 16 T=
    4 0 ?do
       i REREAD DIGEST
       REREAD SHA-BYTES DIGESTS i SHA-BYTES * + SHA-BYTES T$=
    loop
-   KEY ART$ AOT-FILE:WRITE
+   AOTSH-KEY:KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ FIRST SHA-BYTES T$= ;
 
 : CLOSED-ROUND-CASE ( -- )
    s" capture without a shadow writes and reads empty shadow sections" T-LABEL
    ARTIFACT!
-   KEY ART$ AOT-FILE:WRITE
+   AOTSH-KEY:KEY ART$ AOT-FILE:WRITE
    AOT-SHADOW:RESET
-   KEY ART$ AOT-FILE:READ
+   AOTSH-KEY:KEY ART$ AOT-FILE:READ
    4 0 ?do i TABLE$ nip 0 T= loop ;
 
-\ ---- the reader child ---------------------------------------------------------
+\ ---- the children --------------------------------------------------------------
 \ src/habu/aot-file.f's DIE: this exit code, its sentence on stderr.
 $4B constant REFUSE-RC
 64 constant USAGE-RC                \ sysexits EX_USAGE
@@ -448,11 +437,11 @@ create ERR CAP allot    variable ERR-U
 create EMPTY 1 allot                 \ zero-length stdin
 variable RC
 
-\ Stage `bin/hb --load test/aot-shadow-capture.f -- <mode>`; the paths follow.
-: CHILD-ARGS ( ptr u8 n -- ) {: m:ptr mu:n :}
+\ Stage `bin/hb --load <file> -- <mode>`; the paths follow.
+: CHILD-ARGS ( ptr u8 n ptr u8 n -- ) {: f:ptr fu:n m:ptr mu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/aot-shadow-capture.f" >LEN PROC-ARGV+
+   f fu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    m mu >LEN PROC-ARGV+ ;
 
@@ -479,7 +468,8 @@ variable RC
 
 \ The capturing child in `mode` completes its capture.
 : CAPTURED ( ptr u8 n -- )
-   CHILD-ARGS
+   {: m:ptr mu:n :}
+   s" test/aot-shadow-capture.f" m mu CHILD-ARGS
    RUN-CHILD
    OUT OUT-U @ s" aot-shadow-capture: captured" CONTAINS? {: said:bool :}
    RC @ 0<> said 0= or if SHOW-CHILD then
@@ -541,11 +531,11 @@ variable RC
    p LE:U32@ {: was:n :}
    v p LE:U32!
    na nu FORGED IN-DIR FORGED-U !
-   KEY FORGED FORGED-U @ AOT-FILE:WRITE
+   AOTSH-KEY:KEY FORGED FORGED-U @ AOT-FILE:WRITE
    was p LE:U32! ;
 
 : READ-REFUSED ( ptr u8 n -- ) {: m:ptr mu:n :}
-   s" read" CHILD-ARGS  FORGED FORGED-U @ >LEN PROC-ARGV+
+   s" test/aot-shadow-reader.f" s" read" CHILD-ARGS  FORGED FORGED-U @ >LEN PROC-ARGV+
    m mu REFUSED ;
 
 \ The last routine ends where the shadow code does.
@@ -572,24 +562,9 @@ variable RC
    s" MERGE refuses an artifact that carries a shadow, into a host that carries none" T-LABEL
    AOT-SHADOW:RESET
    s" host.aot" HOST IN-DIR HOST-U !
-   KEY HOST HOST-U @ AOT-FILE:WRITE
-   s" merge" CHILD-ARGS  HOST HOST-U @ >LEN PROC-ARGV+  ART$ >LEN PROC-ARGV+
+   AOTSH-KEY:KEY HOST HOST-U @ AOT-FILE:WRITE
+   s" test/aot-shadow-reader.f" s" merge" CHILD-ARGS  HOST HOST-U @ >LEN PROC-ARGV+  ART$ >LEN PROC-ARGV+
    s" aot-file: a merge carries no shadow target's routines" REFUSED ;
-
-\ The child: READ an artifact, or READ a host and MERGE an artifact into it.
-: CHILD ( -- )
-   IDENT!
-   0 SCRIPT-ARGV$ s" read" STR=  SCRIPT-ARGC 2 = and if
-      KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
-      s" aot-shadow-capture: read=ok" type cr exit
-   then
-   0 SCRIPT-ARGV$ s" merge" STR=  SCRIPT-ARGC 3 = and if
-      KEY 1 SCRIPT-ARGV$ AOT-FILE:READ
-      KEY 2 SCRIPT-ARGV$ AOT-FILE:MERGE
-      s" aot-shadow-capture: merge=ok" type cr exit
-   then
-   s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export, closed, read <artifact>, or merge <host> <artifact>"
-   USAGE-RC die ;
 
 \ What the capture carried, for a reader comparing runs.
 : REPORT ( -- )
@@ -620,7 +595,10 @@ public
    MODE$ nip 0<> if
       CAPTURE NSHADOW:CLOSE  s" aot-shadow-capture: captured" type cr exit
    then
-   SCRIPT-ARGC 0 > if NSHADOW:CLOSE CHILD exit then
+   SCRIPT-ARGC 0 > if
+      s" aot-shadow-capture: expected no arguments, retired, alias, bridge, helper, export or closed"
+      USAGE-RC die
+   then
    CAPTURE
    NSHADOW:CLOSE
    T-RESET

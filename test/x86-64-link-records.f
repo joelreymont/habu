@@ -51,7 +51,8 @@
 \ anonymous routine. A live emitted
 \ private HELPER beside its public USER ships with its private WID, links, and
 \ runs as USER(7)=22 on a Linux x86-64 host. A public EXPORT alias of a live
-\ private body ships both names over one routine and lays out.
+\ private body ships both names over one routine and lays out. These two and the
+\ quotation cell complete in one child, the linked one, whose window has all three.
 \
 \ LOAD ORDER. The x86-64 writer first sizes its shared image buffer under
 \ `using X64CODE`; the ARM64 code layer then supplies the capture budget.
@@ -59,8 +60,8 @@
 \ Registered as `SUITE x86-64-link-records`. Run standalone from the repository
 \ root: bin/hb --load test/x86-64-link-records.f
 \ A child: bin/hb --load test/x86-64-link-records.f -- MODE, MODE one of shift
-\ stray strip export callee retired wid unresolved quot cellname pkgsite doessite
-\ xtless pkgcell
+\ stray linked callee retired wid unresolved cellname pkgsite doessite xtless
+\ pkgcell
 
 package X64LT
 public
@@ -104,12 +105,13 @@ variable IMAGE-PATH-U
       exit
    then
    s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
-   s" strip" MODE? if s" private get-current X64LT:PRIVATE-WID ! : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ;" exit then
-   s" export" MODE? if s" private : SHARED ( -- n ) 7 ; public EXPORT SHARED" exit then
+   s" linked" MODE? if
+      s" private get-current X64LT:PRIVATE-WID ! : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ; private : SHARED ( -- n ) 7 ; public EXPORT SHARED : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!"
+      exit
+   then
    s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
    s" retired" MODE? if s" 0 set-tier : GONE ( -- n ) 7 ; 1 set-tier : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
-   s" quot" MODE? if s" : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
    s" " ;
 SHIFT$ evaluate
@@ -502,7 +504,7 @@ using AOT-BUF
    off W-LEAF IMG ENTRY X64LINK:CODE-VA - T=
    raw W-LEAF IMG 8 RF@ T= ;
 
-\ ---- the index, read by the kernel ---------------------------------------------
+\ ---- the private image, booted by the kernel -----------------------------------
 \ The stream KERNEL opened becomes an image: the writer's records at the region
 \ and its code band DICT-SIZE past them, where the long names lie; the count,
 \ through ndict!; then the writer's index at INDEX-VA, which HIDXP-CELL names
@@ -655,21 +657,18 @@ variable RC
    s" stray" s" names window record BARE"
    s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
-: EXPORT-CASE ( -- )
-   s" a public EXPORT alias of a live private body lays out" T-LABEL
-   s" export" RUN-CHILD
-   OUT OUT-U @ s" x86-64-link-records: laid out" CONTAINS? {: said:bool :}
-   RC @ 0<> said 0= or if SHOW-CHILD then
+\ The linked child's window holds the strip, export and quotation subjects.
+: LINKED-CASE ( -- )
+   s" linked" RUN-CHILD
+   OUT OUT-U @ s" x86-64-link-records: linked private" CONTAINS? {: strip:bool :}
+   OUT OUT-U @ s" x86-64-link-records: quotation cell linked" CONTAINS? {: quot:bool :}
+   RC @ 0<> strip 0= or quot 0= or if SHOW-CHILD then
+   s" a window with a live private helper, a public EXPORT alias of a live private body and a quotation code cell lays out" T-LABEL
    RC @ 0 T=
-   said TTRUE ;
-
-: STRIP-CASE ( -- )
    s" a live private helper ships with its public caller and links with its private WID" T-LABEL
-   s" strip" RUN-CHILD
-   OUT OUT-U @ s" x86-64-link-records: linked private" CONTAINS? {: said:bool :}
-   RC @ 0<> said 0= or if SHOW-CHILD then
-   RC @ 0 T=
-   said TTRUE
+   strip TTRUE
+   s" a declared code cell holds its anonymous quotation entry in linked image DATA" T-LABEL
+   quot TTRUE
    RUN-STRIP-IMAGE ;
 
 : STRIP-CHILD ( -- )
@@ -736,14 +735,6 @@ variable RC
    then
    s" x86-64-link-records: quotation cell linked" type cr ;
 
-: QUOT-CASE ( -- )
-   s" a declared code cell holds its anonymous quotation entry in linked image DATA" T-LABEL
-   s" quot" RUN-CHILD
-   OUT OUT-U @ s" x86-64-link-records: quotation cell linked" CONTAINS? {: linked:bool :}
-   RC @ 0<> linked 0= or if SHOW-CHILD then
-   RC @ 0 T=
-   linked TTRUE ;
-
 : CELLNAME-CASE ( -- )
    s" a code cell holding the xt of a prefix word no kernel body carries is refused by its name" T-LABEL
    s" cellname" s" holds STR=, which no x86-64 kernel body carries"
@@ -805,9 +796,8 @@ public
    IMAGE-MODE @ 0<> if IMAGE-CASE exit then
    KERNEL
    X64LINK:LAYOUT
-   s" strip" MODE? if STRIP-CHILD exit then
-   REFUSAL? s" export" MODE? or if s" x86-64-link-records: laid out" type cr exit then
-   s" quot" MODE? if QUOT-LINKED exit then
+   s" linked" MODE? if QUOT-LINKED STRIP-CHILD exit then
+   REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
    RECORDS-CASE
@@ -831,13 +821,11 @@ public
    INDEX-IMAGE
    SHIFT-CASE
    STRAY-CASE
-   STRIP-CASE
-   EXPORT-CASE
+   LINKED-CASE
    CALLEE-CASE
    RETIRED-CASE
    WID-FORGED-CASE
    UNRESOLVED-CASE
-   QUOT-CASE
    CELLNAME-CASE
    PKGSITE-CASE
    DOESSITE-CASE
