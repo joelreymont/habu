@@ -39,8 +39,8 @@
 \ the very same number. For `callq` the encoding agrees outright, e8 having no
 \ short form; for `jmp` and `jcc` llvm-mc assembles the two-byte relaxable form
 \ (EB cb, 7x cb) where this emitter always writes the wide one, because rel8
-\ relaxation is not a condition of correctness here (docs/xcomp.md "The
-\ emitter's sink"). The displacement itself is measured FROM THE END of its
+\ relaxation is not a condition of correctness here (src/compiler/native/
+\ emit-x64.f, "TWO PASSES"). The displacement itself is measured FROM THE END of its
 \ instruction, so the target of a pinned `jmp -26` is 26 bytes before the byte
 \ after it.
 \

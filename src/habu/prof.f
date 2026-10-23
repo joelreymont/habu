@@ -7,7 +7,9 @@
 \ inclusive counts with percent and the top callers under each row. A non-zero
 \ `prof-on` limit still reports and exits 99 at that many samples, for a program
 \ that cannot reach a `prof-off` of its own. prof-pc>rec answers the handler's
-\ attribution question from Habu code.
+\ attribution question from Habu code. Measured as user CPU across separate
+\ processes at `20 prof-rate` over about a million samples against a 19.7 s
+\ baseline, a tick costs about 1 us: a tenth of a percent at the default rate.
 \ Load after habu1.f (uses DBASE/NDICT/DREC/A/FPRIM-L), before habu2.f.
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 \
@@ -378,6 +380,21 @@ public
       next LBL,  12 12 1 ADDI,  turn B,
    done LBL, ;
 
+\ The header line names every field: samples (ticks delivered), words (ticks in a
+\ dictionary word, the sum of the exclusive column), other (Habu code in no word:
+\ the main loop, engine helpers, gaps between spans), new (deferred ticks whose pc
+\ no live record owns), defer (ticks in code compiled after prof-on, still
+\ unnamed), spill (deferred ticks the buffer had no room for), foreign (contexts
+\ without the engine's DATA and dictionary registers: a lower bound on FFI time,
+\ since a foreign leaf that keeps both lands in other), frames (caller frames
+\ attributed), dropped (caller edges a full probe window could not key), indexed
+\ (index entries), usec (the interval sampled at) and attributed (words that took
+\ a sample of either kind; the text report prints PROF-ROWS of them per section,
+\ prof-json all). A text row is exclusive, its percent of samples, inclusive, its
+\ percent, then the package-qualified word; a caller line `<- count percent
+\ caller` is a share of the row's exclusive count in the flat section and of its
+\ inclusive count under `by inclusive`. `(unknown)` is the share whose caller the
+\ walk could not establish.
 \ words + other + new + defer + spill + foreign == samples is the accounting this
 \ line states. After a sync, defer is 0 and new holds only the deferred samples
 \ whose pc belongs to no live record; an auto-report at the limit does not sync,

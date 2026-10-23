@@ -404,7 +404,13 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ Cold prefix and argv or stdin input share the read allowance. Baked source
-\ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f.
+\ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f. Each argv
+\ file is bounded by it too, and the file reader reserves an EOF probe; overflow
+\ exits 74 with `hb: source prefix buffer full` (test/main-argv.f,
+\ tools/build-fixpoint-test.f SOURCE-BOUNDARY). The prefix is read without its
+\ comment and blank lines (habu2.f EMIT-SOURCE-READ-PREFIX); argv files and the
+\ --build payload are read byte for byte. A seeded engine emits no cold prefix,
+\ so its program input starts at the arena base.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA

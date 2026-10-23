@@ -561,8 +561,9 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
 
 \ An HB_TMP longer than that is refused once, here, before anything is made: a
 \ named failure with its length and the limit, then the report's exit. A row's
-\ own deeper paths are its business: docs/gate.md "Scratch and cache" bounds the
-\ full gate.
+\ own deeper paths are not checked here: the deepest, streaming-sha256's deep
+\ file (tools/sha256-file-test.f), must still fit FS-PATH-CAP (src/lib/fs.f
+\ FS-PATHZ-INTO), so a gate HB_TMP must be short enough to leave it room.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
    s" HB_TMP" GETENV nip {: tmpu:n :}
    prefixu GT-HB-TMP-MAX {: max:n :}

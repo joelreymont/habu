@@ -8,8 +8,8 @@ rule is named where the reason depends on it.
 
 **The stack comment is the signature.** Every Forth word already states its
 interface in `( in -- out )`. Habu makes that comment a type and proves the body
-against it when the file loads; a body that disagrees stops the load with exit
-70 and a message naming the word and the token. No new syntax is needed, and a
+against it when the file loads; a body that disagrees stops the load with a
+message naming the word and the token. No new syntax is needed, and a
 wrong interface becomes a load failure instead of runtime stack corruption.
 
 **Effect tokens are types, not names.** `( got expected -- bool )` declares two
@@ -52,12 +52,10 @@ to be part of the type.
 `NEWTYPE` derives nothing: its only constructors are what the owning package
 writes, so holding a value proves the package's validation ran. A `DEFTYPE`
 derives the converter pair `>NAME` and `NAME>N`, so anyone may cross the
-boundary and every crossing is visible in source. `src/lib/num-types.f` shows
-the first discipline: its constructors validate and no public word turns a
-`NUM:byte-len` back into `n`; each consumer that needs the raw cell keeps its
-own private `CAST:` (`src/lib/memory.f` has `ALLOC-BYTES>N` and `BYTE-LEN>N`).
-A public inverse would let any caller launder one role into another through
-`n`.
+boundary and every crossing is visible in source. A validating package
+publishes no inverse to `n`; each consumer that needs the raw cell keeps its
+own private `CAST:`. A public inverse would let any caller launder one role
+into another through `n`.
 
 **A nominal field is a proof token.** Generated constructors are always
 public, so a field whose type only the package can construct is the one way a
@@ -74,9 +72,8 @@ bound to a local (`E-LINEAR-LOCAL`), because a local can be referenced twice;
 the checker refuses even a local referenced once rather than counting
 references.
 
-**Disposal cannot half-fail.** `MEM:RELEASE-BYTES` and `MEM:UNMAP` return
-nothing; a failing `munmap` ends the process with `memory: unmap failed` and
-exit 71. A disposal word with a result could be ignored or half-handled and
+**Disposal cannot half-fail.** A disposal word returns nothing, and a failing
+release ends the process. A disposal word with a result could be ignored or half-handled and
 leave a caller believing memory was returned. A disposer that runs in a
 sequence of disposals may return a `result` instead, so one failure does not
 unwind past owners not yet disposed; it must still free its own record before
@@ -109,10 +106,9 @@ trusted call site, or a whole unchecked span, into checked code.
 **Packages can be sealed.** Not resolving a private name from outside proves
 only that the name is not visible; a later `package NAME` could reopen the
 package and republish a private word, for example one that turns an `mmap`
-result into a typed pointer. A sealed package refuses the reopen with
-`ENGINE-ERROR:SEAL-PACKAGE` (84). The native build seals every package a
-capture ships (`src/core/internal-mark.f`), so on a product engine no baked
-package can be reopened.
+result into a typed pointer. A sealed package refuses the reopen, and the
+native build seals every package a capture ships, so on a product engine no
+baked package can be reopened.
 
 ## Families and layout policies
 
@@ -128,8 +124,8 @@ concrete types: `option<a>` is declared once and `option<n>` and
 `option<NUM:index>` are distinct members.
 
 **Rows key on (package, lowercase tail).** Two packages may each declare
-`index` without aliasing. Type tails are lowercase (`E-TFAM-CASE`) and
-executable words upper case, so a type and a word never collide by spelling.
+`index` without aliasing. Type tails are lowercase and executable words upper
+case, so a type and a word never collide by spelling.
 
 **An algebraic type has four layers.** Each family defines a logical type
 (`result<a,b>`), a physical layout (payload slots and a tag), generated
@@ -183,8 +179,8 @@ family publishes `PKG-FAMILY:MAKE` in a reserved constructor namespace; a
 private family publishes `FAMILY-MAKE` in its package's private wordlist. Most
 memory records are package-private, so a public-only generator would serve
 almost nothing. The private spelling has no colon because it cannot: a
-qualified definition name is routed to the named namespace's public wordlist
-(`C-QUALIFY-DEF`), and the checker records a colon name as a public symbol. A
+qualified definition name is routed to the named namespace's public wordlist,
+and the checker records a colon name as a public symbol. A
 private sum or enum publishes no words at all; it constructs through
 checker-owned tokens keyed by package, family and variant.
 
@@ -193,7 +189,7 @@ constructor namespace is a protected wordlist, which refuses an extra tail and
 an `undefine`. A private family's words share the package's own wordlist, and
 protecting that wordlist would refuse every later definition the package
 makes, so they are protected by name instead: `undefine` of a generated member
-is `E-CTOR-PROTECTED`. A variant name is not a generated member, so a package
+is refused. A variant name is not a generated member, so a package
 may still define a word that happens to share it.
 
 ## Type substrate
@@ -225,42 +221,39 @@ roles stay in the CT table, where a global name is what they are.
 
 ## Registry protection
 
-**The hole.** Registry control cells such as `PF-COMMIT-N` are
-`variable`/`create` records. The seal-time internal-word pass classifies only
-colon records, so these names stayed executable at top level, and
-`99 PF-COMMIT-N !` corrupted `TYPE-FIELD:COUNT` past the public API. Checked code
-naming a cell directly was already refused, because the cells are defined
-before the checker installs and are never certified.
+**The hole.** Registry control cells are `variable`/`create` records, which a
+seal-time pass over colon records alone would leave executable at top level,
+where a bare store corrupts a registry past its public API. Checked code naming
+a cell directly is refused, because the cells are defined before the checker
+installs and are never certified.
 
-**Name authority closes direct routes.** Each registry cell is tagged with
-`REG-PROTECT` at its definition (`src/core/util.f`); the seal pass marks it
-internal, and a bare use or `'` fails closed with `hb: internal engine word`,
-rc 70. Whole-file packages close the rest: `src/core/type-family.f` is package
-`TFAM`, so a cell nothing outside it names is private and unreachable by name.
-Reads go through certified accessors.
+**Name authority closes direct routes.** Each registry cell is tagged as
+protected at its definition (`src/core/util.f`); the seal pass marks it
+internal, and a bare use or `'` fails closed with `hb: internal engine word`.
+Whole-file packages close the rest: a cell nothing outside its package names is
+private and unreachable by name. Reads go through certified accessors.
 
 **The checker closes the laundered route.** `variable V  ' W V !  : F V @
-execute ;` once certified as a pure `( -- )` while the real xt ran, which let
+execute ;` would certify as a pure `( -- )` while the real xt ran, letting
 checked source write a protected cell or run a definer. Executing or catching
-an xt fetched from untyped memory is now `E-EXEC-OPAQUE-XT`, and a tick of a
-protected target is refused at the tick. The fix is provenance-blind: it closes
-the whole class of laundered calls at check time.
+an xt fetched from untyped memory is refused, and a tick of a protected target
+is refused at the tick. The fix is provenance-blind: it closes the whole class
+of laundered calls at check time.
 
 **A guarded memory band was rejected.** Moving the cells into a write-trapped
 band would require a guard-bypass writer for legitimate declaration-time
 updates. Because the registry is Forth-level, that writer must be a
 Forth-callable word with no effect, which is exactly what the laundered route
-reached; the band would only trade one route for another. The engine's
-`TXN-STATE` band is safe for a different reason: its writers are inline machine
-code inside compiler primitives, never standalone words. Protection of a
+reached; the band would only trade one route for another. An engine band is
+safe for a different reason: its writers are inline machine code inside
+compiler primitives, never standalone words. Protection of a
 Forth-level registry is therefore name authority plus the checker's refusal of
 opaque execution.
 
 ## Typed top level
 
-**The problem.** The native depth floor (`DNAME-MIN-IN`, checked before a
-certified word's body runs) sees how many cells are present, not what they
-are. `' W execute` below `W`'s arity read below the stack base; `0 0 catch`
+**The problem.** The native depth floor, checked before a certified word's
+body runs, sees how many cells are present, not what they are. `' W execute` below `W`'s arity read below the stack base; `0 0 catch`
 branched to address 0; `s" abc" +` added a pointer to its length; and an
 immediate named in a checked body ran at compile time, leaving an empty body
 under a non-empty certificate.
@@ -277,12 +270,12 @@ the anchor: the row resynchronises to it at every event.
 depth: depth stays enforced, value types are honestly unknown, and checking
 resumes at the next token. `TRUSTED:` and certified words carry stored effects
 and reset nothing, so the trigger is "no stored effect", never trust level.
-A reject fires before the word runs, so the stack is untouched and the rc-70
+A reject fires before the word runs, so the stack is untouched and the
 failure stays catchable by the REPL and `evaluate`.
 
 **No new escape hatch.** `0 set-check` suspends the row's enforcement inside
-its window; nothing else does. The tracker warns by default and
-`HABU_TOP_TIER=2` makes the same sites reject.
+its window; nothing else does. By default the row warns; `src/core/top-row.f`
+names the switch that makes the same sites reject.
 
 **An xt carries its effect.** `['] W` yields `xt<effect(W)>`, a quotation type
 built from `W`'s certified effect, so `execute`, `catch` and `is` check it by
@@ -336,19 +329,18 @@ cells without reading them; those cells may only be discarded.
 **Owner frames belong to the task.** Frames form a chain in the current task's
 storage, rooted in a private slot reached through `data-base`; the main thread
 uses the same slot without a TCB. One static `TASK:AT-EXIT` callback per task
-drains remaining frames innermost first. The drain is necessary because
-`TASK:PAUSE` ends a halted task without unwinding `finally`. The exit registry
-is shared and fixed (`TASK-EXIT-MAX`, 128 rows), so ownership uses one row per
-task, not per scope, and an exhausted registration fails before any owner is
-acquired. The process-wide `MEM:WITH-BYTES` scope stack is not reused, because
-it nests per image, not per task.
+drains remaining frames innermost first. The drain is necessary because a
+halted task ends without unwinding `finally`. The exit registry is shared and
+fixed, so ownership uses one row per task, not per scope, and an exhausted
+registration fails before any owner is acquired. The process-wide byte scope
+stack is not reused, because it nests per image, not per task.
 
 **No half-done transfer.** A frame is registered pending before allocation
 and records each acquisition with a step that can neither throw nor yield; it
 then moves pending, live, closing, closed, and a pending frame disposes only
 what it recorded. Closing invalidates loans before disposal. A cooperative
 halt is deferred across acquisition and close through the task's own deferral
-depth, which `TASK:PAUSE` consults, so `TASK` has no dependency on the owner
+depth, which the halt consults, so the task library has no dependency on the owner
 runtime. A disposer finishes releasing before it reports an error, and a drain
 continues through every remaining frame before reporting its first failure.
 Otherwise an interrupted disposer could run twice or lose the authority to
@@ -363,7 +355,7 @@ services, under Habu's package prefixes and typed handles but with the
 products' word names.
 
 **Tasks.** The runner catches the worker xt, records an uncaught throw in the
-task control block (`TASK:THROW@`) and ends only that task, as SwiftForth's
+task control block and ends only that task, as SwiftForth's
 trampoline does; a worker throw must not end the process. Blocking waits use
 semaphores (`SEMAPHORE`, `WAIT`, `SIGNAL`) and `STOP`/`WAKE` instead of
 polling. `JOIN` returns a `result` and `AT-EXIT` registers cleanup, after VFX's

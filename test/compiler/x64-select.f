@@ -45,6 +45,9 @@
 \ ONE FIXTURE PER CONTEXT, and a refusing case runs inside an enclosing one: an
 \ abandoned context gives its registry slots back only when a live enclosing
 \ context leaves normally (src/compiler/ir/context.f, the note on stale handles).
+\
+\ NOT COVERED: edge splitting of a permuting back edge, and the pass's internal
+\ shape refusals.
 
 require src/lib/test.f
 require src/compiler/native/select-x64.f

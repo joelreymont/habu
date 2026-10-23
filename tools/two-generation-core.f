@@ -7,6 +7,10 @@
 \ 5 - each through the production entry point, tools/native-build.f. Copy the
 \ seed and write each generation in a fresh private temporary directory. No
 \ success, failure or interruption needs to move or restore the installed engine.
+\ Each build, the two of same-host mode included, uses its own empty cache under
+\ that directory, so cached support and FILE artifacts cannot affect the
+\ comparison. A successful run removes those caches and keeps the executables,
+\ maps and logs; a failed run keeps the caches for diagnosis.
 \
 \ Each generation prints one line: the image size plus the shape
 \ tools/two-generation-probe.f reads out of it. The chain fails, naming the

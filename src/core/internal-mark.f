@@ -6,7 +6,7 @@ require src/core/prefix-boundary.f
 package ENGINE-INTERNAL
 
 \ THE PASS LEAVES NO RECORD NUMBER IN DATA: a record number is the host's
-\ (docs/bootstrap.md, "A record number is the host's"). So the cursors are loop
+\ (docs/bootstrap.md, "Generation Chain Check"). So the cursors are loop
 \ indices, the prefix's first record is a local, and IMK-PASS retires the
 \ REG-PROTECT registrations (src/core/util.f) once it has decided what to do
 \ with them.

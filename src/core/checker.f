@@ -27105,7 +27105,7 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
 \ one row fewer than this tree moved that word's record and rows, and a host
 \ with one row more renumbered every symbol interned after its name, in the
 \ engine built from the same source (docs/bootstrap.md
-\ "The checker's records do not follow the host's symbol numbering"). The host
+\ "Generation Chain Check"). The host
 \ certified the prefix in source order after CHECKER-RESET-SOURCE rewound its
 \ user records, so the store offset just past each record, EW.NEXT, orders the
 \ copies the same way on every host. ORDER-P holds source order and the exact
