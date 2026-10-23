@@ -27,6 +27,16 @@ variable EXPORT-U
 variable IMPORT-U
 variable CODE-A-O  variable CODE-A-U
 variable CODE-B-O  variable CODE-B-U
+create EXPECT 512 allot  variable EXPECT-U
+
+\ The diagnostic line head of file name's reuse.
+: REUSED$ ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n :}
+   0 EXPECT-U !
+   s" native-file: reused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  records=" EXPECT 512 EXPECT-U BUF-APPEND
+   EXPECT EXPECT-U @ ;
 
 : BUILD ( ptr u8 n -- n )
    {: product:ptr productu:n :}
@@ -98,15 +108,22 @@ variable CODE-B-O  variable CODE-B-U
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
    s" task-cold-hb" RUN-TASK-STATE
    s" downstream.f" AT S\" \\ task consumer comment\n" APPEND-FILE
+   true NATIVE-FILE-APP:DIAG? !
    s" task-warm-hb" BUILD SUCCESS
+   false NATIVE-FILE-APP:DIAG? !
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
+   \ app.f moves no TASK user slot itself: the slots its children take are
+   \ theirs, so it is reused.
+   ERR$ s" app.f" REUSED$ CONTAINS? TTRUE
    s" task-warm-hb" RUN-TASK-STATE
+   \ prefix.f and app.f change, and unit.f and downstream.f baked slot
+   \ offsets the grown prefix moves: no file is reused.
    s" a grown prefix reservation moves the cached leaf slot" T-LABEL
    GROWN-PREFIX
    s" task-grown-hb" BUILD SUCCESS
    OUT$ s" files reused " CONTAINS? TTRUE
-   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
    s" task-grown-hb" RUN-TASK-STATE ;
 

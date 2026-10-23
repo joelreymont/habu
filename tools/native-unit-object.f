@@ -96,8 +96,9 @@ private
 \ length, library index, argument and spill counts, the function's index.
 \ FFI-SCOPE: kind, role (0 the declarer's selection when the segment opened,
 \ 1 when it closed), library index, the scope wordlist's reference and 1
-\ when a scope was stated. OUT: kind, the bytes' offset in slot 19 and their
-\ length. Unused cells are 0.
+\ when a scope was stated. TASK: kind, TASK's user-slot watermark at the
+\ segment's open and at its close. OUT: kind, the bytes' offset in slot 19
+\ and their length. Unused cells are 0.
 88 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
 \ length.
@@ -158,6 +159,11 @@ private
 3 constant EV-FFI-LIB
 4 constant EV-FFI-FN
 5 constant EV-FFI-SCOPE
+\ Last of the rows after a SEGMENT row whose segment moved TASK's user-slot
+\ watermark, before its OUT row: the watermark at its open, which the slot offsets it baked assume, and at
+\ its close, which a replay leaves. A segment that leaves it in place has
+\ none, so a parent is not charged with the slots its children took.
+6 constant EV-TASK
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
@@ -169,9 +175,11 @@ private
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
 \ was stated), the origin bytes when it opened, its sink cell first, the
 \ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the
-\ output bytes when it and its open segment opened, and the LOAD row its
-\ pending loader action claimed (ACT-NONE, ACT-OPEN). A child file's bytes
-\ and sites follow its parent's and are dropped when the child closes.
+\ output bytes when it and its open segment opened, the LOAD row its
+\ pending loader action claimed (ACT-NONE, ACT-OPEN), and the open
+\ segment's TASK user-slot watermark with 1 when TASK was bound to read it.
+\ A child file's bytes and sites follow its parent's and are dropped when
+\ the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -203,7 +211,9 @@ private
 28 constant FO-OUTPUT
 29 constant FO-SEG-OUT
 30 constant FO-ACT-ROW
-31 constant FO-CELLS
+31 constant FO-SEG-USER
+32 constant FO-SEG-USER-BOUND
+33 constant FO-CELLS
 \ FO-ACT-ROW with no loader action of the file's own token pending, and with
 \ one pending that has loaded no child yet; any other value is the LOAD row
 \ its child opened.
@@ -431,6 +441,7 @@ CAST: FFI-FN-XT ( n -- [ ptr u8 n n n n -- n ] )
 CAST: FFI-SELECT-XT ( n -- [ n n bool -- ] )
 CAST: REQ-LEN-XT ( n -- [ n -- n ] )
 CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
+CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 
 \ Field n of file frame k, outermost first.
 : FRAME ( n n -- ptr n ) swap FO-CELLS * + FILE-FRAMES ;
@@ -571,6 +582,18 @@ CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
 : FFI-XT ( ptr u8 n -- n ) NUNIT-CAPTURE:BOUND-PRODUCER-XT ;
 : FFI-N ( ptr u8 n -- n ) FFI-XT DEF-NUM-XT execute ;
 : FFI-SELECTION ( -- n n bool ) s" FFI-DECL:SELECTION" FFI-XT FFI-SELECTION-XT execute ;
+
+\ TASK hands its user-slot watermark cell to a claimant: USER-MARK reads it,
+\ and whether TASK is bound to; INSTALL-TASK stores USER-PUT through it.
+variable USER-SEEN
+variable USER-PUT
+: USER-SEEN! ( ptr u8 -- ) CELL-VIEW @ USER-SEEN ! ;
+: USER-PUT! ( ptr u8 -- ) CELL-VIEW USER-PUT @ swap ! ;
+: USER-XT ( -- n ) s" TASK:OWNED-USER-NEXT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT ;
+: USER-MARK ( -- n bool )
+   USER-XT dup 0= if drop 0 false exit then
+   ['] USER-SEEN! swap USER-NEXT-XT execute
+   USER-SEEN @ true ;
 
 \ The registry's observer: journal one declaration of the open segment.
 : OBS+ ( n n -- )
@@ -804,6 +827,7 @@ private
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO !
    AOT-ARM:WIDN FO-SEG-WID FO !
    0 IMAGE-U ! 0 KCELLS-HELD !
+   USER-MARK if 1 else 0 then FO-SEG-USER-BOUND FO ! FO-SEG-USER FO !
    FFI-BOUND? 0= if exit then
    s" FFI:NEXT-FN" FFI-N FO-SEG-FN FO !
    s" FFI:MARK" FFI-N FO-SEG-ROOM FO !
@@ -900,9 +924,11 @@ private
 \ back, a require counter other than the one the file opened with, or an
 \ address cell row removed below the segment's first refuses it. The row
 \ records the values of its first and last address cell rows, which the
-\ file's encoding checks again. The earlier DATA bytes the segment changed
-\ are recorded whether or not it adds a row; a kernel cell it left changed
-\ refuses it. Output its top level wrote adds an OUT row after the rest.
+\ file's encoding checks again; a segment that moved TASK's user-slot
+\ watermark, either way, adds its TASK row. The earlier DATA bytes the
+\ segment changed are recorded whether or not it adds a row; a kernel cell it
+\ left changed refuses it. Output its top level wrote adds an OUT row after
+\ the rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
    FO-SEG-ORD FO @ {: first:n :}
@@ -924,12 +950,15 @@ private
          s" slots-rewound" FILE-REFUSE exit
       then
    then
+   FO-SEG-USER FO @ {: entry:n :}
+   USER-MARK {: user:n bound:bool :}
+   bound FO-SEG-USER-BOUND FO @ 1 = and user entry <> and {: moved:bool :}
    KCELLS-CHECK
    FILE-REFUSED? 0= if IMAGE-DIFF then
    FFI-BOUND? if FFI-SEG-CK else false then {: sel:bool :}
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= OBS-N @ 0= and sel 0= and
-      if first OUTPUT-ROW+ exit then
+      moved 0= and if first OUTPUT-ROW+ exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
@@ -945,7 +974,9 @@ private
       FO-SEG-HERE FO @ DATA-PTR at SEG-DATA bytes BYTE-COPY
       bytes SEG-DATA-U +!
    then
-   first sel FFI-ROWS+ first OUTPUT-ROW+ ;
+   first sel FFI-ROWS+
+   moved if EV-TASK first entry user 0 0 0 0 0 EV+ then
+   first OUTPUT-ROW+ ;
 
 \ The end of open file k's event rows, where the next frame's begin.
 : EV-HI ( n -- n )
@@ -2245,6 +2276,11 @@ CAST: N>U8 ( n -- ptr u8 )
       0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
       0 OUT-N 0 OUT-N 0 OUT-N exit
    then
+   kind EV-TASK = if
+      kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
+   then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
    row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N row 9 EV @ OUT-N
@@ -3087,15 +3123,18 @@ private
       {: end:n mark:n rows:n inputs:n prev:n :}
       evs i EVENT-BYTES * + {: row:ptr :}
       row 0 U64-AT {: kind:n :}
-      kind EV-SEGMENT <> kind EV-LOAD <> and row 7 U64-AT 0<> and
-         if BAD then
+      kind EV-SEGMENT <> kind EV-LOAD <> and kind EV-TASK <> and
+         row 7 U64-AT 0<> and if BAD then
       kind EV-SEGMENT = if row end mark SEGMENT-CK rows inputs else
          kind EV-LOAD = if end mark row namesu srcu rows inputs LOAD-CK else
             kind EV-OUT = if end mark rows inputs else
-               kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
-               \ FFI rows follow their segment's row.
-               prev EV-LOAD = if BAD then
-               row names namesu refs FFI-CK end mark rows inputs
+               \ FFI rows follow their segment's row, and a TASK row the
+               \ last of them.
+               prev EV-LOAD = prev EV-TASK = or if BAD then
+               kind EV-TASK <> if
+                  kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
+                  row names namesu refs FFI-CK
+               then end mark rows inputs
             then
          then
       then
@@ -3995,22 +4034,40 @@ TRUSTED: SLOT-STORE ( n n n -- )
    loop
    AOT-ARM:HERE-N 1 cells mod ev 6 U64-AT <> and 0= ;
 
-\ The event row after event row seg's FFI rows.
-: FFI-END ( n -- n )
+\ The event row after segment row seg's FFI and TASK rows.
+: TAIL-END ( n -- n )
    {: seg:n :}
    OBJ-EVS seg 1+ ?do
       i OBJ-EV 0 U64-AT {: kind:n :}
-      kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if i unloop exit then
+      kind EV-FFI-LIB < kind EV-TASK > or if i unloop exit then
    loop
    OBJ-EVS ;
 
-\ The event row after event row seg's FFI rows and its OUT row.
+\ The event row after segment row seg's FFI and TASK rows and its OUT row.
 : SEG-NEXT ( n -- n )
-   FFI-END {: next:n :}
+   TAIL-END {: next:n :}
    next OBJ-EVS < if
       next OBJ-EV 0 U64-AT EV-OUT = if next 1+ exit then
    then
    next ;
+
+\ Segment row seg's TASK row, the last of its FFI and TASK rows, or -1.
+: TASK-ROW ( n -- n )
+   {: seg:n :}
+   seg TAIL-END 1- {: last:n :}
+   last seg > if last OBJ-EV 0 U64-AT EV-TASK = if last exit then then
+   -1 ;
+
+\ Segment row seg's TASK row, installed: the watermark the segment left is
+\ stored through the cell TASK hands its claimants. TASK-ROW-HOLDS? found
+\ TASK bound.
+: INSTALL-TASK ( n -- )
+   TASK-ROW {: row:n :}
+   row 0 < if exit then
+   USER-XT {: xt:n :}
+   xt 0= if BAD then
+   row OBJ-EV 2 U64-AT USER-PUT !
+   ['] USER-PUT! xt USER-NEXT-XT execute ;
 
 \ The offset in slot 8 of require row k.
 : REQ-OFF ( n -- n )
@@ -4073,11 +4130,12 @@ public
    rc 0<> if rc throw then ;
 
 \ Event row seg, a segment: its records with its DATA bytes, the wordlists
-\ they make and their protection, its require rows, its FFI rows, then the
-\ checker slices through its own. The file's first segment starts at the
-\ file's first ordinal and adds its map row here; one after a load starts
-\ wherever the loads left the dictionary, and PREPARE-SEGMENT added its map
-\ row and prepared its checker slice. Every refusal here is a malformed
+\ they make and their protection, its require rows, its FFI rows, its TASK
+\ row, then the checker slices through its own. The file's first segment
+\ starts at the file's first ordinal and adds its map row here; one after a
+\ load starts wherever the loads left the dictionary, and PREPARE-SEGMENT
+\ added its map row and prepared its checker slice. Every refusal here is a
+\ malformed
 \ object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
@@ -4103,6 +4161,7 @@ public
    wids 0 ?do prot i + c@ 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then loop
    seg rbase reqs INSTALL-REQUIRES
    seg INSTALL-FFI
+   seg INSTALL-TASK
    loads INSTALL-CHECKS ;
 
 private
@@ -4297,7 +4356,7 @@ public
    s" FFI:NEXT-LIB" FFI-N {: nextlib:n :}
    s" FFI:NEXT-FN" FFI-N {: nextfn:n :}
    s" FFI:MAKER-BANK" FFI-N {: bank:n :}
-   0 0 seg FFI-END seg 1+ ?do
+   0 0 seg TAIL-END seg 1+ ?do
       {: libs:n fns:n :}
       i OBJ-EV {: row:ptr :}
       row 0 U64-AT {: kind:n :}
@@ -4345,6 +4404,16 @@ public
       else libs fns then
    loop
    2drop true ;
+
+\ Whether TASK's user-slot watermark stands where segment row seg's TASK
+\ row found it at the segment's open: the slot offsets the segment baked
+\ assume it. A segment that left the watermark in place has no row and
+\ holds.
+: TASK-ROW-HOLDS? ( n -- bool )
+   TASK-ROW {: row:n :}
+   row 0 < if true exit then
+   USER-MARK {: user:n bound:bool :}
+   bound user row OBJ-EV 1 U64-AT = and ;
 
 \ Begin installing the FILE object bytes holds under key at the next
 \ ordinal, its segment map rows after the installing parent's.

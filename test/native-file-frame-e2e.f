@@ -803,8 +803,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" nest-parent.f" S\" : NP ( -- ) ;\ninclude nest-child.f\nNCOMP:SESSION-LIVE? drop\n" PUT
    s" act.f" S\" 1 constant ACT-K\nIR-CTX:SESSION-CLOSE\n" PUT
    \ watermark.f moves the user-slot watermark of the TASK the builder loaded at
-   \ load time through the cell TASK hands its claimants. TASK:+USER moves it too
-   \ and refuses its file for task-slots the same way.
+   \ load time through the cell TASK hands its claimants.
    \ scope.f leaves its package open, the last load: a using it left open
    \ would not count, as usings end with their file (interpret.f CLEAN-END).
    s" watermark.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT

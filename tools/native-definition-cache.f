@@ -55,30 +55,26 @@ $4B8 constant LIVE-FIXED-OFF
 \ Where the loading file's source stood when it loaded this one; -1 for
 \ the outermost file or a load from outside that source.
 96 constant F-AT
-\ TASK's user-slot watermark when the file opened, and 1 when TASK was bound
-\ to read it.
-104 constant F-SLOTS
-112 constant F-SLOTS-BOUND
 \ The file's object key, taken when it opened: 64 hex digits.
-120 constant F-KEY
+104 constant F-KEY
 \ The origin sink the file opened under (NUNIT-OBJECT SINK-*), 1 when the
 \ builder fed its rows to the early journal, the builder's prefix row count
 \ and the early journal's serial when it opened, and its first record.
-184 constant F-OSINK
-192 constant F-OFED
-200 constant F-OCUR
-208 constant F-OSER
-216 constant F-OFIRST
+168 constant F-OSINK
+176 constant F-OFED
+184 constant F-OCUR
+192 constant F-OSER
+200 constant F-OFIRST
 \ The file's object bytes as OBJECT-READ? copied them: their offset in
 \ OBJECTS and their length.
-224 constant F-OBJ
-232 constant F-OBJ-U
+208 constant F-OBJ
+216 constant F-OBJ-U
 \ The object's dependency rows checked so far: a replay checks them segment
 \ by segment, and a child loaded between two checks its own object.
-240 constant F-DONE
+224 constant F-DONE
 \ The source offset a stale replay's resume runs the file from.
-248 constant F-RESUME
-256 constant FRAME-BYTES
+232 constant F-RESUME
+240 constant FRAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
 76 constant OBJECT-NAME-BYTES
 
@@ -183,7 +179,6 @@ CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
-CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
 CAST: RETIRE-SET-XT ( n -- [ n -- ] )
 CAST: RETIRE>N ( [ ptr n -- ] -- n )
@@ -1160,25 +1155,6 @@ variable TEE-ERR
    FRAME-PATH FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
       NFILE-INPUTS:ADD-SOURCE ;
 
-variable USER-SEEN
-: USER-SEEN! ( ptr u8 -- ) CELL-VIEW @ USER-SEEN ! ;
-
-\ TASK's user-slot watermark, and whether TASK is bound to read it.
-: USER-MARK ( -- n bool )
-   s" TASK:OWNED-USER-NEXT" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT
-      dup 0= if drop 0 false exit then
-   ['] USER-SEEN! swap USER-NEXT-XT execute
-   USER-SEEN @ true ;
-
-\ Whether the innermost file took TASK user slots: a replay restores none.
-\ A file during which TASK came to be bound has no watermark to compare and
-\ counts as taking them.
-: SLOTS-MOVED? ( -- bool )
-   USER-MARK {: mark:n bound:bool :}
-   bound 0= if false exit then
-   F-SLOTS-BOUND F@ 0= if true exit then
-   mark F-SLOTS F@ <> ;
-
 \ The early journal's serial, and whether it records rows; 0 false without
 \ the target's journal.
 : EARLY-MARK ( -- n bool )
@@ -1374,7 +1350,6 @@ variable USER-SEEN
    FILE-KEY {: key:ptr keyu:n :}
    key FRAME F-KEY + keyu BYTE-COPY
    NFILE-INPUTS:MARK F-MARK F!
-   USER-MARK if F-SLOTS F! 1 else drop 0 then F-SLOTS-BOUND F!
    SOURCE-ROW
    \ The parent's segment closes in FILE-BEGIN, and this file's before-image
    \ follows it: both start from rested scratch.
@@ -1416,8 +1391,8 @@ variable USER-SEEN
 
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none. A
-\ file that leaves its scope or takes TASK user slots changes state a replay
-\ does not restore, so it has none.
+\ file that leaves its scope changes state a replay does not restore, so it
+\ has none.
 : OBJECT-CLOSE ( -- )
    SCRATCH-RETIRE                  \ before the segment's DATA comparison
    ROWS-FLUSH
@@ -1431,7 +1406,6 @@ variable USER-SEEN
       s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE
    then
    NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
-   SLOTS-MOVED? if s" task-slots" NUNIT-OBJECT:FILE-REFUSE then
    \ Here, where a refusal may throw, and not inside the output operation
    \ that failed: every file open then closes before TEE-CLOSE clears it.
    TEE-ERR @ 0<> if s" output-record" NUNIT-OBJECT:FILE-REFUSE then
@@ -1573,6 +1547,14 @@ variable USER-SEEN
    k SEGMENT-HEAD
    S\"  reason=ffi-rows\n" DIAG-W2 ;
 
+\ Segment row k's TASK row expects a user-slot watermark the live TASK no
+\ longer holds: the file's baked slot offsets assume it.
+: SEGMENT-TASK-ROW ( n -- )
+   {: k:n :}
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   k SEGMENT-HEAD
+   S\"  reason=task-slots\n" DIAG-W2 ;
+
 \ A later segment row k's dependency rows fail: under diagnostics the
 \ dependency miss line names the row; this one names the segment it stops.
 : SEGMENT-STALE-ROWS ( n -- )
@@ -1593,12 +1575,14 @@ variable USER-SEEN
    S\" \n" DIAG-W2 ;
 
 \ Segment row k of the viewed object can install on the state its loads
-\ left: its dependency rows hold, its FFI rows hold and no record name it
-\ defines is live. A failed check prints its line.
+\ left: its dependency rows hold, its FFI rows hold, TASK's user-slot
+\ watermark stands where its TASK row expects and no record name it defines
+\ is live. A failed check prints its line.
 : SEGMENT-HOLDS? ( n -- bool )
    {: k:n :}
    k INTERVAL-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
    k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
+   k NUNIT-OBJECT:TASK-ROW-HOLDS? 0= if k SEGMENT-TASK-ROW false exit then
    k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
    2drop true ;
 
