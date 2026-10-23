@@ -11,6 +11,12 @@
 \ silently out of step would read as a per-word result while comparing two
 \ different words, which is the one failure that makes a census lie.
 \
+\ Storage is sized from the input, so a corpus of any size joins. Both reports
+\ are read whole, each to its end, into one growing byte buffer; the
+\ tier-0 names are offsets into that buffer rather than copies. The tier-0
+\ report is scanned once to count its `W` rows, and the row tables are reserved
+\ to that count before the rows are read. The mappings live for the run.
+\
 \ Ratios are printed in parts per thousand of the tier-0 value (`d/1000`), not
 \ as a decimal: -234 is tier 1 at 23.4 percent below tier 0. An integer column
 \ keeps the arithmetic exact and this tool free of the float formatter.
@@ -22,21 +28,16 @@
 \ in literal materialisation, including two per compact DATA address and three
 \ per full absolute address.
 
-require src/lib/errors.f
 require src/lib/string.f
-require src/lib/fs.f
 require src/lib/argv.f
+require src/lib/source.f
 
--7730 constant E-JOIN-CAPACITY
 -7731 constant E-JOIN-SHAPE
 -7732 constant E-JOIN-MISMATCH
 
 package TIER-JOIN
 private
 
-8192 constant MAX-WORDS
-$40000 constant NAME-CAP
-$400000 constant SRC-CAP
 12 constant TOP-N
 $0A constant LF
 $20 constant SP
@@ -49,17 +50,14 @@ $2D constant MINUS-C
 32 constant NUM-CAP
 $7FFFFFFFFFFFFFF constant NO-BOUND
 
-create SRC SRC-CAP allot
+DYNAMIC-BUFFER SRC u8               \ both reports, back to back
 variable SRC-U
 variable POS
 
-create NAMES NAME-CAP allot
-variable NAME-FILL
-create N-OFF MAX-WORDS cells allot
-create N-LEN MAX-WORDS cells allot
-
-create M0 MAX-WORDS METRICS * cells allot
-create M1 MAX-WORDS METRICS * cells allot
+DYNAMIC-BUFFER N-OFF n               \ a tier-0 name's offset in SRC, per row
+DYNAMIC-BUFFER N-LEN n
+DYNAMIC-BUFFER M0 n                  \ METRICS cells per row, tier 0
+DYNAMIC-BUFFER M1 n
 variable NWORDS
 variable ROW
 
@@ -81,12 +79,11 @@ variable BOUND
 
 : @N ( ptr n n -- n ) {: a:ptr ix :} a ix cells + @ ;
 : !N ( n ptr n n -- ) {: v a:ptr ix :} v a ix cells + ! ;
-: M@ ( ptr n n n -- n ) {: m:ptr ix k :} m ix METRICS * k + @N ;
-: M! ( n ptr n n n -- ) {: v m:ptr ix k :} v m ix METRICS * k + !N ;
+: SLOT ( n n -- n ) {: ix k :} ix METRICS * k + ;
 
 \ ---- reading a report -------------------------------------------------------
 
-: AT ( n -- n ) {: off :} SRC off + c@ ;
+: AT ( n -- n ) SRC c@ ;
 
 : SEPARATOR? ( n -- bool ) {: c :}
    c SP = c LF = or ;
@@ -110,7 +107,7 @@ variable BOUND
    repeat
    POS @ TOK-A !  0 TOK-U ! ;
 
-: TOK$ ( -- ptr u8 n ) SRC TOK-A @ + TOK-U @ ;
+: TOK$ ( -- ptr u8 n ) TOK-A @ SRC TOK-U @ ;
 
 : NUM ( -- n )
    TOKEN
@@ -127,12 +124,13 @@ variable BOUND
       POS @ 1 - AT LF = if exit then
    repeat ;
 
+\ Append one report to SRC, sized from the descriptor it is read through, and
+\ point the reader at its first byte.
+: ROOM ( n -- ptr u8 ) SRC-U @ + SRC-RESERVE SRC-U @ SRC ;
+
 : LOAD-FILE ( ptr u8 n -- )
-   SRC SRC-CAP READ-ALL {: got :}
-   got 0 < if E-JOIN-SHAPE throw then
-   got SRC-CAP >= if E-JOIN-CAPACITY throw then
-   got SRC-U !
-   0 POS ! ;
+   SRC-U @ POS !
+   [: ROOM ;] SOURCE:READ-WHOLE-FILE SRC-U @ + SRC-U ! ;
 
 : TAG? ( n -- bool ) {: t :}
    TOK-U @ 1 <> if false exit then
@@ -144,29 +142,39 @@ variable BOUND
 \ ---- the first report defines the rows --------------------------------------
 
 : KEEP-NAME ( -- )
-   NAME-FILL @ TOK-U @ + NAME-CAP > if E-JOIN-CAPACITY throw then
-   NAME-FILL @ N-OFF NWORDS @ !N
-   TOK-U @ N-LEN NWORDS @ !N
-   TOK-U @ 0 ?do TOK-A @ i + AT NAMES NAME-FILL @ + i + c! loop
-   NAME-FILL @ TOK-U @ + NAME-FILL ! ;
+   TOK-A @ NWORDS @ N-OFF !
+   TOK-U @ NWORDS @ N-LEN ! ;
 
 \ The instruction column is the byte column over four, so it is read and dropped
 \ rather than stored twice.
 : ROW0 ( -- )
-   NWORDS @ MAX-WORDS >= if E-JOIN-CAPACITY throw then
    TOKEN KEEP-NAME
-   NUM M0 NWORDS @ 0 M!
+   NUM NWORDS @ 0 SLOT M0 !
    NUM drop
-   NUM M0 NWORDS @ 1 M!
-   NUM M0 NWORDS @ 2 M!
-   NUM M0 NWORDS @ 3 M!
-   NUM M0 NWORDS @ 4 M!
-   NUM M0 NWORDS @ 5 M!
+   NUM NWORDS @ 1 SLOT M0 !
+   NUM NWORDS @ 2 SLOT M0 !
+   NUM NWORDS @ 3 SLOT M0 !
+   NUM NWORDS @ 4 SLOT M0 !
+   NUM NWORDS @ 5 SLOT M0 !
    NWORDS @ 1 + NWORDS ! ;
+
+\ The same tokenizer as the row pass, so the count and the rows cannot differ.
+: COUNT-ROWS ( -- n )
+   0
+   begin POS @ SRC-U @ < while
+      TOKEN
+      W-TAG TAG? if 1 + then
+      END-LINE
+   repeat ;
 
 : LOAD0 ( ptr u8 n -- )
    LOAD-FILE
-   0 NWORDS !  0 NAME-FILL !
+   POS @ {: start :}
+   COUNT-ROWS {: rows :}
+   rows N-OFF-RESERVE  rows N-LEN-RESERVE
+   rows METRICS * M0-RESERVE  rows METRICS * M1-RESERVE
+   start POS !
+   0 NWORDS !
    begin POS @ SRC-U @ < while
       TOKEN
       W-TAG TAG? if ROW0 then
@@ -177,20 +185,20 @@ variable BOUND
 \ ---- the second report fills the other half ---------------------------------
 
 : NAME= ( n -- bool ) {: ix :}
-   N-LEN ix @N TOK-U @ <> if STR-FALSE exit then
-   NAMES N-OFF ix @N + TOK-U @ TOK$ STR= ;
+   ix N-LEN @ TOK-U @ <> if STR-FALSE exit then
+   ix N-OFF @ SRC TOK-U @ TOK$ STR= ;
 
 : ROW1 ( -- )
    ROW @ NWORDS @ >= if E-JOIN-MISMATCH throw then
    TOKEN
    ROW @ NAME= 0= if E-JOIN-MISMATCH throw then
-   NUM M1 ROW @ 0 M!
+   NUM ROW @ 0 SLOT M1 !
    NUM drop
-   NUM M1 ROW @ 1 M!
-   NUM M1 ROW @ 2 M!
-   NUM M1 ROW @ 3 M!
-   NUM M1 ROW @ 4 M!
-   NUM M1 ROW @ 5 M!
+   NUM ROW @ 1 SLOT M1 !
+   NUM ROW @ 2 SLOT M1 !
+   NUM ROW @ 3 SLOT M1 !
+   NUM ROW @ 4 SLOT M1 !
+   NUM ROW @ 5 SLOT M1 !
    ROW @ 1 + ROW ! ;
 
 : LOAD1 ( ptr u8 n -- )
@@ -210,7 +218,6 @@ variable BOUND
 \ row it was called to extend.
 
 : NUM-C ( n -- )
-   NUM-U @ NUM-CAP >= if E-JOIN-CAPACITY throw then
    NUM-BUF NUM-U @ + c!
    NUM-U @ 1 + NUM-U ! ;
 
@@ -277,7 +284,7 @@ variable BOUND
    s" mov" 6 TOTAL-LINE
    s" movk" 7 TOTAL-LINE ;
 
-: NAME$ ( n -- ptr u8 n ) {: ix :} NAMES N-OFF ix @N + N-LEN ix @N ;
+: NAME$ ( n -- ptr u8 n ) {: ix :} ix N-OFF @ SRC ix N-LEN @ ;
 
 : WORD-HEAD ( -- )
    SB-RESET
@@ -290,16 +297,16 @@ variable BOUND
    SB$ type cr ;
 
 : WORD-LINE ( n -- ) {: ix :}
-   M0 ix 0 M@ {: a :}
-   M1 ix 0 M@ {: b :}
+   ix 0 SLOT M0 @ {: a :}
+   ix 0 SLOT M1 @ {: b :}
    SB-RESET
    ix NAME$ 34 LEFT$
    a 8 COL  b 8 COL  b a - 8 COL  a b PERMILLE 8 COL
-   M0 ix 1 M@ 6 COL  M1 ix 1 M@ 6 COL
-   M0 ix 2 M@ M0 ix 3 M@ + 6 COL
-   M1 ix 2 M@ M1 ix 3 M@ + 6 COL
-   M0 ix 4 M@ 6 COL  M1 ix 4 M@ 6 COL
-   M0 ix 5 M@ 6 COL  M1 ix 5 M@ 6 COL
+   ix 1 SLOT M0 @ 6 COL  ix 1 SLOT M1 @ 6 COL
+   ix 2 SLOT M0 @ ix 3 SLOT M0 @ + 6 COL
+   ix 2 SLOT M1 @ ix 3 SLOT M1 @ + 6 COL
+   ix 4 SLOT M0 @ 6 COL  ix 4 SLOT M1 @ 6 COL
+   ix 5 SLOT M0 @ 6 COL  ix 5 SLOT M1 @ 6 COL
    SB$ type cr ;
 
 : ALL-WORDS ( -- )
@@ -312,7 +319,7 @@ variable BOUND
 : SCAN-BEST ( n -- n ) {: sign :}
    -1 PICK !  0 BEST !
    NWORDS @ 0 ?do
-      M1 i 0 M@ M0 i 0 M@ - sign * {: d :}
+      i 0 SLOT M1 @ i 0 SLOT M0 @ - sign * {: d :}
       d BEST @ > d BOUND @ < and if d BEST ! i PICK ! then
    loop
    PICK @ ;
