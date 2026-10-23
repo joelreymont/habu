@@ -1,6 +1,6 @@
 ---
 title: Decide whether one pass can replace tier 1
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-23T18:58:18.936516+03:00"
