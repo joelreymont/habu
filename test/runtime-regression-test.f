@@ -538,9 +538,15 @@ variable GE-NEST-J
    JIT-SNAP:FRAMES GE-NEST-RUN
    0 s" BEGIN nesting at the frame ceiling compiles" GE-EXPECT-RC
    JIT-SNAP:FRAMES 1+ GE-NEST-RUN
-   75 s" BEGIN-nesting exit rc" GE-EXPECT-RC
-   GE-NEST-DIAG$ s" BEGIN-nesting exit diagnostic" GE-EXPECT-ERR-HAS
-   s" PASS: BEGIN-nesting capacity is named with its depth" type cr ;
+   \ The frames are the tier-0 JIT's; tier 1 compiles one BEGIN more, silently.
+   tier@ 1 = if
+      s" BEGIN-nesting exit rc" GE-EXPECT-OK
+      s" " s" BEGIN-nesting exit diagnostic" GE-EXPECT-ERR
+   else
+      75 s" BEGIN-nesting exit rc" GE-EXPECT-RC
+      GE-NEST-DIAG$ s" BEGIN-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+   then
+   tier@ 1 = if s" PASS: BEGIN nesting past tier 0's capacity compiles at tier 1" else s" PASS: BEGIN-nesting capacity is named with its depth" then type cr ;
 
 \ DP heap (allot/,/c,/definer) must stop below the profiler counter band reserved at
 \ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the
@@ -669,13 +675,23 @@ variable GE-NEST-J
    s" GE-SINK-FLOOR . 5 . depth . cr" GE-SRC-LINE
    s" GE-NOOP-FLOOR . depth . cr" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
-   s" hb execute-floor rc" GE-EXPECT-OK
-   SB-RESET
-   s" -1" SB-APPEND GE-SB-LF s" 5" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
-   s" 0" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
-   SB$ s" hb execute-floor flags and output" GE-EXPECT-OUT
-   s" " s" hb execute-floor stderr" GE-EXPECT-ERR
-   s" PASS: execute-floor flags an underflowed xt and resets the stack" type cr ;
+   \ Tier 1 compiles TRUSTED: bodies natively and refuses the sink's drop below
+   \ its stated input (E-NELAB-UNDER, -8304): the underflow subject of this and
+   \ the three underflow helpers below cannot be built, so this is its one case.
+   tier@ 1 = if
+      GE-UNCAUGHT-RC s" hb execute-floor rc" GE-EXPECT-RC
+      s" " s" hb execute-floor flags and output" GE-EXPECT-OUT
+      S\" ncomp: cannot compile GE-SINK\nhb: uncaught throw code -8304\n"
+         s" hb execute-floor stderr" GE-EXPECT-ERR
+   else
+      s" hb execute-floor rc" GE-EXPECT-OK
+      SB-RESET
+      s" -1" SB-APPEND GE-SB-LF s" 5" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
+      s" 0" SB-APPEND GE-SB-LF s" 0" SB-APPEND GE-SB-LF GE-SB-LF
+      SB$ s" hb execute-floor flags and output" GE-EXPECT-OUT
+      s" " s" hb execute-floor stderr" GE-EXPECT-ERR
+   then
+   tier@ 1 = if s" PASS: tier 1 refuses the execute-floor sink's underflow" else s" PASS: execute-floor flags an underflowed xt and resets the stack" then type cr ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
    \ Build: : W ( -- ) s" <body>" evaluate-closed ;  then run W.
@@ -803,6 +819,7 @@ variable GE-NEST-J
    \ was the one interpret failure still rolling the eval frame back with only
    \ EVALERR set — catch read 0 (fail-open). It must be caught 70 exactly like
    \ E-UNDEFINED, with the sentinel stack under the wrapper intact.
+   0 tier@ < if exit then    \ tier 0's case: tier 1 refuses GE-SINK (GE-EXECUTE-FLOOR)
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    GE-SINK-LINE
@@ -819,6 +836,7 @@ variable GE-NEST-J
    \ No handler: the underflow throw escapes the eval frame and fails closed rc
    \ 70 (uncaught-throw exit), never continuing past the failed evaluate. The
    \ rollback-and-return path printed the marker and exited 0 (fail-open).
+   0 tier@ < if exit then    \ tier 0's case: tier 1 refuses GE-SINK (GE-EXECUTE-FLOOR)
    GE-HB-RESET
    GE-SRC-RESET
    GE-SINK-LINE
@@ -835,6 +853,7 @@ variable GE-NEST-J
 : GE-UNDERFLOW-TOPLEVEL-UNCHANGED ( -- )
    \ Plain-stdin contract pin for the fix: top-level underflow (EVALD==0) keeps
    \ the E-UNDERFLOW diagnostic + rc 70 exactly.
+   0 tier@ < if exit then    \ tier 0's case: tier 1 refuses GE-SINK (GE-EXECUTE-FLOOR)
    GE-HB-RESET
    GE-SRC-RESET
    GE-SINK-LINE
@@ -878,6 +897,34 @@ variable GE-NEST-J
       s" hb eval def-surplus-out catch" GE-EVAL-DEF-REJECT-1
    s" PASS: def-compile failures under catch+evaluate -> caught 70" type cr ;
 
+: GE-SB-LOWER ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do a i + c@ ASCII-LOWER SB-APPEND-C loop ;
+
+: GE-SB-AT ( ptr u8 n -- ) {: tok:ptr toku:n :}
+   s"  at '" SB-APPEND tok toku SB-APPEND s" '" SB-APPEND GE-SB-LF ;
+
+public
+
+\ The whole of stderr when tier 1 refuses definition NAME at token TOK: its
+\ checker reaches the closer or opener with no structure it can certify, names
+\ the definition lower-cased, and the native compiler then gives it up. The
+\ loop family's battery (package LOOP-OPENER) asserts the same refusal.
+: GE-UNCERT$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: nm:ptr nmu:n tok:ptr toku:n :}
+   SB-RESET
+   s" habu: in " SB-APPEND nm nmu GE-SB-LOWER s" :" SB-APPEND tok toku GE-SB-AT
+   s" hook: non-certified definition: " SB-APPEND nm nmu GE-SB-LOWER tok toku GE-SB-AT
+   s" ncomp: cannot compile " SB-APPEND nm nmu SB-APPEND GE-SB-LF
+   SB$ ;
+
+private
+
+\ The first diagnostic at tier 0, the second at tier 1.
+: GE-TIER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: t0:ptr t0u:n t1:ptr t1u:n :}
+   tier@ 1 = if t1 t1u exit then
+   t0 t0u ;
+
 : GE-ORPHAN-CLOSER-1 ( ptr u8 n ptr u8 n -- ) {: tok:ptr toku:n label:ptr labelu:n :}
    \ Plain stdin: a definition that opens no control-flow frame but names a closer
    \ must fail closed rc 70 with the named engine diagnostic + the offending token,
@@ -892,6 +939,7 @@ variable GE-NEST-J
    s"  ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 label labelu GE-EXPECT-RC
+   tier@ 1 = if s" XI" tok toku GE-UNCERT$ label labelu GE-EXPECT-ERR exit then
    s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
    tok toku label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
@@ -913,10 +961,13 @@ variable GE-NEST-J
    \ Under [: INCLUDE-EVALUATE ;] catch: the former SIGBUS closers deliver a
    \ catchable RC-REJECT (70), the eval frame rolled back, process exits 0.
    s" : XO1 ( -- ) THEN ;" s" control-flow closer without opener"
+      s" non-certified definition: xo1 at 'THEN'" GE-TIER$
       s" hb eval orphan-then catch" GE-EVAL-DEF-REJECT-1
    s" : XO2 ( -- ) LOOP ;" s" control-flow closer without opener"
+      s" non-certified definition: xo2 at 'LOOP'" GE-TIER$
       s" hb eval orphan-loop catch" GE-EVAL-DEF-REJECT-1
    s" : XO3 ( -- ) REPEAT ;" s" control-flow closer without opener"
+      s" non-certified definition: xo3 at 'REPEAT'" GE-TIER$
       s" hb eval orphan-repeat catch" GE-EVAL-DEF-REJECT-1
    s" PASS: orphan control-flow closers fail closed rc70 (no SIGBUS)" type cr ;
 
@@ -951,6 +1002,9 @@ private
    s"  ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 label labelu GE-EXPECT-RC
+   tier@ 1 = if
+      s" XM" tok toku RUNTIME-REGRESSION:GE-UNCERT$ label labelu GE-EXPECT-ERR exit
+   then
    diag diagu label labelu GE-EXPECT-ERR-HAS
    tok toku label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
@@ -967,6 +1021,10 @@ private
    s" : XMF ( -- ) 1 IF LEAVE drop LOOP ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb mispair leave-forge rc" GE-EXPECT-RC
+   tier@ 1 = if
+      s" XMF" s" LEAVE" RUNTIME-REGRESSION:GE-UNCERT$
+         s" hb mispair leave-forge diag" GE-EXPECT-ERR exit
+   then
    s" control-flow closer without opener" s" hb mispair leave-forge diag" GE-EXPECT-ERR-HAS
    s" LEAVE" s" hb mispair leave-forge token" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb mispair leave-forge no-crash" GE-EXPECT-ERR-LACKS ;
@@ -1062,6 +1120,9 @@ variable GE-CF-BODY-U
    n GE-CF-NEST
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
    70 label labelu GE-EXPECT-RC
+   \ Tier 1's checker refuses the nest at the depth it cannot certify, which
+   \ is below the native cap (the region-full case below is that refusal too).
+   tier@ 1 = if s" DEEP" s" if" GE-UNCERT$ label labelu GE-EXPECT-ERR exit then
    s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
    s" if" label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
@@ -1089,7 +1150,11 @@ variable GE-CF-BODY-U
    GE-CF-BODY$ GE-EVAL-CATCH-RUN
    s" hb cf-cap eval-catch rc" GE-EXPECT-OK
    s" 70" s" hb cf-cap eval-catch code" GE-EXPECT-OUT-HAS
-   s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
+   tier@ 1 = if
+      s" DEEP" s" if" GE-UNCERT$ s" hb cf-cap eval-catch diag" GE-EXPECT-ERR
+   else
+      s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
+   then
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
 \ Build "variable HITS : DEEP ( -- ) " + n * opener + "1 HITS +! " + n * closer
@@ -1113,6 +1178,14 @@ variable GE-CF-BODY-U
    GE-HB-RESET
    LV-LEVELS 1 + op opu cl clu GE-DO-NEST
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
+   \ The levels are the tier-0 JIT's: tier 1 compiles the extra level and runs
+   \ every turn, twice 2^LV-LEVELS, so the check prints false.
+   tier@ 1 = if
+      label labelu GE-EXPECT-OK
+      S\" 0\n\n" label labelu GE-EXPECT-OUT
+      s" " label labelu GE-EXPECT-ERR
+      exit
+   then
    70 label labelu GE-EXPECT-RC
    s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
@@ -1127,7 +1200,7 @@ variable GE-CF-BODY-U
    s" -1" s" hb do-cap legal turns" GE-EXPECT-OUT-HAS
    s" 2 0 ?do " s" 1 +loop " s" hb do-cap ?do plus1" GE-DO-OVERCAP-1
    s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
-   s" PASS: do nesting cap fail-closed rc70 (no overflow)" type cr ;
+   tier@ 1 = if s" PASS: do nesting past tier 0's cap compiles and runs at tier 1" else s" PASS: do nesting cap fail-closed rc70 (no overflow)" then type cr ;
 
 \ Build "<tier> set-tier", then a definition holding n values on the virtual
 \ stack in a counted loop that leaves on its second turn and reads its local
