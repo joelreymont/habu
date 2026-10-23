@@ -409,17 +409,54 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    TIER-OPEN
    s" TRUSTED: " LN+ NAME+ s"  ( -- n ) 7 ; " LN+ NAME+ s"  . cr" LN+ LN$ ;
 
-\ A TRUSTED: body whose row carries a two-cell value; with rejected set the body
-\ ends in a ptr-times-zero its scan refuses. Tier 0 lowers it from the certificate of
-\ a scan that enforces nothing, whatever its verdict; without that certificate
-\ the pair moves one cell wide and its cells come back out of order.
-: WIDE-TRUST$ ( n bool -- ptr u8 n )
-   {: tier:n rejected:bool :}
-   tier 0 TIER-OPEN
+\ A TRUSTED: body whose row carries a two-cell value. Tier 0 lowers it from the
+\ certificate of a scan that enforces nothing, whatever its verdict; without
+\ that certificate the pair moves one cell wide and its cells come back out of
+\ order.
+: WIDE-TRUST$ ( n -- ptr u8 n )
+   0 TIER-OPEN
    s" STRUCTURE twpair FIELD a n FIELD b n ;STRUCTURE " LN+
-   s" TRUSTED: TW-TB ( n -- twpair n ) 1 2 TWPAIR:MAKE swap " LN+
-   rejected if S\" s\" x\" drop 0 * + " LN+ then
-   s" ; : TW-SHOW ( -- ) 7 TW-TB . TWPAIR:UNMAKE . . cr ; TW-SHOW" LN+ LN$ ;
+   s" TRUSTED: TW-TB ( n -- twpair n ) 1 2 TWPAIR:MAKE swap ; " LN+
+   s" : TW-SHOW ( -- ) 7 TW-TB . TWPAIR:UNMAKE . . cr ; TW-SHOW" LN+ LN$ ;
+
+\ TRUSTED: bodies whose scans refuse a token while a two-cell value is live:
+\ a ptr-times-zero before the pair moves, after it, inside a quotation, over a
+\ callee's pair, in a branch that exits, `depth`, `over` the pair, and two
+\ refusals before the pair binds a local. The scan applies each refused
+\ token's declared effect to the rows it found, so the widths after it stay
+\ stated and both tiers move the pair whole. The bodies are independent: one
+\ process runs them all.
+: REJECT-TRUST$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE rjpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   S\" TRUSTED: RJ-P15 ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop 0 * drop swap ; " LN+
+   S\" TRUSTED: RJ-R3 ( n -- rjpair n ) 1 2 RJPAIR:MAKE [: s\" x\" drop 0 * drop ;] execute swap ; " LN+
+   s" TRUSTED: RJ-INNER ( -- rjpair ) 1 2 RJPAIR:MAKE ; " LN+
+   S\" TRUSTED: RJ-R4 ( n -- rjpair n ) RJ-INNER s\" x\" drop 0 * drop swap ; " LN+
+   S\" TRUSTED: RJ-R5 ( n -- rjpair n ) dup if 1 2 RJPAIR:MAKE s\" x\" drop 0 * drop swap exit then " LN+
+   s" 3 4 RJPAIR:MAKE swap ; " LN+
+   s" TRUSTED: RJ-P09 ( n -- rjpair n ) 1 2 RJPAIR:MAKE depth drop swap ; " LN+
+   S\" TRUSTED: RJ-P01 ( n -- rjpair n ) 1 2 RJPAIR:MAKE swap s\" x\" drop 0 * + ; " LN+
+   S\" TRUSTED: RJ-AFTER ( n -- rjpair n ) s\" x\" drop 0 * drop 1 2 RJPAIR:MAKE swap ; " LN+
+   s" TRUSTED: RJ-IF ( n -- rjpair n ) 1 2 RJPAIR:MAKE over if swap exit then swap ; " LN+
+   S\" TRUSTED: RJ-LOCAL ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop 0 * drop " LN+
+   S\" s\" y\" drop 0 * drop {: p :} p swap ; " LN+
+   S\" TRUSTED: RJ-Q2 ( -- n ) 1 2 RJPAIR:MAKE 5 s\" x\" drop 0 * drop swap drop ; " LN+
+   s" : RJ-ALL ( -- ) 7 RJ-P15 . RJPAIR:UNMAKE . .  7 RJ-R3 . RJPAIR:UNMAKE . . " LN+
+   s" 7 RJ-R4 . RJPAIR:UNMAKE . .  7 RJ-R5 . RJPAIR:UNMAKE . . " LN+
+   s" 7 RJ-P09 . RJPAIR:UNMAKE . .  7 RJ-P01 . RJPAIR:UNMAKE . . " LN+
+   s" 7 RJ-AFTER . RJPAIR:UNMAKE . .  7 RJ-IF . RJPAIR:UNMAKE . . " LN+
+   s" 0 RJ-IF . RJPAIR:UNMAKE . .  7 RJ-LOCAL . RJPAIR:UNMAKE . .  RJ-Q2 . cr ; RJ-ALL" LN+
+   LN$ ;
+: REJECT-TRUST-OUT$ ( -- ptr u8 n )
+   S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n" ;
+
+\ The first body checked: the same scan still refuses it at `*`, and nothing runs.
+: REJECT-CHECKED$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE rjpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   S\" : RJ-CHECKED ( n -- rjpair n ) 1 2 RJPAIR:MAKE s\" x\" drop 0 * drop swap ; " LN+
+   s" : RJ-SHOW ( -- ) 7 RJ-CHECKED . RJPAIR:UNMAKE . . cr ; RJ-SHOW" LN+ LN$ ;
 
 : CALL$ ( n n -- ptr u8 n )
    TIER-OPEN
@@ -512,12 +549,18 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
    LEGACY? if
       s" a TRUSTED: body moves a two-cell value on tier 0" T-LABEL
-      0 0 0<> WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
-      s" a rejected TRUSTED: body moves a two-cell value on tier 0" T-LABEL
-      0 0 0= WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+      0 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+      s" rejected TRUSTED: bodies move two-cell values on tier 0" T-LABEL
+      0 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
+      s" the checked twin is refused at its token on tier 0" T-LABEL
+      0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
    then
    s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
-   1 0 0<> WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+   1 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+   s" rejected TRUSTED: bodies move two-cell values on tier 1" T-LABEL
+   1 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
+   s" the checked twin is refused at its token on tier 1" T-LABEL
+   1 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
 
    LEGACY? if
       s" a caller of a 7900-byte name runs on tier 0" T-LABEL

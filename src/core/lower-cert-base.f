@@ -17,6 +17,13 @@ $4841425543455254 constant MAGIC-V
 1 constant VERSION-I
 2 constant TOTAL-BYTES-I
 3 constant NEEDS-I
+\ The NEEDS cell: what lowering needs beyond the plain body. REPLAY: the width
+\ facts must be replayed (layout-valid.f NEEDS-P2). INCOMPLETE: an unjudged
+\ scan lost a width fact past a rejected token (checker.f SCAN-INCOMPLETE), so
+\ the facts cannot be lowered from and tier 0 refuses the certificate.
+0 constant NEEDS-NONE
+1 constant NEEDS-REPLAY
+2 constant NEEDS-INCOMPLETE
 4 constant WF-COUNT-I
 5 constant BIND-COUNT-I
 6 constant FETCH-COUNT-I
@@ -117,7 +124,8 @@ variable FULL-SET   0 FULL-SET !
    MAGIC-V BUF,
    VERSION-V BUF,
    HEADER-N cells BUF,
-   0 BUF,  0 BUF,  0 BUF,  0 BUF,  0 BUF,
+   SCAN-INCOMPLETE @ 0 <> if NEEDS-INCOMPLETE else NEEDS-NONE then BUF,
+   0 BUF,  0 BUF,  0 BUF,  0 BUF,
    BODY-LEN @ BUF,
    BODY-HASH @ BUF, ;
 

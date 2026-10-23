@@ -299,8 +299,9 @@ variable CHECKS
    repeat drop ;
 
 : NEEDS-P2 ( -- n )
+   SCAN-INCOMPLETE @ 0 <> if NEEDS-INCOMPLETE exit then
    WF-WIDE? HAS-VALID @ 0 <> or WF-XPAD? or WF-INIT? or WF-FIELD? or
-   if 1 else 0 then ;
+   if NEEDS-REPLAY else NEEDS-NONE then ;
 
 : STREAM-BASE ( -- n )
    HEADER-N
@@ -362,7 +363,9 @@ variable CHECKS
 
 \ An unjudged scan (checker.f CHECK-UNJUDGED!, a TRUSTED: body) states the
 \ body's widths whatever its verdict: nothing enforces that verdict, and tier 1
-\ lowers from the scan's tape either way.
+\ lowers from the scan's tape either way. Its rows stay whole past a rejected
+\ token (checker.f UNJ-SPLICE); where a width fact was lost instead, NEEDS
+\ says NEEDS-INCOMPLETE and tier 0 refuses the certificate.
 : FULL-PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    MULTI-ERR? if a u EMPTY exit then
    verdict -1 = BWIN-UNJUDGED @ 0 <> or if a u MAKE exit then

@@ -4071,17 +4071,109 @@ variable QDEPTH
    pre common ROW-WINDOW-LOST {: lost:n :}
    post common lost ROW-OUTPUT-LOSS ;
 
+\ --- an unjudged scan keeps its rows whole past a rejected token -------------
+\ A TRUSTED: body's scan (CHECK-UNJUDGED!) is the width authority tier 0 lowers
+\ from (layout-valid.f FULL-PRODUCE) whatever its verdict, so a rejected token
+\ there must still leave the rows its runtime leaves. DO-TOK1 arms UNJ-TOK for
+\ each unjudged token; a failed committed step (CHECKER-STEP, never inside a
+\ TRY-EFF trial), or a failed token no step settled, applies its declared
+\ effect to the pre-token rows: pop exactly the input's physical cells, push
+\ the declared outputs over the remainder. A failure that cannot be spliced
+\ while a row holds a wide or open-width cell sets SCAN-INCOMPLETE, and the
+\ certificate says NEEDS-INCOMPLETE (lower-cert-base.f). Over one-cell rows the
+\ unspliced result stands: every cell lowers at the default width.
+variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
+variable UNJ-TOK           \ inside an unjudged token: the splice is armed
+variable UNJ-SPLICED       \ a committed step settled this token's rows
+variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
+variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
+
+: SPLICE-OPEN? ( n -- bool ) {: t:n :}   \ a cell whose physical width is not known yet
+   t T-RES {: r:n :}
+   r HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   r LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   r T-UNSTALE LAYOUT-WIDTH-OPEN? ;
+: CELL-WIDE? ( n -- bool ) {: t:n :}     \ wider than one cell, in a bundle, or open
+   t T-RES HIDDEN-PARAM? IF RES-TRUE EXIT THEN
+   t ROW-TERM-CELLS 1 > IF RES-TRUE EXIT THEN
+   t SPLICE-OPEN? ;
+: ROW-HOLDS-WIDE? ( n -- bool )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE CELL-WIDE? IF drop RES-TRUE EXIT THEN
+      P>REST
+   REPEAT drop RES-FALSE ;
+: SPLICE-ROW-OPEN? ( n -- bool )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE SPLICE-OPEN? IF drop RES-TRUE EXIT THEN
+      P>REST
+   REPEAT drop RES-FALSE ;
+
+: UNJ-LOST ( -- )   \ an unspliced failure is incomplete only where a width is at stake
+   UNJ-PD @ ROW-HOLDS-WIDE? IF -1 SCAN-INCOMPLETE ! EXIT THEN
+   UNJ-PR @ ROW-HOLDS-WIDE? IF -1 SCAN-INCOMPLETE ! THEN ;
+
+\ Cells to pop and terms to push, read before the unify binds din's tail;
+\ -1 cells when the effect cannot be spliced over `pre`.
+: SPLICE-SHAPE ( n n n -- n n ) {: din:n dout:n pre:n :}
+   STEP-R @ 0 <> IF -1 0 EXIT THEN
+   din ROW-TAIL {: tail:n :}
+   tail dout ROW-TAIL <> IF -1 0 EXIT THEN
+   tail TAG S-ROW <> IF -1 0 EXIT THEN
+   tail pre ROW-TAIL = IF -1 0 EXIT THEN        \ din already lies over the live row
+   din SPLICE-ROW-OPEN? IF -1 0 EXIT THEN
+   dout SPLICE-ROW-OPEN? IF -1 0 EXIT THEN
+   din ROW-CELLS dout ROW-TERMS ;
+
+: SPLICE-CUT? ( n -- bool ) {: row:n :}   \ the cut splits no bundle: its top cell is a group top
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF RES-TRUE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-TRUE EXIT THEN
+   t HIDDEN-SLOT@  t T-WIDTH 1 -  = ;
+: SPLICE-FRAME ( n n -- n bool ) {: node:n need:n :}   \ the rest comes from the caller's frame
+   FRESH MK-ROW {: rest:n :}
+   rest  need 0 ?do FRESH MK-VAR swap MK-PUSH loop  {: cells:n :}
+   node cells UNIFY-EXACT IF rest RES-TRUE ELSE node RES-FALSE THEN ;
+: SPLICE-POP ( n n -- n bool ) {: row:n need:n :}   \ row less its top `need` cells
+   need 0= IF row  row SPLICE-CUT? EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-ROW = IF node need SPLICE-FRAME EXIT THEN
+   node TAG S-PUSH <> IF row RES-FALSE EXIT THEN
+   node P>TYPE {: t:n :}
+   t SPLICE-OPEN? IF row RES-FALSE EXIT THEN
+   t ROW-TERM-CELLS {: w:n :}
+   w need > IF row RES-FALSE EXIT THEN
+   node P>REST need w - RECURSE ;
+: SPLICE-PUSH ( n n n -- n ) {: out:n cnt:n base:n :}   \ out's top cnt terms over base
+   cnt 0= IF base EXIT THEN
+   out R-RES {: node:n :}
+   node P>TYPE  node P>REST cnt 1 - base RECURSE  MK-PUSH ;
+
+: UNJ-SPLICE ( n n n n n -- ) {: pre:n rpre:n cells:n dout:n terms:n :}
+   -1 UNJ-SPLICED !
+   cells 0 < IF UNJ-LOST EXIT THEN
+   pre cells SPLICE-POP 0= IF drop UNJ-LOST EXIT THEN
+   {: rest:n :}
+   dout terms rest SPLICE-PUSH DCUR !
+   rpre RCUR ! ;
+
 : CHECKER-STEP {: din dout :}
+   UNJ-TOK @ 0 <>  TRIAL-DEPTH @ 0=  and {: unj:bool :}
+   DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}
+   unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
    din dout LIN-EXPLICIT? LINEXP !
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
-   DCUR @ WAS !
+   pre WAS !
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
-   DCUR @ din UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
-   OK @ and OK !
+   DCUR @ din UNIFY-IN {: fit:bool :}
+   fit 0=  FAILSET @ 0=  and  OK @ and  IF din WAS @ UF-CAPTURE THEN
+   fit OK @ and OK !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    WAS @ dout STEP-LINEAGE DCUR !
-   OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
+   OK @ LINEXP @ 0= and IF LIN-CHECK THEN
+   unj 0= IF EXIT THEN
+   fit 0= IF pre rpre cells dout terms UNJ-SPLICE EXIT THEN
+   STEP-R @ 0= IF -1 UNJ-SPLICED ! THEN ;
 
 \ Record a complete token effect while its input row is unified. Memory
 \ tokens construct these rows directly instead of instantiating a named word.
@@ -10021,7 +10113,10 @@ variable LMI
    h E-DOUT@ E-INST {: dout:n :}
    RGN-N @ {: bind-region:n :}
    -1 SCOPE-INTRO-ON !
+   STEP-R @ {: outer-r:n :}
+   h E-HASR@ STEP-R !
    din dout RECORDED-STEP
+   outer-r STEP-R !
    0 SCOPE-INTRO-ON !
    h E-RIN@ E-INST {: rin:n :}
    h E-ROUT@ E-INST {: rout:n :}
@@ -17506,7 +17601,7 @@ variable WF-CURROW   variable WF-POS-I
 : WF-SNAP-RESET ( -- )
    WFS-P WFS-BOOT WF-INIT WF-REC * CELL / ARENA-SNAP-BOOT
    WF-INIT WF-CAP !
-   0 WF-N !  0 WF-CURROW !  0 WF-POS-I ! ;
+   0 WF-N !  0 WF-CURROW !  0 WF-POS-I !  0 SCAN-INCOMPLETE ! ;
 
 1 constant WF-FETCH-FLAG
 2 constant WF-STORE-FLAG
@@ -22559,12 +22654,33 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FAILB @ FAILTU @ + FAILE !
    CF-FAIL ;
 
+\ A failed unjudged token no committed step settled (a refusal with no step,
+\ or a step that left the token's rows to this): splice its declared ABI effect
+\ over the pre-token rows, as UNJ-SPLICE's header says. An unsafe token's text
+\ may do anything to the rows, so it has no effect to splice.
+: UNJ-SETTLE ( bool -- ) {: unsafe:bool :}
+   UNJ-SPLICED @ 0 <> IF EXIT THEN
+   unsafe IF UNJ-LOST EXIT THEN
+   TOK-ABI-EFF @ {: h:ptr :}
+   h NULL-PTR = IF UNJ-LOST EXIT THEN
+   h E-HASR@ 0 <> IF UNJ-LOST EXIT THEN
+   h E-INST-RESET
+   h E-DIN@ E-INST {: din:n :}
+   h E-DOUT@ E-INST {: dout:n :}
+   UNJ-PD @ UNJ-PR @  din dout UNJ-PD @ SPLICE-SHAPE  dout swap  UNJ-SPLICE ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
    a TOK-SPELL-A !  u TOK-SPELL-U !  0 CREFUSE !  0 CRTGT !
    0 CUSING !  -1 USING-HOLD !
    a u TOKFOLD drop
+   BWIN-UNJUDGED @ 0 <> {: unj:bool :}       \ judged per token: OK := incoming AND this token
+   unj IF TKF TKFU @ UNSAFE-TOK? ELSE RES-FALSE THEN {: unsafe:bool :}
+   OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
+   unj IF
+      -1 OK !  0 UNCK !  -1 UNJ-TOK !  0 UNJ-SPLICED !  DCUR @ UNJ-PD !  RCUR @ UNJ-PR !
+   THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !
@@ -22620,6 +22736,12 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    \ must start clean.
    0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
    LIN-TAINT-SCAN
+   unj IF
+      OK @ 0=  UNCK @ 0 <>  or IF unsafe UNJ-SETTLE THEN
+      OK @ ok-in and OK !
+      UNCK @ unck-in or UNCK !
+      0 UNJ-TOK !
+   THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    0 USING-HOLD !
@@ -24298,7 +24420,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
-   0 WF-N !  0 RECW !  0 RECMI !
+   0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
    ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
