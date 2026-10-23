@@ -3938,8 +3938,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    m HIR-MEANING:STRING-LITERAL HIR-MEANING:EQ if
       NHOST:MEMORY ix HOST-REFUSE exit
    then
+   \ A constant value compiles as an immediate; a data address is an address site.
    m HIR-MEANING:FIXED HIR-MEANING:EQ if
-      NHOST:UNKNOWN ix HOST-REFUSE exit
+      NHOST:FIXED ix HOST-REFUSE exit
    then
    m HIR-MEANING:REAL-LITERAL HIR-MEANING:EQ if
       NHOST:UNKNOWN ix HOST-REFUSE exit

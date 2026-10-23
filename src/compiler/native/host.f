@@ -20,6 +20,16 @@ public
 -9441 constant E-STATE
 -9442 constant E-ROW
 
+\ A definition's host reason names what in its body the published facts
+\ (contract, call sites, address sites) do not account for. SAFE: nothing.
+\ MEMORY: memory operations and address-forming words (operand addresses,
+\ views, string literals), admitted by provenance. FIXED: a fixed record
+\ mention: a constant value compiled as an immediate, or a data address the
+\ address sites carry. CAST, INDIRECT, UNCHECKED and FOREIGN: an
+\ effect the facts cannot name. UNKNOWN: an op, expansion or literal the
+\ classification does not model, or no facts at all. SAFE, MEMORY and FIXED
+\ are admitted. Objects publish these values in section 15: append, never
+\ renumber.
 0 constant SAFE
 1 constant CAST
 2 constant MEMORY
@@ -27,6 +37,7 @@ public
 4 constant UNCHECKED
 5 constant FOREIGN
 6 constant UNKNOWN
+7 constant FIXED
 
 private
 
@@ -120,6 +131,7 @@ CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
    reason INDIRECT = if s" indirect invocation" exit then
    reason UNCHECKED = if s" unchecked body" exit then
    reason FOREIGN = if s" foreign call" exit then
+   reason FIXED = if s" fixed record mention" exit then
    s" missing implementation facts" ;
 
 : REPORT-ENTRY ( n -- )
@@ -296,8 +308,8 @@ public
    0 PRIOR-FACTS !
    0 KERNEL-BEGIN !  0 KERNEL-END !  0 SEEDED-N ! ;
 
-\ The elaborator keeps the first semantic refusal while its source tape is
-\ still live. Later HIR and machine rows cannot reinterpret that decision.
+\ The elaborator keeps the worst reason by rank while its source tape is still
+\ live. Later HIR and machine rows cannot reinterpret that decision.
 : SOURCE-BEGIN ( bool -- )
    INSTALL
    if UNCHECKED else SAFE then SOURCE-REASON !
@@ -306,11 +318,27 @@ public
    0 SOURCE-TYPE-N !
    0 FACT-FUNS ! ;
 
+private
+
+\ The admitted reasons rank SAFE < MEMORY < FIXED; every refusing reason ranks
+\ above them, alike.
+: RANK ( n -- n )
+   {: reason:n :}
+   reason SAFE = if 0 exit then
+   reason MEMORY = if 1 exit then
+   reason FIXED = if 2 exit then
+   3 ;
+
+public
+
+\ Keep the worst reason by rank, so an admitted reason never masks a later
+\ refusing one; among refusing reasons the first keeps its location.
 : SOURCE-REFUSE ( n n -- )
    {: reason:n loc:n :}
-   SOURCE-REASON @ SAFE <> if exit then
-   reason SOURCE-REASON !
-   loc SOURCE-LOC ! ;
+   reason RANK SOURCE-REASON @ RANK > if
+      reason SOURCE-REASON !
+      loc SOURCE-LOC !
+   then ;
 
 : SOURCE-REASON@ ( -- n n )
    FACT-REASON @ FACT-LOC @ ;
