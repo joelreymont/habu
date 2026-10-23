@@ -62,8 +62,9 @@ private
 \ then each slice's length and bytes padded to a cell. Slot 17 holds the body
 \ of each constant record row, in row order: its recorded code length, then
 \ the code bytes its load emitted. Slot 18 holds the origin sink the file
-\ loaded under, then one ORIGIN-BYTES row per definition the sink recorded:
-\ its ordinal past the file's first record, its name token's span, and the
+\ loaded under, then one ORIGIN-BYTES row per definition the sink recorded,
+\ in the order its segments recorded them: its ordinal past the file's
+\ first record, its name token's span, and the
 \ name's and path's offsets and lengths in slot 3, a zero span and path when
 \ the row is unlocated. A definition's own dependency slot stays out: the
 \ file's rows cover it.
@@ -1014,10 +1015,6 @@ public
    -1 FO-DEPTH +!
    \ A hit or a throw pops a file without its segment's close.
    FILE-OPEN? if SEGMENT-OPEN CHECK-MARK else OBS-CLEAR then ;
-
-\ The innermost file has loaded no child file so far.
-: FILE-LEAF? ( -- bool )
-   0 EVENTS-N @ FO-EVENTS FO @ ?do i 0 EV @ EV-LOAD = if 1+ then loop 0= ;
 
 \ The innermost file loaded under origin sink kind.
 : ORIGIN-SINK! ( n -- ) FO-ORIGIN FO @ FILE-ORIGIN LE:U64! ;
@@ -3784,12 +3781,14 @@ public
 
 \ End the install: the checker slices left, every segment and definition
 \ installed, the view released, the file's map rows dropped and its
-\ references ended.
+\ references ended. INS-MAP-AT stays at the file's first row, where the
+\ installing parent's rows end: a sibling's rows start there again, and
+\ the parent's own rows stay as INSTALL-RESTORE finds them.
 : INSTALL-END ( -- )
    OPEN-LOADS @ INSTALL-CHECKS
    INS-SEGS @ OPEN-SEGS @ <> INS-ROW @ OPEN-DEFS @ <> or if BAD then
    NUNIT-FILE:RESET-KEEP
-   0 INS-MAP-AT ! 0 INS-SEGS !
+   0 INS-SEGS !
    NFILE-REF:FILE-DONE ;
 
 \ The installing file's place, kept across a child load: its next index row
@@ -3853,20 +3852,26 @@ public
 : ORIGIN-FORMED? ( -- bool ) OPEN-ORIGIN-OK @ 0<> ;
 : ORIGIN-KIND ( -- n ) OPEN-SINK @ ;
 
-\ Visit each origin row of the FILE object being installed, in row order:
-\ its record's live ordinal, name token span, path and name.
+\ Visit each origin row of the segment just installed, in row order: its
+\ record's live ordinal, name token span, path and name. The rows stand in
+\ segment order, so visiting each segment's as it installs keeps the order
+\ a cold load records them in, a child's rows between its loader's. It reads
+\ the view the install holds and leaves it open for the events after it.
 : ORIGIN-EACH ( [ n n n ptr u8 n ptr u8 n -- ] -- )
    {: each :}
-   FILE-VIEW
    18 NUNIT-FILE:SECTION$ {: sec:ptr secu:n :}
    3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
-   NUNIT-FILE:RESET-KEEP
+   M-ORD CUR@ {: first:n :}
+   M-ROWS CUR@ {: count:n :}
    secu 8 - ORIGIN-BYTES / 0 ?do
       sec 8 + i ORIGIN-BYTES * + {: row:ptr :}
-      row 0 U64-AT ORD>LIVE row 1 U64-AT row 2 U64-AT
-      names row 5 U64-AT + row 6 U64-AT
-      names row 3 U64-AT + row 4 U64-AT
-      each execute
+      row 0 U64-AT {: ord:n :}
+      ord first >= ord first count + < and if
+         ord ORD>LIVE row 1 U64-AT row 2 U64-AT
+         names row 5 U64-AT + row 6 U64-AT
+         names row 3 U64-AT + row 4 U64-AT
+         each execute
+      then
    loop ;
 
 \ The FILE object OPEN-FILE found is one the install replays: package,

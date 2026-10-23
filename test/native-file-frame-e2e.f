@@ -111,6 +111,8 @@ variable MOVED
    S\" s\" dep=\" type CON-DEP . cr\n" IN+
    s" rp.f" LOAD+
    S\" s\" rp=\" type RP-B . cr\n" IN+
+   s" hpar.f" LOAD+
+   S\" s\" hp=\" type FRAME-HP:B . HG-ONE . HG-TWO . cr\n" IN+
    s" w.f" LOAD+
    S\" s\" w=\" type wordlist W - . s\" k=\" type K . cr\n" IN+
    S\" 0 set-tier\n" IN+
@@ -123,11 +125,16 @@ variable MOVED
    \ og.f and ogw.f load under the full origin journal, which the capture
    \ preparation above disarmed. The row it holds for each of their words:
    \ its name, whether it exists and its name token span. Their tree lies
-   \ outside the engine root, so no row has a path.
+   \ outside the engine root, so no row has a path. OJ-SHOW prints the full
+   \ journal's rows past a serial in their order: name and name token span.
    MOVED @ if ROOT$ else SOURCE-ROOT:CWD$ then ROOT+
+   S\" package FRAME-OJ-PROBE\nCAST: OJ-MARK ( n -- [ -- n n bool ] )\nCAST: OJ-ROWS ( n -- [ n [ n n n n ptr u8 n ptr u8 n n n -- ] -- ] )\n: OJ-ROW ( n n n n ptr u8 n ptr u8 n n n -- )\n   {: serial:n phase:n xt:n sym:n path:ptr pathu:n name:ptr nameu:n at:n end:n :}\n   space name nameu type s\" :\" type at . end . ;\npublic\n: OJ-SER ( -- n ) s\" ENGINE-ORIGIN-EARLY:FILE-MARK\" NUNIT-ORIGIN:JOURNAL-XT OJ-MARK execute drop drop ;\n: OJ-SHOW ( n -- ) s\" oj=\" type [: OJ-ROW ;] s\" ENGINE-ORIGIN:FILE-ROWS\" NUNIT-ORIGIN:JOURNAL-XT OJ-ROWS execute s\" ;oj\" type cr ;\n;package\n" IN+
    S\" ENGINE-ORIGIN:ARM\n" IN+
    s" og.f" LOAD+
    s" ogw.f" LOAD+
+   S\" FRAME-OJ-PROBE:OJ-SER\n" IN+
+   s" hop.f" LOAD+
+   S\" FRAME-OJ-PROBE:OJ-SHOW\n" IN+
    S\" ENGINE-ORIGIN:DISARM\n" IN+
    SOURCE-ROOT:CWD$ ROOT+
    S\" package FRAME-OG-PROBE\nCAST: OG-SYM-XT ( n -- [ ptr u8 n n ptr u8 n -- n ] )\n: OG-ROW ( ptr u8 n n ptr u8 n -- )\n   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:ORIGIN-SYM-OFF + CELL-VIEW @ OG-SYM-XT execute\n   ENGINE-ORIGIN:TARGET drop {: at:n end:n name:ptr nameu:n :} 2drop\n   space name nameu type s\" :\" type nameu 0<> if 1 else 0 then . at . end . ;\ns\" origins=\" type s\" FRAME-OG\" 2 s\" OG-P\" OG-ROW s\" \" 0 s\" OG-G\" OG-ROW s\" \" 0 s\" OG-W\" OG-ROW s\" ;origins\" type cr\n;package\n" IN+
@@ -447,6 +454,20 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    name nameu FRAME$ why whyu ENDS-WITH? TTRUE
    name nameu NO-OBJECT ;
 
+\ Files whose installs nest under an installing parent, kept apart from
+\ FIXTURES for its body text limit (BODYBUF-CAP).
+: NEST-FIXTURES ( -- )
+   \ hpar.f requires hch.f between its two segments, and hch.f requires hg1.f
+   \ and hg2.f: once a comment makes hch.f compile, hg1.f's and hg2.f's
+   \ installs run inside it while hpar.f's install holds its segment map.
+   s" hg1.f" S\" : HG-ONE ( -- n ) 1 ;\n" PUT
+   s" hg2.f" S\" : HG-TWO ( -- n ) 2 ;\n" PUT
+   s" hch.f" S\" require hg1.f\nrequire hg2.f\n" PUT
+   s" hpar.f" S\" package FRAME-HP public : A ( -- n ) 1 ; ;package\nrequire hch.f\npackage FRAME-HP public : B ( -- n ) A ; ;package\n" PUT
+   \ hop.f loads hoc.f between its definitions under the full origin journal.
+   s" hoc.f" S\" : HO-PC ( -- n ) 3 ;\n" PUT
+   s" hop.f" S\" : HO-PA ( -- n ) 1 ;\nrequire hoc.f\n: HO-PB ( -- n ) 2 ;\n" PUT ;
+
 \ The FFI fixtures, kept apart from FIXTURES: together their body text
 \ passes the 8000 bytes one definition captures (BODYBUF-CAP).
 : FFI-FIXTURES ( -- )
@@ -698,12 +719,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ gives it a segment to install, and the install must import the family.
    s" newtype.f" S\" package FRAME-NEWTYPE\nNEWTYPE frnt\n;package\n" PUT
    FFI-FIXTURES
+   NEST-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level runs TALLY, which
    \ adds 1 to lib.f's HITS, then stores lib.f's QUAD into lib.f's declared
    \ xt cell HOOK.
-   \ og.f's constants install on a warm build; ogw.f's colon word compiles
-   \ again.
+   \ og.f's constants and ogw.f's colon word install on a warm build.
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
    \ dv.f's variable and created table install with their DATA bytes, the
@@ -1071,6 +1092,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" no other file's run names a run reason" T-LABEL
    RUNS-ADMITTED ;
 
+\ The full journal's rows from hop.f's load, as a cold load records them:
+\ HO-PA, then hoc.f's HO-PC, then HO-PB, each unlocated as og.f's are.
+: OJ-LINE$ ( -- ptr u8 n ) S\" oj= HO-PA:0\n0\n HO-PC:0\n0\n HO-PB:0\n0\n;oj\n" ;
+
 \ The origin rows PROBE printed, up to their end mark.
 : ORIGINS$ ( -- ptr u8 n )
    OUT$ {: out:ptr outu:n :}
@@ -1168,6 +1193,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs jrn.f and imports its early origin row" T-LABEL
    s" jrn.f" REUSED
    OUT$ S\" ek=1\n" CONTAINS? TTRUE
+   s" a warm build installs hop.f and hoc.f and imports their origin rows in the cold order" T-LABEL
+   s" hop.f" REUSED s" hoc.f" REUSED
+   OUT$ OJ-LINE$ CONTAINS? TTRUE
    s" a warm build installs the files loaded where no journal records" T-LABEL
    OUT$ S\" pcf=0\n" CONTAINS? TTRUE
    OUT$ S\" pcz=0\n" CONTAINS? TTRUE
@@ -1316,6 +1344,10 @@ public
    s" a cold build records an origin row for each of og.f's and ogw.f's words" T-LABEL
    ORIGINS$ s" :0" CONTAINS? TFALSE
    ORIGINS$ OG-LINE OG-LINE-U KEEP-LINE
+   s" a cold build records hop.f's and hoc.f's origin rows in load order" T-LABEL
+   OUT$ OJ-LINE$ CONTAINS? TTRUE
+   s" a cold build runs hpar.f over hch.f's two children" T-LABEL
+   OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
    s" a cold build records jrn.f's early origin row under the journal's own hook" T-LABEL
    OUT$ S\" ek=1\n" CONTAINS? TTRUE
    s" files loaded where no journal records store their objects" T-LABEL
@@ -1353,7 +1385,12 @@ public
    s" wca.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
    \ RC-N's new body keeps its effect: rp.f's rows do not read it.
    s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
+   s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
    s" comments in lib.f keep both keys and both files' results" REBUILT
+   s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
+   OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
+   ERR$ s" /hch.f records=" CONTAINS? TFALSE
+   s" hpar.f" REUSED s" hg1.f" REUSED s" hg2.f" REUSED
    s" a body edit of rc.f compiles rc.f and replays rp.f around it" T-LABEL
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
    ERR$ s" /rc.f records=" CONTAINS? TFALSE

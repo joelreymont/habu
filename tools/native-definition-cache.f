@@ -1083,14 +1083,18 @@ variable USER-SEEN
 
 : ORIGIN-SINK-REFUSE ( -- ) s" origin-sink" NUNIT-OBJECT:FILE-REFUSE ;
 
+\ The innermost file's journal cursors at the rows recorded so far.
+: ORIGIN-MARK ( -- )
+   PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
+   EARLY-MARK drop F-OSER F! ;
+
 \ The open file's sink, cursors and first record, stored as it opens. A file
 \ opened with no sink is refused.
 : ORIGIN-OPEN ( -- )
    SINK {: kind:n fed:bool :}
    kind F-OSINK F!
    fed if 1 else 0 then F-OFED F!
-   PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
-   EARLY-MARK drop F-OSER F!
+   ORIGIN-MARK
    ndict@ F-OFIRST F!
    kind SINK-UNSUPPORTED = if ORIGIN-SINK-REFUSE exit then
    kind NUNIT-OBJECT:ORIGIN-SINK! ;
@@ -1152,12 +1156,13 @@ variable USER-SEEN
    rows 0= if exit then
    mark visit rows ROWS-XT execute ;
 
-\ Store the closing file's origin rows: those its sink recorded since it
-\ opened, under the same sink. A file with child loads keeps only its sink
-\ kind: the install replays only leaves. The journal's serial advances once
-\ per row it recorded, and not at all for a file whose rows go elsewhere.
+\ Store the rows the innermost file's closing segment recorded, as a child
+\ load or the file's end closes it: those its sink recorded since the
+\ cursors, under the same sink. A child's rows lie between two segments'
+\ and are its own: the cursors move past them when it ends. The journal's
+\ serial advances once per row the segment recorded, and not at all for a
+\ file whose rows go elsewhere.
 : ORIGIN-HARVEST ( -- )
-   NUNIT-OBJECT:FILE-LEAF? 0= if exit then
    SINK {: kind:n fed:bool :}
    fed if 1 else 0 then {: fedn:n :}
    kind F-OSINK F@ <> fedn F-OFED F@ <> or if ORIGIN-SINK-REFUSE exit then
@@ -1468,7 +1473,9 @@ variable IMPORT-AT
    then
    sym ord path pathu name nameu at end IMPORT-AT @ FULL-IMPORT-XT execute ;
 
-\ Append the installed object's origin rows once, in their stored order.
+\ Append the origin rows of the segment just installed, in their stored
+\ order. A child's replay sets the import's kind for its own object, so
+\ each segment sets it again.
 : ORIGIN-INSTALL ( -- )
    NUNIT-OBJECT:ORIGIN-KIND {: kind:n :}
    kind IMPORT-KIND !
@@ -1502,6 +1509,7 @@ variable IMPORT-AT
       kind NUNIT-OBJECT:EV-SEGMENT = if
          i 0 > if i SEGMENT-HOLDS? 0= if BAD then then
          i NUNIT-OBJECT:INSTALL-SEGMENT
+         ORIGIN-INSTALL
       then
       kind NUNIT-OBJECT:EV-LOAD = if
          loads NUNIT-OBJECT:INSTALL-CHECKS
@@ -1512,9 +1520,6 @@ variable IMPORT-AT
    \ Rows bound after a trailing load are checked once it ran.
    ALL-ROWS SEGMENT-FRESH? 0= if BAD then
    all NUNIT-OBJECT:INSTALL-CHECKS
-   \ Origin rows map their ordinals through the segment map INSTALL-END
-   \ drops.
-   ORIGIN-INSTALL
    NUNIT-OBJECT:INSTALL-END
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    1 REUSED-N +!
@@ -1551,7 +1556,7 @@ variable IMPORT-AT
       {: raw:ptr rawu:n :} 2drop 2drop
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
-   DEPTH @ 0 > if ROWS-FLUSH then
+   DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST then
    DEPTH @ 0 > if SOURCE-AT else -1 then {: at:n :}
    FRAME-RESERVE
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
@@ -1598,7 +1603,7 @@ variable IMPORT-AT
       {: finish-rc:n :}
    FILE-CLOSE
    \ The rows recorded so far belong to the closed file's object.
-   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! then
+   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    unit-rc 0<> if unit-rc throw then
    finish-rc 0<> if finish-rc throw then
