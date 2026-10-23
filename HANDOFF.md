@@ -68,20 +68,26 @@ Done only when command output shows all of:
    `/usr/lib/postgresql/18/bin`, `nohup` into a log). The last census (159
    red of 491) ran on an older stack; give each red to a child dot or to
    `habu-fix-remaining-x86-5a0c47fd`.
-3. Land the lanes that wait only for review first: capreach
-   (`habu-review-and-land-2437d9b0`, staged build above), proflate
-   (`habu-review-and-land-5ce7ebe9`), tier0 (`habu-review-and-land-d6a57b7c`).
-   After capreach lands, self-build `bin/hb` again (native build plus
-   two-gen) so later trees build in one stage.
-4. Then gep64 and bodyabi (their dots), the design-first dots (pstore,
-   breakpoints, throws: design first), the tier-1 branches dot and the
-   remaining rows. A dot step that says "x86 cross-build" is a native
-   build here; "Fable" or "Opus" review or Plan means the Codex reviewer
-   or the lead's design.
-5. ARM steps go to the Mac: gep64's ARM native-build and tests, the tier0
-   review's ARM engine, the ARM check of every change to shared (non-x86)
-   code, and goal (A) in `habu-rebase-gate-and-62c0a60f`. Record each one in
-   its dot as open for the Mac session; never mark it done from pulsar.
+3. Lanes are split by who can prove them. The Mac (jerry) owns every lane
+   with ARM work and lands it on `intel`: capreach
+   (`habu-review-and-land-2437d9b0`), gep64 (`habu-land-the-64-1111310e`),
+   tier0 (`habu-review-and-land-d6a57b7c`), the tier-1 branches
+   (`habu-give-runtime-regression-cf20fae7`), bodyabi
+   (`habu-finish-the-x86-5a565370`) and pstore's shared allocator fix
+   (`habu-unblock-x86-inline-a7682014`). Do not edit their files; take
+   their commits by rebasing onto `intel@origin` as they land.
+4. Pulsar owns the x86-only lanes: proflate
+   (`habu-review-and-land-5ce7ebe9`), breakpoints
+   (`habu-implement-x86-native-261ee8bb`), throws
+   (`habu-recover-x86-throws-b66ec686`) and the remaining rows
+   (`habu-fix-remaining-x86-5a0c47fd`, after capreach lands). After capreach
+   lands, self-build `bin/hb` again (native build plus two-gen) so later
+   trees build in one stage. "Fable" or "Opus" review or Plan in a dot means
+   the Codex reviewer or the lead's design.
+5. A pulsar change to shared (non-x86) code needs an ARM check that only the
+   Mac can run: record it in the lane's dot as open for the Mac session and
+   never mark it done from pulsar. Goal (A) in
+   `habu-rebase-gate-and-62c0a60f` runs on the Mac at the final tip.
 
 ## Rules
 
