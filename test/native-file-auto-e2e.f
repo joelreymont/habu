@@ -117,22 +117,62 @@ variable DIAG-START
    OUT$ s" main-check" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
+\ The history cache holds one object per source file, keyed by the file's place
+\ in the load. Both objects name both paths, so the first build's diagnostics
+\ give lib.f's key, and each walk sorts the objects by the key in their names,
+\ counts those whose bytes differ from the previous walk's, and keeps the new
+\ bytes.
+create HISTORY-OBJ CAP allot
+create HISTORY-APP CAP allot  variable HISTORY-APP-U
+create HISTORY-LIB CAP allot  variable HISTORY-LIB-U
+create HISTORY-LIB-KEY 64 allot
+variable HISTORY-APP-NEW
+variable HISTORY-LIB-NEW
+
+\ lib.f's key, from its object line on the diagnostic build's stderr.
+: HISTORY-LIB-KEY! ( -- )
+   ERR$ s" /lib.f key=" FIND-SUB MATCH option
+      none OF T-FAIL ENDOF
+      some OF
+         IDX>N s" /lib.f key=" nip + {: at:n :}
+         at 64 + ERR$ nip > if T-FAIL
+         else ERR$ drop at + HISTORY-LIB-KEY 64 BYTE-COPY then
+      ENDOF
+   ;MATCH ;
+
+: HISTORY-KEEP ( n ptr u8 ptr n ptr n -- )
+   {: u:n slot:ptr slotu:ptr new:ptr :}
+   HISTORY-OBJ u slot slotu @ STR= 0= if
+      1 new +!
+      HISTORY-OBJ slot u BYTE-COPY u slotu !
+   then ;
+
 : HISTORY-FILE ( ptr u8 n -- )
-   BASENAME {: a:ptr u:n :}
+   {: path:ptr pathu:n :}
+   path pathu BASENAME {: a:ptr u:n :}
    a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and u 76 = and if
       1 HISTORY-N +!
+      path pathu FILE-SIZE {: size:n :}
+      size CAP > if E-FS-IO throw then
+      path pathu HISTORY-OBJ size READ-ALL size <> if E-FS-IO throw then
+      a 8 + 64 HISTORY-LIB-KEY 64 STR= if
+         size HISTORY-LIB HISTORY-LIB-U HISTORY-LIB-NEW HISTORY-KEEP
+      else
+         size HISTORY-APP HISTORY-APP-U HISTORY-APP-NEW HISTORY-KEEP
+      then
    then ;
 
 \ The file objects in the history cache: one hb-file-<64 hex>.hfo each.
 : HISTORY-ENTRIES ( -- n )
-   0 HISTORY-N !
+   0 HISTORY-N ! 0 HISTORY-APP-NEW ! 0 HISTORY-LIB-NEW !
    s" history-cache" AT ['] HISTORY-FILE WALK-FILES
    HISTORY-N @ ;
 
+\ app.f requires lib.f, which holds HIST-KEEP, and prints HIST-KEEP + n.
 : HISTORY-SOURCE ( n -- )
    {: value:n :}
    0 INPUT-U !
-   S\" : HIST-KEEP ( -- n ) 40 ;\n: MAIN ( -- ) HIST-KEEP "
+   S\" require lib.f\n: MAIN ( -- ) HIST-KEEP "
       INPUT CAP INPUT-U BUF-APPEND
    value 48 + INPUT CAP INPUT-U BUF-APPEND-C
    32 INPUT CAP INPUT-U BUF-APPEND-C
@@ -140,28 +180,36 @@ variable DIAG-START
    s" app.f" INPUT INPUT-U @ PUT ;
 
 : HISTORY-CASE ( -- )
-   s" an edit adds entries only for what it compiled and failure preserves them" T-LABEL
+   s" an edit writes objects only for what it compiled and failure preserves them" T-LABEL
+   s" lib.f" S\" : HIST-KEEP ( -- n ) 40 ;\n" PUT
    1 HISTORY-SOURCE
+   1 DIAG? !
    s" history-cache" AT RUN-SAVED-IN SUCCESS
+   0 DIAG? !
+   HISTORY-LIB-KEY!
    RUN-APP SUCCESS OUT$ s" 41" CONTAINS? TTRUE
-   HISTORY-ENTRIES {: initial:n :}
-   initial 0 > TTRUE
+   HISTORY-ENTRIES 2 T=
+   HISTORY-LIB-NEW @ 1 T=
    2 HISTORY-SOURCE
-   s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
-   DIAG-COMPILED {: compiled:n :}
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-ENTRIES {: stable:n :}
-   stable initial - {: added:n :}
-   added 0 > TTRUE
-   added compiled <= TTRUE
-   s" app.f" S\" : HIST-KEEP ( -- n ) 40 ;\n: MAIN ( -- ) HIST-KEEP MISSING . ;\n" PUT
-   s" history-cache" AT RUN-SAVED-IN 70 T=
-   HISTORY-ENTRIES stable T=
-   2 HISTORY-SOURCE
-   s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   DIAG-COMPILED 1 T=
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-ENTRIES stable T= ;
+   HISTORY-ENTRIES 2 T=
+   HISTORY-LIB-NEW @ 0 T=
+   HISTORY-APP-NEW @ 1 T=
+   s" app.f" S\" require lib.f\n: MAIN ( -- ) HIST-KEEP MISSING . ;\n" PUT
+   s" history-cache" AT RUN-SAVED-IN 70 T=
+   HISTORY-ENTRIES 2 T=
+   HISTORY-LIB-NEW @ 0 T=
+   HISTORY-APP-NEW @ 0 T=
+   2 HISTORY-SOURCE
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
+   HISTORY-ENTRIES 2 T=
+   HISTORY-LIB-NEW @ 0 T=
+   HISTORY-APP-NEW @ 0 T= ;
 
 : TRACE$ ( -- ptr u8 n )
    s" trace" AT FILE-SIZE {: size:n :}
