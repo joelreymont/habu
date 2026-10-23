@@ -206,6 +206,18 @@ PTR-VARIABLE SND-A
 
 : SND-PTR ( -- ptr u8 ) SND-A @ ;
 
+\ Only x86-64 captures the Habu evaluator. Bind its copied-state operation
+\ while SNAP is open; ARM keeps its engine evaluator and loads no OUTER.
+: SND-OUTER-BIND ( -- )
+   HB-TARGET-LINUX-X86-64? if
+      s" : SND-ZERO-OUTER ( -- ) SND-PTR OUTER:SNAPSHOT-COPY ;"
+   else
+      s" : SND-ZERO-OUTER ( -- ) ;"
+   then evaluate-closed ;
+
+SND-OUTER-BIND
+undefine SND-OUTER-BIND
+
 : SND-ALLOC ( -- )
    SND-PTR NULL-PTR = 0= if exit then
    SDL @ map-anon 0 <> if drop s" snap: data scratch mmap failed" 74 die then
@@ -236,6 +248,17 @@ PTR-VARIABLE SND-A
       0 SND-PTR BODYBUF-OFF i + + c!
    loop ;
 
+\ Locals that have left scope no longer own their name records. Keep only
+\ the live prefix so earlier compilation cannot change the saved image.
+: SND-ZERO-LOCAL-TAIL ( -- )
+   LOCN-CELL SND-PTR + CELL-VIEW @ {: used:n :}
+   used 0 < used LOC-RECS > or if
+      s" snap: local count outside buffer" 74 die
+   then
+   LOC-RECS LOC-REC * used LOC-REC * ?do
+      0 SND-PTR LOCNAMES i + + c!
+   loop ;
+
 \ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
 \ and had to be zeroed: stale slots held dangling arena pointers from the build
 \ (proven: two old-USIGS pointers survived there). It is a guarded mapping
@@ -243,6 +266,7 @@ PTR-VARIABLE SND-A
 \ SND-ZERO-LIVE clears with the other per-process addresses.
 
 : SND-ZERO-LIVE ( -- )
+   GTOD-SCRATCH SND-ZERO-CELL  GTOD-SCRATCH CELL + SND-ZERO-CELL
    RBASE-CELL SND-ZERO-CELL   S0-CELL SND-ZERO-CELL
    STACK-ABI:CAP-CELL SND-ZERO-CELL
    STACK-ABI:REPL-BASE-CELL SND-ZERO-CELL
@@ -432,8 +456,10 @@ PTR-VARIABLE SND-A
    SND-COPY
    SND-PTR SDL @ CHECKER-REG:RECORD-SNAPSHOT-COPY
    SND-ZERO-LIVE
+   SND-ZERO-OUTER
    SND-ZERO-FS-SCRATCH
    SND-ZERO-BODY-TAIL
+   SND-ZERO-LOCAL-TAIL
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-CANON-ORIGIN

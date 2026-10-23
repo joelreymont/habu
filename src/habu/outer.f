@@ -641,6 +641,16 @@ TYPED-VARIABLE REC ptr n
 \ this loop compares its own frame.
 variable LOOP-EVAL
 
+public
+
+\ The active evaluator frame belongs to the writing process. Clear its copy
+\ without disturbing the live loop that will finish the save.
+: SNAPSHOT-COPY ( ptr u8 -- )
+   {: copy:ptr :}
+   0 copy LOOP-EVAL BYTE-VIEW data-base BYTE-VIEW - + CELL-VIEW ! ;
+
+private
+
 \ The frame's callback cells hold raw execution tokens.
 CAST: BEFORE-CALL ( n -- [ n n n n ptr u8 n -- n bool ] )
 CAST: AFTER-CALL ( n -- [ n n n -- ] )

@@ -157,7 +157,7 @@ DYNAMIC-BUFFER D-NEED-BUF n
 : D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
 align
 create D-CUR DSLOT-MAX cells allot   \ the running answer inside one block
-create D-MEET DSLOT-MAX cells allot  \ the meet of one block's predecessors
+DSLOT-MAX CWORK-SPAN D-MEET n        \ the meet of one block's predecessors
 variable D-MOVED                     \ a fixpoint round changed something
 
 \ The liveness planes: one bit per value, per block, in each of the four sets
@@ -242,7 +242,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
-1 TYPED-BUFFER S-ACC IR-ID:ir-value-id
+1 CWORK-BUFFER S-ACC IR-ID:ir-value-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
 1 TYPED-BUFFER S-ARGS NEFF:placeseq
 1 TYPED-BUFFER S-OUTS NEFF:placeseq
@@ -250,7 +250,7 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
 1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
-EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
+EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 variable S-FRAME                     \ the frame the contract declares, in bytes
 variable S-DECL-IN                   \ how many values the contract declares the emission takes
 variable S-DECL-OUT                  \ and how many it declares it leaves
