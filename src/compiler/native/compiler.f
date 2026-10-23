@@ -1095,7 +1095,12 @@ private
    lease M-LEASE !
    TXT 0 false STAGE
    kind M-FIXED ! val M-FIXED-VAL !
-   RUN ;
+   \ Fixed definers borrow an existing compiler session, but do not leave a
+   \ session open when their one body was the only work that needed it.
+   SC IR-CTX:LIVE? if RUN exit then
+   ['] RUN catch {: rc:n :}
+   SC IR-CTX:LIVE? if IR-CTX:SESSION-CLOSE then
+   rc 0<> if rc throw then ;
 
 : SHADOW-FIXED-LEASED ( n n n NLEASE:lease -- )
    {: val:n kind:n idx:n lease:NLEASE:lease :}
