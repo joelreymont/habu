@@ -80,13 +80,12 @@ create ERR IO-CAP allot
    s" HABU_WHITEBOX_IMAGE" >LEN s" 1" >LEN PROC-ENV+
    SPAWN ;
 
+\ Three pre-hook words with axiom rows, in one load: SCOPE-FIND-AMBIGUOUS is
+\ the one src/core/dict.f names in SCOPE-REC.
 : AXIOM-CASES ( -- )
-   s" a checked body names PATH-CAP, which has an axiom row" T-LABEL
-   S\" : CN-CAP ( -- n ) PATH-CAP ;\n" LOAD nip 0 T=
-   s" ... and E-PATH-RANGE, which has one too" T-LABEL
-   S\" : CN-RANGE ( -- n ) E-PATH-RANGE ;\n" LOAD nip 0 T=
-   s" ... and SCOPE-FIND-AMBIGUOUS, which dict.f names in SCOPE-REC" T-LABEL
-   S\" : CN-AMB ( -- n ) SCOPE-FIND-AMBIGUOUS ;\n" LOAD nip 0 T= ;
+   s" checked bodies name PATH-CAP, E-PATH-RANGE and SCOPE-FIND-AMBIGUOUS, which have axiom rows" T-LABEL
+   S\" : CN-CAP ( -- n ) PATH-CAP ;\n: CN-RANGE ( -- n ) E-PATH-RANGE ;\n: CN-AMB ( -- n ) SCOPE-FIND-AMBIGUOUS ;\n"
+   LOAD nip 0 T= ;
 
 : NO-AXIOM-CASE ( -- )
    S\" : CN-REG ( -- n ) REG-PROT-CAP ;\n" LOAD {: erru:n rc:n :}

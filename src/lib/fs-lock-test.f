@@ -67,18 +67,22 @@ variable HELD-FD
    fd FD>N close ;
 
 \ A spawned process stays alive after the parent closes its hold. It must not
-\ keep the directory locked through exec.
+\ keep the directory locked through exec. The child is cat reading a pipe whose
+\ only write end the parent holds, so it lives until the parent closes that end.
 : EXEC-DOES-NOT-INHERIT ( -- )
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
    fd FD>N F-GETFD 0 fcntl FD-CLOEXEC and FD-CLOEXEC T=
    fd FS-LOCK:TRY TTRUE
+   PIPE-PAIR {: r:fd w:fd :}
+   r FD-CLOEXEC!  w FD-CLOEXEC!
    PROC-ARGV-RESET
-   s" 1" >LEN PROC-ARGV+
-   s" /bin/sleep" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
+   s" /bin/cat" >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
+   r FD>N close
    fd FD>N close
    ROOT$ FS-LOCK:OPEN-DIR {: again:fd :}
    again FS-LOCK:TRY TTRUE
    again FD>N close
+   w FD>N close
    child EXPECT-CLEAN ;
 
 : BAD-FD ( -- ) -1 >FD FS-LOCK:TRY drop ;
