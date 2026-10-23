@@ -29,7 +29,8 @@ belong in the language core.
   packing allocations tightly and choosing a compact table encoding are not
   compression.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
-  Use separate workspaces when concurrent edits would conflict. Create Habu
+  The repo root checkout stays on `master` with no work of its own (Joel,
+  2026-10-23): every editing task works in a workspace. Create Habu
   workspaces under this repository's `.jj-ws.noindex/`, never directly under `~/Work/`,
   and only from the repo root: one workspace name maps to one directory (a
   nested duplicate checkout silently resets the other's edits; a divergent
