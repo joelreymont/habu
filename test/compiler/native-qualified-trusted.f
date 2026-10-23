@@ -6,6 +6,8 @@
 require src/lib/test.f
 require src/compiler/native/compiler.f
 
+T-RESET
+
 package NCOMP-QTRUST-LEFT ;package
 package NCOMP-QTRUST-RIGHT ;package
 
@@ -61,4 +63,4 @@ TRUSTED: NCOMP-QTRUST-LEFT:RETRY ( n -- n )
 ;package
 
 NCOMP-QTRUST:CHECK
-s" native qualified trusted: ok" type cr
+T-REPORT
