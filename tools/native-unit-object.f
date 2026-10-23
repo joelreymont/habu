@@ -3897,17 +3897,15 @@ public
    INS-MAP-AT @ INS-SEGS @ + INS-MAP-AT ! 0 INS-SEGS !
    ndict@ INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF ! 0 INS-SLICE ! ;
 
-\ End the install: the checker slices left, every segment and definition
-\ installed, the view released, the file's map rows dropped and its
-\ references ended. INS-MAP-AT stays at the file's first row, where the
-\ installing parent's rows end: a sibling's rows start there again, and
-\ the parent's own rows stay as INSTALL-RESTORE finds them.
+\ End the install, its checker slices installed: every segment and
+\ definition installed, the view released and the file's map rows dropped.
+\ INS-MAP-AT stays at the file's first row, where the installing parent's
+\ rows end: a sibling's rows start there again, and the parent's own rows
+\ stay as INSTALL-RESTORE finds them.
 : INSTALL-END ( -- )
-   OPEN-LOADS @ INSTALL-CHECKS
    INS-SEGS @ OPEN-SEGS @ <> INS-ROW @ OPEN-DEFS @ <> or if BAD then
    NUNIT-FILE:RESET-KEEP
-   0 INS-SEGS !
-   NFILE-REF:FILE-DONE ;
+   0 INS-SEGS ! ;
 
 \ The installing file's place, kept across a child load: its next index row
 \ and payload offset, its map rows and its next checker slice.

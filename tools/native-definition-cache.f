@@ -1351,21 +1351,49 @@ variable USER-SEEN
    k NUNIT-OBJECT:LAST-SEGMENT? if ALL-ROWS exit then
    k NUNIT-OBJECT:SEGMENT-MARK ;
 
-\ A fresh object's record name is live where the install would define it:
-\ the file compiles live, and the language refuses the duplicate.
-: MISS-NAME-LIVE ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
+\ Segment row k's refusal prints: a leading one's miss under diagnostics, a
+\ later one's always, since it fails the build.
+: SEGMENT-SAY? ( n -- bool ) 0 > NUNIT-DEP:DIAG? @ or ;
+
+\ The head of the line that fails the build at event row k of the replay.
+: STALE-HEAD ( n -- )
+   {: k:n :}
+   s" native-file: stale path=" DIAG-W2 FRAME-PATH DIAG-W2
+   s"  segment=" DIAG-W2 k DIAG-N ;
+
+\ The head of segment row k's refusal line. A leading segment is checked
+\ before anything installs: its refusal is a miss and the file compiles
+\ live. A later one is checked after the replay installed what precedes it:
+\ the file is half installed, so its refusal is stale and the build fails.
+: SEGMENT-HEAD ( n -- )
+   {: k:n :}
+   k 0= if s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2 exit then
+   k STALE-HEAD ;
+
+\ Segment row k's record name is live where the install would define it:
+\ the language refuses the duplicate.
+: SEGMENT-NAME-LIVE ( ptr u8 n n -- )
+   {: name:ptr nameu:n k:n :}
+   k SEGMENT-SAY? 0= if exit then
+   k SEGMENT-HEAD
    s"  reason=name-live word=" DIAG-W2 name nameu DIAG-W2
    S\" \n" DIAG-W2 ;
 
-\ A fresh object's FFI rows expect an index or a selection the registry no
-\ longer gives: the file compiles live against the registry as it stands.
-: MISS-FFI-ROWS ( -- )
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
+\ Segment row k's FFI rows expect an index or a selection the registry no
+\ longer gives.
+: SEGMENT-FFI-ROWS ( n -- )
+   {: k:n :}
+   k SEGMENT-SAY? 0= if exit then
+   k SEGMENT-HEAD
    S\"  reason=ffi-rows\n" DIAG-W2 ;
+
+\ A later segment row k's dependency rows fail: under diagnostics the
+\ dependency miss line names the row; this one names the segment it stops.
+: SEGMENT-STALE-ROWS ( n -- )
+   {: k:n :}
+   k 0= if exit then
+   k SEGMENT-HEAD
+   S\" \n" DIAG-W2 ;
 
 \ A miss the hit check names: the viewed object is dropped and the file
 \ loads from source.
@@ -1379,12 +1407,12 @@ variable USER-SEEN
 
 \ Segment row k of the viewed object can install on the state its loads
 \ left: its dependency rows hold, its FFI rows hold and no record name it
-\ defines is live. A failed check prints its miss.
+\ defines is live. A failed check prints its line.
 : SEGMENT-HOLDS? ( n -- bool )
    {: k:n :}
-   k SEGMENT-END SEGMENT-FRESH? 0= if false exit then
-   k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if MISS-FFI-ROWS false exit then
-   k NUNIT-OBJECT:LIVE-NAME? if MISS-NAME-LIVE false exit then
+   k SEGMENT-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
+   k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
+   k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
    2drop true ;
 
 \ Every child the viewed object loads has this file's root: the replay loads
@@ -1494,6 +1522,24 @@ variable IMPORT-AT
    row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE ;
 
+\ The replay steps NAMED-STEP runs, each keeping its argument for catch:
+\ install segment row i; install the checker slices through slice n, the one
+\ before load n; install them through the last, n the file's load count, and
+\ end the install.
+: SEGMENT-STEP ( n -- n ) dup NUNIT-OBJECT:INSTALL-SEGMENT ORIGIN-INSTALL ;
+: CHECKS-STEP ( n -- n ) dup NUNIT-OBJECT:INSTALL-CHECKS ;
+: END-STEP ( n -- n ) CHECKS-STEP NUNIT-OBJECT:INSTALL-END ;
+
+\ Run replay step q on arg at event row k. The install has begun, so a
+\ refusal there fails the build with the file half installed: its stale
+\ line names row k before the refusal leaves.
+: NAMED-STEP ( n [ n -- n ] n -- )
+   {: arg:n q k:n :}
+   arg q catch {: rc:n :} drop
+   rc 0= if exit then
+   rc E-NUNIT-PROFILE = if k STALE-HEAD S\"  reason=install\n" DIAG-W2 then
+   rc throw ;
+
 \ Install the viewed object in place of running the file: its segments and
 \ its child loads in their order, each checker slice before the load that
 \ follows it. A segment after a load is checked, and its checker slice
@@ -1508,19 +1554,20 @@ variable IMPORT-AT
       i NUNIT-OBJECT:EVENT-KIND {: kind:n :}
       kind NUNIT-OBJECT:EV-SEGMENT = if
          i 0 > if i SEGMENT-HOLDS? 0= if BAD then then
-         i NUNIT-OBJECT:INSTALL-SEGMENT
-         ORIGIN-INSTALL
+         i ['] SEGMENT-STEP i NAMED-STEP
       then
       kind NUNIT-OBJECT:EV-LOAD = if
-         loads NUNIT-OBJECT:INSTALL-CHECKS
+         loads ['] CHECKS-STEP i NAMED-STEP
          i REPLAY-LOAD
          loads 1+
       else loads then
    loop {: all:n :}
-   \ Rows bound after a trailing load are checked once it ran.
-   ALL-ROWS SEGMENT-FRESH? 0= if BAD then
-   all NUNIT-OBJECT:INSTALL-CHECKS
-   NUNIT-OBJECT:INSTALL-END
+   \ Rows bound after a trailing load are checked once it ran; a stale one
+   \ is named as the segment past the last event.
+   ALL-ROWS SEGMENT-FRESH? 0= if
+      NUNIT-OBJECT:EVENT-COUNT SEGMENT-STALE-ROWS BAD
+   then
+   all ['] END-STEP NUNIT-OBJECT:EVENT-COUNT NAMED-STEP
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    1 REUSED-N +!
    NUNIT-DEP:DIAG? @ 0= if exit then
@@ -1588,8 +1635,6 @@ variable IMPORT-AT
    \ A replay installs each checker plan it keeps; one that threw between a
    \ preparation and its install leaves that plan for this release.
    NUNIT-OBJECT:RELEASE-CHECKER
-   \ A replay that threw ends its object's references as INSTALL-END does.
-   hit unit-rc 0<> and if NFILE-REF:FILE-DONE then
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
    unit-rc 0= plan-rc 0= and hit 0= and

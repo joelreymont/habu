@@ -1324,7 +1324,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
 \ the replay has installed RP-A and loaded rc.f, so the build stops with
-\ E-NUNIT-PROFILE (a stale later segment is not yet cut and compiled).
+\ E-NUNIT-PROFILE (a stale later segment is not yet cut and compiled) and
+\ names the segment row it stopped at: event 2, after rc.f's load.
 : RC-INTERFACE ( -- )
    s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
    s" an effect edit of rc.f stops rp.f's replay at its stale second segment" T-LABEL
@@ -1333,6 +1334,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rc-interface-err.log" ERR$ PUT
    0 T<>
    ERR$ s" -8597" CONTAINS? TTRUE
+   0 INPUT-U !
+   s" native-file: stale path=" IN+ s" rp.f" AT IN+ S\"  segment=2\n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
    OUT$ s" rp=" CONTAINS? TFALSE ;
 
 \ Keep line in a LINE-CAP buffer and its length in a cell.

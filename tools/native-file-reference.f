@@ -1239,10 +1239,6 @@ public
    \ projected, so INDEX-PREPARED-WIDS has nothing to index.
    1 PREP-WIDS-INDEXED ! ;
 
-\ A FILE object's install ended, on its normal or throwing path: its LOCAL
-\ references resolve no more, as in a build that replays no object.
-: FILE-DONE ( -- ) 0 PREP-MAPPED ! ;
-
 \ A refused import may have published projected keys before its later sections
 \ were checked. Installed records have live occurrences and no longer project.
 : DISCARD-PREPARED ( -- )
