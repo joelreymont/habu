@@ -304,9 +304,10 @@ variable EXPECT-U
 \ (SCHEMA-APP). Each is stored as start 0 count 0; the sums are private, so
 \ they publish no constructor word and b.f stays reusable. Editing a.f shifts
 \ those stores under b.f's reused object, down and then up from its capture:
-\ each warm build reuses b.f without a throw and its app prints what a
-\ fresh-cache build's app prints. An empty range stored at the store's
-\ high-water instead makes the warm build throw 76.
+\ each warm build reuses b.f without a throw, its app prints what a
+\ fresh-cache build's app prints, and its image holds the same bytes: an
+\ image depends only on persistent program state. An empty range stored at
+\ the store's high-water instead makes the warm build throw 76.
 : WIDTH-SOURCE ( n -- ) {: k:n :}
    s" a.f" S\" package FILE-WIDE public\nSTRUCTURE wide OPAQUE DERIVE addr FIELD a n\n" PUT
    k 1 > if s" a.f" AT S\" FIELD b n\n" APPEND-FILE then
@@ -319,8 +320,13 @@ variable EXPECT-U
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" shift-warm-hb" SAVE-APP
    fresh freshu BUILD-FRESH SUCCESS
-   RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE ;
+   RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
+   COLD-HASH HASH-APP
+   s" shift-fresh-hb" SAVE-APP
+   WARM-HASH 32 COLD-HASH 32 T$= ;
 
 : EMPTY-RANGE-CASE ( -- )
    s" a reused empty family range survives store shifts in an earlier file" T-LABEL
@@ -334,6 +340,17 @@ variable EXPECT-U
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
+   \ The first build ran on an empty cache, so it is the fresh-cache build
+   \ the build that reuses every file is compared against. app.f's requires
+   \ keep it from reuse (unsupported-segments), so a.f and b.f are every file.
+   COLD-HASH HASH-APP
+   s" hit-fresh-hb" SAVE-APP
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" hit-warm-hb" SAVE-APP
+   COLD-HASH 32 WARM-HASH 32 T$=
    1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
