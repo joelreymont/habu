@@ -1199,6 +1199,10 @@ variable SWEEP-ARMED
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
+   \ SCRIPT-ARGV picks the application convention from this cell
+   \ (src/os/script-argv.f SCRIPT-ARG-START); left at the region's zero, a
+   \ task in an application read the engine's and lost argument 0.
+   data-base reg APP-ENTRY:XT-CELL TASK-COPY-CELL
    \ A task starts on its creator's I/O devices (src/lib/genio.f). These cells
    \ hold a device INDEX, not an address, which is what makes copying them into
    \ a freshly mapped region sound: nothing here needs relocating. The funnel's
