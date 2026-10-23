@@ -1,4 +1,35 @@
-\ Caller-owned XML source view and reversible lexical/original byte coordinates.
+\ source.f - caller-owned XML source views and reversible lexical/original byte
+\ coordinates. Part of package XML (src/lib/xml.f).
+\
+\ SOURCE-BYTES validates the whole wire encoding and scalar range and answers
+\ the cell-aligned storage SOURCE-INIT needs; SOURCE-INIT validates again before
+\ publishing. Neither checks well-formedness. UTF-8 and US-ASCII borrow the
+\ original bytes; UTF-16 is converted to canonical UTF-8 in caller storage.
+\ Storage and original bytes stay live until SOURCE-CLOSE, after every reader
+\ and editor borrowing them has closed. SOURCE-OWN turns a source into a
+\ one-cell XML:source-owner for movable records; the header, storage and bytes
+\ stay put until OWNER-CLOSE, which invalidates every copy (later use and a
+\ second close are E-STATE). Nothing counts borrowers: the caller sequences
+\ close and use, and a failed initialisation publishes nothing.
+\
+\ SOURCE-ORIGINAL$ includes the BOM, SOURCE-BOM$ is that prefix (0, 2 or 3
+\ bytes) and SOURCE-LEXICAL$ drops only it. A reader over a source reports
+\ lexical UTF-8 offsets only. SOURCE-RANGE maps a lexical half-open range on
+\ scalar boundaries to the original offsets EDIT:REPLACE takes, BOM included,
+\ in time linear in the offset. ENCODE-SIZE and ENCODE write replacement
+\ markup, already escaped, in the wire encoding without a BOM, validating
+\ input, capacity and aliasing first. Edit flow: SOURCE-INIT, drain a reader to
+\ EOF, SOURCE-RANGE, ENCODE, EDIT:INIT on SOURCE-ORIGINAL$, EDIT:REPLACE,
+\ EDIT:WRITE, reopen.
+\
+\ Accepted wire forms: UTF-8 with or without BOM; declared US-ASCII without BOM
+\ (a byte above $7F anywhere, replacement markup included, is E-ENCODING;
+\ numeric references stay ASCII); UTF-16 LE or BE with BOM and no or a generic
+\ UTF-16 declaration; BOM-less UTF-16 starting `<?` with a matching UTF-16LE or
+\ UTF-16BE declaration, checked by the first NEXT. Labels are case-insensitive
+\ and the target `xml` lowercase (XML 1.0 section 4.3.3). Anything else, UTF-32
+\ included, is E-ENCODING; bad surrogates are E-UTF16 and a lexical cut off a
+\ UTF-8 boundary E-BOUNDARY.
 require src/lib/xml/scalar.f
 
 package XML

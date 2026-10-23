@@ -30,10 +30,15 @@
 \ makes the exit observable on both backends (Linux pidfd_open and macOS
 \ kqueue/NOTE_EXIT).
 
-\ AWAIT and AWAIT-BYTES wait on the AIO loop (docs/aio.md): one POLL for the
+\ AWAIT and AWAIT-BYTES wait on the AIO loop (src/lib/aio.f): one POLL for the
 \ milliseconds the caller named, -1 for no deadline, and one AWAIT. A program
 \ calls AIO:START before the first of them; a wait with no loop running is
 \ E-AIO-STATE. The forked target never touches the ring; see IO-BUILD.
+\ AWAIT-BYTES answers ONE read, never a whole reply: a caller waiting for text
+\ loops to its marker under one absolute deadline (PROC-DEADLINE-AT).
+\
+\ STORAGE CLASS. PROCESS-WIDE: the spawn staging (path, slave name, mode) is
+\ one set of cells, so one task spawns at a time; handles are the registry's.
 
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f

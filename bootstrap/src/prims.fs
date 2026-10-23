@@ -113,13 +113,14 @@ s" R -- R a | S a -- S a" s" R@" PRIM
 s" R [ R -- S ] -- S"     s" EXECUTE" PRIM
 s" R a [ R -- S ] -- S a" s" DIP"     PRIM
 s" R a [ R a -- S ] -- S a" s" KEEP"  PRIM
-\ ?DUP-IF — the typeable fused form of `?DUP IF … THEN`. Naked ?DUP is untypeable
-\ (value-dependent 0/2 arity); this consumes the value and a quotation over it,
-\ both the run (nonzero) and skip (zero) paths converging to R. See docs/effects.md.
+\ ?DUP-IF — the typeable fused form of `?DUP IF … THEN`. Naked ?DUP is
+\ untypeable (value-dependent 0/2 arity); this consumes the value and a
+\ quotation over it, both the run (nonzero) and skip (zero) paths converging to
+\ R. See docs/forth.md "Stack effects".
 s" R a [ R a -- R ] -- R" s" ?DUP-IF" PRIM
 
 \ --- number parsing (the double result is modeled as one i64; honest enough to
-\ catch the branch-imbalance bug class that bit the codegen — see LESSONS.md) ---
+\ catch the branch-imbalance bug class that bit the codegen) ---
 s" R str -- R i64 bool" s" S>NUMBER?" PRIM   \ ( c-addr u -- d flag ), d as i64
 
 \ --- char literals ---

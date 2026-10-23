@@ -198,11 +198,10 @@ variable CA-COMPOSE-LABEL-U
 
 \ Captures the whole `<value> constant NAME` line segment so replay defines the
 \ constant; the replay funnels through verify-source, whose one-cell `-- a`
-\ model is the PERMANENT constant contract (TFAM 12 verdict 2026-07-09: the
-\ interpret stack is untyped by design, no sound shape source exists, and
-\ wider-than-cell layout values never land there — DNAME-WIDE dispatch gate).
-\ A layout USE of the constant fails closed downstream; parity locked by the
-\ const-layout-narrow fixture.
+\ model is the PERMANENT constant contract (the interpret stack is untyped by
+\ design, no sound shape source exists, and wider-than-cell layout values never
+\ land there — DNAME-WIDE dispatch gate). A layout USE of the constant fails
+\ closed downstream; parity locked by the const-layout-narrow fixture.
 
 
 

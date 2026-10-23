@@ -16,15 +16,15 @@ private
 32 constant REF-BYTES
 \ ENCODE writes the reference, import and declaration counts first.
 24 constant HEAD-BYTES
-8 constant REC-CELLS
+\ A declaration row: index, key and contract lengths, then key and contract.
+24 constant DECL-HEAD
+6 constant REC-CELLS
 0 constant REC-OFF
 1 constant REC-LEN
-2 constant REC-PRODUCER
-3 constant REC-KNOWN
-4 constant REC-CON-OFF
-5 constant REC-CON-U
-6 constant REC-TOKEN
-7 constant REC-PROJECTED
+2 constant REC-CON-OFF
+3 constant REC-CON-U
+4 constant REC-TOKEN
+5 constant REC-PROJECTED
 4 constant GROUP-CELLS
 5 constant KEY-CELLS
 4096 constant HASH-SLOTS
@@ -169,7 +169,6 @@ variable FAMILY-FIND
    want REC-CELLS * REC-ROWS-RESERVE
    want REC-N @ ?do
       -1 i REC-OFF ROW! 0 i REC-LEN ROW!
-      -1 i REC-PRODUCER ROW! 0 i REC-KNOWN ROW!
       -1 i REC-CON-OFF ROW! 0 i REC-CON-U ROW!
       0 i REC-TOKEN ROW! 0 i REC-PROJECTED ROW!
    loop
@@ -610,12 +609,9 @@ EXPORT REGISTER-IMPL
    id key keyu BIND-CON ;
 
 \ The publication owner calls this for the exact record it just emitted.
-\ A zero producer length means this declaration has no proven implementation
-\ producer contract, so consumers must use their ordered dependency path.
-: BIND-DECL ( n ptr u8 n ptr u8 n -- )
-   {: ord:n raw:ptr keyu:n producer:ptr produceru:n :}
-   ord 0 < keyu 0 <= or produceru 0 < or produceru 32 > or if BAD then
-   produceru 0<> produceru 32 <> and if BAD then
+: BIND-DECL ( n ptr u8 n -- )
+   {: ord:n raw:ptr keyu:n :}
+   ord 0 < keyu 0 <= or if BAD then
    ord PENDING-ORD @ = if
       raw keyu PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ STR=
          0= if BAD then
@@ -626,25 +622,12 @@ EXPORT REGISTER-IMPL
    ord 1+ GROW-RECS
    ord REC-OFF ROW@ 0 >= if
       ord RECORD-KEY$ key keyu SAME-KEY? 0= if BAD then
-      produceru 32 = if
-         ord REC-KNOWN ROW@ 0<> if
-            producer 32 ord REC-PRODUCER ROW@ KEY-ARENA 32
-               STR= 0= if BAD then
-         else
-            producer 32 SAVE-KEY ord REC-PRODUCER ROW!
-            1 ord REC-KNOWN ROW!
-         then
-      then
       exit
    then
    key keyu GROUP-OBSERVE
    key keyu SAVE-KEY ord REC-OFF ROW!
    keyu ord REC-LEN ROW!
-   key keyu ord 0 KEY-PUT
-   produceru 32 = if
-      producer 32 SAVE-KEY ord REC-PRODUCER ROW!
-      1 ord REC-KNOWN ROW!
-   then ;
+   key keyu ord 0 KEY-PUT ;
 
 \ A published dictionary slot is identified by the engine's occurrence,
 \ not by this session's key-table insertion order. A prepared projection has
@@ -658,7 +641,6 @@ EXPORT REGISTER-IMPL
 
 : CLEAR-RECORD ( n -- ) {: ord:n :}
    -1 ord REC-OFF ROW! 0 ord REC-LEN ROW!
-   -1 ord REC-PRODUCER ROW! 0 ord REC-KNOWN ROW!
    -1 ord REC-CON-OFF ROW! 0 ord REC-CON-U ROW!
    0 ord REC-TOKEN ROW! 0 ord REC-PROJECTED ROW! ;
 
@@ -717,7 +699,7 @@ EXPORT REGISTER-IMPL
       KEY$
    then
    {: key:ptr keyu:n :}
-   ord key keyu NULL-PTR 0 BIND-DECL
+   ord key keyu BIND-DECL
    ord BIND-LIVE ;
 
 : PENDING-CLEAR ( -- )
@@ -755,7 +737,7 @@ PENDING-CLEAR
    ord PENDING-ORD ! group PENDING-GROUP !
    occurrence PENDING-OCC !
    occurrence 1+ group 2 GROUP!
-   ord PENDING-KEY-OFF @ KEY-ARENA keyu NULL-PTR 0 BIND-DECL
+   ord PENDING-KEY-OFF @ KEY-ARENA keyu BIND-DECL
    PENDING-KEY-OFF @ KEY-ARENA PENDING-KEY-U @ ;
 
 : ON-PUBLISHED ( n -- ) {: ord:n :}
@@ -767,11 +749,11 @@ PENDING-CLEAR
       rec XREF-START rec XREF-CODE-BYTES ord REGISTER-IMPL-RANGE
    then ;
 
-: PUBLISH-DEFINITION ( n ptr u8 n ptr u8 n -- )
-   {: ord:n key:ptr keyu:n producer:ptr produceru:n :}
+: PUBLISH-DEFINITION ( n ptr u8 n -- )
+   {: ord:n key:ptr keyu:n :}
    ord 0 < ord ndict@ >= or if BAD then
    PENDING-ORD @ ord <> if BAD then
-   ord key keyu producer produceru BIND-DECL
+   ord key keyu BIND-DECL
    ord BIND-LIVE
    ord LIVE-CONTRACT$ if
       ord -rot BIND-CONTRACT
@@ -814,7 +796,7 @@ PENDING-CLEAR
       rec XREF-RETIRED? if
          \ A retired row no longer has a wordlist to name its declaration.
          0 KEY-U ! SEED-DECL K-N INSTANCE-KEY$ K-S i K-N
-         i KEY$ NULL-PTR 0 BIND-DECL
+         i KEY$ BIND-DECL
          i BIND-LIVE
       else
          i BIND-RECORD
@@ -831,32 +813,6 @@ PENDING-CLEAR
       KEY$ DATA-VA VA>N bytes 1 0 BIND-ALLOC drop
    then
    FILE-INSTANCE-CLEAR ;
-
-\ Host kernel code and source-built prefix code have separate producers.
-\ Declarations without code and a kernel with no known role stay ordered.
-: BIND-SEED-PRODUCER ( n n n ptr u8 n bool ptr u8 -- )
-   {: first:n last:n frontier:n kernel:ptr kernelu:n known:bool source:ptr :}
-   first 0 < last first < or last ndict@ > or
-   frontier 0 < or frontier last > or if BAD then
-   known if kernelu 32 <> if BAD then
-   else kernelu 0<> if BAD then then
-   last first ?do
-      i REC-N @ >= if BAD then
-      i REC-OFF ROW@ 0 < if BAD then
-      i XREF-REC XREF-CODE-BYTES 0 > if
-         i frontier < if
-            known if kernel else NULL-PTR then
-         else source then {: producer:ptr :}
-         producer NULL-PTR <> if
-            i REC-KNOWN ROW@ 0<> if
-               producer 32 i REC-PRODUCER ROW@ KEY-ARENA 32 STR= 0= if BAD then
-            else
-               producer 32 SAVE-KEY i REC-PRODUCER ROW!
-               1 i REC-KNOWN ROW!
-            then
-         then
-      then
-   loop ;
 
 : DECL-KEY$ ( n -- ptr u8 n ) RECORD-KEY$ ;
 
@@ -950,11 +906,6 @@ PENDING-CLEAR
    role 4 = if
       spelling spellingu QUALIFIED-TAIL
    else spelling spellingu then wid FIND-WORD shape ;
-
-: PRODUCER$ ( n -- ptr u8 n bool ) {: ord:n :}
-   ord 0 < ord REC-N @ >= or if BAD then
-   ord REC-KNOWN ROW@ 0= if NULL-PTR 0 false exit then
-   ord REC-PRODUCER ROW@ KEY-ARENA 32 true ;
 
 : KEY-RECORD ( ptr u8 n -- ptr n n ) {: key:ptr keyu:n :}
    key keyu KEY-FIND dup 0 < if drop XREF-NULL -1 exit then
@@ -1114,12 +1065,8 @@ public
       i RECORD-KEY$ {: key:ptr keyu:n :}
       i first - O-N
       keyu O-N
-      i REC-KNOWN ROW@ O-N
       i REC-CON-U ROW@ O-N
       key keyu O-S
-      i REC-KNOWN ROW@ 0<> if
-         i REC-PRODUCER ROW@ KEY-ARENA 32 O-S
-      then
       i REC-CON-U ROW@ 0<> if
          i REC-CON-OFF ROW@ KEY-ARENA i REC-CON-U ROW@ O-S
       then
@@ -1159,25 +1106,17 @@ public
    loop
    0 PREP-WIDS-INDEXED !
    decls 0 ?do
-      32 size PREP-ROOM
+      DECL-HEAD size PREP-ROOM
       src PREP-CURSOR @ + {: row:ptr :}
       row LE:U64@ i <> if BAD then
       row 8 + LE:U64@ {: keyu:n :}
-      row 16 + LE:U64@ {: known:n :}
-      row 24 + LE:U64@ {: contractu:n :}
-      known 0 <> known 1 <> and if BAD then
+      row 16 + LE:U64@ {: contractu:n :}
       contractu 0 < if BAD then
-      32 PREP-CURSOR +!
+      DECL-HEAD PREP-CURSOR +!
       keyu 0 <= keyu size PREP-CURSOR @ - > or if BAD then
       src PREP-CURSOR @ + {: key:ptr :}
       keyu PREP-CURSOR +!
-      known 0<> if
-         32 size PREP-ROOM
-         recbase i + key keyu src PREP-CURSOR @ + 32 BIND-DECL
-         32 PREP-CURSOR +!
-      else
-         recbase i + key keyu NULL-PTR 0 BIND-DECL
-      then
+      recbase i + key keyu BIND-DECL
       1 recbase i + REC-PROJECTED ROW!
       1 PREP-REC-COUNT +!
       contractu size PREP-CURSOR @ - > if BAD then

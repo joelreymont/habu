@@ -22,7 +22,26 @@
 \ REGISTERING is safe from any task, because a registration claims its slot with
 \ one atomic-add and writes only that slot, FORGETTING is too, because it empties
 \ only the slot naming its path and gives the top back with one atomic-cas, and
-\ the RUN belongs to the process. See docs/threads.md.
+\ the RUN belongs to the process.
+\
+\ CONTRACT. Public names avoid the primitives' (the dictionary is
+\ case-insensitive): MAKE-DIR, REMOVE-DIR, MAKE-DIRS, not mkdir or rmdir. After
+\ an E-FS-IO from MAKE-DIR, MKDIR-MODE or MAKE-DIRS, FFI:ERRNO names libc's
+\ cause; MAKE-DIRS keeps a component mkdir finds existing (EEXIST) only when it
+\ is a directory or a link to one. COPY-FILE refuses a file past the caller's
+\ capacity with E-FS-CAPACITY instead of truncating. REPLACE-STAGED leaves the
+\ destination naming its old file or the whole new one: the sibling is removed
+\ if the filler or the rename throws or the filler dies. A destination longer
+\ than SIBLING-PATH-MAX is E-SPAN-CAPACITY; one whose last name is longer than
+\ SIBLING-NAME-MAX gives a sibling the host refuses, E-FS-OPEN. REMOVE-TREE
+\ unlinks a symlink to a directory and never descends into it, and throws on
+\ any partial failure. HB-TMP-MKDIR makes its tree under $HB_TMP when the
+\ process was handed one (the caller reaps it, even after a kill), else under
+\ $TMPDIR or /tmp. CLEANUP-RUN removes registrations newest first, so a parent
+\ registered before its child goes after it. Each registration also arms
+\ CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL, chaining a hook already
+\ there to run last, once; a restored or stripped image (docs/architecture.md
+\ "Images") starts with an empty table.
 \
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so

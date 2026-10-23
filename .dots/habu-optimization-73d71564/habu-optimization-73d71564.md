@@ -439,13 +439,13 @@ copies and links the native payload. Track corrections at those owners:
 
 | Finding | Implementation dot |
 |---|---|
-| 8,502 private symbols remain without dictionary entries | [Prune checker metadata](habu-drop-private-signatures-974304d0.md) |
+| 8,502 private symbols remain without dictionary entries | Prune checker metadata (`habu-drop-private-signatures-974304d0`, no dot file) |
 | Internal-name reduction qualified above | `habu-strip-the-names-89d6524a` (closed) |
-| 9,638 zero-displacement calls use 12-byte target rows | [Bind primitive calls](habu-bind-primitive-calls-a45cdb44.md) |
-| Repeated package strings and absolute string pointers | [Intern names and use offsets](habu-store-checker-names-70a89ffb.md) |
+| 9,638 zero-displacement calls use 12-byte target rows | Bind primitive calls (`habu-bind-primitive-calls-a45cdb44`, no dot file) |
+| Repeated package strings and absolute string pointers | Intern names and use offsets (`habu-store-checker-names-70a89ffb`, no dot file) |
 | Older effect and control records persist wholesale | `habu-compact-checker-histories-3a1ce692` (closed: control histories compacted; no effect row is prunable) |
-| 20,825 effect headers represent 1,766 semantic tuples | [Share effect headers](habu-share-effect-headers-d26ffc89.md) |
-| Four reconstructible UNBOUND arrays cost 51,840 bytes | [Initialize checker scratch](habu-init-checker-scratch-4c2afab4.md) |
+| 20,825 effect headers represent 1,766 semantic tuples | Share effect headers (`habu-share-effect-headers-d26ffc89`, no dot file) |
+| Four reconstructible UNBOUND arrays cost 51,840 bytes | Initialize checker scratch (`habu-init-checker-scratch-4c2afab4`, no dot file) |
 
 Header sharing preserves every history and has no correctness dependency on
 history compaction; the earlier ordering only avoided concurrent representation
@@ -535,7 +535,7 @@ intended surface through `habu-declare-the-surface-89e9aed0`.
 Capture also conservatively retains 33,696 bytes outside indexed bodies;
 their removability is unproved.
 
-`docs/engine-size.md` and `tools/image-size-lib.f` now distinguish the native
+`tools/image-size-lib.f` now distinguishes the native
 closure walk from the historical Linux samples. Old tier-1-growth examples
 must not override current measurements.
 
@@ -563,8 +563,7 @@ landing: mask and shift immediates f082dbf3, shifted index and msub c57b5f1b,
 callee clobber summaries db11d4c1, persisted summaries 890d67ea, DATA literal
 pools d65bdc94, (RETURNED) 2ddb20af, colon inlining 2ca2438f and the
 proven span-check slice of 22af10b0. (STORE-CELLS) 458c9100 was closed below
-its break-even. `docs/engine-size.md`, "ARM64 code-generation changes that
-were removed", carries the measurement for each.
+its break-even.
 
 Joel's decisions (2026-09-30): no no-check build mode; HR1, the private
 register ABI, stays parked. Confirmed drops: inline guarded scalar stores (12

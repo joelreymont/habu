@@ -1,13 +1,13 @@
 \ select.f - WSEL, the Wasm backend's selector: the folded interim HIR a
 \ definition froze (src/compiler/native/backend.f FREEZE), read through NFROZEN
 \ and written out as a WSTRUCT module frozen through WSTRUCT:FREEZE, so the full
-\ verifier checks what the interim freeze skipped (docs/wasm-backend.md 17.2).
+\ verifier checks what the interim freeze skipped (src/arch/wasm/wstruct.f).
 \
 \ THE CALL. Every function is (ctx:i32, in x i64) -> (status:i32, out x i64),
 \ its arity the HIR function's, and function zero's held to the DECLARE row.
 \ Past WPROF's 16 input or 16 output lanes a function takes the aligned frame
 \ instead: (ctx:i32) -> (status:i32), its inputs and outputs in the eight-byte
-\ cells of the context stack, the native data stack's layout (section 7.3). At
+\ cells of the context stack, the native data stack's layout. At
 \ every call, wordcall and terminal the live row the operation carries through
 \ is stored to the context stack, deepest cell first, and reloaded after, as
 \ the native boundary stores it (src/compiler/native/select-x64.f CALL-SAVE),
@@ -26,28 +26,28 @@
 \ binds in the scope being compiled, where a package's own word of either
 \ spelling is an ordinary call. Each is selected as a framed call whatever its
 \ arity, the row and the xt stored, no lane passed and the results read back
-\ off the stack: the dynamic adapter's convention (section 7.2), which the
+\ off the stack: the dynamic adapter's convention, which the
 \ runtime functions of src/arch/wasm/dynamic.f take.
 \ A quotation's address, HIR's quot, names a function of the module by its
 \ ordinal and is selected as an i64.const of WSTRUCT's kind FUN, which the
 \ encoder writes as that function's offset and the linker as its adapter's
-\ table slot, the descriptor every xt is (section 9).
+\ table slot, the descriptor every xt is (docs/xcomp.md "Execution tokens").
 \
 \ THE STATUS. Status 0 is a return, status 1 a catchable throw whose full code
-\ the callee stored in ctx.throw-code (section 8.1). Every caller tests it
+\ the callee stored in ctx.throw-code. Every caller tests it
 \ before it reads an output and propagates a 1 through its own return with zero
 \ outputs, leaving the context stack where the throw left it: the catch that
 \ takes the throw restores the depth, as natively. A tail call is a call then
-\ a return, self calls included: not bounded space (section 17.4).
+\ a return, self calls included: not bounded space.
 \
 \ THE TERMINAL AND THE TRAP. HIR ends control with `terminal`, a call to the
 \ engine's throw or die that carries the whole live row and states no arity
 \ (src/compiler/native/elaborate.f STAGE-TERMINAL). It is selected as the
-\ dynamic adapter's call (section 7.2): the row stored, no lanes, so the callee
+\ dynamic adapter's call (dynamic.f): the row stored, no lanes, so the callee
 \ takes its operands from the stack. Its status 1 propagates; a callee that
 \ came back with 0 is a fault. A fault - that, a `trap`, a store past the
 \ stack region or a pointer that fails its check - is fatal and is never a
-\ status (section 8.2): it records ctx.fault-kind, the exit code the native
+\ status: it records ctx.fault-kind, the exit code the native
 \ process would end with, and ctx.fault-addr, the trap's message, the top the
 \ store would have left, the pointer, or zero, then executes unreachable.
 \
@@ -63,7 +63,7 @@
 \
 \ THE FLOATS. A real is an f64 value, which bitsreal and realbits, the
 \ elaborator's crossings to and from cells, reinterpret. Habu's NaN rule binds
-\ Wasm (section 17.3): after add, sub, mul, div and sqrt the selector answers,
+\ Wasm: after add, sub, mul, div and sqrt the selector answers,
 \ without a branch, the left operand when it is a NaN, else the right when it
 \ is, else $7FF8000000000000 when the result is, else the result. Each test is
 \ an f64.ne of a value with itself and each answer a select, which moves bits
@@ -98,8 +98,8 @@
 \ memory32 takes an i32 address, so a load or store first proves on the whole
 \ cell that the pointer's high 32 bits are zero and that it lies past the null
 \ reservation [0, WPROF:CTX-BASE), which no Wasm engine faults on since address
-\ zero is in bounds, and only then narrows it by i32.wrap_i64 (sections 6.2,
-\ 6.3 and 17.5). A pointer that fails is fatal, as a native access fault is,
+\ zero is in bounds, and only then narrows it by i32.wrap_i64 (WPROF's
+\ layout). A pointer that fails is fatal, as a native access fault is,
 \ and records the exit code of native's crash handler with the pointer as its
 \ address. The access takes the narrowed address at offset 0, so the engine's
 \ bounds check covers p + n whole: an access running past the memory's end
@@ -143,8 +143,8 @@ package WSEL
 public
 
 \ ---- the signature descriptor -----------------------------------------------
-\ The pinned 16/16 rule (section 7.3): a function past either count takes the
-\ frame.
+\ The pinned 16/16 rule (docs/xcomp.md "Calls"): a function past either
+\ count takes the frame.
 : FRAMED? ( n n -- bool )
    {: in:n out:n :}
    in WPROF:PARAMS-MAX >  out WPROF:RESULTS-MAX >  or ;

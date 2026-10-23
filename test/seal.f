@@ -1,4 +1,4 @@
-\ seal.f - friend-arena seal regressions (TFAM 2b-i).
+\ seal.f - friend-arena seal regressions.
 \
 \ Proves the post-seal raw-write guard (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps
 \ every store sink whose target lands in the sealed crown-jewel band
@@ -192,7 +192,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-C . cr" SB-APPEND SLV-LF
    SB$ ;
 
-\ Sealed-dictionary truncation guard (TFAM 2b-iii). FORGET-DEFS-FROM /
+\ Sealed-dictionary truncation guard. FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM resolve a name to a dict index and truncate ndict (FORGET also
 \ rewinds CP) to it; a name resolving to an ENGINE record (index below the
 \ seal-time watermark SEAL-NDICT-CELL, captured by SEAL-CAPTURE at the end of the
@@ -260,7 +260,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ Second guarded band (TFAM 2b-v): protected metadata [$3CB8, $40C8) contains the
+\ Second guarded band: protected metadata [$3CB8, $40C8) contains the
 \ protected-WID registry and UNCGH-CELL. A raw store to the registry or reporter hook
 \ must trap, so user source cannot unprotect sealed WIDs or redirect uncaught throws.
 : SLV-PWIDN-FORGE$ ( -- ptr u8 n )          \ ! into the registry count cell ($3CB8)
@@ -308,7 +308,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 
-\ FFI seal guard (TFAM 2b-iii, cat 5 FFI-writer): a sealed-band pointer packed as a
+\ FFI seal guard (cat 5 FFI-writer): a sealed-band pointer packed as a
 \ LIVE integer/pointer FFI arg must trap ENGINE-ERROR:SEAL-VIOLATION at the trampoline BEFORE
 \ the foreign call, else the callee writes through it and tampers a sealed cell.
 \ Routed via the checked FFI package with an explicit writable extent; fn=0 so
@@ -650,7 +650,7 @@ variable PWG-U
    s" raw abi FFI high arg[6] register into band traps before the call" T-LABEL
    SLV-FFI-A6-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
 
-\ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
+\ Sealed-dictionary truncation guard: FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
 \ must trap ENGINE-ERROR:SEAL-VIOLATION after the sealed entry.
 : SLV-NEGATIVES-TRUNCATE ( -- )

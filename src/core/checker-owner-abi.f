@@ -180,7 +180,7 @@ $388 constant C2-STOW-OFF
 8 constant BOUND-PEND-IX
 9 constant BOUND-PEND-OFF
 10 constant BOUND-CTL
-\ Every resolved row's return effect is neutral (docs/effects.md "The
+\ Every resolved row's return effect is neutral (docs/forth.md "The
 \ return-stack clause") and this tree reads no cell 11, but a retained compiler
 \ built before that rule sizes these rows by BOUND-CELLS and refuses a call
 \ whose cell 11 holds 0: with the field deleted, a native build from such a

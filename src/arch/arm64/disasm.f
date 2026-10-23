@@ -1,4 +1,4 @@
-\ disasm.fs — a small ARM64 disassembler in the STANDALONE's Forth: decode a u32 to a
+\ disasm.f — a small ARM64 disassembler in the STANDALONE's Forth: decode a u32 to a
 \ mnemonic + operands (printed via type/.). Data-table driven (the standalone inlines
 \ colon words, so a big switch would overflow). Self-hosted debugging of generated code.
 \ NROWS rows of [mask:8][val:8][kind:1][nlen:1][name]. kind: 0 RRR 1 RRI 2 MOVW 3 LS

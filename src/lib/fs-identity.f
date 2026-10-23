@@ -1,4 +1,11 @@
 \ File identity follows symlinks and preserves stat failures other than ENOENT.
+\ SAMEFILE is true when both paths exist and name one device and inode; an
+\ ENOENT path is simply not the same file, any other stat failure E-FS-STAT.
+\ SAME-OPEN-FILE? compares two open descriptors, untouched by later path or
+\ symlink changes.
+\
+\ STORAGE CLASS. CALLER-OWNED: each call allocates and releases its own MEM
+\ mapping; no module state.
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
@@ -14,9 +21,6 @@ private
 STAT-BYTES FS-PATHZ-CAP + constant WORK-BYTES
 
 PROCESS-SYMBOLS
-FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
-   1 STAT-BYTES WRITES-BYTES
-;FUNCTION
 FUNCTION: STAT-CALL stat ( ptr u8 ptr u8 -- i32 )
    1 STAT-BYTES WRITES-BYTES
 ;FUNCTION

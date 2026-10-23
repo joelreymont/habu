@@ -1,9 +1,11 @@
 ---
 title: Compile definer bodies through the compiler
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.672233+03:00"
+closed-at: "2026-10-22T12:36:34.204591+03:00"
+close-reason: "Triage 2026-10-22, OBSOLETE: Its own 10-09 lead note says the acceptance can't be met. create/variable moved to habu-read-create-and-98e016f0 (closed); x86 does-patch is done (cc7d326d)."
 ---
 
 Problem: `create`/`variable`/`constant`/`defer` bodies are assembly chains (`habu2.f:3155-3232`); `aot-closure.f:683-690` and `address-carrier.f:9-30` decode their MOVZ/MOVK chains.

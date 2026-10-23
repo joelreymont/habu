@@ -1,6 +1,6 @@
 \ encode.f - WENC, the Wasm backend's encoder: a frozen WSTRUCT module written
 \ as one emission, a header and then each function's body in Wasm binary form
-\ (docs/wasm-backend.md 10.2, 17.1).
+\ (docs/xcomp.md "Encoder").
 \
 \ THE IDENTITIES ARE THE MODULE'S OWN. A module's symbols are its own ordinals,
 \ so ENCODE looks each WSTRUCT opcode and attribute key up in the frozen module

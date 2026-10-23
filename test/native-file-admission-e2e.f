@@ -7,7 +7,6 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
-require src/lib/engine-candidate.f
 require test/aot-builder-engine.f
 require test/native-file-e2e.f
 
@@ -49,19 +48,11 @@ package NATIVE-FILE-ADMISSION-TEST
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING s" hb-aot-got" AT s" " CAPTURE ;
 : SAID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? ERR$ a u CONTAINS? or ;
-: READER-PROBE ( -- )
-   s" reader.f"
-      S\" require src/habu/native-body-abi.f\n1 set-tier\nvariable READER-SEEN\nTRUSTED: CHECK-HEAD ( ptr u8 n n n -- n bool )\n   {: source:ptr sourceu:n name-at:n body-at:n :}\n   name-at 0 < name-at sourceu >= or if 70 throw then\n   body-at name-at <= body-at sourceu >= or if 70 throw then\n   source name-at + c@ dup 80 = if\n      drop source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 53 <> if 70 throw then\n   else\n      84 <> if 70 throw then\n      source body-at + c@ 32 <> if 70 throw then source body-at 1+ + c@ 54 <> if 70 throw then\n   then\n   1 READER-SEEN +!  0 false ;\nTRUSTED: ARM-READER ( -- )\n   ['] CHECK-HEAD native-body-reuse-cell CELL-VIEW xt!\n   check@ native-body-reuse-cell NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW ! ;\nTRUSTED: DROP-READER ( -- ) 0 native-body-reuse-cell CELL-VIEW ! ;\nARM-READER\n: PLAIN ( -- n ) 5 ;\nTRUSTED: T-READER-TRUST ( -- n ) 6 ;\nDROP-READER\n: READER-VERIFY ( -- ) READER-SEEN @ 2 <> if 70 throw then PLAIN T-READER-TRUST + . cr ;\nREADER-VERIFY\n" PUT
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" reader.f" AT ARG ENGINE-CANDIDATE:PATH$ s" " CAPTURE 0 T= OUT$ S\" 11\n" CONTAINS? TTRUE ;
-
 public
 : RUN ( -- )
    T-RESET
    s" native-file-admission" TREE
    s" cache" AT MAKE-DIR
-   s" native reader passes original name and body cursor after each opener" T-LABEL
-   READER-PROBE
    s" undeclared code pointer declines" T-LABEL
    COLD-UNSAFE
    BUILD 70 T=

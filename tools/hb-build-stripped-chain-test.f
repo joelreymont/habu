@@ -26,12 +26,6 @@ package HB-BUILD-CLI
 : HBT-CHAIN-OUT ( -- ptr u8 n )
    HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U @ ;
 
-: HBT-OPENP-SRC ( -- ptr u8 n )
-   HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U @ ;
-
-: HBT-OPENP-OUT ( -- ptr u8 n )
-   HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U @ ;
-
 \ THE THREE BAKED CONSTANTS AN ORDINARY PROGRAM READS, in one program: printing
 \ an integer reaches src/lib/fmt.f INT>NUM and its copy of STR-MIN-I64$, parsing one
 \ reaches STR-PARSE-POS and STR-MAX-I64$, hashing reaches SHA-256's KK and HH0
@@ -70,17 +64,14 @@ package HB-BUILD-CLI
 \ merely exiting zero.
 : HBT-OPENP-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" variable FD\n: MAIN ( -- )\n   s\" /dev/null\" PATH0 0 0 open FD !\n" SB-APPEND
+   S\" variable FD\n: OPEN-PATH ( -- )\n   s\" /dev/null\" PATH0 0 0 open FD !\n" SB-APPEND
    S\"    FD @ 0 < IF s\" openpath: cannot open /dev/null\" 74 die THEN\n" SB-APPEND
    S\"    FD @ close\n   s\" opened\" type cr ;\n" SB-APPEND
    SB$ ;
 
-: HBT-OPENP-EXPECTED$ ( -- ptr u8 n )
-   S\" opened\n" ;
-
-\ A PROGRAM WHOSE CLOSURE IS ITS OWN SIZE. HBT-CHAIN-N words, each calling the
-\ next and reaching no library, are exactly HBT-CHAIN-N + 1 closure members, so
-\ this fixture measures the table sizing and nothing else. 1100 is past the 1024
+\ A PROGRAM WHOSE CLOSURE IS ITS SIZE. HBT-CHAIN-N words, each calling the next
+\ and reaching no library, are HBT-CHAIN-N closure members beside the few the
+\ file open above reaches, which runs after the chain. 1100 is past the 1024
 \ rows the tables were once cut to by a constant - the wall that refused every
 \ Tender entry point (dot habu-size-the-stripped-b2932715) and, measured on the
 \ engine before the sizing landed, this very chain at `last_added_word='CW76'`.
@@ -102,17 +93,18 @@ package HB-BUILD-CLI
    HBT-CHAIN-SRC SB$ APPEND-FILE ;
 
 : HBT-CHAIN-SRC! ( -- )
-   HBT-CHAIN-SRC s" " WRITE-ALL
+   HBT-CHAIN-SRC HBT-OPENP-SRC$ WRITE-ALL
    HBT-CHAIN-N 0 ?do i HBT-CHAIN-WORD! loop
    SB-RESET
    s" : MAIN ( -- ) 0 CW" SB-APPEND HBT-CHAIN-N 1- HBT-SB-U+
    s"  " SB-APPEND HBT-CHAIN-N HBT-SB-U+
-   s\"  = if s\" chain=ok\" type cr then ;" SB-APPEND 10 SB-APPEND-C
+   s\"  = if s\" chain=ok\" type cr then OPEN-PATH ;" SB-APPEND 10 SB-APPEND-C
    HBT-CHAIN-SRC SB$ APPEND-FILE ;
 
 : HBT-CHAIN-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" chain=ok" SB-APPEND 10 SB-APPEND-C
+   s" opened" SB-APPEND 10 SB-APPEND-C
    SB$ ;
 
 \ ... a program that PRINTS an integer, PARSES one and HASHES a string builds
@@ -135,7 +127,11 @@ package HB-BUILD-CLI
 
 \ ... and a program whose closure is larger than any constant the linker used to
 \ carry builds and runs: the tables are sized from the program (aot-closure.f
-\ CLO-CAPACITY).
+\ CLO-CAPACITY). It also OPENS A FILE BY PATH, because the path scratch PATH0
+\ terminates into is claimed fresh with its byte length. Before that claim this
+\ program's open - Tender's minimal reproducer - was refused with `outside the
+\ restored span caller=PATH0 target=PZB`, and so was every entry point that
+\ reaches a file.
 : HBT-STRIPPED-CHAIN ( -- )
    HBT-CHAIN-SRC!
    HBT-CHAIN-OUT HBT-REMOVE-FILE?
@@ -148,23 +144,6 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn HBT-CHAIN-EXPECTED$ T$= ;
 
-\ ... a stripped image OPENS A FILE BY PATH, because the path scratch PATH0
-\ terminates into is claimed fresh with its byte length. Before that claim this
-\ program - Tender's minimal reproducer - was refused with `outside the restored
-\ span caller=PATH0 target=PZB`, and so was every entry point that reaches a file.
-: HBT-STRIPPED-OPEN-PATH ( -- )
-   HBT-OPENP-SRC HBT-OPENP-SRC$ WRITE-ALL
-   HBT-OPENP-OUT HBT-REMOVE-FILE?
-   HBT-OPENP-SRC HBT-OPENP-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
-   HBT-OPENP-OUT FILE? TTRUE
-   HBT-OPENP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
-   rcn 0 T=
-   errn 0 T=
-   HBT-RUN-OUT outn HBT-OPENP-EXPECTED$ T$=
-   HBT-OPENP-OUT HBT-REMOVE-FILE? ;
-
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -175,7 +154,6 @@ public
    HBT-PREPARE
    HBT-STRIPPED-PRINT-PARSE-HASH
    HBT-STRIPPED-CHAIN
-   HBT-STRIPPED-OPEN-PATH
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

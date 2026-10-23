@@ -21,7 +21,8 @@
 \ TVK-NULL is the null. It is fenced in VALUE position and permissive inside a
 \ POINTEE, because every honest use of a null binds its pointee inside a `ptr`
 \ and means this one literal address: `ptr thing NULL-PTR =`, `NULL-PTR X !`,
-\ `NULL-PTR -`, `NULL-PTR 0=`. What it refuses is a value read THROUGH it.
+\ `NULL-PTR 0=`. A distance `X NULL-PTR -` binds no pointee at all. What it
+\ refuses is a value read THROUGH it.
 \
 \ TVK-DBASE is the DATA region's base, and it is fenced at EVERY pointee depth.
 \ The first cut stopped at the first pointee -- NOMPTR-BLOCK? catches a nominal
@@ -56,12 +57,23 @@ NEWTYPE bpathing
 PTR-VARIABLE BPA-SLOT
 TYPED-VARIABLE BPA-PP ptr ptr n     \ a declared cell that really holds an address
 TYPED-VARIABLE BPA-HK [ -- n ]      \ a declared CODE cell, for the executable-value controls
+TYPED-VARIABLE BPA-TV bpathing      \ a pointer to a nominal, for the inferred-operand distances
 variable BPA-RAW                    \ an undeclared raw storage cell, for the RAW controls
 
 \ A stepper written in ordinary checked Habu. Its own certification is half the
 \ point: the offset mark rides its published quantifier, so a null handed to it
 \ comes out a DATA-base pointer at the CALLER, and no wrapper launders the step.
 : BPA-STEPPER ( ptr a n -- ptr a ) + ;
+
+\ Distances against a base address, written in ordinary checked Habu. A distance
+\ reads no storage, so neither leaves a kind on the pointee `a` it publishes, and
+\ a caller may instantiate `a` with anything, a quotation among them.
+: BPA-NDIST ( ptr a -- n ) NULL-PTR - ;
+: BPA-DDIST ( ptr a -- n ) data-base - ;
+
+\ A distance with no signature: its input is inferred from the body, never a
+\ base address, so it pairs with BPA-TV's pointee (CASE-DIST-INFERRED-OPERAND).
+: BPA-TVDIST BPA-TV - ;
 
 package BASE-PTR-ARITH-TEST
 
@@ -459,6 +471,37 @@ create DIAG-BUF 8192 allot
    s" and still subtracts from one" T-LABEL
    s" BPA-SUB ( ptr bpathing -- n ) NULL-PTR -" CERTIFIES ;
 
+: CASE-NULL-DIST-FREE ( -- )
+   s" a distance from a base address leaves the pointee free" T-LABEL
+   s" BPA-NDQ ( -- n ) BPA-HK BPA-NDIST" CERTIFIES
+   s" BPA-DDQ ( -- n ) BPA-HK BPA-DDIST" CERTIFIES ;
+
+\ A base row matches only a base address's own pointee. An operand still being
+\ inferred -- a quotation's input, a signature-less word's input -- is not one,
+\ so a distance against a pointer to a nominal pairs both pointees, and the
+\ inferred input is that pointer: it takes `ptr bpathing` and refuses the null.
+: CASE-DIST-INFERRED-OPERAND ( -- )
+   s" an inferred operand of a distance takes the other pointee" T-LABEL
+   s" BPA-QX ( ptr bpathing -- n ) [: BPA-TV - ;] execute" CERTIFIES
+   s" BPA-QD ( -- [ ptr bpathing -- n ] ) [: BPA-TV - ;]" CERTIFIES
+   s" BPA-NSU ( ptr bpathing -- n ) BPA-TVDIST" CERTIFIES ;
+
+: CASE-DIST-INFERRED-NULL ( -- )
+   s" and a null is not that pointee" T-LABEL
+   ARM
+   s" BPA-NSN ( -- n ) NULL-PTR BPA-TVDIST" CHECK-CANDIDATE! 0 T=
+   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"expected\":\"ptr bpathing \"" HAS?
+   DISARM ;
+
+\ The null whose distance was taken is still the null: a read through it is
+\ refused with the null's own suggestion.
+: CASE-NULL-DIST-READ ( -- )
+   s" a read through the null a distance was taken from is still refused" T-LABEL
+   ARM
+   s" BPA-NDR ( ptr a -- a ) NULL-PTR dup rot - drop @" CHECK-CANDIDATE! 0 T=
+   NP-CODE$ HAS?  s" Declare the pointee this null stands in for" HAS?
+   DISARM ;
+
 : CASE-NULL-ZEROTEST ( -- )
    s" and still answers 0=" T-LABEL
    s" BPA-Z ( -- bool ) NULL-PTR 0=" CERTIFIES ;
@@ -595,6 +638,10 @@ public
    CASE-NULL-STORE
    CASE-NULL-COMPARE
    CASE-NULL-DIFF
+   CASE-NULL-DIST-FREE
+   CASE-NULL-DIST-READ
+   CASE-DIST-INFERRED-OPERAND
+   CASE-DIST-INFERRED-NULL
    CASE-NULL-ZEROTEST
    CASE-NULL-STORE-DEEP
    CASE-NULL-COMPARE-DEEP

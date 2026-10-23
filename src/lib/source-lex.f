@@ -1,7 +1,9 @@
 \ source-lex.f — package LINT-LEX: the one shared lexer for Habu source, used by
 \ the lint, checker and codegen tooling and by applications that read source by
-\ its tokens. Storage class: process-wide. The token table and the scan state
-\ are one set for the image, and SOURCE replaces the last scan's tokens.
+\ its tokens. Tokens point into the span SOURCE was given, so that span stays
+\ in place while they are read.
+\ STORAGE CLASS. PROCESS-WIDE: the token table and the scan state are one set
+\ for the image, and SOURCE replaces the last scan's tokens.
 \ It states its own dependencies below rather than naming them in a load order:
 \ src/lib/vector.f is no longer in the engine, so a consumer that loaded this file
 \ without it would fail at VEC-HEADER-CELLS.

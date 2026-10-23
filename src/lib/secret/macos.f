@@ -1,3 +1,5 @@
+\ secret/macos.f - SECRET:READ through the Security framework's generic
+\ passwords, loaded by src/lib/secret.f on macOS. Contract: src/lib/secret.f.
 require src/lib/secret.f
 
 package SECRET

@@ -1,3 +1,5 @@
+\ secret/linux.f - SECRET:READ through libsecret's Secret Service search,
+\ loaded by src/lib/secret.f on a Linux target. Contract: src/lib/secret.f.
 require src/lib/secret.f
 
 package SECRET

@@ -41,7 +41,7 @@ variable LPROFRECLAIM
 \ at ARMED-RUNS, and every word that clears or reads the counters leaves
 \ ARMED-RUNS before it stops the timer. The x86-64 twin stores 0 and ARMED-RUNS
 \ and never holds: Linux delivers a raised tick before setitimer returns
-\ (docs/x86-64.md, the prof-off row).
+\ (src/habu/prof-x64.f, prof-off).
 
 \ ---- the arena: the pc index the handler searches -----------------------------
 \ THE HANDLER NEVER WALKS THE DICTIONARY. It searches a pc-sorted live-range

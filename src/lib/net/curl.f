@@ -1,4 +1,26 @@
-\ HTTPS client over libcurl's easy interface.
+\ HTTPS client over libcurl's easy interface: one request and one response, with
+\ no retry policy, authentication, payload format or URL construction. TLS,
+\ redirects, proxies, compression and the system CA bundle are libcurl's.
+\
+\ A caller relies on these:
+\ - Every setter copies its span before it returns.
+\ - INIT restricts the URL and every redirect to HTTP and HTTPS, so a scraped
+\   file:// or ftp:// URL fails with CURLE_UNSUPPORTED_PROTOCOL before anything
+\   opens.
+\ - An HTTP error status is a `response`, not `failed`; `truncated` carries the
+\   whole body's length.
+\ - A string with an embedded NUL is E-OPERAND rather than cut short.
+\ - CLEANUP ends a handle. A later use is a use-after-free the nominal type
+\   does not catch.
+\ - PERFORM holds its task for the whole transfer. START/AWAIT and
+\   STREAM-START/NEXT run on the one CURL loop task instead (AIO:START, then
+\   LOOP-START). From START until its terminal result is collected, the handle
+\   and its span belong to the loop; the task that started a transfer collects
+\   it exactly once, and LOOP-STOP refuses while any record is held. A task
+\   halted while it waits abandons its record, which the loop frees.
+\
+\ Only HABU_NET_TESTS=1 runs the case that leaves the machine and exercises TLS
+\ and the CA bundle; the gate runs without it.
 \
 \ STORAGE CLASS. TASK-LOCAL for call staging: five foreign out-parameter cells
 \ are one $28 TASK:+USER row. The caller owns destination spans; each handle
@@ -6,7 +28,7 @@
 \ (GLOBAL-DONE, GLOBAL-REGISTERED) are PROCESS-WIDE, as curl_global_init requires.
 \ So is the multiplexed transfer table at the end of this file: one loop task
 \ owns the multi handle and the records, and a record is claimed atomically by
-\ whichever task starts a transfer. See docs/threads.md.
+\ whichever task starts a transfer.
 require src/lib/errors.f
 require src/lib/string.f                      \ BUFFER:, the transfer table's byte rows
 require src/lib/le.f                          \ the foreign cells are little-endian

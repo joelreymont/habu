@@ -16,7 +16,7 @@ package NATIVE-FILE-AUTO-TEST
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
 create TRACE CAP allot
-variable HISTORY-BYTES
+variable HISTORY-N
 DYNAMIC-BUFFER LITERAL-IMAGE u8
 DYNAMIC-BUFFER LITERAL-COLD u8
 variable LITERAL-IMAGE-U
@@ -100,10 +100,6 @@ variable DIAG-START
    OUT$ s" definition hits " CONTAINS? TTRUE
    OUT$ S\" definition hits 0\n" CONTAINS? TFALSE ;
 
-: BODY-SKIPPED ( -- )
-   OUT$ s" body skips " CONTAINS? TTRUE
-   OUT$ S\" body skips 0\n" CONTAINS? TFALSE ;
-
 : HOOK-CASE ( -- )
    s" a preinstalled checker retains authority during app load" T-LABEL
    s" hook-cache" AT MAKE-DIR
@@ -122,14 +118,16 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 : HISTORY-FILE ( ptr u8 n -- )
-   2dup s" .hbd" ENDS-WITH? if
-      FILE-SIZE HISTORY-BYTES +!
-   else 2drop then ;
+   {: a:ptr u:n :}
+   a u s" .hbd" ENDS-WITH? a u s" /hb-def-" CONTAINS? and if
+      1 HISTORY-N +!
+   then ;
 
-: HISTORY-SIZE ( -- n )
-   0 HISTORY-BYTES !
+\ The definition entries in the history cache: one hb-def-<key>.hbd each.
+: HISTORY-ENTRIES ( -- n )
+   0 HISTORY-N !
    s" history-cache" AT ['] HISTORY-FILE WALK-FILES
-   HISTORY-BYTES @ ;
+   HISTORY-N @ ;
 
 : HISTORY-SOURCE ( n -- )
    {: value:n :}
@@ -142,25 +140,28 @@ variable DIAG-START
    s" app.f" INPUT INPUT-U @ PUT ;
 
 : HISTORY-CASE ( -- )
-   s" successful edits bound definition history and failure preserves it" T-LABEL
+   s" an edit adds entries only for what it compiled and failure preserves them" T-LABEL
    1 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS
    RUN-APP SUCCESS OUT$ s" 41" CONTAINS? TTRUE
-   HISTORY-SIZE {: initial:n :}
+   HISTORY-ENTRIES {: initial:n :}
    initial 0 > TTRUE
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   DIAG-COMPILED {: compiled:n :}
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-SIZE {: stable:n :}
-   stable initial <= TTRUE
+   HISTORY-ENTRIES {: stable:n :}
+   stable initial - {: added:n :}
+   added 0 > TTRUE
+   added compiled <= TTRUE
    s" app.f" S\" : HIST-KEEP ( -- n ) 40 ;\n: MAIN ( -- ) HIST-KEEP MISSING . ;\n" PUT
    s" history-cache" AT RUN-SAVED-IN 70 T=
-   HISTORY-SIZE stable T=
+   HISTORY-ENTRIES stable T=
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS REUSED
    OUT$ S\" definition hits 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   HISTORY-SIZE stable T= ;
+   HISTORY-ENTRIES stable T= ;
 
 : TRACE$ ( -- ptr u8 n )
    s" trace" AT FILE-SIZE {: size:n :}
@@ -423,7 +424,7 @@ variable DIAG-START
    ;MATCH ;
 
 : BODY-EDIT-CASE ( -- )
-   s" unchanged neighbors skip across same-file body edits" T-LABEL
+   s" unchanged neighbors reuse across same-file body edits" T-LABEL
    s" body-edit-cache" AT MAKE-DIR
    s" body-edit-fresh-cache" AT MAKE-DIR
    -1 BODY-EDIT-SOURCE
@@ -433,13 +434,16 @@ variable DIAG-START
    RUN-APP SUCCESS OUT$ s" 46" CONTAINS? TTRUE
    41 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 4\n" CONTAINS? TTRUE
+   \ LEFT, RIGHT, MAIN and CHECK-RIGHT-ORIGIN; only MIDDLE changed.
+   OUT$ S\" definition hits 4\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    101 BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 3\n" CONTAINS? TTRUE
+   \ LEFT and the shifted RIGHT and MAIN; MIDDLE and CHECK-RIGHT-ORIGIN, which
+   \ spells RIGHT's offset, compile.
+   OUT$ S\" definition hits 3\n" CONTAINS? TTRUE
    SOURCE-ACTION-ONCE
    OUT$ s" right-origin=current" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
@@ -452,7 +456,7 @@ variable DIAG-START
 : BODY-READER-CASE ( -- )
    s" a newly parsing binding cannot reuse an unchanged body" T-LABEL
    s" body-reader-cache" AT MAKE-DIR
-   \ Only READER-KEEP can contribute a skip; MIDDLE changes on each build.
+   \ Only READER-KEEP can be reused; MIDDLE changes on each build.
    s" reader.f"
       S\" package FILE-READER public\n: STEP ( -- ) s\" mode-step\" type ;\n;package\n"
       PUT
@@ -469,95 +473,9 @@ variable DIAG-START
       S\" require reader.f\n: READER-KEEP ( -- n ) 42 FILE-READER:STEP ;\n: MIDDLE ( -- n ) 3 ;\nTRUSTED: MAIN ( -- ) READER-KEEP MIDDLE + . cr ;\n"
       PUT
    s" body-reader-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TFALSE ;
-
-: BODY-DELIMITER-CASE ( -- )
-   s" delimiter, signature and trust changes miss early reuse" T-LABEL
-   s" body-delimiter-cache" AT MAKE-DIR
-   \ MAIN is trusted so only DELIMITER-KEEP can contribute a body skip.
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- n ) 42 ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- n ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : DELIMITER-KEEP ( -- cell ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" TRUSTED: DELIMITER-KEEP ( -- cell ) 42  ;\nTRUSTED: MAIN ( -- ) DELIMITER-KEEP . cr ;\n"
-      PUT
-   s" body-delimiter-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
-
-: BODY-EOF-CASE ( -- )
-   s" truncated and EOF-delimited bodies do not reuse a stale span" T-LABEL
-   s" body-eof-cache" AT MAKE-DIR
-   s" app.f"
-      S\" : MAIN ( -- ) 42 . cr ;\n: EOF-KEEP ( -- n ) 7 ;"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
-   s" app.f"
-      S\" : MAIN ( -- ) 42 . cr ;\n: EOF-KEEP ( -- n ) 7"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN 0<> TTRUE
-   s" app.f"
-      S\" : MAIN ( -- ) 43 . cr ;\n: EOF-KEEP ( -- n ) 7 ;\n"
-      PUT
-   s" body-eof-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE ;
-
-variable INCOMPLETE-SAVED
-
-: INCOMPLETE-FILE ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
-   path pathu s" .hbd" ENDS-WITH? 0= if exit then
-   path pathu FILE-SIZE {: size:n :}
-   size LITERAL-COLD-RESERVE
-   path pathu 0 LITERAL-COLD BYTE-VIEW size READ-ALL size <> if E-FS-IO throw then
-   0 LITERAL-COLD BYTE-VIEW size s" HBFDEP02" CONTAINS? if
-      1 INCOMPLETE-SAVED !
-   then ;
-
-: BODY-INCOMPLETE-CASE ( -- )
-   s" an incomplete object stays incomplete after a post-reader hit" T-LABEL
-   s" body-incomplete-cache" AT MAKE-DIR
-   s" body-incomplete-fresh-cache" AT MAKE-DIR
-   s" app.f"
-      S\" TRUSTED: DROP-READER ( -- ) 0 native-body-reader-cell CELL-VIEW xt! ;\nDROP-READER\n: MIDDLE ( -- n ) 1 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
-      PUT
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   0 INCOMPLETE-SAVED !
-   s" body-incomplete-cache" AT ['] INCOMPLETE-FILE WALK-FILES
-   INCOMPLETE-SAVED @ 0<> TTRUE
-   RUN-APP SUCCESS OUT$ s" 43" CONTAINS? TTRUE
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   BODY-SKIPPED
-   s" app.f"
-      S\" s\" moved\" 2drop\n: MIDDLE ( -- n ) 333 ;\n: INCOMPLETE-KEEP ( -- n ) 42 ;\n: MAIN ( -- ) INCOMPLETE-KEEP MIDDLE + . cr ;\n"
-      PUT
-   s" body-incomplete-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" body skips 0\n" CONTAINS? TTRUE
-   REUSED
-   RUN-APP SUCCESS OUT$ s" 375" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAVE
-   s" body-incomplete-fresh-cache" AT RUN-SAVED-IN SUCCESS
-   RUN-APP SUCCESS OUT$ s" 375" CONTAINS? TTRUE
-   LITERAL-IMAGE-SAME? TTRUE ;
 
 : LITERAL-EVENT-CASE ( -- )
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
@@ -640,6 +558,39 @@ variable INCOMPLETE-SAVED
    RUN-APP SUCCESS OUT$ s" share" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
+\ ROLLED runs at load, so sdfail generates SDFAIL:MAKE inside the build and then
+\ fails at commit on the SDFAIL:A it would derive; the build catches the code.
+: GENERATED-SOURCE ( n -- )
+   {: last:n :}
+   0 INPUT-U !
+   S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
+      INPUT CAP INPUT-U BUF-APPEND
+   SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
+   s" app.f" INPUT INPUT-U @ PUT ;
+
+: GENERATED-CASE ( -- )
+   s" words a declaration generates store and reuse like other definitions" T-LABEL
+   1 DIAG? !
+   40 GENERATED-SOURCE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS
+   s" generated-cold.err" AT ERR$ WRITE-ALL
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=RED\n" CONTAINS? TTRUE
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
+   ERR$ s" reason=checker-busy" CONTAINS? TFALSE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n" CONTAINS? TTRUE
+   41 GENERATED-SOURCE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS
+   s" generated-warm.err" AT ERR$ WRITE-ALL
+   REUSED
+   \ Only MAIN's source changed, so every other word, generated or not, hits.
+   DIAG-LINES 1 T=
+   ERR$ s" name=MAIN path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n" CONTAINS? TTRUE
+   s" generated-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   DIAG-LINES 0 T=
+   0 DIAG? ! ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -648,6 +599,7 @@ public
    s" execute-cache" AT MAKE-DIR
    s" definition-cache" AT MAKE-DIR
    s" history-cache" AT MAKE-DIR
+   s" generated-cache" AT MAKE-DIR
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" primitive" STR= if
          PRIMITIVE-CASES
@@ -704,9 +656,6 @@ public
       0 SCRIPT-ARGV$ s" body" STR= if
          BODY-EDIT-CASE
          BODY-READER-CASE
-         BODY-DELIMITER-CASE
-         BODY-EOF-CASE
-         BODY-INCOMPLETE-CASE
          T-REPORT
          s" native file auto artifacts: " type ROOT$ type cr
          exit
@@ -723,14 +672,8 @@ public
          s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
-      0 SCRIPT-ARGV$ s" body-delimiter" STR= if
-         BODY-DELIMITER-CASE
-         T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
-         exit
-      then
-      0 SCRIPT-ARGV$ s" body-incomplete" STR= if
-         BODY-INCOMPLETE-CASE
+      0 SCRIPT-ARGV$ s" generated" STR= if
+         GENERATED-CASE
          T-REPORT
          s" native file auto artifacts: " type ROOT$ type cr
          exit
@@ -753,10 +696,8 @@ public
    HISTORY-CASE
    BODY-EDIT-CASE
    BODY-READER-CASE
-   BODY-DELIMITER-CASE
-   BODY-EOF-CASE
-   BODY-INCOMPLETE-CASE
    HOOK-CASE
+   GENERATED-CASE
    T-REPORT
    s" native file auto artifacts: " type ROOT$ type cr ;
 ;package

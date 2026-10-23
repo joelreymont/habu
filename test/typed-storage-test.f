@@ -267,8 +267,7 @@ TS-ADDRESS-ROWS constant TS-BEFORE-NUMBER
 TYPED-VARIABLE TS-NUMBER n
 TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
 
-: TS-CODE-CELL? ( ptr u8 -- bool )
-   data-base BYTE-VIEW - {: off:n :}
+: TS-CODE-CELL? ( n -- bool ) {: off:n :}
    TS-ADDRESS-ROWS 0 ?do
       i ADDRESS-CELLS:ROW@ off = if true unloop exit then
    loop false ;
@@ -278,10 +277,10 @@ TS-ADDRESS-ROWS TS-BEFORE-NUMBER - constant TS-NUMBER-ROWS
 : TS-SECTION-QUOT-DECLARATION ( -- )
    s" typed quotation storage declares every zero code cell" T-LABEL
    TS-QUOT-ROWS 1 T= TS-QUOTS-ROWS 3 T= TS-NUMBER-ROWS 0 T=
-   TS-CALLBACK BYTE-VIEW TS-CODE-CELL? TTRUE
-   3 0 ?do i TS-CALLBACKS BYTE-VIEW TS-CODE-CELL? TTRUE loop
-   TS-NUMBER BYTE-VIEW TS-CODE-CELL? TFALSE
-   CELL 0 ?do TS-CALLBACK BYTE-VIEW i + c@ 0 T= loop
+   TS-CALLBACK data-base - TS-CODE-CELL? TTRUE
+   3 0 ?do i TS-CALLBACKS data-base - TS-CODE-CELL? TTRUE loop
+   TS-NUMBER data-base - TS-CODE-CELL? TFALSE
+   TS-CALLBACK data-base - data-base + @ 0 T=
    TS-ADDRESS-ROWS {: before:n :}
    TS-STORE-CALLBACK
    TS-ADDRESS-ROWS before T=

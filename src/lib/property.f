@@ -6,6 +6,16 @@
 \ PROP:SHRINK, PROP:DEFAULTS and the PROP:DEFAULT-SEED/DEFAULT-COUNT/MAX-COUNT/
 \ BUF-CAP constants); the LCG constants, PRNG/buffer state cells, seed/count
 \ validators and DROP-LAST's trailing-space trim are package-private.
+\
+\ The PRNG is a deterministic LCG, so a seed reproduces a run. A seed or count
+\ outside its bound throws E-PROP-SEED, a nonpositive RND% bound or an
+\ out-of-range byte or digit E-PROP-GENERATOR, and source that would overflow
+\ the buffer E-PROP-CAPACITY.
+\ A property that runs generated checked source owns its own audited
+\ `evaluate` boundary; generators and shrink predicates stay checked.
+\
+\ STORAGE CLASS. PROCESS-WIDE: seed, count and the source buffer are static;
+\ one task runs a property at a time.
 
 require src/lib/errors.f
 

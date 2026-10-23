@@ -1,16 +1,22 @@
 \ verify.f - the independent structural verifier: the one authority that reads a
 \ whole module and decides whether it may be published.
 \
-\ docs/compiler-ir-design.md section 5.8 (nothing is visible until every stage
-\ validator passes), section 6.5 (the list of structural checks IR:FREEZE must
-\ perform), and section 16.1 (every IR has a hostile fixture for each of them).
+\ Nothing is published until every check passes. The checks, in file order:
+\ the window tilings cover every row once; every operation's block and every
+\ block's function agree with the windows; every block ends in exactly one
+\ terminator; every value has one definition; successor arguments match the
+\ destination block's arguments in count and type; every operand is dominated
+\ by its definition; the schema's operand and result type rules hold;
+\ attribute keys are legal for the opcode; effects, source spans and target
+\ requirements are legal for the bound contract; functions obey the symbol and
+\ linkage rules.
 \ This file checks a module; it builds no record and owns no producer's table.
 \
 \ WHY A SEPARATE PACKAGE. Every producer in this substrate validates the record
 \ it is appending: IR-OP:END-OP against the opcode's schema and the pool tiling,
 \ IR-FUN:END-BLOCK against the terminator rule and the argument run,
 \ IR-FUN:END-FUN against the linkage rules and the target contract. None of them
-\ can see the whole module, and several of the section 6.5 rules are only
+\ can see the whole module, and several of the freeze rules are only
 \ decidable once construction has stopped: a branch to a block that is still
 \ being built is ordinary SSA construction, so a successor's existence cannot be
 \ checked when the branch is written; a block's predecessors are unknown until
@@ -28,9 +34,9 @@
 \ nothing, so the caller can repair the module and freeze again. Everything here
 \ therefore reads the live builder arenas, not the frozen views.
 \
-\ WHAT IT PUBLISHES (design lines 404-405 and 410). A block record deliberately
-\ stores neither a predecessor count nor a successor count, because design line
-\ 410 says those tables are derived at freeze rather than maintained through
+\ WHAT IT PUBLISHES. A block record deliberately
+\ stores neither a predecessor count nor a successor count, because those
+\ tables are derived at freeze rather than maintained through
 \ every builder mutation - a stored count would be wrong for as long as any
 \ branch to the block is unwritten. This file derives them and publishes them as
 \ one more module table, in the pool-and-rows shape every other table uses: a
@@ -43,10 +49,10 @@
 \ WHY THE SUCCESSOR LIST IS NOT COPIED. A block's successors are already stored,
 \ exactly once, in its terminator's successor window, and IR-OP is that window's
 \ single authority. Copying the list here would create a second authority for a
-\ fact the module already holds, and section 6.3's rule against duplicated
+\ fact the module already holds, and the substrate's rule against duplicated
 \ fields is the same rule that kept parent-block out of the operation row. What
 \ is genuinely derived is the inverse relation - which blocks branch TO a block -
-\ and the two counts design lines 404-405 name. Those are what this table holds:
+\ and the two counts the block record omits. Those are what this table holds:
 \ the successor COUNT, because the block record does not carry it, and the
 \ predecessor window, because nothing else in the module records it at all.
 \
@@ -65,13 +71,13 @@
 \ the target check and the one that appends the derived table - take it from
 \ their caller.
 \
-\ DOMINANCE (design line 541). Operands cannot reach forward: IR-OP refuses an
+\ DOMINANCE. Operands cannot reach forward: IR-OP refuses an
 \ operand whose ordinal is at or past the live value count, so within one block a
 \ definition always precedes its use and no cycle can be built. What that rule
 \ cannot see is a use in a block the definition does not dominate - block two
 \ using a value block one defined, when block two is reachable without passing
 \ through block one. The dominator sets are computed here by the ordinary
-\ iterative dataflow the design leaves open: the entry block dominates only
+\ iterative dataflow: the entry block dominates only
 \ itself, every other block starts dominated by all of its function's blocks, and
 \ each round replaces a block's set with the intersection of its predecessors'
 \ sets plus itself until nothing changes. The sets only ever shrink, so the
@@ -126,14 +132,14 @@ $45445231 constant EDR-MAGIC         \ "EDR1": the edge row header tag
 3 constant HDR-CELLS
 
 0 constant OFF-PST                   \ predecessor window start
-1 constant OFF-PN                    \ design line 404: predecessor count
-2 constant OFF-SN                    \ design line 405: successor count
+1 constant OFF-PN                    \ predecessor count
+2 constant OFF-SN                    \ successor count
 3 constant EROW-CELLS
 
 $FFFFFFFF HDR-CELLS - EROW-CELLS / constant EROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant EPOOL-CAP-MAX
 
-\ ---- the reusable working set -------------------------------------------------
+\ ---- the reusable working set ------------------------------------------------
 64 constant SET-BITS                 \ dominator-set bits per cell
 
 \ ---- the module under verification -------------------------------------------
@@ -188,7 +194,7 @@ DYNAMIC-BUFFER WORK n
 : K@ ( -- IR-ID:ir-module-key )
    0 VK @ ;
 
-\ ---- small typed accessors ----------------------------------------------------
+\ ---- small typed accessors ---------------------------------------------------
 : BLOCKS ( -- n )
    T-BLR T@ IR-FUN:BLOCKS ;
 
@@ -243,7 +249,7 @@ DYNAMIC-BUFFER WORK n
    {: o:IR-ID:ir-op-id i:n :}
    T-OPP T@ T-OPR T@ K@ o i IR-OP:SUCCESSOR@ IR-ID:BLOCK-LOCAL ;
 
-\ ---- scratch sizing -----------------------------------------------------------
+\ ---- scratch sizing ----------------------------------------------------------
 \ Sizes and offsets count cells; reject an extent before cells can overflow.
 : WORK+ ( n n -- n )
    {: a:n b:n :}
@@ -276,7 +282,7 @@ DYNAMIC-BUFFER WORK n
    then
    WORK-RESERVE ;
 
-\ ---- coverage (the two window tilings, totalled) ------------------------------
+\ ---- coverage (the two window tilings, totalled) -----------------------------
 \ IR-FUN's tiling proves each window continues where the one before it ended, so
 \ the windows can only fail to cover the table at the top: an operation appended
 \ after the last block belongs to no block, and a block left behind by an
@@ -296,7 +302,7 @@ DYNAMIC-BUFFER WORK n
    loop
    OPS <> if E-IR-VERIFY-COVER throw then ;
 
-\ ---- parents ------------------------------------------------------------------
+\ ---- parents -----------------------------------------------------------------
 \ Walking the functions in order hands out the block ordinals in exactly the
 \ order the windows tile, so each block's own parent field can be compared
 \ against the function whose window is claiming it without searching.
@@ -315,12 +321,12 @@ DYNAMIC-BUFFER WORK n
       loop
    loop ;
 
-\ ---- terminators --------------------------------------------------------------
+\ ---- terminators -------------------------------------------------------------
 : TERMINATOR? ( IR-ID:ir-op-id -- bool )
    OPCODE-OF {: s:IR-ID:ir-symbol-id :}
    T-SCR T@ s IR-SCHEMA:TERMINATOR? ;
 
-\ Design line 403: exactly one terminator, and it is the block's last operation.
+\ Exactly one terminator, and it is the block's last operation.
 : TERM-CK ( n -- )
    {: b:n :}
    b OP-COUNT {: n:n :}
@@ -340,7 +346,7 @@ DYNAMIC-BUFFER WORK n
       i TERM-CK
    loop ;
 
-\ ---- value definitions (design line 537) --------------------------------------
+\ ---- value definitions -------------------------------------------------------
 \ Every value has exactly one definition, and the definition has to claim it
 \ back. A result value names an operation and a position, so that operation's
 \ result window must hold this very value there; a block argument names a block
@@ -442,7 +448,7 @@ DYNAMIC-BUFFER WORK n
    WORK-GROW
    EDGES-FILL ;
 
-\ ---- successor arguments (design line 536) ------------------------------------
+\ ---- successor arguments -----------------------------------------------------
 \ A terminator's operands are the arguments it hands its successor, so with one
 \ successor the count and the types must be the destination block's. With more
 \ than one successor there are no per-edge argument windows. Such destinations
@@ -477,7 +483,7 @@ DYNAMIC-BUFFER WORK n
       i SUCCARGS-CK
    loop ;
 
-\ ---- dominator sets -----------------------------------------------------------
+\ ---- dominator sets ----------------------------------------------------------
 : DOM-CELL ( n n -- n )
    {: b:n w:n :}
    b SET-N @ * w + DOM-OFF @ + ;
@@ -575,7 +581,7 @@ DYNAMIC-BUFFER WORK n
       bst bn DOM-ROUND 0= if leave then
    loop ;
 
-\ ---- dominance of every operand -----------------------------------------------
+\ ---- dominance of every operand ----------------------------------------------
 \ Which block defines a value: its own block for an argument, and the block whose
 \ operation window holds the defining operation for a result. The windows tile
 \ the operation table in block order, so the owning block is found by bisection
@@ -631,7 +637,7 @@ DYNAMIC-BUFFER WORK n
       AT @ bn + AT !
    loop ;
 
-\ ---- schema type rules (design line 542) --------------------------------------
+\ ---- schema type rules -------------------------------------------------------
 \ The schema's declared list is shorter than the operation's when the last entry
 \ is a variadic tail: every further entry is described by that tail type.
 : LIST-AT ( n n bool -- n )
@@ -639,9 +645,9 @@ DYNAMIC-BUFFER WORK n
    tail i want 1- >= and if want 1- exit then
    i ;
 
-\ WHERE THE SCHEMA IS NOT THE AUTHORITY ON AN OPERAND'S TYPE. Design lines 706 to
-\ 708 make the operands of a terminator with ONE successor the arguments that
-\ successor is entered with, and design line 532 makes the verifier match them
+\ WHERE THE SCHEMA IS NOT THE AUTHORITY ON AN OPERAND'S TYPE. The operands
+\ of a terminator with ONE successor are the arguments that
+\ successor is entered with, and the verifier matches them
 \ against that block - count and type, position by position, which SUCCARGS-CK
 \ below does. Those two lists are the same list, and the destination is the one
 \ that knows what is in it: an opcode's schema cannot say what type argument
@@ -690,7 +696,7 @@ DYNAMIC-BUFFER WORK n
       s o i RESULT-TYPE-CK
    loop ;
 
-\ ---- attribute keys (design lines 479 and 484) --------------------------------
+\ ---- attribute keys ----------------------------------------------------------
 : OP-KEY ( IR-ID:ir-op-id n -- n )
    {: o:IR-ID:ir-op-id i:n :}
    T-OPP T@ T-OPR T@ K@ o i IR-OP:ATTR-KEY@ IR-ID:SYMBOL-LOCAL ;
@@ -742,8 +748,8 @@ DYNAMIC-BUFFER WORK n
    s o REQUIRED-CK
    s o EXTRA-CK ;
 
-\ ---- effect, span, and target -------------------------------------------------
-\ Design line 543: an operation that carries an effect token has to have one.
+\ ---- effect, span, and target ------------------------------------------------
+\ An operation that carries an effect token has to have one.
 \ The effect class is the schema's field, and this is the cross-check IR-SCHEMA
 \ cannot make on its own: an opcode that reads or writes a memory domain must
 \ declare a memory-token operand or result to carry that domain.
@@ -767,7 +773,7 @@ DYNAMIC-BUFFER WORK n
    IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ if exit then
    s SCHEMA-TOKEN? 0= if E-IR-VERIFY-EFFECT throw then ;
 
-\ Design line 545: a span is a valid slice of a source this module registered.
+\ A span is a valid slice of a source this module registered.
 \ A span is a three-field value, so it is unmade to reach the fields the way
 \ every other holder of one does.
 : SPAN-CK ( IR-SOURCE:span -- )
@@ -784,7 +790,7 @@ DYNAMIC-BUFFER WORK n
    T-SCR T@ s IR-SCHEMA:ARCH@ CTARGET-ARCH:EQ
    0= if E-IR-VERIFY-TARGET throw then ;
 
-\ ---- one operation ------------------------------------------------------------
+\ ---- one operation -----------------------------------------------------------
 : OPCODE-CK ( IR-ID:ir-symbol-id -- )
    {: s:IR-ID:ir-symbol-id :}
    s IR-ID:SYMBOL-LOCAL {: ord:n :}
@@ -808,8 +814,8 @@ DYNAMIC-BUFFER WORK n
       c i OP-CK
    loop ;
 
-\ ---- functions ----------------------------------------------------------------
-\ Section 6.5's symbol rules, restated over the finished table: a function names
+\ ---- functions ---------------------------------------------------------------
+\ The freeze symbol rules, restated over the finished table: a function names
 \ a symbol this module interned, and it names it alone.
 : FUN-SYMBOL-CK ( n -- n )
    {: f:n :}
@@ -835,7 +841,7 @@ DYNAMIC-BUFFER WORK n
       T-BLR T@ K@ i BLK IR-FUN:BLOCK-SPAN@ SPAN-CK
    loop ;
 
-\ ---- publishing the derived table ---------------------------------------------
+\ ---- publishing the derived table --------------------------------------------
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
@@ -881,7 +887,7 @@ DYNAMIC-BUFFER WORK n
 
 public
 
-\ ---- creation -----------------------------------------------------------------
+\ ---- creation ----------------------------------------------------------------
 \ The derived table's two arenas are created with the module's other tables,
 \ using its block ceiling and an upper bound on its control-flow edges. The
 \ private scratch slab grows independently at freeze.
@@ -973,7 +979,7 @@ public
 
 private
 
-\ ---- frozen readers -----------------------------------------------------------
+\ ---- frozen readers ----------------------------------------------------------
 \ A public reader opens the view once and every helper below takes the reader,
 \ which refuses on the generation and the state exactly where the view would.
 : FPSHAPE-CK ( n -- )
@@ -1017,8 +1023,8 @@ private
 
 public
 
-\ ---- the published derived table ----------------------------------------------
-\ Design line 404: how many blocks branch to this one.
+\ ---- the published derived table ---------------------------------------------
+\ How many blocks branch to this one.
 : RPRED-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
    {: rview:IR-ARENA:reader id:IR-ID:ir-block-id :}
    rview IR-ARENA:FROZEN-READER id OFF-PN FFLD ;

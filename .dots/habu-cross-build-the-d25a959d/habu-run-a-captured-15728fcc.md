@@ -1,9 +1,11 @@
 ---
 title: Run a captured Habu program on x86-64 (M3)
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.740651+03:00"
+closed-at: "2026-10-22T12:36:34.398008+03:00"
+close-reason: "Triage 2026-10-22, DONE: INTEL.md State: the cross-built engine enters captured MAIN and runs; 9cbf2e02."
 blocks:
   - habu-resolve-x86-entry-cb671d4d
   - habu-emit-x86-pure-f70fb84b

@@ -60,11 +60,20 @@
 \   stripped no dictionary, no compiler, no trailer: an entry, the closure of
 \            MAIN, the crash handlers, the DATA window as sparse non-zero runs,
 \            and one 8-byte relocation row per declared address cell.
-\ PRESERVED BYTES ARE THE WHOLE STORY. A snapshot retains every user-heap byte,
-\ including zeros and spare allocation capacity, while fixed omitted capacity
-\ has its own virtual-extent report. Every file class carries a ZERO column.
-\ A stripped image carries no zero byte at all: its runs describe a span far
-\ larger than the file.
+\ PRESERVED BYTES ARE THE WHOLE STORY. A snapshot stores its user heap as raw
+\ bytes, zeros and spare allocation capacity included, or as the cell grid of
+\ src/habu/cell-grid.f when that is smaller (the trailer's
+\ SNAPSHOT-FORMAT:HEAP-FIELD says which); fixed omitted capacity has its own
+\ virtual-extent report. Every file class carries a ZERO column. A stripped
+\ image carries no zero byte at all: its runs describe a span far larger than
+\ the file.
+\
+\ WHAT THE REPORT DOES NOT SAY. Code is charged to a record and a record to its
+\ package; nothing in the image names a source file, so there is no per-file
+\ attribution; global-wordlist words belong to no package and share one row.
+\ The snapshot trailer has no payload checksum: the reader's checks of version,
+\ extents, row count, section lengths and pads establish framing and geometry,
+\ not content authenticity.
 \
 \ Run: <engine> --load tools/engine-size.f -- <image>
 \
@@ -147,10 +156,10 @@ variable ILEN
 : U64@ ( n -- n ) {: off:n :}
    off U32@  off 4 + U32@ 32 lshift or ;
 
-\ How many bytes of a span are zero. An application image writes its user heap
-\ verbatim, zeros included, so this is the difference between what an image
-\ CARRIES and what it SAYS, and every class is reported with it beside the byte
-\ count rather than folded into one number.
+\ How many bytes of a span are zero. A span an image stores raw (the engine's
+\ low prefix, a snapshot heap in the raw form) carries its zeros, so this is the
+\ difference between what an image CARRIES and what it SAYS, and every class is
+\ reported with it beside the byte count rather than folded into one number.
 variable ZACC
 
 : ZEROS ( n n -- n ) {: at:n len:n :}
@@ -2556,10 +2565,10 @@ variable HEAD-W     variable HEAD-Z
 \ four-byte boundary and confirmed by the `ADR x12` that follows it and must
 \ name this image's own code base.
 \ DO NOT REPLACE THIS WITH THE LAST NON-ZERO BYTE. A row is (u32 location, u32
-\ target) and a target below 65,536 leaves the row's last two bytes zero: the
-\ fixture image in docs/engine-size.md has exactly one row, target 1,252, and a
-\ last-non-zero scan ends the content two bytes early and loses eight bytes of
-\ the file to the pad. The count is read, never inferred.
+\ target) and a target below 65,536 leaves the row's last two bytes zero: for
+\ an image whose last row has such a target, a last-non-zero scan ends the
+\ content two bytes early and loses eight bytes of the file to the pad. The
+\ count is read, never inferred.
 variable BLOB-AT     variable BLOB-ROWB   variable BLOB-RUNS
 variable BLOB-CARRIED  variable BLOB-SPAN variable BLOB-STOP
 variable RELOC-AT    variable RELOC-N     variable APP-END

@@ -1,9 +1,15 @@
 \ rows.f - connections and row readers over package PG.
 \
 \ OPEN hands out a connection for the calling task; the readers below turn a
-\ PG:result into values. A span a reader answers is copied into the reading
-\ task's own arena first, so it outlives PG:CLEAR: a record read through WITH-ROW
-\ keeps its text after its result is gone. See docs/db.md "Row readers".
+\ PG:result into values. A span a COL- reader answers is copied into the reading
+\ task's own arena first, so it outlives PG:CLEAR and lasts until that task's
+\ next read (READ-RESET, which BY-ID runs): a record read through WITH-ROW keeps
+\ its text after its result is gone. The AT readers answer libpq's bytes, valid
+\ until PG:CLEAR.
+\
+\ STORAGE CLASS. TASK-LOCAL arenas: a reading task takes one on its first read
+\ and keeps it, READ-CAP bytes per read. The declared connection and reader
+\ counts are PROCESS-WIDE.
 \
 \ Two declarations come first, both before the first OPEN or read:
 \
@@ -52,11 +58,11 @@ variable CONNECTIONS-FROZEN
 \ A record outlives the result it was read from, so every span it carries is
 \ copied into an arena first and the result is cleared before the record is
 \ returned. The arena is the reading task's own, one row per task, because
-\ static storage is one copy for the whole image (docs/threads.md) while a
+\ static storage is one copy for the whole image while a
 \ server reads rows from many tasks at once, each on a connection of its own.
-\ One arena between them hands a reader back the bytes another task copied after
-\ it: Tender witnessed a platform whose adapter name had become another row's
-\ text between the lookup and the run. A record's spans are therefore valid
+\ One arena between them would hand a reader back the bytes another task copied
+\ after it, so a span could become another row's text between its lookup and
+\ its use. A record's spans are therefore valid
 \ until the task that read them reads again, and no longer.
 \
 \ A row is taken on a task's first read and stays that task's: a TCB is

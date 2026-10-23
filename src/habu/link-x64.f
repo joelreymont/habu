@@ -1,7 +1,7 @@
 \ link-x64.f - the captured dictionary laid out for an x86-64 image, package
 \ X64LINK. It is the write-time twin of the ARM64 seed's boot passes (src/habu/
 \ habu2.f EM-SEED-DICT, EM-AOT-REGISTER-RECS and EMIT-AOT-PROT-RESTORE): an
-\ x86-64 image maps its code region and DATA at fixed addresses (docs/x86-64.md
+\ x86-64 image maps its code region and DATA at fixed addresses (docs/xcomp.md
 \ "Fixed segments"), so what the ARM64 seed computes at every boot is computed
 \ here once, into byte rows the image writer places.
 \
@@ -778,12 +778,9 @@ private
    UNCGH-CELL false CELL-DECL
    PROVIDED-XT:EVALUATE-CELL false CELL-DECL
    PROVIDED-XT:EVALUATE-RANGE-CELL false CELL-DECL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + false CELL-DECL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + false CELL-DECL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + false CELL-DECL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + false CELL-DECL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + false CELL-DECL
-   PROVIDED-XT:BODY-PASSIVE-CELL false CELL-DECL
    NCOMP-DISPATCH:DECL-CELL true CELL-DECL
    NCOMP-DISPATCH:TARGET-DECL-CELL true CELL-DECL ;
 

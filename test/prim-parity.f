@@ -89,7 +89,8 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 $8000000000000000 constant MIN-N
 
 create FIX-CELLS 4 cells allot
-$20 BUFFER: FIX-BYTES                   \ declared: `ptr-field` refuses a raw base
+$20 BUFFER: FIX-BYTES                   \ byte fixture for the offset rows
+4 PTR-U8-TABLE FIX-PTRS                 \ pointer table for the `ptr-field` row
 create COVERED COVER-CAP allot
 create SUBJ-BUF SUBJ-CAP allot
 create LBL-BUF LBL-CAP allot
@@ -384,12 +385,12 @@ $3A constant COLON-B
    na nu s" count" STR= IF v FIX-BYTES c! FIX-BYTES PRIM-REF:COUNTED$ nip EXIT THEN
    s" memory reference" na nu NO-ARM ;
 
-\ Pointer columns are offsets into FIX-BYTES; results are offsets or distances.
-\ All accesses stay within that fixture. Each arm has the row's checked types.
+\ Pointer columns are offsets into FIX-BYTES, or into FIX-PTRS for `ptr-field`;
+\ results are offsets or distances. All accesses stay within those fixtures. Each arm has the row's checked types.
 : PN-P-PRIM ( n n ptr u8 n -- n ) {: a:n b:n na:ptr nu:n :}
    na nu s" +" STR= IF FIX-BYTES a + b + FIX-BYTES - EXIT THEN
    na nu s" -" STR= IF FIX-BYTES a + b - FIX-BYTES - EXIT THEN
-   na nu s" ptr-field" STR= IF FIX-BYTES a + b ptr-field byte-view FIX-BYTES - EXIT THEN
+   na nu s" ptr-field" STR= IF FIX-PTRS a + b ptr-field NULL-PTR - FIX-PTRS NULL-PTR - - EXIT THEN
    s" pointer step" na nu NO-ARM ;
 
 : P-P-PRIM ( n ptr u8 n -- n ) {: a:n na:ptr nu:n :}

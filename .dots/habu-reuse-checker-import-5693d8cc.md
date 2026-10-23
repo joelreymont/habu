@@ -1,6 +1,6 @@
 ---
 title: Reuse checker import scratch
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-16T14:43:59.577995+03:00"

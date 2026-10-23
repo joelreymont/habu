@@ -1300,7 +1300,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- KILL and HALT at the moment the task ends -------------------------------
-\ The teardown docs/threads.md sanctions - the owner sets a stop flag, the body
+\ The teardown src/lib/task.f sanctions - the owner sets a stop flag, the body
 \ writes its own "I am finished" flag and returns, the owner KILLs - arrives
 \ INSIDE the interval in which the task is finishing: that last write precedes
 \ TASK-END and the thread entry's own DONE store. So the owner's KILL reaches a
@@ -1581,7 +1581,7 @@ variable DONE-PUB-MISSES
    DONE-PUB-MISSES @ 0 T=
    TASK-LIVE-COUNT base T= ;
 
-\ ---- exposed tasks and callback slots (docs/ffi-callback.md) ------------------
+\ ---- exposed tasks and callback slots (src/lib/ffi-callback.f) --------------
 \ The slot rows and the EXPOSED state are src/lib/task.f's own, so their refusals
 \ are pinned here with bare slot numbers; src/lib/ffi-callback-test.f drives them
 \ through real callbacks.

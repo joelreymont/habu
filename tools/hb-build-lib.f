@@ -1312,6 +1312,13 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-ARTIFACT$ HBB-MAP-DST!
    HBB-ARTIFACT-PREFIX$ s" .map" HBB-ARTIFACT-STEM$ HBB-MAP-DST$ BUILD-CACHE:PRUNE ;
 
+\ A child that opens the definition cache stores its hb-def- entries in this
+\ root and prunes nothing: its dictionary is saved as a product image, so
+\ retention belongs here, in the parent, which is never saved. keep is an
+\ entry this build published or used in the root, which names the directory.
+: HBB-PRUNE-ENTRIES ( ptr u8 n -- ) {: keep:ptr keepu:n :}
+   s" hb-def-" s" .hbd" s" " keep keepu BUILD-CACHE:PRUNE ;
+
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
    HBB-GOT-NAME$ BF-REMOVE-TMP
@@ -1376,6 +1383,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-STORE-OBJECT
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
+   HBB-ARTIFACT$ HBB-PRUNE-ENTRIES
    HBB-FINISH ;
 
 \ The selector records separate support and product input spans. Its name is
@@ -1598,6 +1606,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-ENGINE-INPUTS-READ
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
+   HBB-ARTIFACT$ HBB-PRUNE-ENTRIES
    HBB-ENGINE-SELECT-WRITE
    HBB-FINISH ;
 
@@ -1837,6 +1846,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-INVALIDATE-DEPS
    HBB-INSTALL-OUT
    HBB-REPL-SAVE-INPUTS
+   HBB-REPL-SUPPORT-PATH$ HBB-PRUNE-ENTRIES
    HBB-FINISH ;
 
 : HBB-BUILD ( -- )
@@ -1847,7 +1857,8 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-BUILD-REST ;
 
 : HBB-PREPARE-CACHE-CLI ( -- )
-   [: HBB-PREPARE-ARTIFACT-CACHE ;] catch {: rc:n :}
+   [: HBB-REPL @ if HBB-PREPARE-CACHE else HBB-PREPARE-ARTIFACT-CACHE then ;]
+   catch {: rc:n :}
    rc 0= if exit then
    rc E-BUILD-PATH = if
       HBB-CLEANUP
@@ -1875,8 +1886,8 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
    HBB-ENGINE @ if [: HBB-BUILD-ENGINE ;] catch HBB-CLI-MAKER-CODE exit then
-   HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    HBB-PREPARE-CACHE-CLI
+   HBB-REPL @ if [: HBB-BUILD-REPL ;] catch HBB-CLI-MAKER-CODE exit then
    [: HBB-BUILD-REST ;] catch HBB-CLI-MAKER-CODE ;
 
 : HBB-MAIN ( -- )

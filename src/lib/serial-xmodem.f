@@ -1,4 +1,17 @@
 \ Bounded XMODEM transfers over an already-open raw serial stream.
+\
+\ INIT's two waits are separate: the control wait covers an ACK or the next
+\ header and must allow a whole packet at the line's baud rate; the inactivity
+\ wait covers gaps inside a frame and must be shorter than the peer's
+\ retransmission interval. Each SEND or RECEIVE takes a fresh overall deadline
+\ that negotiation, retries and draining share. Only `completed` means done: a
+\ failure may leave an accepted prefix, and padding is never stripped, so the
+\ application frames its own length. DISPOSE does not close the serial handle.
+\ Peer tests: test/serial-xmodem.py.
+\
+\ STORAGE CLASS. CALLER-OWNED: the session header and its packet buffer are
+\ the caller's; distinct sessions over distinct handles run concurrently, one
+\ session or one stream never.
 require src/lib/xmodem.f
 require src/lib/serial.f
 

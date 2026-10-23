@@ -1,17 +1,32 @@
-\ utf16-test.f - UTF-16 code units of UTF-8 spans, and the byte back from a
-\ unit, through src/lib/utf16.f.
+\ utf16-test.f - UTF-16 code units of UTF-8 spans, the byte back from a unit,
+\ and strict UTF-16LE conversion, through src/lib/utf16.f.
 \ Run: bin/hb --load src/lib/utf16-test.f
 \
 \ Every expected count and byte is written from the definitions, not computed:
 \ a scalar below U+10000 is one unit, one at or above it is a surrogate pair,
 \ and each byte UTF8:NEXT answers as `raw-byte` is one unit. The column cases
 \ are the language server's use: the units before a byte offset on one line.
+\ The conversion vectors are written from UTF-16LE and UTF-8 the same way.
 
 require src/lib/errors.f
+require src/lib/byte-buffer.f
 require src/lib/test.f
 require src/lib/utf16.f
 
 package UTF16-TEST
+
+create LE-BUF BUF:HDR-BYTES allot
+create LE-OUT BUF:HDR-BYTES allot
+
+4 constant BUF-CAP0               \ small, so the vectors grow the buffer
+
+CAST: BL>N ( NUM:byte-len -- n )
+
+: FRESH ( ptr a -- )
+   {: buf:ptr :}
+   buf BUF:DISPOSE  buf BUF-CAP0 BUF:N>BLEN BUF:INIT ;
+
+: GOT$ ( ptr a -- ptr u8 n )  BUF:SPAN$ BL>N ;
 
 : UNITS= ( ptr u8 n n -- )
    {: a:ptr u:n want:n :}
@@ -139,6 +154,119 @@ package UTF16-TEST
    [: OFFSET-NEGATIVE-INDEX ;] E-STR-BOUNDS TTHROWSQ
    [: OFFSET-EMPTY-NEGATIVE ;] E-STR-BOUNDS TTHROWSQ ;
 
+: LE>UTF8= ( ptr u8 n ptr u8 n -- )
+   {: le:ptr lu:n want:ptr wu:n :}
+   LE-BUF BUF:CLEAR
+   le lu LE-BUF UTF16:APPEND-LE>UTF8
+   LE-BUF GOT$ want wu T$= ;
+
+: UTF8>LE= ( ptr u8 n ptr u8 n -- )
+   {: text:ptr tu:n want:ptr wu:n :}
+   LE-BUF BUF:CLEAR
+   text tu LE-BUF UTF16:APPEND-UTF8>LE
+   LE-BUF GOT$ want wu T$= ;
+
+: BOTH= ( ptr u8 n ptr u8 n -- )
+   {: le:ptr lu:n text:ptr tu:n :}
+   le lu text tu LE>UTF8=
+   text tu le lu UTF8>LE= ;
+
+
+\ Each vector both ways: UTF-16LE on the left, UTF-8 on the right.
+: VECTORS ( -- )
+   s" " s" " BOTH=
+   s\" \x44\x00\x65\x00\x66\x00\x61\x00\x75\x00\x6C\x00\x74\x00" s" Default" BOTH=
+   s\" a\x00\x00\x00b\x00" s\" a\x00b" BOTH=          \ an embedded NUL
+   s\" \xE9\x00" s\" \xC3\xA9" BOTH=                  \ U+00E9
+   s\" \xFF\xD7" s\" \xED\x9F\xBF" BOTH=              \ U+D7FF, just below the surrogates
+   s\" \x00\xE0" s\" \xEE\x80\x80" BOTH=              \ U+E000, just above them
+   s\" \xFF\xFF" s\" \xEF\xBF\xBF" BOTH=              \ U+FFFF, the last one-unit scalar
+   s\" \x00\xD8\x00\xDC" s\" \xF0\x90\x80\x80" BOTH=  \ U+10000, the first pair
+   s\" \xFF\xDB\xFF\xDF" s\" \xF4\x8F\xBF\xBF" BOTH=  \ U+10FFFF, the last pair
+   s\" \x3D\xD8\x00\xDE" s\" \xF0\x9F\x98\x80" BOTH= ; \ U+1F600, a surrogate pair
+
+
+\ A mixed string to UTF-16LE in one buffer and back to UTF-8 in another.
+: ROUND-TRIP ( -- )
+   s\" a\x00\xC3\xA9\xEF\xBF\xBF\xF0\x9F\x98\x80z" {: text:ptr tu:n :}
+   LE-BUF BUF:CLEAR  LE-OUT BUF:CLEAR
+   text tu LE-BUF UTF16:APPEND-UTF8>LE
+   LE-BUF GOT$ LE-OUT UTF16:APPEND-LE>UTF8
+   LE-OUT GOT$ text tu T$= ;
+
+
+\ An append keeps the bytes already in the buffer.
+: APPENDS ( -- )
+   LE-BUF BUF:CLEAR
+   s\" a\x00b\x00" LE-BUF UTF16:APPEND-LE>UTF8
+   s\" \xE9\x00" LE-BUF UTF16:APPEND-LE>UTF8
+   LE-BUF GOT$ s\" ab\xC3\xA9" T$=
+   LE-BUF BUF:CLEAR
+   s" a" LE-BUF UTF16:APPEND-UTF8>LE
+   s\" \xC3\xA9" LE-BUF UTF16:APPEND-UTF8>LE
+   LE-BUF GOT$ s\" a\x00\xE9\x00" T$= ;
+
+
+\ Ill-formed UTF-16LE: an odd length, or a surrogate without its partner.
+: LE-REFUSALS ( -- )
+   [: s\" \x44" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
+   [: s\" \x44\x00\x65" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ
+   [: s\" \x3D\xD8a\x00" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ      \ high, then a
+   [: s\" \x3D\xD8\x3D\xD8\x00\xDE" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ \ high, then a pair
+   [: s\" a\x00\x3D\xD8" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ      \ high at the end
+   [: s\" \x00\xDEa\x00" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ      \ low first
+   [: s\" a\x00\x00\xDE" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ      \ low after a
+   [: s\" \x00\xD8" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ D800 alone
+   [: s\" \xFF\xDB" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ DBFF alone
+   [: s\" \x00\xDC" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ DC00 alone
+   [: s\" \xFF\xDF" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ          \ DFFF alone
+   [: s\" \x00\xD8\x00\xE0" LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ  \ high, then E000
+   [: s\" \x00\xD8\x00\xDC" drop 2 LE-BUF UTF16:APPEND-LE>UTF8 ;] UTF16:E-UTF16 TTHROWSQ \ the span ends before its low
+   [: s" a" drop -2 LE-BUF UTF16:APPEND-LE>UTF8 ;] E-STR-BOUNDS TTHROWSQ ;
+
+
+\ Every byte UTF8:NEXT answers as `raw-byte`.
+: UTF8-REFUSALS ( -- )
+   [: s\" \x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ               \ a lone continuation
+   [: s\" \xC0\x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ           \ U+0000, overlong
+   [: s\" \xED\xA0\x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ       \ U+D800, a surrogate
+   [: s\" \xF4\x90\x80\x80" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ   \ past U+10FFFF
+   [: s\" \xF0\x9F\x98" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ       \ truncated at the end
+   [: s\" a\xF0\x9F\x98b" LE-BUF UTF16:APPEND-UTF8>LE ;] UTF16:E-UTF8 TTHROWSQ     \ truncated by b
+   [: s" a" drop -1 LE-BUF UTF16:APPEND-UTF8>LE ;] E-STR-BOUNDS TTHROWSQ ;
+
+\ Input inside the destination's storage, which an append may move, is refused
+\ before a byte moves: the active bytes whole, an interior slice of them, and
+\ spare capacity past them, in a buffer of capacity 4.
+: ALIASED-LE ( -- )
+   LE-BUF FRESH
+   s\" a\x00b\x00" BUF:N>BLEN LE-BUF BUF:APPEND-SPAN
+   [: LE-BUF GOT$ LE-BUF UTF16:APPEND-LE>UTF8 ;] E-BUF-BOUNDS TTHROWSQ
+   [: LE-BUF GOT$ drop 2 + 2 LE-BUF UTF16:APPEND-LE>UTF8 ;] E-BUF-BOUNDS TTHROWSQ
+   LE-BUF GOT$ s\" a\x00b\x00" T$= ;
+
+: ALIASED-UTF8 ( -- )
+   LE-BUF FRESH
+   s" abcd" BUF:N>BLEN LE-BUF BUF:APPEND-SPAN
+   [: LE-BUF GOT$ LE-BUF UTF16:APPEND-UTF8>LE ;] E-BUF-BOUNDS TTHROWSQ
+   [: LE-BUF GOT$ drop 1 + 2 LE-BUF UTF16:APPEND-UTF8>LE ;] E-BUF-BOUNDS TTHROWSQ
+   LE-BUF GOT$ s" abcd" T$=
+   LE-BUF FRESH
+   s" ab" BUF:N>BLEN LE-BUF BUF:APPEND-SPAN
+   [: LE-BUF GOT$ drop 2 + 2 LE-BUF UTF16:APPEND-UTF8>LE ;] E-BUF-BOUNDS TTHROWSQ
+   LE-BUF GOT$ s" ab" T$= ;
+
+: CONVERSIONS ( -- )
+   LE-BUF FRESH  LE-OUT FRESH
+   VECTORS
+   ROUND-TRIP
+   APPENDS
+   LE-REFUSALS
+   UTF8-REFUSALS
+   ALIASED-LE
+   ALIASED-UTF8
+   LE-BUF BUF:DISPOSE  LE-OUT BUF:DISPOSE ;
+
 : MAIN ( -- )
    T-RESET
    BMP
@@ -151,6 +279,7 @@ package UTF16-TEST
    OFFSET-INVALID
    ROUND-TRIPS
    REFUSALS
+   CONVERSIONS
    T-REPORT
    s" utf16-test: ok" type cr ;
 

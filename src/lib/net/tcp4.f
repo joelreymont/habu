@@ -1,12 +1,35 @@
-\ Linux and Darwin IPv4 stream sockets through exact, bounded libc bindings.
+\ Linux and Darwin IPv4 stream sockets through exact, bounded libc bindings. No
+\ application protocol, framing, name resolution or connection policy; another
+\ OS is E-PLATFORM before a socket opens.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $20 TASK:+USER row, so
 \ each task holds its own sockaddr, socklen, socket option int and pollfd, and
 \ any number of tasks may bind, accept, read and write at once. The payload
-\ spans READ, READ-EXACT, SEND-SLICE and WRITE take are caller-owned. See
-\ docs/threads.md.
+\ spans READ, READ-EXACT, SEND-SLICE and WRITE take are caller-owned.
 \
-\ Every readiness wait a caller asks for runs on the AIO loop (docs/aio.md):
+\ A caller relies on these:
+\ - A stream has no message boundaries: `closed` is the only way a transfer
+\   answers zero bytes, and a partial READ-EXACT's `closed` length is a
+\   readable prefix of its span.
+\ - WRITE's `ok` means the OS took every byte, not delivery. A `failed` WRITE
+\   may have sent part of the span and leaves the stream unusable. Every send
+\   carries MSG_NOSIGNAL, so a closed peer is EPIPE, never SIGPIPE.
+\ - A failed BIND or CONNECT closes its new socket and keeps the first errno.
+\ - An interrupted ACCEPT, READ, READ-EXACT or WRITE retries. An interrupted
+\   CONNECT is `failed` with EINTR and its socket closed, because Linux goes on
+\   completing that connection asynchronously.
+\ - The caller closes each handle once and never reuses it, even after an
+\   interrupted close: Linux releases the descriptor before reporting the error.
+\   Handle lifetime is a caller obligation, not a linear proof. Calls must not
+\   nest within one task, and readers sharing a connection coordinate
+\   themselves.
+\ - Descriptors are process resources: close them and stop concurrent use
+\   before image capture.
+\ - A listener stays blocking.
+\
+\ Not run on Linux: the non-blocking path, UNREAD and UNSENT.
+\
+\ Every readiness wait a caller asks for runs on the AIO loop (src/lib/aio.f):
 \ WAIT-READY submits one POLL and awaits it, so a waiting task costs no thread of
 \ its own. A program calls AIO:START before its first wait; a wait with no loop
 \ is E-AIO-STATE.
@@ -760,7 +783,7 @@ public
 \ ---- the descriptor seam -----------------------------------------------------
 \ The three words an asynchronous caller needs and this module's own blocking
 \ surface does not: the descriptor under a listener or a connection, so it can
-\ be handed to a readiness or completion loop (docs/aio.md), and a socket that
+\ be handed to a readiness or completion loop (src/lib/aio.f), and a socket that
 \ is not connected yet, so such a loop can do the connecting. Nothing here
 \ changes ownership: a descriptor read out still belongs to the handle it came
 \ from, and CLOSE / CLOSE-LISTENER is still what ends it.

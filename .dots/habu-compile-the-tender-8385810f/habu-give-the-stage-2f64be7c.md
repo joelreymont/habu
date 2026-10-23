@@ -11,7 +11,7 @@ blocks:
   - habu-preserve-complete-addr-258c0288
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Source-prefix repair by Cedar; remaining acceptance failures below stay open.
+Source-prefix repair by Cedar; remaining acceptance failures below stay open.
 
 Own habu2.f cold-prefix assembly, stage source and related fixtures; exclude tier dispatch and target layout. Load/provide the cold stdlib once. Keep prelude/errors in bootstrap SRC_COMMON and mirror them in BF-APPEND-COMMON: PREFIX-REWIND removes them because they load after the core mark. Resolve actual target callees before emitting; missing names/sites refuse early. Verify aot-wide-format/aot-wid-restore/build-fixpoint-fixtures. Supported recovery repair is not the current-native selfbuild prerequisite.
 

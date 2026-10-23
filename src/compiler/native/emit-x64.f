@@ -2,10 +2,11 @@
 \ placed at the slot the driver names.
 \
 \ IT IS THE TWIN OF src/compiler/native/emit.f AND NOT A PARAMETERISATION OF IT.
-\ docs/x86-64.md "The emitter's sink" decided that before any emitter code: that
-\ file is a FIXED-WIDTH word sink - four bytes an instruction, a capacity counted
-\ in instructions, a source map keyed by instruction ordinal - and an x86-64
-\ instruction is one to fifteen bytes. Everything this file reads back is
+\ Parameterising that file would rewrite most of it, share almost nothing and
+\ put the ARM64 product's byte identity at risk: it is a FIXED-WIDTH word sink -
+\ four bytes an instruction, a capacity counted in instructions, a source map
+\ keyed by instruction ordinal - and an x86-64 instruction is one to fifteen
+\ bytes. Everything this file reads back is
 \ therefore counted in BYTES where the ARM64 emitter counts instructions.
 \
 \ THE SINK IS THIS PASS'S OWN. Two src/lib/byte-buffer.f BUFs: the emission, which is
@@ -21,7 +22,7 @@
 \ than a silently different routine. A branch is written in the WIDE form always
 \ (rel32), so no displacement can change a length between the two passes and no
 \ third pass is needed; shortening one that fits a byte is a relaxation this
-\ emitter deliberately has not got (docs/x86-64.md "The emitter's sink").
+\ emitter deliberately has not got.
 \
 \ A DISPLACEMENT COUNTS FROM THE END OF ITS INSTRUCTION, which is the x86 rule
 \ and NOT ARM64's - emit.f DELTA counts from the instruction's own address. So
@@ -45,7 +46,7 @@
 \ to an absolute entry files one - where its instruction starts, NEMIT:CALL or
 \ NEMIT:TAIL, and the entry - and every relocatable literal and `codeaddr` a site
 \ of its address kind, so whoever writes the routine can write those fields
-\ again at any address (docs/x86-64.md "Live-region sites"). An EMIT with no
+\ again at any address (docs/xcomp.md "Live-region sites"). An EMIT with no
 \ PLACE-AT is a SHADOW emission: those rel32 fields are zero, the rows are the
 \ whole statement of where they go, and a `codeaddr` carries the function's
 \ offset in the emission alone. Nothing here trims a span: SIZE is the whole
@@ -803,7 +804,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ ---- the divide --------------------------------------------------------------
 \ `idiv r64` divides rdx:rax and raises #DE on a zero divisor and on MIN-N -1,
 \ where Habu throws and wraps instead, so the divisor is screened first and the
-\ form is three pieces (docs/x86-64.md "Division semantics"):
+\ form is three pieces (docs/xcomp.md "Numeric admission"):
 \
 \ - ZERO is a caller error. The cold side pushes ARITH-ABI:E-DIV-ZERO the way
 \   src/arch/x86-64/rt.f G-PUSH pushes, store then advance, and calls the entry
@@ -1016,7 +1017,7 @@ X64IR-OPCODE:TRAP     X64IR:ORD constant O-TRAP
 \ ---- the dispatch ------------------------------------------------------------
 \ Every opcode of the dialect is named, so a form added to the vocabulary is a
 \ decision taken HERE rather than a silent fall-through. The refusing arm is the
-\ negate, which no source form lowers to (docs/x86-64.md "No `neg`").
+\ negate, which no source form lowers to: HIR has no negate.
 : PUT-OP ( IR-ID:ir-op-id n ptr a -- )
    {: id:IR-ID:ir-op-id home:n s:ptr :}
    id SLOT-AT X64IR:NTH

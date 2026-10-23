@@ -9,7 +9,7 @@
 \ survive the sha256 compare, reducing seed trust to "no coordinated cross-host
 \ backdoor". This is an EXPLICIT audit (never per-commit): it needs a working
 \ Gforth recovery host and is gated on HABU_ALLOW_BOOTSTRAP=1, like the launcher
-\ it drives (docs/bootstrap.md).
+\ it drives (docs/bootstrap.md "DDC Audit (Diverse Double-Compiling)").
 \
 \ WHY WE COMPARE AT THE FIXPOINT, NOT THE RAW SEED: the CHECK_ONLY seed hb-stdin
 \ is captured by a Gforth-lineage stage whose live REPL sits at different

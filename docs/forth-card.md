@@ -29,37 +29,33 @@ public
   resolves it while `P:Y` stays `E-UNDEFINED`. Define into a package
   by being in it, never by qualifying.
 - `using NAME … ;using` imports NAME's publics for bare calls. A bare tail a
-  global also owns is `E-USING-SHADOW-GLOBAL` (rc 70) in a definition and
-  `ENGINE-ERROR:USING-SHADOW-GLOBAL` (rc 105) at top level or after `'` —
-  rename the public. A file loaded under a `using` resolves through it.
-  Close a using opened before `package` after `;package`: a `;using` inside
-  the package that would close it is `ENGINE-ERROR:USING-OUTER` (rc 104).
-  A load file is a using scope too: a `;using` in an included file or
-  `evaluate` buffer that would close its includer's using is rc 104 as well.
+  global also owns is `E-USING-SHADOW-GLOBAL` in a definition and
+  `ENGINE-ERROR:USING-SHADOW-GLOBAL` at top level or after `'` — rename the
+  public. A file loaded under a `using` resolves through it. Close a using
+  opened before `package` after `;package`: a `;using` inside the package that
+  would close it is `ENGINE-ERROR:USING-OUTER`. A load file is a using scope
+  too: a `;using` in an included file or `evaluate` buffer that would close its
+  includer's using is refused the same way.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
-  `E-DUPLICATE-DEFINITION` (rc 78); `undefine R` first to replace one. A
-  `does>` definer `R` also claims `R;does` there, and so does `EXPORT R`. The
-  new `R` is checked and called as itself even when it spells an engine word:
-  the checker's rules for `@`, `!`, `create` and the like follow the engine's
-  `INTRINSIC` tag, which a redefinition does not carry.
-- A call binds a word the engine holds. A name only the checker knows - a row
-  `CHECK!` alone recorded, a word `VERIFY:SOURCE-BUF-IN-SCOPE` scanned - is
-  `E-UNDEFINED` in a body. Scanned names bind while that scope is open: inside
-  one `CHECKER-SCOPE-START-NEUTRAL` … `CHECKER-SCOPE-DONE` pair each row the
-  checker records is a codeless engine record, so there
-  `VERIFY:CANDIDATE-IN-SCOPE` (`require src/habu/verify-source.f`) certifies a
-  candidate calling one (-1); after the pair closes it answers 1. A
-  definition, a new `package` or a `wordlist` made inside the pair dies where
-  it is made, naming it, and so does an `undefine` run there, before it
-  retires anything: `ENGINE-ERROR:OVERLAY-OPEN` (rc 108).
+  `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
+  definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`
+  is checked and called as itself even when it spells an engine word: the
+  checker's rules for `@`, `!`, `create` and the like belong to the engine's
+  own word, which a redefinition is not.
+- A call binds a word the engine holds. A name only the checker knows, a row
+  recorded or scanned without a definition, is `E-UNDEFINED` in a body, except
+  that generated definitions inside one checker replay may call rows recorded
+  earlier in it. A definition, a new `package` or a `wordlist` made while a
+  checker replay is open dies where it is made, naming it, and so does an
+  `undefine` run there, before it retires anything:
+  `ENGINE-ERROR:OVERLAY-OPEN`.
 - Compiler keywords (`I`, `DO`, `IF`, …) cannot be definition names:
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
-  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer the lint
-  reads (`:`, `TRUSTED:`, `defer`, `constant`, …), since `tools/check.f` reads
-  their spelling to skip the target arms the engine never runs; it refuses
-  them, not `--load`. A number-shaped name (`: 42`) is refused by
+  `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer (`:`,
+  `TRUSTED:`, `defer`, `constant`, …): `tools/check.f` refuses them, not
+  `--load`. A number-shaped name (`: 42`) is refused by
   `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
@@ -107,10 +103,10 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   a parameter, a `TYPED-VARIABLE` or `TYPED-BUFFER` element, and a
   `STRUCTURE FIELD` value. A derived field accessor returns `ptr [ in -- out ]`.
   `: A ( n [ n -- n ] -- n ) execute ;` certifies and `2 [: 1 + ;] A` runs. A
-  quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`, rc 75) —
+  quotation may not touch an enclosing local (`E-BAD-LOCAL-SHAPE`) —
   pass the value on the stack or through a cell.
 
-forth.md: **Stack comments**, **Words & factoring**.
+forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
 
 ## 3 What the checker refuses, and what it admits
 
@@ -123,35 +119,35 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | `variable V  : F ( -- ) V @ execute ;` | `E-EXEC-OPAQUE-XT` |
 | `@` on a `ptr u8` | `E-MISMATCH` — use `c@` |
 | an `if` arm or loop body that changes depth | `E-MISMATCH` at `then`/`repeat` |
-| a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE`, rc 75 |
-| a 33rd `[:` while 32 are open | `E-UNCHECKABLE`; `--load` exits 75, `hb: quotation nesting full at 32 levels` |
-| a nested `[:` in a file `tools/bootstrap.sh` compiles | the Gforth recovery build's `hb-stage0` prints `[:`, exits 75; name the inner body |
-| a definition leaving 4097 cells, or returning a quotation that leaves 4095 | `E-UNCHECKABLE`, `effect too deep to record (depth 4097, at most 4096)` |
-| a definition taking 256 cells, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (256 cells, at most 255)` |
-| a `trust` row leaving 4097 cells, or one, `TRUSTED:` or `defer` taking 256 | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
+| a local read or declared inside `[: … ;]` | `E-BAD-LOCAL-SHAPE` |
+| a `[:` past the quotation nesting ceiling | `E-UNCHECKABLE`; `--load` exits, `hb: quotation nesting full at <cap> levels` |
+| a nested `[:` in a file `tools/bootstrap.sh` compiles | the Gforth recovery build prints `[:` and exits; name the inner body |
+| a definition whose effect, a returned quotation's row included, is deeper than the ceiling | `E-UNCHECKABLE`, `effect too deep to record (depth <depth>, at most <cap>)` |
+| a definition taking more input cells than the ceiling, declared or inferred | `E-UNCHECKABLE`, `input row too wide to record (<cells> cells, at most <cap>)` |
+| a `trust`, `TRUSTED:` or `defer` row past either ceiling | `E-BAD-STORED-SIGNATURE`, `fix_signature_size`, the same reasons |
 | a return-stack cell in a signature or quotation type: `( n \| -- \| n )`, `( R n \| S -- R )`, `[ n -- \| U -- U n ]`; only `\| U -- U` (one row variable, both sides) is admitted | `E-BAD-SIGNATURE`, `fix_return_stack`, at both tiers; `E-BAD-STORED-SIGNATURE` for `TRUSTED:`, `defer`, `trust`, `CAST:` — park a value with `>r … r>` inside one definition |
 | a quotation literal that pushes a cell its caller pops, or pops one its caller pushed: `[: >r ;] execute r>`, `>r [: r> ;] execute` | `E-REJECTED` at `;]`, `fix_return_stack` |
 | a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
-| a family, variant or field name over 255 bytes | `E-BAD-DECLARATION`, `name longer than 255 bytes`; `--load` exits 70 |
-| `package` with a name over 255 bytes | `E-STATEMENT-THROW`, throw code 7154; `--load` exits 67 |
-| `: IR-ID:X ( -- ) ;`, `variable IR-ID:V` or `package IR-ID`: a definition into, or the reopening of, a package the engine bakes | `E-STATEMENT-THROW`, throw code 84 at the name; `--load` exits 84 |
+| a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
+| `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
+| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG`: a definition into, or the reopening of, a sealed package | `E-STATEMENT-THROW` at the name |
 | a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
-| any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE`; `--load` exits 70 |
+| any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
-| a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f`, rc 70 |
-| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION`, rc 70 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE`, rc 70 |
+| a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
+| `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION` |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER` or `DYNAMIC-BUFFER` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
-| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`, rc 70; at top level or after `'` `--load` exits 105 (`ENGINE-ERROR:USING-SHADOW-GLOBAL`) |
-| a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, rc 70, before anything runs |
-| `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` inside a `CHECKER-SCOPE-START-NEUTRAL` pair | `ENGINE-ERROR:OVERLAY-OPEN`, rc 108 |
-| a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION`, rc 78 |
-| `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH`, rc 70 |
-| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after `src/core/checker.f`) in a checked body (`REG-PROT-CAP`) | `E-UNDEFINED`, rc 70 — **on a sealed from-source prefix boot only**, never on `bin/hb`; `PATH-CAP`, `E-PATH-RANGE` and `SCOPE-FIND-AMBIGUOUS` have rows, another constant is read at top level: `REG-PROT-CAP constant MY-CAP`. An unsealed boot binds a signed `:` word of the prefix to its declaration |
-| `0 set-check` then `SUMTYPE`, `PRODUCT`, `STRUCTURE` or `ENUM`, which generate constructors; `NEWTYPE` and `DEFTYPE` generate none and are admitted | `E-TDECL-UNCHECKED` (7210), `habu: bad sumtype declaration 'name': checking is suspended; declare it where checking is on at 'name'`, rc 70, nothing registered — close the window first (`test/sumtype-unchecked-e2e.f`) |
+| a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
+| a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
+| `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` while a checker replay is open | `ENGINE-ERROR:OVERLAY-OPEN` |
+| a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION` |
+| `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
+| a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-UNDEFINED` — **on a sealed from-source prefix boot only**, never on `bin/hb`; a constant without a row is read at top level into a file-owned constant. An unsealed boot binds a signed `:` word of the prefix to its declaration |
+| `0 set-check` then `SUMTYPE`, `PRODUCT`, `STRUCTURE` or `ENUM`, which generate constructors; `NEWTYPE` and `DEFTYPE` generate none and are admitted | `E-TDECL-UNCHECKED`, `habu: bad sumtype declaration 'name': checking is suspended; declare it where checking is on at 'name'`, nothing registered — close the window first |
 | a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
-| `CHECK!`, `generates:`, a type registration (`CHECKER-DEFLINEAR`, `CHECKER-DEFFAMILY`, a `TYPE-FIELD-OWNER` phase) or another checker scan or store write in a compile callback (`NBACK:OBSERVE!`, `NPUB:WITH-UNIT`) | `E-NCOMP-STATE` (-8570), catchable, before anything changes |
+| a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-NCOMP-STATE`, catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
 exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
@@ -160,8 +156,7 @@ exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.
 throw. A child cannot escape its callback. `C2-MEM:ALLOC` appends zeroed storage
 to an explicit owner. Build that owner with `OWNER-SIZE` / `WITH-MUT`,
 `SEED-OWNER` / `WITH-INIT`, then `BIND` and `UNBIND` inside the initialized
-callback; [ownership-model.md](ownership-model.md#public-owner-recipe) has a
-checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
+callback; forth.md **Owners and views** has a checked source example. `ALLOC-DISPOSE` also registers a callback that consumes
 the new unique view at that owner's close, including when an inner owner is
 active. `PUBLISH` consumes a mutable view to make it shared.
 A view on either side of `CAST:` is `E-CAST-SCOPE`, except a view representation
@@ -169,31 +164,16 @@ cast: only C2-MEM's private section packs `( ptr u8 n -- V )` or unpacks a
 mut-view, and any private section may unpack `( read-view<p,q,T> -- ptr u8 n )`.
 The cast takes an unqualified name; a qualified one is `E-CAST-SCOPE`.
 Ordinary raw pointers remain lifetime-free.
-The task-local frame capacity is 32; the 33rd live open throws `E-C2-CAPACITY`
-(`-9360`) before acquisition. Live owner or loan image capture throws
-`E-C2-CAPTURE` (`-9364`); capture after close succeeds.
+The task-local frame capacity is fixed; one more live open throws
+`E-C2-CAPACITY` before acquisition. Live owner or loan image capture throws
+`E-C2-CAPTURE`; capture after close succeeds.
 
-`C2-MEM:WITH-INIT` admits a live unique byte view and a complete, non-owning
-fixed-cell record. Its callback uses `forall<i inside [l,T],[ ... ]>`: the fresh
-initialization scope is inside both the parent scope `l` and the scope
-dependencies of `T`. The callback receives `mut-view<p,i,a,init<i,T>>`; its
-result cannot let `i` escape. The original byte view returns after the record
-is cleared. See forth.md **Rules learned by refusal** and
-[ownership-model.md](ownership-model.md) **Typed storage and checker authority**.
-
-`C2-MEM:WITH-RECORDS` takes a unique byte view, a nonnegative count, and a
-committed `DERIVE init` fixed-cell product seed. One scope owns `count` copies
-and clears the complete extent when its callback returns. The callback carries
-an opaque linear `records<p,i,a,T>`; `C2-MEM:WITH-RECORD` loans element `n`
-as `mut-view<p,j,a,init<i,T>>` with `j inside i`, then restores the table.
-Indices are zero based, and an empty table is valid.
-
-`C2-MEM:WITH-FIELD name` lends a committed initialized record field from a
-unique `mut-view<p,i,a,init<i,T>>`. The bare `name` is a compile-time selector
-resolved against `T`; it is not a runtime value. The callback receives the
-field as `mut-view<p,j,field(a,name),init<i,F>>` with fresh `j inside i`, and
-the exact parent view returns. The field keeps initialization lifetime `i`;
-neither the child lifetime nor its projected region can escape.
+`C2-MEM:WITH-INIT` initializes a record in a byte view, `WITH-RECORDS` and
+`WITH-RECORD` own a table of records and lend one element, and `WITH-FIELD
+name` borrows one initialized field, each under a fresh scope nested in the
+parent's that cannot escape its callback. The comments above each word in
+`src/lib/c2-memory.f` state what it admits and refuses; forth.md **Owners and
+views** has a checked example.
 
 A caught result becomes readable on the success arm of core `code 0=` (or the
 false arm of core `code 0<>`) only when `code` is that catch's own status.
@@ -231,8 +211,7 @@ The count is of raw blank-delimited tokens, as `parse-name` reads them; the
 through form then reads through the first token that equals a listed one,
 byte for byte, inclusive (`)` cannot be listed). A `:`, a definer, a comment or
 string opener among the operands is data. The word is still
-`W-CHECK-DEFERRED`: the row is trusted, as `parse-imm`'s is, never compared with
-the body. The check reads it from the source it checks, so a word whose row it
+`W-CHECK-DEFERRED`: the row is trusted, never compared with the body. The check reads it from the source it checks, so a word whose row it
 did not read, a resident or precompiled one among them, is undeclared;
 `EXPORT` carries a row, a word that calls the declared one does not.
 The separate dependency discovery walk harvests rows before it follows loads.
@@ -245,13 +224,12 @@ definition, and a string literal right before a call of it is then a use of
 the word between its quotes, which references list:
 
 ```forth
-names: LOOK                         \ LOOK finds ( ptr u8 n ) as XREF-FIND does
+names: LOOK                         \ LOOK finds ( ptr u8 n ) as a name
 : SEEK ( -- ) s" ROOK" LOOK ;       \ ROOK between the quotes is a use of ROOK
 ```
 
-The engine states it for `XREF-FIND` and `XREF-FIND-INDEX`. The name resolves
-as `XREF-FIND` resolves it: `PKG:TAIL` a public word, a bare name the global
-one. A computed operand, a literal a caller passes on and a literal with an
+The name resolves as a lookup does: `PKG:TAIL` a public word, a bare name the
+global one. A computed operand, a literal a caller passes on and a literal with an
 escape in it bind nothing. The row is trusted, never compared with the body;
 `EXPORT` carries it, a word that calls the declared one declares its own. A
 row with no target, naming no word or naming a word whose input row does not
@@ -274,12 +252,10 @@ signature or generated words. Known syntax, visibility, arity and count errors
 still refuse. Defining a provider, taking its tick or reading an uncalled body
 does not create this uncertainty; ordinary loading keeps its existing rules.
 
-A trusted-only tick can outrank closing body checks at tier 0 only while the
-verifier knows the compiler tier and checker owner. A resident immediate in a
-body or a top-level loader makes later ordering uncertain; `--verify-only`
-reports the tick as `W-CHECK-DEFERRED` and leaves dependent source to the one
-subject run. Even an original `require`/`include` entry can reach replaceable
-source providers, so its spelling or original entry does not preserve tier.
+After a resident immediate in a body or a top-level loader, later ordering is
+uncertain: `--verify-only` reports a trusted-only tick as `W-CHECK-DEFERRED`
+and leaves dependent source to the run. A `require`/`include` can reach
+replaceable source providers, so its spelling alone settles nothing.
 
 Admitted and measured, the ones worth doubting: `tuck`, `+!`, `unloop exit`,
 `>r r@ r> 2>r 2r>`, `RECURSE`, `['] W catch`, `finally`, `defer W ( n -- n )`
@@ -291,12 +267,11 @@ only while start < limit, signed, so `0 0`, `-1 0` and `MIN-N 0` run zero times
 and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
 `0 10 ?do … -1 +loop` counts down eleven turns. `evaluate-closed ( ptr u8 n -- )`
 evaluates source in a body: the text's `depth` starts at 0, a token reaching
-below it throws 70 and a text that leaves cells throws `E-EVAL-RESIDUE`, the
-caller's cells intact either way. An xt the text runs cannot reach them: its
-reach under the floor throws 70 too. A text that ends inside a definition it
-opened is refused as every source is,
-`hb: source ended inside definition: NAME`, rc 74, and the definition is rolled
-back (forth.md **Checked code and primitive boundaries** lists the open cases).
+below it throws a stack underflow and a text that leaves cells throws
+`E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
+cannot reach them: its reach under the floor underflows too. A text that ends
+inside a definition it opened is refused as every source is, `hb: source ended
+inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** lists the open cases).
 
 forth.md: **Checker & type model**, **Native Forth Gotchas …**.
 
@@ -316,7 +291,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
-| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record; a 34-cell nested native roundtrip is tested | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled; `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
+| `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled; `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
 A word a definer's `create` makes has `-- ptr a` from the moment it is made, at
 either tier, in a package or under `evaluate`, until a `does>` the definer then
@@ -339,7 +314,7 @@ a byte offset.
 2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+ byte-view CELL SPAN:MAKE ;`
 keeps the two-cell body boundary when `does>` changes the word's result to a
 span. The count must be positive and the body must end at `here`; invalid
-extents throw 7121. The declaration supplies storage boundaries to image
+extents throw `E-LAYOUT-BUFFER`. The declaration supplies storage boundaries to image
 capture, not pointer or type authority: a complete cell holding a build-time
 mapping address still causes stripped-image refusal.
 
@@ -364,7 +339,9 @@ the address it was declared for and refuses the address *of* one.
 
 An integer becomes an address or an xt only through a private `CAST:`
 (`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
-`E-CAST-MINT`); `NULL-PTR BYTE-VIEW -` is the address-to-integer distance.
+`E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any
+pointer `X`, with no view: a distance against `NULL-PTR` or `data-base` binds
+neither pointee, so `: D ( ptr a -- n ) NULL-PTR - ;` keeps `a` free.
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint, and one whose field holds
 another package's family is `E-CAST-OWNER` outside that package.
@@ -380,8 +357,8 @@ pointer to one) `E-LINEAR-PAYLOAD`. `CAST:` refuses a linear side
 operand: `LINEAR: MINT ( R n -- R PKG:tok )` is valid, but different tails
 are `E-CAST-ARITY`.
 
-forth.md: **Structures And Enums**; the rule is `docs/effects.md` "Raw storage
-never holds an address".
+forth.md: **Structures And Enums**; the rule is forth.md **Raw storage never
+holds an address**.
 
 ## 6 Errors
 
@@ -396,7 +373,7 @@ never holds an address".
   255, has one `E-` name across the tree; a file that needs it under its own
   name reads the owner's constant (`E-OWNER constant E-LOCAL`). A library owns
   one inclusive block of about a hundred bounded by its own `E-X-FIRST` /
-  `E-X-LAST` (arrays `-2000`, filesystem `-2100`, strings `-2200`, …) and
+  `E-X-LAST` (arrays, filesystem, strings, …) and
   reserves that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
 - A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
@@ -430,27 +407,26 @@ forth.md: **Errors**, **Integer arithmetic**.
   the tree above the running `bin/hb`), so `require src/lib/…` names the tree
   root. A file found through the working directory keeps that root for its own
   requires: an overlay copy of one tree file, required by a tree file, loads
-  beside the tree's copy and dies on the duplicate (exit 78;
-  test/aot-capture-bound.f copies the requirer too). Every file requires its
+  beside the tree's copy and dies on the duplicate. Every file requires its
   **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
-  token reaching its loader's cells throws 70, a file that ends with cells on
-  the stack is `E-EVAL-RESIDUE`, and one that ends inside a definition it
-  opened is refused there, rc 74, as every source is. A value crosses a load
+  token reaching its loader's cells throws a stack underflow, a file that ends
+  with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
+  definition it opened is refused there, as every source is. A value crosses a load
   only as a word the file defines.
 - At the top level of a stdin session or of a program file run as
   `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in
-  `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused
-  (exit 74): scope a root with `SOURCE-ROOT:WITH`.
+  `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused:
+  scope a root with `SOURCE-ROOT:WITH`.
 - The engine provides `src/lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
-  `src/` files its boot prefix loads (`ENGINE-PROVIDES?`; `tools/check.f`
-  refuses one with `E-ENGINE-PROVIDED`):
-  their words resolve with no require and a `require` is a no-op. Write it
+  `src/` files its boot prefix loads: their words resolve with no require and
+  a `require` is a no-op, and `tools/check.f` answers `E-ENGINE-PROVIDED` for
+  one (rebuild `bin/hb` to check a change to it). Write it
   anyway: a file states its dependencies.
 - Multi-file packages reopen `package NAME` per file; reopening shares scope and
-  loads nothing. An engine package is sealed: reopening one exits 84. Run tools
+  loads nothing. An engine package is sealed: reopening one is refused. Run tools
   as `bin/hb --load src/lib/a.f tool.f -- args`; `SCRIPT-ARGV$` starts after `--`.
 
 forth.md: **Files**, **Packages**.
@@ -477,19 +453,21 @@ forth.md: **Testing**, **Verification before committing**.
 | Checked code and primitive boundaries | `TRUST`, a new `PRIM:`, what `evaluate-closed` leaves open |
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
-| Importing … with `using` | ambiguity, scope end, the 16 limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `CAST:`, `LINEAR:` |
+| Importing … with `using` | ambiguity, scope end, the limit |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
-| Stack comments | the token list, `DEFTYPE`, `DEFLINEAR` |
+| Stack comments | the token list, real types |
+| Stack effects | the effect grammar, the return-stack clause, types, widening, `DEFTYPE`/`DEFLINEAR`, pointers, escape hatches |
 | Checker & type model | loop frames, higher-order effects, `defer` |
+| Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | 8000-byte body, 255-byte line, 28 `begin`, 32 `[:`, 255-byte family and package names, effect 4096 deep, input row 255 cells |
-| Constants | hex versus decimal, `src/config.fs` |
-| Testing | groups, hooks, runner rules |
+| Engine limits … | the body-text, REPL-line, `begin`, `[:` and `do` nesting, name, effect-depth, input-row and data-space ceilings |
+| Constants | hex versus decimal, where codes live |
+| Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |
-| Verification before committing | what to rebuild and run |
+| Verification before committing | where the gates are |
 | Comments & hygiene | comment style, debug prints |
-| Habu Native Tooling Gotchas | debugger, spawn and env, snapshots |
+| Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, alignment, `CELL-BODY`, absent words, escapes |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |

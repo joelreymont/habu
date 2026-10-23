@@ -21,6 +21,9 @@
 \ are passed over. An invalid message carries its own id when that id is valid
 \ and the message has a method, else the null id, so a reply never answers a
 \ response.
+\ JR's syntax codes, E-JR-MALFORMED through E-JR-COMMA (nesting past its depth
+\ limit included), are PARSE-ERROR; its other codes, such as JR:E-CAPACITY, are
+\ thrown.
 \
 \ The writers build replies on a caller's JSON-WRITE writer, member by member:
 \ RESULT writes the envelope up to `"result":`, the caller writes the value and

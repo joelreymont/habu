@@ -1,5 +1,5 @@
-// host-cli.mjs - the browser host's turns under bun, for tests
-// (docs/browser-host.md):
+// host-cli.mjs - the browser host's turns (turn.js) under bun, for tests. It
+// proves no rendering:
 //
 //    bun host-cli.mjs <module.wasm> [--size W H] [step]...
 //

@@ -1,5 +1,5 @@
-\ icode.fs — minimal single-pass assembler in the STANDALONE's Forth: emit ARM64
-\ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
+\ icode.f — minimal single-pass assembler in the STANDALONE's Forth: emit ARM64
+\ words (asm.f encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
 \ The encoders are package A64ASM's public surface, imported here once and called
@@ -447,7 +447,7 @@ variable BBASE  variable BKIND
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !          \ named before the check
      ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
 
-\ The base word of a branch is the asm.fs encoder applied to a zero delta —
+\ The base word of a branch is the asm.f encoder applied to a zero delta —
 \ the same shape ADR, below already uses. Going through the encoder keeps one
 \ authority for each opcode's bit layout and for its operand refusals: the
 \ condition code and the compare-and-branch register are bounded and screened

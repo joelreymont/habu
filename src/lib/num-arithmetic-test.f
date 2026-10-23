@@ -1,11 +1,11 @@
-\ num-arithmetic-test.f - the NUM B5.2 arithmetic boundary + static
+\ num-arithmetic-test.f - the NUM arithmetic boundary + static
 \ rejection matrix (dot habu-implement-cad-num-cb413b2a). Run:
 \   bin/hb --load src/lib/num-arithmetic-test.f
 \
 \ Suite `num-arithmetic` in the standard-library gate; direct-load this file
-\ for the focused B5.2 boundary and property matrix.
+\ for the focused boundary and property matrix.
 \
-\ Every B5.2 row is exercised at the exact boundary cases named in its table row
+\ Every admitted operation is exercised at its exact boundary cases
 \ (zero / safe-max / first-overflow / underflow / misalignment). `numeric-result`
 \ is a layout value, so it is only built and MATCHed inside compiled words; each
 \ classifier below returns the ok payload's RAW value (nonnegative) or the named

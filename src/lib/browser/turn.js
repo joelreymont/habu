@@ -1,6 +1,51 @@
-// turn.js - the turn protocol between a host and a Habu Wasm module
-// (docs/browser-host.md). The browser host (host.js) and the bun runner
-// (host-cli.mjs) share it; it knows no DOM, GPU, network or file system.
+// turn.js - the turn protocol between a host and a Habu Wasm module. The
+// browser host (host.js) and the bun runner (host-cli.mjs) share it; it knows
+// no DOM, GPU, network or file system.
+//
+// The module (src/arch/wasm/link.f) imports nothing and exports memory, run,
+// throw-code, out-base and out-len. Its memory may grow to memory32's 65536
+// pages; the host places received bytes past the image, and neither owner
+// reuses the other's pages.
+//
+// An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
+// mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
+// 6 released, 7 wheel, 8 key, 9 resize, 10 control. c and d are the drawing
+// buffer's width and height in device pixels except for answered.
+//   bytes, typed, key: a, b name the fetched bytes, the field's text or
+//     KeyboardEvent.key (sent only while the canvas has focus)
+//   pointer, moved, released: a, b are x, y from the canvas's top-left; the
+//     canvas captures the pointer, so either may be negative or past the buffer
+//   answered: a, b the response, c the status, d the request id, buttons and
+//     mods the buffer size when the answer arrived; a tagged request's
+//     transport failure is status 0 with String(error) as its body; a legacy
+//     post's d, buttons and mods are 0
+//   wheel: a, b signed device-pixel deltas; resize: a, b are 0
+//   control: a is a transient tree row key, never a persistent identity
+// buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
+// The host writes all 56 bytes on every event; a field that does not apply is 0.
+//
+// A record is 32 bytes, kind a b c:
+//   0 hello: a is the event's address
+//   1 fetch: a, b a path fetched relative to the page; outside 2xx it fails
+//   2 draw: a, b triangles of f32 x y z corners, c a column-major f32 4x4
+//     matrix to clip space (x, y in [-1, 1], z in [0, 1], 0 nearest); a draw
+//     removes a shown SVG
+//   3 text: a, b UTF-8 text
+//   4 post: span a, b whose first c bytes are the path and the rest the body
+//   5 tree: a, b strict UTF-8 JSON rows {key, parent, label}, c the selected key
+//     or 0; keys are unique positive safe integers, a parent is 0 or an earlier
+//     row's key
+//   6 highlight: a one u8 per triangle (1 selected), b the count; it holds for
+//     every later draw, which must have that count
+//   7 request: span a, b of u64 method and path lengths, the method token, the
+//     UTF-8 path and the body (none for GET or HEAD); c a positive i64 id
+//   8 svg: a, b the image bytes, copied before host.svg runs
+//   9 input: a is 0 or 1, disabling or enabling the typed-text field
+// A post or request is answered for every HTTP status. A host that takes
+// request records provides error(error): the first reply failure of a turn
+// reaches it at once, each further one as an AggregateError of all of them.
+// The module maps clip space to pixels as x = (ndc.x + 1) * width / 2 and
+// y = (1 - ndc.y) * height / 2, origin top-left.
 //
 // The module imports nothing. A turn writes one event at the address the
 // module named in hello, calls run() and handles the records the run left in

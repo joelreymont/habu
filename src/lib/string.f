@@ -1,12 +1,23 @@
 \ string.f - checked byte-string helpers.
 \
+\ Inputs are byte pointers plus lengths; no word assumes NUL termination. Every
+\ word that takes a length checks it first (E-STR-BOUNDS on a negative one), and
+\ the builders throw E-STR-CAPACITY or E-STR-BOUNDS instead of truncating. STR<
+\ orders by unsigned byte value, a shorter equal prefix first, with no notion of
+\ case, locale or UTF-8. STR>NUMBER? parses a signed i64 and HEX>NUMBER? 1 to 16
+\ hex digits as the cell's bit pattern (FFFFFFFFFFFFFFFF is SOME -1), NONE on
+\ anything else. An empty FIND-SUB needle is SOME 0; FIND-SUB-FROM answers an
+\ offset into the whole text and NONE for a start outside [0, length].
+\ COUNT-SUB counts non-overlapping occurrences left to right (aaaa holds aa
+\ twice); an empty needle counts 0.
+\
 \ STORAGE CLASS. The SB builder (SB-BUF, SB-LEN) is TASK-LOCAL: it lives in the
 \ STRING-ABI band of the per-task DATA region, so each task's builder is its own
 \ and two tasks between SB-RESET and SB$ cannot see each other's bytes. The
 \ BUF-* family (BUF-RESET, BUF-APPEND, BUF-APPEND-LEN, BUF-APPEND-C, BUF-LEN@)
 \ is CALLER-OWNED - the caller passes the buffer, its capacity and its length
 \ cell - and remains the builder to reach for when two tasks must share one.
-\ Everything else here is pure over the caller's spans. See docs/threads.md.
+\ Everything else here is pure over the caller's spans.
 
 s" src/lib/errors.f" required
 s" src/lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (switchover wave A)

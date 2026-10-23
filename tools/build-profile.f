@@ -1,10 +1,9 @@
 \ build-profile.f - run the engine self-build under the internal profiler.
 \
 \ Joel, 2026-09-16: "make sure that the build profiler uses our own profiler.
-\ that's the best view into our code." The self-build numbers in LESSONS.md were
-\ taken with `strace -c` and `perf record`, and neither can name a word the
-\ engine compiled for itself: perf sees one anonymous mapping. This runs the
-\ same build under prof-on and writes what our own profiler saw.
+\ that's the best view into our code." `strace -c` and `perf record` cannot
+\ name a word the engine compiled for itself: perf sees one anonymous mapping.
+\ This runs the self-build under prof-on and writes what our own profiler saw.
 \
 \   bin/hb --load tools/build-profile.f -- <engine-out> <text-report> <json-report>
 \

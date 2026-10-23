@@ -1,4 +1,4 @@
-\ storage.f - STORAGE-TURN, a browser host module (docs/browser-host.md) whose
+\ storage.f - STORAGE-TURN, a browser host module (src/lib/browser/host.f) whose
 \ dynamic buffer shares memory with the pages the host adds, built by
 \ tools/wasm-build.f with the entry STORAGE-TURN:TURN; test/browser/storage-test.f
 \ runs it under src/lib/browser/host-cli.mjs. Its records are test/browser/echo.f's.

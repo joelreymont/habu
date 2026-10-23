@@ -1,7 +1,7 @@
 \ link-wasm.f - WASMLINK, a captured window linked into one Wasm module: the
 \ Wasm twin of src/habu/link-x64.f, handing WLINK (src/arch/wasm/link.f) every
-\ function, call, address and data cell of the capture (docs/wasm-backend.md
-\ 10.1, 17.1).
+\ function, call, address and data cell of the capture (docs/xcomp.md
+\ "Wasm", "Linking").
 \
 \ - THE FUNCTIONS. A routine is its emission in the capture's shadow
 \   (src/habu/aot-decl.f AOT-SHADOW), written by WENC (src/arch/wasm/encode.f):

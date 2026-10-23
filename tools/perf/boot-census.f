@@ -42,7 +42,9 @@
 \ THE CENSUS: fresh images by image bucket, fork children by image basename,
 \ refused registrations, incomplete image reads, and Habu argv shapes. Exec
 \ notifications may coalesce: only observed image generations can be counted.
-\ See docs/debugging.md for the libproc ABI and exec-version sources.
+\ ABI sources: xnu bsd/sys/proc_info_private.h (PROC_PIDUNIQIDENTIFIERINFO,
+\ 56 bytes, p_idversion at byte 32) and xnu tests/exec-race-128791723.c, which
+\ checks that the version changes across exec.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f

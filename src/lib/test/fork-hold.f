@@ -14,6 +14,9 @@
 \ lets go before it is joined. The parent closes its copy of a pipe's write
 \ end, so the children's copies are the last: the last child's exit closes it,
 \ which is how the parent sees them end without a wait that could block.
+\
+\ STORAGE CLASS. PROCESS-WIDE: HELD and LET-GO are the static handshake
+\ between the case and its holder task; one case runs at a time.
 
 require src/lib/errors.f
 require src/lib/test.f

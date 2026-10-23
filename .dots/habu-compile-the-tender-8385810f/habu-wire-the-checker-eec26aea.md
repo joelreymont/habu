@@ -12,7 +12,7 @@ blocks:
   - habu-keep-a-row-f2c4f3d4
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: review_completion_plan.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: review_completion_plan.
 
 Own aot-arm.f payload arm/mark/high-waters, aot-capture.f signature/type collection, checker ASIG and type-family registry mark/restore; exclude call-row recording. Payload is required for restored checked REPL. Arm source owner and freeze membership before persistence/writer tools; restore correct registry base, close on refusal. Do not retire empty sections to hide unarmed producer. Verify explicit family/signature content after cleared-buffer read, source-free checked call/wrong-type refusal and second capture, with writer-only types excluded. Consume layout leaf's distinct membership/DATA boundaries.
 

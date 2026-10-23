@@ -1,5 +1,16 @@
-\ Ordered edits borrow source/replacement spans until CLOSE. WRITE validates
-\ the complete destination before copying; the source is never modified.
+\ byte-edit.f - ordered replacement spans over arbitrary bytes (package EDIT).
+\
+\ The storage capacity is the maximum number of edits. REPLACE records a source
+\ offset, a removed length and borrowed replacement bytes; source, replacements
+\ and storage stay live until CLOSE. Edits are sorted and nonoverlapping, and
+\ insertions at one offset keep call order; a failed edit leaves the plan as it
+\ was. WRITE validates the complete destination before copying: it preflights
+\ capacity and refuses overlap with every borrowed input or the editor storage,
+\ then copies untouched bytes exactly; the source is never modified. Qualify
+\ EDIT:CLOSE and EDIT:WRITE: those tails are also global words.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
+
 require src/lib/prelude.f
 
 package EDIT

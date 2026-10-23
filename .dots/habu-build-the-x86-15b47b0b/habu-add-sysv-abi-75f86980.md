@@ -11,8 +11,8 @@ blocks:
 ---
 
 Problem: the ABI-planned trampolines pass float arguments and results, which on SysV use XMM registers and the vector-register count in `al`.
-Acceptance: bodies for `ffi-call-abi(-r)(-bounded)`: xmm0-7, `al` = vector-register count, float return in xmm0; a case dirties `al` before `snprintf`; the rows join the `docs/x86-64.md` kernel inventory.
-Files: `src/habu/boot-x64.f`, `src/habu/kernel-x64.f`, `test/x86-64-peer-routines.f`, `docs/x86-64.md` (kernel inventory).
+Acceptance: bodies for `ffi-call-abi(-r)(-bounded)`: xmm0-7, `al` = vector-register count, float return in xmm0; a case dirties `al` before `snprintf`; the rows join the kernel inventory (`src/habu/kernel-x64.f`).
+Files: `src/habu/boot-x64.f`, `src/habu/kernel-x64.f`, `test/x86-64-peer-routines.f`.
 Verify: ThinkPad: routine images with float arguments and results, and `snprintf` after a dirty `al`.
 Depends: habu-add-sysv-ffi-17a130a1 (K11a), habu-emit-and-exec-a8536cf2 (C7b).
 Route: direct.
@@ -25,7 +25,7 @@ Preflight corrections (2026-09-30; override the lines above where they differ):
 - Twin: `habu1.f` `BFFI-CALL-ABI-CORE` 1912-1938, `BFFI-COPY-ABI-STACK` 1895-1910, `BFFI-CALL-ABI-BOUNDED-CORE` 2054-2084. Rows `prims.f:707-720`: `ffi-call-abi(-r) ( argbuf fpbuf stackbuf nstack nint sret fn -- n|r )`, `ffi-call-abi(-r)-bounded ( argbuf fpbuf stackbuf regext stkext nstack fn -- n|r )`.
 - Descriptor: no per-argument tag; floats sit in fpbuf (`src/lib/ffi-abi.f` `FFI-FBUF`), integers in argbuf, overflow prepacked in stackbuf. rdi..r9 = argbuf[0..6); xmm0..7 = fpbuf[0..8) always; the stack gets max(nstack,0) stackbuf cells and nothing else (SysV planning, `habu-marshal-ffi-calls-46dfd999`, prepacks integer overflow). argbuf[6..9) pass nowhere but keep the twin's guards: unbounded, one byte at argbuf[i] for i < nint and at argbuf[8] when sret is nonzero; bounded, regext over slots 0..8 (`habu1.f:2065`), then stkext over nstack cells. `al` = 8: no input carries a float count and the psABI takes an upper bound. `-r` pushes xmm0's bits.
 - `SYSV-CALL,` (`kernel-x64.f:855`) takes `al` as an argument, 0 from `C-CALL,` (878) and `BUF-CALL,` (2712); `GUARD-ARGS,` (2677) takes its count and extents as arguments.
-- Files: `src/habu/kernel-x64.f` (FFI section 2659-2742), `test/x86-64-kernel-ffi.f` (new images and header lines, same `SUITE`), `docs/x86-64.md` "### FFI rows" (1409-1456). Not `boot-x64.f` (`_start` only), not `test/x86-64-peer-routines.f` (`test/x86-64-boot-harness.f:17-20`). Nothing baked.
+- Files: `src/habu/kernel-x64.f` (FFI section 2659-2742), `test/x86-64-kernel-ffi.f` (new images and header lines, same `SUITE`). Not `boot-x64.f` (`_start` only), not `test/x86-64-peer-routines.f` (`test/x86-64-boot-harness.f:17-20`). Nothing baked.
 - Pre-change: a booted case calling `ffi-call-abi` dies 76 at build: `x64kernel: no registered body named ffi-call-abi`.
 - Tests, beside `hb-x64-kernel-ffi`, `-negative` 21, `-armed` and `-call-armed` 83; no second negative:
   - `hb-x64-kernel-ffi-abi` 0: a stub folding xmm0..7 and `al`, answering the fold in xmm0 and its complement in rax, through all four rows; K11a's nine-place stub through `ffi-call-abi` and `-bounded` (`SHIFTED-ROW`), nstack 3, junk in argbuf[6..9); nstack -1 on a stub without stack places.

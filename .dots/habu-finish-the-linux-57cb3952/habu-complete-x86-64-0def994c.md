@@ -1,9 +1,11 @@
 ---
 title: Complete x86-64 compiler emission
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.362761+03:00"
+closed-at: "2026-10-22T12:36:34.234049+03:00"
+close-reason: "Triage 2026-10-22, DONE: Container: every C leaf (C1-C8) is closed."
 blocks:
   - habu-emit-and-exec-a8536cf2
 ---

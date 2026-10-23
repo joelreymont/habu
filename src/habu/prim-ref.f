@@ -22,8 +22,8 @@
 \ expected-output cases rather than by a reference.
 \
 \ NAMES. No word here shadows a primitive spelling, case-insensitively, so
-\ `dup`'s reference is `S-DUP` and `abs`'s is `ABSOLUTE` (docs/forth.md, "Do
-\ not shadow native primitive names"). The `REF` clause spells the qualified
+\ `dup`'s reference is `S-DUP` and `abs`'s is `ABSOLUTE` (docs/forth.md "Never
+\ shadow a native primitive name"). The `REF` clause spells the qualified
 \ name, `PRIM-REF:S-DUP`, and the gate asserts every spelling resolves.
 \
 \ LOAD PATH. This file is NOT baked: it appears in no engine prefix source list

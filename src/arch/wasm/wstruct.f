@@ -7,7 +7,7 @@
 \ checks (src/compiler/ir/build.f FREEZE-INTERIM). A native backend gets them
 \ back by verifying its machine module whole; a Wasm backend has no machine
 \ module, so the selector builds a WSTRUCT module and freezes it with the full
-\ IR-BUILD:FREEZE before anything encodes it (docs/wasm-backend.md 17.2).
+\ IR-BUILD:FREEZE before anything encodes it.
 \
 \ A GRAPH, NOT A TREE. Blocks take typed i32, i64 and f64 arguments, a branch
 \ hands its destination those arguments, and Wasm's block, loop and if are not
@@ -32,7 +32,7 @@
 \ is not a Wasm value; the encoder writes nothing for one.
 \
 \ THE CALL IS THE HABU CALL. A schema states one type for a variadic tail, so a
-\ call is the internal convention of section 7.1 and not every Wasm signature:
+\ call is the internal convention (select.f THE CALL), not every Wasm signature:
 \ the context address and the input lanes in, the status and the output lanes
 \ out, every lane an i64. `return` answers the same row.
 \

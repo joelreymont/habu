@@ -1,6 +1,6 @@
 \ type-family.f — package-scoped type-family (TFAM), sum-variant (SUMV),
 \ product-field, and logical-layout registries for the checker (package TFAM).
-\ See docs/type-families.md §6-7, §21. Records key on (package name, canonical
+\ Records key on (package name, canonical
 \ lowercase tail), so two packages may define the same tail without aliasing.
 \ All names are interned as byte offsets into one growable string pool, so record
 \ arrays hold only integers: a grow is a plain cell copy and snapshot persist
@@ -8,6 +8,23 @@
 \ right after type-schema.f, mirroring the VREC value-record registry. The
 \ declaration boundary rejects uppercase/mixed-case tails BEFORE storage, so the
 \ registry only ever stores already-canonical tails.
+\
+\ LAYOUT MODEL. A stack value is cells, so a family wider than one cell is not
+\ one checker cell. Under the default POLICY stack-cell-tag a sum is W = M + 1
+\ cells, M the widest variant payload: payload slots in declared order, slot0
+\ deepest, padding above a shorter payload, the tag on top. An enum is its tag
+\ alone; a product is its field cells in slot order, with no tag; a cell,
+\ evidence, boxed (one pointer) or niche-null (null is the empty variant) family
+\ is one cell. packed keeps the stack cells and adds only a memory descriptor
+\ (PACKED-DESC) that narrows the tag. TFAM-WIDTH@ is the declared width, every
+\ parameter one cell; TFAM-INST-WIDTH is the width of an instantiated term. In
+\ the checker (checker.f PUSH-LOGICAL) a layout type whose width is known, linear
+\ included, expands to its W hidden physical terms and generic stack words move
+\ whole bundles; one whose width reads an open argument stays one logical cell.
+\ A sum whose payload may be linear is linear. render.f compacts a hidden run back to family<args>. Every
+\ registry here rolls back through the checker's frame stack (RBF-PUSH /
+\ RBF-POP) and persists through REG-EXT-PERSIST (TFAM-SNAPSHOT-PERSIST); the
+\ frames are process-local and reset at a snapshot.
 \
 \ THE WHOLE FILE IS package TFAM (dot habu-tfam-2b-sealed-1b77662c). The split is
 \ measured, not chosen: a name something outside this package references is
@@ -113,7 +130,7 @@ private
 4 constant TK-MAX
 
 \ --- layout policy (physical representation). Default is the universal
-\ M-payload-cells + 1-tag-cell stack representation (docs §22.1).
+\ M-payload-cells + 1-tag-cell stack representation (file header).
 
 public
 
@@ -365,7 +382,7 @@ private
 \ lives in the record rather than in a side table that could drift from it.
 19 cells constant TF.TAILNEXT-OFF
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
-\ placement (the OPAQUE header clause, docs/type-system.md §10.4).
+\ placement (the OPAQUE header clause, src/core/structure-decl.f header).
 20 cells constant TF.OPAQUE-OFF
 
 public
@@ -480,7 +497,7 @@ public
 \ their fixed generator-owned tails, exactly like generated constructors.
 1 constant DRV-EQ
 2 constant DRV-HASH
-4 constant DRV-ADDR              \ address surface: one accessor per field (docs/type-system.md §10.4)
+4 constant DRV-ADDR              \ address surface: one accessor per field (structure-decl.f header)
 8 constant DRV-INIT              \ initialized-record field accessors
 DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or constant DRV-ALL
 
@@ -511,14 +528,14 @@ public
 : TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-PUBLIC? fam TFAM-OPAQUE? 0= and ;
 
-\ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
+\ a boxed value is a single heap/DATA pointer (file header `ptr fam-box`) and a
 \ niche value is a single cell with the discriminant folded into the payload
-\ (docs §22.3) — both collapse the stack width to one cell regardless of kind,
+\ (file header) — both collapse the stack width to one cell regardless of kind,
 \ so the width branch below keys on the policy before the kind. Reached today
 \ ONLY through the direct TFAM-LAYOUT! mutator (no declaration accepts boxed /
 \ niche-null yet — both reject at the POLICY clause), so this is check-sound
 \ metadata the boxed/niche accept slices consume; it never changes the width of
-\ a stack-cell-tag or packed family (packed keeps the cell width, docs §22.2).
+\ a stack-cell-tag or packed family (packed keeps the cell width, file header).
 
 private
 
@@ -526,7 +543,7 @@ private
    id TFAM-LAYOUT-POLICY@ {: p:n :}
    p TL-BOXED = p TL-NICHE = or ;
 
-\ logical width in stack cells (docs/type-families.md §18 WIDTH function):
+\ logical width in stack cells:
 \ boxed/niche = one cell; sum = max payload slots + one tag cell; enum = tag only
 \ (slots 0); product = field cells, no tag; cell/evidence families are one cell.
 
@@ -946,7 +963,7 @@ public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
-\ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
+\ generated-constructor metadata. A PUBLIC sum/enum family stores its
 \ derived constructor package name (interned offset+len) in every variant; the
 \ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
 \ families export nothing, so both stay zero. All three cells are integers /
@@ -1178,7 +1195,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 public
 
-\ generated-constructor protection predicates (item 8 slice 3). Names are
+\ generated-constructor protection predicates. Names are
 \ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
 \ folded alias cannot reopen a constructor package, extend it with a new
 \ tail, or undefine a generated word through any case variant. Installed into
@@ -1306,8 +1323,8 @@ public
    id ;
 
 \ ---------------------------------------------------------------------------
-\ constructor package-name derivation (Package Shape; docs/type-families.md §12,
-\ PLAN "Package Shape"). Maps the defining (package, family tail) to the reserved
+\ constructor package-name derivation (package shape: docs/forth.md "Structures And Enums").
+\ Maps the defining (package, family tail) to the reserved
 \ constructor package spelling — the same bytes native, habu1, and the Gforth
 \ mirror must produce (all three parse this one file). Readable escaped form:
 \ uppercase every joined segment (the package segment AND the family tail),
@@ -1983,7 +2000,7 @@ public
       FVX-NEXT
    REPEAT drop ;
 
-\ --- instantiated width (docs §18 WIDTH). A schema application's width is its
+\ --- instantiated width (file header). A schema application's width is its
 \ family's width at its arguments' widths. Under a term, a parameter takes the
 \ term's argument width; at declaration (TFAM-SCH-WIDTH), a parameter counts as
 \ one cell. Every width follows that one rule, so a closed family's declared
@@ -2888,7 +2905,7 @@ get-current prot-wid-add
 ;package
 
 \ ---------------------------------------------------------------------------
-\ generated ADDRESS accessors (`DERIVE addr`, docs/type-system.md §10.4). A
+\ generated ADDRESS accessors (`DERIVE addr`, structure-decl.f header). A
 \ family with the addr bit publishes one word per field plus the three fixed
 \ members AT / BYTES / CELLS, in the same two spellings and the same two
 \ wordlists its constructors use. The protection predicates must recognise them
@@ -3211,11 +3228,11 @@ public
    id ;
 
 \ ---------------------------------------------------------------------------
-\ packed memory ABI descriptor (docs §22.2, policy TL-PACKED-TAG). packed keeps
-\ the STACK representation as cells (docs §4/§22.2 - the stack width W is
+\ packed memory ABI descriptor (file header, policy TL-PACKED-TAG). packed keeps
+\ the STACK representation as cells (file header - the stack width W is
 \ unchanged, identical to stack-cell-tag); it ONLY adds a memory descriptor so a
 \ layout value can be marshalled into an ABI-stable buffer (arrays of ADTs, GPU
-\ buffers). v1 payloads are cell-kinded (docs §4: slot0..slot(M-1) tag, M cells),
+\ buffers). v1 payloads are cell-kinded (file header: slot0..slot(M-1) tag, M cells),
 \ so the only field packed narrows is the TAG: a K-variant tag is stored in the
 \ smallest of u8/u16/u32/cell holding tags [0,K). Payloads stay CELL-wide (align
 \ CELL), so per-field byte offsets are implicit (slot i at byte i*CELL) and need
@@ -3692,6 +3709,14 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 5 = IF TF-STR-U @ EXIT THEN
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
+
+\ The rows a family contract covers: every live row. Inside a declaration
+\ that includes its provisional field rows [PF-COMMIT-N, PF-N); a word the
+\ declaration generates is captured there, and commit moves no row, so its
+\ contract equals the one a later word computes over the committed rows.
+: REG-LIVE-COUNT ( n -- n ) {: k:n :}
+   k 3 = IF PF-N @ EXIT THEN
+   k REG-AOT-COUNT ;
 
 : REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
    k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
@@ -4819,8 +4844,7 @@ s" attn-stage-output"  0 TFAM-REG-CELL
 s" attn-stage-done"    0 TFAM-REG-CELL
 s" uniform"    1 TFAM-REG-CELL
 s" rowidx"     1 TFAM-REG-CELL
-\ BTC-7 extent-role product/factorization (docs/batch-sequence-design.md §5,
-\ docs/extent-substrate.md). `extprod<free,inner>` is the product former: an
+\ BTC-7 extent-role product/factorization (docs/design.md "Type substrate"). `extprod<free,inner>` is the product former: an
 \ ORDERED arity-2 cell family so ix<extprod<extb,extt>> types a folded (B,T) row
 \ and its ordered args already reject a swapped or mismatched factor on the
 \ existing parametric unification. `redx`
@@ -5205,7 +5229,7 @@ REG-EXT-PERSIST-INSTALL
 public
 
 \ ---------------------------------------------------------------------------
-\ construct form (item 9, docs §12): resolution + step effect for the checker's
+\ construct form (docs/forth.md "Structures And Enums"): resolution + step effect for the checker's
 \ reserved `construct family variant` token protocol. The ownership predicate
 \ is package identity: the family must live in the ACTIVE checker package (top
 \ level owns the global "" package), public or private — cross-package
@@ -5217,9 +5241,10 @@ public
 \ themselves), the family output term carries those vars, and CHECKER-STEP
 \ applies din/dout with the same unification, diagnostics capture, and linear
 \ conservation as any word call. PUSH-LOGICAL keeps declared-sig parity:
-\ resolved-arg bundles (incl. every arity-0 family) expand to hidden fields at
-\ the step; open-arg parametric results stay one conservative logical cell and
-\ expand at the boundary through the LOGHID coercion.
+\ bundles whose width is known (incl. every arity-0 family) expand to hidden
+\ fields at the step; a parametric result whose width reads an open argument
+\ (checker.f LAYOUT-WIDTH-OPEN?) stays one logical cell and expands at the
+\ boundary through the LOGHID coercion.
 \ ---------------------------------------------------------------------------
 
 private
@@ -5689,7 +5714,7 @@ private
    RES-TRUE ;
 
 \ ---------------------------------------------------------------------------
-\ MATCH resolution + payload instantiation (item 9 slice 3, docs §14). MATCH
+\ MATCH resolution + payload instantiation (docs/forth.md "Structures And Enums"). MATCH
 \ resolution follows SIGNATURE scope, not construct's owner-only rule:
 \ eliminability = nameability. You may match any family you could name in a
 \ stack signature (own package private+public, else the unique public family,
@@ -5825,7 +5850,7 @@ public
 private
 
 \ ---------------------------------------------------------------------------
-\ item 10 slice 1: compiler-facing lowering surface (docs §16; dot
+\ compiler-facing lowering surface (dot
 \ habu-tfam-10-native design A). Pure resolution + metadata for the native
 \ construct/MATCH emitters, called by NAME through the engine's C-FIND-GLOBAL
 \ friend bridge at the captured token positions: same registry and scope rules
@@ -5848,7 +5873,7 @@ public
 
 ;package
 
-: TFL-CON-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ owner-only scope (docs §12)
+: TFL-CON-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ owner-only scope
    TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
@@ -5858,7 +5883,7 @@ package TFAM
 
 ;package
 
-: TFL-MATCH-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ signature scope (docs §14)
+: TFL-MATCH-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ signature scope
    TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
@@ -5939,7 +5964,7 @@ private
       loop
    loop
    fam TFAM-FLD-COUNT@ 0 ?do
-      fam TFAM-FLD-START@ i + PF-REC@ PF.SCH @
+      fam TFAM-FLD-START@ i + PF-PENDING-SCH@
       SCHEMA-ROOT@ UNIT-FAM-SCAN-NODE
    loop ;
 
@@ -6585,8 +6610,11 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
          plan UFP.BLOB UFP-PTR@ i REG-AOT-BLOB-STORE
          i REG-AOT-BASE-PTR plan i UFP-TBASE@ i REG-AOT-WIDTH * +
          bytes ARENA-COPY
+         \ Only a store the plan grows moves its count: the field store's
+         \ setter also moves PF-N, which inside a declaration would retire
+         \ that declaration's provisional rows.
+         i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
       THEN
-      i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
    loop
    TFX-SNAP-RESET VNX-SNAP-RESET FVX-SNAP-RESET
    TFM-EPOCH+ 0 SVX-GEN ! ;
@@ -6650,7 +6678,7 @@ create UNIT-FAM-CON-CELL 8 allot
 : UNIT-FAM-CON-ROW ( n n -- ptr n ) {: k:n id:n :}
    UNIT-FAM-PROJECT-ON @ IF
       k id 1 UNIT-FAM-PROJECT-VIEW CELL-VIEW EXIT THEN
-   id 0 < id k REG-AOT-COUNT >= or IF
+   id 0 < id k REG-LIVE-COUNT >= or IF
       s" tfam: FILE contract row is outside the registry" REG-AOT-REFUSE THEN
    k REG-AOT-BASE-PTR id k REG-AOT-WIDTH * + CELL-VIEW ;
 
@@ -6944,14 +6972,14 @@ UNIT-FAM-RESET-INSTALL
    [: UNIT-FAMILY-NAME? ;] is CK-UNIT-FAMILY?
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CLAIMED? ;] is TFAM-CLAIMED?-XT
-   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
-   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
-   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject
+   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ constructor-package reopen reject
+   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ generated-word undefine reject
+   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ closed-package extra-tail reject
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
-   [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
+   [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
-   [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
+   [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
    [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
    [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
@@ -6959,15 +6987,15 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
    [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
    [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
-   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)
-   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ item 9: construct variant resolve + inline constructor effect
+   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
+   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
-   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ item 9: MATCH family resolution (signature scope)
-   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ item 9: MATCH branch variant resolve
-   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
+   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
+   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
+   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ variant id -> declaration-order tag (bitset index)
    [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
-   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
+   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
+   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ branch payload row from the scrutinee's args
    [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
 TFAM-HOOK-INSTALL
 

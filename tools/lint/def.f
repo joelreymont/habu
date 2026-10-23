@@ -1,6 +1,6 @@
 \ def.f - one audited inventory of words that define dictionary names.
 \
-\ Native forms come from the engine dictionary and docs/typed-top-level.md.
+\ Native forms come from the engine dictionary and src/core/top-row.f.
 \ Type/storage forms cover the checker's top-level declarations. Project forms
 \ cover every executable `create` and definition-generating `evaluate` owner.
 \ Registry grammars that publish rows rather than dictionary words are absent.

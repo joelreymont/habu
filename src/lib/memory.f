@@ -5,7 +5,17 @@
 \ and the module keeps nothing about it. The one exception is WITH-BYTES: its
 \ quotation-scoped mapping stack (WB-DEPTH and the two dynamic buffers beside
 \ it) is PROCESS-WIDE, so WITH-BYTES scopes nest per image and not per task.
-\ See docs/threads.md.
+\
+\ These mappings are for runtime-sized storage (source bundles, JSONL streams,
+\ report tables, 64K scratch buffers); `create ... allot` is for
+\ dictionary-sized static storage. Sizes are validated before mmap, a failure
+\ throws E-MEM-SIZE or E-MEM-MAP, and a mapping becomes typed storage only at
+\ the private MEM-ALLOC-PTR boundary. RELEASE-BYTES takes the exact extent
+\ ALLOC-BYTES gave and RELEASE-CELLS the count ALLOC-CELLS took; UNMAP releases
+\ a validated range. A kernel munmap refusal writes "memory: unmap failed" and
+\ exits 71, bypassing catch. WITH-BYTES releases after a return or a throw and
+\ then rethrows the body's code. MEM-ALLOC-64K-SPAN rounds a byte need up to
+\ whole 64K buffers; no caller encodes a maximum buffer count.
 
 s" src/lib/errors.f" required
 require src/lib/num-arithmetic.f
@@ -86,7 +96,7 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 \ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
 \ `n`. Package MEM re-states the same sizing as CHECKED words over NUM roles:
 \ the scalar words (CELLS>BYTES, 64K-BYTES, 64K-COUNT-FOR, 64K-SPAN-BYTES) are
-\ typed compositions of the closed B5.2 algebra that return `numeric-result<a>`
+\ typed compositions of the closed NUM algebra that return `numeric-result<a>`
 \ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
 \ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
 \ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
@@ -182,14 +192,14 @@ CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 
-: RELEASE-RANGE ( ptr u8 n -- )
+: RELEASE-RANGE ( ptr a n -- )
    munmap 0 < if
       s" memory: unmap failed" UNMAP-EXIT die
    then ;
 
 public
 
-\ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
+\ ---- scalar sizing: typed compositions of the closed NUM algebra --------------
 : CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
    NUM:CELLS>BYTES ;
 : 64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> )
@@ -209,6 +219,9 @@ public
    swap ;
 : ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
+\ The typed inverse of ALLOC-CELLS.
+: RELEASE-CELLS ( ptr a NUM:alloc-cell-count -- )
+   ALLOC-CELLS>N cells RELEASE-RANGE ;
 : ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
@@ -260,6 +273,9 @@ private
 DYNAMIC-BUFFER WB-BUFFERS ptr u8
 DYNAMIC-BUFFER WB-LENGTHS NUM:alloc-byte-len
 variable WB-DEPTH
+
+\ a declared head cell as the bytes a span visitor reads; the consumer only reads (src/habu/aot-owned-cells.f CLAIM)
+CAST: HEAD-BYTES ( ptr ptr u8 -- ptr u8 )
 
 
 : WB-RESERVE ( -- )
@@ -314,9 +330,9 @@ public
 \ into the engine, its cells are private, and a private cell of a baked package
 \ stays private - so it hands out these and nothing else.
 : OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
-   WB-BUFFERS#base BYTE-VIEW CELL claim execute
+   WB-BUFFERS#base HEAD-BYTES CELL claim execute
    WB-BUFFERS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   WB-LENGTHS#base BYTE-VIEW CELL claim execute
+   WB-LENGTHS#base HEAD-BYTES CELL claim execute
    WB-LENGTHS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
    WB-DEPTH BYTE-VIEW CELL claim execute ;
 

@@ -1,4 +1,19 @@
-\ C66x 32-bit encodings from SPRUGH7; no packet scheduling or memory emission.
+\ asm.f - C6XASM, C66x instructions encoded from TI's SPRUGH7 as values, each
+\ a little-endian u32; nothing here schedules packets or emits memory.
+\
+\ REGISTERS AND UNITS. A-REG and B-REG take indices 0-31 and answer the codes
+\ A0-A31 = 0-31 and B0-B31 = 32-63. The .L unit follows the destination's
+\ bank: the first register source shares it and the second may cross. An
+\ immediate form takes the destination, the register source, then the signed
+\ constant. For ENC-LDW and ENC-STW the base's bank picks the .D unit and the
+\ data's bank the transfer side; ENC-B-REG uses .S2, crossing from an A source.
+\
+\ WHAT A CONSUMER OWNS. PARALLEL-NEXT sets the p bit and proves no packet
+\ legal: unit, cross-path and packet constraints and the latencies, four delay
+\ slots after LDW and five after a branch, are the scheduler's
+\ (src/arch/tic6x/eabi.f over facts.f; sim.f checks them on the host).
+\ test/compiler/tic6x-asm.f pins every form to the word GNU tic6x-elf-as 2.47
+\ writes for the same operands.
 require src/lib/type/deftype.f
 require src/lib/errors.f
 

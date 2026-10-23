@@ -364,7 +364,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \
 \ The accessor body reads the rebindable offset/count cells; per the checker's
 \ armed LAYOUT-INTRO window (keyed on the pending accessor NAME + declared
-\ signature, checker.f:9004-9007, not the body's arithmetic form) it mints the
+\ signature, checker.f LBUF-PEND-MATCH?, not the body's arithmetic form) it mints the
 \ SAME `( n -- ptr type )` as the immediate LAYOUT-BUFFER accessor. An access
 \ before the first NAME-BIND (count-cell 0) dies NAMED (E-LAYOUT-UNBOUND),
 \ red-first — never a silent zero-offset read.

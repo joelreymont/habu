@@ -11,9 +11,17 @@
 \ task serve the whole image, and every record access but the free claim runs
 \ under one TASK:FACILITY. The one task-local row is the flag that says this
 \ task has registered its cleanup. A ticket belongs to the task that submitted
-\ it and only that task may AWAIT it. See docs/threads.md and docs/aio.md.
+\ it and only that task may AWAIT it.
 \
-\ Linux uses io_uring below. Darwin installs src/lib/aio-macos.f's poll backend.
+\ START LAST. The loop is a live task, so a program defines every word first
+\ and calls START after (src/lib/task.f); a submission with no loop is
+\ E-AIO-STATE. tcp4, udp4, serial, pty, process-pty-io and signal wait here,
+\ so a program using any of them starts the loop before its first wait.
+\
+\ Linux uses io_uring below, written against 5.10, the first long-term kernel
+\ with every opcode used here and IORING_FEAT_NODROP; an older kernel refuses
+\ io_uring_setup with ENOSYS. Darwin installs src/lib/aio-macos.f's poll
+\ backend.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -777,7 +785,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 
 \ An accept or a connect: one SQE on one record and no memory of the caller's
 \ that this module owns. The bytes a connect names stay the caller's, and the
-\ caller keeps them unchanged until the outcome is taken (docs/aio.md).
+\ caller keeps them unchanged until the outcome is taken.
 : SOCK-STAGE ( n n n n -- n n ) {: f:n addr:n off:n kind:n :}
    CLAIM-ONE {: idx:n :}
    idx 0 < if E-AIO-FULL -1 exit then
@@ -885,7 +893,7 @@ INSTALL-HOST
 
 \ The wait: a hint returns the task to its own state, which is the record's.
 \ The PAUSE is what lets a TASK:HALT end a task parked here, exactly as
-\ docs/threads.md requires of a STOP loop.
+\ src/lib/task.f requires of a STOP loop.
 : WAIT-DONE ( n -- ) {: idx:n :}
    begin
       idx REC-STATE@ STATE-DONE = if exit then
@@ -1021,7 +1029,7 @@ public
    EV-WRITABLE ;
 
 \ Opens the ring and starts the completion task. A live task forbids
-\ compilation (docs/threads.md), so a program starts the loop after it has
+\ compilation (src/lib/task.f), so a program starts the loop after it has
 \ finished defining words and not at load time. A second start is E-AIO-STATE.
 : START ( -- )
    RING-LIVE @ 0 <> if E-AIO-STATE throw then

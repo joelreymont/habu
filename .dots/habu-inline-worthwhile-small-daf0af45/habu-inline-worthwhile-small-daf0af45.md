@@ -1,6 +1,6 @@
 ---
 title: Inline worthwhile small native calls
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-14T16:55:46.872105+03:00"

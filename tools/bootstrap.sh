@@ -43,7 +43,7 @@ case "$HABU_TARGET" in
     OS_SIGN=src/os/linux/sign.f
     ;;
   linux-x86-64)
-    printf 'the gforth recovery chain emits ARM64 code; bring up linux-x86-64 by cross-building from a working arm64 engine (docs/bootstrap.md)\n' >&2
+    printf 'the gforth recovery chain emits ARM64 code; bring up linux-x86-64 by cross-building from a working arm64 engine (docs/bootstrap.md "No-Binary Recovery")\n' >&2
     exit 64
     ;;
   *)

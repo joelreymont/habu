@@ -625,13 +625,12 @@ private
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
-   \ `constant` bakes one physical cell: the emitted trust is the one-cell `-- a`
-   \ model, matching native C-CONSTANT / verify-source / all-errors — the
-   \ PERMANENT contract (TFAM 12 verdict 2026-07-09): the interpret stack is
-   \ untyped by design, so no path has a sound shape source, and wider-than-cell
-   \ layout values never land there (DNAME-WIDE dispatch gate). Layout mis-use
-   \ of a constant stays fail-closed at USE; parity locked by
-   \ public-signatures-test const-layout.
+   \ `constant` bakes one physical cell: the emitted trust is the one-cell
+   \ `-- a` model, matching native C-CONSTANT / verify-source / all-errors — the
+   \ PERMANENT contract: the interpret stack is untyped by design, so no path
+   \ has a sound shape source, and wider-than-cell layout values never land
+   \ there (DNAME-WIDE dispatch gate). Layout mis-use of a constant stays
+   \ fail-closed at USE; parity locked by public-signatures-test const-layout.
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
@@ -758,7 +757,7 @@ public
 TFAM-N@ constant FAM-BASE
 private
 
-\ --- synthesized public constructor signatures (item 13). Each PUBLIC ENUM
+\ --- synthesized public constructor signatures. Each PUBLIC ENUM
 \ family THIS LOAD declared publishes one nullary constructor per variant:
 \ word `PKG:VARIANT` (from SUMV-CTOR-PKG$/SUMV-NAME$), signature `-- family<args>`
 \ (the logical family type from name+arity, mirroring sumtype.f TDGEN-OUT-TYPE).

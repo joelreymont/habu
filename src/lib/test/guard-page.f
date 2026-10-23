@@ -5,6 +5,9 @@
 \ holds, a read that runs before the bound faults, and a bound that runs first
 \ refuses. The page is one MEM:ALLOC-GUARDED keeps between two inaccessible
 \ ones, mapped once per process and refilled on every call.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the guarded page is mapped once and kept; one
+\ task uses it at a time.
 
 require src/lib/memory.f
 require src/lib/test/assert.f                 \ T-EX-FAIL

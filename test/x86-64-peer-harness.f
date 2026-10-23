@@ -281,7 +281,7 @@ private
 \ what goes in them, so these write them again the way a linker writes a
 \ routine it did not place. A call or tail-branch row names its instruction's
 \ first byte and an absolute target: the rel32 follows the one opcode byte of
-\ `call` and `jmp` and counts from the end of the instruction (docs/x86-64.md
+\ `call` and `jmp` and counts from the end of the instruction (docs/xcomp.md
 \ "Live-region sites"). A CODE literal is the placement plus a function's
 \ offset, so it moves by what the routine moved.
 4 constant REL32-N

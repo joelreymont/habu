@@ -1,5 +1,16 @@
 \ vector.f - checked growable cell-vector helpers.
 \
+\ A vector is a caller-owned header of VEC-HEADER-CELLS cells (data pointer,
+\ active length, capacity). VEC-INIT binds a dead (zero or disposed) header to
+\ a fresh src/lib/memory.f mapping and VEC-DISPOSE releases it; the capacity
+\ cell is the liveness token. Capacities are `count`, lengths `len`, positions
+\ `idx`. VEC-PUSH doubles the capacity when the length reaches it. Invalid or
+\ overflowing capacity requests throw E-VEC-CAPACITY, invalid indexes or
+\ impossible lengths E-VEC-BOUNDS, and a touch of a dead header E-VEC-STATE.
+\ Package VEC, after the raw words, states the same vector over NUM roles.
+\
+\ STORAGE CLASS. CALLER-OWNED: the header and its mapping belong to the caller.
+
 require src/lib/errors.f
 require src/lib/memory.f
 

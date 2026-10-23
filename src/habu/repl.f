@@ -79,7 +79,7 @@ defer REPL-READ ( -- ptr u8 n )
 : RAW-OFF ( -- )  0 HBR-TIO-SET TIOB0 ioctl drop ;
 
 \ The editor's echo goes out through `emit` and `type` rather than a write to
-\ descriptor 1, so it follows the task's current output device (docs/genio.md):
+\ descriptor 1, so it follows the task's current output device (src/lib/genio.f):
 \ a line edited over a connection is echoed back over that connection. KEY1 and
 \ RD-LINE below stay on descriptor 0 because together they ARE the terminal
 \ device's key and accept; another device supplies its own pair, and src/lib/genio.f
@@ -188,7 +188,7 @@ defer REPL-READ ( -- ptr u8 n )
    LDEC LDEC-I @ +  24 LDEC-I @ - ;
 
 \ One line on descriptor 2: what filled up, the ceiling and the length the line
-\ asked for. Diagnostics do not leave through the editor's echo (docs/genio.md),
+\ asked for. Diagnostics do not leave through the editor's echo (src/lib/genio.f),
 \ and no REPL-baked word may `die` or `bye` (tools/repl-lint-core.f), so the
 \ session states the refusal and reads the next line.
 : LINE-FULL ( -- )
@@ -216,7 +216,7 @@ defer REPL-READ ( -- ptr u8 n )
 \ The REPLH-CELL slot holds the line reader. REPLH-CELL is an image-ABI offset
 \ (layout.f names it and habu2.f reads it), so the cell cannot become a
 \ TYPED-VARIABLE; `xt!` is the sanctioned mint that declares what it holds
-\ (docs/effects.md). Nothing here reads the cell back as code, so no accessor
+\ (docs/forth.md "An undeclared cell holds no execution token"). Nothing here reads the cell back as code, so no accessor
 \ hands its address out.
 : REPL-ENABLE ( -- )
    [: REPL-READ ;] data-base REPLH-CELL + xt! ;

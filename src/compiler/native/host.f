@@ -233,36 +233,6 @@ public
       1-
    repeat ;
 
-\ Visit the implementation actually bound at each direct call, including
-\ nested functions in one definition. An unrecorded, indirect, or unsafe
-\ implementation has no complete construction dependency closure.
-: CLOSURE-EACH ( n [ n -- ] -- bool )
-   {: entry:n q :}
-   entry ID-OF {: root:n :}
-   root 0= if false exit then
-   RESERVE-WALK
-   IMPL-N @ 1+ 0 ?do 0 i SEEN ! loop
-   0 WORK-N !
-   root PUSH
-   begin WORK-N @ 0<> while
-      POP {: id:n :}
-      id SEEN @ 0= if
-         1 id SEEN !
-         id ROW {: row:n :}
-         row IMPL-LIVE @ 0=
-         row IMPL-TYPE-FIRST @ 0< or
-         row IMPL-REASON @ SAFE <> or if false exit then
-         row IMPL-ENTRY @ q execute
-         row IMPL-FIRST @ row IMPL-EDGES @ +
-         row IMPL-FIRST @ ?do
-            i EDGE-TO @ {: to:n :}
-            to 1 < to IMPL-N @ > or if false unloop exit then
-            to SEEN @ 0= if to PUSH then
-         loop
-      then
-   repeat
-   true ;
-
 private
 
 : MATCH-ROW? ( n ptr n n n -- bool )

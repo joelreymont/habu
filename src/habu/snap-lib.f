@@ -27,6 +27,7 @@ require src/habu/stack-abi.f
 require src/habu/native-observer-cells.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
+require src/habu/native-body.f
 require src/habu/native-host-cells.f
 
 package SNAP
@@ -51,9 +52,8 @@ variable OUTPUT-U
 : OUT-PATH-NAMED ( -- )
    OUTPUT-U @ 0= if s" snap: persist has no output path" 74 die then ;
 
-\ Snapshot trailer format version (item 12 slice 3b, dot
-\ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
-\ persisted effect-node arena, a pre-3b engine restoring such an image would
+\ Snapshot trailer format version: the persisted effect-node arena carries
+\ hidden-field counts, and an older-format engine restoring such an image would
 \ misread hidden fields as logical params. The trailer grows 40->48 bytes with
 \ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
 \ rejects any image whose version is not the current format with a distinct
@@ -226,6 +226,19 @@ undefine SND-OUTER-BIND
 : SND-ZERO-CELL ( n -- )
    SND-PTR + CELL-VIEW 0 swap ! ;
 
+\ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
+\ pointers before the subtraction: `BYTE-VIEW` makes both operands `ptr u8`, as
+\ the AOT linker's DATA-PTR does, and says nothing about what either cell holds.
+: SND-ZERO-OFF ( ptr a -- n )
+   BYTE-VIEW data-base BYTE-VIEW - ;
+
+\ The running engine places its origin record; an engine without one has no
+\ pending take to clear.
+: SND-ZERO-PENDING-TAKE ( -- )
+   NATIVE-BODY:BODY-CAPABILITY dup NULL-PTR = if drop exit then
+   {: record:ptr :}
+   record NATIVE-BODY-ABI:PENDING-TAKE cells + SND-ZERO-OFF SND-ZERO-CELL ;
+
 \ FS-ABI and FS-MUT-ABI hold only per-call filesystem scratch. Their path,
 \ stat and descriptor bytes describe the build process, not the application.
 \ Clear the copied bands, leaving caller-owned buffers and the live task alone.
@@ -323,9 +336,7 @@ undefine SND-OUTER-BIND
    DEF-OCC:PTR-CELL SND-ZERO-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE SND-ZERO-CELL
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE SND-ZERO-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:REUSE cells + SND-ZERO-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + SND-ZERO-CELL
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + SND-ZERO-CELL
+   SND-ZERO-PENDING-TAKE
    NATIVE-HOST-CELLS:SELECT SND-ZERO-CELL
    NATIVE-HOST-CELLS:FACTS SND-ZERO-CELL
    NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
@@ -410,16 +421,6 @@ undefine SND-OUTER-BIND
 : SND-CANON-XT-CELLS ( -- )
    SND-ROWS {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
-
-\ The DATA offset of a cell is a BYTE distance, so both ends are taken as byte
-\ pointers before the subtraction. `MBUF-A` is a PTR-VARIABLE, so the bare
-\ `MBUF-A data-base -` asked `-`'s `ptr a ptr a -- n` row to make the DATA base
-\ the address of an ADDRESS, which is the one thing a base address never is
-\ (dot habu-fence-a-base-c6c1d71d). `BYTE-VIEW` is the same door the AOT linker's
-\ DATA-PTR already takes: it names what the distance is measured in and says
-\ nothing about what either cell holds.
-: SND-ZERO-OFF ( ptr a -- n )
-   BYTE-VIEW data-base BYTE-VIEW - ;
 
 : SND-ZERO-WRITER ( -- )
    SNC-A SND-ZERO-OFF SND-ZERO-CELL

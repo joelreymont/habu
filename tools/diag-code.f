@@ -1,9 +1,31 @@
 \ diag-code.f - what a checker diagnostic's code names.
 \
 \ tools/check.f --json-errors writes each diagnostic as one JSON object in the
-\ shape its code names (docs/repair-diagnostics.md). tools/gate-json-assert.f
-\ checks a record and tools/repair-packet.f builds its packet by the row read
-\ here, so a code enters both through one row.
+\ shape its code names. tools/gate-json-assert.f checks a record and
+\ tools/repair-packet.f builds its packet by the row read here, so a code
+\ enters both through one row.
+\
+\ THE CONTRACT. Records are newline-delimited JSON on stderr with
+\ schema_version 1, each a valid line even when the checker rejects the input;
+\ the field set per shape is what tools/gate-json-assert-core.f requires
+\ (diag-contract), over every fixture test/gate-diagnostics.f emits. verdict
+\ is `uncheckable` for E-UNCHECKABLE, `deferred` on a deferral, else
+\ `rejected`; a certified definition writes no record. A definition may fail
+\ more than one check; its record names one refusal, the one the engine's own
+\ load reports, in the load's order. line and column are one-based, column in
+\ bytes; byte_start and byte_end are zero-based, end exclusive, in the labeled
+\ file. Text with no file bytes behind it (the engine's own load, `evaluate`,
+\ checker-generated definitions) reports its definition's origin plus the
+\ token's offset in the checked text. The packet's source_excerpt is the
+\ record's definition_source: packet builders normalize, the checker emits no
+\ aliases.
+\ Under --all-errors, and in CHECK:VERIFY-BYTES, every refused definition is
+\ reported and the check goes on at the next one. A duplicate name is reported
+\ by its record in both; CHECK:VERIFY-BYTES skips the definition and goes on,
+\ --all-errors ends at it as the load does. A later definition sees a refused
+\ one by its declared signature when that parses; a use of one whose signature
+\ does not parse is E-UNDEFINED. Without --all-errors tools/check.f stops at
+\ the first refusal.
 
 require src/lib/string.f
 

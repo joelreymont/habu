@@ -1,6 +1,6 @@
 ---
 title: Remove audited internal machinery
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-10-16T11:16:12.196219+03:00"

@@ -643,7 +643,7 @@ private
 
 : STAT ( -- )
    T-RESET
-   \ positive signature controls: the exact B5.5-frozen effects resolve.
+   \ positive signature controls: the exact frozen effects resolve.
    s" G-CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> ) MEM:64K-BYTES"

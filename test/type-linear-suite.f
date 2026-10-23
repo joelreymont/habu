@@ -1,14 +1,13 @@
 \ type-linear-suite.f — whole-bundle linear accounting for layout values
-\ (PLAN item 11, docs/type-families.md §19). Run BY THE ENGINE over stdin:
+\ (docs/design.md "Families and layout policies"). Run BY THE ENGINE over stdin:
 \     bin/hb < test/type-linear-suite.f
 \ A sum whose type args include a linear con is ONE linear unit: constructors
 \ consume linear payloads and mint the bundle (empty-payload variants mint
 \ without input, the option-NONE shape), pass-through and deeper-row flow
 \ conserve it, and every copy/drop/transport/local-capture/unconsumed path
-\ rejects (v1: construct + flow only; move-class transports and MATCH
-\ consumption land with item 9). Width stays truthful: linear-arg layouts
-\ expand to hidden fields exactly like non-linear ones (LAYOUT-ARGS-OPEN?),
-\ so checker rows and runtime cells agree.
+\ rejects. Width stays truthful: linear-arg layouts expand to hidden fields
+\ exactly like non-linear ones (LAYOUT-WIDTH-OPEN?), so checker rows and runtime
+\ cells agree.
 \
 \ The closing TC/TK/TM section (package TLIN) covers the OTHER way a bundle
 \ becomes one linear unit: not through its type arguments but through a declared
@@ -99,7 +98,7 @@ s" S3=" type s" D3 ( ltok -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
 \ ---------------------------------------------------------------------------
-\ item 9 slice 2: the `construct` form conserves exactly like the generated
+\ The `construct` form conserves exactly like the generated
 \ constructor words — same CHECKER-STEP accounting, no separate linear rules.
 \ Consume (A1 parity), mint (A2), padded/multi-cell (A6/A7), and the reuse/
 \ loss/transport rejects hold through the inline form.

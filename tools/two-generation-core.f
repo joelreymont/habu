@@ -7,6 +7,10 @@
 \ 5 - each through the production entry point, tools/native-build.f. Copy the
 \ seed and write each generation in a fresh private temporary directory. No
 \ success, failure or interruption needs to move or restore the installed engine.
+\ Each build, the two of same-host mode included, uses its own empty cache under
+\ that directory, so cached support and FILE artifacts cannot affect the
+\ comparison. A successful run removes those caches and keeps the executables,
+\ maps and logs; a failed run keeps the caches for diagnosis.
 \
 \ Each generation prints one line: the image size plus the shape
 \ tools/two-generation-probe.f reads out of it. The chain fails, naming the
@@ -28,8 +32,7 @@
 \ per-process addresses. The residue reaches its own fixpoint at generation 4,
 \ where f(B4) = B4 exactly. A byte difference in the last pair is therefore a
 \ real defect - a clock, a pid, an unpinned address or an unordered walk in the
-\ build - and this is the check that names it. docs/bootstrap.md records the
-\ measurement and the counts per pair.
+\ build - and this is the check that names it.
 \
 \ Invocation and today's lines: docs/bootstrap.md, "Generation Chain Check".
 

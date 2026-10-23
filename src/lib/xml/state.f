@@ -1,3 +1,16 @@
+\ state.f - XML reader state, INIT, INIT-INPUT, INIT-SOURCE and the accessors.
+\
+\ INIT-INPUT reads bounded UTF-8 or declared US-ASCII through a callback that
+\ fills up to the chunk span's reach and answers its count: zero ends input, and
+\ a negative count or one past the reach is E-RANGE. Its `ptr n` context, the
+\ callback, the chunk span and the storage stay live through CLOSE. A long tag,
+\ comment or CDATA grows the event buffer while consumed bytes are released and
+\ scope storage is reused; offsets are absolute bytes of the stream, a BOM
+\ included. Attribute access works only on a start event, after ATTR-NEXT has
+\ selected one and before exhaustion (else E-STATE); xmlns declarations are
+\ attributes. ATTR-RAW covers name, `=`, whitespace and quoted value, and
+\ ATTR-VALUE omits the quotes. Part of package XML (src/lib/xml.f).
+
 require src/lib/xml/source.f
 require src/lib/byte-buffer.f
 

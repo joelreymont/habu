@@ -7,10 +7,10 @@
 \ terminator and body.
 \ The declaration events (the header clauses and every field) are owned by the
 \ event module, and the duplicate / reserved / case field-name gate is raised by
-\ the field record through the field-event path unchanged (docs/type-families.md
-\ §2.2-2.5; dot habu-structure-parse-typed-c5a01e1f).
+\ the field record through the field-event path unchanged (docs/forth.md "Structures And
+\ Enums"; dot habu-structure-parse-typed-c5a01e1f).
 \
-\ Grammar (docs §2.1):
+\ Grammar:
 \   STRUCTURE type-name[<params>] header-clause* field* ;STRUCTURE
 \   header-clause = POLICY policy-name | DERIVE derive-name+ | OPAQUE
 \   field         = FIELD field-name type-expr
@@ -30,23 +30,41 @@
 \ STRUCTURE-MAKE:GENERATE to define the MAKE / UNMAKE constructor words from the
 \ still-provisional field schemas. ONE condition gates the call:
 \   - FIELDS only. A zero-field structure is an opaque one-cell family that
-\     publishes no constructor (docs/type-families.md §2.2 — the authority-safe
-\     shape a bare NEWTYPE also declares); only a declaration WITH fields is a
+\     publishes no constructor (the authority-safe shape a bare
+\     NEWTYPE also declares); only a declaration WITH fields is a
 \     product with a MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
 \ VISIBILITY IS NOT A CONDITION. It decides the SPELLING and the WORDLIST, not
 \ whether a structure has a construction surface: a public family publishes
 \ FAMILY:MAKE / FAMILY:UNMAKE into its reserved constructor namespace, a private
 \ one publishes FAMILY-MAKE / FAMILY-UNMAKE into the declaring package's private
-\ wordlist, where a second package cannot resolve them. The gate that used to
-\ stand here refused a private family outright and called package-scoped private
-\ generation deferred type-DSL work; it is that work (dot
-\ habu-generate-a-private-80272413, docs/type-system.md §10.4), and without it
-\ the declared memory record serves almost nothing, because nearly every memory
-\ record under src/lib/ is package-private.
-\ The OPAQUE header clause moves a PUBLIC family's generated words to that
-\ private placement while the type stays nameable everywhere (docs/type-system.md
-\ §10.4): the only construction surface another package gets is what the
-\ declaring package defines over the pair.
+\ wordlist, where a second package cannot resolve them; nearly every memory
+\ record under src/lib/ is package-private. The OPAQUE header clause moves a
+\ PUBLIC family's generated words to that private placement while the type stays
+\ nameable everywhere (TFAM-GEN-PUBLIC? answers placement, TFAM-PUBLIC?
+\ visibility): another package constructs only through what the declaring
+\ package defines over the pair.
+\
+\ MEMORY RECORDS. `DERIVE addr` gives a family an address surface over this one
+\ field registry; there is no second record registry. It generates one accessor
+\ per field, F:f ( ptr F -- ptr T ) with body `<byte-offset> field-project`, plus
+\ F:AT ( ptr F n -- ptr F ) over record-at and the F:BYTES / F:CELLS sizes. An
+\ accessor yields an address, so @ ! c@ do the access. Spellings come from
+\ TF-CTOR-PKG$ (public: package then tail, hyphens doubled) and TF-CTOR-PRIV$
+\ (private: FAMILY-member, uppercased). A private generated word cannot wear a
+\ colon: the engine routes a qualified definition to the namespace's PUBLIC
+\ wordlist (habu2.f C-QUALIFY-DEF) and the checker records a colon name as a
+\ public symbol (CHECKER-RECORD-SYM). The declaring package's private wordlist
+\ is current at ;STRUCTURE, so the unqualified definition lands there.
+\ A public family's constructor namespace is a protected wid (prot-wid-add). A
+\ private family's wordlist cannot be one, since its package keeps defining into
+\ it, so its guard is by name: TFAM-CTOR-WORD? recognises the TF-PRIV-MEMBER$
+\ members while the package is open and the undefine guard refuses them with
+\ E-CTOR-PROTECTED. Each accessor is minted through FIELD-PROJ!, a single-shot
+\ window keyed on the accessor's name that disarms at its field-project token
+\ even on a reject. The committed field id is the sole authority for family,
+\ offset, extent, role and schema; the checker cross-checks the baked offset.
+\ Outside the window field-project is exactly `+`, and record-at preserves the
+\ family (both in structure-make.f).
 \ Generation remains inside the shared transaction. If evaluation or checker
 \ certification rejects either constructor, the runner restores every
 \ participant before the error returns to the caller.
@@ -320,7 +338,7 @@ SD-QUOT-INSTALL
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
 \ OPAQUE: the family keeps its declared visibility and its generated words take
-\ the private-family placement (docs/type-system.md §10.4). The event validates
+\ the private-family placement (header above). The event validates
 \ (package, at most once), then the fresh family record is marked.
 : OPAQUE-CLAUSE ( -- )
    HEADER-ORDER

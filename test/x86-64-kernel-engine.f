@@ -21,8 +21,7 @@
 \ by the scan the probe leaves that wid to.
 \
 \ The heap, printer and hook rows, one image per outcome; the peer runs each
-\ and compares its status and its fd-1 and fd-2 bytes (docs/x86-64.md
-\ "Engine-state rows"):
+\ and compares its status and its fd-1 and fd-2 bytes (src/habu/kernel-x64.f):
 \ - hb-x64-kernel-heap walks DP from the heap floor through allot, align, `,`
 \   and c, checks the cells they filled and returns to the floor, and exits 0;
 \ - hb-x64-kernel-heap-high allots up to the ceiling, which DP may reach, and

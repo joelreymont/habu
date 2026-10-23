@@ -101,7 +101,7 @@ FS-PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 \ The rows hold quotations, the checker's proven-quotation store
-\ (docs/threads.md): an xt in a plain cell would lose the effect.
+\ (src/lib/task.f): an xt in a plain cell would lose the effect.
 1 TYPED-BUFFER CACHE-HOOK [ ptr u8 n -- ptr u8 n ]
 1 TYPED-BUFFER FALLBACK-HOOK [ ptr u8 n -- ptr u8 n ]
 

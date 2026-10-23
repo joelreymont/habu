@@ -719,8 +719,7 @@ USIGS-USER-OFF @ TG-UOFF !
 \ The grow asserts further down run after USIGS-RESET, i.e. over a runtime mmap
 \ arena, so they never exercise the case the generation chain actually meets: a
 \ pool the IMAGE carried in DATA, growing on the engine's own appends (an image
-\ whose content lands just under a grain boundary grows at its first load -
-\ docs/bootstrap.md).
+\ whose content lands just under a grain boundary grows at its first load).
 \ THIS BLOCK ESTABLISHES THAT STATE RATHER THAN ASSUMING IT. Whether the running
 \ engine's pool is still the baked one by the time the suite gets here is a
 \ property of that engine's content against its cap, not of this file: a root
@@ -1020,9 +1019,9 @@ variable TR-S-LC variable TR-S-STRLC
 : TR-SYMS-WHITEBOX ( -- )
    \ This probe restores the original store; growth now clears its retired bytes.
    SYM-CAP-V @ SYM-REC * {: bytes:n :}
-   bytes ARENA-ALLOC {: saved:ptr :}
+   bytes ARENA-ALLOC-BYTES {: saved:ptr :}
    SYMS-P @ {: prior:ptr :}
-   prior saved BYTE-VIEW bytes ARENA-COPY
+   prior saved bytes ARENA-COPY
    SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-SSU !
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
@@ -1049,7 +1048,7 @@ variable TR-S-LC variable TR-S-STRLC
    SYMS-P @ mark >= TTRUE
    s" syms-persist-find" T-LABEL
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
-   saved BYTE-VIEW prior bytes ARENA-COPY
+   saved prior bytes ARENA-COPY
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    HIDX-RESET
@@ -1357,7 +1356,7 @@ s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" T-CHEC
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
-\ --- parametric type-family (TFAM) signature parsing (PLAN item 4) -----------
+\ --- parametric type-family (TFAM) signature parsing -------------------------
 \ Registry-driven `family<...>` parsing replacing the old PARAM-CTOR? whitelist:
 \ correct arity, reentrant nested parse, dual `ptr`, and family-id identity.
 s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
@@ -1404,7 +1403,7 @@ s" CSP-CALL ( -- n n ) CSPQ:ROW-A CSPQ:ROW-B" CHECK! -1 T=
 CHECKER-CANDIDATE-SCOPE-DONE
 s" and nowhere once the scope has closed" T-LABEL
 s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 1 T=
-\ Family-specific arity diagnostics (PLAN item 4 acceptance): assert the verdict
+\ Family-specific arity diagnostics: assert the verdict
 \ AND the diagnostic KIND (SGBAD-ARITY?), not merely rejection, so a regression
 \ swapping the arity reason for a generic syntax error is caught. The kind
 \ predicates and the test-family registrar TFAM-REG-CELL are checker-internal

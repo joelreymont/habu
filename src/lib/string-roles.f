@@ -1,16 +1,11 @@
-\ string-roles.f - the string words over NUM's numeric roles.
+\ string-roles.f - the string words over NUM's numeric roles (package STR).
 \
-\ WHY IT IS ITS OWN FILE. The engine bakes src/lib/string.f, because the compiler,
-\ the JIT and the REPL use the raw byte-string words. They do not use the ROLES,
-\ and while package STR sat in src/lib/string.f its `require` of
-\ src/lib/num-arithmetic.f put NUM's types and its whole arithmetic table
-\ into every image for callers that are all in src/lib/, tools/ and test/ - eighteen
-\ files, none of them under src/compiler or src/habu (dot
-\ habu-bake-only-what-4039004a: only what the compiler, JIT and REPL require is
-\ baked). A file of its own is what keeps it out of the image: src/lib/string.f keeps
-\ exactly the raw words it had, and a caller that wants STR: requires this.
-\ Every word below is the one that was in src/lib/string.f, with its effect, its
-\ checks and its comments unchanged.
+\ A file of its own because the engine bakes src/lib/string.f for the compiler,
+\ the JIT and the REPL, which use only the raw words, while STR requires
+\ src/lib/num-arithmetic.f; keeping STR here keeps NUM's types and arithmetic
+\ out of the image. A caller that wants STR: requires this file.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/string.f
 require src/lib/num-arithmetic.f
@@ -37,7 +32,7 @@ require src/lib/num-arithmetic.f
 \ captured before the package words shadow their global names) and only
 \ STR:SPLIT-NEXT adds a check the raw word cannot express: the largest field
 \ boundary it can report is one past the string end, so the offset advance
-\ (end + 1) is proven through the B5.2 NUM:ADVANCE-BYTE-OFF BEFORE the scan,
+\ (end + 1) is proven through NUM:ADVANCE-BYTE-OFF BEFORE the scan,
 \ turning an offset-space overflow into an E-STR-BOUNDS throw instead of a
 \ silent wrap.
 
@@ -106,7 +101,7 @@ CAST: BYTE-OFF>N ( NUM:byte-off -- n )
       some OF IDX>N N>INDEX OPTION:SOME ENDOF
    ;MATCH ;
 
-\ ---- one-past-end offset advance guard (B5.2 offset algebra) -------------------
+\ ---- one-past-end offset advance guard (offset algebra) ------------------------
 : ONE-BYTE-LEN ( -- NUM:byte-len )   1 NUM:BYTE-LEN OK-BYTE-LEN ;
 : SPLIT-SENTINEL-OK ( NUM:byte-len -- )
    \ the raw scan's largest reported boundary is (length + 1); prove that offset

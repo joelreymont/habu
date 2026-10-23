@@ -1,7 +1,7 @@
 \ process-tree.f - end a process and every process descended from it, or read
 \ the CPU time they have run.
 \
-\ A SPAWNED CHILD LEADS A PROCESS GROUP OF ITS OWN (docs/process-pty.md), so the
+\ A SPAWNED CHILD LEADS A PROCESS GROUP OF ITS OWN (src/lib/process.f), so the
 \ kill that reaches a group - PROC-FORK:KILL-GROUP - ends a process and what it
 \ forked, and nothing it spawned. Measured on the native gate: SIGTERM to the
 \ root ended every row, and eight of the rows' own children - engine builds,
@@ -702,8 +702,8 @@ public
 \ init or a group rather than a process, and the caller cannot be its own tree.
 \ Whatever the walk throws - a process table it could not read, a tree past
 \ MEMBER-MAX - every member found by then is still killed, so none is left
-\ stopped. A SIGKILL of the caller runs no finally: what the walk had stopped
-\ is left stopped (docs/gate.md).
+\ stopped. A SIGKILL of the caller runs no finally: what the walk had stopped is
+\ left stopped (docs/gate.md "Signals and servers").
 : KILL-TREE ( pid -- ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET

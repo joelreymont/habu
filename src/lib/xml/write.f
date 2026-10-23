@@ -1,3 +1,7 @@
+\ write.f - XML escaping. ESCAPE-TEXT and ESCAPE-ATTR validate XML scalars and
+\ write carriage returns as references; ESCAPE-ATTR does so for tabs and
+\ newlines too. Part of package XML (src/lib/xml.f).
+
 require src/lib/xml/scalar.f
 
 package XML

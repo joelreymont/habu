@@ -117,7 +117,7 @@ require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 $3000 constant LOCNAMES   \ LOC-RECS records of LOC-REC bytes ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
 64  constant LOC-RECS     \ locals per definition: C-LBRACE-STORE-ONE refuses the next (native layout.f LOC-RECS)
-\ Friend arena (TFAM 2b-i): contiguous write-protected band mirroring
+\ Friend arena: contiguous write-protected band mirroring
 \ src/habu/layout.f. Latch cell == arena base (0 open / FRIEND-ARENA-LEN sealed).
 \ Package cells and protected-WID state mirror native, as do the two
 \ deferred-word scratch cells ($98/$A0, filled in below). CUR/WIDN/HOOK/TSIG/
@@ -128,10 +128,10 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 82 constant ENGINE-ERROR:AOT-SEED
-$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; inside the band so a post-seal store traps
 83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
 84 constant ENGINE-ERROR:SEAL-PACKAGE
-85 constant ENGINE-ERROR:BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
+85 constant ENGINE-ERROR:BAD-TAG         \ MATCH invalid-tag runtime exit (mirrors layout.f)
 86 constant ENGINE-ERROR:CALLABLE-ABI
 87 constant ENGINE-ERROR:CATCH-STACK
 88 constant ENGINE-ERROR:CODE-CERT
@@ -224,7 +224,7 @@ $D63F0200 constant C-CALL-BLR-X16
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (see
                                         \ src/habu/layout.f); stage0 has no driver-io reporter, so it only
                                         \ maps the raw code to this fixed nonzero rc - never the masked value
-\ Second guarded band (TFAM 2b-v): protected package WID registry plus uncaught
+\ Second guarded band: protected package WID registry plus uncaught
 \ hook. Stage0 now owns the same registry shape as native so package reopen is
 \ guarded by WID identity rather than a second hard-coded package-name list.
 $3CB8 constant PROT-REG-TAG-CELL
@@ -309,7 +309,7 @@ $2D80 constant SUSP-HOOK-CELL       \ the hook `0 set-check` parked; mirrors src
 $2D88 constant SUSP-PREFLIGHT-CELL  \ the preflight parked with it
 SUSP-HOOK-CELL constant SUSP-HOOK-OFF
 2 cells constant SUSP-HOOK-LEN
-$27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
+$27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (mirrors src/habu/layout.f)
 \ The process-exit vector, at the offset src/habu/layout.f gives it: an xt the
 \ seed calls once, with the cell cleared first, before the exit_group of each
 \ deliberate exit (BDIE, the uncaught top-level throw, the normal top-level
@@ -402,7 +402,7 @@ previous definitions
 vocabulary LOWER-TXN
 vocabulary LOWER-TXN-LOOKUP
 $1B0 constant CMFAM-CELL    \ resolved construct family id between the operand tokens (mirrors layout.f)
-$B0 constant CMBK-CELL      \ MATCH ENDOF branch-kind bitstack (TFAM 10 slice 3; mirrors layout.f)
+$B0 constant CMBK-CELL      \ MATCH ENDOF branch-kind bitstack (mirrors layout.f)
 $B8 constant CMTAG-CELL     \ pending MATCH variant tag (VAR -> OF)
 $C0 constant CMPADS-CELL    \ pending MATCH variant zero pads M-p (VAR -> OF)
 $C8 constant CMFRD-CELL     \ MATCH nesting depth (0 = not in a match)
@@ -673,7 +673,7 @@ variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
-variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords (TFAM 10; MATCH rows are data-only until slice 3)
+variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (mirrors habu2.f)
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
@@ -2159,7 +2159,7 @@ HB-TARGET-LINUX? [IF]
 \ Stage 0 has no trusted-tick query, even when its internal-word tick gate runs.
 : BTICKORDER ( -- )  A 0 MOVZ,  A G-PUSH  A G-PUSH ;
 
-\ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
+\ SEAL-CAPTURE: freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
 \ engine-prefix end). The friend latch is already sealed by then, so a raw !
 \ would trap; this direct STR from NDICT is the sanctioned bypass, mirroring
@@ -2467,7 +2467,7 @@ HB-TARGET-LINUX? [IF]
 \ eight rows src/habu/prims.f registers for package CHECKER-OVERLAY, so the seed
 \ registers them owned and EMIT-COMPILE-CALL admits checked calls to them. No
 \ seed-built image opens the overlay: stage0 only compiles stage2, and the
-\ recovery gates replay nothing (docs/bootstrap.md), so each body refuses.
+\ recovery gates replay nothing, so each body refuses.
 : NOOVERLAY$ ( -- addr u ) s\" hb: stage0 has no checker overlay\n" ;
 : B-NO-OVERLAY ( -- ) NOOVERLAY$ B-REFUSE ;
 
@@ -3806,11 +3806,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $0A C-SOURCE-APPEND-CHAR
    done LBL, ;
 
-\ TFAM 2b-iii: append `SEAL-CAPTURE` as the LAST engine-prefix source token
-\ (mirrors src/habu/habu2.f EMIT-SEAL-CAPTURE-TOKEN): xref.f's in-file call is
-\ only the baseline - script-argv.f loads after it, so the truncation watermark
-\ must re-freeze at the true engine-prefix end. Source token, not a native
-\ store: nothing has evaluated at cold-prefix assembly time. Cold boots only.
+\ Append `SEAL-CAPTURE` as the LAST engine-prefix source token (mirrors
+\ src/habu/habu2.f EMIT-SEAL-CAPTURE-TOKEN): xref.f's in-file call is only the
+\ baseline - script-argv.f loads after it, so the truncation watermark must
+\ re-freeze at the true engine-prefix end. Source token, not a native store:
+\ nothing has evaluated at cold-prefix assembly time. Cold boots only.
 : EMIT-SEAL-CAPTURE-TOKEN ( -- )
    LBL {: done :}
    12 DATA SNAP-CELL LDR,
@@ -4257,12 +4257,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-CASE ( -- )
    9 0 MOVZ,  LCFPUSH @ BL, ;
 
-\ construct keyword (TFAM 10 slice 2; mirrors habu2.f J-CONSTRUCT): arm the
+\ construct keyword (mirrors habu2.f J-CONSTRUCT): arm the
 \ operand capture (CMM=1). CFN entry — construct only ADDS VS constants.
 : J-CONSTRUCT ( -- )
    12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
-\ match keyword (TFAM 10 slice 3; mirrors habu2.f J-MATCH): CF-ENTRY spills the
+\ match keyword (mirrors habu2.f J-MATCH): CF-ENTRY spills the
 \ width-expanded bundle to the physical stack, then push a J-CASE-shape CF
 \ sentinel, open a match-frame level, arm CMM=3. No emission.
 : J-MATCH ( -- )
@@ -8108,7 +8108,7 @@ variable P2SK
       13 lundef CBZ,                              \ still nothing -> undefined in this body
       found B, ;                                  \ resolved via a used package: rejoin the normal compile path
 
-\ construct lowering (TFAM 10 slice 2; mirrors habu2.f C-FIND-GLOBAL and the
+\ construct lowering (mirrors habu2.f C-FIND-GLOBAL and the
 \ EM-ADT-CON-* operand steps. The bridge names are global compiler services, so
 \ a plain LFIND is the exact lookup). CMM=1: family operand -> eager resolve via
 \ tfl-con-fam?, stash id in CMFAM-CELL, arm CMM=2. CMM=2: variant operand ->
@@ -8197,7 +8197,7 @@ variable P2SK
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    lmain B, ;
 
-\ MATCH lowering legs (TFAM 10 slice 3; mirrors habu2.f EM-ADT-MATCH-*/EM-MATCH-
+\ MATCH lowering legs (mirrors habu2.f EM-ADT-MATCH-*/EM-MATCH-
 \ SEMI/C-DIE-BAD-TAG). CMM=3/4/5 continue the token machine J-MATCH armed: 3 =
 \ want family, 4 = want variant-or-`;match`, 5 = want `of`. Each opens an RX
 \ window (LPROT 5 -> 3) around the checker-friend bridge call and LBCAPs its

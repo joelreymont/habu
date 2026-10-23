@@ -1,4 +1,10 @@
 \ seed.f - checked native seed installation helpers.
+\
+\ Validates the seed against HABU_SEED_SHA256 when set, promotes it to bin/hb as
+\ a signed executable, runs a stdin smoke program, then refreshes it from current
+\ source with `tools/build-fixpoint-main.f -- install --force`. The --force is
+\ deliberate: this is a proof flow, so the content-key stamp skip must not stand
+\ in for the self-rebuild fixpoint.
 
 require src/lib/errors.f
 require src/lib/span.f

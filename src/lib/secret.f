@@ -1,4 +1,23 @@
-\ Native desktop credential lookup. Storage and secret lifetime belong to READ's caller.
+\ secret.f - native desktop credential lookup, in `package SECRET`.
+\
+\ SECRET:READ ( service$ account$ destination -- n found? ) looks up one item in
+\ the OS store: a found item writes exactly n bytes into the caller's
+\ SPAN:span<u8> and returns true (0 true for an empty value); a missing item
+\ returns 0 false. The destination is unchanged on a miss or a throw, and the
+\ caller owns the bytes and their lifetime. No key material enters diagnostics.
+\ Empty, NUL-containing or malformed UTF-8 identifiers throw E-CONFIG; a failed
+\ store access E-ACCESS; no native support (an absent symbol, macOS
+\ errSecNotAvailable) E-UNAVAILABLE; a value larger than the destination
+\ E-CAPACITY, before any byte is copied. There is no plaintext fallback.
+\ The calls are synchronous and may block while the desktop store responds.
+\ Backends: secret/macos.f (generic password by service and account,
+\ SecItemCopyMatching) and secret/linux.f (libsecret item search by `service`
+\ and `account` attributes, so a dismissed unlock is an access failure; the
+\ value is read by length, keeping embedded NULs). src/lib/secret-test.f writes
+\ dummy items to the real store and removes them.
+\
+\ STORAGE CLASS. CALLER-OWNED: each READ allocates and frees its own request
+\ record; the backend is a deferred pair bound once at load.
 require src/lib/errors.f
 require src/lib/span.f
 require src/lib/memory.f

@@ -14,22 +14,19 @@
 \ itself never converts one of these values, so this file - not the engine prefix
 \ - carries the converter surface application code calls.
 \
-\ WHY THE CONVERTERS ARE HERE AND NOT IN package MAKI. Introducing a value into a
-\ resolved cell family is authorized only from that family's declaring package
-\ (src/core/checker.f CAST-OWNER?, reject code 7135 E-CAST-OWNER). `redx` is
-\ declared by the engine in the global package, so a `CAST:` whose OUTPUT is a
-\ redx must itself be declared at global scope. maki/extent.f used to declare
-\ `CAST: >RED ( ix<e> -- redx<e> )` inside `package MAKI`; that is an application
-\ package minting a core-owned nominal, and every load of the file threw 7135.
-\ The fix is this file plus the move of `ix` into the same core registration as
-\ its two siblings: one owner for the whole substrate, one place its values are
-\ introduced. Projections OUT of a family are unrestricted, so IX>N would have
-\ been legal anywhere - it lives here to keep the pair in one place.
+\ WHY THE CONVERTERS ARE HERE. Introducing a value into a resolved cell family
+\ is authorized only from that family's declaring package (src/core/checker.f
+\ CAST-OWNER?, reject code 7135 E-CAST-OWNER). `redx` is declared by the engine
+\ in the global package, so a `CAST:` whose OUTPUT is a redx must be declared at
+\ global scope; an application package that declares one throws 7135 at load.
+\ Projections OUT of a family are unrestricted, so IX>N could live anywhere; it
+\ lives here to keep the pair in one place.
 \
-\ This file is a documented core/prelude language surface (the package-first rule
-\ in CLAUDE.md), like src/lib/type/deftype.f: it defines global words on purpose,
-\ because the types it converts are global engine types. It has no private state,
-\ so it needs no package of its own.
+\ Like src/lib/type/deftype.f, this file is a core language surface: it defines
+\ global words on purpose, because the types it converts are global engine
+\ types, and it has no package of its own.
+\
+\ STORAGE CLASS. CALLER-OWNED: casts only; no module state.
 \
 \ WHAT IS NOT HERE. The reverse direction - a plain n INTO an extent's index
 \ space - needs a runtime range guard that is not expressible as a checked body.

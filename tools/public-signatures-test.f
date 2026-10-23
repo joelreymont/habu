@@ -22,7 +22,7 @@ require tools/public-signatures-core.f
 using PS
 
 \ A public ENUM registered here exercises the metadata-synthesized constructor
-\ signatures (item 13): each variant publishes a nullary `PKG:VARIANT ( -- fam )`
+\ signatures: each variant publishes a nullary `PKG:VARIANT ( -- fam )`
 \ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
 ENUM pstcolor red green blue ;ENUM
 \ A DERIVE-eq enum additionally publishes the synthesized derived words
@@ -382,13 +382,12 @@ variable PST-NUM-U
 : PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
 
 \ `constant` bakes one physical cell, so a value of the 2-field `cae-cv` layout
-\ family records the one-cell `-- a` trust here — identical to the
-\ verify-source / all-errors / native C-CONSTANT model. This is the PERMANENT
-\ contract (TFAM 12 verdict 2026-07-09, habu-tfam-12-layout): the interpret
-\ stack is untyped by design, no path has a sound shape source, and carrying
-\ the producer's multi-cell type would record more cells than the constant
-\ holds. This locks that public-signatures does NOT invent a multi-cell shape
-\ (nor drop the constant); layout mis-use stays fail-closed at USE
+\ family records the one-cell `-- a` trust here — identical to the verify-source
+\ / all-errors / native C-CONSTANT model. This is the PERMANENT contract: the
+\ interpret stack is untyped by design, no path has a sound shape source, and
+\ carrying the producer's multi-cell type would record more cells than the
+\ constant holds. This locks that public-signatures does NOT invent a multi-cell
+\ shape (nor drop the constant); layout mis-use stays fail-closed at USE
 \ (check-all-errors-test const-layout-narrow).
 : PST-CONST-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -418,13 +417,12 @@ variable PST-NUM-U
 
 : PST-SUM ( -- ptr u8 n )    PST-SUM-BUF PST-SUM-U @ ;
 
-\ TFAM 7 (habu-tfam-7-hidden): a sum layout family in a passing (identity)
-\ signature renders as the LOGICAL type in public-signatures output — the family
-\ tail with its args, never the hidden `@family.slotN`/`@family.tag` physical
-\ fields (PLAN item 7 acceptance: public signatures without hidden fields). It is
-\ also not narrowed to one bare cell nor to a multi-cell shape: one logical
-\ T-PARAM cell in, one out. Item 12 (habu-tfam-12-layout) owns physical layout
-\ exposure; this locks that item 7 keeps the surface logical-only.
+\ A sum layout family in a passing (identity) signature renders as the LOGICAL
+\ type in public-signatures output — the family tail with its args, never the
+\ hidden `@family.slotN`/`@family.tag` physical fields (public signatures
+\ without hidden fields). It is also not narrowed to one bare cell nor to a
+\ multi-cell shape: one logical T-PARAM cell in, one out. This locks the public
+\ surface logical-only: physical layout is never exposed.
 : PST-SUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" SUMTYPE ps-res<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" SB-APPEND PST-LF
@@ -486,7 +484,7 @@ variable PST-NUM-U
    23 PS-FAM-ARGS
    PS-CSIG$ s" <a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>" T$= ;
 
-\ item 13: the registered public ENUM `pstcolor` publishes one synthesized
+\ The registered public ENUM `pstcolor` publishes one synthesized
 \ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
 : PST-TEST-ENUM-CTORS ( -- )
    PST-FIX PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}

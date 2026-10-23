@@ -454,7 +454,7 @@ variable STR-TEST-BUF2-LEN
      some OF drop STR-FALSE ENDOF
    ;MATCH STR-ASSERT ;
 
-\ ---- B5.5 typed STR surface over NUM roles --------------------------------
+\ ---- typed STR surface over NUM roles --------------------------------
 \ White-box role readers, declared at this test's own scope: a scalar assertion
 \ compares against a literal n, and STR-ASSERT$ takes a raw span, so the extent
 \ roles must be read out here. Checked casts, so none can misdeclare its shape,

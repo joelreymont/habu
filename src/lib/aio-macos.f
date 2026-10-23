@@ -4,6 +4,9 @@
 \ fence the snapshot across poll, so cancellation/reuse cannot deliver an old
 \ event to a new operation. Each serialized host call temporarily sets
 \ nonblocking status and restores it before releasing the facility.
+\ The caller keeps a pending operation's descriptor open and its flags
+\ unchanged. Regular-file transfers run on the poll thread with pread/pwrite,
+\ so slow disk I/O delays other completions. Storage is src/lib/aio.f's.
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f

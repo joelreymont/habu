@@ -1,4 +1,19 @@
 \ object.f - checked object-record codec for future linkable Habu builds.
+\
+\ One current record, tab-separated and canonical. SOURCE! takes a 64-byte hex
+\ source digest. Fields refuse tabs, newlines, other control bytes and empty
+\ strings with E-OBJ-FIELD; TEXT+ and DATA+ store section bytes as lowercase hex
+\ and LOAD refuses malformed hex. DEF+ records an address-bearing text
+\ definition (symbol, text offset, effect); ENTRY+ records a non-MAIN entry
+\ (name, test mode, forged seed cells as big-endian u64 hex), so a preseeded
+\ object is a distinct artifact. BYTES$ and KEY-HEX need the source, target,
+\ checker and compiler fields first (E-OBJ-SCHEMA); KEY-HEX hashes the
+\ canonical bytes through src/lib/content-key.f. Row accessors skip the magic
+\ header, index from zero, exclude the tag, and throw E-OBJ-FIELD out of range.
+\ LOAD validates and restores a serialized record.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the current record, its digest context and
+\ field flags are module storage; single-task.
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -1,6 +1,6 @@
 ---
 title: Prepare origin keys before publication
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-15T07:19:17.005287+03:00"

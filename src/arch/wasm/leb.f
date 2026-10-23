@@ -1,4 +1,4 @@
-\ leb.f - WLEB, the Wasm backend's LEB128 (docs/wasm-backend.md §10.1, §17.1).
+\ leb.f - WLEB, the Wasm backend's LEB128 (docs/xcomp.md "Linking").
 \
 \ An LEB holds seven bits of its integer a byte, low group first, with the high
 \ bit set on every byte but the last. An N-bit integer takes at most ceil(N/7)

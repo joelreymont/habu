@@ -1,13 +1,12 @@
 \ Observed inputs to one native definition. Section 14 carries declaration identities,
-\ checked contracts, frozen primitive schemas, fixed values and implementations
-\ actually run while the FILE was built. A nested child keeps a separate span
-\ in the same byte arena.
+\ checked contracts, frozen primitive schemas and fixed values; anything it
+\ cannot re-verify is an ORDERED row. A nested child keeps a separate span in
+\ the same byte arena.
 
 require src/lib/errors.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/string.f
-require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/core/checker-owner-extension.f
 require src/habu/layout.f
@@ -23,7 +22,6 @@ private
 
 1 constant BINDING
 2 constant VALUE
-3 constant EXECUTED
 4 constant ORDERED
 5 constant CHECKER-ROLE
 6 constant SCOPE
@@ -31,7 +29,6 @@ private
 8 constant PRIMITIVE
 9 constant COMPILER-ROLE
 10 constant READER-FLAGS
-11 constant BODY-READER
 16 constant HEADER-BYTES
 24 constant ROW-BYTES
 48 constant RES-ROW-BYTES
@@ -51,8 +48,6 @@ DYNAMIC-BUFFER PRIMITIVE-DATA u8
 0 CWORK-VARIABLE MISS-U n
 0 CWORK-VARIABLE SCAN-OFF n
 create CELL-BYTES 8 allot
-create PRODUCER-CTX SHA256-CTX-BYTES allot
-create PRODUCER-DIGEST 32 allot
 
 \ The checker owner installs an exact-occurrence query at its publication
 \ boundary. An older owner has none, and that FILE is explicitly ordered.
@@ -69,19 +64,13 @@ defer SYM-IDENTITY ( n -- ptr u8 n ptr u8 n n )
 defer ORIGIN-SYM ( ptr u8 n n ptr u8 n -- n )
 : NO-ORIGIN ( ptr u8 n n ptr u8 n -- n )
    2drop drop 2drop 0 ;
-defer CLOSURE-EACH ( n [ n -- ] -- bool )
-: NO-CLOSURE ( n [ n -- ] -- bool ) 2drop false ;
-defer BODY-PASSIVE? ( ptr u8 n -- bool )
-: NO-BODY-PASSIVE ( ptr u8 n -- bool ) 2drop false ;
 : INSTALL-DEFAULT ( -- )
    ['] NO-CONTRACT is CONTRACT$
    ['] NO-ROLE is CHECKER-ROLE$
    ['] NO-ROLE is COMPILER-ROLE$
    ['] NO-PRIMITIVE is PRIMITIVE-STATE
    ['] NO-IDENTITY is SYM-IDENTITY
-   ['] NO-ORIGIN is ORIGIN-SYM
-   ['] NO-CLOSURE is CLOSURE-EACH
-   ['] NO-BODY-PASSIVE is BODY-PASSIVE? ;
+   ['] NO-ORIGIN is ORIGIN-SYM ;
 INSTALL-DEFAULT
 
 : BAD ( -- ) E-NUNIT-PROFILE throw ;
@@ -125,11 +114,6 @@ INSTALL-DEFAULT
    {: key:ptr keyu:n result:ptr resultu:n :}
    resultu 8 <> if BAD then
    VALUE key keyu result resultu ADD-ROW ;
-
-: EXECUTED-ROW ( ptr u8 n ptr u8 n -- )
-   {: key:ptr keyu:n producer:ptr produceru:n :}
-   produceru 32 <> if BAD then
-   EXECUTED key keyu producer produceru ADD-ROW ;
 
 : REMEMBER-MISS ( ptr u8 n -- )
    MISS-P @ NULL-PTR = if
@@ -183,16 +167,6 @@ INSTALL-DEFAULT
    value CELL-BYTES LE:U64!
    CELL-BYTES 8 want wantu STR=
    dup 0= if s" value changed" REMEMBER-MISS then ;
-
-: CHECK-EXECUTED ( ptr u8 n ptr u8 n -- bool )
-   {: key:ptr keyu:n want:ptr wantu:n :}
-   key keyu CURRENT {: rec:ptr ord:n found:bool :}
-   rec drop
-   found 0= if s" executed binding absent" REMEMBER-MISS false exit then
-   ord NFILE-REF:PRODUCER$ {: got:ptr gotu:n known:bool :}
-   known 0= if s" executed producer unknown" REMEMBER-MISS false exit then
-   got gotu want wantu STR=
-   dup 0= if s" executed producer changed" REMEMBER-MISS then ;
 
 : CHECK-CHECKER-ROLE ( ptr u8 n -- bool )
    {: want:ptr wantu:n :}
@@ -271,10 +245,6 @@ INSTALL-DEFAULT
       keyu 0= datau 8 <> or if MALFORMED then
       key keyu data datau CHECK-VALUE exit
    then
-   kind EXECUTED = if
-      keyu 0= datau 32 <> or if MALFORMED then
-      key keyu data datau CHECK-EXECUTED exit
-   then
    kind CHECKER-ROLE = if
       keyu 0<> datau 32 <> or if MALFORMED then
       data datau CHECK-CHECKER-ROLE exit
@@ -298,12 +268,6 @@ INSTALL-DEFAULT
    kind ORDERED = if
       keyu 0<> datau 0<> or if MALFORMED then
       s" ordered source action" REMEMBER-MISS false exit
-   then
-   kind BODY-READER = if
-      keyu 0= datau 0<> or if MALFORMED then
-      key keyu BODY-PASSIVE? dup 0= if
-         s" body reader changed" REMEMBER-MISS
-      then exit
    then
    MALFORMED ;
 
@@ -436,34 +400,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    then
    value CELL-BYTES LE:U64!
    key keyu CELL-BYTES 8 VALUE-ROW ;
-
-: CAPTURE-EXEC-ENTRY ( n -- )
-   NFILE-REF:IMPL-OWNER {: ord:n owned:bool :}
-   owned 0= if
-      s" executed-entry-unowned" -1 DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
-   ord NFILE-REF:CURRENT-RECORD? if exit then
-   ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
-   keyed 0= if
-      s" executed-key-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
-   ord NFILE-REF:PRODUCER$ {: producer:ptr produceru:n known:bool :}
-   known 0= if
-      s" executed-producer-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW exit
-   then
-   key keyu producer produceru EXECUTED-ROW ;
-
-: CAPTURE-EXEC ( n -- )
-   {: ord:n :}
-   DEPTH @ 0= if exit then
-   ord XREF-REC XREF-START ['] CAPTURE-EXEC-ENTRY CLOSURE-EACH
-   0= if
-      s" execution-closure-unknown" ord DIAG-ORDERED
-      ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW
-   then ;
 
 : ADD-RESOLUTION ( n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: role:n shape:n spelling:ptr spellingu:n namespace:ptr namespaceu:n
@@ -623,7 +559,11 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
       row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
       ord flags CAPTURE-READER-FLAGS
       flags DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then
-      flags DNAME-IMM and 0<> if ord CAPTURE-EXEC then
+      \ What an immediate ran while compiling cannot be re-verified.
+      flags DNAME-IMM and 0<> if
+         s" immediate-binding" ord DIAG-ORDERED
+         ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW
+      then
       exit
    then
    kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = if
@@ -658,49 +598,27 @@ public
 
 : BINDING+ ( ptr u8 n ptr u8 n -- ) BINDING-ROW ;
 : VALUE+ ( ptr u8 n ptr u8 n -- ) VALUE-ROW ;
-: EXECUTED+ ( ptr u8 n ptr u8 n -- ) EXECUTED-ROW ;
 : ORDERED! ( -- )
    s" ordered-source-action" -1 DIAG-ORDERED
    ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
 : COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;
-: BODY-READER+ ( ptr u8 n -- )
-   {: spelling:ptr spellingu:n :}
-   spellingu 0= if BAD then
-   BODY-READER spelling spellingu NULL-PTR 0 ADD-ROW ;
-: READER-COMPLETE! ( -- )
-   DEPTH @ 1- FRAME-KINDS @ 0= if BAD then
-   s" HBFDEP03" drop FRAME BYTES 8 BYTE-COPY ;
 : TOP-BOUND ( ptr u8 n -- ) OBSERVE-BOUND ;
 : TOP-RESOLUTION ( ptr u8 n -- ) OBSERVE-RESOLUTION ;
 : ABSENT-NEW ( n n -- ) {: first:n last:n :}
    first 0 < last first < or last ndict@ > or if BAD then
    last first ?do i ABSENCE-DECL loop ;
 
-: EXPORT ( -- ptr u8 n )
+\ The frame's rows, and whether the definition may be stored: an ORDERED row
+\ names a fact no later build can re-verify.
+: EXPORT ( -- ptr u8 n bool )
    FRAME {: off:n :}
-   off BYTES USED @ off - ;
-
-\ A declaration's producer is the source bytes and the observations needed
-\ to construct it. The FILE owner can publish this digest for declarations it
-\ owns after all its source actions have run. An unproved action leaves no
-\ portable producer for downstream FILEs to rely on.
-: FINAL-PRODUCER$ ( ptr u8 n -- ptr u8 n bool )
-   {: source:ptr sourceu:n :}
-   sourceu 32 <> if BAD then
-   EXPORT {: deps:ptr depsu:n :}
-   deps depsu HAS-ORDERED? if NULL-PTR 0 false exit then
-   PRODUCER-CTX SHA256-BEGIN
-   PRODUCER-CTX s" native-definition-construction-v1" SHA256-FEED
-   PRODUCER-CTX source 32 SHA256-FEED
-   PRODUCER-CTX deps depsu SHA256-FEED
-   PRODUCER-CTX PRODUCER-DIGEST SHA256-END
-   PRODUCER-DIGEST 32 true ;
+   off BYTES USED @ off - {: deps:ptr depsu:n :}
+   deps depsu deps depsu HAS-ORDERED? 0= ;
 
 : CHECK ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
    size HEADER-BYTES < if MALFORMED then
-   bytes 8 s" HBFDEP02" STR=
-   bytes 8 s" HBFDEP03" STR= or 0= if MALFORMED then
+   bytes 8 s" HBFDEP02" STR= 0= if MALFORMED then
    bytes 8 + LE:U64@ {: count:n :}
    count 0 < count size HEADER-BYTES - ROW-BYTES / > or if MALFORMED then
    HEADER-BYTES CHECK-OFF !
@@ -711,11 +629,6 @@ public
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
 
-: COMPLETE? ( ptr u8 n -- bool )
-   {: bytes:ptr size:n :}
-   size 8 < if false exit then
-   bytes 8 s" HBFDEP03" STR= ;
-
 : RESET ( -- )
    NFILE-REF:END-DEFINITION
    CHECKER-OWNER:RESOLUTION-NS-DEFAULT
@@ -725,9 +638,7 @@ public
    NFEED:RESOLUTIONS-DEFAULT
    BYTES-RELEASE FRAMES-RELEASE FRAME-KINDS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
-   8 0 ?do 0 CELL-BYTES i + c! loop
-   SHA256-CTX-BYTES 0 ?do 0 PRODUCER-CTX i + c! loop
-   32 0 ?do 0 PRODUCER-DIGEST i + c! loop ;
+   8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 : CLOSE ( -- )
    FRAME {: off:n :}
@@ -748,8 +659,6 @@ public
 : USE-PRIMITIVE-STATE ( [ n n -- n bool ] -- ) is PRIMITIVE-STATE ;
 : USE-SYM-IDENTITY ( [ n -- ptr u8 n ptr u8 n n ] -- ) is SYM-IDENTITY ;
 : USE-ORIGIN-SYM ( [ ptr u8 n n ptr u8 n -- n ] -- ) is ORIGIN-SYM ;
-: USE-CLOSURE ( [ n [ n -- ] -- bool ] -- ) is CLOSURE-EACH ;
-: USE-BODY-PASSIVE ( [ ptr u8 n -- bool ] -- ) is BODY-PASSIVE? ;
 : UNBIND ( -- ) INSTALL-DEFAULT ;
 
 \ The scanner supplies the exact resolved record ordinal, not a spelling or
@@ -759,8 +668,5 @@ public
 
 : VALUE-ORD ( n -- )
    CAPTURE-VALUE ;
-
-: EXEC-ORD ( n -- )
-   CAPTURE-EXEC ;
 
 ;package

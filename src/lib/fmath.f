@@ -8,6 +8,27 @@
 \ The module lives in `package FMATH`. External callers use the qualified public API
 \ (FMATH:FEXP, FMATH:FROUND, the integer roots, FLN and FPOW); range-reduction
 \ helpers remain package-private.
+\
+\ ERRORS. An invalid root input, logarithm input, base or exponent, and a
+\ nonfinite input to anything but the IEEE wrappers (ADD..FMIN), throws
+\ E-DOMAIN (-9020); an overflowing power, a nonfinite
+\ intermediate exponent product or an out-of-range FROUND throws E-OUTPUT
+\ (-9021). Underflow may return zero. FPOW's domain is a positive finite base
+\ (zero to the zero is outside it) and a finite exponent. FEXP returns +inf
+\ above 709.782712893384 and zero below -745.1332191019411.
+\
+\ ACCURACY. FPOW is exp(exponent * ln(base)): large exponents amplify the
+\ logarithm and product rounding, so it is an approximation, not a correctly
+\ rounded libm replacement. The *-BOUND words and DEG>RAD return the plain
+\ binary64 result plus an absolute error bound whose every term rounds
+\ outward, so a bound can be conservative and can overflow (E-OUTPUT) where a
+\ tighter one would fit. A development sweep against the platform libm
+\ (seed 9020, inputs built from exact significands and powers of two) held
+\ 516 FLN inputs across the exponent range to absolute error <= 2e-12 and 514
+\ FPOW pairs to <= max(5e-12*|reference|, 4 ulp): sampled, not a bound.
+\
+\ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module
+\ state.
 
 require src/lib/errors.f
 require src/lib/ieee754.f
@@ -74,7 +95,7 @@ private
 \ to [1/sqrt(2),sqrt(2)], |z| < 0.172. Centering the interval on one
 \ avoids cancellation between ln(unit) and exponent*ln(2) for x just below
 \ one. Terms through z^41 put truncation below binary64
-\ rounding noise; docs/fmath.md records measured end-to-end error.
+\ rounding noise; this file's header records the sampled end-to-end error.
 : FLN-ACC ( r r r n -- r ) {: z2:r term:r sum:r denom:n :}
    denom 41 > if sum exit then
    term z2 f* {: next:r :}

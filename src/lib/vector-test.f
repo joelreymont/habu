@@ -212,7 +212,7 @@ variable VECT-IDX-SUM
    1 VECT-VEC VEC-PUSH-N drop
    2 VECT-VEC 1 VEC-IDX VEC-N! ;
 
-\ ---- B5.5 typed VEC surface over NUM roles --------------------------------
+\ ---- typed VEC surface over NUM roles --------------------------------
 \ White-box count reader, declared at this test's own scope: a length/capacity
 \ assertion compares against a literal n. Checked cast, and projection out of a
 \ cell family needs no ownership (checker.f CAST-OWNER?). A pushed index is read

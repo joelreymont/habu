@@ -2,7 +2,7 @@
 \ it takes the value back: a divide's generated helper call (on x86-64 the
 \ division helper, src/compiler/native/select-x64.f), an ordinary final call, a
 \ quotation's own calls and a does> clause's. No signature declares a
-\ return-stack cell (docs/effects.md "The return-stack clause"), so every case
+\ return-stack cell (docs/forth.md "The return-stack clause"), so every case
 \ parks and takes back within one definition.
 require src/lib/test.f
 

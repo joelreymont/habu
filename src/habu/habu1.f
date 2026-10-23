@@ -98,6 +98,8 @@ variable DIVISION-PRIM-ROW
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
+\ FPRIM-L only for a body that emits no BL or BLR of its own; any other body
+\ uses FPRIM, whose frame preserves the caller's return address in x30.
 : FPRIM-L ( ptr u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    LBL FPL !  LBL FPE !
@@ -420,7 +422,7 @@ public
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
-\ so emitting one for any other target fails closed (docs/porting.md).
+\ so emitting one for any other target fails closed (docs/xcomp.md "Source Selection").
 package ENGINE-EMIT
 public
 : TARGET-UNKNOWN ( -- )
@@ -1410,11 +1412,8 @@ variable SZA-I
 : BNUNITRECLAIMCELL ( -- )
    9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
-: BNATIVEBODYREUSECELL ( -- )
+: BNATIVEORIGINCELL ( -- )
    9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + MOVZ,
-   9 DATA 9 ADD,  9 G-PUSH ;
-: BNATIVEBODYREADERCELL ( -- )
-   9 NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:READER cells + MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
@@ -2163,7 +2162,7 @@ variable LSOURCEEXECFINISH
       10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL, \ guard x8 = argbuf[8] indirect result
    nosret LBL, ;
 
-\ ---- the VM frame an outbound call leaves for C (docs/ffi-callback.md) ----
+\ ---- the VM frame an outbound call leaves for C (src/lib/ffi-callback.f) ----
 \ This thread's pointer, the value CB-OWNER and a slot row are compared with.
 \ It has to be one value for the life of a thread and a different one in every
 \ other live thread. Linux: TPIDR_EL0, the TLS base clone gives each thread.
@@ -2442,7 +2441,7 @@ variable LSOURCEEXECFINISH
    SP SP $A0 ADDI, RET,
    done LBL, ;
 
-\ ---- callback-entry: CB-POOL C entries into checked code (docs/ffi-callback.md)
+\ ---- callback-entry: CB-POOL C entries into checked code (src/lib/ffi-callback.f)
 \ The thunk's frame on C's stack: C's callee-saved set at [sp..$A0) as
 \ BTASK-ENTRY keeps it, the marshal frame CB-FRAME names (x0..x7, then d0..d7
 \ from CB-FRAME-FLOATS), and the thunk's own state. Checked code may hold state
@@ -4137,7 +4136,7 @@ public
    done LBL, ;
 
 \ set-top-check ( xt -- ): install the top-row token hook (dot
-\ habu-typed-top-engine-2b2e88aa, docs/typed-top-level.md §2.1), fail-closed
+\ habu-typed-top-engine-2b2e88aa, src/core/top-row.f), fail-closed
 \ at install with exactly BSETCHECK's window: 0 uninstalls (tier 0, today's
 \ dispatch byte for byte); a non-zero argument must be a live JIT code entry,
 \ DBASE <= xt < CP, or the install dies with a named rc-70 diagnostic instead
@@ -4160,16 +4159,16 @@ public
    msg LBL,  ma mu BYTES,
    done LBL, ;
 
-\ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
+\ Capture the seal-time dictionary-truncation watermark. Called from
 \ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
 \ assembler's token at the true engine-prefix end (habu2.f
 \ EMIT-SEAL-CAPTURE-TOKEN, after script-argv.f) - always after engine
-\ definitions and before any user token. The friend latch is already sealed (it is
-\ set much earlier, before the engine source is evaluated), so a raw ! would trap;
-\ this direct STR from NDICT (x27) is the engine's sanctioned bypass, mirroring how
-\ BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only grows once the
-\ engine is loaded (its records cannot be forgotten past this mark), so re-running
-\ the capture is monotonic and never lowers the watermark.
+\ definitions and before any user token. The friend latch is already sealed (it
+\ is set much earlier, before the engine source is evaluated), so a raw ! would
+\ trap; this direct STR from NDICT (x27) is the engine's sanctioned bypass,
+\ mirroring how BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only
+\ grows once the engine is loaded (its records cannot be forgotten past this
+\ mark), so re-running the capture is monotonic and never lowers the watermark.
 \ Undrained pre-trust defer backstop (dot habu-engine-pre-trust-77410827): the
 \ pending table (layout.f PD-*) must be empty by the engine-prefix seal — checker.f
 \ drains it after `: TRUST`, and SEAL-CAPTURE only ever runs after checker.f. A
@@ -4299,7 +4298,7 @@ private
    16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
-\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md). The harness
+\ The design seal's two writers (src/lib/vocabulary.f). The harness
 \ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
 \ is set either prim writes `hb: policy: sealed` and exits ENGINE-ERROR:POLICY,
 \ so nothing the design can reach widens its own vocabulary. Each refusal is one
@@ -4733,8 +4732,7 @@ package ENGINE-EMIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" native-unit-reclaim-cell" ['] BNUNITRECLAIMCELL FPRIM-L
-   s" native-body-reuse-cell" ['] BNATIVEBODYREUSECELL FPRIM-L
-   s" native-body-reader-cell" ['] BNATIVEBODYREADERCELL FPRIM-L
+   s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" seed-ndict!" ['] BSEEDNDICTSET FPRIM
@@ -4961,7 +4959,7 @@ package ENGINE-EMIT
    LBL BCAP-CP !
    LBL BCAP-CD !
    LBL BCAP-GO !
-   \ pass 2 re-runs the already-captured body: never re-capture (item 12 3b)
+   \ pass 2 re-runs the already-captured body: never re-capture
    14 DATA P2-CELL LDR,  14 BCAP-GO LABEL@ CBZ,  RET,
    BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
@@ -5315,7 +5313,7 @@ package ENGINE-EMIT
 
 ;package
 
-\ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
+\ Protected-WID membership. BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is a protected wordlist, else 0. The two engine-reserved OWNER-API
 \ wordlists (public=1, private=2) are ALWAYS protected: they are the sealed
 \ engine API and the registered-helper marker (OWNER-API-PRI-WID stamps the AOT

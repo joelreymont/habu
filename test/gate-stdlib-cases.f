@@ -167,10 +167,6 @@ SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
 ;SUITE
 
-SUITE hb-build-large-source
-   tools/hb-build-large-source-test.f
-;SUITE
-
 SUITE stripped-entry-qualified
    test/stripped-entry-qualified.f
 ;SUITE
@@ -186,10 +182,6 @@ SUITE hb-build-stripped-chain
 
 SUITE hb-build-stripped-lifecycle
    tools/hb-build-stripped-lifecycle-test.f
-;SUITE
-
-SUITE hb-build-stripped-quotation-field
-   tools/hb-build-stripped-quotation-field-test.f
 ;SUITE
 
 SUITE hb-build-cli-errors
@@ -253,15 +245,16 @@ SUITE native-file-types
    test/native-file-types-e2e.f
 ;SUITE
 
-SUITE native-file-stack
-   test/native-file-stack-e2e.f
-;SUITE
-
 SUITE native-file-auto
    test/native-file-auto-e2e.f
+   test/native-file-storage-e2e.f
    test/native-file-cwork-e2e.f
    test/native-file-fresh-region-e2e.f
    test/native-file-admission-e2e.f
+;SUITE
+
+SUITE native-file-root
+   test/native-file-root-e2e.f
 ;SUITE
 
 SUITE native-file-replay
@@ -1125,6 +1118,10 @@ SUITE utf16-units
    src/lib/utf16-test.f
 ;SUITE
 
+SUITE be-integers
+   src/lib/be-test.f
+;SUITE
+
 SUITE file-uri
    src/lib/uri-test.f
 ;SUITE
@@ -1169,6 +1166,12 @@ SUITE ffi-cabi
    src/lib/ffi-test.f
 ;SUITE
 
+\ Raw DEFLATE and CRC-32 through libz in one stripped application; keeps its
+\ executable and 10 MiB original, compressed and decoded payloads.
+SUITE zlib
+   test/zlib-e2e.f
+;SUITE
+
 \ C calling back into checked code through libc's qsort and pthread_create, on
 \ the calling task and on foreign threads; writes
 \ build/ffi-callback-transcript.txt and compares it whole.
@@ -1183,12 +1186,12 @@ SUITE ffi-callback-growth
 ;SUITE
 
 \ Packages PG and DB-ROWS against a private PostgreSQL cluster the harness
-\ starts on a Unix-domain socket, runs src/lib/pg-test.f and then src/lib/db/rows-test.f
-\ against, and stops however they end; then the same harness killed by a pool,
-\ which must leave no server process and no socket directory. initdb and
-\ postgres on PATH are a gate requirement (docs/bootstrap.md). The harness's
-\ step deadlines sum to 300 s, inside the row's hang guard (test/suite-budget.f
-\ ROW-MS).
+\ starts on a Unix-domain socket, runs src/lib/pg-test.f and then
+\ src/lib/db/rows-test.f against, and stops however they end; then the same
+\ harness killed by a pool, which must leave no server process and no socket
+\ directory. initdb and postgres on PATH are a gate requirement
+\ (docs/bootstrap.md "Requirements"). The harness's step deadlines sum to 300 s,
+\ inside the row's hang guard (test/suite-budget.f ROW-MS).
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
@@ -1365,7 +1368,7 @@ SUITE x86-64-emit
 ;SUITE
 
 \ Build executable peer fixtures through the real pass chain and ELF writer.
-\ Execution on the x86-64 peer is a separate device check (docs/bootstrap.md).
+\ Execution on the x86-64 peer is a separate device check.
 SUITE x86-64-peer-image
    test/x86-64-peer-image.f
 ;SUITE
@@ -1373,7 +1376,7 @@ SUITE x86-64-peer-image
 \ Every HIR fixture the x86-64 rows emit, one image each, the signal image that
 \ raises a real signal through src/habu/boot-x64.f's handler install, the one
 \ diff-negative image that proves the harness and the manifest of statuses the
-\ peer must see (docs/bootstrap.md).
+\ peer must see.
 SUITE x86-64-peer-routines
    test/x86-64-peer-routines.f
 ;SUITE

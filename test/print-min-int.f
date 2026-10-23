@@ -8,7 +8,7 @@
 \ which reads the pattern left by the negate as the magnitude it is.
 \
 \ HOW THE TEXT COMES BACK. `.` and `u.` write through the engine's output funnel
-\ (docs/genio.md), so a genio device makes them readable: the sink below is a
+\ (src/lib/genio.f), so a genio device makes them readable: the sink below is a
 \ write-only device that appends to a buffer, and each case installs it, prints
 \ one number, restores the terminal and only THEN asserts — a failing assertion
 \ has to reach the terminal, not the buffer it is complaining about.

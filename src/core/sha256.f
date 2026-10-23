@@ -5,7 +5,7 @@
 \ A DIGEST IN PROGRESS IS THE CALLER'S BYTES. SHA256-BEGIN, SHA256-FEED and
 \ SHA256-END work on a context the caller owns: any writable span of
 \ SHA256-CTX-BYTES bytes, one per digest. Nothing on that path is process-wide,
-\ so two tasks (docs/threads.md — tasks are pthreads) hash at the same time by
+\ so two tasks (src/lib/task.f: tasks are pthreads) hash at the same time by
 \ holding a context each, and a context is a plain span: copying its bytes
 \ copies the digest state, and the copy finishes on its own.
 \

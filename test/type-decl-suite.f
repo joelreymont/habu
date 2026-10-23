@@ -1,17 +1,16 @@
-\ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration
-\ grammar (src/core/sumtype.f; docs/type-families.md §9, PLAN item 6). A
-\ WHITEBOX-SUITE row, like test/type-family-suite.f: the registry probes are
-\ checker internals, which the unsealed engine binds by their recorded rows. The
-\ gate runs it on that engine, which test/whitebox-engine.f builds:
+\ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration grammar
+\ (src/core/sumtype.f; docs/forth.md "Structures And Enums"). A WHITEBOX-SUITE
+\ row, like test/type-family-suite.f: the registry probes are checker internals,
+\ which the unsealed engine binds by their recorded rows. The gate runs it on
+\ that engine, which test/whitebox-engine.f builds:
 \     <unsealed engine> --load test/type-decl-suite.f
 \ TFAM, TYPE and MATCH are reserved system-package names in the engine's native
-\ RESTAB (src/habu/habu2.f, TFAM 2b-ii), so `package TFAM` exits 84 on this
-\ engine too. So every accepting declaration below is also the post-seal proof:
-\ user source registers families through the baked grammar words without opening
-\ any reserved package.
-\ Only the capture-time seal of the other packages (internal-mark.f
-\ SEAL-PACKAGES) stands down here.
-\ A failure prints F<index> + detail; T-REPORT exits 1 on any fail.
+\ RESTAB (src/habu/habu2.f), so `package TFAM` exits 84 on this engine too. So
+\ every accepting declaration below is also the post-seal proof: user source
+\ registers families through the baked grammar words without opening any
+\ reserved package. Only the capture-time seal of the other packages
+\ (internal-mark.f SEAL-PACKAGES) stands down here. A failure prints F<index> +
+\ detail; T-REPORT exits 1 on any fail.
 
 require src/lib/string.f
 require src/lib/test.f
@@ -25,7 +24,7 @@ T-RESET
 \ evaluate a declaration string, returning its throw code (0 = accepted).
 \ Checked: the dynamic-evaluate boundary is the existing audited
 \ INCLUDE-EVALUATE; the throw code crosses the eval frame into this compiled
-\ catch (a TOP-LEVEL catch around evaluate loses the code — see LESSONS.md).
+\ catch (a TOP-LEVEL catch around evaluate loses the code).
 TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
 : TDT-EVAL-GO ( -- )
    TDTE-A @ TDTE-U @ INCLUDE-EVALUATE ;
@@ -152,7 +151,7 @@ SUMTYPE tdres<a,b>
 s" TDOK-RES ( tdres<n,n> -- tdres<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-RES1 ( tdres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ zero-payload variant: padding-only, paycells 0 (docs §4 option shape).
+\ zero-payload variant: padding-only, paycells 0 (the option `none` shape).
 SUMTYPE tdopt<a>
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
@@ -164,7 +163,7 @@ TDF @ TWX-TFAM-SLOTS@ 1 T=
 TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 0 T=
 TDF @ TFAM-VAR-START@ SUMV-SCH-COUNT@ 0 T=
 
-\ multi-cell concrete payload (docs §8 parse-result): ptr u8 + n schemas.
+\ multi-cell concrete payload: ptr u8 + n schemas.
 SUMTYPE tdparse<a>
   VARIANT yes a ;VARIANT
   VARIANT no  ptr u8 n ;VARIANT
@@ -280,7 +279,7 @@ SUMTYPE tdmix<a,b>
   VARIANT big a b n ;VARIANT
 ;SUMTYPE
 \ ---------------------------------------------------------------------------
-\ ENUM (item 14, docs §9.3): `ENUM name v0 v1 .. ;ENUM` registers a TK-ENUM
+\ ENUM: `ENUM name v0 v1 .. ;ENUM` registers a TK-ENUM
 \ family — a zero-payload sum (arity 0, slots 0) — one bare variant name per
 \ token becoming a payload-free SUMV row in declaration-tag order. It shares the
 \ SUMTYPE close/rollback/constructor path, so the family MATCHes and gets one
@@ -294,15 +293,15 @@ ENUM tdcolor
 \ the bare enum tail resolves as a logical type in a signature (arity-0 family).
 s" TDE-ID ( tdcolor -- tdcolor )" CHECK-QUIET-CANDIDATE! -1 T=
 \ generated constructors: TDCOLOR:GREEN ( -- tdcolor ). A raw n is NOT the enum
-\ (docs §23 rejected example): a payload-free enum ctor takes no input and yields
-\ the enum type; a bare 0 cannot certify as tdcolor.
+\ (docs/design.md "Families and layout policies"): a payload-free enum ctor
+\ takes no input and yields the enum type; a bare 0 cannot certify as tdcolor.
 s" TDE-MK ( -- tdcolor ) TDCOLOR:GREEN" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDE-BAD ( -- tdcolor ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 \ a payload-free ctor rejects a spurious input just like the arity-0 sum ctors.
 s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
-\ PRODUCT (item 15, docs §9.4): `PRODUCT name[<params>] FIELD f t .. ;PRODUCT`
+\ PRODUCT: `PRODUCT name[<params>] FIELD f t .. ;PRODUCT`
 \ registers a TK-PRODUCT family — a single-shape record with named PF-* field
 \ rows and NO tag. It resolves in signatures and transports as a whole bundle.
 \ ---------------------------------------------------------------------------
@@ -311,7 +310,7 @@ PRODUCT tdpair<a,b>
   FIELD snd b
 ;PRODUCT
 \ a concrete-arg product expands to hidden fields in a signature and transports
-\ as ONE whole bundle (dup/drop are width-aware, item 12); identity flows.
+\ as ONE whole bundle (dup/drop are width-aware); identity flows.
 s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDP-DUP ( tdpair<n,n> -- tdpair<n,n> tdpair<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDP-DROP ( tdpair<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
@@ -342,12 +341,12 @@ TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-CON? -1 T=
 TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 
 \ ---------------------------------------------------------------------------
-\ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
+\ Layout-aware generic stack ops. A logical
 \ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
 \ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
 \ closed: ?dup (branches on the tag cell), control predicates, higher-order
 \ apply, arithmetic/compare/store, and hidden '@' field names in a public
-\ signature. See docs/type-families.md §17.
+\ signature. See docs/design.md "Families and layout policies".
 \ ---------------------------------------------------------------------------
 \ a layout value flows through untouched (identity is fine).
 s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -370,7 +369,7 @@ s" TD7-CELL-DUP ( tdfoo<n,n> -- tdfoo<n,n> tdfoo<n,n> ) dup" CHECK-QUIET-CANDIDA
 s" TD7-HID-SLOT ( @tdres.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD7-HID-TAG ( @tdopt.tag<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- item 12 slice-1: the full generic stack-op surface transports a bundle ---
+\ --- the full generic stack-op surface transports a bundle ---
 \ every prim in the dot's list, on a width-1 sum, a wider (slots=3) sum, and an
 \ enum, with a cell above/below to prove only the layout bundle moves as a unit.
 s" TD12-ROT ( tdres<n,n> n n -- n n tdres<n,n> ) rot" CHECK-QUIET-CANDIDATE! -1 T=
@@ -390,7 +389,7 @@ s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" CHECK-QUIET-CANDIDATE! 
 \ whole, so a signature that splits it (claims a bare n out) still rejects.
 s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- item 12 slice-3b + habu-tfam-12-pass: branch-scoped locals lower ----------
+\ --- branch-scoped locals lower ----------
 \ The pass-2 recompiler used to read the per-CHECK LOCW table by LIVE index
 \ AFTER the hook certified, but branch-scoped locals are popped from #LOC at
 \ their join and the scalar emitter reuses their frame slots (habu2.f
@@ -444,7 +443,7 @@ public
 
 LOCAL-BIND-CAP-TEST:RUN
 
-\ --- item 12 slice-1 negatives: non-transport touches still fail closed --------
+\ --- negatives: non-transport touches still fail closed --------
 \ ?dup branches on the tag cell: width-breaking, so it rejects a layout value.
 s" TD12-QDUP ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-QDUP-ENUM ( tdlight -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -458,7 +457,7 @@ s" TD12-EXEC ( tdres<n,n> -- ) execute" CHECK-QUIET-CANDIDATE! 0 T=
 \ memory store/fetch is a field coercion outside constructors/MATCH: reject.
 s" TD12-STORE ( tdres<n,n> ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- item 12: possibly-linear layout transports reject until TFAM 11 ---------
+\ --- possibly-linear layout transports reject -----------------------
 \ A layout family whose args carry a linear con — or an arg still unresolved,
 \ which may later bind linear — must not transport: the linear discipline
 \ counts concrete linear cons, so a layout bundle would let a copy duplicate
@@ -480,8 +479,8 @@ s" TDLIN-DROP ( tdlin<tdown> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-2DROP ( tdlin<tdown> n -- ) 2drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-LOCAL ( tdlin<tdown> -- ) {: x :} x drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ TFAM 11 move-class relaxation: a count-preserving move (>r r>) of a resolved
-\ linear bundle conserves the count (LIN-CHECK before=after) and now certifies;
+\ Move-class relaxation: a count-preserving move (>r r>) of a resolved linear
+\ bundle conserves the count (LIN-CHECK before=after) and now certifies;
 \ copy/drop above still reject. An OPEN-arg (may-later-bind-linear) layout stays
 \ fail-closed for every transport (TDLIN-VAR-DUP), including moves — that is the
 \ separate delayed-resolution piece.
@@ -511,18 +510,18 @@ s" TDLINC-S-STORE ( tdlins ptr tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-FETCH ( ptr tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ --- item 12 slice-2/3b: interpret-mode + frame-metadata boundaries (docs §17).
-\ A layout value is a whole logical bundle, so introspection and frame-crossing
-\ words either see it whole or fail closed — pinned here as regressions.
-\ depth/.s report raw physical cells: with hidden-field expansion (slice 3b)
-\ they would expose a layout row's physical shape, so they fail closed over any
-\ row holding hidden fields PERMANENTLY (TFAM 12 item-5 verdict, docs §17).
+\ --- interpret-mode + frame-metadata boundaries (docs/design.md
+\ "Families and layout policies"). A layout value is a whole logical bundle, so
+\ introspection and frame-crossing words either see it whole or fail closed —
+\ pinned here as regressions. depth/.s report raw physical cells: with
+\ hidden-field expansion (slice 3b) they would expose a layout row's physical
+\ shape, so they fail closed over any row holding hidden fields PERMANENTLY.
 s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
 \ constant pops one physical cell: a checked-body pop of a layout value rejects
-\ PERMANENTLY (TFAM 12 verdict 2026-07-09: docs §17 sanctions reject over
-\ multi-cell store; the top-level pop never sees a wide value — DNAME-WIDE
-\ dispatch gate — and records the one-cell `-- a` trust for the rest).
+\ PERMANENTLY: a multi-cell value rejects rather than store one of its cells.
+\ The top-level pop never sees a wide value (DNAME-WIDE dispatch gate) and
+\ records the one-cell `-- a` trust for the rest.
 s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-CONST-N ( n -- ) constant" CHECK-QUIET-CANDIDATE! -1 T=
 \ catch/frame words: a layout value FLOWS through a stack-preserving quotation
@@ -575,7 +574,7 @@ s" TDS2-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDS2-WMIX ( tdres<n,n> ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS2-WNIN ( n ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS2-WNOUT ( ptr tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
-\ linear / open args stay fail-closed even at width 1 (TFAM-11 rule).
+\ linear / open args stay fail-closed even at width 1.
 s" TDS1-LIN ( tdmemu<tdown> ptr tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ executed round-trip: store an enum, fetch it, MATCH the fetched value.
@@ -635,7 +634,7 @@ TDS2-MIX-SUM 41 T=
 \ is one cell), and MAKE/UNMAKE render the field as its family — the field is
 \ born typed, so a swapped enum-field argument order is a checker reject (the
 \ dtype/layout guarantee the CAD swap needs). A SELF-referential field is
-\ recursive and rejects with E-TDECL-RECURSIVE (item 16 boxed sub-slice 1).
+\ recursive and rejects with E-TDECL-RECURSIVE.
 PRODUCT tdprec
   FIELD col tdcolor
   FIELD lum tdlight
@@ -711,8 +710,8 @@ TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
 TDF @ TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
 s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-\ a SELF-referential field is recursive: item 16 boxed sub-slice 1 rejects it with
-\ the §24 recursive-sum diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
+\ a SELF-referential field is recursive and rejects with the recursive-sum
+\ diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
 s" PRODUCT tdpbad3 FIELD s tdpbad3 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdpnest VARIANT value tdpw ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
 s" " s" tdpnest" TFAM-FIND-IN TDOK ! TDF !
@@ -807,7 +806,7 @@ s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
 REC-MIN-IN@ 34 T=
 TDT-BASE!
 
-\ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).
+\ --- logical width metadata.
 s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-WIDTH@ 2 T=
@@ -848,7 +847,8 @@ TDF @ TFAM-VAR-COUNT@ 1 T=
 s" tdpa" s" tpriv" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
-\ same tail in a second package registers without aliasing (docs §6).
+\ same tail in a second package registers without aliasing (docs/design.md
+\ "Families and layout policies").
 package tdpb
 public
 NEWTYPE tres<a>
@@ -860,10 +860,10 @@ TDOK @ -1 T=
 TDF @ TDX @ <> -1 T=
 
 \ ---------------------------------------------------------------------------
-\ item 8 metadata: a PUBLIC sum/enum family derives its constructor package name
+\ Constructor metadata: a PUBLIC sum/enum family derives its constructor package name
 \ (Package Shape) at ;SUMTYPE and stores it in every variant's SV.CTOR-PKG slot;
 \ a PRIVATE family exports nothing, so the slot stays empty (the `construct`
-\ form is item 9). No runtime constructor word is published in this item yet.
+\ form constructs it).
 \ ---------------------------------------------------------------------------
 \ top-level public `tdres` -> package TDRES on both variants.
 s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
@@ -1040,7 +1040,7 @@ s" NEWTYPE fresh-mask-x<a>" E-TDECL-NAME TDT-NEG
 \ an effect reads a bare `ptr` as the pointer constructor, never as a family,
 \ so the tail is reserved ahead of the global `ptr` family's duplicate check.
 s" NEWTYPE ptr" E-TDECL-NAME TDT-NEG
-\ item 9 reserved token protocol: construct/match/;match may not name a
+\ Reserved token protocol: construct/match/;match may not name a
 \ family or a variant (;match already fails the canonical-tail gate).
 s" NEWTYPE construct<a>" E-TDECL-NAME TDT-NEG
 s" SUMTYPE match VARIANT x n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
@@ -1193,7 +1193,7 @@ s" " s" tdpgn" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 3 T=  \ tdopt<tdres<n,f>> is three cells
 
-\ malformed enum declarations (item 14): every reject rolls back to baseline via
+\ malformed enum declarations: every reject rolls back to baseline via
 \ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or
 \ variant row survives.
 \ empty / unterminated bodies.
@@ -1224,7 +1224,7 @@ s" ENUM sumtype red ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdcolor red ;ENUM" E-TFAM-DUP TDT-NEG
 s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
 
-\ malformed product declarations (item 15): every reject rolls back to baseline
+\ malformed product declarations: every reject rolls back to baseline
 \ via the shared transactional path (TDT-NEG asserts TDT-BASE=, incl. PF-N), so
 \ no family, field, or schema row survives a failed product.
 \ empty / unterminated bodies.
@@ -1282,22 +1282,24 @@ s" SUMTYPE tdpv2<a> VARIANT field a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" NEWTYPE product<a>" E-TDECL-NAME TDT-NEG
 
 \ ---------------------------------------------------------------------------
-\ item 16: layout-policy header clause (`POLICY <name>`, docs §22/§24). A missing
-\ clause keeps the TFAM-DECL default (stack-cell-tag, docs §22.1); explicit
-\ stack-cell-tag and packed-tag accept on sum/enum/product (packed bakes only a
-\ memory ABI descriptor at close - stack shape identical, pinned in
-\ test/type-family-suite.f); niche-null/boxed are recognised but reject as
-\ not-yet-supported until their per-policy lowering ships (grammar-gated); any other token — including the v1 non-goal `custom`
+\ Layout-policy header clause (`POLICY <name>`, docs/design.md
+\ "Families and layout policies"). A missing clause keeps the TFAM-DECL default
+\ (stack-cell-tag); explicit stack-cell-tag and packed-tag accept on
+\ sum/enum/product (packed bakes only a memory ABI descriptor at close - stack
+\ shape identical, pinned in test/type-family-suite.f); niche-null/boxed are
+\ recognised but reject as not-yet-supported until their per-policy lowering
+\ ships (grammar-gated); any other token — including the v1 non-goal `custom`
 \ the LAY-* registry tolerates but the grammar must not expose — is an unknown
-\ policy; POLICY is a reserved name. Every reject rolls back to baseline (TDT-NEG
-\ asserts TDT-BASE=). The recursive-sum reject (docs §24) lands with boxed.
+\ policy; POLICY is a reserved name. Every reject rolls back to baseline
+\ (TDT-NEG asserts TDT-BASE=). A self-referential payload rejects under every
+\ accepted policy (E-TDECL-RECURSIVE).
 \ ---------------------------------------------------------------------------
 \ explicit stack-cell-tag accepts and records the default policy on sum, enum,
 \ and product headers, after the family name. The
 \ POLICY clause is parsed in the shared CHECKER-DEF*-BODY before any
 \ visibility-dependent constructor generation, so these probe the parse with
 \ PRIVATE families inside a package: a PUBLIC family publishes constructors and
-\ each consumes one slot of the fixed protected-WID seal registry (item 2b),
+\ each consumes one slot of the fixed protected-WID seal registry,
 \ whose ~16/session cap this suite already sits at (dot
 \ habu-seal-protwid-cap-6f1c9d2b). Private families skip constructor generation,
 \ so they exercise TDECL-POLICY on sum/enum/product without touching that cap.
@@ -1349,21 +1351,22 @@ TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
 \ Re-arm the diagnostic swallow buffer before the layout-policy/recursive reject
 \ fixtures. The buffer armed at the top of the suite accumulates every expected
 \ reject's rendered diagnostic (its content is never inspected here — it only
-\ silences stderr) and was sized to just fit; re-arming resets its offset so this
-\ growing TFAM-16 section keeps headroom, matching the suite's re-arm-per-section
-\ idiom (§1434, §1447, §1599, …).
+\ silences stderr) and was sized to just fit; re-arming resets its offset so
+\ this growing layout-policy section keeps headroom, matching the suite's
+\ re-arm-per-section idiom.
 TDIAG-BUF 8192 DIAG-BUFFER!
 \ not-yet-supported policies reject on every header (grammar-gated until lowering).
 s" SUMTYPE tdpolns2<a> POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolns3<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM" E-TDECL-POLICY TDT-NEG
 s" PRODUCT tdpolns5 POLICY niche-null FIELD x n ;PRODUCT" E-TDECL-POLICY TDT-NEG
-\ niche-null reject-until-supported is TOTAL and shape-independent: even the exact
-\ null-pointer-niche option shape (a 2-variant sum { none (empty), some (one
-\ pointer) }, docs §22.3) rejects at the POLICY clause. The policy is validated
-\ before any variant, so no structurally "niche-eligible" family is accepted
-\ before its prerequisites land (the nonnull-ptr refined type that keeps `some`
-\ off the null discriminant, plus the W=1 MATCH/ctor lowering).
+\ niche-null reject-until-supported is TOTAL and shape-independent: even the
+\ exact null-pointer-niche option shape (a 2-variant sum { none (empty), some
+\ (one pointer) }, docs/design.md "Families and layout policies") rejects at the
+\ POLICY clause. The policy is validated before any variant, so no structurally
+\ "niche-eligible" family is accepted before its prerequisites land (the
+\ nonnull-ptr refined type that keeps `some` off the null discriminant, plus the
+\ W=1 MATCH/ctor lowering).
 s" SUMTYPE tdpolnq1<a> POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM" E-TDECL-POLICY TDT-NEG
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
@@ -1377,17 +1380,17 @@ s" SUMTYPE tdpolrv<a> VARIANT policy a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" NEWTYPE policy<a>" E-TDECL-NAME TDT-NEG
 
 \ ---------------------------------------------------------------------------
-\ item 16 boxed sub-slice 1: a DIRECT self-family reference in a payload makes
-\ the family recursive, which only the (deferred) boxed policy can represent; so
-\ under any non-boxed policy — every family today, since packed/niche/boxed reject
-\ at the POLICY clause — a self-ref rejects with the docs §24 recursive-sum
-\ diagnostic (E-TDECL-RECURSIVE), not the generic E-TDECL-PAYLOAD "unknown payload
-\ type". ptr-wrapped, inline, bare, and product-field forms all reject; the reject
-\ rolls back to baseline (TDT-NEG asserts TDT-BASE=). Mutual recursion
-\ (A -> B -> A) is fail-closed today: a payload may only reference an ALREADY
-\ declared family, so a cycle needs a forward reference that rejects as an
-\ unknown payload before any row is created (pinned below). A schema cycle walk
-\ becomes necessary only once boxed accept admits forward self/mutual refs.
+\ A DIRECT self-family reference in a payload makes the family recursive, which
+\ only the (deferred) boxed policy can represent; so under any non-boxed policy
+\ — every family today, since packed/niche/boxed reject at the POLICY clause — a
+\ self-ref rejects with the recursive-sum diagnostic (E-TDECL-RECURSIVE), not
+\ the generic E-TDECL-PAYLOAD "unknown payload type". ptr-wrapped, inline, bare,
+\ and product-field forms all reject; the reject rolls back to baseline (TDT-NEG
+\ asserts TDT-BASE=). Mutual recursion (A -> B -> A) is fail-closed today: a
+\ payload may only reference an ALREADY declared family, so a cycle needs a
+\ forward reference that rejects as an unknown payload before any row is created
+\ (pinned below). A schema cycle walk becomes necessary only once boxed accept
+\ admits forward self/mutual refs.
 \ ---------------------------------------------------------------------------
 s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec2<a> VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
@@ -1582,9 +1585,9 @@ s" PRODUCT tdpfdiag FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
 DIAG-BUFFER$ s" bad product declaration" CONTAINS? -1 T=
 DIAG-BUFFER$ s" reserved field name" CONTAINS? -1 T=
 DIAG-BUFFER$ s" at 'make'" CONTAINS? -1 T=
-\ item 16: a policy reject flows into the same declaration-shaped prose packet —
-\ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics (item
-\ 13) change; the richer JSON ADT fields join it unchanged when item 13 lands.
+\ A policy reject flows into the same declaration-shaped prose packet —
+\ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics
+\ change; the richer JSON ADT fields join it unchanged.
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 
 DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? -1 T=
@@ -1792,8 +1795,9 @@ s" package tdrv" E-CTOR-PROTECTED TDT-NEG
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
-\ visibility gate (docs §9.3.1): DERIVE requires a PUBLIC family — a family
-\ declared in a private package section rejects with full registry rollback.
+\ visibility gate (docs/forth.md "Structures And Enums"): DERIVE requires a
+\ PUBLIC family — a family declared in a private package section rejects with
+\ full registry rollback.
 package tdprv
 private
 s" ENUM tdrb11 DERIVE eq aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
@@ -2055,7 +2059,7 @@ s" TDLB6I ( n -- tdfoo<n,n> ) {: x:tdfoo<n,n> :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ W=3, its annotation is the bundle's top hidden term and the bind records the
 \ full width, so the local holds the whole value.
 s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" CHECK-QUIET-CANDIDATE! -1 T=
-\ bare W>1 bundle locals keep working (item 12 regression).
+\ bare W>1 bundle locals keep working.
 s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ arity-0 cell family annotation = the signature nominal.
 NEWTYPE tdlnom

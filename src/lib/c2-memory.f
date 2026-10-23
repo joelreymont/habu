@@ -54,12 +54,29 @@ public
    {: parent:ptr bound:n callback :}
    parent bound callback LOAN-RUN 2drop parent bound ;
 
+\ WITH-INIT's callback may declare `forall<i inside [l,T],[ ... ]>`: fresh `i`
+\ is inside the byte view's lifetime `l` and every scope dependency of the
+\ initial record `T`. It takes a live unique byte view and a complete,
+\ non-unique, non-stale fixed-cell product; a short capacity, incompatible
+\ field schema, open, unique or stale record, raw or shared authority,
+\ incompatible callback, or escape of `i` refuses. Return clears the
+\ initialized extent and restores the original view and bound; throw and task
+\ halt close the scope.
 TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-RUN ;
 
+\ WITH-RECORDS gives a table one owning scope: a unique byte view, a
+\ nonnegative count (zero is valid) and a committed, non-owning `DERIVE init`
+\ seed whose count times record size fits the original bound. Under
+\ `forall<i inside [l,T],...>` its callback gets opaque linear
+\ `records<p,i,a,T>`. Closing the table clears the whole initialized extent
+\ once and restores the original bound.
 TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    RECORDS-RUN ;
 
+\ WITH-RECORD checks a zero-based index and lends `mut-view<p,j,a,init<i,T>>`
+\ under `forall<j inside i,...>`; `j` cannot escape, and the element is
+\ neither reconstructed nor cleared on return.
 : WITH-RECORD ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] n n n | U -- S ptr u8 n | U )
    {: width:n stride:n align:n :}
    {: base:ptr count:n index:n callback :}
@@ -67,6 +84,10 @@ TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
    base index stride * + stride callback LOAN-RUN 2drop
    base count ;
 
+\ WITH-FIELD name borrows an initialized field of the receiver's committed
+\ instantiated schema: a live unique `mut-view<p,i,a,init<i,T>>` lends a child
+\ with field type `F`, fresh scope `j` inside `i`, init scope `i` and region
+\ `field(a,name)`; throw and task halt close the child loan.
 \ The field offset and extent are emitted from the checker's committed layout
 \ fact for this exact call. The callback owns only that span; the parent's
 \ original base and bound return unchanged even when the field was edited.

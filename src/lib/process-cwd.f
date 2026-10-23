@@ -5,7 +5,7 @@
 \ RUN-ARGV-ENV-CWD-* entries, even though the src/lib/process.f row underneath them
 \ is per task. A caller that owns its own cwd bytes (src/lib/process-command.f's
 \ command contexts) calls SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE instead and
-\ touches nothing here. See docs/threads.md.
+\ touches nothing here.
 \
 \ The module lives in `package PROC-CWD`. External callers use the qualified public
 \ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,

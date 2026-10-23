@@ -15,6 +15,8 @@
 \ This file declares no package. A block with codes in a package (JR:E-SOURCE)
 \ is minted in the file that owns that package, bounds and all, and a comment
 \ here says where (docs/forth-card.md § 6).
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state (constants only).
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST
@@ -1456,6 +1458,10 @@
 
 \ Intel disassembly: -9510..-9519, minted by src/arch/x86-64/disasm.f,
 \ which owns package X64DIS.
+\ Raw DEFLATE and CRC-32: -9520..-9529, minted in src/lib/zlib.f, which owns
+\ package ZLIB.
+\ Strict UTF-16LE conversion: -9530..-9539, minted in src/lib/utf16.f, which
+\ owns package UTF16.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

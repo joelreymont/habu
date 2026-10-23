@@ -1,5 +1,7 @@
 \ The linux-x86-64 writer: links a captured window to the x86-64 kernel and
-\ writes the image (docs/x86-64.md "The write-time link").
+\ writes the image. The link (src/habu/link-x64.f) resolves every record, call,
+\ MOVABS literal and DATA cell at write time; no relocation runs at boot or
+\ snapshot restore.
 \
 \ WHY ITS OWN FILE, LOADED BEFORE THE WINDOW. tools/native-emit.f loads after
 \ the capture, so the window's compiler compiles it: CHECKER-REG:SEAL

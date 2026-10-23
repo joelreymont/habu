@@ -214,7 +214,7 @@ private
    CTARGET:F-BASE CTARGET:F-SCALAR-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
-\ Design lines 236-238: a value-producing straight-line operation ends no block,
+\ A value-producing straight-line operation ends no block,
 \ names no successor, holds no region, and carries no effect token.
 : PURE-VALUE ( -- )
    false 0 0 IR-SCHEMA:SET-CONTROL

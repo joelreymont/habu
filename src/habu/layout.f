@@ -53,7 +53,7 @@ public
 1 CP lshift or
 constant A64-MASK
 
-\ docs/x86-64.md fixes these six, and this is their one statement:
+\ docs/xcomp.md "Machine model" fixes these six, and this is their one statement:
 \ src/compiler/native/x64ir.f RESERVED-MASK reads X64-MASK and adds rsp, which
 \ the machine holds and the engine does not. X64-DSTACK is A64-DSTACK's twin;
 \ each of the four after rbx is the twin of the ARM64 constant at the head of
@@ -404,7 +404,13 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ Cold prefix and argv or stdin input share the read allowance. Baked source
-\ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f.
+\ has separate space sized from SRCN by SOURCE-ARENA-LEN in habu2.f. Each argv
+\ file is bounded by it too, and the file reader reserves an EOF probe; overflow
+\ exits 74 with `hb: source prefix buffer full` (test/main-argv.f,
+\ tools/build-fixpoint-test.f SOURCE-BOUNDARY). The prefix is read without its
+\ comment and blank lines (habu2.f EMIT-SOURCE-READ-PREFIX); argv files and the
+\ --build payload are read byte for byte. A seeded engine emits no cold prefix,
+\ so its program input starts at the arena base.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA
@@ -420,7 +426,7 @@ $3000 constant LOCNAMES
 \ it is stored. checker.f LOC-NAME-W and the LLOCWIDEMSG text state the same 16.
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
-\ --- Friend arena (TFAM 2b-i): one contiguous write-protected band
+\ --- Friend arena: one contiguous write-protected band
 \ [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch plus
 \ every checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
 \ TSIG/TCSIG/CRSIG signature cells, the package PKG-* cells, and the DEFER-*
@@ -449,10 +455,10 @@ LOC-REC 8 - constant LOC-NAME-CAP
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
-$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark; 0 until SEAL-CAPTURE
 
 \ ENGINE-ERROR:BAD-TAG is the runtime exit status when a compiled MATCH reaches its invalid-tag
-\ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
+\ fallback (docs/forth.md "Structures And Enums"). The compiler emits a
 \ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
 \ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
 \ reaches it; a forged tag (TRUSTED constructor) exits deterministically with this
@@ -500,7 +506,7 @@ $4842444546455201 constant DEFER-MAGIC
 \ and no covering ranged region (GTOD-SCRATCH is $1E0..$1F0; the seal suite's
 \ deliberate poke hole is $1A0 — left alone).
 $1B0 constant CMFAM-CELL
-\ MATCH-lowering compile state (TFAM 10 slice 3, docs §16). All DATA-relative
+\ MATCH-lowering compile state. All DATA-relative
 \ (x20), in the reclaimed $B0..$1B0 free band above the friend arena ($20..$B0)
 \ and below CMFAM-CELL ($1B0) — rg-verified unused (the seal-suite poke hole $1A0
 \ is left alone; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0). CMBK-CELL is a
@@ -898,7 +904,7 @@ $47E0 constant HEAP-START-CELL
 ;package
 
 
-\ GENIO-ABI: where the generic I/O layer (docs/genio.md, src/lib/genio.f) keeps the
+\ GENIO-ABI: where the generic I/O layer (src/lib/genio.f) keeps the
 \ routing the ENGINE itself has to read. Everything else about a device -- its
 \ eight operations, its private state, its handle -- belongs to the library and
 \ lives in ordinary dictionary storage; only these cells cross into engine code.
@@ -1001,7 +1007,7 @@ package BOOT-SRC
 public
 $3CB0 constant USER-END
 ;package
-\ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
+\ --- protected-WID registry: count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;
 \ PROT-WID? membership (habu1.f) gates the sealed-WID guards.
 \
@@ -1050,7 +1056,7 @@ PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitm
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
-\ ---- the callback band: C calling back into checked code (docs/ffi-callback.md)
+\ ---- the callback band: C calling back into checked code (src/lib/ffi-callback.f)
 \ Eight cells every region carries at the same offset, in the run between the
 \ FFI length buffers ($40C8..$41C8) and APP-ENTRY:XT-CELL ($43A0). Every cell is
 \ correct at zero, which is what a fresh task region, a fresh DATA mapping and a
@@ -1157,7 +1163,7 @@ $37F8 constant SNAP-CELL
 $3800 constant NULL-PTR-CELL-OFF
 
 \ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's
-\ MAIN through (docs/x86-64.md, "Build and bootstrap"). It is a separate cell
+\ MAIN through (docs/xcomp.md "Build and bootstrap"). It is a separate cell
 \ from APP-ENTRY:XT-CELL because that one also switches the argv and stdin
 \ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
 \ MAIN there; only the x86-64 boot reads it, and an ARM64 boot, which reaches
@@ -1189,8 +1195,8 @@ $3868 constant ARENA-CELL
 \ capture carries the cell as a fixed address row (tools/native-layout.f) and
 \ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
 \ An ARM64 record, and an x86-64 build with no captured runtime,
-\ keep the assembly body and never read the cell. EVALUATE-CELL is the
-\ first cell past the native body record's reader callback ($3840), in the run
+\ keep the assembly body and never read the cell. EVALUATE-CELL follows the
+\ three-cell origin record ($3820..$3837) and the free cells $3838..$3847, in the run
 \ ENGINE-MAIN:XT-CELL extends, swept for a claimant up to the FFI buffers at
 \ $3A00 the way that cell was.
 package PROVIDED-XT
@@ -1200,10 +1206,6 @@ $3848 constant EVALUATE-CELL
 \ (src/habu/interpret.f OUTER:EVAL-FRAMED-RANGE). It follows
 \ ENGINE-MAIN:REPORT-CELL ($3858) in the same swept run below $3A00.
 $3860 constant EVALUATE-RANGE-CELL
-\ A seeded x86-64 native-body-passive? jumps through its own cell the same way
-\ (src/habu/definers.f OUTER:BODY-PASSIVE?). It follows ENGINE-MAIN:ARENA-CELL
-\ ($3868) in the swept run below the FFI buffers at $3A00.
-$3870 constant BODY-PASSIVE-CELL
 ;package
 
 \ The x86-64 policy writer calls the checked interpreter's dispatch-keyword
@@ -1243,8 +1245,8 @@ $358 constant XT-CELL
 \ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
-\ The optional body-reader callback at $3840 follows the four-cell native body
-\ record at $3820..$383F. Older kernels expose only the four-cell getter.
+\ The optional three-cell origin record follows at $3820..$3837, read through
+\ the three-cell native-origin-cell getter; $3838..$3847 is free.
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
@@ -1484,7 +1486,7 @@ $7D0 constant FRAME-CELL
 $7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-\ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
+\ CMM-CELL: compile-loop ADT-lowering mode (docs/forth.md "Structures And Enums"),
 \ mirroring the checker's match-mode token machine: 0 = off; slices 2-3 arm it at a
 \ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
 \ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
@@ -1509,7 +1511,7 @@ $27A8 constant CMM-CELL
 $27E8 constant COMPILE-PREFLIGHT-CELL
 \ The retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
 \ TOP-HOOK-CELL: top-row token hook xt (dot habu-typed-top-engine-2b2e88aa,
-\ docs/typed-top-level.md §2.1). 0 = no hook: the interpret dispatch is
+\ src/core/top-row.f). 0 = no hook: the interpret dispatch is
 \ byte-for-byte today's behavior (tier 0). Installed only through the
 \ fail-closed `set-top-check` prim (habu1.f BSETTOPCHECK), which mirrors
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
@@ -1723,7 +1725,7 @@ $2DA0 constant DOES-SHADOW-CELL
 2 constant FIXED-ADDR-KIND
 ;package
 $2DA8 constant TASK-CHAIN-CELL
-\ The design seal (src/lib/vocabulary.f, docs/vocabulary.md): a cell and bitmap that confine a
+\ The design seal (src/lib/vocabulary.f): a cell and bitmap that confine a
 \ sealed source to the vocabulary its harness admitted. POLICY-NDICT-CELL is 0
 \ while nothing is sealed, else the NDICT the seal stored; a record at or above
 \ that index is the design's own. POLICY-BITS-OFF is a WID-indexed bitmap shaped
@@ -1949,8 +1951,8 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \
 \ TWO THINGS STAY PROCESS-WIDE ON PURPOSE. The 8 KiB copy buffer is not here:
 \ 3072 + 8192 does not fit the 7408 bytes USER-BAND had free, and COPY-FILE /
-\ COPY-FILE-STREAM are the module's one single-task pair, which its header and
-\ docs/threads.md say. Neither is the cleanup registry, 64 paths of it: that is
+\ COPY-FILE-STREAM are the module's one single-task pair, which its header
+\ says. Neither is the cleanup registry, 64 paths of it: that is
 \ a PROCESS exit registry, not per-call scratch - every task registers into the
 \ one table and the process runs it once.
 \
@@ -1981,8 +1983,9 @@ FS-MUT-ABI:START constant END
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
 \ `defer NAME ( E )` declared in src/core/checker.f BEFORE `: TRUST`
-\ (checker.f:7685) cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which
-\ LFIND `trust`/`checker-defer` (undefined until 5208/7687) and die exit 70. When
+\ cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which LFIND
+\ `trust`/`checker-defer` (undefined until TRUST and CHECKER-DEFER are defined)
+\ and die exit 70. When
 \ they are absent C-DEFER, and the Habu loop's `defer` (src/habu/definers.f
 \ PD-HOLD), instead COPY the defer's qualified name + effect
 \ signature into a slot of this fixed table; DRAIN-PRETRUST (called once in

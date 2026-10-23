@@ -5,9 +5,47 @@
 \ owns it and a generation. The generation is what makes the result owner
 \ linear - CLEAR retires the slot, so the handle a caller still holds refuses
 \ every later use with E-CLEARED instead of reaching a freed PGresult. The same
-\ registry carries the concurrency rule from docs/database-models.md: a
-\ connection and its results belong to the task that created them and a handle
-\ presented by any other task is E-HANDLE.
+\ registry carries the concurrency rule (docs/design.md "Models taken from other
+\ Forths"): a connection and its results belong to the task that created them
+\ and a handle presented by any other task is E-HANDLE. A task that needs two
+\ databases opens two connections.
+\
+\ STORAGE CLASS. PROCESS-WIDE registry sized by CONFIGURE. The same declaration
+\ again is harmless from any task; a different one is refused until image
+\ preparation releases the registry. The parameter list, call arena and
+\ diagnostic buffers belong to each connection.
+\
+\ CLOSE also clears the connection's results. Closing a pending query first
+\ sends a native cancel, which may block up to the connection's connect_timeout
+\ (with none set, PG imposes no deadline) and cannot undo SQL already completed;
+\ idle and connecting handles send none. LIVE? tells the owning task whether its
+\ handle is still the slot's live generation, so cleanup closes only what lives.
+\
+\ CONNECT-START, SEND and POLL let one task drive many connections: the caller
+\ owns readiness and deadlines (libpq ignores connect_timeout while polling),
+\ registers the descriptor each POLL answers afresh, and uses a Unix socket or
+\ a numeric hostaddr so DNS cannot block startup. CONNECT, EXEC and the other
+\ conveniences wait through AIO:AWAIT and need AIO:START. One operation may be
+\ pending per connection; a send copies its statement and parameters. A
+\ transport failure closes the connection and throws E-EXEC; a SQL rejection is
+\ the result's `failed` outcome with SQLSTATE and message.
+\
+\ OUTCOME's `failed` spans are the connection's copies, valid until its next
+\ OUTCOME; CONNECT's `refused` text lasts until the next CONNECT; TEXT$ and
+\ NAME$ answer libpq's memory, valid until CLEAR.
+\
+\ EXEC runs exactly one statement on the extended protocol. SCRIPT runs several
+\ on the simple-query protocol, which takes no parameters (a pending list is
+\ E-STATEMENT) and runs them as one implicit transaction: a failing statement
+\ rolls back the earlier ones. EXEC consumes the parameter list; BEGIN, COMMIT
+\ and ROLLBACK leave it untouched, which is how a WITH-TRANSACTION body carries
+\ its caller's values in. A nested WITH-TRANSACTION is E-TRANSACTION, since
+\ PostgreSQL ignores a nested BEGIN and the inner COMMIT would end the outer
+\ transaction.
+\
+\ Handles do not survive image capture: preparation retires every slot and
+\ frees its libpq resources and arenas. Stop the AIO loop before capture (a
+\ live task at PREPARE ends the process) and CONFIGURE again in the new one.
 \
 \ Statement and parameter text have no fixed ceiling. Each connection builds one
 \ call in an arena it allocates from src/lib/memory.f, sized to that call: the
@@ -21,12 +59,11 @@
 \ and paramFormats are all NULL: the server infers each type, lengths are
 \ ignored for text, and a NULL formats array means text. Only paramValues is
 \ built here.
-\
-\ See docs/db.md for the vocabulary, the buffer lifetimes and a worked example.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 require src/lib/string.f
+require src/lib/utf8-scalar.f
 require src/lib/memory.f
 require src/lib/type/deftype.f
 require src/lib/task.f
@@ -98,6 +135,7 @@ CAST: RESULT>N ( result -- n )
 1 constant CONNECTION-BAD
 1 constant CONNECT-FIRST
 2 constant CONNECT-POLLING
+0 constant TRANS-IDLE                     \ PGTransactionStatusType
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
@@ -111,7 +149,9 @@ $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 $0400 constant MESSAGE-CAP                \ copied primary server message
 $05 constant SQLSTATE-LEN
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
-MESSAGE-CAP constant SCAN-CAP             \ bound on a NUL scan of a libpq C string
+\ A NUL scan of a libpq C string reads one byte past the copied message, so
+\ MESSAGE! sees whether its cap falls inside a character.
+MESSAGE-CAP 1+ constant SCAN-CAP
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
 $7FFFFFFF constant GENERATION-MAX         \ positive signed handle, high 31 bits
@@ -174,6 +214,7 @@ VERSIONED-LIBRARY pq 5
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: LIB-TRANSACTION-STATUS PQtransactionStatus ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-SET-NONBLOCKING PQsetnonblocking ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-SOCKET PQsocket ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
@@ -213,7 +254,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    p FFI:>CELL 0= ;
 
 
-\ Bound scans to the diagnostic buffer; libpq gives these strings no extent.
+\ Bound scans by SCAN-CAP; libpq gives these strings no extent.
 : CSTR-LEN ( ptr u8 -- n ) {: p :}
    SCAN-CAP 0 ?do
       p i + c@ 0= if i unloop exit then
@@ -619,7 +660,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ are gone and its mappings are not its own. Retiring every slot makes the
 \ surviving handles refuse instead of reaching a freed pointer, and releases
 \ the call arenas the image must not carry. The flag is set only after REGISTER
-\ returns, so a throwing registration stays retryable (docs/forth.md rule).
+\ returns, so a throwing registration stays retryable
+\ (`src/lib/image-lifecycle.f PREPARE`).
 : FORGET-HANDLES ( -- )
    0
    CONFIGURED @ if
@@ -747,7 +789,7 @@ REGISTER-CHILD-RESET
 
 \ ---- server diagnostics ---------------------------------------------------
 : MESSAGE! ( n ptr u8 n -- ) {: slot:n a u:n :}
-   u MESSAGE-CAP > if MESSAGE-CAP else u then {: kept:n :}
+   a u MESSAGE-CAP UTF8:FIT {: kept:n :}
    a slot MESSAGE-BUF kept BYTE-COPY
    kept slot MESSAGE-U! ;
 
@@ -1151,6 +1193,13 @@ public
    slot CONN-GEN@ raw HANDLE-GEN <> if false exit then
    slot CONN-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
    true ;
+
+
+\ IDLE? is libpq's own view of the session, so it covers a transaction opened
+\ by plain BEGIN text as well as WITH-TRANSACTION. It is false while a command
+\ is in flight, inside a transaction block and after a failed statement there.
+: IDLE? ( connection -- bool )
+   CONN-SLOT CONN-PG@ LIB-TRANSACTION-STATUS TRANS-IDLE = ;
 
 
 \ CLOSE cancels pending SQL, clears owned results and retires the handle even

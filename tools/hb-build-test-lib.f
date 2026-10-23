@@ -3,7 +3,8 @@
 \ build report check. It defines no MAIN; each row file loads it and runs the
 \ groups it owns:
 \   tools/hb-build-test.f                     CLI REPL build and report, cache
-\                                             keys, rejected inputs, image size
+\                                             keys, rejected inputs, image size,
+\                                             large sources, literal bodies
 \   tools/hb-build-cli-errors-test.f          cache path error, refused paths
 \                                             and entry names, MAIN effects
 \   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
@@ -14,12 +15,11 @@
 \                                             publication
 \   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
-\                                             ptr mark
+\                                             quotation fields, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
-\   tools/hb-build-large-source-test.f        literal bodies, large source
 \   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
 \ test/gate-stdlib-cases.f registers each file as a row of its own and says why.
@@ -125,8 +125,6 @@ variable HBT-CHAIN-OUT-U
 variable HBT-PTRC-SRC-U
 variable HBT-PTRC-OUT-U
 variable HBT-PTRU-SRC-U
-variable HBT-OPENP-SRC-U
-variable HBT-OPENP-OUT-U
 variable HBT-LIFE-SRC-U
 variable HBT-LIFE-OUT-U
 variable HBT-HOOK-SRC-U
@@ -154,8 +152,6 @@ create HBT-CHAIN-OUT-BUF FS-PATH-CAP allot
 create HBT-PTRC-SRC-BUF FS-PATH-CAP allot
 create HBT-PTRC-OUT-BUF FS-PATH-CAP allot
 create HBT-PTRU-SRC-BUF FS-PATH-CAP allot
-create HBT-OPENP-SRC-BUF FS-PATH-CAP allot
-create HBT-OPENP-OUT-BUF FS-PATH-CAP allot
 create HBT-LIFE-SRC-BUF FS-PATH-CAP allot
 create HBT-LIFE-OUT-BUF FS-PATH-CAP allot
 create HBT-HOOK-SRC-BUF FS-PATH-CAP allot
@@ -299,8 +295,6 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBT-ROOT s" ptrcell.f" HBT-PTRC-SRC-BUF HBT-PTRC-SRC-U HBT-PATH!
    HBT-ROOT s" ptrcell" HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U HBT-PATH!
    HBT-ROOT s" ptrunowned.f" HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U HBT-PATH!
-   HBT-ROOT s" openpath.f" HBT-OPENP-SRC-BUF HBT-OPENP-SRC-U HBT-PATH!
-   HBT-ROOT s" openpath" HBT-OPENP-OUT-BUF HBT-OPENP-OUT-U HBT-PATH!
    HBT-ROOT s" lifecycle.f" HBT-LIFE-SRC-BUF HBT-LIFE-SRC-U HBT-PATH!
    HBT-ROOT s" lifecycle" HBT-LIFE-OUT-BUF HBT-LIFE-OUT-U HBT-PATH!
    HBT-ROOT s" lifehook.f" HBT-HOOK-SRC-BUF HBT-HOOK-SRC-U HBT-PATH!
@@ -325,16 +319,18 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ refusals, REPL CLI spawns (HBT-ARGV-BASE-REPL) and HBT-RUN-APP run on
 \ ENGINE-CANDIDATE:PATH$. The keyed builders those children select are the
 \ family images the row's load closure grants (aot-builder, linker-builder,
-\ app-builder; docs/gate.md), each built once and found in the process's cache
-\ root: under the gate the run's, standalone the user's (test/image-grant.f).
-\ No row overrides that root except where a case owns a cache miss or a damaged
-\ entry, and says so beside it. HBT-HBB-PREPARE-AOT-SOURCE keeps one build on
-\ the engine, which compiles the linker above the application: for a subject
-\ whose closure reaches a word, or an unclaimed cell, of a module of the
-\ linker's lib closure the engine does not bake, which the linker image refuses
-\ by name (test/preloaded-engine.f rule 3), and for a case about that order. A
-\ subject that only requires such a module links on the image. A row that
-\ records no image builds every program on the engine.
+\ app-builder; docs/gate.md
+\ "How a suite runs, and what that demands of its files"), each built once and
+\ found in the process's cache root: under the gate the run's, standalone the
+\ user's (test/image-grant.f). No row overrides that root except where a case
+\ owns a cache miss or a damaged entry, and says so beside it.
+\ HBT-HBB-PREPARE-AOT-SOURCE keeps one build on the engine, which compiles the
+\ linker above the application: for a subject whose closure reaches a word, or
+\ an unclaimed cell, of a module of the linker's lib closure the engine does not
+\ bake, which the linker image refuses by name (test/preloaded-engine.f rule 3),
+\ and for a case about that order. A subject that only requires such a module
+\ links on the image. A row that records no image builds every program on the
+\ engine.
 : HBT-KEYED! ( ptr u8 n -- )
    HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
 
@@ -345,7 +341,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    u 0= if BF-ENGINE-RESET exit then
    a u BF-ENGINE! ;
 
-\ The CLI as docs/native-applications.md documents it: tools/hb-build.f alone
+\ The CLI as tools/hb-build.f's header documents it: tools/hb-build.f alone
 \ requires its library, so every row spawns the command a user runs. Its maker
 \ or app-build child runs the engine named second, unless that is empty. The
 \ child uses the process's cache root, made absolute because the child may run

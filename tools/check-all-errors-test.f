@@ -769,7 +769,7 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" large word" T-LABEL
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
-\ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
+\ ---- all-errors support-parity fixtures (census gap4) ------------------------
 \ verify-source's full re-drive replays deftype/deflinear/value-record before
 \ later definitions; per-def all-errors redrive must collect the same support
 \ or a good definition whose signature references the declared type is spuriously
@@ -806,19 +806,18 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ ---- layout-constant one-cell contract parity (TFAM 5 + TFAM 12 verdict) -----
+\ ---- layout-constant one-cell contract parity --------------------------------
 \ `constant` bakes exactly one physical cell, so its recorded effect is the
 \ one-cell `-- a` model in EVERY path (native C-CONSTANT, verify-source
 \ RECORD-DEFINER?, this all-errors funnel, and public-signatures). This is the
-\ PERMANENT contract, not a pending narrowing (TFAM 12 verdict 2026-07-09,
-\ habu-tfam-12-layout): the interpret stack is untyped by design, so no path
-\ has a sound shape source — an adjacent-producer heuristic mis-carries
-\ (`MK 5 constant K`), and carrying the producer's multi-cell type would
-\ certify USE words that push fewer cells than the constant holds. A
+\ PERMANENT contract, not a pending narrowing: the interpret stack is untyped by
+\ design, so no path has a sound shape source — an adjacent-producer heuristic
+\ mis-carries (`MK 5 constant K`), and carrying the producer's multi-cell type
+\ would certify USE words that push fewer cells than the constant holds. A
 \ wider-than-cell layout value cannot even LAND on the interpret stack
 \ (DNAME-WIDE dispatch gate, habu-tfam-12-interpret), and a checked-body pop
-\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed
-\ at USE — which this fixture proves end-to-end.
+\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed at
+\ USE — which this fixture proves end-to-end.
 : CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
@@ -891,7 +890,7 @@ $100000 constant CAE-CHILD-ERR-CAP
    s" type-family-support" CAE-CASE!
    CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;
 
-\ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
+\ ---- verify-source top-level TRUST replay (census gap5) -----------------------
 \ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
 \ through verify-source before later definitions. verify-source's RECORD-DEFINER?
 \ must dispatch that TRUST so a definition using the trusted word passes. The

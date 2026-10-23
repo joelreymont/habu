@@ -2,23 +2,22 @@
 \ opcode, and the single authority on the shape an operation of that opcode may
 \ have.
 \
-\ docs/compiler-ir-design.md section 5.3 (closed-world operation schemas, lines
-\ 227-245), section 6.4 (the builder API, lines 497-521), section 6.5 (the
-\ freeze checks that consume a schema, lines 523-545), and section 10.6
-\ (schema name and major/minor version, lines 1710-1719). This file defines
-\ the schema machinery.
-\ The dialect packages that fill a table with their own opcodes stay separate,
-\ exactly as design line 317 says the shared substrate "does not define the
-\ meaning of dialect-specific operations".
+\ A schema records an opcode's operand and result arity and type rules, its
+\ control-flow shape and terminator status, its effect class, memory space and
+\ alias behavior, whether it may trap, the target capabilities it needs, and
+\ its semantic rule and renderer identifiers. IR-OP checks each operation
+\ against its schema as it is appended, and IR-VERIFY checks the frozen module
+\ against the same rows. This file defines the schema machinery; the dialect
+\ packages that fill a table with their own opcodes stay separate, because the
+\ shared substrate does not define the meaning of dialect-specific operations.
 \
-\ ONE TABLE IS ONE DIALECT. Design line 229 says "Each dialect has an
-\ exhaustive operation family and one schema table", so the dialect is a
-\ property of the table, not of each row: the row-table header carries the
-\ dialect's interned name symbol together with the major and minor schema
-\ version that design line 1714 requires. A row therefore records the opcode
-\ half of design line 233 ("dialect and opcode") and inherits the dialect half
-\ from the table it lives in. That is also what makes duplicate detection
-\ simple and exact: two rows may not carry the same opcode name symbol.
+\ ONE TABLE IS ONE DIALECT. Each dialect has an exhaustive operation family
+\ and one schema table, so the dialect is a property of the table, not of each
+\ row: the row-table header carries the dialect's interned name symbol together
+\ with the major and minor schema version. A row therefore records the opcode
+\ and inherits the dialect from the table it lives in. That is also what makes
+\ duplicate detection simple and exact: two rows may not carry the same opcode
+\ name symbol.
 \
 \ IDENTITY IS THE INTERNED OPCODE NAME. A schema is named by the module's own
 \ interned symbol for its opcode, an existing IR-ID ir-symbol-id. This file
@@ -26,49 +25,48 @@
 \ duplicate IR-ID's module-key packing. Every public reader takes that symbol,
 \ resolves it through LOOKUP against this table, and throws E-IR-SCHEMA-OPCODE
 \ when no row defines it: a name that is not an opcode of this dialect can name
-\ nothing here. Combined with the exact decoders below, that is design line
-\ 229's closed world - there is no path, forged rows included, by which a
+\ nothing here. Combined with the exact decoders below, that is the
+\ closed world - there is no path, forged rows included, by which a
 \ reader hands back a value for an operation the table never defined.
 \
-\ WHAT A ROW RECORDS. One fixed-shape row per opcode, one cell per design line:
-\   opcode name symbol                      - design line 233
-\   operand type list, length, tail flag    - design lines 234, 235
-\   result type list, length, tail flag     - design lines 234, 235
-\   successor count and region count        - design line 236 (control-flow shape)
-\   terminator flag                         - design line 237
-\   effect class                            - design line 238
-\   effect domain                           - design line 238, section 7.3 lines 753-762
-\   memory space and alias behavior         - design line 239
-\   may-trap flag                           - design line 240
-\   required architecture and features      - design line 241
-\   required attribute key list and count   - design line 479
-\   extension-set flag                      - design line 479
-\   semantic rule identifier symbol         - design line 242
-\   renderer identifier symbol              - design line 243
+\ WHAT A ROW RECORDS. One fixed-shape row per opcode:
+\   opcode name symbol
+\   operand type list, length, tail flag
+\   result type list, length, tail flag
+\   successor count and region count        - the control-flow shape
+\   terminator flag
+\   effect class
+\   effect domain
+\   memory space and alias behavior
+\   may-trap flag
+\   required architecture and features
+\   required attribute key list and count
+\   extension-set flag
+\   semantic rule identifier symbol
+\   renderer identifier symbol
 \   tied operand list and count             - see the note below
 \   fixed register list and count           - see the note below
-\ Design line 234 asks for arity RULES rather than a bare count, so an operand
+\ Arity is a RULE rather than a bare count, so an operand
 \ or result list is a fixed sequence of types optionally ending in a variadic
 \ tail: the last listed type then describes every further operand or result.
-\ Design line 235's type constraints are those listed ir-type-ids, each one
+\ The type constraints are those listed ir-type-ids, each one
 \ validated against the module's own type table.
 \
 \ THE CLOSED VOCABULARIES. The effect class and the alias behavior are ENUM
-\ families declared here, because design lines 238 and 239 name the fields but
-\ no section fixes their members. The effect classes follow section 7.3 line
-\ 763 - "Pure arithmetic has no token" - so an operation either has no effect
-\ token at all or reads, writes, or does both in exactly one domain. The alias
-\ behaviors follow design line 779 ("a proven alias class") and line 1177 ("alias
-\ group"). The effect domain and the memory space are NOT redeclared here: the
-\ six domains of section 7.3 and the address spaces of the section 6.3 type
-\ table already exist as IR-TYPE:domain and IR-TYPE:space, and reusing them
-\ keeps one vocabulary per concept. Rows persist all four families as stable
+\ families declared here, because no other layer fixes their
+\ members. Pure arithmetic has no effect token, so an operation either has no
+\ effect token at all or reads, writes, or does both in exactly one domain. The
+\ alias behaviors name a proven alias class or an alias group. The effect
+\ domain and the memory space are NOT redeclared here: the six effect domains
+\ and the type table's address spaces already exist as IR-TYPE:domain and
+\ IR-TYPE:space, and reusing them keeps one vocabulary per concept. Rows
+\ persist all four families as stable
 \ wire codes, and every decoder is an exact case whose unmatched code throws
 \ E-IR-SCHEMA-STATE, so a bypass-forged row rejects at first touch instead of
 \ decoding as some other operation.
 \
-\ THE THREE EFFECT SHAPES. Design line 239 pairs "memory space and alias
-\ behavior" with the effect class, and only the data-memory domain has an
+\ THE THREE EFFECT SHAPES. Memory space and alias behavior qualify the effect
+\ class, and only the data-memory domain has an
 \ address space and an alias class at all; the dictionary, code-publication,
 \ I/O, process, and external-call domains are ordered by their token alone.
 \ There are therefore exactly three ways to declare an effect, and any other
@@ -81,17 +79,16 @@
 \ all reject. Readers mirror the shapes: DOMAIN@ rejects on a pure schema and
 \ SPACE@/ALIAS@ reject on anything but a memory schema, with E-IR-SCHEMA-KIND.
 \
-\ THE TERMINATOR RULES. Design line 237 records terminator status and design
-\ line 236 records the control-flow shape; design line 531 requires that
-\ "every block ends in exactly one terminator" and design line 532 requires
-\ that "successor argument counts and types match destination block arguments".
+\ THE TERMINATOR RULES. Every block ends in exactly one terminator, and a
+\ successor's argument counts and types match the destination block's
+\ arguments.
 \ Two rules follow and both reject with E-IR-SCHEMA-TERM:
 \   a non-terminator declares no successors - a block leaves only through its
-\     one terminator (design lines 236, 531), so control-flow edges belong to
+\     one terminator, so control-flow edges belong to
 \     terminator schemas alone;
-\   a terminator declares no results - section 7.2's block-parameter SSA passes
-\     values to a successor as its block arguments (design lines 706-708) and
-\     design line 532 makes those arguments the matched interface, so a
+\   a terminator declares no results - HIR's block-parameter SSA passes
+\     values to a successor as its block arguments and
+\     those arguments are the matched interface, so a
 \     terminator has nowhere to put a result of its own.
 \
 \ TIED OPERANDS BELONG TO THE FORM. Some instruction forms name one register
@@ -132,9 +129,8 @@
 \ E-A64RA-FIXED). A schema table therefore stays free of any dependency on the
 \ native layer, which is what lets this file sit under every dialect.
 \
-\ TARGET LEGALITY COMES FROM THE BINDING. Design line 241 records the legal
-\ target capabilities and design line 541 makes the freeze check "target-specific
-\ operations are legal for the target contract". A schema declares the
+\ TARGET LEGALITY COMES FROM THE BINDING. Freeze checks that target-specific
+\ operations are legal for the target contract. A schema declares the
 \ architecture and the feature set its operation needs, and definition consumes
 \ the owning context's validated binding (IR-CTX:BINDING@ -> CBIND:TARGET@) -
 \ never a rederived legality table. A required architecture other than the
@@ -142,8 +138,8 @@
 \ the required architecture cannot have at all each reject
 \ E-IR-SCHEMA-TARGET, so a table never holds a schema its target cannot run.
 \
-\ DEFINITION IS A STAGED BUILDER. Design lines 497-521 ask for a small builder
-\ API of separate ADD-* words rather than one wide constructor, and Habu words
+\ DEFINITION IS A STAGED BUILDER. The IR's builder API is a small set of
+\ separate ADD-* words rather than one wide constructor, and Habu words
 \ cannot pass variable-length lists on the stack anyway, so a schema is built
 \ through the staged protocol IR-TYPE and IR-ATTR established: BEGIN-OP opens
 \ the stage, the ADD-* and SET-* words fill it, and DEFINE validates everything
@@ -151,8 +147,8 @@
 \ discipline; a begin while one is open, a field declared twice, an end without
 \ a begin, and a list past ARITY-MAX all reject E-IR-SCHEMA-STAGE or
 \ E-IR-SCHEMA-ARITY, and any end consumes the stage, so no half-staged schema
-\ leaks into the next definition. DEFINE requires every field design line 5.3
-\ names that has no meaningful default - the effect, the control-flow shape and
+\ leaks into the next definition. DEFINE requires every schema field
+\ that has no meaningful default - the effect, the control-flow shape and
 \ terminator status, the trap flag, the target requirement, the semantic rule,
 \ and the renderer - and a missing one throws E-IR-SCHEMA-FIELD.
 \
@@ -180,8 +176,8 @@ require src/compiler/ir/type.f
 package IR-SCHEMA
 public
 
-\ The effect class an operation has (design line 238). Section 7.3 line 763
-\ says pure arithmetic carries no effect token; everything else takes and
+\ The effect class an operation has. Pure arithmetic carries no effect token;
+\ everything else takes and
 \ returns one in exactly one domain, reading it, writing it, or both.
 ENUM effect DERIVE eq
    pure
@@ -190,10 +186,10 @@ ENUM effect DERIVE eq
    read-write
 ;ENUM
 
-\ How an operation's memory access relates to other accesses (design line 239),
-\ in the vocabulary of design line 779's proven alias class and design line
-\ 1177's alias group. `unaliased` reaches only locations no other operation can
-\ reach, `grouped` only the locations of its declared alias group, and
+\ How an operation's memory access relates to other accesses, in the vocabulary
+\ of a proven alias class and an alias group. `unaliased` reaches only
+\ locations no other operation can reach, `grouped` only the locations of its
+\ declared alias group, and
 \ `unrestricted` any location in its memory space.
 ENUM alias DERIVE eq
    unaliased
@@ -229,33 +225,33 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 0 constant HC-MAGIC
 1 constant HC-SERIAL
 2 constant HC-CAP
-3 constant HC-DIALECT                \ design lines 229, 233: this table's dialect
-4 constant HC-MAJOR                  \ design line 1714: schema major version
-5 constant HC-MINOR                  \ design line 1714: schema minor version
+3 constant HC-DIALECT                \ this table's dialect
+4 constant HC-MAJOR                  \ schema major version
+5 constant HC-MINOR                  \ schema minor version
 6 constant RHDR-CELLS
 
-0 constant OFF-NAME                  \ design line 233
-1 constant OFF-OPST                  \ design lines 234, 235
+0 constant OFF-NAME                  \ the opcode name
+1 constant OFF-OPST                  \ the operand type list
 2 constant OFF-OPN
 3 constant OFF-OPTAIL
-4 constant OFF-RSST                  \ design lines 234, 235
+4 constant OFF-RSST                  \ the result type list
 5 constant OFF-RSN
 6 constant OFF-RSTAIL
-7 constant OFF-SUCC                  \ design line 236
-8 constant OFF-REGN                  \ design line 236
-9 constant OFF-ATST                  \ design line 479
+7 constant OFF-SUCC                  \ the successor count
+8 constant OFF-REGN                  \ the region count
+9 constant OFF-ATST                  \ the required attribute keys
 10 constant OFF-ATN
 11 constant OFF-ATEXT
-12 constant OFF-EFF                  \ design line 238
-13 constant OFF-DOM                  \ design line 238
-14 constant OFF-SPC                  \ design line 239
-15 constant OFF-ALI                  \ design line 239
-16 constant OFF-TRAP                 \ design line 240
-17 constant OFF-ARCH                 \ design line 241
-18 constant OFF-FEAT                 \ design line 241
-19 constant OFF-TERM                 \ design line 237
-20 constant OFF-RULE                 \ design line 242
-21 constant OFF-REND                 \ design line 243
+12 constant OFF-EFF                  \ the effect class
+13 constant OFF-DOM                  \ the effect domain
+14 constant OFF-SPC                  \ the memory space
+15 constant OFF-ALI                  \ the alias behavior
+16 constant OFF-TRAP                 \ the may-trap flag
+17 constant OFF-ARCH                 \ the required architecture
+18 constant OFF-FEAT                 \ the required features
+19 constant OFF-TERM                 \ the terminator flag
+20 constant OFF-RULE                 \ the semantic rule identifier
+21 constant OFF-REND                 \ the renderer identifier
 22 constant OFF-TIST                 \ the tied-operand list
 23 constant OFF-TIN
 24 constant OFF-FXST                 \ the fixed-register list
@@ -294,7 +290,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant EF-PURE
 1 constant EF-READ
 2 constant EF-WRITE
@@ -563,8 +559,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 \ word, so a dialect emitting an operation pays one walk of the name column per
 \ schema question it asks. Asked a row at a time it was one IR-ARENA:RD@ per
 \ row - generation, state, bound, ptr-field and cell-view, per row, for one
-\ cell - which the profile in docs/compiler-measurements.md prices at 13.1
-\ percent of every RD@ call the corpus makes. IR-ARENA:RD-FIND asks those same
+\ cell. IR-ARENA:RD-FIND asks those same
 \ questions once for the whole column and then loads and compares; the row it
 \ answers, and the -1 for an opcode this table never defined, are the walk's.
 : SCAN-NAME ( IR-ARENA:reader n -- n )
@@ -580,7 +575,7 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 
 \ ---- effect-shape projections ------------------------------------------------
 \ A row carries a domain only when it is not pure, and a space and an alias
-\ behaviour only in the data-memory domain (design line 239). Asking a schema
+\ behaviour only in the data-memory domain. Asking a schema
 \ for a field its effect shape does not have is a caller error.
 : SHAPE-CK ( bool -- )
    0= if E-IR-SCHEMA-KIND throw then ;
@@ -708,7 +703,7 @@ LIST# CWORK-SPAN STG-T n
 : LIST-ROOM ( n -- )
    SN@ ARITY-MAX >= if E-IR-SCHEMA-ARITY throw then ;
 
-\ Design line 234's variadic tail describes every operand or result past the
+\ The variadic tail describes every operand or result past the
 \ fixed ones, so it is necessarily the last entry of its list: appending after
 \ a tail, or declaring a second tail, is an arity-rule violation.
 : TAIL-CK ( n -- )
@@ -758,7 +753,7 @@ LIST# CWORK-SPAN STG-T n
       syr key L-AT SEG i + SV@ L-AT SEG i + SO@ STG-SYM-CK
    loop ;
 
-\ Every field design line 5.3 names that has no meaningful default must have
+\ Every schema field that has no meaningful default must have
 \ been declared; a zero count means "no operands", but a missing effect class
 \ means the schema was never finished.
 : FIELDS-CK ( -- )
@@ -769,7 +764,7 @@ LIST# CWORK-SPAN STG-T n
    STG-RULE @ UNSET = if E-IR-SCHEMA-FIELD throw then
    STG-REND @ UNSET = if E-IR-SCHEMA-FIELD throw then ;
 
-\ Design line 236's control-flow shape stays inside its committed ceilings, and
+\ The control-flow shape stays inside its committed ceilings, and
 \ a variadic tail is only meaningful when its list has an entry to be.
 : ARITY-CK ( -- )
    STG-SUCC @ dup 0 < swap SUCC-MAX > or if E-IR-SCHEMA-ARITY throw then
@@ -848,15 +843,15 @@ LIST# CWORK-SPAN STG-T n
       i FIX-ONCE-CK
    loop ;
 
-\ Design lines 236, 237, 531, 532: control-flow edges belong to the block's one
+\ Control-flow edges belong to the block's one
 \ terminator, and a terminator hands its values to the successor as block
 \ arguments rather than producing results of its own.
 : TERM-CK ( -- )
    STG-TERM @ 0= STG-SUCC @ 0<> and if E-IR-SCHEMA-TERM throw then
    STG-TERM @ 0<> L-RS SN@ 0<> and if E-IR-SCHEMA-TERM throw then ;
 
-\ Design line 241, enforced against the context's validated binding rather
-\ than a rederived legality table (design line 541).
+\ Target capabilities, enforced against the context's validated binding rather
+\ than a rederived legality table.
 : WANT-ARCH ( -- CTARGET:arch )
    STG-ARCH @ N>ARCH ;
 
@@ -984,7 +979,7 @@ public
 \ Create one dialect's schema table: the list pool committed to exactly pcap
 \ cells and the row table committed to exactly rcap opcodes, both headers bound
 \ to key's module serial, and the row header carrying the dialect's interned
-\ name symbol with its major and minor schema version (design lines 229, 1714).
+\ name symbol with its major and minor schema version.
 \ The two handles plus the key are the table; all three stay with the module
 \ owner, and the table dies with the owning context.
 : NEW ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id n n n n -- IR-ARENA:arena IR-ARENA:arena )
@@ -1010,7 +1005,7 @@ public
    c r minor CELL+
    a r ;
 
-\ ---- the schema builder (design lines 497-521) -------------------------------
+\ ---- the schema builder ------------------------------------------------------
 \ Open a schema for one opcode, named by the module's interned symbol for it.
 : BEGIN-OP ( IR-ID:ir-symbol-id -- )
    {: op:IR-ID:ir-symbol-id :}
@@ -1026,7 +1021,7 @@ public
 : ABANDON ( -- )
    STG-TAKE ;
 
-\ Design lines 234 and 235: one fixed operand of this type, then optionally a
+\ One fixed operand of this type, then optionally a
 \ variadic tail whose type describes every further operand.
 : ADD-OPERAND ( IR-ID:ir-type-id -- )
    L-OP swap TYPE+ ;
@@ -1063,20 +1058,20 @@ public
    STG-OPEN-CK
    sd SIDE-CODE ord reg FIX+ ;
 
-\ Design line 479: an attribute key this opcode requires.
+\ An attribute key this opcode requires.
 : ADD-ATTR ( IR-ID:ir-symbol-id -- )
    {: k:IR-ID:ir-symbol-id :}
    STG-OPEN-CK
    L-AT k SYM-ORD k SYM-OWNER ORD+ ;
 
-\ Design line 479: this opcode also admits the dialect's extension attribute
+\ This opcode also admits the dialect's extension attribute
 \ set, so an attribute outside the required keys is not automatically unknown.
 : ADD-ATTR-EXT ( -- )
    STG-OPEN-CK
    STG-ATEXT @ 0<> if E-IR-SCHEMA-STAGE throw then
    1 STG-ATEXT ! ;
 
-\ Design lines 236 and 237: the control-flow shape and the terminator status.
+\ The control-flow shape and the terminator status.
 : SET-CONTROL ( bool n n -- )
    {: term:bool succ:n regn:n :}
    STG-OPEN-CK
@@ -1086,13 +1081,13 @@ public
    succ STG-SUCC !
    regn STG-REGN ! ;
 
-\ Design line 238 with section 7.3 line 763: no effect token at all.
+\ Pure: no effect token at all.
 : SET-PURE ( -- )
    STG-OPEN-CK
    STG-EFF ONCE-CK
    EF-PURE STG-EFF ! ;
 
-\ Design lines 238 and 239: an effect in the data-memory domain, which is the
+\ An effect in the data-memory domain, which is the
 \ one domain that has an address space and an alias behaviour.
 : SET-MEMORY ( IR-TYPE:space IR-SCHEMA:alias IR-SCHEMA:effect -- )
    {: spc:IR-TYPE:space ali:IR-SCHEMA:alias eff:IR-SCHEMA:effect :}
@@ -1105,7 +1100,7 @@ public
    spc SPC-CODE STG-SPC !
    ali ALI-CODE STG-ALI ! ;
 
-\ Design line 238 with section 7.3 lines 753-762: an effect in one of the five
+\ An effect in one of the five
 \ domains that are ordered by their token alone and have no address space.
 : SET-TOKEN ( IR-TYPE:domain IR-SCHEMA:effect -- )
    {: dom:IR-TYPE:domain eff:IR-SCHEMA:effect :}
@@ -1118,21 +1113,21 @@ public
    e STG-EFF !
    d STG-DOM ! ;
 
-\ Design line 240.
+\ The may-trap flag.
 : SET-TRAP ( bool -- )
    {: t:bool :}
    STG-OPEN-CK
    STG-TRAP ONCE-CK
    t BOOL>N STG-TRAP ! ;
 
-\ Design line 241: the architecture and the features this operation needs.
+\ The architecture and the features this operation needs.
 : SET-TARGET ( CTARGET:arch CTARGET:features -- )
    STG-OPEN-CK
    STG-ARCH ONCE-CK
    CTARGET:FEATURES-N STG-FEAT !
    ARCH-CODE STG-ARCH ! ;
 
-\ Design line 242.
+\ The semantic rule identifier.
 : SET-RULE ( IR-ID:ir-symbol-id -- )
    {: s:IR-ID:ir-symbol-id :}
    STG-OPEN-CK
@@ -1140,7 +1135,7 @@ public
    s SYM-ORD STG-RULE !
    s SYM-OWNER STG-RULEO ! ;
 
-\ Design line 243.
+\ The renderer identifier.
 : SET-RENDERER ( IR-ID:ir-symbol-id -- )
    {: s:IR-ID:ir-symbol-id :}
    STG-OPEN-CK

@@ -4,7 +4,7 @@
 \ (src/lib/net/http.f).
 \
 \ src/lib/json-write.f keeps no state of its own: the caller declares the writer and
-\ owns the bytes it writes into (docs/stdlib.md, "JSON Write"). Each worker
+\ owns the bytes it writes into. Each worker
 \ therefore holds one writer of its own over its own JSON buffer, opened at the
 \ start of a response body and closed after it, so two workers write JSON at the
 \ same time without a lock between them.
@@ -332,7 +332,7 @@ private
 
 
 \ The quotation lives in a row declared to hold one, the checker's proven
-\ quotation store (docs/threads.md): an xt in a plain cell would lose the effect.
+\ quotation store (src/lib/task.f): an xt in a plain cell would lose the effect.
 1 TYPED-BUFFER ERROR-HOOK [ response n ptr u8 n ptr u8 n -- ]
 
 

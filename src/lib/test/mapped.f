@@ -14,6 +14,8 @@
 \ is open: the descriptor keeps the inode alive for the run and no file is left
 \ behind. Its contents are never read, so concurrent test processes cannot
 \ disturb each other.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the sink path and descriptor are static.
 
 require src/lib/errors.f
 require src/lib/fs.f

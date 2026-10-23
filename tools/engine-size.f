@@ -7,7 +7,8 @@
 \ lives in the library because tools/hb-build-lib.f requires it too, to size
 \ what a build has just written, and a file that measures argv[0] the moment it
 \ loads cannot be required by a program that has arguments of its own.
-\ docs/engine-size.md is this tool's document.
+\ The header of tools/image-size-lib.f says what the report means and what
+\ it does not say.
 
 require tools/image-size-lib.f
 

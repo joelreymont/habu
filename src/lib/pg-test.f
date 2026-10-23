@@ -155,8 +155,9 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 \ that waits cannot let that task release the lock. CHECK-PROGRESS also ends
 \ each turn of EXIT-CASES's wait, while the loop and the exit worker are active.
 \ A wait that passes its PROGRESS-NS deadline is no assertion result
-\ (docs/gate.md): CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the
-\ case engine exits with as PROC-TIMEOUT-RC (RUN).
+\ (docs/gate.md "How a suite runs, and what that demands of its files"):
+\ CHECK-PROGRESS names it and throws E-PROC-TIMEOUT, which the case engine exits
+\ with as PROC-TIMEOUT-RC (RUN).
 : CHECK-PROGRESS ( n -- )
    {: deadline:n :}
    mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
@@ -337,6 +338,26 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c ;
 
 
+\ The server quotes the bad input, so its message outgrows the 1024-byte copy
+\ kept for it; the leading 'x' puts that cap inside an e-acute, which the copy
+\ must not split: the copy keeps 1023 bytes and goes back as text.
+: LONG-MESSAGE-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a capped server message ends on a character and goes back as text" T-LABEL
+   c PARAMS
+   c s" select ('x' || repeat(chr(233), 700))::int" EXEC {: r :}
+   r FAILED-SQLSTATE$ s" 22P02" T$=
+   r FAILED-MESSAGE$ {: ma mu:n :}
+   mu 1023 T=
+   c PARAMS
+   c ma mu TEXT+
+   c s" select $1::text" EXEC {: back :}
+   back OUTCOME-TAG TAG-ROWS T=
+   back 0 >ROW 0 >COL TEXT$ ma mu T$=
+   back CLEAR
+   r CLEAR
+   c ;
+
+
 \ ---- prepared statements --------------------------------------------------
 : PREPARED-INSERT ( PG:connection n ptr u8 n -- ) {: c id:n la:ptr lu:n :}
    c PARAMS
@@ -393,6 +414,7 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
 \ into a body that may not read the caller's locals: BEGIN must leave the
 \ pending list alone.
 : COMMIT-BODY ( PG:connection -- PG:connection )
+   dup IDLE? TFALSE
    dup s" insert into pqt (id, label, note) values ($1, $2, null)" EXEC
    dup OUTCOME-TAG TAG-OK T=
    CLEAR ;
@@ -403,6 +425,10 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    c 901 INT+
    c s" kept" TEXT+
    c [: COMMIT-BODY ;] WITH-TRANSACTION
+   c IDLE? TTRUE
+   c s" begin" EXEC-OK
+   c IDLE? TFALSE
+   c s" rollback" EXEC-OK
    c 901 COUNT-ID 1 T=
    c PARAMS
    c 901 INT+
@@ -1011,7 +1037,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
 
 
 \ A capture runs after the program's tasks stop: PREPARE ends the process on a
-\ task still activated (docs/threads.md), and the AIO loop is one. CAPTURE stops
+\ task still activated (src/lib/task.f), and the AIO loop is one. CAPTURE stops
 \ it, prepares, and starts it again however PREPARE ends, so the loop is live
 \ for the connections opened afterwards and for MAIN's cleanup.
 : CAPTURE ( -- )
@@ -1059,6 +1085,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    DDL-CASES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
+   LONG-MESSAGE-CASES
    PREPARED-CASES
    ROLLBACK-CASES
    COMMIT-CASES

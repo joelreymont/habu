@@ -69,17 +69,6 @@ variable HBT-ENV-ROOT-B-U
    99 HBT-ENV-RUN
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
-: HBT-ENV-LARGE-INPUTS ( -- )
-   s" AOT cache keys accept manifests larger than a text fragment" T-LABEL
-   \ Each of these 1000 observed queries has a 64-byte row header and name.
-   HBT-AOT-SRC S\" : READ-INPUTS ( -- ) 1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop ;\nREAD-INPUTS\n: MAIN ( -- ) 42 . s\" AOT_RUNTIME\" GETENV type ;\n" WRITE-ALL
-   HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ false false HBT-ENV-BUILD
-   42 HBT-ENV-RUN
-   HBT-ENV-ROOT-A HBT-ENV-ROOT-A-U @ true false HBT-ENV-BUILD
-   42 HBT-ENV-RUN
-   HBT-ENV-ROOT-B HBT-ENV-ROOT-B-U @ false false HBT-ENV-BUILD
-   42 HBT-ENV-RUN ;
-
 : HBT-ENV-SAVE ( ptr u8 n -- )
    HBT-ROOT 2swap HBT-ENV-DEP HBT-ENV-DEP-U HBT-PATH!
    HBT-AOT-OUT HBT-ENV-DEP HBT-ENV-DEP-U @ COPY-FILE-STREAM
@@ -147,6 +136,8 @@ variable HBT-ENV-ROOT-B-U
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH! ;
 
 
+\ The load and four tasks each make 1000 observed queries, a manifest far larger
+\ than a text fragment, which the cache key must accept.
 : HBT-ENV-WORKERS ( -- )
    s" load-time tasks collect complete environment inputs" T-LABEL
    HBT-AOT-SRC S\" require src/lib/task.f\npackage INPUT-WORKERS\nTASK:MIN-STACK TASK:TASK A\nTASK:MIN-STACK TASK:TASK B\nTASK:MIN-STACK TASK:TASK C\nTASK:MIN-STACK TASK:TASK D\nhere data-base - negate 7 and allot\nvariable READY\nvariable START\nvariable ANSWER\n: WORK ( -- )\n   1 READY atomic-add drop\n   begin START atomic@ 0= while TASK:PAUSE repeat\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   s\" SHARED_ROOT\" GETENV 1- + c@ ANSWER atomic! 0 TASK:RETURN ;\n: JOIN ( ptr n -- )\n   TASK:JOIN MATCH result ok OF drop ENDOF err OF throw ENDOF ;MATCH ;\n: LOAD ( -- )\n   ['] WORK A TASK:ACTIVATE ['] WORK B TASK:ACTIVATE\n   ['] WORK C TASK:ACTIVATE ['] WORK D TASK:ACTIVATE\n   begin READY atomic@ 4 < while TASK:PAUSE repeat\n   1 START atomic!\n   1000 0 ?do s\" SHARED_ROOT\" GETENV 2drop loop\n   A JOIN B JOIN C JOIN D JOIN ;\nLOAD\npublic\n: VALUE ( -- n ) ANSWER atomic@ ;\n;package\n: MAIN ( -- ) INPUT-WORKERS:VALUE . s\" AOT_RUNTIME\" GETENV type ;\n" WRITE-ALL
@@ -167,7 +158,6 @@ public
    HBT-PREPARE
    HBT-ENV-SELECTED-INPUT
    HBT-SCOPED-INPUT
-   HBT-ENV-LARGE-INPUTS
    HBT-ENV-WORKERS
    CLEANUP-RESET
    T-REPORT

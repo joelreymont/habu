@@ -14,4 +14,5 @@ When brought up, implement the actual PE/DLL, unwind, TLS, ABI and OS boundaries
 needed by the target, then qualify native self-build and real consumers on each
 host. The retired generic fragment/HostServices frameworks are not prerequisites;
 use existing responsible providers unless a demonstrated boundary requires an
-extension. Preserve the required-versus-qualified distinction in portability.md.
+extension. Keep docs/xcomp.md "Target contract" stating which Windows profiles
+are declarable only and which are qualified.

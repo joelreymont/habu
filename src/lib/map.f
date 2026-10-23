@@ -12,6 +12,16 @@
 \ The two families are public because only a public family gets generated
 \ constructors (MAP-SLOT--STATE:EMPTY, MAP-LOC:FOUND); the words that produce
 \ and consume them are private.
+\
+\ SET stores the caller's key pointer and length, not a copy, and a replacement
+\ keeps the first key's pointer: the key bytes stay alive and unchanged while
+\ the entry exists. GET answers SOME value or NONE; EACH visits occupied slots
+\ in storage order. Every call takes the capacity the storage was initialised
+\ with; a bad capacity, malformed storage and a full table throw E-MAP-* codes.
+\ The slot reader turns raw tags 0 and 1 into constructors and throws
+\ ENGINE-ERROR:BAD-TAG on any other.
+\
+\ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.
 
 require src/lib/errors.f
 require src/lib/string.f

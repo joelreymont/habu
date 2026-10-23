@@ -1,4 +1,6 @@
 \ zip-ffi.f - exact libzip/libc ABI bindings, private to ZIP.
+\ STORAGE CLASS. PROCESS-WIDE: the REGISTERED lifecycle flag, set under the
+\ ZIP state lock; image preparation retires every live archive and clears it.
 require src/lib/ffi-abi.f
 require src/lib/image-lifecycle.f
 require src/lib/zip-state.f

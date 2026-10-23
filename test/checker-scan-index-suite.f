@@ -4,7 +4,8 @@
 \ top-level interpret line, and the stores and their indexes are checker
 \ internals the unsealed engine binds by their recorded rows, named directly or
 \ through checked words. The gate runs it in its unsealed whitebox engine;
-\ standalone under bin/hb it exits 70 (docs/gate.md "How a suite runs").
+\ standalone under bin/hb it exits 70 (docs/gate.md "How a suite runs, and
+\ what that demands of its files").
 \
 \ WHAT IS UNDER TEST. Each lookup below stopped walking its store and started
 \ asking an index (dot habu-the-checker-s-8c4e7273 for all but SUMV-FIND):

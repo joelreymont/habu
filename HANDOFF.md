@@ -57,13 +57,32 @@ Done only when command output shows all of:
 
 ## Next on pulsar
 
-Active lanes use `.jj-ws.noindex/pulsar-intel-{images,pstore,sessions,image-state,app-extent}`;
+Integration and the native census use `.jj-ws.noindex/pulsar-intel-gate`;
 the dots workspace is `pulsar-intel-dots` on master. The unchanged image
 producer now exits 0, producing all three executable/map pairs and the merged
 seed image. Its fix includes x86 placement/writer ordering, publication across
 compiler replacement, boot contract seeding/restoration, native window capture
-and the structural shadow-row bound. Final delta review and convergence remain
-open before integration. Shared changes retain an open Mac ARM check.
+and the structural shadow-row bound. Independent initial and delta reviews,
+native build and generation 5/4 convergence pass. Shared changes retain an
+open Mac ARM check. The integration also contains checked inline
+stores, fixed-session ownership and transient image-state cleanup; each has
+passed independent review, focused checks and generation convergence. Their
+combined pre-rebase census ran 486/486 rows with 56 red (originally 97).
+The image producer and every image builder passed. These four lane workspaces
+are retired after integration; their shared-code ARM checks remain open.
+
+The integration reconciles master with that candidate. Master
+deleted pre-body reuse, reader and passive APIs: keep those deletions and the
+three-cell `native-origin-cell` API, retaining the x86 unit codec and literal
+origin transport for positive post-reader cache hits. Its independent source
+review passes; native build, native-eval, hookless rejection, positive cache
+hits and generation 5/4 byte convergence pass at source `1b39d57f`.
+The temporary origin-transition workspaces and old-catalog bodies are retired.
+Newer master changes include BE/zlib additions and test consolidation;
+the next full census must use the merged tree. `pulsar-intel-check-verify` investigates
+the remaining verifier row and its CPU cost. The app-image extent mismatch
+was caused by missing restored checker contracts and passes with the image
+boot fix; its diagnostic workspace is retired.
 
 Landed on intel: `ruypmwwq` / `e65e0176`, "Retire x86 profiler spans on trim
 and reclaim". Independent adversarial review found no defects; native build,
@@ -97,9 +116,12 @@ are listed in `habu-finish-the-x86-5a565370`; its Mac ARM check remains OPEN.
 Remaining auto byte differences belong to image-state, session close to
 sessions, and missing seeded contracts to the image boot fix.
 
-Joel decisions are pending for whitebox classification of FMT/byte-buffer
-tests and a tier-1 PTY diagnostic expectation. No master assertions have been
-changed for these requests. The image-state lane removes measured transient
+Joel requires FMT/byte-buffer to remain ordinary SUITE rows and all existing
+check-verify assertions to remain intact. FMT's extra x86 reporter dependency
+has a reviewed fix; BUF's extra encoder dependency remains under investigation.
+Joel permits the PTY package-recovery tier-1 branch, preserving its tier-0
+expectation; its source review and Intel E2E pass, and actual ARM verification
+remains open. The image-state lane removes measured transient
 DATA differences from seven native-file-auto image comparisons; it preserves
 all original comparisons.
 
@@ -245,11 +267,11 @@ stays unbranched.
   the older test.
   Resolve the conflict to master's test and code, then keep this branch's
   x86 `NO-TIER-ZERO` session and `HB-TARGET-LINUX-X86-64?` selection.
-- Master, as of `e1220a95`, has folded `docs/x86-64.md` and
-  `docs/porting.md` into `docs/xcomp.md` (its "x86-64" and "Porting"
+- Master, as of `e1220a95`, has folded the x86-64 and porting references into
+  [docs/xcomp.md](docs/xcomp.md) (its "x86-64" and "Porting"
   sections) and dissolved `docs/vocabulary.md` and `docs/policy.md` into
   code headers and `docs/design.md`. This branch still edits
-  `docs/x86-64.md`: carry each edit into `docs/xcomp.md`, or into the header of the code it describes
+  the former x86-64 reference: carry each edit into [docs/xcomp.md](docs/xcomp.md), or into the header of the code it describes
   (a doc passage that restates code moves to that file's header or is
   dropped), delete the old files, and repoint the links in `INTEL.md` and
   this file.
@@ -271,4 +293,4 @@ stays unbranched.
   needs a failure it fixes; run `$complexity` on a design before a worker
   gets it, and do not let Astra's own critique be the only check.
 
-Port design background: `INTEL.md`, `docs/x86-64.md`, `docs/gate.md`.
+Port design background: `INTEL.md`, [docs/xcomp.md](docs/xcomp.md#x86-64), [docs/gate.md](docs/gate.md).

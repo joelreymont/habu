@@ -1,7 +1,12 @@
-// host.js - the browser host (docs/browser-host.md): runs /module.wasm's turns
-// through turn.js on the main thread, draws its triangles with WebGPU, shows
-// SVG images, its text and tree, and sends canvas input and text from the field.
-// A failure to start WebGPU, request, grow memory or run is shown in text.
+// host.js - the browser host: runs /module.wasm's turns through turn.js on the
+// main thread, draws its triangles with WebGPU, shows SVG images, its text and
+// tree, and sends canvas input and text from the field. A failure to start
+// WebGPU, request, grow memory or run is shown in text.
+//
+// SVG is shown through an img element, whose processing mode disables scripts,
+// interaction and external references; supplied markup is never inserted into
+// the document. Only a browser checks this file: host-cli.mjs runs the same
+// turns with no DOM or GPU.
 import { Module } from "./turn.js";
 
 const canvas = document.querySelector("canvas");

@@ -1,6 +1,6 @@
 \ storage-test.f - test/browser/storage.f's module under bun: its dynamic buffer
-\ beside the pages src/lib/browser/host-cli.mjs adds (docs/browser-host.md). The
-\ module is built by tools/wasm-build.f's command line and validated by
+\ beside the pages src/lib/browser/host-cli.mjs adds (src/lib/browser/host.f).
+\ The module is built by tools/wasm-build.f's command line and validated by
 \ wasm-tools. bun and wasm-tools must be on PATH, so this is no row of the
 \ ordinary gate: test/wasm/device.f runs it, as does
 \ `bin/hb --load test/browser/storage-test.f` from the tree's root.

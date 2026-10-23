@@ -1,4 +1,18 @@
-\ AES-256-GCM sealing and HMAC-SHA-256/SHA-1 over OpenSSL 3's libcrypto.
+\ AES-256-GCM sealing, HMAC-SHA-256/SHA-1 and RS256 over OpenSSL 3's libcrypto
+\ (libcrypto.3.dylib on macOS, libcrypto.so.3 on Linux). No key management: no
+\ derivation, rotation, storage format or nonce counter. JWS serialization and
+\ key selection belong above it.
+\
+\ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 record
+\ are TASK:+USER rows. Every input span is borrowed for its call and nothing is
+\ kept between calls; a SEAL or UNSEAL context is freed on every path, a throw
+\ included.
+\
+\ A nonce must never repeat under one key: GCM then leaks the two plaintexts'
+\ XOR and the authentication key. UNSEAL clears its output on `failed`, so no
+\ unauthenticated plaintext is ever visible. Associated data such as a record's
+\ row identity is authenticated, not encrypted: the record fails to open under
+\ any other row.
 require src/lib/errors.f
 require src/lib/prelude.f                      \ true / false
 require src/lib/string.f

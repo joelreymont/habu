@@ -33,12 +33,10 @@ create SLOTS
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
    NATIVE-HOST-CELLS:FACTS ,            0 ,
-   \ Appended optional body-reader identities. Old hosts lack these names.
+   \ The origin record's three cells. Old hosts lack these names.
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + ,       0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 2 cells + ,    0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 3 cells + ,    0 ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 4 cells + ,    0 ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 5 cells + ,    0 ,
    \ The capture host's baked layout has no names for the suspended hook pair.
    $2D80 ,                             0 ,   \ SUSP-HOOK-CELL
    $2D88 ,                             0 ,   \ SUSP-PREFLIGHT-CELL
@@ -55,7 +53,6 @@ create SLOTS
    $3850 ,                             0 ,   \ POLICY-ABI:KEYWORD-CELL
    $3858 ,                             0 ,   \ ENGINE-MAIN:REPORT-CELL
    $3860 ,                             0 ,   \ PROVIDED-XT:EVALUATE-RANGE-CELL
-   $3870 ,                             0 ,   \ PROVIDED-XT:BODY-PASSIVE-CELL
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

@@ -1,11 +1,11 @@
 \ build.f - the builder and freeze lifecycle: one uniquely owned handle for a
 \ module under construction, and the one act that publishes it.
 \
-\ docs/compiler-ir-design.md section 6.2 (NEW-BUILDER / FREEZE / ABORT are the
-\ ownership shape the substrate must already have), section 6.4 (the small
-\ common builder API every dialect wraps), and section 6.5 (freeze is where a
-\ module is validated before anything is published). This file owns the
-\ lifecycle of that construction: who may mutate, when mutation stops, what
+\ A builder is uniquely owned: NEW-BUILDER makes one, FREEZE publishes it as an
+\ immutable module that later read-only passes may share, and ABORT abandons
+\ it. The small common builder API every dialect wraps lives here, and freeze
+\ is where a module is validated before anything is published. This file owns
+\ the lifecycle of that construction: who may mutate, when mutation stops, what
 \ abandoning costs, and what publication produces. It defines no table format
 \ and repeats no table logic; every append here is a delegation to the module
 \ that owns the table being appended to.
@@ -61,14 +61,15 @@
 \
 \ FREEZE IS ALL OR NOTHING. Every check runs before the first arena is frozen:
 \ the builder must be live and presented with its own context, must own no open
-\ stage (design line 544's "no builder-only placeholder"), every table must hold
-\ no more records than the ceiling this builder committed to, and all sixteen
+\ stage (a frozen module holds no builder-only placeholder), every table must
+\ hold no more records than the ceiling this builder committed to, and all
+\ sixteen
 \ arenas must still be live. Only then are the arenas frozen, the slot marked
 \ frozen and the module handle minted. A refusal therefore leaves the context,
 \ the tables and the builder exactly as they were, and the caller may fix the
 \ module and freeze again.
 \
-\ THE WHOLE-MODULE CHECKS ARE IR-VERIFY'S. Design section 6.5's structural
+\ THE WHOLE-MODULE CHECKS ARE IR-VERIFY'S. The structural
 \ verification of a whole module is package IR-VERIFY (src/compiler/ir/verify.f),
 \ its own owner with its own error block (-8080..-8099). FREEZE calls it through
 \ VERIFY-CK as its last refusal arm, in front of the arena freezing, and
@@ -228,7 +229,7 @@ CAST: ARENA>N ( IR-ARENA:arena -- n )
 : BCEIL! ( n n n -- )
    CEIL-IDX cells BCEILS + ! ;
 
-\ ---- the table transaction ----------------------------------------------------
+\ ---- the table transaction ---------------------------------------------------
 \ Creating a builder is sixteen arena allocations followed by one publication,
 \ and it has to be all of them or none. NOTHING GIVES THE ARENAS BACK, because
 \ there is nothing to give back: an arena is a record and a span in the owning
@@ -505,7 +506,7 @@ private
 : OP-DONE ( n -- )
    OP-MINE STG-FREE OP-STG ! ;
 
-\ Design line 544: a module that still has a record open carries a builder-only
+\ A module that still has a record open carries a builder-only
 \ placeholder, so it cannot be published.
 : STG-CLEAR-CK ( n -- )
    {: g:n :}
@@ -833,7 +834,7 @@ public
    have 0= if false exit then
    have pr ARENA>N = ;
 
-\ ---- interning: symbols, sources, and spans (design lines 517-520) ------------
+\ ---- interning: symbols, sources, and spans ----------------------------------
 : INTERN-SYMBOL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b USE {: slot:n :}
@@ -870,7 +871,7 @@ public
    {: b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
    b LIVE-SLOT T-SA TAB@ src st ln IR-SOURCE:SPAN ;
 
-\ ---- interning: types (design line 517) --------------------------------------
+\ ---- interning: types --------------------------------------------------------
 private
 
 : TYPE-USE ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
@@ -908,7 +909,7 @@ public
 : INTERN-CODE-REF ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    TYPE-USE IR-TYPE:CODE-REF ;
 
-\ ---- interning: attributes (design line 519) ---------------------------------
+\ ---- interning: attributes ---------------------------------------------------
 private
 
 : ATTR-USE ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key )
@@ -941,7 +942,7 @@ public
    c  slot T-QP TAB@  slot T-QR TAB@  slot KEY@  slot T-SR TAB@  slot T-TR TAB@
    IR-SCHEMA:DEFINE ;
 
-\ ---- the operation builder (design lines 507-514) ----------------------------
+\ ---- the operation builder ---------------------------------------------------
 : BEGIN-OP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b USE drop
@@ -968,7 +969,7 @@ public
    blk IR-OP:ADD-SUCCESSOR ;
 
 \ One attribute this operation carries, under the key it answers: the schema
-\ declares keys, so an operation has to name one (design line 479).
+\ declares keys, so an operation has to name one.
 : ADD-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-attr-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-symbol-id a:IR-ID:ir-attr-id :}
    c b USE drop
@@ -992,7 +993,7 @@ public
    slot T-QR TAB@  slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    IR-OP:END-OP ;
 
-\ ---- the function builder (design lines 498-499) -----------------------------
+\ ---- the function builder ----------------------------------------------------
 : BEGIN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder sym:IR-ID:ir-symbol-id :}
    c b USE {: slot:n :}
@@ -1044,7 +1045,7 @@ public
    slot T-SR TAB@  slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    IR-FUN:END-FUN ;
 
-\ ---- the block builder (design lines 501-503) --------------------------------
+\ ---- the block builder -------------------------------------------------------
 : BEGIN-BLOCK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}
@@ -1171,7 +1172,7 @@ public
    slot T-SA TAB@ span IR-SOURCE:SPAN-CK ;
 
 \ The dialect this module's schema table was created for, and the schema version
-\ it was created at. NEW-BUILDER fixes all three (design line 1714) and nothing
+\ it was created at. NEW-BUILDER fixes all three and nothing
 \ can change them afterwards, so a dialect that reads them back is reading the
 \ header it would have to have written itself - which is what turns "call
 \ NEW-BUILDER through the dialect" from a usage rule into a check.
@@ -1189,7 +1190,7 @@ public
 \ How many operands and results the schema table declares for one opcode. An
 \ elaborator has to know both before it can stage the operation: how many values
 \ to take off its compile-time value vector, and how many results to declare. The
-\ schema table is the authority on an operation's shape (design line 229), and
+\ schema table is the authority on an operation's shape, and
 \ these two readers are how a caller reaches that authority for a module that is
 \ still being built. Neither is a second opinion about the shape: IR-OP:END-OP
 \ validates the staged operation against the same rows, so a caller that ignored
@@ -1251,7 +1252,7 @@ private
    live 0 < if E-IR-BUILD-STATE throw then
    live slot f BCEIL@ > if E-IR-BUILD-CEILING throw then ;
 
-\ Design line 380's committed ceilings, reread from the tables themselves. Each
+\ The committed ceilings, reread from the tables themselves. Each
 \ authority already refuses an append past its ceiling; reading the counts back
 \ here is the independent check that what will be published is exactly the
 \ prefix this builder committed to.
@@ -1325,7 +1326,7 @@ private
    slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
    slot T-EP TAB@  slot T-ER TAB@ ;
 
-\ Design section 6.5's whole-module verification, run as the last refusal arm
+\ IR-VERIFY's whole-module verification, run as the last refusal arm
 \ before any table is frozen. The verifier is its own authority: this file hands
 \ it the module's tables and its own derived table and repeats none of its logic.
 : VERIFY-CK ( IR-CTX:ctx n -- )
@@ -1342,7 +1343,7 @@ private
 
 public
 
-\ ---- freeze and abort (design lines 505-507) ---------------------------------
+\ ---- freeze and abort --------------------------------------------------------
 \ Publish the module. Every refusal arm runs before the first table is frozen,
 \ so a refused freeze changes nothing at all: the context keeps its scratch and
 \ its module count, the tables keep their contents, and the builder stays live
@@ -1355,7 +1356,7 @@ public
 \ passes the same USE gate every append does rather than merely checking that
 \ the builder is live: a builder handle that escaped into another compilation
 \ could otherwise publish a module its context never agreed to. The context is
-\ also what section 6.5's validation needs - the bound target contract, and an
+\ also what freeze validation needs - the bound target contract, and an
 \ allocator for the tables that validation derives - so the argument is the
 \ interface that check requires, not a courtesy. ABORT publishes nothing and
 \ allocates nothing: retiring an arena needs no allocator, so it keeps the
@@ -1371,7 +1372,7 @@ public
 \ gate, the same refusal arms before the first table freezes, the same module
 \ identity, and the same published views afterwards.
 \
-\ WHY THERE ARE TWO. Section 6.5's verification is the gate on a module that
+\ WHY THERE ARE TWO. Whole-module verification is the gate on a module that
 \ becomes a routine, and it costs a full walk of every table. A chain of passes
 \ ran it once per module per word - three times for a two-operation body - and
 \ each run re-derived the same facts about the same code in a new numbering.

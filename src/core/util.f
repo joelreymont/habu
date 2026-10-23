@@ -30,7 +30,8 @@ variable SEQ
 \ callers resolved before that pass keep working, and checked user code already
 \ rejects the non-certified raw name (E-UNDEFINED). Read a registry through its
 \ certified accessor (TYPE-FIELD:COUNT, TFAM-N@, TF-STR-U@, SCHEMA-N@, …), never
-\ the raw cell. Defined here in the first prefix source so every later prefix file
+\ the raw cell. The laundered ['] -> execute route this does not close is
+\ docs/design.md "Registry protection". Defined here in the first prefix source so every later prefix file
 \ (type-schema.f and type-family.f both load before internal-mark.f) can tag its
 \ cells at their definition site with a single REG-PROTECT.
 \ An index holds only in the process that loads the prefix - a build host

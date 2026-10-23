@@ -11,7 +11,7 @@ XTSITE, PWIN and packed BOOTRUN formats. Do not restore an old shared width.
 
 The remaining reporting issue is tools/data-table-census.f's attribution of
 anonymous storage after the last declared object to that preceding object.
-docs/engine-size.md documents the limitation; the current size tool is a
+The current size tool is a
 wrapper over image-size-lib, so the old TR-LASTZERO/USIGS-USER comparison is
 not a current measurement.
 

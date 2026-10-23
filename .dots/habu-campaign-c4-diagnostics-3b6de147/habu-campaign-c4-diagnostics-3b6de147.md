@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-09-16T13:54:06.636339+03:00"
 ---
 
-Problem: several checker and engine paths die or crash on input a user can reach, where a located diagnostic belongs. docs/repair-diagnostics.md gives checker diagnostics a stable JSON contract; this campaign holds the observed failures that still escape it.
+Problem: several checker and engine paths die or crash on input a user can reach, where a located diagnostic belongs. The tools/diag-code.f header gives checker diagnostics a stable JSON contract; this campaign holds the observed failures that still escape it.
 
 Acceptance: every child below is closed, each with the fixture that reproduces its failure.
 
@@ -16,4 +16,4 @@ Removed from the campaign: the JSON contract for runtime failures (habu-extend-t
 
 Absorbed on 2026-09-16: 60 dots closed with the reason 'superseded by habu-campaign-c4-diagnostics-3b6de147'; find their text with dot find.
 
-Files: src/core/render.f, src/lib/errors.f, src/habu/habu2.f diagnostic emission, docs/repair-diagnostics.md, docs/roadmap.md section C4. Verify: test/gate-diagnostics.f, test/run.f green. Depends: none. Ownership: checker and engine lanes. Claim: unassigned.
+Files: src/core/render.f, src/lib/errors.f, src/habu/habu2.f diagnostic emission, tools/diag-code.f (header). Verify: test/gate-diagnostics.f, test/run.f green. Depends: none. Ownership: checker and engine lanes. Claim: unassigned.

@@ -1,8 +1,23 @@
-\ suite.f - TEST package suite/group/test implementation.
+\ suite.f - package TEST: suite, group and row registration and the run loop,
+\ loaded by src/lib/test.f.
 \
-\ Loaded by src/lib/test.f. A project adapter configures setup, teardown, argument
-\ construction and runner words; suite files define named
-\ groups/tests, then call TEST:RUN once.
+\ A project adapter installs the hooks (SETUP! TEARDOWN! DRAIN! SETTLE!
+\ ARGS-BEGIN! ARG+! RUNNER! STDIN-RUNNER! WHITEBOX-RUNNER!). A suite file
+\ declares `TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the mode token is
+\ mandatory), rows (SUITE, WHITEBOX-SUITE, SUITE-STDIN) each closed by
+\ `TEST:;SUITE`, then `TEST:;GROUP`, and calls TEST:RUN once. RUN offers rows
+\ to their runner in registration order between SETUP and TEARDOWN, which
+\ receives the run's throw code; RUN rethrows it. DRAIN runs on entry to a SEQ
+\ group, before and after each of its rows, and once at the end; PARA rows,
+\ SUITE-STDIN ones included, start without waiting for each other, so a row
+\ that needs an idle pool belongs in a SEQ group. A row whose arguments reach
+\ another row keyword or the end of input (`test: row <name> has no ;SUITE`),
+\ and a row a runner still declines after SETTLE (`test: row <name> not
+\ started after settle`), throw E-SUITE-ROW. Fixture helper words belong in a
+\ private package, not global stemmed names.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the row and group tables, argument buffer and
+\ hooks are static; one task registers and runs a suite.
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -1,11 +1,11 @@
 # Architecture
 
-What Habu is made of, from the bottom up: what each part owns and the rules it
-follows. [compilation.md](compilation.md) follows a definition from source to
-native code and an image; [bootstrap.md](bootstrap.md) makes the first `hb`;
-[portability.md](portability.md) holds the detail for platforms and
-cross-compilation. Each rule is present tense; where the code does not follow
-it yet, its **Now** line says what differs.
+The structure Habu is built to, from the bottom up: what each part owns and the
+rules that span files. [compilation.md](compilation.md) follows a definition
+from source to native code and an image; [bootstrap.md](bootstrap.md) makes the
+first `hb`; [xcomp.md](xcomp.md) holds platforms and cross-compilation. Each
+rule states the target. Where the code does not follow one yet, the code is the
+current state and its file headers describe it.
 
 ## Kernel
 
@@ -17,15 +17,11 @@ carries a trusted type declared at its definition. Every other kernel word has
 no type, is private to the system package and is stripped from the delivered
 `hb`.
 
-**One primitive table.** Each primitive is one row in `src/habu/prims.f` that
-names it and states its effect. Each platform supplies one body per row, native
-code per instruction set, and the build refuses a
-body without a row or a row without a body. Where a primitive can be written
-without itself, a reference implementation in checked Habu runs beside every
-body in tests (`test/prim-parity.f`).
-**Now:** 233 primitives in 285 rows, 47 of them per-owner rows that
-[privacy](#packages-and-privacy) removes. The seed in `bootstrap/cg/forth.fs`
-carries a second copy of the ARM64 bodies (`FPRIM`) ([bootstrap.md](bootstrap.md)).
+**One primitive table.** Each primitive is one row that names it and states its
+effect. Each platform supplies one body per row, native code per instruction
+set, and the build refuses a body without a row or a row without a body. Where
+a primitive can be written without itself, a reference implementation in
+checked Habu runs beside every body in tests.
 
 ## Dictionary
 
@@ -33,15 +29,9 @@ carries a second copy of the ARM64 bodies (`FPRIM`) ([bootstrap.md](bootstrap.md
 A word's type hangs off its record: the checker's per-word data is reached from
 the record, laid down with it, discarded with it and linked into the image with
 it. A word's package and visibility come from its record's wordlist.
-**Now:** the checker keeps a second table keyed by package, visibility and name
-(`src/core/checker.f` `SYM-FIND`, `HIDX`), with its own rollback and its own
-copy of the used package names. The record's flags cell restates two type
-facts, `DNAME-MIN-IN` and `DNAME-WIDE` (`src/habu/layout.f`).
 
 **A word's type comes from its definition.** The effect declared where a word
 is defined is its type; nothing restates it elsewhere.
-**Now:** `src/core/checker.f` restates the types of words compiled before the
-checker in `PRIM:`/`PPRIM:` rows.
 
 **A header is five cells, then its name, then its body.** The definer lays the
 word's type at `HERE`, then its header, so one rewind discards both:
@@ -61,21 +51,12 @@ created word's body address, or nothing for a cast. An emission's row names a
 record and, for a quotation or a `does>` clause, which function of that
 record's emission it means. A package's body holds its public and private
 wordlists and whether it is sealed.
-**Now:** records are 48-byte slots in the code region
-(`src/habu/layout.f:167-200`), with a 16-byte inline name or a pointer to a
-longer one (1,811 of 20,626 names are longer), a numeric wordlist id and a code
-length. Their flags restate type facts and carry marks (`DNAME-MIN-IN`,
-`DNAME-WIDE`, `DNAME-INT`, `DNAME-OWNED`). A `does>` clause gets a companion
-record of its own (`src/compiler/native/publish.f:236`).
 
-**Each wordlist hashes its names into 64 chains.** Lookup hashes the folded
-token once and walks the matching chain of each wordlist in the search order.
-Plain chains would cost seconds per engine load: a load reads 237,186 tokens,
-11,264 of them numbers that miss every wordlist, the global wordlist holds 6,245
-words while loading, and a chain step costs about 10 ns in checked Habu. With 64
-chains the global one stays under 100 headers.
-**Now:** one global table of 262,144 slots is keyed by name hash and wordlist
-id (`src/habu/layout.f`, `HIDX-SLOTS`).
+**Each wordlist hashes its names into chains.** Lookup hashes the folded token
+once and walks the matching chain of each wordlist in the search order. An
+engine load reads hundreds of thousands of tokens, many of them numbers that
+miss every wordlist, so a single chain per wordlist would cost seconds per
+load.
 
 ## Memory
 
@@ -88,33 +69,16 @@ program.
 
 A word's header and its data are laid down at `HERE` as it is defined, and
 `ALLOT` grows the space. Headers and data interleave, as in Forth.
-**Now:** records are a fixed array of 131,072 slots inside the 35 MiB code
-region. The record band and region grow together to preserve 30,404,608 bytes
-for code (`src/habu/layout.f`, `DICT-CAP` and `CODE-BAND:BYTES`). Data is a separate space, and the engine's own
-state sits at 315 hand-assigned offsets in a header before it
-(`src/habu/layout.f`, `DATA-START` at :2273).
 
 ### Code space
 
 Code has its own space and pointer because a page is writable or executable,
-never both ([portability.md](portability.md) §14).
-**Now:** code shares one 35 MiB region with the records, and the engine flips
-the region between writable and executable around compilation
-(`src/habu/habu2.f:12466-12476`). Records in that region are write-protected
-and changed through `patch32` and page flips (`src/habu/xref.f:476`,
-`LPROTREC`).
+never both ([xcomp.md](xcomp.md#linking-and-publication)).
 
 ### Stacks
 
 Each stack is its own mapping with an inaccessible page below and above it, so
-the MMU enforces its bounds and compiled code carries no bounds check
-(`src/habu/stack-abi.f:1-13`).
-
-### Mapped buffers
-
-`src/lib/memory.f` hands out OS-backed mappings that the caller owns and releases.
-The library keeps nothing about them except the process-wide scope stack of
-`WITH-BYTES`.
+the MMU enforces its bounds and compiled code carries no bounds check.
 
 ## Packages and privacy
 
@@ -122,39 +86,20 @@ The library keeps nothing about them except the process-wide scope stack of
 its package. System words are private words of the system package, and the
 build strips private words from the delivered `hb`. There are no owner rows,
 caller checks or marks on records.
-**Now:** engine-internal primitives sit in the global dictionary and are
-refused by marks (`DNAME-INT`, the trusted-only flag, `DNAME-OWNED`);
-`PPRIM:`/`EPPRIM:` owner rows type words per package.
 
 **A sealed package cannot be reopened.** `package NAME` on a sealed package is
 refused.
-**Now:** the refusal is written twice because `package` is: in the engine's
-machine code (`src/habu/habu2.f` `C-PACKAGE`, `C-PACKAGE-SEAL-GUARD`) and in a
-second interpret loop written in Habu (`src/habu/interpret.f`
-`OUTER:INTERPRET`, with `src/habu/packages.f` `PKG-PACKAGE`,
-`PKG-SEAL-GUARD`), which only tests load.
 
 **Stripping drops headers; reachability decides code.** The linker writes a
 sealed package's private wordlist empty, so no later source can name its
 words. A word's code and body stay in the image only while a kept word reaches
 them through a row or a reference cell. An application image keeps no header
 at all.
-**Now:** the native builders emit every specified primitive. Image capture
-then follows references from the program's roots to retain reachable code.
 
 ## Interpreter
 
 **One interpreter.** The interpret loop, definers, packages and source loading
 are written once in typed Habu and run on every platform.
-**Now:** ARM64 runs a machine-code interpreter (`src/habu/habu2.f`); the Habu
-loop (`src/habu/interpret.f`) runs only under tests and does not yet read
-`constant`, `defer` or `linear:`. Its `create` and `variable` publish the word
-through the `def-create` writer row, whose ARM64 body is the tail of the
-engine's own `create` (`DEFWRITE:ADDR-TAIL,`), and its `cast:` through
-`def-cast`, which ends with the engine cast's empty body
-(`DEFWRITE:EMPTY-BODY,`); x86-64 has no interpreter
-(`src/habu/kernel-x64.f:1752`) and refuses both rows. Its `immediate` is the
-`imm-mark` row, whose ARM64 body is the engine's own keyword (`C-IMMEDIATE`).
 
 **The loop is Forth's.** `INTERPRET` reads a token and looks it up. Outside a
 definition the word runs; inside one, an immediate word runs and any other word
@@ -164,13 +109,6 @@ the pending definition, none while interpreting. Every construct (`if`, `{:`,
 `s"`, `;` and the rest) is an immediate word that calls the checker's step for
 it ([one reader](compilation.md#defining-a-word)). `evaluate`,
 `evaluate-closed`, `include` and `require` are `INTERPRET` over another source.
-**Now:** the machine-code reader dispatches through keyword tables, 25 rows
-for interpreting and about 70 for compiling (`src/habu/habu2.f`
-`EM-INTERPRET-*-KEYWORDS` at :10083, `EM-COMPILE-*-KEYWORDS` at :11288), and
-`src/core/include.f` reaches the loop through its private `INCLUDE-INTERPRET`
-defer. `SOURCE-ROOT:USE-INTERPRETER` installs a renderer for loader fragments;
-the loader closes the stack around the whole source unit. Public range
-evaluators close their own program stack and reject invalid byte bounds.
 
 **The kernel holds what the typed interpreter needs to load.** That is:
 - lookup over the hashed chains;
@@ -192,28 +130,20 @@ space is untouched. `INTERPRET` restores the source, package scope and used
 packages it saved on entry, then rethrows.
 
 **At top level, a word's type guards the stack.** The interpreter supplies the
-exact selected dictionary record to the checker-owned typed row. The checker
-applies that word's input and output effects and refuses a mismatch before the
-call, including a pointer or execution token stored in a numeric cell. Native
-`DNAME-MIN-IN`, `DNAME-WIDE`, `DNAME-INT` and policy checks remain in force.
-`src/core/top-row.f` connects the token hook to this row; nested evaluators own
-separate row state. See [typed-top-level.md](typed-top-level.md).
+exact selected dictionary record to the checker, which applies that word's
+input and output effects and refuses a mismatch before the call, including a
+pointer or execution token stored in a numeric cell. See
+[design.md](design.md#typed-top-level).
 
 **The REPL is `INTERPRET` per line.** When standard input is a terminal, it
 reads a line, interprets it under `catch` and answers `ok` or the error. A
 definition still open at the end of a line continues on the next.
-**Now:** the REPL loop is machine code (`src/habu/habu2.f` `LREAD`, `LRREC`),
-and its line editor (`src/habu/repl.f`) is untyped and installs itself through
-an engine hook cell.
 
 ## Platforms and code generation
 
 **One codegen per platform.** Each definition compiles through the current
 platform's codegen. Hand-written code per platform is only the kernel's
 primitives.
-**Now:** ARM64 has a second codegen beside its platform codegen, the tier-0 JIT
-(`src/habu/jit.f`). The platform codegen compiles 2.51 ms per word against the
-JIT's 0.105 ms (`docs/compiler-measurements.md:361`).
 
 **The codegen is one pass over the checked events.** It does four things:
 - it keeps a definition's stack values in registers, and leaves its constants
@@ -226,45 +156,26 @@ JIT's 0.105 ms (`docs/compiler-measurements.md:361`).
 Locals live in the return-stack frame, and `>r` moves a value to the return
 stack. There is no IR and no optimizing pass. A pass is added only when a
 benchmark shows that the code it produces pays for it.
-**Now:** tier 1 is 59,710 lines. It reads the definition again from a token
-tape, builds an IR module, runs passes and two verifiers, allocates registers
-and emits. It costs 524 µs for a trivial word
-(`docs/compiler-measurements.md:1361`), and its selection and emission proper
-are about a tenth of that (:607-613). Its code runs 1.0 to 9.1 times as fast
-as tier 0's (:157-165) through what this pass keeps: inlined primitives, stack
-values in registers, constants as immediates and comparisons folded into
-branches (:11-133). Tier 0 compiles a trivial word in 9.0 µs with checking off
-(:1081).
 
 ### Cross-compilation
 
 **A build names the platform it runs on and the platform it produces.** Any
-`hb` builds `hb` for every required host ([portability.md](portability.md)
-§1.1). The build runs a word's host body when it needs the word's value and
-compiles a target body for the product ([portability.md](portability.md) §7).
+`hb` builds `hb` for every required host
+([xcomp.md](xcomp.md#build-host-product-and-target)). The build runs a word's
+host body when it needs the word's value and compiles a target body for the
+product ([xcomp.md](xcomp.md#compile-time-execution-and-target-data)).
 Building for a platform never runs on it: `hb` on a macOS ARM64 machine
 cross-compiles the x86-64 `hb`, and only running the product needs a machine of
-its kind ([portability.md](portability.md) §2.3).
-**Now:** the x86-64 native cross-build and the Wasm module build compile
-definitions for a second target through `src/compiler/native/shadow.f` and
-their target linkers. The ordinary ARM64 product build captures the running
-engine.
+its kind.
 
 **Every codegen emits unplaced code.** A compiled definition is its bytes plus
 a row for each call, outgoing branch, code address and data address in them,
-and each row names a record ([header](#dictionary)), not an address. The publisher places an emission
-in the running engine by resolving its rows against that engine; the linker
-places it in an image by resolving them against the image's layout. A build
-compiles a definition once when the product runs on the host's platform, and
-twice otherwise: once to run on the host and once for the product.
-**Now:** the ARM64 codegen emits only placed code
-(`src/arch/arm64/passes.f:315`, `UNPLACED-UNSUPPORTED`), and the ARM64 capture
-finds call sites again by decoding branches and address chains in the placed
-bytes (`src/habu/aot-capture.f` `ACAP-TGT`, `ACAP-CHAIN@`). The x86-64 capture
-reads the rows the engine recorded where it built the code (the live band,
-`ACAP-X64-REACH`) and decodes no bytes. x86-64 and Wasm emit unplaced code only
-in a second compile beside the placed one
-(`src/compiler/native/compiler.f:537-580`).
+and each row names a record ([header](#dictionary)), not an address. The
+publisher places an emission in the running engine by resolving its rows
+against that engine; the linker places it in an image by resolving them against
+the image's layout. A build compiles a definition once when the product runs on
+the host's platform, and twice otherwise: once to run on the host and once for
+the product.
 
 **Build-time data is product data.** While a build loads the product's
 sources, the dictionary space is the product's: a reservation the build owns,
@@ -276,13 +187,6 @@ clause. `defer` is a created cell that holds a function. Engine state the
 product boots from, such as its checker hook, is product data that its sources
 declare and store into; what build-time code does to the build's own state
 never reaches the image.
-**Now:** the build runs definers on the running engine's own data and then
-copies that span (`src/habu/aot-capture.f` `ACAP-BAKE-DATA`), and carries a
-fixed list of engine cells into the image (`tools/native-build-core.f`
-`CHECK-FIXED-ROWS`) that `tools/native-layout.f` translates per host. Created
-words get hand-written routines (`does-patch`, `src/habu/prims.f:636`;
-`LDOESPATCH` in `src/habu/habu2.f`), and the x86-64 kernel refuses `create`
-and `does-patch` (`src/habu/kernel-x64.f:1777`, `:2379`).
 
 **A cell's declared type says whether it holds a reference.** Raw storage
 holds no address ([forth.md](forth.md), "Raw storage never holds an address"),
@@ -292,13 +196,86 @@ writes each such cell as a reference to the object or function its value names,
 and copies every other cell as bytes. Nothing scans integers for pointers, and
 no registry lists pointer cells. A reference cell whose value is neither null
 nor inside the product's spaces is refused, naming the cell.
-**Now:** the build keeps a registry of pointer cells, filled by `defer`, `is`,
-`xt!` and `ptr-cell-mark` (`src/habu/address-cells.f`,
-`src/habu/habu2.f:7592-7602`). `xt!` admits an execution token into a raw cell
-(`src/habu/prims.f:452-466`). A record that mixes pointer and scalar fields has
-no declared form, so one of its halves goes through a cast that the linker
-cannot see ([effects.md](effects.md), the two open launders;
-[type-system.md](type-system.md) §10).
+
+## Builds
+
+**A file is the unit of compilation.** Packages stay namespaces that any file
+can open or reopen. The loader reads source from disk in its normal order, and
+a file is compiled again when its inputs, the facts it consumed, the compiler
+or the target change.
+
+**A file's object is the result of compiling it.** It holds the file's
+definitions, code, initialized data, literals, its persistent changes to
+earlier data, and the checker and loader state that later source and the final
+binary need; compiler scratch is not part of it. Addresses are relocatable
+references, resolved by declaration and offset at import and never keyed, so
+an edit that changes an earlier file's size leaves later objects valid.
+Symbols resolve by package and name, not by the numbers the compiler assigned
+them. State a subsystem owns (compiler identities, checker pools, the literal
+pool, task slots, the require registry, the search order) is exported and
+restored by that owner; an object never copies a span of another owner's data.
+
+**Importing an object installs its result and runs nothing.** Compile-time code
+runs when the file is compiled; an import repeats neither that code nor its
+external effects. A value captured from the environment stays part of the
+result until a tracked input changes, so a program that needs a fresh value on
+every run reads it at run time. Imported at its original load position, an
+object makes its definitions and data available to later source as compiling
+it would: package visibility and `require`/`include` semantics hold, and
+reopenings are not grouped ahead of intervening source. The proof is a fresh
+process that imports objects, compiles downstream source and behaves as a clean
+build does.
+
+**A file's key names the file, not what loaded before it.** The key is the
+engine, the target profile, the build mode, the canonical path and root, the
+load kind and the occurrence: how many earlier loads of the same path, root and
+kind the build made. Only `include` repeats a load, and the count is build-wide
+because the parent is not in the key, so two parents' first includes of one
+file stay distinct. Folding preceding files into the key would make an edit to
+the root file recompile every library it loads.
+
+**An entry is valid while what it consumed still holds.** In order: the file's
+size and modification time match, or else its bytes hash the same; the
+environment and path-resolution inputs it read answer the same; and every fact
+it consumed from earlier files still holds. A consumed fact is a record of an
+earlier file that the compilation looked up (its contract, immediacy, fixed
+value or generated family, the resolution of a spelling in the search order)
+or the search order at entry, recorded once per file. A comment or body-only
+edit leaves later files valid; renaming a word or changing a contract, a
+constant or `immediate` invalidates exactly the files that consumed it.
+
+**A file that reads earlier data around its owners stores no object.**
+Compile-time code reads earlier files' state through dictionary records and
+owner-exported state. A file whose compile-time code reads earlier data through
+a raw address, a trusted body outside an owner interface, or an untracked
+foreign or system call is compiled on every build, and the build names the
+word.
+
+**An edit during a build is read in due course.** A file already compiled
+keeps the version it read for that build and is rebuilt on the next; a file not
+yet compiled is read when the loader reaches it. A build neither snapshots the
+source tree nor stops because an editor changed a file.
+
+## Images
+
+**A stripped image carries only its entry's closure.** Without `--repl`, an
+image has no compiler, dictionary or REPL: the code `MAIN` reaches and the data
+window the application loaded into. It compiles nothing at run time, so it runs
+under `MemoryDenyWriteExecute`.
+
+**The window holds only what the application requires.** The builder opens the
+capture window before the application loads, with only the application's own
+library copies visible to `require`, so the application's require closure lies
+inside the restored span. A library loaded before the window would be the copy
+the application's `require` resolves to; its cells would lie below the span and
+read as zero in the image, so the linker refuses such an image. A program that
+uses a library word without requiring its module fails to compile, naming the
+word.
+
+**Nothing is relocated because of its value.** A cell reaches the image as an
+address only because a declaration, a claim or a code row names it; the linker
+never reads an integer as a pointer. A value it cannot account for is refused,
+naming the word, the cell and the value.
 
 ## Tools
 
@@ -314,11 +291,6 @@ the checker records the event. There are five hooks:
 
 A definition's location is the tool's fact: the tool keeps it, and the record
 does not.
-**Now:** tools read source with readers of their own.
-`src/habu/verify-source.f` (3,905 lines) rebuilds each definition and checks it
-before it is compiled. `src/lib/source-lex.f` (838 lines) tokenizes for the check
-tool and nine lints. `tools/check-core.f` marks origins into a copy of the file
-so that the engine's diagnostics get positions.
 
 **Loading checks and runs; a check runs nothing that acts.** Loading a file is
 the checker's regular use: the checker checks each definition at `;`, and the
@@ -326,9 +298,8 @@ interpreter runs everything else, effects included. A check, the editor's or
 the check tool's, is that same load in a child `hb` with one setting: a word
 that acts outside the process does not run. Everything else runs, because
 running words decides which names exist: `ENUM` and the sum-type definers
-generate definitions by `evaluate` (`src/core/sumtype.f`), and `STRUCTURE`
-reads ahead (`src/core/structure-decl.f:714`). The child exits, so what ran
-leaves nothing behind, and the check's verdict is the load's.
+generate definitions by `evaluate`, and `STRUCTURE` reads ahead. The child
+exits, so what ran leaves nothing behind, and the check's verdict is the load's.
 - each primitive row says whether it acts outside the process: writing or
   changing files, processes, signals, the network, terminal input or a foreign
   call;
@@ -351,33 +322,15 @@ file's `require` closure, which does not change while the file is edited. The
 editor keeps a child per load context with the closure loaded. Each check
 forks that child, loads only the edited text, reports and exits, so nothing
 the check ran survives it. A new edit ends a check still running. A changed
-`require` line or a changed required file rebuilds the child. Running the
-definers is cheap: a cold load of `src/lib/process-command.f` with its closure takes
-0.10 s, and of `tools/lsp-core.f` 0.66 s.
-**Now:** the editor and the check tool's pre-pass read a file without running
-it. `src/habu/verify-source.f` models each definer by name (`ENUM-END?`,
-`STRUCTURE-END?` and about 45 more), and a definer that writes its word as
-text needs a `generates:` row, which is a claim the pre-pass cannot prove. The
-two readers disagree: after `CMD:COMMAND C`, `: U ( -- n ) C#VEC ;` checks 0
-under `--verify-only` and 70 when the file loads ([forth.md](forth.md), the
-`generates:` rule). The pre-pass is also slower than the load it avoids:
-`--verify-only` takes 1.0 s on `src/lib/process-command.f` and 1.71 s on
-`tools/lsp-core.f`, about 0.6 s of it loading the verifier.
+`require` line or a changed required file rebuilds the child.
 
 **A check reports every independent error.** When the check sets the
 multi-error flag, a refused definition is rewound as always and the
 interpreter goes on at the next token. A mention of a refused word is
 undefined. The tool counts a definition whose first defect is such a mention
 as refused, without reporting it. An error outside a definition ends the file.
-**Now:** in multi-error mode the hook publishes a refused word under its
-declared signature so that later definitions resolve it
-(`src/core/check-hook.f:100-104`), which leaves a word behind.
 
 **A lint that states a language rule is a refusal.** The definer refuses a
 reserved name, a broad `TRUSTED:` and a global that shadows a primitive. Facts
 about a whole program, such as the error codes it uses or its public
 signatures, come from walking the dictionary after the program loads.
-**Now:** these are separate tools over the token stream
-(`tools/reserved-name-lint.f`, `tools/checked-boundary-lint.f`,
-`tools/lint/shadow-lint.f`, `tools/error-code-lint.f`,
-`tools/public-signatures.f`).

@@ -10,7 +10,7 @@ blocks:
   - habu-check-arena-append-c7b1e040
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned (stale claim cleared 2026-09-16).
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned (stale claim cleared 2026-09-16).
 
 Own symbol.f NEW-FROM ceiling parameters, build.f SYM-NEW and ir-symbol/ir-build tests. Pass P-SYMS/P-SBYTES for clones; refuse smaller-than-prototype occupancy before mutation/allocation. Verify zero/small/exact fit, future insertion ceiling, duplicate at capacity and independent clone. This establishes constructor contract before index ownershipa35dd84d; no implicit CAP-MAX/BYTE-MAX override.
 

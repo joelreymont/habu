@@ -10,7 +10,7 @@ blocks:
   - habu-build-the-compiler-c348eab0
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own pre-record declaration in native-build.f/by-name regime in native/checker-owner.f and seed docs only. Product supplies record-capable pair; make record sole authority. Verify cold/product-hosted build, missing/incompatible-owner negatives, compiler inventory lint and provenance. No ancient stdin prerequisite, absent-field fallback or new seed architecture.
 

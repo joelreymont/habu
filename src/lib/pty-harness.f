@@ -443,7 +443,8 @@ public
 \ answers whether the text came before it. The clock answers nothing: a child
 \ that still holds the terminal has not answered YET, which is a deadline and
 \ not a wrong answer, so the wait throws E-PROC-TIMEOUT and the row reads as a
-\ timeout instead of a failed assertion (docs/gate.md).
+\ timeout instead of a failed assertion (docs/gate.md
+\ "How a suite runs, and what that demands of its files").
 : WAIT-AFTER-WITHIN ( ptr u8 n ptr u8 n n -- bool ) {: ha:ptr hu:n ta:ptr tu:n ms:n :}
    ms WAIT-OPEN
    begin

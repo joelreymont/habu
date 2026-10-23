@@ -1,8 +1,8 @@
 # INTEL.md — the Linux x86-64 backend
 
 The entry point for the lane that finishes the Linux x86-64 backend. The
-design reference is [docs/x86-64.md](docs/x86-64.md). The seam rules are in
-[docs/porting.md](docs/porting.md). The dot tree starts at
+design reference is [docs/xcomp.md](docs/xcomp.md#x86-64). The seam rules are in
+[docs/xcomp.md](docs/xcomp.md#porting). The dot tree starts at
 `habu-finish-the-linux-57cb3952` (`dot show habu-finish-the-linux-57cb3952`),
 under the umbrella `habu-campaign-c6-targets-86bb56bb`.
 
@@ -35,7 +35,7 @@ is a follow-on, opened once tier-1 latency is measured on spark
 
 ## State
 
-Landed on `master` (the facts are in [docs/x86-64.md](docs/x86-64.md)):
+Landed on `master` (the facts are in [docs/xcomp.md](docs/xcomp.md#x86-64)):
 
 - the assembler (`X64ASM`);
 - the primitive table and its parity gate;
@@ -134,4 +134,4 @@ when their stated acceptance is met.
 
 The 2026-09 experiment branches and the earlier multi-agent integration line
 are superseded and archived. What survived is on `master` and is described in
-[docs/x86-64.md](docs/x86-64.md).
+[docs/xcomp.md](docs/xcomp.md#x86-64).

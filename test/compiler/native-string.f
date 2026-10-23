@@ -127,7 +127,7 @@ public
 variable SAVED-LITERAL
 private
 create ROLLBACK-BYTES 101 c, 112 c, 104 c, 101 c, 109 c, 101 c, 114 c, 97 c, 108 c,
-: PTR>N ( ptr a -- n ) BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+: PTR>N ( ptr a -- n ) NULL-PTR - ;
 \ A saved literal address is an integer cell; reading its bytes needs a byte view.
 CAST: N>BYTES ( n -- ptr u8 )
 

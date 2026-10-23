@@ -36,9 +36,9 @@ variable REFS-U
    {: key:ptr keyu:n idx:n contractu:n :}
    PARTIAL-REFS REFS-U @ + {: row:ptr :}
    idx row LE:U64! keyu row 8 + LE:U64!
-   contractu row 24 + LE:U64!
-   key row 32 + keyu BYTE-COPY
-   32 keyu + REFS-U +! ;
+   contractu row 16 + LE:U64!
+   key row 24 + keyu BYTE-COPY
+   24 keyu + REFS-U +! ;
 
 : PREPARE-REFS ( -- )
    PARTIAL-REFS REFS-U @ ndict@ cp@ 0 NFILE-REF:PREPARE ;
@@ -66,7 +66,7 @@ variable REFS-U
    NUNIT-CAPTURE:BIND-PRODUCER
    REFS-RESET
    \ The first row has no key; no record table has grown to ndict@ yet.
-   56 REFS-U !
+   48 REFS-U !
    ['] PREPARE-REFS E-NUNIT-PROFILE TTHROWSQ
    NUNIT-OBJECT:DISCARD-DEFINITION
    PENDING-REFS

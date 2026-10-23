@@ -8,7 +8,7 @@ closed-at: "2026-09-16T14:34:48.785395+03:00"
 close-reason: "superseded by habu-campaign-c1-finish-1f129a00: AOT artifact IO still uses a narrower row width than the declared row, so a second row is lost while the roundtrip reports ok"
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: active; owner: Astra artifact lane, .jj-ws/cedar-artifact-rows.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: active; owner: Astra artifact lane, .jj-ws/cedar-artifact-rows.
 
 Own aot-file.f row lengths/bases/counts/merge/version, aot-decl.f row contract and exact-row/MERGE fixtures. XTOFF-ROW=8 while IO uses4; cleared-buffer reproduction loses second row yet says roundtrip=ok. Use shared width; preserve fixed/window location and CODE/DATA target tags plus nullable offset+1. Shift window locations and nonnull targets by proper merged bases, checking range before publication. Reject truncated rows/incompatible old version. Verify fresh-buffer exact rows, both kinds/null/fixed cells, real merge and restored execution.25770093 owns other negative reader cases.
 

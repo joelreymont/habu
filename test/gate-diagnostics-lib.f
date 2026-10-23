@@ -486,7 +486,7 @@ TYPED-VARIABLE SPLICE-LEN len
 
 \ A refused record names its token and any known position, under the shape
 \ and repair class its code names
-\ (docs/repair-diagnostics.md). tools/check.f runs as a child: the packet comes
+\ (tools/diag-code.f). tools/check.f runs as a child: the packet comes
 \ from its own load child, whose capture would replace the one an in-process
 \ CHECK-CAPTURE holds open.
 : RECORD-ARGS ( ptr u8 n -- ) {: src:ptr srcu:n :}
@@ -843,7 +843,7 @@ TYPED-VARIABLE SPLICE-LEN len
    70 s" wide diagnostic row must fail closed with rc 70, not crash" GE-EXPECT-RC
    s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
 
-\ Item 13 repair-packet family field: a layout (ADT) type mismatch must carry the
+\ Repair-packet family field: a layout (ADT) type mismatch must carry the
 \ involved type-family name as `"family"`; a pure-scalar mismatch must not. The
 \ field carries the interned qualified spelling — bare tail for these global
 \ families; the foreign-package pkg:tail form is pinned in test/type-decl-suite.f
@@ -878,7 +878,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" family" s" scalar mismatch omits family field" ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-nofam.err" s" scalar mismatch schema" GJA1 ;
 
-\ Item 13 repair-packet variant/tag field: a `construct family variant` payload
+\ Repair-packet variant/tag field: a `construct family variant` payload
 \ mismatch must carry the arm's sum-variant name (`variant`) and declaration-order
 \ `tag`, plus the family it belongs to; a pure-scalar mismatch carries none. The
 \ two-variant sum built on the SECOND variant proves `tag` tracks the actual arm
@@ -905,7 +905,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" tag" s" scalar mismatch omits tag field" ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-novar.err" s" scalar novar schema" GJA1 ;
 
-\ Item 13 repair-packet payload_pos field: a construct payload mismatch names the
+\ Repair-packet payload_pos field: a construct payload mismatch names the
 \ 0-based declaration-order slot that failed. Both slots of the two-payload
 \ variant expect the SAME type (n), so a type-matched capture cannot tell them
 \ apart: the two arms prove the position is tracked structurally through the
@@ -941,7 +941,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" payload_pos" s" family-only mismatch omits payload_pos" ERR-NO-JKEY
    s" json-one-schema" s" habu-adt-nopos.err" s" family-only nopos schema" GJA1 ;
 
-\ Item 13 repair-packet arity fields: a family applied with the wrong number of
+\ Repair-packet arity fields: a family applied with the wrong number of
 \ signature arguments (E-WRONG-ARITY / fix_signature_arity) carries the family's
 \ declared arity (`arity_expected`) and the written count (`arity_actual`). The
 \ arity-2 arm proves the counts track the declaration, not a hard-coded pair; a

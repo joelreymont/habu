@@ -1030,14 +1030,15 @@ package BUILD-FIXPOINT
    BF-CERT-RC @ ;
 
 \ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
-\ build (E-BUILD-CERTIFY) after reporting the diagnostic. This is the staged trust induction (dot
-\ habu-staged-fixpoint-src-0b5fc6e6): the RUNNING stage-N engine certifies the
-\ full assembled stage-N+1 source - the exact bytes the build consumes,
-\ checker-boot prelude included - before any stage compile, so a type error in
-\ emitted engine source can no longer warn its way into an installed binary.
-\ No escape hatch: the gforth recovery lane (docs/bootstrap.md) reaches this
-\ native refresh only after a working bin/hb exists, and a tree whose
-\ generated sources reject must be repaired, not installed.
+\ build (E-BUILD-CERTIFY) after reporting the diagnostic. This is the staged
+\ trust induction (dot habu-staged-fixpoint-src-0b5fc6e6): the RUNNING stage-N
+\ engine certifies the full assembled stage-N+1 source - the exact bytes the
+\ build consumes, checker-boot prelude included - before any stage compile, so a
+\ type error in emitted engine source can no longer warn its way into an
+\ installed binary. No escape hatch: the gforth recovery lane (docs/bootstrap.md
+\ "No-Binary Recovery") reaches this native refresh only after a working bin/hb
+\ exists, and a tree whose generated sources reject must be repaired, not
+\ installed.
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
    BF-CERTIFY-RC
    0= IF exit THEN

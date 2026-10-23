@@ -1,7 +1,7 @@
 # Debugging the self-hosted standalone
 
-The standalone is JIT-compiled native ARM64; blind `.`-printing was the recurring
-pain. Toolkit:
+Tools and procedures for diagnosing native engine failures, from a load
+refusal to a profile.
 
 ## Where a load refusal happened — read the message
 
@@ -23,115 +23,65 @@ prefix. A string a harness `evaluate`s *inside* a file is the one case where the
 two halves come from different places: the path is the file's, the line counts
 within the evaluated string.
 
-One place prints this — the `LCOMPILEDIE` tail in `src/habu/habu2.f`, from the
-three cells `src/habu/layout.f` reserves as `SRCLOC:PATH-CELL` /
-`PATHLEN-CELL` / `INB-CELL`. Every die site that branches there writes its
-message with no trailing newline and the tail ends the line.
+Interpret-level diagnostics (`hb: undefined: X` and its siblings) and the
+refusals that exit without the compile tail (boot source, CLI, uncaught throw,
+snapshot and AOT families) print no location. For those, the checker's own
+diagnostics, which carry `<path>:<line>`, or a bisect are the way in.
 
-**What is located, and what is not.** Located: every refusal routed through
-`LCOMPILEDIE` — bad string literal, counted string too long, data space out of
-range, dictionary/code space full, definition body text full, BEGIN nesting
-full, quotation nesting full, duplicate definition, `does>` in a checker-rejected
-body, malformed stack signature, `;]` with no open quotation, `;` with a
-quotation or control structure open, source that ends
-inside a definition it opened (at the definition's name, or the word that ran
-`def-open`, naming the definition) or
-inside a `(` comment (at the `(`), a `;` that closes a definition its source
-did not open (at the `;`, naming the definition), `does>` with locals active,
-a local referenced inside a quotation, locals opener inside a quotation,
-`:`/`cast:`/`defer`/`is` missing a name, `is` target not found or not deferred,
-`package`/`export` misuse, the whole `using` family, and the
-`construct`/`match` operand refusals (`hb: construct: unknown family: NOPE at
-<path>:<line>`).
+## Reading an exit status
 
-Still unlocated, and why: the interpret-level diagnostics share a **different**
-tail (`LDIAGRET`) — `hb: undefined: X`, `hb: interpret-mode layout value`,
-`hb: internal engine word`, `hb: interpret stack underdepth`,
-`hb: control-flow closer without opener`,
-`hb: control-flow word does not match the open structure`,
-`hb: control-flow nesting too deep`,
-`hb: local name over 16 bytes`, `hb: more than 64 locals in one definition`.
-So do the refusals that `exit_group` without any tail: the boot source errors
-(`hb: source prefix buffer full`, `hb: cannot read source`), the CLI ones
-(`hb: unknown flag`, `hb: cannot open`), `hb: uncaught throw code N`,
-`hb: catch frame corrupt`, the snapshot, AOT, protected-WID, lowering,
-address-cell and mmap families, and `hb: repl line over`. Each ends its line
-with a newline. For those the checker's own diagnostics (which carry
-`<path>:<line>` of their own) or a bisect are still the way in.
+An uncaught throw in a `--load` or spawned child exits by its code. A code from
+1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
+code prints `hb: uncaught throw code N` on stderr and exits 67, so read the
+`E-*` from the message, not from the status. A refusal the checker rendered
+before throwing its code prints the same line after its diagnostic and exits
+70, the status of every refusal. A one-byte diagnostic and a clean exit means a
+raw engine capacity path, not a throw.
 
-## `.s` — data-stack inspector (in the standalone)
-`forth.fs` defines a `.s` primitive: prints the whole data stack (base..top), one
-signed decimal per line, **non-destructively**. Interleave it to "step" through a
-word and watch the stack — the practical stepper for standalone Forth. The loop
-pointer lives in a DATA cell (`SSCR-CELL`) because the shared printer `g-print9`
-clobbers x9..x15. The base is saved at startup into `S0-CELL`.
-For build-time underflow, also probe with `depth .`: `.s` walks the saved
-base-to-top range and can hide a negative depth after a native emitter corrupts
-the build stack.
+## `.s` and `.` — stack inspection
+
+`.s` prints the whole data stack (base..top), one signed decimal per line,
+**non-destructively**. Interleave it to "step" through a word and watch the
+stack:
 
 ```
 : GO 11 22 33 .s + + . ;   \ .s prints 11/22/33, then GO continues -> 66
 ```
 
-## `.` — single value (in the standalone)
-Pop + print one signed decimal + newline. Use for a specific intermediate.
+For build-time underflow, also probe with `depth .`: `.s` walks the saved
+base-to-top range and can hide a negative depth after a native emitter corrupts
+the build stack. `.` pops and prints one value, for a specific intermediate.
 
-## `BPW+` / `BPW-` / `BPW.` — watched cells
-The engine bakes the debugger (`src/habu/native-runtime.f`) as package DEBUG:
-the watched cells, the token stepper and the breakpoints below. `using DEBUG`,
-once in a session or at the head of a program, opens its commands for bare use
-until `;using`, and every example below assumes it ran; a one-off call
-qualifies the name instead, as in `' WORD DEBUG:BP+`.
-`src/habu/debug-watch.f` loads before the stepper/debugger. It publishes a small
-watch table used by both `step` and compiled-word breakpoints.
-Add a cell address with `BPW+`, remove it with `BPW-`, clear all watches with
-`BPW-CLEAR`, and list `address value` pairs with `BPW.`. For fixed engine cells:
+## The debugger: watched cells, `step`, breakpoints
+
+The engine bakes the debugger as package DEBUG (`src/habu/debug.f` lists its
+commands). `using DEBUG`, once in a session or at the head of a program, opens
+its commands for bare use; a one-off call qualifies the name instead, as in
+`' WORD DEBUG:BP+`. Every example below assumes `using DEBUG` ran.
+
+**Watched cells.** `BPW+` adds a cell address, `BPW-` removes it, `BPW-CLEAR`
+clears all, `BPW.` lists `address value` pairs. Both `step` and breakpoints
+print the watch table. For fixed engine cells:
 
 ```
-using DEBUG
 DATAB ENVP-CELL + BPW+
 DATAB ARGV-CELL + BPW+
 ```
 
-## `step` — native token stepper (in the REPL, `bin/hb` on a tty)
-`src/habu/stepper.f` installs its own REPL read hook. `step 5 dup * 3 +` runs
-the rest of the line one token at a time, echoing each token and printing the
-data stack and watch table after it executes — no `EVALUATE` needed: the REPL
-hook feeds the engine one token per call, so the engine's own interpret loop is
-the evaluator.
+**`step`** (in the REPL, `bin/hb` on a tty): `step 5 dup * 3 +` runs the rest
+of the line one token at a time, echoing each token and printing the data stack
+and watch table after it executes.
 
-## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
-`src/habu/debug.f`: `' WORD BP+` plants a `BRK #0` at the
-word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
-`habu-bp-lr:` + the **interrupted thread's x30** — the address the word will
-return to, which is what names its caller — then `habu-bp-stack:` with each live
-data-stack cell and `habu-bp-watch:` with watched address/value pairs, then
-restores the original instruction and **resumes** the word; the breakpoint is
-one-shot. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to turn it
-into a caller's name; that pair is the only way to answer "who called this?" in a
-seeded engine, because lldb cannot plant a breakpoint in the JIT region at all. `' WORD BP*` is **persistent** (fires every call — the handler
-emulates the word's entry instruction and leaves the BRK planted, so no
-single-step is needed). A tier-0 word entry is one of exactly two instructions:
-`str x30,[sp,#-16]!` in a word that calls, or a `nop` in one that does not
-(`EM-COMPILE-RET` rewrites the slot at `;`). The handler reads the instruction
-the BRK replaced out of the breakpoint slot to tell them apart: a nop needs only
-`pc += 4`, and the save also gets `sp -= 16` and the interrupted `x30` written at
-the new `sp`. That store lands in the sixteen bytes the kernel's signal frame
-keeps for its `frame_record {fp, lr}`; nothing reads those back (`sigreturn`
-restores from `uc_mcontext` lower in the frame, and the handler addresses its
-locals off `sp`, never off `x29`), and the resumed word loads the value with
-`ldr x30,[sp],#16` while the frame is still there. There is no other address to
-write: that one IS the slot the word's epilogue reads. `N ' WORD BPN` is
-persistent but **silent for the first N hits** (skip-count). `BP-` removes;
-`BP.` lists. Up to 8 at once. The SIGTRAP handler (`EMIT-TRAPH`) resumes via
-`sigreturn` with the trampoline token; code is patched through the `patch32`
-prim (RW→store→RX→isync, atomic from JIT-resident code). A full
-Forth-predicate conditional would need signal-safe deferred evaluation; the
-supported conditional breakpoint mechanism is skip-count (`BPN`).
-
-Targets must be instruction-aligned addresses in the live compiled code region.
-Engine-text primitives such as `atomic-cas` are refused with `E-BP-TARGET`
-before changing the breakpoint table or page permissions.
+**Breakpoints on compiled words.** `' WORD BP+` is one-shot, `' WORD BP*`
+fires on every call, and `N ' WORD BPN` fires on every call after the first N
+(the supported conditional breakpoint). `BP-` removes, `BP.` lists. A hit
+prints `habu-bp:` with the pc and stack top, `habu-bp-lr:` with the address the
+word will return to, then the live data stack and watched cells, and resumes
+the word. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to name
+the caller: in a seeded engine that pair is the only way to answer "who called
+this?", because lldb cannot plant a breakpoint in the JIT region at all.
+Targets must be instruction-aligned addresses in the live compiled code region;
+engine-text primitives are refused.
 
 `cp@` is stable only inside a compiled word: the interpreter compiles each
 top-level line into a transient buffer at `cp@`, so a top-level `cp@ patch32`
@@ -140,19 +90,8 @@ clobbers the executing line (SIGILL). Write a runtime stub at `cp@` from inside
 the exact ARM64 encodings and search the on-disk `bin/hb` for the contiguous
 stream — ASLR slides the xt, file bytes do not move.
 
-An uncaught throw in a `--load` or spawned child exits by its code. A code from
-1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
-code prints `hb: uncaught throw code N` on stderr and exits 67: `-2504 throw`
-(`E-PROC-TRUNCATED`) exits 67 with that line, so read the `E-*` from the
-message, not from the status. A refusal the checker rendered before throwing its
-code - a bad declaration, a stale `trust` row, a used public shadowing a global -
-prints the same line after its diagnostic and exits 70, the status of every
-refusal; the engine keeps the code of the last refusal rendered
-(`src/habu/layout.f` `REFUSAL-CELL`), so only a throw of that code exits 70. A
-one-byte diagnostic and a clean exit means a raw engine capacity path
-(`exit_group`), not a throw.
-
 ## gdb/lldb — native stepping boundary
+
 Use the Habu stepper, breakpoints, watch cells, `jitdump`, and `imgdump` first.
 Use gdb on Linux and lldb on macOS only when the fault is in startup or emitted
 machine code before the Forth debugger is reachable. Inspect data-stack cells,
@@ -162,12 +101,9 @@ path/cdhash, so a binary that ran fine can be SIGKILLed at a path that previousl
 held an invalid signature. Write to a fresh path when in doubt.
 
 ## Forth disassembler (preferred over external disassemblers)
-`jitdump` decodes a live word's exact recorded code span in process on ARM64 or
-x86-64. It includes instructions after an early return and stops at the word's
-recorded end, including a tail branch. It refuses an xt with no live code record
-and an unknown or truncated Intel encoding instead of reading into a neighbor.
-The decoders and encoders are checked Forth where expressible. Use the dump to
-inspect generated code before falling back to external tools.
+
+Use the in-process dumps to inspect generated code before falling back to
+external tools:
 
 ```
 bin/hb --load tools/jitdump.f -- ': S ( n -- n ) dup * ;' S
@@ -176,66 +112,42 @@ bin/hb --load tools/imgdump.f -- bin/hb
 bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```
 
-For a baked Mach-O image, `imgdump` reports the preferred virtual addresses
-recorded in its `__text` section. Remove the process's ASLR slide from a live
-PC before passing it to `--pc`. Snapshot records use their persisted canonical
-coordinates. `tools/engine-size.f` reads Mach-O load commands and accounts for
-the GOT, chained fixups, code signature and padding as well as the payload.
+For a baked Mach-O image, `imgdump` reports preferred virtual addresses:
+remove the process's ASLR slide from a live PC before passing it to `--pc`.
 
 ## Which word owns this address — `tools/code-owner.f`
 
 A debugger stop, a crash dump and a breakpoint all hand back raw addresses in the
-JIT region, where no external symbol table reaches: `nm` and lldb see the loaded
-`__text` and nothing else. The dictionary has the answer, because every record
-carries its routine's start and length.
+JIT region, where no external symbol table reaches. The dictionary has the
+answer:
 
 ```sh
 <engine> --load tools/code-owner-main.f -- '$181954'
 ```
 
-The argument is a **region offset**, not an address — ASLR moves the region every
-boot, so an absolute address caught in one process means nothing in the next, and
-`region-off=` is what one run can hand another. It prints every record whose span
-contains the address (an `EXPORT` alias or `;does` companion can make that more
-than one) with the offset into each, or says plainly that no record owns it.
-`CODE-OWNER:AT.` takes a live address for use inside a larger probe, and
-`CODE-OWNER:AT` answers the count so a caller can tell "no owner" from silence.
-
-It must run inside the engine under study, for the same reason
-`tools/snap-heap-owner.f` must: that is the only process where those records
-exist. This is what turned an anonymous return address into `owner=PATHZ off=384`
-during the merged-engine crash hunt (dot habu-merged-engine-nmigrate-c970bf04).
+The argument is a **region offset**, not an address: ASLR moves the region
+every boot, and `region-off=` is what one run can hand another. Run it inside
+the engine under study, the only process where those records exist.
 
 ## Dictionary / xref inspection
+
 Semantic dictionary inspection is a live-image Forth surface, not external text
-search. `src/habu/xref.f` is baked into `bin/hb` and exposes `LATEST`,
-`XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`; use these before source search
-when debugging dictionary ownership. `XREF word-name` prints the latest matching
-record name, start, length, flags, and wordlist.
+search. `src/habu/xref.f` is baked into `bin/hb`; use `XREF`, `SEE` and
+`WORDS` before source search when debugging dictionary ownership.
 
 ## Who owns a persisted DATA cell — `tools/snap-heap-owner.f`
 
 When two builds of the same snapshot image differ, the differing byte offsets say
 *where* a stale pointer sits but not *whose* it is, and guessing an owner from
 what the cell contains is how this class of bug gets papered over. This tool
-answers the question from the dictionary instead. It prints two maps:
+answers from the dictionary: `SNAP-HEAP-OWNER:DUMP` maps heap offsets to owner
+words, `SNAP-HEAP-OWNER:CODE-MAP` maps code offsets to words.
 
-- `SNAP-HEAP-OWNER:DUMP` — `<heap offset> <name>` for every word that owns a
-  piece of the DP heap. The owner of a drifting offset is the last line whose
-  offset is not greater than it. A word is recognised as a heap owner by the one
-  `DKIND:ADDR` stamp `create`/`variable` publishes; the address it owns is read
-  with the shared, bounded `SNAP-RELOC` carrier decoder. A word that merely uses
-  that address is not an owner.
-- `SNAP-HEAP-OWNER:CODE-MAP` — `<JIT region offset> <code length> <name>` for
-  every word that has code, headed by the region base and heap top this run got,
-  so a program counter caught by a debugger watchpoint turns into a name.
-
-It has to run inside a process that has the source under investigation loaded,
-because that is the only place the names exist. A snapshot build leaves that
-process's two inputs in `HB_TMP`: the native engine `hb-native` and the snapshot
-source `hb-snap-src` (`tools/build-fixpoint.f` `BF-SNAP-SOURCE`), whose last line
-calls `APP-IMAGE:SAVE`. Run that engine on the same source with the dump in place
-of the save:
+It has to run inside a process that has the source under investigation loaded.
+A snapshot build leaves that process's two inputs in `HB_TMP`: the native
+engine `hb-native` and the snapshot source `hb-snap-src`, whose last line calls
+`APP-IMAGE:SAVE`. Run that engine on the same source with the dump in place of
+the save:
 
 ```sh
 HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
@@ -244,14 +156,9 @@ HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
 } | HB_TMP=<private-root> <private-root>/hb-native > owners.txt
 ```
 
-The heap map that produced the owner table in dot
-`habu-fix-persisted-dangling-a520f7b4` had 1793 owners; pairing it against the
-offsets `cmp -l` reports between two images built from one `hb-stdin` and one
-`hb-snap-src` named every drifting cell above the engine-reserved band.
-
-It reads the live dictionary through the engine's `src/habu/xref.f` surface and
-loads the pure grammar from `src/habu/address-carrier.f`; image inspection does
-not need the capture buffers or assembler state in `aot-decl.f`.
+Pair the heap map against the offsets `cmp -l` reports between two images
+built from one `hb-stdin` and one `hb-snap-src` to name every drifting cell
+above the engine-reserved band.
 
 ## Is this heap cell a persisted pointer or a live one — the ASLR intersect
 
@@ -277,24 +184,22 @@ for n in A B; do
 done
 ```
 
-A cell that holds an out-of-band address (above the image, i.e. neither the DP
-heap at `DATA-VA` nor this run's code region) **and holds the same value in both
-dumps** is persisted, and it is a defect. A cell whose value differs between the
-two dumps is this process's own and is fine. The pipe held open by `sleep` is
-what gives a booted, quiescent process to attach to; the trivial `7 .` only
-proves the engine reached its REPL.
+A cell that holds an out-of-band address (neither the DP heap at `DATA-VA` nor
+this run's code region) **and holds the same value in both dumps** is
+persisted, and it is a defect. A cell whose value differs between the two dumps
+is this process's own and is fine. The pipe held open by `sleep` is what gives
+a booted, quiescent process to attach to; the trivial `7 .` only proves the
+engine reached its REPL.
 
 Run the same intersect against an image built from a known-good tree and compare
 the two sets **by owner name** (`SNAP-HEAP-OWNER:DUMP`, above): what the suspect
 image carries and the good one does not is the regression, and everything in both
-is a pre-existing cell the good image already ships green. That comparison is
-what named `DEV-A-P` in dot `habu-single-prefix-load-17a8c792` — the arena base
-of `src/core/decl-event.f`, `malloc`ed by the build and persisted, so the warm
-image's first `ENUM` stored its event at `stale base + DEV-N * DEV-REC` and died
-`EXC_BAD_ACCESS` on an unmapped page. Note that it did NOT die on every run: when
-ASLR happened to leave that address mapped, the store landed in live memory and
-the program "passed". A nondeterministic pass rate is itself a symptom of this
-class, not noise to be re-run away.
+is a pre-existing cell the good image already ships green. A persisted
+`malloc`ed arena base makes the warm image's first store through it die
+`EXC_BAD_ACCESS` on an unmapped page, but not on every run: when ASLR leaves
+that address mapped, the store lands in live memory and the program "passes".
+A nondeterministic pass rate is itself a symptom of this class, not noise to be
+re-run away.
 
 Two ways this class hides:
 
@@ -303,10 +208,10 @@ Two ways this class hides:
   fresh one. The defect is still there; only the accident is. Removing a
   redundant load is therefore a change that can expose persisted-pointer bugs
   anywhere in the tree, and this intersect is how to check.
-- **The owner map does not name it.** `snap-heap-owner` lists live records still
-  stamped `DKIND:ADDR`; `does>` clears that stamp. An unnamed cell may therefore
-  fall far above the preceding owner. Treat a big offset as "unnamed", not as
-  that word's field.
+- **The owner map does not name it.** The owner map lists only live `create`
+  and `variable` records; `does>` clears their stamp. An unnamed cell may
+  therefore fall far above the preceding owner. Treat a big offset as
+  "unnamed", not as that word's field.
 
 ## Stage0 mirror vs native engine — which engine is actually running
 
@@ -316,189 +221,89 @@ installed `bin/hb`. `bootstrap/cg/forth.fs` is the Gforth-hosted mirror that
 builds `hb-stage0` during recovery. The mirror is meant to stay byte-for-byte
 equivalent to the native engine, and nothing currently proves that it does.
 
-This matters because `tools/bootstrap.sh` builds `hb-stage0` with the mirror at
-line 315 and runs it at line 318. That run is the first time a native binary
-loads the prefix, and it happens before any natively built engine exists. So a
-mirror-only defect stops the bootstrap outright, while every test that boots a
-child engine from an installed `bin/hb` keeps passing — those tests exercise the
-native engine and structurally cannot see the mirror.
+`tools/bootstrap.sh` builds `hb-stage0` with the mirror and then runs it. That
+run is the first time a native binary loads the prefix, and it happens before
+any natively built engine exists. So a mirror-only defect stops the bootstrap
+outright, while every test that boots a child engine from an installed
+`bin/hb` keeps passing: those tests exercise the native engine and structurally
+cannot see the mirror.
 
 When a failure appears during `tools/bootstrap.sh` but the matching test suite is
 green, suspect this split before suspecting the checker. Identify the engine by
-where the failure lands: a diagnostic printed by `hb-stage0` (bootstrap.sh line
-318, before any `stage2:` message) is the mirror; the same source failing under
+where the failure lands: a diagnostic printed by the `hb-stage0` run, before
+any `stage2:` message, is the mirror; the same source failing under
 `bin/hb --load` is the native engine.
 
 ### Reproducing a mirror-only prefix defect
 
 Patch the working tree and let `tools/bootstrap.sh` drive it. No separate seed
 builder is needed — the script already assembles the prefix in the right order,
-and the failure surfaces about five seconds in, at the `hb-stage0` run.
-
-The worked example below is the pre-trust deferred-word replay (dot
-`habu-fix-stage0-pre-88a4297e`). A `defer` declared before `: TRUST` in
-`src/core/checker.f` is copied into the pending table described in
-`src/habu/layout.f` (the `PD-*` constants) and replayed by `DRAIN-PRETRUST`. The
-replay is what teaches the checker the name, so a later checked `is` on that
-deferred word can compare the quotation against the declared effect.
-
-Append a pre-trust deferred word to `src/core/exec-vector.f`, the earliest
-prefix file where a `defer` is legal:
-
-    defer ZZ-PRETRUST-XT ( -- n )
-
-and a checked round-trip to the end of `src/core/check-hook.f`, which is the
-first file that compiles with the check hook installed:
-
-    : ZZ-PRETRUST-SELFTEST ( -- )
-       [: 42 ;] is ZZ-PRETRUST-XT
-       ZZ-PRETRUST-XT 42 <> IF s" zz: pre-trust round-trip failed" 76 die THEN ;
-    ZZ-PRETRUST-SELFTEST
-
-Then run the recovery launcher and restore the two files afterwards:
+and the failure surfaces within seconds, at the `hb-stage0` run. Add the
+smallest checked probe that exercises the suspect path at the earliest prefix
+file where it is legal, run the recovery launcher, and restore the files
+afterwards:
 
     HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
 
-Under a working mirror this completes with `bootstrap OK: bin/hb`. While the
-mirror replay is broken it exits 70 in about five seconds with
+An installed `bin/hb` re-reads the prefix from disk at boot, so the same patch
+under any `bin/hb --load <file>` prints the native engine's answer without a
+rebuild. Compare the two.
 
-    hook: non-certified definition: zz-pretrust-selftest at 'is'
-
-### Censusing what the checker actually learned
-
-`is NAME` needs two separate checker rows: the deferred-word row that
-`CHECKER-FIND-ACTIVE-DEFER` reports, and the signature row that
-`CHECKER-DEFINED?` reports. `DRAIN-PRETRUST` is supposed to produce the first
-through `checker-defer` and the second through `trust`. Ask for both by name
-immediately after the bare `DRAIN-PRETRUST` token in `src/core/checker.f`:
-
-    s" NAME dfr=" type s" NAME" CHECKER-FIND-ACTIVE-DEFER .
-    s" sig="      type s" NAME" CHECKER-DEFINED? .
-
-Use the lower-case spelling; the lookup folds the token. Run the same census
-under both engines and compare — an installed `bin/hb` re-reads the prefix from
-disk at boot, so patching `src/core/checker.f` and running any
-`bin/hb --load <file>` prints the native answer without a rebuild.
-
-On 2026-07-28 that census read `dfr=-1 sig=-1` for every pre-trust deferred word
-under the native engine and `dfr=0 sig=0` under the mirror. The conclusion drawn
-at the time — that the mirror's replay of `trust` produces no signature row —
-was WRONG, and it cost a lane. Both halves of the replay run and both reach the
-checker; what differed was WHICH checker they reached. Read the next section
-before trusting a census: a recovery engine loads `src/core/checker.f` twice in
-one process, so a census printed right after `DRAIN-PRETRUST` answers about
-whichever load is running, and the two loads give opposite answers.
-
-### Reading the replay from inside the engine
+### Building the seed directly
 
 Instrumenting `src/core/checker.f` changes what `test/bootstrap-wide-memory.fs`
-measures, so `tools/bootstrap.sh` then stops in its first gate with `bootstrap
-wide memory mismatch` and never reaches the stage0 run. Instrumented runs must
-therefore skip the launcher and build the seed directly. The seed is exactly the
-file `tools/bootstrap.sh` writes to `$HB_TMP/stage2-src`, used as written —
-`emit_src` gives every consumer the same text, boot-hide prologue included, and
-that prologue is load-bearing: strip it and the boot dies at exit 70 before you
-see any of your instrumentation (see below). Build and boot it with:
+measures, so `tools/bootstrap.sh` then stops in its first gate and never
+reaches the stage0 run. Instrumented runs must therefore skip the launcher and
+build the seed directly. The seed is exactly the file `tools/bootstrap.sh`
+writes to `$HB_TMP/stage2-src`, used as written: its boot-hide prologue is
+load-bearing (below). Build and boot it with:
 
     HABU_TARGET=<target> gforth -e 'require test/nf.fs s" <seed>" slurp-file s" <out>" FORTH-BUILD-EXE bye'
     HB_TMP=<dir> <out> -- <dir>
 
 A boot that reaches `stage2: cannot open source` (exit 74) got through the whole
-prefix; that message is success for this purpose.
+prefix; that message is success for this purpose. Copy `bootstrap/` and
+`test/nf.fs` into a scratch directory before instrumenting the mirror, and
+point Gforth at the copy, so the repository tree stays clean.
 
 ### The recovery engine reads the prefix twice
 
-This is the fact that made the 2026-07-28 census misleading, so keep it in mind
-for any probe placed in the boot prefix. The emitted engine reads every prefix
-file from disk when it starts — `PFX-LOAD-CHECKER-FILES` and its siblings in
-`bootstrap/cg/forth.fs` emit `LSRCRD` calls on baked path strings — and then
-interprets its baked program, which for a `FORTH-BUILD-EXE` binary is the whole
-prefix again plus a driver. So every top-level action in `src/core/checker.f`
-happens twice, in two different checker instances. Two markers tell the loads
-apart in a trace: only the startup load runs `src/core/include.f`, and only the
-baked program runs `src/habu/habu1.f`.
+Keep this in mind for any probe placed in the boot prefix. The emitted engine
+reads every prefix file from disk when it starts, then interprets its baked
+program, which for a `FORTH-BUILD-EXE` binary is the whole prefix again plus a
+driver. So every top-level action in a prefix file happens twice, in two
+different checker instances, and a census printed from the prefix answers about
+whichever load is running. Two markers tell the loads apart in a trace: only
+the startup load runs `src/core/include.f`, and only the baked program runs
+`src/habu/habu1.f`.
 
-The second load must not inherit the first load's words. That is the job of the
-boot-hide prologue `emit_boot_hide` in `tools/bootstrap.sh`, which appends
-`src/habu/hide.f` to find the marker, then hides the startup load's dictionary
-and clears its recorded effects. It is why
-instrumented seeds built by hand (above) drop it deliberately. When it is
-missing, `trust` and `checker-defer` from the startup load are still resolvable
-while `checker.f` is being re-read, so `C-PRETRUST-READY?` says "ready" and
-every defer declared before `: TRUST` publishes into the checker that is being
-replaced; nothing is captured, the drain replays nothing, and the first checked
-`is` on such a defer fails with `hook: non-certified definition: ... at 'is'`
-and exit 70 (dot habu-fix-stage0-pre-88a4297e).
+The second load must not inherit the first load's words: the boot-hide prologue
+(`tools/bootstrap.sh`, through `src/habu/hide.f`) hides the startup load's
+dictionary and clears its recorded effects. Without it, checker words from the
+startup load stay resolvable while `checker.f` is re-read, so declarations
+publish into the checker that is being replaced, and a later checked use fails
+with `hook: non-certified definition: ...` and exit 70.
 
-To see this directly, put the engine-side probe and the checker-side probe on
-the SAME file descriptor so their order is evidence: write the slot name from
-inside the `BDRAINPRETRUST` loop to fd 1, and `type` the name at the head of
-`: TRUST` and `: CHECKER-DEFER`. Interleaved output of the form
-`[NAME><tr:NAME><cd:NAME>]` proves the replay reached the checker; a second
-`is NAME` later in the same stream answering differently from the first proves
-you are looking at two loads, not at a broken replay.
-
-
-The pending table and its replay are assembly in both engines, so ordinary
+The pending tables and their replay are assembly in both engines, so ordinary
 `type`/`.` probes cannot reach them. Two techniques cover it without
 print-bisecting:
 
-- Instrument the checker end in Habu. Add a `type` of the name to `: TRUST` and
-  to `: CHECKER-DEFER` in `src/core/checker.f`, then bracket the bare
-  `DRAIN-PRETRUST` token with markers. If the markers print with nothing between
-  them, the replay never reached the checker.
-- Instrument the engine end by making an existing fail-closed exit fire where you
-  want a probe. Calling `C-PD-DIE-FULL` at the top of `C-PD-CAPTURE` proves the
-  capture branch was taken and names the deferred word; the same call inside the
-  `BDRAINPRETRUST` loop body proves the table was non-empty at replay time. Both
-  print the current token and exit 72, so they need no new string labels.
-
-Copy `bootstrap/` and `test/nf.fs` into a scratch directory before instrumenting
-the mirror, and point Gforth at the copy, so the repository tree stays clean.
+- Instrument the checker end in Habu: `type` the name at the head of the
+  checker words the replay calls, and bracket the replay with markers. If the
+  markers print with nothing between them, the replay never reached the
+  checker. Put the engine-side and checker-side probes on the same file
+  descriptor so their order is evidence; a second answer for the same name
+  later in the stream shows two loads, not a broken replay.
+- Instrument the engine end by making an existing fail-closed exit fire where
+  you want a probe: it prints the current token and exits, so it needs no new
+  string labels.
 
 ## External disassembly — last resort
+
 Use external disassemblers only when the native disassembler lacks an encoding.
 On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.
 On macOS, `otool -tv` can inspect `__text`; verify page hashes against the
 embedded CodeDirectory when signature behavior is involved.
-
-## Source arenas
-
-The engine input arena holds boot input and baked source. The stage2 reader
-holds one source stream. `SOURCE-ARENA-CAP` is the read allowance:
-
-- `IBUFSZ` equals `SOURCE-ARENA-CAP`: the cold source prefix and later program
-  input share it. The argv files include generated path rows and separators;
-  each file also has a `SOURCE-ARENA-CAP` bound. The file reader reserves an
-  EOF probe.
-  `test/main-argv.f` checks adjacent accepted and refused `--build` sizes
-  through the native and `main.f` entry routes. The `source boundary` case in
-  `tools/build-fixpoint-test.f` checks the distinct cold source-only host with
-  its stripped prefix, generated rows and argv sharing this arena. Overflow
-  exits 74 with `hb: source prefix buffer full`.
-  The prefix rows come in through `LSRCRDP`, which drops comment and blank lines
-  (`EMIT-SOURCE-READ-PREFIX`), so the resident prefix is about 41 percent
-  smaller than the files on disk; `LSRCRD` still reads argv files and the
-  `--build` payload byte for byte. A seeded engine emits no cold prefix, so
-  installed `bin/hb` starts program input at the arena base. Baked source
-  has separate space: the mapping is `SOURCE-ARENA-LEN = IBUFSZ + SRCN`.
-- `src/habu/stage2.f` reads the generated fixpoint compiler source into a
-  `DYNAMIC-BUFFER` byte row that doubles from 64 KiB until the source fits. It
-  is not the engine input arena and has no fixed bound; the code window refuses
-  a source an image cannot carry. It learns the size by reading because
-  `hb-stage0`, the Gforth-built engine that runs it first, has no `stat64`.
-
-`SOURCE-ARENA-CAP` is the shared read capacity. Native layout and Gforth
-recovery carry matching owner tokens. The assembler image window budgets one
-baked source stream; the generated engine maps the actual baked size separately
-from its `IBUFSZ` read allowance.
-
-The three ceilings a PROGRAM reaches — one definition's captured body text
-(`BODYBUF-CAP`, rc 71), one REPL line (`LLINE-MAX`, refused at the prompt) and
-`begin` nesting per definition (`JIT-SNAP:FRAMES`, rc 75) — are not arenas and
-are documented where the author of the program will look, under "Engine limits
-ordinary source reaches" in [forth.md](forth.md). Each states its ceiling and
-the count it saw on fd 2, so a refusal is read, not bisected.
 
 ## A child-process fixture disagrees with itself — `tools/launch-context.f`
 
@@ -507,18 +312,12 @@ when it fails (`expected 73 got 70`), which is what makes this class look
 environmental: the child printed the reason and the fixture threw it away. Get
 the reason before theorising about the launcher.
 
-- `src/lib/test/spawn-report.f` is the reporter. `SPAWN-REPORT:CHILD
-  ( ptr u8 n n n ptr u8 n ptr u8 n -- )` takes a label, the wanted and the got
-  rc, and the captured stdout/stderr, and prints all of it plus the launch
-  context. Wire every child-rc assertion in a fixture through a helper that
-  calls it on a mismatch.
-  The exit-70-vs-73 disagreement that stood for a day was one line of the
-  child's own stderr.
+- Wire every child-rc assertion in a fixture through a helper that calls
+  `SPAWN-REPORT:CHILD` (`src/lib/test/spawn-report.f`) on a mismatch: it prints
+  the wanted and got rc, the captured stdout/stderr and the launch context.
 - `bin/hb --load tools/launch-context.f` prints only the context, so the same
   report can be taken under different launchers and diffed. Every line starts
-  `ctx `: pid, script argv, whether `bin/hb` is reachable from the process's cwd
-  and from its inherited `PWD` (a stale `PWD` shows up as a yes/no split), fds
-  0/1/2 with open state, status flags and tty-ness, and the environment.
+  `ctx `; a stale `PWD` shows up as a yes/no split between cwd and `PWD`.
 
 ```sh
 bin/hb --load tools/launch-context.f | grep '^ctx ' | sort > /tmp/pipe.txt
@@ -527,150 +326,44 @@ grep '^ctx ' /tmp/tty.log | sort > /tmp/tty.txt
 diff /tmp/pipe.txt /tmp/tty.txt
 ```
 
-tty-ness is read with the host's own terminal-attributes ioctl, selected by
-`HB-TARGET-MACOS?`/`HB-TARGET-LINUX?`. The two hosts' request numbers are not
-interchangeable — issuing Linux `TCGETS` on macOS kills the process (exit 83) —
-so an unrecognised host throws `E-PROC-HOST` instead of trying both.
+Before concluding "environment", check the cheaper explanations: the test may
+not be registered in `test/gate-stdlib-cases.f`, and a fixture that asserts a
+specific exit code may simply be asserting a code the tree stopped producing.
 
-Before concluding "environment", check the cheaper explanations the same way
-this class was mis-filed once already: the test may not be registered in
-`test/gate-stdlib-cases.f`, and a fixture that asserts a specific exit code may
-simply be asserting a code the tree stopped producing.
+## Stack diagnostics — which one you are looking at
 
-## Stack diagnostics — which of the three you are looking at
-Every VM stack (the boot data stack, a task's own data/return/loop stacks, a
-run-in-stack callback's stack) is a mapping with an inaccessible page on each
-side (`STACK-ABI:PAGE-BYTES`, `src/habu/rt.f` EMIT-MAP). Compiled code carries
-no bounds check at all any more — capacity is enforced by the MMU, not by a
-check at every push and pop — so three independent mechanisms answer "why did
-this die", and they are not interchangeable:
-- `hb: interpret stack underdepth: <token>` and `E-UNDERFLOW: <token>` (both
-  exit 70) are the interpreter's own refusals. The first is the band in
-  `EM-INTERPRET-FIND`: `<token>`'s record states more inputs than the
-  interpret stack holds (a certified word's declared inputs, or a primitive's
-  `src/habu/prims.f` row), so the body never runs. The second is the
-  post-token depth floor: a word ran and left the stack below its base
-  because its body consumes more than its record states — a word defined
-  with checking off records no minimum, and a `TRUSTED:` body can drop more
-  than it declares. Inside `evaluate` either is a catchable
-  RC-REJECT throw; in the REPL the line recovers. These are the only checks
-  still anywhere near the per-token path, and they only ever fire from the
-  interpreter — a stripped application has no interpreter to name the token,
-  so the same underflow there is a guard-page fault instead (below).
-- A guard-page fault: a push past the capacity or a read below the base takes
-  SIGSEGV/SIGBUS, and `src/habu/crash.f` reads the faulting address out of the
-  signal context and classifies which of the three named stacks it landed in.
-  One kind of fault is thrown, not exited: a load or store in the data stack's
-  low guard page by the engine's own code or the JIT region, such as compiled
-  code reached through `execute`, `catch`, `finally` or a quotation xt taking
-  more cells than the stack holds. `C-CRASH-DATA-RECOVER` resumes the thread
-  at `habu2.f` LFLOORREC, which writes `hb: interpret stack underdepth:
-  <token>` with the token the interpreter was running and throws 70: a `catch`
-  receives it with the stack its frame saved, `evaluate` unwinds its frames,
-  the REPL recovers the line, and uncaught it exits 70. `1 ' W execute` with
-  `W ( n n -- n )` and one cell is `hb: interpret stack underdepth: execute`,
-  rc 70. `evaluate-closed` runs each text on a guarded data stack of its own,
-  so the cell under a text's floor is that stack's low guard page:
-  `5 s" 1 ' W execute" evaluate-closed` throws 70 and the caller's 5 is never
-  read (`test/compiler/native-eval.f` XT-UNDER, TOP-LEVEL).
-  A descriptor counts as a stack when its base is a cell boundary and its top
-  a page boundary, and its low guard is the page under the base rounded down
-  to a page. `source-unit-run` runs each callback on a fresh guarded stack of
-  its own, as `evaluate-closed` does, so the cell under a callback's floor is
-  that stack's low guard page too, on ARM64 and x86-64 alike.
-  Every other guard-page fault is `hb: stack bounds exceeded (data)` /
-  `(return)` / `(loop)` (exit 102, `ENGINE-ERROR:STACK-BOUNDS`): an overflow
-  (an overflow inside a closed text too, OVERFLOW), a jump into a guard page
-  (the instruction fetch faults and nothing was read, FLOOR-JUMP), and the
-  return and loop stacks. The handler never resumes a fault whose pc lies in
-  foreign code; on macOS arm64 such a fault on a guard page currently hangs
-  in the handler instead of exiting (dot habu-report-a-guard-ae3318e1). An access
-  below the base also keeps exit 102 where no throw entry exists: on a task's
-  own stack (a task region's `FLOORREC-CELL` reads zero), in a stripped AOT
-  image and on the x86-64 engine. The parenthetical names the stack, not the
-  operation. This is what a per-transfer bounds check used to report
-  generically; the message and exit code are unchanged from before guard
-  pages, only the `(name)` suffix is new, so match it as a prefix
-  (`hb: stack bounds exceeded`) rather than the whole line if the specific
-  stack does not matter to the assertion.
-- A machine-stack overflow: the OS thread's own stack, which every call and
-  local frame uses, runs into the kernel's guard, with sp already in it, where
-  no signal frame fits. So every thread that runs Habu code registers
-  `STACK-ABI:SIGNAL-BYTES` carved off its own stack as its alternate signal
-  stack before it runs any (`src/habu/crash.f` C-SIGNAL-STACK: the engine's
-  and a stripped image's startup, a task's thread, and a thread C started at
-  the callback that brings it in), and the crash handler runs there. A SIGSEGV
-  or SIGBUS whose fault address lies within `STACK-ABI:MACHINE-REACH` of the
-  interrupted sp, either side, is `hb: stack bounds exceeded (machine)`, exit
-  102, whatever code faulted, checked before the three VM stacks; `catch` does
-  not receive it. So a fault on a VM stack's guard is also named `(machine)`
-  when that guard lies within `MACHINE-REACH` (64 KiB) of the interrupted sp,
-  as on a task whose nearly exhausted machine stack the kernel mapped next to
-  one of its VM stacks, and a data low-guard hit so named exits instead of
-  resuming. A word that calls itself with nothing on the data stack, or
-  adds a cell per call, ends so at tier 0 and tier 1, plain and under `catch`,
-  on a task's thread, on a thread C started and in a stripped image
-  (`test/engine-stack-machine.f`). A frame wider than `MACHINE-REACH` that
-  faults farther from sp keeps the register dump. A refused registration
-  writes `hb: cannot install the signal stack` and exits 78.
-- `E-STACK-UNGUARDED` (-3802, `src/lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
-  the same number for the engine emitters, and `test/stack-guard.f` proves
-  the two agree) is run-in-stack's own admission check
-  (`src/habu/habu1.f` BRUNSTACK `GUARDED-EXTENT?`), thrown *before* the
-  callback ever runs and before any stack switch happens — catchable, not a
-  crash. It is a STRUCTURAL test of the extent, not a provenance test: it
-  knows nothing about where the extent came from and never asks whether
-  `src/lib/memory.f` `MEM:ALLOC-GUARDED` made it. It tests six things in a fixed
-  order, and the first that fails is the one that decides — base non-zero,
-  capacity non-zero, base a whole `STACK-ABI:PAGE-BYTES` multiple, capacity a
-  whole `STACK-ABI:PAGE-BYTES` multiple, base + capacity not wrapping, base
-  outside the DATA region. The DATA-region clause is what makes this a proof
-  rather than a guess, because every `create`, `allot`, `,` and `buffer`
-  address lies inside that region — but it is the LAST clause, so an ordinary
-  create/allot buffer is normally refused earlier, on base alignment, and a
-  case that means to exercise the region clause has to hand over an address
-  that is page-aligned to begin with (`test/stack-guard.f`
-  DATA-REGION-REFUSAL uses `data-base` itself). In practice
-  `MEM:ALLOC-GUARDED` is the only thing that returns an extent all six
-  clauses accept. Because a guarded mapping only comes in whole-page sizes,
-  there is no way to hand run-in-stack a "slightly too small" guarded stack
-  any more: a request is either refused up front with `E-STACK-UNGUARDED`, or
-  it runs on a full page and any real overflow is a guard-page fault instead.
-  Nothing malformed reaches the older descriptor check behind this one:
-  `GUARDED-EXTENT?` runs strictly before it at the same switch and, for a
-  freshly entered stack (used bytes = 0), subsumes it so completely that the
-  entry `STACK-GUARD:CHECK-CURSOR` call is gone — the check on the way back
-  OUT, where the callback may have moved the cursor, stays.
-  `test/engine-stack-lifecycle.f` UNGUARDED-UNCAUGHT shows the uncaught shape
-  (exit 67, `hb: uncaught throw code -3802`, and an empty stdout because the
-  callback never ran).
-- A tier-1 top-row warning does not change which of these three a given
-  program hits, only that it also warns once first. `' FOO2 execute` on an empty
-  stack (`: FOO2 ( n -- n n ) dup ;`) warns once and then still runs FOO2:
-  since FOO2 is compiled code invoked through `execute`, not a token the
-  interpreter reads directly, its `dup` reading below the base faults the
-  data stack's guard page, which is thrown as `hb: interpret stack
-  underdepth: execute`, rc 70 — not `E-UNDERFLOW`. A bare `drop` on an empty
-  stack, entered directly at the top level or through `evaluate`, ends in
-  `hb: interpret stack underdepth: drop`
-  rc 70, because its record states min-in 1 and the band refuses it before
-  the body runs; a `TRUSTED: ( -- )` word that drops passes the band and ends
-  in `E-UNDERFLOW` at the floor (see `test/xt-effect-test.f` XE-TIER1,
-  `test/top-row-warn-test.f` TW-POSITIVES, and
-  `test/runtime-regression-test.f` for the interpreted cases).
+Every VM stack is a guarded mapping and compiled code carries no bounds check,
+so the message names the mechanism that caught the fault
+(`src/habu/stack-abi.f` and `src/habu/crash.f` hold the rules):
 
-`test/stack-guard.f` has worked cases for all three: filling the boot stack
-short of its page by a margin versus filling the whole page, unbounded
-data/return/loop recursion, and one case per `GUARDED-EXTENT?` clause — each
-changing a single field of an extent the same fixture shows being accepted, so
-the clause named in the label is the one that decided. `test/engine-stack-wide.f`
-adds the capacity boundary of individual
-transfers: it wraps the transfer in a ratchet that grows the stack by one
-cell per recursion level on a `MEM:ALLOC-GUARDED` stack, so the transfer is
-what fills the stack and, being wider than the ratchet, its own write is what
-first crosses the guard page.
+- `hb: interpret stack underdepth: <token>` (exit 70): the interpreter refused
+  a token whose record states more inputs than the stack holds, or compiled
+  code reached through `execute`, `catch`, `finally` or a quotation read below
+  the data stack's base. Catchable; the REPL recovers the line.
+- `E-UNDERFLOW: <token>` (exit 70): a word ran and left the stack below its
+  base because its body consumes more than its record states: a word defined
+  with checking off, or a `TRUSTED:` body that drops more than it declares.
+- `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow, a
+  jump into a guard page, or a below-base access where no throw entry exists
+  (a task's own stack, a stripped AOT image, the x86-64 engine). Match the
+  prefix `hb: stack bounds exceeded` unless the stack matters.
+- `hb: stack bounds exceeded (machine)` (exit 102): the OS thread's own stack
+  overflowed, typically unbounded recursion; `catch` does not receive it.
+- `E-STACK-UNGUARDED`: `run-in-stack` refused an extent that is not a guarded
+  mapping, before the callback ran. Allocate the stack with
+  `MEM:ALLOC-GUARDED`.
+
+A tier-1 top-row warning does not change which of these a program hits; it
+only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
+`test/engine-stack-wide.f` hold worked cases.
+
+`source-unit-run` and `evaluate-closed` give each callback its own guarded
+data stack. The cell below that callback's floor is its low guard page on
+ARM64 and x86-64; a callback cannot read the caller's cells below the floor.
+`test/compiler/native-eval.f` exercises the closed-stack boundary.
 
 ## Standalone gotchas a stepper catches fast
+
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.
 - Unchecked native emitters can be visibly balanced but still corrupt the build
@@ -683,239 +376,33 @@ first crosses the guard page.
 - The dictionary search returns the newest definition; use the checker and
   shadow lint when a new word appears to change built-in behavior.
 
-## Performance measurement tools (tools/perf/)
-
-- **"Where does boot time go" for a protection change — measure the real
-  workload; there is no tool row here on purpose.** Two cheaper instruments
-  were tried and both refuted on the same landing (2026-08-14), so neither
-  gets a shortcut in this file. `sample(1)` bucketed by mprotect stub
-  under-reports syscall time about 5x (`tools/perf/protcost.py` read 12.5ms
-  where wall/sys said 67-80ms; the tool was deleted rather than left as a
-  wrong number with a trustworthy interface). Replaying the syscall
-  sequence against a fresh bare mapping under-predicts about 4x in the
-  other direction, because nothing executes inside the replayed region and
-  the real cost is not the syscall at all — a wide RW→RX→RW flip drops the
-  PTEs of the JIT code the engine is executing, which showed up as 93,691
-  minor faults per boot. Price a protection change by running the actual
-  workload and reading wall/sys time and the minor-fault count together
-  (`/usr/bin/time -l` on macOS); attribute it by moving the fault count,
-  not by attributing samples to a stub.
-- `bin/hb --load tools/perf/boot-census.f -- LOGFILE CMD [ARGS...]` (macOS) —
-  run CMD, follow its whole process tree via kqueue `EVFILT_PROC`, log every
-  process to LOGFILE and print a census that classifies every child
-  fork-vs-exec by image path and argv (fork children keep the parent's argv).
-  Start here for any "how many engines does this run actually start" question.
-  The census brackets path/argv reads with `proc_pidinfo`'s exec version and
-  counts each observed version once. The `PROC_PIDUNIQIDENTIFIERINFO` record
-  is 56 bytes with `p_idversion` at byte 32, as specified by Apple's
-  [API structure](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info_private.h);
-  Apple's [exec regression test](https://github.com/apple-oss-distributions/xnu/blob/main/tests/exec-race-128791723.c)
-  verifies that the version changes across exec. This preserves same-image
-  reexecs while avoiding a queued exec notification counting an image already
-  read at registration twice. An inherited child counts as a fork only at
-  exit without an observed exec. Unavailable or changing image reads are
-  reported as incomplete and retried at an event or sweep; exited processes
-  may never yield a coherent image. A child with no comparable parent image
-  remains unclassified until that comparison is possible; an earlier exit
-  logs `INCOMPLETE` instead of fabricating an exec or fork. Notifications can
-  coalesce, so the census counts observed generations and cannot reconstruct
-  unseen rapid execs.
-
 ## Sampling profiler
 
-`n prof-on` arms a SIGALRM interval timer and counts each tick against the
-dictionary word whose code holds the interrupted pc, then walks the interrupted
-machine stack for that word's callers. The surface:
-
-| word | effect | what it does |
-| --- | --- | --- |
-| `n prof-on` | `( n -- )` | build the pc index, clear the counters, start the clock. `n` is a sample limit: at the `n`-th sample the profiler prints the text report and exits 99. `0` samples until `prof-off`. |
-| `prof-off` | `( -- )` | stop the clock. The handler stays installed and every counter keeps its value, so the phase just measured can be reported afterwards. A tick the kernel delivers after the timer stopped counts nothing, so the counts are final when `prof-off` returns. |
-| `prof-report` | `( -- )` | print the text report. |
-| `prof-json` | `( -- )` | print the same walk as one JSON object. |
-| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. The clock is held for the clears, so no tick counts during them, and starts again unless `prof-off` stopped it. |
-| `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000, also asked for by `0`); any positive interval arms, a second or more included. A negative `n` throws `E-PROF-RATE` (-3803) before anything is stored, so a caller that catches it keeps the rate it had. Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
-| `n prof-row` | `( n -- )` | print the row for a current dictionary record, whatever its rank, with its callers. The caller supplies a current `XREF` index; the profiler resolves its own identity after syncing. |
-| `pc prof-pc>rec` | `( n -- n )` | the current dictionary record index for an indexed pc, or -1 if the pc belongs to a word retired by a seed rewind or no indexed word. This runs the handler's own search. |
-
-A report never samples itself: it holds the clock for the walk and starts it
-again if `prof-off` has not already stopped it, so the phase loses at most one
-interval. Without that the header's own identity would be false by one, because
-the report owns x20 and its own ticks read as a foreign context.
-
-### Report format
-
-The first line is the accounting, and every field is named:
+`n prof-on` samples the running program and attributes each tick to the word
+whose code holds the interrupted pc, with its callers (`src/habu/prof.f` states
+the surface and the report format). The usual phase measurement:
 
 ```
-profiler samples 92000 words 80215 other 291 new 0 defer 11492 spill 0 foreign 2 frames 764625 dropped 0 indexed 15676 usec 1000 attributed 1873
+1000 prof-rate  0 prof-on  <work>  prof-off  prof-report
 ```
 
-- `samples` — ticks delivered.
-  `words + other + new + defer + spill + foreign == samples` exactly, and a
-  regression in `test/gate-debug-lib.f` reads those named fields and asserts it.
-- `words` — ticks attributed to a dictionary word, the sum of every row's
-  exclusive column.
-- `other` — ticks in Habu code that belongs to no word: the main loop, engine
-  helpers, the gaps between spans.
-- `new` — deferred ticks the sync could not name at all: their pc belongs to no
-  live record. After a sync this is normally 0.
-- `defer` — ticks in code compiled *after* `prof-on` built the index, still
-  waiting to be named. `prof-report` and `prof-json` name them (see **Code
-  compiled after prof-on** below) and leave this at 0; only the automatic report
-  at a `prof-on` limit, which runs inside the signal handler and cannot rebuild
-  the index, prints a non-zero `defer`.
-- `spill` — deferred ticks the buffer had no room for. It holds `$40000`
-  samples, about eighteen self-builds' worth; a spill is reported, never dropped
-  in silence.
-- `foreign` — ticks whose context does not hold the engine's DATA and dictionary
-  base registers, which is what a foreign callee reached through the FFI (libc,
-  libzip, the CUDA driver) leaves behind. It is a lower bound on foreign time: a
-  foreign leaf that keeps those two registers intact is walked like Habu code and
-  lands in `other`.
-- `frames` — caller frames the stack walk attributed, over every sample.
-- `dropped` — caller edges the edge table could not key because its probe window
-  was full. They are reported, never merged into another row.
-- `indexed` — index entries, and `usec` the interval actually sampled at.
-- `attributed` — how many words took a sample of either kind. The text report
-  shows the top 24 of them per section, so this is what says how much it left
-  out; `prof-json` carries all of them.
-
-Then two sections, each up to 24 rows with their top 5 callers: first ordered by
-exclusive count, then, under a `by inclusive` line, ordered by inclusive count.
-The second section is the one that shows a phase word — a compiler pass, a
-verifier entry — which does no work of its own and is invisible in the first.
-
-```
-    9257  10.0   11709  12.7  IR-ARENA:ACEIL!
-         <-     1564  16.8 IR-OP:OFF-OPN
-         <-     1169  12.6 IR-SCHEMA:UNUSED
-```
-
-The row is `exclusive`, its percent of `samples`, `inclusive`, its percent of
-`samples`, then the package-qualified word. Exclusive counts the ticks whose pc
-was inside that word; inclusive counts the ticks where the word was anywhere on
-the sampled stack. A caller line is `<- count percent-of-this-row's-exclusive
-caller`. The caller lines are the top few, not every caller, so they need not sum
-to the row. `(unknown)` is a real caller row: it is the share of the word's
-samples whose caller the walk could not establish, kept explicit rather than
-dropped. Rows are selected by repeated maximum rather than sorted, so the
-counters are left exactly as they were and a second `prof-report` says the same
-thing.
-
-`prof-json` prints **every attributed word**, not a top-N, and every caller edge:
-
-```
-{"samples":N,...,"attributed":M,
- "rows":[{"word":"PKG:W","excl":N,"incl":N}, ...],
- "edges":[{"word":"PKG:W","caller":"PKG:C","n":N}, ...]}
-```
-
-The edges are a flat array rather than nested under each row on purpose:
-nesting them would mean one pass over the edge table per row, and this walk
-covers every row. Both arrays are bounded by the arena — at most one row per
-index entry and one edge per table slot — so the report cannot outgrow it and
-nothing is truncated. The header is the same one the text report prints, from
-the same walk, so the two cannot disagree about what they counted.
-
-Inclusive counts a word **once per sample**. The conservative walk can see one
-word twice in a single stack — a recursive call, or a stale spill slot still
-holding a return address into it — and an inclusive count that ran past the
-sample total would say a word took longer than the program did. The handler
-stamps each record with the sample serial, so the second sighting costs a load
-and a compare and changes nothing.
-
-### Code compiled after prof-on
-
-`prof-on` builds the pc index once, so a word the profiled phase *defines* has no
-entry to be found by. For a compile — the self-build above, or any program that
-`require`s its own sources — that is most of the profile: a 92-second self-build
-put 11,492 of 92,000 samples in code that did not exist when sampling started.
-
-The handler cannot fix this itself: naming those words means reading the
-dictionary, and the interrupted thread may be in the middle of adding a record to
-it. So the handler keeps the raw pc and the interrupted x30 for such a tick — two
-cells, no walk, no allocation — and `prof-report` / `prof-json` do the work, with
-  the clock stopped: fold the index entries' inclusive counts into the per-profile-ID
-array, rebuild the index from the dictionary as it now stands, and replay every
-deferred sample through it. That is the first moment at which every word the
-phase compiled exists.
-
-### Dictionary rewinds while profiling
-
-`seed-ndict!` lowers the dictionary record count while leaving compiled code in
-place. A continuation compiled before the rewind can still run, and a target
-definition can take the donor's former record number. Before lowering the count,
-the profiler holds the clock, syncs deferred samples, and retires the affected
-record numbers from its live map. Each sampled word keeps its own profile ID,
-copied qualified name, code span, counter, inclusive count and caller edges.
-The next report indexes retained code alongside new live definitions, so a new
-word at a reused ordinal cannot inherit the donor's samples or name.
-
-On ARM64, ordinary dictionary trimming (`ndict!`, including `HIDE-DEFS-FROM` and
-checker overlay cleanup) resolves pending samples before detaching the removed
-identities and clearing their stored spans. Those words leave the searchable
-index immediately; their names, counts and edges remain in reports. A later
-seed rewind cannot revive a word already retired by `undefine`. Reusing an
-ordinary trimmed ordinal assigns a fresh profile ID at the next refresh.
-
-An ARM64 code-pointer rewind (`cp!`, including ordinary code reclamation) resolves
-pending samples before releasing any bytes, then removes every overlapping
-live or seed-retained span from the index. Code emitted at a reused address
-cannot inherit the old word's exclusive samples. Reports walk stable profile
-IDs independently of the searchable spans, so reclaimed words keep their
-accumulated samples.
-
-`prof-on` starts a fresh identity session; `prof-reset` clears counts across
-the full profile-ID range while retaining the session's names and index.
-Profile IDs are bounded by `DICT-CAP`, and exhaustion exits 78 with
-`hb: profiler profile IDs exhausted` rather than reusing an ID. Name copies use
-exact-length mapped chunks that the next `prof-on` releases. A process that has
-never started profiling allocates nothing for a seed rewind.
-
-Two consequences worth knowing:
-
-- The automatic report at a `prof-on` limit runs in the signal handler, so it
-  does *not* sync. Its deferred samples stay in the `defer` column. A program
-  that can reach a `prof-off` of its own should use one.
-- A deferred sample carries only x30, not the stack scan, so its caller is
-  whatever x30 pointed at. When the word had already called something that
-  returned, x30 points back inside the word itself and the caller is reported as
-  `(unknown)` rather than guessed.
-
-### Caller attribution
-
-Emitted words carry no frame pointer — the prologue is `sub sp,sp,#16` +
-`str x30,[sp]` — so there is no chain to follow and return addresses are
-recognised by their value: a stack cell that lands inside the index's code range
-is taken for a return address. That is the standard frame-pointer-less technique
-and it is a *superset* of the true chain: an uninitialised spill slot still
-holding a code address from a returned call adds a frame. The immediate caller is
-usually in x30 rather than on the stack, because a leaf entered by `bl` never
-stores it. The scan never leaves SP's own 4 KiB block, since one cell further
-could be the unmapped page above a thread stack and a SIGSEGV inside a SIGALRM
-handler is not a diagnosis anybody can use.
-
-The x29 chain was not built: it would cost every emitted word in the default
-build two more instructions and a register.
-
-### Cost
-
-Measured against the same workload run with and without the clock, comparing user
-CPU time across separate processes — wall time on a machine carrying other work
-is far too noisy for a signal this small. At `20 prof-rate` (50 kHz) over
-1,054,074 and 1,062,100 samples the profiled runs cost +0.98 s and +1.13 s of
-user CPU against a 19.7 s baseline, i.e. **about 1 us per tick**, inside the 2 us
-budget. At the 1 kHz default that is a tenth of a percent of wall time and sits
-below the noise floor of a loaded machine. The handler allocates
-nothing and takes nothing from the interrupted registers; its state lives in the
-profiler band at the top of the DATA region and in an arena mapped once per
-process, so it works inside a stripped image.
+- `prof-off` stops the clock and keeps every counter, so the phase just
+  measured can be reported afterwards; `prof-reset` clears the counters for a
+  second phase without rebuilding the index.
+- `prof-report` prints the top rows twice: by exclusive count, then under
+  `by inclusive`. The second section shows a phase word, such as a compiler
+  pass, that does no work of its own. `prof-json` prints every attributed word
+  and caller edge.
+- `n prof-row` prints one word's row whatever its rank.
+- A non-zero `prof-on` limit reports from inside the signal handler and exits
+  99 at that many samples. Words compiled after `prof-on` stay in the `defer`
+  column of that report; a program that can reach its own `prof-off` should
+  use one and call `prof-report`.
 
 ### Profiling the build
 
-`tools/build-profile.f` runs the engine self-build under this profiler and
-writes both reports to files:
+`tools/build-profile.f` runs the engine self-build under the profiler and writes
+both reports to files:
 
 ```
 bin/hb --load tools/build-profile.f -- /tmp/engine /tmp/build.txt /tmp/build.json
@@ -923,56 +410,25 @@ bin/hb --load tools/build-profile.f -- /tmp/engine /tmp/build.txt /tmp/build.jso
 
 This is the method for "what does the build spend its time on". `strace -c` and
 `perf record` cannot answer it on their own: neither can name a word the engine
-compiled for itself, because it is all one anonymous mapping. The build's own
-phase timers still go to stdout, so they sit beside the profile.
-
-For the same source tree and host, its product is byte-identical to
-`tools/native-build.f`. Capture stores DATA addresses in window coordinates,
-and symbol-table growth clears retired storage, so the profiler's own DATA
-allocations do not enter the artifact.
-
-A caller line's share is of the row's own denominator: the exclusive count in the
-flat section, where the edges come from, and the inclusive count in the inclusive
-section, where it says how much of the row the known edges cover.
+compiled for itself, because it is all one anonymous mapping.
 
 ### Cross-checking with external perf
 
 `perf record -g` keeps exact call chains where the profiler's conservative walk
-can only approximate one, but it prints every Habu word as `[unknown]`: the
-engine's code lives in one anonymous mapping perf has no symbols for.
-`tools/perf-map.f` puts the names back:
+can only approximate one, but it prints every Habu word as `[unknown]`.
+`tools/perf-map.f` puts the names back through the profiler's own search:
 
 ```
 perf record -g bin/hb --load prog.f
 perf script | bin/hb --load tools/perf-map.f
 ```
 
-Each call-chain line's address column becomes a package-qualified word plus a
-byte offset — `(PROT-SPAN)+344` — resolved through `prof-pc>rec`, which is the
-handler's own search, so the two profilers cannot disagree about which word owns
-an address. Only the address column of an indented call-chain line is rewritten;
-the sample header's pid and period are decimal runs that also read as hex and are
-left alone. Addresses the profiled program compiled for itself, and everything in
-a shared library, resolve to nothing and stay hex.
-
 ### Limits
 
-- A profiled program that spawns and captures a child used to die, and no longer
-  does. `poll(2)` is never restarted by `SA_RESTART`, so every tick that lands in
-  it returns EINTR; the `poll` primitive used to collapse that to -1, so
-  `src/lib/process.f` could not tell it from a real failure and raised
-  `E-PROC-OUTPUT` — which stopped a `tools/native-build.f` run under `prof-on` at
-  its final child-spawn phase. The primitive now returns `-errno` and the capture
-  loop restarts on `-EINTR` against its existing deadline, so a profiled
-  self-build runs end to end and needs no sample-limit workaround. A `prof-on`
-  limit still reports and exits 99 at that many samples, so give a whole
-  self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
-- The handler runs on the thread's alternate signal stack, the crash
-  handler's, which every thread that runs Habu code registers
-  (`src/habu/crash.f` C-SIGNAL-STACK; on x86-64 the boot registers the main
-  thread's and each task's guarded stack comes from `src/lib/task.f` PREPARE);
-  a tick delivered to a thread C started that is not inside a callback runs on
+- A profiled program may spawn and capture children; the capture loop restarts
+  its `poll` on EINTR against its existing deadline.
+- A tick delivered to a thread C started that is not inside a callback runs on
   that thread's own stack.
-- When the `n`-th sample is foreign the report waits for the next Habu sample, so
-  a program that exits or stays blocked in a foreign call from that point on
-  never reports; call `prof-report` yourself in that case.
+- When the limit's last sample is foreign the report waits for the next Habu
+  sample, so a program that exits or stays blocked in a foreign call from that
+  point on never reports; call `prof-report` yourself.

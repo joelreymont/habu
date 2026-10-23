@@ -1,10 +1,19 @@
-\ Linux and Darwin IPv4 datagrams through exact, bounded libc bindings.
+\ Linux and Darwin IPv4 datagrams through exact, bounded libc bindings. No
+\ application protocol, sequencing or retry policy; another OS is E-PLATFORM
+\ before a socket opens.
 \
 \ STORAGE CLASS. TASK-LOCAL. The endpoint storage is one $18 TASK:+USER row, so
 \ each task holds its own, and the datagram spans the transfer words take are
-\ caller-owned. See docs/threads.md.
+\ caller-owned.
 \
-\ The socket is nonblocking and RECEIVE waits on the AIO loop (docs/aio.md): one
+\ SEND's `ok` means the OS took the whole datagram, not delivery; interruption
+\ and a full send queue reach the caller. A `truncated` length is the
+\ datagram's original size, never a readable length. Source filtering and
+\ reordering are the caller's. The caller closes each socket once and never
+\ reuses it, even after an interrupted close; calls must not nest within one
+\ task. Close sockets before image capture: they are process resources.
+\
+\ The socket is nonblocking and RECEIVE waits on the AIO loop (src/lib/aio.f): one
 \ POLL for the time left on its deadline, awaited without parking a thread. A
 \ program calls AIO:START before its first RECEIVE that waits; a wait with
 \ no loop is E-AIO-STATE.

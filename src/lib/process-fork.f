@@ -19,6 +19,9 @@
 \
 \ Load after native refresh: older engines do not have the fork/setpgid
 \ primitives.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd pair and REAP-WATCH-FD
+\ belong to the process, not to a task.
 
 require src/lib/errors.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below

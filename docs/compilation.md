@@ -77,10 +77,10 @@ A refused definition leaves no word behind
 It loads the sources, runs a word's host body when the build needs its value,
 compiles each definition for the product's platform through that platform's
 codegen, keeps build-time data as product data, and links the image from
-them ([portability.md](portability.md) §7, §13).
+them ([Build host, product and target](xcomp.md#build-host-product-and-target)).
 [Cross-compilation](architecture.md#cross-compilation) says which platforms a
 build names. A stripped application image carries its code and data with no
-compiler, dictionary or REPL (`docs/native-applications.md:122`). The test
+compiler, dictionary or REPL ([Images](architecture.md#images)). The test
 suite builds `hb` once and runs every test against it. The two-generation build
 and the build from zero ([bootstrap.md](bootstrap.md)) are occasional
 integration tests.
@@ -136,5 +136,5 @@ and refuses to run when it cannot get it; nothing is relocated at boot.
 **Now:** only the x86-64 linker places at fixed addresses
 (`src/habu/link-x64.f` `LAYOUT`), and nothing in the product build calls it.
 The ARM64 boot maps the code region wherever the kernel gives it near a hint
-(`docs/x86-64.md:1030-1031`), then relocates data and patches call sites by
+([Fixed segments](xcomp.md#fixed-segments)), then relocates data and patches call sites by
 name (`src/habu/habu2.f` `EM-AOT-RELOC-DATA`, `EM-AOT-PATCH-NAMED-SITES`).

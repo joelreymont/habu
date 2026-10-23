@@ -8,7 +8,14 @@
 \ every operation names its own fold, two keys derived at overlapping times
 \ cannot mix bytes - see the fold-handle section below for what that replaced.
 \ FILE+ digests the file's current bytes on every call. Each live fold owns a
-\ SHA-256 context; its complete preimage is never retained.
+\ SHA-256 context; its complete preimage is never retained. FILE-NAMED+ reads
+\ the physical path but folds only the logical name and the content, so a build
+\ that names sources root-relative shares its key across identical trees in
+\ different workspaces. No environment variable enters a key.
+\
+\ STORAGE CLASS. PROCESS-WIDE: CK-FOLD-N (four) fold slots and the file-digest
+\ scratch are module storage with no atomic claim, so the module is single-task;
+\ within that task up to four folds overlap.
 \
 \ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
 

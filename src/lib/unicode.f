@@ -1,4 +1,18 @@
 \ unicode.f - Unicode whitespace and locale-independent full casefold equality.
+\
+\ CASEFOLD= compares whole UTF-8 spans by full case folding (Straße equals
+\ STRASSE) with no normalization (precomposed é differs from e plus a combining
+\ acute) and keeps embedded NULs. FOLDED-BYTES answers the folded length and
+\ FOLD writes it, preflighting capacity (E-CAPACITY, output unchanged).
+\ Negative lengths and malformed UTF-8 throw E-UTF8 before any comparison; a
+\ library failure throws E-CASEFOLD. Inputs must not point into transient FFI
+\ scratch. Folding is GNU libunistring's u8_casecmp and u8_casefold with NULL
+\ language and normalization, so the casefold data is the installed library's;
+\ each FUNCTION: symbol resolves at its first call (E-FFI-DLSYM) and again in a
+\ restored image. WHITE-SPACE? re-exports src/lib/unicode/class.f's predicate.
+\
+\ STORAGE CLASS. TASK-LOCAL: the foreign calls use per-task FFI scratch and
+\ release their temporary allocation on success and failure alike.
 
 require src/lib/unicode/class.f
 require src/lib/utf8-scalar.f

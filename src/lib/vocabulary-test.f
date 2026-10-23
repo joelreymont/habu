@@ -3,7 +3,7 @@
 \ Every row is one child: `bin/hb --load test/policy/<harness>.f -- test/policy/<case>.f`.
 \ The harness admits package PDEP (test/policy/dep.f), seals and loads the case,
 \ so a case may name PDEP's public words, its own definitions and the design
-\ built-ins (docs/vocabulary.md). allow.f compiles bodies with the JIT and
+\ built-ins (src/lib/vocabulary.f header). allow.f compiles bodies with the JIT and
 \ allow-tier1.f with the native compiler; a case is run under both, because the
 \ two read a body's tokens at different sites.
 \

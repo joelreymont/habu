@@ -1,22 +1,14 @@
 \ prims.f — the engine primitive specification, in one machine-independent table.
 \
-\ An engine primitive used to be two things in two files that nothing tied
-\ together: an ARM64 body registered in src/habu/habu1.f (`s" dup" ['] BDUP
-\ FPRIM-L`) and a `PRIM:` row in src/core/checker.f stating its effect. A second
-\ backend would have forked that list, and the drift was already there —
-\ `run-rc` and `top-check@` have engine bodies and no checker row at all, so no
-\ checked program can call either and nothing said so.
-\
-\ This file is the single specification. Each row names one primitive, states
+\ This file is the single specification of the engine primitives. Each row names one primitive, states
 \ its checker effect once, and carries the two attachment points a backend and a
 \ reference implementation bind to BY NAME:
 \
 \   EPRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT  REF PRIM-REF:S-DUP  EPRIM;
 \   EPRIM: +     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT   REF PRIM-REF:ADD    EPRIM;
 \
-\ - src/core/checker.f replays the table onto its own `PE-*` row constructors at
-\   the point its table used to hold these rows, so the effects exist here and
-\   nowhere else.
+\ - src/core/checker.f replays the table onto its own `PE-*` row constructors,
+\   so the effects exist here and nowhere else.
 \ - each backend registers a body under the row's name; src/habu/primitive-registry.f
 \   refuses a body whose name has no row (ENGINE-PRIMS:SPEC-CHECK) and a row that
 \   no body answers (ENGINE-PRIMS:COMPLETE).
@@ -27,6 +19,14 @@
 \   the semantics can be written WITHOUT the primitive it answers for and where
 \   the gate exercises it; the overloads of a name state it on the row whose
 \   instantiation the gate runs.
+\
+\ THE ROWS ARE THE CHECKER'S AXIOMS. A primitive has no Habu body to infer an
+\ effect from, so the checker takes each row on faith, and everything a checked
+\ program proves derives from these rows. An overloaded name has one row per
+\ pointer, integer or bool variant. A row with a REF is held to its reference by
+\ test/prim-parity.f; a row with none (every syscall, control, defining-word,
+\ image, FFI and atomic row among them) is held only by the engine rebuilding
+\ itself through these rows and by the programs the gate runs on it.
 \
 \ WHY IT IS DATA AND WHY IT LOADS BEFORE THE CHECKER. A row must be registered
 \ before checker.f's `PTABLE-END`: that word sets `USIGS-USER-OFF`, and a row
@@ -79,6 +79,7 @@ public
 19 constant A-QUOT-IN
 20 constant A-QUOT-OUT
 21 constant A-C2-INVOKE
+22 constant A-BASE           \ the pending pointee binds only a base address's own pointee: a distance row's base operand
 
 private
 
@@ -180,6 +181,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
+: PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
 : PE-QIN         A-QUOT-IN CODE, ;
 : PE-QOUT        A-QUOT-OUT CODE, ;
@@ -444,13 +446,19 @@ EPRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:ADD EPRIM;
 \ every pointee but the null: a null that rides one of these rows comes out a
 \ DATA-base pointer, because the address it answers is the caller's arithmetic
 \ and no longer the one literal address the null's permissive pointee arm is for
-\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer row below is a
-\ distance, not a step, and is deliberately left unmarked: `BYTE-VIEW ...
-\ NULL-PTR BYTE-VIEW -` is the sanctioned address-to-integer idiom.
+\ (dot habu-fence-an-offset-7372e836). The pointer-MINUS-pointer rows below are a
+\ distance, not a step, and read no storage, so neither operand's pointee may
+\ take a kind from the other. Two pointers to elements still name one element
+\ type (`ptr a ptr a`), but a base address -- `NULL-PTR`, `data-base`, or one
+\ computed off them -- is the address OF nothing, so the PE-PTR-B-BASE rows,
+\ tried first, match its pointee alone and leave the other operand's free:
+\ `X NULL-PTR -` is the address-to-integer distance and publishes no null kind.
 EPRIM: +      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: +      PE-N PE-IN PE-PTR-A-OFF PE-IN  PE-PTR-A PE-OUT EPRIM;
 EPRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:SUB EPRIM;
 EPRIM: -      PE-PTR-A-OFF PE-IN PE-N PE-IN  PE-PTR-A PE-OUT EPRIM;
+EPRIM: -      PE-PTR-A PE-IN PE-PTR-B-BASE PE-IN  PE-N PE-OUT EPRIM;
+EPRIM: -      PE-PTR-B-BASE PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:MUL EPRIM;
 EPRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT REF PRIM-REF:BAND EPRIM;
@@ -969,18 +977,14 @@ EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
 \ engines lack this name and explicit export declines before arming a capture.
 EPRIM: native-unit-reclaim-cell PE-PTR-A PE-OUT EPRIM;
 ETRUSTED-ONLY!
-\ A null result means the running kernel has no pre-body reader. The four
-\ optional cells are addressed through this byte pointer, never baked offsets.
-EPRIM: native-body-reuse-cell PE-PTR-U8 PE-OUT EPRIM;
+\ A null result means the running kernel has no origin record. Source reaches
+\ the three optional cells through this byte pointer and the running engine's
+\ NATIVE-BODY-ABI indices; only the engine's own emitters bake their offsets.
+EPRIM: native-origin-cell PE-PTR-U8 PE-OUT EPRIM;
 ETRUSTED-ONLY!
-EPRIM: native-body-reader-cell PE-PTR-U8 PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPRIM: native-body-passive? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT EPRIM;
-ETRUSTED-ONLY!
-EPREFIX-PROVIDED!                    \ seeded x86-64: src/habu/definers.f OUTER:BODY-PASSIVE?, through PROVIDED-XT:BODY-PASSIVE-CELL
 EPRIM: prot-wid-add   PE-N PE-IN EPRIM;
 EPRIM: prot-wid-room  PE-N PE-OUT EPRIM;
-\ The design seal's two writers (src/lib/vocabulary.f, docs/vocabulary.md): admit a
+\ The design seal's two writers (src/lib/vocabulary.f): admit a
 \ package's public wordlist by name, then seal the dictionary as it stands. Both
 \ refuse once sealed, so a sealed design cannot widen its own vocabulary.
 EPRIM: policy-admit   PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;

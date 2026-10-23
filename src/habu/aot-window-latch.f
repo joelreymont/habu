@@ -110,7 +110,7 @@ PTR-VARIABLE APP-POOL
 \ USE TRAVELS IN EVERY IMAGE: the copies are made for every link, reached or not,
 \ and their non-zero bytes are blob content like any other window byte (measured:
 \ a hello-world image carries 390 written data bytes, 64 without the copies).
-\ docs/native-applications.md states the run's capacity and ownership.
+\ docs/architecture.md "Images" states what the run carries.
 \ The ownership list sizes this run from the same aligned extents it collects
 \ after cleanup. Fresh cells need no copy; in-window declarations already travel
 \ with the application. The image writes only nonzero bytes from the reserve.

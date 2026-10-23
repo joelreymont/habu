@@ -11,9 +11,9 @@
 \ row, so it loads src/lib/ffi-abi.f and src/lib/task.f; src/lib/time.f stays free of both
 \ for the files that only want wall time, src/lib/build-cache.f among them.
 \
-\ THE TIMESPEC IS THE CALLING TASK'S OWN. clock_gettime writes its answer
-\ through a pointer, and a Habu task is an OS thread, so the record is a
-\ TASK:+USER row: two tasks reading their clocks at once share nothing.
+\ STORAGE CLASS. TASK-LOCAL: clock_gettime writes its answer through a
+\ pointer, and a Habu task is an OS thread, so the timespec is a TASK:+USER
+\ row: two tasks reading their clocks at once share nothing.
 
 require src/lib/errors.f
 require src/lib/ffi-abi.f

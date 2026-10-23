@@ -2,12 +2,11 @@
 \ row per basic block, and one shared cell pool holding every function's
 \ attribute window.
 \
-\ docs/compiler-ir-design.md section 6.3 (the function table and the block
-\ table), section 6.4 (the BEGIN-FUN/END-FUN and BEGIN-BLOCK/ADD-BLOCK-ARG/
-\ END-BLOCK builder API), section 6.5 (the freeze checks that consume these
-\ rows), and section 7.2, whose stage builds one function per colon definition.
+\ It owns the BEGIN-FUN/END-FUN and BEGIN-BLOCK/ADD-BLOCK-ARG/END-BLOCK builder
+\ API; IR-VERIFY reads these rows at freeze, and the native elaborator builds
+\ one function per colon definition.
 \ This file stores the control structure of a module; it does not define what
-\ any dialect's operations mean, which section 5.3 leaves to the schema table.
+\ any dialect's operations mean, which is the schema table's to say.
 \
 \ ONE CONCERN, TWO ROW TABLES. Functions and blocks are one responsibility for
 \ the same reason IR-OP's operations and values are: they are defined by the
@@ -18,52 +17,51 @@
 \ function table's count - so splitting them across two files would make each
 \ depend on the other and break the single all-or-nothing append each of them
 \ guarantees. They therefore share one package and one file, and the file keeps
-\ them in separate row tables so a later canonical encoder can order and
-\ renumber each independently.
+\ them in separate row tables.
 \
 \ IDENTITY COMES FROM IR-ID. Functions are the existing IR-ID ir-fun-id family
 \ and blocks the ir-block-id family, both packed under this module's key. This
 \ file mints no identity family of its own, no raw converter, and no parallel
 \ numbering.
 \
-\ WHAT A FUNCTION ROW RECORDS (design lines 384-392).
-\   symbol name          - design line 384, the module's interned symbol, whose
+\ WHAT A FUNCTION ROW RECORDS.
+\   symbol name          - the module's interned symbol, whose
 \                          existence the symbol interner confirms
-\   signature type       - design line 385, a code-reference type of this
-\                          module's type table: design line 456 is the type
+\   signature type       - a code-reference type of this
+\                          module's type table, which is the type
 \                          table's name for "a callable with this effect", and a
 \                          signature that is anything else is E-IR-FUN-SIG
-\   block window         - design lines 386-387, first-block and block-count
-\   attribute window     - design line 388
-\   source span          - design line 389, as the (source, start, length)
+\   block window         - first-block and block-count
+\   attribute window
+\   source span          - as the (source, start, length)
 \                          triple IR-SOURCE:span already defines
-\   linkage              - design line 390
-\   visibility           - the second half of design line 390's link-time
+\   linkage
+\   visibility           - the second half of the linkage's link-time
 \                          question, see LINKAGE AND VISIBILITY below
-\   calling convention   - design line 391
-\ One section 6.3 field is deliberately absent: flags (design line 392) names no
-\ member anywhere in the design, and an empty flag word is not a capability -
+\   calling convention
+\ One field is deliberately absent: a flag word would name no
+\ member, and an empty flag word is not a capability -
 \ the stage that needs a flag adds it together with the meaning that makes it
 \ checkable. This is the same judgment IR-OP recorded for the same field.
 \
-\ WHAT A BLOCK ROW RECORDS (design lines 400-407).
-\   parent function      - design line 400
-\   argument window      - design line 401, into the value table, see BLOCK
+\ WHAT A BLOCK ROW RECORDS.
+\   parent function
+\   argument window      - into the value table, see BLOCK
 \                          ARGUMENTS below
-\   operation window     - design line 402, into IR-OP's operation table
-\   terminator operation - design line 403
-\   source span          - design line 406
-\ Three section 6.3 fields are deliberately absent:
-\   predecessor-count and successor-count (design lines 404-405) are not the
-\     builder's to maintain: design line 410 says in as many words that the
-\     predecessor and successor tables are derived at freeze time rather than
+\   operation window     - into IR-OP's operation table
+\   terminator operation
+\   source span
+\ Three fields are deliberately absent:
+\   predecessor-count and successor-count are not the
+\     builder's to maintain: the predecessor and successor tables are
+\     derived at freeze time rather than
 \     maintained through every builder mutation. Storing a count here during
 \     construction would publish a number that is wrong for as long as any
-\     branch to the block is still unwritten, so the section 6.5 freeze verifier
+\     branch to the block is still unwritten, so the freeze verifier
 \     derives them together with the tables they belong to;
-\   flags (design line 407), for the reason given above.
+\   flags, for the reason given above.
 \
-\ AN OPERATION'S PARENT BLOCK LIVES HERE (design line 418). IR-OP deliberately
+\ AN OPERATION'S PARENT BLOCK LIVES HERE. IR-OP deliberately
 \ omits the parent-block field from an operation row, and this file supplies it
 \ as the block's operation window rather than as a back-reference on every
 \ operation. The window is the stronger of the two. Blocks are built in order
@@ -72,23 +70,23 @@
 \ table, every operation from zero to the last block's end therefore belongs to
 \ exactly one block by construction, and no scan or agreement check is needed to
 \ prove it. A stored back-reference would be a second authority that could
-\ disagree with the window, and section 6.5's "every operation belongs to
+\ disagree with the window, and the freeze rule "every operation belongs to
 \ exactly one block" would then be a cross-table search rather than an O(1) read
 \ of one row against the row before it. Operations appended while no block is
 \ open are the one case the tiling has to catch, and BEGIN-BLOCK is what catches
 \ it: the block captures the operation count when it opens, so an operation
 \ appended outside a block leaves a gap the tiling check rejects.
 \
-\ TERMINATOR PLACEMENT (design line 403). A block's terminator is its last
+\ TERMINATOR PLACEMENT. A block's terminator is its last
 \ operation. END-BLOCK reads every operation in the window, asks the opcode's
-\ schema whether it is a terminator (design line 240's terminator flag), and
+\ schema whether it is a terminator, and
 \ requires exactly one - at the end. A block with no operation has no terminator
 \ and is rejected too. The ordinal is then stored, so the freeze verifier and
 \ every later pass read the terminator in constant time instead of rescanning
 \ the window, and a forged row whose terminator is not its last operation is a
 \ named reject rather than a misread.
 \
-\ BLOCK ARGUMENTS ARE VALUES (design lines 401 and 434). A block argument is
+\ BLOCK ARGUMENTS ARE VALUES. A block argument is
 \ minted through IR-OP's value store, because that store owns value rows
 \ whatever defines them; this file records only the window they fill. The window
 \ is a run of value ordinals rather than a pool of copies, and it does not have
@@ -116,8 +114,8 @@
 \ outside; and a function that supplies a body must have at least an entry
 \ block. The one hidden shape is a plain hidden definition.
 \
-\ THE CALLING CONVENTION IS CHECKED AGAINST THE BOUND TARGET (design line 391
-\ with section 5.4). Habu and C conventions belong to the native architecture
+\ THE CALLING CONVENTION IS CHECKED AGAINST THE BOUND TARGET. Habu and C
+\ conventions belong to the native architecture
 \ set, kernel to PTX, and Wasm to its dedicated architecture. END-FUN rejects a
 \ convention the context's bound contract cannot provide.
 \
@@ -172,7 +170,7 @@ require src/compiler/ir/op.f
 package IR-FUN
 public
 
-\ Design line 390: where a function's body comes from and how two definitions of
+\ Where a function's body comes from and how two definitions of
 \ one name resolve. The vocabulary is closed, so an unknown linkage is
 \ unrepresentable in checked code; the wire codes below persist it.
 ENUM linkage DERIVE eq
@@ -187,7 +185,7 @@ ENUM visibility DERIVE eq
    exported
 ;ENUM
 
-\ Design line 391: how arguments and results cross a call boundary.
+\ How arguments and results cross a call boundary.
 ENUM convention DERIVE eq
    habu
    c-abi
@@ -213,27 +211,27 @@ $424C5231 constant BLR-MAGIC         \ "BLR1": the block-table header tag
 2 constant HC-CAP
 3 constant HDR-CELLS
 
-0 constant OFF-SYM                   \ design line 384: the symbol name
-1 constant OFF-SIG                   \ design line 385: the signature type
-2 constant OFF-BST                   \ design line 386: first-block
-3 constant OFF-BN                    \ design line 387: block-count
-4 constant OFF-ATST                  \ design line 388: the attribute window
+0 constant OFF-SYM                   \ the symbol name
+1 constant OFF-SIG                   \ the signature type
+2 constant OFF-BST                   \ first-block
+3 constant OFF-BN                    \ block-count
+4 constant OFF-ATST                  \ the attribute window
 5 constant OFF-ATN
-6 constant OFF-SRC                   \ design line 389: the source span
+6 constant OFF-SRC                   \ the source span
 7 constant OFF-SBEG
 8 constant OFF-SLEN
-9 constant OFF-LNK                   \ design line 390: linkage
+9 constant OFF-LNK                   \ linkage
 10 constant OFF-VIS                  \ the visibility half of the same question
-11 constant OFF-CC                   \ design line 391: the calling convention
+11 constant OFF-CC                   \ the calling convention
 12 constant FNROW-CELLS
 
-0 constant OFF-PAR                   \ design line 400: the parent function
-1 constant OFF-AGST                  \ design line 401: the argument window
+0 constant OFF-PAR                   \ the parent function
+1 constant OFF-AGST                  \ the argument window
 2 constant OFF-AGN
-3 constant OFF-OPST                  \ design line 402: the operation window
+3 constant OFF-OPST                  \ the operation window
 4 constant OFF-OPN
-5 constant OFF-TERM                  \ design line 403: the terminator operation
-6 constant OFF-BSRC                  \ design line 406: the source span
+5 constant OFF-TERM                  \ the terminator operation
+6 constant OFF-BSRC                  \ the source span
 7 constant OFF-BBEG
 8 constant OFF-BLEN
 9 constant BROW-CELLS
@@ -247,7 +245,7 @@ private
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant LK-DEFINED
 1 constant LK-REPLACEABLE
 2 constant LK-IMPORTED
@@ -469,7 +467,7 @@ private
    l 0= if 0 else blr l 1- BOP-END then
    blr l OFF-OPST BC@ STEP-CK ;
 
-\ ---- the staged function and block --------------------------------------------
+\ ---- the staged function and block -------------------------------------------
 \ Two package-owned stages under the single-task compilation discipline, in the
 \ shape IR-TYPE, IR-ATTR, IR-SCHEMA, and IR-OP established. The block stage
 \ nests inside the function stage: a block may only be opened while a function
@@ -571,7 +569,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
 : BFIELDS-CK ( -- )
    BSTG-SRC @ UNSET = if E-IR-FUN-FIELD throw then ;
 
-\ Section 6.5's symbol uniqueness rule at the point the name is claimed: one
+\ The symbol uniqueness rule at the point the name is claimed: one
 \ module's function table defines a name at most once.
 : DUP-CK ( IR-ARENA:reader -- )
    {: fnr:IR-ARENA:reader :}
@@ -579,8 +577,8 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
       fnr i OFF-SYM FNC@ FSTG-SYM @ = if E-IR-FUN-DUP throw then
    loop ;
 
-\ Design line 385: a function's signature is the type table's name for a
-\ callable with an effect, which design line 456 calls a code reference.
+\ A function's signature is the type table's code reference: a callable with
+\ an effect.
 : SIG-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
    {: tr:IR-ARENA:arena key:IR-ID:ir-module-key :}
    key KEY-SERIAL FSTG-SIGO @ OWNED-CK
@@ -646,7 +644,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
    0= if E-IR-FUN-TARGET throw then ;
 
 \ Every block this function is about to claim must already name this function as
-\ its parent. The block window and the parent field are both section 6.3 fields
+\ its parent. The block window and the parent field are both stored fields
 \ and this is where they are made to agree, so a later cross-function block use
 \ is a disagreement between two records rather than an unchecked assumption.
 : PARENTS-CK ( IR-ARENA:reader n n n -- )
@@ -657,7 +655,7 @@ ATTR-MAX CWORK-SPAN FSTG-ATO n
 
 \ ---- block-side staged validation --------------------------------------------
 \ Every operation the block is about to claim, asked of the opcode's schema:
-\ exactly one terminator, and it is the last (design line 403).
+\ exactly one terminator, and it is the last.
 : TERM-AT-CK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n n -- )
    {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n i:n last:n :}
    qr  r key  key opst i + IR-ID:PACK-OP  IR-OP:OPCODE@  IR-SCHEMA:TERMINATOR?
@@ -791,7 +789,7 @@ public
    c b bcap CELL+
    p f b ;
 
-\ ---- the function builder (design lines 498-499) ------------------------------
+\ ---- the function builder ----------------------------------------------------
 \ Open one function, named by the module's interned symbol. The block table's
 \ live count is captured here and revalidated at the end as the start of this
 \ function's block window, so blocks appended for a function that was then
@@ -810,7 +808,7 @@ public
 : ABANDON-FUN ( -- )
    FSTG-TAKE ;
 
-\ Design line 385: the callable type this function implements.
+\ The callable type this function implements.
 : SET-SIGNATURE ( IR-ID:ir-type-id -- )
    {: t:IR-ID:ir-type-id :}
    FSTG-OPEN-CK
@@ -818,7 +816,7 @@ public
    t IR-ID:TYPE-LOCAL FSTG-SIG !
    t TYP-OWNER FSTG-SIGO ! ;
 
-\ Design line 390: how this function's definition binds.
+\ How this function's definition binds.
 : SET-LINKAGE ( IR-FUN:linkage -- )
    FSTG-OPEN-CK
    FSTG-LNK @ ONCE-CK
@@ -830,18 +828,18 @@ public
    FSTG-VIS @ ONCE-CK
    VIS-CODE FSTG-VIS ! ;
 
-\ Design line 391: how a call to this function passes its arguments.
+\ How a call to this function passes its arguments.
 : SET-CONVENTION ( IR-FUN:convention -- )
    FSTG-OPEN-CK
    FSTG-CC @ ONCE-CK
    CC-CODE FSTG-CC ! ;
 
-\ Design line 388: one attribute this function carries.
+\ One attribute this function carries.
 : ADD-FUN-ATTR ( IR-ID:ir-attr-id -- )
    FSTG-OPEN-CK
    ATTR+ ;
 
-\ Design line 389: where this function came from.
+\ Where this function came from.
 : SET-FUN-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -888,7 +886,7 @@ public
    c f atst FSTG-BST @ bn FNROW-ADD
    key l IR-ID:PACK-FUN ;
 
-\ ---- the block builder (design lines 501-503) ---------------------------------
+\ ---- the block builder -------------------------------------------------------
 \ Open one block inside the open function. IR-OP's operation table is presented
 \ so the block can capture the operation count it starts at; an operation
 \ appended while no block is open therefore leaves a gap the window tiling
@@ -906,7 +904,7 @@ public
 : ABANDON-BLOCK ( -- )
    BSTG-TAKE ;
 
-\ Design line 502: one argument of this block. The value is minted through
+\ One argument of this block. The value is minted through
 \ IR-OP's value store, named by this block's identity and this argument's
 \ position, and returned so the block's operations can take it as an operand.
 : ADD-BLOCK-ARG ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-type-id -- IR-ID:ir-value-id )
@@ -920,7 +918,7 @@ public
    BSTG-AGN @ 1+ BSTG-AGN !
    val ;
 
-\ Design line 406: where this block came from.
+\ Where this block came from.
 : SET-BLOCK-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -1055,7 +1053,7 @@ public
    ord r IR-OP:OPS >= if E-IR-FUN-BOUND throw then
    key ord IR-ID:PACK-OP ;
 
-\ Design line 403: the terminator this block ends in, read in constant time and
+\ The terminator this block ends in, read in constant time and
 \ rechecked against the window it must end.
 : TERMINATOR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: b:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}

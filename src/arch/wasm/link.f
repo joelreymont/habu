@@ -1,5 +1,5 @@
 \ link.f - WLINK, the Wasm backend's linker: encoded functions, a data image and
-\ table slots written as one Wasm module (docs/wasm-backend.md 10.1, 17.1, 17.5).
+\ table slots written as one Wasm module (docs/xcomp.md "Linking").
 \
 \ A FUNCTION IS A BODY AND A SIGNATURE. FUNCTION+ copies a body as WENC writes
 \ one, its local declarations, code and end, with the lanes its emission row
@@ -36,7 +36,7 @@
 \ code, and data, one active segment at WPROF's image base. The memory's
 \ minimum is the pages holding the image's end and its maximum memory32's
 \ 65536, so a host may grow it and place bytes past the image
-\ (docs/browser-host.md). The exports are memory and the four wrappers, whose
+\ (src/lib/browser/host.f). The exports are memory and the four wrappers, whose
 \ bodies are written here through WENC's opcode bytes because their signatures
 \ lie outside WSTRUCT's call row: run initializes the task DATA stack header,
 \ stores WPROF's stack base in ctx's stack base and top and 0 in its out-len,

@@ -28,9 +28,10 @@
 \    it, and a literal would not.
 \
 \ 4. THE x86_64 SHAPE IS EXPRESSIBLE AT ALL. Sixteen registers with six of them
-\    the virtual machine's is the shape docs/x86-64.md fixes, and the point of
-\    the description is that it can be stated before a backend exists. The
-\    allocator's own suite takes it from here and allocates under it.
+\    the virtual machine's is the shape docs/xcomp.md "Machine model" fixes, and
+\    the point of the description is that it can be stated before a backend
+\    exists. The allocator's own suite takes it from here and allocates under
+\    it.
 
 require src/lib/test.f
 require src/compiler/native/regfile.f
@@ -53,11 +54,13 @@ private
    NREGFILE:REGS-NONE
    n 0 ?do base i + NREGFILE:REGS-REG NREGFILE:REGS-WITH loop ;
 
-\ ---- the shape the x86_64 backend will have ----------------------------------
-\ Sixteen general registers, six of them the virtual machine's (rbp, rbx and
-\ r12..r15 in docs/x86-64.md), so ten are allocatable; sixteen floating with none
-\ reserved; eight-byte slots. Every allocatable number is one ARM64 leaves alone
-\ too, so the allocator's suite can build NEFF pools over the same registers.
+\ ---- an x86_64-like shape ----------------------------------------------------
+\ Sixteen general registers, six of them reserved as the virtual machine's
+\ (rbp, rbx and r12..r15 in docs/xcomp.md "Machine model"), so ten are
+\ allocatable here (the real backend also reserves rsp); sixteen floating with
+\ none reserved; eight-byte slots. Every allocatable number is one
+\ ARM64 leaves alone too, so the allocator's suite can build NEFF pools over the
+\ same registers.
 16 constant X64-N
 10 constant X64-ALLOC-N
 6 constant X64-RES-N

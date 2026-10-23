@@ -20,11 +20,10 @@ create RAW-CELL 1 cells allot
 : UNIT-ROUNDTRIP ( ptr identity -- identity ) 1+ 1- @ ;
 
 : PASS ( ptr a -- ptr a ) ;
-: VIEW ( ptr a -- ptr u8 ) BYTE-VIEW ;
 : GENERIC@ ( ptr a -- a ) @ ;
 : GENERIC! ( a ptr a -- ) ! ;
 : PASSED@ ( ptr identity -- identity ) PASS GENERIC@ ;
-: VIEWED-BYTE ( ptr identity -- u8 ) VIEW c@ ;
+: VIEWED-BYTE ( ptr identity -- u8 ) BYTE-VIEW c@ ;
 : STRUCT-BYTE ( ptr identity -- u8 ) 0 STRUCT-BYTE+ c@ ;
 
 : REJECT ( ptr u8 n -- )

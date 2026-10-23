@@ -874,6 +874,26 @@ variable WANT-RC
    S\" 105\n7\n8\n" CASE$ GE-EXPECT-OUT
    s" hb: bare word a global and a used package both export: OI-SEVEN at " CASE$ GE-EXPECT-ERR-HAS ;
 
+\ At tier 1 a package defines a tail that the global OI-SEVEN and the used
+\ OI-PKG:OI-SEVEN both export: the name a definition makes is no reference, so
+\ the using refuses neither a colon definition (15) nor a definer (6). A bare
+\ reference to the tail in a body is still refused, the definition's own name
+\ included (7141), and a private twin of another width still refuses the
+\ public (7145): there the tail binds the private word.
+: USING-OWN-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier package OI-Q using OI-PKG : OI-SEVEN ( n -- n ) 3 * ; 5 OI-SEVEN . ;using ;package" GE-SRC-LINE
+   s" package OI-QD using OI-PKG : OI-SEVEN ( n -- ) create , does> ( -- n ) @ ;" GE-SRC-LINE
+   s" 6 OI-SEVEN OI-SIX OI-SIX . ;using ;package" GE-SRC-LINE
+   s" package OI-QR using OI-PKG s~ : OI-SEVEN ( -- n ) OI-SEVEN ;~ ' evaluate catch . 2drop ;using ;package" QLINE
+   s" package OI-QA using OI-PKG : OI-SEVEN ( n n -- n ) + ; public" GE-SRC-LINE
+   s" s~ : OI-SEVEN ( n -- n ) 1 + ;~ ' evaluate catch . 2drop ;using ;package" QLINE
+   s" oi-using-own-name.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 15\n6\n7141\n7145\n" CASE$ GE-EXPECT-OUT
+   s" E-USING-SHADOW-GLOBAL habu: bare 'OI-SEVEN'" CASE$ GE-EXPECT-ERR-HAS
+   s" E-SHADOWED-ARITY habu: public 'oi-qa:oi-seven'" CASE$ GE-EXPECT-ERR-HAS ;
+
 \ `;package` restores the using depth its package opened at, so inside a
 \ package `;using` closes only a using the package opened. One opened before
 \ `package` is refused by name: closed, it came back at `;package` and the
@@ -2105,6 +2125,7 @@ private
    TICK-USED
    USING-SHADOW
    TOP-SHADOW
+   USING-OWN-NAME
    USING-ACROSS-PACKAGE
    PACKAGE-RECOVERY
    PACKAGE-RECOVERY-LIVE

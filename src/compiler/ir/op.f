@@ -2,12 +2,10 @@
 \ row per SSA value, and one shared cell pool holding every operation's operand,
 \ result, successor, and attribute window.
 \
-\ docs/compiler-ir-design.md section 6.3 (the operation table and the value
-\ table), section 6.4 (the ADD-OP/ADD-OPERAND/ADD-RESULT/ADD-SUCCESSOR/ADD-ATTR
-\ builder API), section 6.5 (the freeze checks that consume these rows), and
-\ section 7.2 (the stage that fills them). This file stores operations and
-\ values; it does not define what any dialect's operations mean, which section
-\ 5.3 leaves to the dialect's schema table.
+\ It owns the ADD-OP/ADD-OPERAND/ADD-RESULT/ADD-SUCCESSOR/ADD-ATTR builder API;
+\ the native elaborator fills these rows and IR-VERIFY reads them at freeze.
+\ This file stores operations and values; it does not define what any
+\ dialect's operations mean, which is the dialect's schema table's to say.
 \
 \ ONE CONCERN, TWO ROW TABLES. Operations and values are one responsibility, not
 \ two, because they are defined by the same act: appending an operation is what
@@ -17,8 +15,7 @@
 \ operation count to validate a defining operation, the operation table needs the
 \ value count to validate an operand - and would break the single all-or-nothing
 \ append this file guarantees. They therefore share one package and one file, and
-\ the file keeps them in separate row tables so a later canonical encoder can
-\ order and renumber each independently.
+\ the file keeps them in separate row tables.
 \
 \ IDENTITY COMES FROM IR-ID. Operations are the existing IR-ID ir-op-id family
 \ and values the ir-value-id family, both packed under this module's key. This
@@ -27,30 +24,30 @@
 \ the module's interned symbol for that opcode, resolved through the dialect's
 \ schema table. There is no second opcode numbering to keep in step.
 \
-\ WHAT AN OPERATION ROW RECORDS (design lines 412-426).
-\   opcode name symbol   - design line 417's dialect-opcode half; the dialect
+\ WHAT AN OPERATION ROW RECORDS.
+\   opcode name symbol   - the opcode half of dialect-opcode; the dialect
 \                          half belongs to the schema table the opcode resolves
 \                          in, exactly as IR-SCHEMA decided
-\   operand window       - design line 419
-\   result window        - design line 420
-\   successor window     - design line 422
-\   attribute window     - design line 421
-\   source span          - design line 423, as the (source, start, length)
+\   operand window
+\   result window
+\   successor window
+\   attribute window
+\   source span          - as the (source, start, length)
 \                          triple IR-SOURCE:span already defines
-\ Three section 6.3 fields are deliberately absent, each because another stage
+\ Three fields are deliberately absent, each because another stage
 \ owns it and duplicating it here would create a second authority:
-\   parent-block (design line 418) belongs to the function and block structure
+\   parent-block belongs to the function and block structure
 \     stage, which owns parents and their windows;
-\   effect-class (design line 424) is the schema's field (design line 238) and is
+\   effect-class is the schema's field and is
 \     read through the opcode's schema, so an operation cannot contradict the
 \     closed world its dialect declared;
-\   flags (design line 425) names no member anywhere in the design, and an empty
+\   flags would name no member, and an empty
 \     flag word is not a capability: the stage that needs a flag adds it together
 \     with the meaning that makes it checkable.
 \
-\ WHAT A VALUE ROW RECORDS (design lines 428-438). Its type, its definition
+\ WHAT A VALUE ROW RECORDS. Its type, its definition
 \ kind, the identity that defined it, and the position within that definition.
-\ Section 6.3 fixes the two definition kinds - block argument or operation
+\ The value table fixes the two definition kinds - block argument or operation
 \ result - so they are a closed ENUM here. Both kinds are minted here, because
 \ the value store owns value rows whoever defines them: an operation's results
 \ are minted by END-OP, and a block's arguments by MINT-ARG, which the block
@@ -85,11 +82,11 @@
 \ detect. Block successors are the one reference that legitimately points
 \ forward - a branch to a block that is still being built is ordinary SSA
 \ construction - so this stage validates a successor's owning module and leaves
-\ the existence check to the block table and the section 6.5 freeze verifier.
+\ the existence check to the block table and the freeze verifier.
 \
 \ ARITY AGREES WITH THE SCHEMA. The opcode's schema declares how many operands
 \ and results the operation has and whether the last listed type is a variadic
-\ tail (design lines 234-235). Without a tail the counts must match exactly;
+\ tail. Without a tail the counts must match exactly;
 \ with one, the fixed part is one shorter and there is no upper bound, because
 \ the tail type describes every further entry and may describe none. A
 \ terminator's successor count is an exact match, since the schema records it as
@@ -98,7 +95,7 @@
 \ that list, and deciding an operation's keys against that list is the section
 \ 6.5 freeze verifier's job together with the operand and result type rules.
 \
-\ AN ATTRIBUTE IS A KEY AND A VALUE (design lines 479 and 484). The schema
+\ AN ATTRIBUTE IS A KEY AND A VALUE. The schema
 \ declares the attribute KEYS an opcode requires, so an operation has to say
 \ which key each attribute it carries answers; an unkeyed attribute names
 \ nothing the schema can be asked about, and "attributes are canonical and legal
@@ -162,7 +159,7 @@ require src/compiler/ir/schema.f
 package IR-OP
 public
 
-\ Design line 434: a value is defined either as a block argument or as an
+\ A value is defined either as a block argument or as an
 \ operation result. The vocabulary is closed, so an unknown definition kind is
 \ unrepresentable in checked code; the wire codes below persist it.
 ENUM def-kind DERIVE eq
@@ -188,17 +185,17 @@ $4F505231 constant OPR-MAGIC         \ "OPR1": the operation-table header format
 2 constant HC-CAP
 3 constant HDR-CELLS
 
-0 constant OFF-OPC                   \ design line 417: the opcode name symbol
-1 constant OFF-OPST                  \ design line 419: the operand window
+0 constant OFF-OPC                   \ the opcode name symbol
+1 constant OFF-OPST                  \ the operand window
 2 constant OFF-OPN
-3 constant OFF-RSST                  \ design line 420: the result window
+3 constant OFF-RSST                  \ the result window
 4 constant OFF-RSN
-5 constant OFF-SCST                  \ design line 422: the successor window
+5 constant OFF-SCST                  \ the successor window
 6 constant OFF-SCN
-7 constant OFF-ATST                  \ design line 421: the attribute window
+7 constant OFF-ATST                  \ the attribute window
 8 constant OFF-ATN                   \ in pool cells, so the window tiling is
                                      \ arithmetic on cells like the other three
-9 constant OFF-SRC                   \ design line 423: the source span
+9 constant OFF-SRC                   \ the source span
 10 constant OFF-SBEG
 11 constant OFF-SLEN
 12 constant ROW-CELLS
@@ -212,10 +209,10 @@ $4F505231 constant OPR-MAGIC         \ "OPR1": the operation-table header format
 1 constant AT-VAL                    \ the attribute ordinal
 2 constant AT-CELLS
 
-0 constant OFF-VTYP                  \ design line 433: the value's type
-1 constant OFF-VKIND                 \ design line 434: block argument or result
-2 constant OFF-VDEF                  \ design line 435: what defined it
-3 constant OFF-VPOS                  \ design line 436: where in that definition
+0 constant OFF-VTYP                  \ the value's type
+1 constant OFF-VKIND                 \ block argument or result
+2 constant OFF-VDEF                  \ what defined it
+3 constant OFF-VPOS                  \ where in that definition
 4 constant VROW-CELLS
 
 public
@@ -227,7 +224,7 @@ private
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per family; a code may be added but never renumbered
-\ without a schema bump in the canonical encoder.
+\ without a schema bump.
 0 constant DK-RESULT
 1 constant DK-BLOCK
 
@@ -593,7 +590,7 @@ LIST# CWORK-SPAN STG-N n
    {: hs:n owner:n :}
    owner hs SERIAL-CK ;
 
-\ Design lines 432-437 with the acyclicity rule above: an operand names a value
+\ By the acyclicity rule above, an operand names a value
 \ that is already defined, so its ordinal is strictly below the live count.
 : OPERANDS-CK ( n n -- )
    {: hs:n vcnt:n :}
@@ -624,7 +621,7 @@ LIST# CWORK-SPAN STG-N n
    loop ;
 
 \ A successor names a block of this module. Its existence is the block table's
-\ fact and the section 6.5 freeze verifier's check, because a branch to a block
+\ fact and the freeze verifier's check, because a branch to a block
 \ that is still being built is ordinary SSA construction.
 : SUCCS-CK ( n -- )
    {: hs:n :}
@@ -633,7 +630,7 @@ LIST# CWORK-SPAN STG-N n
       L-SC SEG i + SV@ 0 < if E-IR-OP-BOUND throw then
    loop ;
 
-\ Design lines 234-235: an exact count without a variadic tail; with one, the
+\ The schema's arity rule: an exact count without a variadic tail; with one, the
 \ fixed part is one shorter and the tail describes every further entry, of which
 \ there may be none.
 : LIST-ARITY-CK ( n n bool -- )
@@ -783,7 +780,7 @@ public
    c r ocap CELL+
    p v r ;
 
-\ ---- the operation builder (design lines 497-521) ----------------------------
+\ ---- the operation builder ---------------------------------------------------
 \ Open one operation, named by the module's interned symbol for its opcode.
 : BEGIN-OP ( IR-ID:ir-symbol-id -- )
    {: op:IR-ID:ir-symbol-id :}
@@ -799,13 +796,13 @@ public
 : ABANDON ( -- )
    STG-TAKE ;
 
-\ Design line 510: one operand, naming a value this module has already defined.
+\ One operand, naming a value this module has already defined.
 : ADD-OPERAND ( IR-ID:ir-value-id -- )
    {: val:IR-ID:ir-value-id :}
    STG-OPEN-CK
    L-OP val IR-ID:VALUE-LOCAL val VAL-OWNER ORD+ ;
 
-\ Design line 511: one result of this type. Its value identity is minted by the
+\ One result of this type. Its value identity is minted by the
 \ append, because a result cannot name its defining operation before that
 \ operation exists.
 : ADD-RESULT ( IR-ID:ir-type-id -- )
@@ -813,13 +810,13 @@ public
    STG-OPEN-CK
    L-RS t IR-ID:TYPE-LOCAL t TYP-OWNER ORD+ ;
 
-\ Design line 512: one control-flow successor of this terminator.
+\ One control-flow successor of this terminator.
 : ADD-SUCCESSOR ( IR-ID:ir-block-id -- )
    {: b:IR-ID:ir-block-id :}
    STG-OPEN-CK
    L-SC b IR-ID:BLOCK-LOCAL b BLK-OWNER ORD+ ;
 
-\ Design line 513 with design line 479: one attribute this operation carries,
+\ One attribute this operation carries,
 \ under the key it answers. The two lists are pushed together and are therefore
 \ always the same length: the key push runs first, and it is refused at exactly
 \ the entry count that would refuse the value push.
@@ -829,7 +826,7 @@ public
    L-AK k SYM-ORD k SYM-OWNER ORD+
    L-AT a IR-ID:ATTR-LOCAL a ATTR-OWNER ORD+ ;
 
-\ Design line 518: where this operation came from.
+\ Where this operation came from.
 : SET-SPAN ( IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
@@ -876,7 +873,7 @@ public
    key l IR-ID:PACK-OP ;
 
 \ ---- block arguments ---------------------------------------------------------
-\ Design line 434's other definition kind. A block argument is a value its block
+\ The other definition kind. A block argument is a value its block
 \ defines at an argument position; it is minted whole here because the value
 \ store owns value rows, while the block table records the window those values
 \ fill. The block identity is owner-checked but not existence-checked: a block's

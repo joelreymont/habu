@@ -1,9 +1,11 @@
 ---
 title: Route stdin, REPL and application entry in Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T13:12:28.974480+03:00"
+closed-at: "2026-10-22T12:36:34.369685+03:00"
+close-reason: "Triage 2026-10-22, DONE: The x86 product routes through src/habu/main.f (APP-ENTRY :196-204, EXIT-HOOK :210-225) via runtime-x64.f (3091cee6). ARM64 stays on the kernel by the master-wins rule; that goes to the parent."
 blocks:
   - habu-recover-throws-across-18bd36f9
 ---

@@ -24,7 +24,7 @@
 \   of them is gone;
 \ - a prune that takes a recent entry, or the one just published: it is gone;
 \ - a publish that leaves its work directory, or a prune its claim: the root
-\   holds a name that is none of the entries;
+\   holds a name that is none of the entries or the sweep stamps' directory;
 \ - a prune that fails its build: the build throws.
 \ The builds run in this process, as tools/hb-build-test-lib.f says a row builds
 \ where the CLI is not the subject; src/lib/build-cache-retain-test.f holds what a
@@ -148,6 +148,12 @@ variable HBR-STRAY
    {: a:ptr u:n :}
    a u s" hb-maker-support-" STARTS-WITH? u 81 = and ;
 
+\ A definition entry, hb-def-<64 hex>.hbd, which the maker writes per compiled
+\ definition; it is neither a kind the build publishes nor a stray.
+: HBR-DEF? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" hb-def-" STARTS-WITH? a u s" .hbd" ENDS-WITH? and u 75 = and ;
+
 : HBR-MAP-SLOT ( n -- n )
    dup HBR-NONE <> if 1+ then ;
 
@@ -160,6 +166,8 @@ variable HBR-STRAY
 
 : HBR-NOTE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u HBR-KNOWN? if exit then
+   a u s" build-cache-meta" STR= if exit then
+   a u HBR-DEF? if exit then
    a u s" .map" ENDS-WITH? if
       a u 4 - HBR-ART? if
          a u HBR-ART-SLOT @ HBR-MAP-SLOT HBR-TAKE exit
@@ -191,8 +199,8 @@ variable HBR-STRAY
 \ Name what a build added to the root: the slots for its artifact, object and
 \ index, HBR-NONE for a kind it must not publish, and how many it publishes.
 \ The first build also records one maker image and its support record.
-\ Another name of either kind is a stray.
-\ Any other name is a stray.
+\ Another name of either kind is a stray. Definition entries the maker writes
+\ are counted as neither, so `want` leaves them out. Any other name is a stray.
 : HBR-RECORD ( n n n n n -- )
    {: art:n obj:n idx:n inputs:n want:n :}
    art HBR-ART-SLOT !
@@ -216,7 +224,10 @@ variable HBR-STRAY
    HBR-SRC$ text textu WRITE-ALL ;
 
 \ One build of the current source into the cache root; json? is --json-errors.
+\ A prune runs at most once per SWEEP-SECONDS (src/lib/build-cache.f, SWEEPS
+\ ARE THROTTLED), so the stamps go first: every build's prune here sweeps.
 : HBR-BUILD ( ptr u8 n bool -- ) {: out:ptr outu:n json:bool :}
+   s" build-cache-meta" HBR-AT$ REMOVE-TREE
    HBT-ROOT out outu HBR-OUT-BUF HBR-OUT-U HBT-PATH!
    HBR-SRC$ HBR-OUT$ HBT-HBB-PREPARE-AOT
    json if -1 HBB-JSON ! then

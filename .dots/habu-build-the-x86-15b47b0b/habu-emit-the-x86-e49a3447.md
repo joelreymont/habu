@@ -13,7 +13,7 @@ close-reason: "Seven x86 definition-writer bodies; 25 images at their stated sta
 
 Problem: I4c registers its seven engine-writer rows on x86 as refusals, but the Habu interpreter X6 runs needs them.
 Acceptance: real bodies in `kernel-x64.f` `DEFINITION,` with I4c's contracts and exit codes: one name-store helper (inline, or at CP inside WINDOW-OPEN with `X64PROV:NATIVE-RANGE,` over it); RECORD-AT,, WINDOW-SPAN, WINDOW-CLOSE, as DOES-RECORD, does (`kernel-x64.f:2000-2052`); the live-name probe of the one-wordlist search (`:491`), `HIDX-ADD,` (`:661`), `PROT-BITS,` (`:2493`), TASK-LIVE-GUARD,; a store of the code pointer into OPEN-CELL.
-Files: `src/habu/kernel-x64.f`; `test/x86-64-kernel-definition.f` (package X64K-DEFINITION: one booted image per row outcome, one per refusal code, one `-negative` 21); SUITE x86-64-kernel-definition; `docs/x86-64.md`.
+Files: `src/habu/kernel-x64.f`; `test/x86-64-kernel-definition.f` (package X64K-DEFINITION: one booted image per row outcome, one per refusal code, one `-negative` 21); SUITE x86-64-kernel-definition.
 Verify: host `bin/hb --load test/x86-64-kernel-definition.f`; ThinkPad: each image natively with the status its header names.
 Route: direct (x86-only files).
 Ownership: krait (Intel lane).
@@ -31,7 +31,7 @@ Preflight corrections (2026-09-30; override the lines above where they differ):
 - Files add:
   - `test/gate-stdlib-cases.f`: the SUITE goes after :1440-1442.
   - `src/habu/prims.f`, comments only: at :618, "4-aligned" becomes "a code slot, 4 bytes ARM64, 16 x86-64"; the CP-writer list at :516-524 gains the three record writers.
-  - `docs/x86-64.md`: the "Code slots" bullet at :1136 and the "Definition rows" section at :1713.
+  - `src/habu/kernel-x64.f`: the code slot comment and the "definition writers" section.
 - Baked: only `prims.f`, and the change is comment-only. Show that the ARM64 product is byte-identical to master's, as K8c did. No chain and no full gate.
 - Pre-change check: a harness image that pushes `hello 0 0` and calls `def-open` exits 76 with `hb: def-open is not in the x86-64 kernel`.
 - Tests (put the region at rest with REST, first; after each write, PUSH-BANDS, reads 0 and a PROBE, of the record page faults):

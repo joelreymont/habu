@@ -125,7 +125,7 @@ PROC-NO-FD FEED-WR !
 
 \ A process is started with its caller's ignored signals still ignored, and a
 \ check.f that inherited one would never see it. RELEASE restores the default
-\ action for every signal CATCH installed (docs/signal.md).
+\ action for every signal CATCH installed.
 : SIGNALS-DEFAULT ( -- )
    SIGNAL:INIT
    SIGNAL:SIGTERM SIGNAL:CATCH

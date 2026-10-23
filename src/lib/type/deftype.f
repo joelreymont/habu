@@ -13,20 +13,14 @@
 \ converter pair `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`. The converters
 \ are the ONLY way across the boundary: the checker never lets a plain `n` stand
 \ in for a nominal, and never collapses a nominal back to `n` on its own. That is
-\ the whole point - the conversion is visible in the source (MISSING.md Foundation
-\ A1's non-negotiable invariant, locked by test/deftype-suite.f).
+\ the whole point - the conversion is visible in the source (locked by
+\ test/deftype-suite.f).
 \
-\ SUBSTRATE (decision record: docs/value-nominal-substrate.md). A value nominal is
-\ a package-scoped arity-0 type-family cell (a TFAM nominal scalar), exactly the
-\ substrate maki/extent.f uses for a flat extent. This was chosen over extending
-\ the CT-role table (roles.f's since-retired DEFTYPE) because type families are
-\ ALREADY package-scoped: `DEFTYPE SERIAL` in package CAMERA and `DEFTYPE SERIAL`
-\ in package FRAME are two distinct types with no engine change, whereas the CT-role
-\ table was global and a second same-named declaration collided. Choosing TFAM
-\ obviates the CON-OF/CT-FIND package-scoping restructure (dot
-\ habu-foundation-a1b-pkg-6692f4e3) for value nominals. Both substrates give the
-\ same strictness (probed: distinct from n both directions, distinct nominals,
-\ explicit-converter-only); TFAM adds package scoping for free.
+\ SUBSTRATE (docs/design.md "Type substrate"). A value nominal is a
+\ package-scoped arity-0 type-family cell (a TFAM nominal scalar). Type families
+\ are package-scoped, so `DEFTYPE SERIAL` in package CAMERA and `DEFTYPE SERIAL`
+\ in package FRAME are two distinct types; each is distinct from n in both
+\ directions and from every other nominal, and crosses only by its converters.
 \
 \ MANGLING (surface NAME -> family tail). A TFAM tail is lowercase
 \ (E-TFAM-CASE); the surface name is UPPER-CASE by project convention. `DEFTYPE`
@@ -42,6 +36,9 @@
 \ Generated converters use CAST:, which checks representation, ownership and
 \ linearity. NG-EVAL is the source-evaluation boundary; it does not exempt a
 \ generated declaration from those checks.
+\
+\ STORAGE CLASS. PROCESS-WIDE: NG-BUFFER and NM-BUFFER are static load-time
+\ codegen buffers; DEFTYPE runs in one loading task at a time.
 
 require src/lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
 require src/lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer

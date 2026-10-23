@@ -1,7 +1,22 @@
-\ Exact binary64 basis scaling with one final rounding per coordinate.
+\ fmath-basis.f - exact binary64 basis scaling with one final rounding per
+\ coordinate, in `package FBASIS`.
+\
+\ FBASIS:SCALE3 takes a point (three floats), a frame span of twelve binary64
+\ bit patterns in rows [a00 a01 a02 o0, a10 a11 a12 o1, a20 a21 a22 o2], three
+\ axis-column scales and a scratch span of at least WORK-CELLS cells. It
+\ evaluates o + A diag(s) A^-1 (p-o) exactly from the supplied values and
+\ rounds each output once, to nearest with ties to even (subnormals and zero
+\ by the same rule). A nonfinite input, singular basis, short span or frame
+\ and scratch overlap throws FMATH:E-DOMAIN; a final binary64 overflow
+\ FMATH:E-OUTPUT. The frame is not altered. Geometric tolerance and rigidity
+\ are the caller's policy.
+\
 \ The fixed five-factor expression has at most 42 terms. A finite factor has
 \ at most 53 significand bits and exponent at least -1074; 408 base-2^26
 \ limbs cover the resulting signed sums and quotient alignment.
+\
+\ STORAGE CLASS. CALLER-OWNED: all limb arithmetic lives in the caller's
+\ scratch span; no module state.
 
 require src/lib/span.f
 require src/lib/ieee754.f

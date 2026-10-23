@@ -1,6 +1,6 @@
 ---
 title: Reduce MAP-POINT native order refusal
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-10-19T15:00:25.756955+03:00"

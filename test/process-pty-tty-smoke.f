@@ -70,8 +70,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ cannot cross the throw, so the target is torn down here before the caller's
 \ wait is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); RUN stops the
 \ loop and lets it through, so the engine's report of it is the last line on
-\ stderr and the gate pool reads the row as a timeout (docs/gate.md). The
-\ caller has shown what it waited for.
+\ stderr and the gate pool reads the row as a timeout (docs/gate.md
+\ "Reading a red run"). The caller has shown what it waited for.
 : DEADLINE ( process-pty-handle ptr u8 n -- ) {: name:ptr len:n :}
    READ-SO-FAR
    PROCESS-PTY:TEARDOWN

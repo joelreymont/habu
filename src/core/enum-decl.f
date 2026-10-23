@@ -8,7 +8,7 @@
 \ transaction run are DECL-FRONT's (src/core/generated-declaration.f): this
 \ file hands it its kind, terminator and body.
 \
-\ Grammar (docs/type-families.md §2.1, §2.3):
+\ Grammar (docs/forth.md "Structures And Enums"):
 \   enum-decl    = ENUM type-name (full-enum | compact-enum) ;ENUM
 \   full-enum    = header-clause* variant-block+
 \   compact-enum = header-clause* compact-variant+
@@ -26,11 +26,11 @@
 \ FAMILY KIND (settled). The kind is chosen by mode at registration, before the
 \ variants are parsed, because TFAM-DECL fixes the kind once (there is no kind
 \ mutator). A compact ENUM is all-payloadless by construction, so it registers
-\ TK-ENUM exactly like the legacy compact ENUM (docs §9.3): arity 0, slots 0. A
+\ TK-ENUM exactly like the legacy compact ENUM (type-family.f header): arity 0, slots 0. A
 \ full ENUM is the general named-variant sum surface, so it registers TK-SUM with
 \ the declared arity — the same kind test/decl-event-suite.f drives DECL-EVENT
 \ variants over, and the kind PF-OWNER-OK? requires for a named variant field
-\ (fam TFAM-SUM? or TFAM-ENUM?, type-family.f). §2.3's "all payloadless => enum
+\ (fam TFAM-SUM? or TFAM-ENUM?, type-family.f). The rule "all payloadless => enum
 \ layout" is a downstream LAYOUT selection derived from the payload slots, not the
 \ coarse registry kind: TFAM-WIDTH@ already treats TK-SUM and TK-ENUM identically
 \ for a zero-payload family, so a full ENUM whose variants happen to be payloadless
@@ -50,7 +50,7 @@
 \ renders no constructor itself. Once the variant range, the field range and the
 \ payload width are bound, ED-CLOSE names the family to the constructor
 \ participant (src/core/generated-declaration.f) and the declaration transaction
-\ generates the per-variant checked constructor package (MESSAGE:QUIT, docs §2.3)
+\ generates the per-variant checked constructor package (MESSAGE:QUIT, docs/forth.md "Structures And Enums")
 \ inside its commit phase, so a failure anywhere publishes no constructor at all.
 \
 \ ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ ED-RESET
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ ---------------------------------------------------------------------------
-\ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
+\ field type resolution -> a schema node (type-schema.f header): concrete cell types (n/f/r +
 \ multi-char con names), positional letter params within arity, ptr T, and closed
 \ arity-0 layout/cell families. Everything else is unresolved. Mirrors
 \ structure-decl.f's resolver; a shared resolver module is future type-DSL work.

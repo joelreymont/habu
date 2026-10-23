@@ -18,8 +18,8 @@
 \                                      scenario, the expected answer
 \     PN-P NP-P PP-N PP-F ( n n n -- ) two inputs, the expected result
 \     P-P ( n n -- )                   one input, the expected result
-\   where a pointer column or result is a byte offset into one declared byte
-\   fixture (`ptr-field` refuses a raw `create` base);
+\   where a pointer column or result is a byte offset into the includer's
+\   fixture (prim-parity.f, for example, measures `ptr-field` in a pointer table);
 \ - `MAX-N` and `MIN-N`, the extreme cells, and `E-DIV-ZERO`;
 \ - a `+!` scenario that adds 3 to the stored cell.
 
@@ -71,7 +71,8 @@
            0           0                   0  PN-P
 ;CASES
 
-2 CASES -                              \ (ptr a ptr a -- n)
+\ Rows 2-3 run this subtraction; test/compiler/base-pointer-arith-refusals.f types them.
+4 CASES -                              \ (ptr a ptr a -- n)
            8           3                   5  PP-N
            3           8                  -5  PP-N
            4           4                   0  PP-N

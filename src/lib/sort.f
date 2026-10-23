@@ -6,8 +6,7 @@
 \ Binary heapsort: O(n log n), in place, no scratch buffer. SORT:FSORT! is the
 \ float-ascending convenience. The comparator is threaded as an ordinary checked
 \ higher-order parameter — the checker verifies quotation effects through the
-\ call chain and the sift-down loop, so no unchecked boundary is needed (unlike
-\ the older src/core/combinators.f). Raw indexed access (array.f's A-SUM idiom);
+\ call chain and the sift-down loop. Raw indexed access (array.f's A-SUM idiom);
 \ the algorithm keeps indices in bounds; len <= 1 is a no-op. Core + float deps.
 \
 \ The module lives in `package SORT`. External callers use the qualified public

@@ -200,7 +200,7 @@ s" RESULT"  TF-CANON? 0 T=
 s" 123"     TF-CANON? 0 T=
 s" @x"      TF-CANON? 0 T=
 \ internal-only single hyphens: leading / trailing / doubled '-' reject
-\ (item 8's '-'->'--' constructor-package escaping depends on this canon).
+\ (the '-'->'--' constructor-package escaping depends on this canon).
 s" -a"      TF-CANON? 0 T=
 s" a-"      TF-CANON? 0 T=
 s" a--b"    TF-CANON? 0 T=
@@ -277,7 +277,7 @@ NQDIN @ NQDOUT @ NQRIN @ NP @    -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop 
 NQDIN @ NQDOUT @ NQRIN @ 0       -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
 NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
 
-\ SC-PTR pointer payload node (PLAN item 6, docs §8 SC-PTR): child round-trip,
+\ SC-PTR pointer payload node: child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
 NC @ SCHEMA-PTR NPTR !
 NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? -1 T=
@@ -833,7 +833,7 @@ GSPAN @ TFAM-ARITY@ 3 T=
 MSPAN @ TFAM-ARITY@ 6 T=
 
 \ ---------------------------------------------------------------------------
-\ item 10 slice 1: TFL-* compiler-facing lowering surface (dot
+\ TFL-* compiler-facing lowering surface (dot
 \ habu-tfam-10-native design A) — pure folded resolution + tag/pad metadata
 \ the native construct/MATCH emitters call by name at token positions. Same
 \ scope rules as the checker friend XTs (owner-only construct, signature-scope
@@ -876,13 +876,14 @@ s" nope" LID @ TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 s" TFL-SURFACE" type cr
 
 \ ---------------------------------------------------------------------------
-\ packed ABI descriptor (docs §22.2, policy TL-PACKED-TAG). PACKED-NARROW picks
-\ the smallest byte tag width holding a K-variant tag; PACKED-DESC composes
-\ ( size align tagw ) with cell payloads (align CELL) and the narrowed tag placed
-\ last, SIZE the aligned record stride. Computed for ANY family regardless of its
-\ declared policy (the accept-flip that populates LAY on POLICY packed-tag is a
-\ later sub-slice); private families (package pkpk) keep the protected-WID seal
-\ cap untouched (dot habu-seal-protwid-cap-6f1c9d2b).
+\ packed ABI descriptor (docs/design.md "Families and layout policies", policy
+\ TL-PACKED-TAG). PACKED-NARROW picks the smallest byte tag width holding a
+\ K-variant tag; PACKED-DESC composes ( size align tagw ) with cell payloads
+\ (align CELL) and the narrowed tag placed last, SIZE the aligned record stride.
+\ Computed for ANY family regardless of its declared policy (the accept-flip
+\ that populates LAY on POLICY packed-tag is a later sub-slice); private
+\ families (package pkpk) keep the protected-WID seal cap untouched (dot
+\ habu-seal-protwid-cap-6f1c9d2b).
 \ ---------------------------------------------------------------------------
 0 PACKED-NARROW 0 T=
 1 PACKED-NARROW 1 T=
@@ -912,7 +913,7 @@ PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 
 \ ---------------------------------------------------------------------------
-\ packed-tag ACCEPT (item 16 sub-slice 2, docs §22.0/§22.2). `POLICY packed-tag`
+\ packed-tag ACCEPT. `POLICY packed-tag`
 \ declares: the family row carries TL-PACKED-TAG and the close bakes the
 \ PACKED-DESC memory descriptor into the LAY registry. packed is a MEMORY-ABI
 \ descriptor ONLY: the stack representation is IDENTICAL to stack-cell-tag, so a
@@ -975,14 +976,14 @@ PQL @ LAY-SIZE@ 16 T=  PQL @ LAY-ALIGN@ 8 T=   PQL @ LAY-TAGW@ 0 T=
 ;package
 
 \ ---------------------------------------------------------------------------
-\ boxed / niche-null stack width = 1 (docs §18 WIDTH(boxed)=1, §22.3 niche one
-\ cell). No declaration accepts boxed/niche yet (both reject at the POLICY
-\ clause), so this shared W=1 metadata is exercised through the direct
-\ TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit tests.
-\ A multi-slot SUM (default width slots+1) collapses to 1 under boxed and under
-\ niche, but keeps its cell width under stack-cell-tag AND packed (packed is a
-\ MEMORY-ABI descriptor only, §22.2) — the regression guard that the branch
-\ fires for boxed/niche alone.
+\ boxed / niche-null stack width = 1 (docs/design.md
+\ "Families and layout policies"). No declaration accepts boxed/niche yet (both
+\ reject at the POLICY clause), so this shared W=1 metadata is exercised through
+\ the direct TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit
+\ tests. A multi-slot SUM (default width slots+1) collapses to 1 under boxed and
+\ under niche, but keeps its cell width under stack-cell-tag AND packed (packed
+\ is a MEMORY-ABI descriptor only) — the regression guard that the branch fires
+\ for boxed/niche alone.
 \ ---------------------------------------------------------------------------
 s" pkgw" CHECKER-PACKAGE-PRIVATE s" wbx" 1 TK-SUM TFAM-DECL WBX !
 WBX @ 2 TFAM-SLOTS!                                           \ 2 payload slots
@@ -994,14 +995,14 @@ WBX @ TL-PACKED-TAG  TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ packed keeps c
 WBX @ TL-STACK-CELL-TAG TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=      \ restored
 
 \ ---------------------------------------------------------------------------
-\ arg-aware INSTANTIATED width (layout-cap slice 1, docs §18). T-WIDTH walks a
-\ resolved layout term's variant/product schemas, substituting each param slot by
-\ its arg's width, instead of the declared "every param is one cell" TFAM-WIDTH@.
-\ A width-1 arg reproduces the declared width (behaviour-preserving groundwork,
-\ what every cell-kinded corpus shape uses); a wide layout arg widens the sum
-\ payload — the degenerate case the declared family-only width gets wrong. The
-\ probe shapes stay rejected at the sig layer (slice 1 adds NO new accepts); these
-\ terms are built directly through MK-PARAM to exercise the width function alone.
+\ arg-aware INSTANTIATED width. T-WIDTH walks a resolved layout term's
+\ variant/product schemas, substituting each param slot by its arg's width,
+\ instead of the declared "every param is one cell" TFAM-WIDTH@. A width-1 arg
+\ reproduces the declared width (behaviour-preserving groundwork, what every
+\ cell-kinded corpus shape uses); a wide layout arg widens the sum payload — the
+\ degenerate case the declared family-only width gets wrong. The probe shapes
+\ stay rejected at the sig layer (slice 1 adds NO new accepts); these terms are
+\ built directly through MK-PARAM to exercise the width function alone.
 \ ---------------------------------------------------------------------------
 variable IWP1  variable IWP3  variable IWOPT  variable IWT
 package pkiw

@@ -8,7 +8,7 @@ closed-at: "2026-09-13T16:25:50.475734+03:00"
 close-reason: Integrated4d34fa11 after separate Astra review plus80b4cf59 strengthening overflow-before-growth check. Fresh rebuilt0c602d1c passes test/compiler/ir-arena.f and full315-suite compiler-ir-arena entry. Largest signed start, source extent/end/empty, ownership and unchanged count/content/scratch checks pass. Other named full-suite failures remain in campaign; no invalid access needed to validate fixed implementation.
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: active; owner: Sol arena lane, .jj-ws/cedar-arena-range.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: active; owner: Sol arena lane, .jj-ws/cedar-arena-range.
 
 Own src/compiler/ir/arena.f APPEND-SPAN and its tests. Validate from<=source-count then k<=source-count-from before growth/copy, preserving LIVE/OWN and zero-length-at-end. Rejected appends leave destination count/content unchanged. Test largest signed inputs, one-past/end/empty and valid bulk clones through real arena tests; no invalid-memory probe is needed.
 

@@ -1,18 +1,18 @@
-\ type-ctor-suite.f — generated-constructor suite (PLAN item 8, docs
-\ /type-families.md §12). A WHITEBOX-SUITE row, like the type-decl suite: the
+\ type-ctor-suite.f — generated-constructor suite (docs/forth.md
+\ "Structures And Enums"). A WHITEBOX-SUITE row, like the type-decl suite: the
 \ record queries are checker internals, which the unsealed engine binds by their
 \ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
 \ builds, and tools/bootstrap.sh runs it on the recovery chain's hb-stdin:
 \     <unsealed engine> --load test/type-ctor-suite.f
-\ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant
-\ in its derived constructor package (RESULT:OK shape): payload cells stay,
-\ M-p zero pads and the tag push on top, certified against the declared
-\ hidden-field sig through the checker-owned pending-constructor rule — no
-\ TRUST anywhere. Parametric (arity > 0) families are possibly-linear layouts
-\ under the v1 cell-kinded params (a linear con can flow through a var), so
-\ their constructors stay unpublished until TFAM 11's whole-bundle linear
-\ counting; their SV.CTOR-PKG metadata is still recorded. Private families
-\ generate nothing until item 9's construct form.
+\ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant in
+\ its derived constructor package (RESULT:OK shape): payload cells stay, M-p
+\ zero pads and the tag push on top, certified against the declared hidden-field
+\ sig through the checker-owned pending-constructor rule — no TRUST anywhere.
+\ Parametric (arity > 0) families are possibly-linear layouts under the v1
+\ cell-kinded params (a linear con can flow through a var), so their
+\ constructors stay unpublished until whole-bundle linear counting; their
+\ SV.CTOR-PKG metadata is still recorded. Private families generate no words and
+\ construct through the `construct` form.
 
 require tools/prot-wid-probe.f
 require src/lib/adt/result.f
@@ -186,7 +186,7 @@ s" LONG-GET ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESUL
 s" GEN-LONG-CTOR" type cr
 
 \ ---------------------------------------------------------------------------
-\ parametric families publish (item 11 slice 1): the constructor's result is
+\ parametric families publish: the constructor's result is
 \ one conservative logical cell while args are vars, expands to the hidden
 \ fields where instantiation proves the args non-linear (LOGHID coercion),
 \ and genuinely-linear instantiations stay fail-closed.
@@ -259,7 +259,8 @@ TWX-MULTI-ERR-END 1 T=
 s" DUP-DECL-SAFE" type cr
 
 \ ---------------------------------------------------------------------------
-\ linear payloads stay rejected until TFAM 11 (regression pins).
+\ linear payloads stay rejected until whole-bundle linear accounting (regression
+\ pins).
 \ ---------------------------------------------------------------------------
 \ concrete linear payload rejects at declaration (v1 payload grammar).
 TWX-MULTI-ERR-BEGIN
@@ -299,7 +300,7 @@ s" undefine ZDOOMED" TCE-CATCH 0 T=
 PROT-WID-PROBE:COUNT 0 > TTRUE
 
 \ ---------------------------------------------------------------------------
-\ item 9 slice 2: `construct family variant` — the checker-owned token
+\ `construct family variant` — the checker-owned token
 \ protocol. Resolution is package-identity-owned (the family must live in the
 \ ACTIVE package; cross-package never resolves, public families included —
 \ those use the generated words), kind-gated to sum/enum, and folded like
@@ -379,7 +380,7 @@ s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ th
 s" CONSTRUCT-OWN" type cr
 
 \ ---------------------------------------------------------------------------
-\ item 15: product generated words. A PUBLIC product publishes exactly two
+\ Product generated words. A PUBLIC product publishes exactly two
 \ checked words in its derived package — PKG:MAKE ( fields -- fam<..> ) and
 \ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
 \ window: a product bundle is its field cells in slot order (no tag), so

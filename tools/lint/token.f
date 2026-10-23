@@ -4,7 +4,6 @@ require src/lib/source.f
 require src/lib/source-lex.f
 
 $10000 constant TMAX            \ largest linted source (src/core/checker.f) + headroom
-                                \ (item 9 grew checker.f past the old $8000 tokens)
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 -4821 constant E-LINT-TOKEN-SOURCE

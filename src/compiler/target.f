@@ -1,6 +1,6 @@
 \ target.f - the immutable compiler target contract.
 \
-\ docs/compiler-ir-design.md section 5.4. No compiler pass may read target facts
+\ No compiler pass may read target facts
 \ out of scattered globals; it reads them out of one immutable value that says
 \ what machine the compilation is for. This file owns the first stage of that
 \ value: architecture, ABI, byte order, pointer width and feature set. The
@@ -12,8 +12,9 @@
 \ NOT rejected merely because this compiler cannot yet emit code for it. Those
 \ are different questions with different owners: coherence is decided here, once,
 \ at construction; backend capability is decided later by the stage that has to
-\ produce instructions, against the contract (design section 8, "target-specific
-\ operations are legal for the target contract"). Collapsing the two would make
+\ produce instructions, against the contract (IR-VERIFY refuses a
+\ target-specific operation the target contract cannot run). Collapsing the two
+\ would make
 \ the contract undeclarable for any machine we are about to add support for, and
 \ - worse - would prevent the context from representing that machine.
 \

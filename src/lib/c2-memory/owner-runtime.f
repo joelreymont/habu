@@ -1,4 +1,19 @@
-\ Private task-local cleanup for the checked owner surface under construction.
+\ owner-runtime.f - private task-local cleanup for the checked owner surface
+\ under construction (src/lib/c2-memory.f; rules in docs/design.md "Ownership").
+\
+\ Each scope OPENs one frame, registered PENDING before any allocation can
+\ return, moved to LIVE once its acquisitions are recorded, and CLOSING ->
+\ CLOSED as its disposers run; a pending frame disposes only what it recorded.
+\ At most FRAME-CAP frames nest (E-C2-CAPACITY). Cooperative halt is deferred
+\ (TASK:DEFER-ENTER) across that transfer and while a close runs. A task's
+\ first scope registers one TASK:AT-EXIT DRAIN that closes every remaining
+\ frame innermost first, keeps going past a disposer's error and reports the
+\ first; TASK:PAUSE ends a halted thread without unwinding `finally`, so the
+\ drain is required. Image capture refuses an open frame or loan (E-C2-CAPTURE).
+\
+\ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row
+\ (OWNER-REGION); main uses the same row in its own data region and registers
+\ no exit hook.
 require src/lib/errors.f
 require src/lib/task.f
 require src/lib/memory.f

@@ -1,9 +1,11 @@
 ---
 title: Re-enter evaluate from Habu
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.689073+03:00"
+closed-at: "2026-10-22T12:36:34.314294+03:00"
+close-reason: "Triage 2026-10-22, OBSOLETE: x86 runs the Habu evaluate with frames (src/habu/interpret.f:154-200; 174460de). The FL-PREFIX-PROVIDED design it prescribes was dropped in eccbd28. ARM64 adoption goes to the parent."
 blocks:
   - habu-move-pkgs-using-22f18b81
   - habu-call-the-unit-ec148ccf
@@ -25,8 +27,8 @@ Design correction, rev 2 (absorbs I1 `habu-mark-blob-provided-21605a53`, closed;
 - Gate: `ENGINE-PRIMS:COMPLETE ( [ ptr u8 n -- bool ] -- )` takes the provider. `CHECK-ROW` (`primitive-registry.f:131-135`), for a prefix-provided row when seeded: `BODY?` dies "assembly body for a prefix-provided row in a seeded build"; provider false dies "prefix-provided row not in the captured runtime"; otherwise today's rule. Call site `habu2.f:11114`: `[: 0 AOT-PAYLOAD-INDEX 0 >= ;] ENGINE-PRIMS:COMPLETE` (`AOT-PAYLOAD-INDEX` `habu2.f:10820` is top-level between `;package` 10750 and `package` 10942; captured globals carry wid 0, `src/habu/aot-capture.f:455-457,1371,1389`).
 - Row: `outer.f` defines global `evaluate` (saved input state, `EVALD`, `LEX0`/`EM-EVAL-CLEAN-EXIT`); `s" src/habu/outer.f" required` in `native-runtime.f` plus an `ML-ENTRY+` with its reason (`tools/manifest-lint-core.f:169-173`), unless an earlier leaf added them (`rg outer.f src/habu/native-runtime.f tools/manifest-lint-core.f`).
 - Measure first, on spark: whether the build host admits a global `: evaluate` beside the seed primitive (rc 78 duplicate rule, card section 1; `undefine` exists, `src/habu/verify-source.f:697`, `src/habu/xref.f:426`). The gate's wid-0 lookup needs the captured record to be a global `evaluate`.
-- Docs: `docs/x86-64.md:472-491` (row forms, readers); `docs/porting.md:83-85`.
-- Files: `src/habu/outer.f`, `test/outer-interpret.f`, `src/habu/prims.f`, `src/habu/primitive-registry.f`, `src/habu/habu1.f`, `src/habu/habu2.f`, `src/core/checker.f`, `src/habu/native-runtime.f`, `tools/manifest-lint-core.f`, `docs/x86-64.md`, `docs/porting.md`.
+- Docs: `src/arch/x86-64/passes.f` (row forms, readers); `docs/xcomp.md` "Engine Primitives".
+- Files: `src/habu/outer.f`, `test/outer-interpret.f`, `src/habu/prims.f`, `src/habu/primitive-registry.f`, `src/habu/habu1.f`, `src/habu/habu2.f`, `src/core/checker.f`, `src/habu/native-runtime.f`, `tools/manifest-lint-core.f`, `docs/xcomp.md`.
 - Verify (spark): rebuild; the nested cases on the rebuilt engine through plain `evaluate` (the only `evaluate`); gate (every suite's `evaluate` now runs the captured one); `bin/hb --load test/prim-parity.f` and `test/primitive-registry.f` unchanged; chain to convergence (a builder change: gen2 == gen3); once by hand, build with the `outer.f` manifest row removed and record the rc-76 prefix-provided refusal; the periodic no-binary check (`docs/bootstrap.md:209-220`): the cold `hb-stdin` keeps the assembly body.
 - Depends: I5e, I8, K4 (`habu-share-the-primitive-58c235e5`). Base on X7's bookmark until K4/X7 land. Serialise `habu2.f` (K4, X7, I6, I10c), `prims.f` (I6), `native-runtime.f` (I10c).
 - Route: Alder (shared: every file above except `outer.f` and the test).

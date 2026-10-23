@@ -29,7 +29,6 @@ require src/lib/source-syntax.f
 require src/core/checker.f
 require src/core/does-clause.f
 require src/habu/layout.f
-require src/habu/native-body-abi.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
@@ -78,13 +77,6 @@ CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
-\ The native body record's reuse and reader callbacks (src/habu/native-body-abi.f,
-\ tools/native-definition-cache.f BODY-REUSE and its reader).
-CAST: AS-BODY-REUSE ( n -- [ ptr u8 n n n -- n bool ] )
-CAST: AS-READER ( n -- [ ptr u8 n bool -- ] )
-
-\ The DATA offset of cell n of the native body record.
-: BODY-CELL ( n -- n ) cells NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + + ;
 
 \ ---- tier 0 ------------------------------------------------------------------
 \ The engine's tier 0 compiles each body token as it reads it, with its JIT,
@@ -430,30 +422,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-SEED
    DEF-QUALIFY kind DEF-RECORD ;
 
-\ A native definition cache may supply the body whole (habu2.f TRY-BODY-REUSE).
-\ Unsealed, with its reuse callback set and the checker hook empty or the one
-\ the cache observed, the callback sees the source buffer, the name's and the
-\ body's offsets in it, after the optional signature. On a hit it has
-\ installed the definition's code and checker state: the input resumes at the
-\ offset it gives and the definition closes as `;` closes it.
-: DEF-REUSE ( -- )
-   POLICY-NDICT-CELL CELL@ 0<> if exit then
-   NATIVE-BODY-ABI:REUSE BODY-CELL CELL@ {: reuse:n :}
-   reuse 0= if exit then
-   HOOK-CELL CELL@ {: hook:n :}
-   hook 0<> hook NATIVE-BODY-ABI:ORIGIN-HOOK BODY-CELL CELL@ <> and if exit then
-   SRCLOC:INB-CELL CELL@ {: inb:n :}
-   SRCLOC:INB-CELL ADDR@  INE-CELL CELL@ inb -
-   DEF-TKA-CELL CELL@ inb -  INP-CELL CELL@ inb -
-   reuse AS-BODY-REUSE execute {: resume:n hit:bool :}
-   hit 0= if exit then
-   DEF-SOURCE-CLOSE
-   SRCLOC:INB-CELL ADDR@ resume + INP-CELL ADDR!
-   DEF-CLOSE ;
-
 \ The name opens a pending record with the capture it seeds. `trusted:` then
 \ sets the trusted cell and needs a signature; `:` takes one if it is there.
-\ A cached body then ends the definition here.
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
    NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TASK-GUARD
@@ -468,7 +438,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    else
       DEF-MAYBE-SIG
    then
-   DEF-DISPATCH DEF-REUSE ;
+   DEF-DISPATCH ;
 
 \ ---- a string in the body (habu2.f NCOMP-EMIT:CAPTURE-STRING) -----------------
 \ After a string keyword the body takes the literal's text as written, from one
@@ -571,53 +541,26 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    TOKEN$ DEF-DESIGN-BODY? if exit then
    POLICY-REFUSE ;
 
-\ ---- the reader's verdict (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ------------
-\ The capture and the native definition cache's query (native-body-passive?)
-\ share this one decision, as habu2.f EMIT-READER-DECIDE serves both. A token
-\ FIND-SCOPE resolves to a word that is not immediate is a captured call. An
-\ immediate runs now when the checker calls it a stack-neutral parsing
-\ immediate (parse-imm): it may read the input after it or end the
-\ definition, and the compiler passes over it at `;`. Otherwise an unbound
-\ token or another immediate spelled `does>`, A-Z folded, splits the body, and
-\ anything else waits in the capture for the compiler. The engine closes the
-\ code window over the head's unit before it asks the checker; here that
-\ window is closed already: def-open closes its own, and evaluate's return
-\ closes the one an engine head opened. The engine finds NEUTRAL-PARSE-IMM? by
-\ name as it asks, so a checker loaded after it answers. Here the live checker
-\ owner answers (CHECKER-OWNER:PARSE-IMM?), the one the compiler asks at `;`
-\ when it passes over the token (elaborate.f): a binding fixed at this file's
-\ load would ask the retained checker, which never saw a `parse-imm` the
-\ replacement checker of a build window recorded, and the immediate would
-\ wait in the capture instead of running.
-0 constant VERDICT-PASSIVE
-1 constant VERDICT-RUN
-2 constant VERDICT-DOES
-
-: IMMEDIATE-REC? ( ptr n -- bool ) {: rec:ptr :}
-   rec XREF-FOUND? 0= if false exit then
-   rec XREF-FLAGS DNAME-IMM and 0<> ;
-
-: BODY-VERDICT ( ptr n ptr u8 n -- n ) {: rec:ptr a:ptr u:n :}
-   rec IMMEDIATE-REC? if
-      a u CHECKER-OWNER:PARSE-IMM? if VERDICT-RUN exit then
-   else
-      rec XREF-FOUND? if VERDICT-PASSIVE exit then
-   then
-   a u s" does>" STR=CI if VERDICT-DOES exit then
-   VERDICT-PASSIVE ;
-
-\ The query: whether the spelling is captured for the compiler. The x86-64
-\ native-body-passive? jumps here through PROVIDED-XT:BODY-PASSIVE-CELL.
-: BODY-PASSIVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u FIND-SCOPE a u BODY-VERDICT VERDICT-PASSIVE = ;
-
-\ The cache's reader sees each body token as it is read, captured (passive)
-\ or not. `;`, string text, local-group names and a parsing keyword's operand
-\ are not observed.
-: DEF-OBSERVE ( bool -- ) {: passive:bool :}
-   NATIVE-BODY-ABI:READER BODY-CELL CELL@ {: reader:n :}
-   reader 0= if exit then
-   TOKEN$ passive reader AS-READER execute ;
+\ ---- an immediate in the body (habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE) ----------
+\ A captured token LFIND resolves to an immediate word runs now when the
+\ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
+\ the input after it or end the definition, and the compiler passes over it at
+\ `;`. Any other immediate waits in the capture for the compiler. The engine
+\ closes the code window over the head's unit before it asks the checker; here
+\ that window is closed already: def-open closes its own, and evaluate's
+\ return closes the one an engine head opened. The engine finds
+\ NEUTRAL-PARSE-IMM? by name as it asks, so a checker loaded after it answers.
+\ Here the live checker owner answers (CHECKER-OWNER:PARSE-IMM?), the one the
+\ compiler asks at `;` when it passes over the token (elaborate.f): a binding
+\ fixed at this file's load would ask the retained checker, which never saw a
+\ `parse-imm` the replacement checker of a build window recorded, and the
+\ immediate would wait in the capture instead of running.
+: DEF-IMMEDIATE ( -- ptr n bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if NULL-PTR false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
+   rec POLICY-CHECK-REC
+   rec TOKEN$ CHECKER-OWNER:PARSE-IMM? ;
 
 \ An armed checker's preflight gets the body so far, the token and the trusted
 \ cell first; one armed without a preflight is refused (habu2.f
@@ -642,6 +585,10 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    slot occurrence DEF-OCC:RESOLVE NHOST:SELECT-REC
    -1 PEND-OPAQUE-CELL CELL!
    execute-floor FLOORED ;
+
+: DEF-IMMEDIATE? ( -- bool )
+   DEF-IMMEDIATE if DEF-RUN true exit then
+   drop false ;
 
 \ ---- `does>` in the body (habu2.f NCOMP-EMIT:CAPTURE-DOES) -------------------
 \ `does>` ends a defining word's own part: DOESB takes the capture's length
@@ -685,6 +632,19 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    DEF-DOES-NAME
    DEF-CREATED
    BODYLEN-CELL CELL@ DOESB-CELL CELL! ;
+
+\ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
+\ LFIND finds a word of that spelling that is not immediate, which the body
+\ calls instead.
+: DEF-CALL? ( -- bool )
+   TOKEN$ FIND-SCOPE {: rec:ptr :}
+   rec XREF-FOUND? 0= if false exit then
+   rec XREF-FLAGS DNAME-IMM and 0= ;
+
+: DEF-DOES? ( -- bool )
+   s" does>" TOKEN-IS? 0= if false exit then
+   DEF-CALL? if false exit then
+   DEF-DOES true ;
 
 \ ---- `;` (habu2.f NCOMP-EMIT:EM-COMPILE) --------------------------------------
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
@@ -730,18 +690,14 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    DEF-SEMI? if true exit then
    BODY-LOCAL? if
-      TOKEN$ DEF-CAPTURE  true DEF-OBSERVE  DEF-PREFIX-BIND  true exit
+      TOKEN$ DEF-CAPTURE  DEF-PREFIX-BIND  true exit
    then
    BODY-POLICY
    TOKEN$ DEF-CAPTURE
-   s" {:" TOKEN-IS? if true DEF-OBSERVE BODY-LOCAL-GROUP DEF-PREFIX-BIND true exit then
+   s" {:" TOKEN-IS? if BODY-LOCAL-GROUP DEF-PREFIX-BIND true exit then
    BODY-BLOCK-STEP
-   TOKEN$ FIND-SCOPE {: rec:ptr :}
-   rec IMMEDIATE-REC? if rec POLICY-CHECK-REC then
-   rec TOKEN$ BODY-VERDICT {: verdict:n :}
-   verdict VERDICT-PASSIVE = DEF-OBSERVE
-   verdict VERDICT-RUN = if rec DEF-RUN true exit then
-   verdict VERDICT-DOES = if DEF-DOES true exit then
+   DEF-IMMEDIATE? if true exit then
+   DEF-DOES? if true exit then
    DEF-STRING-TEXT
    TOKEN$ SOURCE-SYNTAX:PARSING-KEYWORD? if
       s" [']" TOKEN-IS? if RAW-TICK-OPERAND else RAW-OPERAND then BODY-RAW-NEXT !
@@ -1086,10 +1042,5 @@ public
 
 : INSTALL-CREATE ( -- )
    ['] DEF-CREATE-ROW data-base CREATEP-CELL + xt! ;
-
-\ The x86-64 native-body-passive? (kernel-x64.f PROVIDED-ROW) jumps through
-\ PROVIDED-XT:BODY-PASSIVE-CELL to the reader's verdict.
-: INSTALL-BODY-PASSIVE ( -- )
-   ['] BODY-PASSIVE? data-base PROVIDED-XT:BODY-PASSIVE-CELL + xt! ;
 
 ;package

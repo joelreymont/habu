@@ -24,7 +24,7 @@ private
 TYPED-VARIABLE ROW [ n -- n ]
 : PRIVATE-STORE ( -- ) [: 1 + ;] ROW ! ;
 : PRIVATE-CALL ( n -- n ) ROW @ execute ;
-: PRIVATE-OFF ( -- n ) ROW BYTE-VIEW data-base BYTE-VIEW - ;
+: PRIVATE-OFF ( -- n ) ROW data-base - ;
 
 public
 \ The public accessor has the same tail as the private quote accessor. Record

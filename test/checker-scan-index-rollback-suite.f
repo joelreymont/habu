@@ -7,7 +7,8 @@
 \ side by side in the gate pool; section numbers are that suite's, so a case
 \ keeps its name across the two rows. The shared fixture is
 \ test/checker-scan-index-lib.f. A WHITEBOX-SUITE row: standalone under bin/hb
-\ it exits 70 (docs/gate.md "How a suite runs").
+\ it exits 70 (docs/gate.md "How a suite runs, and what that demands of its
+\ files").
 \
 \ The guard and differential of section 2 run here first too: an index mark a
 \ rollback case reads is meaningful only once all five indexes exist, and the

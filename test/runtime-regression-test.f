@@ -140,8 +140,8 @@ variable GE-SCRIPT-U
 : GE-PASS-2? ( -- bool ) tier@ 0= ;
 
 \ does>-split wide facts fail closed at the pass-2 trigger with a fixed
-\ label (previously a lone current-token write - unattributable; TFAM 12
-\ item 3 verdict: the checker cannot see across the does> split, so the
+\ label (previously a lone current-token write - unattributable;
+\ the checker cannot see across the does> split, so the
 \ labeled engine exit IS the permanent contract). Pass 2 is tier 0's; the
 \ native compiler carries the width facts across the split and accepts both
 \ definitions.

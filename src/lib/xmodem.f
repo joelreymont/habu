@@ -1,4 +1,12 @@
 \ XMODEM packet framing. No transport, file, or device policy.
+\
+\ CRC is polynomial $1021, initial value zero, no reflection or final XOR,
+\ high byte first; the checksum is the payload sum modulo 256. Unused payload
+\ bytes are $1A. Single-file XMODEM with the 1K and CAN extensions, after the
+\ XMODEM/YMODEM Protocol Reference; no YMODEM batch. Peer tests: test/xmodem.py.
+\
+\ STORAGE CLASS. CALLER-OWNED: no module state; ENCODE writes the caller's BUF
+\ and DECODE borrows the caller's packet.
 require src/lib/errors.f
 require src/lib/type/deftype.f
 require src/lib/byte-buffer.f

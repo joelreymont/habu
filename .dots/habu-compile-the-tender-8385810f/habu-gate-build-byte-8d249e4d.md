@@ -11,7 +11,7 @@ blocks:
   - habu-build-the-compiler-c348eab0
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
 Own comparison mode in two-generation-build.f, dirty-transient fixture and bootstrap docs after private-output API. Two same-host uncached builds compare complete bytes; report offsets and owners where metadata supports. Clean product passes, baked timestamp/transient refuses, product-hosted chain converges. Record actual runtime; no assumed minute budget, second gate framework or rebuild for docs/tracker edits.
 

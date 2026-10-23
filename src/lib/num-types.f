@@ -34,7 +34,7 @@
 \ can throw the named code at its own boundary. `numeric-result<a>` is a layout
 \ value, so it is constructed and MATCHed only inside compiled words. A
 \ polymorphic eliminator (`numeric-result<a> -- n`) is not yet expressible
-\ (whole-bundle MATCH, dot habu-eliminate-a-parameterised-7ce778f8), so a consumer
+\ (whole-bundle MATCH), so a consumer
 \ MATCHes the concrete instantiation it holds; src/lib/num-types-test.f does
 \ exactly that per role.
 \
@@ -48,14 +48,13 @@
 \ AS-ALLOC-CELL-COUNT additionally returns `overflow` for a count above
 \ MAX-CELL-N / CELL-BYTES, before any allocation primitive is reachable.
 \
-\ SEALED (B5.1, B5.5 slice 1): these canonical roles and validators reach
+\ SEALED: these canonical roles and validators reach
 \ production through src/lib/num-arithmetic.f, including src/lib/memory.f and inference
 \ consumers. This file opens NUM and src/lib/num-arithmetic.f reopens it; both are
 \ baked into the engine prefix, and the native build seals every package it
 \ bakes (src/core/internal-mark.f SEAL-PACKAGES), so on the product engine a
 \ later `package NUM` exits 84 and NUM:MINT-BYTE-LEN is undefined: the private
-\ mints are unforgeable. The closed B5.2 arithmetic is src/lib/num-arithmetic.f (dot
-\ habu-implement-cad-num-cb413b2a).
+\ mints are unforgeable. The arithmetic is src/lib/num-arithmetic.f.
 \ Independently of the mints, raw storage cannot forge a role: a `variable`,
 \ `create` or `constant` cell is TVK-RAW (src/core/checker.f), which refuses an
 \ arity-zero family in both directions, so a role is stored as itself only
@@ -63,18 +62,20 @@
 \ field).
 \
 \ No `require`: the type-declaration grammar (package/NEWTYPE/ENUM/
-\ CAST:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). NUM must
+\ CAST:/MATCH) is in the checker prefix. NUM must
 \ not depend on src/lib/memory.f - MEM:ALLOC-* consumes NUM:alloc-* roles, so a
 \ dependency would be a cycle; MAX-CELL-N mirrors the machine max cell that
 \ src/lib/memory.f also names as MEM-MAX-N.
+\
+\ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 \ ---- named refusal codes (numeric-result error variants; consumers throw) -----
 -5400 constant E-NUM-NEGATIVE       \ a role rejected a negative raw cell
 -5401 constant E-NUM-ZERO           \ a positive/allocation role rejected zero
 -5402 constant E-NUM-OVERFLOW       \ an allocation count would exceed MAX-CELL-N
--5403 constant E-NUM-UNDERFLOW      \ a subtraction/retreat went below zero (B5.2)
+-5403 constant E-NUM-UNDERFLOW      \ a subtraction/retreat went below zero
 -5404 constant E-NUM-BAD-ALIGNMENT  \ alignment raw cell is not a positive power of two
--5405 constant E-NUM-MISALIGNED     \ a byte extent/offset is not a whole cell count (B5.2)
+-5405 constant E-NUM-MISALIGNED     \ a byte extent/offset is not a whole cell count
 
 package NUM
 public

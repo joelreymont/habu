@@ -1,7 +1,8 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
 \ stripped image may own and reach: library state, a fork, claimed engine
-\ cells, and a run-time pointer-cell mark that preserves data and stack.
-\ It also checks refusals for a missing entry and an unclaimed engine cell.
+\ cells, fixed quotation fields, and a run-time pointer-cell mark that preserves
+\ data and stack. It also checks refusals for a missing entry, an unclaimed
+\ engine cell and a scalar holding a code address.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
@@ -93,11 +94,15 @@ package HB-BUILD-CLI
 \ `ptr-cell-mark` runs at DEFINITION time, on the build host; this program calls
 \ the primitive itself inside MAIN, after storing the address of its own data in
 \ a persisted cell. The linker removes the compiler-only registration call
-\ while preserving its stack effect and the application pointer.
+\ while preserving its stack effect and the application pointer. The same image
+\ carries test/stripped-quotation-field-subject.f's fixed quotation fields,
+\ replaced by whole-record stores as it loads, and checks them first.
 : HBT-PMK-SRC$ ( -- ptr u8 n )
    SB-RESET
+   S\" require test/stripped-quotation-field-subject.f\n" SB-APPEND
    S\" create PMK-OWN 111 c, 107 c,\nPERSISTED-PTR-VARIABLE PMK-CELL\n" SB-APPEND
-   S\" : MAIN ( -- )\n   PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n" SB-APPEND
+   S\" : MAIN ( -- )\n   STRIPPED-QUOT-FIELD:CHECK\n" SB-APPEND
+   S\"    PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n" SB-APPEND
    S\"    depth 0 <> if s\" ptrmark: stack\" 74 die then\n   PMK-CELL @ 2 type cr ;\n" SB-APPEND
    SB$ ;
 
@@ -278,9 +283,21 @@ package HB-BUILD-CLI
    HBT-AOT-OUT FILE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    errn 0 T=
-   HBT-RUN-OUT outn S\" ok\n" T$= ;
+   HBT-RUN-OUT outn S\" quotation fields=ok\nok\n" T$= ;
+
+\ A scalar holding a live code address is still refused by the DATA scan.
+: HBT-STRIPPED-QUOT-LOOKALIKE ( -- )
+   s" test/stripped-quotation-field-lookalike.f" HBT-RUN-MAKER
+   {: outn:n errn:n rcn:n :}
+   rcn 70 T=
+   outn 0 T=
+   HBB-ERR-BUF errn
+      s" stripped AOT persistent data holds an undeclared code/dict pointer"
+      CONTAINS? TTRUE
+   HBB-ERR-BUF errn s" word=SCALAR-ROW#base" CONTAINS? TTRUE ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
@@ -296,6 +313,7 @@ public
    HBT-STRIPPED-NO-ENTRY
    HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PTR-MARK
+   HBT-STRIPPED-QUOT-LOOKALIKE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

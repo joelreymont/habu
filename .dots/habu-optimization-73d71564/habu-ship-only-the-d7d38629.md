@@ -13,13 +13,13 @@ Measured on master's engine (2,493,559 bytes, macOS arm64; `tools/engine-size.f`
 - The DATA census charges the `DONE` row, which holds the baked user-signature store and the tables of packages loaded after the REPL, 439,162 B, and the checker's symbol text `SYM-STR-BOOT` 184,437 B.
 - From the engine-entry roots, 3,757 records are unreachable: 110,536 B of code, 35,738 B of records and 38,425 B of names.
 - 3,250 global and 2,820 package-public records ship; private records are already dropped at capture (14 remain).
-- For comparison, every instruction-selection pattern the ARM64 code-size campaign counted summed to a ceiling of 165 KB (`docs/engine-size.md`).
+- For comparison, every instruction-selection pattern the ARM64 code-size campaign counted summed to a ceiling of 165 KB.
 
-Acceptance: the image carries checker data only for the declared surface and what its signatures reference, by one structural rule; a user program that names a word outside the surface is refused by name at check time; public words are checked exactly as before; the byte fixpoint, the full gate and the downstream builds (Tender, Etch, Loom) pass; `tools/engine-size.f` before and after, recorded in `docs/engine-size.md`.
+Acceptance: the image carries checker data only for the declared surface and what its signatures reference, by one structural rule; a user program that names a word outside the surface is refused by name at check time; public words are checked exactly as before; the byte fixpoint, the full gate and the downstream builds (Tender, Etch, Loom) pass; `tools/engine-size.f` before and after.
 Children, in order:
 1. habu-give-every-baked-9ca94f18 and habu-drop-private-signatures-974304d0, in parallel. Closed on evidence: habu-zero-the-type-96a51b7e (those planes never reach the image) and habu-certify-engine-src-0746d42c (certification replays its own private words, so it stays on the build host).
 2. habu-seal-every-captured-c550102f after 9ca94f18, and habu-compact-the-effect-130fd5d0 after 974304d0.
 3. habu-declare-the-surface-89e9aed0.
 Design: ~/.cache/tmp/heron-arm64/design-surface.md. Census: ~/.cache/tmp/heron-arm64/size-census/.
-Files: `src/core/checker.f`, `src/core/internal-mark.f`, `src/habu/aot-capture.f`, `src/habu/habu2.f`, `tools/engine-size.f`, `docs/engine-size.md`, `docs/forth.md`.
+Files: `src/core/checker.f`, `src/core/internal-mark.f`, `src/habu/aot-capture.f`, `src/habu/habu2.f`, `tools/engine-size.f`, `docs/forth.md`.
 Ownership: heron (campaign lead).

@@ -1,5 +1,5 @@
 \ top-row-hook-test.f - top-row hook engine regressions (dot
-\ habu-typed-top-engine-2b2e88aa, docs/typed-top-level.md §2.1 / §5.2).
+\ habu-typed-top-engine-2b2e88aa, src/core/top-row.f).
 \
 \ The engine carries a sealed top-row hook cell (layout.f TOP-HOOK-CELL)
 \ installed only through the fail-closed `set-top-check` prim (habu1.f

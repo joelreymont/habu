@@ -1,3 +1,18 @@
+\ names.f - XML names, namespace scopes and PREFIX-URI.
+\
+\ Name spans keep their prefix; URI and ATTR-URI answer the resolved, decoded
+\ namespace URI. A default namespace applies to elements, not to unprefixed
+\ attributes. Duplicate expanded attribute names and invalid bindings are
+\ refused before the start event is returned. PREFIX-URI resolves a decoded
+\ prefix against the current scope, the start tag's own declarations included,
+\ into caller storage and answers the count and true when bound; an unknown
+\ nonempty prefix, xmlns included, answers 0 and false without writing, `xml`
+\ its implicit URI, and the empty prefix the default (zero bytes when none).
+\ The scope lasts through the element's end event; before the root, past its
+\ end, at EOF or on a failed reader the lookup is E-STATE. A short or aliasing
+\ output throws and leaves the reader unchanged. Part of package XML
+\ (src/lib/xml.f).
+
 require src/lib/xml/state.f
 
 package XML

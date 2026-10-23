@@ -15,6 +15,14 @@
 \ The engine leaves the definition pending. Only a chain emission that passes
 \ every stage publishes it, so a refusal leaves no word behind.
 \
+\ THE CHAIN, IN ORDER. RECORD opens the source tape (tape.f) that the checker's
+\ reader fills (feed.f) and END-RECORDED seals it; the elaborator (elaborate.f)
+\ builds the definition's HIR functions from the sealed tape; NBACK:FREEZE folds
+\ shared HIR and freezes the module; an open shadow runs its chain from that
+\ frozen module; then NBACK:DECLARE, NBACK:SELECT into the target's machine
+\ dialect, NBACK:FIXPOINT (allocation, lowering spills until every value fits),
+\ NBACK:EMIT into the next code slot, and publication (publish.f).
+\
 \ NO BACKEND IS NAMED HERE. Every stage that turns an elaborated definition into
 \ instructions goes through src/compiler/native/backend.f, at the row the
 \ definition's own target contract resolves to, and an architecture with no
@@ -229,16 +237,16 @@ private
    kind DKIND:CAST = PRIOR-CAST !
    1 PRIOR-CALLABLE ! ;
 
-\ An ambiguous bare name is no prior binding: the engine's own lookup
-\ (NDICT:SCOPE-REC under CALL-BINDING) throws E-USING-AMBIGUOUS when two used
-\ publics export the tail and nothing earlier binds it.  The checker's verdict
-\ on the name is asked quietly in READ-PRIOR.  A qualified body token remains
-\ free to resolve its own unambiguous record after the check.
+\ A bare name a using refuses is no prior binding: it names no word, and the
+\ definition is admitted as at tier 0 (docs/forth.md: shadowing a global from
+\ inside a package is legal; the using refusal belongs to a reference). Asked
+\ before READ-PRIOR, whose effect query would raise that refusal for the name
+\ being defined. A qualified body token remains free to resolve its own
+\ unambiguous record after the check.
 : KEEP-PRIOR ( -- )
    0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  false PRIOR-CAST !
-   [: READ-PRIOR ;] catch {: rc:n :}
-   rc E-USING-AMBIGUOUS = if exit then
-   rc 0<> if rc throw then ;
+   PENDING-NAME$ NDICT:USING-REFUSED? if exit then
+   READ-PRIOR ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )

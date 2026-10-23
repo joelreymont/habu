@@ -1,6 +1,6 @@
 \ echo-test.f - the browser host's turns under bun: src/lib/browser/host-cli.mjs
 \ runs test/browser/echo.f's module through src/lib/browser/turn.js
-\ (docs/browser-host.md). The module is built by tools/wasm-build.f's command
+\ (src/lib/browser/host.f). The module is built by tools/wasm-build.f's command
 \ line and validated by wasm-tools. bun and wasm-tools must be on PATH, so this
 \ is no row of the ordinary gate: test/wasm/device.f runs it, as does
 \ `bin/hb --load test/browser/echo-test.f` from the tree's root.

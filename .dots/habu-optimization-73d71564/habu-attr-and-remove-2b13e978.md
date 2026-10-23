@@ -10,7 +10,7 @@ blocks:
   - habu-give-a-word-297b990d
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: cedar-indexed-dictionary, `.jj-ws/cedar-indexed-dictionary`, base `0c1ca1f3`.
+Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: cedar-indexed-dictionary, `.jj-ws/cedar-indexed-dictionary`, base `0c1ca1f3`.
 
 Own habu1.f WLFIND compiler record wrapper/checked declaration, native/dict.f WL-CANDIDATE/SPELL-REC and binding tests. WLFIND:LENTRY already returns record x12/start x11; consume it instead of indexed search-wl then full XREF rescan. Preserve public search-wl, private/TRUSTED-CELL visibility and retired-wordlist latest-record fallback. Verify precedence/ambiguity, collisions, hide/forget/redeclare and failed-evaluate slot reuse. Keep existing single EFFECT-QUERY; remove further duplicate consumers only if counted. Normal lookup avoids full dictionary scan; measure call counts and all-AOT contribution.375us/intrinsic is historical.
 

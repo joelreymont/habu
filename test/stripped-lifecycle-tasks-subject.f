@@ -2,7 +2,8 @@
 \ return, loop and region mappings THIS process took, which no image restores, so
 \ the capture sweep src/lib/task.f registers has to release them and leave the task
 \ EMPTY before the stripped link reads the window. The restored image then
-\ activates the same task, which prepares mappings of its own.
+\ activates the same task, which prepares mappings of its own, and reads the
+\ script arguments main reads: an application's convention is process-wide.
 require src/lib/task.f
 require src/lib/adt/result.f
 
@@ -15,11 +16,13 @@ $2A constant ANSWER
 TASK:MIN-STACK TASK:TASK WORKER
 variable RAN
 variable EXIT-RAN
+variable MAIN-ARGC
 
 : EXIT-STEP ( -- ) 1 EXIT-RAN +! ;
 
 : STEP ( -- )
    1 RAN +!
+   SCRIPT-ARGC MAIN-ARGC @ <> if 0 TASK:RETURN exit then
    ANSWER TASK:RETURN ;
 
 : ARM ( -- )
@@ -41,9 +44,10 @@ public
 : RUN ( -- )
    0 RAN !
    0 EXIT-RAN !
+   SCRIPT-ARGC MAIN-ARGC !
    ['] STEP WORKER TASK:ACTIVATE
    WORKER TASK:JOIN ANSWERED? 0= if
-      s" stripped-lifecycle-tasks: worker did not answer" FAILURE-RC die
+      s" stripped-lifecycle-tasks: worker did not answer or lost the arguments" FAILURE-RC die
    then
    WORKER TASK:KILL
    RAN @ 1 <> if

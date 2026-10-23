@@ -67,7 +67,8 @@ TASK:MIN-STACK TASK:TASK READER
       failed OF SERIAL:ERRNO>N K-FAILED swap ENDOF
    ;MATCH ;
 
-\ A deadline the case did not expect is no assertion result (docs/gate.md).
+\ A deadline the case did not expect is no assertion result (docs/gate.md
+\ "How a suite runs, and what that demands of its files").
 : WANT ( SERIAL:io-result n n -- ) {: kind:n payload:n :}
    CLASSIFY {: got-kind:n got-payload:n :}
    got-kind K-TIMEOUT = kind K-TIMEOUT <> and if
@@ -107,10 +108,11 @@ TASK:MIN-STACK TASK:TASK READER
 
 \ TASK:JOIN would park the main task forever on a reader that never ends, so the
 \ wait owns a deadline. A reader that never ends ends the row as that deadline,
-\ not as an assertion result (docs/gate.md): the join names itself and throws
-\ E-PROC-TIMEOUT, so the asserts after a join read a finished task. The window
-\ closes once less than a whole millisecond of JOIN-MS is left, the cutoff a
-\ PROC-LEFT-MS reading gives.
+\ not as an assertion result (docs/gate.md
+\ "How a suite runs, and what that demands of its files"): the join names itself
+\ and throws E-PROC-TIMEOUT, so the asserts after a join read a finished task.
+\ The window closes once less than a whole millisecond of JOIN-MS is left, the
+\ cutoff a PROC-LEFT-MS reading gives.
 : JOIN-READER ( -- )
    [: READER TASK:DONE? ;] JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
    s" serial-test JOIN-READER" TEST-WAIT:POLL ;

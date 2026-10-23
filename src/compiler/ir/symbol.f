@@ -2,9 +2,7 @@
 \ identities backed by content bytes, with byte equality and no pointer
 \ identity.
 \
-\ docs/compiler-ir-design.md section 6.3 (the symbol table), section 6.6 (the
-\ string and symbol tables in the canonical serialization order), and plan
-\ item IR-0.3. One interner serves one module as two coupled stores, both
+\ One interner serves one module as two coupled stores, both
 \ IR-ARENA arenas owned by the compilation context: a byte pool holding the
 \ symbol bytes and a row table holding one record per distinct symbol. Both
 \ die with their context, freeze with their arenas, geometric growth under the
@@ -61,12 +59,9 @@
 \ row is touched. Creating a second store pair under one key is the owner's
 \ misuse, as it is for the source registry.
 \
-\ INSERTION ORDER AND CANONICALIZATION. Local ordinals are insertion-ordered
-\ and stable; the section 6.6 canonical encoding must not depend on that
-\ order. What canonicalization needs from this file is a deterministic,
-\ byte-faithful iteration surface, and that is SYMBOLS plus the
-\ ordinal-packed identities resolved through LEN@ and COPY: the encoder sorts
-\ symbols by their bytes and emits its own permutation. The filter cell is an
+\ INSERTION ORDER. Local ordinals are insertion-ordered and stable. The
+\ deterministic, byte-faithful iteration surface is SYMBOLS plus the
+\ ordinal-packed identities resolved through LEN@ and COPY. The filter cell is an
 \ in-memory lookup filter only and never serializes. Mutable buckets are private
 \ context scratch, cleared on arena retirement and copied independently on clone.
 \
@@ -259,10 +254,9 @@ private
 \ filter stay two symbols.
 \
 \ WHY A NONCRYPTOGRAPHIC HASH IS THE RIGHT ONE. The value never leaves this
-\ file: it does not serialize, no canonical preimage or persisted digest
-\ contains it, and the section 6.6 encoder reaches symbols through
-\ SYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
-\ above). Nothing outside ROW-MATCH? can observe which function produced it, so
+\ file: it does not serialize, no persisted digest contains it, and readers
+\ reach symbols through SYMBOLS, LEN@ and COPY (see INSERTION ORDER above).
+\ Nothing outside ROW-MATCH? can observe which function produced it, so
 \ changing it moves no digest anyone has stored. It cheaply rejects candidates;
 \ a cryptographic digest per intern was a steep price for sixteen bits of
 \ reject power that FNV-1a delivers in a few instructions per byte.
@@ -275,7 +269,7 @@ private
    dup 32 rshift xor
    dup 16 rshift xor ;
 
-\ ---- matching --------------------------------------------------------------------
+\ ---- matching ----------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n p u:n f:n :}
    rr l OFF-FLT RC@ f <> if false exit then
@@ -687,7 +681,7 @@ public
    hit 0 < if key 0 IR-ID:PACK-SYMBOL false exit then
    key hit IR-ID:PACK-SYMBOL true ;
 
-\ ---- carrying a symbol between modules ----------------------------------------
+\ ---- carrying a symbol between modules ---------------------------------------
 \ A pass that rebuilds a frozen module names what it builds with the old
 \ module's symbols, and the two modules number their symbols separately, so the
 \ new one interns the same bytes. They cross through a span of the context's

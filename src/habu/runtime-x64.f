@@ -7,7 +7,7 @@
 \ startup and REPL bodies, so its product captures none of these files.
 \
 \ CHECKER-REG:SEAL runs CHECKER-REG:SEAL-TARGET on x86-64 only; this file
-\ fills it with INSTALL-LOOP, which binds each of the five cells before the
+\ fills it with INSTALL-LOOP, which binds each of the four cells before the
 \ capture seals them. test/prefix-provided-unfilled.f removes the first
 \ install line here and expects the build to refuse the empty evaluate cell.
 
@@ -21,7 +21,6 @@ private
 
 : INSTALL-LOOP ( -- )
    OUTER:INSTALL-EVALUATE
-   OUTER:INSTALL-BODY-PASSIVE
    OUTER:INSTALL-CREATE
    OUTER:INSTALL-POLICY
    ENGINE-MAIN:INSTALL ;

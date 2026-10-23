@@ -4,7 +4,7 @@
 \ and the POW10I/SB-FRAC scratch cells (FMT-IX, FMT-FR, FMT-DV) live in the
 \ FMT-ABI band of the per-task DATA region, and the appenders write into
 \ src/lib/string.f's SB, which is task-local too, so two tasks formatting at once
-\ share nothing. See docs/threads.md.
+\ share nothing.
 \
 \ The module lives in `package FMT`. External callers reach it through the
 \ qualified public API: FMT:SB-U, FMT:SB-HEX, FMT:SB-HEX-WIDTH, FMT:SB-INT, and
@@ -38,6 +38,9 @@
 \ instead of letting f>s saturate to a wrong number. The power-of-ten helper
 \ POW10I, the fits-i64 guard FIT-I64, the zero-padded fraction helper SB-FRAC,
 \ the integer renderer, and every buffer and constant are package-private.
+\ SB-SCALED divides by 10^places for places 0 through 18 (else E-FMT-DOMAIN
+\ before the builder changes), trims trailing fractional zeros and a bare point,
+\ and keeps the zero before a fraction below one: 5500 3 is 5.5, -1 3 is -0.001.
 \ Depends on src/lib/float.f (POW10) and src/lib/string.f (SB builder).
 
 require src/lib/float.f                        \ POW10 (SB-FIX float scaling)

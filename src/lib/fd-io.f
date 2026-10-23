@@ -13,7 +13,7 @@
 \
 \ Signals and descriptors stay the caller's. Every handler that returns - the
 \ profiler's and src/lib/signal.f's - sets SA_RESTART, so a blocked read or write
-\ that moved nothing resumes by itself (docs/signal.md). A write to a pipe with
+\ that moved nothing resumes by itself. A write to a pipe with
 \ no reader raises SIGPIPE, which ends the process, unless the caller armed
 \ FD-NOSIGPIPE! (src/lib/process.f); then it throws E-FS-IO here. The engine
 \ reports EAGAIN as a failed call, so these words are for blocking descriptors.

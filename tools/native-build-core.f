@@ -70,6 +70,9 @@ variable PRIOR-ENGINE-ROOT-U
    \ Older hosts register the retired observer CODE cell even when it holds zero.
    \ Remove its declaration before translating the remaining fixed host rows.
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
+   \ Older hosts register the retired body-reuse reader cells after the
+   \ three-cell origin record.
+   $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
       i ADDR-ROW@ {: raw:n :}
@@ -268,11 +271,8 @@ CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
    install execute ;
 
 variable TARGET-SOURCE-BOUND
-create HOST-KERNEL 32 allot
-variable HOST-KERNEL-KNOWN
 create HOST-COMPILER 32 allot
 variable HOST-COMPILER-KNOWN
-variable HOST-PREFIX-FIRST
 
 : HOST-COMPILER$ ( -- ptr u8 n bool )
    HOST-COMPILER HOST-COMPILER-KNOWN @ if 32 else 0 then
@@ -289,21 +289,10 @@ variable HOST-PREFIX-FIRST
    then
    ACTIVE-COMPILER-XT execute ;
 
-\ The host's source boundary and producer roles belong to its dictionary.
-\ Save them before LOGICAL-RESET retires that dictionary, then bind the
-\ matching producers to code-bearing seed rows in the replacement window.
+\ The host's checker and compiler roles belong to its dictionary. Save them
+\ before LOGICAL-RESET retires that dictionary.
 : RETAIN-HOST-PRODUCERS ( -- )
    NDEF-CACHE:RETAIN-HOST-CHECKER
-   CORE-PREFIX:FIRST-RECORD HOST-PREFIX-FIRST !
-   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$
-      {: digest:ptr size:n known:bool :}
-   known if
-      size 32 <> if
-         s" native-build: invalid host kernel producer" BUILD-RC die
-      then
-      digest HOST-KERNEL 32 BYTE-COPY
-   then
-   known HOST-KERNEL-KNOWN !
    HOST-ACTIVE-COMPILER$
       {: compiler:ptr compileru:n compiler-known:bool :}
    compiler-known if
@@ -372,14 +361,6 @@ variable HOST-UNIT-BOUND
    HOST-UNIT-PRIOR @ SOURCE-UNIT:USE
    ['] HOST-UNIT-ORDINARY HOST-UNIT-PRIOR !
    0 HOST-UNIT-BOUND ! ;
-
-: BIND-SEED-PRODUCERS ( -- )
-   \ The seed ends at this frontier; later FILEs bind their own source role.
-   0 HOST-PREFIX-FIRST @ HOST-PREFIX-FIRST @
-   HOST-KERNEL HOST-KERNEL-KNOWN @ if 32 else 0 then
-   HOST-KERNEL-KNOWN @ 0<>
-   HOST-KERNEL
-   NFILE-REF:BIND-SEED-PRODUCER ;
 
 : DEFAULT-SOURCE-POLICY ( -- )
    ['] DEFAULT-SOURCE-BIND ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY! ;
@@ -584,7 +565,6 @@ variable PRE-ROWS-N
          NDEF-CACHE:RETURN-BORROW RESTORE-PREFIX-DISPATCH ;] finally ;
 
 : LOAD-TARGET ( -- )
-   BIND-SEED-PRODUCERS
    CHECKED-PREFIX
    BUILD-PRODUCER:FREEZE-CHECKER
    s" src/core/roles.f" included

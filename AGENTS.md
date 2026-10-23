@@ -82,7 +82,7 @@ belong in the language core.
   layer and verify the behavior through the testing policy below; a type checker
   does not prove unmodeled semantics.
 - Use [docs/debugging.md](docs/debugging.md) for native failures. If `bin/hb`
-  is missing or stale, follow [docs/bootstrap.md](docs/bootstrap.md).
+  is missing or stale, follow [docs/bootstrap.md](docs/bootstrap.md) "Recovery routes".
 
 ## Verification and documentation
 
@@ -120,7 +120,8 @@ belong in the language core.
   its downstream checks. Documentation, moves and other mechanical changes
   need proportionate checks.
 - Report actual results and untested boundaries. Never weaken a claim to make a
-  check pass. [docs/proofs.md](docs/proofs.md) explains verification limits.
+  check pass. [docs/gate.md](docs/gate.md) "Verification claims" states
+  verification limits.
 - A finding goes where it is checked: a test or a code comment if either can
   hold it; [docs/forth.md](docs/forth.md) (its "Rules learned by refusal"
   section) and the card for a language rule; [docs/bootstrap.md](docs/bootstrap.md),

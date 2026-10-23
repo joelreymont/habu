@@ -98,7 +98,7 @@ variable NUM-U
    s" : LAYOUT-BUFFER ( -- ) ;" SB-APPEND LF
    SB$ ;
 
-\ TFAM 9: construct/MATCH/;MATCH are reserved control forms — a definition may
+\ construct/MATCH/;MATCH are reserved control forms — a definition may
 \ not take those names (case-folded), exactly like case/of/endof.
 : CONTROL-SRC$ ( -- ptr u8 n )
    SB-RESET

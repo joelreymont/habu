@@ -1,4 +1,7 @@
 \ class.f - complete pinned Unicode character-class queries.
+\
+\ STORAGE CLASS. PROCESS-WIDE read-only tables (src/lib/unicode/class-data.f,
+\ generated); any task may query.
 
 require src/lib/unicode/class-data.f
 

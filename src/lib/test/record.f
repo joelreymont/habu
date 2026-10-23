@@ -2,6 +2,8 @@
 \ One TSV line per failing case: TFAIL <layer> <case-id> <label>.
 \ Shared by src/lib/test/assert.f and src/lib/test/runner.f so gate
 \ logs and repair loops parse one record shape across all test layers.
+\
+\ STORAGE CLASS. PROCESS-WIDE: the record line is built in one static buffer.
 
 require src/lib/errors.f
 require src/lib/string.f

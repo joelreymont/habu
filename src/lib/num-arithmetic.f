@@ -2,7 +2,7 @@
 \ Reopens package NUM (slice 2); depends on
 \ src/lib/num-types.f (slice 1) and adds no roles or overloads.
 \
-\ This file is the COMPLETE admitted role algebra. The B5.2 table is closed: an
+\ This file is the COMPLETE admitted role algebra. The algebra is closed: an
 \ omitted, reversed, or cross-unit pair is statically unavailable, because the
 \ only inputs each word accepts are its exact nominal roles. There is no generic
 \ raw-`n` arithmetic and no extra overload; the type system IS the table. New

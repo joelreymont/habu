@@ -1,6 +1,6 @@
 \ numeric-policy.f - the explicit numerical policy of a compilation.
 \
-\ docs/compiler-ir-design.md section 5.5. A floating-point or integer rewrite is
+\ A floating-point or integer rewrite is
 \ never justified by "the operation is commutative" or by an ambient fast-math
 \ switch. It is justified by a policy value that the compilation carries, and
 \ every rewrite rule declares which policies admit it. This file owns that value:
