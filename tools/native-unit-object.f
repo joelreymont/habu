@@ -58,8 +58,6 @@ private
 \ then each slice's length and bytes padded to a cell. A definition's own
 \ dependency slot stays out: the file's rows cover it.
 42031 constant DEF-SLOTS
-\ Slots 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16.
-131071 constant FILE-SLOTS
 14 constant DEPS-SLOT
 \ An index row's name span: after the ordinal and the eight section lengths.
 72 constant SPAN-AT
@@ -1580,16 +1578,6 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
       if i base else best at then
    loop ;
 
-\ The keyed declaration whose DATA holds va, and va's offset in it; -1 0
-\ when none does.
-: EARLIER-AT ( n -- n n )
-   {: va:n :}
-   va AOT-CELL:DATA-ADDRESS? 0= if -1 0 exit then
-   va OWNER-AT {: ord:n base:n :}
-   ord 0 < if -1 0 exit then
-   ord NFILE-REF:DECL-KEY? nip nip 0= if -1 0 exit then
-   ord va base - ;
-
 \ An earlier file's DATA at va, owned by record ord whose DATA starts at
 \ base, as a reference through that declaration, 0 when it is not keyed.
 \ The file depends on that declaration as a compiled reference to it would
@@ -1607,8 +1595,12 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
 \ whose digest covers the extent, so an edit that moves its end, and with it
 \ the record the offset names, is stale.
 : EARLIER-REF ( n -- n )
-   EARLIER-AT {: ord:n addend:n :}
+   {: va:n :}
+   va AOT-CELL:DATA-ADDRESS? 0= if 0 exit then
+   va OWNER-AT {: ord:n base:n :}
    ord 0 < if 0 exit then
+   ord NFILE-REF:DECL-KEY? nip nip 0= if 0 exit then
+   va base - {: addend:n :}
    ord NUNIT-DEP:DATA-ORD addend <= if 0 exit then
    ord addend 0 1 NFILE-REF:REF-DECL-DATA ;
 
@@ -2354,13 +2346,14 @@ private
    kind RK-BARE = value 0<> and if BAD then ;
 
 \ The reference section: an NFILE-REF ENCODE header with no declarations
-\ and room for its reference rows.
-: REFS-CK ( ptr u8 n -- )
+\ and room for its reference rows; their count.
+: REFS-CK ( ptr u8 n -- n )
    {: refs:ptr refsu:n :}
    refsu 24 < if BAD then
    refs 2 U64-AT 0<> if BAD then
    refs 0 U64-AT {: cnt:n :}
-   cnt 0 < cnt refsu 24 - 32 / > or if BAD then ;
+   cnt 0 < cnt refsu 24 - 32 / > or if BAD then
+   cnt ;
 
 : RECORDS-CK ( ptr u8 n n ptr u8 n -- )
    {: recs:ptr recsu:n namesu:n refs:ptr defs:n :}
@@ -2474,8 +2467,7 @@ private
    3 NUNIT-FILE:SECTION$ nip {: namesu:n :}
    12 NUNIT-FILE:SECTION$ namesu EVENTS-CK
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
-   rows rowsu REFS-CK
-   rows 0 U64-AT {: refs:n :}
+   rows rowsu REFS-CK {: refs:n :}
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
    4 NUNIT-FILE:SECTION$ PROT-CK
@@ -2488,18 +2480,13 @@ private
 
 public
 
-\ Check a FILE object's framing: only FILE-SLOTS hold bytes, the dependency
-\ and input rows are well formed, the segment sections agree, and each index
-\ row frames one definition payload, in increasing ordinal order, covering the
-\ definitions slot exactly, and spans a name within the source's srcu bytes.
+\ Check a FILE object's framing: the dependency and input rows are well
+\ formed, the segment sections agree, and each index row frames one
+\ definition payload, in increasing ordinal order, covering the definitions
+\ slot exactly, and spans a name within the source's srcu bytes.
 : OPEN-FILE ( ptr u8 n ptr u8 n n -- )
    {: bytes:ptr size:n key:ptr keyu:n srcu:n :}
    bytes size NUNIT-FILE:ARCH-AARCH64 s" FILE" key keyu NUNIT-FILE:READ-VIEW
-   17 0 ?do
-      FILE-SLOTS i rshift 1 and 0= if
-         i NUNIT-FILE:SECTION$ nip 0<> if BAD then
-      then
-   loop
    DEPS-SLOT NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT OPEN-ROWS !
    11 NUNIT-FILE:SECTION$ NFILE-INPUTS:ROW-COUNT OPEN-INPUTS !
    \ SECTIONS-VIEW replaces the table, so keep the FILE spans first.
