@@ -232,7 +232,6 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : COMEND-MSG$ ( -- ptr u8 n )    s" hb: source ended inside a ( comment" ;
 : SRCCLOSE-MSG$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: " ;
 : UNSET-MSG$ ( -- ptr u8 n )     S\" hb: native compiler dispatch unset\n" ;
-: P2DOESW-MSG$ ( -- ptr u8 n )   s" hb: does>-split cannot lower layout width facts: " ;
 : P2NEST-MSG$ ( -- ptr u8 n )    s" hb: nested definition in pass 2: " ;
 : P2SLOT-MSG$ ( -- ptr u8 n )    s" hb: locals frame over 4096 cells: " ;
 
@@ -2236,7 +2235,7 @@ variable LDEFHINT
 \ No newline: the LCOMPILEDIE tail appends the location and it.
 : HINT$ ( -- ptr u8 n )   s" hb: is: parsing words resolve outside using-imports; qualify the target" ;
 ;package
-variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
+variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2CLAUSE
 
 \ The native compiler seam's labels hold its qualified spelling, its
 \ boot-integrity diagnostic, and the capture-only compiler entry.
@@ -2382,7 +2381,7 @@ public
    LKEYNONAME LABEL@ LBL, KEYNONAME$ BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES,      LKWCHKDOES LABEL@ LBL, KWCHKDOES$ BYTES,
-   LKWDUPDEF LABEL@ LBL, KWDUPDEF$ BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, DEFER-DIAG:NOTOKEN$ BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, DEFER-DIAG:NOTFOUND$ BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, DEFER-DIAG:NOTDEFER$ BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, DEFER-DIAG:HINT$ BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, DEFER-DIAG:NONAME$ BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, RECWPUB$ BYTES,  LRECMIQ LABEL@ LBL, RECMIQ$ BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, UNSET-MSG$ BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, NCOMP-EMIT:NEUTRAL$ BYTES,  LP2DOESW LABEL@ LBL, P2DOESW-MSG$ BYTES,
+   LKWDUPDEF LABEL@ LBL, KWDUPDEF$ BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, DEFER-DIAG:NOTOKEN$ BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, DEFER-DIAG:NOTFOUND$ BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, DEFER-DIAG:NOTDEFER$ BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, DEFER-DIAG:HINT$ BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, DEFER-DIAG:NONAME$ BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, RECWPUB$ BYTES,  LRECMIQ LABEL@ LBL, RECMIQ$ BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, UNSET-MSG$ BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, NCOMP-EMIT:NEUTRAL$ BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, CHKEXPORT$ BYTES,
    LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -4614,9 +4613,18 @@ public
 ;package
 
 : J-DOES ( -- )
+   LBL LBL LBL {: p1:label sigd:label marked:label :}
    DOES-REC:REJECT-DUP
    C-CF-NONE                             \ a structure open across the split would branch into the clause
+   \ Pass 2 re-reads a frozen source that holds no clause signature: TCSIG and
+   \ its DP copy stand from pass 1, as does DOESB, and the lowering
+   \ transaction moves from the head's certificate to the clause's.
+   9 DATA P2-CELL LDR,  9 p1 CBZ,
+      LP2CLAUSE LABEL@ BL,
+      sigd B,
+   p1 LBL,
    C-PARSE-CREATED-SIG
+   sigd LBL,
    C-EMIT-CRSIG-SET
    \ The head's locals end here. Their frame is dropped ahead of the opener, so
    \ word 4 stays one word, and the scope is emptied once nothing below can
@@ -4627,7 +4635,9 @@ public
    \ DOESB marks the clause only once nothing above can refuse: set before the
    \ signature, a refusal caught inside an immediate word's evaluate left it on
    \ a definition with no clause, and its `;` refused the `does>` (rc 70).
+   9 DATA P2-CELL LDR,  9 marked CBNZ,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   marked LBL,
    9 0 MOVZ,  9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,
    DOES-REC:ENTRY-ADR                    \ adr x10, D = past word 4 and the name bytes
    16 20 DOESP-CELL W-LDRX C-EMITW       \ x16 = LDOESPATCH runtime addr
@@ -5999,8 +6009,10 @@ variable LCODEINV
 \ locals carve/reference paths. Width, bind, and fetch facts come only from the
 \ immutable LOWER-CERT artifact copied into the lowering transaction; pass 2
 \ never calls the checker or reads its mutable tables.
-variable LCERTBYTES  variable LP2CWAT  variable LP2CDESC
+variable LCERTBYTES  variable LCERTKEEP  variable LCERTKEPT  variable LP2CWAT  variable LP2CDESC
 : CERTBYTES$ ( -- ptr u8 n )   s" lower-cert:bytes" ;
+: CERTKEEP$ ( -- ptr u8 n )    s" lower-cert:keep" ;
+: CERTKEPT$ ( -- ptr u8 n )    s" lower-cert:kept" ;
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
 variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
@@ -10952,6 +10964,8 @@ public
 \ keyword names reuse the jit.f/loop-keyword labels).
 : EMIT-P2KW ( -- )
    LCERTBYTES LABEL@ LBL, CERTBYTES$ BYTES,
+   LCERTKEEP LABEL@ LBL, CERTKEEP$ BYTES,
+   LCERTKEPT LABEL@ LBL, CERTKEPT$ BYTES,
    LP2NEST LABEL@ LBL, P2NEST-MSG$ BYTES,
    LP2SLOT LABEL@ LBL, P2SLOT-MSG$ BYTES,
    LOWER-TXN-CODE:BAD LABEL@ LBL, LOWER-TXN-CODE:BAD$ BYTES,
@@ -11238,19 +11252,29 @@ private
    cur 16 CMP,  C-CC bad BCOND,
    cur total CMP,  C-HI bad BCOND, ;
 
-: SOURCE-LEN ( n -- ) {: dst:n :}
+\ x<dst> = the length of the span a certificate covers: a definer's head ends
+\ before its `does> ` (DOESB-6), its clause runs from DOESB to the body's end.
+\ x<tmp> is clobbered.
+: SPAN-LEN ( n n bool -- ) {: dst:n tmp:n clause:bool :}
    LBL LBL {: full:label done:label :}
-   dst DATA DOESB-CELL LDR,
-   dst full CBZ,
-      dst dst 6 SUBI,  done B,
-   full LBL,
-      dst DATA BODYLEN-CELL LDR,
-   done LBL, ;
+   clause if
+      dst DATA BODYLEN-CELL LDR,  tmp DATA DOESB-CELL LDR,  dst dst tmp SUB,
+   else
+      dst DATA DOESB-CELL LDR,
+      dst full CBZ,
+         dst dst 6 SUBI,  done B,
+      full LBL,
+         dst DATA BODYLEN-CELL LDR,
+      done LBL,
+   then ;
 
-: HASH-BODY ( -- )
+\ x14 = the FNV-1a hash of the span certificate x11 covers; its length is the
+\ certificate's own body length, which VALIDATE has already matched to it.
+: HASH-BODY ( bool -- ) {: clause:bool :}
    LBL LBL {: loop:label done:label :}
    12 DATA BODYBUF-OFF ADDI,
-   13 SOURCE-LEN
+   clause if  13 DATA DOESB-CELL LDR,  12 12 13 ADD,  then
+   13 11 LOWER-CERT:BODY-LEN-CELL cells LDR,
    14 LOWER-CERT:FNV-OFFSET LIT64,
    15 LOWER-CERT:FNV-PRIME LIT64,
    loop LBL,  13 done CBZ,
@@ -11268,7 +11292,7 @@ private
    13 11 LOWER-CERT:HEADER-CELLS cells ADDI,
    14 0 MOVZ,  9 0 MOVZ,  8 0 MOVZ,  6 0 MOVZ,  7 0 MOVZ,
    loop LBL,  14 5 CMP,  C-GE done BCOND,
-      15 13 0 LDR,  17 SOURCE-LEN  15 17 CMP,  C-CS bad BCOND,
+      15 13 0 LDR,  17 11 LOWER-CERT:BODY-LEN-CELL cells LDR,  15 17 CMP,  C-CS bad BCOND,
       17 13 1 cells LDR,  17 TXN-LIVE-W-CAP CMPI,  C-CS bad BCOND,
       14 ordered CBZ,
       15 6 CMP,  C-CC bad BCOND,  C-NE ordered BCOND,
@@ -11365,7 +11389,7 @@ private
    3 4 CMP,  C-NE bad BCOND,
    12 11 LOWER-CERT:NEEDS-CELL cells LDR,  12 9 CMP,  C-NE bad BCOND, ;
 
-: VALIDATE ( -- )
+: VALIDATE ( bool -- ) {: clause:bool :}
    LBL LBL {: bad:label done:label :}
    10 LOWER-CERT:HEADER-CELLS cells CMPI,  C-CC bad BCOND,
    13 11 LOWER-CERT:MAGIC-CELL cells LDR,
@@ -11376,9 +11400,9 @@ private
    13 10 CMP,  C-NE bad BCOND,
    13 10 7 ANDI,  13 bad CBNZ,
    13 11 LOWER-CERT:BODY-LEN-CELL cells LDR,
-   14 SOURCE-LEN
+   14 12 clause SPAN-LEN
    13 14 CMP,  C-NE bad BCOND,
-   HASH-BODY
+   clause HASH-BODY
    13 11 LOWER-CERT:BODY-HASH-CELL cells LDR,
    13 14 CMP,  C-NE bad BCOND,
    5 11 LOWER-CERT:WF-COUNT-CELL cells LDR,
@@ -11428,30 +11452,51 @@ public
    TXN-BIND-I-CELL LOWER-CERT:BIND-COUNT-CELL VERIFY-COUNT
    TXN-FETCH-I-CELL LOWER-CERT:FETCH-COUNT-CELL VERIFY-COUNT ;
 
+\ Freeze the certificates of the definition just checked into one sealed blob:
+\ the whole captured body and `; `, then the head's certificate, then the
+\ clause's when the body has a `does>`. A checked head's certificate is the
+\ hook's, a TRUSTED: head's the unjudged scan's. The pass-2 `does>`
+\ (EMIT-TO-CLAUSE) steps from the one certificate to the other. The frame holds
+\ [0] the head's certificate, [8] its bytes, [16] the clause's, [24] its bytes,
+\ [32] the needs-p2 union and [40] the body length.
 : FREEZE ( -- )
-   LBL LBL LBL LBL {: skip:label copy:label room:label alloc:label :}
+   LBL LBL LBL LBL LBL {: nodoes:label skip:label copy:label full:label alloc:label :}
+   SP SP 48 SUBI,
    LCERTBYTES CERTBYTES$ nip C-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP                              \ x11=certificate, x10=bytes
-   VALIDATE
+   0 0<> VALIDATE
    10 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,      \ validator helpers use x10 as scratch
-   13 11 LOWER-CERT:NEEDS-CELL cells LDR,  13 copy CBNZ,
+   13 11 LOWER-CERT:NEEDS-CELL cells LDR,
+   11 SP 0 STR,  10 SP 8 STR,  13 SP 32 STR,
+   11 0 MOVZ,  11 SP 16 STR,  11 SP 24 STR,
+   13 DATA DOESB-CELL LDR,  13 nodoes CBZ,
+      LCERTKEPT CERTKEPT$ nip C-FIND-GLOBAL
+      C-CALL-X11-SAVED
+      10 G-POP  11 G-POP
+      0 0= VALIDATE
+      10 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,
+      11 SP 16 STR,  10 SP 24 STR,
+      13 11 LOWER-CERT:NEEDS-CELL cells LDR,
+      14 SP 32 LDR,  13 13 14 ORR,  13 SP 32 STR,
+   nodoes LBL,
+   13 SP 32 LDR,  13 copy CBNZ,
       13 0 MOVZ,  13 DATA TXN-ACTIVE-CELL STR,  skip B,
    copy LBL,
-   14 SOURCE-LEN
+   14 DATA BODYLEN-CELL LDR,  14 SP 40 STR,
    15 14 9 ADDI,  15 15 $FFFFFFFFFFFFFFF8 ANDI,     \ aligned source bytes incl. `; `
-   16 15 10 ADD,  16 15 CMP,  C-CS room BCOND,
-      LOWER-TXN-CODE:FULL LOWER-TXN-CODE:FULL$ nip 76 C-EXIT-LABEL
-   room LBL,
-   17 PROT-PAGE-MAX 1 - LIT64,  17 16 17 ADD,
-   17 16 CMP,  C-CS alloc BCOND,
+   10 SP 8 LDR,
+   16 15 10 ADD,  16 15 CMP,  C-CC full BCOND,
+   10 SP 24 LDR,
+   12 16 10 ADD,  12 16 CMP,  C-CC full BCOND,
+   17 PROT-PAGE-MAX 1 - LIT64,  17 12 17 ADD,
+   17 12 CMP,  C-CS alloc BCOND,
+   full LBL,
       LOWER-TXN-CODE:FULL LOWER-TXN-CODE:FULL$ nip 76 C-EXIT-LABEL
    alloc LBL,
    5 PROT-PAGE-MAX negate LIT64,  17 17 5 AND,
-   SP SP 32 SUBI,
-   11 SP 0 STR,  10 SP 8 STR,  14 SP 16 STR,
    17 MAP
-   11 DATA BODYBUF-OFF ADDI,  12 14 0 ADDI,
+   11 DATA BODYBUF-OFF ADDI,  12 SP 40 LDR,
    13 DATA TXN-BLOB-A-CELL LDR,
    13 DATA TXN-SRC-A-CELL STR,
    11 12 13 COPY-BYTES
@@ -11459,10 +11504,12 @@ public
    17 32 MOVZ,  17 13 0 STRB,  13 13 1 ADDI,
    13 13 7 ADDI,  13 13 $FFFFFFFFFFFFFFF8 ANDI,
    13 DATA TXN-CERT-A-CELL STR,
-   11 SP 0 LDR,  12 SP 8 LDR,
+   12 SP 8 LDR,
    12 DATA TXN-CERT-U-CELL STR,
+   11 SP 0 LDR,  11 12 13 COPY-BYTES
+   11 SP 16 LDR,  12 SP 24 LDR,
    11 12 13 COPY-BYTES
-   14 SP 16 LDR,  14 14 2 ADDI,  14 DATA TXN-SRC-U-CELL STR,
+   14 SP 40 LDR,  14 14 2 ADDI,  14 DATA TXN-SRC-U-CELL STR,
    14 0 MOVZ,
    14 DATA TXN-BIND-I-CELL STR,
    14 DATA TXN-WF-I-CELL STR,
@@ -11470,8 +11517,26 @@ public
    ZERO-LIVE
    14 1 MOVZ,  14 DATA TXN-ACTIVE-CELL STR,
    SEAL
-   SP SP 32 ADDI,
-   skip LBL, ;
+   skip LBL,
+   SP SP 48 ADDI, ;
+
+\ The pass-2 `does>` (J-DOES) branches here: the head's certificate must be
+\ consumed, and the clause's, frozen right after it, takes over with its own
+\ cursors. Clause rows count source offsets from the clause's first byte, as
+\ CHECK-DOES! was handed the clause, so the source base moves up by DOESB.
+: EMIT-TO-CLAUSE ( -- )
+   LP2CLAUSE LABEL@ LBL,
+   VERIFY-DONE
+   11 DATA TXN-CERT-A-CELL LDR,  12 DATA TXN-CERT-U-CELL LDR,
+   11 11 12 ADD,  11 DATA TXN-CERT-A-CELL STR,
+   12 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,  12 DATA TXN-CERT-U-CELL STR,
+   11 DATA TXN-SRC-A-CELL LDR,  12 DATA DOESB-CELL LDR,
+   11 11 12 ADD,  11 DATA TXN-SRC-A-CELL STR,
+   11 0 MOVZ,
+   11 DATA TXN-WF-I-CELL STR,
+   11 DATA TXN-BIND-I-CELL STR,
+   11 DATA TXN-FETCH-I-CELL STR,
+   RET, ;
 
 : NEEDS? ( -- )
    10 DATA TXN-ACTIVE-CELL LDR, ;
@@ -11540,37 +11605,23 @@ public
    9 DATA TXN-BIND-I-CELL STR, ;
 
 \ EM-P2-TRIGGER: emitted right after the publish path freezes a certified
-\ definition. An active transaction enters the pass-2 re-run; wide facts inside
-\ a does> split body fail
-\ closed: the two-phase body check indexes tokens differently, so a width-aware
-\ re-run cannot align). Pass 2 (the re-run's own ';') falls through to the
+\ definition. An active transaction enters the pass-2 re-run. Pass 2 never
+\ reaches it: both publish paths send the re-run's own ';' straight to the
 \ normal publish.
-: EM-DOES-WIDE-REFUSE ( -- )
-   0 2 MOVZ,  1 LP2DOESW LABEL@ ADR,  2 P2DOESW-MSG$ nip MOVZ,  NR-WRITE SYS,
-   $4B C-EXIT-TOKEN ;
-
 : EM-P2-TRIGGER ( -- )
-   LBL LBL {: nowide:label p2ok:label :}
-   9 DATA P2-CELL LDR,  9 nowide CBNZ,
+   LBL {: nowide:label :}
    LOWER-TXN:NEEDS?
    10 nowide CBZ,
-   10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
-      EM-DOES-WIDE-REFUSE
-   p2ok LBL,
    EM-P2-START
    LMAIN LABEL@ B,
    nowide LBL, ;
 
-\ EM-P2-CHECK-DEFINER: the publish gate of a definition with a body. Pass 1
+\ EM-P2-CHECK-DEFINER: the pass-1 publish gate of a definition with a body. It
 \ runs the hook (which registers the certified signature), or for a TRUSTED:
-\ body the unjudged scan, and then the pass-2 trigger. The
-\ pass-2 second ';' must NOT re-run the hook — a second CHECK! of the same name
-\ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
-\ $4E) — so it publishes the verified effect from pass 1 without recording a
-\ second, textual effect that would erase inferred cells and types.
+\ body the unjudged scan, freezes the certificates and enters the pass-2
+\ trigger. Pass 2 never reaches it (EM-COMPILE-PUBLISH-TRUSTED).
 : EM-P2-CHECK-DEFINER ( bool -- ) {: trusted:bool :}
    LBL {: p2sk:label :}
-   9 DATA P2-CELL LDR,  9 p2sk CBNZ,
    9 DATA HOOK-CELL LDR,  9 p2sk CBZ,
       trusted if C-CALL-CHECK-UNJUDGED else C-CALL-CHECK-DEFINER then
       LOWER-TXN:FREEZE
@@ -11596,21 +11647,29 @@ public
    nop2 LBL, ;
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
-   LBL LBL LBL {: ttrusted ndhas ndchk :}
+   LBL LBL LBL LBL LBL {: pass1 ttrusted register ndhas ndchk :}
+   \ The pass-2 second ';': pass 1 checked and froze the definition and its
+   \ clause. It must NOT re-run either check - a second CHECK! of the same name
+   \ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
+   \ $4E) - so it publishes the verified effect from pass 1 without recording a
+   \ second, textual effect that would erase inferred cells and types. A
+   \ TRUSTED: definition still registers its declaration, which pass 1 left to
+   \ the pass that publishes.
+   9 DATA P2-CELL LDR,  9 pass1 CBZ,
+      10 DATA TRUSTED-CELL LDR,  10 publish CBZ,
+      register B,
+   pass1 LBL,
    \ Check the created-word body first: CHECK-DOES! resets the checker's
    \ publication latches. The definer's own verified effect must be last.
+   \ The clause's certificate is kept for FREEZE while the head is checked.
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-DIE-DOES
    ndhas LBL,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
-      10 DATA TRUSTED-CELL LDR,  10 ndchk CBZ,
-      LCERTBYTES CERTBYTES$ nip C-FIND-GLOBAL
+      LCERTKEEP CERTKEEP$ nip C-FIND-GLOBAL
       C-CALL-X11-SAVED
-      10 G-POP  11 G-POP
-      10 11 LOWER-CERT:NEEDS-CELL cells LDR,  10 ndchk CBZ,
-      EM-DOES-WIDE-REFUSE
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       0 0<> EM-P2-CHECK-DEFINER
@@ -11619,6 +11678,7 @@ public
    0 0= EM-P2-CHECK-DEFINER
    \ Only an explicit TRUSTED: declaration publishes its textual effect.
    \ Checked definitions already own the graph certified by the hook.
+   register LBL,
    DEF-TRUST:REGISTER
    publish B, ;
 
@@ -13475,7 +13535,7 @@ package LABELS
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2CLAUSE !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDUSED-CORE !  LBL LSCOPEREC !
    LBL INTERP-EMIT:LFINDSHADOW !  LBL DEFWRITE:LREPLAYTRAP !
@@ -13572,7 +13632,7 @@ package LABELS
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
 : P2 ( -- )
-   LBL LCERTBYTES !  LBL LP2CWAT !  LBL LP2CDESC !
+   LBL LCERTBYTES !  LBL LCERTKEEP !  LBL LCERTKEPT !  LBL LP2CWAT !  LBL LP2CDESC !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !
@@ -14130,7 +14190,8 @@ variable KERNEL-CODE-END
    EMIT-FLAGS
    EMIT-JIT
    EMIT-P2-HELPERS
-   LOWER-TXN:EMIT-VALIDATOR ;
+   LOWER-TXN:EMIT-VALIDATOR
+   LOWER-TXN:EMIT-TO-CLAUSE ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN

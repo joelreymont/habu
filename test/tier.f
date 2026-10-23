@@ -605,6 +605,20 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       s" tier 0 refuses a does> clause that names a head local" T-LABEL
       s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  REJECT-RC ASSERT-RC
       ERR$ s" E-UNDEFINED: v" CONTAINS? TTRUE
+
+      \ A head with no width facts and a clause that moves a two-cell value,
+      \ on the stack and through a clause local: the clause lowers from its own
+      \ certificate. Lowered cell by cell, the pair came back as 1 2 7.
+      s" tier 0 lowers a does> clause's width facts" T-LABEL
+      s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE : MK ( n -- ) create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MK W : SHOW1 ( -- ) W . PR:UNMAKE . . cr ; SHOW1 : MKL ( n -- ) create , does> ( -- n pr n ) @ 1 2 PR:MAKE {: x:n p:pr :} 3 p x ; 7 MKL WL : SHOW2 ( -- ) WL . PR:UNMAKE . . . cr ; SHOW2"
+      RUN  S\" 7\n2\n1\n\n7\n2\n1\n3\n" ASSERT-OK
+
+      \ A TRUSTED: head that binds a two-cell local inside an `if` closed before
+      \ does>, and a clause that moves a pair: each span lowers from its own
+      \ certificate. Lowered from the head's alone, the pair came back as 1 2 10.
+      s" tier 0 lowers a TRUSTED: definer whose head binds locals in a branch" T-LABEL
+      s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE TRUSTED: MKW ( n -- ) dup 0 > if 1 2 PR:MAKE {: p:pr :} p PR:UNMAKE + + else 1 - then create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MKW WW : SHOWW ( -- ) WW . PR:UNMAKE . . cr ; SHOWW"
+      RUN  S\" 10\n2\n1\n" ASSERT-OK
    then
 
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL

@@ -9134,9 +9134,7 @@ CUR-DEFAULT
 \ source-order clause never reaches a record. The record step takes state 2 and
 \ clears (DOES-EFF-TAKE, the E-ADD-EFFECT publish tail), a refused clause clears
 \ instead of arming, and REC-WIDE-PUBLISH below clears whatever a definition's
-\ publication left, which is what closes the native compiler's two-pass path:
-\ its second `;` re-runs CHECK-DOES! with no body check and no record after it
-\ (habu2.f EM-P2-CHECK-DEFINER), so that latch must die with that definition.
+\ publication left, so no latch outlives the definition that set it.
 variable DOESEFF   0 DOESEFF !
 variable DOESPEND  0 DOESPEND !
 

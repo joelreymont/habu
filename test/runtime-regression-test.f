@@ -135,30 +135,38 @@ variable GE-SCRIPT-U
    SB-RESET s" 42" SB-APPEND GE-SB-LF
    SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
 
-\ does>-split wide facts fail closed at the pass-2 trigger with a fixed
-\ label (previously a lone current-token write - unattributable;
-\ the checker cannot see across the does> split, so the
-\ labeled engine exit IS the permanent contract).
+\ A definer whose head moves a layout value lowers it at tier 0 through the
+\ pass-2 re-run, which then reaches `does>` and steps to the clause's
+\ certificate. It used to fail closed at the trigger (rc 75).
 : GE-DOES-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    GE-ILAYOUT-PRELUDE
-   s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( -- n ) drop 5 ;" GE-SRC-LINE
+   s" TRUSTED: GE-WUN ( gewide<n,n> -- n n ) ;" GE-SRC-LINE
+   s" : GE-WDOES ( n -- ) GE-WMK swap create , GE-WUN drop drop does> ( -- n ) @ ;" GE-SRC-LINE
+   s" 5 GE-WDOES GE-WX  GE-WX ." GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
-   75 s" does>-split wide facts fail closed" GE-EXPECT-RC
-   S\" hb: does>-split cannot lower layout width facts: ;\n"
-      s" does>-split wide diagnostic" GE-EXPECT-ERR ;
+   s" does> head wide facts lower" GE-EXPECT-OK
+   SB-RESET s" 5" SB-APPEND GE-SB-LF
+   SB$ s" does> head wide facts output" GE-EXPECT-OUT ;
 
+\ The clause's own width facts, under a TRUSTED: head the unjudged scan
+\ certifies: the clause swaps a layout value past a cell, which tier 0 lowered
+\ cell by cell before the clause had a certificate (printed 9 5 7).
 : GE-DOES-TRUSTED-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    GE-ILAYOUT-PRELUDE
    s" 0 set-tier" GE-SRC-LINE
-   s" TRUSTED: GE-TDOES ( -- ) create does> ( gewide<n,n> -- ) drop drop ;" GE-SRC-LINE
+   s" TRUSTED: GE-WUN ( gewide<n,n> -- n n ) ;" GE-SRC-LINE
+   s" TRUSTED: GE-TDOES ( n -- ) create , does> ( -- gewide<n,n> n ) @ GE-WMK swap ;" GE-SRC-LINE
+   s" 5 GE-TDOES GE-TX" GE-SRC-LINE
+   s" : GE-TRUN ( -- n n n ) GE-TX swap GE-WUN ;" GE-SRC-LINE
+   s" GE-TRUN . . ." GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
-   75 s" trusted does>-split wide facts fail closed" GE-EXPECT-RC
-   S\" hb: does>-split cannot lower layout width facts: ;\n"
-      s" trusted does>-split wide diagnostic" GE-EXPECT-ERR ;
+   s" trusted does> clause wide facts lower" GE-EXPECT-OK
+   SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF s" 5" SB-APPEND GE-SB-LF
+   SB$ s" trusted does> clause wide facts output" GE-EXPECT-OUT ;
 
 \ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
 \ closed naming the limit and the token that carved it. No one value may

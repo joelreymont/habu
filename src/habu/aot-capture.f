@@ -858,6 +858,10 @@ variable ACAP-ENTRY-N
 \ source declares a new defer. The compiler embeds the lookup string in its own
 \ code, outside the capture's named-site tables; without this record even
 \ `defer SETUP ( -- )` fails before it publishes the word.
+\ LOWER-CERT:KEEP/KEPT - habu2.f EM-COMPILE-PUBLISH-TRUSTED and LOWER-TXN FREEZE
+\ resolve them by name to hold a does> clause's certificate while its definer's
+\ head is checked. Nothing compiled calls them, so without this record every
+\ tier-0 `does>` publish dies on the lookup (rc 70).
 \ CHECKER-STORAGE-CELLS - FILE and stripped AOT load aot-data-cell.f after the
 \ engine is captured. Its scan resolves this checker export by name, so no
 \ source call or named site in the engine can keep the row.
@@ -880,6 +884,9 @@ variable ACAP-ENTRY-N
    if true exit then
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
+   a u s" KEEP" CORE-STR=CI
+   a u s" KEPT" CORE-STR=CI or
+   k s" LOWER-CERT" ACAP-KEEP-PKG? and if true exit then
    a u s" IMPORT-ROWS" CORE-STR=CI
    a u s" ATTACH-SEGMENTS" CORE-STR=CI or
    k s" NSTR" ACAP-KEEP-PKG? and if true exit then

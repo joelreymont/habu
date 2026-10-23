@@ -722,8 +722,8 @@ variable LKW2DUP3 variable LKW2DROP3 variable LKW2SWAP3 variable LKW2OVER3
 variable LKW2TOR3 variable LKW2RFROM3 variable LKW2RFET3
 variable LP2COPY variable LP2DROPN variable LP2REV variable LP2ROT variable LP2RS
 variable LP2VEXEC variable LP2VEMIT variable LVPBADMSG
-variable LRECWPUB variable LP2DOESW
-variable LCERTBYTES variable LP2CWAT variable LP2CDESC variable LP2NEST
+variable LRECWPUB variable LP2CLAUSE
+variable LCERTBYTES variable LCERTKEEP variable LCERTKEPT variable LP2CWAT variable LP2CDESC variable LP2NEST
 
 \ Gforth recovery-host mirror of Habu's LOWER-TXN-CODE package. Keep these
 \ code labels out of the global wordlist; callers select the vocabulary.
@@ -4933,8 +4933,17 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    none LBL, ;
 
 : J-DOES ( -- )
+   LBL LBL {: p1 sigd :}
+   \ MIRROR of src/habu/habu2.f: pass 2 re-reads a frozen source that holds no
+   \ clause signature, so TCSIG and DOESB stand from pass 1, and the lowering
+   \ transaction moves from the head's certificate to the clause's.
+   9 DATA P2-CELL LDR,  9 p1 CBZ,
+      LP2CLAUSE @ BL,
+      sigd B,
+   p1 LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
+   sigd LBL,
    C-EMIT-CRSIG-SET
    12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12        \ the head's locals end ahead of the opener
    C-DOES-NAME$  C-DOES-ROOM
@@ -7251,9 +7260,8 @@ previous previous definitions
    LKW2RFROM3 @ LBL, s" 2r>" BYTES,  LKW2RFET3 @ LBL, s" 2r@" BYTES,
    LKWAT2 @ LBL,    s" @" BYTES,
    LKWSTORE2 @ LBL, s" !" BYTES,
-   LP2DOESW @ LBL,
-   s" hb: does>-split cannot lower layout width facts: " BYTES,
-   ;
+   LCERTKEEP @ LBL, s" lower-cert:keep" BYTES,
+   LCERTKEPT @ LBL, s" lower-cert:kept" BYTES, ;
 
 also LOWER-CERT also LOWER-TXN-CODE definitions
 
@@ -7369,18 +7377,28 @@ also LOWER-CERT also LOWER-TXN definitions
    cur 16 CMP,  C-CC bad BCOND,
    cur total CMP,  C-HI bad BCOND, ;
 
-: SOURCE-LEN ( n -- ) {: dst :}
+\ x<dst> = the length of the span a certificate covers: a definer's head ends
+\ before its `does> ` (DOESB-6), its clause runs from DOESB to the body's end.
+\ x<tmp> is clobbered. MIRROR of src/habu/habu2.f SPAN-LEN.
+: SPAN-LEN ( n n f -- ) {: dst tmp clause :}
    LBL LBL {: full done :}
-   dst DATA DOESB-CELL LDR,
-   dst full CBZ,
-      dst dst 6 SUBI,  done B,
-   full LBL,  dst DATA BODYLEN-CELL LDR,
-   done LBL, ;
+   clause if
+      dst DATA BODYLEN-CELL LDR,  tmp DATA DOESB-CELL LDR,  dst dst tmp SUB,
+   else
+      dst DATA DOESB-CELL LDR,
+      dst full CBZ,
+         dst dst 6 SUBI,  done B,
+      full LBL,  dst DATA BODYLEN-CELL LDR,
+      done LBL,
+   then ;
 
-: HASH-BODY ( -- )
+\ x14 = the FNV-1a hash of the span certificate x11 covers; its length is the
+\ certificate's own body length, which VALIDATE has already matched to it.
+: HASH-BODY ( f -- ) {: clause :}
    LBL LBL {: loop done :}
    12 DATA BODYBUF-OFF ADDI,
-   13 SOURCE-LEN
+   clause if  13 DATA DOESB-CELL LDR,  12 12 13 ADD,  then
+   13 11 BODY-LEN-CELL cells LDR,
    14 FNV-OFFSET LIT64,
    15 FNV-PRIME LIT64,
    loop LBL,  13 done CBZ,
@@ -7394,7 +7412,7 @@ also LOWER-CERT also LOWER-TXN definitions
    13 11 HEADER-CELLS cells ADDI,
    14 0 MOVZ,  9 0 MOVZ,  8 0 MOVZ,  6 0 MOVZ,  7 0 MOVZ,
    loop LBL,  14 5 CMP,  C-GE done BCOND,
-      15 13 0 LDR,  17 SOURCE-LEN  15 17 CMP,  C-CS bad BCOND,
+      15 13 0 LDR,  17 11 BODY-LEN-CELL cells LDR,  15 17 CMP,  C-CS bad BCOND,
       17 13 1 cells LDR,  17 TXN-LIVE-W-CAP CMPI,  C-CS bad BCOND,
       14 ordered CBZ,
       15 6 CMP,  C-CC bad BCOND,  C-NE ordered BCOND,
@@ -7474,7 +7492,7 @@ also LOWER-CERT also LOWER-TXN definitions
    3 4 CMP,  C-NE bad BCOND,
    12 11 NEEDS-CELL cells LDR,  12 9 CMP,  C-NE bad BCOND, ;
 
-: VALIDATE ( -- )
+: VALIDATE ( f -- ) {: clause :}
    LBL LBL {: bad done :}
    10 HEADER-CELLS cells CMPI,  C-CC bad BCOND,
    13 11 MAGIC-CELL cells LDR,
@@ -7485,8 +7503,8 @@ also LOWER-CERT also LOWER-TXN definitions
    13 10 CMP,  C-NE bad BCOND,
    13 10 7 ANDI,  13 bad CBNZ,
    13 11 BODY-LEN-CELL cells LDR,
-   14 SOURCE-LEN  13 14 CMP,  C-NE bad BCOND,
-   HASH-BODY
+   14 12 clause SPAN-LEN  13 14 CMP,  C-NE bad BCOND,
+   clause HASH-BODY
    13 11 BODY-HASH-CELL cells LDR,  13 14 CMP,  C-NE bad BCOND,
    5 11 WF-COUNT-CELL cells LDR,
    6 11 BIND-COUNT-CELL cells LDR,
@@ -7527,30 +7545,49 @@ also LOWER-CERT also LOWER-TXN definitions
    TXN-BIND-I-CELL BIND-COUNT-CELL VERIFY-COUNT
    TXN-FETCH-I-CELL FETCH-COUNT-CELL VERIFY-COUNT ;
 
+\ MIRROR of src/habu/habu2.f LOWER-TXN FREEZE: one sealed blob holds the whole
+\ captured body and `; `, the head's certificate, then the clause's when the
+\ body has a `does>`. The frame holds [0] the head's certificate, [8] its
+\ bytes, [16] the clause's, [24] its bytes, [32] the needs-p2 union and [40]
+\ the body length.
 : FREEZE ( -- )
-   LBL LBL LBL LBL {: skip copy room alloc :}
+   LBL LBL LBL LBL LBL {: nodoes skip copy full alloc :}
+   SP SP 48 SUBI,
    LCERTBYTES 16 C-P2-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP
-   VALIDATE
+   0 0<> VALIDATE
    10 11 TOTAL-BYTES-CELL cells LDR,
-   13 11 NEEDS-CELL cells LDR,  13 copy CBNZ,
+   13 11 NEEDS-CELL cells LDR,
+   11 SP 0 STR,  10 SP 8 STR,  13 SP 32 STR,
+   11 0 MOVZ,  11 SP 16 STR,  11 SP 24 STR,
+   13 DATA DOESB-CELL LDR,  13 nodoes CBZ,
+      LCERTKEPT 15 C-P2-FIND-GLOBAL
+      C-CALL-X11-SAVED
+      10 G-POP  11 G-POP
+      0 0= VALIDATE
+      10 11 TOTAL-BYTES-CELL cells LDR,
+      11 SP 16 STR,  10 SP 24 STR,
+      13 11 NEEDS-CELL cells LDR,
+      14 SP 32 LDR,  13 13 14 ORR,  13 SP 32 STR,
+   nodoes LBL,
+   13 SP 32 LDR,  13 copy CBNZ,
       13 0 MOVZ,  13 DATA TXN-ACTIVE-CELL STR,  skip B,
    copy LBL,
-   14 SOURCE-LEN
+   14 DATA BODYLEN-CELL LDR,  14 SP 40 STR,
    15 14 9 ADDI,  15 15 $FFFFFFFFFFFFFFF8 ANDI,
-   16 15 10 ADD,  16 15 CMP,  C-CS room BCOND,
-      [ also LOWER-TXN-CODE ] FULL-LABEL 29 DIE [ previous ]
-   room LBL,
-   17 PROT-PAGE-MAX 1 - LIT64,  17 16 17 ADD,
-   17 16 CMP,  C-CS alloc BCOND,
+   10 SP 8 LDR,
+   16 15 10 ADD,  16 15 CMP,  C-CC full BCOND,
+   10 SP 24 LDR,
+   12 16 10 ADD,  12 16 CMP,  C-CC full BCOND,
+   17 PROT-PAGE-MAX 1 - LIT64,  17 12 17 ADD,
+   17 12 CMP,  C-CS alloc BCOND,
+   full LBL,
       [ also LOWER-TXN-CODE ] FULL-LABEL 29 DIE [ previous ]
    alloc LBL,
    5 PROT-PAGE-MAX negate LIT64,  17 17 5 AND,
-   SP SP 32 SUBI,
-   11 SP 0 STR,  10 SP 8 STR,  14 SP 16 STR,
    17 MAP
-   11 DATA BODYBUF-OFF ADDI,  12 14 0 ADDI,
+   11 DATA BODYBUF-OFF ADDI,  12 SP 40 LDR,
    13 DATA TXN-BLOB-A-CELL LDR,
    13 DATA TXN-SRC-A-CELL STR,
    11 12 13 COPY-BYTES
@@ -7558,10 +7595,12 @@ also LOWER-CERT also LOWER-TXN definitions
    17 32 MOVZ,  17 13 0 STRB,  13 13 1 ADDI,
    13 13 7 ADDI,  13 13 $FFFFFFFFFFFFFFF8 ANDI,
    13 DATA TXN-CERT-A-CELL STR,
-   11 SP 0 LDR,  12 SP 8 LDR,
+   12 SP 8 LDR,
    12 DATA TXN-CERT-U-CELL STR,
+   11 SP 0 LDR,  11 12 13 COPY-BYTES
+   11 SP 16 LDR,  12 SP 24 LDR,
    11 12 13 COPY-BYTES
-   14 SP 16 LDR,  14 14 2 ADDI,  14 DATA TXN-SRC-U-CELL STR,
+   14 SP 40 LDR,  14 14 2 ADDI,  14 DATA TXN-SRC-U-CELL STR,
    14 0 MOVZ,
    14 DATA TXN-BIND-I-CELL STR,
    14 DATA TXN-WF-I-CELL STR,
@@ -7569,8 +7608,26 @@ also LOWER-CERT also LOWER-TXN definitions
    ZERO-LIVE
    14 1 MOVZ,  14 DATA TXN-ACTIVE-CELL STR,
    SEAL
-   SP SP 32 ADDI,
-   skip LBL, ;
+   skip LBL,
+   SP SP 48 ADDI, ;
+
+\ MIRROR of src/habu/habu2.f EMIT-TO-CLAUSE: the pass-2 `does>` (J-DOES)
+\ branches here. The head's certificate must be consumed, and the clause's,
+\ frozen right after it, takes over with its own cursors; its source base moves
+\ up by DOESB.
+: EMIT-TO-CLAUSE ( -- )
+   LP2CLAUSE @ LBL,
+   VERIFY-DONE
+   11 DATA TXN-CERT-A-CELL LDR,  12 DATA TXN-CERT-U-CELL LDR,
+   11 11 12 ADD,  11 DATA TXN-CERT-A-CELL STR,
+   12 11 TOTAL-BYTES-CELL cells LDR,  12 DATA TXN-CERT-U-CELL STR,
+   11 DATA TXN-SRC-A-CELL LDR,  12 DATA DOESB-CELL LDR,
+   11 11 12 ADD,  11 DATA TXN-SRC-A-CELL STR,
+   11 0 MOVZ,
+   11 DATA TXN-WF-I-CELL STR,
+   11 DATA TXN-BIND-I-CELL STR,
+   11 DATA TXN-FETCH-I-CELL STR,
+   RET, ;
 : NEEDS? ( -- ) 10 DATA TXN-ACTIVE-CELL LDR, ;
 
 : START ( -- )
@@ -7590,28 +7647,23 @@ also LOWER-CERT also LOWER-TXN definitions
 
 previous previous definitions
 
+\ MIRROR of src/habu/habu2.f: an active transaction enters the pass-2 re-run.
+\ Pass 2 never reaches it: both publish paths send the re-run's own ';'
+\ straight to the normal publish.
 : EM-P2-TRIGGER ( n -- ) {: lmain :}
-   LBL LBL {: nowide p2ok :}
-   9 DATA P2-CELL LDR,  9 nowide CBNZ,
+   LBL {: nowide :}
    [ also LOWER-TXN ] NEEDS? [ previous ]
    10 nowide CBZ,
-   10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
-      0 2 MOVZ,  1 LP2DOESW @ ADR,  2 49 MOVZ,  NR-WRITE SYS,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,
-      NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
-   p2ok LBL,
    [ also LOWER-TXN ] START [ previous ]
    lmain B,
    nowide LBL, ;
 
+\ The pass-1 publish gate of a definition with a body; pass 2 never reaches it
+\ (EMIT-COMPILE-PUBLISH-TRUSTED).
 : EM-P2-CHECK-DEFINER ( f n -- ) {: trusted lmain :}
-   LBL {: p2sk :}
-   9 DATA P2-CELL LDR,  9 p2sk CBNZ,
-      trusted if C-CALL-CHECK-UNJUDGED else C-CALL-CHECK-DEFINER then
-      [ also LOWER-TXN ] FREEZE [ previous ]
-      lmain EM-P2-TRIGGER
-   p2sk LBL, ;
+   trusted if C-CALL-CHECK-UNJUDGED else C-CALL-CHECK-DEFINER then
+   [ also LOWER-TXN ] FREEZE [ previous ]
+   lmain EM-P2-TRIGGER ;
 
 also LOWER-CERT also LOWER-TXN definitions
 
@@ -7842,21 +7894,32 @@ variable P2SK
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
 : EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :}
-   LBL LBL LBL LBL {: ttrusted ndhas ndchk publish :}
-   \ Mirror habu2.f: created-body checking resets publication latches, so
-   \ certify the definer last and retain its verified graph.
+   LBL LBL LBL LBL LBL LBL {: pass1 ttrusted register ndhas ndchk publish :}
+   \ Mirror habu2.f: the pass-2 second ';' publishes what pass 1 checked and
+   \ froze without re-running either check; a TRUSTED: definition still
+   \ registers its declaration, which pass 1 left to the pass that publishes.
+   9 DATA P2-CELL LDR,  9 pass1 CBZ,
+      10 DATA TRUSTED-CELL LDR,  10 publish CBZ,
+      register B,
+   pass1 LBL,
+   \ Created-body checking resets publication latches, so certify the definer
+   \ last and retain its verified graph. The clause's certificate is kept for
+   \ FREEZE while the head is checked.
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-DIE-DOES
    ndhas LBL,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
+      LCERTKEEP 15 C-P2-FIND-GLOBAL
+      C-CALL-X11-SAVED
    ndchk LBL,
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       0 0<> lmain EM-P2-CHECK-DEFINER
       publish B,
    ttrusted LBL,
    0 0= lmain EM-P2-CHECK-DEFINER
+   register LBL,
    C-CALL-TRUST-PEND
    publish LBL,
    C-DOES-OCC-ROOM
@@ -8729,7 +8792,7 @@ variable P2SK
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
 : EMIT-LABEL-P2 ( -- )
-   LBL LCERTBYTES !  LBL LP2CWAT !  LBL LP2CDESC !
+   LBL LCERTBYTES !  LBL LCERTKEEP !  LBL LCERTKEPT !  LBL LP2CWAT !  LBL LP2CDESC !
    LBL LRECWPUB !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
@@ -8737,7 +8800,7 @@ variable P2SK
    LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS !
    LBL LKWAT2 !  LBL LKWSTORE2 !
    LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !
-   LBL LVPBADMSG !  LBL LP2DOESW !  LBL LP2NEST !
+   LBL LVPBADMSG !  LBL LP2CLAUSE !  LBL LP2NEST !
    LBL [ also LOWER-TXN-CODE ] BAD-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] MEM-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] FULL-LABEL [ previous ] !
@@ -8800,7 +8863,8 @@ variable P2SK
    EMIT-SOURCE-READ-PREFIX
    EMIT-JIT
    EMIT-P2-HELPERS
-   [ also LOWER-TXN-CODE ] EMIT-DESC EMIT-DRIFT-FAIL [ previous ] ;
+   [ also LOWER-TXN-CODE ] EMIT-DESC EMIT-DRIFT-FAIL [ previous ]
+   [ also LOWER-TXN ] EMIT-TO-CLAUSE [ previous ] ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
