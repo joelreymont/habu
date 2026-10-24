@@ -277,7 +277,7 @@ PTR-VARIABLE SND-A
    \ captured Habu CREATE handler, which snapshot startup does not reinstall.
    HB-TARGET-LINUX-X86-64? 0= if CREATEP-CELL SND-ZERO-CELL then
    RRECP-CELL SND-ZERO-CELL
-   LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL
+   LMAINP-CELL SND-ZERO-CELL  DOESB-CELL SND-ZERO-CELL  CLAUSE-CELL SND-ZERO-CELL
    EVALREC-CELL SND-ZERO-CELL
    \ The x86-64 handler points into fixed linked code. MAIN installed it before
    \ the sealed image was saved, so snapshot boot keeps that exact XT.
