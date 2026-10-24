@@ -1,6 +1,6 @@
 ---
 title: "Keep the first attempt's miss diagnostics across a restart"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-24T03:41:15.771412+03:00"

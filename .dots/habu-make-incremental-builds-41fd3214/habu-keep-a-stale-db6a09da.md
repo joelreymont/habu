@@ -1,6 +1,6 @@
 ---
 title: "Keep a stale replay's restart free of repeated effects"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-24T03:41:15.755172+03:00"
