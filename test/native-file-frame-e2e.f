@@ -122,6 +122,10 @@ variable FILL-POOL
    S\" s\" dep=\" type CON-DEP . cr\n" IN+
    s" rp.f" LOAD+
    S\" s\" rp=\" type RP-B . cr\n" IN+
+   s" lbv.f" LOAD+
+   S\" s\" lbv=\" type LBV-K LBV-KID + . cr\n" IN+
+   s" lbc.f" LOAD+
+   S\" s\" lbc=\" type LBC-A LBC-B + . cr\n" IN+
    s" hpar.f" LOAD+
    S\" s\" hp=\" type FRAME-HP:B . HG-ONE . HG-TWO . cr\n" IN+
    s" w.f" LOAD+
@@ -677,6 +681,14 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ segments and the load between them.
    s" rc.f" S\" : RC-N ( -- n ) 2 ;\n" PUT
    s" rp.f" S\" : RP-A ( -- n ) 1 ;\nrequire rc.f\n: RP-B ( -- n ) RP-A RC-N + ;\n" PUT
+   \ lbv.f carries a value across its load of lbvk.f; lbc.f loads lbca.f and
+   \ lbcb.f from a colon word. Neither load is a loader token's action
+   \ ending balanced at a loader cut.
+   s" lbvk.f" S\" : LBV-KID ( -- n ) 2 ;\n" PUT
+   s" lbv.f" S\" 1 include lbvk.f constant LBV-K\n" PUT
+   s" lbca.f" S\" : LBC-A ( -- n ) 41 ;\n" PUT
+   s" lbcb.f" S\" : LBC-B ( -- n ) 1 ;\n" PUT
+   s" lbc.f" S\" : LBC-LOAD ( -- ) s\" lbca.f\" required s\" lbcb.f\" required ;\nLBC-LOAD\n" PUT
    \ w.f makes a wordlist no package record owns: the next one is W's next.
    s" w.f" S\" wordlist constant W\n3 constant K\n" PUT
    \ tier0.f loads at tier 0, where an install's writers do not run.
@@ -902,6 +914,19 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" con=4\n" CONTAINS? TTRUE
    OUT$ S\" dep=5\n" CONTAINS? TTRUE
    OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
+   s" rp.f's top-level require is a clean load: its object stores the load" T-LABEL
+   s" rp.f" s"  loads=" s" 1" OBJECT-HAS
+   s" a value carried across a load refuses its file, not the child" T-LABEL
+   OUT$ S\" lbv=3\n" CONTAINS? TTRUE
+   s" lbv.f" s"  reason=" LINE$ s" lbv.f reason=load-boundary" T$=
+   s" lbv.f" NO-OBJECT
+   s" lbvk.f" KEY$ STORED
+   s" a colon word's loads refuse its file, not the children" T-LABEL
+   OUT$ S\" lbc=42\n" CONTAINS? TTRUE
+   \ The run trace sees the kernel loader before the child's FILE-BEGIN.
+   s" lbc.f" s"  reason=" LINE$ s" lbc.f reason=run-reaches-kernel-word word=required" T$=
+   s" lbc.f" NO-OBJECT
+   s" lbca.f" KEY$ STORED s" lbcb.f" KEY$ STORED
    s" w.f writes its object" T-LABEL
    ERR$ s" /w.f key=" CONTAINS? TTRUE
    s" tier0.f, loaded at tier 0, writes no object" T-LABEL

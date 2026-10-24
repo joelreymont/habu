@@ -87,13 +87,18 @@ private
 \ records, DATA bytes, requires, wordlists, where in a cell HERE stood at its
 \ open, and the file's dependency row count at its close. LOAD: kind, load
 \ kind, source offset in the loading file, path offset and length, root
-\ offset and length. FFI-LIB: kind, path offset and length, the library's
-\ index. FFI-FN: kind, symbol offset and length, library index, argument and
-\ spill counts, the function's index. FFI-SCOPE: kind, role (0 the
-\ declarer's selection when the segment opened, 1 when it closed), library
-\ index, the scope wordlist's reference and 1 when a scope was stated. OUT:
-\ kind, the bytes' offset in slot 19 and their length. Unused cells are 0.
-64 constant EVENT-BYTES
+\ offset and length, 1 when the load was clean, the source offset the
+\ loading file resumes at, and the file's dependency row count and input
+\ bytes when the child opened. A clean load is a loader action that started
+\ at a loader cut and returned with the loading file balanced at its resume
+\ offset; a file with any other load stores no object. FFI-LIB: kind, path
+\ offset and length, the library's index. FFI-FN: kind, symbol offset and
+\ length, library index, argument and spill counts, the function's index.
+\ FFI-SCOPE: kind, role (0 the declarer's selection when the segment opened,
+\ 1 when it closed), library index, the scope wordlist's reference and 1
+\ when a scope was stated. OUT: kind, the bytes' offset in slot 19 and their
+\ length. Unused cells are 0.
+88 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
 \ length.
 56 constant ORIGIN-BYTES
@@ -163,9 +168,10 @@ private
 \ FFI registry marks: the selected bank's next function index, the tables'
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
 \ was stated), the origin bytes when it opened, its sink cell first, the
-\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, and the
-\ output bytes when it and its open segment opened. A child file's bytes and
-\ sites follow its parent's and are dropped when the child closes.
+\ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the
+\ output bytes when it and its open segment opened, and the LOAD row its
+\ pending loader action claimed (ACT-NONE, ACT-OPEN). A child file's bytes
+\ and sites follow its parent's and are dropped when the child closes.
 0 constant FO-DEFS
 1 constant FO-INDEX
 2 constant FO-INPUTS
@@ -196,7 +202,13 @@ private
 27 constant FO-SEG-POOL
 28 constant FO-OUTPUT
 29 constant FO-SEG-OUT
-30 constant FO-CELLS
+30 constant FO-ACT-ROW
+31 constant FO-CELLS
+\ FO-ACT-ROW with no loader action of the file's own token pending, and with
+\ one pending that has loaded no child yet; any other value is the LOAD row
+\ its child opened.
+-2 constant ACT-NONE
+-1 constant ACT-OPEN
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
@@ -204,8 +216,10 @@ private
 \ dependency row count at its close and its DATA bytes' offset in SEG-DATA.
 \ LOAD: kind, the child's first ordinal,
 \ load kind, source offset, path offset and length, root offset and length
-\ in FILE-NAMES, then zeros. OUT: kind, the segment's first ordinal, the
-\ bytes' offset in FILE-OUTPUT and their length, then zeros.
+\ in FILE-NAMES, 0, 1 once the loader action finished clean, the resume
+\ offset, the file's dependency row count and input bytes at the child's
+\ open, then zeros. OUT: kind, the segment's first ordinal, the bytes'
+\ offset in FILE-OUTPUT and their length, then zeros.
 15 constant EV-CELLS
 DYNAMIC-BUFFER FILE-DEFS u8
 DYNAMIC-BUFFER FILE-INDEX u8
@@ -343,8 +357,6 @@ variable OPEN-REQS
 variable OPEN-WIDS
 variable OPEN-LOADS
 variable OPEN-SEGS
-\ The open object's last SEGMENT row's dependency row mark.
-variable OPEN-MARK
 \ One bit per record kind the open FILE object's rows hold.
 variable OPEN-KINDS
 \ The lowest DATA offset the next address record row may name, and the end of
@@ -1009,6 +1021,24 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
    then
    rc throw ;
 
+\ Event row k is a SEGMENT row.
+: SEG? ( n -- bool ) 0 EV @ EV-SEGMENT = ;
+
+\ The closing file's record row of its own record ord, -1 when another file
+\ made it.
+: OWN-ROW ( n -- n )
+   {: ord:n :}
+   0 EVENTS-N @ FO-EVENTS FO @ ?do
+      {: base:n :}
+      i SEG? if
+         i 1 EV @ {: first:n :}
+         ord first >= ord first i 2 EV @ + < and if
+            base ord + first - unloop exit
+         then
+         base i 2 EV @ +
+      else base then
+   loop drop -1 ;
+
 \ The 1-based index of the innermost file's reference entry key bytes,
 \ appended when new.
 : CHECK-ENTRY ( n n -- n )
@@ -1038,8 +1068,11 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
 
 \ Append the checker state since the mark as one slice: its length, then
 \ its bytes padded to a cell. The checker's buffer is shared, so the bytes
-\ are copied before anything else runs.
+\ are copied before anything else runs. Then the file depends on each live
+\ record an earlier file made that the slice newly names, so the rows of
+\ the interval the slice closes precede the next load's.
 : CHECK-EXPORT-RUN ( -- )
+   CKORD-N @ {: entries:n :}
    ['] CHECK-REF CHECKER-OWNER-ABI:UNIT-EXPORT-REFS-OFF CHECK-XT
       CK-EXPORT-XT execute {: source:ptr bytes:n :}
    bytes 0 < if BAD then
@@ -1050,7 +1083,15 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
    bytes 0<> if source at CELL + FILE-CHECK bytes BYTE-COPY then
    padded bytes ?do 0 at CELL + i + FILE-CHECK c! loop
    CELL padded + CHECK-U +!
-   1 FO-SLICES FO +! ;
+   1 FO-SLICES FO +!
+   CKORD-N @ entries ?do
+      i 2 * FILE-CKORD @ {: key:n :}
+      i 2 * 1+ FILE-CKORD @ 0 < key ndict@ < and if
+         key OWN-ROW 0 < key XREF-REC XREF-RETIRED? 0= and if
+            key NUNIT-DEP:BIND-ORD
+         then
+      then
+   loop ;
 
 \ Close the innermost file's open mark as a slice. A refused file exports
 \ nothing; state the checker cannot export refuses it.
@@ -1081,9 +1122,16 @@ public
       SITES-N @ FO-SITES FO @ > if s" earlier-write-before-load" FILE-REFUSE then
       at 0 < if s" load-outside-source" FILE-REFUSE then
       NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
+      EVENTS-N @ {: row:n :}
       EV-LOAD ndict@ kind at path pathu NAMES+ pathu
          root rootu NAMES+ rootu 0 EV+
+      \ The pending loader action claims the row; a load no loader token of
+      \ the file started at a loader cut, as from a colon word or an
+      \ evaluated text, stays unclean and FILE-ENCODE refuses it.
+      FO-ACT-ROW FO @ ACT-OPEN = if row FO-ACT-ROW FO ! then
       CHECK-EXPORT
+      NUNIT-DEP:FILE-ROWS row 11 EV !
+      INPUTS-U @ FO-INPUTS FO @ - row 12 EV !
    then
    FO-DEPTH @ 1+ FO-CELLS * FILE-FRAMES-RESERVE
    1 FO-DEPTH +!
@@ -1107,6 +1155,7 @@ public
    CKORD-N @ FO-CKORD FO !
    0 FO-SLICES FO !
    0 FO-CKMARK FO !
+   ACT-NONE FO-ACT-ROW FO !
    SEGMENT-OPEN
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
@@ -1141,6 +1190,19 @@ public
    -1 FO-DEPTH +!
    \ A hit or a throw pops a file without its segment's close.
    FILE-OPEN? if SEGMENT-OPEN CHECK-MARK else OBS-CLEAR then ;
+
+\ A loader token of the innermost file starts its action at a loader cut:
+\ the child it loads claims its LOAD row (FILE-BEGIN).
+: LOAD-ACTION ( -- ) FILE-OPEN? if ACT-OPEN FO-ACT-ROW FO ! then ;
+
+\ The pending loader action returned; when ok, the loading file stood
+\ balanced at offset off, and the LOAD row it claimed is clean.
+: LOAD-FINISH ( n bool -- )
+   {: off:n ok:bool :}
+   FILE-OPEN? 0= if exit then
+   FO-ACT-ROW FO @ {: row:n :}
+   ok row 0 >= and if 1 row 9 EV ! off row 10 EV ! then
+   ACT-NONE FO-ACT-ROW FO ! ;
 
 \ The innermost file loaded under origin sink kind.
 : ORIGIN-SINK! ( n -- ) FO-ORIGIN FO @ FILE-ORIGIN LE:U64! ;
@@ -1205,7 +1267,7 @@ public
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
-   0 OPEN-REM ! 0 OPEN-MARK ! 0 OPEN-ADDR ! 0 OPEN-SEG-END !
+   0 OPEN-REM ! 0 OPEN-ADDR ! 0 OPEN-SEG-END !
    0 OPEN-SINK ! 0 OPEN-ORIGIN-OK !
    false OPEN-POOL-ROOM !
    NULL-PTR OBJ-BYTES ! 0 OBJ-SIZE ! NULL-PTR OBJ-KEY ! 0 OBJ-KEY-U !
@@ -1925,9 +1987,6 @@ public
 
 private
 
-\ Event row k is a SEGMENT row.
-: SEG? ( n -- bool ) 0 EV @ EV-SEGMENT = ;
-
 \ Wordlist wid as a reference: local, indexed over the wordlists the closing
 \ file's segments made in order, else one made before the file.
 : WID-REF ( n -- n )
@@ -2015,21 +2074,6 @@ CAST: N>U8 ( n -- ptr u8 )
    at 8 + size + VALS-U !
    at ;
 
-\ The closing file's record row of its own record ord, -1 when another file
-\ made it.
-: OWN-ROW ( n -- n )
-   {: ord:n :}
-   0 EVENTS-N @ FO-EVENTS FO @ ?do
-      {: base:n :}
-      i SEG? if
-         i 1 EV @ {: first:n :}
-         ord first >= ord first i 2 EV @ + < and if
-            base ord + first - unloop exit
-         then
-         base i 2 EV @ +
-      else base then
-   loop drop -1 ;
-
 \ Record key as a FILE object reference, 0 after it refuses the closing file:
 \ a record the file made, retired or not (its object makes the record again),
 \ or a live record an earlier file made under a declaration key.
@@ -2041,9 +2085,9 @@ CAST: N>U8 ( n -- ptr u8 )
    key XREF-REC XREF-RETIRED? if
       s" checker-ref-retired" FILE-REFUSE 0 exit
    then
-   key NUNIT-DEP:BIND-ORD
    \ A record an earlier session made has no key to import: BIND-ORD has
-   \ ordered the file on it.
+   \ ordered the file on it (CHECK-EXPORT-RUN for a checker reference, the
+   \ run that made a does> word for its definer).
    key NFILE-REF:DECL-KEY? nip nip 0= if
       s" ordered-dependency" FILE-REFUSE 0 exit
    then
@@ -2172,17 +2216,19 @@ CAST: N>U8 ( n -- ptr u8 )
    row SEG? if
       EV-SEGMENT OUT-N row 1 EV @ FO-FIRST FO @ - OUT-N
       row 2 EV @ OUT-N row 4 EV @ OUT-N row 6 EV @ OUT-N
-      row 8 EV @ OUT-N row 3 EV @ 1 cells mod OUT-N row 13 EV @ OUT-N exit
+      row 8 EV @ OUT-N row 3 EV @ 1 cells mod OUT-N row 13 EV @ OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    row 0 EV @ {: kind:n :}
    kind EV-FFI-LIB = if
       kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
-      row 4 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+      row 4 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    kind EV-FFI-FN = if
       kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
       row 4 EV @ OUT-N row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N
-      0 OUT-N exit
+      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    \ The scope's reference is taken here: BEGIN-FILE-REFS resets the
    \ references after the segments close. It binds no owner: FFI-ROWS-HOLD?
@@ -2191,15 +2237,18 @@ CAST: N>U8 ( n -- ptr u8 )
       row 4 EV @ WID-REF {: ref:n :}
       ref 0= if s" ffi-scope-unknown" FILE-REFUSE then
       kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N ref OUT-N
-      row 5 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+      row 5 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    kind EV-OUT = if
       kind OUT-N row 2 EV @ FO-OUTPUT FO @ - OUT-N row 3 EV @ OUT-N
-      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
-   row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N 0 OUT-N ;
+   row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N row 9 EV @ OUT-N
+   row 10 EV @ OUT-N row 11 EV @ OUT-N row 12 EV @ OUT-N ;
 
 CAST: OWNER-ROW-FN ( n -- [ n -- ptr u8 n bool ] )
 CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
@@ -2769,16 +2818,21 @@ public
 
 \ Encode the innermost file's records, DATA, requires, protection bytes,
 \ events, slots, slot literals, checker slices, updates and pins into
-\ FILE-OUT, closing its last segment. A file that lacks a checker slice per
-\ load, whose records, slots, checker references or updates cannot all
-\ encode, or whose DATA or updated cells hold an undeclared address, refuses.
+\ FILE-OUT, closing its last segment. A file with a load that was not clean,
+\ that lacks a checker slice per load, whose records, slots, checker
+\ references or updates cannot all encode, or whose DATA or updated cells
+\ hold an undeclared address, refuses.
 : FILE-ENCODE ( -- )
    FILE-OPEN? 0= if BAD then
    SEGMENT-CLOSE
    CHECK-EXPORT
+   0 EVENTS-N @ FO-EVENTS FO @ ?do
+      i 0 EV @ EV-LOAD = if
+         i 9 EV @ 1 <> if s" load-boundary" FILE-REFUSE then
+         1+
+      then
+   loop {: loads:n :}
    FILE-REFUSED? if exit then
-   0 EVENTS-N @ FO-EVENTS FO @ ?do i 0 EV @ EV-LOAD = if 1+ then loop
-      {: loads:n :}
    FO-SLICES FO @ loads 1+ <> if s" checker-slices" FILE-REFUSE exit then
    NFILE-REF:BEGIN-FILE-REFS
    0 OUT-U !
@@ -2902,6 +2956,9 @@ public
       i FO-FIRST FRAME @ kept min i FO-FIRST FRAME !
       i FO-EVENTS FRAME @ EVENTS-N @ min i FO-EVENTS FRAME !
       i FO-SEG-ORD FRAME @ kept min i FO-SEG-ORD FRAME !
+      i FO-ACT-ROW FRAME @ EVENTS-N @ >= if
+         ACT-NONE i FO-ACT-ROW FRAME !
+      then
    loop ;
 
 private
@@ -2947,11 +3004,11 @@ private
    item 0 < item max > or row 3 U64-AT 0<> or if BAD then ;
 
 \ A SEGMENT event row starting at or past end, the previous segment's last
-\ ordinal, with a dependency row mark no lower than the previous segment's
-\ and within the file's rows; the new end. The first segment's remainder is
-\ the object's.
-: SEGMENT-CK ( ptr u8 n -- n )
-   {: row:ptr end:n :}
+\ ordinal, with a dependency row mark no lower than last, the previous
+\ segment's, and within the file's rows; the new end and mark. The first
+\ segment's remainder is the object's.
+: SEGMENT-CK ( ptr u8 n n -- n n )
+   {: row:ptr end:n last:n :}
    row 1 U64-AT {: first:n :}
    row 2 U64-AT {: count:n :}
    row 3 U64-AT {: bytes:n :}
@@ -2961,17 +3018,19 @@ private
    row 7 U64-AT {: mark:n :}
    first end < count 0 < or bytes 0 < or reqs 0 < or wids 0 < or if BAD then
    rem 0 < rem 1 cells >= or if BAD then
-   mark OPEN-MARK @ < mark OPEN-ROWS @ > or if BAD then
-   mark OPEN-MARK !
+   mark last < mark OPEN-ROWS @ > or if BAD then
    OPEN-SEGS @ 0= if rem OPEN-REM ! then
    count OPEN-RECS +! bytes OPEN-DATA +! reqs OPEN-REQS +!
    wids OPEN-WIDS +! 1 OPEN-SEGS +!
-   first count + ;
+   first count + mark ;
 
 \ A LOAD event row: an include or a require, where the loading file's source
-\ stood, and the child's path and root in the names section.
-: LOAD-CK ( ptr u8 n -- )
-   {: row:ptr namesu:n :}
+\ stood, the child's path and root in the names section, a clean load, a
+\ resume offset within the file's srcu source bytes, and dependency rows and
+\ input bytes, both no fewer than the previous LOAD row's, within their
+\ sections. The input rows since the previous LOAD row are whole rows.
+: LOAD-CK ( ptr u8 n n n n -- n n )
+   {: row:ptr namesu:n srcu:n last-rows:n last-in:n :}
    row 1 U64-AT {: kind:n :}
    kind SOURCE-UNIT:LOAD-INCLUDE <> kind SOURCE-UNIT:LOAD-REQUIRE <> and
       if BAD then
@@ -2979,7 +3038,17 @@ private
    row 4 U64-AT 0= if BAD then
    row 3 U64-AT row 4 U64-AT namesu SPAN-CK
    row 5 U64-AT row 6 U64-AT namesu SPAN-CK
-   1 OPEN-LOADS +! ;
+   row 7 U64-AT 1 <> if BAD then
+   row 8 U64-AT {: resume:n :}
+   resume 0 < resume srcu > or if BAD then
+   row 9 U64-AT {: rows:n :}
+   rows last-rows < rows OPEN-ROWS @ > or if BAD then
+   row 10 U64-AT {: inputs:n :}
+   11 NUNIT-FILE:SECTION$ {: ins:ptr insu:n :}
+   inputs last-in < inputs insu > or if BAD then
+   ins last-in + inputs last-in - NFILE-INPUTS:ROW-COUNT drop
+   1 OPEN-LOADS +!
+   rows inputs ;
 
 \ An FFI row after a segment: a library path or symbol a span of the names
 \ section without a 0 byte, both of which the engine refuses, counts within
@@ -3011,26 +3080,27 @@ private
    row 5 U64-AT {: spills:n :}
    argc 0 < argc cap > or spills 0 < or spills cap > or if BAD then ;
 
-: EVENTS-CK ( ptr u8 n ptr u8 n ptr u8 -- )
-   {: evs:ptr evsu:n names:ptr namesu:n refs:ptr :}
+: EVENTS-CK ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: evs:ptr evsu:n names:ptr namesu:n refs:ptr srcu:n :}
    evsu EVENT-BYTES mod 0<> if BAD then
-   0 EV-LOAD evsu EVENT-BYTES / 0 ?do
-      {: end:n prev:n :}
+   0 0 0 0 EV-LOAD evsu EVENT-BYTES / 0 ?do
+      {: end:n mark:n rows:n inputs:n prev:n :}
       evs i EVENT-BYTES * + {: row:ptr :}
       row 0 U64-AT {: kind:n :}
-      kind EV-SEGMENT <> row 7 U64-AT 0<> and if BAD then
-      kind EV-SEGMENT = if row end SEGMENT-CK else
-         kind EV-LOAD = if row namesu LOAD-CK end else
-            kind EV-OUT = if end else
+      kind EV-SEGMENT <> kind EV-LOAD <> and row 7 U64-AT 0<> and
+         if BAD then
+      kind EV-SEGMENT = if row end mark SEGMENT-CK rows inputs else
+         kind EV-LOAD = if end mark row namesu srcu rows inputs LOAD-CK else
+            kind EV-OUT = if end mark rows inputs else
                kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
                \ FFI rows follow their segment's row.
                prev EV-LOAD = if BAD then
-               row names namesu refs FFI-CK end
+               row names namesu refs FFI-CK end mark rows inputs
             then
          then
       then
       kind
-   loop 2drop ;
+   loop 2drop 2drop drop ;
 
 \ Reference ref of the reference section refs is the file's own wordlist item.
 : LOCAL-WID? ( ptr u8 n n -- bool )
@@ -3281,17 +3351,17 @@ private
 
 \ The FILE object's segment framing: events, records, DATA, protection
 \ bytes, requires, slots, updates and pins agree with one another, given its defs
-\ index rows.
-: SEGMENTS-CK ( n -- )
-   {: defs:n :}
+\ index rows and its srcu source bytes.
+: SEGMENTS-CK ( n n -- )
+   {: defs:n srcu:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
    0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED ! 0 OPEN-VALS !
-   0 OPEN-FFI ! 0 OPEN-REM ! 0 OPEN-MARK !
+   0 OPEN-FFI ! 0 OPEN-REM !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
-   12 NUNIT-FILE:SECTION$ names namesu rows EVENTS-CK
+   12 NUNIT-FILE:SECTION$ names namesu rows srcu EVENTS-CK
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
    17 NUNIT-FILE:SECTION$ nip OPEN-VALS @ <> if BAD then
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
@@ -4112,7 +4182,7 @@ public
    10 NUNIT-FILE:SECTION$ {: lits:ptr litsu:n :}
    indexu INDEX-BYTES mod 0<> if BAD then
    indexu INDEX-BYTES / {: count:n :}
-   count SEGMENTS-CK
+   count srcu SEGMENTS-CK
    count 0= litsu 0= and if
       true OPEN-POOL-ROOM ! 0
    else
@@ -4293,12 +4363,13 @@ public
    loop
    true ;
 
-\ LOAD row k's load kind, the child's path and its root.
-: LOAD-ROW ( n -- n ptr u8 n ptr u8 n )
+\ LOAD row k's load kind, the child's path and its root, and the source
+\ offset the loading file resumes at.
+: LOAD-ROW ( n -- n ptr u8 n ptr u8 n n )
    OBJ-EV {: ev:ptr :}
    3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
    ev 1 U64-AT names ev 3 U64-AT + ev 4 U64-AT
-   names ev 5 U64-AT + ev 6 U64-AT ;
+   names ev 5 U64-AT + ev 6 U64-AT ev 8 U64-AT ;
 
 \ Issue OUT row k's recorded operations again, in their order: each emit's
 \ character to qemit, each write's bytes to qwrite.

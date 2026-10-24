@@ -161,6 +161,8 @@ variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
 variable TARGET-ENV-RESET
 variable TARGET-SOURCE-BOUND
+\ The target's SOURCE-UNIT:LOADER-KIND once its source is bound, else 0.
+variable TARGET-KIND
 variable HOST-INPUT-RESET
 variable HOST-SOURCE-BOUND
 variable HOST-SOURCE-READY
@@ -192,6 +194,7 @@ CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
 CAST: RETIRE-SET-XT ( n -- [ n -- ] )
 CAST: RETIRE>N ( [ ptr n -- ] -- n )
 CAST: OBSERVE-XT ( n -- [ [ ptr n -- ] -- ] )
+CAST: KIND-XT ( n -- [ n n n -- n ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -1096,13 +1099,43 @@ variable TEE-ERR
    FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
    F-Q F@ N>Q F-PRIOR F@ N>UNIT execute ;
 
+\ The token runs a source loader: the host's, or once bound the target's.
+: LOADER? ( n n n -- bool )
+   {: op:n rec:n entry:n :}
+   op rec entry SOURCE-UNIT:LOADER-KIND SOURCE-UNIT:NONE <> if true exit then
+   TARGET-KIND @ 0= if false exit then
+   op rec entry TARGET-KIND @ KIND-XT execute SOURCE-UNIT:NONE <> ;
+
+\ The observer's before callback: RUN-BEFORE's ticket doubled, plus one when
+\ the token is a loader at a loader cut, whose action the file then records
+\ (NUNIT-OBJECT:LOAD-ACTION).
+: LOAD-BEFORE ( n n n n ptr u8 n -- n bool )
+   {: unit:n op:n rec:n entry:n tok:ptr toku:n :}
+   unit op rec entry tok toku NUNIT-DEP:RUN-BEFORE {: ticket:n judged:bool :}
+   ticket 2 *
+   op rec entry LOADER? SOURCE-EXEC:LOADER-CUT? and if
+      NUNIT-OBJECT:LOAD-ACTION 1+
+   then
+   judged ;
+
+\ The observer's after callback: RUN-AFTER with RUN-BEFORE's ticket, then a
+\ loader action's end: clean when it returned with the file balanced at the
+\ position it resumes from.
+: LOAD-AFTER ( n n n -- )
+   {: unit:n ticket:n rc:n :}
+   unit ticket 1 rshift rc NUNIT-DEP:RUN-AFTER
+   ticket 1 and 0= if exit then
+   SOURCE-EXEC:POSITION {: off:n balanced:bool :}
+   off rc 0= balanced and NUNIT-OBJECT:LOAD-FINISH ;
+
 \ The file's source runs under the engine's source observer, whose callbacks
-\ judge each seed word the top level runs (NUNIT-DEP RUN-BEFORE, RUN-AFTER).
-\ The frame arms when the loader evaluates exactly the source span; a child
-\ load pushes its own frame.
+\ judge each seed word the top level runs (NUNIT-DEP RUN-BEFORE, RUN-AFTER)
+\ and each loader action it takes (LOAD-BEFORE, LOAD-AFTER). The frame arms
+\ when the loader evaluates exactly the source span; a child load pushes its
+\ own frame.
 : OBSERVED-RUN ( -- )
    FRAME F-SRC + 0 ptr-field @ F-SRC-U F@ {: source:ptr sourceu:n :}
-   DEPTH @ source sourceu ['] NUNIT-DEP:RUN-BEFORE ['] NUNIT-DEP:RUN-AFTER
+   DEPTH @ source sourceu ['] LOAD-BEFORE ['] LOAD-AFTER
       [: UNIT-RUN ;] SOURCE-EXEC:RUN {: rc:n :}
    rc 0<> if rc throw then ;
 
@@ -1580,7 +1613,7 @@ variable USER-SEEN
 : LOAD-ROOTS? ( -- bool )
    NUNIT-OBJECT:EVENT-COUNT 0 ?do
       i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if
-         i NUNIT-OBJECT:LOAD-ROW {: root:ptr rootu:n :} 2drop drop
+         i NUNIT-OBJECT:LOAD-ROW drop {: root:ptr rootu:n :} 2drop drop
          root rootu FRAME-ROOT STR= 0= if false unloop exit then
       then
    loop
@@ -1677,7 +1710,7 @@ variable IMPORT-AT
 \ are kept across it; the loader copies the path before the child's object
 \ read can move OBJECTS.
 : REPLAY-LOAD ( n -- )
-   NUNIT-OBJECT:LOAD-ROW 2drop {: kind:n path:ptr pathu:n :}
+   NUNIT-OBJECT:LOAD-ROW drop 2drop {: kind:n path:ptr pathu:n :}
    NUNIT-OBJECT:INSTALL-SAVE {: row:n off:n at:n segs:n slice:n :}
    kind path pathu SOURCE-UNIT:LOAD-PATH
    row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
@@ -1904,6 +1937,7 @@ variable IMPORT-AT
    s" SOURCE-UNIT:USE" TARGET-XT TARGET-UNIT-USE !
    s" SOURCE-INPUT:RESET" TARGET-XT TARGET-INPUT-RESET !
    s" ENV-INPUT:RESET" ENV-XT TARGET-ENV-RESET !
+   s" SOURCE-UNIT:LOADER-KIND" TARGET-XT TARGET-KIND !
    prior UNIT>N ['] FILE-UNIT UNIT>N <> if
       prior PRIOR-UNIT !
       ['] FILE-UNIT TARGET-UNIT-USE @ UNIT-USE-XT execute
@@ -1962,7 +1996,7 @@ variable IMPORT-AT
    NULL-PTR ORIGIN-RECORD !
    0 PUBLICATION-CLEAR-XT !
    0 TFAM-RESET-XT ! 0 CON-RESET-XT !
-   0 HOST-SOURCE-BOUND ! 0 TARGET-SOURCE-BOUND !
+   0 HOST-SOURCE-BOUND ! 0 TARGET-SOURCE-BOUND ! 0 TARGET-KIND !
    0 HOST-SOURCE-READY ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-INPUT-RESET !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET !
