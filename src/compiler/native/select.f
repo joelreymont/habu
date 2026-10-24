@@ -229,7 +229,20 @@ DYNAMIC-BUFFER R-READ-BUF n
 \ ---- what the data-stack residency pass answers ------------------------------
 \ A slot of the caller's data stack holds a value of the source module, and this
 \ is the window that fact is tracked over: past it, never resident.
+\
+\ Each slot is named twice. Its EDGE name follows the value into the block
+\ argument an edge passes it as, which is what lets a block argument stay in its
+\ slot unbuilt (DDROP?). Its STORED name is the value the slot is known to hold:
+\ a routine input at entry, a value a save wrote, or a call's result. It crosses
+\ every edge unchanged, since no edge writes a slot, so it is the name
+\ regalloc-verify.f VDRES-FIX holds the slot to, and a store of it is the one
+\ VDSTORE-CK refuses. A stored name is a routine input or a
+\ call's result, never a block argument a later edge redefines, so keeping it
+\ across a backedge is exact. The stored names sit DSTORED cells above the edge
+\ names in every map.
 64 constant DSLOT-MAX                \ slots one routine's residency is tracked over
+DSLOT-MAX constant DSTORED           \ where a map's stored names start
+DSLOT-MAX 2 * constant DCELLS        \ names one map holds: an edge and a stored name per slot
 -1 constant DNONE                    \ this slot holds nothing this pass can name
 -2 constant DANY                     \ nothing has been said about this slot yet
 63 constant DELIDE-MAX               \ store positions one run's elision mask holds
@@ -239,7 +252,7 @@ DYNAMIC-BUFFER D-IN-BUF n
 : D-IN ( -- ptr n ) 0 D-IN-BUF ;
 DYNAMIC-BUFFER D-OUT-BUF n
 : D-OUT ( -- ptr n ) 0 D-OUT-BUF ;
-DSLOT-MAX CWORK-SPAN D-CUR n                 \ the running answer inside one block
+DCELLS CWORK-SPAN D-CUR n                    \ the running answer inside one block
 DYNAMIC-BUFFER D-NEED-BUF n
 : D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
 DYNAMIC-BUFFER D-ORDER-SET-BUF n
@@ -267,8 +280,8 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
    VMAX R-KEY-BUF-RESERVE
    BMAX SEL-WIDTH-MAX * R-PICK-BUF-RESERVE
    BMAX R-READ-BUF-RESERVE
-   BMAX DSLOT-MAX * D-IN-BUF-RESERVE
-   BMAX DSLOT-MAX * D-OUT-BUF-RESERVE
+   BMAX DCELLS * D-IN-BUF-RESERVE
+   BMAX DCELLS * D-OUT-BUF-RESERVE
    VMAX D-NEED-BUF-RESERVE
    BMAX D-ORDER-SET-BUF-RESERVE
    BMAX D-ORDER-RESERVE
@@ -433,25 +446,25 @@ DREQ-MAX CWORK-SPAN D-REQ n                  \ the places, with repeats
 : DIN-WINDOW? ( n -- bool )
    DSLOT-CK DSLOT-MAX < ;
 
-: DRES@ ( n -- n )
-   dup DIN-WINDOW? 0= if drop DNONE exit then
-   cells D-CUR + @ ;
-
 : DRES! ( IR-ID:ir-value-id n -- )
    {: v:IR-ID:ir-value-id s:n :}
    s DIN-WINDOW? 0= if exit then
-   v VSLOT s cells D-CUR + ! ;
+   v VSLOT {: k:n :}
+   k s cells D-CUR + !
+   k s DSTORED + cells D-CUR + ! ;
 
-\ Whether the cell already held it, which is the whole of what makes a store
-\ droppable.
+\ Whether the cell already held it under either name, which is the whole of what
+\ makes a store droppable.
 : DPUT? ( IR-ID:ir-value-id n -- bool )
    {: v:IR-ID:ir-value-id s:n :}
-   s DRES@  v VSLOT =  {: had:bool :}
+   s DIN-WINDOW? 0= if false exit then
+   v VSLOT {: k:n :}
+   s cells D-CUR + @ k =  s DSTORED + cells D-CUR + @ k =  or {: had:bool :}
    v s DRES!
    had ;
 
 : DKILL ( -- )
-   DSLOT-MAX 0 ?do DNONE i cells D-CUR + ! loop ;
+   DCELLS 0 ?do DNONE i cells D-CUR + ! loop ;
 
 \ A memory order holds no register and is never dropped.
 : DNEED? ( IR-ID:ir-value-id -- bool )
@@ -1587,15 +1600,15 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    dup 0 < if E-A64SEL-SHAPE throw then ;
 
 \ ---- which block arguments are built -----------------------------------------
+: DIN-CELL ( n n -- ptr n )
+   {: b:n c:n :}
+   b BLOCK-ORD-CK DCELLS * c + cells D-IN + ;
+
+\ The edge name of slot `s` where control enters block `b`.
 : DIN-AT ( n n -- n )
    {: b:n s:n :}
    s DIN-WINDOW? 0= if DNONE exit then
-   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + @ ;
-
-: DIN-AT! ( n n n -- )
-   {: v:n b:n s:n :}
-   s DIN-WINDOW? 0= if exit then
-   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-IN + ! ;
+   b s DIN-CELL @ ;
 
 : DIN-HOLDS? ( n IR-ID:ir-value-id -- bool )
    {: b:n v:IR-ID:ir-value-id :}
@@ -2903,23 +2916,17 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ ---- which slot holds which value, over the whole routine ---------------------
 \ A slot of the caller's data stack holds a value of the source module.
-: DOUT-AT ( n n -- n )
-   {: b:n s:n :}
-   s DIN-WINDOW? 0= if DNONE exit then
-   b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + @ ;
-
-: DOUT-AT! ( n n n -- )
-   {: v:n b:n s:n :}
-   s DIN-WINDOW? 0= if exit then
-   v  b BLOCK-ORD-CK DSLOT-MAX * s + cells D-OUT + ! ;
+: DOUT-CELL ( n n -- ptr n )
+   {: b:n c:n :}
+   b BLOCK-ORD-CK DCELLS * c + cells D-OUT + ;
 
 : DCUR<IN ( n -- )
    {: b:n :}
-   DSLOT-MAX 0 ?do  b i DIN-AT  i cells D-CUR + !  loop ;
+   DCELLS 0 ?do  b i DIN-CELL @  i cells D-CUR + !  loop ;
 
 : DOUT<CUR ( n -- )
    {: b:n :}
-   DSLOT-MAX 0 ?do  i cells D-CUR + @  b i DOUT-AT!  loop ;
+   DCELLS 0 ?do  i cells D-CUR + @  b i DOUT-CELL !  loop ;
 
 : DXFER-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -2930,7 +2937,7 @@ EDGE-MAX CWORK-BUFFER EDGE-V IR-ID:ir-value-id
 
 \ ---- the meet, and the translation that makes it exact -----------------------
 align
-DSLOT-MAX CWORK-SPAN D-MEET n
+DCELLS CWORK-SPAN D-MEET n
 
 : DMEET1 ( n n -- n )
    {: a:n b:n :}
@@ -2939,17 +2946,20 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    a b = if a exit then
    DNONE ;
 
-\ Function inputs retain their value across every loop turn. Other names need
-\ an edge argument to identify the value carried into the next turn.
+\ An edge name follows its value into the block argument the edge passes it as;
+\ a stored name crosses unchanged (see DSTORED). Function inputs retain their
+\ value across every loop turn. Other edge names need an edge argument to
+\ identify the value carried into the next turn.
 : DENTRY-VALUE? ( n -- bool ) {: v:n :}
    false
    ARGS SLOT-POSITIONS 0 ?do
       0 ARGS i NEFF:SEQ-SLOT@ DIN-AT v = if drop true leave then
    loop ;
 
-: DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n -- n )
-   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id back:bool v:n :}
+: DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n n -- n )
+   {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id back:bool c:n v:n :}
    v 0 < if v exit then
+   c DSTORED >= if v exit then
    tb ARG-COUNT {: k:n :}
    DANY
    t OP-SLOT O-BR = if
@@ -2969,9 +2979,9 @@ DSLOT-MAX CWORK-SPAN D-MEET n
 : DMEET-EDGE ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- )
    {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id p:n b:n :}
    b p <= {: back:bool :}
-   DSLOT-MAX 0 ?do
+   DCELLS 0 ?do
       i cells D-MEET + @
-      t tb  back  p i DOUT-AT  DXLATE
+      t tb  back  i  p i DOUT-CELL @  DXLATE
       DMEET1
       i cells D-MEET + !
    loop ;
@@ -2990,38 +3000,43 @@ DSLOT-MAX CWORK-SPAN D-MEET n
    t  f b BLOCK-AT  p b DMEET-EDGE ;
 
 : DIN-SET? ( n n n -- bool )
-   {: v:n b:n s:n :}
-   b s DIN-AT v = if false exit then
-   v b s DIN-AT!
+   {: v:n b:n c:n :}
+   b c DIN-CELL @ v = if false exit then
+   v b c DIN-CELL !
    true ;
 
 : DMEET-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
-   DSLOT-MAX 0 ?do DANY i cells D-MEET + ! loop
+   DCELLS 0 ?do DANY i cells D-MEET + ! loop
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    f BLOCK-COUNT {: n:n :}
    bk PRED-COUNT 0 ?do
       bk i PRED-AT IR-ID:BLOCK-LOCAL R-BASE @ - {: p:n :}
       p 0 >= p n < and if f p b DMEET-FROM then
    loop
-   DSLOT-MAX 0 ?do
+   DCELLS 0 ?do
       i cells D-MEET + @  b i DIN-SET? if 1 D-MOVED ! then
    loop ;
 
 \ ---- the entry map, and the fixpoint over the rest ---------------------------
 : DIN-ANY ( n -- )
    {: b:n :}
-   DSLOT-MAX 0 ?do DANY b i DIN-AT! loop ;
+   DCELLS 0 ?do DANY b i DIN-CELL ! loop ;
 
 : DENTRY-IN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   DSLOT-MAX 0 ?do DNONE 0 i DIN-AT! loop
+   DCELLS 0 ?do DNONE 0 i DIN-CELL ! loop
    DSTACK? 0= if exit then
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    ARGS SLOT-POSITIONS {: a:n :}
    bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
    a 0 ?do
-      bk i ARG-AT VSLOT  0  ARGS i NEFF:SEQ-SLOT@  DIN-AT!
+      ARGS i NEFF:SEQ-SLOT@ {: s:n :}
+      s DIN-WINDOW? if
+         bk i ARG-AT VSLOT {: k:n :}
+         k 0 s DIN-CELL !
+         k 0 s DSTORED + DIN-CELL !
+      then
    loop ;
 
 : DIN-INIT ( IR-ID:ir-fun-id -- )
@@ -3036,7 +3051,7 @@ DSLOT-MAX CWORK-SPAN D-MEET n
 
 \ Every cell starts at "nothing said", may name one value, and may then fall to
 \ "nothing", so the descent has a bounded number of rounds.
-: DRES-ROUNDS ( -- n ) BMAX DSLOT-MAX * 2 * 2 + ;
+: DRES-ROUNDS ( -- n ) BMAX DCELLS * 2 * 2 + ;
 
 : DRES-FIX ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}

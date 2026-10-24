@@ -502,6 +502,34 @@ variable INPUT-N
    INPUTS cell+ @ 7 T=
    INPUTS 3 cells + @ 13 T= ;
 
+\ A value reaches a call or the return in the data-stack slot it already holds,
+\ so a store of it there is redundant and the regalloc verifier refuses it (-8611). Each
+\ row brings it there across a different edge: a counted loop that passes the
+\ input on as its limit (`?do` also joins the skipped loop's path, `do` does
+\ not), a join that passes it on one arm only, and a call result that crosses
+\ the loop's backedge before it is passed to the second call. SLOT-EXIT returns
+\ its inputs past a loop, so the return's stores, not a call's, meet them.
+: SLOT-MIX ( n n -- n ) swap 10 * + ;
+: SLOT-ONE ( n -- n ) 1 + ;
+: SLOT-QDO ( n n -- n ) {: a:n k:n :} k 0 ?do loop a k SLOT-MIX ;
+: SLOT-DO ( n n -- n ) {: a:n k:n :} k 0 do loop a k SLOT-MIX ;
+: SLOT-JOIN ( n n bool -- n ) {: a:n k:n f:bool :}
+   f if k else 7 then drop a k SLOT-MIX ;
+: SLOT-BACK ( n n -- n ) {: a:n k:n :}
+   a k SLOT-MIX {: m:n :} k 0 ?do loop m SLOT-ONE ;
+: SLOT-EXIT ( n n -- n n ) {: a:n k:n :} k 0 ?do loop a k ;
+
+: SLOT-CASE ( -- )
+   s" a value an edge passes on keeps its slot for the call" T-LABEL
+   3 4 SLOT-QDO 34 T=
+   3 0 SLOT-QDO 30 T=
+   3 4 SLOT-DO 34 T=
+   3 4 true SLOT-JOIN 34 T=
+   3 4 false SLOT-JOIN 34 T=
+   3 4 SLOT-BACK 35 T=
+   3 0 SLOT-BACK 31 T=
+   3 4 SLOT-EXIT 4 T= 3 T= ;
+
 public
 
 : RUN ( -- )
@@ -534,7 +562,8 @@ public
    VARSTART-CASE
    MAXSTART-CASE
    UNTIL-CASE
-   INPUT-CASE ;
+   INPUT-CASE
+   SLOT-CASE ;
 
 ;package
 
