@@ -28430,13 +28430,14 @@ private
    row RLINK.GRID cells + @ PENDING-GRID UNIT-GRAPH-REF
       swap UNIT-CELL+ UNIT-CELL+
    row RLINK.DEFER cells + @ 0 <> IF 1 ELSE 0 THEN UNIT-CELL+
-   row RLINK.FIXED-KIND cells + @
-   dup CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF
-      UNIT-CELL+
-      row RLINK.FIXED-VALUE cells + @ UNIT-CELL+
-   ELSE
-      drop 0 UNIT-CELL+ 0 UNIT-CELL+
-   THEN ;
+   \ The kind travels as it is, -1 (no reader yet) included, so an installed
+   \ link states the contract its source build stated. Only a value belongs
+   \ to the link; an address is the live owner's, as in the shipped rows.
+   row RLINK.FIXED-KIND cells + @ {: kind:n :}
+   kind UNIT-CELL+
+   kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = IF
+      row RLINK.FIXED-VALUE cells + @
+   ELSE 0 THEN UNIT-CELL+ ;
 
 : UNIT-EXPORT-LINKS ( -- )
    UNIT-NLINK @ UNIT-CELL+
@@ -29404,10 +29405,10 @@ UNIT-CON-PROJECT-INSTALL
       UNIT-READ-CELL dup 0 <> over 1 <> and IF UNIT-FORMAT-BAD THEN
          row UPL.DEFER UP!
       UNIT-READ-CELL {: kind:n :}
-      kind CHECKER-OWNER-ABI:RECORD-FIXED-NONE <
-      kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL > or IF UNIT-FORMAT-BAD THEN
+      kind -1 <
+      kind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR > or IF UNIT-FORMAT-BAD THEN
       UNIT-READ-CELL {: value:n :}
-      kind CHECKER-OWNER-ABI:RECORD-FIXED-NONE = value 0 <> and
+      kind CHECKER-OWNER-ABI:RECORD-FIXED-VAL <> value 0 <> and
          IF UNIT-FORMAT-BAD THEN
       kind row UPL.FIXED-KIND UP!
       value row UPL.FIXED-VALUE UP!
