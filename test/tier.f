@@ -946,18 +946,40 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ ---- 7c. checking off still lowers wide values ------------------------------
 \ `0 set-check` empties the hook cell: the verdict is not enforced, but each
-\ tier still scans a body unjudged, signed or not, to learn its cell widths. A
-\ tier that compiled the body one cell per value moved the pair as 1 2 7.
-: UW-PROGRAM$ ( n ptr u8 n -- ptr u8 n ) {: tier:n head:ptr hu:n :}
+\ tier still scans a body unjudged, signed or not, and a definer's signed does>
+\ clause, to learn their cell widths. A tier that compiled the body one cell
+\ per value moved the pair as 1 2 7. The clause scan leaves no latch for a
+\ later word: a tier whose publication kept it recorded the next checked
+\ definitions as creating the clause's word, and FOO and W printed -1.
+: UW-TIER ( n -- ) {: tier:n :}
    0 LN-OPEN
    tier 1 = if s" 1 set-tier " LN+ else s" 0 set-tier " LN+ then
-   s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE 0 set-check " LN+
+   s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE " LN+ ;
+
+: UW-OPEN ( n -- ) UW-TIER s" 0 set-check " LN+ ;
+
+: UW-PROGRAM$ ( n ptr u8 n -- ptr u8 n ) {: tier:n head:ptr hu:n :}
+   tier UW-OPEN
    head hu LN+
    s"  1 2 PR:MAKE swap ; : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
    LN$ ;
 
 : UW-CASE ( n ptr u8 n -- ) {: tier:n head:ptr hu:n :}
    tier head hu UW-PROGRAM$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
+
+: UW-DOES-CASE ( n -- )
+   UW-OPEN
+   s" : MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; MKP TB" LN+
+   s"  : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
+   LN$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
+
+: UW-LATCH-CASE ( n -- )
+   UW-TIER
+   s" TRUSTED: CR? ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM CHECKER-CREATES-SYM? 0<> ; " LN+
+   s" check@ 0 set-check : MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; " LN+
+   s" : OTHER ( -- n ) 3 ; set-check : FOO ( -- ) ; : W ( -- ) FOO ; " LN+
+   S\" s\" FOO\" CR? . s\" W\" CR? . s\" MKP\" CR? . s\" OTHER\" CR? . cr" LN+
+   LN$ RUN  S\" 0\n0\n0\n0\n" ASSERT-OK ;
 
 : TEST-UNCHECKED-WIDTHS ( -- )
    LEGACY? if
@@ -967,11 +989,19 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 s" TRUSTED: TB ( n -- pr n )" UW-CASE
       s" tier 0 lowers a wide value in an unchecked signature-less body" T-LABEL
       0 s" : TB" UW-CASE
+      s" tier 0 lowers a wide value in an unchecked does> clause" T-LABEL
+      0 UW-DOES-CASE
+      s" tier 0 leaves no unchecked does> clause latch for a later word" T-LABEL
+      0 UW-LATCH-CASE
    then
    s" tier 1 lowers a wide value in an unchecked : body" T-LABEL
    1 s" : TB ( n -- pr n )" UW-CASE
    s" tier 1 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
-   1 s" TRUSTED: TB ( n -- pr n )" UW-CASE ;
+   1 s" TRUSTED: TB ( n -- pr n )" UW-CASE
+   s" tier 1 lowers a wide value in an unchecked does> clause" T-LABEL
+   1 UW-DOES-CASE
+   s" tier 1 leaves no unchecked does> clause latch for a later word" T-LABEL
+   1 UW-LATCH-CASE ;
 
 : TEST-ORIGIN ( -- )
    s" known primitive text has positive native origin" T-LABEL

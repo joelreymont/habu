@@ -3140,6 +3140,16 @@ public
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 KWDOES$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ Push the does> clause's body and signature, the arguments of both clause
+\ checks: the body after `does> ` up to `; `, then TCSIG-A/U.
+: C-PUSH-DOES-CLAUSE ( -- )
+   9 DATA BODYBUF-OFF ADDI,
+   10 DATA DOESB-CELL LDR,
+   9 9 10 ADD,  9 G-PUSH
+   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
+   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH ;
+
 \ The does> clause check is the source owner's, reached through its record as
 \ tier 1 reaches it (checker-owner.f DOES-CHECK), so no word the definer's
 \ package names can stand in for it; an owner with no such field exits 70.
@@ -3154,12 +3164,7 @@ public
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    ready LBL,
-   9 DATA BODYBUF-OFF ADDI,
-   10 DATA DOESB-CELL LDR,
-   9 9 10 ADD,  9 G-PUSH
-   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
-   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
-   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
+   C-PUSH-DOES-CLAUSE
    C-CALL-X11-SAVED
    10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
       10 G-PUSH  C-PUSH-DREC-NAME
@@ -3168,6 +3173,33 @@ public
       C-CALL-X11-SAVED  10 G-POP
       C-DIE-DOES
    good LBL, ;
+
+\ A hookless definer's clause is scanned as tier 1 scans it (checker-owner.f
+\ DOES-UNJUDGED): by checker.f CHECK-DOES-UNJUDGED!, for the certificate it
+\ leaves; nobody enforces its verdict.
+: C-CALL-DOES-UNJUDGED ( -- )
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF
+   S\" hb: the source owner carries no unjudged does> scan\n" C-OWNER-FIELD
+   C-PUSH-DOES-CLAUSE
+   C-CALL-X11-SAVED
+   10 G-POP ;                                         \ the verdict, unenforced
+
+\ The hookless publication of a definer takes the clause latch the unjudged
+\ clause scan armed (checker.f DOES-EFF-LATCH!), as tier 1's checker-owner.f
+\ DOES-FINISH does: REC-WIDE-PUBLISH clears it only under a hook
+\ (EM-REC-WIDE-PUBLISH), and a latch left armed becomes the next checked
+\ record's CREATES cell. The body buffer still opens with the definer's name.
+: EM-HOOKLESS-DOES-PUBLISH ( -- )
+   LBL {: skip:label :}
+   9 DATA HOOK-CELL LDR,  9 skip CBNZ,
+   9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 skip CBZ,
+   9 DATA DOESB-CELL LDR,  9 skip CBZ,
+      C-PUSH-DREC-NAME
+      9 0 MOVN,  9 G-PUSH                              \ committed: the definer published
+      NCOMP-DISPATCH:DECL-NATIVE-DOES-FINISH-OFF
+      S\" hb: the source owner carries no does> publication\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED
+   skip LBL, ;
 
 \ Call the check hook on the body it was pushed and leave its verdict in x10.
 \ A zero verdict drops the definition, so it also cuts the rows the hook
@@ -11764,18 +11796,20 @@ public
 \ so no logged record is ever rolled back and reused. A definition with no
 \ signature records nothing.
 \ Unjudged, the body still states its widths: while `0 set-check` holds a
-\ parked hook (SUSP-HOOK-CELL), with an owner and no does> clause, pass 1
-\ scans it as a TRUSTED: body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's
-\ compiler.f CHECK-HOOKLESS), with or without a signature, and lowers from that
-\ certificate, so a wide value is not moved one cell wide. The verdict is not
-\ enforced. A signed declaration records once, on the pass that publishes. The gate is the parked
-\ hook, not the owner: the cold prefix claims the owner in checker.f before
-\ lower-cert-base.f and layout-valid.f install the certificate producer, and
-\ no hook is armed before check-hook.f, which loads after both, so a cold boot
-\ never scans.
+\ parked hook (SUSP-HOOK-CELL) with an owner, pass 1 scans it as a TRUSTED:
+\ body is scanned (C-CALL-CHECK-UNJUDGED, tier 1's compiler.f CHECK-HOOKLESS),
+\ with or without a signature, and lowers from that certificate, so a wide
+\ value is not moved one cell wide. A signed does> clause is scanned first and
+\ its certificate kept, as tier 1's CHECK-DOES-SPLIT does
+\ (C-CALL-DOES-UNJUDGED); a definer with an unsigned clause is not scanned. No
+\ verdict is enforced. A signed declaration records once, on the pass that
+\ publishes. The gate is the parked hook, not the owner: the cold prefix claims
+\ the owner in checker.f before lower-cert-base.f and layout-valid.f install
+\ the certificate producer, and no hook is armed before check-hook.f, which
+\ loads after both, so a cold boot never scans.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
-   LBL LBL LBL LBL LBL LBL LBL {: nohook:label scanned:label declared:label owned:label rejected:label inl:label done:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: nohook:label head:label scanned:label declared:label owned:label rejected:label inl:label done:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    9 DATA P2-CELL LDR,  9 publish CBNZ,               \ pass-2 second ';': no hook re-check
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -11790,7 +11824,13 @@ public
    9 DATA SUSP-HOOK-CELL LDR,  9 scanned CBZ,         \ never checked: no scan
    9 DATA P2-CELL LDR,  9 scanned CBNZ,               \ pass 1 scanned it
    9 DATA NCOMP-DISPATCH:DECL-CELL LDR,  9 scanned CBZ,
-   9 DATA DOESB-CELL LDR,  9 scanned CBNZ,
+   9 DATA DOESB-CELL LDR,  9 head CBZ,
+   9 DATA TCSIG-U-CELL LDR,  9 scanned CBZ,           \ an unsigned clause: no scan
+      C-CALL-DOES-UNJUDGED
+      NCOMP-DISPATCH:DECL-CERT-KEEP-OFF
+      S\" hb: the source owner carries no certificate keep\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED
+   head LBL,
       C-CALL-CHECK-UNJUDGED
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
@@ -11825,6 +11865,7 @@ public
    C-DOES-OCC-ROOM
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
+   EM-HOOKLESS-DOES-PUBLISH
    DOES-REC:PUBLISH
    finish LBL,
    EM-P2-FINISH

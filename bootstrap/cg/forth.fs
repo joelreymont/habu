@@ -296,9 +296,10 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 \ fields of them the publish arms call (C-CALL-OWNER-DECLARATION,
 \ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
 \ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF,
-\ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF, and of
-\ src/core/checker-owner-extension.f NATIVE-DOES-REPORT-OFF, CERT-BYTES-OFF,
-\ CERT-KEEP-OFF and CERT-KEPT-OFF (C-OWNER-FIELD).
+\ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF, DECLARED-ROW-OFF and
+\ NATIVE-DOES-FINISH-OFF, and of src/core/checker-owner-extension.f
+\ DOES-UNJUDGED-OFF, NATIVE-DOES-REPORT-OFF, CERT-BYTES-OFF, CERT-KEEP-OFF and
+\ CERT-KEPT-OFF (C-OWNER-FIELD).
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 $0 constant DECL-RAW-OFF
@@ -306,6 +307,8 @@ $8 constant DECL-EFFECT-OFF
 $A8 constant DECL-DOES-CHECK-OFF
 $1A8 constant DECL-CHECK-UNJUDGED-OFF
 $390 constant DECL-DECLARED-ROW-OFF
+$298 constant DECL-NATIVE-DOES-FINISH-OFF
+$550 constant DECL-DOES-UNJUDGED-OFF
 $558 constant DECL-NATIVE-DOES-REPORT-OFF
 $560 constant DECL-CERT-BYTES-OFF
 $568 constant DECL-CERT-KEEP-OFF
@@ -4702,6 +4705,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ MIRROR of src/habu/habu2.f C-PUSH-DOES-CLAUSE: the clause body and signature.
+: C-PUSH-DOES-CLAUSE ( -- )
+   9 DATA BODYBUF-OFF ADDI,
+   10 DATA DOESB-CELL LDR,
+   9 9 10 ADD,  9 G-PUSH
+   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
+   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH ;
+
 \ MIRROR of src/habu/habu2.f C-CALL-CHECK-DOES: the does> clause check is the
 \ source owner's, reached through its record; an owner with no such field
 \ exits 70. A refused clause is reported by the owner's does> report first.
@@ -4715,12 +4727,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    ready LBL,
-   9 DATA BODYBUF-OFF ADDI,
-   10 DATA DOESB-CELL LDR,
-   9 9 10 ADD,  9 G-PUSH
-   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
-   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
-   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
+   C-PUSH-DOES-CLAUSE
    C-CALL-X11-SAVED
    10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
       10 G-PUSH  C-PUSH-DREC-NAME
@@ -4729,6 +4736,29 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       C-CALL-X11-SAVED  10 G-POP
       C-DIE-DOES
    good LBL, ;
+
+\ MIRROR of src/habu/habu2.f C-CALL-DOES-UNJUDGED: a hookless definer's clause
+\ scan, for the certificate it leaves; its verdict is not enforced.
+: C-CALL-DOES-UNJUDGED ( -- )
+   DECL-DOES-UNJUDGED-OFF
+   S\" hb: the source owner carries no unjudged does> scan\n" C-OWNER-FIELD
+   C-PUSH-DOES-CLAUSE
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+\ MIRROR of src/habu/habu2.f EM-HOOKLESS-DOES-PUBLISH: a hookless definer's
+\ publication takes the clause latch its unjudged clause scan armed.
+: EM-HOOKLESS-DOES-PUBLISH ( -- )
+   LBL {: skip :}
+   9 DATA HOOK-CELL LDR,  9 skip CBNZ,
+   9 DATA DECL-CELL LDR,  9 skip CBZ,
+   9 DATA DOESB-CELL LDR,  9 skip CBZ,
+      C-PUSH-DREC-NAME
+      9 0 MOVN,  9 G-PUSH
+      DECL-NATIVE-DOES-FINISH-OFF
+      S\" hb: the source owner carries no does> publication\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED
+   skip LBL, ;
 
 : C-PUSH-DEFINER-BODY ( -- )                     \ MIRROR of src/habu/habu2.f
    LBL LBL {: fulllen lenok :}
@@ -7974,12 +8004,13 @@ variable P2SK
 \ Mirror habu2.f: with the hook cell empty the declaration is the definition's
 \ row, a TRUSTED: one with authority and any other without it; before
 \ checker.f claims the source the latter goes to the declared-row log. With a
-\ hook parked by `0 set-check`, an owner and no does> clause, pass 1 scans the
-\ body unjudged, signed or not, and lowers from its certificate; a signed
+\ hook parked by `0 set-check` and an owner, pass 1 scans the body unjudged,
+\ signed or not, after a signed does> clause whose certificate it keeps, and
+\ lowers from them; a definer with an unsigned clause is not scanned. A signed
 \ declaration records on the publishing pass. The cold prefix parks no hook, so it never
 \ scans before the certificate producer is installed.
 : EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
-   LBL LBL LBL LBL LBL LBL {: nohook scanned declared owned publish rejected :}
+   LBL LBL LBL LBL LBL LBL LBL {: nohook head scanned declared owned publish rejected :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    9 DATA P2-CELL LDR,  9 publish CBNZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -7994,7 +8025,13 @@ variable P2SK
    9 DATA SUSP-HOOK-CELL LDR,  9 scanned CBZ,
    9 DATA P2-CELL LDR,  9 scanned CBNZ,
    9 DATA DECL-CELL LDR,  9 scanned CBZ,
-   9 DATA DOESB-CELL LDR,  9 scanned CBNZ,
+   9 DATA DOESB-CELL LDR,  9 head CBZ,
+   9 DATA TCSIG-U-CELL LDR,  9 scanned CBZ,
+      C-CALL-DOES-UNJUDGED
+      DECL-CERT-KEEP-OFF
+      S\" hb: the source owner carries no certificate keep\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED
+   head LBL,
       C-CALL-CHECK-UNJUDGED
       [ also LOWER-TXN ] FREEZE [ previous ]
       lmain EM-P2-TRIGGER
@@ -8013,6 +8050,7 @@ variable P2SK
       C-DOES-OCC-ROOM
       LOCC-APPEND @ BL,
       EM-REC-WIDE-PUBLISH
+      EM-HOOKLESS-DOES-PUBLISH
       C-DOES-PUB
    rejected LBL,
    [ also LOWER-TXN ] FINISH [ previous ]
