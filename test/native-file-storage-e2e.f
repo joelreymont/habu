@@ -1,8 +1,8 @@
-\ The definition cache keeps one checksummed entry per definition in the build
-\ cache root. An entry a build does not use survives it, another engine's
-\ build leaves this engine's entries, concurrent builds into one root leave
-\ entries their rebuilds reuse, a corrupt entry is refused on fd 2 and
-\ rebuilt, and hb-build prunes the entries nothing has used for a day.
+\ The build cache root keeps one checksummed object per loaded file. An entry
+\ a build does not use survives it, another engine's build leaves this
+\ engine's entries, concurrent builds into one root leave entries their
+\ rebuilds reuse, a corrupt entry is refused on fd 2 and rebuilt, and hb-build
+\ prunes the entries nothing has used for a day.
 \ Run: bin/hb --load test/native-file-storage-e2e.f
 
 require src/lib/test.f
@@ -37,12 +37,12 @@ variable STALE-N
 
 : LIB-V1$ ( -- ptr u8 n )
    S\" package STORE-LIB\npublic\n: LIB-X ( -- n ) 1 ;\n: LIB-Y ( -- n ) 2 ;\n: LIB-Z ( -- n ) 3 ;\n;package\n" ;
-: LIB-V2$ ( -- ptr u8 n )
-   S\" package STORE-LIB\npublic\n: LIB-X ( -- n ) 1 ;\n: LIB-Z ( -- n ) 3 ;\n;package\n" ;
 : LIB-V3$ ( -- ptr u8 n )
    S\" package STORE-LIB\npublic\n: LIB-X ( -- n ) 1 ;\n: LIB-W ( -- n ) 5 ;\n: LIB-Z ( -- n ) 3 ;\n;package\n" ;
 : APP$ ( -- ptr u8 n )
    S\" require lib.f\n: MAIN ( -- ) STORE-LIB:LIB-X STORE-LIB:LIB-Z + . ;\n" ;
+: APP-NO-LIB$ ( -- ptr u8 n )
+   S\" : MAIN ( -- ) 7 . ;\n" ;
 : APP-EDITED$ ( -- ptr u8 n )
    S\" require lib.f\n\\ edited\n: MAIN ( -- ) STORE-LIB:LIB-X STORE-LIB:LIB-Z + . ;\n" ;
 : LIB-A$ ( -- ptr u8 n )
@@ -193,24 +193,23 @@ variable STALE-N
    CACHE-PATH CACHE-U @ [: FLIP ;] FS-LIST:EACH
    FLIP-N @ ;
 
-\ 1. A definition a build of its file does not use is still there for the next
-\ build that does: removing LIB-Y and restoring it reuses every definition.
+\ 1. A file a build does not load keeps its object for the next build that
+\ does: an app that drops lib.f and requires it again reuses lib.f's object.
 : KEEP-CASE ( -- )
    s" an entry survives a build that does not use it" T-LABEL
    s" keep" CASE-DIR
    s" keep" s" lib.f" LIB-V1$ WRITE-IN
    s" keep" s" app.f" APP$ WRITE-IN
    s" keep" SAVED-APP SUCCESS
-   s" keep" s" lib.f" LIB-V2$ WRITE-IN
+   s" keep" s" app.f" APP-NO-LIB$ WRITE-IN
    s" keep" SAVED-APP SUCCESS
-   s" keep" s" lib.f" LIB-V1$ WRITE-IN
-   s" keep" s" app.f" APP-EDITED$ WRITE-IN
+   s" keep" s" app.f" APP$ WRITE-IN
    s" keep" SAVED-APP SUCCESS
    ERR$ s" name=LIB-" CONTAINS? TFALSE
    \ A file key names the file's place in the load, not its text: the second
-   \ build stored lib.f's V2 object under V1's name, and app.f is edited.
-   REUSED 0 T=
-   COMPILED 0 T=
+   \ build stored its app.f under the first's name, so only MAIN compiles.
+   REUSED 1 T=
+   COMPILED 1 T=
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
 
