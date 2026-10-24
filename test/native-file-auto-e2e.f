@@ -15,7 +15,8 @@ package NATIVE-FILE-AUTO-TEST
 
 $8000 constant CAP
 create INPUT CAP allot  variable INPUT-U
-create TRACE CAP allot
+create TRACE CAP allot  variable TRACE-U
+variable MARK-AT
 variable HISTORY-N
 DYNAMIC-BUFFER LITERAL-IMAGE u8
 DYNAMIC-BUFFER LITERAL-COLD u8
@@ -211,43 +212,61 @@ variable HISTORY-LIB-NEW
    HISTORY-LIB-NEW @ 0 T=
    HISTORY-APP-NEW @ 0 T= ;
 
-: TRACE$ ( -- ptr u8 n )
-   s" trace" AT FILE-SIZE {: size:n :}
-   size CAP > if E-FS-IO throw then
-   s" trace" AT TRACE size READ-ALL size <> if E-FS-IO throw then
-   TRACE size ;
+: TRACE$ ( -- ptr u8 n ) TRACE TRACE-U @ ;
+
+\ Appends the next `mark=` line at or after MARK-AT in the build's output to
+\ the trace; false when no mark is left.
+: MARK+ ( -- bool )
+   OUT$ {: out:ptr outu:n :}
+   out outu s" mark=" MARK-AT @ FIND-SUB-FROM MATCH option
+     none OF false ENDOF
+     some OF IDX>N 5 + {: at:n :}
+        out at +  outu at -  {: a:ptr u:n :}
+        a u 10 INDEX-OF MATCH option
+          none OF u ENDOF
+          some OF IDX>N ENDOF
+        ;MATCH {: len:n :}
+        a len TRACE CAP TRACE-U BUF-APPEND
+        at len + MARK-AT !
+        true
+     ENDOF
+   ;MATCH ;
+
+\ Appends every mark in the last run's output to the trace, in output order.
+: MARKS ( -- ) 0 MARK-AT ! begin MARK+ 0= until ;
+
+\ A build whose marks, fresh or replayed, join the trace in output order.
+: RUN-MARKED ( -- n ) RUN-DIRECT MARKS ;
 
 : MARKED ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: name:ptr nameu:n source:ptr sourceu:n mark:ptr marku:n :}
    0 INPUT-U !
    source sourceu INPUT CAP INPUT-U BUF-APPEND
-   S\" s\" " INPUT CAP INPUT-U BUF-APPEND
-   s" trace" AT INPUT CAP INPUT-U BUF-APPEND
-   S\" \" s\" " INPUT CAP INPUT-U BUF-APPEND
+   S\" s\" mark=" INPUT CAP INPUT-U BUF-APPEND
    mark marku INPUT CAP INPUT-U BUF-APPEND
-   S\" \" APPEND-FILE\n" INPUT CAP INPUT-U BUF-APPEND
+   S\" \" type cr\n" INPUT CAP INPUT-U BUF-APPEND
    name nameu INPUT INPUT-U @ PUT ;
 
 : LEAF-SOURCE ( n -- )
    41 = if
       s" leaf.f"
-         S\" require src/lib/fs-mutate.f\npackage FILE-LEAF public\n: VALUE ( -- n ) 41 ;\n;package\n"
+         S\" package FILE-LEAF public\n: VALUE ( -- n ) 41 ;\n;package\n"
          s" L" MARKED
    else
       s" leaf.f"
-         S\" require src/lib/fs-mutate.f\npackage FILE-LEAF public\n: VALUE ( -- n ) 101 ;\n;package\n"
+         S\" package FILE-LEAF public\n: VALUE ( -- n ) 101 ;\n;package\n"
          s" L" MARKED
    then ;
 
 : VALUE-SOURCE ( -- )
    s" value.f"
-      S\" require src/lib/fs-mutate.f\nrequire leaf.f\npackage FILE-VALUE public\nFILE-LEAF:VALUE constant VALUE\n;package\n"
+      S\" require leaf.f\npackage FILE-VALUE public\nFILE-LEAF:VALUE constant VALUE\n;package\n"
       s" V" MARKED ;
 
 : APP-SOURCE ( bool bool -- )
    {: pad:bool extra:bool :}
    0 INPUT-U !
-   S\" require src/lib/fs-mutate.f\nrequire leaf.f\nrequire value.f\npackage FILE-APP public\nvariable OBSERVED\nFILE-LEAF:VALUE OBSERVED !\n"
+   S\" require leaf.f\nrequire value.f\npackage FILE-APP public\nvariable OBSERVED\nFILE-LEAF:VALUE OBSERVED !\n"
       INPUT CAP INPUT-U BUF-APPEND
    pad if S\" : PAD ( -- n ) 999 ;\n" INPUT CAP INPUT-U BUF-APPEND then
    S\" : LEFT ( -- n ) FILE-LEAF:VALUE 1+ ;\n: MAKE ( n -- ) create , does> ( -- n ) @ ;\n: WRAP ( n -- ) MAKE ;\n9 WRAP BOX\n: RIGHT ( -- n ) FILE-VALUE:VALUE 2 + ;\n: READ ( -- n ) OBSERVED @ ;\n;package\n: MAIN ( -- ) FILE-APP:LEFT . FILE-APP:BOX . FILE-APP:RIGHT . FILE-APP:READ .\n"
@@ -258,27 +277,27 @@ variable HISTORY-LIB-NEW
 
 : AUTO-CASE ( -- )
    s" source actions replay around cached native definitions" T-LABEL
-   s" trace" s" " PUT
+   0 TRACE-U !
    41 LEAF-SOURCE VALUE-SOURCE false false APP-SOURCE
-   RUN-DIRECT SUCCESS
+   RUN-MARKED SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" compiled " CONTAINS? TTRUE
-   RUN-APP SUCCESS
+   RUN-APP SUCCESS MARKS
    OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
    TRACE$ s" LVA" STR= TTRUE
    true false APP-SOURCE
-   RUN-DIRECT SUCCESS REUSED
-   RUN-APP SUCCESS
+   RUN-MARKED SUCCESS REUSED
+   RUN-APP SUCCESS MARKS
    OUT$ S\" 42\n9\n43\n41\n" CONTAINS? TTRUE
    TRACE$ s" LVALVA" STR= TTRUE
    true true APP-SOURCE
-   RUN-DIRECT SUCCESS REUSED
-   RUN-APP SUCCESS
+   RUN-MARKED SUCCESS REUSED
+   RUN-APP SUCCESS MARKS
    OUT$ S\" 42\n9\n43\n41\n7\n" CONTAINS? TTRUE
    TRACE$ s" LVALVALVA" STR= TTRUE
    101 LEAF-SOURCE
-   RUN-DIRECT SUCCESS
-   RUN-APP SUCCESS
+   RUN-MARKED SUCCESS
+   RUN-APP SUCCESS MARKS
    OUT$ S\" 102\n9\n103\n101\n7\n" CONTAINS? TTRUE
    TRACE$ s" LVALVALVALVA" STR= TTRUE
    s" app.f"
@@ -558,10 +577,8 @@ variable HISTORY-LIB-NEW
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
    s" literal-fresh-cache" AT MAKE-DIR
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" oldBBBB\" ;\n;package\n" PUT
-   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY ( -- ptr u8 n ) s\" seven77\" 2drop s\" \" 2drop s\" twelve123456\" 2drop s\" oldBBBB\" ;\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: SCALAR-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do 42 + loop ;\ns\" scalar-loop-folded \" type NLOOP:FOLDED . cr\n: BODY-PTR ( -- n ) c\" oldBBBB\" LIT-PTR>N ;\n: MAIN ( -- ) BODY type cr 3 BODY-LOOP 3 BODY-PTR * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
+   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY ( -- ptr u8 n ) s\" seven77\" 2drop s\" \" 2drop s\" twelve123456\" 2drop s\" oldBBBB\" ;\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\n: BODY-PTR ( -- n ) c\" oldBBBB\" LIT-PTR>N ;\n: MAIN ( -- ) BODY type cr 3 BODY-LOOP 3 BODY-PTR * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
    RUN-DEFINITION SUCCESS
-   OUT$ s" address-loop-folded 0" CONTAINS? TTRUE
-   OUT$ s" scalar-loop-folded 1" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" oldBBBB" CONTAINS? TTRUE
    OUT$ s" loop-ok" CONTAINS? TTRUE
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" changed-prefix\" ;\n;package\n" PUT
@@ -579,12 +596,13 @@ variable HISTORY-LIB-NEW
    s" literal-loop-cache" AT MAKE-DIR
    s" literal-loop-fresh-cache" AT MAKE-DIR
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" oldBBBB\" ;\n;package\n" PUT
-   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
+   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: SCALAR-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do 42 + loop ;\ns\" scalar-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
    RUN-LITERAL-LOOP SUCCESS
    OUT$ s" address-loop-folded 0" CONTAINS? TTRUE
+   OUT$ s" scalar-loop-folded 1" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" oldBBBB\nloop-ok\n" CONTAINS? TTRUE
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" changed-prefix\" ;\n;package\n" PUT
-   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr 7 drop ;\n" PUT
+   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\ns\" address-loop-folded \" type NLOOP:FOLDED . cr\n: SCALAR-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do 42 + loop ;\ns\" scalar-loop-folded \" type NLOOP:FOLDED . cr\n: MAIN ( -- ) FILE-LITERAL:OLD type cr 3 BODY-LOOP 3 c\" oldBBBB\" LIT-PTR>N * = if s\" loop-ok\" else s\" loop-bad\" then type cr 7 drop ;\n" PUT
    RUN-LITERAL-LOOP SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" changed-prefix\nloop-ok\n" CONTAINS? TTRUE
