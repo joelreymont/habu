@@ -101,7 +101,6 @@ DYNAMIC-BUFFER MEMBERS n
 DYNAMIC-BUFFER HWORK u8
 \ The declared address cells inside one DATA extent, as offsets into it.
 DYNAMIC-BUFFER PTRS n
-variable PTR-N
 \ A run's queue: the epoch stamp of each record queued, and the queue of the
 \ file's own records to walk through and the other records to capture.
 DYNAMIC-BUFFER RMARK n
@@ -679,19 +678,17 @@ CAST: AS-FACTS ( n -- [ -- n bool ] )
 \ as offsets from start; their count.
 : DECLARED ( n n -- n )
    {: start:n end:n :}
-   0 PTR-N !
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: data:n :}
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
-   count 0 ?do
+   0 count 0 ?do
       rows i cells + @ SNAP-RELOC:XTCELL-OFF-MASK and data + {: site:n :}
       site start >= site CELL + end <= and if
-         PTR-N @ 1+ PTRS-RESERVE
-         site start - PTR-N @ PTRS !
-         1 PTR-N +!
+         dup 1+ PTRS-RESERVE
+         site start - over PTRS !
+         1+
       then
    loop
-   PTR-N @ 1 > if 0 PTRS PTR-N @ [: < ;] SORT:SORT! then
-   PTR-N @ ;
+   dup 1 > if 0 PTRS over [: < ;] SORT:SORT! then ;
 
 \ ord's DATA digest in HOUT over its extent up to the next record origin
 \ within its limits, and that extent in bytes; 0 when ord has no DATA origin
@@ -1699,6 +1696,7 @@ public
    FRUNS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
    DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
+   PTRS-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    0 REACH-XT ! 0 FIND-XT ! 0 FACTS-XT !
