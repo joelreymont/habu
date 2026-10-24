@@ -3486,7 +3486,7 @@ TRUSTED: REC-PATCH ( n -- )
 CAST: CK-PREP-XT ( n -- [ ptr u8 n [ n n -- ptr u8 ] -- n ] )
 CAST: CK-INSTALL-XT ( n -- [ n -- ] )
 
-\ The plan PREPARE-SLICE keeps open for INSTALL-CHECKER; -1 when none is.
+\ The plan PREPARE-SLICE? keeps open for INSTALL-CHECKER; -1 when none is.
 variable CHECK-PLAN
 -1 CHECK-PLAN !
 
@@ -3516,7 +3516,7 @@ public
 
 \ End the kept checker plan, which will not be installed; nothing when none
 \ is kept. The checker's PREPARE-END resets every projection and plan row the
-\ preparation set, so the state is the one before PREPARE-SLICE.
+\ preparation set, so the state is the one before PREPARE-SLICE?.
 : RELEASE-CHECKER ( -- )
    CHECK-PLAN @ 0 < if exit then
    -1 CHECK-PLAN !
@@ -3526,17 +3526,17 @@ private
 
 \ Prepare the viewed object's checker slice k on the state the file's mark
 \ saw, before the install side effects of the segment it follows, and keep
-\ the plan for INSTALL-CHECKER. The file's references are prepared as
-\ INSTALL-SEGMENT prepares them, through the segment map, which holds the
-\ row of the segment the slice follows at the cursors its install takes. A
-\ slice the checker refuses (its unit codes, a type-family plan refusal, a
-\ FILE dependency whose family contract changed) is BAD, and a refusal
-\ keeps no plan. The object checksum is the integrity boundary: an object
-\ that passes it was written by this engine's writer, so the checker's own
-\ refusals are misses, while its fail-stop validators (checker.f
-\ ASIG-GRAPH-DIE, type-family.f REG-AOT-PARAM?) stay fail-stop for an object
-\ altered and resealed.
-: PREPARE-SLICE ( n -- )
+\ the plan for INSTALL-CHECKER; true when it prepared. The file's
+\ references are prepared as INSTALL-SEGMENT prepares them, through the
+\ segment map, which holds the row of the segment the slice follows at the
+\ cursors its install takes. A slice the checker refuses (its unit codes, a
+\ type-family plan refusal, a FILE dependency whose family contract
+\ changed) is false, and a refusal keeps no plan. The object checksum is
+\ the integrity boundary: an object that passes it was written by this
+\ engine's writer, so the checker's own refusals are misses, while its
+\ fail-stop validators (checker.f ASIG-GRAPH-DIE, type-family.f
+\ REG-AOT-PARAM?) stay fail-stop for an object altered and resealed.
+: PREPARE-SLICE? ( n -- bool )
    {: k:n :}
    FILE-REFS
    5 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
@@ -3549,8 +3549,9 @@ private
       sec at + LE:U64@ 7 + -8 and at + 8 +
    loop IMPORT-OFF !
    ['] PREPARE-BODY catch {: rc:n :}
-   rc CHECK-CODE? rc FAMILY-CODE? or if BAD then
-   rc 0<> if rc throw then ;
+   rc CHECK-CODE? rc FAMILY-CODE? or if false exit then
+   rc 0<> if rc throw then
+   true ;
 
 \ Install the kept plan on the records INSTALL-SEGMENT made, then end it. A
 \ state the checker refuses here is a malformed object.
@@ -3568,18 +3569,23 @@ public
 : BIND-LOCAL ( -- ) ['] MAP-LOCAL NFILE-REF:LOCAL-AT! ;
 
 \ Install the checker slices from the next one through slice n, the one the
-\ file left before its load n, or at its end when n is its load count. A
-\ slice that follows a segment was prepared before that segment installed,
-\ slice 0 by PREPARE-CHECKER, and is the plan kept; one that follows no
-\ segment is prepared here, on the state the loads before it left.
+\ file left before its load n, or at its end when n is its load count. Each
+\ is the plan kept: slice 0 prepared by PREPARE-CHECKER, a later slice that
+\ follows a segment by PREPARE-SEGMENT before that segment installed, and
+\ one that follows no segment by PREPARE-CHECKS on the state the loads
+\ before it left.
 : INSTALL-CHECKS ( n -- )
    {: n:n :}
    INS-SLICE @ n > if exit then
-   n 1+ INS-SLICE @ ?do
-      CHECK-PLAN @ 0 < if i PREPARE-SLICE then
-      INSTALL-CHECKER
-   loop
+   n 1+ INS-SLICE @ ?do INSTALL-CHECKER loop
    n 1+ INS-SLICE ! ;
+
+\ Prepare checker slice n, one that follows no segment, on the state the
+\ loads before it left, and keep its plan for INSTALL-CHECKS: "" when it
+\ prepared, else the reason it did not, with no plan kept.
+: PREPARE-CHECKS ( n -- ptr u8 n )
+   PREPARE-SLICE? if s" " exit then
+   s" checker-prepare" ;
 
 private
 
@@ -3747,16 +3753,22 @@ TRUSTED: SLOT-STORE ( n n n -- )
    flags DNAME-MIN-IN-MASK and 52 rshift {: minin:n :}
    minin 0<> if ndict@ 1- minin REC-MIN-IN then ;
 
+\ View the payload index row row frames at offset off of the definitions
+\ slot defs, defsu bytes; its size. The view replaces the FILE sections.
+: PAYLOAD-AT ( ptr u8 ptr u8 n n -- n )
+   {: row:ptr defs:ptr defsu:n off:n :}
+   row defsu off - ROW-SIZE {: total:n :}
+   DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
+   total ;
+
 \ View definition index row row's payload, the next in the definitions slot:
 \ index rows pair with colon records in ordinal order.
 : PAYLOAD-VIEW ( n -- )
    {: row:n :}
    row INS-ROW @ <> if BAD then
-   2 NUNIT-FILE:SECTION$ drop row INDEX-BYTES * + {: ix:ptr :}
-   0 NUNIT-FILE:SECTION$ {: defs:ptr defsu:n :}
-   ix defsu INS-DEFS-OFF @ - ROW-SIZE {: total:n :}
-   DEF-SLOTS ix 8 + defs INS-DEFS-OFF @ + total NUNIT-FILE:SECTIONS-VIEW
-   total INS-DEFS-OFF +! 1 INS-ROW +! ;
+   2 NUNIT-FILE:SECTION$ drop row INDEX-BYTES * +
+   0 NUNIT-FILE:SECTION$ INS-DEFS-OFF @ PAYLOAD-AT
+   INS-DEFS-OFF +! 1 INS-ROW +! ;
 
 \ Prepare the viewed payload against the pending record def-open made: its
 \ code, literals, calls, addresses and host facts. A payload carries no
@@ -4046,7 +4058,7 @@ TRUSTED: SLOT-STORE ( n n n -- )
 public
 
 \ Prepare the viewed object's checker slice 0 before any install side
-\ effect, as PREPARE-SLICE does, and keep its plan for the install. A
+\ effect, as PREPARE-SLICE? does, and keep its plan for the install. A
 \ leading segment's records resolve through its map row at the present
 \ cursors, where the install puts them, in a map frame past the installing
 \ parent's rows as INSTALL-BEGIN opens the file's; the parent's frame is
@@ -4056,17 +4068,16 @@ public
    INS-SEGS @ {: segs:n :}
    at segs + INS-MAP-AT ! 0 INS-SEGS !
    0 OBJ-EV 0 U64-AT EV-SEGMENT = if 0 0 0 0 MAP-ROW then
-   [: 0 PREPARE-SLICE ;] catch {: rc:n :}
+   [: 0 PREPARE-SLICE? 0= if BAD then ;] catch {: rc:n :}
    at INS-MAP-AT ! segs INS-SEGS !
    rc 0<> if rc throw then ;
 
-\ Event row seg, a segment: its map row, its checker slice prepared when a
-\ load precedes it, its records with its DATA bytes, the wordlists they
-\ make and their protection, its require rows, its FFI rows, then the
+\ Event row seg, a segment: its records with its DATA bytes, the wordlists
+\ they make and their protection, its require rows, its FFI rows, then the
 \ checker slices through its own. The file's first segment starts at the
-\ file's first ordinal; one after a load starts wherever the loads left
-\ the dictionary, and its data alignment and checker slice were not checked
-\ before the install, so a different one or a refused slice is a stale
+\ file's first ordinal and adds its map row here; one after a load starts
+\ wherever the loads left the dictionary, and PREPARE-SEGMENT added its map
+\ row and prepared its checker slice. Every refusal here is a malformed
 \ object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
@@ -4080,11 +4091,8 @@ public
    ev 5 U64-AT {: wids:n :}
    loads 0= if
       INS-FIRST @ first + ndict@ <> if BAD then
-   else
-      ev rows SEG-ALIGNED? 0= if BAD then
+      seg rows wbase dbase MAP-ROW
    then
-   seg rows wbase dbase MAP-ROW
-   loads 0 > if loads PREPARE-SLICE then
    AOT-ARM:HERE-N INS-DATA ! bytes INS-DATA-U ! 0 INS-DATA-AT !
    FILE-REFS
    count 0 ?do rows i + INSTALL-RECORD loop
@@ -4127,8 +4135,7 @@ private
       row SPAN-END + LE:U64@ {: end:n :}
       at 0 < end srcu > or if BAD then
       at end < at end or 0= or 0= if BAD then
-      row defsu off - ROW-SIZE {: total:n :}
-      DEF-SLOTS row 8 + defs off + total NUNIT-FILE:SECTIONS-VIEW
+      row defs defsu off PAYLOAD-AT {: total:n :}
       PAYLOAD-CK
       PAYLOAD-PLAN
       ord off total +
@@ -4152,8 +4159,8 @@ private
 \ the last payload. OPEN-POOL-ROOM says whether the pool takes them all
 \ without opening a segment, which would land at HERE, inside the DATA the
 \ file's cold load laid out. A child loaded between the object's segments
-\ can still use the room up; that later segment is then stale at its
-\ install. The caller closes the plan.
+\ can still use the room up; SEGMENT-ROOM? checks that later segment's
+\ payloads before its install. The caller closes the plan.
 : POOL-PLAN ( ptr u8 n ptr u8 n ptr u8 n n -- n )
    {: lits:ptr litsu:n defs:ptr defsu:n index:ptr count:n srcu:n :}
    AOT-ARM:HERE-N {: start:n :}
@@ -4162,7 +4169,54 @@ private
    defs defsu index count srcu DEFS-CK
    DEF-PREP-DATA-END start = OPEN-POOL-ROOM ! ;
 
+\ Plan the literals of the n payloads from index row row, at offset off of
+\ the definitions slot defs, defsu bytes, into one plan begun at HERE, as
+\ DEFS-CK plans the file's; whether the pool takes them all without opening
+\ a segment. The caller closes the plan.
+: ROOM-CK ( ptr u8 ptr u8 n n n n -- bool )
+   {: index:ptr defs:ptr defsu:n row:n off:n n:n :}
+   AOT-ARM:HERE-N {: start:n :}
+   start DEF-PREP-BEGIN
+   off n 0 ?do
+      {: at:n :}
+      index row i + INDEX-BYTES * + defs defsu at PAYLOAD-AT {: total:n :}
+      PAYLOAD-PLAN
+      at total +
+   loop drop
+   DEF-PREP-DATA-END start = ;
+
+\ Whether segment row ev's payloads, the next ones for its own colon
+\ records from row rows, take the literal pool's room at HERE, which the
+\ loads before the segment moved: DEFS-CK found the file's took it at
+\ HERE when the object opened. Nothing is written, and the FILE sections
+\ are viewed again.
+: SEGMENT-ROOM? ( ptr u8 n -- bool )
+   {: ev:ptr rows:n :}
+   0 ev 2 U64-AT 0 ?do rows i + OBJ-ROW 0 U64-AT RK-COLON = if 1+ then loop
+   {: n:n :}
+   n 0= if true exit then
+   2 NUNIT-FILE:SECTION$ drop 0 NUNIT-FILE:SECTION$ INS-ROW @ INS-DEFS-OFF @ n
+      ['] ROOM-CK ['] DEF-PREP-CLOSE finally
+   FILE-VIEW ;
+
 public
+
+\ Prepare event row seg, a segment after a load, on the state the loads
+\ left and before any of its install side effects: its DATA alignment, its
+\ payloads' literal pool room, its map row and its checker slice, whose
+\ plan is kept for INSTALL-SEGMENT. "" when it prepared, else the reason it
+\ did not, with the map and the checker as they were. A code PREPARE-SLICE?
+\ rethrows ends the run, so it leaves the map row in place.
+: PREPARE-SEGMENT ( n -- ptr u8 n )
+   {: seg:n :}
+   seg OBJ-EV {: ev:ptr :}
+   seg SEG-BASES {: rows:n wbase:n dbase:n rbase:n loads:n :}
+   ev rows SEG-ALIGNED? 0= if s" data-alignment" exit then
+   ev rows SEGMENT-ROOM? 0= if s" literal-pool" exit then
+   seg rows wbase dbase MAP-ROW
+   loads PREPARE-SLICE? if s" " exit then
+   -1 INS-SEGS +!
+   s" checker-prepare" ;
 
 \ Check a FILE object's framing: the dependency and input rows are well
 \ formed, the segment sections agree, and the index rows frame the
@@ -4301,16 +4355,20 @@ public
    INS-MAP-AT @ INS-SEGS @ + INS-MAP-AT ! 0 INS-SEGS !
    ndict@ INS-FIRST ! 0 INS-ROW ! 0 INS-DEFS-OFF ! 0 INS-SLICE ! ;
 
-\ End the install, its checker slices installed: every segment and
-\ definition installed, the view released and the file's map rows dropped.
+\ Stop the install: the view released and the file's map rows dropped.
 \ INS-MAP-AT stays at the file's first row, where the installing parent's
 \ rows end: a sibling's rows start there again, and the parent's own rows
 \ stay as INSTALL-RESTORE finds them.
+: INSTALL-STOP ( -- )
+   NUNIT-FILE:RESET-KEEP
+   0 INS-SEGS ! ;
+
+\ End the install, its checker slices installed: every segment and
+\ definition installed, then INSTALL-STOP.
 : INSTALL-END ( -- )
    FILE-REFS EARLIER-SLOTS!
    INS-SEGS @ OPEN-SEGS @ <> INS-ROW @ OPEN-DEFS @ <> or if BAD then
-   NUNIT-FILE:RESET-KEEP
-   0 INS-SEGS ! ;
+   INSTALL-STOP ;
 
 \ The installing file's place, kept across a child load: its next index row
 \ and payload offset, its map rows and its next checker slice.
@@ -4349,19 +4407,9 @@ public
    18 NUNIT-FILE:SECTION$ drop LE:U64@ OPEN-SINK !
    19 NUNIT-FILE:SECTION$ nip OPEN-OUT ! ;
 
-\ The viewed object's event rows: their count, row k's kind, a SEGMENT
-\ row's dependency row mark, and whether no SEGMENT or LOAD row follows
-\ row k.
+\ The viewed object's event rows: their count and row k's kind.
 : EVENT-COUNT ( -- n ) OBJ-EVS ;
 : EVENT-KIND ( n -- n ) OBJ-EV 0 U64-AT ;
-: SEGMENT-MARK ( n -- n ) OBJ-EV 7 U64-AT ;
-: LAST-SEGMENT? ( n -- bool )
-   {: k:n :}
-   OBJ-EVS k 1+ ?do
-      i EVENT-KIND {: kind:n :}
-      kind EV-SEGMENT = kind EV-LOAD = or if false unloop exit then
-   loop
-   true ;
 
 \ LOAD row k's load kind, the child's path and its root, and the source
 \ offset the loading file resumes at.
@@ -4387,6 +4435,12 @@ public
          if bytes LE:U64@ qemit execute else bytes len qwrite execute then
       at OUT-HEAD-BYTES + len +
    repeat drop ;
+
+\ LOAD row k's dependency row count and input row offset: what the file
+\ had recorded before the load.
+: LOAD-ENDS ( n -- n n )
+   OBJ-EV {: ev:ptr :}
+   ev 9 U64-AT ev 10 U64-AT ;
 
 \ The FILE object OPEN-FILE found has a well formed slot 18; only then is its
 \ origin sink kind ORIGIN-KIND.

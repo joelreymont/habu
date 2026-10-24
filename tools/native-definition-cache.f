@@ -1539,12 +1539,18 @@ variable USER-SEEN
 \ The viewed object's dependency row count.
 : ALL-ROWS ( -- n ) 14 NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT ;
 
-\ The dependency rows segment row k checks up to: its mark, or every row for
-\ the last segment, since rows bound in FILE-ENCODE come after its mark.
-: SEGMENT-END ( n -- n )
+\ The dependency rows the interval after event row k checks up to: those
+\ the file recorded before the first LOAD row after row k, or every row
+\ when no load follows, since rows bound in FILE-ENCODE come after the last
+\ load's.
+: INTERVAL-END ( n -- n )
    {: k:n :}
-   k NUNIT-OBJECT:LAST-SEGMENT? if ALL-ROWS exit then
-   k NUNIT-OBJECT:SEGMENT-MARK ;
+   NUNIT-OBJECT:EVENT-COUNT k 1+ ?do
+      i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if
+         i NUNIT-OBJECT:LOAD-ENDS drop unloop exit
+      then
+   loop
+   ALL-ROWS ;
 
 \ The head of the line that names a stale replay at event row k.
 : STALE-HEAD ( n -- )
@@ -1603,7 +1609,7 @@ variable USER-SEEN
 \ defines is live. A failed check prints its line.
 : SEGMENT-HOLDS? ( n -- bool )
    {: k:n :}
-   k SEGMENT-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
+   k INTERVAL-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
    k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
    k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
    2drop true ;
@@ -1666,10 +1672,11 @@ variable USER-SEEN
    LOAD-ROOTS? 0= if s" load-root" OBJECT-MISS false exit then
    OBJECT-FRESH? 0= if s" input-stale" OBJECT-MISS false exit then
    \ A leading segment installs before any load, on the state this check
-   \ sees; one after a load is checked by the replay.
-   0 NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = if
-      0 SEGMENT-HOLDS? 0= if NUNIT-FILE:RESET-KEEP false exit then
-   then
+   \ sees, and a leading load's interval is the rows recorded before it; an
+   \ interval after a load is checked by the replay.
+   0 NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = if 0 SEGMENT-HOLDS?
+   else -1 INTERVAL-END SEGMENT-FRESH? then
+   0= if NUNIT-FILE:RESET-KEEP false exit then
    CHECKER-PREPARED? 0= if s" checker-prepare" OBJECT-MISS false exit then
    true ;
 
@@ -1716,26 +1723,60 @@ variable IMPORT-AT
    row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE ;
 
-\ The replay steps NAMED-STEP runs, each keeping its argument for catch:
-\ install segment row i; install the checker slices through slice n, the one
-\ before load n; install them through the last, n the file's load count, and
-\ end the install.
-: SEGMENT-STEP ( n -- n ) dup NUNIT-OBJECT:INSTALL-SEGMENT ORIGIN-INSTALL ;
-: CHECKS-STEP ( n -- n ) dup NUNIT-OBJECT:INSTALL-CHECKS ;
-: END-STEP ( n -- n ) CHECKS-STEP NUNIT-OBJECT:INSTALL-END ;
-
-\ Run replay step q on arg at event row k. The install has begun, so a
-\ refusal there leaves the file half installed: under diagnostics its stale
-\ line names row k, and REPLAY-STALE ends the run for a rerun.
-: NAMED-STEP ( n [ n -- n ] n -- )
-   {: arg:n q k:n :}
-   arg q catch {: rc:n :} drop
-   rc 0= if exit then
-   rc E-NUNIT-PROFILE = if
-      NUNIT-DEP:DIAG? @ if k STALE-HEAD S\"  reason=install\n" DIAG-W2 then
-      REPLAY-STALE
+\ Event row k's interval did not prepare on the state the loads before it
+\ left, for reason why: the file is half installed, so under diagnostics
+\ its stale line names the reason, and REPLAY-STALE ends the run for a
+\ rerun without this object.
+: PREPARE-STALE ( ptr u8 n n -- )
+   {: why:ptr whyu:n k:n :}
+   NUNIT-DEP:DIAG? @ if
+      k STALE-HEAD s"  reason=" DIAG-W2 why whyu DIAG-W2 S\" \n" DIAG-W2
    then
-   rc throw ;
+   REPLAY-STALE ;
+
+\ Segment row k, which follows a load, holds and is prepared on the state
+\ the loads left, before any of its install side effects.
+: SEGMENT-READY ( n -- )
+   {: k:n :}
+   k SEGMENT-HOLDS? 0= if REPLAY-STALE then
+   k NUNIT-OBJECT:PREPARE-SEGMENT {: why:ptr whyu:n :}
+   whyu 0<> if why whyu k PREPARE-STALE then ;
+
+\ Event row k is a SEGMENT row; false past the last row.
+: SEGMENT-AT? ( n -- bool )
+   {: k:n :}
+   k NUNIT-OBJECT:EVENT-COUNT < if
+      k NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = exit
+   then
+   false ;
+
+\ The interval after LOAD row k holds no segment, only the checker slice
+\ numbered slice: its dependency rows hold and the slice is prepared on the
+\ state the load left, or the replay goes stale, named as the row after k.
+: CHECKS-READY ( n n -- )
+   {: k:n slice:n :}
+   k INTERVAL-END SEGMENT-FRESH? 0= if k 1+ SEGMENT-STALE-ROWS REPLAY-STALE then
+   slice NUNIT-OBJECT:PREPARE-CHECKS {: why:ptr whyu:n :}
+   whyu 0<> if why whyu k 1+ PREPARE-STALE then ;
+
+\ The viewed object's input rows from offset from to offset to go to the
+\ session manifest: those the file recorded in that interval.
+: INPUTS-APPEND ( n n -- )
+   {: from:n to:n :}
+   11 NUNIT-FILE:SECTION$ drop from + to from - NFILE-INPUTS:APPEND ;
+
+\ Replay LOAD row k, the file's load loads: the checker slices before it
+\ are installed, the input rows the file recorded from offset prev to the load go
+\ to the session manifest, the child loads, and an interval after it with
+\ no segment is made ready. The input offset the load is at.
+: LOAD-STEP ( n n n -- n )
+   {: k:n loads:n prev:n :}
+   loads NUNIT-OBJECT:INSTALL-CHECKS
+   k NUNIT-OBJECT:LOAD-ENDS nip {: inputs:n :}
+   prev inputs INPUTS-APPEND
+   k REPLAY-LOAD
+   k 1+ SEGMENT-AT? 0= if k loads 1+ CHECKS-READY then
+   inputs ;
 
 \ OUT row k's operations, issued again in their order: an emit to the output
 \ device's emit operation, as GENIO:EMIT reached it, and a write through the
@@ -1757,33 +1798,29 @@ variable IMPORT-AT
 \ Install the viewed object in place of running the file: its segments and
 \ its child loads in their order, each checker slice before the load that
 \ follows it, and the output each segment's top level wrote, after the
-\ segment. A segment after a load is checked, and its checker slice
-\ prepared, on the state the loads left; one stale there ends the run for
-\ a rerun without this object (REPLAY-STALE). The session manifest keeps the
-\ input rows the skipped load would have recorded.
+\ segment. Each interval after a load, a segment or checker slice, is
+\ checked and prepared on the state the loads left before it installs; one
+\ stale there ends the run for a rerun without this object (REPLAY-STALE).
+\ Every refusal past a preparation is a malformed object. The session
+\ manifest gets the input rows the skipped load would have recorded, in
+\ the order it recorded them, between its children's.
 : REPLAY-OBJECT ( -- )
-   11 NUNIT-FILE:SECTION$ NFILE-INPUTS:APPEND
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-BEGIN
-   0 NUNIT-OBJECT:EVENT-COUNT 0 ?do
-      {: loads:n :}
+   0 0 NUNIT-OBJECT:EVENT-COUNT 0 ?do
+      {: loads:n prev:n :}
       i NUNIT-OBJECT:EVENT-KIND {: kind:n :}
       kind NUNIT-OBJECT:EV-SEGMENT = if
-         i 0 > if i SEGMENT-HOLDS? 0= if REPLAY-STALE then then
-         i ['] SEGMENT-STEP i NAMED-STEP
+         loads 0 > if i SEGMENT-READY then
+         i NUNIT-OBJECT:INSTALL-SEGMENT ORIGIN-INSTALL
       then
       kind NUNIT-OBJECT:EV-LOAD = if
-         loads ['] CHECKS-STEP i NAMED-STEP
-         i REPLAY-LOAD
-         loads 1+
-      else loads then
+         loads 1+ i loads prev LOAD-STEP
+      else loads prev then
       kind NUNIT-OBJECT:EV-OUT = if i REPLAY-OUT then
-   loop {: all:n :}
-   \ Rows bound after a trailing load are checked once it ran; a stale one
-   \ is named as the segment past the last event.
-   ALL-ROWS SEGMENT-FRESH? 0= if
-      NUNIT-OBJECT:EVENT-COUNT SEGMENT-STALE-ROWS REPLAY-STALE
-   then
-   all ['] END-STEP NUNIT-OBJECT:EVENT-COUNT NAMED-STEP
+   loop {: all:n prev:n :}
+   all NUNIT-OBJECT:INSTALL-CHECKS
+   prev 11 NUNIT-FILE:SECTION$ nip INPUTS-APPEND
+   NUNIT-OBJECT:INSTALL-END
    KEPT-KEY FILE-PATH BUILD-CACHE:USED drop
    1 REUSED-N +!
    NUNIT-DEP:DIAG? @ 0= if exit then
