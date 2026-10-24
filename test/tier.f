@@ -527,6 +527,22 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" TRUSTED: DB-T ( n n n -- ) {: -- q:dbpair :} q DBPAIR:UNMAKE . . ; " LN+
    s" TRUSTED: DB-SHOW ( -- ) 9 1 2 DB-T cr ; DB-SHOW" LN+ LN$ ;
 
+\ A pair-typed local after two one-cell locals binds the top two cells, so `a`
+\ binds the 1 beneath them.
+: PAIR-LAST$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE plpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: PL-T ( n n n n -- ) {: a z p:plpair :} p PLPAIR:UNMAKE . . a . ; " LN+
+   s" TRUSTED: PL-SHOW ( -- ) 1 2 3 4 PL-T cr ; PL-SHOW" LN+ LN$ ;
+
+\ A pair-typed local between one-cell locals binds the two cells between them,
+\ and leaves the body whole.
+: PAIR-MID$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE pmpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   S\" TRUSTED: PM-T ( -- pmpair ) s\" x\" drop 1 2 5 {: q:n p:pmpair r :} p ; " LN+
+   s" : PM-SHOW ( -- ) PM-T PMPAIR:UNMAKE . . cr ; PM-SHOW" LN+ LN$ ;
+
 \ The whole of tier 0's refusal of an incomplete certificate, and no output.
 : ASSERT-INCOMPLETE ( ptr u8 n -- ) {: want:ptr want-u:n :}
    INCOMPLETE-RC ASSERT-RC
@@ -647,12 +663,21 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 INCOMPLETE-LOST$ RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
       s" a hookless body with incomplete width facts is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-HOOKLESS$ RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
-      \ Tier 0 only: tier 1 carves this bind at the wrong cells (dot habu-tier-1-binds-c45e8e92).
       s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
       0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
+      s" a TRUSTED: pair local after one-cell locals binds the top cells on tier 0" T-LABEL
+      0 PAIR-LAST$ RUN  S\" 4\n3\n1\n" ASSERT-OK
+      s" a TRUSTED: pair local between one-cell locals binds its cells on tier 0" T-LABEL
+      0 PAIR-MID$ RUN  S\" 2\n1\n" ASSERT-OK
    then
    s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
    1 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+   s" a `--` in a TRUSTED: bind is bound as a local on tier 1" T-LABEL
+   1 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
+   s" a TRUSTED: pair local after one-cell locals binds the top cells on tier 1" T-LABEL
+   1 PAIR-LAST$ RUN  S\" 4\n3\n1\n" ASSERT-OK
+   s" a TRUSTED: pair local between one-cell locals binds its cells on tier 1" T-LABEL
+   1 PAIR-MID$ RUN  S\" 2\n1\n" ASSERT-OK
    s" rejected TRUSTED: bodies move two-cell values on tier 1" T-LABEL
    1 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
    s" the checked twin is refused at its token on tier 1" T-LABEL

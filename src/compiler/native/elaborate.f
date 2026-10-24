@@ -1737,6 +1737,18 @@ CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
    r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then
    r ix DECLARE-LOCAL ;
 
+\ A local is as wide as its certified bind (NFETCH:BIND-WIDTH), not as the
+\ cells beneath it are glued: an unjudged body binds a two-cell local over
+\ cells no layout value grouped. The scan numbers binds in declaration order,
+\ as DECLARE-LOCAL numbers locals, so local d is bind d of the certificate split
+\ the body was read from, and that scan must have counted exactly these
+\ locals. A direct tape has no scan to say how wide a local is.
+: BINDS-CK ( n -- )
+   {: lo:n :}
+   LN @ 0= if exit then
+   EXACT-SOURCE @ 0= if E-NELAB-LOCAL throw then
+   VW lo TOK-OFF NFETCH:BINDS LN @ <> if E-NELAB-LOCAL throw then ;
+
 \ A name still in scope when the body ends is in scope for the whole of it.
 : LOCALS-SCAN ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
@@ -3757,11 +3769,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 
 
 \ Lexical slots count names; the live vector holds every cell of each name.
-: BIND-VALUE ( n n n -- n n )
-   {: base:n d:n s:n :}
-   base 1+
-   begin dup VN @ < if dup VGLUE-BIT? else false then while 1+ repeat
-   base - {: w:n :}
+: BIND-VALUE ( n n n n -- n n )
+   {: base:n d:n s:n w:n :}
    s d cells LBASE + !
    w d cells LWIDTH + !
    w 0 ?do  base i + d s i + BIND-ONE  loop
@@ -3775,12 +3784,13 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    LGB @ LG-K@ {: k:n :}
    LGB @ LG-F@ {: d0:n :}
    LBN @ {: from:n :}
-   k VROWS-CELLS {: w:n :}
-   w 0 < if E-NELAB-UNDER throw then
+   VW ix TOK-OFF {: off:n :}
+   0 k 0 ?do  off d0 i + NFETCH:BIND-WIDTH +  loop {: w:n :}
+   w VN @ > if E-NELAB-UNDER throw then
    from w + LOCAL-VALUES-ROOM
    VN @ w - from
    k 0 ?do
-      d0 i + swap BIND-VALUE
+      d0 i + swap  off d0 i + NFETCH:BIND-WIDTH  BIND-VALUE
    loop
    2drop
    w VDROP
@@ -4366,6 +4376,7 @@ private
    FUN-KIND @ FUN-DOES-PARENT = if QBASE @ QN @ + 1+ DOES-FUN ! then
    r lo hi LOCALS-SCAN
    QLOCALS-CK
+   lo BINDS-CK
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
    r lo hi RESOLVE-TRY

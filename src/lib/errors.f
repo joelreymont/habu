@@ -935,7 +935,7 @@
 \ of these: a local means the local, which is what the engine does, so the only
 \ name refused here is the quotation's closer, whose spans are found before the
 \ locals frame exists.
--8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the quotation pre-scan reads before there is a locals frame to consult (`;]`), the same name declared twice, or a token in the group that is not a name
+-8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a group opened inside another group or inside a control structure, a group left unclosed, a closer with no opener, a declared name the quotation pre-scan reads before there is a locals frame to consult (`;]`), the same name declared twice, a token in the group that is not a name, a body whose locals differ in number from its certified binds, or locals on a direct tape with no certificate
 -8541 constant E-NELAB-LOCAL-CAP \ more locals, or more locals groups, in one definition than the elaborator's tables hold
 
 \ Native calls: -8550..-8559
