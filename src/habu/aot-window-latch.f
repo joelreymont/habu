@@ -168,4 +168,14 @@ variable TASK-USER-MARK
       s" aot: capture window was not opened before the application loaded" 74 die
    THEN ;
 
+\ The image restores no mapping, so every dynamic control record in the span is
+\ released before the link copies it, as aot-capture.f ACAP-RELEASE-DYNAMIC does
+\ for the other captures (src/core/dynamic-storage.f RELEASE-RANGE). The runtime
+\ is the engine's, retained: records declared outside the span - the maker's,
+\ and the linker's own above it - stay live. Without it a CODEGEN:BUFFER filled
+\ at load time was refused for its text mapping (test/ffi-callback-file-cache.f).
+: AOT-DATA-RELEASE ( -- )
+   data-base BYTE-VIEW BLOB-SRC @ DATA-VA VA>N - + BLOB-LEN @
+   DYNAMIC-STORAGE:RELEASE-RANGE ;
+
 ;package

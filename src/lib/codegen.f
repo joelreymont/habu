@@ -6,16 +6,18 @@
 \ `evaluate` wrapper, so the trust boundary stays per package.
 \
 \ A buffer is a descriptor minted by the `CODEGEN:BUFFER` defining word. The
-\ descriptor word pushes the address of a fixed header laid out as four cells
-\ followed by the raw byte storage:
+\ descriptor word pushes the address of a fixed header: three cells, then a
+\ dynamic control record (src/core/dynamic-storage.f: the head cell holding the
+\ mapping and its CONTROL-CELLS count cells):
 \
-\     [ cap ][ cap-err ][ val-err ][ len ][ ...cap raw bytes... ]
+\     [ cap ][ cap-err ][ val-err ][ head ][ control ]
 \
 \ `cap` is the byte capacity, `cap-err` is the throw code raised when an append
-\ would overflow, `val-err` is the throw code raised when APPEND-DECIMAL is handed
-\ a negative value, and `len` is the current content length. The header is ordinary
-\ dictionary storage, so nothing here is trusted: cells are read with `@`, and the
-\ byte storage is read/written through the core `BYTE-VIEW` byte pointer.
+\ would overflow and `val-err` is the throw code raised when APPEND-DECIMAL is
+\ handed a negative value. The text is scratch that outlives no generation, so
+\ it lives in the mapping, reserved at first use: the content length in its
+\ first cell, then the cap content bytes. Image capture releases the mapping, so
+\ a build that generated text leaves the same DATA as one that did not.
 \
 \ The definer has no trailing colon because a package word
 \ ending in `:` cannot be resolved through a `CODEGEN:` qualifier - the trailing colon
@@ -29,10 +31,11 @@
 \ see (deftype.f keeps E-VNOM-CAP) without a catch-and-remap wrapper. New
 \ codegen buffers should use the plain definer.
 \
-\ STORAGE CLASS. CALLER-OWNED: each CODEGEN:BUFFER is its definer's dictionary
-\ storage; the module keeps no state.
+\ STORAGE CLASS. CALLER-OWNED: each CODEGEN:BUFFER's header is its definer's
+\ dictionary storage and its text a dynamic mapping; the module keeps no state.
 
 require src/lib/prelude.f
+require src/core/dynamic-storage.f
 
 \ Codegen-buffer throw codes. src/lib/errors.f owns the canonical stdlib blocks up to
 \ -4499; the -4700..-4799 block is unclaimed there, so it is declared at the
@@ -45,17 +48,29 @@ package CODEGEN
 
 private
 
-\ header cell layout: [cap][cap-err][val-err][len] then cap raw bytes.
+\ header cell layout: [cap][cap-err][val-err] then the control record.
+3 cells constant CB-RECORD
+CB-RECORD CELL / 1+ DYNAMIC-STORAGE:CONTROL-CELLS + constant CB-CELLS
 : CB-CAP@  ( ptr n -- n )  @ ;
 : CB-CERR@ ( ptr n -- n )  cell+ @ ;
 : CB-VERR@ ( ptr n -- n )  2 cells + @ ;
-: CB-LEN@  ( ptr n -- n )  3 cells + @ ;
-: CB-LEN!  ( n ptr n -- )  3 cells + ! ;
-: CB-DATA  ( ptr n -- ptr u8 )  4 cells + BYTE-VIEW ;   \ byte storage past the header
+CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
+: CB-HEAD  ( ptr n -- ptr ptr u8 )  CB-RECORD + CB-HEAD-CELL ;
+: CB-CTL   ( ptr n -- ptr n )  CB-RECORD CELL + + ;
 
-\ Compile the four header cells and leave cap underneath for the trailing `allot`.
-: CB-HEADER, ( n n n -- n )   \ cap cap-err val-err -- cap
-   >r >r dup , r> , r> , 0 , ;
+\ The mapping, reserved whole at first use: the length cell and cap bytes.
+: CB-MAP ( ptr n -- ptr u8 ) {: d:ptr :}
+   d CB-CTL @ 0= if
+      CELL d CB-CAP@ + d CB-HEAD d CB-CTL 1 DYNAMIC-STORAGE:RESERVE
+   then
+   d CB-HEAD @ ;
+: CB-LEN@  ( ptr n -- n )  CB-MAP CELL-VIEW @ ;
+: CB-LEN!  ( n ptr n -- )  CB-MAP CELL-VIEW ! ;
+: CB-DATA  ( ptr n -- ptr u8 )  CB-MAP CELL + ;   \ content bytes past the length
+
+\ Compile the three header cells and the zeroed control record.
+: CB-HEADER, ( n n n -- )   \ cap cap-err val-err --
+   >r >r , r> , r> ,  CB-CELLS CB-RECORD CELL / - 0 ?do 0 , loop ;
 
 public
 
@@ -63,7 +78,7 @@ public
 \ word pushing the buffer descriptor. Use this only to preserve a legacy caller's
 \ existing throw code while migrating an existing buffer onto this module.
 : BUFFER-E ( n n n -- )   \ cap cap-err val-err --
-   create CB-HEADER, allot  does> ( -- ptr n ) ;
+   create CB-HEADER,  does> ( -- ptr n ) ;
 
 \ Mint a codegen buffer using the module's own named error codes (E-CG-CAP on an
 \ overflowing append, E-CG-VALUE on a negative decimal). The form new code should use.
@@ -92,11 +107,10 @@ public
 \ The buffer's current contents as a counted byte string.
 : CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
 
-\ A descriptor's four header cells and capacity bytes have different scan
-\ geometry even though BUFFER stores them in one CREATE allocation.
-: SCAN-SPANS ( ptr n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: d:ptr cells bytes :}
-   d BYTE-VIEW 4 CELL * cells execute
-   d CB-DATA d CB-CAP@ bytes execute ;
+\ A descriptor is one cell span: the header and the control record. Its text
+\ is a mapping capture releases, outside DATA.
+: SCAN-SPANS ( ptr n [ ptr u8 n -- ] -- )
+   {: d:ptr cells :}
+   d BYTE-VIEW CB-CELLS CELL * cells execute ;
 
 ;package

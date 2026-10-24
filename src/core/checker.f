@@ -1082,9 +1082,15 @@ public
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
 $100 constant CHECKER-PACKAGE-CAP
+\ Bytes at and past CHECKER-PACKAGE-U stay zero (CHECKER-PACKAGE-U!): a package may be open at a file capture.
 create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
 variable CHECKER-PACKAGE-U
 variable CHECKER-PACKAGE-MODE
+
+: CHECKER-PACKAGE-U! ( n -- ) {: u:n :}
+   CHECKER-PACKAGE-U @ {: old:n :}
+   old u > IF old u ?do 0 CHECKER-PACKAGE-NAME i + c! loop THEN
+   u CHECKER-PACKAGE-U ! ;
 
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
@@ -11656,7 +11662,7 @@ variable DFER-END
       a over CHECKER-PACKAGE-COPY-C
       1 +
    REPEAT drop
-   u CHECKER-PACKAGE-U ! ;
+   u CHECKER-PACKAGE-U! ;
 
 \ --- `using`-scope import mirror (dot habu-using-import-pkg-a07dd7ba). The engine owns
 \ the live using depth in one fixed DATA cell (layout.f USE-DEPTH-CELL); the checker reads
@@ -11936,7 +11942,7 @@ public
    ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
       CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
-      0 CHECKER-PACKAGE-U !
+      0 CHECKER-PACKAGE-U!
       EXIT
    THEN
    a u CHECKER-PACKAGE-COPY
@@ -12644,7 +12650,7 @@ package CHECKER-REG
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
-   0 CHECKER-PACKAGE-U ! ;
+   0 CHECKER-PACKAGE-U! ;
 package CHECKER-REG
 ' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
 ;package
@@ -26075,7 +26081,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.CAND @ CHK-CAND !
    r RBF.VSIG @ VSIG !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
-   r RBF.PKGU @ CHECKER-PACKAGE-U !
+   r RBF.PKGU @ CHECKER-PACKAGE-U!
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.VPRSN @ VERIFY-PARSES-N !

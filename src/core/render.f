@@ -21,6 +21,7 @@ using TFAM
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
+\ RSBUF and RSN outlive no record; snap-lib.f SND-ZERO-LIVE zeroes them in an image.
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
 variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes

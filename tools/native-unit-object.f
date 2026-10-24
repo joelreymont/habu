@@ -586,6 +586,8 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
 
 \ TASK hands its user-slot watermark cell to a claimant: USER-MARK reads it,
 \ and whether TASK is bound to; INSTALL-TASK stores USER-PUT through it.
+\ USER-PUT carries the value into TASK's fixed-row claim only for one install,
+\ which zeroes it after, so a hit leaves the cold path's value in the image.
 variable USER-SEEN
 variable USER-PUT
 : USER-SEEN! ( ptr u8 -- ) CELL-VIEW @ USER-SEEN ! ;
@@ -4073,7 +4075,8 @@ TRUSTED: SLOT-STORE ( n n n -- )
    USER-XT {: xt:n :}
    xt 0= if BAD then
    row OBJ-EV 2 U64-AT USER-PUT !
-   ['] USER-PUT! xt USER-NEXT-XT execute ;
+   ['] USER-PUT! xt USER-NEXT-XT execute
+   0 USER-PUT ! ;
 
 \ The offset in slot 8 of require row k.
 : REQ-OFF ( n -- n )

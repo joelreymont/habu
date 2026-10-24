@@ -1923,23 +1923,14 @@ public
 : SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: cells bytes :}
    cells CONTEXT-CELLS
-   LIB-NAME cells bytes CODEGEN:SCAN-SPANS
-   GEN cells bytes CODEGEN:SCAN-SPANS
-   EFF cells bytes CODEGEN:SCAN-SPANS
-   DIAG cells bytes CODEGEN:SCAN-SPANS
+   LIB-NAME cells CODEGEN:SCAN-SPANS
+   GEN cells CODEGEN:SCAN-SPANS
+   EFF cells CODEGEN:SCAN-SPANS
+   DIAG cells CODEGEN:SCAN-SPANS
    NAME-BUF TOK-CAP bytes execute
    SYM-BUF TOK-CAP bytes execute
    TOK-BUF TOK-CAP bytes execute
    BASE-BUF TOK-CAP bytes execute ;
-
-\ Only the FFI declarer's persistent compile context is owned here. The open
-\ declaration fields are included even when OPEN is clear at the start of a
-\ range: that range may open FUNCTION: and leave ;FUNCTION to its caller.
-: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
-   keep CONTEXT-CELLS
-   NAME-BUF TOK-CAP keep execute
-   SYM-BUF TOK-CAP keep execute
-   EFF 3 cells + BYTE-VIEW EFF-CAP CELL + keep execute ;
 
 \ FUNCTION: parses the name, the symbol and the effect and leaves the
 \ declaration open; the interpreter then runs any clauses; ;FUNCTION plans it,

@@ -69,7 +69,7 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
 8 constant FLOAT-REGS
 $400 constant GEN-CAP
 $200 constant PART-CAP            \ sixteen `7 FFI-CB:I32-ARG@ ` reads need $108
-$40 constant TOK-CAP
+$40 constant NAME-CAP
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -245,27 +245,14 @@ public
 : CLEAR ( callback -- )
    CALLBACK>N 0 swap FAULTS ! ;
 
-\ FILE replay visits only explicitly owned controls below its current DATA
-\ range. Declarations can grow this baked table while a parent file loads, so
-\ the controls and the former allocation belong to that range's update set.
-\ Newly allocated rows are already inside its ordinary DATA span.
-: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: keep :}
-   TABLE BYTE-VIEW CELL keep execute
-   CAP BYTE-VIEW CELL keep execute
-   SLOTS BYTE-VIEW CELL keep execute
-   CAP @ 0 > if TABLE @ CAP @ ROW-BYTES * keep execute then ;
-
 private
 
 \ ---- the declaration ----------------------------------------------------------
 GEN-CAP CODEGEN:BUFFER GEN
 PART-CAP CODEGEN:BUFFER QTYPE             \ the body's quotation type
 PART-CAP CODEGEN:BUFFER READS             \ the argument reads, in order
+NAME-CAP CODEGEN:BUFFER NAME              \ the callback's name, CALLBACK: to ;CALLBACK
 
-create NAME-BUF TOK-CAP allot
-create TOK-BUF TOK-CAP allot
-variable NAME-U
-variable TOK-U
 variable INT-N
 variable FLT-N
 variable RES-KIND
@@ -274,28 +261,21 @@ variable FB-VALUE
 TYPED-VARIABLE FFB-VALUE r
 variable OPEN
 
-: TOK! ( ptr u8 n -- ) {: a:ptr u:n :}
+\ The next token. parse-name's bytes stay valid until the next parse, and each
+\ token is matched or copied before then, so it lives on the stack.
+: TOK@ ( -- ptr u8 n )
+   parse-name {: a:ptr u:n :}
    u 0= if E-FFI-SYNTAX throw then
-   u TOK-CAP > if E-FFI-SYNTAX throw then
-   a TOK-BUF u BYTE-COPY
-   u TOK-U ! ;
+   a u ;
 
-: TOK@ ( -- )
-   parse-name TOK! ;
-
-: TOK$ ( -- ptr u8 n )
-   TOK-BUF TOK-U @ ;
-
-: TOK-IS? ( ptr u8 n -- bool )
-   TOK$ STR= ;
-
-: NAME! ( -- )
-   TOK$ {: a:ptr u:n :}
-   a NAME-BUF u BYTE-COPY
-   u NAME-U ! ;
+: NAME! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u NAME-CAP > if E-FFI-SYNTAX throw then
+   NAME CODEGEN:RESET
+   a u NAME CODEGEN:APPEND-STRING ;
 
 : NAME$ ( -- ptr u8 n )
-   NAME-BUF NAME-U @ ;
+   NAME CODEGEN:CONTENTS ;
 
 : QTYPE+ ( ptr u8 n -- )
    QTYPE CODEGEN:APPEND-STRING s"  " QTYPE CODEGEN:APPEND-STRING ;
@@ -311,44 +291,47 @@ variable OPEN
    INT-N @ a u READ+
    1 INT-N +! ;
 
-: IN-TOKEN ( -- )
-   s" n" TOK-IS? if s" n" QTYPE+ s" ARG@" INT+ exit then
-   s" i32" TOK-IS? if s" n" QTYPE+ s" I32-ARG@" INT+ exit then
-   s" u32" TOK-IS? if s" n" QTYPE+ s" U32-ARG@" INT+ exit then
-   s" ptr" TOK-IS? if
-      TOK@ s" u8" TOK-IS? 0= if E-FFI-SYNTAX throw then
+: IN-TOKEN ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u s" n" STR= if s" n" QTYPE+ s" ARG@" INT+ exit then
+   a u s" i32" STR= if s" n" QTYPE+ s" I32-ARG@" INT+ exit then
+   a u s" u32" STR= if s" n" QTYPE+ s" U32-ARG@" INT+ exit then
+   a u s" ptr" STR= if
+      TOK@ s" u8" STR= 0= if E-FFI-SYNTAX throw then
       s" ptr u8" QTYPE+ s" PTR-ARG@" INT+ exit
    then
-   s" r" TOK-IS? if
+   a u s" r" STR= if
       FLT-N @ FLOAT-REGS >= if E-FFI-ARITY throw then
       s" r" QTYPE+ FLT-N @ s" FARG@" READ+
       1 FLT-N +! exit
    then
    E-FFI-SYNTAX throw ;
 
-: OUT-TOKEN ( -- )
+: OUT-TOKEN ( ptr u8 n -- )
+   {: a:ptr u:n :}
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
-   s" r" TOK-IS? if s" r" QTYPE+ R-FLOAT RES-KIND ! exit then
-   s" n" TOK-IS? s" i32" TOK-IS? or s" u32" TOK-IS? or if
+   a u s" r" STR= if s" r" QTYPE+ R-FLOAT RES-KIND ! exit then
+   a u s" n" STR= a u s" i32" STR= or a u s" u32" STR= or if
       s" n" QTYPE+ R-VALUE RES-KIND ! exit
    then
    E-FFI-SYNTAX throw ;
 
-: INPUTS ( -- )
-   begin
-      TOK@
-      s" --" TOK-IS? if s" --" QTYPE+ exit then
-      s" )" TOK-IS? if E-FFI-SYNTAX throw then
-      IN-TOKEN
-   again ;
+\ One input token: true at the -- that ends the inputs.
+: INPUT? ( -- bool )
+   TOK@ {: a:ptr u:n :}
+   a u s" --" STR= if s" --" QTYPE+ true exit then
+   a u s" )" STR= if E-FFI-SYNTAX throw then
+   a u IN-TOKEN false ;
 
-: OUTPUTS ( -- )
-   begin
-      TOK@
-      s" )" TOK-IS? if exit then
-      s" --" TOK-IS? if E-FFI-SYNTAX throw then
-      OUT-TOKEN
-   again ;
+\ One output token: true at the ) that ends the effect.
+: OUTPUT? ( -- bool )
+   TOK@ {: a:ptr u:n :}
+   a u s" )" STR= if true exit then
+   a u s" --" STR= if E-FFI-SYNTAX throw then
+   a u OUT-TOKEN false ;
+
+: INPUTS ( -- ) begin INPUT? until ;
+: OUTPUTS ( -- ) begin OUTPUT? until ;
 
 : GEN+ ( ptr u8 n -- ) GEN CODEGEN:APPEND-STRING ;
 : GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
@@ -416,7 +399,7 @@ public
    0 INT-N ! 0 FLT-N ! R-NONE RES-KIND ! 0 FB-SET !
    QTYPE CODEGEN:RESET READS CODEGEN:RESET
    TOK@ NAME!
-   TOK@ s" (" TOK-IS? 0= if E-FFI-SYNTAX throw then
+   TOK@ s" (" STR= 0= if E-FFI-SYNTAX throw then
    INPUTS
    OUTPUTS
    1 OPEN ! ;
@@ -442,15 +425,15 @@ public
    k EMIT ;
 
 \ The callback descriptor table holds whole cells, including numeric fallback
-\ values. OWNED-CELLS identifies the same live allocation for FILE replay.
+\ values. Every span here is cells; the byte producer is the storage owners'
+\ shared pair shape, which this owner leaves unused.
 : SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: cells bytes :}
+   drop {: cells :}
    CAP @ 0 > if TABLE @ BYTE-VIEW CAP @ ROW-BYTES * cells execute then
-   GEN cells bytes CODEGEN:SCAN-SPANS
-   QTYPE cells bytes CODEGEN:SCAN-SPANS
-   READS cells bytes CODEGEN:SCAN-SPANS
-   NAME-BUF TOK-CAP bytes execute
-   TOK-BUF TOK-CAP bytes execute ;
+   GEN cells CODEGEN:SCAN-SPANS
+   QTYPE cells CODEGEN:SCAN-SPANS
+   READS cells CODEGEN:SCAN-SPANS
+   NAME cells CODEGEN:SCAN-SPANS ;
 
 ;package
 
