@@ -47,6 +47,9 @@
 \                                        clobbered
 \    hb-x64-kernel-die-hook           6  the exit hook dies with 6, so its cell
 \                                        was cleared before the call
+\    hb-x64-kernel-die-throw         50  a catch around a die whose exit hook
+\                                        throws 42: the throw is uncaught, so the
+\                                        reporter exits with the code plus 8
 \    hb-x64-kernel-die-wide          67  an rc past 255
 \
 \ The host checks each image's ELF header; running them is the peer's.
@@ -465,6 +468,16 @@ DATA-START $10000 + constant CLOSED-SCRATCH
    s" hb: die" X64HARNESS:PUSH-TEXT,  rc PUSH,  s" die" ROW,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
+\ die inside a catch, its exit hook throwing THROWN-CODE, with a reporter
+\ installed. Before the hook runs, die empties the handler chain, so the throw
+\ reaches the reporter instead of resuming the catch and returning from die.
+: BUILD-DIE-THROW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   false X64HARNESS:BOOT-OPEN,
+   REPORTS-EXIT UNCGH-CELL XT!,
+   THROWN-CODE THROWS EXIT-HOOK-CELL XT!,
+   5 DIES PUSH-XT,  s" catch" ROW,
+   path pathu X64HARNESS:BOOT-CLOSE, ;
+
 : BUILD-DIE-WIDE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" hb: die" X64HARNESS:PUSH-TEXT,  256 PUSH,  s" die" ROW,
@@ -498,6 +511,7 @@ public
    s" hb-x64-kernel-throw-corrupt" TMP-PATH BUILD-THROW-CORRUPT
    [: RETURNS-CLOBBERED ;] 5 s" hb-x64-kernel-die" TMP-PATH BUILD-DIE
    [: 6 DIES ;] 5 s" hb-x64-kernel-die-hook" TMP-PATH BUILD-DIE
+   s" hb-x64-kernel-die-throw" TMP-PATH BUILD-DIE-THROW
    s" hb-x64-kernel-die-wide" TMP-PATH BUILD-DIE-WIDE
    X64HARNESS:DISPOSE
    T-REPORT ;

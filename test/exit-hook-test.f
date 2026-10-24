@@ -166,6 +166,27 @@ variable TREE-U
    erru s" hook: dying" ERR-HAS? TTRUE
    TREE$ EXISTS? TFALSE ;
 
+\ A hook that throws, armed while `die` runs inside a `catch`. The engine runs
+\ the hook with the handler chain empty, so its throw is uncaught and ends the
+\ process - the vector is already clear - with the hook's code, as CASE-CHAIN's
+\ hook ends it with its own; it never resumes the program's catch, which would
+\ return from `die` and print the caught code and `after` on stdout, rc 0.
+\ Its own child process, like every case here: process exit is the boundary.
+: CASE-HOOK-THROW ( -- )
+   s" hook-throw.f" s" hook-throw-tree" CASE-PATHS
+   S\" : CHILD-HOOK ( -- ) 9 throw ;\n" TEXT+
+   S\" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;\n" TEXT+
+   S\" CHILD-ARM\n" TEXT+
+   S\" : CHILD-DIE ( n -- ) 0< if s\q neg\q 3 die then ;\n" TEXT+
+   S\" : CHILD-MAIN ( -- n ) [: -1 CHILD-DIE ;] catch ;\n" TEXT+
+   S\" CHILD-MAIN . cr\n" TEXT+
+   S\" s\q after\q type cr\n" TEXT+
+   RUN-CHILD {: outu:n erru:n rc:n :}
+   s" a hook that throws ends the process instead of returning from die" T-LABEL
+   outu erru rc 9 EXPECT-RC
+   erru s" neg" ERR-HAS? TTRUE
+   outu 0 T= ;
+
 \ REPLACE-STAGED registers the sibling it reserves, so a `die` inside the
 \ filler - the image writer's on a failed open or write - takes the sibling
 \ with it, and the file it was replacing stays as it was: one file, its old
@@ -211,6 +232,7 @@ variable STAGED-FILES
    CASE-THROW
    CASE-REPORT
    CASE-CHAIN
+   CASE-HOOK-THROW
    CASE-STAGED ;
 
 : RUN ( -- )

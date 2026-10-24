@@ -6011,6 +6011,19 @@ variable LCODEINV
 \ load and a CBZ, so an uninstalled vector costs two instructions on the way out.
 \ THE CELL IS CLEARED BEFORE THE CALL. A hook that dies or throws re-enters an
 \ exit path, and it has to find the vector empty there rather than itself.
+\ THE HANDLER CHAIN (HND-CELL) IS EMPTIED WITH IT. BDIE can run inside a
+\ program's `catch`, and a hook's throw that reached that handler would return
+\ from `die` with the program's state intact; with no handler the throw takes
+\ the uncaught exit (LUNCAUGHT, past any evaluate frames LEVALREC pops), which
+\ ends the process with the hook's code. LRBYE and LUNCAUGHT already run with
+\ the chain empty, so the store changes nothing for them. The hook's own
+\ catches chain from the empty handler as usual.
+\ THE REPL ROUTE (REPLH-CELL) IS DISARMED WITH THEM, the way a batch route
+\ disarms it: with no handler, a live tty REPL takes a throw back to its prompt
+\ (habu1.f BTHROW, LEVALREC) before the uncaught exit, so a hook's throw would
+\ resume the session `die` or the end of input was ending. LUNCAUGHT runs only
+\ where the route already answered no, so it sees no change; LRBYE at a tty
+\ now exits with the hook's code, as it does on a pipe.
 \ The hook's effect is ( -- ) and it runs on the data stack AS IT STANDS, with no
 \ reset to S0: BDIE may be running on a task thread whose stack is its own, and
 \ every caller reaches here with a valid XDS. x0 (the exit code) and LR are saved
@@ -6035,7 +6048,8 @@ variable LCODEINV
    start LBL,
    9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  30 SP 0 STR,  0 SP 8 STR,
-   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,
+   10 0 MOVZ,  10 DATA EXIT-HOOK-CELL STR,  10 DATA HND-CELL STR,
+   10 DATA REPLH-CELL STR,
    9 BLR,
    0 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL,

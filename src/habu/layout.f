@@ -1596,8 +1596,14 @@ $27F8 constant CODE-CELL
 \ ENGINE-ERROR:* rc and the 70/74/75/76 band - do NOT call it: a broken engine
 \ must not run program code. Clearing before the call is what stops a hook that
 \ dies or throws from re-entering itself; the exit path it lands in finds the
-\ vector empty. The hook's effect is ( -- ) and it runs on the data stack as it
-\ stands, because `die` may be running on a task thread whose stack is its own.
+\ vector empty. The catch handler chain (HND-CELL) is emptied with it, so a
+\ throw from the hook is uncaught and ends the process with the hook's code:
+\ `die` runs inside the program's catches, and a hook's throw caught there would
+\ return from `die`. The REPL route (REPLH-CELL) is disarmed too, since a tty
+\ REPL takes an otherwise uncaught throw back to its prompt. A stripped image's
+\ exit follows its root's return, when the chain is already empty. The hook's
+\ effect is ( -- ) and it runs on the data stack as it stands, because `die`
+\ may be running on a task thread whose stack is its own.
 \ It holds a code pointer, so it is declared for snapshot relocation beside the
 \ other hook cells (habu2.f EM-DATA-INIT RELOC-EMIT:MARK-CELL) and carries the
 \ tools/native-layout.f row every declared engine cell below the heap floor

@@ -1950,7 +1950,8 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 \ positive, then the exit hook, then the exit. The rc waits on the machine
 \ stack, and the LF is a cell pushed there for its write. The hook's cell is
 \ cleared before the call (layout.f EXIT-HOOK-CELL, habu2.f EMIT-EXITHOOK), so
-\ a hook that dies or throws finds it empty.
+\ a hook that dies or throws finds it empty, and the handler chain with it, so
+\ a hook's throw is uncaught rather than resuming a catch around `die`.
 : DIE, ( -- )
    X64CODE:LBL X64CODE:LBL {: quiet:label bare:label :}
    RAX POP,  RDX POP,  RSI POP,
@@ -1964,6 +1965,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX DATA-REG EXIT-HOOK-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E bare JCC,
    RCX ZERO-REG,  RCX DATA-REG EXIT-HOOK-CELL MOV-STORE,
+   RCX DATA-REG HND-CELL MOV-STORE,
    RAX ASM-SINK ENC-CALL-REG
    bare X64CODE:LBL,
    RDI ASM-SINK ENC-POP

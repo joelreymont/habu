@@ -111,9 +111,9 @@ using PTY-HARNESS
    then
    0 EXIT= ;
 
-\ Once EOF ends the session, a throwing exit hook must be an uncaught exit,
-\ not a jump into the assembly reader's retired REPL savepoint. x86-64's Habu
-\ REPL meets this; ARM64's kernel REPL, master's, still re-enters the reader.
+\ Once EOF ends the session, a throwing exit hook is an uncaught exit, not a
+\ jump back into the reader's retired REPL savepoint: on both targets the
+\ hook's throw ends the process with its code.
 : HOOK-CASE ( -- )
    FIRST-TIER OPEN dup TTRUE if
       S\" : RV-HOOK ( -- ) s\" HOOK\" type cr 91 throw ;" STEP TTRUE
@@ -124,6 +124,23 @@ using PTY-HARNESS
    91 EXIT=
    s" HOOK" IN-BUF? TTRUE
    s" hb: stack bounds exceeded" IN-BUF? TFALSE ;
+
+\ The same hook armed while `die` runs inside a `catch`. A tty REPL recovers an
+\ otherwise uncaught throw at its prompt, and the program's catch would return
+\ from `die`; `die` disarms both before the hook runs, so the hook's throw ends
+\ the process with its code and no prompt follows die's message.
+: DIE-HOOK-CASE ( -- )
+   FIRST-TIER OPEN dup TTRUE if
+      s" : CHILD-HOOK ( -- ) 9 throw ;" STEP TTRUE
+      s" TRUSTED: CHILD-ARM ( -- ) ['] CHILD-HOOK data-base EXIT-HOOK-CELL + ! ;" STEP TTRUE
+      s" CHILD-ARM" STEP TTRUE
+      S\" : CHILD-DIE ( n -- ) 0< if s\q neg\q 3 die then ;" STEP TTRUE
+      s" : CHILD-MAIN ( -- n ) [: -1 CHILD-DIE ;] catch ;" STEP TTRUE
+      BUF-CLEAR s" CHILD-MAIN" SEND-LINE
+   then
+   9 EXIT=
+   s" neg" IN-BUF? TTRUE
+   s" neg" s" habu> " AFTER? TFALSE ;
 
 \ A using opened on one line remains active after an unrelated rejected line.
 : USING-CASE ( -- )
@@ -157,7 +174,8 @@ public
       i REJECT-CASE
    loop
    USING-CASE
-   HB-TARGET-LINUX-X86-64? if HOOK-CASE then
+   HOOK-CASE
+   DIE-HOOK-CASE
    T-REPORT ;
 
 ;using
