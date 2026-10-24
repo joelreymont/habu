@@ -17,6 +17,9 @@ require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
 require src/lib/engine-candidate.f
 require src/lib/test/outcome.f
 require src/lib/test/guard-page.f      \ a path whose bytes end where memory does
+require src/lib/ffi-callback.f         \ a struct argument held across a callback
+require src/lib/task.f
+require test/ffi-struct-fixture.f      \ the struct-argument callee
 
 package FFI-TEST
 
@@ -782,9 +785,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 FFI-RUN
 
-\ Struct results by value are AAPCS64 against macOS system libraries.
+\ Structs by value are AAPCS64: results against macOS system libraries,
+\ arguments against a fixture library compiled for the run.
 : FFI-T-STRUCT-LOAD ( -- )
-   HB-TARGET-MACOS? if s" test/ffi-struct-result.f" required then ;
+   HB-TARGET-MACOS? if
+      s" test/ffi-struct-result.f" required
+      s" test/ffi-struct-arg.f" required
+   then ;
 FFI-T-STRUCT-LOAD
 
 T-REPORT

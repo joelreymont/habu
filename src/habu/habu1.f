@@ -2288,7 +2288,23 @@ variable LSOURCEEXECFINISH
    FFI-DONE LABEL@ LBL,
    FFI-SKIP LABEL@ LBL, ;
 
-: BFFI-CALL-ABI-CORE ( -- )
+\ A relocated cell holds a prepacked-buffer address; it is moved by the
+\ distance x13 from that buffer to the copy on the native stack. The mask in
+\ x12 names the cells: bits 0-7 are x0-x7, bits 8-23 the stack cells 0-15.
+\ x11 is the bit test's scratch, x9 the stack cell's.
+: BFFI-RELOC-REG ( n -- ) LBL {: r:n skip:label :}
+   11 12 63 r - LSLI,  11 11 63 LSRI,  11 skip CBZ,
+   r r 13 ADD,
+   skip LBL, ;
+
+: BFFI-RELOC-CELL ( n -- ) LBL {: j:n skip:label :}
+   11 12 55 j - LSLI,  11 11 63 LSRI,  11 skip CBZ,
+   9 SP j 8 * LDR,  9 9 13 ADD,  9 SP j 8 * STR,
+   skip LBL, ;
+
+\ A relocating call (STRUCT-ARG's private copies) enters with the mask in x2
+\ and keeps the prepacked buffer's address in x3 until the copy is made.
+: BFFI-CALL-ABI-CORE ( bool -- ) {: reloc:bool :}
    16 G-POP                                            \ x16 = fn
    9 G-POP                                             \ x9  = sret-present flag
    14 G-POP                                            \ x14 = int-nargs (live x0..x7 count)
@@ -2298,24 +2314,31 @@ variable LSOURCEEXECFINISH
    15 G-POP                                            \ x15 = integer argbuf
    BFFI-GUARD-ARGS                                     \ band-guard live int args + x8 sret before any load
    14 1 0 ADDI,                                        \ x14 = stack cell count (restore for the spill copy)
+   reloc if 3 13 0 ADDI, then                          \ x3 = prepacked stack cells
    BCB-ENTER
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    BFFI-COPY-ABI-STACK
+   reloc if
+      13 SP 0 ADDI,  13 13 3 SUB,                      \ x13 = native copy - prepacked cells
+      12 2 0 ADDI,                                     \ x12 = mask; x0-x7 load over x2/x3
+      16 0 do i BFFI-RELOC-CELL loop
+   then
    BFFI-LOAD-X0-X7
    8 15 $40 LDR,                                       \ x8 = indirect-result address
    BFFI-LOAD-D0-D7
+   reloc if 8 0 do i BFFI-RELOC-REG loop then
    16 BLR,
    SP 20 0 ADDI,
    20 SP $8 LDR,
    BCB-LEAVE ;
 
 : BFFI-CALL-ABI ( -- )
-   BFFI-CALL-ABI-CORE
+   false BFFI-CALL-ABI-CORE
    0 G-PUSH ;
 
 : BFFI-CALL-ABI-R ( -- )
-   BFFI-CALL-ABI-CORE
+   false BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
 \ Sealed foreign bindings carry one writable byte extent per live argument.
@@ -2621,8 +2644,9 @@ $150 constant CBT-BYTES
 \ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
 \ every caller-packed stack slot before the foreign branch.  The two extent
 \ tables are distinct because stack slot zero is not integer slot zero.
-: BFFI-CALL-ABI-BOUNDED-CORE ( -- )
+: BFFI-CALL-ABI-BOUNDED-CORE ( bool -- ) {: reloc:bool :}
    16 G-POP                                            \ x16 = fn
+   reloc if 2 G-POP then                               \ x2  = relocation mask
    14 G-POP                                            \ x14 = stack cell count
    12 G-POP                                            \ x12 = stack extents
    11 G-POP                                            \ x11 = x0..x8 extents
@@ -2632,6 +2656,7 @@ $150 constant CBT-BYTES
    SP SP $40 SUBI,
    15 SP 0 STR,  17 SP $8 STR,  13 SP $10 STR,  11 SP $18 STR,
    12 SP $20 STR,  14 SP $28 STR,  16 SP $30 STR,
+   reloc if 2 SP $38 STR, then
    17 11 0 ADDI,  14 9 MOVZ,                          \ guard x0..x8
    BFFI-GUARD-BOUNDS
    15 SP $10 LDR,  17 SP $20 LDR,  14 SP $28 LDR,     \ guard stack slots
@@ -2642,21 +2667,24 @@ $150 constant CBT-BYTES
    14 SP $28 LDR,  14 G-PUSH
    9 0 MOVZ,  9 G-PUSH  9 G-PUSH                       \ int-nargs=0, sret=0: BFFI-GUARD-BOUNDS already guarded x0..x8
    16 SP $30 LDR,  16 G-PUSH
+   reloc if 2 SP $38 LDR, then
    SP SP $40 ADDI,
-   BFFI-CALL-ABI-CORE ;
+   reloc BFFI-CALL-ABI-CORE ;
 
 : BFFI-CALL-ABI-BOUNDED ( -- )
-   BFFI-CALL-ABI-BOUNDED-CORE
+   false BFFI-CALL-ABI-BOUNDED-CORE
    0 G-PUSH ;
 
 : BFFI-CALL-ABI-R-BOUNDED ( -- )
-   BFFI-CALL-ABI-BOUNDED-CORE
+   false BFFI-CALL-ABI-BOUNDED-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
 \ A C struct returned by value: x0 then x1, both intact through BCB-LEAVE.
 \ FFI stores the record they hold; an x8-indirect record is already written.
+\ The relocation mask names the cells holding private struct copies'
+\ prepacked addresses, which then point at the copies on the native stack.
 : BFFI-CALL-STRUCT-BOUNDED ( -- )
-   BFFI-CALL-ABI-BOUNDED-CORE
+   true BFFI-CALL-ABI-BOUNDED-CORE
    0 G-PUSH  1 G-PUSH ;
 
 : BOPENRD ( -- )

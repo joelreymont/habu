@@ -1039,7 +1039,7 @@ EPRIM: ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
 ETRUSTED-ONLY!
 EPRIM: ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                               PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                              PE-N PE-OUT PE-N PE-OUT EPRIM;
+                              PE-N PE-IN PE-N PE-OUT PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
@@ -1065,7 +1065,7 @@ EPPRIM: FFI ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                                   PE-R PE-OUT ECLOSE-PRIVATE
 EPPRIM: FFI ffi-call-struct-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                                    PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
-                                   PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
+                                   PE-N PE-IN PE-N PE-OUT PE-N PE-OUT ECLOSE-PRIVATE
 
 EPRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;
 EPRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT EPRIM;

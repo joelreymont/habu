@@ -16,4 +16,9 @@ create ROW 4 cells allot
    ROW 3 cells + @ 4 = and 0= if 74 throw then
    s" full-image-callback-rebind: ok" type cr ;
 
+\ The struct binding exists only in the macOS image.
+: STRUCT-CHECK ( -- )
+   HB-TARGET-MACOS? if s" test/ffi-callback-full-image-struct-check.f" required then ;
+STRUCT-CHECK
+
 RUN

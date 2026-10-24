@@ -257,7 +257,8 @@ $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders 
 1 cells constant FN-LIB-OFF
 2 cells constant FN-ARGC-OFF
 3 cells constant FN-SPILL-OFF
-4 cells constant FN-NAME-OFF
+4 cells constant FN-RELOC-OFF
+5 cells constant FN-NAME-OFF
 FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
@@ -411,6 +412,11 @@ private
    {: idx:n :}
    idx FN-CHECK
    idx FN-ARGC-OFF FN-FIELD @ ;
+
+: FN-RELOC@ ( n -- n )
+   {: idx:n :}
+   idx FN-CHECK
+   idx FN-RELOC-OFF FN-FIELD @ ;
 
 : LIB-CHECK ( n -- )
    {: idx:n :}
@@ -592,12 +598,16 @@ public
 : CALLBACK-ENTRY ( n -- n ) callback-entry ;
 
 \ ---- the declared-function surface ----------------------------------------
-\ DECLARE publishes one row and answers its index; the declarer below is its
-\ only intended caller. PROCESS and LIBRARY-PATH answer the library index a
-\ declaration resolves against.
+\ DECLARE-ROW publishes one row and answers its index; the declarer below is
+\ its only intended caller, and DECLARE is the row of a call with no spilled
+\ arguments and nothing to relocate. PROCESS and LIBRARY-PATH answer the
+\ library index a declaration resolves against.
 : PROCESS ( -- n ) 0 ;
 
 : LIBRARY-PATH-CAP ( -- n ) LIB-PATH-CAP ;
+
+\ The cells a declaration's stack arguments and private record copies share.
+: STACK-CELLS ( -- n ) FFI-MAX-ARGS ;
 
 \ Render into the caller's CODEGEN buffer; the caller owns the returned span.
 \ Independent callers can build names without sharing mutable scratch storage.
@@ -780,15 +790,58 @@ public
    addr 0= addr mask and 0<> or if E-FFI-SYNTAX throw then
    dst len X8-WRITABLE! ;
 
-\ The raw x0 and x1 after the call, in address order.
+\ The raw x0 and x1 after the call, in address order. The row's relocation
+\ mask names the staged cells that hold a private struct copy's address in
+\ the stack buffer: bits 0-7 are x0-x7 and bits 8-23 stack cells 0-15. The
+\ engine copies the stack buffer into the native call frame and moves each
+\ named cell to the copy there, so C receives storage that lives exactly as
+\ long as the call and that no other call reuses.
 : CALL-STRUCT ( n -- n n ) {: idx:n :}
    idx FN-RESOLVE {: fn:n :}
    FFI-BUF FFI-FBUF FFI-STACK-BUF FFI-REG-LEN-BUF FFI-STACK-LEN-BUF
-   idx FN-SPILL@ fn ffi-call-struct-bounded ;
+   idx FN-SPILL@ idx FN-RELOC@ fn ffi-call-struct-bounded ;
+
+: CALL-STRUCT-PTR ( n -- ptr u8 ) CALL-STRUCT drop CELL>PTR ;
+
+private
 
 \ The low len bytes of a register, little-endian.
 : REG-STORE ( n ptr u8 n -- ) {: v:n dst:ptr len:n :}
    len 0 ?do v i 8 * rshift $FF and dst i + c! loop ;
+
+\ A by-value record is read at exactly its width: cell k holds bytes
+\ 8k..8k+7, little-endian, and the last cell's bytes past len are zero.
+: RECORD-CELL ( ptr u8 n n -- n ) {: src:ptr len:n k:n :}
+   0 len k 8 * - 8 min 0 ?do src k 8 * + i + c@ i 8 * lshift or loop ;
+
+: RECORD-CELLS ( ptr u8 n -- n ) {: src:ptr len:n :}
+   src PTR>CELL 0= len 0 <= or if E-FFI-SYNTAX throw then
+   len 1- 8 / 1+ ;
+
+\ A record over 16 bytes is copied into stack cells from payload on, and its
+\ address there is what the call relocates.
+: RECORD-COPY ( ptr u8 n n -- n ) {: src:ptr len:n pay:n :}
+   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pay i + STACK-VALUE! loop
+   pay FFI-STACK-SLOT PTR>CELL ;
+
+public
+
+\ STRUCT-ARG staging. A record of 16 bytes or fewer goes whole in consecutive
+\ integer registers from reg, or in stack cells from pos; a larger one is
+\ copied into stack cells from pay and passed by address in register reg or
+\ stack cell pos. Every staged cell has extent 0: C reads the record's
+\ copy, never the source.
+: STRUCT-REGS! ( ptr u8 n n -- ) {: src:ptr len:n reg:n :}
+   src len RECORD-CELLS 0 ?do src len i RECORD-CELL reg i + VALUE! loop ;
+
+: STRUCT-STACK! ( ptr u8 n n -- ) {: src:ptr len:n pos:n :}
+   src len RECORD-CELLS 0 ?do src len i RECORD-CELL pos i + STACK-VALUE! loop ;
+
+: STRUCT-COPY-REG! ( ptr u8 n n n -- ) {: src:ptr len:n pay:n reg:n :}
+   src len pay RECORD-COPY reg VALUE! ;
+
+: STRUCT-COPY-STACK! ( ptr u8 n n n -- ) {: src:ptr len:n pay:n pos:n :}
+   src len pay RECORD-COPY pos STACK-VALUE! ;
 
 \ A record of len bytes returned in x0 then x1 lands at exactly its width;
 \ one larger than 16 bytes is already in place through x8.
@@ -801,17 +854,25 @@ public
 : I32-RESULT ( n -- n )
    $FFFFFFFF and $80000000 xor $80000000 - ;
 \ An exact descriptor includes the library index, complete C symbol, integer
-\ argument count and spill count. The terminating byte distinguishes a symbol
-\ from its prefix.
+\ argument count, spill count and relocation mask. The terminating byte
+\ distinguishes a symbol from its prefix.
 private
 
-: SAME-FN? ( ptr u8 n n n n n -- bool )
-   {: name:ptr u:n lib:n argc:n spills:n idx:n :}
+: SAME-FN? ( ptr u8 n n n n n n -- bool )
+   {: name:ptr u:n lib:n argc:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
    idx FN-ARGC@ argc <> if false exit then
    idx FN-SPILL@ spills <> if false exit then
+   idx FN-RELOC@ reloc <> if false exit then
    idx FN-NAME u + c@ 0<> if false exit then
    name u idx FN-NAME u STR= ;
+
+\ A relocation mask may name only the row's own cells: registers among its
+\ first argc, at most x0-x7, and stack cells among its spills, so the engine
+\ never moves a cell past the native frame it copies.
+: RELOC-OWNED? ( n n n -- bool ) {: reloc:n argc:n spills:n :}
+   1 argc 8 min lshift 1-  1 spills lshift 1- 8 lshift or {: own:n :}
+   reloc own invert and 0= ;
 
 public
 
@@ -822,7 +883,8 @@ public
 \ hook, so FFI's hook is the first and runs last whenever the first foreign call
 \ comes, and a full image keeps the entry and the flag (tools/aot-build-core.f
 \ registers PROC-MAPS:RELOAD, which calls Mach through this table, after it).
-: DECLARE-SPILLED ( ptr u8 n n n n -- n ) {: name:ptr u:n lib:n argc:n spills:n :}
+: DECLARE-ROW ( ptr u8 n n n n n -- n )
+   {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
    DECL-TAG {: tag:n :}
    lib 0 < if E-FFI-LIBRARY throw then
    lib 0<> if
@@ -836,9 +898,10 @@ public
    then
    argc FFI-MAX-ARGS FFI-CHECK-COUNT
    spills FFI-MAX-ARGS FFI-CHECK-COUNT
+   reloc argc spills RELOC-OWNED? 0= if E-FFI-ARITY throw then
    u NAME-ROOM drop
    tag FN-N-CELL @ 0 ?do
-      name u lib argc spills i tag or SAME-FN? if
+      name u lib argc spills reloc i tag or SAME-FN? if
          REGISTER-CLEANUP
          i tag or unloop exit
       then
@@ -847,13 +910,14 @@ public
    FN-NEW
    tag FN-N-CELL @ 1+ tag FN-N-CELL !
    spills tag FN-N-CELL @ 1- tag or FN-SPILL-OFF FN-FIELD !
+   reloc tag FN-N-CELL @ 1- tag or FN-RELOC-OFF FN-FIELD !
    name u tag FN-N-CELL @ 1- tag or FN-NAME CSTR
    lib tag FN-N-CELL @ 1- tag or FN-LIB-OFF FN-FIELD !
    argc tag FN-N-CELL @ 1- tag or FN-ARGC-OFF FN-FIELD !
    0 tag FN-N-CELL @ 1- tag or FN-ADDR!
    tag FN-N-CELL @ 1- tag or ;
 
-: DECLARE ( ptr u8 n n n -- n ) 0 DECLARE-SPILLED ;
+: DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
 
 \ errno is this package's own binding, written by hand because the declarer is
 \ defined after this package closes. libc's location is thread-local and the
@@ -1081,19 +1145,49 @@ get-current prot-wid-add
 \ returned by value. The last input is a `ptr u8` to caller-owned storage of
 \ at least `bytes`, which stays the caller's and must not alias memory the
 \ callee reaches; it is no C argument, and the output row is empty. The
-\ record is an aggregate that is not a homogeneous floating-point aggregate
-\ (HFA): integer, pointer or mixed members, which the declaration asserts as
-\ it asserts scalar widths. An HFA, a struct of one to four floats or doubles
-\ alone, returns in v0-v3, which no byte count distinguishes: it is
-\ unsupported and must not be declared with STRUCT-RESULT. AAPCS64 returns up
+\ record is an aggregate that is neither a homogeneous floating-point
+\ aggregate (HFA) nor a homogeneous short-vector aggregate (HVA): integer,
+\ pointer or mixed members, which the declaration asserts as it asserts scalar
+\ widths. An HFA, one to four members of one float type, and an HVA, one to
+\ four members of one 8- or 16-byte vector type, return in v0-v3, which no
+\ byte count distinguishes: they are unsupported and must not be declared with
+\ STRUCT-RESULT. AAPCS64 returns up
 \ to 8 bytes in x0 and 9..16 in x0 then x1, stored at exactly `bytes`; a
 \ larger record C writes through x8. The storage is eight-byte aligned, and
 \ 16-byte aligned for a record over 16 bytes; a record type aligned beyond 16
-\ bytes is excluded. The whole extent is guarded. The other inputs take x0-x7
-\ and the float registers as any declaration's do, with no VARIADIC, no write
-\ clause on the storage, and no x86-64 declaration. The symbol resolves
-\ before staging. A null or misaligned destination is E-FFI-SYNTAX at the
-\ call.
+\ bytes is excluded. The whole extent is guarded. The destination is one of
+\ the sixteen inputs any declaration may have, so at most fifteen C arguments
+\ remain, placed as a STRUCT-ARG declaration's are, below. There is no
+\ VARIADIC, no write clause on the storage, and no x86-64 declaration. The
+\ symbol resolves before staging. A null or misaligned destination is
+\ E-FFI-SYNTAX at the call.
+\
+\ `idx bytes STRUCT-ARG` declares input idx, a `ptr u8`, the address of a C
+\ struct of `bytes`, any positive count, passed by value: one C argument,
+\ read at exactly `bytes` when the call is staged, so the callee never sees
+\ the source. The record is neither an HFA nor an HVA, as for STRUCT-RESULT;
+\ either travels in v registers and must not be declared. One of up to 16
+\ bytes goes whole in the next integer registers, the last one's unused high
+\ bytes zero; when too few of x0-x7 remain it goes whole on the stack and the
+\ later integer arguments follow it there (AAPCS64 sets the next register to
+\ x8). A larger record is passed as a pointer to a private, 16-byte aligned
+\ copy in the native call frame, which lives exactly as long as the call. A
+\ declaration may have up to eight float arguments beside its records; its
+\ integer and pointer inputs must be cell-wide C types, since Apple arm64
+\ packs two spilled C ints into one stack cell. The stack cells, the copies
+\ and the padding that aligns each copy share sixteen cells, refused past
+\ that at ;FUNCTION (E-FFI-ARITY). Excluded, because a byte count cannot
+\ reveal them, are records aligned beyond 16 bytes and 16-byte aligned ones
+\ of 16 bytes or fewer: Apple arm64 may start such a record in an odd
+\ register like any other, but on the stack it starts at a 16-byte aligned
+\ slot, so after nine longs an ordinary 16-byte record is at SP+8 and a
+\ 16-byte aligned one at SP+16. The clause refuses, E-FFI-SYNTAX, outside a
+\ declaration, twice on one input, on any input that is not a `ptr u8`, the
+\ STRUCT-RESULT destination or the target of a write clause, beside VARIADIC
+\ or an `r` or `f32` result, and on x86-64. It combines with STRUCT-RESULT:
+\     FUNCTION: DEPARSE pg_query_deparse_protobuf ( ptr u8 ptr u8 -- )
+\        0 16 STRUCT-ARG  16 STRUCT-RESULT
+\     ;FUNCTION
 \
 \ Arguments take integer and float registers in declaration order.
 \ A C float occupies the low 32 bits of an FP slot; a float result reads only
@@ -1180,6 +1274,8 @@ create ARG-KIND ARG-MAX cells allot
 create ARG-REG ARG-MAX cells allot
 create ARG-EXT ARG-MAX cells allot
 create ARG-EXT-ARG ARG-MAX cells allot
+create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
+create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
 variable ARG-N
 variable INT-N
 variable FLT-N
@@ -1244,6 +1340,10 @@ variable SCOPE-HOOK
 : ARG-EXT-ARG@ ( n -- n ) {: i:n :} ARG-EXT-ARG i cells + @ ;
 : ARG-EXT! ( n n -- ) {: v:n i:n :} v ARG-EXT i cells + ! ;
 : ARG-EXT-ARG! ( n n -- ) {: v:n i:n :} v ARG-EXT-ARG i cells + ! ;
+: ARG-SBYTES@ ( n -- n ) {: i:n :} ARG-SBYTES i cells + @ ;
+: ARG-SBYTES! ( n n -- ) {: v:n i:n :} v ARG-SBYTES i cells + ! ;
+: ARG-PAY@ ( n -- n ) {: i:n :} ARG-PAY i cells + @ ;
+: ARG-PAY! ( n n -- ) {: v:n i:n :} v ARG-PAY i cells + ! ;
 
 : EFF+ ( ptr u8 n -- )
    EFF CODEGEN:APPEND-STRING
@@ -1257,6 +1357,7 @@ variable SCOPE-HOOK
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
+   0 ARG-N @ ARG-SBYTES!
    kind K-FLOAT = kind K-FLOAT32 = or if
       FLT-N @ ARG-REG ARG-N @ cells + !
       FLT-N @ 1 + FLT-N !
@@ -1354,16 +1455,60 @@ variable SCOPE-HOOK
    loop
    REG-ROOM ;
 
-\ The result destination is the last input and no C argument; the rest fill
-\ x0-x7 and v0-v7 (SET-STRUCT-RESULT admits no variadic or x86-64 shape).
+\ A struct-bearing declaration is planned by AAPCS64 over its C arguments in
+\ order; the STRUCT-RESULT destination, the last input, is none. Floats take
+\ v0-v7. An integer argument takes the next of x0-x7, else the next stack
+\ cell. A record of up to 16 bytes takes its registers whole, or when too few
+\ remain its stack cells whole, and the next register becomes x8. A larger
+\ record's pointer is an integer argument, and its copy follows every stack
+\ argument from an even cell, 16-byte aligned on the 16-byte aligned native
+\ stack. ARG-REG keeps a stack cell as -1-cell, as on x86-64.
+: C-ARGS ( -- n )
+   ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
+
+: RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
+
+: INT-WORDS ( n -- n ) {: i:n :}
+   i ARG-SBYTES@ 0 > i ARG-SBYTES@ 16 <= and if i ARG-SBYTES@ RECORD-WORDS exit then
+   1 ;
+
+: PLACE-INT ( n -- ) {: i:n :}
+   i INT-WORDS {: words:n :}
+   INT-N @ words + REG-MAX <= if
+      INT-N @ ARG-REG i cells + !
+      words INT-N +! exit
+   then
+   REG-MAX INT-N !
+   STACK-N @ 1+ negate ARG-REG i cells + !
+   words STACK-N +! ;
+
+: PLACE-COPY ( n n -- n ) {: i:n pos:n :}
+   i ARG-SBYTES@ 16 <= if pos exit then
+   pos 1+ 2 / 2 * {: pay:n :}
+   \ The width meets the capacity left, so no sum of payloads can wrap.
+   FFI:STACK-CELLS pay - 8 * i ARG-SBYTES@ < if E-FFI-ARITY throw then
+   pay i ARG-PAY!
+   pay i ARG-SBYTES@ RECORD-WORDS + ;
+
 : PLAN-STRUCT ( -- )
-   -1 INT-N +!
-   0 STACK-N !
+   0 INT-N ! 0 FLT-N ! 0 STACK-N !
+   C-ARGS 0 ?do
+      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or if
+         FLT-N @ ARG-REG i cells + !
+         1 FLT-N +!
+      else i PLACE-INT then
+   loop
    REG-ROOM
+   STACK-N @ C-ARGS 0 ?do i swap PLACE-COPY loop {: total:n :}
+   total FFI:STACK-CELLS > if E-FFI-ARITY throw then
+   total STACK-N !
    C-STRUCT CALL-KIND ! ;
 
+: RECORDS? ( -- bool )
+   false ARG-N @ 0 ?do i ARG-SBYTES@ 0 > or loop ;
+
 : PLAN-CALL ( -- )
-   STRUCT-BYTES @ 0 > if PLAN-STRUCT exit then
+   STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT exit then
    HB-TARGET-LINUX-X86-64? if PLAN-X86 else
       HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS
       else E-FFI-LIBRARY throw then
@@ -1425,9 +1570,11 @@ variable SCOPE-HOOK
    i ARG-EXT-ARG@ NO-EXT <> if i STAGE-WRITABLE exit then
    i STAGE-READABLE ;
 
-: STACK-POS ( n -- )
-   HB-TARGET-LINUX-X86-64? if ARG-REG@ negate 1- GEN-N exit then
-   VAR-START @ - GEN-N ;
+\ A planned stack cell is -1-cell in ARG-REG; a macOS variadic argument's
+\ cell is its position past the fixed ones.
+: STACK-POS ( n -- ) {: i:n :}
+   i ARG-REG@ 0 < if i ARG-REG@ negate 1- GEN-N exit then
+   i VAR-START @ - GEN-N ;
 : STAGE-SPILL ( n -- ) {: i:n :}
    i ARG-KIND@ K-FLOAT = if
       i STACK-POS s"  FFI:STACK-FLOAT! " GEN+ exit then
@@ -1439,16 +1586,19 @@ variable SCOPE-HOOK
    then
    i STACK-POS s"  FFI:STACK-READABLE! " GEN+ ;
 
+: STAGE-REG ( n -- ) {: i:n :}
+   i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
+   i ARG-KIND@ K-FLOAT32 = if i STAGE-FLOAT32 exit then
+   i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
+   i STAGE-POINTER ;
+
 : STAGE-ONE ( n bool -- ) {: i:n named:bool :}
    named if i GEN-ARG GEN-SP then
    HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
    HB-TARGET-MACOS? STACK-N @ 0 > and i VAR-START @ >= and if
       i STAGE-SPILL exit
    then
-   i ARG-KIND@ K-FLOAT = if i STAGE-FLOAT exit then
-   i ARG-KIND@ K-FLOAT32 = if i STAGE-FLOAT32 exit then
-   i ARG-KIND@ K-VALUE = if i STAGE-VALUE exit then
-   i STAGE-POINTER ;
+   i STAGE-REG ;
 
 : STAGE ( bool -- ) {: named:bool :}
    ARG-N @ 0 ?do
@@ -1517,8 +1667,20 @@ variable SCOPE-HOOK
    E-FFI-LIBRARY throw ;
 
 
+\ The cells holding a larger record's copy address, which the call moves to
+\ the copy in its native frame: bit reg for x0-x7, bit 8+cell for a stack
+\ cell. The row keeps this mask; no caller supplies one.
+: RELOC-MASK ( -- n )
+   0 C-ARGS 0 ?do
+      i ARG-SBYTES@ 16 > if
+         i ARG-REG@ 0 < if 1 i ARG-REG@ negate 1- 8 + lshift
+         else 1 i ARG-REG@ lshift then
+         or
+      then
+   loop ;
+
 : SLOT ( -- n )
-   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ FFI:DECLARE-SPILLED ;
+   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ RELOC-MASK FFI:DECLARE-ROW ;
 
 \ What the machine return cell becomes: dropped, rebuilt from its low half for a
 \ 32-bit result, or taken whole.
@@ -1527,16 +1689,40 @@ variable SCOPE-HOOK
    RES-KIND @ R-I32 = if s"  FFI:I32-RESULT" GEN+ exit then
    RES-KIND @ R-U32 = if s"  $FFFFFFFF and" GEN+ then ;
 
-\ Resolve first, then stage every C argument and the destination, call, and
-\ store the record.
+: STAGE-RECORD ( n -- ) {: i:n :}
+   i ARG-SBYTES@ GEN-N GEN-SP
+   i ARG-SBYTES@ 16 <= if
+      i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-STACK! " GEN+ exit then
+      i ARG-REG@ GEN-N s"  FFI:STRUCT-REGS! " GEN+ exit
+   then
+   i ARG-PAY@ GEN-N GEN-SP
+   i ARG-REG@ 0 < if i STACK-POS s"  FFI:STRUCT-COPY-STACK! " GEN+ exit then
+   i ARG-REG@ GEN-N s"  FFI:STRUCT-COPY-REG! " GEN+ ;
+
+: STAGE-C-ARG ( n -- ) {: i:n :}
+   i GEN-ARG GEN-SP
+   i ARG-SBYTES@ 0 > if i STAGE-RECORD exit then
+   i ARG-REG@ 0 < if i STAGE-SPILL exit then
+   i STAGE-REG ;
+
+\ Resolve first, then stage every C argument and any destination, call, and
+\ store the record or shape the result.
 : STRUCT-BODY ( -- )
    SLOT {: slot:n :}
    LOCALS
    slot GEN-N s"  FFI:RESOLVE-ROW FFI:RESET " GEN+
-   ARG-N @ 1- 0 ?do i true STAGE-ONE loop
-   ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
-   slot GEN-N s"  FFI:CALL-STRUCT " GEN+
-   ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ ;
+   C-ARGS 0 ?do i STAGE-C-ARG loop
+   STRUCT-BYTES @ 0 > if
+      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:RESULT-DEST! " GEN+
+   then
+   slot GEN-N
+   STRUCT-BYTES @ 0 > if
+      s"  FFI:CALL-STRUCT " GEN+
+      ARG-N @ 1- GEN-ARG GEN-SP STRUCT-BYTES @ GEN-N s"  FFI:STORE-RESULT" GEN+ exit
+   then
+   RES-KIND @ R-POINTER = if s"  FFI:CALL-STRUCT-PTR" GEN+ exit then
+   s"  FFI:CALL-STRUCT drop" GEN+
+   RESULT-TAIL ;
 
 : EMIT ( -- )
    GEN CODEGEN:RESET
@@ -1596,6 +1782,7 @@ variable SCOPE-HOOK
    ARG-REG ARG-MAX cells keep execute
    ARG-EXT ARG-MAX cells keep execute
    ARG-EXT-ARG ARG-MAX cells keep execute
+   ARG-SBYTES ARG-MAX cells keep execute
    ARG-N BYTE-VIEW CELL keep execute
    INT-N BYTE-VIEW CELL keep execute
    FLT-N BYTE-VIEW CELL keep execute
@@ -1669,12 +1856,13 @@ public
    idx ARG-KIND@ K-POINTER <> if REFUSE then
    idx ARG-EXT@ NO-EXT <> if REFUSE then
    idx ARG-EXT-ARG@ NO-EXT <> if REFUSE then
+   idx ARG-SBYTES@ 0 <> if REFUSE then
    STRUCT-BYTES @ 0 <> idx ARG-N @ 1- = and if REFUSE then ;
 
 : SET-VARIADIC ( n -- ) {: fixed:n :}
    OPEN @ 0= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
-   STRUCT-BYTES @ 0 <> if REFUSE then
+   STRUCT-BYTES @ 0 <> RECORDS? or if REFUSE then
    fixed 1 < fixed ARG-N @ > or if REFUSE then
    ARG-N @ fixed ?do
       i ARG-KIND@ K-FLOAT32 = if REFUSE then
@@ -1707,6 +1895,18 @@ public
    ARG-N @ 0= if REFUSE then
    ARG-N @ 1- CLAUSE-TARGET
    bytes STRUCT-BYTES ! ;
+
+\ Input idx, a `ptr u8` no other clause names, is the address of a C struct of
+\ bytes passed by value. The struct call returns x0 and x1 only, so a float
+\ result has no shape here. AAPCS64 only.
+: SET-STRUCT-ARG ( n n -- ) {: idx:n bytes:n :}
+   OPEN @ 0= if REFUSE then
+   HB-TARGET-LINUX-X86-64? if REFUSE then
+   idx CLAUSE-TARGET
+   bytes 0 <= if REFUSE then
+   VAR-START @ -1 <> if REFUSE then
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if REFUSE then
+   bytes idx ARG-SBYTES! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then
@@ -1754,6 +1954,8 @@ public
 : VARIADIC ( n -- ) FFI-DECL:SET-VARIADIC ;
 
 : STRUCT-RESULT ( n -- ) FFI-DECL:SET-STRUCT-RESULT ;
+
+: STRUCT-ARG ( n n -- ) FFI-DECL:SET-STRUCT-ARG ;
 
 : ;FUNCTION ( -- )
    FFI-DECL:CLOSE-FUNCTION ;

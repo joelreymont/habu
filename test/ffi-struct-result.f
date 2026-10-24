@@ -85,8 +85,9 @@ create FFI-T-SR-BUF 64 allot
    INCLUDE-EVALUATE ;
 : FFI-T-SR-OUTSIDE ( -- )
    s" 8 STRUCT-RESULT" INCLUDE-EVALUATE ;
-: FFI-T-SR-REGISTERS ( -- )
-   s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
+\ Sixteen inputs are the limit, and the destination is one of them.
+: FFI-T-SR-INPUTS ( -- )
+   s" FUNCTION: FFI-T-SRXC div ( n n n n n n n n n n n n n n n n ptr u8 -- ) 32 STRUCT-RESULT ;FUNCTION"
    INCLUDE-EVALUATE ;
 
 : FFI-T-STRUCT-RESULTS ( -- )
@@ -152,7 +153,7 @@ create FFI-T-SR-BUF 64 allot
    [: FFI-T-SR-WRITES-BEFORE ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-SR-WRITES-AFTER ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-SR-OUTSIDE ;] E-FFI-SYNTAX TTHROWSQ
-   s" nine C arguments beside the destination exceed x0-x7" T-LABEL
-   [: FFI-T-SR-REGISTERS ;] E-FFI-ARITY TTHROWSQ ;
+   s" sixteen C arguments beside the destination exceed the inputs" T-LABEL
+   [: FFI-T-SR-INPUTS ;] E-FFI-ARITY TTHROWSQ ;
 
 FFI-T-STRUCT-RESULTS

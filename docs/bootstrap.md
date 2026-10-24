@@ -64,6 +64,7 @@ and postgres on PATH and libpq 17 or newer for native query cancellation,
 run as an ordinary user because initdb refuses root.
 On macOS the library rows use Homebrew libzip, libunistring, openssl@3,
 libpq and socat; SVG/PDF checks also need librsvg, qpdf and Poppler.
+The FFI row compiles its struct-by-value fixture library with /usr/bin/cc.
 Keg-only postgresql@18 needs its bin directory on PATH.
 See [gate.md](gate.md) for the suite and its boundaries.
 

@@ -4423,7 +4423,10 @@ public
    s" ffi-call-abi-r" [: FFI-CALL-ABI-BODY  XMM0-PUSH, ;] PRIM
    s" ffi-call-abi-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH, ;] PRIM
    s" ffi-call-abi-r-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  XMM0-PUSH, ;] PRIM
-   s" ffi-call-struct-bounded" [: FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
+   \ x86-64 refuses STRUCT-ARG declarations, so the relocation mask under fn
+   \ is always zero here: it is dropped before the body reads its inputs.
+   s" ffi-call-struct-bounded"
+      [: R11 POP,  DROP,  R11 PUSH,  FFI-CALL-ABI-BOUNDED-BODY  RAX PUSH,  RDX PUSH, ;] PRIM ;
 
 \ ---- task entry --------------------------------------------------------------
 \ The twin of habu1.f BTASK-ENTRY. `task-entry` answers an immutable pthread
