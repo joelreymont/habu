@@ -12456,8 +12456,8 @@ public
    14 1 MOVZ,  9 SP 9 SUB,                             \ x9 = -x9 (abs); x14 = sign flag
    LUNCPOS LABEL@ LBL,
    10 $A MOVZ,
-   LUNCLOOP LABEL@ LBL,
-   11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
+   LUNCLOOP LABEL@ LBL,                                \ unsigned, as G-PRINT9: -MIN-N is MIN-N, magnitude 2^63
+   11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
    13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 LUNCLOOP LABEL@ CBNZ,
    14 LUNCDONE LABEL@ CBZ,

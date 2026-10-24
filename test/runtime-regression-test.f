@@ -56,6 +56,11 @@ variable GE-SCRIPT-U
       s" uncaught throw -2816 (kernel-masks-to-0)" GE-UNCAUGHT-CASE
    s" -2802 throw" GE-UNCAUGHT-RC s" uncaught throw code -2802"
       s" uncaught throw -2802 (kernel-masks-to-14)" GE-UNCAUGHT-CASE
+   \ MIN-N negates to itself, so its digits come from an unsigned divide.
+   s" -9223372036854775807 1 - throw" GE-UNCAUGHT-RC
+      s" uncaught throw MIN-N" GE-UNCAUGHT-RUN
+   S\" hb: uncaught throw code -9223372036854775808\n"
+      s" uncaught throw MIN-N prints its digits" GE-EXPECT-ERR
    s" 70 throw" 70 s" uncaught throw 70 representable passthrough" RUNTIME-RUNNER:LINE-RC
    s" uncaught throw 70 representable passthrough" GE-EXPECT-SILENT
    s" : GEUT ( -- ) [: -2816 throw ;] catch . ;  GEUT" 0
