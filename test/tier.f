@@ -726,6 +726,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
+\ A definer whose clause breaks its declared effect. Each tier reports the
+\ checker's reason under the clause name and exits 70.
+: MKW-BAD$ ( -- ptr u8 n )
+   s" : MKW ( n -- ) create , does> ( -- n n ) @ ;" ;
+
 \ A definer whose package holds a private word named `check-does!` that would
 \ approve any clause, printing SHADOW.
 : CDS-SHADOW$ ( -- ptr u8 n )
@@ -777,6 +782,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       s" tier 0 checks a does> clause with the owner's check, not a package's" T-LABEL
       CDS-SHADOW$ RUN  s" 8" ASSERT-OK
       OUT$ s" SHADOW" CONTAINS? TFALSE
+
+      s" tier 0 refuses a does> clause whose body breaks its effect" T-LABEL
+      MKW-BAD$ RUN  s" mkw;does" ASSERT-REJECTED
    then
 
    s" tier 1 checks a does> clause with the owner's check, not a package's" T-LABEL
@@ -792,7 +800,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
    \ A load stops at its first refused clause, so a second refusal needs its own run.
    s" tier 1 refuses a does> clause whose body breaks its effect" T-LABEL
-   s" 1 set-tier : MKW ( n -- ) create , does> ( -- n n ) @ ;" RUN  s" mkw;does" ASSERT-REJECTED
+   SB-RESET s" 1 set-tier " SB-APPEND MKW-BAD$ SB-APPEND SB$ RUN  s" mkw;does" ASSERT-REJECTED
 
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;

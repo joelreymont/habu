@@ -26775,8 +26775,7 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    UNJ-DOES-VERDICT @ ;
 
 \ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
-\ body itself, but CHECK-DOES-RUN renders nothing: tier 0 reports a refused
-\ clause its own way (src/habu/habu2.f C-DIE-DOES), and a clause this entry
+\ body itself, but CHECK-DOES-RUN renders nothing, and a clause this entry
 \ refused ended tools/check.f's pre-pass with no diagnostic. It is reported as CHECK reports a body: rendered unless the scope
 \ is quiet, and counted in a multi-error load, rejected or uncheckable, under
 \ the name of the record the clause publishes - the definer's, folded as a
@@ -26795,9 +26794,10 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    MULTI-ERR? IF 1 MULTI-ERR-N +! THEN
    v ;
 
-\ The native compiler reports a clause its split refused the same way
-\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT), but it names the definer
-\ only after the scan, so the token buffers are sized for the clause name here.
+\ Both compilers report a clause their check refused the same way
+\ (src/compiler/native/compiler.f CHECK-DOES-SPLIT, src/habu/habu2.f
+\ C-CALL-CHECK-DOES), but they name the definer only after the scan, so the
+\ token buffers are sized for the clause name here.
 \ A grown buffer starts empty and the old one stays mapped, so the refused token
 \ is carried over from it.
 : CHECKER-NATIVE-DOES-REPORT ( n ptr u8 n -- n ) {: v:n na:ptr nu:n :}

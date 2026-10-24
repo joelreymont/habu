@@ -297,8 +297,8 @@ $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 \ C-FIND-ACTIVE-RAW, C-FIND-TARGET-RAW). MIRROR of src/habu/layout.f DECL-CELL
 \ and TARGET-DECL-CELL and src/core/checker-owner-abi.f RAW-OFF, EFFECT-OFF,
 \ DOES-CHECK-OFF, CHECK-UNJUDGED-OFF and DECLARED-ROW-OFF, and of
-\ src/core/checker-owner-extension.f CERT-BYTES-OFF, CERT-KEEP-OFF and
-\ CERT-KEPT-OFF (C-OWNER-FIELD).
+\ src/core/checker-owner-extension.f NATIVE-DOES-REPORT-OFF, CERT-BYTES-OFF,
+\ CERT-KEEP-OFF and CERT-KEPT-OFF (C-OWNER-FIELD).
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
 $0 constant DECL-RAW-OFF
@@ -306,6 +306,7 @@ $8 constant DECL-EFFECT-OFF
 $A8 constant DECL-DOES-CHECK-OFF
 $1A8 constant DECL-CHECK-UNJUDGED-OFF
 $390 constant DECL-DECLARED-ROW-OFF
+$558 constant DECL-NATIVE-DOES-REPORT-OFF
 $560 constant DECL-CERT-BYTES-OFF
 $568 constant DECL-CERT-KEEP-OFF
 $570 constant DECL-CERT-KEPT-OFF
@@ -4682,13 +4683,28 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
+\ MIRROR of src/habu/habu2.f C-OWNER-FIELD: x11 = the operation at OFF in the
+\ source owner's record; an owner whose record ends before OFF or holds 0 there
+\ writes the line MA MU and exits 70.
+: C-OWNER-FIELD ( off ma mu -- ) {: off ma mu :}
+   LBL LBL LBL {: absent msg ready :}
+   11 DATA DECL-CELL LDR,  11 absent CBZ,
+   10 11 8 SUBI,  10 10 0 LDR,
+   10 off 8 + CMPI,  C-LT absent BCOND,
+   11 11 off LDR,  11 ready CBNZ,
+   absent LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
+   ready LBL, ;
+
 : C-DIE-DOES ( -- )
    0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ MIRROR of src/habu/habu2.f C-CALL-CHECK-DOES: the does> clause check is the
 \ source owner's, reached through its record; an owner with no such field
-\ exits 70.
+\ exits 70. A refused clause is reported by the owner's does> report first.
 : C-CALL-CHECK-DOES ( -- )
    S\" hb: the source owner carries no does> check\n"
    LBL LBL LBL LBL {: ma mu absent msg ready good :}
@@ -4707,6 +4723,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
+      10 G-PUSH  C-PUSH-DREC-NAME
+      DECL-NATIVE-DOES-REPORT-OFF
+      S\" hb: the source owner carries no does> report\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED  10 G-POP
       C-DIE-DOES
    good LBL, ;
 
@@ -4730,21 +4750,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       C-DIE-DOES
    good LBL,
    nohook LBL, ;
-
-\ MIRROR of src/habu/habu2.f C-OWNER-FIELD: x11 = the operation at OFF in the
-\ source owner's record; an owner whose record ends before OFF or holds 0 there
-\ writes the line MA MU and exits 70.
-: C-OWNER-FIELD ( off ma mu -- ) {: off ma mu :}
-   LBL LBL LBL {: absent msg ready :}
-   11 DATA DECL-CELL LDR,  11 absent CBZ,
-   10 11 8 SUBI,  10 10 0 LDR,
-   10 off 8 + CMPI,  C-LT absent BCOND,
-   11 11 off LDR,  11 ready CBNZ,
-   absent LBL,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
-   ready LBL, ;
 
 \ MIRROR of src/habu/habu2.f C-CALL-CHECK-UNJUDGED: a TRUSTED: or hookless
 \ body's scan, for the lowering certificate only; its verdict is not enforced.

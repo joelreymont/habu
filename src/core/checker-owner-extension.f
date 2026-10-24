@@ -46,8 +46,8 @@ $538 constant JSON-REPORTED-OFF
 $548 constant RECOVERY-USED-OFF
 \ A does> clause scanned in its parent's unjudged regime (TRUSTED: or hookless).
 $550 constant DOES-UNJUDGED-OFF
-\ The report of a does> clause the native compiler's split refused, named for
-\ the definer it belongs to.
+\ The report of a does> clause either compiler's check refused, named for the
+\ definer it belongs to.
 $558 constant NATIVE-DOES-REPORT-OFF
 \ The lowering certificate the owner's last scan produced, the keep of a does>
 \ clause's certificate while its definer's head is scanned, and the kept one.

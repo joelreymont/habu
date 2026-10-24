@@ -3118,6 +3118,24 @@ public
    nomark LBL,
    nohook LBL, ;
 
+\ x11 = the operation at OFF in the source owner's record. An owner whose record
+\ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
+\ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
+\ by name: the scan and the certificate it leaves are one owner's, also in
+\ tools/bootstrap.sh's reload window, where the owner stays claimed while its
+\ names are rewound.
+: C-OWNER-FIELD ( n ptr u8 n -- ) {: off:n ma:ptr mu:n :}
+   LBL LBL LBL {: absent:label msg:label ready:label :}
+   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
+   10 11 8 SUBI,  10 10 0 LDR,
+   10 off CELL + CMPI,  C-LT absent BCOND,
+   11 11 off LDR,  11 ready CBNZ,
+   absent LBL,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
+   ready LBL, ;
+
 : C-DIE-DOES ( -- )                                   \ does>-body checker reject: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 KWDOES$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -3125,6 +3143,9 @@ public
 \ The does> clause check is the source owner's, reached through its record as
 \ tier 1 reaches it (checker-owner.f DOES-CHECK), so no word the definer's
 \ package names can stand in for it; an owner with no such field exits 70.
+\ The check renders nothing, so a refused clause is reported as tier 1 reports
+\ one (compiler.f CLAUSE-CK): the owner's does> report renders the checker's
+\ reason under the definer's clause name, then C-DIE-DOES fails the definition.
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL LBL {: msg:label ready:label good:label :}
    S\" hb: the source owner carries no does> check\n" {: ma:ptr mu:n :}
@@ -3141,6 +3162,10 @@ public
    9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
+      10 G-PUSH  C-PUSH-DREC-NAME
+      NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF
+      S\" hb: the source owner carries no does> report\n" C-OWNER-FIELD
+      C-CALL-X11-SAVED  10 G-POP
       C-DIE-DOES
    good LBL, ;
 
@@ -3182,24 +3207,6 @@ public
       C-DIE-DOES
    good LBL,
    nohook LBL, ;
-
-\ x11 = the operation at OFF in the source owner's record. An owner whose record
-\ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
-\ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
-\ by name: the scan and the certificate it leaves are one owner's, also in
-\ tools/bootstrap.sh's reload window, where the owner stays claimed while its
-\ names are rewound.
-: C-OWNER-FIELD ( n ptr u8 n -- ) {: off:n ma:ptr mu:n :}
-   LBL LBL LBL {: absent:label msg:label ready:label :}
-   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
-   10 11 8 SUBI,  10 10 0 LDR,
-   10 off CELL + CMPI,  C-LT absent BCOND,
-   11 11 off LDR,  11 ready CBNZ,
-   absent LBL,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  ma mu BYTES,
-   ready LBL, ;
 
 \ A TRUSTED: body is scanned as tier 1 scans it (compiler.f CHECK-PARENT): by
 \ checker.f CHECK-UNJUDGED!, whose verdict nobody enforces and whose diagnostics
