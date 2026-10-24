@@ -1,5 +1,4 @@
 ---
-title: Tier 0 lowers a generic-row call at a wide type
 title: Tier 1 refuses a rejected generic call in a TRUSTED: body
 status: open
 priority: 3
