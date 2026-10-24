@@ -30,13 +30,19 @@ diagnostics, which carry `<path>:<line>`, or a bisect are the way in.
 
 ## Reading an exit status
 
-An uncaught throw in a `--load` or spawned child exits by its code. A code from
-1 to 255 is the exit status and prints nothing: `42 throw` exits 42. Any other
-code prints `hb: uncaught throw code N` on stderr and exits 67, so read the
-`E-*` from the message, not from the status. A refusal the checker rendered
-before throwing its code prints the same line after its diagnostic and exits
-70, the status of every refusal. A one-byte diagnostic and a clean exit means a
-raw engine capacity path, not a throw.
+An uncaught throw in a `--load` or spawned child, or in an arm64 stripped (AOT)
+application, runs the process-exit hook and then exits by its code. An x86-64
+stripped application's uncaught throw does not yet run the hook or print the
+report. A code from 1 to 255 is the exit status and prints nothing: `42 throw`
+exits 42. Any other code prints `hb: uncaught throw code N` on stderr and exits
+67, so read the `E-*` from the message, not from the status. Code 0 differs by
+entry: under `--load` the loader rethrows only a nonzero code, so `0 throw`
+ends that file's load and the process exits 0, while a plain `hb file.f` or
+source on stdin prints `hb: uncaught throw code 0` and exits 67. A refusal the
+checker rendered before throwing its code prints the same line after its
+diagnostic and exits 70, the status of every refusal; a stripped application
+carries no checker, so it never takes that exit. A one-byte diagnostic and a
+clean exit means a raw engine capacity path, not a throw.
 
 ## `.s` and `.` — stack inspection
 

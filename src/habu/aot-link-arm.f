@@ -101,6 +101,7 @@ variable CODE-END
 variable LTEXT
 variable LDPREFUSE  variable LDPREFUSE-NUM
 variable LDPREFUSE-MSG  variable LDPREFUSE-OF  variable LDPREFUSE-UNIT
+variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-NL
 
 \ ADDRESS A LABEL THE STARTUP CANNOT REACH WITH ADR. `adr` carries a signed
 \ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB), and the startup sits
@@ -561,13 +562,15 @@ create AOT-OBJ-HDR 8 allot
 \ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
 \ The process-exit vector (src/habu/layout.f EXIT-HOOK-CELL), inline. A stripped
 \ image has no engine label to call - habu2.f EMIT-EXITHOOK's trampoline is
-\ engine text, and this entry is the whole of this image's exit path - and after
-\ the root call every register but the VM's is dead, so the sequence needs
-\ neither a frame nor a saved exit code. THE CELL IS CLEARED BEFORE THE CALL,
-\ exactly as the engine's trampoline clears it: a hook that dies re-enters an
-\ exit path and must find the vector empty. An image that arms nothing pays one
-\ load and a CBZ. The image gate reads this sequence instruction by instruction
-\ between the root call and the exit tail (test/gate-aot-image.f EXIT-HOOK-END).
+\ engine text - so this entry and EMIT-UNCAUGHT each emit it. After the root
+\ call every register but the VM's is dead, so the sequence needs neither a
+\ frame nor a saved exit code; the reporter saves its code itself. THE CELL IS
+\ CLEARED BEFORE THE CALL, exactly as the engine's trampoline clears it: a hook
+\ that dies re-enters an exit path and must find the vector empty. An image that
+\ arms nothing pays one load and a CBZ. No gate reads this sequence: the image
+\ gate's walk (test/gate-aot-image.f SCAN-STARTUP) stops at the root call. Its
+\ behaviour is test/stripped-image.f RUN-EXITS, one run per exit, each of which
+\ must remove the directory its hook registered.
 : EMIT-EXIT-HOOK ( -- )
    LBL {: nohk:label :}
    9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
@@ -594,6 +597,7 @@ create AOT-OBJ-HDR 8 allot
    EMIT-FFI-BASES                                \ select this image's two FFI table destinations
    EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
+   11 12 LUNCREP LABEL@ TEXT-ADR,  11 DATA UNCGH-CELL STR,   \ the uncaught-throw reporter (EMIT-UNCAUGHT)
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    EMIT-EXIT-HOOK                                \ whatever the application armed on its way out
@@ -633,6 +637,44 @@ create AOT-OBJ-HDR 8 allot
    LDPREFUSE-MSG LABEL@ LBL,  DP-REFUSE-MSG$ BYTES,
    LDPREFUSE-OF LABEL@ LBL,  DP-REFUSE-OF$ BYTES,
    LDPREFUSE-UNIT LABEL@ LBL,  DP-REFUSE-UNIT$ BYTES, ;
+
+\ A throw no handler catches reaches BTHROW's THROW-NOREC branch (habu1.f) with
+\ the code in x9, and that branch jumps through UNCGH-CELL. The engine's boot
+\ stores its own reporter there (habu2.f LUNCAUGHT); a stripped image has no
+\ engine text, so EMIT-ENTRY stores this one, which keeps the same contract
+\ (docs/debugging.md "Reading an exit status"). It runs the exit vector first,
+\ as every exit does. A code from 1 to 255 is then the exit status, with no
+\ output; any other code would be kernel-masked, so it is named on fd 2 as
+\ `hb: uncaught throw code <n>` and the process exits UNCAUGHT-RC. The engine's
+\ RC-REJECT leg has no counterpart: only the checker renders a refusal, and no
+\ stripped closure can write REFUSAL-ABI:CODE-CELL, which aot-owned-cells.f
+\ does not claim. The code waits out the hook on the machine stack and stays
+\ in x15 across the writes, which the kernel preserves; the digits are
+\ LDPREFUSE-NUM's, printed from the magnitude, so MIN-N prints exactly.
+: UNCAUGHT-MSG$ ( -- ptr u8 n ) s" hb: uncaught throw code " ;
+
+: EMIT-UNCAUGHT ( -- )
+   LBL LBL {: report:label pos:label :}
+   LUNCREP LABEL@ LBL,
+   SP SP $10 SUBI,  9 SP 0 STR,
+   EMIT-EXIT-HOOK
+   15 SP 0 LDR,  SP SP $10 ADDI,
+   15 1 CMPI,    C-LT report BCOND,
+   15 255 CMPI,  C-GT report BCOND,
+   0 15 0 ADDI,  NR-EXIT-GROUP SYS,
+   report LBL,
+   0 2 MOVZ,  1 LUNCREP-MSG LABEL@ ADR,  2 UNCAUGHT-MSG$ nip MOVZ,  NR-WRITE SYS,
+   9 15 0 ADDI,
+   15 0 CMPI,  C-GE pos BCOND,
+      0 2 MOVZ,  1 LUNCREP-SIGN LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+      9 SP 15 SUB,                               \ x9 = 0 - code (register 31 reads zero)
+   pos LBL,
+   LDPREFUSE-NUM LABEL@ BL,
+   0 2 MOVZ,  1 LUNCREP-NL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+   0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   LUNCREP-MSG LABEL@ LBL,  UNCAUGHT-MSG$ BYTES,
+   LUNCREP-SIGN LABEL@ LBL,  s" -" BYTES,
+   LUNCREP-NL LABEL@ LBL,  S\" \n" BYTES, ;
 
 : EMIT-CRASH-CODE ( -- )
    EMIT-CRASH-HANDLER  EMIT-SIGNAL-HANDLER  EMIT-HEX ;
@@ -1090,7 +1132,8 @@ variable RP  variable RE
    LBL LCRASHH !  LBL LSIGH !  LBL LHEX !  LBL LHDR !
    LBL LDPREFUSE !  LBL LDPREFUSE-NUM !
    LBL LDPREFUSE-MSG !  LBL LDPREFUSE-OF !  LBL LDPREFUSE-UNIT !
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-CRASH-CODE
+   LBL LUNCREP !  LBL LUNCREP-MSG !  LBL LUNCREP-SIGN !  LBL LUNCREP-NL !
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-UNCAUGHT  EMIT-CRASH-CODE
    ASM-LEN CODE-END !
    EMIT-DATA-BLOB  EMIT-XT-ROWS
    AOT-WRITE-OBJ

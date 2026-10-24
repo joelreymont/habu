@@ -2,7 +2,7 @@
 \ (test/stripped-image-subject.f) through tools/hb-build.f, then measure it,
 \ read its startup shape and run it through its real entry. One build serves
 \ every subject: each prints its line or dies naming itself, so the exact
-\ stdout says which one failed. The same image runs twice for
+\ stdout says which one failed. The same image runs again for
 \ test/exit-hook-subject.f, once per exit a stripped application takes, and
 \ each run must leave the directory it registered removed.
 require test/gate-common.f
@@ -30,33 +30,32 @@ private
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
 create DIE-TREE FS-PATH-CAP allot
-create RETURN-TREE FS-PATH-CAP allot
+create EXIT-TREE FS-PATH-CAP allot
 variable SUBJECT-U
 variable IMAGE-U
 variable DIE-TREE-U
-variable RETURN-TREE-U
+variable EXIT-TREE-U
 
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : DIE-TREE$ ( -- ptr u8 n ) DIE-TREE DIE-TREE-U @ ;
-: RETURN-TREE$ ( -- ptr u8 n ) RETURN-TREE RETURN-TREE-U @ ;
+: EXIT-TREE$ ( -- ptr u8 n ) EXIT-TREE EXIT-TREE-U @ ;
 
 : PREPARE ( -- )
    s" stripped-image" GT-START
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" application" IMAGE GT-PATH IMAGE-U !
-   s" die-tree" DIE-TREE GT-PATH DIE-TREE-U !
-   s" return-tree" RETURN-TREE GT-PATH RETURN-TREE-U ! ;
+   s" die-tree" DIE-TREE GT-PATH DIE-TREE-U ! ;
 
 \ MAIN is written per host: the macOS image also starts and stops AIO, the
 \ run-time use of src/lib/aio.f's definers; the Linux image links src/lib/aio.f without
-\ starting it. The exit-hook subject registers its directory first, and its
-\ return run leaves before the other subjects. UNMAP comes last because it ends
+\ starting it. The exit-hook subject registers its directory first, and a run
+\ given its code leaves before the other subjects. UNMAP comes last because it ends
 \ the process.
 : WRITE-SUBJECT ( -- )
    SB-RESET
    S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" SB-APPEND
-   S\" : MAIN ( -- )\n   EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if exit then\n" SB-APPEND
+   S\" : MAIN ( -- )\n   EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if EXIT-HOOK-SUBJECT:FINISH exit then\n" SB-APPEND
    S\"    STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
    HB-TARGET-MACOS? if S\"    AIO:START AIO:STOP\n" SB-APPEND then
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
@@ -103,28 +102,39 @@ variable RETURN-TREE-U
    S\" memory: unmap failed\n" s" stripped image exact stderr" GE-EXPECT-ERR
    DIE-TREE$ EXISTS? if s" a stripped application's die removes the registered tree" GE-FAIL then ;
 
-\ The application's own return: its entry calls the exit vector inline on the
-\ way to exit(0).
-: RUN-RETURN ( -- )
+\ MAIN leaves by the code it is given, in a directory named for that code.
+\ Code 0 is the application's own return: its entry calls the exit
+\ vector inline on the way to exit(0). Any other code is an uncaught throw,
+\ which exits as an engine's does (docs/debugging.md "Reading an exit status"):
+\ a code from 1 to 255 is the status, silently, and any other code is named on
+\ stderr and exits 67. Every one of those exits runs the vector.
+: RUN-EXIT ( ptr u8 n n ptr u8 n -- ) {: code:ptr codeu:n rc:n err:ptr erru:n :}
+   code codeu EXIT-TREE GT-PATH EXIT-TREE-U !
    GE-HB-RESET
    IMAGE$ GE-ARGV+
-   RETURN-TREE$ GE-ARG+
-   s" return" GE-ARG+
+   EXIT-TREE$ GE-ARG+
+   code codeu GE-ARG+
    IMAGE$ TIMEOUT-MS GE-RUN-ENV
-   s" stripped image return" GE-EXPECT-OK
-   S\" exit-hook-subject: ok\n" s" stripped image return stdout" GE-EXPECT-OUT
-   s" " s" stripped image return stderr" GE-EXPECT-ERR
-   RETURN-TREE$ EXISTS? if s" a stripped application's own exit removes the registered tree" GE-FAIL then ;
+   rc s" stripped image exit status" GE-EXPECT-RC
+   S\" exit-hook-subject: ok\n" s" stripped image exit stdout" GE-EXPECT-OUT
+   err erru s" stripped image exit stderr" GE-EXPECT-ERR
+   EXIT-TREE$ EXISTS? if s" a stripped application's exit removes the registered tree" GE-FAIL then ;
+
+: RUN-EXITS ( -- )
+   s" 0" 0 s" " RUN-EXIT
+   s" 42" 42 s" " RUN-EXIT
+   s" 256" 67 S\" hb: uncaught throw code 256\n" RUN-EXIT
+   s" -2500" 67 S\" hb: uncaught throw code -2500\n" RUN-EXIT ;
 
 \ The ARM startup carries the xt-cell apply loop, so it has to keep satisfying
 \ the image gate's ARM instruction model. The x86 image's actual DATA, xt-cell,
-\ root and exit behavior is checked by RUN-IMAGE and RUN-RETURN above.
+\ root and exit behavior is checked by RUN-IMAGE and RUN-EXITS above.
 : CHECK-SHAPE ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;
 
 : BODY ( -- )
-   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE RUN-RETURN CHECK-SHAPE
+   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE RUN-EXITS CHECK-SHAPE
    s" PASS: stripped image subjects" type cr ;
 
 public

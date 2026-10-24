@@ -2,7 +2,7 @@
 \ Every case registers a path inside this fixture's own temp root and then
 \ leaves the process the way it means to - normally, by `die`, by an uncaught
 \ throw, or by dying inside a chained foreign hook - and the assertion is what
-\ the child left on disk. The two exits of a stripped image's MAIN run in
+\ the child left on disk. The exits of a stripped image's MAIN run in
 \ test/stripped-image.f, on the application it already builds
 \ (test/exit-hook-subject.f). The children take the directory as argument 0
 \ rather than making their own under HB_TMP, so a case that fails leaves its
