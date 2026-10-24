@@ -263,3 +263,160 @@ variable LLOCAL-SKIP
    4 13 0 LDRB,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 ;package
+
+package CLOBBER-FIXTURE
+variable LUDIV-CALLEE
+variable LUDIV-CALLER
+
+\ UDIV writes its first register: the callee's clobber set gains x13.
+: EMIT-UDIV-CALLEE ( -- )
+   LUDIV-CALLEE LABEL@ LBL,
+   13 9 10 UDIV,
+   RET, ;
+
+: EMIT-UDIV-CALLER-BAD ( -- )
+   LUDIV-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LUDIV-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+;package
+
+\ Each callee below writes x13 through one more instruction class; each caller
+\ keeps x13 live across the call and reads it after.
+package CLOBBER-FIXTURE
+variable LORRI-CALLEE    variable LORRI-CALLER
+variable LLDAR-CALLEE    variable LLDAR-CALLER
+variable LCSEL-CALLEE    variable LCSEL-CALLER
+variable LFMOVDX-CALLEE  variable LFMOVDX-CALLER
+variable LLDRPRE-CALLEE  variable LLDRPRE-CALLER
+variable LSTRPOST-CALLEE variable LSTRPOST-CALLER
+variable LCASAL-CALLEE   variable LCASAL-CALLER
+
+\ ORRI, a two-register immediate, writes its first register.
+: EMIT-ORRI-CALLEE ( -- )
+   LORRI-CALLEE LABEL@ LBL,
+   13 9 1 ORRI,
+   RET, ;
+
+: EMIT-ORRI-CALLER-BAD ( -- )
+   LORRI-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LORRI-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LDAR, the load-acquire, writes its first register.
+: EMIT-LDAR-CALLEE ( -- )
+   LLDAR-CALLEE LABEL@ LBL,
+   13 9 LDAR,
+   RET, ;
+
+: EMIT-LDAR-CALLER-BAD ( -- )
+   LLDAR-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LLDAR-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ CSEL, the conditional select, writes its first register.
+: EMIT-CSEL-CALLEE ( -- )
+   LCSEL-CALLEE LABEL@ LBL,
+   9 10 CMP,  13 9 10 C-LS CSEL,
+   RET, ;
+
+: EMIT-CSEL-CALLER-BAD ( -- )
+   LCSEL-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LCSEL-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ FMOVDX, the FP-to-x move, writes its x register, the first.
+: EMIT-FMOVDX-CALLEE ( -- )
+   LFMOVDX-CALLEE LABEL@ LBL,
+   13 0 FMOVDX,
+   RET, ;
+
+: EMIT-FMOVDX-CALLER-BAD ( -- )
+   LFMOVDX-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LFMOVDX-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LDRPRE, the pre-indexed load, writes its destination as well as its base.
+: EMIT-LDRPRE-CALLEE ( -- )
+   LLDRPRE-CALLEE LABEL@ LBL,
+   13 9 -8 LDRPRE,
+   RET, ;
+
+: EMIT-LDRPRE-CALLER-BAD ( -- )
+   LLDRPRE-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LLDRPRE-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ STRPOST, the post-indexed store, writes its base register, the second.
+: EMIT-STRPOST-CALLEE ( -- )
+   LSTRPOST-CALLEE LABEL@ LBL,
+   9 13 8 STRPOST,
+   RET, ;
+
+: EMIT-STRPOST-CALLER-BAD ( -- )
+   LSTRPOST-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LSTRPOST-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ CASAL, the compare-and-swap, returns the old value in its first register.
+: EMIT-CASAL-CALLEE ( -- )
+   LCASAL-CALLEE LABEL@ LBL,
+   13 10 9 CASAL,
+   RET, ;
+
+: EMIT-CASAL-CALLER-BAD ( -- )
+   LCASAL-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LCASAL-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+;package
+
+package CLOBBER-FIXTURE
+variable LCBSELF-CALLEE  variable LCBSELF-CALLER
+variable LFMOVXD-CALLER
+
+\ CB-SELF reads the thread base into its register: the callee writes x13.
+: EMIT-CBSELF-CALLEE ( -- )
+   LCBSELF-CALLEE LABEL@ LBL,
+   13 CB-SELF,
+   RET, ;
+
+: EMIT-CBSELF-CALLER-BAD ( -- )
+   LCBSELF-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LCBSELF-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ FMOVXD reads its x register, the second: the read after the call reports.
+: EMIT-FMOVXD-CALLER-BAD ( -- )
+   LFMOVXD-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 9 0 ADDI,
+   LORRI-CALLEE LABEL@ BL,
+   0 13 FMOVXD,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+;package

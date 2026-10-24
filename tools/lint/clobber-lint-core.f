@@ -321,21 +321,28 @@ package CLOBBER
    a u s" MUL," LINT-STR= if LINT-TRUE exit then  a u s" AND," LINT-STR= if LINT-TRUE exit then
    a u s" ORR," LINT-STR= if LINT-TRUE exit then  a u s" EOR," LINT-STR= if LINT-TRUE exit then
    a u s" LSLV," LINT-STR= if LINT-TRUE exit then  a u s" LSRV," LINT-STR= if LINT-TRUE exit then
-   a u s" SDIV," LINT-STR= ;
+   a u s" SDIV," LINT-STR= if LINT-TRUE exit then  a u s" UDIV," LINT-STR= if LINT-TRUE exit then
+   a u s" CSEL," LINT-STR= ;
 : MN-W2I?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" ADDI," LINT-STR= if LINT-TRUE exit then  a u s" SUBI," LINT-STR= if LINT-TRUE exit then
    a u s" LSLI," LINT-STR= if LINT-TRUE exit then  a u s" LSRI," LINT-STR= if LINT-TRUE exit then
-   a u s" ASRI," LINT-STR= if LINT-TRUE exit then  a u s" ANDI," LINT-STR= ;
+   a u s" ASRI," LINT-STR= if LINT-TRUE exit then  a u s" ANDI," LINT-STR= if LINT-TRUE exit then
+   a u s" ORRI," LINT-STR= if LINT-TRUE exit then  a u s" EORI," LINT-STR= if LINT-TRUE exit then
+   a u s" ADDI-4K," LINT-STR= if LINT-TRUE exit then  a u s" SUBI-4K," LINT-STR= ;
 : MN-W1?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" MOVZ," LINT-STR= if LINT-TRUE exit then  a u s" MOVN," LINT-STR= if LINT-TRUE exit then
    a u s" ADR," LINT-STR= if LINT-TRUE exit then  a u s" LIT64," LINT-STR= if LINT-TRUE exit then
-   a u s" CSET," LINT-STR= ;
+   a u s" CSET," LINT-STR= if LINT-TRUE exit then
+   \ FMOVDX and FCVTZS write their first, x, register from a d register.
+   a u s" FMOVDX," LINT-STR= if LINT-TRUE exit then  a u s" FCVTZS," LINT-STR= if LINT-TRUE exit then
+   \ CB-SELF reads the thread base into its register.
+   a u s" CB-SELF," LINT-STR= ;
 : MN-WRMW?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" MOVK," LINT-STR= if LINT-TRUE exit then  a u s" MOVZHW," LINT-STR= if LINT-TRUE exit then
    a u s" MOVKHW," LINT-STR= if LINT-TRUE exit then  a u s" MOVNHW," LINT-STR= ;
 : MN-LD?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" LDR," LINT-STR= if LINT-TRUE exit then  a u s" LDRB," LINT-STR= if LINT-TRUE exit then
-   a u s" LDRW," LINT-STR= ;
+   a u s" LDRW," LINT-STR= if LINT-TRUE exit then  a u s" LDAR," LINT-STR= ;
 : MN-ST?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" STR," LINT-STR= if LINT-TRUE exit then  a u s" STRB," LINT-STR= if LINT-TRUE exit then
    a u s" STRW," LINT-STR= ;
@@ -393,8 +400,11 @@ variable RK
    a u s" mark-commit-index" LINT-STR=CI if
       0 4 CL-ADD 13 CL-ADD 16 CL-ADD 31 CL-ADD CL-ROR
       0 7 CL-ADD 8 CL-ADD 11 CL-ADD 13 CL-ADD CL-WOR exit then
-   a u s" g-push" LINT-STR=CI if 0 ER 19 ER 19 EW exit then
-   a u s" g-pop" LINT-STR=CI if 0 EW 19 ER 19 EW exit then
+   \ G-PUSH and G-POP also move x19 by the data-stack protocol, a stack effect
+   \ rather than a clobber; prof.f and crash.f hold x19 across calls, so it
+   \ stays tracked everywhere else.
+   a u s" g-push" LINT-STR=CI if 0 ER exit then
+   a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
    a u s" c-lit" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD CL-ROR exit then
    a u s" c-call" LINT-STR=CI if 0 5 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD 12 CL-ADD CL-ROR exit then
@@ -431,6 +441,13 @@ variable RK
    a u MN-WRMW? if RR# @ 0 > if 0 EW 0 ER then exit then
    a u MN-LD? if 0 EW 1 ER exit then
    a u MN-ST? if 0 ER 1 ER exit then
+   \ The writeback forms move their base, the second register, as well.
+   a u s" LDRPRE," LINT-STR= if 0 EW 1 ER 1 EW exit then
+   a u s" STRPOST," LINT-STR= if 0 ER 1 ER 1 EW exit then
+   \ CASAL Xs, Xt, [Xn] compares Xs and returns the old value in it.
+   a u s" CASAL," LINT-STR= if 0 ER 0 EW 1 ER 2 ER exit then
+   \ FMOVXD reads its second, x, register into its first, a d register.
+   a u s" FMOVXD," LINT-STR= if 1 ER exit then
    a u s" CMP," LINT-STR= if 0 ER 1 ER exit then
    a u s" CMPI," LINT-STR= if 0 ER exit then
    a u s" CBZ," LINT-STR= if 0 ER exit then
