@@ -1235,10 +1235,16 @@ $0A constant LF-C                         \ the diagnostic's line terminator
 
 PATH-CAP 128 + constant DIAG-CAP
 
+public
+
+\ An input's kind, as STRUCT-FITS? reads it: a cell, a `ptr u8`, an `r` or an
+\ `f32`.
 0 constant K-VALUE
 1 constant K-POINTER
 2 constant K-FLOAT
 3 constant K-FLOAT32
+
+private
 
 0 constant R-NONE
 1 constant R-VALUE
@@ -1462,46 +1468,70 @@ variable SCOPE-HOOK
 \ remain its stack cells whole, and the next register becomes x8. A larger
 \ record's pointer is an integer argument, and its copy follows every stack
 \ argument from an even cell, 16-byte aligned on the 16-byte aligned native
-\ stack. ARG-REG keeps a stack cell as -1-cell, as on x86-64.
+\ stack. A register is kept as its number and a stack cell as -1-cell, as on
+\ x86-64; a record of 16 bytes or fewer has no copy, kept as 0.
 : C-ARGS ( -- n )
    ARG-N @ STRUCT-BYTES @ 0 > if 1- then ;
 
 : RECORD-WORDS ( n -- n ) 1- 8 / 1+ ;
 
-: INT-WORDS ( n -- n ) {: i:n :}
-   i ARG-SBYTES@ 0 > i ARG-SBYTES@ 16 <= and if i ARG-SBYTES@ RECORD-WORDS exit then
+\ The integer registers an argument of record width bytes, 0 for none, takes.
+: INT-WORDS ( n -- n ) {: bytes:n :}
+   bytes 0 > bytes 16 <= and if bytes RECORD-WORDS exit then
    1 ;
 
-: PLACE-INT ( n -- ) {: i:n :}
-   i INT-WORDS {: words:n :}
-   INT-N @ words + REG-MAX <= if
-      INT-N @ ARG-REG i cells + !
-      words INT-N +! exit
-   then
-   REG-MAX INT-N !
-   STACK-N @ 1+ negate ARG-REG i cells + !
-   words STACK-N +! ;
+\ One argument's place, from the integer registers, float registers and stack
+\ cells taken before it.
+: PLACE-ARG ( n n n n n -- n n n n ) {: int:n flt:n stack:n kind:n bytes:n :}
+   kind K-FLOAT = kind K-FLOAT32 = or if int flt 1+ stack flt exit then
+   bytes INT-WORDS {: words:n :}
+   int words + REG-MAX <= if int words + flt stack int exit then
+   REG-MAX flt stack words + stack 1+ negate ;
 
-: PLACE-COPY ( n n -- n ) {: i:n pos:n :}
-   i ARG-SBYTES@ 16 <= if pos exit then
+\ A record's copy cell from the first free one, and the next free one.
+: PLACE-COPY ( n n -- n n ) {: pos:n bytes:n :}
+   bytes 16 <= if pos 0 exit then
    pos 1+ 2 / 2 * {: pay:n :}
-   \ The width meets the capacity left, so no sum of payloads can wrap.
-   FFI:STACK-CELLS pay - 8 * i ARG-SBYTES@ < if E-FFI-ARITY throw then
-   pay i ARG-PAY!
-   pay i ARG-SBYTES@ RECORD-WORDS + ;
+   \ A width past the capacity left makes the plan unfit at once, so no sum of
+   \ payloads can wrap.
+   FFI:STACK-CELLS pay - 8 * bytes < if FFI:STACK-CELLS 1+ pay exit then
+   pay bytes RECORD-WORDS + pay ;
+
+\ The plan of n C arguments, each with its kind in kinds and its record width,
+\ 0 for none, in sbytes: each one's place goes to regs and its copy's to pays.
+\ Answers the integer registers, float registers and stack cells it takes.
+: PLAN-RECORDS ( ptr n ptr n n ptr n ptr n -- n n n )
+   {: kinds:ptr sbytes:ptr argc:n regs:ptr pays:ptr :}
+   0 0 0 argc 0 ?do
+      kinds i cells + @ sbytes i cells + @ PLACE-ARG
+      regs i cells + !
+   loop
+   argc 0 ?do
+      sbytes i cells + @ PLACE-COPY
+      pays i cells + !
+   loop ;
+
+\ Whether a plan's float registers and stack cells fit the struct call.
+: PLAN-FITS? ( n n -- bool ) {: flt:n stk:n :}
+   flt REG-MAX <= stk FFI:STACK-CELLS <= and ;
+
+public
+
+\ Whether n C arguments, kinds and record widths as PLAN-RECORDS reads them,
+\ fit the struct call; past it the declaration is refused (E-FFI-ARITY).
+\ regs and pays take the plan, n cells each. The source checker holds a
+\ declaration's clauses to the rule this way (src/habu/verify-source.f).
+: STRUCT-FITS? ( ptr n ptr n n ptr n ptr n -- bool )
+   PLAN-RECORDS {: flt:n stk:n :}
+   drop flt stk PLAN-FITS? ;
+
+private
 
 : PLAN-STRUCT ( -- )
-   0 INT-N ! 0 FLT-N ! 0 STACK-N !
-   C-ARGS 0 ?do
-      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or if
-         FLT-N @ ARG-REG i cells + !
-         1 FLT-N +!
-      else i PLACE-INT then
-   loop
-   REG-ROOM
-   STACK-N @ C-ARGS 0 ?do i swap PLACE-COPY loop {: total:n :}
-   total FFI:STACK-CELLS > if E-FFI-ARITY throw then
-   total STACK-N !
+   ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
+   {: int:n flt:n stk:n :}
+   flt stk PLAN-FITS? 0= if E-FFI-ARITY throw then
+   int INT-N ! flt FLT-N ! stk STACK-N !
    C-STRUCT CALL-KIND ! ;
 
 : RECORDS? ( -- bool )

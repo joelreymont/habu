@@ -14,6 +14,7 @@ require src/habu/xref.f
 require src/compiler/workspace.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
+require src/lib/ffi-abi.f                 \ FFI-DECL:STRUCT-FITS?, the declarer's plan rule
 
 package VERIFY
 
@@ -3628,6 +3629,27 @@ DYNAMIC-BUFFER FFI-SIG u8
 variable FFI-SIG-U
 TYPED-VARIABLE FFI-GROUP bool
 
+\ The group as its clauses read it (FFI-CLAUSE below): each input's kind
+\ (ffi-abi.f FFI-DECL:K-VALUE and the rest) and the clauses that name it, and
+\ the result.
+16 constant FFI-IN-CAP                      \ ffi-abi.f ARG-MAX, the declarer's input cap
+variable FFI-IN-N
+variable FFI-OUT-N                          \ the output tokens
+TYPED-VARIABLE FFI-OUT-FP bool              \ the result is `r` or `f32`
+TYPED-VARIABLE FFI-PTR bool                 \ the input read last is `ptr`, its pointee next
+TYPED-VARIABLE FFI-UNREAD bool              \ the load refuses the effect before any clause
+FFI-IN-CAP TYPED-BUFFER FFI-KIND n          \ an input's kind
+FFI-IN-CAP TYPED-BUFFER FFI-SARG n          \ its STRUCT-ARG bytes, 0 for none
+FFI-IN-CAP TYPED-BUFFER FFI-WRIT bool       \ a write clause names it
+FFI-IN-CAP TYPED-BUFFER FFI-REGS n          \ the plan's places (FFI-STAGING), unread
+FFI-IN-CAP TYPED-BUFFER FFI-PAYS n          \ and its copies', unread
+variable FFI-RES                            \ the STRUCT-RESULT bytes, 0 for none
+TYPED-VARIABLE FFI-VAR bool                 \ a VARIADIC clause was read
+TYPED-VARIABLE FFI-CLAUSES bool             \ the group's clauses are still checked
+variable FFI-LIT-N                          \ literals read last, at most two:
+variable FFI-LIT-A                          \ the older
+variable FFI-LIT-B                          \ and the newer
+
 : FFI-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    FFI-SIG-U @
@@ -3637,9 +3659,46 @@ TYPED-VARIABLE FFI-GROUP bool
    32  at u + FFI-SIG  c!
    at u + 1 + FFI-SIG-U ! ;
 
+: FFI-IN-KIND ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u s" ptr" CORE-STR= IF FFI-DECL:K-POINTER EXIT THEN
+   a u s" r" CORE-STR= IF FFI-DECL:K-FLOAT EXIT THEN
+   a u s" f32" CORE-STR= IF FFI-DECL:K-FLOAT32 EXIT THEN
+   FFI-DECL:K-VALUE ;
+
+
+\ An input the declarer refuses at the effect (ffi-abi.f IN-TOKEN, REG+), a
+\ `ptr` over any pointee but `u8` or one past the input cap, leaves the group's
+\ clauses unread.
+: FFI-INPUT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FFI-PTR @ IF
+      false FFI-PTR !
+      a u s" u8" CORE-STR= 0= IF true FFI-UNREAD ! THEN
+      EXIT
+   THEN
+   FFI-IN-N @ {: i:n :}
+   i 1+ FFI-IN-N !
+   i FFI-IN-CAP >= IF true FFI-UNREAD ! EXIT THEN
+   a u s" ptr" CORE-STR= FFI-PTR !
+   a u FFI-IN-KIND i FFI-KIND !
+   0 i FFI-SARG !  false i FFI-WRIT ! ;
+
+
+: FFI-OUTPUT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FFI-OUT-N @ 0= IF a u s" r" CORE-STR= a u s" f32" CORE-STR= or FFI-OUT-FP ! THEN
+   1 FFI-OUT-N +! ;
+
+
 : FFI-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u s" --" CORE-STR= IF -1 FFI-OUT ! THEN
+   a u s" --" CORE-STR= IF
+      FFI-PTR @ IF true FFI-UNREAD ! THEN
+      -1 FFI-OUT !
+   ELSE
+      FFI-OUT @ 0<> IF a u FFI-OUTPUT ELSE a u FFI-INPUT THEN
+   THEN
    a u s" f32" CORE-STR= IF s" r" FFI-APPEND EXIT THEN
    FFI-OUT @ 0<> a u s" i32" CORE-STR= and IF s" n" FFI-APPEND EXIT THEN
    a u FFI-APPEND ;
@@ -3649,6 +3708,9 @@ TYPED-VARIABLE FFI-GROUP bool
    1 FFI-SIG-RESERVE                          \ an empty group answers a string in the row
    0 FFI-SIG-U !
    0 FFI-OUT !
+   0 FFI-IN-N !  0 FFI-OUT-N !  false FFI-OUT-FP !  false FFI-PTR !
+   false FFI-UNREAD !  0 FFI-RES !  false FFI-VAR !  false FFI-CLAUSES !
+   0 FFI-LIT-N !
    BEGIN
       NEXT-RAW
       dup 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
@@ -3670,6 +3732,7 @@ TYPED-VARIABLE FFI-GROUP bool
    name nameu sig sigu DECL-SIGNATURE
    DISARM
    dup FFI-GROUP !
+   dup FFI-UNREAD @ 0= and FFI-OUT @ 0<> and FFI-CLAUSES !
    IF name nameu sig sigu at DEF-WORD DEFINED-HERE THEN ;
 
 \ A `;FUNCTION` closing a group this scan accounts for.
@@ -3677,14 +3740,117 @@ TYPED-VARIABLE FFI-GROUP bool
    {: a:ptr u:n :}
    a u s" ;FUNCTION" STR=CI FFI-GROUP @ and ;
 
+\ A top-level token read in a checked group: a literal joins the operands of a
+\ clause after it, any other token clears them.
+: FFI-LITERAL ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FFI-CLAUSES @ 0= IF EXIT THEN
+   a u num-parse {: v:n flt:bool num:bool :}
+   num flt 0= and 0= IF 0 FFI-LIT-N ! EXIT THEN
+   FFI-LIT-B @ FFI-LIT-A !  v FFI-LIT-B !
+   FFI-LIT-N @ 1+ 2 min FFI-LIT-N ! ;
+
+: FFI-STOP ( -- ) E-FFI-SYNTAX STATEMENT-STOP ;
+
+\ Whether the clause's k operands are established; if not, the group's
+\ remaining clauses are the load's.
+: FFI-OPERANDS? ( n -- bool )
+   {: k:n :}
+   FFI-LIT-N @ k >= IF true EXIT THEN
+   false FFI-CLAUSES !
+   false ;
+
+: FFI-INPUT? ( n -- bool )
+   {: i:n :}
+   i 0 >= i FFI-IN-N @ < and ;
+
+: FFI-DEST ( -- n ) FFI-IN-N @ 1- ;
+
+\ No struct clause holds input i.
+: FFI-UNSTRUCT ( n -- )
+   {: i:n :}
+   i FFI-SARG @ 0<> IF FFI-STOP THEN
+   FFI-RES @ 0<> i FFI-DEST = and IF FFI-STOP THEN ;
+
+: FFI-ANY-SARG? ( -- bool )
+   FFI-IN-N @ 0 ?do
+      i FFI-SARG @ 0<> IF true unloop EXIT THEN
+   loop
+   false ;
+
+
+\ `idx len WRITES-BYTES`, `idx src WRITES-ARG`: idx is no struct clause's input.
+: FFI-WRITES ( -- )
+   2 FFI-OPERANDS? 0= IF EXIT THEN
+   FFI-LIT-A @ {: i:n :}
+   i FFI-INPUT? 0= IF EXIT THEN
+   i FFI-UNSTRUCT
+   true i FFI-WRIT ! ;
+
+
+: FFI-VARIADIC ( -- )
+   FFI-RES @ 0<> FFI-ANY-SARG? or IF FFI-STOP THEN
+   true FFI-VAR ! ;
+
+
+\ `idx bytes STRUCT-ARG`: a `ptr u8` input no other clause names, in a
+\ declaration with no VARIADIC or `r`/`f32` result, off x86-64.
+: FFI-STRUCT-ARG ( -- )
+   2 FFI-OPERANDS? 0= IF EXIT THEN
+   FFI-LIT-A @ FFI-LIT-B @ {: i:n bytes:n :}
+   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
+   FFI-VAR @ FFI-OUT-FP @ or IF FFI-STOP THEN
+   bytes 0 <= IF FFI-STOP THEN
+   i FFI-INPUT? 0= IF FFI-STOP THEN
+   i FFI-KIND @ FFI-DECL:K-POINTER <> IF FFI-STOP THEN
+   i FFI-WRIT @ IF FFI-STOP THEN
+   i FFI-UNSTRUCT
+   bytes i FFI-SARG ! ;
+
+
+\ `bytes STRUCT-RESULT`: the last input is a `ptr u8` no other clause names, in a
+\ declaration with no output or VARIADIC, off x86-64.
+: FFI-STRUCT-RESULT ( -- )
+   1 FFI-OPERANDS? 0= IF EXIT THEN
+   FFI-LIT-B @ {: bytes:n :}
+   HB-TARGET-LINUX-X86-64? IF FFI-STOP THEN
+   FFI-RES @ 0<> FFI-VAR @ or IF FFI-STOP THEN
+   bytes 0 <= IF FFI-STOP THEN
+   FFI-OUT-N @ 0<> FFI-IN-N @ 0= or IF FFI-STOP THEN
+   FFI-DEST FFI-KIND @ FFI-DECL:K-POINTER <> IF FFI-STOP THEN
+   FFI-DEST FFI-WRIT @ IF FFI-STOP THEN
+   FFI-DEST FFI-SARG @ 0<> IF FFI-STOP THEN
+   bytes FFI-RES ! ;
+
+
+: FFI-CLAUSE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   FFI-CLAUSES @ 0= IF EXIT THEN
+   a u TOKEN-TAIL {: t:ptr tu:n :}
+   t tu s" STRUCT-ARG" STR=CI IF FFI-STRUCT-ARG EXIT THEN
+   t tu s" STRUCT-RESULT" STR=CI IF FFI-STRUCT-RESULT EXIT THEN
+   t tu s" VARIADIC" STR=CI IF FFI-VARIADIC EXIT THEN
+   FFI-WRITES ;
+
+\ A declaration with a struct clause is planned at its `;FUNCTION` by the
+\ declarer's own rule over its C arguments, every input but a STRUCT-RESULT
+\ destination: past it the load refuses the declaration (E-FFI-ARITY) before
+\ it is published.
+: FFI-STAGING ( -- )
+   FFI-CLAUSES @ 0= IF EXIT THEN
+   FFI-RES @ 0= FFI-ANY-SARG? 0= and IF EXIT THEN
+   FFI-IN-N @ FFI-RES @ 0<> IF 1- THEN {: args:n :}
+   0 FFI-KIND 0 FFI-SARG args 0 FFI-REGS 0 FFI-PAYS FFI-DECL:STRUCT-FITS?
+   0= IF E-FFI-ARITY STATEMENT-STOP THEN ;
+
 \ The library's storage definers (src/core/layout-buffer.f,
 \ src/core/pointer-storage.f) are words, not keywords: a package's word of the
 \ spelling, or a global one an `undefine` of it made room for, in this file or
 \ one loaded before it, is the word the load calls. An arm below reads a name
 \ only when the record the engine's lookup binds the token to (scope-find,
 \ which the checker's overlay drives) runs the library word's code; any other
-\ word of the spelling is a call, TOP-TOKEN's. Its symbol cannot tell: a global
-\ word defined after `undefine` keeps the library word's (FIND-SYM). Each
+\ word of the spelling is a call, TOP-TOKEN's. Its symbol alone cannot tell: a
+\ global word defined after `undefine` keeps the library word's (FIND-SYM). Each
 \ library word's code is kept as this file loads, before any source it reads
 \ can give the spelling to another word: checked code may not take a layout
 \ definer's xt (E-UNSAFE). A prefix rewind preserves code but reuses discarded
@@ -3710,12 +3876,64 @@ variable PERSISTED-PTR-U8-TABLE-VARIABLE-XT s" PERSISTED-PTR-U8-TABLE-VARIABLE" 
 variable PTR-U8-TABLE-VARIABLE-XT s" PTR-U8-TABLE-VARIABLE" PTR-U8-TABLE-VARIABLE-XT LIBRARY-XT!
 variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-XT LIBRARY-XT!
 
+\ A re-export of the library word is that word (docs/forth.md, EXPORT): the
+\ load binds its alias, bare in the package or qualified outside it, to the
+\ library word's code. An export keeps its source's tail, so only a token whose
+\ tail is the word's name, in any case, can bind it. A live export's record
+\ runs that code itself; one this scan's replay made has no code, so its
+\ symbol is followed to the word it names (SYM-SOURCE), which is the library
+\ word only as the global word whose newest record still runs its code. Known
+\ gap: an alias exported before its source is undefined, redefined or not, is
+\ followed to the current global word, so the check can certify a use the load
+\ refuses.
 : LIBRARY-DEFINER? ( ptr u8 n n ptr u8 n -- bool )
    {: a:ptr u:n code:n name:ptr nameu:n :}
-   a u name nameu STR=CI 0= IF false EXIT THEN
+   a u TOKEN-TAIL name nameu STR=CI 0= IF false EXIT THEN
    a u scope-find drop drop drop {: rec:ptr :}
    rec XREF-FOUND? 0= IF false EXIT THEN
-   rec XREF-START code = ;
+   rec XREF-START code = IF true EXIT THEN
+   a u FIND-SYM {: sym:n :}
+   sym 0= IF false EXIT THEN
+   sym SYM-SOURCE {: src:n :}
+   src sym = IF false EXIT THEN
+   src SYM-IDENTITY drop 2swap nip {: tail:ptr tailu:n pkgu:n :}
+   pkgu 0<> tailu 0= or IF false EXIT THEN
+   tail tailu XREF-FIND {: word:ptr :}
+   word XREF-FOUND? 0= IF false EXIT THEN
+   word XREF-START code = ;
+
+\ FUNCTION:'s clauses are the declarer's words between a group and its
+\ `;FUNCTION` (ffi-abi.f STRUCT-RESULT, STRUCT-ARG, WRITES-BYTES, WRITES-ARG,
+\ VARIADIC). A token is a clause only where the load's lookup binds it to the
+\ declarer's word, read as the storage definers above are (LIBRARY-DEFINER?): a
+\ package's word of the spelling, or a global one defined after `undefine`, is
+\ an ordinary call, left to TOP-TOKEN; a re-export of the declarer's word is the
+\ clause. In a group this scan reads, each clause
+\ is the declaration's syntax, not a call to resolve, so the check needs no
+\ runtime that defines it, and the struct clauses are held to the declarer's
+\ rules (FFI-DECL SET-STRUCT-RESULT, SET-STRUCT-ARG, CLAUSE-TARGET, SET-VARIADIC
+\ and the plan, FFI-STAGING): the code the load throws for a declaration is the
+\ refusal here, before the declaration is accepted. A write clause is read for
+\ the struct clause its target conflicts with and VARIADIC for its presence;
+\ their other rules stay the load's. An operand is established only as a literal
+\ the engine's reader takes (num-parse), read at top level right before the
+\ clause. A clause with any other operand, or a group whose effect the load
+\ refuses, leaves the group's remaining clauses to the load unchecked, as every
+\ clause was before this scan read them. Nothing runs.
+variable STRUCT-ARG-XT s" STRUCT-ARG" STRUCT-ARG-XT LIBRARY-XT!
+variable STRUCT-RESULT-XT s" STRUCT-RESULT" STRUCT-RESULT-XT LIBRARY-XT!
+variable WRITES-BYTES-XT s" WRITES-BYTES" WRITES-BYTES-XT LIBRARY-XT!
+variable WRITES-ARG-XT s" WRITES-ARG" WRITES-ARG-XT LIBRARY-XT!
+variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
+
+: FFI-CLAUSE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   FFI-GROUP @ 0= IF false EXIT THEN
+   a u STRUCT-ARG-XT @ s" STRUCT-ARG" LIBRARY-DEFINER? IF true EXIT THEN
+   a u STRUCT-RESULT-XT @ s" STRUCT-RESULT" LIBRARY-DEFINER? IF true EXIT THEN
+   a u WRITES-BYTES-XT @ s" WRITES-BYTES" LIBRARY-DEFINER? IF true EXIT THEN
+   a u WRITES-ARG-XT @ s" WRITES-ARG" LIBRARY-DEFINER? IF true EXIT THEN
+   a u VARIADIC-XT @ s" VARIADIC" LIBRARY-DEFINER? ;
 
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
@@ -3794,6 +4012,7 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" generates:" STR=CI IF RECORD-GENERATES 0 0= EXIT THEN
    a u s" FUNCTION:" STR=CI IF RECORD-FFI-FUNCTION 0 0= EXIT THEN
+   a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    \ … then a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
@@ -3813,7 +4032,9 @@ variable RESERVED-PTR-U8-CELL-XT s" RESERVED-PTR-U8-CELL" RESERVED-PTR-U8-CELL-X
    \ later token uses it, that stretch or definition is deferred too.
    a u QUIET-NOMINAL
    a u MARK-RENDERS RENDERS-MARK? {: renders:bool :}
-   renders a u FFI-CLOSER? and IF false FFI-GROUP ! 0 0= EXIT THEN
+   renders a u FFI-CLOSER? and IF
+      FFI-STAGING  false FFI-CLAUSES !  false FFI-GROUP !  0 0= EXIT
+   THEN
    \ … and last, a definer this pre-pass learned from a `does>` definition or a
    \ `generates:` row earlier in the closure. The created word is the NEXT
    \ token, as it is for `constant` above - the definer's own arguments precede
@@ -4046,6 +4267,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
       2dup COLON? IF 2drop VERIFY-DEFINITION TOP-CLOSE ELSE
       2dup COMPOSE-TOP? IF 2drop TOP-CLOSE ELSE
       2dup TOP-DEFINER? IF 2drop ELSE TOP-TOKEN THEN THEN THEN THEN
+      TOP-CUR-A @ TOP-CUR-U @ FFI-LITERAL
       FILE-NEUTRAL? TICK-REMAINDER @ 0= and IF PEND-RELEASE THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop
@@ -4142,7 +4364,7 @@ COMPOSE-INIT
 \ path alike.
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
-   false TICK-REMAINDER !  false FFI-GROUP !
+   false TICK-REMAINDER !  false FFI-GROUP !  false FFI-CLAUSES !
    0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch

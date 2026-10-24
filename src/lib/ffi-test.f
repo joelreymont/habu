@@ -20,6 +20,7 @@ require src/lib/test/guard-page.f      \ a path whose bytes end where memory doe
 require src/lib/ffi-callback.f         \ a struct argument held across a callback
 require src/lib/task.f
 require test/ffi-struct-fixture.f      \ the struct-argument callee
+require test/e2e-tree.f                \ the struct clauses' --verify-only children
 
 package FFI-TEST
 
@@ -786,11 +787,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 FFI-RUN
 
 \ Structs by value are AAPCS64: results against macOS system libraries,
-\ arguments against a fixture library compiled for the run.
+\ arguments against a fixture library compiled for the run, and
+\ tools/check.f --verify-only reads the struct clauses.
 : FFI-T-STRUCT-LOAD ( -- )
    HB-TARGET-MACOS? if
       s" test/ffi-struct-result.f" required
       s" test/ffi-struct-arg.f" required
+      s" test/ffi-struct-verify.f" required
    then ;
 FFI-T-STRUCT-LOAD
 
