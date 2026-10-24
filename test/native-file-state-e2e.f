@@ -18,6 +18,8 @@ package NATIVE-FILE-STATE-TEST
 $8000 constant CAP
 create EXPORT-PATH FS-PATH-CAP allot
 create IMPORT-PATH FS-PATH-CAP allot
+create FRESH-CACHE FS-PATH-CAP allot
+create FRESH-SOURCE FS-PATH-CAP allot
 DYNAMIC-BUFFER CUT u8  variable CUT-U
 DYNAMIC-BUFFER IMAGE-A u8
 DYNAMIC-BUFFER IMAGE-B u8
@@ -202,6 +204,120 @@ variable CODE-B-O  variable CODE-B-U
       CAPTURE SUCCESS
    CUT$ OUT$ STR= ;
 
+\ Records with no compiled body of their own: lib.f declares casts, redef.f
+\ retires a word before its redefinition. app.f calls the public cast and the
+\ live word. The private wide cast, between two words that take nothing, is
+\ marked DNAME-WIDE; it and the public cast carry DNAME-MIN-IN 1.
+: BARE-FILES ( -- )
+   s" cache" AT MAKE-DIR
+   s" lib.f"
+   S\" package FILE-BARE\n: BEFORE ( -- ) ;\nCAST: WIDE ( [ SPAN:span<u8> -- ] -- [ SPAN:span<u8> -- ] )\n: AFTER ( -- ) ;\npublic\nCAST: BARE>IDX ( n -- idx )\n;package\n" PUT
+   s" redef.f"
+   S\" package FILE-REDEF\npublic\n: TWICE ( -- n ) 1 ;\nundefine TWICE\n: TWICE ( -- n ) 2 ;\n;package\n" PUT
+   s" app.f"
+   S\" require lib.f\nrequire redef.f\n: MAIN ( -- ) 40 FILE-BARE:BARE>IDX IDX>N FILE-REDEF:TWICE + . ;\n" PUT ;
+
+: RUN-BARE ( ptr u8 n -- )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   AT s" " CAPTURE SUCCESS
+   OUT$ S\" 42\n" CONTAINS? TTRUE ;
+
+\ BUILD with the empty cache directory cache of its own, the cold build to
+\ compare against.
+: FRESH-BUILD ( ptr u8 n -- n )
+   AT {: c:ptr cu:n :}
+   c FRESH-CACHE cu BYTE-COPY
+   FRESH-CACHE cu MAKE-DIR
+   s" app.f" AT {: a:ptr au:n :}
+   a FRESH-SOURCE au BYTE-COPY
+   FRESH-SOURCE au s" fresh-bare-hb" AT FRESH-CACHE cu NATIVE-FILE-APP:BUILD
+   NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
+
+\ A consumer passing a byte pointer where the cast takes n.
+: BARE-MISUSE ( -- )
+   s" app.f"
+   S\" require lib.f\nrequire redef.f\n: MAIN ( -- ) s\" x\" drop FILE-BARE:BARE>IDX IDX>N . ;\n" PUT ;
+
+\ Top-level uses of lib.f's words on an empty interpret stack: the neighbours
+\ run, so a flag restored onto either refuses it, and the last word refuses
+\ through the gate its flag drives. The wide use first casts one cell, so a
+\ minimum input restored too large refuses it at BARE>IDX.
+: WIDE-USE ( -- )
+   s" app.f" S\" require lib.f\npackage FILE-BARE\nBEFORE AFTER 1 BARE>IDX drop WIDE\n;package\n" PUT ;
+: MIN-IN-USE ( -- )
+   s" app.f" S\" require lib.f\npackage FILE-BARE\nBEFORE AFTER BARE>IDX\n;package\n" PUT ;
+
+\ A line a warm build's cache diagnostics print.
+: DIAG-LINE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" native-file: " STARTS-WITH?
+   a u s" native-cache: " STARTS-WITH? or ;
+
+\ From at, the next line of ERR$ that is no cache diagnostic, the offset
+\ after it, and false past the end.
+: KEPT-LINE ( n -- ptr u8 n n bool )
+   {: at:n :}
+   ERR$ 10 at SPLIT-NEXT {: p:ptr pu:n next:n ok:bool :}
+   ok if p pu DIAG-LINE? if next RECURSE exit then then
+   p pu next ok ;
+
+\ From offsets in ERR$ and CUT$, the kept lines of ERR$ are the lines of CUT$,
+\ in order, byte for byte, to both ends.
+: SAME-ERR-AT? ( n n -- bool )
+   {: wat:n cat:n :}
+   wat KEPT-LINE {: w:ptr wu:n wnext:n wok:bool :}
+   CUT$ 10 cat SPLIT-NEXT {: c:ptr cu:n cnext:n cok:bool :}
+   wok cok and 0= if wok cok or 0= exit then
+   w wu c cu STR= 0= if false exit then
+   wnext cnext RECURSE ;
+
+\ The warm stderr, its cache diagnostic lines removed, is the cold one in CUT.
+: SAME-ERR? ( -- bool ) 0 0 SAME-ERR-AT? ;
+
+\ app.f built cold into cache refuses with line; built warm it reuses lib.f
+\ and refuses exactly as the cold build did, beside its cache diagnostics.
+: SAME-REFUSAL ( ptr u8 n ptr u8 n -- )
+   {: cache:ptr cacheu:n line:ptr lineu:n :}
+   cache cacheu FRESH-BUILD 70 T=
+   ERR$ line lineu CONTAINS? TTRUE
+   ERR$ CUT!
+   1 NATIVE-FILE-APP:DIAG? !
+   s" bad-warm-hb" BUILD
+   0 NATIVE-FILE-APP:DIAG? !
+   70 T=
+   ERR$ s" lib.f records=" CONTAINS? TTRUE
+   SAME-ERR? TTRUE ;
+
+: BARE-CASE ( -- )
+   s" a file declaring a cast reuses into the cold state" T-LABEL
+   s" native-file-bare" TREE
+   BARE-FILES
+   s" cold-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" cold-hb" RUN-BARE
+   s" app.f" AT S\" \\ unrelated app edit\n" APPEND-FILE
+   1 NATIVE-FILE-APP:DIAG? !
+   s" warm-hb" BUILD
+   0 NATIVE-FILE-APP:DIAG? !
+   SUCCESS
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   ERR$ s" native-file: reused path=" CONTAINS? TTRUE
+   ERR$ s" lib.f records=" CONTAINS? TTRUE
+   ERR$ s" redef.f reason=unsupported-retired" CONTAINS? TTRUE
+   PAIR-PATHS
+   SAME-CODE? TTRUE
+   SAME-CUT? TTRUE
+   s" warm-hb" RUN-BARE
+   s" the reused cast refuses a misuse as the cold one does" T-LABEL
+   BARE-MISUSE
+   s" misuse-cache" s" at 'FILE-BARE:BARE>IDX' expected: n actual: ptr u8" SAME-REFUSAL
+   s" the reused wide cast refuses at the prompt as the cold one does" T-LABEL
+   WIDE-USE
+   s" wide-cache" S\" hb: interpret-mode layout value: WIDE\n" SAME-REFUSAL
+   s" the reused cast refuses underdepth at the prompt as the cold one does" T-LABEL
+   MIN-IN-USE
+   s" min-in-cache" S\" hb: interpret stack underdepth: BARE>IDX\n" SAME-REFUSAL ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -228,6 +344,7 @@ public
    TASK-STATE-CASE
    FFI-CASE
    HOOKS-CASE
+   BARE-CASE
    T-REPORT
    s" native file unit artifacts: " type ROOT$ type cr ;
 ;package

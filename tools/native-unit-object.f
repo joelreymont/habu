@@ -119,13 +119,18 @@ private
 \ An update row: the changed byte's reference and its value at the close.
 16 constant UPDATE-BYTES
 \ Record row kinds; 1 to 3 are the fixed kinds: a constant, an address, a
-\ deferred word.
-0 constant RK-BARE
+\ deferred word. The last three have no body of their own: a record retired
+\ in place, one with no code, and a cast, whose code is the engine's empty
+\ checked body. No row holds RK-NONE, the kind of a record that refuses.
+0 constant RK-NONE
 1 constant RK-VAL
 2 constant RK-ADDR
 3 constant RK-DEFER
 4 constant RK-COLON
 5 constant RK-PACKAGE
+6 constant RK-RETIRED
+7 constant RK-CODELESS
+8 constant RK-CAST
 
 public
 
@@ -2007,16 +2012,16 @@ CAST: N>U8 ( n -- ptr u8 )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
    rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec PACKAGE-SHAPE exit then
-   rec XREF-RETIRED? if RK-BARE 0 0 true exit then
+   rec XREF-RETIRED? if RK-RETIRED 0 0 true exit then
    ord 0 > if ord 1- XREF-DOES-COMPANION? else false then if
-      s" does-pending" rec REFUSE-WORD RK-BARE 0 0 false exit
+      s" does-pending" rec REFUSE-WORD RK-NONE 0 0 false exit
    then
-   rec XREF-START 0= if RK-BARE 0 0 true exit then
-   rec XREF-FLAGS DKIND:MASK and DKIND:CAST = if RK-BARE 0 0 true exit then
+   rec XREF-START 0= if RK-CODELESS 0 0 true exit then
+   rec XREF-FLAGS DKIND:MASK and DKIND:CAST = if RK-CAST 0 0 true exit then
    ord NFILE-REF:FIXED@ {: fkind:n fvalue:n known:bool :}
    known fkind CHECKER-OWNER-ABI:RECORD-FIXED-VAL = and if
       rec VAL-ENTRY {: at:n :}
-      at 0 < if s" val-sites" rec REFUSE-WORD RK-BARE 0 0 false exit then
+      at 0 < if s" val-sites" rec REFUSE-WORD RK-NONE 0 0 false exit then
       RK-VAL at 0 true exit
    then
    known fkind CHECKER-OWNER-ABI:RECORD-FIXED-ADDR = and if
@@ -2025,7 +2030,7 @@ CAST: N>U8 ( n -- ptr u8 )
    rec NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0<> if RK-DEFER cell ADDR-SHAPE exit then
    rec XREF-FLAGS DNAME-ALLOC and 0<> if
-      s" does-pending" rec REFUSE-WORD RK-BARE 0 0 false exit
+      s" does-pending" rec REFUSE-WORD RK-NONE 0 0 false exit
    then
    ord ORD-ROW {: row:n :}
    RK-COLON row 0 row 0 >= ;
@@ -3020,15 +3025,16 @@ private
 \ One record row: a known kind, its name in the names section, and the
 \ references, body and index row its kind names: its wordlists the file's
 \ own or earlier, a constant's body in slot 17, an address a place in its own
-\ segment's DATA, its end included, at or past the address before it, and a
-\ deferred word's cell a place in the file's DATA.
+\ segment's DATA, its end included, at or past the address before it, a
+\ deferred word's cell a place in the file's DATA, and no value for a record
+\ with no body of its own.
 : RECORD-CK ( ptr u8 n ptr u8 n -- )
    {: row:ptr namesu:n refs:ptr defs:n :}
    row 0 U64-AT {: kind:n :}
    row 4 U64-AT {: wl:n :}
    row 5 U64-AT {: value:n :}
    row 6 U64-AT {: priv:n :}
-   kind RK-BARE < kind RK-PACKAGE > or if BAD then
+   kind RK-VAL < kind RK-CAST > or if BAD then
    1 kind lshift OPEN-KINDS @ or OPEN-KINDS !
    row 2 U64-AT row 3 U64-AT namesu SPAN-CK
    OPEN-WIDS @ 1- {: wmax:n :}
@@ -3053,7 +3059,7 @@ private
       refs value NFILE-REF:DATA OPEN-DATA @ REF-ROW-CK exit
    then
    kind RK-COLON = if value 0 < value defs >= or if BAD then exit then
-   kind RK-BARE = value 0<> and if BAD then ;
+   kind RK-RETIRED >= value 0<> and if BAD then ;
 
 \ The reference section: an NFILE-REF ENCODE header with no declarations
 \ and room for its reference rows; their count.
@@ -3255,8 +3261,9 @@ private
    15 NUNIT-FILE:SECTION$ refs PINS-CK
    18 NUNIT-FILE:SECTION$ namesu ORIGIN-CK ;
 
-\ Install: the hit path. Every engine writer is reached by name through this
-\ TRUSTED: block, the install boundary.
+\ Install: the hit path. Every engine writer is reached by name through
+\ NEED-XT in this block, the install boundary: REC-WIDE and REC-MIN-IN are
+\ checked through their casts, the rest are TRUSTED: rows.
 
 \ The engine word name's xt, 0 when this engine lacks it.
 : ENGINE-XT ( ptr u8 n -- n )
@@ -3269,6 +3276,7 @@ private
 CAST: REC-OPEN-XT ( n -- [ ptr u8 n n n -- ] )
 CAST: REC-NAMESPACE-XT ( n -- [ ptr u8 n bool -- n ] )
 CAST: REC-PROTECT-XT ( n -- [ n -- ] )
+CAST: REC-MIN-IN-XT ( n -- [ n n -- ] )
 
 \ name, wid and kind: open the pending record at ndict@ (prims.f def-open).
 TRUSTED: REC-OPEN ( ptr u8 n n n -- )
@@ -3278,6 +3286,12 @@ TRUSTED: REC-CLOSE ( -- ) s" def-close" NEED-XT DEF-ACTION-XT execute ;
 \ End the pending DKIND:ADDR record as the engine's `create` ends one.
 TRUSTED: REC-CREATE ( -- ) s" def-create" NEED-XT DEF-ACTION-XT execute ;
 TRUSTED: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
+\ End the pending DKIND:CAST record as the engine's `cast:` ends one.
+TRUSTED: REC-CAST ( -- ) s" def-cast" NEED-XT DEF-ACTION-XT execute ;
+\ Set DNAME-WIDE on the newest record.
+: REC-WIDE ( -- ) s" wide-mark" NEED-XT DEF-ACTION-XT execute ;
+\ Record ord and its minimum input arity: or it into DNAME-MIN-IN.
+: REC-MIN-IN ( n n -- ) s" min-in-mark" NEED-XT REC-MIN-IN-XT execute ;
 \ name and private?: publish a namespace row; its ordinal.
 TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
    s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
@@ -3687,6 +3701,17 @@ TRUSTED: SLOT-STORE ( n n n -- )
    DEF-DROP-PLAN dup 0<> if throw then drop
    FILE-VIEW FILE-REFS ;
 
+\ A cast row: its record ended as `cast:` ends one, then the facts the cold
+\ registrar latched restored from its flags, as DEF-CAST-FACTS drains them.
+\ The checker row comes with the segment's checker slice.
+: INSTALL-CAST ( ptr u8 n n n -- )
+   {: name:ptr nameu:n wl:n flags:n :}
+   name nameu wl DKIND:CAST REC-OPEN
+   REC-CAST
+   flags DNAME-WIDE and 0<> if REC-WIDE then
+   flags DNAME-MIN-IN-MASK and 52 rshift {: mi:n :}
+   mi 0<> if ndict@ 1- mi REC-MIN-IN then ;
+
 \ The viewed object's record row k, and its name.
 : OBJ-ROW ( n -- ptr u8 ) 1 NUNIT-FILE:SECTION$ drop swap RECORD-BYTES * + ;
 : ROW-NAME$ ( ptr u8 -- ptr u8 n )
@@ -3721,8 +3746,9 @@ TRUSTED: SLOT-STORE ( n n n -- )
       name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT
       kind RK-VAL = if INSTALL-VAL else
       kind RK-ADDR = if flags INSTALL-ADDR else
+      kind RK-CAST = if drop flags INSTALL-CAST else
          kind RK-COLON <> if BAD then INSTALL-COLON
-      then then
+      then then then
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
@@ -4248,7 +4274,7 @@ public
    loop ;
 
 \ The FILE object OPEN-FILE found is one the install replays: package,
-\ constant, address and colon records, DATA bytes, slot rows and require
+\ constant, address, cast and colon records, DATA bytes, slot rows and require
 \ rows in segments between child loads, on a checker that imports. Later
 \ lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
 \ nothing to the dictionary, DATA or the require registry, so a file whose
@@ -4267,7 +4293,8 @@ public
    OPEN-KINDS @ 1 RK-VAL lshift and 0<>
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= and
       if s" unsupported-import-pending" exit then
-   OPEN-KINDS @ 1 RK-BARE lshift and 0<> if s" unsupported-bare" exit then
+   OPEN-KINDS @ 1 RK-RETIRED lshift and 0<> if s" unsupported-retired" exit then
+   OPEN-KINDS @ 1 RK-CODELESS lshift and 0<> if s" unsupported-codeless" exit then
    OPEN-KINDS @ 1 RK-DEFER lshift and 0<> if s" unsupported-defer" exit then
    0 EVENT-KIND EV-SEGMENT = if
       0 OBJ-EV 0 SEG-ALIGNED? 0= if s" data-alignment" exit then
@@ -4280,6 +4307,7 @@ public
    s" def-open" ENGINE-XT 0<> s" def-close" ENGINE-XT 0<> and
    s" def-create" ENGINE-XT 0<> and
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
-   s" prot-wid-add" ENGINE-XT 0<> and ;
+   s" prot-wid-add" ENGINE-XT 0<> and s" def-cast" ENGINE-XT 0<> and
+   s" wide-mark" ENGINE-XT 0<> and s" min-in-mark" ENGINE-XT 0<> and ;
 
 ;package
