@@ -136,8 +136,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $28 TASK:+USER IO-STORAGE drop
 : HLEN-CELL ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $20 + ;
 
 
-\ libcurl's easy interface. CURL*, curl_slist* and FILE* are OPAQUE here -
-\ nothing in this package dereferences one - so they are declared `n`: both host
+\ libcurl's easy interface. CURL* and FILE* are OPAQUE here - nothing in this
+\ package dereferences one - and so is curl_slist* outside SLIST-RELEASE, which
+\ reads its documented layout to wipe it; all three are declared `n`: both host
 \ ABIs pass a pointer and an integer in the same register, and a cell is what the
 \ nominal handle types wrap. Only a span Habu or the callee really reads or
 \ writes is declared `ptr u8`.
@@ -241,26 +242,54 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    CURLE-OUT-OF-MEMORY >CODE CURL-STATUS:failed ;
 
 
+CAST: >BYTES ( n -- ptr u8 )
+
+
+\ A URL or header line can carry a credential, so every text copy and request
+\ list this file frees is zeroed first.
+: WIPE ( n -- )
+   {: text:n :}
+   text >BYTES {: bytes :}
+   text TEXT-LENGTH 0 ?do 0 bytes i + c! loop ;
+
+
+: TEXT-RELEASE ( n -- )
+   dup WIPE RELEASE ;
+
+
 \ A NUL-terminated copy libcurl reads and duplicates for itself, released as soon
 \ as the call returns. strndup stops at an embedded NUL, and a silently shortened
 \ URL or header line is exactly what must not happen, so the copy is measured.
 \ Zero answers an allocation failure; every other refusal throws.
-: TEXT-DUP ( ptr u8 n -- n ) {: text u:n :}
+: TEXT-DUP ( ptr u8 n -- n )
+   {: text u:n :}
    u 0 MAX-TEXT WITHIN-RANGE
    text u DUP-TEXT dup 0= if exit then
-   dup TEXT-LENGTH u <> if RELEASE E-OPERAND throw then ;
+   dup TEXT-LENGTH u <> if TEXT-RELEASE E-OPERAND throw then ;
+
+
+\ A request list is curl_slist { char *data; struct curl_slist *next; }, and
+\ its header lines can carry a credential, so they are wiped before it is freed.
+: SLIST-RELEASE ( n -- )
+   {: list:n :}
+   list begin dup 0 <> while
+      dup >BYTES LE:U64@ WIPE
+      >BYTES CELL-BYTES + LE:U64@
+   repeat drop
+   list SLIST-FREE ;
 
 
 : SET-NUM-RAW ( handle n n -- n ) {: subject:handle option:n value:n :}
    subject HANDLE-CELL option value SETOPT-NUM ;
 
 
-: SET-TEXT-RAW ( handle n ptr u8 n -- n ) {: subject:handle option:n text u:n :}
+: SET-TEXT-RAW ( handle n ptr u8 n -- n )
+   {: subject:handle option:n text u:n :}
    subject HANDLE-CELL {: easy:n :}
    text u TEXT-DUP dup 0= if drop CURLE-OUT-OF-MEMORY exit then
    {: copy:n :}
    easy option copy SETOPT-NUM {: rc:n :}
-   copy RELEASE
+   copy TEXT-RELEASE
    rc ;
 
 
@@ -270,7 +299,6 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 \ The private slot owns one record: request list, captured response pointer,
 \ response length and success flag. The record lasts exactly as long as CURL*.
-CAST: STATE>BYTES ( n -- ptr u8 )
 0 constant S.LIST
 8 constant S.RESPONSE
 16 constant S.LENGTH
@@ -282,8 +310,9 @@ CAST: STATE>BYTES ( n -- ptr u8 )
    easy INFO-PRIVATE INFO-CELL GETINFO-CELL CURLE-OK <> if E-RESULT throw then
    INFO-CELL LE:U64@ dup 0= if E-STATE throw then ;
 
-: STATE-FIELD ( n n -- ptr u8 ) {: state:n offset:n :}
-   state STATE>BYTES offset + ;
+: STATE-FIELD ( n n -- ptr u8 )
+   {: state:n offset:n :}
+   state >BYTES offset + ;
 
 : STATE-LIST@ ( n -- n ) S.LIST STATE-FIELD LE:U64@ ;
 : STATE-RESP@ ( n -- n ) S.RESPONSE STATE-FIELD LE:U64@ ;
@@ -303,30 +332,33 @@ CAST: STATE>BYTES ( n -- ptr u8 )
    u state S.LENGTH STATE-FIELD LE:U64!
    1 state S.VALID STATE-FIELD LE:U64! ;
 
-: STATE-DESTROY ( n -- ) {: state:n :}
+: STATE-DESTROY ( n -- )
+   {: state:n :}
    state STATE-CLEAR-RESPONSE
-   state STATE-LIST@ dup 0 <> if SLIST-FREE else drop then
+   state STATE-LIST@ dup 0 <> if SLIST-RELEASE else drop then
    state RELEASE ;
 
 
 \ A list this call created and could not publish is freed here; an appended-to
 \ list is already the head the private slot holds, so it stays owned either way.
-: HEADER-STORE ( n n n n -- status ) {: easy:n state:n old:n list:n :}
+: HEADER-STORE ( n n n n -- status )
+   {: easy:n state:n old:n list:n :}
    easy OPT-HTTP-HEADER list SETOPT-NUM dup CURLE-OK <> if
-      old 0= if list SLIST-FREE then
+      old 0= if list SLIST-RELEASE then
       CODE>STATUS exit
    then drop
    list state S.LIST STATE-FIELD LE:U64!
    CURL-STATUS:ok ;
 
 
-: HEADER-APPEND ( n ptr u8 n -- status ) {: easy:n text u:n :}
+: HEADER-APPEND ( n ptr u8 n -- status )
+   {: easy:n text u:n :}
+   easy STATE-GET {: state:n :}
    text u TEXT-DUP dup 0= if drop OUT-OF-MEMORY exit then
    {: line:n :}
-   easy STATE-GET {: state:n :}
    state STATE-LIST@ {: old:n :}
    old line SLIST-APPEND {: list:n :}
-   line RELEASE
+   line TEXT-RELEASE
    list 0= if OUT-OF-MEMORY exit then
    easy state old list HEADER-STORE ;
 
@@ -1701,12 +1733,12 @@ public
    easy HANDLE-BUSY? if E-STATE throw then
    easy STATE-GET {: state:n :}
    state STATE-VALID@ 0= if E-STATE throw then
-   state STATE-RESP@ STATE>BYTES state STATE-LEN@ FINAL-BLOCK
+   state STATE-RESP@ >BYTES state STATE-LEN@ FINAL-BLOCK
       {: at:n finish:n :}
    finish at - {: u:n :}
    u capacity LEN>N min {: copied:n :}
    copied 0 > if
-      target state STATE-RESP@ STATE>BYTES at + FFI:>CELL copied COPY-OUT drop
+      target state STATE-RESP@ >BYTES at + FFI:>CELL copied COPY-OUT drop
    then
    u >LEN
    u capacity LEN>N > if CURL-HEADER--RESULT:truncated
