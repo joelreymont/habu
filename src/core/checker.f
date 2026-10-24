@@ -4084,7 +4084,10 @@ variable QDEPTH
 \ while a row holds a wide or open-width cell sets SCAN-INCOMPLETE, and so does
 \ a lost local bind with a local declared wide (LOC-UNJ-BIND); the certificate
 \ then says NEEDS-INCOMPLETE (lower-cert-base.f). Otherwise the unspliced
-\ result stands: every cell lowers at the default width.
+\ result stands: every cell lowers at the default width. A spliced call whose
+\ unify never reached the row tail freezes its declared rows there, so its
+\ call record (CW-CALL-RAW) states the cells the splice popped and pushed;
+\ CHECK finalizes an unjudged scan's call records whatever its verdict.
 variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
@@ -4158,7 +4161,8 @@ variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
    pre cells SPLICE-POP 0= IF drop UNJ-LOST EXIT THEN
    {: rest:n :}
    dout terms rest SPLICE-PUSH DCUR !
-   rpre RCUR ! ;
+   rpre RCUR !
+   CALL-ARMED @ IF 0 CALL-ARMED !  CALL-FREEZE-XT THEN ;
 
 : UNJ-ARMED? ( -- bool )   \ a committed step of an unjudged token: its failure splices
    UNJ-TOK @ 0 <>  TRIAL-DEPTH @ 0=  and ;
@@ -25553,8 +25557,10 @@ variable CAST-PATH-N
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
    0 BIND-HORIZON !                                   \ the record step asks the store, not the walk
    CK-CLOSE-CLEAR
+   \ An unjudged scan's call rows are the width authority whatever its verdict
+   \ (UNJ-SPLICE), so a rejected TRUSTED: body still states its call rows.
+   dup -1 = NMU @ 0 > and  BWIN-UNJUDGED @ 0 <> or IF CALL-FINALIZE THEN
    dup -1 = NMU @ 0 > and IF
-      CALL-FINALIZE
       NMA @ NMU @ PUBLISH-REFUSALS
       \ Every fact below is about the symbol the definition is recorded under,
       \ never about what its name binds: the lookup cannot see a definition the

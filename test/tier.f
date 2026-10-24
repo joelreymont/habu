@@ -427,7 +427,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 \ over the pair, unread and read, and under it, and a pair-typed local bound
 \ beside a refused `n` local, from two loose cells, and under a refused `n`
 \ local, an undeclared local beside a refused `n` local, a pair-typed local
-\ under an undeclared one, and a linear local over the pair. The scan applies
+\ under an undeclared one, a linear local over the pair, a rejected call to a
+\ word whose row holds a naked type variable (RJ-GX), and a pair an `execute`d
+\ quotation returns (RJ-EX). The scan applies
 \ each refused token's declared effect to the rows it found, so the widths
 \ after it stay stated and both tiers move the pair whole. The bodies are
 \ independent: one process runs them all.
@@ -458,6 +460,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" package RJLP public DEFLINEAR RJLP:own ;package " LN+
    s" TRUSTED: RJ-MK-OWN ( n -- RJLP:own ) ;  TRUSTED: RJ-FREE-OWN ( RJLP:own -- n ) ; " LN+
    s" TRUSTED: RJ-LL1 ( n -- rjpair n ) 1 2 RJPAIR:MAKE 5 RJ-MK-OWN {: x:RJLP:own :} x RJ-FREE-OWN drop swap ; " LN+
+   s" : RJ-GN ( a bool -- bool a ) swap ;  TRUSTED: RJ-GX ( -- n n ) 1 2 RJ-GN ; " LN+
+   S\" TRUSTED: RJ-EX ( n -- rjpair n ) [: 1 2 RJPAIR:MAKE ;] execute s\" x\" drop 0 * drop swap ; " LN+
    s" : RJ-ALL ( -- ) 7 RJ-P15 . RJPAIR:UNMAKE . .  7 RJ-R3 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-R4 . RJPAIR:UNMAKE . .  7 RJ-R5 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-P09 . RJPAIR:UNMAKE . .  7 RJ-P01 . RJPAIR:UNMAKE . . " LN+
@@ -466,10 +470,10 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 7 RJ-BS1 . RJPAIR:UNMAKE . .  7 RJ-BS2 . RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-BS3 RJPAIR:UNMAKE . . .  7 RJ-LP1 RJPAIR:UNMAKE . . .  RJ-LP2 RJPAIR:UNMAKE . . " LN+
    s" 7 RJ-LP3 RJPAIR:UNMAKE . . .  RJ-UB1 RJPAIR:UNMAKE . . .  7 RJ-UB2 RJPAIR:UNMAKE . . . " LN+
-   s" 7 RJ-LL1 . RJPAIR:UNMAKE . . cr ; RJ-ALL" LN+
+   s" 7 RJ-LL1 . RJPAIR:UNMAKE . .  RJ-GX . .  7 RJ-EX . RJPAIR:UNMAKE . . cr ; RJ-ALL" LN+
    LN$ ;
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
-   S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n" ;
+   S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n1\n2\n7\n2\n1\n" ;
 
 \ TRUSTED: bodies whose scans meet a token they cannot apply while a two-cell
 \ value is live: an unchecked word with no row, and `evaluate`. The widths
