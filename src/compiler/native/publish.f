@@ -157,11 +157,13 @@ variable UNIT-ARMED
    e fn size PLACE
    fn e size RECORDED-LEN idx PUBLISH-REC ;
 
-TYPED-VARIABLE HELD-E NART:emission
-variable HELD-IDX
-variable HELD-FN
-variable HELD-SIZE
-variable HELD-DEFER                     \ a defer body's dispatch cell, or 0
+\ One routine's commit, held where COMMIT-OWNED's quotations read it. Compiler
+\ working storage, as NHOST's TAKEN-* are: an image carries none of it.
+0 CWORK-VARIABLE HELD-E NART:emission
+0 CWORK-VARIABLE HELD-IDX n
+0 CWORK-VARIABLE HELD-FN n
+0 CWORK-VARIABLE HELD-SIZE n
+0 CWORK-VARIABLE HELD-DEFER n           \ a defer body's dispatch cell, or 0
 
 \ A defer record's span ends at the trailer just past its code slot.
 2 cells constant TRAILER-BYTES

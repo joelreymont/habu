@@ -1182,6 +1182,15 @@ public
    v id OFF-VKIND VFLD ARG-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
+\ The row memo is a cache FROW-USE validates before every use, so a capture
+\ rests it to its boot state: the bytes an image carries do not depend on which
+\ row the build read last.
+: CAPTURE-PREPARE ( -- )
+   false 0 FROW-READY !
+   0 0 FROW-READERS BYTE-VIEW CELL-VIEW !  0 1 FROW-READERS BYTE-VIEW CELL-VIEW !
+   8 0 ?do 0 i FROW-FIELDS ! loop
+   0 FROW-KEY !  0 FROW-LOCAL ! ;
+
 private
 get-current prot-wid-add
 
