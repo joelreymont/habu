@@ -1,6 +1,6 @@
 ---
 title: Give generated slot words an owner path
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-24T02:53:06.665316+03:00"
