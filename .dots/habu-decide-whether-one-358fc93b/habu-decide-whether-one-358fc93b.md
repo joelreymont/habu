@@ -13,7 +13,7 @@ Evidence for the ruling (2026-10-23, children census aed47e19, timing d02bf855, 
 - Run: tier 1 is 1.25-3.4x faster (zz 3.4x, tier-bench 2.5x, tender 1.65x, dots 1.3x; dots is 70% syscalls at both tiers).
 - Where the speed comes from: on zz and tender hot words, 94.6% and 98.0% of the sample drop is primitive inlining, register-resident stack values in straight-line code, loop counters in registers, compare/branch fusion and tail calls, all single-pass-capable; residency across joins plus register allocation and spills is 5.4% and 2.0%.
 - Passes a single pass cannot do: the loop fold fires 0 times on every corpus; disabling copy coalescing or cross-join residency knowledge changes no real workload's run time beyond noise.
-- Not measured: etch and loom (do not load on current Habu: habu-make-etch-load-ba7e4997, habu-make-loom-load-55f9444c); maki run time (its tests run geometry in a separate OCCT process).
+- Not measured: etch and loom (made to load: etch master e182e7a9, habu-make-etch-load-ba7e4997 closed; loom habu-make-loom-load-55f9444c); maki run time (its tests run geometry in a separate OCCT process).
 The next step on this evidence is the proposed experiment habu-inline-primitives-in-74e0211f, which waits for Joel's go-ahead.
 
 Joel's rulings (2026-10-25 interview):
