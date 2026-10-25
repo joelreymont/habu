@@ -742,7 +742,7 @@ private
 \ The resolution every call makes. Its unresolved path arms FFI's cleanup before
 \ the lookup acquires an address or a library handle, and the cached path pays
 \ nothing. A stripped image needs this: it starts with an empty registry and the
-\ flag clear (OWNED-CELLS) and replays no declaration, so its first resolution
+\ flag clear (AOT-CONTROLS) and replays no declaration, so its first resolution
 \ registers, and FFI's hook is its first persistent one unless the program
 \ registered one at run time before its first foreign call. Registering here
 \ rather than in the CALL words puts this word after REGISTER-CLEANUP, and so
@@ -1083,11 +1083,6 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    MAKER-LIB-TABLE BYTE-VIEW CELL fresh execute
    MAKER-DEPTH BYTE-VIEW CELL fresh execute ;
 
-: OWNED-TABLES-AT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
-   {: fn:ptr fncap:n lib:ptr libcap:n carry :}
-   fncap 0 > if fn fncap FN-ROW-BYTES * carry execute then
-   libcap 0 > if lib libcap LIB-ROW-BYTES * carry execute then ;
-
 \ The fixed row headers contain cells; symbol names and library paths are
 \ bytes. AOT sizes and copies these same extents before scanning header cells.
 : AOT-TABLES-AT ( ptr u8 n ptr u8 n [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
@@ -1115,20 +1110,6 @@ public
       MAKER-LIB-TABLE @ MAKER-LIB-CAP @ cells bytes AOT-TABLES-AT
    PIN-FN @ PIN-FN-CAP @ PIN-LIB @ PIN-LIB-CAP @
       cells bytes AOT-TABLES-AT ;
-
-: OWNED-CELLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   carry fresh OWNED-CONTROLS
-   FN-TABLE @ FN-CAP @ LIB-TABLE @ LIB-CAP @ carry OWNED-TABLES-AT
-   carry fresh MAKER-OWNED-CONTROLS
-   MAKER-FN-TABLE @ MAKER-FN-CAP @
-      MAKER-LIB-TABLE @ MAKER-LIB-CAP @ carry OWNED-TABLES-AT
-   PIN-FN @ FN-TABLE @ <> PIN-FN-CAP @ 0 > and if
-      PIN-FN @ PIN-FN-CAP @ FN-ROW-BYTES * carry execute
-   then
-   PIN-LIB @ LIB-TABLE @ <> PIN-LIB-CAP @ 0 > and if
-      PIN-LIB @ PIN-LIB-CAP @ LIB-ROW-BYTES * carry execute
-   then ;
 
 : OWNED-BASES ( [ ptr u8 -- ] -- )
    {: claim :}

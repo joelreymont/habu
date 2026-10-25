@@ -335,6 +335,11 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" CALLBACK: CBT-XA ( -- ) CALLBACK: CBT-XB ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 : DECL-SEVENTEENTH ( -- )
    s" CALLBACK: CBT-XC ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+\ A name of NAME-CAP (64) bytes fits; one byte more does not.
+: DECL-NAME-65 ( -- )
+   s" CALLBACK: CBT-NAME-65-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
+: DECL-NAME-64 ( -- )
+   s" CALLBACK: CBT-NAME-64-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ( -- ) ;CALLBACK" INCLUDE-EVALUATE ;
 
 : CASE-DECLARATIONS ( -- )
    s" == declarations refused" SAY
@@ -351,7 +356,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    [: DECL-STRAY-FALLBACK ;] catch E-FFI-SYNTAX = s" FALLBACK with nothing open: E-FFI-SYNTAX" FACT
    [: DECL-NESTED ;] catch E-FFI-SYNTAX = s" CALLBACK: inside an open declaration: E-FFI-SYNTAX" FACT
    [: DECL-SEVENTEENTH ;] catch 0=
-      s" the seventeenth declaration succeeds" FACT ;
+      s" the seventeenth declaration succeeds" FACT
+   [: DECL-NAME-65 ;] catch E-FFI-SYNTAX = s" a 65-byte name: E-FFI-SYNTAX" FACT
+   [: DECL-NAME-64 ;] catch 0= s" a 64-byte name is accepted" FACT ;
 
 \ ---- children ---------------------------------------------------------------------
 \ The name, the exit status and both streams of one spawned process.
@@ -585,7 +592,9 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ok   ;CALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   FALLBACK with nothing open: E-FFI-SYNTAX" W
    s" ok   CALLBACK: inside an open declaration: E-FFI-SYNTAX" W
-   s" ok   the seventeenth declaration succeeds" W ;
+   s" ok   the seventeenth declaration succeeds" W
+   s" ok   a 65-byte name: E-FFI-SYNTAX" W
+   s" ok   a 64-byte name is accepted" W ;
 
 : WANT-CHILDREN ( -- )
    s" == child outside: exit 106" W

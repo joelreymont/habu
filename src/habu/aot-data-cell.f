@@ -219,8 +219,7 @@ variable SITE-HIT
       [: CELLS+ ;] task CELL-PRODUCER-XT execute
    then
    callback 0<> if
-      [: CELLS+ ;] [: BYTES+ ;]
-      callback MIXED-PRODUCER-XT execute
+      [: CELLS+ ;] callback CELL-PRODUCER-XT execute
    then
    0 SPAN-ORDER SPAN-N @ [: SPAN-LESS? ;] SORT:SORT! ;
 
