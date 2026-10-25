@@ -1340,6 +1340,34 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    current CLEAR fresh PG:CLOSE ;
 
 
+\ ---- abandon --------------------------------------------------------------
+: ABANDON-KEEP ( PG:connection -- PG:connection )
+   dup PG:ABANDON ;
+
+
+\ ABANDON opens no cancel connection, so cancel-target reachability cannot
+\ affect it, and the SLEEPING check proves no cancel left the client: a cancel
+\ would have ended the sleep.
+: ABANDON-CASES ( -- )
+   s" abandon closes a pending statement at once and sends no cancel" T-LABEL
+   OPEN {: c :}
+   c s" set statement_timeout='1s'" EXEC-OK
+   c BACKEND {: backend:n :}
+   c s" select pg_sleep(5)" SEND
+   mono-ns {: started:n :}
+   c PG:ABANDON
+   started ELAPSED-MS PROMPT-MS < TTRUE
+   c PG:LIVE? TFALSE
+   OPEN {: w :}
+   w backend SLEEPING 1 T=
+   \ The statement_timeout and the dead client socket end the backend.
+   w backend AWAIT-GONE
+   s" abandon of a closed handle is E-HANDLE" T-LABEL
+   c [: ABANDON-KEEP ;] catch {: stale code:n :}
+   code E-HANDLE T=
+   w PG:CLOSE ;
+
+
 \ ---- the live suite -------------------------------------------------------
 : SERVER-CASES ( -- )
    OPEN
@@ -1371,6 +1399,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    CANCEL-CASES
    LOST-CONNECTION-CASES
    DEADLINE-CASES
+   ABANDON-CASES
    RECYCLE-CASES
    PG:CLOSE
    CLOSE-CLEARS-CASES

@@ -18,8 +18,9 @@
 \ CLOSE also clears the connection's results. Closing a pending query first
 \ sends a native cancel, which may block up to the connection's connect_timeout
 \ (with none set, PG imposes no deadline) and cannot undo SQL already completed;
-\ idle and connecting handles send none. LIVE? tells the owning task whether its
-\ handle is still the slot's live generation, so cleanup closes only what lives.
+\ idle and connecting handles send none. ABANDON is the close that sends no
+\ cancel and waits for nothing. LIVE? tells the owning task whether its handle
+\ is still the slot's live generation, so cleanup closes only what lives.
 \
 \ CONNECT-START, SEND and POLL let one task drive many connections: the caller
 \ owns readiness and deadlines (libpq ignores connect_timeout while polling),
@@ -50,14 +51,14 @@
 \ connection's bound is nonzero, every close but an explicit CLOSE and image
 \ preparation (FORGET-HANDLES), which still send the native cancel - expiry, a
 \ transport or readiness failure, an exception caught while waiting, a failed
-\ ROLLBACK under a body's throw - finishes it WITHOUT the cancel, since a
-\ cancel to an unreachable server would stretch the bound, and the primary
-\ exception stands. The server may go on running the abandoned statement: its
-\ own statement_timeout bounds that work. A WITH-TRANSACTION whose body closed
-\ the connection rethrows without a ROLLBACK, and one whose body returned on a
-\ closed connection is E-HANDLE. One whose ROLLBACK fails after the body threw
-\ closes the connection, whose transaction state is then unknown, and rethrows
-\ the body's code.
+\ ROLLBACK under a body's throw - finishes it WITHOUT the cancel, as ABANDON
+\ does whatever the bound, since a cancel to an unreachable server would
+\ stretch the bound, and the primary exception stands. The server may go on
+\ running the abandoned statement: its own statement_timeout bounds that work.
+\ A WITH-TRANSACTION whose body closed the connection rethrows without a
+\ ROLLBACK, and one whose body returned on a closed connection is E-HANDLE. One
+\ whose ROLLBACK fails after the body threw closes the connection, whose
+\ transaction state is then unknown, and rethrows the body's code.
 \
 \ ID answers a connection's identity as a plain cell and OF-ID the connection
 \ it names, so a cleanup that takes no arguments can keep the identity in
@@ -829,8 +830,8 @@ REGISTER-CHILD-RESET
 
 
 \ Clears the connection's results and finishes it. A pending statement gets no
-\ cancel here: CLOSE-SLOT sends one first, ABANDON-SLOT on a bounded connection
-\ does not.
+\ cancel here: CLOSE-SLOT sends one first; ABANDON never does, nor does
+\ ABANDON-SLOT on a bounded connection.
 : FINISH-SLOT ( n -- )
    {: slot:n :}
    RESULT-CAP 0 ?do
@@ -1337,6 +1338,14 @@ public
 : CLOSE ( connection -- ) {: handle:connection :}
    handle CONN-SLOT CLOSE-SLOT
    dup 0<> if throw then drop ;
+
+
+\ ABANDON closes without the cancel and without waiting on the network: the
+\ pending statement, if any, runs on the server to its end or its
+\ statement_timeout. For a cleanup under HALT or a failure that must not
+\ wait on the server, whatever the connection's bound.
+: ABANDON ( connection -- )
+   CONN-SLOT FINISH-SLOT ;
 
 
 \ PARAMS empties the connection's parameter list and releases its call arena;
