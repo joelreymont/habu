@@ -654,12 +654,13 @@ variable HISTORY-LIB-NEW
 
 \ ROLLED runs at decl.f's load, so sdfail generates SDFAIL:MAKE inside the
 \ build and then fails at commit on the SDFAIL:A it would derive; the build
-\ catches the code. decl.f makes three wordlists outside any package: the
+\ catches the code. decl.f makes six wordlists outside any package: the
 \ constructor namespaces SHADE and PAIR, protected, and SDFAIL, which the
-\ qualified definition makes.
+\ qualified definition makes. PX:A makes namespace PX, W2 is a bare
+\ wordlist, and `package PX` then gives PX its private wordlist after W2.
 : GENERATED-DECL ( -- )
    s" decl.f"
-      S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n"
+      S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n: PX:A ( -- n ) 5 ;\nwordlist constant W2\npackage PX\npublic\n: B ( -- n ) 6 ;\n;package\n"
       PUT ;
 
 : GENERATED-SOURCE ( n -- )
@@ -668,7 +669,7 @@ variable HISTORY-LIB-NEW
    S\" require decl.f\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
       INPUT CAP INPUT-U BUF-APPEND
    SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
-   S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
+   S\"  . PX:A PX:B + . ;\n" INPUT CAP INPUT-U BUF-APPEND
    s" app.f" INPUT INPUT-U @ PUT ;
 
 : GENERATED-CASE ( -- )
@@ -681,7 +682,7 @@ variable HISTORY-LIB-NEW
    s" generated-cold.err" AT ERR$ WRITE-ALL
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=RED\n" CONTAINS? TTRUE
    ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n40\n11\n" CONTAINS? TTRUE
    41 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
    s" generated-warm.err" AT ERR$ WRITE-ALL
@@ -691,7 +692,7 @@ variable HISTORY-LIB-NEW
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    DIAG-LINES 1 T=
    ERR$ s" name=MAIN path=" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n11\n" CONTAINS? TTRUE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS REUSED
    DIAG-LINES 0 T=
    LITERAL-IMAGE-SAVE

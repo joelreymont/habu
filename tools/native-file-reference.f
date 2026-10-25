@@ -9,6 +9,8 @@ require src/lib/string.f
 require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/habu/xref.f
+require src/habu/layout.f
+require src/habu/aot-arm.f
 require src/compiler/native/dict.f
 require src/compiler/native/host.f
 require tools/native-unit-file.f
@@ -32,6 +34,16 @@ private
 5 constant KEY-CELLS
 4096 constant HASH-SLOTS
 9 constant SEED-DECL
+\ A WID-OWNERS row: the owning namespace record's ordinal and visibility, then
+\ the KEY-ARENA offset (-1 none) and length of the key of the file that made
+\ the wordlist.
+4 constant WID-CELLS
+\ An INSTANCE-ROWS row: key offset and length, constructor counter and the
+\ wordlists the instance made so far.
+4 constant INSTANCE-CELLS
+\ The WID-KEY$ sub-tag of a wordlist named by the file that made it: its
+\ instance key and its index among that instance's wordlists.
+6 constant WID-FILE
 
 DYNAMIC-BUFFER KEY-BUF u8
 DYNAMIC-BUFFER INPUT-KEY u8
@@ -72,6 +84,9 @@ variable PENDING-KEY-OFF
 variable PENDING-KEY-U
 variable INSTANCE-N
 variable CURRENT-INSTANCE
+\ The first wordlist of the innermost file's open run, the one it gives its
+\ next wordlist; meaningful while FILE-DEPTH is positive.
+variable SEG-FIRST
 variable CON-N
 variable FILE-DEPTH
 variable FILE-OCC
@@ -161,9 +176,9 @@ variable FAMILY-FIND
 : KEY! ( n n n -- ) {: value:n row:n field:n :}
    value row KEY-CELLS * field + KEY-ROWS ! ;
 : INSTANCE@ ( n n -- n ) {: row:n field:n :}
-   row 3 * field + INSTANCE-ROWS @ ;
+   row INSTANCE-CELLS * field + INSTANCE-ROWS @ ;
 : INSTANCE! ( n n n -- ) {: value:n row:n field:n :}
-   value row 3 * field + INSTANCE-ROWS ! ;
+   value row INSTANCE-CELLS * field + INSTANCE-ROWS ! ;
 : CON@ ( n n -- n ) {: row:n field:n :}
    row 3 * field + CON-ROWS @ ;
 : CON! ( n n n -- ) {: value:n row:n field:n :}
@@ -266,14 +281,15 @@ variable FAMILY-FIND
 : WID-ROW ( n -- n ) {: wid:n :}
    wid 0 <= if BAD then
    wid WID-CAP @ >= if
-      wid 1+ 2 * WID-OWNERS-RESERVE
+      wid 1+ WID-CELLS * WID-OWNERS-RESERVE
       wid 1+ WID-CAP @ ?do
-         -1 i 2 * WID-OWNERS !
-         -1 i 2 * 1+ WID-OWNERS !
+         i WID-CELLS * {: row:n :}
+         -1 row WID-OWNERS ! -1 row 1+ WID-OWNERS !
+         -1 row 2 + WID-OWNERS ! 0 row 3 + WID-OWNERS !
       loop
       wid 1+ WID-CAP !
    then
-   wid 2 * ;
+   wid WID-CELLS * ;
 
 : WID-BIND ( n n n -- ) {: wid:n ord:n vis:n :}
    wid 0= if exit then
@@ -309,8 +325,9 @@ private
 : WID-OWNER ( n -- n n bool ) {: wid:n :}
    wid 0 <= if -1 0 false exit then
    wid WID-CAP @ < if
-      wid 2 * WID-OWNERS @ {: ord:n :}
-      ord 0 >= if ord wid 2 * 1+ WID-OWNERS @ true exit then
+      wid WID-CELLS * {: row:n :}
+      row WID-OWNERS @ {: ord:n :}
+      ord 0 >= if ord row 1+ WID-OWNERS @ true exit then
    then
    wid WID-MAKER {: ord:n vis:n found:bool :}
    found 0= if -1 0 false exit then
@@ -524,10 +541,11 @@ EXPORT REGISTER-IMPL
 : FILE-INSTANCE! ( ptr u8 n -- ) {: key:ptr keyu:n :}
    keyu 0 <= if BAD then
    INSTANCE-N @ {: row:n :}
-   row 1+ 3 * INSTANCE-ROWS-RESERVE
+   row 1+ INSTANCE-CELLS * INSTANCE-ROWS-RESERVE
    key keyu SAVE-KEY row 0 INSTANCE!
    keyu row 1 INSTANCE!
    0 row 2 INSTANCE!
+   0 row 3 INSTANCE!
    row 1+ INSTANCE-N ! row CURRENT-INSTANCE ! ;
 
 : FILE-INSTANCE-CLEAR ( -- ) -1 CURRENT-INSTANCE ! ;
@@ -538,6 +556,59 @@ EXPORT REGISTER-IMPL
 : INSTANCE-KEY$ ( -- ptr u8 n )
    INSTANCE-ID {: row:n :}
    row 0 INSTANCE@ KEY-ARENA row 1 INSTANCE@ ;
+
+private
+
+\ Name wordlist wid by the current instance and item, its index among the
+\ wordlists that instance made.
+: WID-FILE-BIND ( n n -- ) {: wid:n item:n :}
+   0 KEY-U ! 8 K-N WID-FILE K-N INSTANCE-KEY$ K-S item K-N
+   KEY$ SAVE-KEY {: off:n :}
+   wid WID-ROW {: row:n :}
+   off row 2 + WID-OWNERS !
+   KEY-U @ row 3 + WID-OWNERS ! ;
+
+\ Bind the wordlists the innermost file's open run made to that file's
+\ instance, after those it made before, and start a new run. The runs
+\ between PUSH-FILE and POP-FILE are NUNIT-OBJECT's segments: both close at a
+\ child load and reopen after it, so each item is the index WID-ITEM gives
+\ the writer, and a hit's install mints the keys its cold load did.
+: WIDS-SYNC ( -- )
+   FILE-DEPTH @ 0= if exit then
+   INSTANCE-ID {: inst:n :}
+   inst 3 INSTANCE@ {: base:n :}
+   AOT-ARM:WIDN SEG-FIRST @ - {: count:n :}
+   count 0 > if
+      count 0 ?do SEG-FIRST @ i + base i + WID-FILE-BIND loop
+      base count + inst 3 INSTANCE!
+   then
+   AOT-ARM:WIDN SEG-FIRST ! ;
+
+\ The key of the file that made wordlist wid and true; NULL-PTR 0 false when
+\ no file of the session made it. The open run binds first, so a number
+\ reused after a rewind answers its new maker, not a stale binding.
+: WID-FILE-KEY? ( n -- ptr u8 n bool ) {: wid:n :}
+   FILE-DEPTH @ 0 > wid SEG-FIRST @ >= and if WIDS-SYNC then
+   wid 0 <= wid WID-CAP @ >= or if NULL-PTR 0 false exit then
+   wid WID-CELLS * {: row:n :}
+   row 2 + WID-OWNERS @ {: off:n :}
+   off 0 < if NULL-PTR 0 false exit then
+   off KEY-ARENA row 3 + WID-OWNERS @ true ;
+
+\ The live wordlist whose maker's key is key and true; 0 false when none is.
+: WID-BY-KEY? ( ptr u8 n -- n bool ) {: key:ptr keyu:n :}
+   WIDS-SYNC
+   AOT-ARM:WIDN WID-CAP @ min 1 ?do
+      i WID-CELLS * {: row:n :}
+      row 2 + WID-OWNERS @ {: off:n :}
+      off 0 >= if
+         off KEY-ARENA row 3 + WID-OWNERS @ key keyu STR=
+         if i true unloop exit then
+      then
+   loop
+   0 false ;
+
+public
 
 : PACKAGE-OF ( ptr n -- ptr u8 n n ) {: rec:ptr :}
    rec XREF-WORDLIST {: wid:n :}
@@ -553,6 +624,8 @@ EXPORT REGISTER-IMPL
 : PUSH-FILE ( ptr u8 n n n -- )
    {: name:ptr nameu:n role:n kind:n :}
    nameu 0 <= role 0 < or kind 0 < or if BAD then
+   \ The parent's run closes under the parent's instance.
+   WIDS-SYNC
    0 KEY-U ! 4 K-N
    CURRENT-INSTANCE @ {: parent:n :}
    parent 0 >= if
@@ -574,11 +647,15 @@ EXPORT REGISTER-IMPL
    KEY$ FILE-INSTANCE!
    FILE-DEPTH @ 1+ FILE-STACK-RESERVE
    CURRENT-INSTANCE @ FILE-DEPTH @ FILE-STACK !
-   FILE-DEPTH @ 1+ FILE-DEPTH ! ;
+   FILE-DEPTH @ 1+ FILE-DEPTH !
+   AOT-ARM:WIDN SEG-FIRST ! ;
 
 : POP-FILE ( -- )
    FILE-DEPTH @ 0 <= if BAD then
+   \ The child's last run closes under the child's instance.
+   WIDS-SYNC
    -1 FILE-DEPTH +!
+   AOT-ARM:WIDN SEG-FIRST !
    FILE-DEPTH @ 0= if -1 CURRENT-INSTANCE ! exit then
    FILE-DEPTH @ 1- FILE-STACK @ CURRENT-INSTANCE ! ;
 
@@ -946,16 +1023,22 @@ public
    if {: ord:n vis:n :}
       vis 1 = if 2 else 3 then K-N
       ord RECORD-KEY$ K-S KEY$ exit
-   then 2drop BAD ;
+   then 2drop
+   wid WID-FILE-KEY? 0= if BAD then ;
 
-\ Whether WID-KEY$ can name wordlist wid, and else the package record that
-\ owns it, whose declaration has no key: a package an earlier session made.
+\ -1 true when WID-KEY$ names wordlist wid: a builtin, one a package record
+\ with a key owns, or one a file of the session made. The owning package
+\ record and false when its declaration has no key: a package an earlier
+\ session made. -1 false when nothing names it.
 : WID-KEYED? ( n -- n bool ) {: wid:n :}
+   wid 0= wid XREF-RETIRED-WL = or
+   wid OWNER-API-PUB-WID = or wid OWNER-API-PRI-WID = or if -1 true exit then
    wid WID-OWNER dup 0= if drop 2drop MAYBE-INDEX-PREPARED-WIDS
       wid WID-OWNER then
    if drop {: ord:n :}
       ord ord DECL-KEY? nip nip exit
-   then 2drop -1 true ;
+   then 2drop
+   -1 wid WID-FILE-KEY? nip nip ;
 
 : CONTRACT$ ( n -- ptr u8 n bool ) {: ord:n :}
    ord 0 < ord REC-N @ >= or if NULL-PTR 0 false exit then
@@ -1172,12 +1255,18 @@ public
    CAP-READY @ if BAD then
    0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! 0 CAP-CODE-U ! ;
 
-\ The reference to wordlist wid made before the file: builtin, or imported
-\ from the package record that owns it. 0 when no keyed record owns it.
+\ The reference to wordlist wid made before the file: builtin, imported from
+\ the package record that owns it, or imported by the key of the file that
+\ made it. 0 when an unkeyed record owns it or nothing names it.
 : REF-WID ( n -- n ) {: wid:n :}
    wid 0= if WID BUILTIN 0 0 REF! exit then
    wid XREF-RETIRED-WL = if WID BUILTIN 1 0 REF! exit then
-   wid WID-OWNER 0= if 2drop 0 exit then
+   wid WID-OWNER 0= if 2drop
+      wid WID-FILE-KEY? 0= if 2drop 0 exit then
+      {: key:ptr keyu:n :}
+      WID key keyu 0 1 IMPORT-KEY {: row:n :}
+      WID row 0 REF-IMPORT exit
+   then
    {: ord:n vis:n :}
    \ A package an earlier session made has no key; its 0 refuses the record
    \ as an unowned one does.
@@ -1396,9 +1485,10 @@ public
    item addend ;
 
 \ The wordlist a WID reference names and true: builtin, one the file's
-\ object made, or a public (addend 0) or private (addend 1) wordlist of an
-\ imported package. 0 false when no live record has the import's key: the
-\ package is gone. A malformed reference is BAD.
+\ object made, one an earlier file made (by its key, addend 0), or a public
+\ (addend 0) or private (addend 1) wordlist of an imported package. 0 false
+\ when no live wordlist or record has the import's key: the maker is gone. A
+\ malformed reference is BAD.
 : REF>WID? ( n -- n bool ) {: idx:n :}
    idx 0= if BAD then
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
@@ -1417,6 +1507,7 @@ public
    item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
    extent drop alignment drop
    rowkind WID <> if BAD then
+   key keyu WID-BY-KEY? if addend 0<> if BAD then true exit then drop
    key keyu KEY-RECORD drop {: rec:ptr :}
    rec XREF-NULL = if 0 false exit then
    rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
@@ -1706,7 +1797,7 @@ public
    0 GROUP-N ! 0 KEY-N ! 0 INDEX-READY ! 0 WID-CAP !
    0 IMPL-N ! 0 IMPL-CAP ! 0 EXACT-N ! 0 EXACT-READY !
    0 INSTANCE-N ! -1 CURRENT-INSTANCE ! 0 CON-N !
-   0 FILE-DEPTH ! 0 FILE-OCC !
+   0 FILE-DEPTH ! 0 FILE-OCC ! 0 SEG-FIRST !
    0 ALLOC-N !
    0 IMPORT-N ! 0 IMPORT-U ! 0 OUTPUT-U !
    NULL-PTR PREP-REFS ! 0 PREP-REF-N ! 0 PREP-IMPORT-N !

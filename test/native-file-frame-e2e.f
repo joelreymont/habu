@@ -100,7 +100,9 @@ variable FILL-POOL
    s" wlr.f" LOAD+
    S\" s\" wlr=\" type WLQ:A WLQ:B + . cr\n" IN+
    s" wls.f" LOAD+
-   S\" s\" wls=\" type WLS:A WLT-K + . cr\n" IN+ ;
+   S\" s\" wls=\" type WLS:A WLT-K + . cr\n" IN+
+   s" wlk.f" LOAD+
+   S\" s\" wlx=\" type WLX-CUR WLK-W = . cr\n" IN+ ;
 
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
@@ -696,13 +698,18 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ which C is then defined into. wls.f's qualified definition makes namespace
 \ WLS, it loads wlt.f, and its later segment's `package WLS` gives WLS its
 \ private wordlist with no lookup into it; STALE-CON edits wlt.f to give WLS
-\ that wordlist first.
+\ that wordlist first. wlk.f requires wlx.f while its own bare wordlist WLK-W
+\ is current, so wlx.f's scope names a wordlist no package record owns;
+\ wlx.f reads it, defines in the global context and restores it. wlk.f
+\ itself loads outside the scope it began in (scope-at-load).
 : WL-FIXTURES ( -- )
    s" wlp.f" S\" : WLP:A ( -- n ) 5 ;\nwordlist constant WLP-W\npackage WLP\npublic\n: B ( -- n ) 6 ;\n;package\n" PUT
    s" wlq.f" S\" : WLQ:A ( -- n ) 5 ;\n" PUT
    s" wlr.f" S\" require wlq.f\npackage WLQ\n: C ( -- n ) 1 ;\npublic\n: B ( -- n ) C 5 + ;\n;package\n" PUT
    s" wls.f" S\" : WLS:A ( -- n ) 5 ;\nrequire wlt.f\npackage WLS\n;package\n" PUT
-   s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n" PUT ;
+   s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n" PUT
+   s" wlk.f" S\" wordlist constant WLK-W\nget-current constant WLK-OLD\nWLK-W set-current\nrequire wlx.f\nWLK-OLD set-current\n" PUT
+   s" wlx.f" S\" get-current 0 set-current constant WLX-CUR\nWLX-CUR set-current\n" PUT ;
 
 
 : FIXTURES ( -- )
@@ -973,6 +980,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wls.f, which reopens its namespace after a load, writes its object" T-LABEL
    OUT$ S\" wls=6\n" CONTAINS? TTRUE
    s" wls.f" KEY$ STORED s" wlt.f" KEY$ STORED
+   s" wlx.f writes its object though it loads under wlk.f's bare wordlist" T-LABEL
+   OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
+   s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
+   s" wlx.f" KEY$ STORED
    s" tier0.f, loaded at tier 0, writes no object" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
@@ -1459,6 +1470,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs wls.f, whose later segment gives its namespace its private wordlist" T-LABEL
    OUT$ S\" wls=6\n" CONTAINS? TTRUE
    s" wls.f" REUSED s" wlt.f" REUSED
+   s" a warm build installs wlx.f under wlk.f's bare wordlist" T-LABEL
+   OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
+   s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
+   s" wlx.f" REUSED
    s" a warm build compiles tier0.f at tier 0 again" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    ERR$ s" /tier0.f records=" CONTAINS? TFALSE
