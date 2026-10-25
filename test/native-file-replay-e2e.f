@@ -344,7 +344,18 @@ variable REMOVED
    REUSED
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    OUT$ s" contract=-1" CONTAINS? TTRUE
-   OUT$ s" published=42" CONTAINS? TTRUE ;
+   OUT$ s" published=42" CONTAINS? TTRUE
+   s" a warm build reusing a published defer saves the cold product" T-LABEL
+   s" cache-defer-published-app" AT MAKE-DIR
+   s" published-app.f"
+      S\" include published-defer.f\n: MAIN ( -- ) REVIEW-PUBLISHED:INSTALL 40 REVIEW-PUBLISHED:USE . ;\n" PUT
+   s" published-app.f" s" published-hb" s" cache-defer-published-app" BUILD-IN
+      SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" published-app.f" s" published-warm-hb" s" cache-defer-published-app"
+      BUILD-IN SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   s" published-hb" s" published-warm-hb" SAME-FILE ;
 
 : DEFER-REPLACEMENT-CASE ( -- )
    s" FILE replay refuses a same-key colon or variable replacing a defer" T-LABEL

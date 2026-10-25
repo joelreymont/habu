@@ -826,11 +826,11 @@ EPRIM: def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT EPRIM;
 ETRUSTED-ONLY!                       \ slot and nonzero process-local occurrence
 EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRIVATE   \ src/habu/xref.f DEF-OCC:RESOLVE
 \ ---- the definition writers --------------------------------------------------
-\ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate` and `cast:`
-\ change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
+\ What `package`, `export`, `:`, `create`, `does>`, `;`, `immediate`, `cast:`
+\ and `defer` change is sealed state after the seal: the friend arena (CUR, WIDN, DEF-WL,
 \ TSIG, TCSIG, PKG-*), BODYBUF, DEF-TIER-CELL, the TIER-PROV band and the
 \ records behind the PROT window.
-\ These fourteen rows are how an interpreter written in Habu writes it. Each is
+\ These fifteen rows are how an interpreter written in Habu writes it. Each is
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
 \ the interpret loop written in Habu (src/habu/packages.f and
@@ -843,8 +843,9 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ and `def-open`, like `native-unit-publish` above, name the token and die
 \ ENGINE-ERROR:OVERLAY-OPEN (habu1.f OVERLAY-EMIT:GUARD,), and `def-create`
 \ dies 76 as `allot` does when DP would pass the data region. x86-64 refuses
-\ `def-create` (src/habu/kernel-x64.f): its Habu loop has NCOMP compile a
-\ created word's body instead (definers.f DEF-ADDR-TAIL).
+\ `def-create` and `def-defer` (src/habu/kernel-x64.f): its Habu loop has NCOMP
+\ compile a created or deferred word's body instead (definers.f DEF-ADDR-TAIL,
+\ DEF-DEFER).
 \
 \ The three record writers store a name of at least one byte: up to DNAME-INL
 \ bytes inline, a longer one at CP rounded up to a code slot, 4 bytes on ARM64
@@ -970,6 +971,16 @@ EPPRIM: OUTER imm-mark ECLOSE-PRIVATE
 EPRIM: def-cast EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-cast ECLOSE-PRIVATE
+\ def-defer ( n -- ): end the pending kind-0 definition as the engine's `defer`
+\ ends its record (habu2.f C-DEFER), n its dispatch cell: the code at CP loads
+\ the cell and calls what it holds, an address-map site; [8] takes the code's
+\ length; the DEFER-MAGIC trailer naming the cell follows; the record is
+\ counted and indexed, its code is native provenance, the fixed shadow learns
+\ it and the state def-open set clears, PEND-CELL with it. It refuses no
+\ pending definition, a pending one of a nonzero kind and CP at or past the
+\ code ceiling.
+EPRIM: def-defer PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!
 \ ---- the replay writers ------------------------------------------------------
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds

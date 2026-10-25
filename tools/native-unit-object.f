@@ -3516,6 +3516,7 @@ private
 CAST: REC-OPEN-XT ( n -- [ ptr u8 n n n -- ] )
 CAST: REC-NAMESPACE-XT ( n -- [ ptr u8 n bool -- n ] )
 CAST: REC-PROTECT-XT ( n -- [ n -- ] )
+CAST: REC-DEFER-XT ( n -- [ n -- ] )
 CAST: REC-PATCH-XT ( n -- [ n ptr u8 n -- ] )
 CAST: REC-MIN-IN-XT ( n -- [ n n -- ] )
 
@@ -3529,6 +3530,9 @@ TRUSTED: REC-CREATE ( -- ) s" def-create" NEED-XT DEF-ACTION-XT execute ;
 TRUSTED: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
 \ End the pending DKIND:CAST record as the engine's `cast:` ends one.
 TRUSTED: REC-CAST ( -- ) s" def-cast" NEED-XT DEF-ACTION-XT execute ;
+\ End the pending record as the engine's `defer` ends one: the dispatch body
+\ and trailer for cell n.
+TRUSTED: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
 \ Set DNAME-WIDE on the newest record.
 : REC-WIDE ( -- ) s" wide-mark" NEED-XT DEF-ACTION-XT execute ;
 \ Record ord and its minimum input arity: or it into DNAME-MIN-IN.
@@ -3871,14 +3875,20 @@ TRUSTED: SLOT-STORE ( n n n -- )
       row 0 U64-AT NFILE-REF:REF-OWNER NFILE-REF:EXTERNAL = if row SLOT-ROW! then
    loop ;
 
+\ Restore on the newest record the facts its cold publication latched into
+\ flags: DNAME-WIDE and DNAME-MIN-IN.
+: REC-FLAGS ( n -- )
+   {: flags:n :}
+   flags DNAME-WIDE and 0<> if REC-WIDE then
+   flags DNAME-MIN-IN-MASK and 52 rshift {: mi:n :}
+   mi 0<> if ndict@ 1- mi REC-MIN-IN then ;
+
 \ A does> word: its address row installed, then patched to run its definer's
 \ clause, the record after the definer, with the flags the patch set.
 : INSTALL-DOES ( n n -- )
    {: priv:n flags:n :}
    priv NFILE-REF:REF>RECORD 1+ XREF-REC XREF-START REC-PATCH
-   flags DNAME-WIDE and 0<> if REC-WIDE then
-   flags DNAME-MIN-IN-MASK and 52 rshift {: minin:n :}
-   minin 0<> if ndict@ 1- minin REC-MIN-IN then ;
+   flags REC-FLAGS ;
 
 \ View the payload index row row frames at offset off of the definitions
 \ slot defs, defsu bytes; its size. The view replaces the FILE sections.
@@ -3978,9 +3988,18 @@ TRUSTED: SLOT-STORE ( n n n -- )
    {: name:ptr nameu:n wl:n flags:n :}
    name nameu wl DKIND:CAST REC-OPEN
    REC-CAST
-   flags DNAME-WIDE and 0<> if REC-WIDE then
-   flags DNAME-MIN-IN-MASK and 52 rshift {: mi:n :}
-   mi 0<> if ndict@ 1- mi REC-MIN-IN then ;
+   flags REC-FLAGS ;
+
+\ A defer row: its record opened as `defer` opens one and ended as `defer`
+\ ends one, the engine's dispatch body and trailer emitted against the cell
+\ the segment map places (REC-DEFER-CELL reads the trailer), then the flags
+\ the cold publication latched restored. The segment's checker slice carries
+\ its row and defer link; its slot row stores the cell's xt.
+: INSTALL-DEFER ( ptr u8 n n n n -- )
+   {: name:ptr nameu:n wl:n value:n flags:n :}
+   name nameu wl 0 REC-OPEN
+   value NFILE-REF:REF>LOCAL-DATA REC-DEFER
+   flags REC-FLAGS ;
 
 \ The viewed object's record row k, and its name.
 : OBJ-ROW ( n -- ptr u8 ) 1 NUNIT-FILE:SECTION$ drop swap RECORD-BYTES * + ;
@@ -4021,11 +4040,12 @@ TRUSTED: SLOT-STORE ( n n n -- )
       kind RK-VAL = if INSTALL-VAL else
       kind RK-ADDR = if flags INSTALL-ADDR else
       kind RK-CAST = if drop flags INSTALL-CAST else
+      kind RK-DEFER = if flags INSTALL-DEFER else
       kind RK-DOES-WORD = if
          flags INSTALL-ADDR  row 6 U64-AT flags INSTALL-DOES
       else
          kind RK-COLON <> if BAD then INSTALL-COLON
-      then then then then
+      then then then then then
    then
    flags DNAME-IMM and 0<> if REC-IMM then ;
 
@@ -4118,7 +4138,7 @@ TRUSTED: SLOT-STORE ( n n n -- )
    ev 3 U64-AT 0<>
    ev 2 U64-AT 0 ?do
       rows i + OBJ-ROW 0 U64-AT {: kind:n :}
-      kind RK-ADDR = kind RK-DOES-WORD = or or
+      kind RK-ADDR = kind RK-DOES-WORD = or kind RK-DEFER = or or
    loop
    AOT-ARM:HERE-N 1 cells mod ev 6 U64-AT <> and 0= ;
 
@@ -4663,9 +4683,9 @@ public
    loop ;
 
 \ The FILE object OPEN-FILE found is one the install replays: package,
-\ constant, address, cast and colon records, DATA bytes, slot rows and require
-\ rows in segments between child loads, on a checker that imports. Later
-\ lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
+\ constant, address, cast, colon and deferred-word records, DATA bytes, slot
+\ rows and require rows in segments between child loads, on a checker that
+\ imports. Later lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
 \ nothing to the dictionary, DATA or the require registry, so a file whose
 \ runs added nothing has no segment to replay and loads from source. The install makes
 \ wordlists only through package rows, so every wordlist the file made must
@@ -4684,7 +4704,6 @@ public
       if s" unsupported-import-pending" exit then
    OPEN-KINDS @ 1 RK-RETIRED lshift and 0<> if s" unsupported-retired" exit then
    OPEN-KINDS @ 1 RK-CODELESS lshift and 0<> if s" unsupported-codeless" exit then
-   OPEN-KINDS @ 1 RK-DEFER lshift and 0<> if s" unsupported-defer" exit then
    0 EVENT-KIND EV-SEGMENT = if
       0 OBJ-EV 0 SEG-ALIGNED? 0= if s" data-alignment" exit then
    then
@@ -4698,6 +4717,6 @@ public
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
    s" prot-wid-add" ENGINE-XT 0<> and s" def-cast" ENGINE-XT 0<> and
    s" does-patch" ENGINE-XT 0<> and s" wide-mark" ENGINE-XT 0<> and
-   s" min-in-mark" ENGINE-XT 0<> and ;
+   s" min-in-mark" ENGINE-XT 0<> and s" def-defer" ENGINE-XT 0<> and ;
 
 ;package

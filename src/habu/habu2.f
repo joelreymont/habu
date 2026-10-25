@@ -5604,6 +5604,33 @@ public
    11 DEFER-MAGIC LIT64,  11 28 0 STR,  28 28 8 ADDI,
    11 DATA DEFER-XT-CELL LDR,  11 28 0 STR,  28 28 8 ADDI, ;
 
+\ The end of `defer` and of the def-defer row alike, for record x9 in slot
+\ NDICT with the code band open at CP, the record declared and the dispatch
+\ cell in DEFER-XT-CELL: [0] is CP, the code loads the cell and calls what it
+\ holds, [8] takes the code's length, the DEFER-MAGIC trailer naming the cell
+\ follows, the code is native, the band closes and the code is flushed.
+: DEFER-BODY, ( -- )
+   CP 9 0 STR,
+   C-DEFER-EMIT-CODE
+   9 DATA PEND-CELL LDR,
+   10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
+   C-DEFER-META-WRITE
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,
+   9 CP CODE-ORIGIN:NATIVE-RANGE,
+   PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
+
+\ The native compiler's fixed shadow callback, when one is installed
+\ (src/compiler/native/compiler.f SHADOW-FIXED), learns the deferred record
+\ just published, NDICT - 1, and its dispatch cell.
+: DEFER-SHADOW, ( -- )
+   LBL {: noshadow:label :}
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
+   9 DATA DEFER-XT-CELL LDR,  9 G-PUSH
+   9 3 MOVZ,  9 G-PUSH                    \ NCOMP:FIXED-DEFER, compiled after this builder
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
+   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
+   noshadow LBL, ;
+
 : C-DEFER-ROOM ( -- )
    LBL LBL {: cpok ndok :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
@@ -5680,14 +5707,7 @@ public
    9 DATA PEND-CELL STR,
    1 9 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL, \ the record this defer publishes
    C-STORE-DEF-NAME
-   CP 9 0 STR,
-   C-DEFER-EMIT-CODE
-   9 DATA PEND-CELL LDR,
-   10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
-   C-DEFER-META-WRITE
-   9 DATA PEND-CELL LDR,  9 9 0 LDR,
-   9 CP CODE-ORIGIN:NATIVE-RANGE,
-   PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
+   DEFER-BODY,
    LBL LBL LBL {: ready registered pdone :}
    C-PRETRUST-READY?
    SP SP 16 SUBI,  13 SP 0 STR,                     \ target readiness survives the registrars and publication observer
@@ -5706,17 +5726,25 @@ public
    13 pdone CBNZ,
       C-PD-CAPTURE                                  \ retain the target checker's later registration only after publication
    pdone LBL,
-   \ The record is published: its native shadow names NDICT - 1.
-   LBL {: noshadow:label :}
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
-   9 DATA DEFER-XT-CELL LDR,  9 G-PUSH
-   9 3 MOVZ,  9 G-PUSH                    \ NCOMP:FIXED-DEFER, compiled after this builder
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
-   11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
-   noshadow LBL,
+   DEFER-SHADOW,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+\ def-defer ( n -- ): a pending kind-0 record takes DEFER-BODY, for dispatch
+\ cell n, is counted and indexed, and its fixed shadow follows, as C-DEFER's
+\ does. The cell is popped before TAIL-CLOSE checks: its refusals exit, never
+\ throw.
+package DEFWRITE
+public
+
+: DEF-DEFER ( -- )
+   11 G-POP  11 DATA DEFER-XT-CELL STR,
+   0 [: DEFER-BODY,  EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
+      DEFER-SHADOW, ;]
+   TAIL-CLOSE ;
+
+;package
 
 : C-DEFER-TARGET-META ( -- )
    LBL LBL LBL {: named found ok :}
@@ -14415,6 +14443,7 @@ variable KERNEL-CODE-END
    s" stack-clear" ['] DEFWRITE:STACK-CLEAR ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" imm-mark" ['] C-IMMEDIATE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" def-cast" ['] DEFWRITE:DEF-CAST ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" def-defer" ['] DEFWRITE:DEF-DEFER ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-open" ['] DEFWRITE:REPLAY-OPEN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-close" ['] DEFWRITE:REPLAY-CLOSE ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" replay-widn!" ['] DEFWRITE:REPLAY-WIDN ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
