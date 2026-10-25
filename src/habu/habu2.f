@@ -411,6 +411,11 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: deferred-word indirect call
 : C-CALL ( -- )
    LCEMITBL LABEL@ BL, ;
 
+\ A dictionary word named in a body: LCINLINE copies a straight-line seed
+\ primitive in place and calls anything else through LCEMITBL.
+: C-CALL-INLINE ( -- )
+   LCINLINE LABEL@ BL, ;
+
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 : SRCFULL-MSG$ ( -- ptr u8 n )   S\" hb: source prefix buffer full\n" ;   \ LSRCFULL; SRC-SFAIL/SRC-BFAIL arena overflow
 : SRCFULL-MSG-LEN ( -- n )   SRCFULL-MSG$ nip ;
@@ -810,6 +815,78 @@ here BPL-KW - constant BPL-LEN
    10 10 2 ASRI,  5 $03FFFFFF LIT64,  10 10 5 AND,      \ imm26 = (disp >> 2) & 0x03FFFFFF (sign-preserving)
    9 $94000000 LIT64,  9 9 10 ORR,                     \ x9 = BL opcode | imm26
    LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
+
+\ LCINLINE ( x11 = callee code address, x5 = its dictionary record ) : copy the
+\ callee's body into the word being compiled when it is a straight-line engine
+\ primitive; otherwise tail into LCEMITBL for one BL. Clobbers x5-x7, x9-x11.
+\ A body is copied only when it is outside the region (a seed primitive, not a
+\ compiled word), its record holds a legacy span (an exact span is not a seed
+\ body and holds its own RET), and no word of it is a BL, BR/BLR/RET, ADR/ADRP
+\ or literal load, or a B, B.cond, CBZ/CBNZ or TBZ/TBNZ whose target leaves the
+\ body; a branch to the dropped RET stays, as the copy falls through to that
+\ address. Each of those depends on where the body sits or leaves it, so a copy
+\ would compute, load or return to the wrong place; everything else reads only
+\ registers and memory and means the same at any address. The copy marks no
+\ call in FRAME-CELL and records nothing in the call map: a definition that
+\ only inlines stays a leaf (EM-COMPILE-RET).
+\ The scan reads the final bytes at compile time instead of a build-side flag
+\ because inlinability is a property of those bytes: while the engine is being
+\ built, a forward external BL is encoded with delta 0 until its label binds
+\ (icode.f BR-EMIT), so a build-side scan would misread it.
+\ Opcode classes, each as (word >> shift) [& mask] = value:
+0 ENC-BL 26 rshift               constant CINL-BL-OP     \ bl
+0 ENC-B 26 rshift                constant CINL-B-OP      \ b
+ENC-RET 25 rshift                constant CINL-BR-OP     \ br, blr, ret
+0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP  \ b.cond
+0 0 ENC-CBZ 25 rshift $3F and    constant CINL-CBZ-OP    \ cbz, cbnz, either width
+0 0 ENC-ADR 24 rshift $1F and    constant CINL-ADR-OP    \ adr, adrp
+$1B constant CINL-TBZ-OP         \ tbz, tbnz, either width: bits 30:25 = 011011
+$3B constant CINL-LDRLIT-MASK    \ ldr, ldrsw, prfm (literal), any register file:
+$18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
+: EMIT-CINLINE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: scan:label next:label rel26:label rel19:label rel14:label target:label copy:label cloop:label cdone:label :}
+   LCEMITBL LABEL@ {: emitbl:label :}
+   LCINLINE LABEL@ LBL,
+   6 11 DBASE SUB,  7 REGION LIT64,  6 7 CMP,
+   C-CC emitbl BCOND,                                  \ a compiled word: an ordinary call
+   7 5 8 LDR,
+   6 7 CODE-SPAN:FULL ANDI,  6 emitbl CBNZ,            \ an exact span: an ordinary call
+   7 7 CODE-SPAN:MASK ANDI,  10 11 7 ADD,              \ x10 = end of the body before its RET
+   6 11 0 ADDI,                                        \ x6 = scan cursor
+   scan LBL,
+      6 10 CMP,  C-CS copy BCOND,
+      9 6 0 LDRW,
+      5 9 26 LSRI,  5 CINL-BL-OP CMPI,  C-EQ emitbl BCOND,
+      5 9 25 LSRI,  5 CINL-BR-OP CMPI,  C-EQ emitbl BCOND,
+      5 9 24 LSRI,  5 5 $1F ANDI,  5 CINL-ADR-OP CMPI,  C-EQ emitbl BCOND,
+      5 9 24 LSRI,  7 CINL-LDRLIT-MASK MOVZ,  5 5 7 AND,  5 CINL-LDRLIT-OP CMPI,  C-EQ emitbl BCOND,
+      5 9 26 LSRI,  5 CINL-B-OP CMPI,  C-EQ rel26 BCOND,
+      5 9 24 LSRI,  5 CINL-BCOND-OP CMPI,  C-EQ rel19 BCOND,
+      5 9 25 LSRI,  5 5 $3F ANDI,  5 CINL-CBZ-OP CMPI,  C-EQ rel19 BCOND,
+      5 CINL-TBZ-OP CMPI,  C-EQ rel14 BCOND,
+      next B,
+   rel26 LBL,  5 9 38 LSLI,  5 5 36 ASRI,  target B,             \ x5 = imm26 * 4, signed
+   rel19 LBL,  5 9 40 LSLI,  5 5 45 ASRI,  5 5 2 LSLI,  target B, \ x5 = imm19 * 4, signed
+   rel14 LBL,  5 9 45 LSLI,  5 5 50 ASRI,  5 5 2 LSLI,           \ x5 = imm14 * 4, signed
+   target LBL,
+      5 6 5 ADD,
+      5 11 CMP,  C-CC emitbl BCOND,                    \ before the body
+      5 10 CMP,  C-HI emitbl BCOND,                    \ past its end; AT the end is the dropped RET,
+                                                       \ which in the copy is the next word emitted
+   next LBL,
+      6 6 4 ADDI,  scan B,
+   \ The cursor and end ride the frame across each LCEMIT, whose band-growth
+   \ path calls out (PROT-EMIT:LGROW).
+   copy LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,  10 SP 16 STR,
+   cloop LBL,
+      6 SP 8 LDR,  10 SP 16 LDR,  6 10 CMP,  C-CS cdone BCOND,
+      9 6 0 LDRW,  6 6 4 ADDI,  6 SP 8 STR,
+      LCEMIT LABEL@ BL,
+      cloop B,
+   cdone LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ LADDSUBIMM ( x8 = an add/sub-immediate word with Rd and Rn set and imm12 = 0,
 \ x7 = the unsigned byte operand ) : emit that instruction with the operand
@@ -12204,7 +12281,7 @@ public
       12 6 MOVZ,  12 DATA CMM-CELL STR,
       ordinary LBL,
    THEN
-   C-CALL  LMAIN LABEL@ B,
+   C-CALL-INLINE  LMAIN LABEL@ B,
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies; region-flip handled inside)
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined in this body
@@ -13573,7 +13650,7 @@ package LABELS
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LKERNELDIGEST !
    LBL LSOURCEEXECFINISH !
-   LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LCEMITBL !  LBL LCINLINE !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LHOSTROW !
    LBL LHOSTDIVROW !
    LBL LDIVZERO !
@@ -14227,6 +14304,7 @@ variable KERNEL-CODE-END
    ENGINE-PRIMS:COMPLETE
    EMIT-CEMIT
    EMIT-CEMITBL
+   EMIT-CINLINE
    EMIT-ADDSUB-IMM
    EMIT-BCAP
    EMIT-TOK

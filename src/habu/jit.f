@@ -143,7 +143,8 @@ variable FESK
 
 \ fold-entry: if the token is this operator AND the top two VS entries are
 \ constants, fold at JIT time (no code) and continue the main loop; else fall
-\ through to the generic dispatch (which spills + calls the prim).
+\ through to the generic dispatch (which spills, then
+\ inlines the body or calls the prim (habu2.f EMIT-CINLINE)).
 : FOLD-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n fxt :}
    LBL FESK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -689,7 +690,8 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 variable FESK5
 
 \ FOP-ENTRY: float binop keyword -> FADD-class dd,dn,dm on the d-pool; anything
-\ not forceable falls through to the generic (spill + memory prim) path.
+\ not forceable falls through to the generic path (spills, then inlines the
+\ body or calls the memory prim (habu2.f EMIT-CINLINE)).
 : FOP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK5 !

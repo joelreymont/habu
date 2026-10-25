@@ -61,3 +61,8 @@ WHITEBOX-SUITE prop
 SUITE build-fixpoint-sandbox
    tools/build-fixpoint-sandbox-test.f
 ;SUITE
+
+\ Tier 0, the ARM JIT, copies straight-line primitive bodies; x64 has no tier 0.
+SUITE compiler-tier0-inline-prims
+   test/compiler/tier0-inline-prims.f
+;SUITE
