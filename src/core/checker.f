@@ -25451,6 +25451,13 @@ create CAST-PATH-TERM CAST-PATH-CAP cells allot
 create CAST-PATH-POS CAST-PATH-CAP cells allot
 variable CAST-PATH-N
 : CAST-WALK-RESET ( -- ) TWALK-RESET 0 CAST-PATH-N ! ;
+\ Cells at and above CAST-PATH-N hold what earlier walks pushed there; no walk
+\ reads them. A file reused from the object cache runs no walk, so a saved image
+\ holds no path and a reused file captures as its compiled one does.
+: CAST-PATH-SNAP-RESET ( -- )
+   CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
+   CAST-PATH-POS 0 CAST-PATH-CAP ARENA-CELLS-ZERO
+   CAST-WALK-RESET ;
 \ CAST-SAME-INSTANCE? ( term term -- bool ) : one family over identical terms.
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
@@ -29869,6 +29876,7 @@ private
 \ checked source mapping into the engine.
 : CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
    XG-SNAP-RESET
+   CAST-PATH-SNAP-RESET
    CHECKER-SCAN-SNAP-RESET
    CFS 0 32 CFS-REC * CELL / ARENA-CELLS-ZERO
    0 CATCH-PF-N !  0 CATCH-N !  0 FACTS !  0 XFACT !  0 JOIN-FACTS !
