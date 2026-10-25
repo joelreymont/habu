@@ -150,6 +150,32 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    loop ;
 
 
+\ A cleanup that takes no arguments reaches its connection through an identity
+\ held in a cell. Nothing else is open here, so the next OPEN reuses the
+\ closed connection's slot under a new generation.
+TYPED-VARIABLE HELD-ID n
+
+: HELD-EXEC ( -- )
+   HELD-ID @ PG:OF-ID s" select 1" EXEC CLEAR ;
+
+
+: IDENTITY-CASES ( -- )
+   s" a held identity names its connection until the slot is reused" T-LABEL
+   OPEN {: c :}
+   c PG:ID HELD-ID !
+   HELD-ID @ PG:OF-ID {: held :}
+   held s" select 1" EXEC-TAG TAG-ROWS T=
+   held IDLE? TTRUE
+   c PG:CLOSE
+   HELD-ID @ PG:OF-ID PG:LIVE? TFALSE
+   ['] HELD-EXEC E-HANDLE TTHROWSQ
+   OPEN {: fresh :}
+   HELD-ID @ PG:OF-ID PG:LIVE? TFALSE
+   fresh PG:LIVE? TTRUE
+   fresh s" select 1" EXEC-TAG TAG-ROWS T=
+   fresh PG:CLOSE ;
+
+
 \ The progress helpers. AWAIT-READY, OPEN-POLL and RESULT-POLL run before the
 \ AIO loop starts: a single task advances both connections, and a progress call
 \ that waits cannot let that task release the lock. CHECK-PROGRESS also ends
@@ -1373,7 +1399,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    again ;
 
 : LOOP-CASES ( -- )
-   CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES AIO-FAIL-CASES SERVER-CASES ;
+   CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
+   AIO-FAIL-CASES SERVER-CASES ;
 
 \ The AIO loop stops however LOOP-CASES ends. As under finally, a code from
 \ AIO:STOP replaces the cases' code, except a deadline's: with a deadline

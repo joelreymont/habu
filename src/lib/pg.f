@@ -59,6 +59,11 @@
 \ closes the connection, whose transaction state is then unknown, and rethrows
 \ the body's code.
 \
+\ ID answers a connection's identity as a plain cell and OF-ID the connection
+\ it names, so a cleanup that takes no arguments can keep the identity in
+\ per-task memory. Validity is checked by use: a closed connection's identity
+\ resolves to a handle LIVE? answers false for and every verb refuses.
+\
 \ EXEC runs exactly one statement on the extended protocol. SCRIPT runs several
 \ on the simple-query protocol, which takes no parameters (a pending list is
 \ E-STATEMENT) and runs them as one implicit transaction: a failing statement
@@ -342,8 +347,11 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
 
-: CONN-GEN@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-GEN @ ;
-: CONN-GEN! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-GEN ! ;
+\ The generation publishes the slot's owner: written with release after the
+\ owner and read with acquire before it, so a reader that sees a generation
+\ sees the owner stored with it.
+: CONN-GEN@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-GEN atomic@ ;
+: CONN-GEN! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-GEN atomic! ;
 : CONN-LIVE-CELL ( n -- ptr n ) {: slot:n :}   slot CONN-CHECK slot CONN-LIVE ;
 : CONN-LIVE@ ( n -- n )   CONN-LIVE-CELL atomic@ ;
 : CONN-LIVE! ( n n -- ) {: v:n slot:n :}   v slot CONN-LIVE-CELL atomic! ;
@@ -578,9 +586,11 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    NEXT-GENERATION slot RES-GEN! ;
 
 
+\ Generation 0 marks a slot no handle names: free, or claimed and not yet
+\ opened. OF-ID can build any raw cell, so a handle below one stride is refused.
 : CONN-SLOT ( connection -- n ) {: handle:connection :}
    handle CONNECTION>N {: raw:n :}
-   raw 0 < if E-HANDLE throw then
+   raw HANDLE-STRIDE < if E-HANDLE throw then
    raw HANDLE-SLOT {: slot:n :}
    slot CONN-LIVE@ 0= if E-HANDLE throw then
    slot CONN-GEN@ raw HANDLE-GEN <> if E-HANDLE throw then
@@ -601,7 +611,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 \ The registry is shared by every task, so a slot is claimed by winning the
 \ compare-and-swap on its live cell, never by a read-then-write a second task
 \ could interleave with. The claim is what publishes the slot as taken; the
-\ owner fills the rest afterwards, before any handle for it exists.
+\ owner fills the rest afterwards; until it sets the generation no handle
+\ matches the slot.
 : CLAIM-CONN-SLOT ( -- n )
    CONN-CAP 0 ?do
       0 1 i CONN-LIVE-CELL atomic-cas 0= if i unloop exit then
@@ -768,9 +779,11 @@ REGISTER-CHILD-RESET
 
 
 \ ---- slot lifecycle -------------------------------------------------------
+\ The owner is stored before the generation a handle must match (CONN-GEN!), so
+\ no handle matches the slot while the previous owner still stands.
 : OPEN-CONN-SLOT ( n -- ) {: slot:n :}
-   slot BUMP-CONN-GEN
    TASK:SELF-N slot CONN-OWNER!
+   slot BUMP-CONN-GEN
    NULL-ARG slot DRAIN-LAST!
    0 slot PENDING!
    0 slot CONNECTING!
@@ -1298,13 +1311,17 @@ public
 : LIVE? ( connection -- bool ) {: handle:connection :}
    CONFIGURED @ 0= if false exit then
    handle CONNECTION>N {: raw:n :}
-   raw 0 < if false exit then
+   raw HANDLE-STRIDE < if false exit then
    raw HANDLE-SLOT {: slot:n :}
    slot CONN-CAP >= if false exit then
    slot CONN-LIVE@ 0= if false exit then
    slot CONN-GEN@ raw HANDLE-GEN <> if false exit then
    slot CONN-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
    true ;
+
+
+: ID ( connection -- n )   CONNECTION>N ;
+: OF-ID ( n -- connection )   >CONNECTION ;
 
 
 \ IDLE? is libpq's own view of the session, so it covers a transaction opened
