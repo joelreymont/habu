@@ -18,8 +18,10 @@ create ROOT FS-PATH-CAP allot variable ROOT-U
 create PATH FS-PATH-CAP allot variable PATH-U
 create LONG-SOURCE FS-PATH-CAP allot variable LONG-SOURCE-U
 create ROW 80 allot
-create GOOD 512 allot
-create RAW 512 allot variable RAW-U
+\ An artifact holds the header plus every SECTIONS label.
+1024 constant ART-CAP
+create GOOD ART-CAP allot
+create RAW ART-CAP allot variable RAW-U
 
 : KEY$ ( -- ptr u8 n )
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
@@ -59,7 +61,8 @@ create RAW 512 allot variable RAW-U
    15 s" compiler" NUNIT-FILE:SECTION!
    16 s" scope" NUNIT-FILE:SECTION!
    17 s" values" NUNIT-FILE:SECTION!
-   18 s" origins" NUNIT-FILE:SECTION! ;
+   18 s" origins" NUNIT-FILE:SECTION!
+   19 s" output" NUNIT-FILE:SECTION! ;
 
 : WRITE-GOOD ( -- )
    SECTIONS
@@ -84,8 +87,9 @@ create RAW 512 allot variable RAW-U
    10 NUNIT-FILE:SECTION$ s" literals" T$=
    11 NUNIT-FILE:SECTION$ s" inputs" T$=
    12 NUNIT-FILE:SECTION$ s" retired" T$=
+   19 NUNIT-FILE:SECTION$ s" output" T$=
    NUNIT-FILE:CLOSE
-   ART$ RAW 512 READ-ALL RAW-U !
+   ART$ RAW ART-CAP READ-ALL RAW-U !
    RAW GOOD RAW-U @ BYTE-COPY ;
 
 : RESTORE ( -- )
@@ -143,7 +147,7 @@ create RAW 512 allot variable RAW-U
    0 NUNIT-FILE:SECTION$ s" code1234" T$=
    NUNIT-FILE:SECTION-COUNT 2 ?do i NUNIT-FILE:SECTION$ nip 0 T= loop
    NUNIT-FILE:CLOSE
-   ART$ RAW 512 READ-ALL {: size:n :}
+   ART$ RAW ART-CAP READ-ALL {: size:n :}
    RAW size NUNIT-FILE:ARCH-AARCH64 s" NBR" KEY$ NUNIT-FILE:READ-VIEW
    NUNIT-FILE:SECTION-COUNT 2 ?do
       i NUNIT-FILE:SECTION$ 0 T= RAW size + = TTRUE
