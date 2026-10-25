@@ -653,22 +653,8 @@ variable HBB-APP-BUILDER-U
    HBB-JSON @ if s" 1" exit then
    s" 0" ;
 
-\ The build's exclusion file: the cached file objects whose replay went stale
-\ in a maker run (BUILD-CACHE:EXCLUDE-ENV$). Copied out of BF-A$'s shared
-\ buffer.
-create HBB-EXCLUDE-PATH FS-PATH-CAP allot
-variable HBB-EXCLUDE-U
-: HBB-EXCLUDE$ ( -- ptr u8 n )
-   s" hb-file-exclude" BF-A$ HBB-EXCLUDE-PATH HBB-EXCLUDE-U HBB-COPY-PATH!
-   HBB-EXCLUDE-PATH HBB-EXCLUDE-U @ ;
-
-\ Name the exclusion file to a maker child.
-: HBB-EXCLUDE-ENV ( -- )
-   BUILD-CACHE:EXCLUDE-ENV$ >LEN HBB-EXCLUDE$ >LEN PROC-ENV-SET ;
-
 : HBB-RUN-MAKER-ARGS ( -- )
    HBB-CMD-RESET
-   HBB-EXCLUDE-ENV
    s" HABU_AOT_INPUTS" >LEN HBB-MAKER-INPUTS$ >LEN PROC-ENV-SET
    s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
@@ -755,39 +741,6 @@ variable HBB-EXCLUDE-U
          outu LEN>N erru LEN>N sig 128 + HBB-FINISH-MAKER-RC ENDOF
       timeout OF LEN>N swap LEN>N swap HBB-MAKER-TIMED-OUT ENDOF
    ;MATCH ;
-
-\ The maker exited asking for a rerun without a stale cached object.
-: HBB-RETRY-RC? ( outcome -- bool )
-   MATCH outcome
-      exited OF BUILD-CACHE:RETRY-RC = ENDOF
-      signaled OF drop false ENDOF
-      timeout OF false ENDOF
-   ;MATCH ;
-
-\ Run attempt q, which starts one maker child, again while it exits
-\ BUILD-CACHE:RETRY-RC having added a key to the exclusion file; a refused
-\ run's capture is dropped. A retry status that added nothing is the maker's
-\ failure, returned as it is.
-: HBB-MAKER-TRY ( [ -- len len outcome ] -- len len outcome )
-   {: q :}
-   HBB-EXCLUDE$ FILE-SIZE {: before:n :}
-   q execute {: outu:len erru:len got :}
-   got HBB-RETRY-RC? if
-      HBB-EXCLUDE$ FILE-SIZE before > if q RECURSE exit then
-   then
-   outu erru got ;
-
-\ Run a maker attempt under a fresh exclusion file, rerunning it while a
-\ stale replay adds a key, then finish with the last run. The exit registry
-\ removes the file if the build ends first.
-: HBB-MAKER-RETRYING ( [ -- len len outcome ] -- )
-   {: q :}
-   HBB-EXCLUDE$ s" " WRITE-ALL
-   HBB-EXCLUDE$ CLEANUP+
-   q HBB-MAKER-TRY
-   HBB-EXCLUDE$ REMOVE-FILE
-   HBB-EXCLUDE$ CLEANUP-FORGET
-   HBB-FINISH-MAKER ;
 
 \ Every file hb-build writes at -o is written to its sibling and renamed over
 \ -o only once it is whole and executable (src/lib/fs-mutate.f REPLACE-STAGED), so
@@ -1291,10 +1244,10 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
-   [: HBB-GOT-NAME$ BF-REMOVE-TMP
-      HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
-      HBB-OBJ-NAME$ BF-REMOVE-TMP
-      HBB-RUN-MAKER-CMD ;] HBB-MAKER-RETRYING ;
+   HBB-GOT-NAME$ BF-REMOVE-TMP
+   HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
+   HBB-OBJ-NAME$ BF-REMOVE-TMP
+   HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
 
 : HBB-SUCCESS ( -- )
    HBB-ENGINE-COMPAT @ if s" native-build OK: " else s" hb-build OK: " then type
@@ -1444,7 +1397,6 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-ENGINE-PRODUCT-ENV ( -- )
    HBB-CMD-RESET
    s" HABU_ENGINE_INPUTS" >LEN HBB-ENGINE-INPUT$ >LEN PROC-ENV-SET
-   HBB-EXCLUDE-ENV
    s" HABU_WHITEBOX_IMAGE" >LEN
    HBB-WHITEBOX @ if s" 1" else s" " drop 0 then >LEN PROC-ENV-SET ;
 
@@ -1573,7 +1525,7 @@ defer HBB-REPORT-HOOK ( -- )
       then
    then
    -1 HBB-MAKER-RUN !
-   ['] HBB-ENGINE-CMD HBB-MAKER-RETRYING
+   HBB-ENGINE-CMD HBB-FINISH-MAKER
    HBB-ENGINE-INPUTS-READ
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
@@ -1750,7 +1702,6 @@ defer HBB-REPORT-HOOK ( -- )
    rc E-PROC-TIMEOUT = if HBB-APP-BUILDER-TIMED-OUT then
    rc 0 <> if rc throw then
    HBB-CMD-RESET
-   HBB-EXCLUDE-ENV
    s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
    HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
@@ -1811,7 +1762,7 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-BUILD-REPL ( -- )
    HBB-REPL-ROOT!
    HBB-REPL-FRESH? if HBB-FINISH-REPL-FRESH exit then
-   ['] HBB-RUN-APP-CMD HBB-MAKER-RETRYING
+   HBB-RUN-APP-CMD HBB-FINISH-MAKER
    HBB-REPL-INVALIDATE-DEPS
    HBB-INSTALL-OUT
    HBB-REPL-SAVE-INPUTS

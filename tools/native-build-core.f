@@ -4,7 +4,6 @@ require tools/native-build-deps.f
 require src/lib/executable-build.f
 require src/lib/tier.f
 require src/lib/sort.f
-require src/lib/build-cache.f
 
 package NATIVE-BUILD
 
@@ -1571,12 +1570,10 @@ public
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN and tools/build-profile.f): 0,
-\ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f),
-\ BUILD-CACHE:RETRY-RC when a cached object's replay went stale (hb-build
-\ reruns the build), and BUILD-RC for any other failure. RUN-FILE-INNER has
-\ already printed the throw code itself.
+\ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC
+\ for any other failure. RUN-FILE-INNER has already printed the throw code
+\ itself.
 : EXIT-RC ( n -- n )
-   dup BUILD-CACHE:RETRY-RC = if exit then
    BUILD-RC PROC-EXIT-RC ;
 
 \ The build says which of the two images it wrote, on the way out, so a build
