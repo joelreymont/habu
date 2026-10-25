@@ -1558,7 +1558,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" con-dep.f" s" 2" RESUMED
    s" a warm build finds wls.f's reopen stale after the edited wlt.f gave WLS its private wordlist" T-LABEL
    OUT$ S\" wls=7\n" CONTAINS? TTRUE
-   s" wls.f" s" 2 reason=wordlist-rows" RESUMED
+   s" wls.f" s" 3 reason=wordlist-rows" RESUMED
    ERR$ s" /con.f records=" CONTAINS? TFALSE
    s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
    s" the next build compiles only con-dep.f and wls.f and stores them" T-LABEL
@@ -1631,8 +1631,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
 \ the replay has installed RP-A and loaded rc.f, so the build names the
-\ segment row it stopped at, event 2 after rc.f's load, and compiles the
-\ rest of rp.f from source. SXC-N's new effect does the same to sx.f past
+\ event row it stopped at, row 3 after RP-A's segment and history rows and
+\ rc.f's load, and compiles the rest of rp.f from source. SXC-N's new effect does the same to sx.f past
 \ its loads of sxm.f and sxc.f; the resume never loads sxm.f again, so its
 \ marker byte and its line come once.
 : RC-INTERFACE ( -- )
@@ -1645,7 +1645,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rc-interface-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
-   s" rp.f" s" 2" RESUMED
+   s" rp.f" s" 3" RESUMED
    s" a resumed sx.f runs its cold child sxm.f once" T-LABEL
    OUT$ S\" sx=3\n" CONTAINS? TTRUE
    s" sx.f" s" 4" RESUMED

@@ -456,6 +456,32 @@ create ENUM-LINE 48 allot
    s" grow-warm-hb" SAVE-APP
    WARM-HASH 32 COLD-HASH 32 T$= ;
 
+\ A reused file whose cold load spent compile history outside its recorded
+\ definitions (a STRUCTURE whose name the package SDFAIL takes, rolled back by
+\ catch after its MAKE and UNMAKE compiled) leaves the compiler's
+\ identity counters where that cold load left them: the warm build's image
+\ holds the bytes of the fresh-cache build. The first build runs on an empty
+\ cache, so it is that fresh-cache build.
+: ROLL-HIT-CASE ( -- )
+   s" a reused file of rolled-back compiles leaves the cold image" T-LABEL
+   s" native-file-types-roll" TREE
+   s" cache" AT MAKE-DIR
+   s" decl.f"
+      S\" package SDFAIL public\n: A ( -- n ) 7 ;\n;package\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n"
+      PUT
+   s" app.f" S\" require decl.f\n: MAIN ( -- ) ROLL-RC 0<> if 1 else 0 then . SDFAIL:A . ;\n" PUT
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 1\n7\n" CONTAINS? TTRUE
+   COLD-HASH HASH-APP
+   s" roll-fresh-hb" SAVE-APP
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 1\n7\n" CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" roll-warm-hb" SAVE-APP
+   WARM-HASH 32 COLD-HASH 32 T$= ;
+
 create SLICE-KEY 64 allot
 DYNAMIC-BUFFER ENTRY u8
 
@@ -691,6 +717,7 @@ public
    EMPTY-RANGE-CASE
    FAMILY-HIT-CASE
    GROW-HIT-CASE
+   ROLL-HIT-CASE
    CTOR-CASE
    LINK-CASE
    SLICE-CASE

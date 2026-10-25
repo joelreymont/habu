@@ -19,6 +19,7 @@ require src/habu/aot-arm.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
+require src/compiler/native/compiler.f
 require src/compiler/workspace.f
 require tools/native-unit-capture.f
 require tools/native-file-reference.f
@@ -181,6 +182,21 @@ private
 \ made in the segment, as TASK reported it (NUNIT-DEP:USER-MADE). Cell 1 is
 \ the record's ordinal, so a dictionary cut retires the row with its record.
 7 constant EV-USER
+\ Last of the rows after a SEGMENT row, after its TASK row and before its OUT
+\ row: how far the segment moved the compiler's identity counters, close
+\ minus open (module serial, context gen and epoch, builder gen, lease), and
+\ 1 when the compiler's session is live at its close. A record's replay
+\ advances only its own definition's deltas and one lease; a cold segment
+\ also spends history no record carries: a compile catch rolled back, one a
+\ dictionary cut dropped, one that threw, a constant's or defer's fixed
+\ compile (a lease and a session open with no replay), and the session open
+\ itself. A hit starts each segment where its cold load opened it, so the
+\ install sets each counter to its value at the segment's start plus the
+\ delta: the total needs no account of what the replays advanced, which a
+\ residual would have to mirror exactly. The counters only grow, so no
+\ delta is negative. A segment that moved none and left the session as it
+\ found it has none.
+9 constant EV-HIST
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
@@ -193,8 +209,10 @@ private
 \ was stated), the origin bytes when it opened, its sink cell first, the
 \ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the
 \ output bytes when it and its open segment opened, the LOAD row its
-\ pending loader action claimed (ACT-NONE, ACT-OPEN), and the open
-\ segment's TASK user-slot watermark with 1 when TASK was bound to read it.
+\ pending loader action claimed (ACT-NONE, ACT-OPEN), the open segment's
+\ TASK user-slot watermark with 1 when TASK was bound to read it, and the
+\ compiler's identity counters at its open (module serial, context gen and
+\ epoch, builder gen, lease) with 1 when the compiler's session was live.
 \ A child file's bytes and sites follow its parent's and are dropped when
 \ the child closes.
 0 constant FO-DEFS
@@ -230,7 +248,13 @@ private
 30 constant FO-ACT-ROW
 31 constant FO-SEG-USER
 32 constant FO-SEG-USER-BOUND
-33 constant FO-CELLS
+33 constant FO-SEG-MOD
+34 constant FO-SEG-GEN
+35 constant FO-SEG-EPOCH
+36 constant FO-SEG-BUILD
+37 constant FO-SEG-LEASE
+38 constant FO-SEG-LIVE
+39 constant FO-CELLS
 \ FO-ACT-ROW with no loader action of the file's own token pending, and with
 \ one pending that has loaded no child yet; any other value is the LOAD row
 \ its child opened.
@@ -850,6 +874,14 @@ private
 \ leaves it changed holds pool bytes a replay cannot put back.
 : POOL-FLOOR ( -- n ) data-base DATA-FLOOR-CELL + CELL-VIEW @ ;
 
+\ The compiler's identity counters: module serial, context gen and epoch,
+\ builder gen and lease.
+: COUNTERS ( -- n n n n n )
+   IR-ID:SERIAL-HISTORY IR-CTX:HISTORY IR-BUILD:HISTORY NLEASE:HISTORY ;
+
+\ 1 when the compiler's session is live, else 0.
+: LIVE-N ( -- n ) NCOMP:SESSION-LIVE? if 1 else 0 then ;
+
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
    ndict@ FO-SEG-ORD FO !
@@ -861,6 +893,9 @@ private
    0 IMAGE-U ! 0 KCELLS-HELD !
    USER-MARK if 1 else 0 then FO-SEG-USER-BOUND FO ! FO-SEG-USER FO !
    0 NUNIT-DEP:USER-READ !
+   COUNTERS FO-SEG-LEASE FO ! FO-SEG-BUILD FO ! FO-SEG-EPOCH FO !
+      FO-SEG-GEN FO ! FO-SEG-MOD FO !
+   LIVE-N FO-SEG-LIVE FO !
    FFI-BOUND? 0= if exit then
    s" FFI:NEXT-FN" FFI-N FO-SEG-FN FO !
    s" FFI:MARK" FFI-N FO-SEG-ROOM FO !
@@ -954,6 +989,13 @@ private
       i 0 EV @ EV-SEGMENT = if drop i 3 EV @ i 4 EV @ + then
    loop ;
 
+\ How far the open segment moved the compiler's identity counters, in
+\ COUNTERS order.
+: SEG-DELTAS ( -- n n n n n )
+   COUNTERS {: mod:n gen:n epoch:n build:n lease:n :}
+   mod FO-SEG-MOD FO @ - gen FO-SEG-GEN FO @ - epoch FO-SEG-EPOCH FO @ -
+   build FO-SEG-BUILD FO @ - lease FO-SEG-LEASE FO @ - ;
+
 \ The open segment's OUT row, first its first ordinal, when its top level
 \ wrote output.
 : OUTPUT-ROW+ ( n -- )
@@ -972,12 +1014,16 @@ private
 \ records the values of its first and last address cell rows, which the
 \ file's encoding checks again; its slot words add their USER rows, and a
 \ segment that moved TASK's user-slot watermark, either way, or ran a reader
-\ of it adds its TASK row. The earlier
+\ of it adds its TASK row, and one that moved the compiler's identity
+\ counters or opened its session its HIST row. A segment that closed a
+\ session live at its open refuses it: a replay cannot close one. The earlier
 \ DATA bytes the segment changed are recorded whether or not it adds a row; a
 \ kernel cell it left changed refuses it. Output its top level wrote adds an
 \ OUT row after the rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
+   SEG-DELTAS {: dmod:n dgen:n depoch:n dbuild:n dlease:n :}
+   LIVE-N {: live:n :}
    NUNIT-DEP:USER-READ @ 0<>  0 NUNIT-DEP:USER-READ ! {: read:bool :}
    FO-SEG-ORD FO @ {: first:n :}
    ndict@ first - {: count:n :}
@@ -992,6 +1038,9 @@ private
    REQ-XT FO-REQ-XT FO @ <> if s" requires-unknown" FILE-REFUSE exit then
    FO-REQ-XT FO @ REQ-NOW FO-SEG-REQ FO @ - {: reqs:n :}
    reqs 0 < if s" requires-unknown" FILE-REFUSE exit then
+   live FO-SEG-LIVE FO @ < if s" unrecorded-session" FILE-REFUSE exit then
+   dmod dgen or depoch or dbuild or dlease or 0<>
+      live FO-SEG-LIVE FO @ > or {: hist:bool :}
    FO-SEG-SLOT FO @ {: slot:n :}
    slot 0 > if
       slot 1- FO-SEG-PREV FO @ ROW-HOLDS? 0= if
@@ -1009,7 +1058,7 @@ private
    FFI-BOUND? if FFI-SEG-CK else false then {: sel:bool :}
    SLOT-COUNT slot - {: slots:n :}
    count bytes or reqs or wids or slots or 0= OBS-N @ 0= and sel 0= and
-      task 0= and if first OUTPUT-ROW+ exit then
+      task 0= and hist 0= and if first OUTPUT-ROW+ exit then
    EV-SEGMENT first count FO-SEG-HERE FO @ bytes
       FO-SEG-REQ FO @ reqs FO-SEG-WID FO @ wids EV+
    EVENTS-N @ 1- {: row:n :}
@@ -1028,6 +1077,7 @@ private
    first sel FFI-ROWS+
    first count USER-ROWS+
    task if EV-TASK first entry user 0 0 0 0 0 EV+ then
+   hist if EV-HIST first dmod dgen depoch dbuild dlease live 0 EV+ then
    first OUTPUT-ROW+ ;
 
 \ The end of open file k's event rows, where the next frame's begin.
@@ -1857,6 +1907,45 @@ variable DEF-HELD-SIZE
    history-rc E-IR-BUILD-SERIALS = or if BAD then
    history-rc 0<> if history-rc throw then ;
 
+\ Add the deltas of event row row to the sums when it is a HIST row. The
+\ sums stay on the stack: a builder's variables are captured with the app
+\ image, so a check that left them set would change a hit's image.
+: HIST-ADD ( n n n n n ptr u8 -- n n n n n )
+   {: mod:n gen:n epoch:n build:n lease:n row:ptr :}
+   row LE:U64@ EV-HIST <> if mod gen epoch build lease exit then
+   mod row 8 + LE:U64@ +  gen row 16 + LE:U64@ +
+   epoch row 24 + LE:U64@ +  build row 32 + LE:U64@ +
+   lease row 40 + LE:U64@ + ;
+
+\ The identity counter deltas of the event section evs's HIST rows, summed
+\ in COUNTERS order.
+: HIST-SUM ( ptr u8 n -- n n n n n )
+   {: evs:ptr evsu:n :}
+   0 0 0 0 0
+   evsu EVENT-BYTES / 0 ?do evs i EVENT-BYTES * + HIST-ADD loop ;
+
+\ Each counter plus its summed delta in the event section evs is in its
+\ range. The section stays on the stack for HISTORY-CK's catch.
+: HIST-TOTAL-CK ( ptr u8 n -- ptr u8 n )
+   2dup HIST-SUM {: dmod:n dgen:n depoch:n dbuild:n dlease:n :}
+   COUNTERS {: mod:n gen:n epoch:n build:n lease:n :}
+   mod dmod + IR-ID:SERIAL-CHECK drop
+   gen dgen + epoch depoch + IR-CTX:CHECK-HISTORY
+   build dbuild + IR-BUILD:CHECK-HISTORY
+   lease dlease + NLEASE:CHECK-HISTORY ;
+
+\ The counters a hit leaves once the event section evs's HIST rows install
+\ are in range, as DEF-READ-META checks a definition's deltas: a total past a
+\ counter's limit is a miss here, so the install never throws on it.
+: HISTORY-CK ( ptr u8 n -- )
+   ['] HIST-TOTAL-CK catch {: rc:n :}
+   2drop
+   rc E-IR-MODULE-EXHAUSTED =
+   rc E-IR-CTX-SERIALS = or
+   rc E-IR-BUILD-SERIALS = or
+   rc NLEASE:E-STATE = or if BAD then
+   rc 0<> if rc throw then ;
+
 \ Literal row number row at off in the literal section: its byte length,
 \ within the section, and the first row with the same address, within
 \ bounds.
@@ -2362,6 +2451,11 @@ CAST: N>U8 ( n -- ptr u8 )
       kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
       0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
       0 OUT-N 0 OUT-N 0 OUT-N exit
+   then
+   kind EV-HIST = if
+      kind OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N row 4 EV @ OUT-N
+      row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    kind EV-USER = if
       kind OUT-N row 1 EV @ FO-FIRST FO @ - OUT-N row 2 EV @ OUT-N
@@ -3248,15 +3342,28 @@ private
       kind EV-SEGMENT = if row end mark SEGMENT-CK rows inputs else
          kind EV-LOAD = if end mark row namesu srcu rows inputs LOAD-CK else
             kind EV-OUT = if end mark rows inputs else
-               \ FFI and USER rows follow their segment's row, and a TASK row
-               \ the last of them.
-               prev EV-LOAD = prev EV-TASK = or if BAD then
-               kind EV-USER = if row namesu USER-CK else
-                  kind EV-TASK <> if
-                     kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
-                     row names namesu refs FFI-CK
-                  then
-               then end mark rows inputs
+               \ A HIST row follows its segment's row and the FFI, USER and
+               \ TASK rows after it; its five counter deltas are not negative,
+               \ so their sum bounds every install, and its last cell is 0 or 1.
+               kind EV-HIST = if
+                  prev EV-SEGMENT <> prev EV-FFI-LIB < prev EV-USER > or and
+                     if BAD then
+                  6 1 do row i U64-AT 0 < if BAD then loop
+                  row 6 U64-AT {: live:n :}
+                  live 0<> live 1 <> and if BAD then
+                  end mark rows inputs
+               else
+                  \ FFI and USER rows follow their segment's row, and a TASK
+                  \ row the last of them.
+                  prev EV-LOAD = prev EV-TASK = or prev EV-HIST = or
+                     if BAD then
+                  kind EV-USER = if row namesu USER-CK else
+                     kind EV-TASK <> if
+                        kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
+                        row names namesu refs FFI-CK
+                     then
+                  then end mark rows inputs
+               then
             then
          then
       then
@@ -3511,6 +3618,7 @@ private
    rows rowsu REFS-CK {: refs:n :}
    12 NUNIT-FILE:SECTION$ names namesu rows srcu EVENTS-CK
    4 NUNIT-FILE:SECTION$ rows WIDS-CK
+   12 NUNIT-FILE:SECTION$ HISTORY-CK
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
    17 NUNIT-FILE:SECTION$ nip OPEN-VALS @ <> if BAD then
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
@@ -4211,9 +4319,18 @@ TRUSTED: SLOT-STORE ( n n n -- )
    loop
    OBJ-EVS ;
 
-\ The event row after segment row seg's FFI and TASK rows and its OUT row.
+\ Segment row seg's HIST row, the one after its FFI, USER and TASK rows, or
+\ -1.
+: HIST-ROW ( n -- n )
+   TAIL-END {: row:n :}
+   row OBJ-EVS < if row OBJ-EV 0 U64-AT EV-HIST = if row exit then then
+   -1 ;
+
+\ The event row after segment row seg's FFI, TASK and HIST rows and its OUT
+\ row.
 : SEG-NEXT ( n -- n )
-   TAIL-END {: next:n :}
+   {: seg:n :}
+   seg TAIL-END seg HIST-ROW 0 < if 0 else 1 then + {: next:n :}
    next OBJ-EVS < if
       next OBJ-EV 0 U64-AT EV-OUT = if next 1+ exit then
    then
@@ -4254,6 +4371,25 @@ TRUSTED: SLOT-STORE ( n n n -- )
          names row 5 U64-AT + row 1 U64-AT ORD>LIVE off size NUNIT-DEP:USER+
       then
    loop ;
+
+\ Segment row seg's HIST row, installed on the counters at the segment's
+\ start, in COUNTERS order, after its records: a session its cold load
+\ opened is opened when no replay did, then each counter goes to its start
+\ plus the row's delta. HISTORY-CK checked the totals. The row is read
+\ before the session opens.
+: INSTALL-HIST ( n n n n n n -- )
+   {: seg:n mod:n gen:n epoch:n build:n lease:n :}
+   seg HIST-ROW {: row:n :}
+   row 0 < if exit then
+   row OBJ-EV {: ev:ptr :}
+   ev 1 U64-AT mod + ev 2 U64-AT gen + ev 3 U64-AT epoch +
+      ev 4 U64-AT build + ev 5 U64-AT lease + ev 6 U64-AT 1 =
+      {: to-mod:n to-gen:n to-epoch:n to-build:n to-lease:n live:bool :}
+   live NCOMP:SESSION-LIVE? 0= and if NCOMP:SESSION-ENSURE then
+   to-mod IR-ID:REPLAY-SERIAL
+   to-gen to-epoch IR-CTX:REPLAY-HISTORY
+   to-build IR-BUILD:REPLAY-HISTORY
+   to-lease NLEASE:REPLAY-HISTORY ;
 
 \ The offset in slot 8 of require row k.
 : REQ-OFF ( n -- n )
@@ -4317,13 +4453,12 @@ public
 
 \ Event row seg, a segment: its records with its DATA bytes, the wordlists
 \ it made, through its package rows and WID-REACH for the rest, and their
-\ protection, its require rows, its FFI rows, its slots'
-\ bytes, its TASK row, then the checker slices through its own. The file's
-\ first segment starts at the file's first ordinal and adds its map row here;
-\ one after a load starts wherever the loads left the dictionary, and
+\ protection, its require rows, its FFI rows, its slots' bytes, its TASK row,
+\ its HIST row, then the checker slices through its own. The file's first
+\ segment starts at the file's first ordinal and adds its map row here; one
+\ after a load starts wherever the loads left the dictionary, and
 \ PREPARE-SEGMENT added its map row and prepared its checker slice. Every
-\ refusal here is a malformed
-\ object.
+\ refusal here is a malformed object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
    seg OBJ-EV {: ev:ptr :}
@@ -4334,6 +4469,7 @@ public
    ev 3 U64-AT {: bytes:n :}
    ev 4 U64-AT {: reqs:n :}
    ev 5 U64-AT {: wids:n :}
+   COUNTERS {: mod:n gen:n epoch:n build:n lease:n :}
    loads 0= if
       INS-FIRST @ first + ndict@ <> if BAD then
       seg rows wbase dbase MAP-ROW
@@ -4352,6 +4488,7 @@ public
    seg INSTALL-FFI
    seg INSTALL-USERS
    seg INSTALL-TASK
+   seg mod gen epoch build lease INSTALL-HIST
    loads INSTALL-CHECKS ;
 
 private
