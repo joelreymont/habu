@@ -2142,6 +2142,23 @@ CT-ARENA-BOOT
    0 code cells CT-PKG-U + !
    code CT-ADVANCE ;
 
+\ CT-REWIND ( ctn ctu -- ) : THE type table's rewind; the checker frame's
+\ restore lowers CTN and CT-STR-U only through here. An image carries the
+\ columns' and the pool's slack, so the rows [ctn, CTN) and the pool bytes
+\ [ctu, CT-STR-U) it retires are zeroed first: a later image then bakes no
+\ retired type and matches a run that never declared one.
+: CT-REWIND ( n n -- ) {: ctn:n ctu:n :}
+   ctn 1 < ctn CTN @ > or ctu 0 < or ctu CT-STR-U @ > or IF
+      s" checker: type table rewind outside the registry" 76 die
+   THEN
+   CT-NAME-A ctn CTN @ ARENA-CELLS-ZERO   CT-NAME-U ctn CTN @ ARENA-CELLS-ZERO
+   CT-CLASS ctn CTN @ ARENA-CELLS-ZERO    CT-WIDTH ctn CTN @ ARENA-CELLS-ZERO
+   CT-SIGN ctn CTN @ ARENA-CELLS-ZERO
+   CT-PKG-A ctn CTN @ ARENA-CELLS-ZERO    CT-PKG-U ctn CTN @ ARENA-CELLS-ZERO
+   CT-STR ctu +  CT-STR-U @ ctu -  ARENA-ZERO
+   ctn CTN !
+   ctu CT-STR-U ! ;
+
 \ The built-in type table. A new type token needs a checker-only bootstrap
 \ stage: an older bin/hb rejects an unknown stack-comment token, so add the
 \ parser, renderer and CC-* support, refresh the native binary, then use the
@@ -4985,6 +5002,31 @@ variable VRC-RVN
    node VREC-FIELD-N @ cells VREC-FIELDS + !
    VREC-FIELD-N @ 1 + VREC-FIELD-N ! ;
 
+\ VREC-REWIND ( rn fn dn an su -- ) : THE value-record stores' rewind; the
+\ checker frame's restore and CHECKER-TRY-RECORD's refusals lower the five marks
+\ only through here. An image carries every store's slack, so the records
+\ [rn, VREC-N), fields [fn, VREC-FIELD-N), nodes [dn, VREC-NODE-N), argument
+\ cells [an, VNARG-N) and pool bytes [su, VREC-STR-U) it retires are zeroed
+\ first: a later image then bakes no retired record.
+: VREC-REWIND ( n n n n n -- ) {: rn:n fn:n dn:n an:n su:n :}
+   rn 0 < rn VREC-N @ > or  fn 0 < or fn VREC-FIELD-N @ > or
+   dn 1 < or dn VREC-NODE-N @ > or  an 0 < or an VNARG-N @ > or
+   su 0 < or su VREC-STR-U @ > or IF
+      s" checker: value-record rewind outside the registry" 76 die
+   THEN
+   VREC-NAME-A rn VREC-N @ ARENA-CELLS-ZERO   VREC-NAME-U rn VREC-N @ ARENA-CELLS-ZERO
+   VREC-START rn VREC-N @ ARENA-CELLS-ZERO    VREC-COUNT rn VREC-N @ ARENA-CELLS-ZERO
+   VREC-TVN rn VREC-N @ ARENA-CELLS-ZERO      VREC-RVN rn VREC-N @ ARENA-CELLS-ZERO
+   VREC-FIELDS fn VREC-FIELD-N @ ARENA-CELLS-ZERO
+   VRN-TAG dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VRN-A dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-B dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VRN-C dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-D dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VRN-E dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-F dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VRN-G dn VREC-NODE-N @ ARENA-CELLS-ZERO    VRN-H dn VREC-NODE-N @ ARENA-CELLS-ZERO
+   VNARG an VNARG-N @ ARENA-CELLS-ZERO
+   VREC-STR su +  VREC-STR-U @ su -  ARENA-ZERO
+   rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U ! ;
+
 : VREC-MAP-RESET-ONE ( ptr n -- ) {: p:ptr :}
    0 BEGIN dup MAXTV < WHILE
       UNBOUND over cells p + !
@@ -6640,8 +6682,8 @@ variable VREC-AT
 \ leaves every record table as it found it and answers the byte offset in the
 \ field text of the field it refuses (the end of the text for a record with no
 \ field, 0 for a name TYPE-RESERVED? refuses) and the refusal; an empty refusal
-\ means registered. On a refusal it rewinds the five marks a rollback frame
-\ rewinds (RBF.VRECN .. RBF.VRECU).
+\ means registered. On a refusal it rewinds, through VREC-REWIND, the five marks
+\ a rollback frame rewinds (RBF.VRECN .. RBF.VRECU).
 : CHECKER-TRY-RECORD ( ptr u8 n ptr u8 n -- n ptr u8 n )
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu TYPE-RESERVED? IF 0 s" checker: bad or duplicate value-record type" EXIT THEN
@@ -6649,11 +6691,9 @@ variable VREC-AT
    {: rn:n fn:n dn:n an:n su:n :}
    name nameu VREC-BEGIN {: id:n :}
    id name nameu fields fieldsu VREC-DEFINE {: at:n msg:ptr msgu:n :}
-   msgu 0 <> IF
-      rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
-   THEN
+   msgu 0 <> IF rn fn dn an su VREC-REWIND THEN
    SIG-UNRES @ 0 <> msgu 0= and IF
-      rn VREC-N !  fn VREC-FIELD-N !  dn VREC-NODE-N !  an VNARG-N !  su VREC-STR-U !
+      rn fn dn an su VREC-REWIND
       E-CHECKER-RECORD-UNRESOLVED throw
    THEN
    at msg msgu ;
@@ -8970,6 +9010,7 @@ defer RECORD-CREATED-XT ( n n ptr n -- )
    [: RECORD-CREATED-DEFAULT ;] is RECORD-CREATED-XT ;
 RECORD-HOOK-DEFAULTS
 
+\ UEND lowerers need no scrub: USIGS-SNAPSHOT-PERSIST zeroes all above UEND.
 : USIGS-RESTORE-END ( n -- )
    dup RECORD-EFFECT-REWIND-XT
    dup CHX-TRUNCATE                      \ content and nodes share the rollback watermark
@@ -9722,7 +9763,7 @@ PTR-VARIABLE ASIG-LAST-P
 \ HANDS THOSE IDS BACK, so an entry written inside the popped scope answers for
 \ whatever word interns next at the same id - a different word's row, served as
 \ this one's. HIDX-SYMS-RETIRE is the same fact about the other sym-keyed table,
-\ and this is its twin; the two are called together from RBF-POP-WITH.
+\ and this is its twin; the two are called together from SYM-REWIND.
 \
 \ IT IS NOT THE ROWS THAT ARE RETIRED, only the index. A row records the name,
 \ package and visibility it was written under, so it stays true about the word it
@@ -9735,6 +9776,23 @@ PTR-VARIABLE ASIG-LAST-P
       dup ASIG-LAST-FORGET
       1 -
    REPEAT drop ;
+
+\ SYM-REWIND ( symn symu -- ) : THE symbol table's rewind; the checker frame's
+\ restore lowers SYM-N and SYM-STR-U only through here. The two sym-keyed
+\ indexes read the rows they forget, so they retire first. An image carries the
+\ rows' and the pool's slack, so the rows [symn, SYM-N) and the pool bytes
+\ [symu, SYM-STR-U) it retires are zeroed: a later image then bakes no retired
+\ symbol and matches a run that never interned one.
+: SYM-REWIND ( n n -- ) {: symn:n symu:n :}
+   symn 1 < symn SYM-N @ > or symu 0 < or symu SYM-STR-U @ > or IF
+      s" checker: symbol rewind outside the registry" 76 die
+   THEN
+   symn HIDX-SYMS-RETIRE
+   symn ASIG-SYMS-RETIRE
+   SYMS CELL-VIEW  symn SYM-REC CELL / *  SYM-N @ SYM-REC CELL / *  ARENA-CELLS-ZERO
+   SYM-STR symu +  SYM-STR-U @ symu -  ARENA-ZERO
+   symn SYM-N !
+   symu SYM-STR-U ! ;
 
 \ Most significant byte first into the accumulator, so the shift is the running
 \ value's and not the byte's - the same shape aot-file.f U64@ uses, and getting
@@ -14726,6 +14784,18 @@ RESOLUTION-LIFETIME-DEFAULT
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
+\ DFER-REWIND ( n -- ) : THE defer table's rewind; the checker frame's restore
+\ and a source reset lower DFER-END only through here. The table is baked, so
+\ the rows [n, DFER-END) it retires are zeroed before the terminator is
+\ written: a later image then bakes no retired defer row.
+: DFER-REWIND ( n -- ) {: n:n :}
+   n 0 < n DFER-END @ > or IF
+      s" checker: defer table rewind outside the registry" 76 die
+   THEN
+   DFERS CELL-VIEW  n CELL /  DFER-END @ CELL /  ARENA-CELLS-ZERO
+   n DFER-END !
+   DFER-TERM ;
+
 : DFER-NEXT ( ptr n -- ptr n )
    DFER-REC + ;
 
@@ -15549,10 +15619,17 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    repeat
    newend NRX-HI ! ;
 
-: NORET-RESTORE-END ( n -- )
-   dup RECORD-CONTROL-REWIND-XT
-   dup NRX-TRUNCATE
-   NORET-END !
+\ NORET-RESTORE-END ( n -- ) : THE control-flag store's rewind. NRX-TRUNCATE
+\ walks the entries it retires, so they are zeroed after it: the store is baked,
+\ and a later image then carries no retired entry.
+: NORET-RESTORE-END ( n -- ) {: newend:n :}
+   newend 0 < newend NORET-END @ > or IF
+      s" checker: control-flag rewind outside the registry" 76 die
+   THEN
+   newend RECORD-CONTROL-REWIND-XT
+   newend NRX-TRUNCATE
+   NORETS newend +  NORET-END @ newend -  ARENA-ZERO
+   newend NORET-END !
    NORET-TERM ;
 
 \ NORET-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what NRX answers — the
@@ -15570,13 +15647,6 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : NORET-NEWEST ( n -- n ) {: sym:n :}
    NRX-ENSURE
    sym NRX@ ;
-
-: NORET-RESET ( -- )
-   NRX-RESET                     \ every entry the index points at is being dropped
-   0 NORET-END !
-   NORET-P @ NULL-PTR <> IF 0 NORET-P @ CELL-VIEW ! THEN
-   0 NORET-GROW-CAP !
-   NULL-PTR NORET-GROW-NEXT ! ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
 \ in image DATA at the grain with a grain of room, just like stored signatures
@@ -15928,15 +15998,7 @@ REG-EXT-AOT-DEFAULTS
    ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
    PARAMA-BOOT 0 MAXPARAM-INIT REG-POINTERS-CLEAR
    FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
-   0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N !
-   CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO   \ name offsets, so zero retires a row
-   CT-PKG-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO    \ ... and its owner
-   CT-PKG-U CTN @ CT-CAP-V @ ARENA-CELLS-ZERO
-   VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
-   SYM-CAP-V @ SYM-N @ ?do
-      0 i SYM-PKG-A-FIELD !
-      0 i SYM-NAME-A-FIELD !
-   loop ;
+   0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N ! ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -26106,18 +26168,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-OVERLAY:ROLLBACK
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
-   r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
-   r RBF.SYMN @ ASIG-SYMS-RETIRE      \ ... and the signature pool's, keyed by the same ids
-   r RBF.SYMN @ SYM-N !
-   r RBF.SYMU @ SYM-STR-U !
-   r RBF.CTN @ CTN !
-   r RBF.CTU @ CT-STR-U !
+   r RBF.SYMN @ r RBF.SYMU @ SYM-REWIND
+   r RBF.CTN @ r RBF.CTU @ CT-REWIND
    r RBF.LIN @ LIN-NDECL !
-   r RBF.VRECN @ VREC-N !
-   r RBF.VRECF @ VREC-FIELD-N !
-   r RBF.VRECND @ VREC-NODE-N !
-   r RBF.VNARGN @ VNARG-N !
-   r RBF.VRECU @ VREC-STR-U !
+   r RBF.VRECN @ r RBF.VRECF @ r RBF.VRECND @ r RBF.VNARGN @ r RBF.VRECU @ VREC-REWIND
    r RBF.CAND @ CHK-CAND !
    r RBF.VSIG @ VSIG !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
@@ -26125,8 +26179,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.FLOOR @ PASS-FLOOR !
    r RBF.VDEFN @ VERIFY-DEFINER-N !
    r RBF.VPRSN @ VERIFY-PARSES-N !
-   r RBF.DFEREND @ DFER-END !
-   DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
+   r RBF.DFEREND @ DFER-REWIND ;
 
 \ Source replay discards the dictionary tail but retains the compiler's type
 \ graph. Its constructor/defer/control metadata names symbol IDs, so retired
@@ -26141,7 +26194,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    0 BWIN-VALID !  0 UWIN-VALID !
    USIGS-USER-OFF @ USIGS-RESTORE-END
    NORET-PRIM-END NORET-RESTORE-END
-   0 DFER-END ! DFER-TERM
+   0 DFER-REWIND
    CHECKER-ASIG-RESET
    SYMS-RETIRE-SOURCE
    \ The reloaded primitives get fresh symbol ids. Rebind their facts before
@@ -30778,9 +30831,7 @@ variable MARK-U                          \ the map's length in bytes
       THEN
    loop
    bnd oldend = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
-   DFERS CELL-VIEW DST @ CELL / oldend CELL / ARENA-CELLS-ZERO
-   DST @ DFER-END !
-   DFER-TERM ;
+   DST @ DFER-REWIND ;
 
 : UNSAFE-FILTER ( -- )
    0 DST !
