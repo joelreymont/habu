@@ -11,7 +11,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/build-cache.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 
@@ -79,7 +78,6 @@ variable FILL-POOL
    s" HABU_BUILD_CACHE" >LEN s" cache" AT >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
-   BUILD-CACHE:EXCLUDE-ENV$ >LEN s" exclude" AT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    builder builderu INPUT INPUT-U @ CAPTURE ;
 
@@ -122,6 +120,8 @@ variable FILL-POOL
    S\" s\" dep=\" type CON-DEP . cr\n" IN+
    s" rp.f" LOAD+
    S\" s\" rp=\" type RP-B . cr\n" IN+
+   s" sx.f" LOAD+
+   S\" s\" sx=\" type SX-B . cr\n" IN+
    s" lbv.f" LOAD+
    S\" s\" lbv=\" type LBV-K LBV-KID + . cr\n" IN+
    s" lbc.f" LOAD+
@@ -638,7 +638,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ execute: INDIRECT is admitted, and the closure walk follows the
 \ quotation to its sibling mxone.f's MX-ONE, whose body the third build
 \ edits; MX-ONE is not a child of mask.f, since an edited child makes
-\ mask.f's replay stale and the builder exits with the retry code.
+\ mask.f's replay stale and the build resumes mask.f from its source.
 \ xrun.f's XGO executes the typed xt its sibling xset.f stores in XHOOK,
 \ and the third build edits XA's body under the same key. dxrun.f's DXGO
 \ executes the xt dxset.f stores in DXHOOK, a data cell with no colon
@@ -669,6 +669,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ixt.f" S\" variable IXT-V\n: IXT-RUN ( -- ) s\" IX-TEN IXT-V !\" evaluate-closed ;\nIXT-RUN\nIXT-V @ constant IXT-K\n" PUT
    s" ixp.f" S\" require ixw.f\nrequire ixl.f\nrequire ixt.f\n" PUT ;
 
+\ sx.f loads sxm.f, then sxc.f, then compiles against sxc.f. sxm.f's top
+\ level prints sx-mark and appends a byte to sxmark.txt, a run the capture
+\ refuses, so it runs on every build.
+: SX-FIXTURES ( -- )
+   0 INPUT-U !
+   S\" s\" sx-mark\" type cr\ns\" " IN+ s" sxmark.txt" AT IN+ S\" \" s\" x\" APPEND-FILE\n" IN+
+   s" sxm.f" INPUT INPUT-U @ PUT
+   s" sxc.f" S\" : SXC-N ( -- n ) 2 ;\n" PUT
+   s" sx.f" S\" require sxm.f\nrequire sxc.f\n: SX-B ( -- n ) SXC-N 1+ ;\n" PUT ;
+
+
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
@@ -681,6 +692,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ segments and the load between them.
    s" rc.f" S\" : RC-N ( -- n ) 2 ;\n" PUT
    s" rp.f" S\" : RP-A ( -- n ) 1 ;\nrequire rc.f\n: RP-B ( -- n ) RP-A RC-N + ;\n" PUT
+   SX-FIXTURES
    \ lbv.f carries a value across its load of lbvk.f; lbc.f loads lbca.f and
    \ lbcb.f from a colon word. Neither load is a loader token's action
    \ ending balanced at a loader cut.
@@ -1454,51 +1466,46 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
    RUNS-ADMITTED ;
 
-\ A session exited RETRY-RC when name's replay went stale at the segment
-\ row seg names, and listed one key in the exclusion file RUN-INPUT names
-\ (BUILD-CACHE:EXCLUDE-ENV$); hb-build would run it again.
-: WENT-STALE ( n ptr u8 n ptr u8 n -- )
-   {: rc:n name:ptr nameu:n seg:ptr segu:n :}
-   rc BUILD-CACHE:RETRY-RC T=
+\ name's replay went stale at the segment row seg names, and the build went
+\ on in the same process from name's source where the load before that row
+\ returned: name is refused as segment-stale and writes no object.
+: RESUMED ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n seg:ptr segu:n :}
    0 INPUT-U !
    s" native-file: stale path=" IN+ name nameu AT IN+ s"  segment=" IN+
    seg segu IN+ S\" \n" IN+
    ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   s" exclude" AT FILE-SIZE 65 T= ;
-
-\ The rerun of a stale session missed name's excluded object and compiled it
-\ from source; the exclusion file goes, so the cases after start without it.
-: EXCLUDED ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
    name nameu s"  reason=" LINE$ {: line:ptr lineu:n :}
    0 INPUT-U !
-   name nameu IN+ s"  reason=excluded" IN+
+   name nameu IN+ s"  reason=segment-stale" IN+
    line lineu INPUT INPUT-U @ T$=
-   s" exclude" AT REMOVE-FILE ;
+   name nameu NO-OBJECT ;
 
 \ A changed constant leaves con.f's object supported but stale: the warm build
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
 \ con-dep.f's replay, past con.f's load, then finds its second segment stale,
-\ so the session exits for a rerun, which compiles con-dep.f from source over
-\ the con.f object the first run wrote.
+\ so the build compiles the rest of con-dep.f from source and discards its
+\ object. The next build compiles con-dep.f alone and stores it.
 : STALE-CON ( -- )
    s" con.f" S\" 4 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
-   s" a warm build compiles a stale con.f again" T-LABEL
+   s" a warm build compiles a stale con.f again and resumes con-dep.f" T-LABEL
    PROBE
    s" probe-stale-out.log" OUT$ PUT
    s" probe-stale-err.log" ERR$ PUT
-   s" con-dep.f" s" 2" WENT-STALE
-   ERR$ s" /con.f records=" CONTAINS? TFALSE
-   s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
-   s" the rerun compiles con-dep.f from source over con.f's new object" T-LABEL
-   PROBE
-   s" probe-rerun-out.log" OUT$ PUT
-   s" probe-rerun-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" con=5\n" CONTAINS? TTRUE
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
+   s" con-dep.f" s" 2" RESUMED
+   ERR$ s" /con.f records=" CONTAINS? TFALSE
+   s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
+   s" the next build compiles only con-dep.f and stores it" T-LABEL
+   PROBE
+   s" probe-next-out.log" OUT$ PUT
+   s" probe-next-err.log" ERR$ PUT
+   SUCCESS
+   OUT$ S\" dep=6\n" CONTAINS? TTRUE
    s" con.f" REUSED
-   s" con-dep.f" EXCLUDED ;
+   s" con-dep.f" KEY$ STORED ;
 
 \ The freshness check left no row: a cold build of the edited con.f writes
 \ the object the stale warm build rewrote, kept as con-cold.obj.
@@ -1557,25 +1564,26 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
 
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
-\ the replay has installed RP-A and loaded rc.f, so the session stops for a
-\ rerun and names the segment row it stopped at: event 2, after rc.f's load.
-\ The rerun compiles rp.f from source over rc.f's new object.
+\ the replay has installed RP-A and loaded rc.f, so the build names the
+\ segment row it stopped at, event 2 after rc.f's load, and compiles the
+\ rest of rp.f from source. SXC-N's new effect does the same to sx.f past
+\ its loads of sxm.f and sxc.f; the resume never loads sxm.f again, so its
+\ marker byte and its line come once.
 : RC-INTERFACE ( -- )
    s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
-   s" an effect edit of rc.f stops rp.f's replay at its stale second segment" T-LABEL
+   s" sxc.f" S\" : SXC-N ( -- u8 ) 2 ;\n" PUT
+   s" sxmark.txt" AT FILE-SIZE {: marks:n :}
+   s" an effect edit of rc.f resumes rp.f at its stale second segment" T-LABEL
    PROBE
    s" rc-interface-out.log" OUT$ PUT
    s" rc-interface-err.log" ERR$ PUT
-   s" rp.f" s" 2" WENT-STALE
-   OUT$ s" rp=" CONTAINS? TFALSE
-   s" the rerun compiles rp.f from source, its object excluded" T-LABEL
-   PROBE
-   s" rc-rerun-out.log" OUT$ PUT
-   s" rc-rerun-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
-   s" rc.f" REUSED
-   s" rp.f" EXCLUDED ;
+   s" rp.f" s" 2" RESUMED
+   s" a resumed sx.f runs its cold child sxm.f once" T-LABEL
+   OUT$ S\" sx=3\n" CONTAINS? TTRUE
+   s" sx.f" s" 4" RESUMED
+   s" sxmark.txt" AT FILE-SIZE marks 1+ T= ;
 
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
@@ -1803,7 +1811,7 @@ public
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    COLD-CON
-   \ RC-INTERFACE's rerun runs the whole probe, which LOADER-FIRST's ret-late.f
+   \ RC-INTERFACE runs the whole probe, which LOADER-FIRST's ret-late.f
    \ would refuse.
    RC-INTERFACE
    LOADER-FIRST

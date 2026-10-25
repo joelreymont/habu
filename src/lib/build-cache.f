@@ -25,7 +25,8 @@
 \ <key>.idx (src/lib/object-resolve.f); the gate its keyed images (test/keyed-image.f,
 \ test/cold-engine.f, test/whitebox-engine.f). A key moves with every edit to what it covers, so
 \ each publish lands beside the entries it replaces, and nothing but PRUNE
-\ removes one.
+\ removes one, except that a native-file object found stale at replay is
+\ discarded by its user (DISCARD), so the next build stores it again.
 \
 \ AN ENTRY GOES ONCE NOTHING HAS USED IT FOR A DAY. Builds on other trees share
 \ the cache under keys of their own, and some run an entry in place, so keeping
@@ -746,6 +747,14 @@ public
    a u FS-TRY-LSTAT 0= if FALSE exit then
    s" date" a u code REPORT
    TRUE ;
+
+\ Remove an entry its user found stale. An entry already gone, a pruner
+\ having taken it, counts as removed; any other failure is thrown.
+: DISCARD ( ptr u8 n -- )
+   [: 2dup REMOVE-FILE ;] catch {: a:ptr u:n code:n :}
+   code 0= if exit then
+   a u FS-TRY-LSTAT 0= if exit then
+   code throw ;
 
 \ ---- work directories --------------------------------------------------------
 
