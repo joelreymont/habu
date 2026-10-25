@@ -21,5 +21,5 @@ Joel's rulings (2026-10-25 interview):
 - End state if one pass wins: single-pass codegen on every platform (ARM64, x86-64, Wasm), then tier 1 and the IR are deleted.
 - One pass wins when real workloads run within 5% of tier 1's run time and compile cost stays near today's tier 0.
 - The ruling waits for every corpus: etch and loom are made to load on current Habu (habu-make-etch-load-ba7e4997, habu-make-loom-load-55f9444c) and timed with the rest.
-- Until then tier 1 stays production code: every confirmed tier 1 defect is dotted and fixed at its root; no new tier 1 optimization work.
+- Until then every confirmed tier 1 defect is dotted. One a real program hits (x86-64 and Wasm run only tier 1) gets its root fix; the rest wait for the ruling, which deletes them with tier 1 or schedules them. No new tier 1 optimization work.
 - Workloads timed for the ruling, each made to run on current Habu first: zz, dots, tools/tier-bench.f, tender, zen (formerly Kaizen) under a real query load, maki's CAD server building real designs end to end (Habu time split from the OCCT worker's; maki tests.f exits 67 from its kernel worker today), etch and loom.
