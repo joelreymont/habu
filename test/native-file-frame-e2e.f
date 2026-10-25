@@ -13,6 +13,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
+require test/ffi-struct-fixture.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-FRAME-TEST
@@ -92,6 +93,15 @@ variable FILL-POOL
 \ E-GENIO-IO. Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
+
+\ ffs.f's struct-by-value call prints its checksum, on macOS only, as
+\ FFS-FIXTURE writes it. Kept apart from PROBE for its body text limit
+\ (BODYBUF-CAP).
+: FFS-PROBE ( -- )
+   HB-TARGET-MACOS? if
+      s" ffs.f" LOAD+
+      S\" s\" ffs=\" type FFS-S FFS-SUM24 . cr\n" IN+
+   then ;
 
 \ The package and bare wordlist shapes load after w.f.
 : WL-PROBE ( -- )
@@ -205,6 +215,7 @@ variable FILL-POOL
    S\" s\" crc2=\" type 0 NULL-PTR 0 FF-CRC2 . cr\n" IN+
    s" ffn.f" LOAD+
    S\" s\" pid=\" type FF-PID 0 > . cr\n" IN+
+   FFS-PROBE
    s" sel.f" LOAD+
    s" selc.f" LOAD+
    s" ffb.f" LOAD+
@@ -589,6 +600,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" lf.f" S\" : LF-S ( -- ptr u8 n ) s\" lf-pool-probe\" ;\n" PUT
    s" lp.f" S\" : LP-S ( -- ptr u8 n ) s\" lp-pool-probe\" ;\n" PUT ;
 
+\ ffs.f declares a struct-by-value FUNCTION: against test/ffi-struct-fixture.f's
+\ library, built into the tree, so its registry row carries a relocation mask
+\ that a warm install declares again. FFS-S holds the s24 record {7, 3, 0, -9}.
+\ Structs by value are AAPCS64, so it runs on macOS only, as in
+\ src/lib/ffi-test.f.
+: FFS-FIXTURE ( -- )
+   0 INPUT-U !
+   S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ ROOT$ STRUCT-FIXTURE:BUILD IN+
+   S\" \nFUNCTION: FFS-SUM24 hb_sum24 ( ptr u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION\ncreate FFS-S 7 , 3 , -9 ,\n" IN+
+   s" ffs.f" INPUT INPUT-U @ PUT ;
+
 \ The FFI fixtures, kept apart from FIXTURES: together their body text
 \ passes the 8000 bytes one definition captures (BODYBUF-CAP).
 : FFI-FIXTURES ( -- )
@@ -628,7 +650,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ wcb.f's IMAGE-LIFECYCLE:PREPARE runs FFI-DECL's CLEAR-SCOPE hook, which
    \ clears the scope and keeps the library wca.f selected.
    s" wca.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
-   s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT ;
+   s" wcb.f" S\" require src/lib/image-lifecycle.f\nIMAGE-LIFECYCLE:PREPARE\n17 constant WCB-K\n" PUT
+   HB-TARGET-MACOS? if FFS-FIXTURE then ;
 
 \ say.f's, pout.f's, fx.f's, fy.f's and capo.f's top levels print: the tee
 \ records each output operation, which a hit issues again. fpar.f, fq.f,
@@ -1203,6 +1226,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a file reusing that library row stores its object" T-LABEL
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
    s" ffl2.f" KEY$ STORED
+   HB-TARGET-MACOS? if
+      s" a struct-by-value FUNCTION: file stores its object" T-LABEL
+      OUT$ S\" ffs=1134932\n" CONTAINS? TTRUE
+      s" ffs.f" KEY$ STORED
+   then
    s" a declaring file that runs PROCESS-SYMBOLS refuses; one reusing its row stores" T-LABEL
    s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    s" selc.f" KEY$ STORED
@@ -1509,6 +1537,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
    s" selc.f" REUSED
    s" plain.f" REUSED
+   \ The frame suite builds no image, so no product bytes compare: the cold
+   \ build's ffs= line printed again is the cold == warm check.
+   HB-TARGET-MACOS? if
+      s" a warm build installs ffs.f's row with its relocation mask" T-LABEL
+      OUT$ S\" ffs=1134932\n" CONTAINS? TTRUE
+      s" ffs.f" REUSED
+   then
    s" a warm build refuses each refused FFI file again by its run reason" T-LABEL
    s" ffn.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED

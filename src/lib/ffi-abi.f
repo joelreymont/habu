@@ -966,12 +966,13 @@ public
 : NEXT-FN ( -- n ) DECL-TAG dup FN-N-CELL @ or ;
 : NEXT-LIB ( -- n ) DECL-TAG dup LIB-N-CELL @ 1+ or ;
 
-\ Row idx's descriptor: symbol, library index, argument and spill counts.
-: FN-ROW@ ( n -- ptr u8 n n n n )
+\ Row idx's descriptor: symbol, library index, argument and spill counts and
+\ relocation mask, in DECLARE-ROW's order.
+: FN-ROW@ ( n -- ptr u8 n n n n n )
    {: idx:n :}
    idx FN-NAME {: name:ptr :}
    0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat {: u:n :}
-   name u idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ ;
+   name u idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
 \ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
 : LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 : MAX-ARGS ( -- n ) FFI-MAX-ARGS ;

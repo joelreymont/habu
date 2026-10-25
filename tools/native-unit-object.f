@@ -103,7 +103,8 @@ private
 \ at a loader cut and returned with the loading file balanced at its resume
 \ offset; a file with any other load stores no object. FFI-LIB: kind, path
 \ offset and length, the library's index. FFI-FN: kind, symbol offset and
-\ length, library index, argument and spill counts, the function's index.
+\ length, library index, argument and spill counts, the function's index
+\ and its relocation mask.
 \ FFI-SCOPE: kind, role (0 the declarer's selection when the segment opened,
 \ 1 when it closed), library index, the scope wordlist's reference and 1
 \ when a scope was stated. TASK: kind, TASK's user-slot watermark at the
@@ -476,9 +477,9 @@ CAST: DEF-NUM-XT ( n -- [ -- n ] )
 CAST: FFI-OBSERVE-XT ( n -- [ [ n n -- ] -- ] )
 CAST: FFI-SELECTION-XT ( n -- [ -- n n bool ] )
 CAST: FFI-LIB-ROW-XT ( n -- [ n -- ptr u8 n ] )
-CAST: FFI-FN-ROW-XT ( n -- [ n -- ptr u8 n n n n ] )
+CAST: FFI-FN-ROW-XT ( n -- [ n -- ptr u8 n n n n n ] )
 CAST: FFI-PATH-XT ( n -- [ ptr u8 n -- n ] )
-CAST: FFI-FN-XT ( n -- [ ptr u8 n n n n -- n ] )
+CAST: FFI-FN-XT ( n -- [ ptr u8 n n n n n -- n ] )
 CAST: FFI-SELECT-XT ( n -- [ n n bool -- ] )
 CAST: REQ-LEN-XT ( n -- [ n -- n ] )
 CAST: REQ-SLOT-XT ( n -- [ n -- ptr u8 ] )
@@ -943,8 +944,8 @@ private
       then
       kind OBS-FN = if
          idx s" FFI:FN-ROW@" FFI-XT FFI-FN-ROW-XT execute
-            {: name:ptr u:n lib:n argc:n spills:n :}
-         EV-FFI-FN first name u NAMES+ u lib argc spills idx 0 EV+
+            {: name:ptr u:n lib:n argc:n spills:n reloc:n :}
+         EV-FFI-FN first name u NAMES+ u lib argc spills idx reloc EV+
       then
    loop
    sel 0= if exit then
@@ -2430,7 +2431,7 @@ CAST: N>U8 ( n -- ptr u8 )
    kind EV-FFI-FN = if
       kind OUT-N row 2 EV @ FO-NAMES FO @ - OUT-N row 3 EV @ OUT-N
       row 4 EV @ OUT-N row 5 EV @ OUT-N row 6 EV @ OUT-N row 7 EV @ OUT-N
-      0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
+      row 8 EV @ OUT-N 0 OUT-N 0 OUT-N 0 OUT-N exit
    then
    \ The scope's reference is taken here: BEGIN-FILE-REFS resets the
    \ references after the segments close. It binds no owner: FFI-ROWS-HOLD?
@@ -3317,7 +3318,12 @@ private
    s" FFI:MAX-ARGS" FFI-N {: cap:n :}
    row 4 U64-AT {: argc:n :}
    row 5 U64-AT {: spills:n :}
-   argc 0 < argc cap > or spills 0 < or spills cap > or if BAD then ;
+   argc 0 < argc cap > or spills 0 < or spills cap > or if BAD then
+   \ The relocation mask names only the row's own cells, as src/lib/ffi-abi.f's
+   \ RELOC-OWNED? requires: the first argc registers up to x7 from bit 0, the
+   \ spills from bit 8.
+   1 argc 8 min lshift 1-  1 spills lshift 1- 8 lshift or {: own:n :}
+   row 7 U64-AT own invert and 0<> if BAD then ;
 
 \ A USER row after a segment: one of the object's own records, a slot's
 \ offset and size, and the slot's close and entry bytes spans of the names
@@ -3338,7 +3344,7 @@ private
       evs i EVENT-BYTES * + {: row:ptr :}
       row 0 U64-AT {: kind:n :}
       kind EV-SEGMENT <> kind EV-LOAD <> and kind EV-TASK <> and
-         row 7 U64-AT 0<> and if BAD then
+         kind EV-FFI-FN <> and row 7 U64-AT 0<> and if BAD then
       kind EV-SEGMENT = if row end mark SEGMENT-CK rows inputs else
          kind EV-LOAD = if end mark row namesu srcu rows inputs LOAD-CK else
             kind EV-OUT = if end mark rows inputs else
@@ -4244,6 +4250,7 @@ TRUSTED: SLOT-STORE ( n n n -- )
             prev 3 U64-AT row 3 U64-AT = and
             prev 4 U64-AT row 4 U64-AT = and
             prev 5 U64-AT row 5 U64-AT = and
+            prev 7 U64-AT row 7 U64-AT = and
          then
          if prev FFI-IDX unloop exit then
       then
@@ -4251,7 +4258,7 @@ TRUSTED: SLOT-STORE ( n n n -- )
    -1 ;
 
 : FFI-LIB-INDEX ( ptr u8 n -- n ) s" FFI:LIB-INDEX" FFI-XT FFI-PATH-XT execute ;
-: FFI-FN-INDEX ( ptr u8 n n n n -- n ) s" FFI:FN-INDEX" FFI-XT FFI-FN-XT execute ;
+: FFI-FN-INDEX ( ptr u8 n n n n n -- n ) s" FFI:FN-INDEX" FFI-XT FFI-FN-XT execute ;
 
 \ The FFI rows after event row seg, replayed: each library and function
 \ declared again answers the index it stores, as FFI-ROWS-HOLD? found, and
@@ -4271,8 +4278,8 @@ TRUSTED: SLOT-STORE ( n n n -- )
          row FFI-IDX <> if BAD then
       then
       kind EV-FFI-FN = if
-         row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT
-         s" FFI:DECLARE-SPILLED" FFI-XT FFI-FN-XT execute
+         row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT row 7 U64-AT
+         s" FFI:DECLARE-ROW" FFI-XT FFI-FN-XT execute
          row FFI-IDX <> if BAD then
       then
       kind EV-FFI-SCOPE = row 1 U64-AT 1 = and if
@@ -4696,7 +4703,7 @@ public
 \ nothing: the index each declaration would answer, like a resolution row, and
 \ the declarer's selection the segment opened with. A row expects the index
 \ of an earlier row of the object with its descriptor, else the live row's,
-\ else the next new one. A function's library must be one DECLARE-SPILLED
+\ else the next new one. A function's library must be one DECLARE-ROW
 \ takes at the replay, and every scope row's imported wordlist must still
 \ have its package, which no dependency row checks, so a hit never throws.
 \ Only the FFI rows after segment row seg are checked, after the segments
@@ -4750,7 +4757,8 @@ public
                row FFI-NAME$ FFI-LIB-INDEX {: live:n :}
                live 0<> if live libs fns else nextlib libs + libs 1+ fns then
             else
-               row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT FFI-FN-INDEX
+               row FFI-NAME$ row 3 U64-AT row 4 U64-AT row 5 U64-AT row 7 U64-AT
+                  FFI-FN-INDEX
                   {: live:n :}
                live 0 >= if live libs fns else nextfn fns + libs fns 1+ then
             then
