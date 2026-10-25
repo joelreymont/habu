@@ -564,8 +564,7 @@ DYNAMIC-BUFFER ENTRY u8
    s" app.f" AT S\" \\ edited\n" APPEND-FILE ;
 
 \ c.f declares private products, whose MAKE and UNMAKE are words of package
-\ FCTOR (a public family's constructor package would keep c.f from reuse:
-\ unsupported-wordlists). app.f, compiled from source in every build (each
+\ FCTOR. app.f, compiled from source in every build (each
 \ warm build edits it first), reopens FCTOR and gives the
 \ generic box the two-cell pair. Only the typed construct step admits that
 \ call (TFAM-CTOR-STEP?: a direct layout argument), and the step finds the

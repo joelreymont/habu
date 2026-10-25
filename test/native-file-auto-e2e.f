@@ -652,12 +652,20 @@ variable HISTORY-LIB-NEW
    RUN-APP SUCCESS OUT$ s" share" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
-\ ROLLED runs at load, so sdfail generates SDFAIL:MAKE inside the build and then
-\ fails at commit on the SDFAIL:A it would derive; the build catches the code.
+\ ROLLED runs at decl.f's load, so sdfail generates SDFAIL:MAKE inside the
+\ build and then fails at commit on the SDFAIL:A it would derive; the build
+\ catches the code. decl.f makes three wordlists outside any package: the
+\ constructor namespaces SHADE and PAIR, protected, and SDFAIL, which the
+\ qualified definition makes.
+: GENERATED-DECL ( -- )
+   s" decl.f"
+      S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n"
+      PUT ;
+
 : GENERATED-SOURCE ( n -- )
    {: last:n :}
    0 INPUT-U !
-   S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
+   S\" require decl.f\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
       INPUT CAP INPUT-U BUF-APPEND
    SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
    S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
@@ -666,6 +674,8 @@ variable HISTORY-LIB-NEW
 : GENERATED-CASE ( -- )
    s" words a declaration generates store and reuse like other definitions" T-LABEL
    1 DIAG? !
+   s" generated-fresh-cache" AT MAKE-DIR
+   GENERATED-DECL
    40 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
    s" generated-cold.err" AT ERR$ WRITE-ALL
@@ -676,12 +686,20 @@ variable HISTORY-LIB-NEW
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
    s" generated-warm.err" AT ERR$ WRITE-ALL
    REUSED
-   \ Only MAIN's source changed, so every other word, generated or not, hits.
+   \ Only app.f changed: decl.f, its generated words and the wordlists they
+   \ made, installs from its object, and app.f compiles MAIN alone.
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    DIAG-LINES 1 T=
    ERR$ s" name=MAIN path=" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n" CONTAINS? TTRUE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS REUSED
    DIAG-LINES 0 T=
+   LITERAL-IMAGE-SAVE
+   \ The product a hit on decl.f builds is the one a cold build of the same
+   \ source builds: the installed wordlists stand where the cold ones did.
+   s" generated-fresh-cache" AT RUN-SAVED-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   LITERAL-IMAGE-SAME? TTRUE
    0 DIAG? ! ;
 
 \ HIDE-DEFS-FROM lowers the dictionary count with no code reclaim, so CUT-NEW

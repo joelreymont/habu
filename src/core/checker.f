@@ -3489,6 +3489,10 @@ variable DF-ACT   variable DF-EXP
 \ pure-scalar or non-construct mismatch renders no variant/tag.
 variable DVAR    -1 DVAR !
 variable CVLIVE  -1 CVLIVE !
+\ The construct form's token state (CONSTRUCT-TOK); declared here so the
+\ capture seam (CHECKER-CAPTURE-SCRATCH-PREPARE) can rest it.
+variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
+variable CONFAM    \ resolved family id while CONM = 2
 \ Payload slot of the captured mismatch: UF-POSN's slot-from-top of
 \ the failed expected-row element, latched beside DVAR. Render converts it to
 \ the declaration-order payload index; -1 = position unknown (row-level or
@@ -15868,6 +15872,7 @@ REG-EXT-AOT-DEFAULTS
    \ in these inactive fields. A captured engine begins with neither pending.
    0 CK-CLOSED-SYM !  0 CK-CLOSED-IX !  0 CK-CLOSED-OFF !
    0 CK-PEND-FLOOR !  0 CK-PEND-IX !
+   0 CONFAM !                    \ the last construct's family
    SG-ROWS-RESET
    REC-RELEASE
    UWL-SNAP-RESET
@@ -22850,9 +22855,6 @@ variable IS-PEND-U                   \ and its length
 \ constructor call (payloads consumed, layout bundle produced, CHECKER-STEP
 \ conservation). Stage engines without the registry keep the 0 hooks and fail
 \ closed. test/match-factor-pin.f pins native construct execution.
-variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
-variable CONFAM    \ resolved family id while CONM = 2
-
 : CONSTRUCT-BEGIN ( -- )
    EV-OPERAND
    1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)

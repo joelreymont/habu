@@ -275,17 +275,47 @@ variable FAMILY-FIND
    then
    wid 2 * ;
 
-: WID-OWNER ( n -- n n bool ) {: wid:n :}
-   wid 0 <= wid WID-CAP @ >= or if -1 0 false exit then
-   wid 2 * WID-OWNERS @ {: ord:n :}
-   ord 0 < if -1 0 false exit then
-   ord wid 2 * 1+ WID-OWNERS @ true ;
-
 : WID-BIND ( n n n -- ) {: wid:n ord:n vis:n :}
    wid 0= if exit then
    wid WID-ROW {: row:n :}
    ord row WID-OWNERS !
    vis row 1+ WID-OWNERS ! ;
+
+public
+
+\ The live namespace row whose public (vis 1) or private (vis 2) wordlist wid
+\ is, and true; 0 0 false when none is: a bare `wordlist`'s, or a rolled-back
+\ declaration's whose record was cut. The live dictionary is scanned from the
+\ newest row, as xref.f WID-PKG scans for a public wordlist: a reopen's
+\ namespace-private binds nothing here.
+: WID-MAKER ( n -- n n bool )
+   {: wid:n :}
+   ndict@ 0 ?do
+      ndict@ 1- i - {: ord:n :}
+      ord XREF-REC {: rec:ptr :}
+      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+         rec XREF-PKG-PUBLIC wid = if ord 1 true unloop exit then
+         rec XREF-PKG-PRIVATE wid = if ord 2 true unloop exit then
+      then
+   loop
+   0 0 false ;
+
+private
+
+\ The namespace row that owns wordlist wid, its visibility and true. A
+\ namespace row binds its wordlists when it publishes; a private wordlist
+\ namespace-private gives it later (a reopen, or an install that makes the
+\ private one apart from its package row) is bound on its first lookup.
+: WID-OWNER ( n -- n n bool ) {: wid:n :}
+   wid 0 <= if -1 0 false exit then
+   wid WID-CAP @ < if
+      wid 2 * WID-OWNERS @ {: ord:n :}
+      ord 0 >= if ord wid 2 * 1+ WID-OWNERS @ true exit then
+   then
+   wid WID-MAKER {: ord:n vis:n found:bool :}
+   found 0= if -1 0 false exit then
+   wid ord vis WID-BIND
+   ord vis true ;
 
 : WID-BIND-REC ( n -- ) {: ord:n :}
    ord XREF-REC {: rec:ptr :}
@@ -1291,6 +1321,19 @@ public
    then
    owner EXTERNAL = if RECORD item PREP-DECL-ORD exit then
    BAD ;
+
+\ The record a RECORD reference names and true; -1 false when no live record
+\ has an EXTERNAL reference's key: the record is gone.
+: REF>RECORD? ( n -- n bool ) {: idx:n :}
+   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
+   kind RECORD <> addend 0<> or if BAD then
+   owner EXTERNAL <> if idx REF>RECORD true exit then
+   item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
+   extent drop alignment drop
+   rowkind RECORD <> if BAD then
+   key keyu KEY-RECORD {: rec:ptr ord:n :}
+   rec XREF-NULL = if -1 false exit then
+   ord true ;
 
 : REF>CODE ( n -- n ) {: idx:n :}
    idx 0= if 0 exit then

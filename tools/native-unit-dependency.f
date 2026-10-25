@@ -48,14 +48,17 @@ private
 32 constant PRIMITIVE-HEAD
 \ A file frame's cells: its row offset, its first record ordinal, where its
 \ children's record ranges start, where its first ORDERED reason starts, and
-\ its entry here, and the pending run count (FRUN-N) when it opened.
+\ its entry here, the pending run count (FRUN-N) when it opened, and the
+\ wordlist counter where its open segment began: at its open, then after
+\ each child file it loaded.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
 3 constant F-WHY
 4 constant F-HERE
 5 constant F-RUNS
-6 constant FRAME-CELLS
+6 constant F-WID
+7 constant FRAME-CELLS
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
@@ -1290,9 +1293,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    value CELL-BYTES LE:U64!
    ord key keyu CELL-BYTES 8 VALUE-ROW ;
 
-: ADD-RESOLUTION ( n n n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ord:n role:n shape:n spelling:ptr spellingu:n namespace:ptr namespaceu:n
-      key:ptr keyu:n :}
+\ A resolution row's key in RES-KEY, and its length: role, shape, the
+\ spelling's and namespace's lengths, then their bytes.
+: RES-KEY! ( n n ptr u8 n ptr u8 n -- n )
+   {: role:n shape:n spelling:ptr spellingu:n namespace:ptr namespaceu:n :}
    spellingu 0 < namespaceu 0 < or if BAD then
    spellingu MEM-MAX-N RES-KEY-BYTES - > if BAD then
    namespaceu MEM-MAX-N RES-KEY-BYTES spellingu + - > if BAD then
@@ -1307,11 +1311,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    namespaceu 0<> if
       namespace 32 spellingu + RES-KEY namespaceu BYTE-COPY
    then
-   ord RESOLUTION 0 RES-KEY RES-KEY-BYTES spellingu + namespaceu +
-      key keyu ADD-ROW ;
+   RES-KEY-BYTES spellingu + namespaceu + ;
 
 \ The record whose ownership decides whether the file frame keeps a
-\ resolution row (ADD-ROW): the namespace record when the file owns that
+\ resolution row (OBSERVE-RESOLUTION): the namespace record when the file owns that
 \ package, else the candidate, -1 when there is none. A global leg has no
 \ namespace.
 : ROW-OWNER ( n n ptr u8 n -- n )
@@ -1319,6 +1322,19 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    role 0= if ord exit then
    namespace namespaceu NFILE-REF:FIND-NAMESPACE {: ns:n :}
    ns OWN-NAMESPACE? if ns else ord then ;
+
+\ Whether the namespace a resolution row names got its private wordlist in
+\ the innermost file's open segment, from the file's own source. The file's
+\ hit checks the segment's rows before its install gives the namespace that
+\ wordlist again (NUNIT-OBJECT:WIDS-HOLD? checks it can), so its rows see
+\ the namespace without it.
+: OWN-PRIVATE? ( ptr u8 n -- bool )
+   {: namespace:ptr namespaceu:n :}
+   FDEPTH @ 0= namespaceu 0= or if false exit then
+   namespace namespaceu NFILE-REF:FIND-NAMESPACE {: ns:n :}
+   ns 0 < if false exit then
+   ns XREF-REC XREF-PKG-PRIVATE {: pri:n :}
+   pri 0<> pri F-WID FFIELD @ >= and ;
 
 : OBSERVE-RESOLUTION ( ptr u8 n -- )
    {: row:ptr rowu:n :}
@@ -1345,17 +1361,23 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
          2drop s" resolution-key-unknown" ord ORDERED-BY exit
       then 2drop
    then
-   ord role row RES-ROW-BYTES spellingu + + namespaceu ROW-OWNER {: owner:n :}
-   ord -1 = if
-      owner role shape row RES-ROW-BYTES + spellingu
-         row RES-ROW-BYTES spellingu + + namespaceu
-         NULL-PTR 0 ADD-RESOLUTION
-   else
-      ord NFILE-REF:DECL-KEY$ {: key:ptr keyu:n :}
-      owner role shape row RES-ROW-BYTES + spellingu
-         row RES-ROW-BYTES spellingu + + namespaceu
-         key keyu ADD-RESOLUTION
-   then ;
+   row RES-ROW-BYTES + {: spelling:ptr :}
+   spelling spellingu + {: namespace:ptr :}
+   ord role namespace namespaceu ROW-OWNER {: owner:n :}
+   ord -1 = if NULL-PTR 0 else ord NFILE-REF:DECL-KEY$ then {: key:ptr keyu:n :}
+   DEPTH @ 0 > if
+      role shape spelling spellingu namespace namespaceu RES-KEY! {: u:n :}
+      RESOLUTION 0 RES-KEY u key keyu DEF-ROW
+   then
+   FDEPTH @ 0= owner OWN? or if exit then
+   \ A private wordlist the file's open segment made holds only the
+   \ segment's records, so a lookup in it is the file's own; every other
+   \ leg sees the namespace public only, as the file's hit check does.
+   namespace namespaceu OWN-PRIVATE? {: own:bool :}
+   own role CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = and if exit then
+   role own if 1 else shape then spelling spellingu namespace namespaceu
+      RES-KEY! {: u:n :}
+   RESOLUTION 0 RES-KEY u key keyu FILE-ROW ;
 
 \ The token the interpreter resolved: the word it runs, or the name after a
 \ top-level tick (habu2.f C-TICK).
@@ -1696,6 +1718,7 @@ variable USER-READ
    WHYU @ base F-WHY + FFRAMES !
    HERE-N base F-HERE + FFRAMES !
    FRUN-N @ base F-RUNS + FFRAMES !
+   AOT-ARM:WIDN base F-WID + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -1704,7 +1727,8 @@ variable USER-READ
    OBSERVE ;
 
 \ Close the innermost file frame. Its records become a child range of the
-\ enclosing file frame, whose rows may name them.
+\ enclosing file frame, whose rows may name them, and the enclosing file's
+\ next segment begins.
 : CLOSE-UNIT ( -- )
    F-OFF FFIELD @ {: off:n :}
    F-FIRST FFIELD @ {: first:n :}
@@ -1717,7 +1741,7 @@ variable USER-READ
    F-WHY FFIELD @ WHYU !
    F-RUNS FFIELD @ FRUN-N !
    -1 FDEPTH +!
-   FDEPTH @ 0 > if first ndict@ RANGE+ then
+   FDEPTH @ 0 > if first ndict@ RANGE+ AOT-ARM:WIDN F-WID FFIELD ! then
    UNOBSERVE ;
 
 \ The innermost file frame's cache diagnostic line, on stderr.

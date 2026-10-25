@@ -1191,7 +1191,7 @@ variable VNX-CUR              \ private bucket-walk cursor
 : VNX-SNAP-RESET ( -- )
    VNX-B-BOOT VNX-B-P !   VNX-SLOTS-INIT VNX-SLOTS-V !
    VNX-L-BOOT VNX-L-P !   SUMV-CAP-INIT VNX-LCAP !   0 VNX-CAP !
-   0 VNX-READY !   0 VNX-HI ! ;
+   0 VNX-READY !   0 VNX-HI !   0 VNX-CUR ! ;
 
 public
 
@@ -5258,6 +5258,7 @@ REG-EXT-PERSIST-INSTALL
    0 TFQ-U !  NULL-PTR TFQ-TA !  0 TFQ-TU !  0 TFQ-COLON !
    NULL-PTR TFSR-PA !  0 TFSR-PU !
    NULL-PTR TFSR-NA !  0 TFSR-NU !
+   0 TFSR-ID !  0 TFSR-FLAG !
    TFC-VARS 0 TFC-VAR-CAP ARENA-CELLS-ZERO
    0 TFC-I !  0 TFC-J !  0 TFC-ROW !
    TF-CTOR-CAP 0 ?do 0 TF-CTOR-BUF i + c!  0 TF-INIT-TAIL i + c! loop

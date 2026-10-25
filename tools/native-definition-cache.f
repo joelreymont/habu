@@ -1556,6 +1556,15 @@ variable TEE-ERR
    k SEGMENT-HEAD
    S\"  reason=ffi-rows\n" DIAG-W2 ;
 
+\ Segment row k's wordlist rows give a private wordlist to a namespace row an
+\ earlier file or an earlier segment of this file made, and that row is gone
+\ or has one.
+: SEGMENT-WID-ROWS ( n -- )
+   {: k:n :}
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   k SEGMENT-HEAD
+   S\"  reason=wordlist-rows\n" DIAG-W2 ;
+
 \ Segment row k's TASK row expects a user-slot watermark the live TASK no
 \ longer holds, which the file's baked slot offsets assume, or one of its
 \ USER rows expects slot bytes another owner has since changed.
@@ -1585,7 +1594,8 @@ variable TEE-ERR
    S\" \n" DIAG-W2 ;
 
 \ Segment row k of the viewed object can install on the state its loads
-\ left: its dependency rows hold, its FFI rows hold, TASK's user-slot
+\ left: its dependency rows hold, its FFI rows hold, the namespace rows its
+\ wordlist rows give a private wordlist have none, TASK's user-slot
 \ watermark stands where its TASK row expects, each slot it declared holds
 \ the bytes its USER row found there and no record name it defines is live.
 \ A failed check prints its line.
@@ -1593,6 +1603,7 @@ variable TEE-ERR
    {: k:n :}
    k INTERVAL-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
    k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
+   k NUNIT-OBJECT:WIDS-HOLD? 0= if k SEGMENT-WID-ROWS false exit then
    k NUNIT-OBJECT:TASK-ROW-HOLDS? 0= if k SEGMENT-TASK-ROW false exit then
    k NUNIT-OBJECT:USER-ROWS-HOLD? 0= if k SEGMENT-TASK-ROW false exit then
    k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then

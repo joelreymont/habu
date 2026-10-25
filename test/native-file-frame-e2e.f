@@ -93,6 +93,15 @@ variable FILL-POOL
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 
+\ The package and bare wordlist shapes load after w.f.
+: WL-PROBE ( -- )
+   s" wlp.f" LOAD+
+   S\" s\" wlp=\" type WLP:A WLP:B + . cr\n" IN+
+   s" wlr.f" LOAD+
+   S\" s\" wlr=\" type WLQ:A WLQ:B + . cr\n" IN+
+   s" wls.f" LOAD+
+   S\" s\" wls=\" type WLS:A WLT-K + . cr\n" IN+ ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -130,6 +139,7 @@ variable FILL-POOL
    S\" s\" hp=\" type FRAME-HP:B . HG-ONE . HG-TWO . cr\n" IN+
    s" w.f" LOAD+
    S\" s\" w=\" type wordlist W - . s\" k=\" type K . cr\n" IN+
+   WL-PROBE
    S\" 0 set-tier\n" IN+
    s" tier0.f" LOAD+
    S\" 1 set-tier\ns\" tier=\" type TIER-K . cr\n" IN+
@@ -679,6 +689,21 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" sxc.f" S\" : SXC-N ( -- n ) 2 ;\n" PUT
    s" sx.f" S\" require sxm.f\nrequire sxc.f\n: SX-B ( -- n ) SXC-N 1+ ;\n" PUT ;
 
+\ wlp.f's qualified definition makes namespace WLP with one wordlist, and
+\ `package WLP` gives it a private one after WLP-W, so the two are not
+\ adjacent. wlq.f's qualified definition makes namespace WLQ, and wlr.f's
+\ `package WLQ` gives that earlier file's namespace its private wordlist,
+\ which C is then defined into. wls.f's qualified definition makes namespace
+\ WLS, it loads wlt.f, and its later segment's `package WLS` gives WLS its
+\ private wordlist with no lookup into it; STALE-CON edits wlt.f to give WLS
+\ that wordlist first.
+: WL-FIXTURES ( -- )
+   s" wlp.f" S\" : WLP:A ( -- n ) 5 ;\nwordlist constant WLP-W\npackage WLP\npublic\n: B ( -- n ) 6 ;\n;package\n" PUT
+   s" wlq.f" S\" : WLQ:A ( -- n ) 5 ;\n" PUT
+   s" wlr.f" S\" require wlq.f\npackage WLQ\n: C ( -- n ) 1 ;\npublic\n: B ( -- n ) C 5 + ;\n;package\n" PUT
+   s" wls.f" S\" : WLS:A ( -- n ) 5 ;\nrequire wlt.f\npackage WLS\n;package\n" PUT
+   s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n" PUT ;
+
 
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
@@ -703,6 +728,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" lbc.f" S\" : LBC-LOAD ( -- ) s\" lbca.f\" required s\" lbcb.f\" required ;\nLBC-LOAD\n" PUT
    \ w.f makes a wordlist no package record owns: the next one is W's next.
    s" w.f" S\" wordlist constant W\n3 constant K\n" PUT
+   WL-FIXTURES
    \ tier0.f loads at tier 0, where an install's writers do not run.
    s" tier0.f" S\" 6 constant TIER-K\n" PUT
    \ td.f changes the tier and restores it.
@@ -940,6 +966,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" lbca.f" KEY$ STORED s" lbcb.f" KEY$ STORED
    s" w.f writes its object" T-LABEL
    ERR$ s" /w.f key=" CONTAINS? TTRUE
+   s" wlp.f, wlq.f and wlr.f write objects for every package wordlist shape" T-LABEL
+   OUT$ S\" wlp=11\n" CONTAINS? TTRUE
+   OUT$ S\" wlr=11\n" CONTAINS? TTRUE
+   s" wlp.f" KEY$ STORED s" wlq.f" KEY$ STORED s" wlr.f" KEY$ STORED
+   s" wls.f, which reopens its namespace after a load, writes its object" T-LABEL
+   OUT$ S\" wls=6\n" CONTAINS? TTRUE
+   s" wls.f" KEY$ STORED s" wlt.f" KEY$ STORED
    s" tier0.f, loaded at tier 0, writes no object" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
@@ -1414,9 +1447,18 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build replays rp.f, which requires rc.f between its definitions" T-LABEL
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
    s" rc.f" REUSED s" rp.f" REUSED
-   s" a warm build compiles w.f, whose wordlist no package record owns" T-LABEL
+   s" a warm build installs w.f, whose wordlist no package record owns, as the cold load made it" T-LABEL
    OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
-   ERR$ s" /w.f records=" CONTAINS? TFALSE
+   s" w.f" REUSED
+   s" a warm build installs wlp.f, whose package takes its private wordlist after another wordlist" T-LABEL
+   OUT$ S\" wlp=11\n" CONTAINS? TTRUE
+   s" wlp.f" REUSED
+   s" a warm build installs wlr.f, which gives an earlier file's namespace its private wordlist" T-LABEL
+   OUT$ S\" wlr=11\n" CONTAINS? TTRUE
+   s" wlq.f" REUSED s" wlr.f" REUSED
+   s" a warm build installs wls.f, whose later segment gives its namespace its private wordlist" T-LABEL
+   OUT$ S\" wls=6\n" CONTAINS? TTRUE
+   s" wls.f" REUSED s" wlt.f" REUSED
    s" a warm build compiles tier0.f at tier 0 again" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    ERR$ s" /tier0.f records=" CONTAINS? TFALSE
@@ -1465,7 +1507,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
    RUNS-ADMITTED ;
 
-\ name's replay went stale at the segment row seg names, and the build went
+\ name's replay went stale at the segment row seg names, with the reason its
+\ stale line gives after the number, and the build went
 \ on in the same process from name's source where the load before that row
 \ returned: name is refused as segment-stale and writes no object.
 : RESUMED ( ptr u8 n ptr u8 n -- )
@@ -1484,9 +1527,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
 \ con-dep.f's replay, past con.f's load, then finds its second segment stale,
 \ so the build compiles the rest of con-dep.f from source and discards its
-\ object. The next build compiles con-dep.f alone and stores it.
+\ object. The next build compiles con-dep.f alone and stores it. An edited
+\ wlt.f gives WLS its private wordlist, so wls.f's second segment, which
+\ would give WLS one, is stale the same way.
 : STALE-CON ( -- )
    s" con.f" S\" 4 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
+   s" wlt.f" S\" package WLS\n: K ( -- n ) 7 ;\n;package\n: WLT-K ( -- n ) 2 ;\n" PUT
    s" a warm build compiles a stale con.f again and resumes con-dep.f" T-LABEL
    PROBE
    s" probe-stale-out.log" OUT$ PUT
@@ -1495,16 +1541,22 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" con=5\n" CONTAINS? TTRUE
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
    s" con-dep.f" s" 2" RESUMED
+   s" a warm build finds wls.f's reopen stale after the edited wlt.f gave WLS its private wordlist" T-LABEL
+   OUT$ S\" wls=7\n" CONTAINS? TTRUE
+   s" wls.f" s" 2 reason=wordlist-rows" RESUMED
    ERR$ s" /con.f records=" CONTAINS? TFALSE
    s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
-   s" the next build compiles only con-dep.f and stores it" T-LABEL
+   s" the next build compiles only con-dep.f and wls.f and stores them" T-LABEL
    PROBE
    s" probe-next-out.log" OUT$ PUT
    s" probe-next-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
    s" con.f" REUSED
-   s" con-dep.f" KEY$ STORED ;
+   s" con-dep.f" KEY$ STORED
+   OUT$ S\" wls=7\n" CONTAINS? TTRUE
+   s" wlt.f" REUSED
+   s" wls.f" KEY$ STORED ;
 
 \ The freshness check left no row: a cold build of the edited con.f writes
 \ the object the stale warm build rewrote, kept as con-cold.obj.

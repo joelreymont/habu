@@ -27,7 +27,7 @@ private
 64 constant KEY-BYTES
 160 constant LENGTHS-OFF
 320 constant HEADER-BYTES
-21 constant FORMAT-VERSION
+22 constant FORMAT-VERSION
 1 constant ARCH-ARM64
 
 DYNAMIC-BUFFER FILE-BUF u8

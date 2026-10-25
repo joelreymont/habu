@@ -46,7 +46,7 @@ private
 \ per TASK:+USER slot word it made. Over the
 \ segments in order, slot 1 holds one RECORD-BYTES row per record, slot 6 the
 \ DATA they allotted, slot 8 their require rows (length, then path) and slot
-\ 4 one byte per wordlist they made, 1 when it is protected. Slot 3 holds the
+\ 4 one WL-BYTES row per wordlist they made. Slot 3 holds the
 \ names record and load rows point at, slot 13 the references record and slot
 \ rows name, in NFILE-REF ENCODE format with no declarations, and slot 16 the
 \ namespace at the file's end. Slot 9 holds one SLOT-BYTES row per declared
@@ -81,9 +81,17 @@ private
 88 constant INDEX-BYTES
 \ A record row: kind, flags, name offset and length in slot 3, wordlist
 \ reference, then by kind the body's offset in slot 17, DATA reference, index
-\ row or public wordlist reference, and a package's private wordlist
-\ reference.
+\ row or a package's public wordlist reference, and a does> word's definer
+\ reference, else 0. A package row makes only its public wordlist: a private
+\ one is a wordlist row's, wherever the load gave it.
 56 constant RECORD-BYTES
+\ A wordlist row: how the load made it, the record reference of the namespace
+\ row a private one was given to (0 for the other kinds), and 1 when it is
+\ protected.
+24 constant WL-BYTES
+0 constant WL-BARE      \ `wordlist`
+1 constant WL-PUBLIC    \ namespace-record's public wordlist: its package row makes it
+2 constant WL-PRIVATE   \ namespace-private of the row the reference names
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
 \ records, DATA bytes, requires, wordlists, where in a cell HERE stood at its
 \ open, and the file's dependency row count at its close. LOAD: kind, load
@@ -363,7 +371,7 @@ variable OUT-U
 variable RECS-AT
 variable DATA-AT
 variable REQS-AT
-variable PROT-AT
+variable WIDS-AT
 variable EVS-AT
 variable FO-DEPTH
 \ The closing file's next definition index row while its records encode.
@@ -388,9 +396,6 @@ variable OPEN-SEG-END
 \ Whether the live literal pool takes every literal of the open FILE
 \ object's colon bodies without opening a segment.
 variable OPEN-POOL-ROOM
-\ The file's wordlists its package rows own, in the order they made them, -1
-\ once a row owns others.
-variable OPEN-OWNED
 \ The end of the slot 17 entries the open FILE object's rows have framed.
 variable OPEN-VALS
 \ The open FILE object's origin sink kind, and whether its slot 18 is well
@@ -525,11 +530,6 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
    OUT-U @ u + FILE-OUT-RESERVE
    a OUT-U @ FILE-OUT u BYTE-COPY
    u OUT-U +! ;
-: OUT-B ( n -- )
-   {: value:n :}
-   OUT-U @ 1+ FILE-OUT-RESERVE
-   value OUT-U @ FILE-OUT c!
-   1 OUT-U +! ;
 : EV+ ( n n n n n n n n n -- )
    {: kind:n ord:n c2:n c3:n c4:n c5:n c6:n c7:n c8:n :}
    EVENTS-N @ {: row:n :}
@@ -1349,7 +1349,7 @@ public
    0 OUTPUT-U ! 0 OPEN-OUT !
    0 OPEN-DEFS ! 0 OPEN-ROWS ! 0 OPEN-INPUTS !
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
-   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS ! 0 OPEN-OWNED !
+   0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-KINDS !
    0 OPEN-REM ! 0 OPEN-ADDR ! 0 OPEN-SEG-END !
    0 OPEN-SINK ! 0 OPEN-ORIGIN-OK !
    false OPEN-POOL-ROOM !
@@ -1362,7 +1362,7 @@ public
    0 IMAGE-U ! KCELLS-RELEASE 0 SITES-N ! 0 SLOTW-N ! 0 OWNER-N !
    0 OPEN-UPDS ! 0 PINS-N ! 0 OPEN-PINS !
    0 CHECK-U ! 0 CKORD-N ! 0 CHECK-AT ! 0 OPEN-CHECKS !
-   0 DATA-AT ! 0 REQS-AT ! 0 PROT-AT ! 0 EVS-AT ! 0 SLOTS-AT ! 0 LITS-AT !
+   0 DATA-AT ! 0 REQS-AT ! 0 WIDS-AT ! 0 EVS-AT ! 0 SLOTS-AT ! 0 LITS-AT !
    0 UPDS-AT ! 0 PINS-AT ! 0 VAL-SITES !
    IMAGE-RELEASE FILE-SITES-RELEASE FILE-SLOTW-RELEASE OWNER-SPANS-RELEASE
    SEG-DATA-RELEASE
@@ -2081,20 +2081,26 @@ public
 
 private
 
-\ Wordlist wid as a reference: local, indexed over the wordlists the closing
-\ file's segments made in order, else one made before the file.
-: WID-REF ( n -- n )
+\ Wordlist wid's index over the wordlists the closing file's segments made in
+\ order, -1 for one made before the file.
+: WID-ITEM ( n -- n )
    {: wid:n :}
    0 EVENTS-N @ FO-EVENTS FO @ ?do
       {: base:n :}
       i SEG? if
          wid i 7 EV @ >= wid i 7 EV @ i 8 EV @ + < and if
-            NFILE-REF:WID base wid + i 7 EV @ - 0 NFILE-REF:REF-LOCAL
-            unloop exit
+            base wid + i 7 EV @ - unloop exit
          then
          base i 8 EV @ +
       else base then
-   loop drop
+   loop drop -1 ;
+
+\ Wordlist wid as a reference: local, by WID-ITEM, else one made before the
+\ file.
+: WID-REF ( n -- n )
+   {: wid:n :}
+   wid WID-ITEM {: item:n :}
+   item 0 >= if NFILE-REF:WID item 0 NFILE-REF:REF-LOCAL exit then
    wid NFILE-REF:REF-WID ;
 
 \ The closing file's segment that allotted all the bytes at va: its start,
@@ -2136,11 +2142,13 @@ private
    ROW-AT @ rows < if ROW-AT @ FILE-ORDS @ ord = else false then
    if ROW-AT @ FO-INDEX FO @ INDEX-BYTES / - else -1 then ;
 
+\ A package record's row: its public wordlist, which the file made. Its
+\ private one, when it has one, is a wordlist row (WIDS-OUT).
 : PACKAGE-SHAPE ( ptr n -- n n n bool )
    {: rec:ptr :}
-   rec XREF-PKG-PUBLIC WID-REF {: pub:n :}
-   rec XREF-PKG-PRIVATE WID-REF {: priv:n :}
-   RK-PACKAGE pub priv pub 0<> priv 0<> and ;
+   rec XREF-PKG-PUBLIC {: pw:n :}
+   pw WID-ITEM 0 < if RK-PACKAGE 0 0 false exit then
+   RK-PACKAGE pw WID-REF 0 true ;
 
 : ADDR-SHAPE ( n n -- n n n bool )
    {: kind:n va:n :}
@@ -2291,12 +2299,23 @@ CAST: N>U8 ( n -- ptr u8 )
       then
    loop ;
 
-: PROT-OUT ( -- )
+\ Wordlist wid's WL-BYTES row: a namespace row's public one, the private one
+\ a namespace row was given, by that row's reference, else a bare
+\ `wordlist`'s or a rolled-back declaration's whose record was cut.
+: WID-ROW-OUT ( n -- )
+   {: wid:n :}
+   wid NFILE-REF:WID-MAKER {: ord:n vis:n found:bool :}
+   found 0= if WL-BARE OUT-N 0 OUT-N else
+      vis 1 = if WL-PUBLIC OUT-N 0 OUT-N else
+         WL-PRIVATE OUT-N ord RECORD-TARGET OUT-N
+      then
+   then
+   wid XREF-WID-PROTECTED? if 1 else 0 then OUT-N ;
+
+: WIDS-OUT ( -- )
    EVENTS-N @ FO-EVENTS FO @ ?do
       i SEG? if
-         i 7 EV @ i 8 EV @ + i 7 EV @ ?do
-            i XREF-WID-PROTECTED? if 1 else 0 then OUT-B
-         loop
+         i 7 EV @ i 8 EV @ + i 7 EV @ ?do i WID-ROW-OUT loop
       then
    loop ;
 
@@ -2927,7 +2946,7 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
 
 public
 
-\ Encode the innermost file's records, DATA, requires, protection bytes,
+\ Encode the innermost file's records, DATA, requires, wordlist rows,
 \ events, slots, slot literals, checker slices, updates and pins into
 \ FILE-OUT, closing its last segment. A file with a load that was not clean,
 \ that lacks a checker slice per load, whose records, slots, checker
@@ -2952,7 +2971,7 @@ public
    0 RECS-AT ! RECORDS-OUT
    OUT-U @ DATA-AT ! DATA-OUT
    OUT-U @ REQS-AT ! REQS-OUT
-   OUT-U @ PROT-AT ! PROT-OUT
+   OUT-U @ WIDS-AT ! WIDS-OUT
    OUT-U @ EVS-AT !
    EVENTS-N @ FO-EVENTS FO @ ?do i EVENT-OUT loop
    s" NSTR:OWNER-ROW" PX OWNER-ROW-XT !
@@ -2980,9 +2999,9 @@ public
    1 RECS-AT @ DATA-AT @ OUT$ NUNIT-FILE:SECTION!
    2 INDEX$ NUNIT-FILE:SECTION!
    3 NAMES$ NUNIT-FILE:SECTION!
-   4 PROT-AT @ EVS-AT @ OUT$ NUNIT-FILE:SECTION!
+   4 WIDS-AT @ EVS-AT @ OUT$ NUNIT-FILE:SECTION!
    6 DATA-AT @ REQS-AT @ OUT$ NUNIT-FILE:SECTION!
-   8 REQS-AT @ PROT-AT @ OUT$ NUNIT-FILE:SECTION!
+   8 REQS-AT @ WIDS-AT @ OUT$ NUNIT-FILE:SECTION!
    11 INPUTS$ NUNIT-FILE:SECTION!
    18 ORIGIN$ NUNIT-FILE:SECTION!
    19 OUTPUT$ NUNIT-FILE:SECTION!
@@ -3244,20 +3263,25 @@ private
       kind
    loop 2drop 2drop drop ;
 
-\ Reference ref of the reference section refs is the file's own wordlist item.
-: LOCAL-WID? ( ptr u8 n n -- bool )
-   {: refs:ptr ref:n item:n :}
-   refs 24 + ref 1- 32 * + {: row:ptr :}
-   row 1 U64-AT NFILE-REF:LOCAL = row 2 U64-AT item = and ;
+\ The viewed object's wordlist row of file wordlist item n.
+: WID-ROW ( n -- ptr u8 ) 4 NUNIT-FILE:SECTION$ drop swap WL-BYTES * + ;
 
-\ A package row whose checked wordlist references value and priv: as
-\ namespace-record makes them, the file's next wordlist and the one after.
-: OWNED+ ( ptr u8 n n -- )
-   {: refs:ptr value:n priv:n :}
-   OPEN-OWNED @ {: next:n :}
-   next 0 < if exit then
-   refs value next LOCAL-WID? refs priv next 1+ LOCAL-WID? and
-   if next 2 + else -1 then OPEN-OWNED ! ;
+\ The wordlist rows, one per wordlist the segments made: a known kind,
+\ protected 0 or 1, and a private one's owner a record reference, the other
+\ kinds' 0.
+: WIDS-CK ( ptr u8 n ptr u8 -- )
+   {: wids:ptr widsu:n refs:ptr :}
+   widsu OPEN-WIDS @ WL-BYTES * <> if BAD then
+   OPEN-WIDS @ 0 ?do
+      wids i WL-BYTES * + {: row:ptr :}
+      row 0 U64-AT {: kind:n :}
+      row 1 U64-AT {: owner:n :}
+      row 2 U64-AT {: prot:n :}
+      kind WL-BARE < kind WL-PRIVATE > or prot 0 < or prot 1 > or if BAD then
+      kind WL-PRIVATE = if
+         refs owner NFILE-REF:RECORD OPEN-RECS @ 1- REF-ROW-CK
+      else owner 0<> if BAD then then
+   loop ;
 
 \ A constant row's slot 17 entry at offset at: it starts where the row
 \ before left off, and its recorded length is a valid code span whose
@@ -3276,7 +3300,8 @@ private
 
 \ One record row: a known kind, its name in the names section, and the
 \ references, body and index row its kind names: its wordlists the file's
-\ own or earlier, a constant's body in slot 17, an address a place in its own
+\ own or earlier, a package's public one the file's own WL-PUBLIC row and no
+\ private one, a constant's body in slot 17, an address a place in its own
 \ segment's DATA, its end included, at or past the address before it, a
 \ does> word's the same with its definer's record, a deferred word's cell a
 \ place in the file's DATA, a clause row nothing past its name, and no value
@@ -3292,10 +3317,11 @@ private
    row 2 U64-AT row 3 U64-AT namesu SPAN-CK
    OPEN-WIDS @ 1- {: wmax:n :}
    kind RK-PACKAGE = if
-      wl 0<> if BAD then
+      wl 0<> priv 0<> or if BAD then
       refs value NFILE-REF:WID wmax REF-ROW-CK
-      refs priv NFILE-REF:WID wmax REF-ROW-CK
-      refs value priv OWNED+ exit
+      refs 24 + value 1- 32 * + {: ref:ptr :}
+      ref 1 U64-AT NFILE-REF:LOCAL <> if BAD then
+      ref 2 U64-AT WID-ROW 0 U64-AT WL-PUBLIC <> if BAD then exit
    then
    refs wl NFILE-REF:WID wmax REF-ROW-CK
    kind RK-DOES-WORD = if
@@ -3346,11 +3372,6 @@ private
          rec count + OPEN-SEG-END @
       else rec at then
    loop 2drop ;
-
-: PROT-CK ( ptr u8 n -- )
-   {: prot:ptr protu:n :}
-   protu OPEN-WIDS @ <> if BAD then
-   protu 0 ?do prot i + c@ 1 > if BAD then loop ;
 
 \ Each require row: its length, then that many path bytes.
 : REQUIRES-CK ( ptr u8 n -- )
@@ -3476,23 +3497,23 @@ private
       1 OPEN-ORIGIN-OK !  sec LE:U64@ OPEN-SINK !
    else 0 OPEN-ORIGIN-OK !  SINK-NONE OPEN-SINK ! then ;
 
-\ The FILE object's segment framing: events, records, DATA, protection
-\ bytes, requires, slots, updates and pins agree with one another, given its defs
+\ The FILE object's segment framing: events, records, DATA, wordlist
+\ rows, requires, slots, updates and pins agree with one another, given its defs
 \ index rows and its srcu source bytes.
 : SEGMENTS-CK ( n n -- )
    {: defs:n srcu:n :}
    0 OPEN-RECS ! 0 OPEN-DATA ! 0 OPEN-REQS ! 0 OPEN-WIDS !
    0 OPEN-LOADS ! 0 OPEN-SEGS ! 0 OPEN-SLOTS ! 0 OPEN-UPDS ! 0 OPEN-PINS !
-   0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-OWNED ! 0 OPEN-VALS !
+   0 OPEN-CHECKS ! 0 OPEN-KINDS ! 0 OPEN-VALS !
    0 OPEN-FFI ! 0 OPEN-REM !
    3 NUNIT-FILE:SECTION$ {: names:ptr namesu:n :}
    13 NUNIT-FILE:SECTION$ {: rows:ptr rowsu:n :}
    rows rowsu REFS-CK {: refs:n :}
    12 NUNIT-FILE:SECTION$ names namesu rows srcu EVENTS-CK
+   4 NUNIT-FILE:SECTION$ rows WIDS-CK
    1 NUNIT-FILE:SECTION$ namesu rows defs RECORDS-CK
    17 NUNIT-FILE:SECTION$ nip OPEN-VALS @ <> if BAD then
    6 NUNIT-FILE:SECTION$ nip OPEN-DATA @ <> if BAD then
-   4 NUNIT-FILE:SECTION$ PROT-CK
    8 NUNIT-FILE:SECTION$ REQUIRES-CK
    9 NUNIT-FILE:SECTION$ refs SLOTS-CK
    10 NUNIT-FILE:SECTION$ SLOT-LITS-CK
@@ -3519,6 +3540,8 @@ CAST: REC-PROTECT-XT ( n -- [ n -- ] )
 CAST: REC-DEFER-XT ( n -- [ n -- ] )
 CAST: REC-PATCH-XT ( n -- [ n ptr u8 n -- ] )
 CAST: REC-MIN-IN-XT ( n -- [ n n -- ] )
+CAST: REC-WORDLIST-XT ( n -- [ -- n ] )
+CAST: REC-PRIVATE-XT ( n -- [ n -- ] )
 
 \ name, wid and kind: open the pending record at ndict@ (prims.f def-open).
 TRUSTED: REC-OPEN ( ptr u8 n n n -- )
@@ -3541,6 +3564,35 @@ TRUSTED: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
 TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
    s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
 TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
+TRUSTED: REC-WORDLIST ( -- ) s" wordlist" NEED-XT REC-WORDLIST-XT execute drop ;
+\ Give namespace row ord the next wordlist as its private one, as `package`
+\ does when it reopens a namespace that has none (packages.f PKG-REOPEN).
+TRUSTED: REC-PRIVATE ( n -- ) s" namespace-private" NEED-XT REC-PRIVATE-XT execute ;
+
+\ Make the next wordlist as wordlist row row says the load made it: a bare
+\ `wordlist`, or the private one of the namespace row its owner names, which
+\ is live and has none yet. A package row makes a public one; reaching one
+\ here means the rows disagree.
+: WID-MAKE ( ptr u8 -- )
+   {: row:ptr :}
+   row 0 U64-AT {: kind:n :}
+   kind WL-BARE = if REC-WORDLIST exit then
+   kind WL-PRIVATE <> if BAD then
+   row 1 U64-AT NFILE-REF:REF>RECORD {: ord:n :}
+   ord 0 < ord ndict@ >= or if BAD then
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL <> rec XREF-PKG-PRIVATE 0<> or if BAD then
+   AOT-ARM:WIDN {: wid:n :}
+   ord REC-PRIVATE
+   ord XREF-REC XREF-PKG-PRIVATE wid <> if BAD then ;
+
+\ Make the installing segment's wordlists below live wid w, each as its row
+\ says.
+: WID-REACH ( n -- )
+   {: w:n :}
+   begin AOT-ARM:WIDN w < while
+      M-WID CUR@ AOT-ARM:WIDN + M-LIVE-WID CUR@ - WID-ROW WID-MAKE
+   repeat ;
 \ Patch the word `create` just ended to run the clause at entry as `does>`
 \ does, with no signature: the file's checker slice carries its contract.
 TRUSTED: REC-PATCH ( n -- )
@@ -3720,13 +3772,15 @@ public
 
 private
 
-\ A package row: its namespace record and the wordlists its references name.
-\ RECORD-CK requires the private reference.
-: INSTALL-PACKAGE ( ptr u8 n n n -- )
-   {: name:ptr nameu:n value:n priv:n :}
-   name nameu true REC-NAMESPACE XREF-REC {: rec:ptr :}
-   rec XREF-PKG-PUBLIC value NFILE-REF:REF>WID <> if BAD then
-   rec XREF-PKG-PRIVATE priv NFILE-REF:REF>WID <> if BAD then ;
+\ A package row: the file's wordlists below its public one, then its
+\ namespace record with that public wordlist only: a private one is a
+\ wordlist row's (WID-MAKE).
+: INSTALL-PACKAGE ( ptr u8 n n -- )
+   {: name:ptr nameu:n value:n :}
+   value NFILE-REF:REF>WID {: pub:n :}
+   pub WID-REACH
+   name nameu false REC-NAMESPACE XREF-REC {: rec:ptr :}
+   rec XREF-PKG-PUBLIC pub <> rec XREF-PKG-PRIVATE 0<> or if BAD then ;
 
 \ A constant row at slot 17 entry at: its record, and the body its load
 \ emitted copied back through NPUB:IMPORT-PENDING. The cold AArch64 load
@@ -4034,9 +4088,15 @@ TRUSTED: SLOT-STORE ( n n n -- )
    then
    ndict@ NFILE-REF:RECORD k 0 MAP-LOCAL <> if BAD then
    kind RK-PACKAGE = if
-      name nameu row 5 U64-AT row 6 U64-AT INSTALL-PACKAGE
+      name nameu row 5 U64-AT INSTALL-PACKAGE
    else
-      name nameu row 4 U64-AT NFILE-REF:REF>WID row 5 U64-AT
+      \ The wordlist a record defines into exists before it: one of the
+      \ installing segment's is made here, an earlier one is live.
+      row 4 U64-AT {: wl:n :}
+      wl NFILE-REF:REF-OWNER NFILE-REF:LOCAL = if
+         wl NFILE-REF:REF>WID 1+ WID-REACH
+      then
+      name nameu wl NFILE-REF:REF>WID row 5 U64-AT
       kind RK-VAL = if INSTALL-VAL else
       kind RK-ADDR = if flags INSTALL-ADDR else
       kind RK-CAST = if drop flags INSTALL-CAST else
@@ -4256,7 +4316,8 @@ public
    rc 0<> if rc throw then ;
 
 \ Event row seg, a segment: its records with its DATA bytes, the wordlists
-\ they make and their protection, its require rows, its FFI rows, its slots'
+\ it made, through its package rows and WID-REACH for the rest, and their
+\ protection, its require rows, its FFI rows, its slots'
 \ bytes, its TASK row, then the checker slices through its own. The file's
 \ first segment starts at the file's first ordinal and adds its map row here;
 \ one after a load starts wherever the loads left the dictionary, and
@@ -4282,9 +4343,11 @@ public
    count 0 ?do rows i + INSTALL-RECORD loop
    bytes DATA-FILL
    seg SEGMENT-SLOTS
+   M-LIVE-WID CUR@ wids + WID-REACH
    AOT-ARM:WIDN M-LIVE-WID CUR@ wids + <> if BAD then
-   4 NUNIT-FILE:SECTION$ drop wbase + {: prot:ptr :}
-   wids 0 ?do prot i + c@ 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then loop
+   wids 0 ?do
+      wbase i + WID-ROW 2 U64-AT 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then
+   loop
    seg rbase reqs INSTALL-REQUIRES
    seg INSTALL-FFI
    seg INSTALL-USERS
@@ -4462,6 +4525,35 @@ public
    loop
    NULL-PTR 0 false ;
 
+
+\ Whether every installed namespace row that segment row seg's wordlist rows
+\ give a private wordlist is live and still has none, declaring nothing: an
+\ earlier file's, or one an earlier segment of this file made, which a file
+\ loaded since may have given one after the cold build. No dependency row
+\ checks that, so a hit never throws. A namespace row among the segment's
+\ own record rows, row rows on, is made by its install. The
+\ references are prepared as LIVE-NAME? prepares them; an earlier segment's
+\ record maps through the map row its install added.
+: WIDS-HOLD? ( n -- bool )
+   {: seg:n :}
+   seg SEG-BASES drop drop drop {: rows:n wbase:n :}
+   seg OBJ-EV 5 U64-AT {: wids:n :}
+   wids 0= if true exit then
+   FILE-REFS
+   wids 0 ?do
+      wbase i + WID-ROW {: row:ptr :}
+      row 1 U64-AT {: owner:n :}
+      row 0 U64-AT WL-PRIVATE = if
+         owner NFILE-REF:PREP-REF@ drop rot drop {: own:n item:n :}
+         own NFILE-REF:LOCAL <> item rows < or if
+            owner NFILE-REF:REF>RECORD? 0= if drop false unloop exit then
+            XREF-REC {: rec:ptr :}
+            rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
+            rec XREF-PKG-PRIVATE 0<> if false unloop exit then
+         then
+      then
+   loop
+   true ;
 
 \ Whether the facts the viewed object's FFI rows consumed still hold, declaring
 \ nothing: the index each declaration would answer, like a resolution row, and
@@ -4688,8 +4780,11 @@ public
 \ imports. Later lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
 \ nothing to the dictionary, DATA or the require registry, so a file whose
 \ runs added nothing has no segment to replay and loads from source. The install makes
-\ wordlists only through package rows, so every wordlist the file made must
-\ be one they own. The first segment's data alignment is checked here, when
+\ the file's wordlists in order, each as its slot 4 row says: a package
+\ row's public one through namespace-record, a private one through
+\ namespace-private of the namespace row its owner names, a rolled-back
+\ declaration's or a bare `wordlist`'s through `wordlist` (WID-REACH), then
+\ protects the ones its row marks. The first segment's data alignment is checked here, when
 \ it opens the file; a later one's at its install. The answer names the
 \ first part it cannot replay, for the miss; empty when it can install the
 \ whole object.
@@ -4697,7 +4792,6 @@ public
    OPEN-SEGS @ 0= if s" empty-file" exit then
    OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then
-   OPEN-OWNED @ OPEN-WIDS @ <> if s" unsupported-wordlists" exit then
    FILE-CHECK-AVAILABLE? 0= if s" checker-unavailable" exit then
    OPEN-KINDS @ 1 RK-VAL lshift and 0<>
    s" NPUB:IMPORT-PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0= and
@@ -4717,6 +4811,7 @@ public
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
    s" prot-wid-add" ENGINE-XT 0<> and s" def-cast" ENGINE-XT 0<> and
    s" does-patch" ENGINE-XT 0<> and s" wide-mark" ENGINE-XT 0<> and
-   s" min-in-mark" ENGINE-XT 0<> and s" def-defer" ENGINE-XT 0<> and ;
+   s" min-in-mark" ENGINE-XT 0<> and s" def-defer" ENGINE-XT 0<> and
+   s" wordlist" ENGINE-XT 0<> and s" namespace-private" ENGINE-XT 0<> and ;
 
 ;package
