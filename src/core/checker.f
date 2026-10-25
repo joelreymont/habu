@@ -231,6 +231,17 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    repeat
    drop ;
 
+\ The checker's byte zeroer: n bytes at dst, cell-wise with a byte tail.
+: ARENA-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
+   u CELL / CELL * {: bulk:n :}
+   0
+   begin dup bulk < while
+      0 over dst + CELL-VIEW ! CELL +
+   repeat
+   begin dup u < while
+      0 over dst + c! 1+
+   repeat drop ;
+
 \ ARENA-CELLS-COPY copies n cells, src->dst, of any element type, so neither
 \ side is viewed as bytes. A caller holding a byte count passes it rounded up
 \ to cells. The rounded read stays mapped because every source is a map-anon
@@ -252,12 +263,24 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
       i 1 +
    repeat drop ;
 
+\ REG-DATA-SPAN? ( base cap -- flag ) : CAP bytes at BASE lie inside image DATA.
+\ Validate the allocation capacity, not only the live prefix being copied.
+\ Subtraction after the ordered bounds checks avoids a wrapping end address.
+: REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
+   cap 0 < 0=  base data-base < 0= and  base here <= and
+   dup IF drop cap here base - <= THEN ;
+
 \ ARENA-BYTES-GROW ( ptr a n n -- ptr a ) : alloc newbytes, copy oldbytes from
 \ base rounded up to whole cells, return the new base. For record/cell stores counted in raw elements the
 \ callers reset counters per definition, so no tail init is needed.
+\ An old base in image DATA is zeroed: the abandoned store is still baked, so
+\ zeroing makes its bytes independent of how writes and the grow interleave (a
+\ cold load writes rows before the move, a file hit makes room first), and a
+\ stale pointer into it reads zeros.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
+   base BYTE-VIEW oldbytes REG-DATA-SPAN? IF base BYTE-VIEW oldbytes ARENA-ZERO THEN
    nb ;
 
 \ REG-GROW1 ( pvar oldbytes newbytes -- ) : grow the buffer held in pvar in place,
@@ -7079,14 +7102,6 @@ USIGS-RUNTIME-INIT
    here {: dst:ptr :}
    n allot
    dst ;
-
-\ Validate the allocation capacity, not only the live prefix being copied.
-\ Subtraction after the ordered bounds checks avoids a wrapping end address.
-: REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
-   cap 0 < IF RES-FALSE EXIT THEN
-   base data-base < IF RES-FALSE EXIT THEN
-   base here > IF RES-FALSE EXIT THEN
-   cap here base - <= ;
 
 \ Bake the store at the grain above its content, plus one grain of room. A
 \ power-of-two cap shipped up to 2 MB of zero padding per image; USIGS-GROW
@@ -23695,27 +23710,17 @@ variable ASIG-GRAPH-MAP-CAP
 : ASIG-GRAPH-PTR ( n -- ptr u8 )
    ASIG-GRAPH-BASE @ + ASIG-STR-P @ + ;
 
-: ASIG-GRAPH-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
-   u CELL / CELL * {: bulk:n :}
-   0
-   begin dup bulk < while
-      0 over dst + CELL-VIEW ! CELL +
-   repeat
-   begin dup u < while
-      0 over dst + c! 1+
-   repeat drop ;
-
 : ASIG-GRAPH-ALIGN ( -- )
    ASIG-STR-U @ 7 + -8 and ASIG-STR-U @ - {: pad:n :}
    pad ASIG-STR-ROOM
-   ASIG-STR-P @ ASIG-STR-U @ + pad ASIG-GRAPH-ZERO
+   ASIG-STR-P @ ASIG-STR-U @ + pad ARENA-ZERO
    pad ASIG-STR-U +! ;
 
 : ASIG-GRAPH-ALLOC ( n -- n ) {: bytes:n :}
    ASIG-GRAPH-ALIGN
    bytes ASIG-STR-ROOM
    ASIG-STR-U @ ASIG-GRAPH-BASE @ - {: off:n :}
-   off ASIG-GRAPH-PTR bytes ASIG-GRAPH-ZERO
+   off ASIG-GRAPH-PTR bytes ARENA-ZERO
    bytes ASIG-STR-U +!
    off ;
 
@@ -24025,7 +24030,7 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
       bytes ARENA-ALLOC CK-GRAPH-MAP !
       bytes CK-GRAPH-CAP ! old oldcap ASIG-RELEASE
    THEN
-   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ CK-GRAPH-META-SPANS * ASIG-GRAPH-ZERO
+   CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ CK-GRAPH-META-SPANS * ARENA-ZERO
    0 CK-LEX-MEMO-U ! ;
 
 : CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
@@ -24610,7 +24615,7 @@ CK-AOT-REC-CONTROL-INSTALL
    base EFF-REC + EFF-WIRE - {: delta:n :}
    CK-GRAPH-BASE @ EFF-WIRE + base EFF-REC + E-PTR
    CK-GRAPH-LEN @ EFF-WIRE - ARENA-COPY
-   CK-GRAPH-LEN @ delta + E-PTR wirebytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
+   CK-GRAPH-LEN @ delta + E-PTR wirebytes CK-GRAPH-LEN @ - ARENA-ZERO
    EFF-WIRE BEGIN dup CK-GRAPH-LEN @ < WHILE
       dup CK-GRAPH-SLOT @ 0 > IF dup delta CK-GRAPH-NODE-REBASE THEN
       CELL +
@@ -27508,7 +27513,7 @@ NAMED-OPERAND-INSTALL
 \ SOURCE-ROW is consumed synchronously before the next call. Node offsets
 \ remain relative to the returned source pool, not this transient flat view.
 create EFFECT-XFER EFF-WIRE allot
-: EFFECT-XFER-CLEAR ( -- ) EFFECT-XFER EFF-WIRE ASIG-GRAPH-ZERO ;
+: EFFECT-XFER-CLEAR ( -- ) EFFECT-XFER EFF-WIRE ARENA-ZERO ;
 
 package CHECKER-REG
 

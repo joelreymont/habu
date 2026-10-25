@@ -23,7 +23,7 @@ variable GD-USED
    GD-USED @ {: at:n :}
    at EFF-NODE + GD-CAP > IF 79 throw THEN
    GD-POOL at + {: node:ptr :}
-   node EFF-NODE ASIG-GRAPH-ZERO
+   node EFF-NODE ARENA-ZERO
    tag node EN.TAG ! a node EN.A ! b node EN.B ! d node EN.D !
    tag EN-PUSH = IF 2 node EN.C ! THEN
    EFF-NODE GD-USED +! at ;

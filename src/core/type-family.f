@@ -3622,14 +3622,10 @@ package TFAM
 \ into snapshot/fixpoint identity. Persist runs at depth 0 (PF-TX-SNAP-RESET/
 \ TFAM-RBF-SNAP-RESET assert it), so PF-N == PF-COMMIT-N and everything at or above
 \ the committed high-water is dead capacity. Zero the live arena's unused tail
-\ [PF-COMMIT-N, PF-CAP); if the arena has grown, the boot buffer is now dead DATA
-\ that is still baked verbatim, so zero it whole. Only committed rows [0,PF-COMMIT-N)
-\ then carry information; identical logical registries bake byte-identically.
+\ [PF-COMMIT-N, PF-CAP). Only committed rows [0,PF-COMMIT-N) then carry
+\ information; identical logical registries bake byte-identically.
 : PF-PERSIST-CANONICAL ( -- )
-   PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB
-   PF-BASE PF-A-BOOT <> IF
-      PF-A-BOOT 0 PF-CAP-INIT PF-REC-CELLS * ARENA-CELLS-ZERO
-   THEN ;
+   PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB ;
 
 \ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
@@ -3745,17 +3741,22 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF s" schema nodes" EXIT THEN
    s" schema roots" ;
 
-\ Room for `n` elements in store k, through the store's own geometric grow, so a
-\ seeded delta lands in an arena that grew exactly as a compiled one would.
+\ Room for `n` elements in store k, through the store's own geometric grow: each
+\ step is the grow the compiled path's ENSURE takes when the store is full
+\ (`cap 1+`), so a seeded delta lands in an arena of the capacity a compiled one
+\ reaches rather than the grow's floor `n`. The type-name store's compiled ENSURE
+\ asks for max(used + name bytes, 2*cap), which is 2*cap here: names are at most
+\ TF-NAME-MAX bytes and every baked name store is larger, and persist rebakes a
+\ moved name store at its used size in any case.
 : REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
-   k 0 = IF n TF-CAP-V @ > IF n TF-GROW THEN EXIT THEN
-   k 1 = IF n TF-PK-CAP-V @ > IF n TF-PK-GROW THEN EXIT THEN
-   k 2 = IF n SUMV-CAP-V @ > IF n SUMV-GROW THEN EXIT THEN
-   k 3 = IF n PF-CAP-V @ > IF n PF-GROW THEN EXIT THEN
-   k 4 = IF n LAY-CAP-V @ > IF n LAY-GROW THEN EXIT THEN
-   k 5 = IF n TF-STR-U @ - TF-STR-ENSURE EXIT THEN
-   k 6 = IF n SCH-CAP-V @ > IF n SCH-GROW THEN EXIT THEN
-   n SCH-ROOT-CAP-V @ > IF n SCH-ROOT-GROW THEN ;
+   k 0 = IF begin n TF-CAP-V @ > while TF-CAP-V @ 1+ TF-GROW repeat EXIT THEN
+   k 1 = IF begin n TF-PK-CAP-V @ > while TF-PK-CAP-V @ 1+ TF-PK-GROW repeat EXIT THEN
+   k 2 = IF begin n SUMV-CAP-V @ > while SUMV-CAP-V @ 1+ SUMV-GROW repeat EXIT THEN
+   k 3 = IF begin n PF-CAP-V @ > while PF-CAP-V @ 1+ PF-GROW repeat EXIT THEN
+   k 4 = IF begin n LAY-CAP-V @ > while LAY-CAP-V @ 1+ LAY-GROW repeat EXIT THEN
+   k 5 = IF begin n TF-STR-CAP-V @ > while TF-STR-CAP-V @ 1+ TF-STR-GROW repeat EXIT THEN
+   k 6 = IF begin n SCH-CAP-V @ > while SCH-CAP-V @ 1+ SCH-GROW repeat EXIT THEN
+   begin n SCH-ROOT-CAP-V @ > while SCH-ROOT-CAP-V @ 1+ SCH-ROOT-GROW repeat ;
 
 : REG-AOT-COUNT! ( n n -- ) {: k:n n:n :}
    k 0 = IF n TFAM-N ! EXIT THEN

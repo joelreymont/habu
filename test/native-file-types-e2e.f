@@ -378,6 +378,84 @@ variable EXPECT-U
    s" family-warm-hb" SAVE-APP
    WARM-HASH 32 COLD-HASH 32 T$= ;
 
+\ A decimal count the builder printed.
+: COUNT-N ( ptr u8 n -- n )
+   TRIM STR>NUMBER? MATCH option
+     none OF T-FAIL 0 ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
+
+\ The builder's family and variant row counts. The builder runs as its own
+\ process because it, not this test engine, loads decl.f: the stores its
+\ registry baked are the ones the file outgrows.
+: BUILDER-ROWS ( -- n n )
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   NATIVE-FILE-APP:BUILDER$ S\" using TFAM TFAM-N@ . SUMV-N@ .\n" CAPTURE SUCCESS
+   OUT$ {: out:ptr outu:n :}
+   out outu 10 0 SPLIT-NEXT drop {: rest:n :} COUNT-N
+   out rest + outu rest - COUNT-N ;
+
+
+\ The rows that take a store holding n past twice the capacity the builder
+\ baked it at: its grow doubles from a capacity of 4 (TFAM TF-GROW, SUMV-GROW),
+\ so n rows fill the least 4*2^k that holds them, and 2*cap - n + 1 more rows
+\ need more than the 2*cap one grow gives.
+: ROWS-PAST-DOUBLE ( n -- n ) {: n:n :}
+   4 begin dup n < while 2 * repeat 2 * n - 1 + ;
+
+create ENUM-NAME 16 allot
+create ENUM-LINE 48 allot
+
+\ Spell n in base 26 with lowercase letters into ENUM-NAME, as many letters as
+\ it takes, no leading `a` but for 0; the letter count.
+: ENUM-NAME! ( n -- n ) {: n:n :}
+   1 n begin dup 26 >= while 26 / swap 1+ swap repeat drop {: w:n :}
+   n w 0 ?do dup 26 mod 97 + ENUM-NAME w 1- i - + c! 26 / loop drop
+   w ;
+
+\ decl.f's line i, a one-variant family `ENUM eN xN ;ENUM` with N spelling i
+\ in base 26; its length.
+: ENUM-LINE! ( n -- n ) ENUM-NAME! {: w:n :}
+   s" ENUM e" drop ENUM-LINE 6 BYTE-COPY
+   ENUM-NAME ENUM-LINE 6 + w BYTE-COPY
+   s"  x" drop ENUM-LINE 6 + w + 2 BYTE-COPY
+   ENUM-NAME ENUM-LINE 8 + w + w BYTE-COPY
+   S\"  ;ENUM\n" drop ENUM-LINE 8 + w 2 * + 7 BYTE-COPY
+   15 w 2 * + ;
+
+
+\ A reused file whose families take the family and variant stores the builder
+\ baked past twice their capacity leaves the cold image. It covers both ways a
+\ hit could differ: a cold load writes rows into each baked DATA store before
+\ the store moves, while a hit makes room first, so the abandoned DATA must not
+\ depend on that order; and a hit needing more than twice the baked capacity
+\ must reach the capacity the cold load's doubling reaches, not its need. Each
+\ one-variant ENUM adds a row to both stores, so the file declares the rows the
+\ store farther from its doubled capacity takes. The first build runs on an
+\ empty cache, so it is the fresh-cache build.
+: GROW-HIT-CASE ( -- )
+   s" a reused file that moves a registry store leaves the cold image" T-LABEL
+   BUILDER-ROWS ROWS-PAST-DOUBLE swap ROWS-PAST-DOUBLE max {: rows:n :}
+   s" native-file-types-grow" TREE
+   s" cache" AT MAKE-DIR
+   s" decl.f" S\" package PZ private\n" PUT
+   rows 0 ?do
+      s" decl.f" AT ENUM-LINE i ENUM-LINE! APPEND-FILE
+   loop
+   s" decl.f" AT S\" ;package\n" APPEND-FILE
+   s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   COLD-HASH HASH-APP
+   s" grow-fresh-hb" SAVE-APP
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 41\n" CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" grow-warm-hb" SAVE-APP
+   WARM-HASH 32 COLD-HASH 32 T$= ;
+
 create SLICE-KEY 64 allot
 DYNAMIC-BUFFER ENTRY u8
 
@@ -613,6 +691,7 @@ public
    FAILED-CAPTURE
    EMPTY-RANGE-CASE
    FAMILY-HIT-CASE
+   GROW-HIT-CASE
    CTOR-CASE
    LINK-CASE
    SLICE-CASE

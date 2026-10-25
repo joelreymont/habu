@@ -960,6 +960,13 @@ T-DECOUPLED-RESET
 \ checker-internal colon words in checked bodies; on the unsealed engine a
 \ checked body binds each one's recorded row. A saved store base is a pointer,
 \ so its cell is a PTR-VARIABLE.
+\ A probe that grows a registry and then points it back at its baked boot
+\ buffer first moves each store onto an arena copy: a grow clears the store
+\ it retires when that store is image DATA, so the retired store must not be
+\ the boot buffer the probe restores.
+: TR-UNPIN ( ptr a n -- ptr a ) {: store:ptr bytes:n :}
+   bytes ARENA-ALLOC {: copy:ptr :}
+   store copy bytes CELL + 1- CELL / ARENA-CELLS-COPY  copy ;
 \ ---- CT registry ----
 variable TR-CTN  variable TR-CTU  variable TR-CTC  variable TR-CTSC
 variable TR-CTCODE  variable TR-CT-LC  variable TR-CT-STRLC
@@ -972,6 +979,11 @@ PTR-VARIABLE TR-CT-PAP  PTR-VARIABLE TR-CT-PUP
    CT-WIDTH-P @ TR-CT-WDP !  CT-SIGN-P @ TR-CT-SGP !  CT-STR-P @ TR-CT-STP !
    CT-PKG-A-P @ TR-CT-PAP !  CT-PKG-U-P @ TR-CT-PUP !
    CTN @ TR-CTCODE !
+   TR-CTC @ cells {: col:n :}
+   CT-NAME-A-P @ col TR-UNPIN CT-NAME-A-P !  CT-NAME-U-P @ col TR-UNPIN CT-NAME-U-P !
+   CT-CLASS-P @ col TR-UNPIN CT-CLASS-P !  CT-WIDTH-P @ col TR-UNPIN CT-WIDTH-P !
+   CT-SIGN-P @ col TR-UNPIN CT-SIGN-P !  CT-PKG-A-P @ col TR-UNPIN CT-PKG-A-P !
+   CT-PKG-U-P @ col TR-UNPIN CT-PKG-U-P !  CT-STR-P @ TR-CTSC @ TR-UNPIN CT-STR-P !
    s" CTGROWPROBE" CTN @ CT-ROLE 64 CS-NONE CT-SET
    CTN @ dup CT-CAP-V !  TR-CT-LC !      \ next CT-SET crosses the record cap
    s" CTGROWTWO" CTN @ CT-ROLE 64 CS-NONE CT-SET
@@ -1053,13 +1065,10 @@ variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
 PTR-VARIABLE TR-SP  PTR-VARIABLE TR-SSP  variable TR-SID0 variable TR-SID1
 variable TR-S-LC variable TR-S-STRLC
 : TR-SYMS-WHITEBOX ( -- )
-   \ This probe restores the original store; growth now clears its retired bytes.
-   SYM-CAP-V @ SYM-REC * {: bytes:n :}
-   bytes ARENA-ALLOC-BYTES {: saved:ptr :}
-   SYMS-P @ {: prior:ptr :}
-   prior saved bytes ARENA-COPY
    SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-SSU !
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
+   SYMS-P @ SYM-CAP-V @ SYM-REC * TR-UNPIN SYMS-P !
+   SYM-STR-P @ SYM-STR-CAP-V @ TR-UNPIN SYM-STR-P !
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
    SYM-N @ dup SYM-CAP-V !  TR-S-LC !    \ next intern crosses the record cap
    HIDX-MEM-CLEAR  0 HIDX-VALID !        \ drop the full-cap index; rebuild at TR-S-LC
@@ -1084,7 +1093,6 @@ variable TR-S-LC variable TR-S-STRLC
    SYMS-P @ mark >= TTRUE
    s" syms-persist-find" T-LABEL
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND TTRUE TR-SID0 @ T=
-   saved prior bytes ARENA-COPY
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
    HIDX-RESET
