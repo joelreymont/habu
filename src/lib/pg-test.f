@@ -527,17 +527,25 @@ RESULTS TYPED-BUFFER HELD-RESULTS PG:result
    r CLEAR
    v PG:LIVE? TTRUE
    v PG:CLOSE
-   s" work inside its deadline, or with none, completes" T-LABEL
+   s" a bound reads back as last set, 0 when none" T-LABEL
    OPEN {: d :}
+   d DEADLINE@ MS>N 0 T=
+   d ROOMY-MS >MS DEADLINE!
+   d DEADLINE@ MS>N ROOMY-MS T=
+   d 0 >MS DEADLINE!
+   d DEADLINE@ MS>N 0 T=
+   s" work inside its deadline, or with none, completes" T-LABEL
    d ROOMY-MS >MS DEADLINE!
    d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
    d BOUND-MS >MS DEADLINE!
    d 0 >MS DEADLINE!
    d s" select pg_sleep(0.3)" EXEC-TAG TAG-ROWS T=
    d PG:LIVE? TTRUE
-   s" a negative deadline bound is a caller error" T-LABEL
+   s" a negative deadline bound is a caller error that keeps the bound" T-LABEL
+   d ROOMY-MS >MS DEADLINE!
    d [: NEGATIVE-BOUND ;] catch {: stale-bound bound-code:n :}
    bound-code E-BOUND T=
+   d DEADLINE@ MS>N ROOMY-MS T=
    s" the widest bound is accepted and one past it is a caller error" T-LABEL
    d $7FFFFFFF >MS DEADLINE!
    d s" select 1" EXEC-TAG TAG-ROWS T=

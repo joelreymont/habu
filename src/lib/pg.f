@@ -44,7 +44,8 @@
 \ DEADLINE! bounds every later EXEC, SCRIPT, PREPARE, EXEC-PREPARED, DESCRIBE
 \ and transaction verb on the connection: each operation's whole wait ends that
 \ many milliseconds after it starts, and 0, the default, sets no bound; a bound
-\ outside 0..$7FFFFFFF ms is E-BOUND. CONNECT and AWAIT are not bounded. On
+\ outside 0..$7FFFFFFF ms is E-BOUND. DEADLINE@ answers the bound the last
+\ DEADLINE! set, 0 if none. CONNECT and AWAIT are not bounded. On
 \ expiry the connection closes and the operation throws E-DEADLINE. While a
 \ connection's bound is nonzero, every close but an explicit CLOSE and image
 \ preparation (FORGET-HANDLES), which still send the native cancel - expiry, a
@@ -1428,6 +1429,12 @@ public
    bound MS>N {: v:n :}
    v 0 < v WAIT-MAX > or if E-BOUND throw then
    v slot BOUND! ;
+
+
+\ The bound the last DEADLINE! set, so a caller can restore it.
+: DEADLINE@ ( connection -- ms )
+   {: handle:connection :}
+   handle CONN-SLOT BOUND@ >MS ;
 
 
 private
