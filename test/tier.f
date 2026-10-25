@@ -690,6 +690,14 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    1 INCOMPLETE-HOOKLESS$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
    ERR$ S\" ncomp: cannot compile IC-HOOKLESS\n" CONTAINS? TTRUE
    ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
+   s" a refused bind leaving an undeclared local over half a pair is refused by name on tier 1" T-LABEL
+   1 INCOMPLETE-BIND$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile U1\n" CONTAINS? TTRUE
+   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
+   s" a refused bind past the known row with a pair-typed local is refused by name on tier 1" T-LABEL
+   1 INCOMPLETE-LOST$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile U2\n" CONTAINS? TTRUE
+   ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
 
    LEGACY? if
       s" a caller of a 7900-byte name runs on tier 0" T-LABEL
