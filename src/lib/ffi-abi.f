@@ -1013,28 +1013,6 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 \ Retired rows drain before capture. Each dynamic buffer's generated #base and
 \ #ctl are the head and control block its generated words name; a fresh runtime
 \ starts both empty.
-: OWNED-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   FN-N BYTE-VIEW CELL carry execute
-   LIB-N BYTE-VIEW CELL carry execute
-   FN-CAP BYTE-VIEW CELL carry execute
-   LIB-CAP BYTE-VIEW CELL carry execute
-   ERRNO-FN-CELL BYTE-VIEW CELL carry execute
-   DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
-   FN-TABLE BYTE-VIEW CELL carry execute
-   LIB-TABLE BYTE-VIEW CELL carry execute
-   PIN-FN BYTE-VIEW CELL carry execute
-   PIN-LIB BYTE-VIEW CELL carry execute
-   PIN-FN-CAP BYTE-VIEW CELL carry execute
-   PIN-LIB-CAP BYTE-VIEW CELL carry execute
-   RETIRED-BASE#base BYTE-VIEW CELL fresh execute
-   RETIRED-BASE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
-   RETIRED-SIZE#base BYTE-VIEW CELL fresh execute
-   RETIRED-SIZE#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells fresh execute
-   RETIRED-COUNT BYTE-VIEW CELL fresh execute
-   OBSERVER BYTE-VIEW CELL fresh execute
-   FN-REGISTERED BYTE-VIEW CELL fresh execute ;
-
 \ A stripped entry publishes the two table bases after restoring DATA. Their
 \ destination addresses vary with the maker's window, while the descriptor
 \ bytes and counts must remain identical for the same application source.
@@ -1060,17 +1038,6 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    OBSERVER BYTE-VIEW CELL fresh execute
    FN-REGISTERED BYTE-VIEW CELL fresh execute ;
 
-\ FILE and a complete saved image retain compiler-support rows as well. The
-\ declaration scope is execution state, never part of a replayed source unit.
-: MAKER-OWNED-CONTROLS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
-   {: carry fresh :}
-   MAKER-FN-N BYTE-VIEW CELL carry execute
-   MAKER-LIB-N BYTE-VIEW CELL carry execute
-   MAKER-FN-CAP BYTE-VIEW CELL carry execute
-   MAKER-LIB-CAP BYTE-VIEW CELL carry execute
-   MAKER-FN-TABLE BYTE-VIEW CELL carry execute
-   MAKER-LIB-TABLE BYTE-VIEW CELL carry execute
-   MAKER-DEPTH BYTE-VIEW CELL fresh execute ;
 
 \ Stripped application runtime starts with no maker declarations. The
 \ conditional lookup branch can still name these cells, so claim them fresh.
@@ -1102,8 +1069,8 @@ public
 
 : SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
    {: cells bytes :}
-   cells cells OWNED-CONTROLS
-   cells cells MAKER-OWNED-CONTROLS
+   cells cells AOT-CONTROLS
+   cells MAKER-FRESH-CONTROLS
    FN-TABLE @ FN-CAP @ LIB-TABLE @ LIB-CAP @
       cells bytes AOT-TABLES-AT
    MAKER-FN-TABLE @ MAKER-FN-CAP @
