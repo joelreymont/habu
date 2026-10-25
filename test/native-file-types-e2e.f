@@ -355,6 +355,29 @@ variable EXPECT-U
    1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
+\ A reused file that declares private families in a package (an ENUM and a
+\ derived STRUCTURE) leaves the state its cold load left: the warm build's
+\ image holds the bytes of a fresh-cache build of the same tree. The first
+\ build runs on an empty cache, so it is that fresh-cache build.
+: FAMILY-HIT-CASE ( -- )
+   s" a reused file of private families leaves the cold image" T-LABEL
+   s" native-file-types-family" TREE
+   s" cache" AT MAKE-DIR
+   s" decl.f"
+      S\" package PZ private\nENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\n;package\n"
+      PUT
+   s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   COLD-HASH HASH-APP
+   s" family-fresh-hb" SAVE-APP
+   s" app-hb" BUILD SUCCESS
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 41\n" CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" family-warm-hb" SAVE-APP
+   WARM-HASH 32 COLD-HASH 32 T$= ;
+
 create SLICE-KEY 64 allot
 DYNAMIC-BUFFER ENTRY u8
 
@@ -589,6 +612,7 @@ public
    BOOTED-SESSION
    FAILED-CAPTURE
    EMPTY-RANGE-CASE
+   FAMILY-HIT-CASE
    CTOR-CASE
    LINK-CASE
    SLICE-CASE

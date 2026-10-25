@@ -3652,9 +3652,11 @@ public
 
 \ TFX-SNAP-RESET ( -- ) : snapshot prepare — the tail index's bucket array is a
 \ grown, process-local buffer, so it is dropped back to the baked boot store and
-\ marked not-ready. The chains themselves live in the persisted records, but they
-\ address buckets that no longer exist, so the restored image must rebuild rather
-\ than follow them. Mirrors HIDX-RESET on the checker side.
+\ marked not-ready. A not-ready index holds no chains: TFX-BUILD rewrites every
+\ row's TF.TAILNEXT, so each is zeroed here too. Left in place, a row's link would
+\ depend on the lookups that ran before capture (a cache hit installs the row with
+\ 0, a cold declaration pushes it), and two loads of one program would capture
+\ different bytes. Mirrors HIDX-RESET on the checker side.
 
 private
 
@@ -3664,7 +3666,8 @@ private
    0 TFX-CAP !
    0 TFX-READY !
    0 TFX-HI !
-   0 TFX-H ! 0 TFX-I ! 0 TFX-CUR ! ;
+   0 TFX-H ! 0 TFX-I ! 0 TFX-CUR !
+   TFAM-N @ 0 ?do 0 i TF-REC@ TF.TAILNEXT ! loop ;
 
 \ ---------------------------------------------------------------------------
 \ AOT capture: the registry delta a captured window declared, and putting it

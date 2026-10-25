@@ -436,6 +436,13 @@ ED-RESET
 
 public
 
+\ The last declaration's parse state back to zero at a file boundary or image
+\ capture (generated-declaration-protection.f SNAPSHOT-RESET), so a cached load
+\ and a fresh one capture the same bytes.
+: SNAPSHOT-RESET ( -- )
+   ED-RESET
+   0 FAM !  0 VBASE !  0 NVAR !  0 FLDBASE !  0 NFLD !  0 VCELLS !  0 MAXSLOTS ! ;
+
 : ED-RUN ( -- ) ED-FRONT DECL-FRONT:RUN ;
 
 \ ED-REPLAY ( name body -- ) : register an ENUM from tokens a tool has already
