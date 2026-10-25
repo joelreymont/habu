@@ -4,7 +4,7 @@
 \ Each case is a file a child engine loads twice:
 \   --load <prelude> test/outer-loop-on.f <case>   the Habu loop reads the case
 \   --load <prelude> <case>                        the engine's evaluate reads it
-\ test/outer-loop-on.f installs OUTER's private loader renderer through
+\ test/outer-loop-on.f installs the public OUTER:EVAL-FRAMED-RANGE through
 \ SOURCE-ROOT:USE-INTERPRETER. The two runs must end with the same
 \ rc, stdout and stderr, and each case states the rc and output that show what
 \ it exercised, so two runs failing alike do not pass.
@@ -234,6 +234,12 @@ variable WANT-RC
    src srcu GE-SRC-LINE
    name nameu BOTH ;
 
+\ A located refusal's message and the file and line it names. The path before
+\ the file name is the temporary root, which may resolve through a link.
+: ERR-AT ( ptr u8 n ptr u8 n -- ) {: msg:ptr msgu:n at:ptr atu:n :}
+   msg msgu CASE$ GE-EXPECT-ERR-HAS
+   at atu CASE$ GE-EXPECT-ERR-HAS ;
+
 \ ---- the cases -----------------------------------------------------------------------
 : NUMBERS ( -- )
    GE-SRC-RESET
@@ -266,7 +272,7 @@ variable WANT-RC
    s" (x) 1 ." GE-SRC-LINE
    s" oi-not-a-comment.f" BOTH
    70 s" not a comment" GE-EXPECT-RC
-   S\" E-UNDEFINED: (x)\n" s" not a comment" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: (x) at " S\" oi-not-a-comment.f:1\n" ERR-AT ;
 
 : BLANK-INPUT ( -- )
    GE-SRC-RESET
@@ -281,7 +287,7 @@ variable WANT-RC
    s" oi-undefined.f" BOTH
    70 s" undefined" GE-EXPECT-RC
    S\" 1\n" s" undefined" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" s" undefined" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-undefined.f:1\n" ERR-AT ;
 
 \ Out of range, a number's spelling is undefined though a word has that name.
 : OUT-OF-RANGE ( -- )
@@ -289,7 +295,7 @@ variable WANT-RC
    s" 18446744073709551616" GE-SRC-LINE
    s" oi-range.f" BOTH
    70 s" out of range" GE-EXPECT-RC
-   S\" E-UNDEFINED: 18446744073709551616\n" s" out of range" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: 18446744073709551616 at " S\" oi-range.f:1\n" ERR-AT ;
 
 : UNDERFLOW ( -- )
    GE-SRC-RESET
@@ -381,6 +387,26 @@ variable WANT-RC
    s" include residue" GE-EXPECT-OK
    S\" -3804\n7\n0\n" s" include residue" GE-EXPECT-OUT ;
 
+\ A file that fails takes back the require rows it added under either loop:
+\ its nested require reloads when the includer requires it again (1 twice).
+: REQUIRE-ROLLBACK ( -- )
+   GE-SRC-RESET
+   s" 1 ." GE-SRC-LINE
+   s" oi-rr-nested.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" require oi-rr-nested.f" GE-SRC-LINE
+   s" OI-RR-NOSUCH" GE-SRC-LINE
+   s" oi-rr-outer.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" s~ oi-rr-outer.f~ ' included catch . 2drop" QLINE
+   s" s~ oi-rr-nested.f~ required 9 ." QLINE
+   s" oi-require-rollback.f" BOTH
+   s" require rollback" GE-EXPECT-OK
+   S\" 1\n70\n1\n9\n" s" require rollback" GE-EXPECT-OUT
+   s" E-UNDEFINED: OI-RR-NOSUCH at " S\" oi-rr-outer.f:2\n" ERR-AT ;
+
 \ Nested plain evaluate buffers resume their callers' inputs. A caught inner
 \ throw leaves both readers active; a throw caught by the outer buffer rolls
 \ back the definition the inner buffer published; one that escapes both
@@ -410,7 +436,7 @@ variable WANT-RC
    s" oi-evaluate-outer-catch.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 42\n70\n10\n11\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-GONE\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-GONE at " S\" oi-evaluate-outer-catch.f:1\n" ERR-AT
    GE-SRC-RESET
    s" 1 set-tier : OI-T42 ( -- ) 42 throw ;" GE-SRC-LINE
    s" TRUSTED: OI-AT-THROW ( -- ) s~ OI-T42 12 .~ evaluate ;" QLINE
@@ -505,16 +531,16 @@ variable WANT-RC
    s" oi-tick-undefined.f" BOTH
    70 s" tick undefined" GE-EXPECT-RC
    S\" 1\n" s" tick undefined" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined" GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-tick-undefined.f:1\n" ERR-AT
    s" ' engine-error:" s" oi-tick-edge-colon.f" LINE-CASE
    70 s" tick edge colon" GE-EXPECT-RC
-   S\" E-UNDEFINED: engine-error:\n" s" tick edge colon" GE-EXPECT-ERR
+   s" E-UNDEFINED: engine-error: at " S\" oi-tick-edge-colon.f:1\n" ERR-AT
    GE-SRC-RESET
    s" s~ ' OI-NOPE~ ' evaluate catch . depth . 2drop" QLINE
    s" oi-tick-undefined-caught.f" BOTH
    s" tick undefined caught" GE-EXPECT-OK
    S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined caught" GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-tick-undefined-caught.f:1\n" ERR-AT
    GE-SRC-RESET
    s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
    s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
@@ -524,7 +550,7 @@ variable WANT-RC
    s" oi-tick-undefined-included.f" BOTH
    s" tick undefined included" GE-EXPECT-OK
    S\" 1\n70\n3\n4\n" s" tick undefined included" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" s" tick undefined included" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-tick.f:1\n" ERR-AT ;
 
 \ Top-level `char` operands whose bytes together pass the definition-body
 \ capture (layout.f BODYBUF-CAP): no definition is open, so none is captured.
@@ -540,8 +566,7 @@ variable WANT-RC
 \ the case file's line the refusal names.
 : DIED-AT ( n ptr u8 n ptr u8 n -- ) {: rc:n msg:ptr msgu:n at:ptr atu:n :}
    rc CASE$ GE-EXPECT-RC
-   msg msgu CASE$ GE-EXPECT-ERR-HAS
-   at atu CASE$ GE-EXPECT-ERR-HAS ;
+   msg msgu at atu ERR-AT ;
 
 \ ARM can put CP eight bytes below its code ceiling to test name allocation.
 \ Intel seals that boundary, so the same source refuses the CP write first.
@@ -766,14 +791,14 @@ variable WANT-RC
    s" using OI-FXA OI-TWIN . ;using OI-TWIN ." s" oi-using.f" LINE-CASE
    70 s" using" GE-EXPECT-RC
    S\" 1\n" s" using" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" s" using" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-using.f:1\n" ERR-AT ;
 
 \ A using opened in a package ends at its `;package`.
 : USING-IN-PACKAGE ( -- )
    s" package OI-T using OI-FXA OI-TWIN . ;package OI-TWIN" s" oi-using-in-package.f" LINE-CASE
    70 s" using in a package" GE-EXPECT-RC
    S\" 1\n" s" using in a package" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" s" using in a package" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-using-in-package.f:1\n" ERR-AT ;
 
 \ Usings are file-local: one a nested include opens ends with it, and so does
 \ one open when the include throws.
@@ -784,7 +809,7 @@ variable WANT-RC
    NESTED$ SRC>FILE
    s" include oi-nested-using.f OI-TWIN" s" oi-include-using.f" LINE-CASE
    70 s" using ends with its file" GE-EXPECT-RC
-   S\" E-UNDEFINED: OI-TWIN\n" s" using ends with its file" GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-include-using.f:1\n" ERR-AT
    GE-SRC-RESET
    s" using OI-FXA OI-NOPE" GE-SRC-LINE
    s" oi-nested-using-throw.f" NESTED-BUF GT-PATH NESTED-U !
@@ -794,7 +819,8 @@ variable WANT-RC
    s" oi-include-using-throw.f" BOTH
    70 s" using ends with a throw" GE-EXPECT-RC
    S\" 70\n" s" using ends with a throw" GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" s" using ends with a throw" GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-using-throw.f:1\nE-UNDEFINED: OI-TWIN at " ERR-AT
+   S\" oi-include-using-throw.f:1\n" CASE$ GE-EXPECT-ERR-HAS ;
 
 \ `using` needs a name with no colon that names a package, and at most
 \ USE-MAX usings open; `;using` needs one open.
@@ -897,11 +923,11 @@ variable WANT-RC
    s" package OI-T using OI-FXA OI-TWIN . ;using OI-TWIN" s" oi-using-own.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-using-own.f:1\n" ERR-AT
    s" using OI-FXA package OI-T OI-TWIN . ;package OI-TWIN . ;using OI-TWIN" s" oi-using-around.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
    S\" 1\n1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-using-around.f:1\n" ERR-AT
    GE-SRC-RESET
    s" using OI-FXA package OI-T ;using" GE-SRC-LINE
    s" oi-nested-using-outer.f" NESTED-BUF GT-PATH NESTED-U !
@@ -912,7 +938,7 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" 104\n" CASE$ GE-EXPECT-OUT
    s" hb: ;using would close a using opened outside the package at " CASE$ GE-EXPECT-ERR-HAS
-   S\" oi-nested-using-outer.f:1\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR-HAS
+   S\" oi-nested-using-outer.f:1\nE-UNDEFINED: OI-TWIN at " S\" oi-include-using-outer.f:1\n" ERR-AT
    GE-SRC-RESET
    s" using OI-FXA package OI-T" GE-SRC-LINE
    s" oi-nested-package-open.f" NESTED-BUF GT-PATH NESTED-U !
@@ -920,7 +946,7 @@ variable WANT-RC
    s" include oi-nested-package-open.f using OI-FXB OI-TWIN . ;using ;package OI-TWIN ." s" oi-include-package-open.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
    S\" 2\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-include-package-open.f:1\n" ERR-AT ;
 
 \ ---- the package scope after a caught throw ----------------------------------------
 \ A throw puts back the package scope its buffer entered with on both loops:
@@ -969,21 +995,21 @@ variable WANT-RC
    s" oi-pkg-reopen.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-pkg-close-throw.f:1\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
    s" s~ oi-nested-pkg-throw.f~ ' included catch . 2drop OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
    s" oi-pkg-reclose.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-pkg-throw.f:1\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
    s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . 2drop OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-evaluate.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-pkg-evaluate.f:1\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
    s" package OI-P" GE-SRC-LINE
@@ -991,7 +1017,8 @@ variable WANT-RC
    s" oi-pkg-floor.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 70\n0\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\nE-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-floor-throw.f:1\nE-UNDEFINED: OI-TWIN at " ERR-AT
+   S\" oi-pkg-floor.f:6\n" CASE$ GE-EXPECT-ERR-HAS
    0 SPIN-U ! ;
 
 \ A throw puts the package scope back with a task live, as the engine's
@@ -1030,7 +1057,7 @@ variable WANT-RC
    s" oi-close-includer.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-TWIN\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-TWIN at " S\" oi-close-includer.f:1\n" ERR-AT ;
 
 \ A throw puts back the includer's used publics on both loops. The file closes
 \ OI-P, opens OI-FXN in the slot OI-FXA held and throws: the slot used to keep
@@ -1046,7 +1073,7 @@ variable WANT-RC
    s" oi-using-slot-throw.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n1\n1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-NOPE\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-slot-throw.f:1\n" ERR-AT ;
 
 \ At top level `export` consumes its name and does nothing else; with no name
 \ it refuses, naming itself.
@@ -1560,7 +1587,7 @@ variable WANT-RC
    s" 1 . [: 2 . ;] execute" s" oi-top-quotation.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: [:\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: [: at " S\" oi-top-quotation.f:1\n" ERR-AT ;
 
 \ A string in a body with no closing quote, or with a bad escape, refuses as
 \ the top-level keyword does, at the keyword's line. A counted string's length
@@ -1803,7 +1830,7 @@ variable WANT-RC
    s" 1 . ;" s" oi-semi-none.f" HEAD
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: ;\n" CASE$ GE-EXPECT-ERR
+   s" E-UNDEFINED: ; at " S\" oi-semi-none.f:1\n" ERR-AT
    s" : OI-BAD ( -- n ) ; 7 ." s" oi-semi-unchecked.f" HEAD
    70 CASE$ GE-EXPECT-RC
    s" " CASE$ GE-EXPECT-OUT
@@ -1932,7 +1959,7 @@ variable WANT-RC
    s" oi-cast-private.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 3\nOI-F\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-CX:>OI-V\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-CX:>OI-V at " S\" oi-cast-private.f:5\n" ERR-AT ;
 
 \ `cast:` refuses in the engine's order: a full code space or dictionary,
 \ naming the keyword, then a missing name, at the line the input ends on past
@@ -2002,7 +2029,7 @@ variable WANT-RC
    s" oi-cast-caught.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 7129\n2\n5\n" CASE$ GE-EXPECT-OUT
-   S\" E-UNDEFINED: OI-Y\n" CASE$ GE-EXPECT-ERR ;
+   s" E-UNDEFINED: OI-Y at " S\" oi-cast-caught.f:4\n" ERR-AT ;
 
 \ The def hook never sees a cast: it gets only the created word after it.
 : CAST-HOOK ( -- )
@@ -2076,6 +2103,7 @@ private
    HOOK-UNDERFLOW
    NESTED
    NESTED-CLOSED
+   REQUIRE-ROLLBACK
    EVALUATE-NESTED
    EVALUATE-CLOSED
    LITERALS

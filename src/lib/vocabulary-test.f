@@ -285,7 +285,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A harness that bound the loaded-bytes seam to the interpret loop written in
 \ Habu, which reads no seal: a sealed load is read by the engine's loop all the
-\ same (src/core/include.f LOAD-BYTES), so it runs and refuses as it does there.
+\ same (src/core/include.f INTERPRET-SAVED-RANGE), so it runs and refuses as it does there.
 : SEAM ( -- )
    s" allow-outer" HARNESS!
    s" ok" 0 s" " OK-OUT$ RUNS

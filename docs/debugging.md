@@ -23,10 +23,18 @@ prefix. A string a harness `evaluate`s *inside* a file is the one case where the
 two halves come from different places: the path is the file's, the line counts
 within the evaluated string.
 
-Interpret-level diagnostics (`hb: undefined: X` and its siblings) and the
-refusals that exit without the compile tail (boot source, CLI, uncaught throw,
-snapshot and AOT families) print no location. For those, the checker's own
-diagnostics, which carry `<path>:<line>`, or a bisect are the way in.
+An undefined word, `E-UNDEFINED: X at <path>:<line>`, is located like any
+compile refusal on both loops. A loaded file that leaves cells prints
+`E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no
+line, once at the innermost file, before the throw it raises (uncaught, that
+throw ends the load). The other interpret-level diagnostics
+(`hb: interpret-mode layout value: X` and
+its siblings) and the refusals that exit without the compile tail (boot
+source, CLI, uncaught throw, snapshot and AOT families) print no location.
+Neither do the checker's diagnostics: they name the definition and the token
+(`habu: in g: at '2' expected: n actual: n n`, and a tier-1 undefined word in
+a checked body as `E-UNDEFINED habu: in f: undefined word 'x'`) but no file or line. For
+all of these, search the source for the named definition, or bisect.
 
 ## Reading an exit status
 

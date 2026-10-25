@@ -12597,20 +12597,24 @@ public
    LREAD LABEL@ B,
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
-\ Interpret-level reject diagnostics. LUNDEF: undefined token. LWIDE: a found
-\ word whose DNAME-WIDE dict flag is set (recorded effect carries a
-\ wider-than-cell layout value) was executed or ticked at interpret level -
-\ running it would land a multi-cell bundle on the untyped interpret stack,
-\ where scalar dup/drop/swap silently corrupt it (dot
-\ habu-tfam-12-interpret-10b385b1); checked definitions own bundle work. Both
-\ print their diagnostic + the token, then share the LDIAGRET recovery tail:
-\ inside evaluate the aborted compile unwinds as a catchable RC-REJECT (70) throw
-\ via the eval throw-recovery (restoring RX first), else tty REPL recovery, else exit 70.
+\ Interpret-level reject diagnostics. LUNDEF: undefined token. It prints its
+\ message + the token and ends through the LCOMPILEDIE tail, which names the
+\ file and line and throws RC-REJECT (70) like every located refusal; outer.f
+\ UNDEFINED writes the same bytes. LWIDE: a found word whose DNAME-WIDE dict
+\ flag is set (recorded effect carries a wider-than-cell layout value) was
+\ executed or ticked at interpret level - running it would land a multi-cell
+\ bundle on the untyped interpret stack, where scalar dup/drop/swap silently
+\ corrupt it (dot habu-tfam-12-interpret-10b385b1); checked definitions own
+\ bundle work. LWIDE and the rejects after it print their diagnostic + the
+\ token + a newline, then share the LDIAGRET recovery tail: inside evaluate the
+\ aborted compile unwinds as a catchable RC-REJECT (70) throw via the eval
+\ throw-recovery (restoring RX first), else tty REPL recovery, else exit 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    9 DATA POLICY-NDICT-CELL LDR,  9 LPOLICY LABEL@ CBNZ,    \ under the design seal a token nothing resolves is outside the vocabulary like any other: the same located line and code
-   SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
-   LDIAGRET LABEL@ LBL,                                     \ shared LUNDEF/LWIDE recovery tail (TFAM)
+   SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 RC-REJECT MOVZ,  LCOMPILEDIE LABEL@ B,                 \ no newline: the LCOMPILEDIE tail appends the location and it
+   LDIAGRET LABEL@ LBL,                                     \ shared recovery tail of the interpret-level rejects below (LWIDE, LINTERNAL, ...)
    9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
       \ Inside evaluate: the aborted nested :-compile unwinds as a catchable throw
       \ (RC-REJECT) via the eval throw-recovery (the same LEVALREC path BTHROW uses),

@@ -342,9 +342,6 @@ create NL NEWLINE c,
    SAY TOKEN$ SAY NL 1 SAY
    RC-REJECT throw ;
 
-: UNDEFINED ( -- )
-   s" E-UNDEFINED: " REFUSE ;
-
 \ ---- the refusal's location (habu2.f EM-COMPILE-DIE) ----------------------------
 20 constant DIGITS-CAP
 create DIGITS DIGITS-CAP allot
@@ -379,6 +376,9 @@ variable DIGIT-AT
 \ it inside evaluate.
 : THROW-AT ( n -- )
    AT-SOURCE NL 1 SAY throw ;
+
+: UNDEFINED ( -- )
+   s" E-UNDEFINED: " SAY TOKEN$ SAY RC-REJECT THROW-AT ;
 
 : AMBIGUOUS ( -- )
    s" hb: ambiguous bare word resolves in multiple used packages: " SAY

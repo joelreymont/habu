@@ -1346,11 +1346,13 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
-\ The loader's evaluation boundary. Every loaded file (require, include,
-\ `--load`) and every generated core declaration crosses the evaluator
-\ installed below, so each runs as a closed program: its floor
-\ is the loader's depth and whatever it leaves is refused E-EVAL-RESIDUE. A file
-\ that leaves cells is fixed at the file, never here.
+\ Evaluate generated source: core declarations (TYPE-DECL:TDECL-EVAL-XT) and
+\ library code that generates source. Each runs as a closed
+\ program: its floor is the loader's depth, whatever it leaves is refused
+\ E-EVAL-RESIDUE by the engine, and a failure rolls back the require rows it
+\ added. Loaded files do not cross it: they run inside LOAD-UNIT's
+\ source-unit-run, where CALL-UNIT names a residue's cell count and file and
+\ the engine's check is the backstop.
 : INCLUDE-EVALUATE ( ptr u8 n -- )
    REQUIRE-REG:MARK {: mark:n epoch:n :}
    [: 2dup evaluate-closed ;] catch {: rc:n :}
@@ -1600,7 +1602,9 @@ CELL constant FR-NAMED
 12 cells constant FR-EVAL-SIZE
 13 cells constant FR-EVAL-FIRST
 14 cells constant FR-EVAL-END
-15 cells constant FR-PATH
+\ How many root programs (RUN-ROOT) are being read while this frame is the top.
+15 cells constant FR-ROOT-RUNS
+16 cells constant FR-PATH
 FR-PATH INCLUDE-PATH-CAP + 1 cells + constant FR-ROOT
 FR-ROOT INCLUDE-PATH-CAP + 1 cells + constant FR-ACTPATH
 \ The action retains the raw request, before normalization limits the resolved
@@ -1635,18 +1639,20 @@ variable LAST-LOAD-EVAL-OK
    then ;
 
 \ The engine's refusal tail prints ` at <path>:<line>` from these two cells and
-\ nothing else decides when they are right: they are republished on every PUSH
-\ and every POP, so they name the file the interpreter is inside and read 0 when
-\ it is inside none (the REPL or another stdin session, the boot prefix).
+\ nothing else decides when they are right: PUBLISH-LOCATION republishes them
+\ when the top frame, its size, execution copy or root-run count changes, so
+\ they name the file being read, or 0 for none (the REPL, a stdin session, the
+\ boot prefix, a root program run over an open file: FR-ROOT-RUNS).
+: PUBLISH-NONE ( -- )
+   0 data-base INCLUDE-SRCLOC-PATH-CELL + !
+   0 data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
+   0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
+   0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + ! ;
+
 : PUBLISH-LOCATION ( -- )
-   INCLUDE-DEPTH @ 0 <= if
-      0 data-base INCLUDE-SRCLOC-PATH-CELL + !
-      0 data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
-      0 data-base INCLUDE-SRCLOC-OWNED-CELL + !
-      0 data-base INCLUDE-SRCLOC-OWNEDLEN-CELL + !
-      exit
-   then
+   INCLUDE-DEPTH @ 0 <= if PUBLISH-NONE exit then
    TOP@ {: frame:ptr :}
+   frame FR-ROOT-RUNS + CELL-VIEW @ 0 > if PUBLISH-NONE exit then
    frame FR-PATH + NULL-PTR - data-base INCLUDE-SRCLOC-PATH-CELL + !
    frame FR-PATHLEN + CELL-VIEW @ data-base INCLUDE-SRCLOC-PATHLEN-CELL + !
    frame FR-SIZE + CELL-VIEW @ dup 0 < if
@@ -1676,6 +1682,7 @@ variable LAST-LOAD-EVAL-OK
    0 frame FR-ACTLEN + CELL-VIEW !
    NULL-PTR frame FRAME-EXEC-COPY !
    0 frame FR-EVAL-OK + CELL-VIEW !
+   0 frame FR-ROOT-RUNS + CELL-VIEW !
    INCLUDE-PATH frame FR-PATH + INCLUDE-PATH-U @ BYTE-COPY
    CURRENT$ {: root:ptr rootu:n :}
    rootu frame FR-ROOTLEN + CELL-VIEW !
@@ -1779,11 +1786,11 @@ TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n )
    $5c a c!
    $20 a 1 + c! ;
 
-\ The loop a loaded file's bytes go through, inside the closed boundary:
-\ the owner binds its native evaluator, and test/outer-loop-on.f binds
-\ the loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, under
-\ evaluate-closed for the files loaded after it. A file loaded under the design
-\ seal does not go through it (LOAD-BYTES).
+\ The loop a loaded file's bytes go through, inside LOAD-UNIT's source-unit-run:
+\ the owner binds its native evaluator, and test/outer-loop-on.f binds the loop
+\ written in Habu through its framed entry, src/habu/interpret.f
+\ OUTER:EVAL-FRAMED-RANGE, for the files loaded after it. A file loaded under
+\ the design seal does not go through it (INTERPRET-SAVED-RANGE).
 private
 
 defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
@@ -1817,32 +1824,19 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 : EXEC-SOURCE ( -- ptr u8 )
    TOP@ FRAME-EXEC-SOURCE ;
 
-\ A loaded program starts on an empty data stack. Keep the range in its source
-\ frame across catch; copied arguments beneath evaluate-range would let an
-\ underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
 TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
 
-: EVALUATE-SAVED-RANGE ( -- )
+\ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
+\ its source frame across catch; copied arguments beneath evaluate-range would
+\ let an underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
+\ The sealed design reads every file through the engine's loop.
+: INTERPRET-SAVED-RANGE ( -- )
    TOP@ {: frame:ptr :}
    frame FRAME-EVAL-PTR @
    frame FR-EVAL-SIZE + CELL-VIEW @
    frame FR-EVAL-FIRST + CELL-VIEW @
    frame FR-EVAL-END + CELL-VIEW @
-   EVALUATE-RANGE-RAW ;
-
-: CLOSED-RANGE ( ptr u8 n n n -- )
-   {: source:ptr size:n first:n end:n :}
-   TOP@ {: frame:ptr :}
-   source frame FRAME-EVAL-PTR !
-   size frame FR-EVAL-SIZE + CELL-VIEW !
-   first frame FR-EVAL-FIRST + CELL-VIEW !
-   end frame FR-EVAL-END + CELL-VIEW !
-   REQUIRE-REG:MARK {: mark:n epoch:n :}
-   [: EVALUATE-SAVED-RANGE ;] catch {: rc:n :}
-   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then ;
-
-: EVAL-OPEN ( ptr u8 n n n -- )
-   INCLUDE-DEPTH @ 0 > if CLOSED-RANGE else EVALUATE-RANGE-RAW then ;
+   POLICY-SEALED? if EVALUATE-RANGE-RAW else INCLUDE-INTERPRET then ;
 
 : CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
    first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;
@@ -1854,7 +1848,7 @@ variable EVAL-END
 
 : EVAL-STAGED ( -- )
    EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ EVALUATE-RANGE-RAW ;
-: INTERPRET-INSTALL ( -- ) [: EVAL-OPEN ;] is INCLUDE-INTERPRET ;
+: INTERPRET-INSTALL ( -- ) [: EVALUATE-RANGE-RAW ;] is INCLUDE-INTERPRET ;
 INTERPRET-INSTALL
 
 public
@@ -1879,15 +1873,25 @@ private
 
 public
 
-\ Direct renderers own a closed program. Loader fragments use EVAL-OPEN
+\ Direct renderers own a closed program. Loader fragments run open (RUN-RANGE)
 \ inside LOAD-UNIT's whole-program boundary, so values can cross fragments.
 : RUN-EVAL-RANGE ( ptr u8 n n n -- ) [: EVAL-STAGED ;] CLOSE-RANGE ;
 
 \ The process's root stream runs open, as the engine's own loop runs it: the
 \ program may leave cells on the stack and the process still exits 0. The
-\ files it loads keep their own closed units (LOAD-UNIT).
+\ files it loads keep their own closed units (LOAD-UNIT). Its text is no file's,
+\ so a refusal in it names none: run while a file is open (a harness calling
+\ src/habu/main.f), it counts itself on that file's frame, which then publishes
+\ no location until the program returns or throws.
+: ROOT-RUNS+ ( n -- ) {: k:n :}
+   INCLUDE-DEPTH @ 0 <= if exit then
+   TOP@ {: frame:ptr :}
+   frame FR-ROOT-RUNS + CELL-VIEW @ k + frame FR-ROOT-RUNS + CELL-VIEW !
+   PUBLISH-LOCATION ;
+
 : RUN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u 0 u INCLUDE-INTERPRET ;
+   1 ROOT-RUNS+
+   a u 0 u [: INCLUDE-INTERPRET ;] [: -1 ROOT-RUNS+ ;] finally ;
 
 private
 
@@ -1904,22 +1908,55 @@ private
       then
    then ;
 
+\ Evaluates one fragment of the current file through the bound loop. A failed
+\ fragment rolls back the require rows it added whichever loop read it; the
+\ residue check (CALL-UNIT) stays outside, on the unit's stack.
 : RUN-RANGE ( n n -- ) {: first:n end:n :}
    RANGE-OWNER @ 0= if INCLUDE-RANGE-RC throw then
    CHECK-ACTIVE
    TOP@ RANGE-OWNER @ <> if INCLUDE-RANGE-RC throw then
-   TOP@ FR-SIZE + CELL-VIEW @ {: size:n :}
+   TOP@ {: frame:ptr :}
+   frame FR-SIZE + CELL-VIEW @ {: size:n :}
    size first end CHECK-RANGE
-   EXEC-SOURCE size first end
-      POLICY-SEALED? if EVAL-OPEN else INCLUDE-INTERPRET then
-   -1 TOP@ FR-EVAL-OK + CELL-VIEW ! ;
+   EXEC-SOURCE frame FRAME-EVAL-PTR !
+   size frame FR-EVAL-SIZE + CELL-VIEW !
+   first frame FR-EVAL-FIRST + CELL-VIEW !
+   end frame FR-EVAL-END + CELL-VIEW !
+   REQUIRE-REG:MARK {: mark:n epoch:n :}
+   [: INTERPRET-SAVED-RANGE ;] catch {: rc:n :}
+   rc 0 <> if mark epoch REQUIRE-REG:ROLLBACK rc throw then
+   -1 frame FR-EVAL-OK + CELL-VIEW ! ;
 
+create RESIDUE-DIGIT 1 allot
+
+\ A non-negative number's decimal digits on descriptor 2.
+: RESIDUE-DEC ( n -- )
+   dup 10 >= if dup 10 / recurse then
+   10 mod 48 + RESIDUE-DIGIT c!  2 RESIDUE-DIGIT 1 write drop ;
+
+\ The file left N cells: name the count and the file, then refuse it as the
+\ engine would. A nested file's refusal leaves SOURCE-UNIT:LOAD by its throw
+\ before the file that required it reaches this check, so only the innermost
+\ file is named.
+: RESIDUE-REFUSE ( n -- )
+   2 s" E-EVAL-RESIDUE: stack depth " write drop
+   RESIDUE-DEC
+   2 s"  at " write drop
+   TOP@ {: frame:ptr :}
+   2 frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ write drop
+   2 POLICY-LF 1 write drop
+   STACK-ABI:E-EVAL-RESIDUE throw ;
+
+\ The unit runs inside LOAD-UNIT's source-unit-run, on a stack of its own:
+\ whatever depth reads after the load is what the file left.
 : CALL-UNIT ( -- )
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
    EXEC-SOURCE frame FR-SIZE + CELL-VIEW @ [: RUN-RANGE ;]
-      SOURCE-UNIT:LOAD ;
+      SOURCE-UNIT:LOAD
+   depth {: n:n :}
+   n 0 > if n RESIDUE-REFUSE then ;
 
 : LOAD-UNIT ( -- )
    LOAD-BYTES

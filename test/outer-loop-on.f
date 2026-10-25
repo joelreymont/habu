@@ -1,39 +1,20 @@
 \ outer-loop-on.f - every file after this one on a `--load` line is read by the
-\ interpret loop written in Habu, src/habu/interpret.f OUTER:INTERPRET, instead of
-\ the engine's `evaluate`. The switch is the loaded-bytes seam
-\ SOURCE-ROOT:USE-INTERPRETER, which src/core/include.f binds to the engine's
-\ loop inside the closed boundary, INCLUDE-EVALUATE. The Habu loop runs inside
-\ the same boundary, so a loaded file is a closed program under either loop: it
-\ runs on a data stack of its own, a cell it leaves is refused E-EVAL-RESIDUE,
-\ and a definition it leaves open is refused at its end, as every buffer's is.
+\ interpret loop written in Habu instead of the engine's `evaluate-range`. The
+\ switch is the loaded-bytes seam SOURCE-ROOT:USE-INTERPRETER, which
+\ src/core/include.f RUN-RANGE calls inside LOAD-UNIT's source-unit-run, with
+\ the same require rollback and residue check (CALL-UNIT) as the engine's loop.
+\ It binds the Habu loop's framed entry, src/habu/interpret.f
+\ OUTER:EVAL-FRAMED-RANGE, the one a sealed x86-64 engine reads every loaded
+\ file through as its `evaluate-range`, so the switch exercises on ARM64 the
+\ entry x86-64 uses.
 
 require src/habu/interpret.f
 
 package OUTER-LOOP-ON
 
-PTR-VARIABLE SRC-A
-variable SRC-U
-variable SRC-FIRST
-variable SRC-END
-
-public
-
-\ The loaded bytes are read before the loop runs, so a load nested in them can
-\ store its own. LOADED is immediate: a file an immediate word loads while a
-\ definition is open reaches the loop then too, as the engine's loop reads such
-\ a file into the definition, where a plain word would compile into it.
-: LOADED ( -- )
-   SRC-A @ SRC-U @ SRC-FIRST @ SRC-END @ OUTER:INTERPRET-RANGE ; immediate
-s" OUTER-LOOP-ON:LOADED" 0 parse-imm
-
 private
 
-\ evaluate-closed takes text, so the boundary runs the word that reads the bytes.
-: CLOSED ( ptr u8 n n n -- )
-   SRC-END ! SRC-FIRST ! SRC-U ! SRC-A !
-   s" OUTER-LOOP-ON:LOADED" evaluate-closed ;
-
-: OUTER-LOOP-ON ( -- ) [: CLOSED ;] SOURCE-ROOT:USE-INTERPRETER ;
+: OUTER-LOOP-ON ( -- ) [: OUTER:EVAL-FRAMED-RANGE ;] SOURCE-ROOT:USE-INTERPRETER ;
 OUTER-LOOP-ON
 
 ;package

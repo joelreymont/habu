@@ -52,7 +52,18 @@ create PATH-BUF FS-PATH-CAP allot
    S\" s\" S\" type cr s\" " SB-APPEND
    s" self.f" FIX SB-APPEND
    S\" \" required\n" SB-APPEND
-   SB$ s" self.f" FIXTURE ;
+   SB$ s" self.f" FIXTURE
+   \ A program that requires a file and then refuses: the refusal inside the
+   \ required file names it, the program's own text names no file even after
+   \ that file has returned.
+   SB-RESET
+   S\" s\" " SB-APPEND  s" a.f" FIX SB-APPEND  S\" \" required\n" SB-APPEND
+   S\" s\" " SB-APPEND  s" bad.f" FIX SB-APPEND
+   S\" \" ' required catch . 2drop\n#x\n" SB-APPEND
+   SB$ s" req.f" FIXTURE
+   \ A loaded file that runs root text which refuses, then refuses itself.
+   S\" s\" nosuchword\" ' SOURCE-ROOT:RUN-ROOT catch . 2drop\nMA-AFTER\n"
+   s" root-caught.f" FIXTURE ;
 
 \ ---- the two runs of a case --------------------------------------------------------
 create WANT-OUT GT-OUT-CAP allot
@@ -126,6 +137,27 @@ variable WANT-RC
    s" usage: bin/hb --load --build -- [file.f]  (source on stdin)" SB-APPEND
    10 SB-APPEND-C SB$ ;
 
+\ A fixture's canonical path, as a location prints it: the run directory may
+\ resolve through a symbolic link (macOS /var is /private/var).
+create REAL-BUF FS-PATHZ-CAP allot
+
+: REAL ( ptr u8 n -- ptr u8 n )
+   FIX FS-PATHZ REAL-BUF FS-PATHZ-CAP realpath {: u:n :}
+   u 0 <= if s" a fixture's canonical path" GE-FAIL then
+   REAL-BUF u ;
+
+\ stderr for root text that refused under catch inside root-caught.f, then the
+\ file's own refusal at its line 2: the root text names no file, and the file is
+\ named again once the root text has thrown out.
+: ROOT-CAUGHT-ERR$ ( -- ptr u8 n )
+   SB-RESET S\" E-UNDEFINED: nosuchword\nE-UNDEFINED: MA-AFTER at " SB-APPEND
+   s" root-caught.f" REAL SB-APPEND S\" :2\n" SB-APPEND SB$ ;
+
+\ stderr for req.f: the caught refusal at bad.f line 1, then the program's.
+: REQ-ERR$ ( -- ptr u8 n )
+   SB-RESET s" E-UNDEFINED: nosuchword at " SB-APPEND
+   s" bad.f" REAL SB-APPEND S\" :1\nE-UNDEFINED: #x\n" SB-APPEND SB$ ;
+
 \ ---- --load ----------------------------------------------------------------------
 : LOAD-FILES ( -- )
    [: s" --load" GE-ARG+ s" a.f" FIX GE-ARG+ s" b.f" FIX GE-ARG+ ;] s" load two" BOTH
@@ -149,7 +181,11 @@ variable WANT-RC
    S\" SH\n" s" load, a shebang" OUT
    [: s" --load" GE-ARG+ s" missing.f" FIX GE-ARG+ ;] s" load, a missing file" BOTH
    74 s" load, a missing file" GE-EXPECT-RC
-   s" include: cannot open " s" load, a missing file" GE-EXPECT-ERR-HAS ;
+   s" include: cannot open " s" load, a missing file" GE-EXPECT-ERR-HAS
+   [: s" --load" GE-ARG+ s" root-caught.f" FIX GE-ARG+ ;] s" load, root text caught" BOTH
+   70 s" load, root text caught" GE-EXPECT-RC
+   S\" 70\n" s" load, root text caught" GE-EXPECT-OUT
+   ROOT-CAUGHT-ERR$ s" load, root text caught" GE-EXPECT-ERR ;
 
 \ ---- --build ---------------------------------------------------------------------
 : BUILD-FILES ( -- )
@@ -203,6 +239,10 @@ variable WANT-RC
    S\" S\n" s" program records the file" OUT
    [: s" bad.f" FIX GE-ARG+ ;] s" program, a refusal" BOTH
    70 S\" E-UNDEFINED: nosuchword\n" s" program, a refusal" REFUSED
+   [: s" req.f" FIX GE-ARG+ ;] s" program, a refusal after a require" BOTH
+   70 s" program, a refusal after a require" GE-EXPECT-RC
+   S\" A\n70\n" s" program, a refusal after a require" GE-EXPECT-OUT
+   REQ-ERR$ s" program, a refusal after a require" GE-EXPECT-ERR
    [: s" missing.f" FIX GE-ARG+ ;] s" program, a missing file" BOTH
    74 s" missing.f" FIX CANNOT-OPEN$ s" program, a missing file" REFUSED
    \ argv[1] `--` is the program file's name.

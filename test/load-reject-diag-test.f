@@ -32,6 +32,7 @@ package LOAD-REJECT-TEST
 $1000 constant CAP
 60000 constant TIMEOUT-MS
 70 constant REJECT-RC
+67 constant UNCAUGHT-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -54,6 +55,10 @@ create MODELED-P FS-PATH-CAP allot
 create TRUSTED-P FS-PATH-CAP allot
 create BPS-P FS-PATH-CAP allot
 create BPF-P FS-PATH-CAP allot
+create RES-P FS-PATH-CAP allot
+create RTYPE-P FS-PATH-CAP allot
+create RNEST-P FS-PATH-CAP allot
+create RCATCH-P FS-PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -71,6 +76,10 @@ variable MODELED-U
 variable TRUSTED-U
 variable BPS-U
 variable BPF-U
+variable RES-U
+variable RTYPE-U
+variable RNEST-U
+variable RCATCH-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -124,6 +133,18 @@ variable RC
 : BPF$ ( -- ptr u8 n )
    BPF-P BPF-U @ ;
 
+: RES$ ( -- ptr u8 n )
+   RES-P RES-U @ ;
+
+: RTYPE$ ( -- ptr u8 n )
+   RTYPE-P RTYPE-U @ ;
+
+: RNEST$ ( -- ptr u8 n )
+   RNEST-P RNEST-U @ ;
+
+: RCATCH$ ( -- ptr u8 n )
+   RCATCH-P RCATCH-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -158,7 +179,11 @@ variable RC
    s" modeled.f" MODELED-P MODELED-U PATH!
    s" trusted.f" TRUSTED-P TRUSTED-U PATH!
    s" byte-ptr-store.f" BPS-P BPS-U PATH!
-   s" byte-ptr-fetch.f" BPF-P BPF-U PATH! ;
+   s" byte-ptr-fetch.f" BPF-P BPF-U PATH!
+   s" residue.f" RES-P RES-U PATH!
+   s" residue-type.f" RTYPE-P RTYPE-U PATH!
+   s" residue-nest.f" RNEST-P RNEST-U PATH!
+   s" residue-caught.f" RCATCH-P RCATCH-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
@@ -202,6 +227,13 @@ LOWER-CERT-HOOK:INSTALL
    S\" : RUN-R ( -- ) s\" " S\" \" required ; " RUNTIME-DEF+
    S\" : RUN-P ( -- ) s\" " S\" \" provided ; RUN-I RUN-R RUN-P" RUNTIME-DEF+ ;
 
+: RESIDUE-FIXTURES! ( -- )
+   RES$ s" 1 2" WRITE-ALL
+   RTYPE$ s" NEWTYPE lrd-length 0" WRITE-ALL
+   s" require " RES$ s" " RNEST$ FRAG-FIXTURE!
+   S\" : LRD-T ( -- ) [: s\" " RES$ S\" \" required ;] catch . ; LRD-T"
+      RCATCH$ FRAG-FIXTURE! ;
+
 : POSITIVE-FIXTURES! ( -- )
    s" include " FRAG$ s" " TOP-INC$ FRAG-FIXTURE!
    s" require " FRAG$ s" " TOP-REQ$ FRAG-FIXTURE!
@@ -212,6 +244,7 @@ LOWER-CERT-HOOK:INSTALL
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
    IMM-FIXTURES!
+   RESIDUE-FIXTURES!
    POSITIVE-FIXTURES! ;
 
 : SETUP ( -- )
@@ -289,7 +322,8 @@ LOWER-CERT-HOOK:INSTALL
    s" direct --load reject names the undefined word" T-LABEL
    UNDEF$ RUN
    s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE
+   ERR$ s" undef.f:1" CONTAINS? TTRUE ;
 
 : TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
@@ -361,7 +395,40 @@ LOWER-CERT-HOOK:INSTALL
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
    s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE
+   ERR$ s" undef.f:1" CONTAINS? TTRUE ;
+
+\ A file that leaves cells is refused once, by one line naming the count and
+\ the innermost file, then the engine's uncaught throw. Paths are matched by
+\ their file names: the temporary root may resolve through a symbolic link.
+: ASSERT-RESIDUE ( ptr u8 n ptr u8 n -- ) {: line:ptr lineu:n file:ptr fileu:n :}
+   EXITED @ TTRUE
+   RC @ UNCAUGHT-RC T=
+   OUT-U @ 0 T=
+   ERR$ line lineu STARTS-WITH? TTRUE
+   ERR$ s" E-EVAL-RESIDUE" COUNT-SUB 1 T=
+   ERR$ file fileu CONTAINS? TTRUE
+   ERR$ s" hb: uncaught throw code -3804" CONTAINS? TTRUE ;
+
+: TEST-RESIDUE ( -- )
+   s" residue names the cell count and the file" T-LABEL
+   RES$ RUN
+   s" E-EVAL-RESIDUE: stack depth 2 at /" S\" /residue.f\n" ASSERT-RESIDUE
+   s" a declaration's leftover cell is residue too" T-LABEL
+   RTYPE$ RUN
+   s" E-EVAL-RESIDUE: stack depth 1 at /" S\" /residue-type.f\n" ASSERT-RESIDUE
+   s" nested residue is named once, at the innermost file" T-LABEL
+   RNEST$ RUN
+   s" E-EVAL-RESIDUE: stack depth 2 at /" S\" /residue.f\n" ASSERT-RESIDUE
+   ERR$ s" residue-nest.f" CONTAINS? TFALSE
+   s" caught residue prints its line and keeps its code" T-LABEL
+   RCATCH$ RUN
+   EXITED @ TTRUE
+   RC @ 0 T=
+   OUT$ S\" -3804\n" STR= TTRUE
+   ERR$ s" E-EVAL-RESIDUE: stack depth 2 at /" STARTS-WITH? TTRUE
+   ERR$ S\" /residue.f\n" ENDS-WITH? TTRUE
+   ERR$ 10 COUNT-CHAR 1 T= ;
 
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
@@ -432,6 +499,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-BYTE-PTR-FETCH
    TEST-STORAGE
    TEST-REQUIRE-CHAIN
+   TEST-RESIDUE
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-SIGNATURELESS
