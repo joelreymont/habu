@@ -205,15 +205,16 @@ pool, task slots, the require registry, the search order) is exported and
 restored by that owner; an object never copies a span of another owner's data.
 
 **Importing an object installs its result and runs nothing.** Compile-time code
-runs when the file is compiled; an import repeats neither that code nor its
-external effects. A value captured from the environment stays part of the
-result until a tracked input changes, so a program that needs a fresh value on
-every run reads it at run time. Imported at its original load position, an
-object makes its definitions and data available to later source as compiling
-it would: package visibility and `require`/`include` semantics hold, and
-reopenings are not grouped ahead of intervening source. The proof is a fresh
-process that imports objects, compiles downstream source and behaves as a clean
-build does.
+runs when the file is compiled; an import repeats none of it. The text that
+code wrote to the output device is part of its result and is written again;
+file-system and environment effects are not repeated. A value captured from the
+environment stays part of the result until a tracked input changes, so a
+program that needs a fresh value on every run reads it at run time. Imported at
+its original load position, an object makes its definitions and data available
+to later source as compiling it would: package visibility and
+`require`/`include` semantics hold, and reopenings are not grouped ahead of
+intervening source. The proof is a fresh process that imports objects, compiles
+downstream source and behaves as a clean build does.
 
 **A file's key names the file, not what loaded before it.** The key is the
 engine, the target profile, the build mode, the key of the file that loaded it,

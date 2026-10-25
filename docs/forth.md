@@ -2232,18 +2232,22 @@ sections above.
   primitive with a REACH class are admitted; a seed word with no class is
   `reason=run-reaches-kernel-word word=W` (`run-reaches-kernel-data` for seed
   data), a definition with another reason `run-host-cast`, `-unchecked`,
-  `-foreign`, `-unknown` or `-rebind` (a compiled `is`). Under the file's own
-  word the file
-  refuses by that name; under an earlier file's word the frame is ordered and
-  the object refuses `ordered-dependency`. A seed word the top level runs
-  itself is admitted only by the trace it leaves before the next token: source
-  read past its token, a changed record count, HERE, wordlist count, kernel
-  cell or checker unit fact count, or a child file it loaded. Otherwise it is
-  `run-unaccounted word=W` and the object refuses `ordered-dependency`:
-  `s" HOME" GETENV`, `data-base`, `' W execute` and a top-level `WRITE-ALL`
-  each refuse. A nested run that a caught throw abandoned refuses
-  `run-abandoned word=W`: the catch restores HERE and the source position, so
-  the run's trace cannot be judged. `test/native-file-frame-e2e.f` measures each line.
+  `-foreign`, `-unknown` or `-rebind` (a compiled `is`). `die` is classed as a
+  process exit: a run that ends the process leaves no result to store, so a
+  closure reaching it is admitted. Under the file's own word the file refuses
+  by that name; under an earlier file's word the frame is ordered and the
+  object refuses `ordered-dependency`. A seed word the top level runs itself is
+  admitted only by the trace it leaves before the next token: source read past
+  its token, a changed record count, HERE, wordlist count, kernel cell or
+  checker unit fact count, a child file it loaded, or text it wrote to the
+  output device. That text is part of the file's result: the object carries it
+  and a hit writes it again in load order. Otherwise it is
+  `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
+  file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
+  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A nested run that
+  a caught throw abandoned refuses `run-abandoned word=W`: the catch restores
+  HERE and the source position, so the run's trace cannot be judged.
+  `test/native-file-frame-e2e.f` measures each line.
 - **`catch` requires a callable with a known effect.** Literal quotations,
   callable ticks, quotation parameters already on the stack and fetched
   typed quotations are admitted. A callback whose effect does not preserve
