@@ -315,7 +315,7 @@ FID @ s" none" SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
 \ ---------------------------------------------------------------------------
 variable PFTX   variable PFOUT   variable PFIN
-variable PFBASE variable PFSTR
+variable PFBASE
 variable PFBAD  variable PFAPP   variable PFARG
 TYPE-FIELD:COUNT FX !
 TF-FIELD:OPEN PFTX !
@@ -677,20 +677,32 @@ TF-FIELD:OPEN PFTX !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 \ Nested commit remains provisional. Outer rollback restores both high-waters;
-\ the next outer commit reuses the retired id and string space.
-TYPE-FIELD:COUNT PFBASE !  TF-STR-U@ PFSTR !
+\ the next outer commit reuses the retired id (string space is the family
+\ frame's).
+TYPE-FIELD:COUNT PFBASE !
 TF-FIELD:OPEN PFOUT !
 PFOUT @ PTID @ PF-NO-VARIANT s" outer" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFOUT !
-TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U@ PFSTR @ > TTRUE
+TYPE-FIELD:COUNT PFBASE @ T=
 TF-FIELD:OPEN PFIN !
 PFIN @ PTID @ PF-NO-VARIANT s" inner" 1 21 1 21 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFIN !
 PFIN @ TF-FIELD:CLOSE
 TYPE-FIELD:COUNT PFBASE @ T=
 PTID @ TYPE-FIELD:NO-VARIANT s" inner" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
 PFOUT @ TF-FIELD:ROLLBACK
-TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U@ PFSTR @ T=
+TYPE-FIELD:COUNT PFBASE @ T=
 PTID @ TYPE-FIELD:NO-VARIANT s" outer" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
 PTID @ TYPE-FIELD:NO-VARIANT s" inner" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+
+\ The pool is the family frame's: a family declared inside a field
+\ transaction keeps its name across that transaction's rollback.
+variable INWIN
+TF-FIELD:OPEN PFTX !
+s" pkgc" CHECKER-PACKAGE-PUBLIC s" inwin" 0 TK-CELL TFAM-DECL INWIN !
+PFTX @ PTID @ PF-NO-VARIANT s" gone" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
+PFTX @ TF-FIELD:ROLLBACK
+s" pkgc" CHECKER-PACKAGE-PUBLIC s" after" 0 TK-CELL TFAM-DECL drop
+INWIN @ TFAM-NAME$ s" inwin" T$=
+s" pkgc" s" inwin" TFAM-FIND-IN FOUNDF !  INWIN @ T=  FOUNDF @ -1 T=
 
 TF-FIELD:OPEN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" reuse" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX !
@@ -769,7 +781,7 @@ s" pkgd" CHECKER-PACKAGE-PUBLIC s" tree"  1 TK-SUM     TFAM-DECL drop
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" list"  1 TK-SUM     TFAM-DECL drop
 s" pkgd" CHECKER-PACKAGE-PUBLIC s" maybe" 1 TK-SUM     TFAM-DECL drop
 s" pkge" CHECKER-PACKAGE-PUBLIC s" pair"  2 TK-PRODUCT TFAM-DECL drop
-TFAM-N@ 12 T=                      \ includes the three unified-payload fixtures
+TFAM-N@ 14 T=   \ includes the three unified-payload and two pool-owner fixtures
 TF-GROW-THROUGH-CAP
 FID @ TF-REC@ TF-GROW-BASE @ = TFALSE   \ the record arena moved
 FID @ TFAM-NAME$ s" opt" T$=

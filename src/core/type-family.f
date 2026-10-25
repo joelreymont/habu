@@ -2239,21 +2239,24 @@ public
 
 \ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
 \ global finalization. Nested commit keeps rows provisional; only outer commit
-\ advances PF-COMMIT-N. Every frame owns both mutable marks.
+\ advances PF-COMMIT-N. Every frame owns PF-N and PF-COMMIT-N. The name pool is
+\ the family frame's (TF-RBF, through TFAM-REWIND): family, variant and
+\ constructor-package names interleave with field names in it, so no field
+\ frame mark bounds only its own bytes. A field rollback no enclosing family
+\ frame rewinds leaves its field names in [0, TF-STR-U), so UNIT-FAM-TILED
+\ refuses the file that made them for FILE capture.
 
 private
 
 0 cells constant PFTX.PFN-OFF
-1 cells constant PFTX.STRU-OFF
-2 cells constant PFTX.TOK-OFF
-3 cells constant PFTX.COMMITN-OFF
-4 cells constant PFTX.STATE-OFF
+1 cells constant PFTX.TOK-OFF
+2 cells constant PFTX.COMMITN-OFF
+3 cells constant PFTX.STATE-OFF
 
 public
 
-5 cells constant PF-TX-REC
+4 cells constant PF-TX-REC
 : PFTX.PFN ( ptr a -- ptr a ) PFTX.PFN-OFF + ;
-: PFTX.STRU ( ptr a -- ptr a ) PFTX.STRU-OFF + ;
 : PFTX.TOK ( ptr a -- ptr a ) PFTX.TOK-OFF + ;
 : PFTX.COMMITN ( ptr a -- ptr a ) PFTX.COMMITN-OFF + ;
 : PFTX.STATE ( ptr a -- ptr a ) PFTX.STATE-OFF + ;
@@ -2326,9 +2329,7 @@ package TYPE-FIELD-OWNER
    tx TX-REQUIRE
    TX-TOP PFTX.STATE @ state <> IF E-PF-TX throw THEN ;
 : TX-MARKS-REQUIRE ( -- )
-   TX-TOP {: r:ptr :}
-   r PFTX.PFN @ PF-N @ > IF E-PF-TX throw THEN
-   r PFTX.STRU @ TF-STR-U @ > IF E-PF-TX throw THEN ;
+   TX-TOP PFTX.PFN @ PF-N @ > IF E-PF-TX throw THEN ;
 : TX-OPEN-MARKS-REQUIRE ( -- )
    TX-MARKS-REQUIRE
    TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF E-PF-TX throw THEN ;
@@ -2367,7 +2368,6 @@ public
    tok PF-TX-SERIAL !
    PF-TX-DEPTH @ TX-AT {: r:ptr :}
    PF-N @ r PFTX.PFN !
-   TF-STR-U @ r PFTX.STRU !
    PF-COMMIT-N @ r PFTX.COMMITN !
    STATE-OPEN r PFTX.STATE !
    tok r PFTX.TOK !
@@ -2397,7 +2397,6 @@ public
       IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
    TX-TOP {: r:ptr :}
    r PFTX.PFN @ r PFTX.COMMITN @ PF-REWIND   \ retire the provisional rows
-   r PFTX.STRU @ TF-STR-U !
    RELEASE ;
 
 \ The field owner is the only authority that can read a provisional row.  The
@@ -3347,9 +3346,9 @@ public
 TFAM-RESET
 
 \ ---------------------------------------------------------------------------
-\ THE registry rewind. Every caller that puts the family and variant stores back
-\ to an earlier mark goes through here, and there is nowhere else that writes
-\ those counters down.
+\ THE registry rewind. Every caller that puts the family and variant stores or
+\ the name pool back to an earlier mark goes through here, and there is nowhere
+\ else that writes those counters down.
 \
 \ WHY IT IS ONE WORD AND NOT FIVE STORES AT EACH CALL SITE. Two of these stores
 \ are read through three indexes — TFAM-FIND-IN through the family tail index,

@@ -515,8 +515,9 @@ variable DEV-TX-SERIAL
    tok DEV-FINALIZE ;
 
 \ roll back every watermark this frame owns and delegate the field-registry
-\ cursor to the field record. The family/variant/schema/layout cursors
-\ are retired by the enclosing checker scope/candidate frame (see header).
+\ cursor to the field record. The family/variant/schema/layout cursors and the
+\ name pool are retired by the enclosing checker scope/candidate frame (see
+\ header).
 \ A live frame is always either open or reversibly committed — the only two
 \ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
 \ is no third value to reject here.
