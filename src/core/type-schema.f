@@ -123,9 +123,19 @@ private
 
 variable SCH-I        \ private scan index
 
+\ Retiring a node or root scrubs it back to canonical zero, as PF-SCRUB
+\ (src/core/type-family.f) does for field rows: a zeroed row is the canonical
+\ absent row, so retired rows leave no bytes in reflection or snapshot identity.
+: SCH-SCRUB ( n n -- ) {: lo:n hi:n :}      \ zero the nodes [lo,hi)
+   SCH-BASE  lo SCH-REC CELL / *  hi SCH-REC CELL / *  ARENA-CELLS-ZERO ;
+: SCH-ROOT-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the roots [lo,hi)
+   SCH-ROOT-BASE lo hi ARENA-CELLS-ZERO ;
+
 public
 
-: SCHEMA-RESET ( -- )           \ base state
+: SCHEMA-RESET ( -- )           \ base state; node 0, the nil sentinel, stays
+   1 SCH-N @ SCH-SCRUB
+   0 SCH-ROOT-N @ SCH-ROOT-SCRUB
    1 SCH-N !
    0 SCH-ROOT-N ! ;
 SCHEMA-RESET
@@ -326,7 +336,32 @@ private
    SCH-RBF-GROW ;
 : SCH-RBF-CUR ( -- ptr n ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
 
+\ ---- rewind to a recorded pair ----------------------------------------------
+\ Every place that lowers the schema counts retires nodes and roots, so every
+\ one comes through here: SCHEMA-ROLLBACK-RESTORE below (the checker frame),
+\ src/core/sumtype.f TDECL-RESTORE (a rejected declaration) and the core-prefix
+\ boundary block in src/core/type-family.f (PFX-REWIND). SCHEMA-RESET above is
+\ the one exception: it runs at load, before REWIND exists, and scrubs the same
+\ way itself. REWIND moves no frame
+\ depth. The node and root fields are pointer-free, so putting the counts back
+\ retires every entry above them; it first scrubs the retired nodes and roots.
+\ The prefix boundary is not a scope: it returns a compiling host to a boundary
+\ its own boot crossed long before, so it records COUNTS alongside the family
+\ registry's own counters instead of holding a frame open across the whole boot.
+
+: COUNTS ( -- n n )
+   SCH-N @ SCH-ROOT-N @ ;
+
 public
+
+: REWIND ( n n -- ) {: n:n rootn:n :}
+   n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF
+      s" checker: schema rewind outside the registry" 76 die
+   THEN
+   n SCH-N @ SCH-SCRUB
+   rootn SCH-ROOT-N @ SCH-ROOT-SCRUB
+   n SCH-N !
+   rootn SCH-ROOT-N ! ;
 
 : SCHEMA-ROLLBACK-SAVE ( -- )
    SCH-RBF-ENSURE
@@ -337,37 +372,9 @@ public
 : SCHEMA-ROLLBACK-RESTORE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH !
    SCH-RBF-CUR {: r:ptr :}
-   r SCHRB.N @ SCH-N !
-   r SCHRB.ROOTN @ SCH-ROOT-N ! ;
+   r SCHRB.N @ r SCHRB.ROOTN @ REWIND ;
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
-
-\ ---- depth-neutral rewind to a recorded pair --------------------------------
-\ The frame words above are a STACK, pushed and popped in lockstep with the
-\ checker's core frame. The build's core-prefix rewind is not a scope: it
-\ returns a compiling host to a boundary its own boot crossed long before, so it
-\ carries a recorded pair instead of holding a frame open across the whole boot,
-\ and moves no depth. This is SCHEMA-ROLLBACK-SAVE/RESTORE's body reading a
-\ recorded pair instead of the frame stack, for the same reason those two words
-\ restore only counters: the node and root fields are pointer-free, so putting
-\ the counts back retires every entry above them.
-\ The one caller is the SCHEMA-REG prefix-boundary block in src/core/type-family.f,
-\ which carries this pair alongside the family registry's own counters so the
-\ two halves of a declaration frame move together here exactly as they do
-\ through CHECKER-DECL-FRAME:EXT-SAVE/EXT-RESTORE.
-private
-
-: COUNTS ( -- n n )
-   SCH-N @ SCH-ROOT-N @ ;
-
-: REWIND ( n n -- ) {: n:n rootn:n :}
-   n 0 < n SCH-N @ > or rootn 0 < or rootn SCH-ROOT-N @ > or IF
-      s" checker: schema rewind outside the registry" 76 die
-   THEN
-   n SCH-N !
-   rootn SCH-ROOT-N ! ;
-
-public
 
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.

@@ -906,13 +906,13 @@ create QNAME QNAME-CAP allot
    s" 0 SCH-RBF-P !" SB-APPEND LF
    SB$ ;
 
-: QUAL-USING-FORGE$ ( -- ptr u8 n )   \ a using cannot reach the private rewind
+: QUAL-USING-FORGE$ ( -- ptr u8 n )   \ a using cannot reach the sealed rewind
    SB-RESET
    s" using SCHEMA-REG" SB-APPEND LF
    s" 0 0 REWIND" SB-APPEND LF
    SB$ ;
 
-: QUAL-REWIND-FORGE$ ( -- ptr u8 n )  \ the private rewind has no qualified spelling
+: QUAL-REWIND-FORGE$ ( -- ptr u8 n )  \ the sealed rewind has no qualified spelling
    SB-RESET
    s" 0 0 SCHEMA-REG:REWIND" SB-APPEND LF
    SB$ ;
@@ -944,7 +944,7 @@ create QNAME QNAME-CAP allot
    s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
    s" and its unrooted qualified spelling is absent" T-LABEL
    s" SCHEMA-REG:SCHEMA-A@" NEG-ABSENT
-   s" using cannot expose the private schema rewind" T-LABEL
+   s" using cannot expose the sealed schema rewind" T-LABEL
    QUAL-USING-FORGE$ RUN-SUBJECT
    s" REWIND" ASSERT-UNDEF
    s" 0 0 SCHEMA-REG:REWIND no longer wipes the schema registry" T-LABEL

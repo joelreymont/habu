@@ -254,6 +254,8 @@ private
 : TF-STR-ENSURE ( n -- ) {: add:n :}      \ room for `add` more bytes
    TF-STR-U @ add + TF-STR-CAP-V @ <= IF exit THEN
    TF-STR-U @ add + TF-STR-GROW ;
+: TF-STR-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the pool bytes [lo,hi); see PF-SCRUB
+   hi lo ?do 0 TF-STR i + c! loop ;
 
 public
 
@@ -346,6 +348,8 @@ private
 : TF-PK-ENSURE ( -- )
    TF-PK-N @ TF-PK-CAP-V @ < IF exit THEN
    TF-PK-N @ 1 + TF-PK-GROW ;
+: TF-PK-SCRUB ( n n -- ) {: lo:n hi:n :}  \ zero the param-kind cells [lo,hi); see PF-SCRUB
+   TF-PK-BASE lo hi ARENA-CELLS-ZERO ;
 : TF-PK+ ( n -- ) {: k:n :}             \ append one param-kind slot
    TF-PK-ENSURE
    k TF-PK-N @ cells TF-PK-BASE + !
@@ -438,6 +442,8 @@ private
 : TF-ENSURE ( -- )
    TFAM-N @ TF-CAP-V @ < IF exit THEN
    TFAM-N @ 1 + TF-GROW ;
+: TF-SCRUB ( n n -- ) {: lo:n hi:n :}     \ zero the family records [lo,hi); see PF-SCRUB
+   TF-BASE  lo TF-REC CELL / *  hi TF-REC CELL / *  ARENA-CELLS-ZERO ;
 
 public
 
@@ -944,6 +950,8 @@ private
 : SUMV-ENSURE ( -- )
    SUMV-N @ SUMV-CAP-V @ < IF exit THEN
    SUMV-N @ 1 + SUMV-GROW ;
+: SUMV-SCRUB ( n n -- ) {: lo:n hi:n :}   \ zero the variant records [lo,hi); see PF-SCRUB
+   SUMV-BASE  lo SUMV-REC CELL / *  hi SUMV-REC CELL / *  ARENA-CELLS-ZERO ;
 : SUMV-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF s" tfam: bad variant id" 76 die THEN
    id SUMV-N @ >= IF s" tfam: bad variant id" 76 die THEN
@@ -3198,6 +3206,8 @@ private
 : LAY-ENSURE ( -- )
    LAY-N @ LAY-CAP-V @ < IF exit THEN
    LAY-N @ 1 + LAY-GROW ;
+: LAY-SCRUB ( n n -- ) {: lo:n hi:n :}    \ zero the layout records [lo,hi); see PF-SCRUB
+   LAY-BASE  lo LAY-REC CELL / *  hi LAY-REC CELL / *  ARENA-CELLS-ZERO ;
 : LAY-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF s" tfam: bad layout id" 76 die THEN
    id LAY-N @ >= IF s" tfam: bad layout id" 76 die THEN
@@ -3325,6 +3335,8 @@ public
    0 VNX-READY !                         \ ... and every row the variant tail index chains
    0 FVX-READY !                         \ ... and every row the field owner index chains
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
+   0 TFAM-N @ TF-SCRUB   0 TF-STR-U @ TF-STR-SCRUB   0 TF-PK-N @ TF-PK-SCRUB
+   0 SUMV-N @ SUMV-SCRUB   0 PF-N @ PF-SCRUB   0 LAY-N @ LAY-SCRUB   \ scrub the rows it retires
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
@@ -3354,6 +3366,12 @@ TFAM-RESET
 \ first lookup of that tail died 76 in TF-REC@. Every watermark assertion passed
 \ the whole time, because the watermarks were right; only the indexes were not.
 \
+\ IT SCRUBS WHAT IT RETIRES. The retired family, variant, param-kind and layout
+\ rows and string-pool bytes go back to canonical zero, as PF-SCRUB does for
+\ field rows: a zeroed row is the canonical absent row, so a rolled-back
+\ declaration leaves no bytes in reflection or snapshot identity. The indexes
+\ pop first, while the rows they walk still hold their links and symbols.
+\
 \ WHAT THIS DOES NOT OWN. Product-field rows (PF-*) and schema nodes (SCH-*) are
 \ other participants with their own frames; a caller that also owns those rewinds
 \ them itself, after this (the field rows through PF-REWIND).
@@ -3363,6 +3381,11 @@ TFAM-RESET
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
    sumvn VNX-RETIRE                      \ and the tail chains
+   tfamn TFAM-N @ TF-SCRUB               \ then scrub the rows this rewind retires
+   sumvn SUMV-N @ SUMV-SCRUB
+   pkn TF-PK-N @ TF-PK-SCRUB
+   layn LAY-N @ LAY-SCRUB
+   stru TF-STR-U @ TF-STR-SCRUB
    tfamn TFAM-N @ <> sumvn SUMV-N @ <> or IF TFM-EPOCH+ THEN
    tfamn TFAM-N !
    stru TF-STR-U !

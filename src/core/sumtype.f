@@ -174,7 +174,8 @@ public
 \ that tail died 76 `tfam: bad family id`. The high-water marks were all exactly
 \ right, which is why the suite's own base-state assertions passed either way.
 \
-\ The schema store is not the registry's, so its two marks are restored here.
+\ The schema store is not the registry's, so its two marks go back through the
+\ schema store's own rewind, SCHEMA-REG:REWIND, which scrubs what it retires.
 
 private
 
@@ -209,7 +210,7 @@ private
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
    TDM-TFAM @  TDM-STR @  TDM-PK @  TDM-SUMV @  TDM-LAY @  TFAM-REWIND
-   TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N !
+   TDM-SCH @ TDM-ROOT @ SCHEMA-REG:REWIND
    QUOT-ROLLBACK ;
 
 : TDECL-REPORT ( -- )
