@@ -1,0 +1,9 @@
+---
+title: Locate the remaining load refusals and bare throws
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-25T14:31:40.370636+01:00"
+---
+
+Follow-up to habu-name-the-err-f8c7f3ac, whose lane locates E-UNDEFINED (both loops) and names residue with file and count. Still unlocated: the ten other LDIAGRET sites in src/habu/habu2.f (LWIDE, LINTERNAL, LTRUSTTICK, LMININ, LFLOORREC, LPREFMISS with its baked newline, LORPHAN, LCFKIND, LCFCAP, LLOCWIDE, LLOCMANY) and their Habu twin REFUSE in src/habu/outer.f; route them through LCOMPILEDIE / THROW-AT. Pins to sweep: test/outer-interpret.f ~306, 315, 322, 373, 437, 667, 674, 682, 694, 1075, 1101, 1910. Also a bare library throw during --load ('-2001 throw' in a file) prints only 'hb: uncaught throw code -2001', rc 67: no name (src/lib/errors.f is constants only, no code-to-name table) and no file (include frames are popped before the uncaught reporter runs). Acceptance: each such load failure names its file and, where the site knows it, its error name.
