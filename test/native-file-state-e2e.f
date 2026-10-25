@@ -41,6 +41,16 @@ create EXPECT 512 allot  variable EXPECT-U
    why whyu EXPECT 512 EXPECT-U BUF-APPEND
    EXPECT EXPECT-U @ ;
 
+\ The diagnostic line of file name's refusal for reason why.
+: REFUSED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n why:ptr whyu:n :}
+   0 EXPECT-U !
+   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  reason=" EXPECT 512 EXPECT-U BUF-APPEND
+   why whyu EXPECT 512 EXPECT-U BUF-APPEND
+   EXPECT EXPECT-U @ ;
+
 : BUILD ( ptr u8 n -- n )
    {: product:ptr productu:n :}
    ROOT$ s" app.f" product productu NATIVE-FILE-APP:BUILD-AT
@@ -119,19 +129,33 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    S\" require prefix.f\npackage FILE-TASK-STATE-UNIT\npublic\nTASK:#USER CELL TASK:+USER LEAF drop\n: LEAF@ ( -- n ) LEAF @ ;\n111 LEAF !\n;package\ns\" task-state-unit-ran\" type cr\n" PUT
    s" downstream.f"
    S\" require unit.f\npackage FILE-TASK-STATE-CLIENT\npublic\nTASK:#USER CELL TASK:+USER OWN drop\n: LEAF@ ( -- n ) FILE-TASK-STATE-UNIT:LEAF@ ;\n: OWN@ ( -- n ) OWN @ ;\n222 OWN !\n;package\n" PUT
+   \ COVER re-covers downstream.f's OWN without writing it.
+   s" cover.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-STATE-COVER\npublic\nTASK:#USER CELL - CELL TASK:+USER COVER drop\n;package\n" PUT
+   \ LOW re-covers PAIR's first cell, moving the watermark down.
+   s" low.f"
+   S\" require src/lib/task.f\npackage FILE-TASK-STATE-LOW\npublic\nTASK:#USER 2 cells TASK:+USER PAIR drop\nTASK:#USER 2 cells - CELL TASK:+USER LOW drop\n: LOW@ ( -- n ) LOW @ ;\n: PAIR@ ( -- n ) PAIR @ ;\n333 LOW !\n;package\n" PUT
+   \ A later file writes an earlier file's slot.
+   s" poke.f"
+   S\" require prefix.f\n444 FILE-TASK-STATE-PREFIX:PREFIX-SLOT !\n" PUT
    s" app.f"
-   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\n: MAIN ( -- ) FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . ;\n" PUT ;
+   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\nrequire cover.f\nrequire low.f\nrequire poke.f\n: MAIN ( -- ) FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . FILE-TASK-STATE-LOW:LOW@ . FILE-TASK-STATE-LOW:PAIR@ . FILE-TASK-STATE-PREFIX:PREFIX-SLOT @ . ;\n" PUT ;
 
-: RUN-TASK-STATE ( ptr u8 n -- )
+: RUN-TASK-STATE ( ptr u8 n ptr u8 n -- )
+   {: product:ptr productu:n want:ptr wantu:n :}
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   AT s" " CAPTURE SUCCESS
-   OUT$ S\" 111\n222\n" CONTAINS? TTRUE ;
+   product productu AT s" " CAPTURE SUCCESS
+   OUT$ want wantu CONTAINS? TTRUE ;
+
+\ MAIN's output before and after the edit stores 223 into OWN.
+: COLD-STATE$ ( -- ptr u8 n ) S\" 111\n222\n333\n333\n444\n" ;
+: EDIT-STATE$ ( -- ptr u8 n ) S\" 111\n223\n333\n333\n444\n" ;
 
 : GROWN-PREFIX ( -- )
    s" prefix.f"
    S\" require src/lib/task.f\npackage FILE-TASK-STATE-PREFIX\npublic\nTASK:#USER CELL TASK:+USER PREFIX-SLOT drop\nTASK:#USER CELL TASK:+USER PREFIX-SLOT-2 drop\n;package\n" PUT
    s" app.f"
-   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\n: MAIN ( -- ) -1 FILE-TASK-STATE-PREFIX:PREFIX-SLOT-2 ! FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . ;\n" PUT ;
+   S\" require prefix.f\nrequire unit.f\nrequire downstream.f\nrequire cover.f\nrequire low.f\nrequire poke.f\n: MAIN ( -- ) -1 FILE-TASK-STATE-PREFIX:PREFIX-SLOT-2 ! FILE-TASK-STATE-CLIENT:LEAF@ . FILE-TASK-STATE-CLIENT:OWN@ . FILE-TASK-STATE-LOW:LOW@ . FILE-TASK-STATE-LOW:PAIR@ . FILE-TASK-STATE-PREFIX:PREFIX-SLOT @ . ;\n" PUT ;
 
 : TASK-STATE-CASE ( -- )
    s" a consumer-only edit reuses the leaf TASK reservation" T-LABEL
@@ -140,8 +164,9 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    s" task-cold-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
-   s" task-cold-hb" RUN-TASK-STATE
-   s" downstream.f" AT S\" \\ task consumer comment\n" APPEND-FILE
+   s" task-cold-hb" COLD-STATE$ RUN-TASK-STATE
+   s" downstream.f"
+   S\" require unit.f\npackage FILE-TASK-STATE-CLIENT\npublic\nTASK:#USER CELL TASK:+USER OWN drop\n: LEAF@ ( -- n ) FILE-TASK-STATE-UNIT:LEAF@ ;\n: OWN@ ( -- n ) OWN @ ;\n223 OWN !\n;package\n" PUT
    true NATIVE-FILE-APP:DIAG? !
    s" task-warm-hb" BUILD SUCCESS
    false NATIVE-FILE-APP:DIAG? !
@@ -149,10 +174,21 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    \ app.f moves no TASK user slot itself: the slots its children take are
    \ theirs, so it is reused. prefix.f reads the watermark it moves, which
-   \ its TASK row records, so it is reused too.
+   \ its TASK row records, so it is reused too. unit.f and low.f store into
+   \ their own slots, which their USER rows restore; downstream.f is the edit.
+   \ poke.f stores into prefix.f's slot, which no row of its own carries.
+   \ cover.f's slot holds downstream.f's new 223, not the 222 its USER row
+   \ found when it declared the slot, so installing its 222 would undo the
+   \ edit: it misses.
    ERR$ s" app.f" REUSED$ CONTAINS? TTRUE
    ERR$ s" prefix.f" REUSED$ CONTAINS? TTRUE
-   s" task-warm-hb" RUN-TASK-STATE
+   ERR$ s" unit.f" REUSED$ CONTAINS? TTRUE
+   ERR$ s" low.f" REUSED$ CONTAINS? TTRUE
+   ERR$ s" downstream.f" REUSED$ CONTAINS? TFALSE
+   ERR$ s" poke.f" REUSED$ CONTAINS? TFALSE
+   ERR$ s" poke.f" s" task-slot-updated word=PREFIX-SLOT" REFUSED$ CONTAINS? TTRUE
+   ERR$ s" cover.f" s" task-slots" MISS$ CONTAINS? TTRUE
+   s" task-warm-hb" EDIT-STATE$ RUN-TASK-STATE
    s" task-fresh-hb" s" fresh-cache" COLD-BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    s" task-fresh-hb" s" task-warm-hb" SAME-FILE
@@ -164,7 +200,7 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
-   s" task-grown-hb" RUN-TASK-STATE ;
+   s" task-grown-hb" EDIT-STATE$ RUN-TASK-STATE ;
 
 : FFI-FILES ( -- )
    s" cache" AT MAKE-DIR

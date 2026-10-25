@@ -184,6 +184,7 @@ CAST: RETIRE-SET-XT ( n -- [ n -- ] )
 CAST: RETIRE>N ( [ ptr n -- ] -- n )
 CAST: OBSERVE-XT ( n -- [ [ ptr n -- ] -- ] )
 CAST: KIND-XT ( n -- [ n n n -- n ] )
+CAST: SLOTS-OBSERVE-XT ( n -- [ [ [ -- ptr n ] n n -- ] -- ] )
 CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
@@ -975,7 +976,9 @@ variable TEE-ERR
 \ The open file objects see each word the source runs through the running
 \ kernel's run observer, held for the session, and read its resolution legs
 \ through the running checker owner. A kernel without either observes nothing,
-\ and every file object refuses (NUNIT-OBJECT FILE-BEGIN).
+\ and every file object refuses (NUNIT-OBJECT FILE-BEGIN). The slot words
+\ TASK:+USER makes are reported to NUNIT-DEP, when the kernel's TASK reports
+\ them; without it a slot word refuses as any data-base reader does.
 : OBSERVE ( -- )
    NUNIT-CAPTURE:RUN-OBSERVER? 0= if exit then
    s" CHECKER-OWNER:RESOLUTION-TOP" NUNIT-CAPTURE:BOUND-PRODUCER-XT
@@ -985,10 +988,16 @@ variable TEE-ERR
    s" NHOST:UNOBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT {: undo:n :}
    [: NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-RUN ;]
       s" NHOST:OBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT OBSERVE-XT execute
-   undo UNOBSERVE-XT ! ;
+   undo UNOBSERVE-XT !
+   s" TASK:OBSERVE-SLOTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0<> if
+      [: NUNIT-DEP:USER-MADE ;] swap SLOTS-OBSERVE-XT execute
+   else drop then ;
 
 : UNOBSERVE ( -- )
    UNOBSERVE-XT @ {: undo:n :}
+   s" TASK:UNOBSERVE-SLOTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0<> if
+      ACTION-XT execute
+   else drop then
    undo 0= if exit then
    0 UNOBSERVE-XT !
    undo ACTION-XT execute
@@ -1548,7 +1557,8 @@ variable TEE-ERR
    S\"  reason=ffi-rows\n" DIAG-W2 ;
 
 \ Segment row k's TASK row expects a user-slot watermark the live TASK no
-\ longer holds: the file's baked slot offsets assume it.
+\ longer holds, which the file's baked slot offsets assume, or one of its
+\ USER rows expects slot bytes another owner has since changed.
 : SEGMENT-TASK-ROW ( n -- )
    {: k:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
@@ -1576,13 +1586,15 @@ variable TEE-ERR
 
 \ Segment row k of the viewed object can install on the state its loads
 \ left: its dependency rows hold, its FFI rows hold, TASK's user-slot
-\ watermark stands where its TASK row expects and no record name it defines
-\ is live. A failed check prints its line.
+\ watermark stands where its TASK row expects, each slot it declared holds
+\ the bytes its USER row found there and no record name it defines is live.
+\ A failed check prints its line.
 : SEGMENT-HOLDS? ( n -- bool )
    {: k:n :}
    k INTERVAL-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
    k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
    k NUNIT-OBJECT:TASK-ROW-HOLDS? 0= if k SEGMENT-TASK-ROW false exit then
+   k NUNIT-OBJECT:USER-ROWS-HOLD? 0= if k SEGMENT-TASK-ROW false exit then
    k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
    2drop true ;
 

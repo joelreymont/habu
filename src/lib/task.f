@@ -1681,6 +1681,23 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 : SLOT-NAME ( -- ptr u8 n )
    parse-name dup 0= if E-TASK-USER throw then ;
 
+\ 0, or the quotation OBSERVE-SLOTS stored: +USER hands it each slot word it
+\ generates with the word's offset and size, so a build tool knows the record
+\ by TASK's own account of it, never by its spelling. An image carries 0
+\ (OWNED-CELLS fresh; the tools declare the cell a process cell as FFI's).
+variable SLOT-OBSERVER
+CAST: SLOT-OBSERVER-FN ( n -- [ [ -- ptr n ] n n -- ] )
+CAST: SLOT-OBSERVER-N ( [ [ -- ptr n ] n n -- ] -- n )
+CAST: SLOT>XT ( n -- [ -- ptr n ] )
+
+\ The word +USER just generated is the newest of its name in the current
+\ wordlist; a missing one is a broken definer, not a slot to skip.
+: SLOT-MADE ( ptr u8 n n n -- )
+   {: name:ptr nameu:n off:n size:n :}
+   SLOT-OBSERVER @ dup 0= if drop exit then {: observer:n :}
+   name nameu get-current search-wl dup 0= if drop E-TASK-STATE throw then
+   SLOT>XT off size observer SLOT-OBSERVER-FN execute ;
+
 public
 
 : +USER ( n n -- n ) {: off:n size:n :}
@@ -1694,6 +1711,7 @@ public
    off SLOT-GEN CODEGEN:APPEND-DECIMAL
    s"  + ;" SLOT-GEN CODEGEN:APPEND-STRING
    SLOT-GEN CODEGEN:CONTENTS INCLUDE-EVALUATE
+   name nameu off size SLOT-MADE
    next ;
 generates: +USER ( -- ptr n )
 
@@ -2104,7 +2122,8 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-EXIT-LINK TASK-EXIT-MAX cells carry execute
    TASK-EXIT-N BYTE-VIEW CELL carry execute
    TASK-EXIT-LOCK BYTE-VIEW CELL fresh execute
-   TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute ;
+   TASK-EXIT-SCRATCH BYTE-VIEW CELL fresh execute
+   SLOT-OBSERVER BYTE-VIEW CELL fresh execute ;
 
 \ The FILE range owner needs these fixed callback controls before FFI-CB is
 \ published: a later declaration changes both table bases, even when TASK
@@ -2136,6 +2155,16 @@ TASK-MIN-STACK constant MIN-STACK
 : OWNED-USER-READERS ( [ n -- ] -- )
    {: claim :}
    ['] TASK:#USER READER>N claim execute ;
+
+\ Hand every slot word +USER generates, as its execution token with the slot's
+\ offset and size, to a quotation. The tools' file object journals the slots
+\ a file's code makes (tools/native-unit-dependency.f USER-MADE); a captured
+\ image holds 0.
+: OBSERVE-SLOTS ( [ [ -- ptr n ] n n -- ] -- ) SLOT-OBSERVER-N SLOT-OBSERVER ! ;
+: UNOBSERVE-SLOTS ( -- ) 0 SLOT-OBSERVER ! ;
+\ The observer's cell. The tools declare it a process cell at their load, as
+\ they do FFI's (tools/native-unit-object.f).
+: SLOT-OBSERVER-CELL ( -- ptr n ) SLOT-OBSERVER ;
 
 \ A copied ROW-TABLE control points into its carried row allocation. The
 \ linker marks the copy so ordinary DATA relocation maps it to that copy.

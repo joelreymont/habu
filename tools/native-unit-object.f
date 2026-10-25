@@ -42,7 +42,8 @@ private
 \ input rows; slot 14 the dependency rows. The file's own records fall in
 \ segments, each a maximal run between child loads: slot 12 holds one
 \ EVENT-BYTES row per segment and per child load, in load order, each
-\ segment row followed by the FFI registry rows its code declared. Over the
+\ segment row followed by the FFI registry rows its code declared and a row
+\ per TASK:+USER slot word it made. Over the
 \ segments in order, slot 1 holds one RECORD-BYTES row per record, slot 6 the
 \ DATA they allotted, slot 8 their require rows (length, then path) and slot
 \ 4 one byte per wordlist they made, 1 when it is protected. Slot 3 holds the
@@ -97,8 +98,11 @@ private
 \ FFI-SCOPE: kind, role (0 the declarer's selection when the segment opened,
 \ 1 when it closed), library index, the scope wordlist's reference and 1
 \ when a scope was stated. TASK: kind, TASK's user-slot watermark at the
-\ segment's open and at its close. OUT: kind, the bytes' offset in slot 19
-\ and their length. Unused cells are 0.
+\ segment's open and at its close. USER: kind, the slot word's ordinal past
+\ the file's first record, the slot's DATA offset and size, and the offsets
+\ in slot 3 of the slot's bytes as the segment's close found them and as its
+\ declaration found them. OUT: kind, the bytes' offset in slot 19 and their
+\ length. Unused cells are 0.
 88 constant EVENT-BYTES
 \ An origin row: ordinal, start, end, name offset and length, path offset and
 \ length.
@@ -148,7 +152,7 @@ public
 \ the output a segment's top level wrote.
 1 constant EV-SEGMENT
 2 constant EV-LOAD
-7 constant EV-OUT
+8 constant EV-OUT
 
 private
 
@@ -165,6 +169,10 @@ private
 \ segment that leaves it in place has none, so a parent is not charged with
 \ the slots its children took.
 6 constant EV-TASK
+\ Before the TASK row, after the FFI rows: one row per slot word TASK:+USER
+\ made in the segment, as TASK reported it (NUNIT-DEP:USER-MADE). Cell 1 is
+\ the record's ordinal, so a dictionary cut retires the row with its record.
+7 constant EV-USER
 \ One frame per open file: the buffers' used sizes when it opened, its first
 \ record ordinal, the open segment's marks (first ordinal, HERE, require
 \ count, wordlist counter, address cell rows), the require counter it opened
@@ -300,6 +308,9 @@ CAST: PROCESS-CELL-XT ( n -- [ ptr n -- ] )
 \ Set when this engine's registry declares no process cells.
 variable PROCESS-ABSENT
 variable IMAGE-U
+\ The slot rows (NUNIT-DEP:USERS) whose slots the open segment's image holds
+\ after its IMAGE-U bytes, back to back.
+variable IMAGE-USERS
 \ The kernel cells below the floor as the open segment's image found them,
 \ and whether it took them.
 4 constant KCELLS
@@ -751,7 +762,8 @@ private
    slot FO-SEG-SLOT FO !
    slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO ! ;
 
-\ Copy DATA from the process floor to HERE as the open segment's
+\ Copy DATA from the process floor to HERE, then each slot an earlier
+\ segment's slot word holds, as the open segment's
 \ before-image, counting the bytes against the innermost file, and mark the
 \ segment's address cell rows and kernel cells, after the hooks the caller
 \ set for the segment, so their writes are never the file's. A refused file
@@ -763,12 +775,20 @@ private
    AOT-ARM:HERE-N {: top:n :}
    IMAGE-FLOOR @ 0= top IMAGE-FLOOR @ < or if top IMAGE-FLOOR ! then
    top IMAGE-FLOOR @ - {: bytes:n :}
-   0 IMAGE-U !
-   FILE-REFUSED? bytes 0= or if exit then
-   bytes IMAGE-RESERVE
+   0 IMAGE-U ! 0 IMAGE-USERS !
+   FILE-REFUSED? if exit then
+   NUNIT-DEP:USERS {: users:n :}
+   bytes users 0 ?do i NUNIT-DEP:USER-ROW nip nip + loop {: total:n :}
+   total 0= if exit then
+   total IMAGE-RESERVE
    IMAGE-FLOOR @ DATA-PTR 0 IMAGE bytes BYTE-COPY
-   bytes IMAGE-U !
-   bytes FO-IMAGE FO +! ;
+   bytes users 0 ?do
+      i NUNIT-DEP:USER-ROW rot drop {: off:n size:n :}
+      data-base BYTE-VIEW off + over IMAGE size BYTE-COPY
+      size +
+   loop drop
+   bytes IMAGE-U ! users IMAGE-USERS !
+   total FO-IMAGE FO +! ;
 
 \ The first index from lo below hi whose site is not below va, hi when none.
 : SITE-AT ( n n n -- n )
@@ -800,11 +820,13 @@ private
    loop ;
 
 \ Record each earlier DATA byte that differs from the open segment's
-\ before-image, comparing a cell at a time.
+\ before-image, comparing a cell at a time, then each imaged slot's bytes.
+\ Slot rows are only appended between the image and its close.
 : IMAGE-DIFF ( -- )
    IMAGE-U @ {: size:n :}
-   0 IMAGE-U !
-   size 0= if exit then
+   IMAGE-USERS @ {: users:n :}
+   0 IMAGE-U ! 0 IMAGE-USERS !
+   size 0= users 0= and if exit then
    IMAGE-FLOOR @ {: floor:n :}
    floor DATA-PTR {: live:ptr :}
    0 IMAGE {: before:ptr :}
@@ -814,7 +836,14 @@ private
          floor i CELL live before BYTE-SITES
       then
    CELL +loop
-   floor bulk size bulk - live before BYTE-SITES ;
+   floor bulk size bulk - live before BYTE-SITES
+   size users 0 ?do
+      i NUNIT-DEP:USER-ROW rot drop {: off:n width:n :}
+      DATA-VA VA>N off + {: va:n :}
+      dup {: at:n :}
+      va 0 width va DATA-PTR at IMAGE BYTE-SITES
+      width +
+   loop drop ;
 
 \ The engine's DATA floor. The literal pool raises it past each segment it
 \ opens at HERE (src/compiler/native/string.f PUBLISH), so a segment that
@@ -887,6 +916,19 @@ private
    FFI-SELECTION {: lib:n wid:n stated:bool :}
    EV-FFI-SCOPE first 1 lib wid stated if 1 else 0 then 0 0 0 EV+ ;
 
+\ One USER row per live slot word among the count ordinals from first, with
+\ the bytes its slot holds at the segment's close and its entry bytes.
+: USER-ROWS+ ( n n -- )
+   {: first:n count:n :}
+   NUNIT-DEP:USERS 0 ?do
+      i NUNIT-DEP:USER-ROW {: ord:n off:n size:n :}
+      ord first >= ord first count + < and ord XREF-REC XREF-RETIRED? 0= and if
+         data-base BYTE-VIEW off + size NAMES+ {: at:n :}
+         i NUNIT-DEP:USER-ENTRY$ NAMES+ {: entry:n :}
+         EV-USER ord off size at entry 0 0 0 EV+
+      then
+   loop ;
+
 \ Whether the live address records among the count ordinals from first stand
 \ at or past the segment's start, each at or past the one before: a replay
 \ fills the segment's DATA forward, up to each record in turn.
@@ -928,8 +970,9 @@ private
 \ back, a require counter other than the one the file opened with, or an
 \ address cell row removed below the segment's first refuses it. The row
 \ records the values of its first and last address cell rows, which the
-\ file's encoding checks again; a segment that moved TASK's user-slot
-\ watermark, either way, or ran a reader of it adds its TASK row. The earlier
+\ file's encoding checks again; its slot words add their USER rows, and a
+\ segment that moved TASK's user-slot watermark, either way, or ran a reader
+\ of it adds its TASK row. The earlier
 \ DATA bytes the segment changed are recorded whether or not it adds a row; a
 \ kernel cell it left changed refuses it. Output its top level wrote adds an
 \ OUT row after the rest.
@@ -983,6 +1026,7 @@ private
       bytes SEG-DATA-U +!
    then
    first sel FFI-ROWS+
+   first count USER-ROWS+
    task if EV-TASK first entry user 0 0 0 0 0 EV+ then
    first OUTPUT-ROW+ ;
 
@@ -1361,6 +1405,17 @@ CAST: OBSERVER-CELL-XT ( n -- [ -- ptr n ] )
    xt OBSERVER-CELL-XT execute PROCESS-CELL ;
 
 FFI-OBSERVER-CELL
+
+\ TASK's slot observer belongs to the build in the same way, looked up the
+\ same way.
+: TASK-OBSERVER-CELL ( -- )
+   s" TASK" -1 search-wl {: wid:n :}
+   wid 0= if exit then
+   s" SLOT-OBSERVER-CELL" wid search-wl {: xt:n :}
+   xt 0= if exit then
+   xt OBSERVER-CELL-XT execute PROCESS-CELL ;
+
+TASK-OBSERVER-CELL
 
 \ A definition payload uses the same outer envelope as FILE but owns no FILE
 \ rows or DATA prefix. Section 1 is one 80-byte metadata row;
@@ -2289,6 +2344,12 @@ CAST: N>U8 ( n -- ptr u8 )
       0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N 0 OUT-N
       0 OUT-N 0 OUT-N 0 OUT-N exit
    then
+   kind EV-USER = if
+      kind OUT-N row 1 EV @ FO-FIRST FO @ - OUT-N row 2 EV @ OUT-N
+      row 3 EV @ OUT-N row 4 EV @ FO-NAMES FO @ - OUT-N
+      row 5 EV @ FO-NAMES FO @ - OUT-N 0 OUT-N 0 OUT-N
+      0 OUT-N 0 OUT-N 0 OUT-N exit
+   then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
    row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N row 9 EV @ OUT-N
@@ -2786,7 +2847,9 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    1 SLOTW-N +! ;
 
 \ Drop each changed earlier DATA site that lies in an excluded owner's span,
-\ which holds no program state. A site in the closing file's own DATA is a
+\ which holds no program state. A site in an earlier slot word's slot is a
+\ write the slot's USER row cannot carry: the file runs from source. A site
+\ in the closing file's own DATA is a
 \ later segment's write into an earlier one, whose bytes and slot cells the
 \ object carries as that segment's close left them: an update. A changed
 \ address cell another file declared is a slot row, once per cell; the
@@ -2796,6 +2859,10 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    OWNERS-GATHER
    SITES-N @ FO-SITES FO @ ?do
       i FILE-SITES @ {: va:n :}
+      va DATA-VA VA>N - NUNIT-DEP:USER-AT {: slot:n :}
+      slot 0 >= if
+         s" task-slot-updated" slot XREF-REC REFUSE-WORD unloop exit
+      then
       va 1 OWN-OFF 0 < if va OWNED? if
          0 i FILE-SITES !
       else
@@ -3068,6 +3135,21 @@ private
    wids OPEN-WIDS +! 1 OPEN-SEGS +!
    first count + mark ;
 
+\ Ordinal ord past the file's first record is one of the viewed object's own
+\ records: inside some SEGMENT row's span.
+: OWN-ORD? ( n -- bool )
+   {: ord:n :}
+   12 NUNIT-FILE:SECTION$ {: evs:ptr evsu:n :}
+   evsu EVENT-BYTES / 0 ?do
+      evs i EVENT-BYTES * + {: row:ptr :}
+      row 0 U64-AT EV-SEGMENT = if
+         ord row 1 U64-AT >= ord row 1 U64-AT row 2 U64-AT + < and if
+            true unloop exit
+         then
+      then
+   loop
+   false ;
+
 \ A LOAD event row: an include or a require, where the loading file's source
 \ stood, the child's path and root in the names section, a clean load, a
 \ resume offset within the file's srcu source bytes, and dependency rows and
@@ -3124,6 +3206,17 @@ private
    row 5 U64-AT {: spills:n :}
    argc 0 < argc cap > or spills 0 < or spills cap > or if BAD then ;
 
+\ A USER row after a segment: one of the object's own records, a slot's
+\ offset and size, and the slot's close and entry bytes spans of the names
+\ section.
+: USER-CK ( ptr u8 n -- )
+   {: row:ptr namesu:n :}
+   row 1 U64-AT OWN-ORD? 0= if BAD then
+   row 2 U64-AT 0 < if BAD then
+   row 4 U64-AT row 3 U64-AT namesu SPAN-CK
+   row 5 U64-AT row 3 U64-AT namesu SPAN-CK
+   row 6 U64-AT 0<> if BAD then ;
+
 : EVENTS-CK ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: evs:ptr evsu:n names:ptr namesu:n refs:ptr srcu:n :}
    evsu EVENT-BYTES mod 0<> if BAD then
@@ -3136,12 +3229,14 @@ private
       kind EV-SEGMENT = if row end mark SEGMENT-CK rows inputs else
          kind EV-LOAD = if end mark row namesu srcu rows inputs LOAD-CK else
             kind EV-OUT = if end mark rows inputs else
-               \ FFI rows follow their segment's row, and a TASK row the
-               \ last of them.
+               \ FFI and USER rows follow their segment's row, and a TASK row
+               \ the last of them.
                prev EV-LOAD = prev EV-TASK = or if BAD then
-               kind EV-TASK <> if
-                  kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
-                  row names namesu refs FFI-CK
+               kind EV-USER = if row namesu USER-CK else
+                  kind EV-TASK <> if
+                     kind EV-FFI-LIB < kind EV-FFI-SCOPE > or if BAD then
+                     row names namesu refs FFI-CK
+                  then
                then end mark rows inputs
             then
          then
@@ -3350,21 +3445,6 @@ private
 : SPAN-IN? ( n n n -- bool )
    {: off:n u:n size:n :}
    off 0 >= u 0 >= and off size <= and u size off - <= and ;
-
-\ Ordinal ord past the file's first record is one of the viewed object's own
-\ records: inside some SEGMENT row's span.
-: OWN-ORD? ( n -- bool )
-   {: ord:n :}
-   12 NUNIT-FILE:SECTION$ {: evs:ptr evsu:n :}
-   evsu EVENT-BYTES / 0 ?do
-      evs i EVENT-BYTES * + {: row:ptr :}
-      row 0 U64-AT EV-SEGMENT = if
-         ord row 1 U64-AT >= ord row 1 U64-AT row 2 U64-AT + < and if
-            true unloop exit
-         then
-      then
-   loop
-   false ;
 
 \ Slot 18's framing: a sink kind, then whole rows, none without a sink, each naming one of the
 \ file's records, a name and path within namesu bytes of slot 3, and an
@@ -4042,12 +4122,12 @@ TRUSTED: SLOT-STORE ( n n n -- )
    loop
    AOT-ARM:HERE-N 1 cells mod ev 6 U64-AT <> and 0= ;
 
-\ The event row after segment row seg's FFI and TASK rows.
+\ The event row after segment row seg's FFI, USER and TASK rows.
 : TAIL-END ( n -- n )
    {: seg:n :}
    OBJ-EVS seg 1+ ?do
       i OBJ-EV 0 U64-AT {: kind:n :}
-      kind EV-FFI-LIB < kind EV-TASK > or if i unloop exit then
+      kind EV-FFI-LIB < kind EV-USER > or if i unloop exit then
    loop
    OBJ-EVS ;
 
@@ -4077,6 +4157,23 @@ TRUSTED: SLOT-STORE ( n n n -- )
    row OBJ-EV 2 U64-AT USER-PUT !
    ['] USER-PUT! xt USER-NEXT-XT execute
    0 USER-PUT ! ;
+
+\ Segment row seg's USER rows, installed: each slot gets the bytes the
+\ segment's close left in it, and the table its row with its entry bytes, so
+\ a later segment's store into it is seen as its cold load saw it. MAP-ROW
+\ mapped the ordinals.
+: INSTALL-USERS ( n -- )
+   {: seg:n :}
+   3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
+   seg TAIL-END seg 1+ ?do
+      i OBJ-EV {: row:ptr :}
+      row 0 U64-AT EV-USER = if
+         row 2 U64-AT {: off:n :}
+         row 3 U64-AT {: size:n :}
+         names row 4 U64-AT + data-base BYTE-VIEW off + size BYTE-COPY
+         names row 5 U64-AT + row 1 U64-AT ORD>LIVE off size NUNIT-DEP:USER+
+      then
+   loop ;
 
 \ The offset in slot 8 of require row k.
 : REQ-OFF ( n -- n )
@@ -4139,12 +4236,12 @@ public
    rc 0<> if rc throw then ;
 
 \ Event row seg, a segment: its records with its DATA bytes, the wordlists
-\ they make and their protection, its require rows, its FFI rows, its TASK
-\ row, then the checker slices through its own. The file's first segment
-\ starts at the file's first ordinal and adds its map row here; one after a
-\ load starts wherever the loads left the dictionary, and PREPARE-SEGMENT
-\ added its map row and prepared its checker slice. Every refusal here is a
-\ malformed
+\ they make and their protection, its require rows, its FFI rows, its slots'
+\ bytes, its TASK row, then the checker slices through its own. The file's
+\ first segment starts at the file's first ordinal and adds its map row here;
+\ one after a load starts wherever the loads left the dictionary, and
+\ PREPARE-SEGMENT added its map row and prepared its checker slice. Every
+\ refusal here is a malformed
 \ object.
 : INSTALL-SEGMENT ( n -- )
    {: seg:n :}
@@ -4170,6 +4267,7 @@ public
    wids 0 ?do prot i + c@ 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then loop
    seg rbase reqs INSTALL-REQUIRES
    seg INSTALL-FFI
+   seg INSTALL-USERS
    seg INSTALL-TASK
    loads INSTALL-CHECKS ;
 
@@ -4423,6 +4521,23 @@ public
    row 0 < if true exit then
    USER-MARK {: user:n bound:bool :}
    bound user row OBJ-EV 1 U64-AT = and ;
+
+\ Whether each slot segment row seg's USER rows declare holds the entry
+\ bytes its declaration found: the close bytes the install writes over the
+\ slot assume them, and a slot declared over another owner's bytes must not
+\ restore that owner's old value.
+: USER-ROWS-HOLD? ( n -- bool )
+   {: seg:n :}
+   3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
+   seg TAIL-END seg 1+ ?do
+      i OBJ-EV {: row:ptr :}
+      row 0 U64-AT EV-USER = if
+         row 3 U64-AT {: size:n :}
+         names row 5 U64-AT + size data-base BYTE-VIEW row 2 U64-AT + size STR=
+         0= if false unloop exit then
+      then
+   loop
+   true ;
 
 \ Begin installing the FILE object bytes holds under key at the next
 \ ordinal, its segment map rows after the installing parent's.

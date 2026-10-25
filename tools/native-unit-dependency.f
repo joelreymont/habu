@@ -111,6 +111,15 @@ DYNAMIC-BUFFER RQUEUE n
 DYNAMIC-BUFFER OIDX n
 DYNAMIC-BUFFER OPMAX n
 DYNAMIC-BUFFER OPEND n
+\ The slot words TASK:+USER made inside a file frame or an install restored,
+\ as TASK named them (TASK:OBSERVE-SLOTS): USER-N rows of four cells, each
+\ its record's ordinal, the slot's DATA offset and size, and the offset in
+\ USER-BYTES of the slot's bytes as they stood when the slot was declared
+\ (its entry bytes). USER-BYTES-N bytes of USER-BYTES are in use.
+DYNAMIC-BUFFER USER-TAB n
+variable USER-N
+DYNAMIC-BUFFER USER-BYTES u8
+variable USER-BYTES-N
 0 CWORK-VARIABLE OI-N n
 0 CWORK-VARIABLE OW n
 0 CWORK-VARIABLE OPEND-N n
@@ -458,11 +467,29 @@ $8000000000000000 constant ORIGIN-FLOOR
       1 OPEND-N +!
    then ;
 
+\ Cell k of slot row idx.
+: USER-CELL ( n n -- ptr n ) swap 4 * + USER-TAB ;
+
 public
 
-\ A dictionary cut keeping kept records drops the origins it removed.
+\ A dictionary cut keeping kept records drops the origins and the slot rows
+\ it removed, the kept rows' entry bytes moved down with them.
 : DICT-CUT ( n -- )
    {: kept:n :}
+   0 0 USER-N @ 0 ?do
+      {: rows:n bytes:n :}
+      i 0 USER-CELL @ kept < if
+         i 2 USER-CELL @ {: size:n :}
+         size 0 > if
+            i 3 USER-CELL @ USER-BYTES bytes USER-BYTES size BYTE-COPY
+         then
+         i 0 USER-CELL @ rows 0 USER-CELL !
+         i 1 USER-CELL @ rows 1 USER-CELL !
+         size rows 2 USER-CELL !
+         bytes rows 3 USER-CELL !
+         rows 1+ bytes size +
+      else rows bytes then
+   loop USER-BYTES-N ! USER-N !
    kept OW @ >= if exit then
    0 OI-N @ 0 ?do
       i OI-R kept < if dup i OI-O i OI-R OI! 1+ then
@@ -559,6 +586,76 @@ variable READERS-XT
 CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
 variable READ-AT
 variable READ-HIT
+CAST: SLOT-XT>N ( [ -- ptr n ] -- n )
+
+public
+
+\ Append slot row ord off size, its entry bytes the size bytes at entry.
+: USER+ ( ptr u8 n n n -- )
+   {: entry:ptr ord:n off:n size:n :}
+   USER-N @ {: row:n :}
+   USER-BYTES-N @ {: at:n :}
+   row 1+ 4 * USER-TAB-RESERVE
+   size 0 > if
+      at size + USER-BYTES-RESERVE
+      entry at USER-BYTES size BYTE-COPY
+   then
+   ord row 0 USER-CELL ! off row 1 USER-CELL !
+   size row 2 USER-CELL ! at row 3 USER-CELL !
+   size USER-BYTES-N +!
+   1 USER-N +! ;
+
+\ The slot rows, and row idx's ordinal, offset and size.
+: USERS ( -- n ) USER-N @ ;
+: USER-ROW ( n -- n n n )
+   {: idx:n :}
+   idx 0 USER-CELL @ idx 1 USER-CELL @ idx 2 USER-CELL @ ;
+
+\ Row idx's entry bytes, valid until the next USER+ or DICT-CUT.
+: USER-ENTRY$ ( n -- ptr u8 n )
+   {: idx:n :}
+   idx 2 USER-CELL @ {: size:n :}
+   size 0= if NULL-PTR 0 exit then
+   idx 3 USER-CELL @ USER-BYTES size ;
+
+\ Whether record ord is a slot word.
+: USER? ( n -- bool )
+   {: ord:n :}
+   USER-N @ 0 ?do i 0 USER-CELL @ ord = if true unloop exit then loop
+   false ;
+
+\ The slot word whose slot holds DATA offset off, -1 when none.
+: USER-AT ( n -- n )
+   {: off:n :}
+   USER-N @ 0 ?do
+      i USER-ROW {: ord:n at:n size:n :}
+      off at >= off at size + < and if ord unloop exit then
+   loop
+   -1 ;
+
+\ TASK's slot observer: +USER made the slot word xt over off and size. Inside
+\ a file frame it is the newest record of the innermost file with that
+\ execution token; none is a broken identity. The row keeps the slot's
+\ bytes as the declaration found them: a hit installs the slot's close bytes
+\ only over these (NUNIT-OBJECT USER-ROWS-HOLD?), so a slot declared over
+\ bytes another owner wrote never restores that owner's old value. A segment
+\ that writes a slot of its own and then declares another slot over it
+\ records entry bytes no warm run holds before the segment installs: as a
+\ file's first segment that file misses on every build, and as a later one
+\ its replay goes stale and the maker reruns without its key.
+: USER-MADE ( [ -- ptr n ] n n -- )
+   FDEPTH @ 0= if drop 2drop exit then
+   {: q off:n size:n :}
+   q SLOT-XT>N {: xt:n :}
+   F-FIRST FFIELD @ {: first:n :}
+   ndict@ 1- begin dup first >= while
+      dup XREF-REC XREF-START xt = if
+         data-base BYTE-VIEW off + swap off size USER+ exit
+      then
+      1-
+   repeat drop BAD ;
+
+private
 
 \ The checker's unit-export fact count, -1 when the owner answers none.
 : FACTS ( -- n )
@@ -801,7 +898,9 @@ variable READ-HIT
 \ is its cell, since an earlier file may rebind it; a definition with a
 \ result is a member when its host reason is admitted
 \ (NFILE-REF:REASON-ADMITTED?) and refuses otherwise; a constant is its VALUE row; a does> instance's
-\ clause has no result yet; anything else must be a data record.
+\ clause has no result yet; anything else must be a data record. A slot word
+\ TASK:+USER made is a member without its edges: its digest pins the slot
+\ offset it bakes, and its slot's bytes are its file's (USER-ROWS+).
 : REACH ( n -- )
    {: ord:n :}
    WTRANS @ if
@@ -819,7 +918,8 @@ variable READ-HIT
    known if
       ord NFILE-REF:RESULT-REASON drop {: reason:n :}
       reason NFILE-REF:REASON-ADMITTED? 0= if reason REASON-WHY$ ord FAIL exit then
-      ord MEMBER+ ord EDGES exit
+      ord MEMBER+
+      ord USER? 0= if ord EDGES then exit
    then
    rec XREF-FLAGS {: flags:n :}
    flags DKIND:MASK and DKIND:VAL = if exit then
@@ -1740,6 +1840,7 @@ variable USER-READ
    PTRS-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
+   USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
    0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 READERS-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
