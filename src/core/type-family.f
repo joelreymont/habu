@@ -240,6 +240,9 @@ variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !   REG-PROTECT
 create TF-STR-BOOT   TF-STR-INIT allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !   REG-PROTECT
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
+\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
+PERSISTED-PTR-VARIABLE TF-STR-HOME   TF-STR-BOOT TF-STR-HOME !   REG-PROTECT
+variable TF-STR-HOME-CAP   TF-STR-INIT TF-STR-HOME-CAP !   REG-PROTECT
 
 public
 
@@ -3665,9 +3668,7 @@ public
    PF-PERSIST-CANONICAL
    PF-A-P    PF-CAP-V @ PF-REC *      REG-PERSIST-BUF drop
    LAY-A-P   LAY-CAP-V @ LAY-REC *    REG-PERSIST-BUF drop
-   TF-STR-P TF-STR-U @ TF-STR-CAP-V @ REG-PERSIST-MOVE nip IF
-      TF-STR-U @ TF-STR-CAP-V !
-   THEN ;
+   TF-STR-P TF-STR-HOME TF-STR-HOME-CAP TF-STR-U TF-STR-CAP-V REG-POOL-PERSIST ;
 
 \ TFX-SNAP-RESET ( -- ) : snapshot prepare — the tail index's bucket array is a
 \ grown, process-local buffer, so it is dropped back to the baked boot store and
@@ -3769,8 +3770,8 @@ create REG-AOT-END-A REG-AOT-N cells allot
 \ (`cap 1+`), so a seeded delta lands in an arena of the capacity a compiled one
 \ reaches rather than the grow's floor `n`. The type-name store's compiled ENSURE
 \ asks for max(used + name bytes, 2*cap), which is 2*cap here: names are at most
-\ TF-NAME-MAX bytes and every baked name store is larger, and persist rebakes a
-\ moved name store at its used size in any case.
+\ TF-NAME-MAX bytes and every baked name store is larger, and persist places a
+\ moved name store by its used size and home (REG-POOL-PERSIST).
 : REG-AOT-ROOM ( n n -- ) {: k:n n:n :}
    k 0 = IF begin n TF-CAP-V @ > while TF-CAP-V @ 1+ TF-GROW repeat EXIT THEN
    k 1 = IF begin n TF-PK-CAP-V @ > while TF-PK-CAP-V @ 1+ TF-PK-GROW repeat EXIT THEN

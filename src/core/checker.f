@@ -2042,6 +2042,8 @@ create CT-STR-BOOT CT-STR-INIT allot
 PERSISTED-PTR-VARIABLE CT-NAME-A-P   PERSISTED-PTR-VARIABLE CT-NAME-U-P   PERSISTED-PTR-VARIABLE CT-CLASS-P
 PERSISTED-PTR-VARIABLE CT-WIDTH-P    PERSISTED-PTR-VARIABLE CT-SIGN-P     PERSISTED-PTR-VARIABLE CT-STR-P
 PERSISTED-PTR-VARIABLE CT-PKG-A-P    PERSISTED-PTR-VARIABLE CT-PKG-U-P
+\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
+PERSISTED-PTR-VARIABLE CT-STR-HOME   variable CT-STR-HOME-CAP
 variable CTN
 variable CT-STR-U
 variable CT-I
@@ -2052,7 +2054,8 @@ PTR-VARIABLE CT-DST
    CT-NAME-A-BOOT CT-NAME-A-P !   CT-NAME-U-BOOT CT-NAME-U-P !
    CT-CLASS-BOOT CT-CLASS-P !     CT-WIDTH-BOOT CT-WIDTH-P !
    CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P !
-   CT-PKG-A-BOOT CT-PKG-A-P !     CT-PKG-U-BOOT CT-PKG-U-P ! ;
+   CT-PKG-A-BOOT CT-PKG-A-P !     CT-PKG-U-BOOT CT-PKG-U-P !
+   CT-STR-BOOT CT-STR-HOME !      CT-STR-INIT CT-STR-HOME-CAP ! ;
 CT-ARENA-BOOT
 : CT-NAME-A ( -- ptr n ) CT-NAME-A-P @ ;
 : CT-NAME-U ( -- ptr n ) CT-NAME-U-P @ ;
@@ -4753,6 +4756,8 @@ PERSISTED-PTR-VARIABLE VREC-FIELDS-P
 PERSISTED-PTR-VARIABLE VRN-TAG-P   PERSISTED-PTR-VARIABLE VRN-A-P   PERSISTED-PTR-VARIABLE VRN-B-P   PERSISTED-PTR-VARIABLE VRN-C-P
 PERSISTED-PTR-VARIABLE VRN-D-P     PERSISTED-PTR-VARIABLE VRN-E-P   PERSISTED-PTR-VARIABLE VRN-F-P   PERSISTED-PTR-VARIABLE VRN-G-P
 PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
+\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
+PERSISTED-PTR-VARIABLE VREC-STR-HOME   variable VREC-STR-HOME-CAP
 
 : VREC-ARENA-BOOT ( -- )        \ point every VREC store at its boot buffer
    VREC-NAME-A-BOOT VREC-NAME-A-P !   VREC-NAME-U-BOOT VREC-NAME-U-P !
@@ -4762,7 +4767,8 @@ PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
    VRN-TAG-BOOT VRN-TAG-P !   VRN-A-BOOT VRN-A-P !   VRN-B-BOOT VRN-B-P !
    VRN-C-BOOT VRN-C-P !       VRN-D-BOOT VRN-D-P !   VRN-E-BOOT VRN-E-P !
    VRN-F-BOOT VRN-F-P !       VRN-G-BOOT VRN-G-P !   VRN-H-BOOT VRN-H-P !
-   VREC-STR-BOOT VREC-STR-P ! ;
+   VREC-STR-BOOT VREC-STR-P !
+   VREC-STR-BOOT VREC-STR-HOME !   VREC-STR-INIT VREC-STR-HOME-CAP ! ;
 VREC-ARENA-BOOT
 : VREC-NAME-A ( -- ptr n ) VREC-NAME-A-P @ ;
 : VREC-NAME-U ( -- ptr n ) VREC-NAME-U-P @ ;
@@ -7240,6 +7246,9 @@ $28 constant SYM-REC
 create SYM-STR-BOOT SYM-STR-INIT allot
 PERSISTED-PTR-VARIABLE SYMS-P     NULL-PTR SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
+\ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
+PERSISTED-PTR-VARIABLE SYM-STR-HOME   SYM-STR-BOOT SYM-STR-HOME !
+variable SYM-STR-HOME-CAP   SYM-STR-INIT SYM-STR-HOME-CAP !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-PRIM-END
@@ -15694,6 +15703,29 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : REG-PERSIST-BUF ( ptr ptr u8 n -- bool ) {: pvar:ptr bytes:n :}
    pvar bytes bytes REG-PERSIST-MOVE nip ;
 
+\ REG-POOL-PERSIST ( pvar home home-cap used cap -- ) : bake a string pool by
+\ its used size and its home alone. The home is the DATA block the pool was last
+\ baked in, its boot buffer until a capture rebakes it; every reset of the pool
+\ to its boot buffer resets the home with it. A grow moved the pool to a mapping
+\ and zeroed the home it left. A pool whose used bytes still fit that home goes
+\ back there: a rolled-back declaration's interns grew the pool and its rewind
+\ gave the bytes back, so the image is the one a load without that declaration
+\ bakes, which is what a file hit of the load leaves. A pool that outgrew its
+\ home is baked at its used size, and that block becomes the home.
+: REG-POOL-PERSIST ( ptr ptr u8 ptr ptr u8 ptr n ptr n ptr n -- )
+   {: pvar:ptr home:ptr hcap:ptr used:ptr cap:ptr :}
+   pvar @ home @ = IF EXIT THEN
+   used @ hcap @ <= IF
+      pvar @ home @ used @ ARENA-COPY
+      home @ pvar !
+      hcap @ cap !
+      EXIT
+   THEN
+   pvar used @ cap @ REG-PERSIST-MOVE 2drop
+   used @ cap !
+   pvar @ home !
+   cap @ hcap ! ;
+
 : CT-SNAPSHOT-PERSIST ( -- )
    CT-CAP-V @ cells {: ab:n :}
    CT-NAME-A-P ab REG-PERSIST-BUF drop
@@ -15703,9 +15735,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    CT-SIGN-P ab REG-PERSIST-BUF drop
    CT-PKG-A-P ab REG-PERSIST-BUF drop
    CT-PKG-U-P ab REG-PERSIST-BUF drop
-   CT-STR-P CT-STR-U @ CT-STR-CAP-V @ REG-PERSIST-MOVE nip IF
-      CT-STR-U @ CT-STR-CAP-V !
-   THEN ;
+   CT-STR-P CT-STR-HOME CT-STR-HOME-CAP CT-STR-U CT-STR-CAP-V REG-POOL-PERSIST ;
 
 : VREC-SNAPSHOT-PERSIST ( -- )
    VREC-CAP-V @ cells {: rb:n :}
@@ -15727,16 +15757,12 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    VRN-G-P nb REG-PERSIST-BUF drop
    VRN-H-P nb REG-PERSIST-BUF drop
    VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-STR-P VREC-STR-U @ VREC-STR-CAP-V @ REG-PERSIST-MOVE nip IF
-      VREC-STR-U @ VREC-STR-CAP-V !
-   THEN ;
+   VREC-STR-P VREC-STR-HOME VREC-STR-HOME-CAP VREC-STR-U VREC-STR-CAP-V REG-POOL-PERSIST ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS drop
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
-   SYM-STR-P SYM-STR-U @ SYM-STR-CAP-V @ REG-PERSIST-MOVE nip IF
-      SYM-STR-U @ SYM-STR-CAP-V !
-   THEN ;
+   SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
 
 \ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
 \ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
