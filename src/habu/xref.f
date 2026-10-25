@@ -705,27 +705,22 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
    s cp@ < if s exit then
    0 ;
 
-variable LIVE-HI
-variable FLOOR-A
-
-: HIGHER ( n n -- n ) {: hi:n s:n :}
-   s hi > if s exit then
-   hi ;
-
 \ The highest address any routine below the cut begins at. A record that is
 \ already RETIRED still counts: `undefine` retires the name and leaves the
 \ routine where it is, and a caller compiled before that retirement still
 \ branches into it.
-: LIVE-SCAN ( n -- ) {: cut:n :}
-   0 LIVE-HI !
+\ The scans below carry their running values on the stack, never in a cell: a
+\ routine's start is an arena address, which moves with every launch, and a
+\ cell holding one would carry it into a captured image.
+: LIVE-SCAN ( n -- n ) {: cut:n :}
+   0
    cut 0 ?do
-      LIVE-HI @ i REC-CODE HIGHER LIVE-HI !
+      i REC-CODE max
    loop ;
 
-: MIN-ABOVE-LIVE ( n n -- n ) {: floor:n s:n :}
-   s LIVE-HI @ <= if floor exit then
-   s floor < if s exit then
-   floor ;
+: MIN-ABOVE-LIVE ( n n n -- n ) {: live:n floor:n s:n :}
+   s live <= if floor exit then
+   s floor min ;
 
 public
 
@@ -755,12 +750,11 @@ public
 \ start. When the sweep retires no routine that sits above the survivors there
 \ is nothing to give back and the answer is the free slot itself.
 : FLOOR-FROM ( n -- n ) {: cut:n :}
-   cut LIVE-SCAN
-   cp@ FLOOR-A !
+   cut LIVE-SCAN {: live:n :}
+   cp@
    ndict@ cut ?do
-      FLOOR-A @ i REC-CODE MIN-ABOVE-LIVE FLOOR-A !
-   loop
-   FLOOR-A @ ;
+      live swap i REC-CODE MIN-ABOVE-LIVE
+   loop ;
 
 \ Reclaim the code space above this address. Both relocation maps are cleared
 \ over [floor,old CP), then the pointer moves.
@@ -775,8 +769,7 @@ public
 : TRUNCATE ( n -- )
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then
-   ndict@ LIVE-SCAN
-   floor LIVE-HI @ <= if E-LIVE throw then
+   floor ndict@ LIVE-SCAN <= if E-LIVE throw then
    floor INVALIDATE
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
@@ -790,15 +783,13 @@ get-current prot-wid-add
 
 ;package
 
-variable XREF-FORGET-CP
-
 : FORGET-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
-   idx CODE-RECLAIM:FLOOR-FROM XREF-FORGET-CP !
+   idx CODE-RECLAIM:FLOOR-FROM {: floor:n :}
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
-   XREF-FORGET-CP @ CODE-RECLAIM:TRUNCATE ;
+   floor CODE-RECLAIM:TRUNCATE ;
 
 : XREF-NAME. ( ptr n -- )
    XREF-NAME$ type ;

@@ -159,24 +159,10 @@ CAST: ORIGIN-AT-XT ( n -- [ ptr u8 n n -- n bool ] )
    s" NATIVE-RUNTIME:BUNDLE-HOST-ABS" XREF-FIND XREF-START ;
 
 CAST: TARGET-PATH-XT ( n -- [ ptr u8 n -- ] )
-CAST: TARGET-CELL-XT ( n -- [ -- ptr n ] )
 CAST: TARGET-N-XT ( n -- [ -- n ] )
 
 : TARGET-N ( ptr u8 n -- n )
    OPEN-TARGET-XT TARGET-N-XT execute ;
-
-: TARGET-CELL@ ( n -- n )
-   TARGET-CELL-XT execute @ ;
-
-: TARGET-CELL! ( n n -- )
-   {: value:n xt:n :}
-   value xt TARGET-CELL-XT execute ! ;
-
-: TARGET-LIVE-XT ( -- n )
-   s" CODE-RECLAIM" s" LIVE-HI" OPEN-PRIVATE-XT ;
-
-: TARGET-FLOOR-XT ( -- n )
-   s" CODE-RECLAIM" s" FLOOR-A" OPEN-PRIVATE-XT ;
 
 : BUNDLE-HOST-CHECK ( -- )
    T-RESET
@@ -192,16 +178,8 @@ CAST: TARGET-N-XT ( n -- [ -- n ] )
    s" NATIVE-RUNTIME:BUNDLE-HOST-ABS" BUNDLE-HANDLE
    s" abs" BUNDLE-HANDLE NHOST:ASSOCIATE
    ORIGIN-INSTALL-CASE
-   \ Target-owned FORGET writes numeric address scratch outside the retired
-   \ code span. Preserve its prior capture state around this test-only cut.
-   s" XREF-FORGET-CP" OPEN-TARGET-XT TARGET-CELL@ {: saved-cp:n :}
-   TARGET-LIVE-XT TARGET-CELL@ {: saved-live:n :}
-   TARGET-FLOOR-XT TARGET-CELL@ {: saved-floor:n :}
    s" NATIVE-RUNTIME:BUNDLE-HOST-MARK"
       s" FORGET-DEFS-FROM" OPEN-TARGET-XT TARGET-PATH-XT execute
-   saved-cp s" XREF-FORGET-CP" OPEN-TARGET-XT TARGET-CELL!
-   saved-live TARGET-LIVE-XT TARGET-CELL!
-   saved-floor TARGET-FLOOR-XT TARGET-CELL!
    s" NATIVE-RUNTIME:BUNDLE-HOST-ABS" XREF-FIND XREF-FOUND? 0= TTRUE
    T-REPORT ;
 
