@@ -206,7 +206,6 @@ variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-nam
 variable LDIAGU     \ ( x9 = value ) unsigned decimal on fd 2, no newline (dot habu-name-silent-engine-9b28ac13)
 variable LDIAGDEF   \ ( -- ) the open definition's name on fd 2 (first token of the body buffer)
 variable LBCAPFULLMSG   variable LBCAPUNIT   \ per-definition body-capture overflow (habu1.f EMIT-BCAP at BODYBUF-CAP); label LBCAPFULL declared in habu1.f forward-ref block (dot habu-name-the-per-56a594f3)
-variable LSNAPNESTMSG   variable LSNAPUNIT   \ BEGIN-nesting overflow (jit.f EMIT-SNAP-NEST-CHECK at JIT-SNAP:FRAMES); label LSNAPNEST declared in jit.f
 variable LDPBADMSG   variable LDPBADOF   variable LDPBADUNIT   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks): the head, the " of " before the ceiling and the " bytes" that ends the line; label LDPBAD declared in habu1.f forward-ref block (dots habu-dictionary-allot-past-4e5c3c2b, habu-name-the-ceiling-98ca1f47)
 variable LDIAGNEEDS     \ the shared " needs " between the ceiling and the count
 variable LQNEST   variable LQNESTMSG   variable LQNESTUNIT   \ quotation-nesting overflow (J-QUOT at JIT-QUOT:LEVELS open); EM-QUOT-NEST-DIE names the ceiling, the definition and the depth (dots habu-name-the-nested-6a8e1b28, habu-open-a-quotation-f6c2a55f)
@@ -222,8 +221,6 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : DPBAD-UNIT$ ( -- ptr u8 n )    s"  bytes" ;
 : BCAPFULL-MSG$ ( -- ptr u8 n )  s" hb: definition body text full at " ;
 : BCAP-UNIT$ ( -- ptr u8 n )     s"  bytes: " ;
-: SNAPNEST-MSG$ ( -- ptr u8 n )  s" hb: BEGIN nesting full at " ;
-: SNAP-UNIT$ ( -- ptr u8 n )     s"  frames: " ;
 : DIAG-NEEDS$ ( -- ptr u8 n )    s"  needs " ;
 : QNEST-MSG$ ( -- ptr u8 n )     s" hb: quotation nesting full at " ;
 : QNEST-UNIT$ ( -- ptr u8 n )    s"  levels: " ;
@@ -242,8 +239,6 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : DPBAD-UNIT-LEN ( -- n )    DPBAD-UNIT$ nip ;
 : BCAPFULL-MSG-LEN ( -- n )  BCAPFULL-MSG$ nip ;
 : BCAP-UNIT-LEN ( -- n )     BCAP-UNIT$ nip ;
-: SNAPNEST-MSG-LEN ( -- n )  SNAPNEST-MSG$ nip ;
-: SNAP-UNIT-LEN ( -- n )     SNAP-UNIT$ nip ;
 : DIAG-NEEDS-LEN ( -- n )    DIAG-NEEDS$ nip ;
 : QNEST-MSG-LEN ( -- n )     QNEST-MSG$ nip ;
 : QNEST-UNIT-LEN ( -- n )    QNEST-UNIT$ nip ;
@@ -743,8 +738,6 @@ here BPL-KW - constant BPL-LEN
    LCODEFULL LABEL@ LBL, CODEFULL-MSG$ BYTES,
    LBCAPFULLMSG LABEL@ LBL, BCAPFULL-MSG$ BYTES,                         \ EM-BODY-CAP-DIE appends the ceiling, the unit, the definition, " needs ", the count, newline
    LBCAPUNIT LABEL@ LBL, BCAP-UNIT$ BYTES,
-   LSNAPNESTMSG LABEL@ LBL, SNAPNEST-MSG$ BYTES,                         \ EM-SNAP-NEST-DIE composes the same line from JIT-SNAP:FRAMES
-   LSNAPUNIT LABEL@ LBL, SNAP-UNIT$ BYTES,
    LDIAGNEEDS LABEL@ LBL, DIAG-NEEDS$ BYTES,
    LQNESTMSG LABEL@ LBL, QNEST-MSG$ BYTES,                               \ EM-QUOT-NEST-DIE composes the same line from JIT-QUOT:LEVELS
    LQNESTUNIT LABEL@ LBL, QNEST-UNIT$ BYTES,
@@ -13012,24 +13005,6 @@ public
    9 15 0 ADDI,  LDIAGU LABEL@ BL,
    0 71 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-\ BEGIN-nesting capacity diagnostic (dot habu-name-silent-engine-9b28ac13).
-\ jit.f EMIT-SNAP-NEST-CHECK exited 75 with NOTHING on fd 2 when a definition
-\ nested BEGIN past the snapshot frame area, so a program that outgrew the JIT's
-\ per-definition frames died unattributably. Same line, same routing, same
-\ pre-existing exit code (75). Entered with x6 = the depth already held, so the
-\ frame this BEGIN asked for is x6 + 1; it moves to x15 for the same reason the
-\ body-capture count does.
-: EM-SNAP-NEST-DIE ( -- )
-   LSNAPNEST LABEL@ LBL,
-   15 6 1 ADDI,                                    \ x15 = the frame this BEGIN needs
-   0 2 MOVZ,  1 LSNAPNESTMSG LABEL@ ADR,  2 SNAPNEST-MSG-LEN MOVZ,  NR-WRITE SYS,
-   9 JIT-SNAP:FRAMES MOVZ,  LDIAGU LABEL@ BL,
-   0 2 MOVZ,  1 LSNAPUNIT LABEL@ ADR,  2 SNAP-UNIT-LEN MOVZ,  NR-WRITE SYS,
-   LDIAGDEF LABEL@ BL,
-   0 2 MOVZ,  1 LDIAGNEEDS LABEL@ ADR,  2 DIAG-NEEDS-LEN MOVZ,  NR-WRITE SYS,
-   9 15 0 ADDI,  LDIAGU LABEL@ BL,
-   0 75 MOVZ,  LCOMPILEDIE LABEL@ B, ;
-
 \ Quotation-nesting capacity diagnostic (dots habu-name-the-nested-6a8e1b28,
 \ habu-open-a-quotation-f6c2a55f). J-QUOT parks every enclosing quotation in a
 \ JIT-QUOT frame, so one definition holds JIT-QUOT:LEVELS open at once - the
@@ -13037,7 +13012,7 @@ public
 \ The load path aborts here, before the check that runs at the definition's
 \ `;`. tools/check.f never runs the source this far: its preverify refuses the
 \ 33rd control frame first (E-UNCHECKABLE, src/core/checker.f CF-PUSH).
-\ The line has EM-SNAP-NEST-DIE's shape: the ceiling, the definition, the depth
+\ The line has EM-BODY-CAP-DIE's shape: the ceiling, the definition, the depth
 \ it asked for. It routes through the SAME LCOMPILEDIE tail with x0=75: a
 \ catchable throw inside evaluate (J-QUOT branches here before it writes a cell
 \ or emits a word, so the rollback is clean), a fail-closed exit 75 at top
@@ -13668,7 +13643,6 @@ package ENGINE-EMIT
    EMIT-DIAGU
    EMIT-DIAGDEF
    EM-BODY-CAP-DIE
-   EM-SNAP-NEST-DIE
    EM-QUOT-NEST-DIE
    EM-SOURCE-END-DIE
    EM-COMPILE-EXIT
@@ -13787,7 +13761,6 @@ package LABELS
    LBL OVERLAY-EMIT:LDIE !
    LBL LDIAGU !  LBL LDIAGDEF !  LBL LDIAGNEEDS !
    LBL LBCAPFULL !  LBL LBCAPFULLMSG !  LBL LBCAPUNIT !
-   LBL LSNAPNEST !  LBL LSNAPNESTMSG !  LBL LSNAPUNIT !
    LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !  LBL LINCOMPMSG !
    LBL LSRCEND !  LBL LSRCENDMSG !  LBL LCOMEND !  LBL LCOMENDMSG !
    LBL LSRCCLOSE !  LBL LSRCCLOSEMSG !

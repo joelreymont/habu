@@ -19,7 +19,6 @@ variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
 variable LVNEED
-variable LSNAPNEST   \ BEGIN-nesting over JIT-SNAP:FRAMES die target (defined in habu2.f EM-SNAP-NEST-DIE; dot habu-name-silent-engine-9b28ac13)
  0 XDS  8 ENC-STRPOST  constant W-PUSHR   \ str xR,[x19],#8  (or with R)
  0 XDS -8 ENC-LDRPRE   constant W-POPR    \ ldr xR,[x19,#-8]!
  0 XDS  8 ENC-STRDPOST constant W-FPUSHR  \ str dR,[x19],#8  — tag 2 = FLOAT reg
@@ -806,12 +805,6 @@ variable LVSNAP  variable LVRECON
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
-: EMIT-SNAP-NEST-CHECK ( label -- ) {: snok:label :}
-   SP SP 16 SUBI,  30 SP 0 STR,
-   6 DATA JIT-SNAP:SP-CELL LDR,  6 JIT-SNAP:FRAMES CMPI,  C-LT snok BCOND,
-      LSNAPNEST LABEL@ B,                         \ BEGIN nesting past the frame area: x6 = the depth held; habu2.f EM-SNAP-NEST-DIE names it, then rc 75
-   snok LBL, ;
-
 : EMIT-SNAP-FORCE-LOOP ( label label label -- ) {: fl:label fd:label fail:label :}
    5 0 MOVZ,
    fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
@@ -853,8 +846,8 @@ variable LVSNAP  variable LVRECON
 : EMIT-VSNAP ( -- )
    LVSNAP LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
-   LBL {: plo :}  LBL {: pnx :}  LBL {: snok :}
-   snok EMIT-SNAP-NEST-CHECK
+   LBL {: plo :}  LBL {: pnx :}
+   SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA VSP-CELL LDR,  6 14 CMPI,  C-GE fail BCOND,   \ two cells pack 13 (the pool)
    fl fd fail EMIT-SNAP-FORCE-LOOP
    fd LBL,                                  \ pack: x12 = slots 0-7, x10 = slots 8+

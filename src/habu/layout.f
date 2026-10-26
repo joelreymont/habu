@@ -2352,17 +2352,18 @@ $43B8 constant B0-CELL           \ first address of its code span
 \ and explicitly cleared by the loader. They are live only inside a definition.
 \ THE DEPTH CELL STAYS LOW, AND THAT IS NOT AN OPTIMISATION. It is
 \ definition-scoped state exactly like VSP-CELL, LVD-CELL and EXITH-CELL, so the
-\ colon handlers and EM-RESET-COMPILE-STATE have to zero it in the same breath as
+\ colon handlers and EM-ABORT-COMPILE-STATE have to zero it in the same breath as
 \ those -- a run of `9 DATA <off> STR,` sharing one already-zeroed register. Up in
 \ the frame band it would need its own 64-bit literal and a second register,
 \ inside a routine documented to clobber x9 only.
 \
-\ Leaving it out of that run is what leaked: a definition that failed after its
-\ BEGIN left the depth raised, 28 such failures walked it to the nesting bound,
-\ and the 29th `begin` in the session exited 75 with nothing wrong with it.
+\ Left out of that run, a definition that fails after its BEGIN leaves the
+\ depth raised.
 package JIT-SNAP
 public
-28 constant FRAMES                                  \ EMIT-SNAP-NEST-CHECK's bound
+\ One frame per open BEGIN entry, pushed after C-CF-ROOM admits the entry,
+\ so SP-CELL <= the CF depth <= CFSTK-DEPTH-MAX and no push needs a check.
+CFSTK-DEPTH-MAX constant FRAMES
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
 $378 constant SP-CELL                               \ depth; low, beside TIER-CELL
 SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area

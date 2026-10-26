@@ -483,10 +483,12 @@ variable GE-BCAP-N          \ literal payload bytes for the fixture being writte
    BODYBUF-CAP 1+ GE-BCAP-DIAG$ s" body-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: per-definition body-text capacity is named with its count" type cr ;
 
-\ BEGIN nesting per definition (dot habu-name-silent-engine-9b28ac13). The JIT
-\ snapshots the abstract value stack once per BEGIN into JIT-SNAP:FRAMES frames
-\ of DATA, and a definition that nested past them exited 75 with NOTHING on fd 2.
-\ Same ceiling, same exit code, now named with the depth the definition asked for.
+\ BEGIN nesting per definition. Tier 0 pushes one JIT-SNAP frame per open
+\ `begin`, so the frame area holds the control-flow cap's worth: CFSTK-DEPTH-MAX
+\ nested `begin`s fill it, and GE-CF-DEPTH-CAP holds the over-cap refusal. The
+\ checker refuses a nest this deep, so the script turns it off with
+\ `0 set-check`: the frames, not the certificate, are under test. The nest runs,
+\ so all its frames are pushed and popped without a refusal.
 variable GE-NEST-P
 variable GE-NEST-I
 
@@ -506,18 +508,21 @@ variable GE-NEST-J
 
 : GE-NEST-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
    0 GE-NEST-P !
+   buf s" 0 set-check" GE-NEST-S  buf 10 GE-NEST-C
    buf s" : GENEST ( n -- n )" GE-NEST-S  buf 10 GE-NEST-C
    0 GE-NEST-J !
    begin GE-NEST-J @ GE-NEST-N @ < while
-      buf s"    begin dup 0 > while 1 -" GE-NEST-S  buf 10 GE-NEST-C
+      buf s"    begin" GE-NEST-S  buf 10 GE-NEST-C
       GE-NEST-J @ 1+ GE-NEST-J !
    repeat
+   buf s"    1 +" GE-NEST-S  buf 10 GE-NEST-C
    0 GE-NEST-J !
    begin GE-NEST-J @ GE-NEST-N @ < while
-      buf s"    repeat" GE-NEST-S  buf 10 GE-NEST-C
+      buf s"    dup 0 > until" GE-NEST-S  buf 10 GE-NEST-C
       GE-NEST-J @ 1+ GE-NEST-J !
    repeat
    buf s" ;" GE-NEST-S  buf 10 GE-NEST-C
+   buf s" 5 GENEST . cr" GE-NEST-S  buf 10 GE-NEST-C
    GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-NEST-P @ WRITE-ALL ;
 
 : GE-NEST-RUN ( n -- ) {: depth:n :}
@@ -527,21 +532,11 @@ variable GE-NEST-J
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER ;
 
-: GE-NEST-DIAG$ ( -- ptr u8 n )
-   SB-RESET
-   s" hb: BEGIN nesting full at " SB-APPEND
-   JIT-SNAP:FRAMES FMT:SB-U
-   s"  frames: GENEST needs " SB-APPEND
-   JIT-SNAP:FRAMES 1+ FMT:SB-U
-   SB$ ;
-
 : GE-BEGIN-NEST ( -- )
-   JIT-SNAP:FRAMES GE-NEST-RUN
-   0 s" BEGIN nesting at the frame ceiling compiles" GE-EXPECT-RC
-   JIT-SNAP:FRAMES 1+ GE-NEST-RUN
-   75 s" BEGIN-nesting exit rc" GE-EXPECT-RC
-   GE-NEST-DIAG$ s" BEGIN-nesting exit diagnostic" GE-EXPECT-ERR-HAS
-   s" PASS: BEGIN-nesting capacity is named with its depth" type cr ;
+   CFSTK-DEPTH-MAX GE-NEST-RUN
+   0 s" BEGIN nesting to the control-flow cap runs" GE-EXPECT-RC
+   S\" 6\n" s" BEGIN nesting to the control-flow cap answers" GE-EXPECT-OUT-HAS
+   s" PASS: BEGIN frames hold the control-flow cap's nesting" type cr ;
 
 \ DP heap (allot/,/c,/definer) must stop below the profiler counter band reserved at
 \ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the

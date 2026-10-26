@@ -463,7 +463,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Owners and views | C2 owners, `read-view`/`mut-view`, scope binders |
 | Errors | the `ENGINE-ERROR` ABI, `die` divergence |
 | Integer arithmetic | the wrapping contract, `MIN-N` |
-| Engine limits … | the body-text, REPL-line, `begin`, `[:` and `do` nesting, name, effect-depth, input-row and data-space ceilings |
+| Engine limits … | the body-text, REPL-line, `[:` and control-flow nesting, name, effect-depth, input-row and data-space ceilings |
 | Constants | hex versus decimal, where codes live |
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |

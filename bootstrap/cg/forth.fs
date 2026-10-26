@@ -548,7 +548,7 @@ USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 \ pending table above them. The low header has no room for the band: frames
 \ there run over LASTC/RSP/EXITH/LVD/LVH ($560..$600), and src/core/checker.f
 \ keeps its declaration-owner cells at $360/$368 on this engine too.
-28 constant SNAP-FRAMES                   \ EMIT-SNAP-NEST-CHECK's bound (native JIT-SNAP:FRAMES)
+28 constant SNAP-FRAMES                   \ EMIT-SNAP-NEST-CHECK's bound (the seed's own)
 24 constant SNAP-FRAME-BYTES
 USE-BAND-END constant SNAPSTK-OFF
 SNAPSTK-OFF SNAP-FRAMES SNAP-FRAME-BYTES * + constant SNAPSTK-END

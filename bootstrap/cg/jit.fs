@@ -645,8 +645,7 @@ $358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
-\ A BEGIN past the frame band is refused in native's words and with native's
-\ status (src/habu/habu2.f EM-SNAP-NEST-DIE), exit 75:
+\ A BEGIN past the frame band is refused, exit 75:
 \   hb: BEGIN nesting full at 28 frames: <name> needs <depth>
 \ The name is C-DEF-NAME, the first token of the body capture, where native's
 \ EMIT-DIAGDEF reads it: DEF-TKA/DEF-TKL lie under VVAL-OFF, which the virtual

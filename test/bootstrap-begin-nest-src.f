@@ -1,9 +1,9 @@
 \ bootstrap-begin-nest-src.f - stage0 BEGIN frames stay off the compile cells.
 
 \ Every `begin` pushes a 24-byte snapshot frame of the virtual stack, and the
-\ seed's frame area holds 28 of them, the ceiling native names as
-\ JIT-SNAP:FRAMES. While those frames sat at $360..$600 in the DATA header, the
-\ 22nd landed on the seed's compile cells LASTC and RSP, the 23rd on EXITH (the
+\ seed's frame area holds 28 of them (SNAP-FRAMES, bootstrap/cg/forth.fs). While
+\ those frames sat at $360..$600 in the DATA header, the 22nd landed on the
+\ seed's compile cells LASTC and RSP, the 23rd on EXITH (the
 \ EXIT placeholder chain), LVD (the open DO levels) and the first LVH cell (that
 \ level's LEAVE chain), and the rest on deeper LVH cells. So each definition
 \ below nests to the full 28 with one of those chains open across the nest: an

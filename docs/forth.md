@@ -1684,16 +1684,17 @@ ceiling is a named constant beside the code that enforces it.
 - **One REPL line.** A longer line is refused, `hb: repl line over <cap> bytes:
   <length> typed`, and read again, never truncated, evaluated or saved to
   history. Load long definitions from a file.
-- **`begin` nesting in one definition**: `hb: BEGIN nesting full at <cap>
-  frames: <name> needs <depth>`. Factor the inner loops into their own words.
 - **Quotation nesting in one definition**, the most `[:` bodies open at once:
   `hb: quotation nesting full at <cap> levels: <name> needs <depth>`, catchable
   inside `evaluate`; `tools/check.f` refuses the same source first,
   `E-UNCHECKABLE`. Factor the inner quotations into named words. The files
   `tools/bootstrap.sh` compiles allow one open quotation: a nested `[:` there
   prints `[:` and exits in the Gforth recovery build while `bin/hb` accepts it.
-- **`do` and `?do` nesting in one definition**: `hb: control-flow nesting too
-  deep: do` (or `?do`). Factor the inner loops into their own words.
+- **Control-flow nesting in one definition** (`begin`, `if`, `while`, `do`,
+  `?do` and the other open structures): `hb: control-flow nesting too deep:
+  <word>`. Checked code meets the checker first: 33 nested `begin`s are refused
+  `hook: non-certified definition: <name> at 'begin'`. Factor the inner loops
+  into their own words.
 - **A family, variant, field or package name**: `SUMTYPE`, `PRODUCT`,
   `NEWTYPE`, `STRUCTURE` and `ENUM` refuse a longer one, `tools/check.f`
   reporting `E-BAD-DECLARATION` with the name as its token and the reason

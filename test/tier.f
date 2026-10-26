@@ -15,18 +15,15 @@
 \   2. `set-tier` refuses everything but the available tiers. A tier is not a
 \      truthy flag: 2 and -1 cannot silently pick a compiler.
 \
-\   3. On ARM, tier 0's BEGIN-snapshot depth DIES WITH THE DEFINITION. This is the
-\      regression that pays for the file. jit.f pushes a snapshot frame at each
-\      BEGIN and pops it at the back edge; a definition that FAILS between the
-\      two - an undefined word in the body, say - never reaches its back edge,
-\      so the depth stays raised. Nothing owned reset it, so 28 failed
-\      definitions walked the depth to the nesting bound and the 29th `begin` in
-\      the session exited 75 with nothing whatever wrong with it. The cell is
-\      per-definition state and is now cleared with VSP/LVD/EXITH at both colon
-\      entries and in EM-RESET-COMPILE-STATE, which is the shared tail of both
-\      recovery paths. The test runs THIRTY failing definitions and then a good
-\      one, because the bug needed 29 to show and a bound that moves would make a
-\      smaller count pass for the wrong reason.
+\   3. On ARM, tier 0's BEGIN-snapshot depth DIES WITH THE DEFINITION. jit.f
+\      pushes a snapshot frame at each BEGIN and pops it at the back edge; a
+\      definition that FAILS between the two - an undefined word in the body,
+\      say - never reaches its back edge, so the depth stays raised. The cell
+\      is per-definition state, cleared with VSP/LVD/EXITH at both colon
+\      entries and in EM-ABORT-COMPILE-STATE, which both recovery paths reach.
+\      The frame area holds the control-flow cap's worth of frames, so a leak
+\      reaches no frame bound: the test reads the depth cell itself after the
+\      failed definitions and wants 0.
 \
 \   4. The reset does not reach INSIDE a definition. A quotation is compiled
 \      inline in its enclosing definition, so a BEGIN in a quotation and a
@@ -61,7 +58,6 @@ private
 $4000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
-75 constant NEST-RC                \ jit.f EMIT-SNAP-NEST-CHECK: BEGIN past the bound
 75 constant INCOMPLETE-RC          \ habu2.f VALIDATE: a certificate with incomplete width facts
 67 constant UNCAUGHT-RC            \ hb's exit status for an uncaught throw
 
@@ -843,17 +839,16 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 
 \ ---- 4. the snapshot depth dies with the definition --------------------------
-\ THE REGRESSION. Thirty definitions that each open a BEGIN and then fail on an
-\ undefined word, caught one at a time by `TEST-EVAL:RC`, then one good BEGIN
-\ definition that has to compile and run. Before the fix the thirtieth failure
-\ never returned: the twenty-ninth `begin` exited 75 from inside the engine,
-\ which no catch can see.
+\ THE REGRESSION. Three definitions that each open a BEGIN and then fail on an
+\ undefined word, caught one at a time by `TEST-EVAL:RC`; then the depth cell,
+\ which a missed recovery reset leaves non-zero, and one good BEGIN
+\ definition that has to compile and run.
 : LEAK-SRC$ ( -- ptr u8 n )
-   S\" : X30 ( -- ) 30 0 do s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC drop loop ;\nX30\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
+   S\" : X3 ( -- ) 3 0 do s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC drop loop ;\nX3\ns\q depth \q type JIT-SNAP:SP-CELL data-base + @ . cr\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
 
 : TEST-SNAPSHOT-OWNERSHIP ( -- )
-   s" thirty failed BEGIN definitions leave the depth clean" T-LABEL
-   LEAK-SRC$ RUN  s" 5" ASSERT-OK
+   s" failed BEGIN definitions leave the depth clean" T-LABEL
+   LEAK-SRC$ RUN  s" depth 0" ASSERT-OK  s" 5" ASSERT-OK
 
    s" one failed BEGIN definition is caught, not fatal" T-LABEL
    S\" s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC . cr\n"
@@ -880,25 +875,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" the same nesting compiles on tier 1" T-LABEL
    s" 1 set-tier : N4 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N4 . cr"
    RUN  s" 5" ASSERT-OK ;
-
-\ ---- 6. the nesting bound is a bound, not a corruption ----------------------
-\ 28 frames fit; the 29th must refuse deterministically rather than run off the
-\ end of the relocated band into whatever follows it. Built rather than spelled
-\ out, so the depths track JIT-SNAP:FRAMES instead of a typist.
-: NEST-SRC$ ( n -- ptr u8 n ) {: depth:n :}
-   SB-RESET
-   s" : ZN ( -- n ) 0 " SB-APPEND
-   depth 0 ?do s" begin 1 + dup 2 < while " SB-APPEND loop
-   depth 0 ?do s" repeat " SB-APPEND loop
-   s" ; ZN . cr" SB-APPEND
-   SB$ ;
-
-: TEST-NESTING-BOUND ( -- )
-   s" BEGIN nested to the frame bound compiles and runs" T-LABEL
-   28 NEST-SRC$ EXEC  s" 3" ASSERT-OK
-
-   s" one BEGIN past the bound refuses" T-LABEL
-   29 NEST-SRC$ EXEC  NEST-RC ASSERT-RC ;
 
 \ ---- 7. a failed definition under a top-level catch is recoverable ----------
 \ THE CRASH. `' evaluate catch` at top level installs its handler at exactly the
@@ -1279,7 +1255,6 @@ public
    TEST-TIER0-CONSTRUCTS
    LEGACY? if TEST-SNAPSHOT-OWNERSHIP then
    TEST-NESTED-QUOTATIONS
-   LEGACY? if TEST-NESTING-BOUND then
    TEST-EVAL-RECOVERY
    TEST-TRUSTED-NO-ROW
    TEST-UNCHECKED-WIDTHS
