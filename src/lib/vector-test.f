@@ -7,212 +7,18 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/vector.f
 
-create VECT-VEC VEC-HEADER-CELLS cells allot
+create VECT-VEC VEC:HEADER-CELLS cells allot
 \ The header of a vector OF POINTERS is declared storage: its base carries the
 \ element type (`ptr ptr u8`), which a `create`d cell cannot publish.
-VEC-HEADER-CELLS TYPED-BUFFER VECT-PTR-VEC ptr u8
-create VECT-BIG-VEC VEC-HEADER-CELLS cells allot
-create VECT-REL-VEC VEC-HEADER-CELLS cells allot   \ dedicated header for release/dispose lifecycle tests
+VEC:HEADER-CELLS TYPED-BUFFER VECT-PTR-VEC ptr u8
+create VECT-BIG-VEC VEC:HEADER-CELLS cells allot
+create VECT-REL-VEC VEC:HEADER-CELLS cells allot   \ dedicated header for release/dispose lifecycle tests
 
 141000 constant VECT-BIG-N
-
-variable VECT-SUM
-variable VECT-IDX-SUM
-
-: VECT-RESET ( -- )                     \ dispose-then-init: re-init of a live header now rejects
-   VECT-VEC VEC-DISPOSE  VECT-VEC 2 VEC-CAP-COUNT VEC-INIT
-   0 VECT-PTR-VEC VEC-DISPOSE  0 VECT-PTR-VEC 1 VEC-CAP-COUNT VEC-INIT
-   0 VECT-SUM !
-   0 VECT-IDX-SUM ! ;
 
 : VECT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-: VECT-GROW ( -- )
-   VECT-RESET
-   0 VEC-COUNT VEC-CHECK-NEED
-   1 VEC-CAP-COUNT VEC-CELLS>BYTES 1 cells T=
-   1 VEC-LEN VEC-CHECK-LEN
-   VECT-VEC 1 VEC-CELL-FIELD VECT-VEC cell+ = TTRUE
-   VECT-VEC VEC-CAP@ VEC-CHECK-CAP
-   VECT-VEC 2 VEC-COUNT VEC-ENSURE
-   VECT-VEC VEC-CAP@ COUNT>N 2 T=
-   11 VECT-VEC VEC-PUSH-N IDX>N 0 T=
-   22 VECT-VEC VEC-PUSH-N IDX>N 1 T=
-   33 VECT-VEC VEC-PUSH-N IDX>N 2 T=
-   VECT-VEC VEC-LEN@ LEN>N 3 T=
-   VECT-VEC VEC-CAP@ COUNT>N 4 T=
-   VECT-VEC 0 VEC-IDX VEC-N@ 11 T=
-   VECT-VEC 1 VEC-IDX VEC-N@ 22 T=
-   VECT-VEC 2 VEC-IDX VEC-N@ 33 T= ;
-
-: VECT-SET ( -- )
-   VECT-RESET
-   99 VECT-VEC VEC-PUSH-N drop
-   123 VECT-VEC 0 VEC-IDX VEC-N!
-   VECT-VEC 0 VEC-IDX VEC-N@ 123 T= ;
-
-: VECT-RESIZE ( -- )
-   VECT-RESET
-   41 VECT-VEC VEC-PUSH-N drop
-   42 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC 5 VEC-CAP-COUNT VEC-RESIZE
-   VECT-VEC VEC-LEN@ LEN>N 2 T=
-   VECT-VEC VEC-CAP@ COUNT>N 5 T=
-   VECT-VEC 0 VEC-IDX VEC-N@ 41 T=
-   VECT-VEC 1 VEC-IDX VEC-N@ 42 T= ;
-
-: VECT-RESIZE-SHRINK-BAD ( -- )
-   VECT-RESET
-   41 VECT-VEC VEC-PUSH-N drop
-   42 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC 1 VEC-CAP-COUNT VEC-RESIZE ;
-
-\ ---- release / dispose lifecycle (raw surface) --------------------------------
-\ Release is proved by ADDRESS REUSE: a mapping freed to the OS leaves a hole that
-\ the very next same-size mmap refills, so a fresh allocation lands on the freed
-\ address. On the unreleased base the old mapping is retained, so the fresh
-\ allocation lands elsewhere and the equality assertion fails.
-: VECT-REL-INIT ( n -- )                               \ free any prior mapping, then init fresh
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC swap VEC-CAP-COUNT VEC-INIT ;
-
-: VECT-RESIZE-RELEASES ( -- )                          \ resize frees the prior mapping (address reuse)
-   2 VECT-REL-INIT
-   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
-   VECT-REL-VEC 4 VEC-CAP-COUNT VEC-RESIZE              \ prior 2-cell mapping released after copy/install
-   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}             \ a fresh same-size mapping refills the freed hole
-   reuse old = TTRUE ;
-
-: VECT-DISPOSE-RELEASES ( -- )                         \ dispose frees the owned mapping (address reuse)
-   2 VECT-REL-INIT
-   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
-   VECT-REL-VEC VEC-DISPOSE
-   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}
-   reuse old = TTRUE ;
-
-: VECT-DISPOSE-DOUBLE ( -- )                           \ a second dispose is a proved no-op (no throw)
-   2 VECT-REL-INIT
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC VEC-CAP-FIELD @ 0 T=
-   VECT-REL-VEC VEC-LEN-FIELD @ 0 T=
-   VECT-REL-VEC VEC-DATA@ 0= TTRUE
-   \ A dead header from an earlier image can still hold its old data address.
-   VECT-REL-VEC VECT-REL-VEC VEC-DATA!
-   7 VECT-REL-VEC VEC-LEN-FIELD !
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC VEC-DATA@ 0= TTRUE
-   VECT-REL-VEC VEC-LEN-FIELD @ 0 T= ;
-
-: VECT-DISPOSE-CYCLE-BOUNDED ( -- )                    \ init/dispose cycles keep ONE resident mapping
-   2 VECT-REL-INIT
-   VECT-REL-VEC VEC-DATA@ {: base:ptr :}
-   VECT-REL-VEC VEC-DISPOSE
-   8 0 ?do
-      VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT
-      VECT-REL-VEC VEC-DATA@ base = TTRUE               \ every cycle refills the same freed hole
-      VECT-REL-VEC VEC-DISPOSE
-   loop ;
-
-: VECT-DISPOSE-USE-GET ( -- )                          \ read after dispose
-   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 0 VEC-IDX VEC-N@ drop ;
-: VECT-DISPOSE-USE-PUSH ( -- )                         \ push after dispose
-   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
-   9 VECT-REL-VEC VEC-PUSH-N drop ;
-: VECT-DISPOSE-USE-RESIZE ( -- )                       \ resize after dispose
-   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 5 VEC-CAP-COUNT VEC-RESIZE ;
-
-: VECT-INIT-LIVE-REJECTS ( -- )                        \ re-init of a live header rejects (fail-closed)
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT               \ header now owns a live mapping
-   VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT ;             \ re-init without dispose throws (else old mapping leaks)
-
-: VECT-RESIZE-FAIL-ATOMIC ( -- )                       \ a failed grow leaves the old vector valid
-   2 VECT-REL-INIT
-   41 VECT-REL-VEC VEC-PUSH-N drop  42 VECT-REL-VEC VEC-PUSH-N drop
-   VECT-REL-VEC VEC-DATA@ {: before:ptr :}
-   [: VECT-REL-VEC VEC-MAX-CELLS VEC-COUNT VEC-RESIZE ;] E-MEM-MAP TTHROWSQ  \ mmap of the whole space fails
-   VECT-REL-VEC VEC-DATA@ before = TTRUE                \ mapping not swapped out
-   VECT-REL-VEC VEC-LEN@ LEN>N 2 T=
-   VECT-REL-VEC VEC-CAP@ COUNT>N 2 T=
-   VECT-REL-VEC 0 VEC-IDX VEC-N@ 41 T=
-   VECT-REL-VEC 1 VEC-IDX VEC-N@ 42 T= ;
-
-: VECT-CLEAR ( -- )
-   VECT-RESET
-   7 VECT-VEC VEC-PUSH-N drop
-   8 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC VEC-CLEAR
-   VECT-VEC VEC-LEN@ LEN>N 0 T=
-   VECT-VEC VEC-CAP@ COUNT>N 2 T=
-   9 VECT-VEC VEC-PUSH-N IDX>N 0 T=
-   VECT-VEC 0 VEC-IDX VEC-N@ 9 T= ;
-
-: VECT-POINTER ( -- )
-   VECT-RESET
-   s" alpha" drop 0 VECT-PTR-VEC VEC-PUSH-A IDX>N 0 T=
-   0 VECT-PTR-VEC 0 VEC-IDX VEC-A@ 5 s" alpha" T$=
-   s" beta" drop 0 VECT-PTR-VEC 0 VEC-IDX VEC-A!
-   0 VECT-PTR-VEC 0 VEC-IDX VEC-A@ 4 s" beta" T$= ;
-
-: VECT-EACH-ACC ( idx n -- ) {: ix value :}
-   VECT-SUM @ value + VECT-SUM !
-   VECT-IDX-SUM @ ix IDX>N + VECT-IDX-SUM ! ;
-
-: VECT-EACH-TEST ( -- )
-   VECT-RESET
-   5 VECT-VEC VEC-PUSH-N drop
-   6 VECT-VEC VEC-PUSH-N drop
-   7 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC [: VECT-EACH-ACC ;] VEC-EACH
-   VECT-SUM @ 18 T=
-   VECT-IDX-SUM @ 3 T= ;
-
-\ Large fill stays within the suite budget only while slot access is O(1);
-\ an O(index) VEC-CELL-FIELD regression makes this fill take minutes.
-: VECT-BIG-FILL ( -- )
-   VECT-BIG-VEC 2 VEC-CAP-COUNT VEC-INIT
-   VECT-BIG-N 0 ?do i VECT-BIG-VEC VEC-PUSH-N drop loop
-   VECT-BIG-VEC VEC-LEN@ LEN>N VECT-BIG-N T=
-   VECT-BIG-VEC 0 VEC-IDX VEC-N@ 0 T=
-   VECT-BIG-VEC VECT-BIG-N 2 / VEC-IDX VEC-N@ VECT-BIG-N 2 / T=
-   VECT-BIG-VEC VECT-BIG-N 1 - VEC-IDX VEC-N@ VECT-BIG-N 1 - T= ;
-
-: VECT-BAD-CAP-ZERO ( -- )
-   0 VEC-CAP-COUNT drop ;
-
-: VECT-BAD-CAP-NEG ( -- )
-   -1 VEC-CAP-COUNT drop ;
-
-: VECT-BAD-NEED-HIGH ( -- )
-   VEC-MAX-CELLS 1 + VEC-COUNT drop ;
-
-: VECT-BAD-LEN-NEG ( -- )
-   -1 VEC-LEN drop ;
-
-: VECT-BAD-LEN-HIGH ( -- )
-   VECT-RESET
-   3 VEC-LEN VECT-VEC VEC-LEN! ;
-
-: VECT-GET-HIGH ( -- )
-   VECT-RESET
-   1 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC 1 VEC-IDX VEC-N@ drop ;
-
-: VECT-GET-NEG ( -- )
-   VECT-RESET
-   1 VECT-VEC VEC-PUSH-N drop
-   VECT-VEC -1 VEC-IDX VEC-N@ drop ;
-
-: VECT-SET-HIGH ( -- )
-   VECT-RESET
-   1 VECT-VEC VEC-PUSH-N drop
-   2 VECT-VEC 1 VEC-IDX VEC-N! ;
-
-\ ---- typed VEC surface over NUM roles --------------------------------
 \ White-box count reader, declared at this test's own scope: a length/capacity
 \ assertion compares against a literal n. Checked cast, and projection out of a
 \ cell family needs no ownership (checker.f CAST-OWNER?). A pushed index is read
@@ -246,7 +52,12 @@ CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
 
 \ dispose-then-init the shared typed header at raw cap n: re-init of a live header
 \ now rejects, so each test opens from a disposed header.
-: VECT-T-FRESH ( n -- )  VECT-VEC VEC-DISPOSE  VECT-VEC swap VECT-N>ITEM VEC:INIT ;
+: VECT-T-FRESH ( n -- )  VECT-VEC VEC:DISPOSE  VECT-VEC swap VECT-N>ITEM VEC:INIT ;
+
+\ the same for the release/dispose lifecycle header
+: VECT-REL-INIT ( n -- )
+   VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC swap VECT-N>ITEM VEC:INIT ;
 
 : VECT-T-INIT ( -- )                                    \ zero length valid, capacity honoured
    2 VECT-T-FRESH
@@ -291,6 +102,13 @@ CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
    VECT-VEC 3 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 4 T=  \ need <= cap: no reallocation
    VECT-VEC 9 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
 
+: VECT-T-POINTER ( -- )                                 \ a vector of pointers keeps its element type
+   0 VECT-PTR-VEC VEC:DISPOSE  0 VECT-PTR-VEC 1 VECT-N>ITEM VEC:INIT
+   s" alpha" drop 0 VECT-PTR-VEC VEC:PUSH NUM:ORDINAL 0 T=
+   0 VECT-PTR-VEC 0 VECT-TAT 5 s" alpha" T$=
+   s" beta" drop 0 VECT-PTR-VEC 0 VECT-TPUT
+   0 VECT-PTR-VEC 0 VECT-TAT 4 s" beta" T$= ;
+
 variable VECT-TSUM   variable VECT-TIXSUM
 : VECT-T-EACH-ACC ( NUM:index n -- ) {: ix:NUM:index value:n :}
    VECT-TSUM @ value + VECT-TSUM !
@@ -303,18 +121,15 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-TSUM @ 18 T=
    VECT-TIXSUM @ 3 T= ;
 
-create VECT-HC-VEC VEC:HEADER-CELLS cells allot     \ a header sized by the typed surface alone
-
-: VECT-T-HEADER ( -- )                                  \ a HEADER-CELLS header inits, grows, disposes
-   VECT-HC-VEC VEC:DISPOSE
-   VECT-HC-VEC 1 VECT-N>ITEM VEC:INIT
-   11 VECT-HC-VEC VEC:PUSH drop  22 VECT-HC-VEC VEC:PUSH drop  33 VECT-HC-VEC VEC:PUSH drop
-   VECT-HC-VEC VECT-TLEN 3 T=
-   VECT-HC-VEC VECT-TCAP 4 T=
-   VECT-HC-VEC 0 VECT-TAT 11 T=
-   VECT-HC-VEC 2 VECT-TAT 33 T=
-   VECT-HC-VEC VEC:DISPOSE
-   VECT-HC-VEC VEC-CAP-FIELD @ 0 T= ;
+\ Large fill stays within the suite budget only while slot access is O(1);
+\ an O(index) cell-address regression makes this fill take minutes.
+: VECT-T-BIG-FILL ( -- )
+   VECT-BIG-VEC 2 VECT-N>ITEM VEC:INIT
+   VECT-BIG-N 0 ?do i VECT-BIG-VEC VEC:PUSH drop loop
+   VECT-BIG-VEC VECT-TLEN VECT-BIG-N T=
+   VECT-BIG-VEC 0 VECT-TAT 0 T=
+   VECT-BIG-VEC VECT-BIG-N 2 / VECT-TAT VECT-BIG-N 2 / T=
+   VECT-BIG-VEC VECT-BIG-N 1 - VECT-TAT VECT-BIG-N 1 - T= ;
 
 : VECT-T-DATA ( -- )                                    \ DATA@ is the contiguous cell base, reread after growth
    2 VECT-T-FRESH
@@ -329,7 +144,7 @@ create VECT-HC-VEC VEC:HEADER-CELLS cells allot     \ a header sized by the type
    new cell+ @ 22 T=
    new 2 cells + @ 33 T= ;
 
-: VECT-T-LEN-SET ( -- )                                 \ LEN! truncates, empties, and keeps an equal length
+: VECT-T-LEN-SET ( -- )                                 \ LEN! truncates, grows within capacity, empties
    4 VECT-T-FRESH
    11 VECT-VEC VEC:PUSH drop  22 VECT-VEC VEC:PUSH drop  33 VECT-VEC VEC:PUSH drop
    3 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ same length: no change
@@ -341,16 +156,21 @@ create VECT-HC-VEC VEC:HEADER-CELLS cells allot     \ a header sized by the type
    VECT-VEC 0 VECT-TAT 11 T=
    [: VECT-VEC 1 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ  \ the dropped cells are out of range
    44 VECT-VEC VEC:PUSH NUM:ORDINAL 1 T=
+   4 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ grow within capacity
+   VECT-VEC VECT-TLEN 4 T=
+   VECT-VEC 1 VECT-TAT 44 T=
    0 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ empty
    VECT-VEC VECT-TLEN 0 T=
    [: VECT-VEC 0 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ ;
 
-: VECT-T-LEN-HIGH ( -- )                                \ a length above capacity rejects as VEC-LEN! does
+: VECT-T-LEN-HIGH ( -- )                                \ a length above capacity rejects
    2 VECT-T-FRESH
    3 VECT-N>ITEM VECT-VEC VEC:LEN! ;
 
 : VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;               \ zero capacity allocation
-: VECT-T-CAP-OVER ( -- )   VEC-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
+: VECT-T-CAP-OVER ( -- )   MEM-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
+: VECT-T-ENSURE-HIGH ( -- )                               \ a need above the cell ceiling
+   2 VECT-T-FRESH  VECT-VEC MEM-MAX-CELLS 1 + VECT-N>ITEM VEC:ENSURE ;
 : VECT-T-RESIZE-ZERO ( -- )
    2 VECT-T-FRESH  VECT-VEC 0 VECT-N>ITEM VEC:RESIZE ;        \ resize to zero capacity
 : VECT-T-RESIZE-SHRINK ( -- )
@@ -360,86 +180,117 @@ create VECT-HC-VEC VEC:HEADER-CELLS cells allot     \ a header sized by the type
 : VECT-T-GET-HIGH ( -- )
    2 VECT-T-FRESH  1 VECT-VEC VEC:PUSH drop
    VECT-VEC 1 VECT-TAT drop ;                                             \ index at length rejects
+: VECT-T-SET-HIGH ( -- )
+   2 VECT-T-FRESH  1 VECT-VEC VEC:PUSH drop
+   2 VECT-VEC 1 VECT-TPUT ;                                               \ store at length rejects
 
-: VECT-T-DISPOSE-RELEASES ( -- )                       \ typed dispose frees the owned mapping
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
-   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
+\ ---- release / dispose lifecycle ----------------------------------------------
+\ Release is proved by ADDRESS REUSE: a mapping freed to the OS leaves a hole that
+\ the very next same-size mmap refills, so a fresh allocation lands on the freed
+\ address. On the unreleased base the old mapping is retained, so the fresh
+\ allocation lands elsewhere and the equality assertion fails.
+: VECT-T-RESIZE-RELEASES ( -- )                        \ resize frees the prior mapping
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC:DATA@ {: old:ptr :}
+   VECT-REL-VEC 4 VECT-N>ITEM VEC:RESIZE               \ prior 2-cell mapping released after copy/install
+   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}             \ a fresh same-size mapping refills the freed hole
+   reuse old = TTRUE ;
+
+: VECT-T-DISPOSE-RELEASES ( -- )                       \ dispose frees the owned mapping
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC:DATA@ {: old:ptr :}
    VECT-REL-VEC VEC:DISPOSE
    2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}
    reuse old = TTRUE ;
-: VECT-T-DISPOSE-DOUBLE ( -- )                         \ typed double dispose is a proved no-op
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
+
+\ A second dispose is a proved no-op. The header layout is data pointer at cell 0,
+\ length at cell 1: a dead header from an earlier image can still hold its old data
+\ address and length, and a dispose clears both without releasing anything.
+: VECT-T-DISPOSE-DOUBLE ( -- )
+   2 VECT-REL-INIT
    VECT-REL-VEC VEC:DISPOSE  VECT-REL-VEC VEC:DISPOSE
-   VECT-REL-VEC VEC-CAP-FIELD @ 0 T= ;
-: VECT-T-DISPOSE-USE ( -- )                            \ typed access after dispose rejects
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT  VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC VECT-TCAP 0 T=
+   VECT-REL-VEC VECT-TLEN 0 T=
+   VECT-REL-VEC VEC:DATA@ 0= TTRUE
+   $1000 VECT-REL-VEC !                                \ a stale data address
+   7 VECT-REL-VEC cell+ !
+   VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC VEC:DATA@ 0= TTRUE
+   VECT-REL-VEC VECT-TLEN 0 T= ;
+
+: VECT-T-DISPOSE-CYCLE-BOUNDED ( -- )                  \ init/dispose cycles keep ONE resident mapping
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC:DATA@ {: base:ptr :}
+   VECT-REL-VEC VEC:DISPOSE
+   8 0 ?do
+      VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
+      VECT-REL-VEC VEC:DATA@ base = TTRUE               \ every cycle refills the same freed hole
+      VECT-REL-VEC VEC:DISPOSE
+   loop ;
+
+: VECT-T-RESIZE-FAIL-ATOMIC ( -- )                     \ a failed grow leaves the old vector valid
+   2 VECT-REL-INIT
+   41 VECT-REL-VEC VEC:PUSH drop  42 VECT-REL-VEC VEC:PUSH drop
+   VECT-REL-VEC VEC:DATA@ {: before:ptr :}
+   [: VECT-REL-VEC MEM-MAX-CELLS VECT-N>ITEM VEC:RESIZE ;] E-MEM-MAP TTHROWSQ  \ mmap of the whole space fails
+   VECT-REL-VEC VEC:DATA@ before = TTRUE                \ mapping not swapped out
+   VECT-REL-VEC VECT-TLEN 2 T=
+   VECT-REL-VEC VECT-TCAP 2 T=
+   VECT-REL-VEC 0 VECT-TAT 41 T=
+   VECT-REL-VEC 1 VECT-TAT 42 T= ;
+
+: VECT-T-DISPOSE-USE ( -- )                            \ access after dispose rejects
+   2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
    VECT-REL-VEC 0 VECT-TAT drop ;
-: VECT-T-INIT-LIVE-REJECTS ( -- )                      \ typed re-init of a live header rejects
-   VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT                 \ header now owns a live mapping
+: VECT-T-DISPOSE-USE-PUSH ( -- )                       \ push after dispose rejects
+   2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
+   9 VECT-REL-VEC VEC:PUSH drop ;
+: VECT-T-DISPOSE-USE-RESIZE ( -- )                     \ resize after dispose rejects
+   2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC 5 VECT-N>ITEM VEC:RESIZE ;
+: VECT-T-INIT-LIVE-REJECTS ( -- )                      \ re-init of a live header rejects
+   2 VECT-REL-INIT                                     \ header now owns a live mapping
    VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
 
 : VECT-RUN ( -- )
    T-RESET
-   VECT-GROW
-   VECT-SET
-   VECT-RESIZE
-   VECT-CLEAR
-   VECT-POINTER
-   VECT-EACH-TEST
-   VECT-BIG-FILL
-   [: VECT-RESIZE-SHRINK-BAD ;] E-VEC-BOUNDS TTHROWSQ
-   [: VECT-BAD-CAP-ZERO ;] E-VEC-CAPACITY TTHROWSQ
-   [: VECT-BAD-CAP-NEG ;] E-VEC-CAPACITY TTHROWSQ
-   [: VECT-BAD-NEED-HIGH ;] E-VEC-CAPACITY TTHROWSQ
-   [: VECT-BAD-LEN-NEG ;] E-VEC-BOUNDS TTHROWSQ
-   [: VECT-BAD-LEN-HIGH ;] E-VEC-BOUNDS TTHROWSQ
-   [: VECT-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
-   [: VECT-GET-NEG ;] E-VEC-BOUNDS TTHROWSQ
-   [: VECT-SET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
-   s" BAD-VEC-FETCH ( ptr a len -- a ) VEC@" VECT-CHECK-REJECTS
-   s" BAD-VEC-LEN! ( count ptr a -- ) VEC-LEN!" VECT-CHECK-REJECTS
-   \ ---- release / dispose lifecycle (raw) -------------------------------------
-   VECT-RESIZE-RELEASES
-   VECT-DISPOSE-RELEASES
-   VECT-DISPOSE-DOUBLE
-   VECT-DISPOSE-CYCLE-BOUNDED
-   VECT-RESIZE-FAIL-ATOMIC
-   [: VECT-DISPOSE-USE-GET ;] E-VEC-STATE TTHROWSQ
-   [: VECT-DISPOSE-USE-PUSH ;] E-VEC-STATE TTHROWSQ
-   [: VECT-DISPOSE-USE-RESIZE ;] E-VEC-STATE TTHROWSQ
-   [: VECT-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ   \ live re-init rejects; no owned mapping leaks
-   \ ---- typed VEC surface: positive behavior ----------------------------------
+   \ ---- positive behavior -----------------------------------------------------
    VECT-T-INIT
    VECT-T-PUSH
    VECT-T-SET
    VECT-T-CLEAR
    VECT-T-RESIZE
    VECT-T-ENSURE
+   VECT-T-POINTER
    VECT-T-EACH
-   VECT-T-HEADER
+   VECT-T-BIG-FILL
    VECT-T-DATA
    VECT-T-LEN-SET
-   \ ---- typed VEC surface: runtime allocation/bounds refusals -----------------
+   \ ---- runtime allocation/bounds refusals ------------------------------------
    [: VECT-T-CAP-ZERO ;] E-VEC-CAPACITY TTHROWSQ       \ zero capacity allocation rejects
    [: VECT-T-CAP-OVER ;] E-VEC-CAPACITY TTHROWSQ       \ growth overflow rejects
+   [: VECT-T-ENSURE-HIGH ;] E-VEC-CAPACITY TTHROWSQ
    [: VECT-T-RESIZE-ZERO ;] E-VEC-CAPACITY TTHROWSQ
    [: VECT-T-RESIZE-SHRINK ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
+   [: VECT-T-SET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-LEN-HIGH ;] E-VEC-BOUNDS TTHROWSQ
-   \ ---- typed release / dispose lifecycle -------------------------------------
+   \ ---- release / dispose lifecycle -------------------------------------------
+   VECT-T-RESIZE-RELEASES
    VECT-T-DISPOSE-RELEASES
    VECT-T-DISPOSE-DOUBLE
+   VECT-T-DISPOSE-CYCLE-BOUNDED
+   VECT-T-RESIZE-FAIL-ATOMIC
    [: VECT-T-DISPOSE-USE ;] E-VEC-STATE TTHROWSQ
-   [: VECT-T-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ  \ typed live re-init rejects; no owned mapping leaks
-   \ ---- typed VEC surface: static role-swap rejections (0) + resolving positives (-1)
+   [: VECT-T-DISPOSE-USE-PUSH ;] E-VEC-STATE TTHROWSQ
+   [: VECT-T-DISPOSE-USE-RESIZE ;] E-VEC-STATE TTHROWSQ
+   [: VECT-T-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ  \ live re-init rejects; no owned mapping leaks
+   \ ---- static role-swap rejections (0) + resolving positives (-1) ------------
    s" VOK-INIT ( ptr a NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
    s" VOK-AT ( ptr a NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=
    s" VSWAP-IDX-FOR-CNT ( ptr a NUM:index -- ) VEC:INIT"  VECT-CHECK-REJECTS
    s" VSWAP-CNT-FOR-IDX ( ptr a NUM:item-count -- a ) VEC:@" VECT-CHECK-REJECTS
+   s" VSWAP-IDX-FOR-LEN ( NUM:index ptr a -- ) VEC:LEN!"     VECT-CHECK-REJECTS
    s" VSWAP-RAW-CAP ( ptr a n -- ) VEC:INIT"                  VECT-CHECK-REJECTS
    s" VSWAP-RAW-IDX ( ptr a n -- a ) VEC:@"                   VECT-CHECK-REJECTS
    T-REPORT ;

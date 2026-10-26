@@ -1,26 +1,44 @@
-\ vector.f - checked growable cell-vector helpers.
+\ vector.f - package VEC: checked growable cell vectors over NUM roles.
 \
-\ A vector is a caller-owned header of VEC-HEADER-CELLS cells (data pointer,
-\ active length, capacity). VEC-INIT binds a dead (zero or disposed) header to
-\ a fresh src/lib/memory.f mapping and VEC-DISPOSE releases it; the capacity
-\ cell is the liveness token. Capacities are `count`, lengths `len`, positions
-\ `idx`. VEC-PUSH doubles the capacity when the length reaches it. Invalid or
-\ overflowing capacity requests throw E-VEC-CAPACITY, invalid indexes or
-\ impossible lengths E-VEC-BOUNDS, and a touch of a dead header E-VEC-STATE.
-\ Package VEC, after the raw words, states the same vector over NUM roles.
+\ A vector is a caller-owned header of HEADER-CELLS cells (data pointer, active
+\ length, capacity). INIT binds a dead (zero or disposed) header to a fresh
+\ src/lib/memory.f mapping and DISPOSE releases it; the capacity cell is the
+\ liveness token. A length or a capacity is a `NUM:item-count` and an element
+\ position a `NUM:index`, so a count/index swap is a checker reject. PUSH doubles
+\ the capacity when the length reaches it. Invalid or overflowing capacity
+\ requests throw E-VEC-CAPACITY, invalid indexes or impossible lengths
+\ E-VEC-BOUNDS, and growing or resizing a dead header E-VEC-STATE; a dead
+\ header reads as length and capacity zero.
 \
 \ STORAGE CLASS. CALLER-OWNED: the header and its mapping belong to the caller.
 
 require src/lib/errors.f
 require src/lib/memory.f
 
+\ ---- the header and its raw cells ----------------------------------------------
+\
+\ The private words below keep the header cells and the cell-address arithmetic
+\ on `count`, `len` and `idx` roles over bare cells; the public surface after
+\ them converts those to NUM roles at its boundary. Every allocation goes through
+\ the private one-cell-per-item adapter CAP-ALLOC, which produces a `cell-count`
+\ then an `alloc-cell-count` and calls MEM:ALLOC-CELLS, so a zero or overflowing
+\ capacity is refused at validation before mmap.
+\
+\ VEC owns exactly two representation projections (ITEM-COUNT>N, INDEX>N), both
+\ checked casts, mirroring MEM's ALLOC-CELLS>N: the header cells and the
+\ cell-address arithmetic consume a bare `n`, so the typed boundary reads a
+\ validated role's cell here. Raw storage rejects nominal roles, so these
+\ projections are the explicit boundary to the numeric header and address
+\ arithmetic.
+
+package VEC
+private
+
 BEGIN-STRUCTURE VEC-HEADER-BYTES
    PTR-FIELD: VEC.DATA
    CELL +FIELD VEC.LEN
    CELL +FIELD VEC.CAP
 END-STRUCTURE
-
-VEC-HEADER-BYTES CELL / constant VEC-HEADER-CELLS
 
 2 constant VEC-GROWTH
 MEM-MAX-CELLS constant VEC-MAX-CELLS
@@ -29,10 +47,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    dup 0 < if E-VEC-CAPACITY throw then
    dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
    >COUNT ;
-
-: VEC-CAP-COUNT ( n -- count )
-   dup 0= if E-VEC-CAPACITY throw then
-   VEC-COUNT ;
 
 : VEC-LEN ( n -- len )
    dup 0 < if E-VEC-BOUNDS throw then
@@ -54,14 +68,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 : VEC-CHECK-LEN ( len -- ) {: len :}
    len LEN>N 0 < if E-VEC-BOUNDS throw then
    len LEN>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
-
-: VEC-CELLS>BYTES ( count -- n )
-   dup VEC-CHECK-CAP
-   MEM-CELLS>BYTES ;
-
-: VEC-ALLOC-CELLS ( count -- ptr a )
-   dup VEC-CHECK-CAP
-   MEM-ALLOC-CELLS ;
 
 : VEC-CELL-FIELD ( ptr a n -- ptr a ) {: base:ptr off :}
    off 0 < if E-VEC-BOUNDS throw then
@@ -94,7 +100,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 
 \ Ownership / liveness token. A positive VEC.CAP means the header owns a live
 \ mapping of that many cells at VEC.DATA; a zero VEC.CAP means no mapping is owned
-\ (a fresh all-zero header or a disposed one). VEC-DISPOSE clears the capacity to
+\ (a fresh all-zero header or a disposed one). DISPOSE clears the capacity to
 \ void ownership, so this single cell is the liveness marker every storage-touching
 \ use consults: touching a dead vector throws E-VEC-STATE instead of dereferencing
 \ freed storage. Reads the raw cell (VEC-CAP@ would refuse a zero elsewhere).
@@ -113,15 +119,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    len LEN>N vec VEC-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
    len LEN>N vec VEC-LEN-FIELD ! ;
 
-: VEC-INIT ( ptr a count -- ) {: vec:ptr cap :}
-   vec VEC-CHECK-DEAD
-   cap VEC-ALLOC-CELLS vec VEC-DATA!
-   cap vec VEC-CAP!
-   0 VEC-LEN vec VEC-LEN! ;
-
-: VEC-CLEAR ( ptr a -- )
-   0 VEC-LEN swap VEC-LEN! ;
-
 : VEC-CHECK-INDEX ( ptr a idx -- ) {: vec:ptr ix :}
    vec VEC-CHECK-LIVE
    ix IDX>N 0 < if E-VEC-BOUNDS throw then
@@ -135,18 +132,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec ix VEC-CHECK-INDEX
    value vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD ! ;
 
-: VEC-N@ ( ptr n idx -- n )
-   VEC@ ;
-
-: VEC-N! ( n ptr n idx -- )
-   VEC! ;
-
-: VEC-A@ ( ptr ptr u8 idx -- ptr u8 )
-   VEC@ ;
-
-: VEC-A! ( ptr u8 ptr ptr u8 idx -- )
-   VEC! ;
-
 : VEC-COPY-CELLS ( ptr a ptr a len -- ) {: src:ptr dst:ptr len :}
    len VEC-CHECK-LEN
    len LEN>N 0 ?do
@@ -155,7 +140,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 
 \ Return a mapping the vector owns (data pointer + its cell capacity) to the OS via
 \ the typed munmap inverse: the capacity IS the mapping's cell length, so
-\ MEM-CELLS>BYTES projects it to the exact byte extent MEM-ALLOC-CELLS minted and
+\ MEM-CELLS>BYTES projects it to the exact byte extent the allocation minted and
 \ MEM:BYTES-ALLOC-LEN narrows that to the alloc-byte-len MEM:RELEASE-BYTES demands.
 : VEC-RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap :}
    data BYTE-VIEW  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
@@ -176,21 +161,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    cap VEC-CHECK-CAP
    cap COUNT>N vec VEC-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
 
-: VEC-RESIZE ( ptr a count -- ) {: vec:ptr cap :}
-   vec cap VEC-CHECK-RESIZE-CAP
-   vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
-
-\ Clear the entire header before release, so retries cannot free the mapping
-\ twice and a captured dead header cannot retain its former process address.
-: VEC-DISPOSE ( ptr a -- ) {: vec:ptr :}
-   vec VEC-CAP-FIELD @ {: cap :}
-   vec VEC-DATA@ {: data:ptr :}
-   NULL-PTR vec VEC-DATA!
-   0 vec VEC-CAP-FIELD !
-   0 vec VEC-LEN-FIELD !
-   cap 0= if exit then
-   data cap >COUNT VEC-RELEASE-STORAGE ;
-
 : VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}
    vec VEC-CHECK-LIVE
    need VEC-CHECK-NEED
@@ -202,55 +172,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
          VEC-GROWTH *
       then
    repeat VEC-COUNT ;
-
-: VEC-ENSURE ( ptr a count -- ) {: vec:ptr need :}
-   need VEC-CHECK-NEED
-   need COUNT>N vec VEC-CAP@ COUNT>N <= if exit then
-   vec vec need VEC-GROW-CAP VEC-RESIZE ;
-
-: VEC-PUSH-AT ( a ptr a n -- idx ) {: value vec:ptr old :}
-   old VEC-IDX drop
-   vec old 1 + VEC-COUNT VEC-ENSURE
-   value vec VEC-DATA@ old VEC-CELL-FIELD !
-   old 1 + VEC-LEN vec VEC-LEN!
-   old VEC-IDX ;
-
-: VEC-PUSH ( a ptr a -- idx ) {: value vec:ptr :}
-   value vec vec VEC-LEN@ LEN>N VEC-PUSH-AT ;
-
-: VEC-PUSH-N ( n ptr n -- idx )
-   VEC-PUSH ;
-
-: VEC-PUSH-A ( ptr u8 ptr ptr u8 -- idx )
-   VEC-PUSH ;
-
-: VEC-EACH ( R ptr a [ R idx a -- R ] -- R ) {: vec:ptr q :}
-   vec VEC-LEN@ LEN>N 0 ?do
-      i VEC-IDX vec i VEC-IDX VEC@ q execute
-   loop ;
-
-\ ---- typed VEC surface over NUM roles -------------------------------------
-\
-\ The raw VEC-* words above conflate item counts, capacities, and indices on one
-\ interchangeable `n` and allocate through the raw MEM-ALLOC-CELLS sink. Package
-\ VEC re-states the same growable cell vector over NUM roles: a length or a
-\ capacity is a `NUM:item-count`, an element position is a `NUM:index`, and
-\ the ONLY allocation path is the private one-cell-per-item adapter, which produces
-\ a `cell-count` (one cell per item) then an `alloc-cell-count` and calls the
-\ packaged MEM:ALLOC-CELLS - so a count/index swap is a checker reject and a zero or
-\ overflowing capacity is refused at VALIDATION before mmap. Positive behavior is
-\ byte-identical to the raw words (same storage, same E-VEC-CAPACITY/E-VEC-BOUNDS
-\ throws); the raw words stay for their not-yet-migrated callers.
-\
-\ VEC owns exactly two representation projections (ITEM-COUNT>N, INDEX>N), both
-\ checked casts, mirroring MEM's ALLOC-CELLS>N: the raw vector header cell and the
-\ cell-address arithmetic still consume a bare `n`, so the typed boundary reads a
-\ validated role's cell here. Private, no public export, confined to src/lib/vector.f
-\ like the MEM pair. Raw storage rejects nominal roles, so these projections
-\ are the explicit boundary to the numeric header and address arithmetic.
-
-package VEC
-private
 
 CAST: ITEM-COUNT>N ( NUM:item-count -- n )
 CAST: INDEX>N ( NUM:index -- n )
@@ -282,7 +203,7 @@ CAST: INDEX>N ( NUM:index -- n )
 
 \ ---- capacity narrowing: the plan's named owner boundary. A zero-admitting ------
 \ cell-count becomes the positive alloc role, or maps zero/overflow explicitly to
-\ the existing named vector-capacity throw (byte-identical to raw VEC-CHECK-CAP).
+\ the existing named vector-capacity throw (byte-identical to VEC-CHECK-CAP).
 : OK-ALLOC-CELL-COUNT
       ( NUM:numeric-result<NUM:alloc-cell-count> -- NUM:alloc-cell-count )
    MATCH NUM:numeric-result
@@ -301,15 +222,15 @@ CAST: INDEX>N ( NUM:index -- n )
    ITEM-COUNT>N NUM:CELL-COUNT OK-CELL-COUNT      \ N items -> N cells (1 cell/item)
    NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;  \ positive alloc role or E-VEC-CAPACITY
 
-\ ---- role bridges between NUM roles, raw cells, and the legacy helpers ------
+\ ---- role bridges between NUM roles, raw cells, and the header roles --------
 : N>ITEM   ( n -- NUM:item-count )  NUM:ITEM-COUNT OK-ITEM-COUNT ;
 : N>INDEX  ( n -- NUM:index )       NUM:INDEX OK-INDEX ;
-: ITEM>RC  ( NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> legacy count
-: IX>RI    ( NUM:index -- idx )         INDEX>N >IDX ;          \ role -> legacy index
+: ITEM>RC  ( NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> header count
+: IX>RI    ( NUM:index -- idx )         INDEX>N >IDX ;          \ role -> header index
 
 public
 
-VEC-HEADER-CELLS constant HEADER-CELLS          \ cells a caller allots for one header
+VEC-HEADER-BYTES CELL / constant HEADER-CELLS   \ cells a caller allots for one header
 
 \ ---- init / clear -------------------------------------------------------------
 : INIT ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
@@ -317,15 +238,27 @@ VEC-HEADER-CELLS constant HEADER-CELLS          \ cells a caller allots for one 
    cap CAP-ALLOC MEM:ALLOC-CELLS vec VEC-DATA!   \ typed alloc; 0/overflow -> E-VEC-CAPACITY
    cap ITEM>RC vec VEC-CAP!
    0 VEC-LEN vec VEC-LEN! ;
-: CLEAR ( ptr a -- )  VEC-CLEAR ;
-: DISPOSE ( ptr a -- )  VEC-DISPOSE ;
+: CLEAR ( ptr a -- )
+   0 VEC-LEN swap VEC-LEN! ;
+
+\ Clear the entire header before release, so retries cannot free the mapping
+\ twice and a captured dead header cannot retain its former process address.
+: DISPOSE ( ptr a -- ) {: vec:ptr :}
+   vec VEC-CAP-FIELD @ {: cap :}
+   vec VEC-DATA@ {: data:ptr :}
+   NULL-PTR vec VEC-DATA!
+   0 vec VEC-CAP-FIELD !
+   0 vec VEC-LEN-FIELD !
+   cap 0= if exit then
+   data cap >COUNT VEC-RELEASE-STORAGE ;
 
 \ ---- length / capacity (raw cell <-> item-count role) -------------------------
 : LEN@ ( ptr a -- NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
 : CAP@ ( ptr a -- NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
+\ Any length from zero through the capacity; above it throws E-VEC-BOUNDS.
 : LEN! ( NUM:item-count ptr a -- )  swap ITEM-COUNT>N VEC-LEN swap VEC-LEN! ;
 
-\ Borrowed base of the contiguous cells: RESIZE, ENSURE growth and DISPOSE invalidate it.
+\ Borrowed base of the contiguous cells: growth (PUSH, ENSURE), RESIZE and DISPOSE invalidate it.
 : DATA@ ( ptr a -- ptr a )  VEC-DATA@ ;
 
 \ ---- resize / ensure (every allocation flows through the typed adapter) -------

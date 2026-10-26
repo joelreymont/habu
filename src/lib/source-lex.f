@@ -6,7 +6,7 @@
 \ for the image, and SOURCE replaces the last scan's tokens.
 \ It states its own dependencies below rather than naming them in a load order:
 \ src/lib/vector.f is no longer in the engine, so a consumer that loaded this file
-\ without it would fail at VEC-HEADER-CELLS.
+\ without it would fail at VEC:HEADER-CELLS.
 \
 \ Public surface (the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
@@ -69,21 +69,21 @@ variable FAM                    \ family of the row being scanned
 variable FOFF   variable FLEN   \ current row field: offset into the source, length
 variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
-create KIND-V VEC-HEADER-CELLS cells allot
+create KIND-V VEC:HEADER-CELLS cells allot
 \ The two address columns hold starts into the linted source, so their vector
 \ headers are declared pointer storage and carry the element type.
-VEC-HEADER-CELLS TYPED-BUFFER ADDR-V ptr u8
-create LEN-V VEC-HEADER-CELLS cells allot
-create BYTE-V VEC-HEADER-CELLS cells allot
-create LINE-V VEC-HEADER-CELLS cells allot
-create COL-V VEC-HEADER-CELLS cells allot
-VEC-HEADER-CELLS TYPED-BUFFER CADDR-V ptr u8
-create CLEN-V VEC-HEADER-CELLS cells allot
-create OPND-V VEC-HEADER-CELLS cells allot   \ the token is a raw operand
+VEC:HEADER-CELLS TYPED-BUFFER ADDR-V ptr u8
+create LEN-V VEC:HEADER-CELLS cells allot
+create BYTE-V VEC:HEADER-CELLS cells allot
+create LINE-V VEC:HEADER-CELLS cells allot
+create COL-V VEC:HEADER-CELLS cells allot
+VEC:HEADER-CELLS TYPED-BUFFER CADDR-V ptr u8
+create CLEN-V VEC:HEADER-CELLS cells allot
+create OPND-V VEC:HEADER-CELLS cells allot   \ the token is a raw operand
 \ The locals live after the tokens below STEPPED, read from those tokens (STEP):
 \ the token of each live local's name and the block depth that declared it.
-create LOCAL-V VEC-HEADER-CELLS cells allot
-create LDEPTH-V VEC-HEADER-CELLS cells allot
+create LOCAL-V VEC:HEADER-CELLS cells allot
+create LDEPTH-V VEC:HEADER-CELLS cells allot
 variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
@@ -114,6 +114,9 @@ variable IN-GROUP               \ those tokens end inside a `{: … :}` group
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
+\ The lexer's token and locals counts drive raw cell arithmetic (COUNT 1- ...),
+\ so a vector length leaves its role here.
+CAST: ITEM>N ( NUM:item-count -- n )
 
 : SRC@ ( -- ptr u8 )
    SRC-A @ ;
@@ -166,13 +169,8 @@ variable IN-GROUP               \ those tokens end inside a `{: … :}` group
    0 TOK-N !
    LOCALS-RESET ;
 
-\ RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@ yields a
-\ NUM:item-count and the checker correctly refuses to launder it back to n, but
-\ TOK-N is a raw n cache that drives the lexer's raw token arithmetic
-\ (COUNT 1- ...), so the count is read through the raw VEC-LEN@ accessor for this
-\ word alone.
 : SYNC-COUNT ( -- )
-   KIND-V VEC-LEN@ LEN>N TOK-N ! ;
+   KIND-V VEC:LEN@ ITEM>N TOK-N ! ;
 
 : ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind:n a:ptr u:n byte:n line:n col:n ca:ptr cu:n :}
    kind KIND-V VEC:PUSH drop
@@ -583,7 +581,7 @@ private
    a swap ;
 
 : LIVE ( -- n )
-   LOCAL-V VEC-LEN@ LEN>N ;
+   LOCAL-V VEC:LEN@ ITEM>N ;
 
 : LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LIVE 0 ?do
@@ -602,9 +600,9 @@ private
 \ Drop the locals the innermost open block declared.
 : BLOCK-DROP ( -- )
    begin LIVE 0 > if LDEPTH-V LIVE 1- N>INDEX VEC:@ DEPTH @ >= else false then while
-      LIVE 1- VEC-LEN {: l :}
-      l LOCAL-V VEC-LEN!
-      l LDEPTH-V VEC-LEN!
+      LIVE 1- N>ITEM {: l:NUM:item-count :}
+      l LOCAL-V VEC:LEN!
+      l LDEPTH-V VEC:LEN!
    repeat ;
 
 \ Block word k acts unless it is a name or names a live local.
@@ -802,16 +800,16 @@ private
 \ a dropped one.
 : KEEP ( n -- )
    dup STEPPED @ < if LOCALS-RESET then
-   VEC-LEN {: l :}
-   l KIND-V VEC-LEN!
-   l 0 ADDR-V VEC-LEN!
-   l LEN-V VEC-LEN!
-   l BYTE-V VEC-LEN!
-   l LINE-V VEC-LEN!
-   l COL-V VEC-LEN!
-   l 0 CADDR-V VEC-LEN!
-   l CLEN-V VEC-LEN!
-   l OPND-V VEC-LEN!
+   N>ITEM {: l:NUM:item-count :}
+   l KIND-V VEC:LEN!
+   l 0 ADDR-V VEC:LEN!
+   l LEN-V VEC:LEN!
+   l BYTE-V VEC:LEN!
+   l LINE-V VEC:LEN!
+   l COL-V VEC:LEN!
+   l 0 CADDR-V VEC:LEN!
+   l CLEN-V VEC:LEN!
+   l OPND-V VEC:LEN!
    SYNC-COUNT ;
 
 \ A token whose spelling steers how the scan reads the token after it.

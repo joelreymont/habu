@@ -1305,8 +1305,8 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
   `>MS MS>N`, `>NS NS>N`, `>TOK TOK>N`, `>REG REG>N`, `>LABEL LABEL>N`, `>VA
   VA>N`, `>SYMIDX SYMIDX>N` (`src/core/roles.f`). Library boundaries prefer
   checked refinement constructors that reject negative, overflowing or
-  out-of-capacity input: `A-LEN`, `A-IDX`, `A-COUNT`, `VEC-LEN`, `VEC-IDX`,
-  `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `M-LEN`, `M-OFF`.
+  out-of-capacity input: `A-LEN`, `A-IDX`, `A-COUNT`, `STR-LEN`, `STR-OFF`,
+  `STR-COUNT`, `M-LEN`, `M-OFF`.
 - Phase roles `asm`, `img`, `snap` are ordering cells whose payload is
   ignored: each phase consumes the role the previous one produced, so the
   checker refuses a build step run out of order.

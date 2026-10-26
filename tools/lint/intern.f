@@ -24,13 +24,13 @@ $100 constant INTERN-FOLD-CAP
 8 constant INTERN-VEC-CAP
 2 constant INTERN-CHUNK-VEC-CAP
 
-VEC-HEADER-CELLS TYPED-BUFFER INTERN-ADDR-V ptr u8
-create INTERN-LEN-V VEC-HEADER-CELLS cells allot
+VEC:HEADER-CELLS TYPED-BUFFER INTERN-ADDR-V ptr u8
+create INTERN-LEN-V VEC:HEADER-CELLS cells allot
 \ The chunk column holds allocation addresses, so its header is declared
 \ pointer storage and carries the element type.
-VEC-HEADER-CELLS TYPED-BUFFER INTERN-CHUNK-A-V ptr u8
-create INTERN-CHUNK-CAP-V VEC-HEADER-CELLS cells allot
-create INTERN-CHUNK-USED-V VEC-HEADER-CELLS cells allot
+VEC:HEADER-CELLS TYPED-BUFFER INTERN-CHUNK-A-V ptr u8
+create INTERN-CHUNK-CAP-V VEC:HEADER-CELLS cells allot
+create INTERN-CHUNK-USED-V VEC:HEADER-CELLS cells allot
 create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
@@ -61,6 +61,9 @@ variable INTERN-CHUNK-I
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
+\ The entry and chunk counts drive raw bounds and the id a new entry is stored
+\ under, so a vector length leaves its role here.
+CAST: ITEM>N ( NUM:item-count -- n )
 
 : INTERN-READY? ( -- bool )
    INTERN-READY @ 0 = IF LINT-FALSE ELSE LINT-TRUE THEN ;
@@ -74,20 +77,14 @@ variable INTERN-CHUNK-I
    INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
    1 INTERN-READY ! ;
 
-\ live interned count. RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@
-\ yields a NUM:item-count and the checker correctly refuses to launder a count
-\ back to n, but INTERN# is pinned to a raw n that drives the INTERN$/INTERN-FIND
-\ bounds and the id a new entry is stored under, so the count is read through raw
-\ VEC-LEN@ accessor for this word alone (no new projection). A typed
-\ item-count-bounded VEC iterator would retire it.
+\ live interned count
 : INTERN# ( -- n )
    INTERN-INIT-ONCE
-   0 INTERN-ADDR-V VEC-LEN@ LEN>N ;
+   0 INTERN-ADDR-V VEC:LEN@ ITEM>N ;
 
-\ live chunk count. RAW residual (same pin as INTERN#): drives the raw begin/while
-\ bounds in INTERN-RESET-CHUNKS / INTERN-ENSURE-CHUNK, so it stays on VEC-LEN@.
+\ live chunk count
 : INTERN-CHUNK# ( -- n )
-   0 INTERN-CHUNK-A-V VEC-LEN@ LEN>N ;
+   0 INTERN-CHUNK-A-V VEC:LEN@ ITEM>N ;
 
 : INTERN-CHUNK-A@ ( n -- ptr u8 )
    0 INTERN-CHUNK-A-V swap INTERN>INDEX VEC:@ ;

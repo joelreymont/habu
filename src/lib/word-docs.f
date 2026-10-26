@@ -59,8 +59,8 @@ $10000 constant CHUNK-BYTES
 40 constant LPAREN
 92 constant BACKSLASH
 
-VEC-HEADER-CELLS TYPED-BUFFER RECS ptr u8     \ each record, in source order
-VEC-HEADER-CELLS TYPED-BUFFER CHUNKS ptr u8   \ each chunk; its first cell holds its length
+VEC:HEADER-CELLS TYPED-BUFFER RECS ptr u8     \ each record, in source order
+VEC:HEADER-CELLS TYPED-BUFFER CHUNKS ptr u8   \ each chunk; its first cell holds its length
 TYPED-VARIABLE CHUNK ptr u8                   \ the chunk records are taken from
 variable USED                                 \ bytes of CHUNK taken
 variable ROOM                                 \ CHUNK's length; 0 when there is none
@@ -73,6 +73,29 @@ variable PUB                                  \ the open section is public
 
 \ ---- storage ------------------------------------------------------------------
 
+\ A record or chunk position and an index capacity enter the typed vectors as
+\ NUM roles; the refusal arms are unreachable for these nonnegative cells and
+\ surface the vector's own codes.
+: N>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
+: N>INDEX ( n -- NUM:index )
+   NUM:INDEX
+   MATCH NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
+\ Record and chunk counts drive raw loops and COUNT, so a vector length or
+\ capacity leaves its role here.
+CAST: ITEM>N ( NUM:item-count -- n )
+
 : CELL! ( n ptr u8 -- )
    CELL-VIEW ! ;
 
@@ -81,15 +104,15 @@ variable PUB                                  \ the open section is public
 
 \ The index vectors' capacity cell is their liveness token (vector.f).
 : LIVE? ( -- bool )
-   0 RECS VEC-CAP@ COUNT>N 0 > ;
+   0 RECS VEC:CAP@ ITEM>N 0 > ;
 
 : INIT ( -- )
-   0 RECS INDEX-CAP VEC-COUNT VEC-INIT
-   0 CHUNKS INDEX-CAP VEC-COUNT VEC-INIT ;
+   0 RECS INDEX-CAP N>ITEM VEC:INIT
+   0 CHUNKS INDEX-CAP N>ITEM VEC:INIT ;
 
 : RELEASE-CHUNKS ( -- )
-   0 CHUNKS VEC-LEN@ LEN>N 0 ?do
-      0 CHUNKS i VEC-IDX VEC@ {: base:ptr :}
+   0 CHUNKS VEC:LEN@ ITEM>N 0 ?do
+      0 CHUNKS i N>INDEX VEC:@ {: base:ptr :}
       base base CELL@ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    loop ;
 
@@ -100,7 +123,7 @@ variable PUB                                  \ the open section is public
 : NEW-CHUNK ( n -- ) {: need:n :}
    need CELL + CHUNK-BYTES max {: len:n :}
    len MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
-   base 0 CHUNKS VEC-PUSH drop
+   base 0 CHUNKS VEC:PUSH drop
    len base CELL!
    base CHUNK !
    CELL USED !
@@ -192,7 +215,7 @@ variable PUB                                  \ the open section is public
 \ ---- records ------------------------------------------------------------------
 
 : REC ( n -- ptr u8 )
-   0 RECS swap VEC-IDX VEC@ ;
+   0 RECS swap N>INDEX VEC:@ ;
 
 : FIELD@ ( n n -- n ) {: k:n f:n :}
    k REC f cells + CELL@ ;
@@ -229,7 +252,7 @@ variable PUB                                  \ the open section is public
    a t PKG-U @ + u BYTE-COPY
    e t PKG-U @ + u + eu BYTE-COPY
    t PKG-U @ + u + eu + top stop NOTES-COPY
-   r 0 RECS VEC-PUSH drop ;
+   r 0 RECS VEC:PUSH drop ;
 
 \ ---- the scan -----------------------------------------------------------------
 
@@ -298,8 +321,8 @@ public
 : RESET ( -- )
    LIVE? 0= if exit then
    RELEASE-CHUNKS
-   0 CHUNKS VEC-DISPOSE
-   0 RECS VEC-DISPOSE
+   0 CHUNKS VEC:DISPOSE
+   0 RECS VEC:DISPOSE
    0 ROOM !
    0 USED ! ;
 
@@ -323,6 +346,6 @@ public
 
 \ Defined last: inside this package a bare COUNT is this word from here on.
 : COUNT ( -- n )
-   0 RECS VEC-LEN@ LEN>N ;
+   0 RECS VEC:LEN@ ITEM>N ;
 
 ;package
