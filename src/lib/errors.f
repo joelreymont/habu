@@ -1470,6 +1470,8 @@
 \ package OS-CPU.
 \ PostgreSQL's growth region: -9560..-9569, minted by src/lib/pg.f once
 \ -9250..-9259 filled.
+\ Word contracts read from source: -9570..-9579, minted in src/lib/word-docs.f,
+\ which owns package WORD-DOCS.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

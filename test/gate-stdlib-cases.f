@@ -1495,6 +1495,7 @@ SUITE stdlib-source-default
 
 SUITE source-lex
    src/lib/source-lex-test.f
+   src/lib/word-docs-test.f
 ;SUITE
 
 SUITE stdlib-process-fixtures
