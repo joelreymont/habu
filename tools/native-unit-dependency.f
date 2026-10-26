@@ -62,8 +62,9 @@ private
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
-\ checker's unit facts before it, whether it opened a child file, and the
-\ output bytes the open files held before it (RUN-OUT).
+\ checker's unit facts before it, whether it opened a child file, the
+\ output bytes the open files held before it (RUN-OUT), and the pending FFI
+\ declaration before it (PENDING).
 0 constant R-ORD
 1 constant R-END
 2 constant R-N
@@ -73,7 +74,8 @@ private
 9 constant R-FACTS
 10 constant R-CHILD
 11 constant R-OUT
-12 constant RUN-CELLS
+12 constant R-PENDING
+13 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -585,6 +587,8 @@ variable RUN-CLASS-XT
 CAST: AS-CLASS ( n -- [ -- n ] )
 variable FACTS-XT
 CAST: AS-FACTS ( n -- [ -- n bool ] )
+variable PENDING-XT
+CAST: AS-PENDING ( n -- [ -- n ] )
 variable READERS-XT
 CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
 variable READ-AT
@@ -666,6 +670,12 @@ private
    FACTS-XT @ AS-FACTS execute {: n:n known:bool :}
    known 0= if -1 exit then
    n ;
+
+\ The pending FFI declaration, FFI-DECL:PENDING; 0, which never admits a run,
+\ when the declarer is not loaded.
+: PENDING ( -- n )
+   PENDING-XT @ 0= if 0 exit then
+   PENDING-XT @ AS-PENDING execute ;
 
 \ The DATA offset of kernel cell k, the cells NUNIT-OBJECT KCELL names: tier,
 \ build depth, build tier and the optimizing compiler's dispatch.
@@ -1656,13 +1666,16 @@ variable USER-READ
    FACTS run R-FACTS RFIELD !
    0 run R-CHILD RFIELD !
    RUN-OUT run R-OUT RFIELD !
+   PENDING run R-PENDING RFIELD !
    run 1+ FRUN-N !
    run 1+ false ;
 
 \ A closed run's judgment: a seed word's run that consumed no source past its
 \ token, changed no record count, here, wordlist count, kernel cell or unit
-\ fact count, wrote no output the open file records (its OUT row carries it)
-\ and opened no child file left nothing the object carries.
+\ fact count, left no pending FFI declaration it changed, wrote no output
+\ the open file records (its OUT row carries it) and opened no child file
+\ left nothing the object carries. ;FUNCTION folds the declaration its
+\ clauses changed into the definition and FFI-FN row the object carries.
 \ The rule is residual: a run admitted by its trace may also touch state the
 \ object does not carry, as `.(` reads its text. `data-base`
 \ refuses, so a file aligning with `here data-base - negate 7 and allot`
@@ -1682,6 +1695,8 @@ variable USER-READ
    facts 0 >= if FACTS facts <> if exit then then
    run R-CHILD RFIELD @ 0<> if exit then
    RUN-OUT run R-OUT RFIELD @ <> if exit then
+   PENDING {: pending:n :}
+   pending 0<> pending run R-PENDING RFIELD @ <> and if exit then
    run R-ORD RFIELD @ {: ord:n :}
    ord USER-READER? if true USER-READ ! exit then
    s" run-unaccounted" ord ORDERED-BY ;
@@ -1711,6 +1726,7 @@ variable USER-READ
    s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
    s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
    s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
+   s" FFI-DECL:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT PENDING-XT !
    s" TASK:OWNED-USER-READERS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT READERS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
@@ -1868,7 +1884,8 @@ variable USER-READ
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
-   0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 READERS-XT !
+   0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 PENDING-XT !
+   0 READERS-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

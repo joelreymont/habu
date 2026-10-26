@@ -1317,7 +1317,7 @@ variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
 variable STACK-N
 variable CUR-LIB
-variable OPEN                              \ a declaration is between FUNCTION: and ;FUNCTION
+variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
 variable SCOPE-SET                         \ ... and whether one was stated at all
 variable SCOPE-HOOK
@@ -1867,6 +1867,13 @@ public
    set if ENSURE-SCOPE-HOOK 1 else 0 then SCOPE-SET !
    FFI:NOTIFY-SCOPE ;
 
+\ The declaration between FUNCTION: and ;FUNCTION: 0 when none is open, else
+\ one more than the clauses it holds. A top-level run that changes it is
+\ admitted by that change (tools/native-unit-dependency.f RUN-JUDGE); a
+\ segment that opens or closes with one pending refuses
+\ (tools/native-unit-object.f DECL-CLOSED-CK).
+: PENDING ( -- n ) OPEN @ ;
+
 \ The parser's context, generated-text descriptors and token arrays are one
 \ declared cell grid or byte span apiece.
 : SCAN-SPANS ( [ ptr u8 n -- ] [ ptr u8 n -- ] -- )
@@ -1928,21 +1935,24 @@ public
    ARG-N @ fixed ?do
       i ARG-KIND@ K-FLOAT32 = if REFUSE then
    loop
-   fixed VAR-START ! ;
+   fixed VAR-START !
+   1 OPEN +! ;
 
 \ Argument idx is written by the callee: the bounded call guards exactly the
 \ span named here, a fixed width or the argument that carries the length.
 : WRITE-EXTENT ( n n -- ) {: idx:n len:n :}
    idx CLAUSE-TARGET
    len 0 <= if REFUSE then
-   len idx ARG-EXT! ;
+   len idx ARG-EXT!
+   1 OPEN +! ;
 
 : WRITE-LENGTH-ARG ( n n -- ) {: idx:n src:n :}
    idx CLAUSE-TARGET
    src 0 < if REFUSE then
    src ARG-N @ >= if REFUSE then
    src ARG-KIND@ K-VALUE <> if REFUSE then
-   src idx ARG-EXT-ARG! ;
+   src idx ARG-EXT-ARG!
+   1 OPEN +! ;
 
 \ The last input, a `ptr u8` no write clause names, receives a C struct of
 \ bytes returned by value; the declaration has no output. AAPCS64 only.
@@ -1955,7 +1965,8 @@ public
    VAR-START @ -1 <> if REFUSE then
    ARG-N @ 0= if REFUSE then
    ARG-N @ 1- CLAUSE-TARGET
-   bytes STRUCT-BYTES ! ;
+   bytes STRUCT-BYTES !
+   1 OPEN +! ;
 
 \ Input idx, a `ptr u8` no other clause names, is the address of a C struct of
 \ bytes passed by value. The struct call returns x0 and x1 only, so a float
@@ -1967,7 +1978,8 @@ public
    bytes 0 <= if REFUSE then
    VAR-START @ -1 <> if REFUSE then
    RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or if REFUSE then
-   bytes idx ARG-SBYTES! ;
+   bytes idx ARG-SBYTES!
+   1 OPEN +! ;
 
 : SELECT-LIBRARY ( ptr u8 n -- ) {: path:ptr u:n :}
    u 0 <= u FFI:LIBRARY-PATH-CAP >= or if E-FFI-SYNTAX throw then

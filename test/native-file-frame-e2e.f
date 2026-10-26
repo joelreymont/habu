@@ -94,11 +94,18 @@ variable FILL-POOL
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 
+\ ffo.f and ffg.f run inside an open FUNCTION: declaration. Kept apart from
+\ PROBE for its body text limit (BODYBUF-CAP).
+: DECL-PROBE ( -- )
+   s" ffo.f" LOAD+
+   s" ffg.f" LOAD+ ;
+
 \ ffs.f's struct-by-value call prints its checksum, on macOS only, as
-\ FFS-FIXTURE writes it. Kept apart from PROBE for its body text limit
-\ (BODYBUF-CAP).
+\ FFS-FIXTURE writes it; ffsl.f loads first to grow the library table.
+\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : FFS-PROBE ( -- )
    HB-TARGET-MACOS? if
+      s" ffsl.f" LOAD+
       s" ffs.f" LOAD+
       S\" s\" ffs=\" type FFS-S FFS-SUM24 . cr\n" IN+
    then ;
@@ -222,6 +229,7 @@ variable FILL-POOL
    S\" s\" crc2=\" type 0 NULL-PTR 0 FF-CRC2 . cr\n" IN+
    s" ffn.f" LOAD+
    S\" s\" pid=\" type FF-PID 0 > . cr\n" IN+
+   DECL-PROBE
    FFS-PROBE
    s" sel.f" LOAD+
    s" selc.f" LOAD+
@@ -570,6 +578,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    name nameu FRAME$ why whyu ENDS-WITH? TTRUE
    name nameu NO-OBJECT ;
 
+\ name refuses because a segment of it opens or closes inside an open FFI
+\ declaration, and its load wrote no object.
+: DECL-OPEN ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu s"  reason=" LINE$ s"  reason=ffi-declaration-open" ENDS-WITH? TTRUE
+   name nameu NO-OBJECT ;
+
 \ Files whose installs nest under an installing parent, kept apart from
 \ FIXTURES for its body text limit (BODYBUF-CAP).
 : NEST-FIXTURES ( -- )
@@ -611,10 +626,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ library, built into the tree, so its registry row carries a relocation mask
 \ that a warm install declares again. FFS-S holds the s24 record {7, 3, 0, -9}.
 \ Structs by value are AAPCS64, so it runs on macOS only, as in
-\ src/lib/ffi-test.f.
+\ src/lib/ffi-test.f. Its library is the second distinct one, which grows
+\ the library table, and a file that grows a registry table refuses
+\ ffi-grown: ffsl.f states the same LIBRARY line first and takes that
+\ growth, so ffs.f reuses the row, as ffl2.f does ffl.f's.
 : FFS-FIXTURE ( -- )
+   ROOT$ STRUCT-FIXTURE:BUILD {: lib:ptr libu:n :}
    0 INPUT-U !
-   S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ ROOT$ STRUCT-FIXTURE:BUILD IN+
+   S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ lib libu IN+ S\" \n" IN+
+   s" ffsl.f" INPUT INPUT-U @ PUT
+   0 INPUT-U !
+   S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ lib libu IN+
    S\" \nFUNCTION: FFS-SUM24 hb_sum24 ( ptr u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION\ncreate FFS-S 7 , 3 , -9 ,\n" IN+
    s" ffs.f" INPUT INPUT-U @ PUT ;
 
@@ -628,6 +650,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ffl.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n4 BUFFER: GROW-SYM\n: GROW-NAME ( n -- ) 102 GROW-SYM c! 4 1 do dup 26 mod 97 + GROW-SYM i + c! 26 / loop drop ;\n: GROW ( -- ) FFI:MARK {: room:n :} 0 begin dup GROW-NAME GROW-SYM 4 FFI:PROCESS 0 FFI:DECLARE drop 1+ FFI:MARK room <> until drop ;\nGROW\n" PUT
    s" ffn.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: FF-PID getpid ( -- i32 ) ;FUNCTION\n" PUT
    s" ffl2.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC2 crc32 ( n ptr u8 n -- n ) ;FUNCTION\n" PUT
+   \ ffo.f loads ffoc.f inside an open declaration whose clause it states:
+   \ its segment closes and ffoc.f's opens with the declaration pending.
+   \ ffg.f's GETENV runs inside an open declaration and leaves it unchanged.
+   s" ffo.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFO-CRC crc32 ( n ptr u8 n -- n ) 1 2 WRITES-ARG\nrequire ffoc.f\n;FUNCTION\n" PUT
+   s" ffoc.f" S\" 1 constant FFOC-K\n" PUT
+   s" ffg.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFG-CRC crc32 ( n ptr u8 n -- n ) s\" HOME\" GETENV 2drop ;FUNCTION\n" PUT
    \ sel.f declares getuid under the process selection; selc.f, which does not
    \ require sel.f, declares the same row: a reuse row and the entry selection.
    s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
@@ -1260,6 +1288,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
    s" ffl2.f" KEY$ STORED
    HB-TARGET-MACOS? if
+      s" a LIBRARY line that grows the library table refuses ffi-grown" T-LABEL
+      s" ffsl.f" s"  reason=" LINE$ s" ffsl.f reason=ffi-grown" T$=
+      s" ffsl.f" NO-OBJECT
       s" a struct-by-value FUNCTION: file stores its object" T-LABEL
       OUT$ S\" ffs=1134932\n" CONTAINS? TTRUE
       s" ffs.f" KEY$ STORED
@@ -1278,7 +1309,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
    s" a file whose top level clears the scope refuses" T-LABEL
    OUT$ S\" wcb=0\n0\n0\n" CONTAINS? TTRUE
-   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED ;
+   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
+   s" a FUNCTION: clause run is admitted; a load inside the declaration refuses both files" T-LABEL
+   s" ffo.f" DECL-OPEN
+   s" ffoc.f" DECL-OPEN
+   s" a run inside a declaration that leaves it unchanged refuses" T-LABEL
+   s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED ;
 
 \ Neither name's frame nor a refused line of name names a run reason.
 : NO-RUN-REASON ( ptr u8 n -- )
@@ -1319,7 +1355,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" xrun.f" NO-RUN-REASON
    s" dxrun.f" NO-RUN-REASON
    s" ixl.f" NO-RUN-REASON
-   s" ixt.f" NO-RUN-REASON ;
+   s" ixt.f" NO-RUN-REASON
+   s" ffo.f" NO-RUN-REASON ;
 
 \ What a top-level run reaches: a checked definition and a classed
 \ primitive are admitted; a seed word no REACH class covers refuses.
@@ -1593,6 +1630,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" scopeb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
    s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
+   s" a warm build refuses a load inside a declaration, and a run that leaves it unchanged, again" T-LABEL
+   s" ffo.f" DECL-OPEN
+   s" ffoc.f" DECL-OPEN
+   s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED
    s" a warm build runs act.f again, which closes the compiler session" T-LABEL
    s" act.f" NO-OBJECT
    OUT$ S\" session=0\n" CONTAINS? TTRUE

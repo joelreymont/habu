@@ -2241,9 +2241,12 @@ sections above.
   object refuses `ordered-dependency`. A seed word the top level runs itself is
   admitted only by the trace it leaves before the next token: source read past
   its token, a changed record count, HERE, wordlist count, kernel cell or
-  checker unit fact count, a child file it loaded, or text it wrote to the
-  output device. That text is part of the file's result: the object carries it
-  and a hit writes it again in load order. Otherwise it is
+  checker unit fact count, a child file it loaded, text it wrote to the
+  output device, or a change to the open FFI declaration (`FUNCTION:`, a
+  clause). That text is part of the file's result: the object carries it and
+  a hit writes it again in load order. `;FUNCTION` folds the declaration into
+  the definition and FFI-FN row the object carries; a segment that opens or
+  closes with a declaration open is `ffi-declaration-open`. Otherwise it is
   `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
   file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
   a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A nested run that

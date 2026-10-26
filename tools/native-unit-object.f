@@ -614,8 +614,11 @@ CAST: USER-NEXT-XT ( n -- [ [ ptr u8 -- ] -- ] )
    xt REQ-COUNT-XT execute ;
 
 \ Whether this engine's FFI registry reports its declarations. The observer
-\ decides for every FFI producer: they land together.
-: FFI-BOUND? ( -- bool ) s" FFI:OBSERVE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> ;
+\ and the pending declaration, the newest, decide for every FFI producer: an
+\ engine that has both has them all.
+: FFI-BOUND? ( -- bool )
+   s" FFI:OBSERVE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
+   s" FFI-DECL:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
 : FFI-XT ( ptr u8 n -- n ) NUNIT-CAPTURE:BOUND-PRODUCER-XT ;
 : FFI-N ( ptr u8 n -- n ) FFI-XT DEF-NUM-XT execute ;
 : FFI-SELECTION ( -- n n bool ) s" FFI-DECL:SELECTION" FFI-XT FFI-SELECTION-XT execute ;
@@ -883,6 +886,12 @@ private
 \ 1 when the compiler's session is live, else 0.
 : LIVE-N ( -- n ) NCOMP:SESSION-LIVE? if 1 else 0 then ;
 
+\ A segment opens and closes outside an FFI declaration: its object carries
+\ the definition and FFI-FN row ;FUNCTION makes, never a declaration left
+\ open across a load.
+: DECL-CLOSED-CK ( -- )
+   s" FFI-DECL:PENDING" FFI-N 0<> if s" ffi-declaration-open" FILE-REFUSE then ;
+
 \ Open the innermost file's next segment at the present cursors.
 : SEGMENT-OPEN ( -- )
    ndict@ FO-SEG-ORD FO !
@@ -902,13 +911,15 @@ private
    s" FFI:MARK" FFI-N FO-SEG-ROOM FO !
    FFI-SELECTION if 1 else 0 then FO-SEG-SEL-SET FO !
    FO-SEG-SEL-WID FO ! FO-SEG-SEL-LIB FO !
-   0 OBS-N ! OBS-SET ;
+   0 OBS-N ! OBS-SET
+   DECL-CLOSED-CK ;
 
 \ The open segment's FFI declarations against its open marks: a row in the
 \ bank the segment did not select refuses ffi-bank, and that names the
 \ cause, so it goes first; a table that grew refuses ffi-grown. A selection
 \ write names no row. Whether the declarer's selection changed.
 : FFI-SEG-CK ( -- bool )
+   DECL-CLOSED-CK
    s" FFI:MAKER-BANK" FFI-N {: bank:n :}
    FO-SEG-FN FO @ bank and {: own:n :}
    OBS-N @ 0 ?do
@@ -1017,10 +1028,12 @@ private
 \ segment that moved TASK's user-slot watermark, either way, or ran a reader
 \ of it adds its TASK row, and one that moved the compiler's identity
 \ counters or opened its session its HIST row. A segment that closed a
-\ session live at its open refuses it: a replay cannot close one. The earlier
-\ DATA bytes the segment changed are recorded whether or not it adds a row; a
-\ kernel cell it left changed refuses it. Output its top level wrote adds an
-\ OUT row after the rest.
+\ session live at its open refuses it: a replay cannot close one. A segment
+\ that opens or closes inside an FFI declaration refuses
+\ ffi-declaration-open (DECL-CLOSED-CK). The earlier DATA bytes the segment
+\ changed are recorded whether or not it adds a row; a kernel cell it left
+\ changed refuses it. Output its top level wrote adds an OUT row after the
+\ rest.
 : SEGMENT-CLOSE ( -- )
    OBS-CLEAR
    SEG-DELTAS {: dmod:n dgen:n depoch:n dbuild:n dlease:n :}
