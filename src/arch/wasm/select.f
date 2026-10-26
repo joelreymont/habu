@@ -477,9 +477,9 @@ HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
    e ;
 
 \ ---- checked memory ------------------------------------------------------------
-\ The exit code native's crash handler ends the process with after an access
-\ fault outside every stack's guard pages (src/habu/crash.f EMIT-CRASH-HANDLER,
-\ src/habu/boot-x64.f CRASH-RC).
+\ The exit status a Wasm checked-memory fault records: an access outside every
+\ stack's guard pages, where native's crash handler (src/habu/crash.f
+\ EMIT-CRASH-HANDLER) dies by the signal instead.
 134 constant CRASH-RC
 
 \ How many bits a memory32 address has: a pointer at or past 2^32 names no byte.

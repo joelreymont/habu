@@ -54,6 +54,8 @@ $104022 constant MAP-DATA-RESERVE
 62  constant NR-KILL
 109 constant NR-SETPGID
 39  constant NR-GETPID
+186 constant NR-GETTID
+234 constant NR-TGKILL
 310 constant NR-PROCESS-VM-READV
 434 constant NR-PIDFD-OPEN
 293 constant NR-PIPE              \ pipe2(fds, flags)

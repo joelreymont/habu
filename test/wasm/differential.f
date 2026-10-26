@@ -37,7 +37,7 @@ private
 
 60000 constant DEADLINE-MS
 4096 constant CAP
-134 constant CRASH-RC                  \ native's crash handler exits so (src/habu/crash.f)
+139 constant CRASH-RC                  \ 128 + SIGSEGV: native dies of the trap after its dump
 CAP BUFFER: OUT
 CAP BUFFER: ERR
 FS-PATH-CAP BUFFER: DIR

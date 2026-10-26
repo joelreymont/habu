@@ -2,8 +2,8 @@
 \ (src/habu/kernel-x64.f DEFINITION,) in the booted harness, cross-built for an
 \ x86-64 peer. Each image seeds its records and cells, puts the code region at
 \ rest and then calls the rows, so a row that writes the region outside its
-\ window faults into the crash handler's dump (134). After a row writes a
-\ record, one check finds every band cell clear and the record's page
+\ window faults: the crash handler dumps and dies by SIGSEGV. After a row writes
+\ a record, one check finds every band cell clear and the record's page
 \ read-execute. Every image ends by checking the data stack is empty and the
 \ machine stack balanced.
 \

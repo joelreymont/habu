@@ -5,7 +5,8 @@
 \ WHERE THE REST OF THE PROOF IS, AND WHY IT IS NOT A TEST. A bracket makes
 \ writable only the pages of the three bands it declares - dictionary records,
 \ the control-flow stack, the code at CP - and a writer that fails to declare its
-\ span stores into an RX page and dies in the crash handler (exit 134). The
+\ span stores into an RX page and dies of the fault after the crash handler's
+\ report. The
 \ complete detector for THAT is the build, not a suite: `install --force`
 \ compiles the whole engine prefix through every definer, every patch path, the
 \ AOT seed and pass 2 before a single test runs, so a missing declaration cannot
@@ -55,10 +56,11 @@ package CODE-WINDOW-TEST
 
 $800 constant CAP
 20000 constant TIMEOUT-MS
-\ The engine's crash handler prints the register dump and exits 134 itself
-\ (src/habu/crash.f EMIT-CRASH-HANDLER), so a refused write is an EXIT on both
-\ targets, not a signal.
-134 constant CRASH-RC
+\ The engine's crash handler prints the register dump and then the process
+\ dies by the fault's own signal (src/habu/crash.f C-CRASH-RERAISE). A store
+\ into a mapped page without write permission is SIGBUS on macOS and SIGSEGV
+\ on Linux.
+: STORE-FAULT ( -- n )  HB-TARGET-LINUX? if 11 else 10 then ;
 
 create OUT CAP allot
 create ERR CAP allot
@@ -72,7 +74,9 @@ variable CW-BASE
    src u CAPTURE {: outu:len erru:len oc :}
    src u OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED= ;
 
-: TRAPS ( ptr u8 n -- )    CRASH-RC EXPECT ;
+: TRAPS ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u CAPTURE {: outu:len erru:len oc :}
+   src u OUT outu LEN>N ERR erru LEN>N oc STORE-FAULT T-OUTCOME-SIGNALED= ;
 
 : ACCEPTS ( ptr u8 n -- )  0 EXPECT ;
 

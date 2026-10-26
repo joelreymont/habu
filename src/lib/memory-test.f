@@ -258,7 +258,9 @@ using MEM
 package MEMT
 private
 
-$86 constant MEMT-FAULT-RC
+\ A child that touches released memory prints the crash handler's report and
+\ dies of the SIGSEGV itself (src/habu/crash.f C-CRASH-RERAISE).
+11 constant MEMT-FAULT-SIG
 $1000 constant RBT-CAP
 1000 constant RBT-TIMEOUT-MS
 -7777 constant E-PRIMARY
@@ -396,10 +398,12 @@ create RBT-ERR RBT-CAP allot
    src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
    outu LEN>N erru LEN>N ;
 
-: RBT-EXPECT-FAULT ( ptr u8 n -- )
-   MEMT-FAULT-RC RBT-EXITS
-   0 > TTRUE
-   0 T= ;
+: RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
+   RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
+   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc MEMT-FAULT-SIG T-OUTCOME-SIGNALED=
+   erru LEN>N 0 > TTRUE
+   outu LEN>N 0 T= ;
 
 : RBT-EXPECT-CLEAN ( ptr u8 n -- )
    0 RBT-EXITS
@@ -514,8 +518,8 @@ TASK:SEMAPHORE WBT-OWN-MARKED
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
    MATCH outcome
-      exited OF MEMT-FAULT-RC <> if E-PRIMARY throw then ENDOF
-      signaled OF drop E-PRIMARY throw ENDOF
+      exited OF drop E-PRIMARY throw ENDOF
+      signaled OF MEMT-FAULT-SIG <> if E-PRIMARY throw then ENDOF
       timeout OF E-PRIMARY throw ENDOF
    ;MATCH ;
 

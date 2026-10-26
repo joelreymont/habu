@@ -23,6 +23,8 @@ $6   constant NR-CLOSE
 $25  constant NR-KILL
 $52  constant NR-SETPGID
 $14  constant NR-GETPID
+$148 constant NR-PTHREAD-KILL  \ __pthread_kill(thread port, sig) — BSD syscall 328
+26   constant MACH-THREAD-SELF  \ thread_self_trap is Mach trap -27, so x16 = ~26
 $16A constant NR-KQUEUE
 $171 constant NR-KEVENT64
 $FFFB constant EVFILT-PROC-U16     \ EVFILT_PROC as an unsigned 16-bit filter (-5)
@@ -93,6 +95,14 @@ $D4001001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0x80
 
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
+
+\ Send the signal in a register to this thread, as libc's pthread_kill(
+\ pthread_self(), sig) does: x0 = thread_self_trap(), then __pthread_kill.
+\ Clobbers x0, x1 and x16.
+: OS-RAISE-SELF ( n -- )
+   {: sigreg :}
+   16 MACH-THREAD-SELF MOVN,  $80 SVC,
+   1 sigreg 0 ADDI,  NR-PTHREAD-KILL SYS, ;
 
 : OS-OPEN-FLAGS ( -- ) ;
 

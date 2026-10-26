@@ -369,7 +369,7 @@ public
 \ page closed, a poisoned cell, and the cells a case reads back. At rest the
 \ region is read-execute throughout, as the ARM64 boot leaves it, so a row
 \ that writes it outside its window faults into the crash handler's dump
-\ (134).
+\ and dies of that signal.
 package X64HARNESS
 using X64ASM
 using X64CODE

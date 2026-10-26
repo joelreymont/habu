@@ -627,8 +627,8 @@ variable GE-NEST-J
 : GE-DEREF-1 ( ptr u8 n -- ) {: tok:ptr toku:n :}
    \ Run one deref/execute primitive as the LITERAL FIRST top-level token on an
    \ empty stack: its seed record's min-in must make the band refuse it with the
-   \ underdepth reject + exit 70 before the body runs, never a signal (crash
-   \ handler exit 134). Unguarded, the body faults reading below the base.
+   \ underdepth reject + exit 70 before the body runs, never a signal (death
+   \ after the crash dump). Unguarded, the body faults reading below the base.
    GE-HB-RESET
    GE-SRC-RESET
    tok toku GE-SRC-LINE
@@ -855,7 +855,7 @@ variable GE-NEST-J
    {: src:ptr srcu:n diag:ptr diagu:n label:ptr labelu:n :}
    \ One rejected definition evaluated under the TCE-CATCH wrapper: the abort
    \ must deliver caught RC-REJECT (70) on stdout with the diagnostic on
-   \ stderr and the process exiting 0 — never a SIGBUS register dump (rc 134).
+   \ stderr and the process exiting 0 — never a SIGBUS register dump.
    src srcu GE-EVAL-CATCH-RUN
    label labelu GE-EXPECT-OK
    s" 70" label labelu GE-EXPECT-OUT-HAS
@@ -882,7 +882,7 @@ variable GE-NEST-J
 : GE-ORPHAN-CLOSER-1 ( ptr u8 n ptr u8 n -- ) {: tok:ptr toku:n label:ptr labelu:n :}
    \ Plain stdin: a definition that opens no control-flow frame but names a closer
    \ must fail closed rc 70 with the named engine diagnostic + the offending token,
-   \ NEVER a SIGBUS register dump (rc 134). Root cause (dot habu-orphan-control-
+   \ NEVER a SIGBUS register dump. Root cause (dot habu-orphan-control-
    \ word-0370b49d): every closer's compile-time patch pops the control-flow stack
    \ through LCFPOP; with an empty stack it underflowed to a bogus branch origin that
    \ LPAT then dereferenced. LCFPOP now guards depth 0 and rejects like E-UNDEFINED.
@@ -935,7 +935,7 @@ private
    \ Plain stdin: a loop-family word (LOOP / +LOOP / LEAVE) whose innermost open
    \ control-flow frame is not a `do` frame -- or which has no open frame at all --
    \ must fail closed rc 70 with the named engine diagnostic and the offending
-   \ token, NEVER a register dump (rc 134). Root cause (dot habu-fix-loop-closer-
+   \ token, NEVER a register dump. Root cause (dot habu-fix-loop-closer-
    \ 9e5d012e): the DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level
    \ arrays) is the loop family's opener record and LCFPOP's orphan guard does not
    \ cover it. With an IF or BEGIN frame open, LOOP/+LOOP still popped the CF stack

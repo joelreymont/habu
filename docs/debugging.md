@@ -114,6 +114,25 @@ lldb may need the admin password once. AMFI signature cache keys on the
 path/cdhash, so a binary that ran fine can be SIGKILLed at a path that previously
 held an invalid signature. Write to a fresh path when in doubt.
 
+A fault the crash handler does not name prints the `habu-crash regs` dump on
+fd 2 and then ends by its own signal, delivered again at the faulting pc
+(`src/habu/crash.f` C-CRASH-RERAISE, `src/habu/boot-x64.f` DUMP,): the parent
+sees the signal (a shell shows 128 + n, 139 for SIGSEGV), and a core or a
+debugger shows the faulting pc, sp and caller frames, not the handler's. A core
+is written only when RLIMIT_CORE allows it: `ulimit -c unlimited` before the
+run. Linux writes it where `/proc/sys/kernel/core_pattern` says
+(`coredumpctl` when that is systemd-coredump). macOS writes it to
+`sysctl kern.corefile` (`/cores/core.%P`), and `/cores` is root-owned mode 755,
+so a core needs it made writable by an administrator first. Without a core,
+run the child under lldb with
+`settings set platform.plugin.darwin.ignored-exceptions EXC_BAD_ACCESS` and
+`process handle SIGSEGV -s true -p true` before `process launch`; without the
+setting lldb catches the Mach exception itself and `continue` discards it, so
+the handler never runs. The first stop (`signal SIGSEGV`) is the fault before
+the handler runs; after `continue` the handler prints the dump, and the
+re-delivered SIGSEGV stops at the same pc and sp, where `bt` or the return
+address at `[sp]` shows the callers.
+
 ## Forth disassembler (preferred over external disassemblers)
 
 Use the in-process dumps to inspect generated code before falling back to
@@ -363,6 +382,10 @@ so the message names the mechanism that caught the fault
   prefix `hb: stack bounds exceeded` unless the stack matters.
 - `hb: stack bounds exceeded (machine)` (exit 102): the OS thread's own stack
   overflowed, typically unbounded recursion; `catch` does not receive it.
+- `habu-crash regs [...]` and one hex value per line: any other fault
+  (SIGSEGV, SIGBUS, SIGILL, SIGTRAP, SIGFPE). After the dump the process dies
+  by that signal at the faulting pc, with a core when RLIMIT_CORE allows (see
+  "gdb/lldb" above).
 - `E-STACK-UNGUARDED`: `run-in-stack` refused an extent that is not a guarded
   mapping, before the callback ran. Allocate the stack with
   `MEM:ALLOC-GUARDED`.

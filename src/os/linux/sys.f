@@ -31,6 +31,8 @@ $104022 constant MAP-DATA-RESERVE
 129 constant NR-KILL
 154 constant NR-SETPGID
 172 constant NR-GETPID
+178 constant NR-GETTID
+131 constant NR-TGKILL
 434 constant NR-PIDFD-OPEN
 59  constant NR-PIPE
 134 constant NR-SIGACTION
@@ -101,6 +103,14 @@ $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
+
+\ Send the signal in a register to this thread: tgkill(getpid(), gettid(),
+\ sig). Clobbers x0, x1, x2, x8, x10 and x16.
+: OS-RAISE-SELF ( n -- )
+   {: sigreg :}
+   NR-GETPID SYS,  10 0 0 ADDI,
+   NR-GETTID SYS,  1 0 0 ADDI,
+   0 10 0 ADDI,  2 sigreg 0 ADDI,  NR-TGKILL SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
    LBL LBL LBL LBL {: noappend nocreat notrunc noctty :}

@@ -362,7 +362,7 @@ variable USE-K                       \ and its index there
 
 \ A pointer is checked on its whole cell - high 32 bits zero, and at least
 \ 65536, past the null reservation - before i32.wrap_i64 narrows it; one that
-\ fails records the crash handler's exit code, 134, with the pointer, and
+\ fails records CRASH-RC, 134, with the pointer, and
 \ executes unreachable, its kind at ctx offset 32 and its address at 40. The
 \ access takes the narrowed pointer at offset 0, so whether p + n fits the
 \ memory is the engine's bounds check. The fixture reads decimal literals only;

@@ -16,7 +16,7 @@
 \ handler returns through, and UC-GREG and UC-RIP name where the ucontext a
 \ SA_SIGINFO handler receives keeps the interrupted registers. The crash handler START, installs through them is the twin of
 \ crash.f EMIT-CRASH-HANDLER: it names a VM stack whose guard page faulted and
-\ exits 102, or dumps the registers on fd 2 and exits 134.
+\ exits 102, or dumps the registers on fd 2 and dies by the signal itself.
 \
 \ The syscall numbers and SYS, are the x86-64 seam's, loaded below the way
 \ tools/native-emit.f loads a target's seam before the files that emit against
@@ -425,19 +425,23 @@ UC-GREGS 16 CELL * + constant UC-RIP
 \ given flags, returning through the restorer bound at the label; SA-RESTORER
 \ joins the flags. The action is built on the machine stack and rsp comes back
 \ where it was. The handler is stored before anything is clobbered, so any
-\ register but rsp may hold it. It clobbers rax rcx rdx rsi rdi r10 r11 and
-\ leaves CF set when the kernel refused, as SYS, does: the lea that gives the
-\ frame back keeps the flags.
-: SIGACTION-AT, ( n n r64 label -- ) {: sig:n flags:n handler:r64 rest:label :}
+\ register but rsp, and rdi under SIGACTION-AT,, may hold it. It clobbers rax
+\ rcx rdx rsi rdi r10 r11 and leaves CF set when the kernel refused, as SYS,
+\ does: the lea that gives the frame back keeps the flags. SIGACTION-RDI,
+\ installs it for the signal rdi holds.
+: SIGACTION-RDI, ( n r64 label -- ) {: flags:n handler:r64 rest:label :}
    RSP SA-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
    handler RSP SA-HANDLER MEM-OFF ASM-SINK ENC-MOV-MR
    RAX flags SA-RESTORER or IMM,  RAX RSP SA-FLAGS MEM-OFF ASM-SINK ENC-MOV-MR
    RAX rest MOVABS,  RAX RSP SA-RESTORER-AT MEM-OFF ASM-SINK ENC-MOV-MR
    RAX ZERO-REG,  RAX RSP SA-MASK MEM-OFF ASM-SINK ENC-MOV-MR
-   RDI sig IMM,  RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
+   RSI RSP ASM-SINK ENC-MOV-RR  RDX ZERO-REG,
    R10 SIGSET-BYTES IMM,
    NR-SIGACTION SYS,
    RSP RSP SA-BYTES MEM-OFF ASM-SINK ENC-LEA ;
+
+: SIGACTION-AT, ( n n r64 label -- ) {: sig:n flags:n handler:r64 rest:label :}
+   RDI sig IMM,  flags handler rest SIGACTION-RDI, ;
 
 \ The same for the handler at a label, through rax.
 : SIGACTION, ( n n label label -- ) {: sig:n flags:n handler:label rest:label :}
@@ -509,8 +513,12 @@ private
 \ number and rip, then the 24 bytes from rip - 8 as three cells in memory
 \ order, each 0 unless its eight bytes lie in the code region. The region lies
 \ a fixed distance past the text, so its base comes rip-relative, never from
-\ the saved r13, and the handler reads no address it cannot prove mapped. It
-\ then exits CRASH-RC, as crash.f does.
+\ the saved r13, and the handler reads no address it cannot prove mapped.
+\ Then the process dies by the signal itself, as crash.f C-CRASH-RERAISE does:
+\ SIG_DFL for it, tgkill to this thread, where it stays pending while its
+\ handler runs, and rt_sigreturn, which restores the interrupted context and
+\ mask, so it is delivered at the faulting rip. CRASH-RC remains the exit if
+\ rt_sigreturn ever comes back.
 4 constant SIGILL
 5 constant SIGTRAP
 7 constant SIGBUS
@@ -758,8 +766,9 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    hex MEMORY-ORDER PRINT, ;
 
 \ The dump: HEAD$ from the label, the signal, the registers, rip and the three
-\ code lines, then exit CRASH-RC.
-: DUMP, ( label label -- ) {: head:label hex:label :}
+\ code lines, then the signal re-raised, returning through the restorer label
+\ for the default action's frame.
+: DUMP, ( label label label -- ) {: head:label hex:label rest:label :}
    RDI STDERR IMM,  RSI head MOVABS,  RDX HEAD$ nip IMM,  NR-WRITE SYS,
    RAX SIG-REG ASM-SINK ENC-MOV-RR  hex VALUE-ORDER PRINT,
    16 0 ?do
@@ -768,11 +777,21 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    RAX UC-REG UC-RIP MEM-OFF ASM-SINK ENC-MOV-RM  hex VALUE-ORDER PRINT,
    REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
    CELL negate hex CODE-LINE,  0 hex CODE-LINE,  CELL hex CODE-LINE,
+   RDI SIG-REG ASM-SINK ENC-MOV-RR  R8 ZERO-REG,  0 R8 rest SIGACTION-RDI,
+   NR-GETPID SYS,  RDI RAX ASM-SINK ENC-MOV-RR
+   NR-GETTID SYS,  RSI RAX ASM-SINK ENC-MOV-RR
+   RDX SIG-REG ASM-SINK ENC-MOV-RR  NR-TGKILL SYS,
+   \ rsp is back at entry, at the restorer address the kernel pushed; the
+   \ restorer's own `ret` would pop it, so rt_sigreturn finds its frame at
+   \ rsp + 8.
+   RSP CELL >IMM8 ASM-SINK ENC-ADD-RI8  NR-SIGRETURN SYS,
+   \ Reached only if rt_sigreturn fails: the exit the handler took before.
    RDI CRASH-RC IMM,  NR-EXIT-GROUP SYS, ;
 
-\ Bind the handler at the label, then the printer and the header it writes,
-\ where no control falls in.
-: CRASH-HANDLER, ( label -- ) {: at:label :}
+\ Bind the handler at the first label, then the printer and the header it
+\ writes, where no control falls in. The second is the restorer RESTORER,
+\ binds, which the default action the handler installs names.
+: CRASH-HANDLER, ( label label -- ) {: at:label rest:label :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: dump:label hex:label head:label :}
    at X64CODE:LBL,
    SIG-REG RDI ASM-SINK ENC-MOV-RR
@@ -782,7 +801,7 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    REGION-REG TEXT-REG REGION-FROM-TEXT MEM-OFF ASM-SINK ENC-LEA
    dump GUARDS,
    dump X64CODE:LBL,
-   head hex DUMP,
+   head hex rest DUMP,
    hex HEX-LINE,
    head X64CODE:LBL,
    HEAD$ TEXT-BYTES, ;
@@ -823,7 +842,7 @@ STACK-ABI:LOOP-BASE-CELL CELL + constant TASK-REGION-MIN
    STACK-BAD @ >LABEL S\" hb: cannot map guarded VM stack\n" MAP-FAIL-RC FAIL,
    OCC-BAD @ >LABEL S\" hb: cannot map definition occurrences\n" MAP-FAIL-RC FAIL,
    DATA-BAD @ >LABEL S\" hb: cannot map fixed data region\n" MAP-FAIL-RC FAIL,
-   crash CRASH-HANDLER,
+   crash rest CRASH-HANDLER,
    rest RESTORER,
    stub SIGNAL-STUB, ;
 

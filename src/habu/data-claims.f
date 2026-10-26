@@ -15,7 +15,7 @@ require src/habu/native-host-cells.f
 \ PROT, AOT-SIG, BOOT-LAYOUT and src/habu/stack-abi.f all sit inside it. Five
 \ shipped libraries fitted into the 472 bytes before the first of them by luck,
 \ and a sixth would have overwritten the AOT window with no diagnostic at all -
-\ measured, before the bound was corrected: one $40 row past the mark exits 134
+\ measured, before the bound was corrected: one $40 row past the mark crashed
 \ at teardown with a register dump.
 \
 \ A COMMENT COULD NOT CATCH THAT AND DID NOT. This table can. Every claim on the

@@ -11,7 +11,8 @@
 \ The guard-fetch image jumps into the data stack's low guard page. An
 \ instruction fetch there is a bounds fault (102), never an underdepth throw.
 \ The foreign-fetch image faults outside every owned stack with an aligned but
-\ unmapped RBP; the handler must dump it (134) without dereferencing RBP.
+\ unmapped RBP; the handler must dump it and die by SIGSEGV without
+\ dereferencing RBP.
 \ The gap-fetch image faults between text and REGION with the same untrusted
 \ RBP; that unmapped gap cannot authorize a DATA descriptor either.
 \ The host checks each image's ELF header; running them is the peer's.

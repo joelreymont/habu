@@ -50,7 +50,7 @@ create LIT-SRC LIT-SRC-CAP allot
 \ so Z exhausts the machine call stack and reports on its alternate signal
 \ stack.
 : MACHINE-OVERFLOW ( ptr u8 n -- )
-   CHILD-RC 134 T=
+   CHILD-RC 128 11 + T=                          \ the dump, then death by SIGSEGV
    ERR ERRLEN @ s" habu-crash regs" T-PREFIX= ;
 
 : OVERFLOW-NAMES ( -- )

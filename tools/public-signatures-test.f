@@ -572,7 +572,7 @@ public
 \ A source whose last token ends on the last byte of the slab it is read into:
 \ the slab is the file rounded up to 64 KiB, so a 64 KiB multiple fills it.
 \ The word scan used to read the byte after that token, past the slab, which
-\ faults (rc 134) when nothing is mapped there. At 2 MiB nothing was, on every
+\ faults when nothing is mapped there. At 2 MiB nothing was, on every
 \ measured macOS run; smaller slabs mostly sat beside another mapping, where
 \ the read passed unseen.
 package PST-SLAB-END

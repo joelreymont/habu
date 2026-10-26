@@ -1,6 +1,9 @@
 \ crash.fs — the in-binary signal handlers the native engine bakes.
 \ sa_tramp = the handler itself: kernel enters with x2=sig, x4=ucontext; we dump
-\ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
+\ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr, then the process dies by
+\ the signal itself: SIG_DFL, the signal re-raised at this thread, sigreturn to
+\ the interrupted context, so the parent sees the signal and a core (when
+\ RLIMIT_CORE allows) holds the faulting pc, sp and callers.
 \ EMIT-SIGNAL-HANDLER at the end of this file bakes the second one: the
 \ async-signal-safe stub a program installs for an ordinary signal.
 variable LCRASHH   variable LHEX   variable LHDR   variable LSIGH
@@ -327,31 +330,14 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
    CRS-MACHINE-M LABEL@ LBL,  CRS-MACHINE$ BYTES,
    CRS-SKIP LABEL@ LBL, ;
 
-: EMIT-CRASH-HANDLER ( -- )
-   LCRASHH LABEL@ LBL,
-   LBL CR-L1 !  LBL CR-L2 !
-      C-CRASH-ENTRY
-      C-CRASH-MCTX>R21
-      C-CRASH-STACK-GUARDS                          \ a guard-page fault exits here, named
-      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
-      9 20 0 ADDI,  LHEX LABEL@ BL,
-      20 0 MOVZ,
-      CR-L1 LABEL@ LBL,  20 $1D CMPI,  C-GE CR-L2 LABEL@ BCOND,
-         C-CRASH-XREG>R9  LHEX LABEL@ BL,
-         20 20 1 ADDI,  CR-L1 LABEL@ B,
-      CR-L2 LABEL@ LBL,
-      C-CRASH-PRINT-REGS
-      C-CRASH-PC-8
-      C-CRASH-PC-4
-      C-CRASH-PC0
-      C-CRASH-PC+4
-      0 $86 MOVZ,  NR-EXIT-GROUP SYS,
-   LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
-
-: INSTALL-SIGACT ( n -- )
-   0 swap MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
+\ sigaction(x0, the frame at sp, NULL).
+: C-SIGACTION-CALL ( -- )
+   1 SP 0 ADDI,  2 0 MOVZ,
    HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
+
+: INSTALL-SIGACT ( n -- )
+   0 swap MOVZ,  C-SIGACTION-CALL ;
 
 \ The sigaction frame for the handler in a register and the sa_flags given.
 \ Darwin's __sigaction is the handler, sa_tramp, then the u32 sa_mask and the
@@ -370,6 +356,49 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP $40 ADDI, ;
+
+\ The end of a reported crash: the process dies by the signal itself, so the
+\ parent sees it and a core (when RLIMIT_CORE allows) shows the faulting
+\ context. x27 = the signal; on macOS x24 = the trampoline's infostyle and x5
+\ its token. SIG_DFL goes in, the signal is sent to this thread, where it stays
+\ pending because it is blocked while its handler runs, and sigreturn restores
+\ the interrupted context and its mask: the signal is delivered at the faulting
+\ pc and takes its default action there. Linux rt_sigreturn reads the frame at
+\ the entry sp, which every call in the dump gives back.
+: C-CRASH-RERAISE ( -- )
+   11 0 MOVZ,  11 0 C-SIGACTION-FRAME            \ handler SIG_DFL, no flags
+   0 27 0 ADDI,  C-SIGACTION-CALL
+   C-SIGACTION-FRAME-DONE
+   27 OS-RAISE-SELF
+   HB-TARGET-LINUX? 0= IF 0 19 0 ADDI,  1 24 0 ADDI,  2 5 0 ADDI, THEN
+   NR-SIGRETURN SYS,                             \ macOS: sigreturn(uctx, infostyle, token)
+   \ Reached only if sigreturn fails: the exit the handler took before.
+   0 $86 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: EMIT-CRASH-HANDLER ( -- )
+   LCRASHH LABEL@ LBL,
+   LBL CR-L1 !  LBL CR-L2 !
+      C-CRASH-ENTRY
+      27 20 0 ADDI,                                 \ x27 = the signal; the dump reuses x20
+      C-CRASH-MCTX>R21
+      C-CRASH-STACK-GUARDS                          \ a guard-page fault exits here, named
+      HB-TARGET-LINUX? 0= IF                        \ x24 = the trampoline's infostyle:
+         24 1 0 ADDI,                               \ the dump's writes clobber x1
+      THEN
+      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
+      9 20 0 ADDI,  LHEX LABEL@ BL,
+      20 0 MOVZ,
+      CR-L1 LABEL@ LBL,  20 $1D CMPI,  C-GE CR-L2 LABEL@ BCOND,
+         C-CRASH-XREG>R9  LHEX LABEL@ BL,
+         20 20 1 ADDI,  CR-L1 LABEL@ B,
+      CR-L2 LABEL@ LBL,
+      C-CRASH-PRINT-REGS
+      C-CRASH-PC-8
+      C-CRASH-PC-4
+      C-CRASH-PC0
+      C-CRASH-PC+4
+      C-CRASH-RERAISE
+   LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
 
 \ THE CALLER LOADS x11 WITH THE HANDLER'S ADDRESS, because the two callers cannot
 \ load it the same way. The engine bakes LCRASHH within ADR's ±1 MiB of its own

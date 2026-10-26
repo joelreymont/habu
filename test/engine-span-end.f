@@ -6,7 +6,8 @@
 \ guards tested the bound and the byte with `and`, which evaluates both, so
 \ each scan read the byte past the text. Every case copies its text to end on
 \ the last byte before an
-\ inaccessible page (src/lib/test/guard-page.f): a read past the end faults, rc 134,
+\ inaccessible page (src/lib/test/guard-page.f): a read past the end faults and
+\ the process dies by the signal after the crash handler's dump,
 \ where a bounded scan answers what the same text answers anywhere else.
 \   - a body whose last token ends at the edge: CHECK-SCAN's token loop;
 \   - a signature left open to the edge: CHECK-SCAN's comment loop, then

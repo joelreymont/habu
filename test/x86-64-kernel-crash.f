@@ -7,7 +7,8 @@
 \
 \    hb-x64-kernel-crash             0  every register but rsp distinct, rbp
 \                                       not canonical, a jump to $1000, which
-\                                       is never mapped: the dump and exit 134,
+\                                       is never mapped: the dump, then death
+\                                       by the SIGSEGV itself,
 \                                       its three code lines 0
 \    hb-x64-kernel-crash-negative   21  the same, expecting the wrong status
 \    hb-x64-kernel-crash-region      0  rbp DATA and a jump to CP in the
@@ -58,7 +59,7 @@ $40 constant GOT
 $400 constant GOT-CAP
 
 2 constant STDERR
-134 8 lshift constant DUMPED                    \ wait4's status for exit 134
+$80 constant WCOREFLAG                          \ wait4's core bit: the peer's RLIMIT_CORE
 ENGINE-ERROR:STACK-BOUNDS 8 lshift constant NAMED
 11 constant SIGSEGV
 4 constant SIGILL
@@ -293,11 +294,14 @@ $1716151413121110 constant CELL-C
    0 G-PUSH ;
 
 \ The parent, holding the pid: close the write end, wait, read the pipe to
-\ EOF, then check the status, the count, the EOF and the bytes on each side of
-\ the sixteen at SKIP-AT.
+\ EOF, then check the status without its core bit (a dumped child dies of its
+\ signal and dumps core when the peer allows), the count, the EOF and the
+\ bytes on each side of the sixteen at SKIP-AT.
 : PARENT, ( n -- ) {: status:n :}
    WFD RECALL,  s" close" ROW
-   s" wait-status" ROW  status WANT
+   s" wait-status" ROW
+   0 G-POP  RAX WCOREFLAG invert >IMM32 ASM-SINK ENC-AND-RI32  0 G-PUSH
+   status WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  WANT-N @ WANT
    RFD RECALL,  GOT AT,  GOT-CAP N,  s" read" ROW  0 WANT
    WANT-BUF WANT-N @ X64HARNESS:PUSH-TEXT,  0 G-POP  TEXT-AT KEEP,
@@ -322,18 +326,18 @@ public
 : RUN ( -- )
    T-RESET
    X64HARNESS:INIT
-   [: CRASH-CHILD ;] DUMPED false s" hb-x64-kernel-crash" TMP-PATH IMAGE
-   [: CRASH-CHILD ;] DUMPED true s" hb-x64-kernel-crash-negative" TMP-PATH IMAGE
-   [: REGION-CHILD ;] DUMPED false s" hb-x64-kernel-crash-region" TMP-PATH IMAGE
-   [: REGION-END-CHILD ;] DUMPED false s" hb-x64-kernel-crash-region-end" TMP-PATH IMAGE
-   [: ILL-CHILD ;] DUMPED false s" hb-x64-kernel-crash-ill" TMP-PATH IMAGE
+   [: CRASH-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash" TMP-PATH IMAGE
+   [: CRASH-CHILD ;] SIGSEGV true s" hb-x64-kernel-crash-negative" TMP-PATH IMAGE
+   [: REGION-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-region" TMP-PATH IMAGE
+   [: REGION-END-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-region-end" TMP-PATH IMAGE
+   [: ILL-CHILD ;] SIGILL false s" hb-x64-kernel-crash-ill" TMP-PATH IMAGE
    [: DATA-CHILD ;] NAMED false s" hb-x64-kernel-crash-data" TMP-PATH IMAGE
    [: RETURN-CHILD ;] NAMED false s" hb-x64-kernel-crash-return" TMP-PATH IMAGE
    [: LOOP-CHILD ;] NAMED false s" hb-x64-kernel-crash-loop" TMP-PATH IMAGE
    [: MACHINE-CHILD ;] NAMED false s" hb-x64-kernel-crash-machine" TMP-PATH IMAGE
-   [: PAST-CHILD ;] DUMPED false s" hb-x64-kernel-crash-past" TMP-PATH IMAGE
+   [: PAST-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-past" TMP-PATH IMAGE
    [: REGION-GUARD-CHILD ;] NAMED false s" hb-x64-kernel-crash-region-guard" TMP-PATH IMAGE
-   [: ZERO-BASE-CHILD ;] DUMPED false s" hb-x64-kernel-crash-zero-base" TMP-PATH IMAGE
+   [: ZERO-BASE-CHILD ;] SIGSEGV false s" hb-x64-kernel-crash-zero-base" TMP-PATH IMAGE
    X64HARNESS:DISPOSE
    T-REPORT ;
 

@@ -727,7 +727,7 @@ $27C8 constant CLAIMS
 \ publishes LAOTNREC records in one bracket and C-PACKAGE-EXISTING-PRIVATE
 \ rewrites a record found anywhere below the watermark. Both already falsify it.
 \ A writer that forgets to declare its span writes to an RX page and the engine
-\ dies in the crash handler (exit 134) - which is what makes the declaration set
+\ dies by the signal after the crash dump - which is what makes the declaration set
 \ complete by construction: `install --force` drives every definer over the whole
 \ prefix before any suite runs.
 \

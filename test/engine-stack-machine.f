@@ -8,7 +8,8 @@
 \ catch; the same overflow on a task thread, on a thread C started that
 \ enters through a callback, and in a stripped application. Two controls keep
 \ the other reports: a data-stack overflow is still (data), and a load from
-\ address 0 is still the register dump.
+\ address 0 is still the register dump, after which the child dies of the
+\ SIGSEGV itself.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
@@ -18,7 +19,7 @@ package MACHINE-STACK-TEST
 private
 
 600000 constant BUILD-MS
-134 constant DUMP-RC                    \ crash.f EMIT-CRASH-HANDLER's exit after the dump
+11 constant SIGSEGV
 
 create SUBJECT FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
@@ -51,6 +52,15 @@ variable IMAGE-U
 : RUN-SRC ( ptr u8 n -- ) {: src:ptr srcu:n :}
    GE-HB-RESET
    GE-HB$ src srcu GE-TIMEOUT-MS GE-RUN-STDIN ;
+
+\ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
+\ re-raises it after the dump. An exit of 128 + n is no signal death.
+: KILLED-BY ( n ptr u8 n -- ) {: sig:n label:ptr labelu:n :}
+   GT-OUTCOME@ MATCH outcome
+     exited OF drop label labelu GE-FAIL ENDOF
+     signaled OF sig <> if label labelu GE-FAIL then ENDOF
+     timeout OF label labelu GE-FAIL ENDOF
+   ;MATCH ;
 
 : MACHINE-EXIT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
@@ -106,7 +116,7 @@ variable IMAGE-U
    ENGINE-ERROR:STACK-BOUNDS s" a data-stack overflow" GE-EXPECT-RC
    DATA$ s" a data-stack overflow" GE-EXPECT-ERR
    S\" TRUSTED: W ( -- ) 0 @ drop ;\nW\n" RUN-SRC
-   DUMP-RC s" a load from address 0" GE-EXPECT-RC
+   SIGSEGV s" a load from address 0" KILLED-BY
    s" habu-crash regs [sig" s" a load from address 0" GE-EXPECT-ERR-HAS
    s" stack bounds" s" a load from address 0" GE-EXPECT-ERR-LACKS
    s" PASS: the data-stack and address-0 controls" type cr ;
