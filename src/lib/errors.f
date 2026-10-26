@@ -1404,7 +1404,7 @@
 -9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
 -9345 constant E-HTTP-STATIC      \ a static root that is not a directory, or a tree larger than the tables that hold it
 -9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
--9347 constant E-HTTP-RESPONSE    \ a JSON body larger than the worker's body buffer
+\ -9347 was E-HTTP-RESPONSE, retired: a response grows instead of refusing.
 
 \ Base64 (package BASE64): -9350..-9359.
 -9350 constant E-BASE64-FIRST

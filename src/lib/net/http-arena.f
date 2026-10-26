@@ -1,8 +1,11 @@
 \ http-arena.f - per-worker storage for the HTTP/1.1 server (src/lib/net/http.f):
-\ one OS-backed span per request worker, carved into the input, body header,
-\ JSON and output buffers one request needs; the body header owns a separate
-\ mapping while a request is live. Nominal request and response handles name
-\ the worker's slot. Nothing here touches a socket.
+\ one OS-backed span per request worker, carved into the input buffer, the
+\ fixed buffers one request needs and the headers of four growing ones. The
+\ request body's header owns a separate mapping while a request is live; the
+\ response's header lines, its JSON body and its head each own one for the
+\ worker's whole life, cleared for every request and grown with the answer.
+\ Nominal request and response handles name the worker's slot. Nothing here
+\ touches a socket.
 \
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by the worker's own slot: every
 \ per-request cell below is a row of a typed buffer, never a bare global,
@@ -10,8 +13,9 @@
 \ running worker's slot itself is a TASK:+USER row.
 \
 \ A worker's region is one span (src/lib/span.f): the base and the reach travel
-\ together, every buffer below is a narrowing of it, and a narrowing past the
-\ region throws E-SPAN-RANGE instead of addressing the next worker's slot.
+\ together, every fixed buffer and growing buffer's header below is a narrowing
+\ of it, and a narrowing past the region throws E-SPAN-RANGE instead of
+\ addressing the next worker's slot.
 require src/lib/errors.f
 require src/lib/prelude.f
 require src/lib/memory.f
@@ -31,7 +35,6 @@ E-HTTP-CAPACITY constant E-CAPACITY
 E-HTTP-ROUTE constant E-ROUTE
 E-HTTP-STATIC constant E-STATIC
 E-HTTP-SOCKET constant E-SOCKET
-E-HTTP-RESPONSE constant E-RESPONSE
 
 \ A worker slot under two names: the request it is parsing and the response it
 \ is building. Both carry the slot's generation, so a handle kept past the
@@ -39,6 +42,8 @@ E-HTTP-RESPONSE constant E-RESPONSE
 DEFTYPE REQUEST
 DEFTYPE RESPONSE
 
+\ The worker count and the request-head limits below are the server's defence
+\ against a hostile client, as nginx's header limits are: they stay fixed.
 8 constant MAX-WORKERS
 64 constant MAX-HEADERS
 8 constant MAX-SEGMENTS
@@ -48,21 +53,27 @@ $400 constant STREAM-CAP         \ chunk framing and the head of a pipelined req
 HEAD-CAP STREAM-CAP + constant IN-CAP
 $100000 constant DEFAULT-BODY-CAP
 $2000 constant BODY-START-CAP    \ small mapping, grown only for the current request
-$800 constant HDR-CAP            \ response header lines
-$100000 constant JSON-CAP        \ one generated body: what JSON! writes, or the default error text
-$1000 constant OUT-CAP           \ status line plus headers of one response
-$100 constant SEG-CAP            \ the decoded path segments one route binds
 $20 constant ID-CAP              \ the request id a fault is reported under
 $18 constant NUM-CAP             \ one number on its way into a buffer
 JR:STORAGE-BYTES constant READER-CAP   \ one JSON reader over one request body
 
 private
 
+\ The growing buffers' first capacities; each grows past its own as one answer
+\ needs and keeps what it grew to for the worker's next answers.
+$800 constant HDR-START          \ response header lines
+$100000 constant JSON-START      \ one generated body: what JSON! writes, or the error text
+$1000 constant OUT-START         \ status line plus headers of one response, or a fault line
+
+\ Decoded path segments are never longer than the path they decode, which is
+\ part of a head no longer than HEAD-CAP, so this one stays fixed.
+HEAD-CAP constant SEG-CAP
+
 IN-CAP constant BODY-OFF
 BODY-OFF BUF:HDR-BYTES + constant HDR-OFF
-HDR-OFF HDR-CAP + constant JSON-OFF
-JSON-OFF JSON-CAP + constant OUT-OFF
-OUT-OFF OUT-CAP + constant SEG-OFF
+HDR-OFF BUF:HDR-BYTES + constant JSON-OFF
+JSON-OFF BUF:HDR-BYTES + constant OUT-OFF
+OUT-OFF BUF:HDR-BYTES + constant SEG-OFF
 SEG-OFF SEG-CAP + constant ID-OFF
 ID-OFF ID-CAP + constant NUM-OFF
 NUM-OFF NUM-CAP + constant READER-OFF
@@ -83,8 +94,6 @@ variable BODY-TIMEOUT-MS             \ 0 shares START's deadline with the head
 MAX-WORKERS TYPED-BUFFER IN-U n           \ bytes read into the input buffer
 MAX-WORKERS TYPED-BUFFER IN-AT n          \ bytes of it already consumed
 MAX-WORKERS TYPED-BUFFER HEAD-U n         \ bytes of the current request head
-MAX-WORKERS TYPED-BUFFER HDR-U n
-MAX-WORKERS TYPED-BUFFER OUT-U n
 
 MAX-WORKERS TYPED-BUFFER METHOD-AT n
 MAX-WORKERS TYPED-BUFFER METHOD-N n
@@ -184,14 +193,30 @@ private
    1 idx SLOT-LIVE ! ;
 
 
+\ The BUF header carved at one offset of the worker's region.
+: BUF-AT ( n n -- ptr n ) {: idx:n off:n :}
+   idx SLOT-SPAN off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
+
+
+: BODY-HDR ( n -- ptr n )    BODY-OFF BUF-AT ;
+: HDR-BUF ( n -- ptr n )     HDR-OFF BUF-AT ;
+: JSON-BUF ( n -- ptr n )    JSON-OFF BUF-AT ;
+: OUT-BUF ( n -- ptr n )     OUT-OFF BUF-AT ;
+
+
 \ One span per worker, taken before any task is live and given back after every
-\ task has ended.
+\ task has ended. A slot is live once carved, so ARENA-CLOSE gives back whatever
+\ an open that failed part way had taken: a header never opened is zero, which
+\ is a disposed one.
 : ARENA-OPEN ( n -- ) {: workers:n :}
    workers 1 < if E-WORKERS throw then
    workers MAX-WORKERS > if E-WORKERS throw then
    workers 0 ?do
       SPAN-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN i CARVE
       0 i SEQ !
+      i HDR-BUF HDR-START BUF:N>BLEN BUF:INIT
+      i JSON-BUF JSON-START BUF:N>BLEN BUF:INIT
+      i OUT-BUF OUT-START BUF:N>BLEN BUF:INIT
    loop ;
 
 
@@ -206,10 +231,6 @@ private
    then ;
 
 
-: BODY-HDR ( n -- ptr n )
-   SLOT-SPAN BODY-OFF BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
-
-
 : BODY-CLOSE ( n -- )
    BODY-HDR BUF:DISPOSE ;
 
@@ -219,6 +240,9 @@ private
       i SLOT-LIVE @ 0 <> if
          i CLOSE-FILE
          i BODY-CLOSE
+         i HDR-BUF BUF:DISPOSE
+         i JSON-BUF BUF:DISPOSE
+         i OUT-BUF BUF:DISPOSE
          i SLOT-REGION @ MEM:FREE-SPAN
          0 i SLOT-LIVE !
       then
@@ -227,8 +251,8 @@ private
 
 \ ---- the slot's buffers ------------------------------------------------------
 
-\ Each one narrows the worker's region to its own offset and capacity, so the
-\ value a caller holds cannot reach the buffer next to it.
+\ Each fixed one narrows the worker's region to its own offset and capacity, so
+\ the value a caller holds cannot reach the buffer next to it.
 
 : IN-BUF ( n -- SPAN:span<u8> )
    SLOT-SPAN IN-CAP SPAN:TAKE ;
@@ -240,18 +264,6 @@ private
 
 : BODY-APPEND ( ptr u8 n n -- ) {: bytes:ptr len:n idx:n :}
    bytes len BUF:N>BLEN idx BODY-HDR BUF:APPEND-SPAN ;
-
-
-: HDR-BUF ( n -- SPAN:span<u8> )
-   SLOT-SPAN HDR-OFF HDR-CAP SPAN:SUB ;
-
-
-: JSON-BUF ( n -- SPAN:span<u8> )
-   SLOT-SPAN JSON-OFF JSON-CAP SPAN:SUB ;
-
-
-: OUT-BUF ( n -- SPAN:span<u8> )
-   SLOT-SPAN OUT-OFF OUT-CAP SPAN:SUB ;
 
 
 : SEG-BUF ( n -- SPAN:span<u8> )
@@ -288,10 +300,6 @@ private
 : HEAD-U@ ( n -- n )      BOUNDED HEAD-U @ ;
 : HEAD-U! ( n n -- )      BOUNDED HEAD-U ! ;
 : BODY-U@ ( n -- n )      BODY-HDR BUF:LEN@ BUF:BLEN>N ;
-: HDR-U@ ( n -- n )       BOUNDED HDR-U @ ;
-: HDR-U! ( n n -- )       BOUNDED HDR-U ! ;
-: OUT-U@ ( n -- n )       BOUNDED OUT-U @ ;
-: OUT-U! ( n n -- )       BOUNDED OUT-U ! ;
 : SLOT-STATUS@ ( n -- n ) BOUNDED STATUS @ ;
 : SLOT-STATUS! ( n n -- ) BOUNDED STATUS ! ;
 : KEEP-ALIVE@ ( n -- n )  BOUNDED KEEP-ALIVE @ ;
@@ -315,6 +323,16 @@ private
    idx CLOSE-FILE
    bytes idx BOUNDED BODY-PTR !
    len idx BODY-LEN ! ;
+
+
+\ No body at all, borrowed from nowhere: what a slot answers before a body is
+\ set, and what it must answer before the buffer a body borrowed is rewritten,
+\ which may move it.
+: DROP-BODY ( n -- ) {: idx:n :}
+   idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
+
+
+: BUF$ ( ptr n -- ptr u8 n )  BUF:SPAN$ BUF:BLEN>N ;
 
 
 : NEXT-SEQ ( n -- n ) {: idx:n :}
@@ -436,8 +454,8 @@ private
    0 idx PATH-AT ! 0 idx PATH-N !
    0 idx QUERY-AT ! 0 idx QUERY-N !
    0 idx VERSION-AT ! 0 idx VERSION-N !
-   0 idx HDR-U !
-   0 idx OUT-U !
+   idx HDR-BUF BUF:CLEAR
+   idx OUT-BUF BUF:CLEAR
    0 idx SEG-U !
    0 idx ID-U !
    0 idx HEADER-N !
@@ -446,7 +464,7 @@ private
    200 idx STATUS !
    0 idx BODY-LEN !
    1 idx KEEP-ALIVE !
-   idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY!
+   idx DROP-BODY
    idx BODY-OPEN ;
 
 

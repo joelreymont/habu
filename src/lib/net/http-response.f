@@ -5,9 +5,9 @@
 \
 \ src/lib/json-write.f keeps no state of its own: the caller declares the writer and
 \ owns the bytes it writes into. Each worker
-\ therefore holds one writer of its own over its own JSON buffer, opened at the
-\ start of a response body and closed after it, so two workers write JSON at the
-\ same time without a lock between them.
+\ therefore holds one writer of its own over its own growing JSON buffer, opened
+\ at the start of a response body and closed after it, so two workers write JSON
+\ at the same time without a lock between them.
 require src/lib/net/http-request.f
 require src/lib/json-write.f
 require src/lib/string.f
@@ -33,23 +33,19 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 \ ---- appending to the slot's buffers ----------------------------------------
 
 : OUT+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
-   src len idx OUT-BUF idx OUT-U@ SPAN:SKIP SPAN:COPY
-   idx OUT-U@ len + idx OUT-U! ;
+   src len BUF:N>BLEN idx OUT-BUF BUF:APPEND-SPAN ;
 
 
 : OUT+C ( n n -- ) {: byte:n idx:n :}
-   byte idx OUT-BUF idx OUT-U@ SPAN:U8!
-   idx OUT-U@ 1+ idx OUT-U! ;
+   byte idx OUT-BUF BUF:APPEND-BYTE ;
 
 
 : HDR+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
-   src len idx HDR-BUF idx HDR-U@ SPAN:SKIP SPAN:COPY
-   idx HDR-U@ len + idx HDR-U! ;
+   src len BUF:N>BLEN idx HDR-BUF BUF:APPEND-SPAN ;
 
 
 : HDR+C ( n n -- ) {: byte:n idx:n :}
-   byte idx HDR-BUF idx HDR-U@ SPAN:U8!
-   idx HDR-U@ 1+ idx HDR-U! ;
+   byte idx HDR-BUF BUF:APPEND-BYTE ;
 
 
 : CRLF+ ( n -- ) {: idx:n :}
@@ -139,9 +135,9 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 
 : HEAD-BYTES ( n -- ) {: idx:n :}
-   0 idx OUT-U!
+   idx OUT-BUF BUF:CLEAR
    idx STATUS-LINE
-   idx HDR-BUF idx HDR-U@ SPAN:TAKE SPAN:$ idx OUT+
+   idx HDR-BUF BUF$ idx OUT+
    idx CONNECTION-HEADER
    idx LENGTH-HEADER
    idx CRLF+ ;
@@ -204,7 +200,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 : SEND-BODY ( TCP4:connection response -- bool ) {: conn:TCP4:connection subject:response :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx HEAD-BYTES
-   conn idx OUT-BUF idx OUT-U@ SPAN:TAKE SPAN:$ WRITE-SPAN 0= if false exit then
+   conn idx OUT-BUF BUF$ WRITE-SPAN 0= if false exit then
    idx SLOT-STATUS@ BODYLESS? if true exit then
    idx SLOT-METHOD$ s" HEAD" STR= if true exit then
    idx FILE-LIVE @ 0<> if conn idx SEND-FILE exit then
@@ -217,9 +213,12 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 \ ---- JSON -------------------------------------------------------------------
 
-\ The slot's writer over the slot's JSON bytes, empty and ready to be chained.
+\ The slot's writer over the slot's JSON buffer, empty and ready to be chained.
+\ The writer may move the bytes a previous body borrowed, so that body goes
+\ first: a body that does not finish leaves none.
 : OPEN-JSON ( n -- ) {: idx:n :}
-   idx JSON-W idx JSON-BUF SPAN:$ JSON-WRITE:OPEN drop ;
+   idx DROP-BODY
+   idx JSON-W idx JSON-BUF JSON-WRITE:OPEN-BUF drop ;
 
 
 \ Whatever the body left behind, the writer is done with: a closed writer
@@ -236,16 +235,6 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    SELF-SLOT {: idx:n :}
    idx JSON-W idx JSON-BODY @ execute
    JSON-WRITE:$ idx RESPONSE-BODY! ;
-
-
-\ A body larger than the slot's JSON buffer is the writer's E-JW-CAPACITY, which
-\ is this package's own E-RESPONSE seen from the other side of the boundary: a
-\ handler that lets it through is answered 500 response_too_large by the
-\ worker, never a truncated body.
-: JSON-FAULT ( n -- ) {: code:n :}
-   code 0= if exit then
-   code E-JW-CAPACITY = if E-RESPONSE throw then
-   code throw ;
 
 
 public
@@ -301,19 +290,16 @@ public
    idx SELF-SLOT <> if E-HANDLE throw then
    body idx JSON-BODY !
    idx OPEN-JSON
-   [: WRITE-JSON ;] catch {: code:n :}
-   idx CLOSE-JSON
-   code JSON-FAULT
+   [: WRITE-JSON ;] [: SELF-SLOT CLOSE-JSON ;] finally
    subject s" Content-Type" s" application/json" HEADER! ;
 
 
 private
 
-\ The whole error answer as text in the slot's body buffer: the code, the
+\ The whole error answer as text in the slot's JSON buffer: the code, the
 \ message and the request id the fault was reported under, on one line.
-: TEXT-AT ( n ptr u8 n n -- n ) {: at:n src:ptr len:n idx:n :}
-   src len idx JSON-BUF at SPAN:SKIP SPAN:COPY
-   at len + ;
+: ERROR-TEXT+ ( ptr u8 n n -- ) {: src:ptr len:n idx:n :}
+   src len BUF:N>BLEN idx JSON-BUF BUF:APPEND-SPAN ;
 
 
 : PLAIN-ERROR ( response n ptr u8 n ptr u8 n -- )
@@ -321,14 +307,16 @@ private
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
    subject status STATUS!
-   0 code codelen idx TEXT-AT
-   s" : " idx TEXT-AT
-   message messagelen idx TEXT-AT
-   s"  (request " idx TEXT-AT
-   idx SLOT-ID$ idx TEXT-AT
-   S\" )\n" idx TEXT-AT {: len:n :}
+   idx DROP-BODY
+   idx JSON-BUF BUF:CLEAR
+   code codelen idx ERROR-TEXT+
+   s" : " idx ERROR-TEXT+
+   message messagelen idx ERROR-TEXT+
+   s"  (request " idx ERROR-TEXT+
+   idx SLOT-ID$ idx ERROR-TEXT+
+   S\" )\n" idx ERROR-TEXT+
    subject s" Content-Type" s" text/plain; charset=utf-8" HEADER!
-   idx JSON-BUF len SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
+   idx JSON-BUF BUF$ idx RESPONSE-BODY! ;
 
 
 \ The quotation lives in a row declared to hold one, the checker's proven

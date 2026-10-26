@@ -290,45 +290,41 @@ variable ECHO-HITS
    answer [: BOOM-BODY ;] HTTP:JSON! ;
 
 
-\ One value larger than the slot's whole JSON buffer, which the writer refuses
-\ rather than truncating.
-HTTP:JSON-CAP $1000 + constant OVER-CAP
-create OVER-BUF OVER-CAP allot
-variable OVERFLOW-CODE
-1 TYPED-BUFFER OVERFLOW-ANSWER HTTP:response
+\ One value past the 1 MiB a worker's JSON buffer once held, and the answer
+\ that carries it: the writer's storage grows with the body.
+$101000 constant BIG-VALUE-BYTES
+create BIG-VALUE BIG-VALUE-BYTES allot
+BIG-VALUE-BYTES 10 + constant BIG-ANSWER-BYTES   \ {"big":"<value>"}
+BIG-ANSWER-BYTES $1000 + constant BIG-RES-CAP    \ room to see a longer answer
+1 TYPED-BUFFER BIG-RES SPAN:span<u8>
+5 constant FILL-HEADERS
+$400 constant FILL-HEADER-BYTES   \ five of them: past 2 KiB of lines, 4 KiB of head
+300 constant LONG-SEGMENT-BYTES   \ past the 256 decoded bytes a route once bound
 
 
-: FILL-OVER ( -- )
-   OVER-CAP 0 ?do FILL-BYTE OVER-BUF i + c! loop ;
+: FILL-BIG ( -- )
+   BIG-VALUE-BYTES 0 ?do FILL-BYTE BIG-VALUE i + c! loop ;
+
+FILL-BIG
 
 
-: OVERFLOW-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: BIG-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
-   s" big" OVER-BUF OVER-CAP JSON-WRITE:FIELD-S
+   s" big" BIG-VALUE BIG-VALUE-BYTES JSON-WRITE:FIELD-S
    JSON-WRITE:OBJECT-END ;
 
 
-\ The quotation cannot read a local, so the response travels through the cell
-\ the handler has just filled.
-: OVERFLOW-JSON ( -- )
-   0 OVERFLOW-ANSWER @ [: OVERFLOW-BODY ;] HTTP:JSON! ;
-
-
-\ The refusal is this package's own named response failure, and the writer it
-\ came out of is closed, so the error body below is written into an empty one.
-: OVERFLOW ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
-   answer 0 OVERFLOW-ANSWER !
+: BIG-JSON ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    answer 200 HTTP:STATUS!
-   [: OVERFLOW-JSON ;] catch OVERFLOW-CODE !
-   answer 500 s" too_large" s" the answer does not fit this server's JSON buffer"
-   HTTP:ERROR! ;
+   answer [: BIG-BODY ;] HTTP:JSON! ;
 
 
-\ The same body from a handler that catches nothing: the worker's own boundary
-\ answers it.
-: OVERFLOW-RAW ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+: MANY-HEADERS ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   FILL-HEADERS 0 ?do
+      answer s" X-Fill" BIG-VALUE FILL-HEADER-BYTES HTTP:HEADER!
+   loop
    answer 200 HTTP:STATUS!
-   answer [: OVERFLOW-BODY ;] HTTP:JSON! ;
+   answer [: PING-BODY ;] HTTP:JSON! ;
 
 
 \ ---- an installed error renderer ----------------------------------------------
@@ -555,8 +551,8 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
    s" POST" s" /api/answer" [: ANSWER-TEXT ;] HTTP:ROUTE
-   s" GET" s" /api/overflow" [: OVERFLOW ;] HTTP:ROUTE
-   s" GET" s" /api/overflow-raw" [: OVERFLOW-RAW ;] HTTP:ROUTE
+   s" GET" s" /api/big-json" [: BIG-JSON ;] HTTP:ROUTE
+   s" GET" s" /api/many-headers" [: MANY-HEADERS ;] HTTP:ROUTE
    s" GET" s" /api/park" [: PARK ;] HTTP:ROUTE ;
 
 
@@ -623,12 +619,12 @@ $2710 constant PARK-MS            \ far past every stop bound
 \ starved or stopped process. A deadline is no assertion result (docs/gate.md
 \ "How a suite runs, and what that demands of its files"): the wait names itself
 \ on stdout and throws E-PROC-TIMEOUT. Every other failure answers -2, a fault.
-: TAKE-RESPONSE ( CURL:handle -- n ) {: subject:CURL:handle :}
-   subject RES-BUF RES-CAP >LEN CURL:PERFORM
+: TAKE-INTO ( CURL:handle ptr u8 n -- n n ) {: subject:CURL:handle into:ptr cap:n :}
+   subject into cap >LEN CURL:PERFORM
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
-         got LEN>N RES-U ! status CURL:HTTP-STATUS>N ENDOF
-      truncated OF drop drop 0 RES-U ! -1 ENDOF
+         status CURL:HTTP-STATUS>N got LEN>N ENDOF
+      truncated OF drop drop -1 0 ENDOF
       failed OF {: rc:CURL:code :}
          SB-RESET
          s" http-test: libcurl code " SB-APPEND
@@ -638,8 +634,13 @@ $2710 constant PARK-MS            \ far past every stop bound
          rc CURL:CODE>N CURLE-TIMED-OUT = if
             s" http-test TAKE-RESPONSE" TEST-WAIT:EXPIRED
          then
-         0 RES-U ! -2 ENDOF
+         -2 0 ENDOF
    ;MATCH ;
+
+
+\ The status, with the answer's bytes in the suite's response buffer.
+: TAKE-RESPONSE ( CURL:handle -- n )
+   RES-BUF RES-CAP TAKE-INTO RES-U ! ;
 
 
 : FETCH ( ptr u8 n ptr u8 n -- n ) {: method:ptr methodlen:n path:ptr pathlen:n :}
@@ -1171,23 +1172,49 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s" handler-fault" TRANSCRIBE ;
 
 
-\ A body the writer cannot fit is refused by name rather than truncated: the
-\ handler reads this package's own E-RESPONSE back, answers its own error into
-\ the writer the refusal closed, and the worker serves the next request whole.
-\ A handler that lets the refusal through is answered response_too_large by
-\ the worker's boundary, not internal, and the worker serves on.
-: OVERFLOW-CASE ( -- )
-   FILL-OVER
-   -1 OVERFLOW-CODE !
-   s" GET" s" /api/overflow" FETCH 500 T=
-   s" too_large: " BEGINS? TTRUE
-   OVERFLOW-CODE @ HTTP:E-RESPONSE T=
-   s" GET" s" /api/ping" FETCH 200 T=
-   RES$ S\" {\qservice\q:\qhttp-test\q}" T$=
-   s" GET" s" /api/overflow-raw" FETCH 500 T=
-   s" response_too_large: " BEGINS? TTRUE
+\ A JSON body past 1 MiB arrives whole, and the worker answers the next
+\ request from a cleared writer.
+: BIG-ANSWER? ( ptr u8 n -- bool ) {: bytes:ptr len:n :}
+   len BIG-ANSWER-BYTES <> if false exit then
+   bytes 8 S\" {\qbig\q:\q" STR= 0= if false exit then
+   bytes len + 2 - 2 S\" \q}" STR= 0= if false exit then
+   bytes 8 + BIG-VALUE-BYTES BIG-VALUE BIG-VALUE-BYTES STR= ;
+
+
+: BIG-JSON-CASE ( -- )
+   BIG-RES-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-RES !
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" /api/big-json" URL-FOR CURL:URL! DROP-CURL-STATUS
+   subject 0 BIG-RES @ SPAN:$ TAKE-INTO {: status:n got:n :}
+   subject CURL:CLEANUP
+   status 200 T=
+   0 BIG-RES @ SPAN:$ drop got BIG-ANSWER? TTRUE
+   0 BIG-RES @ MEM:FREE-SPAN
    s" GET" s" /api/ping" FETCH 200 T=
    RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;
+
+
+\ Response header lines past the 2 KiB, and a head past the 4 KiB, a worker
+\ once held are sent whole, before the body.
+: MANY-HEADERS-CASE ( -- )
+   s\" GET /api/many-headers HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   RES-U @ FILL-HEADERS FILL-HEADER-BYTES * > TTRUE
+   S\" {\qservice\q:\qhttp-test\q}" HAS? TTRUE ;
+
+
+\ A decoded path segment past the 256 bytes a route once bound reaches the
+\ handler whole: exactly LONG-SEGMENT-BYTES of the fill come back as the id.
+: LONG-SEGMENT-CASE ( -- )
+   REQ-RESET
+   s" GET /api/items/" REQ+
+   FILL-BYTE LONG-SEGMENT-BYTES REQ-FILL
+   s\"  HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   S\" {\qid\q:\q" HAS? TTRUE
+   BIG-VALUE LONG-SEGMENT-BYTES HAS? TTRUE
+   BIG-VALUE LONG-SEGMENT-BYTES 1+ HAS? TFALSE ;
 
 
 \ The ETag a file is served with revalidates it: CURL sends it back and is
@@ -1306,7 +1333,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 \ Route selection must reject an oversized body before a named path segment
-\ is decoded into the smaller segment buffer.
+\ is decoded.
 : LONG-SEGMENT-BODY-CASE ( -- )
    REQ-RESET
    s" GET /api/items/" REQ+
@@ -2231,7 +2258,9 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    JSON-CASES
    REFUSAL-CASES
    FAULT-CASE
-   OVERFLOW-CASE
+   BIG-JSON-CASE
+   MANY-HEADERS-CASE
+   LONG-SEGMENT-CASE
    STATIC-CASES
    MALFORMED-CASE
    HOST-CASE

@@ -167,22 +167,22 @@ private
 
 \ The fault reaches the operator with the same request id the client is given.
 : REPORT-FAULT ( n n -- ) {: idx:n code:n :}
-   0 idx OUT-U!
+   idx OUT-BUF BUF:CLEAR
    s" http: request " idx OUT+
    idx SLOT-ID$ idx OUT+
    s"  failed, throw " idx OUT+
    code 0 < if DASH-BYTE idx OUT+C then
    code MAGNITUDE idx NUM$ idx OUT+
    LF idx OUT+C
-   STDERR-FD idx OUT-BUF idx OUT-U@ SPAN:TAKE SPAN:$ write drop
-   0 idx OUT-U! ;
+   STDERR-FD idx OUT-BUF BUF$ write drop
+   idx OUT-BUF BUF:CLEAR ;
 
 
 \ Whatever had been built is dropped: the client is owed one answer and the
 \ caller is about to render it.
 : DROP-ANSWER ( n -- ) {: idx:n :}
-   0 idx HDR-U!
-   idx IN-BUF 0 SPAN:TAKE SPAN:$ idx RESPONSE-BODY! ;
+   idx HDR-BUF BUF:CLEAR
+   idx DROP-BODY ;
 
 
 \ The error hook runs outside the handler's boundary for a refusal and for a
@@ -261,23 +261,13 @@ private
    SELF-SLOT DISPATCH ;
 
 
-\ A body the slot's JSON buffer does not hold is refused by name: the client
-\ learns the answer exists and is too large, not that the handler broke.
-: LARGE-RESPONSE ( n -- ) {: idx:n :}
-   idx DROP-ANSWER
-   idx RESPONSE-OF 500 s" response_too_large"
-   s" the answer is larger than this server sends in one response" ERROR! ;
-
-
-\ The handler's throw, kept for RENDER-FAULT and for a taker's release: a
-\ quotation cannot read a local.
+\ The handler's throw, kept for a taker's release: a quotation cannot read a
+\ local.
 MAX-WORKERS TYPED-BUFFER FAULT-CODE n
 
 
 : RENDER-FAULT ( -- )
-   SELF-SLOT {: idx:n :}
-   idx FAULT-CODE @ E-RESPONSE = if idx LARGE-RESPONSE exit then
-   idx FAULT-RESPONSE ;
+   SELF-SLOT FAULT-RESPONSE ;
 
 
 \ ---- a connection its handler takes over -------------------------------------
@@ -422,7 +412,6 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
    idx MAKE-ID
    0 idx KEEP-ALIVE!
    idx code REPORT-FAULT
-   code idx FAULT-CODE !
    500 idx SLOT-STATUS!
    [: RENDER-FAULT ;] catch {: failed:n :}
    idx failed HOOK-FAULT
