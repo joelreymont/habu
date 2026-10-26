@@ -28,8 +28,8 @@ public
    s" require src/habu/data-claims.f HND-CELL DATA-CLAIMS:TAB ! DATA-CLAIMS:CLAIMS-ASSERT"
    76 S\" layout: DATA-CLAIMS overlap: DP-CELL and HND-CELL\n" EXPECT
 
-   s" the image writer still checks the guarded band's declared extent" T-LABEL
-   s" require src/habu/data-claims.f : DC-BAD-BAND ( -- ) DATA-CLAIMS:COUNT-ROWS 0 ?do i DATA-CLAIMS:ROW-OFF FRIEND-ARENA = if 1 DATA-CLAIMS:TAB i DATA-CLAIMS:ROW-CELLS * 1+ cells + ! unloop exit then loop ; DC-BAD-BAND require tools/native-emit.f"
+   s" BANDS-ASSERT refuses a guarded band whose claim length differs" T-LABEL
+   s" require src/habu/data-claims.f : DC-BAD-BAND ( -- ) DATA-CLAIMS:COUNT-ROWS 0 ?do i DATA-CLAIMS:ROW-OFF FRIEND-ARENA = if 1 DATA-CLAIMS:TAB i DATA-CLAIMS:ROW-CELLS * 1+ cells + ! unloop exit then loop ; DC-BAD-BAND DATA-CLAIMS:BANDS-ASSERT"
    76 S\" data-bands: PROT-GUARD band length differs from its claim: FRIEND-ARENA\n" EXPECT
 
    \ A macOS host's DATA is far larger than the x86-64 target's, so only a band

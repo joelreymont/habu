@@ -63,7 +63,7 @@ $F2E00009 constant W-MOVK3
 require src/habu/primitive-registry.f
 require src/habu/native-observer-extension.f
 require src/habu/native-body-abi.f
-require src/habu/data-bands.f           \ each band GUARD-SPAN tests is a claim
+require src/habu/data-claims.f          \ each band GUARD-SPAN tests is a claim
 require src/habu/arith-abi.f           \ E-DIV-ZERO, the dividing bodies' refusal
 require src/habu/task-abi.f
 require src/habu/code-span.f

@@ -20,10 +20,12 @@ require src/habu/native-host-cells.f
 \
 \ A COMMENT COULD NOT CATCH THAT AND DID NOT. This table can. Every claim on the
 \ DATA region states its own extent, and CLAIMS-ASSERT refuses an overlapping
-\ pair at ENGINE BUILD TIME, naming both. src/habu/data-bands.f runs a second
-\ check over the same table: every protected band must BE a declared claim,
-\ start and length both, which is the check that would have caught the
-\ transaction guarding $3000 of a band whose cells end after $300.
+\ pair at ENGINE BUILD TIME, naming both. BANDS-ASSERT, at the end of this file,
+\ runs a second check over the same table: every protected band must BE a
+\ declared claim, start and length both, which is the check that would have
+\ caught the transaction guarding $3000 of a band whose cells end after $300.
+\ Both run when an engine builder (src/habu/habu1.f, src/habu/kernel-x64.f)
+\ loads this file.
 \
 \ WHAT IS IN IT: every claim whose extent is DECLARED - a band with a length
 \ constant, or a single cell. That is the whole map from $3A00 up, where every
@@ -68,392 +70,216 @@ variable MSG-U
 : MSG$ ( -- ptr u8 n )
    MSG-BUF MSG-U @ ;
 
-\ Names live in their own blob, one counted string per row, in row order: the
-\ rows have to stay two contiguous cells each, so the bytes cannot sit in them.
-\ The blob is ALLOTTED and filled by index, never built with `c,`: an
-\ interpreted `s"` appends its own bytes at HERE, so a blob grown with `c,`
-\ between two `s"` literals interleaves each name with a copy of itself.
+\ Each claim is one line, `<offset> <length> CLAIM <display name>`. The row is
+\ two contiguous cells in TAB; the name goes to its own blob, one counted string
+\ per row in row order, because its bytes cannot sit between the rows. CLAIM
+\ reads the name with parse-name, which allots nothing at HERE, so TAB grows
+\ with `,` alone.
 $1000 constant NAMES-CAP
 create NAMES NAMES-CAP allot
 variable NAMES-U
 
 : NAME-C+ ( n -- ) {: b :}
-   NAMES-U @ NAMES-CAP < if
-      b NAMES NAMES-U @ + c!
-      NAMES-U @ 1+ NAMES-U !
-   then ;
+   NAMES-U @ NAMES-CAP < 0= if
+      s" layout: DATA-CLAIMS names exceed NAMES-CAP" 76 die
+   then
+   b NAMES NAMES-U @ + c!
+   NAMES-U @ 1+ NAMES-U ! ;
 
-: NAME, ( ptr u8 n -- ) {: a u :}
+\ Append the row at byte offset off, len bytes long, named by the next token.
+: CLAIM ( n n -- ) {: off len :}
+   parse-name {: a u :}
+   u 0 = if s" layout: DATA-CLAIMS row has no name" 76 die then
+   u $FF > if s" layout: DATA-CLAIMS name exceeds its count byte" 76 die then
    u NAME-C+
-   0 begin dup u < while dup a + c@ NAME-C+ 1+ repeat drop ;
-
-   s" DP-CELL" NAME,
-   s" HND-CELL" NAME,
-   s" LOCN-CELL" NAME,
-   s" LOCF-CELL" NAME,
-   s" FRIEND-ARENA" NAME,
-   s" CMBK-CELL" NAME,
-   s" CMTAG-CELL" NAME,
-   s" CMPADS-CELL" NAME,
-   s" CMFRD-CELL" NAME,
-   s" CMFR-STACK" NAME,
-   s" ADDRESS-CELLS-LOCK" NAME,
-   s" CMFAM-CELL" NAME,
-   s" BODYLEN-CELL" NAME,
-   s" RBASE-CELL" NAME,
-   s" LOOPSP-CELL" NAME,
-   s" STACK-ABI-BASE-CELL" NAME,
-   s" SSCR-CELL" NAME,
-   s" GTOD-SCRATCH" NAME,
-   s" DOESP-CELL" NAME,
-   s" VSP-CELL" NAME,
-   s" VRFREE-CELL" NAME,
-   s" VTAG-STACK" NAME,
-   s" CREATEP-CELL" NAME,
-   s" QPATCH-CELL" NAME,
-   s" QENT-CELL" NAME,
-   s" QXH-CELL" NAME,
-   s" VVAL-STACK" NAME,
-   s" NCOMP-XT-CELL" NAME,
-   s" NCOMP-DECL-CELL" NAME,
-   s" NCOMP-TARGET-DECL-CELL" NAME,
-   s" NCOMP-TIER-CELL" NAME,
-   s" JIT-SNAP-SP-CELL" NAME,
-   s" NCOMP-DEF-TIER" NAME,
-   s" NCOMP-RECOVER-CELL" NAME,
-   s" LASTC-CELL" NAME,
-   s" RSP-CELL" NAME,
-   s" EXITH-CELL" NAME,
-   s" LVD-CELL" NAME,
-   s" LVH-LEVELS" NAME,
-   s" GENIO-ABI" NAME,
-   s" AOT-SPAN" NAME,
-   s" SIGNAL-ABI" NAME,
-   s" LVF-LEVELS" NAME,
-   s" LVQ-LEVELS" NAME,
-   s" FRAME-CELL" NAME,
-   s" QFRAME-CELL" NAME,
-   s" BODYBUF" NAME,
-   s" RPKG-SNAPSHOT" NAME,
-   s" CMM-CELL" NAME,
-   s" DOESB-CELL" NAME,
-   s" TRUSTED-CELL" NAME,
-   s" SRCLOC-PATH" NAME,
-   s" SRCLOC-PATHLEN" NAME,
-   s" SRCLOC-INB" NAME,
-   s" SRCLOC-OWNED" NAME,
-   s" SRCLOC-OWNEDLEN" NAME,
-   s" TOKBODY-CELL" NAME,
-   s" TOKLOCN-CELL" NAME,
-   s" TOKCP-CELL" NAME,
-   s" TOKVSP-CELL" NAME,
-   s" TOKVRF-CELL" NAME,
-   s" TOKFRF-CELL" NAME,
-   s" PENDTKA-CELL" NAME,
-   s" NCOMP-FIXED-SHADOW-CELL" NAME,
-   s" NCOMP-DOES-SHADOW-CELL" NAME,
-   s" TASK-CHAIN-CELL" NAME,
-   s" PKGRESYNC-CELL" NAME,
-   s" HIDX-CLAIMS" NAME,
-   s" PROT-WINDOW" NAME,
-   s" PROT-WLO" NAME,
-   s" PROT-RLO" NAME,
-   s" ENGINE-HOOK" NAME,
-   s" SUSP-HOOK" NAME,
-   s" REFUSAL-ABI:CODE-CELL" NAME,
-   s" EXIT-HOOK-CELL" NAME,
-   s" JIT-QUOT-SP-CELL" NAME,
-   s" JIT-QUOT-FRAMES" NAME,
-   s" FLOORREC-CELL" NAME,
-   s" CLOSED-FREE-CELL" NAME,
-   s" CODE-END-CELL" NAME,
-   s" TEXT-SIZE-CELL" NAME,
-   s" DATA-FLOOR-CELL" NAME,
-   s" NATIVE-OBS-CELLS:PUBLISHED" NAME,
-   s" NATIVE-OBS-CELLS:INVALIDATE" NAME,
-   s" NATIVE-OBS-CELLS:HOST-INVALIDATE" NAME,
-   s" NATIVE-OBS-EXT:CAPTURE-INVALIDATE" NAME,
-   s" NATIVE-HOST-CELLS:SELECT" NAME,
-   s" NATIVE-HOST-CELLS:SCALAR-PRIM" NAME,
-   s" NATIVE-HOST-CELLS:FACTS" NAME,
-   s" NATIVE-HOST-CELLS:DIVISION-PRIM" NAME,
-   s" PEND-OPAQUE-CELL" NAME,
-   s" DEF-OCC:PTR-CELL" NAME,
-   s" LOCNAMES" NAME,
-   s" VRTAB" NAME,
-   s" VRITAB" NAME,
-   s" REPLH-CELL" NAME,
-   s" RSAVCP-CELL" NAME,
-   s" RSAVND-CELL" NAME,
-   s" RSAVDP-CELL" NAME,
-   s" RSAVSP-CELL" NAME,
-   s" RRECP-CELL" NAME,
-   s" RSAVROWS-CELL" NAME,
-   s" ARGC-CELL" NAME,
-   s" ARGV-CELL" NAME,
-   s" ENVP-CELL" NAME,
-   s" PEND-CELL" NAME,
-   s" TKA-CELL" NAME,
-   s" TKL-CELL" NAME,
-   s" INP-CELL" NAME,
-   s" INE-CELL" NAME,
-   s" FRFREE-CELL" NAME,
-   s" FRCLM-CELL" NAME,
-   s" BPA-CELL" NAME,
-   s" ADDRESS-CELLS-INDEX" NAME,
-   s" BPTAB" NAME,
-   s" EVALD-CELL" NAME,
-   s" EVALERR-CELL" NAME,
-   s" LMAINP-CELL" NAME,
-   s" BPWBASE-CELL" NAME,
-   s" BPWN-CELL" NAME,
-   s" SNAP-CELL" NAME,
-   s" NULL-PTR-CELL" NAME,
-   s" ENGINE-MAIN-XT-CELL" NAME,
-   s" NCOMP-DISPATCH:CALLBACK-STUB-CELL" NAME,
-   s" NCOMP-DISPATCH:CALLBACK-ENTRY-CELL" NAME,
-   s" NATIVE-BODY-ABI:ORIGIN-HOOK" NAME,
-   s" NATIVE-BODY-ABI:ORIGIN-TAKE" NAME,
-   s" NATIVE-BODY-ABI:PENDING-TAKE" NAME,
-   s" ENGINE-MAIN-REPORT-CELL" NAME,
-   s" PROVIDED-XT-EVALUATE-CELL" NAME,
-   s" PROVIDED-XT-EVALUATE-RANGE-CELL" NAME,
-   s" POLICY-KEYWORD-CELL" NAME,
-   s" ENGINE-MAIN-ARENA-CELL" NAME,
-   s" FFI-BUFFERS" NAME,
-   s" TASK-TCB-CELL" NAME,
-   s" TASKS-LIVE-CELL" NAME,
-   s" HIDXP-CELL" NAME,
-   s" EVALREC-CELL" NAME,
-   s" AOT-SEED-DONE-CELL" NAME,
-   s" BOOT-SRC-USER-END" NAME,
-   s" PROT-REG" NAME,
-   s" FFI-LEN-BUFFERS" NAME,
-   s" CALLBACK-BAND" NAME,
-   s" DECLARED-LOG-ADDR" NAME,
-   s" APP-ENTRY-XT-CELL" NAME,
-   s" AOT-WINDOW-T0" NAME,
-   s" AOT-WINDOW-D0" NAME,
-   s" AOT-WINDOW-B0" NAME,
-   s" EVAL-POINTER-BAND" NAME,
-   s" PROT-RHI" NAME,
-   s" PROT-CF" NAME,
-   s" AOT-SIG-POOL" NAME,
-   s" AOT-SIG-LEN" NAME,
-   s" BOOT-HEAP-START" NAME,
-   s" STACK-ABI-CAP" NAME,
-   s" STACK-ABI-REPL-BASE" NAME,
-   s" STACK-ABI-REPL-CAP" NAME,
-   s" STACK-ABI-RETURN-BASE" NAME,
-   s" STACK-ABI-LOOP-BASE" NAME,
-   s" TXN-STATE" NAME,
-   s" USER-BAND" NAME,
-   s" FS-MUT-ABI" NAME,
-   s" FS-ABI" NAME,
-   s" FMT-ABI" NAME,
-   s" STRING-ABI" NAME,
-   s" PD-TABLE" NAME,
-   s" DECLARED-LOG" NAME,
-   s" USE-BAND" NAME,
-   s" SNAP-CALLMAP" NAME,
-   s" SNAP-ADDRMAP" NAME,
-   s" SNAP-XTCELL" NAME,
-   s" JIT-SNAP-FRAMES" NAME,
-   s" TIER-PROV" NAME,
-   s" UNIT-COMPILE" NAME,
-   s" SOURCE-EXEC-CTX-CELL" NAME,
-   s" REPLAY-SCOPE" NAME,
-   s" RPKG:FLOOR" NAME,
-   s" RPKG:WIDS" NAME,
-   s" POLICY-NDICT-CELL" NAME,
-   s" POLICY-BITS" NAME,
-   s" POLICY-REQUIRE-CELL" NAME,
-   s" PROF-BAND" NAME,
+   0 begin dup u < while dup a + c@ NAME-C+ 1+ repeat drop
+   off , len , ;
+parses: CLAIM 1
 
 create TAB
-   DP-CELL                        ,  1 cells ,
-   HND-CELL                       ,  1 cells ,
-   LOCN-CELL                      ,  1 cells ,
-   LOCF-CELL                      ,  1 cells ,
-   FRIEND-ARENA                   ,  FRIEND-ARENA-LEN ,
-   CMBK-CELL                      ,  1 cells ,
-   CMTAG-CELL                     ,  1 cells ,
-   CMPADS-CELL                    ,  1 cells ,
-   CMFRD-CELL                     ,  1 cells ,
-   CMFR-OFF                       ,  CMFR-MAX cells ,
-   ADDRESS-CELLS:LOCK-CELL        ,  1 cells ,
-   CMFAM-CELL                     ,  1 cells ,
-   BODYLEN-CELL                   ,  1 cells ,
-   RBASE-CELL                     ,  1 cells ,
-   LOOPSP-CELL                    ,  1 cells ,
-   STACK-ABI:BASE-CELL            ,  1 cells ,
-   SSCR-CELL                      ,  1 cells ,
-   GTOD-SCRATCH                   ,  2 cells ,
-   DOESP-CELL                     ,  1 cells ,
-   VSP-CELL                       ,  1 cells ,
-   REGALLOC-ABI:VRFREE-CELL       ,  1 cells ,
-   VTAG-OFF                       ,  VSMAX ,
-   CREATEP-CELL                   ,  1 cells ,
-   QPATCH-CELL                    ,  1 cells ,
-   QENT-CELL                      ,  1 cells ,
-   QXH-CELL                       ,  1 cells ,
-   VVAL-OFF                       ,  VSMAX cells ,
-   NCOMP-DISPATCH:XT-CELL         ,  1 cells ,
-   NCOMP-DISPATCH:DECL-CELL       ,  1 cells ,
-   NCOMP-DISPATCH:TARGET-DECL-CELL ,  1 cells ,
-   NCOMP-DISPATCH:TIER-CELL       ,  1 cells ,
-   JIT-SNAP:SP-CELL               ,  1 cells ,
-   NCOMP-DISPATCH:DEF-TIER-CELL   ,  3 cells ,
-   NCOMP-DISPATCH:RECOVER-CELL    ,  1 cells ,
-   LASTC-CELL                     ,  1 cells ,
-   RSP-CELL                       ,  1 cells ,
-   EXITH-CELL                     ,  1 cells ,
-   LVD-CELL                       ,  1 cells ,
-   LVH-OFF                        ,  LV-LEVELS cells ,
-   GENIO-ABI:OUT-CELL             ,  GENIO-ABI:END GENIO-ABI:OUT-CELL - ,
-   AOT-CELLS:SPAN-TABLE-CELL      ,  3 cells ,
-   SIGNAL-ABI:STUB-CELL           ,  3 cells ,
-   LVF-OFF                        ,  LV-LEVELS cells ,
-   LVQ-OFF                        ,  LV-LEVELS cells ,
-   FRAME-CELL                     ,  1 cells ,
-   QFRAME-CELL                    ,  1 cells ,
-   BODYBUF-OFF                    ,  BODYBUF-CAP 2 + ,
-   RPKG-CUR                       ,  RPKG-REC RPKG-CUR - 1 cells + ,
-   CMM-CELL                       ,  1 cells ,
-   DOESB-CELL                     ,  1 cells ,
-   TRUSTED-CELL                   ,  1 cells ,
-   SRCLOC:PATH-CELL               ,  1 cells ,
-   SRCLOC:PATHLEN-CELL            ,  1 cells ,
-   SRCLOC:INB-CELL                ,  1 cells ,
-   SRCLOC:OWNED-CELL              ,  1 cells ,
-   SRCLOC:OWNEDLEN-CELL           ,  1 cells ,
-   TOKBODY-CELL                   ,  1 cells ,
-   TOKLOCN-CELL                   ,  1 cells ,
-   TOKCP-CELL                     ,  1 cells ,
-   TOKVSP-CELL                    ,  1 cells ,
-   TOKVRF-CELL                    ,  1 cells ,
-   TOKFRF-CELL                    ,  1 cells ,
-   PENDTKA-CELL                   ,  1 cells ,
-   NCOMP-DISPATCH:FIXED-SHADOW-CELL , 1 cells ,
-   NCOMP-DISPATCH:DOES-SHADOW-CELL , 1 cells ,
-   TASK-CHAIN-CELL                ,  1 cells ,
-   PKGRESYNC-CELL                 ,  1 cells ,
-   HIDX:CLAIMS                    ,  1 cells ,
-   PROT:WINDOW                    ,  1 cells ,
-   PROT:WLO                       ,  1 cells ,
-   PROT:RLO                       ,  1 cells ,
-   ENGINE-HOOK-OFF                ,  ENGINE-HOOK-LEN ,
-   SUSP-HOOK-OFF                  ,  SUSP-HOOK-LEN ,
-   REFUSAL-ABI:CODE-CELL          ,  1 cells ,
-   EXIT-HOOK-CELL                 ,  1 cells ,
-   JIT-QUOT:SP-CELL               ,  1 cells ,
-   JIT-QUOT:STK-OFF               ,  JIT-QUOT:END JIT-QUOT:STK-OFF - ,
-   FLOORREC-CELL                  ,  1 cells ,
-   CLOSED-FREE-CELL               ,  1 cells ,
-   CODE-END-CELL                  ,  1 cells ,
-   TEXT-SIZE-CELL                 ,  1 cells ,
-   DATA-FLOOR-CELL                ,  1 cells ,
-   NATIVE-OBS-CELLS:PUBLISHED     ,  1 cells ,
-   NATIVE-OBS-CELLS:INVALIDATE    ,  1 cells ,
-   NATIVE-OBS-CELLS:HOST-INVALIDATE ,  1 cells ,
-   NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 1 cells ,
-   NATIVE-HOST-CELLS:SELECT        ,  1 cells ,
-   NATIVE-HOST-CELLS:SCALAR-PRIM   ,  1 cells ,
-   NATIVE-HOST-CELLS:FACTS         ,  1 cells ,
-   NATIVE-HOST-CELLS:DIVISION-PRIM ,  1 cells ,
-   PEND-OPAQUE-CELL               ,  1 cells ,
-   DEF-OCC:PTR-CELL               ,  1 cells ,
-   LOCNAMES                       ,  LOC-RECS LOC-REC * ,
-   REGALLOC-ABI:VRTAB-OFF         ,  REGALLOC-ABI:VRTAB-BYTES ,
-   REGALLOC-ABI:VRITAB-OFF        ,  REGALLOC-ABI:VRTAB-BYTES ,
-   REPLH-CELL                     ,  1 cells ,
-   RSAVCP-CELL                    ,  1 cells ,
-   RSAVND-CELL                    ,  1 cells ,
-   RSAVDP-CELL                    ,  1 cells ,
-   RSAVSP-CELL                    ,  1 cells ,
-   RRECP-CELL                     ,  1 cells ,
-   RSAVROWS-CELL                  ,  1 cells ,
-   ARGC-CELL                      ,  1 cells ,
-   ARGV-CELL                      ,  1 cells ,
-   ENVP-CELL                      ,  1 cells ,
-   PEND-CELL                      ,  1 cells ,
-   TKA-CELL                       ,  1 cells ,
-   TKL-CELL                       ,  1 cells ,
-   INP-CELL                       ,  1 cells ,
-   INE-CELL                       ,  1 cells ,
-   REGALLOC-ABI:FRFREE-CELL       ,  1 cells ,
-   FRCLM-CELL                     ,  1 cells ,
-   BPA-CELL                       ,  1 cells ,
-   ADDRESS-CELLS:INDEX-CELL       ,  1 cells ,
-   BPTAB-OFF                      ,  EVALD-CELL BPTAB-OFF - ,
-   EVALD-CELL                     ,  1 cells ,
-   EVALERR-CELL                   ,  1 cells ,
-   LMAINP-CELL                    ,  1 cells ,
-   BPWBASE-CELL                   ,  1 cells ,
-   BPWN-CELL                      ,  1 cells ,
-   SNAP-CELL                      ,  1 cells ,
-   NULL-PTR-CELL-OFF              ,  1 cells ,
-   ENGINE-MAIN:XT-CELL            ,  1 cells ,
-   NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  1 cells ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 1 cells ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells + , 1 cells ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + , 1 cells ,
-   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + , 1 cells ,
-   ENGINE-MAIN:REPORT-CELL        ,  1 cells ,
-   PROVIDED-XT:EVALUATE-CELL      ,  1 cells ,
-   PROVIDED-XT:EVALUATE-RANGE-CELL ,  1 cells ,
-   POLICY-ABI:KEYWORD-CELL         ,  1 cells ,
-   ENGINE-MAIN:ARENA-CELL          ,  1 cells ,
-   $3A00                          ,  $288 ,
-   TASK-TCB-CELL                  ,  1 cells ,
-   TASKS-LIVE-CELL                ,  1 cells ,
-   HIDXP-CELL                     ,  1 cells ,
-   EVALREC-CELL                   ,  1 cells ,
-   AOT-SEED-DONE-CELL             ,  1 cells ,
-   BOOT-SRC:USER-END              ,  1 cells ,
-   PROT-REG-OFF                   ,  PROT-REG-LEN ,
-   $40C8                          ,  $100 ,
-   CB-XDS                         ,  CB-BAND-BYTES ,
-   DECLARED-LOG:ADDR-CELL         ,  1 cells ,
-   APP-ENTRY:XT-CELL              ,  1 cells ,
-   AOT-CELLS:T0-CELL              ,  1 cells ,
-   AOT-CELLS:D0-CELL              ,  1 cells ,
-   AOT-CELLS:B0-CELL              ,  1 cells ,
-   EVAL-TOP-CELL                  ,  PROT:RHI EVAL-TOP-CELL - ,
-   PROT:RHI                       ,  1 cells ,
-   PROT:CF                        ,  1 cells ,
-   AOT-CELLS:SIG-POOL-CELL        ,  1 cells ,
-   AOT-CELLS:SIG-LEN-CELL         ,  1 cells ,
-   BOOT-LAYOUT:HEAP-START-CELL    ,  1 cells ,
-   STACK-ABI:CAP-CELL             ,  1 cells ,
-   STACK-ABI:REPL-BASE-CELL       ,  1 cells ,
-   STACK-ABI:REPL-CAP-CELL        ,  1 cells ,
-   STACK-ABI:RETURN-BASE-CELL     ,  1 cells ,
-   STACK-ABI:LOOP-BASE-CELL       ,  1 cells ,
-   TXN-STATE-OFF                  ,  TXN-STATE-LEN ,
-   USER-BAND:START                ,  USER-BAND:END USER-BAND:START - ,
-   FS-MUT-ABI:START               ,  FS-MUT-ABI:BYTES ,
-   FS-ABI:START                   ,  FS-ABI:BYTES ,
-   FMT-ABI:START                  ,  FMT-ABI:BYTES ,
-   STRING-ABI:START               ,  STRING-ABI:BYTES ,
-   PD-TABLE-OFF                   ,  PD-TABLE-END PD-TABLE-OFF - ,
-   DECLARED-LOG:OFF               ,  DECLARED-LOG:END DECLARED-LOG:OFF - ,
-   USE-BAND-OFF                   ,  USE-BAND-END USE-BAND-OFF - ,
-   SNAP-RELOC:CALLMAP-OFF         ,  SNAP-RELOC:CALLMAP-BYTES ,
-   SNAP-RELOC:ADDRMAP-OFF         ,  SNAP-RELOC:ADDRMAP-BYTES ,
-   SNAP-RELOC:XTCELL-N-CELL       ,  SNAP-RELOC:XTCELL-END SNAP-RELOC:XTCELL-N-CELL - ,
-   JIT-SNAP:STK-OFF               ,  JIT-SNAP:END JIT-SNAP:STK-OFF - ,
-   TIER-PROV:OPEN-CELL            ,  TIER-PROV:END TIER-PROV:OPEN-CELL - ,
-   UNIT-COMPILE-CELL              ,  1 cells ,
-   SOURCE-EXEC-CTX-CELL           ,  1 cells ,
-   REPLAY-SCOPE:LATCH             ,  REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
-   RPKG:FLOOR                     ,  1 cells ,
-   RPKG:WIDS                      ,  USE-MAX cells ,
-   POLICY-NDICT-CELL              ,  1 cells ,
-   POLICY-BITS-OFF                ,  PROT-BITS-BYTES ,
-   POLICY-REQUIRE-CELL            ,  1 cells ,
+   DP-CELL                            1 cells                 CLAIM DP-CELL
+   HND-CELL                           1 cells                 CLAIM HND-CELL
+   LOCN-CELL                          1 cells                 CLAIM LOCN-CELL
+   LOCF-CELL                          1 cells                 CLAIM LOCF-CELL
+   FRIEND-ARENA                       FRIEND-ARENA-LEN        CLAIM FRIEND-ARENA
+   CMBK-CELL                          1 cells                 CLAIM CMBK-CELL
+   CMTAG-CELL                         1 cells                 CLAIM CMTAG-CELL
+   CMPADS-CELL                        1 cells                 CLAIM CMPADS-CELL
+   CMFRD-CELL                         1 cells                 CLAIM CMFRD-CELL
+   CMFR-OFF                           CMFR-MAX cells          CLAIM CMFR-STACK
+   ADDRESS-CELLS:LOCK-CELL            1 cells                 CLAIM ADDRESS-CELLS-LOCK
+   CMFAM-CELL                         1 cells                 CLAIM CMFAM-CELL
+   BODYLEN-CELL                       1 cells                 CLAIM BODYLEN-CELL
+   RBASE-CELL                         1 cells                 CLAIM RBASE-CELL
+   LOOPSP-CELL                        1 cells                 CLAIM LOOPSP-CELL
+   STACK-ABI:BASE-CELL                1 cells                 CLAIM STACK-ABI-BASE-CELL
+   SSCR-CELL                          1 cells                 CLAIM SSCR-CELL
+   GTOD-SCRATCH                       2 cells                 CLAIM GTOD-SCRATCH
+   DOESP-CELL                         1 cells                 CLAIM DOESP-CELL
+   VSP-CELL                           1 cells                 CLAIM VSP-CELL
+   REGALLOC-ABI:VRFREE-CELL           1 cells                 CLAIM VRFREE-CELL
+   VTAG-OFF                           VSMAX                   CLAIM VTAG-STACK
+   CREATEP-CELL                       1 cells                 CLAIM CREATEP-CELL
+   QPATCH-CELL                        1 cells                 CLAIM QPATCH-CELL
+   QENT-CELL                          1 cells                 CLAIM QENT-CELL
+   QXH-CELL                           1 cells                 CLAIM QXH-CELL
+   VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
+   NCOMP-DISPATCH:XT-CELL             1 cells                 CLAIM NCOMP-XT-CELL
+   NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
+   NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
+   NCOMP-DISPATCH:TIER-CELL           1 cells                 CLAIM NCOMP-TIER-CELL
+   JIT-SNAP:SP-CELL                   1 cells                 CLAIM JIT-SNAP-SP-CELL
+   NCOMP-DISPATCH:DEF-TIER-CELL       3 cells                 CLAIM NCOMP-DEF-TIER
+   NCOMP-DISPATCH:RECOVER-CELL        1 cells                 CLAIM NCOMP-RECOVER-CELL
+   LASTC-CELL                         1 cells                 CLAIM LASTC-CELL
+   RSP-CELL                           1 cells                 CLAIM RSP-CELL
+   EXITH-CELL                         1 cells                 CLAIM EXITH-CELL
+   LVD-CELL                           1 cells                 CLAIM LVD-CELL
+   LVH-OFF                            LV-LEVELS cells         CLAIM LVH-LEVELS
+   GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
+   AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
+   SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
+   LVF-OFF                            LV-LEVELS cells         CLAIM LVF-LEVELS
+   LVQ-OFF                            LV-LEVELS cells         CLAIM LVQ-LEVELS
+   FRAME-CELL                         1 cells                 CLAIM FRAME-CELL
+   QFRAME-CELL                        1 cells                 CLAIM QFRAME-CELL
+   BODYBUF-OFF                        BODYBUF-CAP 2 +         CLAIM BODYBUF
+   RPKG-CUR                           RPKG-REC RPKG-CUR - 1 cells +  CLAIM RPKG-SNAPSHOT
+   CMM-CELL                           1 cells                 CLAIM CMM-CELL
+   DOESB-CELL                         1 cells                 CLAIM DOESB-CELL
+   TRUSTED-CELL                       1 cells                 CLAIM TRUSTED-CELL
+   SRCLOC:PATH-CELL                   1 cells                 CLAIM SRCLOC-PATH
+   SRCLOC:PATHLEN-CELL                1 cells                 CLAIM SRCLOC-PATHLEN
+   SRCLOC:INB-CELL                    1 cells                 CLAIM SRCLOC-INB
+   SRCLOC:OWNED-CELL                  1 cells                 CLAIM SRCLOC-OWNED
+   SRCLOC:OWNEDLEN-CELL               1 cells                 CLAIM SRCLOC-OWNEDLEN
+   TOKBODY-CELL                       1 cells                 CLAIM TOKBODY-CELL
+   TOKLOCN-CELL                       1 cells                 CLAIM TOKLOCN-CELL
+   TOKCP-CELL                         1 cells                 CLAIM TOKCP-CELL
+   TOKVSP-CELL                        1 cells                 CLAIM TOKVSP-CELL
+   TOKVRF-CELL                        1 cells                 CLAIM TOKVRF-CELL
+   TOKFRF-CELL                        1 cells                 CLAIM TOKFRF-CELL
+   PENDTKA-CELL                       1 cells                 CLAIM PENDTKA-CELL
+   NCOMP-DISPATCH:FIXED-SHADOW-CELL   1 cells                 CLAIM NCOMP-FIXED-SHADOW-CELL
+   NCOMP-DISPATCH:DOES-SHADOW-CELL    1 cells                 CLAIM NCOMP-DOES-SHADOW-CELL
+   TASK-CHAIN-CELL                    1 cells                 CLAIM TASK-CHAIN-CELL
+   PKGRESYNC-CELL                     1 cells                 CLAIM PKGRESYNC-CELL
+   HIDX:CLAIMS                        1 cells                 CLAIM HIDX-CLAIMS
+   PROT:WINDOW                        1 cells                 CLAIM PROT-WINDOW
+   PROT:WLO                           1 cells                 CLAIM PROT-WLO
+   PROT:RLO                           1 cells                 CLAIM PROT-RLO
+   ENGINE-HOOK-OFF                    ENGINE-HOOK-LEN         CLAIM ENGINE-HOOK
+   SUSP-HOOK-OFF                      SUSP-HOOK-LEN           CLAIM SUSP-HOOK
+   REFUSAL-ABI:CODE-CELL              1 cells                 CLAIM REFUSAL-ABI:CODE-CELL
+   EXIT-HOOK-CELL                     1 cells                 CLAIM EXIT-HOOK-CELL
+   JIT-QUOT:SP-CELL                   1 cells                 CLAIM JIT-QUOT-SP-CELL
+   JIT-QUOT:STK-OFF                   JIT-QUOT:END JIT-QUOT:STK-OFF -  CLAIM JIT-QUOT-FRAMES
+   FLOORREC-CELL                      1 cells                 CLAIM FLOORREC-CELL
+   CLOSED-FREE-CELL                   1 cells                 CLAIM CLOSED-FREE-CELL
+   CODE-END-CELL                      1 cells                 CLAIM CODE-END-CELL
+   TEXT-SIZE-CELL                     1 cells                 CLAIM TEXT-SIZE-CELL
+   DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
+   NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
+   NATIVE-OBS-CELLS:INVALIDATE        1 cells                 CLAIM NATIVE-OBS-CELLS:INVALIDATE
+   NATIVE-OBS-CELLS:HOST-INVALIDATE   1 cells                 CLAIM NATIVE-OBS-CELLS:HOST-INVALIDATE
+   NATIVE-OBS-EXT:CAPTURE-INVALIDATE  1 cells                 CLAIM NATIVE-OBS-EXT:CAPTURE-INVALIDATE
+   NATIVE-HOST-CELLS:SELECT           1 cells                 CLAIM NATIVE-HOST-CELLS:SELECT
+   NATIVE-HOST-CELLS:SCALAR-PRIM      1 cells                 CLAIM NATIVE-HOST-CELLS:SCALAR-PRIM
+   NATIVE-HOST-CELLS:FACTS            1 cells                 CLAIM NATIVE-HOST-CELLS:FACTS
+   NATIVE-HOST-CELLS:DIVISION-PRIM    1 cells                 CLAIM NATIVE-HOST-CELLS:DIVISION-PRIM
+   PEND-OPAQUE-CELL                   1 cells                 CLAIM PEND-OPAQUE-CELL
+   DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
+   LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
+   REGALLOC-ABI:VRTAB-OFF             REGALLOC-ABI:VRTAB-BYTES  CLAIM VRTAB
+   REGALLOC-ABI:VRITAB-OFF            REGALLOC-ABI:VRTAB-BYTES  CLAIM VRITAB
+   REPLH-CELL                         1 cells                 CLAIM REPLH-CELL
+   RSAVCP-CELL                        1 cells                 CLAIM RSAVCP-CELL
+   RSAVND-CELL                        1 cells                 CLAIM RSAVND-CELL
+   RSAVDP-CELL                        1 cells                 CLAIM RSAVDP-CELL
+   RSAVSP-CELL                        1 cells                 CLAIM RSAVSP-CELL
+   RRECP-CELL                         1 cells                 CLAIM RRECP-CELL
+   RSAVROWS-CELL                      1 cells                 CLAIM RSAVROWS-CELL
+   ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
+   ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
+   ENVP-CELL                          1 cells                 CLAIM ENVP-CELL
+   PEND-CELL                          1 cells                 CLAIM PEND-CELL
+   TKA-CELL                           1 cells                 CLAIM TKA-CELL
+   TKL-CELL                           1 cells                 CLAIM TKL-CELL
+   INP-CELL                           1 cells                 CLAIM INP-CELL
+   INE-CELL                           1 cells                 CLAIM INE-CELL
+   REGALLOC-ABI:FRFREE-CELL           1 cells                 CLAIM FRFREE-CELL
+   FRCLM-CELL                         1 cells                 CLAIM FRCLM-CELL
+   BPA-CELL                           1 cells                 CLAIM BPA-CELL
+   ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
+   BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB
+   EVALD-CELL                         1 cells                 CLAIM EVALD-CELL
+   EVALERR-CELL                       1 cells                 CLAIM EVALERR-CELL
+   LMAINP-CELL                        1 cells                 CLAIM LMAINP-CELL
+   BPWBASE-CELL                       1 cells                 CLAIM BPWBASE-CELL
+   BPWN-CELL                          1 cells                 CLAIM BPWN-CELL
+   SNAP-CELL                          1 cells                 CLAIM SNAP-CELL
+   NULL-PTR-CELL-OFF                  1 cells                 CLAIM NULL-PTR-CELL
+   ENGINE-MAIN:XT-CELL                1 cells                 CLAIM ENGINE-MAIN-XT-CELL
+   NCOMP-DISPATCH:CALLBACK-STUB-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-STUB-CELL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL  1 cells                 CLAIM NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-HOOK cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-HOOK
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:ORIGIN-TAKE
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells +  1 cells                 CLAIM NATIVE-BODY-ABI:PENDING-TAKE
+   ENGINE-MAIN:REPORT-CELL            1 cells                 CLAIM ENGINE-MAIN-REPORT-CELL
+   PROVIDED-XT:EVALUATE-CELL          1 cells                 CLAIM PROVIDED-XT-EVALUATE-CELL
+   PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
+   POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
+   ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
+   $3A00                              $288                    CLAIM FFI-BUFFERS
+   TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
+   TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL
+   HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
+   EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
+   AOT-SEED-DONE-CELL                 1 cells                 CLAIM AOT-SEED-DONE-CELL
+   BOOT-SRC:USER-END                  1 cells                 CLAIM BOOT-SRC-USER-END
+   PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
+   $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
+   CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
+   DECLARED-LOG:ADDR-CELL             1 cells                 CLAIM DECLARED-LOG-ADDR
+   APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
+   AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0
+   AOT-CELLS:D0-CELL                  1 cells                 CLAIM AOT-WINDOW-D0
+   AOT-CELLS:B0-CELL                  1 cells                 CLAIM AOT-WINDOW-B0
+   EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
+   PROT:RHI                           1 cells                 CLAIM PROT-RHI
+   PROT:CF                            1 cells                 CLAIM PROT-CF
+   AOT-CELLS:SIG-POOL-CELL            1 cells                 CLAIM AOT-SIG-POOL
+   AOT-CELLS:SIG-LEN-CELL             1 cells                 CLAIM AOT-SIG-LEN
+   BOOT-LAYOUT:HEAP-START-CELL        1 cells                 CLAIM BOOT-HEAP-START
+   STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
+   STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
+   STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP
+   STACK-ABI:RETURN-BASE-CELL         1 cells                 CLAIM STACK-ABI-RETURN-BASE
+   STACK-ABI:LOOP-BASE-CELL           1 cells                 CLAIM STACK-ABI-LOOP-BASE
+   TXN-STATE-OFF                      TXN-STATE-LEN           CLAIM TXN-STATE
+   USER-BAND:START                    USER-BAND:END USER-BAND:START -  CLAIM USER-BAND
+   FS-MUT-ABI:START                   FS-MUT-ABI:BYTES        CLAIM FS-MUT-ABI
+   FS-ABI:START                       FS-ABI:BYTES            CLAIM FS-ABI
+   FMT-ABI:START                      FMT-ABI:BYTES           CLAIM FMT-ABI
+   STRING-ABI:START                   STRING-ABI:BYTES        CLAIM STRING-ABI
+   PD-TABLE-OFF                       PD-TABLE-END PD-TABLE-OFF -  CLAIM PD-TABLE
+   DECLARED-LOG:OFF                   DECLARED-LOG:END DECLARED-LOG:OFF -  CLAIM DECLARED-LOG
+   USE-BAND-OFF                       USE-BAND-END USE-BAND-OFF -  CLAIM USE-BAND
+   SNAP-RELOC:CALLMAP-OFF             SNAP-RELOC:CALLMAP-BYTES  CLAIM SNAP-CALLMAP
+   SNAP-RELOC:ADDRMAP-OFF             SNAP-RELOC:ADDRMAP-BYTES  CLAIM SNAP-ADDRMAP
+   SNAP-RELOC:XTCELL-N-CELL           SNAP-RELOC:XTCELL-END SNAP-RELOC:XTCELL-N-CELL -  CLAIM SNAP-XTCELL
+   JIT-SNAP:STK-OFF                   JIT-SNAP:END JIT-SNAP:STK-OFF -  CLAIM JIT-SNAP-FRAMES
+   TIER-PROV:OPEN-CELL                TIER-PROV:END TIER-PROV:OPEN-CELL -  CLAIM TIER-PROV
+   UNIT-COMPILE-CELL                  1 cells                 CLAIM UNIT-COMPILE
+   SOURCE-EXEC-CTX-CELL               1 cells                 CLAIM SOURCE-EXEC-CTX-CELL
+   REPLAY-SCOPE:LATCH                 REPLAY-SCOPE:END REPLAY-SCOPE:LATCH -  CLAIM REPLAY-SCOPE
+   RPKG:FLOOR                         1 cells                 CLAIM RPKG:FLOOR
+   RPKG:WIDS                          USE-MAX cells           CLAIM RPKG:WIDS
+   POLICY-NDICT-CELL                  1 cells                 CLAIM POLICY-NDICT-CELL
+   POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
+   POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
-   0 DATA-SIZE PROF-ABI:PROF-BAND-AT ,  PROF-CNT-BYTES ,
+   0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
    0 ,  0 ,
 
 : ROW-OFF ( n -- n )
@@ -514,4 +340,43 @@ PROF-ROW-ASSERT
    CLAIMS-ASSERT ;
 
 CLAIMS-ASSERT
+
+\ EVERY GUARDED BAND MUST BE A DECLARED CLAIM, start and length both. The
+\ bands are src/habu/layout.f's DATA-BANDS table, which every engine's prefix
+\ carries. The transaction row guarded TXN-STATE-LEN when that constant was
+\ $3000 and the transaction's own cells ended after $300, so PROT-GUARD refused
+\ stores across 11520 bytes no claim owned - which is exactly what kept the
+\ task-user arena out of the only run in the per-task header big enough to hold
+\ it. Nothing compared the guard against the map until this did. It dies when
+\ an engine builder loads this file, so a band that outgrows or outlives its
+\ claim cannot ship.
+
+private
+
+\ The claim at band ix's offset, else -1.
+: CLAIM-AT ( n -- n )
+   {: ix:n :}
+   COUNT-ROWS 0 ?do
+      i ROW-OFF ix DATA-BANDS:OFF = if i unloop exit then
+   loop -1 ;
+
+: DECLARED-AT ( n -- )
+   {: ix:n :}
+   ix CLAIM-AT {: hit:n :}
+   hit 0 < if
+      s" data-bands: PROT-GUARD band has no DATA-CLAIMS claim at its offset" 76 die
+   then
+   hit ROW-LEN ix DATA-BANDS:LEN <> if
+      MSG-RESET
+      s" data-bands: PROT-GUARD band length differs from its claim: " MSG+
+      hit NAME-AT MSG+
+      MSG$ 76 die
+   then ;
+
+public
+
+: BANDS-ASSERT ( -- )
+   0 BEGIN dup DATA-BANDS:LEN 0 <> WHILE  dup DECLARED-AT  1+  REPEAT drop ;
+
+BANDS-ASSERT
 ;package

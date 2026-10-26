@@ -813,10 +813,9 @@ package BUILD-FIXPOINT
 \ the required build modules at their dependency boundaries, in habu1.f's own
 \ require order: regalloc-abi.f, address-cells.f and prof-abi.f, which
 \ data-claims.f requires for the register allocator's, the address-cell
-\ registry's and the profiler's rows, then data-claims.f before data-bands.f's
-\ claim check reads its rows (a module habu1.f requires but this list omits
-\ certifies as `undefined word`, which is how the DATA-CLAIMS split first
-\ failed here);
+\ registry's and the profiler's rows, then data-claims.f itself (a module
+\ habu1.f requires but this list omits certifies as `undefined word`, which is
+\ how the DATA-CLAIMS split first failed here);
 \ code-origin.f registers its helpers through ENGINE-PRIMS, so its source
 \ follows primitive-registry.f, at habu1.f's own require line.
 : BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
@@ -828,7 +827,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/prof-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/native-host-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/data-claims.f" BF-APPEND-MODULE
-   out outu s" src/habu/data-bands.f" BF-APPEND-MODULE
    out outu s" src/habu/arith-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/task-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-BEFORE

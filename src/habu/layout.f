@@ -2432,9 +2432,9 @@ USE-WIDS USE-MAX cells + constant END
 \ the same edit that adds their band tests, which a hull written out beside
 \ the list, or a copy of the rows per target, could not promise. The
 \ zero-length row ends every walk: no count sits beside the table to fall out
-\ of step with its rows. src/habu/data-bands.f checks every row against its
-\ DATA-CLAIMS claim when an engine is built. bootstrap/cg/forth.fs mirrors the
-\ six bands its stage0 engine owns.
+\ of step with its rows. src/habu/data-claims.f BANDS-ASSERT checks every row
+\ against its DATA-CLAIMS claim when an engine is built. bootstrap/cg/forth.fs
+\ mirrors the six bands its stage0 engine owns.
 package DATA-BANDS
 
 create TAB

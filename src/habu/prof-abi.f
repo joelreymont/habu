@@ -1,5 +1,5 @@
 \ prof-abi.f - the sampling profiler's band and arena layout, package PROF-ABI.
-\ Build-only, as data-bands.f is: runtime images need only layout.f.
+\ Build-only, as data-claims.f is: runtime images need only layout.f.
 \
 \ The handler a target's profiler emitter writes and the report that reads its
 \ samples meet only in memory: the band at the top of the DATA region and the
