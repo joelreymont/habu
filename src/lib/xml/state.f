@@ -4,10 +4,11 @@
 \ fills up to the chunk span's reach and answers its count: zero ends input, and
 \ a negative count or one past the reach is E-RANGE. Its `ptr n` context, the
 \ callback, the chunk span and the storage stay live through CLOSE. A long tag,
-\ comment or CDATA grows the event buffer while consumed bytes are released and
-\ scope storage is reused; offsets are absolute bytes of the stream, a BOM
-\ included. Attribute access works only on a start event, after ATTR-NEXT has
-\ selected one and before exhaustion (else E-STATE); xmlns declarations are
+\ comment or CDATA grows the event buffer while consumed bytes are released;
+\ open frames' names and live bindings are copied once into scope storage, so
+\ releasing bytes never revisits them. Offsets are absolute bytes of the stream,
+\ a BOM included. Attribute access works only on a start event, after ATTR-NEXT
+\ has selected one and before exhaustion (else E-STATE); xmlns declarations are
 \ attributes. ATTR-RAW covers name, `=`, whitespace and quoted value, and
 \ ATTR-VALUE omits the quotes. Part of package XML (src/lib/xml.f).
 
@@ -102,9 +103,6 @@ STRUCTURE stream DERIVE addr
    FIELD scope ptr u8
    FIELD scope-len n
    FIELD scope-cap n
-   FIELD spare ptr u8
-   FIELD spare-len n
-   FIELD spare-cap n
 ;STRUCTURE
 
 : INPUT? ( ptr n -- bool )
@@ -122,7 +120,6 @@ CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
 
 : TOKEN-BUF ( ptr stream -- ptr ptr u8 ) STREAM-TOKEN ;
 : SCOPE-BUF ( ptr stream -- ptr ptr u8 ) STREAM-SCOPE ;
-: SPARE-BUF ( ptr stream -- ptr ptr u8 ) STREAM-SPARE ;
 
 : BUF-LEN ( ptr a -- n ) BUF:LEN@ BUF:BLEN>N ;
 : BUF-CAP ( ptr a -- n ) BUF:CAP@ BUF:BLEN>N ;
@@ -134,7 +131,6 @@ CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
    {: stream :}
    stream STREAM-TOKEN-CAP @ 0<> if stream TOKEN-BUF BUF:DISPOSE then
    stream STREAM-SCOPE-CAP @ 0<> if stream SCOPE-BUF BUF:DISPOSE then
-   stream STREAM-SPARE-CAP @ 0<> if stream SPARE-BUF BUF:DISPOSE then
    stream STREAM>BYTES STREAM-CELLS cells
       MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
@@ -142,7 +138,6 @@ CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
    {: stream cap:n :}
    stream TOKEN-BUF cap BUF:N>BLEN BUF:INIT
    stream SCOPE-BUF 16 BUF:N>BLEN BUF:INIT
-   stream SPARE-BUF 16 BUF:N>BLEN BUF:INIT
    stream cap ;
 
 : STREAM-OPEN ( ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- ptr stream )
@@ -360,42 +355,18 @@ private
    then
    state SOURCE$ state POSITION + @ mode DECODE-AT ;
 
-\ Negative references below -2 point into the active-scope buffer. Rebuild it
-\ from the live frames before dropping consumed lexical bytes.
-: SAVE-REF ( ptr n n n -- n )
+\ An input reader keeps each open frame's name and each live binding's prefix
+\ and URI in the scope buffer: SCOPE-REF appends them when the frame opens or
+\ the binding is declared, and SCOPE-CUT drops a frame's strings, its
+\ bindings' included, when it pops. A reference below -2 is a scope offset, so
+\ dropping consumed lexical bytes never revisits a frame or binding.
+: SCOPE-REF ( ptr n n n -- n n )
    {: state start:n size:n :}
-   start XML-URI = start XMLNS-URI = or if start exit then
-   state start size SPAN$ BUF:N>BLEN
-   state STREAM@ SPARE-BUF {: spare :}
-   spare BUF-LEN {: index:n :}
-   spare BUF:APPEND-SPAN
-   index negate 3 - ;
-
-: SAVE-FRAME-REFS ( ptr n n -- )
-   {: state index:n :}
-   state index FRAME {: frame :}
-   state frame @ frame CELL + @ SAVE-REF frame !
-   state frame 3 cells + @ frame 4 cells + @ SAVE-REF
-      frame 3 cells + ! ;
-
-: SAVE-NS-REFS ( ptr n n -- )
-   {: state index:n :}
-   state index NAMESPACE {: binding :}
-   state binding @ binding CELL + @ SAVE-REF binding !
-   state binding 2 cells + @ binding 3 cells + @ SAVE-REF
-      binding 2 cells + ! ;
-
-: SWAP-SCOPES ( ptr stream -- )
-   {: stream :}
-   stream STREAM-SCOPE @ {: old-ptr :}
-   stream STREAM-SCOPE-LEN @ {: old-len:n :}
-   stream STREAM-SCOPE-CAP @ {: old-cap:n :}
-   stream STREAM-SPARE @ stream STREAM-SCOPE !
-   stream STREAM-SPARE-LEN @ stream STREAM-SCOPE-LEN !
-   stream STREAM-SPARE-CAP @ stream STREAM-SCOPE-CAP !
-   old-ptr stream STREAM-SPARE !
-   old-len stream STREAM-SPARE-LEN !
-   old-cap stream STREAM-SPARE-CAP ! ;
+   state INPUT? 0= if start size exit then
+   state STREAM@ SCOPE-BUF {: scope :}
+   scope BUF-LEN {: index:n :}
+   state start size SPAN$ BUF:N>BLEN scope BUF:APPEND-SPAN
+   index negate 3 - size ;
 
 : TOKEN-TRIM ( ptr stream -- )
    {: stream :}
@@ -424,24 +395,27 @@ private
    used stream STREAM-SCOPE-LEN !
    cap stream STREAM-SCOPE-CAP ! ;
 
-: SPARE-TRIM ( ptr stream -- )
-   {: stream :}
-   stream SCOPE-BUF BUF-LEN 16 max {: need:n :}
-   stream SPARE-BUF BUF-CAP 4 / need <= if exit then
-   stream SPARE-BUF BUF:DISPOSE
-   stream SPARE-BUF need BUF:N>BLEN BUF:INIT ;
+: SCOPE-CUT ( ptr n n -- )
+   {: state ref:n :}
+   state INPUT? 0= if exit then
+   state STREAM@ {: stream :}
+   ref negate 3 - stream STREAM-SCOPE-LEN !
+   stream SCOPE-TRIM ;
 
+\ Before an event, drop the consumed bytes only when the next refill would not
+\ fit or the buffer is four times what it keeps, and only once at least as many
+\ bytes were consumed as remain: each move copies fewer bytes than were read
+\ since the last one, so streaming costs time linear in the input.
 : INPUT-REBASE ( ptr n -- )
    {: state :}
    state STREAM@ {: stream :}
-   stream SPARE-BUF BUF:CLEAR
-   state OPEN-DEPTH + @ 0 ?do state i SAVE-FRAME-REFS loop
-   state NS-COUNT + @ 0 ?do state i SAVE-NS-REFS loop
-   stream SWAP-SCOPES
-   stream SCOPE-TRIM
-   stream SPARE-TRIM
    state POSITION + @ {: consumed:n :}
    state SOURCE-LEN + @ consumed - {: tail:n :}
+   consumed 0= consumed tail < or if exit then
+   stream TOKEN-BUF BUF-CAP {: cap:n :}
+   stream STREAM-INPUT-CAP @ {: chunk:n :}
+   state SOURCE-LEN + @ chunk + cap <=
+   cap 4 / chunk tail max <= and if exit then
    state SOURCE-IDX ptr-field @ consumed + tail BUF:N>BLEN
       stream TOKEN-BUF BUF:REPLACE
    stream TOKEN-TRIM
@@ -455,6 +429,28 @@ private
    start XML-URI = if s" http://www.w3.org/XML/1998/namespace" exit then
    start XMLNS-URI = if s" http://www.w3.org/2000/xmlns/" exit then
    state start size SPAN$ ;
+
+\ A value of bytes $20..$7F other than `&` decodes to itself.
+: PLAIN-VALUE? ( ptr u8 n -- bool )
+   {: source size:n :}
+   size 0 ?do
+      source i + c@ {: byte:n :}
+      byte $20 < byte $26 = or byte $7F > or if false unloop exit then
+   loop
+   true ;
+
+\ Decode a URI into destination, copying a plain one directly, with
+\ DECODE-INTO's refusals in its order.
+: URI-INTO ( ptr u8 n ptr u8 n -- n )
+   {: source size:n destination cap:n :}
+   source size PLAIN-VALUE? 0= if
+      source size DECODE-ATTR destination cap DECODE-INTO exit
+   then
+   destination cap SPAN-CHECK
+   size cap > if E-CAPACITY throw then
+   source size destination cap OVERLAP? if E-ALIAS throw then
+   source destination size BYTE-COPY
+   size ;
 
 : CURRENT-FRAME ( ptr n -- ptr n )
    dup OPEN-DEPTH + @ 1- FRAME ;
@@ -608,8 +604,6 @@ private
       destination cap OVERLAP? if E-ALIAS throw then
       stream STREAM-SCOPE @ stream STREAM-SCOPE-CAP @
       destination cap OVERLAP? if E-ALIAS throw then
-      stream STREAM-SPARE @ stream STREAM-SPARE-CAP @
-      destination cap OVERLAP? if E-ALIAS throw then
    then ;
 
 \ Keep the reader below throwing workers' arguments. Native catch restores
@@ -638,7 +632,7 @@ private
    state NAMED
    state destination cap OUTPUT-CHECK
    state state URI-OFF + @ state URI-LEN + @ URI$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   destination cap URI-INTO ;
 
 : ATTR-RESET-STATE ( ptr n -- )
    {: state :}
@@ -679,7 +673,7 @@ private
    state ACTIVE-ATTRIBUTE {: attr :}
    state destination cap OUTPUT-CHECK
    state attr 6 cells + @ attr 7 cells + @ URI$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   destination cap URI-INTO ;
 
 : ATTR-TEXT-STATE ( ptr n ptr u8 n -- n )
    {: state destination cap:n :}

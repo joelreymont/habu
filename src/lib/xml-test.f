@@ -1,6 +1,7 @@
 require src/lib/test.f
 require src/lib/xml.f
 require src/lib/test/guard-page.f
+require src/lib/byte-buffer.f
 
 package XML-TEST
 using XML
@@ -30,6 +31,10 @@ variable INPUT-FAIL
 variable INPUT-OFF
 variable INPUT-USED
 create INPUT-BIG 8200 allot
+create DEEP-DOC BUF:HDR-BYTES allot
+100000 constant DEEP-LEVELS
+4 BUFFER: DEEP-NAME
+variable DEEP-BAD
 
 CAST: TOKEN>N ( XML:kind -- n )
 
@@ -750,9 +755,9 @@ variable URI-LEN
    XML-KIND:END NEXT= XML-KIND:END NEXT=
    XML-KIND:EOF NEXT= XML:CLOSE ;
 
-\ Each NEXT of an input reader moves the live frames' and bindings' strings into
-\ a fresh scope buffer and drops the consumed bytes, and one-byte fills grow the
-\ lexical buffer within a tag. Shadowed prefixes must resolve and restore across
+\ An input reader keeps the live frames' and bindings' strings in its scope
+\ buffer while it drops consumed bytes, and one-byte fills grow the lexical
+\ buffer within a tag. Shadowed prefixes must resolve and restore across
 \ both, after ordinary and self-closing children, and the duplicate checks must
 \ find a moved binding's URI equal to a fresh one spelled another way.
 : INPUT-NAMESPACE-SCOPES ( -- )
@@ -790,6 +795,52 @@ variable URI-LEN
       E-NAMESPACE INPUT-BAD
    s" <a xmlns:p='urn:u' xmlns:q='urn:u'><b><c p:x='1' q:x='2'/></b></a>"
       E-NAMESPACE INPUT-BAD ;
+
+: DEEP+ ( ptr u8 n -- ) BUF:N>BLEN DEEP-DOC BUF:APPEND-SPAN ;
+
+\ Level i of the chain is p:aD, D the digit i mod 10.
+: LEVEL-NAME ( n -- ptr u8 n )
+   10 mod [char] 0 + {: digit:n :}
+   s" p:a" drop DEEP-NAME 3 BYTE-COPY
+   digit DEEP-NAME 3 + c!
+   DEEP-NAME 4 ;
+
+: DEEP-BUILD ( -- ptr u8 n )
+   DEEP-DOC 16 BUF:N>BLEN BUF:INIT
+   s" <r xmlns:p='urn:p'>" DEEP+
+   DEEP-LEVELS 0 ?do s" <" DEEP+ i LEVEL-NAME DEEP+ s" >" DEEP+ loop
+   s" <p:z/>" DEEP+
+   0 DEEP-LEVELS 1- ?do s" </" DEEP+ i LEVEL-NAME DEEP+ s" >" DEEP+ -1 +loop
+   s" </r>" DEEP+
+   DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
+
+: DEEP-EVENT ( XML:reader XML:kind n -- XML:reader )
+   {: expected:XML:kind level:n :}
+   NEXT TOKEN>N expected TOKEN>N = 0= if 1 DEEP-BAD +! exit then
+   NAME$ level LEVEL-NAME STR= 0= if 1 DEEP-BAD +! then ;
+
+\ A chain 100000 elements deep streams through one-byte fills. Each level's name,
+\ which its end tag must match, and the root's binding live in scope storage
+\ while consumed bytes are dropped; reading costs time linear in the bytes,
+\ whatever the depth, or the row overruns its CPU budget.
+: INPUT-DEEP-CHAIN ( -- )
+   DEEP-BUILD 1 $7FFFFFFFFFFFFFFF INPUT-SET
+   DEEP-LEVELS 2 + STORAGE-BYTES {: size:n :}
+   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store:ptr alloc :}
+   INPUT-POS ['] INPUT-FILL INPUT-CHUNK store CELL-VIEW size INIT-INPUT
+   0 DEEP-BAD !
+   XML-KIND:START NEXT= s" r" NAME=
+   DEEP-LEVELS 0 ?do XML-KIND:START i DEEP-EVENT loop
+   DEEP-BAD @ 0 T=
+   XML-KIND:START NEXT= s" p:z" NAME= s" urn:p" URI=
+   XML:DEPTH DEEP-LEVELS 2 + T= s" p" s" urn:p" PREFIX=
+   XML-KIND:END NEXT= s" p:z" NAME=
+   0 DEEP-LEVELS 1- ?do XML-KIND:END i DEEP-EVENT -1 +loop
+   DEEP-BAD @ 0 T=
+   XML-KIND:END NEXT= s" r" NAME= s" p" s" urn:p" PREFIX=
+   XML-KIND:EOF NEXT= XML:CLOSE
+   store alloc MEM:RELEASE-BYTES
+   DEEP-DOC BUF:DISPOSE ;
 
 : INPUT-FAILURES ( -- )
    s" <a><b></a>" E-MALFORMED INPUT-BAD
@@ -860,6 +911,7 @@ INPUT-ALIAS-CHECK
 INPUT-LARGE-TEXT
 INPUT-LARGE-SCOPE
 INPUT-NAMESPACE-SCOPES
+INPUT-DEEP-CHAIN
 INPUT-FAILURES
 BEFORE @ CANARY T=
 AFTER @ CANARY T=

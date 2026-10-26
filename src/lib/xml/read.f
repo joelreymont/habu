@@ -62,8 +62,8 @@ private
 : SAVE-FRAME ( ptr n -- )
    {: state :}
    state state OPEN-DEPTH + @ FRAME {: frame :}
-   state NAME-OFF + @ frame !
-   state NAME-LEN + @ frame CELL + !
+   state state NAME-OFF + @ state NAME-LEN + @ SCOPE-REF
+   frame CELL + ! frame !
    state NS-COUNT + @ frame 2 cells + ! ;
 
 : PUSH-FRAME ( ptr n -- )
@@ -108,7 +108,9 @@ private
 
 : POP-FRAME ( ptr n -- )
    {: state :}
-   state state CURRENT-FRAME 2 cells + @ POP-BINDINGS
+   state CURRENT-FRAME {: frame :}
+   state frame 2 cells + @ POP-BINDINGS
+   state frame @ SCOPE-CUT
    -1 state OPEN-DEPTH + +!
    0 state PENDING + ! ;
 
@@ -211,7 +213,7 @@ private
       false exit
    then
    state INPUT? if
-      state STREAM@ STREAM-BASE @ 0<> if E-ENCODING throw then
+      state STREAM@ STREAM-STARTED @ 1 <> if E-ENCODING throw then
    else
       state SOURCE$ s\" \xEF\xBB\xBF" SRC-STARTS? if E-ENCODING throw then
    then

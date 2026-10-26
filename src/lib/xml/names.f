@@ -248,10 +248,10 @@ $10000 $EFFFF 14 RANGE!
    state attr NS-BINDING-CHECK
    state NS-COUNT + @ {: index:n :}
    state index NAMESPACE {: binding :}
-   state attr NS-PREFIX
+   state state attr NS-PREFIX SCOPE-REF
    binding CELL + ! binding !
-   attr 2 cells + @ binding 2 cells + !
-   attr 3 cells + @ binding 3 cells + !
+   state attr 2 cells + @ attr 3 cells + @ SCOPE-REF
+   binding 3 cells + ! binding 2 cells + !
    state state attr ATTRIBUTE-VALUE$ URI-HASH binding NS-HASH + !
    state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
    head @ binding NS-LINK + !
@@ -395,7 +395,7 @@ $10000 $EFFFF 14 RANGE!
    prefix size SPAN-CHECK
    state destination cap OUTPUT-CHECK
    state prefix size BOUND-URI if
-      state -rot URI$ DECODE-ATTR destination cap DECODE-INTO true
+      state -rot URI$ destination cap URI-INTO true
    else
       2drop 0 false
    then ;
