@@ -66,3 +66,8 @@ SUITE build-fixpoint-sandbox
 SUITE compiler-tier0-inline-prims
    test/compiler/tier0-inline-prims.f
 ;SUITE
+
+\ Tier 0 branches on a compare's flags; x64 has no tier 0.
+SUITE compiler-tier0-compare-branch
+   test/compiler/tier0-compare-branch.f
+;SUITE

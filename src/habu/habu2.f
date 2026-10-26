@@ -2637,22 +2637,31 @@ public
 
 \ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
-\ x17 — never a VS register, so the reconcile reload can't clobber the flag.
+\ x17 — never a VS register, so the reconcile reload can't clobber the flag —
+\ or on the flags of a compare LVFUSE fused into the branch.
 : J-BEGIN ( -- )  C-CF-ROOM  LVSNAP LABEL@ BL,  CFK-BEGIN C-PUSHCP ;
 
 : J-AGAIN ( -- )  0 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK ;
 
-: J-UNTILX ( -- )                                 \ shared tail: reconcile + cbz x17,top
-   0 CFK-BEGIN C-CF-AT
+\ Shared tail of `until`: reconcile, then the back branch whose word (imm19 0)
+\ the caller put in x16. LCFPOP writes x16, so the word is framed across it.
+: J-UNTILX ( -- )
+   SP SP 16 SUBI,  16 SP 0 STR,
    LVRECON LABEL@ BL,
    LCFPOP LABEL@ BL,
+   16 SP 0 LDR,  SP SP 16 ADDI,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
-   9 $B4000011 LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL, ;
+   9 16 10 ORR,  LCEMIT LABEL@ BL, ;
 
-: J-UNTIL ( -- )
-   W-POP17 C-EMITW  J-UNTILX ;                        \ pop flag -> x17
+: J-UNTIL ( -- )                                      \ pop flag -> x17, cbz x17
+   W-POP17 C-EMITW  16 $B4000011 LIT64,  J-UNTILX ;
 
-: J-WHILE ( -- ) 0 CFK-BEGIN C-CF-AT  C-POPFLAG  CFK-WHILE C-PUSHCP  $B4000009 C-EMITW ;
+\ The refusals `until` and `while` make before either path (CFB-ENTRY).
+: C-UNTIL-CHECK ( -- )  0 CFK-BEGIN C-CF-AT ;
+
+: C-WHILE-CHECK ( -- )  0 CFK-BEGIN C-CF-AT  C-CF-ROOM ;
+
+: J-WHILE ( -- ) C-POPFLAG  CFK-WHILE C-PUSHCP  $B4000009 C-EMITW ;
 
 : J-REPEAT ( -- ) 0 CFK-WHILE C-CF-AT  1 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,
    SP SP 16 SUBI,  9 SP 0 STR,  14 SP 8 STR,
@@ -6532,19 +6541,24 @@ variable CFSK2
 
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
-\ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm hxtr :}
+\ back to the spill + pop path. checkxt makes the word's compile-time refusals
+\ first on both paths, before anything is emitted or rewound (C-CF-ROOM's
+\ comment states the rule). hxtr gets the condition reg in x14 and, from
+\ LVFUSE, the b.cond word that replaced the compare's cset/neg in x16, or 0.
+: CFB-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n checkxt hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
+   checkxt execute
    6 DATA VSP-CELL LDR,  6 CFSK2 LABEL@ CBZ,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 CFSK2 LABEL@ CBNZ,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
-   SP SP 16 SUBI,  14 SP 8 STR,
+   LVFUSE LABEL@ BL,
+   SP SP 16 SUBI,  16 SP 0 STR,  14 SP 8 STR,
    LVDROP LABEL@ BL,  LVSPILL LABEL@ BL,
-   14 SP 8 LDR,  SP SP 16 ADDI,
+   16 SP 0 LDR,  14 SP 8 LDR,  SP SP 16 ADDI,
    hxtr execute
    lmainlbl B,
    CFSK2 LABEL@ LBL,
@@ -6554,17 +6568,19 @@ variable CFSK2
    CFSK LABEL@ LBL, ;
 
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
-\ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
-\ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm hxtr :}
+\ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 and
+\ LVFUSE's x16 survive LVDROP (which only relabels the VS, no emission).
+: CFBN-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n checkxt hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
+   checkxt execute
    6 DATA VSP-CELL LDR,  6 CFSK2 LABEL@ CBZ,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 CFSK2 LABEL@ CBNZ,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
+   LVFUSE LABEL@ BL,
    LVDROP LABEL@ BL,
    hxtr execute
    lmainlbl B,
@@ -6574,15 +6590,30 @@ variable CFSK2
    lmainlbl B,
    CFSK LABEL@ LBL, ;
 
-\ A kind entry at a cbz on the condition register x14 (CFB-ENTRY).
-: C-CBZR ( n -- )  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL, ;
+\ A kind entry at the forward branch on the condition (CFB-ENTRY): LVFUSE's
+\ b.cond in x16 when it fused the compare, else cbz on the register x14.
+: C-CBZR ( n -- )
+   LBL LBL {: reg:label emit:label :}
+   C-PUSHCP
+   16 reg CBZ,
+      9 16 0 ADDI,  emit B,
+   reg LBL,
+      8 $B4000000 LIT64,  9 8 14 ORR,
+   emit LBL,  LCEMIT LABEL@ BL, ;
 
 : J-IFR ( -- )  CFK-IF C-CBZR ;
 
-: J-WHILER ( -- )  0 CFK-BEGIN C-CF-AT  CFK-WHILE C-CBZR ;
+: J-WHILER ( -- )  CFK-WHILE C-CBZR ;
 
-: J-UNTILR ( -- )                                 \ reg flag -> x17 first: the reconcile
-   8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ may reload into it
+\ A fused compare (x16 = b.cond) branches on the flags, which the reconcile's
+\ loads, stores and moves leave alone. Otherwise the reg flag moves to x17
+\ first, since the reconcile may reload into x14, and the branch is cbz x17.
+: J-UNTILR ( -- )
+   LBL {: fused:label :}
+   16 fused CBNZ,
+      8 $AA0003F1 LIT64,  7 14 16 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+      16 $B4000011 LIT64,
+   fused LBL,
    J-UNTILX ;
 
 : C-LOCAL-REF-LABELS ( -- )
@@ -11995,13 +12026,13 @@ public
    lnotsemi LBL, ;
 
 : EM-COMPILE-CONTROL-KEYWORDS ( -- )
-   LMAIN LABEL@ LKWIF     2 ['] J-IF   ['] J-IFR    CFB-ENTRY
+   LMAIN LABEL@ LKWIF     2 ['] C-CF-ROOM ['] J-IF   ['] J-IFR    CFB-ENTRY
    LMAIN LABEL@ LKWTHEN   4 ['] J-THEN   CF-ENTRY
    LMAIN LABEL@ LKWELSE   4 ['] J-ELSE   CF-ENTRY
    LMAIN LABEL@ LKWBEGIN  5 ['] J-BEGIN  CFN-ENTRY
-   LMAIN LABEL@ LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
+   LMAIN LABEL@ LKWUNTIL  5 ['] C-UNTIL-CHECK ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
    LMAIN LABEL@ LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
-   LMAIN LABEL@ LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
+   LMAIN LABEL@ LKWWHILE  5 ['] C-WHILE-CHECK ['] J-WHILE ['] J-WHILER CFB-ENTRY
    LMAIN LABEL@ LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
    LMAIN LABEL@ LKWCASE 4 ['] J-CASE CFN-ENTRY
    LMAIN LABEL@ LKWOF 2 ['] J-OF CF-ENTRY
@@ -13808,7 +13839,7 @@ package LABELS
    LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
    LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
-   LBL LVSNAP !  LBL LVRECON ! ;
+   LBL LVSNAP !  LBL LVRECON !  LBL LVFUSE ! ;
 
 : OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !

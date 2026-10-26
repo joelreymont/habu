@@ -1932,9 +1932,9 @@ create GE-END-AT 16 allot
 \ was open: the leftover pop, a lost or stale control-flow entry, DO level or
 \ BEGIN snapshot gave a wrong sum, an orphaned `then` or a bounds fault. The
 \ checker certifies a shallower nesting than the control-flow cap, so a row at
-\ the cap compiles unchecked.
-: GE-FAMILY ( n ptr u8 n ptr u8 n -- )
-   {: n:n ref:ptr refu:n fol:ptr folu:n :}
+\ the cap compiles unchecked. out is the run's whole stdout.
+: GE-FAMILY-OUT ( n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: n:n ref:ptr refu:n fol:ptr folu:n out:ptr outu:n :}
    GE-SRC-RESET
    n CFSTK-DEPTH-MAX = if s" 0 set-check" GE-SRC-LINE  s" : " else s" TRUSTED: " then GE-SRC+
    s" GEENDCAT ( -- ) " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
@@ -1946,7 +1946,22 @@ create GE-END-AT 16 allot
    n CFSTK-DEPTH-MAX <> if S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE then
    s" : GEEND ( n -- n ) GEENDCAT ;" GE-SRC-LINE
    s" 5 GEEND . depth ." GE-SRC-LINE
-   S\" 70\n70\n12\n0\n" ref refu GE-EMIT-EXPECT ;
+   out outu ref refu GE-EMIT-EXPECT ;
+
+: GE-FAMILY ( n ptr u8 n ptr u8 n -- )
+   S\" 70\n70\n12\n0\n" GE-FAMILY-OUT ;
+
+\ A refused branch on a compare's flag: the refusal comes before the branch
+\ rewinds the compare (habu2.f CFB-ENTRY), so the compare stays compiled and
+\ its flag stays on the stack. At the cap, unchecked, GEEND adds 5's flag (-1)
+\ where the 7 rows add 7. Checked, `+` refuses a flag, so the `until` row
+\ branches on it instead: GEEND adds 2 only if the flag reads true. Its
+\ compare is false for 5, so a lost compare, which leaves the dup'd 5 in the
+\ flag's place, reads true and prints 7 instead of 5.
+: GE-FUSE-FAMILIES ( -- )
+   0 s" dup 3 < until" s" if 2 + then" S\" 70\n70\n5\n0\n" GE-FAMILY-OUT
+   CFSTK-DEPTH-MAX s" dup 7 < if" s" +" S\" 70\n70\n4\n0\n" GE-FAMILY-OUT
+   CFSTK-DEPTH-MAX s" dup 7 < while" s" +" S\" 70\n70\n4\n0\n" GE-FAMILY-OUT ;
 
 : GE-EMIT-FAMILIES ( -- )
    CFSTK-DEPTH-MAX s" 7 if" s" +" GE-FAMILY
@@ -1958,7 +1973,8 @@ create GE-END-AT 16 allot
    0 s" 7 until" s" +" GE-FAMILY
    0 s" 7 again" s" +" GE-FAMILY
    1 s" 7 repeat" s" +" GE-FAMILY
-   1 s" 7 endcase" s" +" GE-FAMILY ;
+   1 s" 7 endcase" s" +" GE-FAMILY
+   GE-FUSE-FAMILIES ;
 
 \ A refused nested quotation must not park a frame. The outer definition
 \ survives the caught evaluate, so its real quotation must still close once.
@@ -2459,6 +2475,64 @@ variable GE-KIND-N
       s" tier 0 memory operands output" GE-EXPECT-OUT
    s" PASS: tier 0 keeps memory operands in registers and keeps every boundary" type cr ;
 
+\ Tier 0 branches on a compare's flags when the flag is the register top at
+\ `if`, `until` or `while` (jit.f LVFUSE). Each case breaks one boundary: every
+\ compare under each branch, both outcomes, signed operands, nested loops, a
+\ flag that is copied or stored, `0=` and `0<`, a float compare, and a
+\ redefined `<`, which is a call and branches on what it returns. Tier 1 runs
+\ the same source and prints the same lines.
+: GE-VFUSE-AT ( n -- ) {: tier:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" : GEFI= ( n n -- n ) = if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFI<> ( n n -- n ) <> if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFI< ( n n -- n ) < if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFI> ( n n -- n ) > if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFI<= ( n n -- n ) <= if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFI>= ( n n -- n ) >= if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEFU= ( n -- n ) 0 begin 1+ 2dup = until nip ;" GE-SRC-LINE
+   s" : GEFU<> ( n -- n ) 0 begin 1+ 2dup <> until nip ;" GE-SRC-LINE
+   s" : GEFU< ( n -- n ) 0 begin 1+ 2dup < until nip ;" GE-SRC-LINE
+   s" : GEFU> ( n -- n ) 0 begin 1+ 2dup swap > until nip ;" GE-SRC-LINE
+   s" : GEFU<= ( n -- n ) 0 begin 1+ 2dup <= until nip ;" GE-SRC-LINE
+   s" : GEFU>= ( n -- n ) 0 begin 1+ 2dup swap >= until nip ;" GE-SRC-LINE
+   s" : GEFW= ( n -- n ) dup begin 2dup = while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFW<> ( n -- n ) 0 begin 2dup <> while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFW< ( n -- n ) 0 begin 2dup swap < while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFW> ( n -- n ) 0 begin 2dup > while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFW<= ( n -- n ) 0 begin 2dup swap <= while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFW>= ( n -- n ) 0 begin 2dup >= while 1+ repeat nip ;" GE-SRC-LINE
+   s" : GEFNEST ( n -- n ) 0 swap begin dup 0 > while 3 begin dup 0 > while rot 1+ rot rot 1- repeat drop 1- repeat drop ;" GE-SRC-LINE
+   s" : GEFNESTU ( n -- n ) 0 swap begin 2 begin rot 1+ rot rot 1- dup 0= until drop 1- dup 0 = until drop ;" GE-SRC-LINE
+   s" : GEFDUP ( n n -- bool n ) < dup if 1 else 2 then ;" GE-SRC-LINE
+   s" variable GEFV" GE-SRC-LINE
+   s" : GEFST ( n n -- ) < GEFV ! ;" GE-SRC-LINE
+   s" : GEFZU ( n -- n ) begin 1- dup 0= until ;" GE-SRC-LINE
+   s" : GEFZLU ( n -- n ) begin 1- dup 0< until ;" GE-SRC-LINE
+   s" : GEFF ( r r -- n ) f< if 1 else 2 then ;" GE-SRC-LINE
+   s" 3 4 GEFI= . 4 3 GEFI= . 3 3 GEFI= ." GE-SRC-LINE
+   s" 3 4 GEFI<> . 4 3 GEFI<> . 3 3 GEFI<> ." GE-SRC-LINE
+   s" 3 4 GEFI< . 4 3 GEFI< . 3 3 GEFI< . -1 0 GEFI< ." GE-SRC-LINE
+   s" 3 4 GEFI> . 4 3 GEFI> . 3 3 GEFI> . -1 0 GEFI> ." GE-SRC-LINE
+   s" 3 4 GEFI<= . 4 3 GEFI<= . 3 3 GEFI<= ." GE-SRC-LINE
+   s" 3 4 GEFI>= . 4 3 GEFI>= . 3 3 GEFI>= ." GE-SRC-LINE
+   s" 3 GEFU= . 1 GEFU<> . 3 GEFU< . 3 GEFU> . 3 GEFU<= . 3 GEFU>= ." GE-SRC-LINE
+   s" 3 GEFW= . 3 GEFW<> . 3 GEFW< . 3 GEFW> . 3 GEFW<= . 3 GEFW>= ." GE-SRC-LINE
+   s" 4 GEFNEST . 3 GEFNESTU ." GE-SRC-LINE
+   s" 3 4 GEFDUP . . 4 3 GEFDUP . ." GE-SRC-LINE
+   s" 3 4 GEFST GEFV @ . 4 3 GEFST GEFV @ ." GE-SRC-LINE
+   s" 3 GEFZU . 3 GEFZLU . 1.0 2.0 GEFF . 2.0 1.0 GEFF ." GE-SRC-LINE
+   s" undefine < : < ( n n -- bool ) > ; : GEU ( n n -- n ) < if 1 else 2 then ; 3 4 GEU ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" compare and branch" GE-EXPECT-OK
+   S\" 2\n2\n1\n1\n1\n2\n1\n2\n2\n1\n2\n1\n2\n2\n1\n2\n1\n2\n1\n1\n3\n2\n4\n4\n3\n3\n4\n3\n3\n3\n4\n4\n12\n6\n1\n-1\n2\n0\n-1\n0\n0\n-1\n1\n2\n2\n"
+      s" compare and branch output" GE-EXPECT-OUT ;
+
+: GE-VFUSE ( -- )
+   2 0 do i GE-VFUSE-AT loop
+   s" PASS: tier 0 branches on a compare's flags and keeps every boundary" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2496,6 +2570,7 @@ public
    GE-SET-CHECK-NEG
    GE-VUN-FLOAT
    GE-VPULL
+   GE-VFUSE
    GE-VMEM ;
 
 : TEST ( -- )

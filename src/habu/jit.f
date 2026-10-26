@@ -565,6 +565,43 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
+\ LVFUSE ( x14=VS top reg -- x16=b.cond word with imm19 0, or 0 ) : a leaf the
+\ branch keywords (habu2.f CFB-ENTRY, CFBN-ENTRY) call on a register top. When
+\ the last two words emitted are the `cset x14 ; neg x14` that VCMP-ENTRY ends a
+\ compare with, it rewinds CP over them and answers the conditional branch that
+\ takes the cset's condition field: that field holds the inverted condition, so
+\ the branch is taken exactly when the flag would be 0, as cbz on it would be.
+\ The flags hold until the branch: what the keywords emit in between (spills,
+\ the BEGIN reconcile) is loads, stores and moves.
+\ Fence: no open control-flow entry may record an origin at or above CP-8.
+\ Only `begin` records CP without emitting, so a loop top between the compare
+\ and the branch would land in the rewound words.
+\ Clobbers x5, x10-x13; preserves x14 and x30.
+variable LVFUSE
+
+: EMIT-VFUSE ( -- )
+   LVFUSE LABEL@ LBL,
+   LBL LBL LBL {: walk chk no :}
+   16 0 MOVZ,
+   12 CP 8 SUBI,                                            \ x12 = CP-8
+   5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,        \ x11 = control-flow depth
+   10 10 8 ADDI,                                            \ x10 = entry 0
+   walk LBL,
+      11 chk CBZ,
+      13 10 0 LDR,  13 12 CMP,  C-CS no BCOND,              \ origin >= CP-8: fence
+      10 10 CF-REC ADDI,  11 11 1 SUBI,  walk B,
+   chk LBL,
+   11 12 0 LDRW,  12 12 4 LDRW,                             \ x11 = [CP-8], x12 = [CP-4]
+   5 $CB0003E0 LIT64,  13 5 14 ORR,  5 14 16 LSLI,  13 13 5 ORR,
+   12 13 CMP,  C-NE no BCOND,                               \ neg x14,x14
+   5 $FFFF0FFF LIT64,  13 11 5 AND,
+   5 $9A9F07E0 LIT64,  5 5 14 ORR,
+   13 5 CMP,  C-NE no BCOND,                                \ cset x14,<any>
+   CP CP 8 SUBI,
+   11 11 12 LSRI,  11 11 $F ANDI,
+   16 $54000000 LIT64,  16 16 11 ORR,
+   no LBL,  RET, ;
+
 : EMIT-CMPKW ( -- )
    LKWEQ2 LABEL@ LBL,  s" =" BYTES,    LKWNE2 LABEL@ LBL,  s" <>" BYTES,
    LKWLT2 LABEL@ LBL,  s" <" BYTES,    LKWGT2 LABEL@ LBL,  s" >" BYTES,
@@ -1089,7 +1126,7 @@ package ENGINE-EMIT
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
-   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;
+   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON  EMIT-VFUSE ;
 
 ;package
 
