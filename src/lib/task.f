@@ -468,59 +468,154 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 
 \ ---- the semaphore pool ------------------------------------------------------
 \ A semaphore a caller asks for at run time instead of defining one. The records
-\ are this package's own static storage, so a handed-out handle still names a
-\ record TASK owns and no other package needs the extent of one to hold a
-\ semaphore of its own.
+\ live in chunks this package owns, so a handed-out handle still names a record
+\ TASK owns and no other package needs the extent of one to hold a semaphore of
+\ its own. A chunk is a link to the next chunk, TASK-SEM-POOL-N used cells and as
+\ many records. The first is static storage; when every record is in use, a
+\ claim maps a further chunk and appends it to the chain. A handle is the
+\ record's address, so chunks never move, and a record given back is handed out
+\ again, from whichever chunk holds it, before the pool grows. The mapped
+\ chunks are released together at capture, when none holds a live record.
 $40 constant TASK-SEM-POOL-N
+1 cells constant TASK-SEM-CHUNK-USED-OFF
+TASK-SEM-POOL-N 1 + cells constant TASK-SEM-CHUNK-RECS-OFF
+TASK-SEM-CHUNK-RECS-OFF TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * +
+   constant TASK-SEM-CHUNK-BYTES
 
 : TASK-ZERO-CELLS, ( n -- )
    0 ?do 0 , loop ;
 
 TASK-ALIGN8
-create TASK-SEM-USED TASK-SEM-POOL-N TASK-ZERO-CELLS,
+create TASK-SEM-POOL TASK-SEM-CHUNK-BYTES 8 / TASK-ZERO-CELLS,
+
+\ Whether a capture cleanup is registered for the mapped chunks.
 TASK-ALIGN8
-create TASK-SEM-POOL
-   TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * 8 / TASK-ZERO-CELLS,
+variable SEM-CHUNKS-ARMED
 
-: SEM-POOL-REC ( n -- ptr n ) {: idx:n :}
-   TASK-SEM-POOL CELL-VIEW idx TASK-SEMAPHORE-BYTES * + ;
+\ Chunks are named by address, as n; 0 ends the chain.
+: SEM-POOL-FIRST ( -- n )
+   TASK-SEM-POOL CELL-VIEW FFI:>CELL ;
 
-: SEM-POOL-USED ( n -- ptr n ) {: idx:n :}
-   TASK-SEM-USED CELL-VIEW idx cells + ;
+: SEM-CHUNK-LINK ( n -- ptr n )
+   TASK-N>PTR ;
+
+: SEM-CHUNK-NEXT ( n -- n )
+   SEM-CHUNK-LINK atomic@ ;
+
+: SEM-CHUNK-USED ( n n -- ptr n ) {: c:n idx:n :}
+   c TASK-SEM-CHUNK-USED-OFF + idx cells + TASK-N>PTR ;
+
+: SEM-CHUNK-REC ( n n -- n ) {: c:n idx:n :}
+   c TASK-SEM-CHUNK-RECS-OFF + idx TASK-SEMAPHORE-BYTES * + ;
 
 \ One claim wins: the used cell moves 0 -> 1 in one step, so two tasks asking at
-\ the same moment are handed different records.
-: SEM-POOL-CLAIM? ( n -- bool ) {: idx:n :}
-   0 1 idx SEM-POOL-USED atomic-cas 0= ;
-
-: SEM-POOL-RELEASE ( n -- ) {: idx:n :}
-   0 idx SEM-POOL-USED atomic! ;
-
-: SEM-POOL-FREE-INDEX ( -- n )
+\ the same moment are handed different records. Answers the claimed record, or
+\ 0 when the chunk has none free.
+: SEM-CHUNK-CLAIM ( n -- n ) {: c:n :}
    TASK-SEM-POOL-N 0 ?do
-      i SEM-POOL-CLAIM? if i unloop exit then
+      0 1 c i SEM-CHUNK-USED atomic-cas 0= if c i SEM-CHUNK-REC unloop exit then
    loop
-   -1 ;
+   0 ;
+
+: SEM-CHUNK-LIVE? ( n -- bool ) {: c:n :}
+   TASK-SEM-POOL-N 0 ?do
+      c i SEM-CHUNK-USED atomic@ 0<> if true unloop exit then
+   loop
+   false ;
+
+\ Whether that chunk or any after it holds a record in use.
+: SEM-CHAIN-LIVE? ( n -- bool )
+   begin dup 0<> while
+      dup SEM-CHUNK-LIVE? if drop true exit then
+      SEM-CHUNK-NEXT
+   repeat
+   drop false ;
+
+\ The used cell of the record that handle names, or 0 for a handle from
+\ anywhere else: a defined semaphore and a task's mailbox are not the pool's to
+\ hand back out.
+: SEM-CHUNK-SLOT ( sem n -- n ) {: s:sem c:n :}
+   s SEM>N c 0 SEM-CHUNK-REC - {: off:n :}
+   off 0 < if 0 exit then
+   off TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * >= if 0 exit then
+   off TASK-SEMAPHORE-BYTES mod 0 <> if 0 exit then
+   c off TASK-SEMAPHORE-BYTES / SEM-CHUNK-USED FFI:>CELL ;
+
+: SEM-POOL-SLOT ( sem -- n ) {: s:sem :}
+   SEM-POOL-FIRST
+   begin dup 0<> while
+      s over SEM-CHUNK-SLOT dup 0<> if nip exit then drop
+      SEM-CHUNK-NEXT
+   repeat ;
+
+: SEM-CHUNK-RELEASE ( n -- )
+   TASK-N>PTR BYTE-VIEW TASK-SEM-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ The mapped chunks are this process's: a capture gives them back so the image
+\ carries only the static first chunk, which its declaration zeroes. A live
+\ record in one is the program's defect, named here rather than left to the
+\ linker as a mapping it cannot carry - free a held semaphore in a cleanup
+\ registered after taking it, so it runs before this one. `die` and not
+\ `throw`, as TASK-SWEEP-ONE says. The flag is cleared last: the next chunk
+\ mapped, here or in the restored image, arms the cleanup again.
+: SEM-CHUNKS-SWEEP ( -- )
+   SEM-POOL-FIRST SEM-CHUNK-NEXT
+   dup SEM-CHAIN-LIVE? if
+      s" task: live pool semaphore at capture - free it before the build or snapshot captures"
+      E-TASK-STATE die
+   then
+   0 SEM-POOL-FIRST SEM-CHUNK-LINK atomic!
+   begin dup 0<> while
+      dup SEM-CHUNK-NEXT swap SEM-CHUNK-RELEASE
+   repeat
+   drop
+   0 SEM-CHUNKS-ARMED atomic! ;
+
+\ Armed before a chunk is mapped, so no mapping exists without its cleanup. The
+\ flag is set only after REGISTER completes (src/lib/image-lifecycle.f): a
+\ grower that sees it set knows the sweep is registered, and a registration that
+\ throws leaves it clear for the next grower to retry. Two growers that both see
+\ it clear each register a sweep; that is harmless, as the second finds an
+\ empty chain.
+: SEM-CHUNKS-ARM ( -- )
+   SEM-CHUNKS-ARMED atomic@ 0<> if exit then
+   [: SEM-CHUNKS-SWEEP ;] IMAGE-LIFECYCLE:REGISTER
+   1 SEM-CHUNKS-ARMED atomic! ;
+
+\ Links a chunk after the last one. Two tasks growing at the same moment each
+\ append their own; the one that loses the race walks on to the new last.
+: SEM-CHUNK-APPEND ( n -- ) {: c:n :}
+   SEM-POOL-FIRST
+   begin
+      dup 0 c rot SEM-CHUNK-LINK atomic-cas
+      dup 0<>
+   while nip repeat
+   2drop ;
+
+\ A fresh mapping is zero: no record used, none live. Its first record is the
+\ caller's before the chunk is published.
+: SEM-GROW ( -- n )
+   SEM-CHUNKS-ARM
+   TASK-SEM-CHUNK-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: c:n :}
+   1 c 0 SEM-CHUNK-USED !
+   c SEM-CHUNK-APPEND
+   c 0 SEM-CHUNK-REC ;
 
 : SEM-NEW ( -- sem )
-   SEM-POOL-FREE-INDEX dup 0 < if E-TASK-SEM-POOL throw then
-   SEM-POOL-REC SEM-AT ;
-
-\ The index of a pooled record, or -1 for a handle from anywhere else: a defined
-\ semaphore and a task's mailbox are not the pool's to hand back out.
-: SEM-POOL-INDEX ( sem -- n ) {: s:sem :}
-   s SEM>N TASK-SEM-POOL CELL-VIEW FFI:>CELL - {: off:n :}
-   off 0 < if -1 exit then
-   off TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * >= if -1 exit then
-   off TASK-SEMAPHORE-BYTES mod 0 <> if -1 exit then
-   off TASK-SEMAPHORE-BYTES / ;
+   SEM-POOL-FIRST
+   begin dup 0<> while
+      dup SEM-CHUNK-CLAIM dup 0<> if nip >SEM exit then drop
+      SEM-CHUNK-NEXT
+   repeat
+   drop SEM-GROW >SEM ;
 
 \ Destroys the semaphore if it is still live, so a recycled record never carries
 \ a POSIX object into its next owner; the caller has already ended its waiters.
 : SEM-FREE ( sem -- ) {: s:sem :}
-   s SEM-POOL-INDEX dup 0 < if drop E-TASK-SEM-POOL throw then
+   s SEM-POOL-SLOT {: slot:n :}
+   slot 0= if E-TASK-SEM-POOL throw then
    s SEM-DESTROY
-   SEM-POOL-RELEASE ;
+   0 slot TASK-N>PTR atomic! ;
 
 \ ---- the task's own wake-up --------------------------------------------------
 \ TASK:STOP parks the calling task on the semaphore in its own TCB and TASK:WAKE
@@ -529,7 +624,7 @@ create TASK-SEM-POOL
 \ whoever posted it, so the caller re-checks its own state after every STOP
 \ instead of believing the wake-up meant what it hoped. That is what lets one
 \ loop complete work for many tasks - it wakes an owner by its TCB and holds no
-\ semaphore per waiter, which the pool could not do past TASK-SEM-POOL-N.
+\ semaphore per waiter.
 : TASK-PARK-SEM ( ptr n -- sem )
    TCB.PARK SEM-AT ;
 
@@ -2058,8 +2153,8 @@ TASK-MIN-STACK constant MIN-STACK
    SEM-TRY-WAIT ;
 
 \ A semaphore for a caller that needs one at run time rather than at definition,
-\ over a record from this package's pool: E-TASK-SEM-POOL when every record is
-\ in use. It arrives uninitialized, like a defined one.
+\ over a record from this package's pool, which grows when every record is in
+\ use. It arrives uninitialized, like a defined one.
 : NEW-SEMAPHORE ( -- sem )
    SEM-NEW ;
 
@@ -2095,11 +2190,9 @@ TASK-MIN-STACK constant MIN-STACK
 : CHECK-OWNED ( n -- )
    {: window:n :}
    TASK-USER-NEXT FFI:>CELL window < if
-      TASK-SEM-POOL-N 0 ?do
-         i SEM-POOL-USED @ 0<> if
-            s" task: stripped image cannot carry a live semaphore" 74 die
-         then
-      loop
+      SEM-POOL-FIRST SEM-CHAIN-LIVE? if
+         s" task: stripped image cannot carry a live semaphore" 74 die
+      then
    then ;
 
 \ Enumerating the declarations does not inspect process state. The linker sizes
@@ -2109,8 +2202,8 @@ TASK-MIN-STACK constant MIN-STACK
    TASK-USER-NEXT BYTE-VIEW CELL carry execute
    TASK-CHAIN BYTE-VIEW CELL carry execute
    SWEEP-ARMED BYTE-VIEW CELL fresh execute
-   TASK-SEM-USED TASK-SEM-POOL-N cells fresh execute
-   TASK-SEM-POOL TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * fresh execute
+   TASK-SEM-POOL TASK-SEM-CHUNK-BYTES fresh execute
+   SEM-CHUNKS-ARMED BYTE-VIEW CELL fresh execute
    MAIN-PARK-REC TASK-SEMAPHORE-BYTES fresh execute
    MAIN-PARK-READY BYTE-VIEW CELL fresh execute
    ROW-TABLE BYTE-VIEW CELL carry execute

@@ -16,7 +16,7 @@ package QUEUE-TEST
 1 QUEUE:QUEUE Q-ONE              \ one slot: the blocking handshake
 8 QUEUE:QUEUE Q-SOAK             \ deliberately smaller than the soak's load
 2 QUEUE:QUEUE Q-COLD             \ never initialized
-2 QUEUE:QUEUE Q-STARVED          \ armed while the pool is nearly empty
+2 QUEUE:QUEUE Q-GROWN            \ armed past the pool's first chunk
 
 TASK:MIN-STACK TASK:TASK Q-PROD0
 TASK:MIN-STACK TASK:TASK Q-PROD1
@@ -237,9 +237,10 @@ variable Q-POOL-RC
    Q-DRAINER TASK:KILL
    Q-ONE QUEUE:DESTROY ;
 
-\ ---- arming against an empty pool --------------------------------------------
-\ The queue's semaphores come from package TASK's pool, so a queue that cannot
-\ take all three must give back the ones it did take.
+\ ---- arming past the pool's first chunk ---------------------------------------
+\ The queue's semaphores come from package TASK's pool, which grows past its
+\ first chunk of $40 records: with this fixture holding $80, the queue arms over
+\ records of a further chunk and blocks and wakes on them as on any other.
 
 : Q-POOL-TAKE ( -- )
    TASK:NEW-SEMAPHORE Q-POOL-N @ Q-POOL-SEMS !
@@ -253,38 +254,29 @@ variable Q-POOL-RC
       Q-POOL-N @ Q-POOL-CAP < if Q-POOL-TAKE? else 0 0= 0= then
    while repeat ;
 
-: Q-POOL-GIVE ( n -- ) {: count:n :}
-   count 0 ?do
+: Q-POOL-GIVE-ALL ( -- )
+   begin Q-POOL-N @ 0 > while
       Q-POOL-N @ 1 - Q-POOL-N !
       Q-POOL-N @ Q-POOL-SEMS @ TASK:FREE-SEMAPHORE
-   loop ;
+   repeat ;
 
-: Q-POOL-GIVE-ALL ( -- )
-   Q-POOL-N @ Q-POOL-GIVE ;
+: Q-GROWN-WORK ( -- )
+   Q-GROWN QUEUE:POP Q-DRAIN-GOT ! ;
 
-\ How many records the pool hands out while no queue holds any.
-: Q-POOL-SIZE ( -- n )
-   0 Q-POOL-N !
+: QUEUE-TEST-ARM-GROWN ( -- )
+   0 Q-POOL-N ! 0 Q-POOL-RC ! 0 Q-DRAIN-GOT !
    Q-POOL-FILL
-   Q-POOL-N @ {: size:n :}
-   Q-POOL-GIVE-ALL
-   size ;
-
-: QUEUE-TEST-ARM-REFUSED ( -- )
-   Q-POOL-SIZE {: size:n :}
-   size 3 > TTRUE
-   0 Q-POOL-N !
-   Q-POOL-FILL
-   Q-POOL-RC @ E-TASK-SEM-POOL T=
-   2 Q-POOL-GIVE
-   [: Q-STARVED QUEUE:INIT ;] E-TASK-SEM-POOL TTHROWSQ
-   Q-POOL-GIVE-ALL
-   Q-POOL-SIZE size T=
-   Q-STARVED QUEUE:INIT
-   Q-STARVED QUEUE:COUNT 0 T=
-   $12 Q-STARVED QUEUE:PUSH
-   Q-STARVED QUEUE:POP $12 T=
-   Q-STARVED QUEUE:DESTROY ;
+   Q-POOL-RC @ 0 T=
+   Q-POOL-N @ Q-POOL-CAP T=
+   Q-GROWN QUEUE:INIT
+   ['] Q-GROWN-WORK Q-DRAINER TASK:ACTIVATE
+   Q-LATE Q-GROWN QUEUE:PUSH
+   Q-DRAINER Q-WAIT-DONE
+   Q-DRAIN-GOT @ Q-LATE T=
+   Q-DRAINER TASK:THROW@ 0 T=
+   Q-DRAINER TASK:KILL
+   Q-GROWN QUEUE:DESTROY
+   Q-POOL-GIVE-ALL ;
 
 \ ---- the soak ----------------------------------------------------------------
 
@@ -375,7 +367,7 @@ variable Q-POOL-RC
    QUEUE-TEST-PUSH-BLOCKS
    QUEUE-TEST-POP-BLOCKS
    QUEUE-TEST-SOAK
-   QUEUE-TEST-ARM-REFUSED
+   QUEUE-TEST-ARM-GROWN
    T-REPORT ;
 
 QUEUE-TEST-RUN

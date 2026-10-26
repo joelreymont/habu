@@ -113,7 +113,7 @@ $80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
 20000 constant BUILD-FMT-ITERS       \ the render never yields; the window is one preemption wide
 111111 constant BUILD-A-V
 222222 constant BUILD-B-V
-$80 constant POOL-CAP                \ handles this fixture can hold; the pool is smaller
+$80 constant POOL-CAP                \ handles this fixture holds: two of the pool's chunks
 
 POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
 
@@ -713,19 +713,52 @@ $33 constant MSG-LATE-VALUE
       POOL-N @ POOL-SEMS @ TASK:FREE-SEMAPHORE
    repeat ;
 
-\ The pool hands out records until it has none, refuses with its own code before
-\ this fixture runs out of room, and recovers when they are given back. A handle
-\ that never came from the pool - a defined semaphore - cannot be given to it.
+\ Every handle names a record of its own: a second init of a shared record
+\ would be E-TASK-SEM-STATE.
+: POOL-ARM-ALL ( -- )
+   POOL-N @ 0 ?do 1 i POOL-SEMS @ TASK:SEMAPHORE-INIT loop ;
+
+: POOL-DRAIN-ALL ( -- )
+   POOL-N @ 0 ?do
+      i POOL-SEMS @ TASK:TRY-WAIT TTRUE
+   loop ;
+
+\ A stale handle names its record still, so it counts again exactly when the
+\ record went to a new owner who initialized it; otherwise it is
+\ E-TASK-SEM-STATE. The handle crosses the quotation on the stack.
+: POOL-REUSED ( TASK:sem -- )
+   [: dup TASK:TRY-WAIT TTRUE ;] catch {: rc:n :}
+   drop
+   rc 0 T= ;
+
+\ One record from the first chunk and the last one taken, in a further chunk,
+\ go back; the next two handles are those two records again, not new ones.
+: POOL-REUSE-ACROSS ( -- )
+   POOL-CAP 1 - {: last:n :}
+   3 POOL-SEMS @ last POOL-SEMS @ {: early late :}
+   early TASK:FREE-SEMAPHORE
+   late TASK:FREE-SEMAPHORE
+   TASK:NEW-SEMAPHORE 3 POOL-SEMS !
+   TASK:NEW-SEMAPHORE last POOL-SEMS !
+   1 3 POOL-SEMS @ TASK:SEMAPHORE-INIT
+   1 last POOL-SEMS @ TASK:SEMAPHORE-INIT
+   early POOL-REUSED
+   late POOL-REUSED ;
+
+\ The pool grows past its first chunk of $40 records: this fixture holds twice
+\ that many live at once, and records given back are handed out again from
+\ whichever chunk holds them before the pool grows. A handle that never came
+\ from the pool - a defined semaphore - cannot be given to it.
 : TASK-TEST-SEM-POOL ( -- )
    0 POOL-N ! 0 POOL-RC !
    POOL-FILL
-   POOL-RC @ E-TASK-SEM-POOL T=
-   POOL-N @ 0 > TTRUE
-   POOL-N @ POOL-CAP < TTRUE
+   POOL-RC @ 0 T=
+   POOL-N @ POOL-CAP T=
+   POOL-ARM-ALL
+   POOL-DRAIN-ALL
+   POOL-REUSE-ACROSS
    POOL-FREE-ALL
    POOL-N @ 0 T=
-   POOL-TAKE? TTRUE
-   POOL-FREE-ALL
    [: SEM-COLD TASK:FREE-SEMAPHORE ;] E-TASK-SEM-POOL TTHROWSQ ;
 
 \ A pooled semaphore counts like a defined one, and freeing it destroys it: the

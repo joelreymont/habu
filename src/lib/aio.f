@@ -4,8 +4,7 @@
 \ its thread inside the host call: it submits one operation, gets a ticket, and
 \ AWAITs it. One completion task drains the ring and TASK:WAKEs the owner of
 \ each finished operation, so a thousand waiters cost one thread and no
-\ semaphore each - which is what the pooled semaphores could not do past
-\ TASK:NEW-SEMAPHORE's $40 records.
+\ semaphore each.
 \
 \ STORAGE CLASS. PROCESS-WIDE: one ring, one fixed record table and one loop
 \ task serve the whole image, and every record access but the free claim runs
