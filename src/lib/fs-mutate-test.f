@@ -9,7 +9,6 @@ require src/lib/fs.f
 require src/lib/span.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f                               \ the HB_TMP child's uncaught code
-require src/lib/memory.f                            \ the walk contexts the last two rows own
 require src/lib/process-env.f
 require src/lib/test/outcome.f                      \ the HB_TMP child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
@@ -1038,15 +1037,24 @@ create FMT-ROOT-PATH-BUF FS-PATH-CAP allot
 : FMT-NEXT-FD ( -- n )
    FMT-ROOT$ FS-OPEN-DIR dup close ;
 
-\ A tree FS-MAX-DEPTH directories deep throws E-FS-DEPTH with every level
-\ above the refusal open. A leaked one would hold the lowest free number.
+\ A tree deeper than the walk's starting frames whose last directory is
+\ locked: the removal grows its frames on the way down, then unlinkat refuses
+\ the deepest level with EACCES while every level above it is open. A leaked
+\ descriptor would hold the lowest free number.
+40 constant FMT-DEEP-LEVELS
+
 : FMT-TEST-REMOVE-TREE-DEPTH-FDS ( -- )
-   FS-MAX-DEPTH FMT-DEEP$ MAKE-DIRS
+   FMT-DEEP-LEVELS FMT-DEEP$ MAKE-DIRS
+   FMT-DEEP-LEVELS 1 - FMT-DEEP$ FMT-MODE-0555 CHMOD-MODE
    FMT-NEXT-FD {: before:n :}
-   [: FMT-TREE REMOVE-TREE ;] E-FS-DEPTH TTHROWSQ
+   [: FMT-TREE REMOVE-TREE ;] catch FS:ERRNO {: code:n cause:n :}
+   FMT-DEEP-LEVELS 1 - FMT-DEEP$ FS-MUT-MODE-DIR CHMOD-MODE
+   s" a deep REMOVE-TREE refused below a locked level is E-FS-IO, EACCES" T-LABEL
+   code E-FS-IO T=
+   cause FS:EACCES T=
    s" a refused REMOVE-TREE closes every descriptor it opened" T-LABEL
    FMT-NEXT-FD before T=
-   0 FS-MAX-DEPTH ?do i FMT-DEEP$ REMOVE-DIR -1 +loop ;
+   FMT-TREE REMOVE-TREE ;
 
 package FMT-SPECIAL
 
@@ -1415,23 +1423,14 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
       i REGS / i REGS mod base CHECK-ONE
    loop ;
 
-\ ---- the walk context is the caller's ----------------------------------------
-\ Two tasks remove two trees at once, each through a context of its own, and a
-\ WALK-FILES-IN callback removes a subtree through a SECOND context while its
-\ walk stands on the first. Both were impossible while the walk stacks were one
-\ set for the image: the two removals crossed each other's depth and path slot,
-\ and a removal inside a callback clobbered the walk it ran under.
-PTR-VARIABLE CTX-A-P
-PTR-VARIABLE CTX-B-P
+\ ---- each walk owns its context ---------------------------------------------
+\ Two tasks remove two trees at once with plain REMOVE-TREE, and a WALK-FILES
+\ callback removes a subtree while its walk stands. Both were impossible while
+\ the walk stacks were one set for the image: the two removals crossed each
+\ other's depth and path slot, and a removal inside a callback clobbered the
+\ walk it ran under.
 variable T6-SEEN
 variable T6-BAD
-
-: CTX-A ( -- ptr u8 ) CTX-A-P @ ;
-: CTX-B ( -- ptr u8 ) CTX-B-P @ ;
-
-: CTXS! ( -- )
-   FS-WALK-BYTES MEM-ALLOC-BYTES drop CTX-A-P !
-   FS-WALK-BYTES MEM-ALLOC-BYTES drop CTX-B-P ! ;
 
 : A-TREE! ( -- )
    RA$ MAKE-DIR  RAS$ MAKE-DIR
@@ -1441,8 +1440,8 @@ variable T6-BAD
    RB$ MAKE-DIR  RBS$ MAKE-DIR
    RBF$ B-BODY$ WRITE-ALL  RBG$ B-BODY$ WRITE-ALL ;
 
-: T5-A ( -- ) ROUNDS 0 ?do A-TREE! CTX-A RA$ REMOVE-TREE-IN loop 0 TASK:RETURN ;
-: T5-B ( -- ) ROUNDS 0 ?do B-TREE! CTX-B RB$ REMOVE-TREE-IN loop 0 TASK:RETURN ;
+: T5-A ( -- ) ROUNDS 0 ?do A-TREE! RA$ REMOVE-TREE loop 0 TASK:RETURN ;
+: T5-B ( -- ) ROUNDS 0 ?do B-TREE! RB$ REMOVE-TREE loop 0 TASK:RETURN ;
 
 : T5-RUN ( -- )
    KEEP$ s" keep" WRITE-ALL
@@ -1459,17 +1458,17 @@ variable T6-BAD
 \ directory it is reading OPEN, and `getdirentries64` on the descriptor of a
 \ directory that has since been removed answers -1 here, which the walk reports
 \ as E-FS-DIR (measured). Two walks in flight must therefore cover disjoint
-\ trees - which is exactly what a second context is for. What this row proves is
-\ that the removal moves no part of the walk's own state: every path the
-\ callback is handed still starts at the walked root, and both of its files are
-\ still found after a whole tree went away underneath a second context.
+\ trees. What this row proves is that the removal moves no part of the walk's
+\ own state: every path the callback is handed still starts at the walked root,
+\ and both of its files are still found after a whole tree went away through
+\ the removal's own context.
 : UNDER? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u ra:ptr ru :}
    u ru <= if false exit then
    a ru ra ru STR= ;
 
 : T6-CB ( ptr u8 n -- ) {: a:ptr u :}
    a u W5$ UNDER? 0= if 1 T6-BAD +! then
-   T6-SEEN @ 0= if CTX-B W5D$ REMOVE-TREE-IN then
+   T6-SEEN @ 0= if W5D$ REMOVE-TREE then
    1 T6-SEEN +! ;
 
 : T6-TREES! ( -- )
@@ -1480,15 +1479,14 @@ variable T6-BAD
 : T6-RUN ( -- )
    T6-TREES!
    0 T6-SEEN !  0 T6-BAD !
-   CTX-A W5$ [: T6-CB ;] WALK-FILES-IN
-   s" a callback removed a tree through a second context, the walk stood" T-LABEL
+   W5$ [: T6-CB ;] WALK-FILES
+   s" a callback removed a tree, the walk stood" T-LABEL
    T6-BAD @ 0 T=
    T6-SEEN @ 2 T=
    W5D$ EXISTS? TFALSE
    W5F1$ FILE? TTRUE
    W5F2$ FILE? TTRUE
-   CTX-A FS-WALK-ACTIVE@ 0 T=
-   CTX-A W5$ REMOVE-TREE-IN
+   W5$ REMOVE-TREE
    W5$ EXISTS? TFALSE ;
 
 public
@@ -1500,7 +1498,6 @@ public
    MEM-ABI:END FS-MUT-ABI:START T=
    MEM-ABI:START USER-BAND:END T=
    PATHS!
-   CTXS!
    T1-RUN
    T2-RUN
    T3-RUN

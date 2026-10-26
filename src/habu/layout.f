@@ -1997,13 +1997,10 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ FS-ABI:STAT-BYTES`, rc 70, before any target work. Build one engine from this
 \ declaration and E-FS-BAND alone, then build the tree with it.
 \
-\ THE WALK STATE IS NOT HERE: the per-depth path slots and dirent blocks are
-\ FS-MAX-DEPTH deep, $7FE0 and $20000 bytes, over a hundred times this band. A
-\ second task that must walk needs its own walker, not a wider per-task region,
-\ and it has one - src/lib/fs.f makes the whole walk CALLER-OWNED (FS-WALK-BYTES,
-\ WALK-FILES-IN, REMOVE-TREE-IN), so a task holds a context of its own and this
-\ band carries none of it. WALK-FILES and REMOVE-TREE stand on one static
-\ context and stay single-task.
+\ THE WALK STATE IS NOT HERE: src/lib/fs.f maps a context for each WALK-FILES,
+\ WALK-FILES-IF or REMOVE-TREE call, grows it with the tree's depth and
+\ releases it when the call ends, so this band carries none of it and two tasks
+\ walk at once.
 \
 \ Sized the way FMT-ABI above is: every member at its measured width, the five
 \ cells at the band base so they are cell-aligned whatever the buffers do, the

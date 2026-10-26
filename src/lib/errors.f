@@ -32,12 +32,12 @@
 -2101 constant E-FS-STAT
 -2102 constant E-FS-OPEN
 -2103 constant E-FS-DIR
--2104 constant E-FS-DEPTH
+\ -2104 was E-FS-DEPTH, retired: a walk grows its context
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
 -2107 constant E-FS-PATH-UNSAFE
 -2108 constant E-FS-BAND        \ layout FS-ABI band widths disagree with the caps here
--2109 constant E-FS-WALK-ACTIVE \ WALK-FILES cannot be nested on one task
+\ -2109 was E-FS-WALK-ACTIVE, retired: each walk owns its context
 -2110 constant E-FS-TIMEOUT     \ a descriptor transfer reached its deadline
 
 \ Strings: -2200..-2299

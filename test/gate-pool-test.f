@@ -743,17 +743,16 @@ variable GPT-RF-VIC-PID
    GT-CLEANUP ;
 
 \ A SCRATCH THAT WILL NOT GO FAILS ITS ROW, NOT THE POOL (gate-pool.f
-\ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its HB_TMP deeper
-\ than FS-MAX-DEPTH, which REMOVE-TREE refuses with E-FS-DEPTH. The refusal
-\ is named with the row, the path and the code, the row is red, and the pool
-\ goes on to the next row; the run's own cleanup meets the same tree under the
-\ root and is named too, before the red report's exit. The case runs in a
-\ child (mode deep-scratch-case), so that exit is the child's.
+\ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its HB_TMP that
+\ REMOVE-TREE cannot take apart: a directory the row locked, holding an entry,
+\ refuses that entry's unlink with EACCES and the removal throws E-FS-IO. The
+\ refusal is named with the row, the path and the code, the row is red, and the
+\ pool goes on to the next row; the run's own cleanup meets the same tree under
+\ the root and is named too, before the red report's exit. The case runs in a
+\ child (mode locked-scratch-case), so that exit is the child's.
 \
-\ The tree is slot/d/d/..., GPT-DS-LEVELS one-byte directories below the slot,
-\ so the removal rooted at the slot passes FS-MAX-DEPTH while every path stays
-\ far inside FS-PATH-CAP and the test can take it apart with REMOVE-DIR.
-FS-MAX-DEPTH constant GPT-DS-LEVELS
+\ The tree is slot/d/d, the outer d locked (mode 0555) over the inner one.
+$16D constant GPT-DS-LOCKED-MODE
 
 create GPT-DS-PATH FS-PATH-CAP allot
 
@@ -766,20 +765,21 @@ create GPT-DS-PATH FS-PATH-CAP allot
    loop
    GPT-DS-PATH slotu level 2 * + ;
 
-: GPT-DS-MAKE ( ptr u8 n -- )
-   GPT-DS-LEVELS GPT-DS-PATH$ MAKE-DIRS ;
+: GPT-DS-MAKE ( ptr u8 n -- ) {: slot:ptr slotu:n :}
+   slot slotu 2 GPT-DS-PATH$ MAKE-DIRS
+   slot slotu 1 GPT-DS-PATH$ GPT-DS-LOCKED-MODE CHMOD-MODE ;
 
 : GPT-DS-CASE ( -- )
-   s" gate-pool-deep-scratch" GT-START
+   s" gate-pool-locked-scratch" GT-START
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" /usr/bin/true" s" deep scratch row" GPT-TIMEOUT-MS GT-POOL-START
+   s" /usr/bin/true" s" locked scratch row" GPT-TIMEOUT-MS GT-POOL-START
    0 >IDX GT-POOL-TMP$ GPT-DS-MAKE
-   s" deep slot: " type 0 >IDX GT-POOL-TMP$ type cr
-   s" deep root: " type GT-ROOT type cr
-   s" deep scratch sibling" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   s" locked slot: " type 0 >IDX GT-POOL-TMP$ type cr
+   s" locked root: " type GT-ROOT type cr
+   s" locked scratch sibling" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN ;
 
 \ The text after needle in the child's stdout, to the end of its line; empty
@@ -797,50 +797,49 @@ create GPT-DS-PATH FS-PATH-CAP allot
    ;MATCH {: lineu:n :}
    rest lineu ;
 
-\ text followed by E-FS-DEPTH, the code REMOVE-TREE refuses the tree with.
+\ text followed by E-FS-IO, the code REMOVE-TREE refuses the tree with.
 : GPT-DS-CODE$ ( ptr u8 n -- ptr u8 n ) {: text:ptr textu:n :}
    SB-RESET
    text textu SB-APPEND
-   E-FS-DEPTH FMT:SB-INT
+   E-FS-IO FMT:SB-INT
    SB$ ;
 
 : GPT-DS-SCRATCH-LINE$ ( ptr u8 n -- ptr u8 n ) {: slot:ptr slotu:n :}
    SB-RESET
    s" test pool: scratch " SB-APPEND slot slotu SB-APPEND
-   s"  of deep scratch row not removed, throw " SB-APPEND
-   E-FS-DEPTH FMT:SB-INT
+   s"  of locked scratch row not removed, throw " SB-APPEND
+   E-FS-IO FMT:SB-INT
    SB$ ;
 
 : GPT-DS-EXPECT ( n ptr u8 n -- ) {: outu:n slot:ptr slotu:n :}
-   s" deep scratch: the refusal names the row, its scratch and the code" T-LABEL
+   s" locked scratch: the refusal names the row, its scratch and the code" T-LABEL
    GPT-OUT outu slot slotu GPT-DS-SCRATCH-LINE$ CONTAINS? TTRUE
-   s" deep scratch: the row is red for it" T-LABEL
-   GPT-OUT outu s" FAIL: deep scratch row" CONTAINS? TTRUE
+   s" locked scratch: the row is red for it" T-LABEL
+   GPT-OUT outu s" FAIL: locked scratch row" CONTAINS? TTRUE
    GPT-OUT outu s"  scratch=" GPT-DS-CODE$ CONTAINS? TTRUE
    GPT-OUT outu s" red tests: 1" CONTAINS? TTRUE
-   s" deep scratch: the pool went on to the next row" T-LABEL
-   GPT-OUT outu s" PASS: deep scratch sibling" CONTAINS? TTRUE
-   s" deep scratch: the run's cleanup refusal is named" T-LABEL
+   s" locked scratch: the pool went on to the next row" T-LABEL
+   GPT-OUT outu s" PASS: locked scratch sibling" CONTAINS? TTRUE
+   s" locked scratch: the run's cleanup refusal is named" T-LABEL
    GPT-OUT outu s" test pool: cleanup threw " GPT-DS-CODE$ CONTAINS? TTRUE ;
 
-\ The case's tree goes bottom-up, a directory at a time, then the child's
-\ root with it.
+\ The case's tree goes once its lock is lifted, with the child's root.
 : GPT-DS-CLEAN ( ptr u8 n ptr u8 n -- ) {: slot:ptr slotu:n root:ptr rootu:n :}
-   1 GPT-DS-LEVELS ?do slot slotu i GPT-DS-PATH$ REMOVE-DIR -1 +loop
+   slot slotu 1 GPT-DS-PATH$ FS-MUT-MODE-DIR CHMOD-MODE
    root rootu REMOVE-TREE
-   s" deep scratch: the case's tree is gone" T-LABEL
+   s" locked scratch: the case's tree is gone" T-LABEL
    root rootu EXISTS? TFALSE ;
 
 : GPT-DS-REPORT ( -- )
-   s" deep-scratch-case" GPT-MODE-CAPTURE {: outu:n erru:n code:n :}
-   s" deep scratch: the run ends on the red report's exit" T-LABEL
+   s" locked-scratch-case" GPT-MODE-CAPTURE {: outu:n erru:n code:n :}
+   s" locked scratch: the run ends on the red report's exit" T-LABEL
    code 1 T=
    GPT-ERR erru s" test pool failed" CONTAINS? TTRUE
-   s" deep scratch: the cleanup refusal is reported once" T-LABEL
+   s" locked scratch: the cleanup refusal is reported once" T-LABEL
    GPT-ERR erru s" cleanup at exit threw" CONTAINS? TFALSE
-   outu s" deep slot: " GPT-LINE-AFTER$ {: slot:ptr slotu:n :}
-   outu s" deep root: " GPT-LINE-AFTER$ {: root:ptr rootu:n :}
-   s" deep scratch: the child named its slot and its root" T-LABEL
+   outu s" locked slot: " GPT-LINE-AFTER$ {: slot:ptr slotu:n :}
+   outu s" locked root: " GPT-LINE-AFTER$ {: root:ptr rootu:n :}
+   s" locked scratch: the child named its slot and its root" T-LABEL
    slotu 0 > rootu 0 > and TTRUE
    slotu 0 > rootu 0 > and if
       outu slot slotu GPT-DS-EXPECT
@@ -1056,7 +1055,7 @@ variable GPT-FR-U
 
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
-   s" deep-scratch-case" GPT-MODE? if GPT-DS-CASE exit then
+   s" locked-scratch-case" GPT-MODE? if GPT-DS-CASE exit then
    T-RESET
    0 GPT-COW !
    s" gate-pool-test" GT-START

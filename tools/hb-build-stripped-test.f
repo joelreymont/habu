@@ -36,9 +36,10 @@ package HB-BUILD-CLI
 : HBT-PMK-SRC ( -- ptr u8 n )
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
 
-\ An application that touches a PERSISTENT CELL of each library it requires:
-\ src/lib/string.f's builder, src/lib/fs-mutate.f's copy buffer (FS-MUT-COPY-BUF) and
-\ src/lib/fs.f's static walk context (FS-WALK-CTX0). Those cells are what the maker
+\ An application that touches a PERSISTENT CELL of each library it requires,
+\ src/lib/string.f's builder and src/lib/fs-mutate.f's copy buffer
+\ (FS-MUT-COPY-BUF), and walks a tree with src/lib/fs.f's WALK-FILES, which maps
+\ a context of its own for the call. Those cells are what the maker
 \ used to own before the application was read - it required app-image.f, and so
 \ src/lib/fs.f and src/lib/fs-mutate.f, before opening the capture window - which put them
 \ below the span and refused the image. The walked directory is spliced in as a
@@ -114,9 +115,10 @@ package HB-BUILD-CLI
 \ THE WINDOW INVARIANT, end to end: nothing the application can require is loaded
 \ when the capture window opens, so the application's own require closure is the
 \ only library content inside the restored span. Measured before this held:
-\ `caller=WALK-FILES target=FS-DEPTH` and `caller=COPY-FILE-STREAM
+\ WALK-FILES's then-static walk state and `caller=COPY-FILE-STREAM
 \ target=FS-MUT-COPY-IN` refused this very program - the copy descriptors are
-\ locals of the call now, and the copy BUFFER is the cell that stands there.
+\ locals of the call now, the walk maps its own context, and the copy BUFFER is
+\ the cell that stands there.
 \ That order is the claim, so this program builds on the engine: src/lib/fs.f and
 \ src/lib/fs-mutate.f are modules of the linker's lib closure the engine does not
 \ bake, and the linker image refuses it at COPY-FILE-STREAM (E-AOT-PRE-WINDOW).

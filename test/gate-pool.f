@@ -484,7 +484,7 @@ GT-POOL-ABORT-BARE!
    a u REMOVE-TREE ;
 
 \ One of a slot's directories. A removal that throws - a tree its child left
-\ deeper than FS-MAX-DEPTH, which REMOVE-TREE refuses with E-FS-DEPTH - is
+\ with a directory it locked, which REMOVE-TREE refuses with E-FS-IO - is
 \ named with the row, the path and the code, and the code is the slot's
 \ (GT-POOL-OK?): the row fails and the pool goes on.
 : GT-POOL-SCRATCH-REMOVE ( ptr u8 n idx -- ) {: a:ptr u:n idx:idx :}
@@ -1622,7 +1622,7 @@ variable GT-POOL-UNC-SCALE              \ place value of the digit under the cur
    ;MATCH ;
 
 \ The end of a run removes the runner's root and the fallback root. A removal
-\ that throws, as one does on a tree deeper than FS-PATH-CAP that a slot left
+\ that throws, as one does on a tree with a locked directory that a slot left
 \ under the root, is named here, and the run still ends the way it was ending.
 \ The registry goes with the report: the exit hook's retry would throw at the
 \ same entry and name it a second time.

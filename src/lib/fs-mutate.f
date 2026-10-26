@@ -9,13 +9,10 @@
 \ symlinking, writing atomically or making a temporary directory at once share
 \ nothing and neither can replace the other's returned path. The descriptors,
 \ cursors and lengths COPY-FILE-STREAM threads are LOCALS of the call.
-\ CALLER-OWNED: the tree removal. REMOVE-TREE-IN keeps its per-depth directory
-\ descriptors and dirent blocks in the context the caller supplies - a span of
-\ src/lib/fs.f's FS-WALK-BYTES - so two tasks remove two trees
-\ at once by holding one each, and a WALK-FILES-IN callback removes a subtree
-\ through a SECOND context while its walk stands. REMOVE-TREE is the
-\ one-context form over the static FS-WALK-CTX0 and is therefore SINGLE-TASK,
-\ and it shares that one context with WALK-FILES.
+\ PER CALL: the tree removal. REMOVE-TREE maps a walk context of its own, as
+\ src/lib/fs.f's WALK-FILES does, holds its per-depth directory descriptors and
+\ dirent blocks there and releases it on return or throw, so two tasks remove
+\ two trees at once and a WALK-FILES callback removes a subtree.
 \ PROCESS-WIDE: the 8 KiB FS-MUT-COPY-BUF, so COPY-FILE and COPY-FILE-STREAM are
 \ this module's one SINGLE-TASK pair (8192 bytes is more than the whole per-task
 \ band could carry; a second task that must copy needs its own buffer); and the
@@ -38,8 +35,9 @@
 \ unlinks a symlink to a directory and never descends into it, a root spelled
 \ with a trailing slash (`link/`, `lfile/`, `dang/`) included, and throws on
 \ any partial failure. Its root path must fit FS-PATH-CAP; below the root each
-\ entry is named relative to its parent's directory descriptor, so the depth
-\ of the tree (FS-MAX-DEPTH), not its path lengths, bounds it. A missing root
+\ entry is named relative to its parent's directory descriptor and the walk's
+\ frames grow with the depth, so neither path lengths nor depth bound the tree,
+\ only the descriptors the process may hold open. A missing root
 \ is a no-op; a root that cannot be stat'ed for any other reason is E-FS-STAT,
 \ with libc's cause in FS:ERRNO. HB-TMP-MKDIR makes its tree under $HB_TMP
 \ when the process was handed one (the caller reaps it, even after a kill),
@@ -204,10 +202,10 @@ public
    a u FS-PATHZ rmdir 0 < if E-FS-IO throw then ;
 
 \ Tree removal names every entry below the root relative to its parent's
-\ directory descriptor, held in the context's per-depth FDS, so no path below the
-\ root is joined and none is bounded by FS-PATH-CAP. The root is the entry its
-\ own path names relative to the working directory. The error paths throw
-\ plainly: REMOVE-TREE-IN closes whatever descriptors the context still holds,
+\ directory descriptor, held in the walk's per-depth frames, so no path below
+\ the root is joined and none is bounded by FS-PATH-CAP. The root is the entry
+\ its own path names relative to the working directory. The error paths throw
+\ plainly: FS-WALK-UNMAP closes whatever descriptors the frames still hold,
 \ however the traversal ended.
 
 \ The entry's own mode, never a link target's, lands in FS-STAT-BUF. A name
@@ -225,20 +223,31 @@ public
 
 
 \ The directory opens one depth down, O_NOFOLLOW, so a link swapped in since
-\ the stat is refused, never followed.
-: FS-MUT-OPEN-AT ( ptr u8 n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
-   ctx FS-WALK-DEPTH@ 1 + ctx FS-WALK-DEPTH!
-   ctx FS-CHECK-WALK-DESCEND
-   parent name u FS-PATHZ FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
+\ the stat is refused, never followed. The name is staged before that depth's
+\ frame is made: a child's name lies in its parent's dirent block, which
+\ growing the frames moves.
+: FS-MUT-OPEN-AT ( ptr n n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
+   name u FS-PATHZ {: z:ptr :}
+   ctx FS-WALK-DEPTH@ 1 + {: d :}
+   ctx d FS-ENSURE-DEPTH
+   d ctx FS-WALK-DEPTH!
+   parent z FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
    dup 0 < if drop E-FS-OPEN FS-ERRNO-FAIL then
    ctx FS-FD!
    0 ctx FS-BASE@ ! ;
 
+\ The name an emptied directory is unlinked by, once its traversal is back at
+\ its parent's depth. That traversal may have grown the frames and so moved the
+\ parent's dirent block: a child's name is read again from its parent's
+\ current entry. The root's, at depth -1, is the caller's path and never moves.
+: FS-MUT-OWN-NAME ( ptr n ptr u8 n -- ptr u8 n ) {: ctx:ptr name:ptr u:n :}
+   ctx FS-WALK-DEPTH@ 0 < if name u exit then
+   ctx FS-CUR-ENTRY FS-DIRENT-NAME ;
 
 \ Only a directory is traversed; every other inode, a link to a directory
 \ among them, belongs to unlink. A child's name stays in its parent's dirent
 \ block, one depth up from the blocks the child's own traversal reads.
-: FS-MUT-REMOVE-AT ( ptr u8 n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
+: FS-MUT-REMOVE-AT ( ptr n n ptr u8 n -- ) {: ctx:ptr parent:n name:ptr u:n :}
    parent name u FS-MUT-LSTAT-AT? 0= if exit then
    FS-STAT-BUF FS-LIBC-MODE@ S-IFMT and S-IFDIR <> if
       parent name u 0 FS-MUT-UNLINK-AT exit
@@ -257,7 +266,7 @@ public
    repeat
    ctx FS-CLOSE-CUR-DIR
    ctx FS-ASCEND-PATH
-   parent name u FS-AT-REMOVEDIR FS-MUT-UNLINK-AT ;
+   parent ctx name u FS-MUT-OWN-NAME FS-AT-REMOVEDIR FS-MUT-UNLINK-AT ;
 
 
 \ The root's length to stat. lstat of `link/` resolves the link, so a root
@@ -272,30 +281,29 @@ public
    s u < if a s SYMLINK? if s exit then then
    u ;
 
-
 \ Caught as a whole, the way src/lib/fs.f catches FS-WALK-RUN, so one site closes
-\ the descriptors for every way out.
-: FS-MUT-REMOVE-RUN ( ptr u8 ptr u8 n -- ptr u8 ptr u8 n ) {: ctx:ptr a:ptr u :}
-   ctx FS-AT-CWD a u FS-MUT-REMOVE-AT
+\ the descriptors and releases the frames for every way out, a root refused by
+\ FS-MUT-ROOT-LEN's stat included.
+: FS-MUT-REMOVE-RUN ( ptr n ptr u8 n -- ptr n ptr u8 n ) {: ctx:ptr a:ptr u :}
+   ctx FS-AT-CWD a a u FS-MUT-ROOT-LEN FS-MUT-REMOVE-AT
    ctx a u ;
 
-\ The context is the caller's, so two tasks remove two trees at once by holding
-\ one each. It does NOT claim FS-WALK-ACTIVE: the process exit hook removes
-\ trees through CLEANUP-RUN whatever a task was doing, and a flag would refuse
-\ it there. A removal through the context a live walk owns still clobbers that
-\ walk - pass a second context, which is what these words are for.
-: REMOVE-TREE-IN ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
-   u 0 <= if FS-CAUSE-CLEAR E-FS-PATH throw then
-   ctx FS-FDS-RESET
+\ The WITH-BYTES body, built as src/lib/fs.f's FS-WALK-SCOPE. No flag guards
+\ the context: it is this call's alone, so the process exit hook removes trees
+\ through CLEANUP-RUN whatever a task was doing.
+: FS-MUT-REMOVE-SCOPE ( ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   drop CELL-VIEW {: a:ptr u ctx:ptr :}
+   ctx FS-WALK-MAP
    \ The depth names the directory being emptied: none until the root opens.
    -1 ctx FS-WALK-DEPTH!
-   ctx a a u FS-MUT-ROOT-LEN [: FS-MUT-REMOVE-RUN ;] catch {: code:n :}
+   ctx a u [: FS-MUT-REMOVE-RUN ;] catch {: code:n :}
    2drop drop
-   ctx FS-CLOSE-WALK
+   ctx FS-WALK-UNMAP
    code 0<> if code throw then ;
 
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
-   FS-WALK-CTX0 a u REMOVE-TREE-IN ;
+   u 0 <= if FS-CAUSE-CLEAR E-FS-PATH throw then
+   a u FS-WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: FS-MUT-REMOVE-SCOPE ;] MEM:WITH-BYTES ;
 
 \ Only EEXIST can mean the folder is already there, so only it is checked
 \ with a stat. Any other failure throws at once, mkdir's errno intact.

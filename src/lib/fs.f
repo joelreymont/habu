@@ -5,14 +5,11 @@
 \ buffer FS-PATHZ-BUF, the stat buffer FS-STAT-BUF and the read probe are the
 \ FS-ABI band of the per-task DATA region, so two tasks in READ-ALL, WRITE-ALL,
 \ FILE-SIZE, FILE-META or any FS-* predicate at once share nothing. The data
-\ buffers READ-ALL and WRITE-ALL take are CALLER-OWNED, and so is the WALK:
-\ WALK-FILES-IN takes the caller's context, a span of FS-WALK-BYTES holding the
-\ whole per-depth state, so any number of tasks walk at once by holding one
-\ each. WALK-FILES-IF-IN also takes a path predicate before stat or descent.
-\ WALK-FILES and WALK-FILES-IF use the static FS-WALK-CTX0 and are
-\ therefore SINGLE-TASK, as is REMOVE-TREE (src/lib/fs-mutate.f), which stands on
-\ the same context; a task that walks or removes a tree beside another one
-\ takes WALK-FILES-IN / REMOVE-TREE-IN with a context of its own.
+\ buffers READ-ALL and WRITE-ALL take are CALLER-OWNED. A WALK OWNS ITS STATE
+\ FOR ONE CALL: WALK-FILES, WALK-FILES-IF and REMOVE-TREE (src/lib/fs-mutate.f)
+\ each map a context of their own and release it on return or throw, so a
+\ callback walks or removes another tree, any number of tasks walk at once, and
+\ a tree is as deep as FS-PATH-CAP lets its paths be.
 \
 \ FS:ERRNO IS THE CAUSE. It answers the positive host errno the last
 \ filesystem primitive in the running task saved; read it at once after
@@ -20,14 +17,14 @@
 \ successful one, replaces it, and a nested call replaces the outer call's.
 \ A semantic refusal (path capacity, a malformed path) leaves zero. The
 \ guarantee covers fs.f, fs-list.f, fs-anchored.f and fs-mutate.f's
-\ REMOVE-TREE and REMOVE-TREE-IN; the identity, lock and other mutation
+\ REMOVE-TREE; the identity, lock and other mutation
 \ helpers do not join it. The throws stay the primary contract.
 \
 \ THE WALK visits regular files only, depth-first, in the order the platform
 \ directory stream returns (a caller that needs lexical order sorts); it skips
 \ .git, .jj, .jj-ws, .dots and .out (a tree's build outputs and scratch,
-\ tools/build-out.f) and closes every descriptor it opened however it ends. The path a callback gets is valid only during that callback.
-\ Re-entering a context that is walking is E-FS-WALK-ACTIVE. Two walks in
+\ tools/build-out.f) and closes every descriptor it opened however it ends.
+\ The path a callback gets is valid only during that callback. Two walks in
 \ flight cover disjoint trees: getdirentries64 on a directory removed
 \ meanwhile answers -1 and the walk reports E-FS-DIR.
 \
@@ -53,11 +50,11 @@ require src/lib/string.f
 require src/lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
 require src/lib/span.f                              \ the module's own buffers carry their reach
 require src/lib/ffi-abi.f                           \ fstat on an open descriptor
+require src/lib/memory.f                            \ each walk's handle scope and frames
 
 PATH-CAP constant FS-PATH-CAP                   \ the core's one path capacity (src/core/util.f)
 FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 4096 constant FS-DIR-CAP
-32 constant FS-MAX-DEPTH
 256 constant FS-STAT-CAP
 8 constant FS-BYTE-BITS
 16 constant FS-BYTE-BITS-2
@@ -168,61 +165,53 @@ FS-BAND-AGREE
 : FS-PATHZ-BUF ( -- SPAN:span<u8> )
    data-base FS-ABI:PATHZ-OFF + BYTE-VIEW FS-PATHZ-CAP SPAN:MAKE ;
 
-\ A WALK IN PROGRESS IS THE CALLER'S BYTES. WALK-FILES-IN and REMOVE-TREE-IN
-\ (src/lib/fs-mutate.f) work on a context the caller owns: any writable span of
-\ FS-WALK-BYTES, one per walk. Nothing on that path is process-wide, so two
-\ tasks walk or remove trees at the same time by holding a context each, and a
-\ callback walks a second tree - or removes a subtree - through a SECOND
-\ context while the first walk stands on its own. The state is 161 KiB,
-\ fifteen times the whole per-task DATA region, so caller-owned is the only
-\ class it can have (src/habu/layout.f).
+\ A WALK OWNS ITS CONTEXT FOR ONE CALL. WALK-FILES-IF and REMOVE-TREE
+\ (src/lib/fs-mutate.f) take the handle from a WITH-BYTES scope and map the
+\ frames inside it, and release both however the call ends, so nothing on the
+\ walk's path is shared: a callback walks or removes another tree through a
+\ context of its own, and two tasks walk at once.
 \
-\ THE LAYOUT, by byte offset into the span:
-\   DEPTH       8 at $000     the depth being walked
-\   ACTIVE      8 at $008     nonzero while a walk owns this context
-\   CHILD-U     8 at $010     length of the child path FS-DESCEND-PATH built
-\   BASES    $100 at $018     per-depth getdirentries64 base cookie
-\   FDS      $100 at $118     per-depth directory descriptor, -1 when closed
-\   NS       $100 at $218     per-depth bytes the last block read answered
-\   OFFS     $100 at $318     per-depth offset into that block
-\   RECS     $100 at $418     per-depth length of the record at that offset
-\   PATHS  $7FE0 at $518     FS-MAX-DEPTH path slots of FS-PATH-CAP
-\   DIRS  $20000 at $84F8    FS-MAX-DEPTH dirent blocks of FS-DIR-CAP
-\ THE SCALARS ARE CELLS, reached through CELL-VIEW (the declared view, as in
-\ src/core/sha256.f and src/core/checker.f SYM.PKG-U); the path and dirent
-\ slots stay byte regions, taken with ZPTR+ and narrowed with SPAN:SUB, so a
-\ depth reaches no further than its own slot (E-SPAN-RANGE).
+\ THE HANDLE is FS-WALK-HANDLE-CELLS cells and does not move for the whole
+\ call, so every helper's handle local stays valid:
+\   FRAMES  cell 0   the frames mapping, a ptr-field cell: a declared pointer
+\                    cell is the one raw storage that may hold an address
+\                    (docs/forth-card.md § 5)
+\   CAP     cell 1   the frames the mapping holds
+\   DEPTH   cell 2   the depth being walked
 \
-\ NOTHING IN A CONTEXT IS A POINTER OR AN XT: the dirent cursor is the value
-\ FS-LOAD-ENTRY answers and the callback travels on the stack into the
-\ quotation FS-WALK-RUN is caught in, because raw storage never holds an
-\ address (docs/forth-card.md § 5). That is what makes a context a plain span
-\ the caller may allot, map or embed.
-\
-\ A CONTEXT MUST THEREFORE BE CELL-ALIGNED. `create` aligns whatever was
-\ allotted before it and FS-WALK-BYTES is a multiple of the cell, so both
-\ `create C FS-WALK-BYTES allot` and a MEM-ALLOC-BYTES mapping are aligned. A
-\ misaligned span is NOT diagnosed - the checker sees a `ptr u8` and AArch64
-\ user code does not fault on an unaligned cell access - so the rule is stated
-\ here because it can only be stated.
-0 constant FS-WALK-DEPTH-CELL
-1 constant FS-WALK-ACTIVE-CELL
-2 constant FS-WALK-CHILD-U-CELL
-3 constant FS-WALK-BASES-CELL
-FS-WALK-BASES-CELL FS-MAX-DEPTH + constant FS-WALK-FDS-CELL
-FS-WALK-FDS-CELL FS-MAX-DEPTH + constant FS-WALK-NS-CELL
-FS-WALK-NS-CELL FS-MAX-DEPTH + constant FS-WALK-OFFS-CELL
-FS-WALK-OFFS-CELL FS-MAX-DEPTH + constant FS-WALK-RECS-CELL
-FS-WALK-RECS-CELL FS-MAX-DEPTH + constant FS-WALK-CELLS
-FS-WALK-CELLS cells constant FS-WALK-PATHS-OFF
-FS-MAX-DEPTH FS-PATH-CAP * constant FS-WALK-PATHS-BYTES
-FS-WALK-PATHS-OFF FS-WALK-PATHS-BYTES + constant FS-WALK-DIRS-OFF
-FS-MAX-DEPTH FS-DIR-CAP * constant FS-WALK-DIRS-BYTES
-FS-WALK-DIRS-OFF FS-WALK-DIRS-BYTES + constant FS-WALK-BYTES
-
-\ The one static context WALK-FILES and REMOVE-TREE stand on, for a caller that
-\ walks one tree at a time in one task.
-create FS-WALK-CTX0 FS-WALK-BYTES allot
+\ THE FRAMES are one mapping of CAP records, one per depth, FS-FRAME-BYTES each:
+\   BASE    cell 0   getdirentries64 base cookie
+\   FD      cell 1   the directory descriptor, -1 when closed
+\   N       cell 2   bytes the last block read answered
+\   OFF     cell 3   offset of the current record in that block
+\   REC     cell 4   length of that record
+\   PATH-U  cell 5   length of the path in this depth's slot
+\   PATH             FS-PATH-CAP bytes, rounded up to a cell: this depth's path
+\   DIR              FS-DIR-CAP bytes: this depth's dirent block
+\ FS-WALK-FRAMES0 is where the capacity starts, not a bound: FS-ENSURE-DEPTH
+\ doubles the mapping before a descent needs a frame past it, and a tree is as
+\ deep as FS-PATH-CAP lets its paths be (E-FS-CAPACITY at the join). Growth
+\ MOVES the frames, so no helper holds an address into them across a descent:
+\ FS-DESCEND-PATH reads the parent path and the entry name from the frames
+\ after growing them, and a walk loop carries only the handle past its
+\ recursion. A frame and its slots are narrowings of the whole frames span, so
+\ a depth reaches no further than its own record (E-SPAN-RANGE).
+0 constant FS-WALK-FRAMES-IDX
+1 constant FS-WALK-CAP-CELL
+2 constant FS-WALK-DEPTH-CELL
+3 constant FS-WALK-HANDLE-CELLS
+FS-WALK-HANDLE-CELLS cells constant FS-WALK-HANDLE-BYTES
+8 constant FS-WALK-FRAMES0
+0 constant FS-FRAME-BASE-CELL
+1 constant FS-FRAME-FD-CELL
+2 constant FS-FRAME-N-CELL
+3 constant FS-FRAME-OFF-CELL
+4 constant FS-FRAME-REC-CELL
+5 constant FS-FRAME-PATH-U-CELL
+6 cells constant FS-FRAME-PATH-OFF
+FS-PATH-CAP 1 cells + 1 - 1 cells / cells constant FS-FRAME-PATH-BYTES
+FS-FRAME-PATH-OFF FS-FRAME-PATH-BYTES + constant FS-FRAME-DIR-OFF
+FS-FRAME-DIR-OFF FS-DIR-CAP + constant FS-FRAME-BYTES
 
 : FS-FALSE ( -- bool )
    0 0= 0= ;
@@ -246,84 +235,69 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    a 6 FS-BYTE@ FS-BYTE-BITS-6 lshift or
    a 7 FS-BYTE@ FS-BYTE-BITS-7 lshift or ;
 
-: FS-CHECK-DEPTH ( n -- ) {: d :}
-   d 0 < if FS-CAUSE-CLEAR E-FS-DEPTH throw then
-   d FS-MAX-DEPTH >= if FS-CAUSE-CLEAR E-FS-DEPTH throw then ;
+\ ---- the handle --------------------------------------------------------------
+: FS-WALK-FRAMES ( ptr n -- ptr ptr u8 )
+   FS-WALK-FRAMES-IDX ptr-field ;
 
-\ ---- the context's scalar cells ----------------------------------------------
-: FS-WALK-DEPTH@ ( ptr u8 -- n )
-   CELL-VIEW FS-WALK-DEPTH-CELL cells + @ ;
+: FS-WALK-CAP ( ptr n -- ptr n )
+   FS-WALK-CAP-CELL cells + ;
 
-: FS-WALK-DEPTH! ( n ptr u8 -- )
-   CELL-VIEW FS-WALK-DEPTH-CELL cells + ! ;
+: FS-WALK-DEPTH@ ( ptr n -- n )
+   FS-WALK-DEPTH-CELL cells + @ ;
 
-: FS-WALK-ACTIVE@ ( ptr u8 -- n )
-   CELL-VIEW FS-WALK-ACTIVE-CELL cells + @ ;
+: FS-WALK-DEPTH! ( n ptr n -- )
+   FS-WALK-DEPTH-CELL cells + ! ;
 
-: FS-WALK-ACTIVE! ( n ptr u8 -- )
-   CELL-VIEW FS-WALK-ACTIVE-CELL cells + ! ;
+\ ---- the frames --------------------------------------------------------------
+: FS-WALK-SPAN ( ptr n -- SPAN:span<u8> ) {: ctx:ptr :}
+   ctx FS-WALK-FRAMES @ ctx FS-WALK-CAP @ FS-FRAME-BYTES * SPAN:MAKE ;
 
-: FS-CHILD-U@ ( ptr u8 -- n )
-   CELL-VIEW FS-WALK-CHILD-U-CELL cells + @ ;
+: FS-FRAME ( ptr n n -- SPAN:span<u8> ) {: ctx:ptr d :}
+   ctx FS-WALK-SPAN d FS-FRAME-BYTES * FS-FRAME-BYTES SPAN:SUB ;
 
-: FS-CHILD-U! ( n ptr u8 -- )
-   CELL-VIEW FS-WALK-CHILD-U-CELL cells + ! ;
+: FS-FRAME-CELL ( ptr n n n -- ptr n ) {: ctx:ptr d k :}
+   ctx d FS-FRAME SPAN:$ drop CELL-VIEW k cells + ;
 
-\ ---- the five per-depth stacks ------------------------------------------------
-\ FS-CHECK-DEPTH is what keeps a stack index inside the context: the deepest
-\ cell of the last stack is the one before FS-WALK-PATHS-OFF.
-: FS-WALK-STACK ( ptr u8 n n -- ptr n ) {: ctx:ptr base d :}
-   d FS-CHECK-DEPTH
-   ctx CELL-VIEW base d + cells + ;
+: FS-CUR-CELL ( ptr n n -- ptr n ) {: ctx:ptr k :}
+   ctx ctx FS-WALK-DEPTH@ k FS-FRAME-CELL ;
 
-\ A slot is a narrowing of the context's whole path (or dirent) region, so the
-\ depth arithmetic is bounded by the region itself (E-SPAN-RANGE) and not only
-\ by FS-CHECK-DEPTH.
-: FS-CTX-PATHS ( ptr u8 -- SPAN:span<u8> )
-   FS-WALK-PATHS-OFF ZPTR+ FS-WALK-PATHS-BYTES SPAN:MAKE ;
+: FS-PATH-SLOT ( ptr n n -- SPAN:span<u8> )
+   FS-FRAME FS-FRAME-PATH-OFF FS-PATH-CAP SPAN:SUB ;
 
-: FS-CTX-DIRS ( ptr u8 -- SPAN:span<u8> )
-   FS-WALK-DIRS-OFF ZPTR+ FS-WALK-DIRS-BYTES SPAN:MAKE ;
+: FS-PATH-U ( ptr n n -- ptr n )
+   FS-FRAME-PATH-U-CELL FS-FRAME-CELL ;
 
-: FS-PATH-SLOT ( ptr u8 n -- SPAN:span<u8> ) {: ctx:ptr d :}
-   d FS-CHECK-DEPTH
-   ctx FS-CTX-PATHS d FS-PATH-CAP * FS-PATH-CAP SPAN:SUB ;
+: FS-CUR-PATH$ ( ptr n -- ptr u8 n ) {: ctx:ptr :}
+   ctx FS-WALK-DEPTH@ {: d :}
+   ctx d FS-PATH-SLOT ctx d FS-PATH-U @ SPAN:TAKE SPAN:$ ;
 
-: FS-DIR-SLOT ( ptr u8 n -- SPAN:span<u8> ) {: ctx:ptr d :}
-   d FS-CHECK-DEPTH
-   ctx FS-CTX-DIRS d FS-DIR-CAP * FS-DIR-CAP SPAN:SUB ;
+: FS-CUR-DIR ( ptr n -- SPAN:span<u8> ) {: ctx:ptr :}
+   ctx ctx FS-WALK-DEPTH@ FS-FRAME FS-FRAME-DIR-OFF FS-DIR-CAP SPAN:SUB ;
 
-: FS-CUR-PATH ( ptr u8 -- SPAN:span<u8> ) {: ctx:ptr :}
-   ctx ctx FS-WALK-DEPTH@ FS-PATH-SLOT ;
+: FS-BASE@ ( ptr n -- ptr n )
+   FS-FRAME-BASE-CELL FS-CUR-CELL ;
 
-: FS-NEXT-PATH ( ptr u8 -- SPAN:span<u8> ) {: ctx:ptr :}
-   ctx ctx FS-WALK-DEPTH@ 1 + FS-PATH-SLOT ;
+: FS-FD-PTR ( ptr n n -- ptr n )
+   FS-FRAME-FD-CELL FS-FRAME-CELL ;
 
-: FS-CUR-DIR ( ptr u8 -- SPAN:span<u8> ) {: ctx:ptr :}
-   ctx ctx FS-WALK-DEPTH@ FS-DIR-SLOT ;
-
-: FS-BASE@ ( ptr u8 -- ptr n ) {: ctx:ptr :}
-   ctx FS-WALK-BASES-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK ;
-
-: FS-FD-PTR ( ptr u8 n -- ptr n ) {: ctx:ptr d :}
-   ctx FS-WALK-FDS-CELL d FS-WALK-STACK ;
-
-: FS-FD@ ( ptr u8 -- n ) {: ctx:ptr :}
+: FS-FD@ ( ptr n -- n ) {: ctx:ptr :}
    ctx ctx FS-WALK-DEPTH@ FS-FD-PTR @ ;
 
-: FS-FD! ( n ptr u8 -- ) {: fd ctx:ptr :}
+: FS-FD! ( n ptr n -- ) {: fd ctx:ptr :}
    fd ctx ctx FS-WALK-DEPTH@ FS-FD-PTR ! ;
 
-: FS-FD-CLEAR-AT ( ptr u8 n -- ) {: ctx:ptr d :}
+: FS-FD-CLEAR-AT ( ptr n n -- ) {: ctx:ptr d :}
    -1 ctx d FS-FD-PTR ! ;
 
-: FS-FDS-RESET ( ptr u8 -- ) {: ctx:ptr :}
-   0 begin dup FS-MAX-DEPTH < while
+\ A fresh mapping is zeroed, and zero is a descriptor: every frame a mapping
+\ adds is marked closed before the walk's depth can reach it.
+: FS-FDS-CLEAR ( ptr n n n -- ) {: ctx:ptr from to :}
+   from begin dup to < while
       ctx over FS-FD-CLEAR-AT
       1+
    repeat drop ;
 
-: FS-CLOSE-FD-AT ( ptr u8 n -- ) {: ctx:ptr d :}
+: FS-CLOSE-FD-AT ( ptr n n -- ) {: ctx:ptr d :}
    ctx d FS-FD-PTR @ dup 0 >= if
       close ctx d FS-FD-CLEAR-AT
    else
@@ -331,35 +305,60 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    then ;
 
 \ Every descriptor this context still holds, from the depth it stopped at back
-\ to the root. This is the one cleanup site: FS-WALK-FINISH runs it whether the
+\ to the root. This is the one cleanup site: FS-WALK-UNMAP runs it whether the
 \ walk ended or threw, so no error path of its own has to close anything.
-: FS-CLOSE-WALK ( ptr u8 -- ) {: ctx:ptr :}
+: FS-CLOSE-WALK ( ptr n -- ) {: ctx:ptr :}
    ctx FS-WALK-DEPTH@ begin dup 0 >= while
       ctx over FS-CLOSE-FD-AT
       1-
    repeat drop ;
 
-: FS-WALK-FINISH ( ptr u8 -- ) {: ctx:ptr :}
+: FS-N@ ( ptr n -- n )
+   FS-FRAME-N-CELL FS-CUR-CELL @ ;
+
+: FS-N! ( n ptr n -- )
+   FS-FRAME-N-CELL FS-CUR-CELL ! ;
+
+: FS-OFF@ ( ptr n -- n )
+   FS-FRAME-OFF-CELL FS-CUR-CELL @ ;
+
+: FS-OFF! ( n ptr n -- )
+   FS-FRAME-OFF-CELL FS-CUR-CELL ! ;
+
+: FS-REC@ ( ptr n -- n )
+   FS-FRAME-REC-CELL FS-CUR-CELL @ ;
+
+: FS-REC! ( n ptr n -- )
+   FS-FRAME-REC-CELL FS-CUR-CELL ! ;
+
+\ The frames a walk starts on, depth 0, every descriptor closed. Nothing else
+\ is allocated yet, so a refused mapping leaves nothing to release.
+: FS-WALK-MAP ( ptr n -- ) {: ctx:ptr :}
+   FS-WALK-FRAMES0 FS-FRAME-BYTES * MEM-ALLOC-BYTES drop ctx FS-WALK-FRAMES !
+   FS-WALK-FRAMES0 ctx FS-WALK-CAP !
+   0 ctx FS-WALK-DEPTH!
+   ctx 0 FS-WALK-FRAMES0 FS-FDS-CLEAR ;
+
+: FS-WALK-UNMAP ( ptr n -- ) {: ctx:ptr :}
    ctx FS-CLOSE-WALK
-   0 ctx FS-WALK-ACTIVE! ;
+   ctx FS-WALK-SPAN MEM:FREE-SPAN ;
 
-: FS-N@ ( ptr u8 -- n ) {: ctx:ptr :}
-   ctx FS-WALK-NS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK @ ;
-
-: FS-N! ( n ptr u8 -- ) {: n ctx:ptr :}
-   n ctx FS-WALK-NS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK ! ;
-
-: FS-OFF@ ( ptr u8 -- n ) {: ctx:ptr :}
-   ctx FS-WALK-OFFS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK @ ;
-
-: FS-OFF! ( n ptr u8 -- ) {: off ctx:ptr :}
-   off ctx FS-WALK-OFFS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK ! ;
-
-: FS-REC@ ( ptr u8 -- n ) {: ctx:ptr :}
-   ctx FS-WALK-RECS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK @ ;
-
-: FS-REC! ( n ptr u8 -- ) {: rec ctx:ptr :}
-   rec ctx FS-WALK-RECS-CELL ctx FS-WALK-DEPTH@ FS-WALK-STACK ! ;
+\ Make frame d exist before a descent writes it; a descent asks for one frame
+\ past the deepest, so doubling always suffices. The handle names the new
+\ mapping first and its new frames are closed before the depth reaches them; a
+\ refused mapping leaves the walk on its old frames, where FS-CLOSE-WALK still
+\ finds every descriptor.
+: FS-ENSURE-DEPTH ( ptr n n -- ) {: ctx:ptr d :}
+   ctx FS-WALK-CAP @ {: cap :}
+   d cap < if exit then
+   cap 2 * {: grown :}
+   grown FS-FRAME-BYTES * MEM-ALLOC-BYTES SPAN:MAKE {: fresh :}
+   ctx FS-WALK-SPAN {: old :}
+   old SPAN:$ fresh SPAN:COPY
+   fresh SPAN:$ drop ctx FS-WALK-FRAMES !
+   grown ctx FS-WALK-CAP !
+   ctx cap grown FS-FDS-CLEAR
+   old MEM:FREE-SPAN ;
 
 : FS-CHECK-JOIN-CAP ( n -- )
    dup FS-PATH-CAP > if FS-CAUSE-CLEAR E-FS-CAPACITY throw then drop ;
@@ -735,7 +734,7 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 
 \ The dirent decoders below are shared with src/lib/fs-list.f, which lists one
 \ directory with no walk context at all, so a malformed record throws plainly
-\ here: closing descriptors belongs to whoever opened them (FS-WALK-FINISH in
+\ here: closing descriptors belongs to whoever opened them (FS-WALK-UNMAP in
 \ this file, CLOSE in fs-list.f).
 : FS-LINUX-DIRENT-NAMELEN-SCAN ( ptr u8 n -- n ) {: ent:ptr rec :}
    0 begin dup FS-LINUX-DIRENT-NAME-OFF + rec < while
@@ -758,14 +757,14 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 : FS-DIRENT-NAME-END ( ptr u8 -- n ) {: ent:ptr :}
    FS-DIRENT-NAME-OFFSET ent FS-DIRENT-NAMELEN + ;
 
-: FS-CHECK-RECORD ( ptr u8 ptr u8 -- ) {: ctx:ptr ent:ptr :}
+: FS-CHECK-RECORD ( ptr n ptr u8 -- ) {: ctx:ptr ent:ptr :}
    ctx FS-REC@ 0 <= if FS-CAUSE-CLEAR E-FS-DIR throw then
    ctx FS-OFF@ ctx FS-REC@ + ctx FS-N@ > if FS-CAUSE-CLEAR E-FS-DIR throw then
    ent FS-DIRENT-NAME-END ctx FS-REC@ > if
       FS-CAUSE-CLEAR E-FS-DIR throw
    then ;
 
-: FS-READ-DIR ( ptr u8 -- bool ) {: ctx:ptr :}
+: FS-READ-DIR ( ptr n -- bool ) {: ctx:ptr :}
    ctx FS-FD@ ctx FS-CUR-DIR SPAN:$ ctx FS-BASE@ getdirentries64
    dup 0 < if drop E-FS-DIR throw then
    dup ctx FS-N! 0 > ;
@@ -773,10 +772,11 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 \ The root goes into the depth-0 walk slot, whose reach the span carries, so the
 \ hand-written FS-PATH-CAP check is gone: a root too long for the slot is
 \ refused by the copy itself (E-SPAN-CAPACITY).
-: FS-WALK-ROOT! ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
+: FS-WALK-ROOT! ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    FS-CAUSE-CLEAR
    u 0 < if E-FS-PATH throw then
-   a u ctx FS-CUR-PATH SPAN:COPY ;
+   a u ctx 0 FS-PATH-SLOT SPAN:COPY
+   u ctx 0 FS-PATH-U ! ;
 
 : FS-WALK-JOIN-LEN ( ptr u8 n n -- n ) {: pa:ptr pu nu :}
    pu 0 < if FS-CAUSE-CLEAR E-FS-PATH throw then
@@ -786,22 +786,18 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 : FS-CHECK-WALK-JOIN-CAP ( ptr u8 n n -- )
    FS-WALK-JOIN-LEN FS-PATH-CAP > if FS-CAUSE-CLEAR E-FS-CAPACITY throw then ;
 
-: FS-CHECK-WALK-DESCEND ( ptr u8 -- ) {: ctx:ptr :}
-   ctx FS-WALK-DEPTH@ 1 + FS-MAX-DEPTH >= if FS-CAUSE-CLEAR E-FS-DEPTH throw then ;
-
-: FS-OPEN-WALK-DIR ( ptr u8 ptr u8 n -- ) {: ctx:ptr a:ptr u :}
-   ctx FS-CHECK-WALK-DESCEND
+: FS-OPEN-WALK-DIR ( ptr n ptr u8 n -- ) {: ctx:ptr a:ptr u :}
    a u FS-OPEN-DIR ctx FS-FD!
    0 ctx FS-BASE@ ! ;
 
-: FS-CLOSE-CUR-DIR ( ptr u8 -- ) {: ctx:ptr :}
+: FS-CLOSE-CUR-DIR ( ptr n -- ) {: ctx:ptr :}
    ctx FS-FD@ close
    -1 ctx FS-FD! ;
 
-: FS-DIR-BLOCK-BEGIN ( ptr u8 -- )
+: FS-DIR-BLOCK-BEGIN ( ptr n -- )
    0 swap FS-OFF! ;
 
-: FS-DIR-MORE? ( ptr u8 -- bool ) {: ctx:ptr :}
+: FS-DIR-MORE? ( ptr n -- bool ) {: ctx:ptr :}
    ctx FS-OFF@ ctx FS-N@ < ;
 
 \ The block offset is a running sum of kernel-supplied record lengths, so the
@@ -809,31 +805,41 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 \ with E-SPAN-RANGE instead of naming memory beyond the buffer. The cursor is
 \ the ANSWER and not a cell of the context: an address never lands in raw
 \ storage, and the block loop holds it only until it takes the name.
-: FS-LOAD-ENTRY ( ptr u8 -- ptr u8 ) {: ctx:ptr :}
-   ctx FS-CUR-DIR ctx FS-OFF@ SPAN:AT {: ent:ptr :}
+: FS-CUR-ENTRY ( ptr n -- ptr u8 ) {: ctx:ptr :}
+   ctx FS-CUR-DIR ctx FS-OFF@ SPAN:AT ;
+
+: FS-LOAD-ENTRY ( ptr n -- ptr u8 ) {: ctx:ptr :}
+   ctx FS-CUR-ENTRY {: ent:ptr :}
    ent FS-DIRENT-RECLEN ctx FS-REC!
    ctx ent FS-CHECK-RECORD
    ent ;
 
-: FS-ADVANCE-ENTRY ( ptr u8 -- ) {: ctx:ptr :}
+: FS-ADVANCE-ENTRY ( ptr n -- ) {: ctx:ptr :}
    ctx FS-OFF@ ctx FS-REC@ + ctx FS-OFF! ;
 
-\ The child name comes first because the block loop already holds it; the
-\ context comes back on top so the recursive call reads ( ctx path ).
-: FS-DESCEND-PATH ( ptr u8 n ptr u8 ptr u8 n -- ptr u8 ptr u8 n )
-   {: na:ptr nu ctx:ptr pa:ptr pu :}
+\ The child frame exists before anything is read, because making it may move
+\ the frames: the parent path and the entry name come from the frames as they
+\ stand after FS-ENSURE-DEPTH. The context comes back under the child path so
+\ the recursive call reads ( ctx path ).
+: FS-DESCEND-PATH ( ptr n -- ptr n ptr u8 n ) {: ctx:ptr :}
+   ctx FS-WALK-DEPTH@ 1 + {: d :}
+   ctx d FS-ENSURE-DEPTH
+   ctx FS-CUR-PATH$ {: pa:ptr pu :}
+   ctx FS-CUR-ENTRY FS-DIRENT-NAME {: na:ptr nu :}
    pa pu nu FS-CHECK-WALK-JOIN-CAP
-   pa pu na nu ctx FS-NEXT-PATH JOIN-PATH-INTO ctx FS-CHILD-U!
-   ctx FS-WALK-DEPTH@ 1 + ctx FS-WALK-DEPTH!
-   ctx  ctx FS-CUR-PATH ctx FS-CHILD-U@ SPAN:TAKE SPAN:$ ;
+   pa pu na nu ctx d FS-PATH-SLOT JOIN-PATH-INTO ctx d FS-PATH-U !
+   d ctx FS-WALK-DEPTH!
+   ctx ctx FS-CUR-PATH$ ;
 
-: FS-ASCEND-PATH ( ptr u8 -- ) {: ctx:ptr :}
+: FS-ASCEND-PATH ( ptr n -- ) {: ctx:ptr :}
    ctx FS-WALK-DEPTH@ 1 - ctx FS-WALK-DEPTH! ;
 
 \ The callback is executed straight off the stack: it needs no cell, and its
-\ throw needs no catch here because FS-WALK-FINISH closes this context's
-\ descriptors for every way out of FS-WALK-RUN.
-: FS-WALK-PATH ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
+\ throw needs no catch here because FS-WALK-UNMAP closes this context's
+\ descriptors for every way out of FS-WALK-RUN. The path `a u` lies in the
+\ frames, which a descent may move, so it is read only before the first one;
+\ the loop carries nothing but the handle across its recursion.
+: FS-WALK-PATH ( ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
    {: ctx:ptr a:ptr u allow q :}
    a u FS-SKIP-DIR? if exit then
    a u allow execute 0= if exit then
@@ -843,10 +849,8 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
    begin ctx FS-READ-DIR while
       ctx FS-DIR-BLOCK-BEGIN
       begin ctx FS-DIR-MORE? while
-         ctx FS-LOAD-ENTRY FS-DIRENT-NAME 2dup FS-SKIP-ENTRY? if
-            2drop
-         else
-            ctx a u FS-DESCEND-PATH allow q recurse
+         ctx FS-LOAD-ENTRY FS-DIRENT-NAME FS-SKIP-ENTRY? 0= if
+            ctx FS-DESCEND-PATH allow q recurse
             ctx FS-ASCEND-PATH
          then
          ctx FS-ADVANCE-ENTRY
@@ -857,29 +861,25 @@ FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
 \ A quotation-typed LOCAL cannot be caught - `{: a u q :} a u q catch` is
 \ "non-certified definition ... at 'catch'" - so the walk travels on the stack
 \ into this preserving word and the literal quotation below catches THAT.
-: FS-WALK-RUN ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] )
+: FS-WALK-RUN ( ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- ptr n ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] )
    {: ctx:ptr a:ptr u allow q :}
-   ctx a u allow q FS-WALK-PATH
+   ctx a u FS-WALK-ROOT!
+   ctx ctx FS-CUR-PATH$ allow q FS-WALK-PATH
    ctx a u allow q ;
 
-: WALK-FILES-IF-IN ( ptr u8 ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
-   {: ctx:ptr a:ptr u allow q :}
-   ctx FS-WALK-ACTIVE@ 0<> if FS-CAUSE-CLEAR E-FS-WALK-ACTIVE throw then
-   ctx FS-FDS-RESET
-   0 ctx FS-WALK-DEPTH!
-   ctx a u FS-WALK-ROOT!
-   1 ctx FS-WALK-ACTIVE!
-   ctx  ctx FS-CUR-PATH u SPAN:TAKE SPAN:$  allow q  [: FS-WALK-RUN ;] catch {: code:n :}
+\ The WITH-BYTES body: the handle is that scope's bytes, so WITH-BYTES frees it
+\ however the walk ends, and the frames are mapped and released here, around
+\ the one catch.
+: FS-WALK-SCOPE ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] ptr u8 NUM:alloc-byte-len -- )
+   drop CELL-VIEW {: a:ptr u allow q ctx:ptr :}
+   ctx FS-WALK-MAP
+   ctx a u allow q [: FS-WALK-RUN ;] catch {: code:n :}
    drop drop 2drop drop
-   ctx FS-WALK-FINISH
+   ctx FS-WALK-UNMAP
    code 0<> if code throw then ;
 
-: WALK-FILES-IN ( ptr u8 ptr u8 n [ ptr u8 n -- ] -- ) {: ctx:ptr a:ptr u q :}
-   ctx a u [: 2drop true ;] q WALK-FILES-IF-IN ;
-
 : WALK-FILES-IF ( ptr u8 n [ ptr u8 n -- bool ] [ ptr u8 n -- ] -- )
-   {: a:ptr u allow q :}
-   FS-WALK-CTX0 a u allow q WALK-FILES-IF-IN ;
+   FS-WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: FS-WALK-SCOPE ;] MEM:WITH-BYTES ;
 
 : WALK-FILES ( ptr u8 n [ ptr u8 n -- ] -- ) {: a:ptr u q :}
-   FS-WALK-CTX0 a u q WALK-FILES-IN ;
+   a u [: 2drop true ;] q WALK-FILES-IF ;
