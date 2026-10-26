@@ -44,25 +44,6 @@ variable CMP-I
 variable PATH-FIRST
 variable PATH-U
 
-\ Ids, rows and path offsets enter the typed vectors as NUM roles; the refusal
-\ arms are unreachable for these nonnegative cells and surface the vector's own
-\ codes.
-: N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-: N>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
 \ Vector lengths bound raw loops and the sort, so a length leaves its role here.
 CAST: ITEM>N ( NUM:item-count -- n )
 
@@ -140,11 +121,11 @@ CAST: ITEM>N ( NUM:item-count -- n )
 
 : INDEX-INIT ( -- )
    INDEX-READY @ IF exit THEN
-   IDS 8 N>ITEM VEC:INIT
-   ROW-IDS 8 N>ITEM VEC:INIT
-   ROW-PATH-OFFSETS 8 N>ITEM VEC:INIT
-   ROW-PATH-LENGTHS 8 N>ITEM VEC:INIT
-   ROW-ORDER 8 N>ITEM VEC:INIT
+   IDS 8 VEC:N>ITEM VEC:INIT
+   ROW-IDS 8 VEC:N>ITEM VEC:INIT
+   ROW-PATH-OFFSETS 8 VEC:N>ITEM VEC:INIT
+   ROW-PATH-LENGTHS 8 VEC:N>ITEM VEC:INIT
+   ROW-ORDER 8 VEC:N>ITEM VEC:INIT
    1 INDEX-READY ! ;
 
 : INDEX-RESET ( -- )
@@ -188,7 +169,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
    left INTERN$ right INTERN$ TEXT< ;
 
 : ROW-PATH$ ( n -- ptr u8 n )
-   N>INDEX dup ROW-PATH-OFFSETS swap VEC:@ PATH-BUF +
+   VEC:N>INDEX dup ROW-PATH-OFFSETS swap VEC:@ PATH-BUF +
    swap ROW-PATH-LENGTHS swap VEC:@ ;
 
 : ROW-BEFORE? ( n n -- bool ) {: left:n right:n :}
@@ -203,11 +184,11 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : ID-COUNT ( n -- n ) {: id:n :}
    0
    ROW-IDS VEC:LEN@ ITEM>N 0 ?do
-      ROW-IDS i N>INDEX VEC:@ id = IF 1+ THEN
+      ROW-IDS i VEC:N>INDEX VEC:@ id = IF 1+ THEN
    loop ;
 
 : REPORT-PATH ( n n -- ) {: row:n id:n :}
-   ROW-IDS row N>INDEX VEC:@ id <> IF exit THEN
+   ROW-IDS row VEC:N>INDEX VEC:@ id <> IF exit THEN
    PATH-FIRST @ 0= IF s" , " OUT THEN
    row ROW-PATH$ OUT
    0 PATH-FIRST ! ;
@@ -219,7 +200,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
    s" : " OUT
    1 PATH-FIRST !
    ROW-ORDER VEC:LEN@ ITEM>N 0 ?do
-      ROW-ORDER i N>INDEX VEC:@ id REPORT-PATH
+      ROW-ORDER i VEC:N>INDEX VEC:@ id REPORT-PATH
    loop
    DDP-NL
    DDP-BAD+ ;
@@ -227,7 +208,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : REPORT-DUPLICATES ( -- )
    PREPARE-ORDER
    IDS VEC:LEN@ ITEM>N 0 ?do
-      IDS i N>INDEX VEC:@ REPORT-DUPLICATE
+      IDS i VEC:N>INDEX VEC:@ REPORT-DUPLICATE
    loop ;
 
 : DDP-FM-MARK? ( ptr u8 n -- bool )

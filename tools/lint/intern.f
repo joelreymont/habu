@@ -35,32 +35,7 @@ create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
 
-\ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
-\ The interner's parallel vectors store raw cells (string / chunk addresses,
-\ lengths, caps, used counts). The typed VEC surface (package VEC) reads a
-\ validated NUM role - a capacity is a `NUM:item-count`, an entry position
-\ is a `NUM:index` - so a count/index role swap at a VEC call is a checker
-\ reject. These lift a nonnegative cell to its role through the PUBLIC NUM
-\ validators (no laundering back to n, no reopened package); the refusal arms are
-\ unreachable invariants (a boot capacity and a bounds-checked id are nonnegative),
-\ an impossible negative surfaces the vector's own capacity / bounds code. This is
-\ the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept intern-local.
-: INTERN>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-: INTERN>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
+\ ---- VEC length -> raw count bridge ---------------------------------------
 \ The entry and chunk counts drive raw bounds and the id a new entry is stored
 \ under, so a vector length leaves its role here.
 CAST: ITEM>N ( NUM:item-count -- n )
@@ -70,11 +45,11 @@ CAST: ITEM>N ( NUM:item-count -- n )
 
 : INTERN-INIT-ONCE ( -- )
    INTERN-READY? IF exit THEN
-   0 INTERN-ADDR-V INTERN-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-LEN-V INTERN-VEC-CAP INTERN>ITEM VEC:INIT
-   0 INTERN-CHUNK-A-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-CHUNK-CAP-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
-   INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP INTERN>ITEM VEC:INIT
+   0 INTERN-ADDR-V INTERN-VEC-CAP VEC:N>ITEM VEC:INIT
+   INTERN-LEN-V INTERN-VEC-CAP VEC:N>ITEM VEC:INIT
+   0 INTERN-CHUNK-A-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
+   INTERN-CHUNK-CAP-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
+   INTERN-CHUNK-USED-V INTERN-CHUNK-VEC-CAP VEC:N>ITEM VEC:INIT
    1 INTERN-READY ! ;
 
 \ live interned count
@@ -87,16 +62,16 @@ CAST: ITEM>N ( NUM:item-count -- n )
    0 INTERN-CHUNK-A-V VEC:LEN@ ITEM>N ;
 
 : INTERN-CHUNK-A@ ( n -- ptr u8 )
-   0 INTERN-CHUNK-A-V swap INTERN>INDEX VEC:@ ;
+   0 INTERN-CHUNK-A-V swap VEC:N>INDEX VEC:@ ;
 
 : INTERN-CHUNK-CAP@ ( n -- n )
-   INTERN-CHUNK-CAP-V swap INTERN>INDEX VEC:@ ;
+   INTERN-CHUNK-CAP-V swap VEC:N>INDEX VEC:@ ;
 
 : INTERN-CHUNK-USED@ ( n -- n )
-   INTERN-CHUNK-USED-V swap INTERN>INDEX VEC:@ ;
+   INTERN-CHUNK-USED-V swap VEC:N>INDEX VEC:@ ;
 
 : INTERN-CHUNK-USED! ( n n -- ) {: used k :}
-   used INTERN-CHUNK-USED-V k INTERN>INDEX VEC:! ;
+   used INTERN-CHUNK-USED-V k VEC:N>INDEX VEC:! ;
 
 : INTERN-RESET-CHUNKS ( -- )
    0 begin dup INTERN-CHUNK# < while
@@ -117,8 +92,8 @@ public
    INTERN-INIT-ONCE
    id 0 < IF E-LINT-INTERN-CAP throw THEN
    id INTERN# >= IF E-LINT-INTERN-CAP throw THEN
-   0 INTERN-ADDR-V id INTERN>INDEX VEC:@
-   INTERN-LEN-V id INTERN>INDEX VEC:@ ;
+   0 INTERN-ADDR-V id VEC:N>INDEX VEC:@
+   INTERN-LEN-V id VEC:N>INDEX VEC:@ ;
 
 : INTERN-FIND ( ptr u8 n -- n ) {: a:ptr u :}
    INTERN-INIT-ONCE

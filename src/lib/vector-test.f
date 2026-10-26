@@ -26,38 +26,19 @@ create VECT-REL-VEC VEC:HEADER-CELLS cells allot   \ dedicated header for releas
 \ INDEX>N stay VEC-private.)
 CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
 
-\ role builders from a raw cell (the refusal arms are unreachable for the test
-\ inputs; an unexpected refusal throws the vector's own invariant code).
-: VECT-N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-: VECT-N>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-
 : VECT-TLEN ( ptr a -- n )  VEC:LEN@ VECT-IC>RAW ;   \ typed length as raw n
 : VECT-TCAP ( ptr a -- n )  VEC:CAP@ VECT-IC>RAW ;   \ typed capacity as raw n
-: VECT-TAT  ( ptr a n -- a ) VECT-N>INDEX VEC:@ ;              \ typed fetch at a raw index
-: VECT-TPUT ( a ptr a n -- ) VECT-N>INDEX VEC:! ;              \ typed store at a raw index
+: VECT-TAT  ( ptr a n -- a ) VEC:N>INDEX VEC:@ ;              \ typed fetch at a raw index
+: VECT-TPUT ( a ptr a n -- ) VEC:N>INDEX VEC:! ;              \ typed store at a raw index
 
 \ dispose-then-init the shared typed header at raw cap n: re-init of a live header
 \ now rejects, so each test opens from a disposed header.
-: VECT-T-FRESH ( n -- )  VECT-VEC VEC:DISPOSE  VECT-VEC swap VECT-N>ITEM VEC:INIT ;
+: VECT-T-FRESH ( n -- )  VECT-VEC VEC:DISPOSE  VECT-VEC swap VEC:N>ITEM VEC:INIT ;
 
 \ the same for the release/dispose lifecycle header
 : VECT-REL-INIT ( n -- )
    VECT-REL-VEC VEC:DISPOSE
-   VECT-REL-VEC swap VECT-N>ITEM VEC:INIT ;
+   VECT-REL-VEC swap VEC:N>ITEM VEC:INIT ;
 
 : VECT-T-INIT ( -- )                                    \ zero length valid, capacity honoured
    2 VECT-T-FRESH
@@ -91,7 +72,7 @@ CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
 : VECT-T-RESIZE ( -- )                                  \ resize grows capacity, preserves cells
    2 VECT-T-FRESH
    41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
-   VECT-VEC 5 VECT-N>ITEM VEC:RESIZE
+   VECT-VEC 5 VEC:N>ITEM VEC:RESIZE
    VECT-VEC VECT-TLEN 2 T=
    VECT-VEC VECT-TCAP 5 T=
    VECT-VEC 0 VECT-TAT 41 T=
@@ -99,11 +80,11 @@ CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
 
 : VECT-T-ENSURE ( -- )                                  \ ensure is a no-op below cap, grows above
    4 VECT-T-FRESH
-   VECT-VEC 3 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 4 T=  \ need <= cap: no reallocation
-   VECT-VEC 9 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
+   VECT-VEC 3 VEC:N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 4 T=  \ need <= cap: no reallocation
+   VECT-VEC 9 VEC:N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
 
 : VECT-T-POINTER ( -- )                                 \ a vector of pointers keeps its element type
-   0 VECT-PTR-VEC VEC:DISPOSE  0 VECT-PTR-VEC 1 VECT-N>ITEM VEC:INIT
+   0 VECT-PTR-VEC VEC:DISPOSE  0 VECT-PTR-VEC 1 VEC:N>ITEM VEC:INIT
    s" alpha" drop 0 VECT-PTR-VEC VEC:PUSH NUM:ORDINAL 0 T=
    0 VECT-PTR-VEC 0 VECT-TAT 5 s" alpha" T$=
    s" beta" drop 0 VECT-PTR-VEC 0 VECT-TPUT
@@ -124,7 +105,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
 \ Large fill stays within the suite budget only while slot access is O(1);
 \ an O(index) cell-address regression makes this fill take minutes.
 : VECT-T-BIG-FILL ( -- )
-   VECT-BIG-VEC 2 VECT-N>ITEM VEC:INIT
+   VECT-BIG-VEC 2 VEC:N>ITEM VEC:INIT
    VECT-BIG-N 0 ?do i VECT-BIG-VEC VEC:PUSH drop loop
    VECT-BIG-VEC VECT-TLEN VECT-BIG-N T=
    VECT-BIG-VEC 0 VECT-TAT 0 T=
@@ -147,36 +128,36 @@ variable VECT-TSUM   variable VECT-TIXSUM
 : VECT-T-LEN-SET ( -- )                                 \ LEN! truncates, grows within capacity, empties
    4 VECT-T-FRESH
    11 VECT-VEC VEC:PUSH drop  22 VECT-VEC VEC:PUSH drop  33 VECT-VEC VEC:PUSH drop
-   3 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ same length: no change
+   3 VEC:N>ITEM VECT-VEC VEC:LEN!                        \ same length: no change
    VECT-VEC VECT-TLEN 3 T=
    VECT-VEC 2 VECT-TAT 33 T=
-   1 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ truncate to the first cell
+   1 VEC:N>ITEM VECT-VEC VEC:LEN!                        \ truncate to the first cell
    VECT-VEC VECT-TLEN 1 T=
    VECT-VEC VECT-TCAP 4 T=
    VECT-VEC 0 VECT-TAT 11 T=
    [: VECT-VEC 1 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ  \ the dropped cells are out of range
    44 VECT-VEC VEC:PUSH NUM:ORDINAL 1 T=
-   4 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ grow within capacity
+   4 VEC:N>ITEM VECT-VEC VEC:LEN!                        \ grow within capacity
    VECT-VEC VECT-TLEN 4 T=
    VECT-VEC 1 VECT-TAT 44 T=
-   0 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ empty
+   0 VEC:N>ITEM VECT-VEC VEC:LEN!                        \ empty
    VECT-VEC VECT-TLEN 0 T=
    [: VECT-VEC 0 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ ;
 
 : VECT-T-LEN-HIGH ( -- )                                \ a length above capacity rejects
    2 VECT-T-FRESH
-   3 VECT-N>ITEM VECT-VEC VEC:LEN! ;
+   3 VEC:N>ITEM VECT-VEC VEC:LEN! ;
 
 : VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;               \ zero capacity allocation
 : VECT-T-CAP-OVER ( -- )   MEM-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
 : VECT-T-ENSURE-HIGH ( -- )                               \ a need above the cell ceiling
-   2 VECT-T-FRESH  VECT-VEC MEM-MAX-CELLS 1 + VECT-N>ITEM VEC:ENSURE ;
+   2 VECT-T-FRESH  VECT-VEC MEM-MAX-CELLS 1 + VEC:N>ITEM VEC:ENSURE ;
 : VECT-T-RESIZE-ZERO ( -- )
-   2 VECT-T-FRESH  VECT-VEC 0 VECT-N>ITEM VEC:RESIZE ;        \ resize to zero capacity
+   2 VECT-T-FRESH  VECT-VEC 0 VEC:N>ITEM VEC:RESIZE ;        \ resize to zero capacity
 : VECT-T-RESIZE-SHRINK ( -- )
    2 VECT-T-FRESH
    41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
-   VECT-VEC 1 VECT-N>ITEM VEC:RESIZE ;                                     \ cap below active length
+   VECT-VEC 1 VEC:N>ITEM VEC:RESIZE ;                                     \ cap below active length
 : VECT-T-GET-HIGH ( -- )
    2 VECT-T-FRESH  1 VECT-VEC VEC:PUSH drop
    VECT-VEC 1 VECT-TAT drop ;                                             \ index at length rejects
@@ -192,7 +173,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
 : VECT-T-RESIZE-RELEASES ( -- )                        \ resize frees the prior mapping
    2 VECT-REL-INIT
    VECT-REL-VEC VEC:DATA@ {: old:ptr :}
-   VECT-REL-VEC 4 VECT-N>ITEM VEC:RESIZE               \ prior 2-cell mapping released after copy/install
+   VECT-REL-VEC 4 VEC:N>ITEM VEC:RESIZE               \ prior 2-cell mapping released after copy/install
    2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}             \ a fresh same-size mapping refills the freed hole
    reuse old = TTRUE ;
 
@@ -223,7 +204,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-REL-VEC VEC:DATA@ {: base:ptr :}
    VECT-REL-VEC VEC:DISPOSE
    8 0 ?do
-      VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
+      VECT-REL-VEC 2 VEC:N>ITEM VEC:INIT
       VECT-REL-VEC VEC:DATA@ base = TTRUE               \ every cycle refills the same freed hole
       VECT-REL-VEC VEC:DISPOSE
    loop ;
@@ -232,7 +213,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
    2 VECT-REL-INIT
    41 VECT-REL-VEC VEC:PUSH drop  42 VECT-REL-VEC VEC:PUSH drop
    VECT-REL-VEC VEC:DATA@ {: before:ptr :}
-   [: VECT-REL-VEC MEM-MAX-CELLS VECT-N>ITEM VEC:RESIZE ;] E-MEM-MAP TTHROWSQ  \ mmap of the whole space fails
+   [: VECT-REL-VEC MEM-MAX-CELLS VEC:N>ITEM VEC:RESIZE ;] E-MEM-MAP TTHROWSQ  \ mmap of the whole space fails
    VECT-REL-VEC VEC:DATA@ before = TTRUE                \ mapping not swapped out
    VECT-REL-VEC VECT-TLEN 2 T=
    VECT-REL-VEC VECT-TCAP 2 T=
@@ -247,10 +228,10 @@ variable VECT-TSUM   variable VECT-TIXSUM
    9 VECT-REL-VEC VEC:PUSH drop ;
 : VECT-T-DISPOSE-USE-RESIZE ( -- )                     \ resize after dispose rejects
    2 VECT-REL-INIT  VECT-REL-VEC VEC:DISPOSE
-   VECT-REL-VEC 5 VECT-N>ITEM VEC:RESIZE ;
+   VECT-REL-VEC 5 VEC:N>ITEM VEC:RESIZE ;
 : VECT-T-INIT-LIVE-REJECTS ( -- )                      \ re-init of a live header rejects
    2 VECT-REL-INIT                                     \ header now owns a live mapping
-   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
+   VECT-REL-VEC 2 VEC:N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
 
 : VECT-RUN ( -- )
    T-RESET
@@ -275,6 +256,8 @@ variable VECT-TSUM   variable VECT-TIXSUM
    [: VECT-T-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-SET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-LEN-HIGH ;] E-VEC-BOUNDS TTHROWSQ
+   [: -1 VEC:N>ITEM drop ;] E-VEC-CAPACITY TTHROWSQ    \ a negative count rejects
+   [: -1 VEC:N>INDEX drop ;] E-VEC-BOUNDS TTHROWSQ     \ a negative index rejects
    \ ---- release / dispose lifecycle -------------------------------------------
    VECT-T-RESIZE-RELEASES
    VECT-T-DISPOSE-RELEASES

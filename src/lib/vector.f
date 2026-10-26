@@ -176,24 +176,10 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 CAST: ITEM-COUNT>N ( NUM:item-count -- n )
 CAST: INDEX>N ( NUM:index -- n )
 
-\ ---- ok-extractors: the read/derived cell is provably nonnegative, so the -------
+\ ---- ok-extractor: the derived cell is provably nonnegative, so the -------------
 \ refusal arms are unreachable invariants (E-VEC-BOUNDS; mirrors MEM's
 \ E-MEM-TOTALITY discipline of an exhaustive MATCH over an impossible result).
-: OK-ITEM-COUNT ( NUM:numeric-result<NUM:item-count> -- NUM:item-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
 : OK-CELL-COUNT ( NUM:numeric-result<NUM:cell-count> -- NUM:cell-count )
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-: OK-INDEX ( NUM:numeric-result<NUM:index> -- NUM:index )
    MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
@@ -223,14 +209,32 @@ CAST: INDEX>N ( NUM:index -- n )
    NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;  \ positive alloc role or E-VEC-CAPACITY
 
 \ ---- role bridges between NUM roles, raw cells, and the header roles --------
-: N>ITEM   ( n -- NUM:item-count )  NUM:ITEM-COUNT OK-ITEM-COUNT ;
-: N>INDEX  ( n -- NUM:index )       NUM:INDEX OK-INDEX ;
 : ITEM>RC  ( NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> header count
 : IX>RI    ( NUM:index -- idx )         INDEX>N >IDX ;          \ role -> header index
 
 public
 
 VEC-HEADER-BYTES CELL / constant HEADER-CELLS   \ cells a caller allots for one header
+
+\ ---- raw cell -> count and index roles ----------------------------------------
+\ A length or capacity as an item count; a negative n throws E-VEC-CAPACITY.
+: N>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
+\ An element position as an index; a negative n throws E-VEC-BOUNDS.
+: N>INDEX ( n -- NUM:index )
+   NUM:INDEX
+   MATCH NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
 
 \ ---- init / clear -------------------------------------------------------------
 : INIT ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}

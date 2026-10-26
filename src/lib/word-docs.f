@@ -73,25 +73,6 @@ variable PUB                                  \ the open section is public
 
 \ ---- storage ------------------------------------------------------------------
 
-\ A record or chunk position and an index capacity enter the typed vectors as
-\ NUM roles; the refusal arms are unreachable for these nonnegative cells and
-\ surface the vector's own codes.
-: N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-: N>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
 \ Record and chunk counts drive raw loops and COUNT, so a vector length or
 \ capacity leaves its role here.
 CAST: ITEM>N ( NUM:item-count -- n )
@@ -107,12 +88,12 @@ CAST: ITEM>N ( NUM:item-count -- n )
    0 RECS VEC:CAP@ ITEM>N 0 > ;
 
 : INIT ( -- )
-   0 RECS INDEX-CAP N>ITEM VEC:INIT
-   0 CHUNKS INDEX-CAP N>ITEM VEC:INIT ;
+   0 RECS INDEX-CAP VEC:N>ITEM VEC:INIT
+   0 CHUNKS INDEX-CAP VEC:N>ITEM VEC:INIT ;
 
 : RELEASE-CHUNKS ( -- )
    0 CHUNKS VEC:LEN@ ITEM>N 0 ?do
-      0 CHUNKS i N>INDEX VEC:@ {: base:ptr :}
+      0 CHUNKS i VEC:N>INDEX VEC:@ {: base:ptr :}
       base base CELL@ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    loop ;
 
@@ -215,7 +196,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
 \ ---- records ------------------------------------------------------------------
 
 : REC ( n -- ptr u8 )
-   0 RECS swap N>INDEX VEC:@ ;
+   0 RECS swap VEC:N>INDEX VEC:@ ;
 
 : FIELD@ ( n n -- n ) {: k:n f:n :}
    k REC f cells + CELL@ ;

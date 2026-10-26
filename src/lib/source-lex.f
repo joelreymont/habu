@@ -88,32 +88,7 @@ variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
 
-\ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
-\ The lexer's parallel record columns store raw cells (token / content addresses,
-\ lengths, kinds, byte/line/col positions). The typed VEC surface (package VEC)
-\ reads a validated NUM role - a capacity is a `NUM:item-count`, a record
-\ position is a `NUM:index` - so a count/index role swap at a VEC call is a
-\ checker reject. These lift a nonnegative cell to its role through the PUBLIC
-\ NUM validators (no laundering back to n, no reopened package); the refusal
-\ arms are unreachable invariants (MIN-CAP and a live record index are
-\ nonnegative), an impossible negative surfaces the vector's own capacity / bounds
-\ code. This is the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept lexer-local.
-: N>ITEM ( n -- NUM:item-count )
-   NUM:ITEM-COUNT
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-: N>INDEX ( n -- NUM:index )
-   NUM:INDEX
-   MATCH NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
+\ ---- VEC length -> raw count bridge ---------------------------------------
 \ The lexer's token and locals counts drive raw cell arithmetic (COUNT 1- ...),
 \ so a vector length leaves its role here.
 CAST: ITEM>N ( NUM:item-count -- n )
@@ -125,7 +100,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
    SRC-A ! ;
 
 : INIT-ONE ( ptr a -- )
-   MIN-CAP N>ITEM VEC:INIT ;
+   MIN-CAP VEC:N>ITEM VEC:INIT ;
 
 : CLEAR-ONE ( ptr a -- )
    VEC:CLEAR ;
@@ -186,7 +161,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
 
 \ The locals state reads the marks, so a mark on a token it has read forgets it.
 : MARK-OPERAND ( n -- ) {: k:n :}
-   true OPND-V k N>INDEX VEC:!
+   true OPND-V k VEC:N>INDEX VEC:!
    k STEPPED @ < if LOCALS-RESET then ;
 
 public
@@ -202,29 +177,29 @@ public
    TOK-N @ ;
 
 : TOKEN ( n -- ptr u8 n ) {: k:n :}
-   0 ADDR-V k N>INDEX VEC:@
-   LEN-V k N>INDEX VEC:@ ;
+   0 ADDR-V k VEC:N>INDEX VEC:@
+   LEN-V k VEC:N>INDEX VEC:@ ;
 
 : CONTENT ( n -- ptr u8 n ) {: k:n :}
-   0 CADDR-V k N>INDEX VEC:@
-   CLEN-V k N>INDEX VEC:@ ;
+   0 CADDR-V k VEC:N>INDEX VEC:@
+   CLEN-V k VEC:N>INDEX VEC:@ ;
 
 : KIND@ ( n -- n ) {: k:n :}
-   KIND-V k N>INDEX VEC:@ ;
+   KIND-V k VEC:N>INDEX VEC:@ ;
 
 : BYTE@ ( n -- n ) {: k:n :}
-   BYTE-V k N>INDEX VEC:@ ;
+   BYTE-V k VEC:N>INDEX VEC:@ ;
 
 : LINE@ ( n -- n ) {: k:n :}
-   LINE-V k N>INDEX VEC:@ ;
+   LINE-V k VEC:N>INDEX VEC:@ ;
 
 : COL@ ( n -- n ) {: k:n :}
-   COL-V k N>INDEX VEC:@ ;
+   COL-V k VEC:N>INDEX VEC:@ ;
 
 \ Token k is a raw operand: data the source never runs, so it starts nothing,
 \ ends nothing and makes no name of the token after it.
 : OPERAND? ( n -- bool ) {: k:n :}
-   OPND-V k N>INDEX VEC:@ ;
+   OPND-V k VEC:N>INDEX VEC:@ ;
 
 : ERROR? ( -- bool )
    ERR-KIND @ NO-ERROR <> ;
@@ -585,7 +560,7 @@ private
 
 : LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LIVE 0 ?do
-      a u LOCAL-V i N>INDEX VEC:@ LOCAL$ STR= if true unloop exit then
+      a u LOCAL-V i VEC:N>INDEX VEC:@ LOCAL$ STR= if true unloop exit then
    loop
    false ;
 
@@ -599,8 +574,8 @@ private
 
 \ Drop the locals the innermost open block declared.
 : BLOCK-DROP ( -- )
-   begin LIVE 0 > if LDEPTH-V LIVE 1- N>INDEX VEC:@ DEPTH @ >= else false then while
-      LIVE 1- N>ITEM {: l:NUM:item-count :}
+   begin LIVE 0 > if LDEPTH-V LIVE 1- VEC:N>INDEX VEC:@ DEPTH @ >= else false then while
+      LIVE 1- VEC:N>ITEM {: l:NUM:item-count :}
       l LOCAL-V VEC:LEN!
       l LDEPTH-V VEC:LEN!
    repeat ;
@@ -800,7 +775,7 @@ private
 \ a dropped one.
 : KEEP ( n -- )
    dup STEPPED @ < if LOCALS-RESET then
-   N>ITEM {: l:NUM:item-count :}
+   VEC:N>ITEM {: l:NUM:item-count :}
    l KIND-V VEC:LEN!
    l 0 ADDR-V VEC:LEN!
    l LEN-V VEC:LEN!
