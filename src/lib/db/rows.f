@@ -1,11 +1,14 @@
 \ rows.f - connections and row readers over package PG.
 \
 \ OPEN hands out a connection for the calling task; the readers below turn a
-\ PG:result into values. A span a COL- reader answers is copied into the reading
-\ task's own arena first, so it outlives PG:CLEAR and lasts until that task's
-\ next read (READ-RESET, which BY-ID runs): a record read through WITH-ROW keeps
-\ its text after its result is gone. The AT readers answer libpq's bytes, valid
-\ until PG:CLEAR.
+\ PG:result into values inside the scope that owns it, threading the linear
+\ token: BY-ID runs a query in a PG:WITH-RESULT scope, checks its first row and
+\ runs a body on the result, and the scope clears it when the body returns or
+\ throws. A span a COL- reader answers is copied into the reading task's own
+\ arena first, so it outlives the scope and lasts until that task's next read
+\ (READ-RESET, which BY-ID runs): a record BY-ID's body reads keeps its text
+\ after its result is gone. The AT readers answer libpq's bytes, valid until
+\ the result's scope ends.
 \
 \ STORAGE CLASS. TASK-LOCAL arenas: a reading task takes one on its first read
 \ and keeps it, READ-CAP bytes that a longer read extends by chained chunks.
@@ -56,8 +59,8 @@ variable CONNECTIONS-FROZEN
 
 \ ---- the reader arenas ----------------------------------------------------------
 \ A record outlives the result it was read from, so every span it carries is
-\ copied into an arena first and the result is cleared before the record is
-\ returned. The arena is the reading task's own, one row per task, because
+\ copied into an arena first and the result's scope clears it before the
+\ record is returned. The arena is the reading task's own, one row per task, because
 \ static storage is one copy for the whole image while a
 \ server reads rows from many tasks at once, each on a connection of its own.
 \ One arena between them would hand a reader back the bytes another task copied
@@ -95,9 +98,6 @@ CHUNK-CELLS cells constant HEADER-BYTES
 DYNAMIC-BUFFER READ-CHUNK SPAN:span<u8>   \ the newest chunk, empty until the first read
 DYNAMIC-BUFFER READ-TASK n
 DYNAMIC-BUFFER READ-USED n                \ the newest chunk's bytes taken, its header among them
-\ The result a row is decoding, so WITH-ROW's cleanup can reach it; it belongs
-\ to this task until its record is decoded, on failure as well as success.
-DYNAMIC-BUFFER READ-RESULT PG:result
 
 
 \ The arena of the task that is running, taken here if this is its first read.
@@ -173,19 +173,14 @@ DYNAMIC-BUFFER READ-RESULT PG:result
       READ-CHUNK-RELEASE
       READ-TASK-RELEASE
       READ-USED-RELEASE
-      READ-RESULT-RELEASE
       0 READER-N !
    then
    false REGISTERED ! ;
 
 
-: CLEAR-ROW ( -- )
-   MY-ARENA READ-RESULT @ PG:CLEAR ;
-
-
-: CELL$ ( PG:result n -- ptr u8 n ) {: r c:n :}
-   r 0 PG:>ROW c PG:>COL PG:NULL? if E-ROW throw then
-   r 0 PG:>ROW c PG:>COL PG:TEXT$ ;
+: CELL$ ( PG:result n -- PG:result ptr u8 n ) {: c:n :}
+   0 PG:>ROW c PG:>COL PG:NULL? if E-ROW throw then
+   0 PG:>ROW c PG:>COL PG:TEXT$ ;
 
 
 : BOOL$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -209,7 +204,6 @@ public
    readers READ-CHUNK-RESERVE
    readers READ-TASK-RESERVE
    readers READ-USED-RESERVE
-   readers READ-RESULT-RESERVE
    readers READER-N !
    REGISTERED @ 0= if
       [: FORGET-READERS ;] IMAGE-LIFECYCLE:REGISTER
@@ -266,17 +260,11 @@ public
    HEADER-BYTES at READ-USED ! ;
 
 
-\ Runs the decoder over the result and clears the result on every path out.
-: WITH-ROW ( PG:result [ PG:result -- R ] -- R ) {: r body :}
-   r MY-ARENA READ-RESULT !
-   r body [: CLEAR-ROW ;] finally ;
-
-
 : ROWS-OR-THROW ( PG:result -- PG:result )
-   dup PG:OUTCOME MATCH PG:outcome
-      ok OF PG:CLEAR E-QUERY throw ENDOF
+   PG:OUTCOME MATCH PG:outcome
+      ok OF E-QUERY throw ENDOF
       rows OF ENDOF
-      failed OF 2drop 2drop PG:CLEAR E-QUERY throw ENDOF
+      failed OF 2drop 2drop E-QUERY throw ENDOF
    ;MATCH ;
 
 
@@ -284,86 +272,100 @@ public
 \ invents fields for an id that names nothing.
 : FIRST-ROW ( PG:result -- PG:result )
    ROWS-OR-THROW
-   dup PG:ROWS COUNT>N 0= if PG:CLEAR E-ROW throw then ;
+   PG:ROWS COUNT>N 0= if E-ROW throw then ;
+
+private
+
+: RUN-FIRST ( R [ R PG:result -- S PG:result ] PG:result -- S PG:result )
+   FIRST-ROW swap execute ;
+
+public
 
 
-\ One parameter, one row: the read of a row by its identity.
-: BY-ID ( PG:connection n ptr u8 n -- PG:result ) {: c id:n a:ptr u:n :}
+\ One parameter, one row: the read of a row by its identity. The body runs on
+\ the result once its first row is there; the scope clears the result when
+\ the body returns or throws.
+: BY-ID ( R PG:connection n ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: c id:n a:ptr u:n body :}
    READ-RESET
    c PG:PARAMS
    c id PG:INT+
-   c a u PG:EXEC FIRST-ROW ;
+   body c a u [: RUN-FIRST ;] PG:WITH-RESULT ;
 
 
 \ ---- the first row's columns, copied into the arena ---------------------------
 
 \ SQL NULL is E-ROW; COL-TEXT? is the nullable reader.
-: COL-TEXT ( PG:result n -- ptr u8 n )
+: COL-TEXT ( PG:result n -- PG:result ptr u8 n )
    CELL$ ARENA+ ;
 
 
 \ A nullable text: false means SQL NULL, and the span is then empty.
-: COL-TEXT? ( PG:result n -- ptr u8 n bool ) {: r c:n :}
-   r 0 PG:>ROW c PG:>COL PG:NULL? if s" " ARENA+ false exit then
-   r c COL-TEXT true ;
+: COL-TEXT? ( PG:result n -- PG:result ptr u8 n bool ) {: c:n :}
+   0 PG:>ROW c PG:>COL PG:NULL? if s" " ARENA+ false exit then
+   c COL-TEXT true ;
 
 
 \ SQL NULL is PG:E-TYPE; COL-ID is the nullable reader.
-: COL-INT ( PG:result n -- n ) {: r c:n :}
-   r 0 PG:>ROW c PG:>COL PG:INT ;
+: COL-INT ( PG:result n -- PG:result n ) {: c:n :}
+   0 PG:>ROW c PG:>COL PG:INT ;
 
 
 \ A number with a fraction. The server renders it as text, so this is where it
 \ becomes one again; SQL NULL is zero.
-: COL-REAL ( PG:result n -- r ) {: r c:n :}
-   r 0 PG:>ROW c PG:>COL PG:NULL? if 0.0 exit then
-   r c CELL$ STR>FLOAT MATCH option
+: COL-REAL ( PG:result n -- PG:result r ) {: c:n :}
+   0 PG:>ROW c PG:>COL PG:NULL? if 0.0 exit then
+   c CELL$ STR>FLOAT MATCH option
       none OF E-ROW throw ENDOF
       some OF ENDOF
    ;MATCH ;
 
 
 \ A nullable reference: SQL NULL is zero, which an identity column never holds.
-: COL-ID ( PG:result n -- n ) {: r c:n :}
-   r 0 PG:>ROW c PG:>COL PG:NULL? if 0 exit then
-   r c COL-INT ;
+: COL-ID ( PG:result n -- PG:result n ) {: c:n :}
+   0 PG:>ROW c PG:>COL PG:NULL? if 0 exit then
+   c COL-INT ;
 
 
-: COL-BOOL ( PG:result n -- bool )
+: COL-BOOL ( PG:result n -- PG:result bool )
    CELL$ BOOL$ ;
 
 
 \ ---- any row, read in place ----------------------------------------------------
-\ These answer libpq's own bytes, valid until PG:CLEAR: a page of rows is read
-\ while its result is held, and nothing is copied.
+\ These answer libpq's own bytes, valid until the result's scope ends: a page
+\ of rows is read inside its scope, and nothing is copied.
 
-: AT$ ( PG:result n n -- ptr u8 n ) {: r at:n col:n :}
-   r at PG:>ROW col PG:>COL PG:TEXT$ ;
-
-
-: AT?$ ( PG:result n n -- ptr u8 n bool ) {: r at:n col:n :}
-   r at PG:>ROW col PG:>COL PG:NULL? if s" " false exit then
-   r at col AT$ true ;
+: AT$ ( PG:result n n -- PG:result ptr u8 n ) {: at:n col:n :}
+   at PG:>ROW col PG:>COL PG:TEXT$ ;
 
 
-: AT-INT ( PG:result n n -- n ) {: r at:n col:n :}
-   r at PG:>ROW col PG:>COL PG:INT ;
+: AT?$ ( PG:result n n -- PG:result ptr u8 n bool ) {: at:n col:n :}
+   at PG:>ROW col PG:>COL PG:NULL? if s" " false exit then
+   at col AT$ true ;
 
 
-: AT-BOOL ( PG:result n n -- bool )
+: AT-INT ( PG:result n n -- PG:result n ) {: at:n col:n :}
+   at PG:>ROW col PG:>COL PG:INT ;
+
+
+: AT-BOOL ( PG:result n n -- PG:result bool )
    AT$ BOOL$ ;
 
+private
 
-\ The one integer a count or an aggregate answers. The text is parsed before
-\ the result is cleared, so a NULL or a fraction is E-ROW with nothing left
-\ behind.
-: ONE-INT ( PG:result -- n )
-   FIRST-ROW {: r :}
-   r 0 0 AT$ STR>NUMBER? {: v :}
-   r PG:CLEAR
-   v MATCH option
+: FIRST-INT ( PG:result -- n PG:result )
+   FIRST-ROW
+   0 0 AT$ STR>NUMBER? MATCH option
       none OF E-ROW throw ENDOF
       some OF ENDOF
-   ;MATCH ;
+   ;MATCH swap ;
+
+public
+
+
+\ The one integer a count or an aggregate answers, run in its own scope on
+\ the parameters the caller staged. A NULL, a fraction or no row is E-ROW.
+: ONE-INT ( PG:connection ptr u8 n -- n )
+   [: FIRST-INT ;] PG:WITH-RESULT ;
 
 ;package

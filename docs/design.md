@@ -388,9 +388,9 @@ in VFX; the server is a small layer over `TCP4`. TLS for a server terminates at
 a proxy.
 
 **Databases.** SQL through the FFI came first: Postgres through libpq
-(`src/lib/pg.f`), with nominal connection and result handles, results cleared
-exactly once, result types for every fallible call and never a raw `n` for an
-error. The vocabulary is SQL-shaped because the schema language is SQL. A
+(`src/lib/pg.f`), with a nominal connection handle, results as `DEFLINEAR`
+tokens that live in scopes (`PG:WITH-RESULT` clears its result on every path),
+result types for every fallible call and never a raw `n` for an error. The vocabulary is SQL-shaped because the schema language is SQL. A
 connection and its results belong to the task that created them. polyFORTH's
 fixed-record kit (typed fields, ordered indexes over a file or flash range) is
 the model for targets, opened when a target program first needs persistent

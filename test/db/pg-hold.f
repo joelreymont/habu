@@ -67,14 +67,12 @@ using PG
 
 \ The one value a one-row, one-column query answers, reported.
 : REPORT-SHOW ( PG:connection ptr u8 n -- ) {: c:PG:connection q:ptr qu:n :}
-   c q qu EXEC {: r :}
-   r 0 >ROW 0 >COL TEXT$ REPORT
-   r CLEAR ;
+   c q qu [: 0 >ROW 0 >COL TEXT$ REPORT ;] WITH-RESULT ;
 
 : REPORT-SEGMENT ( PG:connection -- ) {: c:PG:connection :}
-   c s" show data_directory" EXEC {: r :}
-   r 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE JOIN-PATH {: pu:n :}
-   r CLEAR
+   c s" show data_directory"
+   [: 0 >ROW 0 >COL TEXT$ s" postmaster.pid" PIDFILE JOIN-PATH swap ;] WITH-RESULT
+   {: pu:n :}
    PIDFILE pu TEXT PIDFILE-CAP READ-ALL {: u:n :}
    SHM-LINE u LINE$ REPORT ;
 
@@ -86,7 +84,7 @@ using PG
    OPEN {: c :}
    c s" show unix_socket_directories" REPORT-SHOW
    c REPORT-SEGMENT
-   c s" select pg_sleep(600)" EXEC CLEAR
+   c s" select pg_sleep(600)" [: ;] WITH-RESULT
    s" pg-hold: the sleep ended before the row was killed" 1 die ;
 
 MAIN

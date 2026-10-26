@@ -7,10 +7,10 @@
 \     bin/hb --load test/db/pg-cluster.f
 \
 \ Loaded without the argument, the file dies naming the harness. There is no
-\ skip. The main task reads records whose spans must outlive PG:CLEAR, every
-\ NULL arm and every refusal; two worker tasks then read at the same time and
-\ each must keep its own bytes, and a third worker is one reader past the
-\ declaration.
+\ skip. The main task reads records whose spans must outlive their result's
+\ scope, every NULL arm and every refusal; two worker tasks then read at the
+\ same time and each must keep its own bytes, and a third worker is one reader
+\ past the declaration.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -33,7 +33,6 @@ package DB-ROWS-TEST
 $5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
 
 TYPED-VARIABLE CONN PG:connection
-TYPED-VARIABLE HELD PG:result
 
 
 : CONNINFO$ ( -- ptr u8 n )
@@ -45,7 +44,7 @@ TYPED-VARIABLE HELD PG:result
 
 : RUN ( ptr u8 n -- ) {: a:ptr u:n :}
    CONN @ PG:PARAMS
-   CONN @ a u PG:EXEC PG:CLEAR ;
+   CONN @ a u [: ;] PG:WITH-RESULT ;
 
 
 : SEED ( -- )
@@ -55,81 +54,105 @@ TYPED-VARIABLE HELD PG:result
 
 \ ---- a record outlives its result ----------------------------------------------
 
-: NAMES-ROW ( PG:result -- ptr u8 n ptr u8 n bool ) {: r :}
-   r 1 DB-ROWS:COL-TEXT
-   r 2 DB-ROWS:COL-TEXT? ;
+: NAMES-ROW ( PG:result -- ptr u8 n ptr u8 n bool PG:result )
+   1 DB-ROWS:COL-TEXT rot
+   2 DB-ROWS:COL-TEXT? {: ka:ptr ku:n given:bool :}
+   ka ku rot given swap ;
 
 
 : NAMES-OF ( PG:connection n -- ptr u8 n ptr u8 n bool )
-   PERSON-SQL$ DB-ROWS:BY-ID [: NAMES-ROW ;] DB-ROWS:WITH-ROW ;
+   PERSON-SQL$ [: NAMES-ROW ;] DB-ROWS:BY-ID ;
 
 
-\ WITH-ROW has cleared the result before the spans are read. A second result
-\ of the same shape is held while they are compared, so a span still pointing
-\ into the freed one would read that result's bytes.
-: OUTLIVES-CASES ( -- )
-   CONN @ 1 NAMES-OF {: na:ptr nu:n ka:ptr ku:n given:bool :}
-   CONN @ PG:PARAMS
-   CONN @ s" select 1::bigint, 'Zed', 'zed', 0.25::float8, null::bigint, false" PG:EXEC {: churn :}
+: CHURNED ( ptr u8 n ptr u8 n bool PG:result -- PG:result )
+   >r {: na:ptr nu:n ka:ptr ku:n given:bool :}
    s" name after clear" T-LABEL
    na nu s" Ada" T$=
    s" nick after clear" T-LABEL
    ka ku s" ada" T$=
    given TTRUE
-   churn PG:CLEAR ;
+   r> ;
+
+
+\ BY-ID's scope has cleared the result before the spans are read. A second
+\ result of the same shape is held while they are compared, so a span still
+\ pointing into the freed one would read that result's bytes.
+: OUTLIVES-CASES ( -- )
+   CONN @ 1 NAMES-OF
+   CONN @ PG:PARAMS
+   CONN @ s" select 1::bigint, 'Zed', 'zed', 0.25::float8, null::bigint, false"
+   [: CHURNED ;] PG:WITH-RESULT ;
 
 
 \ ---- the first row's readers and their NULL arms ------------------------------
 
-: HOLD ( n -- ) {: id:n :}
-   CONN @ id PERSON-SQL$ DB-ROWS:BY-ID HELD ! ;
+: ON-PERSON ( n [ PG:result -- PG:result ] -- ) {: id:n body :}
+   CONN @ id PERSON-SQL$ body DB-ROWS:BY-ID ;
+
+
+: ADA-ROW ( PG:result -- PG:result )
+   0 DB-ROWS:COL-INT 1 T=
+   1 DB-ROWS:COL-TEXT s" Ada" T$=
+   2 DB-ROWS:COL-TEXT? TTRUE s" ada" T$=
+   3 DB-ROWS:COL-REAL 0.5 f= TTRUE
+   s" a NULL reference reads as zero" T-LABEL
+   4 DB-ROWS:COL-ID 0 T=
+   5 DB-ROWS:COL-BOOL TTRUE ;
 
 
 : ADA-CASES ( -- )
-   1 HOLD
-   HELD @ 0 DB-ROWS:COL-INT 1 T=
-   HELD @ 1 DB-ROWS:COL-TEXT s" Ada" T$=
-   HELD @ 2 DB-ROWS:COL-TEXT? TTRUE s" ada" T$=
-   HELD @ 3 DB-ROWS:COL-REAL 0.5 f= TTRUE
-   s" a NULL reference reads as zero" T-LABEL
-   HELD @ 4 DB-ROWS:COL-ID 0 T=
-   HELD @ 5 DB-ROWS:COL-BOOL TTRUE
-   HELD @ PG:CLEAR ;
+   1 [: ADA-ROW ;] ON-PERSON ;
+
+
+: GRACE-ROW ( PG:result -- PG:result )
+   s" a NULL nullable text is empty and false" T-LABEL
+   2 DB-ROWS:COL-TEXT? TFALSE nip 0 T=
+   s" a NULL real is zero" T-LABEL
+   3 DB-ROWS:COL-REAL 0.0 f= TTRUE
+   4 DB-ROWS:COL-ID 1 T=
+   5 DB-ROWS:COL-BOOL TFALSE ;
+
+
+\ Each refusal throws out of its own scope, which clears the result.
+: NULL-TEXT ( -- )
+   2 [: 2 DB-ROWS:COL-TEXT 2drop ;] ON-PERSON ;
+
+: NULL-BOOL ( -- )
+   2 [: 2 DB-ROWS:COL-BOOL drop ;] ON-PERSON ;
+
+: NULL-INT ( -- )
+   2 [: 3 DB-ROWS:COL-INT drop ;] ON-PERSON ;
 
 
 : GRACE-CASES ( -- )
-   2 HOLD
-   s" a NULL nullable text is empty and false" T-LABEL
-   HELD @ 2 DB-ROWS:COL-TEXT? TFALSE nip 0 T=
-   s" a NULL real is zero" T-LABEL
-   HELD @ 3 DB-ROWS:COL-REAL 0.0 f= TTRUE
-   HELD @ 4 DB-ROWS:COL-ID 1 T=
-   HELD @ 5 DB-ROWS:COL-BOOL TFALSE
+   2 [: GRACE-ROW ;] ON-PERSON
    s" COL-TEXT refuses NULL" T-LABEL
-   [: HELD @ 2 DB-ROWS:COL-TEXT 2drop ;] DB-ROWS:E-ROW TTHROWSQ
+   [: NULL-TEXT ;] DB-ROWS:E-ROW TTHROWSQ
    s" COL-BOOL refuses NULL" T-LABEL
-   [: HELD @ 2 DB-ROWS:COL-BOOL drop ;] DB-ROWS:E-ROW TTHROWSQ
+   [: NULL-BOOL ;] DB-ROWS:E-ROW TTHROWSQ
    s" COL-INT of NULL is PG's refusal" T-LABEL
-   [: HELD @ 3 DB-ROWS:COL-INT drop ;] PG:E-TYPE TTHROWSQ
-   HELD @ PG:CLEAR ;
+   [: NULL-INT ;] PG:E-TYPE TTHROWSQ ;
 
 
 \ ---- rows read in place --------------------------------------------------------
 
+: PAGE-ROWS ( PG:result -- PG:result )
+   DB-ROWS:ROWS-OR-THROW
+   2 0 DB-ROWS:AT-INT 3 T=
+   0 1 DB-ROWS:AT-BOOL TFALSE
+   1 1 DB-ROWS:AT-BOOL TTRUE
+   0 2 DB-ROWS:AT$ s" v1" T$=
+   2 2 DB-ROWS:AT?$ TTRUE s" v3" T$=
+   s" a NULL cell in place is empty and false" T-LABEL
+   1 2 DB-ROWS:AT?$ TFALSE nip 0 T= ;
+
+
 : PAGE-CASES ( -- )
    CONN @ PG:PARAMS
-   CONN @ s" select i, i % 2 = 0, case when i = 2 then null else 'v' || i end from generate_series(1, 3) i" PG:EXEC
-   DB-ROWS:ROWS-OR-THROW {: r :}
-   r 2 0 DB-ROWS:AT-INT 3 T=
-   r 0 1 DB-ROWS:AT-BOOL TFALSE
-   r 1 1 DB-ROWS:AT-BOOL TTRUE
-   r 0 2 DB-ROWS:AT$ s" v1" T$=
-   r 2 2 DB-ROWS:AT?$ TTRUE s" v3" T$=
-   s" a NULL cell in place is empty and false" T-LABEL
-   r 1 2 DB-ROWS:AT?$ TFALSE nip 0 T=
-   r PG:CLEAR
+   CONN @ s" select i, i % 2 = 0, case when i = 2 then null else 'v' || i end from generate_series(1, 3) i"
+   [: PAGE-ROWS ;] PG:WITH-RESULT
    CONN @ PG:PARAMS
-   CONN @ s" select count(*) from person" PG:EXEC DB-ROWS:ONE-INT 2 T= ;
+   CONN @ s" select count(*) from person" DB-ROWS:ONE-INT 2 T= ;
 
 
 \ ---- reads longer than an arena's first chunk -----------------------------------
@@ -138,30 +161,32 @@ TYPED-VARIABLE HELD PG:result
    s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
 
 
-: LONG-ROW ( PG:result -- ptr u8 n ptr u8 n ptr u8 n ) {: r :}
-   r 1 DB-ROWS:COL-TEXT
-   r 2 DB-ROWS:COL-TEXT
-   r 3 DB-ROWS:COL-TEXT ;
+: LONG-ROW ( PG:result -- ptr u8 n ptr u8 n ptr u8 n PG:result )
+   1 DB-ROWS:COL-TEXT rot
+   2 DB-ROWS:COL-TEXT rot
+   3 DB-ROWS:COL-TEXT rot ;
 
 
 \ The short text stays in the arena's first chunk while each long one chains
 \ another. The same texts are held in a second result while the spans are
 \ compared, as in OUTLIVES-CASES.
-: LONG-READ ( -- )
-   CONN @ LONG-TEXT LONG-SQL$ DB-ROWS:BY-ID [: LONG-ROW ;] DB-ROWS:WITH-ROW
-   {: ha:ptr hu:n aa:ptr au:n ba:ptr bu:n :}
-   CONN @ PG:PARAMS
-   CONN @ LONG-TEXT PG:INT+
-   CONN @ LONG-SQL$ PG:EXEC {: churn :}
+: LONG-CHURNED ( ptr u8 n ptr u8 n ptr u8 n PG:result -- PG:result )
+   >r {: ha:ptr hu:n aa:ptr au:n ba:ptr bu:n :}
    s" a short text beside long ones" T-LABEL
    ha hu s" head" T$=
    s" a text longer than the first chunk reads whole" T-LABEL
-   aa au churn 0 2 DB-ROWS:AT$ T$=
+   r> 0 2 DB-ROWS:AT$ aa au T$=
    au LONG-TEXT T=
    s" a text of several chunks reads whole" T-LABEL
-   ba bu churn 0 3 DB-ROWS:AT$ T$=
-   bu LONG-TEXT 3 * T=
-   churn PG:CLEAR ;
+   0 3 DB-ROWS:AT$ ba bu T$=
+   bu LONG-TEXT 3 * T= ;
+
+
+: LONG-READ ( -- )
+   CONN @ LONG-TEXT LONG-SQL$ [: LONG-ROW ;] DB-ROWS:BY-ID
+   CONN @ PG:PARAMS
+   CONN @ LONG-TEXT PG:INT+
+   CONN @ LONG-SQL$ [: LONG-CHURNED ;] PG:WITH-RESULT ;
 
 
 \ The second read gives up the first one's chunks and chains its own.
@@ -182,28 +207,28 @@ TYPED-VARIABLE HELD PG:result
 
 : REFUSED-QUERY ( -- )
    CONN @ PG:PARAMS
-   CONN @ s" select nothing from nowhere" PG:EXEC DB-ROWS:ROWS-OR-THROW PG:CLEAR ;
+   CONN @ s" select nothing from nowhere" [: DB-ROWS:ROWS-OR-THROW ;] PG:WITH-RESULT ;
 
 
 : NO-ROWS-COMMAND ( -- )
    CONN @ PG:PARAMS
-   CONN @ s" update person set nick = nick where id = 99" PG:EXEC DB-ROWS:ROWS-OR-THROW PG:CLEAR ;
+   CONN @ s" update person set nick = nick where id = 99" [: DB-ROWS:ROWS-OR-THROW ;] PG:WITH-RESULT ;
 
 
 : NULL-COUNT ( -- )
    CONN @ PG:PARAMS
-   CONN @ s" select null::int" PG:EXEC DB-ROWS:ONE-INT drop ;
+   CONN @ s" select null::int" DB-ROWS:ONE-INT drop ;
 
 
 : EMPTY-COUNT ( -- )
    CONN @ PG:PARAMS
-   CONN @ s" select 1 where false" PG:EXEC DB-ROWS:ONE-INT drop ;
+   CONN @ s" select 1 where false" DB-ROWS:ONE-INT drop ;
 
 
-\ The decoder throws inside WITH-ROW, which still clears the result.
+\ The decoder throws inside BY-ID's scope, which still clears the result.
 : BAD-DECODE ( -- )
-   CONN @ 1 PERSON-SQL$ DB-ROWS:BY-ID
-   [: 1 DB-ROWS:COL-BOOL ;] DB-ROWS:WITH-ROW drop ;
+   CONN @ 1 PERSON-SQL$
+   [: 1 DB-ROWS:COL-BOOL swap ;] DB-ROWS:BY-ID drop ;
 
 
 : REFUSAL-CASES ( -- )
@@ -217,7 +242,7 @@ TYPED-VARIABLE HELD PG:result
    [: NULL-COUNT ;] DB-ROWS:E-ROW EACH-REFUSES
    s" ONE-INT refuses no row" T-LABEL
    [: EMPTY-COUNT ;] DB-ROWS:E-ROW EACH-REFUSES
-   s" a decoder's refusal inside WITH-ROW" T-LABEL
+   s" a decoder's refusal inside BY-ID" T-LABEL
    [: BAD-DECODE ;] DB-ROWS:E-ROW EACH-REFUSES ;
 
 
@@ -257,12 +282,12 @@ TASK:MIN-STACK TASK:TASK SIDE-B
 TASK:MIN-STACK TASK:TASK THIRD-TASK
 
 
-: NAME-ROW ( PG:result -- ptr u8 n )
-   1 DB-ROWS:COL-TEXT ;
+: NAME-ROW ( PG:result -- ptr u8 n PG:result )
+   1 DB-ROWS:COL-TEXT rot ;
 
 
 : NAME-OF ( PG:connection n -- ptr u8 n )
-   PERSON-SQL$ DB-ROWS:BY-ID [: NAME-ROW ;] DB-ROWS:WITH-ROW ;
+   PERSON-SQL$ [: NAME-ROW ;] DB-ROWS:BY-ID ;
 
 
 : SIDE-NAME$ ( n -- ptr u8 n )

@@ -1,13 +1,18 @@
 \ pg.f - PostgreSQL over libpq, bound through the FFI FUNCTION: declarer.
 \
-\ A connection and a result are nominal handles, never a raw cell: each names a
-\ slot in this module's registry, which holds the libpq pointer, the task that
-\ owns it and a generation. The generation is what makes the result owner
-\ linear - CLEAR retires the slot, so the handle a caller still holds refuses
-\ every later use with E-CLEARED instead of reaching a freed PGresult. The same
-\ registry carries the concurrency rule (docs/design.md "Models taken from other
-\ Forths"): a connection and its results belong to the task that created them
-\ and a handle presented by any other task is E-HANDLE. A task that needs two
+\ A connection is a nominal handle and a result a linear PG:result token, never
+\ a raw cell: each names a slot in this module's registry, which holds the
+\ libpq pointer, the task that owns it and a generation. A result lives in a
+\ scope: WITH-RESULT, WITH-SCRIPT, WITH-PREPARE, WITH-PREPARED and
+\ WITH-DESCRIPTION run one operation, hand the body its token and clear the
+\ result when the body returns or throws, so no result outlives its scope. The
+\ body threads the token through the accessors and hands it back. The one
+\ unscoped token is the `completed` progress POLL or AWAIT answers, which CLEAR
+\ consumes. The generation makes a stale handle refuse with E-CLEARED instead
+\ of reaching a freed PGresult. The same registry carries the concurrency rule
+\ (docs/design.md "Models taken from other Forths"): a connection and its
+\ results belong to the task that created them and a handle presented by any
+\ other task is E-HANDLE. A task that needs two
 \ databases opens two connections.
 \
 \ STORAGE CLASS. PROCESS-WIDE registry sized by CONFIGURE. The same declaration
@@ -25,26 +30,30 @@
 \ CONNECT-START, SEND and POLL let one task drive many connections: the caller
 \ owns readiness and deadlines (libpq ignores connect_timeout while polling),
 \ registers the descriptor each POLL answers afresh, and uses a Unix socket or
-\ a numeric hostaddr so DNS cannot block startup. CONNECT, EXEC and the other
-\ conveniences wait through AIO:AWAIT and need AIO:START. One operation may be
-\ pending per connection; a send copies its statement and parameters. A
+\ a numeric hostaddr so DNS cannot block startup. CONNECT and the WITH- scopes
+\ wait through AIO:AWAIT and need AIO:START. One operation may be pending per
+\ connection; a send copies its statement and parameters. A
 \ transport failure closes the connection and throws E-EXEC; a SQL rejection is
 \ the result's `failed` outcome with SQLSTATE and message.
 \
-\ OUTCOME's `failed` spans are the connection's copies, valid until its next
-\ OUTCOME; CONNECT's `refused` text lasts until the next CONNECT; TEXT$ and
-\ NAME$ answer libpq's memory, valid until CLEAR.
+\ OUTCOME's `failed` spans, TEXT$ and NAME$ answer libpq's memory inside the
+\ result: valid until its scope ends (CLEAR for a progress token) or its
+\ connection closes, whichever comes first, so a body copies what it keeps. A
+\ close under the body leaves the token answering E-CLEARED. CONNECT's
+\ `refused` text lasts until the next CONNECT. A task ended by TASK:PAUSE under
+\ HALT runs no `finally` cleanup, so its open result scopes are reclaimed only
+\ when that ending unwinds.
 \
-\ DESCRIBE prepares a text as the unnamed statement and describes it without
+\ WITH-DESCRIPTION prepares a text as the unnamed statement and describes it without
 \ running it: the result answers COLS, NAME$ and OID (the column's type)
-\ and has no rows. A SQL rejection is its `failed` outcome, as for EXEC. It
-\ takes no parameters (a pending list is E-STATEMENT) and replaces the
-\ connection's unnamed statement; only DESCRIBE names that statement, since
-\ PREPARE and EXEC-PREPARED refuse an empty name.
+\ and has no rows. A SQL rejection is its `failed` outcome, as for WITH-RESULT.
+\ It takes no parameters (a pending list is E-STATEMENT) and replaces the
+\ connection's unnamed statement; only WITH-DESCRIPTION names that statement,
+\ since WITH-PREPARE and WITH-PREPARED refuse an empty name.
 \
-\ DEADLINE! bounds every later EXEC, SCRIPT, PREPARE, EXEC-PREPARED, DESCRIBE
-\ and transaction verb on the connection: each operation's whole wait ends that
-\ many milliseconds after it starts, and 0, the default, sets no bound; a bound
+\ DEADLINE! bounds every later WITH- scope's operation and transaction verb on
+\ the connection: each operation's whole wait ends that many milliseconds after
+\ it starts, and 0, the default, sets no bound; a bound
 \ outside 0..$7FFFFFFF ms is E-BOUND. DEADLINE@ answers the bound the last
 \ DEADLINE! set, 0 if none. CONNECT and AWAIT are not bounded. On
 \ expiry the connection closes and the operation throws E-DEADLINE. While a
@@ -65,10 +74,11 @@
 \ per-task memory. Validity is checked by use: a closed connection's identity
 \ resolves to a handle LIVE? answers false for and every verb refuses.
 \
-\ EXEC runs exactly one statement on the extended protocol. SCRIPT runs several
-\ on the simple-query protocol, which takes no parameters (a pending list is
-\ E-STATEMENT) and runs them as one implicit transaction: a failing statement
-\ rolls back the earlier ones. EXEC consumes the parameter list; BEGIN, COMMIT
+\ WITH-RESULT runs exactly one statement on the extended protocol. WITH-SCRIPT
+\ runs several on the simple-query protocol, which takes no parameters (a
+\ pending list is E-STATEMENT) and runs them as one implicit transaction: a
+\ failing statement rolls back the earlier ones. WITH-RESULT consumes the
+\ parameter list; BEGIN, COMMIT
 \ and ROLLBACK leave it untouched, which is how a WITH-TRANSACTION body carries
 \ its caller's values in. A nested WITH-TRANSACTION is E-TRANSACTION, since
 \ PostgreSQL ignores a nested BEGIN and the inner COMMIT would end the outer
@@ -118,9 +128,9 @@ public
 -9251 constant E-EXEC         \ transport/readiness failure, no result, rejected transaction verb or failed cancel
 -9252 constant E-COLUMN       \ a row or column index outside the result
 -9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
--9254 constant E-CLEARED      \ a result used after CLEAR, or cleared a second time
+-9254 constant E-CLEARED      \ a result used after CLEAR or its connection's close
 -9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
--9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
+-9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
 -9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement/name or embedded NUL in C-string text
@@ -128,7 +138,7 @@ public
 -9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms
 
 NEWTYPE connection
-NEWTYPE result
+DEFLINEAR PG:result
 
 DEFTYPE ROW
 DEFTYPE COL
@@ -138,9 +148,8 @@ SUMTYPE connect-result
    VARIANT refused ptr u8 n ;VARIANT
 ;SUMTYPE
 
-\ The failure spans are the server's SQLSTATE and its primary message, copied
-\ into the owning connection's storage, so they outlive CLEAR and are replaced
-\ by the next OUTCOME on that connection.
+\ The failure spans are the server's SQLSTATE and its primary message, read in
+\ place from the result's own bytes: they live exactly as long as TEXT$.
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
@@ -152,7 +161,7 @@ SUMTYPE outcome
 SUMTYPE progress
    VARIANT waiting fd n ;VARIANT
    VARIANT connected connection ;VARIANT
-   VARIANT completed result ;VARIANT
+   VARIANT completed PG:result ;VARIANT
    VARIANT refused ptr u8 n ;VARIANT
 ;SUMTYPE
 
@@ -160,8 +169,8 @@ private
 
 CAST: >CONNECTION ( n -- connection )
 CAST: CONNECTION>N ( connection -- n )
-CAST: >RESULT ( n -- result )
-CAST: RESULT>N ( result -- n )
+LINEAR: N>RESULT ( n -- PG:result )
+LINEAR: RESULT>N ( PG:result -- n )
 
 \ ---- libpq facts, read off /usr/include/libpq-fe.h and postgres_ext.h ------
 0 constant PGRES-POLLING-FAILED           \ PostgresPollingStatusType
@@ -182,7 +191,6 @@ $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 \ Connection, result and parameter counts belong to the application. There is
 \ no process-wide guessed connection ceiling: CONFIGURE allocates exactly the
 \ registries the caller declares, and a live registry cannot be resized.
-$05 constant SQLSTATE-LEN
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
@@ -214,12 +222,10 @@ DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
 DYNAMIC-BUFFER CONN-PENDING n
 DYNAMIC-BUFFER CONN-CONNECTING n
 DYNAMIC-BUFFER CONN-MESSAGE-U n
-DYNAMIC-BUFFER CONN-SQLSTATE-U n
 DYNAMIC-BUFFER CONN-PARAM-OFF n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-MESSAGE ptr u8
 DYNAMIC-BUFFER CONN-MESSAGE-CAP n
-DYNAMIC-BUFFER CONN-SQLSTATE n
 DYNAMIC-BUFFER CONN-BOUND n
 
 DYNAMIC-BUFFER RES-PG ptr u8
@@ -227,6 +233,8 @@ DYNAMIC-BUFFER RES-GEN n
 DYNAMIC-BUFFER RES-LIVE n
 DYNAMIC-BUFFER RES-OWNER n
 DYNAMIC-BUFFER RES-CONN n
+DYNAMIC-BUFFER RES-OUTER n
+DYNAMIC-BUFFER RES-SCOPED n
 
 TYPED-VARIABLE REGISTERED bool
 
@@ -236,6 +244,8 @@ false REGISTERED !
 here data-base - negate 7 and allot
 variable GENERATION
 variable CONFIG-MUTEX
+\ The packed handle of the running task's innermost result scope ("result scopes").
+TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
@@ -274,6 +284,7 @@ FUNCTION: LIB-IS-BUSY PQisBusy ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-GET-RESULT PQgetResult ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-RESULT-STATUS PQresultStatus ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-RESULT-ERROR-FIELD PQresultErrorField ( ptr u8 n -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-RESULT-ERROR-MESSAGE PQresultErrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
@@ -367,14 +378,10 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
 : MESSAGE-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-CAP @ ;
 : MESSAGE-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-CAP ! ;
-: SQLSTATE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-SQLSTATE-U @ ;
-: SQLSTATE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-SQLSTATE-U ! ;
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
 : BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
 
 : VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
-: SQLSTATE-BUF ( n -- ptr u8 ) {: slot:n :}
-   slot CONN-CHECK 0 CONN-SQLSTATE BYTE-VIEW slot SQLSTATE-LEN * + ;
 
 : PARAM-CHECK ( n -- ) {: idx:n :}
    CONFIGURED @ 0= if E-CAPACITY throw then
@@ -415,6 +422,10 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : RES-OWNER! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-OWNER ! ;
 : RES-CONN@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-CONN @ ;
 : RES-CONN! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-CONN ! ;
+: RES-OUTER@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-OUTER @ ;
+: RES-OUTER! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-OUTER ! ;
+: RES-SCOPED@ ( n -- n ) {: slot:n :}   slot RES-CHECK slot RES-SCOPED @ ;
+: RES-SCOPED! ( n n -- ) {: v:n slot:n :}   slot RES-CHECK v slot RES-SCOPED ! ;
 
 
 \ ---- the call arena -------------------------------------------------------
@@ -596,13 +607,15 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot ;
 
 
-: RESULT-SLOT ( result -- n ) {: handle:result :}
-   handle RESULT>N {: raw:n :}
+\ A scoped result whose connection closed keeps its slot, with no PGresult,
+\ until its scope ends.
+: RESULT-SLOT ( n -- n ) {: raw:n :}
    raw 0 < if E-HANDLE throw then
    raw HANDLE-SLOT {: slot:n :}
    slot RES-LIVE@ 0= if E-CLEARED throw then
    slot RES-GEN@ raw HANDLE-GEN <> if E-CLEARED throw then
    slot RES-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
+   slot RES-PG@ NULL-ADDR? if E-CLEARED throw then
    slot ;
 
 
@@ -672,18 +685,18 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-PENDING-RELEASE
    CONN-CONNECTING-RELEASE
    CONN-MESSAGE-U-RELEASE
-   CONN-SQLSTATE-U-RELEASE
    CONN-PARAM-OFF-RELEASE
    CONN-VERB-RELEASE
    CONN-MESSAGE-RELEASE
    CONN-MESSAGE-CAP-RELEASE
-   CONN-SQLSTATE-RELEASE
    CONN-BOUND-RELEASE
    RES-PG-RELEASE
    RES-GEN-RELEASE
    RES-LIVE-RELEASE
    RES-OWNER-RELEASE
    RES-CONN-RELEASE
+   RES-OUTER-RELEASE
+   RES-SCOPED-RELEASE
    0 CONN-CAPACITY !
    0 RESULT-CAPACITY !
    0 PARAM-CAPACITY !
@@ -704,18 +717,18 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-CAP CONN-PENDING-RESERVE
    CONN-CAP CONN-CONNECTING-RESERVE
    CONN-CAP CONN-MESSAGE-U-RESERVE
-   CONN-CAP CONN-SQLSTATE-U-RESERVE
    CONN-CAP PARAM-CAP * CONN-PARAM-OFF-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP CONN-MESSAGE-RESERVE
    CONN-CAP CONN-MESSAGE-CAP-RESERVE
-   CONN-CAP SQLSTATE-LEN * CELL 1- + CELL / CONN-SQLSTATE-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
    RESULT-CAP RES-PG-RESERVE
    RESULT-CAP RES-GEN-RESERVE
    RESULT-CAP RES-LIVE-RESERVE
    RESULT-CAP RES-OWNER-RESERVE
    RESULT-CAP RES-CONN-RESERVE
+   RESULT-CAP RES-OUTER-RESERVE
+   RESULT-CAP RES-SCOPED-RESERVE
    RESULT-CAP 0 ?do NO-CONN i RES-CONN ! loop ;
 
 
@@ -768,6 +781,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
       loop
       RELEASE-REGISTRY
    then
+   0 SCOPE-HEAD !
    false REGISTERED !
    dup 0<> if throw then drop ;
 
@@ -819,7 +833,6 @@ REGISTER-CHILD-RESET
    0 slot CONNECTING!
    0 slot CONN-TX!
    0 slot MESSAGE-U!
-   0 slot SQLSTATE-U!
    0 slot BOUND!
    slot RESET-PARAMS ;
 
@@ -839,12 +852,12 @@ REGISTER-CHILD-RESET
    0 slot CONN-LIVE! ;
 
 
-: FILL-RES-SLOT ( ptr u8 n n -- result ) {: pg conn:n slot:n :}
+: FILL-RES-SLOT ( ptr u8 n n -- n ) {: pg conn:n slot:n :}
    pg slot RES-PG!
    slot BUMP-RES-GEN
    TASK:SELF-N slot RES-OWNER!
    conn slot RES-CONN!
-   slot RES-GEN@ slot PACK-HANDLE >RESULT ;
+   slot RES-GEN@ slot PACK-HANDLE ;
 
 
 \ The owning connection is unset BEFORE the slot is published as free, so a
@@ -855,7 +868,18 @@ REGISTER-CHILD-RESET
    NULL-ARG slot RES-PG!
    0 slot RES-GEN!
    NO-CONN slot RES-CONN!
+   0 slot RES-OUTER!
+   0 slot RES-SCOPED!
    0 slot RES-LIVE! ;
+
+
+\ A scoped slot is retired only by its scope, which keeps the task's chain of
+\ open scopes sound: a close under the body frees the PGresult and leaves the
+\ slot to the scope, where every later read is E-CLEARED.
+: DETACH-RES-SLOT ( n -- ) {: slot:n :}
+   slot RES-PG@ LIB-CLEAR
+   NULL-ARG slot RES-PG!
+   NO-CONN slot RES-CONN! ;
 
 
 \ Clears the connection's results and finishes it. A pending statement gets no
@@ -865,8 +889,12 @@ REGISTER-CHILD-RESET
    {: slot:n :}
    RESULT-CAP 0 ?do
       i RES-LIVE@ 0<> i RES-CONN@ slot = and if
-         i RES-PG@ LIB-CLEAR
-         i RETIRE-RES-SLOT
+         i RES-SCOPED@ 0<> if
+            i DETACH-RES-SLOT
+         else
+            i RES-PG@ LIB-CLEAR
+            i RETIRE-RES-SLOT
+         then
       then
    loop
    slot DRAIN-LAST@ NULL-ADDR? 0= if slot DRAIN-LAST@ LIB-CLEAR then
@@ -902,42 +930,24 @@ REGISTER-CHILD-RESET
    slot MESSAGE-BASE slot MESSAGE-U@ ;
 
 
-: SQLSTATE! ( n ptr u8 n -- ) {: slot:n a u:n :}
-   u SQLSTATE-LEN > if SQLSTATE-LEN else u then {: kept:n :}
-   a slot SQLSTATE-BUF kept BYTE-COPY
-   kept slot SQLSTATE-U! ;
+\ A failed result names its SQLSTATE and primary message in its own bytes. One
+\ libpq made without the server - a connection that died under the query -
+\ carries no primary message but holds the connection's message, copied in when
+\ libpq built it, so the failed arm is never silently empty.
+: FIELD$ ( ptr u8 -- ptr u8 n ) {: p :}
+   p NULL-ADDR? if NULL-ARG 0 exit then
+   p CSTR$ ;
 
 
-: SQLSTATE$ ( n -- ptr u8 n ) {: slot:n :}
-   slot SQLSTATE-BUF slot SQLSTATE-U@ ;
-
-
-: SQLSTATE-FROM ( n ptr u8 -- ) {: slot:n res :}
-   res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD {: p :}
-   p NULL-ADDR? if 0 slot SQLSTATE-U! exit then
-   slot p CSTR$ SQLSTATE! ;
-
-
-\ A result that carries no primary message - a connection that died under the
-\ query, or a status libpq produced without the server - still has libpq's own
-\ connection message, so the failed arm is never silently empty.
-: MESSAGE-FROM ( n ptr u8 -- ) {: slot:n res :}
+: FAILED-SPANS ( ptr u8 -- ptr u8 n ptr u8 n ) {: res :}
+   res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD FIELD$
    res PG-DIAG-MESSAGE-PRIMARY LIB-RESULT-ERROR-FIELD {: p :}
-   p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! exit then
-   slot CONN-PG@ LIB-ERROR-MESSAGE {: q :}
-   q NULL-ADDR? if 0 slot MESSAGE-U! exit then
-   slot q CSTR$ MESSAGE! ;
-
-
-: DIAGNOSE ( n ptr u8 -- ) {: slot:n res :}
-   slot res SQLSTATE-FROM
-   slot res MESSAGE-FROM ;
+   p NULL-ADDR? 0= if p CSTR$ exit then
+   res LIB-RESULT-ERROR-MESSAGE FIELD$ ;
 
 
 \ ---- nonblocking progress ------------------------------------------------
-\ Only OUTCOME and a refused CONNECT write the connection's message copy: an
-\ OUTCOME's `failed` span holds until the next OUTCOME, so a failure that throws
-\ leaves the copy alone.
+\ Only a refused CONNECT writes the connection's message copy.
 : COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
    p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! then ;
@@ -987,7 +997,7 @@ REGISTER-CHILD-RESET
    pg NULL-ADDR? if slot ABANDON-SLOT E-EXEC throw then
    NULL-ARG slot DRAIN-LAST!
    0 slot PENDING!
-   pg slot res FILL-RES-SLOT PG-PROGRESS:completed ;
+   pg slot res FILL-RES-SLOT N>RESULT PG-PROGRESS:completed ;
 
 
 \ Consume whatever is available, flush without waiting, and drain only while
@@ -1067,9 +1077,9 @@ REGISTER-CHILD-RESET
    again ;
 
 
-: WAIT-QUERY ( n n -- result )
+: WAIT-QUERY ( n n -- n )
    WAIT-PROGRESS MATCH progress
-      completed OF ENDOF
+      completed OF RESULT>N ENDOF
       connected OF drop E-EXEC throw ENDOF
       refused OF 2drop E-EXEC throw ENDOF
       waiting OF 2drop E-EXEC throw ENDOF
@@ -1248,9 +1258,9 @@ REGISTER-CHILD-RESET
 
 
 \ A column of the result's descriptor: the PGresult and the column index.
-: COLUMN-AT ( result col -- ptr u8 n )
-   {: handle:result c:col :}
-   handle RESULT-SLOT RES-PG@ {: res :}
+: COLUMN-AT ( n col -- ptr u8 n )
+   {: slot:n c:col :}
+   slot RES-PG@ {: res :}
    c COL>N {: ci:n :}
    ci 0 < if E-COLUMN throw then
    ci res LIB-NFIELDS >= if E-COLUMN throw then
@@ -1267,12 +1277,51 @@ REGISTER-CHILD-RESET
 
 
 \ ---- the outcome ADT ------------------------------------------------------
-: CLASSIFY ( n n -- outcome ) {: slot:n res:n :}
+: CLASSIFY ( n -- outcome ) {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK = if PG-OUTCOME:ok exit then
    status PGRES-TUPLES-OK = if PG-OUTCOME:rows exit then
-   slot res RES-PG@ DIAGNOSE
-   slot SQLSTATE$ slot MESSAGE$ PG-OUTCOME:failed ;
+   res RES-PG@ FAILED-SPANS PG-OUTCOME:failed ;
+
+
+\ ---- result scopes --------------------------------------------------------
+\ The token does not survive a throw out of the body, so the scope keeps its
+\ packed handle in the running task's SCOPE-HEAD cell, where the cleanup reads
+\ it. A nested scope saves the cell in RES-OUTER under its own slot and its
+\ cleanup puts it back, so each cleanup retires its own result. Zero is no
+\ scope: a packed handle is at least one HANDLE-STRIDE, and image preparation,
+\ which releases every slot, zeroes the cell of the task that runs it.
+
+: SCOPE-ENTER ( n -- n ) {: raw:n :}
+   raw HANDLE-SLOT {: slot:n :}
+   SCOPE-HEAD @ slot RES-OUTER!
+   1 slot RES-SCOPED!
+   raw SCOPE-HEAD !
+   raw ;
+
+
+\ PQclear of the NULL a close under the body left is a no-op.
+: SCOPE-LEAVE ( -- )
+   SCOPE-HEAD @ {: raw:n :}
+   raw 0= if exit then
+   raw HANDLE-SLOT {: slot:n :}
+   slot RES-OUTER@ SCOPE-HEAD !
+   slot RES-PG@ LIB-CLEAR
+   slot RETIRE-RES-SLOT ;
+
+
+\ The body hands back the token it was given; any other is refused.
+: RUN-SCOPED ( R PG:result [ R PG:result -- S PG:result ] -- S )
+   execute RESULT>N SCOPE-HEAD @ <> if E-HANDLE throw then ;
+
+
+: RESULT-SCOPE ( R n [ R PG:result -- S PG:result ] -- S ) {: raw:n body :}
+   raw SCOPE-ENTER N>RESULT body [: RUN-SCOPED ;] [: SCOPE-LEAVE ;] finally ;
+
+
+\ The accessors resolve the token's slot and hand the token back.
+: PEEK ( PG:result -- PG:result n )
+   RESULT>N dup RESULT-SLOT swap N>RESULT swap ;
 
 
 \ A caught staging refusal still owns the claimed slot. The new arena starts
@@ -1328,7 +1377,7 @@ public
       connected OF PG-CONNECT--RESULT:connected ENDOF
       refused OF PG-CONNECT--RESULT:refused ENDOF
       waiting OF 2drop E-CONNECT throw ENDOF
-      completed OF drop E-CONNECT throw ENDOF
+      completed OF RESULT>N RESULT-SLOT CLEAR-SLOT E-CONNECT throw ENDOF
    ;MATCH ;
 
 
@@ -1375,8 +1424,9 @@ public
 
 
 \ PARAMS empties the connection's parameter list and releases its call arena;
-\ TEXT+, INT+ and NULL+ append in $1, $2, ... order. EXEC and EXEC-PREPARED
-\ consume the list and leave it empty, so no call inherits another's parameters.
+\ TEXT+, INT+ and NULL+ append in $1, $2, ... order. WITH-RESULT and
+\ WITH-PREPARED consume the list and leave it empty, so no call inherits
+\ another's parameters.
 : PARAMS ( connection -- )
    CONN-SLOT dup IDLE-CHECK RESET-PARAMS ;
 
@@ -1419,58 +1469,63 @@ public
    handle CONN-SLOT a u PREPARED-START ;
 
 
-: EXEC ( connection ptr u8 n -- result )
-   {: handle:connection a u:n :}
+\ Each WITH- word runs one operation and the body over its result, then clears
+\ the result whether the body returns or throws. The body hands the token back.
+: WITH-RESULT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot a u EXEC-START
-   slot deadline WAIT-QUERY ;
+   slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-\ SCRIPT runs a whole script - a migration file, several statements in one
-\ text - through the simple-query protocol, which is the only protocol that
-\ takes more than one statement: the extended protocol EXEC rides answers a
-\ second command with 42601. libpq returns the LAST statement's result and a
-\ failing statement abandons the rest, so the outcome ADT covers it unchanged.
-\ EXEC stays the default, because it is the one that takes parameters.
-: SCRIPT ( connection ptr u8 n -- result )
-   {: handle:connection a u:n :}
+\ WITH-SCRIPT runs a whole script - a migration file, several statements in
+\ one text - through the simple-query protocol, which is the only protocol that
+\ takes more than one statement: the extended protocol WITH-RESULT rides
+\ answers a second command with 42601. libpq returns the LAST statement's
+\ result and a failing statement abandons the rest, so the outcome ADT covers
+\ it unchanged. WITH-RESULT stays the default, because it takes parameters.
+: WITH-SCRIPT ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot a u SCRIPT-START
-   slot deadline WAIT-QUERY ;
+   slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: PREPARE ( connection ptr u8 n ptr u8 n -- result )
-   {: handle:connection na nu:n sa su:n :}
+: WITH-PREPARE ( R connection ptr u8 n ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: handle:connection na nu:n sa su:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot na nu sa su PREPARE-START
-   slot deadline WAIT-QUERY ;
+   slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
-: EXEC-PREPARED ( connection ptr u8 n -- result )
-   {: handle:connection a u:n :}
+: WITH-PREPARED ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot a u PREPARED-START
-   slot deadline WAIT-QUERY ;
+   slot deadline WAIT-QUERY body RESULT-SCOPE ;
 
 
 \ Two round trips under one deadline: the prepare, then the describe. A
-\ rejected prepare is the answer, with its `failed` outcome.
-: DESCRIBE ( connection ptr u8 n -- result )
-   {: handle:connection a u:n :}
+\ rejected prepare is the body's result, with its `failed` outcome.
+: WITH-DESCRIPTION ( R connection ptr u8 n [ R PG:result -- S PG:result ] -- S )
+   {: handle:connection a u:n body :}
    handle CONN-SLOT {: slot:n :}
    slot OP-DEADLINE {: deadline:n :}
    slot PARAM-N@ 0 <> if E-STATEMENT throw then
    slot s" " a u PREPARE-SEND
-   slot deadline WAIT-QUERY {: prepared:result :}
+   slot deadline WAIT-QUERY {: prepared:n :}
    prepared RESULT-SLOT {: res:n :}
-   res RESULT-STATUS PGRES-COMMAND-OK <> if prepared exit then
-   res CLEAR-SLOT
-   slot DESCRIBE-START
-   slot deadline WAIT-QUERY ;
+   res RESULT-STATUS PGRES-COMMAND-OK <> if
+      prepared body RESULT-SCOPE
+   else
+      res CLEAR-SLOT
+      slot DESCRIBE-START
+      slot deadline WAIT-QUERY body RESULT-SCOPE
+   then ;
 
 
 \ The bound covers each later operation from its start; one in flight keeps
@@ -1521,55 +1576,55 @@ public
    code throw ;
 
 
-: OUTCOME ( result -- outcome ) {: handle:result :}
-   handle RESULT-SLOT {: res:n :}
-   res RES-CONN@ res CLASSIFY ;
+: OUTCOME ( PG:result -- PG:result outcome )
+   PEEK CLASSIFY ;
 
 
-: ROWS ( result -- count )
-   RESULT-SLOT RES-PG@ LIB-NTUPLES >COUNT ;
+: ROWS ( PG:result -- PG:result count )
+   PEEK RES-PG@ LIB-NTUPLES >COUNT ;
 
 
-: COLS ( result -- count )
-   RESULT-SLOT RES-PG@ LIB-NFIELDS >COUNT ;
+: COLS ( PG:result -- PG:result count )
+   PEEK RES-PG@ LIB-NFIELDS >COUNT ;
 
 
-: AFFECTED ( result -- count )
-   RESULT-SLOT CMD-COUNT >COUNT ;
+: AFFECTED ( PG:result -- PG:result count )
+   PEEK CMD-COUNT >COUNT ;
 
 
-: NAME$ ( result col -- ptr u8 n )
-   COLUMN-AT LIB-FNAME {: p :}
+: NAME$ ( PG:result col -- PG:result ptr u8 n ) {: c:col :}
+   PEEK c COLUMN-AT LIB-FNAME {: p :}
    p NULL-ADDR? if E-COLUMN throw then
    p CSTR$ ;
 
 
 \ The column's type OID, as pg_type numbers it.
-: OID ( result col -- u32 )
-   COLUMN-AT LIB-FTYPE ;
+: OID ( PG:result col -- PG:result u32 ) {: c:col :}
+   PEEK c COLUMN-AT LIB-FTYPE ;
 
 
 \ The OID of the column's source table; 0 unless it is a plain table column.
-: TABLE ( result col -- u32 )
-   COLUMN-AT LIB-FTABLE ;
+: TABLE ( PG:result col -- PG:result u32 ) {: c:col :}
+   PEEK c COLUMN-AT LIB-FTABLE ;
 
 
 \ The column's attnum in its TABLE; 0 unless it is a plain table column.
-: TABLE-COL ( result col -- n )
-   COLUMN-AT LIB-FTABLECOL ;
+: TABLE-COL ( PG:result col -- PG:result n ) {: c:col :}
+   PEEK c COLUMN-AT LIB-FTABLECOL ;
 
 
-\ The span is libpq's own bytes inside the result and stays valid until CLEAR.
-: TEXT$ ( result row col -- ptr u8 n ) {: handle:result r:row c:col :}
-   handle RESULT-SLOT r c CELL-AT VALUE$ ;
+\ The span is libpq's own bytes inside the result, valid until its scope ends,
+\ its CLEAR or its connection's close.
+: TEXT$ ( PG:result row col -- PG:result ptr u8 n ) {: r:row c:col :}
+   PEEK r c CELL-AT VALUE$ ;
 
 
-: NULL? ( result row col -- bool ) {: handle:result r:row c:col :}
-   handle RESULT-SLOT r c CELL-AT CELL-NULL? ;
+: NULL? ( PG:result row col -- PG:result bool ) {: r:row c:col :}
+   PEEK r c CELL-AT CELL-NULL? ;
 
 
-: INT ( result row col -- n ) {: handle:result r:row c:col :}
-   handle RESULT-SLOT r c CELL-AT {: slot:n ri:n ci:n :}
+: INT ( PG:result row col -- PG:result n ) {: r:row c:col :}
+   PEEK r c CELL-AT {: slot:n ri:n ci:n :}
    slot ri ci CELL-NULL? if E-TYPE throw then
    slot ri ci VALUE$ STR>NUMBER? MATCH option
       none OF E-TYPE throw ENDOF
@@ -1577,9 +1632,11 @@ public
    ;MATCH ;
 
 
-\ CLEAR is the result owner's single consumption point: the slot retires, so
-\ this handle and every copy of it refuse afterwards with E-CLEARED.
-: CLEAR ( result -- )
-   RESULT-SLOT CLEAR-SLOT ;
+\ CLEAR consumes the `completed` token POLL or AWAIT answered. A scope's token
+\ goes back to its scope, which clears it; CLEAR of one is E-HANDLE.
+: CLEAR ( PG:result -- )
+   RESULT>N RESULT-SLOT {: slot:n :}
+   slot RES-SCOPED@ 0<> if E-HANDLE throw then
+   slot CLEAR-SLOT ;
 
 ;package
