@@ -722,6 +722,18 @@ $37D0 constant EVALD-CELL        \ mirrored: src/core/checker.f CK-EVALD-OFF
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL
+\ HALT-UNWIND-CELL: nonzero while a TASK:HALT unwinds the task that observed it,
+\ else 0, which a fresh task region and every non-task region hold. Only that
+\ task's own thread writes it: src/lib/task.f HALT-UNWIND, which PAUSE calls,
+\ sets it before it throws, and the catch family reads it on its throw-resume
+\ path (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE; their kernel-x64.f
+\ twins). An inner
+\ catch rethrows at once and never pushes; the task's root catch, whose frame's
+\ prev HND is 0, clears it and delivers the code; finally and c2-invoke clear it
+\ while their cleanup runs and set it again to continue the unwind. $3870
+\ follows ENGINE-MAIN:ARENA-CELL ($3868) in the run swept for a claimant up to
+\ the FFI buffers at $3A00, below $7FF8 for a `DATA <off> LDR`.
+$3870 constant HALT-UNWIND-CELL
 $3C90 constant TASKS-LIVE-CELL
 $3C98 constant HIDXP-CELL
 \ HIDX:CLAIMS: how many hash-index slots have ever been claimed - live rows
@@ -1837,7 +1849,10 @@ STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 \ (dot habu-restore-complete-exec-abb8baca). Field offsets are byte offsets from
 \ the frame base; every delivery site (BTHROW, LEVLD, seed BTHROW) reads them and
 \ validates the sentinel, saved depths and allocation BEFORE any restore store. Keep this block
-\ byte-for-byte in step with the bootstrap/cg/forth.fs mirror.
+\ byte-for-byte in step with the bootstrap/cg/forth.fs mirror. Where a throw
+\ resumes, the native catch family (habu1.f BCATCH-FORWARD, BFINALLY,
+\ BC2-INVOKE; kernel-x64.f twins) also reads HALT-UNWIND-CELL to keep a halt
+\ unwinding; the frame itself carries nothing for it.
 STACK-ABI:CATCH-BYTES constant HNDF-SIZE
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel

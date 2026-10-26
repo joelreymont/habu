@@ -1444,12 +1444,12 @@ private
    RAX -2 RSLOT ASM-SINK ENC-MOV-RM  RDX -1 RSLOT ASM-SINK ENC-MOV-RM
    RAX PUSH,  RDX PUSH, ;
 
-\ Pop an xt and call it under a catch frame, leaving 0 in rax when it returns
-\ and its throw's code when it throws: the twin of BCATCH before its push. The
-\ frame saves the caller's whole execution state, links in as the handler and
-\ is unlinked on the return; a throw restores the state, unlinks the frame and
-\ resumes after the unlink with the code in rax.
-: CAUGHT, ( -- )
+\ Pop an xt and call it under a catch frame: the twin of habu1.f BCATCH-RUN.
+\ The frame saves the caller's whole execution state, links in as the handler
+\ and is unlinked on the return, which leaves 0 in rax; a throw restores the
+\ state, unlinks the frame and resumes at the label this answers, with its code
+\ in rax. The caller places that label after the return path.
+: CATCH-RUN, ( -- label )
    X64CODE:LBL {: resume:label :}
    RAX POP,  CALLABLE,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
@@ -1472,7 +1472,7 @@ private
    RCX RSP CATCH-PREV MOV-LOAD,  RCX DATA-REG HND-CELL MOV-STORE,
    RSP STACK-ABI:CATCH-BYTES >IMM32 ASM-SINK ENC-ADD-RI32
    RAX ZERO-REG,
-   resume X64CODE:LBL, ;
+   resume ;
 
 \ Admit the handler frame in rdx before any store: its sentinel, both depths
 \ within their stacks' capacities, and its data stack's descriptor and cursor
@@ -1537,6 +1537,37 @@ private
    UNCAUGHT,
    corrupt X64CODE:LBL,
    CORRUPT$ ENGINE-ERROR:CATCH-STACK STDERR-EXIT, ;
+
+\ At a throw's resume, with the code in rax: the twin of habu1.f
+\ BCATCH-FORWARD. With HALT-UNWIND-CELL clear the code is delivered as always.
+\ Set, a TASK:HALT is unwinding the task: while a frame remains below this one
+\ (HND nonzero) this is an inner catch, which rethrows the code at once and
+\ never delivers it; the task's root catch (HND 0) clears the cell and delivers
+\ the code, so the runner ends the task.
+: CATCH-FORWARD, ( -- )
+   X64CODE:LBL X64CODE:LBL {: inner:label keep:label :}
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E keep JCC,
+   RCX DATA-REG HND-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE inner JCC,
+   RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,      \ the root: rcx = HND = 0 clears it
+   keep JMP,
+   inner X64CODE:LBL,  THROW,
+   keep X64CODE:LBL, ;
+
+\ Pop an xt and call it under a catch frame, leaving 0 in rax when it returns
+\ and its throw's code when it throws: the twin of habu1.f BCATCH, which
+\ forwards a halt. CAUGHT-HELD, is BCATCH-HELD's twin, which does not, for the
+\ body and cleanup of finally and c2-invoke: they take the halt into their own
+\ frame and resume it after their cleanup.
+: CAUGHT, ( -- )
+   X64CODE:LBL {: done:label :}
+   CATCH-RUN, {: resume:label :}
+   done JMP,
+   resume X64CODE:LBL,  CATCH-FORWARD,
+   done X64CODE:LBL, ;
+
+: CAUGHT-HELD, ( -- )  CATCH-RUN, X64CODE:LBL, ;
 
 \ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then the source
 \ location from LCOMPILEDIE and a newline. An active catch receives code 76
@@ -1608,42 +1639,70 @@ private
    s" throw" ENTRY-LABEL JMP,
    done X64CODE:LBL, ;
 
-\ finally ( xt xt -- ): run the body under CAUGHT, and then the cleanup outside
-\ it, so the cleanup's throw supersedes the body's; then rethrow the body's
-\ code unless it is 0. The cleanup's xt and then the code wait in a two-cell
-\ frame, which a throw inside the body leaves in place.
+\ finally ( xt xt -- ): run the body under CAUGHT-HELD, and then the cleanup
+\ under another outside it, so the cleanup's throw supersedes the body's; then
+\ rethrow the code unless it is 0. Frame: [0] cleanup | [CELL] code |
+\ [2*CELL] halt, the HALT-UNWIND-CELL value the body's throw carried, as
+\ habu1.f BFINALLY: the frame takes the cell and clears it while the cleanup
+\ runs, a halt that begins inside the cleanup lands in the frame keeping the
+\ body's code, and a halt taken here is set again and the code thrown on, even
+\ 0; a cleanup's nonzero code supersedes.
 : FINALLY, ( -- )
-   X64CODE:LBL {: done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: keep:label calm:label throw:label done:label :}
    RAX POP,  CALLABLE,
-   RSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
+   RSP 4 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RAX RSP 0 MOV-STORE,
-   CAUGHT,
+   CAUGHT-HELD,
    RAX RSP CELL MOV-STORE,
-   RAX RSP 0 MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
-   RAX RSP CELL MOV-LOAD,
-   RSP 2 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,  RCX RSP 2 CELL * MOV-STORE,
+   RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
+   RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT-HELD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E keep JCC,
+   RAX RSP CELL MOV-STORE,                       \ a cleanup's code supersedes
+   keep X64CODE:LBL,
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E calm JCC,
+   RCX RSP 2 CELL * MOV-STORE,                   \ a halt begun in the cleanup
+   calm X64CODE:LBL,
+   RAX RSP CELL MOV-LOAD,  RCX RSP 2 CELL * MOV-LOAD,
+   RSP 4 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,      \ the halt taken, 0 when none
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE throw JCC,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   THROW,
+   throw X64CODE:LBL,  THROW,
    done X64CODE:LBL, ;
 
+\ c2-invoke ( body cleanup finish -- ): habu1.f BC2-INVOKE's twin. Frame:
+\ [0] cleanup | [CELL] finisher | [2*CELL] code | [3*CELL] halt. A halt is
+\ taken and resumed as FINALLY, does, one begun inside the cleanup included,
+\ and the finisher runs with the cell clear.
 : C2-INVOKE, ( -- )
-   X64CODE:LBL X64CODE:LBL {: clean:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: clean:label calm:label throw:label done:label :}
    RAX POP,
    RSP 4 CELL * >IMM8 ASM-SINK ENC-SUB-RI8
    RAX RSP CELL MOV-STORE,
    RAX POP,  RAX RSP 0 MOV-STORE,
-   CAUGHT,
+   CAUGHT-HELD,
    RAX RSP 2 CELL * MOV-STORE,
-   RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT,
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,  RCX RSP 3 CELL * MOV-STORE,
+   RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
+   RAX RSP 0 MOV-LOAD,  RAX PUSH,  CAUGHT-HELD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E clean JCC,
    RAX RSP 2 CELL * MOV-STORE,
    clean X64CODE:LBL,
+   RCX DATA-REG HALT-UNWIND-CELL MOV-LOAD,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E calm JCC,
+   RCX RSP 3 CELL * MOV-STORE,                   \ a halt begun in the cleanup
+   RCX ZERO-REG,  RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,
+   calm X64CODE:LBL,
    RAX RSP 2 CELL * MOV-LOAD,  RAX PUSH,
    RAX RSP CELL MOV-LOAD,  RAX ASM-SINK ENC-CALL-REG
-   RAX RSP 2 CELL * MOV-LOAD,
+   RAX RSP 2 CELL * MOV-LOAD,  RCX RSP 3 CELL * MOV-LOAD,
    RSP 4 CELL * >IMM8 ASM-SINK ENC-ADD-RI8
+   RCX DATA-REG HALT-UNWIND-CELL MOV-STORE,      \ the halt taken, 0 when none
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE throw JCC,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E done JCC,
-   THROW,
+   throw X64CODE:LBL,  THROW,
    done X64CODE:LBL, ;
 
 : C2-INIT-STOW, ( -- )

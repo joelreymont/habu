@@ -8,8 +8,11 @@
 \ (TASK:DEFER-ENTER) across that transfer and while a close runs. A task's
 \ first scope registers one TASK:AT-EXIT DRAIN that closes every remaining
 \ frame innermost first, keeps going past a disposer's error and reports the
-\ first; TASK:PAUSE ends a halted thread without unwinding `finally`, so the
-\ drain is required. Image capture refuses an open frame or loan (E-C2-CAPTURE).
+\ first. A halt at TASK:PAUSE unwinds through every scope's c2-invoke cleanup,
+\ and the outermost scope's finisher serves a halt that stayed pending through
+\ a deferred close (FINISH), so the drain has no reachable case left; dot
+\ habu-retire-c2-invoke-a608fd55 retires it with c2-invoke. Image capture
+\ refuses an open frame or loan (E-C2-CAPTURE).
 \
 \ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row
 \ (OWNER-REGION); main uses the same row in its own data region and registers
@@ -291,10 +294,12 @@ TRUSTED: RECORDS-STOW ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] sto
 
 : RUN-BODY ( R [ R -- S ] -- S ) execute ;
 
-: FINISH ( n -- ) {: rc:n :}
-   HEAD-CELL @ 0= if
-      TASK:HALTED? if rc TASK:EXIT-FAILURE TASK:PAUSE then
-   then ;
+\ The outermost scope serves a halt that stayed pending while its cleanup ran
+\ under DEFER-ENTER, carrying the code its body and cleanup selected, so a
+\ catch around the scope never resumes and the task's error is that code. A
+\ halt already unwinding through the scope continues from c2-invoke's tail.
+: FINISH ( n -- )
+   HEAD-CELL @ 0= if TASK:HALT-UNWIND else drop then ;
 
 TRUSTED: INIT-RUN ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-OPEN

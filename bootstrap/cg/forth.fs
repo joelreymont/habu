@@ -2097,11 +2097,15 @@ HB-TARGET-LINUX? [IF]
 : B-NO-UNIT ( -- ) NOUNIT$ B-REFUSE ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
-\ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
-\ result row survives a clean run; the cleanup runs outside the body's handler,
-\ so a throw from it supersedes the body's, and the body's own throw is rethrown
-\ once the cleanup has run. src/habu/address-cells.f, which the stage source
-\ requires, locks through it, so the seed has to carry it.
+\ finally ( body cleanup -- ): src/habu/habu1.f BFINALLY's behaviour without its
+\ halt. The body's result row survives a clean run; the cleanup runs outside the
+\ body's handler, so a throw from it supersedes the body's, and the body's own
+\ throw is rethrown once the cleanup has run. src/habu/address-cells.f, which
+\ the stage source requires, locks through it, so the seed has to carry it.
+\ habu1.f's frame adds a halt flag and runs the cleanup under a catch to carry
+\ a TASK:HALT's unwind (HALT-UNWIND-CELL) through the cleanup; the seed runs
+\ no tasks, so that cell is never set here and this 16-byte frame and bare
+\ cleanup call behave the same.
 : BFINALLY ( -- )
    LBL {: ldone :}
    A G-POP  BCALLABLE                    \ cleanup xt
@@ -2114,7 +2118,10 @@ HB-TARGET-LINUX? [IF]
    9 G-PUSH  BTHROW                      \ the body's throw goes on
    ldone LBL, ;
 
-\ MIRROR of src/habu/habu1.f BC2-INVOKE.
+\ src/habu/habu1.f BC2-INVOKE's behaviour without its halt: habu1.f keeps
+\ a TASK:HALT's unwind (HALT-UNWIND-CELL) in [24] while the cleanup and
+\ finisher run and resumes it after them; the seed runs no tasks, so that cell
+\ is never set here and [24] stays unused.
 : BC2-INVOKE ( -- )
    LBL LBL {: lclean ldone :}
    A G-POP  10 A 0 ADDI,

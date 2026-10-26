@@ -17,9 +17,14 @@
 \
 \ ENDINGS. A worker `die` ends the process (Linux uses exit_group). An uncaught
 \ worker throw ends only that task: THROW@ keeps the code and JOIN answers it.
-\ TASK:HALT is cooperative and observed at TASK:PAUSE; a task parked in STOP,
-\ WAIT, SLEEP or a host call observes it only when released, so TASK:KILL waits
-\ for it. KILL discards the outcome, JOIN collects it; both release the task.
+\ TASK:HALT is cooperative and observed at TASK:PAUSE, which then unwinds the
+\ body through every finally around the PAUSE, innermost first, as a throw
+\ does; a catch between the PAUSE and the task's root never resumes, so a body
+\ that swallows errors still ends. The halt is not a body error: THROW@ is a
+\ code a cleanup threw, else the body's error a halt overtook in a cleanup,
+\ else the n of TASK:HALT-UNWIND, else 0. A task parked in STOP, WAIT, SLEEP or
+\ a host call observes the halt only when released, so TASK:KILL waits for it.
+\ KILL discards the outcome, JOIN collects it; both release the task.
 \ KILL of an activated task joins it whatever state it reaches first, so an
 \ owner may KILL a body that signalled its own end and is still finishing.
 \ Every ending runs the AT-EXIT chain in the task's thread, drops the callback
@@ -298,9 +303,7 @@ FUNCTION: NANOSLEEP-CALL nanosleep ( ptr u8 ptr u8 -- i32 )
    1 TASK-TIMESPEC-BYTES WRITES-BYTES
 ;FUNCTION
 
-\ PAUSE's yield and a halted task's exit. pthread_exit never returns; its one
-\ argument is the value a join reads, passed as a number.
-FUNCTION: PTHREAD-EXIT-CALL pthread_exit ( n -- ) ;FUNCTION
+\ PAUSE's yield.
 FUNCTION: SCHED-YIELD-CALL sched_yield ( -- i32 ) ;FUNCTION
 
 \ A task region goes back to the system through munmap, which only reads the
@@ -345,8 +348,8 @@ FUNCTION: MUTEX-UNLOCK-CALL pthread_mutex_unlock ( ptr u8 -- i32 )
 \ and TASK-JOIN-CHECK all read it from the owner while the worker is still
 \ moving it - so the read is an acquire load. The ending task publishes DONE
 \ with the matching release store (the entry's STLR, src/habu/habu1.f
-\ BTASK-ENTRY, and PAUSE's halted exit below), which is what makes an owner that
-\ only polls DONE? see every write the body made before it ended.
+\ BTASK-ENTRY), which is what makes an owner that only polls DONE? see every
+\ write the body made before it ended.
 : TASK-STATE@ ( ptr n -- n )
    TCB.STATUS atomic@ ;
 
@@ -1097,10 +1100,10 @@ variable ROW-N
 : ROWS-END ( n -- ) {: reg:n :}
    ROW-N @ 0 ?do i reg ROW-END loop ;
 
-\ Every way a task's thread ends passes here: the body returning, the body
-\ throwing, and a halted body leaving at TASK:PAUSE. The stop mark goes first,
-\ so a cleanup that pauses yields rather than entering the halted exit
-\ (HALT-PENDING?). The rows go before the signal, which is last, so a joiner
+\ Every way a task's thread ends passes here, from TASK-RUNNER: the body
+\ returning, the body throwing, and a halted body unwound from TASK:PAUSE. The
+\ stop mark goes first, so a cleanup that pauses yields rather than starting a
+\ halt unwind (HALT-PENDING?). The rows go before the signal, which is last, so a joiner
 \ that wakes finds the cleanup finished, the outcome rows final and no slot
 \ naming the region it is about to release.
 : TASK-END ( -- )
@@ -1383,15 +1386,6 @@ variable SWEEP-ARMED
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
 
-\ A scope that finished cleanup while HALT is pending must publish the error
-\ selected by finally before PAUSE ends this worker outside TASK-RUNNER's catch.
-\ Keep an earlier task failure, as the exit callback chain does.
-: TASK-EXIT-FAILURE ( n -- ) {: rc:n :}
-   rc 0= if exit then
-   TASK-SELF-N dup 0= if drop E-TASK-STATE throw then
-   TASK-N>PTR {: self:ptr :}
-   self TASK-THROW@ 0= if rc self TASK-THROW! then ;
-
 \ An uncaught worker throw ends this task only: record the code and return, so
 \ the entry marks the task DONE and the other tasks keep running. A worker
 \ `die` is not catchable and still exits the process with its own status.
@@ -1441,23 +1435,28 @@ variable SWEEP-ARMED
 \ HALT'S REQUEST IS THE STATUS ITSELF: HALT-REQ, which only HALT's CAS writes,
 \ over RUNNING. The CAS is a CASAL and TASK-STATE@ an LDAR, so the request and
 \ the worker's stop read here are a release/acquire pair. TCB.STOP is the run's
-\ own mark that it is ending: TASK-END sets it first, for all three endings, so
-\ a cleanup that pauses yields instead of entering the halted exit, and PREPARE
-\ and ACTIVATE clear it before the thread exists. No other thread writes it, so
-\ it is a plain cell, and a second HALT racing the exit cannot re-arm it.
+\ own mark that it is ending: PAUSE sets it before it starts the halt unwind
+\ and TASK-END sets it first for every ending, so a cleanup that pauses yields
+\ instead of starting a second unwind, and PREPARE and ACTIVATE clear it before the
+\ thread exists. No other thread writes it, so it is a plain cell, and a second
+\ HALT racing the exit cannot re-arm it.
 : HALT-PENDING? ( ptr n -- bool ) {: tcb:ptr :}
    tcb TASK-STATE@ TASK-HALT-REQ = tcb TCB.STOP @ 0= and ;
 
-\ A halted task leaves here rather than through the runner, so this is the third
-\ way a task ends and it runs the same TASK-END, whose stop mark makes a cleanup
-\ that pauses yield rather than re-enter the exit it is part of.
+\ A halted task starts its unwind here, ONCE, from PAUSE or from a scope's end
+\ (TASK:HALT-UNWIND): the stop mark goes first, so every cleanup the unwind runs
+\ and the AT-EXIT chain may pause and only yield. Then HALT-UNWIND-CELL is set
+\ and `n throw` leaves: with the cell set the catch family (src/habu/layout.f
+\ HALT-UNWIND-CELL) runs each finally around the throw, innermost first, and
+\ rethrows past every other catch, so no code after a catch observes the halt.
+\ TASK-RUNNER's catch, the task's root, takes n, or a code a cleanup threw
+\ during the unwind, which supersedes as it does for any throw, or, when the
+\ halt began inside a cleanup, the body's error that cleanup ran for; TASK-END
+\ runs and the entry publishes DONE. PAUSE carries 0: the halt is not a body error.
+\ Where the halt cannot be served it drops n and returns.
 \
-\ The DONE goes out with the same release the entry's STLR makes for a body that
-\ returned: this is the worker's own thread publishing its last state, and every
-\ write it made - the body's and TASK-END's cleanup - precedes it.
-\
-\ Inside a callback it only yields and the request stays pending: leaving there
-\ would end the thread beneath C's frames, holding the slot it entered through,
+\ Inside a callback the request stays pending: a throw there
+\ would unwind through C's frames, holding the slot it entered through,
 \ with C's call never drained. A live marshal frame on the region (CB-FRAME) is
 \ that case; the thunk restores the cell as each callback returns, so it reads
 \ 0 once C is off the stack. The body returns to C, C returns to the task, and
@@ -1468,16 +1467,17 @@ variable SWEEP-ARMED
 : IN-CALLBACK? ( -- bool )
    data-base CB-FRAME + @ 0 <> ;
 
+: HALT-UNWIND ( n -- ) {: rc:n :}
+   TASK-SELF-N dup 0= if drop exit then
+   TASK-N>PTR {: self:ptr :}
+   self HALT-PENDING? IN-CALLBACK? 0= and TASK-DEFER-DEPTH @ 0= and if
+      1 self TCB.STOP !
+      1 data-base HALT-UNWIND-CELL + !
+      rc throw
+   then ;
+
 : PAUSE ( -- )
-   TASK-SELF-N dup 0= if drop SCHED-YIELD-CALL TASK-RC0 exit then
-   TASK-N>PTR dup HALT-PENDING? IN-CALLBACK? 0= and if
-         TASK-DEFER-DEPTH @ 0= if
-            TASK-END
-            TASK-DONE over TCB.STATUS atomic!
-            0 PTHREAD-EXIT-CALL
-         then
-   then
-   drop
+   0 HALT-UNWIND
    SCHED-YIELD-CALL TASK-RC0 ;
 
 \ The request is observed at TASK:PAUSE, so a task parked in TASK:STOP would not
@@ -1994,8 +1994,21 @@ TASK-MIN-STACK constant MIN-STACK
    0 SWEEP-ARMED !
    ROW-N @ 0 > if TASK-ARM-SWEEP then ;
 
+\ Yields the processor. In a task whose run a TASK:HALT has reached, outside a
+\ callback and outside DEFER-ENTER, it unwinds the body through every finally
+\ around it, once per run; a catch between it and the task's root never resumes.
 : PAUSE ( -- )
    PAUSE ;
+
+\ Serves this task's pending TASK:HALT here, carrying n, where PAUSE would: in a
+\ task whose run a TASK:HALT has reached and has not yet begun to unwind,
+\ outside a callback and outside DEFER-ENTER, it unwinds as PAUSE's halt does
+\ but delivers n to the task's root, so THROW@ and JOIN answer n unless a
+\ cleanup's throw supersedes it; 0 delivers what PAUSE does. Anywhere else it
+\ drops n and returns. A scope that ends while a halt is pending uses it to
+\ keep its own selected error as the task's.
+: HALT-UNWIND ( n -- )
+   HALT-UNWIND ;
 
 \ Critical task-local resource transfers and disposal may call PAUSE while a
 \ HALT is pending. The request remains pending until a later PAUSE outside it.
@@ -2013,11 +2026,6 @@ TASK-MIN-STACK constant MIN-STACK
 : HALTED? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STATE@ TASK-HALT-REQ = ;
-
-\ Publish the code already selected by a finished scoped body and its cleanup
-\ before that body services a pending HALT at PAUSE. Zero changes nothing.
-: EXIT-FAILURE ( n -- )
-   TASK-EXIT-FAILURE ;
 
 \ Parks the calling task for at least ms milliseconds and returns as soon after
 \ that as the scheduler allows, from the main task or from a worker. It burns no
@@ -2084,16 +2092,20 @@ TASK-MIN-STACK constant MIN-STACK
 
 \ Waits for the task to end, releases it as TASK:KILL would, and answers ok with
 \ the value the worker stored or err with the code that ended it - including
-\ E-TASK-NO-RESULT when the worker ended without an answer. A task that was never
+\ E-TASK-NO-RESULT when the worker ended without an answer. A halted worker
+\ answers a code a cleanup threw during its unwind, else the body's error the
+\ halt overtook in a cleanup, else the n a TASK:HALT-UNWIND carried, else ok
+\ with a value it stored before the halt, else E-TASK-NO-RESULT. A task that was never
 \ activated, a task already joined, and a second joiner are E-TASK-JOIN.
 : JOIN ( ptr n -- result<n,n> )
    TASK-JOIN ;
 
 \ Adds a cleanup quotation to that task's chain, run in the task's own thread
-\ when it ends - body returned, body threw, or halted at TASK:PAUSE - before the
-\ join is released, newest first. A quotation already in the chain is not added
-\ again. A throw inside a cleanup becomes the task's error if it has none and
-\ never leaves the task.
+\ when it ends - body returned or threw, a halt at TASK:PAUSE included - after
+\ the body has unwound through its finally cleanups and before the join is
+\ released, newest first. A quotation already in the chain is not added again.
+\ A throw inside a cleanup becomes the task's error if it has none and never
+\ leaves the task.
 : AT-EXIT ( [ -- ] ptr n -- )
    TASK-AT-EXIT ;
 

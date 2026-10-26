@@ -9,17 +9,19 @@ require src/lib/fmt.f
 package C2-OWNER-DISPOSE
 private
 
-20 PTR-U8-TABLE FOREIGN
-20 TYPED-BUFFER FOREIGN-LEN NUM:alloc-byte-len
-20 TYPED-BUFFER CALLS n
-20 TYPED-BUFFER ORDER n
-20 TYPED-BUFFER CHUNK-LENGTH n
+21 PTR-U8-TABLE FOREIGN
+21 TYPED-BUFFER FOREIGN-LEN NUM:alloc-byte-len
+21 TYPED-BUFFER CALLS n
+21 TYPED-BUFFER ORDER n
+21 TYPED-BUFFER CHUNK-LENGTH n
 variable RELEASES
 variable EMPTY-CALLS
 variable READY
 variable GO
 variable CAP-CALLS
 variable RESUMED
+variable SEEN-CALLS
+variable SEEN-BYTE
 TASK:MIN-STACK TASK:TASK WORKER
 TASK:MIN-STACK TASK:TASK WORKER-B
 TASK:MIN-STACK TASK:TASK WORKER-C
@@ -239,6 +241,25 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 : HALT-CALL ( -- )
    16 MEM:BYTES-ALLOC-LEN [: HALT-BODY ;] C2-MEM:WITH-MUT ;
 
+\ A cleanup inside the owner scope: it records whether the owner's disposer had
+\ already released id 20 and reads the foreign byte only while it had not.
+: SEE-LIVE ( -- )
+   20 CALLS @ SEEN-CALLS !
+   20 CALLS @ 0= if 20 FOREIGN-CELL @ c@ SEEN-BYTE ! then ;
+
+: WAIT-GO ( -- ) begin GO atomic@ 0= while TASK:PAUSE repeat ;
+
+: HALT-FIN-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
+   C2-MEM:BIND 20 ACQUIRE 20 ALLOC-ID
+   1 READY atomic!
+   [: WAIT-GO ;] [: SEE-LIVE ;] finally C2-MEM:UNBIND ;
+
+: HALT-FIN-BODY ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> )
+   C2-MEM:SEED-OWNER [: HALT-FIN-INIT ;] C2-MEM:WITH-INIT ;
+
+: HALT-FIN-CALL ( -- )
+   16 MEM:BYTES-ALLOC-LEN [: HALT-FIN-BODY ;] C2-MEM:WITH-MUT ;
+
 : PAUSE-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 4 ACQUIRE 4 ALLOC-PAUSE-ID C2-MEM:UNBIND ;
 
@@ -447,6 +468,15 @@ public
    WORKER-C TASK:JOIN CLEANUP-ERROR? TTRUE
    RESUMED atomic@ 0 T=
    2 CALLS @ 1 T=
+   0 READY atomic! 0 GO atomic! -1 SEEN-CALLS ! -1 SEEN-BYTE !
+   ['] HALT-FIN-CALL WORKER TASK:ACTIVATE
+   begin READY atomic@ 0= while TASK:PAUSE repeat
+   WORKER TASK:HALT
+   s" a halt runs a finally inside an owner before its disposer" T-LABEL
+   WORKER TASK:JOIN HALTED? TTRUE
+   SEEN-CALLS @ 0 T=
+   SEEN-BYTE @ 20 T=
+   20 CALLS @ 1 T=
    T-REPORT
    s" c2-owner-dispose release-order:" type
    RELEASES @ 0 ?do STR-SPACE emit i ORDER @ FMT:.INT loop cr

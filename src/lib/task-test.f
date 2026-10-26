@@ -963,15 +963,148 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
    HALTED-SEEN @ 1 T=
    HALTED-TASK TASK:KILL ;
 
-\ A halted task leaves at TASK:PAUSE instead of through the runner: that ending
-\ runs the cleanup and releases the joiner too.
+\ A HALTED TASK:PAUSE UNWINDS THE BODY THROUGH EVERY FINALLY AROUND IT,
+\ innermost first, and past every catch between it and the task's root: the
+\ code after such a catch never runs. The AT-EXIT chain runs after the unwind,
+\ and the halt is no body error: THROW@ stays 0 and the join answers
+\ E-TASK-NO-RESULT. The inner cleanup pauses twice before taking its turn, so a
+\ cleanup that pauses during the unwind yields and completes. Each cleanup takes
+\ the next turn of one counter, so the turns give the order they ran in.
+TASK-TEST-ALIGN8
+variable UNWIND-TURN                  \ the last turn taken
+variable UNWIND-INNER                 \ the inner finally's turn
+variable UNWIND-OUTER                 \ the outer finally's turn
+variable UNWIND-AFTER                 \ set by the code after the catch
+variable SWALLOW-CAUGHT               \ codes the swallowing catch received
+TASK:MIN-STACK TASK:TASK HALT-SWALLOW
+
+: UNWIND-RESET ( -- )
+   0 UNWIND-TURN atomic!
+   0 UNWIND-INNER atomic!
+   0 UNWIND-OUTER atomic!
+   0 UNWIND-AFTER atomic! ;
+
+: UNWIND-TAKE ( ptr n -- ) {: at:ptr :}
+   1 UNWIND-TURN atomic-add 1 + at atomic! ;
+
+: UNWIND-INNER-CLEAN ( -- )
+   TASK:PAUSE TASK:PAUSE
+   UNWIND-INNER UNWIND-TAKE ;
+
+: UNWIND-THROW-CLEAN ( -- )
+   UNWIND-INNER UNWIND-TAKE
+   E-TASK-USER throw ;
+
+: UNWIND-AFTER-CATCH ( n -- )
+   drop 1 UNWIND-AFTER atomic! ;
+
+: UNWIND-OUTER-CLEAN ( -- )
+   UNWIND-OUTER UNWIND-TAKE ;
+
+: UNWIND-INNER-BODY ( -- )
+   [: TASK-PAUSER ;] [: UNWIND-INNER-CLEAN ;] finally ;
+
+: UNWIND-NESTED ( -- )
+   [: [: UNWIND-INNER-BODY ;] catch UNWIND-AFTER-CATCH ;]
+   [: UNWIND-OUTER-CLEAN ;] finally ;
+
+: UNWIND-THROW-BODY ( -- )
+   [: TASK-PAUSER ;] [: UNWIND-THROW-CLEAN ;] finally ;
+
+: UNWIND-THROW-NESTED ( -- )
+   [: [: UNWIND-THROW-BODY ;] catch UNWIND-AFTER-CATCH ;]
+   [: UNWIND-OUTER-CLEAN ;] finally ;
+
 : TASK-TEST-JOIN-HALTED ( -- )
+   UNWIND-RESET
    ['] JOIN-MARK JOIN-HALT TASK:AT-EXIT
-   ['] TASK-PAUSER JOIN-HALT TASK:ACTIVATE
+   ['] UNWIND-NESTED JOIN-HALT TASK:ACTIVATE
    JOIN-HALT TASK:HALT
    JOIN-HALT APP-WAIT-DONE
+   s" a halted PAUSE runs the inner finally first, after its pauses" T-LABEL
+   UNWIND-INNER atomic@ 1 T=
+   s" a halted PAUSE runs the outer finally after the inner" T-LABEL
+   UNWIND-OUTER atomic@ 2 T=
+   s" the code after a catch the halt passed never runs" T-LABEL
+   UNWIND-AFTER atomic@ 0 T=
+   s" the AT-EXIT chain runs after the unwind" T-LABEL
    JOIN-HALT TASK-EXIT-MARK TASK:HIS @ 1 T=
+   s" a halt is no body error" T-LABEL
+   JOIN-HALT TASK:THROW@ 0 T=
    JOIN-HALT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
+
+\ A CLEANUP THAT THROWS DURING THE UNWIND supersedes as it does for any throw:
+\ its code continues the unwind past the catch, the outer finally still runs,
+\ and the code is the task's error.
+: TASK-TEST-HALT-CLEANUP-THROWS ( -- )
+   UNWIND-RESET
+   ['] UNWIND-THROW-NESTED JOIN-HALT TASK:ACTIVATE
+   JOIN-HALT TASK:HALT
+   JOIN-HALT APP-WAIT-DONE
+   s" the throwing inner cleanup ran first" T-LABEL
+   UNWIND-INNER atomic@ 1 T=
+   s" the outer finally runs after a cleanup threw during the halt" T-LABEL
+   UNWIND-OUTER atomic@ 2 T=
+   s" the cleanup's code passes the catch too" T-LABEL
+   UNWIND-AFTER atomic@ 0 T=
+   s" the cleanup's code is the halted task's error" T-LABEL
+   JOIN-HALT TASK:THROW@ E-TASK-USER T=
+   JOIN-HALT TASK:JOIN E-TASK-USER JOIN-ERR= ;
+
+\ A HALT THAT BEGINS INSIDE A FINALLY'S CLEANUP cuts the cleanup short at its
+\ TASK:PAUSE and keeps the body's error: a body that threw ends the task with
+\ that code, and a body that returned ends it with no error. The cleanup takes
+\ its turn, then pauses until the halt ends it. The halt keeps unwinding past a
+\ catch around the finally.
+: UNWIND-PAUSE-CLEAN ( -- )
+   UNWIND-INNER UNWIND-TAKE
+   begin TASK:PAUSE again ;
+
+: UNWIND-CLEAN-THROWS ( -- )
+   [: [: E-TASK-USER throw ;] [: UNWIND-PAUSE-CLEAN ;] finally ;]
+   catch UNWIND-AFTER-CATCH ;
+
+: UNWIND-CLEAN-RETURNS ( -- )
+   [: [: ;] [: UNWIND-PAUSE-CLEAN ;] finally ;] catch UNWIND-AFTER-CATCH ;
+
+: HALT-IN-CLEANUP ( [ -- ] -- )
+   UNWIND-RESET
+   JOIN-HALT TASK:ACTIVATE
+   UNWIND-INNER 1 APP-WAIT-CELL
+   JOIN-HALT TASK:HALT
+   JOIN-HALT APP-WAIT-DONE ;
+
+: TASK-TEST-HALT-IN-CLEANUP ( -- )
+   ['] UNWIND-CLEAN-THROWS HALT-IN-CLEANUP
+   s" a halt inside a cleanup passes the catch" T-LABEL
+   UNWIND-AFTER atomic@ 0 T=
+   s" a halt inside a cleanup keeps the body's error" T-LABEL
+   JOIN-HALT TASK:THROW@ E-TASK-USER T=
+   JOIN-HALT TASK:JOIN E-TASK-USER JOIN-ERR=
+   ['] UNWIND-CLEAN-RETURNS HALT-IN-CLEANUP
+   s" a halt inside a returned body's cleanup passes the catch" T-LABEL
+   UNWIND-AFTER atomic@ 0 T=
+   s" a halt inside a returned body's cleanup is no error" T-LABEL
+   JOIN-HALT TASK:THROW@ 0 T=
+   JOIN-HALT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
+
+\ A BODY THAT SWALLOWS EVERY ERROR STILL ENDS ON A HALT: the catch around its
+\ PAUSE never resumes with the halt, so TASK:KILL returns. A catch that resumed
+\ would loop back to a PAUSE that only yields and KILL would never return.
+: SWALLOW-WORK ( -- )
+   begin
+      [: TASK:PAUSE ;] catch 0 <> if 1 SWALLOW-CAUGHT atomic-add drop then
+   again ;
+
+: TASK-TEST-HALT-SWALLOWED ( -- )
+   0 SWALLOW-CAUGHT atomic!
+   ['] SWALLOW-WORK HALT-SWALLOW TASK:ACTIVATE
+   HALT-SWALLOW TASK:HALT
+   HALT-SWALLOW APP-WAIT-DONE
+   s" a halt ends a body whose catch swallows errors" T-LABEL
+   SWALLOW-CAUGHT atomic@ 0 T=
+   HALT-SWALLOW TASK:THROW@ 0 T=
+   HALT-SWALLOW TASK:KILL ;
 
 \ A HALT THAT MEETS A TASK'S CLEANUP RUNS IT ONCE, AND THE CLEANUP SEES IT.
 \ The cleanup pauses until the owner lets it return, which the owner does once
@@ -980,7 +1113,7 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
 \ first the body has returned and the HALT lands in its cleanup; in the second,
 \ a later activation of the same task, a HALT ends the body at TASK:PAUSE and a
 \ second HALT lands in that exit's cleanup. Either way the cleanup's PAUSE
-\ yields rather than entering the halted exit, and TASK:HALTED? answers true
+\ yields rather than starting a second unwind, and TASK:HALTED? answers true
 \ there.
 TASK-TEST-ALIGN8
 variable EXIT-HALT-RUNS               \ times the cleanup started
@@ -2185,6 +2318,9 @@ variable BIND-PAIR-Q-WON
    TASK-TEST-EXIT-CHAIN-THROWS
    TASK-TEST-HALTED
    TASK-TEST-JOIN-HALTED
+   TASK-TEST-HALT-CLEANUP-THROWS
+   TASK-TEST-HALT-IN-CLEANUP
+   TASK-TEST-HALT-SWALLOWED
    TASK-TEST-EXIT-HALT
    TASK-TEST-JOIN-REFUSED
    TASK-TEST-SPIN-CPU

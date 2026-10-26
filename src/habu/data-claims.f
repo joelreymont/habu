@@ -235,6 +235,7 @@ create TAB
    PROVIDED-XT:EVALUATE-RANGE-CELL    1 cells                 CLAIM PROVIDED-XT-EVALUATE-RANGE-CELL
    POLICY-ABI:KEYWORD-CELL            1 cells                 CLAIM POLICY-KEYWORD-CELL
    ENGINE-MAIN:ARENA-CELL             1 cells                 CLAIM ENGINE-MAIN-ARENA-CELL
+   HALT-UNWIND-CELL                   1 cells                 CLAIM HALT-UNWIND-CELL
    $3A00                              $288                    CLAIM FFI-BUFFERS
    TASK-TCB-CELL                      1 cells                 CLAIM TASK-TCB-CELL
    TASKS-LIVE-CELL                    1 cells                 CLAIM TASKS-LIVE-CELL

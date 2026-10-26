@@ -9,6 +9,7 @@ require src/lib/test/outcome.f
 require src/lib/process-fork.f
 require src/lib/test/subject.f
 require src/lib/task.f
+require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -639,6 +640,36 @@ TASK:SEMAPHORE WBT-OWN-MARKED
    MEMT-EXIT0 ;
 
 
+\ A task halted at TASK:PAUSE inside WITH-BYTES leaves the scope as a throw
+\ does: the scope's cleanup releases the mapping, and the join answers
+\ E-TASK-NO-RESULT because the halt is no body error. The task stores its
+\ buffer and raises the ready cell before its PAUSE loop, so the HALT lands
+\ inside the scope.
+align
+variable WBT-HALT-READY
+TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
+
+: WBT-HALT-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop WBT-SAVED !
+   1 WBT-HALT-READY atomic!
+   begin TASK:PAUSE again ;
+
+: WBT-HALT-WORK ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-HALT-BODY ;] WITH-BYTES ;
+
+: WBT-HALTED ( -- )
+   0 WBT-HALT-READY atomic!
+   ['] WBT-HALT-WORK WBT-HALT-TASK TASK:ACTIVATE
+   begin WBT-HALT-READY atomic@ 0= while TASK:PAUSE repeat
+   WBT-HALT-TASK TASK:HALT
+   s" a task halted inside WITH-BYTES ends without a result" T-LABEL
+   WBT-HALT-TASK TASK:JOIN
+   MATCH result
+      ok OF drop E-PRIMARY throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   WBT-RELEASED ;
+
 : TEST-WITH-BYTES ( -- )
    T-RESET
    [: WBT-NORMAL-CHILD ;] MEMT-FORK-CLEAN
@@ -648,6 +679,7 @@ TASK:SEMAPHORE WBT-OWN-MARKED
    [: WBT-RETAINED-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-TWO-TASK-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-ALLOC-FAIL ;] E-MEM-MAP TTHROWSQ
+   WBT-HALTED
    MEM-64K BYTES-ALLOC-LEN [: WBT-ALLOC-RETRY ;] WITH-BYTES
    WBT-RESULT MEMT-MARK-A T=
    T-REPORT ;

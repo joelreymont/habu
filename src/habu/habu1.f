@@ -3401,7 +3401,10 @@ public
 \ 56 sentinel | 64 saved base | 72 saved capacity. BTHROW /
 \ EM-EVAL-THROW-RECOVER restore all of it; keep in step with
 \ the bootstrap/cg/forth.fs mirror.
-: BCATCH ( -- )
+\ BCATCH-RUN is the frame alone: push, call, unlink. A normal return branches
+\ to CATCH-PUSH with x9 = 0; a throw resumes at CATCH-RES, where it ends, with
+\ the code in x9 and the frame already unlinked. Its caller places CATCH-PUSH.
+: BCATCH-RUN ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
    A G-POP  BCALLABLE
@@ -3421,32 +3424,7 @@ public
    11 SP 0 LDR,  11 DATA 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
-   CATCH-RES LABEL@ LBL,
-   CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
-
-\ unit-compile-run ( guard source -- rc ): the engine owns the protected
-\ dispatch hook for one source invocation. Busy or wild hooks return rc70
-\ before source runs; a source throw returns its original catch status.
-\ The hook remains callable after its donor dictionary records are reset,
-\ so use the existing live-code interval rather than dictionary membership.
-: BUNITCOMPILE ( -- )
-   LBL LBL {: bad:label done:label :}
-   A G-POP
-   SP SP 16 SUBI,  9 SP 0 STR,             \ source quotation
-   A G-POP                                  \ guard quotation
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
-   11 10 0 LDR,  11 bad CBNZ,
-   9 DBASE CMP,  C-CC bad BCOND,
-   9 CP CMP,     C-CS bad BCOND,
-   9 10 0 STR,
-   9 SP 0 LDR,  9 G-PUSH
-   BCATCH
-   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
-   11 0 MOVZ,  11 10 0 STR,                  \ clear on return or throw
-   SP SP 16 ADDI,  done B,
-   bad LBL,
-   SP SP 16 ADDI,  9 70 MOVZ,  9 G-PUSH
-   done LBL, ;
+   CATCH-RES LABEL@ LBL, ;
 
 \ throw ( code -- ) : unwind to the nearest catch handler (ANS semantics). When
 \ EVALD>0 the throw may cross one or more active `evaluate` boundaries before it
@@ -3502,6 +3480,55 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
+
+\ BCATCH-FORWARD sits at CATCH-RES with the code in x9. With HALT-UNWIND-CELL
+\ clear the code is delivered as always. Set, a TASK:HALT is unwinding the task:
+\ while a frame remains below this one (HND nonzero) this is an inner catch,
+\ which rethrows the code at once and never delivers it, so no code after a
+\ `catch` observes a halt; the task's root catch (HND 0, src/lib/task.f
+\ TASK-RUN-USER) clears the cell and delivers the code, so the runner ends the
+\ task.
+: BCATCH-FORWARD ( -- )
+   LBL LBL {: inner:label keep:label :}
+   10 DATA HALT-UNWIND-CELL LDR,  10 keep CBZ,
+   10 DATA HND-CELL LDR,  10 inner CBNZ,
+   10 DATA HALT-UNWIND-CELL STR,                 \ the root: x10 = HND = 0 clears it
+   keep B,
+   inner LBL,  9 G-PUSH  BTHROW
+   keep LBL, ;
+
+\ A catch that leaves its code in x9 and does not forward a halt, for the body
+\ and cleanup of finally and c2-invoke, which take the halt into their own frame
+\ and resume it after their cleanup.
+: BCATCH-HELD ( -- )
+   BCATCH-RUN  CATCH-PUSH LABEL@ LBL, ;
+
+: BCATCH ( -- )
+   BCATCH-RUN  BCATCH-FORWARD  CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
+
+\ unit-compile-run ( guard source -- rc ): the engine owns the protected
+\ dispatch hook for one source invocation. Busy or wild hooks return rc70
+\ before source runs; a source throw returns its original catch status.
+\ The hook remains callable after its donor dictionary records are reset,
+\ so use the existing live-code interval rather than dictionary membership.
+: BUNITCOMPILE ( -- )
+   LBL LBL {: bad:label done:label :}
+   A G-POP
+   SP SP 16 SUBI,  9 SP 0 STR,             \ source quotation
+   A G-POP                                  \ guard quotation
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 10 0 LDR,  11 bad CBNZ,
+   9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,     C-CS bad BCOND,
+   9 10 0 STR,
+   9 SP 0 LDR,  9 G-PUSH
+   BCATCH
+   10 UNIT-COMPILE-CELL LIT64,  10 DATA 10 ADD,
+   11 0 MOVZ,  11 10 0 STR,                  \ clear on return or throw
+   SP SP 16 ADDI,  done B,
+   bad LBL,
+   SP SP 16 ADDI,  9 70 MOVZ,  9 G-PUSH
+   done LBL, ;
 
 \ ALLOT's missing owner callback throws through the engine helper above.
 \ `allot` hands out zeroed space (docs/forth.md `create … allot`). Fresh DATA
@@ -3771,7 +3798,9 @@ public
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
    \ Same handler shape as BCATCH, but do not push its status on the callback's
-   \ stack: the clean callback may have filled that stack exactly.
+   \ stack: the clean callback may have filled that stack exactly. It reads no
+   \ HALT-UNWIND-CELL: a task never reaches it, B-TASK-LIVE-GUARD above exits
+   \ while any task is live.
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -3930,41 +3959,66 @@ public
 
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
-
-\ finally ( body cleanup -- ): preserve the body's result row on success;
-\ cleanup runs outside the body's handler so its throw supersedes that body's.
+\ Frame: [0] cleanup | [8] code | [16] halt, the HALT-UNWIND-CELL value the
+\ body's throw carried. Neither catch forwards a halt. The frame takes the cell
+\ and clears it, so the cleanup's own catches resume as usual; a halt that
+\ begins inside the cleanup abandons it and lands in the frame as a halt the
+\ body carried, keeping [8], so the body's error survives it. A halt taken here
+\ is set again and [8] thrown on, even 0; a cleanup's nonzero code supersedes.
 : BFINALLY ( -- )
+   LBL LBL LBL {: keep:label calm:label throw:label :}
    LBL FINALLY-DONE !
    A G-POP  BCALLABLE
-   SP SP $10 SUBI,  9 SP 0 STR,
-   BCATCH
-   A G-POP  9 SP 8 STR,
-   9 SP 0 LDR,  9 BLR,
-   9 SP 8 LDR,  SP SP $10 ADDI,
+   SP SP 32 SUBI,  9 SP 0 STR,
+   BCATCH-HELD
+   9 SP 8 STR,
+   10 DATA HALT-UNWIND-CELL LDR,  10 SP 16 STR,
+   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
+   9 keep CBZ,  9 SP 8 STR,                     \ a cleanup's code supersedes
+   keep LBL,
+   10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
+   10 SP 16 STR,                                \ a halt begun in the cleanup
+   calm LBL,
+   9 SP 8 LDR,  10 SP 16 LDR,  SP SP 32 ADDI,
+   10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
+   10 throw CBNZ,
    9 FINALLY-DONE LABEL@ CBZ,
-   9 G-PUSH  BTHROW
+   throw LBL,  9 G-PUSH  BTHROW
    FINALLY-DONE LABEL@ LBL, ;
 
 \ c2-invoke ( body cleanup finish -- ): both calls have independent handlers.
 \ The finisher sees the selected code while the body's result row is still live;
 \ a nonzero code is rethrown before compiled code reloads that row.
+\ Frame: [0] cleanup | [8] finisher | [16] code | [24] halt. A halt is taken and
+\ resumed as BFINALLY does, one begun inside the cleanup included, and the
+\ finisher runs with the cell clear.
 : BC2-INVOKE ( -- )
+   LBL LBL {: calm:label throw:label :}
    LBL C2-INVOKE-DONE !
    LBL C2-INVOKE-CLEAN !
    A G-POP  10 A 0 ADDI,
    A G-POP
    SP SP 32 SUBI,  A SP 0 STR,  10 SP 8 STR,
-   BCATCH
-   A G-POP  A SP 16 STR,
-   9 SP 0 LDR,  9 G-PUSH  BCATCH
-   A G-POP  9 C2-INVOKE-CLEAN LABEL@ CBZ,
-   A SP 16 STR,
+   BCATCH-HELD
+   9 SP 16 STR,
+   10 DATA HALT-UNWIND-CELL LDR,  10 SP 24 STR,
+   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   9 SP 0 LDR,  9 G-PUSH  BCATCH-HELD
+   9 C2-INVOKE-CLEAN LABEL@ CBZ,
+   9 SP 16 STR,
    C2-INVOKE-CLEAN LABEL@ LBL,
+   10 DATA HALT-UNWIND-CELL LDR,  10 calm CBZ,
+   10 SP 24 STR,                                \ a halt begun in the cleanup
+   10 0 MOVZ,  10 DATA HALT-UNWIND-CELL STR,
+   calm LBL,
    9 SP 16 LDR,  9 G-PUSH
    9 SP 8 LDR,  9 BLR,
-   9 SP 16 LDR,  SP SP 32 ADDI,
+   9 SP 16 LDR,  10 SP 24 LDR,  SP SP 32 ADDI,
+   10 DATA HALT-UNWIND-CELL STR,                 \ the halt taken, 0 when none
+   10 throw CBNZ,
    9 C2-INVOKE-DONE LABEL@ CBZ,
-   9 G-PUSH  BTHROW
+   throw LBL,  9 G-PUSH  BTHROW
    C2-INVOKE-DONE LABEL@ LBL, ;
 
 \ c2-init-stow sees (R base bound value[W] callback W bytes align frame).
