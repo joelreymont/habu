@@ -11815,8 +11815,8 @@ public
 ;package
 
 \ The FILE observer is installed after the source reader below. These hooks
-\ are inert until that owner is loaded; the namespace one is also reset at
-\ the end of each FILE range.
+\ are inert until that owner is loaded, and again once NS-DEFAULT or the
+\ capture seam ends observation.
 defer RESOLUTION-SOURCE-XT ( ptr u8 n ptr u8 n -- )
 defer RESOLUTION-NAMESPACE-XT ( ptr u8 n n -- )
 : RESOLUTION-SOURCE-NONE ( ptr u8 n ptr u8 n -- ) 2drop 2drop ;
@@ -25022,18 +25022,19 @@ defer RWIN-NS-CB ( ptr u8 n -- )
 
 : RWIN-CLEAR ( -- ) 0 RWIN-U !  0 RWIN-N ! ;
 : RWIN-DEFAULT ( -- )
-   ['] RESOLUTION-SOURCE-NONE is RESOLUTION-SOURCE-XT
-   ['] RESOLUTION-NAMESPACE-NONE is RESOLUTION-NAMESPACE-XT
+   RESOLUTION-SOURCE-DEFAULT
    [: 2drop ;] is RWIN-NS-CB
    0 RWIN-FILE-ON ! ;
 RWIN-DEFAULT
 
+\ Releasing the rows keeps the observer: a child load retires checker scratch
+\ while its parent's file is still observed. NS-DEFAULT and the capture seam
+\ (CHECKER-QUIESCE-CORE) are where observation ends.
 : RWIN-RELEASE ( -- )
    RWIN-P RWIN-CAP 1 ARENA-ROWS-RELEASE
    RWIN-OFF-P RWIN-OFF-CAP 1 ARENA-ROWS-RELEASE
    RWIN-FOLD-P RWIN-FOLD-CAP 1 ARENA-ROWS-RELEASE
-   RWIN-CLEAR
-   RWIN-DEFAULT ;
+   RWIN-CLEAR ;
 
 : RWIN-FIELD ( ptr u8 n -- n ) {: row:ptr field:n :}
    row field cells + CELL-VIEW @ ;
@@ -30974,6 +30975,7 @@ public
    DECOUPLED-ARENA-SNAP-RESET
    LOC-SNAP-RESET                       \ the local tables and their width arena
    CHECKER-CAPTURE-SCRATCH-PREPARE
+   RWIN-DEFAULT                         \ a captured image observes no file
    ASIG-POOL-RELEASE
    CHECKER-PERSIST-PRIMS
    PES-BOOT-RETIRE
