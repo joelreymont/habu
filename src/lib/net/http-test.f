@@ -1865,6 +1865,30 @@ $BB8 constant STOP-CEILING-MS     \ over the server's own stop bound, far under 
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T= ;
 
 
+$3E8 constant IDLE-STOP-MS        \ STOP-WAIT-MS and scheduling slack, a fifth of LARGE-IDLE-MS
+
+
+\ A worker waiting for the next request on a connection its peer keeps open
+\ reads the stop flag while it waits: the stop returns far inside LARGE-IDLE-MS,
+\ every task ended itself, and the worker's close ends the held peer's
+\ stream.
+: IDLE-STOP-CASE ( -- )
+   TRACE-RESET
+   LOOPBACK 0 ONE-WORKER LARGE-IDLE-MS HTTP:START
+   RAW-OPEN {: held:TCP4:connection :}
+   REQ-RESET
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\n\r\n" REQ+
+   held REQ$ RAW-SEND
+   held S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   mono-ns {: began:n :}
+   HTTP:STOP
+   mono-ns began - IDLE-STOP-MS NS-PER-MS * < TTRUE
+   HTTP:KILLED-TASKS 0 T=
+   HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
+   held CLOSED-WITHIN? TTRUE
+   held TCP4:CLOSE DROP-TCP-STATUS ;
+
+
 HTTP-TEST:QUEUED TYPED-BUFFER QUEUED-CONN TCP4:connection
 variable OPENED                   \ the peers whose connect succeeded, first in QUEUED-CONN
 
@@ -2236,6 +2260,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    POLICY-CASES
    TRANSCRIPT-CASE
    PARKED-WORKER-CASE
+   IDLE-STOP-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
    ERROR-HOOK-CASE

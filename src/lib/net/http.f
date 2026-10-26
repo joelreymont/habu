@@ -204,13 +204,30 @@ private
    s" the handler did not finish this request" ERROR! ;
 
 
+\ Waits for the first byte of a request, nothing of it buffered, reading
+\ STOPPING? at least every STOP-WAIT-MS: false once a stop has been raised,
+\ true once the peer speaks or the deadline has passed, which READ-HEAD then
+\ reads as it reads any fill.
+: AWAIT-REQUEST ( TCP4:connection n -- bool ) {: conn:TCP4:connection deadline:n :}
+   begin
+      STOPPING? if false exit then
+      mono-ns deadline >= if true exit then
+      conn STOP-WAIT-MS DEADLINE-AT deadline min WAIT-READABLE
+   until
+   true ;
+
+
 \ Read the validated head first, select its first route, then bound body
-\ buffering by that route's explicit cap or the final server default.
+\ buffering by that route's explicit cap or the final server default. A stop
+\ raised while the connection is quiet before a request's first byte closes it.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n ms:n :}
    ms DEADLINE-AT {: deadline:n :}
    idx SLOT-RESET
    idx COMPACT
+   idx IN-U@ 0= if
+      conn deadline AWAIT-REQUEST 0= if CLOSED exit then
+   then
    conn idx deadline READ-HEAD {: head:parse-result :}
    head COMPLETE? 0= if head exit then
    idx PARSE-HEAD {: parsed:parse-result :}
