@@ -13,13 +13,13 @@ Evidence for the ruling (2026-10-23, children census aed47e19, timing d02bf855, 
 - Run: tier 1 is 1.25-3.4x faster (zz 3.4x, tier-bench 2.5x, tender 1.65x, dots 1.3x; dots is 70% syscalls at both tiers).
 - Where the speed comes from: on zz and tender hot words, 94.6% and 98.0% of the sample drop is primitive inlining, register-resident stack values in straight-line code, loop counters in registers, compare/branch fusion and tail calls, all single-pass-capable; residency across joins plus register allocation and spills is 5.4% and 2.0%.
 - Passes a single pass cannot do: the loop fold fires 0 times on every corpus; disabling copy coalescing or cross-join residency knowledge changes no real workload's run time beyond noise.
-- Not measured: etch and loom (made to load: etch master e182e7a9, habu-make-etch-load-ba7e4997 closed; loom habu-make-loom-load-55f9444c); maki run time (its tests run geometry in a separate OCCT process).
+- Not measured: etch and loom (made to load: etch master e182e7a9, habu-make-etch-load-ba7e4997 closed; loom aspen/dots-import c5bbb76d, habu-make-loom-load-55f9444c closed); maki run time (its tests run geometry in a separate OCCT process).
 The next step on this evidence is the proposed experiment habu-inline-primitives-in-74e0211f, which waits for Joel's go-ahead.
 
 Joel's rulings (2026-10-25 interview):
 - Run experiment habu-inline-primitives-in-74e0211f before ruling; it is approved.
 - End state if one pass wins: single-pass codegen on every platform (ARM64, x86-64, Wasm), then tier 1 and the IR are deleted.
 - One pass wins when real workloads run within 5% of tier 1's run time and compile cost stays near today's tier 0.
-- The ruling waits for every corpus: etch and loom are made to load on current Habu (habu-make-etch-load-ba7e4997, habu-make-loom-load-55f9444c) and timed with the rest.
+- The ruling waits for every corpus: etch and loom now load on current Habu (habu-make-etch-load-ba7e4997, habu-make-loom-load-55f9444c, both closed) and are timed with the rest.
 - Until then every confirmed tier 1 defect is dotted. One a real program hits (x86-64 and Wasm run only tier 1) gets its root fix; the rest wait for the ruling, which deletes them with tier 1 or schedules them. No new tier 1 optimization work.
 - Workloads timed for the ruling, each made to run on current Habu first: zz, dots, tools/tier-bench.f, tender, zen (formerly Kaizen) under a real query load, maki's CAD server building real designs end to end (Habu time split from the OCCT worker's; maki tests.f exits 67 from its kernel worker today), etch and loom.
