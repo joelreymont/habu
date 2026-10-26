@@ -53,11 +53,11 @@ private
 
 : PUSH-CHECK ( ptr n -- )
    {: state :}
-   state OPEN-DEPTH + @ state CAPACITY + @ >= if E-DEPTH throw then
    state OPEN-DEPTH + @ 0= if
       state ROOT-COUNT + @ 0<> if E-MALFORMED throw then
       1 state ROOT-COUNT + !
-   then ;
+   then
+   state state OPEN-DEPTH + @ 1+ FRAMES-GROW ;
 
 : SAVE-FRAME ( ptr n -- )
    {: state :}

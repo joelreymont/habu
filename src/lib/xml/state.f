@@ -1,9 +1,10 @@
-\ state.f - XML reader state, INIT, INIT-INPUT, INIT-SOURCE and the accessors.
+\ state.f - XML reader state, INIT, INIT-INPUT, INIT-SOURCE, CLOSE, DISPOSE and
+\ the accessors.
 \
 \ INIT-INPUT reads bounded UTF-8 or declared US-ASCII through a callback that
 \ fills up to the chunk span's reach and answers its count: zero ends input, and
 \ a negative count or one past the reach is E-RANGE. Its `ptr n` context, the
-\ callback, the chunk span and the storage stay live through CLOSE. A long tag,
+\ callback and the chunk span stay live through CLOSE. A long tag,
 \ comment or CDATA grows the event buffer while consumed bytes are released;
 \ open frames' names and live bindings are copied once into scope storage, so
 \ releasing bytes never revisits them. Offsets are absolute bytes of the stream,
@@ -26,11 +27,67 @@ private
 CAST: KIND>N ( kind -- n )
 CAST: >KIND ( n -- kind )
 
-\ The header ends with the reader's SipHash key, drawn by INIT-STATE. A SipHash
-\ state follows the header as scratch for src/lib/xml/names.f, then the frame,
-\ attribute and namespace tables.
-28 constant HEADER-CELLS
+\ The reader's whole fixed state lives in the caller's XML:cursor record: the
+\ header cells below, ending with the reader's SipHash key drawn by
+\ READER-TABLES, then a SipHash state as scratch for src/lib/xml/names.f. The
+\ frame, attribute and namespace tables are mappings the reader owns and the
+\ header points to; each starts at TABLE-START records and doubles when full.
+\ An input reader's stream is a reader-owned mapping too. A zero-filled record
+\ owns nothing; CLOSE and DISPOSE leave it owning nothing.
+public
+STRUCTURE cursor OPAQUE DERIVE addr
+   FIELD source ptr u8
+   FIELD source-len n
+   FIELD position n
+   FIELD frame-cap n
+   FIELD open-depth n
+   FIELD ns-count n
+   FIELD attr-count n
+   FIELD attr-index n
+   FIELD raw-off n
+   FIELD raw-len n
+   FIELD token-kind n
+   FIELD name-off n
+   FIELD name-len n
+   FIELD value-off n
+   FIELD value-len n
+   FIELD uri-off n
+   FIELD uri-len n
+   FIELD pending n
+   FIELD root-count n
+   FIELD failed n
+   FIELD attr-cap n
+   FIELD source-mode n
+   FIELD wire-original ptr u8
+   FIELD wire-original-len n
+   FIELD wire-storage ptr u8
+   FIELD wire-storage-len n
+   FIELD ns-cap n
+   FIELD frames ptr n
+   FIELD attrs ptr n
+   FIELD namespaces ptr n
+   FIELD hash-k0 n
+   FIELD hash-k1 n
+   FIELD sip0 n
+   FIELD sip1 n
+   FIELD sip2 n
+   FIELD sip3 n
+   FIELD sip4 n
+   FIELD sip5 n
+;STRUCTURE
+
+\ The record's size in bytes, for a caller that allocates it as bytes
+\ (src/lib/xml/c2.f).
+EXPORT CURSOR-BYTES
+
+private
+CAST: >STATE ( ptr cursor -- ptr n )
+32 constant HEADER-CELLS
 HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
+: LAYOUT-CHECK ( -- )
+   CURSOR-CELLS FIXED-CELLS <> if s" xml: cursor layout" E-STATE die then ;
+LAYOUT-CHECK
+8 constant TABLE-START
 5 constant FRAME-CELLS
 \ An attribute is name, value and raw spans and URI, then its name hash, the
 \ older attribute in its bucket, and the head of the bucket its own index
@@ -44,11 +101,10 @@ HEADER-CELLS SIPHASH:STATE-CELLS + constant FIXED-CELLS
 4 cells constant NS-HASH
 5 cells constant NS-LINK
 6 cells constant NS-HEAD
-FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 0 constant SOURCE-IDX
 1 cells constant SOURCE-LEN
 2 cells constant POSITION
-3 cells constant CAPACITY
+3 cells constant FRAME-CAP
 4 cells constant OPEN-DEPTH
 5 cells constant NS-COUNT
 6 cells constant ATTR-COUNT
@@ -65,14 +121,18 @@ FRAME-CELLS ATTR-CELLS + NS-CELLS + constant CAP-CELLS
 17 cells constant PENDING
 18 cells constant ROOT-COUNT
 19 cells constant FAILED
-20 cells constant STORAGE-LEN
+20 cells constant ATTR-CAP
 21 cells constant SOURCE-MODE
 22 constant WIRE-ORIGINAL-IDX
 23 cells constant WIRE-ORIGINAL-LEN
 24 constant WIRE-STORAGE-IDX
 25 cells constant WIRE-STORAGE-LEN
-26 cells constant HASH-K0
-27 cells constant HASH-K1
+26 cells constant NS-CAP
+27 constant FRAMES-IDX
+28 constant ATTRS-IDX
+29 constant NS-IDX
+30 cells constant HASH-K0
+31 cells constant HASH-K1
 HEADER-CELLS cells constant SIP-STATE
 
 0 constant LEGACY-UTF8
@@ -88,7 +148,7 @@ HEADER-CELLS cells constant SIP-STATE
 
 \ An input reader owns only its current lexical window and active scope strings.
 \ Its metadata and byte buffers are released by CLOSE, including after a
-\ failed NEXT. The caller retains the callback, context, input and parser store.
+\ failed NEXT. The caller retains the callback, context and input.
 STRUCTURE stream DERIVE addr
    FIELD fill [ ptr n SPAN:span<u8> -- n ]
    FIELD ctx ptr n
@@ -160,38 +220,57 @@ CAST: STREAM>BYTES ( ptr stream -- ptr u8 )
 -1 constant XML-URI
 -2 constant XMLNS-URI
 
-\ A reader token is the caller's validated storage; only these rows cross it.
+\ A reader token is its record's header cells; only these rows cross it.
 LINEAR: MINT ( ptr n -- XML:reader )
 LINEAR: ERASE ( XML:reader -- ptr n )
 
 : STATE ( XML:reader -- XML:reader ptr n )
    ERASE dup MINT swap ;
 
-: CAP-CHECK ( n -- )
-   dup 0 < if E-CAPACITY throw then
-   MAX-SIZE FIXED-CELLS cells - CAP-CELLS cells / > if
-      E-CAPACITY throw
-   then ;
+: RECORD ( ptr n n n n -- ptr n )
+   {: state table:n index:n size:n :}
+   state table ptr-field @ index size * cells + ;
 
-public
-: STORAGE-BYTES ( n -- n )
-   dup CAP-CHECK
-   CAP-CELLS * FIXED-CELLS + cells ;
+: FRAME ( ptr n n -- ptr n ) FRAMES-IDX swap FRAME-CELLS RECORD ;
+: ATTRIBUTE ( ptr n n -- ptr n ) ATTRS-IDX swap ATTR-CELLS RECORD ;
+: NAMESPACE ( ptr n n -- ptr n ) NS-IDX swap NS-CELLS RECORD ;
 
-private
-: FRAME ( ptr n n -- ptr n )
-   {: state index:n :}
-   state FIXED-CELLS index FRAME-CELLS * + cells + ;
+\ Release a table and leave the header owning none, so a second release is a
+\ no-op.
+: TABLE-RELEASE ( ptr n n n n -- )
+   {: state table:n cap-off:n size:n :}
+   state cap-off + @ {: cap:n :}
+   cap 0= if exit then
+   state table ptr-field @ {: old:ptr :}
+   0 state cap-off + !
+   NULL-PTR state table ptr-field !
+   old cap size * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
-: ATTRIBUTE ( ptr n n -- ptr n )
-   {: state index:n :}
-   state FIXED-CELLS state CAPACITY + @ FRAME-CELLS * +
-   index ATTR-CELLS * + cells + ;
+\ Make room for want records of size cells in a table: double it into a fresh
+\ mapping, copy the records and release the old one. Records move, so no
+\ caller keeps a record's address across a growth. A failed allocation leaves
+\ the table as it was.
+: GROW ( ptr n n n n n -- )
+   {: state want:n table:n cap-off:n size:n :}
+   state cap-off + @ {: cap:n :}
+   want cap <= if exit then
+   cap 2 * TABLE-START max want max {: fresh-cap:n :}
+   fresh-cap size * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh:ptr :}
+   cap 0<> if
+      state table ptr-field @ BYTE-VIEW fresh BYTE-VIEW cap size * cells BYTE-COPY
+   then
+   state table cap-off size TABLE-RELEASE
+   fresh state table ptr-field !
+   fresh-cap state cap-off + ! ;
 
-: NAMESPACE ( ptr n n -- ptr n )
-   {: state index:n :}
-   state FIXED-CELLS state CAPACITY + @ FRAME-CELLS ATTR-CELLS + * +
-   index NS-CELLS * + cells + ;
+: FRAMES-GROW ( ptr n n -- ) FRAMES-IDX FRAME-CAP FRAME-CELLS GROW ;
+: ATTRS-GROW ( ptr n n -- ) ATTRS-IDX ATTR-CAP ATTR-CELLS GROW ;
+: NS-GROW ( ptr n n -- ) NS-IDX NS-CAP NS-CELLS GROW ;
+
+\ Empty every prefix bucket: src/lib/xml/names.f relinks the bindings.
+: NS-HEADS-CLEAR ( ptr n -- )
+   {: state :}
+   state NS-CAP + @ 0 ?do -1 state i NAMESPACE NS-HEAD + ! loop ;
 
 : SOURCE$ ( ptr n -- ptr u8 n )
    {: state :}
@@ -455,25 +534,51 @@ private
 : CURRENT-FRAME ( ptr n -- ptr n )
    dup OPEN-DEPTH + @ 1- FRAME ;
 
-: STORAGE-CHECK ( ptr n n ptr u8 n -- )
-   {: storage cap:n source size:n :}
-   storage BYTE-VIEW cap SPAN-CHECK
-   storage BYTE-VIEW BYTE-ADDRESS CELL 1- and 0<> if E-STORAGE throw then
-   cap 1 STORAGE-BYTES < if E-CAPACITY throw then
-   source size SPAN-CHECK
-   storage BYTE-VIEW cap source size OVERLAP? if E-ALIAS throw then ;
+\ Release what the record owns and leave it owning nothing: the three tables,
+\ and an input reader's stream, after which the mode is the legacy one.
+: RECORD-FREE ( ptr n -- )
+   {: state :}
+   state FRAMES-IDX FRAME-CAP FRAME-CELLS TABLE-RELEASE
+   state ATTRS-IDX ATTR-CAP ATTR-CELLS TABLE-RELEASE
+   state NS-IDX NS-CAP NS-CELLS TABLE-RELEASE
+   state INPUT? if
+      state STREAM@
+      LEGACY-UTF8 state SOURCE-MODE + !
+      NULL-PTR state WIRE-STORAGE-IDX ptr-field !
+      STREAM-CLOSE
+   then ;
 
-: INIT-STATE ( ptr n n ptr u8 n -- )
-   {: storage cap:n source size:n :}
-   HEADER-CELLS 0 ?do 0 storage i cells + ! loop
-   storage HASH-K0 + BYTE-VIEW 2 cells ENTROPY:FILL
-   source storage SOURCE-IDX ptr-field !
-   size storage SOURCE-LEN + !
-   cap FIXED-CELLS cells - CAP-CELLS cells / storage CAPACITY + !
-   storage CAPACITY + @ 0 ?do -1 storage i NAMESPACE NS-HEAD + ! loop
-   cap storage STORAGE-LEN + !
-   -1 storage ATTR-INDEX + !
-   XML-KIND:EOF KIND>N storage TOKEN-KIND + ! ;
+
+\ Refuse bytes that overlap the record: the reader writes it on every event.
+: RECORD-CHECK ( ptr n ptr u8 n -- )
+   {: state bytes size:n :}
+   state BYTE-VIEW FIXED-CELLS cells bytes size OVERLAP? if E-ALIAS throw then ;
+
+
+\ A record a caller's throw abandoned still holds its tables: release them,
+\ then zero the header, so a failed build releases exactly what it made.
+: INIT-STATE ( ptr n -- )
+   {: state :}
+   state RECORD-FREE
+   HEADER-CELLS 0 ?do 0 state i cells + ! loop ;
+
+
+: READER-TABLES ( ptr n -- )
+   {: state :}
+   state HASH-K0 + BYTE-VIEW 2 cells ENTROPY:FILL
+   state 1 FRAMES-GROW
+   state 1 ATTRS-GROW
+   state 1 NS-GROW
+   state NS-HEADS-CLEAR
+   -1 state ATTR-INDEX + !
+   XML-KIND:EOF KIND>N state TOKEN-KIND + ! ;
+
+
+\ Answer the reader a build body made, or release it and rethrow the body's code.
+: BUILT ( ptr n n -- XML:reader )
+   {: state code:n :}
+   code 0<> if state RECORD-FREE code throw then
+   state MINT ;
 
 : BOM ( ptr n -- )
    {: state :}
@@ -485,25 +590,45 @@ private
    then
    state s\" \xEF\xBB\xBF" MATCH$ if state 3 ADVANCE-N then ;
 
-public
-: INIT ( ptr n n ptr u8 n -- XML:reader )
-   {: storage cap:n source size:n :}
-   storage cap source size STORAGE-CHECK
-   storage cap source size INIT-STATE
-   storage BOM
-   storage MINT ;
+: INIT-BODY ( ptr n ptr u8 n -- ptr n ptr u8 n )
+   {: state source size:n :}
+   source state SOURCE-IDX ptr-field !
+   size state SOURCE-LEN + !
+   state READER-TABLES
+   state BOM
+   state source size ;
 
-: INIT-INPUT ( ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> ptr n n -- XML:reader )
-   {: ctx fill input storage cap:n :}
-   storage cap NULL-PTR 0 STORAGE-CHECK
-   input SPAN:$ {: bytes size:n :}
-   bytes size SPAN-CHECK
-   storage BYTE-VIEW cap bytes size OVERLAP? if E-ALIAS throw then
-   storage cap NULL-PTR 0 INIT-STATE
-   ctx fill input STREAM-OPEN {: stream :}
-   INPUT-UTF8 storage SOURCE-MODE + !
-   stream STREAM>BYTES storage WIRE-STORAGE-IDX ptr-field !
-   storage MINT ;
+
+\ The stream goes into the header before the tables, so a failed table step
+\ leaves RECORD-FREE to release both.
+: INPUT-BODY ( ptr n ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- ptr n ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> )
+   {: state ctx fill input :}
+   ctx fill input STREAM-OPEN
+   STREAM>BYTES state WIRE-STORAGE-IDX ptr-field !
+   INPUT-UTF8 state SOURCE-MODE + !
+   state READER-TABLES
+   state ctx fill input ;
+
+public
+: INIT ( ptr cursor ptr u8 n -- XML:reader )
+   {: record source size:n :}
+   source size SPAN-CHECK
+   record >STATE {: state :}
+   state source size RECORD-CHECK
+   state INIT-STATE
+   state source size ['] INIT-BODY catch
+   >r 2drop drop r> {: code:n :}
+   state code BUILT ;
+
+: INIT-INPUT ( ptr cursor ptr n [ ptr n SPAN:span<u8> -- n ] SPAN:span<u8> -- XML:reader )
+   {: record ctx fill input :}
+   input SPAN:$ SPAN-CHECK
+   record >STATE {: state :}
+   state input SPAN:$ RECORD-CHECK
+   state INIT-STATE
+   state ctx fill input ['] INPUT-BODY catch
+   >r 2drop 2drop r> {: code:n :}
+   state code BUILT ;
 
 private
 : SOURCE-READER-MODE ( ptr n -- n )
@@ -525,38 +650,50 @@ private
       then
    then ;
 
-: SOURCE-READER ( ptr n ptr n n -- XML:reader )
-   {: source-state storage cap:n :}
+: SOURCE-BODY ( ptr n ptr n -- ptr n ptr n )
+   {: state source-state :}
    source-state SRC-LEXICAL$ {: lexical size:n :}
-   storage cap lexical size STORAGE-CHECK
-   source-state SRC-ORIGINAL$ storage BYTE-VIEW cap OVERLAP? if
-      E-ALIAS throw
-   then
-   source-state BYTE-VIEW source-state SRC-STORAGE-LEN + @
-   storage BYTE-VIEW cap OVERLAP? if E-ALIAS throw then
-   storage cap lexical size INIT-STATE
-   source-state SOURCE-READER-MODE storage SOURCE-MODE + !
+   lexical state SOURCE-IDX ptr-field !
+   size state SOURCE-LEN + !
+   source-state SOURCE-READER-MODE state SOURCE-MODE + !
    source-state SRC-ORIGINAL$ {: original original-len:n :}
-   original storage WIRE-ORIGINAL-IDX ptr-field !
-   original-len storage WIRE-ORIGINAL-LEN + !
-   source-state BYTE-VIEW storage WIRE-STORAGE-IDX ptr-field !
-   source-state SRC-STORAGE-LEN + @ storage WIRE-STORAGE-LEN + !
-   storage MINT ;
+   original state WIRE-ORIGINAL-IDX ptr-field !
+   original-len state WIRE-ORIGINAL-LEN + !
+   source-state BYTE-VIEW state WIRE-STORAGE-IDX ptr-field !
+   source-state SRC-STORAGE-LEN + @ state WIRE-STORAGE-LEN + !
+   state READER-TABLES
+   state source-state ;
 
-: SOURCE-READER-ARGS ( XML:source ptr n n -- XML:source ptr n ptr n n )
-   {: storage cap:n :}
-   SRC-STATE storage cap ;
+
+: SOURCE-READER ( ptr cursor ptr n -- XML:reader )
+   {: record source-state :}
+   source-state SRC-LEXICAL$ SPAN-CHECK
+   record >STATE {: state :}
+   state source-state SRC-LEXICAL$ RECORD-CHECK
+   state source-state SRC-ORIGINAL$ RECORD-CHECK
+   state source-state BYTE-VIEW source-state SRC-STORAGE-LEN + @ RECORD-CHECK
+   state INIT-STATE
+   state source-state ['] SOURCE-BODY catch
+   >r 2drop r> {: code:n :}
+   state code BUILT ;
 
 public
-: INIT-SOURCE ( XML:source ptr n n -- XML:source XML:reader )
-   SOURCE-READER-ARGS SOURCE-READER ;
+\ The source stays in place under the reader's inputs, so a caller that
+\ catches a refusal still holds it to close.
+: INIT-SOURCE ( XML:source ptr cursor -- XML:source XML:reader )
+   >r SRC-STATE r> swap SOURCE-READER ;
 
-: OWNER-READER ( source-owner ptr n n -- XML:reader )
-   {: owner storage cap:n :}
-   owner OWNER-STATE storage cap SOURCE-READER ;
+: OWNER-READER ( ptr cursor source-owner -- XML:reader )
+   OWNER-STATE SOURCE-READER ;
 
+\ CLOSE consumes the reader and releases what its record owns.
 : CLOSE ( XML:reader -- )
-   ERASE dup INPUT? if dup STREAM@ STREAM-CLOSE then drop ;
+   ERASE RECORD-FREE ;
+
+\ Release what a record owns after a caller's throw abandoned its live reader.
+\ A second DISPOSE, or one on a closed or zero-filled record, does nothing.
+: DISPOSE ( ptr cursor -- )
+   >STATE RECORD-FREE ;
 
 private
 : LIVE ( ptr n -- )
@@ -588,8 +725,7 @@ private
    {: state destination cap:n :}
    destination cap SPAN-CHECK
    state SOURCE$ destination cap OVERLAP? if E-ALIAS throw then
-   state BYTE-VIEW state STORAGE-LEN + @
-   destination cap OVERLAP? if E-ALIAS throw then
+   state destination cap RECORD-CHECK
    state WIRE-ORIGINAL-IDX ptr-field @ state WIRE-ORIGINAL-LEN + @
    destination cap OVERLAP? if E-ALIAS throw then
    state WIRE-STORAGE-IDX ptr-field @ state WIRE-STORAGE-LEN + @

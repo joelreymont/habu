@@ -1570,8 +1570,10 @@ public
   once at close; a failed allocation runs none.
 - `C2-BYTES` gives bounded copy, slice and length operations on live byte
   views. `XML-C2:WITH-READER` (`src/lib/xml/c2.f`) takes a shared source view
-  and unique cursor storage; `XML-C2:NAME$` keeps the source lifetime after the
-  cursor callback ends.
+  and unique cursor storage of `XML:CURSOR-BYTES` plus one cell; the tables the
+  reader grows are released when its callback returns or throws, inner readers
+  first. `XML-C2:NAME$` keeps the source lifetime after the cursor callback
+  ends.
 - At most 32 owner or initialization frames are live in one task: the 33rd
   open throws `E-C2-CAPACITY` before acquisition, and capacity returns
   as frames close. Capturing an image while an owner or loan is live throws

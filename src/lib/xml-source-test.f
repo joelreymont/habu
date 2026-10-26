@@ -5,11 +5,9 @@ require src/lib/test/guard-page.f
 
 package XML-SOURCE-TEST
 
-16 constant READER-CAP
 256 constant SOURCE-CAP
 create SOURCE-STORE SOURCE-CAP allot
 create SECOND-STORE SOURCE-CAP allot
-create READER-STORE READER-CAP XML:STORAGE-BYTES allot
 create EDIT-STORE 4 EDIT:STORAGE-BYTES allot
 create ENCODED 64 allot
 create ATTR-OUT 64 allot
@@ -20,6 +18,7 @@ create BOMLESS 256 allot
 create BOM-INPUT 256 allot
 create WIRE 64 allot
 TYPED-VARIABLE ASCII-OWNER XML:source-owner
+TYPED-VARIABLE RD XML:cursor
 1024 constant MARKED-CAP
 create MARKED MARKED-CAP allot
 create MARKED-AT MARKED-CAP cells allot
@@ -31,6 +30,7 @@ variable WIDE-BAD
 
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
+CAST: STORE>CURSOR ( ptr u8 -- ptr XML:cursor )
 
 : LE$ ( -- ptr u8 n )
    s\" \xFF\xFE<\za\z \zq\z=\z'\zx\z'\z>\z&\za\zm\zp\z;\z<\z/\za\z>\z" ;
@@ -66,8 +66,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
 : OPEN ( ptr u8 n -- XML:source )
    SOURCE-STORE SOURCE-CAP 2swap XML:SOURCE-INIT ;
 
-: READER ( XML:source -- XML:source XML:reader )
-   READER-STORE READER-CAP XML:STORAGE-BYTES XML:INIT-SOURCE ;
+: READER ( XML:source -- XML:source XML:reader ) RD XML:INIT-SOURCE ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    KIND>N {: want:n :}
@@ -136,7 +135,7 @@ CAST: ENCODING>N ( XML:encoding -- n )
    s" <?xml version='1.0' encoding='US-ASCII'?><a>old</a>" OPEN
    XML:SOURCE-OWN dup ASCII-OWNER ! {: owner :}
    owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
-   owner READER-STORE READER-CAP XML:STORAGE-BYTES XML:OWNER-READER
+   RD owner XML:OWNER-READER
    XML-KIND:PI NEXT= XML-KIND:START NEXT=
    owner XML:OWNER-ENCODING ENCODING>N XML-ENCODING:US-ASCII ENCODING>N T=
    XML-KIND:TEXT NEXT= XML:CONTENT {: text-off:off text-len:len :}
@@ -449,13 +448,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-ORIGINAL$ {: original size:n :}
    s\" A" original size XML:ENCODE drop ;
 
-: BAD-READER-CAP ( XML:source -- XML:source )
-   READER-STORE 0 XML:INIT-SOURCE XML:CLOSE ;
-
-: ALIAS-READER ( XML:source -- XML:source )
-   SOURCE-STORE READER-CAP XML:STORAGE-BYTES XML:INIT-SOURCE
-   XML:CLOSE ;
-
 : TEXT-WIRE ( XML:reader -- XML:reader )
    WIRE BYTE-VIEW 1 XML:TEXT drop ;
 
@@ -474,6 +466,17 @@ CAST: ENCODING>N ( XML:encoding -- n )
    XML:SOURCE-ORIGINAL$ nip size T=
    XML:SOURCE-CLOSE ;
 
+\ A record over the source's own storage is refused before the reader is
+\ built, and the refusal leaves the source with its caller to read and close.
+: STORE-READER ( XML:source -- XML:source )
+   SOURCE-STORE BYTE-VIEW STORE>CURSOR XML:INIT-SOURCE XML:CLOSE ;
+
+: REFUSED-READER-KEEPS-SOURCE ( -- )
+   s" <a>x</a>" OPEN
+   ['] STORE-READER catch XML:E-ALIAS T=
+   READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
+   XML:CLOSE XML:SOURCE-CLOSE ;
+
 : BOUNDARIES-AND-RECOVERY ( -- )
    s\" \xFF\xFE<\za\z>\z\x3D\xD8\z\xDE<\z/\za\z>\z" OPEN
    0 >OFF 0 >LEN XML:SOURCE-RANGE
@@ -490,8 +493,6 @@ CAST: ENCODING>N ( XML:encoding -- n )
    ['] TINY-ENCODE catch XML:E-CAPACITY T=
    ENCODED c@ $5A T=
    ['] ALIAS-ENCODE catch XML:E-ALIAS T=
-   ['] BAD-READER-CAP catch XML:E-CAPACITY T=
-   ['] ALIAS-READER catch XML:E-ALIAS T=
    s\" A🚗" ENCODED 64 XML:ENCODE
    {: added:n :}
    added 6 T=
@@ -715,6 +716,7 @@ WIDE-OWNER-RANGES
 SOURCE-CAPACITY
 ENCODE-BOUND
 SOURCE-OUTPUT-ALIAS
+REFUSED-READER-KEEPS-SOURCE
 REJECTIONS
 T-REPORT
 ;package

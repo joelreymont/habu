@@ -6,10 +6,8 @@ require src/lib/property.f
 package XML-ROUNDTRIP-TEST
 using XML
 CAST: TOKEN>N ( XML:kind -- n )
-8 constant XML-CAP
 $1000 constant BYTE-CAP
 align
-create PARSER XML-CAP STORAGE-BYTES allot
 create EDITOR 2 EDIT:STORAGE-BYTES allot
 create ATTRIBUTE-BUF BYTE-CAP allot
 create TEXT-BUF BYTE-CAP allot
@@ -18,6 +16,7 @@ create READBACK BYTE-CAP allot
 create SINGLE 1 allot
 create RANDOM-BUF BYTE-CAP allot
 variable TEMPLATE
+TYPED-VARIABLE RD XML:cursor
 
 : ORIGINAL$ ( -- ptr u8 n )
    TEMPLATE @ case
@@ -28,7 +27,8 @@ variable TEMPLATE
    endcase ;
 
 : OPEN ( ptr u8 n -- XML:reader )
-   PARSER XML-CAP STORAGE-BYTES 2swap INIT ;
+   {: source size:n :}
+   RD source size INIT ;
 
 : ATTRIBUTE-RANGE ( -- off len )
    ORIGINAL$ OPEN NEXT drop NEXT drop

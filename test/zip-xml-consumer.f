@@ -11,15 +11,14 @@ private
 
 136 constant ZIP-SIZE
 38 constant XML-OFFSET
-16 constant XML-CAP
 create ROOT FS-PATH-CAP allot
 variable ROOT-LEN
 create PATH FS-PATH-CAP allot
 create IMAGE ZIP-SIZE allot
 create CONTEXT 0 ,
 create CHUNK 7 allot
-create READER XML-CAP XML:STORAGE-BYTES allot
 create TEXT-BUF 32 allot
+TYPED-VARIABLE RD XML:cursor
 
 CAST: KIND>N ( XML:kind -- n )
 
@@ -36,8 +35,7 @@ CAST: KIND>N ( XML:kind -- n )
 
 : OPEN-XML ( ZIP:input -- XML:reader )
    CONTEXT ZIP:INPUT-SLOT !
-   CONTEXT ['] FILL CHUNK 7 SPAN:MAKE
-   READER XML-CAP XML:STORAGE-BYTES XML:INIT-INPUT ;
+   RD CONTEXT ['] FILL CHUNK 7 SPAN:MAKE XML:INIT-INPUT ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    KIND>N {: expected:n :}

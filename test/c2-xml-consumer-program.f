@@ -20,7 +20,7 @@ CAST: KIND>N ( XML:kind -- n )
    swap [: FIRST ;] XML-C2:WITH-READER ;
 
 : FIRST-NAME ( read-view<p,q,u8> -- read-view<p,q,u8> )
-   2 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: FIRST-STORAGE ;] C2-MEM:WITH-MUT ;
 
 : ASCII-NAME ( read-view<p,q,u8> -- bool read-view<p,q,u8> )
@@ -54,14 +54,14 @@ CAST: KIND>N ( XML:kind -- n )
 : OUTER-READER ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- bool mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> )
    XML-C2:NEXT KIND>N XML-KIND:START KIND>N T=
    XML-C2:SOURCE$ swap
-   2 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: SECOND-STORAGE ;] C2-MEM:WITH-MUT ;
 
 : OUTER-STORAGE ( read-view<p,q,u8> mut-view<b,l,a,u8> -- bool mut-view<b,l,a,u8> )
    swap [: OUTER-READER ;] XML-C2:WITH-READER ;
 
 : CONCURRENT-SOURCE ( read-view<p,q,u8> -- bool read-view<p,q,u8> )
-   dup 2 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   dup XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: OUTER-STORAGE ;] C2-MEM:WITH-MUT swap ;
 
 : CONCURRENT-ROOT ( mut-view<x,y,z,u8> -- bool mut-view<x,y,z,u8> )
@@ -238,7 +238,7 @@ CAST: KIND>N ( XML:kind -- n )
    swap [: NS-READER ;] XML-C2:WITH-READER ;
 
 : NS-SOURCE ( read-view<p,q,u8> -- bool read-view<p,q,u8> )
-   dup 4 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   dup XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: NS-STORAGE ;] C2-MEM:WITH-MUT swap ;
 
 : NS-ROOT ( mut-view<x,y,z,u8> -- bool mut-view<x,y,z,u8> )
@@ -255,7 +255,7 @@ CAST: KIND>N ( XML:kind -- n )
    swap [: DUP-READER ;] XML-C2:WITH-READER ;
 
 : DUP-SOURCE ( read-view<p,q,u8> -- read-view<p,q,u8> )
-   dup 4 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   dup XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: DUP-STORAGE ;] C2-MEM:WITH-MUT ;
 
 : DUP-ROOT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> )
@@ -264,6 +264,72 @@ CAST: KIND>N ( XML:kind -- n )
 
 : DUP-NAMES ( -- )
    DUP-DOC$ nip MEM:BYTES-ALLOC-LEN [: DUP-ROOT ;] C2-MEM:WITH-MUT ;
+
+\ The inner of two nested readers throws the caller's own code while both are
+\ open; each WITH-READER releases its reader's tables as the throw unwinds it.
+77 constant CALLER-CODE
+
+: ALWAYS ( -- bool ) 0 0= ;
+
+: THROWING-READER ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,j,z,init<j,XML-C2:reader-state<p,q>>> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,j,z,init<j,XML-C2:reader-state<p,q>>> )
+   XML-C2:NEXT drop ALWAYS if CALLER-CODE throw then ;
+
+: THROWING-STORAGE ( read-view<p,q,u8> mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,m,z,u8> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> mut-view<x,m,z,u8> )
+   rot [: THROWING-READER ;] XML-C2:WITH-READER ;
+
+: NESTED-READER ( mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> -- mut-view<b,i,a,init<i,XML-C2:reader-state<p,q>>> )
+   XML-C2:NEXT drop
+   XML-C2:SOURCE$ swap
+   XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
+   [: THROWING-STORAGE ;] C2-MEM:WITH-MUT ;
+
+: NESTED-STORAGE ( read-view<p,q,u8> mut-view<b,l,a,u8> -- mut-view<b,l,a,u8> )
+   swap [: NESTED-READER ;] XML-C2:WITH-READER ;
+
+: NESTED-SOURCE ( read-view<p,q,u8> -- read-view<p,q,u8> )
+   dup XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
+   [: NESTED-STORAGE ;] C2-MEM:WITH-MUT ;
+
+: NESTED-ROOT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> )
+   ASCII-DOC$ C2-BYTES:COPY$ drop
+   [: NESTED-SOURCE ;] C2-MEM:WITH-READ ;
+
+: NESTED-THROW ( -- )
+   ASCII-DOC$ nip MEM:BYTES-ALLOC-LEN [: NESTED-ROOT ;] C2-MEM:WITH-MUT ;
+
+\ A one-page mapping takes the lowest free page: the kernel's first-fit reuse
+\ src/lib/xml-test.f RELEASES relies on. SLOTS probes take the lowest free
+\ pages and are freed before the body runs; the same probes after it land on
+\ the same pages only when the body released every mapping that took one. The
+\ body maps fewer pages than SLOTS.
+4096 constant PROBE-BYTES
+32 constant SLOTS
+SLOTS TYPED-BUFFER PROBED ptr u8
+
+: PROBE-FILL ( -- )
+   SLOTS 0 ?do
+      PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop i PROBED !
+   loop ;
+
+: PROBE-FREE ( -- )
+   SLOTS 0 ?do
+      i PROBED @ PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   loop ;
+
+: SLOT-AGAIN ( n -- bool )
+   {: idx:n :}
+   PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: at:ptr :}
+   at idx PROBED @ =
+   at idx PROBED ! ;
+
+: RELEASES ( [ -- ] -- )
+   PROBE-FILL PROBE-FREE
+   execute
+   ALWAYS SLOTS 0 ?do i SLOT-AGAIN and loop TTRUE
+   PROBE-FREE ;
+
+: NESTED-RELEASES ( -- )
+   [: NESTED-THROW ;] CALLER-CODE TTHROWSQ ;
 
 public
 : RUN ( -- )
@@ -295,6 +361,8 @@ public
    NS-RESULT TTRUE
    s" two prefixes bound to one URI refuse a repeated expanded name" T-LABEL
    [: DUP-NAMES ;] XML:E-NAMESPACE TTHROWSQ
+   s" a throw in a nested reader reaches the caller and releases both readers" T-LABEL
+   [: NESTED-RELEASES ;] RELEASES
    T-REPORT
    s" c2-xml-consumer-program: ok" type cr ;
 ;package

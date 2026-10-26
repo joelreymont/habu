@@ -137,6 +137,7 @@ $10000 $EFFFF 14 RANGE!
 
 : SAVE-ATTRIBUTE ( ptr n n n n n -- )
    {: state name:n name-size:n value:n value-size:n :}
+   state state ATTR-COUNT + @ 1+ ATTRS-GROW
    state state ATTR-COUNT + @ ATTRIBUTE {: attr :}
    name attr !
    name-size attr CELL + !
@@ -150,7 +151,6 @@ $10000 $EFFFF 14 RANGE!
 
 : SCAN-ATTRIBUTE ( ptr n -- )
    {: state :}
-   state ATTR-COUNT + @ state CAPACITY + @ >= if E-ATTRIBUTES throw then
    state SCAN-NAME {: name:n size:n :}
    state name size QNAME-CHECK
    state SKIP-WHITE
@@ -235,17 +235,36 @@ $10000 $EFFFF 14 RANGE!
 
 : PREFIX-HEAD ( ptr n ptr u8 n -- ptr n )
    {: state prefix size:n :}
-   state state prefix size BYTES-HASH state CAPACITY + @ BUCKET
+   state state prefix size BYTES-HASH state NS-CAP + @ BUCKET
    NAMESPACE NS-HEAD + ;
 
 : BINDING-PREFIX$ ( ptr n ptr n -- ptr u8 n )
    {: state binding :}
    state binding @ binding CELL + @ SPAN$ ;
 
+: LINK-BINDING ( ptr n n -- )
+   {: state index:n :}
+   state index NAMESPACE {: binding :}
+   state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
+   head @ binding NS-LINK + !
+   index head ! ;
+
+
+\ Make room for one more binding. The bucket count is the table's capacity, so
+\ a growth relinks every live binding oldest first, keeping the newest of each
+\ prefix its bucket's head as POP-BINDINGS requires.
+: NS-ENSURE ( ptr n -- )
+   {: state :}
+   state NS-COUNT + @ 1+ state NS-CAP + @ <= if exit then
+   state state NS-COUNT + @ 1+ NS-GROW
+   state NS-HEADS-CLEAR
+   state NS-COUNT + @ 0 ?do state i LINK-BINDING loop ;
+
+
 : SAVE-NAMESPACE ( ptr n ptr n -- )
    {: state attr :}
-   state NS-COUNT + @ state CAPACITY + @ >= if E-NAMESPACES throw then
    state attr NS-BINDING-CHECK
+   state NS-ENSURE
    state NS-COUNT + @ {: index:n :}
    state index NAMESPACE {: binding :}
    state state attr NS-PREFIX SCOPE-REF
@@ -253,9 +272,7 @@ $10000 $EFFFF 14 RANGE!
    state attr 2 cells + @ attr 3 cells + @ SCOPE-REF
    binding 3 cells + ! binding 2 cells + !
    state state attr ATTRIBUTE-VALUE$ URI-HASH binding NS-HASH + !
-   state state binding BINDING-PREFIX$ PREFIX-HEAD {: head :}
-   head @ binding NS-LINK + !
-   index head !
+   state index LINK-BINDING
    1 state NS-COUNT + +! ;
 
 \ Drop the bindings above count, newest first: each is its bucket's head.

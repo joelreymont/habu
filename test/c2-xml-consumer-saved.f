@@ -53,7 +53,7 @@ CAST: XML-LEN>N ( len -- n )
    swap [: DOC-READER ;] XML-C2:WITH-READER ;
 
 : DOC-SOURCE ( read-view<p,q,u8> -- bool read-view<p,q,u8> )
-   dup 2 XML:STORAGE-BYTES MEM:BYTES-ALLOC-LEN
+   dup XML:CURSOR-BYTES cell+ MEM:BYTES-ALLOC-LEN
    [: DOC-STORAGE ;] C2-MEM:WITH-MUT swap ;
 
 : DOC-ROOT ( mut-view<x,y,z,u8> -- bool mut-view<x,y,z,u8> )

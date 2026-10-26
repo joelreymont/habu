@@ -6,22 +6,9 @@ require src/lib/byte-buffer.f
 package XML-TEST
 using XML
 
-64 constant CAP
 $400 constant TEXT-CAP
-$31415926 constant CANARY
-align
-create BEFORE CANARY ,
-create STORAGE CAP STORAGE-BYTES allot
-create AFTER CANARY ,
-create TINY 1 STORAGE-BYTES allot
-create SMALL 2 STORAGE-BYTES allot
-create LARGE 128 STORAGE-BYTES allot
 create TEXT-BUF TEXT-CAP allot
 create OTHER-BUF TEXT-CAP allot
-create NESTED $1000 allot
-variable NESTED-LEN
-16 constant INPUT-CAP
-create INPUT-STORAGE INPUT-CAP STORAGE-BYTES allot
 3 SPAN-BUFFER: INPUT-CHUNK
 PTR-VARIABLE INPUT-SOURCE
 variable INPUT-LEN
@@ -35,11 +22,15 @@ create DEEP-DOC BUF:HDR-BYTES allot
 100000 constant DEEP-LEVELS
 4 BUFFER: DEEP-NAME
 variable DEEP-BAD
+TYPED-VARIABLE RD XML:cursor
+TYPED-VARIABLE RD2 XML:cursor
 
 CAST: TOKEN>N ( XML:kind -- n )
+CAST: CURSOR>BYTES ( ptr XML:cursor -- ptr u8 )
 
 : OPEN ( ptr u8 n -- XML:reader )
-   STORAGE CAP STORAGE-BYTES 2swap INIT ;
+   {: source size:n :}
+   RD source size INIT ;
 
 : NEXT= ( XML:reader XML:kind -- XML:reader )
    TOKEN>N {: expected:n :}
@@ -110,8 +101,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    count pos +! count ;
 
 : INPUT-OPEN ( -- XML:reader )
-   INPUT-POS ['] INPUT-FILL INPUT-CHUNK
-   INPUT-STORAGE INPUT-CAP STORAGE-BYTES INIT-INPUT ;
+   RD INPUT-POS ['] INPUT-FILL INPUT-CHUNK INIT-INPUT ;
 
 : INPUT-FAILURE ( -- n )
    INPUT-OPEN ['] DRAIN catch swap XML:CLOSE ;
@@ -120,8 +110,7 @@ CAST: TOKEN>N ( XML:kind -- n )
    2drop 4 ;
 
 : INPUT-OVER-COUNT-RC ( -- n )
-   INPUT-POS ['] INPUT-OVER-COUNT INPUT-CHUNK
-   INPUT-STORAGE INPUT-CAP STORAGE-BYTES INIT-INPUT
+   RD INPUT-POS ['] INPUT-OVER-COUNT INPUT-CHUNK INIT-INPUT
    ['] DRAIN catch swap XML:CLOSE ;
 
 : INPUT-TEXT-ALIASED ( XML:reader -- XML:reader )
@@ -135,11 +124,11 @@ CAST: TOKEN>N ( XML:kind -- n )
 \ The reader is opened INSIDE the caught body, the way BAD-INIT below already
 \ does it: `catch` restores the DEPTH of both stacks and never their contents, so
 \ a reader opened before the catch comes back `stale<XML:reader>` and a linear
-\ cell can be neither read nor dropped. What the throw path leaves open here is
-\ the file's own static storage, which the next OPEN re-initialises.
+\ cell can be neither read nor dropped. The body closes the reader its failed
+\ NEXT leaves, as the contract requires, and rethrows that failure.
 : BAD ( ptr u8 n n -- )
    {: expected:n :}
-   [: 2dup OPEN DRAIN XML:CLOSE ;] catch expected T=
+   [: 2dup OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch expected T=
    2drop ;
 
 : BAD-INIT ( ptr u8 n n -- )
@@ -415,28 +404,25 @@ CAST: TOKEN>N ( XML:kind -- n )
 : CONTENT-READ ( XML:reader -- XML:reader ) CONTENT 2drop ;
 : TEXT-FULL ( XML:reader -- XML:reader ) TEXT-BUF TEXT-CAP TEXT drop ;
 : TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 TEXT drop ;
-: TEXT-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP TEXT drop ;
+: TEXT-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP TEXT drop ;
+: TEXT-INTO-RECORD ( XML:reader -- XML:reader ) RD CURSOR>BYTES 16 TEXT drop ;
 : URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 URI drop ;
-: URI-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP URI drop ;
+: URI-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP URI drop ;
 : ATTR-URI-TINY ( XML:reader -- XML:reader ) TEXT-BUF 4 ATTR-URI drop ;
-: ATTR-URI-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-URI drop ;
+: ATTR-URI-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP ATTR-URI drop ;
 : ATTR-TEXT-TINY ( XML:reader -- XML:reader ) TEXT-BUF 1 ATTR-TEXT drop ;
-: ATTR-TEXT-ALIASED ( XML:reader -- XML:reader ) STORAGE BYTE-VIEW TEXT-CAP ATTR-TEXT drop ;
+: ATTR-TEXT-ALIASED ( XML:reader -- XML:reader ) RAW$ drop TEXT-CAP ATTR-TEXT drop ;
 : PREFIX-TINY ( XML:reader -- XML:reader )
    s" p" TEXT-BUF 2 PREFIX-URI 2drop ;
 : PREFIX-ALIASED ( XML:reader -- XML:reader )
-   s" p" STORAGE BYTE-VIEW TEXT-CAP PREFIX-URI 2drop ;
+   RAW$ drop {: raw :}
+   s" p" raw TEXT-CAP PREFIX-URI 2drop ;
 
-: CAPACITY-AND-STATE ( -- )
-   TINY 1 STORAGE-BYTES s" <a><b/></a>" INIT
-   ['] DRAIN catch E-DEPTH T=
+: FAILURE-AND-STATE ( -- )
+   s" <a><b></a>" OPEN
+   ['] DRAIN catch E-MALFORMED T=
    ['] NEXT-ONE catch E-STATE T=
    XML:CLOSE
-   TINY 1 STORAGE-BYTES s" <a q='1' r='2'/>" INIT
-   ['] DRAIN catch E-ATTRIBUTES T= XML:CLOSE
-   SMALL 2 STORAGE-BYTES s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" INIT
-   ['] DRAIN catch E-NAMESPACES T= XML:CLOSE
-   s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" OPEN DRAIN XML:CLOSE
    s" <a q='x'/>" OPEN
    ['] ATTR-NEXT-ONE catch E-STATE T=
    ['] ATTR-RESET catch E-STATE T=
@@ -454,8 +440,8 @@ CAST: TOKEN>N ( XML:kind -- n )
    ['] ATTR-NAME-READ catch E-STATE T=
    XML:CLOSE ;
 
-\ A namespace error once bindings exist fails the reader. INIT again on the
-\ same storage starts with none of them.
+\ A namespace error once bindings exist fails the reader. A new reader starts
+\ with none of them.
 : NAMESPACE-FAILURE ( -- )
    s" <a xmlns:p='urn:stale'><b xmlns:q='urn:q' q:x='1' x='2' x='3'/></a>" OPEN
    XML-KIND:START NEXT=
@@ -470,18 +456,6 @@ CAST: TOKEN>N ( XML:kind -- n )
    XML-KIND:START NEXT= s" p" PREFIX-MISSING s" r" s" urn:r" PREFIX=
    XML-KIND:END NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
-: NESTED+ ( ptr u8 n -- )
-   {: source size:n :}
-   source NESTED NESTED-LEN @ + size >LEN BYTE-COPY-LEN
-   size NESTED-LEN +! ;
-
-: CALLER-SIZED-STORAGE ( -- )
-   0 NESTED-LEN !
-   96 0 ?do s" <p:a xmlns:p='u'>" NESTED+ loop
-   96 0 ?do s" </p:a>" NESTED+ loop
-   LARGE 128 STORAGE-BYTES NESTED NESTED-LEN @ INIT
-   DRAIN XML:CLOSE ;
-
 : NO-PARTIAL-DECODE ( -- )
    $5A TEXT-BUF c!
    s" <a>long&amp;text</a>" OPEN
@@ -490,6 +464,20 @@ CAST: TOKEN>N ( XML:kind -- n )
    TEXT-BUF c@ $5A T=
    s" long&text" TEXT=
    ['] TEXT-ALIASED catch E-ALIAS T=
+   s" long&text" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+\ The reader writes its record on every event, so neither the source nor a
+\ decoder's output may overlap it.
+: INIT-INTO-RECORD ( -- ) RD RD CURSOR>BYTES 16 INIT XML:CLOSE ;
+
+: INIT-RECORD-ALIAS ( -- )
+   [: INIT-INTO-RECORD ;] E-ALIAS TTHROWSQ ;
+
+: TEXT-RECORD-ALIAS ( -- )
+   s" <a>long&amp;text</a>" OPEN
+   NEXT drop NEXT drop
+   ['] TEXT-INTO-RECORD catch E-ALIAS T=
    s" long&text" TEXT=
    XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
@@ -517,18 +505,78 @@ CAST: TOKEN>N ( XML:kind -- n )
    XML-KIND:END NEXT= XML-KIND:EOF NEXT=
    ['] PREFIX-READ catch E-STATE T=
    XML:CLOSE
-   TINY 1 STORAGE-BYTES s" <a><b/></a>" INIT
-   ['] DRAIN catch E-DEPTH T=
+   s" <a><b></a>" OPEN
+   ['] DRAIN catch E-MALFORMED T=
    ['] PREFIX-READ catch E-STATE T=
    XML:CLOSE ;
 
 : PREFIX-READERS ( -- )
-   s" <a xmlns:p='urn:first'/>" OPEN
-   LARGE 128 STORAGE-BYTES s" <b xmlns:p='urn:second'/>" INIT
+   RD s" <a xmlns:p='urn:first'/>" INIT
+   RD2 s" <b xmlns:p='urn:second'/>" INIT
    XML-KIND:START NEXT= s" p" s" urn:second" PREFIX=
    swap XML-KIND:START NEXT= s" p" s" urn:first" PREFIX=
    swap s" p" s" urn:second" PREFIX=
    XML:CLOSE XML:CLOSE ;
+
+\ A reader's first table mapping is one page. Freeing a page and mapping one
+\ again lands at the same address only when nothing took the hole, so a body
+\ that leaves its first table mapped moves the second probe elsewhere. This
+\ relies on the kernel's first-fit reuse of a freed mapping, as
+\ src/lib/json-read-test.f JRT-RELEASES does.
+4096 constant PROBE-BYTES
+
+: PROBE ( -- SPAN:span<u8> )
+   PROBE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
+
+: RELEASES ( [ -- ] -- )
+   PROBE {: hole :}
+   hole SPAN:$ drop {: at:ptr :}
+   hole MEM:FREE-SPAN
+   execute
+   PROBE {: again :}
+   again SPAN:$ drop at = TTRUE
+   again MEM:FREE-SPAN ;
+
+77 constant CALLER-CODE
+
+: ALWAYS ( -- bool ) 0 0= ;
+
+: CALLER-FAIL ( XML:reader -- XML:reader )
+   ALWAYS if CALLER-CODE throw then ;
+
+\ The caller's own throw abandons a live reader, so record RD keeps its tables
+\ and, for an input reader, its stream.
+: ABANDON ( -- )
+   s" <a><b/></a>" OPEN
+   XML-KIND:START NEXT= XML-KIND:START NEXT=
+   CALLER-FAIL
+   XML:CLOSE ;
+
+: ABANDON-INPUT ( -- )
+   s" <a><b/></a>" 1 $7FFFFFFFFFFFFFFF INPUT-SET INPUT-OPEN
+   XML-KIND:START NEXT=
+   CALLER-FAIL
+   XML:CLOSE ;
+
+\ DISPOSE releases what each abandoned reader left; a second does nothing.
+: ABANDON-DISPOSE ( -- )
+   [: ABANDON ;] CALLER-CODE TTHROWSQ
+   RD XML:DISPOSE RD XML:DISPOSE
+   [: ABANDON-INPUT ;] CALLER-CODE TTHROWSQ
+   RD XML:DISPOSE RD XML:DISPOSE ;
+
+\ INIT on a record that still holds tables releases them before it reads.
+: ABANDON-REINIT ( -- )
+   [: ABANDON-INPUT ;] CALLER-CODE TTHROWSQ
+   s" <c/>" OPEN
+   XML-KIND:START NEXT= XML-KIND:END NEXT= XML-KIND:EOF NEXT=
+   XML:CLOSE ;
+
+: ABANDONED-RECORD ( -- )
+   s" DISPOSE releases what a caller's throw abandoned" T-LABEL
+   [: ABANDON-DISPOSE ;] RELEASES
+   s" a record holding a leftover reads again and nothing stays mapped" T-LABEL
+   [: ABANDON-REINIT ;] RELEASES ;
 
 : ATTRIBUTE-CAPACITY-RECOVERY ( -- )
    s" <p:a xmlns:p='urn:&#97;' p:q='long&amp;text'/>" OPEN NEXT drop
@@ -559,10 +607,8 @@ CAST: TOKEN>N ( XML:kind -- n )
 15 constant URI-SCALARS
 1 URI-SCALARS lshift constant WIDE-PREFIXES
 WIDE-PREFIXES 1- constant WIDE-LAST
-WIDE-PREFIXES 2 * 2 + constant WIDE-CAP
 $300000 constant WIDE-DOC-CAP
 PTR-VARIABLE WIDE-DOC
-PTR-VARIABLE WIDE-STORE
 variable WIDE-LEN
 variable URI-LEN
 
@@ -610,17 +656,14 @@ variable URI-LEN
    tail size WIDE+
    s" />" WIDE+ ;
 
-: WIDE-OPEN ( -- XML:reader )
-   WIDE-STORE @ CELL-VIEW WIDE-CAP STORAGE-BYTES
-   WIDE-DOC @ WIDE-LEN @ INIT ;
+: WIDE-OPEN ( -- XML:reader ) RD WIDE-DOC @ WIDE-LEN @ INIT ;
 
 : WIDE-BAD ( ptr u8 n -- )
    WIDE-BUILD
-   [: WIDE-OPEN DRAIN XML:CLOSE ;] catch E-NAMESPACE T= ;
+   [: WIDE-OPEN ['] DRAIN catch swap XML:CLOSE throw ;] catch E-NAMESPACE T= ;
 
 : WIDE-ELEMENT ( -- )
    WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop WIDE-DOC !
-   WIDE-CAP STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop WIDE-STORE !
    s" " WIDE-BUILD
    WIDE-OPEN XML-KIND:START NEXT=
    s" p0" s" aaaaaaaaaaaaaaa" PREFIX=
@@ -632,7 +675,6 @@ variable URI-LEN
    0 URI-LEN !
    s"  xmlns:q='" URI+ WIDE-LAST true [: URI+ ;] WIDE-URI s" ' q:a='2'" URI+
    OTHER-BUF URI-LEN @ WIDE-BAD
-   WIDE-STORE @ WIDE-CAP STORAGE-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    WIDE-DOC @ WIDE-DOC-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : ESCAPING ( -- )
@@ -825,9 +867,7 @@ variable URI-LEN
 \ whatever the depth, or the row overruns its CPU budget.
 : INPUT-DEEP-CHAIN ( -- )
    DEEP-BUILD 1 $7FFFFFFFFFFFFFFF INPUT-SET
-   DEEP-LEVELS 2 + STORAGE-BYTES {: size:n :}
-   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store:ptr alloc :}
-   INPUT-POS ['] INPUT-FILL INPUT-CHUNK store CELL-VIEW size INIT-INPUT
+   INPUT-OPEN
    0 DEEP-BAD !
    XML-KIND:START NEXT= s" r" NAME=
    DEEP-LEVELS 0 ?do XML-KIND:START i DEEP-EVENT loop
@@ -839,7 +879,79 @@ variable URI-LEN
    DEEP-BAD @ 0 T=
    XML-KIND:END NEXT= s" r" NAME= s" p" s" urn:p" PREFIX=
    XML-KIND:EOF NEXT= XML:CLOSE
-   store alloc MEM:RELEASE-BYTES
+   DEEP-DOC BUF:DISPOSE ;
+
+\ The reader's element, attribute and binding tables start small and grow: a
+\ 5000-deep tree, a tag of 2000 attributes and 2000 live bindings read whole.
+5000 constant TALL-LEVELS
+2000 constant WIDE-ATTRS
+1000 constant NS-LEVELS
+variable SEEN
+
+: DOC-START ( -- ) DEEP-DOC 16 BUF:N>BLEN BUF:INIT ;
+: DOC$ ( -- ptr u8 n ) DEEP-DOC BUF:SPAN$ BUF:BLEN>N ;
+
+: DEEP-N+ ( n -- )
+   {: value:n :}
+   value 10 >= if value 10 / recurse then
+   value 10 mod $30 + DEEP-NAME c!
+   DEEP-NAME 1 DEEP+ ;
+
+\ Read count events, counting each that is not expected in DEEP-BAD.
+: EVENTS ( XML:reader XML:kind n -- XML:reader )
+   {: expected:XML:kind count:n :}
+   count 0 ?do
+      NEXT TOKEN>N expected TOKEN>N <> if 1 DEEP-BAD +! then
+   loop ;
+
+: TALL-TREE ( -- )
+   DOC-START
+   TALL-LEVELS 0 ?do s" <a>" DEEP+ loop
+   TALL-LEVELS 0 ?do s" </a>" DEEP+ loop
+   0 DEEP-BAD !
+   DOC$ OPEN
+   XML-KIND:START TALL-LEVELS EVENTS
+   XML:DEPTH TALL-LEVELS T=
+   XML-KIND:END TALL-LEVELS EVENTS
+   DEEP-BAD @ 0 T=
+   XML-KIND:EOF NEXT= XML:CLOSE
+   DEEP-DOC BUF:DISPOSE ;
+
+: MANY-ATTRIBUTES ( -- )
+   DOC-START s" <a" DEEP+
+   WIDE-ATTRS 0 ?do
+      s"  a" DEEP+ i DEEP-N+ s" ='" DEEP+ i DEEP-N+ s" '" DEEP+
+   loop
+   s" />" DEEP+
+   DOC$ OPEN XML-KIND:START NEXT=
+   0 SEEN !
+   begin ATTR-NEXT while 1 SEEN +! repeat
+   SEEN @ WIDE-ATTRS T=
+   ATTR-RESET WIDE-ATTRS 0 ?do ATTR-NEXT drop loop
+   s" a1999" ATTR-NAME= s" 1999" ATTR-TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE
+   DEEP-DOC BUF:DISPOSE ;
+
+\ Level i rebinds p to urn:i and binds its own qi to urn:qi. Rebuilding the
+\ prefix buckets as the binding table grows keeps every binding reachable, and
+\ each pop restores the binding it shadowed.
+: MANY-BINDINGS ( -- )
+   DOC-START
+   NS-LEVELS 0 ?do
+      s" <p:e xmlns:p='urn:" DEEP+ i DEEP-N+
+      s" ' xmlns:q" DEEP+ i DEEP-N+ s" ='urn:q" DEEP+ i DEEP-N+ s" '>" DEEP+
+   loop
+   NS-LEVELS 0 ?do s" </p:e>" DEEP+ loop
+   0 DEEP-BAD !
+   DOC$ OPEN
+   XML-KIND:START NS-LEVELS EVENTS
+   s" urn:999" URI= s" p" s" urn:999" PREFIX=
+   s" q0" s" urn:q0" PREFIX= s" q999" s" urn:q999" PREFIX=
+   XML-KIND:END NS-LEVELS 1- EVENTS
+   XML-KIND:END NEXT= s" urn:0" URI= s" p" s" urn:0" PREFIX=
+   s" q0" s" urn:q0" PREFIX= s" q1" PREFIX-MISSING
+   DEEP-BAD @ 0 T=
+   XML-KIND:EOF NEXT= XML:CLOSE
    DEEP-DOC BUF:DISPOSE ;
 
 : INPUT-FAILURES ( -- )
@@ -893,13 +1005,15 @@ SIBLING-ATTRIBUTES
 NAMESPACE-SHADOWING
 BAD-ENCODINGS
 ASCII-WIRE
-CAPACITY-AND-STATE
+FAILURE-AND-STATE
 NAMESPACE-FAILURE
-CALLER-SIZED-STORAGE
 NO-PARTIAL-DECODE
+INIT-RECORD-ALIAS
+TEXT-RECORD-ALIAS
 URI-CAPACITY-RECOVERY
 PREFIX-RECOVERY
 PREFIX-READERS
+ABANDONED-RECORD
 ATTRIBUTE-CAPACITY-RECOVERY
 WIDE-ELEMENT
 ESCAPING
@@ -913,8 +1027,9 @@ INPUT-LARGE-SCOPE
 INPUT-NAMESPACE-SCOPES
 INPUT-DEEP-CHAIN
 INPUT-FAILURES
-BEFORE @ CANARY T=
-AFTER @ CANARY T=
+TALL-TREE
+MANY-ATTRIBUTES
+MANY-BINDINGS
 T-REPORT
 ;using
 ;package

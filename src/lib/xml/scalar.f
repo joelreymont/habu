@@ -16,9 +16,6 @@ public
 -9206 constant E-SCALAR
 -9207 constant E-ENTITY
 -9208 constant E-NAMESPACE
--9209 constant E-DEPTH
--9210 constant E-ATTRIBUTES
--9211 constant E-NAMESPACES
 -9212 constant E-STATE
 -9213 constant E-DTD
 -9214 constant E-ENCODING
