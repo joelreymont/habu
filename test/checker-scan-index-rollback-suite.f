@@ -86,8 +86,8 @@ s" scxrb" s" cand" TFAM-FIND-IN TFALSE drop
 s" scxrb" s" cand2" TFAM-FIND-IN TFALSE drop
 CAND-FAM @ s" cand" SUMV-FIND TFALSE drop
 IX @ SUMV-FROM-CTOR-SYM TFALSE drop
-s" scxrb" CHECKER-PACKAGE-PUBLIC s" cand" 0 TK-CELL ' TFAM-DECL catch TC ! drop
-TC @ 0 T=
+: SCX-REDECL ( -- ) s" scxrb" CHECKER-PACKAGE-PUBLIC s" cand" 0 TK-CELL TFAM-DECL drop ;
+' SCX-REDECL catch 0 T=
 s" scxrb" s" cand" TFAM-FIND-IN TTRUE drop
 SCX-MARKS-EXACT
 SCX-DIFF-ALL

@@ -581,9 +581,10 @@ variable GE-NEST-J
       76 s" data-space definer-sink exit rc" RUNTIME-RUNNER:LINE-RC
    DATA-SIZE PROF-CNT-BYTES - 8 + GE-DATA-DIAG$
       s" data-space definer-sink diagnostic" GE-EXPECT-ERR
-   \ A refused nested allot restores its evaluation frame and reaches the caller's
-   \ catch. The following literal proves execution resumed after the refusal.
-   S\" s\q data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot\q ' evaluate catch . 2drop 9 ."
+   \ A refused nested allot restores its evaluation frame and reaches
+   \ TEST-EVAL:RC's catch. The following literal proves execution resumed after
+   \ the refusal.
+   S\" require src/lib/test/eval.f s\q data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot\q TEST-EVAL:RC . 9 ."
       0 s" data-space nested catch" RUNTIME-RUNNER:LINE-RC
    S\" 76\n9\n" s" data-space nested catch output" GE-EXPECT-OUT
    DATA-SIZE PROF-CNT-BYTES - 1+ GE-DATA-DIAG$

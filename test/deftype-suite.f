@@ -115,9 +115,10 @@ s" VN-PP-N ( pserial -- n )"         CHECK-QUIET-CANDIDATE!  0 T=
 \    pointee. Shadowing another package's family stays legal: `side` is
 \    IR-SCHEMA's public enum, and the package's own `side` is a distinct type.
 \ ---------------------------------------------------------------------------
-s" PTR" ' VNOM:MINT catch nip nip TYPE-DECL:E-TDECL-NAME T=
+: MINT-PTR ( -- ) s" PTR" VNOM:MINT ;
+' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
 package CTORPKG
-s" PTR" ' VNOM:MINT catch nip nip TYPE-DECL:E-TDECL-NAME T=
+' MINT-PTR catch TYPE-DECL:E-TDECL-NAME T=
 ;package
 
 package SIDEPKG

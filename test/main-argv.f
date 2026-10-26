@@ -58,11 +58,11 @@ create PATH-BUF FS-PATH-CAP allot
    \ that file has returned.
    SB-RESET
    S\" s\" " SB-APPEND  s" a.f" FIX SB-APPEND  S\" \" required\n" SB-APPEND
-   S\" s\" " SB-APPEND  s" bad.f" FIX SB-APPEND
-   S\" \" ' required catch . 2drop\n#x\n" SB-APPEND
+   S\" : MA-REQ ( -- ) s\" " SB-APPEND  s" bad.f" FIX SB-APPEND
+   S\" \" required ; ' MA-REQ catch .\n#x\n" SB-APPEND
    SB$ s" req.f" FIXTURE
    \ A loaded file that runs root text which refuses, then refuses itself.
-   S\" s\" nosuchword\" ' SOURCE-ROOT:RUN-ROOT catch . 2drop\nMA-AFTER\n"
+   S\" : MA-ROOT ( -- ) s\" nosuchword\" SOURCE-ROOT:RUN-ROOT ; ' MA-ROOT catch .\nMA-AFTER\n"
    s" root-caught.f" FIXTURE ;
 
 \ ---- the two runs of a case --------------------------------------------------------

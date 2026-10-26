@@ -36,11 +36,12 @@ CHECK-RETURN
    repeat
    -1 FAIL ;
 
-: CHECK ( ptr u8 n n -- )
-   >r 2drop r>
+: SCAN-ABC ( -- ) s" abc" SCAN ;
+
+: CHECK ( n -- )
    -1 <> if -2 throw then ;
 
-s" abc" ' SCAN catch CHECK
+' SCAN-ABC catch CHECK
 
 \ The local crosses both calls and spills. On the last ELSE, its final reload
 \ is in a predecessor of the trap block; the other arms return normally.
@@ -72,21 +73,27 @@ CHECK-RETURNS
 : EXHAUST ( n n -- ) {: k:n lim:n :}
    lim 0 ?do k MIX 109 = if unloop exit then loop -7192 throw ;
 
-: CHECK-EXHAUST ( n n n -- )
-   >r 2drop r> -7192 <> if -2 throw then ;
+: CHECK-EXHAUST ( n -- )
+   -7192 <> if -2 throw then ;
+
+: EXHAUST-ZERO ( -- ) 2 0 EXHAUST ;
+: EXHAUST-ALL ( -- ) 2 3 EXHAUST ;
 
 1 1 EXHAUST
-2 0 ' EXHAUST catch CHECK-EXHAUST
-2 3 ' EXHAUST catch CHECK-EXHAUST
+' EXHAUST-ZERO catch CHECK-EXHAUST
+' EXHAUST-ALL catch CHECK-EXHAUST
 
 \ A trap that reads the saved local still requires the incoming frame order.
 : EXHAUST-READ ( n n -- ) {: k:n lim:n :}
    lim 0 ?do k MIX 109 = if unloop exit then loop
    k MIX drop -7192 throw ;
 
+: EXHAUST-READ-ZERO ( -- ) 2 0 EXHAUST-READ ;
+: EXHAUST-READ-ALL ( -- ) 2 3 EXHAUST-READ ;
+
 1 1 EXHAUST-READ
-2 0 ' EXHAUST-READ catch CHECK-EXHAUST
-2 3 ' EXHAUST-READ catch CHECK-EXHAUST
+' EXHAUST-READ-ZERO catch CHECK-EXHAUST
+' EXHAUST-READ-ALL catch CHECK-EXHAUST
 
 \ A loop-carried link crosses the comparison call and an early-return arm.
 \ The comparison also returns early; both offset and rank order matter.

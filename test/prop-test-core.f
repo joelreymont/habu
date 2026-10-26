@@ -207,10 +207,12 @@ variable CHKCPSV variable CHKNDSV variable CHKUESV
 \ CHK compiles its caller's text with this file's check hook armed, so the bytes
 \ the checker certifies are the bytes the engine compiles. The text runs at top
 \ level, so a text that changes the hook itself (set-check) is outside CHK's
-\ contract; no candidate or primitive case does. RUN's fixed closed
-\ text clears the hook at its own top level, runs COMPILE under catch and
-\ restores the saved hook on every path, a throw included; RUN answers the
-\ text's throw code, 0 when it compiled. The fixed text runs in the caller's
+\ contract; no candidate or primitive case does, so the armed hook is always
+\ PROP-CHECK-HOOK. RUN's fixed closed text clears the hook at its own top
+\ level, runs COMPILE under catch, stores the code while the hook is still
+\ clear (a cell the window leaves is unknown after it) and re-arms
+\ PROP-CHECK-HOOK on every path, a throw included; RUN answers the text's
+\ throw code, 0 when it compiled. The fixed text runs in the caller's
 \ scope and so reaches SRC$, COMPILE and RC! only qualified. RUN and its one
 \ caller, CONFIRM-FR?, are private: no public word compiles a text of its
 \ caller's choosing with the hook cleared.
@@ -236,7 +238,7 @@ private
 : RUN ( ptr u8 n -- n )
    SRC-U !
    SRC-A !
-   s" check@ 0 set-check ' PROP-CORE:COMPILE catch swap set-check PROP-CORE:RC!"
+   s" 0 set-check ' PROP-CORE:COMPILE catch PROP-CORE:RC! ' PROP-CHECK-HOOK set-check"
    evaluate-closed
    RC-CELL @ ;
 

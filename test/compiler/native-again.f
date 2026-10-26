@@ -96,8 +96,8 @@ private
 : ACC-CASE ( -- )
    s" and one that never returns throws what its turns accumulated" T-LABEL
    s" NAG-FIXTURE:NAG-ACC" KEPT
-   s" 0 ' NAG-FIXTURE:NAG-ACC catch nip" TEST-EVAL:N -1 T=
-   s" 2 ' NAG-FIXTURE:NAG-ACC catch nip" TEST-EVAL:N -4 T= ;
+   s" 0 NAG-FIXTURE:NAG-ACC 2drop" TEST-EVAL:RC -1 T=
+   s" 2 NAG-FIXTURE:NAG-ACC 2drop" TEST-EVAL:RC -4 T= ;
 
 : CALL-CASE ( -- )
    s" a call in the body carries both values round the back edge" T-LABEL

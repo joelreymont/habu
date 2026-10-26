@@ -27,7 +27,16 @@ T-RESET
 
 require src/habu/verify-source.f   \ VERIFY:CANDIDATE-IN-SCOPE: the certify path's verdict
 
-variable FOUNDF   variable TC
+variable FOUNDF
+
+\ One name or source line, run under a top-level catch by a word that takes
+\ nothing and leaves nothing: catch then leaves only the throw code.
+TYPED-VARIABLE XN-A ptr u8   variable XN-U
+: XN! ( ptr u8 n -- )  XN-U ! XN-A ! ;
+: XN-EXPORT ( -- )  XN-A @ XN-U @ CHECKER-EXPORT ;
+: XN-NAME-OK ( -- )  XN-A @ XN-U @ CHECKER-LBUF-NAME-OK? drop ;
+: XN-INTERPRET ( -- )  XN-A @ XN-U @ OUTER:INTERPRET ;
+
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
 variable EXPORT-CP
 create BASE-CONTRACT 4096 allot
@@ -169,37 +178,35 @@ s" XPU7 ( n -- n ) [: + ;] swap xpq2:XP-HOF" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 CHECKER-SCOPE-FINALIZE
 
 \ ---------------------------------------------------------------------------
-\ 5. rejects. Every fail-closed path throws its named code; catch restores
-\    the pre-call ( a u ) under the code.
+\ 5. rejects. Every fail-closed path throws its named code.
 \ ---------------------------------------------------------------------------
 \ no open package.
-s" XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-NO-PACKAGE T=
+s" XP-INC" XN! ' XN-EXPORT catch E-EXPORT-NO-PACKAGE T=
 package XPR
 public
 \ undefined bare + qualified names.
-s" XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
-s" xps:XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
+s" XP-NOPE" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
+s" xps:XP-NOPE" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 \ private word from a CLOSED package: qualified lookup is public-only.
-s" xps:XP-PRIV" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
+s" xps:XP-PRIV" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 \ malformed qualification (double colon / edge colon) never resolves.
-s" xps:XP:BAD" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
-s" :XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
+s" xps:XP:BAD" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
+s" :XP-INC" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 \ re-export FROM a sealed system package (latch is sealed in this process).
-s" tfam:list" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
-s" type:of" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
-s" match:arm" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
-s" engine-error:bad-tag" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
-s" engine-error:bad-tag" ' CHECKER-LBUF-NAME-OK? catch TC ! 2drop
-TC @ CHECKER-REJECT-RC T=
+s" tfam:list" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
+s" type:of" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
+s" match:arm" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
+s" engine-error:bad-tag" XN! ' XN-EXPORT catch E-EXPORT-SEALED T=
+s" engine-error:bad-tag" XN! ' XN-NAME-OK catch CHECKER-REJECT-RC T=
 \ duplicate tail in the current section.
 s" xps:XP-INC" CHECKER-EXPORT
-s" xps:XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
+s" xps:XP-INC" XN! ' XN-EXPORT catch $4E T=
 ;package
 \ self-export in the same section is the duplicate case.
 package XPZ
 public
 : XP-SELF ( n -- n ) ;
-s" XP-SELF" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
+s" XP-SELF" XN! ' XN-EXPORT catch $4E T=
 ;package
 
 \ the private source used by the closed-package reject above really is private:
@@ -210,7 +217,7 @@ package XPS
 ;package
 package XPR2
 public
-s" xps:XP-PRIV" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
+s" xps:XP-PRIV" XN! ' XN-EXPORT catch E-EXPORT-UNDEFINED T=
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -289,8 +296,7 @@ package XPC
 public
 cp@ EXPORT-CP !
 dbase@ REGION + $4000 - XTC:ALIAS-ROOM - cp!
-s" EXPORT xps:XP-LONG-NAMED-INCREMENT" ' OUTER:INTERPRET catch TC ! 2drop
-TC @ 76 T=
+s" EXPORT xps:XP-LONG-NAMED-INCREMENT" XN! ' XN-INTERPRET catch 76 T=
 EXPORT-CP @ cp!
 s" xpc:XP-LONG-NAMED-INCREMENT" XREF-FIND XREF-FOUND? TFALSE
 : AFTER-FAILED-EXPORT ( -- n ) 42 ;
@@ -302,8 +308,7 @@ package XPC
 public
 cp@ EXPORT-CP !
 dbase@ REGION + $4000 - XTC:PAIR-ROOM - cp!
-s" EXPORT xps:XP-LONG-NAMED-MAKER" ' OUTER:INTERPRET catch TC ! 2drop
-TC @ 76 T=
+s" EXPORT xps:XP-LONG-NAMED-MAKER" XN! ' XN-INTERPRET catch 76 T=
 EXPORT-CP @ cp!
 s" xpc:XP-LONG-NAMED-MAKER" XREF-FIND XREF-FOUND? TFALSE
 s" xpc:XP-LONG-NAMED-MAKER;does" XREF-FIND XREF-FOUND? TFALSE

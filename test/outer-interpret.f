@@ -104,7 +104,10 @@ variable SPIN-U
 \ hook (src/habu/layout.f EXIT-HOOK-CELL) to a word, OI-CR the hook that prints
 \ a newline, through OI-XT>N, the cast that reads an xt as its address: an
 \ undeclared cell holds no xt. The cast introduces no pointer or xt, so it
-\ needs no private section.
+\ needs no private section. OI-PARK parks a string; OI-INC-PARKED includes it
+\ as a path, OI-EVAL-PARKED evaluates it and OI-EVC-PARKED evaluates it closed,
+\ each taking and leaving nothing, so a case catches any of them as
+\ `s" text" OI-PARK ' OI-EVAL-PARKED catch` and the catch leaves only the code.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -161,6 +164,12 @@ variable SPIN-U
    s" : OI-CR ( -- ) cr ;" GE-SRC-LINE
    s" CAST: OI-XT>N ( [ R -- S ] -- n )" GE-SRC-LINE
    s" : OI-ARM ( [ -- ] -- ) OI-XT>N data-base EXIT-HOOK-CELL + ! ;" GE-SRC-LINE
+   s" TYPED-VARIABLE OI-PARKED ptr u8" GE-SRC-LINE
+   s" variable OI-PARKED-U" GE-SRC-LINE
+   s" : OI-PARK ( ptr u8 n -- ) OI-PARKED-U ! OI-PARKED ! ;" GE-SRC-LINE
+   s" : OI-INC-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ included ;" GE-SRC-LINE
+   s" TRUSTED: OI-EVAL-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ evaluate ;" GE-SRC-LINE
+   s" : OI-EVC-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ evaluate-closed ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -380,7 +389,7 @@ variable WANT-RC
    s" oi-nested-drop.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 7 s~ oi-nested-drop.f~ ' included catch . 2drop . depth ." QLINE
+   s" 7 s~ oi-nested-drop.f~ OI-PARK ' OI-INC-PARKED catch . . depth ." QLINE
    s" oi-include-drop.f" BOTH
    s" include floor" GE-EXPECT-OK
    S\" 70\n7\n0\n" s" include floor" GE-EXPECT-OUT
@@ -390,7 +399,7 @@ variable WANT-RC
    s" oi-nested-left.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 7 s~ oi-nested-left.f~ ' included catch . 2drop . depth ." QLINE
+   s" 7 s~ oi-nested-left.f~ OI-PARK ' OI-INC-PARKED catch . . depth ." QLINE
    s" oi-include-left.f" BOTH
    s" include residue" GE-EXPECT-OK
    S\" -3804\n7\n0\n" s" include residue" GE-EXPECT-OUT ;
@@ -408,7 +417,7 @@ variable WANT-RC
    s" oi-rr-outer.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" s~ oi-rr-outer.f~ ' included catch . 2drop" QLINE
+   s" s~ oi-rr-outer.f~ OI-PARK ' OI-INC-PARKED catch ." QLINE
    s" s~ oi-rr-nested.f~ required 9 ." QLINE
    s" oi-require-rollback.f" BOTH
    s" require rollback" GE-EXPECT-OK
@@ -438,8 +447,8 @@ variable WANT-RC
    GE-SRC-RESET
    s" 1 set-tier : OI-T42 ( -- ) 42 throw ;" GE-SRC-LINE
    s" TRUSTED: OI-AT-THROW ( -- ) s~ : OI-GONE ( -- n ) 1 ; OI-T42 9 .~ evaluate ;" QLINE
-   s" s~ OI-AT-THROW~ ' evaluate catch . 2drop" QLINE
-   s" s~ OI-GONE~ ' evaluate catch . 2drop 10 ." QLINE
+   s" s~ OI-AT-THROW~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-GONE~ OI-PARK ' OI-EVAL-PARKED catch . 10 ." QLINE
    s" s~ 11 .~ evaluate" QLINE
    s" oi-evaluate-outer-catch.f" BOTH
    CASE$ GE-EXPECT-OK
@@ -448,7 +457,7 @@ variable WANT-RC
    GE-SRC-RESET
    s" 1 set-tier : OI-T42 ( -- ) 42 throw ;" GE-SRC-LINE
    s" TRUSTED: OI-AT-THROW ( -- ) s~ OI-T42 12 .~ evaluate ;" QLINE
-   s" s~ OI-AT-THROW 13 .~ ' evaluate catch . 2drop 14 ." QLINE
+   s" s~ OI-AT-THROW 13 .~ OI-PARK ' OI-EVAL-PARKED catch . 14 ." QLINE
    s" oi-evaluate-past-both.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 42\n14\n" CASE$ GE-EXPECT-OUT ;
@@ -464,18 +473,18 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 2\n1\n3\n" CASE$ GE-EXPECT-OUT
    GE-SRC-RESET
-   s" 7 s~ drop~ ' evaluate-closed catch . 2drop . depth ." QLINE
+   s" 7 s~ drop~ OI-PARK ' OI-EVC-PARKED catch . . depth ." QLINE
    s" oi-evaluate-closed-floor.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n7\n0\n" CASE$ GE-EXPECT-OUT
    S\" hb: interpret stack underdepth: drop\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
-   s" 7 s~ 3~ ' evaluate-closed catch . 2drop . depth ." QLINE
+   s" 7 s~ 3~ OI-PARK ' OI-EVC-PARKED catch . . depth ." QLINE
    s" oi-evaluate-closed-residue.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" -3804\n7\n0\n" CASE$ GE-EXPECT-OUT
    GE-SRC-RESET
-   s" 1 set-tier s~ : OI-OPEN ( -- n ) 42~ ' evaluate-closed catch . 2drop" QLINE
+   s" 1 set-tier s~ : OI-OPEN ( -- n ) 42~ OI-PARK ' OI-EVC-PARKED catch ." QLINE
    s" : OI-OPEN ( -- n ) 5 ; OI-OPEN ." GE-SRC-LINE
    s" oi-evaluate-closed-head.f" BOTH
    CASE$ GE-EXPECT-OK
@@ -544,20 +553,20 @@ variable WANT-RC
    70 s" tick edge colon" GE-EXPECT-RC
    s" E-UNDEFINED: engine-error: at " S\" oi-tick-edge-colon.f:1\n" ERR-AT
    GE-SRC-RESET
-   s" s~ ' OI-NOPE~ ' evaluate catch . depth . 2drop" QLINE
+   s" s~ ' OI-NOPE~ OI-PARK ' OI-EVAL-PARKED catch . depth ." QLINE
    s" oi-tick-undefined-caught.f" BOTH
    s" tick undefined caught" GE-EXPECT-OK
-   S\" 70\n2\n" s" tick undefined caught" GE-EXPECT-OUT
+   S\" 70\n0\n" s" tick undefined caught" GE-EXPECT-OUT
    s" E-UNDEFINED: OI-NOPE at " S\" oi-tick-undefined-caught.f:1\n" ERR-AT
    GE-SRC-RESET
    s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
    s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 3 s~ oi-nested-tick.f~ ' included catch . depth . 4 . 2drop drop" QLINE
+   s" 3 s~ oi-nested-tick.f~ OI-PARK ' OI-INC-PARKED catch . depth . 4 . drop" QLINE
    s" oi-tick-undefined-included.f" BOTH
    s" tick undefined included" GE-EXPECT-OK
-   S\" 1\n70\n3\n4\n" s" tick undefined included" GE-EXPECT-OUT
+   S\" 1\n70\n1\n4\n" s" tick undefined included" GE-EXPECT-OUT
    s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-tick.f:1\n" ERR-AT ;
 
 \ Top-level `char` operands whose bytes together pass the definition-body
@@ -823,7 +832,7 @@ variable WANT-RC
    s" oi-nested-using-throw.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" s~ oi-nested-using-throw.f~ ' included catch . OI-TWIN" QLINE
+   s" s~ oi-nested-using-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-TWIN" QLINE
    s" oi-include-using-throw.f" BOTH
    70 s" using ends with a throw" GE-EXPECT-RC
    S\" 70\n" s" using ends with a throw" GE-EXPECT-OUT
@@ -888,7 +897,7 @@ variable WANT-RC
    s" hb: bare word a global and a used package both export: OI-SEVEN at "
    S\" oi-tick-shadow.f:1\n" DIED-AT
    GE-SRC-RESET
-   s" using OI-PKG s~ OI-SEVEN~ ' evaluate catch . 2drop OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
+   s" using OI-PKG s~ OI-SEVEN~ OI-PARK ' OI-EVAL-PARKED catch . OI-PKG:OI-SEVEN . ;using OI-SEVEN ." QLINE
    s" oi-shadow-caught.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 105\n7\n8\n" CASE$ GE-EXPECT-OUT
@@ -905,9 +914,9 @@ variable WANT-RC
    s" 1 set-tier package OI-Q using OI-PKG : OI-SEVEN ( n -- n ) 3 * ; 5 OI-SEVEN . ;using ;package" GE-SRC-LINE
    s" package OI-QD using OI-PKG : OI-SEVEN ( n -- ) create , does> ( -- n ) @ ;" GE-SRC-LINE
    s" 6 OI-SEVEN OI-SIX OI-SIX . ;using ;package" GE-SRC-LINE
-   s" package OI-QR using OI-PKG s~ : OI-SEVEN ( -- n ) OI-SEVEN ;~ ' evaluate catch . 2drop ;using ;package" QLINE
+   s" package OI-QR using OI-PKG s~ : OI-SEVEN ( -- n ) OI-SEVEN ;~ OI-PARK ' OI-EVAL-PARKED catch . ;using ;package" QLINE
    s" package OI-QA using OI-PKG : OI-SEVEN ( n n -- n ) + ; public" GE-SRC-LINE
-   s" s~ : OI-SEVEN ( n -- n ) 1 + ;~ ' evaluate catch . 2drop ;using ;package" QLINE
+   s" s~ : OI-SEVEN ( n -- n ) 1 + ;~ OI-PARK ' OI-EVAL-PARKED catch . ;using ;package" QLINE
    s" oi-using-own-name.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 15\n6\n7141\n7145\n" CASE$ GE-EXPECT-OUT
@@ -941,7 +950,7 @@ variable WANT-RC
    s" oi-nested-using-outer.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" s~ oi-nested-using-outer.f~ ' included catch . OI-TWIN" QLINE
+   s" s~ oi-nested-using-outer.f~ OI-PARK ' OI-INC-PARKED catch . OI-TWIN" QLINE
    s" oi-include-using-outer.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 104\n" CASE$ GE-EXPECT-OUT
@@ -999,21 +1008,21 @@ variable WANT-RC
    GE-SRC-RESET
    PKG-VS-LINE
    s" include oi-nested-pkg-open.f" GE-SRC-LINE
-   s" s~ oi-nested-pkg-close-throw.f~ ' included catch . 2drop OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-close-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-reopen.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-pkg-close-throw.f:1\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ oi-nested-pkg-throw.f~ ' included catch . 2drop OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
+   s" s~ oi-nested-pkg-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-VERIFY:SCOPE . package OI-V ;package 5 ." QLINE
    s" oi-pkg-reclose.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
    s" E-UNDEFINED: OI-NOPE at " S\" oi-nested-pkg-throw.f:1\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
-   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ ' evaluate catch . 2drop OI-VERIFY:SCOPE . ;package 5 ." QLINE
+   s" s~ package OI-Q~ evaluate s~ ;package OI-NOPE~ OI-PARK ' OI-EVAL-PARKED catch . OI-VERIFY:SCOPE . ;package 5 ." QLINE
    s" oi-pkg-evaluate.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
@@ -1021,7 +1030,7 @@ variable WANT-RC
    GE-SRC-RESET
    PKG-VS-LINE
    s" package OI-P" GE-SRC-LINE
-   s" s~ oi-nested-floor-throw.f~ ' included catch . OI-VERIFY:FLOOR . using OI-FXA ;using ;package OI-TWIN" QLINE
+   s" s~ oi-nested-floor-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-VERIFY:FLOOR . using OI-FXA ;using ;package OI-TWIN" QLINE
    s" oi-pkg-floor.f" BOTH
    70 CASE$ GE-EXPECT-RC
    S\" 70\n0\n" CASE$ GE-EXPECT-OUT
@@ -1037,7 +1046,7 @@ variable WANT-RC
    SPIN-PRELUDE
    GE-SRC-RESET
    s" package OI-T s~ : OI-TP ( -- n ) 6 ;~ evaluate" QLINE
-   s" s~ oi-nested-live-throw.f~ ' included catch . 2drop OI-TP ." QLINE
+   s" s~ oi-nested-live-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-TP ." QLINE
    s" oi-pkg-live-throw.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 42\n6\n" CASE$ GE-EXPECT-OUT
@@ -1054,7 +1063,7 @@ variable WANT-RC
 : USING-INCLUDER ( -- )
    s" ;using using OI-FXB" s" oi-nested-using-includer.f" PKG-NESTED
    GE-SRC-RESET
-   s" using OI-FXA s~ oi-nested-using-includer.f~ ' included catch . 2drop OI-TWIN ." QLINE
+   s" using OI-FXA s~ oi-nested-using-includer.f~ OI-PARK ' OI-INC-PARKED catch . OI-TWIN ." QLINE
    s" oi-using-includer.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 104\n1\n" CASE$ GE-EXPECT-OUT
@@ -1076,7 +1085,7 @@ variable WANT-RC
    s" ;package using OI-FXN OI-NOPE" s" oi-nested-slot-throw.f" PKG-NESTED
    GE-SRC-RESET
    s" s~ package OI-FXN public : OI-TWIN ( n -- n ) 100 + ; ;package~ evaluate" QLINE
-   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ ' included catch . 2drop OI-TWIN ." QLINE
+   s" package OI-P using OI-FXA s~ oi-nested-slot-throw.f~ OI-PARK ' OI-INC-PARKED catch . OI-TWIN ." QLINE
    s" s~ : OI-SLOT ( -- n ) OI-TWIN ;~ evaluate OI-SLOT . ;package" QLINE
    s" oi-using-slot-throw.f" BOTH
    CASE$ GE-EXPECT-OK
@@ -1482,11 +1491,14 @@ variable WANT-RC
 \ opened gives the definition up with its refusal, as an evaluate's does: the
 \ caller goes on with nothing pending, defines anew and reuses the name. The
 \ buffer goes to OUTER:INTERPRET directly, since an include under either loop
-\ runs inside an evaluate frame, whose unwind would give it up anyway.
+\ runs inside an evaluate frame, whose unwind would give it up anyway. OI-INT-PARKED
+\ interprets the parked buffer, taking and leaving nothing; a case defines it
+\ after its require, as the prelude loads before src/habu/interpret.f does, and
+\ at tier 1, the only tier the Habu loop defines at.
 : CAUGHT-HEAD ( -- )
    GE-SRC-RESET
-   s" require src/habu/interpret.f" GE-SRC-LINE
-   s" 1 set-tier s~ : OI-HELD ( -- )~ ' OUTER:INTERPRET catch . 2drop 1 ." QLINE
+   s" require src/habu/interpret.f 1 set-tier : OI-INT-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ OUTER:INTERPRET ;" GE-SRC-LINE
+   s" s~ : OI-HELD ( -- )~ OI-PARK ' OI-INT-PARKED catch . 1 ." QLINE
    s" : OI-NEW ( -- ) 5 . ; OI-NEW : OI-HELD ( -- ) 6 . ; OI-HELD" GE-SRC-LINE
    s" oi-caught-head.f" BOTH
    CASE$ GE-EXPECT-OK
@@ -2030,13 +2042,13 @@ variable WANT-RC
    S\" \n" CASE$ GE-EXPECT-OUT
    S\" hb: uncaught throw code 7147\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
-   s" require src/habu/interpret.f" GE-SRC-LINE
-   s" 1 set-tier s~ cast: OI-Y ( n n -- n )~ ' OUTER:INTERPRET catch . depth . 2drop" QLINE
+   s" require src/habu/interpret.f 1 set-tier : OI-INT-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ OUTER:INTERPRET ;" GE-SRC-LINE
+   s" s~ cast: OI-Y ( n n -- n )~ OI-PARK ' OI-INT-PARKED catch . depth ." QLINE
    s" : OI-NEW ( -- ) 5 . ; OI-NEW" GE-SRC-LINE
    s" ' OI-Y" GE-SRC-LINE
    s" oi-cast-caught.f" BOTH
    70 CASE$ GE-EXPECT-RC
-   S\" 7129\n2\n5\n" CASE$ GE-EXPECT-OUT
+   S\" 7129\n0\n5\n" CASE$ GE-EXPECT-OUT
    s" E-UNDEFINED: OI-Y at " S\" oi-cast-caught.f:4\n" ERR-AT ;
 
 \ The def hook never sees a cast: it gets only the created word after it.

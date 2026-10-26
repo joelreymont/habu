@@ -196,7 +196,7 @@ s" the live path leaves the declared cell" T-LABEL
 1 2 DEADPATH-FIX:JT 1 T=
 
 s" the dead path throws the code the arm named" T-LABEL
-7 0 ' DEADPATH-FIX:JT catch E-A-EMPTY T=
-2drop
+: JT-DEAD ( -- ) 7 0 DEADPATH-FIX:JT drop ;
+' JT-DEAD catch E-A-EMPTY T=
 
 T-REPORT

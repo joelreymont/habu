@@ -74,6 +74,17 @@ variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable R
 variable RC   variable FID   variable B   variable NODE   variable PFB
 variable VS0  variable VID
 
+\ The payload queries under catch, answering only the throw code: each adapter
+\ parks its inputs in cells so the caught word takes and leaves nothing.
+variable Q-TOK  variable Q-FAM  variable Q-VID  variable Q-IDX
+: Q-N ( -- ) Q-TOK @ Q-FAM @ Q-VID @ DECL-EVENT:PAYLOAD-N drop ;
+: Q-SCHEMA ( -- ) Q-TOK @ Q-FAM @ Q-VID @ Q-IDX @ DECL-EVENT:PAYLOAD-SCHEMA@ drop ;
+: Q-WIDTH ( -- ) Q-TOK @ Q-FAM @ Q-VID @ Q-IDX @ DECL-EVENT:PAYLOAD-WIDTH@ drop ;
+: Q! ( n n n -- ) Q-VID ! Q-FAM ! Q-TOK ! ;
+: PAYLOAD-N-RC ( n n n -- n ) Q! ['] Q-N catch ;
+: PAYLOAD-SCHEMA-RC ( n n n n -- n ) Q-IDX ! Q! ['] Q-SCHEMA catch ;
+: PAYLOAD-WIDTH-RC ( n n n n -- n ) Q-IDX ! Q! ['] Q-WIDTH catch ;
+
 \ The production parser and declaration runner stay unchanged.  These private
 \ drivers pause only the test body between DRIVE and the runner's prepares,
 \ while declaration events and field rows are still provisional.
@@ -100,16 +111,16 @@ package ENUM-DECL
    s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-WIDTH@ 2 T=" evaluate-closed
    s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-CELLS 3 T=" evaluate-closed
 
-   s" DECL-EVENT:CURRENT PFB @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7173 T=" evaluate-closed
-   s" DECL-EVENT:CURRENT FID @ -1 ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
-   s" DECL-EVENT:CURRENT FID @ VS0 @ 0 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
-   s" DECL-EVENT:CURRENT FID @ VID @ -1 ' DECL-EVENT:PAYLOAD-WIDTH@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
-   s" DECL-EVENT:CURRENT FID @ VID @ 2 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT PFB @ VID @ PAYLOAD-N-RC 7173 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ -1 PAYLOAD-N-RC 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 0 PAYLOAD-SCHEMA-RC 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ -1 PAYLOAD-WIDTH-RC 7172 T=" evaluate-closed
+   s" DECL-EVENT:CURRENT FID @ VID @ 2 PAYLOAD-SCHEMA-RC 7172 T=" evaluate-closed
 
    DECL-EVENT:OPEN NODE !
    NODE @ FID @ DECL-EVENT:DECL NODE !
-   s" RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7161 T=" evaluate-closed
-   s" NODE @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" evaluate-closed
+   s" RC @ FID @ VID @ PAYLOAD-N-RC 7161 T=" evaluate-closed
+   s" NODE @ FID @ VID @ PAYLOAD-N-RC 7172 T=" evaluate-closed
    NODE @ DECL-EVENT:ROLLBACK ;
 
 : TEST-PAYLOAD-BODY ( -- )
@@ -174,16 +185,14 @@ execute epview
 ;ENUM
 ;package
 
-RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
-B @ 7161 T=                                            \ published token is stale
+RC @ FID @ VID @ PAYLOAD-N-RC 7161 T=                \ published token is stale
 
 package ENUM-DECL
 TEST-PAYLOAD-ROLL-XT
 catch eproll VARIANT gone FIELD value n ;VARIANT ;ENUM
 ;package
 7107 T=                                                \ forced body failure rolled back
-RC @ FID @ VS0 @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
-B @ 7161 T=                                            \ rolled-back token is stale
+RC @ FID @ VS0 @ PAYLOAD-N-RC 7161 T=                \ rolled-back token is stale
 
 \ ---------------------------------------------------------------------------
 \ 7. Compact POLICY and DERIVE clauses use the same family owner as

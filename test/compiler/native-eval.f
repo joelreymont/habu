@@ -350,10 +350,11 @@ variable ERR-U
    s" a definition its hook threw back keeps no row" T-LABEL
    tier TIER-TEXT
    s" : W-FORGET ( -- n ) 1 ; package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+
+   S\" TRUSTED: EVAL-W-FORGET ( -- ) s\" : W-FORGET 3 4 ;\" evaluate ; " TEXT+
    s" : THROWER-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
    s" LOWER-CERT-HOOK:HOOK r> if 77 throw then ; ' THROWER-FORGET set-check " TEXT+
    s" package Q-FORGET public using P-FORGET " TEXT+
-   S\" s\" : W-FORGET 3 4 ;\" ' evaluate catch . 2drop cr " TEXT+
+   s" ' EVAL-W-FORGET catch . cr " TEXT+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
@@ -364,7 +365,8 @@ variable ERR-U
 : NAME-THROWN ( n -- ) {: tier:n :}
    s" a definition its text threw back leaves its name free" T-LABEL
    tier TIER-TEXT
-   S\" s\" : X-FORGET ( -- n ) 1 ; 77 throw\" ' evaluate catch . 2drop cr " TEXT+
+   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n ) 1 ; 77 throw\" evaluate ; " TEXT+
+   s" ' EVAL-X-FORGET catch . cr " TEXT+
    s" : X-FORGET ( -- n ) 2 ; X-FORGET . cr" TEXT+
    TEXT-RC 0 T=
    OUT$ S\" 77\n\n2\n\n" T$= ;
@@ -375,8 +377,9 @@ variable ERR-U
 : ROW-THROWN ( n -- ) {: tier:n :}
    s" a definition its text threw back does not type a later caller" T-LABEL
    tier TIER-TEXT
-   s" : X-FORGET ( -- n ) 1 ; package Q-FORGET public " TEXT+
-   S\" s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" ' evaluate catch . 2drop cr " TEXT+
+   s" : X-FORGET ( -- n ) 1 ; " TEXT+
+   S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" evaluate ; " TEXT+
+   s" package Q-FORGET public ' EVAL-X-FORGET catch . cr " TEXT+
    s" : T-FORGET ( -- n n ) X-FORGET ; ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=

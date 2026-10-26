@@ -150,8 +150,8 @@ s" scxfam" TFAM-FIND-PUBLIC TTRUE IX @ <> TTRUE
 \ a second package exporting the same tail makes the unqualified answer
 \ genuinely ambiguous, and the index must reproduce the refusal, not pick one.
 s" scxpk2" CHECKER-PACKAGE-PUBLIC s" scxfam" 0 TK-CELL TFAM-DECL drop
-s" scxfam" ' TFAM-FIND-PUBLIC catch TC ! 2drop
-TC @ E-TFAM-AMBIG T=
+: SCX-FIND-AMBIG ( -- ) s" scxfam" TFAM-FIND-PUBLIC 2drop ;
+' SCX-FIND-AMBIG catch E-TFAM-AMBIG T=
 
 \ 1d. constructor symbols: a generated constructor resolves to its variant, and
 \     an ordinary word symbol resolves to nothing.

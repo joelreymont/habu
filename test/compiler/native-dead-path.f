@@ -36,7 +36,7 @@ private
 
 : JT-DEAD-CASE ( -- )
    s" and its dead path throws the code the arm named, catchably" T-LABEL
-   s" 7 0 ' DPC-JT catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
+   s" 7 0 DPC-JT drop" TEST-EVAL:RC E-A-EMPTY T= ;
 
 \ ---- 2. the same arm with an `else` beside it ---------------------------------
 \ With two arms no edge into the join comes from the `if` itself, so the arm that
