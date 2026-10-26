@@ -925,11 +925,28 @@ public
 
 ;package
 
+: FMT-PATH-IDENTITY-MISSING ( -- )
+   FMT-BROKEN-TARGET FS:PATH-IDENTITY 2drop ;
+
+\ The link and its target name one file; the copy source is another.
+: FMT-TEST-PATH-IDENTITY ( -- )
+   s" a symlink and its target have one identity" T-LABEL
+   FMT-LINK FS:PATH-IDENTITY FMT-LINK-TARGET FS:PATH-IDENTITY
+   {: link-dev:n link-ino:n dev:n ino:n :}
+   link-dev dev T=
+   link-ino ino T=
+   s" two files have different identities" T-LABEL
+   FMT-COPY-SRC FS:PATH-IDENTITY {: other-dev:n other-ino:n :}
+   other-dev dev = other-ino ino = and TFALSE
+   s" a missing path has no identity" T-LABEL
+   [: FMT-PATH-IDENTITY-MISSING ;] E-FS-STAT TTHROWSQ ;
+
 : FMT-TEST-SYMLINK ( -- )
    FMT-LINK-TARGET s" link-target" WRITE-ALL
    FMT-LINK-TARGET FMT-LINK MAKE-SYMLINK
    FMT-LINK SYMLINK? TTRUE
    FMT-LINK FILE? TTRUE
+   FMT-TEST-PATH-IDENTITY
    FMT-LINK FMT-LINK-READ-BUF READ-LINK FMT-LINK-TARGET-U @ T=
    FMT-LINK-READ-BUF FMT-LINK-TARGET-U @ SPAN:TAKE SPAN:$ FMT-LINK-TARGET T$=
    [: FMT-MAKE-SYMLINK-EXISTS ;] E-FS-IO TTHROWSQ

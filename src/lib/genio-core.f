@@ -618,7 +618,10 @@ public
 
 \ One line without its terminator. A zero length is the end of input -- the
 \ terminal answers it on ^D and a stream answers it when the peer closes -- so
-\ a read loop ends instead of spinning.
+\ a read loop ends instead of spinning. A stream fills at most the buffer and
+\ leaves the rest of a longer line for the next ACCEPT, so a filled buffer means
+\ the line may go on; the terminal refuses a line longer than the buffer with
+\ E-OPERAND, because its editor's line cannot be read twice.
 : ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
    IN-ROW {: idx:n :}
    idx FAULT-CHECK

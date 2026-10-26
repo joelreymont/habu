@@ -121,7 +121,6 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
-$10000 constant MAX-TEXT                  \ one string option or header line
 $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
 $08 constant CELL-BYTES
@@ -221,8 +220,10 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-\ A request body and a destination span are the caller's own storage, bounded
-\ only by what the caller allocated: the response itself grows in a memstream.
+\ A request body, a destination span, a string option and a header line are the
+\ caller's own storage, bounded only by what the caller allocated: the response
+\ itself grows in a memstream, and libcurl refuses a string option past its own
+\ input limit with a code, which answers `failed`.
 : AT-LEAST ( n n -- ) {: value:n minimum:n :}
    value minimum < if E-OPERAND throw then ;
 
@@ -268,7 +269,7 @@ CAST: >BYTES ( n -- ptr u8 )
 \ Zero answers an allocation failure; every other refusal throws.
 : TEXT-DUP ( ptr u8 n -- n )
    {: text u:n :}
-   u 0 MAX-TEXT WITHIN-RANGE
+   u 0 AT-LEAST
    text u DUP-TEXT dup 0= if exit then
    dup TEXT-LENGTH u <> if TEXT-RELEASE E-OPERAND throw then ;
 
@@ -501,7 +502,7 @@ public
 
 
 : URL! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
-   u 1 MAX-TEXT WITHIN-RANGE
+   u 1 AT-LEAST
    subject OPT-URL text u SET-TEXT ;
 
 
@@ -517,7 +518,7 @@ public
 \ stays POST across a 302 or 303. A POST that should follow 302 or 303 as GET
 \ uses BODY! alone. GET! returns a reused handle to plain GET.
 : METHOD! ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
-   u 1 MAX-TEXT WITHIN-RANGE
+   u 1 AT-LEAST
    subject OPT-METHOD text u SET-TEXT ;
 
 
@@ -531,7 +532,7 @@ public
 
 \ One "Name: value" line, appended to the list this handle already owns.
 : HEADER+ ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
-   u 1 MAX-TEXT WITHIN-RANGE
+   u 1 AT-LEAST
    subject HANDLE-CELL text u HEADER-APPEND ;
 
 
@@ -552,7 +553,7 @@ public
 
 \ Cookies written back when the handle is cleaned up.
 : COOKIE-JAR! ( handle ptr u8 n -- status ) {: subject:handle path u:n :}
-   u 1 MAX-TEXT WITHIN-RANGE
+   u 1 AT-LEAST
    subject OPT-COOKIE-JAR path u SET-TEXT ;
 
 

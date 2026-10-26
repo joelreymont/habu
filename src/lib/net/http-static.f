@@ -1,6 +1,13 @@
 \ http-static.f - one directory tree served from memory. STATIC-ROOT reads the
 \ whole tree before the server starts, so the tables are written while no task
-\ is live and a request costs no file system call.
+\ is live and a request costs no file system call. The tables grow with the
+\ tree and STATIC-CLOSE gives them back; only a path wider than FS-PATH-CAP is
+\ refused.
+\
+\ Symlinks are followed, so a linked directory is served under its link's path.
+\ A directory whose device and inode match one of its ancestors' is a cycle and
+\ refuses the root; two links to one directory that is not an ancestor are not,
+\ and both paths are served. A refused root leaves nothing loaded.
 \
 \ Each file carries the content type its extension names, an ETag over its
 \ bytes, and the Cache-Control value the installed cache rule gives its path.
@@ -10,6 +17,7 @@
 \ until then every file is revalidated and nothing falls back.
 require src/lib/net/http-router.f
 require src/lib/fs.f
+require src/lib/fs-identity.f
 require src/lib/fs-list.f
 require src/lib/memory.f
 require src/lib/span.f
@@ -20,28 +28,29 @@ using MEM
 
 private
 
-$40 constant MAX-FILES
-$20 constant MAX-DIRS
-$4000 constant TEXT-CAP           \ the served paths and their ETags
-$1000 constant NAMES-CAP
 $40 constant DIGEST-HEX-BYTES
 $20 constant DIGEST-BYTES
-$400000 constant MAX-FILE-BYTES   \ one served file
 $2E constant DOT-BYTE
 
-MAX-FILES TYPED-BUFFER FILE-PATH-AT n
-MAX-FILES TYPED-BUFFER FILE-PATH-N n
-MAX-FILES TYPED-BUFFER FILE-ETAG-AT n
-MAX-FILES TYPED-BUFFER FILE-ETAG-N n
-MAX-FILES TYPED-BUFFER FILE-BODY SPAN:span<u8>   \ the bytes one file was read into
-MAX-FILES TYPED-BUFFER FILE-BODY-N n
-MAX-DIRS TYPED-BUFFER DIR-AT n
-MAX-DIRS TYPED-BUFFER DIR-N n
+\ A row per file and per directory, reserved as each is found. Growth may move
+\ a row, so an entry keeps offsets into TEXT-ROW and a pointer into it is taken
+\ again after the next append.
+DYNAMIC-BUFFER FILE-PATH-AT n
+DYNAMIC-BUFFER FILE-PATH-N n
+DYNAMIC-BUFFER FILE-ETAG-AT n
+DYNAMIC-BUFFER FILE-ETAG-N n
+DYNAMIC-BUFFER FILE-BODY SPAN:span<u8>   \ the bytes one file was read into
+DYNAMIC-BUFFER FILE-BODY-N n
+DYNAMIC-BUFFER DIR-AT n
+DYNAMIC-BUFFER DIR-N n
+DYNAMIC-BUFFER DIR-UP n                  \ the parent's row; the root has none
+DYNAMIC-BUFFER DIR-DEVICE n
+DYNAMIC-BUFFER DIR-INODE n
+DYNAMIC-BUFFER TEXT-ROW u8               \ the served paths and their ETags
 
-TEXT-CAP SPAN-BUFFER: TEXT-BUF
-NAMES-CAP SPAN-BUFFER: NAMES-BUF
 FS-PATH-CAP SPAN-BUFFER: PATH-BUF
 FS-PATH-CAP SPAN-BUFFER: URL-BUF
+FS-PATH-CAP SPAN-BUFFER: LIST-BUF        \ the directory being listed
 \ SHA256-IN and SHA256>HEX write a digest of their own fixed size and take no
 \ capacity, so these two are the library's bound and not a span's.
 create DIGEST-RAW DIGEST-BYTES allot
@@ -60,15 +69,18 @@ FS-PATH-CAP SPAN-BUFFER: ROOT-BUF
 
 
 : TEXT+ ( ptr u8 n -- n ) {: bytes:ptr len:n :}
-   TEXT-U @ len + TEXT-CAP > if E-STATIC throw then
    TEXT-U @ {: at:n :}
-   bytes len TEXT-BUF at SPAN:SKIP SPAN:COPY
-   TEXT-U @ len + TEXT-U !
+   len 0= if at exit then
+   at len + TEXT-ROW-RESERVE
+   bytes len at TEXT-ROW len SPAN:MAKE SPAN:COPY
+   at len + TEXT-U !
    at ;
 
 
+\ The root directory's url is the one empty text, and it has no byte to point at.
 : TEXT$ ( n n -- ptr u8 n ) {: at:n len:n :}
-   TEXT-BUF at len SPAN:SUB SPAN:$ ;
+   len 0= if s" " exit then
+   at TEXT-ROW len ;
 
 
 : FILE-PATH$ ( n -- ptr u8 n ) {: at:n :}
@@ -158,30 +170,73 @@ DEFAULT-RULES
    at DIGEST-HEX-BYTES 2 + ;
 
 
-: LOAD-FILE ( ptr u8 n -- ) {: url:ptr urllen:n :}
-   FILE-COUNT @ MAX-FILES >= if E-STATIC throw then
-   url urllen UNDER-ROOT {: pathlen:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ FILE-SIZE {: size:n :}
-   size MAX-FILE-BYTES > if E-STATIC throw then
-   size 1 max {: capacity:n :}
-   capacity BYTES-ALLOC-LEN ALLOC-SPAN {: body :}
+: FILE-ROWS ( n -- ) {: count:n :}
+   count FILE-PATH-AT-RESERVE
+   count FILE-PATH-N-RESERVE
+   count FILE-ETAG-AT-RESERVE
+   count FILE-ETAG-N-RESERVE
+   count FILE-BODY-RESERVE
+   count FILE-BODY-N-RESERVE ;
+
+
+\ Reads the file into body and records all of entry at but the body itself.
+\ The stack is kept, so the catch around it can give the body back.
+: FILE-ENTRY ( ptr u8 n n SPAN:span<u8> n -- ptr u8 n n SPAN:span<u8> n )
+   {: url:ptr urllen:n pathlen:n body at:n :}
    PATH-BUF pathlen SPAN:TAKE SPAN:$ body SPAN:$ READ-ALL {: got:n :}
-   FILE-COUNT @ {: at:n :}
    url urllen TEXT+ at FILE-PATH-AT !
    urllen at FILE-PATH-N !
-   body at FILE-BODY !
    got at FILE-BODY-N !
    body SPAN:$ drop got ETAG-FOR {: etag:n etaglen:n :}
    etag at FILE-ETAG-AT !
    etaglen at FILE-ETAG-N !
+   url urllen pathlen body at ;
+
+
+\ The entry counts only once it owns its body, so STATIC-CLOSE frees each body
+\ once and a failed read frees its own.
+: LOAD-FILE ( ptr u8 n -- ) {: url:ptr urllen:n :}
+   FILE-COUNT @ {: at:n :}
+   at 1+ FILE-ROWS
+   url urllen UNDER-ROOT {: pathlen:n :}
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ FILE-SIZE 1 max
+      BYTES-ALLOC-LEN ALLOC-SPAN {: body :}
+   url urllen pathlen body at [: FILE-ENTRY ;] catch {: code:n :}
+   2drop 2drop drop
+   code 0<> if body FREE-SPAN code throw then
+   body at FILE-BODY !
    at 1+ FILE-COUNT ! ;
 
 
-: DIR+ ( ptr u8 n -- ) {: url:ptr urllen:n :}
-   DIR-TAIL @ MAX-DIRS >= if E-STATIC throw then
-   url urllen TEXT+ DIR-TAIL @ DIR-AT !
-   urllen DIR-TAIL @ DIR-N !
-   DIR-TAIL @ 1+ DIR-TAIL ! ;
+\ True when the directory row at, or one of its ancestors, has this identity.
+: ANCESTOR? ( n n n -- bool ) {: at:n device:n inode:n :}
+   at 0< if false exit then
+   at DIR-DEVICE @ device = at DIR-INODE @ inode = and if true exit then
+   at DIR-UP @ device inode recurse ;
+
+
+\ A directory under row up, refused before it is walked when it is one of its
+\ own ancestors.
+: DIR+ ( ptr u8 n n -- ) {: url:ptr urllen:n up:n :}
+   url urllen UNDER-ROOT {: pathlen:n :}
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ FS:PATH-IDENTITY {: device:n inode:n :}
+   up device inode ANCESTOR? if E-STATIC throw then
+   DIR-TAIL @ {: at:n :}
+   at 1+ DIR-AT-RESERVE
+   at 1+ DIR-N-RESERVE
+   at 1+ DIR-UP-RESERVE
+   at 1+ DIR-DEVICE-RESERVE
+   at 1+ DIR-INODE-RESERVE
+   url urllen TEXT+ at DIR-AT !
+   urllen at DIR-N !
+   up at DIR-UP !
+   device at DIR-DEVICE !
+   inode at DIR-INODE !
+   at 1+ DIR-TAIL ! ;
+
+
+: DIR$ ( n -- ptr u8 n ) {: at:n :}
+   at DIR-AT @ at DIR-N @ TEXT$ ;
 
 
 : URL-JOIN ( ptr u8 n ptr u8 n -- n ) {: base:ptr baselen:n name:ptr namelen:n :}
@@ -195,46 +250,29 @@ DEFAULT-RULES
 : ENTRY ( ptr u8 n ptr u8 n -- ) {: base:ptr baselen:n name:ptr namelen:n :}
    base baselen name namelen URL-JOIN {: urllen:n :}
    URL-BUF urllen SPAN:TAKE SPAN:$ UNDER-ROOT {: pathlen:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ DIR? if URL-BUF urllen SPAN:TAKE SPAN:$ DIR+ exit then
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ DIR? if
+      URL-BUF urllen SPAN:TAKE SPAN:$ DIR-HEAD @ DIR+ exit
+   then
    PATH-BUF pathlen SPAN:TAKE SPAN:$ FILE? if URL-BUF urllen SPAN:TAKE SPAN:$ LOAD-FILE then ;
 
 
-\ FS-LIST answers the whole listing into this buffer before anything opens the
-\ next directory, so one buffer serves every level of the walk.
-: LIST-NAMES ( ptr u8 n -- n ) {: url:ptr urllen:n :}
-   url urllen UNDER-ROOT {: pathlen:n :}
-   PATH-BUF pathlen SPAN:TAKE SPAN:$ NAMES-BUF SPAN:$ FS-LIST:NAMES ;
+\ One name in the directory DIR-HEAD names. Its url is taken again for every
+\ name, because the entry before may have grown TEXT-ROW and moved it.
+: NAME-ENTRY ( ptr u8 n -- ) {: name:ptr namelen:n :}
+   DIR-HEAD @ DIR$ name namelen ENTRY ;
 
 
-\ FS-LIST separates the names with one newline and no terminator.
-: LINE-STOP ( n n -- n ) {: total:n at:n :}
-   total at ?do
-      NAMES-BUF i SPAN:U8@ LF = if i unloop exit then
-   loop
-   total ;
-
-
-: WALK-NAMES ( ptr u8 n n -- ) {: url:ptr urllen:n total:n :}
-   0
-   begin
-      {: at:n :}
-      at total >= if exit then
-      total at LINE-STOP {: stop:n :}
-      stop at > if url urllen NAMES-BUF at stop at - SPAN:SUB SPAN:$ ENTRY then
-      stop 1+
-   again ;
-
-
-: WALK-DIR ( n -- ) {: at:n :}
-   at DIR-AT @ at DIR-N @ TEXT$ {: url:ptr urllen:n :}
-   url urllen LIST-NAMES {: total:n :}
-   url urllen total WALK-NAMES ;
+\ The listing's path sits in LIST-BUF, which no entry writes.
+: WALK-DIR ( -- )
+   DIR-HEAD @ DIR$ UNDER-ROOT {: pathlen:n :}
+   PATH-BUF pathlen SPAN:TAKE SPAN:$ LIST-BUF SPAN:COPY
+   LIST-BUF pathlen SPAN:TAKE SPAN:$ [: NAME-ENTRY ;] FS-LIST:EACH ;
 
 
 : WALK ( -- )
    begin
       DIR-HEAD @ DIR-TAIL @ >= if exit then
-      DIR-HEAD @ WALK-DIR
+      WALK-DIR
       DIR-HEAD @ 1+ DIR-HEAD !
    again ;
 
@@ -319,9 +357,32 @@ DEFAULT-RULES
 
 public
 
+\ Gives back every span and row the tree owns and empties its table.
+: STATIC-CLOSE ( -- )
+   FILE-COUNT @ 0 ?do
+      i FILE-BODY @ FREE-SPAN
+   loop
+   FILE-PATH-AT-RELEASE
+   FILE-PATH-N-RELEASE
+   FILE-ETAG-AT-RELEASE
+   FILE-ETAG-N-RELEASE
+   FILE-BODY-RELEASE
+   FILE-BODY-N-RELEASE
+   DIR-AT-RELEASE
+   DIR-N-RELEASE
+   DIR-UP-RELEASE
+   DIR-DEVICE-RELEASE
+   DIR-INODE-RELEASE
+   TEXT-ROW-RELEASE
+   0 FILE-COUNT !
+   0 TEXT-U !
+   0 ROOT-U ! ;
+
+
 \ Reads the whole tree under a directory into memory, before the server
-\ starts. STOP and failures opening worker resources or starting tasks empty
-\ the table. Rejected arguments/context and listener-open failures retain it.
+\ starts. A failure while reading it gives back what was read and is rethrown.
+\ STOP and failures opening worker resources or starting tasks empty the
+\ table. Rejected arguments/context and listener-open failures retain it.
 : STATIC-ROOT ( ptr u8 n -- ) {: root:ptr len:n :}
    len 0 <= if E-STATIC throw then
    len FS-PATH-CAP >= if E-STATIC throw then
@@ -333,22 +394,12 @@ public
    0 FILE-COUNT !
    0 DIR-HEAD !
    0 DIR-TAIL !
-   s" " DIR+
-   WALK ;
+   [: s" " -1 DIR+ WALK ;] catch {: code:n :}
+   code 0<> if STATIC-CLOSE code throw then ;
 
 
 : STATIC-COUNT ( -- n )
    FILE-COUNT @ ;
-
-
-\ Gives back every span the tree owns and empties its table.
-: STATIC-CLOSE ( -- )
-   FILE-COUNT @ 0 ?do
-      i FILE-BODY @ FREE-SPAN
-   loop
-   0 FILE-COUNT !
-   0 TEXT-U !
-   0 ROOT-U ! ;
 
 
 ;using

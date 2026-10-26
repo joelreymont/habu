@@ -3,14 +3,22 @@
 \ src/lib/genio-core.f; this file reopens its package GENIO and adds what needs
 \ a transport or changes the process on load.
 \
-\ STORAGE CLASS. TASK-LOCAL: the READ-LINE line buffer is a TASK:+USER row, so
-\ two tasks may each be reading a line from their own device.
+\ STORAGE CLASS. TASK-LOCAL: READ-LINE's line and the chunk a device's accept
+\ fills are TASK:+USER rows, so two tasks may each be reading a line from their
+\ own device.
+\
+\ LINES. ACCEPT on a stream is standard Forth's: it fills at most the caller's
+\ buffer and leaves the rest of a longer line in the stream for the next ACCEPT.
+\ READ-LINE has no length of its own: its per-task line grows to the longest
+\ line its task has read, and is released when the task exits.
 \
 \ ROUTING. Requiring this file installs READ-LINE as REPL-READ, so the engine's
 \ REPL reads from the current input device.
 require src/lib/prelude.f
 require src/lib/num-types.f
 require src/lib/task.f
+require src/lib/image-lifecycle.f
+require src/lib/byte-buffer.f
 require src/lib/net/tcp4.f
 require src/lib/genio-core.f
 
@@ -21,14 +29,47 @@ private
 $A constant LF
 
 \ The line READ-LINE hands back, per task: two tasks may each be reading a
-\ line from their own device.
-$100 constant LINE-CAP
-TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and LINE-CAP TASK:+USER IO-LINE drop
+\ line from their own device. The line is a BUF (src/lib/byte-buffer.f) that
+\ grows to the longest line its task has read: a device's accept fills the
+\ chunk row and READ-LINE appends each chunk. LINE-OPEN marks the line live
+\ once its release is registered: the task's exit chain for a task, image
+\ preparation for the main task, which has no exit chain and whose row a
+\ capture would otherwise carry.
+$100 constant CHUNK-CAP
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CHUNK-CAP TASK:+USER IO-CHUNK drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and BUF:HDR-BYTES TASK:+USER IO-LINE drop
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $8 TASK:+USER IO-LINE-LIVE drop
 
-: LINE ( -- ptr u8 )
-   IO-LINE BYTE-VIEW ;
+: CHUNK ( -- ptr u8 )
+   IO-CHUNK BYTE-VIEW ;
+
+: LINE-DISPOSE ( -- )
+   0 IO-LINE-LIVE !
+   IO-LINE BUF:DISPOSE ;
+
+: LINE-REGISTER ( -- )
+   TASK:SELF-N 0= if [: LINE-DISPOSE ;] IMAGE-LIFECYCLE:REGISTER exit then
+   [: LINE-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
+
+\ A refused registration releases the line it would have released, so a live
+\ line always has its release armed.
+: LINE-OPEN ( -- )
+   IO-LINE-LIVE @ 0<> if exit then
+   IO-LINE CHUNK-CAP BUF:N>BLEN BUF:INIT
+   [: LINE-REGISTER ;] catch {: code:n :}
+   code 0<> if IO-LINE BUF:DISPOSE code throw then
+   1 IO-LINE-LIVE ! ;
 
 CAST: BLEN>N ( NUM:byte-len -- n )
+
+\ The line is whole when an accept leaves the chunk unfilled: the newline, or
+\ the end of input, came first.
+: LINE-FILL ( -- )
+   begin
+      CHUNK CHUNK-CAP ACCEPT {: got:n :}
+      CHUNK got BUF:N>BLEN IO-LINE BUF:APPEND-SPAN
+      got CHUNK-CAP <
+   until ;
 
 public
 
@@ -40,8 +81,10 @@ public
 \ no change to repl.f: that is what makes a REPL over a connection free.
 : READ-LINE ( -- ptr u8 n )
    IN-ROW TERMINAL-ROW = if RD-LINE exit then
-   LINE LINE-CAP ACCEPT {: len:n :}
-   LINE len ;
+   LINE-OPEN
+   IO-LINE BUF:CLEAR
+   LINE-FILL
+   IO-LINE BUF:SPAN$ BLEN>N ;
 
 private
 
@@ -100,16 +143,18 @@ private
       failed OF drop E-IO throw ENDOF
    ;MATCH ;
 
-\ A line, without its newline. Reading one byte at a time is what keeps the
-\ stream's own bytes with the stream: a device has no buffer of its own to
-\ leave a half-read line in for the next reader. The running length stays on
-\ the data stack because a quotation-free loop cannot rebind a local.
+\ A line, without its newline, or its first `cap` bytes. Reading one byte at a
+\ time is what keeps the stream's own bytes with the stream: a device has no
+\ buffer of its own to leave a half-read line in for the next reader, and a
+\ filled buffer stops before the next byte is taken, so the rest of a long line
+\ is still the stream's. The running length stays on the data stack because a
+\ quotation-free loop cannot rebind a local.
 : TCP-ACCEPT ( ptr u8 n -- n ) {: bytes:ptr cap:n :}
    0
    begin ( len )
+      dup cap >= if exit then
       TCP-BYTE? 0= if exit then
       SCRATCH c@ LF = if exit then
-      dup cap >= if E-OPERAND throw then
       dup bytes swap +  SCRATCH c@ swap c!
       1+
    again ;

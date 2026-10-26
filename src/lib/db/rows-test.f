@@ -30,7 +30,7 @@ package DB-ROWS-TEST
 \ More reads than PG's 64 live results, so a refusal that left its result
 \ behind would end in PG:E-CAPACITY before the loop does.
 70 constant OVER-RESULTS
-$5000 constant PAST-ARENA         \ a text longer than one read's arena
+$5000 constant LONG-TEXT          \ a text longer than an arena's first chunk
 
 TYPED-VARIABLE CONN PG:connection
 TYPED-VARIABLE HELD PG:result
@@ -132,6 +132,44 @@ TYPED-VARIABLE HELD PG:result
    CONN @ s" select count(*) from person" PG:EXEC DB-ROWS:ONE-INT 2 T= ;
 
 
+\ ---- reads longer than an arena's first chunk -----------------------------------
+
+: LONG-SQL$ ( -- ptr u8 n )
+   s" select $1::int, 'head', repeat('a', $1::int), repeat('b', 3 * $1::int)" ;
+
+
+: LONG-ROW ( PG:result -- ptr u8 n ptr u8 n ptr u8 n ) {: r :}
+   r 1 DB-ROWS:COL-TEXT
+   r 2 DB-ROWS:COL-TEXT
+   r 3 DB-ROWS:COL-TEXT ;
+
+
+\ The short text stays in the arena's first chunk while each long one chains
+\ another. The same texts are held in a second result while the spans are
+\ compared, as in OUTLIVES-CASES.
+: LONG-READ ( -- )
+   CONN @ LONG-TEXT LONG-SQL$ DB-ROWS:BY-ID [: LONG-ROW ;] DB-ROWS:WITH-ROW
+   {: ha:ptr hu:n aa:ptr au:n ba:ptr bu:n :}
+   CONN @ PG:PARAMS
+   CONN @ LONG-TEXT PG:INT+
+   CONN @ LONG-SQL$ PG:EXEC {: churn :}
+   s" a short text beside long ones" T-LABEL
+   ha hu s" head" T$=
+   s" a text longer than the first chunk reads whole" T-LABEL
+   aa au churn 0 2 DB-ROWS:AT$ T$=
+   au LONG-TEXT T=
+   s" a text of several chunks reads whole" T-LABEL
+   ba bu churn 0 3 DB-ROWS:AT$ T$=
+   bu LONG-TEXT 3 * T=
+   churn PG:CLEAR ;
+
+
+\ The second read gives up the first one's chunks and chains its own.
+: LONG-CASES ( -- )
+   LONG-READ
+   LONG-READ ;
+
+
 \ ---- refusals, each leaving no result behind ------------------------------------
 
 : EACH-REFUSES ( [ -- ] n -- ) {: q want:n :}
@@ -162,14 +200,10 @@ TYPED-VARIABLE HELD PG:result
    CONN @ s" select 1 where false" PG:EXEC DB-ROWS:ONE-INT drop ;
 
 
-: LONG-ROW ( PG:result -- ptr u8 n )
-   1 DB-ROWS:COL-TEXT ;
-
-
 \ The decoder throws inside WITH-ROW, which still clears the result.
-: PAST-ARENA-READ ( -- )
-   CONN @ PAST-ARENA s" select $1::int, repeat('x', $1::int)" DB-ROWS:BY-ID
-   [: LONG-ROW ;] DB-ROWS:WITH-ROW 2drop ;
+: BAD-DECODE ( -- )
+   CONN @ 1 PERSON-SQL$ DB-ROWS:BY-ID
+   [: 1 DB-ROWS:COL-BOOL ;] DB-ROWS:WITH-ROW drop ;
 
 
 : REFUSAL-CASES ( -- )
@@ -183,8 +217,8 @@ TYPED-VARIABLE HELD PG:result
    [: NULL-COUNT ;] DB-ROWS:E-ROW EACH-REFUSES
    s" ONE-INT refuses no row" T-LABEL
    [: EMPTY-COUNT ;] DB-ROWS:E-ROW EACH-REFUSES
-   s" a read past its arena" T-LABEL
-   [: PAST-ARENA-READ ;] DB-ROWS:E-CAPACITY EACH-REFUSES ;
+   s" a decoder's refusal inside WITH-ROW" T-LABEL
+   [: BAD-DECODE ;] DB-ROWS:E-ROW EACH-REFUSES ;
 
 
 : REFUSED-OPEN ( -- )
@@ -327,6 +361,7 @@ TASK:MIN-STACK TASK:TASK THIRD-TASK
    ADA-CASES
    GRACE-CASES
    PAGE-CASES
+   LONG-CASES
    REFUSAL-CASES
    DECLARATION-CASES
    TASK-CASES

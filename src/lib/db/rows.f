@@ -8,8 +8,8 @@
 \ until PG:CLEAR.
 \
 \ STORAGE CLASS. TASK-LOCAL arenas: a reading task takes one on its first read
-\ and keeps it, READ-CAP bytes per read. The declared connection and reader
-\ counts are PROCESS-WIDE.
+\ and keeps it, READ-CAP bytes that a longer read extends by chained chunks.
+\ The declared connection and reader counts are PROCESS-WIDE.
 \
 \ Two declarations come first, both before the first OPEN or read:
 \
@@ -39,13 +39,13 @@ public
 -9321 constant E-QUERY        \ the server refused a query, or a command answered no rows where rows were read
 -9322 constant E-ROW          \ the query answered no row, or a column its reader cannot read
 -9323 constant E-READERS      \ more tasks read rows than the declared readers
--9324 constant E-CAPACITY     \ a declaration out of range or after first use, or a read past its arena
+-9324 constant E-CAPACITY     \ a declaration out of range or after first use
 
 private
 
 64 constant RESULTS               \ live results across every connection
 32 constant PARAMETERS            \ parameters one statement takes
-$4000 constant READ-CAP           \ the bytes one read may copy out of its results
+$4000 constant READ-CAP           \ an arena's first chunk, and the least a later one maps
 $74 constant TRUE-BYTE            \ PostgreSQL renders a boolean as 't' or 'f'
 
 \ The process entry owns one connection. Each module that opens connections
@@ -70,6 +70,11 @@ variable CONNECTIONS-FROZEN
 \ rows are bounded by the tasks the image declares and never by the jobs that
 \ pass through them. An untaken row costs a few cells; its bytes are mapped only
 \ when its task first reads.
+\
+\ An arena is a chain of chunks, newest first. A record holds pointers into
+\ them, so a chunk never moves: a span the newest cannot hold maps another of
+\ READ-CAP bytes or of the span's own length behind it, whichever is larger,
+\ whose header names the chunk before. The first chunk's header names none.
 0 constant NO-TASK                \ a row no task has taken; also the main task's TCB
 0 constant MAIN-ARENA             \ the arena of the main task, which has no TCB
 1 constant FIRST-CLAIMED          \ the rows tasks take, MAIN-ARENA being taken already
@@ -78,9 +83,18 @@ variable READER-N                 \ the declared rows, zero until CONFIGURE-READ
 TYPED-VARIABLE REGISTERED bool
 false REGISTERED !
 
-DYNAMIC-BUFFER READ-SPAN SPAN:span<u8>
+STRUCTURE chunk DERIVE addr
+   FIELD prev ptr u8
+   FIELD prev-len n
+;STRUCTURE
+
+CAST: >CHUNK ( ptr u8 -- ptr chunk )
+
+CHUNK-CELLS cells constant HEADER-BYTES
+
+DYNAMIC-BUFFER READ-CHUNK SPAN:span<u8>   \ the newest chunk, empty until the first read
 DYNAMIC-BUFFER READ-TASK n
-DYNAMIC-BUFFER READ-USED n
+DYNAMIC-BUFFER READ-USED n                \ the newest chunk's bytes taken, its header among them
 \ The result a row is decoding, so WITH-ROW's cleanup can reach it; it belongs
 \ to this task until its record is decoded, on failure as well as success.
 DYNAMIC-BUFFER READ-RESULT PG:result
@@ -96,28 +110,56 @@ DYNAMIC-BUFFER READ-RESULT PG:result
    me NO-TASK = if MAIN-ARENA exit then
    readers FIRST-CLAIMED ?do
       i READ-TASK @ me = if i unloop exit then
-      NO-TASK me i READ-TASK atomic-cas NO-TASK = if 0 i READ-USED ! i unloop exit then
+      NO-TASK me i READ-TASK atomic-cas NO-TASK = if i unloop exit then
    loop
    E-READERS throw ;
 
 
-\ A row's span is empty until its first read and is mapped here, by the only
-\ task that ever asks for it - so the map needs no lock, and main's row is
-\ mapped the same way as a worker's. The bytes live until image preparation.
-: ARENA-BUF ( n -- SPAN:span<u8> ) {: at:n :}
-   at READ-SPAN @ SPAN:LEN 0= if
-      READ-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN at READ-SPAN !
+\ Maps a chunk of len bytes after the newest of row at, which it becomes.
+: CHUNK+ ( n n -- ) {: at:n len:n :}
+   len MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: fresh :}
+   at READ-CHUNK @ SPAN:$ {: before:ptr before-len:n :}
+   fresh SPAN:$ drop >CHUNK {: c :}
+   before c CHUNK-PREV !
+   before-len c CHUNK-PREV-LEN !
+   fresh at READ-CHUNK !
+   HEADER-BYTES at READ-USED ! ;
+
+
+\ Gives up row at's newest chunk for the one before it; false at the first.
+: POP-CHUNK? ( n -- bool ) {: at:n :}
+   at READ-CHUNK @ {: newest :}
+   newest SPAN:$ drop >CHUNK {: c :}
+   c CHUNK-PREV-LEN @ 0= if false exit then
+   c CHUNK-PREV @ c CHUNK-PREV-LEN @ SPAN:MAKE at READ-CHUNK !
+   newest MEM:FREE-SPAN
+   true ;
+
+
+\ Gives up every chunk of a mapped row but the first.
+: TRIM ( n -- ) {: at:n :}
+   begin at POP-CHUNK? 0= until ;
+
+
+\ The newest chunk of row at, with room for u more bytes. A row's first chunk
+\ is mapped here on its first read, by the only task that ever asks for it -
+\ so the map needs no lock, and main's row is mapped the same way as a
+\ worker's. Its bytes live until image preparation.
+: ROOM ( n n -- SPAN:span<u8> ) {: at:n u:n :}
+   at READ-CHUNK @ SPAN:LEN 0= if at READ-CAP CHUNK+ then
+   at READ-USED @ u + at READ-CHUNK @ SPAN:LEN > if
+      at READ-CAP u HEADER-BYTES + max CHUNK+
    then
-   at READ-SPAN @ ;
+   at READ-CHUNK @ ;
 
 
 : ARENA+ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    MY-ARENA {: at:n :}
+   at u ROOM {: chunk :}
    at READ-USED @ {: used:n :}
-   used u + READ-CAP > if E-CAPACITY throw then
-   a u at ARENA-BUF used SPAN:SKIP SPAN:COPY
+   a u chunk used SPAN:SKIP SPAN:COPY
    used u + at READ-USED !
-   at ARENA-BUF used u SPAN:SUB SPAN:$ ;
+   chunk used u SPAN:SUB SPAN:$ ;
 
 
 \ A restored image runs in another process: the arenas are mappings it does not
@@ -126,9 +168,9 @@ DYNAMIC-BUFFER READ-RESULT PG:result
 : FORGET-READERS ( -- )
    READER-N @ 0<> if
       READER-N @ 0 ?do
-         i READ-SPAN @ SPAN:LEN 0<> if i READ-SPAN @ MEM:FREE-SPAN then
+         i READ-CHUNK @ SPAN:LEN 0<> if i TRIM i READ-CHUNK @ MEM:FREE-SPAN then
       loop
-      READ-SPAN-RELEASE
+      READ-CHUNK-RELEASE
       READ-TASK-RELEASE
       READ-USED-RELEASE
       READ-RESULT-RELEASE
@@ -164,7 +206,7 @@ public
    READER-N @ {: had:n :}
    had readers = if exit then
    had 0<> if E-CAPACITY throw then
-   readers READ-SPAN-RESERVE
+   readers READ-CHUNK-RESERVE
    readers READ-TASK-RESERVE
    readers READ-USED-RESERVE
    readers READ-RESULT-RESERVE
@@ -216,9 +258,12 @@ public
 
 \ ---- one read ----------------------------------------------------------------
 
-\ Starts a read on this task: the spans of its previous read are given up.
+\ Starts a read on this task: the spans of its previous read are given up, and
+\ every chunk they took but the first.
 : READ-RESET ( -- )
-   0 MY-ARENA READ-USED ! ;
+   MY-ARENA {: at:n :}
+   at READ-CHUNK @ SPAN:LEN 0<> if at TRIM then
+   HEADER-BYTES at READ-USED ! ;
 
 
 \ Runs the decoder over the result and clears the result on every path out.

@@ -734,6 +734,13 @@ SUITE print-min-int
    test/print-min-int.f
 ;SUITE
 
+\ A TCP device's lines past any fixed length: READ-LINE grows its per-task line,
+\ a worker's line is released by its exit chain, and successive ACCEPTs bring a
+\ line longer than their buffer across whole.
+SUITE genio
+   src/lib/genio-test.f
+;SUITE
+
 \ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
 \ inside the engine it tests - a reopened engine package, a pre-hook global, a

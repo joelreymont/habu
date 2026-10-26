@@ -375,6 +375,9 @@ input and output device through a small table of operations
 (`src/lib/genio-core.f`), as VFX's generic I/O devices do. A socket or serial port
 can then become the REPL's console without changes to the REPL, which keeps a
 running server or microcontroller inspectable and correctable from a distance.
+A stream device's `ACCEPT` is standard Forth's: it fills the caller's buffer
+and leaves the rest of a longer line for the next `ACCEPT`, and `READ-LINE`
+answers a line of any length.
 The device record stays small enough to be the per-task vector table SwiftX
 uses on a microcontroller.
 

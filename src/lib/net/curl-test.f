@@ -1681,6 +1681,66 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LOW-SPEED-PAIRS ;
 
 
+\ ---- long text ----------------------------------------------------------------
+\ A string option or header line is the caller's own storage, as long as the
+\ caller made it. libcurl keeps its own input limit on string options, and one
+\ past it answers `failed` with libcurl's code rather than a throw.
+
+$10001 constant PAST-TEXT                 \ a byte past the 64 KiB text CURL once refused
+8000001 constant PAST-CURL-INPUT          \ a byte past libcurl's CURL_MAX_INPUT_LENGTH
+43 constant CURLE-BAD-ARGUMENT            \ CURLE_BAD_FUNCTION_ARGUMENT
+$61 constant TEXT-BYTE
+
+TEST-ALIGN8
+TYPED-VARIABLE LONG-HANDLE CURL:handle
+PTR-VARIABLE LONG-PTR
+variable LONG-U
+variable LONG-ANSWER
+
+: LONG-TEXT ( -- ptr u8 n )
+   LONG-PTR @ LONG-U @ ;
+
+: LONG-OPEN ( n -- ) {: u:n :}
+   OPEN-HANDLE LONG-HANDLE !
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: p :}
+   u 0 do TEXT-BYTE p i + c! loop
+   p LONG-PTR !  u LONG-U ! ;
+
+: LONG-CLOSE ( -- )
+   LONG-HANDLE @ CURL:CLEANUP
+   LONG-PTR @ LONG-U @ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+: LONG-SETTERS ( -- )
+   LONG-HANDLE @ LONG-TEXT CURL:URL! EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT CURL:METHOD! EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT CURL:HEADER+ EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT CURL:PROXY! EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT CURL:COOKIE-FILE! EXPECT-OK
+   LONG-HANDLE @ LONG-TEXT CURL:COOKIE-JAR! EXPECT-OK ;
+
+: LONG-URL ( -- )
+   LONG-HANDLE @ LONG-TEXT CURL:URL!
+   MATCH CURL:status
+      ok OF 0 ENDOF
+      failed OF CURL:CODE>N ENDOF
+   ;MATCH LONG-ANSWER ! ;
+
+\ Each row releases its handle and text before asserting, a throw included.
+: TEST-LONG-TEXT ( -- )
+   s" text options and a header line past 64 KiB are taken whole" T-LABEL
+   PAST-TEXT LONG-OPEN
+   ['] LONG-SETTERS catch
+   LONG-CLOSE
+   0 T=
+   s" a URL past libcurl's input limit answers failed with its code" T-LABEL
+   -1 LONG-ANSWER !
+   PAST-CURL-INPUT LONG-OPEN
+   ['] LONG-URL catch
+   LONG-CLOSE
+   0 T=
+   LONG-ANSWER @ CURLE-BAD-ARGUMENT T= ;
+
+
 \ ---- many transfers on one task ----------------------------------------------
 \ Every wait below is bounded. A wait whose bound passes names itself on stdout
 \ and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so a transfer the loop never
@@ -2552,6 +2612,7 @@ public
    TEST-NO-URL
    TEST-FILE-SCHEME
    TEST-REFUSALS
+   TEST-LONG-TEXT
    TEST-HOST:SNAPSHOT
    AIO:START
    TEST-MULTI

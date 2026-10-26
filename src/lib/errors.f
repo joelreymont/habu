@@ -1402,7 +1402,7 @@
 -9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
 -9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
 -9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
--9345 constant E-HTTP-STATIC      \ a static root that is not a directory, or a tree larger than the tables that hold it
+-9345 constant E-HTTP-STATIC      \ a bad or non-directory static root, a URL wider than FS-PATH-CAP, or a directory cycle
 -9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
 \ -9347 was E-HTTP-RESPONSE, retired: a response grows instead of refusing.
 

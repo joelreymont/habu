@@ -105,6 +105,7 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 create RES-BUF RES-CAP allot
 REQ-CAP SPAN-BUFFER: REQ-BUF
 FS-PATH-CAP SPAN-BUFFER: ROOT-BUF
+FS-PATH-CAP SPAN-BUFFER: TREE-BUF   \ the root of the big and linked static trees
 create PATH-BUF FS-PATH-CAP allot
 ETAG-CAP SPAN-BUFFER: ETAG-BUF
 SCRIPT-CAP SPAN-BUFFER: SCRIPT-BUF  \ the transcript this run captured
@@ -116,6 +117,7 @@ SCRIPT-CAP SPAN-BUFFER: BACK-BUF    \ the transcript read back from its file
 
 TEST-ALIGN8
 variable ROOT-U
+variable TREE-U
 variable RES-U
 variable REQ-U
 variable ETAG-U
@@ -2343,6 +2345,180 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    again ;
 
 
+\ ---- a static tree past the former table bounds -------------------------------
+\ The table once held 64 files, 32 directories, 16 KiB of paths and ETags, 4 KiB
+\ of names in one directory and 4 MiB in one file. This tree has 41 directories,
+\ 161 files, a directory whose 80 names take 9680 bytes, 21608 bytes of paths and
+\ ETags and a file one byte over 4 MiB. Each small file holds its own relative
+\ path.
+
+40 constant BIG-DIRS
+80 constant LONG-NAMES
+$78 constant LONG-NAME-BYTES
+$400001 constant BIG-FILE-BYTES
+BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
+
+
+: TREE$ ( -- ptr u8 n )
+   TREE-BUF TREE-U @ SPAN:TAKE SPAN:$ ;
+
+
+: NEW-TREE ( -- )
+   s" http-static" HB-TMP-MKDIR {: a:ptr u:n :}
+   a u CLEANUP-TREE+
+   a u TREE-BUF SPAN:COPY
+   u TREE-U ! ;
+
+
+: TREE-UNDER ( ptr u8 n -- n ) {: name:ptr len:n :}
+   TREE$ name len PATH-BUF JOIN-PATH ;
+
+
+\ The file at the relative path the string builder holds, written with that
+\ path as its text.
+: SB-FILE ( -- )
+   SB$ TREE-UNDER {: len:n :}
+   PATH-BUF len SB$ WRITE-ALL ;
+
+
+: BIG-DIR ( n -- ) {: d:n :}
+   SB-RESET s" d" SB-APPEND d FMT:SB-U
+   SB$ TREE-UNDER {: len:n :}
+   PATH-BUF len MAKE-DIR
+   2 0 do
+      SB-RESET s" d" SB-APPEND d FMT:SB-U s" /f" SB-APPEND i FMT:SB-U
+      s" .txt" SB-APPEND SB-FILE
+   loop ;
+
+
+: LONG-NAME ( n -- ) {: k:n :}
+   SB-RESET s" names/" SB-APPEND k FMT:SB-U
+   begin SB$ nip LONG-NAME-BYTES 6 + < while $78 SB-APPEND-C repeat
+   SB-FILE ;
+
+
+: BIG-FILE ( -- )
+   BIG-FILE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: big :}
+   s" big.bin" TREE-UNDER {: len:n :}
+   PATH-BUF len big SPAN:$ WRITE-ALL
+   big MEM:FREE-SPAN ;
+
+
+: MAKE-BIG ( -- )
+   NEW-TREE
+   BIG-DIRS 0 do i BIG-DIR loop
+   s" names" TREE-UNDER {: len:n :}
+   PATH-BUF len MAKE-DIR
+   LONG-NAMES 0 do i LONG-NAME loop
+   BIG-FILE ;
+
+
+\ The trace rows the installed hooks mark are emptied first, as for every
+\ server PARKED-WORKER-CASE starts.
+: BIG-TREE-CASE ( -- )
+   TRACE-RESET
+   MAKE-BIG
+   TREE$ HTTP:STATIC-ROOT
+   s" every file of a tree past the former bounds" T-LABEL
+   HTTP:STATIC-COUNT BIG-FILES T=
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s" GET" s" /d0/f0.txt" FETCH 200 T=
+   RES$ s" d0/f0.txt" T$=
+   s" a file in the last directory" T-LABEL
+   s" GET" s" /d39/f1.txt" FETCH 200 T=
+   RES$ s" d39/f1.txt" T$=
+   s" a file over 4 MiB" T-LABEL
+   s\" HEAD /big.bin HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   S\" Content-Length: 4194305\r\n" HAS? TTRUE
+   HTTP:STOP
+   HTTP:STATIC-COUNT 0 T=
+   TREE$ REMOVE-TREE ;
+
+
+\ ---- static trees through symlinks -------------------------------------------
+\ A directory whose identity matches an ancestor's is a cycle and refuses the
+\ root; links that reach a directory by another path are served under it.
+
+: TREE-FILE ( ptr u8 n ptr u8 n -- ) {: name:ptr namelen:n text:ptr textlen:n :}
+   name namelen TREE-UNDER {: len:n :}
+   PATH-BUF len text textlen WRITE-ALL ;
+
+
+: TREE-DIR ( ptr u8 n -- )
+   TREE-UNDER {: len:n :}
+   PATH-BUF len MAKE-DIR ;
+
+
+: TREE-LINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetlen:n name:ptr namelen:n :}
+   name namelen TREE-UNDER {: len:n :}
+   target targetlen PATH-BUF len MAKE-SYMLINK ;
+
+
+\ The refusal leaves nothing loaded, so a good tree loads next.
+: CYCLE-REFUSED ( -- )
+   [: TREE$ HTTP:STATIC-ROOT ;] HTTP:E-STATIC TTHROWSQ
+   HTTP:STATIC-COUNT 0 T=
+   TREE$ REMOVE-TREE
+   NEW-TREE
+   s" index.html" INDEX-TEXT$ TREE-FILE
+   TREE$ HTTP:STATIC-ROOT
+   HTTP:STATIC-COUNT 1 T=
+   HTTP:STATIC-CLOSE
+   TREE$ REMOVE-TREE ;
+
+
+: SELF-LINK-CASE ( -- )
+   s" a link to the root is a cycle" T-LABEL
+   NEW-TREE
+   s" index.html" INDEX-TEXT$ TREE-FILE
+   \ One level down, so the root's file loads before the cycle in any listing order.
+   s" d" TREE-DIR
+   s" .." s" d/a" TREE-LINK
+   CYCLE-REFUSED ;
+
+
+: TWO-SELF-LINKS-CASE ( -- )
+   s" two links to the root are refused, not walked" T-LABEL
+   NEW-TREE
+   s" index.html" INDEX-TEXT$ TREE-FILE
+   s" ." s" a" TREE-LINK
+   s" ." s" b" TREE-LINK
+   CYCLE-REFUSED ;
+
+
+\ The root is site/. linked/ reaches a directory outside it; one/ and two/ both
+\ reach real/, which is their sibling and no ancestor.
+: LINKED-TREE-CASE ( -- )
+   TRACE-RESET
+   NEW-TREE
+   s" site" TREE-DIR
+   s" elsewhere" TREE-DIR
+   s" site/real" TREE-DIR
+   s" site/index.html" INDEX-TEXT$ TREE-FILE
+   s" elsewhere/page.txt" s" page" TREE-FILE
+   s" site/real/x.txt" s" x" TREE-FILE
+   s" ../elsewhere" s" site/linked" TREE-LINK
+   s" real" s" site/one" TREE-LINK
+   s" real" s" site/two" TREE-LINK
+   s" site" TREE-UNDER {: len:n :}
+   PATH-BUF len HTTP:STATIC-ROOT
+   s" every file reached through a link that is no cycle" T-LABEL
+   HTTP:STATIC-COUNT 5 T=
+   LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
+   s" a symlinked directory is served under its link's path" T-LABEL
+   s" GET" s" /linked/page.txt" FETCH 200 T=
+   RES$ s" page" T$=
+   s" two links to one sibling directory both serve" T-LABEL
+   s" GET" s" /one/x.txt" FETCH 200 T=
+   RES$ s" x" T$=
+   s" GET" s" /two/x.txt" FETCH 200 T=
+   RES$ s" x" T$=
+   HTTP:STOP
+   HTTP:STATIC-COUNT 0 T=
+   TREE$ REMOVE-TREE ;
+
+
 \ The loop first: the listener's own wait and this suite's raw READABLE? ride
 \ it, and it is stopped once every server has been stopped, which is when every
 \ task this suite started has been joined.
@@ -2391,6 +2567,10 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    READ-FAULT-CASE
    POLICY-CASES
    TRANSCRIPT-CASE
+   BIG-TREE-CASE
+   SELF-LINK-CASE
+   TWO-SELF-LINKS-CASE
+   LINKED-TREE-CASE
    PARKED-WORKER-CASE
    IDLE-STOP-CASE
    FULL-QUEUE-CASE
