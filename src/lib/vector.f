@@ -309,6 +309,8 @@ CAST: INDEX>N ( NUM:index -- n )
 
 public
 
+VEC-HEADER-CELLS constant HEADER-CELLS          \ cells a caller allots for one header
+
 \ ---- init / clear -------------------------------------------------------------
 : INIT ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
    vec VEC-CHECK-DEAD                             \ reject re-init of a live header (no leak)
@@ -318,9 +320,13 @@ public
 : CLEAR ( ptr a -- )  VEC-CLEAR ;
 : DISPOSE ( ptr a -- )  VEC-DISPOSE ;
 
-\ ---- length / capacity readers (raw cell -> item-count role) ------------------
+\ ---- length / capacity (raw cell <-> item-count role) -------------------------
 : LEN@ ( ptr a -- NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
 : CAP@ ( ptr a -- NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
+: LEN! ( NUM:item-count ptr a -- )  swap ITEM-COUNT>N VEC-LEN swap VEC-LEN! ;
+
+\ Borrowed base of the contiguous cells: RESIZE, ENSURE growth and DISPOSE invalidate it.
+: DATA@ ( ptr a -- ptr a )  VEC-DATA@ ;
 
 \ ---- resize / ensure (every allocation flows through the typed adapter) -------
 : RESIZE ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}

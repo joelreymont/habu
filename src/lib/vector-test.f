@@ -303,6 +303,52 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-TSUM @ 18 T=
    VECT-TIXSUM @ 3 T= ;
 
+create VECT-HC-VEC VEC:HEADER-CELLS cells allot     \ a header sized by the typed surface alone
+
+: VECT-T-HEADER ( -- )                                  \ a HEADER-CELLS header inits, grows, disposes
+   VECT-HC-VEC VEC:DISPOSE
+   VECT-HC-VEC 1 VECT-N>ITEM VEC:INIT
+   11 VECT-HC-VEC VEC:PUSH drop  22 VECT-HC-VEC VEC:PUSH drop  33 VECT-HC-VEC VEC:PUSH drop
+   VECT-HC-VEC VECT-TLEN 3 T=
+   VECT-HC-VEC VECT-TCAP 4 T=
+   VECT-HC-VEC 0 VECT-TAT 11 T=
+   VECT-HC-VEC 2 VECT-TAT 33 T=
+   VECT-HC-VEC VEC:DISPOSE
+   VECT-HC-VEC VEC-CAP-FIELD @ 0 T= ;
+
+: VECT-T-DATA ( -- )                                    \ DATA@ is the contiguous cell base, reread after growth
+   2 VECT-T-FRESH
+   11 VECT-VEC VEC:PUSH drop  22 VECT-VEC VEC:PUSH drop
+   VECT-VEC VEC:DATA@ {: old:ptr :}
+   old @ 11 T=
+   old cell+ @ 22 T=
+   33 VECT-VEC VEC:PUSH drop                              \ third push grows into new storage
+   VECT-VEC VEC:DATA@ {: new:ptr :}
+   new old = TFALSE
+   new @ 11 T=
+   new cell+ @ 22 T=
+   new 2 cells + @ 33 T= ;
+
+: VECT-T-LEN-SET ( -- )                                 \ LEN! truncates, empties, and keeps an equal length
+   4 VECT-T-FRESH
+   11 VECT-VEC VEC:PUSH drop  22 VECT-VEC VEC:PUSH drop  33 VECT-VEC VEC:PUSH drop
+   3 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ same length: no change
+   VECT-VEC VECT-TLEN 3 T=
+   VECT-VEC 2 VECT-TAT 33 T=
+   1 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ truncate to the first cell
+   VECT-VEC VECT-TLEN 1 T=
+   VECT-VEC VECT-TCAP 4 T=
+   VECT-VEC 0 VECT-TAT 11 T=
+   [: VECT-VEC 1 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ  \ the dropped cells are out of range
+   44 VECT-VEC VEC:PUSH NUM:ORDINAL 1 T=
+   0 VECT-N>ITEM VECT-VEC VEC:LEN!                        \ empty
+   VECT-VEC VECT-TLEN 0 T=
+   [: VECT-VEC 0 VECT-TAT drop ;] E-VEC-BOUNDS TTHROWSQ ;
+
+: VECT-T-LEN-HIGH ( -- )                                \ a length above capacity rejects as VEC-LEN! does
+   2 VECT-T-FRESH
+   3 VECT-N>ITEM VECT-VEC VEC:LEN! ;
+
 : VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;               \ zero capacity allocation
 : VECT-T-CAP-OVER ( -- )   VEC-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
 : VECT-T-RESIZE-ZERO ( -- )
@@ -374,12 +420,16 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-T-RESIZE
    VECT-T-ENSURE
    VECT-T-EACH
+   VECT-T-HEADER
+   VECT-T-DATA
+   VECT-T-LEN-SET
    \ ---- typed VEC surface: runtime allocation/bounds refusals -----------------
    [: VECT-T-CAP-ZERO ;] E-VEC-CAPACITY TTHROWSQ       \ zero capacity allocation rejects
    [: VECT-T-CAP-OVER ;] E-VEC-CAPACITY TTHROWSQ       \ growth overflow rejects
    [: VECT-T-RESIZE-ZERO ;] E-VEC-CAPACITY TTHROWSQ
    [: VECT-T-RESIZE-SHRINK ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
+   [: VECT-T-LEN-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    \ ---- typed release / dispose lifecycle -------------------------------------
    VECT-T-DISPOSE-RELEASES
    VECT-T-DISPOSE-DOUBLE
