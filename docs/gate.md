@@ -1,9 +1,10 @@
 # Native test suite
 
-Run focused tests through their real load paths first. Run the full native
-registry when a change affects shared checker or compiler behavior, runtime
-ABI, capture format or several libraries, or when focused tests cannot bound
-its effects. Source location alone does not decide this.
+Run focused tests through their real load paths. Run the full native registry
+only when a change affects shared checker or compiler behavior, runtime ABI,
+capture format or several libraries, or when focused tests cannot bound its
+effects. Where the change lives does not decide this: an engine change whose
+effects focused tests bound needs only those tests.
 
 ## Focused tests
 
@@ -20,8 +21,8 @@ files measures what the row measures.
 
 ## Qualifying a candidate
 
-For behavior baked into the engine, build a product candidate from a private
-copy of the matching tree with a ready native engine as host:
+Tests of behavior baked into the engine run on a product candidate built from
+a private copy of the matching tree with a ready native engine as host:
 
 ```sh
 HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
@@ -29,9 +30,9 @@ HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
 ```
 
 Copy that candidate and its matching `hb.map` into the private tree's `bin/`
-as regular files, not symlinks, then run the native registry from that tree.
-Keep `HB_TMP` outside the checkout, under `TMPDIR` or another external scratch
-directory.
+as regular files, not symlinks, and run the tests from that tree: the focused
+tests, and the registry when the rule above calls for it. Keep `HB_TMP`
+outside the checkout, under `TMPDIR` or another external scratch directory.
 
 ```sh
 bin/hb --load test/run.f </dev/null
