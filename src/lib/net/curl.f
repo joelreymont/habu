@@ -121,7 +121,7 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
-$4000000 constant MAX-BYTES               \ request body and response capacity
+$4000000 constant MAX-BYTES               \ response capacity
 $10000 constant MAX-TEXT                  \ one string option or header line
 $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
@@ -531,9 +531,10 @@ public
 
 
 \ The span is borrowed for this call: libcurl copies the body out of it, and its
-\ declared length is set first because the copy reads that length.
+\ declared length is set first because the copy reads that length. Any length
+\ libcurl can hold is taken; a copy it cannot allocate is its out-of-memory status.
 : BODY! ( handle ptr u8 n -- status ) {: subject:handle bytes u:n :}
-   u 0 MAX-BYTES WITHIN-RANGE
+   u 0 < if E-OPERAND throw then
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
    subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
 

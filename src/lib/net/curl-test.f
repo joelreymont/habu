@@ -18,6 +18,7 @@ require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
+require src/lib/memory.f                   \ the request body past 64 MiB
 require src/lib/image-lifecycle.f
 require src/lib/task.f
 require test/host-threads.f
@@ -74,6 +75,7 @@ $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 1 constant LOW-SECONDS                  \ the shortest window libcurl measures
 5000 constant STALL-MOST-MS             \ half REQUEST-MS: the stall test ended it, not the ceiling
 $80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
+$4000001 constant HUGE-BODY-U           \ one past the 64 MiB that once capped a request body
 
 create ROOT-BUF FS-PATH-CAP allot
 create FILE-BUF FS-PATH-CAP allot
@@ -163,6 +165,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-INTERIM$ ( -- ptr u8 n ) s" /interim" ;
 : PATH-RETRY$ ( -- ptr u8 n ) s" /retry" ;
 : PATH-ECHO$ ( -- ptr u8 n ) s" /echo" ;
+: PATH-COUNT$ ( -- ptr u8 n ) s" /count" ;
 : PATH-FOUND$ ( -- ptr u8 n ) s" /found" ;
 : PATH-SEE-OTHER$ ( -- ptr u8 n ) s" /see-other" ;
 : PATH-TEMPORARY$ ( -- ptr u8 n ) s" /temporary" ;
@@ -592,6 +595,55 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn SEND-RESPONSE ;
 
 
+\ Content-Length's value in the head; a value that does not parse is a fixture
+\ fault.
+: LENGTH-AT ( n -- n ) {: at:n :}
+   REQ-BUF at + at TOKEN-END at - STR>NUMBER?
+   MATCH option
+      some OF ENDOF
+      none OF 1 SERVER-BAD +! 0 ENDOF
+   ;MATCH ;
+
+
+\ A head without Content-Length is a fixture fault.
+: DECLARED-LENGTH ( -- n )
+   s" Content-Length: " {: name:ptr nameu:n :}
+   HEAD-U @ 0 ?do
+      name nameu i REQ-AT-CI? if i nameu + LENGTH-AT unloop exit then
+   loop
+   1 SERVER-BAD +! 0 ;
+
+
+\ One read of at most `most` body bytes over the routed head; zero when the
+\ peer ends first or the read fails, which SERVER-FAILED records.
+: SINK-CHUNK ( TCP4:connection n -- n ) {: conn:TCP4:connection most:n :}
+   conn REQ-BUF most REQ-CAP min TCP4:TRANSFER-BYTES TCP4:READ
+   MATCH TCP4:read-result
+      data OF BLEN>N ENDOF
+      closed OF drop 0 ENDOF
+      failed OF SERVER-FAILED 0 ENDOF
+   ;MATCH ;
+
+
+\ The body bytes that arrived, up to `want`, read off and discarded.
+: BODY-COUNT ( TCP4:connection n -- n ) {: conn:TCP4:connection want:n :}
+   REQ-U @ HEAD-U @ - want min
+   begin dup want < while
+      dup want swap - conn swap SINK-CHUNK
+      dup 0= if drop exit then
+      +
+   repeat ;
+
+
+\ The answer's body is the decimal count of body bytes that arrived, up to the
+\ declared length. Nothing is kept, so a body of any size fits.
+: SERVE-COUNT ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn DECLARED-LENGTH BODY-COUNT {: got:n :}
+   SB-RESET got FMT:SB-U
+   s" 200 OK" SB$ RESPOND
+   conn SEND-RESPONSE ;
+
+
 : SERVE-INTERIM ( TCP4:connection -- ) {: conn:TCP4:connection :}
    RES-RESET
    S\" HTTP/1.1 100 Continue\r\nX-Interim: one\r\n\r\nHTTP/1.1 103 Early Hints\r\nCache-Control: no-store\r\n\r\n" RES+
@@ -675,6 +727,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
       exit
    then
    PATH-ECHO$ PATH-IS? if conn SERVE-ECHO exit then
+   PATH-COUNT$ PATH-IS? if conn SERVE-COUNT exit then
    PATH-FOUND$ PATH-IS? if conn s" 302 Found" SERVE-MOVED exit then
    PATH-SEE-OTHER$ PATH-IS? if conn s" 303 See Other" SERVE-MOVED exit then
    PATH-TEMPORARY$ PATH-IS? if conn s" 307 Temporary Redirect" SERVE-MOVED exit then
@@ -1191,6 +1244,26 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LAST-STATUS @ 501 T= ;
 
 
+\ BODY! copies the body, so its source is released before the transfer runs.
+\ "Expect:" drops libcurl's 100-continue wait: the server reads at once.
+: TEST-HUGE-POST ( -- )
+   HUGE-BODY-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: bytes :}
+   PATH-COUNT$ GET-READY {: subject:CURL:handle :}
+   subject s" Expect:" CURL:HEADER+ EXPECT-OK
+   subject bytes HUGE-BODY-U CURL:BODY! EXPECT-OK
+   bytes HUGE-BODY-U MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" a request body past 64 MiB reaches the server whole" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   BODY$ STR>NUMBER?
+   MATCH option
+      some OF ENDOF
+      none OF -1 ENDOF
+   ;MATCH HUGE-BODY-U T= ;
+
+
 : TEST-METHOD ( -- )
    PATH-HELLO$ GET-READY {: subject:CURL:handle :}
    subject s" DELETE" CURL:METHOD! EXPECT-OK
@@ -1506,6 +1579,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject CURL:CLEANUP ;
 
 
+\ libcurl reads a body length of -1 as "use strlen", which a NUL would cut.
+: NEGATIVE-BODY ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" a" drop -1 CURL:BODY! EXPECT-OK
+   subject CURL:CLEANUP ;
+
+
 : LOW-SPEED-RATE ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject -1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
@@ -1531,6 +1611,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    [: NULL-HANDLE ;] CURL:E-STATE TTHROWSQ
    s" a NUL inside a URL is refused, never silently cut" T-LABEL
    [: EMBEDDED-NUL ;] CURL:E-OPERAND TTHROWSQ
+   s" a negative body length is refused" T-LABEL
+   [: NEGATIVE-BODY ;] CURL:E-OPERAND TTHROWSQ
    s" a low-speed rate below zero is refused" T-LABEL
    [: LOW-SPEED-RATE ;] CURL:E-OPERAND TTHROWSQ
    s" a low-speed window past the C long ceiling is refused" T-LABEL
@@ -2332,7 +2414,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 92 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 93 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2395,6 +2477,7 @@ public
    TEST-MISSING
    TEST-HEADER
    TEST-POST
+   TEST-HUGE-POST
    TEST-METHOD
    TEST-REDIRECT-VERBS
    TEST-COOKIES
