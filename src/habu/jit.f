@@ -578,9 +578,12 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 \ the branch is taken exactly when the flag would be 0, as cbz on it would be.
 \ The flags hold until the branch: what the keywords emit in between (spills,
 \ the BEGIN reconcile) is loads, stores and moves.
-\ Fence: no open control-flow entry may record an origin at or above CP-8.
-\ Only `begin` records CP without emitting, so a loop top between the compare
-\ and the branch would land in the rewound words.
+\ Fence: no open control-flow entry may record an origin at or above CP-8, and
+\ the last forward branch patched (layout.f FWDTGT-CELL, habu2.f LPAT) may not
+\ land there. `begin` records CP without emitting, and so does `then` when the
+\ arm already holds the recorded layout: a loop top or a join between the
+\ compare and the branch would land in the rewound words. A target at the
+\ compare itself is safe: the compare stays.
 \ Clobbers x5, x10-x13; preserves x14 and x30.
 variable LVFUSE
 
@@ -589,6 +592,7 @@ variable LVFUSE
    LBL LBL LBL {: walk chk no :}
    16 0 MOVZ,
    12 CP 8 SUBI,                                            \ x12 = CP-8
+   13 DATA FWDTGT-CELL LDR,  13 DBASE 13 ADD,  13 12 CMP,  C-CS no BCOND,   \ a join lands at or above CP-8: fence
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,        \ x11 = control-flow depth
    10 10 8 ADDI,                                            \ x10 = entry 0
    walk LBL,
@@ -788,7 +792,7 @@ variable FESK5
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
-variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF
+variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF  variable LVRESNAP
 
 \ The depth cell and the frame area live in JIT-SNAP (src/habu/layout.f), an
 \ appended band above DATA-START's old edge. They used to be $358 and $360; both
@@ -807,8 +811,8 @@ variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,                       \ 16*sp + 8*sp = 24*sp
    8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD, ;
 
-\ LVSNAP ( -- ) : BEGIN. VSP<=13: force every VS entry into a register (movz
-\ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
+\ LVSNAP ( -- ) : BEGIN, IF, WHILE. VSP<=13: force every VS entry into a
+\ register (movz chains for cons emitted HERE, before the join) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-SNAP-FORCE-LOOP ( label label label -- ) {: fl:label fd:label fail:label :}
@@ -864,10 +868,10 @@ variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF
    spush LBL,                               \ frame = (k, p0, p1); 24 B stride
    EMIT-SNAP-PUSH-FRAME ;
 
-\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the BEGIN frame (k slots,
-\ a register byte each: bit 7 = a d-reg) and emit a parallel copy that moves
-\ the VS into it, so loop-carried values stay in their BEGIN registers. With m
-\ the smaller depth, VS entry j belongs in slot k-m+j:
+\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT) or THEN. Pop the top frame
+\ (k slots, a register byte each: bit 7 = a d-reg) and emit a parallel copy
+\ that moves the VS into it, so values stay in the registers their opener
+\ recorded. With m the smaller depth, VS entry j belongs in slot k-m+j:
 \   A  VS deeper than the frame: push its bottom entries (as LVSPILL does).
 \   B  move each register entry into its slot once no other entry reads that
 \      slot; a pass that moves nothing breaks a cycle through x16.
@@ -905,7 +909,7 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
    6 rb 6 LSRI,  6 6 2 ANDI,  8 5 VTAG-AT,  6 8 0 STRB,
    6 rb $7F ANDI,  8 5 VVAL-AT,  6 8 0 STR, ;
 
-\ LVFPOP ( -- x13=k x12=p0 x14=p1 ) : pop the BEGIN frame. Clobbers x6-x8.
+\ LVFPOP ( -- x13=k x12=p0 x14=p1 ) : pop the top frame. Clobbers x6-x8.
 : EMIT-VFPOP ( -- )
    LVFPOP LABEL@ LBL,
    6 DATA JIT-SNAP:SP-CELL LDR,  6 6 1 SUBI,  6 DATA JIT-SNAP:SP-CELL STR,
@@ -1071,6 +1075,18 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
    RECON-POPS,
    13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
    30 SP 0 LDR,  SP SP 80 ADDI,
+   LVSETF LABEL@ B, ;
+
+\ LVRESNAP ( -- ) : ELSE. Pop the IF frame, push the VS (the true arm's end) as
+\ the join frame, then set the VS to the IF frame: the false arm starts in the
+\ layout the IF branch arrives with.
+: EMIT-VRESNAP ( -- )
+   LVRESNAP LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,
+   LVFPOP LABEL@ BL,  13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
+   LVSNAP LABEL@ BL,
+   13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
+   30 SP 0 LDR,  SP SP 32 ADDI,
    LVSETF LABEL@ B, ;
 variable FESK3
 
@@ -1240,7 +1256,7 @@ package ENGINE-EMIT
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
-   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VFPOP  EMIT-VSETF  EMIT-VRECON  EMIT-VFUSE ;
+   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VFPOP  EMIT-VSETF  EMIT-VRECON  EMIT-VRESNAP  EMIT-VFUSE ;
 
 ;package
 

@@ -2191,7 +2191,8 @@ public
       \ body - so the code band opened at the bracket's CP need not reach it: the
       \ compile loop reopens at the CP it holds after every checker call, and pass
       \ 2 rewinds CP outright. The target says so itself. Only x30 is framed; the
-      \ declaration leaves x9 and x11 alone.
+      \ declaration leaves x9 and x11 alone. The target is recorded for LVFUSE's
+      \ fence: a closer that emits nothing after its patch leaves it at CP.
       SP SP 16 SUBI,  30 SP 0 STR,
       1 9 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
@@ -2205,7 +2206,8 @@ public
       5 $FC000000 LIT64,  13 11 5 AND,  5 $14000000 LIT64,  13 5 CMP,  C-EQ pisb BCOND,
          5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,  pdone B,
       pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
-      pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
+      pdone LBL,  11 11 10 ORR,  11 9 0 STRW,
+      10 CP DBASE SUB,  10 DATA FWDTGT-CELL STR,  RET,
    LKWCMP LABEL@ LBL,
       2 DATA TKL-CELL LDR,  2 1 CMP,  C-NE kno BCOND,
       2 0 MOVZ,  3 $20 MOVZ,
@@ -2482,7 +2484,7 @@ public
 \ TOKBODY-CELL): its body text, locals count, CP and virtual-stack depth and
 \ register masks. So a control word may spill or emit code before it refuses,
 \ but it refuses before it pushes or pops the control-flow stack, opens a DO
-\ level, takes or reconciles to a BEGIN snapshot, shifts CMBK or patches code
+\ level, takes or reconciles to a snapshot frame, shifts CMBK or patches code
 \ below CP; none of those is in the mark. Checking first is chosen over a
 \ wider mark: the refusal depends only on the control-flow depth and the kinds
 \ of its entries, known before the word touches anything, and costs nothing on
@@ -2534,7 +2536,10 @@ public
 
 : J-IF ( -- )    C-POPFLAG  CFK-IF C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-THEN ( -- )  0 CFK-IF C-CF-AT  LCFPOP LABEL@ BL,  LPAT LABEL@ BL, ;
+\ `then` reconciles the fall-through arm to the frame its `if` or `else`
+\ recorded, then patches the pending branch past that code: the branch arrives
+\ in the frame's layout already.
+: J-THEN ( -- )  0 CFK-IF C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  LPAT LABEL@ BL, ;
 
 \ Pop the top entry, open a kind entry at a forward B and patch the popped
 \ branch past that B: the shared tail of else and endof.
@@ -2547,7 +2552,9 @@ public
    9 14 0 ADDI,
    LPAT LABEL@ BL, ;
 
-: J-ELSE ( -- )  0 CFK-IF C-CF-AT  CFK-IF C-ELSE ;
+\ `else` records the true arm's end as the join frame and starts the false arm
+\ in the frame `if` recorded, the layout its branch arrives with (LVRESNAP).
+: J-ELSE ( -- )  0 CFK-IF C-CF-AT  LVRESNAP LABEL@ BL,  CFK-IF C-ELSE ;
 
 : J-CASE ( -- )
    9 0 MOVZ,  CFK-CASE C-CF-PUSH ;
@@ -2628,10 +2635,11 @@ public
       cloop B,
    done LBL, ;
 
-\ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
-\ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
-\ x17 — never a VS register, so the reconcile reload can't clobber the flag —
-\ or on the flags of a compare LVFUSE fused into the branch.
+\ Tier 0 keeps the VS in registers across joins: `begin`, `if` and `while`
+\ snapshot it into registers (LVSNAP), and the back edges, `then` and
+\ `repeat`'s exit reconcile to that snapshot (LVRECON, LVSETF). A back edge
+\ branches on x17 — never a VS register, so the reconcile can't clobber the
+\ flag — or on the flags of a compare LVFUSE fused into the branch.
 : J-BEGIN ( -- )  C-CF-ROOM  LVSNAP LABEL@ BL,  CFK-BEGIN C-PUSHCP ;
 
 : J-AGAIN ( -- )  0 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK ;
@@ -2656,15 +2664,20 @@ public
 
 : J-WHILE ( -- ) C-POPFLAG  CFK-WHILE C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-REPEAT ( -- ) 0 CFK-WHILE C-CF-AT  1 CFK-BEGIN C-CF-AT  LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,
-   SP SP 16 SUBI,  9 SP 0 STR,  14 SP 8 STR,
+\ `repeat` pops the WHILE frame above the BEGIN frame, reconciles the back
+\ edge to the BEGIN frame and starts the exit path in the WHILE frame, the
+\ layout `while`'s branch arrives with. Machine frame: 0 the WHILE origin,
+\ 8 its LOCF, 16 k, 24 p0, 32 p1 of the WHILE frame.
+: J-REPEAT ( -- ) 0 CFK-WHILE C-CF-AT  1 CFK-BEGIN C-CF-AT
+   SP SP 48 SUBI,
+   LVFPOP LABEL@ BL,  13 SP 16 STR,  12 SP 24 STR,  14 SP 32 STR,
+   LVRECON LABEL@ BL,
+   LCFPOP LABEL@ BL,  9 SP 0 STR,  14 SP 8 STR,
    LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK
-   12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
-   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
-   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   13 SP 16 LDR,  12 SP 24 LDR,  14 SP 32 LDR,  LVSETF LABEL@ BL,
    9 SP 0 LDR,  LPAT LABEL@ BL,
    14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
-   SP SP 16 ADDI, ;
+   SP SP 48 ADDI, ;
 
 \ Instruction words the JIT stamps into generated code. They live here, above
 \ the loop and return-stack emitters, because every one of those families now
@@ -5220,7 +5233,7 @@ package INTERP-EMIT
    9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
    12 0 MOVZ,  12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-   12 DATA QPATCH-CELL STR,
+   12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,
    12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
    12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
@@ -6512,8 +6525,8 @@ variable CFSK
    hxt execute  lmainlbl B,
    CFSK LABEL@ LBL, ;
 
-\ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
-\ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
+\ cfn-entry: keyword case WITHOUT the spill — join words manage the VS
+\ themselves (BEGIN snapshots it; THEN, ELSE and the back edges reconcile).
 : CFN-ENTRY ( label ptr n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
@@ -6532,11 +6545,14 @@ variable CLOC-MAIN  variable CLOC-NOT
 variable CLOC-MEM   variable CLOC-QOK   variable CLOC-P1
 variable CFSK2
 
-\ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
-\ a REGISTER top branches directly (no spill + memory pop); con or empty falls
-\ back to the spill + pop path. checkxt makes the word's compile-time refusals
-\ first on both paths, before anything is emitted or rewound (C-CF-ROOM's
-\ comment states the rule). hxtr gets the condition reg in x14 and, from
+\ cfb-entry: branch keywords (if/while) with the condition on the VS — a
+\ REGISTER top branches directly on it and snapshots the VS below it (LVSNAP),
+\ the frame the closers reconcile to; con or empty falls back to the spill +
+\ pop path and an empty frame. The flag's register stays claimed across
+\ LVSNAP, so no constant it forces lands there before the cbz reads it.
+\ checkxt makes the word's compile-time refusals first on both paths, before
+\ anything is emitted, rewound or snapshotted (C-CF-ROOM's comment states the
+\ rule). hxtr gets the condition reg in x14 and, from
 \ LVFUSE, the b.cond word that replaced the compare's cset/neg in x16, or 0.
 : CFB-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n checkxt hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
@@ -6550,12 +6566,17 @@ variable CFSK2
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
    LVFUSE LABEL@ BL,
    SP SP 16 SUBI,  16 SP 0 STR,  14 SP 8 STR,
-   LVDROP LABEL@ BL,  LVSPILL LABEL@ BL,
+   LVDROP LABEL@ BL,
+   7 14 0 ADDI,  LVBIT LABEL@ BL,
+   6 DATA VRFREE-CELL LDR,  6 6 8 EOR,  6 DATA VRFREE-CELL STR,
+   LVSNAP LABEL@ BL,
+   14 SP 8 LDR,  7 14 0 ADDI,  LVBIT LABEL@ BL,
+   6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
    16 SP 0 LDR,  14 SP 8 LDR,  SP SP 16 ADDI,
    hxtr execute
    lmainlbl B,
    CFSK2 LABEL@ LBL,
-   LVSPILL LABEL@ BL,
+   LVSPILL LABEL@ BL,  LVSNAP LABEL@ BL,
    hxtm execute
    lmainlbl B,
    CFSK LABEL@ LBL, ;
@@ -9930,7 +9951,7 @@ public
          9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
          12 0 MOVZ,  12 DATA VSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-         12 DATA QPATCH-CELL STR,
+         12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,
          12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
          12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
@@ -11766,6 +11787,7 @@ public
    12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,  12 DATA JIT-QUOT:SP-CELL STR,
+   12 DATA FWDTGT-CELL STR,                          \ pass 1's targets lie above pass 2's CP
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
    9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ pass 2 re-opens the entry slot
@@ -12020,8 +12042,8 @@ public
 
 : EM-COMPILE-CONTROL-KEYWORDS ( -- )
    LMAIN LABEL@ LKWIF     2 ['] C-CF-ROOM ['] J-IF   ['] J-IFR    CFB-ENTRY
-   LMAIN LABEL@ LKWTHEN   4 ['] J-THEN   CF-ENTRY
-   LMAIN LABEL@ LKWELSE   4 ['] J-ELSE   CF-ENTRY
+   LMAIN LABEL@ LKWTHEN   4 ['] J-THEN   CFN-ENTRY
+   LMAIN LABEL@ LKWELSE   4 ['] J-ELSE   CFN-ENTRY
    LMAIN LABEL@ LKWBEGIN  5 ['] J-BEGIN  CFN-ENTRY
    LMAIN LABEL@ LKWUNTIL  5 ['] C-UNTIL-CHECK ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
    LMAIN LABEL@ LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
@@ -12335,6 +12357,7 @@ public
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
+   9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
    9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
@@ -13812,7 +13835,7 @@ package LABELS
    LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
    LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
-   LBL LVSNAP !  LBL LVRECON !  LBL LVFPOP !  LBL LVSETF !  LBL LVFUSE ! ;
+   LBL LVSNAP !  LBL LVRECON !  LBL LVFPOP !  LBL LVSETF !  LBL LVRESNAP !  LBL LVFUSE ! ;
 
 : OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !

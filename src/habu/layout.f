@@ -557,6 +557,11 @@ $3690 constant TKA-CELL
 $3698 constant TKL-CELL
 $36A0 constant INP-CELL          \ mirrored: src/core/layout-buffer.f STGT-INP-CELL, src/core/checker.f CK-INP-OFF
 $36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF
+\ FWDTGT-CELL: where the last forward branch tier 0 patched lands, as an
+\ offset from DBASE (habu2.f LPAT). jit.f LVFUSE refuses to rewind code a
+\ branch lands in. Definition-scoped like JIT-SNAP:SP-CELL: the colon entries,
+\ EM-P2-START and EM-ABORT-COMPILE-STATE zero it.
+$36B8 constant FWDTGT-CELL
 $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
@@ -2356,12 +2361,13 @@ $43B8 constant B0-CELL           \ first address of its code span
 \ the frame band it would need its own 64-bit literal and a second register,
 \ inside a routine documented to clobber x9 only.
 \
-\ Left out of that run, a definition that fails after its BEGIN leaves the
+\ Left out of that run, a definition that fails after an opener leaves the
 \ depth raised.
 package JIT-SNAP
 public
-\ One frame per open BEGIN entry, pushed after C-CF-ROOM admits the entry,
-\ so SP-CELL <= the CF depth <= CFSTK-DEPTH-MAX and no push needs a check.
+\ One frame per open IF, BEGIN or WHILE entry, pushed after C-CF-ROOM admits
+\ the entry (`else` pops one and pushes one), so SP-CELL <= the CF depth <=
+\ CFSTK-DEPTH-MAX and no push needs a check.
 CFSTK-DEPTH-MAX constant FRAMES
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
 $378 constant SP-CELL                               \ depth; low, beside TIER-CELL
