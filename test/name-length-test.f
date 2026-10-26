@@ -309,10 +309,12 @@ variable LBL-U
    s" PRODUCT-IT" 70 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
-\ TRUST, PTX-BARRIER! and CHECKER-DEFCAST have no effect a checked body may call,
-\ so the child names them at its top level. TRUST-DECL and TRUST-RAW are sealed
-\ (src/core/checker.f: the interpreter refuses them), so a TRUSTED: body calls
-\ them, as the engine's own callers do. A trust row refuses a false name as it
+\ TRUST, PTX-BARRIER!, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
+\ checked body may call, so the child names them at its top level or in a
+\ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
+\ refused name publishes no use and reads none of its bytes. TRUST-DECL and
+\ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
+\ TRUSTED: body calls them, as the engine's own callers do. A trust row refuses a false name as it
 \ refuses one that names no word, without echoing it; a cast reaches its name
 \ once its signature certifies, and stores it.
 $400 constant WANT-CAP
@@ -337,6 +339,8 @@ variable WANT-U
    s" BAD$ SIG$ TRUST" 70 s" " STALE$ DIES
    s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 70 s" " STALE$ DIES
    s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 70 s" " STALE$ DIES
+   s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
+      RETURNS
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
 
 \ ---- a name no record is keyed by --------------------------------------------

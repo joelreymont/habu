@@ -11695,8 +11695,6 @@ PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
 PTABLE-END
 
-variable CHECKER-COLON-N
-variable CHECKER-COLON-I
 PTR-VARIABLE CHECKER-REC-A
 variable CHECKER-REC-U
 PTR-VARIABLE CHECKER-QA
@@ -12074,13 +12072,12 @@ public
 
 ;package
 
-: CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CHECKER-COLON-N !
-   -1 CHECKER-COLON-I !
-   0 BEGIN dup u < WHILE
+\ How many colons the name holds, and the index of its first, -1 for none.
+: CHECKER-COLON-SCAN ( ptr u8 n -- n n )
+   {: a:ptr u:n :}
+   0 -1 0 BEGIN dup u < WHILE
       a over + c@ $3A = IF
-         CHECKER-COLON-N @ 0= IF dup CHECKER-COLON-I ! THEN
-         CHECKER-COLON-N @ 1+ CHECKER-COLON-N !
+         >r  dup 0 < IF drop r@ THEN  swap 1 + swap  r>
       THEN
       1 +
    REPEAT drop ;
@@ -12107,15 +12104,15 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
    a u CK-NAME-SPAN? 0= IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
-   a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
-   CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
-   CHECKER-COLON-I @ u 1 - = IF RES-FALSE EXIT THEN
-   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 0= IF RES-FALSE EXIT THEN
+   ci 0= IF RES-FALSE EXIT THEN
+   ci u 1 - = IF RES-FALSE EXIT THEN
+   cn 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a CHECKER-QA!
-   CHECKER-COLON-I @ CHECKER-QU !
-   a CHECKER-COLON-I @ + 1 + CHECKER-TA!
-   u CHECKER-COLON-I @ - 1 - CHECKER-TU !
+   ci CHECKER-QU !
+   a ci + 1 + CHECKER-TA!
+   u ci - 1 - CHECKER-TU !
    RES-TRUE ;
 
 : CHECKER-QPKG$ ( -- ptr u8 n )
@@ -12277,8 +12274,7 @@ variable SNAP-N
 \ engine's `package` refuses it under (packages.f PKG-RC-CONTEXT, private to
 \ OUTER); a new row takes both wids.
 : NS-ENSURE ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0 <> IF E-PKG-CONTEXT throw THEN
+   a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
    a u NS-ROW {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
    ROOM
@@ -12665,8 +12661,7 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ lowers the floor to meet its first using, as an evaluated buffer does.
 : OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-USING
-   a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
+   a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
    a u NS-ENSURE {: rec:ptr :}
    CK-USE-DEPTH-OFF DATA@ {: d:n :}
    d CHECKER-USE:SOURCE-FLOOR @ < IF d CHECKER-USE:SOURCE-FLOOR ! THEN
@@ -22381,7 +22376,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    BIND-PEND-IX @ BIND-PEND-OFF @ BIND-SEEDED @ {: s-bpi:n s-bpo:n s-bs:n :}
    CK-USED-MASK @ {: s-um:n :}
    USH-GSYM @ USH-USYM @ USH-PKG-A @ USH-PKG-U @ {: s-hg:n s-hu:n s-ha:ptr s-hn:n :}
-   CHECKER-QBAD-TOK @ CHECKER-COLON-N @ CHECKER-COLON-I @ {: s-qb:n s-cn:n s-ci:n :}
+   CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:ptr s-qu:n s-ta:ptr s-tu:n :}
    USING-UNBOUND @ WALK-REC @ {: s-ub:n s-wr:n :}
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
@@ -22404,7 +22399,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    s-br BIND-REC !  s-bpi BIND-PEND-IX !  s-bpo BIND-PEND-OFF !  s-bs BIND-SEEDED !
    s-um CK-USED-MASK !
    s-hg USH-GSYM !  s-hu USH-USYM !  s-ha USH-PKG-A !  s-hn USH-PKG-U !
-   s-qb CHECKER-QBAD-TOK !  s-cn CHECKER-COLON-N !  s-ci CHECKER-COLON-I !
+   s-qb CHECKER-QBAD-TOK !
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
    s-ub USING-UNBOUND !  s-wr WALK-REC !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
@@ -22592,7 +22587,8 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    0 VIS-QUAL !  a VIS-PA !  0 VIS-PU !
    a u CHECKER-QUALIFIED? IF -1 VIS-QUAL !  CHECKER-QPKG$ VIS-PU ! VIS-PA ! EXIT THEN
    CHECKER-QBAD-TOK @ IF EXIT THEN
-   CHECKER-COLON-N @ 1 =  CHECKER-COLON-I @ u 1 - = and  u 1 > and IF u 1 - VIS-PU ! THEN ;
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 =  ci u 1 - = and  u 1 > and IF u 1 - VIS-PU ! THEN ;
 
 \ The open package's name, 0 bytes when none is open or the engine's package
 \ record names no package context.
@@ -22606,7 +22602,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ for the run, whatever it throws. The prefix's own split is put back too.
 : VIS-ENUM ( ptr u8 n n -- )
    {: a:ptr u:n kind:n :}
-   CHECKER-QBAD-TOK @ CHECKER-COLON-N @ CHECKER-COLON-I @ {: s-qb:n s-cn:n s-ci:n :}
+   CHECKER-QBAD-TOK @ {: s-qb:n :}
    CHECKER-QA @ CHECKER-QU @ CHECKER-TA @ CHECKER-TU @ {: s-qa:ptr s-qu:n s-ta:ptr s-tu:n :}
    a VIS-A !  u VIS-U !  kind VIS-KIND !
    a u VIS-SPLIT
@@ -22615,7 +22611,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    [: VIS-RUN ;] catch {: rc:n :}
    0 VIS-OPEN !
    VS-RELEASE
-   s-qb CHECKER-QBAD-TOK !  s-cn CHECKER-COLON-N !  s-ci CHECKER-COLON-I !
+   s-qb CHECKER-QBAD-TOK !
    s-qa CHECKER-QA !  s-qu CHECKER-QU !  s-ta CHECKER-TA !  s-tu CHECKER-TU !
    rc 0 <> IF rc throw THEN ;
 
@@ -27567,7 +27563,8 @@ NAMES-DIAG-DEFAULT
 : NAMED-SYM ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
-   CHECKER-QBAD-TOK @ 0 <>  CHECKER-COLON-N @ 1 >  or IF 0 EXIT THEN
+   CHECKER-QBAD-TOK @ IF 0 EXIT THEN
+   a u CHECKER-COLON-SCAN drop 1 > IF 0 EXIT THEN
    a u CHECKER-GLOBAL-SYM? ;
 
 \ The call BIND-TOK bound, right after an `s"` literal (SPAY-ARMED): the
