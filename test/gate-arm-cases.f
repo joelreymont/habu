@@ -71,3 +71,8 @@ SUITE compiler-tier0-inline-prims
 SUITE compiler-tier0-compare-branch
    test/compiler/tier0-compare-branch.f
 ;SUITE
+
+\ Tier 0 loops reconcile the virtual stack at the back edge; x64 has no tier 0.
+SUITE compiler-tier0-join
+   test/compiler/tier0-join.f
+;SUITE

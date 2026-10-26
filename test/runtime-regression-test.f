@@ -2528,6 +2528,43 @@ variable GE-KIND-N
    2 0 do i GE-VFUSE-AT loop
    s" PASS: tier 0 branches on a compare's flags and keeps every boundary" type cr ;
 
+\ Tier 0 loops reconcile the back edge's virtual stack with the frame `begin`
+\ recorded (jit.f LVRECON). Each case breaks one boundary: a body that swaps
+\ the two frame registers (a move cycle), a constant left on top in an int
+\ slot and in a float slot, a float pair that swaps across the two register
+\ classes, a body that calls a word (spilled, so the back edge pops the frame
+\ registers), and a loop under thirteen copies of a local. Tier 1 runs
+\ the same source and prints the same lines, except the two cycle rows, which
+\ tier 1 refuses with E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
+: GE-VJOIN-AT ( n -- ) {: tier:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" CAST: GEFB ( r -- n )" GE-SRC-LINE
+   s" : GEJCON ( n -- n n ) 0 begin drop 1- 5 over 0= until ;" GE-SRC-LINE
+   s" : GEJCONF ( n -- n r ) 0.5 begin drop 1- 2.5 over 0= until ;" GE-SRC-LINE
+   s" : GEJID ( bool -- bool ) ;" GE-SRC-LINE
+   s" : GEJCALL ( n -- n ) 0 swap begin 1- swap 1+ swap dup 0= GEJID until drop ;" GE-SRC-LINE
+   s" : GEJPRESS ( n -- n ) {: a:n :} a a a a a a a a a a a a a 0 begin 1+ dup 3 = until a a a + + + + + + + + + + + + + + + + ;" GE-SRC-LINE
+   s" 99 3 GEJCON . . . 99 3 GEJCONF f. . . 99 3 GEJCALL . . 99 2 GEJPRESS . ." GE-SRC-LINE
+   tier 0= if
+      s" : GEJSWAP ( n -- n n ) dup 1+ begin swap 1- dup 0= until ;" GE-SRC-LINE
+      s" : GEJFSW ( r r -- r r ) 0.0 f+ swap begin swap over GEFB 4607182418800017408 = until ;" GE-SRC-LINE
+      s" 99 3 GEJSWAP . . . 99 1 GEJSWAP . . . 1.0 2.0 GEJFSW f. f. 2.0 1.0 GEJFSW f. f." GE-SRC-LINE
+   then
+   RUNTIME-RUNNER:BUFFER
+   s" loop joins" GE-EXPECT-OK
+   tier 0= if
+      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n35\n99\n0\n2\n99\n0\n2\n99\n2.000000\n1.000000\n2.000000\n1.000000\n"
+   else
+      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n35\n99\n"
+   then
+   s" loop joins output" GE-EXPECT-OUT ;
+
+: GE-VJOIN ( -- )
+   2 0 do i GE-VJOIN-AT loop
+   s" PASS: tier 0 loops reconcile the back edge with the begin frame" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2566,6 +2603,7 @@ public
    GE-VUN-FLOAT
    GE-VPULL
    GE-VFUSE
+   GE-VJOIN
    GE-VMEM ;
 
 : TEST ( -- )

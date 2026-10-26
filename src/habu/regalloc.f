@@ -8,7 +8,7 @@
 \   - Their DATA offsets, and FRFREE-CELL's, are package REGALLOC-ABI
 \     (src/habu/regalloc-abi.f), where src/habu/data-claims.f can claim them.
 \ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
-\   jit.f: LVSPILL (reset to VRALL), LVDROP/LVNIPX/LVBINPREP/LVPUSHR/LVRECON
+\   jit.f: LVSPILL (reset to VRALL), LVDROP/LVNIPX/LVBINPREP/LVPUSHR/LVSETF
 \   (free/claim via LVBIT)   habu2.f: the WHILE and J-REPEAT VRALL stores
 \ Load after mnem.f/sys.f, before jit.f.
 

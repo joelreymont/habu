@@ -52,9 +52,24 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    9 W-PUSH16 LIT64,  LCEMIT LABEL@ BL,                      \ str x16,[x19],#8
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ Emit the push of one VS entry, x7=tag x11=val: str xR / str dR, or the
+\ constant through LVLITPUSH. Clobbers x5-x10, x12, x14.
+: VPUSH-ENTRY, ( -- )
+   LBL LBL LBL {: vcon vfr vnext :}
+   7 1 CMPI,  C-EQ vcon BCOND,
+   7 3 CMPI,  C-EQ vcon BCOND,
+   7 2 CMPI,  C-EQ vfr BCOND,
+      8 W-PUSHR LIT64,  9 8 11 ORR,  LCEMIT LABEL@ BL,        \ str xR,[x19],#8
+      vnext B,
+   vfr LBL,
+      8 W-FPUSHR LIT64,  9 8 11 ORR,  LCEMIT LABEL@ BL,       \ str dR,[x19],#8
+      vnext B,
+   vcon LBL,  LVLITPUSH LABEL@ BL,
+   vnext LBL, ;
+
 : EMIT-VSPILL ( -- )
    LVSPILL LABEL@ LBL,
-   LBL LBL LBL LBL {: vl vd vcon vnext :}
+   LBL LBL {: vl vd :}
    SP SP 16 SUBI,  30 SP 0 STR,
    \ Empty flushes emit nothing, including outside an open code-write window.
    \ A nonempty flush is one physical transfer, including constant slots.
@@ -66,17 +81,8 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
       6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE vd BCOND,
       7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,        \ tag[k]
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,   \ val[k]
-      7 1 CMPI,  C-EQ vcon BCOND,
-      7 3 CMPI,  C-EQ vcon BCOND,
-      LBL {: vfr :}
-      7 2 CMPI,  C-EQ vfr BCOND,
-         8 W-PUSHR LIT64,  9 8 11 ORR,  LCEMIT LABEL@ BL,        \ str xR,[x19],#8
-         vnext B,
-      vfr LBL,
-         8 W-FPUSHR LIT64,  9 8 11 ORR,  LCEMIT LABEL@ BL,       \ str dR,[x19],#8
-         vnext B,
-      vcon LBL,  LVLITPUSH LABEL@ BL,
-   vnext LBL,  5 SP 8 LDR,  5 5 1 ADDI,  5 SP 8 STR,  vl B,
+      VPUSH-ENTRY,
+      5 SP 8 LDR,  5 5 1 ADDI,  5 SP 8 STR,  vl B,
    vd LBL,
    6 0 MOVZ,  6 DATA VSP-CELL STR,
    6 VRALL MOVZ,  6 DATA VRFREE-CELL STR,
@@ -782,7 +788,7 @@ variable FESK5
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
-variable LVSNAP  variable LVRECON
+variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF
 
 \ The depth cell and the frame area live in JIT-SNAP (src/habu/layout.f), an
 \ appended band above DATA-START's old edge. They used to be $358 and $360; both
@@ -858,99 +864,214 @@ variable LVSNAP  variable LVRECON
    spush LBL,                               \ frame = (k, p0, p1); 24 B stride
    EMIT-SNAP-PUSH-FRAME ;
 
-\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the snapshot; if the VS
-\ is exactly it (k register entries, same registers, bottom-up) emit nothing.
-\ Otherwise spill-all then emit k pops into the snapshot registers (top-down)
-\ and set the VS to exactly the snapshot. Loop-carried values stay in their
-\ BEGIN registers across iterations either way.
-: EMIT-RECON-LOAD-FRAME ( -- )
-   SP SP 32 SUBI,  30 SP 0 STR,
+\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT). Pop the BEGIN frame (k slots,
+\ a register byte each: bit 7 = a d-reg) and emit a parallel copy that moves
+\ the VS into it, so loop-carried values stay in their BEGIN registers. With m
+\ the smaller depth, VS entry j belongs in slot k-m+j:
+\   A  VS deeper than the frame: push its bottom entries (as LVSPILL does).
+\   B  move each register entry into its slot once no other entry reads that
+\      slot; a pass that moves nothing breaks a cycle through x16.
+\   C  constants: materialize each into its slot.
+\   D  frame deeper than the VS: pop the slots below the entries.
+\   E  LVSETF: the VS becomes the frame.
+\ Pushes precede the moves because a pushed entry's register may be a slot;
+\ constants and pops follow them because they write slots the moves still
+\ read. An exact layout emits nothing. The code is movs, fmovs, movz/movk/movn,
+\ loads and stores only: a fused `until`'s b.cond reads the flags after it.
+\ Compile-time state lives in the 80-byte frame: 0 lr, 8 k, 16 p0, 24 p1,
+\ 32 entry or slot index, 40 k-m (A: the pushed count), 48 progress,
+\ 56 the blocked slot's byte, 64 its holder's index + 1 (0: none blocked).
+$9E670000 constant W-FMOVDX     \ fmov dR, xN  (| rd | rn<<5)
+$9E660000 constant W-FMOVXD     \ fmov xR, dN
+$1E604000 constant W-FMOVDD     \ fmov dR, dN
+
+: VTAG-AT, ( n n -- ) {: rd:n ri:n :}       \ x<rd> := &tag[x<ri>]
+   rd ri VTAG-OFF ADDI,  rd DATA rd ADD, ;
+
+: VVAL-AT, ( n n -- ) {: rd:n ri:n :}       \ x<rd> := &val[x<ri>]
+   rd ri 3 LSLI,  rd rd VVAL-OFF ADDI,  rd DATA rd ADD, ;
+
+\ x7 := the byte of frame slot x5, from x12 (slots 0-7) or x14 (8+); x6 scratch.
+: FRAME-BYTE, ( -- )
+   LBL LBL {: hi done :}
+   6 5 7 ANDI,  6 6 3 LSLI,
+   5 8 CMPI,  C-GE hi BCOND,
+      7 12 6 LSRV,  done B,
+   hi LBL,  7 14 6 LSRV,
+   done LBL,  7 7 $FF ANDI, ;
+
+\ VS entry x5 := (tag 2 if bit 7 of x<rb> else 0, x<rb> & $7F); x6 x8 scratch.
+: VS-SET-REG, ( n -- ) {: rb:n :}
+   6 rb 6 LSRI,  6 6 2 ANDI,  8 5 VTAG-AT,  6 8 0 STRB,
+   6 rb $7F ANDI,  8 5 VVAL-AT,  6 8 0 STR, ;
+
+\ LVFPOP ( -- x13=k x12=p0 x14=p1 ) : pop the BEGIN frame. Clobbers x6-x8.
+: EMIT-VFPOP ( -- )
+   LVFPOP LABEL@ LBL,
    6 DATA JIT-SNAP:SP-CELL LDR,  6 6 1 SUBI,  6 DATA JIT-SNAP:SP-CELL STR,
    SNAP-FRAME,
-   13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;          \ x13=k x12=p0 x14=p1
+   13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR,  RET, ;
 
-: EMIT-RECON-CHECK-LOOP ( label label label label label -- ) {: cl:label cd:label rel:label chi:label cnx:label :}
+\ LVSETF ( x13=k x12=p0 x14=p1 -- ) : the VS := the frame, and each free mask
+\ := its pool minus the frame's registers. Emits nothing; clobbers x5-x11, x15.
+: EMIT-VSETF ( -- )
+   LVSETF LABEL@ LBL,
+   LBL LBL LBL LBL {: sl sd sint snx :}
+   SP SP 16 SUBI,  30 SP 0 STR,
+   13 DATA VSP-CELL STR,
+   11 0 MOVZ,  15 0 MOVZ,  5 0 MOVZ,                  \ x11/x15 = claimed x/d bits
+   sl LBL,
+      5 13 CMP,  C-GE sd BCOND,
+      FRAME-BYTE,  7 VS-SET-REG,
+      6 7 $80 ANDI,  6 sint CBZ,
+         6 7 $7F ANDI,  6 6 8 SUBI,  8 1 MOVZ,  8 8 6 LSLV,  15 15 8 ORR,
+         snx B,
+      sint LBL,  LVBIT LABEL@ BL,  11 11 8 ORR,
+      snx LBL,  5 5 1 ADDI,  sl B,
+   sd LBL,
+   6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
+   6 FRALL MOVZ,  6 6 15 EOR,  6 DATA FRFREE-CELL STR,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ x11 := entry x5's source byte (bit 7 = a d-reg); a constant branches to kon.
+\ Clobbers x7, x8.
+: RECON-SRC, ( label -- ) {: kon:label :}
+   LBL {: sint :}
+   7 5 VTAG-AT,  7 7 0 LDRB,  8 5 VVAL-AT,  11 8 0 LDR,
+   8 7 1 ANDI,  8 kon CBNZ,                           \ tags 1 and 3: constants
+   7 sint CBZ,  11 11 $80 ORRI,
+   sint LBL, ;
+
+\ x7 := the byte of entry x5's slot, k-m + x5; x6 x12 x14 scratch, x5 kept.
+: RECON-SLOT, ( -- )
+   12 SP 16 LDR,  14 SP 24 LDR,  6 SP 40 LDR,  5 5 6 ADD,
+   FRAME-BYTE,
+   6 SP 40 LDR,  5 5 6 SUB, ;
+
+\ Branch to found with x5 = the entry whose source byte is x15; fall through
+\ when none is. Clobbers x6-x8, x11.
+: RECON-HOLDER, ( label -- ) {: found:label :}
+   LBL LBL LBL {: hl hd hnx :}
    5 0 MOVZ,
+   hl LBL,
+      6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE hd BCOND,
+      hnx RECON-SRC,
+      11 15 CMP,  C-EQ found BCOND,
+   hnx LBL,  5 5 1 ADDI,  hl B,
+   hd LBL, ;
+
+\ Emit the move into register byte x15 from register byte x13. Clobbers x6-x9.
+: RECON-MOVE, ( -- )
+   LBL LBL LBL LBL {: dfl xfd dfd mgo :}
+   6 15 $7F ANDI,  7 13 $7F ANDI,  7 7 5 LSLI,         \ x6 = rd, x7 = rn<<5
+   8 15 $80 ANDI,  8 dfl CBNZ,
+      8 13 $80 ANDI,  8 xfd CBNZ,
+         8 W-MOVRR LIT64,  7 7 11 LSLI,  mgo B,        \ orr's rm is at bit 16
+      xfd LBL,  8 W-FMOVXD LIT64,  mgo B,
+   dfl LBL,
+      8 13 $80 ANDI,  8 dfd CBNZ,
+         8 W-FMOVDX LIT64,  mgo B,
+      dfd LBL,  8 W-FMOVDD LIT64,
+   mgo LBL,
+   9 8 6 ORR,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+
+\ Phase A: VS k' > frame k: push entries 0..k'-k-1, then shift the rest down.
+: RECON-PUSH, ( -- )
+   LBL LBL LBL LBL LBL {: al ash sl sd done :}
+   6 DATA VSP-CELL LDR,  13 SP 8 LDR,  6 13 CMP,  C-LE done BCOND,
+   6 6 13 SUB,  6 SP 40 STR,
+   5 0 MOVZ,  5 SP 32 STR,
+   al LBL,
+      5 SP 32 LDR,  6 SP 40 LDR,  5 6 CMP,  C-GE ash BCOND,
+      7 5 VTAG-AT,  7 7 0 LDRB,  8 5 VVAL-AT,  11 8 0 LDR,
+      VPUSH-ENTRY,
+      5 SP 32 LDR,  5 5 1 ADDI,  5 SP 32 STR,  al B,
+   ash LBL,
+   5 0 MOVZ,  6 SP 40 LDR,  13 SP 8 LDR,
+   sl LBL,
+      5 13 CMP,  C-GE sd BCOND,
+      7 5 6 ADD,
+      8 7 VTAG-AT,  8 8 0 LDRB,  9 5 VTAG-AT,  8 9 0 STRB,
+      8 7 VVAL-AT,  8 8 0 LDR,   9 5 VVAL-AT,  8 9 0 STR,
+      5 5 1 ADDI,  sl B,
+   sd LBL,  13 DATA VSP-CELL STR,
+   done LBL, ;
+
+\ Phase B: passes over the entries until every register entry is in its slot.
+\ An entry whose slot another entry still reads waits; a pass that moves
+\ nothing saves the first waiting slot in x16, and that slot's one reader
+\ (registers are owned exclusively) reads x16 instead. The broken cycle is a
+\ chain, so it drains before another pass can stall.
+: RECON-COPY, ( -- )
+   LBL LBL LBL LBL {: bpass bl bend bdone :}  LBL LBL {: bblk bnext :}
+   bpass LBL,
+      5 0 MOVZ,  5 SP 32 STR,  5 SP 48 STR,  5 SP 64 STR,
+   bl LBL,
+      5 SP 32 LDR,  6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE bend BCOND,
+      bnext RECON-SRC,  13 11 0 ADDI,                  \ x13 = source
+      RECON-SLOT,  15 7 0 ADDI,                        \ x15 = slot
+      15 13 CMP,  C-EQ bnext BCOND,
+      bblk RECON-HOLDER,
+      RECON-MOVE,
+      5 SP 32 LDR,  15 VS-SET-REG,
+      6 1 MOVZ,  6 SP 48 STR,
+      bnext B,
+   bblk LBL,
+      6 SP 64 LDR,  6 bnext CBNZ,
+      5 5 1 ADDI,  5 SP 64 STR,  15 SP 56 STR,
+   bnext LBL,
+      5 SP 32 LDR,  5 5 1 ADDI,  5 SP 32 STR,  bl B,
+   bend LBL,
+      6 SP 64 LDR,  6 bdone CBZ,                       \ nothing waits: done
+      6 SP 48 LDR,  6 bpass CBNZ,
+      13 SP 56 LDR,  15 16 MOVZ,  RECON-MOVE,          \ x16 <- the slot
+      5 SP 64 LDR,  5 5 1 SUBI,  15 VS-SET-REG,        \ its reader reads x16
+      bpass B,
+   bdone LBL, ;
+
+\ Phase C: each constant entry into its slot; a d slot through x16.
+: RECON-CONSTS, ( -- )
+   LBL LBL LBL LBL {: cl cd cfl cnx :}
+   5 0 MOVZ,  5 SP 32 STR,
    cl LBL,
-      5 13 CMP,  C-GE cd BCOND,
-      7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
-      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDR,
-      LBL {: cint :}
-      7 cint CBZ,
-      7 2 CMPI,  C-NE rel BCOND,
-      8 8 $80 ORRI,
-      cint LBL,
-      6 5 7 ANDI,  6 6 3 LSLI,
-      5 8 CMPI,  C-GE chi BCOND,
-         7 12 6 LSRV,  cnx B,
-      chi LBL,  7 14 6 LSRV,
-      cnx LBL,  7 7 $FF ANDI,
-      8 7 CMP,  C-NE rel BCOND,
-      5 5 1 ADDI,  cl B,
+      5 SP 32 LDR,  6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE cd BCOND,
+      7 5 VTAG-AT,  7 7 0 LDRB,  7 7 1 ANDI,  7 cnx CBZ,
+      RECON-SLOT,  8 5 VVAL-AT,  11 8 0 LDR,
+      8 7 $80 ANDI,  8 cfl CBNZ,
+         14 7 0 ADDI,  LVMOVK LABEL@ BL,  cnx B,
+      cfl LBL,
+         7 7 $7F ANDI,  7 SP 48 STR,
+         14 16 MOVZ,  LVMOVK LABEL@ BL,
+         7 SP 48 LDR,  8 W-FMOVD16 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+      cnx LBL,  5 SP 32 LDR,  5 5 1 ADDI,  5 SP 32 STR,  cl B,
    cd LBL, ;
 
-: EMIT-RECON-SAVE-FRAME ( -- )
-   13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
-   LVSPILL LABEL@ BL,
-   13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
-   11 0 MOVZ,  6 0 MOVZ,  6 DATA FRCLM-CELL STR,
-   5 13 0 ADDI, ;                           \ x11=claimed bits, x5=i
-
-: EMIT-RECON-RESTORE-INT ( label -- ) {: rgo:label :}
-   7 7 $FF ANDI,                                      \ x7 = L[i] (int reg)
-   8 W-POPR LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,          \ ldr L[i],[x19,#-8]!
-   8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
-   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
-   LVBIT LABEL@ BL,  11 11 8 ORR,
-   rgo B, ;
-
-: EMIT-RECON-RESTORE-FLOAT ( label -- ) {: rgo:label :}
-   7 7 $7F ANDI,                                      \ x7 = the d-reg
-   8 W-FPOPR LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,         \ ldr dN,[x19,#-8]!
-   8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 2 MOVZ,  6 8 0 STRB,
-   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
-   7 7 8 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
-   6 DATA FRCLM-CELL LDR,  6 6 8 ORR,  6 DATA FRCLM-CELL STR,
-   rgo LBL, ;
-
-: EMIT-RECON-RESTORE-SLOT ( -- )
-   LBL {: rfl :}  LBL {: rgo :}
-   6 7 $80 ANDI,  6 rfl CBNZ,
-   rgo EMIT-RECON-RESTORE-INT
-   rfl LBL,
-   rgo EMIT-RECON-RESTORE-FLOAT ;
-
-: EMIT-RECON-RESTORE-LOOP ( label label label label -- ) {: rl:label rln:label rhi:label rnx:label :}
-   rl LBL,
-      5 rln CBZ,
-      5 5 1 SUBI,
-      6 5 7 ANDI,  6 6 3 LSLI,
-      5 8 CMPI,  C-GE rhi BCOND,
-         7 12 6 LSRV,  rnx B,
-      rhi LBL,  7 14 6 LSRV,
-      rnx LBL,
-      EMIT-RECON-RESTORE-SLOT
-      rl B,
-   rln LBL, ;
-
-: EMIT-RECON-FINISH ( -- )
-   13 DATA VSP-CELL STR,
-   6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
-   6 FRALL MOVZ,  7 DATA FRCLM-CELL LDR,  6 6 7 EOR,  6 DATA FRFREE-CELL STR,
-   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+\ Phase D: frame k > VS m: pop slots k-m-1 down to 0.
+: RECON-POPS, ( -- )
+   LBL LBL LBL LBL {: dl dd dfl dgo :}
+   6 SP 40 LDR,  6 SP 32 STR,
+   dl LBL,
+      5 SP 32 LDR,  5 dd CBZ,  5 5 1 SUBI,  5 SP 32 STR,
+      12 SP 16 LDR,  14 SP 24 LDR,  FRAME-BYTE,
+      8 7 $80 ANDI,  8 dfl CBNZ,
+         8 W-POPR LIT64,  dgo B,
+      dfl LBL,  7 7 $7F ANDI,  8 W-FPOPR LIT64,
+      dgo LBL,  9 8 7 ORR,  LCEMIT LABEL@ BL,  dl B,
+   dd LBL, ;
 
 : EMIT-VRECON ( -- )
    LVRECON LABEL@ LBL,
-   LBL LBL LBL LBL LBL {: cl cd rel rl rln :}
-   LBL {: chi :}  LBL {: cnx :}  LBL {: rhi :}  LBL {: rnx :}
-   EMIT-RECON-LOAD-FRAME
-   6 DATA VSP-CELL LDR,  6 13 CMP,  C-NE rel BCOND,   \ depth differs -> reload
-   cl cd rel chi cnx EMIT-RECON-CHECK-LOOP
-   30 SP 0 LDR,  SP SP 32 ADDI,  RET,                 \ exact: emit nothing
-   rel LBL,
-   EMIT-RECON-SAVE-FRAME
-   rl rln rhi rnx EMIT-RECON-RESTORE-LOOP
-   EMIT-RECON-FINISH ;
+   SP SP 80 SUBI,  30 SP 0 STR,
+   LVFPOP LABEL@ BL,
+   13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
+   RECON-PUSH,
+   6 DATA VSP-CELL LDR,  13 SP 8 LDR,  13 13 6 SUB,  13 SP 40 STR,   \ k-m
+   RECON-COPY,
+   RECON-CONSTS,
+   RECON-POPS,
+   13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
+   30 SP 0 LDR,  SP SP 80 ADDI,
+   LVSETF LABEL@ B, ;
 variable FESK3
 
 \ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory
@@ -1119,7 +1240,7 @@ package ENGINE-EMIT
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
-   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON  EMIT-VFUSE ;
+   EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VFPOP  EMIT-VSETF  EMIT-VRECON  EMIT-VFUSE ;
 
 ;package
 

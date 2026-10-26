@@ -1119,7 +1119,6 @@ package HIDX
 public
 HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
-$36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 \ NULL-PTR-CELL-OFF: the engine's one permanently zero cell. Checked code cannot
 \ name a raw address, so it reads a pointer's NUMBER only by subtracting a null
