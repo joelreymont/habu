@@ -335,7 +335,11 @@ public
 
 \ ---- append (returns the index the value landed at) ---------------------------
 : PUSH ( a ptr a -- NUM:index ) {: value:a vec:ptr :}
-   value vec VEC-PUSH IDX>N N>INDEX ;
+   vec VEC-LEN@ LEN>N {: old:n :}
+   vec old 1 + N>ITEM ENSURE                       \ growth through the typed adapter
+   value vec VEC-DATA@ old VEC-CELL-FIELD !
+   old 1 + VEC-LEN vec VEC-LEN!
+   old N>INDEX ;
 
 \ ---- iterate active cells, index-first (index lifted to the role) -------------
 \ effect [ R NUM:index a -- R ], which a local annotation cannot express.
