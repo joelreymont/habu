@@ -2363,6 +2363,54 @@ variable GE-KIND-N
       s" tier 0 unary op on a float output" GE-EXPECT-OUT
    s" PASS: tier 0 folds a unary op only into an integer constant" type cr ;
 
+\ Tier 0 pulls an arithmetic, unary, shuffle or float operand off the data stack
+\ into a pool register, beneath whatever the virtual stack already holds. Each
+\ case breaks one boundary the pulled cell crosses: operand order, a constant
+\ above it, a call, a loop snapshot shallower than the body, an if arm, a throw,
+\ an exhausted pool, float bits, a float above it across a loop, an exhausted
+\ d-register pool, a do loop's entry, exit and leave, and an exit. Each expected
+\ value is what the interpreter (or, for a control structure, tier 1) prints for
+\ the same body.
+: GE-VPULL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" CAST: GEFB ( r -- n )" GE-SRC-LINE
+   s" : GEPSUB2 ( n n -- n ) - 3 * 1+ ;" GE-SRC-LINE
+   s" : GEPSUB1 ( n -- n ) 4 - 3 * ;" GE-SRC-LINE
+   s" : GEPPASS ( n -- n ) ;" GE-SRC-LINE
+   s" : GEPCALL ( n -- n ) 4 - GEPPASS 3 * ;" GE-SRC-LINE
+   s" : GEPCOUNT ( n -- n ) begin 1- dup 0= until ;" GE-SRC-LINE
+   s" : GEPCOUNT2 ( n -- n ) 0 begin 1+ swap 1- swap over 0= until nip ;" GE-SRC-LINE
+   s" : GEPCOUNTW ( n -- n ) begin dup 0 > while 1- repeat ;" GE-SRC-LINE
+   s" : GEPNEST ( n -- n ) begin 2 begin 1- dup 0= until drop 1- dup 0= until ;" GE-SRC-LINE
+   s" : GEPBR ( n bool -- n ) if 1+ else 1- then 2 * ;" GE-SRC-LINE
+   s" : GEPDIV0 ( n -- n ) 1+ 0 / ;" GE-SRC-LINE
+   s" : GEPPRESS ( n -- n ) {: a:n :} a a a a a a a a a a a a a 2 * + + + + + + + + + + + + ;" GE-SRC-LINE
+   s" : GEPFSUB ( r r -- r ) f- 0.5 f+ ;" GE-SRC-LINE
+   s" : GEPFMIX ( n r -- n r ) 2.0 f* swap 1+ swap ;" GE-SRC-LINE
+   s" : P-FLOOP ( n r -- r ) 0.5 f+ begin swap 1- swap 1.0 f+ over 0= until nip ;" GE-SRC-LINE
+   s" : P-FPRESS ( r -- r ) {: a:r :} a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a a f+ f+ f+ f+ f+ f+ f+ f+ ;" GE-SRC-LINE
+   s" : P-DO ( n -- n ) 3 0 do 1+ loop ;" GE-SRC-LINE
+   s" : P-QDO ( n n -- n ) 0 ?do 1+ loop ;" GE-SRC-LINE
+   s" : P-PLOOP ( n -- n ) 0 6 do 1+ -2 +loop ;" GE-SRC-LINE
+   s" : P-PLOOPUP ( n -- n ) 6 0 do 1+ 2 +loop ;" GE-SRC-LINE
+   s" : P-LEAVE ( n -- n ) 3 0 do 1+ leave loop ;" GE-SRC-LINE
+   s" : P-EXIT ( n -- n ) 1+ exit ;" GE-SRC-LINE
+   s" 10 4 GEPSUB2 . 10 GEPSUB1 . 10 GEPCALL ." GE-SRC-LINE
+   s" 99 4 GEPCOUNT . . 99 4 GEPCOUNT2 . . 99 4 GEPCOUNTW . . 99 3 GEPNEST . ." GE-SRC-LINE
+   s" 10 0 0= GEPBR . 10 0 0<> GEPBR ." GE-SRC-LINE
+   s" 41 ' GEPDIV0 catch E-DIV-ZERO = . drop 99 3 GEPPRESS . ." GE-SRC-LINE
+   s" 5.0 1.25 GEPFSUB GEFB . 7 1.5 GEPFMIX GEFB . ." GE-SRC-LINE
+   s" 3 1.0 P-FLOOP f. 3.0 P-FPRESS f. 99 10 P-DO . ." GE-SRC-LINE
+   s" 99 10 0 P-QDO . . 99 10 3 P-QDO . . 99 10 P-PLOOP . . 99 10 P-PLOOPUP . ." GE-SRC-LINE
+   s" 99 10 P-LEAVE . . 99 10 P-EXIT . ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" tier 0 pulled operands" GE-EXPECT-OK
+   S\" 19\n18\n18\n0\n99\n4\n99\n0\n99\n0\n99\n22\n18\n-1\n42\n99\n4616471093031469056\n4613937818241073152\n8\n4.500000\n27.000000\n13\n99\n10\n99\n13\n99\n14\n99\n13\n99\n11\n99\n11\n99\n"
+      s" tier 0 pulled operands output" GE-EXPECT-OUT
+   s" PASS: tier 0 pulls stack operands into registers and keeps every boundary" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2398,7 +2446,8 @@ public
    GE-CF-KIND
    GE-PASS2-IMMEDIATE
    GE-SET-CHECK-NEG
-   GE-VUN-FLOAT ;
+   GE-VUN-FLOAT
+   GE-VPULL ;
 
 : TEST ( -- )
    s" habu-runtime-regression" GT-START

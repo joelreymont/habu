@@ -28,6 +28,10 @@ private
 
 $D503201F constant ENTRY-NOP         \ nop: the entry slot of a leaf
 $F81F0FFE constant ENTRY-SAVE        \ str x30,[sp,#-16]!: the entry slot of a caller
+$FFFFFFE0 constant REG-MASK          \ clears an instruction's Rt field
+$F85F8E60 constant STACK-POP         \ ldr xR,[x19,#-8]!
+$F8008660 constant STACK-PUSH        \ str xR,[x19],#8
+$FC008660 constant FLOAT-PUSH        \ str dR,[x19],#8
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -60,6 +64,14 @@ variable MISSING                     \ names the dictionary did not answer for
          i w NBR:BL-TARGET {: t:n :}
          t tlo >= t thi < and if 1+ then
       then
+   4 +loop ;
+
+\ How many of the named word's instructions are the data-stack transfer op.
+: STACK-OPS ( ptr u8 n n -- n ) {: na:ptr nu:n op:n :}
+   na nu SPAN {: lo:n hi:n :}
+   0
+   hi lo ?do
+      i CODE@ REG-MASK and op = if 1+ then
    4 +loop ;
 
 : ENTRY@ ( ptr u8 n -- n )
@@ -108,6 +120,14 @@ public
    a b c k begin >r rot r> 1- dup 0= until drop ;
 : T0-QROT ( n n n -- n n n ) [: rot ;] execute ;
 
+\ Arithmetic on cells the caller left on the data stack, one subject per entry
+\ that pulls: binary, binary with an immediate, unary, shuffle, float.
+: T0-SUB2 ( n n -- n ) - 3 * 1+ ;
+: T0-IMM ( n -- n ) 4 - 3 * ;
+: T0-UN ( n -- n ) 1+ 1+ ;
+: T0-SHUF ( n n -- n ) swap - ;
+: T0-FLT ( r r -- r ) f- 0.5 f+ ;
+
 private
 
 : TEST-DECODER ( -- )
@@ -147,6 +167,22 @@ private
    s" TIER0-INLINE-PRIMS:T0-ROT" ENTRY@ ENTRY-NOP T=
    s" TIER0-INLINE-PRIMS:T0-ACA" ENTRY@ ENTRY-NOP T=
    s" TIER0-INLINE-PRIMS:T0-STORE" ENTRY@ ENTRY-SAVE T= ;
+
+: TEST-PULL ( -- )
+   s" stack operands are popped into registers once and the result pushed once" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-SUB2" STACK-POP STACK-OPS 2 T=
+   s" TIER0-INLINE-PRIMS:T0-SUB2" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-IMM" STACK-POP STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-IMM" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-UN" STACK-POP STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-UN" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-SHUF" STACK-POP STACK-OPS 2 T=
+   s" TIER0-INLINE-PRIMS:T0-SHUF" STACK-PUSH STACK-OPS 1 T=
+   \ the float operands are pulled as bits and the result pushed from a d-reg
+   s" TIER0-INLINE-PRIMS:T0-FLT" STACK-POP STACK-OPS 2 T=
+   s" TIER0-INLINE-PRIMS:T0-FLT" STACK-PUSH STACK-OPS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-FLT" FLOAT-PUSH STACK-OPS 1 T=
+   10 4 T0-SUB2 19 T= ;
 
 : TEST-VALUES ( -- )
    s" the copied bodies answer what the calls answered" T-LABEL
@@ -206,6 +242,7 @@ public
    TEST-INLINED
    TEST-CALLED
    TEST-LEAF
+   TEST-PULL
    TEST-VALUES
    TEST-QDUP
    MISSING @ 0 T=

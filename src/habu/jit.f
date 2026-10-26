@@ -18,6 +18,7 @@ variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
+variable LVNEED
 variable LSNAPNEST   \ BEGIN-nesting over JIT-SNAP:FRAMES die target (defined in habu2.f EM-SNAP-NEST-DIE; dot habu-name-silent-engine-9b28ac13)
  0 XDS  8 ENC-STRPOST  constant W-PUSHR   \ str xR,[x19],#8  (or with R)
  0 XDS -8 ENC-LDRPRE   constant W-POPR    \ ldr xR,[x19,#-8]!
@@ -305,6 +306,31 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    fr LBL,  14 11 0 ADDI,
    fd LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
+\ LVNEED ( x5=need -- x13=ok ) : pull data-stack cells beneath the VS until it
+\ holds need (1 or 2) entries. A pull claims a pool register, emits the runtime
+\ pop into it and records it as entry 0 (tag 0: bits in an integer register),
+\ shifting the at most one entry already there up. Each entry is complete
+\ before the next allocation, so an exhausted pool returns 0 with the VS a
+\ valid representation that the caller's fallback spills. Clobbers x5-x9, x14.
+: EMIT-VNEED ( -- )
+   LVNEED LABEL@ LBL,
+   LBL LBL LBL LBL {: nl nput nok nd :}
+   SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
+   nl LBL,
+      6 DATA VSP-CELL LDR,  5 SP 8 LDR,  6 5 CMP,  C-GE nok BCOND,
+      LVRALLOC LABEL@ BL,  13 0 MOVZ,  14 nd CBZ,               \ no reg -> 0
+      8 W-POPR LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,          \ ldr xR,[x19,#-8]!
+      6 DATA VSP-CELL LDR,  6 nput CBZ,
+         7 DATA VTAG-OFF ADDI,  8 7 0 LDRB,  8 7 1 STRB,        \ entry 0 -> entry 1
+         7 DATA VVAL-OFF ADDI,  8 7 0 LDR,  8 7 8 STR,
+      nput LBL,
+      7 DATA VTAG-OFF ADDI,  8 0 MOVZ,  8 7 0 STRB,
+      7 DATA VVAL-OFF ADDI,  14 7 0 STR,
+      6 6 1 ADDI,  6 DATA VSP-CELL STR,
+      nl B,
+   nok LBL,  13 1 MOVZ,
+   nd LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 \ LVBINPREP ( -- x13=mode ) : 0 fall-through; 1 fold (x11=a x12=b, VS untouched);
 \ 2 registers ready (x14=rd result slot, x15=rm; rm freed; VSP already --).
 : C-VBIN-FRAME ( -- )
@@ -312,7 +338,8 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 ;
 
 : C-VBIN-TAGS ( label label -- ) {: bno:label bfold:label :}
-   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT bno BCOND,
+   5 2 MOVZ,  LVNEED LABEL@ BL,  13 bno CBZ,
+   6 DATA VSP-CELL LDR,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
    7 2 CMPI,  C-EQ bno BCOND,  8 2 CMPI,  C-EQ bno BCOND,
@@ -359,13 +386,17 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ implementation instead of a second copy here.
 \ Only tag 0 (a live register) reaches the immediate lowering: tags 1 and 3 make
 \ the pair foldable and tag 2 makes it mode 0, and LVBINPREP already classifies
-\ all three. The probe mutates nothing before it commits (the imm12 goes to this
-\ frame's scratch slot), so an LVFORCEK allocation failure leaves the VS pristine
-\ and falls out as mode 0, exactly as before.
+\ all three. The probe first completes the pulls LVNEED makes, so the VS may
+\ already hold pulled registers when it classifies; past them it mutates nothing
+\ before it commits (the imm12 goes to this frame's scratch slot). Every failure,
+\ an exhausted pool in LVNEED or LVFORCEK included, leaves the VS a valid
+\ representation that the mode 0 fallback spills.
 package ENGINE-EMIT
 
 : C-VBINI-PROBE ( label label label -- ) {: bno:label b2:label bdone:label :}
-   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT b2 BCOND,
+   10 SP 16 STR,  5 2 MOVZ,  LVNEED LABEL@ BL,  10 SP 16 LDR,
+   13 bno CBZ,
+   6 DATA VSP-CELL LDR,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 1 CMPI,  C-NE b2 BCOND,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
@@ -637,7 +668,8 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
 \ LFFORCEK ( x5=k -- x14=dreg | 0 ) : force entry k into a d-reg, in place.
 \ tag 2 -> already there; tag 1 (a con holding double BITS) -> materialize via
-\ movz/movk x16 + fmov dN,x16; tag 0 (int reg) -> 0 (type error: generic path).
+\ movz/movk x16 + fmov dN,x16; tag 0 (bits in an x-reg) -> fmov dN,xJ, freeing xJ.
+\ Each returns 0, nothing mutated, when no d-reg is free.
 : EMIT-FFORCEK ( -- )
    LFFORCEK LABEL@ LBL,
    LBL LBL LBL {: ffr ffd ffno :}
@@ -676,7 +708,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    LFBINPREP LABEL@ LBL,
    LBL LBL {: fbno fb2 :}
    SP SP 32 SUBI,  30 SP 0 STR,
-   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT fbno BCOND,
+   5 2 MOVZ,  LVNEED LABEL@ BL,  13 fbno CBZ,
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LFFORCEK LABEL@ BL,  14 fbno CBZ,
    14 SP 8 STR,
    6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LFFORCEK LABEL@ BL,  14 fbno CBZ,
@@ -884,13 +916,15 @@ variable LVSNAP  variable LVRECON
    EMIT-RECON-FINISH ;
 variable FESK3
 
-\ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory traffic
-: VSHUF-ENTRY ( label ptr n n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n min:n sxt :}
+\ vshuf-entry: reg-aware stack ops — relabels and register moves, no memory
+\ traffic beyond pulling the need operands the op reads (LVNEED). A row that
+\ reads no value (drop) pulls nothing: its handler refuses an empty VS itself.
+: VSHUF-ENTRY ( label ptr n n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n need:n sxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK3 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK3 LABEL@ CBZ,
-   6 DATA VSP-CELL LDR,  6 min CMPI,  C-LT FESK3 LABEL@ BCOND,
+   need 0<> IF  5 need MOVZ,  LVNEED LABEL@ BL,  13 FESK3 LABEL@ CBZ,  THEN
    sxt execute
    13 FESK3 LABEL@ CBZ,
    lmainlbl B,
@@ -916,14 +950,16 @@ variable FESK4
 
 \ vun-entry: unary op on the VS top. Tag 1 (integer constant) folds at JIT time
 \ (no code); tag 0 (integer register) gets an in-place op (rd = rs, entry
-\ unchanged); tags 2 and 3 (float register, float constant) and an empty VS fall
-\ through to the prim.
+\ unchanged); tags 2 and 3 (float register, float constant) fall through to the
+\ prim. An empty VS first pulls the operand off the data stack (LVNEED); an
+\ exhausted pool falls through.
 : VUN-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK4 !  LBL FESK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK4 LABEL@ CBZ,
-   6 DATA VSP-CELL LDR,  6 FESK4 LABEL@ CBZ,
+   5 1 MOVZ,  LVNEED LABEL@ BL,  13 FESK4 LABEL@ CBZ,
+   6 DATA VSP-CELL LDR,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
    7 FESK2 LABEL@ CBZ,
@@ -996,7 +1032,7 @@ package ENGINE-EMIT
 
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
-   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
+   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;
 
 ;package
