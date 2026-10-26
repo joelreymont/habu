@@ -19,3 +19,5 @@ Step 1 done (commit "Inline primitive bodies in tier 0"; test/compiler/tier0-inl
 | tender c2-office-scale | 1.84 / 1.73 | 66.8 | 64.5 | 38.6 |
 
 Tier 0 compile cost is unchanged (load times equal; tools/compile-floor.f trivial-t0 42-44 / least 32 ms both, against trivial-t1 ~590 / least ~560 ms). Tier 0 still runs 1.5-2.4x slower than tier 1, so step 1 alone is far from the 5% bar; the call overhead it removes is not where tier 0 loses. Next: step 2 (stack values in registers).
+
+Rulings (Joel 2026-10-26, after the Fable review of the outside tier 0 plan): order is fixes first (habu-fix-the-tier-4d7b9733, habu-check-tier-bench-57f504d5), then step 2 (habu-keep-tier-0-bfdcdd19), compare/branch fusion (habu-fuse-tier-0-c829c4e9), register residency across joins as T0-04 minus copy-on-write aliases (habu-keep-tier-0-730a5c5d, with habu-widen-the-tier-8c29a00c; aliases deferred in habu-copy-on-write-a885df73), and step 3 last (habu-keep-the-innermost-636aeac0); measure after each. Retirement prerequisites are dotted as children blocked on step 3, to do only if the ruling retires tier 1.
