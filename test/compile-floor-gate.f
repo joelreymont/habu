@@ -9,7 +9,9 @@
 \ gate judges the cheapest sample - the floor line's least- fields (each set's
 \ cheapest definition in five rounds) and the least of a B line's fifteen
 \ rounds - which is the cost on the fastest core the run found. Each tool says
-\ why its rounds outlast a slow stretch.
+\ why its rounds outlast a slow stretch. Speed means nothing from a wrong word,
+\ so every bench run must print its R lines and, where tier 0 exists, tier 1's
+\ R values must equal tier 0's.
 \
 \ A least moves only when every sample pays a cost, so the floor means have a
 \ ceiling as well: a cost only some definitions pay shows in the mean alone.
@@ -87,6 +89,8 @@ variable ERR-U
 variable RC
 variable EXITED
 variable PARSE-POS
+7 constant BENCHES                  \ tier-bench's R lines
+create T0-RESULTS BENCHES cells allot
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
@@ -174,7 +178,7 @@ variable PARSE-POS
       1+
    repeat drop ;
 
-: REPORT-OUT ( -- ) OUT$ type cr ;
+: REPORT-OUT ( -- ) OUT$ type cr ERR$ type ;
 
 : CHILD-OK? ( -- bool ) EXITED @ RC @ 0= and ;
 
@@ -211,13 +215,36 @@ variable PARSE-POS
    OUT$ s" compiled 1000 " CONTAINS? TTRUE
    CHECK-FLOOR ;
 
+: R-LABEL$ ( n -- ptr u8 n ) {: k :}
+   k 0 = if s" R harness " exit then
+   k 1 = if s" R arith " exit then
+   k 2 = if s" R branch " exit then
+   k 3 = if s" R search " exit then
+   k 4 = if s" R fold " exit then
+   k 5 = if s" R move " exit then
+   k 6 = if s" R lines " exit then
+   s" compile-floor-gate: no such R line" 74 die ;
+
+: R-VALUE ( n -- n ) {: k :} OUT$ k R-LABEL$ 0 FIELD-LABEL ;
+: T0-RESULT-AT ( n -- ptr n ) cells T0-RESULTS + ;
+
+\ Run after the tier-1 bench, so OUT holds tier 1's R lines.
+: SAME-RESULTS ( -- )
+   BENCHES 0 ?do
+      s" tier 0 and tier 1 benchmarks compute the same results" T-LABEL
+      i R-VALUE i T0-RESULT-AT @ T=
+   loop ;
+
+
 : RUN-BENCH-CASE ( n -- )
    dup RUN-BENCH
    REPORT-OUT
    CHILD-OK? TTRUE
    OUT$ s" B harness " CONTAINS? TTRUE
    OUT$ s" B lines " CONTAINS? TTRUE
+   BENCHES 0 ?do OUT$ i R-LABEL$ CONTAINS? TTRUE loop
    dup 0= if
+      BENCHES 0 ?do i R-VALUE i T0-RESULT-AT ! loop
       OUT$ s" B arith " T0-ARITH-BUDGET CHECK-BENCH
       OUT$ s" B branch " T0-BRANCH-BUDGET CHECK-BENCH
       OUT$ s" B search " T0-SEARCH-BUDGET CHECK-BENCH
@@ -250,6 +277,7 @@ public
    then
    s" tier-1 corpus: every benchmark stays within its budget" T-LABEL
    1 RUN-BENCH-CASE
+   HB-TARGET-LINUX-X86-64? 0= if SAME-RESULTS then
    T-REPORT ;
 
 ;package

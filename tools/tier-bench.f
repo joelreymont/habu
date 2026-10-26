@@ -8,6 +8,12 @@
 \
 \     B <name> <run1> <run2> ... <run15> <median>
 \
+\ then one line per benchmark, `R <name> <value>`, its result, which covers the
+\ whole output: `search` gives where its match starts, `fold` and `move` a sum
+\ over every byte they wrote. Every round must compute run 0's value or the
+\ run dies naming the benchmark, and test/compile-floor-gate.f requires the two
+\ tiers to agree.
+\
 \ WHY THE TIER IS SELECTED BEFORE THE REQUIRES. Only code compiled after
 \ `set-tier` is the selected tier's; the engine's baked words - the checker, the
 \ compiler, src/lib/string.f, everything in the cold prefix - were compiled when the
@@ -89,6 +95,8 @@ $0A constant LF
 $20 constant SP
 48 constant ZERO-C
 74 constant IO-RC                   \ sysexits EX_IOERR
+70 constant WRONG-RC                \ sysexits EX_SOFTWARE
+64 constant MSG-CAP
 
 \ Repeat counts, one per benchmark, chosen so a run lands in tens of
 \ milliseconds at tier 0 on this machine: long enough to swamp the clock read,
@@ -120,10 +128,14 @@ variable DEC-K
 7 constant ROWS
 create RUN-NS ROWS RUNS * cells allot
 create SORTED RUNS cells allot      \ one row's samples, ascending: its median
+create RESULTS ROWS cells allot     \ each benchmark's SINK after run 0
+create MSG MSG-CAP allot            \ KEEP's message, which names the benchmark
+TYPED-VARIABLE MSG-N len
 
 variable TEXT-N                     \ bytes of the loaded source actually used
 variable LINES-N                    \ bytes of it holding at most MAX-LINES lines
 variable SINK                       \ keeps a benchmark's result from being dead
+variable NEEDLE-N                   \ bytes of the text's tail B-SEARCH looks for
 
 \ ---- output -----------------------------------------------------------------
 \ This file requires nothing beyond its benchmark targets and its clock, for
@@ -150,6 +162,17 @@ variable SINK                       \ keeps a benchmark's result from being dead
    repeat ;
 
 : EMIT-FIELD ( n -- ) SP EMIT-C EMIT-DEC ;
+
+
+: ROW-NAME$ ( n -- ptr u8 n ) {: row :}
+   row HARNESS-ROW = if s" harness" exit then
+   row ARITH-ROW = if s" arith" exit then
+   row BRANCH-ROW = if s" branch" exit then
+   row SEARCH-ROW = if s" search" exit then
+   row FOLD-ROW = if s" fold" exit then
+   row MOVE-ROW = if s" move" exit then
+   row LINES-ROW = if s" lines" exit then
+   s" tier-bench: no such benchmark row" WRONG-RC die ;
 
 \ ---- the source under the text benchmarks -----------------------------------
 
@@ -179,8 +202,41 @@ variable SINK                       \ keeps a benchmark's result from being dead
 : FILL-CELLS ( -- )
    CELLS-N 0 ?do i 7 mod ABUF i cells + ! loop ;
 
+\ The offset where the first match starts; the text's length when there is none.
+: FOUND-AT ( option<n> -- n )
+   MATCH option
+     none OF TEXT-N @ ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
+: NEEDLE$ ( -- ptr u8 n )
+   LINT-SOURCE:TEXT drop TEXT-N @ NEEDLE-N @ - + NEEDLE-N @ ;
+
+: SEARCH-AT ( -- n ) TEXT$ NEEDLE$ LINT-FIND-SUB FOUND-AT ;
+
+
+\ The shortest tail of the text that occurs nowhere earlier in it, so a search
+\ for it tries every offset and its first match is the tail itself.
+: PICK-NEEDLE ( -- )
+   1 NEEDLE-N !
+   begin
+      NEEDLE-N @ TEXT-N @ < if SEARCH-AT TEXT-N @ NEEDLE-N @ - <> else false then
+   while
+      NEEDLE-N @ 1 + NEEDLE-N !
+   repeat ;
+
+: CLEAR-DEST ( -- ) TEXT-N @ 0 ?do 0 DEST i + c! loop ;
+
+
+\ Each byte of DEST that fold and move write, weighted by its position, so a
+\ byte left out, wrong or out of place changes the sum.
+: SUM-DEST ( -- )
+   0 TEXT-N @ 0 ?do DEST i + c@ i 1 + * + loop SINK ! ;
+
 \ ---- the benchmark bodies ---------------------------------------------------
-\ Each leaves something in SINK so the work cannot be dropped as unused.
+\ Each leaves something in SINK so the work cannot be dropped as unused. For
+\ fold and move that is one byte; their timing words replace it, outside the
+\ window, with SUM-DEST over the whole output.
 
 : B-HARNESS ( -- )
    HARNESS-REPS 0 ?do i SINK ! loop ;
@@ -195,12 +251,10 @@ variable SINK                       \ keeps a benchmark's result from being dead
       ABUF CELLS-N ARRAY:A-LEN ARRAY:A-COUNT-EVEN COUNT>N SINK !
    loop ;
 
-\ A needle that is not there, so the scan runs to the end of the file every
-\ time rather than stopping at the first hit in whichever file was passed.
+\ PICK-NEEDLE's tail first occurs at the end, so the scan runs to the end of
+\ the file every time, and the offset it returns shows where it stopped.
 : B-SEARCH ( -- )
-   SEARCH-REPS 0 ?do
-      TEXT$ s" zzq-absent-needle-zzq" LINT-CONTAINS? if 1 else 0 then SINK !
-   loop ;
+   SEARCH-REPS 0 ?do SEARCH-AT SINK ! loop ;
 
 : B-FOLD ( -- )
    FOLD-REPS 0 ?do
@@ -226,6 +280,7 @@ variable SINK                       \ keeps a benchmark's result from being dead
    RUN-NS row RUNS * run + cells + ;
 
 : SORTED-AT ( n -- ptr n ) cells SORTED + ;
+: RESULT-AT ( n -- ptr n ) cells RESULTS + ;
 
 \ v into SORTED's first k samples, which are in ascending order.
 : INSERT ( n n -- ) {: v k :}
@@ -242,30 +297,62 @@ variable SINK                       \ keeps a benchmark's result from being dead
    RUNS 0 ?do row i SAMPLE @ i INSERT loop
    RUNS 2 / SORTED-AT @ ;
 
-: REPORT ( n ptr u8 n -- ) {: row name:ptr nu :}
+: REPORT ( n -- ) {: row :}
    s" B " type
-   name nu type
+   row ROW-NAME$ type
    RUNS 0 ?do row i SAMPLE @ NS-PER-US / EMIT-FIELD loop
    row MEDIAN NS-PER-US / EMIT-FIELD
    LF EMIT-C ;
+
+
+: RESULT ( n -- ) {: row :}
+   s" R " type
+   row ROW-NAME$ type
+   row RESULT-AT @ EMIT-FIELD
+   LF EMIT-C ;
+
+
+: MSG+ ( ptr u8 n -- ) MSG MSG-CAP MSG-N BUF-APPEND ;
+
+
+\ Run 0 records each benchmark's result; a later round that computes another
+\ one has run a miscompiled word, whose time would mean nothing. Called after
+\ the window's closing clock read, so the check is not timed.
+: KEEP ( n n -- ) {: row run :}
+   run 0= if SINK @ row RESULT-AT ! exit then
+   SINK @ row RESULT-AT @ = if exit then
+   MSG-N BUF-RESET
+   s" tier-bench: " MSG+
+   row ROW-NAME$ MSG+
+   s"  computed a different result in a later round" MSG+
+   MSG MSG-N BUF-LEN@ WRONG-RC die ;
 
 \ One `xt` per benchmark would need a quotation the checker can call from a
 \ loop; naming the bodies and timing each in its own word costs one line each
 \ and keeps every body a plain checked call.
 : TIME-HARNESS ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-HARNESS TIME:THREAD-CPU-NS swap - HARNESS-ROW run SAMPLE ! ;
+   TIME:THREAD-CPU-NS B-HARNESS TIME:THREAD-CPU-NS swap - HARNESS-ROW run SAMPLE !
+   HARNESS-ROW run KEEP ;
 : TIME-ARITH ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-ARITH TIME:THREAD-CPU-NS swap - ARITH-ROW run SAMPLE ! ;
+   TIME:THREAD-CPU-NS B-ARITH TIME:THREAD-CPU-NS swap - ARITH-ROW run SAMPLE !
+   ARITH-ROW run KEEP ;
 : TIME-BRANCH ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-BRANCH TIME:THREAD-CPU-NS swap - BRANCH-ROW run SAMPLE ! ;
+   TIME:THREAD-CPU-NS B-BRANCH TIME:THREAD-CPU-NS swap - BRANCH-ROW run SAMPLE !
+   BRANCH-ROW run KEEP ;
 : TIME-SEARCH ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-SEARCH TIME:THREAD-CPU-NS swap - SEARCH-ROW run SAMPLE ! ;
+   TIME:THREAD-CPU-NS B-SEARCH TIME:THREAD-CPU-NS swap - SEARCH-ROW run SAMPLE !
+   SEARCH-ROW run KEEP ;
 : TIME-FOLD ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-FOLD TIME:THREAD-CPU-NS swap - FOLD-ROW run SAMPLE ! ;
+   CLEAR-DEST
+   TIME:THREAD-CPU-NS B-FOLD TIME:THREAD-CPU-NS swap - FOLD-ROW run SAMPLE !
+   SUM-DEST FOLD-ROW run KEEP ;
 : TIME-MOVE ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-MOVE TIME:THREAD-CPU-NS swap - MOVE-ROW run SAMPLE ! ;
+   CLEAR-DEST
+   TIME:THREAD-CPU-NS B-MOVE TIME:THREAD-CPU-NS swap - MOVE-ROW run SAMPLE !
+   SUM-DEST MOVE-ROW run KEEP ;
 : TIME-LINES ( n -- ) {: run :}
-   TIME:THREAD-CPU-NS B-LINES TIME:THREAD-CPU-NS swap - LINES-ROW run SAMPLE ! ;
+   TIME:THREAD-CPU-NS B-LINES TIME:THREAD-CPU-NS swap - LINES-ROW run SAMPLE !
+   LINES-ROW run KEEP ;
 
 \ A round times every benchmark once, and the rounds are the outer loop, so a
 \ benchmark's runs lie a whole round apart instead of back to back on one core.
@@ -282,15 +369,11 @@ public
 
 : MAIN ( -- )
    1 script-argv$ LOAD-SOURCE
+   PICK-NEEDLE
    FILL-CELLS
    RUNS 0 ?do i ROUND loop
-   HARNESS-ROW s" harness" REPORT
-   ARITH-ROW   s" arith"   REPORT
-   BRANCH-ROW  s" branch"  REPORT
-   SEARCH-ROW  s" search"  REPORT
-   FOLD-ROW    s" fold"    REPORT
-   MOVE-ROW    s" move"    REPORT
-   LINES-ROW   s" lines"   REPORT ;
+   ROWS 0 ?do i REPORT loop
+   ROWS 0 ?do i RESULT loop ;
 
 ;package
 
