@@ -15,9 +15,12 @@ private
 
 DYNAMIC-BUFFER INPUT-BYTES u8
 variable INPUT-U
-\ The first package record the live scope names whose declaration has no
-\ key, -1 when it has none. Such a scope cannot be encoded, so it never
-\ matches and its frame refuses.
+\ Nonzero when the live scope names something no key names: a package
+\ record whose declaration has no key, or a wordlist nothing names. Such a
+\ scope cannot be encoded, so it never matches and its frame refuses.
+variable UNKEYED?
+\ The first package record without a key the live scope names, -1 when it
+\ names none.
 variable UNKEYED-ORD
 -1 UNKEYED-ORD !
 
@@ -35,8 +38,10 @@ variable UNKEYED-ORD
       size FILE-SCOPE-ROOM INPUT-BYTES bytes swap size BYTE-COPY
    then ;
 
-\ Record ord as the scope's first unkeyed package, standing in no bytes.
+\ Mark the scope unkeyed by a name standing in no bytes: package record ord,
+\ kept when it is the first, or -1 for a wordlist no record owns.
 : FILE-SCOPE-UNKEYED ( n -- ) {: ord:n :}
+   1 UNKEYED? !
    UNKEYED-ORD @ 0 < if ord UNKEYED-ORD ! then
    NULL-PTR 0 FILE-SCOPE-S ;
 
@@ -45,12 +50,12 @@ variable UNKEYED-ORD
    ord NFILE-REF:DECL-KEY? if FILE-SCOPE-S exit then
    2drop ord FILE-SCOPE-UNKEYED ;
 
-: FILE-SCOPE-WID ( n -- ) {: wid:n :}
-   wid NFILE-REF:WID-KEYED? if drop wid NFILE-REF:WID-KEY$ FILE-SCOPE-S exit then
-   FILE-SCOPE-UNKEYED ;
+: FILE-SCOPE-WID ( n -- )
+   NFILE-REF:WID-KEY? if FILE-SCOPE-S drop exit then
+   2drop FILE-SCOPE-UNKEYED ;
 
 : LIVE-INPUT ( -- )
-   0 INPUT-U ! -1 UNKEYED-ORD !
+   0 INPUT-U ! 0 UNKEYED? ! -1 UNKEYED-ORD !
    data-base PKG-REC-CELL + 0 ptr-field @ {: rec:ptr :}
    rec NFILE-REF:REC-ORD FILE-SCOPE-REC
    data-base PKG-PARENT-CELL + @ FILE-SCOPE-WID
@@ -66,15 +71,16 @@ public
    LIVE-INPUT
    0 INPUT-BYTES INPUT-U @ ;
 
-\ The first package record the scope SCOPE-INPUT$ last encoded names
-\ without a key, -1 when every name has one.
-: SCOPE-UNKEYED ( -- n ) UNKEYED-ORD @ ;
+\ The first package record without a key the scope SCOPE-INPUT$ last
+\ encoded names, -1 when it names none, and whether that scope names
+\ anything without a key: such a record or a wordlist nothing names.
+: SCOPE-UNKEYED ( -- n bool ) UNKEYED-ORD @ UNKEYED? @ 0<> ;
 
 : SCOPE-MATCH? ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
-   SCOPE-INPUT$ bytes size STR= UNKEYED-ORD @ 0 < and ;
+   SCOPE-INPUT$ bytes size STR= UNKEYED? @ 0= and ;
 
 : SCOPE-CLOSE ( -- )
-   INPUT-BYTES-RELEASE 0 INPUT-U ! -1 UNKEYED-ORD ! ;
+   INPUT-BYTES-RELEASE 0 INPUT-U ! 0 UNKEYED? ! -1 UNKEYED-ORD ! ;
 
 ;package

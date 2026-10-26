@@ -1580,11 +1580,14 @@ DEFAULT-OUT
       1+
    repeat drop ;
 
-\ The frame's SCOPE row names a package an earlier session made, whose
-\ declaration has no key, so no later build can verify it: refuse.
+\ The frame's SCOPE row names what no later build can verify, so refuse: a
+\ package an earlier session made, whose declaration has no key, or a
+\ wordlist no package owns and no file of this session made.
 : SCOPE-KNOWN ( -- )
-   NFILE-SCOPE:SCOPE-UNKEYED {: ord:n :}
-   ord 0 >= if s" scope-key-unknown" ord ORDERED-BY then ;
+   NFILE-SCOPE:SCOPE-UNKEYED {: ord:n unkeyed:bool :}
+   unkeyed 0= if exit then
+   ord 0 >= if s" scope-key-unknown" ord ORDERED-BY exit then
+   s" scope-wordlist-unknown" -1 ORDERED-BY ;
 
 public
 

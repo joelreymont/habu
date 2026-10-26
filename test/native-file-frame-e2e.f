@@ -112,7 +112,14 @@ variable FILL-POOL
    s" wls.f" LOAD+
    S\" s\" wls=\" type WLS:A WLT-K + . cr\n" IN+
    s" wlk.f" LOAD+
-   S\" s\" wlx=\" type WLX-CUR WLK-W = . cr\n" IN+ ;
+   S\" s\" wlx=\" type WLX-CUR WLK-W = . cr\n" IN+
+   s" wld.f" LOAD+
+   S\" s\" wlm=\" type WLM-B WLM-A - . WLC-W WLM-A - . WMB-CUR WLM-B = . WMA-CUR WLM-A = . WMC-CUR WLC-W = . cr\n" IN+
+   \ The warm build loads wln.f under the other top-level wordlist.
+   S\" wordlist constant WLN-A\nwordlist constant WLN-B\n" IN+
+   FILL-POOL @ if S\" WLN-A set-current\n" else S\" WLN-B set-current\n" then IN+
+   s" wln.f" LOAD+
+   S\" 0 set-current\ns\" wln=\" type WLN-CUR WLN-A = . WLN-CUR WLN-B = . cr\n" IN+ ;
 
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
@@ -724,7 +731,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ that wordlist first. wlk.f requires wlx.f while its own bare wordlist WLK-W
 \ is current, so wlx.f's scope names a wordlist no package record owns;
 \ wlx.f reads it, defines in the global context and restores it. wlk.f
-\ itself loads outside the scope it began in (scope-at-load).
+\ itself loads outside the scope it began in (scope-at-load). wlm.f makes
+\ WLM-A, loads wlc.f, which makes WLC-W, then makes WLM-B: its second
+\ wordlist is its item 1, apart from its child's. wld.f requires wlm.f,
+\ then wmb.f, wma.f and wmc.f while WLM-B, WLM-A and WLC-W are current, so
+\ each scope names a wordlist by the file that made it; like wlk.f, wld.f
+\ is scope-at-load. The wlm= line is the cold/warm equality check: each
+\ consumer compares the wordlist it saw with its maker's, so a warm install
+\ that numbers items apart from the cold load prints a different line; this
+\ suite builds no image to compare. A file names a wordlist only within one
+\ top-level load, as it names a record. wln.f loads while a wordlist the
+\ session made outside every file is current, which no key can name.
 : WL-FIXTURES ( -- )
    s" wlp.f" S\" : WLP:A ( -- n ) 5 ;\nwordlist constant WLP-W\npackage WLP\npublic\n: B ( -- n ) 6 ;\n;package\n" PUT
    s" wlq.f" S\" : WLQ:A ( -- n ) 5 ;\n" PUT
@@ -732,7 +749,14 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wls.f" S\" : WLS:A ( -- n ) 5 ;\nrequire wlt.f\npackage WLS\n;package\n" PUT
    s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n" PUT
    s" wlk.f" S\" wordlist constant WLK-W\nget-current constant WLK-OLD\nWLK-W set-current\nrequire wlx.f\nWLK-OLD set-current\n" PUT
-   s" wlx.f" S\" get-current 0 set-current constant WLX-CUR\nWLX-CUR set-current\n" PUT ;
+   s" wlx.f" S\" get-current 0 set-current constant WLX-CUR\nWLX-CUR set-current\n" PUT
+   s" wld.f" S\" require wlm.f\nget-current constant WLD-OLD\nWLM-B set-current\nrequire wmb.f\nWLM-A set-current\nrequire wma.f\nWLC-W set-current\nrequire wmc.f\nWLD-OLD set-current\n" PUT
+   s" wlm.f" S\" wordlist constant WLM-A\nrequire wlc.f\nwordlist constant WLM-B\n" PUT
+   s" wlc.f" S\" wordlist constant WLC-W\n" PUT
+   s" wma.f" S\" get-current 0 set-current constant WMA-CUR\nWMA-CUR set-current\n" PUT
+   s" wmb.f" S\" get-current 0 set-current constant WMB-CUR\nWMB-CUR set-current\n" PUT
+   s" wmc.f" S\" get-current 0 set-current constant WMC-CUR\nWMC-CUR set-current\n" PUT
+   s" wln.f" S\" get-current 0 set-current constant WLN-CUR\nWLN-CUR set-current\n" PUT ;
 
 
 : FIXTURES ( -- )
@@ -1007,6 +1031,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
    s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
    s" wlx.f" KEY$ STORED
+   s" wlm.f, wlc.f and the loads under their wordlists write objects" T-LABEL
+   OUT$ S\" wlm=2\n1\n-1\n-1\n-1\n" CONTAINS? TTRUE
+   s" wld.f" s"  reason=" LINE$ s" wld.f reason=scope-at-load" T$=
+   s" wlm.f" KEY$ STORED s" wlc.f" KEY$ STORED
+   s" wma.f" KEY$ STORED s" wmb.f" KEY$ STORED s" wmc.f" KEY$ STORED
+   s" wln.f, loaded under a wordlist no file made, refuses its object" T-LABEL
+   OUT$ S\" wln=0\n-1\n" CONTAINS? TTRUE
+   s" wln.f" FRAME$ s"  reason=scope-wordlist-unknown" ENDS-WITH? TTRUE
+   s" wln.f" NO-OBJECT
    s" tier0.f, loaded at tier 0, writes no object" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
@@ -1502,6 +1535,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
    s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
    s" wlx.f" REUSED
+   s" a warm build installs wlm.f's wordlists apart from wlc.f's, as the cold load made them" T-LABEL
+   OUT$ S\" wlm=2\n1\n-1\n-1\n-1\n" CONTAINS? TTRUE
+   s" wld.f" s"  reason=" LINE$ s" wld.f reason=scope-at-load" T$=
+   s" wlm.f" REUSED s" wlc.f" REUSED
+   s" wma.f" REUSED s" wmb.f" REUSED s" wmc.f" REUSED
+   s" a warm build compiles wln.f again under another wordlist no file made" T-LABEL
+   OUT$ S\" wln=-1\n0\n" CONTAINS? TTRUE
+   s" wln.f" FRAME$ s"  reason=scope-wordlist-unknown" ENDS-WITH? TTRUE
+   s" wln.f" NO-OBJECT
    s" a warm build compiles tier0.f at tier 0 again" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    ERR$ s" /tier0.f records=" CONTAINS? TFALSE

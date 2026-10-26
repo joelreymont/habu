@@ -2224,7 +2224,9 @@ sections above.
   same process made has no key, so a later load that reads it is ordered
   (`resolution-key-unknown`, `binding-key-unknown`; the object refuses
   `ordered-dependency`), and a file loaded inside such a package is
-  `scope-key-unknown word=<package>`. A dependency the file's own load
+  `scope-key-unknown word=<package>`; one loaded while a wordlist no file of
+  the load made is current (an earlier top-level load's, or the session's) is
+  `scope-wordlist-unknown`. A dependency the file's own load
   `require`s is tracked as usual. `test/native-file-frame-e2e.f` measures each line.
 - **A file's top-level run is admitted by its closure or by its trace.** A run
   of the file's own word or of an earlier file's walks the closure it reaches:
