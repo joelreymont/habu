@@ -12,6 +12,7 @@
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
+require src/lib/fd-lock.f
 require src/lib/string.f
 require src/lib/image-lifecycle.f
 
@@ -76,9 +77,12 @@ public
    then
    PROC-ARGV-BUF@ ;
 
-: PROC-SPAWN-ARGV-RAW ( ptr u8 ptr a fd fd fd -- pid )
+: PROC-SPAWN-ARGV-RAW-HELD ( ptr u8 ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr infd outfd errfd :}
    pathz argv infd FD>N outfd FD>N errfd FD>N spawn-argv-io >PID ;
+
+: PROC-SPAWN-ARGV-RAW ( ptr u8 ptr a fd fd fd -- pid )
+   [: PROC-SPAWN-ARGV-RAW-HELD ;] FD-LOCK:WITH ;
 
 : PROC-ARGV-RESET ( -- )
    0 >COUNT PROC-ARGV-N !

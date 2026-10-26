@@ -33,6 +33,7 @@ require src/lib/memory.f
 require src/lib/codegen.f                    \ the refusal line is built in a CODEGEN buffer
 require src/lib/fs.f
 require src/lib/process.f
+require src/lib/fd-lock.f
 require src/lib/process-argv.f
 require src/lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
 
@@ -247,9 +248,12 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 : PROC-ENV-FALSE ( -- bool )
    0 0= 0= ;
 
-: PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
+: PROC-SPAWN-ARGV-ENV-RAW-HELD ( ptr u8 ptr a ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
    pathz argv envp infd FD>N outfd FD>N errfd FD>N spawn-argv-env-io >PID ;
+
+: PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
+   [: PROC-SPAWN-ARGV-ENV-RAW-HELD ;] FD-LOCK:WITH ;
 
 : PROC-ENV-RESET ( -- )
    0 >COUNT PROC-ENV-N !

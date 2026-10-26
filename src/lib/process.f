@@ -18,12 +18,13 @@
 \ gate pool's reaper relies on this. A negative fd leaves that stream as it
 \ is, and a stdio fd stays on 0, 1 or 2 even when marked close-on-exec. Mark
 \ parent-only pipe and pty ends close-on-exec, or a child holds a writer and
-\ the parent never sees EOF.
+\ the parent never sees EOF. src/lib/fd-lock.f orders that mark against spawns.
 
 s" src/lib/errors.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-WAIT-BOUNDED's deadline
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
+s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
 \ outcome - how a child process completed (switchover wave C): a clean exit
@@ -187,8 +188,11 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
-: PROC-SPAWN-RAW ( ptr u8 fd fd fd -- pid ) {: pathz:ptr infd outfd errfd :}
+: PROC-SPAWN-RAW-HELD ( ptr u8 fd fd fd -- pid ) {: pathz:ptr infd outfd errfd :}
    pathz infd FD>N outfd FD>N errfd FD>N spawn-io >PID ;
+
+: PROC-SPAWN-RAW ( ptr u8 fd fd fd -- pid )
+   [: PROC-SPAWN-RAW-HELD ;] FD-LOCK:WITH ;
 
 : PROC-KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;
@@ -297,6 +301,16 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    pipe {: r w rc :}
    rc 0 <> if E-PROC-OUTPUT throw then
    r >FD w >FD ;
+
+: PIPE-PAIR-CLOEXEC-HELD ( -- fd fd )
+   PIPE-PAIR {: r:fd w:fd :}
+   r FD-CLOEXEC!
+   w FD-CLOEXEC!
+   r w ;
+
+\ A pipe whose two ends no spawned child inherits.
+: PIPE-PAIR-CLOEXEC ( -- fd fd )
+   [: PIPE-PAIR-CLOEXEC-HELD ;] FD-LOCK:WITH ;
 
 : PROC-PFD-SLOT ( idx -- ptr n ) {: idx :}
    idx IDX>N PROC-PFD-SLOT-BYTES * PROC-PFD + CELL-VIEW ;
@@ -567,22 +581,31 @@ PROC-REAP-ARM-DEFAULT
    code 0= if rpid PID>N PROC-REAP-PID ! exit then
    code PROC-THROW-CAPTURE ;
 
-: PROC-OPEN-PIPE ( ptr n ptr n -- ) {: rp:ptr wp:ptr :}
+: PROC-CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
+   p @ F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
+
+: PROC-OPEN-PIPE-HELD ( ptr n ptr n -- ) {: rp:ptr wp:ptr :}
    pipe {: r w rc :}
    rc 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    r rp !
-   w wp ! ;
+   w wp !
+   rp PROC-CLOEXEC-CELL
+   wp PROC-CLOEXEC-CELL ;
 
-: PROC-CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
-   p @ F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
+\ Opens a pipe into the two capture cells, both ends close-on-exec.
+: PROC-OPEN-PIPE ( ptr n ptr n -- )
+   [: PROC-OPEN-PIPE-HELD ;] FD-LOCK:WITH ;
+
+: PROC-CAPTURE-NULL-INPUT-HELD ( -- )
+   s\" /dev/null\z" drop open-rd
+   dup 0 < if drop E-PROC-OUTPUT PROC-THROW-CAPTURE then
+   PROC-IN-R !
+   PROC-IN-R PROC-CLOEXEC-CELL ;
 
 \ Default captures supply EOF, independent of the parent's terminal or pipe.
 \ Keep the descriptor in the capture row so a refused spawn also closes it.
 : PROC-CAPTURE-NULL-INPUT ( -- fd )
-   s\" /dev/null\z" drop open-rd
-   dup 0 < if drop E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   PROC-IN-R !
-   PROC-IN-R PROC-CLOEXEC-CELL
+   [: PROC-CAPTURE-NULL-INPUT-HELD ;] FD-LOCK:WITH
    PROC-IN-R @ >FD ;
 
 : PROC-NONBLOCK! ( fd -- ) {: fd :}
@@ -595,16 +618,10 @@ PROC-REAP-ARM-DEFAULT
 
 : PROC-SETUP-CAPTURE-FDS ( -- )
    PROC-OUT-R PROC-OUT-W PROC-OPEN-PIPE
-   PROC-ERR-R PROC-ERR-W PROC-OPEN-PIPE
-   PROC-OUT-R PROC-CLOEXEC-CELL
-   PROC-OUT-W PROC-CLOEXEC-CELL
-   PROC-ERR-R PROC-CLOEXEC-CELL
-   PROC-ERR-W PROC-CLOEXEC-CELL ;
+   PROC-ERR-R PROC-ERR-W PROC-OPEN-PIPE ;
 
 : PROC-SETUP-STDIN-FDS ( -- )
    PROC-IN-R PROC-IN-W PROC-OPEN-PIPE
-   PROC-IN-R PROC-CLOEXEC-CELL
-   PROC-IN-W PROC-CLOEXEC-CELL
    PROC-IN-W @ >FD PROC-NOSIGPIPE!
    PROC-IN-W @ >FD PROC-NONBLOCK! ;
 

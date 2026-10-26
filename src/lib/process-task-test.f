@@ -446,6 +446,111 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
    0 PTT-GROW-OUT-A 8 + PTT-GROW-U PTT-GROW-IN-A PTT-GROW-U T$=
    0 PTT-GROW-OUT-B 7 + PTT-GROW-U PTT-GROW-IN-B PTT-GROW-U T$= ;
 
+\ ---- descriptors a concurrent spawn must not inherit ------------------------
+\ Three tasks capture /usr/bin/true beside one whose shells leave a five-second
+\ sleep behind and one that lists /dev/fd. Failure cases: a capture's pipe or
+\ /dev/null that another task's spawn inherits before it is marked
+\ close-on-exec reaches the sleep, which holds a capture's write end past its
+\ deadline (a timeout), and shows in a listing as a descriptor the quiet
+\ baseline lacks (a leak). Detection is probabilistic: without FD-LOCK:WITH
+\ (src/lib/fd-lock.f) about one capture in three hundred times out.
+100 constant PTT-INHERIT-CAPTURES        \ captures per capture task
+3000 constant PTT-INHERIT-MS             \ one capture's deadline, inside the sleep's 5 s
+256 constant PTT-FD-BASE-CAP
+
+CMD:COMMAND PTT-CMD-I0
+CMD:COMMAND PTT-CMD-I1
+CMD:COMMAND PTT-CMD-I2
+CMD:COMMAND PTT-CMD-SH
+CMD:COMMAND PTT-CMD-LS
+
+TASK:MIN-STACK TASK:TASK PTT-I0
+TASK:MIN-STACK TASK:TASK PTT-I1
+TASK:MIN-STACK TASK:TASK PTT-I2
+TASK:MIN-STACK TASK:TASK PTT-SH
+TASK:MIN-STACK TASK:TASK PTT-LS
+
+variable PTT-INHERIT-ON                  \ the shell and listing tasks run while set
+variable PTT-INHERIT-TIMEOUTS
+variable PTT-INHERIT-BAD                 \ children that did not exit 0
+variable PTT-INHERIT-LEAKS               \ listings unlike the baseline
+create PTT-FD-BASE PTT-FD-BASE-CAP allot
+variable PTT-FD-BASE-U
+
+: PTT-INHERIT-SLOT ( n -- ptr ptr u8 ) {: ix:n :}
+   ix 0 = if PTT-CMD-I0 exit then
+   ix 1 = if PTT-CMD-I1 exit then
+   PTT-CMD-I2 ;
+
+\ Runs INSIDE a worker, so it counts and asserts nothing.
+: PTT-INHERIT-COUNT ( outcome -- )
+   MATCH outcome
+      exited OF 0<> if 1 PTT-INHERIT-BAD atomic-add drop then ENDOF
+      signaled OF drop 1 PTT-INHERIT-BAD atomic-add drop ENDOF
+      timeout OF 1 PTT-INHERIT-TIMEOUTS atomic-add drop ENDOF
+   ;MATCH ;
+
+: PTT-INHERIT-RUN ( n -- ) {: ix:n :}
+   PTT-INHERIT-CAPTURES 0 ?do
+      ix PTT-INHERIT-SLOT CMD:RESET
+      ix PTT-INHERIT-SLOT s" /usr/bin/true" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME
+      PTT-INHERIT-COUNT
+   loop ;
+
+: PTT-I0-BODY ( -- ) 0 PTT-INHERIT-RUN 0 TASK:RETURN ;
+: PTT-I1-BODY ( -- ) 1 PTT-INHERIT-RUN 0 TASK:RETURN ;
+: PTT-I2-BODY ( -- ) 2 PTT-INHERIT-RUN 0 TASK:RETURN ;
+
+\ The shell exits at once; its sleep keeps every descriptor the shell inherited.
+: PTT-SH-BODY ( -- )
+   begin
+      PTT-CMD-SH CMD:RESET
+      PTT-CMD-SH s" -c" CMD:ARG+
+      PTT-CMD-SH s" /bin/sleep 5 </dev/null >/dev/null 2>&1 &" CMD:ARG+
+      PTT-CMD-SH s" /bin/sh" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME PTT-INHERIT-COUNT
+      PTT-INHERIT-ON atomic@ 0=
+   until 0 TASK:RETURN ;
+
+: PTT-LIST-FDS ( -- outcome )
+   PTT-CMD-LS CMD:RESET
+   PTT-CMD-LS s" /dev/fd" CMD:ARG+
+   PTT-CMD-LS s" /bin/ls" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME ;
+
+: PTT-LS-BODY ( -- )
+   begin
+      PTT-LIST-FDS PTT-INHERIT-COUNT
+      PTT-CMD-LS CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR= 0= if
+         1 PTT-INHERIT-LEAKS atomic-add drop
+      then
+      PTT-INHERIT-ON atomic@ 0=
+   until 0 TASK:RETURN ;
+
+: PTT-FD-BASELINE ( -- )
+   PTT-LIST-FDS PROC-OUTCOME>RC RC>N 0 T=
+   PTT-CMD-LS CMD:OUT$ {: a:ptr u:n :}
+   u PTT-FD-BASE-CAP <= TTRUE
+   a PTT-FD-BASE u BYTE-COPY
+   u PTT-FD-BASE-U ! ;
+
+: PTT-NO-INHERIT ( -- )
+   0 PTT-INHERIT-TIMEOUTS !  0 PTT-INHERIT-BAD !  0 PTT-INHERIT-LEAKS !
+   PTT-FD-BASELINE
+   1 PTT-INHERIT-ON !
+   ['] PTT-SH-BODY PTT-SH TASK:ACTIVATE
+   ['] PTT-LS-BODY PTT-LS TASK:ACTIVATE
+   ['] PTT-I0-BODY PTT-I0 TASK:ACTIVATE
+   ['] PTT-I1-BODY PTT-I1 TASK:ACTIVATE
+   ['] PTT-I2-BODY PTT-I2 TASK:ACTIVATE
+   PTT-I0 0 PTT-JOIN=
+   PTT-I1 0 PTT-JOIN=
+   PTT-I2 0 PTT-JOIN=
+   0 PTT-INHERIT-ON atomic!
+   PTT-SH 0 PTT-JOIN=
+   PTT-LS 0 PTT-JOIN=
+   PTT-INHERIT-TIMEOUTS @ 0 T=
+   PTT-INHERIT-LEAKS @ 0 T=
+   PTT-INHERIT-BAD @ 0 T= ;
+
 \ ---- cancelling one call, while another completes --------------------------
 \ Failure cases: a ready cancellation must wake both capture shapes (including
 \ blocked stdin), preserve the bytes already copied, run caller cleanup, and
@@ -631,6 +736,8 @@ public
    PTT-WAITS-BESIDE-CAPTURE
    s" owned growing captures keep argv, env and large stdout apart" T-LABEL
    PTT-GROW-CAPTURES
+   s" a capture's descriptors never reach another task's child" T-LABEL
+   PTT-NO-INHERIT
    s" cancelling fixed, growing, tree-held and EOF captures isolates another call" T-LABEL
    5 0 ?do i PTT-CANCEL-ONE loop
    s" pre-signalled cancellation never spawns and reuse disconnects the old pipe" T-LABEL

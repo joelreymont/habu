@@ -10,6 +10,7 @@
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
+require src/lib/fd-lock.f                \ FD-LOCK:WITH orders the wake pipe against spawns
 
 package AIO
 private
@@ -170,14 +171,17 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    idx MAC-ACTIVE? if idx ERR-CANCELED negate MAC-FINISH then
    MAC-NOTIFY ;
 
-: MAC-SETUP ( -- )
+: MAC-PIPE-HELD ( -- )
    pipe {: rd:n wr:n rc:n :}
    rc 0 <> if E-AIO-SETUP throw then
    rd MAC-READ-FD ! wr MAC-WRITE-FD !
    rd 2 1 MAC-FCNTL wr 2 1 MAC-FCNTL or rd 4 MAC-NONBLOCK MAC-FCNTL or
    wr 4 MAC-NONBLOCK MAC-FCNTL or 0 <> if
       rd close wr close E-AIO-SETUP throw
-   then
+   then ;
+
+: MAC-SETUP ( -- )
+   [: MAC-PIPE-HELD ;] FD-LOCK:WITH
    OPS-MAX 0 ?do 0 i MR MR.OWNS-FLAGS ! loop ;
 
 : MAC-CLOSE ( -- )

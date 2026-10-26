@@ -29,6 +29,7 @@ require src/lib/image-lifecycle.f            \ the three locks RAW holds while i
 require src/core/dynamic-storage.f
 require src/habu/address-cells.f
 require src/lib/process.f
+require src/lib/fd-lock.f                    \ the fourth lock RAW holds while it forks
 require src/lib/fs-mutate.f                  \ CLEANUP-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
 require src/lib/fork-child.f                 \ the resets RAW runs in the child
@@ -69,9 +70,10 @@ public
 \ limit can refuse a reaper's fork alone - after FORK-REAPER's first fork or a
 \ capture's spawn - without racing the rest of the host. src/lib/process-fork-test.f
 \ and test/gate-pool-test.f install their refusals here. RAW calls it holding
-\ the three registry locks of FORK-HELD below, so a replacement registers no
-\ image-lifecycle hook, reserves or releases no dynamic buffer and stores no
-\ quotation: each takes one of those locks, and its own thread holds it.
+\ the four locks of FORK-HELD below, so a replacement registers no
+\ image-lifecycle hook, reserves or releases no dynamic buffer, stores no
+\ quotation and spawns or opens no process descriptor: each takes one of those
+\ locks, and its own thread holds it.
 defer FORK-CALL ( -- n )
 
 : FORK-CALL-DEFAULT ( -- )
@@ -90,9 +92,15 @@ private
 \ thread forking here holds none of them already. A fork made on a task holds
 \ the task-local address-cell lock, not the registrar's, until dot bb84a527
 \ (ADDRESS-CELLS:ACROSS-FORK).
-: FORK-HELD ( -- n )
+\ Outside all three, FD-LOCK:WITH (src/lib/fd-lock.f): the child copies
+\ no descriptor another task has created but not yet marked close-on-exec. The
+\ child is the forking thread's copy, so the same finally releases it there.
+: FORK-REGISTRIES-HELD ( -- n )
    [: [: [: FORK-CALL ;] ADDRESS-CELLS:ACROSS-FORK ;] DYNAMIC-STORAGE:ACROSS-FORK ;]
    IMAGE-LIFECYCLE:ACROSS-FORK ;
+
+: FORK-HELD ( -- n )
+   [: FORK-REGISTRIES-HELD ;] FD-LOCK:WITH ;
 
 public
 
@@ -145,10 +153,7 @@ public
 \ end. Both ends are close-on-exec so an exec'd grandchild never inherits a
 \ write-end copy that would wedge the reaper's EOF.
 : DEATH-PIPE ( -- fd fd )
-   PIPE-PAIR {: rd:fd wr:fd :}
-   rd FD-CLOEXEC!
-   wr FD-CLOEXEC!
-   rd wr ;
+   PIPE-PAIR-CLOEXEC ;
 
 \ A forked reaper inherits every fd the worker held; keeping any capture-pipe
 \ or death-pipe write end open would wedge a downstream EOF, so it closes all

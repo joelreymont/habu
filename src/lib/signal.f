@@ -239,9 +239,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ parked in read until the NEXT signal arrives - which is a hang, not a race,
 \ for a window that was meant to close on its own.
 : OPEN-PIPE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   w FD-CLOEXEC!
+   PIPE-PAIR-CLOEXEC {: r:fd w:fd :}
    r PROC-NONBLOCK!
    w PROC-NONBLOCK!
    r FD>N READ-FD-CELL !

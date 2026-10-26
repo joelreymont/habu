@@ -38,6 +38,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/type/deftype.f
 require src/lib/process.f
+require src/lib/fd-lock.f
 require src/lib/pty.f
 
 package PTY-HARNESS
@@ -125,10 +126,14 @@ variable WATCH-N
    s SFD ! ;
 
 
-: OPEN-PAIR ( -- )
+: OPEN-MASTER-HELD ( -- )
    PTYNAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: m:n :}
    m MFD !
-   m >FD FD-CLOEXEC!
+   m >FD FD-CLOEXEC! ;
+
+
+: OPEN-PAIR ( -- )
+   [: OPEN-MASTER-HELD ;] FD-LOCK:WITH
    OPEN-SLAVE ;
 
 
