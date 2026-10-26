@@ -60,16 +60,25 @@ private
 
 : BP-PATCH32 ( n ptr u8 -- ) patch32 ;
 
-\ The instruction word at an xt: CODE-BYTES:AT is the one bounded view of a code
-\ address, and it dies on one outside the code region.
-: XT>CODE ( n -- ptr u8 )
-   4 CODE-BYTES:AT drop ;
+\ A code address reaches checked code as a number; CODE-BYTES:AT is the one
+\ bounded view of the bytes there.
+CAST: XT>N ( [ R -- S ] -- n )
 
-: FIND ( ptr u8 -- n ) {: addr:ptr :}   \ slot holding addr, else -1
+\ A slot is filled while its address field holds a code pointer; an empty slot
+\ holds BP-NULL, whose address reads 0.
+: FILLED? ( n -- bool )  BP-SLOT-ADDR @ BP-NULL = 0= ;
+
+\ The filled slot holding code address at, else -1. An empty slot never
+\ matches, so an address of 0 finds nothing.
+: FIND ( n -- n )
+   {: at :}
    0 BEGIN dup MAXBP < WHILE
-      dup BP-SLOT-ADDR @ addr = IF exit THEN  1 + REPEAT  drop -1 ;
+      dup FILLED? IF dup BP-SLOT-ADDR @ NULL-PTR - at = IF exit THEN THEN
+      1 + REPEAT  drop -1 ;
 
-: FREE ( -- n )  BP-NULL FIND ;                \ a free slot (addr 0)
+\ An empty slot, else -1.
+: FREE ( -- n )
+   0 BEGIN dup MAXBP < WHILE  dup FILLED? 0= IF exit THEN  1 + REPEAT  drop -1 ;
 
 \ BPADD ( xt ctrl -- ) : record + plant. ctrl = (skip << 1) | persistent.
 : BP-SET-SLOT ( ptr u8 n n -- ) {: xt:ptr ctrl idx :}
@@ -78,35 +87,33 @@ private
    0 idx BP-SLOT-HITS !
    ctrl idx BP-SLOT-CTRL ! ;
 
-: BPADD-PTR ( ptr u8 n -- ) {: xt:ptr ctrl :}
-   xt FIND 0 < 0= IF exit THEN                \ already set
-   FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
-   xt ctrl rot BP-SET-SLOT
-   BRK0 xt BP-PATCH32 ;
-
-: BPADD ( n n -- ) {: xt ctrl :}
+: BPADD ( n n -- ) {: at ctrl :}
    \ patch32 runs in engine text while opening the target's pages RW. An
    \ engine-text target can remove X from the patcher itself. Only the live
    \ compiled region is supported; refuse before publishing a slot or patching.
-   \ That region lies inside CODE-BYTES:AT's code band, so XT>CODE cannot die.
-   xt dbase@ DICT-SIZE + <  xt cp@ 4 - > or  xt 3 and 0<> or if
+   \ That region lies inside CODE-BYTES:AT's code band, so AT cannot die.
+   at dbase@ DICT-SIZE + <  at cp@ 4 - > or  at 3 and 0<> or if
       E-BP-TARGET throw
    then
-   xt XT>CODE ctrl BPADD-PTR ;
+   at FIND 0 < 0= IF exit THEN                \ already set
+   FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
+   {: idx :}
+   at 4 CODE-BYTES:AT drop {: xt:ptr :}
+   xt ctrl idx BP-SET-SLOT
+   BRK0 xt BP-PATCH32 ;
 
 public
 
-: BP+ ( n -- )    0 BPADD ;                  \ one-shot
-: BP* ( n -- )    1 BPADD ;                  \ persistent (re-fires every call)
-: BPN ( n n -- )  swap 1 lshift 1 or BPADD ; \ persistent, silent for the first n hits
+: BP+ ( [ R -- S ] -- )    XT>N 0 BPADD ;     \ one-shot
+: BP* ( [ R -- S ] -- )    XT>N 1 BPADD ;     \ persistent (re-fires every call)
+: BPN ( n [ R -- S ] -- )                     \ persistent, silent for the first n hits
+   XT>N swap 1 lshift 1 or BPADD ;
 
-\ An xt outside the code region has no breakpoint to remove; returning before
-\ XT>CODE keeps a mistyped number from killing the REPL session.
-: BP- ( n -- ) {: xt :}                      \ remove a breakpoint
-   xt 4 CODE-BYTES:IN-CODE? 0= IF exit THEN
-   xt XT>CODE {: xp:ptr :}
-   xp FIND dup 0 < IF drop exit THEN
-   dup BP-SLOT-INSTR @ xp BP-PATCH32          \ restore orig instr, clear slot
+\ Only a slot BPADD filled is patched back, through the pointer it stored, so
+\ an xt with no breakpoint returns before any byte is touched.
+: BP- ( [ R -- S ] -- )                       \ remove a breakpoint
+   XT>N FIND dup 0 < IF drop exit THEN
+   dup BP-SLOT-INSTR @ over BP-SLOT-ADDR @ BP-PATCH32   \ restore orig instr, clear slot
    BP-NULL swap BP-SLOT-ADDR ! ;
 
 : BP. ( -- )                                  \ list active breakpoints (addrs)

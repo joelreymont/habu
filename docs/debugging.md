@@ -94,8 +94,8 @@ word will return to, then the live data stack and watched cells, and resumes
 the word. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to name
 the caller: in a seeded engine that pair is the only way to answer "who called
 this?", because lldb cannot plant a breakpoint in the JIT region at all.
-Targets must be instruction-aligned addresses in the live compiled code region;
-engine-text primitives are refused.
+Each word takes the target as an xt, which must be an instruction-aligned entry
+in the live compiled code region; engine-text primitives are refused.
 
 `cp@` is stable only inside a compiled word: the interpreter compiles each
 top-level line into a transient buffer at `cp@`, so a top-level `cp@ patch32`
