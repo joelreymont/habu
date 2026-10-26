@@ -9,7 +9,8 @@
 \     (src/habu/regalloc-abi.f), where src/habu/data-claims.f can claim them.
 \ Allocator-state TOUCHPOINTS elsewhere (they or/eor the mask directly):
 \   jit.f: LVSPILL (reset to VRALL), LVDROP/LVNIPX/LVBINPREP/LVPUSHR/LVSETF
-\   (free/claim via LVBIT)   habu2.f: the WHILE and J-REPEAT VRALL stores
+\   (free/claim via LVBIT)   habu2.f: the definition-start and abort resets,
+\   CFB-ENTRY's claim/release around LVSNAP, the mark restore
 \ Load after mnem.f/sys.f, before jit.f.
 
 require src/habu/regalloc-abi.f
@@ -23,7 +24,10 @@ using REGALLOC-ABI
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
 $1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
-$1615181719 constant VRPACK2        \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA cells)
+$0807061615181719 constant VRPACK2  \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA
+                                    \ cells), x6,x7,x8 (no row's code uses them while pool
+                                    \ values are live)
+16 constant SNAP-SLOTS              \ a snapshot frame's two pack cells hold 16 slots
 : PK# ( n -- n ) 0 BEGIN over 0= 0= WHILE 1 + swap 8 rshift swap REPEAT nip ;
 VRPACK PK# constant #POOL1
 #POOL1 VRPACK2 PK# + constant #POOL

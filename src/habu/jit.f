@@ -811,7 +811,7 @@ variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF  variable LV
    7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,                       \ 16*sp + 8*sp = 24*sp
    8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD, ;
 
-\ LVSNAP ( -- ) : BEGIN, IF, WHILE. VSP<=13: force every VS entry into a
+\ LVSNAP ( -- ) : BEGIN, IF, WHILE. VSP<=SNAP-SLOTS: force every VS entry into a
 \ register (movz chains for cons emitted HERE, before the join) and push (k, packed regs —
 \ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
@@ -858,7 +858,7 @@ variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF  variable LV
    LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
    LBL {: plo :}  LBL {: pnx :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   6 DATA VSP-CELL LDR,  6 14 CMPI,  C-GE fail BCOND,   \ two cells pack 13 (the pool)
+   6 DATA VSP-CELL LDR,  6 SNAP-SLOTS 1+ CMPI,  C-GE fail BCOND,   \ two cells pack 16
    fl fd fail EMIT-SNAP-FORCE-LOOP
    fd LBL,                                  \ pack: x12 = slots 0-7, x10 = slots 8+
    pl pd plo pnx EMIT-SNAP-PACK-LOOP
