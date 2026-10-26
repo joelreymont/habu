@@ -685,11 +685,12 @@ variable CANDIDATE-VERDICT
 \ source strings here; reserved-name-lint forbids them in committed code.
 : LITERAL-FLOAT-SRC ( -- )
    GE-SRC-RESET
+   s" require src/lib/ieee754.f" GE-SRC-LINE
    s" : FRUN ( -- r ) .5 ;" GE-SRC-LINE
-   s" FRUN ." GE-SRC-LINE
-   s" .0 ." GE-SRC-LINE
-   s" -.5 ." GE-SRC-LINE
-   s" 1.5 ." GE-SRC-S"  s"  evaluate" GE-SRC-LINE
+   s" FRUN IEEE754:F64>BITS ." GE-SRC-LINE
+   s" .0 IEEE754:F64>BITS ." GE-SRC-LINE
+   s" -.5 IEEE754:F64>BITS ." GE-SRC-LINE
+   s" 1.5 IEEE754:F64>BITS ." GE-SRC-S"  s"  evaluate" GE-SRC-LINE
    s" -$FF ." GE-SRC-LINE
    s" FLOK1 ( -- r ) .5" GE-SRC-CHECK-LINE
    s" FLOK2 ( -- r ) -.5" GE-SRC-CHECK-LINE
@@ -700,7 +701,7 @@ variable CANDIDATE-VERDICT
    s" FLBAD2 ( -- r ) ..5" GE-SRC-CHECK-LINE
    s" FLBAD3 ( -- n ) .5" GE-SRC-CHECK-LINE
    s" : .0 ( n -- ) drop ;" GE-SRC-LINE
-   s" 60 .0 . ." GE-SRC-LINE
+   s" 60 .0 IEEE754:F64>BITS . ." GE-SRC-LINE
    s" SHOK ( -- r ) .0" GE-SRC-CHECK-LINE
    s" SHBAD ( n -- ) .0" GE-SRC-CHECK-LINE ;
 
@@ -740,8 +741,9 @@ variable CANDIDATE-VERDICT
 : LITERAL-FLOAT-EVAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
+   s" require src/lib/ieee754.f" GE-SRC-LINE
    s" : FRUN2 ( -- r ) -.5 ;" GE-SRC-LINE
-   s" FRUN2 ." GE-SRC-LINE
+   s" FRUN2 IEEE754:F64>BITS ." GE-SRC-LINE
    s" FLEV1 ( -- r ) .5" GE-SRC-CHECK-LINE
    s" FLEV2 ( -- n ) .5" GE-SRC-CHECK-LINE
    s" hb resident evaluate float literal-first" GE-EVAL-RUN-STDIN
@@ -754,15 +756,16 @@ variable CANDIDATE-VERDICT
 : LITERAL-FLOAT-LAST-SAFE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" -0.008503115738340623 ." GE-SRC-LINE
+   s" require src/lib/ieee754.f" GE-SRC-LINE
+   s" -0.008503115738340623 IEEE754:F64>BITS ." GE-SRC-LINE
    s" : GD-FLOAT-LAST-SAFE ( -- r ) -0.008503115738340623 ;" GE-SRC-LINE
-   s" GD-FLOAT-LAST-SAFE ." GE-SRC-LINE
-   s" 9223372036854775807.0 ." GE-SRC-LINE
-   s" -9223372036854775807.0 ." GE-SRC-LINE
+   s" GD-FLOAT-LAST-SAFE IEEE754:F64>BITS ." GE-SRC-LINE
+   s" 9223372036854775807.0 IEEE754:F64>BITS ." GE-SRC-LINE
+   s" -9223372036854775807.0 IEEE754:F64>BITS ." GE-SRC-LINE
    s" : GD-FLOAT-CELL-POS ( -- r ) 9223372036854775807.0 ;" GE-SRC-LINE
    s" : GD-FLOAT-CELL-NEG ( -- r ) -9223372036854775807.0 ;" GE-SRC-LINE
-   s" GD-FLOAT-CELL-POS ." GE-SRC-LINE
-   s" GD-FLOAT-CELL-NEG ." GE-SRC-LINE
+   s" GD-FLOAT-CELL-POS IEEE754:F64>BITS ." GE-SRC-LINE
+   s" GD-FLOAT-CELL-NEG IEEE754:F64>BITS ." GE-SRC-LINE
    s" hb accepts the last signed-cell decimal accumulators" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -4647316702578275452" GE-OUT-LINE

@@ -243,7 +243,8 @@ variable WANT-RC
 \ ---- the cases -----------------------------------------------------------------------
 : NUMBERS ( -- )
    GE-SRC-RESET
-   s" 1 2 + . $2A . -7 . -$10 . 1.5 . -2.25 . 0 . depth ." GE-SRC-LINE
+   s" require src/lib/ieee754.f" GE-SRC-LINE
+   s" 1 2 + . $2A . -7 . -$10 . 1.5 IEEE754:F64>BITS . -2.25 IEEE754:F64>BITS . 0 . depth ." GE-SRC-LINE
    s" oi-numbers.f" BOTH
    s" numbers" GE-EXPECT-OK
    S\" 42\n-7\n-16\n" s" numbers" GE-EXPECT-OUT-HAS ;
