@@ -107,8 +107,17 @@ variable SAVED-ROOT-U
    [: s" tools/aot-build.f" required ;]
       FFI:WITH-MAKER-DECLARATIONS ;
 
+\ APP-LOAD wrote the application's rows to the manifest before this session
+\ opened and reset them. The link reads its own sources, the runtime among
+\ them, so its rows join the manifest too. The path is read before RUN binds
+\ the environment observer: the maker's private manifest is not a build input.
 : LOAD-LINK-CACHED ( -- )
-   ['] LOAD-LINK-SUPPORT NDEF-CACHE:RUN ;
+   s" HABU_AOT_INPUTS" GETENV {: manifest:ptr manifestu:n :}
+   ['] LOAD-LINK-SUPPORT NDEF-CACHE:RUN
+   manifest NULL-PTR = if exit then
+   NFILE-INPUTS:BYTES$ {: bytes:ptr size:n :}
+   size 0= if E-NUNIT-PROFILE throw then
+   manifest manifestu bytes size APPEND-FILE ;
 
 : LOAD-LINK-IN-SCOPE ( -- )
    s" aot" ['] LOAD-LINK-CACHED NDEF-CACHE:WITH-QUIET ;

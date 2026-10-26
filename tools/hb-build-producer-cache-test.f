@@ -1,6 +1,7 @@
 \ Producer edits change the application on a warm cache: a builder edit from an
-\ external CWD, then a runtime edit racing the maker
-\ (tools/hb-build-producer-race-test.f, run in this copy after those builds).
+\ external CWD, a runtime edit the link reads after the application loaded,
+\ then a runtime edit racing the maker (tools/hb-build-producer-race-test.f,
+\ run in this copy after those builds).
 \ Run: bin/hb --load tools/hb-build-producer-cache-test.f
 
 require src/lib/test.f
@@ -28,7 +29,10 @@ create TOOL FS-PATH-CAP allot
 create SAVED FS-PATH-CAP allot
 create TMP FS-PATH-CAP allot
 create CACHE FS-PATH-CAP allot
+create RT FS-PATH-CAP allot
+create RT-B FS-PATH-CAP allot
 create IMAGE IMAGE-CAP allot
+create RT-TEXT CAP allot
 create OUT CAP allot
 create ERR CAP allot
 variable ROOT-U
@@ -41,6 +45,9 @@ variable TOOL-U
 variable SAVED-U
 variable TMP-U
 variable CACHE-U
+variable RT-U
+variable RT-B-U
+variable RT-TEXT-U
 variable CAP-OUT-U
 variable CAP-ERR-U
 variable RC
@@ -55,6 +62,8 @@ variable RC
 : SAVED$ ( -- ptr u8 n ) SAVED SAVED-U @ ;
 : TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
 : CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
+: RT$ ( -- ptr u8 n ) RT RT-U @ ;
+: RT-B$ ( -- ptr u8 n ) RT-B RT-B-U @ ;
 
 : PATHS ( -- )
    ROOT$ s" project" PROJECT JOIN-PATH PROJECT-U !
@@ -65,7 +74,9 @@ variable RC
    ROOT$ s" tools/hb-build.f" TOOL JOIN-PATH TOOL-U !
    ROOT$ s" maker-saved.f" SAVED JOIN-PATH SAVED-U !
    ROOT$ s" hbtmp" TMP JOIN-PATH TMP-U !
-   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U ! ;
+   ROOT$ s" cache" CACHE JOIN-PATH CACHE-U !
+   ROOT$ s" src/habu/rt.f" RT JOIN-PATH RT-U !
+   ROOT$ s" rt-b.f" RT-B JOIN-PATH RT-B-U ! ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -188,6 +199,58 @@ variable RC
    IMAGE u yes yesu CONTAINS? TTRUE
    IMAGE u no nou CONTAINS? TFALSE ;
 
+
+\ The application's load moves rt-b.f, the runtime with its guarded-stack
+\ diagnostic edited, over rt.f once, the way an edit lands after the maker
+\ loaded the application and before the link reads the runtime.
+: WRITE-SWAP-APP ( -- )
+   SB-RESET
+   s" require src/lib/fs.f" SB-APPEND 10 SB-APPEND-C
+   s" require src/lib/fs-mutate.f" SB-APPEND 10 SB-APPEND-C
+   s" package LINK-RACE-APP" SB-APPEND 10 SB-APPEND-C
+   S\" : B$ ( -- ptr u8 n ) s\" " SB-APPEND RT-B$ SB-APPEND S\" \" ;" SB-APPEND
+   10 SB-APPEND-C
+   s" public" SB-APPEND 10 SB-APPEND-C
+   s" : SWAP-RT ( -- ) B$ FILE? if B$ " SB-APPEND
+   S\" s\" " SB-APPEND RT$ SB-APPEND S\" \" RENAME-FILE then ;" SB-APPEND
+   10 SB-APPEND-C
+   s" ;package" SB-APPEND 10 SB-APPEND-C
+   s" LINK-RACE-APP:SWAP-RT" SB-APPEND 10 SB-APPEND-C
+   s" : MAIN ( -- ) ;" SB-APPEND 10 SB-APPEND-C
+   APP$ SB$ WRITE-ALL ;
+
+
+\ Offset of the guarded-stack diagnostic in the original runtime text.
+: RT-AT ( -- n )
+   RT$ RT-TEXT CAP READ-ALL RT-TEXT-U !
+   RT-TEXT RT-TEXT-U @ s" hb: cannot map guarded VM stack" FIND-SUB MATCH option
+      none OF s" rt.f has no guarded-stack diagnostic" T-EX-FAIL die ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH ;
+
+
+\ RT-TEXT keeps the original; rt-b.f gets the edited copy.
+: WRITE-RT-B ( -- )
+   RT-AT RT-TEXT + {: at:ptr :}
+   s" hb: REVIEW map guarded VM stack" at swap BYTE-COPY
+   RT-B$ RT-TEXT RT-TEXT-U @ WRITE-ALL
+   s" hb: cannot map guarded VM stack" at swap BYTE-COPY ;
+
+
+\ The first build's link reads the edited runtime. Restoring the original
+\ must miss that artifact: the link's reads are build inputs too.
+: LINK-INPUT-RACE ( -- )
+   WRITE-SWAP-APP
+   WRITE-RT-B
+   BUILD
+   RT-B$ EXISTS? TFALSE
+   s" hb: REVIEW map guarded VM stack" s" hb: cannot map guarded VM stack" IMAGE-HAS
+   RT$ RT-TEXT RT-TEXT-U @ WRITE-ALL
+   BUILD
+   s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
+   APP$ s" : MAIN ( -- ) ;" WRITE-ALL ;
+
+
 public
 
 : RUN ( -- )
@@ -198,6 +261,7 @@ public
    CHANGE-BUILDER-SAME-MTIME
    BUILD-AFTER-BUILDER-EDIT
    s" hb: cannot map guarded VM stack" s" hb: REVIEW map guarded VM stack" IMAGE-HAS
+   LINK-INPUT-RACE
    BUILD-RACE
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE

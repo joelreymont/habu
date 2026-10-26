@@ -114,10 +114,6 @@ Target compilation and capture run in the native build scope. Once the capture
 owns its bytes, the uncaptured source writer loads at the host's JIT tier on
 AArch64 (native tier on x86-64), then restores the previous tier. Its definitions
 use the fresh target layout and do not enter the emitted engine.
-An unchanged checked body can also be reused before the reader enters it when
-another body in the same file changes. That path requires the original body
-span, its following delimiter, the current reader behavior, and the saved
-compiler dependencies to agree; otherwise the reader compiles the body normally.
 
 **Incremental-build implementation guidance.** Read files from disk and use
 files as compilation units, following the C compiler / make model. Packages
