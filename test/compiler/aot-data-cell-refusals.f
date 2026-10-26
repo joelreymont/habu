@@ -90,8 +90,9 @@ variable IMAGE-U
 \ authority to read this one as a code address and says which forms would give it
 \ one. A DEFER cell in the same position is relocated instead, which is what
 \ test/stripped-image.f builds and runs.
+\ The checker is suspended around the store so the image, not the checker, refuses it.
 : CASE-TICK ( -- )
-   S\" : DCR-BUMP ( n -- n ) 1+ ;\ncreate DCR-TABLE ' DCR-BUMP ,\n: MAIN ( -- ) DCR-TABLE @ . ;\n"
+   S\" : DCR-BUMP ( n -- n ) 1+ ;\ncreate DCR-TABLE check@ 0 set-check ' DCR-BUMP , set-check\n: MAIN ( -- ) DCR-TABLE @ . ;\n"
       WRITE-SUBJECT
    LINK-ONLY$ BUILD
    70 s" ' word , cell: refusal code" GE-EXPECT-RC
@@ -118,7 +119,7 @@ variable IMAGE-U
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
    s" 1"
-   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT ' DCR-PRE ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT check@ 0 set-check ' DCR-PRE , set-check\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
       BUILD-DIAG
    70 s" pre-window xt cell: refusal code" GE-EXPECT-RC
    S\" \"code\":\"E-AOT-UNSUPPORTED\"" s" pre-window xt cell: schema code" GE-EXPECT-ERR-HAS

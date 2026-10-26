@@ -11,7 +11,7 @@ package NATIVE-EDGE-PERMUTATION
 private
 
 : SWAP-TURNS ( n n n -- n n ) 0 ?DO swap LOOP ;
-' SWAP-TURNS dup 4 + code-origin constant SWAP-TURNS-TIER
+' SWAP-TURNS TEST:XT>N dup 4 + code-origin constant SWAP-TURNS-TIER
 : DUPLICATE-TURNS ( n n n -- n n ) 0 ?DO nip dup LOOP ;
 : SHARED-TURNS ( n n n -- n n ) 0 ?DO over + swap LOOP ;
 

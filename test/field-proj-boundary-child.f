@@ -31,6 +31,10 @@ private
 : LOCAL-SHADOW ( n -- n )
    {: FIELD-PROJ!:n :} FIELD-PROJ! ;
 
+\ The tier probe reads FP-GETA's xt as raw bits for code-origin. This child
+\ runs on the core prefix without src/lib/test.f, so TEST:XT>N is absent.
+CAST: XT>N ( [ R -- S ] -- n )
+
 \ The compiler's trusted crossing can still mutate the protected storage.
 TRUSTED: RAW-ROUNDTRIP ( -- n )
    FIELD-PROJ-U @ {: before:n :}
@@ -87,9 +91,7 @@ public
 
    \ The lib's projection reader really used this tier, and the earlier
    \ projections remain callable after all refusals.
-   s" ' FIELD-PROJ-LIB:FP-GETA dup 4 + code-origin FIELD-BOUNDARY-TEST:RESULT !"
-      evaluate-closed
-   RESULT @ tier@ =ASSERT
+   ['] FP-GETA XT>N dup 4 + code-origin tier@ =ASSERT
    0 FP-GETA 10 =ASSERT
    1 FP-GETB 40 =ASSERT
    0 FPG-GET 42 =ASSERT

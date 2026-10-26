@@ -979,49 +979,53 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" tier 1 leaves no unchecked does> clause latch for a later word" T-LABEL
    1 UW-LATCH-CASE ;
 
+\ A child that asks code-origin about a word declares `CAST: XT>N` first, before
+\ any tier or code-cursor marker, to pass the xt as the address code-origin takes.
+\ A primitive's tick is an opaque xt no cast admits, so DUP-ENTRY reads dup's
+\ in a TRUSTED body.
 : TEST-ORIGIN ( -- )
    s" known primitive text has positive native origin" T-LABEL
-   s" ' dup dup 4 + code-origin . " EXEC s" 1" ASSERT-OK
+   s" TRUSTED: DUP-ENTRY ( -- n ) ['] dup ; DUP-ENTRY dup 4 + code-origin . " EXEC s" 1" ASSERT-OK
    s" absent and empty coverage remain unknown" T-LABEL
-   s" 0 4 code-origin .  0 0 code-origin . ' dup -1 code-origin ." EXEC
+   s" TRUSTED: DUP-ENTRY ( -- n ) ['] dup ; 0 4 code-origin .  0 0 code-origin . DUP-ENTRY -1 code-origin ." EXEC
    0 ASSERT-RC OUT$ S\" -1\n-1\n-1\n" STR= TTRUE
    LEGACY? if
       s" changing the next tier cannot relabel a retained JIT definition" T-LABEL
-      s" 0 set-tier : OR-J ( -- n ) 42 ; ' OR-J dup 4 + code-origin .  1 set-tier ' OR-J dup 4 + code-origin .  OR-J . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 0 set-tier : OR-J ( -- n ) 42 ; ' OR-J XT>N dup 4 + code-origin .  1 set-tier ' OR-J XT>N dup 4 + code-origin .  OR-J . " EXEC
       0 ASSERT-RC OUT$ S\" 0\n0\n42\n" STR= TTRUE
    then
    s" native definition publication supplies positive origin" T-LABEL
    LEGACY? if
-      s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  0 set-tier ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N XT>N dup 4 + code-origin .  0 set-tier ' OR-N XT>N dup 4 + code-origin .  OR-N . " EXEC
    else
-      s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N XT>N dup 4 + code-origin .  ' OR-N XT>N dup 4 + code-origin .  OR-N . " EXEC
    then
    0 ASSERT-RC OUT$ S\" 1\n1\n43\n" STR= TTRUE
    s" stored quotations keep their enclosing definition's origin" T-LABEL
    LEGACY? if
-      s" 0 set-tier : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  1 set-tier : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 0 set-tier : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q XT>N dup 4 + code-origin .  1 set-tier : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ XT>N dup 4 + code-origin . " EXEC
       0 ASSERT-RC OUT$ S\" 0\n1\n" STR= TTRUE
       s" a native CREATE stub cannot relabel its retained JIT does body" T-LABEL
-      s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C XT>N dup 4 + code-origin .  ' OR-M XT>N dup 4 + code-origin .  OR-C . " EXEC
       0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
       s" a tier change inside an immediate affects only the next definition" T-LABEL
-      S\" 0 set-tier require src/lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+      S\" CAST: XT>N ( [ R -- S ] -- n )\n0 set-tier require src/lib/tier.f : OR-SW ( -- ) 1 TIER:SELECT ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L XT>N dup 4 + code-origin .  tier@ .  OR-L . " EXEC
       0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
       s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
-      S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
+      S\" CAST: XT>N ( [ R -- S ] -- n )\n0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN XT>N dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
       0 ASSERT-RC OUT$ S\" 0\n48\n" STR= TTRUE
    else
-      s" : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q XT>N dup 4 + code-origin .  : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ XT>N dup 4 + code-origin . " EXEC
       0 ASSERT-RC OUT$ S\" 1\n1\n" STR= TTRUE
    then ;
 
 : TEST-ORIGIN-OVERWRITE ( -- )
    s" a generic instruction patch invalidates native provenance" T-LABEL
-   S\" 1 set-tier : OR-PATCHED ( -- n ) 56 ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\n' OR-PATCHED dup 4 + code-origin . ' OR-PATCHED OR-PATCH ' OR-PATCHED dup 4 + code-origin .\n" EXEC
+   S\" CAST: XT>N ( [ R -- S ] -- n )\n1 set-tier : OR-PATCHED ( -- n ) 56 ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\n' OR-PATCHED XT>N dup 4 + code-origin . ' OR-PATCHED XT>N OR-PATCH ' OR-PATCHED XT>N dup 4 + code-origin .\n" EXEC
    0 ASSERT-RC OUT$ S\" 1\n-1\n" STR= TTRUE
    s" exported aliases retain the target body's origin" T-LABEL
    LEGACY? if
-      s" 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V XT>N dup 4 + code-origin . ' OB:V XT>N dup 4 + code-origin . OB:V ." EXEC
       0 ASSERT-RC OUT$ S\" 0\n0\n51\n" STR= TTRUE
       s" an interior native overwrite retains both JIT edges and merges an adjacent native body" T-LABEL
       S\" 0 set-tier variable OL variable OH variable ON variable OE variable OC\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\ncp@ OL ! : OLD ( -- ) 1 emit 2 emit 3 emit 4 emit 5 emit 6 emit 7 emit 8 emit ; cp@ OH ! OR-COUNT OC !\nOL @ 16 + dup ON ! cp! 1 set-tier : NEW1 ( -- n ) 52 ; : NEW2 ( -- n ) 53 ; cp@ OE !\nOL @ dup 4 + code-origin . ON @ OE @ code-origin . OH @ 4 - OH @ code-origin . OL @ OH @ code-origin . OR-COUNT OC @ - . NEW1 . NEW2 .\n" EXEC
@@ -1030,7 +1034,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       s" 0 set-tier variable OL cp@ OL ! : OLD ( -- n ) 1 ; OL @ cp! 1 set-tier : NEW-WITH-A-LONG-EXTERNAL-NAME ( -- n ) 54 ; OL @ cp@ code-origin . NEW-WITH-A-LONG-EXTERNAL-NAME ." EXEC
       0 ASSERT-RC OUT$ S\" 1\n54\n" STR= TTRUE
    else
-      s" 1 set-tier package OA public : V ( -- n ) 51 ; ;package package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
+      s" CAST: XT>N ( [ R -- S ] -- n ) 1 set-tier package OA public : V ( -- n ) 51 ; ;package package OB public export OA:V ;package ' OA:V XT>N dup 4 + code-origin . ' OB:V XT>N dup 4 + code-origin . OB:V ." EXEC
       0 ASSERT-RC OUT$ S\" 1\n1\n51\n" STR= TTRUE
    then ;
 
@@ -1050,16 +1054,16 @@ variable OR-U
 
 : OR-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
    0 OR-U !
-   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n" OR+
+   S\" CAST: XT>N ( [ R -- S ] -- n )\n0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n" OR+
    count 0 ?do
       s" variable OV" OR+ i OR-NUM+
       S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+ S\"  ;\n" OR+
    loop
-   S\" OR-COUNT TIER-PROV:SPANS > bool>n . ' OV0 dup 4 + code-origin . ' OD0 dup 4 + code-origin . OD0 .\n' OV" OR+
-   count 2 / OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
-   count 2 / OR-NUM+ S\"  dup 4 + code-origin . OD" OR+ count 2 / OR-NUM+
-   S\"  .\n' OV" OR+ count 1- OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
-   count 1- OR-NUM+ S\"  dup 4 + code-origin . OD" OR+ count 1- OR-NUM+
+   S\" OR-COUNT TIER-PROV:SPANS > bool>n . ' OV0 XT>N dup 4 + code-origin . ' OD0 XT>N dup 4 + code-origin . OD0 .\n' OV" OR+
+   count 2 / OR-NUM+ S\"  XT>N dup 4 + code-origin . ' OD" OR+
+   count 2 / OR-NUM+ S\"  XT>N dup 4 + code-origin . OD" OR+ count 2 / OR-NUM+
+   S\"  .\n' OV" OR+ count 1- OR-NUM+ S\"  XT>N dup 4 + code-origin . ' OD" OR+
+   count 1- OR-NUM+ S\"  XT>N dup 4 + code-origin . OD" OR+ count 1- OR-NUM+
    S\"  . cp@ 4 - cp@ code-origin .\n" OR+
    OR-BUF OR-U @ ;
 
@@ -1080,7 +1084,7 @@ variable OR-U
 
 : OR-SPLIT-SOURCE$ ( -- ptr u8 n )
    0 OR-U !
-   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\nvariable OS-DID\n" OR+
+   S\" CAST: XT>N ( [ R -- S ] -- n )\n0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\nvariable OS-DID\n" OR+
    TIER-PROV:SPANS 2 / 128 + 0 ?do
       s" variable SV" OR+ i OR-NUM+
       i TIER-PROV:SPANS 2 / 64 - >= if OR-SPLIT-CHECK+ then
@@ -1092,7 +1096,7 @@ variable OR-U
       then
       i TIER-PROV:SPANS 2 / 64 - >= if OR-SPLIT-CHECK+ then
    loop
-   S\" OS-DID @ . OR-COUNT TIER-PROV:SPANS > bool>n . ' SD0 dup 4 + code-origin . ' SD0 8 + dup 4 + code-origin . ' SD0 12 + dup 4 + code-origin . SD0 .\n" OR+
+   S\" OS-DID @ . OR-COUNT TIER-PROV:SPANS > bool>n . ' SD0 XT>N dup 4 + code-origin . ' SD0 XT>N 8 + dup 4 + code-origin . ' SD0 XT>N 12 + dup 4 + code-origin . SD0 .\n" OR+
    OR-BUF OR-U @ ;
 
 : OR-GUARD-SOURCE$ ( bool -- ptr u8 n ) {: last?:bool :}
@@ -1155,7 +1159,7 @@ variable OR-DIR-U  variable OR-PATH-U  variable OR-IMAGE-U
 : OR-IMAGE-RUN ( -- )
    PROC-ARGV-RESET
    OR-IMAGE-PATH$ >LEN
-   S\" OR-KEPT . ' OR-KEPT dup 4 + code-origin . OR-REWRITTEN-NATIVE-WORD . ' OR-REWRITTEN-NATIVE-WORD dup 4 + code-origin . 1 set-tier : OR-NEW ( -- n ) 85 ; OR-NEW . ' OR-NEW dup 4 + code-origin .\n" >LEN
+   S\" CAST: XT>N ( [ R -- S ] -- n )\nOR-KEPT . ' OR-KEPT XT>N dup 4 + code-origin . OR-REWRITTEN-NATIVE-WORD . ' OR-REWRITTEN-NATIVE-WORD XT>N dup 4 + code-origin . 1 set-tier : OR-NEW ( -- n ) 85 ; OR-NEW . ' OR-NEW XT>N dup 4 + code-origin .\n" >LEN
    OUT CAP >LEN ERR CAP >LEN OR-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME OR-PATH$ STORE! ;
 
@@ -1217,7 +1221,7 @@ variable OR-DIR-U  variable OR-PATH-U  variable OR-IMAGE-U
    S\" 1 set-tier require src/lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
    0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
    s" evaluated source publishes native code inside the scope" T-LABEL
-   S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
+   S\" CAST: XT>N ( [ R -- S ] -- n )\nrequire src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE XT>N dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
    0 ASSERT-RC OUT$
    LEGACY? if S\" 1\n61\n0\n" else S\" 1\n61\n1\n" then STR= TTRUE
    LEGACY? if

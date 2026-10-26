@@ -55,7 +55,7 @@ s" abc" ' SCAN catch CHECK
 
 T-RESET
 s" the no-return exit subject was compiled at tier 1" T-LABEL
-' CHOOSE dup 4 + code-origin 1 T=
+' CHOOSE TEST:XT>N dup 4 + code-origin 1 T=
 
 : CHECK-RETURNS ( -- )
    1 CHOOSE 1 <> if -2 throw then

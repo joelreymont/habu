@@ -315,6 +315,6 @@ public
    $AB BYTE! $CD BYTE-SLOT c! BYTE-SLOT c@ $AB T= ;
 ;package
 0 set-tier
-' NWM-SHADOW:CHECK dup 4 + code-origin 1 T=
+' NWM-SHADOW:CHECK TEST:XT>N dup 4 + code-origin 1 T=
 NWM-SHADOW:CHECK
 T-REPORT

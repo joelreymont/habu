@@ -608,13 +608,14 @@ create EMPTY 1 allot            \ zero-length stdin
 \ E-EXEC-OPAQUE-XT (RSEXEC T-VAR flip), so the definer-mint and protected-registry
 \ writes the RCA laundered through `variable V  ' W V !  : F V @ execute ;` can no
 \ longer certify. Each child rejects rc 70 with the named diagnostic before the
-\ body runs, so the mint / store never happens. ----
+\ body runs, so the mint / store never happens. The top-level store runs with
+\ the checker suspended, so the refusal each child meets is the execute's. ----
 
 : LAUNDER-DEFINER$ ( ptr u8 n -- ptr u8 n )   \ tick <definer> into a var, launder its execute
    {: a:ptr u:n :}
    SB-RESET
    s" variable IWG-LV" SB-APPEND LF
-   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND LF
+   s" check@ 0 set-check ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV ! set-check" SB-APPEND LF
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
@@ -634,7 +635,7 @@ create EMPTY 1 allot            \ zero-length stdin
    {: a:ptr u:n :}
    SB-RESET
    s" variable IWG-LV" SB-APPEND LF
-   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND LF
+   s" check@ 0 set-check ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV ! set-check" SB-APPEND LF
    s" : IWG-LBAD ( -- n ) IWG-LV @ catch ;" SB-APPEND LF
    SB$ ;
 

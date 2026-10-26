@@ -100,7 +100,11 @@ variable SPIN-U
 \ private does> definer whose clause name is longer than DNAME-INL bytes, and
 \ OI-DX. prints whether the record above its public export is that export's
 \ clause, and the clause's name. OI-DH holds a private definer and, in its
-\ public wordlist, a word under that definer's clause name.
+\ public wordlist, a word under that definer's clause name. OI-ARM sets the exit
+\ hook (src/habu/layout.f EXIT-HOOK-CELL) to a word, OI-CR the hook that prints
+\ a newline, through OI-XT>N, the cast that reads an xt as its address: an
+\ undeclared cell holds no xt. The cast introduces no pointer or xt, so it
+\ needs no private section.
 : PRELUDE ( -- )
    GE-SRC-RESET
    s" : OI-TWO ( n n -- ) 2drop ;" GE-SRC-LINE
@@ -154,6 +158,9 @@ variable SPIN-U
    s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
    s" TYPED-VARIABLE OI-SHOWN [ -- ]" GE-SRC-LINE
    s" : OI-SHOW ( -- ) OI-SHOWN @ execute ; immediate  s~ OI-SHOW~ 0 parse-imm" QLINE
+   s" : OI-CR ( -- ) cr ;" GE-SRC-LINE
+   s" CAST: OI-XT>N ( [ R -- S ] -- n )" GE-SRC-LINE
+   s" : OI-ARM ( [ -- ] -- ) OI-XT>N data-base EXIT-HOOK-CELL + ! ;" GE-SRC-LINE
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
@@ -670,7 +677,7 @@ variable WANT-RC
 \ EXIT-HOOK-CELL), does not run.
 : SEALED ( ptr u8 n -- ) {: t:ptr u:n :}
    GE-SRC-RESET
-   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" ' " GE-SRC+ t u GE-SRC-LINE
    s" oi-sealed.f" BOTH
    ENGINE-ERROR:SEAL-PACKAGE t u GE-EXPECT-RC
@@ -1163,7 +1170,7 @@ variable WANT-RC
 \ is fail-closed: the exit hook the program armed, `cr`, does not run.
 : ARMED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
-   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" ' OI-CR OI-ARM" GE-SRC-LINE
    src srcu GE-SRC-LINE
    name nameu BOTH
    ENGINE-ERROR:SEAL-PACKAGE CASE$ GE-EXPECT-RC ;
@@ -1350,7 +1357,7 @@ variable WANT-RC
    s" 1 set-tier package OI-EX public get-current prot-wid-add : OI-T" s" oi-head-protected-current.f" ARMED
    S\" hb: cannot publish into protected word: OI-T\n" CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
-   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" 1 set-tier 0 data-base NCOMP-DISPATCH:XT-CELL + ! : OI-T ( -- )" GE-SRC-LINE
    s" oi-head-dispatch-unset.f" BOTH
    ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
@@ -1422,14 +1429,14 @@ variable WANT-RC
 : PENDING-HOOK ( -- )
    GE-SRC-RESET
    UNIT-START
-   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
+   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK OI-ARM" QLINE
    s" 1 set-tier : OI-X ( -- ) 1" GE-SRC-LINE
    s" oi-pending-hook.f" BOTH
    S\" 7\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-X at " S\" oi-pending-hook.f:3\n" DIED-AT
    GE-SRC-RESET
    UNIT-START
-   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK data-base EXIT-HOOK-CELL + !" QLINE
+   s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK OI-ARM" QLINE
    s" s~ : OI-X ( -- ) 1~ evaluate" QLINE
    s" oi-pending-hook-jit.f" BOTH
    S\" 7\n" CASE$ GE-EXPECT-OUT
@@ -1817,7 +1824,7 @@ variable WANT-RC
    GE-SRC-RESET
    s" 1 set-tier : OI-X ( n -- n )" GE-SRC-LINE
    s"   1 + ;" GE-SRC-LINE
-   s" 41 OI-X . OI-ENDED. ' OI-X dup 1 + code-origin ." GE-SRC-LINE
+   s" 41 OI-X . OI-ENDED. ' OI-X OI-XT>N dup 1 + code-origin ." GE-SRC-LINE
    s" trusted: OI-T ( -- n ) 5 ; OI-T . OI-ENDED." GE-SRC-LINE
    s" package OI-P public : OI-Y ( -- n ) 3 ; ;package OI-P:OI-Y ." GE-SRC-LINE
    s" : OI-DEF ( n -- ) create , does> ( -- n ) @ ; OI-ENDED. 7 OI-DEF OI-K OI-K ." GE-SRC-LINE
@@ -1842,7 +1849,7 @@ variable WANT-RC
 : SEMI-DISPATCH-UNSET ( -- )
    GE-SRC-RESET
    s" s~ TRUSTED: OI-UNSET ( -- ) 0 data-base NCOMP-DISPATCH:XT-CELL + ! ; immediate~ evaluate" QLINE
-   s" s~ OI-UNSET~ 0 parse-imm ' cr data-base EXIT-HOOK-CELL + !" QLINE
+   s" s~ OI-UNSET~ 0 parse-imm ' OI-CR OI-ARM" QLINE
    s" 1 set-tier : OI-T ( -- ) OI-UNSET ;" GE-SRC-LINE
    s" oi-semi-dispatch-unset.f" BOTH
    ENGINE-ERROR:AOT-SEED CASE$ GE-EXPECT-RC
@@ -2016,7 +2023,7 @@ variable WANT-RC
 \ absent and nothing stays pending.
 : CAST-REGISTRAR ( -- )
    GE-SRC-RESET
-   s" ' cr data-base EXIT-HOOK-CELL + !" GE-SRC-LINE
+   s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" 1 set-tier cast: OI-X ( n -- ptr u8 )" GE-SRC-LINE
    s" oi-cast-mint.f" BOTH
    67 CASE$ GE-EXPECT-RC

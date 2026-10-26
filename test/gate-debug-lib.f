@@ -499,13 +499,15 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ An engine-text target can share a page with patch32 itself: opening that
 \ page RW removes execute permission from the patcher's next instruction.
 \ Refusal must precede both the patch and publication of a breakpoint slot.
+\ atomic-cas is a primitive, whose tick is an opaque xt no typed slot admits, so
+\ the child stores it through a TRUSTED setter.
 : GDB-BREAKPOINT-REFUSAL ( -- )
    GE-HB-RESET GE-SRC-RESET
    s" require src/habu/code-bytes.f" GE-SRC-LINE
    s" require src/habu/debug.f" GE-SRC-LINE
    s" package GDBBP private" GE-SRC-LINE
    s" : VALID ( n -- n ) 1+ ; TYPED-VARIABLE VALID-XT [ n -- n ] ' VALID VALID-XT !" GE-SRC-LINE
-   s" TYPED-VARIABLE TARGET-XT [ n n ptr n -- n ] ' atomic-cas TARGET-XT !" GE-SRC-LINE
+   s" TYPED-VARIABLE TARGET-XT [ n n ptr n -- n ] TRUSTED: TARGET-SET ( -- ) ['] atomic-cas TARGET-XT ! ; TARGET-SET" GE-SRC-LINE
    s" TYPED-VARIABLE NONE-XT [ n -- n ]" GE-SRC-LINE
    s" CAST: TARGET>ADDR ( [ n n ptr n -- n ] -- n )" GE-SRC-LINE
    s" create SAVED-SLOTS DEBUG:MAXBP 32 * allot create SAVED-CODE 16 allot" GE-SRC-LINE

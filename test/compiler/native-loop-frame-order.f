@@ -89,7 +89,7 @@ variable TOTAL
    then
    found pattern panel heading first at title height AR-SAVE ;
 
-' SCAN dup 4 + code-origin constant SCAN-TIER
+' SCAN TEST:XT>N dup 4 + code-origin constant SCAN-TIER
 
 public
 : CASES ( -- )

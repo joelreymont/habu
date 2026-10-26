@@ -182,6 +182,6 @@ public
 
 T-RESET
 s" the nested loop subject was compiled at tier 1" T-LABEL
-' NJ-FIXTURE:NJ-IJ dup 4 + code-origin 1 T=
+' NJ-FIXTURE:NJ-IJ TEST:XT>N dup 4 + code-origin 1 T=
 NJ-TEST:RUN
 T-REPORT

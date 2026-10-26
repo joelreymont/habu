@@ -9,6 +9,10 @@ public
 : ANCHOR ( -- ) ;
 private
 
+\ The subject reads ANCHOR's xt as raw bits; it does not load src/lib/test.f, so
+\ TEST:XT>N is not available to the maker that loads it.
+CAST: XT>N ( [ R -- S ] -- n )
+
 : TEXT+ ( ptr u8 n -- ) SOURCE CODEGEN:APPEND-STRING ;
 : BYTE+ ( n -- ) SOURCE CODEGEN:APPEND-BYTE ;
 : DEC+ ( n -- ) SOURCE CODEGEN:APPEND-DECIMAL ;
@@ -17,16 +21,16 @@ private
    S\" \\x" TEXT+ dup 4 rshift HEX+ HEX+ ;
 
 public
-\ The untyped top-level fixture passes ' ANCHOR as raw bits deliberately.
-: RAW ( n -- ) LIT-CELL ! ;
+\ The control stores ANCHOR's xt as raw bits deliberately.
+: RAW ( [ -- ] -- ) XT>N LIT-CELL ! ;
 : VALUE ( -- n ) LIT-CELL @ ;
 
 \ Repeat the pointer at all eight alignments. Exactly one block puts it in
 \ an aligned DATA cell regardless of where the literal pool places the body.
 \ Expected bytes are separate small immediates, so the image verifies that
 \ literal storage survives capture without relocating its pointer-shaped text.
-: BODY-SOURCE ( n -- ptr u8 n )
-   {: value:n :}
+: BODY-SOURCE ( [ -- ] -- ptr u8 n )
+   XT>N {: value:n :}
    SOURCE CODEGEN:RESET
    S\" : LIT$ ( -- ptr u8 n ) S\\\q " TEXT+
    8 0 ?do

@@ -112,6 +112,6 @@ public
 
 T-RESET
 s" the aliasing subject was compiled at tier 1" T-LABEL
-' DKA:POKED dup 4 + code-origin 1 T=
+' DKA:POKED TEST:XT>N dup 4 + code-origin 1 T=
 NDSA-TEST:RUN
 T-REPORT
