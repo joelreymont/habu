@@ -502,8 +502,9 @@ $4398 constant DECLARED-LOG-ADDR-CELL
 24 constant DECLARED-LOG-SIG-U-OFF
 32 constant DECLARED-LOG-SLOT
 8  constant DECLARED-LOG-SLOTS-REL
-\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$67D8
-\ is USER-BAND (src/lib/task.f TASK:+USER), $67D8..$73D8 FS-MUT-ABI, $73D8..$7910
+\ USER-REGION-END ends native's library arena (src/habu/layout.f): $5300..$67D0
+\ is USER-BAND (src/lib/task.f TASK:+USER), $67D0..$67D8 MEM-ABI (src/lib/memory.f
+\ WITH-BYTES scope head), $67D8..$73D8 FS-MUT-ABI, $73D8..$7910
 \ FS-ABI, $7910..$7BF8 FMT-ABI and $7BF8..$8000 STRING-ABI. None of their
 \ libraries is in this seed's emitted prefix (PFX-LOAD-STDLIB-FILES loads only
 \ src/lib/prelude.f and src/lib/errors.f from src/lib/). The stage2 build loads src/lib/fmt.f

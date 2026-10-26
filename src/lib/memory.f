@@ -3,8 +3,11 @@
 \ STORAGE CLASS. CALLER-OWNED: every mapping ALLOC-BYTES, ALLOC-CELLS,
 \ ALLOC-64K and ALLOC-GUARDED hand back belongs to the caller, who releases it,
 \ and the module keeps nothing about it. The one exception is WITH-BYTES: its
-\ quotation-scoped mapping stack (WB-DEPTH and the two dynamic buffers beside
-\ it) is PROCESS-WIDE, so WITH-BYTES scopes nest per image and not per task.
+\ scope chain is TASK-LOCAL, one head cell in the MEM-ABI band of the running
+\ task's DATA region (src/habu/layout.f), so each task's scopes nest and unwind
+\ on their own. Known limit: a task ended by TASK:PAUSE under HALT runs no
+\ `finally` cleanup (src/lib/task.f PAUSE), so the mappings of its open scopes
+\ stay mapped until the process exits.
 \
 \ These mappings are for runtime-sized storage (source bundles, JSONL streams,
 \ report tables, 64K scratch buffers); `create ... allot` is for
@@ -265,76 +268,66 @@ public
    SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
 
 \ ---- quotation-scoped owned mapping --------------------------------------------
-\ Each scope records a typed pointer and validated extent. The null pointer is
-\ its pending state until allocation succeeds. Grow before entering the scope;
-\ the outer cleanup also releases storage after a partial reserve failure.
+\ Each WITH-BYTES mapping starts with a frame header: the enclosing scope's
+\ mapping (or null) and this mapping's whole extent. The body's bytes follow
+\ the header, so the base the body gets is FRAME-BYTES into a fresh mapping:
+\ cell-aligned, not page-aligned. The running task's MEM-ABI head cell names
+\ the innermost frame. A scope is linked only after its allocation succeeded,
+\ so a refused allocation leaves nothing to release; inner scopes unwind
+\ first, also under a throw, so the release always finds its own frame at the
+\ head. The release unlinks before it unmaps.
 private
 
-DYNAMIC-BUFFER WB-BUFFERS ptr u8
-DYNAMIC-BUFFER WB-LENGTHS NUM:alloc-byte-len
-variable WB-DEPTH
+STRUCTURE frame DERIVE addr
+   FIELD prev ptr u8
+   FIELD extent n
+;STRUCTURE
 
-\ a declared head cell as the bytes a span visitor reads; the consumer only reads (src/habu/aot-owned-cells.f CLAIM)
-CAST: HEAD-BYTES ( ptr ptr u8 -- ptr u8 )
+CAST: >HEAD ( ptr n -- ptr ptr frame )
+CAST: FRAME>BYTES ( ptr frame -- ptr u8 )
+CAST: >FRAME ( ptr u8 -- ptr frame )
 
+: HEAD ( -- ptr ptr frame )
+   data-base MEM-ABI:HEAD-OFF + >HEAD ;
 
-: WB-RESERVE ( -- )
-   WB-DEPTH @ 1+ dup WB-BUFFERS-RESERVE WB-LENGTHS-RESERVE ;
+: NEW-FRAME ( n -- ptr frame )
+   MEM-ALLOC-PTR >FRAME ;
 
+: FRAME>BODY ( ptr frame -- ptr u8 )
+   FRAME>BYTES FRAME-BYTES + ;
 
-: WB-CACHE-RELEASE ( -- )
-   WB-DEPTH @ 0= if WB-BUFFERS-RELEASE WB-LENGTHS-RELEASE then ;
+\ The mapping extent for a body of `len` bytes; one whose header would carry
+\ it past MEM-MAX-N is refused as a size.
+: SCOPE-EXTENT ( NUM:alloc-byte-len -- n )
+   ALLOC-BYTES>N
+   dup MEM-MAX-N FRAME-BYTES - > if drop E-MEM-SIZE throw then
+   FRAME-BYTES + ;
 
+: PUSH-FRAME ( ptr frame n -- )
+   {: extent:n :}
+   HEAD @ FRAME>BYTES over FRAME-PREV !
+   extent over FRAME-EXTENT !
+   HEAD ! ;
+
+: WB-ENTER ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
+   dup SCOPE-EXTENT {: extent:n :}
+   extent NEW-FRAME
+   dup extent PUSH-FRAME
+   FRAME>BODY swap ;
 
 : WB-LEAVE ( -- )
-   WB-DEPTH @ 1- {: at:n :}
-   at WB-BUFFERS @ dup 0= if drop else
-      at WB-LENGTHS @ RELEASE-BYTES
-   then
-   at WB-DEPTH ! ;
+   HEAD @
+   dup FRAME-PREV @ >FRAME HEAD !
+   dup FRAME>BYTES swap FRAME-EXTENT @ RELEASE-RANGE ;
 
-
-: WB-ALLOC-RUN ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
-   {: body :}
-   ALLOC-BYTES
-   over WB-DEPTH @ 1- WB-BUFFERS !
-   body execute ;
-
-
-: WB-RUN ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
-   {: body :}
-   dup WB-DEPTH @ WB-LENGTHS !
-   NULL-PTR WB-DEPTH @ WB-BUFFERS !
-   1 WB-DEPTH +!
-   body [: WB-ALLOC-RUN ;] [: WB-LEAVE ;] finally ;
-
-
-: WB-SCOPE ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
-   [: WB-RESERVE WB-RUN ;] [: WB-CACHE-RELEASE ;] finally ;
+: WB-BODY ( R ptr u8 NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
+   execute ;
 
 public
 
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
-   WB-SCOPE ;
-
-\ THE CELLS THE WITH-BYTES SCOPE STACK IS, handed one span at a time, with its
-\ byte extent, to a claim the caller supplies. Depth zero, no cached mapping and
-\ no cached capacity is what every runtime instance starts at - the zero a fresh
-\ anonymous mapping already holds - so a stripped AOT image owns these outright
-\ instead of being refused for naming them (src/habu/aot-owned-cells.f, dot
-\ habu-give-a-stripped-c1a6664a). WB-BUFFERS and WB-LENGTHS are DYNAMIC-BUFFER
-\ declarations: code spells each one's head cell and its control block, because
-\ the generated words pass `NAME#base NAME#ctl` (src/core/layout-buffer.f
-\ DBUF-SOURCE), and both start empty, where the reserve on first use starts.
-\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE: this file is baked
-\ into the engine, its cells are private, and a private cell of a baked package
-\ stays private - so it hands out these and nothing else.
-: OWNED-CELLS ( [ ptr u8 n -- ] -- ) {: claim :}
-   WB-BUFFERS#base HEAD-BYTES CELL claim execute
-   WB-BUFFERS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   WB-LENGTHS#base HEAD-BYTES CELL claim execute
-   WB-LENGTHS#ctl BYTE-VIEW DYNAMIC-STORAGE:CONTROL-CELLS cells claim execute
-   WB-DEPTH BYTE-VIEW CELL claim execute ;
+   {: body :}
+   WB-ENTER body [: WB-BODY ;] [: WB-LEAVE ;] finally ;
 
 private
 

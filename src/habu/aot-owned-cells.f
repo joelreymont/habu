@@ -227,23 +227,13 @@ private
 \ ENV-INPUT's observer starts empty: source tracking belongs to the build process.
 \
 \ The dynamic-storage registry (src/core/dynamic-storage.f), which every
-\ DYNAMIC-BUFFER declaration - and so src/lib/memory.f MEM:WITH-BYTES - reaches, is
-\ named through its own package. Its four cells are private and stay private: a
+\ DYNAMIC-BUFFER declaration reaches, is named through its own package. Its four
+\ cells are private and stay private: a
 \ private word of a baked package is reachable from outside it neither by
 \ qualified name nor by reopening the package (measured 2026-09-18: E-UNDEFINED
 \ for both spellings). DYNAMIC-STORAGE:OWNED-CELLS hands each of the four to the
 \ claim below in turn, which keeps the rule intact - a cell is on this list
 \ because a name put it there.
-\
-\ src/lib/memory.f's WITH-BYTES scope stack (MEM:OWNED-CELLS) is on the list for the
-\ same two reasons: the file is baked into the engine, so its cells sit below
-\ every window, and its spans - the two DYNAMIC-BUFFER heads, their control
-\ blocks and the scope depth - are correct at zero in a runtime that has
-\ allocated nothing yet. MEM:OWNED-CELLS and IMAGE-LIFECYCLE:OWNED-CELLS hand
-\ each span with its byte extent, since a control block is four cells.
-\ The registry claim above is not enough on its own: a WITH-BYTES call names these
-\ cells before it ever reaches DYNAMIC-STORAGE (measured 2026-09-18: with only the
-\ registry claimed, the refusal moved 400 bytes past MUTEX, to WB-BUFFERS).
 \
 \ APP-ENTRY:XT-CELL (src/habu/layout.f) is the cell that says THIS PROCESS IS AN
 \ APPLICATION AND NOT THE ENGINE. An image saved with APP-IMAGE:START! writes the
@@ -337,7 +327,6 @@ public
    ENV-DATA-PTR IMAGE-BASE
    ENV-CELLS
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
-   [: FRESH-BYTES ;] MEM:OWNED-CELLS
    [: FRESH-BYTES ;] IMAGE-LIFECYCLE:OWNED-CELLS
    data-base APP-ENTRY:XT-CELL + ENTRY-XT
    data-base EXIT-HOOK-CELL + FRESH

@@ -8,6 +8,7 @@ require src/lib/memory.f
 require src/lib/test/outcome.f
 require src/lib/process-fork.f
 require src/lib/test/subject.f
+require src/lib/task.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -250,10 +251,11 @@ CAST: MEMT-IC>RAW ( NUM:item-count -- n )
    MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
 \ ---- typed release and range unmap ---------------------------------------------
-\ White-box suite block: these fixtures and their runner live inside package MEM
-\ beside the WITH-BYTES fixtures below, so package words are called bare and the
-\ suite owns a real package tail instead of a raw global stem.
-package MEM
+\ These fixtures and their runner live in package MEMT beside the WITH-BYTES
+\ fixtures below; MEM's public words are imported for bare calls, and the suite
+\ owns a real package tail instead of a raw global stem.
+using MEM
+package MEMT
 private
 
 $86 constant MEMT-FAULT-RC
@@ -363,28 +365,28 @@ create RBT-ERR RBT-CAP allot
    RBT-UNMAPPED-BASE MEM-64K 3 * 1 - + c@ drop ;
 
 : RBT-RELEASE-FIRST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-RELEASE-FIRST ;package" ;
+   s" package MEMT RBT-RELEASE-FIRST ;package" ;
 
 : RBT-RELEASE-LAST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-RELEASE-LAST ;package" ;
+   s" package MEMT RBT-RELEASE-LAST ;package" ;
 
 : RBT-UNMAP-FIRST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-FIRST ;package" ;
+   s" package MEMT RBT-UNMAP-FIRST ;package" ;
 
 : RBT-UNMAP-LAST-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-LAST ;package" ;
+   s" package MEMT RBT-UNMAP-LAST ;package" ;
 
 : RBT-UNMAP-LEFT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-LEFT ;package" ;
+   s" package MEMT RBT-UNMAP-LEFT ;package" ;
 
 : RBT-UNMAP-RIGHT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-UNMAP-RIGHT ;package" ;
+   s" package MEMT RBT-UNMAP-RIGHT ;package" ;
 
 : RBT-ONE-GUARDS-SRC ( -- ptr u8 n )
-   s" package MEM RBT-ONE-GUARDS ;package" ;
+   s" package MEMT RBT-ONE-GUARDS ;package" ;
 
 : RBT-ONE-FAULT-SRC ( -- ptr u8 n )
-   s" package MEM RBT-ONE-FAULT ;package" ;
+   s" package MEMT RBT-ONE-FAULT ;package" ;
 
 \ Runs the source in a subject child and asserts its exit code, leaving the
 \ stdout and stderr lengths.
@@ -450,6 +452,7 @@ TEST-ALLOC-ROLES
 RBT-ACTION
 
 ;package
+;using
 
 execute
 
@@ -494,11 +497,14 @@ MEM-FATAL-TEST:RUN
 
 \ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
 \ Child processes prove release through OS-enforced mapping accessibility.
-package MEM
+using MEM
+package MEMT
 private
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
-E-LAYOUT-BOUNDS constant E-WBT-FRAME-BOUNDS
+TASK:MIN-STACK TASK:TASK WBT-PEER
+TASK:SEMAPHORE WBT-PEER-IN
+TASK:SEMAPHORE WBT-OWN-MARKED
 
 : WBT-PROBE-RELEASED ( -- )
    2 close
@@ -581,8 +587,9 @@ E-LAYOUT-BOUNDS constant E-WBT-FRAME-BOUNDS
    MEMT-MARK-A buf c!
    WBT-PROBE-RELEASED ;
 
+\ A size the scope header still fits beside, so the refusal is the OS mapping's.
 : WBT-ALLOC-FAIL ( -- )
-   MEM-MAX-N BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
+   MEM-MAX-N 2 / BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
 
 
 : WBT-ALLOC-RETRY ( ptr u8 NUM:alloc-byte-len -- )
@@ -592,6 +599,41 @@ E-LAYOUT-BOUNDS constant E-WBT-FRAME-BOUNDS
    outer c@ MEMT-MARK-A T=
    WBT-RESULT MEMT-MARK-A T= ;
 
+\ Scopes nest per task: a peer task leaving its own scope leaves this task's
+\ open mapping intact. Two semaphores and the join fix the order: the peer
+\ opens its scope, this task opens its own and marks it, the peer leaves and
+\ ends, and only then does this task read its mark. A process-wide scope stack
+\ would release this task's mapping when the peer left, so the read faults.
+: WBT-PEER-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   MEMT-MARK-Z buf c!
+   WBT-PEER-IN TASK:SIGNAL
+   WBT-OWN-MARKED TASK:WAIT
+   buf c@ TASK:RETURN ;
+
+: WBT-PEER-WORK ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-PEER-BODY ;] WITH-BYTES ;
+
+: WBT-OWN-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   MEMT-MARK-A buf c!
+   WBT-OWN-MARKED TASK:SIGNAL
+   WBT-PEER TASK:JOIN MATCH result
+      ok OF MEMT-MARK-Z <> if E-PRIMARY throw then ENDOF
+      err OF drop E-PRIMARY throw ENDOF
+   ;MATCH
+   buf c@ MEMT-MARK-A <> if E-PRIMARY throw then ;
+
+: WBT-TWO-TASK-CHILD ( -- )
+   0 WBT-PEER-IN TASK:SEMAPHORE-INIT
+   0 WBT-OWN-MARKED TASK:SEMAPHORE-INIT
+   ['] WBT-PEER-WORK WBT-PEER TASK:ACTIVATE
+   WBT-PEER-IN TASK:WAIT
+   MEM-64K BYTES-ALLOC-LEN [: WBT-OWN-BODY ;] WITH-BYTES
+   WBT-PEER-IN TASK:SEMAPHORE-DESTROY
+   WBT-OWN-MARKED TASK:SEMAPHORE-DESTROY
+   MEMT-EXIT0 ;
+
 
 : TEST-WITH-BYTES ( -- )
    T-RESET
@@ -600,21 +642,20 @@ E-LAYOUT-BOUNDS constant E-WBT-FRAME-BOUNDS
    [: WBT-INNER-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-OUTER-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-RETAINED-CHILD ;] MEMT-FORK-CLEAN
+   [: WBT-TWO-TASK-CHILD ;] MEMT-FORK-CLEAN
    [: WBT-ALLOC-FAIL ;] E-MEM-MAP TTHROWSQ
    MEM-64K BYTES-ALLOC-LEN [: WBT-ALLOC-RETRY ;] WITH-BYTES
-   WB-DEPTH @ 0 T=
-   [: 0 WB-BUFFERS drop ;] E-WBT-FRAME-BOUNDS TTHROWSQ
-   [: 0 WB-LENGTHS drop ;] E-WBT-FRAME-BOUNDS TTHROWSQ
    WBT-RESULT MEMT-MARK-A T=
    T-REPORT ;
 
 TEST-WITH-BYTES
 
 ;package
+;using
 
 \ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
-package MEM
+package MEMT
 private
 
 \ A released guarded stack must leave its neighbours mapped: the kernel's

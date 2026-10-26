@@ -1333,9 +1333,7 @@ SUITE compiler-compile-floor-gate
    test/compile-floor-gate.f
 ;SUITE
 
-\ src/lib/memory-test.f is not here: its WITH-BYTES frame audit reopens package MEM
-\ and reads the frame cells directly, which no shipped image has a name for.
-WHITEBOX-SUITE memory
+SUITE memory
    src/lib/memory-test.f
 ;SUITE
 

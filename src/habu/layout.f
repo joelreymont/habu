@@ -951,7 +951,7 @@ $47E0 constant HEAP-START-CELL
 \ taking it, and read back as zero out of a booted engine. The run above
 \ BOOT-LAYOUT:HEAP-START-CELL that reads free in the source is NOT: src/habu/
 \ stack-abi.f already owns $47E8..$4810, and USER-BAND (from $5300 up to
-\ FS-MUT-ABI:START) is what src/lib/task.f `+USER` hands out. This band ends at
+\ MEM-ABI:START) is what src/lib/task.f `+USER` hands out. This band ends at
 \ $660 and leaves the word-frame lane's $7D0/$7D8 and the $3800 null cell
 \ untouched. Every cell is below $7FF8 -- the ceiling for a cell a compiled
 \ routine names directly as `DATA <off> LDR`, which the funnel's first
@@ -1992,11 +1992,30 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
+\ MEM-ABI is src/lib/memory.f's WITH-BYTES scope head: one cell holding the
+\ running task's innermost live scope mapping, 0 when none is open. Each
+\ mapping's header links the enclosing one, so this cell is the whole per-task
+\ chain and nesting has no bound. memory.f is baked into the engine, so it
+\ takes a declared band. It costs a bootstrap, as FS-MUT-ABI does: the build
+\ host compiles src/habu/snap-lib.f, which names MEM-ABI:START, so an engine
+\ that predates this band dies `E-UNDEFINED MEM-ABI:START`, rc 70, and it lands
+\ through a stage engine built from this declaration alone. A region is a
+\ fresh zeroed mapping, so every task, and every stripped image, starts with no
+\ scope open.
+\ Carved directly below FS-MUT-ABI, whose start is a cell boundary.
+package MEM-ABI
+public
+1 cells constant BYTES
+FS-MUT-ABI:START constant END
+END BYTES - constant START
+START constant HEAD-OFF
+;package
+
 \ USER-BAND is what src/lib/task.f `TASK:+USER` hands out, base and bound both.
 package USER-BAND
 public
 TXN-STATE-OFF TXN-STATE-LEN + constant START
-FS-MUT-ABI:START constant END
+MEM-ABI:START constant END
 ;package
 
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---

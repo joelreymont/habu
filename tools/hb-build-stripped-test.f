@@ -64,8 +64,9 @@ package HB-BUILD-CLI
 \ THE ENGINE RUNTIME CELLS A STRIPPED IMAGE OWNS, all in one program: the
 \ environment (an explicitly set variable and an inherited one, both through
 \ GETENV, whose ENV-DATA-PTR is a baked engine cell below every
-\ window), the kernel's argv, and src/lib/memory.f's WITH-BYTES scope over the baked
-\ DYNAMIC-STORAGE registry. Each cell it reaches is named in
+\ window), the kernel's argv, and a src/lib/memory.f WITH-BYTES scope, whose head
+\ is the MEM-ABI band of the image's own fresh DATA region and so needs no claim.
+\ Each engine cell below the window it reaches is named in
 \ src/habu/aot-owned-cells.f, so the entry publishes or zeroes it by declaration
 \ and the closure walker admits it; nothing here is admitted for being scratch.
 \ The argv lines pin the APPLICATION convention: the image's own arguments start
@@ -221,8 +222,8 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-NOARG-EXPECTED$ T$= ;
 
 \ ... and the engine runtime cells the stripped entry OWNS are readable in the
-\ image: the environment (explicit and inherited), argv, and an allocation
-\ through the baked dynamic-storage registry. Before src/habu/aot-owned-cells.f
+\ image: the environment (explicit and inherited), argv, and a WITH-BYTES
+\ scope's mapping. Before src/habu/aot-owned-cells.f
 \ this program's GETENV access was refused. The walk reaches
 \ engine words the build stripped through the payload's span table, which the
 \ keyed linker image this build runs on reads at the address its own boot

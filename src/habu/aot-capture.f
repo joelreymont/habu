@@ -863,12 +863,12 @@ variable ACAP-ENTRY-N
 \ source call or named site in the engine can keep the row.
 \
 \ IT USED TO BE FOUR. MEM:WB-DEPTH, MEM:WB-BUFFERS and MEM:WB-LENGTHS were here
-\ for src/lib/memory-test.f's WITH-BYTES frame audit, which reopens package MEM and
-\ reads them to prove a completed WITH-BYTES left no frame behind. That was a
-\ whitebox suite asking the SHIPPED image for something the shipped image should
-\ not have to answer, and it is a WHITEBOX-SUITE now: it runs on the unsealed,
-\ unstripped engine test/whitebox-engine.f builds, which carries every name, and
-\ the product owes it nothing.
+\ for src/lib/memory-test.f's WITH-BYTES frame audit, which reopened package MEM
+\ and read them to prove a completed WITH-BYTES left no frame behind. That asked
+\ the SHIPPED image for something the shipped image should not have to answer.
+\ Those cells are gone: the scope chain is a per-task MEM-ABI head, and
+\ memory-test proves release through mapping accessibility, so the product owes
+\ the audit nothing.
 : ACAP-KEEP-PKG? ( n ptr u8 n -- bool ) {: k:n pa:ptr pu:n :}
    k ACAP-REC-DST 40 + ACAP-W32@ ACAP-REC-PKG {: na:ptr nu:n pub:bool found:bool :}
    found 0= if false exit then

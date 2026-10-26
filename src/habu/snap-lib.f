@@ -230,12 +230,17 @@ PTR-VARIABLE SND-A
 \ FS-ABI and FS-MUT-ABI hold only per-call filesystem scratch. Their path,
 \ stat and descriptor bytes describe the build process, not the application.
 \ Clear the copied bands, leaving caller-owned buffers and the live task alone.
-: SND-ZERO-FS-BAND ( n n -- ) {: off:n bytes:n :}
+: SND-ZERO-BAND ( n n -- ) {: off:n bytes:n :}
    bytes 0 ?do off i + SND-ZERO-CELL CELL +loop ;
 
 : SND-ZERO-FS-SCRATCH ( -- )
-   FS-MUT-ABI:START FS-MUT-ABI:BYTES SND-ZERO-FS-BAND
-   FS-ABI:START FS-ABI:BYTES SND-ZERO-FS-BAND ;
+   FS-MUT-ABI:START FS-MUT-ABI:BYTES SND-ZERO-BAND
+   FS-ABI:START FS-ABI:BYTES SND-ZERO-BAND ;
+
+\ MEM-ABI names the build process's open WITH-BYTES scope mappings, which the
+\ saved image does not own. Clear it so the image starts with no scope open.
+: SND-ZERO-MEM-SCOPE ( -- )
+   MEM-ABI:START MEM-ABI:BYTES SND-ZERO-BAND ;
 
 \ BODYLEN bounds the current definition text. A cached FILE replay can leave
 \ older source after that bound, while a cold compile writes a different tail.
@@ -434,6 +439,7 @@ PTR-VARIABLE SND-A
    SND-PTR SDL @ CHECKER-REG:RECORD-SNAPSHOT-COPY
    SND-ZERO-LIVE
    SND-ZERO-FS-SCRATCH
+   SND-ZERO-MEM-SCOPE
    SND-ZERO-BODY-TAIL
    SND-ZERO-POLICY
    SND-ZERO-WRITER

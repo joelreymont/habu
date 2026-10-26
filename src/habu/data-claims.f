@@ -259,6 +259,7 @@ create TAB
    STACK-ABI:LOOP-BASE-CELL           1 cells                 CLAIM STACK-ABI-LOOP-BASE
    TXN-STATE-OFF                      TXN-STATE-LEN           CLAIM TXN-STATE
    USER-BAND:START                    USER-BAND:END USER-BAND:START -  CLAIM USER-BAND
+   MEM-ABI:START                      MEM-ABI:BYTES           CLAIM MEM-ABI
    FS-MUT-ABI:START                   FS-MUT-ABI:BYTES        CLAIM FS-MUT-ABI
    FS-ABI:START                       FS-ABI:BYTES            CLAIM FS-ABI
    FMT-ABI:START                      FMT-ABI:BYTES           CLAIM FMT-ABI
