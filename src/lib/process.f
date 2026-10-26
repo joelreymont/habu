@@ -514,7 +514,7 @@ PROC-REAP-ARM-DEFAULT
 \ A child is killed for a reason of its caller's - a capture's deadline, an
 \ overflow, a refused reaper arm, a stop; a pty reap's expiry; a supervised
 \ session's teardown - and the caller acts on that reason: tools/check.f names
-\ a run past its deadline, and src/lib/process-pty-io.f TEARDOWN hands its slot
+\ a run past its deadline, and src/lib/process-pty-io.f's scope hands its slot
 \ back. A walk of the child's tree that throws there must not stand in for it,
 \ nor vanish, so stderr gets one line naming the walk's code and the caller
 \ goes on as it would have. The line is written a piece at a time from

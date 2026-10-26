@@ -5,13 +5,13 @@
 \ supervisor connected pipes, so the child engine never installed its line editor
 \ and a batch REPL stopped at the first refused definition with exit 70, and the
 \ handle exposed no child I/O. Both reproducers are the red-first cases here:
-\   - PIPE-STOPS: under SPAWN the refused definition ends the child; the line
+\   - PIPE-STOPS: under WITH-TARGET the refused definition ends the child; the line
 \     after it is never evaluated (no "42"), which is the batch contract;
-\   - TTY-RECOVERS: under SPAWN-TTY the child prints its prompt, refuses the same
+\   - TTY-RECOVERS: under WITH-TTY-TARGET the child prints its prompt, refuses the same
 \     definition, evaluates `6 7 * . cr`, answers 42 and prompts again;
 \ and both drive the child through PROCESS-PTY:WRITE-LINE / AWAIT-BYTES from
-\ outside the package, which used to be E-UNDEFINED. TREE-ENDS holds TEARDOWN
-\ to what the target started: it used to end the target's pid alone.
+\ outside the package, which used to be E-UNDEFINED. TREE-ENDS holds the scope's
+\ teardown to what the target started: it used to end the target's pid alone.
 \
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
 \
@@ -19,8 +19,8 @@
 \ never-seen facts are src/lib/pty-harness.f's. The reading step, the waits and
 \ their deadline are this file's own: the bytes come through the supervisor's
 \ linear handle, which cannot be handed to the module's own descriptor reader,
-\ and a deadline must tear that handle's target down before it throws
-\ (DEADLINE), which the harness's WAIT-AFTER-WITHIN does not.
+\ and a deadline shows what was read before it throws (DEADLINE), which the
+\ harness's WAIT-AFTER-WITHIN does not.
 
 require src/lib/errors.f
 require src/lib/fmt.f
@@ -45,7 +45,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 
 \ The engine under test: the gate's freshly built candidate when it exported
 \ one, else the running engine itself (src/lib/engine-candidate.f).
-: HB$ ( -- ptr u8 len )      ENGINE-CANDIDATE:PATH$ >LEN ;
+: HB$ ( -- ptr u8 n )        ENGINE-CANDIDATE:PATH$ ;
 
 : PROMPT$ ( -- ptr u8 n )    s" habu> " ;
 : ANYWHERE$ ( -- ptr u8 n )  s" " ;      \ an empty head: the tail may be anywhere
@@ -66,15 +66,13 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    s" read so far (" type ru FMT:.INT s"  bytes):" type cr ra ru type cr ;
 
 \ A clock that ends while the target still holds its side has not been answered
-\ YET: a deadline, not a wrong answer, so it asserts nothing. The linear handle
-\ cannot cross the throw, so the target is torn down here before the caller's
-\ wait is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); RUN stops the
-\ loop and lets it through, so the engine's report of it is the last line on
+\ YET: a deadline, not a wrong answer, so it asserts nothing. The caller's wait
+\ is named and E-PROC-TIMEOUT thrown (TEST-WAIT:EXPIRED); the scope tears the
+\ target down on the way out, and RUN stops the loop and lets it through, so the engine's report of it is the last line on
 \ stderr and the gate pool reads the row as a timeout (docs/gate.md
 \ "Reading a red run"). The caller has shown what it waited for.
-: DEADLINE ( process-pty-handle ptr u8 n -- ) {: name:ptr len:n :}
+: DEADLINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: name:ptr len:n :}
    READ-SO-FAR
-   PROCESS-PTY:TEARDOWN
    name len TEST-WAIT:EXPIRED ;
 
 \ What a wait waited for, and how long.
@@ -162,11 +160,9 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : ARITH$ ( -- ptr u8 n )    s" 6 7 * . cr" ;
 
 \ ---- red-first case 1: the batch REPL over pipes stops at the refusal --------
-: PIPE-STOPS ( -- )
+: PIPE-STOPS-BODY ( process-pty-handle -- process-pty-handle )
    WATCH-RESET
-   BUF-CLEAR
    s" 42" WATCH+ {: answered:watch :}   \ the claim below outlives every compaction
-   HB$ PROCESS-PTY:SPAWN
    PROCESS-PTY:LAUNCH
    BAD-DEF$ TELL
    ARITH$ TELL
@@ -174,30 +170,31 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    s" non-certified definition: tty-bad" EXPECT!
    EXPECT-EXIT
    DRAIN-ALL
-   answered NEVER-SEEN? TTRUE
-   PROCESS-PTY:TEARDOWN
+   answered NEVER-SEEN? TTRUE ;
+
+: PIPE-STOPS ( -- )
+   BUF-CLEAR
+   HB$ [: PIPE-STOPS-BODY ;] PROCESS-PTY:WITH-TARGET
    s" PASS: batch REPL over pipes stops at the refused definition" type cr ;
 
 \ ---- red-first case 2: the REPL on a pseudo-terminal refuses and recovers ----
 : TTY-RECOVERS ( -- )
    BUF-CLEAR
-   HB$ PROCESS-PTY:SPAWN-TTY
-   PROCESS-PTY:LAUNCH
-   ANYWHERE$ SETTLE
-   BAD-DEF$ TELL
-   s" tty-bad" EXPECT!
-   BUF-CLEAR
-   ARITH$ TELL
-   s" 42" PROMPT-AFTER!
-   PROCESS-PTY:ALIVE? TTRUE
-   PROCESS-PTY:TEARDOWN
+   HB$ [:
+      PROCESS-PTY:LAUNCH
+      ANYWHERE$ SETTLE
+      BAD-DEF$ TELL
+      s" tty-bad" EXPECT!
+      BUF-CLEAR
+      ARITH$ TELL
+      s" 42" PROMPT-AFTER!
+      PROCESS-PTY:ALIVE? TTRUE
+   ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: REPL on a pseudo-terminal refuses, recovers and prompts again" type cr ;
 
 \ A normal checked structure needs no TRUSTED seed. The same constructor and
 \ projection are refused as bare tokens and work inside a checked definition.
-: TTY-LAYOUT ( -- )
-   BUF-CLEAR
-   HB$ PROCESS-PTY:SPAWN-TTY
+: TTY-LAYOUT-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
    s" package PTYP public STRUCTURE point FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" TELL
@@ -207,8 +204,11 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    s" PTYP:FIRST-X . cr depth . cr" TELL
    S\" \r\n2\r\n" EXPECT!
    S\" \r\n0\r\n" PROMPT-AFTER!
-   PROCESS-PTY:ALIVE? TTRUE
-   PROCESS-PTY:TEARDOWN
+   PROCESS-PTY:ALIVE? TTRUE ;
+
+: TTY-LAYOUT ( -- )
+   BUF-CLEAR
+   HB$ [: TTY-LAYOUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
 
 \ An uncaught throw from inside run-in-stack reaches the tty REPL while the
@@ -234,9 +234,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 : STACK-DEFS$ ( -- ptr u8 n )
    s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TTY-POOL-CAP POOL-A ! : TTY-POOL ( -- ptr u8 ) POOL-A @ ; : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
-: TTY-STACK-RECOVERS ( -- )
-   BUF-CLEAR
-   HB$ PROCESS-PTY:SPAWN-TTY
+: TTY-STACK-RECOVERS-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
    STACK-DEFS$ TELL
@@ -253,13 +251,16 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    BUF-CLEAR
    s" 1 2 3 4 . . . . depth . cr" TELL
    S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" PROMPT-AFTER!
-   PROCESS-PTY:ALIVE? TTRUE
-   PROCESS-PTY:TEARDOWN
+   PROCESS-PTY:ALIVE? TTRUE ;
+
+: TTY-STACK-RECOVERS ( -- )
+   BUF-CLEAR
+   HB$ [: TTY-STACK-RECOVERS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
 
 \ ---- a supervised child's tree ends with it ---------------------------------
 \ The target starts a sleeper on its own terminal and prints 48879, then the
-\ sleeper's pid. TEARDOWN used to kill the target's pid alone, and the sleeper,
+\ sleeper's pid. Teardown used to kill the target's pid alone, and the sleeper,
 \ leading a group of its own, ran out its 30 s under init (dot
 \ habu-kill-a-pty-1841a310). It ends with the target, and init reaps it.
 : SLEEPER$ ( -- ptr u8 n )
@@ -293,18 +294,19 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
       PROBE-MS >MS TASK:SLEEP
    again ;
 
-: TREE-ENDS ( -- )
-   BUF-CLEAR
-   HB$ PROCESS-PTY:SPAWN-TTY
+: TREE-ENDS-BODY ( process-pty-handle -- n process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
    s" require src/lib/process-argv.f" TELL
    s"  ok" SETTLE
    SLEEPER$ TELL
    s" 48879" PROMPT-AFTER!
-   SLEEPER-PID {: pid:n :}
+   SLEEPER-PID swap ;
+
+: TREE-ENDS ( -- )
+   BUF-CLEAR
+   HB$ [: TREE-ENDS-BODY ;] PROCESS-PTY:WITH-TTY-TARGET {: pid:n :}
    pid 0 > TTRUE
-   PROCESS-PTY:TEARDOWN
    pid GONE-MS GONE-WITHIN? TTRUE
    s" PASS: teardown ends what the target started" type cr ;
 
@@ -316,9 +318,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 \ `s" habu> " EXPECT!` takes, and reads append in order, so such a wait can
 \ return before the child has evaluated anything -- while the barrier's prompt
 \ is a later one that only the finished line could print.
-: ECHO-PROMPT-REJECTED ( -- )
-   BUF-CLEAR
-   HB$ PROCESS-PTY:SPAWN-TTY
+: ECHO-PROMPT-REJECTED-BODY ( process-pty-handle -- process-pty-handle )
    PROCESS-PTY:LAUNCH
    ANYWHERE$ SETTLE
    ARITH$ TELL
@@ -328,8 +328,11 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    echo-at 0 >= TTRUE                      \ a bare prompt wait had a prompt to take
    echo-at ans-at < TTRUE                  \ and it was the editor's, ahead of the answer
    s" 42" PROMPT$ FIND-AFTER ans-at > TTRUE   \ the barrier took one that follows it
-   PROCESS-PTY:ALIVE? TTRUE
-   PROCESS-PTY:TEARDOWN
+   PROCESS-PTY:ALIVE? TTRUE ;
+
+: ECHO-PROMPT-REJECTED ( -- )
+   BUF-CLEAR
+   HB$ [: ECHO-PROMPT-REJECTED-BODY ;] PROCESS-PTY:WITH-TTY-TARGET
    s" PASS: the prompt barrier is not answered by the echo's own prompt" type cr ;
 
 : CASES ( -- )

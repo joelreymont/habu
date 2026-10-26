@@ -32,11 +32,11 @@
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, and each
 \ sleeper died of SIGKILL and was reaped; and here, that the walker's stderr is
 \ one line per capture naming the refused walk's E-PROC-OUTPUT.
-\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. TEARDOWN kills the
-\     session target with its tree (src/lib/process-pty-io.f IO-KILL-REAP),
-\     and a throw out of it would strand the linear teardown token and leak
-\     the slot.
-\ Asserted by a third walker, `pty`, under the listing denial: TEARDOWN
+\  5. A REFUSED WALK THAT STRANDS A SUPERVISED SESSION. The end of a
+\     PROCESS-PTY:WITH-TARGET scope kills the session target with its tree
+\     (src/lib/process-pty-io.f IO-KILL-REAP), and a throw out of it would
+\     strand the linear teardown token and leak the slot.
+\ Asserted by a third walker, `pty`, under the listing denial: the scope
 \ returns and the target is reaped; and here, that its stderr names the one
 \ refused walk.
 \
@@ -152,10 +152,10 @@ variable TARGET
 
 : PTY-WALK ( -- )
    T-RESET
-   s" /usr/bin/true" >LEN PROCESS-PTY:SPAWN
-   PROCESS-PTY:LAUNCH
-   PROCESS-PTY:TARGET PID>N TARGET !
-   PROCESS-PTY:TEARDOWN
+   s" /usr/bin/true" [:
+      PROCESS-PTY:LAUNCH
+      PROCESS-PTY:TARGET PID>N TARGET !
+   ;] PROCESS-PTY:WITH-TARGET
    s" refused: a torn-down session's target was reaped" T-LABEL
    TARGET @ 0 kill-errno ESRCH# negate T=
    T-REPORT ;

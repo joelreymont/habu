@@ -169,10 +169,13 @@ LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
    dup UNPACK-IDX LIVE@ if E-PROC-PTY-HANDLE throw then
    dup UNPACK-IDX DRAIN@ if E-PROC-PTY-HANDLE throw then ;
 
-: OPEN-HANDLE ( process-pty-handle -- n )
-   HANDLE>N OPEN-RAW
+: OPEN-LIVE ( n -- n )
+   OPEN-RAW
    dup UNPACK-IDX LIVE@ 0= if E-PROC-PTY-HANDLE throw then
    dup UNPACK-IDX DRAIN@ if E-PROC-PTY-HANDLE throw then ;
+
+: OPEN-HANDLE ( process-pty-handle -- n )
+   HANDLE>N OPEN-LIVE ;
 
 : OPEN-TEARDOWN ( process-pty-teardown -- n )
    TEARDOWN>N OPEN-RAW
@@ -241,12 +244,18 @@ LINEAR: TEARDOWN>N ( process-pty-teardown -- n )
    -1 >FD idx GATE!
    gate ;
 
-: TAKE ( process-pty-handle -- process-pty-teardown )
-   OPEN-HANDLE {: raw:n :}
+\ Begin a live slot's teardown from its raw handle number: the scope that owns
+\ a handle keeps that number where its cleanup can read it, because the token
+\ itself does not survive a throw out of the scope's body.
+: TAKE-RAW ( n -- process-pty-teardown )
+   OPEN-LIVE {: raw:n :}
    raw UNPACK-IDX {: idx:idx :}
    false idx LIVE!
    true idx DRAIN!
    raw N>TEARDOWN ;
+
+: TAKE ( process-pty-handle -- process-pty-teardown )
+   HANDLE>N TAKE-RAW ;
 
 : TEARDOWN-IDX ( process-pty-teardown -- process-pty-teardown idx )
    OPEN-TEARDOWN {: raw:n :}

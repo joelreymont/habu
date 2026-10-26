@@ -7,8 +7,14 @@
 \     teardown reaps it the same signal reports -ESRCH (gone), so the supervisor
 \     distinguishes existence from -EPERM;
 \   - teardown erases every handle field exactly once (a clean TEARDOWN-DONE is the
-\     registry's own proof it drained) and frees the slot, so more spawn/teardown
-\     cycles than the registry has slots keep succeeding (registry balance);
+\     registry's own proof it drained) and frees the slot, so more scopes than the
+\     registry has slots keep succeeding (registry balance);
+\   - a body that throws still tears its target down: the throw reaches the
+\     caller, the target's pid is gone and the slot is free, for more throwing
+\     scopes than the registry has slots;
+\   - a task halted inside a scope (TASK:PAUSE ends it without unwinding the
+\     scope) still tears its target down at exit, for more halted tasks than
+\     the registry has slots;
 \   - the checker rejects duplicating a handle or teardown token, so a double
 \     teardown cannot even be written.
 \
@@ -24,6 +30,7 @@ require src/lib/prelude.f
 require src/lib/aio.f
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/lib/task.f
 
 package PTY-IO-SMOKE
 
@@ -31,15 +38,18 @@ package PTY-IO-SMOKE
 3 constant ESRCH#                  \ "no such process" (POSIX, identical Linux/macOS)
 $1388 constant DEADLINE-MS         \ 5s ceiling for the live->dead watch transition
 20 constant CYCLES                 \ > PROCESS-PTY slot capacity (16): proves each teardown frees its slot
+-7001 constant BODY-THROW          \ a scope body's own throw code, no library's
 
 create WAIT-BYTE 1 allot
 create SIGNAL-BYTES 64 allot
 variable TGT-PID
 variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, closes on exit
+variable IN-SCOPE                         \ set by the halted task's body once its target is up
+TASK:MIN-STACK TASK:TASK HALTEE
 
 \ A real short-lived executable available on both OSes.
-: TRUE-PATH ( -- ptr u8 len )
-   s" /usr/bin/true" >LEN ;
+: TRUE-PATH ( -- ptr u8 n )
+   s" /usr/bin/true" ;
 
 : SAVE-TGT ( pid -- )
    PID>N TGT-PID ! ;
@@ -50,24 +60,25 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 
 \ ---- full supervised lifecycle ----------------------------------------------
 \ Spawn gated, probe the live target, release it, watch the exit, remember the
-\ target pid, tear down (which reaps), then confirm the reaped pid is gone.
+\ target pid; the scope's end tears down (which reaps), then the reaped pid is
+\ confirmed gone.
 : LIFECYCLE ( -- )
-   TRUE-PATH PROCESS-PTY:SPAWN
-   PROCESS-PTY:ALIVE? TTRUE
-   PROCESS-PTY:LAUNCH
-   DEADLINE-MS PROCESS-PTY:AWAIT 0= if       \ the linear handle cannot cross the throw
-      PROCESS-PTY:TEARDOWN s" process-pty-io-smoke LIFECYCLE" TEST-WAIT:EXPIRED
-   then
-   PROCESS-PTY:TARGET SAVE-TGT
-   PROCESS-PTY:TEARDOWN
+   TRUE-PATH [:
+      PROCESS-PTY:ALIVE? TTRUE
+      PROCESS-PTY:LAUNCH
+      DEADLINE-MS PROCESS-PTY:AWAIT 0= if
+         s" process-pty-io-smoke LIFECYCLE" TEST-WAIT:EXPIRED
+      then
+      PROCESS-PTY:TARGET SAVE-TGT
+   ;] PROCESS-PTY:WITH-TARGET
    TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
 
 \ ---- registry balance -------------------------------------------------------
 : CYCLE ( -- )
-   TRUE-PATH PROCESS-PTY:SPAWN
-   PROCESS-PTY:LAUNCH
-   DEADLINE-MS PROCESS-PTY:AWAIT drop
-   PROCESS-PTY:TEARDOWN ;
+   TRUE-PATH [:
+      PROCESS-PTY:LAUNCH
+      DEADLINE-MS PROCESS-PTY:AWAIT drop
+   ;] PROCESS-PTY:WITH-TARGET ;
 
 \ More cycles than the registry has slots: if any teardown leaked its slot the
 \ later spawns would throw E-PROC-PTY-CAPACITY, so completing the loop proves
@@ -75,6 +86,52 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 : BALANCE ( -- )
    0 begin dup CYCLES < while
       CYCLE
+      1+
+   repeat drop ;
+
+\ ---- a throwing body ---------------------------------------------------------
+\ The body throws with its target still gated, before LAUNCH. The scope passes
+\ the throw on, and by then has reaped the target and freed its slot: a leaked
+\ slot would turn a later scope's throw into E-PROC-PTY-CAPACITY.
+: THROW-BODY ( process-pty-handle -- process-pty-handle )
+   PROCESS-PTY:TARGET SAVE-TGT
+   BODY-THROW throw ;
+
+: THROWN ( -- )
+   [: TRUE-PATH [: THROW-BODY ;] PROCESS-PTY:WITH-TARGET ;] BODY-THROW TTHROWSQ
+   TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
+
+: THROW-FREES ( -- )
+   0 begin dup CYCLES < while
+      THROWN
+      1+
+   repeat drop ;
+
+\ ---- a task halted inside the scope ----------------------------------------
+\ The task's body parks in its scope with the target still gated and alive.
+\ TASK:KILL halts it at TASK:PAUSE, which ends the task without running the
+\ scope's cleanup; the task's exit must still reap the target and free its slot,
+\ or a later round's spawn throws E-PROC-PTY-CAPACITY.
+: PARK-BODY ( process-pty-handle -- process-pty-handle )
+   PROCESS-PTY:TARGET SAVE-TGT
+   1 IN-SCOPE atomic!
+   begin TASK:PAUSE again ;
+
+: PARKED ( -- )
+   TRUE-PATH [: PARK-BODY ;] PROCESS-PTY:WITH-TARGET ;
+
+: HALTED ( -- )
+   0 IN-SCOPE atomic!
+   ['] PARKED HALTEE TASK:ACTIVATE
+   [: IN-SCOPE atomic@ 0<> HALTEE TASK:DONE? or ;]
+   mono-ns DEADLINE-MS 1000000 * + s" process-pty-io-smoke HALTED" TEST-WAIT:POLL
+   HALTEE TASK:KILL
+   HALTEE TASK:THROW@ 0 T=
+   TGT-PID @ SIG-PROBE kill-errno ESRCH# negate T= ;
+
+: HALT-FREES ( -- )
+   0 begin dup CYCLES < while
+      HALTED
       1+
    repeat drop ;
 
@@ -114,26 +171,24 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
 \ the process while its watch wait is on the AIO loop; a signal reaches no
 \ thread parked in poll(2) any more, so it must neither throw, shorten the wait
 \ nor renew time.
-: SIGNAL-WATCH ( -- )
-   PROC-ARGV-RESET
-   TRUE-PATH PROCESS-PTY:SPAWN
+: SIGNAL-WATCH-BODY ( process-pty-handle -- process-pty-handle )
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
    100 PROCESS-PTY:AWAIT {: ready:bool :}
    mono-ns started - {: elapsed:n :}
    prof-off
-   PROCESS-PTY:TEARDOWN
    ready TFALSE
    elapsed 90000000 >= TTRUE
    elapsed 1000000000 < TTRUE ;
 
+: SIGNAL-WATCH ( -- )
+   PROC-ARGV-RESET
+   TRUE-PATH [: SIGNAL-WATCH-BODY ;] PROCESS-PTY:WITH-TARGET ;
+
 \ Drive the same storm through the terminal's data descriptor, first a quiet
 \ deadline, then real bytes. No input is written to echo back.
-: SIGNAL-OUTPUT ( -- )
-   PROC-ARGV-RESET
-   s" -c" >LEN PROC-ARGV+
-   s" sleep 0.3; printf %s habu-pty-eintr" >LEN PROC-ARGV+
-   s" /bin/sh" >LEN PROCESS-PTY:SPAWN-TTY PROCESS-PTY:LAUNCH
+: SIGNAL-OUTPUT-BODY ( process-pty-handle -- process-pty-handle )
+   PROCESS-PTY:LAUNCH
    1000 prof-rate 1000000 prof-on
    mono-ns {: started:n :}
    SIGNAL-BYTES 64 100 PROCESS-PTY:AWAIT-BYTES {: quiet:n :}
@@ -141,19 +196,20 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    \ A negative timeout is POLL's own unbounded wait, signals or not.
    SIGNAL-BYTES 64 -1 PROCESS-PTY:AWAIT-BYTES {: got:n :}
    prof-off
-   PROCESS-PTY:TEARDOWN
    quiet 0 T=
    elapsed 90000000 >= TTRUE
    elapsed 1000000000 < TTRUE
    SIGNAL-BYTES got s" habu-pty-eintr" T$= ;
 
-\ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop,
-\ but this suite cannot pin it: the refusal has to happen on a spawned handle,
-\ the handle is linear and does not cross the throw a refusal assertion catches,
-\ and the gated target it strands keeps the gate runner's capture pipe open
-\ (measured: the runner waits on that pipe forever). src/lib/serial-test.f,
-\ src/lib/pty-test.f and src/lib/signal-test.f pin the
-\ refusal on the three packages whose waits carry no linear token.
+: SIGNAL-OUTPUT ( -- )
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s" sleep 0.3; printf %s habu-pty-eintr" >LEN PROC-ARGV+
+   s" /bin/sh" [: SIGNAL-OUTPUT-BODY ;] PROCESS-PTY:WITH-TTY-TARGET ;
+
+\ AWAIT with the loop stopped is E-AIO-STATE, like every other wait on the loop;
+\ src/lib/serial-test.f, src/lib/pty-test.f and src/lib/signal-test.f pin that
+\ refusal, and this suite does not.
 \
 \ The loop is started after the last definition (a live task forbids
 \ compilation) and stopped at the end.
@@ -162,6 +218,8 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    AIO:START
    LIFECYCLE
    BALANCE
+   THROW-FREES
+   HALT-FREES
    STATIC
    DEAD-WATCH
    SIGNAL-WATCH

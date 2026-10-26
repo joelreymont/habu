@@ -7,12 +7,18 @@
 \ teardown lifecycle therefore has to live inside the same package and call those
 \ words by their bare names, exactly the way src/lib/process-pty-handle-test.f does.
 \ The supervisor exports its lifecycle words in the package's PUBLIC section, so
-\ callers outside the package reach them as PROCESS-PTY:SPAWN, PROCESS-PTY:SIGNAL,
-\ and so on.
+\ callers outside the package reach them as PROCESS-PTY:WITH-TARGET,
+\ PROCESS-PTY:SIGNAL, and so on.
 \
-\ I/O model: this slice connects the target through ordinary pipes (the
+\ Lifetime: WITH-TARGET spawns the target, hands the body its handle, and tears
+\ the target down when the body returns or throws, or at the task's exit when
+\ the task is halted inside it: the child is reaped, every descriptor closed and
+\ the slot handed back. Spawn and teardown are private,
+\ so no handle outlives its scope.
+\
+\ I/O model: WITH-TARGET connects the target through ordinary pipes (the
 \ `master` slot is its stdout read end and `done` its stdin write end).
-\ SPAWN-TTY is the second mode: the target's standard descriptors are the slave
+\ WITH-TTY-TARGET is the second mode: the target's standard descriptors are the slave
 \ side of a fresh pseudo-terminal, opened by PTY:OPEN, which owns the
 \ per-target unlock-and-name dance for the whole tree, so a
 \ child engine sees a terminal on fd 0, installs its line editor and recovers
@@ -24,7 +30,7 @@
 \ unencoded request the engine's ioctl guard refuses), so job control is not
 \ part of this slice. WRITE-LINE and AWAIT-BYTES drive either mode.
 \
-\ Spawn is gated: SPAWN forks the child but leaves it blocked before exec, opens
+\ Spawn is gated: the scope forks the child but leaves it blocked before exec, opens
 \ its lifetime watch descriptor while it is guaranteed alive, and only LAUNCH
 \ releases it to exec. Opening the watch while the child is still alive is what
 \ makes the exit observable on both backends (Linux pidfd_open and macOS
@@ -39,6 +45,9 @@
 \
 \ STORAGE CLASS. PROCESS-WIDE: the spawn staging (path, slave name, mode) is
 \ one set of cells, so one task spawns at a time; handles are the registry's.
+\ IO-OUTER is one cell per registry slot, read and written only by the scope
+\ that holds that slot. TASK-LOCAL: IO-SCOPE, the raw handle of the running
+\ task's innermost scope, and IO-HOOK, whether the task registered its drain.
 
 require src/lib/process-pty-handle.f
 require src/lib/process-fork.f
@@ -46,6 +55,7 @@ require src/lib/process-argv.f
 require src/lib/process.f
 require src/lib/pty.f
 require src/lib/aio.f
+require src/lib/task.f
 require src/lib/prelude.f
 
 package PROCESS-PTY
@@ -268,18 +278,73 @@ variable IO-GO-R                                 \ child-side release gate
    0 IO-TTY !
    IO-RAW @ N>HANDLE ;
 
+\ ---- the scope ---------------------------------------------------------------
+\ The handle does not survive a throw out of the body, so the scope keeps its raw
+\ number in the running task's IO-SCOPE cell, where the cleanup reads it. A
+\ nested scope saves the cell in IO-OUTER under its own slot and its cleanup
+\ puts it back, so each cleanup retires its own target. Zero is no scope: every
+\ reservation advances its slot's generation past zero, so no handle is zero.
+\ TASK:PAUSE ends a halted task without unwinding `finally`, so a task's first
+\ scope registers one TASK:AT-EXIT drain that retires every scope still open,
+\ innermost first. The main thread has no task exit and registers none.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER IO-SCOPE 8 TASK:+USER IO-HOOK drop
+create IO-OUTER SLOT-CAP cells allot
+
+: IO-ENTER ( process-pty-handle -- process-pty-handle )
+   HANDLE>N {: raw:n :}
+   IO-SCOPE @ IO-OUTER raw UNPACK-IDX CELL-AT !
+   raw IO-SCOPE !
+   raw N>HANDLE ;
+
+\ Close the target watch before reaping, then retire every remaining descriptor
+\ and hand the slot back to the registry.
+: IO-RETIRE ( process-pty-teardown -- )
+   TEARDOWN-TARGET@ {: tgt:pid :}
+   TEARDOWN-WATCH-TAKE IO-CLOSE-FD
+   tgt IO-KILL-REAP
+   TEARDOWN-MASTER-TAKE IO-CLOSE-FD
+   TEARDOWN-DONE-TAKE IO-CLOSE-FD
+   TEARDOWN-GATE-TAKE IO-CLOSE-FD
+   TEARDOWN-DONE ;
+
+: IO-LEAVE ( -- )
+   IO-SCOPE @ {: raw:n :}
+   IO-OUTER raw UNPACK-IDX CELL-AT @ IO-SCOPE !
+   raw TAKE-RAW IO-RETIRE ;
+
+: IO-DRAIN ( -- )
+   begin IO-SCOPE @ 0 <> while IO-LEAVE repeat ;
+
+\ Registered before the spawn, so no target exists that the drain would miss.
+: IO-REGISTER-EXIT ( -- )
+   TASK:SELF-N 0= if exit then
+   IO-HOOK @ 0 <> if exit then
+   [: IO-DRAIN ;] TASK:SELF TASK:AT-EXIT
+   1 IO-HOOK ! ;
+
+\ The body hands back the handle it was given; any other is refused.
+: IO-RUN-BODY ( R process-pty-handle [ R process-pty-handle -- S process-pty-handle ] -- S )
+   execute HANDLE>N IO-SCOPE @ <> if E-PROC-PTY-HANDLE throw then ;
+
+: IO-WITH ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] bool -- S )
+   {: path:ptr pathu:n body tty:bool :}
+   IO-REGISTER-EXIT
+   path pathu >LEN tty IO-SPAWN-MODE IO-ENTER
+   body [: IO-RUN-BODY ;] [: IO-LEAVE ;] finally ;
+
 public
 
-\ Spawn the target and return a live handle. The target is forked but
-\ blocked before exec; its lifetime watch is already open, so LAUNCH can release
-\ it and the exit stays observable.
-: SPAWN ( ptr u8 len -- process-pty-handle )
-   false IO-SPAWN-MODE ;
+\ Spawn the target at path, run the body with its live handle, and tear the
+\ target down when the body returns or throws. The target is forked but blocked
+\ before exec; its lifetime watch is already open, so LAUNCH can release it and
+\ the exit stays observable.
+: WITH-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+   false IO-WITH ;
 
-\ The same lifecycle with the target's standard descriptors on the slave side
-\ of a fresh pseudo-terminal; the handle's master is the terminal.
-: SPAWN-TTY ( ptr u8 len -- process-pty-handle )
-   true IO-SPAWN-MODE ;
+\ The same scope with the target's standard descriptors on the slave side of a
+\ fresh pseudo-terminal; the handle's master is the terminal.
+: WITH-TTY-TARGET ( R ptr u8 n [ R process-pty-handle -- S process-pty-handle ] -- S )
+   true IO-WITH ;
 
 \ Send one line to the target's input: the bytes then a line feed. A short write
 \ is an error, never a silent truncation.
@@ -290,7 +355,7 @@ public
    w FD>N IO-LFBYTE 1 write 1 <> if E-PROC-OUTPUT throw then ;
 
 \ Close the target's input so a batch reader sees end of file; the slot is
-\ cleared so teardown does not close it again. Under SPAWN-TTY the terminal
+\ cleared so teardown does not close it again. Under WITH-TTY-TARGET the terminal
 \ stays open (a PTY master has no end of file to give); send the child's own
 \ end-of-input convention with WRITE-LINE instead.
 : END-INPUT ( process-pty-handle -- process-pty-handle )
@@ -339,18 +404,6 @@ public
 \ Poll the target's lifetime watch up to ms; true once its exit is signalled.
 : AWAIT ( process-pty-handle n -- process-pty-handle bool ) {: ms:n :}
    HANDLE-IDX WATCH@ ms IO-POLL-READY? ;
-
-\ Close the target watch before reaping, then retire every remaining descriptor
-\ and hand the slot back to the registry. The linear handle is consumed.
-: TEARDOWN ( process-pty-handle -- )
-   TAKE
-   TEARDOWN-TARGET@ {: tgt:pid :}
-   TEARDOWN-WATCH-TAKE IO-CLOSE-FD
-   tgt IO-KILL-REAP
-   TEARDOWN-MASTER-TAKE IO-CLOSE-FD
-   TEARDOWN-DONE-TAKE IO-CLOSE-FD
-   TEARDOWN-GATE-TAKE IO-CLOSE-FD
-   TEARDOWN-DONE ;
 
 private
 
