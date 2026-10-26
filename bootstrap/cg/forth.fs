@@ -335,6 +335,7 @@ $2CD0 constant FLOORREC-CELL      \ underdepth throw entry the crash handler res
 $2CD8 constant CLOSED-FREE-CELL   \ idle closed-text data stacks; mirrors src/habu/layout.f
 $2CE0 constant CODE-END-CELL      \ end of the engine's own code (LSRC); mirrors src/habu/layout.f
 $2D50 constant TEXT-SIZE-CELL      \ the running image's text content size; mirrors src/habu/layout.f
+$2D58 constant DPHW-CELL          \ release high-water, a DATA offset; mirrors src/habu/layout.f
 $2CE8 constant DATA-FLOOR-CELL    \ published literal segments; mirrors src/habu/layout.f
 $2CF8 constant NCOMP-PUBLISHED-CELL
 $2D00 constant CODE-INVALIDATE-CELL
@@ -1375,7 +1376,30 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
       s" bootstrap: data pointer exceeds data region" C-EXIT76
    high-ok LBL, ;
 
-: BALLOT ( -- )  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
+\ Before a path lowers DP, raise the release high-water to the DP it lowers
+\ from; mirrors src/habu/habu1.f DP-LOWER,. Clobbers the two scratch registers.
+: DP-LOWER, ( n n -- ) {: t u -- :}
+   LBL {: done :}
+   t DATA DP-CELL LDR,  t t DATA SUB,
+   u DATA DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
+   t DATA DPHW-CELL STR,
+   done LBL, ;
+
+\ `allot` hands out zeroed space: a positive count zeroes the part of [old DP,
+\ new DP) below the release high-water, a negative one raises it; mirrors
+\ src/habu/habu1.f BALLOT without its native-only owner callback and task guard.
+: BALLOT ( -- )
+   LBL LBL LBL {: grow zero store :}
+   A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
+   A 0 CMPI,  C-GE grow BCOND,
+   10 11 DP-LOWER,  store B,
+   grow LBL,
+   10 7 A SUB,
+   11 DATA DPHW-CELL LDR,  11 11 DATA ADD,  11 7 CMP,  11 11 7 C-LS CSEL,
+   zero LBL,  10 11 CMP,  C-CS store BCOND,
+      31 10 0 STRB,  10 10 1 ADDI,  zero B,
+   store LBL,
+   7 DATA 0 STR, ;
 
 \ align ( -- ): round the data pointer up to a cell so the next `,` or allot starts
 \ cell-aligned. Data space is the seed's own, laid out by this file's own DATA
@@ -5349,7 +5373,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC @ BL,
    10 9 16 LDR,  10 10 DNAME-CELL ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL,
-   7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;          \ reserve 1 cell
+   10 DATA 0 LDR,  7 10 8 ADDI,  7 DP-CHECK  31 10 0 STR,  7 DATA 0 STR, ;   \ reserve 1 zero cell
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
 \ survives the name copy), then emit a literal-push body via C-LIT (x11=n).
@@ -8594,6 +8618,7 @@ variable P2SK
    9 DATA RSAVND-CELL LDR,  LOCC-COUNT @ BL,
    \ Native REPL and evaluate recovery share the address-row filter before
    \ rewinding DP. This seed has no rows (addr-cells-abi is zero), as below.
+   10 11 DP-LOWER,
    9 DATA RSAVDP-CELL LDR,
    10 DATA DATA-FLOOR-CELL LDR,  10 DATA 10 ADD,
    9 10 CMP,  9 9 10 C-HI CSEL,
@@ -8639,6 +8664,7 @@ variable P2SK
       12 13 56 LDR,
       10 DATA DATA-FLOOR-CELL LDR,  10 DATA 10 ADD,
       12 10 CMP,  12 12 10 C-HI CSEL,
+      9 10 DP-LOWER,
       12 DATA DP-CELL STR,
       9 DATA EVALD-CELL LDR,  9 9 1 SUBI,
       10 13 EVAL-PKG ADDI,
