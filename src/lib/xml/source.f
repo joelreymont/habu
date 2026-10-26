@@ -4,7 +4,8 @@
 \ SOURCE-BYTES validates the whole wire encoding and scalar range and answers
 \ the cell-aligned storage SOURCE-INIT needs; SOURCE-INIT validates again before
 \ publishing. Neither checks well-formedness. UTF-8 and US-ASCII borrow the
-\ original bytes; UTF-16 is converted to canonical UTF-8 in caller storage.
+\ original bytes; UTF-16 is converted to canonical UTF-8 in caller storage,
+\ with one cell of offset checkpoints per SRC-MARK-STRIDE lexical bytes.
 \ Storage and original bytes stay live until SOURCE-CLOSE, after every reader
 \ and editor borrowing them has closed. SOURCE-OWN turns a source into a
 \ one-cell XML:source-owner for movable records; the header, storage and bytes
@@ -16,11 +17,12 @@
 \ bytes) and SOURCE-LEXICAL$ drops only it. A reader over a source reports
 \ lexical UTF-8 offsets only. SOURCE-RANGE maps a lexical half-open range on
 \ scalar boundaries to the original offsets EDIT:REPLACE takes, BOM included,
-\ in time linear in the offset. ENCODE-SIZE and ENCODE write replacement
-\ markup, already escaped, in the wire encoding without a BOM, validating
-\ input, capacity and aliasing first. Edit flow: SOURCE-INIT, drain a reader to
-\ EOF, SOURCE-RANGE, ENCODE, EDIT:INIT on SOURCE-ORIGINAL$, EDIT:REPLACE,
-\ EDIT:WRITE, reopen.
+\ in time bounded independently of the offset and the source size: constant for
+\ UTF-8 and US-ASCII, at most SRC-MARK-STRIDE lexical bytes walked for UTF-16.
+\ ENCODE-SIZE and ENCODE write replacement markup, already escaped, in the wire
+\ encoding without a BOM, validating input, capacity and aliasing first. Edit
+\ flow: SOURCE-INIT, drain a reader to EOF, SOURCE-RANGE, ENCODE, EDIT:INIT on
+\ SOURCE-ORIGINAL$, EDIT:REPLACE, EDIT:WRITE, reopen.
 \
 \ Accepted wire forms: UTF-8 with or without BOM; declared US-ASCII without BOM
 \ (a byte above $7F anywhere, replacement markup included, is E-ENCODING;
@@ -52,6 +54,12 @@ CAST: >ENCODING ( n -- encoding )
 4 cells constant SRC-ENCODING-IDX
 5 cells constant SRC-BOM-LEN
 6 cells constant SRC-STORAGE-LEN
+
+\ A UTF-16 source's storage holds, after the header, one checkpoint cell per
+\ SRC-MARK-STRIDE lexical bytes, then the lexical copy. Checkpoint k-1 is the
+\ original offset of the first scalar boundary at or after lexical offset
+\ k*SRC-MARK-STRIDE, so a mapping walks fewer than SRC-MARK-STRIDE bytes.
+64 constant SRC-MARK-STRIDE
 
 \ The token carries the caller-owned header; every span stays caller-owned.
 LINEAR: SRC-MINT ( ptr n -- XML:source )
@@ -268,11 +276,12 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    encoding XML-ENCODING:US-ASCII ENCODING>N = or if
       SRC-HEADER-CELLS cells encoding bom exit
    then
-   lexical MAX-SIZE SRC-HEADER-CELLS cells - CELL 1- - > if
+   lexical SRC-MARK-STRIDE / cells {: marks:n :}
+   lexical MAX-SIZE SRC-HEADER-CELLS cells - CELL 1- - marks - > if
       E-CAPACITY throw
    then
    lexical CELL 1- + CELL 1- invert and
-   SRC-HEADER-CELLS cells + encoding bom ;
+   marks + SRC-HEADER-CELLS cells + encoding bom ;
 
 : SRC-STORAGE-CHECK ( ptr n n ptr u8 n n -- )
    {: storage cap:n original size:n needed:n :}
@@ -281,16 +290,31 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
    cap needed < if E-CAPACITY throw then
    original size storage BYTE-VIEW cap OVERLAP? if E-ALIAS throw then ;
 
-: SRC-WRITE-UTF16 ( ptr u8 n n n ptr u8 -- )
-   {: original size:n bom:n encoding:n output :}
-   output bom
-   begin dup size < while
-      {: target cursor:n :}
+\ Set each checkpoint from mark on whose stride point lies at or before the
+\ scalar boundary at lexical to original, that boundary's original offset;
+\ answer the next checkpoint to set.
+: SRC-MARKS ( ptr n n n n -- n )
+   {: marks mark:n lexical:n original:n :}
+   mark
+   begin dup SRC-MARK-STRIDE * lexical <= while
+      {: next:n :}
+      original marks next 1- cells + !
+      next 1+
+   repeat ;
+
+
+: SRC-WRITE-UTF16 ( ptr u8 n n n ptr n ptr u8 -- )
+   {: original size:n bom:n encoding:n marks output :}
+   output bom 1
+   begin over size < while
+      {: target cursor:n mark:n :}
+      marks mark target output - cursor SRC-MARKS {: marked:n :}
       original size cursor encoding SRC-NEXT
       {: scalar:n next:n :}
-      scalar target PUT-SCALAR next
+      scalar target PUT-SCALAR next marked
    repeat
-   2drop ;
+   {: target cursor:n mark:n :}
+   marks mark target output - cursor SRC-MARKS drop ;
 
 : SRC-INITIALIZE ( ptr n n ptr u8 n n n -- )
    {: storage cap:n original size:n encoding:n bom:n :}
@@ -304,12 +328,12 @@ LINEAR: SRC-ERASE ( XML:source -- ptr n )
       original bom + storage SRC-LEXICAL-IDX ptr-field !
       size bom - storage SRC-LEXICAL-LEN + !
    else
-      storage SRC-HEADER-CELLS cells + BYTE-VIEW
+      original size bom encoding SRC-SCAN {: lexical:n :}
+      lexical storage SRC-LEXICAL-LEN + !
+      storage SRC-HEADER-CELLS lexical SRC-MARK-STRIDE / + cells + BYTE-VIEW
       storage SRC-LEXICAL-IDX ptr-field !
-      original size bom encoding
+      original size bom encoding storage SRC-HEADER-CELLS cells +
       storage SRC-LEXICAL-IDX ptr-field @ SRC-WRITE-UTF16
-      original size bom encoding SRC-SCAN
-      storage SRC-LEXICAL-LEN + !
    then ;
 
 public
@@ -357,23 +381,39 @@ public
    SRC-STATE SRC-BOM$ ;
 
 private
+\ SOURCE-INIT validated every scalar; only continuation bytes split one.
+: SRC-CONTINUATION? ( ptr u8 n n -- bool )
+   {: lexical size:n cursor:n :}
+   cursor 0<> cursor size <> and if
+      lexical cursor + c@ $C0 and $80 = exit
+   then
+   false ;
+
+
+\ The nearest checkpoint at or below endpoint: its lexical boundary and
+\ original offset.
+: SRC-MARK-AT ( ptr n n -- n n )
+   {: state endpoint:n :}
+   state SRC-LEXICAL$ {: lexical size:n :}
+   endpoint SRC-MARK-STRIDE / {: mark:n :}
+   mark 0= if 0 state SRC-BOM-LEN + @ exit then
+   mark SRC-MARK-STRIDE *
+   begin dup lexical size rot SRC-CONTINUATION? while 1+ repeat
+   state SRC-HEADER-CELLS mark 1- + cells + @ ;
+
+
 : SRC-MAP ( ptr n n -- n )
    {: state endpoint:n :}
    state SRC-LEXICAL$ {: lexical size:n :}
-   state SRC-BOM-LEN + @ {: mapped:n :}
+   lexical size endpoint SRC-CONTINUATION? if E-BOUNDARY throw then
    state SRC-ENCODING-N XML-ENCODING:UTF8 ENCODING>N =
    state SRC-ENCODING-N XML-ENCODING:US-ASCII ENCODING>N = or if
-      \ SOURCE-INIT validated every scalar; only continuation bytes split one.
-      endpoint 0<> endpoint size <> and if
-         lexical endpoint + c@ $C0 and $80 = if E-BOUNDARY throw then
-      then
-      mapped endpoint + exit
+      state SRC-BOM-LEN + @ endpoint + exit
    then
-   0 mapped
+   state endpoint SRC-MARK-AT
    begin over endpoint < while
       {: cursor:n original:n :}
       lexical size cursor SCALAR-AT {: scalar:n next:n :}
-      next endpoint > if E-BOUNDARY throw then
       original scalar $10000 < if 2 else 4 then +
       next swap
    repeat

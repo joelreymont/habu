@@ -20,6 +20,14 @@ create BOMLESS 256 allot
 create BOM-INPUT 256 allot
 create WIRE 64 allot
 TYPED-VARIABLE ASCII-OWNER XML:source-owner
+1024 constant MARKED-CAP
+create MARKED MARKED-CAP allot
+create MARKED-AT MARKED-CAP cells allot
+variable MARKED-LEX
+variable MARKED-WIRE
+variable PROBE
+100000 constant CHILDREN
+variable WIDE-BAD
 
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
@@ -544,6 +552,126 @@ CAST: ENCODING>N ( XML:encoding -- n )
    ['] UNREAD-UTF16 catch XML:E-CAPACITY T=
    XML:SOURCE-CLOSE ;
 
+\ MARKED holds a UTF-16 text built scalar by scalar; MARKED-AT holds, per
+\ lexical offset, the original offset that scalar was written at, or -1 inside
+\ one.
+: MARK-UNIT ( n bool -- )
+   {: unit:n little:bool :}
+   MARKED-WIRE @ {: at:n :}
+   little if
+      unit $FF and MARKED at + c!
+      unit 8 rshift MARKED at 1+ + c!
+   else
+      unit 8 rshift MARKED at + c!
+      unit $FF and MARKED at 1+ + c!
+   then
+   at 2 + MARKED-WIRE ! ;
+
+
+\ Append scalar, width bytes of lexical UTF-8, as one unit or a surrogate pair.
+: MARK-SCALAR ( n n bool -- )
+   {: scalar:n width:n little:bool :}
+   MARKED-LEX @ {: lex:n :}
+   MARKED-WIRE @ MARKED-AT lex cells + !
+   width 1 ?do -1 MARKED-AT lex i + cells + ! loop
+   lex width + MARKED-LEX !
+   scalar $10000 < if scalar little MARK-UNIT exit then
+   scalar $10000 - {: pair:n :}
+   pair 10 rshift $D800 + little MARK-UNIT
+   pair $3FF and $DC00 + little MARK-UNIT ;
+
+
+: MARK-ASCII ( ptr u8 n bool -- )
+   {: text size:n little:bool :}
+   size 0 ?do text i + c@ 1 little MARK-SCALAR loop ;
+
+
+\ <a>, 64 turns of 😀éx中x, </a>: 711 lexical bytes. A turn is 11 bytes, so
+\ each scalar of each width starts at every residue modulo any power of two up
+\ to 64, and the multibyte ones straddle every such boundary.
+: MARKED-BUILD ( bool -- ptr u8 n )
+   {: little:bool :}
+   0 MARKED-LEX ! 0 MARKED-WIRE !
+   $FEFF little MARK-UNIT
+   s" <a>" little MARK-ASCII
+   64 0 ?do
+      $1F600 4 little MARK-SCALAR
+      $E9 2 little MARK-SCALAR
+      $78 1 little MARK-SCALAR
+      $4E2D 3 little MARK-SCALAR
+      $78 1 little MARK-SCALAR
+   loop
+   s" </a>" little MARK-ASCII
+   MARKED-WIRE @ MARKED-AT MARKED-LEX @ cells + !
+   MARKED MARKED-WIRE @ ;
+
+: PROBE-RANGE ( XML:source -- XML:source )
+   PROBE @ >OFF 0 >LEN XML:SOURCE-RANGE 2drop ;
+
+
+\ Every lexical offset of a long UTF-16 source maps to the original offset its
+\ scalar was written at, as the start and as the end of a range; every offset
+\ inside a scalar is E-BOUNDARY.
+: MARKED-RANGES ( bool -- )
+   {: little:bool :}
+   little MARKED-BUILD {: original size:n :}
+   original size XML:SOURCE-BYTES {: needed:n :}
+   needed MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store alloc :}
+   store CELL-VIEW needed original size XML:SOURCE-INIT
+   XML:SOURCE-LEXICAL$ nip MARKED-LEX @ T=
+   READER DRAIN XML:CLOSE
+   0
+   MARKED-LEX @ 1+ 0 ?do
+      {: prev:n :}
+      MARKED-AT i cells + @ {: want:n :}
+      want -1 = if
+         i PROBE ! ['] PROBE-RANGE catch XML:E-BOUNDARY T=
+         prev
+      else
+         MARKED-AT prev cells + @ {: from:n :}
+         i >OFF 0 >LEN XML:SOURCE-RANGE LEN>N 0 T= OFF>N want T=
+         prev >OFF i prev - >LEN XML:SOURCE-RANGE
+         LEN>N want from - T= OFF>N from T=
+         i
+      then
+   loop
+   drop
+   XML:SOURCE-CLOSE
+   store alloc MEM:RELEASE-BYTES ;
+
+
+: WIDE-PUT ( ptr u8 n ptr u8 n -- n )
+   {: wire at:n text size:n :}
+   size 0 ?do
+      text i + c@ wire at i 2 * + + c!
+      0 wire at i 2 * + 1+ + c!
+   loop
+   at size 2 * + ;
+
+
+\ A UTF-16LE <r> of 100000 <a/> children maps each child, as a consumer
+\ mapping every node does, and every result is checked. Mapping costs time
+\ bounded whatever the offset, or the row overruns its CPU budget.
+: WIDE-OWNER-RANGES ( -- )
+   CHILDREN 4 * 7 + 2 * 2 + {: size:n :}
+   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: wire wire-alloc :}
+   $FF wire c! $FE wire 1+ c!
+   wire 2 s" <r>" WIDE-PUT
+   CHILDREN 0 ?do wire swap s" <a/>" WIDE-PUT loop
+   wire swap s" </r>" WIDE-PUT size T=
+   wire size XML:SOURCE-BYTES {: needed:n :}
+   needed MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: store store-alloc :}
+   store CELL-VIEW needed wire size XML:SOURCE-INIT XML:SOURCE-OWN {: owner :}
+   0 WIDE-BAD !
+   CHILDREN 0 ?do
+      owner i 4 * 3 + >OFF 4 >LEN XML:OWNER-RANGE
+      LEN>N 8 <> swap OFF>N i 4 * 3 + 2 * 2 + <> or if 1 WIDE-BAD +! then
+   loop
+   WIDE-BAD @ 0 T=
+   owner XML:OWNER-CLOSE
+   store store-alloc MEM:RELEASE-BYTES
+   wire wire-alloc MEM:RELEASE-BYTES ;
+
 : REJECTIONS ( -- )
    s\" \xFF\xFE<" XML:E-UTF16 BAD-INIT
    s\" \xFF\xFE\x00\xDC" XML:E-UTF16 BAD-INIT
@@ -581,6 +709,9 @@ false COMPOSED-EDIT
 EDIT-LE
 BOUNDARIES-AND-RECOVERY
 UTF8-RANGES
+true MARKED-RANGES
+false MARKED-RANGES
+WIDE-OWNER-RANGES
 SOURCE-CAPACITY
 ENCODE-BOUND
 SOURCE-OUTPUT-ALIAS
