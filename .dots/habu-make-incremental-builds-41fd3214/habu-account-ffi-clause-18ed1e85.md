@@ -1,6 +1,6 @@
 ---
 title: Account FFI clause runs by the declaration row
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-26T12:20:27.601997+02:00"

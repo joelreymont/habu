@@ -1,6 +1,6 @@
 ---
 title: Lay out CWORK from its declarations
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-26T12:20:27.582462+02:00"
