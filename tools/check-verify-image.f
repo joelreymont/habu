@@ -6,10 +6,11 @@
 \ The key is the version text, the engine's bytes and the canonical engine path
 \ the image bakes, from which ENTER finds its source root when it starts
 \ (tools/check-verify-save.f), the program (which names the entry under ROOT,
-\ the tree this file was loaded from) and the content and canonical path of
-\ every file of the entry's closure (tools/keyed-image.f CLOSURE-IN-EACH+). Each
-\ file's mtime and size stamp (tools/native-file-inputs.f FILE rows) is kept,
-\ and PATH$ checks the stamps on every call: a change re-keys and builds again;
+\ the canonical tree this file was loaded from) and the content and canonical
+\ path of every file of the entry's closure (tools/keyed-image.f
+\ CLOSURE-IN-EACH+). Each file's mtime and size stamp
+\ (tools/native-file-inputs.f FILE rows) is kept, and PATH$ checks the stamps
+\ on every call: a change re-keys and builds again;
 \ an edit racing a build belongs to the next re-key, as for hb-build's makers
 \ (tools/hb-build-lib.f). A build that fails dies or throws (tools/keyed-image.f
 \ BUILD-RUN, PUBLISH); there is no fallback.
@@ -69,9 +70,14 @@ TYPED-VARIABLE RESOLVED bool
    PROGRAM-U @ u + PROGRAM-U ! ;
 
 \ While this file loads, SOURCE-ROOT:CURRENT$ is the root that resolved it
-\ (tools/check-verify-core.f fixes its child the same way).
-SOURCE-ROOT:CURRENT$ ROOT ROOT-U COPY!
-ROOT$ s" tools/check-verify-save.f" ENTRY JOIN-PATH ENTRY-U !
+\ (tools/check-verify-core.f fixes its child the same way). ENTRY is the
+\ canonical path of the save driver and ROOT its tree, the tree
+\ tools/check-verify-save.f ROOT! builds from, so the key walks the closure the
+\ build loads: a root that links to a tree (tools/check-test-lib.f LC-ROOT)
+\ keys the same files and shares the image.
+SOURCE-ROOT:CURRENT$ s" tools/check-verify-save.f" ENTRY JOIN-PATH
+ENTRY swap SOURCE-ROOT:CANONICAL drop ENTRY ENTRY-U COPY!
+ENTRY$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME ROOT ROOT-U COPY!
 0 PROGRAM-U !
 s\" tick-order@\n1 set-tier\ns\" " PROGRAM+
 ENTRY$ PROGRAM+
