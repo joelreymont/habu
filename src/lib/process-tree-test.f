@@ -1,4 +1,4 @@
-\ process-tree-test.f - a walk the kernel refuses says so.
+\ process-tree-test.f - a walk the kernel refuses says so; a big tree dies whole.
 \
 \     bin/hb --load src/lib/process-tree-test.f
 \
@@ -39,8 +39,14 @@
 \ Asserted by a third walker, `pty`, under the listing denial: the scope
 \ returns and the target is reaped; and here, that its stderr names the one
 \ refused walk.
+\  6. A TREE PAST A FIXED TABLE. A walk that held 1,024 members, or listed 1,024
+\     children of one, threw as it met a bigger tree and left the rest running,
+\     reparented to init.
+\ Asserted by CROWD, here and on any host: KILL-TREE returns, and none of the
+\ root's DESCENDANTS children answers a signal once GONE-MS has passed.
 \
-\ HOSTS. macOS only: sandbox-exec is the way here to make the kernel refuse.
+\ HOSTS. The refusal cases are macOS only: sandbox-exec is the way here to make
+\ the kernel refuse.
 \ The Linux walk reads /proc through open, whose failure the engine reports
 \ with no errno (src/lib/process-tree.f says what it takes one to mean).
 \
@@ -49,7 +55,9 @@
 \ it SIGTERM and then SIGCONT, which end it even if it was left stopped, and
 \ reaps it; a victim that was not killed is then reaped as dead of SIGTERM. A
 \ captured sleeper is the capture's to reap, and a walker stuck reaping one
-\ the walk left alive is ended with it at WALKER-MS.
+\ the walk left alive is ended with it at WALKER-MS. CROWD-END kills the
+\ crowd's group and reaps its root whatever the case did, and every sleeper
+\ ends on its own within 30 s.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -160,6 +168,119 @@ variable TARGET
    TARGET @ 0 kill-errno ESRCH# negate T=
    T-REPORT ;
 
+\ ---- a tree past a fixed table ------------------------------------------------
+\
+\ A root, /bin/sh, starts DESCENDANTS sleepers in its own group - more than the
+\ 1,024 members, or 1,024 listed children, a walk once held - writes each pid
+\ on a pipe, closes it and waits. The sleepers hold no end of the pipe, so end
+\ of file says every one has started. The root stays unreaped until CROWD-END,
+\ so its pid, which is the group's id, names nobody else while a check or the
+\ cleanup signals the group.
+
+1100 constant DESCENDANTS
+5000 constant GONE-MS                \ the killed take a moment to finish dying
+1000000 constant NS-PER-MS
+4096 constant READ-CHUNK
+
+DYNAMIC-BUFFER LISTING u8            \ the root's report: a child's pid a line
+variable LISTING-U
+variable ROOT                        \ the root's pid until CROWD-END reaps it
+variable CROWD-RD
+variable CROWD-WR
+variable PID-ACC                     \ the pid TALLY is reading
+variable SEEN                        \ pids TALLY read
+variable ALIVE                       \ of those, still there
+PROC-NO-PID ROOT !
+PROC-NO-FD CROWD-RD !
+PROC-NO-FD CROWD-WR !
+
+: CROWD-SCRIPT$ ( -- ptr u8 n )
+   SB-RESET
+   s" i=0; while [ $i -lt " SB-APPEND
+   DESCENDANTS FMT:SB-INT
+   s"  ]; do sleep 30 </dev/null >/dev/null 2>&1 & echo $!; i=$((i+1)); done; exec >&-; wait" SB-APPEND
+   SB$ ;
+
+: CROWD-START ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   r FD-CLOEXEC!
+   w FD-CLOEXEC!
+   r FD>N CROWD-RD !
+   w FD>N CROWD-WR !
+   0 LISTING-U !
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   CROWD-SCRIPT$ >LEN PROC-ARGV+
+   s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N ROOT !
+   CROWD-WR PROC-CLOSE-CELL ;
+
+\ Everything the root writes, until it closes the pipe.
+: CROWD-READ ( -- )
+   begin
+      LISTING-U @ READ-CHUNK + LISTING-RESERVE
+      CROWD-RD @ LISTING-U @ LISTING READ-CHUNK read {: got:n :}
+      got 0 < if E-PROC-OUTPUT throw then
+      got 0 >
+   while
+      LISTING-U @ got + LISTING-U !
+   repeat
+   CROWD-RD PROC-CLOSE-CELL ;
+
+\ The listing read again: SEEN pids, ALIVE of them still answering a signal.
+: TALLY ( -- )
+   0 SEEN !
+   0 ALIVE !
+   0 PID-ACC !
+   LISTING-U @ 0 ?do
+      i LISTING c@ {: c:n :}
+      c 10 = if
+         1 SEEN +!
+         PID-ACC @ 0 kill-errno 0= if 1 ALIVE +! then
+         0 PID-ACC !
+      else
+         PID-ACC @ 10 * c [char] 0 - + PID-ACC !
+      then
+   loop ;
+
+\ The children still alive once GONE-MS has passed, or none sooner.
+: ALIVE-AFTER ( -- n )
+   mono-ns GONE-MS NS-PER-MS * + {: deadline:n :}
+   begin
+      TALLY
+      ALIVE @ 0<> mono-ns deadline < and
+   while
+      10 >MS TASK:SLEEP
+   repeat
+   ALIVE @ ;
+
+: CROWD-KILL ( -- )
+   ROOT @ >PID PROC-TREE:KILL-TREE ;
+
+: CROWD-BODY ( -- )
+   CROWD-START
+   CROWD-READ
+   s" crowd: the root reported every child it started" T-LABEL
+   TALLY SEEN @ DESCENDANTS T=
+   s" crowd: KILL-TREE ends a tree past 1,024 members" T-LABEL
+   [: CROWD-KILL ;] 0 TTHROWSQ
+   s" crowd: a second listing finds none of the root's children alive" T-LABEL
+   ALIVE-AFTER 0 T= ;
+
+\ Whatever the body asserted or threw: the group, the root with it, is killed
+\ and the root reaped, so no sleeper outlives a failed case.
+: CROWD-END ( -- )
+   CROWD-WR PROC-CLOSE-CELL
+   CROWD-RD PROC-CLOSE-CELL
+   ROOT @ PROC-NO-PID <> if
+      ROOT @ negate SIGKILL kill drop
+      ROOT @ >PID PROC-WAIT-STATUS drop
+      PROC-NO-PID ROOT !
+   then
+   LISTING-RELEASE ;
+
+: CROWD ( -- )
+   [: CROWD-BODY ;] [: CROWD-END ;] finally ;
+
 \ ---- the cases --------------------------------------------------------------
 
 : SANDBOX$ ( -- ptr u8 n )
@@ -232,6 +353,7 @@ variable TARGET
 
 : CASES ( -- )
    T-RESET
+   CROWD
    HB-TARGET-MACOS? 0= if
       s" process-tree-test: the refusal cases need macOS sandbox-exec" type cr
       exit

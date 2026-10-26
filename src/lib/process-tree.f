@@ -63,7 +63,9 @@
 \ table and the scan buffers are this file's. src/lib/process.f ends a capture's
 \ child from whichever task ran the capture, so KILL-TREE, CATCHES? and CPU-NS
 \ hold WALKING while they use them, and a task that finds it held waits its
-\ turn.
+\ turn. The member table and the macOS listing grow with the tree, as far as
+\ the host maps memory; a walk or CPU reading releases both as it ends, thrown
+\ or not, so nothing is mapped between them.
 \
 \ BENEATH src/lib/process.f, which requires this file to end a capture's child. A
 \ walk signals through the kill primitive and times itself with mono-ns, so it
@@ -85,14 +87,14 @@ package PROC-TREE
 
 private
 
-1024 constant MEMBER-MAX
 2000 constant SETTLE-MS             \ the walk's whole window; a tree that will not settle is killed as it stands
 1000000 constant NS-PER-MS
 2 constant QUIET-PASSES
 
-create MEMBERS MEMBER-MAX cells allot
+DYNAMIC-BUFFER MEMBERS n            \ MEMBER-N of them in use
 variable MEMBER-N
 variable SELF
+variable ROOT                       \ the pid a walk was named, killed whether or not it joined
 variable ADDED                      \ members the pass in progress found
 variable AWAKE                      \ what the pass in progress saw that is not yet settled
 variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS holds the storage above and below
@@ -105,7 +107,7 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
    E-PROC-HOST throw ;
 
 : MEMBER ( n -- n ) {: i:n :}
-   i cells MEMBERS + @ ;
+   i MEMBERS @ ;
 
 : MEMBER? ( n -- bool ) {: pid:n :}
    MEMBER-N @ 0 ?do
@@ -114,8 +116,8 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
    false ;
 
 : JOIN ( n -- ) {: pid:n :}
-   MEMBER-N @ MEMBER-MAX >= if E-PROC-TRUNCATED throw then
-   pid MEMBER-N @ cells MEMBERS + !
+   MEMBER-N @ 1+ MEMBERS-RESERVE
+   pid MEMBER-N @ MEMBERS !
    MEMBER-N @ 1+ MEMBER-N !
    ADDED @ 1+ ADDED ! ;
 
@@ -170,10 +172,10 @@ variable WALKING                    \ 1 while a walk, a CATCHES? or a CPU-NS hol
 3 constant ESRCH                    \ no such process
 0 constant LIVE-ONLY                \ proc_pidinfo's third argument
 1 constant ZOMBIE-TOO
-1024 constant LIST-MAX              \ children, or group members, of one process
-LIST-MAX PID-BYTES * constant LIST-BYTES
+4096 constant LIST-FIRST            \ bytes a walk's first listing offers; a full one doubles
 
-create LIST LIST-BYTES allot
+DYNAMIC-BUFFER LIST u8              \ the pids of the last listing
+variable LIST-BYTES                 \ what LIST offers the kernel, 0 outside a walk
 create SHORT SHORT-BYTES allot
 create TASK TASK-BYTES allot
 
@@ -243,16 +245,21 @@ FUNCTION: ERRNO-CELL __error ( -- ptr u8 ) ;FUNCTION
 
 \ The pids of pid's children or group, in LIST; answers how many. A full buffer
 \ is a list that may have been cut: the kernel fills what fits and says nothing
-\ of the rest.
+\ of the rest. So a full one is asked again in twice the room, which a walk
+\ keeps for the listings after it.
 : LIST! ( n n -- n ) {: kind:n pid:n :}
-   ERRNO-CLEAR
-   kind pid LIST LIST-BYTES LIST-PIDS {: bytes:n :}
-   bytes 0= ERRNO@ 0<> and if E-PROC-OUTPUT throw then
-   bytes LIST-BYTES >= if E-PROC-TRUNCATED throw then
-   bytes PID-BYTES / ;
+   LIST-BYTES @ 0= if LIST-FIRST LIST-BYTES ! then
+   begin
+      LIST-BYTES @ LIST-RESERVE
+      ERRNO-CLEAR
+      kind pid 0 LIST LIST-BYTES @ LIST-PIDS {: bytes:n :}
+      bytes 0= ERRNO@ 0<> and if E-PROC-OUTPUT throw then
+      bytes LIST-BYTES @ < if bytes PID-BYTES / exit then
+      LIST-BYTES @ 2 * LIST-BYTES !
+   again ;
 
 : LISTED@ ( n -- n ) {: i:n :}
-   LIST i PID-BYTES * + LE:U32@ ;
+   i PID-BYTES * LIST LE:U32@ ;
 
 : LISTED ( n n -- )
    LIST! 0 ?do i LISTED@ CANDIDATE loop ;
@@ -445,9 +452,11 @@ variable CUR                        \ the read position in STAT
       mono-ns deadline >= if drop exit then
    repeat drop ;
 
-\ The answer is not read: a member that ended since it joined has nothing left
-\ to kill.
+\ The named pid first, so a walk whose first join threw still kills it; then
+\ every member. The answer is not read: a member that ended since it joined has
+\ nothing left to kill.
 : END-MEMBERS ( -- )
+   ROOT @ SIGKILL kill drop
    MEMBER-N @ 0 ?do
       i MEMBER SIGKILL kill drop
    loop ;
@@ -460,12 +469,21 @@ variable CUR                        \ the read position in STAT
 : WALK-RELEASE ( -- )
    0 WALKING atomic! ;
 
+\ Unmaps the member table and the listing. Safe to repeat.
+: STORAGE-RELEASE ( -- )
+   MEMBERS-RELEASE
+   LIST-RELEASE
+   0 LIST-BYTES ! ;
+
+: WALK-MEMBERS ( n -- ) {: pid:n :}
+   0 MEMBER-N !
+   pid ROOT !
+   pid [: MEMBER+ SETTLE ;] [: END-MEMBERS ;] finally ;
+
 : WALK ( pid -- ) {: pid:pid :}
    getpid SELF !
    pid PID>N SELF @ = if E-PROC-OUTPUT throw then
-   0 MEMBER-N !
-   pid PID>N MEMBER+
-   [: SETTLE ;] [: END-MEMBERS ;] finally ;
+   pid PID>N [: WALK-MEMBERS ;] [: STORAGE-RELEASE ;] finally ;
 
 \ ---- a process that catches a signal ------------------------------------------
 \
@@ -688,22 +706,25 @@ FUNCTION: TIMEBASE-INFO mach_timebase_info ( ptr u8 -- i32 )
    until
    TICKS @ NS-PER-S USER-HZ / * ;
 
-\ CPU-NS's reading, run with WALKING held.
-: CPU-READ ( n -- n ) {: pid:n :}
+: CPU-HOST ( n -- n ) {: pid:n :}
    0 MEMBER-N !
    pid JOIN
    HB-TARGET-MACOS? if CPU-MACOS exit then
    HB-TARGET-LINUX-KERNEL? if CPU-LINUX exit then
    E-PROC-HOST throw ;
 
+\ CPU-NS's reading, run with WALKING held.
+: CPU-READ ( n -- n )
+   [: CPU-HOST ;] [: STORAGE-RELEASE ;] finally ;
+
 public
 
 \ SIGKILL pid and every process descended from it. A pid at or below 1 names
 \ init or a group rather than a process, and the caller cannot be its own tree.
-\ Whatever the walk throws - a process table it could not read, a tree past
-\ MEMBER-MAX - every member found by then is still killed, so none is left
-\ stopped. A SIGKILL of the caller runs no finally: what the walk had stopped is
-\ left stopped (docs/gate.md "Signals and servers").
+\ Whatever the walk throws - a process table it could not read, memory the
+\ host would not map - every member found by then is still killed, so none is
+\ left stopped. A SIGKILL of the caller runs no finally: what the walk had
+\ stopped is left stopped (docs/gate.md "Signals and servers").
 : KILL-TREE ( pid -- ) {: pid:pid :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
    WALK-GET
