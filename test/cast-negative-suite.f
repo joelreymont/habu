@@ -156,28 +156,28 @@ get-current CN-WID !
 : CN-PRIVATE-PROBE ( -- ) ;
 \ WID 0 cannot observe a package-private word, so it cannot prove rollback.
 \ The captured private WID sees the probe and must see no failed cast.
-s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
-s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
+s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
+s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 s" CAST: CNP1 ( n -- CAST-NEG:lease )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP1" CN-ABSENT? -1 T=  s" CNP1" 0 search-wl 0= -1 T=
+s" CNP1" CN-ABSENT? TTRUE  s" CNP1" 0 search-wl 0= TTRUE
 s" CAST: CNP2 ( CAST-NEG:lease -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP2" CN-ABSENT? -1 T=  s" CNP2" 0 search-wl 0= -1 T=
+s" CNP2" CN-ABSENT? TTRUE  s" CNP2" 0 search-wl 0= TTRUE
 s" CAST: CNP3 ( CAST-NEG:lease -- CAST-NEG:lease )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP3" CN-ABSENT? -1 T=  s" CNP3" 0 search-wl 0= -1 T=
+s" CNP3" CN-ABSENT? TTRUE  s" CNP3" 0 search-wl 0= TTRUE
 s" CAST: CNP4 ( n -- CAST-NEG:nested )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP4" CN-ABSENT? -1 T=  s" CNP4" 0 search-wl 0= -1 T=
+s" CNP4" CN-ABSENT? TTRUE  s" CNP4" 0 search-wl 0= TTRUE
 s" CAST: CNP5 ( CAST-NEG:nested -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP5" CN-ABSENT? -1 T=  s" CNP5" 0 search-wl 0= -1 T=
+s" CNP5" CN-ABSENT? TTRUE  s" CNP5" 0 search-wl 0= TTRUE
 s" CAST: CNP6 ( n -- cnpbox<CAST-NEG:lease> )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP6" CN-ABSENT? -1 T=  s" CNP6" 0 search-wl 0= -1 T=
+s" CNP6" CN-ABSENT? TTRUE  s" CNP6" 0 search-wl 0= TTRUE
 s" CAST: CNP7 ( cnpbox<cnpbox<CAST-NEG:lease>> -- n )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP7" CN-ABSENT? -1 T=  s" CNP7" 0 search-wl 0= -1 T=
+s" CNP7" CN-ABSENT? TTRUE  s" CNP7" 0 search-wl 0= TTRUE
 s" CAST: CNP8 ( n -- a )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP8" CN-ABSENT? -1 T=  s" CNP8" 0 search-wl 0= -1 T=
+s" CNP8" CN-ABSENT? TTRUE  s" CNP8" 0 search-wl 0= TTRUE
 s" CAST: CNP9 ( n -- cnpbox<cnpbox<a>> )" CN-EVAL-CATCH E-CAST-LINEAR T=
-s" CNP9" CN-ABSENT? -1 T=  s" CNP9" 0 search-wl 0= -1 T=
-s" CN-PRIVATE-PROBE" 0 search-wl 0= -1 T=
-s" CN-PRIVATE-PROBE" CN-ABSENT? 0 T=
+s" CNP9" CN-ABSENT? TTRUE  s" CNP9" 0 search-wl 0= TTRUE
+s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
+s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package
 
 \ introduction into an arity-0 or parametric cell family belongs to its
@@ -300,7 +300,7 @@ CHECKER-END-PACKAGE
 \ in a package's private section, where the package's own words are its only
 \ callers. Top level and a public section refuse it and leave no name behind.
 s" cast: CNM1 ( n -- ptr u8 )"                    CN-RUN:DECL E-CAST-MINT T=
-s" CNM1" 0 search-wl 0= -1 T=
+s" CNM1" 0 search-wl 0= TTRUE
 s" cast: CNM2 ( n -- [ n -- n ] )"                CN-RUN:DECL E-CAST-MINT T=
 s" cast: CNM3 ( ptr u8 -- ptr n )"                CN-RUN:DECL E-CAST-MINT T=
 \ A layout argument is what a field projection yields, so an instance whose
@@ -356,21 +356,21 @@ get-current CV-WID !
 : CV-ABSENT? ( ptr u8 n -- bool )
    CV-WID @ search-wl 0= ;
 : CV-PRIVATE-PROBE ( -- ) ;
-s" CV-PRIVATE-PROBE" CV-ABSENT? 0 T=
+s" CV-PRIVATE-PROBE" CV-ABSENT? TFALSE
 s" cast: CNV1 ( ptr u8 n -- read-view<p,q,u8> )"        CV-DECL E-CAST-SCOPE T=
-s" CNV1" CV-ABSENT? -1 T=
+s" CNV1" CV-ABSENT? TTRUE
 s" cast: CNV2 ( ptr u8 n -- mut-view<p,q,a,u8> )"       CV-DECL E-CAST-SCOPE T=
-s" CNV2" CV-ABSENT? -1 T=
+s" CNV2" CV-ABSENT? TTRUE
 s" cast: CNV3 ( mut-view<p,l,a,u8> -- ptr u8 n )"       CV-DECL E-CAST-SCOPE T=
-s" CNV3" CV-ABSENT? -1 T=
+s" CNV3" CV-ABSENT? TTRUE
 s" cast: CNV4 ( mut-view<p,l,a,u8> -- read-view<p,l,u8> )" CV-DECL E-CAST-SCOPE T=
-s" CNV4" CV-ABSENT? -1 T=
+s" CNV4" CV-ABSENT? TTRUE
 s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL E-CAST-SCOPE T=
-s" CNV5" CV-ABSENT? -1 T=
+s" CNV5" CV-ABSENT? TTRUE
 s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
-s" CNV6" CV-ABSENT? -1 T=
+s" CNV6" CV-ABSENT? TTRUE
 s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL E-CAST-SCOPE T=
-s" CNV7" CV-ABSENT? -1 T=
+s" CNV7" CV-ABSENT? TTRUE
 \ A qualified name selects that package's public wordlist, so the read-view
 \ unpack this section admits is refused under one, and once the package closes
 \ that wordlist holds no such name.
@@ -379,7 +379,7 @@ public
 get-current constant CV-PUBLIC-WID
 s" cast: CNV8 ( read-view<p,q,u8> -- ptr u8 n )"        CN-RUN:DECL E-CAST-SCOPE T=
 ;package
-s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= -1 T=
+s" CNV9" CN-VIEW:CV-PUBLIC-WID search-wl 0= TTRUE
 \ The stored-signature intake still refuses an output variable no input
 \ supplies; a view whose variables its input supplies is a well-formed row.
 s" defer CNVD1 ( ptr u8 n -- read-view<p,q,u8> )"       CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
@@ -490,7 +490,7 @@ CHECKER-END-PACKAGE
 \ evaluation, refuses by name.
 package CN
 s" cast: CNS1 ( n -- CN:cnfam ) 42"              CN-RUN:DECL E-EVAL-RESIDUE T=
-s" CNS1" get-current search-wl 0= 0 T=        \ ... and the cast published anyway
+s" CNS1" get-current search-wl 0= TFALSE        \ ... and the cast published anyway
 ;package
 
 \ The last two refusals belong to the ENGINE, not the checker: it writes them to
@@ -532,38 +532,38 @@ variable ERR-U
 \ base. The bits are poked by the cast's own publish tail; drop that step from
 \ the engine and this case is the one that notices (measured).
 s" NEWTYPE cnmrole  cast: >CNMROLE ( n -- cnmrole )  >CNMROLE" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: interpret stack underdepth: >CNMROLE" CONTAINS? TTRUE
 
 \ The OLD spelling is dead, and that is a fact worth failing on: the trailing
 \ `;` every converted site used to carry is now an undefined token at interpret
 \ state — which is exactly why the conversion had to be one commit.
 s" cast: CNZ1 ( n -- n ) ;" CN-CHILD:RUN CN-CHILD:UNDEF-RC T=
-CN-CHILD:ERR$ s" E-UNDEFINED: ;" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" E-UNDEFINED: ;" CONTAINS? TTRUE
 \ A reader keyword that needs a name and reaches the end of its stream fails
 \ closed, and says which keyword and where.
 s" cast:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: cast: missing name after" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: cast: missing name after" CONTAINS? TTRUE
 
 \ Required reader operands fail before stale token bytes can be consumed.
 \ These are child checks because the reader exits after its diagnostic.
 s" create"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? TTRUE
 s" trusted:" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: trusted:" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: trusted:" CONTAINS? TTRUE
 s" variable" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
 \ `variable` shares the CREATE emitter, so its stable diagnostic names the
 \ implementation keyword that owns the common name reader.
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: create" CONTAINS? TTRUE
 s" constant" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: constant" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: constant" CONTAINS? TTRUE
 s" char"     CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: char" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: char" CONTAINS? TTRUE
 s" : x [char]" CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-s" hb: reader keyword needs a name: [char]" CN-CHILD:BODY-EOF? -1 T=
+s" hb: reader keyword needs a name: [char]" CN-CHILD:BODY-EOF? TTRUE
 s" '"        CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-CN-CHILD:ERR$ s" hb: reader keyword needs a name: '" CONTAINS? -1 T=
+CN-CHILD:ERR$ s" hb: reader keyword needs a name: '" CONTAINS? TTRUE
 s" : x [']"   CN-CHILD:RUN CN-CHILD:NO-NAME-RC T=
-s" hb: reader keyword needs a name: [']" CN-CHILD:BODY-EOF? -1 T=
+s" hb: reader keyword needs a name: [']" CN-CHILD:BODY-EOF? TTRUE
 package CN
 
 \ the cast: declarer used inside a checked body is rejected unsafe (verdict 0);

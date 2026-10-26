@@ -173,11 +173,11 @@ TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-VAR-START@ 1 + TWX-SUMV-PAYCELLS@ 2 T=
 TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ SCHEMA-ROOT@ TDX !
-TDX @ SCHEMA-PTR? -1 T=
-TDX @ SCHEMA-A@ SCHEMA-CON? -1 T=
+TDX @ SCHEMA-PTR? TTRUE
+TDX @ SCHEMA-A@ SCHEMA-CON? TTRUE
 TDX @ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ 1 + SCHEMA-ROOT@ TDY !
-TDY @ SCHEMA-CON? -1 T=
+TDY @ SCHEMA-CON? TTRUE
 TDY @ SCHEMA-A@ CC-N T=
 
 \ zero-arity sum (payload-free variants only): the enum-shaped sum.
@@ -217,7 +217,7 @@ PRODUCT tdga06<a,b,c,d,e,g>
 s" " s" tdga06" TFAM-FIND-IN TDOK ! TDF !
 TDF @ TYPE-FIELD:NO-VARIANT s" p05" TYPE-FIELD:FIND TDOK ! TDX !
 TDOK @ -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PARAM? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PARAM? TTRUE
 TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 5 T=
 s" TDGA06-RT ( n bool char u8 i64 r -- n bool char u8 i64 r ) TDGA06:MAKE TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDGA06-BAD-MAKE ( bool n char u8 i64 r -- tdga06<n,bool,char,u8,i64,r> ) TDGA06:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -257,14 +257,14 @@ TDTC @ 19 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 19 T=
 TDTC @ 20 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 20 T=
 TDTC @ 21 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 21 T=
 TDTC @ 22 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 22 T=
-TDTC @ 23 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? -1 T=
+TDTC @ 23 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? TTRUE
 TDTC @ 23 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-BOOL T=
 TDTC @ 24 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-N T=
 TDTC @ 25 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-R T=
 : TDGA23-RT ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- n n n n n n n n n n n n n n n n n n n n n n n bool n r )
    TDGA23:MAKE TDGA23:UNMAKE ;
-1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 0 24 25 TDGA23-RT
-25 T= 24 T= 0 T=
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 false 24 25.0 TDGA23-RT
+25.0 f= TTRUE 24 T= TFALSE
 23 T= 22 T= 21 T= 20 T= 19 T= 18 T= 17 T= 16 T= 15 T= 14 T= 13 T= 12 T=
 11 T= 10 T= 9 T= 8 T= 7 T= 6 T= 5 T= 4 T= 3 T= 2 T= 1 T=
 s" TDGA23-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- tdga23<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n> ) TDGA23:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -336,8 +336,8 @@ TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TYPE-FIELD:NO-VARIANT s" raw" TYPE-FIELD:FIND TDOK ! TDX !   TDOK @ -1 T=
 TDX @ TYPE-FIELD:SLOT@ 1 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PTR? -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-CON? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PTR? TTRUE
+TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-CON? TTRUE
 TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 
 \ ---------------------------------------------------------------------------
@@ -649,10 +649,10 @@ TDF @ TFAM-FLD-START@ TDX !
 TDX @ TYPE-FIELD:SLOT@ 0 T=                       \ cumulative cell offsets
 TDX @ 1 + TYPE-FIELD:SLOT@ 1 T=
 TDX @ 2 + TYPE-FIELD:SLOT@ 2 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 s" " s" tdcolor" TFAM-FIND-IN TDOK ! TDY !
 TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ TDY @ T=           \ SC-APP carries the enum family-id
-TDX @ 2 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? -1 T=
+TDX @ 2 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? TTRUE
 TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 3 T=       \ make/unmake rows carry cell width
 \ generated MAKE/UNMAKE consume/produce the fields as their families.
 s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -708,7 +708,7 @@ s" " s" tdpwide" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
-TDF @ TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+TDF @ TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ a SELF-referential field is recursive and rejects with the recursive-sum
 \ diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
@@ -718,7 +718,7 @@ s" " s" tdpnest" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 3 T=
-TDF @ TFAM-VAR-START@ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+TDF @ TFAM-VAR-START@ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A closed wide PRODUCT is one logical value backed by one hidden parameter per
@@ -792,7 +792,7 @@ s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 REC-MIN-IN@ 34 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDW34-BAD" CHECKER-FIND-USIG 0 T=
+s" TDW34-BAD" CHECKER-FIND-USIG TFALSE
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 REC-MIN-IN@ 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
@@ -857,7 +857,7 @@ s" tdpb" s" tres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDX !
 TDOK @ -1 T=
-TDF @ TDX @ <> -1 T=
+TDF @ TDX @ <> TTRUE
 
 \ ---------------------------------------------------------------------------
 \ Constructor metadata: a PUBLIC sum/enum family derives its constructor package name
@@ -995,17 +995,17 @@ s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET
 \ before lookup.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " CONTAINS? 0 T=
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " CONTAINS? TTRUE
+DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " CONTAINS? TFALSE
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"arity_expected\":6" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"arity_actual\":3" CONTAINS? -1 T=
-0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"arity_expected\":6" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"arity_actual\":3" CONTAINS? TTRUE
+false DIAG-JSON!
 TDIAG-BUF 8192 DIAG-BUFFER!
 
 \ The failed declaration above did not disturb either exact span row.
@@ -1130,13 +1130,13 @@ s" SUMTYPE tdpay4<a> VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TD
 \ empty input side, a multi-type input side, an empty output side, and a multi-type
 \ input with a ptr element all declare and resolve.
 SUMTYPE tdpq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpq0" TFAM-FIND-IN nip -1 T=
+s" " s" tdpq0" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpq2" TFAM-FIND-IN nip -1 T=
+s" " s" tdpq2" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpqd" TFAM-FIND-IN nip -1 T=
+s" " s" tdpqd" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpqm" TFAM-FIND-IN nip -1 T=
+s" " s" tdpqm" TFAM-FIND-IN nip TTRUE
 
 \ ---------------------------------------------------------------------------
 \ declaration-time parameter-arity gate for SUM variant payloads
@@ -1181,7 +1181,7 @@ SUMTYPE tdpga<a,b>
   VARIANT applied tdres<a,b> ;VARIANT
   VARIANT quoted  [ a -- b ] ;VARIANT
 ;SUMTYPE
-s" " s" tdpga" TFAM-FIND-IN nip -1 T=
+s" " s" tdpga" TFAM-FIND-IN nip TTRUE
 \ and the in-range variants still construct through the untouched construct path.
 s" TDPGA-MK1 ( n -- tdpga<n,n> ) TDPGA:PLAIN"           CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPGA-MK2 ( tdres<n,n> -- tdpga<n,n> ) TDPGA:APPLIED" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1459,12 +1459,12 @@ TDF @ TFAM-WIDTH@ 2 T=
 \ tdqp:qslot — nominal identity, not a washed-out scalar.
 s" tdqp" s" qslot" TFAM-FIND-IN TDOK ! TDX !
 TDOK @ -1 T=
-TDX @ TFAM-CELL? -1 T=
+TDX @ TFAM-CELL? TTRUE
 TDF @ TFAM-VAR-START@ TDV0 !
 TDV0 @ SUMV-NAME$ s" qsome" T$=
 TDV0 @ SUMV-SCH-COUNT@ 1 T=
 TDV0 @ TWX-SUMV-PAYCELLS@ 1 T=
-TDV0 @ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+TDV0 @ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 TDV0 @ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-A@ TDX @ T=
 \ constructor + MATCH round-trip. Checked: the constructor input IS the
 \ qualified nominal scalar (an n is not), and the qsome arm refines back to it.
@@ -1516,7 +1516,7 @@ TDOK @ -1 T=
 TDF @ TYPE-FIELD:NO-VARIANT s" child" TYPE-FIELD:FIND TDOK ! TDY !
 TDOK @ -1 T=
 s" tdqp" s" qslot" TFAM-FIND-IN TDOK ! TDX !   TDOK @ -1 T=
-TDY @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+TDY @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 TDY @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ TDX @ T=
 \ negatives: named code + full registry rollback each time.
 \ a bogus qualifier never resolves.
@@ -1557,41 +1557,41 @@ TDT-BASE=
 \ machinery — no fake declared stack effect, definition fields, or word row.
 \ ---------------------------------------------------------------------------
 DIAG-BUFFER-OFF
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" NEWTYPE tdfoo<a,b>" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"verdict\":\"rejected\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"decl\":\"newtype\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdfoo\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"reason\":\"duplicate family\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"declared_effect\"" CONTAINS? 0 T=
-DIAG-BUFFER$ s\" \"definition_source\"" CONTAINS? 0 T=
-DIAG-BUFFER$ s\" \"return_stack\"" CONTAINS? 0 T=
-DIAG-BUFFER-OFF  0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"verdict\":\"rejected\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"decl\":\"newtype\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"family\":\"tdfoo\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"reason\":\"duplicate family\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"declared_effect\"" CONTAINS? TFALSE
+DIAG-BUFFER$ s\" \"definition_source\"" CONTAINS? TFALSE
+DIAG-BUFFER$ s\" \"return_stack\"" CONTAINS? TFALSE
+DIAG-BUFFER-OFF  false DIAG-JSON!
 \ prose form names the declaration kind and reason.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" SUMTYPE tdvd2<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? -1 T=
-DIAG-BUFFER$ s" duplicate variant" CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
+DIAG-BUFFER$ s" duplicate variant" CONTAINS? TTRUE
 \ the enum kind token flows into the same declaration-shaped prose packet.
 s" ENUM tdediag red red ;ENUM" E-TFAM-DUP TDT-NEG
-DIAG-BUFFER$ s" bad enum declaration" CONTAINS? -1 T=
-DIAG-BUFFER$ s" duplicate variant" CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad enum declaration" CONTAINS? TTRUE
+DIAG-BUFFER$ s" duplicate variant" CONTAINS? TTRUE
 \ PRODUCT delegates reserved field names to the PF registry truth while the
 \ declaration layer owns the exact token/reason packet.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" PRODUCT tdpfdiag FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
-DIAG-BUFFER$ s" bad product declaration" CONTAINS? -1 T=
-DIAG-BUFFER$ s" reserved field name" CONTAINS? -1 T=
-DIAG-BUFFER$ s" at 'make'" CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad product declaration" CONTAINS? TTRUE
+DIAG-BUFFER$ s" reserved field name" CONTAINS? TTRUE
+DIAG-BUFFER$ s" at 'make'" CONTAINS? TTRUE
 \ A policy reject flows into the same declaration-shaped prose packet —
 \ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics
 \ change; the richer JSON ADT fields join it unchanged.
 s" SUMTYPE tdpoldg<a> POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 
-DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? -1 T=
-DIAG-BUFFER$ s" layout policy not yet supported" CONTAINS? -1 T=
+DIAG-BUFFER$ s" bad sumtype declaration" CONTAINS? TTRUE
+DIAG-BUFFER$ s" layout policy not yet supported" CONTAINS? TTRUE
 
 \ C2: a declaration body over TDECL-CAP ($1000) reports the packet, not a raw
 \ die (the length check fires ahead of variant parsing, so repeats never matter).
@@ -1617,7 +1617,7 @@ s" " s" tdme" TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
 s" " s" tdcont" TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=
-s" TDMEW" CHECKER-FIND-USIG -1 T=
+s" TDMEW" CHECKER-FIND-USIG TTRUE
 \ missing terminator in multi-error mode: reported, counted, load continues.
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdnoe<a> VARIANT ok a ;VARIANT" evaluate
@@ -1640,7 +1640,7 @@ s" " s" tdmee" TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=                                  \ the rejected enum registered nothing
 s" " s" tdmeecont" TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=                                 \ the next declaration still loaded
-s" TDMEEW" CHECKER-FIND-USIG -1 T=           \ and so did the definition after it
+s" TDMEEW" CHECKER-FIND-USIG TTRUE           \ and so did the definition after it
 TWX-MULTI-ERR-BEGIN
 s" STRUCTURE tdmes FIELD x n FIELD x n ;STRUCTURE NEWTYPE tdmescont<a> : TDMESW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
@@ -1648,7 +1648,7 @@ s" " s" tdmes" TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
 s" " s" tdmescont" TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=
-s" TDMESW" CHECKER-FIND-USIG -1 T=
+s" TDMESW" CHECKER-FIND-USIG TTRUE
 \ A reject raised AFTER the terminator was consumed must not skip anything: the
 \ next tokens are the following declaration, not this one's tail. `tdmea` is an
 \ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
@@ -1677,9 +1677,9 @@ s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 TWX-MULTI-ERR-BEGIN
 s" : TDSME1 ( nope<n> -- nope<n> ) ; : TDSME2 ( tdfoo<n> -- tdfoo<n> ) ; : TDSME3 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 2 T=
-s" TDSME1" CHECKER-FIND-USIG 0 T=
-s" TDSME2" CHECKER-FIND-USIG 0 T=
-s" TDSME3" CHECKER-FIND-USIG -1 T=
+s" TDSME1" CHECKER-FIND-USIG TFALSE
+s" TDSME2" CHECKER-FIND-USIG TFALSE
+s" TDSME3" CHECKER-FIND-USIG TTRUE
 \ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
 \ malformed effect is not stored.
 \
@@ -1705,8 +1705,8 @@ s" TDTTOOK ( -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! 0 T=
 TWX-MULTI-ERR-BEGIN
 s\" s\" TDTGONE\" s\" -- n\" TRUST : TDTOK2 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDTGONE" CHECKER-FIND-USIG 0 T=
-s" TDTOK2" CHECKER-FIND-USIG -1 T=
+s" TDTGONE" CHECKER-FIND-USIG TFALSE
+s" TDTOK2" CHECKER-FIND-USIG TTRUE
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
@@ -1728,31 +1728,31 @@ CC-N MK-CON PARAM-SCR+
 CC-N MK-CON PARAM-SCR+
 s" tdres" TD3F @ MK-PARAM  TD3LOG !
 \ a logical layout term is NOT hidden.
-TD3LOG @ HIDDEN-PARAM? 0 T=
+TD3LOG @ HIDDEN-PARAM? TFALSE
 TD3LOG @ PARAM>HID 0 T=
 TD3LOG @ PARAM>FAM TD3F @ T=
 
 \ unification discipline (UNIFY ( t t -- bool ), self-contained per call).
 \ same family + same slot -> pair.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY -1 T=
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY TTRUE
 \ same family, different slot -> reject.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 1 MK-HIDDEN  UNIFY 0 T=
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 1 MK-HIDDEN  UNIFY TFALSE
 \ hidden never binds a var, even under whole-bundle transport mode.
-TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY 0 T=
+TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY TFALSE
 1 LAYOUT-XPORT !
-TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY 0 T=
+TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY TFALSE
 0 LAYOUT-XPORT !
 \ hidden never unifies a con.
-TD3LOG @ 0 MK-HIDDEN  CC-N MK-CON  UNIFY 0 T=
+TD3LOG @ 0 MK-HIDDEN  CC-N MK-CON  UNIFY TFALSE
 \ a hidden field never unifies its own logical value.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @  UNIFY 0 T=
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @  UNIFY TFALSE
 
 \ cross-family: a same-slot hidden field of a DIFFERENT family rejects.
 PARAM-SCR-N @
 CC-N MK-CON PARAM-SCR+
 CC-N MK-CON PARAM-SCR+
 s" tdmix" TD3M @ MK-PARAM  TD3MLOG !
-TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY 0 T=
+TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY TFALSE
 
 \ ---------------------------------------------------------------------------
 \ derive S1 (dot habu-checker-capability-derive): `DERIVE eq` on a PUBLIC ENUM
@@ -1766,9 +1766,9 @@ ENUM tdrv DERIVE eq red green blue ;ENUM
 : TDRV-EQ-LAST ( -- bool ) TDRV:BLUE TDRV:BLUE TDRV:EQ ;
 : TDRV-TAG0 ( -- n ) TDRV:RED TDRV:TAG ;
 : TDRV-TAG2 ( -- n ) TDRV:BLUE TDRV:TAG ;
-TDRV-EQ-SAME -1 T=
-TDRV-EQ-DIFF 0 T=
-TDRV-EQ-LAST -1 T=
+TDRV-EQ-SAME TTRUE
+TDRV-EQ-DIFF TFALSE
+TDRV-EQ-LAST TTRUE
 TDRV-TAG0 0 T=
 TDRV-TAG2 2 T=
 
@@ -1814,7 +1814,7 @@ s" ENUM tdrb8 DERIVE eq tag other ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdrb9 DERIVE eq bad eq ;ENUM" E-TDECL-NAME TDT-NEG
 ENUM tdrb9 DERIVE eq aa bb ;ENUM
 : TDRB9-EQ ( -- bool ) TDRB9:AA TDRB9:BB TDRB9:EQ ;
-TDRB9-EQ 0 T=
+TDRB9-EQ TFALSE
 
 \ a variant named eq/tag stays legal WITHOUT derive (no reservation creep).
 ENUM tdrx eq neq ;ENUM
@@ -1840,14 +1840,14 @@ SUMTYPE tdsv DERIVE eq
 : TDSV-NEQ-X ( -- bool ) TDSV:NIL 5 TDSV:SING TDSV:EQ ;
 : TDSV-NEQ-Y ( -- bool ) 1 2 TDSV:PAIR TDSV:NIL TDSV:EQ ;
 : TDSV-TAG-P ( -- n ) 1 2 TDSV:PAIR TDSV:TAG ;
-TDSV-EQ-NIL -1 T=
-TDSV-EQ-S -1 T=
-TDSV-NEQ-S 0 T=
-TDSV-EQ-P -1 T=
-TDSV-NEQ-P1 0 T=
-TDSV-NEQ-P0 0 T=
-TDSV-NEQ-X 0 T=
-TDSV-NEQ-Y 0 T=
+TDSV-EQ-NIL TTRUE
+TDSV-EQ-S TTRUE
+TDSV-NEQ-S TFALSE
+TDSV-EQ-P TTRUE
+TDSV-NEQ-P1 TFALSE
+TDSV-NEQ-P0 TFALSE
+TDSV-NEQ-X TFALSE
+TDSV-NEQ-Y TFALSE
 TDSV-TAG-P 2 T=
 \ the scalar = wall stays closed on a derived W>1 sum.
 s" TDSV-RAW ( tdsv tdsv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
@@ -1860,9 +1860,9 @@ PRODUCT tdpv DERIVE eq
 : TDPV-EQ ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 7 TDPV:MAKE TDPV:EQ ;
 : TDPV-NEQ-C ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:GREEN 7 TDPV:MAKE TDPV:EQ ;
 : TDPV-NEQ-N ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 8 TDPV:MAKE TDPV:EQ ;
-TDPV-EQ -1 T=
-TDPV-NEQ-C 0 T=
-TDPV-NEQ-N 0 T=
+TDPV-EQ TTRUE
+TDPV-NEQ-C TFALSE
+TDPV-NEQ-N TFALSE
 \ products derive EQ only: no TWX-TAG surface (undefined -> uncheckable), and the
 \ derived EQ is undefine-protected like a constructor.
 s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 1 T=
@@ -1880,7 +1880,7 @@ s" SUMTYPE tdsb5 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdsb6 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 SUMTYPE tdsb6 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 : TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
-TDSB6-EQ -1 T=
+TDSB6-EQ TTRUE
 
 \ ---------------------------------------------------------------------------
 \ derive S3: hash — the checked SEMANTIC generator (FNV-1a folded over the
@@ -1902,19 +1902,19 @@ SUMTYPE tdhs DERIVE eq hash
 : TDHS-H2 ( -- bool ) 5 TDHS:HONE TDHS:HASH 5 TDHS:HONE TDHS:HASH = ;
 : TDHS-C3 ( -- bool ) 1 2 TDHS:HPAIR 1 2 TDHS:HPAIR TDHS:EQ ;
 : TDHS-H3 ( -- bool ) 1 2 TDHS:HPAIR TDHS:HASH 1 2 TDHS:HPAIR TDHS:HASH = ;
-TDHS-C1 -1 T=
-TDHS-H1 -1 T=
-TDHS-C2 -1 T=
-TDHS-H2 -1 T=
-TDHS-C3 -1 T=
-TDHS-H3 -1 T=
+TDHS-C1 TTRUE
+TDHS-H1 TTRUE
+TDHS-C2 TTRUE
+TDHS-H2 TTRUE
+TDHS-C3 TTRUE
+TDHS-H3 TTRUE
 \ non-degeneracy smoke: tag difference, payload difference, payload ORDER.
 : TDHS-D1 ( -- bool ) TDHS:HNIL TDHS:HASH 5 TDHS:HONE TDHS:HASH = ;
 : TDHS-D2 ( -- bool ) 5 TDHS:HONE TDHS:HASH 6 TDHS:HONE TDHS:HASH = ;
 : TDHS-D3 ( -- bool ) 1 2 TDHS:HPAIR TDHS:HASH 2 1 TDHS:HPAIR TDHS:HASH = ;
-TDHS-D1 0 T=
-TDHS-D2 0 T=
-TDHS-D3 0 T=
+TDHS-D1 TFALSE
+TDHS-D2 TFALSE
+TDHS-D3 TFALSE
 
 \ product hash: order-free `DERIVE hash eq`; enum field folds via TDRV:TAG.
 PRODUCT tdhp DERIVE hash eq
@@ -1925,17 +1925,17 @@ PRODUCT tdhp DERIVE hash eq
 : TDHP-H ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 7 TDHP:MAKE TDHP:HASH = ;
 : TDHP-D1 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:GREEN 7 TDHP:MAKE TDHP:HASH = ;
 : TDHP-D2 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 8 TDHP:MAKE TDHP:HASH = ;
-TDHP-C -1 T=
-TDHP-H -1 T=
-TDHP-D1 0 T=
-TDHP-D2 0 T=
+TDHP-C TTRUE
+TDHP-H TTRUE
+TDHP-D1 TFALSE
+TDHP-D2 TFALSE
 
 \ hash-alone: HASH + TWX-TAG generated, EQ absent (undefined -> uncheckable);
 \ the derived HASH is undefine-protected like a constructor.
 ENUM tdho DERIVE hash oa ob ;ENUM
 : TDHO-H ( -- bool ) TDHO:OA TDHO:HASH TDHO:OA TDHO:HASH = ;
 : TDHO-T ( -- n ) TDHO:OB TDHO:TAG ;
-TDHO-H -1 T=
+TDHO-H TTRUE
 TDHO-T 1 T=
 s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 1 T=
 s" undefine TDHO:HASH" E-CTOR-PROTECTED TDT-NEG
@@ -1976,14 +1976,14 @@ TDOK @ -1 T=
 : TDNU-HASH-ORDER ( -- bool )
    1 2 construct tdnu pair TDNU:HASH
    2 1 construct tdnu pair TDNU:HASH = ;
-TDNU-EQ-EMPTY -1 T=
-TDNU-EQ-PAIR -1 T=
-TDNU-NEQ-PAY 0 T=
-TDNU-NEQ-ORDER 0 T=
-TDNU-NEQ-CROSS 0 T=
+TDNU-EQ-EMPTY TTRUE
+TDNU-EQ-PAIR TTRUE
+TDNU-NEQ-PAY TFALSE
+TDNU-NEQ-ORDER TFALSE
+TDNU-NEQ-CROSS TFALSE
 TDNU-TAG-PAIR 1 T=
-TDNU-HASH-EQ -1 T=
-TDNU-HASH-ORDER 0 T=
+TDNU-HASH-EQ TTRUE
+TDNU-HASH-ORDER TFALSE
 
 \ The named-field derivation validator resolves the field schema too: a pointer
 \ payload now rejects at declaration time, exactly like a legacy SUMTYPE, because
@@ -2016,7 +2016,7 @@ TDLV-MA 10 T=
 TDLV-MB 20 T=
 \ two annotated locals + derived eq through the reads.
 : TDLV-EQ2 ( -- bool ) TDLV:LVA TDLV:LVA {: x:tdlv y:tdlv :} x y TDLV:EQ ;
-TDLV-EQ2 -1 T=
+TDLV-EQ2 TTRUE
 \ annotated local referenced in both branch arms.
 : TDLV-BR ( n tdlv -- n ) {: v:tdlv :} 0 > if v TDLV:TAG else v TDLV:TAG 10 + then ;
 : TDLV-BRT ( -- n ) 1 TDLV:LVB TDLV-BR ;
@@ -2080,18 +2080,18 @@ s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ reads, and the signature's own arity diagnostic is what comes out.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLRA1 ( tdres<n,n> -- n ) {: x:tdres<n> :} 5" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" CONTAINS? -1 T=
+DIAG-BUFFER$ s" wrong arity for type family 'x:tdres<n>'" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom " CONTAINS? TTRUE
 \ enum-tier annotation term on the EXPECTED side of the :} bind check
 \ (pre-fix rendered 'expected: oplv<>').
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: tdlv actual: tdlp " CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: tdlv actual: tdlp " CONTAINS? TTRUE
 \ foreign-package family: the interned name renders qualified pkg:tail. Use the
 \ real package path; checker mirror mutation is not namespace authority.
 package tdlrpk
@@ -2100,7 +2100,7 @@ NEWTYPE tdlrfam
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " CONTAINS? -1 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam " CONTAINS? TTRUE
 
 \ Same row, but the package was declared in UPPER case. TDLR4 above cannot see
 \ the difference — `tdlrpk` is already lowercase — so the renderer used to echo
@@ -2117,27 +2117,27 @@ NEWTYPE tdlrfamu
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? TTRUE
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? TFALSE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu " CONTAINS? TTRUE
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu " CONTAINS? TFALSE
 \ the folded qualifier still names the family back: a signature may spell it either way.
 s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" CONTAINS? 0 T=
-0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu \"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu \"" CONTAINS? TFALSE
+false DIAG-JSON!
 \ a package reopened under different capitalisation is the SAME package: the
 \ engine reports the first-registered spelling, so the family renders bare
 \ inside it rather than picking up a self-qualifier.
 package tdlrpku
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" expected: n actual: tdlrfamu " CONTAINS? -1 T=
-DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " CONTAINS? 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrfamu " CONTAINS? TTRUE
+DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu " CONTAINS? TFALSE
 ;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 
@@ -2154,14 +2154,14 @@ package tdlrjp
 public
 SUMTYPE tdlrjs VARIANT keep n ;VARIANT ;SUMTYPE
 ;package
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? 0 T=
-0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" CONTAINS? TFALSE
+false DIAG-JSON!
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
@@ -2207,11 +2207,11 @@ s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
 \ TDPA1's reject also renders the arg-aware expansion: option<tdpbw2>'s tag is at
 \ slot 2 (declared family width would put it at slot 1) — the W=3 slot the
 \ certified TDPN4-7 satisfy by construction.
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" CONTAINS? -1 T=
-0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" CONTAINS? TTRUE
+false DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
@@ -2246,19 +2246,19 @@ s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE
 s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
-TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"family\":\"tdnres\"" CONTAINS? -1 T=
-0 DIAG-JSON!
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"family\":\"tdnres\"" CONTAINS? TTRUE
+false DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 

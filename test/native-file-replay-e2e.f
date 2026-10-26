@@ -149,14 +149,14 @@ variable REMOVED
       S\" : REVIEW-BEFORE ( -- ) ;\ninclude session-close.f\n1 constant REVIEW-SESSION-VALUE\n" PUT
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" session-parent.f" s" cache-close"
-      S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
+      S\" s\" session=\" type NCOMP:SESSION-LIVE? bool>n . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
       SESSION-PROBE
    REPORT
    OUT$ s" session=0" CONTAINS? TTRUE
    OUT$ s" open-result=0" CONTAINS? TTRUE
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" session-parent.f" s" cache-close"
-      S\" s\" session=\" type NCOMP:SESSION-LIVE? . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
+      S\" s\" session=\" type NCOMP:SESSION-LIVE? bool>n . cr\ns\" open-result=\" type ' REVIEW-OPEN catch . cr\n"
       SESSION-PROBE
    REPORT
    OUT$ s" session=0" CONTAINS? TTRUE
@@ -168,13 +168,13 @@ variable REMOVED
    s" foreign.f" S\" REVIEW-OPEN\n" PUT
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" foreign.f" s" cache-foreign"
-      S\" s\" session=\" type IR-CTX:SESSION-LIVE? . cr\n"
+      S\" s\" session=\" type IR-CTX:SESSION-LIVE? bool>n . cr\n"
       SESSION-PROBE
    REPORT
    OUT$ s" session=-1" CONTAINS? TTRUE
    S\" : REVIEW-OPEN ( -- ) NABI:BINDING IR-CTX:SESSION-OPEN drop ;\n"
       s" foreign.f" s" cache-foreign"
-      S\" s\" session=\" type IR-CTX:SESSION-LIVE? . cr\n"
+      S\" s\" session=\" type IR-CTX:SESSION-LIVE? bool>n . cr\n"
       SESSION-PROBE
    REPORT
    OUT$ s" session=-1" CONTAINS? TTRUE ;

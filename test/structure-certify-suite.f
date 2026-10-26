@@ -199,7 +199,7 @@ s" STRUCTURE scder DERIVE eq hash FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 : SCDEQ ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE b SCDER:MAKE SCDER:EQ ;
 : SCDHS ( n n -- bool ) {: a:n b:n :} a SCDER:MAKE SCDER:HASH b SCDER:MAKE SCDER:HASH = ;
 5 5 SCDEQ TTRUE
-5 6 SCDEQ 0 T=
+5 6 SCDEQ TFALSE
 5 5 SCDHS TTRUE
 
 \ ---------------------------------------------------------------------------

@@ -361,19 +361,19 @@ DECL-DIAG:PROSE
 s" package vp public ENUM cm1 red ( note ) green ;ENUM ;package"
 VSPARITY:VSTRY 7101 T=
 s" habu: bad enum declaration 'cm1': name must be a lowercase tail at '('"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" package vq public STRUCTURE cm2 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
 VSPARITY:VSTRY 7107 T=
 s" habu: bad structure declaration 'cm2': unexpected token in structure declaration at '('"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ a `\` comment runs to end of line, so this one needs a real newline in it
 DECL-DIAG:PROSE
 VSPARITY:BACKSLASH-ENUM-SOURCE VSPARITY:VSTRY 7101 T=
 s" habu: bad enum declaration 'cm3': name must be a lowercase tail at '\'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------

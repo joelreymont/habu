@@ -1359,10 +1359,14 @@ private
 \ The two masks it is asked with: a text renderer (RECORD-DEFINER?), and a text
 \ renderer or a word that calls `create` (TOP-TOKEN). They are bound at top
 \ level because the checker loads before the check hook, so a source boot has
-\ no checked row for its constants (test/cold-naming-test.f).
+\ no checked row for its constants (test/cold-naming-test.f). Its top level also
+\ reads them as stale cells that `or` refuses, so each fact is first bound to a
+\ constant of this file and the masks combine those.
 CTL-RENDERS constant MARK-RENDERS
-CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
-CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
+CTL-CREATES constant FACT-CREATES
+CTL-NOMINAL constant FACT-NOMINAL
+MARK-RENDERS FACT-CREATES or constant MARK-UNSEEN
+MARK-RENDERS FACT-NOMINAL or constant MARK-NOMINAL
 
 \ Only a reached call whose outputs this reader does not model can introduce
 \ nominal types absent from the source. A modeled declaration checks its own

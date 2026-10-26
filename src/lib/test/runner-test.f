@@ -101,7 +101,7 @@ variable GTT-OFI
    s" 98 emit 97 emit 100 emit 45 emit 111 emit 117 emit 116 emit 10 emit" SB-APPEND GTT-LF
    s" create E 98 c, 97 c, 100 c, 45 c, 101 c, 114 c, 114 c, 10 c," SB-APPEND GTT-LF
    s" 2 E 8 write drop" SB-APPEND GTT-LF
-   s" 0 0 7 die" SB-APPEND GTT-LF
+   s" NULL-PTR 0 7 die" SB-APPEND GTT-LF
    SB$ ;
 
 : GTT-HANG-SRC$ ( -- ptr u8 n )
@@ -142,7 +142,7 @@ variable GTT-OFI
    s"    " SB-APPEND s" room-ok" GTT-LIT+ s"  type cr" SB-APPEND GTT-LF
    s"    GT-CLEANUP ;" SB-APPEND GTT-LF
    s" ROOM" SB-APPEND GTT-LF
-   s" 0 0 0 die" SB-APPEND GTT-LF
+   s" NULL-PTR 0 0 die" SB-APPEND GTT-LF
    SB$ ;
 
 \ A child that runs the fail fixture through the real runner, then asserts two
@@ -172,7 +172,7 @@ variable GTT-OFI
    s" want-err" GTT-LIT+ s" err-detail" GTT-LIT+ s"  GT-STDERR=" SB-APPEND GTT-LF
    \ Ends itself: a child that falls off the end waits on the stdin it
    \ inherited, so its cost would be the caller's stdin and not its own work.
-   s" 0 0 0 die" SB-APPEND GTT-LF
+   s" NULL-PTR 0 0 die" SB-APPEND GTT-LF
    GTT-DETAIL$ SB$ APPEND-FILE ;
 
 \ Golden, written out rather than derived, so a change in what the runner prints

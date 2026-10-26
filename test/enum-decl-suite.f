@@ -700,83 +700,83 @@ TFAMN@ RB-TFAM @ T=
 \      token and rethrowing the exact code.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgempty ;ENUM" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration 'dgempty': empty enum at 'dgempty'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgempty': empty enum at 'dgempty'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN Dgcase red ;ENUM" TEST-EVAL:RC 7101 T=
 s" habu: bad enum declaration 'Dgcase': name must be a lowercase family tail at 'Dgcase'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN n red ;ENUM" TEST-EVAL:RC 7110 T=
-s" habu: bad enum declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgdup red red ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgdup': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgdup': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgar<a,a> VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 7108 T=
 s" habu: bad enum declaration 'dgar<a,a>': invalid type parameter header at 'dgar<a,a>'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpay VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
-s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpol POLICY nosuch red ;ENUM" TEST-EVAL:RC 7116 T=
-s" habu: bad enum declaration 'dgpol': unknown layout policy at 'nosuch'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgpol': unknown layout policy at 'nosuch'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgdrv DERIVE nosuch red ;ENUM" TEST-EVAL:RC 7119 T=
-s" habu: bad enum declaration 'dgdrv': unknown derive feature at 'nosuch'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgdrv': unknown derive feature at 'nosuch'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgord DERIVE order red ;ENUM" TEST-EVAL:RC 7119 T=
 s" habu: bad enum declaration 'dgord': derive feature not yet supported at 'order'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgfn VARIANT vv FIELD make n ;VARIANT ;ENUM" TEST-EVAL:RC 7125 T=
-s" habu: bad enum declaration 'dgfn': reserved field name at 'make'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgfn': reserved field name at 'make'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgkw alpha variant ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgkw': block keyword in a compact enum at 'variant'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ a terminator that never arrives anchors on the family, exactly as the legacy
 \ unterminated-declaration packet does (sumtype.f TDECL-ENUM-NOEND-BODY).
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnoend red" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration 'dgnoend': missing ;ENUM at 'dgnoend'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgnoend': missing ;ENUM at 'dgnoend'" DECL-DIAG:HAS? TTRUE
 
 \ 22b. Legacy / unified parity. The same malformed shape through the legacy ENUM
 \      definer and through ED-RUN produces the same code and the same message,
 \      differing only in the family name the two declarations had to be given.
 DECL-DIAG:PROSE
 s" ENUM dglegacy red red ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dglegacy': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dglegacy': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgunified red red ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgunified': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgunified': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM dglegacy2 ;ENUM" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration 'dglegacy2': empty enum at 'dglegacy2'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dglegacy2': empty enum at 'dglegacy2'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgunified2 ;ENUM" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIAG:HAS? TTRUE
 
 \ 22c. Clause nesting inside one declaration. A FIELD inside a VARIANT inside an
 \      ENUM reports the ENUM's family, not the variant or the field it is nested
 \      in, while the token moves to the offending payload token.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnest VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
-s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
-s" declaration 'nestvar'" DECL-DIAG:HAS? 0 T=
-s" declaration 'nestfld'" DECL-DIAG:HAS? 0 T=
+s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? TTRUE
+s" declaration 'nestvar'" DECL-DIAG:HAS? TFALSE
+s" declaration 'nestfld'" DECL-DIAG:HAS? TFALSE
 
 \ 22d. A declaration that ends before its own name reports an empty family, not
 \      the family dgnest declared just above. What this pins is DRIVE's ordering:
@@ -786,8 +786,8 @@ s" declaration 'nestfld'" DECL-DIAG:HAS? 0 T=
 \      OPEN's own contract is pinned directly in 22g below.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? -1 T=
-s" dgnest" DECL-DIAG:HAS? 0 T=
+s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? TTRUE
+s" dgnest" DECL-DIAG:HAS? TFALSE
 
 \ 22e. Hostile declarations. Text supplied BY the declaration cannot forge or
 \      displace the packet: a variant spelled like a fragment of the message is
@@ -795,12 +795,12 @@ s" dgnest" DECL-DIAG:HAS? 0 T=
 \      exactly one line is emitted (length = the line plus its newline).
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgforge duplicate duplicate ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgforge': duplicate variant at 'duplicate'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgforge': duplicate variant at 'duplicate'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:LEN 71 T=
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgat at at ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgat': duplicate variant at 'at'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgat': duplicate variant at 'at'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:LEN 61 T=
 
 \      A family name spelled like one of the JSON packet's own keys keeps key and
@@ -808,15 +808,15 @@ DECL-DIAG:LEN 61 T=
 \      rather than closing the JSON string early.
 DECL-DIAG:JSON
 s" ENUM-DECL:ED-RUN reason red red ;ENUM" TEST-EVAL:RC 7102 T=
-s\" \"family\":\"reason\"" DECL-DIAG:HAS? -1 T=
-s\" \"reason\":\"duplicate variant\"" DECL-DIAG:HAS? -1 T=
-s\" \"token\":\"red\"" DECL-DIAG:HAS? -1 T=
+s\" \"family\":\"reason\"" DECL-DIAG:HAS? TTRUE
+s\" \"reason\":\"duplicate variant\"" DECL-DIAG:HAS? TTRUE
+s\" \"token\":\"red\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:JSON
 s\" ENUM-DECL:ED-RUN dgquote aq\"b red ;ENUM" TEST-EVAL:RC 7101 T=
-s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? -1 T=
-s\" \"family\":\"dgquote\"" DECL-DIAG:HAS? -1 T=
-s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? -1 T=
+s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
+s\" \"family\":\"dgquote\"" DECL-DIAG:HAS? TTRUE
+s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? TTRUE
 
 \ 22f. Accepted declarations stay silent, and a rendered reject still leaves the
 \      registry byte-identical: rendering happens after the runner has
@@ -826,12 +826,12 @@ s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM-DECL:ED-RUN dgok2 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM-DECL:ED-RUN dgok3 POLICY packed-tag redd greend ;ENUM" TEST-EVAL:RC 0 T=
 s" ENUM-DECL:ED-RUN dgok4 DERIVE eq rede greene ;ENUM" TEST-EVAL:RC 0 T=
-DECL-DIAG:SILENT? -1 T=
+DECL-DIAG:SILENT? TTRUE
 
 REG-MARK
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgroll red red ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgroll': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgroll': duplicate variant at 'red'" DECL-DIAG:HAS? TTRUE
 TFAMN@ RB-TFAM @ T=
 SUMVN@ RB-SUMV @ T=
 SCHN@ RB-SCH @ T=
@@ -847,10 +847,10 @@ DECL-DIAG:OFF
 \      moved on it can no longer explain anything.
 s" enum" DECL-REJECT:OPEN
 s" armed-for-7102" 7102 DECL-REJECT:EXPECT
-7102 DECL-REJECT:REASON$ s" armed-for-7102" DECL-DIAG:SAME? -1 T=
-7107 DECL-REJECT:REASON$ s" malformed declaration" DECL-DIAG:SAME? -1 T=
+7102 DECL-REJECT:REASON$ s" armed-for-7102" DECL-DIAG:SAME? TTRUE
+7107 DECL-REJECT:REASON$ s" malformed declaration" DECL-DIAG:SAME? TTRUE
 s" moved-on" DECL-REJECT:TOKEN!
-7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? -1 T=
+7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? TTRUE
 
 \      OPEN clears every field. The packet below is fully populated first, so a
 \      clear that stopped happening would leave one of these three assertions
@@ -862,7 +862,7 @@ s" leaked-reason" 7102 DECL-REJECT:EXPECT
 s" enum" DECL-REJECT:OPEN
 DECL-REJECT:FAMILY$ nip 0 T=
 DECL-REJECT:TOKEN$ nip 0 T=
-7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? -1 T=
+7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? TTRUE
 
 \ 22h. SLOT! bounds. A span longer than the 96-byte slot is capped and MARKED
 \      with a trailing "...", so the packet never presents a prefix as if it were
@@ -874,18 +874,18 @@ s" enum" DECL-REJECT:OPEN
 s" survivor" DECL-REJECT:TOKEN!
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop"
 DECL-REJECT:FAMILY!
-DECL-REJECT:TOKEN$ s" survivor" DECL-DIAG:SAME? -1 T=
+DECL-REJECT:TOKEN$ s" survivor" DECL-DIAG:SAME? TTRUE
 DECL-REJECT:FAMILY$ nip 96 T=
 DECL-REJECT:FAMILY$
 s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe..."
-DECL-DIAG:SAME? -1 T=
+DECL-DIAG:SAME? TTRUE
 
 \      and the marked cap reaches the rendered line through the real front end.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop ;ENUM"
 TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe...': empty enum"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ 22i. The reasons no case above reaches: the armed duplicate-family text, the
 \      declaration-event clause duplicates, the variant-block and header-order
@@ -896,59 +896,59 @@ DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgtwice red ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgtwice blue ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgtwice': duplicate family at 'dgtwice'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgtwice': duplicate family at 'dgtwice'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgdupfld VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TEST-EVAL:RC 7102 T=
-s" habu: bad enum declaration 'dgdupfld': duplicate field name at 'zz'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgdupfld': duplicate field name at 'zz'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dg2pol POLICY packed-tag POLICY packed-tag red ;ENUM" TEST-EVAL:RC 7163 T=
 s" habu: bad enum declaration 'dg2pol': a second POLICY clause in one declaration at 'packed-tag'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dg2drv DERIVE eq DERIVE eq red ;ENUM" TEST-EVAL:RC 7164 T=
 s" habu: bad enum declaration 'dg2drv': the same DERIVE feature twice in one declaration at 'eq'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dghdr red POLICY packed-tag ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dghdr': header clause after the first variant at 'POLICY'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgvb VARIANT vv stray ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'dgvb': unexpected token in variant block at 'stray'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgvn VARIANT" TEST-EVAL:RC 7107 T=
-s" habu: bad enum declaration 'dgvn': missing variant name" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgvn': missing variant name" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgdgd<a> DERIVE eq VARIANT vv ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
 s" habu: bad enum declaration 'dgdgd': derive requires a concrete (arity 0) family at 'eq'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \      7119 raised by the constructor participant's payload-role check, two
 \      phases after the body: no reason is armed for it, so the table answers.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgroleq DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TEST-EVAL:RC 7119 T=
 s" habu: bad enum declaration 'dgroleq': a payload type or role has no derived equality at 'dgroleq'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgvrsv VARIANT n ;VARIANT ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'dgvrsv': name is reserved or already taken at 'n'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgfcase VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TEST-EVAL:RC 7101 T=
 s" habu: bad enum declaration 'dgfcase': name must be a lowercase tail at 'Zed'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
@@ -1005,7 +1005,7 @@ CHECKER-SCOPE-FINALIZE
 enum-ctor-test:DICT-SAME
 
 s" rpcompact" FAMID FID !
-FID @ TFAM-ENUM? -1 T=                    \ compact mode still picks TK-ENUM
+FID @ TFAM-ENUM? TTRUE                    \ compact mode still picks TK-ENUM
 FID @ F-VAR-COUNT 3 T=
 FID @ F-WIDTH 1 T=
 FID @ F-VAR-START VS0 !
@@ -1031,7 +1031,7 @@ VS0 @ 2 + SUMV-CTOR-SYM@ 0 <> TTRUE
 s" rpfull" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rpfull" FAMID FID !
-FID @ TFAM-SUM? -1 T=                     \ full mode still picks TK-SUM
+FID @ TFAM-SUM? TTRUE                     \ full mode still picks TK-SUM
 FID @ F-VAR-COUNT 2 T=
 FID @ TFAM-FLD-COUNT@ 2 T=
 FID @ F-VAR-START VS0 !
@@ -1053,8 +1053,8 @@ s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rppol" FAMID FID !
 FID @ TFAM:TFAM-LAYOUT-POLICY@ PACKED# T=
-FID @ F-EQ? -1 T=
-FID @ F-HASH? -1 T=
+FID @ F-EQ? TTRUE
+FID @ F-HASH? TTRUE
 REPLAY-SCOPE:CLOSE
 
 \ 23d. A malformed replayed declaration reports through the SAME renderer as a
@@ -1063,25 +1063,25 @@ REPLAY-SCOPE:CLOSE
 DECL-DIAG:PROSE
 s" rpbadv" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
 s" habu: bad enum declaration 'rpbadv': unexpected token in variant block at 'stray'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" rpbadname" s" red red ;ENUM" enum-replay-test:RP-TRY 7102 T=
 s" habu: bad enum declaration 'rpbadname': duplicate variant at 'red'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ 23e. A buffer whose terminator is missing rejects through the front end's own
 \      end-of-input gate, exactly as a truncated live declaration does. The
 \      consumers therefore cannot register a half-read declaration by accident.
 DECL-DIAG:PROSE
 s" rpnoend" s" red green" enum-replay-test:RP-TRY 7107 T=
-s" habu: bad enum declaration 'rpnoend': missing ;ENUM" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'rpnoend': missing ;ENUM" DECL-DIAG:HAS? TTRUE
 
 \ 23f. A zero-length name reaches the missing-name gate instead of silently
 \      promoting the first body token to the family name.
 DECL-DIAG:PROSE
 s" " s" red green ;ENUM" enum-replay-test:RP-TRY 7107 T=
-s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 23g. A REJECTED replay leaves the stream closed, so the next LIVE declaration
@@ -1198,12 +1198,12 @@ DECL-DIAG:OFF
 \      legacy definer as well as on the front end.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN if red green ;ENUM" TEST-EVAL:RC 7110 T=
-s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
 s" ENUM if red green ;ENUM" TEST-EVAL:RC 7110 T=
-s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 24c. Variant-name position, both modes. These already refused control words
@@ -1213,13 +1213,13 @@ DECL-DIAG:OFF
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwvc do loop ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'cwvc': name is reserved or already taken at 'do'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwvf VARIANT loop ;VARIANT ;ENUM" TEST-EVAL:RC 7110 T=
 s" habu: bad enum declaration 'cwvf': name is reserved or already taken at 'loop'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 24d. Field-name position. The field row's own gate (PF-RESERVED?) answers, so
@@ -1230,7 +1230,7 @@ DECL-DIAG:OFF
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN cwfld VARIANT vv FIELD then n ;VARIANT ;ENUM" TEST-EVAL:RC 7125 T=
 s" habu: bad enum declaration 'cwfld': reserved field name at 'then'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ 24e. The match is on the WHOLE token. A name that starts with, ends with, or
@@ -1294,7 +1294,7 @@ BUILD
 SRC$ TEST-EVAL:RC 0 T=
 s" longenum" FAMID FID !
 FID @ F-VAR-COUNT LONG-N T=            \ every variant arrived
-FID @ TFAM-ENUM? -1 T=
+FID @ TFAM-ENUM? TTRUE
 FID @ F-VAR-START VS0 !
 VS0 @ SV-NAME$ s" v000" CORE-STR= TTRUE
 VS0 @ SV-TAG@ 0 T=
@@ -1367,7 +1367,7 @@ s" edlrole" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 DECL-DIAG:PROSE
 s" ENUM edlfwd VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -1380,7 +1380,7 @@ s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" ENUM edlgenuse VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlgenuse': payload type is parametric and needs type arguments at 'edlgen'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -1410,35 +1410,35 @@ s" edlowns" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 DECL-DIAG:PROSE
 s" ENUM edlptr VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" ENUM edlptrcon VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" ENUM edlptr2 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" ENUM edlptrsum VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ every variant is checked, not just the first, and the token names the offending
 \ payload rather than the declaration's first payload.
 DECL-DIAG:PROSE
 s" ENUM edlptrlate VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ the controls. A pointer to a family that owns nothing declares and leaves the
 \ enum non-linear — so the rejects above answer the POINTEE's linearity and not
@@ -1467,17 +1467,17 @@ s" edlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 DECL-DIAG:PROSE
 s" ENUM edlptrpar VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
-DECL-DIAG:HAS? -1 T=                                  \ the paren itself was the token
+DECL-DIAG:HAS? TTRUE                                  \ the paren itself was the token
 DECL-DIAG:PROSE
 s" ENUM edlptrbsl VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TEST-EVAL:RC 7107 T=
 s" habu: bad enum declaration 'edlptrbsl': unexpected token in variant block at '\'"
-DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
+DECL-DIAG:HAS? TTRUE                                  \ and so was the backslash
 \ and trailing text after the offending payload cannot suppress the reject,
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" ENUM edlptrtail VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TEST-EVAL:RC 7109 T=
 s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------

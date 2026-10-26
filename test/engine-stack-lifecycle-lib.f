@@ -180,7 +180,7 @@ variable ERRLEN
 \ primitive from the interpreter, so the exact slot accounting is ARM-only.
 : PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
-   s" STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = ."
+   s" STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
    CHILD-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL

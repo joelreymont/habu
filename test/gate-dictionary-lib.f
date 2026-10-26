@@ -163,9 +163,9 @@ variable CANDIDATE-VERDICT
    s" 77 LONG-DICTIONARY-VARIABLE !" GE-SRC-LINE
    s" LONG-DICTIONARY-VARIABLE @ ." GE-SRC-LINE
    s" LONG-DICTIONARY-NAME-ADDONE" GE-SRC-S"
-   s"  get-current search-wl 0= ." GE-SRC-LINE
+   s"  get-current search-wl 0= bool>n ." GE-SRC-LINE
    s" long-dictionary-name-addone" GE-SRC-S"
-   s"  get-current search-wl 0= ." GE-SRC-LINE
+   s"  get-current search-wl 0= bool>n ." GE-SRC-LINE
    s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
@@ -211,9 +211,9 @@ variable CANDIDATE-VERDICT
    s" : LONG-WORDLIST-ONLY-NAME ( -- i64 ) 8 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" LONG-WORDLIST-ONLY-NAME" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" LONG-WORDLIST-ONLY-NAME" GE-SRC-S"
-   s"  LONG-WL @ search-wl 0= ." GE-SRC-LINE ;
+   s"  LONG-WL @ search-wl 0= bool>n ." GE-SRC-LINE ;
 
 : WORDLIST ( -- )
    GE-HB-RESET
@@ -250,7 +250,7 @@ variable CANDIDATE-VERDICT
    EMIT-LONG-NAME
    s"  ." GE-SRC-LINE
    LONG-NAME-S"
-   s"  get-current search-wl 0= ." GE-SRC-LINE ;
+   s"  get-current search-wl 0= bool>n ." GE-SRC-LINE ;
 
 : LONG-NAME ( -- )
    GE-HB-RESET
@@ -450,13 +450,13 @@ variable CANDIDATE-VERDICT
    s" HBTRUSTCALL ." GE-SRC-LINE
    s" hb:gd-count ." GE-SRC-LINE
    s" HB:GD-COUNT" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" GD-COUNT" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" : GD-EDGE: ( -- n ) 3 ;" GE-SRC-LINE
    s" GD-EDGE: ." GE-SRC-LINE
    s" GD-EDGE:" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" hb wordlist namespace qualification" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 1" GE-OUT-LINE
@@ -490,9 +490,9 @@ variable CANDIDATE-VERDICT
    s" hb:exposed ." GE-SRC-LINE
    s" hB:eXpOsEd ." GE-SRC-LINE
    s" EXPOSED" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" HIDDEN" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
+   s"  0 search-wl 0= bool>n ." GE-SRC-LINE
    s" package hb" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : MORE ( -- n ) EXPOSED 10 + ;" GE-SRC-LINE
@@ -921,7 +921,7 @@ variable CANDIDATE-VERDICT
    s" ;package" GE-SRC-LINE
    s" undefine GD-QUNDEF:TARGET" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  GD-QUNDEF:TARGET" GE-SRC+ GE-DQ GE-SRC-C
-   s"  XREF-FIND XREF-FOUND? ." GE-SRC-LINE
+   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" package GD-QUNDEF" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
@@ -933,7 +933,7 @@ variable CANDIDATE-VERDICT
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
    s"  GD-UQ-CATCH ." GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
-   s"  XREF-FIND XREF-FOUND? ." GE-SRC-LINE
+   s"  XREF-FIND XREF-FOUND? bool>n ." GE-SRC-LINE
    s" : GD-QROLL-CALL ( len len -- pcap:captured ) PCAP-CAPTURED:MAKE ;" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  checker-kept" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
@@ -1437,9 +1437,9 @@ variable CANDIDATE-VERDICT
    s" : IDENTITY ( -- bool ) ndict@ dup ndict! ndict@ = ;" GE-SRC-LINE
    s" MARK-LOW" GE-SRC-LINE
    s" : FRESH ( -- n ) 41 ;" GE-SRC-LINE
-   s" MARK-HIGH FRESH . IDENTITY . LOWER" GE-SRC-LINE
-   S\" s\" FRESH\" get-current search-wl 0= ." GE-SRC-LINE
-   s" RAISE FRESH . IDENTITY ." GE-SRC-LINE
+   s" MARK-HIGH FRESH . IDENTITY bool>n . LOWER" GE-SRC-LINE
+   S\" s\" FRESH\" get-current search-wl 0= bool>n ." GE-SRC-LINE
+   s" RAISE FRESH . IDENTITY bool>n ." GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" public ndict! preserves live identity and rewind/restore lookup" GE-EVAL-RUN-STDIN
    SB-RESET

@@ -176,7 +176,7 @@ s" clear-label" T-LABEL
 T-LABEL-CLEAR
 T-LABEL$ s" " T$=
 s" true label" T-LABEL
--1 TTRUE
+true TTRUE
 T-LABEL$ s" " T$=
 
 TAT-TEST-ONE-LINE

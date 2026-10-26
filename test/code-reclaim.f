@@ -149,9 +149,12 @@ LC-CAP BUFFER: LC-ERR
    outu LEN>N 0 T=
    LC-ERR erru LEN>N s" hb: does> has no created word" CONTAINS? TTRUE ;
 
+\ A does> reached outside create's definer leaves the created word typed
+\ `-- ptr a`, so the print takes its distance from NULL-PTR: the patched clause
+\ yields the number itself.
 : LASTC-CASE ( -- )
    s" a forget that keeps the created record keeps it for does>" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP .\n"
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP NULL-PTR - .\n"
    S\" 8\n" LC-PRINTS
 
    s" a forget that retires the created record leaves does> none to patch" T-LABEL

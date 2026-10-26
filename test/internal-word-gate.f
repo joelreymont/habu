@@ -239,7 +239,7 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : SEED-RESET-SEARCH$ ( -- ptr u8 n )
-   S\" s\" seed-ndict!\" 0 search-wl 0<> . cr" ;
+   S\" s\" seed-ndict!\" 0 search-wl 0<> bool>n . cr" ;
 
 \ DATA-CELL and NULL-PTR-CELL are sealed publics of POINTER-STORAGE with no
 \ checker row: neither qualified spelling resolves outside the engine, at top

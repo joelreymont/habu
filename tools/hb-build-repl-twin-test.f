@@ -87,9 +87,10 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 \ The session's first `does>` runs before it creates anything, so it patches the
 \ record the restored LASTC-CELL names. Naming this process's X, the clause reads
 \ the 5 the build stored; the build's address instead lands wherever that
-\ address falls in this process.
+\ address falls in this process. X keeps the `-- ptr a` its create gave it, so
+\ the print takes its distance from NULL-PTR, which is the clause's number.
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
-   S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X . cr\n" ;
+   S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X NULL-PTR - . cr\n" ;
 
 \ A and D share HB_TMP and the run's cache; B gets its own HB_TMP and cache root.
 \ B's output name is longer than A's and D's.

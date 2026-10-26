@@ -107,15 +107,15 @@ TFAM-DECL-PARAM-COUNT 23 T=
 20 $78 TDP-PAIR
 21 $79 TDP-PAIR
 22 $7A TDP-PAIR
-0 TFAM-DECL-PARAM>CHAR nip -1 T=
-22 TFAM-DECL-PARAM>CHAR nip -1 T=
--1 TFAM-DECL-PARAM>CHAR nip 0 T=
-23 TFAM-DECL-PARAM>CHAR nip 0 T=
-$66 TFAM-DECL-CHAR>PARAM nip 0 T=   \ f is bool
-$6E TFAM-DECL-CHAR>PARAM nip 0 T=   \ n is int
-$72 TFAM-DECL-CHAR>PARAM nip 0 T=   \ r is real
-$41 TFAM-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
-$30 TFAM-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
+0 TFAM-DECL-PARAM>CHAR nip TTRUE
+22 TFAM-DECL-PARAM>CHAR nip TTRUE
+-1 TFAM-DECL-PARAM>CHAR nip TFALSE
+23 TFAM-DECL-PARAM>CHAR nip TFALSE
+$66 TFAM-DECL-CHAR>PARAM nip TFALSE   \ f is bool
+$6E TFAM-DECL-CHAR>PARAM nip TFALSE   \ n is int
+$72 TFAM-DECL-CHAR>PARAM nip TFALSE   \ r is real
+$41 TFAM-DECL-CHAR>PARAM nip TFALSE   \ uppercase is never positional
+$30 TFAM-DECL-CHAR>PARAM nip TFALSE   \ non-letter is never positional
 \ clean slate (nothing declares families during prefix load, but be explicit).
 TFAM-RESET
 SCHEMA-RESET
@@ -176,7 +176,7 @@ s" opt" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ 0 T=
 \ ---------------------------------------------------------------------------
 \ 4. same tail across different packages -> distinct ids, both findable.
 \ ---------------------------------------------------------------------------
-AID @ PID @ = 0 T=
+AID @ PID @ = TFALSE
 s" pkga" s" res" TFAM-FIND-IN FOUNDF !  AID @ T=  FOUNDF @ -1 T=
 s" pkgb" s" res" TFAM-FIND-IN FOUNDF !  PID @ T=  FOUNDF @ -1 T=
 AID @ TFAM-ARITY@ 0 T=    PID @ TFAM-ARITY@ 2 T=
@@ -191,20 +191,20 @@ s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM ' TFAM-DECL catch
 \ ---------------------------------------------------------------------------
 \ 6. uppercase / mixed-case rejection at the declaration boundary.
 \ ---------------------------------------------------------------------------
-s" result"  TF-CANON? -1 T=
-s" opt-2"   TF-CANON? -1 T=
-s" a-b-c"   TF-CANON? -1 T=           \ internal single hyphens are fine
-s" Result"  TF-CANON? 0 T=
-s" reSult"  TF-CANON? 0 T=
-s" RESULT"  TF-CANON? 0 T=
-s" 123"     TF-CANON? 0 T=
-s" @x"      TF-CANON? 0 T=
+s" result"  TF-CANON? TTRUE
+s" opt-2"   TF-CANON? TTRUE
+s" a-b-c"   TF-CANON? TTRUE           \ internal single hyphens are fine
+s" Result"  TF-CANON? TFALSE
+s" reSult"  TF-CANON? TFALSE
+s" RESULT"  TF-CANON? TFALSE
+s" 123"     TF-CANON? TFALSE
+s" @x"      TF-CANON? TFALSE
 \ internal-only single hyphens: leading / trailing / doubled '-' reject
 \ (the '-'->'--' constructor-package escaping depends on this canon).
-s" -a"      TF-CANON? 0 T=
-s" a-"      TF-CANON? 0 T=
-s" a--b"    TF-CANON? 0 T=
-s" -"       TF-CANON? 0 T=
+s" -a"      TF-CANON? TFALSE
+s" a-"      TF-CANON? TFALSE
+s" a--b"    TF-CANON? TFALSE
+s" -"       TF-CANON? TFALSE
 s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM ' TFAM-DECL catch
    TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
 s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
@@ -213,9 +213,9 @@ s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
 \ ---------------------------------------------------------------------------
 \ 7. no hidden-field ('@name') lookup from public signatures.
 \ ---------------------------------------------------------------------------
-s" @opt.slot0" TF-HIDDEN? -1 T=
-s" @res.tag"   TF-HIDDEN? -1 T=           \ item-7 tag row shape is hidden too
-s" opt"        TF-HIDDEN? 0 T=
+s" @opt.slot0" TF-HIDDEN? TTRUE
+s" @res.tag"   TF-HIDDEN? TTRUE           \ item-7 tag row shape is hidden too
+s" opt"        TF-HIDDEN? TFALSE
 s" pkga" s" @opt.slot0" TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 s" pkgb" s" @res.tag"   TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 
@@ -230,7 +230,7 @@ FID @ 0 PK-TYPE TFAM-PK!
 0 SCHEMA-PARAM NP !    NP @ SCHEMA-TAG@ SCH-PARAM T=   NP @ SCHEMA-A@ 0 T=
 1 SCHEMA-CON   NC !    NC @ SCHEMA-TAG@ SCH-CON T=     NC @ SCHEMA-A@ 1 T=
 FID @ 0 1 SCHEMA-APP NA !   NA @ SCHEMA-TAG@ SCH-APP T=   NA @ SCHEMA-C@ 1 T=
-NP @ SCHEMA-PARAM? -1 T=    NC @ SCHEMA-CON? -1 T=       NA @ SCHEMA-APP? -1 T=
+NP @ SCHEMA-PARAM? TTRUE    NC @ SCHEMA-CON? TTRUE       NA @ SCHEMA-APP? TTRUE
 1 SCHEMA-PARAM drop   2 SCHEMA-CON drop   3 SCHEMA-PARAM drop               \ >4 nodes -> SCH grew
 SCHEMA-N@ 7 T=                                          \ ids 1..6 created (nil is 0)
 \ malformed tag rejected (tag a b c = 4 cells before catch)
@@ -252,11 +252,11 @@ NP @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDIN !
 NC @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQDOUT !
 NA @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQRIN !
 NP @ SCHEMA-ROOT+ 1 SCHEMA-ROW NQROUT !
-NQDIN @ SCHEMA-TAG@ SCH-ROW T=   NQDIN @ SCHEMA-ROW? -1 T=
-NQDIN @ SCHEMA-ROW-COUNT@ 1 T=   NQDIN @ SCHEMA-ROW-OK? -1 T=
+NQDIN @ SCHEMA-TAG@ SCH-ROW T=   NQDIN @ SCHEMA-ROW? TTRUE
+NQDIN @ SCHEMA-ROW-COUNT@ 1 T=   NQDIN @ SCHEMA-ROW-OK? TTRUE
 NQDIN @ NQDOUT @ NQRIN @ NQROUT @ -1 SCHEMA-QUOT NQ !
-NQ @ SCHEMA-TAG@ SCH-QUOT T=   NQ @ SCHEMA-QUOT? -1 T=
-NQ @ SCHEMA-PARAM? 0 T=        NQ @ SCHEMA-C@ SCH-QUOT-ROWS T=
+NQ @ SCHEMA-TAG@ SCH-QUOT T=   NQ @ SCHEMA-QUOT? TTRUE
+NQ @ SCHEMA-PARAM? TFALSE        NQ @ SCHEMA-C@ SCH-QUOT-ROWS T=
 NQ @ SCHEMA-QUOT-HASR@ -1 T=
 NQ @ SCHEMA-QUOT-DIN@  NQDIN @ T=   NQ @ SCHEMA-QUOT-DOUT@ NQDOUT @ T=
 NQ @ SCHEMA-QUOT-RIN@  NQRIN @ T=   NQ @ SCHEMA-QUOT-ROUT@ NQROUT @ T=
@@ -266,7 +266,7 @@ NQ @ SCHEMA-QUOT-RIN@  0 SCHEMA-ROW-ELEM@ NA @ T=
 NQ @ SCHEMA-QUOT-ROUT@ 0 SCHEMA-ROW-ELEM@ NP @ T=
 \ empty side (count 0) is a legal SCH-ROW; hasr normalizes to 0 through SCH-FLAG.
 SCHEMA-ROOT-N@ 0 SCHEMA-ROW NQEMP !
-NQEMP @ SCHEMA-ROW? -1 T=   NQEMP @ SCHEMA-ROW-COUNT@ 0 T=
+NQEMP @ SCHEMA-ROW? TTRUE   NQEMP @ SCHEMA-ROW-COUNT@ 0 T=
 NQEMP @ NQEMP @ NQEMP @ NQEMP @ 0 SCHEMA-QUOT SCHEMA-QUOT-HASR@ 0 T=
 \ multi-type side: din=[NP,NC], read both elements back in order.
 NP @ SCHEMA-ROOT+ NC @ SCHEMA-ROOT+ drop 2 SCHEMA-ROW NQMUL !
@@ -280,10 +280,10 @@ NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop 
 \ SC-PTR pointer payload node: child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
 NC @ SCHEMA-PTR NPTR !
-NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? -1 T=
-NPTR @ SCHEMA-CON? 0 T=         NPTR @ SCHEMA-A@ NC @ T=
+NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? TTRUE
+NPTR @ SCHEMA-CON? TFALSE         NPTR @ SCHEMA-A@ NC @ T=
 NPTR @ SCHEMA-PTR SCHEMA-A@ NPTR @ T=               \ ptr ptr X nests
-NC @ SCHEMA-PTR? 0 T=
+NC @ SCHEMA-PTR? TFALSE
 \ malformed child = nil node (0) / out-of-range node rejected (1 cell before catch)
 0 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 99999 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
@@ -364,7 +364,7 @@ PFTX @ FID @ VERR @ s" value" 1 0 1 0 CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFTX 
 PFTX @ TF-FIELD:CLOSE
 FID @ VOK @ s" value" TYPE-FIELD:FIND FOUNDF ! PFOUT !  FOUNDF @ -1 T=
 FID @ VERR @ s" value" TYPE-FIELD:FIND FOUNDF ! PFIN !   FOUNDF @ -1 T=
-PFOUT @ PFIN @ = 0 T=
+PFOUT @ PFIN @ = TFALSE
 PFOUT @ TYPE-FIELD:VARIANT@ VOK @ T=
 PFOUT @ TYPE-FIELD:BYTES@ CELL T=  PFOUT @ TYPE-FIELD:ALIGN@ CELL T=
 PFIN @ TYPE-FIELD:VARIANT@ VERR @ T=
@@ -646,7 +646,7 @@ TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 TYPE-FIELD:COUNT PFBASE !  TF-STR-U@ PFSTR !
 TF-FIELD:OPEN PFOUT !
 PFOUT @ PTID @ PF-NO-VARIANT s" outer" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFOUT !
-TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U@ PFSTR @ > -1 T=
+TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U@ PFSTR @ > TTRUE
 TF-FIELD:OPEN PFIN !
 PFIN @ PTID @ PF-NO-VARIANT s" inner" 1 21 1 21 cells CELL CELL PF-FLAGS-NONE TF-FIELD:ADD PFIN !
 PFIN @ TF-FIELD:CLOSE
@@ -733,7 +733,7 @@ s" pkgd" CHECKER-PACKAGE-PUBLIC s" maybe" 1 TK-SUM     TFAM-DECL drop
 s" pkge" CHECKER-PACKAGE-PUBLIC s" pair"  2 TK-PRODUCT TFAM-DECL drop
 TFAM-N@ 12 T=                      \ includes the three unified-payload fixtures
 TF-GROW-THROUGH-CAP
-FID @ TF-REC@ TF-GROW-BASE @ = 0 T=   \ the record arena moved
+FID @ TF-REC@ TF-GROW-BASE @ = TFALSE   \ the record arena moved
 FID @ TFAM-NAME$ s" opt" T$=
 FID @ TFAM-PKG$  s" pkga" T$=
 FID @ TFAM-ARITY@ 1 T=
@@ -818,7 +818,7 @@ s" tier" TFAM-FIND-PUBLIC FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
 \ Exact identities and arities never alias.
 s" " s" span" TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
 s" mem" s" span" TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
-GSPAN @ MSPAN @ <> -1 T=
+GSPAN @ MSPAN @ <> TTRUE
 GSPAN @ TFAM-ARITY@ 3 T=
 MSPAN @ TFAM-ARITY@ 6 T=
 MLOCAL @ TFAM-ARITY@ 1 T=
@@ -1092,8 +1092,8 @@ TF-FIELD:OPEN STOK !
 STOK @ TF-FIELD:CLOSE
 TFAM-RESET
 TF-FIELD:OPEN NTOK !
-NTOK @ STOK @ > -1 T=                \ token generation did not rewind across reset
-NTOK @ STOK @ = 0 T=                 \ so a completed token can never be reissued
+NTOK @ STOK @ > TTRUE                \ token generation did not rewind across reset
+NTOK @ STOK @ = TFALSE                 \ so a completed token can never be reissued
 STOK @ ' TF-FIELD:CLOSE catch TC ! drop  TC @ E-PF-TX T=   \ stale token never aliases the new frame
 NTOK @ TF-FIELD:ROLLBACK
 
@@ -1130,7 +1130,7 @@ RBIDX @ 10 TWX-PF-RAW@ 0 T=         \ FLAGS scrubbed
 \ tail slot, persist, and prove it bakes as canonical zero while committed rows
 \ survive the bake (AOT restore fidelity).
 TYPE-FIELD:COUNT RBCN !
-PF-CAP RBCN @ > -1 T=               \ there is unused tail capacity to fill
+PF-CAP RBCN @ > TTRUE               \ there is unused tail capacity to fill
 $5eed RBCN @ 3 TWX-PF-RAW!
 RBCN @ 3 TWX-PF-RAW@ $5eed T=       \ planted garbage in the unused tail
 TFAM-SNAPSHOT-PERSIST

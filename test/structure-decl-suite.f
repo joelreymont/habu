@@ -295,72 +295,72 @@ public
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN Sdgcase ;STRUCTURE" TEST-EVAL:RC 7101 T=
 s" habu: bad structure declaration 'Sdgcase': name must be a lowercase family tail at 'Sdgcase'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN n ;STRUCTURE" TEST-EVAL:RC 7110 T=
-s" habu: bad structure declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? -1 T=
+s" habu: bad structure declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgdup FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
-s" habu: bad structure declaration 'sdgdup': duplicate field name at 'z'" DECL-DIAG:HAS? -1 T=
+s" habu: bad structure declaration 'sdgdup': duplicate field name at 'z'" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgar<q,q> ;STRUCTURE" TEST-EVAL:RC 7108 T=
 s" habu: bad structure declaration 'sdgar<q,q>': invalid type parameter header at 'sdgar<q,q>'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgbad FIELD a nosuchtype ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdgbad': unknown field type at 'nosuchtype'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgpol POLICY nosuch ;STRUCTURE" TEST-EVAL:RC 7116 T=
 s" habu: bad structure declaration 'sdgpol': unknown layout policy at 'nosuch'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgdrv DERIVE nosuch ;STRUCTURE" TEST-EVAL:RC 7119 T=
 s" habu: bad structure declaration 'sdgdrv': unknown derive feature at 'nosuch'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgstray VARIANT ;STRUCTURE" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdgstray': unexpected token in structure declaration at 'VARIANT'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgfn FIELD make n ;STRUCTURE" TEST-EVAL:RC 7125 T=
-s" habu: bad structure declaration 'sdgfn': reserved field name at 'make'" DECL-DIAG:HAS? -1 T=
+s" habu: bad structure declaration 'sdgfn': reserved field name at 'make'" DECL-DIAG:HAS? TTRUE
 
 \ a terminator that never arrives anchors on the family, exactly as the legacy
 \ unterminated-declaration packet does (sumtype.f TDECL-PRODUCT-NOEND-BODY).
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgnoend FIELD a n" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdgnoend': missing ;STRUCTURE at 'sdgnoend'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ A self-referential field is refused during type resolution, before a width
 \ query can enter the unfinished family.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgself FIELD selffld sdgself ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdgself': field type cannot recursively name its owner at 'sdgself'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ no family leaks from one declaration into the next: a declaration that fails
 \ before its own name is read reports an empty family, not sdgself.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN" TEST-EVAL:RC 7107 T=
-s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? -1 T=
-s" sdgself" DECL-DIAG:HAS? 0 T=
+s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? TTRUE
+s" sdgself" DECL-DIAG:HAS? TFALSE
 
 \ hostile declarations: a field spelled like a fragment of the message is
 \ reported as the token it is, and exactly one line is emitted.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgforge FIELD duplicate n FIELD duplicate n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 s" habu: bad structure declaration 'sdgforge': duplicate field name at 'duplicate'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:LEN 80 T=
 
 \ a family name spelled like one of the JSON packet's own keys keeps key and
@@ -368,15 +368,15 @@ DECL-DIAG:LEN 80 T=
 \ than closing the JSON string early.
 DECL-DIAG:JSON
 s" STRUCTURE-DECL:SD-RUN token FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
-s\" \"decl\":\"structure\"" DECL-DIAG:HAS? -1 T=
-s\" \"family\":\"token\"" DECL-DIAG:HAS? -1 T=
-s\" \"token\":\"z\"" DECL-DIAG:HAS? -1 T=
-s\" \"reason\":\"duplicate field name\"" DECL-DIAG:HAS? -1 T=
+s\" \"decl\":\"structure\"" DECL-DIAG:HAS? TTRUE
+s\" \"family\":\"token\"" DECL-DIAG:HAS? TTRUE
+s\" \"token\":\"z\"" DECL-DIAG:HAS? TTRUE
+s\" \"reason\":\"duplicate field name\"" DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:JSON
 s\" STRUCTURE-DECL:SD-RUN sdgquote FIELD aq\"b n ;STRUCTURE" TEST-EVAL:RC 7101 T=
-s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? -1 T=
-s\" \"family\":\"sdgquote\"" DECL-DIAG:HAS? -1 T=
+s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
+s\" \"family\":\"sdgquote\"" DECL-DIAG:HAS? TTRUE
 
 \ accepted declarations stay silent, and a rendered reject still leaves the
 \ registry byte-identical: rendering happens after the runner has rolled
@@ -386,7 +386,7 @@ s" STRUCTURE-DECL:SD-RUN sdgok1 FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE-DECL:SD-RUN sdgok2 ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE-DECL:SD-RUN sdgok3<a> FIELD a a ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE-DECL:SD-RUN sdgok4 DERIVE eq FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
-DECL-DIAG:SILENT? -1 T=
+DECL-DIAG:SILENT? TTRUE
 
 \ the armed duplicate-family reason, which no case above reaches: it is armed at
 \ SD-REGISTER, immediately before the registry call that can raise it.
@@ -395,7 +395,7 @@ s" STRUCTURE-DECL:SD-RUN sdgtwice FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgtwice FIELD b n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 s" habu: bad structure declaration 'sdgtwice': duplicate family at 'sdgtwice'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ SD-CLOSE arms no reason of its own: the generator's rejects are raised past the
 \ last token this front end holds, so they are answered from the packet's code
@@ -404,7 +404,7 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgvrsv FIELD z sdgvrsv ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdgvrsv': field type cannot recursively name its owner at 'sdgvrsv'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 DECL-DIAG:OFF
 
@@ -456,7 +456,7 @@ CHECKER-SCOPE-FINALIZE
 struct-replay-test:DICT-SAME
 
 s" rpsd" FAMID FID !
-FID @ TFAM-PRODUCT? -1 T=
+FID @ TFAM-PRODUCT? TTRUE
 FID @ TFAM-FLD-COUNT@ 2 T=
 FID @ FAM-SLOTS@ 2 T=
 FID @ struct-replay-test:FAM-VAR-COUNT 2 T=          \ make + unmake rows registered
@@ -480,7 +480,7 @@ s" rpsdh" s" POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
 struct-replay-test:RP-TRY 0 T=
 s" rpsdh" FAMID FID !
 FID @ TFAM:TFAM-LAYOUT-POLICY@ PACKED# T=
-FID @ FAM-EQ? -1 T=
+FID @ FAM-EQ? TTRUE
 REPLAY-SCOPE:CLOSE
 
 \ A field typed by a family REGISTERED THROUGH AN EARLIER REPLAY resolves — this
@@ -493,18 +493,18 @@ s" rpsdpay" FAMID TFAM-FLD-COUNT@ 1 T=
 DECL-DIAG:PROSE
 s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 7109 T=
 s" habu: bad structure declaration 'rpsdbad': unknown field type at 'nope'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ A buffer with no terminator rejects through the front end's own gate.
 DECL-DIAG:PROSE
 s" rpsdnoend" s" FIELD one n" struct-replay-test:RP-TRY 7107 T=
 s" habu: bad structure declaration 'rpsdnoend': missing ;STRUCTURE"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ A zero-length name reaches the missing-name gate.
 DECL-DIAG:PROSE
 s" " s" FIELD one n ;STRUCTURE" struct-replay-test:RP-TRY 7107 T=
-s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? -1 T=
+s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ A rejected replay leaves the stream closed, so the next LIVE declaration reads
@@ -534,7 +534,7 @@ s" rpsdafter" FAMID TFAM-FLD-COUNT@ 1 T=
 \ ---------------------------------------------------------------------------
 DECL-DIAG:PROSE
 s" STRUCTURE if FIELD x n ;STRUCTURE"      TEST-EVAL:RC 7110 T=
-s" habu: bad structure declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+s" habu: bad structure declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE do FIELD x n ;STRUCTURE"      TEST-EVAL:RC 7110 T=
 DECL-DIAG:PROSE
@@ -549,18 +549,18 @@ s" STRUCTURE ;match FIELD x n ;STRUCTURE"  TEST-EVAL:RC 7101 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdcwf FIELD if n ;STRUCTURE" TEST-EVAL:RC 7125 T=
 s" habu: bad structure declaration 'sdcwf': reserved field name at 'if'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdcwf2 FIELD x n FIELD loop n ;STRUCTURE" TEST-EVAL:RC 7125 T=
 s" habu: bad structure declaration 'sdcwf2': reserved field name at 'loop'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ The match is on the WHOLE token: a name that merely contains a control word is
 \ an ordinary name and still declares, in both positions.
 DECL-DIAG:PROSE
 s" STRUCTURE iffy FIELD looping n FIELD thence n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" iffy" FAMID TFAM-FLD-COUNT@ 2 T=
-DECL-DIAG:SILENT? -1 T=
+DECL-DIAG:SILENT? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -631,7 +631,7 @@ s" sdlrole" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlfwd FIELD m sdllater ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlfwd': unknown field type at 'sdllater'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -644,7 +644,7 @@ s" STRUCTURE sdlgen<a> FIELD a a ;STRUCTURE" TEST-EVAL:RC 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlgenuse FIELD m sdlgen ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlgenuse': field type is parametric and needs type arguments at 'sdlgen'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -677,39 +677,39 @@ s" sdlowns" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr FIELD p ptr sdlbox ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptr': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrcon FIELD p ptr SDLIN:tok ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrcon': field type is a pointer to a linear value and cannot own it at 'SDLIN:tok'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr2 FIELD p ptr ptr sdlbox ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptr2': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrdeep FIELD p ptr sdldeep ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrdeep': field type is a pointer to a linear value and cannot own it at 'sdldeep'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrsum FIELD p ptr sdlsum ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrsum': field type is a pointer to a linear value and cannot own it at 'sdlsum'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ a field anywhere in the body is checked, not just the first one, and the token
 \ names the offending field's type rather than the declaration's first field.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrlate FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrlate': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 
 \ the controls. A pointer to a family that owns nothing declares, keeps its one
 \ cell, and leaves the structure non-linear — so the rejects above answer the
@@ -738,17 +738,17 @@ s" sdlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrpar FIELD v n ( FIELD p ptr sdlbox ) ;STRUCTURE" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdlptrpar': unexpected token in structure declaration at '('"
-DECL-DIAG:HAS? -1 T=                                  \ the paren itself was the token
+DECL-DIAG:HAS? TTRUE                                  \ the paren itself was the token
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrbsl FIELD v n \ FIELD p ptr sdlbox" TEST-EVAL:RC 7107 T=
 s" habu: bad structure declaration 'sdlptrbsl': unexpected token in structure declaration at '\'"
-DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
+DECL-DIAG:HAS? TTRUE                                  \ and so was the backslash
 \ and trailing text after the offending field cannot suppress the reject, because
 \ the field is resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrtail FIELD p ptr sdlbox ( note ) ;STRUCTURE" TEST-EVAL:RC 7109 T=
 s" habu: bad structure declaration 'sdlptrtail': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
@@ -786,7 +786,7 @@ SDADDR:CELLS 3 T=
 \ for a scalar field, a pointer field, and the last field of the record
 0 SDA-A 0 SDA-UA T=
 0 SDA-C 0 SDA-UC T=
-0 SDA-P 0 SDA-UP = -1 T=
+0 SDA-P 0 SDA-UP = TTRUE
 1 SDA-A 40 T=
 1 SDA-C 60 T=
 
@@ -907,9 +907,9 @@ public
 : DNE ( -- bool ) 4 DREC-MAKE 5 DREC-MAKE DREC-EQ ;
 : DHS ( -- bool ) 4 DREC-MAKE DREC-HASH 4 DREC-MAKE DREC-HASH = ;
 ;package
-SDAPRIVDRV:DEQ -1 T=
-SDAPRIVDRV:DNE 0 T=
-SDAPRIVDRV:DHS -1 T=
+SDAPRIVDRV:DEQ TTRUE
+SDAPRIVDRV:DNE TFALSE
+SDAPRIVDRV:DHS TTRUE
 
 \ a rejected addr declaration rolls the whole thing back, accessors included:
 \ the name is free and re-declaring it publishes working words.
@@ -963,25 +963,25 @@ REJ-MARK
 s" STRUCTURE olate FIELD x n OPAQUE ;STRUCTURE" TEST-EVAL:RC 7107 T=
 REJ-SAME
 s" habu: bad structure declaration 'olate': header clause after the first field at 'OPAQUE'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 REJ-MARK
 s" STRUCTURE otwice OPAQUE OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 7206 T=
 REJ-SAME
 s" habu: bad structure declaration 'otwice': a second OPAQUE clause in one declaration at 'OPAQUE'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 REJ-MARK
 s" STRUCTURE obare OPAQUE ;STRUCTURE" TEST-EVAL:RC 7107 T=
 REJ-SAME
 s" habu: bad structure declaration 'obare': opaque requires a family with fields at 'obare'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 DECL-DIAG:PROSE
 REJ-MARK
 s" ENUM oshade OPAQUE VARIANT dark ;VARIANT ;ENUM" TEST-EVAL:RC 7107 T=
 REJ-SAME
 s" habu: bad enum declaration 'oshade': unexpected token in enum declaration at 'OPAQUE'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 ;package
 
 \ Outside any package there is no private wordlist for the pair to land in: the
@@ -991,7 +991,7 @@ REJ-MARK
 s" STRUCTURE oloose OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 7207 T=
 REJ-SAME
 s" habu: bad structure declaration 'oloose': OPAQUE requires a family declared in a package at 'OPAQUE'"
-DECL-DIAG:HAS? -1 T=
+DECL-DIAG:HAS? TTRUE
 s" STRUCTURE oloose FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
 
 \ ---------------------------------------------------------------------------
@@ -1023,9 +1023,9 @@ public
 ;package
 11 22 SDOPQ:ORT 22 T= 11 T=
 SDOPQ:OAFTER 8 T=
-SDOPQ:OEQT -1 T=
-SDOPQ:OEQF 0 T=
-SDOPQ:OHSH -1 T=
+SDOPQ:OEQT TTRUE
+SDOPQ:OEQF TFALSE
+SDOPQ:OHSH TTRUE
 FID @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=         \ no constructor package stamped (design7 7.2)
 s" SDOPQ-OADDR:AT" TFAM-ADDR-WORD? 0= TTRUE           \ the qualified spelling is nobody's accessor
 s" SDOPQ-OBOX:MAKE" TFAM-CTOR-WORD? 0= TTRUE          \ nor anybody's constructor

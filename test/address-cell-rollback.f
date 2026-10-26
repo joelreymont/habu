@@ -27,9 +27,10 @@ DYNAMIC-BUFFER SAVED n
    here data-base - BASE-DP @ T= ;
 
 : FAIL-QUOTATION ( -- )
-   \ Explicit xt! also exercises this rollback fixture on a host predating
-   \ declaration-time marking of zero quotation cells; newer hosts mark once.
-   s" TYPED-VARIABLE FAILED [ n -- n ] 0 FAILED xt! DECLARED 12345 throw"
+   \ Storing the cell's own zero through xt! also exercises this rollback
+   \ fixture on a host predating declaration-time marking of zero quotation
+   \ cells; newer hosts mark once.
+   s" TYPED-VARIABLE FAILED [ n -- n ] FAILED @ FAILED xt! DECLARED 12345 throw"
    INCLUDE-EVALUATE ;
 : FAIL-DEFER ( -- )
    s" defer FAILED ( -- n ) DECLARED 12345 throw" INCLUDE-EVALUATE ;

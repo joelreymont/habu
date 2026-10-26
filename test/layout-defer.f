@@ -127,7 +127,7 @@ s" DEFER-LAYOUT-BUFFER DTK-AT dtk" DFL-EVAL $4E T=      \ redefinition of the ac
 s" DEFER-LAYOUT-BUFFER DC-BAD TFAM:BAD" DFL-EVAL CHECKER-REJECT-RC T=
 
 \ armed-window state stays sealed (no user handle to the one-shot boundary)
-s" LBUF-PEND!" 0 search-wl 0= -1 T=
-s" LBUF-PEND-MATCH?" 0 search-wl 0= -1 T=
+s" LBUF-PEND!" 0 search-wl 0= TTRUE
+s" LBUF-PEND-MATCH?" 0 search-wl 0= TTRUE
 
 T-REPORT

@@ -1055,7 +1055,7 @@ variable OR-U
       s" variable OV" OR+ i OR-NUM+
       S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+ S\"  ;\n" OR+
    loop
-   S\" OR-COUNT TIER-PROV:SPANS > . ' OV0 dup 4 + code-origin . ' OD0 dup 4 + code-origin . OD0 .\n' OV" OR+
+   S\" OR-COUNT TIER-PROV:SPANS > bool>n . ' OV0 dup 4 + code-origin . ' OD0 dup 4 + code-origin . OD0 .\n' OV" OR+
    count 2 / OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
    count 2 / OR-NUM+ S\"  dup 4 + code-origin . OD" OR+ count 2 / OR-NUM+
    S\"  .\n' OV" OR+ count 1- OR-NUM+ S\"  dup 4 + code-origin . ' OD" OR+
@@ -1092,7 +1092,7 @@ variable OR-U
       then
       i TIER-PROV:SPANS 2 / 64 - >= if OR-SPLIT-CHECK+ then
    loop
-   S\" OS-DID @ . OR-COUNT TIER-PROV:SPANS > . ' SD0 dup 4 + code-origin . ' SD0 8 + dup 4 + code-origin . ' SD0 12 + dup 4 + code-origin . SD0 .\n" OR+
+   S\" OS-DID @ . OR-COUNT TIER-PROV:SPANS > bool>n . ' SD0 dup 4 + code-origin . ' SD0 8 + dup 4 + code-origin . ' SD0 12 + dup 4 + code-origin . SD0 .\n" OR+
    OR-BUF OR-U @ ;
 
 : OR-GUARD-SOURCE$ ( bool -- ptr u8 n ) {: last?:bool :}
@@ -1109,7 +1109,7 @@ variable OR-U
       s" variable IV" OR+ i OR-NUM+
       S\" \n: ID" OR+ i OR-NUM+ S\"  ( -- n ) " OR+ i OR-NUM+ S\"  ;\n" OR+
    loop
-   S\" OR-COUNT TIER-PROV:SPANS > . 1 set-tier OR-FINISH\n" OR+
+   S\" OR-COUNT TIER-PROV:SPANS > bool>n . 1 set-tier OR-FINISH\n" OR+
    OR-BUF OR-U @ ;
 
 \ Each case writes its files into a directory of its own, so runs sharing one
@@ -1224,7 +1224,7 @@ variable OR-DIR-U  variable OR-PATH-U  variable OR-IMAGE-U
       s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
       \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
       \ the saved guard error after the lookups, preserving its rejection code.
-      S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
+      S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= bool>n . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
       REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
       ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
    then

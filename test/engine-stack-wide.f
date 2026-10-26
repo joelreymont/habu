@@ -150,7 +150,7 @@ package STACK-LIFECYCLE-TEST
 
 : WIDE-RETURN-ARM ( -- )
    s" wide return move uses exactly the last two slots" T-LABEL
-   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r@ drop r> drop ; STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! MOVE data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = ."
+   s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r@ drop r> drop ; STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! MOVE data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
    PAIR-RC 0 T= OUT OUTLEN @ S\" -1\n" T$=
    s" wide return move needs two free slots" T-LABEL
    s" : MOVE ( -- ) 11 22 SW-PAIR:MAKE >r r> drop ; STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! MOVE" PAIR-REFUSED-RETURN

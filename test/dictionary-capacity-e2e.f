@@ -97,7 +97,7 @@ create PROGRAM CAPTURE-CAP allot  variable PROGRAM-U
    PROC-ARGV-ENV-RESET
    SOURCE-RESET
    s" require src/habu/verify-source.f" SOURCE-LINE
-   s" ndict@ 65536 > ." SOURCE-LINE
+   s" ndict@ 65536 > bool>n ." SOURCE-LINE
    s" CHECKER-SCOPE-START-NEUTRAL" SOURCE-LINE
    s" s" SOURCE+ 34 SOURCE-C s"  : CAP-OVER ( -- n ) DC052999 ;" SOURCE+
    34 SOURCE-C s"  VERIFY:SOURCE-BUF-IN-SCOPE" SOURCE-LINE

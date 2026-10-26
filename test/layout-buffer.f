@@ -49,11 +49,11 @@ s" LB-CAST ( ptr a -- ptr lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-VAR-P ( -- ptr lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-CREATE-P ( -- ptr lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-DATA-P ( -- ptr lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBUF-PEND!" 0 search-wl 0= -1 T=
-s" LBUF-PEND-CLEAR" 0 search-wl 0= -1 T=
-s" LBUF-PEND-MATCH?" 0 search-wl 0= -1 T=
-s" LBUF-PEND-A" 0 search-wl 0= -1 T=
-s" LBUF-PEND-U" 0 search-wl 0= -1 T=
+s" LBUF-PEND!" 0 search-wl 0= TTRUE
+s" LBUF-PEND-CLEAR" 0 search-wl 0= TTRUE
+s" LBUF-PEND-MATCH?" 0 search-wl 0= TTRUE
+s" LBUF-PEND-A" 0 search-wl 0= TTRUE
+s" LBUF-PEND-U" 0 search-wl 0= TTRUE
 s" LB-CELL+ ( ptr lb-res<n,n> -- ptr lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-BYTE ( ptr lb-res<n,n> -- ptr u8 )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-WRONG-STORE ( lb-other<n> ptr lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -94,7 +94,7 @@ PTR-VARIABLE LB-DP
 
 here LB-DP 0 ptr-field !
 LB-DUP-RC $4E T=
-here LB-DP 0 ptr-field @ = -1 T=
+here LB-DP 0 ptr-field @ = TTRUE
 
 here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
@@ -164,11 +164,11 @@ s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 : LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
 here LB-DP 0 ptr-field !
 LBTK-ZERO-RC E-LAYOUT-BUFFER T=
-here LB-DP 0 ptr-field @ = -1 T=
-LBTK-ZERO-ABSENT? -1 T=
+here LB-DP 0 ptr-field @ = TTRUE
+LBTK-ZERO-ABSENT? TTRUE
 here LB-DP 0 ptr-field !
 LBTK-DUP-RC $4E T=
-here LB-DP 0 ptr-field @ = -1 T=
+here LB-DP 0 ptr-field @ = TTRUE
 
 \ ---- PRODUCT positive: MAKE -> typed store -> fetch -> UNMAKE round-trip ----
 \ (mirrors the type-decl-suite TDS2/TDP executed round-trips; the product
