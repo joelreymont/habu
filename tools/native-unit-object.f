@@ -96,12 +96,13 @@ private
 \ An event row. SEGMENT: kind, first ordinal past the file's first record,
 \ records, DATA bytes, requires, wordlists, where in a cell HERE stood at its
 \ open, and the file's dependency row count at its close. LOAD: kind, load
-\ kind, source offset in the loading file, path offset and length, root
-\ offset and length, 1 when the load was clean, the source offset the
-\ loading file resumes at, and the file's dependency row count and input
-\ bytes when the child opened. A clean load is a loader action that started
-\ at a loader cut and returned with the loading file balanced at its resume
-\ offset; a file with any other load stores no object. FFI-LIB: kind, path
+\ kind, source offset in the loading file, the requested path's offset and
+\ length, the source offset the loading file resumes at, and the file's
+\ dependency row count and input bytes when the action started. Every
+\ loader action of the file's own source writes one, whether it ran its
+\ child or found it loaded, once it started at a loader cut and returned
+\ with the loading file balanced at its resume offset; a file with any other
+\ load stores no object. FFI-LIB: kind, path
 \ offset and length, the library's index. FFI-FN: kind, symbol offset and
 \ length, library index, argument and spill counts, the function's index
 \ and its relocation mask.
@@ -209,11 +210,12 @@ private
 \ room and the declarer's selection (library, scope wordlist, 1 when a scope
 \ was stated), the origin bytes when it opened, its sink cell first, the
 \ segment DATA bytes and the DATA floor (POOL-FLOOR) when it opened, the
-\ output bytes when it and its open segment opened, the LOAD row its
-\ pending loader action claimed (ACT-NONE, ACT-OPEN), the open segment's
-\ TASK user-slot watermark with 1 when TASK was bound to read it, and the
-\ compiler's identity counters at its open (module serial, context gen and
-\ epoch, builder gen, lease) with 1 when the compiler's session was live.
+\ output bytes when it and its open segment opened, 1 while a loader action
+\ of its own source is pending, the open segment's TASK user-slot watermark
+\ with 1 when TASK was bound to read it, the compiler's identity counters at
+\ its open (module serial, context gen and epoch, builder gen, lease) with 1
+\ when the compiler's session was live, and the pending action's first
+\ ordinal, source offset, dependency row count and input bytes.
 \ A child file's bytes and sites follow its parent's and are dropped when
 \ the child closes.
 0 constant FO-DEFS
@@ -246,7 +248,7 @@ private
 27 constant FO-SEG-POOL
 28 constant FO-OUTPUT
 29 constant FO-SEG-OUT
-30 constant FO-ACT-ROW
+30 constant FO-ACT
 31 constant FO-SEG-USER
 32 constant FO-SEG-USER-BOUND
 33 constant FO-SEG-MOD
@@ -255,22 +257,20 @@ private
 36 constant FO-SEG-BUILD
 37 constant FO-SEG-LEASE
 38 constant FO-SEG-LIVE
-39 constant FO-CELLS
-\ FO-ACT-ROW with no loader action of the file's own token pending, and with
-\ one pending that has loaded no child yet; any other value is the LOAD row
-\ its child opened.
--2 constant ACT-NONE
--1 constant ACT-OPEN
+39 constant FO-ACT-ORD
+40 constant FO-ACT-AT
+41 constant FO-ACT-ROWS
+42 constant FO-ACT-INPUTS
+43 constant FO-CELLS
 \ An event row in memory, cell 1 an ordinal in both kinds so a dictionary
 \ cut finds the rows it retired. SEGMENT: kind, first ordinal, records, HERE,
 \ DATA bytes, first require, requires, first wordlist, wordlists, first
 \ address cell row, rows, the first and last rows' values, the file's
 \ dependency row count at its close and its DATA bytes' offset in SEG-DATA.
-\ LOAD: kind, the child's first ordinal,
-\ load kind, source offset, path offset and length, root offset and length
-\ in FILE-NAMES, 0, 1 once the loader action finished clean, the resume
-\ offset, the file's dependency row count and input bytes at the child's
-\ open, then zeros. OUT: kind, the segment's first ordinal, the bytes'
+\ LOAD: kind, the first ordinal past the
+\ action's start, load kind, source offset, path offset and length in
+\ FILE-NAMES, the resume offset, the file's dependency row count and input
+\ bytes at the action's start, then zeros. OUT: kind, the segment's first ordinal, the bytes'
 \ offset in FILE-OUTPUT and their length, then zeros.
 15 constant EV-CELLS
 DYNAMIC-BUFFER FILE-DEFS u8
@@ -323,7 +323,7 @@ variable OPEN-SLOTS
 variable OWNER-ROW-XT
 \ The before-image of earlier DATA: DATA from IMAGE-FLOOR to HERE when the
 \ open segment's image was taken. Taken once the segment opens
-\ (SEGMENT-IMAGE), only while a file compiles, and compared at the
+\ (SEGMENT-IMAGE, LOAD-FINISH), only while a file compiles, and compared at the
 \ segment's close. The floor belongs to the process, not the session: HERE
 \ at the process's first image, so a top-level load sees its writes to every
 \ earlier load's DATA. Every file frame takes its first image as it opens
@@ -374,8 +374,8 @@ variable PINS-AT
 variable OPEN-PINS
 \ The open segment's FFI declarations, reused or appended, and its
 \ declarers' selection writes, as the registry's observer reports them: kind
-\ and index pairs in order. Segments never nest (FILE-BEGIN closes the
-\ parent's before the child's opens), so one journal serves. The observer is
+\ and index pairs in order. Segments never nest (LOAD-ACTION closes the
+\ parent's before a child's opens), so one journal serves. The observer is
 \ set exactly while a segment is open.
 DYNAMIC-BUFFER FFI-OBS n
 variable OBS-N
@@ -1307,35 +1307,12 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
 
 public
 
-\ Open a file frame at the file's first record ordinal. A child's load ends
-\ its parent's segment with a LOAD row: the load kind, where the parent's
-\ source stood, below zero outside it, which refuses the parent, and the
-\ child's path and root. The replay loads the child in the scope the parent
-\ opened with, so a parent whose search order, current wordlist or package
-\ at the load differs from it is refused. The object carries the earlier
-\ DATA a file changed as it stood at the file's end, where the child saw it
-\ as it stood at the load, so a parent that changed earlier DATA before a
-\ load is refused.
-: FILE-BEGIN ( ptr u8 n ptr u8 n n n -- )
-   {: path:ptr pathu:n root:ptr rootu:n kind:n at:n :}
-   FILE-OPEN? if
-      SEGMENT-CLOSE
-      SITES-N @ FO-SITES FO @ > if
-         EARLIER-WRITE-LINE s" earlier-write-before-load" FILE-REFUSE
-      then
-      at 0 < if s" load-outside-source" FILE-REFUSE then
-      NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
-      EVENTS-N @ {: row:n :}
-      EV-LOAD ndict@ kind at path pathu NAMES+ pathu
-         root rootu NAMES+ rootu 0 EV+
-      \ The pending loader action claims the row; a load no loader token of
-      \ the file started at a loader cut, as from a colon word or an
-      \ evaluated text, stays unclean and FILE-ENCODE refuses it.
-      FO-ACT-ROW FO @ ACT-OPEN = if row FO-ACT-ROW FO ! then
-      CHECK-EXPORT
-      NUNIT-DEP:FILE-ROWS row 11 EV !
-      INPUTS-U @ FO-INPUTS FO @ - row 12 EV !
-   then
+\ Open a file frame at the file's first record ordinal. A child opens only
+\ inside a loader action of its parent's own source (LOAD-ACTION); one its
+\ parent loads any other way, as from a colon word or an evaluated text,
+\ refuses the parent.
+: FILE-BEGIN ( -- )
+   FILE-OPEN? if FO-ACT FO @ 0= if s" load-boundary" FILE-REFUSE then then
    FO-DEPTH @ 1+ FO-CELLS * FILE-FRAMES-RESERVE
    1 FO-DEPTH +!
    DEFS-U @ FO-DEFS FO !
@@ -1358,7 +1335,7 @@ public
    CKORD-N @ FO-CKORD FO !
    0 FO-SLICES FO !
    0 FO-CKMARK FO !
-   ACT-NONE FO-ACT-ROW FO !
+   0 FO-ACT FO !
    SEGMENT-OPEN
    \ A kernel without the cut notice lowers the count unseen, and a row it
    \ retired would stay in the object.
@@ -1376,7 +1353,8 @@ public
    FFI-BOUND? 0= if s" ffi-mark-absent" WHY+ then
    CHECK-MARK ;
 
-\ Close the innermost frame; its parent's next segment opens.
+\ Close the innermost frame; its parent's next segment opens when the
+\ parent's loader action finishes (LOAD-FINISH).
 : FILE-END ( -- )
    FO-DEFS FO @ DEFS-U !
    FO-INDEX FO @ INDEX-U !
@@ -1392,20 +1370,52 @@ public
    FO-CKORD FO @ CKORD-N !
    -1 FO-DEPTH +!
    \ A hit or a throw pops a file without its segment's close.
-   FILE-OPEN? if SEGMENT-OPEN CHECK-MARK else OBS-CLEAR then ;
+   FILE-OPEN? 0= if OBS-CLEAR then ;
 
-\ A loader token of the innermost file starts its action at a loader cut:
-\ the child it loads claims its LOAD row (FILE-BEGIN).
-: LOAD-ACTION ( -- ) FILE-OPEN? if ACT-OPEN FO-ACT-ROW FO ! then ;
-
-\ The pending loader action returned; when ok, the loading file stood
-\ balanced at offset off, and the LOAD row it claimed is clean.
-: LOAD-FINISH ( n bool -- )
-   {: off:n ok:bool :}
+\ A loader token of the innermost file starts its action at a loader cut,
+\ at source offset at: the action ends the file's segment, whether it runs
+\ its child or finds it loaded. The replay loads the child in the scope the
+\ file opened with, so a file whose search order, current wordlist or
+\ package at the action differs from it is refused. The object carries the
+\ earlier DATA a file changed as it stood at the file's end, where the child
+\ saw it as it stood at the action, so a file that changed earlier DATA
+\ before an action is refused.
+: LOAD-ACTION ( n -- )
+   {: at:n :}
    FILE-OPEN? 0= if exit then
-   FO-ACT-ROW FO @ {: row:n :}
-   ok row 0 >= and if 1 row 9 EV ! off row 10 EV ! then
-   ACT-NONE FO-ACT-ROW FO ! ;
+   SEGMENT-CLOSE
+   SITES-N @ FO-SITES FO @ > if
+      EARLIER-WRITE-LINE s" earlier-write-before-load" FILE-REFUSE
+   then
+   NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
+   CHECK-EXPORT
+   ndict@ FO-ACT-ORD FO !
+   at FO-ACT-AT FO !
+   NUNIT-DEP:FILE-ROWS FO-ACT-ROWS FO !
+   INPUTS-U @ FO-INPUTS FO @ - FO-ACT-INPUTS FO !
+   1 FO-ACT FO ! ;
+
+\ The pending loader action of load kind kind and requested path returned.
+\ When ok, the loading file stood balanced at source offset off, and the
+\ action is the file's LOAD row; otherwise it refuses the file. Either way
+\ the file's next segment opens, its before-image taken after the child's
+\ capture closed. After each action the file must stand in
+\ the scope it began in (its SCOPE row): a hit replays no source action, so
+\ a file whose own source restores the scope a child left would replay in
+\ the child's scope. The check compares recorded and live scope state only,
+\ so the refusal is deterministic.
+: LOAD-FINISH ( n ptr u8 n n bool -- )
+   {: kind:n path:ptr pathu:n off:n ok:bool :}
+   FILE-OPEN? 0= if exit then
+   ok if
+      EV-LOAD FO-ACT-ORD FO @ kind FO-ACT-AT FO @ path pathu NAMES+ pathu off
+         FO-ACT-ROWS FO @ FO-ACT-INPUTS FO @ EV+
+      NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-after-load" FILE-REFUSE then
+   else
+      s" load-boundary" FILE-REFUSE
+   then
+   SEGMENT-OPEN CHECK-MARK IMAGE-TAKE
+   0 FO-ACT FO ! ;
 
 \ The innermost file loaded under origin sink kind.
 : ORIGIN-SINK! ( n -- ) FO-ORIGIN FO @ FILE-ORIGIN LE:U64! ;
@@ -2524,8 +2534,8 @@ CAST: N>U8 ( n -- ptr u8 )
    then
    EV-LOAD OUT-N row 2 EV @ OUT-N row 3 EV @ OUT-N
    row 4 EV @ FO-NAMES FO @ - OUT-N row 5 EV @ OUT-N
-   row 6 EV @ FO-NAMES FO @ - OUT-N row 7 EV @ OUT-N row 9 EV @ OUT-N
-   row 10 EV @ OUT-N row 11 EV @ OUT-N row 12 EV @ OUT-N ;
+   row 6 EV @ OUT-N row 7 EV @ OUT-N row 8 EV @ OUT-N
+   0 OUT-N 0 OUT-N 0 OUT-N ;
 
 CAST: OWNER-ROW-FN ( n -- [ n -- ptr u8 n bool ] )
 CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
@@ -2745,7 +2755,7 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
 \ DATA address va is the end of a closing file's segment that a child load
 \ follows: the child's first DATA starts there too, or, when it allotted
 \ none, the file's next segment or its here after its last load. A
-\ segment closes only at a load (FILE-BEGIN) or the file's end, so a LOAD row
+\ segment closes only at a load (LOAD-ACTION) or the file's end, so a LOAD row
 \ lies between any two SEGMENT rows and each LOAD row tests the end of the
 \ segment before it.
 : LOAD-BOUNDARY? ( n -- bool )
@@ -3082,8 +3092,8 @@ public
 
 \ Encode the innermost file's records, DATA, requires, wordlist rows,
 \ events, slots, slot literals, checker slices, updates and pins into
-\ FILE-OUT, closing its last segment. A file with a load that was not clean,
-\ that lacks a checker slice per load, whose records, slots, checker
+\ FILE-OUT, closing its last segment. A file that lacks a checker slice per
+\ load, whose records, slots, checker
 \ references or updates cannot all encode, or whose DATA or updated cells
 \ hold an undeclared address, refuses.
 : FILE-ENCODE ( -- )
@@ -3091,10 +3101,7 @@ public
    SEGMENT-CLOSE
    CHECK-EXPORT
    0 EVENTS-N @ FO-EVENTS FO @ ?do
-      i 0 EV @ EV-LOAD = if
-         i 9 EV @ 1 <> if s" load-boundary" FILE-REFUSE then
-         1+
-      then
+      i 0 EV @ EV-LOAD = if 1+ then
    loop {: loads:n :}
    FILE-REFUSED? if exit then
    FO-SLICES FO @ loads 1+ <> if s" checker-slices" FILE-REFUSE exit then
@@ -3163,18 +3170,26 @@ private
       used len +
    loop ;
 
+\ Whether a cut to kept retires what open file k's pending loader action
+\ found: its LOAD row, appended when the action finishes, would follow a
+\ segment the cut crossed.
+: ACT-CUT? ( n n -- bool ) {: kept:n k:n :}
+   k FO-ACT FRAME @ 0<> k FO-ACT-ORD FRAME @ kept < 0= and ;
+
 \ Whether a cut to kept drops a row of open file k: its last, as rows follow
-\ ordinal order.
+\ ordinal order, or the one its pending loader action would append.
 : ROWS-CUT? ( n n -- bool ) {: kept:n k:n :}
+   kept k ACT-CUT? if true exit then
    k EV-HI {: hi:n :}
    hi k FO-EVENTS FRAME @ > 0= if false exit then
    hi 1- 1 EV @ kept < 0= ;
 
 \ Whether a cut to kept reaches below the innermost file's open segment or
-\ drops an event row, such as the load of an open child whose first ordinal
-\ is the cut.
+\ drops an event row, such as the LOAD row an open file's pending loader
+\ action would append when the cut is its child's first ordinal.
 : CUT-BELOW? ( n -- bool ) {: kept:n :}
    kept FO-SEG-ORD FO @ < if true exit then
+   FO-DEPTH @ 0 ?do kept i ACT-CUT? if true unloop exit then loop
    EVENTS-N @ 0= if false exit then
    EVENTS-N @ 1- 1 EV @ kept < 0= ;
 
@@ -3188,7 +3203,7 @@ public
 \ within the innermost file's open segment keeps the objects whole: any other
 \ refuses the innermost file and each open file whose rows it drops. A
 \ SEGMENT row the cut crosses stays as it was: its file's LOAD row at the
-\ segment's end follows it (FILE-BEGIN), so its file refuses.
+\ segment's end follows it or is pending (LOAD-ACTION), so its file refuses.
 : FILE-CUT ( n -- )
    {: kept:n :}
    FILE-OPEN? if kept CUT-BELOW? if
@@ -3220,9 +3235,7 @@ public
       i FO-FIRST FRAME @ kept min i FO-FIRST FRAME !
       i FO-EVENTS FRAME @ EVENTS-N @ min i FO-EVENTS FRAME !
       i FO-SEG-ORD FRAME @ kept min i FO-SEG-ORD FRAME !
-      i FO-ACT-ROW FRAME @ EVENTS-N @ >= if
-         ACT-NONE i FO-ACT-ROW FRAME !
-      then
+      i FO-ACT-ORD FRAME @ kept min i FO-ACT-ORD FRAME !
    loop ;
 
 private
@@ -3304,10 +3317,10 @@ private
    false ;
 
 \ A LOAD event row: an include or a require, where the loading file's source
-\ stood, the child's path and root in the names section, a clean load, a
-\ resume offset within the file's srcu source bytes, and dependency rows and
-\ input bytes, both no fewer than the previous LOAD row's, within their
-\ sections. The input rows since the previous LOAD row are whole rows.
+\ stood, the requested path in the names section, a resume offset within the
+\ file's srcu source bytes, and dependency rows and input bytes, both no
+\ fewer than the previous LOAD row's, within their sections. The input rows
+\ since the previous LOAD row are whole rows.
 : LOAD-CK ( ptr u8 n n n n -- n n )
    {: row:ptr namesu:n srcu:n last-rows:n last-in:n :}
    row 1 U64-AT {: kind:n :}
@@ -3316,13 +3329,12 @@ private
    row 2 U64-AT 0 < if BAD then
    row 4 U64-AT 0= if BAD then
    row 3 U64-AT row 4 U64-AT namesu SPAN-CK
-   row 5 U64-AT row 6 U64-AT namesu SPAN-CK
-   row 7 U64-AT 1 <> if BAD then
-   row 8 U64-AT {: resume:n :}
+   row 5 U64-AT {: resume:n :}
    resume 0 < resume srcu > or if BAD then
-   row 9 U64-AT {: rows:n :}
+   row 6 U64-AT {: rows:n :}
    rows last-rows < rows OPEN-ROWS @ > or if BAD then
-   row 10 U64-AT {: inputs:n :}
+   row 7 U64-AT {: inputs:n :}
+   row 8 U64-AT row 9 U64-AT or row 10 U64-AT or 0<> if BAD then
    11 NUNIT-FILE:SECTION$ {: ins:ptr insu:n :}
    inputs last-in < inputs insu > or if BAD then
    ins last-in + inputs last-in - NFILE-INPUTS:ROW-COUNT drop
@@ -4372,16 +4384,6 @@ TRUSTED: SLOT-STORE ( n n n -- )
    row OBJ-EVS < if row OBJ-EV 0 U64-AT EV-HIST = if row exit then then
    -1 ;
 
-\ The event row after segment row seg's FFI, TASK and HIST rows and its OUT
-\ row.
-: SEG-NEXT ( n -- n )
-   {: seg:n :}
-   seg TAIL-END seg HIST-ROW 0 < if 0 else 1 then + {: next:n :}
-   next OBJ-EVS < if
-      next OBJ-EV 0 U64-AT EV-OUT = if next 1+ exit then
-   then
-   next ;
-
 \ Segment row seg's TASK row, the last of its FFI and TASK rows, or -1.
 : TASK-ROW ( n -- n )
    {: seg:n :}
@@ -4443,20 +4445,11 @@ TRUSTED: SLOT-STORE ( n n n -- )
    8 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
    0 k 0 ?do {: off:n :} sec off + LE:U64@ off + 8 + loop ;
 
-\ The require rows of segment row seg, reqs from row base, provided again.
-\ When a require load follows the segment, its last row is the one
-\ `required` stored before that load, which the load stores again.
-: INSTALL-REQUIRES ( n n n -- )
-   {: seg:n base:n reqs:n :}
-   seg SEG-NEXT {: next:n :}
-   next OBJ-EVS < if
-      next OBJ-EV {: ev:ptr :}
-      ev 0 U64-AT EV-LOAD = ev 1 U64-AT SOURCE-UNIT:LOAD-REQUIRE = and
-   else false then {: required:bool :}
-   required if reqs 1- else reqs then {: n:n :}
-   n 0 < if BAD then
+\ A segment's reqs require rows from row base, provided again.
+: INSTALL-REQUIRES ( n n -- )
+   {: base:n reqs:n :}
    8 NUNIT-FILE:SECTION$ drop {: sec:ptr :}
-   base REQ-OFF n 0 ?do
+   base REQ-OFF reqs 0 ?do
       {: off:n :}
       sec off + LE:U64@ {: len:n :}
       sec off + 8 + len SOURCE-UNIT:PROVIDED-RESOLVED
@@ -4530,7 +4523,7 @@ public
    wids 0 ?do
       wbase i + WID-ROW 2 U64-AT 1 = if M-LIVE-WID CUR@ i + REC-PROTECT then
    loop
-   seg rbase reqs INSTALL-REQUIRES
+   rbase reqs INSTALL-REQUIRES
    seg INSTALL-FFI
    seg INSTALL-USERS
    seg INSTALL-TASK
@@ -4900,13 +4893,12 @@ public
 : EVENT-COUNT ( -- n ) OBJ-EVS ;
 : EVENT-KIND ( n -- n ) OBJ-EV 0 U64-AT ;
 
-\ LOAD row k's load kind, the child's path and its root, and the source
-\ offset the loading file resumes at.
-: LOAD-ROW ( n -- n ptr u8 n ptr u8 n n )
+\ LOAD row k's load kind, the requested path, and the source offset the
+\ loading file resumes at.
+: LOAD-ROW ( n -- n ptr u8 n n )
    OBJ-EV {: ev:ptr :}
    3 NUNIT-FILE:SECTION$ drop {: names:ptr :}
-   ev 1 U64-AT names ev 3 U64-AT + ev 4 U64-AT
-   names ev 5 U64-AT + ev 6 U64-AT ev 8 U64-AT ;
+   ev 1 U64-AT names ev 3 U64-AT + ev 4 U64-AT ev 5 U64-AT ;
 
 \ Issue OUT row k's recorded operations again, in their order: each emit's
 \ character to qemit, each write's bytes to qwrite.
@@ -4929,7 +4921,7 @@ public
 \ had recorded before the load.
 : LOAD-ENDS ( n -- n n )
    OBJ-EV {: ev:ptr :}
-   ev 9 U64-AT ev 10 U64-AT ;
+   ev 6 U64-AT ev 7 U64-AT ;
 
 \ The FILE object OPEN-FILE found has a well formed slot 18; only then is its
 \ origin sink kind ORIGIN-KIND.
@@ -4962,8 +4954,9 @@ public
 \ constant, address, cast, colon and deferred-word records, DATA bytes, slot
 \ rows and require rows in segments between child loads, on a checker that
 \ imports. Later lanes widen the rest. Slot 12 holds no SEGMENT row for a run that added
-\ nothing to the dictionary, DATA or the require registry, so a file whose
-\ runs added nothing has no segment to replay and loads from source. The install makes
+\ nothing to the dictionary, DATA or the require registry, so a file that
+\ added nothing and took no loader action has nothing to replay and loads
+\ from source; one that only loads replays its LOAD rows. The install makes
 \ the file's wordlists in order, each as its slot 4 row says: a package
 \ row's public one through namespace-record, a private one through
 \ namespace-private of the namespace row its owner names, a rolled-back
@@ -4973,7 +4966,7 @@ public
 \ first part it cannot replay, for the miss; empty when it can install the
 \ whole object.
 : UNSUPPORTED$ ( -- ptr u8 n )
-   OPEN-SEGS @ 0= if s" empty-file" exit then
+   OPEN-SEGS @ 0= OPEN-LOADS @ 0= and if s" empty-file" exit then
    OPEN-UPDS @ 0<> if s" unsupported-updates" exit then
    OPEN-PINS @ 0<> if s" unsupported-pins" exit then
    FILE-CHECK-AVAILABLE? 0= if s" checker-unavailable" exit then

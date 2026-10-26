@@ -128,6 +128,23 @@ variable FILL-POOL
    s" wln.f" LOAD+
    S\" 0 set-current\ns\" wln=\" type WLN-CUR WLN-A = . WLN-CUR WLN-B = . cr\n" IN+ ;
 
+\ The loads: lbv.f and lbc.f load where no edge can stand; nproot.f loads
+\ npk.f, then npc.f, whose own require of npk.f finds it loaded; nreq.f's
+\ required of npk.f does the same; evreq.f requires npk.f from an evaluated
+\ text; nlroot.f loads the second pair. Kept apart from PROBE for its body
+\ text limit (BODYBUF-CAP).
+: EDGE-PROBE ( -- )
+   s" lbv.f" LOAD+
+   S\" s\" lbv=\" type LBV-K LBV-KID + . cr\n" IN+
+   s" lbc.f" LOAD+
+   S\" s\" lbc=\" type LBC-A LBC-B + . cr\n" IN+
+   s" nproot.f" LOAD+
+   S\" s\" npc=\" type NPC . cr\n" IN+
+   s" nreq.f" LOAD+
+   S\" s\" nreq=\" type NREQ . cr\n" IN+
+   s" evreq.f" LOAD+
+   s" nlroot.f" LOAD+ ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -157,10 +174,7 @@ variable FILL-POOL
    S\" s\" rp=\" type RP-B . cr\n" IN+
    s" sx.f" LOAD+
    S\" s\" sx=\" type SX-B . cr\n" IN+
-   s" lbv.f" LOAD+
-   S\" s\" lbv=\" type LBV-K LBV-KID + . cr\n" IN+
-   s" lbc.f" LOAD+
-   S\" s\" lbc=\" type LBC-A LBC-B + . cr\n" IN+
+   EDGE-PROBE
    s" hpar.f" LOAD+
    S\" s\" hp=\" type FRAME-HP:B . HG-ONE . HG-TWO . cr\n" IN+
    s" w.f" LOAD+
@@ -787,6 +801,24 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wln.f" S\" get-current 0 set-current constant WLN-CUR\nWLN-CUR set-current\n" PUT ;
 
 
+\ The loader edge fixtures, kept apart from FIXTURES for the same reason as
+\ FFI-FIXTURES. Every load below is a loader token's action at a loader cut,
+\ whether it runs the child or finds it loaded.
+: EDGE-FIXTURES ( -- )
+   s" npk.f" S\" : NPK ( -- n ) 1 ;\n" PUT
+   s" npc.f" S\" require npk.f\n: NPC ( -- n ) NPK 1+ ;\n" PUT
+   s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
+   \ NREQ names no word of npk.f: an earlier top-level load's records hold
+   \ no key in this one, which orders the file (evx.f). The path comes from
+   \ a colon word, as an interpreted s" would copy it to DATA, whose replay
+   \ needs the cold build's HERE alignment.
+   s" nreq.f" S\" : NREQ-PATH ( -- ptr u8 n ) s\" npk.f\" ;\nNREQ-PATH required\n: NREQ ( -- n ) 3 ;\n" PUT
+   \ evreq.f's load runs inside evaluate, not at a loader cut.
+   s" evreq.f" S\" s\" require npk.f\" evaluate\n" PUT
+   s" nlk.f" S\" : NLK ( -- n ) 5 ;\n" PUT
+   s" nlc.f" S\" require nlk.f\n: NLC ( -- n ) NLK 1+ ;\n" PUT
+   s" nlroot.f" S\" require nlk.f\nrequire nlc.f\n" PUT ;
+
 : FIXTURES ( -- )
    s" base.f" S\" package FRAME-BASE\npublic\n: ONE ( -- n ) 1 ;\n;package\n" PUT
    s" deep.f" S\" package FRAME-DEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
@@ -1017,6 +1049,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
    DATA-FIXTURES
+   EDGE-FIXTURES
    s" jrn.f" S\" 3 constant EK-K\n" PUT
    s" pcf.f" S\" 3 constant PC-F3\npackage PCF\npublic\nexport PC-F3\n;package\n" PUT
    s" pcz.f" S\" 3 constant PC-Z3\n" PUT
@@ -1129,24 +1162,24 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
    s" ret-use.f" KEY$ RU-KEY KEY-LEN KEEP
    s" app.f" KEY$ STORED
-   s" lib.f's object holds its records, HITS, T and HOOK's data and deep.f's load" T-LABEL
+   s" lib.f's object holds its records, HITS, T and HOOK's data and its two loads" T-LABEL
    s" lib.f" s"  records=" s" 10" OBJECT-HAS
    \ DATA: HITS 8 bytes, T 16, HOOK 8, and the 14 bytes of "FRAME-LIB:MARK"
    \ that its interpreted s" copies to HERE.
    s" lib.f" s"  data=" s" 46" OBJECT-HAS
-   s" lib.f" s"  requires=" s" 1" OBJECT-HAS
-   s" lib.f" s"  loads=" s" 1" OBJECT-HAS
-   s" lib.f" s"  segments=" s" 2" OBJECT-HAS
+   s" lib.f" s"  requires=" s" 0" OBJECT-HAS
+   s" lib.f" s"  loads=" s" 2" OBJECT-HAS
+   s" lib.f" s"  segments=" s" 1" OBJECT-HAS
    s" app.f's object holds six loads, the last between its own definitions" T-LABEL
    s" app.f" s"  records=" s" 4" OBJECT-HAS
-   s" app.f" s"  requires=" s" 6" OBJECT-HAS
+   s" app.f" s"  requires=" s" 0" OBJECT-HAS
    s" app.f" s"  loads=" s" 6" OBJECT-HAS
-   s" app.f" s"  segments=" s" 7" OBJECT-HAS
+   s" app.f" s"  segments=" s" 3" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
    s" each object holds one checker slice per load and one for itself" T-LABEL
    s" base.f" s"  checks=" s" 1" OBJECT-HAS
-   s" lib.f" s"  checks=" s" 2" OBJECT-HAS
+   s" lib.f" s"  checks=" s" 3" OBJECT-HAS
    s" app.f" s"  checks=" s" 7" OBJECT-HAS
    s" lib.f's declared xt cell HOOK is its one slot" T-LABEL
    s" lib.f" s"  slots=" s" 1" OBJECT-HAS
@@ -1658,7 +1691,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 \ A changed constant leaves con.f's object supported but stale: the warm build
 \ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
-\ con-dep.f's replay, past con.f's load, then finds its second segment stale,
+\ con-dep.f's replay, past con.f's load at row 0, then finds row 1 stale,
 \ so the build compiles the rest of con-dep.f from source and discards its
 \ object. The next build compiles con-dep.f alone and stores it. An edited
 \ wlt.f gives WLS its private wordlist, so wls.f's second segment, which
@@ -1673,7 +1706,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    SUCCESS
    OUT$ S\" con=5\n" CONTAINS? TTRUE
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
-   s" con-dep.f" s" 2" RESUMED
+   s" con-dep.f" s" 1" RESUMED
    s" a warm build finds wls.f's reopen stale after the edited wlt.f gave WLS its private wordlist" T-LABEL
    OUT$ S\" wls=7\n" CONTAINS? TTRUE
    s" wls.f" s" 3 reason=wordlist-rows" RESUMED
@@ -1747,15 +1780,55 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ret-use.f" s"  reason=" LINE$ s" ret-use.f reason=name-live word=RET-USER" T$=
    ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
 
+\ Each loader action is an edge in its file's object, whether the child ran
+\ or was found loaded.
+: EDGE-CHECKS ( -- )
+   s" a load of a file already loaded is an edge in the loading file's object" T-LABEL
+   OUT$ S\" npc=2\n" CONTAINS? TTRUE
+   s" npc.f" s"  loads=" s" 1" OBJECT-HAS
+   s" a known required is an edge, and its file stores its object" T-LABEL
+   OUT$ S\" nreq=3\n" CONTAINS? TTRUE
+   s" nreq.f" s"  loads=" s" 1" OBJECT-HAS
+   s" nreq.f" KEY$ STORED
+   s" a load inside an evaluated text refuses its file" T-LABEL
+   s" evreq.f" s"  reason=" LINE$ s" evreq.f reason=load-boundary" T$=
+   s" evreq.f" NO-OBJECT ;
+
+: EDGE-WARM ( -- )
+   s" a warm build installs the objects of files whose edges found their child loaded" T-LABEL
+   s" npc.f" REUSED s" nreq.f" REUSED s" npk.f" REUSED
+   OUT$ S\" npc=2\n" CONTAINS? TTRUE
+   OUT$ S\" nreq=3\n" CONTAINS? TTRUE ;
+
+\ The third build's edits: nproot.f no longer loads npk.f before npc.f, and
+\ nlk.f gains a comment.
+: EDGE-EDITS ( -- )
+   s" nproot.f" S\" require npc.f\n" PUT
+   s" nlk.f" S\" \\ edited\n: NLK ( -- n ) 5 ;\n" PUT ;
+
+: EDGE-REBUILT ( -- )
+   s" a removed earlier provider compiles the child and its own child again" T-LABEL
+   OUT$ S\" npc=2\n" CONTAINS? TTRUE
+   ERR$ s" /npc.f records=" CONTAINS? TFALSE
+   s" npk.f" KEY$ STORED
+   s" a comment in a leaf compiles only the leaf" T-LABEL
+   s" nlroot.f" REUSED s" nlc.f" REUSED
+   ERR$ s" /nlk.f records=" CONTAINS? TFALSE
+   s" nlk.f" KEY$ STORED ;
+
 \ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
 \ the replay has installed RP-A and loaded rc.f, so the build names the
 \ event row it stopped at, row 3 after RP-A's segment and history rows and
 \ rc.f's load, and compiles the rest of rp.f from source. SXC-N's new effect does the same to sx.f past
-\ its loads of sxm.f and sxc.f; the resume never loads sxm.f again, so its
-\ marker byte and its line come once.
+\ its loads of sxm.f and sxc.f at rows 0 and 1, so it resumes at row 2; the
+\ resume never loads sxm.f again, so its marker byte and its line come once.
+\ npc.f's load of npk.f is row 0, so an effect edit of npk.f resumes it at
+\ row 1.
 : RC-INTERFACE ( -- )
    s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
    s" sxc.f" S\" : SXC-N ( -- u8 ) 2 ;\n" PUT
+   s" npk.f" S\" : NPK ( -- u8 ) 1 ;\n" PUT
+   s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
    s" sxmark.txt" AT FILE-SIZE {: marks:n :}
    s" an effect edit of rc.f resumes rp.f at its stale second segment" T-LABEL
    PROBE
@@ -1766,8 +1839,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rp.f" s" 3" RESUMED
    s" a resumed sx.f runs its cold child sxm.f once" T-LABEL
    OUT$ S\" sx=3\n" CONTAINS? TTRUE
-   s" sx.f" s" 4" RESUMED
-   s" sxmark.txt" AT FILE-SIZE marks 1+ T= ;
+   s" sx.f" s" 2" RESUMED
+   s" sxmark.txt" AT FILE-SIZE marks 1+ T=
+   s" an effect edit of npk.f resumes npc.f after its edge" T-LABEL
+   OUT$ S\" npc=2\n" CONTAINS? TTRUE
+   s" npc.f" s" 1" RESUMED ;
 
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
@@ -1828,6 +1904,7 @@ public
    FLOOR-CHECKS
    FFI-CHECKS
    RUN-CHECKS
+   EDGE-CHECKS
    s" lib.f" KEY$ STORED
    s" a cold build runs dv.f and stores its object" T-LABEL
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
@@ -1878,6 +1955,7 @@ public
    PROBE
    0 FILL-POOL !
    SUCCESS WARM-CHECKS
+   EDGE-WARM
    s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
    s" a warm build compiles rw.f again and installs lf.f's object" T-LABEL
    OUT$ S\" rw=8\n" CONTAINS? TTRUE
@@ -1918,8 +1996,10 @@ public
    s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
    s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
    INDIRECT-EDITS
+   EDGE-EDITS
    s" comments in lib.f keep both keys and both files' results" REBUILT
    INDIRECT-REBUILT
+   EDGE-REBUILT
    s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
    OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
    ERR$ s" /hch.f records=" CONTAINS? TFALSE
@@ -1935,9 +2015,8 @@ public
    OUT$ S\" pk=70\n" CONTAINS? TTRUE
    ERR$ s" /pk.f records=" CONTAINS? TFALSE
    ERR$ s" dependency miss: namespace shape changed" CONTAINS? TTRUE
-   s" a changed selection is a named miss for the file that consumed it" T-LABEL
-   ERR$ s" /selc.f reason=ffi-rows" CONTAINS? TTRUE
-   ERR$ s" /selc.f records=" CONTAINS? TFALSE
+   s" a changed selection resumes the file that consumed it after its require" T-LABEL
+   s" selc.f" s" 1 reason=ffi-rows" RESUMED
    s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
    s" a file that selects the selection it found refuses on every build" T-LABEL
    s" selb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED

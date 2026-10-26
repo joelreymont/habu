@@ -44,37 +44,32 @@ $4B8 constant LIVE-FIXED-OFF
 40 constant F-INPUT
 48 constant F-INPUT-U
 56 constant F-PRIOR
-\ The load kind that opened the file.
-64 constant F-KIND
 \ The input rows below F-MARK belong to a file object already.
-72 constant F-MARK
+64 constant F-MARK
 \ The bytes as read. F-SRC is the copy the interpreter runs, which differs
 \ from them when the file starts with `#!` (include.f LOAD-BYTES).
-80 constant F-RAW
-88 constant F-RAW-U
-\ Where the loading file's source stood when it loaded this one; -1 for
-\ the outermost file or a load from outside that source.
-96 constant F-AT
+72 constant F-RAW
+80 constant F-RAW-U
 \ The file's object key, taken when it opened: 64 hex digits.
-104 constant F-KEY
+88 constant F-KEY
 \ The origin sink the file opened under (NUNIT-OBJECT SINK-*), 1 when the
 \ builder fed its rows to the early journal, the builder's prefix row count
 \ and the early journal's serial when it opened, and its first record.
-168 constant F-OSINK
-176 constant F-OFED
-184 constant F-OCUR
-192 constant F-OSER
-200 constant F-OFIRST
+152 constant F-OSINK
+160 constant F-OFED
+168 constant F-OCUR
+176 constant F-OSER
+184 constant F-OFIRST
 \ The file's object bytes as OBJECT-READ? copied them: their offset in
 \ OBJECTS and their length.
-208 constant F-OBJ
-216 constant F-OBJ-U
+192 constant F-OBJ
+200 constant F-OBJ-U
 \ The object's dependency rows checked so far: a replay checks them segment
 \ by segment, and a child loaded between two checks its own object.
-224 constant F-DONE
+208 constant F-DONE
 \ The source offset a stale replay's resume runs the file from.
-232 constant F-RESUME
-240 constant FRAME-BYTES
+216 constant F-RESUME
+224 constant FRAME-BYTES
 \ A file object name: "hb-file-", 64 hex digits, ".hfo".
 76 constant OBJECT-NAME-BYTES
 
@@ -205,7 +200,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: PRIMITIVE-XT ( n -- [ n n -- n bool ] )
 CAST: IDENTITY-XT ( n -- [ n -- ptr u8 n ptr u8 n n ] )
 CAST: ORIGIN-XT ( n -- [ ptr u8 n n ptr u8 n -- n ] )
-CAST: PARENT-ACTION-XT ( n -- [ -- n ptr u8 n ] )
+CAST: REQUEST-XT ( n -- [ -- n ptr u8 n ] )
 CAST: ACTIVE-SOURCE-XT ( n -- [ -- ptr u8 n ptr u8 n ptr u8 n ] )
 CAST: UNIT>N
    ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- n )
@@ -631,7 +626,6 @@ variable TEE-ERR
    F-OBJ F@ OBJECTS-U ! -1 DEPTH +! ;
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
-: FRAME-ROOT ( -- ptr u8 n ) FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ ;
 : KEPT-KEY ( -- ptr u8 n ) FRAME F-KEY + 64 ;
 
 : ORIGIN-HOOK-ALLOWED? ( -- bool )
@@ -973,6 +967,33 @@ variable TEE-ERR
    0 cell CELL-VIEW !
    NULL-PTR CUT-CELL ! ;
 
+\ The token runs the host's source loader, by the loader words' original
+\ entries: a file's own word named like one is not a loader.
+: HOST-LOADER? ( n n n -- bool )
+   SOURCE-UNIT:LOADER-KIND SOURCE-UNIT:NONE <> ;
+
+\ The token runs the target's source loader, once bound.
+: TARGET-LOADER? ( n n n -- bool )
+   {: op:n rec:n entry:n :}
+   TARGET-KIND @ 0= if false exit then
+   op rec entry TARGET-KIND @ KIND-XT execute SOURCE-UNIT:NONE <> ;
+
+\ The token runs a source loader: the host's, or once bound the target's.
+: LOADER? ( n n n -- bool )
+   {: op:n rec:n entry:n :}
+   op rec entry HOST-LOADER? if true exit then
+   op rec entry TARGET-LOADER? ;
+
+\ The run observer's callback: a word the source runs is a row of the open
+\ files, except a loader, whose action is the file's LOAD row instead
+\ (LOAD-BEFORE).
+: RUN-SEEN ( ptr n -- )
+   {: rec:ptr :}
+   SOURCE-EXEC:WORD 0 rec XREF-START LOADER? if
+      rec NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-LEGS drop exit
+   then
+   rec NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-RUN ;
+
 \ The open file objects see each word the source runs through the running
 \ kernel's run observer, held for the session, and read its resolution legs
 \ through the running checker owner. A kernel without either observes nothing,
@@ -986,7 +1007,7 @@ variable TEE-ERR
    [: NUNIT-OBJECT:REFUSE-WORD ;] NUNIT-DEP:USE-REFUSE
    [: NUNIT-OBJECT:OUTPUT-MARK ;] NUNIT-DEP:USE-OUT
    s" NHOST:UNOBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT {: undo:n :}
-   [: NFILE-REF:REC-ORD NUNIT-DEP:OBSERVE-RUN ;]
+   ['] RUN-SEEN
       s" NHOST:OBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT OBSERVE-XT execute
    undo UNOBSERVE-XT !
    s" TASK:OBSERVE-SLOTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT dup 0<> if
@@ -1055,34 +1076,35 @@ variable TEE-ERR
    FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
    q F-PRIOR F@ N>UNIT execute ;
 
-\ The token runs a source loader: the host's, or once bound the target's.
-: LOADER? ( n n n -- bool )
-   {: op:n rec:n entry:n :}
-   op rec entry SOURCE-UNIT:LOADER-KIND SOURCE-UNIT:NONE <> if true exit then
-   TARGET-KIND @ 0= if false exit then
-   op rec entry TARGET-KIND @ KIND-XT execute SOURCE-UNIT:NONE <> ;
-
-\ The observer's before callback: RUN-BEFORE's ticket doubled, plus one when
-\ the token is a loader at a loader cut, whose action the file then records
-\ (NUNIT-OBJECT:LOAD-ACTION).
+\ The observer's before callback. A loader token is never a run: at a loader
+\ cut within the file's source its action starts (NUNIT-OBJECT:LOAD-ACTION),
+\ and the ticket is 1, plus 2 when the target's loader runs it; anywhere
+\ else it refuses the file, and the ticket is 0. Any other token's ticket is
+\ RUN-BEFORE's doubled.
 : LOAD-BEFORE ( n n n n ptr u8 n -- n bool )
    {: unit:n op:n rec:n entry:n tok:ptr toku:n :}
-   unit op rec entry tok toku NUNIT-DEP:RUN-BEFORE {: ticket:n judged:bool :}
-   ticket 2 *
-   op rec entry LOADER? SOURCE-EXEC:LOADER-CUT? and if
-      NUNIT-OBJECT:LOAD-ACTION 1+
+   op rec entry LOADER? if
+      SOURCE-EXEC:LOADER-CUT? SOURCE-AT 0 >= and if
+         SOURCE-AT NUNIT-OBJECT:LOAD-ACTION
+         op rec entry HOST-LOADER? if 1 else 3 then false exit
+      then
+      s" load-boundary" NUNIT-OBJECT:FILE-REFUSE
+      0 false exit
    then
-   judged ;
+   unit op rec entry tok toku NUNIT-DEP:RUN-BEFORE {: ticket:n judged:bool :}
+   ticket 2 * judged ;
 
-\ The observer's after callback: RUN-AFTER with RUN-BEFORE's ticket, then a
-\ loader action's end: clean when it returned with the file balanced at the
-\ position it resumes from.
+\ The observer's after callback: RUN-AFTER with RUN-BEFORE's ticket, or a
+\ loader action's end with the loader's request, clean when it returned
+\ with the file balanced at the position it resumes from.
 : LOAD-AFTER ( n n n -- )
    {: unit:n ticket:n rc:n :}
-   unit ticket 1 rshift rc NUNIT-DEP:RUN-AFTER
-   ticket 1 and 0= if exit then
+   ticket 1 and 0= if unit ticket 1 rshift rc NUNIT-DEP:RUN-AFTER exit then
+   ticket 2 and 0<> if
+      s" SOURCE-UNIT:ACTION$" TARGET-XT REQUEST-XT execute
+   else SOURCE-UNIT:ACTION$ then {: kind:n path:ptr pathu:n :}
    SOURCE-EXEC:POSITION {: off:n balanced:bool :}
-   off rc 0= balanced and NUNIT-OBJECT:LOAD-FINISH ;
+   kind path pathu off rc 0= balanced and NUNIT-OBJECT:LOAD-FINISH ;
 
 \ Run the file's source through run under the engine's source observer,
 \ whose callbacks judge each seed word the top level runs (NUNIT-DEP
@@ -1360,10 +1382,11 @@ variable TEE-ERR
    key FRAME F-KEY + keyu BYTE-COPY
    NFILE-INPUTS:MARK F-MARK F!
    SOURCE-ROW
-   \ The parent's segment closes in FILE-BEGIN, and this file's before-image
-   \ follows it: both start from rested scratch.
+   \ The parent's segment closed at its loader action (NUNIT-OBJECT
+   \ LOAD-ACTION), and this file's before-image follows it: both start from
+   \ rested scratch.
    SCRATCH-RETIRE
-   FRAME-PATH FRAME-ROOT F-KIND F@ F-AT F@ NUNIT-OBJECT:FILE-BEGIN
+   NUNIT-OBJECT:FILE-BEGIN
    ORIGIN-OPEN
    NUNIT-OBJECT:DEF-OPEN? 0= if
       s" def-open-absent" NUNIT-OBJECT:FILE-REFUSE
@@ -1614,17 +1637,6 @@ variable TEE-ERR
    k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
    2drop true ;
 
-\ Every child the viewed object loads has this file's root: the replay loads
-\ it by path under the root it runs in.
-: LOAD-ROOTS? ( -- bool )
-   NUNIT-OBJECT:EVENT-COUNT 0 ?do
-      i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if
-         i NUNIT-OBJECT:LOAD-ROW drop {: root:ptr rootu:n :} 2drop drop
-         root rootu FRAME-ROOT STR= 0= if false unloop exit then
-      then
-   loop
-   true ;
-
 \ The target journal word an installed row of sink kind is imported
 \ through; 0 for the other kinds or when the target lacks it.
 : IMPORT-XT ( n -- n )
@@ -1668,7 +1680,6 @@ variable TEE-ERR
    \ Freshness is checked only for an object the session can install: the
    \ check reads files and records rows into the innermost file's object.
    NUNIT-OBJECT:UNSUPPORTED$ dup 0<> if OBJECT-MISS false exit then 2drop
-   LOAD-ROOTS? 0= if s" load-root" OBJECT-MISS false exit then
    OBJECT-FRESH? 0= if s" input-stale" OBJECT-MISS false exit then
    \ A leading segment installs before any load, on the state this check
    \ sees, and a leading load's interval is the rows recorded before it; an
@@ -1716,7 +1727,7 @@ variable IMPORT-AT
 \ are kept across it; the loader copies the path before the child's object
 \ read can move OBJECTS.
 : REPLAY-LOAD ( n -- )
-   NUNIT-OBJECT:LOAD-ROW drop 2drop {: kind:n path:ptr pathu:n :}
+   NUNIT-OBJECT:LOAD-ROW drop {: kind:n path:ptr pathu:n :}
    NUNIT-OBJECT:INSTALL-SAVE {: row:n off:n at:n segs:n slice:n :}
    kind path pathu SOURCE-UNIT:LOAD-PATH
    row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
@@ -1789,7 +1800,7 @@ variable IMPORT-AT
       i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if drop i then
    loop {: load:n :}
    load 0 < if BAD then
-   load NUNIT-OBJECT:LOAD-ROW {: off:n :} 2drop 2drop drop
+   load NUNIT-OBJECT:LOAD-ROW {: off:n :} 2drop drop
    NUNIT-OBJECT:INSTALL-STOP
    off false ;
 
@@ -1865,25 +1876,14 @@ variable IMPORT-AT
 \ frame records nothing for the suffix, and its stale object is discarded:
 \ the next build compiles the file and stores its object again. The line
 \ names segment-stale even when the frame kept an earlier reason: a hit's
-\ capture is never stored, and the replay's child loads, made from outside
-\ the file's source, already refused it (load-outside-source).
+\ capture is never stored, and the replay's child loads, made by no loader
+\ action of the file's source, already refused it (load-boundary).
 : REPLAY-RUN ( -- )
    REPLAY-OBJECT if drop exit then {: off:n :}
    s" segment-stale" NUNIT-OBJECT:FILE-REFUSE
    s" segment-stale" REFUSED-LINE
    KEPT-KEY FILE-PATH BUILD-CACHE:DISCARD
    off RESUME-RUN ;
-
-\ Rule: after each child load, the parent file stands in the scope it began
-\ in (its SCOPE row). A hit replays no source action, so a parent whose own
-\ source restores the scope a child left would replay in the child's scope.
-\ Such a parent refuses `scope-after-load` and writes no object; the test
-\ compares recorded and live scope state only, so the refusal is deterministic.
-: SCOPE-AFTER-LOAD ( -- )
-   NUNIT-OBJECT:FILE-OPEN? 0= if exit then
-   NUNIT-DEP:FILE-SCOPE-KEPT? 0= if
-      s" scope-after-load" NUNIT-OBJECT:FILE-REFUSE
-   then ;
 
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
@@ -1894,7 +1894,7 @@ variable IMPORT-AT
    else
       target if
          s" SOURCE-UNIT:PARENT-ACTION$" TARGET-XT
-            PARENT-ACTION-XT execute
+            REQUEST-XT execute
       else SOURCE-UNIT:PARENT-ACTION$ then
          {: mode:n asked:ptr askedu:n :}
       asked drop askedu drop mode
@@ -1908,7 +1908,6 @@ variable IMPORT-AT
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
    DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST then
-   DEPTH @ 0 > if SOURCE-AT else -1 then {: at:n :}
    FRAME-RESERVE
    DEPTH @ 0= if TEE-OPEN then
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
@@ -1923,16 +1922,15 @@ variable IMPORT-AT
    rootu F-ROOT-U F!
    q Q>N F-Q F!
    prior UNIT>N F-PRIOR F!
-   kind F-KIND F!
-   at F-AT F!
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if
       FILE-CLOSE DEPTH @ 0= if TEE-CLOSE then
       NFILE-REF:POP-FILE open-rc throw
    then
    \ The before-image follows BEGIN-UNIT's observer hooks, and the parent's
-   \ reopened segment's follows CLOSE-UNIT's, which may unhook them, so the
-   \ capture's own writes are never a file's change to earlier DATA.
+   \ reopened segment's is taken when its loader action finishes
+   \ (NUNIT-OBJECT:LOAD-FINISH), after CLOSE-UNIT, which may unhook them, so
+   \ the capture's own writes are never a file's change to earlier DATA.
    NUNIT-DEP:BEGIN-UNIT
    NUNIT-OBJECT:SEGMENT-IMAGE
    \ Both paths observe the file's source: an engine build that installs it
@@ -1950,8 +1948,6 @@ variable IMPORT-AT
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
    NUNIT-DEP:CLOSE-UNIT
-   SCOPE-AFTER-LOAD
-   NUNIT-OBJECT:SEGMENT-IMAGE
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}

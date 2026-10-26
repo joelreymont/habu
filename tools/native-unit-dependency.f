@@ -1648,19 +1648,27 @@ variable USER-READ
 
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
-\ without the name included, and then, when one of them holds the record that
-\ ran, what the run read (CAPTURE-RUN).
-: OBSERVE-RUN ( n -- )
+\ without the name included. False when no file is open, or when none of
+\ the legs holds the record that ran, which orders the file. A loader's
+\ token takes only these rows: its action is the file's LOAD row.
+: OBSERVE-LEGS ( n -- bool )
    {: ord:n :}
-   OPEN? 0= if exit then
+   OPEN? 0= if false exit then
    ord RUN-ORD !
    0 RUN-HITS !
    RUN-TOKEN$ ['] RUN-LEG TOP-XT @ AS-TOP execute
    \ RUN-ORD and RUN-HITS carry one run into RUN-LEG; they rest at 0 after it,
    \ so an image holds no run's ordinal.
-   RUN-HITS @ 0=  0 RUN-ORD !  0 RUN-HITS !
-   if s" resolution-leg-unknown" ord ORDERED-BY exit then
-   ord CAPTURE-RUN ;
+   RUN-HITS @ 0<>  0 RUN-ORD !  0 RUN-HITS ! {: hit:bool :}
+   hit 0= if s" resolution-leg-unknown" ord ORDERED-BY then
+   hit ;
+
+\ A word the source ran at top level: its resolution legs (OBSERVE-LEGS)
+\ and then, when one of them holds the record that ran, what the run read
+\ (CAPTURE-RUN).
+: OBSERVE-RUN ( n -- )
+   {: ord:n :}
+   ord OBSERVE-LEGS if ord CAPTURE-RUN then ;
 
 \ The source observer's before callback (NDEF-CACHE wraps a file's run in
 \ SOURCE-EXEC:RUN): a seed code word run at this file's top level, or in a
