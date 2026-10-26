@@ -267,6 +267,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: base:n :}
    f FR-DP FR@ base DATA-FLOOR-CELL CELL@ + max {: cut:n :}
    cut base - ADDRESS-CELLS:KEEP-BELOW
+   \ Raise the release high-water to the DP this lowers from, so `allot`
+   \ zeroes the reused space it hands out again (layout.f DPHW-CELL).
+   DP-CELL CELL@ base - DPHW-CELL CELL@ max DPHW-CELL CELL!
    cut DP-CELL CELL! ;
 
 : FRAME-ROLLBACK-TOKEN ( -- )

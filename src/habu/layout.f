@@ -1706,8 +1706,8 @@ DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's three header cells take $2D98..$2DA8, past
 \ SUSP-PREFLIGHT-CELL ($2D88) and the unclaimed $2D90, swept for a claimant
-\ across src tools test bootstrap; $2D58..$2D60 stay for the master band's
-\ next cells and $2D78 is the unclaimed cell
+\ across src tools test bootstrap; DPHW-CELL takes $2D58, $2D60 stays for the
+\ master band's next cell and $2D78 is the unclaimed cell
 \ test/native-build-host-unknown-code.f relies on. The two shadow cells hold
 \ the native compiler's fixed and does> shadow callbacks; TASK-CHAIN-CELL
 \ heads the x86-64 task chain. No captured image keeps a live stack address.
@@ -1723,6 +1723,18 @@ DICT-CAP 1+ cells constant STATE-BYTES
 \ the cold baseline ahead of the boot-run words and again after snapshot
 \ restore; x86-64: DATA-INIT, on every entry).
 $2D50 constant TEXT-SIZE-CELL
+\ DPHW-CELL: the release high-water, the highest DP, as a DATA offset, that any
+\ path lowering DP has lowered it from (habu1.f DP-LOWER, and BALLOT, habu2.f
+\ EM-EVAL-THROW-RECOVER and EM-REPL-RECOVER, interpret.f FRAME-ROLLBACK-CODE,
+\ src/core/generated-declaration-dictionary.f DICTIONARY-DP!, kernel-x64.f
+\ ALLOT-BODY). Space above both HERE and it has not been handed out since boot,
+\ so it is still the zero of a fresh page; `allot` zeroes only the part of its
+\ request below it, the reused space, and never touches the pages a large
+\ allot reserves. 0 is below every DP, so a fresh mapping reads as nothing released.
+\ An offset rather than an address, as DATA-FLOOR-CELL is, so nothing relocates
+\ it; a snapshot carries it with the rest of DATA, where it can only overstate
+\ the reused space of the restored DATA, whose bytes above `here` are fresh.
+$2D58 constant DPHW-CELL
 package NCOMP-DISPATCH
 public
 $2D98 constant FIXED-SHADOW-CELL

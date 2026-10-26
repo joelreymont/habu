@@ -2303,6 +2303,11 @@ SUITE repl-literal-segment
    test/repl-literal-segment.f
 ;SUITE
 
+\ Its failed-REPL-line case starts and reaps one engine child on a PTY.
+SUITE dictionary-zero
+   test/dictionary-zero.f
+;SUITE
+
 ;GROUP
 
 RUN

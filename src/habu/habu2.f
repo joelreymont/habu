@@ -5094,11 +5094,14 @@ package INTERP-EMIT
    C-TASK-LIVE-GUARD
    15 1 MOVZ,  LCREATE LABEL@ BL, ;
 
+\ The variable's cell is written zero: DP may come back over space a released
+\ DP gave back (habu1.f DP-LOWER,), and the Habu loop's `variable` reaches
+\ the same cell through `allot`, which zeroes it.
 : C-VARIABLE ( -- )  C-CREATE
    9 DATA LASTC-CELL LDR,  2 3 MOVZ,  LPROTREC LABEL@ BL,
    10 9 16 LDR,  10 10 DNAME-CELL ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL,
-   7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
+   10 DATA 0 LDR,  7 10 8 ADDI,  7 DP-CHECK  31 10 0 STR,  7 DATA 0 STR, ;
 
 \ `constant` pops ONE physical cell and records the one-cell `-- a` trust
 \ (LASTC-TRUST:PUBLISH-A) — the permanent contract: the interpret stack is
@@ -12455,6 +12458,7 @@ public
       9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,  NDICT 13 48 LDR,
       12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
       RELOC-EMIT:LROLLBACK LABEL@ BL,
+      9 10 DP-LOWER,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
       scope LBL,
@@ -12586,6 +12590,7 @@ public
    NDICT DATA RSAVND-CELL LDR,
    12 DATA RSAVDP-CELL LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
    RELOC-EMIT:LROLLBACK LABEL@ BL,
+   9 10 DP-LOWER,
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,
    EM-RESET-COMPILE-STATE

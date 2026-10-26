@@ -1988,6 +1988,17 @@ variable LSOURCEEXECFINISH
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
+\ Before a path lowers DP, raise the release high-water (layout.f DPHW-CELL)
+\ to the DP it lowers from, which the DP cell still holds: O(1), so releasing a
+\ large allot costs nothing, and `allot` (BALLOT) zeroes the reused space when
+\ it hands it out again. Clobbers the two scratch registers.
+: DP-LOWER, ( n n -- ) {: t:n u:n :}
+   LBL {: done:label :}
+   t DATA DP-CELL LDR,  t t DATA SUB,
+   u DATA DPHW-CELL LDR,  t u CMP,  C-LS done BCOND,
+   t DATA DPHW-CELL STR,
+   done LBL, ;
+
 \ Standard ALIGN: round the data pointer up to a cell, bound-checked, so the
 \ next `,` or allot starts on a cell. `create` applies the same rounding itself.
 : BALIGN ( -- )
@@ -3461,17 +3472,28 @@ public
    THROW-CORRUPT-MSG LABEL@ LBL,  ma mu BYTES, ;
 
 \ ALLOT's missing owner callback throws through the engine helper above.
+\ `allot` hands out zeroed space (docs/forth.md `create … allot`). Fresh DATA
+\ pages are zero, so a positive count zeroes only the part of [old DP, new DP)
+\ below the release high-water (DP-LOWER,), the space a lowered DP gave back;
+\ above it nothing has been handed out, and the pages a large allot reserves
+\ stay untouched. A negative count raises the high-water instead.
 : BALLOT ( -- )
-   LBL LBL LBL {: store:label no-owner:label missing:label :}
+   LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
    B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
-   A 0 CMPI,  C-GE store BCOND,
+   A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
    11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 no-owner CBZ,
    11 11 CHECKER-OWNER-ABI:GRID-REVOKE-OFF LDR,  11 missing CBZ,
    9 7 DATA SUB,  9 G-PUSH  11 BLR,
    no-owner LBL,
    7 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   10 11 DP-LOWER,  store B,
+   grow LBL,
+   10 7 A SUB,                                     \ x10 = old DP
+   11 DATA DPHW-CELL LDR,  11 11 DATA ADD,  11 7 CMP,  11 11 7 C-LS CSEL,  \ x11 = min(high-water, new DP)
+   zero LBL,  10 11 CMP,  C-CS store BCOND,
+      31 10 0 STRB,  10 10 1 ADDI,  zero B,
    store LBL,
    7 DATA 0 STR,
    RET,

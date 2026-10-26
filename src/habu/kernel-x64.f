@@ -3335,13 +3335,34 @@ private
    RAX DP-CEILING IMM64,  RAX DATA-REG ASM-SINK ENC-ADD-RR
    RDI RAX ASM-SINK ENC-CMP-RR  C-G DPBAD-LBL JCC, ;
 
+\ `allot ( n -- )`, the twin of habu1.f BALLOT: a positive count zeroes the
+\ part of [old DP, new DP) below the release high-water (layout.f DPHW-CELL),
+\ the space a lowered DP gave back, and leaves the fresh pages above it
+\ untouched; a negative count raises the high-water to the old DP instead.
+: ALLOT-BODY ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: grow:label zero:label done:label :}
+   TASK-LIVE-GUARD,  RCX POP,  RDX DP-CELL CELL@,                \ rdx = old DP
+   RDI RDX ASM-SINK ENC-MOV-RR  RDI RCX ASM-SINK ENC-ADD-RR  DP-CHECK,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-GE grow JCC,
+   RDX DATA-REG ASM-SINK ENC-SUB-RR  RAX DPHW-CELL CELL@,
+   RAX RDX ASM-SINK ENC-CMP-RR  C-B RAX RDX ASM-SINK ENC-CMOVCC
+   RAX DPHW-CELL CELL!,  done JMP,
+   grow X64CODE:LBL,
+   RAX DPHW-CELL CELL@,  RAX DATA-REG ASM-SINK ENC-ADD-RR
+   RAX RDI ASM-SINK ENC-CMP-RR  C-A RAX RDI ASM-SINK ENC-CMOVCC   \ rax = min(high-water, new DP)
+   RCX ZERO-REG,
+   zero X64CODE:LBL,
+   RDX RAX ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   RCX R64>N >R8 RDX MEM-AT ASM-SINK ENC-MOV8-MR
+   RDX ASM-SINK ENC-INC  zero JMP,
+   done X64CODE:LBL,
+   RDI DP-CELL CELL!, ;
+
 \ The heap rows move DP, so each begins with the task-live guard, as the
 \ ARM64 bodies do. `,` and c, check the DP past their store before it lands.
 : HEAP, ( -- )
    s" here" [: RAX DP-CELL CELL@,  RAX PUSH, ;] PRIM
-   s" allot" [:
-      TASK-LIVE-GUARD,  RCX POP,  RDI DP-CELL CELL@,
-      RDI RCX ASM-SINK ENC-ADD-RR  DP-CHECK,  RDI DP-CELL CELL!, ;] PRIM
+   s" allot" [: ALLOT-BODY ;] PRIM
    s" align" [:
       TASK-LIVE-GUARD,  RDI DP-CELL CELL@,
       RDI CELL 1- >IMM8 ASM-SINK ENC-ADD-RI8
