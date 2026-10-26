@@ -1251,6 +1251,60 @@ CAST: CK-EXPORT-XT ( n -- [ [ ptr u8 n -- n ] -- ptr u8 n ] )
    rc CHECK-CODE? if s" checker-export" FILE-REFUSE exit then
    rc throw ;
 
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
+
+: DEF-DIAG-W2 ( ptr u8 n -- )
+   {: bytes:ptr size:n :}
+   0 begin dup size < while
+      dup {: sent:n :}
+      2 bytes sent + size sent - write
+      dup 0 <= if drop E-FS-IO throw then
+      +
+   repeat drop ;
+
+: DEF-DIAG-N ( n -- )
+   {: value:n :}
+   value 10 >= if value 10 / recurse then
+   s" 0123456789" drop value 10 mod + 1 DEF-DIAG-W2 ;
+
+\ The DATA record ord's origin names, and whether it names any, while the
+\ record is live.
+: REC-DATA? ( n -- n bool )
+   {: ord:n :}
+   ord NFILE-REF:DATA-ORIGIN-BASE {: base:n known:bool :}
+   base known ord XREF-REC XREF-RETIRED? 0= and ;
+
+\ The live record whose DATA starts nearest at or below va, and that start;
+\ -1 when none does.
+: OWNER-AT ( n -- n n )
+   {: va:n :}
+   -1 0
+   ndict@ 0 ?do
+      {: best:n at:n :}
+      i REC-DATA? {: base:n known:bool :}
+      known base va <= and base at >= best 0 < or and
+      if i base else best at then
+   loop ;
+
+\ Under diagnostics, the record that owns the parent's first changed earlier
+\ DATA byte and the byte's offset in it, - when no record does, and the load
+\ that refuses the parent: the source location already names the child.
+: EARLIER-WRITE-LINE ( -- )
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   FO-SITES FO @ FILE-SITES @ {: site:n :}
+   s" native-cache: earlier-write site=" DEF-DIAG-W2
+   site OWNER-AT {: ord:n base:n :}
+   ord 0 < if s" -" DEF-DIAG-W2
+   else
+      ord XREF-REC XREF-NAME$ DEF-DIAG-W2
+      s"  offset=" DEF-DIAG-W2 site base - DEF-DIAG-N
+   then
+   data-base SRCLOC:PATHLEN-CELL + @ {: pathu:n :}
+   pathu 0 > if
+      s"  load=" DEF-DIAG-W2 DEF-DIAG-PATH @ pathu DEF-DIAG-W2
+   then
+   S\" \n" DEF-DIAG-W2 ;
+
 public
 
 \ Open a file frame at the file's first record ordinal. A child's load ends
@@ -1266,7 +1320,9 @@ public
    {: path:ptr pathu:n root:ptr rootu:n kind:n at:n :}
    FILE-OPEN? if
       SEGMENT-CLOSE
-      SITES-N @ FO-SITES FO @ > if s" earlier-write-before-load" FILE-REFUSE then
+      SITES-N @ FO-SITES FO @ > if
+         EARLIER-WRITE-LINE s" earlier-write-before-load" FILE-REFUSE
+      then
       at 0 < if s" load-outside-source" FILE-REFUSE then
       NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-at-load" FILE-REFUSE then
       EVENTS-N @ {: row:n :}
@@ -1521,17 +1577,6 @@ variable DEF-MODULE-DELTA
 variable DEF-GEN-DELTA
 variable DEF-EPOCH-DELTA
 variable DEF-BUILD-DELTA
-
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DEF-DIAG-PATH
-
-: DEF-DIAG-W2 ( ptr u8 n -- )
-   {: bytes:ptr size:n :}
-   0 begin dup size < while
-      dup {: sent:n :}
-      2 bytes sent + size sent - write
-      dup 0 <= if drop E-FS-IO throw then
-      +
-   repeat drop ;
 
 public
 : REPORT-STORE-REFUSED ( ptr u8 n n -- )
@@ -2492,25 +2537,6 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    v OWNER-ROW-XT @ OWNER-ROW-FN execute ;
 
 : LIT-HIT? ( n -- bool ) OWNER-ROW? {: body:ptr size:n found:bool :} found ;
-
-\ The DATA record ord's origin names, and whether it names any, while the
-\ record is live.
-: REC-DATA? ( n -- n bool )
-   {: ord:n :}
-   ord NFILE-REF:DATA-ORIGIN-BASE {: base:n known:bool :}
-   base known ord XREF-REC XREF-RETIRED? 0= and ;
-
-\ The live record whose DATA starts nearest at or below va, and that start;
-\ -1 when none does.
-: OWNER-AT ( n -- n n )
-   {: va:n :}
-   -1 0
-   ndict@ 0 ?do
-      {: best:n at:n :}
-      i REC-DATA? {: base:n known:bool :}
-      known base va <= and base at >= best 0 < or and
-      if i base else best at then
-   loop ;
 
 \ An earlier file's DATA at va, owned by record ord whose DATA starts at
 \ base, as a reference through that declaration, 0 when it is not keyed.

@@ -1267,6 +1267,29 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    then
    ord ORDERED NULL-PTR 0 NULL-PTR 0 ADD-ROW ;
 
+\ One record's name and package, for the ordered-run line.
+: DIAG-RECORD ( ptr u8 n n -- )
+   {: key:ptr keyu:n ord:n :}
+   key keyu DIAG-W2
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-NAME$ DIAG-W2
+   rec XREF-WORDLIST DIAG-PACKAGE ;
+
+\ The file frame's first ORDERED reason from a run: the record the walk could
+\ not account for, the earlier record the run reached it through, and the
+\ run's root. Later reasons leave the frame line unchanged and print nothing.
+: DIAG-ORDERED-RUN ( ptr u8 n n n n -- )
+   {: why:ptr whyu:n holder:n via:n root:n :}
+   DIAG? @ 0= FDEPTH @ 0= or if exit then
+   FILE-ORDERED? if exit then
+   s" native-cache: ordered-run reason=" DIAG-W2 why whyu DIAG-W2
+   s"  holder=" holder DIAG-RECORD
+   s"  via=" via DIAG-RECORD
+   s"  run=" root DIAG-RECORD
+   data-base SRCLOC:PATHLEN-CELL + @ {: pathu:n :}
+   pathu 0 > if s"  path=" DIAG-W2 DIAG-PATH @ pathu DIAG-W2 then
+   S\" \n" DIAG-W2 ;
+
 : ORDERED-BY ( ptr u8 n n -- )
    {: reason:ptr reasonu:n ord:n :}
    reason reasonu
@@ -1584,7 +1607,9 @@ DEFAULT-OUT
       WOK @ 0= if
          drop
          FAIL-P @ FAIL-U @ FAIL-ORD @ XREF-REC {: why:ptr whyu:n rec:ptr :}
-         r OWN? if why whyu rec RUN-REFUSE else why whyu rec XREF-NAME$ r ORDERED-AT then
+         r OWN? if why whyu rec RUN-REFUSE exit then
+         why whyu FAIL-ORD @ r ord DIAG-ORDERED-RUN
+         why whyu rec XREF-NAME$ r ORDERED-AT
          exit
       then
       1+

@@ -1369,7 +1369,12 @@ variable TEE-ERR
       s" def-open-absent" NUNIT-OBJECT:FILE-REFUSE
    then
    \ The install's writers are tier-1-only (prims.f def-open/def-close).
-   data-base NCOMP-DISPATCH:TIER-CELL + @ 1 <> if
+   data-base NCOMP-DISPATCH:TIER-CELL + @ {: tier:n :}
+   tier 1 <> if
+      NUNIT-DEP:DIAG? @ if
+         s" native-cache: tier value=" DIAG-W2 tier DIAG-N
+         s"  path=" DIAG-W2 FRAME-PATH DIAG-W2 S\" \n" DIAG-W2
+      then
       s" tier" NUNIT-OBJECT:FILE-REFUSE
    then
    \ A hit would skip what another hook refuses, so the file compiles live.
