@@ -1,7 +1,5 @@
-\ gate-aot-positive-lib.f - the positive hb-build AOT checks, in two halves
-\ that share no state: each is a gate row of its own
-\ (test/gate-aot-positive-bundle.f, test/gate-aot-positive-preseed.f), so the
-\ pool runs them beside each other and beside every other row.
+\ gate-aot-positive-lib.f - the positive hb-build AOT checks the gate row
+\ test/gate-aot-positive-bundle.f runs.
 
 require src/lib/string.f
 require src/lib/source.f
@@ -9,7 +7,6 @@ require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/process-env.f
 require tools/build-fixpoint.f
-require tools/hb-build-lib.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 require test/gate-build-common.f
@@ -19,7 +16,6 @@ require test/suite-budget.f              \ CHILD-MS, the maker's hang guard
 require test/aot-builder-engine.f
 
 package AOT-POSITIVE
-using HB-BUILD-CLI                       \ the preseed knobs and the json flag
 using AOT-IMAGE
 
 46 constant DOT
@@ -503,152 +499,12 @@ variable SELF-SRC-U
    s" : ROUND-TRIP ( -- n ) 37 construct res ok 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ A preseeded bad-tag object/AOT test entry. A source declaring a
-\ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
-\ and a forged value-stack seed (payload slots + an out-of-range tag), so the
-\ stripped image starts at the helper and reaches its inline invalid-tag die
-\ (rc ENGINE-ERROR:BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
-\ MAIN) exits 0, and the entry/seed/mode axis is folded into every cache layer
-\ (artifact key + source-index key + object bytes) so the two are distinct
-\ artifacts with no cross-restore in either direction, and the die survives an
-\ object-cache relink.
-: PRESEED-SRC ( -- )                        \ matched family + helper + trivial MAIN
-   GE-SRC-RESET
-   s" SUMTYPE gemt" GE-SRC-LINE
-   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
-   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
-   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
-   s" ;SUMTYPE" GE-SRC-LINE
-   s" : HLP ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
-   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
-
-\ Bundle width M+1 = 3 cells: pad, pad, out-of-range tag 5 (gemt tags 0..2 valid),
-\ each cell a big-endian u64 (16 hex chars), bottom-of-stack first / tag last.
-: PRESEED-SEED$ ( -- ptr u8 n )
-   s" 000000000000000000000000000000000000000000000005" ;
-
-: PRESEED-ARM ( -- )                        \ select the non-MAIN entry + forged seed
-   s" HLP" HBB-PRESEED-ENTRY!
-   PRESEED-SEED$ HBB-PRESEED-SEED! ;
-
-: PRESEED-BUILD ( -- )
-   GB-WRITE-SRC
-   GB-HBB-PREPARE
-   PRESEED-ARM
-   s" hb-build AOT preseed bad-tag entry build" GB-HBB-BUILD-OUT ;
-
-: PRESEED-BUILD-JSON ( -- )                 \ --json flips the artifact key only -> object-cache relink
-   GB-WRITE-SRC
-   GB-HBB-PREPARE
-   -1 HBB-JSON !
-   -1 HBB-REPORT-JSON !
-   PRESEED-ARM
-   s" hb-build AOT preseed object-cache relink build" GB-HBB-BUILD-OUT ;
-
-: PRESEED-RUN-BAD ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-HB-RESET
-   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
-   85 label labelu GE-EXPECT-RC
-   s" hb: bad gemt tag" label labelu GE-EXPECT-ERR-HAS ;
-
-: PRESEED ( -- )
-   \ The artifact and object keys fold the subject's path, which lies under this
-   \ run's fresh root, so the first build links and HB-BUILD:OBJECT-HIT? below
-   \ answers this run's own PRESEED-BUILD, never a warm entry from another run.
-   s" hb-aot-preseed.f" s" hb-aot-preseed" s" hb-aot-preseed-report.json" PATHS
-   PRESEED-SRC
-   s" hb-build AOT preseed normal-MAIN control" GB-HBB-BUILD
-   s" hb-build AOT preseed normal-MAIN exits 0" GB-RUN-OUT
-   PRESEED-BUILD
-   s" hb-build AOT preseed bad-tag entry run" PRESEED-RUN-BAD
-   PRESEED-BUILD
-   s" hb-build AOT preseed restore" PRESEED-RUN-BAD
-   PRESEED-BUILD-JSON
-   HB-BUILD:OBJECT-HIT? 0= if s" hb-build AOT preseed object-cache hit" GE-FAIL then
-   s" hb-build AOT preseed object-cache relink run" PRESEED-RUN-BAD
-   s" hb-build AOT preseed normal-MAIN control (bis)" GB-HBB-BUILD
-   s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT
-   s" PASS: hb-build AOT preseeded bad-tag entry (rc 85 hb: bad gemt tag; three-key lockstep; object relink)" type cr ;
-
-\ Preseeded bad-tag FETCH: proves the compiled fetch's own invalid-tag diagnostic
-\ fires correctly in a stripped image after the relocation fix. HLP stores a
-\ preseeded layout value then reads it back through `@`; the forged seed carries
-\ an out-of-range tag (res tags are 0..1, seed tag 5), so the tag walk the
-\ elaborator stages ahead of the wide load rejects it, writes
-\ "hb: bad layout tag\n" and exits ENGINE-ERROR:BAD-TAG (85). The diagnostic is
-\ NFETCH-CHECK's, not the engine's own (LP2VEXEC) helper: renaming
-\ NFETCH-CHECK:BAD-TAG's message in a probe engine changes exactly this row's
-\ stderr, because src/compiler/native/elaborate.f VALIDATE-FETCH emits the
-\ NFETCH-CHECK:TAGS call before the value load. The SAME source built normally
-\ (entry MAIN) exits 0.
-: PRESEED-FETCH-SRC ( -- )                 \ matched family + fetch helper + trivial MAIN
-   GE-SRC-RESET
-   s" package AOT-LAYOUT-FETCH-BAD" GE-SRC-LINE
-   s" SUMTYPE res<a,b>" GE-SRC-LINE
-   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
-   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
-   s" ;SUMTYPE" GE-SRC-LINE
-   s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : HLP ( res<n,n> -- n ) 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
-   S\" : HLP-DROP ( res<n,n> -- ) 0 MEM ! 0 MEM @ drop s\" fetch-drop: marker\" type ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
-
-\ Bundle width M+1 = 2 cells for res<n,n> (one payload + tag), each a big-endian
-\ u64, bottom-of-stack first / tag last. Forge tag 5 (res tags 0..1 valid).
-: PRESEED-FETCH-SEED$ ( -- ptr u8 n )
-   s" 00000000000000000000000000000005" ;
-
-: PRESEED-FETCH-ARM ( -- )                 \ select the fetch helper entry + forged seed
-   s" AOT-LAYOUT-FETCH-BAD:HLP" HBB-PRESEED-ENTRY!
-   PRESEED-FETCH-SEED$ HBB-PRESEED-SEED! ;
-
-: PRESEED-FETCH-BUILD ( -- )
-   GB-WRITE-SRC
-   GB-HBB-PREPARE
-   PRESEED-FETCH-ARM
-   s" hb-build AOT preseed bad-tag fetch build" GB-HBB-BUILD-OUT ;
-
-\ HLP-DROP fetches the same forged value and drops it: a lowering that elided
-\ the unused load would take the tag walk with it and print the marker.
-: PRESEED-FETCH-DROP-BUILD ( -- )
-   GB-WRITE-SRC
-   GB-HBB-PREPARE
-   s" AOT-LAYOUT-FETCH-BAD:HLP-DROP" HBB-PRESEED-ENTRY!
-   PRESEED-FETCH-SEED$ HBB-PRESEED-SEED!
-   s" hb-build AOT preseed dropped bad-tag fetch build" GB-HBB-BUILD-OUT ;
-
-: FETCH-RUN-BAD ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-HB-RESET
-   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
-   85 label labelu GE-EXPECT-RC
-   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS
-   s" " label labelu GE-EXPECT-OUT ;
-
-: PRESEED-FETCH ( -- )
-   s" hb-aot-preseed-fetch.f" s" hb-aot-preseed-fetch" s" hb-aot-preseed-fetch-report.json" PATHS
-   PRESEED-FETCH-SRC
-   s" hb-build AOT preseed fetch normal-MAIN control" GB-HBB-BUILD
-   s" hb-build AOT preseed fetch normal-MAIN exits 0" GB-RUN-OUT
-   PRESEED-FETCH-BUILD
-   s" hb-build AOT preseed bad-tag fetch run" FETCH-RUN-BAD
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   then
-   PRESEED-FETCH-DROP-BUILD
-   s" hb-build AOT preseed dropped bad-tag fetch run" FETCH-RUN-BAD
-   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via NFETCH-CHECK:TAGS in a stripped image, used and dropped)" type cr ;
-
 \ A TRUSTED: body answers a family value from loose cells. The checker records
 \ the declared row without walking the body, so the elaborator takes that row
 \ as the grouping of the cells the body left (src/compiler/native/elaborate.f
 \ TRUSTED-FRAME-RESHAPE); before it, hb-build died on GWN-MAKE with
 \ `ncomp: cannot compile` E-NELAB-JOIN - the same width, a different grouping.
 \ Cell order: payload below, tag on top, so `7 1` is the gns arm carrying 7.
-\ The forged row proves the cells are still a checked family value where they
-\ are consumed: tag 5 is outside gwfn's range, and the stripped image dies at
-\ the fetch with NFETCH-CHECK's diagnostic, not at the trusted return.
 : TRUSTED-MAKE-LINES ( -- )
    s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
    s" package AOT-TRUSTED-MAKE" GE-SRC-LINE
@@ -657,23 +513,65 @@ variable SELF-SRC-U
    S\" : RUN ( -- ) GWN-MAKE MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH s\" gns=\" type . ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
+\ The same constructor shape forges an out-of-range tag (gwfn tags are 0..1,
+\ gemt tags 0..2; both forge 5), and the forged cells are still a checked family
+\ value where they are consumed: the stripped image dies there with
+\ ENGINE-ERROR:BAD-TAG (85), not at the trusted return. A run dies once, so
+\ MAIN's one argument picks the consumer and one build serves every run:
+\   none   a fetch whose value is dropped. A lowering that elided the unused
+\          load would take the tag walk with it and exit 0.
+\   use    a fetch whose value a MATCH consumes. The tag walk the elaborator
+\          stages ahead of the wide load (src/compiler/native/elaborate.f
+\          VALIDATE-FETCH, NFETCH-CHECK:TAGS) dies first, `hb: bad layout tag`,
+\          before the MATCH could report the family.
+\   match  a MATCH on the forged value itself: its inline invalid-tag die,
+\          `hb: bad gemt tag`.
 : TRUSTED-FORGE-SRC ( -- )
    GE-SRC-RESET
+   s" require src/lib/string.f" GE-SRC-LINE
    s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
+   s" SUMTYPE gemt" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
    s" 1 LAYOUT-BUFFER MEM gwfn" GE-SRC-LINE
    s" package AOT-TRUSTED-FORGE" GE-SRC-LINE
    s" TRUSTED: GWN-FORGE ( -- gwfn ) 0 5 ;" GE-SRC-LINE
+   s" TRUSTED: GEMT-FORGE ( -- gemt ) 0 0 5 ;" GE-SRC-LINE
+   s" : FETCH-DROP ( -- ) GWN-FORGE 0 MEM ! 0 MEM @ drop ;" GE-SRC-LINE
+   s" : FETCH-USE ( -- n ) GWN-FORGE 0 MEM ! 0 MEM @ MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : MATCH-GEMT ( -- n ) GEMT-FORGE MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
-   s" : RUN ( -- ) GWN-FORGE 0 MEM ! 0 MEM @ drop ;" GE-SRC-LINE
+   s" : RUN ( -- )" GE-SRC-LINE
+   s"    SCRIPT-ARGC 0= if FETCH-DROP exit then" GE-SRC-LINE
+   S\"    0 SCRIPT-ARGV$ s\" use\" STR= if FETCH-USE . exit then" GE-SRC-LINE
+   S\"    0 SCRIPT-ARGV$ s\" match\" STR= if MATCH-GEMT . then ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : MAIN ( -- ) AOT-TRUSTED-FORGE:RUN ;" GE-SRC-LINE ;
+
+\ Run the forged-tag image with ARG as its argument (none when ARG is empty)
+\ and expect the bad-tag die: rc 85, DIAG on stderr, nothing on stdout.
+: FORGE-RUN-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: arg:ptr argu:n diag:ptr diagu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   argu 0 > if arg argu GE-ARG+ then
+   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
+   85 label labelu GE-EXPECT-RC
+   diag diagu label labelu GE-EXPECT-ERR-HAS
+   s" " label labelu GE-EXPECT-OUT ;
 
 : TRUSTED-ROW ( -- )
    s" hb-aot-trusted-forge.f" s" hb-aot-trusted-forge" s" hb-aot-trusted-forge-report.json" PATHS
    TRUSTED-FORGE-SRC
    s" hb-build AOT trusted forged-tag build" GB-HBB-BUILD
-   s" hb-build AOT trusted forged-tag run" FETCH-RUN-BAD
-   s" PASS: hb-build AOT trusted family row (a forged tag still dies at the fetch, rc 85)" type cr ;
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" hb-build AOT trusted forged-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
+   then
+   s" " s" hb: bad layout tag" s" hb-build AOT trusted forged-tag dropped fetch" FORGE-RUN-BAD
+   s" use" s" hb: bad layout tag" s" hb-build AOT trusted forged-tag used fetch" FORGE-RUN-BAD
+   s" match" s" hb: bad gemt tag" s" hb-build AOT trusted forged-tag MATCH" FORGE-RUN-BAD
+   s" PASS: hb-build AOT trusted forged tags (rc 85: hb: bad layout tag at a dropped and a used fetch, hb: bad gemt tag at a MATCH)" type cr ;
 
 \ The layout fetch and the trusted family row build as one program: their
 \ declarations are disjoint, and MAIN prints each one's line in turn.
@@ -717,13 +615,5 @@ public
    TRUSTED-ROW
    GT-CLEANUP ;
 
-: RUN-PRESEED ( -- )
-   s" hb-gate-aot-preseed" GT-START
-   AOT-BUILDER-ENGINE:ENSURE
-   PRESEED
-   PRESEED-FETCH
-   GT-CLEANUP ;
-
 ;using                                   \ AOT-IMAGE
-;using                                   \ HB-BUILD-CLI
 ;package

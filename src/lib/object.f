@@ -4,9 +4,7 @@
 \ source digest. Fields refuse tabs, newlines, other control bytes and empty
 \ strings with E-OBJ-FIELD; TEXT+ and DATA+ store section bytes as lowercase hex
 \ and LOAD refuses malformed hex. DEF+ records an address-bearing text
-\ definition (symbol, text offset, effect); ENTRY+ records a non-MAIN entry
-\ (name, test mode, forged seed cells as big-endian u64 hex), so a preseeded
-\ object is a distinct artifact. BYTES$ and KEY-HEX need the source, target,
+\ definition (symbol, text offset, effect). BYTES$ and KEY-HEX need the source, target,
 \ checker and compiler fields first (E-OBJ-SCHEMA); KEY-HEX hashes the
 \ canonical bytes through src/lib/content-key.f. Row accessors skip the magic
 \ header, index from zero, exclude the tag, and throw E-OBJ-FIELD out of range.
@@ -319,11 +317,6 @@ variable LOAD-OFF
       a u PARSE-RELOC-OFF
       exit
    then
-   a u s" entry" TAG? if
-      a u 3 EXPECT-TABS
-      a u PARSE-RELOC-OFF
-      exit
-   then
    E-OBJ-SCHEMA throw ;
 
 \ A loaded line is the next LF-delimited slice of the object record. NEXT-LINE
@@ -455,14 +448,6 @@ public
 
 : DEF+ ( ptr u8 n n ptr u8 n -- )
    s" def" LINE3N ;
-
-\ Selected AOT/object entry identity for a preseeded test entry: the entry word
-\ name, a test mode, and the forged seed cells (big-endian u64 hex, tag last).
-\ Recording it in the object bytes makes a preseeded object distinct from a
-\ normal MAIN object (OBJ:KEY-HEX diverges) and lets the object self-describe its
-\ non-MAIN entry.
-: ENTRY+ ( ptr u8 n n ptr u8 n -- )
-   s" entry" LINE3N ;
 
 : IMPORT+ ( ptr u8 n ptr u8 n -- )
    s" import" LINE2 ;

@@ -98,18 +98,6 @@ create HBB-ENGINE-IMAGE-PATH FS-PATH-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
-\ Preseeded test entry (--preseed-entry / --preseed-seed): a selected non-MAIN
-\ entry word plus a forged value-stack seed (big-endian u64 hex, tag last) built
-\ into the AOT/object image, so a matched helper reaches its inline invalid-tag
-\ die. The entry/seed/mode axis is folded into all three
-\ cache layers (artifact key, source-index key, object bytes) so a preseeded run
-\ can never restore a stale normal-MAIN artifact. The maker's AOT closure holds
-\ an entry name of at most 64 bytes (src/habu/aot-closure.f ENTRY-NAME!).
-64 constant HBB-ENTRY-NAME-CAP
-2048 constant HBB-SEED-HEX-CAP
-create HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-CAP allot
-create HBB-SEED-HEX-BUF HBB-SEED-HEX-CAP allot
-
 DYNAMIC-BUFFER HBB-OUT-CAPTURE u8
 DYNAMIC-BUFFER HBB-ERR-CAPTURE u8
 variable HBB-SRC-U
@@ -163,10 +151,6 @@ variable HBB-OBJECT-HIT
 variable HBB-OBJECT-STORE
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
-variable HBB-PRESEED
-variable HBB-ENTRY-NAME-U
-variable HBB-SEED-HEX-U
-variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
 variable HBB-MAKER-TIMEOUT-MS
@@ -371,39 +355,7 @@ variable HBB-APP-BUILDER-U
    0 HBB-ENGINE-TARGET !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
-   0 HBB-SIZE-REPORT !
-   0 HBB-PRESEED !
-   0 HBB-ENTRY-NAME-U !
-   0 HBB-SEED-HEX-U !
-   0 HBB-PRESEED-MODE ! ;
-
-: HBB-PRESEED? ( -- bool )
-   HBB-PRESEED @ 0 <> ;
-
-: HBB-ENTRY-NAME$ ( -- ptr u8 n )
-   HBB-PRESEED? if HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-U @ else s" MAIN" then ;
-
-: HBB-SEED-HEX$ ( -- ptr u8 n )
-   HBB-SEED-HEX-BUF HBB-SEED-HEX-U @ ;
-
-\ A name the maker cannot hold, empty or too long, is refused by name before
-\ anything is built.
-: HBB-PRESEED-ENTRY! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if s" hb-build: --preseed-entry name empty" HBB-USAGE-RC die then
-   u HBB-ENTRY-NAME-CAP > if
-      s" hb-build: --preseed-entry name too long" HBB-USAGE-RC die
-   then
-   a HBB-ENTRY-NAME-BUF u BYTE-COPY
-   u HBB-ENTRY-NAME-U !
-   -1 HBB-PRESEED ! ;
-
-: HBB-PRESEED-SEED! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u HBB-SEED-HEX-CAP > if E-STR-CAPACITY throw then
-   a HBB-SEED-HEX-BUF u BYTE-COPY
-   u HBB-SEED-HEX-U ! ;
-
-: HBB-PRESEED-MODE! ( n -- )
-   HBB-PRESEED-MODE ! ;
+   0 HBB-SIZE-REPORT ! ;
 
 : HBB-RESET-TRACE ( -- )
    0 HBB-MAKER-HIT !
@@ -449,14 +401,6 @@ variable HBB-APP-BUILDER-U
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --size-report" HBB-ARG= if -1 HBB-SIZE-REPORT ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --preseed-mode" HBB-ARG= if
-      HBB-OPT-VALUE$ STR>NUMBER? MATCH option
-        none OF HBB-USAGE ENDOF
-        some OF ENDOF
-      ;MATCH
-      HBB-PRESEED-MODE! HBB-INC-I HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
    HBB-ENGINE @ if HBB-I @ s" -o" HBB-ARG= if HBB-FALSE exit then then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
@@ -471,7 +415,7 @@ variable HBB-APP-BUILDER-U
    0 HBB-I !
    HBB-PARSE-OPTIONS
    HBB-ENGINE @ if
-      HBB-REPL @ 0<> HBB-PRESEED? or HBB-JSON @ 0<> or if HBB-USAGE then
+      HBB-REPL @ 0<> HBB-JSON @ 0<> or if HBB-USAGE then
       SCRIPT-ARGC HBB-I @ - 2 <> if HBB-USAGE then
       HBB-I @ s" -o" HBB-ARG= 0= if HBB-USAGE then
       HBB-I @ 1+ HBB-ARG$ HBB-OUT-ARG!
@@ -715,10 +659,6 @@ variable HBB-APP-BUILDER-U
    s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
    HBB-JSON-FLAG$ >LEN PROC-ARGV+
-   HBB-PRESEED? if
-      HBB-ENTRY-NAME$ >LEN PROC-ARGV+
-      HBB-SEED-HEX$ >LEN PROC-ARGV+
-   then
    s" --donor" >LEN PROC-ARGV+
    BF-ENGINE$ >LEN PROC-ARGV+ ;
 
@@ -994,19 +934,6 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
 : HBB-OPTION-TEXT+ ( CONTENT-KEY:fold ptr u8 n bool -- CONTENT-KEY:fold )
    if CONTENT-KEY:TEXT+ else 2drop then ;
 
-\ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
-\ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
-\ but for a preseeded run it diverges every cache layer in lockstep: the artifact
-\ key, the source-index key (via HBB-ENTRY-HEX!), and the object source header.
-\ Without it a preseeded run would restore a stale normal-MAIN artifact.
-: HBB-PRESEED-CK+ ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   HBB-PRESEED? 0= if exit then
-   s" preseed-entry-v1" CONTENT-KEY:TEXT+
-   HBB-ENTRY-NAME$ CONTENT-KEY:TEXT+
-   HBB-SEED-HEX$ CONTENT-KEY:TEXT+
-   SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CONTENT-KEY:TEXT+ ;
-
-
 \ The canonical entry selects a prior observed load. Its actual inputs supply
 \ the dependency key: static replay cannot know the root a loader scopes at
 \ runtime, or whether a body containing a literal import runs at all.
@@ -1016,7 +943,6 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    CONTENT-KEY:OPEN
    s" user-source-entry-v1" CONTENT-KEY:TEXT+
    path pathu CONTENT-KEY:FILE+
-   HBB-PRESEED-CK+
    dst CONTENT-KEY:FINAL-HEX ;
 
 
@@ -1210,11 +1136,8 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-COMPILER-ABI$ OBJ:COMPILER!
    BF-SOURCE-BUF 8 + code OBJ:TEXT+
    data 0 > if BF-SOURCE-BUF 8 + code + data OBJ:DATA+ then
-   HBB-ENTRY-NAME$ s" --" OBJ:EXPORT+
-   HBB-ENTRY-NAME$ 0 s" --" OBJ:DEF+
-   HBB-PRESEED? if
-      HBB-ENTRY-NAME$ HBB-PRESEED-MODE @ HBB-SEED-HEX$ OBJ:ENTRY+
-   then ;
+   s" MAIN" s" --" OBJ:EXPORT+
+   s" MAIN" 0 s" --" OBJ:DEF+ ;
 
 : HBB-AOT-SAVE-INPUTS-RUN ( -- )
    HBB-MAKER-INPUTS$ HBB-INPUTS-READ {: rows:ptr rowsu:n :}
@@ -1837,9 +1760,6 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-DEPS$ FILE? if HBB-REPL-DEPS$ REMOVE-FILE then ;
 
 : HBB-BUILD-REPL ( -- )
-   HBB-PRESEED? if
-      s" hb-build: --preseed-entry requires an AOT build" HBB-USAGE-RC die
-   then
    HBB-REPL-ROOT!
    HBB-REPL-FRESH? if HBB-FINISH-REPL-FRESH exit then
    HBB-RUN-APP-CMD HBB-FINISH-MAKER
@@ -1923,8 +1843,6 @@ EXPORT HBB-MAIN
 EXPORT HBB-MAKER-IMAGE$
 EXPORT HBB-ENGINE-RUN-PATH
 EXPORT HBB-PATHS!
-EXPORT HBB-PRESEED-ENTRY!
-EXPORT HBB-PRESEED-SEED!
 EXPORT HBB-REPORT-JSON
 EXPORT HBB-RESET-OPTIONS
 EXPORT HBB-SRC$

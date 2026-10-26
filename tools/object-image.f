@@ -26,7 +26,6 @@ variable TEXT-ROW
 variable DATA-ROW
 variable EXPORT-ROW
 variable DEF-ROW
-variable ENTRY-ROW
 
 : TEXT-BUF ( -- ptr u8 )
    0 TEXT-STORAGE byte-view ;
@@ -37,8 +36,7 @@ variable ENTRY-ROW
    -1 TEXT-ROW !
    -1 DATA-ROW !
    -1 EXPORT-ROW !
-   -1 DEF-ROW !
-   -1 ENTRY-ROW ! ;
+   -1 DEF-ROW ! ;
 
 : CLAIM ( n ptr n -- ) {: row:n slot:ptr :}
    slot @ 0 >= if E-OBJ-SCHEMA throw then
@@ -53,7 +51,6 @@ variable ENTRY-ROW
    row ROW-TAG$ s" data" STR= if row DATA-ROW CLAIM exit then
    row ROW-TAG$ s" export" STR= if row EXPORT-ROW CLAIM exit then
    row ROW-TAG$ s" def" STR= if row DEF-ROW CLAIM exit then
-   row ROW-TAG$ s" entry" STR= if row ENTRY-ROW CLAIM exit then
    E-OBJ-SCHEMA throw ;
 
 : SCAN ( -- )
@@ -77,11 +74,7 @@ variable ENTRY-ROW
    DEF-ROW @ 0 ROW-FIELD$ name nameu STR= 0= if E-OBJ-SCHEMA throw then
    DEF-ROW @ 2 ROW-FIELD$ s" --" STR= 0= if E-OBJ-SCHEMA throw then
    CHECK-DEF-OFF
-   ENTRY-ROW @ 0 < if
-      name nameu s" MAIN" STR= 0= if E-OBJ-SCHEMA throw then
-   else
-      ENTRY-ROW @ 0 ROW-FIELD$ name nameu STR= 0= if E-OBJ-SCHEMA throw then
-   then ;
+   name nameu s" MAIN" STR= 0= if E-OBJ-SCHEMA throw then ;
 
 : HEX-NIB ( n -- n ) {: c:n :}
    c STR-ZERO >= c STR-ZERO 10 + < and if c STR-ZERO - exit then

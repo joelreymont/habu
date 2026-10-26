@@ -525,21 +525,6 @@ create AOT-OBJ-HDR 8 allot
       AOT-OBJ-CODE-N CODE AOT-PAYLOAD-OFF @ + AOT-OBJ-PAYLOAD-N IMG-PAYLOAD!
    then ;
 
-\ --- preseeded test entry: raw physical value-stack cells materialized before
-\ the selected root is called. A preseeded bad-tag object/AOT entry
-\ (tools/hb-build.f --preseed-entry) pushes a forged bundle (payload slots + an
-\ out-of-range tag) so the matched helper reaches its inline invalid-tag die
-\ (test/gate-aot-positive-preseed.f). SEED-CELLS is
-\ bottom-of-stack first, tag last (top). Empty for a normal MAIN build.
-: EMIT-SEED ( -- )                               \ push SEED-CELLS onto the value stack (x19)
-   SEED-N @ STACK-ABI:BOOT-BYTES 8 / > if s" aot: initial data stack exceeds allocation" 74 die then
-   0 BEGIN dup SEED-N @ < WHILE
-      9 over cells SEED-CELLS + @ LIT64,          \ x9 = seed cell value
-      9 XDS 0 STR,                                \ *x19 = x9  (value-stack top)
-      XDS XDS 8 ADDI,                             \ x19 += 8  (advance one cell)
-      1 +
-   REPEAT drop ;
-
 \ The stripped image carries the signal stub too, and publishes it the way
 \ habu2.f EM-STARTUP-RUNTIME-STATE does, with this image's own addresses.
 \ IT CLEARS NO FD WORD, where the engine's boot has to: this startup's DATA is a
@@ -598,7 +583,6 @@ create AOT-OBJ-HDR 8 allot
    EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    11 12 LUNCREP LABEL@ TEXT-ADR,  11 DATA UNCGH-CELL STR,   \ the uncaught-throw reporter (EMIT-UNCAUGHT)
-   EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    EMIT-EXIT-HOOK                                \ whatever the application armed on its way out
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)

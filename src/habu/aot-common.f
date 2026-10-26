@@ -252,14 +252,6 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 \ every scan/copy site below reads it as a span, not a bare number.
 : BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ DATA-PTR ;
 
-64 constant SEED-MAX
-create SEED-CELLS SEED-MAX cells allot   variable SEED-N
-0 SEED-N !
-: SEED-RESET ( -- )  0 SEED-N ! ;
-: SEED+ ( n -- )
-   SEED-N @ SEED-MAX >= IF s" aot: too many preseed cells" 74 die THEN
-   SEED-CELLS SEED-N @ cells + !  SEED-N @ 1 + SEED-N ! ;
-
 variable NEXT-OFF
 \ --- THE MEMBERS IN ENTRY ORDER, the third per-member column. The closure walk
 \ discovers members in CALL order (aot-closure.f ADD-CLO appends what it reaches),

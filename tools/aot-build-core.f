@@ -8,7 +8,6 @@
 \ linker uses the application's copy, at build time only.
 require src/lib/image-lifecycle.f
 require src/habu/app-image.f
-require src/os/script-argv.f
 require src/habu/aot-decl.f
 require src/habu/aot-closure.f
 require src/habu/aot-lib.f
@@ -16,38 +15,6 @@ require tools/aot-code-map.f
 
 package AOT-LINK
 private
-
-: NATIVE-NIBBLE ( n -- n ) {: c:n :}
-   c $30 >= c $39 <= and if c $30 - exit then
-   c $61 >= c $66 <= and if c $61 - 10 + exit then
-   c $41 >= c $46 <= and if c $41 - 10 + exit then
-   s" aot: bad preseed hex digit" 74 die ;
-
-
-: NATIVE-SEED-CELL ( ptr u8 -- n ) {: a:ptr :}
-   0
-   16 0 ?do
-      4 lshift a i + c@ NATIVE-NIBBLE or
-   loop ;
-
-
-: NATIVE-SEED ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 16 mod 0<> if s" aot: preseed hex not cell-aligned" 74 die then
-   SEED-RESET
-   u 16 / 0 ?do
-      a i 16 * + NATIVE-SEED-CELL SEED+
-   loop ;
-
-
-\ The options phase one did not take, now that the words that consume them exist.
-\ The argument count was checked there, before anything was loaded on its behalf.
-: LINK-OPTIONS ( -- )
-   SCRIPT-ARGC 6 =
-   SCRIPT-ARGC 4 = if 2 SCRIPT-ARGV$ s" --donor" STR= 0= else false then
-   or if
-      2 SCRIPT-ARGV$ ENTRY-NAME!
-      3 SCRIPT-ARGV$ NATIVE-SEED
-   then ;
 
 \ Read the map after resource cleanup but before FFI forgets its addresses.
 \ On Darwin RELOAD calls Mach through the shared FFI table, which may be
@@ -75,7 +42,6 @@ private
 \ could be taken again inside the span.
 : NATIVE-BUILD ( -- )
    AOT-WINDOW-LATCHED
-   LINK-OPTIONS
    IMAGE-LIFECYCLE:PREPARE
    BLOB-SRC @ AOT-OWNED:COLLECT
    CHECKER-STORAGE-PREPARE

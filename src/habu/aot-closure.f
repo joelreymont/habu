@@ -173,19 +173,9 @@ $2000000 constant SIGN
          1 +
       REPEAT drop 0 0=
    ELSE 0 0= 0= THEN ;
-\ Selected AOT entry word. Defaults to MAIN (the zero-argument process entry);
-\ a preseeded test entry (tools/hb-build.f --preseed-entry) sets it to a matched
-\ helper so the stripped image starts at a non-MAIN root. Bare names select
-\ global words; package entries use their public qualified token.
-create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
-: ENTRY-NAME$ ( -- ptr u8 n )
-   ENTRY-NAME-BUF ENTRY-NAME-U @ ;
-: ENTRY-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 1 < IF s" aot: empty entry name" 74 die THEN
-   u 64 > IF s" aot: entry name too long" 74 die THEN
-   a ENTRY-NAME-BUF u BYTE-COPY
-   u ENTRY-NAME-U ! ;
-s" MAIN" ENTRY-NAME!
+\ The AOT entry word: MAIN, the zero-argument process root. The name is looked
+\ up bare, so it selects the global word.
+: ENTRY-NAME$ ( -- ptr u8 n ) s" MAIN" ;
 \ Data-space words (@ ! c@ c! here allot , c,) are now supported: the AOT entry
 \ maps the fixed DATA region and restores the program's persistent data (see
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry

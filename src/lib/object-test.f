@@ -173,39 +173,6 @@ create LARGE-TEXT LARGE-U allot
    11 1 ROW-FIELD$ s" 16" T$=
    11 2 ROW-FIELD$ s" PRINT" T$= ;
 
-create ENTRY-SCRATCH 1024 allot
-variable ENTRY-SCRATCH-U
-
-: ENTRY-BUILD ( -- )
-   RESET
-   HASH$ SOURCE!
-   s" macos-aarch64" TARGET!
-   s" checker-effect-v1" CHECKER!
-   s" hb-arm64-v1" COMPILER!
-   TEXT-BYTES 3 TEXT+
-   s" HLP" s" --" EXPORT+
-   s" HLP" 0 s" --" DEF+
-   s" HLP" 1 s" 0000000000000005" ENTRY+ ;
-
-: ENTRY-ASSERT-ROW ( -- )                         \ row 7: source/target/checker/compiler/text/export/def/entry
-   7 ROW-TAG$ s" entry" T$=
-   7 ROW-FIELD# 3 T=
-   7 0 ROW-FIELD$ s" HLP" T$=
-   7 1 ROW-FIELD$ s" 1" T$=
-   7 2 ROW-FIELD$ s" 0000000000000005" T$= ;
-
-\ A selected non-MAIN entry row (name, test mode, forged seed hex) emits, and
-\ re-parses from a serialized copy with a stable content key.
-: ENTRY-ROW ( -- )
-   ENTRY-BUILD
-   ENTRY-ASSERT-ROW
-   KEY1 KEY-HEX
-   BYTES$ dup ENTRY-SCRATCH-U ! ENTRY-SCRATCH swap BYTE-COPY
-   ENTRY-SCRATCH ENTRY-SCRATCH-U @ LOAD
-   KEY2 KEY-HEX
-   KEY1 KEY-U KEY2 KEY-U T$=
-   ENTRY-ASSERT-ROW ;
-
 : BAD-TAB ( -- )
    RESET
    s" bad	name" REQUIRE+ ;
@@ -292,7 +259,6 @@ public
    LARGE-ROUNDTRIP
    SIZE-OVERFLOW-FAILS
    ROW-ACCESSORS
-   ENTRY-ROW
    FAILURES
    T-REPORT ;
 

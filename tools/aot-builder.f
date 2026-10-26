@@ -52,20 +52,14 @@ variable SAVED-ROOT-U
    u 1 = if a c@ [char] 1 = else false then ;
 
 : OPEN-OPTIONS ( -- )
-   SCRIPT-ARGC 2 < SCRIPT-ARGC 6 > or SCRIPT-ARGC 5 = or if
-      s" aot-build: source, JSON flag and optional entry/seed are required" 74 die
-   then
-   SCRIPT-ARGC 6 = if
-      4 SCRIPT-ARGV$ s" --donor" STR= 0= if
-         s" aot-build: donor option missing" 74 die then
-      5 SCRIPT-ARGV$ FILE? 0= if
-         s" aot-build: donor image missing" 74 die then
+   SCRIPT-ARGC 2 < SCRIPT-ARGC 4 > or if
+      s" aot-build: source and JSON flag are required" 74 die
    then
    SCRIPT-ARGC 4 = if
-      2 SCRIPT-ARGV$ s" --donor" STR= if
-         3 SCRIPT-ARGV$ FILE? 0= if
-            s" aot-build: donor image missing" 74 die then
-      then
+      2 SCRIPT-ARGV$ s" --donor" STR= 0= if
+         s" aot-build: donor option missing" 74 die then
+      3 SCRIPT-ARGV$ FILE? 0= if
+         s" aot-build: donor image missing" 74 die then
    then
    SCRIPT-ARGC 3 = if
       2 SCRIPT-ARGV$ JSON-FLAG? 0= if

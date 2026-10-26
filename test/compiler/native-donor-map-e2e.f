@@ -1,6 +1,7 @@
 \ A public EXPORT and its private body share a name and code span in the
-\ compiler bundle, but originate in different source files. Link the public
-\ word through the real stripped maker and inspect its emitted map.
+\ compiler bundle, but originate in different source files. Call the public
+\ word from an application linked by the real stripped maker and check that
+\ its emitted map carries the donor's source path for that span.
 require test/gate-common.f
 require test/c2-image-pair.f
 require test/suite-budget.f
@@ -26,15 +27,15 @@ DYNAMIC-BUFFER MAP-TEXT u8
    s" subject.f" SUBJECT GT-PATH SUBJECT-U !
    s" hb-aot-got" APP GT-PATH APP-U !
    s" hb-aot-got.map" MAP GT-PATH MAP-U !
-   SUBJECT$ S\" : MAIN ( -- ) ;\n" WRITE-ALL ;
+   \ A call target resolves to its first dictionary record, which is the
+   \ private body's record for this shared xt, so the map names its file.
+   SUBJECT$
+   S\" : MAIN ( -- ) NATIVE-MAP-ORIGIN:MAP-ORIGIN-B drop ;\n" WRITE-ALL ;
 
 : BUILD ( -- )
    GE-HB-RESET
    ROOT-IMAGE$ GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
-   \ Select the EXPORT as the root: a call target resolves to its first
-   \ dictionary record, which is the private body's record for this shared xt.
-   s" NATIVE-MAP-ORIGIN:MAP-ORIGIN-B" GE-ARG+ s" " GE-ARG+
    s" --donor" GE-ARG+ ROOT-IMAGE$ GE-ARG+
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    ROOT-IMAGE$
@@ -48,15 +49,15 @@ DYNAMIC-BUFFER MAP-TEXT u8
    MAP$ 0 MAP-TEXT BYTE-VIEW size READ-ALL size <> if
       s" native donor map short read" GE-FAIL then
    0 MAP-TEXT BYTE-VIEW size
-      s" MAP-ORIGIN-B word baked test/compiler/native-map-c.f"
-      CONTAINS? 0= if s" public alias source path" GE-FAIL then ;
+      s" MAP-ORIGIN-B word baked test/compiler/native-map-b.f"
+      CONTAINS? 0= if s" donor source path" GE-FAIL then ;
 
 : RUN-APP ( -- )
    GE-HB-RESET
    APP$ GE-ARGV+
    APP$ SUITE-BUDGET:CHILD-MS GE-RUN-ENV
    s" native donor stripped image" GE-EXPECT-OK
-   GT-OUT$ nip 0 <> if s" public alias execution" GE-FAIL then ;
+   GT-OUT$ nip 0 <> if s" public word execution" GE-FAIL then ;
 
 public
 : RUN ( -- )

@@ -98,14 +98,10 @@ SUITE prefix-provided-unfilled
    test/prefix-provided-unfilled.f
 ;SUITE
 
-\ The positive hb-build AOT checks are two rows that share no state. Both wait
-\ for the saved AOT builder image and start once it settles.
+\ The positive hb-build AOT checks wait for the saved AOT builder image and
+\ start once it settles.
 SUITE native-gate-aot-positive-bundle
    test/gate-aot-positive-bundle.f
-;SUITE
-
-SUITE native-gate-aot-positive-preseed
-   test/gate-aot-positive-preseed.f
 ;SUITE
 
 \ This long row waits for the whitebox image. Queue it early so it runs
@@ -169,10 +165,6 @@ SUITE hb-build-stripped-cache
 
 SUITE aot-named-cells-image
    test/aot-named-cells-suite.f
-;SUITE
-
-SUITE stripped-entry-qualified
-   test/stripped-entry-qualified.f
 ;SUITE
 
 SUITE hb-build-fixtures

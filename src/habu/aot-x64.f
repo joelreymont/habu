@@ -170,15 +170,6 @@ variable X64-I  variable X64-J  variable X64-RUNS
    X64ASM:C-NE top X64CODE:JCC,
    done X64CODE:LBL, ;
 
-: X64-SEED, ( -- )
-   SEED-N @ STACK-ABI:BOOT-BYTES CELL / > if
-      s" aot: initial data stack exceeds allocation" 74 die then
-   SEED-N @ 0 ?do
-      X64ASM:RAX SEED-CELLS i cells + @ X64-IMM,
-      X64ASM:RAX X64ASM:R12 X64ASM:MEM-AT X64-SINK X64ASM:ENC-MOV-MR
-      X64ASM:R12 8 X64ASM:>IMM8 X64-SINK X64ASM:ENC-ADD-RI8
-   loop ;
-
 : X64-EXIT, ( -- )
    X64CODE:LBL {: done:label :}
    X64ASM:RAX X64ASM:RBP EXIT-HOOK-CELL X64ASM:MEM-OFF
@@ -197,7 +188,6 @@ variable X64-I  variable X64-J  variable X64-RUNS
    table X64-DECODE,
    X64-RESTORE-XT,
    root X64-OWNED,
-   X64-SEED,
    X64ASM:RAX root X64CODE:MOVABS,
    X64ASM:RAX X64-SINK X64ASM:ENC-CALL-REG
    X64-EXIT, ;
