@@ -1,6 +1,6 @@
 ---
 title: Keep top-level cells live across nested evaluate and hook changes
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-26T19:10:40.215139+02:00"
