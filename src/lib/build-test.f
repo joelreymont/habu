@@ -24,6 +24,8 @@ variable BT-CMD-FAIL-U
 variable BT-BAD-SRC-U
 variable BT-UNCHECKABLE-SRC-U
 variable BT-TOP-DIE-SRC-U
+variable BT-BIG-SRC-U
+variable BT-BIG-BAD-SRC-U
 
 create BT-ROOT-BUF FS-PATH-CAP allot
 create BT-SRC-BUF FS-PATH-CAP allot
@@ -34,6 +36,14 @@ create BT-CMD-FAIL-BUF FS-PATH-CAP allot
 create BT-BAD-SRC-BUF FS-PATH-CAP allot
 create BT-UNCHECKABLE-SRC-BUF FS-PATH-CAP allot
 create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
+create BT-BIG-SRC-BUF FS-PATH-CAP allot
+create BT-BIG-BAD-SRC-BUF FS-PATH-CAP allot
+
+\ CHECK reads a source of any size: 70000 leading spaces put the definition past
+\ the 64 KiB a fixed source buffer would hold.
+70000 constant BT-BIG-PAD
+BT-BIG-PAD FS-PATH-CAP + constant BT-BIG-CAP
+create BT-BIG-TEXT BT-BIG-CAP allot
 
 : BT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -69,6 +79,12 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
 : BT-TOP-DIE-SRC ( -- ptr u8 n )
    BT-TOP-DIE-SRC-BUF BT-TOP-DIE-SRC-U @ ;
 
+: BT-BIG-SRC ( -- ptr u8 n )
+   BT-BIG-SRC-BUF BT-BIG-SRC-U @ ;
+
+: BT-BIG-BAD-SRC ( -- ptr u8 n )
+   BT-BIG-BAD-SRC-BUF BT-BIG-BAD-SRC-U @ ;
+
 : BT-ROOT! ( -- )
    s" habu-build" HB-TMP-MKDIR {: a:ptr u :}
    a u BT-ROOT-BUF BT-ROOT-U BT-COPY! ;
@@ -81,7 +97,9 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    BT-ROOT s" cmd-fail.f" BT-CMD-FAIL-BUF BT-CMD-FAIL-U BT-PATH!
    BT-ROOT s" bad.f" BT-BAD-SRC-BUF BT-BAD-SRC-U BT-PATH!
    BT-ROOT s" uncheckable.f" BT-UNCHECKABLE-SRC-BUF BT-UNCHECKABLE-SRC-U BT-PATH!
-   BT-ROOT s" top-die.f" BT-TOP-DIE-SRC-BUF BT-TOP-DIE-SRC-U BT-PATH! ;
+   BT-ROOT s" top-die.f" BT-TOP-DIE-SRC-BUF BT-TOP-DIE-SRC-U BT-PATH!
+   BT-ROOT s" big.f" BT-BIG-SRC-BUF BT-BIG-SRC-U BT-PATH!
+   BT-ROOT s" big-bad.f" BT-BIG-BAD-SRC-BUF BT-BIG-BAD-SRC-U BT-PATH! ;
 
 : BT-ART ( -- ptr u8 n )
    BT-ROOT s" artifact.bin" ARTIFACT ;
@@ -150,7 +168,14 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
    BT-CMD-OK CHMOD-X
    BT-CMD-OK CLEANUP+ ;
 
+: BT-WRITE-BIG ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu def:ptr defu :}
+   BT-BIG-PAD 0 do 32 BT-BIG-TEXT i + c! loop
+   def BT-BIG-TEXT BT-BIG-PAD + defu BYTE-COPY
+   path pathu BT-BIG-TEXT BT-BIG-PAD defu + BT-WRITE-FILE ;
+
 : BT-WRITE-FIXTURES ( -- )
+   BT-BIG-SRC s" : BIG ( i64 -- i64 ) 1 + ;" BT-WRITE-BIG
+   BT-BIG-BAD-SRC s" : BIG-BAD ( i64 -- i64 ) 0= ;" BT-WRITE-BIG
    BT-SRC s" : MAIN ( -- ) ; : INC ( i64 -- i64 ) 1 + ;" BT-WRITE-FILE
    BT-BAD-SRC s" : BAD ( i64 -- i64 ) 0= ;" BT-WRITE-FILE
    BT-UNCHECKABLE-SRC s" : UNCHECKABLE ( i64 -- i64 ) evaluate ;" BT-WRITE-FILE
@@ -188,6 +213,9 @@ TYPED-VARIABLE BT-SCRIPT-LEN len
 
 : BT-BAD-SOURCE ( -- )
    BT-BAD-SRC CHECK ;
+
+: BT-BIG-BAD-SOURCE ( -- )
+   BT-BIG-BAD-SRC CHECK ;
 
 : BT-UNCHECKABLE-SOURCE ( -- )
    BT-UNCHECKABLE-SRC CHECK ;
@@ -236,6 +264,8 @@ create BT-LONG FS-PATH-CAP allot
 : BUILD-TEST-PATHS ( -- )
    BT-SRC CHECK
    BT-TOP-DIE-SRC CHECK
+   BT-BIG-SRC CHECK
+   [: BT-BIG-BAD-SOURCE ;] E-BUILD-SOURCE TTHROWSQ
    [: BT-MISSING-SOURCE ;] E-BUILD-SOURCE TTHROWSQ
    [: BT-BAD-SOURCE ;] E-BUILD-SOURCE TTHROWSQ
    [: BT-UNCHECKABLE-SOURCE ;] E-BUILD-SOURCE TTHROWSQ

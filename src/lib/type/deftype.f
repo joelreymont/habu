@@ -54,7 +54,9 @@ private
 \ each declaration evaluates). The append mechanics live in package CODEGEN
 \ (src/lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance,
 \ minted with the E-VNOM-CAP throw code its callers already expect. ------------
-$400 constant NG-CAP
+\ The longer text is EMIT-OUT's: 19 fixed bytes around the surface name and the
+\ tail, each at most TF-NAME-MAX bytes because MANGLE's buffer holds no more.
+TFAM:TF-NAME-MAX 2 * 19 + constant NG-CAP
 NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 : NG-RESET ( -- )  NG-BUFFER CODEGEN:RESET ;
 : NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
@@ -67,8 +69,10 @@ NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 \ ---- surface NAME (UPPER-CASE) -> lowercase family tail -----------------------
 \ A second CODEGEN buffer, kept separate from NG-BUFFER because MINT reads the
 \ mangled tail out of here while EMIT-IN/EMIT-OUT build the converter text in
-\ NG-BUFFER. The tail fold is src/lib/string.f ASCII-LOWER.
-32 constant NM-CAP
+\ NG-BUFFER. The tail fold is src/lib/string.f ASCII-LOWER. It holds the longest
+\ family name (src/core/type-family.f TF-NAME-MAX), so a longer surface name is
+\ refused here with E-VNOM-CAP.
+TFAM:TF-NAME-MAX constant NM-CAP
 NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    NM-BUFFER CODEGEN:RESET

@@ -7,12 +7,13 @@
 \ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
 \ The source scanner, buffers and state variables are private.
 \
-\ STORAGE CLASS. PROCESS-WIDE: the source and path buffers and scanner state
-\ are module storage; single-task, and ARTIFACT's path lives until the next call.
+\ STORAGE CLASS. PROCESS-WIDE: the path buffer and scanner state are module
+\ storage; single-task, and ARTIFACT's path lives until the next call. CHECK
+\ reads the whole source into a mapping sized to the file and released when it
+\ returns or throws.
 \
 \ Errors: CHECK throws E-BUILD-SOURCE for a missing, empty or malformed file,
-\ a file with no colon definition, or one CHECK! refuses; a file over 64 KiB
-\ throws READ-ALL's E-FS-CAPACITY.
+\ a file with no colon definition, or one CHECK! refuses.
 \ ARTIFACT throws E-BUILD-PATH for an empty or too-long component. STEP and RUN
 \ throw E-BUILD-COMMAND for an empty name (RUN also for a command that is not a
 \ file) and E-BUILD-STATUS for a nonzero rc or a signal; RUN then throws
@@ -22,22 +23,23 @@
 \
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/process.f
 
 package BUILD
 
-65536 constant BUILD-SOURCE-CAP
 10 constant BUILD-LF
 13 constant BUILD-CR
 32 constant BUILD-SP
 58 constant BUILD-COLON
 59 constant BUILD-SEMI
 
-create BUILD-SOURCE-BUF BUILD-SOURCE-CAP allot
 create BUILD-PATH-BUF FS-PATH-CAP allot
 
+PTR-VARIABLE BUILD-SOURCE               \ the mapping CHECK reads the file into
 variable BUILD-SOURCE-LEN
+variable BUILD-FD                       \ CHECK's open descriptor until READ-SIZED owns it
 variable BUILD-I
 variable BUILD-DEFS
 variable BUILD-START
@@ -56,13 +58,13 @@ variable BUILD-END
 
 : BUILD-FIND-CHAR ( n n -- n ) {: start ch :}
    start begin dup BUILD-SOURCE-LEN @ < while
-      dup BUILD-SOURCE-BUF + c@ ch = if exit then
+      dup BUILD-SOURCE @ + c@ ch = if exit then
       1+
    repeat drop -1 ;
 
 : BUILD-SKIP-WHITE ( n -- n )
    begin dup BUILD-SOURCE-LEN @ < while
-      dup BUILD-SOURCE-BUF + c@ BUILD-WHITE? if
+      dup BUILD-SOURCE @ + c@ BUILD-WHITE? if
          1+
       else
          exit
@@ -71,16 +73,9 @@ variable BUILD-END
 
 : BUILD-CHECK-ONE ( n n -- ) {: start finish :}
    finish start <= if E-BUILD-SOURCE throw then
-   BUILD-SOURCE-BUF start + finish start - CHECK! -1 <> if
+   BUILD-SOURCE @ start + finish start - CHECK! -1 <> if
       E-BUILD-SOURCE throw
    then ;
-
-: BUILD-READ-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-BUILD-SOURCE throw then
-   a u FILE? 0= if E-BUILD-SOURCE throw then
-   a u BUILD-SOURCE-BUF BUILD-SOURCE-CAP READ-ALL
-   dup 0 <= if E-BUILD-SOURCE throw then
-   BUILD-SOURCE-LEN ! ;
 
 : BUILD-CHECK-NEXT ( n -- n ) {: start :}
    start BUILD-COLON BUILD-FIND-CHAR dup 0 < if exit then
@@ -91,10 +86,7 @@ variable BUILD-END
    BUILD-DEFS @ 1+ BUILD-DEFS !
    BUILD-END @ 1+ ;
 
-public
-
-: CHECK ( ptr u8 n -- )
-   BUILD-READ-SOURCE
+: BUILD-SCAN ( -- )
    0 BUILD-DEFS !
    0 BUILD-I !
    begin BUILD-I @ BUILD-SOURCE-LEN @ < while
@@ -105,6 +97,34 @@ public
       then
    repeat
    BUILD-DEFS @ 0= if E-BUILD-SOURCE throw then ;
+
+: BUILD-READ-BODY ( fd n ptr u8 NUM:alloc-byte-len -- )
+   drop {: file:fd size:n buf:ptr :}
+   -1 BUILD-FD !
+   file buf size FS:READ-SIZED
+   buf BUILD-SOURCE !
+   size BUILD-SOURCE-LEN !
+   BUILD-SCAN ;
+
+: BUILD-READ ( fd n -- ) {: file:fd size:n :}
+   file size  size MEM:BYTES-ALLOC-LEN [: BUILD-READ-BODY ;] MEM:WITH-BYTES ;
+
+: BUILD-CHECK-DONE ( -- )
+   BUILD-FD @ 0 >= if BUILD-FD @ close then
+   -1 BUILD-FD !
+   NULL-PTR BUILD-SOURCE !
+   0 BUILD-SOURCE-LEN ! ;
+
+public
+
+: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-SOURCE throw then
+   a u FILE? 0= if E-BUILD-SOURCE throw then
+   a u FS:OPEN-SIZED {: file:fd size:n found:bool :}
+   found 0= if E-BUILD-SOURCE throw then
+   size 0= if file FD>N close E-BUILD-SOURCE throw then
+   file FD>N BUILD-FD !
+   file size [: BUILD-READ ;] [: BUILD-CHECK-DONE ;] finally ;
 
 private
 

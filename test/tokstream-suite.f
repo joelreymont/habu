@@ -30,11 +30,10 @@ require src/lib/engine-candidate.f
 package TOKSTREAM-TEST
 
 10000 constant TIMEOUT-MS
-64 constant USAGE-RC                  \ ARGV:E-USAGE, the over-cap refusal
-65 constant OVER-CAP                  \ one past src/lib/argv.f ARGV-MAX
-\ The at-cap case captures one fixture stream per argument: the fixture path, up
-\ to FS-PATH-CAP bytes, and under $200 bytes of tokens.
-OVER-CAP 1- FS-PATH-CAP $200 + * constant CAP
+65 constant MANY-PATHS                \ one past the 64 paths argv.f once held
+\ The many-paths case captures one fixture stream per argument: the fixture
+\ path, up to FS-PATH-CAP bytes, and under $200 bytes of tokens.
+MANY-PATHS FS-PATH-CAP $200 + * constant CAP
 
 variable ROOT-U
 variable SRC-U
@@ -247,31 +246,16 @@ create EMPTY 1 allot
    EXITED @ TTRUE  RC @ 0 T=
    OUT$ BASE$ T$<> ;
 
-\ Over the ARGV cap the tool must refuse LOUDLY. An empty stream compares equal to
-\ another empty stream, so a silent refusal would read as "comment-only": the exit
-\ code is the only thing standing between a sweep and a false pass.
-: CASE-OVER-CAP ( -- )
-   s" past the path cap: exit 64, empty stream, named on stderr" T-LABEL
-   BASE-SRC$ WRITE-SRC
+: CASE-MANY-PATHS ( -- )
+   s" more paths than argv once held: every path streams" T-LABEL
+   BASE-SRC$ RUN-SRC
+   OUT-U @ {: one:n :}                         \ the one-path stream's length
    ARGV-HEAD
-   OVER-CAP 0 ?do SRC$ >LEN PROC-ARGV+ loop
-   SPAWN
-   EXITED @ TTRUE
-   RC @ USAGE-RC T=
-   OUT-U @ 0 T=
-   ERR ERR-U @ s" too many positional arguments" CONTAINS? TTRUE ;
-
-\ One under the cap still runs, so the refusal is the cap and not the tool giving
-\ up on a long list.
-: CASE-AT-CAP ( -- )
-   s" at the path cap the sweep still runs" T-LABEL
-   BASE-SRC$ WRITE-SRC
-   ARGV-HEAD
-   OVER-CAP 1- 0 ?do SRC$ >LEN PROC-ARGV+ loop
+   MANY-PATHS 0 ?do SRC$ >LEN PROC-ARGV+ loop
    SPAWN
    EXITED @ TTRUE
    RC @ 0 T=
-   OUT-U @ 0 T<> ;
+   OUT-U @ one MANY-PATHS * T= ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -292,8 +276,7 @@ BASE!
 CASE-IDENTICAL
 CASE-MOVERS
 CASE-FILE-DROP
-CASE-OVER-CAP
-CASE-AT-CAP
+CASE-MANY-PATHS
 CLEANUP
 T-REPORT
 

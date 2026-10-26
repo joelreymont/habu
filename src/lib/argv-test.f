@@ -5,7 +5,6 @@
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/memory.f
 require src/lib/argv.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 
@@ -248,33 +247,41 @@ variable TEST-FAIL
    ASSERT-PRIOR-PARSE
    0 QUIET! ;
 
+\ The mock list and positional table grow, so a list well past any one
+\ allocation's first size parses whole, through the mock path and after `--`.
+200 constant MANY-ARGS
+
 : TEST-APPEND-BOUNDS ( -- )
    COMMON-ARGS PARSE
    QUIET-MOCK
    s" first" MOCK+
-   ARGV-MAX 2 - 0 do s" middle" MOCK+ loop
+   MANY-ARGS 2 - 0 do s" middle" MOCK+ loop
    s" last" MOCK+
-   COUNT ARGV-MAX ASSERT=
-   [: s" overflow" MOCK+ ;] catch E-INTERNAL ASSERT=
+   COUNT MANY-ARGS ASSERT=
    ASSERT-PRIOR-PARSE
-   COUNT ARGV-MAX ASSERT=
    0 TOK$ s" first" ASSERT$
-   ARGV-MAX 1- TOK$ s" last" ASSERT$
+   MANY-ARGS 1- TOK$ s" last" ASSERT$
    PARSE
-   POS# ARGV-MAX ASSERT=
+   POS# MANY-ARGS ASSERT=
    0 POS$ s" first" ASSERT$
-   ARGV-MAX 1- POS$ s" last" ASSERT$
+   MANY-ARGS 1- POS$ s" last" ASSERT$
    [: -1 POS$ 2drop ;] catch E-USAGE ASSERT=
-   [: ARGV-MAX POS$ 2drop ;] catch E-USAGE ASSERT=
+   [: MANY-ARGS POS$ 2drop ;] catch E-USAGE ASSERT=
+   QUIET-MOCK
+   s" --json" MOCK+ s" --" MOCK+
+   MANY-ARGS 0 do s" -rest" MOCK+ loop
+   PARSE
+   POS# MANY-ARGS ASSERT=
+   MANY-ARGS 1- POS$ s" -rest" ASSERT$
+   JSON? ASSERT
    EXPECT-TOKEN-BOUNDS
    QUIET-MOCK
    s" kept" MOCK+
    [: s" bad" drop -1 MOCK+ ;] catch E-INTERNAL ASSERT=
    COUNT 1 ASSERT=
    0 TOK$ s" kept" ASSERT$
-   POS# ARGV-MAX ASSERT=
-   0 POS$ s" first" ASSERT$
-   ARGV-MAX 1- POS$ s" last" ASSERT$
+   POS# MANY-ARGS ASSERT=
+   MANY-ARGS 1- POS$ s" -rest" ASSERT$
    PARSE
    POS# 1 ASSERT=
    0 POS$ s" kept" ASSERT$
@@ -290,23 +297,19 @@ variable TEST-FAIL
    s" ARGV-CONFIG-SCALAR ( span -- ) ARGV-LABEL !"
       CHECK-QUIET-CANDIDATE! 0 ASSERT= ;
 
-\ FAIL builds its line in one fixed buffer: the message, a newline, "usage: ",
-\ the usage text and a newline. Each piece is compared with the room left, so a
-\ length near the maximum cell cannot wrap the fill back into range and send the
-\ copy past the buffer, and a negative one is refused like one too long.
-10 constant MSG-FIXED                    \ a one-byte message, "usage: " and the two newlines
-create MSG-TEXT ARGV-MSG-CAP allot
-
-: MSG-FAIL-RC ( n -- n ) {: u:n :}       \ FAIL's code under a usage text of u bytes
-   -1 QUIET!
-   MSG-TEXT u USAGE!
-   [: s" x" FAIL ;] catch ;
+\ FAIL writes its message, "usage: " and the usage text to stderr as they are,
+\ so a long usage text is a usage refusal like a short one; a negative message
+\ length is refused before anything is written.
+4096 constant MSG-LEN
+create MSG-TEXT MSG-LEN allot
 
 : TEST-MSG-BOUNDS ( -- )
-   ARGV-MSG-CAP 0 do 117 MSG-TEXT i + c! loop
-   ARGV-MSG-CAP MSG-FIXED - MSG-FAIL-RC E-USAGE ASSERT-RC
-   ARGV-MSG-CAP MSG-FIXED - 1+ MSG-FAIL-RC E-INTERNAL ASSERT-RC
-   MEM-MAX-N MSG-FAIL-RC E-INTERNAL ASSERT-RC
+   MSG-LEN 0 do 117 MSG-TEXT i + c! loop
+   MSG-TEXT MSG-LEN USAGE!
+   -1 QUIET!
+   [: s" x" FAIL ;] catch E-USAGE ASSERT-RC
+   -1 QUIET!
+   [: MSG-TEXT MSG-LEN FAIL ;] catch E-USAGE ASSERT-RC
    -1 QUIET!
    [: MSG-TEXT -1 FAIL ;] catch E-INTERNAL ASSERT-RC
    s" usage" USAGE! ;

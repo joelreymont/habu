@@ -11,14 +11,16 @@
 \ flags intact. EXPECT-POS takes lo hi, hi < 0 meaning unbounded.
 \ An unknown option, a missing option value, an arity or required-option
 \ failure, ARGV:FAIL and an out-of-range TOK$/POS$ index throw ARGV:E-USAGE
-\ (64, the process exit when uncaught) after printing the usage text unless
-\ ARGV:QUIET! is set. A copy that does not fit with its NUL, a negative mock
-\ length or a full mock list throws ARGV:E-INTERNAL (76) before any change.
+\ (64, the process exit when uncaught) after writing the message and usage text
+\ to stderr unless ARGV:QUIET! is set. A copy that does not fit with its NUL or
+\ a negative FAIL or mock length throws ARGV:E-INTERNAL (76) before any change.
+\ The mock list and the positional table grow with their input.
 \ POSZ / OUTZ / PATHZ return NUL-terminated copies in the one module path
 \ buffer, valid until the next copy; ZCOPY copies into the caller's buffer.
 \
-\ STORAGE CLASS. PROCESS-WIDE: parser state, mock list and path buffer are
-\ static; one task parses at a time.
+\ STORAGE CLASS. PROCESS-WIDE: parser state and path buffer are static; the
+\ mock list and positional table are DYNAMIC-BUFFERs, released with every
+\ mapping before an image save; one task parses at a time.
 
 package ARGV
 
@@ -29,10 +31,7 @@ public
 
 private
 
-64 constant ARGV-MAX
-1024 constant ARGV-MSG-CAP
 PATH-CAP 1 + constant ARGV-PATH-CAP
-$0A constant ARGV-CHAR-LF
 $2D constant ARGV-CHAR-DASH
 
 STRUCTURE span FIELD base ptr u8 FIELD size len ;STRUCTURE
@@ -43,12 +42,12 @@ ENUM configured-value
 
 variable ARGV-USE-MOCK?
 variable ARGV-MOCK#
-ARGV-MAX LAYOUT-BUFFER ARGV-MOCK span
+DYNAMIC-BUFFER ARGV-MOCK span
 
 variable ARGV-I
 variable ARGV-NPOS
 variable ARGV-SCAN-NPOS
-ARGV-MAX LAYOUT-BUFFER ARGV-POS span
+DYNAMIC-BUFFER ARGV-POS span
 
 TYPED-VARIABLE ARGV-JSON bool
 TYPED-VARIABLE ARGV-ALL-ERRORS bool
@@ -62,8 +61,6 @@ TYPED-VARIABLE ARGV-OUT-DEFAULT span
 
 TYPED-VARIABLE ARGV-USAGE span
 variable ARGV-QUIET
-variable ARGV-MSG-L
-create ARGV-MSG ARGV-MSG-CAP allot
 create ARGV-PATH-BUF ARGV-PATH-CAP allot
 
 : ARGV-FALSE ( -- bool )  0 0= 0= ;
@@ -96,21 +93,8 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-BUF-FAIL ( -- )  E-INTERNAL throw ;
-
-: ARGV-MSG+ ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 < if ARGV-BUF-FAIL then
-   u ARGV-MSG-CAP ARGV-MSG-L @ - > if ARGV-BUF-FAIL then
-   0 begin dup u < while
-      dup a + c@  ARGV-MSG ARGV-MSG-L @ + c!
-      ARGV-MSG-L @ 1 + ARGV-MSG-L !
-      1 +
-   repeat drop ;
-
-: ARGV-MSG-C+ ( n -- ) {: c :}
-   ARGV-MSG-L @ 1 + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
-   c ARGV-MSG ARGV-MSG-L @ + c!
-   ARGV-MSG-L @ 1 + ARGV-MSG-L ! ;
+: ARGV-ERR ( ptr u8 n -- ) {: a:ptr u:n :}   \ one piece of a refusal line
+   ARGV-QUIET @ 0 = if 2 a u write drop then ;
 
 public
 
@@ -122,32 +106,28 @@ public
 private
 
 : ARGV-FAIL-DONE ( -- )
-   ARGV-CHAR-LF ARGV-MSG-C+
-   s" usage: " ARGV-MSG+
-   ARGV-USAGE @ SPAN$ ARGV-MSG+
-   ARGV-CHAR-LF ARGV-MSG-C+
-   ARGV-QUIET @ 0 = if 2 ARGV-MSG ARGV-MSG-L @ write drop then
+   S\" \nusage: " ARGV-ERR
+   ARGV-USAGE @ SPAN$ ARGV-ERR
+   S\" \n" ARGV-ERR
    E-USAGE throw ;
 
 public
 
 : FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 ARGV-MSG-L !
-   a u ARGV-MSG+
+   u 0 < if E-INTERNAL throw then
+   a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
 private
 
 : ARGV-UNKNOWN ( ptr u8 n -- ) {: a:ptr u :}
-   0 ARGV-MSG-L !
-   s" unknown option: " ARGV-MSG+
-   a u ARGV-MSG+
+   s" unknown option: " ARGV-ERR
+   a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
 : ARGV-MISSING ( ptr u8 n -- ) {: a:ptr u :}
-   0 ARGV-MSG-L !
-   s" missing value for " ARGV-MSG+
-   a u ARGV-MSG+
+   s" missing value for " ARGV-ERR
+   a u ARGV-ERR
    ARGV-FAIL-DONE ;
 
 public
@@ -168,8 +148,9 @@ public
    0 ARGV-MOCK# ! ;
 
 : MOCK+ ( ptr u8 n -- )
-   ARGV-MOCK# @ ARGV-MAX >= if E-INTERNAL throw then
-   >SPAN ARGV-MOCK# @ ARGV-MOCK !
+   >SPAN {: arg:span :}
+   ARGV-MOCK# @ 1+ ARGV-MOCK-RESERVE
+   arg ARGV-MOCK# @ ARGV-MOCK !
    ARGV-MOCK# @ 1 + ARGV-MOCK# ! ;
 
 : COUNT ( -- n )
@@ -199,7 +180,6 @@ private
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
 : ARGV-POS+ ( span bool -- ) {: arg:span dry:bool :}
-   ARGV-SCAN-NPOS @ ARGV-MAX >= if s" too many positional arguments" FAIL then
    dry 0= if arg ARGV-SCAN-NPOS @ ARGV-POS ! then
    ARGV-SCAN-NPOS @ 1+ ARGV-SCAN-NPOS ! ;
 
@@ -293,9 +273,11 @@ private
 public
 
 \ Validate with the same parser before replacing any published result. A bad
-\ option or full positional list therefore leaves the prior parse intact.
+\ option therefore leaves the prior parse intact. The dry scan counts the
+\ positionals, so the table grows to hold them before RESET.
 : PARSE ( -- )
    ARGV-TRUE ARGV-SCAN
+   ARGV-SCAN-NPOS @ ARGV-POS-RESERVE
    RESET
    ARGV-FALSE ARGV-SCAN
    ARGV-SCAN-NPOS @ ARGV-NPOS ! ;

@@ -4889,8 +4889,7 @@ variable SS-NEST-U
 \ The pre-verifier's tables grow with what a source holds, so each source below,
 \ one past a bound a table once had, verifies under --verify-only, read as a
 \ file whose loads find their file beside it. Only the verdict is asserted: the
-\ run is the program's own, and src/lib/type/deftype.f refuses CAP-NAME's name
-\ there (E-VNOM-CAP: it mangles at most 32 bytes).
+\ run is the program's own.
 : SS-BIG-VERIFIES ( -- )
    s" ckt-x.f" s" \ ckt-x.f - the file CAP-LOADS' definitions load" NEST-FILE
    s" ckt-big.f" BIG BIG-U @ NEST-FILE

@@ -5,7 +5,8 @@
 \ NONE on malformed input; DATE:N returns SOME field or NONE on a non-digit.
 \ DATE:FORMAT-YMD / DATE:FORMAT-EPOCH-UTC write YYYY-MM-DD /
 \ YYYY-MM-DDTHH:MM:SSZ into a caller buffer and throw E-TIME-CAPACITY when it is
-\ too small; FORMAT-EPOCH-UTC also throws E-TIME-RANGE for negative epoch
+\ too small, and E-TIME-RANGE for a year outside 0..9999, which four digits
+\ cannot write; FORMAT-EPOCH-UTC also throws E-TIME-RANGE for negative epoch
 \ seconds. DATE:LEN / DATE:TIME-LEN are those buffer sizes.
 \
 \ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module
@@ -21,6 +22,7 @@ public
 20 constant TIME-LEN
 private
 4 constant DATE-YEAR-LEN
+9999 constant DATE-YEAR-MAX             \ the largest year DATE-YEAR-LEN digits write
 2 constant DATE-PART-LEN
 4 constant DATE-YEAR-DASH
 7 constant DATE-MONTH-DASH
@@ -110,7 +112,7 @@ public
 
 : YMD>DAYS ( n n n -- n ) {: y:n m:n d:n :}
    m DATE-FEB <= IF y 1- ELSE y THEN {: yy:n :}
-   yy DATE-ERA-YEARS / {: era:n :}
+   yy 0 < IF yy DATE-ERA-YEARS 1- - ELSE yy THEN DATE-ERA-YEARS / {: era:n :}   \ floor
    yy era DATE-ERA-YEARS * - {: yoe:n :}
    m DATE-FEB > IF m DATE-MAR-BIAS - ELSE m DATE-JAN-FEB-BIAS + THEN {: mp:n :}
    DATE-MP-SCALE mp * DATE-MP-BIAS + DATE-MP-DIVISOR / d + 1 - {: doy:n :}
@@ -119,7 +121,7 @@ public
 
 : DAYS>YMD ( n -- n n n ) {: days:n :}
    days DATE-UNIX-EPOCH-DAY + {: z:n :}
-   z DATE-DAYS-ERA / {: era:n :}
+   z 0 < IF z DATE-LAST-DAY-ERA - ELSE z THEN DATE-DAYS-ERA / {: era:n :}   \ floor
    z era DATE-DAYS-ERA * - {: doe:n :}
    doe  doe DATE-YOE-LEAP-CORR / -  doe DATE-YOE-CENTURY-CORR / +  doe DATE-LAST-DAY-ERA / -  DATE-DAYS-YEAR / {: yoe:n :}
    yoe era DATE-ERA-YEARS * + {: y:n :}
@@ -173,6 +175,7 @@ public
    {: days:n dst:ptr cap:n :}
    cap LEN < IF E-TIME-CAPACITY throw THEN
    days DAYS>YMD {: y:n m:n d:n :}
+   y 0 < y DATE-YEAR-MAX > or IF E-TIME-RANGE throw THEN
    y DATE-YEAR-LEN dst 0 WIDTH!
    DATE-DASH dst DATE-YEAR-DASH + c!
    m DATE-PART-LEN dst DATE-YEAR-DASH 1+ WIDTH!

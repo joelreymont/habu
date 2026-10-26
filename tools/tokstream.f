@@ -25,12 +25,9 @@
 \ allowed to remove. A `\` line comment is dropped by the lexer itself and never
 \ reaches a record, so `--` or `s" ..."` written inside one is not code here.
 \
-\ AT MOST 64 PATHS PER INVOCATION, the ARGV-MAX of src/lib/argv.f. A larger sweep is
-\ several invocations over the same ordered list, concatenated; the F records keep
-\ the result honest. THE CALLER MUST CHECK THE EXIT CODE. Over the cap the tool
-\ refuses with `too many positional arguments` on stderr and exit 64, writing an
-\ EMPTY stream - and two empty streams compare equal, so a sweep that ignores the
-\ status reads a refusal as "comment-only".
+\ THE CALLER MUST CHECK THE EXIT CODE. A refused invocation writes an EMPTY
+\ stream, and two empty streams compare equal, so a sweep that ignores the status
+\ reads a refusal as "comment-only".
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -88,7 +85,7 @@ private
 public
 
 : RUN ( -- )
-   s" tokstream.f path ...   (at most 64 paths; check the exit code)" ARGV:USAGE!
+   s" tokstream.f path ...   (check the exit code)" ARGV:USAGE!
    ARGV:PARSE
    1 -1 ARGV:EXPECT-POS
    0 begin dup ARGV:POS# < while
