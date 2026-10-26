@@ -32,6 +32,10 @@ $FFFFFFE0 constant REG-MASK          \ clears an instruction's Rt field
 $F85F8E60 constant STACK-POP         \ ldr xR,[x19,#-8]!
 $F8008660 constant STACK-PUSH        \ str xR,[x19],#8
 $FC008660 constant FLOAT-PUSH        \ str dR,[x19],#8
+$FFC0001F constant CMPI-MASK         \ keeps cmp xN,#imm12's opcode, shift and Rd
+$F100001F constant CMPI-OP           \ cmp xN,#imm12 (subs xzr,xN,#imm12)
+$FFE0FC1F constant CMPR-MASK         \ keeps cmp xN,xM's opcode, shift, amount and Rd
+$EB00001F constant CMPR-OP           \ cmp xN,xM (subs xzr,xN,xM)
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -66,13 +70,18 @@ variable MISSING                     \ names the dictionary did not answer for
       then
    4 +loop ;
 
-\ How many of the named word's instructions are the data-stack transfer op.
-: STACK-OPS ( ptr u8 n n -- n ) {: na:ptr nu:n op:n :}
+\ How many of the named word's instructions match op under mask.
+: MASKED-OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
    na nu SPAN {: lo:n hi:n :}
    0
    hi lo ?do
-      i CODE@ REG-MASK and op = if 1+ then
+      i CODE@ mask and op = if 1+ then
    4 +loop ;
+
+\ How many of the named word's instructions are the data-stack transfer op.
+: STACK-OPS ( ptr u8 n n -- n )
+   {: op:n :}
+   REG-MASK op MASKED-OPS ;
 
 : ENTRY@ ( ptr u8 n -- n )
    SPAN drop CODE@ ;
@@ -137,6 +146,19 @@ public
 : T0-IDX ( ptr n n -- n ) cells + @ ;
 : T0-BYTE ( ptr u8 -- n ) c@ 1+ ;
 : T0-SLOT ( ptr ptr u8 n -- n ) ptr-field @ c@ ;
+
+\ Comparisons against a literal top: one in 0..4095 is the immediate of a
+\ cmp xN,#imm12; one outside it, or a register top, takes cmp xN,xM.
+: T0-LT5 ( n -- n ) 5 < if 1 else 2 then ;
+: T0-EQ5 ( n -- n ) 5 = if 1 else 2 then ;
+: T0-NE5 ( n -- n ) 5 <> if 1 else 2 then ;
+: T0-GT5 ( n -- n ) 5 > if 1 else 2 then ;
+: T0-LE5 ( n -- n ) 5 <= if 1 else 2 then ;
+: T0-GE5 ( n -- n ) 5 >= if 1 else 2 then ;
+: T0-EQMAX ( n -- n ) 4095 = if 1 else 2 then ;
+: T0-LTBIG ( n -- n ) 4096 < if 1 else 2 then ;
+: T0-LTNEG ( n -- n ) -1 < if 1 else 2 then ;
+: T0-LTREG ( n n -- n ) < if 1 else 2 then ;
 
 private
 
@@ -239,6 +261,41 @@ private
    17 5 T0-DIV 3 T=
    [: 1 0 T0-DIV drop ;] E-DIV-ZERO TTHROWSQ ;
 
+: CMP-IMM ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   na nu CMPI-MASK CMPI-OP MASKED-OPS 1 T=
+   na nu CMPR-MASK CMPR-OP MASKED-OPS 0 T= ;
+
+: CMP-REG ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   na nu CMPI-MASK CMPI-OP MASKED-OPS 0 T=
+   na nu CMPR-MASK CMPR-OP MASKED-OPS 1 T= ;
+
+: TEST-CMPI ( -- )
+   s" a comparison with a literal top in 0..4095 compares against an immediate" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-LT5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-EQ5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-NE5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-GT5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-LE5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-GE5" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-EQMAX" CMP-IMM
+   s" a literal above 4095, a negative literal or a register top compares registers" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-LTBIG" CMP-REG
+   s" TIER0-INLINE-PRIMS:T0-LTNEG" CMP-REG
+   s" TIER0-INLINE-PRIMS:T0-LTREG" CMP-REG
+   s" each comparison answers at its boundary" T-LABEL
+   4 T0-LT5 1 T=  5 T0-LT5 2 T=  6 T0-LT5 2 T=
+   4 T0-EQ5 2 T=  5 T0-EQ5 1 T=  6 T0-EQ5 2 T=
+   4 T0-NE5 1 T=  5 T0-NE5 2 T=  6 T0-NE5 1 T=
+   4 T0-GT5 2 T=  5 T0-GT5 2 T=  6 T0-GT5 1 T=
+   4 T0-LE5 1 T=  5 T0-LE5 1 T=  6 T0-LE5 2 T=
+   4 T0-GE5 2 T=  5 T0-GE5 1 T=  6 T0-GE5 1 T=
+   4094 T0-EQMAX 2 T=  4095 T0-EQMAX 1 T=  4096 T0-EQMAX 2 T=
+   4095 T0-LTBIG 1 T=  4096 T0-LTBIG 2 T=  4097 T0-LTBIG 2 T=
+   -7 T0-LTNEG 1 T=  -1 T0-LTNEG 2 T=  0 T0-LTNEG 2 T=
+   4 5 T0-LTREG 1 T=  5 5 T0-LTREG 2 T=  6 5 T0-LTREG 2 T= ;
+
 \ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
 \ compiled last, with checking suspended for the rest of this file.
 0 set-check
@@ -268,6 +325,7 @@ public
    TEST-PULL
    TEST-MEM
    TEST-VALUES
+   TEST-CMPI
    TEST-QDUP
    MISSING @ 0 T=
    T-REPORT ;

@@ -539,20 +539,27 @@ package ENGINE-EMIT
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
-\ cmp rd,rm ; cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
+\ cmp rd,rm (cmp rd,#imm12 when the top is a constant in 0..4095) ;
+\ cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
 : VCMP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n cond:n :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
-   LBL FESK !  LBL FESK2 !
+   LBL FESK !  LBL FESK2 !  LBL FESK6 !  LBL {: flag :}
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 FESK LABEL@ CBZ,
-   LVBINPREP LABEL@ BL,
+   10 4095 MOVZ,
+   LVBINIPREP LABEL@ BL,
    13 FESK LABEL@ CBZ,
    13 1 CMPI,  C-NE FESK2 LABEL@ BCOND,
       11 12 CMP,  11 cond CSET,  11 SP 11 SUB,
       LVFOLDPUT LABEL@ BL,
       lmainlbl B,
    FESK2 LABEL@ LBL,
+   13 3 CMPI,  C-NE FESK6 LABEL@ BCOND,
+      8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      flag B,
+   FESK6 LABEL@ LBL,
       8 $EB00001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+   flag LBL,
       8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,
       8 $CB0003E0 LIT64,  9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
