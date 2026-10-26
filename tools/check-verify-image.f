@@ -88,22 +88,18 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
 : STAMP ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
 : OUT-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-: FILL-KEY ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+: FILL-KEY ( CONTENT-KEY:fold -- )
    VERSION$ CONTENT-KEY:TEXT+
    ENGINE$ s" host-engine" CONTENT-KEY:FILE-NAMED+
    ENGINE$ SOURCE-ROOT:CANONICAL drop CONTENT-KEY:TEXT+
    PROGRAM$ CONTENT-KEY:TEXT+
-   ENTRY$ ROOT$ [: STAMP ;] KEYED-IMAGE:CLOSURE-IN-EACH+ ;
+   ENTRY$ ROOT$ [: STAMP ;] KEYED-IMAGE:CLOSURE-IN-EACH+
+   KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
-\ Key, path and stamps, from the rows this resolve adds after MARK. A refused
-\ walk releases its fold: the pool is process-wide and a few leaks would refuse
-\ every later key derivation.
+\ Key, path and stamps, from the rows this resolve adds after MARK.
 : RESOLVE-IN ( -- )
    ENGINE$ STAMP
-   CONTENT-KEY:OPEN {: fold:CONTENT-KEY:fold :}
-   fold [: FILL-KEY ;] catch {: rc:n :} drop
-   rc 0<> if fold CONTENT-KEY:DISCARD rc throw then
-   fold KEY-HEX CONTENT-KEY:FINAL-HEX
+   [: FILL-KEY ;] CONTENT-KEY:WITH-FOLD
    ENGINE$ ENGINE-KEY BUILD-OUT:KEY-OF!
    FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}

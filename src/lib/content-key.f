@@ -1,27 +1,30 @@
 \ content-key.f - manifest-hashed content cache keys.
 \
-\ The module lives in `package CONTENT-KEY`. A key is built through one FOLD, and
-\ the fold is a value the caller carries: CONTENT-KEY:OPEN returns a
-\ CONTENT-KEY:fold, CONTENT-KEY:TEXT+ / FILE+ / DIGEST+ take that fold and give
-\ it back, and CONTENT-KEY:FINAL / FINAL-HEX close it into a digest.
-\ CONTENT-KEY:DISCARD closes one whose key is not going to be taken. Because
-\ every operation names its own fold, two keys derived at overlapping times
-\ cannot mix bytes - see the fold-handle section below for what that replaced.
-\ FILE+ digests the file's current bytes on every call. Each live fold owns a
-\ SHA-256 context; its complete preimage is never retained. FILE-NAMED+ reads
-\ the physical path but folds only the logical name and the content, so a build
-\ that names sources root-relative shares its key across identical trees in
-\ different workspaces. No environment variable enters a key.
+\ The module lives in `package CONTENT-KEY`. A key is built inside one
+\ CONTENT-KEY:WITH-FOLD scope: its body is handed a CONTENT-KEY:fold, a linear
+\ token naming the scope's own storage, and CONTENT-KEY:TEXT+ / FILE+ /
+\ FILE-NAMED+ / DIGEST+ take that fold and give it back. CONTENT-KEY:FINAL /
+\ FINAL-HEX write the digest and consume the fold. The checker refuses a body
+\ that drops its fold unfinalized or copies it (to finalize twice or fold after
+\ FINAL); WITH-FOLD refuses at run time a body that hands its own fold back
+\ out unfinalized (E-CK-HANDLE). Because every operation names its own fold,
+\ two keys derived at overlapping times cannot mix bytes. FILE+ digests the
+\ file's current bytes on every call. Each fold owns a SHA-256 context; its complete preimage is never
+\ retained. FILE-NAMED+ reads the physical path but folds only the logical name
+\ and the content, so a build that names sources root-relative shares its key
+\ across identical trees in different workspaces. No environment variable
+\ enters a key.
 \
-\ STORAGE CLASS. PROCESS-WIDE: CK-FOLD-N (four) fold slots and the file-digest
-\ scratch are module storage with no atomic claim, so the module is single-task;
-\ within that task up to four folds overlap.
+\ STORAGE CLASS. SCOPE-OWNED: each WITH-FOLD allocates one MEM:WITH-BYTES
+\ mapping holding the fold's digest context, its file-digest context and its
+\ scratch, and releases it when the body returns or throws. The module keeps no
+\ storage of its own, so folds nest without bound and tasks fold independently.
 \
 \ Requires the SHA-256 words; native bin/hb already carries src/core/sha256.f.
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/type/deftype.f
+require src/lib/memory.f
 
 package CONTENT-KEY
 
@@ -30,169 +33,117 @@ $46 constant CK-FILE-TAG
 $44 constant CK-DIGEST-TAG
 $FFFF constant CK-FRAG-MAX       \ the two length bytes a text or file fragment carries
 
-4 constant CK-FOLD-N
-
-\ The fold pool's own conditions get their own codes (the package-scoped shape
-\ src/lib/type/deftype.f uses for package VNOM). Throwing E-STR-CAPACITY for "no
-\ free fold" or E-STR-BOUNDS for "this handle no longer owns its slot" would
-\ hide the ownership error.
--6920 constant E-CK-FOLDS    \ every fold slot is in use; an earlier fold was never closed
--6921 constant E-CK-STALE    \ the handle does not own the slot it names (closed, or never opened)
-
-create CK-FOLD-CTX CK-FOLD-N SHA256-CTX-BYTES * allot
-create CK-FOLD-G CK-FOLD-N cells allot
-create CK-BYTE 1 allot
-create CK-DG 40 allot
-create CK-FILE-DG 40 allot
-create CK-FSHA-CTX SHA256-FILE-CTX-BYTES allot  \ file-digest context
-
-variable CK-GEN
-
-\ ---- fold handles -----------------------------------------------------------
-\ A key is built by feeding fields into its own SHA context. There used to be
-\ ONE preimage buffer, so two folds that overlapped in time - a key derived while
-\ another key's fold was open, which is what a nested cache-key derivation is -
-\ mixed their bytes into a single wrong key, silently and identically for both
-\ (dot habu-content-key-folds-9d2888c2). Every fold now owns a slot, and every
-\ operation names its fold, so overlapping folds cannot reach each other's
-\ bytes: it is the handle, not an ordering convention, that keeps them apart.
-\
-\ The handle is a nominal cell (`CONTENT-KEY:fold`), so a plain integer cannot
-\ stand in for one; the converters that mint it are undefined at the end of the
-\ package, so no caller outside can forge one either. It carries the OWNING
-\ GENERATION as well as the slot, and every operation checks it, so a handle
-\ kept past FINAL names a slot it no longer owns and throws instead of writing
-\ into whatever fold holds that slot now.
-\
-\ Each of the four slots holds one cell-aligned SHA-256 context.
-
 public
 
-DEFTYPE FOLD
+-6920 constant E-CK-FIRST
+-6929 constant E-CK-LAST
+-6920 constant E-CK-HANDLE   \ a WITH-FOLD body returned with its own fold unfinalized: it finalized another scope's or handed its own out
+
+DEFLINEAR CONTENT-KEY:fold
 
 private
 
-: CK-SLOT-CTX ( n -- ptr u8 )
-   SHA256-CTX-BYTES * CK-FOLD-CTX + ;
+\ A fold's scope bytes, by byte offset: the digest context at 0 (cell-aligned,
+\ as WITH-BYTES hands a cell-aligned base), the file-digest context after it
+\ (SHA256-CTX-BYTES is a whole number of cells), then the binary digest
+\ FINAL-HEX renders, the file digest FILE-NAMED+ folds, the one byte a tag or
+\ length is folded through and the byte FINAL sets once it has finalized the
+\ fold.
+32 constant DIGEST-LEN
+SHA256-CTX-BYTES constant FILE-CTX-OFF
+FILE-CTX-OFF SHA256-FILE-CTX-BYTES + constant DG-OFF
+DG-OFF DIGEST-LEN + constant FILE-DG-OFF
+FILE-DG-OFF DIGEST-LEN + constant BYTE-OFF
+BYTE-OFF 1+ constant DONE-OFF
+DONE-OFF 1+ constant SCOPE-LEN
 
-: CK-SLOT-G@ ( n -- n )
-   cells CK-FOLD-G + @ ;
+\ A fold token is its scope's base; only these rows cross it.
+LINEAR: MINT ( ptr u8 -- CONTENT-KEY:fold )
+LINEAR: ERASE ( CONTENT-KEY:fold -- ptr u8 )
 
-: CK-SLOT-G! ( n n -- ) {: g:n s:n :}
-   g s cells CK-FOLD-G + ! ;
+: STATE ( CONTENT-KEY:fold -- CONTENT-KEY:fold ptr u8 )
+   ERASE dup MINT swap ;
 
-: CK-FREE-SLOT ( -- n )
-   0 begin dup CK-FOLD-N < while
-      dup CK-SLOT-G@ 0= if exit then
-      1+
-   repeat drop E-CK-FOLDS throw ;
-
-\ The handle packs the owning generation above the slot, so no two handles are
-\ ever equal and a released one can never be mistaken for its successor.
-: CK-SLOT-OF ( fold -- n )
-   FOLD>N CK-FOLD-N mod ;
-
-: CK-GEN-OF ( fold -- n )
-   FOLD>N CK-FOLD-N / ;
-
-: CK-LIVE ( fold -- n ) {: f:fold :}
-   f CK-SLOT-OF {: s:n :}
-   s CK-SLOT-G@ f CK-GEN-OF <> if E-CK-STALE throw then
-   s ;
-
-: CK-OPEN ( -- fold )
-   CK-FREE-SLOT {: s:n :}
-   CK-GEN @ 1+ dup CK-GEN ! {: g:n :}
-   s CK-SLOT-CTX SHA256-BEGIN
-   g s CK-SLOT-G!
-   g CK-FOLD-N * s + >FOLD ;
-
-: CK-CLOSE ( fold -- )
-   CK-LIVE {: s:n :}
-   0 s CK-SLOT-G! ;
-
-public
-
-: OPEN ( -- fold )
-   CK-OPEN ;
-
-\ Release a fold whose key is not going to be taken. An early return out of a
-\ key derivation would otherwise strand the slot until the process ended, and
-\ the pool would eventually refuse to open a fold at all; DISCARD is the
-\ abandon path, and forgetting it fails loudly (E-CK-FOLDS from the next OPEN)
-\ rather than corrupting anybody's bytes.
-: DISCARD ( fold -- )
-   CK-CLOSE ;
-
-private
-
-: CK-U8+ ( n n -- ) {: s:n c:n :}
+: U8+ ( ptr u8 n -- ) {: st:ptr c:n :}
    c 0 < if E-STR-BOUNDS throw then
    c STR-BYTE-MAX > if E-STR-BOUNDS throw then
-   c CK-BYTE c!
-   s CK-SLOT-CTX CK-BYTE 1 SHA256-FEED ;
+   c st BYTE-OFF + c!
+   st st BYTE-OFF + 1 SHA256-FEED ;
 
-: CK-BYTES+ ( n ptr u8 n -- ) {: s:n a:ptr u:n :}
-   s CK-SLOT-CTX a u SHA256-FEED ;
+: BYTES+ ( ptr u8 ptr u8 n -- ) {: st:ptr a:ptr u:n :}
+   st a u SHA256-FEED ;
 
 \ A fragment is its tag, its length in two little-endian bytes and its bytes:
 \ FILE+ folds the file's name, and a path of PATH-CAP bytes has to fold whole.
-: CK-FRAG+ ( n n ptr u8 n -- ) {: s:n tag:n a:ptr u:n :}
+: FRAG+ ( ptr u8 n ptr u8 n -- ) {: st:ptr tag:n a:ptr u:n :}
    u 0 < if E-STR-BOUNDS throw then
    u CK-FRAG-MAX > if E-STR-BOUNDS throw then
-   s tag CK-U8+
-   s u STR-BYTE-MAX and CK-U8+
-   s u 8 rshift CK-U8+
-   s a u CK-BYTES+ ;
+   st tag U8+
+   st u STR-BYTE-MAX and U8+
+   st u 8 rshift U8+
+   st a u BYTES+ ;
+
+: DIGEST-FRAG+ ( ptr u8 ptr u8 -- ) {: st:ptr dg:ptr :}
+   st CK-DIGEST-TAG U8+
+   st DIGEST-LEN U8+
+   st dg DIGEST-LEN BYTES+ ;
+
+: FILE-DIGEST! ( ptr u8 ptr u8 n -- ) {: st:ptr a:ptr u:n :}
+   st FILE-CTX-OFF + a u st FILE-DG-OFF + SHA256-FILE-IN
+   dup 0 <> if throw then drop ;
+
+\ FINAL consumes whichever fold it is handed, and a nested body holds its outer
+\ scope's fold as well as its own, so conservation alone admits a body that
+\ finalizes the outer fold and hands its own back out. The mark tells the two
+\ apart: a body that returns with its own scope unfinalized is refused before
+\ the scope releases the storage the escaped token names.
+: FINAL! ( ptr u8 -- )
+   DONE-OFF + 1 swap c! ;
+
+: FOLD-RUN ( R [ R CONTENT-KEY:fold -- S ] ptr u8 NUM:alloc-byte-len -- S )
+   drop {: body st:ptr :}
+   st SHA256-BEGIN
+   0 st DONE-OFF + c!
+   st MINT body execute
+   st DONE-OFF + c@ 0= if E-CK-HANDLE throw then ;
 
 public
 
-: TEXT+ ( fold ptr u8 n -- fold ) {: f:fold a:ptr u:n :}
-   f CK-LIVE CK-TEXT-TAG a u CK-FRAG+
-   f ;
+\ Run `body` with a fresh fold over its own scope storage; the body finalizes
+\ the fold, and the storage is released when the body returns or throws.
+: WITH-FOLD ( R [ R CONTENT-KEY:fold -- S ] -- S )
+   SCOPE-LEN MEM:BYTES-ALLOC-LEN [: FOLD-RUN ;] MEM:WITH-BYTES ;
 
-: DIGEST+ ( fold ptr u8 -- fold ) {: f:fold dg:ptr :}
-   f CK-LIVE {: s:n :}
-   s CK-DIGEST-TAG CK-U8+
-   s 32 CK-U8+
-   s dg 32 CK-BYTES+
-   f ;
+: TEXT+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+   STATE CK-TEXT-TAG a u FRAG+ ;
 
-private
-
-: CK-FILE-DIGEST! ( ptr u8 n -- ) {: a:ptr u:n :}
-   CK-FSHA-CTX a u CK-FILE-DG SHA256-FILE-IN dup 0 <> if throw then drop ;
-
-public
+: DIGEST+ ( CONTENT-KEY:fold ptr u8 -- CONTENT-KEY:fold ) {: dg:ptr :}
+   STATE dg DIGEST-FRAG+ ;
 
 \ Read the physical path, but fold the supplied logical name. A build can name
 \ a source relative to its root without changing where its bytes are read.
-: FILE-NAMED+ ( fold ptr u8 n ptr u8 n -- fold )
-   {: f:fold a:ptr u:n name:ptr size:n :}
-   f CK-LIVE CK-FILE-TAG name size CK-FRAG+
-   a u CK-FILE-DIGEST!
-   f CK-FILE-DG DIGEST+ ;
+: FILE-NAMED+ ( CONTENT-KEY:fold ptr u8 n ptr u8 n -- CONTENT-KEY:fold )
+   {: a:ptr u:n name:ptr size:n :}
+   STATE {: st:ptr :}
+   st CK-FILE-TAG name size FRAG+
+   st a u FILE-DIGEST!
+   st st FILE-DG-OFF + DIGEST-FRAG+ ;
 
-: FILE+ ( fold ptr u8 n -- fold ) {: f:fold a:ptr u:n :}
-   f a u a u FILE-NAMED+ ;
+: FILE+ ( CONTENT-KEY:fold ptr u8 n -- CONTENT-KEY:fold ) {: a:ptr u:n :}
+   a u a u FILE-NAMED+ ;
 
-\ Finalizing a key closes its fold; the slot is released for the next one.
-: FINAL ( fold ptr u8 -- ) {: f:fold dst:ptr :}
-   f CK-LIVE {: s:n :}
-   s CK-SLOT-CTX dst SHA256-END
-   f CK-CLOSE ;
+\ Write the fold's 32-byte digest to `dst`, consuming the fold.
+: FINAL ( CONTENT-KEY:fold ptr u8 -- ) {: dst:ptr :}
+   ERASE {: st:ptr :}
+   st dst SHA256-END
+   st FINAL! ;
 
-: FINAL-HEX ( fold ptr u8 -- ) {: f:fold hex:ptr :}
-   f CK-DG FINAL
-   CK-DG hex SHA256>HEX ;
-
-: FOLDS ( -- n )   CK-FOLD-N ;
-
-\ Erase the mint. The nominal stays nameable outside as CONTENT-KEY:fold, but
-\ the only words that cross between it and a plain cell are gone from the public
-\ wordlist, so a handle can be obtained ONLY from OPEN. Compiled callers above
-\ keep their direct xts.
-undefine >FOLD
-undefine FOLD>N
+\ Write the fold's digest to `hex` as 64 lower-case hex digits, consuming the
+\ fold.
+: FINAL-HEX ( CONTENT-KEY:fold ptr u8 -- ) {: hex:ptr :}
+   ERASE {: st:ptr :}
+   st st DG-OFF + SHA256-END
+   st DG-OFF + hex SHA256>HEX
+   st FINAL! ;
 
 ;package

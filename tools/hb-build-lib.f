@@ -505,8 +505,7 @@ variable HBB-APP-BUILDER-U
       s" donor-map:missing" CONTENT-KEY:TEXT+
    then ;
 
-: HBB-MAKER-KEY-COLD ( -- )
-   CONTENT-KEY:OPEN
+: HBB-MAKER-KEY-BODY ( CONTENT-KEY:fold -- )
    s" hb-build-native-producer-v3" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-DONOR-MAP+
@@ -515,6 +514,9 @@ variable HBB-APP-BUILDER-U
    s" tools/aot-builder.f" HBB-MAKER-CLOSURE+
    s" tools/aot-build.f" HBB-MAKER-CLOSURE+
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
+: HBB-MAKER-KEY-COLD ( -- )
+   [: HBB-MAKER-KEY-BODY ;] CONTENT-KEY:WITH-FOLD ;
 
 : HBB-MAKER-CANON ( ptr u8 n -- ptr u8 n bool )
    {: path:ptr pathu:n :}
@@ -525,20 +527,22 @@ variable HBB-APP-BUILDER-U
 : HBB-MAKER-SUPPORT-PATH$ ( -- ptr u8 n )
    HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U @ ;
 
-\ The selector depends only on fixed support identity. The source and path
-\ queries are validated in the record it selects.
-\ The engine enters as its key, the directory its images live in, so the engine
-\ is hashed once.
-: HBB-MAKER-SUPPORT-SELECT ( -- )
-   BF-ENGINE$ HBB-BUILDER-KEY BUILD-OUT:KEY-OF!
-   CONTENT-KEY:OPEN
+: HBB-MAKER-SUPPORT-BODY ( CONTENT-KEY:fold -- )
    s" hb-maker-support-v1" CONTENT-KEY:TEXT+
    HBB-BUILDER-KEY KEYED-IMAGE:KEY-HEX-LEN CONTENT-KEY:TEXT+
    HBB-KEY-DONOR-MAP+
    HBB-KEY-TARGET+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
-   HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
+   HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX ;
+
+\ The selector depends only on fixed support identity. The source and path
+\ queries are validated in the record it selects.
+\ The engine enters as its key, the directory its images live in, so the engine
+\ is hashed once.
+: HBB-MAKER-SUPPORT-SELECT ( -- )
+   BF-ENGINE$ HBB-BUILDER-KEY BUILD-OUT:KEY-OF!
+   [: HBB-MAKER-SUPPORT-BODY ;] CONTENT-KEY:WITH-FOLD
    s" aot-builder.inputs" HBB-BUILDER-KEY
       HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
 
@@ -961,15 +965,17 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-ENGINE-SELECT$ ( -- ptr u8 n )
    HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U @ ;
 
-: HBB-ENGINE-SELECT-KEY! ( -- )
-   CONTENT-KEY:OPEN
+: HBB-ENGINE-SELECT-BODY ( CONTENT-KEY:fold -- )
    s" hb-engine-selection-v2" CONTENT-KEY:TEXT+
    NATIVE-BUILD-IMAGE:DONOR$ CONTENT-KEY:TEXT+
    NATIVE-BUILD-IMAGE:ROOT$ CONTENT-KEY:TEXT+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ CONTENT-KEY:TEXT+
    NATIVE-BUILD-IMAGE:PROGRAM-BYTES$ CONTENT-KEY:TEXT+
-   HBB-ENGINE-SELECT-KEY CONTENT-KEY:FINAL-HEX
+   HBB-ENGINE-SELECT-KEY CONTENT-KEY:FINAL-HEX ;
+
+: HBB-ENGINE-SELECT-KEY! ( -- )
+   [: HBB-ENGINE-SELECT-BODY ;] CONTENT-KEY:WITH-FOLD
    s" native-build-support.inputs" NATIVE-BUILD-IMAGE:DONOR$ drop
       HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U KEYED-IMAGE:PATH! ;
 
@@ -1067,17 +1073,19 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-REPL-SUPPORT-PATH$ ( -- ptr u8 n )
    HBB-REPL-SUPPORT-PATH HBB-REPL-SUPPORT-U @ ;
 
-\ Only the engine, invocation directory, and fallback root select fixed build
-\ support. Application source and output are checked by the normal sidecar.
-: HBB-REPL-SUPPORT-SELECT ( -- )
-   HBB-REPL-ENGINE-DIGEST!
-   CONTENT-KEY:OPEN
+: HBB-REPL-SUPPORT-BODY ( CONTENT-KEY:fold -- )
    s" hb-repl-support-v2" CONTENT-KEY:TEXT+
    BF-ENGINE$ CONTENT-KEY:TEXT+
    HBB-REPL-ENGINE-DIGEST CONTENT-KEY:DIGEST+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-REPL-SELECTED-ROOT HBB-REPL-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
-   HBB-REPL-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
+   HBB-REPL-SUPPORT-KEY CONTENT-KEY:FINAL-HEX ;
+
+\ Only the engine, invocation directory, and fallback root select fixed build
+\ support. Application source and output are checked by the normal sidecar.
+: HBB-REPL-SUPPORT-SELECT ( -- )
+   HBB-REPL-ENGINE-DIGEST!
+   [: HBB-REPL-SUPPORT-BODY ;] CONTENT-KEY:WITH-FOLD
    HBB-REPL-ENGINE-DIGEST HBB-BUILDER-KEY SHA256>HEX
    s" app-builder.inputs" HBB-BUILDER-KEY
       HBB-REPL-SUPPORT-PATH HBB-REPL-SUPPORT-U KEYED-IMAGE:PATH! ;

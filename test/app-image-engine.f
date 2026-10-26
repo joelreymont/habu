@@ -47,14 +47,16 @@ variable RESOLVED?
 : FAMILY$ ( -- ptr u8 n )
    s" app-image" ;
 
-: RESOLVE ( -- )
-   RESOLVED? @ 0 <> if exit then
-   CONTENT-KEY:OPEN
+: KEY-BODY ( CONTENT-KEY:fold -- )
    s" app-image-engine-v1" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
    PROGRAM$ CONTENT-KEY:TEXT+
    s" src/habu/app-image.f" KEYED-IMAGE:CLOSURE+
-   KEY-HEX CONTENT-KEY:FINAL-HEX
+   KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
+: RESOLVE ( -- )
+   RESOLVED? @ 0 <> if exit then
+   [: KEY-BODY ;] CONTENT-KEY:WITH-FOLD
    ENGINE-CANDIDATE:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
    FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;

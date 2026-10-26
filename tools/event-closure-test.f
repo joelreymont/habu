@@ -122,8 +122,8 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    s" unrelated.f" ECT-UN ECT-UN-U ECT-MK
    s" alias.f" ECT-ALIAS ECT-ALIAS-U ECT-MK ;
 
-: ECT-KEY-FOR ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CONTENT-KEY:OPEN
+: ECT-KEY-BODY ( ptr u8 n ptr u8 CONTENT-KEY:fold -- )
+   >r {: a:ptr u:n dst:ptr :} r>
    s" ect-closure-v1" CONTENT-KEY:TEXT+
    a u EC:BUILD
    0 ECT-I !
@@ -132,6 +132,9 @@ ECT-ERR-CAP BUFFER: ECT-ERR
       ECT-I @ 1+ ECT-I !
    repeat
    dst CONTENT-KEY:FINAL-HEX ;
+
+: ECT-KEY-FOR ( ptr u8 n ptr u8 -- )
+   [: ECT-KEY-BODY ;] CONTENT-KEY:WITH-FOLD ;
 
 : ECT-CLOSURE-KEY ( ptr u8 -- )
    ECT-ENTRY$ rot ECT-KEY-FOR ;

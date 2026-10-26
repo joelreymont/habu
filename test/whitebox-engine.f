@@ -129,14 +129,16 @@ variable READY?
    then
    rc 0 <> if s" whitebox-engine: unsealed engine build failed" rc die then ;
 
+: PRODUCT-KEY-BODY ( CONTENT-KEY:fold -- )
+   s" whitebox-product-v1" CONTENT-KEY:TEXT+
+   TMP-BYTES s" product" CONTENT-KEY:FILE-NAMED+
+   KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
       s" whitebox-engine: builder produced no executable image" WB-RC die
    then
-   CONTENT-KEY:OPEN
-   s" whitebox-product-v1" CONTENT-KEY:TEXT+
-   TMP-BYTES s" product" CONTENT-KEY:FILE-NAMED+
-   KEY-HEX CONTENT-KEY:FINAL-HEX
+   [: PRODUCT-KEY-BODY ;] CONTENT-KEY:WITH-FOLD
    KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH
    FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 

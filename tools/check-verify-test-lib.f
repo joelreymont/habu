@@ -220,7 +220,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require src/lib/content-key.f
 require test/cold-engine.f
 require test/pcap-result.f
 require src/lib/jsonl.f
@@ -4674,21 +4673,24 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 \ checks again; the edit re-keys the family's one image, published under a
 \ private out root so the stale tree never replaces this tree's image. Each
 \ check pays a build (the row's wall). The driver then deletes that member
-\ and asks for the image once more than src/lib/content-key.f has folds: each
-\ walk refuses with the missing member's E-FS-STAT, so a refused key derivation
-\ releases its fold (leaked folds would make the last refusal the pool's own).
+\ and asks for the image STALE-REFUSALS times: each walk refuses with the
+\ missing member's E-FS-STAT, so a refused key derivation leaves nothing behind
+\ that changes the next one's outcome.
+2 constant STALE-REFUSALS
+
 : IMAGE-STALE ( -- )
    s" image-stale: the engine runs the saved image" T-LABEL
    ENGINE-CANDIDATE:PATH$ CHECK-VERIFY-IMAGE:CAPABLE? TTRUE
    STALE-TREE
    0 GEN-U !
    S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\n" GEN+
-   S\" require src/lib/engine-candidate.f\nrequire tools/check-verify-core.f\nrequire tools/check-verify-image.f\nrequire src/lib/content-key.f\npackage CVT-STALE\n" GEN+
+   S\" require src/lib/engine-candidate.f\nrequire tools/check-verify-core.f\nrequire tools/check-verify-image.f\npackage CVT-STALE\n" GEN+
    KIND$SRC+ IMAGE-SRC+
    s\" : CHECK ( -- )\n   s\" : CVT-STALE-W ( -- n ) 1 ;\" s\" " GEN+ STALE$ GEN+
    s\" /stale.f\" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
    s\"    IMAGE. ;\n" GEN+
-   s\" : REFUSE ( -- )\n   CONTENT-KEY:FOLDS 1+ 0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
+   s\" : REFUSE ( -- )\n   " GEN+ STALE-REFUSALS GEN-N+
+   s\"  0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
    s\"       s\" refused \" type FMT:.INT cr\n   loop ;\npublic\n" GEN+
    s\" : MAIN ( -- )\n   CHECK\n   s\" " GEN+ STALE$ GEN+
    s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
@@ -4714,7 +4716,7 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
    s" image-stale: published under a key" T-LABEL kau KEYED-IMAGE:KEY-HEX-LEN T=
    s" image-stale: the edit re-keys" T-LABEL ka kau kb kbu STR= TFALSE
    s" image-stale: executable" T-LABEL b bu EXECUTABLE? TTRUE
-   CONTENT-KEY:FOLDS 1+ 0 do
+   STALE-REFUSALS 0 do
       s" image-stale: each walk refuses with the missing member's cause" T-LABEL
       out outn i REFUSED-CODE E-FS-STAT T=
    loop ;

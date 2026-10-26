@@ -57,12 +57,13 @@ variable RESOLVED?
 : TMP-BYTES ( -- ptr u8 n )
    TMP-BUF TMP-U @ ;
 
-: KEY! ( -- )
-   FIXTURE-WRITER:KEY$ {: writer:ptr writeru:n :}
-   CONTENT-KEY:OPEN
+: KEY-BODY ( ptr u8 n CONTENT-KEY:fold -- )
    s" cold-fixture-engine-v3" CONTENT-KEY:TEXT+
-   writer writeru CONTENT-KEY:TEXT+
+   -rot CONTENT-KEY:TEXT+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
+: KEY! ( -- )
+   FIXTURE-WRITER:KEY$ [: KEY-BODY ;] CONTENT-KEY:WITH-FOLD ;
 
 \ The family name: the image's name under img/, the stem of its work
 \ directories, and the name a gate grants the host under (test/image-grant.f).

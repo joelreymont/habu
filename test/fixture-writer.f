@@ -55,8 +55,7 @@ variable RESOLVED?
 : PATH-BYTES ( -- ptr u8 n )
    PATH-BUF PATH-U @ ;
 
-: KEY! ( -- )
-   CONTENT-KEY:OPEN
+: KEY-BODY ( CONTENT-KEY:fold -- )
    s" fixture-writer-v1" CONTENT-KEY:TEXT+
    ENGINE-CANDIDATE:PATH$ s" host-engine" CONTENT-KEY:FILE-NAMED+
    HB-TARGET-LINUX-X86-64? if
@@ -67,6 +66,9 @@ variable RESOLVED?
    BUILDER$ KEYED-IMAGE:CLOSURE+
    WRITER$ KEYED-IMAGE:CLOSURE+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
+
+: KEY! ( -- )
+   [: KEY-BODY ;] CONTENT-KEY:WITH-FOLD ;
 
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then

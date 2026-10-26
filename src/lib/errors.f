@@ -427,6 +427,9 @@
 -6900 constant E-CIE-ROW      \ a shared instruction vector index or table slot is outside its declared table
 -6901 constant E-CIE-FORM     \ an instruction form code no row of the frozen vocabulary names
 
+\ Content-key folds: -6920..-6929, minted in src/lib/content-key.f, which owns
+\ package CONTENT-KEY.
+
 \ Snapshot relocation checks (package RELOC-PROOF): -6880..-6899.
 -6880 constant E-CRL-FIRST
 -6899 constant E-CRL-LAST

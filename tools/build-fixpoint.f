@@ -1518,12 +1518,15 @@ variable CHAIN-I
       CHAIN-I @ 1+ CHAIN-I !
    repeat ;
 
-\ The ordered closure of one entry file, hashed into a 32-byte digest.
-: CHAIN-DIGEST! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CONTENT-KEY:OPEN
+: CHAIN-DIGEST-BODY ( ptr u8 n ptr u8 CONTENT-KEY:fold -- )
+   >r {: a:ptr u:n dst:ptr :} r>
    s" native-chain-closure-v1" CONTENT-KEY:TEXT+
    a u CLOSURE+
    dst CONTENT-KEY:FINAL ;
+
+\ The ordered closure of one entry file, hashed into a 32-byte digest.
+: CHAIN-DIGEST! ( ptr u8 n ptr u8 -- )
+   [: CHAIN-DIGEST-BODY ;] CONTENT-KEY:WITH-FOLD ;
 
 : CHAIN-RECORD ( -- )
    CHAIN-DONE? @ if exit then

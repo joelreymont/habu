@@ -79,19 +79,18 @@ variable LINKER-RESOLVED?
 : LINKER-PROGRAM$ ( -- ptr u8 n )
    S\" require tools/aot-build.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
-\ The saver image's key is taken before this key opens: both fold through the
-\ one content-key context. The linker's slot is under the saver image at host,
-\ which builds it.
+: LINKER-KEY-BODY ( ptr u8 n CONTENT-KEY:fold -- )
+   s" preloaded-engine-v1" CONTENT-KEY:TEXT+
+   -rot CONTENT-KEY:TEXT+
+   LINKER-PROGRAM$ CONTENT-KEY:TEXT+
+   s" tools/aot-build.f" KEYED-IMAGE:CLOSURE+
+   LINKER-KEY CONTENT-KEY:FINAL-HEX ;
+
+\ The linker's slot is under the saver image at host, which builds it.
 : LINKER-RESOLVE ( ptr u8 n -- )
    {: host:ptr hostu:n :}
    LINKER-RESOLVED? @ 0 <> if exit then
-   APP-IMAGE-ENGINE:KEY$ {: app:ptr appu:n :}
-   CONTENT-KEY:OPEN
-   s" preloaded-engine-v1" CONTENT-KEY:TEXT+
-   app appu CONTENT-KEY:TEXT+
-   LINKER-PROGRAM$ CONTENT-KEY:TEXT+
-   s" tools/aot-build.f" KEYED-IMAGE:CLOSURE+
-   LINKER-KEY CONTENT-KEY:FINAL-HEX
+   APP-IMAGE-ENGINE:KEY$ [: LINKER-KEY-BODY ;] CONTENT-KEY:WITH-FOLD
    host hostu HOST-KEY BUILD-OUT:KEY-OF!
    s" linker" HOST-KEY LINKER-BUF LINKER-U KEYED-IMAGE:PATH!
    0 0= LINKER-RESOLVED? ! ;
