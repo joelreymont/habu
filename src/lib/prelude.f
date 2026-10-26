@@ -21,6 +21,7 @@
 export true
 export false
 export 0<>
+export bool>n
 export fdrop
 export fdup
 export fover
@@ -30,6 +31,8 @@ export f>=
 : true  ( -- bool ) 0 0= ;
 : false ( -- bool ) 0 0= 0= ;
 : 0<>   ( n -- bool ) 0 <> ;
+\ True is -1 and false 0, as `true` and `0=` produce.
+: bool>n ( bool -- n ) if -1 else 0 then ;
 
 : fdrop ( r -- ) drop ;
 : fdup  ( r -- r r ) dup ;

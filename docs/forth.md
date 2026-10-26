@@ -1017,7 +1017,7 @@ the wrong argument count) and `E-BAD-SIGNATURE` (a missing or misplaced `--`,
 Widening applies only to integer-class types, only
 at the top level of a stack cell, and only in an input or coercion position —
 never inside a `ptr` pointee, never between roles, never between `bool` and an
-integer, never between `r` and `f32`.
+integer (`bool>n` converts a `bool` to -1 or 0), never between `r` and `f32`.
 
 `n` unifies with every integer type unconditionally. For the others, `got`
 flows into `want` when `width(got) <= width(want)` and one of: either sign

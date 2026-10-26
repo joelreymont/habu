@@ -86,7 +86,8 @@ signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
   `n` accepts structural integer stack cells in either direction: `n` can pass
   to `u32`, while `i64` needs an explicit conversion. Pointer pointees stay
   exact; roles (`idx`, `len`, `fd`) never widen. Booleans are real `bool`s:
-  `0 0=`, never a raw `0`/`-1`.
+  `0 0=`, never a raw `0`/`-1`; a `bool` never passes as `n`, so convert it
+  with `bool>n` (-1 or 0).
 - Locals `{: a b:ptr :}` bind left to right from the deepest item, so
   `1 2 {: a:n b:n :}` gives `a`=1. A local binds **once**: a per-turn value
   lives on the stack or in a cell. Names are at most 16 bytes, 64 per
