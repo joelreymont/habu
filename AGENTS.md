@@ -18,10 +18,6 @@ belong in the language core.
 - Agents work independently in separate worktrees; there are no shared slots.
   Never pause other worktrees for local `jj` errors; back up and recover only
   your own.
-- Every Habu change lands on master through carl, the single integrator;
-  jerry alone lands its own tier 0 compiler lanes. Any other agent hands carl
-  the change id, its workspace, what it fixes and the proof it ran, and
-  reports Habu defects to carl.
 - Infer routine details and complete authorized work. Ask only for a material
   missing choice or additional authority. User instructions take precedence.
 - Use plain English. Keep changes focused and remove obsolete machinery when
