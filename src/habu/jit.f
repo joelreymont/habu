@@ -914,8 +914,10 @@ variable LKWINC  variable LKWDEC  variable LKWZEQ  variable LKWZLT
 variable LKWNEG2  variable LKWINV2
 variable FESK4
 
-\ vun-entry: unary op on the VS top — con folds at JIT time (no code); reg gets
-\ an in-place op (rd = rs, entry unchanged); empty VS falls through to the prim.
+\ vun-entry: unary op on the VS top. Tag 1 (integer constant) folds at JIT time
+\ (no code); tag 0 (integer register) gets an in-place op (rd = rs, entry
+\ unchanged); tags 2 and 3 (float register, float constant) and an empty VS fall
+\ through to the prim.
 : VUN-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK4 !  LBL FESK2 !
@@ -925,6 +927,7 @@ variable FESK4
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
    7 FESK2 LABEL@ CBZ,
+   7 1 CMPI,  C-NE FESK4 LABEL@ BCOND,
       foldxt execute
       11 8 0 STR,
       lmainlbl B,

@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-10-26T11:28:18.221570+02:00"
 blocks:
-  - habu-fix-the-tier-4d7b9733
   - habu-check-tier-bench-57f504d5
 ---
 

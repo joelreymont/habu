@@ -2343,6 +2343,26 @@ variable GE-KIND-N
    2 0 do i GE-P2-SHAPES loop
    s" PASS: an immediate word in a body with a wide local runs once, on the input it was written with, at both tiers" type cr ;
 
+\ Tier 0 folds a unary integer op only into an integer constant on the virtual
+\ stack. A float cast to its bits by a CAST: stays a float register or constant
+\ there; folding the register from a b f+ as an integer made FB 1+ print 2.0's bits.
+\ Each expected value is what the interpreter prints for the same body.
+: GE-VUN-FLOAT ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" CAST: GEFB ( r -- n )" GE-SRC-LINE
+   s" : GEVLIT ( -- n ) 1.5 GEFB 1- ;" GE-SRC-LINE
+   s" : GEVREG ( r r -- n ) {: a:r b:r :} a b f+ GEFB 1+ ;" GE-SRC-LINE
+   s" : GEVICON ( -- n ) 5 1+ ;" GE-SRC-LINE
+   s" : GEVIREG ( n -- n ) {: x :} x 1- ;" GE-SRC-LINE
+   s" GEVLIT . 1.0 2.0 GEVREG . GEVICON . 7 GEVIREG ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" tier 0 unary op on a float" GE-EXPECT-OK
+   S\" 4609434218613702655\n4613937818241073153\n6\n6\n"
+      s" tier 0 unary op on a float output" GE-EXPECT-OUT
+   s" PASS: tier 0 folds a unary op only into an integer constant" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2377,7 +2397,8 @@ public
    GE-SOURCE-END
    GE-CF-KIND
    GE-PASS2-IMMEDIATE
-   GE-SET-CHECK-NEG ;
+   GE-SET-CHECK-NEG
+   GE-VUN-FLOAT ;
 
 : TEST ( -- )
    s" habu-runtime-regression" GT-START
