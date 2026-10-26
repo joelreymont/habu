@@ -1,9 +1,11 @@
 ---
 title: "Move stage records onto IR-CTX:RECORD"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-26T15:50:55.571657+02:00"
+closed-at: "2026-10-26T17:34:44.807636+02:00"
+close-reason: superseded by the arena redesign (Joel approved 2026-10-26, ~/.cache/tmp/carl-file/wstate-recommend.md)
 blocks:
   - habu-take-module-records-8ff62458
 ---

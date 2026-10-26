@@ -1,9 +1,11 @@
 ---
 title: Take module records from the innermost context
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-26T15:50:55.548351+02:00"
+closed-at: "2026-10-26T17:34:44.846184+02:00"
+close-reason: superseded by the arena redesign (Joel approved 2026-10-26, ~/.cache/tmp/carl-file/wstate-recommend.md)
 blocks:
   - habu-keep-the-ctx-ca4e2d27
 ---
