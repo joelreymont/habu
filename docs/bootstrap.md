@@ -275,6 +275,13 @@ Keep the installed executable, map and sources together when updating the
 installation. Running applications retain their loaded executable; restart
 long-running source-loading tools against the updated installation.
 
+On macOS, sign the installed executable with a team-issued identity before it
+replaces the old one: `codesign -f -s <identity> <copy>`, then rename the copy
+into place. The login keychain partitions an item by its filer's signature; an
+ad-hoc signature changes with every build, so a rebuilt `hb` is refused the
+items its predecessor filed, while every build signed under one team ID keeps
+them. Renaming leaves running engines on their old file.
+
 ## Warm Dev Snapshot
 
 For a hot edit/check loop, build a warm snapshot engine with
