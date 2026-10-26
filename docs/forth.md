@@ -802,6 +802,10 @@ Factor raw compiler and emitter code to the same standard.
   file. Run multi-file tools as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
   is not a tty. Use `--load` only with more than one source file.
+- **Data never spans a load.** The loader aligns `here` to a cell when a loaded
+  file starts and when it ends, so a file's data bytes depend only on its own
+  source and its stored object installs whatever earlier files allotted. A live
+  task freezes data, so the loader does not align then.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.

@@ -1978,10 +1978,24 @@ create RESIDUE-DIGIT 1 allot
    depth {: n:n :}
    n 0 > if n RESIDUE-REFUSE then ;
 
+\ A loaded file's DATA starts and ends on a cell, so its bytes are a function
+\ of its own source and a stored object installs whatever earlier files
+\ allotted. The start align precedes the cache's SEGMENT-OPEN for the file,
+\ the end align the parent's SEGMENT-OPEN after the load. A throw skips the
+\ end align, which does not matter: a load that threw refuses the parent's
+\ object, so no stored segment continues the parent's data from there.
+\ A live task freezes DATA (habu1.f B-TASK-LIVE-GUARD): the loader writes
+\ nothing then, as no writer may, and an object that starts off a cell is
+\ refused by its placement (tools/native-unit-object.f SEG-ALIGNED?).
+: LOAD-ALIGN ( -- )
+   data-base TASKS-LIVE-CELL + @ 0= if align then ;
+
 : LOAD-UNIT ( -- )
    LOAD-BYTES
    TOP@ RANGE-OWNER !
-   [: CALL-UNIT ;] source-file-run ;
+   LOAD-ALIGN
+   [: CALL-UNIT ;] source-file-run
+   LOAD-ALIGN ;
 
 : LOAD-CURRENT ( -- )
    PUSH

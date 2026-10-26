@@ -434,7 +434,9 @@ forth.md: **Errors**, **Integer arithmetic**.
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
   definition it opened is refused there, as every source is. A value crosses a load
-  only as a word the file defines.
+  only as a word the file defines. `here` is cell-aligned when a loaded file
+  starts and when a `require` or `include` that ran a file returns, unless a
+  task is live: data never spans a load.
 - At the top level of a stdin session or of a program file run as
   `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in

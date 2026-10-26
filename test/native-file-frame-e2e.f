@@ -156,10 +156,8 @@ variable FILL-POOL
 \ the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
    SESSION
-   \ dv.f loads first: check.f, which top.f requires, allots its object's
-   \ path, so what follows it stands elsewhere in a cell on each build. The
-   \ moved builds allot a byte before it, which leaves its DATA padded for
-   \ another place in a cell.
+   \ The moved builds allot a byte before dv.f. The loader aligns HERE when a
+   \ file starts, so dv.f's DATA bytes match its stored object, which installs.
    MOVED @ if S\" 1 allot\n" IN+ then
    s" dv.f" LOAD+
    S\" s\" dv=\" type DV-SUM . cr\ns\" dvs=\" type DV-S type cr\n" IN+
@@ -2006,8 +2004,8 @@ public
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
    ERR$ s" /rc.f records=" CONTAINS? TFALSE
    s" rp.f" REUSED
-   s" a byte allotted before dv.f misses its object and loads it as a cold build" T-LABEL
-   s" dv.f" s"  reason=" LINE$ s" dv.f reason=data-alignment" T$=
+   s" a byte allotted before dv.f still installs its object" T-LABEL
+   s" dv.f" REUSED
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
    s" an earlier file that now makes FRAME-PK refuses pk.f's object: PK-SEVEN binds its private word" T-LABEL
    OUT$ S\" pk=70\n" CONTAINS? TTRUE
