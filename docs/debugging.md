@@ -396,8 +396,6 @@ only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
 
 ## Standalone gotchas a stepper catches fast
 
-- A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
-- Declaring locals inside `IF`/loop corrupts the frame.
 - Unchecked native emitters can be visibly balanced but still corrupt the build
   stack through saved-register/frame mistakes; bracket phase calls with
   `depth .`, then factor the offending raw emitter and add a source-shape gate.
