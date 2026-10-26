@@ -94,11 +94,13 @@ variable FILL-POOL
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 
-\ ffo.f and ffg.f run inside an open FUNCTION: declaration. Kept apart from
-\ PROBE for its body text limit (BODYBUF-CAP).
+\ ffo.f, ffg.f, ffe.f and ffx.f run inside an open FUNCTION: declaration.
+\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
 : DECL-PROBE ( -- )
    s" ffo.f" LOAD+
-   s" ffg.f" LOAD+ ;
+   s" ffg.f" LOAD+
+   s" ffe.f" LOAD+
+   s" ffx.f" LOAD+ ;
 
 \ ffs.f's struct-by-value call prints its checksum, on macOS only, as
 \ FFS-FIXTURE writes it; ffsl.f loads first to grow the library table.
@@ -670,6 +672,14 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ffo.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFO-CRC crc32 ( n ptr u8 n -- n ) 1 2 WRITES-ARG\nrequire ffoc.f\n;FUNCTION\n" PUT
    s" ffoc.f" S\" 1 constant FFOC-K\n" PUT
    s" ffg.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFG-CRC crc32 ( n ptr u8 n -- n ) s\" HOME\" GETENV 2drop ;FUNCTION\n" PUT
+   \ Each child crosses one boundary only: ffec.f opens with its parent's
+   \ declaration pending and closes it, so only the entry check refuses it;
+   \ ffxc.f opens a declaration and returns it pending, so only the exit
+   \ check refuses it.
+   s" ffe.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFE-CRC crc32 ( n ptr u8 n -- n )\nrequire ffec.f\n" PUT
+   s" ffec.f" S\" ;FUNCTION\n" PUT
+   s" ffx.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nrequire ffxc.f\n;FUNCTION\n" PUT
+   s" ffxc.f" S\" FUNCTION: FFX-CRC crc32 ( n ptr u8 n -- n )\n" PUT
    \ sel.f declares getuid under the process selection; selc.f, which does not
    \ require sel.f, declares the same row: a reuse row and the entry selection.
    s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
@@ -1373,6 +1383,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a FUNCTION: clause run is admitted; a load inside the declaration refuses both files" T-LABEL
    s" ffo.f" DECL-OPEN
    s" ffoc.f" DECL-OPEN
+   s" a child that closes its parent's declaration refuses on entry" T-LABEL
+   s" ffec.f" DECL-OPEN
+   s" a child that returns a declaration pending refuses on exit" T-LABEL
+   s" ffxc.f" DECL-OPEN
    s" a run inside a declaration that leaves it unchanged refuses" T-LABEL
    s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED ;
 
@@ -1693,6 +1707,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build refuses a load inside a declaration, and a run that leaves it unchanged, again" T-LABEL
    s" ffo.f" DECL-OPEN
    s" ffoc.f" DECL-OPEN
+   s" ffec.f" DECL-OPEN
+   s" ffxc.f" DECL-OPEN
    s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED
    s" a warm build runs act.f again, which closes the compiler session" T-LABEL
    s" act.f" NO-OBJECT
