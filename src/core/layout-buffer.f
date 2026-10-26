@@ -214,8 +214,7 @@ PTR-VARIABLE STGT-START
 \ rejected accessor leaves DP on the cell where it found it and needs no rewind.
 : LBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base <> if E-LAYOUT-BUFFER throw then
-   LBUF-BYTES @ allot
-   base LBUF-BYTES @ LBUF-ZERO ;
+   LBUF-BYTES @ allot ;
 
 \ Whole-record stores move ordinary cells. Walk the admitted instantiated term
 \ at capture, using the active sum tag so shared payload slots are classified
@@ -418,7 +417,6 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
       LBUF-ALIGN
       here {: base:ptr :}
       need cells allot
-      base need cells LBUF-ZERO
       base cb -  cb  !                                  \ off-cell = new region offset from cb
       count  cb CELL +  !                               \ cap-cell = new allotted capacity
    then
@@ -457,8 +455,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
       dbl wc * LDEFER-CELL-MAX > if count else dbl then {: newcap:n :}   \ clamp so doubling never trips the ceiling
       LBUF-ALIGN
       here {: nbase:ptr :}
-      newcap wc * cells allot
-      nbase newcap wc * cells LBUF-ZERO                      \ fresh region zeroed (new cells read 0)
+      newcap wc * cells allot                                \ allot hands the fresh region out zeroed
       obase nbase  live wc * cells  LBUF-COPY                \ carry the live cells forward
       nbase cb -  cb  !                                      \ off-cell = new region offset from cb
       newcap  cb CELL +  !                                   \ cap-cell = new capacity
@@ -677,15 +674,15 @@ variable DBUF-W
 \ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
 \ AND commits its cell, and the generated `create NAME#ctl` names the next cell
 \ without allotting it, so the definer allots the four count cells behind the
-\ head and zeroes the record it measured. The same transactional check — if anything else
+\ head, which `allot` hands out zeroed behind the head's `0 ,`. The same
+\ transactional check — if anything else
 \ moved DP between the measurement and here, the accessor and the storage would
 \ name different places, so this refuses instead of allotting into the gap. A
 \ rejected accessor leaves the head's cell allotted and unnamed, like the
 \ alignment pad; the declaration itself fails, so nothing reads it.
 : DBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base CELL + <> if E-LAYOUT-BUFFER throw then
-   LBUF-BYTES @ CELL - allot
-   base LBUF-BYTES @ LBUF-ZERO ;
+   LBUF-BYTES @ CELL - allot ;
 
 : DYNAMIC-BUFFER ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}

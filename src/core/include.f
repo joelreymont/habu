@@ -959,7 +959,6 @@ public
    start PAD-BYTES {: pad:n :}
    bytes pad TOTAL-BYTES {: total:n :}
    total allot
-   total 0 ?do 0 start i + c! loop
    start pad + {: fresh:ptr :}
    REQUIRE-N @ FROZEN-BYTES
    REQUIRE-N @ 0 ?do

@@ -117,7 +117,6 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    here data-base - negate 7 and allot
    here BYTE-VIEW {: rows:ptr :}
    size allot
-   size 0 ?do 0 rows i + c! loop
    rows ;
 
 \ Declarations precede task execution. Once the new table is published, old

@@ -314,7 +314,6 @@ private
    here data-base - negate 7 and allot
    here BYTE-VIEW {: rows:ptr :}
    size allot
-   size 0 ?do 0 rows i + c! loop
    rows ;
 
 \ The loader may still read a row's inline name or path when a callback grows a

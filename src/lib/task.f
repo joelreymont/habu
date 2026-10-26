@@ -859,7 +859,6 @@ variable ROW-N
    TASK-ALIGN8
    here BYTE-VIEW {: rows:ptr :}
    size allot
-   size 0 ?do 0 rows i + c! loop
    rows ;
 
 : ROW-GROW ( -- )

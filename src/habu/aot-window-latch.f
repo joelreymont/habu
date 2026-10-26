@@ -133,8 +133,7 @@ variable TASK-USER-MARK
    HERE-N 7 and dup 0<> IF 8 swap - allot ELSE drop THEN
    here BYTE-VIEW CARRY-P !
    HERE-N CARRY-BASE !
-   CARRY-BYTES @ allot
-   CARRY-BYTES @ 0 ?do 0 CARRY-BASE$ i + c! loop ;
+   CARRY-BYTES @ allot ;
 
 : AOT-DATA-SPAN ( -- )
    NSTR:WINDOW-CLOSE
