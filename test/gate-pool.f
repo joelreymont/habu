@@ -505,8 +505,8 @@ GT-POOL-ABORT-BARE!
 \ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
 \ is made inside one directory under TMPDIR per pool session, which goes in
 \ the cleanup registry once (src/lib/fs-mutate.f CLEANUP-TREE+). One entry a row
-\ would not fit: the registry holds 64 (FS-MUT-CLEANUP-MAX), keeps each entry
-\ until a CLEANUP-RUN, and a gate starts hundreds of rows. So a process that
+\ would keep hundreds in the registry, which holds each entry until a
+\ CLEANUP-RUN, since a gate starts hundreds of rows. So a process that
 \ ends without retiring or killing its slots - an uncaught throw, a die -
 \ still removes every slot's directory with the root, and GT-CLEANUP removes it
 \ with the runner's root. A session's root is made at its first spawn, and

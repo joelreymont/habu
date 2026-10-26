@@ -1401,12 +1401,9 @@ create P-W5DF FS-PATH-CAP allot variable P-W5DF-U
 : T4-A ( -- ) REGS 0 ?do 0 i A-REG T4-REG-ONE loop 0 TASK:RETURN ;
 : T4-B ( -- ) REGS 0 ?do 1 i B-REG T4-REG-ONE loop 0 TASK:RETURN ;
 
-: SLOT$ ( n -- ptr u8 n ) {: idx :}
-   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ SPAN:TAKE SPAN:$ ;
-
 : COUNT-SLOTS ( ptr u8 n n -- n ) {: a:ptr u base :}
    0 REGS 2 * 0 ?do
-      base i + SLOT$ a u STR= if 1+ then
+      base i + FS-MUT-CLEANUP-PATH a u STR= if 1+ then
    loop ;
 
 : CHECK-ONE ( n n n -- ) {: which i base :}
@@ -1508,6 +1505,142 @@ public
 
 ;package
 
+\ ---- the registry grows ------------------------------------------------------
+\ A directory and then GROWS files inside it are registered, enough to grow
+\ the row several times over whatever the rows before left in it; one middle
+\ file is forgotten once its owner removed it. Every registration keeps its
+\ slot through the growth, the forget closes the gap in order, and
+\ FMT-TEST-CLEANUP's CLEANUP-RUN must take every file before the directory:
+\ the directory is a plain rmdir, which a file left in it would refuse.
+package FMT-GROW
+private
+
+100 constant GROWS
+50 constant GONE
+
+FS-PATH-CAP SPAN-BUFFER: NAME-BUF
+FS-PATH-CAP SPAN-BUFFER: DIR-BUF
+variable DIR-U
+variable BASE
+
+: DIR$ ( -- ptr u8 n ) DIR-BUF DIR-U @ SPAN:TAKE SPAN:$ ;
+
+\ File i's path, valid until the next call.
+: NAME$ ( n -- ptr u8 n ) {: i :}
+   SB-RESET
+   DIR$ SB-APPEND
+   s" /f-" SB-APPEND
+   i FS-MUT-SB-U
+   SB$ {: a:ptr u :}
+   a u NAME-BUF SPAN:COPY
+   NAME-BUF u SPAN:TAKE SPAN:$ ;
+
+\ Slot BASE+1+at names file i.
+: SLOT-IS ( n n -- ) {: at i :}
+   BASE @ 1+ at + FS-MUT-CLEANUP-PATH i NAME$ T$= ;
+
+public
+
+: REGISTER ( -- )
+   SB-RESET
+   FMT-ROOT$ SB-APPEND
+   s" /grow" SB-APPEND
+   SB$ {: a:ptr u :}
+   a u DIR-BUF SPAN:COPY
+   u DIR-U !
+   DIR$ MAKE-DIR
+   FS-MUT-CLEANUP-N @ BASE !
+   DIR$ CLEANUP-DIR+
+   GROWS 0 ?do
+      i NAME$ s" grow" WRITE-ALL
+      i NAME$ CLEANUP+
+   loop
+   s" the registry grows past every registration and keeps each slot" T-LABEL
+   FS-MUT-CLEANUP-N @ BASE @ 1+ GROWS + T=
+   BASE @ FS-MUT-CLEANUP-PATH DIR$ T$=
+   GROWS 0 ?do i i SLOT-IS loop
+   GONE NAME$ REMOVE-FILE
+   GONE NAME$ CLEANUP-FORGET
+   s" a forgotten middle slot closes the gap in order" T-LABEL
+   FS-MUT-CLEANUP-N @ BASE @ GROWS + T=
+   GONE 0 ?do i i SLOT-IS loop
+   GROWS 1- GONE ?do i i 1+ SLOT-IS loop ;
+
+\ After CLEANUP-RUN.
+: GONE? ( -- )
+   s" CLEANUP-RUN removed the files before their directory" T-LABEL
+   DIR$ EXISTS? TFALSE ;
+
+;package
+
+\ ---- the run against a registering task ----------------------------------------
+\ CLEANUP-RUN removes a deep tree while another task registers enough paths to
+\ grow the row many times over. Each growth releases the row it replaced, and
+\ REMOVE-TREE reads its root's name again once the tree below is gone, so a
+\ run that held a pointer into a row another task can release read freed
+\ storage (measured: SIGSEGV every time). The run must finish, remove the
+\ tree and leave the worker's registrations to a later run.
+package FMT-RACE
+private
+
+400 constant LEVELS
+16384 constant REGS
+
+FS-PATH-CAP SPAN-BUFFER: DEEP-BUF
+variable DEEP-U
+FS-PATH-CAP SPAN-BUFFER: NONE-BUF
+variable NONE-U
+$10000 TASK:TASK WORKER
+
+\ Atomic cells require native cell alignment.
+here data-base - negate 7 and allot
+variable GO
+
+: DEEP$ ( -- ptr u8 n ) DEEP-BUF DEEP-U @ SPAN:TAKE SPAN:$ ;
+: NONE$ ( -- ptr u8 n ) NONE-BUF NONE-U @ SPAN:TAKE SPAN:$ ;
+
+: PATHS! ( -- )
+   SB-RESET
+   FMT-ROOT$ SB-APPEND
+   LEVELS 0 ?do s" /d" SB-APPEND loop
+   SB$ {: a:ptr u :}
+   a u DEEP-BUF SPAN:COPY  u DEEP-U !
+   SB-RESET
+   FMT-ROOT$ SB-APPEND
+   s" /none" SB-APPEND
+   SB$ {: n:ptr nu :}
+   n nu NONE-BUF SPAN:COPY  nu NONE-U ! ;
+
+: WORK ( -- )
+   begin GO atomic@ 0= while repeat
+   REGS 0 ?do NONE$ CLEANUP+ loop
+   0 TASK:RETURN ;
+
+: JOIN-CODE ( -- n )
+   WORKER TASK:JOIN MATCH result
+      ok OF ENDOF
+      err OF ENDOF
+   ;MATCH ;
+
+public
+
+: RUN ( -- )
+   PATHS!
+   DEEP$ MAKE-DIRS
+   FMT-ROOT$ CLEANUP-TREE+
+   0 GO atomic!
+   ['] WORK WORKER TASK:ACTIVATE
+   1 GO atomic!
+   [: CLEANUP-RUN ;] catch {: code :}
+   JOIN-CODE {: worker :}
+   s" the run removed its tree while another task grew the registry" T-LABEL
+   code 0 T=
+   worker 0 T=
+   FMT-ROOT$ EXISTS? TFALSE
+   CLEANUP-RUN ;
+
+;package
+
 \ The root's tree slot is forgotten just before the registry runs, so the
 \ registry removes every fixture one by one and the root must then be empty: an
 \ rmdir that fails is a fixture nothing registered. A throw before that still
@@ -1526,8 +1659,10 @@ public
    FMT-MKDIR-PATH CLEANUP-DIR+
    FMT-NEST-A CLEANUP-TREE+
    FMT-LINK-DIR CLEANUP-TREE+
+   FMT-GROW:REGISTER
    FMT-ROOT$ CLEANUP-FORGET
    [: CLEANUP-RUN ;] catch 0 T=
+   FMT-GROW:GONE?
    FMT-COPY-DST EXISTS? TFALSE
    FMT-ATOMIC-PATH EXISTS? TFALSE
    FMT-STAGED-TMP EXISTS? TFALSE
@@ -1598,6 +1733,7 @@ public
    FMT-TEST-REMOVE-TREE-DEPTH-FDS
    FMT-TASKS:RUN
    FMT-TEST-CLEANUP
+   FMT-RACE:RUN
    T-REPORT
    s" fs-mutate-test: ok" type cr ;
 

@@ -41,10 +41,10 @@ package PROC-FORK-TEST
 \ through a pool: whoever the caller is, the child arm of PROC-FORK:RAW empties
 \ src/lib/fs-mutate.f's cleanup table before the caller's child code runs.
 \
-\ The parent registers a tree, forks, and the child exits with the cleanup depth
-\ it inherited as its exit code - so the reap alone decides the invariant, since
-\ an inherited entry comes back as a nonzero code. The table caps at
-\ FS-MUT-CLEANUP-MAX, so the depth always fits in an exit code. The child also
+\ The parent registers a tree, forks, and the child exits 1 when it inherited
+\ any cleanup entry and 0 when it inherited none - so the reap alone decides the
+\ invariant, since an inherited entry comes back as a nonzero code. The table
+\ has no fixed size, so its depth need not fit an exit code. The child also
 \ registers and runs its OWN cleanup, which lets the parent see afterwards that
 \ the child's tree is gone (the machinery really ran) while the parent's tree is
 \ untouched. The fixture root itself is never registered, so no cleanup run can
@@ -87,13 +87,13 @@ variable OWN-U
 
 \ Child body: read the inherited depth BEFORE registering anything of its own
 \ (its own registration would add to it, and CLEANUP-RUN clears it), then clean
-\ up what it registered and carry the depth out as the exit code.
+\ up what it registered and exit 1 when the depth was not 0.
 : CHILD-CLEANUP ( -- )
    FS-MUT-CLEANUP-N @ {: depth:n :}
    OWN$ MAKE-DIRS
    OWN$ CLEANUP-TREE+
    CLEANUP-RUN
-   depth FORK-EXIT ;
+   depth 0<> if 1 else 0 then FORK-EXIT ;
 
 : CHECK-CHILD-CLEANUP ( -- )
    PATHS!

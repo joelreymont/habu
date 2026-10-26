@@ -224,10 +224,8 @@ create FS-TEST-U64
    FS-TEST-OUT pathu data datau WRITE-ALL
    pathu ;
 
-\ THE CLEANUP REGISTRY IS EXACTLY FULL at the end of this fixture
-\ (FS-MUT-CLEANUP-MAX slots, measured), so anything added here has to give one
-\ back: the two walk trees the concurrent rows own take none and FS-TEST-CLEANUP
-\ removes them by hand.
+\ Each child file is registered for removal at exit. The two walk trees the
+\ concurrent rows own are not: FS-TEST-CLEANUP removes them by hand.
 : FS-TEST-WRITE-CHILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    FS-TEST-WRITE-PLAIN FS-TEST-OUT swap CLEANUP+ ;
 

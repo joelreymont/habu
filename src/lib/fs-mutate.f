@@ -17,10 +17,8 @@
 \ this module's one SINGLE-TASK pair (8192 bytes is more than the whole per-task
 \ band could carry; a second task that must copy needs its own buffer); and the
 \ cleanup registry, which is a PROCESS exit registry and not per-call scratch -
-\ REGISTERING is safe from any task, because a registration claims its slot with
-\ one atomic-add and writes only that slot, FORGETTING is too, because it empties
-\ only the slot naming its path and gives the top back with one atomic-cas, and
-\ the RUN belongs to the process.
+\ REGISTERING, FORGETTING and the RUN are safe from any task, because all three
+\ run under the registry's one spin lock, which also covers growing its rows.
 \
 \ CONTRACT. Public names avoid the primitives' (the dictionary is
 \ case-insensitive): MAKE-DIR, REMOVE-DIR, MAKE-DIRS, not mkdir or rmdir. After
@@ -43,10 +41,11 @@
 \ when the process was handed one (the caller reaps it, even after a kill),
 \ else under $TMPDIR or /tmp; HB-TMP-MKDIR and TMPDIR-MKDIR make it under the
 \ root's canonical spelling. CLEANUP-RUN removes registrations newest first,
-\ so a parent registered before its child goes after it. Each registration also
-\ arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL, chaining a hook already
-\ there to run last, once; a restored or stripped image (docs/architecture.md
-\ "Images") starts with an empty table.
+\ so a parent registered before its child goes after it, and the registry
+\ grows with what it holds: no number of registrations is refused. Each
+\ registration also arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL,
+\ chaining a hook already there to run last, once; a restored or stripped
+\ image (docs/architecture.md "Images") starts with an empty table.
 \
 \ Every buffer this module owns - the second NUL-padded path, the copy buffer,
 \ the atomic and temp path builders and the cleanup path stack - is a span, so
@@ -63,6 +62,8 @@ require src/lib/fs.f
 require src/lib/fs-identity.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
+require src/lib/memory.f
+require src/lib/image-lifecycle.f
 
 $FFF constant FS-MUT-MODE-PERM
 73 constant FS-MUT-MODE-EXEC
@@ -70,7 +71,6 @@ $FFF constant FS-MUT-MODE-PERM
 448 constant FS-MUT-MODE-PRIVATE-DIR
 493 constant FS-MUT-MODE-DIR
 8192 constant FS-MUT-COPY-CAP
-64 constant FS-MUT-CLEANUP-MAX
 64 constant FS-MUT-ATOMIC-RETRIES
 64 constant FS-MUT-TMP-RETRIES
 0 constant FS-MUT-CLEANUP-FILE
@@ -82,11 +82,52 @@ $2F constant FS-MUT-SLASH
 17 constant FS-MUT-EXISTS                    \ EEXIST on both targets
 
 FS-MUT-COPY-CAP SPAN-BUFFER: FS-MUT-COPY-BUF
-FS-MUT-CLEANUP-MAX FS-PATH-CAP * SPAN-BUFFER: FS-MUT-CLEANUP-PATHS
-create FS-MUT-CLEANUP-US FS-MUT-CLEANUP-MAX cells allot
-create FS-MUT-CLEANUP-KINDS FS-MUT-CLEANUP-MAX cells allot
 
+\ THE CLEANUP REGISTRY IS ONE ROW THAT GROWS WITH IT, a MEM:ALLOC-CELLS
+\ mapping the process owns. Slot i is FS-MUT-CLEANUP-STRIDE cells at cell
+\ i * STRIDE: the path's length, its kind, then FS-PATH-CAP path bytes.
+\ FS-MUT-CLEANUP-CAP counts the slots mapped and FS-MUT-CLEANUP-N the slots in
+\ use, oldest first. A full row grows to twice its slots (FS-MUT-CLEANUP-FIRST
+\ the first time): the new row is mapped, the slots in use copied, the new row
+\ and its capacity published, and only then the old row released.
+\ FS-MUT-CLEANUP-LOCK serializes registration, forgetting, growth and the run,
+\ and holds its owner: the address of that task's DATA region, which no two
+\ live tasks share.
+\
+\ A CAPTURE KEEPS THE PROCESS'S REGISTRATIONS AND THE IMAGE STARTS EMPTY. N,
+\ CAP and ROW are IMAGE-LIFECYCLE process cells: the image writer stores them
+\ as 0 and the capturing process keeps its values, so its own paths are still
+\ removed at its exit while the image owns no path and no mapping. They are
+\ declared at the FIRST REGISTRATION, not at load, because a load inside a
+\ native build's capture window would put that window's DATA addresses into the
+\ host's process-cell table, whose 64 slots every such load would spend, and
+\ whose cells a later snapshot would zero in storage that is no longer the
+\ program's. FS-MUT-CLEANUP-DECLARED is no process cell: a snapshot keeps the
+\ table that holds the declarations, so it keeps the flag that says they exist.
+FS-PATH-CAP CELL 1- + CELL / 2 + constant FS-MUT-CLEANUP-STRIDE
+8 constant FS-MUT-CLEANUP-FIRST
+TYPED-VARIABLE FS-MUT-CLEANUP-ROW ptr n
+variable FS-MUT-CLEANUP-CAP
+variable FS-MUT-CLEANUP-DECLARED
+
+\ Atomic cells require native cell alignment.
+here data-base - negate 7 and allot
 variable FS-MUT-CLEANUP-N
+variable FS-MUT-CLEANUP-LOCK
+
+\ The row's address is declared as the cell it is: IMAGE-LIFECYCLE:PROCESS-CELL
+\ takes ( ptr n ), and an address becomes one only through a private cast.
+package FS-CLEANUP
+private
+CAST: >CELL ( n -- ptr n )
+public
+: DECLARE ( -- )
+   FS-MUT-CLEANUP-DECLARED @ 0<> if exit then
+   FS-MUT-CLEANUP-N IMAGE-LIFECYCLE:PROCESS-CELL
+   FS-MUT-CLEANUP-CAP IMAGE-LIFECYCLE:PROCESS-CELL
+   FS-MUT-CLEANUP-ROW NULL-PTR - >CELL IMAGE-LIFECYCLE:PROCESS-CELL
+   1 FS-MUT-CLEANUP-DECLARED ! ;
+;package
 
 \ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
@@ -130,20 +171,47 @@ FS-MUT-BAND-AGREE
    s su dst u SPAN:SKIP SPAN:COPY
    u su + ;
 
-: FS-MUT-CLEANUP-SLOT ( n -- SPAN:span<u8> ) {: idx :}
+\ Slot idx's first cell, its length; a slot outside the mapped row is refused.
+: FS-MUT-CLEANUP-AT ( n -- ptr n ) {: idx :}
    idx 0 < if E-FS-CAPACITY throw then
-   idx FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
-   FS-MUT-CLEANUP-PATHS idx FS-PATH-CAP * FS-PATH-CAP SPAN:SUB ;
+   idx FS-MUT-CLEANUP-CAP @ >= if E-FS-CAPACITY throw then
+   FS-MUT-CLEANUP-ROW @ idx FS-MUT-CLEANUP-STRIDE * cells + ;
 
-: FS-MUT-CLEANUP-U-PTR ( n -- ptr n ) {: idx :}
-   idx 0 < if E-FS-CAPACITY throw then
-   idx FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
-   idx cells FS-MUT-CLEANUP-US + ;
+: FS-MUT-CLEANUP-KIND ( n -- ptr n ) FS-MUT-CLEANUP-AT CELL + ;
 
-: FS-MUT-CLEANUP-KIND-PTR ( n -- ptr n ) {: idx :}
-   idx 0 < if E-FS-CAPACITY throw then
-   idx FS-MUT-CLEANUP-MAX >= if E-FS-CAPACITY throw then
-   idx cells FS-MUT-CLEANUP-KINDS + ;
+\ Slot idx's path bytes as a span, so every copy into a slot is bounded by it.
+: FS-MUT-CLEANUP-SLOT ( n -- SPAN:span<u8> )
+   FS-MUT-CLEANUP-AT 2 cells + BYTE-VIEW FS-PATH-CAP SPAN:MAKE ;
+
+\ The path slot idx names.
+: FS-MUT-CLEANUP-PATH ( n -- ptr u8 n ) {: idx :}
+   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-AT @ SPAN:TAKE SPAN:$ ;
+
+\ Under the lock. A refused mapping leaves the row, its capacity and N as found.
+: FS-MUT-CLEANUP-GROW ( -- )
+   FS-MUT-CLEANUP-CAP @ {: cap :}
+   cap 2 * FS-MUT-CLEANUP-FIRST max {: grown :}
+   grown FS-MUT-CLEANUP-STRIDE * MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: row:ptr :}
+   FS-MUT-CLEANUP-ROW @ {: old:ptr :}
+   cap 0 > if
+      old BYTE-VIEW row BYTE-VIEW
+      FS-MUT-CLEANUP-N @ FS-MUT-CLEANUP-STRIDE * cells BYTE-COPY
+   then
+   row FS-MUT-CLEANUP-ROW !
+   grown FS-MUT-CLEANUP-CAP !
+   cap 0 > if
+      old cap FS-MUT-CLEANUP-STRIDE * MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS
+   then ;
+
+\ `atomic-cas` and `atomic!` are engine primitives (src/habu/prims.f), so the
+\ lock needs no src/lib/task.f.
+: FS-MUT-CLEANUP-SELF ( -- n ) data-base BYTE-VIEW NULL-PTR BYTE-VIEW - ;
+
+: FS-MUT-CLEANUP-ACQUIRE ( -- )
+   FS-MUT-CLEANUP-SELF {: self :}
+   begin 0 self FS-MUT-CLEANUP-LOCK atomic-cas 0= until ;
+
+: FS-MUT-CLEANUP-RELEASE ( -- ) 0 FS-MUT-CLEANUP-LOCK atomic! ;
 
 : REMOVE-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-PATHZ unlink 0 < if E-FS-IO throw then ;
@@ -716,12 +784,18 @@ public
    then
    prefixu FS-MUT-HB-TMP-CHECK prefix prefixu MAKE-TEMP-DIR ;
 
+\ Its callers are a just-forked child (src/lib/process-fork.f registers it with
+\ FORK-CHILD) and single-task fixtures, where no other task can be inside the
+\ registry: a registration another task was in when the process forked is part
+\ of what the fork copied, so the lock opens with the count, as FORK-CHILD:RESET
+\ opens its own.
 : CLEANUP-RESET ( -- )
-   0 FS-MUT-CLEANUP-N ! ;
+   0 FS-MUT-CLEANUP-N !
+   FS-MUT-CLEANUP-RELEASE ;
 
 : FS-MUT-CLEANUP-REMOVE ( n -- ) {: idx :}
-   idx FS-MUT-CLEANUP-SLOT idx FS-MUT-CLEANUP-U-PTR @ SPAN:TAKE SPAN:$ {: a:ptr u :}
-   idx FS-MUT-CLEANUP-KIND-PTR @ {: kind :}
+   idx FS-MUT-CLEANUP-PATH {: a:ptr u :}
+   idx FS-MUT-CLEANUP-KIND @ {: kind :}
    a u SYMLINK? if a u REMOVE-FILE exit then
    a u EXISTS? 0= if exit then
    kind FS-MUT-CLEANUP-TREE = if
@@ -733,11 +807,30 @@ public
       a u REMOVE-FILE
    then then ;
 
-: CLEANUP-RUN ( -- )
+\ Under the lock.
+: FS-MUT-CLEANUP-REMOVE-ALL ( -- )
    FS-MUT-CLEANUP-N @ begin dup 0 > while
       1 - dup FS-MUT-CLEANUP-REMOVE
    repeat drop
-   CLEANUP-RESET ;
+   0 FS-MUT-CLEANUP-N ! ;
+
+\ THE RUN HOLDS THE LOCK FROM ITS FIRST SLOT TO ITS LAST. A slot's path is read
+\ in place, and REMOVE-TREE reads its root's name again once the tree below is
+\ gone, so a registration that grew the row (releasing the old one) or a
+\ forget that shifted the slots while the run stood would hand it freed or
+\ moved bytes. A task that registers or forgets meanwhile waits for the run.
+\ The exit hook runs this on whichever task exits, and that task may already
+\ hold the lock: a `die` inside a registration, a forget or a run of its own.
+\ It then runs under the hold it has, which no other task can move: every
+\ counted slot is whole, since a registration counts its slot only once it is
+\ written and a growth publishes the new row before releasing the old.
+: CLEANUP-RUN ( -- )
+   FS-MUT-CLEANUP-LOCK atomic@ FS-MUT-CLEANUP-SELF = if
+      FS-MUT-CLEANUP-REMOVE-ALL exit
+   then
+   FS-MUT-CLEANUP-ACQUIRE
+   [: FS-MUT-CLEANUP-REMOVE-ALL ;] [: FS-MUT-CLEANUP-RELEASE ;] finally ;
+
 
 \ ---- the registry runs at process exit ---------------------------------------
 \ The table above is walked by CLEANUP-RUN, and an explicit CLEANUP-RUN used to
@@ -840,30 +933,29 @@ public
    ['] CLEANUP-AT-EXIT VECTOR ! ;
 ;package
 
-\ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: the
-\ slot is claimed with one atomic-add on the count - `atomic-add` is an engine
-\ primitive (src/habu/prims.f), so this needs no src/lib/task.f - and the claimer
-\ writes nothing but the slot it was handed. The count is what CLEANUP-RUN walks
-\ down from, so a claim past the table's end is GIVEN BACK before the refusal;
-\ otherwise a refused 65th path would leave a count no run could walk. The
-\ claimed slot's length is zeroed before the copy, so a slot claimed by a
-\ registration that then throws is empty rather than whatever the last round
-\ left there, and CLEANUP-RUN steps over it.
+\ REGISTRATION IS SAFE FROM ANY TASK although the table is the process's: it
+\ runs under FS-MUT-CLEANUP-LOCK, which a refusal releases too. The row grows
+\ when it is full, the slot is written, and only then is it counted, so every
+\ counted slot names a path and a refused registration - a path past the slot
+\ (E-SPAN-CAPACITY), a row that cannot grow, a full process-cell table - leaves
+\ the count it found.
+: FS-MUT-CLEANUP-APPEND ( ptr u8 n n -- ) {: a:ptr u kind :}
+   FS-CLEANUP:DECLARE
+   FS-MUT-CLEANUP-N @ {: idx :}
+   idx FS-MUT-CLEANUP-CAP @ = if FS-MUT-CLEANUP-GROW then
+   a u idx FS-MUT-CLEANUP-SLOT SPAN:COPY
+   u idx FS-MUT-CLEANUP-AT !
+   kind idx FS-MUT-CLEANUP-KIND !
+   idx 1+ FS-MUT-CLEANUP-N ! ;
+
 : FS-MUT-CLEANUP+ ( ptr u8 n n -- ) {: a:ptr u kind :}
    FS-EXIT:ARM
    u 0 < if E-FS-PATH throw then
    kind FS-MUT-CLEANUP-FILE <>
    kind FS-MUT-CLEANUP-DIR <> and
    kind FS-MUT-CLEANUP-TREE <> and if E-FS-IO throw then
-   1 FS-MUT-CLEANUP-N atomic-add {: idx :}
-   idx FS-MUT-CLEANUP-MAX >= if
-      -1 FS-MUT-CLEANUP-N atomic-add drop
-      E-FS-CAPACITY throw
-   then
-   0 idx FS-MUT-CLEANUP-U-PTR !
-   a u idx FS-MUT-CLEANUP-SLOT SPAN:COPY
-   kind idx FS-MUT-CLEANUP-KIND-PTR !
-   u idx FS-MUT-CLEANUP-U-PTR ! ;
+   FS-MUT-CLEANUP-ACQUIRE
+   a u kind [: FS-MUT-CLEANUP-APPEND ;] [: FS-MUT-CLEANUP-RELEASE ;] finally ;
 
 : CLEANUP+ ( ptr u8 n -- )
    FS-MUT-CLEANUP-FILE FS-MUT-CLEANUP+ ;
@@ -876,15 +968,14 @@ public
 
 \ A PATH ITS OWNER HAS REMOVED IS FORGOTTEN, so the table holds only what is
 \ still owed: a process that makes and removes a tree per job registers each
-\ one and forgets it once it is gone, and its count never walks toward
-\ FS-MUT-CLEANUP-MAX. The newest slot naming the path is emptied - the state
-\ CLEANUP-RUN steps over - and, when it is the top of the table, given back
-\ with one atomic-cas on the count. A claim another task made meanwhile defeats
-\ the cas, keeps its own slot, and leaves the emptied one empty. A path no slot
-\ names is a no-op; an empty path is E-FS-PATH, since an empty slot is not one.
+\ one and forgets it once it is gone, and its count stays the number of paths
+\ still owed. The newest slot naming the path is removed and every newer slot
+\ moves down one, so the table keeps its newest-first run order with no gap,
+\ under the lock registration takes. A path no slot names is a no-op; an empty
+\ path is E-FS-PATH, since no registration names it to be forgotten.
 : FS-MUT-CLEANUP-NAMES? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
-   idx FS-MUT-CLEANUP-U-PTR @ u <> if 0 0= 0= exit then
-   idx FS-MUT-CLEANUP-SLOT u SPAN:TAKE SPAN:$ a u STR= ;
+   idx FS-MUT-CLEANUP-AT @ u <> if 0 0= 0= exit then
+   idx FS-MUT-CLEANUP-PATH a u STR= ;
 
 \ The newest slot naming the path, or -1.
 : FS-MUT-CLEANUP-FIND ( ptr u8 n -- n ) {: a:ptr u :}
@@ -894,12 +985,23 @@ public
    repeat
    drop -1 ;
 
-: CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 <= if E-FS-PATH throw then
+\ The slots above idx move down one in a single forward copy, which is safe
+\ because the destination lies below the source.
+: FS-MUT-CLEANUP-DROP ( ptr u8 n -- ) {: a:ptr u :}
    a u FS-MUT-CLEANUP-FIND {: idx :}
    idx 0 < if exit then
-   0 idx FS-MUT-CLEANUP-U-PTR !
-   idx 1 + idx FS-MUT-CLEANUP-N atomic-cas drop ;
+   FS-MUT-CLEANUP-N @ 1- {: last :}
+   idx last < if
+      idx 1+ FS-MUT-CLEANUP-AT BYTE-VIEW idx FS-MUT-CLEANUP-AT BYTE-VIEW
+      last idx - FS-MUT-CLEANUP-STRIDE * cells BYTE-COPY
+   then
+   last FS-MUT-CLEANUP-N ! ;
+
+: CLEANUP-FORGET ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 <= if E-FS-PATH throw then
+   FS-MUT-CLEANUP-ACQUIRE
+   a u [: FS-MUT-CLEANUP-DROP ;] [: FS-MUT-CLEANUP-RELEASE ;] finally ;
+
 
 \ ---- replacing a file through its sibling --------------------------------------
 
@@ -938,8 +1040,8 @@ public
 \ once fill returns. Until then path holds what it held, so it names its old
 \ file or the whole new one. The sibling is registered for removal at exit
 \ while it is held, so a throw from fill or the rename, or a `die` in fill,
-\ takes it with it; only a killed process leaves one behind. A full registry
-\ refuses the claim, and the sibling goes then. fill must not reserve a
+\ takes it with it; only a killed process leaves one behind. A refused
+\ registration refuses the claim, and the sibling goes then. fill must not reserve a
 \ sibling of its own (ATOMIC-WRITE-FILE does): RESERVE-SIBLING's path is this
 \ task's only until its next reservation.
 \ A caller may pass context below path; fill must return that context unchanged

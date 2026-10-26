@@ -443,7 +443,7 @@ create GPT-FC-PARENT FS-PATH-CAP allot    \ registered by the parent, before the
 create GPT-FC-PARENT-FILE FS-PATH-CAP allot
 create GPT-FC-CHILD FS-PATH-CAP allot     \ registered by the child, after the fork
 create GPT-FC-CHILD-FILE FS-PATH-CAP allot
-create GPT-FC-DEPTH FS-PATH-CAP allot     \ one byte: the table depth the child inherited
+create GPT-FC-DEPTH FS-PATH-CAP allot     \ one byte: 1 when the child inherited an entry
 create GPT-FC-DONE FS-PATH-CAP allot      \ written after the child's CLEANUP-RUN returns
 create GPT-FC-BYTE 8 allot                \ a whole cell, so what follows stays aligned
 variable GPT-FC-EV-U
@@ -498,15 +498,12 @@ variable GPT-FC-DONE-U
    GPT-FC-PARENT-FILE$ s" keep" WRITE-ALL
    GPT-FC-PARENT$ CLEANUP-TREE+ ;
 
-\ The fork worker records the cleanup depth it inherited - one byte, written
-\ before it touches the table - then registers and runs its OWN cleanup. It
-\ asserts nothing: a failed assertion in a fork child still exits 0, so every
+\ The fork worker records whether it inherited any cleanup entry - one byte, 1
+\ or 0, written before it touches the table - then registers and runs its OWN
+\ cleanup. It asserts nothing: a failed assertion in a fork child still exits 0, so every
 \ verdict belongs to the parent.
 : GPT-FC-WORKER ( -- )
-   FS-MUT-CLEANUP-N @ {: depth:n :}
-   depth 0 < if E-FS-CAPACITY throw then
-   depth FS-MUT-CLEANUP-MAX > if E-FS-CAPACITY throw then
-   depth GPT-FC-BYTE c!
+   FS-MUT-CLEANUP-N @ 0<> if 1 else 0 then GPT-FC-BYTE c!
    GPT-FC-DEPTH$ GPT-FC-BYTE 1 WRITE-ALL
    GPT-FC-CHILD$ MAKE-DIRS
    GPT-FC-CHILD-FILE$ s" mark" WRITE-ALL
@@ -515,7 +512,7 @@ variable GPT-FC-DONE-U
    GPT-FC-DONE$ s" done" WRITE-ALL ;
 
 \ Poison the byte before reading it, so a short or empty read cannot pass for a
-\ recorded depth of 0, and demand exactly the one byte the child wrote.
+\ recorded 0, and demand exactly the one byte the child wrote.
 : GPT-FC-DEPTH@ ( -- n )
    $FF GPT-FC-BYTE c!
    GPT-FC-DEPTH$ GPT-FC-BYTE 1 READ-ALL {: got:n :}
