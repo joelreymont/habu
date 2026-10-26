@@ -178,7 +178,7 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
 \ scan reports the first one with the three facts a program has to be edited by:
 \ its owning word, its DATA offset and the pointer it holds.
 \ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN. A stored value can
-\ come from unchecked top-level code or an explicit `0 set-check` window.
+\ come from an explicit `0 set-check` window or an unchecked body.
 \ A declared pointer cell can likewise hold a builder-only mapping;
 \ its type says what kind of value it holds, not whether that mapping survives
 \ capture. A literal body has no such door: nothing stores into it.

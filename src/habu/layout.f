@@ -1757,8 +1757,9 @@ $2D50 constant TEXT-SIZE-CELL
 \ request below it, the reused space, and never touches the pages a large
 \ allot reserves. 0 is below every DP, so a fresh mapping reads as nothing released.
 \ An offset rather than an address, as DATA-FLOOR-CELL is, so nothing relocates
-\ it; a snapshot carries it with the rest of DATA, where it can only overstate
-\ the reused space of the restored DATA, whose bytes above `here` are fresh.
+\ it. A snapshot zeroes it (snap-lib.f SND-ZERO-LIVE): the restored DATA's
+\ bytes above `here` are fresh, and an image's bytes must not depend on what
+\ its writer rolled back.
 $2D58 constant DPHW-CELL
 package NCOMP-DISPATCH
 public

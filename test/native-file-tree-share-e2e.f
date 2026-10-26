@@ -1,7 +1,9 @@
-\ The definition cache is keyed by tree-relative file identity: an identical
-\ copy of an application at another path, built into the same cache, reuses
-\ every definition entry, and a copy whose library value changed under the same
-\ contract still reuses its caller, which then calls the recompiled value.
+\ File objects are keyed by tree-relative file identity and check their input
+\ rows against the tree that builds them: an identical copy of an application
+\ at another path, built into the same cache, reuses every file and compiles
+\ none, and a copy whose library value changed under the same contract
+\ recompiles the library under the shared key and reuses its caller, which
+\ then calls the recompiled value.
 \ Run: bin/hb --load test/native-file-tree-share-e2e.f
 
 require src/lib/test.f
@@ -25,8 +27,8 @@ create CACHE-PATH FS-PATH-CAP allot
 create OUT-A CAP allot  variable OUT-A-U
 create OUT-B CAP allot  variable OUT-B-U
 create OUT-C CAP allot  variable OUT-C-U
-variable DEF-N
-variable DEFS-A  variable DEFS-B  variable DEFS-C
+variable OBJ-N
+variable OBJS-A  variable OBJS-B  variable OBJS-C
 
 : APP ( -- ptr u8 n )
    S\" require lib.f\n: MAIN ( -- ) TREE-SHARE-LIB:VALUE . ;\n" ;
@@ -71,35 +73,31 @@ variable DEFS-A  variable DEFS-B  variable DEFS-C
 : KEEP ( ptr u8 ptr len -- ) {: dst:ptr lenp:ptr :}
    0 >LEN lenp ! OUT$ dst CAP lenp BUF-APPEND ;
 
-\ A definition entry, hb-def-<64 hex>.hbd, counts once.
-: NOTE-DEF ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" hb-def-" STARTS-WITH? a u s" .hbd" ENDS-WITH? and
-   if 1 DEF-N +! then ;
+\ A file object, hb-file-<64 hex>.hfo, counts once.
+: NOTE-OBJ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" hb-file-" STARTS-WITH? a u s" .hfo" ENDS-WITH? and
+   if 1 OBJ-N +! then ;
 
-\ The hb-def-*.hbd entries in the shared cache.
-: DEFS ( -- n )
-   0 DEF-N !
-   s" cache" AT [: NOTE-DEF ;] FS-LIST:EACH
-   DEF-N @ ;
-
-: WARM? ( -- bool )
-   OUT$ s" definition hits " CONTAINS?
-   OUT$ S\" definition hits 0\n" CONTAINS? 0= and ;
+\ The hb-file-*.hfo objects in the shared cache.
+: OBJS ( -- n )
+   0 OBJ-N !
+   s" cache" AT [: NOTE-OBJ ;] FS-LIST:EACH
+   OBJ-N @ ;
 
 : LINE ( ptr u8 n ptr u8 n -- ) {: tag:ptr tagu:n a:ptr u:n :}
    tag tagu SB-APPEND s" : " SB-APPEND a u SB-APPEND ;
 
 : COUNT-LINE ( ptr u8 n n -- ) {: tag:ptr tagu:n n:n :}
-   tag tagu SB-APPEND s"  defs " SB-APPEND n FMT:SB-INT 10 SB-APPEND-C ;
+   tag tagu SB-APPEND s"  objects " SB-APPEND n FMT:SB-INT 10 SB-APPEND-C ;
 
 : ARTIFACT ( -- )
    SB-RESET
    s" a" OUT-A OUT-A-U @ LINE
    s" b" OUT-B OUT-B-U @ LINE
    s" c" OUT-C OUT-C-U @ LINE
-   s" a" DEFS-A @ COUNT-LINE
-   s" b" DEFS-B @ COUNT-LINE
-   s" c" DEFS-C @ COUNT-LINE
+   s" a" OBJS-A @ COUNT-LINE
+   s" b" OBJS-B @ COUNT-LINE
+   s" c" OBJS-C @ COUNT-LINE
    s" tree-share.txt" AT SB$ WRITE-ALL ;
 
 public
@@ -113,28 +111,30 @@ public
 
    s" a cold tree builds and runs" T-LABEL
    s" a" BUILD SUCCESS
+   OUT$ S\" files reused 0\n compiled 2\n" CONTAINS? TTRUE
    s" a" RUN
    OUT$ S\" 42\n" T$=
    OUT-A OUT-A-U KEEP
-   DEFS DEFS-A !
-   DEFS-A @ 0 > TTRUE
+   OBJS OBJS-A !
+   OBJS-A @ 0 > TTRUE
 
-   s" an identical tree at another path reuses every definition" T-LABEL
+   s" an identical tree at another path reuses every file" T-LABEL
    s" b" BUILD SUCCESS
-   WARM? TTRUE
+   OUT$ S\" files reused 2\n compiled 0\n" CONTAINS? TTRUE
    s" b" RUN
    OUT$ OUT-A OUT-A-U @ T$=
    OUT-B OUT-B-U KEEP
-   DEFS DEFS-B !
-   DEFS-B @ DEFS-A @ T=
+   OBJS OBJS-B !
+   OBJS-B @ OBJS-A @ T=
 
-   s" an edited library value reuses its caller against the new value" T-LABEL
+   s" an edited library recompiles and its caller calls the new value" T-LABEL
    s" c" BUILD SUCCESS
-   WARM? TTRUE
+   OUT$ S\" files reused 1\n compiled 1\n" CONTAINS? TTRUE
    s" c" RUN
    OUT$ S\" 100\n" T$=
    OUT-C OUT-C-U KEEP
-   DEFS DEFS-C !
+   OBJS OBJS-C !
+   OBJS-C @ OBJS-A @ T=
 
    ARTIFACT
    T-REPORT

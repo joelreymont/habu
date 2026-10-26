@@ -48,9 +48,10 @@ private
 32 constant PRIMITIVE-HEAD
 \ A file frame's cells: its row offset, its first record ordinal, where its
 \ children's record ranges start, where its first ORDERED reason starts, and
-\ its entry here, the pending run count (FRUN-N) when it opened, and the
+\ its entry here, the pending run count (FRUN-N) when it opened, the
 \ wordlist counter where its open segment began: at its open, then after
-\ each child file it loaded.
+\ each child file it loaded, and whether a top-level action ran with checking
+\ off.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
@@ -58,13 +59,15 @@ private
 4 constant F-HERE
 5 constant F-RUNS
 6 constant F-WID
-7 constant FRAME-CELLS
+7 constant F-UNCHECKED
+8 constant FRAME-CELLS
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
 \ checker's unit facts before it, whether it opened a child file, the
-\ output bytes the open files held before it (RUN-OUT), and the pending FFI
-\ declaration before it (PENDING).
+\ output bytes the open files held before it (RUN-OUT), the pending FFI
+\ declaration before it (PENDING) and CWORK's layout mark before it
+\ (CWORK-MARK).
 0 constant R-ORD
 1 constant R-END
 2 constant R-N
@@ -75,7 +78,8 @@ private
 10 constant R-CHILD
 11 constant R-OUT
 12 constant R-PENDING
-13 constant RUN-CELLS
+13 constant R-CWORK
+14 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -589,6 +593,8 @@ variable FACTS-XT
 CAST: AS-FACTS ( n -- [ -- n bool ] )
 variable PENDING-XT
 CAST: AS-PENDING ( n -- [ -- n ] )
+variable CWORK-XT
+CAST: AS-MARK ( n -- [ -- n ] )
 variable READERS-XT
 CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
 variable READ-AT
@@ -676,6 +682,13 @@ private
 : PENDING ( -- n )
    PENDING-XT @ 0= if 0 exit then
    PENDING-XT @ AS-PENDING execute ;
+
+\ CWORK's layout mark, CWORK:LAYOUT-MARK: its declared bytes plus its DEFAULT
+\ rows, both only increasing, so any CWORK declaration or DEFAULT changes it.
+\ 0 when the host has no CWORK.
+: CWORK-MARK ( -- n )
+   CWORK-XT @ 0= if 0 exit then
+   CWORK-XT @ AS-MARK execute ;
 
 \ The DATA offset of kernel cell k, the cells NUNIT-OBJECT KCELL names: tier,
 \ build depth, build tier and the optimizing compiler's dispatch.
@@ -1254,6 +1267,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 : FILE-ORDERED? ( -- bool ) WHYU @ F-WHY FFIELD @ > ;
 
+public
+
+\ Whether a top-level action of the innermost file ran with checking off, so
+\ its undeclared bytes may hold an address no checked store made.
+: FILE-UNCHECKED? ( -- bool ) F-UNCHECKED FFIELD @ 0<> ;
+
+private
+
 \ The definition frame reports its first ORDERED row now; the file frame keeps
 \ its first reason for FILE-REPORT.
 : ORDERED-AT ( ptr u8 n ptr u8 n n -- )
@@ -1648,28 +1669,38 @@ variable USER-READ
 
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
-\ without the name included, and then, when one of them holds the record that
-\ ran, what the run read (CAPTURE-RUN).
-: OBSERVE-RUN ( n -- )
+\ without the name included. False when no file is open, or when none of
+\ the legs holds the record that ran, which orders the file. A loader's
+\ token takes only these rows: its action is the file's LOAD row.
+: OBSERVE-LEGS ( n -- bool )
    {: ord:n :}
-   OPEN? 0= if exit then
+   OPEN? 0= if false exit then
    ord RUN-ORD !
    0 RUN-HITS !
    RUN-TOKEN$ ['] RUN-LEG TOP-XT @ AS-TOP execute
    \ RUN-ORD and RUN-HITS carry one run into RUN-LEG; they rest at 0 after it,
    \ so an image holds no run's ordinal.
-   RUN-HITS @ 0=  0 RUN-ORD !  0 RUN-HITS !
-   if s" resolution-leg-unknown" ord ORDERED-BY exit then
-   ord CAPTURE-RUN ;
+   RUN-HITS @ 0<>  0 RUN-ORD !  0 RUN-HITS ! {: hit:bool :}
+   hit 0= if s" resolution-leg-unknown" ord ORDERED-BY then
+   hit ;
+
+\ A word the source ran at top level: its resolution legs (OBSERVE-LEGS)
+\ and then, when one of them holds the record that ran, what the run read
+\ (CAPTURE-RUN).
+: OBSERVE-RUN ( n -- )
+   {: ord:n :}
+   ord OBSERVE-LEGS if ord CAPTURE-RUN then ;
 
 \ The source observer's before callback (NDEF-CACHE wraps a file's run in
 \ SOURCE-EXEC:RUN): a seed code word run at this file's top level, or in a
 \ text a pending run evaluates, is judged by the trace its run leaves, read by
 \ RUN-AFTER. It pushes a pending run, whose ticket is its index plus one; 0
-\ when the run is not judged.
+\ when the run is not judged. Any action while a file is open and checking is
+\ off marks the file unchecked first (FILE-UNCHECKED?).
 : RUN-BEFORE ( n n n n ptr u8 n -- n bool )
    2drop {: unit:n op:n rec:n entry:n :}
    unit drop entry drop
+   FDEPTH @ 0 > if check@ 0= if 1 F-UNCHECKED FFIELD ! then then
    op SOURCE-EXEC:WORD <> FDEPTH @ 0= or DEPTH @ 0 > or rec 0 < or if
       0 false exit
    then
@@ -1692,6 +1723,7 @@ variable USER-READ
    0 run R-CHILD RFIELD !
    RUN-OUT run R-OUT RFIELD !
    PENDING run R-PENDING RFIELD !
+   CWORK-MARK run R-CWORK RFIELD !
    run 1+ FRUN-N !
    run 1+ false ;
 
@@ -1706,9 +1738,16 @@ variable USER-READ
 \ refuses, so a file aligning with `here data-base - negate 7 and allot`
 \ refuses where `align` stores. A deliberate offset below the floor computed
 \ from `here` is outside this judgment. A run of a TASK watermark reader is
-\ accounted by the watermark its segment records (USER-READ).
+\ accounted by the watermark its segment records (USER-READ). A run that
+\ declared CWORK storage or wrote a CWORK DEFAULT refuses whatever else it
+\ left: compiler working state is never carried, so the file compiles from
+\ source on every build. A run that loaded a child file leaves the child's
+\ CWORK writes to the child's own runs.
 : RUN-JUDGE ( n -- )
    {: run:n :}
+   run R-CHILD RFIELD @ 0=  CWORK-MARK run R-CWORK RFIELD @ <>  and if
+      s" run-writes-cwork" run R-ORD RFIELD @ ORDERED-BY exit
+   then
    SOURCE-EXEC:POSITION {: off:n balanced:bool :}
    balanced drop
    off run R-END RFIELD @ > if exit then
@@ -1752,6 +1791,7 @@ variable USER-READ
    s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
    s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
    s" FFI-DECL:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT PENDING-XT !
+   s" CWORK:LAYOUT-MARK" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT CWORK-XT !
    s" TASK:OWNED-USER-READERS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT READERS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
@@ -1763,6 +1803,7 @@ variable USER-READ
    HERE-N base F-HERE + FFRAMES !
    FRUN-N @ base F-RUNS + FFRAMES !
    AOT-ARM:WIDN base F-WID + FFRAMES !
+   0 base F-UNCHECKED + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -1910,7 +1951,7 @@ variable USER-READ
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
    0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 PENDING-XT !
-   0 READERS-XT !
+   0 READERS-XT ! 0 CWORK-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

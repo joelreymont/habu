@@ -313,6 +313,10 @@ PTR-VARIABLE SND-A
    EVAL-TOP-CELL SND-ZERO-CELL  EVALD-CELL SND-ZERO-CELL
    CLOSED-FREE-CELL SND-ZERO-CELL
    FLOORREC-CELL SND-ZERO-CELL
+   \ The release high-water records the writer's rollbacks. The restored DATA
+   \ above `here` is fresh, so the image starts with nothing released and its
+   \ bytes do not depend on what the build rolled back.
+   DPHW-CELL SND-ZERO-CELL
    HB-TARGET-LINUX-X86-64? 0= if CODE-END-CELL SND-ZERO-CELL then
    DEF-OCC:PTR-CELL SND-ZERO-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE SND-ZERO-CELL

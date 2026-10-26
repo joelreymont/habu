@@ -1,4 +1,6 @@
-\ A cached FILE replays CWORK layout and ordered defaults across a parent edit.
+\ A file that declares CWORK storage or writes a CWORK DEFAULT at top level
+\ compiles from source on every build: compiler working state is never
+\ carried, so its layout and ordered defaults hold across a parent edit.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -42,14 +44,14 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
 : CHECK-DEFAULT-ORDER ( -- )
    s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE VALUE n\n;package\nCWORK-FILE:VALUE @ drop\nCWORK:DECLARED-BYTES CELL - 9 CWORK:DEFAULT\nCWORK:DECLARED-BYTES CELL - 0 CWORK:DEFAULT\ns\" default unit source ran\" type cr\n" PUT
    s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . ;\n" PUT
-   s" FILE replay retains repeated and zero defaults" T-LABEL
+   s" a rebuilt CWORK file retains repeated and zero defaults" T-LABEL
    s" defaults-hb" BUILD
    RUN-BIN-PATH
    OUT$ S\" 0\n" CONTAINS? TTRUE
    s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . 5 . ;\n" PUT
    s" defaults-warm-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" default unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 0\n5\n" CONTAINS? TTRUE ;
 
@@ -57,7 +59,7 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
    s" prefix.f" S\" package CWORK-PREFIX public\n1 constant CELL-COUNT\n1 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" unit.f" S\" package CWORK-FILE public\n7 CWORK-VARIABLE VALUE n\n2 CWORK-BUFFER ROWS n\n;package\nCWORK:DECLARED-BYTES 3 CELL * - 9 CWORK:DEFAULT\nCWORK:DECLARED-BYTES 3 CELL * - 19 CWORK:DEFAULT\ns\" moved unit source ran\" type cr\n" PUT
    s" app.f" S\" require prefix.f\nrequire unit.f\n: MAIN ( -- ) CWORK-PREFIX:CELL-COUNT 0 ?do 71 i CWORK-PREFIX:PREFIX-ROW ! loop CWORK-FILE:VALUE @ . 31 1 CWORK-FILE:ROWS ! CWORK-FILE:VALUE @ . 1 CWORK-FILE:ROWS @ . ;\n" PUT
-   s" cached CWORK allocation follows an earlier prefix" T-LABEL
+   s" a rebuilt CWORK allocation follows an earlier prefix" T-LABEL
    s" moved-cold-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
    RUN-BIN-PATH
@@ -65,13 +67,13 @@ create CACHE FS-PATH-CAP allot variable CACHE-U
    s" prefix.f" S\" package CWORK-PREFIX public\n3 constant CELL-COUNT\n3 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-grow-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
    s" prefix.f" S\" package CWORK-PREFIX public\n2 constant CELL-COUNT\n2 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-shrink-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE ;
 
@@ -99,10 +101,14 @@ public
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n42\n" CONTAINS? TTRUE
    APP-WARM
-   s" changed parent reuses CWORK child FILE" T-LABEL
+   s" a changed parent recompiles its CWORK child from source" T-LABEL
+   true NATIVE-FILE-APP:DIAG? !
    s" warm-hb" BUILD
+   false NATIVE-FILE-APP:DIAG? !
+   ERR$ S\" reason=run-writes-cwork word=CWORK-VARIABLE\n" CONTAINS? TTRUE
+   ERR$ s" /unit.f reason=ordered-dependency" CONTAINS? TTRUE
    NATIVE-FILE-APP:OUT$ s" cwork unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ s" files reused " CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n43\n" CONTAINS? TTRUE
    CHECK-DEFAULT-ORDER

@@ -802,6 +802,10 @@ Factor raw compiler and emitter code to the same standard.
   file. Run multi-file tools as `hb --load src/lib/a.f src/lib/b.f tool.f -- args…`:
   sources before `--`, `SCRIPT-ARGV$` after it, fd 0 still tool data when stdin
   is not a tty. Use `--load` only with more than one source file.
+- **Data never spans a load.** The loader aligns `here` to a cell when a loaded
+  file starts and when it ends, so a file's data bytes depend only on its own
+  source and its stored object installs whatever earlier files allotted. A live
+  task freezes data, so the loader does not align then.
 - **A leading `#!` line is a comment** in a program `hb` runs from a file or
   standard input, in every file `--load`, `include` and `require` load, and in
   the subject `tools/check.f` checks. A `#!` anywhere else is an ordinary token.
@@ -2249,7 +2253,11 @@ sections above.
   closes with a declaration open is `ffi-declaration-open`. Otherwise it is
   `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
   file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
-  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A nested run that
+  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A run that
+  declares CWORK storage or writes a CWORK default, and loaded no child file,
+  is `run-writes-cwork word=W` whatever else it left: compiler working state
+  is never carried, so the file compiles on every build
+  (`test/native-file-cwork-e2e.f`). A nested run that
   a caught throw abandoned refuses `run-abandoned word=W`: the catch restores
   HERE and the source position, so the run's trace cannot be judged.
   `test/native-file-frame-e2e.f` measures each line.

@@ -29,6 +29,11 @@ variable INPUT-U
 variable INPUT-FIRST
 variable CHECK-OFF
 variable QUERY-OFF
+\ Rows rewritten against a tree (TREE-OUT, TREE-IN): the result of the last
+\ call, valid until the next one or CLOSE.
+DYNAMIC-BUFFER TREE-BUF u8
+variable TREE-U
+variable TREE-OFF
 here data-base - negate 7 and allot
 variable MUTEX
 
@@ -331,16 +336,116 @@ public
 : FORMAT ( ptr u8 n -- ) ROW-COUNT drop ;
 
 private
+
+: TREE-PUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   u MEM-MAX-N TREE-U @ - > if BAD then
+   TREE-U @ u + TREE-BUF-RESERVE
+   a TREE-U @ TREE-BUF u BYTE-COPY
+   u TREE-U +! ;
+
+
+\ A path under root as `./` and its path relative to root, else one under the
+\ engine's source root as `@/` and its path relative to that, else as it is.
+\ An empty root names no tree.
+: OUT-PATH ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+   rootu 0<> if
+      a u root rootu SOURCE-ROOT:BELOW? if
+         s" ./" TREE-PUT a u root rootu SOURCE-ROOT:RELATIVE TREE-PUT exit
+      then
+   then
+   a u SOURCE-ROOT:ENGINE$ SOURCE-ROOT:BELOW? if
+      s" @/" TREE-PUT a u SOURCE-ROOT:ENGINE$ SOURCE-ROOT:RELATIVE TREE-PUT exit
+   then
+   a u TREE-PUT ;
+
+
+\ Root and x joined by one separator; x `.` is root itself.
+: JOINED ( ptr u8 n ptr u8 n -- ) {: x:ptr xu:n root:ptr rootu:n :}
+   root rootu TREE-PUT
+   x xu s" ." STR= if exit then
+   rootu 0<> if root rootu + 1- c@ 47 <> if s" /" TREE-PUT then then
+   x xu TREE-PUT ;
+
+
+\ Whether a is the byte c, a slash and at least one more byte.
+: MARKED? ( ptr u8 n n -- bool ) {: a:ptr u:n c:n :}
+   u 3 < if false exit then
+   a c@ c = a 1+ c@ 47 = and ;
+
+
+\ The reverse of OUT-PATH.
+: IN-PATH ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
+   a u 46 MARKED? if a 2 + u 2 - root rootu JOINED exit then
+   a u 64 MARKED? if a 2 + u 2 - SOURCE-ROOT:ENGINE$ JOINED exit then
+   a u TREE-PUT ;
+
+
+\ One row, the bytes left from it, root and the path map: the row rewritten
+\ onto TREE-BUF, and the bytes it held. FILE, CONTENT and QUERY rows map their
+\ path and a nonempty answer, a SOURCE row its path (its answer is a digest),
+\ an ENV row nothing.
+: TREE-ROW ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- n )
+   {: row:ptr left:n root:ptr rootu:n map :}
+   left ROW-BYTES < if MALFORMED then
+   row 8 + LE:U64@ {: pathu:n :}
+   row 16 + LE:U64@ {: answeru:n :}
+   pathu 0 < answeru 0 < or if MALFORMED then
+   pathu left ROW-BYTES - > if MALFORMED then
+   answeru left ROW-BYTES - pathu - > if MALFORMED then
+   row LE:U64@ {: kind:n :}
+   kind FILE-ROW < kind SOURCE-ROW > or if MALFORMED then
+   row ROW-BYTES + {: path:ptr :}
+   path pathu + {: answer:ptr :}
+   TREE-U @ {: head:n :}
+   row ROW-BYTES TREE-PUT
+   kind ENV-ROW = if path pathu TREE-PUT
+   else path pathu root rootu map execute then
+   TREE-U @ head - ROW-BYTES - {: newpathu:n :}
+   kind ENV-ROW = kind SOURCE-ROW = or answeru 0= or
+      if answer answeru TREE-PUT
+      else answer answeru root rootu map execute then
+   TREE-U @ head - ROW-BYTES - newpathu - {: newansweru:n :}
+   head TREE-BUF {: dst:ptr :}
+   newpathu dst 8 + LE:U64!
+   newansweru dst 16 + LE:U64!
+   ROW-BYTES pathu + answeru + ;
+
+
+: TREE-MAP ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ] -- ptr u8 n )
+   {: bytes:ptr size:n root:ptr rootu:n map :}
+   0 TREE-U ! 0 TREE-OFF !
+   size 0= if NULL-PTR 0 exit then
+   begin TREE-OFF @ size < while
+      bytes TREE-OFF @ + size TREE-OFF @ - root rootu map TREE-ROW
+         TREE-OFF +!
+   repeat
+   0 TREE-BUF TREE-U @ ;
+
+public
+
+\ An object stores its rows relative to its file's root and the engine's
+\ source root, so an identical tree at another path checks its own files.
+\ Rows and root: the rows as stored, valid until the next TREE-OUT, TREE-IN
+\ or CLOSE.
+: TREE-OUT ( ptr u8 n ptr u8 n -- ptr u8 n ) ['] OUT-PATH TREE-MAP ;
+
+\ Stored rows and root: the rows against this tree, as TREE-OUT's are valid.
+: TREE-IN ( ptr u8 n ptr u8 n -- ptr u8 n ) ['] IN-PATH TREE-MAP ;
+
+private
 : ZERO ( ptr u8 n -- ) {: bytes:ptr size:n :}
    size 0 ?do 0 bytes i + c! loop ;
 public
 
-\ A file digest leaves the path and the file's bytes in CONTENT-SHA, and a
-\ freshness check leaves the object's address in FRESH-BYTES: close clears
-\ them, so an image saved after a warm build holds what a cold one does.
+\ A file digest leaves the path and the file's bytes in CONTENT-SHA, a
+\ freshness check leaves the object's address in FRESH-BYTES and a tree
+\ rewrite its rows in TREE-BUF: close clears them, so an image saved after a
+\ warm build holds what a cold one does.
 : CLOSE ( -- )
-   INPUT-BUF-RELEASE
+   INPUT-BUF-RELEASE TREE-BUF-RELEASE
    0 INPUT-U ! 0 INPUT-FIRST ! 0 CHECK-OFF ! 0 QUERY-OFF !
+   0 TREE-U ! 0 TREE-OFF !
    CONTENT-SHA SHA256-FILE-CTX-BYTES ZERO
    CONTENT-DIGEST 32 ZERO
    NULL-PTR FRESH-BYTES ! 0 FRESH-U ! ;
