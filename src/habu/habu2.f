@@ -5237,7 +5237,7 @@ package INTERP-EMIT
    12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
    12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
-   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
    NCOMP-EMIT:TIER-COLON-DISPATCH ;
 
 \ The second end of every definition's publish, emitted by the `;` tail below and
@@ -9955,7 +9955,7 @@ public
          12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
          12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
-         12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+         12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
          NCOMP-EMIT:TIER-COLON-DISPATCH
          LMAIN LABEL@ B,
    ktry LBL,
@@ -11789,7 +11789,7 @@ public
    12 DATA QPATCH-CELL STR,  12 DATA JIT-QUOT:SP-CELL STR,
    12 DATA FWDTGT-CELL STR,                          \ pass 1's targets lie above pass 2's CP
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
-   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
    9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ pass 2 re-opens the entry slot
    9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,
    9 1 MOVZ,  9 DATA P2-CELL STR,

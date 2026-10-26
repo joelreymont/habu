@@ -86,7 +86,7 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    vd LBL,
    6 0 MOVZ,  6 DATA VSP-CELL STR,
    6 VRALL MOVZ,  6 DATA VRFREE-CELL STR,
-   6 FRALL MOVZ,  6 DATA FRFREE-CELL STR,
+   6 FRALL LIT64,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVPUSHT ( x8=tag x11=val ) : THE constant-push body — record one unmaterialized
@@ -934,7 +934,7 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
       snx LBL,  5 5 1 ADDI,  sl B,
    sd LBL,
    6 VRALL MOVZ,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
-   6 FRALL MOVZ,  6 6 15 EOR,  6 DATA FRFREE-CELL STR,
+   6 FRALL LIT64,  6 6 15 EOR,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ x11 := entry x5's source byte (bit 7 = a d-reg); a constant branches to kon.

@@ -2405,7 +2405,7 @@ variable GE-KIND-N
    s" : GEPFSUB ( r r -- r ) f- 0.5 f+ ;" GE-SRC-LINE
    s" : GEPFMIX ( n r -- n r ) 2.0 f* swap 1+ swap ;" GE-SRC-LINE
    s" : P-FLOOP ( n r -- r ) 0.5 f+ begin swap 1- swap 1.0 f+ over 0= until nip ;" GE-SRC-LINE
-   s" : P-FPRESS ( r -- r ) {: a:r :} a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a a f+ f+ f+ f+ f+ f+ f+ f+ ;" GE-SRC-LINE
+   s" : P-FPRESS ( r -- r ) {: a:r :} a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a 0.0 f+ a a f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ ;" GE-SRC-LINE
    s" : P-DO ( n -- n ) 3 0 do 1+ loop ;" GE-SRC-LINE
    s" : P-QDO ( n n -- n ) 0 ?do 1+ loop ;" GE-SRC-LINE
    s" : P-PLOOP ( n -- n ) 0 6 do 1+ -2 +loop ;" GE-SRC-LINE
@@ -2422,7 +2422,7 @@ variable GE-KIND-N
    s" 99 10 P-LEAVE . . 99 10 P-EXIT . ." GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    s" tier 0 pulled operands" GE-EXPECT-OK
-   S\" 19\n18\n18\n0\n99\n4\n99\n0\n99\n0\n99\n22\n18\n-1\n51\n99\n4616471093031469056\n4613937818241073152\n8\n4.500000\n27.000000\n13\n99\n10\n99\n13\n99\n14\n99\n13\n99\n11\n99\n11\n99\n"
+   S\" 19\n18\n18\n0\n99\n4\n99\n0\n99\n0\n99\n22\n18\n-1\n51\n99\n4616471093031469056\n4613937818241073152\n8\n4.500000\n75.000000\n13\n99\n10\n99\n13\n99\n14\n99\n13\n99\n11\n99\n11\n99\n"
       s" tier 0 pulled operands output" GE-EXPECT-OUT
    s" PASS: tier 0 pulls stack operands into registers and keeps every boundary" type cr ;
 

@@ -33,8 +33,9 @@ VRPACK PK# constant #POOL1
 #POOL1 VRPACK2 PK# + constant #POOL
 1 #POOL lshift 1 - constant VRALL
 
-$FF   constant FRALL            \ d8..d15 (d0-d7 stay prim scratch; contiguous,
+24 constant #FPOOL              \ d8..d31 (d0-d7 stay prim scratch; contiguous,
                                 \ so idx+8 math replaces a table here)
+1 #FPOOL lshift 1 - constant FRALL
 
 \ LVRINIT ( -- ) : fill VRTAB/VRITAB from the VRPACK literal. Run once at startup
 \ (idempotent; snapshot images carry the tables but re-running is harmless).
@@ -79,13 +80,13 @@ $FF   constant FRALL            \ d8..d15 (d0-d7 stay prim scratch; contiguous,
       7 1 MOVZ,  7 7 5 LSLV,  6 6 7 EOR,  6 DATA VRFREE-CELL STR,
       14 VRTAB-OFF LIT64,  14 DATA 14 ADD,  14 14 5 ADD,  14 14 0 LDRB,  RET, ;
 
-\ LFRALLOC ( -- x14=dreg | 0 ) : grab a free FLOAT register (d8..d15)
+\ LFRALLOC ( -- x14=dreg | 0 ) : grab a free FLOAT register (d8..d31)
 : EMIT-FRALLOC ( -- )
    LFRALLOC LABEL@ LBL,
    LBL LBL LBL {: rl rgot rno :}
    6 DATA FRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,
-      5 8 CMPI,  C-GE rno BCOND,
+      5 #FPOOL CMPI,  C-GE rno BCOND,
       7 6 5 LSRV,  7 7 1 ANDI,  7 rgot CBNZ,
       5 5 1 ADDI,  rl B,
    rno LBL,  14 0 MOVZ,  RET,
