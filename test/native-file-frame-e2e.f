@@ -809,10 +809,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" npc.f" S\" require npk.f\n: NPC ( -- n ) NPK 1+ ;\n" PUT
    s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
    \ NREQ names no word of npk.f: an earlier top-level load's records hold
-   \ no key in this one, which orders the file (evx.f). The path comes from
-   \ a colon word, as an interpreted s" would copy it to DATA, whose replay
-   \ needs the cold build's HERE alignment.
-   s" nreq.f" S\" : NREQ-PATH ( -- ptr u8 n ) s\" npk.f\" ;\nNREQ-PATH required\n: NREQ ( -- n ) 3 ;\n" PUT
+   \ no key in this one, which orders the file (evx.f).
+   s" nreq.f" S\" s\" npk.f\" required\n: NREQ ( -- n ) 3 ;\n" PUT
    \ evreq.f's load runs inside evaluate, not at a loader cut.
    s" evreq.f" S\" s\" require npk.f\" evaluate\n" PUT
    s" nlk.f" S\" : NLK ( -- n ) 5 ;\n" PUT

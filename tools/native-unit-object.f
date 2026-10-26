@@ -790,6 +790,24 @@ private
    slot FO-SEG-SLOT FO !
    slot 0 > if slot 1- ADDRESS-CELLS:ROW@ else 0 then FO-SEG-PREV FO ! ;
 
+\ The engine word name's xt, 0 when this engine lacks it.
+: ENGINE-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if drop 0 exit then
+   dup XREF-RETIRED? if drop 0 exit then
+   XREF-START dup cp@ >= if drop 0 then ;
+
+\ Retire the checker's scratch (CHECKER-REG:FILE-SCRATCH-RETIRE), so both
+\ ends of every compared interval hold none: a file's DATA comparison and pin
+\ scan never see it, and a hit, which runs nothing, leaves the state a compile
+\ leaves. Every image take and diff runs it first. The live dictionary's word
+\ is the target's from the point its checker.f defines it, before the
+\ handover: the target's PRIM: declarations already run its signature parser.
+\ Before that point the target has no checker scratch, and nothing is retired.
+: SCRATCH-RETIRE ( -- )
+   s" CHECKER-REG:FILE-SCRATCH-RETIRE" ENGINE-XT
+   dup 0= if drop exit then
+   DEF-ACTION-XT execute ;
+
 \ Copy DATA from the process floor to HERE, then each slot an earlier
 \ segment's slot word holds, as the open segment's
 \ before-image, counting the bytes against the innermost file, and mark the
@@ -798,6 +816,7 @@ private
 \ takes no image. The floor is HERE at the process's first image, lowered to
 \ HERE when a rewound dictionary leaves HERE below it.
 : IMAGE-TAKE ( -- )
+   SCRATCH-RETIRE
    SLOTS-MARK
    KCELLS-TAKE
    AOT-ARM:HERE-N {: top:n :}
@@ -851,6 +870,7 @@ private
 \ before-image, comparing a cell at a time, then each imaged slot's bytes.
 \ Slot rows are only appended between the image and its close.
 : IMAGE-DIFF ( -- )
+   SCRATCH-RETIRE
    IMAGE-U @ {: size:n :}
    IMAGE-USERS @ {: users:n :}
    0 IMAGE-U ! 0 IMAGE-USERS !
@@ -3690,12 +3710,6 @@ private
 \ Install: the hit path. Every engine writer is reached by name through
 \ NEED-XT in this block, the install boundary: REC-WIDE and REC-MIN-IN are
 \ checked through their casts, the rest are TRUSTED: rows.
-
-\ The engine word name's xt, 0 when this engine lacks it.
-: ENGINE-XT ( ptr u8 n -- n )
-   XREF-FIND dup XREF-FOUND? 0= if drop 0 exit then
-   dup XREF-RETIRED? if drop 0 exit then
-   XREF-START dup cp@ >= if drop 0 then ;
 
 : NEED-XT ( ptr u8 n -- n ) ENGINE-XT dup 0= if BAD then ;
 

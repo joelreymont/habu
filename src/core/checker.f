@@ -31026,10 +31026,11 @@ public
    NORET-COMPACT
    CHECKER-QUIESCE-END ;
 
-\ A file object compares DATA at every file boundary (tools/native-definition-
-\ cache.f FILE-UNIT-WITH), so the scratch a check leaves rests there as it rests
-\ in an image: the capture seam's scratch retirement, without the index resets
-\ and persistence only an image needs.
+\ A file object compares DATA between its before-images and their diffs, and
+\ runs this before each (tools/native-unit-object.f IMAGE-TAKE and IMAGE-DIFF),
+\ so the scratch a check leaves rests there as it rests in an image: the
+\ capture seam's scratch retirement, without the index resets and persistence
+\ only an image needs.
 package CHECKER-REG
 public
 : FILE-SCRATCH-RETIRE ( -- )
