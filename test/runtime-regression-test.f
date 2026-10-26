@@ -2411,6 +2411,54 @@ variable GE-KIND-N
       s" tier 0 pulled operands output" GE-EXPECT-OUT
    s" PASS: tier 0 pulls stack operands into registers and keeps every boundary" type cr ;
 
+\ Tier 0 keeps `@`, `c@`, `cells`, `cell+` and `ptr-field` on the virtual
+\ stack: the loads run on registers and the address arithmetic folds or runs
+\ in place. Each case breaks one boundary: an offset address, an indexed
+\ address, a zero-extending byte load, a cell stored between two reads (a fetch
+\ never folds), a pointer table slot against the pointer it holds (register and
+\ constant operands), a fetched cell read as float bits, a fetch in a loop and
+\ across a call, a private word spelled `@`, and a protected store, which still
+\ kills the process (the last line, so it ends this run). Each expected value is
+\ what the interpreter prints for the same expressions.
+: GE-VMEM ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-tier" GE-SRC-LINE
+   s" CAST: GEFB ( r -- n )" GE-SRC-LINE
+   s" CAST: GEMNF ( n -- r )" GE-SRC-LINE
+   s" create GEMDATA 11 , 22 , 33 ," GE-SRC-LINE
+   s" 1 BUFFER: GEMB  1 BUFFER: GEMB2  2 PTR-U8-TABLE GEMTAB" GE-SRC-LINE
+   s" variable GEMV  create GEMFC 0 ," GE-SRC-LINE
+   s" : GEMPTR ( ptr n -- ptr n ) ;" GE-SRC-LINE
+   s" : GEMNEXT ( ptr n -- n ) cell+ @ 1+ ;" GE-SRC-LINE
+   s" : GEMIDX ( ptr n n -- n ) cells + @ ;" GE-SRC-LINE
+   s" : GEMBYTE ( ptr u8 -- n ) c@ 1+ ;" GE-SRC-LINE
+   s" : GEMREAD ( -- n ) GEMV @ ;" GE-SRC-LINE
+   s" : GEMSLOT ( ptr ptr u8 n -- n ) ptr-field @ c@ ;" GE-SRC-LINE
+   s" : GEMSLOTK ( -- n ) GEMTAB 1 ptr-field @ c@ ;" GE-SRC-LINE
+   s" : GEMF ( ptr n -- r ) @ GEMNF 0.5 f+ ;" GE-SRC-LINE
+   s" : GEMWALK ( ptr n -- n ) 0 swap begin dup @ rot + swap cell+ dup @ 33 = until @ + ;" GE-SRC-LINE
+   s" : GEMCALL ( ptr n -- n n ) dup @ swap GEMPTR cell+ @ ;" GE-SRC-LINE
+   s" package GEMPKG" GE-SRC-LINE
+   s" : @ ( ptr n -- n ) drop 77 ;" GE-SRC-LINE
+   s" : GEMUSE ( ptr n -- n ) @ ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : GEMRUN ( -- n ) GEMDATA GEMUSE ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" TRUSTED: GEMBAND ( -- ) 1 data-base FRIEND-ARENA + ! ;" GE-SRC-LINE
+   s" GEMDATA GEMNEXT . GEMDATA 2 GEMIDX ." GE-SRC-LINE
+   s" 255 GEMB c! 7 GEMB2 c! GEMB GEMBYTE ." GE-SRC-LINE
+   s" 11 GEMV ! GEMREAD . 29 GEMV ! GEMREAD ." GE-SRC-LINE
+   s" GEMB GEMTAB 0 ptr-field ! GEMB2 GEMTAB 1 ptr-field ! GEMTAB 1 GEMSLOT . GEMSLOTK ." GE-SRC-LINE
+   s" 1.5 GEFB GEMFC ! GEMFC GEMF f." GE-SRC-LINE
+   s" GEMDATA GEMWALK . GEMDATA GEMCALL . . GEMPKG:GEMRUN ." GE-SRC-LINE
+   s" GEMBAND" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   ENGINE-ERROR:SEAL-VIOLATION s" tier 0 memory operands" GE-EXPECT-RC
+   S\" 23\n33\n256\n11\n29\n7\n7\n2.000000\n66\n22\n11\n77\n"
+      s" tier 0 memory operands output" GE-EXPECT-OUT
+   s" PASS: tier 0 keeps memory operands in registers and keeps every boundary" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2447,7 +2495,8 @@ public
    GE-PASS2-IMMEDIATE
    GE-SET-CHECK-NEG
    GE-VUN-FLOAT
-   GE-VPULL ;
+   GE-VPULL
+   GE-VMEM ;
 
 : TEST ( -- )
    s" habu-runtime-regression" GT-START

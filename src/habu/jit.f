@@ -946,6 +946,7 @@ variable FESK3
    LVNIPX LABEL@ BL, ;
 variable LKWINC  variable LKWDEC  variable LKWZEQ  variable LKWZLT
 variable LKWNEG2  variable LKWINV2
+variable LKWCFETCH  variable LKWCELLS  variable LKWCELLP  variable LKWPFIELD
 variable FESK4
 
 \ vun-entry: unary op on the VS top. Tag 1 (integer constant) folds at JIT time
@@ -1027,6 +1028,54 @@ variable FESK4
    LKWINC LABEL@ LBL,   s" 1+" BYTES,      LKWDEC LABEL@ LBL,   s" 1-" BYTES,
    LKWZEQ LABEL@ LBL,   s" 0=" BYTES,      LKWZLT LABEL@ LBL,   s" 0<" BYTES,
    LKWNEG2 LABEL@ LBL,  s" negate" BYTES,  LKWINV2 LABEL@ LBL,  s" invert" BYTES, ;
+
+\ ---- memory words on the VS. None of their primitive bodies carries a guard,
+\ so one instruction on the operand registers is the whole word; `!` and the
+\ other stores keep their guarded bodies (habu1.f PROT-GUARD:CALL).
+
+\ vload-entry: a load from the VS top address, in place (rd = rn, result tag 0).
+\ A constant address (tag 1) is forced into a register first, so the load is a
+\ runtime instruction: memory is never read at compile time. Tags 2 and 3, an
+\ empty pull or an exhausted pool fall through to the primitive.
+: VLOAD-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n base:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
+   LBL FESK4 !
+   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 FESK4 LABEL@ CBZ,
+   5 1 MOVZ,  LVNEED LABEL@ BL,  13 FESK4 LABEL@ CBZ,
+   6 DATA VSP-CELL LDR,  5 6 1 SUBI,
+   7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   7 2 CMPI,  C-GE FESK4 LABEL@ BCOND,
+   LVFORCEK LABEL@ BL,  14 FESK4 LABEL@ CBZ,
+   8 base LIT64,  EU2N
+   lmainlbl B,
+   FESK4 LABEL@ LBL, ;
+
+$F9400000 constant W-LDR0        \ ldr xT,[xN]  (| rt | rn<<5)
+$39400000 constant W-LDRB0       \ ldrb wT,[xN], zero-extending
+
+: FUCELLS ( -- )
+   11 11 3 LSLI, ;
+
+: FUCELLP ( -- )
+   11 11 8 ADDI, ;
+
+: EUCELLS ( -- )
+   8 $D37DF000 LIT64,  EU2N ;    \ lsl xd,xn,#3 (ubfm xd,xn,#61,#60)
+
+: EUCELLP ( -- )
+   8 $91002000 LIT64,  EU2N ;    \ add xd,xn,#8
+
+\ ptr-field ( base index -- base+index*8 ): the slot address, not its contents.
+: FPFIELD ( -- )
+   12 12 3 LSLI,  11 11 12 ADD, ;
+
+: EPFIELD ( -- )
+   8 $8B000C00 LIT64, ;          \ add xd,xn,xm,lsl #3
+
+: EMIT-MEMKW ( -- )
+   LKWCFETCH LABEL@ LBL,  s" c@" BYTES,     LKWCELLS LABEL@ LBL,   s" cells" BYTES,
+   LKWCELLP LABEL@ LBL,   s" cell+" BYTES,  LKWPFIELD LABEL@ LBL,  s" ptr-field" BYTES, ;
 
 package ENGINE-EMIT
 

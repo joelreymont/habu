@@ -82,6 +82,7 @@ variable MISSING                     \ names the dictionary did not answer for
 
 create T0-CELL 2 cells allot
 create T0-TEXT 4 allot
+2 PTR-U8-TABLE T0-TAB
 
 public
 
@@ -91,6 +92,8 @@ public
 : T0-FETCH ( ptr n -- n ) @ ;
 : T0-CFETCH ( ptr u8 -- n ) c@ ;
 : T0-CELLS ( n -- n ) cells ;
+: T0-CELLPLUS ( n -- n ) cell+ ;
+: T0-FIELD ( ptr ptr u8 n -- ptr ptr u8 ) ptr-field ;
 : T0-ABS ( n -- n ) abs ;
 : T0-MIN ( n n -- n ) min ;
 : T0-MAX ( n n -- n ) max ;
@@ -128,6 +131,13 @@ public
 : T0-SHUF ( n n -- n ) swap - ;
 : T0-FLT ( r r -- r ) f- 0.5 f+ ;
 
+\ Memory words on the virtual stack: the address arithmetic and the loads run
+\ on the pulled registers, with no push between them.
+: T0-NEXT ( ptr n -- n ) cell+ @ 1+ ;
+: T0-IDX ( ptr n n -- n ) cells + @ ;
+: T0-BYTE ( ptr u8 -- n ) c@ 1+ ;
+: T0-SLOT ( ptr ptr u8 n -- n ) ptr-field @ c@ ;
+
 private
 
 : TEST-DECODER ( -- )
@@ -138,9 +148,6 @@ private
    s" a straight-line primitive is copied, not called" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-ADD" s" +" INLINED
    s" TIER0-INLINE-PRIMS:T0-ROT" s" rot" INLINED
-   s" TIER0-INLINE-PRIMS:T0-FETCH" s" @" INLINED
-   s" TIER0-INLINE-PRIMS:T0-CFETCH" s" c@" INLINED
-   s" TIER0-INLINE-PRIMS:T0-CELLS" s" cells" INLINED
    s" TIER0-INLINE-PRIMS:T0-ABS" s" abs" INLINED
    s" TIER0-INLINE-PRIMS:T0-MIN" s" min" INLINED
    s" TIER0-INLINE-PRIMS:T0-MAX" s" max" INLINED
@@ -184,6 +191,19 @@ private
    s" TIER0-INLINE-PRIMS:T0-FLT" FLOAT-PUSH STACK-OPS 1 T=
    10 4 T0-SUB2 19 T= ;
 
+\ One pop per stack operand and one push of the result: a copied memory body
+\ would pop and push around itself, so a run of them would count more.
+: MEM-OPS ( ptr u8 n n -- ) {: na:ptr nu:n pops:n :}
+   na nu STACK-POP STACK-OPS pops T=
+   na nu STACK-PUSH STACK-OPS 1 T= ;
+
+: TEST-MEM ( -- )
+   s" memory words load and address on registers, with no spill between them" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-NEXT" 1 MEM-OPS
+   s" TIER0-INLINE-PRIMS:T0-IDX" 2 MEM-OPS
+   s" TIER0-INLINE-PRIMS:T0-BYTE" 1 MEM-OPS
+   s" TIER0-INLINE-PRIMS:T0-SLOT" 2 MEM-OPS ;
+
 : TEST-VALUES ( -- )
    s" the copied bodies answer what the calls answered" T-LABEL
    3 4 T0-ADD 7 T=
@@ -193,6 +213,7 @@ private
    T0-CELL T0-FETCH $55AA T=
    T0-CELL byte-view T0-CFETCH $AA T=
    3 T0-CELLS 24 T=
+   3 T0-CELLPLUS 11 T=
    -5 T0-ABS 5 T=
    5 T0-ABS 5 T=
    3 9 T0-MIN 3 T=
@@ -204,6 +225,8 @@ private
    5 T0-CHARS 5 T=
    3 T0-TEXT c!  T0-TEXT T0-COUNT {: n:n :} drop
    n 3 T=
+   T0-TEXT T0-TAB 1 ptr-field !
+   T0-TAB 1 T0-FIELD @ c@ 3 T=
    T0-ACA addr-cells-abi T=
    s" an inlined body in a loop and in a quotation" T-LABEL
    1 2 3 4 T0-SPIN {: a:n b:n c:n :}
@@ -243,6 +266,7 @@ public
    TEST-CALLED
    TEST-LEAF
    TEST-PULL
+   TEST-MEM
    TEST-VALUES
    TEST-QDUP
    MISSING @ 0 T=
