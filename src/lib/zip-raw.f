@@ -48,7 +48,7 @@ $14 constant LOCATOR-BYTES
 : CENTRAL-LEN ( ptr n -- ptr n ) 1 cells + ;
 : LOCAL-OFF ( ptr n -- ptr n ) 2 cells + ;
 : LOCAL-LEN ( ptr n -- ptr n ) 3 cells + ;
-: COMPRESSED-SIZE ( ptr n -- ptr n ) 4 cells + ;
+: PACKED-SIZE ( ptr n -- ptr n ) 4 cells + ;
 : PLAIN-SIZE ( ptr n -- ptr n ) 5 cells + ;
 : ZIP64-OFFSET ( ptr n -- ptr n ) 6 cells + ;
 : REPLACEMENT ( ptr n -- ptr ptr u8 ) 7 ptr-field ;
@@ -250,7 +250,7 @@ $14 constant LOCATOR-BYTES
    extra 2 + U16@ {: size:n :}
    extra 4 + size
    central $18 + U32@ U32-MAX = if WIDE-FIELD member PLAIN-SIZE ! then
-   central $14 + U32@ U32-MAX = if WIDE-FIELD member COMPRESSED-SIZE ! then
+   central $14 + U32@ U32-MAX = if WIDE-FIELD member PACKED-SIZE ! then
    central $2A + U32@ U32-MAX = if
       over node RAW-PTR @ - member ZIP64-OFFSET !
       WIDE-FIELD member LOCAL-OFF !
@@ -259,7 +259,7 @@ $14 constant LOCATOR-BYTES
    dup 0<> if
       size 24 <> size 28 <> and if E-OPEN throw then
       extra 4 + U64@ member PLAIN-SIZE @ <> if E-OPEN throw then
-      extra $C + U64@ member COMPRESSED-SIZE @ <> if E-OPEN throw then
+      extra $C + U64@ member PACKED-SIZE @ <> if E-OPEN throw then
       extra $14 + U64@ member LOCAL-OFF @ <> if E-OPEN throw then
       size 28 = if extra $1C + U32@ 0 <> if E-OPEN throw then then
    then 2drop ;
@@ -271,7 +271,7 @@ $14 constant LOCATOR-BYTES
    CENTRAL-BYTES data $1C + U16@ + data $1E + U16@ + data $20 + U16@ +
    dup member CENTRAL-LEN ! off + {: next:n :}
    node off member CENTRAL-LEN @ RAW-SPAN drop
-   data $14 + U32@ member COMPRESSED-SIZE !
+   data $14 + U32@ member PACKED-SIZE !
    data $18 + U32@ member PLAIN-SIZE !
    data $2A + U32@ member LOCAL-OFF !
    data $22 + U16@ dup 0 <> swap U16-MAX <> and if E-READ throw then
@@ -286,15 +286,15 @@ $14 constant LOCATOR-BYTES
 : WIDE-DESCRIPTOR? ( ptr n ptr n -- bool ) {: node:ptr member:ptr :}
    node member LOCAL-OFF @ LOCAL-BYTES RAW-SPAN {: local:ptr :}
    local $12 + U32@ U32-MAX = local $16 + U32@ U32-MAX = or
-   member COMPRESSED-SIZE @ U32-MAX >= or member PLAIN-SIZE @ U32-MAX >= or ;
+   member PACKED-SIZE @ U32-MAX >= or member PLAIN-SIZE @ U32-MAX >= or ;
 
 : DESCRIPTOR-MATCH? ( ptr n ptr n n bool -- bool ) {: node:ptr member:ptr off:n wide:bool :}
    node off RAW-U32 node member CENTRAL-PTR $10 + U32@ <> if false exit then
    wide if
-      node off 4 + RAW-U64 member COMPRESSED-SIZE @ =
+      node off 4 + RAW-U64 member PACKED-SIZE @ =
       node off $C + RAW-U64 member PLAIN-SIZE @ = and
    else
-      node off 4 + RAW-U32 member COMPRESSED-SIZE @ =
+      node off 4 + RAW-U32 member PACKED-SIZE @ =
       node off 8 + RAW-U32 member PLAIN-SIZE @ = and
    then ;
 
@@ -313,7 +313,7 @@ $14 constant LOCATOR-BYTES
    LOCAL-BYTES data $1A + U16@ + data $1C + U16@ +
    off + member PAYLOAD-OFF !
    LOCAL-BYTES data $1A + U16@ + data $1C + U16@ +
-   member COMPRESSED-SIZE @ SAFE+ {: len:n :}
+   member PACKED-SIZE @ SAFE+ {: len:n :}
    data 6 + U16@ 8 and 0 <> if
       len node member off len SAFE+ DESCRIPTOR-LEN SAFE+
    else len then member LOCAL-LEN !
@@ -394,7 +394,7 @@ $14 constant LOCATOR-BYTES
 : OUTPUT-SIZE ( ptr n -- n )
    dup REPLACED? if REPLACE-LEN else PLAIN-SIZE then @ ;
 : OUTPUT-COMPRESSED ( ptr n -- n )
-   dup REPLACED? if REPLACE-LEN else COMPRESSED-SIZE then @ ;
+   dup REPLACED? if REPLACE-LEN else PACKED-SIZE then @ ;
 : SIZE64? ( ptr n -- bool )
    dup OUTPUT-SIZE U32-MAX >= swap OUTPUT-COMPRESSED U32-MAX >= or ;
 : OFFSET64? ( ptr n -- bool ) NEW-LOCAL @ U32-MAX >= ;

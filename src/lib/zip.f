@@ -12,6 +12,8 @@
 \ otherwise OPEN opens libzip. SOURCE$, NAME$ and READ return archive-owned
 \ copies valid until a successful COMMIT or CLOSE; SOURCE$ is the original
 \ snapshot, which pending changes do not alter.
+\ COMPRESSED-SIZE answers the central directory compressed size, ZIP64
+\ included, or a pending replacement's stored length, the view READ sees.
 \
 \ REPLACE copies its input at once (an empty member too); REPLACE-WITH hands a
 \ callback an archive-owned span of exactly the length asked. READ sees a
@@ -167,7 +169,7 @@ $4000 constant FILE-CHUNK
    else
       owner OBJECT @ NULL? if
          member PAYLOAD-OFF @ node INPUT-PAYLOAD !
-         member COMPRESSED-SIZE @ node INPUT-COMPRESSED !
+         member PACKED-SIZE @ node INPUT-COMPRESSED !
          2 node INPUT-KIND !
       else
          owner OBJECT @ idx C-FOPEN {: file:ptr :}
@@ -334,6 +336,11 @@ public
 
 : READ ( archive entry -- ptr u8 n )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX READ-COPY ;
+
+\ The central directory size OPEN validated, ZIP64 included; a pending
+\ replacement answers its stored length, the bytes COMMIT writes.
+: COMPRESSED-SIZE ( archive entry -- n )
+   swap ARCHIVE-NODE dup rot ENTRY-INDEX MEMBER-AT OUTPUT-COMPRESSED ;
 
 : OPEN-ENTRY ( archive entry -- input )
    swap ARCHIVE-NODE dup rot ENTRY-INDEX OPEN-INPUT ;

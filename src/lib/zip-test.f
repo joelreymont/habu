@@ -592,6 +592,33 @@ $10000 constant WIDE-COUNT
    [: BOUNDARY-OPEN ;] E-OPEN TTHROWSQ
    9 false BOUNDARY-ZIP64 BOUNDARY-SAVE BOUNDARY-GOOD ;
 
+: WRONG-SIZE ( ZIP:archive ZIP:entry -- ZIP:archive ZIP:entry )
+   2dup ZIP:COMPRESSED-SIZE drop ;
+
+\ Stored, deflated, pending and ZIP64 entries. The ZIP64 case marks only the
+\ central compressed field (offset 97) U32-MAX; its extra field holds 32. The
+\ last case's local header says 31 where the central directory says 32.
+: COMPRESSED-SIZES ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL
+   INPUT$ ZIP:EDIT {: archive:ZIP:archive :}
+   archive archive 0 ENTRY ZIP:COMPRESSED-SIZE 12 T=
+   archive 1 ENTRY {: member:ZIP:entry :}
+   archive member ZIP:COMPRESSED-SIZE 24 T=
+   archive member s" replacement" REPLACE
+   archive member ZIP:COMPRESSED-SIZE 11 T=
+   OTHER$ ZIP:OPEN {: other:ZIP:archive :}
+   other member [: WRONG-SIZE ;] catch E-ENTRY T= 2drop
+   other ZIP:CLOSE archive ZIP:CLOSE
+   archive member [: WRONG-SIZE ;] catch E-HANDLE T= 2drop
+   8 false BOUNDARY-ZIP64 $FFFFFFFF 97 4 BOUNDARY-NUM! BOUNDARY-SAVE
+   BOUNDARY-PATH$ ZIP:OPEN {: big:ZIP:archive :}
+   big big 0 ENTRY ZIP:COMPRESSED-SIZE 32 T=
+   big ZIP:CLOSE
+   BOUNDARY-BASE 18 $1F BOUNDARY-BYTE BOUNDARY-SAVE
+   BOUNDARY-PATH$ ZIP:OPEN {: skew:ZIP:archive :}
+   skew skew 0 ENTRY ZIP:COMPRESSED-SIZE 32 T=
+   skew ZIP:CLOSE ;
+
 : WIDE-BOUNDARY-BASE ( -- n )
    WIDE-BEFORE$ {: data:ptr len:n :}
    data RAW len BYTE-COPY len ;
@@ -672,7 +699,7 @@ $10000 constant WIDE-COUNT
    FILE-CRC-CLOSE FILE-CRC-READ FILE-SIZE-ERRORS
    FILE-INPUT-RETIRE FILE-INSTALL-FAILURE
    BOUNDARY-OPEN-ERRORS BOUNDARY-READ-ERRORS BOUNDARY-DISAGREEMENT BOUNDARY-CURSORS
-   BOUNDARY-ZIP64-CASES WIDE-EOCD-CASES
+   BOUNDARY-ZIP64-CASES COMPRESSED-SIZES WIDE-EOCD-CASES
    FILE-REPLACE TASK-READERS
    CLEANUP-RUN T-REPORT ;
 
