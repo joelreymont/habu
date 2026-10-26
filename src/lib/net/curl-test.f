@@ -76,6 +76,8 @@ $61 constant DRIBBLE-BYTE               \ the body's filler, never the sentinel
 5000 constant STALL-MOST-MS             \ half REQUEST-MS: the stall test ended it, not the ceiling
 $80000000 constant OVER-LONG            \ one past the C long ceiling CURL checks
 $4000001 constant HUGE-BODY-U           \ one past the 64 MiB that once capped a request body
+$4001000 constant HUGE-U                \ a page past the 64 MiB span CURL once refused
+251 constant HUGE-PERIOD                \ a prime period, so a shifted copy cannot match
 
 create ROOT-BUF FS-PATH-CAP allot
 create FILE-BUF FS-PATH-CAP allot
@@ -134,6 +136,8 @@ variable HEADER-LEN
 variable HEADER-KIND
 variable TRANSCRIPT-U
 TYPED-VARIABLE HEADER-HANDLE CURL:handle
+PTR-VARIABLE HUGE-SENT                  \ the huge body the server writes
+PTR-VARIABLE HUGE-GOT                   \ the span the client receives it in
 
 0 constant KIND-RESPONSE
 1 constant KIND-TRUNCATED
@@ -169,6 +173,9 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 : PATH-FOUND$ ( -- ptr u8 n ) s" /found" ;
 : PATH-SEE-OTHER$ ( -- ptr u8 n ) s" /see-other" ;
 : PATH-TEMPORARY$ ( -- ptr u8 n ) s" /temporary" ;
+: PATH-HUGE$ ( -- ptr u8 n ) s" /huge" ;
+: SENT-BYTES ( -- ptr u8 ) HUGE-SENT @ ;
+: GOT-BYTES ( -- ptr u8 ) HUGE-GOT @ ;
 : FORM$ ( -- ptr u8 n ) s" a=1" ;
 : JSON$ ( -- ptr u8 n ) s" {}" ;
 : HEADERS$ ( -- ptr u8 n )
@@ -520,6 +527,18 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    conn TCP4:CLOSE PEER-STATUS ;
 
 
+: SERVE-HUGE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   RES-RESET
+   s" 200 OK" STATUS-LINE
+   s" Content-Length: " RES+ HUGE-U RES-NUM CRLF+
+   s" Connection: close" RES+ CRLF+ CRLF+
+   conn RES-BUF RES-U @ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn SENT-BYTES HUGE-U TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS
+   conn TCP4:SENDING TCP4:SHUTDOWN PEER-STATUS
+   conn DRAIN
+   conn TCP4:CLOSE PEER-STATUS ;
+
+
 : SERVE-HELLO ( TCP4:connection -- ) {: conn:TCP4:connection :}
    s" If-Modified-Since:" REQ-HAS-CI? if
       s" 304 Not Modified" RESPOND-EMPTY
@@ -741,6 +760,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    PATH-HEADERS-B$ PATH-IS? if conn SERVE-HEADERS-B exit then
    PATH-REDIRECT$ PATH-IS? if conn SERVE-REDIRECT exit then
    PATH-INTERIM$ PATH-IS? if conn SERVE-INTERIM exit then
+   PATH-HUGE$ PATH-IS? if conn SERVE-HUGE exit then
    PATH-HELLO$ PATH-IS? if conn SERVE-HELLO exit then
    PATH-COOKIE$ PATH-IS? if conn SERVE-COOKIE exit then
    conn SERVE-MISSING ;
@@ -1374,6 +1394,46 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    LAST-STATUS @ 200 T=
    LAST-LEN @ 6 T=
    BODY-BUF 3 s" hel" T$= ;
+
+
+: HUGE-ALLOC ( -- ptr u8 )
+   HUGE-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
+
+
+: HUGE-FREE ( ptr u8 -- ) {: p :}
+   p NULL-PTR - 0= if exit then
+   p HUGE-U MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+
+: HUGE-RELEASE ( -- )
+   SENT-BYTES HUGE-FREE NULL-PTR HUGE-SENT !
+   GOT-BYTES HUGE-FREE NULL-PTR HUGE-GOT ! ;
+
+
+: HUGE-FILL ( -- )
+   SENT-BYTES {: p :}
+   HUGE-U 0 do i HUGE-PERIOD mod p i + c! loop ;
+
+
+\ The caller's span is the one bound on a reply: a body larger than the 64 MiB
+\ CURL used to cap a span at arrives whole, byte for byte.
+: HUGE-CASE ( -- )
+   HUGE-ALLOC HUGE-SENT !
+   HUGE-ALLOC HUGE-GOT !
+   HUGE-FILL
+   RESULT-RESET
+   PATH-HUGE$ GET-READY {: subject:CURL:handle :}
+   subject GOT-BYTES HUGE-U >LEN CURL:PERFORM false RECORD-RESULT
+   subject CURL:CLEANUP
+   s" a reply past 64 MiB arrives whole in a span that holds it" T-LABEL
+   LAST-KIND @ KIND-RESPONSE T=
+   LAST-STATUS @ 200 T=
+   LAST-LEN @ HUGE-U T=
+   GOT-BYTES HUGE-U SENT-BYTES HUGE-U STR= TTRUE ;
+
+
+: TEST-HUGE ( -- )
+   [: HUGE-CASE ;] [: HUGE-RELEASE ;] finally ;
 
 
 : TEST-RESPONSE-HEADERS ( -- )
@@ -2414,7 +2474,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 93 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 94 DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
@@ -2482,6 +2542,7 @@ public
    TEST-REDIRECT-VERBS
    TEST-COOKIES
    TEST-TRUNCATED
+   TEST-HUGE
    TEST-RESPONSE-HEADERS
    TEST-HEADER-TRUNCATIONS
    TEST-HEADER-REDIRECT

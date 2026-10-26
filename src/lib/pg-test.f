@@ -364,22 +364,58 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
-\ The server quotes the bad input, so its message outgrows the 1024-byte copy
-\ kept for it; the leading 'x' puts that cap inside an e-acute, which the copy
-\ must not split: the copy keeps 1023 bytes and goes back as text.
-: LONG-MESSAGE-CASES ( PG:connection -- PG:connection ) {: c :}
-   s" a capped server message ends on a character and goes back as text" T-LABEL
+\ RAISE makes its argument the server's primary message, so the copy is checked
+\ against the text the server itself builds: six KiB of two-byte characters,
+\ then a longer message the connection's copy must grow past the first to hold.
+: RAISED-WHOLE ( PG:connection ptr u8 n ptr u8 n n -- PG:connection )
+   {: c raise raiseu:n same sameu:n want:n :}
    c PARAMS
-   c s" select ('x' || repeat(chr(233), 700))::int" EXEC {: r :}
-   r FAILED-SQLSTATE$ s" 22P02" T$=
+   c raise raiseu EXEC {: r :}
+   r FAILED-SQLSTATE$ s" P0001" T$=
    r FAILED-MESSAGE$ {: ma mu:n :}
-   mu 1023 T=
+   mu want T=
    c PARAMS
    c ma mu TEXT+
-   c s" select $1::text" EXEC {: back :}
+   c same sameu EXEC {: back :}
    back OUTCOME-TAG TAG-ROWS T=
-   back 0 >ROW 0 >COL TEXT$ ma mu T$=
+   back 0 >ROW 0 >COL TEXT$ s" t" T$=
    back CLEAR
+   r CLEAR
+   c ;
+
+
+: LONG-MESSAGE-CASES ( PG:connection -- PG:connection )
+   s" a server message past one KiB arrives whole and goes back as text" T-LABEL
+   s" do $$ begin raise exception '%', 'x' || repeat(chr(233), 3000); end $$"
+   s" select $1::text = ('x' || repeat(chr(233), 3000))"
+   6001 RAISED-WHOLE
+   s" a longer message after it grows the copy and arrives whole" T-LABEL
+   s" do $$ begin raise exception '%', repeat('yz', 50000); end $$"
+   s" select $1::text = repeat('yz', 50000)"
+   100000 RAISED-WHOLE ;
+
+
+\ A deferred constraint fails the COMMIT, not the insert, with a message longer
+\ than any the copy has held (this runs before LONG-MESSAGE-CASES). The transaction verb's refusal is E-EXEC, not an
+\ OUTCOME, so a `failed` span held from before stays mapped and unchanged.
+: DEFERRED-INSERT ( PG:connection -- PG:connection )
+   dup s" insert into held_t values (1)" EXEC-OK ;
+
+
+: DEFERRED-RUN ( PG:connection -- PG:connection )
+   dup [: DEFERRED-INSERT ;] WITH-TRANSACTION ;
+
+
+: HELD-SPAN-CASES ( PG:connection -- PG:connection ) {: c :}
+   s" a failed COMMIT leaves a held failed span as it was" T-LABEL
+   c s" create table held_t (x int)" EXEC-OK
+   c s" create function held_f() returns trigger language plpgsql as $$ begin raise exception '%', repeat('z', 100000); end $$" EXEC-OK
+   c s" create constraint trigger held_tg after insert on held_t deferrable initially deferred for each row execute function held_f()" EXEC-OK
+   c s" do $$ begin raise exception 'short'; end $$" EXEC {: r :}
+   r FAILED-MESSAGE$ {: ma mu:n :}
+   c [: DEFERRED-RUN ;] catch {: stale code:n :}
+   code E-EXEC T=
+   ma mu s" short" T$=
    r CLEAR
    c ;
 
@@ -1416,6 +1452,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    DDL-CASES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
+   HELD-SPAN-CASES
    LONG-MESSAGE-CASES
    PREPARED-CASES
    DESCRIBE-CASES

@@ -94,7 +94,6 @@
 require src/lib/errors.f
 require src/lib/ffi-abi.f
 require src/lib/string.f
-require src/lib/utf8-scalar.f
 require src/lib/memory.f
 require src/lib/type/deftype.f
 require src/lib/task.f
@@ -183,12 +182,8 @@ $4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 \ Connection, result and parameter counts belong to the application. There is
 \ no process-wide guessed connection ceiling: CONFIGURE allocates exactly the
 \ registries the caller declares, and a live registry cannot be resized.
-$0400 constant MESSAGE-CAP                \ copied primary server message
 $05 constant SQLSTATE-LEN
 $10 constant VERB-CAP                     \ BEGIN / COMMIT / ROLLBACK, this module's own
-\ A NUL scan of a libpq C string reads one byte past the copied message, so
-\ MESSAGE! sees whether its cap falls inside a character.
-MESSAGE-CAP 1+ constant SCAN-CAP
 $1000 constant ARENA-MIN                  \ smallest call arena worth mapping
 $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
 $7FFFFFFF constant GENERATION-MAX         \ positive signed handle, high 31 bits
@@ -222,7 +217,8 @@ DYNAMIC-BUFFER CONN-MESSAGE-U n
 DYNAMIC-BUFFER CONN-SQLSTATE-U n
 DYNAMIC-BUFFER CONN-PARAM-OFF n
 DYNAMIC-BUFFER CONN-VERB n
-DYNAMIC-BUFFER CONN-MESSAGE n
+DYNAMIC-BUFFER CONN-MESSAGE ptr u8
+DYNAMIC-BUFFER CONN-MESSAGE-CAP n
 DYNAMIC-BUFFER CONN-SQLSTATE n
 DYNAMIC-BUFFER CONN-BOUND n
 
@@ -300,16 +296,9 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    p FFI:>CELL 0= ;
 
 
-\ Bound scans by SCAN-CAP; libpq gives these strings no extent.
-: CSTR-LEN ( ptr u8 -- n ) {: p :}
-   SCAN-CAP 0 ?do
-      p i + c@ 0= if i unloop exit then
-   loop
-   SCAN-CAP ;
-
-
-: CSTR$ ( ptr u8 -- ptr u8 n ) {: p :}
-   p p CSTR-LEN ;
+\ libpq gives its strings no extent: each ends at its NUL.
+: CSTR$ ( ptr u8 -- ptr u8 n )
+   dup ZLEN ;
 
 
 \ ---- slot storage ---------------------------------------------------------
@@ -331,6 +320,10 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot CONN-CHECK
    slot CONN-ARENA ;
 
+: MESSAGE-CELL ( n -- ptr ptr u8 ) {: slot:n :}
+   slot CONN-CHECK
+   slot CONN-MESSAGE ;
+
 : DRAIN-LAST-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-LAST-RESULT ;
@@ -349,6 +342,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 
 : ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
+: MESSAGE-BASE ( n -- ptr u8 )   MESSAGE-CELL @ ;
+: MESSAGE-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot MESSAGE-CELL ! ;
 
 \ The generation publishes the slot's owner: written with release after the
 \ owner and read with acquire before it, so a reader that sees a generation
@@ -370,14 +365,14 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
 : ARENA-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-ARENA-U ! ;
 : MESSAGE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-U @ ;
 : MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
+: MESSAGE-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-CAP @ ;
+: MESSAGE-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-CAP ! ;
 : SQLSTATE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-SQLSTATE-U @ ;
 : SQLSTATE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-SQLSTATE-U ! ;
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
 : BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
 
 : VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
-: MESSAGE-BUF ( n -- ptr u8 ) {: slot:n :}
-   slot CONN-CHECK 0 CONN-MESSAGE BYTE-VIEW slot MESSAGE-CAP * + ;
 : SQLSTATE-BUF ( n -- ptr u8 ) {: slot:n :}
    slot CONN-CHECK 0 CONN-SQLSTATE BYTE-VIEW slot SQLSTATE-LEN * + ;
 
@@ -630,10 +625,40 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    E-CAPACITY throw ;
 
 
+\ ---- the message copy -----------------------------------------------------
+\ Each connection keeps its own copy of the last server message, as long as the
+\ server sent it, in one OS mapping that grows to the longest message so far. It
+\ outlives CLOSE, since CONNECT's `refused` text is read after the close, and
+\ goes with the registry, image preparation included.
+: MESSAGE-RELEASE ( n -- ) {: slot:n :}
+   slot MESSAGE-BASE {: base :}
+   base NULL-ADDR? 0= if base slot MESSAGE-CAP@ RELEASE-ARENA then
+   NULL-ARG slot MESSAGE-BASE!
+   0 slot MESSAGE-CAP!
+   0 slot MESSAGE-U! ;
+
+
+\ The old copy is never read again, so growth maps the new size and drops the
+\ old mapping without moving its bytes.
+: MESSAGE-ROOM ( n n -- ) {: slot:n want:n :}
+   want slot MESSAGE-CAP@ <= if exit then
+   want ALLOC-ARENA {: fresh :}
+   slot MESSAGE-RELEASE
+   fresh slot MESSAGE-BASE!
+   want slot MESSAGE-CAP! ;
+
+
+\ Only a registry CONFIGURE published holds copies: a partial reserve made none.
+: RELEASE-MESSAGES ( -- )
+   CONFIGURED @ 0= if exit then
+   CONN-CAP 0 ?do i MESSAGE-RELEASE loop ;
+
+
 \ ---- application-sized registry -----------------------------------------
 \ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
 \ bounds and release, including cleanup after a partially completed reserve.
 : RELEASE-REGISTRY ( -- )
+   RELEASE-MESSAGES
    CONN-PG-RELEASE
    CONN-GEN-RELEASE
    CONN-LIVE-RELEASE
@@ -651,6 +676,7 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-PARAM-OFF-RELEASE
    CONN-VERB-RELEASE
    CONN-MESSAGE-RELEASE
+   CONN-MESSAGE-CAP-RELEASE
    CONN-SQLSTATE-RELEASE
    CONN-BOUND-RELEASE
    RES-PG-RELEASE
@@ -681,7 +707,8 @@ FUNCTION: LIB-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    CONN-CAP CONN-SQLSTATE-U-RESERVE
    CONN-CAP PARAM-CAP * CONN-PARAM-OFF-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
-   CONN-CAP MESSAGE-CAP * CELL / CONN-MESSAGE-RESERVE
+   CONN-CAP CONN-MESSAGE-RESERVE
+   CONN-CAP CONN-MESSAGE-CAP-RESERVE
    CONN-CAP SQLSTATE-LEN * CELL 1- + CELL / CONN-SQLSTATE-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
    RESULT-CAP RES-PG-RESERVE
@@ -865,13 +892,14 @@ REGISTER-CHILD-RESET
 
 \ ---- server diagnostics ---------------------------------------------------
 : MESSAGE! ( n ptr u8 n -- ) {: slot:n a u:n :}
-   a u MESSAGE-CAP UTF8:FIT {: kept:n :}
-   a slot MESSAGE-BUF kept BYTE-COPY
-   kept slot MESSAGE-U! ;
+   0 slot MESSAGE-U!
+   slot u MESSAGE-ROOM
+   a slot MESSAGE-BASE u BYTE-COPY
+   u slot MESSAGE-U! ;
 
 
 : MESSAGE$ ( n -- ptr u8 n ) {: slot:n :}
-   slot MESSAGE-BUF slot MESSAGE-U@ ;
+   slot MESSAGE-BASE slot MESSAGE-U@ ;
 
 
 : SQLSTATE! ( n ptr u8 n -- ) {: slot:n a u:n :}
@@ -907,19 +935,17 @@ REGISTER-CHILD-RESET
 
 
 \ ---- nonblocking progress ------------------------------------------------
+\ Only OUTCOME and a refused CONNECT write the connection's message copy: an
+\ OUTCOME's `failed` span holds until the next OUTCOME, so a failure that throws
+\ leaves the copy alone.
 : COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
    p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! then ;
 
 
-: FAIL-CONNECTION ( n -- ) {: slot:n :}
-   slot COPY-CONN-MESSAGE
-   slot ABANDON-SLOT ;
-
-
 : WAITING ( n n -- progress ) {: slot:n events:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
-   socket 0 < if slot FAIL-CONNECTION E-EXEC throw then
+   socket 0 < if slot ABANDON-SLOT E-EXEC throw then
    socket >FD events PG-PROGRESS:waiting ;
 
 
@@ -958,7 +984,7 @@ REGISTER-CHILD-RESET
 : QUERY-DONE ( n -- progress ) {: slot:n :}
    slot PENDING@ 1- {: res:n :}
    slot DRAIN-LAST@ {: pg :}
-   pg NULL-ADDR? if slot FAIL-CONNECTION E-EXEC throw then
+   pg NULL-ADDR? if slot ABANDON-SLOT E-EXEC throw then
    NULL-ARG slot DRAIN-LAST!
    0 slot PENDING!
    pg slot res FILL-RES-SLOT PG-PROGRESS:completed ;
@@ -969,10 +995,10 @@ REGISTER-CHILD-RESET
 \ progress calls; all preceding results are released as a script advances.
 : POLL-QUERY ( n -- progress ) {: slot:n :}
    slot CONN-PG@ LIB-CONSUME-INPUT 0= if
-      slot FAIL-CONNECTION E-EXEC throw
+      slot ABANDON-SLOT E-EXEC throw
    then
    slot CONN-PG@ LIB-FLUSH {: flushing:n :}
-   flushing 0 < if slot FAIL-CONNECTION E-EXEC throw then
+   flushing 0 < if slot ABANDON-SLOT E-EXEC throw then
    flushing 0<> if slot AIO:READABLE AIO:WRITABLE or WAITING exit then
    begin
       slot CONN-PG@ LIB-IS-BUSY 0<> if
@@ -1059,9 +1085,8 @@ REGISTER-CHILD-RESET
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
 
 
-: SEND-FAILED ( n n -- ) {: slot:n res:n :}
+: SEND-FAILED ( n -- ) {: res:n :}
    res RETIRE-RES-SLOT
-   slot COPY-CONN-MESSAGE
    E-EXEC throw ;
 
 
@@ -1073,7 +1098,7 @@ REGISTER-CHILD-RESET
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1086,7 +1111,7 @@ REGISTER-CHILD-RESET
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1101,7 +1126,7 @@ REGISTER-CHILD-RESET
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1118,7 +1143,7 @@ REGISTER-CHILD-RESET
    s" " slot ARENA-CSTR {: name-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE name-off + LIB-SEND-DESCRIBE-PREPARED {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1133,7 +1158,7 @@ REGISTER-CHILD-RESET
    a u slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1168,7 +1193,7 @@ REGISTER-CHILD-RESET
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
    LIB-SEND-QUERY-PARAMS {: sent:n :}
-   sent 0= if slot res SEND-FAILED then
+   sent 0= if res SEND-FAILED then
    slot res ARM-QUERY
    slot deadline WAIT-QUERY RESULT-SLOT ;
 
@@ -1179,7 +1204,6 @@ REGISTER-CHILD-RESET
    slot a u RUN-VERB {: res:n :}
    res RESULT-STATUS {: status:n :}
    status PGRES-COMMAND-OK <> if
-      slot res RES-PG@ DIAGNOSE
       res CLEAR-SLOT
       E-EXEC throw
    then
@@ -1284,7 +1308,7 @@ public
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    pg slot CONN-PG!
    pg 1 LIB-SET-NONBLOCKING 0<> if
-      slot FAIL-CONNECTION
+      slot ABANDON-SLOT
       E-CONNECT throw
    then
    CONNECT-FIRST slot CONNECTING!

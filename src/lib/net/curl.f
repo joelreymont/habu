@@ -121,7 +121,6 @@ INFO-STRING 21 + constant INFO-PRIVATE    \ CURLINFO_PRIVATE
 2 constant PROTO-HTTPS                    \ CURLPROTO_HTTPS
 PROTO-HTTP PROTO-HTTPS or constant PROTO-WEB
 
-$4000000 constant MAX-BYTES               \ response capacity
 $10000 constant MAX-TEXT                  \ one string option or header line
 $7FFFFFFF constant MAX-TIMEOUT            \ a C long option's own ceiling
 999 constant MAX-STATUS
@@ -220,6 +219,12 @@ FUNCTION: COPY-OUT memcpy ( ptr u8 n n -- n )
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
+
+
+\ A request body and a destination span are the caller's own storage, bounded
+\ only by what the caller allocated: the response itself grows in a memstream.
+: AT-LEAST ( n n -- ) {: value:n minimum:n :}
+   value minimum < if E-OPERAND throw then ;
 
 
 \ Every foreign cell here is little-endian and LE: reads it: LE:U64@ for a
@@ -534,7 +539,7 @@ public
 \ declared length is set first because the copy reads that length. Any length
 \ libcurl can hold is taken; a copy it cannot allocate is its out-of-memory status.
 : BODY! ( handle ptr u8 n -- status ) {: subject:handle bytes u:n :}
-   u 0 < if E-OPERAND throw then
+   u 0 AT-LEAST
    subject OPT-BODY-SIZE u SET-NUM-RAW dup CURLE-OK <> if CODE>STATUS exit then drop
    subject HANDLE-CELL OPT-COPY-BODY bytes SETOPT-SPAN CODE>STATUS ;
 
@@ -1516,7 +1521,7 @@ private
 : START-WITH-BODY ( handle ptr u8 len n -- status ) {: subject:handle target capacity:len mode:n :}
    subject HANDLE-CELL {: easy:n :}
    LOOP-LIVE atomic@ 0= if E-STATE throw then
-   mode MODE-WHOLE = if capacity LEN>N 1 MAX-BYTES WITHIN-RANGE then
+   mode MODE-WHOLE = if capacity LEN>N 1 AT-LEAST then
    TASK:SELF dup FFI:>CELL 0<> if ['] OWNER-END swap TASK:AT-EXIT else drop then
    easy START-CLAIM {: idx:n :}
    easy STATE-GET STATE-CLEAR-RESPONSE
@@ -1592,7 +1597,7 @@ public
 : NEXT ( handle ptr u8 len -- chunk-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if E-STATE throw then
-   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   capacity LEN>N 1 AT-LEAST
    CURL-LOCK TASK:GET
    idx REC R.REQUEST atomic@ REQUEST-NONE <> if
       CURL-LOCK TASK:RELEASE E-STATE throw
@@ -1750,7 +1755,7 @@ public
 \ wins; only an otherwise successful transfer maps a close failure to 23.
 : PERFORM ( handle ptr u8 len -- fetch-result ) {: subject:handle target capacity:len :}
    subject HANDLE-CELL {: easy:n :}
-   capacity LEN>N 1 MAX-BYTES WITHIN-RANGE
+   capacity LEN>N 1 AT-LEAST
    easy HANDLE-BUSY? if E-STATE throw then
    easy STATE-GET STATE-CLEAR-RESPONSE
    BUF-CELL LEN-CELL STREAM-OPEN dup 0= if
