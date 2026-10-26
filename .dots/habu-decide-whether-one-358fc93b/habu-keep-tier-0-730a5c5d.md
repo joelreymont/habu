@@ -13,7 +13,7 @@ Joel 2026-10-26: T0-04 minus copy-on-write aliases (those are habu-copy-on-write
 Design: ~/.cache/tmp/jerry-join-design.md (Plan/Fable), adopted with the lead cuts in its section 7. Claim: jerry. x27 holds NDICT (layout.f:6), so it is not poolable.
 
 Lanes (master 36e54552, host ~/.cache/tmp/jerry-host/hb built from master):
-- 0, size the JIT-SNAP frames by CFSTK-DEPTH-MAX and delete the nest check: workspace .jj-ws.noindex/jerry-snapframes, handoff ~/.cache/tmp/jerry-snapframes-handoff.md.
-- 1a, LVRECON parallel copy at loop back edges: workspace .jj-ws.noindex/jerry-recon, handoff ~/.cache/tmp/jerry-recon-handoff.md.
+- 0, size the JIT-SNAP frames by CFSTK-DEPTH-MAX and delete the nest check: workspace .jj-ws.noindex/jerry-snapframes, handoff ~/.cache/tmp/jerry-snapframes-handoff.md. Committed 4c0ebbb5; in review and gate (logs ~/.cache/tmp/jerry-gate0/).
+- 1a, LVRECON parallel copy at loop back edges: workspace .jj-ws.noindex/jerry-recon, handoff ~/.cache/tmp/jerry-recon-handoff.md. First worker handed off after the tests (R-SWAP and R-PULL fail pre-change); a fresh worker continues from the handoff. Found: tier 1 refuses swap loops (habu-tier-1-refuses-31528d7c).
 - 1b, joins at if/else/then and while/repeat (after 0 and 1a): not started.
 - 3, measurement after the widening lanes (habu-widen-the-tier-8c29a00c).
