@@ -59,13 +59,13 @@ create BODY 4096 allot
    SERVER-U @ CHILD-U !
    s" tools/lsp.f" SERVER-ENTRY 2drop ;
 
-: STAGE ( ptr u8 n -- )
-   PROC-CMD:RESET
-   PROJECT PROJECT-U @ PROC-CMD:CWD!
+: STAGE ( CMD:command ptr u8 n -- CMD:command )
+   {: entry:ptr entryu:n :}
+   PROJECT PROJECT-U @ CMD:CWD!
    \ Exercise a cold image build here, then reuse it for the nested entry.
-   s" HABU_OUT" s" out" PROJECT-PATH PROC-CMD:ENV+
-   s" --load" PROC-CMD:ARG+
-   PROC-CMD:ARG+ ;
+   s" HABU_OUT" s" out" PROJECT-PATH CMD:ENV+
+   s" --load" CMD:ARG+
+   entry entryu CMD:ARG+ ;
 
 : QUOTED ( ptr u8 n -- )
    s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
@@ -119,30 +119,39 @@ create BODY 4096 allot
    SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
    SB$ PROJECT-PATH ;
 
-: SERVER-CASE ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   STAGE
+: SERVER-RUN ( ptr u8 n ptr u8 n CMD:command -- CMD:command )
+   >r {: entry:ptr entryu:n name:ptr nameu:n :} r>
+   entry entryu STAGE
    CONVERSATION
-   WIRE WIRE-U @ PROC-CMD:IN!
-   ENGINE-CANDIDATE:PATH$ 30000 >MS PROC-CMD:RUN-RC RC>N
+   WIRE WIRE-U @ CMD:IN!
+   ENGINE-CANDIDATE:PATH$ 30000 >MS CMD:RUN-RC RC>N {: rc:n :}
+   CMD:OUT$ {: out:ptr outu:n :}
+   CMD:ERR$ {: err:ptr erru:n :}
    name nameu s" .in" STREAM-PATH WIRE WIRE-U @ WRITE-ALL
-   name nameu s" .out" STREAM-PATH PROC-CMD:OUT$ WRITE-ALL
-   name nameu s" .err" STREAM-PATH PROC-CMD:ERR$ WRITE-ALL
-   dup 1 <> if PROC-CMD:ERR$ type cr then 1 T=
-   PROC-CMD:ERR$ s\" lsp: input ended before exit\n" T$=
-   PROC-CMD:OUT$ s\" \"version\":1,\"diagnostics\":[]" CONTAINS? TTRUE
-   PROC-CMD:OUT$ s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" CONTAINS? TTRUE
-   PROC-CMD:OUT$ s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
-   PROC-CMD:OUT$ s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
+   name nameu s" .out" STREAM-PATH out outu WRITE-ALL
+   name nameu s" .err" STREAM-PATH err erru WRITE-ALL
+   rc 1 <> if err erru type cr then rc 1 T=
+   err erru s\" lsp: input ended before exit\n" T$=
+   out outu s\" \"version\":1,\"diagnostics\":[]" CONTAINS? TTRUE
+   out outu s\" \"id\":2,\"result\":[{\"range\":{\"start\":{\"line\":1,\"character\":2},\"end\":{\"line\":1,\"character\":3}},\"kind\":1}" CONTAINS? TTRUE
+   out outu s\" \"id\":3,\"result\":[{\"range\":" CONTAINS? TTRUE
+   out outu s" dep.f" PROJECT-PATH CONTAINS? TTRUE ;
+
+: SERVER-CASE ( ptr u8 n ptr u8 n -- )
+   [: SERVER-RUN ;] CMD:WITH-COMMAND ;
+
+: CHILD-RUN ( ptr u8 n CMD:command -- CMD:command )
+   >r {: entry:ptr entryu:n :} r>
+   entry entryu STAGE
+   s" --" CMD:ARG+
+   SUBJECT SUBJECT-U @ CMD:ARG+
+   s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" CMD:IN!
+   ENGINE-CANDIDATE:PATH$ 30000 >MS CMD:RUN-RC RC>N {: rc:n :}
+   rc 0 <> if CMD:ERR$ type cr then rc 0 T=
+   CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
 
 : CHILD-CASE ( ptr u8 n -- )
-   STAGE
-   s" --" PROC-CMD:ARG+
-   SUBJECT SUBJECT-U @ PROC-CMD:ARG+
-   s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" PROC-CMD:IN!
-   ENGINE-CANDIDATE:PATH$ 30000 >MS PROC-CMD:RUN-RC RC>N
-   dup 0 <> if PROC-CMD:ERR$ type cr then 0 T=
-   PROC-CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
+   [: CHILD-RUN ;] CMD:WITH-COMMAND ;
 
 public
 

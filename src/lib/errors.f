@@ -221,7 +221,7 @@
 -4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
 -4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
 \ -4006 was E-ZED-TIMEOUT: a ZED run's expired deadline throws E-PROC-TIMEOUT
-\ from PROC-CMD:RUN-RC, as every process deadline does. The number stays unused.
+\ from CMD:RUN-RC, as every process deadline does. The number stays unused.
 \ E-ZED-EMIT is thrown downstream: Loom's tools/ptx/zed-gradcheck-suite.f
 \ raises it when its bin/hb spawn that emits a PTX kernel exits nonzero.
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
@@ -1465,6 +1465,8 @@
 \ -9250..-9259 filled.
 \ Word contracts read from source: -9570..-9579, minted in src/lib/word-docs.f,
 \ which owns package WORD-DOCS.
+\ Scoped commands: -9580..-9589, minted in src/lib/process-command.f, which
+\ owns package CMD.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

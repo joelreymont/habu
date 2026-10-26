@@ -48,30 +48,30 @@ create BIG-B 32769 allot
 \ The CLI entry on a stand-in host: the script given replaces the engine that
 \ builds the first generation, so BUILD reads its exit status with no native
 \ build. Returns the entry's own exit status.
-: CHAIN-RC ( ptr u8 n -- n )
+: CHAIN-RC ( CMD:command ptr u8 n -- CMD:command n )
    {: script:ptr scriptu:n :}
    HOST$ script scriptu WRITE-ALL
    HOST$ CHMOD-X
-   PROC-CMD:RESET
-   s" --load" PROC-CMD:ARG+
-   s" tools/chain-run-build.f" PROC-CMD:ARG+
-   s" --" PROC-CMD:ARG+
-   HOST$ PROC-CMD:ARG+
-   ROOT$ s" gen1" JOIN PROC-CMD:ARG+
-   ROOT$ s" gen2" JOIN PROC-CMD:ARG+
-   ROOT$ s" gen3" JOIN PROC-CMD:ARG+
-   ROOT$ s" tmp" JOIN PROC-CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS PROC-CMD:RUN-OUTCOME
+   CMD:RESET
+   s" --load" CMD:ARG+
+   s" tools/chain-run-build.f" CMD:ARG+
+   s" --" CMD:ARG+
+   HOST$ CMD:ARG+
+   ROOT$ s" gen1" JOIN CMD:ARG+
+   ROOT$ s" gen2" JOIN CMD:ARG+
+   ROOT$ s" gen3" JOIN CMD:ARG+
+   ROOT$ s" tmp" JOIN CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N ;
 
 \ The entry replays the failed child's stderr and names the code it caught.
-: CHAIN-NAMED ( -- )
-   PROC-CMD:OUT$ s" chain-run: native-build stderr: chain-run-test host" CONTAINS? TTRUE
-   PROC-CMD:OUT$ s" chain-run: uncaught throw code " CONTAINS? TTRUE ;
+: CHAIN-NAMED ( CMD:command -- CMD:command )
+   CMD:OUT$ s" chain-run: native-build stderr: chain-run-test host" CONTAINS? TTRUE
+   CMD:OUT$ s" chain-run: uncaught throw code " CONTAINS? TTRUE ;
 
 \ 124 is PROC-TIMEOUT-RC, the status a native build exits with when a deadline
 \ expired in it (tools/native-build-args.f).
-: CHAIN-EXITS ( -- )
+: CHAIN-EXITS-IN ( CMD:command -- CMD:command )
    s" a native-build deadline exits the chain with PROC-TIMEOUT-RC" T-LABEL
    S\" #!/bin/sh\necho chain-run-test host >&2\nexit 124\n" CHAIN-RC
    PROC-TIMEOUT-RC T=
@@ -81,6 +81,8 @@ create BIG-B 32769 allot
    CHAIN-RUN:FAIL-RC T=
    CHAIN-NAMED ;
 
+: CHAIN-EXITS ( -- ) [: CHAIN-EXITS-IN ;] CMD:WITH-COMMAND ;
+
 : GEN-SIZE ( ptr u8 n -- n ) {: a:ptr u:n :} ROOT$ a u JOIN FILE-SIZE ;
 
 \ Each generation is built by the one before. The stand-in engines copy their
@@ -89,14 +91,16 @@ create BIG-B 32769 allot
 \ grower appends a newline, so each engine it builds is one byte longer than
 \ its builder. Gen 3 is three bytes longer than the host only when gen 1 built
 \ gen 2 and gen 2 built gen 3.
-: CHAIN-LINEAGE ( -- )
+: CHAIN-LINEAGE-IN ( CMD:command -- CMD:command )
    s" an engine that reproduces itself is a fixpoint at generation 2" T-LABEL
    S\" #!/bin/sh\ncp \q$0\q \q$4\q\n" CHAIN-RC 0 T=
-   PROC-CMD:OUT$ s" chain-run: fixpoint at generation 2" CONTAINS? TTRUE
+   CMD:OUT$ s" chain-run: fixpoint at generation 2" CONTAINS? TTRUE
    s" an engine that differs from its own build is no fixpoint" T-LABEL
    S\" #!/bin/sh\ncp \q$0\q \q$4\q\necho >> \q$4\q\n" CHAIN-RC
    CHAIN-RUN:FAIL-RC T=
    s" gen3" GEN-SIZE HOST$ FILE-SIZE 3 + T= ;
+
+: CHAIN-LINEAGE ( -- ) [: CHAIN-LINEAGE-IN ;] CMD:WITH-COMMAND ;
 
 : MAIN ( -- )
    T-RESET PREP

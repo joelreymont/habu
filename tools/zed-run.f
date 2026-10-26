@@ -19,18 +19,18 @@ package ZED
       1 +
    repeat drop ;
 
-: CLI-REPORT ( -- )   \ echo captured remote output
-   OUT$ type
-   ERR$ type ;
+: CLI-REPORT ( rc CMD:command -- CMD:command )   \ echo captured remote output
+   >r {: rc:rc :} r>
+   CMD:OUT$ type
+   CMD:ERR$ type
+   rc RUN-OK ;
 
 : MAIN ( -- )
    AVAILABLE? 0= if s" zed-run needs HABU_ZED" SKIP exit then
    SCRIPT-ARGC 0= if s" zed-run: no command given" type cr E-ZED-ARG throw then
    PING
    CLI-BUILD
-   CMD$ RUN {: rc:rc :}
-   CLI-REPORT
-   rc RUN-OK ;
+   CMD$ [: CLI-REPORT ;] WITH-RUN ;
 
 MAIN
 

@@ -24,17 +24,18 @@ variable CAPTURE-ROWS
    s" HABU_IMAGE_DEFAULT" >LEN PROC-ENV-DEFAULT$? TTRUE
    LEN>N s" default-value" T$= ;
 
-: COMMAND ( -- )
-   PROC-CMD:RESET
-   PROC-CMD:ENV-HERMETIC
-   s" HABU_IMAGE_ENV" s" command-value" PROC-CMD:ENV+
-   s" -c" PROC-CMD:ARG+
+: COMMAND-RUN ( CMD:command -- CMD:command )
+   CMD:ENV-HERMETIC
+   s" HABU_IMAGE_ENV" s" command-value" CMD:ENV+
+   s" -c" CMD:ARG+
    S\" test \q$HABU_IMAGE_ENV\q = command-value && printf process-image-ok"
-   PROC-CMD:ARG+
-   s" /bin/sh" 10000 >MS PROC-CMD:RUN-OUTCOME
+   CMD:ARG+
+   s" /bin/sh" 10000 >MS CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N 0 T=
-   PROC-CMD:OUT$ s" process-image-ok" T$=
-   PROC-CMD:ERR$ 0 T= drop ;
+   CMD:OUT$ s" process-image-ok" T$=
+   CMD:ERR$ 0 T= drop ;
+
+: COMMAND ( -- ) [: COMMAND-RUN ;] CMD:WITH-COMMAND ;
 
 : CHECK-ROWS ( -- )
    PROC-ARGV-MAX 1+ 0 ?do

@@ -115,7 +115,7 @@ public
    PROC-CAPTURE-FINISH-RC ;
 
 \ The same run reporting the outcome sum (exited / signaled / timeout) with the
-\ captured lengths, the shape PROC-CMD stores.
+\ captured lengths.
 : RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH

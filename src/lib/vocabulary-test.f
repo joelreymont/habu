@@ -51,34 +51,35 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A deadline is no exit code: the file the child loaded last and its capture
 \ are printed and E-PROC-TIMEOUT thrown.
-: CODE! ( outcome ptr u8 n -- )
+: CODE! ( CMD:command outcome ptr u8 n -- CMD:command )
    {: oc ran:ptr ranu:n :}
+   CMD:OUT$ {: out:ptr outu:n :}
+   CMD:ERR$ {: err:ptr erru:n :}
    oc MATCH outcome
      exited OF CODE ! ENDOF
      signaled OF drop -1 CODE ! ENDOF
-     timeout OF ran ranu PROC-CMD:OUT$ PROC-CMD:ERR$ T-TIMED-OUT ENDOF
+     timeout OF ran ranu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: FILE-ARG+ ( ptr u8 n -- )
-   FILE$ PROC-CMD:ARG+ ;
+: FILE-ARG+ ( CMD:command ptr u8 n -- CMD:command )
+   FILE$ CMD:ARG+ ;
 
 \ An empty case name loads the harness alone.
-: SPAWN ( ptr u8 n -- )
+: SPAWN ( CMD:command ptr u8 n -- CMD:command )
    {: name:ptr nu:n :}
-   PROC-CMD:RESET
-   s" --load" PROC-CMD:ARG+
+   s" --load" CMD:ARG+
    STEM$ FILE-ARG+
    nu 0 > if
-      s" --" PROC-CMD:ARG+
+      s" --" CMD:ARG+
       name nu FILE-ARG+
    then
-   s" bin/hb" TIMEOUT-MS >MS PROC-CMD:RUN-OUTCOME
+   s" bin/hb" TIMEOUT-MS >MS CMD:RUN-OUTCOME
    nu 0 > if name nu else STEM$ then FILE$ CODE! ;
 
 \ ---- what the child said ------------------------------------------------------
 
-: ERR-LINE$ ( -- ptr u8 n )
-   PROC-CMD:ERR$ {: a:ptr u:n :}
+: ERR-LINE$ ( CMD:command -- CMD:command ptr u8 n )
+   CMD:ERR$ {: a:ptr u:n :}
    a u LF INDEX-OF MATCH option
      none OF a u ENDOF
      some OF IDX>N a swap ENDOF
@@ -93,7 +94,7 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ Append the first stderr line to the builder. A location is ` at <absolute
 \ path>:<line>`; the path is cut back to the one the harness was given.
-: SAID+ ( -- )
+: SAID+ ( CMD:command -- CMD:command )
    ERR-LINE$ {: a:ptr u:n :}
    a u s"  at /" FIND-SUB MATCH option
      none OF a u SB-APPEND ENDOF
@@ -104,12 +105,12 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ The first `want` bytes of that line, so a row states as much of a diagnostic
 \ as the seal owns: a policy line whole, a checker line by its head.
-: SAID-HEAD$ ( n -- ptr u8 n ) {: want:n :}
+: SAID-HEAD$ ( CMD:command n -- CMD:command ptr u8 n ) {: want:n :}
    SB-RESET SAID+
    SB$ {: a:ptr u:n :}
    a u want min ;
 
-: LOG ( ptr u8 n -- ) {: name:ptr nu:n :}
+: LOG ( CMD:command ptr u8 n -- CMD:command ) {: name:ptr nu:n :}
    SB-RESET STEM$ SB-APPEND s"  " SB-APPEND
    nu 0 > if name nu SB-APPEND else s" -" SB-APPEND then
    s"  rc=" SB-APPEND CODE @ FMT:SB-INT s"  " SB-APPEND
@@ -123,8 +124,9 @@ variable CODE                          \ the last child's exit code, -1 when it 
    s" : " SB-APPEND what wu SB-APPEND
    SB$ T-LABEL ;
 
-: RUNS ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: name:ptr nu:n rc:n line:ptr lu:n out:ptr ou:n :}
+\ One scope per child: its captures stay readable until the verdict is taken.
+: RUNS-IN ( ptr u8 n n ptr u8 n ptr u8 n CMD:command -- CMD:command )
+   >r {: name:ptr nu:n rc:n line:ptr lu:n out:ptr ou:n :} r>
    name nu s" exit code" LABEL
    name nu SPAWN
    name nu LOG
@@ -132,7 +134,10 @@ variable CODE                          \ the last child's exit code, -1 when it 
    name nu s" first stderr line" LABEL
    lu SAID-HEAD$ line lu T$=
    name nu s" stdout" LABEL
-   PROC-CMD:OUT$ out ou T$= ;
+   CMD:OUT$ out ou T$= ;
+
+: RUNS ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   [: RUNS-IN ;] CMD:WITH-COMMAND ;
 
 \ The engine's one refusal: the located line, ENGINE-ERROR:POLICY, no output.
 : REFUSES ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}

@@ -27163,9 +27163,9 @@ variable TOP-ASK-ANSWER
    RBF-FINALIZE ;
 
 \ ---- generates: rows ----------------------------------------------------------
-\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. src/lib/process-command.f
-\ COMMAND and src/lib/task.f +USER build a colon definition and evaluate it, so what
-\ they make exists only once that text runs, which the source pre-verifier never
+\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. src/lib/task.f +USER
+\ builds a colon definition and evaluates it, so what it makes exists only once
+\ that text runs, which the source pre-verifier never
 \ does. `generates: D ( effect )` states it instead: the row's record lands on
 \ D's CREATES cell exactly as a certified clause's does, so every reader of a
 \ clause (the wrapper walk, the pre-pass's resident lookup) reads the row

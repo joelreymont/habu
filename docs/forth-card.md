@@ -246,7 +246,7 @@ row with no target, naming no word or naming a word whose input row does not
 end in the string `( ptr u8 n )`, as `names: dup` does, is `E-NAMES-ROW`.
 
 A word that renders definitions at load time (`FUNCTION:`/`;FUNCTION`,
-`CMD:COMMAND`, `TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
+`TASK:+USER`, anything reaching `INCLUDE-EVALUATE`) makes names
 `tools/check.f` leaves to its run, which type-checks their uses there, unless
 the source declares them: uses of a `FUNCTION:` word and of a `generates:` row's
 word (§ 4) are checked before the run, `--verify-only` included. At top level
@@ -309,10 +309,9 @@ either tier, in a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before
 `does>` leaves `-- ptr a`.
 
-A definer that writes its word as text (`+USER`, `COMMAND`) states what it makes
-with `generates: D ( effect )` after D's definition, so `tools/check.f` checks
-that word's uses before the run; what no row states, such as `COMMAND`'s
-`NAME#VEC`, is left to the run (§ 3). `FUNCTION:` needs no row.
+A definer that writes its word as text (`+USER`) states what it makes with
+`generates: D ( effect )` after D's definition, so `tools/check.f` checks that
+word's uses before the run; what no row states is left to the run (§ 3). `FUNCTION:` needs no row.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`); `PERSISTED-PTR-VARIABLE` and

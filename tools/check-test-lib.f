@@ -1225,8 +1225,8 @@ variable LONG-J
 \ the run as a bare one is. The fixtures require src/lib/ffi-abi.f for `FUNCTION:` and src/lib/task.f
 \ for TASK:+USER, the renderer src/lib/crypto/evp.f uses. The pre-pass checks
 \ FUNCTION:'s word against its declaration group and a TASK:+USER slot
-\ against the `generates:` row src/lib/task.f states; CMD:COMMAND's row declares
-\ only NAME, so NAME#VEC and NAME#BUF are left to the run.
+\ against the `generates:` row src/lib/task.f states. CKR-GEN's row declares
+\ only NAME, so the NAME#X it also renders is left to the run.
 : CKR-DEF+ ( -- )
    s" : CKR-MAKE ( -- ) s" SB-APPEND $22 SB-APPEND-C
    s"  : CKR-SEVEN ( -- n ) 7 ;" SB-APPEND $22 SB-APPEND-C
@@ -1295,8 +1295,8 @@ variable LONG-J
 : RENDER-CALLER$ ( -- ptr u8 n )
    s" : CKR-USE ( -- n ) CKR-SEVEN ; : CKR-CALLER ( -- ) CKR-USE ;" CKR-AFTER$ ;
 
-: RENDER-CMD$ ( -- ptr u8 n )
-   s" require src/lib/process-command.f CMD:COMMAND CKR-CMD : CKR-VEC ( -- ptr ptr u8 ) CKR-CMD#VEC ; : CKR-BUF ( -- ) CKR-CMD#BUF drop ;" ;
+: RENDER-UNSTATED$ ( -- ptr u8 n )
+   s\" require src/lib/codegen.f $60 CODEGEN:BUFFER CKR-GT : CKR-GT+ ( ptr u8 n -- ) CKR-GT CODEGEN:APPEND-STRING ; : CKR-GEN ( -- ) parse-name {: a:ptr u:n :} CKR-GT CODEGEN:RESET s\" : \" CKR-GT+ a u CKR-GT+ s\"  ( -- n ) 7 ; : \" CKR-GT+ a u CKR-GT+ s\" #X ( -- n ) 8 ;\" CKR-GT+ CKR-GT CODEGEN:CONTENTS INCLUDE-EVALUATE ; generates: CKR-GEN ( -- n ) CKR-GEN CKR-G : CKR-GU ( -- n ) CKR-G CKR-G#X + ;" ;
 
 : EXPECT-PREVERIFY-REFUSED ( n n n -- )
    70 T= {: outu:n erru:n :}
@@ -1347,9 +1347,9 @@ variable LONG-J
    CAP-ERR errc s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR errc s" ckr-caller" CONTAINS? TTRUE ;
 
-: TEST-RENDERED-COMMAND ( -- )
-   RENDER-CMD$ DIRECT-STDIN EXPECT-ACCEPTED
-   RENDER-CMD$ DIRECT-ALL-STDIN EXPECT-ACCEPTED ;
+: TEST-RENDERED-UNSTATED ( -- )
+   RENDER-UNSTATED$ DIRECT-STDIN EXPECT-ACCEPTED
+   RENDER-UNSTATED$ DIRECT-ALL-STDIN EXPECT-ACCEPTED ;
 
 \ A definer's created effect is its clause's declaration, so CKR-X is learned
 \ when the clause or the definer's own body names a product only the run can
@@ -7219,7 +7219,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 \ --- a definer that writes its word as text: the generates: row --------------
 \ CKT-GMAKE builds `: NAME ( -- n ) OFF ;` and evaluates it, the shape of
-\ src/lib/process-command.f COMMAND, so only its `generates:` row tells the
+\ src/lib/task.f +USER, so only its `generates:` row tells the
 \ preverify what it makes. The row is a claim: the preverify believes it, and
 \ the run stage, which compiles the generated text, holds it to the real word.
 : GENR-PRELUDE ( -- )
@@ -7414,7 +7414,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/buffer-count" [: TEST-BUFFER-COUNT ;] CASE-RUN
    s" check/parsed-operand" [: TEST-PARSED-OPERAND ;] CASE-RUN
    s" check/rendered-product" [: TEST-RENDERED-PRODUCT ;] CASE-RUN
-   s" check/rendered-command" [: TEST-RENDERED-COMMAND ;] CASE-RUN
+   s" check/rendered-unstated" [: TEST-RENDERED-UNSTATED ;] CASE-RUN
    s" check/rendered-does" [: TEST-RENDERED-DOES ;] CASE-RUN
    s" check/refused-clause" [: TEST-REFUSED-CLAUSE ;] CASE-RUN
    s" check/layout-buffer-count" [: TEST-LAYOUT-BUFFER-COUNT ;] CASE-RUN

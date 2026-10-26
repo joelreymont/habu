@@ -47,26 +47,28 @@ variable CMP-LEFT
 \ (tools/native-build-args.f), and that verdict is thrown again as
 \ E-PROC-TIMEOUT so it reaches the top of the chain. Any other status is a
 \ failed build.
-: BUILD-FAILED ( n -- )
-   s" chain-run: native-build stderr: " type PROC-CMD:ERR$ type cr
-   PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+: BUILD-FAILED ( CMD:command n -- CMD:command ) {: rc:n :}
+   s" chain-run: native-build stderr: " type CMD:ERR$ type cr
+   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    E-BUILD-STATUS throw ;
 
-: BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: host:ptr hostu out:ptr outu tmp:ptr tmpu :}
-   PROC-CMD:RESET
-   s" --load" PROC-CMD:ARG+
-   s" tools/native-build.f" PROC-CMD:ARG+
-   s" --" PROC-CMD:ARG+
-   out outu PROC-CMD:ARG+
-   s" HB_TMP" tmp tmpu PROC-CMD:ENV+
-   s" HABU_UNDER_TEST" host hostu PROC-CMD:ENV+
-   s" HABU_FIXPOINT_ENGINE" host hostu PROC-CMD:ENV+
-   host hostu 1800000 >MS PROC-CMD:RUN-RC MATCH result
+: BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )
+   >r {: host:ptr hostu out:ptr outu tmp:ptr tmpu :} r>
+   s" --load" CMD:ARG+
+   s" tools/native-build.f" CMD:ARG+
+   s" --" CMD:ARG+
+   out outu CMD:ARG+
+   s" HB_TMP" tmp tmpu CMD:ENV+
+   s" HABU_UNDER_TEST" host hostu CMD:ENV+
+   s" HABU_FIXPOINT_ENGINE" host hostu CMD:ENV+
+   host hostu 1800000 >MS CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF
    ;MATCH
    out outu EXISTS? 0= if E-BUILD-PATH throw then ;
+
+: BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   [: BUILD-IN ;] CMD:WITH-COMMAND ;
 
 public
 

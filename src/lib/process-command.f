@@ -1,337 +1,339 @@
-\ process-command.f - checked command contexts and the one shared command.
+\ process-command.f - scoped child-process commands under a linear token.
 \
-\ STORAGE CLASS. `package CMD` is CALLER-OWNED. A command context is what
-\ `CMD:COMMAND NAME` declares: a `PTR-U8-TABLE` whose cell 0 holds the address of
-\ the byte region the same declaration allots, and whose remaining cells are the
-\ child's argv and envp vectors. Every CMD word takes that handle, so any number
-\ of tasks may each build and run their own command at once, and a caller may
-\ pair its own storage with `CMD:BIND` instead of declaring it.
+\ STORAGE CLASS. TASK-LOCAL. `CMD:WITH-COMMAND` allocates one command context,
+\ hands the body a linear `CMD:command` naming it, and releases the context and
+\ everything it grew when the body returns or throws. Every member grows: the
+\ argument, environment and stdin bytes, the argv/envp vectors built from them,
+\ and the stdout/stderr captures. No caller-visible ceiling remains.
 \
-\ `package PROC-CMD` is PROCESS-WIDE. Its words are the same surface over one
-\ static context, CTX0, so every caller that shares them is single-task, as it
-\ always was. Neither package writes the process-wide argv/env staging of
-\ src/lib/process-argv.f and src/lib/process-env.f: an owned run spawns from the
-\ context's own vectors. A run inherits this process's environment unless
-\ ENV-HERMETIC turns that off.
+\ The open contexts of a task form a chain through each context's OUTER cell,
+\ headed by the task's INNER cell; RUNNING names the context whose run is in
+\ progress, so the capture sinks (quotations, which carry no data) find it.
+\ Scopes nest, and tasks never share a context. TASK:PAUSE ends a halted task
+\ without unwinding `finally`, so a task's first scope registers one TASK:AT-EXIT
+\ drain that closes whatever the task left open; main registers none.
+\
+\ The body hands back the token it was given; any other, such as an outer
+\ scope's token swapped in, is refused with CMD:E-HANDLE. Either way the scope
+\ closes its own context, so each scope frees exactly the context it opened.
+\
+\ A throw out of the body loses the token with the stack, and the cleanup frees
+\ by pointer, so `catch` belongs outside the scope word.
+\
+\ A run inherits this process's environment unless ENV-HERMETIC turns that off.
+\ No word here writes the process-wide argv/env staging of src/lib/process-argv.f
+\ and src/lib/process-env.f: a run spawns from the context's own vectors.
 \
 \ CANCELLATION. CMD:CANCEL-FD! lends a pipe's read end to the next run. A byte
 \ or a closed writer cancels it: the run kills the child's tree, reaps the
-\ child, closes its captures and throws E-PROC-CANCELLED, which OUTCOME@ and
-\ RC@ throw again until the next run or reset. A completion already collected
-\ wins, and PROC-STOP is answered first. The lent descriptor is never read or
-\ closed, so a byte left from one request cancels the next run: drain or
-\ replace the pipe before lending it again.
+\ child, closes its captures and throws E-PROC-CANCELLED. A completion already
+\ collected wins, and PROC-STOP is answered first. The lent descriptor is never
+\ read or closed, so a byte left from one request cancels the next run: drain
+\ or replace the pipe before lending it again.
 \
-\ External callers use the qualified public API: the command-builder words
-\ (PROC-CMD:RESET, PROC-CMD:WIPE, PROC-CMD:ARG+, PROC-CMD:ENV+,
-\ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:CWD!,
-\ PROC-CMD:RUN-OUTCOME, PROC-CMD:RUN-RC, PROC-CMD:OUT$, PROC-CMD:ERR$,
-\ PROC-CMD:OUTCOME@, PROC-CMD:RC@) and the same tails under CMD with the handle
-\ deepest. Each package's storage and staging helpers are package-private.
+\ A run that throws, cancelled or not, keeps its code: OUTCOME@ and RC@ throw it
+\ again until the next run or RESET. A path or deadline refused before the run
+\ starts leaves the previous outcome in place.
+\
+\ OUT$ and ERR$ are borrowed until the next run, RESET or the end of the scope.
 require src/lib/errors.f
-require src/lib/codegen.f
+require src/lib/memory.f
+require src/lib/task.f
 require src/lib/fs.f
+require src/lib/byte-buffer.f
+require src/lib/vector.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
-require src/lib/span.f
+
+\ Scoped commands: -9580..-9589, minted here beside the package its codes belong
+\ to (docs/forth-card.md § 6).
+-9580 constant E-CMD-FIRST
+-9589 constant E-CMD-LAST
 
 package CMD
 
 public
 
-255 constant ARG-MAX                     \ positional argv slots a command may carry
-2048 constant ENV-ROWS                   \ envp cells: caller rows, defaults, inherited, the NULL
+-9580 constant E-HANDLE   \ a WITH-COMMAND body handed back a token other than the one it was given
+
+DEFLINEAR CMD:command
 
 private
 
-\ The vector. Cell 0 holds the byte region; the argv vector follows (slot 0 the
-\ path, slots 1..ARG-MAX the arguments, one more for the NULL), then the envp
-\ vector. A vector cell holds a `ptr u8`, which is why the whole context is a
-\ declared PTR-U8-TABLE: a pointer stored in or fetched from an undeclared cell
-\ is refused (E-RAW-CELL-PTR).
-1 constant ARGV-SLOT
-ARGV-SLOT ARG-MAX 2 + + constant ENVP-SLOT
+\ ---- task-local chain ---------------------------------------------------------
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 3 cells TASK:+USER CMD-TASK drop
 
-public
+: INNER ( -- ptr ptr n ) CMD-TASK 0 ptr-field ;
+: RUNNING ( -- ptr ptr n ) CMD-TASK 1 ptr-field ;
+: HOOK ( -- ptr n ) CMD-TASK 2 cells + ;
 
-ENVP-SLOT ENV-ROWS + constant VEC-CELLS
+\ ---- the context record -------------------------------------------------------
+\ Header cells, then the PATHZ and CWDZ byte regions. A member that holds an
+\ address is a typed `ptr-field`; a pointer kept in an undeclared cell is refused.
+: OUTER ( ptr n -- ptr ptr n ) 0 ptr-field ;
+: INHERIT ( ptr n -- ptr n ) 1 cells + ;
+: CWD-LEN ( ptr n -- ptr n ) 2 cells + ;       \ 0: the child inherits this process's directory
+: EXITED ( ptr n -- ptr n ) 3 cells + ;        \ 1: completed by exit (vs signal) when not timed out
+: TIMED-OUT ( ptr n -- ptr n ) 4 cells + ;     \ 1: capture deadline hit
+: CODE ( ptr n -- ptr n ) 5 cells + ;          \ exit code or signal number; 0 for timeout
+: CANCEL-FD ( ptr n -- ptr n ) 6 cells + ;
+: FAILED ( ptr n -- ptr n ) 7 cells + ;        \ the last run's throw code; 0: it completed
+: OUT-LEN ( ptr n -- ptr n ) 8 cells + ;
+: ERR-LEN ( ptr n -- ptr n ) 9 cells + ;
+: OUT-BASE ( ptr n -- ptr ptr u8 ) 10 ptr-field ;
+: OUT-CAP ( ptr n -- ptr n ) 11 cells + ;
+: ERR-BASE ( ptr n -- ptr ptr u8 ) 12 ptr-field ;
+: ERR-CAP ( ptr n -- ptr n ) 13 cells + ;
+: ARG-BUF ( ptr n -- ptr n ) 14 cells + ;      \ NUL-terminated arguments, back to back
+: ENV-BUF ( ptr n -- ptr n ) 17 cells + ;      \ NUL-terminated caller rows, back to back
+: IN-BUF ( ptr n -- ptr n ) 20 cells + ;
+: ARGV-VEC ( ptr n -- ptr ptr u8 ) 23 ptr-field ;  \ the child's argv, built by PREPARE
+: ENVP-VEC ( ptr n -- ptr ptr u8 ) 26 ptr-field ;  \ the child's envp, built by PREPARE
+: ARG-OFF ( ptr n -- ptr n ) 29 cells + ;      \ each argument's offset in ARG-BUF
+: ENV-OFF ( ptr n -- ptr n ) 32 cells + ;      \ each caller row's offset in ENV-BUF
+35 constant HEAD-CELLS
 
-private
-
-\ The byte region, every member at the width it had as a module buffer. The
-\ counts are the leading cells, read through CELL-VIEW of the region's base:
-\ `create ... allot` is zeroed and cell-aligned, so a fresh context starts at
-\ zero and the view is aligned.
-17 constant COUNT-CELLS
-COUNT-CELLS cells constant PATHZ-OFF
 PROC-PATHZ-CAP constant PATHZ-CAP
-PATHZ-OFF PATHZ-CAP + constant CWDZ-OFF
-PATHZ-CAP constant CWDZ-CAP
-CWDZ-OFF CWDZ-CAP + 7 + $FFFFFFFFFFFFFFF8 and constant ARG-BUF-OFF   \ back on the cell grid
-PROC-ARGV-BUF-CAP constant ARG-BUF-CAP
-ARG-BUF-OFF ARG-BUF-CAP + constant ENV-BUF-OFF
-PROC-ENV-EXTRA-BYTES constant ENV-BUF-CAP
-ENV-BUF-OFF ENV-BUF-CAP + constant IN-OFF
-131072 constant IN-CAP
-IN-OFF IN-CAP + constant OUT-OFF
-32768 constant OUT-CAP
-OUT-OFF OUT-CAP + constant ERR-OFF
+HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 
-public
+: PATHZ ( ptr n -- ptr u8 ) BYTE-VIEW HEAD-CELLS cells + ;
+: CWDZ ( ptr n -- ptr u8 ) PATHZ PATHZ-CAP + ;
 
-32768 constant ERR-CAP                   \ the most stderr bytes a run captures, ERR$'s bound
-ERR-OFF ERR-CAP + constant BYTES
+\ Growing members start small; the first byte, row or capture grows them.
+64 constant BYTES-START
+16 constant ITEMS-START
 
-private
+CAST: ITEM>N ( NUM:item-count -- n )
 
-: BASE ( ptr ptr u8 -- ptr u8 )
-   @ ;
+: N>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
 
-: COUNT-CELL ( ptr ptr u8 n -- ptr n ) {: h:ptr i:n :}
-   h BASE i cells + CELL-VIEW ;
+: BUF-LEN ( ptr a -- n ) BUF:LEN@ BUF:BLEN>N ;
+: BUF-BASE ( ptr a -- ptr u8 ) BUF:SPAN$ drop ;
 
-\ The count cells, by index in the header.
-: ARG-N-CELL ( ptr ptr u8 -- ptr n ) 0 COUNT-CELL ;
-: ENV-N-CELL ( ptr ptr u8 -- ptr n ) 1 COUNT-CELL ;
-: ARG-OFF-CELL ( ptr ptr u8 -- ptr n ) 2 COUNT-CELL ;
-: ENV-OFF-CELL ( ptr ptr u8 -- ptr n ) 3 COUNT-CELL ;
-: IN-LEN-CELL ( ptr ptr u8 -- ptr n ) 4 COUNT-CELL ;
-: CWD-LEN-CELL ( ptr ptr u8 -- ptr n ) 5 COUNT-CELL ;   \ 0: the child inherits this process's directory
-: OUT-LEN-CELL ( ptr ptr u8 -- ptr n ) 6 COUNT-CELL ;
-: ERR-LEN-CELL ( ptr ptr u8 -- ptr n ) 7 COUNT-CELL ;
-: EXITED-CELL ( ptr ptr u8 -- ptr n ) 8 COUNT-CELL ;    \ 1: completed by exit (vs signal) when not timed out
-: TIMED-OUT-CELL ( ptr ptr u8 -- ptr n ) 9 COUNT-CELL ; \ 1: capture deadline hit
-: CODE-CELL ( ptr ptr u8 -- ptr n ) 10 COUNT-CELL ;     \ exit code or signal number; 0 for timeout
-: INHERIT-CELL ( ptr ptr u8 -- ptr n ) 11 COUNT-CELL ;
-\ Rows in the envp vector as PREPARE leaves it: the caller's own ENV-N rows plus
-\ whatever inheritance appended for this run. ENV-N stays the caller's count, so
-\ a second run inherits into the same place rather than after the last run's copy.
-: ENV-FILL-CELL ( ptr ptr u8 -- ptr n ) 12 COUNT-CELL ;
-: CANCEL-FD-CELL ( ptr ptr u8 -- ptr n ) 13 COUNT-CELL ;
-: CANCELLED-CELL ( ptr ptr u8 -- ptr n ) 14 COUNT-CELL ;
-: CAP-OUT-CELL ( ptr ptr u8 -- ptr n ) 15 COUNT-CELL ;
-: CAP-ERR-CELL ( ptr ptr u8 -- ptr n ) 16 COUNT-CELL ;
+LINEAR: MINT ( ptr n -- CMD:command )
+LINEAR: ERASE ( CMD:command -- ptr n )
 
-: PATHZ ( ptr ptr u8 -- ptr u8 ) BASE PATHZ-OFF + ;
-: CWDZ ( ptr ptr u8 -- ptr u8 ) BASE CWDZ-OFF + ;
-: ARG-BUF ( ptr ptr u8 -- ptr u8 ) BASE ARG-BUF-OFF + ;
-: ENV-BUF ( ptr ptr u8 -- ptr u8 ) BASE ENV-BUF-OFF + ;
-: IN-BUF ( ptr ptr u8 -- ptr u8 ) BASE IN-OFF + ;
-: OUT-BUF ( ptr ptr u8 -- ptr u8 ) BASE OUT-OFF + ;
-: ERR-BUF ( ptr ptr u8 -- ptr u8 ) BASE ERR-OFF + ;
+: CTX ( CMD:command -- CMD:command ptr n )
+   ERASE dup MINT swap ;
 
-: ARGV-VEC ( ptr ptr u8 -- ptr ptr u8 ) {: h:ptr :} ARGV-SLOT cells h + ;
-: ENVP-VEC ( ptr ptr u8 -- ptr ptr u8 ) {: h:ptr :} ENVP-SLOT cells h + ;
+: CAPTURE-RESET ( ptr n -- ) {: h:ptr :}
+   0 h OUT-LEN !
+   0 h ERR-LEN !
+   0 h FAILED !
+   1 h EXITED !
+   0 h TIMED-OUT !
+   0 h CODE ! ;
 
-: ARGV-CELL ( ptr ptr u8 n -- ptr ptr u8 ) {: h:ptr i:n :}
-   i 0 < i ARG-MAX 1 + > or if E-PROC-OUTPUT throw then
-   i cells h ARGV-VEC + ;
-
-: ENVP-CELL ( ptr ptr u8 n -- ptr ptr u8 ) {: h:ptr i:n :}
-   i 0 < i ENV-ROWS 1 - > or if E-PROC-ENV throw then
-   i cells h ENVP-VEC + ;
-
-: CAPTURE-RESET ( ptr ptr u8 -- ) {: h:ptr :}
-   0 h OUT-LEN-CELL !
-   0 h ERR-LEN-CELL !
-   0 h CAP-OUT-CELL !
-   0 h CAP-ERR-CELL !
-   0 h CANCELLED-CELL !
-   1 h EXITED-CELL !
-   0 h TIMED-OUT-CELL !
-   0 h CODE-CELL ! ;
-
-public
-
-: RESET ( ptr ptr u8 -- ) {: h:ptr :}
-   0 h ARG-N-CELL !
-   0 h ARG-OFF-CELL !
-   0 h ENV-N-CELL !
-   0 h ENV-FILL-CELL !
-   0 h ENV-OFF-CELL !
-   0 h IN-LEN-CELL !
-   0 h CWD-LEN-CELL !
-   1 h INHERIT-CELL !
-   PROC-NO-FD h CANCEL-FD-CELL !
+: CLEAR-BUILD ( ptr n -- ) {: h:ptr :}
+   h ARG-BUF BUF:CLEAR
+   h ENV-BUF BUF:CLEAR
+   h IN-BUF BUF:CLEAR
+   h ARG-OFF VEC:CLEAR
+   h ENV-OFF VEC:CLEAR
+   0 h CWD-LEN !
+   1 h INHERIT !
+   PROC-NO-FD h CANCEL-FD !
    h CAPTURE-RESET ;
+
+\ ---- opening and closing --------------------------------------------------------
+: INIT-MEMBERS ( ptr n -- ) {: h:ptr :}
+   h ARG-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   h ENV-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   h IN-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   h ARGV-VEC ITEMS-START N>ITEM VEC:INIT
+   h ENVP-VEC ITEMS-START N>ITEM VEC:INIT
+   h ARG-OFF ITEMS-START N>ITEM VEC:INIT
+   h ENV-OFF ITEMS-START N>ITEM VEC:INIT
+   h CLEAR-BUILD ;
+
+: RELEASE-REGION ( ptr u8 n -- ) {: base:ptr cap:n :}
+   cap 0= if exit then
+   base cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Pop the context first, so a failing disposer cannot leave a freed context on
+\ the chain; a member never initialised is a dead header, which DISPOSE ignores.
+: CLOSE ( -- )
+   INNER @ {: h:ptr :}
+   h OUTER @ INNER !
+   h ARG-BUF BUF:DISPOSE
+   h ENV-BUF BUF:DISPOSE
+   h IN-BUF BUF:DISPOSE
+   h ARGV-VEC VEC:DISPOSE
+   h ENVP-VEC VEC:DISPOSE
+   h ARG-OFF VEC:DISPOSE
+   h ENV-OFF VEC:DISPOSE
+   h OUT-BASE @ h OUT-CAP @ RELEASE-REGION
+   h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
+   h CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
+
+: OPEN? ( -- bool ) INNER @ NULL-PTR <> ;
+
+: FIRST-ERROR ( n n -- n ) {: first:n rc:n :}
+   first 0<> if first else rc then ;
+
+\ A halted task ends inside its scopes; close every one it left open, keep going
+\ past a disposer's error and report the first.
+: DRAIN ( -- )
+   NULL-PTR RUNNING !
+   0
+   begin OPEN? while
+      [: CLOSE ;] catch FIRST-ERROR
+   repeat
+   dup 0<> if throw then drop ;
+
+: REGISTER-EXIT ( -- )
+   TASK:SELF-N 0= if exit then
+   HOOK @ 0<> if exit then
+   [: DRAIN ;] TASK:SELF TASK:AT-EXIT
+   1 HOOK ! ;
+
+\ Everything that can throw runs here, inside the region CLOSE protects.
+: RUN-BODY ( R [ R CMD:command -- S CMD:command ] -- S )
+   REGISTER-EXIT
+   INNER @ INIT-MEMBERS
+   >r INNER @ MINT r> execute ERASE INNER @ <> if E-HANDLE throw then ;
+
+\ Allocation and linking only, so nothing between them can throw.
+: OPEN ( -- )
+   CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: h:ptr :}
+   INNER @ h OUTER !
+   h INNER ! ;
+
+public
+
+\ Run the body with a fresh command and release the command, with everything it
+\ grew, when the body returns or throws.
+: WITH-COMMAND ( R [ R CMD:command -- S CMD:command ] -- S )
+   OPEN
+   [: RUN-BODY ;] [: CLOSE ;] finally ;
+
+\ Forget the arguments, rows, stdin, directory, lent descriptor and last outcome;
+\ the storage stays for reuse.
+: RESET ( CMD:command -- CMD:command )
+   CTX CLEAR-BUILD ;
 
 \ Lend a pipe's read end until the next run returns or throws. Another task
 \ writes or closes its writer; it never mutates a running command. PROC-NO-FD
 \ disconnects. The owner must keep the read end open through run completion.
-: CANCEL-FD! ( ptr ptr u8 fd -- )
-   {: h:ptr fd:fd :}
-   fd FD>N h CANCEL-FD-CELL ! ;
-
-\ Lengths of the valid last-run prefixes, including a cancelled run. Growing
-\ captures refer to caller storage; OUT$/ERR$ refer only to the fixed buffers.
-: CAPTURE-LENGTHS ( ptr ptr u8 -- len len )
-   {: h:ptr :}
-   h CAP-OUT-CELL @ >LEN h CAP-ERR-CELL @ >LEN ;
-
-\ Explicitly erase stdin and captures, including bytes beyond the live lengths.
-\ RESET and RUN keep their existing lifetime; the caller chooses when to wipe.
-: WIPE ( ptr ptr u8 -- ) {: h:ptr :}
-   0 h IN-BUF IN-CAP SPAN:MAKE SPAN:FILL
-   0 h OUT-BUF OUT-CAP SPAN:MAKE SPAN:FILL
-   0 h ERR-BUF ERR-CAP SPAN:MAKE SPAN:FILL
-   0 h IN-LEN-CELL !
-   0 h OUT-LEN-CELL !
-   0 h ERR-LEN-CELL ! ;
+: CANCEL-FD! ( CMD:command fd -- CMD:command ) {: fd:fd :}
+   CTX {: h:ptr :}
+   fd FD>N h CANCEL-FD ! ;
 
 private
 
-\ An argument is copied NUL-terminated into the context's ARG-BUF and its
-\ address installed straight into the argv vector: no src/lib/process-argv.f
-\ staging is on this path. PROC-ZCOPY is handed the room left and makes the fit
-\ rule, so no second one is kept here to drift from it.
-: ARG-ZCOPY ( ptr ptr u8 ptr u8 n -- ptr u8 )
-   {: h:ptr a:ptr u:n :}
-   h ARG-OFF-CELL @ {: off:n :}
-   a u >LEN h ARG-BUF off + ARG-BUF-CAP off - >LEN PROC-ZCOPY {: z:ptr :}
-   off u 1 + + h ARG-OFF-CELL !
-   z ;
+\ Record where the next NUL-terminated entry starts; PREPARE resolves offsets to
+\ addresses once the bytes stop moving.
+: MARK ( ptr n ptr n -- ) {: buf:ptr offs:ptr :}
+   buf BUF-LEN offs VEC:PUSH drop ;
 
 public
 
-: ARG+ ( ptr ptr u8 ptr u8 n -- )
-   {: h:ptr a:ptr u:n :}
-   h ARG-N-CELL @ ARG-MAX >= if E-PROC-OUTPUT throw then
-   h a u ARG-ZCOPY h h ARG-N-CELL @ 1 + ARGV-CELL !
-   h ARG-N-CELL @ 1 + h ARG-N-CELL ! ;
+: ARG+ ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
+   CTX {: h:ptr :}
+   u 0 < if E-PROC-OUTPUT throw then
+   h ARG-BUF h ARG-OFF MARK
+   a u BUF:N>BLEN h ARG-BUF BUF:APPEND-SPAN
+   0 h ARG-BUF BUF:APPEND-BYTE ;
 
-private
-
-\ A row that would leave no cell for the envp NULL is refused, and the refusal
-\ names the ceiling and the row on stderr the way src/lib/process-env.f's do. The
-\ diagnostic buffer is that module's: one shared line renderer, used only on a
-\ refusal path that ends in a throw.
-: REPORT-FULL ( n -- ) {: saw:n :}
-   PROC-ENV-DIAG CODEGEN:RESET
-   s" process-command: command environment full at " PROC-ENV-DIAG+
-   ENV-ROWS PROC-ENV-DIAG-N
-   s"  rows: entry " PROC-ENV-DIAG+
-   saw PROC-ENV-DIAG-N
-   s"  refused" PROC-ENV-DIAG+
-   PROC-ENV-DIAG-LINE ;
-
-: ENV-CHECK-ROW ( n -- ) {: have:n :}
-   have ENV-ROWS 1 - < if exit then
-   have 1 + REPORT-FULL
-   E-PROC-ENV throw ;
-
-: ENV-CHECK-EXTRA ( ptr ptr u8 -- ) {: h:ptr :}
-   h ENV-N-CELL @ ENV-CHECK-ROW ;
-
-: ENV-INSTALL-Z ( ptr ptr u8 ptr u8 -- ) {: h:ptr z:ptr :}
-   h ENV-CHECK-EXTRA
-   z h h ENV-N-CELL @ ENVP-CELL !
-   h ENV-N-CELL @ 1 + h ENV-N-CELL ! ;
-
-: ENV-STORE-Z ( ptr ptr u8 ptr u8 n -- ptr u8 )
-   {: h:ptr a:ptr u:n :}
+: ENV-ENTRY+ ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
+   CTX {: h:ptr :}
    u 0 < if E-PROC-ENV throw then
-   h ENV-OFF-CELL @ {: off:n :}
-   off u >LEN PROC-ENV-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
    a u >LEN PROC-ENV-CHECK-ENTRY
-   a h ENV-BUF off + u BYTE-COPY
-   0 h ENV-BUF off + u + c!
-   off u 1 + + h ENV-OFF-CELL !
-   h ENV-BUF off + ;
+   h ENV-BUF h ENV-OFF MARK
+   a u BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
+   0 h ENV-BUF BUF:APPEND-BYTE ;
 
-public
-
-: ENV-ENTRY+ ( ptr ptr u8 ptr u8 n -- )
-   {: h:ptr a:ptr u:n :}
-   h ENV-CHECK-EXTRA
-   h h a u ENV-STORE-Z ENV-INSTALL-Z ;
-
-: ENV+ ( ptr ptr u8 ptr u8 n ptr u8 n -- )
-   {: h:ptr name:ptr nameu:n val:ptr valu:n :}
-   h ENV-CHECK-EXTRA
-   h ENV-OFF-CELL @ {: off:n :}
-   off nameu >LEN valu >LEN PROC-ENV-ROW-NEED ENV-BUF-CAP > if E-PROC-ENV throw then
+: ENV+ ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
+   {: name:ptr nameu:n val:ptr valu:n :}
+   CTX {: h:ptr :}
+   nameu 0 < valu 0 < or if E-PROC-ENV throw then
    name nameu >LEN PROC-ENV-CHECK-NAME
-   name h ENV-BUF off + nameu BYTE-COPY
-   PROC-ENV-EQUAL h ENV-BUF off + nameu + c!
-   val h ENV-BUF off + nameu + 1 + valu BYTE-COPY
-   0 h ENV-BUF off + nameu + 1 + valu + c!
-   h h ENV-BUF off + ENV-INSTALL-Z
-   off nameu valu + 2 + + h ENV-OFF-CELL ! ;
+   h ENV-BUF h ENV-OFF MARK
+   name nameu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
+   PROC-ENV-EQUAL h ENV-BUF BUF:APPEND-BYTE
+   val valu BUF:N>BLEN h ENV-BUF BUF:APPEND-SPAN
+   0 h ENV-BUF BUF:APPEND-BYTE ;
 
-: ENV-HERMETIC ( ptr ptr u8 -- ) {: h:ptr :}
-   0 h INHERIT-CELL ! ;
+: ENV-HERMETIC ( CMD:command -- CMD:command )
+   CTX 0 swap INHERIT ! ;
 
 private
 
 : CWD-CHECK ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 <= if E-PROC-PATH throw then
-   u CWDZ-CAP 1 - > if E-PROC-PATH throw then
+   u PATHZ-CAP 1 - > if E-PROC-PATH throw then
    a u DIR? 0= if E-PROC-PATH throw then ;
 
 public
 
 \ Run the child from this directory instead of the loader's. A missing path or a
 \ non-directory is refused here, before anything is spawned; RESET clears it.
-: CWD! ( ptr ptr u8 ptr u8 n -- )
-   {: h:ptr a:ptr u:n :}
+: CWD! ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
+   CTX {: h:ptr :}
    a u CWD-CHECK
-   a u >LEN h CWDZ CWDZ-CAP >LEN PROC-ZCOPY drop
-   u h CWD-LEN-CELL ! ;
+   a u >LEN h CWDZ PATHZ-CAP >LEN PROC-ZCOPY drop
+   u h CWD-LEN ! ;
 
-: IN! ( ptr ptr u8 ptr u8 n -- )
-   {: h:ptr a:ptr u:n :}
+: IN! ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
+   CTX {: h:ptr :}
    u 0 < if E-PROC-OUTPUT throw then
-   u IN-CAP > if E-PROC-OUTPUT throw then
-   a h IN-BUF u BYTE-COPY
-   u h IN-LEN-CELL ! ;
+   a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
 
 private
 
+\ ---- the child's vectors ----------------------------------------------------------
+: ARG-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
+   h ARG-BUF BUF-BASE off + h ARGV-VEC VEC:PUSH drop
+   h ;
+
+: ENV-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
+   h ENV-BUF BUF-BASE off + h ENVP-VEC VEC:PUSH drop
+   h ;
+
 \ Inheritance appends ADDRESSES, never copies: a default row is read where
 \ PROC-ENV-DEFAULT+ wrote it, in the process-wide read-only policy table, and a
-\ parent row is read in the parent's own environment. Only the caller's own rows
-\ occupy the context's ENV-BUF.
-: ENV-HAS-NAME? ( ptr u8 len ptr ptr u8 -- bool ) {: a:ptr u:len h:ptr :}
-   a u h ENVP-VEC h ENV-FILL-CELL @ PROC-ENV-VEC-HAS-NAME? ;
+\ parent row is read in the parent's own environment. A row whose name is already
+\ present is skipped; the vector is re-read for each check because PUSH may move it.
+: INHERIT-Z ( ptr n ptr u8 -- ) {: h:ptr z:ptr :}
+   z z ZLEN >LEN h ENVP-VEC VEC:DATA@ h ENVP-VEC VEC:LEN@ ITEM>N PROC-ENV-VEC-HAS-NAME?
+   if exit then
+   z h ENVP-VEC VEC:PUSH drop ;
 
-: ENV-INHERIT-Z ( ptr ptr u8 ptr u8 -- ) {: h:ptr z:ptr :}
-   z z ZLEN >LEN h ENV-HAS-NAME? if exit then
-   h ENV-FILL-CELL @ ENV-CHECK-ROW
-   z h h ENV-FILL-CELL @ ENVP-CELL !
-   h ENV-FILL-CELL @ 1 + h ENV-FILL-CELL ! ;
-
-: ENV-INHERIT-DEFAULT-ONE ( n ptr ptr u8 -- ) {: i:n h:ptr :}
-   h i >IDX PROC-ENV-DEF-SLOT @ ENV-INHERIT-Z ;
-
-: ENV-INHERIT-DEFAULTS ( ptr ptr u8 -- ) {: h:ptr :}
+: INHERIT-DEFAULTS ( ptr n -- ) {: h:ptr :}
    0 begin dup PROC-ENV-DEF-N @ COUNT>N < while
-      dup h ENV-INHERIT-DEFAULT-ONE
+      h over >IDX PROC-ENV-DEF-SLOT @ INHERIT-Z
       1 +
    repeat drop ;
 
-: ENV-INHERIT-PARENT-ONE ( n ptr ptr u8 -- ) {: i:n h:ptr :}
-   h i ENVP ENV-INHERIT-Z ;
-
-: ENV-INHERIT-MISSING ( ptr ptr u8 -- ) {: h:ptr :}
-   h ENV-INHERIT-DEFAULTS
+: INHERIT-PARENT ( ptr n -- ) {: h:ptr :}
    0 begin dup ENVP 0= 0= while
-      dup h ENV-INHERIT-PARENT-ONE
+      h over ENVP INHERIT-Z
       1 +
    repeat drop ;
 
-\ The vectors the child receives: argv slot 0 is the path and slot n+1 the NULL,
-\ envp ends at the NULL after the last row. Both terminators are written here,
-\ so a refused run leaves no half-built vector behind.
-: PREPARE ( ptr ptr u8 ptr u8 n -- )
+\ argv: the path, each argument, the NULL. envp: the caller's rows, then the
+\ inherited ones, the NULL. Both are rebuilt for every run.
+: PREPARE ( ptr n ptr u8 n -- )
    {: h:ptr path:ptr pathu:n :}
-   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROC-ZCOPY h 0 ARGV-CELL !
-   NULL-PTR h h ARG-N-CELL @ 1 + ARGV-CELL !
-   h ENV-N-CELL @ h ENV-FILL-CELL !
-   h INHERIT-CELL @ 0<> if h ENV-INHERIT-MISSING then
-   NULL-PTR h h ENV-FILL-CELL @ ENVP-CELL ! ;
+   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROC-ZCOPY {: z:ptr :}
+   h ARGV-VEC VEC:CLEAR
+   z h ARGV-VEC VEC:PUSH drop
+   h h ARG-OFF [: ARG-ADDR+ ;] VEC:EACH drop
+   NULL-PTR h ARGV-VEC VEC:PUSH drop
+   h ENVP-VEC VEC:CLEAR
+   h h ENV-OFF [: ENV-ADDR+ ;] VEC:EACH drop
+   h INHERIT @ 0<> if h INHERIT-DEFAULTS h INHERIT-PARENT then
+   NULL-PTR h ENVP-VEC VEC:PUSH drop ;
 
 : CHECK-RUN ( ptr u8 n ms -- )
    {: path:ptr pathu:n timeout:ms :}
@@ -340,256 +342,123 @@ private
 
 \ The spawn cores take the context's own vectors and reset no process-wide
 \ staging; the capture machinery around them is src/lib/process.f's task-local row.
-: SPAWN ( ptr ptr u8 -- ) {: h:ptr :}
-   h CWD-LEN-CELL @ 0 > if
-      h PATHZ h ARGV-VEC h ENVP-VEC h CWDZ
+: SPAWN ( ptr n -- ) {: h:ptr :}
+   h CWD-LEN @ 0 > if
+      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ h CWDZ
       PROC-CWD:SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE
    else
-      h PATHZ h ARGV-VEC h ENVP-VEC PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE
+      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE
    then
    PROC-CAPTURE-ADOPT-SPAWN ;
 
+\ ---- captures ---------------------------------------------------------------------
+\ process.f's growing loop asks for room for `need` bytes and keeps the length
+\ itself; the bytes already captured are carried into the larger region.
+: GROWN ( n n -- n ) {: need:n cap:n :}
+   cap 2 * need max ;
+
+: ROOM ( n ptr ptr u8 ptr n n -- ptr u8 ) {: need:n base:ptr cap:ptr len:n :}
+   need cap @ <= if base @ exit then
+   need cap @ GROWN {: size:n :}
+   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: fresh:ptr :}
+   base @ fresh len BYTE-COPY
+   base @ cap @ RELEASE-REGION
+   fresh base !
+   size cap !
+   fresh ;
+
+: OUT-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h OUT-BASE h OUT-CAP PROC-OUT-LEN @ ROOM ;
+: ERR-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h ERR-BASE h ERR-CAP PROC-ERR-LEN @ ROOM ;
+
 \ Decompose the outcome sum into exited/timed-out flags plus the code cell
-\ (all one cell, lossless): exit codes >= 128 stay distinct from signal
-\ deaths, unlike the retired rc-based pair store.
-: STORE-OUTCOME ( outcome ptr ptr u8 -- )
+\ (all one cell, lossless): exit codes >= 128 stay distinct from signal deaths.
+: STORE-OUTCOME ( outcome ptr n -- )
    {: h:ptr :}
    MATCH outcome
-     exited OF h CODE-CELL ! 1 h EXITED-CELL ! 0 h TIMED-OUT-CELL ! ENDOF
-     signaled OF h CODE-CELL ! 0 h EXITED-CELL ! 0 h TIMED-OUT-CELL ! ENDOF
-     timeout OF 0 h CODE-CELL ! 0 h EXITED-CELL ! 1 h TIMED-OUT-CELL ! ENDOF
+     exited OF h CODE ! 1 h EXITED ! 0 h TIMED-OUT ! ENDOF
+     signaled OF h CODE ! 0 h EXITED ! 0 h TIMED-OUT ! ENDOF
+     timeout OF 0 h CODE ! 0 h EXITED ! 1 h TIMED-OUT ! ENDOF
    ;MATCH ;
 
-: STORE-LENGTHS ( ptr ptr u8 -- )
-   {: h:ptr :}
-   PROC-OUT-LEN @ h CAP-OUT-CELL !
-   PROC-ERR-LEN @ h CAP-ERR-CELL ! ;
-
 \ The command disconnects at entry; release the capture's borrowed reference
-\ after its cleanup. Cancellation has no outcome variant: its getters throw.
-: RUN-DONE ( n ptr ptr u8 -- )
+\ after its cleanup. A throw has no outcome variant: the getters throw its code.
+: RUN-DONE ( n ptr n -- )
    {: code:n h:ptr :}
    PROC-NO-FD PROC-CANCEL-FD !
-   code E-PROC-CANCELLED = if 1 h CANCELLED-CELL ! then
+   code h FAILED !
    code 0<> if code throw then ;
 
 : START-CANCEL ( fd -- )
    FD>N PROC-CANCEL-FD !
    PROC-STOP-ASK ;
 
-: FIXED-CAPTURE ( ptr ptr u8 fd -- ptr ptr u8 fd )
-   {: h:ptr cancel:fd :}
+: CAPTURE ( ptr n fd ms -- ptr n fd ms )
+   {: h:ptr cancel:fd timeout:ms :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
    cancel START-CANCEL
    h SPAWN
-   h IN-BUF h IN-LEN-CELL @ >LEN
-   h OUT-BUF OUT-CAP >LEN
-   h ERR-BUF ERR-CAP >LEN PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   h cancel ;
+   h IN-BUF BUF-BASE h IN-BUF BUF-LEN >LEN
+   [: OUT-ROOM ;] [: ERR-ROOM ;] PROC-RUN-STDIN-GROWING-BOTH-CAPTURE-OUTCOME-LOOP
+   h cancel timeout ;
 
-public
+: OUTCOME-OF ( ptr n -- outcome ) {: h:ptr :}
+   h FAILED @ dup 0<> if throw then drop
+   h TIMED-OUT @ 0<> if OUTCOME:TIMEOUT exit then
+   h EXITED @ 0<> if h CODE @ OUTCOME:EXITED exit then
+   h CODE @ OUTCOME:SIGNALED ;
 
-: OUTCOME@ ( ptr ptr u8 -- outcome ) {: h:ptr :}
-   h CANCELLED-CELL @ 0<> if E-PROC-CANCELLED throw then
-   h TIMED-OUT-CELL @ 0<> if OUTCOME:TIMEOUT exit then
-   h EXITED-CELL @ 0<> if h CODE-CELL @ OUTCOME:EXITED exit then
-   h CODE-CELL @ OUTCOME:SIGNALED ;
-
-: RUN-OUTCOME ( ptr ptr u8 ptr u8 n ms -- outcome )
+\ A refused path or deadline throws before the last run is forgotten; from the
+\ reset on, every throw reaches RUN-DONE. RUNNING names the context only while
+\ its capture runs, and is cleared on every path out, so no task row keeps a
+\ context's address past its run.
+: RUN ( ptr n ptr u8 n ms -- )
    {: h:ptr path:ptr pathu:n timeout:ms :}
-   h CANCEL-FD-CELL @ >FD {: cancel:fd :}
-   PROC-NO-FD h CANCEL-FD-CELL !
-   h CAPTURE-RESET
+   h CANCEL-FD @ >FD {: cancel:fd :}
+   PROC-NO-FD h CANCEL-FD !
    path pathu timeout CHECK-RUN
    h path pathu PREPARE
-   timeout PROC-STDIN-CAPTURE-BEGIN
-   h cancel [: FIXED-CAPTURE ;] catch {: code:n :} 2drop
-   h STORE-LENGTHS
-   h CAP-OUT-CELL @ h OUT-LEN-CELL !
-   h CAP-ERR-CELL @ h ERR-LEN-CELL !
-   code h RUN-DONE
-   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop
-   h OUTCOME@ ;
-
-private
-
-: GROW-CAPTURE
-  ( ptr ptr u8 fd ptr u8 len [ n -- ptr u8 ] ptr u8 len -- ptr ptr u8 fd ptr u8 len [ n -- ptr u8 ] ptr u8 len )
-   {: h:ptr cancel:fd in:ptr inu:len sink err:ptr errcap:len :}
-   cancel START-CANCEL
-   h SPAWN
-   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
-   h cancel in inu sink err errcap ;
-
-public
-
-\ Capture into caller-owned spans. The command owns only argv/env staging; the
-\ input and growing stdout stay with the caller, so separate tasks may run
-\ prepared commands without the context's fixed input and output limits.
-: RUN-STDIN-GROWING-OUTCOME
-  ( ptr ptr u8 ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
-   {: h:ptr path:ptr pathu:len in:ptr inu:len sink err:ptr errcap:len timeout:ms :}
-   h CANCEL-FD-CELL @ >FD {: cancel:fd :}
-   PROC-NO-FD h CANCEL-FD-CELL !
    h CAPTURE-RESET
-   path pathu LEN>N timeout CHECK-RUN
-   inu PROC-CAPTURE-CHECK-STDIN
-   errcap PROC-CAPTURE-CHECK-CAP
-   h path pathu LEN>N PREPARE
-   timeout PROC-STDIN-CAPTURE-BEGIN
-   h cancel in inu sink err errcap [: GROW-CAPTURE ;] catch
-   {: code:n :} drop 2drop 2drop 2drop
-   h STORE-LENGTHS
+   h RUNNING !
+   h cancel timeout [: CAPTURE ;] catch {: code:n :} drop 2drop
+   NULL-PTR RUNNING !
+   PROC-OUT-LEN @ h OUT-LEN !
+   PROC-ERR-LEN @ h ERR-LEN !
    code h RUN-DONE
-   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop
-   h CAPTURE-LENGTHS h OUTCOME@ ;
-
-\ Wrap the stored outcome's completion rc into a result<n,n>: ok = clean exit
-\ (0), err = the nonzero completion code (a nonzero exit code, or 128+signal).
-\ A run its deadline killed has no completion code: RC@ and RUN-RC throw
-\ E-PROC-TIMEOUT for it (PROC-OUTCOME>RC), and only a caller that acts on the
-\ deadline reads it as data through OUTCOME@ or RUN-OUTCOME. The captured
-\ output stays in the context's own buffers (read via OUT$/ERR$), so the return
-\ carries only the code - no capture product here, unlike the RUN-*-CAPTURE
-\ words that return the lengths.
-private
+   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop ;
 
 : RC>RESULT ( n -- result<n,n> ) {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
 public
 
-: RC@ ( ptr ptr u8 -- result<n,n> ) {: h:ptr :}
-   h OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
+: OUTCOME@ ( CMD:command -- CMD:command outcome )
+   CTX OUTCOME-OF ;
 
-: RUN-RC ( ptr ptr u8 ptr u8 n ms -- result<n,n> )
-   {: h:ptr path:ptr pathu:n timeout:ms :}
-   h path pathu timeout RUN-OUTCOME drop
-   h RC@ ;
-
-: OUT$ ( ptr ptr u8 -- ptr u8 n ) {: h:ptr :}
-   h OUT-BUF h OUT-LEN-CELL @ ;
-
-: ERR$ ( ptr ptr u8 -- ptr u8 n ) {: h:ptr :}
-   h ERR-BUF h ERR-LEN-CELL @ ;
-
-\ Bind a byte region to a vector and start it reset. Public so a caller may pair
-\ its own storage - a MEM:ALLOC-BYTES region of BYTES bytes and a
-\ MEM-ALLOC-CELLS vector of VEC-CELLS cells - for a command that is not declared.
-: BIND ( ptr u8 ptr ptr u8 -- ) {: b:ptr h:ptr :}
-   b h !
-   h RESET ;
-
-private
-
-$200 CODEGEN:BUFFER GEN
-
-: GEN+ ( ptr u8 n -- )
-   GEN CODEGEN:APPEND-STRING ;
-
-: COMMAND-NAME ( -- ptr u8 n )
-   parse-name dup 0= if E-PROC-OUTPUT throw then ;
-
-public
-
-\ `CMD:COMMAND NAME` declares one command context and publishes NAME as its
-\ handle. The source is built in a CODEGEN buffer and handed to the loader's
-\ closed evaluate, src/lib/task.f `+USER`'s shape, because a definer cannot both
-\ parse a name and run two storage definers on it:
-\
-\    CMD:VEC-CELLS PTR-U8-TABLE NAME#VEC
-\    create NAME#BUF CMD:BYTES allot
-\    : NAME ( -- ptr ptr u8 ) NAME#VEC ;
-\    NAME#BUF NAME#VEC CMD:BIND
-\
-\ The source pre-pass never sees the names this renders: it reads the text
-\ without running INCLUDE-EVALUATE. The `generates:` row after COMMAND states
-\ NAME's effect, so a later mention of NAME checks against the row, and the run
-\ holds the row to the word the text really defines. No row states NAME#VEC or
-\ NAME#BUF: the pre-pass learns that COMMAND renders, so a later definition
-\ naming either in the same wordlist is left to tools/check.f's run, which
-\ certifies it (docs/forth-card.md § 3, renderers);
-\ `tools/check.f -- src/lib/process-command-test.f` passes.
-: COMMAND ( -- )
-   COMMAND-NAME {: name:ptr nameu:n :}
-   GEN CODEGEN:RESET
-   s" CMD:VEC-CELLS PTR-U8-TABLE " GEN+
-   name nameu GEN+
-   s\" #VEC\ncreate " GEN+
-   name nameu GEN+
-   s\" #BUF CMD:BYTES allot\n: " GEN+
-   name nameu GEN+
-   s"  ( -- ptr ptr u8 ) " GEN+
-   name nameu GEN+
-   s\" #VEC ;\n" GEN+
-   name nameu GEN+
-   s" #BUF " GEN+
-   name nameu GEN+
-   s" #VEC CMD:BIND" GEN+
-   GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
-generates: COMMAND ( -- ptr ptr u8 )
-
-;package
-
-package PROC-CMD
-
-public
-
-CMD:ARG-MAX constant ARG-MAX             \ public: max positional argv slots a command may carry
-
-private
-
-\ The one shared command every PROC-CMD word works on.
-CMD:COMMAND CTX0
-
-public
-
-: RESET ( -- )
-   CTX0 CMD:RESET ;
-
-: WIPE ( -- )
-   CTX0 CMD:WIPE ;
-
-: ARG+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   CTX0 a u CMD:ARG+ ;
-
-: ENV-ENTRY+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   CTX0 a u CMD:ENV-ENTRY+ ;
-
-: ENV+ ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n val:ptr valu:n :}
-   CTX0 name nameu val valu CMD:ENV+ ;
-
-: ENV-HERMETIC ( -- )
-   CTX0 CMD:ENV-HERMETIC ;
-
-: CWD! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   CTX0 a u CMD:CWD! ;
-
-: IN! ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   CTX0 a u CMD:IN! ;
-
-: OUTCOME@ ( -- outcome )
-   CTX0 CMD:OUTCOME@ ;
-
-: RUN-OUTCOME ( ptr u8 n ms -- outcome )
+\ Run the prepared command at path, feed it the stdin and capture both streams
+\ whole; a deadline-killed run answers OUTCOME:TIMEOUT.
+: RUN-OUTCOME ( CMD:command ptr u8 n ms -- CMD:command outcome )
    {: path:ptr pathu:n timeout:ms :}
-   CTX0 path pathu timeout CMD:RUN-OUTCOME ;
+   CTX {: h:ptr :}
+   h path pathu timeout RUN
+   h OUTCOME-OF ;
 
-: RUN-RC ( ptr u8 n ms -- result<n,n> )
-   {: path:ptr pathu:n timeout:ms :}
-   CTX0 path pathu timeout CMD:RUN-RC ;
+\ The stored outcome's completion rc as a result<n,n>: ok = clean exit (0), err =
+\ the nonzero completion code (a nonzero exit code, or 128+signal). A run its
+\ deadline killed has no completion code: RC@ and RUN-RC throw E-PROC-TIMEOUT for
+\ it (PROC-OUTCOME>RC), and only a caller that acts on the deadline reads it as
+\ data through OUTCOME@ or RUN-OUTCOME.
+: RC@ ( CMD:command -- CMD:command result<n,n> )
+   OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
 
-: OUT$ ( -- ptr u8 n )
-   CTX0 CMD:OUT$ ;
+: RUN-RC ( CMD:command ptr u8 n ms -- CMD:command result<n,n> )
+   RUN-OUTCOME drop RC@ ;
 
-: ERR$ ( -- ptr u8 n )
-   CTX0 CMD:ERR$ ;
+: OUT$ ( CMD:command -- CMD:command ptr u8 n )
+   CTX {: h:ptr :}
+   h OUT-BASE @ h OUT-LEN @ ;
 
-: RC@ ( -- result<n,n> )
-   CTX0 CMD:RC@ ;
+: ERR$ ( CMD:command -- CMD:command ptr u8 n )
+   CTX {: h:ptr :}
+   h ERR-BASE @ h ERR-LEN @ ;
 
 ;package

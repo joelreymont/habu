@@ -96,20 +96,51 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
 
-: BATCH-OPTS ( -- )
-   s" -o" PROC-CMD:ARG+  s" BatchMode=yes" PROC-CMD:ARG+
-   s" -o" PROC-CMD:ARG+  s" ConnectTimeout=10" PROC-CMD:ARG+ ;
+: BATCH-OPTS ( CMD:command -- CMD:command )
+   s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
+   s" -o" CMD:ARG+  s" ConnectTimeout=10" CMD:ARG+ ;
 
-: SSH-EXEC ( ptr u8 n -- rc )   \ run one remote command string
+: SSH-RUN ( CMD:command ptr u8 n -- CMD:command rc )   \ run one remote command string
    {: a:ptr u:n :}
-   PROC-CMD:RESET
    BATCH-OPTS
-   HOST$ PROC-CMD:ARG+
-   a u PROC-CMD:ARG+
-   SSH$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
+   HOST$ CMD:ARG+
+   a u CMD:ARG+
+   SSH$ TIMEOUT-MS @ >MS CMD:RUN-RC MATCH result
      ok  OF >RC ENDOF
      err OF >RC ENDOF
    ;MATCH ;
+
+: EXEC-BODY ( ptr u8 n CMD:command -- rc CMD:command )
+   >r {: a:ptr u:n :} r>
+   a u SSH-RUN swap ;
+
+: SSH-EXEC ( ptr u8 n -- rc )   \ the rc alone; the captures end with the scope
+   [: EXEC-BODY ;] CMD:WITH-COMMAND ;
+
+: WITH-RUN-BODY ( R ptr u8 n [ R rc CMD:command -- S CMD:command ] CMD:command -- S CMD:command )
+   >r {: a:ptr u:n body :} r>
+   a u SSH-RUN swap body execute ;
+
+\ Run the upload's argv and throw E-ZED-PUT for a nonzero completion.
+: PUT-RUN ( CMD:command ptr u8 n -- CMD:command )
+   TIMEOUT-MS @ >MS CMD:RUN-RC MATCH result
+     ok  OF drop ENDOF
+     err OF drop E-ZED-PUT throw ENDOF
+   ;MATCH ;
+
+: PUT-DIR-BODY ( ptr u8 n CMD:command -- CMD:command )
+   >r {: a:ptr u:n :} r>
+   s" -rlt" CMD:ARG+
+   a u CMD:ARG+
+   DEST$ CMD:ARG+
+   RSYNC$ PUT-RUN ;
+
+: PUT-FILE-BODY ( ptr u8 n CMD:command -- CMD:command )
+   >r {: a:ptr u:n :} r>
+   s" -o" CMD:ARG+  s" BatchMode=yes" CMD:ARG+
+   a u CMD:ARG+
+   DEST$ CMD:ARG+
+   SCP$ PUT-RUN ;
 
 \ ---- newline/whitespace trim (mktemp output) ---------------------------------
 
@@ -160,7 +191,7 @@ public
 \ cannot distinguish transport failure from tool failure. PING owns the
 \ transport class: running `true`, ANY nonzero rc is unreachability. RUN-OK
 \ classifies every nonzero rc of an ordinary command as a remote failure. A run
-\ whose deadline expired never reaches either: PROC-CMD:RUN-RC throws
+\ whose deadline expired never reaches either: CMD:RUN-RC throws
 \ E-PROC-TIMEOUT for it.
 : UNREACH-OK ( rc -- )
    RC>N 0 <> if E-ZED-UNREACH throw then ;
@@ -168,22 +199,16 @@ public
 : RUN-OK ( rc -- )
    RC>N 0 <> if E-ZED-RC throw then ;
 
-: OUT$ ( -- ptr u8 n )
-   PROC-CMD:OUT$ ;
-
-: ERR$ ( -- ptr u8 n )
-   PROC-CMD:ERR$ ;
-
-: RC@ ( -- rc )
-   PROC-CMD:RC@ MATCH result
-     ok  OF >RC ENDOF
-     err OF >RC ENDOF
-   ;MATCH ;
-
 \ ---- remote command execution ------------------------------------------------
 
 : RUN ( ptr u8 n -- rc )
    SSH-EXEC ;
+
+\ Run one remote command string and hand the body its rc and the command, whose
+\ CMD:OUT$ and CMD:ERR$ hold the run's whole stdout and stderr until the body
+\ returns or throws.
+: WITH-RUN ( R ptr u8 n [ R rc CMD:command -- S CMD:command ] -- S )
+   [: WITH-RUN-BODY ;] CMD:WITH-COMMAND ;
 
 : RUN-IN ( ptr u8 n -- rc ) {: a:ptr u:n :}   \ run with cwd = scratch
    CMD-RESET
@@ -196,10 +221,17 @@ public
 : SCRATCH$ ( -- ptr u8 n )
    SCRATCH-BUF SCRATCH-U @ ;
 
+private
+
+: SCRATCH-READ ( rc CMD:command -- CMD:command )
+   >r RUN-OK r>
+   CMD:OUT$ TRIM-TRAIL SCRATCH! ;
+
+public
+
 : SCRATCH-MK ( -- )   \ create ~/habu-zed-scratch/run.XXXXXX, store its path
    s" mkdir -p ~/habu-zed-scratch && mktemp -d ~/habu-zed-scratch/run.XXXXXX"
-   RUN RUN-OK
-   OUT$ TRIM-TRAIL SCRATCH! ;
+   [: SCRATCH-READ ;] WITH-RUN ;
 
 : SCRATCH-RM ( -- )   \ remove the scratch tree (fail-closed)
    SCRATCH-U @ 0= if exit then
@@ -209,28 +241,12 @@ public
    0 SCRATCH-U ! ;
 
 : PUT-DIR ( ptr u8 n -- )   \ rsync local dir into scratch/
-   {: a:ptr u:n :}
    DEST-BUILD
-   PROC-CMD:RESET
-   s" -rlt" PROC-CMD:ARG+
-   a u PROC-CMD:ARG+
-   DEST$ PROC-CMD:ARG+
-   RSYNC$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
-     ok  OF drop ENDOF
-     err OF drop E-ZED-PUT throw ENDOF
-   ;MATCH ;
+   [: PUT-DIR-BODY ;] CMD:WITH-COMMAND ;
 
 : PUT-FILE ( ptr u8 n -- )   \ scp local file into scratch/
-   {: a:ptr u:n :}
    DEST-BUILD
-   PROC-CMD:RESET
-   s" -o" PROC-CMD:ARG+  s" BatchMode=yes" PROC-CMD:ARG+
-   a u PROC-CMD:ARG+
-   DEST$ PROC-CMD:ARG+
-   SCP$ TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
-     ok  OF drop ENDOF
-     err OF drop E-ZED-PUT throw ENDOF
-   ;MATCH ;
+   [: PUT-FILE-BODY ;] CMD:WITH-COMMAND ;
 
 : HAVE-TOOL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ remote `command -v <tool>`
    CMD-RESET

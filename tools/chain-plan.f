@@ -97,23 +97,29 @@ public
    path pathu CP-FILE CP-FILE-CAP READ-ALL {: u:n :}
    CP-FILE u TEXT-PLAN ;
 
-: REV-PLAN ( ptr u8 n ptr u8 n -- n )
-   {: rev:ptr revu:n root:ptr rootu:n :}
-   PROC-CMD:RESET
-   s" --ignore-working-copy" PROC-CMD:ARG+
-   s" -R" PROC-CMD:ARG+
-   root rootu PROC-CMD:ARG+
-   s" diff" PROC-CMD:ARG+
-   s" -r" PROC-CMD:ARG+
-   rev revu PROC-CMD:ARG+
-   s" --name-only" PROC-CMD:ARG+
-   root rootu PROC-CMD:CWD!
+private
+
+: REV-PLAN-IN ( ptr u8 n ptr u8 n CMD:command -- n CMD:command )
+   >r {: rev:ptr revu:n root:ptr rootu:n :} r>
+   s" --ignore-working-copy" CMD:ARG+
+   s" -R" CMD:ARG+
+   root rootu CMD:ARG+
+   s" diff" CMD:ARG+
+   s" -r" CMD:ARG+
+   rev revu CMD:ARG+
+   s" --name-only" CMD:ARG+
+   root rootu CMD:CWD!
    s" jj" >LEN CP-JJ-PATH RESOLVE-EXECUTABLE LEN>N CP-JJ-U !
-   CP-JJ-PATH CP-JJ-U @ 30000 >MS PROC-CMD:RUN-RC MATCH result
+   CP-JJ-PATH CP-JJ-U @ 30000 >MS CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF drop s" chain-plan: jj stderr: " type
-         PROC-CMD:ERR$ type cr E-BUILD-STATUS throw ENDOF
+         CMD:ERR$ type cr E-BUILD-STATUS throw ENDOF
    ;MATCH
-   PROC-CMD:OUT$ TEXT-PLAN ;
+   CMD:OUT$ TEXT-PLAN swap ;
+
+public
+
+: REV-PLAN ( ptr u8 n ptr u8 n -- n )
+   [: REV-PLAN-IN ;] CMD:WITH-COMMAND ;
 
 ;package

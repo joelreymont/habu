@@ -1408,7 +1408,7 @@ MARK-RENDERS FACT-NOMINAL or constant MARK-NOMINAL
 \ `PROC-ENV-DIAG-CAP CODEGEN:BUFFER PROC-ENV-DIAG`, and `tools/check.f
 \ src/lib/queue.f` refused NG-BUFFER, created at src/lib/type/deftype.f:60.
 \ A third class is a definer whose product text the scan never reads because
-\ it is rendered and evaluated at load (FUNCTION:, COMMAND, +USER). The checker
+\ it is rendered and evaluated at load (FUNCTION:, +USER). The checker
 \ learns that it renders from its body (CTL-RENDERS), and RECORD-DEFINER?, or
 \ TOP-TOKEN for a statement no arm takes, marks the statement's wordlist,
 \ leaving what the text defines to the run. What the source states is still
@@ -4019,14 +4019,14 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u FFI-CLAUSE? IF a u FFI-CLAUSE 0 0= EXIT THEN
    a u s" immediate" STR=CI IF TICK-CONTEXT-UNKNOWN 0 0= EXIT THEN
    a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
-   \ … then a word that renders source when it runs (`;FUNCTION`, CMD:COMMAND,
+   \ … then a word that renders source when it runs (`;FUNCTION`,
    \ TASK:+USER): what it defines is text this scan never reads, so the checker
    \ marks the statement's wordlist and leaves a later definition or top-level
    \ token naming a word nothing resolves to the run (src/core/checker.f
    \ CTL-RENDERS, UNSEEN-MARK$). It marks whether or not an arm below then
    \ records the product a `generates:` row declares (RECORD-GENERATES): that
    \ name resolves and is checked against the row, and the mark covers what no
-   \ row declares, such as COMMAND's NAME#VEC and NAME#BUF. A statement no arm
+   \ row declares. A statement no arm
    \ takes is TOP-TOKEN's, which marks it again and resolves it.
    \ The text is outside this scan unless a `generates:` row states what it
    \ makes (DECLARED-RENDER?) or it is a `;FUNCTION` closing a group the scan
@@ -4197,7 +4197,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 
 \ Any other token: a number the engine's reader takes is done. A word that may
 \ define words this scan never reads when it runs - it renders source
-\ (`;FUNCTION`, CMD:COMMAND, TASK:+USER, `evaluate`), calls `create`, or is
+\ (`;FUNCTION`, TASK:+USER, `evaluate`), calls `create`, or is
 \ deferred - has the checker mark the statement's wordlist, with or without
 \ composition, and a name that resolves nowhere after it, in a definition or at
 \ top level, is left to the run (src/core/checker.f CTL-RENDERS, CTL-CREATES,

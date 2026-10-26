@@ -66,12 +66,12 @@ create TAIL TAIL-BYTES allot
       [char] d i 1 + SEG-BYTES 1 + mod 0= if drop [char] / then TAIL i + c!
    loop ;
 
-: IN-MID ( ptr u8 n -- )
+: IN-MID ( CMD:command ptr u8 n -- CMD:command )
    {: tool:ptr toolu:n :}
-   MID$ PROC-CMD:CWD!
-   tool toolu TIMEOUT-MS >MS PROC-CMD:RUN-RC MATCH result
+   MID$ CMD:CWD!
+   tool toolu TIMEOUT-MS >MS CMD:RUN-RC MATCH result
       ok OF drop true ENDOF
-      err OF drop PROC-CMD:ERR$ type false ENDOF
+      err OF drop CMD:ERR$ type false ENDOF
    ;MATCH {: ran:bool :}
    s" a helper tool run in MID exits 0" T-LABEL
    ran TTRUE ;
@@ -94,9 +94,8 @@ create TAIL TAIL-BYTES allot
    PATH pathu TAIL$ MID JOIN-PATH MID-U !
    MID$ MAKE-DIRS ;
 
-: MAKE-TAIL ( -- )
-   PROC-CMD:RESET
-   s" -p" PROC-CMD:ARG+ TAIL$ PROC-CMD:ARG+
+: MAKE-TAIL ( CMD:command -- CMD:command )
+   s" -p" CMD:ARG+ TAIL$ CMD:ARG+
    s" /bin/mkdir" IN-MID ;
 
 : SAVE ( ptr u8 n ptr u8 n -- ) {: rel:ptr relu:n data:ptr size:n :}
@@ -156,16 +155,19 @@ create TAIL TAIL-BYTES allot
    PATH u ;
 
 
+: LINK ( n CMD:command -- CMD:command )
+   swap {: linku:n :}
+   s" -s" CMD:ARG+ SIDE$ CMD:ARG+ PATH linku CMD:ARG+
+   s" /bin/ln" IN-MID ;
+
+
 \ SIDE is beside the deep tree and holds the sentinel. The link to it sits in
 \ the deepest tail directory, past PATH-CAP, so ln makes it relative to MID.
 : LINK-SIDE ( -- )
    ROOT$ s" side" SIDE JOIN-PATH SIDE-U !
    SIDE$ MAKE-DIR
    SENTINEL$ s" kept" WRITE-ALL
-   TAIL$ s" side" PATH JOIN-PATH {: linku:n :}
-   PROC-CMD:RESET
-   s" -s" PROC-CMD:ARG+ SIDE$ PROC-CMD:ARG+ PATH linku PROC-CMD:ARG+
-   s" /bin/ln" IN-MID ;
+   TAIL$ s" side" PATH JOIN-PATH [: LINK ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-TAIL ( -- )
@@ -182,17 +184,19 @@ create TAIL TAIL-BYTES allot
 
 \ Whatever the cases left of the tail, an rm child removes: it runs after a
 \ recorded failure or a throw, and finds nothing after a passing run.
+: RM-TAIL ( CMD:command -- CMD:command )
+   s" -r" CMD:ARG+ TAIL-TOP$ CMD:ARG+
+   s" /bin/rm" IN-MID ;
+
 : CLEAR-TAIL ( -- )
    TOP$ EXISTS? 0= if exit then
-   PROC-CMD:RESET
-   s" -r" PROC-CMD:ARG+ TAIL-TOP$ PROC-CMD:ARG+
-   s" /bin/rm" IN-MID ;
+   [: RM-TAIL ;] CMD:WITH-COMMAND ;
 
 public
 
 : RUN ( -- )
    T-RESET SETUP
-   [: MAKE-TAIL FITS DEEP REMOVE-TAIL ;] [: CLEAR-TAIL ;] finally
+   [: [: MAKE-TAIL ;] CMD:WITH-COMMAND FITS DEEP REMOVE-TAIL ;] [: CLEAR-TAIL ;] finally
    s" deep cwd tree: " type ROOT$ type cr
    T-REPORT ;
 

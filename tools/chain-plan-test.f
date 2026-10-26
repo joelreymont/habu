@@ -18,17 +18,19 @@ package CHAIN-PLAN-TEST
 
 \ The CLI entry on a revision jj cannot resolve: REV-PLAN throws, and the entry
 \ names the code and exits the planner's failure status.
+: T-REFUSED-REVISION-IN ( CMD:command -- CMD:command )
+   s" --load" CMD:ARG+
+   s" tools/chain-plan-build.f" CMD:ARG+
+   s" --" CMD:ARG+
+   s" chain-plan-test-no-such-revision" CMD:ARG+
+   SOURCE-ROOT:CWD$ CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME
+   PROC-OUTCOME>RC RC>N CHAIN-PLAN:FAIL-RC T=
+   CMD:OUT$ s" chain-plan: uncaught throw code " CONTAINS? TTRUE ;
+
 : T-REFUSED-REVISION ( -- )
    s" a refused revision exits the planner with FAIL-RC" T-LABEL
-   PROC-CMD:RESET
-   s" --load" PROC-CMD:ARG+
-   s" tools/chain-plan-build.f" PROC-CMD:ARG+
-   s" --" PROC-CMD:ARG+
-   s" chain-plan-test-no-such-revision" PROC-CMD:ARG+
-   SOURCE-ROOT:CWD$ PROC-CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS PROC-CMD:RUN-OUTCOME
-   PROC-OUTCOME>RC RC>N CHAIN-PLAN:FAIL-RC T=
-   PROC-CMD:OUT$ s" chain-plan: uncaught throw code " CONTAINS? TTRUE ;
+   [: T-REFUSED-REVISION-IN ;] CMD:WITH-COMMAND ;
 
 : MAIN ( -- )
    T-RESET

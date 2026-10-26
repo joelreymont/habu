@@ -18,9 +18,9 @@
 \ still the declaration both paths record.
 \
 \ Sections 9-12 are the definers no clause describes: one that writes its word
-\ as text and loads it through INCLUDE-EVALUATE (src/lib/process-command.f COMMAND,
-\ src/lib/task.f +USER), and src/lib/ffi-abi.f FUNCTION:, whose word comes from its
-\ declaration group. A `generates: D ( effect )` row states what D makes.
+\ as text and loads it through INCLUDE-EVALUATE (src/lib/task.f +USER), and
+\ src/lib/ffi-abi.f FUNCTION:, whose word comes from its declaration group.
+\ A `generates: D ( effect )` row states what D makes.
 \ Section 9 reads a row from source and from a resident package and pins it
 \ against the word the engine really generates; section 10 reads FUNCTION:'s
 \ group; section 11 holds a row to the checker scope that recorded it; section
@@ -62,8 +62,8 @@ public
 EXPORT CDD-RESP:CDD-RP-D
 ;package
 
-\ The text-writing definer of sections 9-12, the shape of src/lib/process-command.f
-\ COMMAND: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
+\ The text-writing definer of sections 9-12, the shape of src/lib/task.f
+\ +USER: MAKE builds `: NAME ( -- ptr n ) data-base OFF + ;` for the next name
 \ and evaluates it, so its word has no `does>` clause for a checker to read.
 package CDD-GEN
 $60 constant TEXT-CAP

@@ -17,7 +17,7 @@ require src/lib/test/wait.f
 
 package PROCESS-TASK-TEST
 
-\ One task captures children through PROC-CMD:RUN-OUTCOME while this thread
+\ One task captures children through CMD:RUN-OUTCOME while this thread
 \ polls its own always-ready pipe through POLL-IN. Both reach src/lib/process.f's
 \ row. While that row was one set of dictionary cells the two shared pollfd
 \ slot 0: the poller armed its pipe over the capture's stdout descriptor and
@@ -51,21 +51,24 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ Runs INSIDE the captor task, so it asserts nothing: it counts, and this
 \ thread reads the counts after the join. A deadline throws E-PROC-TIMEOUT,
 \ which the join records and this thread names and throws (PTT-WORKER-ERR).
-: PTT-ONE-CAPTURE ( -- )
-   PROC-CMD:RESET
-   s" hello" PROC-CMD:ARG+
-   s" /bin/echo" PTT-CAPTURE-MS >MS PROC-CMD:RUN-OUTCOME
+: PTT-ONE-CAPTURE ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" hello" CMD:ARG+
+   s" /bin/echo" PTT-CAPTURE-MS >MS CMD:RUN-OUTCOME
    PROC-OUTCOME>RC RC>N 0<> if PTT-CAP-BAD+ then
-   PROC-CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
+   CMD:OUT$ S\" hello\n" STR= 0= if PTT-CAP-BAD+ then
    PTT-DID @ 1 + PTT-DID ! ;
+
+: PTT-CAPTURE-ALL ( CMD:command -- CMD:command )
+   0 begin dup PTT-CAPTURES < while
+      swap PTT-ONE-CAPTURE swap
+      1 +
+   repeat drop ;
 
 \ The answer is stored BEFORE the done flag, so this thread never reaches
 \ TASK:JOIN between the last capture and TASK:RETURN.
 : PTT-CAPTOR-BODY ( -- )
-   0 begin dup PTT-CAPTURES < while
-      PTT-ONE-CAPTURE
-      1 +
-   repeat drop
+   [: PTT-CAPTURE-ALL ;] CMD:WITH-COMMAND
    PTT-DID @ TASK:RETURN
    1 PTT-DONE ! ;
 
@@ -156,8 +159,8 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 \ The shape the shared command could not survive: task A states its arguments,
 \ task B states its own in between, and A's run must still be A's command. With
 \ one process-wide command A ran B's arguments (dot habu-give-proc-cmd-c1f51174,
-\ reproducer habu-gaps/process-call-state/repro.f). Two declared contexts are
-\ two sets of storage, so the interleave is no longer a race at all - and this
+\ reproducer habu-gaps/process-call-state/repro.f). Two scopes are two
+\ contexts, so the interleave is no longer a race at all - and this
 \ file's other rows keep proving that the src/lib/process.f capture row underneath
 \ them is already per task. In the two-command case the handshake forces the
 \ interleave every round; the four-command case relies on four tasks
@@ -165,9 +168,6 @@ TASK:MIN-STACK TASK:TASK PTT-CAPTOR
 3 constant PTT-ROUNDS
 5000 constant PTT-RUN-MS
 5000000000 constant PTT-WAIT-NS          \ one handshake wait: 5 s
-
-CMD:COMMAND PTT-CMD-A
-CMD:COMMAND PTT-CMD-B
 
 TASK:MIN-STACK TASK:TASK PTT-A
 TASK:MIN-STACK TASK:TASK PTT-B
@@ -188,9 +188,8 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 \ join reports the code, a deadline throws E-PROC-TIMEOUT, which the join
 \ records and this thread names and throws; a wrong capture is counted and
 \ returned.
-: PTT-PRINT ( ptr ptr u8 -- )
-   {: h:ptr :}
-   h s" /usr/bin/printf" PTT-RUN-MS >MS CMD:RUN-OUTCOME
+: PTT-PRINT ( CMD:command -- CMD:command )
+   s" /usr/bin/printf" PTT-RUN-MS >MS CMD:RUN-OUTCOME
    MATCH outcome
       exited OF 0<> if E-PROC-OUTPUT throw then ENDOF
       signaled OF drop E-PROC-OUTPUT throw ENDOF
@@ -199,36 +198,40 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 
 \ ( bad round -- bad round+1 ): the counter rides the stack because a local
 \ binds once per definition, so a round cannot bind one of its own.
-: PTT-A-ROUND ( n n -- n n )
+: PTT-A-ROUND ( CMD:command n n -- CMD:command n n )
    {: bad:n r:n :}
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A s" alpha" CMD:ARG+
+   CMD:RESET
+   s" alpha" CMD:ARG+
    r 1 + PTT-A-READY atomic!
    PTT-B-DONE r 1 + PTT-WAIT
-   PTT-CMD-A PTT-PRINT
-   PTT-CMD-A CMD:OUT$ s" alpha" STR= if bad else bad 1 + then
+   PTT-PRINT
+   CMD:OUT$ s" alpha" STR= if bad else bad 1 + then
    r 1 + ;
 
-: PTT-A-BODY ( -- )
+: PTT-A-RUN ( CMD:command -- n CMD:command )
    0 0 begin dup PTT-ROUNDS < while
       PTT-A-ROUND
-   repeat drop TASK:RETURN ;
+   repeat drop swap ;
 
-: PTT-B-ROUND ( n n -- n n )
+: PTT-A-BODY ( -- ) [: PTT-A-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
+
+: PTT-B-ROUND ( CMD:command n n -- CMD:command n n )
    {: bad:n r:n :}
    PTT-A-READY r 1 + PTT-WAIT
-   PTT-CMD-B CMD:RESET
-   PTT-CMD-B s" beta" CMD:ARG+
-   PTT-CMD-B PTT-PRINT
-   PTT-CMD-B CMD:OUT$ s" beta" STR= {: kept:bool :}
+   CMD:RESET
+   s" beta" CMD:ARG+
+   PTT-PRINT
+   CMD:OUT$ s" beta" STR= {: kept:bool :}
    r 1 + PTT-B-DONE atomic!
    kept if bad else bad 1 + then
    r 1 + ;
 
-: PTT-B-BODY ( -- )
+: PTT-B-RUN ( CMD:command -- n CMD:command )
    0 0 begin dup PTT-ROUNDS < while
       PTT-B-ROUND
-   repeat drop TASK:RETURN ;
+   repeat drop swap ;
+
+: PTT-B-BODY ( -- ) [: PTT-B-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
 
 : PTT-TWO-COMMANDS ( -- )
    0 PTT-A-READY !  0 PTT-B-DONE !
@@ -239,21 +242,10 @@ variable PTT-B-DONE                      \ rounds task B has run its own command
 \ ---- four tasks, four commands ----------------------------------------------
 \ Each task holds its own environment row and its own stdin across a run, so
 \ every part of a context the tasks could have shared is read back per task.
-CMD:COMMAND PTT-CMD-0
-CMD:COMMAND PTT-CMD-1
-CMD:COMMAND PTT-CMD-2
-CMD:COMMAND PTT-CMD-3
-
 TASK:MIN-STACK TASK:TASK PTT-T0
 TASK:MIN-STACK TASK:TASK PTT-T1
 TASK:MIN-STACK TASK:TASK PTT-T2
 TASK:MIN-STACK TASK:TASK PTT-T3
-
-: PTT-SLOT ( n -- ptr ptr u8 ) {: ix:n :}
-   ix 0 = if PTT-CMD-0 exit then
-   ix 1 = if PTT-CMD-1 exit then
-   ix 2 = if PTT-CMD-2 exit then
-   PTT-CMD-3 ;
 
 : PTT-VALUE$ ( n -- ptr u8 n ) {: ix:n :}
    ix 0 = if s" zero" exit then
@@ -273,38 +265,40 @@ TASK:MIN-STACK TASK:TASK PTT-T3
    ix 2 = if s" stdin for two" exit then
    s" stdin for three" ;
 
-: PTT-RUN-OK ( ptr ptr u8 ptr u8 n -- )
+: PTT-RUN-OK ( CMD:command ptr u8 n -- CMD:command )
    PTT-RUN-MS >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
    rc 0<> if rc throw then ;
 
-: PTT-ENV-ROUND ( n n -- n )
+: PTT-ENV-ROUND ( CMD:command n n -- CMD:command n )
    {: bad:n ix:n :}
-   ix PTT-SLOT CMD:RESET
-   ix PTT-SLOT CMD:ENV-HERMETIC
-   ix PTT-SLOT s" HABU_CMD_TASK" ix PTT-VALUE$ CMD:ENV+
-   ix PTT-SLOT s" /usr/bin/env" PTT-RUN-OK
-   ix PTT-SLOT CMD:OUT$ ix PTT-ENV-OUT$ STR= if bad else bad 1 + then ;
+   CMD:RESET
+   CMD:ENV-HERMETIC
+   s" HABU_CMD_TASK" ix PTT-VALUE$ CMD:ENV+
+   s" /usr/bin/env" PTT-RUN-OK
+   CMD:OUT$ ix PTT-ENV-OUT$ STR= if bad else bad 1 + then ;
 
-: PTT-STDIN-ROUND ( n n -- n )
+: PTT-STDIN-ROUND ( CMD:command n n -- CMD:command n )
    {: bad:n ix:n :}
-   ix PTT-SLOT CMD:RESET
-   ix PTT-SLOT ix PTT-STDIN$ CMD:IN!
-   ix PTT-SLOT s" /bin/cat" PTT-RUN-OK
-   ix PTT-SLOT CMD:OUT$ ix PTT-STDIN$ STR= if bad else bad 1 + then ;
+   CMD:RESET
+   ix PTT-STDIN$ CMD:IN!
+   s" /bin/cat" PTT-RUN-OK
+   CMD:OUT$ ix PTT-STDIN$ STR= if bad else bad 1 + then ;
 
-: PTT-T-ROUND ( n n n -- n n ) {: bad:n r:n ix:n :}
+: PTT-T-ROUND ( CMD:command n n n -- CMD:command n n ) {: bad:n r:n ix:n :}
    bad ix PTT-ENV-ROUND ix PTT-STDIN-ROUND
    r 1 + ;
 
-: PTT-T-RUN ( n -- n ) {: ix:n :}
+\ Task ix answers the rounds whose capture was not its own.
+: PTT-T-RUN ( n CMD:command -- n CMD:command )
+   >r {: ix:n :} r>
    0 0 begin dup PTT-ROUNDS < while
       ix PTT-T-ROUND
-   repeat drop ;
+   repeat drop swap ;
 
-: PTT-T0-BODY ( -- ) 0 PTT-T-RUN TASK:RETURN ;
-: PTT-T1-BODY ( -- ) 1 PTT-T-RUN TASK:RETURN ;
-: PTT-T2-BODY ( -- ) 2 PTT-T-RUN TASK:RETURN ;
-: PTT-T3-BODY ( -- ) 3 PTT-T-RUN TASK:RETURN ;
+: PTT-T0-BODY ( -- ) 0 [: PTT-T-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
+: PTT-T1-BODY ( -- ) 1 [: PTT-T-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
+: PTT-T2-BODY ( -- ) 2 [: PTT-T-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
+: PTT-T3-BODY ( -- ) 3 [: PTT-T-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
 
 : PTT-FOUR-COMMANDS ( -- )
    ['] PTT-T0-BODY PTT-T0 TASK:ACTIVATE
@@ -326,7 +320,6 @@ TASK:MIN-STACK TASK:TASK PTT-T3
 
 TASK:MIN-STACK TASK:TASK PTT-WAITER
 TASK:MIN-STACK TASK:TASK PTT-CAPTURER
-CMD:COMMAND PTT-CMD-CAP
 
 variable PTT-SLEEPER                     \ exits 22 a fifth of a second after its spawn
 variable PTT-HELD                        \ exits 21 once its stdin closes
@@ -360,12 +353,18 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-SLEEPER @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED
    PROC-OUTCOME>RC RC>N TASK:RETURN ;
 
-: PTT-CAPTURER-BODY ( -- )
-   PTT-CMD-CAP CMD:RESET
-   PTT-CMD-CAP s" -c" CMD:ARG+
-   PTT-CMD-CAP s" sleep 0.2; printf capture-ok" CMD:ARG+
-   PTT-CMD-CAP s" /bin/sh" PTT-RUN-OK
-   PTT-CMD-CAP CMD:OUT$ s" capture-ok" STR= if 0 else 1 then TASK:RETURN ;
+\ 0 when `/bin/sh -c script` printed exactly want, else 1.
+: PTT-SH-PRINTS ( CMD:command ptr u8 n ptr u8 n -- n CMD:command )
+   {: script:ptr scriptu:n want:ptr wantu:n :}
+   s" -c" CMD:ARG+
+   script scriptu CMD:ARG+
+   s" /bin/sh" PTT-RUN-OK
+   CMD:OUT$ want wantu STR= if 0 else 1 then swap ;
+
+: PTT-CAPTURER-RUN ( CMD:command -- n CMD:command )
+   s" sleep 0.2; printf capture-ok" s" capture-ok" PTT-SH-PRINTS ;
+
+: PTT-CAPTURER-BODY ( -- ) [: PTT-CAPTURER-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
 
 : PTT-WAITS-BESIDE-CAPTURE ( -- )
    PTT-SPAWN-CHILDREN
@@ -378,54 +377,64 @@ variable PTT-HELD-W                      \ that stdin's write end
    PTT-HELD @ >PID PTT-RUN-MS >MS PROC-WAIT-BOUNDED {: done :}
    PTT-HOLD-SCRIPT s" " s" " done 21 T-OUTCOME-EXITED= ;
 
-\ ---- two caller-owned growing captures ------------------------------------
-\ Each child receives a different argv, environment and 70 KiB stdin. Their
-\ stdout exceeds CMD's fixed 32 KiB OUT$ region and stays in its caller's sink.
+\ ---- two growing captures -----------------------------------------------------
+\ Each child receives a different argv, environment and 70 KiB stdin, and its
+\ stdout, the mark line and that stdin, outgrows the capture's first region. A
+\ task asserts nothing: it records what its scope read, and this thread checks.
 70000 constant PTT-GROW-U
 create PTT-GROW-IN-A PTT-GROW-U allot
 create PTT-GROW-IN-B PTT-GROW-U allot
-create PTT-GROW-ERR-A 1024 allot
-create PTT-GROW-ERR-B 1024 allot
-DYNAMIC-BUFFER PTT-GROW-OUT-A u8
-DYNAMIC-BUFFER PTT-GROW-OUT-B u8
 variable PTT-GROW-OUT-A-U
 variable PTT-GROW-OUT-B-U
 variable PTT-GROW-ERR-A-U
 variable PTT-GROW-ERR-B-U
+variable PTT-GROW-A-BAD                  \ 1: stdout was not the mark line and the stdin
+variable PTT-GROW-B-BAD
 TASK:MIN-STACK TASK:TASK PTT-GROW-TA
 TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 
-: PTT-GROW-A-WORK ( -- )
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A CMD:ENV-HERMETIC
-   PTT-CMD-A s" PTT_MARK" s" alpha" CMD:ENV+
-   PTT-CMD-A s" -c" CMD:ARG+
-   PTT-CMD-A s" echo A:$PTT_MARK; /bin/cat" CMD:ARG+
+: PTT-GROW-STAGE ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
+   {: v:ptr vu:n script:ptr scriptu:n :}
+   CMD:ENV-HERMETIC
+   s" PTT_MARK" v vu CMD:ENV+
+   s" -c" CMD:ARG+
+   script scriptu CMD:ARG+ ;
+
+\ The rc of /bin/sh run with the PTT-GROW-U bytes at in as its stdin.
+: PTT-GROW-RUN ( CMD:command ptr u8 -- CMD:command n )
+   PTT-GROW-U CMD:IN!
+   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N ;
+
+\ 0 when stdout is the mark line followed by the whole stdin at in, else 1.
+: PTT-GROW-BAD ( CMD:command ptr u8 n ptr u8 -- CMD:command n )
+   {: mark:ptr marku:n in:ptr :}
+   CMD:OUT$ {: out:ptr outu:n :}
+   outu marku PTT-GROW-U + <> if 1 exit then
+   out marku mark marku STR=
+   out marku + PTT-GROW-U in PTT-GROW-U STR= and if 0 else 1 then ;
+
+: PTT-GROW-A-RUN ( CMD:command -- n CMD:command )
+   s" alpha" s" echo A:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
    1 PTT-A-READY atomic!
    PTT-B-DONE 1 PTT-WAIT
-   PTT-CMD-A s" /bin/sh" >LEN PTT-GROW-IN-A PTT-GROW-U >LEN
-   [: PTT-GROW-OUT-A-RESERVE 0 PTT-GROW-OUT-A ;]
-   PTT-GROW-ERR-A 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
-   {: outu:len erru:len o :}
-   outu LEN>N PTT-GROW-OUT-A-U !
-   erru LEN>N PTT-GROW-ERR-A-U !
-   o PROC-OUTCOME>RC RC>N TASK:RETURN ;
+   PTT-GROW-IN-A PTT-GROW-RUN {: rc:n :}
+   CMD:OUT$ nip PTT-GROW-OUT-A-U !
+   CMD:ERR$ nip PTT-GROW-ERR-A-U !
+   S\" A:alpha\n" PTT-GROW-IN-A PTT-GROW-BAD PTT-GROW-A-BAD !
+   rc swap ;
 
-: PTT-GROW-B-WORK ( -- )
-   PTT-CMD-B CMD:RESET
-   PTT-CMD-B CMD:ENV-HERMETIC
-   PTT-CMD-B s" PTT_MARK" s" beta" CMD:ENV+
-   PTT-CMD-B s" -c" CMD:ARG+
-   PTT-CMD-B s" echo B:$PTT_MARK; /bin/cat" CMD:ARG+
+: PTT-GROW-B-RUN ( CMD:command -- n CMD:command )
+   s" beta" s" echo B:$PTT_MARK; /bin/cat" PTT-GROW-STAGE
    1 PTT-B-DONE atomic!
    PTT-A-READY 1 PTT-WAIT
-   PTT-CMD-B s" /bin/sh" >LEN PTT-GROW-IN-B PTT-GROW-U >LEN
-   [: PTT-GROW-OUT-B-RESERVE 0 PTT-GROW-OUT-B ;]
-   PTT-GROW-ERR-B 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
-   {: outu:len erru:len o :}
-   outu LEN>N PTT-GROW-OUT-B-U !
-   erru LEN>N PTT-GROW-ERR-B-U !
-   o PROC-OUTCOME>RC RC>N TASK:RETURN ;
+   PTT-GROW-IN-B PTT-GROW-RUN {: rc:n :}
+   CMD:OUT$ nip PTT-GROW-OUT-B-U !
+   CMD:ERR$ nip PTT-GROW-ERR-B-U !
+   S\" B:beta\n" PTT-GROW-IN-B PTT-GROW-BAD PTT-GROW-B-BAD !
+   rc swap ;
+
+: PTT-GROW-A-BODY ( -- ) [: PTT-GROW-A-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
+: PTT-GROW-B-BODY ( -- ) [: PTT-GROW-B-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
 
 : PTT-GROW-CAPTURES ( -- )
    PTT-GROW-U 0 ?do
@@ -433,18 +442,13 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
       98 PTT-GROW-IN-B i + c!
    loop
    0 PTT-A-READY ! 0 PTT-B-DONE !
-   ['] PTT-GROW-A-WORK PTT-GROW-TA TASK:ACTIVATE
-   ['] PTT-GROW-B-WORK PTT-GROW-TB TASK:ACTIVATE
+   ['] PTT-GROW-A-BODY PTT-GROW-TA TASK:ACTIVATE
+   ['] PTT-GROW-B-BODY PTT-GROW-TB TASK:ACTIVATE
    PTT-GROW-TA PTT-GROW-TB PTT-JOIN-PAIR 0= if exit then
    PTT-GROW-OUT-A-U @ PTT-GROW-U 8 + T=
    PTT-GROW-OUT-B-U @ PTT-GROW-U 7 + T=
    PTT-GROW-ERR-A-U @ 0 T= PTT-GROW-ERR-B-U @ 0 T=
-   PTT-CMD-A CMD:CAPTURE-LENGTHS LEN>N 0 T= LEN>N PTT-GROW-U 8 + T=
-   PTT-CMD-A CMD:OUT$ nip 0 T= PTT-CMD-A CMD:ERR$ nip 0 T=
-   0 PTT-GROW-OUT-A 8 S\" A:alpha\n" T$=
-   0 PTT-GROW-OUT-B 7 S\" B:beta\n" T$=
-   0 PTT-GROW-OUT-A 8 + PTT-GROW-U PTT-GROW-IN-A PTT-GROW-U T$=
-   0 PTT-GROW-OUT-B 7 + PTT-GROW-U PTT-GROW-IN-B PTT-GROW-U T$= ;
+   PTT-GROW-A-BAD @ 0 T= PTT-GROW-B-BAD @ 0 T= ;
 
 \ ---- descriptors a concurrent spawn must not inherit ------------------------
 \ Three tasks capture /usr/bin/true beside one whose shells leave a five-second
@@ -457,12 +461,6 @@ TASK:MIN-STACK TASK:TASK PTT-GROW-TB
 100 constant PTT-INHERIT-CAPTURES        \ captures per capture task
 3000 constant PTT-INHERIT-MS             \ one capture's deadline, inside the sleep's 5 s
 256 constant PTT-FD-BASE-CAP
-
-CMD:COMMAND PTT-CMD-I0
-CMD:COMMAND PTT-CMD-I1
-CMD:COMMAND PTT-CMD-I2
-CMD:COMMAND PTT-CMD-SH
-CMD:COMMAND PTT-CMD-LS
 
 TASK:MIN-STACK TASK:TASK PTT-I0
 TASK:MIN-STACK TASK:TASK PTT-I1
@@ -477,11 +475,6 @@ variable PTT-INHERIT-LEAKS               \ listings unlike the baseline
 create PTT-FD-BASE PTT-FD-BASE-CAP allot
 variable PTT-FD-BASE-U
 
-: PTT-INHERIT-SLOT ( n -- ptr ptr u8 ) {: ix:n :}
-   ix 0 = if PTT-CMD-I0 exit then
-   ix 1 = if PTT-CMD-I1 exit then
-   PTT-CMD-I2 ;
-
 \ Runs INSIDE a worker, so it counts and asserts nothing.
 : PTT-INHERIT-COUNT ( outcome -- )
    MATCH outcome
@@ -490,47 +483,51 @@ variable PTT-FD-BASE-U
       timeout OF 1 PTT-INHERIT-TIMEOUTS atomic-add drop ENDOF
    ;MATCH ;
 
-: PTT-INHERIT-RUN ( n -- ) {: ix:n :}
+: PTT-INHERIT-RUN ( CMD:command -- CMD:command )
    PTT-INHERIT-CAPTURES 0 ?do
-      ix PTT-INHERIT-SLOT CMD:RESET
-      ix PTT-INHERIT-SLOT s" /usr/bin/true" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME
+      CMD:RESET
+      s" /usr/bin/true" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME
       PTT-INHERIT-COUNT
    loop ;
 
-: PTT-I0-BODY ( -- ) 0 PTT-INHERIT-RUN 0 TASK:RETURN ;
-: PTT-I1-BODY ( -- ) 1 PTT-INHERIT-RUN 0 TASK:RETURN ;
-: PTT-I2-BODY ( -- ) 2 PTT-INHERIT-RUN 0 TASK:RETURN ;
+: PTT-I-BODY ( -- ) [: PTT-INHERIT-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 
 \ The shell exits at once; its sleep keeps every descriptor the shell inherited.
-: PTT-SH-BODY ( -- )
+: PTT-SH-RUN ( CMD:command -- CMD:command )
    begin
-      PTT-CMD-SH CMD:RESET
-      PTT-CMD-SH s" -c" CMD:ARG+
-      PTT-CMD-SH s" /bin/sleep 5 </dev/null >/dev/null 2>&1 &" CMD:ARG+
-      PTT-CMD-SH s" /bin/sh" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME PTT-INHERIT-COUNT
+      CMD:RESET
+      s" -c" CMD:ARG+
+      s" /bin/sleep 5 </dev/null >/dev/null 2>&1 &" CMD:ARG+
+      s" /bin/sh" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME PTT-INHERIT-COUNT
       PTT-INHERIT-ON atomic@ 0=
-   until 0 TASK:RETURN ;
+   until ;
 
-: PTT-LIST-FDS ( -- outcome )
-   PTT-CMD-LS CMD:RESET
-   PTT-CMD-LS s" /dev/fd" CMD:ARG+
-   PTT-CMD-LS s" /bin/ls" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME ;
+: PTT-SH-BODY ( -- ) [: PTT-SH-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 
-: PTT-LS-BODY ( -- )
+: PTT-LIST-FDS ( CMD:command -- CMD:command outcome )
+   CMD:RESET
+   s" /dev/fd" CMD:ARG+
+   s" /bin/ls" PTT-INHERIT-MS >MS CMD:RUN-OUTCOME ;
+
+: PTT-LS-RUN ( CMD:command -- CMD:command )
    begin
       PTT-LIST-FDS PTT-INHERIT-COUNT
-      PTT-CMD-LS CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR= 0= if
+      CMD:OUT$ PTT-FD-BASE PTT-FD-BASE-U @ STR= 0= if
          1 PTT-INHERIT-LEAKS atomic-add drop
       then
       PTT-INHERIT-ON atomic@ 0=
-   until 0 TASK:RETURN ;
+   until ;
 
-: PTT-FD-BASELINE ( -- )
+: PTT-LS-BODY ( -- ) [: PTT-LS-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
+
+: PTT-FD-BASE! ( CMD:command -- CMD:command )
    PTT-LIST-FDS PROC-OUTCOME>RC RC>N 0 T=
-   PTT-CMD-LS CMD:OUT$ {: a:ptr u:n :}
+   CMD:OUT$ {: a:ptr u:n :}
    u PTT-FD-BASE-CAP <= TTRUE
    a PTT-FD-BASE u BYTE-COPY
    u PTT-FD-BASE-U ! ;
+
+: PTT-FD-BASELINE ( -- ) [: PTT-FD-BASE! ;] CMD:WITH-COMMAND ;
 
 : PTT-NO-INHERIT ( -- )
    0 PTT-INHERIT-TIMEOUTS !  0 PTT-INHERIT-BAD !  0 PTT-INHERIT-LEAKS !
@@ -538,9 +535,9 @@ variable PTT-FD-BASE-U
    1 PTT-INHERIT-ON !
    ['] PTT-SH-BODY PTT-SH TASK:ACTIVATE
    ['] PTT-LS-BODY PTT-LS TASK:ACTIVATE
-   ['] PTT-I0-BODY PTT-I0 TASK:ACTIVATE
-   ['] PTT-I1-BODY PTT-I1 TASK:ACTIVATE
-   ['] PTT-I2-BODY PTT-I2 TASK:ACTIVATE
+   ['] PTT-I-BODY PTT-I0 TASK:ACTIVATE
+   ['] PTT-I-BODY PTT-I1 TASK:ACTIVATE
+   ['] PTT-I-BODY PTT-I2 TASK:ACTIVATE
    PTT-I0 0 PTT-JOIN=
    PTT-I1 0 PTT-JOIN=
    PTT-I2 0 PTT-JOIN=
@@ -552,11 +549,12 @@ variable PTT-FD-BASE-U
    PTT-INHERIT-BAD @ 0 T= ;
 
 \ ---- cancelling one call, while another completes --------------------------
-\ Failure cases: a ready cancellation must wake both capture shapes (including
-\ blocked stdin), preserve the bytes already copied, run caller cleanup, and
-\ leave the other command alone. Descendants can hold capture pipes open; EOF
-\ can precede child exit. Neither may turn cancellation into a blocking reap.
-\ HALT remains cooperative: explicit cancellation is the pipe, never PAUSE.
+\ Failure cases: a ready cancellation must wake a capture blocked writing its
+\ stdin, run caller cleanup, and leave the other command alone. Descendants can
+\ hold capture pipes open; EOF can precede child exit. Neither may turn
+\ cancellation into a blocking reap. HALT remains cooperative: explicit
+\ cancellation is the pipe, never PAUSE. The throw ends the command's scope, so
+\ the caller catches it outside CMD:WITH-COMMAND.
 variable PTT-CANCEL-R
 variable PTT-CANCEL-W
 variable PTT-CANCEL-MODE
@@ -564,50 +562,41 @@ variable PTT-CANCEL-CLEAN
 variable PTT-CANCEL-CODE
 variable PTT-CANCEL-PID
 create PTT-CANCEL-BYTE 99 c,
-create PTT-CANCEL-ERR 1024 allot
-DYNAMIC-BUFFER PTT-CANCEL-OUT u8
 
 : PTT-CANCEL-SCRIPT ( -- ptr u8 n )
-   PTT-CANCEL-MODE @ 2 = if
+   PTT-CANCEL-MODE @ 1 = if
       s" sleep 10 & printf out; printf err >&2; wait" exit
    then
-   PTT-CANCEL-MODE @ 3 = if
+   PTT-CANCEL-MODE @ 2 = if
       s" printf out; printf err >&2; exec 0<&- 1>&- 2>&-; exec sleep 10" exit
    then
    s" printf out; printf err >&2; exec sleep 10" ;
 
-: PTT-CANCEL-RUN ( -- )
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
-   PTT-CMD-A s" -c" CMD:ARG+
-   PTT-CMD-A PTT-CANCEL-SCRIPT CMD:ARG+
-   PTT-CANCEL-MODE @ 1 = if
-      PTT-CMD-A s" /bin/sh" >LEN PTT-GROW-IN-A PTT-GROW-U >LEN
-      [: PTT-CANCEL-OUT-RESERVE 0 PTT-CANCEL-OUT ;]
-      PTT-CANCEL-ERR 1024 >LEN PTT-RUN-MS >MS CMD:RUN-STDIN-GROWING-OUTCOME
-      drop 2drop exit
+\ Mode 3 runs through RUN-RC, the others through RUN-OUTCOME.
+: PTT-CANCEL-RUN ( CMD:command -- CMD:command )
+   PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   s" -c" CMD:ARG+
+   PTT-CANCEL-SCRIPT CMD:ARG+
+   PTT-GROW-IN-A PTT-GROW-U CMD:IN!
+   PTT-CANCEL-MODE @ 3 = if
+      s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-RC drop exit
    then
-   PTT-CMD-A PTT-GROW-IN-A PTT-GROW-U CMD:IN!
-   PTT-CANCEL-MODE @ 4 = if
-      PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-RC drop exit
-   then
-   PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
 
 : PTT-CANCEL-CLEANUP ( -- )
    1 PTT-CANCEL-CLEAN atomic! ;
 
 : PTT-CANCEL-BODY ( -- )
-   [: [: PTT-CANCEL-RUN ;] [: PTT-CANCEL-CLEANUP ;] finally ;] catch
-   PTT-CANCEL-CODE !
+   [: [: [: PTT-CANCEL-RUN ;] CMD:WITH-COMMAND ;] [: PTT-CANCEL-CLEANUP ;] finally ;]
+   catch PTT-CANCEL-CODE !
    PROC-PID @ PTT-CANCEL-PID !
    0 TASK:RETURN ;
 
+: PTT-CANCEL-CONTROL-RUN ( CMD:command -- n CMD:command )
+   s" sleep 0.2; printf unaffected" s" unaffected" PTT-SH-PRINTS ;
+
 : PTT-CANCEL-CONTROL ( -- )
-   PTT-CMD-B CMD:RESET
-   PTT-CMD-B s" -c" CMD:ARG+
-   PTT-CMD-B s" sleep 0.2; printf unaffected" CMD:ARG+
-   PTT-CMD-B s" /bin/sh" PTT-RUN-OK
-   PTT-CMD-B CMD:OUT$ s" unaffected" STR= if 0 else 1 then TASK:RETURN ;
+   [: PTT-CANCEL-CONTROL-RUN ;] CMD:WITH-COMMAND TASK:RETURN ;
 
 : PTT-CANCEL-OPEN ( -- )
    PIPE-PAIR {: rd:fd wr:fd :}
@@ -616,20 +605,6 @@ DYNAMIC-BUFFER PTT-CANCEL-OUT u8
 
 : PTT-CANCEL-SIGNAL ( -- )
    PTT-CANCEL-W @ PTT-CANCEL-BYTE 1 write 1 T= ;
-
-\ The last-run lengths bound exactly the valid prefix, even after a throw.
-\ Growing output belongs to the sink; OUT$/ERR$ must keep their fixed lengths.
-: PTT-CANCEL-PREFIX ( -- )
-   PTT-CMD-A CMD:CAPTURE-LENGTHS {: outu:len erru:len :}
-   outu LEN>N 3 T= erru LEN>N 3 T=
-   PTT-CANCEL-MODE @ 1 = if
-      0 PTT-CANCEL-OUT outu LEN>N s" out" T$=
-      PTT-CANCEL-ERR erru LEN>N s" err" T$=
-      PTT-CMD-A CMD:OUT$ nip 0 T= PTT-CMD-A CMD:ERR$ nip 0 T=
-   else
-      PTT-CMD-A CMD:OUT$ s" out" T$=
-      PTT-CMD-A CMD:ERR$ s" err" T$=
-   then ;
 
 \ Inspect only this live task's process row, before JOIN releases its region.
 \ Copied bytes establish the capture state, rather than assuming a scheduler
@@ -644,7 +619,7 @@ DYNAMIC-BUFFER PTT-CANCEL-OUT u8
    PTT-A PROC-PID TASK:HIS atomic@ 0 <= if false exit then
    PTT-A PROC-OUT-LEN TASK:HIS atomic@ 3 < if false exit then
    PTT-A PROC-ERR-LEN TASK:HIS atomic@ 3 < if false exit then
-   PTT-CANCEL-MODE @ 3 <> if true exit then
+   PTT-CANCEL-MODE @ 2 <> if true exit then
    PTT-A PROC-OUT-R TASK:HIS atomic@ 0 <
    PTT-A PROC-ERR-R TASK:HIS atomic@ 0 < and
    PTT-A PROC-IN-W TASK:HIS atomic@ 0 < and ;
@@ -665,9 +640,6 @@ DYNAMIC-BUFFER PTT-CANCEL-OUT u8
    PTT-CANCEL-CODE @ E-PROC-CANCELLED T=
    PTT-CANCEL-CLEAN atomic@ 1 T=
    PTT-CANCEL-PID @ PROC-NO-PID T=
-   PTT-CANCEL-PREFIX
-   [: PTT-CMD-A CMD:OUTCOME@ drop ;] E-PROC-CANCELLED TTHROWSQ
-   [: PTT-CMD-A CMD:RC@ drop ;] E-PROC-CANCELLED TTHROWSQ
    \ The borrowed fd is still open and its byte was never consumed.
    PTT-CANCEL-W @ close
    PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
@@ -679,14 +651,43 @@ variable PTT-CANCEL-MARK-U
 : PTT-CANCEL-MARK$ ( -- ptr u8 n )
    PTT-CANCEL-MARK PTT-CANCEL-MARK-U @ ;
 
-: PTT-CANCEL-PRE-RUN ( -- )
-   PTT-CMD-A s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
+: PTT-CANCEL-PRE-RUN ( CMD:command -- CMD:command )
+   s" /bin/sh" PTT-RUN-MS >MS CMD:RUN-OUTCOME drop ;
 
-: PTT-CANCEL-PRE-SETUP ( -- )
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A s" -c" CMD:ARG+
-   PTT-CMD-A S\" printf spawned > \q$PC_CANCEL_MARK\q" CMD:ARG+
-   PTT-CMD-A s" PC_CANCEL_MARK" PTT-CANCEL-MARK$ CMD:ENV+ ;
+: PTT-CANCEL-PRE-SETUP ( CMD:command -- CMD:command )
+   s" -c" CMD:ARG+
+   S\" printf spawned > \q$PC_CANCEL_MARK\q" CMD:ARG+
+   s" PC_CANCEL_MARK" PTT-CANCEL-MARK$ CMD:ENV+ ;
+
+\ Run the mark command with fd lent to it.
+: PTT-CANCEL-PRE-LENT ( n CMD:command -- CMD:command )
+   >r {: fd:n :} r>
+   PTT-CANCEL-PRE-SETUP
+   fd >FD CMD:CANCEL-FD!
+   PTT-CANCEL-PRE-RUN ;
+
+\ RESET and a lent PROC-NO-FD each disconnect a lent pipe that stays readable.
+: PTT-CANCEL-PRE-RELENT ( CMD:command -- CMD:command )
+   PTT-CANCEL-PRE-SETUP
+   PTT-CANCEL-PRE-RUN
+   PTT-CANCEL-MARK$ FILE? TTRUE
+   CMD:RESET
+   CMD:OUTCOME@ PROC-OUTCOME>RC RC>N 0 T=
+   PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   CMD:RESET
+   s" /usr/bin/true" PTT-RUN-OK
+   PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   PROC-NO-FD >FD CMD:CANCEL-FD!
+   s" /usr/bin/true" PTT-RUN-OK ;
+
+\ A cancelled run leaves its code: OUTCOME@ and RC@ throw it again. The catch
+\ sits inside the scope, the shape dot habu-settle-stale-linear-0bcc904c questions.
+: PTT-CANCEL-PRE-KEPT ( CMD:command -- CMD:command )
+   PTT-CANCEL-PRE-SETUP
+   PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
+   [: PTT-CANCEL-PRE-RUN ;] catch E-PROC-CANCELLED T=
+   [: CMD:OUTCOME@ drop ;] catch E-PROC-CANCELLED T=
+   [: CMD:RC@ drop ;] catch E-PROC-CANCELLED T= ;
 
 : PTT-CANCEL-PRE ( -- )
    CLEANUP-RESET
@@ -694,33 +695,18 @@ variable PTT-CANCEL-MARK-U
    root rootu CLEANUP-TREE+
    root rootu s" spawned" PTT-CANCEL-MARK JOIN-PATH PTT-CANCEL-MARK-U !
    PTT-CANCEL-OPEN PTT-CANCEL-SIGNAL
-   PTT-CANCEL-PRE-SETUP
-   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
-   [: PTT-CANCEL-PRE-RUN ;] E-PROC-CANCELLED TTHROWSQ
+   [: PTT-CANCEL-R @ [: PTT-CANCEL-PRE-LENT ;] CMD:WITH-COMMAND ;]
+   E-PROC-CANCELLED TTHROWSQ
+   [: PTT-CANCEL-PRE-KEPT ;] CMD:WITH-COMMAND
    PTT-CANCEL-MARK$ FILE? TFALSE
-   PTT-CMD-A CMD:CAPTURE-LENGTHS LEN>N 0 T= LEN>N 0 T=
-   \ Reusing a command disconnects the old request even while its pipe stays
-   \ readable; the caller has joined every old requester before reuse.
-   PTT-CANCEL-PRE-RUN
-   PTT-CANCEL-MARK$ FILE? TTRUE
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A CMD:OUTCOME@ PROC-OUTCOME>RC RC>N 0 T=
-   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
-   PTT-CMD-A CMD:RESET
-   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
-   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
-   PTT-CMD-A PROC-NO-FD >FD CMD:CANCEL-FD!
-   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
+   [: PTT-CANCEL-PRE-RELENT ;] CMD:WITH-COMMAND
    \ POLLHUP cancels too, without a byte to read or a writer left alive.
    PTT-CANCEL-W @ close
    PTT-CANCEL-R @ PTT-CANCEL-BYTE 1 read 1 T=
-   PTT-CMD-A PTT-CANCEL-R @ >FD CMD:CANCEL-FD!
-   [: PTT-CANCEL-PRE-RUN ;] E-PROC-CANCELLED TTHROWSQ
+   [: PTT-CANCEL-R @ [: PTT-CANCEL-PRE-LENT ;] CMD:WITH-COMMAND ;]
+   E-PROC-CANCELLED TTHROWSQ
    PTT-CANCEL-R @ close
-   PTT-CMD-A 1000000 >FD CMD:CANCEL-FD!
-   [: PTT-CANCEL-PRE-RUN ;] E-PROC-OUTPUT TTHROWSQ
-   \ A refused call also disconnects the borrowed reference.
-   PTT-CMD-A s" /usr/bin/true" PTT-RUN-OK
+   [: 1000000 [: PTT-CANCEL-PRE-LENT ;] CMD:WITH-COMMAND ;] E-PROC-OUTPUT TTHROWSQ
    CLEANUP-RUN ;
 
 public
@@ -734,15 +720,14 @@ public
    PTT-FOUR-COMMANDS
    s" bounded waits answer for their own pids beside a capture" T-LABEL
    PTT-WAITS-BESIDE-CAPTURE
-   s" owned growing captures keep argv, env and large stdout apart" T-LABEL
+   s" growing captures keep argv, env, stdin and large stdout apart" T-LABEL
    PTT-GROW-CAPTURES
    s" a capture's descriptors never reach another task's child" T-LABEL
    PTT-NO-INHERIT
-   s" cancelling fixed, growing, tree-held and EOF captures isolates another call" T-LABEL
-   5 0 ?do i PTT-CANCEL-ONE loop
-   s" pre-signalled cancellation never spawns and reuse disconnects the old pipe" T-LABEL
+   s" cancelling plain, tree-held, EOF and RUN-RC captures isolates another call" T-LABEL
+   4 0 ?do i PTT-CANCEL-ONE loop
+   s" pre-signalled cancellation never spawns and reset disconnects the lent pipe" T-LABEL
    PTT-CANCEL-PRE
-   PTT-CANCEL-OUT-RELEASE
    T-REPORT
    s" process-task-test: ok" type cr ;
 

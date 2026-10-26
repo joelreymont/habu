@@ -24,7 +24,8 @@
 \
 \ STORAGE CLASS. PROCESS-WIDE: the environment table and buffer and the
 \ inherited-default table are one set for the image, held by the task that
-\ prepares a spawn until the spawn resets them; an owned CMD run uses none.
+\ prepares a spawn until the spawn resets them; an owned CMD run uses only the
+\ inherited-default table, read-only, when it inherits.
 
 require src/lib/errors.f
 require src/lib/string.f

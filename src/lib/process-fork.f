@@ -1,7 +1,7 @@
 \ process-fork.f - checked fork wrappers.
 \
-\ The module lives in `package PROC-FORK` (the same PROC-* family as PROC-CWD /
-\ PROC-CMD). External callers use the qualified public API:
+\ The module lives in `package PROC-FORK` (the same PROC-* family as PROC-CWD).
+\ External callers use the qualified public API:
 \   PROC-FORK:RAW      raw fork wrapper (pid, negative on failure)
 \   PROC-FORK:CHECKED  fork that throws E-PROC-SPAWN on primitive failure
 \   PROC-FORK:FORK-CALL / FORK-CALL-DEFAULT  the fork RAW makes, for a test to refuse
