@@ -8,7 +8,6 @@ require src/core/include.f
 package BUILD-PRODUCER
 private
 
-create CONTEXT SHA256-CTX-BYTES allot
 create COMPILER-CONTEXT SHA256-CTX-BYTES allot
 create COPY SHA256-CTX-BYTES allot
 create CHECKER-DIGEST 32 allot
@@ -19,12 +18,6 @@ variable INPUTS
 variable STARTED
 variable CHECKER-KNOWN
 variable COMPILER-KNOWN
-
-: SPAN ( ptr u8 n -- )
-   {: bytes:ptr size:n :}
-   size LENGTH !
-   CONTEXT LENGTH CELL SHA256-FEED
-   CONTEXT bytes size SHA256-FEED ;
 
 : COMPILER-SPAN ( ptr u8 n -- )
    {: bytes:ptr size:n :}
@@ -41,8 +34,6 @@ variable COMPILER-KNOWN
 public
 
 : START ( -- )
-   CONTEXT SHA256-BEGIN
-   CONTEXT s" loaded-implementation-buffers-v1" SHA256-FEED
    COMPILER-CONTEXT SHA256-BEGIN
    COMPILER-CONTEXT s" portable-emitting-compiler-inputs-v1" SHA256-FEED
    0 INPUTS !
@@ -50,31 +41,25 @@ public
    false CHECKER-KNOWN !
    false COMPILER-KNOWN ! ;
 
-\ Paths and roots distinguish equal source buffers loaded from different
-\ locations; content comes from the selected reader, not a separate probe.
+\ A path relative to its root distinguishes equal source buffers loaded as
+\ different files; the same tree at another location observes the same inputs.
+\ Content comes from the selected reader, not a separate probe.
 : OBSERVE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n bytes:ptr size:n :}
    STARTED @ 0= if s" build-producer: not started" 76 die then
-   CONTEXT s" source" SHA256-FEED
-   path pathu SPAN
-   root rootu SPAN
-   bytes size SPAN
    COMPILER-CONTEXT s" source" SHA256-FEED
    path pathu root rootu SOURCE-ROOT:RELATIVE COMPILER-SPAN
    bytes size COMPILER-SPAN
    1 INPUTS +! ;
 
 : OPTION ( ptr u8 n -- )
-   2dup
    STARTED @ 0= if s" build-producer: not started" 76 die then
-   CONTEXT s" option" SHA256-FEED
-   SPAN
    COMPILER-CONTEXT s" option" SHA256-FEED
    COMPILER-SPAN ;
 
 : CURRENT$ ( -- ptr u8 n bool )
    STARTED @ 0= if NULL$ false exit then
-   CONTEXT s" current" CURRENT-DIGEST SNAPSHOT
+   COMPILER-CONTEXT s" current" CURRENT-DIGEST SNAPSHOT
    CURRENT-DIGEST 32 true ;
 
 : FREEZE-CHECKER ( -- )

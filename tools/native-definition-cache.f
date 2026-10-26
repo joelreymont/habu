@@ -728,6 +728,16 @@ variable PENDING-KEY-U
       NUNIT-CAPTURE:BIND-PRODUCER
    then ;
 
+\ A file's instance name: its path relative to the root that resolved it, and
+\ role 0 under the engine's source root, 1 under any other. The same sources
+\ built from another tree path name the same instances; reuse soundness rests
+\ on each definition's own key and the live re-check of what it consumed.
+: FILE-NAME ( ptr u8 n ptr u8 n -- ptr u8 n n )
+   {: path:ptr pathu:n root:ptr rootu:n :}
+   rootu 0= if path pathu 1 exit then
+   path pathu root rootu SOURCE-ROOT:RELATIVE
+   root rootu SOURCE-ROOT:ENGINE$ STR= if 0 else 1 then ;
+
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -743,7 +753,7 @@ variable PENDING-KEY-U
       asked drop askedu drop mode
    then {: kind:n :}
    FRAME-RESERVE
-   path pathu root rootu kind NFILE-REF:PUSH-FILE
+   path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
    path FRAME F-INPUT + 0 ptr-field !
    pathu F-INPUT-U F!

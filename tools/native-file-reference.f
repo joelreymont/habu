@@ -470,8 +470,10 @@ EXPORT REGISTER-IMPL
 0 constant LOCAL
 1 constant EXTERNAL
 
-\ The loader supplies the canonical FILE-instance path, root and same-child
-\ load occurrence. Each instance owns its own family ordinals.
+\ The loader supplies the FILE-instance key: its parent instance, the load
+\ kind, whether the file lies under the engine's source root or another one,
+\ its path relative to that root, and the same-child load occurrence. Each
+\ instance owns its own family ordinals.
 : FILE-INSTANCE! ( ptr u8 n -- ) {: key:ptr keyu:n :}
    keyu 0 <= if BAD then
    INSTANCE-N @ {: row:n :}
@@ -501,9 +503,9 @@ EXPORT REGISTER-IMPL
       ord XREF-REC XREF-NAME$ vis exit
    then 2drop BAD ;
 
-: PUSH-FILE ( ptr u8 n ptr u8 n n -- )
-   {: path:ptr pathu:n root:ptr rootu:n kind:n :}
-   pathu 0 <= rootu 0 < or kind 0 < or if BAD then
+: PUSH-FILE ( ptr u8 n n n -- )
+   {: name:ptr nameu:n role:n kind:n :}
+   nameu 0 <= role 0 < or kind 0 < or if BAD then
    0 KEY-U ! 4 K-N
    CURRENT-INSTANCE @ {: parent:n :}
    parent 0 >= if
@@ -511,7 +513,7 @@ EXPORT REGISTER-IMPL
    else
       NULL-PTR 0 K-S
    then
-   kind K-N path pathu K-S root rootu K-S
+   kind K-N role K-N name nameu K-S
    KEY-U @ {: baseu:n :}
    0 FILE-OCC !
    INSTANCE-N @ 0 ?do

@@ -216,12 +216,17 @@ process that imports objects, compiles downstream source and behaves as a clean
 build does.
 
 **A file's key names the file, not what loaded before it.** The key is the
-engine, the target profile, the build mode, the canonical path and root, the
-load kind and the occurrence: how many earlier loads of the same path, root and
-kind the build made. Only `include` repeats a load, and the count is build-wide
-because the parent is not in the key, so two parents' first includes of one
-file stay distinct. Folding preceding files into the key would make an edit to
-the root file recompile every library it loads.
+engine, the target profile, the build mode, the key of the file that loaded it,
+the root's role (the engine root or another), the canonical path relative to
+that root, the load kind and the occurrence: how many earlier loads of the same
+file, with the same kind and under the same parent, the build made, which only
+`include` repeats. The file's parts are names, never content: folding the bytes
+of preceding files into the key would make an edit to the root file recompile
+every library it loads. A file under its root keys the same in a copy of the
+tree or in the tree reached at another path, so those builds share entries. A
+copy whose bytes differ is checked as an edit in place is: a definition whose
+text differs keys apart, and an entry whose consumed facts no longer hold is
+refused.
 
 **An entry is valid while what it consumed still holds.** In order: the file's
 size and modification time match, or else its bytes hash the same; the
