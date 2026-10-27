@@ -1942,14 +1942,16 @@ variable WANT-RC
 \ A constant refused after its record opened is no record a later `does>`
 \ patches: the clause acts on the variable before it. Each loop is held to
 \ the output alone: the engine names the refusal at the file's floor
-\ (`interpret stack underdepth`), the Habu loop's constant E-UNDERFLOW.
+\ (`interpret stack underdepth`), the Habu loop's constant E-UNDERFLOW. The
+\ case runs unchecked: the typed top level refuses a caught `included` there,
+\ and the checker still types the patched variable as its cell.
 : CONSTANT-REFUSED-DOES ( -- )
    GE-SRC-RESET
    s" constant OI-KC" GE-SRC-LINE
    s" oi-nested-constant.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 1 set-tier variable OI-AV s~ oi-nested-constant.f~ ' included catch . 2drop" QLINE
+   s" 1 set-tier 0 set-check variable OI-AV s~ oi-nested-constant.f~ ' included catch . 2drop" QLINE
    s" : OI-BEHAVE ( -- ) does> ( -- n ) drop 9 ;" GE-SRC-LINE
    s" OI-BEHAVE OI-AV ." GE-SRC-LINE
    s" oi-constant-refused-does.f" CASE-BUF GT-PATH CASE-U !
