@@ -1473,6 +1473,8 @@
 \ which owns package WORD-DOCS.
 \ Scoped commands: -9580..-9589, minted in src/lib/process-command.f, which
 \ owns package CMD.
+\ Tier 0 compiler: -9600..-9609, minted in src/habu/t0.f, which owns package
+\ T0.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

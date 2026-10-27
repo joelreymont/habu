@@ -1,0 +1,555 @@
+\ t0.f - the tier 0 compiler's front end, package T0.
+\
+\ T0:COMPILE-TEXT walks one definition's body text as BODYBUF holds it at `;`
+\ (src/habu/definers.f DEF-COMPILE hands the same text to the compiler entry):
+\ the name, an optional `( ... )` signature it skips, then blank-separated
+\ tokens. It emits through T0-EMIT, which one emitter file defines before this
+\ file loads (src/habu/t0-x64.f for x86-64); the emitter leaves the finished
+\ body in its sink.
+\
+\ A TOKEN IS, IN THIS ORDER: a control keyword (if else then begin until while
+\ repeat again exit recurse >r r> r@ ['] [char]); an operation T0 inlines,
+\ when the spelling binds the engine's seeded primitive (NDICT:SPELL-PRIM?):
+\ the stack shuffles, + - * and or xor 1+ 1- negate invert lshift rshift, the
+\ comparisons, @ and c@; a word the dictionary binds (NDICT:CALL-TARGET), as a
+\ call; a number (OUTER:NUMBER) other than a float. Anything else throws
+\ E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next compile.
+\
+\ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
+\ entries, each a vreg or a constant; below them the stack is in memory. A
+\ constant becomes code only when an operation needs it in a register or the
+\ stack is spilled. Every call, join and loop head spills the whole virtual
+\ stack to memory, so control paths meet with it empty and no snapshot or
+\ reconciliation exists. A push onto a full virtual stack spills its bottom
+\ entry.
+\
+\ THE CONTROL STACK holds the open structures: an `if` or `else` site, a
+\ `begin` mark and a `while` site, which `while` puts under its `begin` as
+\ Forth's orig/dest order has it, so `begin ... while ... while ... repeat then`
+\ resolves. A structure that does not close is E-T0-CONTROL.
+
+require src/lib/prelude.f
+require src/lib/string.f
+require src/habu/outer.f
+require src/compiler/native/dict.f
+
+package T0
+public
+
+\ Tier 0 compiler: -9600..-9609, the block src/lib/errors.f names.
+-9600 constant E-FIRST
+-9609 constant E-LAST
+-9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
+-9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
+
+private
+
+\ ---- the text ----------------------------------------------------------------
+PTR-VARIABLE TXT
+variable TXT-LEN
+variable POS
+PTR-VARIABLE BAD
+variable BAD-LEN
+
+: TXT$ ( -- ptr u8 ) TXT @ ;
+
+: BLANK? ( n -- bool ) 32 <= ;
+
+\ The next blank-delimited token, of length zero at the end of the text.
+: AT-BLANK? ( -- bool )
+   POS @ TXT-LEN @ < if TXT$ POS @ + c@ BLANK? exit then
+   false ;
+
+: IN-TOKEN? ( -- bool )
+   POS @ TXT-LEN @ < if TXT$ POS @ + c@ BLANK? 0= exit then
+   false ;
+
+: TOKEN ( -- ptr u8 n )
+   begin AT-BLANK? while POS @ 1+ POS ! repeat
+   POS @ {: start:n :}
+   begin IN-TOKEN? while POS @ 1+ POS ! repeat
+   TXT$ start +  POS @ start - ;
+
+\ Whether no token follows.
+: AT-END? ( -- bool )
+   POS @ {: saved:n :}
+   TOKEN {: a:ptr u:n :}
+   saved POS !
+   u 0= ;
+
+: UNSUPPORTED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a BAD !  u BAD-LEN !
+   E-T0-UNSUPPORTED throw ;
+
+\ ---- the virtual stack -------------------------------------------------------
+0 constant K-REG
+1 constant K-CONST
+
+8 TYPED-BUFFER VS-KIND n
+8 TYPED-BUFFER VS-VAL n
+variable VS-N
+variable FREE                       \ bit k set: vreg k holds no entry
+
+: ALL-FREE ( -- n ) 1 T0-EMIT:VREGS lshift 1- ;
+
+: TOP ( -- n ) VS-N @ 1- ;
+
+: REG? ( n -- bool ) VS-KIND @ K-REG = ;
+
+: VREG@ ( n -- T0-EMIT:vreg ) VS-VAL @ T0-EMIT:>VREG ;
+
+: RELEASE ( T0-EMIT:vreg -- ) T0-EMIT:VREG>N 1 swap lshift FREE @ or FREE ! ;
+
+: ENTRY! ( n n n -- ) {: kind:n val:n k:n :}
+   kind k VS-KIND !  val k VS-VAL ! ;
+
+: COPY-ENTRY ( n n -- ) {: from:n to:n :}
+   from VS-KIND @ from VS-VAL @ to ENTRY! ;
+
+\ Drop entry k, releasing its vreg, and close the gap above it.
+: REMOVE ( n -- ) {: k:n :}
+   k REG? if k VREG@ RELEASE then
+   VS-N @ k 1+ ?do i i 1- COPY-ENTRY loop
+   VS-N @ 1- VS-N ! ;
+
+\ Spill the bottom entry to memory.
+: EVICT ( -- )
+   0 REG? if 0 VREG@ T0-EMIT:PUSH else 0 VS-VAL @ 0 T0-EMIT:SPILL-LIT 1 T0-EMIT:DSP+ then
+   0 REMOVE ;
+
+\ Make room for one more entry.
+: ROOM ( -- )
+   VS-N @ T0-EMIT:VREGS = if EVICT then ;
+
+\ A vreg no entry holds. Fewer than VREGS register entries always leave one.
+: ALLOC ( -- T0-EMIT:vreg )
+   FREE @ 0= if EVICT then
+   FREE @ {: m:n :}
+   0 begin 1 over lshift m and 0= while 1+ repeat {: k:n :}
+   1 k lshift invert m and FREE !
+   k T0-EMIT:>VREG ;
+
+: PUSH-REG ( T0-EMIT:vreg -- ) {: r:T0-EMIT:vreg :}
+   K-REG r T0-EMIT:VREG>N VS-N @ ENTRY!
+   VS-N @ 1+ VS-N ! ;
+
+: PUSH-CONST ( n -- ) {: v:n :}
+   ROOM
+   K-CONST v VS-N @ ENTRY!
+   VS-N @ 1+ VS-N ! ;
+
+\ Write every entry to memory and empty the virtual stack.
+: SPILL-ALL ( -- )
+   VS-N @ 0 ?do
+      i REG? if i VREG@ i T0-EMIT:SPILL else i VS-VAL @ i T0-EMIT:SPILL-LIT then
+   loop
+   VS-N @ T0-EMIT:DSP+
+   0 VS-N !
+   ALL-FREE FREE ! ;
+
+\ Entry k of m loaded from the memory cell k - m below the stack pointer.
+: FILL-ENTRY ( n n -- ) {: k:n m:n :}
+   ALLOC {: r:T0-EMIT:vreg :}
+   r k m - T0-EMIT:FILL
+   K-REG r T0-EMIT:VREG>N k ENTRY! ;
+
+\ At least k entries: the missing ones are loaded from memory under the rest.
+: ENSURE ( n -- ) {: k:n :}
+   VS-N @ k >= if exit then
+   k VS-N @ - {: m:n :}
+   VS-N @ 0 ?do VS-N @ 1- i - dup m + COPY-ENTRY loop
+   m 0 ?do i m FILL-ENTRY loop
+   m negate T0-EMIT:DSP+
+   VS-N @ m + VS-N ! ;
+
+\ Entry k in a vreg. A constant entry means a vreg is free, so k stays put.
+: MAT ( n -- T0-EMIT:vreg ) {: k:n :}
+   k REG? if k VREG@ exit then
+   ALLOC {: r:T0-EMIT:vreg :}
+   k VS-VAL @ r T0-EMIT:LIT
+   K-REG r T0-EMIT:VREG>N k ENTRY!
+   r ;
+
+\ The top entry in a vreg, taken off the virtual stack. The vreg stays allocated
+\ until the caller's next SPILL-ALL or release.
+: TAKE ( -- T0-EMIT:vreg )
+   1 ENSURE
+   TOP MAT {: r:T0-EMIT:vreg :}
+   VS-N @ 1- VS-N !
+   r ;
+
+\ ---- inline operations -------------------------------------------------------
+: CONST? ( n -- bool ) VS-KIND @ K-CONST = ;
+
+: IMM? ( n -- bool ) {: k:n :}
+   k CONST? if k VS-VAL @ T0-EMIT:IMM? exit then
+   false ;
+
+\ Replace the two top entries with one constant. A local cannot hold a
+\ quotation, so the folding words take theirs on the stack, under the rest.
+: FOLD2 ( [ n n -- n ] -- )
+   TOP 1- VS-VAL @  TOP VS-VAL @  rot execute {: v:n :}
+   VS-N @ 2 - VS-N !
+   v PUSH-CONST ;
+
+\ Whether the two top entries are constants.
+: CONST2? ( -- bool ) TOP 1- CONST? TOP CONST? and ;
+
+\ The second entry, now in a vreg, holds the result; the top entry goes.
+: INTO-SECOND ( -- T0-EMIT:vreg T0-EMIT:vreg )
+   TOP 1- MAT  TOP MAT ;
+
+: ALU2 ( [ n n -- n ] T0-EMIT:alu bool -- ) {: o:T0-EMIT:alu comm:bool :}
+   2 ENSURE
+   CONST2? if FOLD2 exit then
+   drop
+   TOP IMM? if
+      TOP 1- MAT TOP VS-VAL @ o T0-EMIT:OP-LIT
+      TOP REMOVE exit
+   then
+   comm TOP 1- IMM? and if
+      TOP VREG@ TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
+      TOP 1- REMOVE exit
+   then
+   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+   d s o T0-EMIT:OP
+   TOP REMOVE ;
+
+: MUL2 ( -- )
+   2 ENSURE
+   CONST2? if [: * ;] FOLD2 exit then
+   TOP IMM? if
+      TOP 1- MAT TOP VS-VAL @ T0-EMIT:MUL-LIT
+      TOP REMOVE exit
+   then
+   TOP 1- IMM? if
+      TOP VREG@ TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
+      TOP 1- REMOVE exit
+   then
+   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+   d s T0-EMIT:MULX
+   TOP REMOVE ;
+
+: SHIFT2 ( [ n n -- n ] T0-EMIT:shifter -- ) {: o:T0-EMIT:shifter :}
+   2 ENSURE
+   CONST2? if FOLD2 exit then
+   drop
+   TOP CONST? if
+      TOP 1- MAT TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
+      TOP REMOVE exit
+   then
+   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+   d s o T0-EMIT:SHIFT
+   TOP REMOVE ;
+
+: CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   2 ENSURE
+   CONST2? if FOLD2 exit then
+   drop
+   TOP IMM? if
+      TOP 1- MAT TOP VS-VAL @ c T0-EMIT:CMP-SET-LIT
+      TOP REMOVE exit
+   then
+   TOP 1- IMM? if
+      TOP VREG@ TOP 1- VS-VAL @ c T0-EMIT:CC-SWAP T0-EMIT:CMP-SET-LIT
+      TOP 1- REMOVE exit
+   then
+   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+   d s c T0-EMIT:CMP-SET
+   TOP REMOVE ;
+
+\ A comparison with zero.
+\ Fold the top constant entry through a quotation.
+: FOLD1 ( [ n -- n ] -- ) TOP VS-VAL @ swap execute TOP VS-VAL ! ;
+
+\ A comparison with zero.
+: CMP0 ( [ n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   1 ENSURE
+   TOP CONST? if FOLD1 exit then
+   drop
+   TOP VREG@ 0 c T0-EMIT:CMP-SET-LIT ;
+
+: UNARY ( [ n -- n ] [ T0-EMIT:vreg -- ] -- )
+   1 ENSURE
+   TOP CONST? if drop FOLD1 exit then
+   nip TOP VREG@ swap execute ;
+
+: FETCH ( T0-EMIT:width -- ) {: w:T0-EMIT:width :}
+   1 ENSURE
+   TOP MAT {: r:T0-EMIT:vreg :}
+   r r w T0-EMIT:LOAD ;
+
+\ ---- the stack shuffles ------------------------------------------------------
+\ A copy of entry k on top: a constant is copied as itself, a vreg into a
+\ fresh one.
+: COPY ( n -- ) {: k:n :}
+   k CONST? if k VS-VAL @ PUSH-CONST exit then
+   VS-N @ T0-EMIT:VREGS = if EVICT k 1- else k then {: j:n :}
+   ALLOC {: r:T0-EMIT:vreg :}
+   r j VREG@ T0-EMIT:MOV
+   r PUSH-REG ;
+
+: SWAP-AT ( n n -- ) {: a:n b:n :}
+   a VS-KIND @ a VS-VAL @ {: ka:n va:n :}
+   b a COPY-ENTRY
+   ka va b ENTRY! ;
+
+: DUP1 ( -- ) 1 ENSURE TOP COPY ;
+: OVER1 ( -- ) 2 ENSURE TOP 1- COPY ;
+: NIP1 ( -- ) 2 ENSURE TOP 1- REMOVE ;
+: SWAP1 ( -- ) 2 ENSURE TOP 1- TOP SWAP-AT ;
+: ROT1 ( -- ) 3 ENSURE TOP 2 - TOP 1- SWAP-AT TOP 1- TOP SWAP-AT ;
+: TUCK1 ( -- ) SWAP1 OVER1 ;
+
+
+\ A drop of a memory cell moves the stack pointer and loads nothing.
+: DROP1 ( -- )
+   VS-N @ 0= if -1 T0-EMIT:DSP+ exit then
+   TOP REMOVE ;
+
+\ ---- the control stack -------------------------------------------------------
+0 constant CS-IF
+1 constant CS-ELSE
+2 constant CS-BEGIN
+3 constant CS-WHILE
+
+DYNAMIC-BUFFER CS-KIND n
+DYNAMIC-BUFFER CS-VAL n
+variable CS-N
+
+: CS-PUSH ( n n -- ) {: kind:n val:n :}
+   CS-N @ {: k:n :}
+   k 1+ CS-KIND-RESERVE  k 1+ CS-VAL-RESERVE
+   kind k CS-KIND !  val k CS-VAL !
+   k 1+ CS-N ! ;
+
+\ The value of the top structure, which must be of kind a or b.
+: CS-POP2 ( n n -- n ) {: a:n b:n :}
+   CS-N @ 0= if E-T0-CONTROL throw then
+   CS-N @ 1- {: k:n :}
+   k CS-KIND @ {: kind:n :}
+   kind a <> kind b <> and if E-T0-CONTROL throw then
+   k CS-N !
+   k CS-VAL @ ;
+
+: CS-POP ( n -- n ) dup CS-POP2 ;
+
+: PATCH ( n -- ) T0-EMIT:>SITE T0-EMIT:PATCH ;
+
+: DO-IF ( -- )
+   TAKE {: c:T0-EMIT:vreg :}
+   SPILL-ALL
+   CS-IF c T0-EMIT:JZ T0-EMIT:SITE>N CS-PUSH ;
+
+: DO-ELSE ( -- )
+   CS-IF CS-POP {: s:n :}
+   SPILL-ALL
+   CS-ELSE T0-EMIT:JMP T0-EMIT:SITE>N CS-PUSH
+   s PATCH ;
+
+: DO-THEN ( -- )
+   CS-N @ 0= if E-T0-CONTROL throw then
+   CS-N @ 1- CS-KIND @ CS-WHILE = if CS-WHILE else CS-IF then
+   CS-ELSE CS-POP2 {: s:n :}
+   SPILL-ALL
+   s PATCH ;
+
+: DO-BEGIN ( -- )
+   SPILL-ALL
+   CS-BEGIN T0-EMIT:LABEL T0-EMIT:MARK>N CS-PUSH ;
+
+: DO-WHILE ( -- )
+   CS-BEGIN CS-POP {: m:n :}
+   TAKE {: c:T0-EMIT:vreg :}
+   SPILL-ALL
+   CS-WHILE c T0-EMIT:JZ T0-EMIT:SITE>N CS-PUSH
+   CS-BEGIN m CS-PUSH ;
+
+: DO-REPEAT ( -- )
+   CS-BEGIN CS-POP {: m:n :}
+   CS-WHILE CS-POP {: s:n :}
+   SPILL-ALL
+   m T0-EMIT:>MARK T0-EMIT:JMP-BACK
+   s PATCH ;
+
+: DO-UNTIL ( -- )
+   CS-BEGIN CS-POP {: m:n :}
+   TAKE {: c:T0-EMIT:vreg :}
+   SPILL-ALL
+   c m T0-EMIT:>MARK T0-EMIT:JZ-BACK ;
+
+: DO-AGAIN ( -- )
+   CS-BEGIN CS-POP {: m:n :}
+   SPILL-ALL
+   m T0-EMIT:>MARK T0-EMIT:JMP-BACK ;
+
+\ ---- the rest of the keywords ------------------------------------------------
+\ True once the body has left through a tail call: nothing follows it.
+variable TAILED
+
+: DO-EXIT ( -- ) SPILL-ALL T0-EMIT:RETURN ;
+: DO-RECURSE ( -- ) SPILL-ALL T0-EMIT:CALL-SELF ;
+
+: DO-TOR ( -- )
+   TAKE {: r:T0-EMIT:vreg :}
+   r T0-EMIT:TOR
+   r RELEASE ;
+
+: DO-RFROM ( -- )
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   r T0-EMIT:RFROM
+   r PUSH-REG ;
+
+: DO-RFETCH ( -- )
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   r T0-EMIT:RFETCH
+   r PUSH-REG ;
+
+: DO-TICK ( -- )
+   TOKEN {: a:ptr u:n :}
+   a u NDICT:TICK-TARGET {: xt:n :}
+   xt 0= if a u UNSUPPORTED then
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   xt r T0-EMIT:ADDR-CODE
+   r PUSH-REG ;
+
+\ The operand's first byte; a character past ASCII is not compiled yet.
+: DO-CHAR ( -- )
+   TOKEN {: a:ptr u:n :}
+   u 0= if a u UNSUPPORTED then
+   a c@ {: b:n :}
+   b $80 >= if a u UNSUPPORTED then
+   b PUSH-CONST ;
+
+\ A call spills first; the last token of a body outside every structure leaves
+\ through the callee.
+: DO-CALL ( n -- ) {: to:n :}
+   SPILL-ALL
+   CS-N @ 0= AT-END? and if
+      to T0-EMIT:TAIL
+      1 TAILED ! exit
+   then
+   to T0-EMIT:CALL ;
+
+\ ---- the keyword dispatch ----------------------------------------------------
+\ By length first, so a token compares only with the keywords of its length.
+\ An operation spelling counts only when it binds the seeded primitive
+\ (NDICT:SPELL-PRIM?); a package's own word of that name is a call.
+: OP? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   a u b v STR= 0= if false exit then
+   a u NDICT:SPELL-PRIM? ;
+
+: KW1 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" +" OP? if [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
+   a u s" -" OP? if [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
+   a u s" *" OP? if MUL2 true exit then
+   a u s" @" OP? if T0-EMIT:CELL-W FETCH true exit then
+   a u s" =" OP? if [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true exit then
+   a u s" <" OP? if [: < bool>n ;] T0-EMIT:CC-LT CMP2 true exit then
+   a u s" >" OP? if [: > bool>n ;] T0-EMIT:CC-GT CMP2 true exit then
+   false ;
+
+: KW2 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR= if DO-IF true exit then
+   a u s" >r" STR= if DO-TOR true exit then
+   a u s" r>" STR= if DO-RFROM true exit then
+   a u s" r@" STR= if DO-RFETCH true exit then
+   a u s" or" OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
+   a u s" 1+" OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
+   a u s" 1-" OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
+   a u s" c@" OP? if T0-EMIT:BYTE-W FETCH true exit then
+   a u s" 0=" OP? if [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true exit then
+   a u s" 0<" OP? if [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true exit then
+   a u s" <>" OP? if [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true exit then
+   a u s" <=" OP? if [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true exit then
+   a u s" >=" OP? if [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true exit then
+   false ;
+
+: KW3 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [']" STR= if DO-TICK true exit then
+   a u s" dup" OP? if DUP1 true exit then
+   a u s" rot" OP? if ROT1 true exit then
+   a u s" nip" OP? if NIP1 true exit then
+   a u s" and" OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
+   a u s" xor" OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
+   false ;
+
+: KW4 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" then" STR= if DO-THEN true exit then
+   a u s" else" STR= if DO-ELSE true exit then
+   a u s" exit" STR= if DO-EXIT true exit then
+   a u s" drop" OP? if DROP1 true exit then
+   a u s" swap" OP? if SWAP1 true exit then
+   a u s" over" OP? if OVER1 true exit then
+   a u s" tuck" OP? if TUCK1 true exit then
+   false ;
+
+: KW5 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" begin" STR= if DO-BEGIN true exit then
+   a u s" while" STR= if DO-WHILE true exit then
+   a u s" until" STR= if DO-UNTIL true exit then
+   a u s" again" STR= if DO-AGAIN true exit then
+   false ;
+
+: KW6 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" repeat" STR= if DO-REPEAT true exit then
+   a u s" [char]" STR= if DO-CHAR true exit then
+   a u s" negate" OP? if [: negate ;] [: T0-EMIT:NEG ;] UNARY true exit then
+   a u s" invert" OP? if [: invert ;] [: T0-EMIT:NOT ;] UNARY true exit then
+   a u s" lshift" OP? if [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true exit then
+   a u s" rshift" OP? if [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true exit then
+   false ;
+
+: KW7 ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" recurse" STR= if DO-RECURSE true exit then
+   false ;
+
+: KEYWORD ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 = if a u KW1 exit then
+   u 2 = if a u KW2 exit then
+   u 3 = if a u KW3 exit then
+   u 4 = if a u KW4 exit then
+   u 5 = if a u KW5 exit then
+   u 6 = if a u KW6 exit then
+   u 7 = if a u KW7 exit then
+   false ;
+
+\ ---- one token ---------------------------------------------------------------
+: NUMBER ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u OUTER:NUMBER {: v:n float:bool number:bool range:bool :}
+   number 0= float or range or if a u UNSUPPORTED then
+   v PUSH-CONST ;
+
+: COMPILE-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u KEYWORD if exit then
+   a u NDICT:CALL-TARGET {: to:n :}
+   to 0<> if to DO-CALL exit then
+   a u NUMBER ;
+
+\ Past the name and a signature, if one follows it.
+: SKIP-HEAD ( -- )
+   TOKEN 2drop
+   POS @ {: after:n :}
+   TOKEN s" (" STR= 0= if after POS ! exit then
+   begin
+      TOKEN dup 0= if drop drop true else s" )" STR= then
+   until ;
+
+public
+
+\ The token the last E-T0-UNSUPPORTED named.
+: UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
+
+\ Compile one body into the emitter's sink.
+: COMPILE-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TXT !  u TXT-LEN !  0 POS !
+   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 TAILED !
+   T0-EMIT:OPEN
+   SKIP-HEAD
+   begin TOKEN dup 0<> while COMPILE-TOKEN repeat
+   drop drop
+   CS-N @ 0<> if E-T0-CONTROL throw then
+   TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
+   T0-EMIT:CLOSE ;
+
+;package
