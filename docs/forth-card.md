@@ -10,7 +10,9 @@ when this runs out.
 Our words UPPER-CASE, built-ins as-is (`dup`, `?do`). Hyphens, never
 underscores, in word *and* file names. Predicates end `?`, conversions are
 `>X`, fetch/store `X@` / `X!`, scope pairs are `FOO … ;FOO`. `$hex` for
-machine-adjacent numbers. Every module is a package.
+machine-adjacent numbers. Every module is a package, named for its subject,
+never an operation on it: `JSON:WRITE-OBJECT-START`, not
+`JSON-WRITE:OBJECT-START`; a subject's reading and writing words share it.
 
 ```forth
 package HB

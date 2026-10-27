@@ -119,6 +119,14 @@ is the module boundary: the real interface as short domain words (`TASK:KILL`,
 unless the domain spelling requires it. Never fake a namespace with global
 prefixes (`TASK-KILL`); prefix-style global APIs are legacy debt.
 
+**A package is named for its subject**, the format, device or domain its words
+act on (`JSON`, `ZIP`, `TASK`), never for an operation, direction or role on
+that subject: no `-READ`, `-WRITE`, `-IN`, `-OUT`, `-READER` or `-WRITER`
+package. The operation belongs in the word, verb first: `JSON:WRITE-OBJECT-START`,
+not `JSON-WRITE:OBJECT-START`. One subject's reading and writing words share its
+package; a large one spreads across files that each reopen it. A test package is
+`<SUBJECT>-TEST`.
+
 ```forth
 package HB
 
