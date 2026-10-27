@@ -414,7 +414,10 @@ only warns once first. `test/stack-guard.f`, `test/engine-stack-machine.f` and
 
 `n prof-on` samples the running program and attributes each tick to the word
 whose code holds the interrupted pc, with its callers (`src/habu/prof.f` states
-the surface and the report format). The usual phase measurement:
+the surface and the report format). A word whose last call compiles as a tail
+call, at either tier, is gone from the stack while its callee runs, so the
+callee's samples show `(unknown)` or an outer caller instead of it. The usual
+phase measurement:
 
 ```
 1000 prof-rate  0 prof-on  <work>  prof-off  prof-report

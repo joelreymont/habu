@@ -4,10 +4,16 @@
 \ The decision is made at compile time on the primitive's final bytes
 \ (src/habu/habu2.f EMIT-CINLINE): a body with no call, return, PC-relative
 \ address or literal load, and no branch leaving the body, is copied; any other
-\ body keeps its BL. This file pins both halves through the real load path
+\ body keeps its call. This file pins both halves through the real load path
 \ (ARM's default tier is 0, so no tier is selected here): the inlined subjects
-\ hold no BL into their primitive's span, the refused ones hold exactly one,
-\ and every subject still answers what the call answered.
+\ hold no call into their primitive's span, the refused ones hold exactly one
+\ (a BL, or a B when the call is the body's last word), and every subject
+\ still answers what the call answered.
+\
+\ A definition whose last word is a call ends in a B to it (habu2.f
+\ EM-COMPILE-SEMI): the link and any local frame are released first, and no
+\ return follows unless an `exit` needs one. A join landing after the call
+\ keeps the BL and the return.
 \
 \ Spans come from the DICTIONARY RECORD (src/habu/xref.f), the same record the
 \ compiler resolves a call against. The decoder's positive control is an
@@ -36,6 +42,11 @@ $FFC0001F constant CMPI-MASK         \ keeps cmp xN,#imm12's opcode, shift and R
 $F100001F constant CMPI-OP           \ cmp xN,#imm12 (subs xzr,xN,#imm12)
 $FFE0FC1F constant CMPR-MASK         \ keeps cmp xN,xM's opcode, shift, amount and Rd
 $EB00001F constant CMPR-OP           \ cmp xN,xM (subs xzr,xN,xM)
+$D65F03C0 constant RET-OP            \ ret
+$FFFFFFFF constant WORD-MASK         \ keeps every bit
+$F84107FE constant LINK-REST         \ ldr x30,[sp],#16
+$FFC003FF constant ADDSP-MASK        \ keeps add sp,sp,#imm12's opcode and registers
+$910003FF constant ADDSP-OP          \ add sp,sp,#imm12
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -57,18 +68,27 @@ variable MISSING                     \ names the dictionary did not answer for
    then
    rec XREF-START dup rec XREF-CODE-BYTES + ;
 
-\ How many calls the named word makes into the named target's span.
-: CALLS-WORD ( ptr u8 n ptr u8 n -- n ) {: na:ptr nu:n ta:ptr tu:n :}
+\ How many BLs (jump false) or Bs (jump true) the named word holds into the
+\ named target's span.
+: BRANCHES-INTO ( ptr u8 n ptr u8 n bool -- n ) {: na:ptr nu:n ta:ptr tu:n jump:bool :}
    ta tu SPAN {: tlo:n thi:n :}
    na nu SPAN {: lo:n hi:n :}
    0
    hi lo ?do
       i CODE@ {: w:n :}
-      w NBR:BL? if
-         i w NBR:BL-TARGET {: t:n :}
+      jump if w NBR:B? else w NBR:BL? then if
+         jump if i w NBR:B-TARGET else i w NBR:BL-TARGET then {: t:n :}
          t tlo >= t thi < and if 1+ then
       then
    4 +loop ;
+
+: BLS ( ptr u8 n ptr u8 n -- n ) false BRANCHES-INTO ;
+: BS ( ptr u8 n ptr u8 n -- n ) true BRANCHES-INTO ;
+
+\ How many calls the named word makes into the named target's span, as a BL
+\ or as a tail B.
+: CALLS-WORD ( ptr u8 n ptr u8 n -- n ) {: na:ptr nu:n ta:ptr tu:n :}
+   na nu ta tu BLS  na nu ta tu BS + ;
 
 \ How many of the named word's instructions match op under mask.
 : MASKED-OPS ( ptr u8 n n n -- n ) {: na:ptr nu:n mask:n op:n :}
@@ -85,6 +105,23 @@ variable MISSING                     \ names the dictionary did not answer for
 
 : ENTRY@ ( ptr u8 n -- n )
    SPAN drop CODE@ ;
+
+\ The named word's k-th instruction counted back from the end of its span.
+: LAST@ ( ptr u8 n n -- n ) {: na:ptr nu:n k:n :}
+   na nu SPAN nip k 4 * - CODE@ ;
+
+: RETS ( ptr u8 n -- n ) WORD-MASK RET-OP MASKED-OPS ;
+
+\ How many Bs the named word holds to its own entry.
+: HOME-JUMPS ( ptr u8 n -- n ) {: na:ptr nu:n :}
+   na nu SPAN {: lo:n hi:n :}
+   0
+   hi lo ?do
+      i CODE@ {: w:n :}
+      w NBR:B? if
+         i w NBR:B-TARGET lo = if 1+ then
+      then
+   4 +loop ;
 
 : INLINED ( ptr u8 n ptr u8 n -- ) CALLS-WORD 0 T= ;
 : CALLED ( ptr u8 n ptr u8 n -- ) CALLS-WORD 1 T= ;
@@ -126,6 +163,23 @@ public
 \ The decoder's positive control: an ordinary call, not in tail position.
 : T0-CALLEE ( n -- n ) 1 lshift ;
 : T0-CALLER ( n -- n ) T0-CALLEE 1+ ;
+
+\ Tail calls: plain, under a local frame, after a join, and beside an exit;
+\ then the bodies that must keep the BL: a call followed by a join, and a
+\ call that ends the arm a join lands after. T0-JOIN's `if` takes its only
+\ cell, so its BL is the last word and only the join target keeps it a call.
+\ T0-DOWN recurses as its last word.
+: T0-TAIL ( n -- n ) 1+ T0-CALLEE ;
+: T0-TAILLOC ( n -- n )
+   {: a:n :}
+   a 1+ T0-CALLEE ;
+: T0-TAILIF ( n -- n ) dup 0< if negate then T0-CALLEE ;
+: T0-TAILEX ( n -- n ) dup 0< if exit then T0-CALLEE ;
+: T0-NOTAIL ( n -- n ) T0-CALLEE dup 0< if 1+ then ;
+variable T0-SV
+: T0-SIDE ( -- ) 7 T0-SV ! ;
+: T0-JOIN ( n -- ) 0< if T0-SIDE then ;
+: T0-DOWN ( n n -- n ) dup 0= if drop exit then 1- swap 1+ swap recurse ;
 
 \ An inlined body inside a loop and inside a quotation.
 : T0-SPIN ( n n n n -- n n n ) {: a:n b:n c:n k:n :}
@@ -190,6 +244,48 @@ private
    s" TIER0-INLINE-PRIMS:T0-PRODUCER" s" kernel-producer$" CALLED
    s" TIER0-INLINE-PRIMS:T0-CREATE" s" create" CALLED
    s" TIER0-INLINE-PRIMS:T0-ALIGN" s" align" CALLED ;
+
+: TAILS ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu s" TIER0-INLINE-PRIMS:T0-CALLEE" BLS 0 T=
+   na nu s" TIER0-INLINE-PRIMS:T0-CALLEE" BS 1 T= ;
+
+: KEEPS-CALL ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ca:ptr cu:n :}
+   na nu ca cu BLS 1 T=
+   na nu ca cu BS 0 T=
+   na nu RETS 1 T= ;
+
+: TEST-TAIL ( -- )
+   s" a last call is a B after the link restore, with no return" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-TAIL" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAIL" RETS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL" 1 LAST@ NBR:B? TTRUE
+   s" TIER0-INLINE-PRIMS:T0-TAIL" 2 LAST@ LINK-REST T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL" ENTRY@ ENTRY-SAVE T=
+   s" a local frame is released before the link restore" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" RETS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" 2 LAST@ LINK-REST T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" 3 LAST@ ADDSP-MASK and ADDSP-OP T=
+   s" a join that lands before the last call keeps the tail call" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-TAILIF" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILIF" RETS 0 T=
+   s" an exit beside the tail call keeps a return epilogue" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-TAILEX" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILEX" RETS 1 T=
+   s" a call before a join, or inside the arm a join lands after, stays a BL" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-NOTAIL" s" TIER0-INLINE-PRIMS:T0-CALLEE" KEEPS-CALL
+   s" TIER0-INLINE-PRIMS:T0-JOIN" s" TIER0-INLINE-PRIMS:T0-SIDE" KEEPS-CALL
+   s" a last recurse is a B to the entry" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DOWN" s" TIER0-INLINE-PRIMS:T0-DOWN" BLS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DOWN" HOME-JUMPS 1 T=
+   s" the tail-calling bodies answer what the calls answered" T-LABEL
+   3 T0-TAIL 8 T=
+   3 T0-TAILLOC 8 T=
+   -3 T0-TAILIF 6 T=  3 T0-TAILIF 6 T=
+   -3 T0-TAILEX -3 T=  3 T0-TAILEX 6 T=
+   3 T0-NOTAIL 6 T=  -3 T0-NOTAIL -5 T=
+   0 T0-SV !  3 T0-JOIN T0-SV @ 0 T=  -3 T0-JOIN T0-SV @ 7 T=
+   0 7 T0-DOWN 7 T= ;
 
 : TEST-LEAF ( -- )
    s" a body that only inlines stays a leaf; one that calls keeps its frame" T-LABEL
@@ -321,6 +417,7 @@ public
    TEST-DECODER
    TEST-INLINED
    TEST-CALLED
+   TEST-TAIL
    TEST-LEAF
    TEST-PULL
    TEST-MEM

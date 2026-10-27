@@ -774,16 +774,23 @@ here BPL-KW - constant BPL-LEN
 \ emission still fails closed on that window: a future layout that broke it would otherwise
 \ encode a wild displacement into live code. Builds x9 = BL opcode | imm26, then tails into
 \ LCEMIT (CP guard + word store + CP += 4).
+\ LCEMITB ( x11 = absolute target ) : the same for a B imm26, the tail call `;` emits
+\ (EM-COMPILE-TAIL). A B returns nothing to this body and neither clobbers x30 nor
+\ runs a loop here, so it marks neither FRAME-CELL nor LIDX-CELL; the reach check and
+\ the call map are shared, and its consumer EMIT-CALLS takes a B site as well as
+\ a BL one.
 \ Before encoding it records the site in the region-to-text call map when the callee lies
 \ OUTSIDE the mapped region (layout.f CALLMAP-OFF). That test is the region's own extent,
 \ not a guess about the value: a callee either is inside [DBASE, DBASE+REGION) or it is in
 \ the engine's loaded __text. Only the second kind changes distance between the run that
 \ writes a snapshot image and the run that restores it, so only the second kind is recorded
 \ and later relocated (EM-SNAPSHOT-REBASE-CALLS).
-\ x11 (the callee) is dead once the map bit is set, so it doubles as scratch; x5/x6/x9/x10
-\ are the registers this primitive already clobbers.
+\ x9 carries the opcode from entry to the encode; x11 (the callee) is dead once the
+\ displacement is taken, so it doubles as scratch. Clobbers x5, x6, x9, x10, x11.
 : EMIT-CEMITBL ( -- )
-   LBL LBL {: rok:label nomark:label :}
+   LBL LBL LBL {: shared:label rok:label nomark:label :}
+   LCEMITB LABEL@ LBL,
+   9 $14000000 LIT64,  shared B,                       \ x9 = B opcode
    LCEMITBL LABEL@ LBL,
    \ The callee may run a loop of its own, which writes x29 (regalloc.f LIDX).
    5 0 MOVZ,  5 DATA LIDX-CELL STR,
@@ -793,6 +800,8 @@ here BPL-KW - constant BPL-LEN
    \ the emitter knows what it emitted and a scan of the body would also have to
    \ decide what the string and address literals inside it are.
    5 DATA FRAME-CELL LDR,  5 5 1 ORRI,  5 DATA FRAME-CELL STR,
+   9 $94000000 LIT64,                                  \ x9 = BL opcode
+   shared LBL,
    10 11 CP SUB,                                       \ x10 = disp = target - CP (signed byte distance)
    5 BL-REACH LIT64,  6 10 5 ADD,  5 5 1 LSLI,  6 5 CMP,    \ (disp + BL-REACH) vs 2*BL-REACH (unsigned window)
    C-CC rok BCOND,                                     \ disp in [-BL-REACH, BL-REACH) -> encode; else fail closed
@@ -802,13 +811,13 @@ here BPL-KW - constant BPL-LEN
    6 11 DBASE SUB,  5 REGION LIT64,  6 5 CMP,          \ callee inside the region?
    C-CC nomark BCOND,                                  \ yes: distance is position independent, nothing to record
       11 CP DBASE SUB,                                 \ x11 = this site's byte offset within the region
-      9 11 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,           \ x9 = bit number = word index & 7
       6 11 0 ADDI,  6 6 5 LSRI,                        \ x6 = map byte index = offset >> 5
       5 SNAP-RELOC:CALLMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,  \ x6 = map byte address
-      5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
+      11 11 2 LSRI,  11 11 7 ANDI,                     \ x11 = bit number = word index & 7
+      5 1 MOVZ,  5 5 11 LSLV,  11 6 0 LDRB,  11 11 5 ORR,  11 6 0 STRB,
    nomark LBL,
    10 10 2 ASRI,  5 $03FFFFFF LIT64,  10 10 5 AND,      \ imm26 = (disp >> 2) & 0x03FFFFFF (sign-preserving)
-   9 $94000000 LIT64,  9 9 10 ORR,                     \ x9 = BL opcode | imm26
+   9 9 10 ORR,                                         \ x9 = opcode | imm26
    LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
 
 \ LCINLINE ( x11 = callee code address, x5 = its dictionary record ) : copy the
@@ -5354,11 +5363,18 @@ package INTERP-EMIT
 \ and a declaration does not survive that far: every checker call inside the body
 \ closes the bracket, and a close clears every band. So the record is declared
 \ again where it is written, rather than once at the colon.
-: EM-COMPILE-FLUSH-PEND ( -- )
+\
+\ A body that ends in its return takes the legacy length, which leaves that
+\ return out. A body `;` closed with a tail call (exact true, EM-COMPILE-TAIL)
+\ has no return to leave out: it takes its whole extent as an exact span
+\ (CODE-SPAN:FULL), which LCINLINE refuses to copy.
+: EM-COMPILE-FLUSH-PEND ( bool -- ) {: exact:bool :}
    DOES-REC:FLUSH
    11 DATA PEND-CELL LDR,
    1 11 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
-   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   9 11 0 LDR,  10 CP 9 SUB,
+   exact if 10 10 CODE-SPAN:FULL ORRI, else 10 10 4 SUBI, then
+   10 11 8 STR,
    PROT-EMIT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
 
 \ The cast's body and the def-cast row join the definition writers, past the
@@ -5378,7 +5394,7 @@ public
    EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP CODE-ORIGIN:NATIVE-RANGE,
-   EM-COMPILE-FLUSH-PEND ;
+   false EM-COMPILE-FLUSH-PEND ;
 
 ;package
 
@@ -8137,12 +8153,13 @@ public
             14 4 2 LSLI,                            \ x14 = site byte offset within the region
             14 11 CMP,  C-GE scbnext BCOND,         \ past this payload: not part of the image being patched
             14 14 4 ADDI,  14 11 CMP,  C-HI scbad BCOND,
-            14 14 4 SUBI,                            \ the complete BL must be inside the extent
+            14 14 4 SUBI,                            \ the complete site must be inside the extent
             14 8 14 ADD,                            \ x14 = site address
             9 14 0 LDRW,
-            \ a recorded site must still be a call. Anything else means the map and
-            \ the region disagree, which is a corrupt image, so refuse to run it.
-            3 9 26 LSRI,  3 BL-OP-HI CMPI,  C-NE scbad BCOND,
+            \ a recorded site must still be a call, a BL or the B of a tail call
+            \ (LCEMITB): the two differ only in bit 31. Anything else means the map
+            \ and the region disagree, which is a corrupt image, so refuse to run it.
+            3 9 26 LSRI,  3 3 $1F ANDI,  3 BL-OP-HI $1F and CMPI,  C-NE scbad BCOND,
             3 9 38 LSLI,  3 3 38 LSRI,              \ x3 = current displacement, in instructions
             3 3 7 ADD,  3 3 38 LSLI,  3 3 38 LSRI,  \ shifted by the delta, back into 26 bits
             9 9 26 LSRI,  9 9 26 LSLI,  9 9 3 ORR,  9 14 0 STRW,
@@ -12190,8 +12207,49 @@ public
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    LMAIN LABEL@ B, ;
 
+\ Close a body whose last word is a call with a branch to the callee instead
+\ of a call and a return: the epilogue runs first, so the callee returns
+\ straight to this word's caller and a recursion that ends in its own call
+\ runs in constant return-stack space. Taken only when
+\   - FRAME-CELL bit 0 is set: the body holds a call, so its entry saved x30;
+\   - the word at CP-4 is a BL (LCEMITBL or J-RECURSE, the only BL emitters);
+\   - no forward branch lands at CP (FWDTGT-CELL holds the last one LPAT patched,
+\     the furthest, as CP only grows): a join after the call needs the return.
+\     The other forward patches never land at CP: LBCHAIN's leave chain lands
+\     before J-LOOPEND's frame pops and its exit chain on the epilogue below;
+\   - the local frame fits one add's 12-bit immediate.
+\ The BL's word becomes the epilogue's first word in place, so a branch that
+\ lands on the call lands on the epilogue: `add sp,sp,#LOCF` when locals are
+\ open, then the link restore, else the link restore alone. LCEMITB then emits
+\ the B. The BL's call-map bit is cleared first; LCEMITB marks the B's own.
+\ With no exit (EXITH-CELL 0) nothing follows the B: control goes to `exact`,
+\ which ends the body with an exact span. An `exit` chain still needs its
+\ return, so the caller emits the normal epilogue after the B for it; J-EXIT
+\ dropped its own locals before it chained. Every other body goes to notail.
+\ Runs after LVSPILL; clobbers x0-x2, x5-x7, x9-x15.
+: EM-COMPILE-TAIL ( label label -- ) {: notail:label exact:label :}
+   LBL LBL {: nolocf:label linked:label :}
+   9 DATA FRAME-CELL LDR,  9 9 1 ANDI,  9 notail CBZ,
+   10 CP 4 SUBI,  11 10 0 LDRW,                          \ x10 = CP-4, x11 = its word
+   9 11 26 LSRI,  9 RELOC-EMIT:BL-OP-HI CMPI,  C-NE notail BCOND,
+   9 DATA FWDTGT-CELL LDR,  9 DBASE 9 ADD,  9 CP CMP,  C-EQ notail BCOND,
+   12 DATA LOCF-CELL LDR,  9 12 12 LSRI,  9 notail CBNZ,
+   11 11 38 LSLI,  11 11 36 ASRI,  11 10 11 ADD,         \ x11 = the callee: CP-4 + sext(imm26)*4
+   9 4 MOVZ,  SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
+   1 10 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,   \ a write below CP, flushed at the close
+   12 DATA LOCF-CELL LDR,  12 nolocf CBZ,
+      13 12 10 LSLI,  9 $910003FF LIT64,  13 13 9 ORR,  13 10 0 STRW,   \ add sp,sp,#LOCF
+      9 W-LINKREST LIT64,  LCEMIT LABEL@ BL,                            \ ldr x30,[sp],#16
+      linked B,
+   nolocf LBL,
+      13 W-LINKREST LIT64,  13 10 0 STRW,                               \ ldr x30,[sp],#16
+   linked LBL,
+   LCEMITB LABEL@ BL,                                    \ b callee
+   9 DATA EXITH-CELL LDR,  9 exact CBZ, ;
+
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}
-   LBL LBL {: noquot:label closed:label :}
+   LBL LBL LBL LBL LBL LBL
+   {: noquot:label closed:label notail:label exact:label legacy:label publish:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       C-DEF-SOURCE-CLOSE
@@ -12223,11 +12281,23 @@ public
          0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
       closed LBL,
       LVSPILL LABEL@ BL,
+      notail exact EM-COMPILE-TAIL
+         \ A tail call beside an exit: the exits land on a normal epilogue.
+         14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,
+         EM-COMPILE-RET
+         legacy B,
+      exact LBL,
+         9 0 MOVZ,  9 DATA FRAME-CELL STR,                \ what EM-COMPILE-RET clears
+         true EM-COMPILE-FLUSH-PEND
+         publish B,
+      notail LBL,
       EM-COMPILE-DROP-LOCALS
       DOES-REC:ELIDE-EMPTY
       14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,
       EM-COMPILE-RET
-      EM-COMPILE-FLUSH-PEND
+      legacy LBL,
+      false EM-COMPILE-FLUSH-PEND
+      publish LBL,
       EM-COMPILE-PUBLISH
    lnotsemi LBL, ;
 
@@ -13886,7 +13956,7 @@ package LABELS
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LKERNELDIGEST !
    LBL LSOURCEEXECFINISH !
-   LBL LCEMIT !  LBL LCEMITBL !  LBL LCINLINE !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LCEMITBL !  LBL LCEMITB !  LBL LCINLINE !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LHOSTROW !
    LBL LHOSTDIVROW !
    LBL LDIVZERO !

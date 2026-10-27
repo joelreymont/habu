@@ -134,7 +134,7 @@ variable FP-WID
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LHOSTDIVROW  variable LSRC  variable SRCN
-variable LCEMIT   variable LCEMITBL  variable LCINLINE  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LCEMITBL  variable LCEMITB  variable LCINLINE  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 \ The number EMIT-DICT actually bakes into LNCOUNT, kept so a later emitter can
 \ use the seeded table's own size instead of re-reading the primitive registry.

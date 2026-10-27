@@ -2661,6 +2661,43 @@ variable GE-KIND-N
    2 0 do i GE-VBIND-AT loop
    s" PASS: tier 0 binds locals from the virtual stack" type cr ;
 
+\ Tier 0 compiles a definition's last call as a B after its epilogue (habu2.f
+\ EM-COMPILE-SEMI). Each row runs a tail call where a call's frame mattered: a
+\ catch as the last word, a throw tail-called under a catch, a recursion
+\ ending in an exit beside the tail call, one under a local frame, one ending
+\ in a throw, and a tail call into another word. Tier 0 alone also runs each
+\ recursion two million deep, past the machine stack a call per turn would
+\ need: tier 1 calls `recurse` and overflows there.
+: GE-VTAIL-AT ( n -- ) {: tier:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" : GETQ ( -- n ) [: 5 throw ;] catch ;" GE-SRC-LINE
+   s" : GETT ( n -- ) 1+ throw ;" GE-SRC-LINE
+   s" : GETC ( -- n ) [: 6 GETT ;] catch ;" GE-SRC-LINE
+   s" : GETS ( n n -- n ) dup 0= if drop exit then 1- swap 1+ swap recurse ;" GE-SRC-LINE
+   s" : GETL ( n n -- n ) {: s:n k:n :} k 0= if s exit then s 1+ k 1- recurse ;" GE-SRC-LINE
+   s" : GETW ( n -- ) dup 0= if 9 throw then 1- recurse ;" GE-SRC-LINE
+   s" : GETX ( -- n ) [: 1000 GETW ;] catch ;" GE-SRC-LINE
+   s" : GETM ( n -- n ) 0 swap GETS ;" GE-SRC-LINE
+   s" GETQ . GETC . 0 1000 GETS . 0 1000 GETL . GETX . 5 GETM ." GE-SRC-LINE
+   tier 0= if
+      s" : GETY ( -- n ) [: 2000000 GETW ;] catch ;" GE-SRC-LINE
+      s" 0 2000000 GETS . 0 2000000 GETL . GETY ." GE-SRC-LINE
+   then
+   RUNTIME-RUNNER:BUFFER
+   s" tail calls" GE-EXPECT-OK
+   tier 0= if
+      S\" 5\n7\n1000\n1000\n9\n5\n2000000\n2000000\n9\n"
+   else
+      S\" 5\n7\n1000\n1000\n9\n5\n"
+   then
+   s" tail calls output" GE-EXPECT-OUT ;
+
+: GE-VTAIL ( -- )
+   2 0 do i GE-VTAIL-AT loop
+   s" PASS: tier 0 tail calls throw, catch and recurse as calls do" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2701,6 +2738,7 @@ public
    GE-VFUSE
    GE-VJOIN
    GE-VBIND
+   GE-VTAIL
    GE-VMEM ;
 
 : TEST ( -- )

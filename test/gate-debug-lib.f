@@ -108,7 +108,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" package GDBPKG" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : OUTER ( -- ) BUSY ;" GE-SRC-LINE
+   \ OUTER's last word is not a call: a tail-called BUSY would run after OUTER's
+   \ frame is released, so its samples would carry no OUTER caller row.
+   s" : OUTER ( -- n ) BUSY 5 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
 \ --- dot habu-complete-queued-profiler-a5ce1ad4: the SIGALRM handler reads nothing
@@ -363,7 +365,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" public" GE-SRC-LINE
    s" variable GDBPH-ACC" GE-SRC-LINE
    s" : BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
-   s" : PHASE ( -- ) BUSY ;" GE-SRC-LINE
+   \ PHASE ends with a value, not a call, so BUSY runs inside PHASE's frame (see
+   \ GDB-PROF-PKG-SRC).
+   s" : PHASE ( -- n ) BUSY 5 ;" GE-SRC-LINE
    s" : FIND-REC ( ptr u8 n -- n ) {: a:ptr u:n :}" GE-SRC-LINE
    s"    -1 GDBPH-ACC !" GE-SRC-LINE
    s"    ndict@ 0 ?do i XREF-REC {: rec:ptr :}" GE-SRC-LINE
@@ -374,7 +378,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-INCLUSIVE ( -- )
    GE-HB-RESET
    GDB-PROF-PHASE-SRC
-   s" 0 prof-on GDBPH:PHASE prof-off prof-report" GE-SRC-LINE
+   s" 0 prof-on GDBPH:PHASE drop prof-off prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler inclusive section" GE-EXPECT-OK
    s" by inclusive" s" profiler printed no inclusive section" GE-EXPECT-OUT-HAS
@@ -388,7 +392,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-ROW ( -- )
    GE-HB-RESET
    GDB-PROF-PHASE-SRC
-   s" 0 prof-on GDBPH:PHASE prof-off" GE-SRC-LINE
+   s" 0 prof-on GDBPH:PHASE drop prof-off" GE-SRC-LINE
    S\" s\" PHASE\" GDBPH:FIND-REC prof-row" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler chosen row" GE-EXPECT-OK
@@ -402,7 +406,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-JSON-ALL ( -- )
    GE-HB-RESET
    GDB-PROF-PHASE-SRC
-   s" 0 prof-on GDBPH:PHASE prof-off prof-json" GE-SRC-LINE
+   s" 0 prof-on GDBPH:PHASE drop prof-off prof-json" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler json completeness" GE-EXPECT-OK
    S\" \"word\":\"GDBPH:BUSY\"" s" json is missing the hot word" GE-EXPECT-OUT-HAS
@@ -447,7 +451,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-QUAL ( -- )
    GE-HB-RESET
    GDB-PROF-PKG-SRC
-   s" 0 prof-on GDBPKG:OUTER prof-off prof-report" GE-SRC-LINE
+   s" 0 prof-on GDBPKG:OUTER drop prof-off prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler qualified rows" GE-EXPECT-OK
    s" GDBPKG:BUSY" s" profiler row is not package-qualified" GE-EXPECT-OUT-HAS
@@ -462,7 +466,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-OFF ( -- )   \ prof-off stops the clock and keeps the counters
    GE-HB-RESET
    GDB-PROF-PKG-SRC
-   s" 0 prof-on GDBPKG:OUTER prof-off prof-report GDBPKG:OUTER prof-report prof-reset prof-report" GE-SRC-LINE
+   s" 0 prof-on GDBPKG:OUTER drop prof-off prof-report GDBPKG:OUTER drop prof-report prof-reset prof-report" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler stop and reset" GE-EXPECT-OK
    GT-OUT$ GDB-SAMPLES {: first:n :}
@@ -479,7 +483,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 : GDB-PROFILER-JSON ( -- )
    GE-HB-RESET
    GDB-PROF-PKG-SRC
-   s" 0 prof-on GDBPKG:OUTER prof-off prof-json" GE-SRC-LINE
+   s" 0 prof-on GDBPKG:OUTER drop prof-off prof-json" GE-SRC-LINE
    GDB-PROF-RUN
    s" profiler json report" GE-EXPECT-OK
    S\" {\"samples\":" s" profiler json has no samples field" GE-EXPECT-OUT-HAS

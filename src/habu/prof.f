@@ -394,7 +394,9 @@ public
 \ percent, then the package-qualified word; a caller line `<- count percent
 \ caller` is a share of the row's exclusive count in the flat section and of its
 \ inclusive count under `by inclusive`. `(unknown)` is the share whose caller the
-\ walk could not establish.
+\ walk could not establish. A word whose last call is a tail call has released
+\ its frame before that callee runs, so the samples its tail callee takes do not
+\ name it.
 \ words + other + new + defer + spill + foreign == samples is the accounting this
 \ line states. After a sync, defer is 0 and new holds only the deferred samples
 \ whose pc belongs to no live record; an auto-report at the limit does not sync,
