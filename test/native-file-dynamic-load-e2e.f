@@ -53,13 +53,14 @@ package NATIVE-FILE-DYNAMIC-LOAD-TEST
    s" app.f" S\" require loader.f\n: MAIN ( -- ) SHARED:ANSWER . ;\n" PUT
    s" a" AT ENV-BUILD SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n" T$=
-   \ Under b, app.f's replay loads b/type.f, and MAIN, compiled against a's
-   \ ANSWER, is a stale later segment: the build compiles the rest of app.f
-   \ from source and discards its object. loader.f's load runs from a
-   \ compiled word, so it compiles on every build: the next build reuses
-   \ b/type.f alone, and the one after reuses app.f too.
-   s" b" AT ENV-BUILD SUCCESS
-   RUN-APP SUCCESS OUT$ S\" 99\n" T$=
+   \ a/type.f and b/type.f are one instance, type.f under the root loader.f
+   \ loads it from, so they share one object key. Under b, that object's input
+   \ rows, read against root b, find other bytes: b/type.f compiles from
+   \ source and its object replaces a's. app.f's object holds, since MAIN
+   \ depends on the declaration of SHARED:ANSWER, which b's ANSWER shares, and
+   \ calls the live word. loader.f's load runs from a compiled word, so it
+   \ compiles on every build: this build reuses app.f alone, and the next
+   \ reuses b/type.f too.
    s" b" AT ENV-BUILD SUCCESS
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 99\n" T$=
