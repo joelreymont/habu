@@ -19,8 +19,7 @@
 \ scalar row cell (X64BOOT:SCALAR-CELL,) follows, ahead of the kernel that
 \ fills it. The kernel's rows go next, so X64LINK:LAYOUT can enter each of its
 \ bodies in the record that names it; then the boot of a linked image
-\ (X64BOOT:SNAP-START,), the kernel text marked native, and the entry
-\ (X64BOOT:ENTRY,).
+\ (X64BOOT:SNAP-START,) and the entry (X64BOOT:ENTRY,).
 \
 \ THE FILE. The ELF src/os/linux-x86-64/elf.f builds, then the region's records
 \ (X64LINK:DICT$) at ELF-REGION-AT and its code band (X64LINK:CODE$) DICT-SIZE
@@ -39,7 +38,6 @@ require src/arch/x86-64/passes.f
 require src/habu/primitive-registry.f
 require src/habu/boot-x64.f
 require src/habu/kernel-x64.f
-require src/habu/code-origin-x64.f
 require src/habu/link-x64.f
 require src/habu/aot-decl.f
 require src/habu/aot-runtime.f
@@ -89,12 +87,11 @@ variable BOOT-AT
 
 : STREAM, ( bool -- ) {: scoped:bool :}
    X64CODE:ASM-RESET
-   X64CODE:LBL X64CODE:LBL {: start:label text:label :}
+   X64CODE:LBL {: start:label :}
    start X64CODE:JMP,
    X64BOOT:SCALAR-CELL,
    ENGINE-PRIMS:RESET
    AOT-RUNTIME:COMPLETE? ENGINE-PRIMS:SEEDED!
-   text X64CODE:LBL,
    X64KERNEL:KERNEL,
    X64LINK:LAYOUT
    ENGINE-PRIMS:COMPLETE  [: LINKED-PROVIDED? ;] ENGINE-PRIMS:COMPLETE-PROVIDED
@@ -103,7 +100,6 @@ variable BOOT-AT
    start X64CODE:LBL,
    X64LINK:RECORDS X64LINK:CP-VA X64KERNEL:FLOORREC-LBL
       [: X64KERNEL:HIDX-BUILD, ;] X64BOOT:SNAP-START,
-   text start X64PROV:TEXT-NATIVE,
    BOOTRUN,
    X64BOOT:ENTRY,
    X64CODE:TEXT-SITES, TEXT-CODE-END !

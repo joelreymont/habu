@@ -24,22 +24,20 @@
 \   another wid holds: the pending record, its cells, and NDICT unchanged.
 \ - hb-x64-kernel-def-open-state checks the state def-open resets: its record's
 \   length cell 0, TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear, DEF-TIER-CELL taking
-\   TIER-CELL and the provenance window open at CP, which an inline name leaves.
-\ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP, the entry and
-\   the open window move 32 bytes, the pad over poisoned cells is 0 and
-\   code-origin answers 1 for the name's slots.
+\   TIER-CELL, and CP, which an inline name leaves.
+\ - hb-x64-kernel-def-open-long stores a 17-byte name at CP: CP and the entry
+\   move 32 bytes and the pad over poisoned cells is 0.
 \ - hb-x64-kernel-body-append fills BODYBUF exactly to BODYBUF-CAP.
 \ - hb-x64-kernel-body-append-pass2 appends in pass 2, which stores nothing.
 \ - hb-x64-kernel-trust-sig stores the pending definition's signature span.
 \ - hb-x64-kernel-created-sig stores the pending definition's `does>`
 \   signature span.
-\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set
-\   and whose CP moved: the provenance window closed with code-origin 1 over
-\   the span, and DEF-TIER, the seven signature and clause cells and PEND clear.
+\ - hb-x64-kernel-def-close ends a tier-1 definition whose state cells are set:
+\   DEF-TIER, the seven signature and clause cells and PEND clear.
 \ - hb-x64-kernel-imm-mark sets DNAME-IMM on the newest record, keeping its
 \   other bits, and leaves the record before it alone.
-\ - hb-x64-kernel-def-abort closes a failed definition's window with unknown
-\   provenance and clears its pending signature and body state.
+\ - hb-x64-kernel-def-abort closes a failed definition's code window and
+\   clears its pending signature and body state.
 \ - hb-x64-kernel-def-abort-scope preserves a catch frame's HND, return and
 \   loop depths while clearing compile mode.
 \ hb-x64-kernel-definition-negative runs the def-open case expecting the wrong
@@ -136,11 +134,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    a u X64HARNESS:PUSH-TEXT,  wid X64HARNESS:PUSH,
    s" xref-search-wl" X64HARNESS:CALL-ROW, ;
 
-\ code-origin over the region offsets [lo, hi).
-: ORIGIN, ( n n -- ) {: lo:n hi:n :}
-   lo X64HARNESS:PUSH-REGION,  hi X64HARNESS:PUSH-REGION,
-   s" code-origin" X64HARNESS:CALL-ROW, ;
-
 : PROTECT, ( n -- ) X64HARNESS:PUSH,  s" prot-wid-add" X64HARNESS:CALL-ROW, ;
 : AFTER-SEAL, ( -- ) 1 SEAL-NDICT-CELL X64HARNESS:CELL!, ;
 : LIVE, ( -- ) 1 TASKS-LIVE-CELL X64HARNESS:CELL!, ;
@@ -172,7 +165,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 \ The long name's second slot less its last byte: 0 when that byte opens the
 \ slot and the fifteen bytes past it are zero.
 \ The tier-1 definition def-close ends: its seven signature and clause cells
-\ set and CP 32 bytes past the open window.
+\ set.
 : TIER-1-OPEN, ( -- )
    1 NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    X64HARNESS:REST,
@@ -180,8 +173,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    1 TSIG-A-CELL X64HARNESS:CELL!,  2 TSIG-U-CELL X64HARNESS:CELL!,
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
-   7 CLAUSE-CELL X64HARNESS:CELL!,
-   DICT-SIZE 32 + CP-AT, ;
+   7 CLAUSE-CELL X64HARNESS:CELL!, ;
 
 : PUSH-PAD, ( -- )
    RAX DBASE-REG SECOND-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
@@ -282,7 +274,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 0 REC-AUX X64HARNESS:EXPECT-RECORD,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    1 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
-   TIER-PROV:OPEN-CELL X64HARNESS:PUSH-DATA-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    X64HARNESS:PUSH-CP,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    s" w" nip DKIND:CAST or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    0 CLOSED, ;
@@ -293,11 +284,9 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    LONG$ 0 0 DEF-OPEN,
    X64HARNESS:PUSH-CP,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    X64KERNEL:REC-CODE X64HARNESS:PUSH-REGION-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
-   TIER-PROV:OPEN-CELL X64HARNESS:PUSH-DATA-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    LONG$ nip DNAME-EXT or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    X64KERNEL:REC-NAME X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
    PUSH-PAD,  0 X64HARNESS:EXPECT-POP,
-   DICT-SIZE PAST-LONG ORIGIN,  1 X64HARNESS:EXPECT-POP,
    0 CLOSED, ;
 
 : BODY-APPEND-CASE, ( -- )
@@ -337,9 +326,7 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
 : DEF-CLOSE-CASE, ( -- )
    TIER-1-OPEN,
    s" def-close" X64HARNESS:CALL-ROW,
-   DICT-SIZE DICT-SIZE 32 + ORIGIN,  1 X64HARNESS:EXPECT-POP,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
-   0 TIER-PROV:OPEN-CELL X64HARNESS:EXPECT-CELL,
    0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL, ;
 
@@ -362,10 +349,8 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    RDI ENGINE-GPR:X64-CP >R64 X64KERNEL:CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
    X64KERNEL:WINDOW-OPEN,
    s" def-abort" X64HARNESS:CALL-ROW,
-   DICT-SIZE DICT-SIZE 32 + ORIGIN,  -1 X64HARNESS:EXPECT-POP,
    PUSH-SIGS,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED,
-   0 TIER-PROV:OPEN-CELL X64HARNESS:EXPECT-CELL,
    0 NCOMP-DISPATCH:DEF-TIER-CELL X64HARNESS:EXPECT-CELL,
    0 PEND-CELL X64HARNESS:EXPECT-CELL,
    0 LOCN-CELL X64HARNESS:EXPECT-CELL,

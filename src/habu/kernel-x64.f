@@ -6,8 +6,7 @@
 \ gates hold on both targets, and the helpers the rows share are emitted once:
 \ the span guard (PROT-SPAN), the narrow page flip LPROTREC, the task-live
 \ exit LTASKLIVE, the dictionary index with the one-wordlist search, the DP
-\ refusal LDPBAD, the output device arm (GENIO-OUT) and the code-provenance
-\ band's set and query (src/habu/code-origin-x64.f).
+\ refusal LDPBAD and the output device arm (GENIO-OUT).
 \
 \ WHAT THE TEXT HOLDS. The image's text window (X64CODE:CODE-CAP-BYTES) holds
 \ this hand-written kernel alone: _start (src/habu/boot-x64.f START,), the
@@ -50,7 +49,6 @@ require src/habu/boot-x64.f
 require src/habu/data-claims.f          \ each band (PROT-SPAN) tests is a claim
 require src/habu/snapshot-format.f
 require src/habu/code-span.f
-require src/habu/code-origin-x64.f
 require src/habu/task-abi.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f
@@ -1595,7 +1593,7 @@ private
    X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
    SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
-   DPBAD-HELPER,  GENIO-HELPER,  X64PROV:EMIT-HELPERS
+   DPBAD-HELPER,  GENIO-HELPER,
    X64PROF:HELPERS, ;
 
 \ Native ARM selection on an x86 host still resolves the sealed `(DIV-ZERO)`
@@ -2829,8 +2827,6 @@ variable SITE-TRAP-CELL
 : PATCH32, ( -- )
    0 PATCH-BYTES SIZED-GUARD,
    RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
-   X64PROV:INVALIDATE,
-   RDI 0 PEEK,  RSI RDI PATCH-BYTES MEM-OFF ASM-SINK ENC-LEA
    HOST-INVALIDATE,
    R8 POP,  R9 POP,                                    \ the address, the word
    R8 PROT-RW PROT-REC,
@@ -2857,9 +2853,7 @@ variable SITE-TRAP-CELL
 \ over [CP, slot), the bytes copy, int3 fills [dst+len, slot), the band
 \ closes, the site rows of both kinds in [dst, slot) go, since the span's
 \ sites are recorded after and the fill holds no code, and CP moves to the
-\ slot. The origin of [dst, slot) is unknown: only
-\ the compiler's successful return, X64PROV:CLOSE, with 1, may certify an
-\ emission.
+\ slot.
 : PUBLISH, ( -- )
    ENGINE-GPR:X64-CP >R64 {: cp:r64 :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: copy:label copied:label fill:label filled:label :}
@@ -2895,8 +2889,7 @@ variable SITE-TRAP-CELL
    LCLOSE-LBL CALL,
    RDI RSP PUB-DST MOV-LOAD,  RSI RSP PUB-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
    DROP-SITES-LBL CALL,
-   RDI RSP PUB-DST MOV-LOAD,  cp RSP PUB-SLOT MOV-LOAD,     \ the slot is claimed
-   RSI cp ASM-SINK ENC-MOV-RR  X64PROV:UNKNOWN-RANGE,
+   cp RSP PUB-SLOT MOV-LOAD,                           \ the slot is claimed
    RSP PUB-FRAME >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 \ RAX is the dictionary count NDICT is about to drop to. The capture owner
@@ -2988,7 +2981,7 @@ variable SITE-TRAP-CELL
 
 \ A prepared unit owns one code emission and complete dictionary records.
 \ Keep both protection bands open for the copy, close them before publishing
-\ the code origin and dictionary count, and index each record as it appears.
+\ the dictionary count, and index each record as it appears.
 0 constant UNIT-SRC
 8 constant UNIT-LEN
 16 constant UNIT-RECS
@@ -3077,10 +3070,7 @@ variable SITE-TRAP-CELL
    RDI RSP UNIT-DST MOV-LOAD,
    RSI RSP UNIT-SLOT MOV-LOAD,  RSI RDI ASM-SINK ENC-SUB-RR
    DROP-SITES-LBL CALL,
-   RDI RSP UNIT-DST MOV-LOAD,
    ENGINE-GPR:X64-CP >R64 RSP UNIT-SLOT MOV-LOAD,
-   RSI ENGINE-GPR:X64-CP >R64 ASM-SINK ENC-MOV-RR
-   X64PROV:NATIVE-RANGE,
    index X64CODE:LBL,
    RAX RSP UNIT-COUNT MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E indexed JCC,
@@ -4017,22 +4007,22 @@ private
 \ for cells holding code and DATA addresses. snap-rebase, which moves a
 \ restored snapshot's cells, refuses. The twins of habu2.f
 \ RELOC-EMIT:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
-\ BBUILDENTER, BBUILDLEAVE, BSETTIER, BTIERFETCH and BCODEORIGIN.
+\ BBUILDENTER, BBUILDLEAVE, BSETTIER and BTIERFETCH.
 
 : TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;
 : DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
 : SAVED-OFF ( -- n ) NCOMP-DISPATCH:BUILD-TIER-CELL ;
 
 \ executable-build-enter ( -- ): open a build scope. The outermost saves the
-\ caller's tier; every scope selects tier 1.
+\ caller's tier. The scope never selects a tier itself: what it compiles uses
+\ the caller's.
 : BUILD-ENTER-BODY ( -- )
    X64CODE:LBL {: nested:label :}
    RAX DEPTH-OFF CELL@,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE nested JCC,
    RCX TIER-OFF CELL@,  RCX SAVED-OFF CELL!,
    nested X64CODE:LBL,
-   RAX ASM-SINK ENC-INC  RAX DEPTH-OFF CELL!,
-   RAX 1 IMM32,  RAX TIER-OFF CELL!, ;
+   RAX ASM-SINK ENC-INC  RAX DEPTH-OFF CELL!, ;
 
 \ executable-build-leave ( -- ): close a scope. The outermost restores the
 \ saved tier and clears the copy; with no scope open it does nothing.
@@ -4236,8 +4226,7 @@ variable MARK-CELL
    s" executable-build-leave" [: BUILD-LEAVE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" set-tier" [: SET-TIER-BODY ;] PRIM
    s" tier@" [: RAX TIER-OFF CELL@,  RAX PUSH, ;] PRIM
-   s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM
-   s" code-origin" [: RSI POP,  RDI POP,  X64PROV:QUERY,  RAX PUSH, ;] PRIM ;
+   s" tick-order@" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH, ;] PRIM ;
 
 public
 
@@ -4717,10 +4706,9 @@ public
 \ order. Every refusal of a row with a body comes before the first store and
 \ writes nothing on fd 2: a live task exits TASK-LIVE-RC in the four
 \ dictionary rows, a protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE,
-\ and every other refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks two
-\ helper exits can still end a row: 74 when the index cannot be kept, and
-\ ENGINE-ERROR:CODE-ORIGIN-FULL. Each record carries
-\ ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+\ and every other refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks one
+\ helper exit can still end a row: 74 when the index cannot be kept. Each
+\ record carries ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
 
 private
 
@@ -4781,7 +4769,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
 \ zero past them, or [24] the address of a copy at CP, zero-padded to the
-\ next code slot and marked native, with CP moved to that slot. The code band
+\ next code slot, with CP moved to that slot. The code band
 \ opens over a long name's slots and the record band over the record; the
 \ caller closes both. The checks have admitted the name.
 : NAME-STORE, ( -- )
@@ -4813,8 +4801,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    COPY-BYTES,
    RCX RSP DW-SLOT MOV-LOAD,  RCX RDI ASM-SINK ENC-SUB-RR
    ZERO-BYTES,
-   RDI CP-REG ASM-SINK ENC-MOV-RR  RSI RSP DW-SLOT MOV-LOAD,
-   X64PROV:NATIVE-RANGE,
    CP-REG RSP DW-SLOT MOV-LOAD,
    done X64CODE:LBL, ;
 
@@ -4961,9 +4947,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record;
 \ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
-\ TIER-CELL and the provenance window opens at that CP. At tier 0 it opens the
-\ record only. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's,
-\ as habu2.f DEFWRITE:DEF-OPEN admits it.
+\ TIER-CELL. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's, as
+\ habu2.f DEFWRITE:DEF-OPEN admits it.
 : DEF-OPEN-BODY ( -- )
    X64CODE:LBL X64CODE:LBL {: prot:label done:label :}
    TASK-LIVE-GUARD,
@@ -4994,7 +4979,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
    RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
-   X64PROV:OPEN,
    WINDOW-CLOSE,
    FRAME-CLOSE,
    done JMP,
@@ -5042,10 +5026,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
 \ def-close ( -- ): the pending definition of the native tier ends, as the
-\ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): the provenance window
-\ closes native, then DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL
-\ clear; before they clear, LASTC-CELL takes the record for a nonzero kind other
-\ than DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+\ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): DEF-TIER-CELL,
+\ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL clear; before
+\ they clear, LASTC-CELL takes the record for a nonzero kind other than
+\ DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,
@@ -5058,7 +5042,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX DKIND:CAST IMM64,  RCX RAX ASM-SINK ENC-CMP-RR  C-E nolast JCC,
    RDX LASTC-CELL CELL!,
    nolast X64CODE:LBL,
-   1 X64PROV:CLOSE,
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX TSIG-A-CELL CELL!,  RAX TSIG-U-CELL CELL!,
@@ -5072,7 +5055,6 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ are lowered, and the code window closes before Habu recovery executes.
 : DEF-ABORT-BODY ( -- )
    WINDOW-CLOSE,
-   -1 X64PROV:CLOSE,
    RAX ZERO-REG,
    RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    RAX LVD-CELL CELL!,  RAX VSP-CELL CELL!,
@@ -5120,7 +5102,6 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    R8 PEND-CELL CELL@,
    RAX 1 CODE-SPAN:EXACT IMM64,  RAX R8 REC-CODE CELL + MOV-STORE,
    CP-REG CP-REG CODE-SLOT MEM-OFF ASM-SINK ENC-LEA
-   1 X64PROV:CLOSE,
    PUBLISH-RECORD,
    R11 NCOMP-DISPATCH:FIXED-SHADOW-CELL CELL@,
    R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,

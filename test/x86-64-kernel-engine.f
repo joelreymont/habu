@@ -60,16 +60,9 @@
 \   -prot-wid-bound exits 84 with its fd-2 text, -xt-store-armed and
 \   -mark-armed exit 83, -tier-zero exits 70 with its fd-2 text, and
 \   -snap-rebase exits 76 with the REFUSE text.
-\ hb-x64-kernel-origin asks code-origin about the kernel's text and about spans
-\ code-publish wrote, each with its int3 fill to the next code slot, and
-\ -origin-patch about them once patch32 rewrote a word; both exit 0.
-\ -origin-fill moves CP back over a native span and publishes a shorter one
-\ bare there, and finds the bare span's fill unknown; it exits 0.
-\ -origin-full publishes into a full table and exits 101 with its fd-2 text.
 \ The host checks each image's ELF header; running them is the peer's.
 require src/habu/snapshot-format.f
 require src/habu/address-cells.f
-require src/habu/code-origin-x64.f
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f
 
@@ -643,13 +636,11 @@ REGION SLOT-BYTES - constant TOP-SLOT
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ ---- the compiler tier and the build scope -----------------------------------
-\ The constant rows, code-origin's unknown answer and tier 1.
+\ The constant rows and tier 1.
 : BUILD-TIER ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    s" addr-cells-abi" ROW  ADDRESS-CELLS:ABI-VERSION X64HARNESS:EXPECT-POP,
    s" snapshot-format" ROW  SNAPSHOT-FORMAT:VERSION X64HARNESS:EXPECT-POP,
-   0 X64HARNESS:PUSH-SCRATCH,  CELL X64HARNESS:PUSH,  s" code-origin" ROW
-   -1 X64HARNESS:EXPECT-POP,
    1 X64HARNESS:PUSH,  s" set-tier" ROW
    s" tier@" ROW  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
@@ -662,16 +653,17 @@ $5A constant CALLER-TIER
 : LEAVE, ( -- ) s" executable-build-leave" ROW ;
 : TIER-CELL?, ( n -- ) NCOMP-DISPATCH:TIER-CELL X64HARNESS:EXPECT-CELL, ;
 
-\ Two nested scopes select tier 1 and save the caller's tier once; the
-\ outermost leave restores it and clears the saved copy, and a leave with no
-\ scope open changes nothing.
+\ Two nested scopes keep the caller's tier and save it once; a tier selected
+\ inside survives the inner leave, the outermost leave restores the caller's
+\ and clears the saved copy, and a leave with no scope open changes nothing.
 : BUILD-SCOPE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    CALLER-TIER NCOMP-DISPATCH:TIER-CELL X64HARNESS:CELL!,
    ENTER,  ENTER,
-   1 TIER-CELL?,
+   CALLER-TIER TIER-CELL?,
    2 NCOMP-DISPATCH:BUILD-DEPTH-CELL X64HARNESS:EXPECT-CELL,
    CALLER-TIER NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
+   1 X64HARNESS:PUSH,  s" set-tier" ROW
    LEAVE,  1 TIER-CELL?,
    LEAVE,  CALLER-TIER TIER-CELL?,
    0 NCOMP-DISPATCH:BUILD-TIER-CELL X64HARNESS:EXPECT-CELL,
@@ -685,109 +677,6 @@ $5A constant CALLER-TIER
 : BUILD-TIER-ZERO ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
    0 X64HARNESS:PUSH,  s" set-tier" ROW
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ ---- code provenance ---------------------------------------------------------
-\ The spans the provenance images publish, as offsets into the region: CP
-\ starts at DICT-SIZE, each publication appends at CP, and CP moves to the
-\ first code slot at or past the span's end, so B, C and D each take a slot
-\ whose last eight bytes are int3 fill.
-16 constant SPAN-A                     \ native, then patched inside
-8 constant SPAN-B                      \ published bare
-8 constant SPAN-C                      \ C and D, native side by side
-DICT-SIZE constant AT-A
-AT-A SPAN-A + constant AT-B            \ A fills its slot
-AT-B SLOT-BYTES + constant AT-C
-AT-C SLOT-BYTES + constant AT-D
-AT-D SLOT-BYTES + constant AT-FREE     \ CP after the four: never published
-4 constant PATCH-AT                    \ the word patch32 rewrites, inside A
-4 constant WORD-BYTES
-$90909090 constant PATCH-WORD
-
-\ Publish n bytes at the region offset, CP, from the scratch cells.
-: PUBLISH, ( n n -- ) {: off:n len:n :}
-   0 X64HARNESS:PUSH-SCRATCH,  off X64HARNESS:PUSH-REGION,  len X64HARNESS:PUSH,
-   s" code-publish" ROW ;
-
-\ The same inside a provenance window that a successful compile closes.
-: NATIVE, ( n n -- ) X64PROV:OPEN,  PUBLISH,  1 X64PROV:CLOSE, ;
-
-\ Check code-origin's answer for the region offsets [lo, hi).
-: EXPECT-ORIGIN, ( n n n -- ) {: want:n lo:n hi:n :}
-   lo X64HARNESS:PUSH-REGION,  hi X64HARNESS:PUSH-REGION,  s" code-origin" ROW
-   want X64HARNESS:EXPECT-POP, ;
-
-\ Rewrite the word at the region offset through patch32.
-: PATCH, ( n -- ) {: off:n :}
-   PATCH-WORD X64HARNESS:PUSH,  off X64HARNESS:PUSH-REGION,  s" patch32" ROW ;
-
-\ Publish the four spans: A, and C and D side by side, inside windows a
-\ successful compile closes, and B bare between them.
-: SPANS, ( -- )
-   AT-A SPAN-A NATIVE,  AT-B SPAN-B PUBLISH,
-   AT-C SPAN-C NATIVE,  AT-D SPAN-C NATIVE, ;
-
-\ The kernel's text is native from the boot on. A span published inside a
-\ closed window is native, one published bare is unknown, and so is one never
-\ published; each span's fill takes its origin. C and D share one row, so the
-\ count holds the text's row, A's, B's and theirs.
-: BUILD-ORIGIN ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   s" code-origin" X64KERNEL:ENTRY-LABEL {: entry:label :}
-   entry 0 X64HARNESS:PUSH-LABEL,  entry 1 X64HARNESS:PUSH-LABEL,
-   s" code-origin" ROW  1 X64HARNESS:EXPECT-POP,
-   SPANS,
-   1 AT-A AT-B EXPECT-ORIGIN,
-   -1 AT-B AT-C EXPECT-ORIGIN,
-   1 AT-C AT-FREE EXPECT-ORIGIN,
-   4 TIER-PROV:N-CELL X64HARNESS:EXPECT-CELL,
-   -1 AT-FREE AT-FREE CELL + EXPECT-ORIGIN,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ A patch32 inside A splits its row in three: the patched word turns unknown,
-\ the bytes on both sides stay native, and B's and C-D's rows move up intact.
-\ A patch32 where no row lies adds none.
-: BUILD-ORIGIN-PATCH ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   SPANS,
-   AT-A PATCH-AT + PATCH,
-   1 AT-A AT-A PATCH-AT + EXPECT-ORIGIN,
-   -1 AT-A PATCH-AT + AT-A PATCH-AT + WORD-BYTES + EXPECT-ORIGIN,
-   1 AT-A PATCH-AT + WORD-BYTES + AT-B EXPECT-ORIGIN,
-   -1 AT-B AT-C EXPECT-ORIGIN,
-   1 AT-C AT-FREE EXPECT-ORIGIN,
-   AT-FREE CELL + PATCH,
-   6 TIER-PROV:N-CELL X64HARNESS:EXPECT-CELL,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ The fill takes its span's origin. Over a 32-byte native span, cp! back to its
-\ start and an 8-byte bare publication leave its first slot unknown, the fill
-\ [dst+8, dst+16) included, and its second slot native.
-32 constant SPAN-WIDE
-
-: BUILD-ORIGIN-FILL ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   AT-A SPAN-WIDE NATIVE,
-   AT-A CP!,
-   AT-A SPAN-B PUBLISH,
-   -1 AT-A SPAN-B + AT-A SLOT-BYTES + EXPECT-ORIGIN,
-   1 AT-A SLOT-BYTES + AT-A SPAN-WIDE + EXPECT-ORIGIN,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
-   path pathu X64HARNESS:BOOT-CLOSE, ;
-
-\ A table of SPANS rows takes no more: the publication's row exits
-\ CODE-ORIGIN-FULL with the ARM64 text on fd 2.
-: BUILD-ORIGIN-FULL ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   false X64HARNESS:BOOT-OPEN,
-   TIER-PROV:SPANS TIER-PROV:N-CELL X64HARNESS:CELL!,
-   AT-A SPAN-B PUBLISH,
-   0 X64HARNESS:EXPECT-DEPTH,
-   X64HARNESS:EXPECT-BALANCED,
    path pathu X64HARNESS:BOOT-CLOSE, ;
 
 \ Exercise the booted kernel's reader through its public primitive. Rejected
@@ -904,10 +793,6 @@ public
    s" hb-x64-kernel-tier" TMP-PATH BUILD-TIER
    s" hb-x64-kernel-scope" TMP-PATH BUILD-SCOPE
    s" hb-x64-kernel-tier-zero" TMP-PATH BUILD-TIER-ZERO
-   s" hb-x64-kernel-origin" TMP-PATH BUILD-ORIGIN
-   s" hb-x64-kernel-origin-patch" TMP-PATH BUILD-ORIGIN-PATCH
-   s" hb-x64-kernel-origin-fill" TMP-PATH BUILD-ORIGIN-FILL
-   s" hb-x64-kernel-origin-full" TMP-PATH BUILD-ORIGIN-FULL
    0 s" hb-x64-kernel-number-00" TMP-PATH BUILD-NUM
    1 s" hb-x64-kernel-number-01" TMP-PATH BUILD-NUM
    2 s" hb-x64-kernel-number-02" TMP-PATH BUILD-NUM

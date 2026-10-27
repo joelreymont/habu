@@ -5,9 +5,8 @@
 \    BOOT-OPEN,  case  BOOT-CLOSE,
 \
 \ BOOT-OPEN, emits X64BOOT's `_start`, a jump over the kernel X64KERNEL:KERNEL,
-\ emits next, and the case's entry past it, which marks the kernel's text
-\ native as the engine's boot marks its own; BOOT-CLOSE, exits 0 and writes the
-\ image. A case stages cells, arms DATA cells, calls kernel rows by name and
+\ emits next, and the case's entry past it; BOOT-CLOSE, exits 0 and writes
+\ the image. A case stages cells, arms DATA cells, calls kernel rows by name and
 \ checks a popped cell, the data stack's depth, the machine stack's balance
 \ and a scratch cell. The checks exit FIRST-CASE upward in the order they are
 \ staged, as the peer harness numbers its case checks; a negative image
@@ -27,7 +26,6 @@ require src/os/linux-x86-64/elf.f
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f
 require src/habu/kernel-x64.f
-require src/habu/code-origin-x64.f
 require src/habu/code-span.f
 require test/x86-64-peer-harness.f
 
@@ -62,11 +60,9 @@ public
    X64KERNEL:FLOORREC-NEW BOOT-END-LBL X64BOOT:START,
    ENTRY-LBL JMP,
    ENGINE-PRIMS:RESET
-   X64CODE:LBL {: text:label :}  text X64CODE:LBL,
    X64KERNEL:KERNEL,
    0 0 0 0 0 0 0 X64KERNEL:SCOPE-KIND-HELPER,
-   ENTRY-LBL X64CODE:LBL,
-   text ENTRY-LBL X64PROV:TEXT-NATIVE, ;
+   ENTRY-LBL X64CODE:LBL, ;
 
 : PUSH, ( n -- ) {: v:n :}  RAX v IMM  0 G-PUSH ;
 
@@ -287,8 +283,7 @@ public
 ;using
 ;package
 
-\ The provenance cases' word: an address in the image's text, which the image
-\ fixes only at link time.
+\ An address in the image's text, which the image fixes only at link time.
 package X64HARNESS
 using X64ASM
 using X64CODE
