@@ -3,7 +3,8 @@
 \ stable extents and run the third copy, carry grown and borrowed require rows
 \ and a discarded one unresolved across captures, start MAIN with arguments, a
 \ quit and an uncaught throw on a terminal, keep a grown address registry
-\ through a tier-1 rewind, and refuse a retired or forged address-ABI probe.
+\ through a tier-1 rewind, refuse a retired or forged address-ABI probe, and
+\ save and run words a restored image compiled at tier 0.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -29,6 +30,7 @@ create PROBE-BUF FS-PATH-CAP allot
 create MUTATED-BUF FS-PATH-CAP allot
 create MUTATED-AGAIN-BUF FS-PATH-CAP allot
 create STARTUP-BUF FS-PATH-CAP allot
+create TIER-ZERO-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
@@ -37,6 +39,7 @@ variable PROBE-U
 variable MUTATED-U
 variable MUTATED-AGAIN-U
 variable STARTUP-U
+variable TIER-ZERO-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
@@ -46,6 +49,7 @@ variable STARTUP-U
 : MUTATED$ ( -- ptr u8 n ) MUTATED-BUF MUTATED-U @ ;
 : MUTATED-AGAIN$ ( -- ptr u8 n ) MUTATED-AGAIN-BUF MUTATED-AGAIN-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
+: TIER-ZERO$ ( -- ptr u8 n ) TIER-ZERO-BUF TIER-ZERO-U @ ;
 
 \ A child reopens the engine's build window - test/address-cell-cap-grown.f
 \ rewinds the source window - which the sealed product refuses: `hb: internal
@@ -63,6 +67,7 @@ variable STARTUP-U
    ROOT$ s" mutated" MUTATED-BUF JOIN-PATH MUTATED-U !
    ROOT$ s" mutated-again" MUTATED-AGAIN-BUF JOIN-PATH MUTATED-AGAIN-U !
    ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
+   ROOT$ s" tier-zero" TIER-ZERO-BUF JOIN-PATH TIER-ZERO-U !
    ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
 
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
@@ -216,6 +221,44 @@ variable PROBE-SOURCE-U
    CAPTURE-PROBE
    MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE ;
 
+\ One package of a loop, a string literal, a quotation and a create...does>
+\ definer, then the code origin of its SHOW.
+: TIER-PACKAGE+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   s" package " SB-APPEND name nameu SB-APPEND
+   S\" \npublic\n: LOOPS ( -- ) 4 0 ?do i . loop ;\n: TEXT ( -- ) s\q saved text\q type cr ;\n" SB-APPEND
+   S\" : TRIPLE ( n -- n ) [: 3 * ;] execute ;\n: KONST ( n -- ) create , does> ( -- n ) @ 1 + ;\n41 KONST ANSWER\n" SB-APPEND
+   S\" : SHOW ( -- ) LOOPS TEXT 5 TRIPLE . ANSWER . ;\n;package\n' " SB-APPEND
+   name nameu SB-APPEND S\" :SHOW TIER-PROBE:XT>N dup 4 + code-origin . cr\n" SB-APPEND ;
+
+\ A restored image compiles at tier 0; x86-64 has tier 1 only. The same words
+\ at tier 1 are the reference the saved image must reproduce.
+: TIER-ZERO-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
+   S\" package TIER-PROBE\npublic\nCAST: XT>N ( [ -- ] -- n )\n;package\n" SB-APPEND
+   s" TIER-ZERO-IMAGE" TIER-PACKAGE+
+   S\" 1 set-tier\n" SB-APPEND
+   s" TIER-ONE-IMAGE" TIER-PACKAGE+
+   S\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   SB$ ;
+
+: TIER-ZERO-ORIGIN$ ( -- ptr u8 n )
+   HB-TARGET-LINUX-X86-64? if S\" 1\n\n1\n\n" else S\" 0\n\n1\n\n" then ;
+
+: CHECK-TIER-ZERO ( -- )
+   s" a restored image saves words it compiled at tier 0" T-LABEL
+   PROC-ARGV-ENV-RESET
+   s" --" >LEN PROC-ARGV+
+   TIER-ZERO$ >LEN PROC-ARGV+
+   WHITEBOX-CHILD:ENV!
+   IMAGE$ TIER-ZERO-SOURCE$ RUN-INPUT CLEAN
+   OUT swap TIER-ZERO-ORIGIN$ T$=
+   PROC-ARGV-ENV-RESET
+   WHITEBOX-CHILD:ENV!
+   TIER-ZERO$ S\" TIER-ZERO-IMAGE:SHOW cr TIER-ONE-IMAGE:SHOW cr\n" RUN-INPUT CLEAN
+   OUT swap S\" 0\n1\n2\n3\nsaved text\n15\n42\n\n0\n1\n2\n3\nsaved text\n15\n42\n\n" T$= ;
+
 : CAPTURE-STARTUP ( -- )
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
@@ -333,6 +376,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    CHECK-REJECTION
    RECAPTURE
    CHECK-REQUIRE-IMAGES
+   CHECK-TIER-ZERO
    CAPTURE-STARTUP
    CHECK-STARTUP
    CHECK-STARTUP-ARGS

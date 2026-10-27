@@ -449,9 +449,13 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    xt 0= if exit then
    [: SND-ZERO-PROCESS-CELL ;] xt PROCESS-CELLS-XT execute ;
 
-\ PERSIST admitted the complete retained code interval before copying. Freeze
-\ exactly that interval, excluding abandoned rows and the old engine's ASLR
-\ coordinates. The restoring engine supplies its own primitive-text evidence.
+\ The live table holds abandoned rows, the old engine's ASLR coordinates and
+\ the address of a mapped backing. Freeze one native row over the retained
+\ interval instead: the x86-64 boot restores this band as written, and its one
+\ tier is native. The ARM64 restore (habu2.f EM-SNAPSHOT-RESTORE) discards the
+\ band and writes the same row from the trailer's region length, so code saved
+\ at tier 0 restores as native. The restoring engine supplies its own
+\ primitive-text evidence.
 : SND-CANON-ORIGIN ( -- )
    \ These are byte offsets into the scratch copy, not pointer values.
    TIER-PROV:OPEN-CELL
@@ -718,14 +722,6 @@ public
    OUT-PATH-NAMED
    SNAPSHOT-FORMAT:VERIFY
    VERIFY-QUIESCENT
-   \ The retained region includes hidden bodies and stored quotations. Checking
-   \ only live dictionary records would miss both. Empty code is valid; every
-   \ byte of a nonempty retained region needs positive native evidence.
-   dbase@ DICT-SIZE + cp@ 2dup <> if
-      code-origin 1 <> if
-         s" snap: retained code lacks native provenance" ENGINE-ERROR:IMAGE-CODE-ORIGIN die
-      then
-   else 2drop then
    ADDRESS-CELLS:PERSIST
    GEOMETRY
    CANON-REGION
