@@ -68,10 +68,6 @@ $1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MA
 : MEM-64K-SPAN-BYTES ( n -- n )
    MEM-64K-COUNT-FOR MEM-64K-BYTES ;
 
-: MEM-MMAP-RC ( n -- n ) {: bytes :}
-   bytes MEM-CHECK-SIZE
-   MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
-
 \ Fresh storage gets its element type from the caller. The engine owns only
 \ the OS mapping and its pointer/error result; sizing and failure policy are checked.
 : MEM-ALLOC-PTR ( n -- ptr a )
