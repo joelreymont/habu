@@ -416,6 +416,18 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" TRUSTED: TW-TB ( n -- twpair n ) 1 2 TWPAIR:MAKE swap ; " LN+
    s" : TW-SHOW ( -- ) 7 TW-TB . TWPAIR:UNMAKE . . cr ; TW-SHOW" LN+ LN$ ;
 
+\ TRUSTED: bodies whose `execute` and `catch` reach under the declared inputs
+\ while a two-cell value is live. The refusal settles the token's rows as a
+\ call's does, so the scan keeps its facts and the words run.
+: BORROW-TRUST$ ( n -- ptr u8 n )
+   0 TIER-OPEN
+   s" STRUCTURE bwpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" : BW-P3 ( n n bwpair n -- n n bwpair n ) ; " LN+
+   s" TRUSTED: BW-X ( n -- n bwpair n ) 1 2 BWPAIR:MAKE 5 ['] BW-P3 execute ; " LN+
+   s" TRUSTED: BW-C ( n -- n bwpair n n ) 1 2 BWPAIR:MAKE 5 ['] BW-P3 catch ; " LN+
+   s" : BW-SHOW ( -- ) 9 7 BW-X . BWPAIR:UNMAKE . . . .  9 7 BW-C . . BWPAIR:UNMAKE . . . . cr ; BW-SHOW" LN+
+   LN$ ;
+
 \ TRUSTED: bodies whose scans refuse a token while a two-cell value is live:
 \ a ptr-times-zero before the pair moves, after it, inside a quotation, over a
 \ callee's pair, in a branch that exits, `depth`, `over` the pair, two
@@ -650,6 +662,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
       s" rejected TRUSTED: bodies move two-cell values on tier 0" T-LABEL
       0 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
+      s" TRUSTED: execute and catch reaching under their inputs keep their facts on tier 0" T-LABEL
+      0 BORROW-TRUST$ RUN  S\" 5\n2\n1\n7\n9\n0\n5\n2\n1\n7\n9\n" ASSERT-OK
       s" the checked twin is refused at its token on tier 0" T-LABEL
       0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
       \ One process each: the refusal ends the process it happens in.

@@ -136,7 +136,8 @@ throws 70).
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
 | `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG`: a definition into, or the reopening of, a sealed package | `E-STATEMENT-THROW` at the name |
-| a non-preserving `[: G ;] catch`, a read of what its throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-REJECTED`, `E-STALE-READ` |
+| a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
+| a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED` |
 | any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
@@ -146,7 +147,7 @@ throws 70).
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
-| at top level, `' F execute` with F's inputs missing, `0 0 catch` | `E-REJECTED` at `execute`, `catch` |
+| `' F execute` or `['] F execute` with F's inputs missing; `0 0 catch` or `0 execute`, a number where an xt belongs | `E-INPUT-UNDERFLOW` at `execute`; `E-MISMATCH` at `catch`, `execute` |
 | at top level, a call of a word defined inside `0 set-check`, or of a private primitive outside its package | `E-CAP-TRUSTED`, as in a body; `'` of either is admitted |
 | `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` while a checker replay is open | `ENGINE-ERROR:OVERLAY-OPEN` |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION` |
@@ -277,7 +278,7 @@ evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
 cannot reach them: `' F execute` with F's input under the floor is
-`E-REJECTED` at `execute`. A text that ends
+`E-INPUT-UNDERFLOW` at `execute`. A text that ends
 inside a definition it opened is refused as every source is, `hb: source ended
 inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** lists the open cases).
 

@@ -1194,9 +1194,10 @@ accessor of the same address.
 
 **Executing an xt of unknown provenance is refused (`E-EXEC-OPAQUE-XT`,
 `fix_opaque_execute`).** An xt fetched from an untyped cell is a bare type
-variable whose effect was erased at the store, so `execute` and `catch` of it
-reject and point at the typed routes: a quotation parameter, a `defer` bound
-with `is`, or a typed code cell.
+variable whose effect was erased at the store, and `'` of a primitive or of a
+word with no stack effect pushes an xt of no known effect, so `execute` and
+`catch` of either reject and point at the typed routes: a quotation parameter,
+a `defer` bound with `is`, or a typed code cell.
 
 #### A base address addresses no declared element
 

@@ -301,19 +301,34 @@ variable ERR-U
    s" ' F execute with F's input missing is refused as in a body" T-LABEL
    ARM
    [: s" : TS-B12 ( -- ) ['] TS-F2 execute ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\"execute\"" HAS?
+   S\" \"code\":\"E-INPUT-UNDERFLOW\"" HAS?  S\" \"token\":\"execute\"" HAS?
    DISARM
    s" true DIAG-JSON! ' TS-F2 execute" CHECK-RC EXITS
-   S\" \"code\":\"E-REJECTED\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
+   S\" \"code\":\"E-INPUT-UNDERFLOW\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 : CASE-CATCH-NON-XT ( -- )
    s" 0 0 catch hands catch a number and is refused as in a body" T-LABEL
    ARM
    [: s" : TS-B13 ( -- ) 0 0 catch ;" evaluate-closed ;] CHECK-RC TTHROWSQ
-   S\" \"code\":\"E-REJECTED\"" HAS?  S\" \"token\":\"catch\"" HAS?
+   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"token\":\"catch\"" HAS?
    DISARM
    s" true DIAG-JSON! 0 0 catch" CHECK-RC EXITS
-   S\" \"code\":\"E-REJECTED\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS? ;
+   S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS?
+   S\" \"actual\":\"n \"" ERR-HAS? ;
+
+\ A child: unchecked, this program branches to the address `here` pushed inside
+\ the window, which crashes the process that runs it.
+: CASE-EXECUTE-UNKNOWN ( -- )
+   s" execute of a cell a 0 set-check window left names the unknown cell" T-LABEL
+   s" true DIAG-JSON! check@ 0 set-check here swap set-check execute" CHECK-RC EXITS
+   S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
+
+\ A child: unchecked, `evaluate` would read a string from whatever the stack
+\ holds. `'` of a word with no stack effect pushes an xt of no known effect.
+: CASE-EXECUTE-OPAQUE-TICK ( -- )
+   s" execute of ' of a word with no stack effect names the opaque xt" T-LABEL
+   s" true DIAG-JSON! ' evaluate execute" CHECK-RC EXITS
+   S\" \"code\":\"E-EXEC-OPAQUE-XT\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, the second `2r>` pops below the cells the first left,
 \ into the return frame of the code running the program, which crashes the
@@ -546,6 +561,8 @@ public
    CASE-LABEL
    CASE-EXECUTE-UNDERFLOW
    CASE-CATCH-NON-XT
+   CASE-EXECUTE-OPAQUE-TICK
+   CASE-EXECUTE-UNKNOWN
    CASE-RETURN-BELOW
    CASE-SHORT-ROW
    CASE-SCOPES

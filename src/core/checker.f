@@ -3644,8 +3644,8 @@ variable LTC-P
 17 constant MD-CON-VAR        \ construct variant not declared by the family
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
 19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
-20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt fetched from untyped memory (RSEXEC T-VAR)
-21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt fetched from untyped memory (RSCATCH T-VAR); same E-EXEC-OPAQUE-XT code, prose names 'catch'
+20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt: fetched from untyped memory (RSEXEC T-VAR) or the opaque-xt atom
+21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt (RSCATCH, as RSEXEC); same E-EXEC-OPAQUE-XT code, prose names 'catch'
 22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
 23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
 24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
@@ -4395,6 +4395,36 @@ variable QAPP-N
 
 variable QUOT-LOSS
 
+\ `execute` and `catch` meet the quotation's input rows as a call meets a word's
+\ (CHECKER-STEP-UNJ): a row that does not fit names the mismatch, and one that
+\ fits only by reaching under the declared inputs names the underflow, at this
+\ token. The depths are read before the unify binds the base's tail. In an
+\ unjudged scan a step that fit applied its rows, so the underflow settles the
+\ token as a call's does and the scan keeps its rows.
+: QUOT-STEP-IN ( n -- ) {: q:n :}
+   q Q>DIN STEP-BORROWS? {: borrows:bool :}
+   DCUR @ q Q>DIN UNIFY-IN {: fit:bool :}
+   fit 0=  FAILSET @ 0=  and  OK @ and  IF q Q>DIN DCUR @ UF-CAPTURE THEN
+   fit OK @ and OK !
+   OK @ borrows and IF
+      STEP-UNDERFLOW!
+      UNJ-ARMED? IF -1 UNJ-SPLICED ! THEN
+   THEN
+   q Q>RIN RSUNI-IN ;
+
+\ A value that is no execution token (`0 0 catch`): the token names the mismatch
+\ between a quotation and the value it found. The pop's unify succeeded, so the
+\ pair is built here, as MEM-BYTE-PTR-REJECT builds its own. A cell with no type
+\ left to read is latched as the unifier latches one, so CELL-DIAG! names the
+\ stale read first.
+: XT-MISMATCH ( n -- ) {: t:n :}
+   0 OK !
+   FAILSET @ 0= IF
+      t TAG T-STALE = IF t STALE-HIT ! THEN
+      FRESH MK-ROW FRESH MK-ROW FRESH MK-ROW dup MK-QUOT FRESH MK-ROW MK-PUSH
+      t FRESH MK-ROW MK-PUSH  UF-CAPTURE
+   THEN ;
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
@@ -4410,8 +4440,7 @@ variable QUOT-LOSS
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
-     DCUR @ QTT @ Q>DIN  UNIFY-IN OK @ and OK !
-     RCUR @ QTT @ Q>RIN  UNIFY-IN OK @ and OK !
+     QTT @ QUOT-STEP-IN
      QTT @ Q>XHAS IF
         \ A callee may overwrite every cell it was given before it throws and can
         \ reach nothing below them, so its exceptional row is the live row with
@@ -4426,18 +4455,18 @@ variable QUOT-LOSS
         RCUR @ CWIN-ROUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
         OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
      THEN
-   ELSE QTT @ TAG T-VAR = IF
-     \ Opaque xt: the executed value is a bare type variable, i.e. an xt of
-     \ unknown provenance — an xt fetched from untyped memory (a raw variable or
-     \ create cell). Its true stack effect is not statically known, so executing
-     \ it in checked code is unsound (it launders whatever the stored xt actually
-     \ does past the checker) and is rejected here (dot
-     \ habu-checker-exec-of-5923c543). DO-TOK1 turns the flag into the named
-     \ E-EXEC-OPAQUE-XT diagnostic on the pinned `execute` token. The typed routes
-     \ that stay checked are a quotation parameter, a `defer` bound with `is`, and
-     \ a typed `xt<effect>` storage cell (all recover a T-QUOT here).
+   ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
+     \ Opaque xt: the executed value is a bare type variable, an xt fetched from
+     \ untyped memory (a raw variable or create cell), or the opaque-xt atom `'`
+     \ pushes for a word with no stack effect. Its true stack effect is not
+     \ statically known, so executing it in checked code is unsound (it launders
+     \ whatever the xt actually does past the checker) and is rejected here.
+     \ DO-TOK1 turns the flag into the named E-EXEC-OPAQUE-XT diagnostic on the
+     \ pinned `execute` token. The typed routes that stay checked are a quotation
+     \ parameter, a `defer` bound with `is`, and a typed `xt<effect>` storage cell
+     \ (all recover a T-QUOT here).
      0 OK !  -1 EXEC-OPAQUE !
-   ELSE 0 OK ! THEN THEN ;
+   ELSE QTT @ XT-MISMATCH THEN THEN ;
 
 \ ---- how wide the window a catch site takes is, measured where it is knowable --
 \ WHAT THE NUMBER IS FOR. A compiler that turns a catch site into a call has to
@@ -4526,13 +4555,17 @@ variable QUOT-LOSS
      CATCH-N @ 1 + CATCH-N !
      DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
      RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
-     DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
-     RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
+     QTT @ QUOT-STEP-IN
      QTT @ Q>XDEAD IF
         QTT @ Q>XHAS 0= IF -1 DEADP ! THEN
      ELSE
-        DCUR @ QTT @ Q>DOUT  UNIFY-IN OK @ and OK !
-        RCUR @ QTT @ Q>ROUT  UNIFY-IN OK @ and OK !
+        \ The body leaves the stack it found: expected is the live row, actual
+        \ what the body leaves.
+        DCUR @ QTT @ Q>DOUT  UNIFY-IN {: fit:bool :}
+        fit 0=  FAILSET @ 0=  and  OK @ and  IF DCUR @ QTT @ Q>DOUT UF-CAPTURE THEN
+        fit 0= IF 0 UNJ-SPLICED ! THEN   \ the rows did not apply: an unjudged scan splices
+        fit OK @ and OK !
+        QTT @ Q>ROUT RSUNI-IN
      THEN
      DCUR @ CWIN-DTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
      RCUR @ CWIN-RTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
@@ -4544,18 +4577,12 @@ variable QUOT-LOSS
         DCUR @ nd CWIN-DTERMS @ QTT @ Q>XDMASK QTT @ Q>XHAS ROW-STALE-TOP DCUR !
         RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ROW-STALE-TOP RCUR !
      THEN
-   ELSE QTT @ TAG T-VAR = IF
-     \ Opaque xt: the caught value is a bare type variable, i.e. an xt of unknown
-     \ provenance fetched from untyped memory (a raw variable or create cell). Its
-     \ true stack effect is not statically known, so catching it in checked code
-     \ launders whatever the stored xt does past the checker just as executing it
-     \ would — reject it identically (dot habu-flip-rscatch-opaque-5da02bd5).
-     \ DO-TOK1 turns the flag into the E-EXEC-OPAQUE-XT diagnostic named on the
-     \ pinned `catch` token. The checked routes are a quotation parameter, a
-     \ `defer` bound with `is`, and a typed `xt<effect>` cell (all recover a
-     \ T-QUOT here).
+   ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
+     \ Opaque xt, as RSEXEC judges it: catching it launders whatever the xt does
+     \ past the checker just as executing it would. DO-TOK1 turns the flag into
+     \ the E-EXEC-OPAQUE-XT diagnostic named on the pinned `catch` token.
      0 OK !  -1 CATCH-OPAQUE !
-   ELSE 0 OK ! THEN THEN
+   ELSE QTT @ XT-MISMATCH THEN THEN
    returns IF
       1 MK-CON DCUR @ MK-PUSH {: status:n :}
       CP-CODE CATCH-N @ 0 0 CP-NEW status P-PROOF!
