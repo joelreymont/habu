@@ -4371,8 +4371,8 @@ package DEFWRITE
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    PROT-EMIT:LCLOSE LABEL@ BL, ;
 
-\ x<r> = the replay scope band (src/habu/layout.f REPLAY-SCOPE). It lies above
-\ $7FF8, past a DATA-relative scaled immediate, so its base is computed.
+\ x<r> = the replay scope band (src/habu/layout.f REPLAY-SCOPE); its cells are
+\ reached as offsets from that base (BAND-OFF).
 : BAND, ( n -- ) {: r:n :}
    r REPLAY-SCOPE:LATCH LIT64,  r DATA r ADD, ;
 

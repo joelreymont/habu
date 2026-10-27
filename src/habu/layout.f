@@ -2446,10 +2446,6 @@ STK-OFF FRAMES FRAME-BYTES * + constant END
 \ above them. The lowering state ends at $8000; the immutable lowering blob
 \ lives outside DATA. Pending-defer scratch follows the private engine bands.
 
-\ The scoped package evaluator owns one transient dispatch xt. A source load
-\ disarms it on return or throw; snapshots are taken only with no unit active.
-JIT-SNAP:END constant UNIT-COMPILE-CELL
-
 \ The active source observer is one native stack frame per owned file.
 $2CA8 constant SOURCE-EXEC-CTX-CELL
 208 constant SOURCE-EXEC-FRAME-BYTES
@@ -2488,11 +2484,19 @@ $2CA8 constant SOURCE-EXEC-CTX-CELL
 \ scratch: replay-close and replay-widn! trust it as the state replay-open
 \ found, so a raw store that forged the saved NDICT, HW or WIDN would turn
 \ replay-close into a record eraser and either into a WIDN setter.
-\ USE-RPKG-SAVE is REPL-line state, not scope, and is not saved. Above $7FF8,
-\ so emitted code reaches it by LIT64 and ADD.
+\ USE-RPKG-SAVE is REPL-line state, not scope, and is not saved.
+\ A FIXED OFFSET, BECAUSE SOURCE READS LATCH. xref.f XREF-UNDEFINE-GUARD and
+\ outer.f OVERLAY-GUARD read it as a DATA offset, and tools/native-build.f runs
+\ the tree's copies of both in a donor whose reserved bands may differ. An
+\ offset derived from the moving bands above names another band's cell in such
+\ a donor: a donor that still had TIER-PROV held its row count there, and the
+\ build's first top-level `undefine` refused. The band takes the start of the
+\ unclaimed run $4208..$4398 below DECLARED-LOG:ADDR-CELL, so the tree and
+\ every donor agree on the latch; DATA-CLAIMS refuses a USE-MAX that would
+\ outgrow the run.
 package REPLAY-SCOPE
 public
-UNIT-COMPILE-CELL CELL + constant LATCH             \ 0: no overlay open
+$4208 constant LATCH                                \ 0: no overlay open
 LATCH CELL + constant HW
 HW CELL + constant NDICT
 NDICT CELL + constant CP
@@ -2507,6 +2511,17 @@ USE-DEPTH CELL + constant USE-PKG-SAVE
 USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
 USE-WIDS USE-MAX cells + constant END
 ;package
+
+\ The scoped package evaluator owns one transient dispatch xt. A source load
+\ disarms it on return or throw; a snapshot refuses a capture with one armed
+\ (snap-lib.f VERIFY-QUIESCENT).
+\ A FIXED OFFSET, BECAUSE SOURCE READS IT. outer.f UNIT? and UNIT-EVENT read
+\ the cell as a DATA offset and execute a nonzero one as an xt, and
+\ tools/native-build.f runs the tree's outer.f in a donor whose reserved bands
+\ may differ, so an offset derived from the moving bands would read and call
+\ another band's cell there. It takes the cell after REPLAY-SCOPE in the
+\ same unclaimed run; DATA-CLAIMS refuses a replay scope that grows into it.
+$42E8 constant UNIT-COMPILE-CELL
 
 \ --- The protected DATA bands, as one table ----------------------------------
 \ Every engine's span guard walks this table: native's ARM64 GUARD-SPAN
@@ -2568,7 +2583,7 @@ public
 \ Pending storage is private to the pre-trust capture (habu2.f C-PD-CAPTURE,
 \ definers.f PD-HOLD) and DRAIN-PRETRUST. Its capacity may grow without moving
 \ any published engine slot or live map.
-REPLAY-SCOPE:END constant PD-TABLE-OFF
+JIT-SNAP:END constant PD-TABLE-OFF
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ --- The declared-row log of a cold boot (dot habu-visibility-discharge-548) --
@@ -2598,9 +2613,10 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ and mirrors no band offset; an
 \ engine that predates the log reads 0, an empty log. WHERE IT HAD TO GO: a
 \ fixed DATA cell both engines leave free, below $7FF8 and below DATA-START for
-\ the reasons AOT-CELLS states. It is the last cell of the unclaimed run
-\ $4208..$43A0 below APP-ENTRY:XT-CELL, swept for a claimant across src lib
-\ tools test maki bootstrap before taking it; the seed claims nothing there.
+\ the reasons AOT-CELLS states. It is the last cell of the run $4208..$43A0
+\ below APP-ENTRY:XT-CELL, swept for a claimant across src lib tools test maki
+\ bootstrap before taking it; the seed claims nothing there. REPLAY-SCOPE and
+\ UNIT-COMPILE-CELL hold the start of that run.
 package DECLARED-LOG
 public
 $4398 constant ADDR-CELL

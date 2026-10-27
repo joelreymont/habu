@@ -181,9 +181,13 @@ layout before it captures pre-trust declarations, so its compiled layout and
 the image's bands agree in the first product, while the donor's own published
 heap floor still classifies the donor's address rows
 (`tools/native-build-core.f`). The donor must publish a heap floor that matches
-its own layout. A direct saved writer keeps the layout of the builder it was
-saved from: rebuild that builder from matching source rather than use a saved
-writer from the previous layout. Run `test/native-layout-transition.f` with a
+its own layout. The build also runs the tree's source in the donor, so an
+engine cell that source reads by DATA offset sits at a fixed offset no band
+change moves (`src/habu/layout.f` REPLAY-SCOPE, UNIT-COMPILE-CELL,
+BOOT-LAYOUT:HEAP-START-CELL); the moving address-cell header is read at the
+donor offset the build passes (ADDRESS-CELLS:WITH-HOST-HEADER). A direct saved writer keeps the layout of
+the builder it was saved from: rebuild that builder from matching source rather
+than use a saved writer from the previous layout. Run `test/native-layout-transition.f` with a
 saved same-machine donor whose reserved layout differs to check the first
 product, and check multi-generation convergence when codegen, self-hosting or
 capture changes require it.

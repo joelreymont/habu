@@ -686,7 +686,12 @@ CAST: REGION-CELL ( n -- ptr n )
 \ control-flow and BEGIN-snapshot depths, the record being built (PEND-CELL),
 \ the innermost open quotation (QPATCH-CELL) and the count of enclosing ones
 \ parked under it (JIT-QUOT). An image captured with any of them set holds a
-\ half-built definition.
+\ half-built definition. The armed unit guard (UNIT-COMPILE-CELL) sits in the
+\ DATA this image copies, and a restored engine would call the dead guard's xt
+\ at its first token. An open checker replay never reaches here: a rollback
+\ scope's frame makes src/core/checker.f RBF-SNAP-RESET die first (76), and the
+\ verifier window closes inside the trusted call that opens it
+\ (src/habu/verify-source.f RUN-IN-SCOPE).
 : VERIFY-QUIESCENT ( -- )
    CF-DEPTH 0<>
    JIT-SNAP:SP-CELL DATA-SET? or
@@ -694,6 +699,9 @@ CAST: REGION-CELL ( n -- ptr n )
    QPATCH-CELL DATA-SET? or
    JIT-QUOT:SP-CELL DATA-SET? or if
       s" snap: active compiler state at capture" 74 die
+   then
+   UNIT-COMPILE-CELL DATA-SET? if
+      s" snap: active compiler state at capture: a source unit is armed" 74 die
    then ;
 
 public

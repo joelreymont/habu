@@ -2,7 +2,8 @@
 \ frames are cleared, protected namespaces survive restore, corrupt images
 \ fail closed, an output that cannot be opened is refused by name and creates
 \ nothing, a failed final close is reported and leaves the output path as it
-\ was, and a capture with a definition or quotation open is refused.
+\ was, and a capture with a definition or quotation open or a source unit
+\ armed is refused.
 require src/lib/string.f
 require src/lib/test.f
 require src/habu/address-cells.f
@@ -946,17 +947,21 @@ variable STRAYS
 : ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
 : QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
 
-\ `rest` reaches SNAP-WRITER-ACTIVE:SAVE, an immediate that saves.
+\ `rest` saves through SNAP-WRITER-ACTIVE:SAVE, an immediate, or APP-IMAGE:SAVE.
 : ACTIVE-BUILD ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu:n rest:ptr restu:n :}
    target targetu s" test/snapshot-writer-active.f" rest restu BUILD-RUNNING-TO ;
 
-: ACTIVE-REFUSED ( ptr u8 n -- ) {: rest:ptr restu:n :}
+: ACTIVE-REFUSED-WITH ( ptr u8 n ptr u8 n -- )
+   {: rest:ptr restu:n why:ptr whyu:n :}
    ACTIVE-SNAP$ rest restu ACTIVE-BUILD
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
    RC @ 74 T=
-   ERR$ s" snap: active compiler state at capture" CONTAINS? TTRUE
+   ERR$ why whyu CONTAINS? TTRUE
    ACTIVE-SNAP$ EXISTS? TFALSE ;
+
+: ACTIVE-REFUSED ( ptr u8 n -- )
+   s" snap: active compiler state at capture" ACTIVE-REFUSED-WITH ;
 
 \ Tier 1 compiles a definition as one unit, so only its pending record is live
 \ when the immediate runs. ARM tier 0 also holds the innermost open quotation
@@ -969,6 +974,12 @@ variable STRAYS
    QUIESCENT-SNAP$ EXISTS? TTRUE
    s" a capture with a definition open is refused" T-LABEL
    s\" : ACTIVE-DEF ( -- ) SNAP-WRITER-ACTIVE:SAVE ;\n" ACTIVE-REFUSED
+   \ The image copies the unit cell, so a restored engine would call the dead
+   \ guard's xt at its first token.
+   s" a capture with a source unit armed is refused" T-LABEL
+   s\" : PG ( ptr u8 n n n -- n ) 2drop 2drop 0 ;\n: GO ( -- n ) [: PG ;] [: 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ;] SOURCE-UNIT:GUARDED ;\nGO .\n"
+   s" snap: active compiler state at capture: a source unit is armed"
+   ACTIVE-REFUSED-WITH
    HB-TARGET-LINUX-X86-64? if exit then
    s" a capture with a quotation open is refused" T-LABEL
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
