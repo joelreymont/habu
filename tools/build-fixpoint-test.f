@@ -33,11 +33,11 @@ variable BFT-ART-B-U
 : BFT-ENV$ ( -- ptr u8 n )
    BFT-ROOT ;
 
-: BFT-ARGV-ENV+ ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
+: BFT-ARGV-ENV+ ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
+   s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN BFT-CACHE >LEN PROC-ENV+ ;
 
@@ -58,10 +58,10 @@ variable BFT-ART-B-U
    PROC-ARGV-N @ COUNT>N ;
 
 : BFT-ARGV-BUILD ( -- n )
-   BFT-ENV$ BFT-STAMP BFT-ARGV-FIXPOINT ;
+   BFT-ENV$ BFT-OUTDIR BFT-ARGV-FIXPOINT ;
 
 : BFT-ARGV-FAIL ( -- n )
-   BFT-NOTDIR BFT-STAMP2 BFT-ARGV-FIXPOINT ;
+   BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-FIXPOINT ;
 
 : BFT-ARGV-ALL-FORCE ( -- )
    s" --" BFT-ARG+
@@ -289,7 +289,7 @@ variable BFT-BIN-FILES
 \ so a build verb can no longer exit 0 having done nothing. Base (unfixed
 \ source): rc 0, empty stderr -> both direction assertions fail.
 : BFT-TEST-NO-MAIN-DISPATCHES ( -- )
-   BFT-NOTDIR BFT-STAMP2 BFT-ARGV-FIXPOINT-NO-MAIN BFT-BUILD-ARGV# 1 - T=
+   BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-FIXPOINT-NO-MAIN BFT-BUILD-ARGV# 1 - T=
    HB-TARGET-LINUX-X86-64? if BFT-ARGV-SNAP-FORCE else BFT-ARGV-INSTALL-FORCE then
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
@@ -304,7 +304,7 @@ variable BFT-BIN-FILES
 \ Base (unfixed source): rc 70, stderr `E-UNDEFINED: FS-PATH-CAP` -> both direction
 \ assertions fail.
 : BFT-TEST-MISSING-PREAMBLE ( -- )
-   BFT-NOTDIR BFT-STAMP2 BFT-ARGV-NO-PREAMBLE DROP
+   BFT-NOTDIR BFT-OUTDIR2 BFT-ARGV-NO-PREAMBLE DROP
    BFT-ARGV-INSTALL-FORCE
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-USAGE-RC T=

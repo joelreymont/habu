@@ -5,9 +5,12 @@
 \ relative value resolved against the canonical working directory
 \ (SOURCE-ROOT:CWD$); otherwise it is .out under that directory, so outputs go
 \ with the tree. obj/<key>.hfo holds one compiled file object per file key,
-\ replaced under its own key. No other variable, root or fallback exists, and a
-\ directory that cannot be made throws the filesystem cause (E-FS-IO with
-\ FFI:ERRNO, or E-FS-CAPACITY for a path past FS-PATH-CAP).
+\ replaced under its own key. Outputs that a later engine must still find, such
+\ as the fixpoint refresh stamp, live directly under <out> (BASE$), since a
+\ refresh replaces the engine that keys <out>/<engine-key>/. No other variable,
+\ root or fallback exists, and a directory that cannot be made throws the
+\ filesystem cause (E-FS-IO with FFI:ERRNO, or E-FS-CAPACITY for a path past
+\ FS-PATH-CAP).
 \
 \ STORAGE CLASS. PROCESS-WIDE: the paths are resolved once per process and
 \ cleared before image capture through a one-shot lifecycle hook, so a saved
@@ -25,7 +28,7 @@ package BUILD-OUT
 
 private
 
-create OUT-BUF FS-PATH-CAP allot
+create OUT-BUF FS-PATH-CAP allot     variable OUT-U
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create OBJ-BUF FS-PATH-CAP allot     variable OBJ-U
 create NAME-BUF FS-PATH-CAP allot
@@ -42,7 +45,7 @@ variable CLEANUP-LIVE
    OBJ-BUF FS-PATH-CAP CLEAR-SPAN
    NAME-BUF FS-PATH-CAP CLEAR-SPAN
    PATH-BUF FS-PATH-CAP CLEAR-SPAN
-   0 ROOT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
+   0 OUT-U ! 0 ROOT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
 
 : REGISTER-CLEANUP ( -- )
    CLEANUP-LIVE @ 0= if
@@ -62,11 +65,19 @@ variable CLEANUP-LIVE
 
 public
 
-: ROOT$ ( -- ptr u8 n )
-   ROOT-U @ 0= if
+\ The out root itself, for outputs not keyed by engine.
+: BASE$ ( -- ptr u8 n )
+   OUT-U @ 0= if
       REGISTER-CLEANUP
       OUT-ROOT {: outu:n :}
-      OUT-BUF outu ENGINE-ID:KEY$ ROOT-BUF JOIN-PATH {: rootu:n :}
+      OUT-BUF outu MAKE-DIRS
+      outu OUT-U !
+   then
+   OUT-BUF OUT-U @ ;
+
+: ROOT$ ( -- ptr u8 n )
+   ROOT-U @ 0= if
+      BASE$ ENGINE-ID:KEY$ ROOT-BUF JOIN-PATH {: rootu:n :}
       ROOT-BUF rootu MAKE-DIRS
       rootu ROOT-U !
    then

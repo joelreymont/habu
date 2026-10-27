@@ -178,7 +178,8 @@ variable DDC-FXP-U
 
 \ Refresh the raw gforth seed to the native fixpoint at <rf-root>/hb-ddc-fixpoint.
 \ Seed the selected build/install path with that Gforth engine, keeping the
-\ checkout's bin/hb outside this chain. XDG_CACHE_HOME isolates its stamp.
+\ checkout's bin/hb outside this chain. HABU_OUT keeps its stamp out of the
+\ checkout; XDG_CACHE_HOME places its build cache when HABU_BUILD_CACHE is unset.
 : DDC-RUN-REFRESH ( -- )
    DDC-STDIN$ DDC-FXP$ COPY-FILE-STREAM
    DDC-FXP$ CHMOD-X
@@ -186,6 +187,7 @@ variable DDC-FXP-U
    PROC-ENV-RESET
    DDC-REFRESH-ARGV+
    s" HB_TMP" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
+   s" HABU_OUT" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
    s" XDG_CACHE_HOME" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN DDC-FXP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING

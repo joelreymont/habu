@@ -10,7 +10,7 @@ bin/
 # tree-local build outputs and agent scratch
 .out/
 
-# engine rebuild scratch and fixpoint stamp (HB_TMP / HABU_FIXPOINT_STAMP)
+# engine rebuild scratch (HB_TMP)
 build/
 
 # jj workspace checkouts (never snapshot or track these)

@@ -256,7 +256,9 @@ Intel route. The `snap` verb remains available on both targets: it builds a
 native product before saving its image.
 
 The `all`/`install` refresh skips an unchanged rebuild by a content-keyed
-stamp. Append `--force` to rebuild unconditionally; proof flows always pass
+stamp at `<out root>/fixpoint/stamp`, where the out root is `$HABU_OUT` (a
+relative value against the working directory), else `.out` in the working
+directory. Append `--force` to rebuild unconditionally; proof flows always pass
 it.
 
 ## Stable local command

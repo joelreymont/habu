@@ -139,6 +139,7 @@ require tools/build-support.f            \ shared path, child env and source scr
 require src/lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 require src/lib/tree-copy.f                  \ the candidate's copied boot tree
+require tools/build-out.f                \ BASE$: the out root the refresh stamp lives under
 
 package BUILD-FIXPOINT
 
@@ -1440,38 +1441,16 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 : BF-STAMP-PATH-RESET ( -- )
    0 BF-STAMP-PATH-U ! ;
 
-: BF-STAMP-DIR-XDG? ( -- bool )
-   s" XDG_CACHE_HOME" GETENV dup 0= if drop drop BF-FALSE exit then
-   s" habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
-   BF-TRUE ;
-
-: BF-STAMP-DIR-HOME? ( -- bool )
-   s" HOME" GETENV dup 0= if drop drop BF-FALSE exit then
-   s" .cache/habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
-   BF-TRUE ;
-
-: BF-STAMP-DIR-TMP ( -- )
-   s" TMPDIR" GETENV dup 0= if drop drop s" /tmp" then
-   s" habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U ! ;
-
 : BF-STAMP-DIR$ ( -- ptr u8 n )
-   BF-STAMP-DIR-XDG? if BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ exit then
-   BF-STAMP-DIR-HOME? if BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ exit then
-   BF-STAMP-DIR-TMP
+   BUILD-OUT:BASE$ s" fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
    BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ ;
-
-: BF-STAMP-DEFAULT? ( -- bool )
-   BF-STAMP-PATH-U @ 0 > if BF-FALSE exit then
-   s" HABU_FIXPOINT_STAMP" GETENV nip 0= ;
 
 : BF-STAMP-PATH$ ( -- ptr u8 n )
    BF-STAMP-PATH-U @ 0 > if BF-STAMP-PATH-BUF BF-STAMP-PATH-U @ exit then
-   s" HABU_FIXPOINT_STAMP" GETENV dup 0 > if exit then drop drop
    BF-STAMP-DIR$ s" stamp" BF-STAMP-DEF-BUF JOIN-PATH BF-STAMP-DEF-U !
    BF-STAMP-DEF-BUF BF-STAMP-DEF-U @ ;
 
 : BF-STAMP-ENSURE-DIR ( -- )
-   BF-STAMP-DEFAULT? if BF-STAMP-DIR$ MAKE-DIRS exit then
    BF-STAMP-PATH$ SOURCE-ROOT:DIRNAME MAKE-DIRS ;
 
 : BF-STAMP-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
