@@ -178,8 +178,8 @@ variable ROOT-U
    pa pu REL$ a u LINT-SCAN ;
 
 \ ---- the tree -----------------------------------------------------------------
-\ src/lib/fs.f's walk already skips .git, .jj, .jj-ws and .dots, so a sibling
-\ workspace is never read. The repository's build directory is skipped before
+\ src/lib/fs.f's walk already skips .git, .jj, .jj-ws, .dots and .out, so a
+\ sibling workspace and the tree's scratch are never read. The repository's build directory is skipped before
 \ stat or descent; its generated trees can disappear while the lint runs.
 : WALK-PATH? ( ptr u8 n -- bool ) {: pa:ptr pu:n :}
    pa pu ROOT$ LINT-STR= if LINT-TRUE exit then

@@ -1,7 +1,7 @@
 \ lsp-workspace.f - the files of the workspace whose loads reach a file.
 \
 \ The subjects are the `.f` files under the folders ROOT+ adds, as WALK-FILES
-\ finds them (src/lib/fs.f, which passes over .jj, .jj-ws, .git and .dots), and
+\ finds them (src/lib/fs.f, which passes over .jj, .jj-ws, .git, .dots and .out), and
 \ the documents open in the server. REACHING takes a file F and a document D,
 \ each by its canonical path, and the open documents as a word that hands the
 \ word it is given each open document's canonical path and text, and gives

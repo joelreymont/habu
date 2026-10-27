@@ -25,8 +25,8 @@
 \
 \ THE WALK visits regular files only, depth-first, in the order the platform
 \ directory stream returns (a caller that needs lexical order sorts); it skips
-\ .git, .jj, .jj-ws and .dots and closes every descriptor it opened however
-\ it ends. The path a callback gets is valid only during that callback.
+\ .git, .jj, .jj-ws, .dots and .out (a tree's build outputs and scratch,
+\ tools/build-out.f) and closes every descriptor it opened however it ends. The path a callback gets is valid only during that callback.
 \ Re-entering a context that is walking is E-FS-WALK-ACTIVE. Two walks in
 \ flight cover disjoint trees: getdirentries64 on a directory removed
 \ meanwhile answers -1 and the walk reports E-FS-DIR.
@@ -672,6 +672,7 @@ public
    2dup s" .jj" FS-PATH= if 2drop FS-TRUE exit then
    2dup s" .jj-ws" FS-PATH= if 2drop FS-TRUE exit then
    2dup s" .git" FS-PATH= if 2drop FS-TRUE exit then
+   2dup s" .out" FS-PATH= if 2drop FS-TRUE exit then
    s" .dots" FS-PATH= ;
 
 : FS-SKIP-SELF-ENTRY? ( ptr u8 n -- bool )
