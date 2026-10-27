@@ -1204,12 +1204,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ DATA: HITS 8 bytes, T 16, HOOK 8, and the 14 bytes of "FRAME-LIB:MARK"
    \ that its interpreted s" copies to HERE.
    s" lib.f" s"  data=" s" 46" OBJECT-HAS
-   s" lib.f" s"  requires=" s" 0" OBJECT-HAS
    s" lib.f" s"  loads=" s" 2" OBJECT-HAS
    s" lib.f" s"  segments=" s" 1" OBJECT-HAS
    s" app.f's object holds six loads, the last between its own definitions" T-LABEL
    s" app.f" s"  records=" s" 4" OBJECT-HAS
-   s" app.f" s"  requires=" s" 0" OBJECT-HAS
    s" app.f" s"  loads=" s" 6" OBJECT-HAS
    s" app.f" s"  segments=" s" 3" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS

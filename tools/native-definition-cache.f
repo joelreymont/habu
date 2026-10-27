@@ -1136,8 +1136,8 @@ variable TEE-ERR
 \ refuses a load that leaves it, scope-at-load). The replayed prefix left
 \ CURRENT and the search order as a cold run would: an install opens each
 \ definition into the wordlist its row names (prims.f def-open), publishes
-\ rows and wordlists only (namespace-record), and its requires, FFI rows and
-\ protection touch the provided registry, FFI selection and protection. The
+\ rows and wordlists only (namespace-record), and its FFI rows and
+\ protection touch FFI selection and protection. The
 \ observer runs over the full source span, which the suffix's evaluation
 \ never matches, so nothing arms for the refused parent; children loaded
 \ in the suffix are ordinary loads, replayed or compiled, and stored.
@@ -1461,7 +1461,7 @@ variable TEE-ERR
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
+      {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
          upds:n pins:n checks:n ffi:n out:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
@@ -1471,7 +1471,6 @@ variable TEE-ERR
    s"  inputs=" DIAG-W2 inputs DIAG-N
    s"  records=" DIAG-W2 recs DIAG-N
    s"  data=" DIAG-W2 data DIAG-N
-   s"  requires=" DIAG-W2 reqs DIAG-N
    s"  loads=" DIAG-W2 loads DIAG-N
    s"  segments=" DIAG-W2 segs DIAG-N
    s"  slots=" DIAG-W2 slots DIAG-N
@@ -1806,7 +1805,7 @@ variable IMPORT-AT
 : REUSED-LINE ( -- )
    NUNIT-DEP:DIAG? @ 0= if exit then
    NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n reqs:n loads:n segs:n slots:n
+      {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
          upds:n pins:n checks:n ffi:n out:n :}
    s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
    s"  records=" DIAG-W2 recs DIAG-N

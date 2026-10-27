@@ -2196,11 +2196,6 @@ TRUSTED: LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
    mode LOAD-INCLUDE = if path size included exit then
    mode LOAD-REQUIRE = if path size required exit then
    INCLUDE-EVAL-RC throw ;
-
-\ FILE objects carry registry paths already resolved by the original loader.
-: PROVIDED-RESOLVED ( ptr u8 n -- )
-   2dup REQUIRE-KNOWN? if 2drop exit then
-   REQUIRE-REG:APPEND ;
 ;package
 
 package SOURCE-ROOT
