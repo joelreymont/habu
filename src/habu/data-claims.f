@@ -210,6 +210,7 @@ create TAB
    INE-CELL                           1 cells                 CLAIM INE-CELL
    REGALLOC-ABI:FRFREE-CELL           1 cells                 CLAIM FRFREE-CELL
    FWDTGT-CELL                        1 cells                 CLAIM FWDTGT-CELL
+   LIDX-CELL                          1 cells                 CLAIM LIDX-CELL
    BPA-CELL                           1 cells                 CLAIM BPA-CELL
    ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB

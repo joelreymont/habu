@@ -23,7 +23,12 @@ using REGALLOC-ABI
 
 variable LVRALLOC   variable LVBIT   variable LVRINIT   variable LFRALLOC
 
-$1D0F0E0D0C0B0A09 constant VRPACK   \ x9..x15, x29 (byte per slot, idx 0 low)
+\ LIDX holds the innermost tier 0 `do`/`?do` index between rows, a copy of the
+\ loop frame's index cell (habu2.f J-FRAME, J-I). It is out of the pool: no
+\ pool value lives in it, and no row's code, inlinable primitive body or
+\ syscall stencil writes it.
+29 constant LIDX
+$0F0E0D0C0B0A09 constant VRPACK     \ x9..x15 (byte per slot, idx 0 low)
 $0807061615181719 constant VRPACK2  \ overflow: x25,x23,x24,x21,x22 (tokenizer state in DATA
                                     \ cells), x6,x7,x8 (no row's code uses them while pool
                                     \ values are live)

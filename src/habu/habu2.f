@@ -785,6 +785,8 @@ here BPL-KW - constant BPL-LEN
 : EMIT-CEMITBL ( -- )
    LBL LBL {: rok:label nomark:label :}
    LCEMITBL LABEL@ LBL,
+   \ The callee may run a loop of its own, which writes x29 (regalloc.f LIDX).
+   5 0 MOVZ,  5 DATA LIDX-CELL STR,
    \ The one fact EM-COMPILE-RET needs and cannot recover later: this body now
    \ holds a call, so x30 does not survive it and the entry slot has to stay a
    \ save. Marked here rather than read back out of the emitted words, because
@@ -2166,6 +2168,7 @@ public
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,    \ x11 = control-flow depth
       12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,                 \ depth vs region cap (x12 = internal scratch, reloaded below; callers like J-ELSE preserve x14 across this call)
       C-GE LCFCAP LABEL@ BCOND,                            \ at the cap: fail-closed reject BEFORE the write (never overflow into the code area above CFSTK)
+      12 0 MOVZ,  12 DATA LIDX-CELL STR,                   \ a join may be reached from code that wrote x29
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       9 12 0 STR,
       13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,
@@ -2175,6 +2178,7 @@ public
    LCFPOP LABEL@ LBL,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,      \ x11 = control-flow depth (peek before pop)
       11 LORPHAN LABEL@ CBZ,                                 \ empty stack: orphan closer, fail-closed reject (never underflow into a bogus branch origin)
+      12 0 MOVZ,  12 DATA LIDX-CELL STR,                     \ a join may be reached from code that wrote x29
       SP SP 16 SUBI,  30 SP 0 STR,
       PROT-EMIT:LCF LABEL@ BL,                               \ the depth store below is a control-flow band write
       11 11 1 SUBI,  11 10 0 STR,
@@ -2709,10 +2713,27 @@ public
    13 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
    12 12 13 W-ADDX C-EMITW ;
 
+\ The innermost loop's index lives in its frame cell, which J-FRAME, J-LOOP and
+\ J-+LOOP store on every step, and in x29 (regalloc.f LIDX), which they write
+\ beside it. `j`, throw and catch, tasks, the crash reporter and the stepper
+\ read the frame, so memory stays the index's home and x29 is a cache.
+\ LIDX-CELL says at compile time whether the next code may read x29: `do` and
+\ `?do` set it, and so does `i` when it reloads; a call (LCEMITBL, RECURSE), a
+\ control-flow push or pop (LCFPUSH, LCFPOP: a join or the code after a loop
+\ may be reached from code that wrote x29), `unloop`, a definition start and
+\ a refused token's rollback clear it. While it is clear, `i`, `loop` and
+\ `+loop` load x29 from the frame first.
 : J-FRAME ( -- )                                \ pop limit/start, push a loop frame
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
    4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
-   4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
+   4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW
+   LIDX 9 ENC-MOV C-EMITW ;                     \ mov x29,x9: the index starts cached
+
+\ LIDX-SET, : the code emitted next may read the index from x29. Clobbers x9.
+: LIDX-SET, ( -- )  9 1 MOVZ,  9 DATA LIDX-CELL STR, ;
+
+\ LIDX-CLEAR, : the code emitted next reloads the index first. Clobbers x9.
+: LIDX-CLEAR, ( -- )  9 0 MOVZ,  9 DATA LIDX-CELL STR, ;
 
 \ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
 \ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
@@ -2768,7 +2789,7 @@ package LOOP-EMIT
    LCEMIT LABEL@ BL, ;
 
 : J-DO ( -- )
-   C-CF-ROOM  J-FRAME  LVOPEN  CFK-DO C-PUSHCP ;
+   C-CF-ROOM  J-FRAME  LVOPEN  CFK-DO C-PUSHCP  LIDX-SET, ;
 
 \ `?do` enters only where its closer lets the first turn run. It emits `loop`'s
 \ test, start < limit, so a limit at or below the start takes no turn, and
@@ -2782,12 +2803,13 @@ package LOOP-EMIT
    11 CP DBASE SUB,  11 10 0 STR,
    $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
    LVLEAVE
-   CFK-DO C-PUSHCP ;
+   CFK-DO C-PUSHCP  LIDX-SET, ;
 
 : J-LEAVE ( -- )  LVLEAVE ;
 
 : J-UNLOOP ( -- )                               \ pop one loop frame, no branch
-   4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW ;
+   4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW
+   LIDX-CLEAR, ;                         \ x29 holds the popped loop's index
 
 : J-LOOPEND ( -- )                              \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
@@ -2796,10 +2818,22 @@ package LOOP-EMIT
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
    LBCHAIN LABEL@ BL, ;
 
+\ LIDX-LOAD?, : x29 := the index at [x12], the frame, unless LIDX-CELL says
+\ x29 holds it. Clobbers x9.
+: LIDX-LOAD?, ( -- )
+   LBL {: kept:label :}
+   9 DATA LIDX-CELL LDR,  9 kept CBNZ,
+      LIDX 12 0 ENC-LDR C-EMITW          \ ldr x29,[x12]
+   kept LBL, ;
+
 : J-LOOP ( -- )
    0 CFK-DO C-CF-AT                      \ no open DO entry: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
-   4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
+   LIDX-LOAD?,
+   10 12 8 ENC-LDR C-EMITW               \ ldr x10,[x12,#8]   limit
+   LIDX LIDX 1 ENC-ADDI C-EMITW          \ add x29,x29,#1
+   LIDX 12 0 ENC-STR C-EMITW             \ str x29,[x12]
+   LIDX 10 ENC-CMP C-EMITW               \ cmp x29,x10
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,
@@ -2816,12 +2850,12 @@ package LOOP-EMIT
    plain LBL,
    W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
-   $F940018D C-EMITW                     \ ldr x13,[x12]      index
-   4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
-   $CB0A01AF C-EMITW                     \ sub x15,x13,x10    old
-   $8B0901AD C-EMITW                     \ add x13,x13,x9
-   $F900018D C-EMITW                     \ str x13,[x12]
-   $CB0A01B0 C-EMITW                     \ sub x16,x13,x10    new
+   LIDX-LOAD?,                           \ x29 = index
+   10 12 8 ENC-LDR C-EMITW               \ ldr x10,[x12,#8]   limit
+   15 LIDX 10 ENC-SUB C-EMITW            \ sub x15,x29,x10    old
+   LIDX LIDX 9 ENC-ADD C-EMITW           \ add x29,x29,x9
+   LIDX 12 0 ENC-STR C-EMITW             \ str x29,[x12]
+   16 LIDX 10 ENC-SUB C-EMITW            \ sub x16,x29,x10    new
    $CA1001F0 C-EMITW                     \ eor x16,x15,x16   old xor new
    $CA0901EF C-EMITW                     \ eor x15,x15,x9    old xor step
    $8A1001EF C-EMITW                     \ and x15,x15,x16   directed boundary crossing
@@ -2833,9 +2867,35 @@ package LOOP-EMIT
 
 ;package
 
+\ LIDX-RELOAD?, : x29 := the innermost index from its frame, through x16 and
+\ x17, which are never pooled, so no live value moves and no flag changes,
+\ unless LIDX-CELL says x29 holds it; then it does. Clobbers x9.
+: LIDX-RELOAD?, ( -- )
+   LBL {: kept:label :}
+   9 DATA LIDX-CELL LDR,  9 kept CBNZ,
+      16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
+      16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
+      16 16 4 ENC-LSLI C-EMITW                          \ lsl x16,x16,#4
+      17 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW     \ ldr x17,[x20,#LOOP-BASE]
+      16 16 17 W-ADDX C-EMITW                           \ add x16,x16,x17
+      LIDX 16 0 W-LDRX C-EMITW                          \ ldr x29,[x16]
+      LIDX-SET,
+   kept LBL, ;
+
+\ `i` keeps the virtual stack (CFN-ENTRY) and pushes a copy of x29 as an
+\ ordinary register entry, as a local read does (C-LOCAL-REF pass 1); with the
+\ pool exhausted it spills and pushes x29 to memory.
 : J-I ( -- )
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
-   4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
+   LBL LBL {: mem:label done:label :}
+   LIDX-RELOAD?,
+   LVRALLOC LABEL@ BL,  14 mem CBZ,
+      8 W-MOVRR LIDX 16 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,   \ mov xR,x29
+      LVPUSHR LABEL@ BL,
+      done B,
+   mem LBL,
+      LVSPILL LABEL@ BL,
+      W-PUSHR LIDX or C-EMITW                                         \ str x29,[x19],#8
+   done LBL, ;
 
 : J-J ( -- )                                    \ outer loop index: frame[LOOPSP-2]
    4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  LOOP-FRAME-ADDR,
@@ -3416,6 +3476,7 @@ public
 \ builds the backward displacement for `b` and for `bl` alike -- so it marks the
 \ body itself.
 : J-RECURSE ( -- )
+   LIDX-CLEAR,                                         \ the call writes x29 when it loops
    9 DATA FRAME-CELL LDR,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
@@ -5233,7 +5294,7 @@ package INTERP-EMIT
    9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
    12 0 MOVZ,  12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-   12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,
+   12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,  12 DATA LIDX-CELL STR,
    12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
    12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
@@ -9951,7 +10012,7 @@ public
          9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
          12 0 MOVZ,  12 DATA VSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-         12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,
+         12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,  12 DATA LIDX-CELL STR,
          12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
          12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
@@ -11788,6 +11849,7 @@ public
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,  12 DATA JIT-QUOT:SP-CELL STR,
    12 DATA FWDTGT-CELL STR,                          \ pass 1's targets lie above pass 2's CP
+   12 DATA LIDX-CELL STR,                            \ ...and pass 2 starts with no loop open
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
    9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ pass 2 re-opens the entry slot
@@ -12080,7 +12142,7 @@ public
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
    LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY
    LMAIN LABEL@ LKWLOOP   4 ['] J-LOOP   CF-ENTRY
-   LMAIN LABEL@ LKWI      1 ['] J-I      CF-ENTRY
+   LMAIN LABEL@ LKWI      1 ['] J-I      CFN-ENTRY
    LMAIN LABEL@ LKWTOR    2 ['] J-TOR    CF-ENTRY
    LMAIN LABEL@ LKWRFROM  2 ['] J-RFROM  CF-ENTRY
    LMAIN LABEL@ LKWRFET   2 ['] J-RFETCH CF-ENTRY
@@ -12358,6 +12420,7 @@ public
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
    9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
+   9 DATA LIDX-CELL STR,          \ ...and its cached loop index
    9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
@@ -12490,6 +12553,7 @@ public
          12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,
          12 DATA TOKFRF-CELL LDR,  12 DATA FRFREE-CELL STR,
+         12 0 MOVZ,  12 DATA LIDX-CELL STR,              \ the refused token's reload is gone
          scope B,
       owned LBL,
       CODE-ORIGIN:ABANDON,

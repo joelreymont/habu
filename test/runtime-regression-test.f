@@ -2543,9 +2543,14 @@ variable GE-KIND-N
 \ in one arm, arms that exit, a swap cycle and a reorder across the join in
 \ int and float slots, an `if` inside a loop and loops inside an `if`, a local
 \ opened in an arm, register pressure from local copies, and a compare that
-\ ends an arm right before the next `if` (GEJFZ). Tier 1 runs the same source
-\ and prints the same lines, except the two loop cycle rows, which tier 1
-\ refuses with E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
+\ ends an arm right before the next `if` (GEJFZ). The GEI rows break the
+\ boundaries of tier 0's cached loop index (habu2.f J-I): `i` at the body top
+\ of `do` and `?do`, after a call, twice in a row, under `+loop` up and down,
+\ in a nested loop and after it, after `unloop`, after a `leave` arm, in a
+\ `begin` loop and an `if` arm, with the register pool full, around a call
+\ that runs its own loop and after a caught throw out of one. Tier 1 runs the
+\ same source and prints the same lines, except the two loop cycle rows, which
+\ tier 1 refuses with E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
 : GE-VJOIN-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -2556,9 +2561,9 @@ variable GE-KIND-N
    s" : GEJID ( bool -- bool ) ;" GE-SRC-LINE
    s" : GEJCALL ( n -- n ) 0 swap begin 1- swap 1+ swap dup 0= GEJID until drop ;" GE-SRC-LINE
    s" : GEJPRESS ( n -- n ) {: a:n :} a a a a a a a a a a a a a a a a 0 begin 1+ dup 3 = until a a a + + + + + + + + + + + + + + + + + + + ;" GE-SRC-LINE
-   \ GEJFULL fills the loop-head snapshot frame exactly (SNAP-SLOTS values);
-   \ GEJPRESS overflows it by one and takes the spill fallback.
-   s" : GEJFULL ( n -- n ) {: a:n :} a a a a a a a a a a a a a a a 0 begin 1+ dup 3 = until a a a + + + + + + + + + + + + + + + + + + ;" GE-SRC-LINE
+   \ GEJFULL fills the register pool exactly (#POOL values) at the loop head;
+   \ GEJPRESS overflows it and takes the spill fallback.
+   s" : GEJFULL ( n -- n ) {: a:n :} a a a a a a a a a a a a a a 0 begin 1+ dup 3 = until a a a + + + + + + + + + + + + + + + + + ;" GE-SRC-LINE
    s" 99 3 GEJCON . . . 99 3 GEJCONF f. . . 99 3 GEJCALL . . 99 2 GEJPRESS . . 99 2 GEJFULL . ." GE-SRC-LINE
    s" : GEJINC ( n -- n ) 1+ ;" GE-SRC-LINE
    s" : GEJIF1 ( n -- n ) dup 0 > if 1+ then 2 * ;" GE-SRC-LINE
@@ -2582,6 +2587,21 @@ variable GE-KIND-N
    s" : GEJPK2 ( n bool -- n ) {: a:n f:bool :} a a a a a a a a a a a a a a 5 f if 1+ then + + + + + + + + + + + + + + ;" GE-SRC-LINE
    s" : GEJPR ( n -- n ) {: a:n :} a a a a a a a a a a a a a a a a a a a 1 2 a 0 > if + else * then + + + + + + + + + + + + + + + + + + + ;" GE-SRC-LINE
    s" : GEJFZ ( n -- n ) dup 0 < dup 0= if drop dup 5 > then if 100 + then ;" GE-SRC-LINE
+   s" : GEIQ ( n -- n ) 0 swap 0 ?do i + loop ;" GE-SRC-LINE
+   s" : GEID ( n -- n ) 0 swap 0 do i + loop ;" GE-SRC-LINE
+   s" : GEICALL ( n -- n ) 0 swap 0 ?do GEJINC i + loop ;" GE-SRC-LINE
+   s" : GEISTEP ( n -- n ) 0 swap 0 ?do i + 2 +loop ;" GE-SRC-LINE
+   s" : GEINEG ( -- n ) 0 0 10 ?do i + -3 +loop ;" GE-SRC-LINE
+   s" : GEINEST ( n -- n ) 0 swap 0 ?do 3 0 ?do j i * + loop i + loop ;" GE-SRC-LINE
+   s" : GEIUNL ( n -- n ) 5 2 ?do 3 0 ?do unloop i + unloop exit loop loop ;" GE-SRC-LINE
+   s" : GEILV ( n -- n ) 0 swap 0 ?do i 3 = if leave then i + loop ;" GE-SRC-LINE
+   s" : GEIBU ( n -- n ) 0 swap 0 ?do 2 begin swap i + swap 1- dup 0= until drop loop ;" GE-SRC-LINE
+   s" : GEIIF ( n -- n ) 0 swap 0 ?do i 2 mod 0= if i + then loop ;" GE-SRC-LINE
+   s" : GEIPR ( n -- n ) {: a:n :} 0 3 0 ?do a a a a a a a a a a a a a a a i + + + + + + + + + + + + + + + + loop ;" GE-SRC-LINE
+   s" : GEICL ( n -- n ) 0 swap 0 ?do 5 GEIQ + i + loop ;" GE-SRC-LINE
+   s" : GEICL2 ( n -- n ) 0 swap 0 ?do i + 4 GEIQ drop loop ;" GE-SRC-LINE
+   s" : GEITHR ( n -- ) 0 ?do i 2 = if 77 throw then loop ;" GE-SRC-LINE
+   s" : GEICT ( n -- n ) 0 swap 0 ?do [: 5 GEITHR ;] catch + i + loop ;" GE-SRC-LINE
    s" 99 5 GEJIF1 . -3 GEJIF1 . 4 GEJIF2 . . -4 GEJIF2 . . 1 2 5 GEJNIP . 1 2 -5 GEJNIP ." GE-SRC-LINE
    s" 0 0= GEJKON . 0 0<> GEJKON . 3 4 GEJCIF . -3 4 GEJCIF . 5 GEJEX . -5 GEJEX . 5 GEJEXE . -5 GEJEXE ." GE-SRC-LINE
    s" 3 5 GEJCYC . . 5 3 GEJCYC . . 3 5 GEJORD . . 5 3 GEJORD . ." GE-SRC-LINE
@@ -2589,6 +2609,8 @@ variable GE-KIND-N
    s" 10 GEJIFL . 4 GEJLIF . -4 GEJLIF . 3 10 GEJWR . 4 GEJDO . -4 GEJDO . 5 GEJLOC . -5 GEJLOC ." GE-SRC-LINE
    s" 2 0 0= GEJPK . 2 0 0<> GEJPK . 2 0 0= GEJPK2 . 2 0 0<> GEJPK2 . 2 GEJPR . -2 GEJPR ." GE-SRC-LINE
    s" -3 GEJFZ . 7 GEJFZ . 3 GEJFZ . ." GE-SRC-LINE
+   s" 5 GEIQ . 0 GEIQ . 5 GEID . 4 GEICALL . 7 GEISTEP . GEINEG . 3 GEINEST . 10 GEIUNL ." GE-SRC-LINE
+   s" 10 GEILV . 4 GEIBU . 6 GEIIF . 2 GEIPR . 3 GEICL . 4 GEICL2 . 3 GEICT ." GE-SRC-LINE
    tier 0= if
       s" : GEJSWAP ( n -- n n ) dup 1+ begin swap 1- dup 0= until ;" GE-SRC-LINE
       s" : GEJFSW ( r r -- r r ) 0.0 f+ swap begin swap over GEFB 4607182418800017408 = until ;" GE-SRC-LINE
@@ -2597,9 +2619,9 @@ variable GE-KIND-N
    RUNTIME-RUNNER:BUFFER
    s" loop joins" GE-EXPECT-OK
    tier 0= if
-      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n39\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n0\n2\n99\n0\n2\n99\n2.000000\n1.000000\n2.000000\n1.000000\n"
+      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n37\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n10\n0\n10\n10\n12\n22\n12\n12\n3\n12\n6\n93\n33\n6\n234\n0\n2\n99\n0\n2\n99\n2.000000\n1.000000\n2.000000\n1.000000\n"
    else
-      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n39\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n"
+      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n37\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n10\n0\n10\n10\n12\n22\n12\n12\n3\n12\n6\n93\n33\n6\n234\n"
    then
    s" loop joins output" GE-EXPECT-OUT ;
 

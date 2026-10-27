@@ -562,6 +562,13 @@ $36A8 constant INE-CELL          \ mirrored: src/core/checker.f CK-INE-OFF
 \ branch lands in. Definition-scoped like JIT-SNAP:SP-CELL: the colon entries,
 \ EM-P2-START and EM-ABORT-COMPILE-STATE zero it.
 $36B8 constant FWDTGT-CELL
+\ LIDX-CELL: 1 while the code tier 0 emits next may read the innermost open
+\ loop's index from x29 (regalloc.f LIDX), 0 when the index must be reloaded
+\ from its memory frame (habu2.f J-I). Definition-scoped like FWDTGT-CELL and
+\ zeroed beside it; every call and every control-flow push and pop zeroes it
+\ too. It sits at JIT-QUOT:END, the first cell after the quotation frames;
+\ data-claims.f proves it disjoint.
+$2C40 constant LIDX-CELL
 $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
@@ -1665,9 +1672,8 @@ STK-OFF LEVELS 1- FRAME-BYTES * + constant END
 \ names. Both hold this process's addresses, so boot stores them and snapshots
 \ (snap-lib.f SND-ZERO-LIVE) zero them. They sit in the free header band for
 \ the reasons EXIT-HOOK-CELL gives: $2CD0..$2CE8, past the quotation frames
-\ (JIT-QUOT:END, $2C40) and the $2C40..$2CD0 run held for the package
-\ publication cells, swept for a claimant across src lib tools test bootstrap
-\ docs.
+\ (JIT-QUOT:END, $2C40); data-claims.f proves each cell disjoint at native
+\ build time.
 $2CD0 constant FLOORREC-CELL
 \ CLOSED-FREE-CELL heads the idle closed-text data stacks, each idle stack's
 \ first cell linking the next: habu1.f B-EVAL-CLOSED takes one (maps one when
@@ -1689,10 +1695,8 @@ $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-
 \ address, so nothing relocates it: a snapshot carries it with the rest of
 \ DATA, and a native or stripped image starts at 0, which no rewind reaches,
 \ because every DP it saves is above the `here` it boots with. It sits past
-\ CODE-END-CELL in the $2800..$3000 free header band, beyond the $2C40..$2CD0
-\ run held for the package publication cells - swept for a claimant across src
-\ lib tools test bootstrap docs - below $7FF8 for the 12-bit scaled
-\ `DATA <off> LDR` form, and below DATA-START.
+\ CODE-END-CELL in the $2800..$3000 free header band, below $7FF8 for the
+\ 12-bit scaled `DATA <off> LDR` form, and below DATA-START.
 $2CE8 constant DATA-FLOOR-CELL
 \ The callback CODE cells at $2CF8, $2D00 and $2D10 are declared in
 \ native-observer-cells.f, which also loads on an older baked host during a build.

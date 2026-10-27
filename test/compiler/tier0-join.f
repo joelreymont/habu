@@ -19,6 +19,16 @@
 \ `if` keeps the flag, while J-FUSED's `then` lands on the compare itself and
 \ both of its `if`s fuse. Every subject also runs and its answer is checked.
 \
+\ Inside a `do`/`?do` loop tier 0 keeps the innermost index in x29 (habu2.f
+\ J-FRAME, J-I): `i` copies x29 into a pool register, and only a call or a
+\ control-flow edge makes the compiler reload it from the memory frame, which
+\ stays current because `loop` and `+loop` store every step. L-TOP's `i` is a
+\ copy alone, L-CALL's reloads once after the call, L-NOI's `loop` reloads the
+\ index it steps after the call, and L-NEST's outer `i` reloads after the
+\ inner loop closes. L-WIDE's wide local sends it through pass 2 (habu2.f
+\ EM-P2-START), where each read of `k` spills the virtual stack and loads the
+\ local into x9 (EM-P2-LOCREF): its `i` still copies x29 and never reloads.
+\
 \ Spans come from the DICTIONARY RECORD (src/habu/xref.f), as in
 \ test/compiler/tier0-compare-branch.f.
 
@@ -26,6 +36,7 @@ require src/lib/test.f
 require src/lib/errors.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
+require src/lib/adt/option.f
 
 package TIER0-JOIN
 private
@@ -36,6 +47,10 @@ $FFE0FFFF constant MOV16-MASK   $AA0003F0 constant MOV16-OP    \ mov x16,xN
 $FFFFFFE0 constant FROM16-MASK  $AA1003E0 constant FROM16-OP   \ mov xN,x16
 $FF000010 constant BCOND-MASK   $54000000 constant BCOND-OP    \ b.cond
 $FF000000 constant CBZ-MASK     $B4000000 constant CBZ-OP      \ cbz xR
+$FFFFFFFF constant RELOAD-MASK  $F940E690 constant RELOAD-OP   \ ldr x16,[x20,#LOOPSP-CELL]
+$FFFFFFFF constant IDXLD-MASK   $F940019D constant IDXLD-OP    \ ldr x29,[x12]
+$FFFFFFE0 constant MOVIDX-MASK  $AA1D03E0 constant MOVIDX-OP   \ mov xN,x29
+$FFC003FF constant SPLD-MASK    $F94003E9 constant SPLD-OP     \ ldr x9,[sp,#off]
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -105,6 +120,10 @@ variable MISSING                     \ names the dictionary did not answer for
 : WMOV16S ( ptr u8 n -- n )  MOV16-MASK MOV16-OP WORD-OPS ;
 : WFROM16S ( ptr u8 n -- n )  FROM16-MASK FROM16-OP WORD-OPS ;
 : WBCONDS ( ptr u8 n -- n )  BCOND-MASK BCOND-OP WORD-OPS ;
+: WRELOADS ( ptr u8 n -- n )  RELOAD-MASK RELOAD-OP WORD-OPS ;
+: WIDXLDS ( ptr u8 n -- n )  IDXLD-MASK IDXLD-OP WORD-OPS ;
+: WMOVIDXS ( ptr u8 n -- n )  MOVIDX-MASK MOVIDX-OP WORD-OPS ;
+: WSPLDS ( ptr u8 n -- n )  SPLD-MASK SPLD-OP WORD-OPS ;
 
 public
 
@@ -132,6 +151,19 @@ public
 : J-FENCE ( n -- n ) dup 0 < dup 0= if drop dup 5 > then if 100 + then ;
 \ `then` lands on `5 >`'s compare, which the fused branch keeps.
 : J-FUSED ( n -- n ) dup 0 > if 1+ then 5 > if 1 else 0 then ;
+: L-INC ( n -- n ) 1+ ;
+\ `i` right after `?do` copies the index register: nothing changed it.
+: L-TOP ( n -- n ) 0 swap 0 ?do i + loop ;
+\ The call may run a loop of its own: `i` reloads, then `loop` steps x29.
+: L-CALL ( n -- n ) 0 swap 0 ?do L-INC i + loop ;
+\ No `i`: `loop` after the call loads the index before it steps it.
+: L-NOI ( n -- n ) 0 swap 0 ?do L-INC loop ;
+\ The inner `i` copies; the outer `i` after the inner `loop` reloads.
+: L-NEST ( n -- n ) 0 swap 0 ?do 2 0 ?do i + loop i + loop ;
+\ Pass 2: both reads of `k` go through memory, `i` copies x29.
+: L-WIDE ( option<n> n -- n )
+   {: o:option<n> k:n :}
+   0 k 0 ?do i k * + loop ;
 
 private
 
@@ -168,6 +200,24 @@ private
    s" TIER0-JOIN:J-FENCE" WBCONDS 1 T=
    s" TIER0-JOIN:J-FUSED" WBCONDS 2 T= ;
 
+: TEST-INDEX-SHAPE ( -- )
+   s" a loop index stays in x29 until a call or a join" T-LABEL
+   s" TIER0-JOIN:L-TOP" WRELOADS 0 T=
+   s" TIER0-JOIN:L-TOP" WIDXLDS 0 T=
+   s" TIER0-JOIN:L-TOP" WMOVIDXS 1 T=
+   s" TIER0-JOIN:L-CALL" WRELOADS 1 T=
+   s" TIER0-JOIN:L-CALL" WIDXLDS 0 T=
+   s" TIER0-JOIN:L-CALL" WMOVIDXS 1 T=
+   s" TIER0-JOIN:L-NOI" WRELOADS 0 T=
+   s" TIER0-JOIN:L-NOI" WIDXLDS 1 T=
+   s" TIER0-JOIN:L-NEST" WRELOADS 1 T=
+   s" TIER0-JOIN:L-NEST" WIDXLDS 0 T=
+   s" TIER0-JOIN:L-NEST" WMOVIDXS 2 T=
+   s" TIER0-JOIN:L-WIDE" WSPLDS 2 T=
+   s" TIER0-JOIN:L-WIDE" WRELOADS 0 T=
+   s" TIER0-JOIN:L-WIDE" WIDXLDS 0 T=
+   s" TIER0-JOIN:L-WIDE" WMOVIDXS 1 T= ;
+
 : TEST-VALUES ( -- )
    s" every subject answers what its loop computes" T-LABEL
    3 R-EXACT  dup . cr  3 T=
@@ -188,7 +238,12 @@ private
    3 J-FENCE  dup . cr  3 T=
    5 J-FUSED  dup . cr  1 T=
    4 J-FUSED  dup . cr  0 T=
-   -9 J-FUSED  dup . cr  0 T= ;
+   -9 J-FUSED  dup . cr  0 T=
+   4 L-TOP  dup . cr  6 T=
+   4 L-CALL  dup . cr  10 T=
+   4 L-NOI  dup . cr  4 T=
+   3 L-NEST  dup . cr  6 T=
+   5 OPTION:SOME 4 L-WIDE  dup . cr  24 T= ;
 
 public
 
@@ -197,6 +252,7 @@ public
    0 MISSING !
    TEST-SHAPE
    TEST-JOIN-SHAPE
+   TEST-INDEX-SHAPE
    TEST-VALUES
    MISSING @ 0 T=
    T-REPORT ;
