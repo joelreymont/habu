@@ -429,7 +429,7 @@ CHECKER-REG:}SCRATCH
    SR-CHUNK @ begin dup NULL-PTR <> while SR-CHUNK-FREE repeat drop
    SCRATCH-SPANS SR-LINK@ begin dup NULL-PTR <> while SR-SPAN-ZERO repeat drop ;
 
-\ TV arena: fifteen var-id planes share one owned mapping and one capacity.
+\ TV arena: sixteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ Measured high-water of
 \ FV over a whole self-build: 1112 vars in one definition (the pool resets per
@@ -437,7 +437,7 @@ CHECKER-REG:}SCRATCH
 \ grows the arena exactly as it does today: test/type-decl-suite.f already peaks
 \ at 2573, above even the old 2048.
 1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
-15 constant TV-PLANES
+16 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
@@ -454,6 +454,7 @@ PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR
 PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
 PERSISTED-PTR-VARIABLE TVK-P
 PERSISTED-PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
+PERSISTED-PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
 PERSISTED-PTR-VARIABLE QCON-IDS-P   PERSISTED-PTR-VARIABLE QCON-KINDS-P
 PERSISTED-PTR-VARIABLE QCON-RIDS-P
 
@@ -475,7 +476,9 @@ PERSISTED-PTR-VARIABLE QCON-RIDS-P
 : TV-FILL-AT ( ptr n n n n -- ) {: base:ptr cap:n plane:n from:n :}
    base cap plane TV-PLANE from cap ARENA-CELLS-UNBOUND ;
 
-: TV-PUBLISH ( ptr n n -- ) {: base:ptr cap:n :}
+
+: TV-PUBLISH ( ptr n n -- )
+   {: base:ptr cap:n :}
    base cap 0 TV-PLANE TVT-P !       base cap 1 TV-PLANE RVT-P !
    base cap 2 TV-PLANE VRC-TV-P !    base cap 3 TV-PLANE VRC-RV-P !
    base cap 4 TV-PLANE VRI-TV-P !    base cap 5 TV-PLANE VRI-RV-P !
@@ -486,7 +489,9 @@ PERSISTED-PTR-VARIABLE QCON-RIDS-P
    base cap 12 TV-PLANE QCON-IDS-P !
    base cap 13 TV-PLANE QCON-KINDS-P !
    base cap 14 TV-PLANE QCON-RIDS-P !
+   base cap 15 TV-PLANE TVP-P !
    cap TV-CAP ! ;
+
 
 : TV-CLEAR ( -- )
    NULL-PTR TVT-P !      NULL-PTR RVT-P !
@@ -496,7 +501,7 @@ PERSISTED-PTR-VARIABLE QCON-RIDS-P
    NULL-PTR EI-TV-P !    NULL-PTR EI-RV-P !
    NULL-PTR TVK-P !      NULL-PTR NSCOPE-P !
    NULL-PTR QCON-IDS-P !   NULL-PTR QCON-KINDS-P !
-   NULL-PTR QCON-RIDS-P !
+   NULL-PTR QCON-RIDS-P !   NULL-PTR TVP-P !
    0 TV-CAP ! ;
 TV-CLEAR
 
@@ -536,11 +541,14 @@ TV-CLEAR
 : TVT ( -- ptr n ) TV-READY TVT-P @ ;       : RVT ( -- ptr n ) TV-READY RVT-P @ ;
 : TVK ( -- ptr n ) TV-READY TVK-P @ ;
 : NSCOPE ( -- ptr n ) TV-READY NSCOPE-P @ ;
+: TVP ( -- ptr n ) TV-READY TVP-P @ ;
 : QCON-IDS ( -- ptr n ) TV-READY QCON-IDS-P @ ;
 : QCON-KINDS ( -- ptr n ) TV-READY QCON-KINDS-P @ ;
 : QCON-RIDS ( -- ptr n ) TV-READY QCON-RIDS-P @ ;
 : NSCOPE@ ( n -- bool ) cells NSCOPE + @ 0 <> ;
 : NSCOPE! ( n -- ) -1 swap cells NSCOPE + ! ;
+: TV-PROV? ( n -- bool ) cells TVP + @ 0 <> ;
+: TV-PROV! ( n bool -- ) IF -1 ELSE 0 THEN swap cells TVP + ! ;
 : VRC-TV ( -- ptr n ) TV-READY VRC-TV-P @ ; : VRC-RV ( -- ptr n ) TV-READY VRC-RV-P @ ;
 : VRI-TV ( -- ptr n ) TV-READY VRI-TV-P @ ; : VRI-RV ( -- ptr n ) TV-READY VRI-RV-P @ ;
 : EC-TV ( -- ptr n ) TV-READY EC-TV-P @ ;   : EC-RV ( -- ptr n ) TV-READY EC-RV-P @ ;
@@ -717,17 +725,21 @@ CHECKER-REG:}SCRATCH
    need TRAIL-CAP @ 2 * max TRAIL-INIT max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells SR-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
+
+
 \ A trail entry carries the var id and a 4-BIT tag. The tag says what to put
 \ back, so a kind raise restores the kind it displaced rather than assuming
 \ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
 \ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
 \ base-address fence on every row an abandoned prim-overload trial touched.
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY
+: TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY
+   {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 16 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
+
+
 : TRAIL-KIND-OF ( n -- n )   \ the kind a kind-tag puts back
-   dup 3 = IF drop RVK-INFERRED EXIT THEN
    dup 4 = IF drop TVK-NULL EXIT THEN
    dup 5 = IF drop TVK-DBASE EXIT THEN
    dup 6 = IF drop TVK-OFF EXIT THEN
@@ -735,6 +747,8 @@ CHECKER-REG:}SCRATCH
    dup 9 = IF drop TVK-REGION EXIT THEN
    dup 11 = IF drop TVK-BASE-ONLY EXIT THEN
    10 = IF TVK-CELL ELSE TVK-ANY THEN ;
+
+
 : TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
@@ -768,12 +782,6 @@ CHECKER-REG:}SCRATCH
 : NSCOPE-RAISE ( n -- )
    dup NSCOPE@ IF drop EXIT THEN
    dup 8 TRAIL-PUSH NSCOPE! ;
-
-
-: RVK-RAISE ( n -- )
-   dup RVK-QUOT? IF drop EXIT THEN
-   dup TVK@ RVK-INFERRED = IF dup 3 TRAIL-PUSH ELSE dup 2 TRAIL-PUSH THEN
-   RVK-QUOT! ;
 
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
 \ Concrete-count conservation only sees linear CONS on the stack. It is defeated
@@ -815,12 +823,17 @@ CHECKER-REG:}SCRATCH
    LTNT-N @ cells LTNT + !
    LTNT-N @ 1 + LTNT-N ! ;
 
-\ TRIAL-DEPTH counts open prim-overload trials (TRY-EFF). T-RES/R-RES compress var
-\ chains ONLY at depth 0, where every binding is permanent, so a compression write
-\ needs no undo (it is a direct TVT/RVT store, not routed through the trail). During
-\ an open trial compression is disabled, so it can never re-point a permanent var at
-\ a trial-allocated var that TRIAL-REST would then clear (the item-3 hazard).
+\ TRIAL-DEPTH counts open prim-overload trials (TRY-EFF), HOLD-N open callable
+\ comparisons (QUOT-PAIR), whose refusal unwinds the bindings it made. T-RES/R-RES
+\ compress var chains ONLY when both are 0, where every binding is permanent, so a
+\ compression write needs no undo (it is a direct TVT/RVT store, not routed through
+\ the trail). While either is open compression is disabled, so it can never
+\ re-point a permanent var past a binding the unwind takes back.
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
+CHECKER-REG:SCRATCH{
+variable HOLD-N
+CHECKER-REG:}SCRATCH
+: COMPRESS? ( -- bool ) TRIAL-DEPTH @ HOLD-N @ or 0= ;
 variable TCMP                            \ path-compression walk cursor
 
 \ Only storage uses the +1 encoding. Logical terms (including term zero) and
@@ -1102,6 +1115,7 @@ defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -
 defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> a scope parameter
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
 defer TFAM-TYPE-SLOT-XT ( n n -- bool )                 \ family id + arg slot -> a phantom element type
+defer TFAM-STORE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the argument reaches storage (PARAM-PAIR-SLOT)
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
 defer TFAM-MEMBERS-XT ( n -- n )                        \ layout term -> row of its field and variant payload types, instantiated over its args
 defer TFAM-LIN-N-XT ( n -- n )                         \ instantiated owning schema's linear capability count
@@ -1446,6 +1460,7 @@ variable VERIFY-FLOOR0
 0 constant UK-EXACT
 1 constant UK-INPUT
 2 constant UK-COERCE
+3 constant UK-JOIN     \ two branches' stacks meet: both sides are provided
 variable UNIFY-KIND
 UK-EXACT UNIFY-KIND !
 
@@ -1693,6 +1708,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-PKG$* ( n -- ptr u8 n ) TFAM-PKG-XT ;
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
+
 \ Registry-not-loaded DEFAULTS for the TFAM query hooks (wrapped in a word so the
 \ `[: ;]` quotations compile; `[: ;] is` is not valid at interpret level). Each
 \ default reproduces the old 0-hook fallback: resolve nothing / arity 0 / not a
@@ -1715,6 +1731,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop RES-FALSE ;] is TFAM-SCOPE-SLOT-XT
    [: 2drop RES-FALSE ;] is TFAM-REGION-SLOT-XT
    [: 2drop RES-FALSE ;] is TFAM-TYPE-SLOT-XT
+   [: 2drop RES-TRUE ;] is TFAM-STORE-SLOT-XT
    [: drop 0 0 0 RES-FALSE ;] is TFAM-INIT-RECORD-XT
    [: 2drop drop 0 0 0 RES-FALSE ;] is TFAM-INIT-FIELD-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
@@ -1754,7 +1771,7 @@ PTX-BARRIER-DEFAULT
    v PAY TV@ UNBOUND <> ;
 
 \ T-COMPRESS ( start root -- ) : point every bound var on start..root directly at
-\ root. Direct TVT stores (depth 0 only, so permanent — no trail entry).
+\ root. Direct TVT stores (COMPRESS? only, so permanent — no trail entry).
 : T-COMPRESS ( n n -- ) {: root:n :}
    TCMP !
    BEGIN TCMP @ T-BOUND-VAR? WHILE
@@ -1763,11 +1780,13 @@ PTX-BARRIER-DEFAULT
       nxt TCMP !
    REPEAT ;
 
+
 : T-RES ( n -- n )
-   TRIAL-DEPTH @ 0 <> IF T-RES-WALK EXIT THEN   \ inside a trial: walk, do not compress
+   COMPRESS? 0= IF T-RES-WALK EXIT THEN
    dup T-RES-WALK {: root:n :}
    root T-COMPRESS
    root ;
+
 
 : R-RES-WALK ( n -- n )
    BEGIN RV-NEXT? WHILE REPEAT ;
@@ -1784,11 +1803,13 @@ PTX-BARRIER-DEFAULT
       nxt TCMP !
    REPEAT ;
 
+
 : R-RES ( n -- n )
-   TRIAL-DEPTH @ 0 <> IF R-RES-WALK EXIT THEN
+   COMPRESS? 0= IF R-RES-WALK EXIT THEN
    dup R-RES-WALK {: root:n :}
    root R-COMPRESS
    root ;
+
 
 : ROW-VIEW-AT ( n n -- n ) {: row:n facts:n :}
    row R-RES {: node:n :}
@@ -1866,6 +1887,8 @@ variable USP
 CHECKER-REG:}SCRATCH
 variable UOK
 variable UF-ACT   variable UF-EXP   variable UF-SET
+variable TAIL-HIT   \ this unify let a declared callable's implicit tail escape (QUOT-PAIR); CELL-DIAG! names it
+variable TAIL-SKOLEM   variable TAIL-ROW   \ TAIL-HIT: the held tail and the row it escaped into (HOLD-ESCAPE?)
 \ Parallel per-pair strictness flag, keyed by the pair's base worklist index.
 \ Strict pairs (pointer pointees) unify by equality/var-binding only — integer
 \ widening (INT-WIDENS?) applies to top-level scalar stack cells, never to a
@@ -1888,6 +1911,11 @@ variable UF-POSN
 create UWL-CALL MAXUWL cells allot   variable CUR-CALL
 create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
 create UWL-ARG MAXUWL cells allot    variable CUR-ARG
+\ Parallel per-pair roles: bit 0 the first (actual) term's, bit 1 the second's;
+\ a set bit is demanded (a declaration), a clear one provided (a value).
+\ QUOT-PAIR holds a demanded quotation's implicit tails rigid.
+create UWL-ROLE MAXUWL cells allot   variable CUR-ROLE
+1 constant ROLE-D1   2 constant ROLE-D2
 variable CALL-DIN   variable CALL-DOUT
 CHECKER-REG:SCRATCH{
 variable CALL-ARMED   variable CALL-HIT
@@ -1916,13 +1944,16 @@ CWIN-BOOT-DEFAULT
 
 : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 
+
 : PAIR ( n n -- )    \ inherit the enclosing pair's strictness and position
    CUR-STRICT @ USP @ cells UWL-STR + !
    CUR-UPOS @ USP @ cells UWL-POS + !
    CUR-CALL @ USP @ cells UWL-CALL + !
    CUR-QUOT @ USP @ cells UWL-QUOT + !
    CUR-ARG @ USP @ cells UWL-ARG + !
+   CUR-ROLE @ USP @ cells UWL-ROLE + !
    swap U-PUSH U-PUSH ;
+
 
 : PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
    -1 USP @ cells UWL-STR + !
@@ -1930,13 +1961,16 @@ CWIN-BOOT-DEFAULT
    0 USP @ cells UWL-CALL + !
    CUR-QUOT @ USP @ cells UWL-QUOT + !
    CUR-ARG @ USP @ cells UWL-ARG + !
+   CUR-ROLE @ USP @ cells UWL-ROLE + !
    swap U-PUSH U-PUSH ;
 
 
-: PAIR-QUOT ( n n -- )
-   CUR-QUOT @ CUR-ARG @ >r >r
-   -1 CUR-QUOT ! 0 CUR-ARG ! PAIR
-   r> CUR-QUOT ! r> CUR-ARG ! ;
+: PAIR-QUOT ( n n n -- )   \ a quotation's row pair, with its roles
+   {: a:n b:n role:n :}
+   CUR-QUOT @ {: q0:n :}   CUR-ARG @ {: g0:n :}   CUR-ROLE @ {: r0:n :}
+   -1 CUR-QUOT !  0 CUR-ARG !  role CUR-ROLE !  a b PAIR
+   q0 CUR-QUOT !  g0 CUR-ARG !  r0 CUR-ROLE ! ;
+
 
 : UNPAIR ( -- n n )    \ pop a pair; restore its strictness and position
    U-POP U-POP swap
@@ -1944,7 +1978,9 @@ CWIN-BOOT-DEFAULT
    USP @ cells UWL-POS + @ CUR-UPOS !
    USP @ cells UWL-CALL + @ CUR-CALL !
    USP @ cells UWL-QUOT + @ CUR-QUOT !
-   USP @ cells UWL-ARG + @ CUR-ARG ! ;
+   USP @ cells UWL-ARG + @ CUR-ARG !
+   USP @ cells UWL-ROLE + @ CUR-ROLE ! ;
+
 
 \ A refused unification can stop with pairs still queued. A source load has
 \ finished before capture, so the queue and its last path belong to that old
@@ -1956,7 +1992,9 @@ CWIN-BOOT-DEFAULT
    UWL-POS 0 MAXUWL ARENA-CELLS-ZERO
    UWL-CALL 0 MAXUWL ARENA-CELLS-ZERO
    UWL-QUOT 0 MAXUWL ARENA-CELLS-ZERO
-   UWL-ARG 0 MAXUWL ARENA-CELLS-ZERO ;
+   UWL-ARG 0 MAXUWL ARENA-CELLS-ZERO
+   UWL-ROLE 0 MAXUWL ARENA-CELLS-ZERO ;
+
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
@@ -2055,27 +2093,41 @@ CWIN-BOOT-DEFAULT
    want FIELD-PARAM? IF got want FIELD-INNER PAIR RES-TRUE EXIT THEN
    RES-FALSE ;
 
-\ occurs check: binding a row var to a spine containing itself would make the
-\ row cyclic — including THROUGH a quotation's effect rows (the ω-combinator
-\ must reject, never loop). Recursion depth is bounded by term size; the
-\ accumulator rides the stack (a shared variable would be clobbered by the
-\ recursive calls).
-: ROW-OCC? ( n n -- bool ) {: r:n s:n :}
-   RES-FALSE s                           \ ( acc cur )
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE T-RES
-     BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
-     BEGIN dup TAG T-FORALL = WHILE F>BODY T-RES REPEAT
-     dup TAG T-QUOT = IF
-       r over Q>DIN RECURSE  swap        \ ( acc cur f1 qt )
-       r over Q>DOUT RECURSE  swap       \ ( acc cur f1 f2 qt )
-       r over Q>RIN RECURSE  swap        \ ( acc cur f1 f2 f3 qt )
-       r swap Q>ROUT RECURSE             \ ( acc cur f1 f2 f3 f4 )
-       or or or  rot or swap             \ ( acc' cur )
-     ELSE drop THEN
-     P>REST
-   REPEAT
-   r = or ;
+
+\ occurs check: does row var r occur in x, a row when row? is set, else a
+\ type? Binding a row var to a spine containing itself would make the row
+\ cyclic, and a held tail must not hide in a var (HOLD-ESCAPE?), whatever
+\ holds the occurrence: a row's values, a pointee, a forall's body, a family's
+\ arguments and a quotation's four rows are all walked (the ω-combinator must
+\ reject, never loop). Recursion depth is bounded by term size.
+: OCC-WALK ( n n bool -- bool )
+   {: r:n x:n row?:bool :}
+   row? IF
+      x R-RES
+      BEGIN dup TAG S-PUSH = WHILE
+         r over P>TYPE RES-FALSE RECURSE IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT
+      r = EXIT
+   THEN
+   x T-RES {: t:n :}
+   t TAG T-PTR = IF r t PTR>INNER RES-FALSE RECURSE EXIT THEN
+   t TAG T-FORALL = IF r t F>BODY RES-FALSE RECURSE EXIT THEN
+   t TAG T-PARAM = IF
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM>ARG  r swap RES-FALSE RECURSE IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      RES-FALSE EXIT
+   THEN
+   t TAG T-QUOT <> IF RES-FALSE EXIT THEN
+   r t Q>DIN RES-TRUE RECURSE IF RES-TRUE EXIT THEN
+   r t Q>DOUT RES-TRUE RECURSE IF RES-TRUE EXIT THEN
+   r t Q>RIN RES-TRUE RECURSE IF RES-TRUE EXIT THEN
+   r t Q>ROUT RES-TRUE RECURSE ;
+
+
+: ROW-OCC? ( n n -- bool ) RES-TRUE OCC-WALK ;
 
 1 constant CC-N     2 constant CC-F     3 constant CC-R
 4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
@@ -2640,16 +2692,28 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    T-RES dup TAG T-PTR <> IF drop RES-TRUE EXIT THEN
    PTR>INNER NO-SCOPE? ;
 
-: TV! ( n n -- ) {: term:n id:n :}
+
+: TV! ( n n -- )
+   {: term:n id:n :}
    id NSCOPE@ IF term NO-SCOPE? 0= IF
       1 SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
    THEN THEN
-   id 0 TRAIL-PUSH term 1+ id cells TVT + ! ;
+   id 0 TRAIL-PUSH term 1+ id cells TVT + !  0 id cells TVP + ! ;
+
+
 : RV! ( n n -- ) {: row:n id:n :}
    id NSCOPE@ IF row NO-SCOPE? 0= IF
       1 SCOPE-HIT ! row id MK-ROW U-FAIL EXIT
    THEN THEN
    id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
+
+
+\ Bind type var id to term from a pair side: the var is provided when the
+\ side it takes its term from (CUR-ROLE bit mask) is.
+: TV-BIND ( n n n -- )
+   {: term:n id:n mask:n :}
+   term id TV!  id CUR-ROLE @ mask and 0= TV-PROV! ;
+
 
 \ --- layout cells (type-family.f header, reject-only): a logical
 \ sum/enum/product layout value whose width is known, linear or not, expands to
@@ -3259,6 +3323,13 @@ variable XT-DECL
    v PAY p TY-OCC? IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
+
+\ A family argument's variance: one that reaches storage (TFAM-STORE-SLOT-XT:
+\ values<a>'s `FIELD data ptr a`, an OPAQUE record, an element-type slot) is
+\ read and written, so both sides are demanded, as a pointee's are; one held
+\ only by value (`FIELD fn a`) takes the pair's roles, so a family built around
+\ a literal is provided as the literal is. Each side pairs resolved, so
+\ ROLE-ALIAS, which reads a binding variable, leaves these roles as set.
 : PARAM-PAIR-SLOT ( n n n -- )
    {: t1:n t2:n slot:n :}
    t1 slot PARAM>ARG T-RES {: a:n :}
@@ -3268,11 +3339,12 @@ variable XT-DECL
    ELSE b a t1 PARAM>FAM slot PARAM-BIND-OK? IF
       a b PAY TV!
    ELSE
-      CUR-ARG @ >r 0 CUR-ARG !
-      t1 READ-VIEW? t1 MUT-VIEW? or t1 RECORDS? or IF
-         a b PAIR-STRICT ELSE a b PAIR THEN
-      r> CUR-ARG !
+      CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r
+      t1 PARAM>FAM slot TFAM-STORE-SLOT-XT IF ROLE-D1 ROLE-D2 or CUR-ROLE ! THEN
+      t1 READ-VIEW? t1 MUT-VIEW? or t1 RECORDS? or IF a b PAIR-STRICT ELSE a b PAIR THEN
+      r> CUR-ROLE !  r> CUR-ARG !
    THEN THEN ;
+
 
 : PARAM-PAIR-ARGS ( n n -- )
    {: t1:n t2:n :}
@@ -3395,8 +3467,305 @@ CHECKER-REG:}SCRATCH
    got F>SECOND want F>SECOND FORALL-CEILING-PAIR
    got F>BODY want F>BODY PAIR-STRICT ;
 
+
+\ The live-graph twin of EFF-ROW-TAIL: what a row ends in once its fixed cells
+\ are walked off. Two rows are the same stack only if they share this tail.
+: ROW-TAIL ( n -- n )
+   R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
+
+
+\ A declared callable's implicit data tail is rigid while a quotation is
+\ compared with it: the callee runs the callable on whatever stack it holds and
+\ expects the declared rows back, so no row that outlives the comparison may
+\ come to equal the tail or hold it. Each comparison (QUOT-PAIR) pushes a hold
+\ frame: its trail mark and var floor (FV; a var at or above it was made by the
+\ comparison) and the rigid tails K, the unbound implicit tails of the data
+\ input and output that the frame holds rigid. The instantiable tails I of one
+\ UNIFY share one list, which a popped frame leaves in place: a nested frame's
+\ instantiable tail stays its ancestors' own. By side role (CUR-ROLE):
+\ - a demanded side's declared tails (RVK-QUOT) are rigid;
+\ - a value's own tails (RVK-INFERRED: a literal's or a tick's) are
+\   instantiable on either side, since the value runs on any stack (a literal
+\   stored into a `[ n -- n ]` cell takes the cell's tail);
+\ - a provided side's declared tails are instantiated on a copy when the other
+\   side is demanded (QUOT-PROV-INST: a provided callable is instantiated at
+\   its use), never bound in place, since a pointer's pointee or another value
+\   may share the declared var;
+\ - in a join (both provided) both sides' declared tails are rigid, since
+\   neither may narrow the other's quantifier.
+\ A tail already held keeps its role: a literal's tail recurring in a callable
+\ it demands (WB-BODY's `[ R ptr u8 n -- S ]` inside `[: WB-BODY ;]`,
+\ src/lib/memory.f) stays the literal's to instantiate.
+\ Return rows are exempt: a quotation literal's return rows are its enclosing
+\ definition's by construction, and the return-row rules check their balance.
+variable FV   0 FV !   \ the next var id FRESH hands out
+
+
+: FRESH ( -- n )
+   FV @ 1 + TV-ENSURE            \ grow the pool so FV is a valid index
+   FV @ dup 1 + FV ! ;
+
+
+8 constant HOLD-FRAME   \ cells: mark, floor, K count, 4 K ids, I start
+2 constant HF-NK   7 constant HF-IS
+8 HOLD-FRAME * constant HOLD-INIT
+32 constant HOLD-I-INIT
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE HOLD-P   variable HOLD-CAP
+PTR-VARIABLE HOLD-I-P   variable HOLD-I-CAP   variable HOLD-I-N
+CHECKER-REG:}SCRATCH
+: HOLD ( -- ptr n ) HOLD-P @ ;
+: HOLD-I ( -- ptr n ) HOLD-I-P @ ;
+
+
+: HOLD-ENSURE ( n -- )
+   {: need:n :}
+   need HOLD-CAP @ <= IF exit THEN
+   need HOLD-CAP @ 2 * max HOLD-INIT max {: nc:n :}
+   HOLD-P @ HOLD-CAP @ cells nc cells SR-GROW HOLD-P !
+   nc HOLD-CAP ! ;
+
+
+: HOLD-I-ENSURE ( n -- )
+   {: need:n :}
+   need HOLD-I-CAP @ <= IF exit THEN
+   need HOLD-I-CAP @ 2 * max HOLD-I-INIT max {: nc:n :}
+   HOLD-I-P @ HOLD-I-CAP @ cells nc cells SR-GROW HOLD-I-P !
+   nc HOLD-I-CAP ! ;
+
+
+: HF ( n n -- ptr n ) swap HOLD-FRAME * + cells HOLD + ;   \ frame f's cell k
+
+
+: HF-K? ( n n -- bool )   \ frame f holds id rigid
+   {: f:n id:n :}
+   f HF-NK HF @ 0 ?do
+      f HF-NK 1 + i + HF @ id = IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+
+: HOLD-OF ( n -- n )   \ the active frame holding id rigid, else -1
+   {: id:n :}
+   HOLD-N @ 0 ?do
+      i id HF-K? IF i unloop EXIT THEN
+   loop
+   -1 ;
+
+
+: HOLD-I-FROM? ( n n -- bool )   \ id is instantiable at list index from or later
+   {: from:n id:n :}
+   HOLD-I-N @ from ?do
+      i cells HOLD-I + @ id = IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+
+: HOLD-I? ( n -- bool ) 0 swap HOLD-I-FROM? ;
+
+
+: HOLD-PUT ( n bool -- )   \ hold id rigid in the top frame, else instantiable
+   {: id:n k?:bool :}
+   k? IF
+      HOLD-N @ 1 - {: f:n :}
+      f HF-NK HF @ {: k:n :}
+      id  f HF-NK 1 + k + HF !
+      k 1 + f HF-NK HF !  EXIT
+   THEN
+   HOLD-I-N @ 1 + HOLD-I-ENSURE
+   id HOLD-I-N @ cells HOLD-I + !
+   1 HOLD-I-N +! ;
+
+
+\ A callable's implicit tails quantify its untouched stacks. Instantiate those
+\ tails on a copy for each use, keeping explicit named rows and value types
+\ shared; binding the declared tail itself would retype every term that shares
+\ it (the pointee of the cell the callable was fetched from). execute and catch
+\ instantiate every implicit tail (QUOT-APPLY-INST); a provided side of a
+\ comparison instantiates the declared tails no frame holds (QUOT-PROV-INST),
+\ the ones HOLD-TAIL would otherwise make instantiable in place. There are four
+\ rows in a quotation, hence at most four distinct terminal tails.
+create QAPP-OLD 4 cells allot
+create QAPP-NEW 4 cells allot
+variable QAPP-N
+
+
+: QAPP-FRESH? ( n bool -- bool )   \ instantiate row's tail on the copy
+   {: row:n pair?:bool :}
+   pair? 0= IF row PAY RVK-IMPLICIT? EXIT THEN
+   row ISROW 0= IF RES-FALSE EXIT THEN
+   row PAY {: id:n :}
+   id RVK-QUOT?  id HOLD-OF -1 = and  id HOLD-I? 0= and ;
+
+
+: QAPP-TAIL ( n bool -- n )
+   {: row:n pair?:bool :}
+   row pair? QAPP-FRESH? 0= IF row EXIT THEN
+   QAPP-N @ 0 ?do
+      i cells QAPP-OLD + @ row = IF
+         i cells QAPP-NEW + @ unloop EXIT
+      THEN
+   loop
+   FRESH MK-QROW {: fresh:n :}
+   row QAPP-N @ cells QAPP-OLD + !
+   fresh QAPP-N @ cells QAPP-NEW + !
+   1 QAPP-N +!
+   fresh ;
+
+
+: QAPP-ROW ( n bool -- n )
+   {: row:n pair?:bool :}
+   row R-RES {: r:n :}
+   r TAG S-PUSH <> IF r pair? QAPP-TAIL EXIT THEN
+   r  r P>REST pair? RECURSE  P-COPY ;
+
+
+: QUOT-INST ( n bool -- n )
+   {: q:n pair?:bool :}
+   0 QAPP-N !
+   q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
+   q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
+   fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
+   fresh ;
+
+
+: QUOT-APPLY-INST ( n -- n ) RES-FALSE QUOT-INST ;
+: QUOT-PROV-INST ( n -- n ) RES-TRUE QUOT-INST ;
+
+
+: HOLD-TAIL ( n bool bool -- )   \ hold row's unheld implicit tail by its side's role
+   {: row:n d?:bool join?:bool :}
+   row ROW-TAIL {: t:n :}
+   t ISROW 0= IF EXIT THEN
+   t PAY {: id:n :}
+   id HOLD-OF -1 <>  id HOLD-I? or IF EXIT THEN
+   id RVK-QUOT? IF id  d? join? or  HOLD-PUT EXIT THEN
+   id TVK@ RVK-INFERRED = IF id RES-FALSE HOLD-PUT THEN ;
+
+
+: HOLD-SIDE ( n bool bool -- )
+   {: q:n d?:bool join?:bool :}
+   q Q>DIN d? join? HOLD-TAIL  q Q>DOUT d? join? HOLD-TAIL ;
+
+
+: HOLD-PUSH ( n n n -- n n )   \ the sides to pair: a provided one copied
+   {: got:n want:n role:n :}
+   HOLD-N @ 1 + HOLD-FRAME * HOLD-ENSURE
+   HOLD-N @ {: f:n :}   1 HOLD-N +!
+   TRAIL-N @ f 0 HF !   FV @ f 1 HF !   0 f HF-NK HF !   HOLD-I-N @ f HF-IS HF !
+   role ROLE-D1 and 0 <> {: d1:bool :}   role ROLE-D2 and 0 <> {: d2:bool :}   role 0= {: join:bool :}
+   \ demanded sides first, so a tail both sides share is held rigid
+   d1 IF got RES-TRUE join HOLD-SIDE THEN
+   d2 IF want RES-TRUE join HOLD-SIDE THEN
+   d1 join or IF got ELSE got QUOT-PROV-INST THEN {: g:n :}
+   d2 join or IF want ELSE want QUOT-PROV-INST THEN {: w:n :}
+   d1 0= IF g RES-FALSE join HOLD-SIDE THEN
+   d2 0= IF w RES-FALSE join HOLD-SIDE THEN
+   g w ;
+
+
+\ Which var of an unbound var-to-var row pair binds while frames hold: an
+\ instantiable tail when exactly one side is one; a rigid tail never, unless
+\ the other side is a rigid tail of the same frame, so the other side when it
+\ is that frame's own (above its floor). Any other pair binds as it comes and
+\ the post-drain check judges it.
+: HOLD-SECOND? ( n n -- bool )   \ bind b rather than a
+   {: a:n b:n :}
+   HOLD-N @ 0= IF RES-FALSE EXIT THEN
+   a ISROW b ISROW and 0= IF RES-FALSE EXIT THEN
+   a PAY {: ia:n :}   b PAY {: ib:n :}
+   ib HOLD-I? IF ia HOLD-I? 0= EXIT THEN
+   ia HOLD-I? IF RES-FALSE EXIT THEN
+   ia HOLD-OF {: fa:n :}
+   fa -1 = IF RES-FALSE EXIT THEN
+   ib HOLD-OF fa = IF RES-FALSE EXIT THEN
+   ib  fa 1 HF @ >= ;
+
+
+\ id is frame f's: made above its floor, held rigid by it, or instantiable
+\ from its start on (an ancestor's instantiable tail is not f's own).
+: HF-OWN? ( n n -- bool )
+   {: f:n id:n :}
+   id f 1 HF @ >= IF RES-TRUE EXIT THEN
+   f id HF-K? IF RES-TRUE EXIT THEN
+   f HF-IS HF @ id HOLD-I-FROM? ;
+
+
+\ After the top frame's pairs drain, a rigid tail escaped when (a) it resolves
+\ to anything but an unbound row of the frame's own, or (b) a var bound since
+\ the mark that is not the frame's own now holds it. The check reads the
+\ drained graph, so the order the rows bound in cannot hide the escape.
+\ TAIL-SKOLEM and TAIL-ROW record the tail and the row it escaped into.
+: HOLD-ESCAPE? ( -- bool )
+   HOLD-N @ 1 - {: f:n :}
+   f HF-NK HF @ 0 ?do
+      f HF-NK 1 + i + HF @ MK-ROW {: k:n :}
+      k R-RES {: kr:n :}
+      kr ISROW IF f kr PAY HF-OWN? ELSE RES-FALSE THEN 0= IF
+         k TAIL-SKOLEM !  kr TAIL-ROW !  RES-TRUE unloop EXIT
+      THEN
+   loop
+   f 0 HF @ {: mark:n :}
+   TRAIL-N @ mark ?do
+      i cells TRAIL + @ {: e:n :}
+      e 15 and {: tag:n :}   e 4 rshift {: id:n :}
+      tag 2 <  f id HF-OWN? 0= and IF
+         tag 1 = {: row?:bool :}
+         row? IF id MK-ROW ELSE id MK-VAR THEN {: x:n :}
+         f HF-NK HF @ 0 ?do
+            f HF-NK 1 + i + HF @ MK-ROW {: k:n :}
+            k R-RES {: kr:n :}
+            kr x row? OCC-WALK IF
+               k TAIL-SKOLEM !  x TAIL-ROW !  RES-TRUE unloop unloop EXIT
+            THEN
+         loop
+      THEN
+   loop
+   RES-FALSE ;
+
+
+\ A quotation pair's output rows keep the outer roles; its input rows flow
+\ into the quotation from whoever executes it, so their pairs are pushed
+\ flipped: the expected effect's inputs take the actual position and the
+\ widening lattice reads supplied-into-consumed, and each side's role turns
+\ over (what a declaration demands of its callable's input, the callee
+\ provides). A refusal unwinds every binding the comparison made and TAIL-HIT
+\ names it (MD-TAIL-ESCAPE), so CELL-DIAG! renders the two quotations as they
+\ were.
+defer U-DRAIN-XT ( n -- )
+: ROLE-FLIP ( n -- n ) dup 1 and 2 * swap 1 rshift 1 and or 3 xor ;
+
+
+: QUOT-PAIR ( n n -- )
+   {: got:n want:n :}
+   CUR-ROLE @ {: role:n :}   role ROLE-FLIP {: flip:n :}
+   TRAIL-N @ {: mark:n :}   USP @ {: base:n :}   CUR-UPOS @ {: upos:n :}
+   got want role HOLD-PUSH {: g:n w:n :}
+   w Q>DIN g Q>DIN flip PAIR-QUOT
+   g Q>DOUT w Q>DOUT role PAIR-QUOT
+   w Q>RIN g Q>RIN flip PAIR-QUOT
+   g Q>ROUT w Q>ROUT role PAIR-QUOT
+   base U-DRAIN-XT
+   UOK @ IF HOLD-ESCAPE? IF upos CUR-UPOS !  got want U-FAIL  -1 TAIL-HIT ! THEN THEN
+   TAIL-HIT @ IF mark TRAIL-UNWIND THEN
+   -1 HOLD-N +! ;
+
+
+\ A quotation reached through a type variable bound from a provided side is
+\ provided, whichever position it takes: X-PICK1's `( a a -- a )` binds a from
+\ its first argument, so its second meets the first as a join. A variable bound
+\ from a demanded side (the pointee of `!`) keeps the side's role. A pointer
+\ pair and a family argument pair hand over resolved terms, so it never
+\ relaxes a side of storage: a provided binding does not make a pointee one.
+: ROLE-ALIAS ( n n -- n n )
+   {: a:n b:n :}
+   a T-BOUND-VAR? IF a T-RES TAG T-QUOT = a PAY TV-PROV? and IF CUR-ROLE @ ROLE-D1 invert and CUR-ROLE ! THEN THEN
+   b T-BOUND-VAR? IF b T-RES TAG T-QUOT = b PAY TV-PROV? and IF CUR-ROLE @ ROLE-D2 invert and CUR-ROLE ! THEN THEN
+   a b ;
+
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
-   T-RES swap T-RES swap
+   ROLE-ALIAS T-RES swap T-RES swap
    over NO-SCOPE-PTR? over NO-SCOPE-PTR? and 0= IF 1 SCOPE-HIT ! U-FAIL EXIT THEN
    2dup = IF 2drop EXIT THEN
    2dup SCOPE-INTRO-READY? IF SCOPE-INTRO-PAIR-XT EXIT THEN
@@ -3406,18 +3775,11 @@ CHECKER-REG:}SCRATCH
    over TAG T-FORALL = over TAG T-FORALL = and IF
      2dup FORALL-PAIR 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
-     \ Inputs flow INTO a quotation from whoever executes it, so the din and rin
-     \ pairs are pushed flipped: the expected effect's inputs take the actual
-     \ position and the widening lattice reads supplied-into-consumed. Outputs
-     \ flow out and keep the outer (actual, expected) order.
-     2dup Q>DIN swap Q>DIN PAIR-QUOT
-     2dup Q>DOUT swap Q>DOUT swap PAIR-QUOT
-     2dup Q>RIN swap Q>RIN PAIR-QUOT
-     Q>ROUT swap Q>ROUT swap PAIR-QUOT ELSE
-   over TAG T-PTR =  over TAG T-PTR =  and IF
-     CUR-ARG @ >r 0 CUR-ARG !
-     over PTR>INNER over PTR>INNER PAIR-STRICT
-     r> CUR-ARG ! 2drop ELSE
+     QUOT-PAIR ELSE
+   over TAG T-PTR =  over TAG T-PTR =  and IF   \ a pointee is read and written: both sides demanded, paired resolved past ROLE-ALIAS
+     CUR-ARG @ >r 0 CUR-ARG !   CUR-ROLE @ >r  ROLE-D1 ROLE-D2 or CUR-ROLE !
+     over PTR>INNER T-RES over PTR>INNER T-RES PAIR-STRICT
+     r> CUR-ROLE !  r> CUR-ARG ! 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
      2dup FO-PAIR? IF 2drop ELSE
         2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN THEN ELSE
@@ -3433,13 +3795,14 @@ CHECKER-REG:}SCRATCH
                                        \ (below) reads before any rule about WHICH type it is
    over ISVAR IF
      over PAY over TY-OCC? IF U-FAIL ELSE
-       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
+       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY ROLE-D2 TV-BIND THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE
-       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
+       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY ROLE-D1 TV-BIND THEN THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
    ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+
 
 \ --- logical<->hidden bundle coercion (type-family.f header). A stored
 \ effect keeps a layout value as ONE logical cell only when its width reads an
@@ -3492,22 +3855,24 @@ CHECKER-REG:}SCRATCH
       CALL-FREEZE-XT
    THEN ;
 
+
 \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. Keep
 \ actual and required in their original order for directional input matching.
 \ The spine cursor is no longer slot-aligned past it: drop to no-position.
 \ Implicit callback tails describe a fixed window. During quotation comparison
 \ they may share another tail, but may not absorb a visible input or output.
 \ Executing the quotation still instantiates its tail against the caller stack.
-: QUOT-ROW-BLOCK? ( n n -- bool ) {: v:n row:n :}
+: QUOT-ROW-BLOCK? ( n n -- bool )
+   {: v:n row:n :}
    CUR-QUOT @ 0= IF RES-FALSE EXIT THEN
    v PAY RVK-QUOT? 0= IF RES-FALSE EXIT THEN
-   row ISROW IF row PAY RVK-RAISE RES-FALSE EXIT THEN
-   RES-TRUE ;
+   row ISROW 0= ;
 
 
 : U-ROW ( n n -- )
    R-RES swap R-RES swap 2dup U-CALL-TAIL
    2dup = IF 2drop EXIT THEN
+   2dup HOLD-SECOND? IF swap THEN
    over ISROW IF
       dup ROW-VALUE? 0= IF U-FAIL EXIT THEN
       2dup QUOT-ROW-BLOCK? IF U-FAIL ELSE
@@ -3526,19 +3891,30 @@ CHECKER-REG:}SCRATCH
    2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND-REV EXIT THEN
    U-ROW-DESCEND ;
 
+
+: U-DRAIN ( n -- )   \ process the pairs queued above base
+   {: base:n :}
+   BEGIN USP @ base > UOK @ and WHILE
+     UNPAIR  over ROW-NODE? over ROW-NODE? or IF U-ROW ELSE U-TYPE THEN
+   REPEAT ;
+
+
+: U-DRAIN-INSTALL ( -- ) [: U-DRAIN ;] is U-DRAIN-XT ;
+U-DRAIN-INSTALL
+
+
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    over FORALL-INPUT-ROOT !
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
    0 FORALL-OPEN-N !
    SCOPE-INTRO-ON @ UNIFY-KIND @ UK-INPUT = and CUR-ARG !
    CALL-ARMED @ CUR-CALL !
-   0 UF-ACT !  0 UF-EXP !  0 UF-SET !
+   0 UF-ACT !  0 UF-EXP !  0 UF-SET !  0 TAIL-HIT !
+   UNIFY-KIND @ UK-JOIN = IF 0 ELSE ROLE-D2 THEN CUR-ROLE !   0 HOLD-N !   0 HOLD-I-N !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
-   PAIR
-   BEGIN USP @ 0 > UOK @ and WHILE
-     UNPAIR  over ROW-NODE? over ROW-NODE? or IF U-ROW ELSE U-TYPE THEN
-   REPEAT
+   PAIR  0 U-DRAIN
    UOK @ ;
+
 
 : UNIFY-EXACT ( n n -- bool )
    UK-EXACT UNIFY-KIND !
@@ -3553,12 +3929,13 @@ CHECKER-REG:}SCRATCH
    UK-COERCE UNIFY-KIND !
    UNIFY
    UK-EXACT UNIFY-KIND ! ;
-variable FV
-0 FV !
 
-: FRESH ( -- n )
-   FV @ 1 + TV-ENSURE            \ grow the pool so FV is a valid index
-   FV @ dup 1 + FV ! ;
+
+: UNIFY-JOIN ( n n -- bool )
+   UK-JOIN UNIFY-KIND !
+   UNIFY
+   UK-EXACT UNIFY-KIND ! ;
+
 
 \ Every var id comes from FRESH, so only cells 0..FV-1 can be bound since
 \ the previous reset. Allocation initializes the cold pool; TRIAL-REST and a
@@ -3569,8 +3946,11 @@ variable FV
      dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
      dup cells NSCOPE + 0 swap !
+     dup cells TVP + 0 swap !
      1 +
    REPEAT drop ;
+
+
 : TV-RESET ( -- ) 0 TV-CLEAR-FROM ;
 \ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
@@ -3845,6 +4225,7 @@ CHECKER-REG:}SCRATCH
 38 constant MD-EFFECT-DEPTH  \ an effect deeper than EFFECT-DEPTH-MAX levels (CHECK-DEPTH-FITS)
 39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
+41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -3892,6 +4273,14 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
    THEN
    CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
 
+\ The escape refusal's rows render the instant it is named (render.f
+\ TAIL-CAPTURE): later tokens go on binding the rows it compared, so a render
+\ at the end would show their bindings, not the refusal. xref.f retires the seam.
+defer TAIL-CAPTURE-XT ( -- )
+: TAIL-CAPTURE-DEFAULT ( -- ) [: ;] is TAIL-CAPTURE-XT ;
+TAIL-CAPTURE-DEFAULT
+
+
 \ The cell disciplines refuse INSIDE the unify, so both captures below ask the
 \ same question the instant their unify answers false and while the pin is still
 \ open. The base-address refusal names itself exactly as the raw one does
@@ -3903,7 +4292,11 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
-   BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN ; \ each with the base it was raised on
+   BASE-PTR-HIT @ TVK-DBASE = IF MD-DBASE-PTR MDIAG! THEN   \ each with the base it was raised on
+   TAIL-HIT @ IF   \ captured only when this refusal latches the reason
+      MDIAG @  MD-TAIL-ESCAPE MDIAG!  MDIAG @ <> IF TAIL-CAPTURE-XT THEN
+   THEN ;
+
 
 \ THE FIRST FAILURE, CAPTURED ONCE. Every site that judges a row -- the token
 \ step, the locals annotation bind, and the three boundary unifies -- pins the
@@ -3935,14 +4328,17 @@ variable QRS-EXP   variable QRS-ACT
    1 RSBAD !
    -1 FAILSET ! ;
 
-\ The return row's SUNI family. It sits here rather than beside SUNI because the
-\ recorded call step -- where a called word's DECLARED return INPUT meets the
-\ caller's return row -- is written thousands of lines above SUNI, and a return
-\ row judged without the capture is the hole this dot closed.
-: RSUNI {: s :}
-   RCUR @ s UNIFY
+
+\ The return row's twins of SUNI-JOIN and SUNI-IN. They sit here rather than
+\ beside those because the recorded call step -- where a called word's DECLARED
+\ return INPUT meets the caller's return row (RSUNI-IN) -- is written thousands
+\ of lines above them.
+: RSUNI-JOIN ( n -- )   \ two branches' return rows meet (UK-JOIN)
+   {: s:n :}
+   RCUR @ s UNIFY-JOIN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
    OK @ and OK ! ;
+
 
 : RSUNI-IN {: s:n :}
    RCUR @ s UNIFY-IN
@@ -3976,11 +4372,6 @@ variable QRS-EXP   variable QRS-ACT
 CHECKER-REG:SCRATCH{
 variable UF-NEED   variable UF-HAVE
 CHECKER-REG:}SCRATCH
-
-\ The live-graph twin of EFF-ROW-TAIL: what a row ends in once its fixed cells
-\ are walked off. Two rows are the same stack only if they share this tail.
-: ROW-TAIL ( n -- n )
-   R-RES BEGIN dup TAG S-PUSH = WHILE P>REST R-RES REPEAT ;
 
 : STEP-BORROWS? ( n -- bool ) {: din:n :}   \ would this step reach under the declared inputs?
    SGDBASE @ 0= IF RES-FALSE EXIT THEN            \ no declared signature: no sealed base
@@ -4536,40 +4927,6 @@ variable FINALLY-CLEANUP-OUT
       CALL-FREEZE-XT
    THEN
    -1 CWIN-HIT ! ;
-
-\ A callback's implicit tails quantify its untouched stacks. Instantiate those
-\ tails for each application, keeping explicit named rows and value types shared.
-\ Otherwise execute/catch bind the declaration itself to the caller's prefix.
-\ There are four rows in a quotation, hence at most four distinct terminal tails.
-create QAPP-OLD 4 cells allot
-create QAPP-NEW 4 cells allot
-variable QAPP-N
-
-: QAPP-TAIL ( n -- n ) {: row:n :}
-   row PAY RVK-IMPLICIT? 0= IF row EXIT THEN
-   QAPP-N @ 0 ?do
-      i cells QAPP-OLD + @ row = IF
-         i cells QAPP-NEW + @ unloop EXIT
-      THEN
-   loop
-   FRESH MK-QROW {: fresh:n :}
-   row QAPP-N @ cells QAPP-OLD + !
-   fresh QAPP-N @ cells QAPP-NEW + !
-   1 QAPP-N +!
-   fresh ;
-
-: QAPP-ROW ( n -- n )
-   R-RES dup TAG S-PUSH = IF
-      dup P>TYPE swap dup P>LOST {: lost:n :}
-      P>REST RECURSE MK-PUSH dup lost swap P-LOST!
-   ELSE QAPP-TAIL THEN ;
-
-: QUOT-APPLY-INST ( n -- n ) {: q:n :}
-   0 QAPP-N !
-   q Q>DIN QAPP-ROW q Q>DOUT QAPP-ROW
-   q Q>RIN QAPP-ROW q Q>ROUT QAPP-ROW MK-QUOT {: fresh:n :}
-   fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
-   fresh ;
 
 : QUOT-TAIL-MARK ( n -- )
    BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT
@@ -10520,6 +10877,11 @@ variable LMI
       FRESH MK-ROW dup
    then
    MK-QUOT ;
+
+\ `['] W` types as the literal `[: W ;]`: its terminal tails generalize as a
+\ literal's do (CF-SEMIQ), so a comparison instantiates them alike. A defer's
+\ declared type (IS-TOK) is a declaration and keeps EFF-QUOT's kinds.
+: TICK-QUOT ( ptr u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE ;
 
 $200 constant PE-CAP-INIT
 1 constant PE-ACTIVE
@@ -19865,9 +20227,11 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
    REPEAT drop
    LOC-CAP-HEAD @ idx cells LOCVAL + ! ;
 
-: LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
+
+: LOC-SCALAR-BIND ( n n -- )
+   {: gi:n idx:n :}
    1 LAYOUT-XPORT !
-   idx cells LOCTV + @  gi XG-TERM0@  UNIFY
+   gi XG-TERM0@  idx cells LOCTV + @  UNIFY   \ the captured value meets the local's type
    0 LAYOUT-XPORT !
    dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
       idx cells LOCTV + @ FRESH MK-ROW MK-PUSH
@@ -19875,6 +20239,7 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
       UF-CAPTURE
    THEN
    OK @ and OK ! ;
+
 
 : LOC-GROUP-BIND ( n -- ) {: gi:n :}
    #LOC @ 1 - gi - {: idx:n :}
@@ -20346,10 +20711,12 @@ SCOPE-INTRO-FENCE-INSTALL
    REPEAT drop -1 ;
 
 
-: SUNI {: s :}
-   DCUR @ s UNIFY
+: SUNI-JOIN ( n -- )   \ two branches' data rows meet (UK-JOIN)
+   {: s:n :}
+   DCUR @ s UNIFY-JOIN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DCUR @ UF-CAPTURE THEN
    OK @ and OK ! ;
+
 
 : SUNI-IN {: s:n :}
    DCUR @ s UNIFY-IN
@@ -20524,15 +20891,20 @@ CHECKER-REG:}SCRATCH
    FACTS @ test abs FACT-ADD FACTS !
    DCUR @ ROW-VIEW DCUR !  RCUR @ ROW-VIEW RCUR ! ;
 
-: CF-JOIN-D ( n n -- n ) {: a:n b:n :}
+
+: CF-JOIN-D ( n n -- n )
+   {: a:n b:n :}
    a b ROW-JOIN-PREP {: ca:n cb:n :}
-   ca DCUR !  cb SUNI
+   ca DCUR !  cb SUNI-JOIN
    DCUR @ ;
 
-: CF-JOIN-R ( n n -- n ) {: a:n b:n :}
+
+: CF-JOIN-R ( n n -- n )
+   {: a:n b:n :}
    a b ROW-JOIN-PREP {: ca:n cb:n :}
-   ca RCUR !  cb RSUNI
+   ca RCUR !  cb RSUNI-JOIN
    RCUR @ ;
+
 
 : CF-JOIN-LIVE ( n n n n n n -- )
    {: da:n db:n ra:n rb:n fa:n fb:n :}
@@ -20583,14 +20955,16 @@ CHECKER-REG:}SCRATCH
       idx CF-CASE-HAS!
    THEN ;
 
+
 : CF-OF ( -- )
    7 7 CF-AT? IF
       STEP-N-IN
-      CF@A SUNI
-      CF@RA RSUNI
+      CF@A SUNI-JOIN
+      CF@RA RSUNI-JOIN
       STEP-N-IN
       8 CF@A 0 CF@RA 0 CF-PUSH
    THEN ;
+
 
 : CF-ENDOF ( -- )                    \ an OF frame sits on its CASE (CF-OF)
    8 8 CF-AT? IF
@@ -20700,25 +21074,28 @@ CHECKER-REG:}SCRATCH
 : CF-BEGIN ( -- )
    3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
+
 : CF-UNTIL
    STEP-BOOL-IN
    3 3 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI  CF@RA RSUNI
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF@LA CF-LOOPS=
      CF-LOC-REST  CF-DROP THEN ;
 
+
 : CF-AGAIN ( -- )
    3 3 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
      THEN
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN ;
+
 
 : CF-WHILE
    STEP-BOOL-IN
@@ -20729,15 +21106,17 @@ CHECKER-REG:}SCRATCH
      CF-LOOPS @ CF-TOP CF.LB !
    THEN ;
 
+
 : CF-REPEAT
    4 4 CF-AT? IF
      DEADP? 0= IF
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS=
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN  CF@LA CF-LOOPS=
      THEN
      CF@B DCUR !  CF@RB RCUR !  CF-LOOP-FACTS
      CF@LB CF-LOOPS !  0 DEADP !
      CF-LOC-REST  CF-DROP THEN ;
+
 
 : CF-DO ( -- )
    STEP-NN-IN
@@ -20749,6 +21128,7 @@ CHECKER-REG:}SCRATCH
    CF-DO
    -1 CF-TOP CF.DED ! ;
 
+
 \ A live latch, a zero-trip ?do or LEAVE reaches the DO-point exit row.
 \ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
@@ -20756,12 +21136,13 @@ CHECKER-REG:}SCRATCH
      DEADP @ IF CF@DED 0= DEADP !
      ELSE
         CF@A DCUR @ CF@RA RCUR @ CF-CARRIED=
-        CF@A SUNI  CF@RA RSUNI
+        CF@A SUNI-JOIN  CF@RA RSUNI-JOIN
         #CFC @ 1 - CF-LOOP-BIT CF@LA or CF-LOOPS=
      THEN
      CF@LA CF-LOOPS !
      CF@A DCUR !  CF@RA RCUR !  CF-LOOP-FACTS
      CF-LOC-REST  CF-DROP THEN ;
+
 
 : CF-+LOOP
    DEADP? 0= IF STEP-N-IN THEN
@@ -20794,6 +21175,7 @@ CHECKER-REG:}SCRATCH
       1 +
    REPEAT drop RES-FALSE ;
 
+
 \ CF-LEAVE : early loop exit. The stack at `leave` must match the loop-exit row
 \ (= the DO-point row CF.SA, since the body is stack-neutral); likewise the return
 \ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
@@ -20807,10 +21189,11 @@ CHECKER-REG:}SCRATCH
      doidx CF-LOOP-BIT doidx CF-ROW CF.LA @ or CF-LOOPS=
      doidx CF-ROW CF.SA @ DCUR @
      doidx CF-ROW CF.RA @ RCUR @ CF-CARRIED=
-     doidx CF-ROW CF.SA @ SUNI
-     doidx CF-ROW CF.RA @ RSUNI
+     doidx CF-ROW CF.SA @ SUNI-JOIN
+     doidx CF-ROW CF.RA @ RSUNI-JOIN
      -1 doidx CF-ROW CF.DED !
      -1 DEADP ! THEN ;
+
 
 : CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
@@ -21103,10 +21486,11 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MTCH-W @ MWIN-CELLS!                      \ the bundle a cell-accurate consumer has to pop
    fam lost MATCH-OPEN ;
 
+
 : MATCH-ACCUM ( -- )
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ 0 <> IF
-      FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
+      FAILSET @ {: fs0:n :}                   \ SUNI-JOIN pins the token itself: latch the
       MF-CUR MF.OUT @ DCUR @ MF-CUR MF.ROUT @ RCUR @
       #CFC @ 2 - CF-ROW CF.FB @ FACTS @ CF-JOIN-LIVE
       DCUR @ MF-CUR MF.OUT !
@@ -21121,6 +21505,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
       CF-LOOPS @ #CFC @ 2 - CF-ROW CF.LB !
       -1 MF-CUR MF.HAS !
    THEN ;
+
 
 : MATCH-ENDOF ( -- )   \ dispatcher-guarded: top CFS frame is the kind-10 branch
    MATCH-ACCUM
@@ -22828,14 +23213,18 @@ variable IS-PEND-U                   \ and its length
    SGHASR @ 0= IF 2drop FRESH MK-ROW dup THEN
    MK-QUOT ;
 
+
 : IS-APPLY ( n -- )
    {: q:n :}
    q NO-SCOPE? 0= IF MD-SCOPE-STORE MDIAG! IS-FAIL EXIT THEN
    q QCON-BEGIN
-   FRESH MK-ROW {: rest :}
-   DCUR @ q rest MK-PUSH UNIFY OK @ and OK !
+   FRESH MK-ROW {: rest :}   q rest MK-PUSH {: want:n :}
+   DCUR @ want UNIFY   \ the first failure is captured as SUNI-IN's is
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF want DCUR @ UF-CAPTURE THEN
+   OK @ and OK !
    OK @ IF QCON-OK? 0= IF IS-FAIL THEN THEN
    rest DCUR ! ;
+
 
 \ The named operand IS-NEXT-TOKEN read, after the gap from GAP: a tick or `is`
 \ target at the cursor fires the named kind with the bytes before it.
@@ -22896,7 +23285,7 @@ variable IS-PEND-U                   \ and its length
 \ literal's term does: the has-edge flag from W's control word and the intact
 \ masks the NORET store recorded for it. W IS that body, so its masks need no
 \ recomposition — a mask bit counts from the TOP of W's declared input row, and
-\ that row (instantiated by EFF-QUOT) is this term's own din, which is the
+\ that row (instantiated by TICK-QUOT) is this term's own din, which is the
 \ window RSCATCH measures the mask against (CWIN-DTERMS / ROW-STALE-TOP).
 \ A symbol with no entry, or one whose flags carry no CTL-THROW, answers 0 and
 \ the term stays edge-free — including a recovery record, which a failed body
@@ -22960,6 +23349,7 @@ variable IS-PEND-U                   \ and its length
    PE-N BTICK-PUSH
    RES-TRUE ;
 
+
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push a known or opaque xt
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ the load's tick refuses its target while compiling
@@ -22989,11 +23379,12 @@ variable IS-PEND-U                   \ and its length
          FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
          RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
       THEN
-      FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
+      FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE BTICK-PUSH
    ELSE
       sym 0=  rec 0=  and IF TKF TKFU @ REFUSE-UNDEFINED THEN   \ the load's tick finds no such word
       OPAQUE-XT BTICK-PUSH
    THEN ;
+
 
 \ --- layout stack-op typing (type-family.f header) -------------------
 \ Whole-bundle transport tokens. For an EXPANDED layout (width known, linear
@@ -30413,6 +30804,7 @@ public
       TKF TKFU @ DO-TOK
    THEN ;
 
+
 \ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
 \ does in a body. W is the word the load's own find selects. A name the checker
 \ does not bind joins the lazy intake's queue, as a body's does
@@ -30423,7 +30815,7 @@ public
    TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
    FEP-CLEAR
    hit IF sym CHECKER-FIND-USIG-SYM drop THEN
-   FEP-HIT? IF FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
+   FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
    TOP-PUSH ;
 
 package LOWER-CERT-HOOK

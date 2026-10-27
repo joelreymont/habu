@@ -530,7 +530,8 @@ public
 \ spelling in the declaring package's private wordlist, protected by name).
 \ TFAM-GEN-PUBLIC? is the one predicate generation and recognition read; type
 \ resolution keeps reading TFAM-PUBLIC?. No TFM-EPOCH bump, as the derive
-\ setters: the memo keys on layout facts.
+\ setters: the TFM-STORE memo reads TFAM-OPAQUE?, but the header clause runs
+\ before the field commit that moves the epoch, so no answer predates it.
 : TFAM-OPAQUE! ( n -- ) TF-REC@ TF.OPAQUE -1 swap ! ;
 : TFAM-OPAQUE? ( n -- bool ) TF-REC@ TF.OPAQUE @ 0 <> ;
 : TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
@@ -1851,7 +1852,8 @@ private
 0 constant TFM-NAMED
 1 constant TFM-LINEAR
 2 constant TFM-WIDTH
-6 cells constant TFM-REC                    \ (stamp, answer) per fact
+3 constant TFM-STORE
+8 cells constant TFM-REC                    \ (stamp, answer) per fact
 create TFM-BOOT   TF-CAP-INIT TFM-REC * allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !   REG-PROTECT
 variable TFM-CAP   TF-CAP-INIT TFM-CAP !   REG-PROTECT   \ families TFM-P holds
@@ -2212,6 +2214,87 @@ defer TFAM-WIDTH-SLOT-FWD ( n n -- bool )   \ ( fam slot -- reads? ) forward ref
    RES-FALSE ;
 : TFAM-WIDTH-SLOT-INSTALL ( -- ) [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-FWD ;
 TFAM-WIDTH-SLOT-INSTALL
+
+\ --- which argument slots reach storage (checker.f PARAM-PAIR-SLOT). A slot
+\ reaches storage when its parameter occurs beneath a pointer, or in an
+\ argument a nested application's own storage slot takes (values<a>'s `FIELD
+\ data ptr a`); a field, a variant payload or a quotation's row elsewhere
+\ holds it by value (`FIELD fn a`). An element-type slot (PK-TYPE: a C2
+\ view's, init's, records' or loan-field's, or a user family's parameter that
+\ feeds one) names the type of the storage the family addresses, so it
+\ reaches storage whatever its fields. Only a visible product or an unboxed
+\ sum holds a slot by value: an OPAQUE or boxed family, or one with no layout,
+\ reaches storage in every slot. One mask per family, memoized under
+\ TFM-EPOCH; the parameter kinds and OPAQUE it reads are set before the field
+\ commit that moves the epoch. Only a boxed sum names its own family
+\ (sumtype.f E-TDECL-RECURSIVE), and it answers before any walk, so the walk
+\ ends.
+-1 constant STORE-ALL
+defer TFAM-STORE-MASK-FWD ( n -- n )   \ ( fam -- mask ) forward ref for a nested application
+
+
+: SCH-STORE-MASK ( n bool -- n )   \ slots whose parameter node holds beneath storage
+   {: node:n held:bool :}
+   node SCHEMA-PARAM? IF held IF 1 node SCHEMA-A@ lshift ELSE 0 THEN EXIT THEN
+   node SCHEMA-PTR? IF node SCHEMA-A@ RES-TRUE RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ TFAM-STORE-MASK-FWD {: g:n :}
+      node SCHEMA-B@ {: start:n :}
+      0  node SCHEMA-C@ 0 ?do
+         start i + SCHEMA-ROOT@  held g 1 i lshift and 0 <> or  RECURSE or
+      loop EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      0  SCH-QUOT-ROWS 0 ?do
+         node i SCHEMA-QUOT-ROW@ {: row:n :}
+         row SCHEMA-ROW-OK? IF
+            row SCHEMA-ROW-COUNT@ 0 ?do row i SCHEMA-ROW-ELEM@ held RECURSE or loop
+         THEN
+      loop EXIT
+   THEN
+   0 ;
+
+
+: FIELDS-STORE-MASK ( n -- n )   \ the declared fields' storage slots
+   {: fam:n :}
+   0  fam TFAM-FLD-COUNT@ 0 ?do
+      fam TFAM-FLD-START@ i + PF-PENDING-SCH@ SCHEMA-ROOT@ RES-FALSE SCH-STORE-MASK or
+   loop ;
+
+
+: SUMV-STORE-MASK ( n -- n )
+   {: vid:n :}
+   0  vid SUMV-PAY-N 0 ?do vid i SUMV-PAY-ROOT SCHEMA-ROOT@ RES-FALSE SCH-STORE-MASK or loop ;
+
+
+: TFAM-STORE-WALK ( n -- n )
+   {: fam:n :}
+   fam TFAM-OPAQUE?  fam TFAM-LAYOUT-POLICY@ TL-BOXED =  or IF STORE-ALL EXIT THEN
+   fam TFAM-PRODUCT? IF fam FIELDS-STORE-MASK EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF STORE-ALL EXIT THEN
+   fam SUM-NAMED-PAYLOAD? IF fam FIELDS-STORE-MASK EXIT THEN
+   0  fam TFAM-VAR-COUNT@ 0 ?do fam TFAM-VAR-START@ i + SUMV-STORE-MASK or loop ;
+
+
+: TYPE-SLOT-MASK ( n -- n )   \ the element-type (PK-TYPE) slots
+   {: fam:n :}
+   0  fam TFAM-ARITY@ 0 ?do fam i TFAM-PK@ PK-TYPE = IF 1 i lshift or THEN loop ;
+
+
+: TFAM-STORE-MASK ( n -- n )
+   {: fam:n :}
+   fam TFM-STORE TFM@ IF EXIT THEN drop
+   fam TFAM-STORE-WALK  fam TYPE-SLOT-MASK or  dup fam TFM-STORE TFM! ;
+
+
+: TFAM-STORE-MASK-INSTALL ( -- ) [: TFAM-STORE-MASK ;] is TFAM-STORE-MASK-FWD ;
+TFAM-STORE-MASK-INSTALL
+
+
+: TFAM-STORE-SLOT? ( n n -- bool )   \ argument slot `slot` reaches storage
+   {: fam:n slot:n :}
+   fam TFAM-STORE-MASK  1 slot lshift and 0 <> ;
+
 
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
@@ -5339,7 +5422,9 @@ private
 \ because the SCH-QUOT case of TFC-SCH-TERM calls it before its impl is defined.
 defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 
-: TFC-SCH-TERM ( n -- n ) {: node:n :}    \ payload schema node -> checker type term
+
+: TFC-SCH-TERM ( n -- n )    \ payload schema node -> checker type term
+   {: node:n :}
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ RECURSE MK-PTR EXIT THEN
@@ -5353,8 +5438,8 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
       base fam TFAM-NAME$ fam MK-PARAM EXIT
    THEN
    node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
-      FRESH MK-ROW {: dbase:n :}              \ data base, rin/rout a return base (row-poly)
-      FRESH MK-ROW {: rbase:n :}
+      FRESH MK-QROW {: dbase:n :}             \ data base, rin/rout a return base: the
+      FRESH MK-QROW {: rbase:n :}             \ implicit tails a signature's callable has
       node SCHEMA-QUOT-DIN@  dbase TFC-QUOT-ROW {: din:n :}
       node SCHEMA-QUOT-DOUT@ dbase TFC-QUOT-ROW {: dout:n :}
       node SCHEMA-QUOT-HASR@ 0= 0= IF
@@ -5365,6 +5450,7 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
       din dout rbase rbase MK-QUOT EXIT       \ no return clause: neutral rin = rout
    THEN
    s" tfam: unsupported construct payload schema" 76 die ;
+
 
 : TFC-QUOT-ROW-IMPL ( n n -- n ) {: rownode:n base:n :}
    base 0                                                \ ( row j )
@@ -7166,6 +7252,7 @@ UNIT-FAM-RESET-INSTALL
    THEN
    name nameu src u UNIT-FAMILY-NAME-IN ;
 
+
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
@@ -7198,6 +7285,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-PK@ PK-SCOPE = ;] is TFAM-SCOPE-SLOT-XT
    [: TFAM-PK@ PK-REGION = ;] is TFAM-REGION-SLOT-XT
    [: 2dup TFAM-PK@ PK-TYPE = >r TFAM-WIDTH-SLOT? 0= r> and ;] is TFAM-TYPE-SLOT-XT
+   [: TFAM-STORE-SLOT? ;] is TFAM-STORE-SLOT-XT   \ which argument slots reach storage: a pair of one demands both sides
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
    [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
    [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step

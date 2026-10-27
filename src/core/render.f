@@ -43,18 +43,26 @@ public
 -2901 constant E-DIAG-CAPACITY
 ;package
 
+\ RTAILS is set while TAIL-CAPTURE renders: every quotation then shows its row
+\ tails.
+variable RTAILS   0 RTAILS !
+
+
 \ RSBUF holds one record whole, a diagnostic or a recorded effect. A record
-\ past it is refused by a throw, with rendering back on stdout and outside any
-\ JSON string, so a refused record leaves the renderer as a delivered one does.
-: EMIT-RAW {: c :}
+\ past it is refused by a throw, with rendering back on stdout, outside any JSON
+\ string and without row tails, so a refused record leaves the renderer as a
+\ delivered one does.
+: EMIT-RAW ( n -- )
+   {: c:n :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
      RSN @ RSBUF-CAP 2 - > IF
-        0 RDST !  0 RSN !  0 RJSON !
+        0 RDST !  0 RSN !  0 RJSON !  0 RTAILS !
         RDIAG:E-DIAG-CAPACITY throw
      THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
+
 
 : JHEX ( n -- ) {: d:n :}
    d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
@@ -375,6 +383,31 @@ create RBIND QDEPTH-MAX cells allot
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
+\ A refusal for an escaped callable tail (MD-TAIL-ESCAPE, TAIL-CAPTURE) names
+\ every quotation's row tails, so the callable that keeps its input stack shows
+\ it: `[ C -- C n ]` against `[ A -- B ]`. Rows letter in their own namespace, A
+\ to Z, then '?'. Every other rendering shows cells only.
+26 constant RROW-CAP
+create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
+
+
+: RROW-LETTER ( n -- n )   \ the letter of row tail t
+   {: t:n :}
+   t PAY {: id:n :}
+   0 BEGIN dup RROW-N @ < WHILE
+      dup cells RROW-KEY + @ id = IF 65 + EXIT THEN
+      1 +
+   REPEAT drop
+   RROW-N @ RROW-CAP >= IF 63 EXIT THEN
+   id RROW-N @ cells RROW-KEY + !
+   RROW-N @ 65 +  RROW-N @ 1 + RROW-N ! ;
+
+
+: QTAIL ( n -- )
+   {: row:n :}
+   row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
+
+
 \ is quot node r already being rendered above depth d (a type-graph cycle)?
 : QANCESTOR? {: r:n d:n :}
    0 BEGIN dup d < WHILE
@@ -431,8 +464,9 @@ create RBIND QDEPTH-MAX cells allot
       T-QUOT of
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
-           91 EMIT1 32 EMIT1  r Q>DIN d 1+ 1 RECURSE
-           45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT d 1+ 1 RECURSE
+           RTAILS @ 0 <> {: named:bool :}
+           91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN  r Q>DIN d 1+ 1 RECURSE
+           45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN  r Q>DOUT d 1+ 1 RECURSE
            r QRET? IF
               124 EMIT1 32 EMIT1
               r Q>RIN d 1+ 1 RECURSE  45 EMIT1 45 EMIT1 32 EMIT1
@@ -548,7 +582,7 @@ LOCSHOW-INSTALL
 \ A top-level step's refusal names its file and line instead (DSITE):
 \   habu: PATH:LINE: at 'TOK' ...
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
-\ only appear when the failing unify was captured (STEP/SUNI).
+\ only appear when the failing unify was captured.
 : DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
@@ -605,17 +639,74 @@ variable DSUGE  variable DSUGA
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
 : SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
-: JEFFECT {: din dout rin rout hasr :}
-   JOPEN
+
+
+: JEFFECT-TEXT ( n n n n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
    din DROW  s" -- " DTXT  dout DROW
-   hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
-   JCLOSE ;
+   hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN ;
+
+
+: JEFFECT ( n n n n bool -- ) JOPEN JEFFECT-TEXT JCLOSE ;
+
+
+: INFERRED-EFFECT ( -- )   \ the body's effect so far: the declared inputs to the current rows
+   SGSEEN @ IF SGIN @ ELSE BROW @ THEN
+   DCUR @
+   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
+   RCUR @
+   SGHASR @ JEFFECT-TEXT ;
+
+
+\ The escape refusal (MD-TAIL-ESCAPE) as it stood when checker.f CELL-DIAG!
+\ named it: the inferred effect, then the declared callable and the argument
+\ compared with it, rendered in DIAG-PRINT's letter order into TCAP before
+\ later tokens bind their rows. It names the callable pair, not the stacks
+\ around it, so it reads the same whatever the definition holds beneath.
+\ The held row then names the tail that escaped (checker.f TAIL-SKOLEM) and the
+\ row that would have come to equal or hold it (TAIL-ROW), in the same letters,
+\ so a join whose two callables read alike still says which side escaped.
+\ TCAP-INF, TCAP-EXP, TCAP-ACT and TCAP-HELD are each piece's end offset; MDIAG
+\ gates every read, so a capture an abandoned trial made is never rendered.
+create TCAP RSBUF-CAP allot
+variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
+: TCAP-INF$ ( -- ptr u8 n ) TCAP TCAP-INF @ ;
+: TCAP-EXP$ ( -- ptr u8 n ) TCAP TCAP-INF @ +  TCAP-EXP @ TCAP-INF @ - ;
+: TCAP-ACT$ ( -- ptr u8 n ) TCAP TCAP-EXP @ +  TCAP-ACT @ TCAP-EXP @ - ;
+: TCAP-HELD$ ( -- ptr u8 n ) TCAP TCAP-ACT @ +  TCAP-HELD @ TCAP-ACT @ -  SIG-RTRIM ;
+
+
+: TCAP-ROW ( n -- )   \ the escaped-into row: its tail's letter and cells
+   {: x:n :}
+   x ISVAR IF x REND-TYPE EXIT THEN
+   x QTAIL  x DROW ;
+
+
+: TAIL-CAPTURE ( -- )
+   RDST @ {: dst:n :}  RSN @ {: base:n :}  RQM @ {: qm:n :}
+   1 RDST !  SEEN-RESET 0 NLET !  0 RROW-N !
+   INFERRED-EFFECT  RSN @ base - TCAP-INF !
+   -1 RTAILS !
+   DF-EXP @ REND-TYPE 32 EMIT1  RSN @ base - TCAP-EXP !
+   DF-ACT @ REND-TYPE 32 EMIT1  RSN @ base - TCAP-ACT !
+   TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " DTXT
+   TAIL-ROW @ TCAP-ROW  RSN @ base - TCAP-HELD !
+   0 RTAILS !
+   0 BEGIN dup TCAP-HELD @ < WHILE
+      dup base + RSBUF + c@  over TCAP + c!  1 +
+   REPEAT drop
+   base RSN !  qm RQM !  dst RDST ! ;
+
+
+: TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
+TAIL-CAPTURE-INSTALL
 \ --- match/construct reason surface (docs/forth.md "Structures And Enums"). The checker
 \ latches an MDIAG reason code with the token pin; these words map it to a
 \ stable JSON code, repair class, suggestion, and reason prose. MD-NONEXH also
 \ walks the latched (family, seen-bitset, count) to the missing variant NAMES
 \ (declaration-order tags index the family's contiguous SUMV rows).
 variable MDV-I   variable MDV-F
+
 
 : MDIAG-CODE$ ( -- ptr u8 n )
    MDIAG @ case
@@ -647,6 +738,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-EXEC     of s" E-RAW-CELL-PTR" endof
       MD-STALE-READ   of s" E-STALE-READ" endof
       MD-TOP-UNKNOWN  of s" E-STALE-READ" endof
+      MD-TAIL-ESCAPE  of s" E-MISMATCH" endof
       MD-SCOPE-STORE  of s" E-SCOPED-STORAGE" endof
       MD-SCOPE-KIND   of s" E-SCOPE-TYPE" endof
       MD-C2-COPY      of s" E-C2-COPY" endof
@@ -661,6 +753,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
       s" E-REJECTED" rot
    endcase ;
+
 
 : MDIAG-CLASS$ ( -- ptr u8 n )
    MDIAG @ case
@@ -688,6 +781,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-EXEC     of s" declare_xt_cell" endof
       MD-STALE-READ   of s" keep_value_before_catch" endof
       MD-TOP-UNKNOWN  of s" drop_unknown_cell" endof
+      MD-TAIL-ESCAPE  of s" fix_type" endof
       MD-SCOPE-STORE  of s" keep_scoped_value_on_stack" endof
       MD-SCOPE-KIND   of s" fix_scope_parameter" endof
       MD-C2-COPY      of s" move_exclusive_value" endof
@@ -703,6 +797,7 @@ variable MDV-I   variable MDV-F
       s" fix_match_syntax" rot
    endcase ;
 
+
 \ An effect too deep or an input row too wide to record, a definition's
 \ (MD-EFFECT-DEPTH, MD-INPUT-WIDTH) or a stored signature's (BADSIG-REASON):
 \ the reason each carries.
@@ -711,6 +806,11 @@ variable MDV-I   variable MDV-F
 
 : WIDTH-REASON$ ( -- ptr u8 n )
    s" input row too wide to record" ;
+
+
+: TAIL-SUGGEST$ ( -- ptr u8 n )
+   s" The callee declares this callable with an implicit input row, [ -- S ], so it may run the callable on any stack and expects S back; a callable that keeps or reads the stack it runs on cannot promise that. Declare the callable [ R -- S ] from the word's input row, as in ( R [ R -- S ] -- S ), or pass a callable whose output does not depend on the stack beneath it." ;
+
 
 : MDIAG-SUGGEST$ ( -- ptr u8 n )
    MDIAG @ case
@@ -744,6 +844,7 @@ variable MDV-I   variable MDV-F
       MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
       MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
       MD-TOP-UNKNOWN  of s" The interpret row knows only the cells pushed while it checks; a cell beneath them was left before checking began or by a `0 set-check` window, so its type is unknown. Push the value with checking on, or drop the cell. An unknown cell may still be moved, dropped, or bound to an untyped local." endof
+      MD-TAIL-ESCAPE  of TAIL-SUGGEST$ endof
       MD-SCOPE-STORE  of s" Keep the scoped value on the stack or in a local; ordinary memory has no scope dependency declaration." endof
       MD-SCOPE-KIND   of s" Use a scope parameter only in a declared scope slot; it is neither a value type nor an allocation identity." endof
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
@@ -753,6 +854,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
+
 
 : MDIAG-REASON$ ( -- ptr u8 n )
    MDIAG @ case
@@ -784,6 +886,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-EXEC     of s" raw storage cell: an undeclared cell cannot hold an execution token / a quotation" endof
       MD-STALE-READ   of s" stale cell: this reads a cell `catch` left stale (a throw path of the caught body may have overwritten it)" endof
       MD-TOP-UNKNOWN  of s" unknown cell: this reads a cell beneath the cells the interpret row knows (left before checking began or by a `0 set-check` window)" endof
+      MD-TAIL-ESCAPE  of s" callable row escape: a callable declared with an implicit input row cannot keep or name the stack it runs on" endof
       MD-SCOPE-STORE  of s" scoped storage: ordinary memory cannot retain a scope dependency" endof
       MD-SCOPE-KIND   of s" scope parameter: a scope identity cannot stand in for a value type" endof
       MD-C2-COPY      of s" exclusive value copied" endof
@@ -798,6 +901,7 @@ variable MDV-I   variable MDV-F
       MD-INPUT-WIDTH  of WIDTH-REASON$ endof
       s" bad match: rejected" rot
    endcase ;
+
 
 : MDIAG-MISSING-WALK ( bool -- ) {: json:bool :}   \ unseen variant tails, space-led
    MDIAG-FAM @ TFAM-VAR-START@ {: vstart:n :}
@@ -837,10 +941,13 @@ variable MDV-I   variable MDV-F
    s"  (" DTXT  width JNUM
    s"  cells, at most " DTXT  EFFECT-MIN-IN-MAX JNUM  s" )" DTXT ;
 
+
 : MDIAG-COUNTS ( -- )
+   MDIAG @ MD-TAIL-ESCAPE = IF s" ; held row " DTXT  TCAP-HELD$ DTXT EXIT THEN
    MDIAG @ MD-UNDERFLOW = IF MDIAG-UF-COUNTS EXIT THEN
    MDIAG @ MD-EFFECT-DEPTH = IF MDIAG-DEPTH @ DEPTH-COUNTS EXIT THEN
    MDIAG @ MD-INPUT-WIDTH = IF MDIAG-WIDTH @ WIDTH-COUNTS THEN ;
+
 
 : IMM-CODE$ ( -- ptr u8 n )
    s" E-UNMODELED-IMMEDIATE" ;
@@ -1147,6 +1254,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : ROWS-REFUSAL? ( n -- bool )
    {: k:n :}
    k RF-MISMATCH =  k RF-REASON = or ;
+
+
 : DIAG-PROSE
    REFUSAL@ {: k:n :}
    k RF-IMM = IF
@@ -1190,11 +1299,15 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      s" actual: " DTXT  act DROW EXIT
    THEN
    k ROWS-REFUSAL? 0= IF EXIT THEN
+   MDIAG @ MD-TAIL-ESCAPE = IF
+     s"  expected: " DTXT  TCAP-EXP$ DTXT
+     s" actual: " DTXT  TCAP-ACT$ DTXT EXIT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN
    DF-ACT @ 0 <>  DEXP @ 0= and IF
      s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN ;
+
 
 \ ADT family field: the exact failed type pair captured by U-FAIL.
 \ Expected takes precedence over actual; unrelated matched row cells cannot leak
@@ -1254,6 +1367,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    THEN
    TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
    JLOC-FIELDS ;
+
+
 \ A field that belongs to one refusal goes only on that refusal's packet: the
 \ flags of a failure the refusal outranks leave their fields behind.
 : DIAG-JSON
@@ -1281,11 +1396,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      SGA @ SGU @ SIG-TRIM JSTR  44 EMIT1
    THEN
    s" inferred_effect" JKEY
-   SGSEEN @ IF SGIN @ ELSE BROW @ THEN
-   DCUR @
-   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
-   RCUR @
-   SGHASR @ JEFFECT  44 EMIT1
+   MDIAG @ MD-TAIL-ESCAPE = IF TCAP-INF$ JSTR ELSE JOPEN INFERRED-EFFECT JCLOSE THEN
+   44 EMIT1
    s" return_stack" JKEY
    123 EMIT1
    RS-ROWS swap
@@ -1293,12 +1405,17 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" actual" JKEY    JROW
    125 EMIT1
    k ROWS-REFUSAL? IF
-     DEXP @ 0 <> IF
-       44 EMIT1 s" expected" JKEY DEXP @ JROW
-       44 EMIT1 s" actual"   JKEY DACT @ JROW
-       DIAG-FAMILY THEN
-     DF-ACT @ 0 <>  DEXP @ 0= and IF
-        44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
+     MDIAG @ MD-TAIL-ESCAPE = IF
+       44 EMIT1 s" expected" JKEY TCAP-EXP$ JSTR
+       44 EMIT1 s" actual"   JKEY TCAP-ACT$ JSTR
+     ELSE
+       DEXP @ 0 <> IF
+         44 EMIT1 s" expected" JKEY DEXP @ JROW
+         44 EMIT1 s" actual"   JKEY DACT @ JROW
+         DIAG-FAMILY THEN
+       DF-ACT @ 0 <>  DEXP @ 0= and IF
+          44 EMIT1 s" actual_type" JKEY 34 EMIT1 DF-ACT @ REND-TYPE 34 EMIT1 THEN
+     THEN
    THEN
    k RF-NP = IF                                           \ non-parametric declared effect
      NPBAD-Q1 @ IF 44 EMIT1 s" quantifier" JKEY JOPEN NPBAD-Q1 @ EMIT1 JCLOSE THEN
@@ -1315,12 +1432,16 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
    44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
    125 EMIT1 ;                                            \ }
+
+
 : DIAG-PRINT
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !  0 RROW-N !
    JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH
    JSON-DIAGS @ IF CHECKER-REPORT-MARK THEN ;
+
+
 : DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
 DIAG-PRINT-INSTALL
 

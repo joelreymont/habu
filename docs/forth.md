@@ -2381,6 +2381,20 @@ sections above.
   refused. N can run inside N's evaluated text. The value type remains
   checked at the caller: declaring bool for N's numeric result is
   `E-MISMATCH`.
+- **A callable declared without an input row runs on any stack.** A
+  declared `[ -- S ]`, `[ -- ]` or `[ n -- ]` names no row beneath its
+  inputs, so the callee may run it on whatever stack it holds
+  (`( R [ -- S ] -- S ) >r 5 r> execute`) and expects the declared rows
+  back: `[ -- ]` and `[ n -- ]` give back the stack they ran on, so `[: ;]`
+  is a `[ -- ]`. A callable that names the stack it runs on is not one, nor
+  is one that keeps it where another row is declared back: `[: 1 ;]` or a
+  forwarder's own `[ R -- B ]` passed as `[ -- S ]`, or one stored with `!`,
+  installed with `is` or met at a branch join, is `E-MISMATCH`, reason
+  `callable row escape: …; held row A would escape into B`, naming the
+  declared row and the row it would escape into. A generic
+  word such as `( a a -- a )` does not let one callable narrow another's
+  declared row. Declare `[ R -- S ]` from the word's input row, as in
+  `( R [ R -- S ] -- S )`, when the callable may read the stack beneath it.
 - **Return-stack cells never cross a signature or quotation boundary.** The
   only admitted `|` notation is the same single row variable on both sides;
   cell entries, a bar on only one side, and such entries in quotation types
