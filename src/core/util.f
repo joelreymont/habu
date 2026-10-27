@@ -6,8 +6,6 @@
 \ This identifies the prefix; earlier DATA allocations can still be live.
 variable IMK-NDICT0
 
-variable SEQ
-
 \ The cell of a dictionary record (src/habu/layout.f DREC) that holds the
 \ wordlist it was published into, 0 for the global one. src/habu/xref.f reads
 \ records by it, and src/core/checker.f, which loads before xref.f, maps the
@@ -60,13 +58,8 @@ variable REG-PROT-N   0 REG-PROT-N !
    0 REG-PROT-N ! ;
 
 : CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
-   u v = IF
-     -1 SEQ !
-     0 BEGIN dup u < WHILE
-       dup a + c@  over b + c@  <> IF 0 SEQ ! THEN
-       1 + REPEAT drop
-	   ELSE 0 SEQ ! THEN
-	   SEQ @ 0 <> ;
+   u v <> IF 0 0= 0= EXIT THEN
+   u 0 ?do  a i + c@  b i + c@  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
 \ ASCII case fold + case-insensitive equality (declaration keyword matching).
 : CORE-FOLD-C ( n -- n ) {: c:n :}
@@ -75,13 +68,8 @@ variable REG-PROT-N   0 REG-PROT-N !
    c $20 or ;
 
 : CORE-STR=CI {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) folded equality
-   u v = IF
-     -1 SEQ !
-     0 BEGIN dup u < WHILE
-       dup a + c@ CORE-FOLD-C  over b + c@ CORE-FOLD-C  <> IF 0 SEQ ! THEN
-       1 + REPEAT drop
-	   ELSE 0 SEQ ! THEN
-	   SEQ @ 0 <> ;
+   u v <> IF 0 0= 0= EXIT THEN
+   u 0 ?do  a i + c@ CORE-FOLD-C  b i + c@ CORE-FOLD-C  <> if 0 0= 0= unloop exit then  loop 0 0= ;
 
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
 \ Both guards below are load-bearing and neither may be a die. This is a library
