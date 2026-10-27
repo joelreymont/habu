@@ -166,7 +166,7 @@ EOF
   fi
   cat >> "$1" <<'EOF'
 CHECKER-BOUND:EMPTY-STORE
-s" IMK-NDICT0" s" SEQ" BOOT-XREF-MARKER-INDEX seed-ndict!
+s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX seed-ndict!
 EOF
 }
 

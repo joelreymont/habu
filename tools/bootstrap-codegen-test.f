@@ -1,4 +1,4 @@
-\ bootstrap-codegen-test.f - earliest-marker recovery cases absent from real builds.
+\ bootstrap-codegen-test.f - hide-marker recovery cases absent from real builds.
 \ Run: bin/hb --load tools/bootstrap-codegen-test.f
 
 require src/lib/errors.f
@@ -45,18 +45,11 @@ private
 : IMK-REC ( -- n )
    s" IMK-NDICT0" REC ;
 
-: SEQ-REC ( -- n )
-   s" SEQ" REC ;
-
-\ The production markers exist in the live dictionary with IMK-NDICT0 (util.f's
-\ first record) earlier than SEQ; the hide index must pick the earlier record
-\ in either argument order.
-: EARLIEST-MARKER ( -- )
+\ The production marker, IMK-NDICT0 (util.f's first record), exists in the live
+\ dictionary and the hide index answers its record.
+: MARKER ( -- )
    IMK-REC 0 >= TTRUE
-   SEQ-REC 0 >= TTRUE
-   IMK-REC SEQ-REC < TTRUE
-   s" IMK-NDICT0" s" SEQ" BOOT-XREF-MARKER-INDEX IMK-REC T=
-   s" SEQ" s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T= ;
+   s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T= ;
 
 \ Earliest-hide depends on lookup returning the FIRST record of a name: the
 \ duplicate fixture record published before the MID watermark must win, and the
@@ -76,21 +69,18 @@ private
    s" dup-mark-with-a-long-spelling" REC
    s" DUP-MARK-WITH-A-LONG-SPELLING" REC T= ;
 
-\ One marker missing falls back to the found one; both missing is asserted at
-\ the component level (FIND -> NOT-FOUND, MIN-FOUND keeps NOT-FOUND) because
-\ BOOT-XREF-MARKER-INDEX's both-missing path is a process exit (die 76) by design.
-: MISSING-FALLBACK ( -- )
-   s" IMK-NDICT0" s" BCG-NO-SUCH-MARKER" BOOT-XREF-MARKER-INDEX IMK-REC T=
-   s" BCG-NO-SUCH-MARKER" s" IMK-NDICT0" BOOT-XREF-MARKER-INDEX IMK-REC T=
-   s" BCG-NO-SUCH-MARKER" REC -1 T=
-   -1 -1 BOOT-MIN-FOUND -1 T= ;
+\ A missing marker is asserted at the component level (FIND -> NOT-FOUND)
+\ because BOOT-XREF-MARKER-INDEX's missing path is a process exit (die 76) by
+\ design.
+: MISSING ( -- )
+   s" BCG-NO-SUCH-MARKER" REC -1 T= ;
 
 public
 
 : TEST ( -- )
-   EARLIEST-MARKER
+   MARKER
    FIRST-RECORD
-   MISSING-FALLBACK ;
+   MISSING ;
 
 ;package
 

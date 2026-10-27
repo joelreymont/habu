@@ -49,10 +49,6 @@ public
       1+
    repeat drop
    -1 ;
-: BOOT-MIN-FOUND ( n n -- n ) {: a:n b:n :}
-   a 0 < if b exit then
-   b 0 < if a exit then
-   a b < if a else b then ;
-: BOOT-XREF-MARKER-INDEX ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
+: BOOT-XREF-MARKER-INDEX ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u BOOT-XREF-FIND-INDEX
    dup 0 < if s" bootstrap: hide marker not found" 76 die then ;
