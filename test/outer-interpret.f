@@ -1929,15 +1929,25 @@ variable WANT-RC
    S\" OI-B create \nOI-V create \n5\n" CASE$ GE-EXPECT-OUT ;
 
 \ A constant is the record a later `does>` patches, as a variable is: the
-\ clause acts on the constant, not on the variable before it.
+\ clause acts on the constant, not on the variable before it. An export of the
+\ constant made before the patch shares its body, so a tier 1 mention of the
+\ alias compiled after the patch calls the clause. So does one of OI-KH's
+\ export, which `ndict!` hid while the patch ran and raised back after it. The
+\ clause reads OI-AV, stored after the mentions compile: a mention folded as
+\ the constant's fixed value would print the 1 the clause gave when it was
+\ folded, not 9.
 : CONSTANT-DOES ( -- )
    GE-SRC-RESET
-   s" 1 set-tier variable OI-AV 3 constant OI-KC" GE-SRC-LINE
-   s" : OI-BEHAVE ( -- ) does> ( -- n ) drop 9 ;" GE-SRC-LINE
-   s" OI-BEHAVE OI-KC ." GE-SRC-LINE
+   s" 1 set-tier variable OI-AV variable OI-LO variable OI-HI 3 constant OI-KC" GE-SRC-LINE
+   s" package OI-KP public export OI-KC ;package" GE-SRC-LINE
+   s" : OI-BEHAVE ( -- ) does> ( -- n ) drop OI-AV @ ;" GE-SRC-LINE
+   s" ndict@ OI-LO ! package OI-KH public export OI-KC ;package ndict@ OI-HI !" GE-SRC-LINE
+   s" OI-LO @ ndict! OI-BEHAVE 1 OI-AV ! OI-HI @ ndict!" GE-SRC-LINE
+   s" : OI-U1 ( -- n ) OI-KP:OI-KC ; : OI-UH ( -- n ) OI-KH:OI-KC ;" GE-SRC-LINE
+   s" 9 OI-AV ! OI-KC . OI-U1 . OI-UH ." GE-SRC-LINE
    s" oi-constant-does.f" BOTH
    CASE$ GE-EXPECT-OK
-   S\" 9\n" CASE$ GE-EXPECT-OUT ;
+   S\" 9\n9\n9\n" CASE$ GE-EXPECT-OUT ;
 
 \ A constant refused after its record opened is no record a later `does>`
 \ patches: the clause acts on the variable before it. Each loop is held to

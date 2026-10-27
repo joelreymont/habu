@@ -5776,6 +5776,8 @@ variable LHIDXBUILD
       lower LBL,
          PROF-ABI:LPROFTRIM LABEL@ BL,
          CAPTURE-CUT,
+         12 DATA NDICT-HW-CELL LDR,  12 NDICT CMP,  12 12 NDICT C-HI CSEL,   \ raise the high-water to the count this lowers from
+         12 DATA NDICT-HW-CELL STR,                       \ (layout.f NDICT-HW-CELL)
          11 DATA EM-DEF-OCC:PTR-CELL LDR,  10 9 0 ADDI,
       clear-loop LBL,
          10 NDICT CMP,  C-CS done BCOND,

@@ -272,7 +272,10 @@ $FFFFFFFE constant MAX
 \ word's RET into a branch to a clause body (habu2.f DOESPATCH:EMIT), and from
 \ that instant the record no longer pushes its address and nothing else: it runs
 \ whatever the clause says. That patch clears these bits in the same window it
-\ writes the branch in, so a stamped record is one whose body is still the
+\ writes the branch in, on the patched record and on every newer record with
+\ the same code pointer (an `EXPORT` alias copies DKIND:VAL with the body),
+\ retired ones up to NDICT-HW-CELL included, since a raising `ndict!` can
+\ re-expose them. So a stamped record is one whose body is still the
 \ definer's own.
 \
 \ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
@@ -1731,11 +1734,11 @@ DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's three header cells take $2D98..$2DA8, past
 \ SUSP-PREFLIGHT-CELL ($2D88) and the unclaimed $2D90, swept for a claimant
-\ across src tools test bootstrap; DPHW-CELL takes $2D58, $2D60 stays for the
-\ master band's next cell and $2D78 is the unclaimed cell
-\ test/native-build-host-unknown-code.f relies on. The two shadow cells hold
-\ the native compiler's fixed and does> shadow callbacks; TASK-CHAIN-CELL
-\ heads the x86-64 task chain. No captured image keeps a live stack address.
+\ across src tools test bootstrap; DPHW-CELL takes $2D58, NDICT-HW-CELL $2D60 and
+\ $2D78 is the unclaimed cell test/native-build-host-unknown-code.f relies on.
+\ The two shadow cells hold the native compiler's fixed and does> shadow
+\ callbacks; TASK-CHAIN-CELL heads the x86-64 task chain. No captured image
+\ keeps a live stack address.
 \ TEXT-SIZE-CELL: the running image's text content size in bytes from the base
 \ RBASE-CELL holds - the header's text-size field less IMAGE-TEXT-CONTENT-ADJ.
 \ Boot publishes it (habu2.f EM-TEXT-SIZE, boot-x64.f DATA-INIT,) so that the
@@ -1761,6 +1764,23 @@ $2D50 constant TEXT-SIZE-CELL
 \ bytes above `here` are fresh, and an image's bytes must not depend on what
 \ its writer rolled back.
 $2D58 constant DPHW-CELL
+\ NDICT-HW-CELL: the largest record count NDICT was ever lowered from; the
+\ dictionary high-water is the larger of NDICT and this cell. Records are
+\ written only at the head, so every record above the high-water is one no
+\ count ever reached, and only a lowering of NDICT can leave published records
+\ above the count: habu1.f EM-DEF-OCC:LCOUNT and kernel-x64.f OCC-COUNT, raise
+\ this cell to the count they lower from, which every
+\ lowering (ndict!, seed-ndict!, evaluate's and the REPL's recovery) passes
+\ through. A raising ndict! re-exposes the retired records below it, so the
+\ does> patch clears the kind of every alias up to the larger of NDICT and this
+\ cell, not to NDICT alone (habu2.f DOESPATCH CLEAR-KIND, kernel-x64.f
+\ DOES-KIND-CLEAR,). A count rather than an address, so nothing relocates it;
+\ 0 is below every count, so a fresh process reads as nothing retired. A
+\ snapshot zeroes it (snap-lib.f SND-ZERO-LIVE, through its copy
+\ DICT-HW-CELL): an image keeps only the records below NDICT, so the restored
+\ dictionary holds none above it. It takes $2D60, the free header cell after
+\ DPHW-CELL.
+$2D60 constant NDICT-HW-CELL
 package NCOMP-DISPATCH
 public
 $2D98 constant FIXED-SHADOW-CELL

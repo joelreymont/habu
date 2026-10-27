@@ -2924,6 +2924,7 @@ variable SITE-TRAP-CELL
 : OCC-COUNT, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: lower:label up:label up-done:label
       down:label done:label exhausted:label end:label prof-next:label :}
+   X64CODE:LBL {: hw:label :}
    RAX ASM-SINK ENC-PUSH  RCX ASM-SINK ENC-PUSH  RDX ASM-SINK ENC-PUSH
    R8 ASM-SINK ENC-PUSH  R9 ASM-SINK ENC-PUSH
    R10 ASM-SINK ENC-PUSH  R11 ASM-SINK ENC-PUSH
@@ -2946,6 +2947,10 @@ variable SITE-TRAP-CELL
       done JMP,
    lower X64CODE:LBL,
       CAPTURE-CUT,
+      R9 NDICT-HW-CELL CELL@,                     \ raise the high-water to the count this lowers from
+      R9 NDICT-REG ASM-SINK ENC-CMP-RR  C-AE hw JCC,   \ (layout.f NDICT-HW-CELL)
+      NDICT-REG NDICT-HW-CELL CELL!,
+   hw X64CODE:LBL,
       RCX RAX ASM-SINK ENC-MOV-RR
       R11 ZERO-REG,
       R8 X64LAYOUT:DATA-VA VA>N X64LAYOUT:DATA-SIZE PROF-ABI:PROF-BAND-AT IMM64,
@@ -5258,14 +5263,52 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ displacement already 0 it writes nothing. A signature then registers as
 \ the created word's raw effect, the record's DNAME-WIDE and DNAME-MIN-IN
 \ clear for the checker's tail to set again, and CRSIG clears.
+\ Clear the DKIND of the record LASTC-CELL names and of every record that
+\ shares its body: the twin of habu2.f DOESPATCH CLEAR-KIND. An alias
+\ (alias-record) copies its source's [0] and DKIND:VAL, so the patch falsifies
+\ its stamp too. An alias is newer than its source, so the scan walks the
+\ records above LASTC, in every wordlist, and only when LASTC had a stamp. It
+\ ends at the larger of NDICT and the dictionary high-water (layout.f
+\ NDICT-HW-CELL): a raising ndict! re-exposes an alias a lowering one retired,
+\ stamp and all. Each match declares its record's span before the write.
+\ Inside the patch window; r10 carries the cursor across WINDOW-SPAN, which
+\ keeps it. Clobbers rax rcx rdx rsi rdi r8 r9 r10 r11.
+: DOES-KIND-CLEAR, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label done:label :}
+   X64CODE:LBL {: hw:label :}
+   R8 LASTC-CELL CELL@,
+   RAX R8 REC-FLAGS MOV-LOAD,
+   RSI DKIND:MASK invert IMM64,
+   RSI R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   RCX DKIND:MASK IMM64,  RAX RCX ASM-SINK ENC-AND-RR  C-E done JCC,
+   R10 R8 DREC MEM-OFF ASM-SINK ENC-LEA                 \ the record above LASTC
+   scan X64CODE:LBL,
+   RAX NDICT-HW-CELL CELL@,
+   RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE hw JCC,
+   RAX NDICT-REG ASM-SINK ENC-MOV-RR
+   hw X64CODE:LBL,
+   RAX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RAX DBASE-REG RAX 1 0 MEM-IDX ASM-SINK ENC-LEA      \ the end of every record ever published
+   R10 RAX ASM-SINK ENC-CMP-RR  C-AE done JCC,
+   R8 LASTC-CELL CELL@,  RCX R8 REC-CODE MOV-LOAD,      \ the patched body
+   RDX R10 REC-CODE MOV-LOAD,
+   RDX RCX ASM-SINK ENC-CMP-RR  C-NE next JCC,
+      RDI R10 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
+      RSI DKIND:MASK invert IMM64,
+      RSI R10 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
+   next X64CODE:LBL,
+   R10 DREC >IMM8 ASM-SINK ENC-ADD-RI8
+   scan JMP,
+   done X64CODE:LBL, ;
+
 : DOES-NONE$ ( -- ptr u8 n )
    S\" hb: does> has no created word\n" ;
 
 : DOES-PATCH-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: patch:label write:label declared:label nocr:label noshadow:label :}
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   {: none:label have:label msg:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: none:label have:label msg:label bare:label :}
    RCX POP,  RCX CRSIG-U-CELL CELL!,
    RCX POP,  RCX CRSIG-A-CELL CELL!,
    RSP DP-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
@@ -5296,6 +5339,10 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    RDI R8 ASM-SINK ENC-MOV-RR  RSI DREC IMM32,  WINDOW-SPAN,
    RDI RSP DP-SLOT MOV-LOAD,  RDI CALL-REL32-OFF >IMM8 ASM-SINK ENC-ADD-RI8
    RSI 4 IMM32,  WINDOW-SPAN,
+   RAX RSP DP-ENTRY MOV-LOAD,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   DOES-KIND-CLEAR,
+   bare X64CODE:LBL,
    RCX RSP DP-SLOT MOV-LOAD,
    RDX ZERO-REG,
    RAX RSP DP-ENTRY MOV-LOAD,
@@ -5303,9 +5350,6 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    RDX RAX ASM-SINK ENC-MOV-RR
    RDX RCX ASM-SINK ENC-SUB-RR
    RDX JMP-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
-   R8 LASTC-CELL CELL@,
-   RSI DKIND:MASK invert IMM64,
-   RSI R8 REC-FLAGS MEM-OFF ASM-SINK ENC-AND-MR
    write X64CODE:LBL,
    2 >R32 RCX CALL-REL32-OFF MEM-OFF ASM-SINK ENC-MOV32-MR
    WINDOW-CLOSE,

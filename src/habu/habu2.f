@@ -3637,7 +3637,9 @@ public
 \ means. A reader that folded the stale stamp would compile the address of the
 \ storage in place of a call to the behaviour - the miscompile the stamp exists
 \ to make impossible - so the clear happens in the same protected window as the
-\ patch, on the same record, and never a step apart from it.
+\ patch, on the same record, and never a step apart from it. A record that
+\ shares the body, an `EXPORT` alias, is falsified by the same patch, so the
+\ clear reaches it in the same window (CLEAR-KIND).
 \
 \ A ZERO CLAUSE ENTRY RESTORES THE BARE BODY. `;` elides a clause that compiled no
 \ instruction (DOES-REC:ELIDE-EMPTY) by writing W-DOESDECL over the `adr x10, D`
@@ -3699,6 +3701,38 @@ package DOESPATCH
    9 SP 40 LDR,  9 9 DBASE SUB,
    12 DREC MOVZ,  9 9 12 UDIV,
    9 G-PUSH  C-CALL-X11-SAVED
+   done LBL, ;
+
+\ Clear the kind of the patched record x11 and of every record that shares its
+\ body. The body is a clause now, not a push or cell definer, so no record
+\ whose code pointer [0] is that body may keep a stamp: an `EXPORT` alias
+\ copies its target's code pointer and DKIND:VAL (C-EXPORT), and a stale VAL
+\ folds the alias into the value it pushed when it was folded. An alias is
+\ made of an existing word, so every one is newer than its target, and the
+\ scan walks only the records above x11, in every wordlist. It ends at the
+\ larger of NDICT and the dictionary high-water (layout.f NDICT-HW-CELL), not
+\ at NDICT: an alias a lowered `ndict!` retired keeps its record, and a later
+\ raise re-exposes it with whatever stamp it holds. A record with no stamp has
+\ no alias with one, so it scans nothing. Each match declares its record's
+\ span before the write. Inside the patch window; clobbers x0-x2, x5, x10,
+\ x13-x15 and x30, which the caller saved.
+: CLEAR-KIND ( -- )
+   LBL LBL LBL {: scan:label next:label done:label :}
+   5 DKIND:MASK DNAME-CELL or -1 xor LIT64,
+   13 11 16 LDR,  14 DKIND:MASK LIT64,  14 13 14 AND,
+   13 13 5 AND,  13 11 16 STR,
+   14 done CBZ,
+   13 11 0 LDR,                                          \ x13 = the patched body
+   14 11 DREC ADDI,                                      \ x14 = the record above it
+   15 DATA NDICT-HW-CELL LDR,  15 NDICT CMP,  15 15 NDICT C-HI CSEL,
+   10 DREC MOVZ,  15 15 10 MUL,  15 DBASE 15 ADD,       \ x15 = the end of every record ever published
+   scan LBL,
+   14 15 CMP,  C-CS done BCOND,
+   10 14 0 LDR,  10 13 CMP,  C-NE next BCOND,
+      1 14 0 ADDI,  2 DREC MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
+      10 14 16 LDR,  10 10 5 AND,  10 14 16 STR,
+   next LBL,
+   14 14 DREC ADDI,  scan B,
    done LBL, ;
 
 public
@@ -3770,7 +3804,7 @@ public
    write LBL,
    14 12 0 STRW,
    10 flush CBZ,
-   13 11 16 LDR,  5 DKIND:MASK DNAME-CELL or -1 xor LIT64,  13 13 5 AND,  13 11 16 STR,   \ the body is a clause now, not a push or cell definer
+   CLEAR-KIND
    flush LBL,
    PROT-EMIT:LCLOSE LABEL@ BL,                           \ region -> RX
    12 SP 16 LDR,
@@ -10804,7 +10838,7 @@ public
    14 0 MOVZ,  14 SP 56 STR,                           \ [56] = the kind bits the alias copies; [32] is its ordinal
    14 5 16 LDR,  16 DKIND:MASK LIT64,  14 14 16 AND,
    16 DKIND:VAL LIT64,  14 16 CMP,  C-NE notval BCOND,
-      16 SP 56 STR,                                      \ only immutable constant bodies keep their fixed-value kind
+      16 SP 56 STR,                                      \ a constant's alias keeps its fixed-value kind until a does> patch of the shared body clears both, a retired alias included (DOESPATCH CLEAR-KIND)
    notval LBL,
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,

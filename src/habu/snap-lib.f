@@ -33,12 +33,13 @@ require src/habu/native-host-cells.f
 package SNAP
 
 \ This writer is also loaded by the previous-generation host, whose baked
-\ SRCLOC package predates the owned source cells in layout.f and whose baked
-\ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL; each must equal
-\ layout.f's.
+\ SRCLOC package predates the owned source cells in layout.f, whose baked
+\ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL and whose baked layout
+\ may predate NDICT-HW-CELL; each must equal layout.f's.
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
 $3868 constant ENGINE-ARENA-CELL
+$2D60 constant DICT-HW-CELL
 
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
@@ -317,6 +318,10 @@ PTR-VARIABLE SND-A
    \ above `here` is fresh, so the image starts with nothing released and its
    \ bytes do not depend on what the build rolled back.
    DPHW-CELL SND-ZERO-CELL
+   \ The dictionary high-water counts the records the writer retired. An image
+   \ holds only the records below NDICT (SNC-CANON, WRITE-BYTES), so the restored
+   \ dictionary has none above it to re-expose.
+   DICT-HW-CELL SND-ZERO-CELL
    HB-TARGET-LINUX-X86-64? 0= if CODE-END-CELL SND-ZERO-CELL then
    DEF-OCC:PTR-CELL SND-ZERO-CELL
    NATIVE-OBS-CELLS:HOST-INVALIDATE SND-ZERO-CELL
