@@ -1,9 +1,11 @@
 ---
 title: Save images holding tier 0 code
-status: active
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-10-26T11:28:42.487638+02:00"
+closed-at: "2026-10-27T19:48:51.134779+02:00"
+close-reason: "landed on master f3d192cd (25766f65 Let saved images hold tier 0 code; provenance removal 84efa01f, f3d192cd); full suite reds = master's pre-existing set"
 ---
 
 Retirement prerequisite (Joel 2026-10-26): do only if the experiment ruling retires tier 1. PERSIST requires code-origin 1 (src/habu/snap-lib.f:684-688); no image contains tier 0 code (src/habu/jit.f:7-8).
