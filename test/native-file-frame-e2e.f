@@ -147,6 +147,22 @@ variable FILL-POOL
    s" evreq.f" LOAD+
    s" nlroot.f" LOAD+ ;
 
+\ The loads of the INDIRECT-FIXTURES runs that store, each followed by the
+\ value it computed.
+\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
+: INDIRECT-PROBE ( -- )
+   s" mxp.f" LOAD+
+   S\" s\" mx=\" type MX-K . cr\n" IN+
+   s" xpar.f" LOAD+
+   S\" s\" xk=\" type X-K . cr\n" IN+
+   s" ixp.f" LOAD+
+   S\" s\" ixl=\" type IXL-K . cr\ns\" ixt=\" type IXT-K . cr\n" IN+
+   s" dxpar.f" LOAD+
+   S\" s\" dxk=\" type DX-K . cr\n" IN+
+   s" uhp.f" LOAD+
+   S\" s\" uh=\" type UH-K . cr\ns\" uhi=\" type UHI-K . cr\n" IN+
+   s" pnt.f" LOAD+ ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -269,17 +285,11 @@ variable FILL-POOL
    s" fw-def.f" LOAD+
    s" out.f" LOAD+
    s" reach.f" LOAD+
-   s" mxp.f" LOAD+
-   S\" s\" mx=\" type MX-K . cr\n" IN+
-   s" xpar.f" LOAD+
-   S\" s\" xk=\" type X-K . cr\n" IN+
-   s" ixp.f" LOAD+
-   S\" s\" ixl=\" type IXL-K . cr\ns\" ixt=\" type IXT-K . cr\n" IN+
-   s" dxpar.f" LOAD+
-   S\" s\" dxk=\" type DX-K . cr\n" IN+
+   INDIRECT-PROBE
    s" rk-ind.f" LOAD+
    s" rk-base.f" LOAD+
    s" rk-rev.f" LOAD+
+   s" rk-trust.f" LOAD+
    s" rebind.f" LOAD+
    s" own-trust.f" LOAD+
    s" parse-ok.f" LOAD+
@@ -742,8 +752,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text stores
 \ into its own file's variable: a store into an earlier file's data is an
 \ update, and an object with updates is not installed. The rk-*.f runs
-\ divide, unclassed, before or after an indirect run, and refuse alike;
-\ rebind.f's RB-B compiles `is`, which rebinds a defer and refuses.
+\ divide, unclassed, before or after an indirect run, and refuse alike,
+\ trusted RK-TRUST too: a contract admits an unchecked body, not a
+\ division in it. rebind.f's RB-B compiles `is`, which rebinds a defer and refuses.
+\ uhrun.f's top level runs uhd.f's checked definer UH-DEF, and uhinit.f's
+\ runs its own UH-INIT; both call the trusted, unchecked UH-ONE, whose
+\ contract admits it, so both runs store, and the third build edits UH-ONE's
+\ body. pnt.f runs PTR-VARIABLE and NEWTYPE at top level.
 : INDIRECT-FIXTURES ( -- )
    s" mxone.f" S\" : MX-ONE ( -- n ) 1 ;\n" PUT
    s" mask.f" S\" variable MX\n: MX-RUN ( -- n ) MX @ drop [: MX-ONE ;] execute ;\nMX-RUN constant MX-K\n" PUT
@@ -754,9 +769,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" dxset.f" S\" : XT-CELL: ( -- ) create 0 , does> ( -- ptr [ -- n ] ) ;\n: DXA ( -- n ) 1 ;\nXT-CELL: DXHOOK\n' DXA DXHOOK xt!\n" PUT
    s" dxrun.f" S\" : DXGO ( -- n ) DXHOOK @ execute ;\nDXGO constant DX-K\n" PUT
    s" dxpar.f" S\" require dxset.f\nrequire dxrun.f\n" PUT
+   s" uhd.f" S\" TRUSTED: UH-ONE ( -- n ) 1 ;\n: UH-DEF ( -- ) create UH-ONE , ;\n" PUT
+   s" uhrun.f" S\" UH-DEF UH-X\nUH-X @ constant UH-K\n" PUT
+   s" uhinit.f" S\" variable UHI-V\n: UH-INIT ( -- ) UH-ONE UHI-V ! ;\nUH-INIT\nUHI-V @ constant UHI-K\n" PUT
+   s" uhp.f" S\" require uhd.f\nrequire uhrun.f\nrequire uhinit.f\n" PUT
+   s" pnt.f" S\" PTR-VARIABLE PN-P\nNEWTYPE pnt\n" PUT
    s" rk-ind.f" S\" : RK-IND ( n n -- n ) [: ;] execute / ;\n6 3 RK-IND constant RK-IND-K\n" PUT
    s" rk-base.f" S\" : RK-BASE ( n n -- n ) / ;\n6 3 RK-BASE constant RK-BASE-K\n" PUT
    s" rk-rev.f" S\" : RK-REV ( n n -- n ) / [: ;] execute ;\n6 3 RK-REV constant RK-REV-K\n" PUT
+   s" rk-trust.f" S\" TRUSTED: RK-TRUST ( n n -- n ) / ;\n6 3 RK-TRUST constant RK-TRUST-K\n" PUT
    s" rebind.f" S\" defer RB-D ( -- )\n: RB-B ( -- ) [: ;] is RB-D ;\nRB-B\n" PUT
    s" ixw.f" S\" : IX-TEN ( -- n ) 10 ;\n" PUT
    s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 3 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT
@@ -942,8 +963,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" exec.f" S\" require lib.f\nFRAME-LIB:SEVEN constant EXEC-SEVEN\n' FRAME-LIB:TWICE drop\nusing FRAME-LIB\nSEVEN constant EXEC-BARE-SEVEN\n;using\n" PUT
    \ peek.f's TRUSTED: PEEK reads its own data; run.f's top level runs it,
    \ safe.f's runs the checked SAFE-PEEK that calls it, and vread.f's reads
-   \ the data word STORE itself. A run that reaches the unchecked PEEK refuses
-   \ its file.
+   \ the data word STORE itself. PEEK's contract admits a run of it, at top
+   \ level or reached from SAFE-PEEK.
    s" peek.f" S\" package FRAME-PEEK\npublic\nvariable STORE\nTRUSTED: PEEK ( -- n ) STORE @ ;\n: SAFE-PEEK ( -- n ) PEEK ;\n;package\n" PUT
    s" run.f" S\" require peek.f\nFRAME-PEEK:PEEK constant RUN-SEEN\n" PUT
    s" safe.f" S\" require peek.f\nFRAME-PEEK:SAFE-PEEK constant SAFE-SEEN\n" PUT
@@ -969,7 +990,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" fw-def.f" INPUT INPUT-U @ PUT
    s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
    INDIRECT-FIXTURES
-   \ own-trust.f runs its own unchecked OT at top level and is refused by name.
+   \ own-trust.f runs its own unchecked OT at top level, which OT's contract
+   \ admits.
    s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
    \ A seed word run at top level is admitted only by the trace its run leaves.
    \ parse-ok.f's parse-imm adds a unit fact, cells is a stack primitive and
@@ -1170,12 +1192,14 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ recorded only the leg holding its record would leave 6.
    s" exec.f only runs: SEVEN's value, TWICE's run and every leg of each run's resolution" T-LABEL
    s" exec.f" FRAME$ s"  ordered=0 binding=0 value=1 resolution=10 executed=1 data=0" ENDS-WITH? TTRUE
-   s" run.f's run of the trusted PEEK refuses it" T-LABEL
-   s" run.f" FRAME$ s"  reason=run-host-unchecked word=PEEK" ENDS-WITH? TTRUE
-   s" run.f" NO-OBJECT
-   s" safe.f's run of the checked SAFE-PEEK reaches PEEK and refuses it" T-LABEL
-   s" safe.f" FRAME$ s"  reason=run-host-unchecked word=PEEK" ENDS-WITH? TTRUE
-   s" safe.f" NO-OBJECT
+   s" run.f's top-level run of the trusted PEEK stores" T-LABEL
+   s" run.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" run.f" FRAME$ s"  executed=" FIELD$ s" 1" T$=
+   s" run.f" KEY$ STORED
+   s" safe.f's run of the checked SAFE-PEEK reaches the unchecked PEEK and stores" T-LABEL
+   s" safe.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" safe.f" FRAME$ s"  executed=" FIELD$ s" 1" T$=
+   s" safe.f" KEY$ STORED
    s" vread.f reads the data word STORE at top level" T-LABEL
    s" vread.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" vread.f" FRAME$ s"  executed=" FIELD$ s" 0" T$=
@@ -1478,6 +1502,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" dxrun.f" KEY$ STORED
    s" dxrun.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    OUT$ S\" dxk=1\n" CONTAINS? TTRUE
+   s" a run of a checked definer that calls an unchecked word stores" T-LABEL
+   s" uhrun.f" KEY$ STORED
+   s" uhrun.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" uhrun.f" FRAME$ s"  executed=" FIELD$ s" 1" T$=
+   OUT$ S\" uh=1\n" CONTAINS? TTRUE
+   s" an own word's run that calls an earlier file's trusted word stores" T-LABEL
+   s" uhinit.f" KEY$ STORED
+   s" uhinit.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   OUT$ S\" uhi=1\n" CONTAINS? TTRUE
    s" runs whose bodies evaluate a closed literal store" T-LABEL
    s" ixl.f" KEY$ STORED
    s" ixl.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
@@ -1485,13 +1518,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ixt.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    OUT$ S\" ixl=3\n" CONTAINS? TTRUE
    OUT$ S\" ixt=10\n" CONTAINS? TTRUE
-   s" a run of the file's own unchecked word refuses it by name" T-LABEL
-   s" own-trust.f" s"  reason=" LINE$ s" own-trust.f reason=run-host-unchecked word=OT" T$=
-   s" own-trust.f" NO-OBJECT
+   s" a top-level run of the file's own trusted word stores" T-LABEL
+   s" own-trust.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" own-trust.f" KEY$ STORED
    s" a division refuses its file before or after an indirect run" T-LABEL
    s" rk-ind.f" s"  reason=" LINE$ s" rk-ind.f reason=run-host-unknown word=RK-IND" T$=
    s" rk-base.f" s"  reason=" LINE$ s" rk-base.f reason=run-host-unknown word=RK-BASE" T$=
    s" rk-rev.f" s"  reason=" LINE$ s" rk-rev.f reason=run-host-unknown word=RK-REV" T$=
+   s" a trusted word's contract does not admit its division" T-LABEL
+   s" rk-trust.f" s"  reason=" LINE$ s" rk-trust.f reason=run-host-unknown word=RK-TRUST" T$=
    s" rk-ind.f" NO-OBJECT
    s" a compiled is refuses its file as a rebinding" T-LABEL
    s" rebind.f" s"  reason=" LINE$ s" rebind.f reason=run-host-rebind word=RB-B" T$=
@@ -1897,20 +1932,24 @@ public
 : INDIRECT-WARM ( -- )
    s" a warm build installs the objects of files whose runs execute an xt or a closed text" T-LABEL
    s" mask.f" REUSED s" xrun.f" REUSED s" dxrun.f" REUSED
-   s" ixl.f" REUSED s" ixt.f" REUSED
+   s" ixl.f" REUSED s" ixt.f" REUSED s" uhrun.f" REUSED s" uhinit.f" REUSED
+   s" run.f" REUSED s" pnt.f" REUSED
    OUT$ S\" mx=1\n" CONTAINS? TTRUE
+   OUT$ S\" uh=1\n" CONTAINS? TTRUE
+   OUT$ S\" uhi=1\n" CONTAINS? TTRUE
    OUT$ S\" xk=1\n" CONTAINS? TTRUE
    OUT$ S\" dxk=1\n" CONTAINS? TTRUE
    OUT$ S\" ixl=3\n" CONTAINS? TTRUE
    OUT$ S\" ixt=10\n" CONTAINS? TTRUE ;
 
-\ The third build's edits: MX-ONE's, XA's and DXA's bodies, IX-TEN's body and
-\ ixl.f's literal.
+\ The third build's edits: MX-ONE's, XA's, DXA's and UH-ONE's bodies,
+\ IX-TEN's body and ixl.f's literal.
 : INDIRECT-EDITS ( -- )
    s" mxone.f" S\" : MX-ONE ( -- n ) 2 ;\n" PUT
    s" xset.f" S\" : XA ( -- n ) 5 ;\nTYPED-VARIABLE XHOOK [ -- n ]\n' XA XHOOK xt!\n" PUT
    s" dxset.f" S\" : XT-CELL: ( -- ) create 0 , does> ( -- ptr [ -- n ] ) ;\n: DXA ( -- n ) 5 ;\nXT-CELL: DXHOOK\n' DXA DXHOOK xt!\n" PUT
    s" ixw.f" S\" : IX-TEN ( -- n ) 20 ;\n" PUT
+   s" uhd.f" S\" TRUSTED: UH-ONE ( -- n ) 2 ;\n: UH-DEF ( -- ) create UH-ONE , ;\n" PUT
    s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 4 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT ;
 
 \ Each edit misses the file whose run reached it, and the rerun's values are
@@ -1923,6 +1962,10 @@ public
    OUT$ S\" xk=5\n" CONTAINS? TTRUE
    ERR$ s" /dxrun.f records=" CONTAINS? TFALSE
    OUT$ S\" dxk=5\n" CONTAINS? TTRUE
+   ERR$ s" /uhrun.f records=" CONTAINS? TFALSE
+   OUT$ S\" uh=2\n" CONTAINS? TTRUE
+   ERR$ s" /uhinit.f records=" CONTAINS? TFALSE
+   OUT$ S\" uhi=2\n" CONTAINS? TTRUE
    s" an edit of a closed literal or of a word its text runs compiles the file again" T-LABEL
    ERR$ s" /ixl.f records=" CONTAINS? TFALSE
    ERR$ s" /ixt.f records=" CONTAINS? TFALSE

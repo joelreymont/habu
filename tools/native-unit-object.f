@@ -358,9 +358,9 @@ variable SLOTW-N
 \ The storage owners' spans while the closing file encodes, base and end.
 DYNAMIC-BUFFER OWNER-SPANS n
 variable OWNER-N
-\ Whether the closing file ran a top-level action with checking off
-\ (NUNIT-DEP:FILE-UNCHECKED?): only then can its undeclared bytes hold an
-\ address no checked store made.
+\ Whether the closing file ran a top-level action with checking off or an
+\ unchecked body (NUNIT-DEP:FILE-UNCHECKED?): only then can its undeclared
+\ bytes hold an address no checked store made.
 variable UNCHECKED
 \ Each of the closing file's sites' owning record and that record's DATA
 \ start, two cells per site.

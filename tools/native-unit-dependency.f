@@ -140,6 +140,9 @@ variable USER-BYTES-N
 0 CWORK-VARIABLE WOK bool
 0 CWORK-VARIABLE WTRANS bool
 0 CWORK-VARIABLE WROOT n
+\ Whether a walk since CAPTURE-RUN began admitted an unchecked body by its
+\ contract (MEMBER-ADMITTED?).
+0 CWORK-VARIABLE WUNCHECKED bool
 0 CWORK-VARIABLE RMARK-N n
 0 CWORK-VARIABLE REPOCH n
 0 CWORK-VARIABLE RQ-N n
@@ -917,16 +920,29 @@ private
    k 2 = k 3 = or if exit then
    k 1 = if s" run-reaches-kernel-data" else s" run-reaches-kernel-word" then ord FAIL ;
 
+\ Whether the walk admits a definition ord with host reason reason, root or
+\ member alike: a reason NFILE-REF:REASON-ADMITTED? admits, or an unchecked
+\ body with a checker contract. The contract is the interface the run
+\ called, not its tier: the definition's result digest enters the closure,
+\ so an edit to its body misses, its effects are the segment's, and the walk
+\ traces its data reads. An unchecked word with no contract refuses.
+: MEMBER-ADMITTED? ( n n -- bool )
+   {: reason:n ord:n :}
+   reason NFILE-REF:REASON-ADMITTED? if true exit then
+   reason NHOST:UNCHECKED <> if false exit then
+   ord CONTRACT$ nip nip ;
+
 \ A record the file made is not in a closure: no row could be checked at the
 \ file's entry. A capturing walk queues it, and a walk through it (WTRANS)
 \ queues every record it reaches but a seed record, which it classes as a
 \ walk from the file's entry does (SEED-REACH). A defer made after the seed
 \ is its cell, since an earlier file may rebind it; a definition with a
-\ result is a member when its host reason is admitted
-\ (NFILE-REF:REASON-ADMITTED?) and refuses otherwise; a constant is its VALUE row; a does> instance's
-\ clause has no result yet; anything else must be a data record. A slot word
-\ TASK:+USER made is a member without its edges: its digest pins the slot
-\ offset it bakes, and its slot's bytes are its file's (USER-ROWS+).
+\ result is a member when its host reason or contract admits it
+\ (MEMBER-ADMITTED?) and refuses otherwise; a constant is its VALUE row; a
+\ does> instance's clause has no result yet; anything else must be a data
+\ record. A slot word TASK:+USER made is a member without its edges: its
+\ digest pins the slot offset it bakes, and its slot's bytes are its file's
+\ (USER-ROWS+).
 : REACH ( n -- )
    {: ord:n :}
    WTRANS @ if
@@ -943,7 +959,8 @@ private
    digest drop
    known if
       ord NFILE-REF:RESULT-REASON drop {: reason:n :}
-      reason NFILE-REF:REASON-ADMITTED? 0= if reason REASON-WHY$ ord FAIL exit then
+      reason ord MEMBER-ADMITTED? 0= if reason REASON-WHY$ ord FAIL exit then
+      reason NHOST:UNCHECKED = if true WUNCHECKED ! then
       ord MEMBER+
       ord USER? 0= if ord EDGES then exit
    then
@@ -954,6 +971,8 @@ private
    then
    ord REACH-DATA ;
 
+\ A walk from root over every record it reaches, each judged by REACH alone:
+\ the root is admitted as a member is (MEMBER-ADMITTED?).
 : WALK ( n bool -- )
    {: root:n capture:bool :}
    capture WALK-BEGIN
@@ -1269,8 +1288,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 public
 
-\ Whether a top-level action of the innermost file ran with checking off, so
-\ its undeclared bytes may hold an address no checked store made.
+\ Whether a top-level action of the innermost file ran with checking off, or
+\ a run it judged reached an unchecked body its contract admitted
+\ (CAPTURE-RUN), so its undeclared bytes may hold an address no checked store
+\ made.
 : FILE-UNCHECKED? ( -- bool ) F-UNCHECKED FFIELD @ 0<> ;
 
 private
@@ -1584,7 +1605,9 @@ DEFAULT-OUT
 \ engine helper is admitted and a seed code root records nothing here (its
 \ RESOLUTION row is its only fact; its trace judges it). A seed record
 \ reaches here only as the run's root: a walk through an own record classes
-\ the seed records it reaches.
+\ the seed records it reaches. A definition the walk meets, root or member,
+\ is admitted by its contract (MEMBER-ADMITTED?); an unchecked one with no
+\ contract, or one any other unadmitted reason marks, orders the frame.
 : CAPTURE-ONE ( n -- )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
@@ -1612,7 +1635,9 @@ DEFAULT-OUT
 \ did not make it, and walked through when it did. The first walk that
 \ cannot account for a record decides: under an own root it refuses the file
 \ by the failing record's name, under an earlier file's root it orders the
-\ frame.
+\ frame. A run that reached an unchecked body marks the file unchecked
+\ (FILE-UNCHECKED?): that body's stores are not checked, so the file's DATA
+\ is judged cell by cell.
 : CAPTURE-RUN ( n -- )
    {: ord:n :}
    ndict@ {: n:n :}
@@ -1620,7 +1645,7 @@ DEFAULT-OUT
    n RMARK-N @ ?do 0 i RMARK ! loop
    n RMARK-N @ max RMARK-N !
    1 REPOCH +!
-   0 RQ-N ! true WOK !
+   0 RQ-N ! true WOK ! false WUNCHECKED !
    ord QUEUE
    0 begin dup RQ-N @ < while
       dup RQUEUE @ {: r:n :}
@@ -1634,7 +1659,8 @@ DEFAULT-OUT
          exit
       then
       1+
-   repeat drop ;
+   repeat drop
+   WUNCHECKED @ if 1 F-UNCHECKED FFIELD ! then ;
 
 \ The frame's SCOPE row names what no later build can verify, so refuse: a
 \ package an earlier session made, whose declaration has no key, or a

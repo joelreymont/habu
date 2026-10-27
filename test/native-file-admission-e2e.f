@@ -59,11 +59,12 @@ public
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
    \ The failed cold build still stored app.f's object, so the warm build reuses
-   \ it and refuses the raw pointer against reused code.
+   \ it and refuses the raw pointer against reused code. unsafe.f stored none:
+   \ its run reached the unchecked ADMIT-RAW, so its DATA was judged cell by
+   \ cell, and a stored copy would carry the cold build's code address.
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
-   OUT$ s" files reused " CONTAINS? TTRUE
-   OUT$ s" files reused 0" CONTAINS? TFALSE
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
    s" unaligned pointer declines" T-LABEL
    COLD-UNALIGNED
