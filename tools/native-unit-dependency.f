@@ -742,9 +742,9 @@ private
 \ primitive-registry.f HELPER-REGISTER): a routine a primitive's lowering
 \ branches to, with no row and no effect of its own. The compiler emits
 \ two (src/compiler/native/select.f): (PROT-SPAN), the guard of a store
-\ whose body reason is MEMORY, and (DIV-ZERO), the trap of a division
-\ whose body reason is UNKNOWN. The op's host reason classes the body, so
-\ the edge to its helper is admitted. NDICT:HELPER-TARGET answers only a
+\ whose body reason is MEMORY, and (DIV-ZERO), the trap of a division in a
+\ scalar body. The op's host reason classes the body, so the edge to its
+\ helper is admitted. NDICT:HELPER-TARGET answers only a
 \ record of the sealed wordlist inside the engine's text, by exact name;
 \ the entry must be this record's own.
 : ENGINE-HELPER? ( n -- bool )

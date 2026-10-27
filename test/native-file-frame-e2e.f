@@ -292,6 +292,10 @@ variable FILL-POOL
    s" rk-rev.f" LOAD+
    s" rk-trust.f" LOAD+
    s" rk-is.f" LOAD+
+   s" rk-div.f" LOAD+
+   s" rk-mod.f" LOAD+
+   s" db-a.f" LOAD+
+   s" db-b.f" LOAD+
    s" rebind.f" LOAD+
    s" own-trust.f" LOAD+
    s" parse-ok.f" LOAD+
@@ -759,9 +763,14 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text stores
 \ into its own file's variable: a store into an earlier file's data
 \ refuses the file. The rk-*.f runs
-\ divide, unclassed, before or after an indirect run, and refuse alike,
-\ trusted RK-TRUST too: a contract admits an unchecked body, not a
-\ division in it, and RK-IS's division refuses after its `is`.
+\ push a real literal, unclassed, before or after an indirect run, and refuse
+\ alike, trusted RK-TRUST too: a contract admits an unchecked body, not a
+\ real literal in it, and RK-IS's real literal refuses after its `is`.
+\ rk-div.f's run divides and rk-mod.f's takes a remainder: scalar ops whose
+\ zero divisor traps with an outcome the operands decide, so both store.
+\ db-a.f's run writes a reserved engine header cell ($3900) through
+\ data-base, and db-b.f's run reads that cell, which a stored object would
+\ answer stale, and refuses.
 \ rebind.f's RB-B compiles `is`, which rebinds a defer still holding the
 \ unset sentinel: the rebind is a slot row and the file stores.
 \ uhrun.f's top level runs uhd.f's checked definer UH-DEF, and uhinit.f's
@@ -783,11 +792,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" uhinit.f" S\" variable UHI-V\n: UH-INIT ( -- ) UH-ONE UHI-V ! ;\nUH-INIT\nUHI-V @ constant UHI-K\n" PUT
    s" uhp.f" S\" require uhd.f\nrequire uhrun.f\nrequire uhinit.f\n" PUT
    s" pnt.f" S\" PTR-VARIABLE PN-P\nNEWTYPE pnt\n" PUT
-   s" rk-ind.f" S\" : RK-IND ( n n -- n ) [: ;] execute / ;\n6 3 RK-IND constant RK-IND-K\n" PUT
-   s" rk-base.f" S\" : RK-BASE ( n n -- n ) / ;\n6 3 RK-BASE constant RK-BASE-K\n" PUT
-   s" rk-rev.f" S\" : RK-REV ( n n -- n ) / [: ;] execute ;\n6 3 RK-REV constant RK-REV-K\n" PUT
-   s" rk-trust.f" S\" TRUSTED: RK-TRUST ( n n -- n ) / ;\n6 3 RK-TRUST constant RK-TRUST-K\n" PUT
-   s" rk-is.f" S\" defer RK-D ( -- )\n: RK-IS ( n n -- n ) [: ;] is RK-D / ;\n6 3 RK-IS constant RK-IS-K\n" PUT
+   s" rk-ind.f" S\" : RK-IND ( n n -- n ) [: ;] execute 1.5 fdrop + ;\n6 3 RK-IND constant RK-IND-K\n" PUT
+   s" rk-base.f" S\" : RK-BASE ( n n -- n ) 1.5 fdrop + ;\n6 3 RK-BASE constant RK-BASE-K\n" PUT
+   s" rk-rev.f" S\" : RK-REV ( n n -- n ) 1.5 fdrop + [: ;] execute ;\n6 3 RK-REV constant RK-REV-K\n" PUT
+   s" rk-trust.f" S\" TRUSTED: RK-TRUST ( n n -- n ) 1.5 fdrop + ;\n6 3 RK-TRUST constant RK-TRUST-K\n" PUT
+   s" rk-is.f" S\" defer RK-D ( -- )\n: RK-IS ( n n -- n ) [: ;] is RK-D 1.5 fdrop + ;\n6 3 RK-IS constant RK-IS-K\n" PUT
+   s" rk-div.f" S\" : RK-DIV ( n n -- n ) / ;\n6 3 RK-DIV constant RK-DIV-K\n" PUT
+   s" rk-mod.f" S\" : RK-MOD ( n n -- n ) mod ;\n7 3 RK-MOD constant RK-MOD-K\n" PUT
+   s" db-a.f" S\" $3900 constant A-OFF\nTRUSTED: A-PUT ( n -- ) data-base A-OFF + ! ;\n7 A-PUT\n" PUT
+   s" db-b.f" S\" : B-GET ( -- n ) data-base $3900 + @ ;\nB-GET constant B-K\n" PUT
    s" rebind.f" S\" defer RB-D ( -- )\n: RB-B ( -- ) [: ;] is RB-D ;\nRB-B\n" PUT
    s" ixw.f" S\" : IX-TEN ( -- n ) 10 ;\n" PUT
    s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 3 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT
@@ -1537,15 +1550,24 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a top-level run of the file's own trusted word stores" T-LABEL
    s" own-trust.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" own-trust.f" KEY$ STORED
-   s" a division refuses its file before or after an indirect run" T-LABEL
+   s" a real literal refuses its file before or after an indirect run" T-LABEL
    s" rk-ind.f" s"  reason=" LINE$ s" rk-ind.f reason=run-host-unknown word=RK-IND" T$=
    s" rk-base.f" s"  reason=" LINE$ s" rk-base.f reason=run-host-unknown word=RK-BASE" T$=
    s" rk-rev.f" s"  reason=" LINE$ s" rk-rev.f reason=run-host-unknown word=RK-REV" T$=
-   s" a trusted word's contract does not admit its division" T-LABEL
+   s" a trusted word's contract does not admit its real literal" T-LABEL
    s" rk-trust.f" s"  reason=" LINE$ s" rk-trust.f reason=run-host-unknown word=RK-TRUST" T$=
-   s" a compiled is does not admit a later division" T-LABEL
+   s" a compiled is does not admit a later real literal" T-LABEL
    s" rk-is.f" s"  reason=" LINE$ s" rk-is.f reason=run-host-unknown word=RK-IS" T$=
    s" rk-ind.f" NO-OBJECT
+   s" a top-level run of a division stores" T-LABEL
+   s" rk-div.f" KEY$ STORED
+   s" rk-div.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a top-level run of a remainder stores" T-LABEL
+   s" rk-mod.f" KEY$ STORED
+   s" rk-mod.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a run reading a data-base cell an earlier file's run wrote refuses" T-LABEL
+   s" db-b.f" s"  reason=" LINE$ s" db-b.f reason=run-reaches-kernel-word word=data-base" T$=
+   s" db-b.f" NO-OBJECT
    s" a compiled is on an unset defer stores its file" T-LABEL
    s" rebind.f" KEY$ STORED
    s" rebind.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=

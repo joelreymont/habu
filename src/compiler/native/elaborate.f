@@ -3857,11 +3857,14 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 \ This decision is made while a source token still has its bound definer and
 \ semantic model. Stores, pointer expansion and indirect calls may disappear
 \ behind ordinary arithmetic or a guarded direct call after this point.
+\ A zero divisor traps through (DIV-ZERO) with E-DIV-ZERO, an outcome the
+\ operands alone decide, so a run that catches it replays the same way.
 : HOST-SCALAR-OP? ( HIR:opcode -- bool )
    {: k:HIR:opcode :}
    k HIR-OPCODE:ADD HIR-OPCODE:EQ
    k HIR-OPCODE:SUB HIR-OPCODE:EQ or
    k HIR-OPCODE:MUL HIR-OPCODE:EQ or
+   k HIR-OPCODE:DIV HIR-OPCODE:EQ or
    k HIR-OPCODE:LT HIR-OPCODE:EQ or
    k HIR-OPCODE:LE HIR-OPCODE:EQ or
    k HIR-OPCODE:GT HIR-OPCODE:EQ or
@@ -3904,7 +3907,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    r ix WSYM HIR-WORD:EXPAND@
    MATCH HIR:expand
       cell-index OF NHOST:MEMORY ix HOST-REFUSE ENDOF
-      modulo     OF NHOST:UNKNOWN ix HOST-REFUSE ENDOF
+      modulo     OF ENDOF
       maximum    OF ENDOF
       minimum    OF ENDOF
    ;MATCH ;

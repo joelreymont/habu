@@ -571,7 +571,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 \ test/compiler/base-pointer-arith-refusals.f pins its reason over base-derived
 \ cells).
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
-EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM;
+EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
 EPRIM: kernel-producer$ PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT EPRIM;

@@ -27,7 +27,7 @@ public
 \ mention: a constant value compiled as an immediate, or a data address the
 \ address sites carry. INDIRECT: a run of an xt or text operand, which a
 \ file's closure walk and source observer account for. CAST, UNCHECKED and
-\ FOREIGN: an effect the facts cannot name. UNKNOWN: an op, expansion or literal the
+\ FOREIGN: an effect the facts cannot name. UNKNOWN: an op or literal the
 \ classification does not model, or no facts at all. REBIND: a compiled `is`,
 \ which rebinds a defer rather than running a typed xt. SAFE, MEMORY, INDIRECT,
 \ FIXED and REBIND are admitted (tools/native-file-reference.f
