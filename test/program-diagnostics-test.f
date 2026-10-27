@@ -97,9 +97,10 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
       s" address cell capacity diagnostic" GE-FAIL then ;
 
-\ These six fixtures open an AOT-ARM window: five assert its boundary
-\ diagnostics, and the last that a window opened after a byte-sized field still
-\ captures on the cell grid. x86-64 has a different resident source window.
+\ These seven fixtures open an AOT-ARM window: five assert its boundary
+\ diagnostics, one that a window opened after a byte-sized field still captures
+\ on the cell grid, and the last that an empty field made just before the window
+\ stays a named call. x86-64 has a different resident source window.
 : AOT-ARM-WINDOWS ( -- )
    s" test/aot-address-cell-lower-straddle-bad.f" 74
       s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
@@ -113,7 +114,10 @@ package PROGRAM-DIAGNOSTICS
       s" AOT-XTCELL-FAR-ARMED" s" aot-capture: fixed address cell lies past the row's 31-bit DATA offset" NEGATIVE
    s" test/aot-window-base-grid.f" RUN-LOAD
    s" test/aot-window-base-grid.f" GE-EXPECT-OK
-   s" AOT-WINDOW-BASE-GRID-CAPTURED" s" test/aot-window-base-grid.f" EXPECT-MARKER ;
+   s" AOT-WINDOW-BASE-GRID-CAPTURED" s" test/aot-window-base-grid.f" EXPECT-MARKER
+   s" test/aot-window-base-call.f" RUN-LOAD
+   s" test/aot-window-base-call.f" GE-EXPECT-OK
+   s" AOT-WINDOW-BASE-CALL-CAPTURED" s" test/aot-window-base-call.f" EXPECT-MARKER ;
 
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 99

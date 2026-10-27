@@ -2369,7 +2369,9 @@ $43A0 constant XT-CELL
 ;package
 
 \ Capture-window cells retain their existing offsets in the engine DATA layout.
-\ AOT-ARM:OPEN writes both coordinates; tier-0 call emission does not read them.
+\ AOT-ARM:OPEN writes both coordinates, and WINDOW-CLOSE clears them. Tier 0
+\ reads B0-CELL to keep a mention of a created word made before the window
+\ opened a call (habu2.f EM-COMPILE-CALL); no engine code reads D0-CELL.
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-CELLS

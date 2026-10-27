@@ -58,30 +58,36 @@ variable EM-C2-FIELD-OFF
 : C-RAW-LIT ( -- )
    14 16 MOVZ,  LVMOVK LABEL@ BL, ;
 
-\ fixed four-instruction MOVZ/MOVK x9 chain (no push): the relocatable-address form the
-\ AOT boot pass rewrites in place. `val` is in x11 at emit time.
+\ A carrier word with its destination field cleared: the chain emitters OR in
+\ the register x14 names.
+: RD-FREE ( n -- n )
+   ADDRESS-CARRIER:ADDR-RD-BITS rshift ADDRESS-CARRIER:ADDR-RD-BITS lshift ;
+
+\ fixed four-instruction MOVZ/MOVK chain into the register x14 names (no push): the
+\ relocatable-address form the AOT boot pass rewrites in place. `val` is in x11 at emit time.
 : C-ADDR-RAW ( -- )
    6 11 0 ADDI,  5 $FFFF MOVZ,
-   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
-\ the same fixed chain followed by the push stencil.
+   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
+\ the same fixed chain into x9, followed by the push stencil.
 : C-ADDR-PUSH ( -- )
-   C-ADDR-RAW
+   14 9 MOVZ,  C-ADDR-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 
 \ Shared DATA must not use x20, which changes per task. Both fixed DATA mappings
 \ fit three halves; high-to-low order distinguishes these from full addresses.
+\ The chain loads the register x14 names.
 : C-DATA-RAW ( -- )
    DATA-VA VA>N DATA-SIZE + $FFFFFFFFFFFF > if C-ADDR-RAW exit then
    LBL LBL {: absolute:label done:label :}
    5 DATA-VA VA>N LIT64,  6 11 5 SUB,  5 DATA-SIZE LIT64,
    6 5 CMP,  C-HI absolute BCOND,
    5 $FFFF MOVZ,
-   7 11 32 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVZ2 9 or LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 16 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVK0 9 or LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 32 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVZ2 LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 16 LSRI,  7 7 5 AND,  7 7 5 LSLI,  8 W-MOVK1 RD-FREE LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 5 AND,  7 7 5 LSLI,  8 ADDRESS-CARRIER:DATA-MOVK0 LIT64,  8 8 14 ORR,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    done B,
    absolute LBL, C-ADDR-RAW
    done LBL, ;
@@ -378,18 +384,17 @@ $25 constant BL-OP-HI
 \ question is now answered by this bit and by nothing else. A second band, or a
 \ per-window kind list, would have cost storage to answer a question the spans
 \ already answer.
-\ push a DATA-region address (create/variable data field).
-\ The guard runs ahead of MARK-SITE: the chain's first instruction has to stay
-\ the marked site, and the guard's request uses x9 as scratch, so it cannot sit
-\ between the chain and the push that consumes x9.
+\ push a DATA-region address (create/variable data field). MARK-SITE records
+\ CP, so the chain C-DATA-RAW emits next starts at the marked site, and the
+\ push that consumes x9 follows the chain.
 : C-DATA-ADDR ( -- )
    RELOC-EMIT:MARK-SITE
-   C-DATA-RAW
+   14 9 MOVZ,  C-DATA-RAW
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
 : C-DATA-ADDR-RAW ( -- )
    RELOC-EMIT:MARK-SITE
-   C-DATA-RAW ;
+   14 9 MOVZ,  C-DATA-RAW ;
 \ push a CODE address (quotation entry xt or ['] target xt). The word it
 \ names lives in the JIT region or in the engine's loaded __text, and neither of
 \ those is at the same address in the run that restores a snapshot image, so the
@@ -2977,6 +2982,40 @@ package LOOP-EMIT
    SP SP 16 SUBI,  30 SP 0 STR,
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
+
+\ Run the stamped constant or created word x11 enters (x5 its record) while
+\ its user compiles, and leave what it pushed in x11. An open band is writable,
+\ not executable. Two bands can hold code: the code band [PROT:WLO,
+\ PROT:WINDOW), and the control-flow unit, latched by PROT:CF, which is also
+\ the first unit of the code area (habu1.f EMIT-PROT-WINDOW "ALIGNMENT"), so
+\ the engine's first prefix words, `cell` among them, sit in it. A body that
+\ reaches an open band, starting below its end and ending above its start, runs
+\ with every band closed, and the code band then reopens at CP. Bands start on
+\ PROT-PAGE-MAX units, so only a body that starts below a band and straddles
+\ its start shares it: the test takes the body's end, not its entry.
+: C-RUN-FIXED ( -- )
+   LBL LBL LBL LBL LBL {: exact:label nocode:label closed:label inplace:label done:label :}
+   9 5 8 LDR,  10 9 CODE-SPAN:MASK ANDI,  10 11 10 ADD,
+   9 9 CODE-SPAN:FULL ANDI,  9 exact CBNZ,
+      10 10 CODE-SPAN:INSN-BYTES ADDI,                  \ a legacy span is recorded before its final slot
+   exact LBL,                                           \ x10 = end of the body
+   9 DATA PROT:WINDOW LDR,  11 9 CMP,  C-CS nocode BCOND,   \ at rest (0) or at or past the band's end
+   9 DATA PROT:WLO LDR,  10 9 CMP,  C-HI closed BCOND,
+   nocode LBL,
+   9 DATA PROT:CF LDR,  9 inplace CBZ,
+   9 CFSTK-OFF LIT64,  9 DBASE 9 ADD,  10 9 CMP,  C-LS inplace BCOND,
+   9 CFSTK-OFF PROT-PAGE-MAX + LIT64,  9 DBASE 9 ADD,  11 9 CMP,  C-CS inplace BCOND,
+   closed LBL,
+   SP SP 16 SUBI,  11 SP 0 STR,
+   PROT-EMIT:LCLOSE LABEL@ BL,
+   11 SP 0 LDR,  SP SP 16 ADDI,
+   C-CALL-X11-SAVED
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,
+   done B,
+   inplace LBL,
+   C-CALL-X11-SAVED
+   done LBL,
+   11 G-POP ;
 
 \ A definition can close only in the source frame that opened it. Both
 \ compiler loops use the same guard.
@@ -12546,7 +12585,8 @@ public
 
 
 : EM-COMPILE-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label prepare:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label prepare:label fval:label faddr:label freg:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,
    found LBL,
@@ -12558,6 +12598,8 @@ public
    14 13 2 ANDI,  14 prepare CBNZ,
    14 5 16 LDR,  14 14 50 LSRI,  14 14 3 ANDI,
    14 3 CMPI,  C-EQ LMAIN LABEL@ BCOND,
+   14 DKIND:VAL 50 rshift CMPI,  C-EQ fval BCOND,
+   14 DKIND:ADDR 50 rshift CMPI,  C-EQ faddr BCOND,
    prepare LBL,
    SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  5 SP 24 STR,
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
@@ -12604,7 +12646,36 @@ public
    usedtry LBL,
       9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies; region-flip handled inside)
       13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined in this body
-      found B, ;                                       \ resolved via a used package: rejoin the normal compile path
+      found B,                                         \ resolved via a used package: rejoin the normal compile path
+   \ A record still carrying its definer's stamp (DKIND, layout.f) is entered
+   \ now and what it pushed folds into the body, as tier 1 enters it (dict.f
+   \ RUN-WORD): a constant's number becomes a virtual-stack literal, a created
+   \ word's DATA address a recorded carrier into a pool register. A spill frees
+   \ the whole pool, so the second allocation cannot fail.
+   \ A created word defined before the open capture window stays a call: the
+   \ capture names a call's callee, and refuses a pre-window DATA literal
+   \ (aot-capture.f ACAP-OUT-CHAIN). The test is the word's entry against the
+   \ window's code base B0, not its address against the DATA span: an empty
+   \ `create` made just before the window opens has the window's first DATA
+   \ address. A word defined inside the window has its DATA inside it, or the
+   \ capture refuses that word's own body. With no window open B0 is 0 and
+   \ every created word folds.
+   fval LBL,
+      C-RUN-FIXED
+      LVPUSHC LABEL@ BL,
+      LMAIN LABEL@ B,
+   faddr LBL,
+      9 DATA AOT-CELLS:B0-CELL LDR,  11 9 CMP,  C-CC prepare BCOND,
+      C-RUN-FIXED
+      SP SP 16 SUBI,  11 SP 0 STR,
+      LVRALLOC LABEL@ BL,  14 freg CBNZ,
+         LVSPILL LABEL@ BL,  LVRALLOC LABEL@ BL,
+      freg LBL,
+      11 SP 0 LDR,  SP SP 16 ADDI,
+      RELOC-EMIT:MARK-SITE
+      C-DATA-RAW
+      LVPUSHR LABEL@ BL,
+      LMAIN LABEL@ B, ;
 
 \ Abort only definition-owned compile state. A Habu catch that survived the
 \ native THROW still owns its handler and return/loop stacks; clearing those

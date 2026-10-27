@@ -8,7 +8,9 @@
 \ (ARM's default tier is 0, so no tier is selected here): the inlined subjects
 \ hold no call into their primitive's span, the refused ones hold exactly one
 \ (a BL, or a B when the call is the body's last word), and every subject
-\ still answers what the call answered.
+\ still answers what the call answered. A mention of a constant or a created
+\ word is folded rather than copied (habu2.f EM-COMPILE-CALL); TEST-FIXED pins
+\ it with the same census.
 \
 \ A definition whose last word is a call ends in a B to it (habu2.f
 \ EM-COMPILE-SEMI): the link and any local frame are released first, and no
@@ -28,6 +30,21 @@ require src/lib/errors.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require src/compiler/native/branch.f
+require src/habu/address-carrier.f
+
+\ A constant and a created word re-exported from another package: the alias of
+\ the constant keeps its definer stamp, the alias of the created word does not.
+package T0-FIX-SRC
+public
+700 constant PK
+create PTB 2 cells allot
+;package
+
+package T0-FIX-OUT
+public
+EXPORT T0-FIX-SRC:PK
+EXPORT T0-FIX-SRC:PTB
+;package
 
 package TIER0-INLINE-PRIMS
 private
@@ -47,6 +64,7 @@ $FFFFFFFF constant WORD-MASK         \ keeps every bit
 $F84107FE constant LINK-REST         \ ldr x30,[sp],#16
 $FFC003FF constant ADDSP-MASK        \ keeps add sp,sp,#imm12's opcode and registers
 $910003FF constant ADDSP-OP          \ add sp,sp,#imm12
+$FFE00000 constant MOVW-MASK         \ keeps a move-wide word's opcode and shift
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -213,6 +231,28 @@ variable T0-SV
 : T0-LTBIG ( n -- n ) 4096 < if 1 else 2 then ;
 : T0-LTNEG ( n -- n ) -1 < if 1 else 2 then ;
 : T0-LTREG ( n n -- n ) < if 1 else 2 then ;
+
+\ Mentions of fixed values. A constant and a created word run while their user
+\ compiles and fold into it, as a literal and as a DATA address; a does> word,
+\ a defer and an EXPORT alias of a created word stay calls. T0-NEAR sits right
+\ before its user, where its code may still be writable; E-DIV-ZERO is baked.
+1000 constant T0-K
+variable T0-V
+create T0-TB 2 cells allot
+: T0-DOES ( n -- ) create , does> ( -- n ) @ 1+ ;
+5 T0-DOES T0-D
+defer T0-DEF ( -- n )
+: T0-KEQ ( n -- n ) T0-K = if 1 else 2 then ;
+: T0-KADD ( n -- n ) T0-K + ;
+: T0-VGET ( -- n ) T0-V @ ;
+: T0-TBGET ( -- n ) T0-TB cell+ @ ;
+: T0-DGET ( -- n ) T0-D ;
+: T0-DEFGET ( -- n ) T0-DEF ;
+: T0-FAR ( -- n ) E-DIV-ZERO ;
+: T0-XK ( n -- n ) T0-FIX-OUT:PK = if 1 else 2 then ;
+: T0-XTB ( -- n ) T0-FIX-OUT:PTB @ ;
+77 constant T0-NEAR
+: T0-NEARU ( -- n ) T0-NEAR 1+ ;
 
 private
 
@@ -392,6 +432,36 @@ private
    -7 T0-LTNEG 1 T=  -1 T0-LTNEG 2 T=  0 T0-LTNEG 2 T=
    4 5 T0-LTREG 1 T=  5 5 T0-LTREG 2 T=  6 5 T0-LTREG 2 T= ;
 
+: TEST-FIXED ( -- )
+   s" a constant mention folds: no call, and `K =` compares against an immediate" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-KEQ" s" TIER0-INLINE-PRIMS:T0-K" INLINED
+   s" TIER0-INLINE-PRIMS:T0-KEQ" CMP-IMM
+   s" TIER0-INLINE-PRIMS:T0-KADD" s" TIER0-INLINE-PRIMS:T0-K" INLINED
+   s" a constant just before its user, one baked in the engine and an alias fold" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-NEARU" s" TIER0-INLINE-PRIMS:T0-NEAR" INLINED
+   s" TIER0-INLINE-PRIMS:T0-FAR" s" E-DIV-ZERO" INLINED
+   s" TIER0-INLINE-PRIMS:T0-XK" s" T0-FIX-SRC:PK" INLINED
+   s" a created word's mention is one DATA carrier and no call" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-VGET" s" TIER0-INLINE-PRIMS:T0-V" INLINED
+   s" TIER0-INLINE-PRIMS:T0-VGET" MOVW-MASK ADDRESS-CARRIER:DATA-MOVZ2 MASKED-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-TBGET" s" TIER0-INLINE-PRIMS:T0-TB" INLINED
+   s" a does> word, a defer and an alias of a created word are still called" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DGET" s" TIER0-INLINE-PRIMS:T0-D" CALLED
+   s" TIER0-INLINE-PRIMS:T0-DEFGET" s" TIER0-INLINE-PRIMS:T0-DEF" CALLED
+   s" TIER0-INLINE-PRIMS:T0-XTB" s" T0-FIX-SRC:PTB" CALLED
+   s" the folded mentions answer what the calls answered" T-LABEL
+   999 T0-KEQ 2 T=  1000 T0-KEQ 1 T=
+   5 T0-KADD 1005 T=
+   T0-NEARU 78 T=
+   T0-FAR E-DIV-ZERO T=
+   700 T0-XK 1 T=  701 T0-XK 2 T=
+   42 T0-V !  T0-VGET 42 T=
+   9 T0-TB cell+ !  T0-TBGET 9 T=
+   5 T0-FIX-SRC:PTB !  T0-XTB 5 T=
+   T0-DGET 6 T=
+   [: 41 ;] is T0-DEF  T0-DEFGET 41 T=
+   [: 43 ;] is T0-DEF  T0-DEFGET 43 T= ;
+
 \ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
 \ compiled last, with checking suspended for the rest of this file.
 0 set-check
@@ -423,6 +493,7 @@ public
    TEST-MEM
    TEST-VALUES
    TEST-CMPI
+   TEST-FIXED
    TEST-QDUP
    MISSING @ 0 T=
    T-REPORT ;

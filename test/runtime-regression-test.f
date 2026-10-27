@@ -2698,6 +2698,47 @@ variable GE-KIND-N
    2 0 do i GE-VTAIL-AT loop
    s" PASS: tier 0 tail calls throw, catch and recurse as calls do" type cr ;
 
+\ Tier 0 runs a mentioned constant or created word while its user compiles
+\ and folds what it pushed into the body (habu2.f EM-COMPILE-CALL): a constant
+\ as a literal, a created word as a DATA address in a pool register. Each row
+\ breaks one edge: a constant compared, added, negative and wider than 32 bits,
+\ one defined right before its user, a variable and a created table written
+\ and read, a does> word, a defer re-targeted twice by `is`, EXPORT aliases of
+\ a constant and of a variable, and a variable mentioned with the register pool
+\ full (GEXFULL). Tier 1 runs the same source and prints the same lines.
+: GE-VFIX-AT ( n -- ) {: tier:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" 1000 constant GEXK  -5 constant GEXN  $123456789 constant GEXW" GE-SRC-LINE
+   s" variable GEXV  create GEXT 3 cells allot" GE-SRC-LINE
+   s" : GEXD: ( n -- ) create , does> ( -- n ) @ 1+ ;  5 GEXD: GEXD" GE-SRC-LINE
+   s" defer GEXF ( -- n )  : GEXF41 ( -- n ) 41 ;  : GEXF43 ( -- n ) 43 ;" GE-SRC-LINE
+   s" : GEXS41 ( -- ) ['] GEXF41 is GEXF ;  : GEXS43 ( -- ) ['] GEXF43 is GEXF ;" GE-SRC-LINE
+   s" package GEXP public EXPORT GEXK EXPORT GEXV ;package" GE-SRC-LINE
+   s" : GEXEQ ( n -- n ) GEXK = if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEXADD ( n -- n ) GEXK + GEXN + ;" GE-SRC-LINE
+   s" : GEXLT ( n -- n ) GEXN < if 1 else 2 then ;" GE-SRC-LINE
+   s" : GEXWIDE ( -- n ) GEXW 1+ ;" GE-SRC-LINE
+   s" 77 constant GEXC  : GEXCU ( -- n ) GEXC GEXC * ;" GE-SRC-LINE
+   s" : GEXSET ( n -- ) GEXV ! ;  : GEXGET ( -- n ) GEXV @ ;" GE-SRC-LINE
+   s" : GEXTS ( n n -- ) cells GEXT + ! ;  : GEXTG ( n -- n ) cells GEXT + @ ;" GE-SRC-LINE
+   s" : GEXDU ( -- n ) GEXD GEXD + ;" GE-SRC-LINE
+   s" : GEXFU ( -- n ) GEXF 1+ ;" GE-SRC-LINE
+   s" : GEXA ( n -- n ) GEXP:GEXK + GEXP:GEXV @ + ;" GE-SRC-LINE
+   s" : GEXFULL ( n -- n ) {: a:n :} a a a a a a a a a a a a a a a GEXV @ + + + + + + + + + + + + + + + ;" GE-SRC-LINE
+   s" 999 GEXEQ . 1000 GEXEQ . 3 GEXADD . -6 GEXLT . -5 GEXLT . GEXWIDE . GEXCU ." GE-SRC-LINE
+   s" 42 GEXSET GEXGET . 7 1 GEXTS 8 2 GEXTS 1 GEXTG . 2 GEXTG . GEXDU ." GE-SRC-LINE
+   s" GEXS41 GEXFU . GEXS43 GEXFU . 3 GEXA . 2 GEXFULL ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" fixed values" GE-EXPECT-OK
+   S\" 2\n1\n998\n1\n2\n4886718346\n5929\n42\n7\n8\n12\n42\n44\n1045\n72\n"
+      s" fixed values output" GE-EXPECT-OUT ;
+
+: GE-VFIX ( -- )
+   2 0 do i GE-VFIX-AT loop
+   s" PASS: tier 0 folds constants and created words and keeps every call" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2739,6 +2780,7 @@ public
    GE-VJOIN
    GE-VBIND
    GE-VTAIL
+   GE-VFIX
    GE-VMEM ;
 
 : TEST ( -- )
