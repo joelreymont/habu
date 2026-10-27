@@ -1511,7 +1511,8 @@ $248 constant QXH-CELL
 \ restore and nothing to patch. QFRAME-CELL scopes it across a quotation
 \ exactly as QXH-CELL scopes the EXIT chain: a quotation's calls are its own
 \ frame's business, not the enclosing body's. Definition-scoped like the Q
-\ cells, cleared by EM-RESET-COMPILE-STATE, never live across a snapshot.
+\ cells, cleared by EM-RESET-COMPILE-STATE; a snapshot zeroes what a closed
+\ quotation left in QFRAME-CELL (snap-lib.f SND-ZERO-LIVE).
 \ Both sit in the free header hole below BODYBUF-OFF (rg-verified unused).
 $7D0 constant FRAME-CELL
 $7D8 constant QFRAME-CELL
@@ -1668,7 +1669,8 @@ $2850 constant PENDTKA-CELL
 \ nesting the checker certifies; one more is refused by name (habu2.f
 \ EM-QUOT-NEST-DIE). SP-CELL counts the parked frames. It is definition-scoped
 \ like QPATCH-CELL and is zeroed beside it in every reset run, so a definition
-\ that fails with quotations open leaves nothing parked. The innermost
+\ that fails with quotations open leaves nothing parked; a snapshot zeroes
+\ the frames themselves (snap-lib.f SND-ZERO-LIVE). The innermost
 \ quotation never needs a frame, so there are LEVELS-1. Both sit after
 \ PENDTKA-CELL in the $2800..$3000 free header band - swept for a claimant
 \ across src lib tools test bootstrap - below $7FF8 for the 12-bit scaled

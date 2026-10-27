@@ -274,6 +274,11 @@ PTR-VARIABLE SND-A
    PKG-PUB-CELL SND-ZERO-CELL PKG-PRI-CELL SND-ZERO-CELL
    PKG-PARENT-CELL SND-ZERO-CELL PKG-REC-CELL SND-ZERO-CELL
    LOOPSP-CELL SND-ZERO-CELL  DOESP-CELL SND-ZERO-CELL
+   \ Tier 0 leaves the last closed quotation's entry, EXIT chain and frame in
+   \ the Q cells, and each quotation it parked in a JIT-QUOT frame: dead once
+   \ closed, and this process's code addresses.
+   QENT-CELL SND-ZERO-CELL  QXH-CELL SND-ZERO-CELL  QFRAME-CELL SND-ZERO-CELL
+   JIT-QUOT:STK-OFF JIT-QUOT:END JIT-QUOT:STK-OFF - SND-ZERO-BAND
    \ ARM startup reinstalls LCREATE. The x86-64 fixed-address image keeps its
    \ captured Habu CREATE handler, which snapshot startup does not reinstall.
    HB-TARGET-LINUX-X86-64? 0= if CREATEP-CELL SND-ZERO-CELL then

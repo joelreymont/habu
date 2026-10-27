@@ -1,6 +1,7 @@
 \ hb-build-repl-twin-test.f - checked fixture for tools/hb-build-lib.f: --repl
 \ builds of one program write the same image across the run's warm cache (A, D)
-\ and a fresh one (B) and an output of another name. The restored image answers
+\ and a fresh one (B) and an output of another name, at tier 1 and again at the
+\ default tier 0. The restored tier 1 image answers
 \ with its own process where the build's would be wrong: a `does>` run before
 \ the session's first `create` patches the image's own created word, a restored
 \ FILE import keeps its retired context handle stale, the AOT code-span table
@@ -8,7 +9,7 @@
 \ is refused.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-repl-twin-test.f
-\ Set HABU_RETAIN_TWIN=1 to keep the three executable images and FILE objects
+\ Set HABU_RETAIN_TWIN=1 to keep each tier's three executable images and FILE objects
 \ under the printed test root for independent inspection.
 
 require tools/hb-build-test-lib.f
@@ -47,16 +48,17 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 : HBT-TWIN-OUT-D ( -- ptr u8 n ) HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U @ ;
 
 \ The build creates X and nothing after it, so X is the record LASTC-CELL names
-\ when the image is written. The clause cannot be part of the program: the build
-\ compiles at tier 1 (HBT-TWIN-BUILD), which refuses a definition that is only
-\ a `does>`.
+\ when the image is written. The clause cannot be part of the program: the tier 1
+\ build (HBT-TWIN-BUILD) refuses a definition that is only a `does>`. NEST
+\ parks an open quotation while its inner one compiles, so the tier 0 round
+\ also saves the quotation frames that compile left behind.
 : HBT-TWIN-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" : LOAD-CHILD ( -- ) s\" " SB-APPEND
    HBT-TWIN-CHILD SB-APPEND
    S\" \" required ;\nLOAD-CHILD\ns\" " SB-APPEND
    HBT-TWIN-CTX SB-APPEND
-   S\" \" required\npackage HBT-TWIN\npublic\n: MAKE ( -- ) create 5 , ;\nMAKE X\n: REFUSAL ( -- ) s\" TW-BAD ( -- ptr u8 n ptr u8 n ) 1 2 3 4 5 6\" CHECK-QUIET-CANDIDATE! 0 <> IF 74 throw THEN ;\n;package\n: MAIN ( -- ) HBT-TWIN-CHILD:NUMBER drop ;\nHBT-TWIN:REFUSAL\n" SB-APPEND
+   S\" \" required\npackage HBT-TWIN\npublic\n: NEST ( -- n ) [: ( -- n ) [: ( -- n ) 3 ;] execute ;] execute ;\n: MAKE ( -- ) create 5 , ;\nMAKE X\n: REFUSAL ( -- ) s\" TW-BAD ( -- ptr u8 n ptr u8 n ) 1 2 3 4 5 6\" CHECK-QUIET-CANDIDATE! 0 <> IF 74 throw THEN ;\n;package\n: MAIN ( -- ) HBT-TWIN-CHILD:NUMBER drop ;\nHBT-TWIN:REFUSAL\n" SB-APPEND
    SB$ ;
 
 : HBT-TWIN-CTX$ ( -- ptr u8 n )
@@ -94,7 +96,8 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X NULL-PTR - . cr\n" ;
 
 \ A and D share HB_TMP and the run's cache; B gets its own HB_TMP and cache root.
-\ B's output name is longer than A's and D's.
+\ B's output name is longer than A's and D's. These are the tier 1 round's names;
+\ HBT-TWIN-TIER0-NAMES gives the tier 0 round its own outputs.
 : HBT-TWIN-PREPARE ( -- )
    HBT-ROOT s" twin.f" HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U HBT-PATH!
    HBT-ROOT s" twin-child.f" HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U HBT-PATH!
@@ -110,11 +113,20 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
 
+\ The tier 0 round's three outputs. B keeps its HB_TMP and cache root: the
+\ builder image there does not depend on the tier (the tier reaches the maker
+\ on its stdin), so the tier 1 round already built it cold.
+: HBT-TWIN-TIER0-NAMES ( -- )
+   HBT-ROOT s" twin0-out-a" HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U HBT-PATH!
+   HBT-ROOT s" twin0-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
+   HBT-ROOT s" twin0-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH! ;
+
 \ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
-\ shared root, which holds the app-builder family image. The command runs after
-\ test/compiler/aot-mode.f selected tier 1, the tier its products are built at.
-: HBT-TWIN-BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
+\ shared root, which holds the app-builder family image. With aot set the command
+\ runs after test/compiler/aot-mode.f selected tier 1, the tier its products are
+\ built at; without it the products are built at the default tier 0.
+: HBT-TWIN-BUILD ( bool ptr u8 n ptr u8 n ptr u8 n -- )
+   {: aot:bool tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
@@ -122,7 +134,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+
-   s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
+   aot if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
    s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" --repl" >LEN PROC-ARGV+
@@ -159,6 +171,15 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-OUT-D HBT-TWIN-READ {: d:ptr du:n :}
    a au b bu HBT-DIFF-AT -1 T=
    a au d du HBT-DIFF-AT -1 T= ;
+
+\ One round: A, B and D built at one tier, then compared.
+: HBT-TWIN-ROUND ( bool -- )
+   {: aot:bool :}
+   aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
+   \ B's own cache root is the cold boundary: the first round builds its builder.
+   aot HBT-TWIN-TMP-B HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
+   aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-D HBT-TWIN-BUILD
+   HBT-TWIN-SAME ;
 
 \ A restored FILE import keeps its retired context handle stale when restored
 \ compilation reuses the same registry slot. D's bytes equal A's, so A alone runs.
@@ -224,15 +245,13 @@ public
    APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-TWIN-PREPARE
-   HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
-   \ B's fresh cache root is the cold boundary: its builder is built there.
-   HBT-TWIN-TMP-B HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
-   HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-D HBT-TWIN-BUILD
-   HBT-TWIN-SAME
+   0 0= HBT-TWIN-ROUND
    HBT-TWIN-GENERATIONS
    HBT-TWIN-DOES
    HBT-TWIN-SPAN
    HBT-TWIN-UNNAMED
+   HBT-TWIN-TIER0-NAMES
+   0 0= 0= HBT-TWIN-ROUND
    HBT-TWIN-FINISH
    T-REPORT
    s" hb-build-repl-twin-test: ok" type cr ;
