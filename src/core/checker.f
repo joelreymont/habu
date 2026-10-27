@@ -13140,7 +13140,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$00007FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$00003FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 $0004000000000000 constant CK-REC-VALUE     \ = layout.f DKIND:VAL
 $000C000000000000 constant CK-REC-KIND-MASK \ = layout.f DKIND:MASK

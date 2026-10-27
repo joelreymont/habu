@@ -310,8 +310,10 @@ $0001000000000000 constant DNAME-CELL
 \ kind byte (src/habu/aot-capture.f) and a native unit object row in its flags.
 $0000400000000000 constant DNAME-REP
 \ The flag bits above the name length in [16], bits 46-63. Every native length
-\ read clears them by this count (LSLI then LSRI), so the next flag carved from
-\ the length is one edit here and none at the readers.
+\ read clears them by this count (LSLI then LSRI). Two files load before this
+\ one and spell the mask as a literal: src/core/checker.f CK-REC-LEN-MASK and
+\ src/habu/engine-origin-early.f RECORD-LEN-MASK. A flag carved from the length
+\ is this edit and those two.
 18 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
