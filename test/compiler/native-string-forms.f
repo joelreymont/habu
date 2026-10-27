@@ -1,12 +1,21 @@
 \ Preserve string behavior through the checker reader and the native source tape.
-\ Tier-neutral by design: the subject program starts with `1 set-tier`, so it is
-\ compiled by the optimizing compiler whatever tier this row runs at.
+\ Each subject program starts with its own `set-tier` line, so the tier that
+\ compiles it is the case's, not this row's: on ARM every printed, counted and
+\ carried case runs once under the JIT (`0 set-tier`, src/habu/habu2.f C-SDQ and
+\ siblings) and once under the optimizing compiler (`1 set-tier`), with the same
+\ expected bytes; x86-64 has no tier 0 and runs them at tier 1 only.
 require test/gate-common.f
 
 package NSTRING-FORMS-TEST
 
 255 constant COUNTED-MAX
 create BOUNDARY COUNTED-MAX 1+ allot
+variable TIER                        \ the tier the subject program compiles at
+
+: LEGACY? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
+
+: TIER-LINE ( -- )
+   TIER @ 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE ;
 
 : BOUNDARY! ( -- )
    COUNTED-MAX 1+ 0 ?do [char] A BOUNDARY i + c! loop ;
@@ -14,7 +23,7 @@ create BOUNDARY COUNTED-MAX 1+ allot
 
 : SOURCE-START ( -- )
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
+   TIER-LINE
    s" package STRING-FORM-SUBJECT" GE-SRC-LINE
    s" : RUN ( -- ) " GE-SRC+ ;
 
@@ -79,7 +88,7 @@ create BOUNDARY COUNTED-MAX 1+ allot
 
 : CARRIED-SOURCE ( -- )
    GE-SRC-RESET
-   s" 1 set-tier" GE-SRC-LINE
+   TIER-LINE
    s" package STRING-FORM-SUBJECT" GE-SRC-LINE
    S\" : STACK ( n -- n ) .\q stack\q ;" GE-SRC-LINE
    S\" : LOCAL ( n -- n ) {: v:n :} .\q local\q v ;" GE-SRC-LINE
@@ -121,11 +130,16 @@ create BOUNDARY COUNTED-MAX 1+ allot
    s" 33 44" E-EVAL-RESIDUE CHECK-EVAL-CALLER ;
 
 
+: FORM-CASES ( -- )
+   PRINTED-CASES COUNTED-CASES COUNTED-BOUNDARY
+   CARRIED-CASE ;
+
+
 : BODY ( -- )
    s" native-string-forms" GT-START
    EVAL-CALLER-CASES
-   PRINTED-CASES COUNTED-CASES COUNTED-BOUNDARY
-   CARRIED-CASE
+   LEGACY? if 0 TIER ! FORM-CASES then
+   1 TIER ! FORM-CASES
    S\" c\q" TOO-LONG
    S\" c\\\q" TOO-LONG
    s" PASS: native counted and printed strings" type cr ;

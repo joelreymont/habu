@@ -11,6 +11,7 @@ require src/lib/process-argv.f         \ the growth case needs a child engine
 require src/lib/process-env.f          \ the stub child runs on the unsealed engine
 require src/lib/fs-mutate.f            \ CLEANUP-RUN - that engine's private copy
 require src/lib/le.f                   \ the spilled %n out-parameter is a C int
+require src/lib/memory.f               \ the read-only page the %n format is copied into
 require test/whitebox-child.f
 require src/lib/test/subject.f
 require test/suite-budget.f        \ CHILD-MS, the stub child's hang guard
@@ -501,8 +502,24 @@ FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
    0 1 WRITES-ARG
    6 4 WRITES-BYTES
 ;FUNCTION
+FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
+1 constant FFI-T-PROT-READ
 64 BUFFER: FFI-T-PRINT-BUF
 4 BUFFER: FFI-T-COUNT
+
+\ macOS's printf aborts on a %n whose format lies in writable memory, and a
+\ literal's bytes live in DATA (src/compiler/native/string.f), so the %n format
+\ is copied into a fresh mapping and the page holding it made read-only for
+\ the call.
+: FFI-T-PRINTF-COUNTED ( -- n )
+   MEM:ALLOC-64K {: fmt:ptr fmtu :}
+   s\" %ld %ld %ld%n\z" {: src:ptr srcu:n :}
+   src fmt srcu BYTE-COPY
+   fmt srcu FFI-T-PROT-READ FFI-T-MPROTECT 0 T=
+   FFI-T-PRINT-BUF 64 fmt 11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
+   fmt fmtu MEM:RELEASE-BYTES ;
+
+
 : FFI-T-VARARGS ( -- )
    FFI-T-PRINT-BUF 64 s\" %ld %.1f %s\z" drop 42 1.5 s\" ok\z" drop FFI-T-PRINTF
    FFI-T-PRINT-BUF swap s" 42 1.5 ok" T$=
@@ -513,8 +530,7 @@ FUNCTION: FFI-T-PRINTF-COUNT snprintf ( ptr u8 n ptr u8 n n n ptr u8 -- i32 )
       11 22 33 44 5.5 66 FFI-T-PRINTF-MIXED
    FFI-T-PRINT-BUF swap s" 11 22 33 44 5.5 66" T$=
    0 FFI-T-COUNT LE:U32!
-   FFI-T-PRINT-BUF 64 s\" %ld %ld %ld%n\z" drop
-      11 22 33 FFI-T-COUNT FFI-T-PRINTF-COUNT
+   FFI-T-PRINTF-COUNTED
    FFI-T-PRINT-BUF swap s" 11 22 33" T$=
    FFI-T-COUNT LE:U32@ 8 T= ;
 

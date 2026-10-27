@@ -206,6 +206,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
+   s" NSTR:INSTALL" 1 DECLARE
    s" NCOMP:INSTALL" 0 DECLARE
    s" NDICT:RETAIN-FIXED-INSTALL" 1 DECLARE
    \ CAPTURE-PREPARE clears NHOST's callback before this audit; boot reinstalls it.

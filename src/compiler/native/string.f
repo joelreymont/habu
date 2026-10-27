@@ -12,6 +12,9 @@
 \ descriptors (src/compiler/native/fetch.f KEEP) are bodies under the same rule.
 \ Equal bodies share an address within the segment being written: a body
 \ interned again after its segment filled is copied into the next one.
+\ Both tiers intern through this store: tier 1 from src/compiler/native/
+\ elaborate.f EMIT-STRING, tier 0 through NSTR-ABI:INTERN-CELL, which INSTALL
+\ sets when this file loads.
 \
 \ A segment can open inside work that is later undone - a failed evaluation or
 \ REPL line, a rolled-back declaration - while the addresses it answered are
@@ -376,6 +379,10 @@ public
    INTERN
    SOURCE-ON @ if SOURCE-N @ negate 1- else -1 then ;
 
+\ Tier 0 interns through this cell (src/habu/habu2.f LNSTRINTERN); xt! declares it.
+: INSTALL ( -- )
+   ['] INTERN data-base NSTR-ABI:INTERN-CELL + xt! ;
+
 private
 
 \ Only the build driver may import the retained owner's actual row tables; it
@@ -622,5 +629,7 @@ get-current prot-wid-add
 
 public
 get-current prot-wid-add
+
+INSTALL
 
 ;package

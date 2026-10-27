@@ -76,3 +76,8 @@ SUITE compiler-tier0-compare-branch
 SUITE compiler-tier0-join
    test/compiler/tier0-join.f
 ;SUITE
+
+\ Tier 0 string literal bodies are NSTR rows, not bytes in the code band.
+SUITE compiler-tier0-string-literals
+   test/compiler/tier0-string-literals.f
+;SUITE

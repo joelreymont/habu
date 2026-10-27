@@ -1734,7 +1734,7 @@ $2D08 constant PTR-CELL
 DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's three header cells take $2D98..$2DA8, past
-\ SUSP-PREFLIGHT-CELL ($2D88) and the unclaimed $2D90, swept for a claimant
+\ SUSP-PREFLIGHT-CELL ($2D88) and NSTR-ABI:INTERN-CELL ($2D90), swept for a claimant
 \ across src tools test bootstrap; DPHW-CELL takes $2D58, NDICT-HW-CELL $2D60 and
 \ $2D78 is the unclaimed cell test/native-build-host-unknown-code.f relies on.
 \ The two shadow cells hold the native compiler's fixed and does> shadow
@@ -1782,6 +1782,16 @@ $2D58 constant DPHW-CELL
 \ dictionary holds none above it. It takes $2D60, the free header cell after
 \ DPHW-CELL.
 $2D60 constant NDICT-HW-CELL
+
+\ INTERN-CELL holds the xt of the literal interner (src/compiler/native/string.f
+\ NSTR:INTERN), 0 until that file loads and installs it with xt!, which
+\ declares the cell. Tier 0 reads it with `DATA <off> LDR` (src/habu/habu2.f
+\ C-SDQ and its siblings): a zero cell keeps the literal's bytes in the code.
+\ It takes $2D90, the unclaimed header cell after SUSP-PREFLIGHT-CELL.
+package NSTR-ABI
+public
+$2D90 constant INTERN-CELL
+;package
 package NCOMP-DISPATCH
 public
 $2D98 constant FIXED-SHADOW-CELL

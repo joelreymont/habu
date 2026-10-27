@@ -180,6 +180,7 @@ create TAB
    TEXT-SIZE-CELL                     1 cells                 CLAIM TEXT-SIZE-CELL
    DPHW-CELL                          1 cells                 CLAIM DPHW-CELL
    NDICT-HW-CELL                      1 cells                 CLAIM NDICT-HW-CELL
+   NSTR-ABI:INTERN-CELL               1 cells                 CLAIM NSTR-ABI:INTERN-CELL
    DATA-FLOOR-CELL                    1 cells                 CLAIM DATA-FLOOR-CELL
    NATIVE-OBS-CELLS:PUBLISHED         1 cells                 CLAIM NATIVE-OBS-CELLS:PUBLISHED
    NATIVE-OBS-CELLS:INVALIDATE        1 cells                 CLAIM NATIVE-OBS-CELLS:INVALIDATE

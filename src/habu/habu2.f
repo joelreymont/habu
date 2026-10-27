@@ -5990,6 +5990,7 @@ public
    done LBL, ;
 
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
+variable LNSTRINTERN
 variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine
 variable LAOTPROT      \ cold-start window-relative protected-WID restore
@@ -6050,6 +6051,25 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
       11 15 0 ADDI,  9 17 0 STRB,  17 17 1 ADDI,  copy B,
    bad LBL,  C-QUOTE-EOF
    done LBL,  10 SP 0 LDR,  30 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ Literal intern, emitted once, BL-called by the string literal emitters when
+\ NSTR-ABI:INTERN-CELL is set (x11 body address, x12 byte count in; x11 the
+\ body's DATA address out; clobbers x0-x17, keeps SP, x19's depth and x28). The
+\ compile loop holds the code region RW from `:` to `;`, and the interner may be
+\ a word compiled into that region, which a call into a writable page SIGBUSes
+\ under W^X, so the call runs in an RX window and the region reopens RW before
+\ emission resumes, as the MATCH legs do (EM-MATCH-SEMI). A throw from the
+\ interner unwinds like any compile-loop throw; EM-EVAL-THROW-RECOVER closes
+\ the region first.
+: EMIT-NSTR-INTERN ( -- )
+   LNSTRINTERN LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   11 G-PUSH  12 G-PUSH
+   PROT-EMIT:LCLOSE LABEL@ BL,                 \ region -> RX: the interner may be region-resident
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 BLR,    \ NSTR:INTERN ( ptr u8 n -- n )
+   1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,    \ region -> RW: emission resumes
+   11 G-POP
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : C-ESC-QUOTE-SCAN ( -- )
    LESCSCAN LABEL@ BL, ;
@@ -6634,26 +6654,35 @@ variable VDESC  variable DRIFT-FAIL
    C-LBRACE-PARSE-NAMES
    C-LBRACE-CARVE-FRAME ;
 
-\ compile-mode PC-RELATIVE address push: emit `adr x9, target` then the push
-\ stencil. Unlike C-LIT's absolute movz/movk, the offset survives the AOT blob
-\ copy and the ASLR slide, because the target (an embedded S" body) moves WITH
-\ this instruction. target in x11; CP (the emit cursor / future ADR pc) is x28.
-: C-ADR ( -- )
+\ compile-mode PC-RELATIVE address: emit `adr x9, target`. Unlike C-LIT's
+\ absolute movz/movk, the offset survives the AOT blob copy and the ASLR slide,
+\ because the target (an embedded body) moves WITH this instruction. target in
+\ x11; CP (the emit cursor / future ADR pc) is x28.
+: C-ADR-X9 ( -- )
    5 11 28 SUB,                                                       \ x5 = d = target - CP
    8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
    6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
    7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
-   9 8 0 ADDI,  LCEMIT LABEL@ BL,                                          \ emit the ADR word
+   9 8 0 ADDI,  LCEMIT LABEL@ BL, ;                                        \ emit the ADR word
+
+\ ... then push x9.
+: C-ADR ( -- )
+   C-ADR-X9
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-SDQ ( -- )
-   LBL LBL {: cl cd :}
+   LBL LBL LBL LBL {: cl cd inline done :}
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    C-QUOTE-SAVE
    C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS LABEL@ BL,
+   C-QUOTE-RESTORE
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   11 16 0 ADDI,  12 10 0 ADDI,  LNSTRINTERN LABEL@ BL,   \ interned straight from the input
+   C-DATA-ADDR  done B,
+   inline LBL,                                     \ no interner yet: the bytes go in the code
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    12 CP 0 ADDI,
    C-QUOTE-RESTORE
@@ -6665,11 +6694,13 @@ variable VDESC  variable DRIFT-FAIL
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR                                \ push byte addr PC-relative (AOT/ASLR-safe)
-   11 15 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
+   done LBL,
+   C-QUOTE-RESTORE
+   11 10 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
    C-QUOTE-SAVED-DROP ;
 
 : C-CQ ( -- )
-   LBL LBL LBL {: capok cl cd :}
+   LBL LBL LBL LBL LBL LBL LBL {: capok cl cd inline done il id :}
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-LEN
@@ -6679,6 +6710,17 @@ variable VDESC  variable DRIFT-FAIL
    C-QUOTE-SAVE
    C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS LABEL@ BL,
+   C-QUOTE-RESTORE
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   1 10 1 ADDI,  PROT-EMIT:RESERVE                 \ count byte + bytes at CP, as scratch: CP stays
+   17 28 0 ADDI,  10 17 0 STRB,  17 17 1 ADDI,
+   11 16 0 ADDI,  9 10 0 ADDI,
+   il LBL,  9 id CBZ,
+      14 11 0 LDRB,  14 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  il B,
+   id LBL,
+   11 28 0 ADDI,  12 10 1 ADDI,  LNSTRINTERN LABEL@ BL,
+   C-DATA-ADDR  done B,
+   inline LBL,                                     \ no interner yet: the bytes go in the code
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    12 CP 0 ADDI,
    C-QUOTE-RESTORE
@@ -6691,6 +6733,7 @@ variable VDESC  variable DRIFT-FAIL
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 1 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR
+   done LBL,
    C-QUOTE-SAVED-DROP ;
 
 : C-DOTQ ( -- )
@@ -6702,12 +6745,21 @@ variable VDESC  variable DRIFT-FAIL
    C-CALL ;
 
 : C-ESDQ ( -- )
+   LBL LBL {: inline:label done:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL,
+   C-ESC-QUOTE-RESTORE
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   1 10 0 ADDI,  PROT-EMIT:RESERVE                 \ the decoded bytes at CP, as scratch: CP stays
+   11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
+   C-ESC-COPY-X17
+   11 28 0 ADDI,  12 10 0 ADDI,  LNSTRINTERN LABEL@ BL,
+   C-DATA-ADDR  done B,
+   inline LBL,                                     \ no interner yet: the bytes go in the code
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
@@ -6719,11 +6771,13 @@ variable VDESC  variable DRIFT-FAIL
    12 13 0 ADDI,
    9 13 4 SUBI,  15 10 0 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR
-   11 15 0 ADDI,  C-LIT
+   done LBL,
+   C-ESC-QUOTE-RESTORE
+   11 10 0 ADDI,  C-LIT
    C-ESC-QUOTE-SAVED-DROP ;
 
 : C-ECQ ( -- )
-   LBL {: capok:label :}
+   LBL LBL LBL {: capok:label inline:label done:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
    10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c\" over 255 bytes (compile mode): named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
@@ -6732,6 +6786,15 @@ variable VDESC  variable DRIFT-FAIL
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL,
+   C-ESC-QUOTE-RESTORE
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   1 10 1 ADDI,  PROT-EMIT:RESERVE                 \ count byte + decoded bytes at CP, as scratch: CP stays
+   17 28 0 ADDI,  10 17 0 STRB,  17 17 1 ADDI,
+   11 16 0 ADDI,  12 16 15 ADD,
+   C-ESC-COPY-X17
+   11 28 0 ADDI,  12 10 1 ADDI,  LNSTRINTERN LABEL@ BL,
+   C-DATA-ADDR  done B,
+   inline LBL,                                     \ no interner yet: the bytes go in the code
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
@@ -6744,6 +6807,7 @@ variable VDESC  variable DRIFT-FAIL
    12 13 0 ADDI,
    9 13 4 SUBI,  15 10 1 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR
+   done LBL,
    C-ESC-QUOTE-SAVED-DROP ;
 
 : C-EDOTQ ( -- )
@@ -9475,6 +9539,7 @@ ardone LBL,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA SUSP-HOOK-CELL STR,  9 DATA SUSP-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   9 DATA NSTR-ABI:INTERN-CELL STR,      \ tier 0 keeps literals inline until string.f installs
    9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
@@ -11211,9 +11276,9 @@ public
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ LP2VEXEC is called by a compiled typed fetch before its address is popped.
-\ LR points at the B-over-descriptor instruction, so the descriptor begins at
-\ LR+4. Every active CHECK validates an unsigned declaration-order tag domain;
+\ LP2VEXEC is called by a compiled typed fetch before its address is popped,
+\ with the descriptor's address in x9 (LP2VEMIT: an NSTR row, or the copy in
+\ the code before a seed host has the interner). Every active CHECK validates an unsigned declaration-order tag domain;
 \ guard mismatches skip that nested CHECK while still consuming its rows.
 \ Registered as the sealed (LP2VEXEC) engine helper, exactly like (PROT-SPAN):
 \ the direct BL that LP2VEMIT plants in a compiled fetch is resolved by exact
@@ -11230,7 +11295,7 @@ public
    LP2VEXEC LABEL@ {: start:label :}
    s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL,
-   15 30 4 ADDI,                                      \ descriptor follows return-site B
+   15 9 0 ADDI,                                       \ the descriptor
    9 15 0 LDR,  15 15 8 ADDI,
    19 19 8 SUBI,  10 19 0 LDR,  19 19 8 ADDI,        \ typed base; stack unchanged
    outer LBL,
@@ -11271,10 +11336,13 @@ public
    end LBL, ;
 
 \ LP2VEMIT reads the current fetch descriptor from the frozen lowering
-\ certificate, copies its cell stream inline after a B-over-data instruction,
-\ and emits an absolute call to LP2VEXEC. No live checker state is consulted.
+\ certificate, interns its cell stream as an NSTR body (LNSTRINTERN) and emits
+\ the body's address into x9 as a recorded DATA site, then a call to LP2VEXEC.
+\ Before string.f installs the interner (NSTR-ABI:INTERN-CELL zero, a seed
+\ host) the cell stream goes inline after a B-over-data instruction and an
+\ `adr x9` names it. No live checker state is consulted.
 : EMIT-P2-VALID-EMIT ( -- )
-   LBL LBL LBL {: copy:label patch:label done:label :}
+   LBL LBL LBL LBL LBL {: copy:label patch:label done:label inline:label call:label :}
    LP2VEMIT LABEL@ LBL,
    SP SP 48 SUBI,  30 SP 0 STR,
    9 0 MOVZ,  9 SP 24 STR,
@@ -11284,8 +11352,10 @@ public
    LP2CDESC LABEL@ BL,
    11 SP 8 STR,  12 SP 16 STR,
    12 done CBZ,
-   11 LP2VEXEC LABEL@ ADR,
-   LCEMITBL LABEL@ BL,                                \ direct BL to the registered (LP2VEXEC) helper
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   LNSTRINTERN LABEL@ BL,                             \ x11 = the descriptor's row
+   C-DATA-ADDR-RAW  call B,                           \ x9 = the row (recorded DATA site)
+   inline LBL,                                        \ no interner yet: the cells go in the code
    14 CP 0 ADDI,  14 SP 24 STR,
    $14000000 C-EMITW
    11 SP 8 LDR,  12 SP 16 LDR,
@@ -11297,6 +11367,10 @@ public
    patch LBL,
    9 SP 24 LDR,
    LPAT LABEL@ BL,
+   11 SP 24 LDR,  11 11 4 ADDI,  C-ADR-X9            \ adr x9, the cells after the B-over
+   call LBL,
+   11 LP2VEXEC LABEL@ ADR,
+   LCEMITBL LABEL@ BL,                                \ direct BL to the registered (LP2VEXEC) helper
    done LBL,
    30 SP 0 LDR,  SP SP 48 ADDI,  RET, ;
 
@@ -13696,29 +13770,37 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 
 \ C-DIE-BAD-TAG ( x11=family-name-addr  x12=family-name-len -- )
 \   Emit the invalid-tag die INLINE into the user word with no normal
-\   continuation: a jump over the message, the message "hb: bad <family> tag\n"
-\   copied inline (the NAME BYTES travel with the word — never a live pointer into
-\   the mmap-relocatable TF-STR pool), then a self-contained write(2,msg,len) +
-\   exit_group(ENGINE-ERROR:BAD-TAG). Modeled on C-DIE-TOKEN's write/exit tail and C-SDQ's
-\   inline-byte copy, but every instruction is C-EMITW'd into the user code region
-\   (x28=CP), not the engine. Runs with the region RW. Clobbers x5-x16.
+\   continuation: the message "hb: bad <family> tag\n" (the NAME BYTES travel
+\   with the word - never a live pointer into the mmap-relocatable TF-STR pool),
+\   then a self-contained write(2,msg,len) + exit_group(ENGINE-ERROR:BAD-TAG).
+\   The message is assembled at CP, then interned as an NSTR body (LNSTRINTERN)
+\   and named by a recorded DATA site; before string.f installs the interner
+\   (NSTR-ABI:INTERN-CELL zero, a seed host) it stays in the code behind a jump
+\   over it and an ADR names it. Modeled on C-DIE-TOKEN's write/exit tail, but
+\   every instruction is C-EMITW'd into the user code region (x28=CP), not the
+\   engine. Runs with the region RW. Clobbers x0-x17.
 : C-DIE-BAD-TAG ( -- )
    LBL LBL LBL LBL LBL LBL {: p1:label p2:label s1:label s2:label t1:label t2:label :}
+   LBL LBL LBL {: skipb:label intern:label tail:label :}
    BADTAG-PFX$ nip BADTAG-SFX-LEN + {: fixed:n :}     \ the message bytes around the family name
    SP SP $20 SUBI,  11 SP 0 STR,  12 SP 8 STR,        \ frame name addr/len (loops clobber x11)
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 skipb CBNZ,    \ an interned message needs no jump over it
    15 CP 0 ADDI,  15 SP 16 STR,                        \ B-over addr (patch target)
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ emit B placeholder
-   16 CP 0 ADDI,  16 SP 24 STR,                        \ msg start addr
-   1 12 fixed ADDI,  PROT-EMIT:RESERVE              \ the whole message, copied at CP
+   skipb LBL,
+   1 SP 8 LDR,  1 1 fixed ADDI,  PROT-EMIT:RESERVE   \ the whole message, copied at CP
+   16 CP 0 ADDI,  16 SP 24 STR,  17 CP 0 ADDI,         \ msg start; x17 writes it
    11 LBADTAGPFX LABEL@ ADR,  9 BADTAG-PFX$ nip MOVZ,  \ copy "hb: bad "
-   p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
+   p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
    p2 LBL,
    11 SP 0 LDR,  9 SP 8 LDR,                           \ copy family name
-   s1 LBL,  9 s2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  s1 B,
+   s1 LBL,  9 s2 CBZ,  14 11 0 LDRB,  14 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  s1 B,
    s2 LBL,
    11 LBADTAGSFX LABEL@ ADR,  9 BADTAG-SFX-LEN MOVZ,   \ copy " tag\n"
-   t1 LBL,  9 t2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  t1 B,
+   t1 LBL,  9 t2 CBZ,  14 11 0 LDRB,  14 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  t1 B,
    t2 LBL,
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 intern CBNZ,
+   28 17 0 ADDI,                                       \ no interner yet: the message stays in the code
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,            \ align CP to 4
    9 SP 16 LDR,  LPAT LABEL@ BL,                       \ patch B-over -> past the bytes
    $D2800040 C-EMITW                                   \ movz x0, #2  (fd)
@@ -13726,7 +13808,15 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,
       7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,
       9 8 0 ADDI,  LCEMIT LABEL@ BL,
-   14 SP 8 LDR,  14 14 fixed ADDI,                     \ x14 = name-len + the fixed bytes
+   tail B,
+   intern LBL,                                         \ the message, as scratch at CP: CP stays
+   11 SP 24 LDR,  12 SP 8 LDR,  12 12 fixed ADDI,
+   LNSTRINTERN LABEL@ BL,                              \ x11 = its row
+   C-DATA-ADDR-RAW                                     \ x9 = the row (recorded DATA site)
+   $D2800040 C-EMITW                                   \ movz x0, #2  (fd)
+   $AA0903E1 C-EMITW                                   \ mov x1, x9
+   tail LBL,
+   14 SP 8 LDR,  14 14 fixed ADDI,                    \ x14 = name-len + the fixed bytes
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
    SYS-EMIT-WRITE C-EMIT-STENCIL                       \ movz x_sys, #NR-WRITE
    SYS-EMIT-SVC C-EMIT-STENCIL                         \ svc
@@ -14043,7 +14133,7 @@ package LABELS
    LBL LPROTWIDQ !
    LBL LAOTPROT !
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
-   LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
+   LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !  LBL LNSTRINTERN !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
    LBL WLFIND:LENTRY !  LBL WLFIND:LNEWEST !
@@ -14706,7 +14796,7 @@ variable KERNEL-CODE-END
    EMIT-CREATE
    DOESPATCH:EMIT
    EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD  COMPILE-EMIT:EMIT-ROW-WALK
-   EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
+   EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY  EMIT-NSTR-INTERN
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  EMIT-AOT-PROT-RESTORE
    RELOC-EMIT:EMIT-CALLS  RELOC-EMIT:EMIT-MARK
    RELOC-EMIT:EMIT-ROLLBACK
