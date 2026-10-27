@@ -1278,12 +1278,8 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ A zero divisor is a CALLER error, so the divide's cold side hands the code to
 \ the runtime's `throw` (src/habu/habu1.f BTHROW) exactly as the engine's own `/`
 \ does. Its engine entry is ticked here regardless of source scope and carried
-\ to the emitter as the operation's attribute. A writer that links a compiled
-\ routine also reads this entry (src/habu/kernel-x64.f PRIM-HIR).
-public
+\ to the emitter as the operation's attribute.
 TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
-
-private
 
 \ `idiv r64` takes its dividend in rax and writes rax and rdx, so the dividend is
 \ COPIED into a fresh value the allocator can place in rax - the source value

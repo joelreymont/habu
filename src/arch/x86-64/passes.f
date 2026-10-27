@@ -297,8 +297,8 @@ public
 
 \ The emit row with no slot: a SHADOW emission (emit-x64.f), whose call fields
 \ are zero and whose rows alone say where they go, for a writer that lays the
-\ routine into its own stream and links it there - the x86-64 kernel its
-\ compiled rows (src/habu/kernel-hir-x64.f), a shadow target every definition
+\ routine into its own stream and links it there - test/compiler/shadow.f's
+\ sealed row (src/habu/kernel-hir-x64.f), a shadow target every definition
 \ (src/compiler/native/shadow.f). The rows are stated with no placement, so
 \ publication, which commits only a placed emission at the slot it names, never
 \ takes them for its own. RETIRE gives this one back too.

@@ -1,20 +1,16 @@
 \ kernel-hir-x64.f - one x86-64 routine compiled from a staged HIR function,
-\ package X64KHIR: the seam the x86-64 kernel builds its pure-op rows through
-\ (src/habu/kernel-x64.f PRIM-HIR), so a row's body is the compiler's own
-\ lowering of the operations a compiled word stages for it.
+\ package X64KHIR: the sealed x86-64 emission test/compiler/shadow.f reads,
+\ the compiler's own lowering of the operations a stager names.
 \
 \ COMPILE opens a context under X64ABI:BINDING and a HIR module whose source
-\ text is the row's name, so every span names the row. It stages one function
+\ text is the function's name, so every span names it. It stages one function
 \ of `in` cells: the stager builds its body with ARG (argument 0 is the
-\ deepest cell), LIT, OP1, OP2 and FETCH, and names each answer, deepest
-\ first, with RESULT. OP1 and OP2 answer the type the opcode's schema declares,
-\ so a float row crosses its cells into reals and its real answer back. The
-\ function then goes down the backend rows in the order
-\ src/compiler/native/compiler.f runs them: declare with no linkage, select,
-\ lower to a fixpoint. X64PASS:EMIT-UNPLACED seals a shadow
-\ emission, since the kernel lays the bytes where its stream is and links the
-\ calls itself, and `use` reads it through X64EMIT's readers before the retire
-\ row gives it back.
+\ deepest cell) and OP2, which answers the type the opcode's schema declares,
+\ and names each answer, deepest first, with RESULT. The function then goes
+\ down the backend rows in the order src/compiler/native/compiler.f runs them:
+\ declare with no linkage, select, lower to a fixpoint. X64PASS:EMIT-UNPLACED
+\ seals a shadow emission, and `use` reads it through X64EMIT's readers before
+\ the retire row gives it back.
 \
 \ A stager that leaves a result count other than `out`, or reads an argument
 \ the function does not take, ends the build with REFUSE-RC.
@@ -34,8 +30,8 @@ require src/compiler/session/lease.f
 package X64KHIR
 private
 
-76 constant REFUSE-RC                   \ X64KERNEL:REFUSE-RC's, a body it lacks
-8 constant ARG-CAP                      \ the most cells a row takes
+76 constant REFUSE-RC                   \ a stager that does not fit its function
+8 constant ARG-CAP                      \ the most cells a function takes
 8 constant RES-CAP                      \ and the most it leaves
 
 \ The module the stager builds into, held while it runs: a stager is a
@@ -43,7 +39,6 @@ private
 1 TYPED-BUFFER W-CTX IR-CTX:ctx
 1 TYPED-BUFFER W-BLD IR-BUILD:builder
 1 TYPED-BUFFER W-SRC IR-ID:ir-source-id
-1 TYPED-BUFFER W-TOK IR-ID:ir-value-id  \ the memory the next fetch reads
 TYPED-VARIABLE W-LEASE NLEASE:lease
 TYPED-VARIABLE W-SESSION NSESSION:session
 ARG-CAP TYPED-BUFFER ARGV IR-ID:ir-value-id
@@ -52,7 +47,6 @@ PTR-VARIABLE NAME-A                     \ the row's name, the module's source
 variable NAME-U
 variable N-ARGS
 variable N-RES
-variable TOK?                           \ nonzero once the function has a token
 
 : CC ( -- IR-CTX:ctx ) 0 W-CTX @ ;
 : BB ( -- IR-BUILD:builder ) 0 W-BLD @ ;
@@ -62,9 +56,6 @@ variable TOK?                           \ nonzero once the function has a token
 
 : CELLT ( -- IR-ID:ir-type-id )
    CC BB IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
-
-: MEMT ( -- IR-ID:ir-type-id )
-   CC BB HIR:MEM-TYPE ;
 
 : REFUSE ( ptr u8 n -- )
    s" x64khir: " type  NAME-A @ NAME-U @ type  s"  " type  type cr
@@ -92,7 +83,7 @@ variable TOK?                           \ nonzero once the function has a token
 
 : OPEN-FUN ( ptr u8 n n n -- )
    {: a:ptr u:n in:n out:n :}
-   in ARG-CAP > if s" takes more cells than the kernel stages" REFUSE then
+   in ARG-CAP > if s" takes more cells than a function holds" REFUSE then
    CC BB  CC BB a u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
    CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
@@ -103,8 +94,7 @@ variable TOK?                           \ nonzero once the function has a token
    CC BB SPAN IR-BUILD:SET-BLOCK-SPAN
    in 0 ?do  CC BB CELLT IR-BUILD:ADD-BLOCK-ARG  i ARGV !  loop
    in N-ARGS !
-   0 N-RES !
-   0 TOK? ! ;
+   0 N-RES ! ;
 
 : OPEN-OP ( HIR:opcode -- )
    {: o:HIR:opcode :}
@@ -122,24 +112,11 @@ variable TOK?                           \ nonzero once the function has a token
    {: id:IR-ID:ir-op-id k:n :}
    CC BB id k IR-BUILD:OP-RESULT@ ;
 
-: CELL-RESULT ( -- ) CC BB CELLT IR-BUILD:ADD-RESULT ;
-
 \ The answer an operation's schema declares: a cell for the integer operations,
 \ a real for the float ones, whose answer the verifier holds to that type.
 : SCHEMA-RESULT ( HIR:opcode -- )
    {: o:HIR:opcode :}
    CC BB  CC BB  CC BB o HIR:OPCODE 0 IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT ;
-
-\ The memory the function is entered with, minted where the first fetch needs
-\ it; each fetch then answers the memory after it.
-: TOKEN ( -- IR-ID:ir-value-id )
-   TOK? @ 0= if
-      HIR-OPCODE:MEM OPEN-OP
-      CC BB MEMT IR-BUILD:ADD-RESULT
-      CLOSE-OP 0 RESULT-AT 0 W-TOK !
-      1 TOK? !
-   then
-   0 W-TOK @ ;
 
 : RETURN ( -- )
    HIR-OPCODE:RETURN OPEN-OP
@@ -193,38 +170,15 @@ public
 \ The next answer, deepest first.
 : RESULT ( IR-ID:ir-value-id -- )
    {: v:IR-ID:ir-value-id :}
-   N-RES @ RES-CAP >= if s" leaves more cells than the kernel stages" REFUSE then
+   N-RES @ RES-CAP >= if s" leaves more cells than a function holds" REFUSE then
    v N-RES @ RESV !
    N-RES @ 1+ N-RES ! ;
-
-: LIT ( n -- IR-ID:ir-value-id )
-   {: v:n :}
-   HIR-OPCODE:CONST OPEN-OP
-   CELL-RESULT
-   CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
-   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR  IR-BUILD:ADD-ATTR
-   CLOSE-OP 0 RESULT-AT ;
-
-: OP1 ( IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
-   {: x:IR-ID:ir-value-id o:HIR:opcode :}
-   o OPEN-OP  x OPERAND  o SCHEMA-RESULT
-   CLOSE-OP 0 RESULT-AT ;
 
 \ The deeper operand first, as the source order is: `a b sub` is a - b.
 : OP2 ( IR-ID:ir-value-id IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id o:HIR:opcode :}
    o OPEN-OP  x OPERAND  y OPERAND  o SCHEMA-RESULT
    CLOSE-OP 0 RESULT-AT ;
-
-\ A load, `load` or `bload`, of the address.
-: FETCH ( IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
-   {: x:IR-ID:ir-value-id o:HIR:opcode :}
-   TOKEN {: t:IR-ID:ir-value-id :}
-   o OPEN-OP  x OPERAND  t OPERAND
-   CELL-RESULT  CC BB MEMT IR-BUILD:ADD-RESULT
-   CLOSE-OP {: id:IR-ID:ir-op-id :}
-   id 1 RESULT-AT 0 W-TOK !
-   id 0 RESULT-AT ;
 
 \ ---- the seam ----------------------------------------------------------------
 \ Compile the function the stager builds for the row named, of `in` cells and

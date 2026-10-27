@@ -18,8 +18,7 @@
 \ r8-r11 are scratch. A body is entered by `call` and leaves by the `ret` PRIM
 \ appends, so the return address stays on the machine stack and a body calls a
 \ helper without a frame: one definer serves where habu1.f needs FPRIM and
-\ FPRIM-L. A compiled body (PRIM-HIR) keeps the same contract and ends in the
-\ x86-64 chain's own `ret`.
+\ FPRIM-L.
 \
 \ The x86-64 seam (src/os/linux-x86-64/sys.f) loads here globally, with its
 \ process emitters (proc-watch.f, proc-control.f), so this file loads before
@@ -57,7 +56,6 @@ require src/os/linux-x86-64/sys.f
 require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
 require src/os/linux-x86-64/target-layout.f
-require src/habu/kernel-hir-x64.f
 require src/habu/aot-decl.f
 
 package X64KERNEL
@@ -160,7 +158,7 @@ variable ROW-U
    ROW$ ENGINE-PRIMS:SPEC-CHECK ;
 
 \ The record spans [first, last): the body, and the ret after it when the
-\ flag says so. A compiled body (PRIM-HIR) ends in its own.
+\ flag says so. A dispatch stub (DISPATCH-BODY) leaves by its jump.
 : RECORD ( bool -- n ) {: ret:bool :}
    X64CODE:LBL X64CODE:LBL {: first:label last:label :}
    ROW$ first last ENGINE-PRIMS:ADD {: row:n :}
@@ -5400,163 +5398,145 @@ public
    s" does-patch" [: DOES-PATCH-BODY ;] PRIM ;
 
 \ ---- pure rows ---------------------------------------------------------------
-\ The arithmetic, comparison, shuffle, memory and float rows. Every row but
-\ five is the compiler's own lowering: PRIM-HIR stages the row as one HIR
-\ function through X64KHIR (src/habu/kernel-hir-x64.f), the operations the
-\ word model gives the word (src/compiler/native/hir-word.f DEF-ARITH to
-\ DEF-BYTE-VIEW, src/compiler/native/elaborate.f EXPAND-CELL-INDEX to
-\ EXPAND-EXTREME), and lays the routine the x86-64 chain emits into the record
-\ whole, its own ret included. A word the model has no row for is staged here
-\ from operations it has. The five hand-written rows are the guarded stores,
-\ the twins of habu1.f BSTORE, BCSTORE and BPLUSSTORE, which compiled stores
-\ call rather than inline (elaborate.f DO-STORE), ?dup, whose depth depends on
-\ its value, and f., the twin of habu1.f BFDOT, which writes its own line.
+\ The arithmetic, comparison, shuffle, memory and float rows, each the twin of
+\ its habu1.f body and written over the shapes below. A row reads its operands
+\ where they stand and writes its answer over the deepest cell it consumed, so
+\ a row that leaves as many cells as it takes never moves DSP. The guarded
+\ stores are the twins of habu1.f BSTORE, BCSTORE and BPLUSSTORE, which
+\ compiled stores call rather than inline (src/compiler/native/elaborate.f
+\ DO-STORE), and f. is the twin of habu1.f BFDOT, which writes its own line.
 \
-\ A compiled body calls out only where a divide refuses a zero divisor: to the
-\ entry X64SEL:THROW-ENTRY names, which is the kernel's `throw` row here. Its
-\ field becomes a site of that row's label; any other call or an address site
-\ ends the build with REFUSE-RC.
+\ A float is a double's bits in a cell, worked in xmm0 and xmm1. An operation
+\ that makes a NaN from numbers makes SSE's default NaN, $FFF8000000000000,
+\ where ARM64 makes $7FF8000000000000, so the arithmetic rows flip that sign
+\ (FCLOSE,). A NaN operand comes back quieted, but of two NaN operands SSE
+\ answers the deeper and ARM64 a signalling one before a quiet one: on x86
+\ `$7FF8000000000002 $7FF0000000000001 f+` is $7FF8000000000002, on ARM64
+\ $7FF8000000000001.
 
 private
 
-variable HIR-IN
-variable HIR-OUT
-TYPED-VARIABLE HIR-STAGE [ -- ]
+$8000000000000000 constant SIGN-BIT     \ a double's sign
+$43DFFFFFFFFFFFFF constant REALINT-TOP  \ every double above it is 2^63 or more
 
-\ The emission laid at the stream's end, its throws linked.
-: HIR-USE ( NART:emission -- )
-   {: e:NART:emission :}
-   e NART:ADDR-SITES 0<> if
-      s" x64kernel: " type ROW$ type s"  compiles to an address site" type cr
-      s" x64kernel: a compiled row takes an address" REFUSE-RC die
-   then
-   X64CODE:ASM-LEN {: at:n :}
-   e NART:BYTES e NART:SIZE TEXT,
-   e NART:CALL-SITES 0 ?do
-      e i NART:CALL-KIND@ NEMIT:CALL <>
-      e i NART:CALL-TARGET@ X64SEL:THROW-ENTRY <> or if
-         s" x64kernel: " type ROW$ type s"  compiles to a call other than throw" type cr
-         s" x64kernel: a compiled row calls out" REFUSE-RC die
-      then
-      at e i NART:CALL-SITE@ + CALL-REL32-OFF + s" throw" ENTRY-LABEL REL32-SITE
-   loop ;
+\ Store the register over the cell n below the top: PEEK,'s twin.
+: POKE, ( r64 n -- ) {: r:r64 depth:n :}
+   r DSP depth 1+ CELL * negate MEM-OFF ASM-SINK ENC-MOV-MR ;
 
-: HIR-BODY ( -- )
-   ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @ [: HIR-USE ;] X64KHIR:COMPILE ;
+: TOP!, ( r64 -- ) 0 POKE, ;
 
-: HIR-USE-SCALAR ( NART:emission -- )
-   {: e:NART:emission :}
-   e NART:CALL-SITES 0<> if
-      s" x64kernel: scalar body has a call edge" REFUSE-RC die
-   then
-   e HIR-USE ;
+\ ( a b -- a ): rax = a and rcx = b; the row writes its answer over a.
+: PAIR, ( -- ) RCX POP,  RAX 0 PEEK, ;
 
-: HIR-BODY-SCALAR ( -- )
-   ROW$ HIR-IN @ HIR-OUT @ HIR-STAGE @
-      [: HIR-USE-SCALAR ;] X64KHIR:COMPILE ;
+\ setcc into the register's low byte, which leaves the flags as they are.
+: SET8, ( condition r64 -- ) R64>N >R8 ASM-SINK ENC-SETCC ;
 
-public
+\ The register's low byte, 0 or 1, as a flag cell: zero or all ones.
+: BYTE>FLAG, ( r64 -- ) {: r:r64 :}
+   r r R64>N >R8 ASM-SINK ENC-MOVZX-8-RR  r ASM-SINK ENC-NEG ;
 
-\ Register the body the x86-64 chain compiles from the function the stager
-\ builds, of n cells in and n out, under the row's name: PRIM's twin for a
-\ compiled body.
-: PRIM-HIR ( ptr u8 n n n [ -- ] -- )
-   HIR-STAGE !  HIR-OUT !  HIR-IN !
-   [: HIR-BODY ;] ARGS
-   false RECORD drop ;
+\ The register all ones where the condition holds, else zero.
+: FLAG, ( condition r64 -- ) {: c:condition r:r64 :}
+   c r SET8,  r BYTE>FLAG, ;
 
-: SCALAR-HIR ( ptr u8 n n n [ -- ] -- )
-   HIR-STAGE !  HIR-OUT !  HIR-IN !
-   [: HIR-BODY-SCALAR ;] ARGS
-   false RECORD ENGINE-PRIMS:MARK-SCALAR ;
+\ ( a b -- flag ): a against b, signed.
+: COMPARE, ( condition -- ) {: c:condition :}
+   PAIR,  RAX RCX ASM-SINK ENC-CMP-RR  c RAX FLAG,  RAX TOP!, ;
 
-private
+\ ( a -- flag ): a against zero.
+: ZERO-COMPARE, ( condition -- ) {: c:condition :}
+   RAX 0 PEEK,  RAX RAX ASM-SINK ENC-TEST-RR  c RAX FLAG,  RAX TOP!, ;
 
-\ ---- the stagers ----
-: PASS ( n -- ) X64KHIR:ARG X64KHIR:RESULT ;
+\ ( a b -- a|b ): b where a stands in the relation to b, else a, as habu1.f
+\ BMIN and BMAX keep a unless it is past b.
+: EXTREME, ( condition -- ) {: c:condition :}
+   PAIR,  RAX RCX ASM-SINK ENC-CMP-RR  c RAX RCX ASM-SINK ENC-CMOVCC  RAX TOP!, ;
 
-\ ( x -- x o n ): the argument against a literal.
-: WITH ( n HIR:opcode -- ) {: k:n o:HIR:opcode :}
-   0 X64KHIR:ARG  k X64KHIR:LIT  o X64KHIR:OP2  X64KHIR:RESULT ;
+\ ( a -- |a| ): the sign smeared over rcx flips a negative a and adds one, so
+\ MIN-N stays MIN-N as habu1.f BABS's negation leaves it. No branch and no
+\ call: the row is marked scalar.
+: ABS-BODY ( -- )
+   RAX 0 PEEK,  RCX RAX ASM-SINK ENC-MOV-RR  RCX 63 >IMM8 ASM-SINK ENC-SAR-RI8
+   RAX RCX ASM-SINK ENC-XOR-RR  RAX RCX ASM-SINK ENC-SUB-RR  RAX TOP!, ;
 
-: BIN ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 X64KHIR:ARG  1 X64KHIR:ARG  o X64KHIR:OP2  X64KHIR:RESULT ;
+\ ( a b -- ): rax = a / b, truncated toward zero, and rdx = a mod b, which
+\ carries a's sign: habu1.f's sdiv and msub. A zero divisor calls the kernel's
+\ `throw` row with ARITH-ABI:E-DIV-ZERO where a stood, as habu1.f BDIV0?
+\ enters (DIV-ZERO). idiv raises #DE on MIN-N -1, so -1 negates instead: MIN-N
+\ wraps to MIN-N, sdiv's answer, and the remainder is 0.
+: DIVIDE, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: ok:label hot:label done:label :}
+   RCX POP,  RAX POP,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-NE ok JCC,
+   RAX ARITH-ABI:E-DIV-ZERO >IMM32 ASM-SINK ENC-MOV-RI32  RAX PUSH,
+   s" throw" ENTRY-LABEL CALL,
+   ok X64CODE:LBL,
+   RCX -1 >IMM32 ASM-SINK ENC-CMP-RI32  C-NE hot JCC,
+   RAX ASM-SINK ENC-NEG  RDX ZERO-REG,  done JMP,
+   hot X64CODE:LBL,
+   ASM-SINK ENC-CQO  RCX ASM-SINK ENC-IDIV
+   done X64CODE:LBL, ;
 
-\ ( x -- 0 x sub ).
-: NEGATE-HIR ( -- )
-   0 X64KHIR:LIT  0 X64KHIR:ARG  HIR-OPCODE:SUB X64KHIR:OP2  X64KHIR:RESULT ;
+\ d = the byte at a, zero-extended.
+: CFETCH, ( r64 r64 -- ) {: d:r64 a:r64 :}
+   d a MEM-AT ASM-SINK ENC-MOVZX-8-RM ;
 
-\ ( x -- (x xor m) - m ), m the mask x 0 lt answers.
-: ABS-HIR ( -- )
-   0 X64KHIR:ARG {: x:IR-ID:ir-value-id :}
-   x  0 X64KHIR:LIT  HIR-OPCODE:LT X64KHIR:OP2 {: m:IR-ID:ir-value-id :}
-   x m HIR-OPCODE:XOR X64KHIR:OP2  m HIR-OPCODE:SUB X64KHIR:OP2  X64KHIR:RESULT ;
+\ ---- the float pair ----
+\ ( a b -- a ): xmm0 = a and xmm1 = b.
+: FPAIR, ( -- )
+   PAIR,  XMM0 RAX ASM-SINK ENC-MOVQ-XR  XMM1 RCX ASM-SINK ENC-MOVQ-XR ;
 
-\ elaborate.f EXPAND-EXTREME, `b xor ((a xor b) and (a rel b))`: gt answers the
-\ larger, lt the smaller.
-: PICK-HIR ( HIR:opcode -- ) {: rel:HIR:opcode :}
-   0 X64KHIR:ARG  1 X64KHIR:ARG {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
-   a b HIR-OPCODE:XOR X64KHIR:OP2
-   a b rel X64KHIR:OP2
-   HIR-OPCODE:AND X64KHIR:OP2
-   b HIR-OPCODE:XOR X64KHIR:OP2
-   X64KHIR:RESULT ;
+\ ( a -- a ): xmm0 = a and xmm1 = 0.0.
+: FZERO, ( -- )
+   RAX 0 PEEK,  XMM0 RAX ASM-SINK ENC-MOVQ-XR  XMM1 XMM1 ASM-SINK ENC-XORPD-RR ;
 
-\ elaborate.f EXPAND-MODULO, a - (a / b) * b, over one division whose quotient
-\ /mod also answers.
-: QUOTIENT ( -- IR-ID:ir-value-id IR-ID:ir-value-id )
-   0 X64KHIR:ARG  1 X64KHIR:ARG {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
-   a b HIR-OPCODE:DIV X64KHIR:OP2 {: q:IR-ID:ir-value-id :}
-   a  q b HIR-OPCODE:MUL X64KHIR:OP2  HIR-OPCODE:SUB X64KHIR:OP2
-   q ;
+\ An arithmetic row's operands, ucomisd setting the parity flag where one is a
+\ NaN: the SSE operations between it and FCLOSE, leave the flags alone.
+: FBIN, ( -- ) FPAIR,  XMM0 XMM1 ASM-SINK ENC-UCOMISD-RR ;
+: FONE, ( -- )
+   RAX 0 PEEK,  XMM0 RAX ASM-SINK ENC-MOVQ-XR  XMM0 XMM0 ASM-SINK ENC-UCOMISD-RR ;
 
-: MOD-HIR ( -- ) QUOTIENT drop X64KHIR:RESULT ;
-: DIVMOD-HIR ( -- ) QUOTIENT {: q:IR-ID:ir-value-id :} X64KHIR:RESULT q X64KHIR:RESULT ;
+\ Write xmm0 over the top cell, its sign flipped when it is a NaN its operands
+\ were not: SSE's default NaN becomes ARM64's.
+: FCLOSE, ( -- )
+   X64CODE:LBL {: done:label :}
+   RAX XMM0 ASM-SINK ENC-MOVQ-RX
+   C-P done JCC,
+   XMM0 XMM0 ASM-SINK ENC-UCOMISD-RR  C-NP done JCC,
+   RCX SIGN-BIT IMM64,  RAX RCX ASM-SINK ENC-XOR-RR
+   done X64CODE:LBL,
+   RAX TOP!, ;
 
-\ elaborate.f EXPAND-CELL-INDEX: ( base n -- base + n cells ).
-: PTR-FIELD-HIR ( -- )
-   0 X64KHIR:ARG
-   1 X64KHIR:ARG  HIR:CELL-BYTES X64KHIR:LIT  HIR-OPCODE:MUL X64KHIR:OP2
-   HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT ;
+\ All ones over the top cell where x > y: ucomisd's above, false when either
+\ is a NaN, as habu1.f's fcmp conditions are. A less-than exchanges the
+\ operands.
+: FGT, ( xmm xmm -- ) {: x:xmm y:xmm :}
+   x y ASM-SINK ENC-UCOMISD-RR  C-A RAX FLAG,  RAX TOP!, ;
 
-: FETCH-HIR ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 X64KHIR:ARG  o X64KHIR:FETCH  X64KHIR:RESULT ;
+\ All ones over the top cell where x = y: equal and ordered.
+: FEQ, ( xmm xmm -- ) {: x:xmm y:xmm :}
+   x y ASM-SINK ENC-UCOMISD-RR
+   C-E RAX SET8,  C-NP RCX SET8,
+   RAX RCX ASM-SINK ENC-AND-RR  RAX BYTE>FLAG,  RAX TOP!, ;
 
-\ ( addr -- addr+1 byte ).
-: COUNT-HIR ( -- )
-   0 X64KHIR:ARG {: x:IR-ID:ir-value-id :}
-   x  1 X64KHIR:LIT  HIR-OPCODE:ADD X64KHIR:OP2  X64KHIR:RESULT
-   x HIR-OPCODE:BLOAD X64KHIR:FETCH  X64KHIR:RESULT ;
+\ ( a -- n ): habu1.f's fcvtzs, which truncates toward zero, saturates at both
+\ ends and answers 0 for a NaN. cvttsd2si answers MIN-N past either end and
+\ for a NaN: a double above REALINT-TOP flips it to MAX-N, and a NaN, unordered
+\ with itself, takes zero.
+: F>S-BODY ( -- )
+   RAX 0 PEEK,  XMM0 RAX ASM-SINK ENC-MOVQ-XR
+   RCX REALINT-TOP IMM64,  XMM1 RCX ASM-SINK ENC-MOVQ-XR
+   RAX XMM0 ASM-SINK ENC-CVTTSD2SI-RR
+   XMM0 XMM1 ASM-SINK ENC-UCOMISD-RR  C-A RCX FLAG,  RAX RCX ASM-SINK ENC-XOR-RR
+   RCX ZERO-REG,
+   XMM0 XMM0 ASM-SINK ENC-UCOMISD-RR  C-P RAX RCX ASM-SINK ENC-CMOVCC
+   RAX TOP!, ;
 
-\ A float row's cells are a double's bits. Each argument crosses into a real
-\ with bitsreal and a real answer back to a cell with realbits, as a compiled
-\ word's values cross (elaborate.f COERCE1 and CELL-CROSS).
-: REAL-ARG ( n -- IR-ID:ir-value-id )
-   X64KHIR:ARG HIR-OPCODE:BITSREAL X64KHIR:OP1 ;
-
-: REAL-RESULT ( IR-ID:ir-value-id -- )
-   HIR-OPCODE:REALBITS X64KHIR:OP1 X64KHIR:RESULT ;
-
-: FBIN ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 REAL-ARG  1 REAL-ARG  o X64KHIR:OP2  REAL-RESULT ;
-
-: FUNARY ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 REAL-ARG  o X64KHIR:OP1  REAL-RESULT ;
-
-\ A comparison answers a flag, which is a cell.
-: FREL ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 REAL-ARG  1 REAL-ARG  o X64KHIR:OP2  X64KHIR:RESULT ;
-
-: FREL0 ( HIR:opcode -- ) {: o:HIR:opcode :}
-   0 REAL-ARG  o X64KHIR:OP1  X64KHIR:RESULT ;
-
-\ s>f and f>s cross between a cell's number and a real, and so take or answer
-\ the cell as it stands.
-: S>F-HIR ( -- )
-   0 X64KHIR:ARG  HIR-OPCODE:INTREAL X64KHIR:OP1  REAL-RESULT ;
-
-: F>S-HIR ( -- )
-   0 REAL-ARG  HIR-OPCODE:REALINT X64KHIR:OP1  X64KHIR:RESULT ;
+\ Register the body under the row's name and mark it scalar: habu1.f
+\ FPRIM-L-SCALAR's twin, for a straight-line ( n -- n ) body with no call.
+: SCALAR ( ptr u8 n [ -- ] -- )
+   ARGS
+   EMIT-ROW ENGINE-PRIMS:MARK-SCALAR ;
 
 \ ---- the hand-written rows ----
 : STORE-BODY ( -- )
@@ -5637,82 +5617,97 @@ private
    RSP FDOT-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
 
 : ARITH-ROWS, ( -- )
-   s" +" 2 1 [: HIR-OPCODE:ADD BIN ;] PRIM-HIR
-   s" -" 2 1 [: HIR-OPCODE:SUB BIN ;] PRIM-HIR
-   s" *" 2 1 [: HIR-OPCODE:MUL BIN ;] PRIM-HIR
-   s" /" 2 1 [: HIR-OPCODE:DIV BIN ;] PRIM-HIR
-   s" mod" 2 1 [: MOD-HIR ;] PRIM-HIR
-   s" /mod" 2 2 [: DIVMOD-HIR ;] PRIM-HIR
-   s" abs" 1 1 [: ABS-HIR ;] SCALAR-HIR
-   s" min" 2 1 [: HIR-OPCODE:LT PICK-HIR ;] PRIM-HIR
-   s" max" 2 1 [: HIR-OPCODE:GT PICK-HIR ;] PRIM-HIR ;
+   s" +" [: PAIR,  RAX RCX ASM-SINK ENC-ADD-RR  RAX TOP!, ;] PRIM
+   s" -" [: PAIR,  RAX RCX ASM-SINK ENC-SUB-RR  RAX TOP!, ;] PRIM
+   s" *" [: PAIR,  RAX RCX ASM-SINK ENC-IMUL-RR  RAX TOP!, ;] PRIM
+   s" /" [: DIVIDE,  RAX PUSH, ;] PRIM
+   s" mod" [: DIVIDE,  RDX PUSH, ;] PRIM
+   s" /mod" [: DIVIDE,  RDX PUSH,  RAX PUSH, ;] PRIM
+   s" abs" [: ABS-BODY ;] SCALAR
+   s" min" [: C-G EXTREME, ;] PRIM
+   s" max" [: C-L EXTREME, ;] PRIM ;
 
+\ A shift takes its count modulo 64 in cl, as habu1.f's lslv and lsrv do.
 : COMPARE-ROWS, ( -- )
-   s" =" 2 1 [: HIR-OPCODE:EQUAL BIN ;] PRIM-HIR
-   s" <>" 2 1 [: HIR-OPCODE:NE BIN ;] PRIM-HIR
-   s" <" 2 1 [: HIR-OPCODE:LT BIN ;] PRIM-HIR
-   s" >" 2 1 [: HIR-OPCODE:GT BIN ;] PRIM-HIR
-   s" <=" 2 1 [: HIR-OPCODE:LE BIN ;] PRIM-HIR
-   s" >=" 2 1 [: HIR-OPCODE:GE BIN ;] PRIM-HIR
-   s" 0=" 1 1 [: 0 HIR-OPCODE:EQUAL WITH ;] PRIM-HIR
-   s" 0<" 1 1 [: 0 HIR-OPCODE:LT WITH ;] PRIM-HIR
-   s" 1+" 1 1 [: 1 HIR-OPCODE:ADD WITH ;] PRIM-HIR
-   s" 1-" 1 1 [: 1 HIR-OPCODE:SUB WITH ;] PRIM-HIR
-   s" and" 2 1 [: HIR-OPCODE:AND BIN ;] PRIM-HIR
-   s" or" 2 1 [: HIR-OPCODE:OR BIN ;] PRIM-HIR
-   s" xor" 2 1 [: HIR-OPCODE:XOR BIN ;] PRIM-HIR
-   s" invert" 1 1 [: 0 X64KHIR:ARG HIR-OPCODE:INVERT X64KHIR:OP1 X64KHIR:RESULT ;] PRIM-HIR
-   s" negate" 1 1 [: NEGATE-HIR ;] PRIM-HIR
-   s" lshift" 2 1 [: HIR-OPCODE:LSHIFT BIN ;] PRIM-HIR
-   s" rshift" 2 1 [: HIR-OPCODE:RSHIFT BIN ;] PRIM-HIR ;
+   s" =" [: C-E COMPARE, ;] PRIM
+   s" <>" [: C-NE COMPARE, ;] PRIM
+   s" <" [: C-L COMPARE, ;] PRIM
+   s" >" [: C-G COMPARE, ;] PRIM
+   s" <=" [: C-LE COMPARE, ;] PRIM
+   s" >=" [: C-GE COMPARE, ;] PRIM
+   s" 0=" [: C-E ZERO-COMPARE, ;] PRIM
+   s" 0<" [: C-L ZERO-COMPARE, ;] PRIM
+   s" 1+" [: RAX 0 PEEK,  RAX ASM-SINK ENC-INC  RAX TOP!, ;] PRIM
+   s" 1-" [: RAX 0 PEEK,  RAX ASM-SINK ENC-DEC  RAX TOP!, ;] PRIM
+   s" and" [: PAIR,  RAX RCX ASM-SINK ENC-AND-RR  RAX TOP!, ;] PRIM
+   s" or" [: PAIR,  RAX RCX ASM-SINK ENC-OR-RR  RAX TOP!, ;] PRIM
+   s" xor" [: PAIR,  RAX RCX ASM-SINK ENC-XOR-RR  RAX TOP!, ;] PRIM
+   s" invert" [: RAX 0 PEEK,  RAX ASM-SINK ENC-NOT  RAX TOP!, ;] PRIM
+   s" negate" [: RAX 0 PEEK,  RAX ASM-SINK ENC-NEG  RAX TOP!, ;] PRIM
+   s" lshift" [: PAIR,  RAX ASM-SINK ENC-SHL-CL  RAX TOP!, ;] PRIM
+   s" rshift" [: PAIR,  RAX ASM-SINK ENC-SHR-CL  RAX TOP!, ;] PRIM ;
 
+\ Each shuffle reads the cells it moves and writes them where they land.
 : STACK-ROWS, ( -- )
-   s" dup" 1 2 [: 0 PASS 0 PASS ;] PRIM-HIR
-   s" drop" 1 0 [: ;] PRIM-HIR
-   s" swap" 2 2 [: 1 PASS 0 PASS ;] PRIM-HIR
-   s" nip" 2 1 [: 1 PASS ;] PRIM-HIR
-   s" over" 2 3 [: 0 PASS 1 PASS 0 PASS ;] PRIM-HIR
-   s" tuck" 2 3 [: 1 PASS 0 PASS 1 PASS ;] PRIM-HIR
-   s" rot" 3 3 [: 1 PASS 2 PASS 0 PASS ;] PRIM-HIR
-   s" -rot" 3 3 [: 2 PASS 0 PASS 1 PASS ;] PRIM-HIR
-   s" 2dup" 2 4 [: 0 PASS 1 PASS 0 PASS 1 PASS ;] PRIM-HIR
-   s" 2drop" 2 0 [: ;] PRIM-HIR
-   s" 2swap" 4 4 [: 2 PASS 3 PASS 0 PASS 1 PASS ;] PRIM-HIR
-   s" 2over" 4 6 [: 0 PASS 1 PASS 2 PASS 3 PASS 0 PASS 1 PASS ;] PRIM-HIR
+   s" dup" [: RAX 0 PEEK,  RAX PUSH, ;] PRIM
+   s" drop" [: DROP, ;] PRIM
+   s" swap" [: RAX 0 PEEK,  RCX 1 PEEK,  RAX 1 POKE,  RCX 0 POKE, ;] PRIM
+   s" nip" [: RAX POP,  RAX TOP!, ;] PRIM
+   s" over" [: RAX 1 PEEK,  RAX PUSH, ;] PRIM
+   s" tuck" [: RAX 0 PEEK,  RCX 1 PEEK,  RAX 1 POKE,  RCX 0 POKE,  RAX PUSH, ;] PRIM
+   s" rot" [:
+      RAX 2 PEEK,  RCX 1 PEEK,  RDX 0 PEEK,
+      RCX 2 POKE,  RDX 1 POKE,  RAX 0 POKE, ;] PRIM
+   s" -rot" [:
+      RAX 2 PEEK,  RCX 1 PEEK,  RDX 0 PEEK,
+      RDX 2 POKE,  RAX 1 POKE,  RCX 0 POKE, ;] PRIM
+   s" 2dup" [: RAX 1 PEEK,  RCX 0 PEEK,  RAX PUSH,  RCX PUSH, ;] PRIM
+   s" 2drop" [: DSP 2 CELL * >IMM8 ASM-SINK ENC-SUB-RI8 ;] PRIM
+   s" 2swap" [:
+      RAX 3 PEEK,  RCX 2 PEEK,  RDX 1 PEEK,  RSI 0 PEEK,
+      RDX 3 POKE,  RSI 2 POKE,  RAX 1 POKE,  RCX 0 POKE, ;] PRIM
+   s" 2over" [: RAX 3 PEEK,  RCX 2 PEEK,  RAX PUSH,  RCX PUSH, ;] PRIM
    s" ?dup" [: QDUP-BODY ;] PRIM ;
 
+\ The views and chars change only the checked type: their bodies are the ret.
 : MEMORY-ROWS, ( -- )
-   s" @" 1 1 [: HIR-OPCODE:LOAD FETCH-HIR ;] PRIM-HIR
+   s" @" [: RAX 0 PEEK,  RAX RAX MEM-AT ASM-SINK ENC-MOV-RM  RAX TOP!, ;] PRIM
    s" !" [: STORE-BODY ;] PRIM
-   s" ptr-field" 2 1 [: PTR-FIELD-HIR ;] PRIM-HIR
-   s" byte-view" 1 1 [: 0 PASS ;] PRIM-HIR
-   s" cell-view" 1 1 [: 0 PASS ;] PRIM-HIR
+   s" ptr-field" [:
+      PAIR,  RAX RAX RCX CELL 0 MEM-IDX ASM-SINK ENC-LEA  RAX TOP!, ;] PRIM
+   s" byte-view" [: ;] PRIM
+   s" cell-view" [: ;] PRIM
    s" +!" [: ADDSTORE-BODY ;] PRIM
-   s" c@" 1 1 [: HIR-OPCODE:BLOAD FETCH-HIR ;] PRIM-HIR
+   s" c@" [: RAX 0 PEEK,  RAX RAX CFETCH,  RAX TOP!, ;] PRIM
    s" c!" [: CSTORE-BODY ;] PRIM
-   s" cells" 1 1 [: HIR:CELL-BYTES HIR-OPCODE:MUL WITH ;] PRIM-HIR
-   s" cell+" 1 1 [: HIR:CELL-BYTES HIR-OPCODE:ADD WITH ;] PRIM-HIR
-   s" chars" 1 1 [: 0 PASS ;] PRIM-HIR
-   s" char+" 1 1 [: 1 HIR-OPCODE:ADD WITH ;] PRIM-HIR
-   s" count" 1 2 [: COUNT-HIR ;] PRIM-HIR ;
+   s" cells" [: RAX 0 PEEK,  RAX 3 >IMM8 ASM-SINK ENC-SHL-RI8  RAX TOP!, ;] PRIM
+   s" cell+" [: RAX 0 PEEK,  RAX CELL >IMM8 ASM-SINK ENC-ADD-RI8  RAX TOP!, ;] PRIM
+   s" chars" [: ;] PRIM
+   s" char+" [: RAX 0 PEEK,  RAX ASM-SINK ENC-INC  RAX TOP!, ;] PRIM
+   s" count" [:
+      RAX 0 PEEK,  RCX RAX CFETCH,
+      RAX ASM-SINK ENC-INC  RAX TOP!,  RCX PUSH, ;] PRIM ;
 
-\ The word model's float operations (hir-word.f DEF-FLOAT and DEF-FCOMPARE),
-\ and f.
 : FLOAT-ROWS, ( -- )
-   s" f+" 2 1 [: HIR-OPCODE:FADD FBIN ;] PRIM-HIR
-   s" f-" 2 1 [: HIR-OPCODE:FSUB FBIN ;] PRIM-HIR
-   s" f*" 2 1 [: HIR-OPCODE:FMUL FBIN ;] PRIM-HIR
-   s" f/" 2 1 [: HIR-OPCODE:FDIV FBIN ;] PRIM-HIR
-   s" f<" 2 1 [: HIR-OPCODE:FLT FREL ;] PRIM-HIR
-   s" f=" 2 1 [: HIR-OPCODE:FEQ FREL ;] PRIM-HIR
-   s" f>" 2 1 [: HIR-OPCODE:FGT FREL ;] PRIM-HIR
-   s" f0<" 1 1 [: HIR-OPCODE:FLTZ FREL0 ;] PRIM-HIR
-   s" f0=" 1 1 [: HIR-OPCODE:FEQZ FREL0 ;] PRIM-HIR
-   s" fabs" 1 1 [: HIR-OPCODE:FABS FUNARY ;] PRIM-HIR
-   s" fnegate" 1 1 [: HIR-OPCODE:FNEG FUNARY ;] PRIM-HIR
-   s" fsqrt" 1 1 [: HIR-OPCODE:FSQRT FUNARY ;] PRIM-HIR
-   s" s>f" 1 1 [: S>F-HIR ;] PRIM-HIR
-   s" f>s" 1 1 [: F>S-HIR ;] PRIM-HIR
+   s" f+" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-ADDSD-RR  FCLOSE, ;] PRIM
+   s" f-" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-SUBSD-RR  FCLOSE, ;] PRIM
+   s" f*" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-MULSD-RR  FCLOSE, ;] PRIM
+   s" f/" [: FBIN,  XMM0 XMM1 ASM-SINK ENC-DIVSD-RR  FCLOSE, ;] PRIM
+   s" f<" [: FPAIR,  XMM1 XMM0 FGT, ;] PRIM
+   s" f=" [: FPAIR,  XMM0 XMM1 FEQ, ;] PRIM
+   s" f>" [: FPAIR,  XMM0 XMM1 FGT, ;] PRIM
+   s" f0<" [: FZERO,  XMM1 XMM0 FGT, ;] PRIM
+   s" f0=" [: FZERO,  XMM0 XMM1 FEQ, ;] PRIM
+   s" fabs" [:
+      RAX 0 PEEK,  RAX 1 >IMM8 ASM-SINK ENC-SHL-RI8  RAX 1 >IMM8 ASM-SINK ENC-SHR-RI8
+      RAX TOP!, ;] PRIM
+   s" fnegate" [:
+      RAX 0 PEEK,  RCX SIGN-BIT IMM64,  RAX RCX ASM-SINK ENC-XOR-RR  RAX TOP!, ;] PRIM
+   s" fsqrt" [: FONE,  XMM0 XMM0 ASM-SINK ENC-SQRTSD-RR  FCLOSE, ;] PRIM
+   s" s>f" [:
+      RAX 0 PEEK,  XMM0 RAX ASM-SINK ENC-CVTSI2SD-RR  RAX XMM0 ASM-SINK ENC-MOVQ-RX
+      RAX TOP!, ;] PRIM
+   s" f>s" [: F>S-BODY ;] PRIM
    s" f." [: FDOT-BODY ;] PRIM ;
 
 public
