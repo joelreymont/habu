@@ -1647,7 +1647,8 @@ backend answers alike.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.
-- `abort"` only for proven-impossible states, with a message.
+- A proven-impossible state throws its owning module's named state code
+  (`E-QUEUE-STATE`, `E-IR-TYPE-STATE`). Habu has no `abort"`.
 - **Interactive support recovers; builders may exit.** Recoverable interactive
   failures `throw` into REPL recovery (`?`, rollback, reread); `die` is for
   build-time makers and CLI boundaries where exiting is the contract.
