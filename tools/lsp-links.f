@@ -32,7 +32,7 @@ using JSON-WRITE
 
 private
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for decoding a line
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for decoding a line
 DYNAMIC-BUFFER PATH-B u8                 \ the line's file, decoded,
 variable PATH-U
 TYPED-VARIABLE HELD bool                 \ and whether its loader held it
@@ -62,7 +62,7 @@ variable SHOWN-N                         \ and the links written so far
    {: a:ptr u:n :}
    0 PATH-U !
    false HELD !
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE ;

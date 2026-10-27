@@ -15,7 +15,7 @@ private
 
 10 constant LF
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for every read of a member
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for every read of a member
 
 \ The line of the text at offset O, without its LF, and the offset after it.
 : LINE ( ptr u8 n n -- ptr u8 n n )
@@ -46,7 +46,7 @@ public
 \ escapes and all, or a number's digits. The line is one JSON object.
 : MEMBER ( ptr u8 n ptr u8 n -- ptr u8 n n )
    {: a:ptr u:n k:ptr ku:n :}
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    k ku JR:FIND-KEY 0= if JR:CLOSE NULL$ -1 exit then
    JR:TOKEN >r JR:SPAN$ rot JR:CLOSE r> ;

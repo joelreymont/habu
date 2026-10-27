@@ -652,7 +652,7 @@ variable DEADLINE                        \ the mono-ns time its waits run out,
 variable SENT                            \ and the bytes of its input written
 
 FS-PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for reading a packet
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for reading a packet
 TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
@@ -1597,7 +1597,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ quotes, and whether it is a string.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    {: a:ptr u:n k:ptr ku:n :}
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    k ku JR:FIND-KEY 0= if JR:CLOSE NULL$ false exit then
    JR:TOKEN >r JR:SPAN$ rot JR:CLOSE r> JR:T-STR = ;
@@ -2569,6 +2569,26 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" ]}" MSG+
    HEAR
    MSG$ HEARD ;
+
+\ Params nested past the 64 levels a JR:cursor keeps inline.
+100 constant DEEP-NEST
+
+\ workspace/symbol params whose query follows a member nested DEEP-NEST deep,
+\ in PAR.
+: DEEP-PARAMS ( -- ptr u8 n )
+   PAR-B CLEAR
+   s\" {\"deep\":" PAR+
+   DEEP-NEST 0 ?do s" [" PAR+ loop
+   DEEP-NEST 0 ?do s" ]" PAR+ loop
+   s\" ,\"query\":\"habu-deep\"}" PAR+
+   PAR$ ;
+
+\ The server reads past the nest to the query and answers: no document is open,
+\ so the list is empty. A query it could not reach is refused instead.
+: DEEP-PARAMS-TURNS ( -- )
+   s" 3" DEEP-PARAMS SYMBOLS-ASK
+   SAY
+   s" 3" SYMBOLS-START SYMBOLS-END ;
 
 \ textDocument/documentSymbol, by its id's JSON text, of the document opened
 \ from this path.
@@ -7687,6 +7707,7 @@ public
    s" invalid-request" [: INVALID-REQUEST-TURNS ;] TALK
    s" sync" [: SYNC-TURNS ;] TALK
    s" malformed-params" [: MALFORMED-PARAMS-TURNS ;] TALK
+   s" deep-params" [: DEEP-PARAMS-TURNS ;] TALK
    TEST-DIAGNOSTICS
    TEST-SYMBOLS
    TEST-OUTLINES

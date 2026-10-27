@@ -38,7 +38,7 @@ private
 
 60000 constant INDEX-MS
 
-create JR-ST JR:STORAGE-BYTES allot
+TYPED-VARIABLE JR-ST JR:cursor
 DYNAMIC-BUFFER ID-PKG u8
 DYNAMIC-BUFFER ID-TAIL u8
 variable ID-PKG-U
@@ -110,7 +110,7 @@ variable RESULT-SYM
    {: a:ptr u:n :}
    0 ROW-PKG-U !  0 ROW-TAIL-U !
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE

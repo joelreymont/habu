@@ -261,7 +261,7 @@ variable BYTES-U
 \ capacity, and a string at the end of what it names, as an empty one is,
 \ still needs the address of that index.
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for decoding a line
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for decoding a line
 DYNAMIC-BUFFER FILE-B u8                 \ the line's file, decoded,
 variable FILE-U
 DYNAMIC-BUFFER IN-B u8                   \ the file a use line's use is in,
@@ -460,7 +460,7 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 END-V !
    0 TARGET-V !
    0 TARGET-END-V !
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE ;

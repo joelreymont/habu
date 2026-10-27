@@ -66,7 +66,7 @@ private
 1 constant ERROR-SEVERITY                \ LSP DiagnosticSeverity.Error
 3 constant INFORMATION-SEVERITY          \ LSP DiagnosticSeverity.Information
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for screening a packet line
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for screening a packet line
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
 create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
 TYPED-VARIABLE W JSON-WRITE:writer
@@ -99,7 +99,7 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ one JSON value.
 : SCAN ( -- )
    -1 FILE-U !
-   JR-ST JR:STORAGE-BYTES LINE-A @ LINE-U @ JR:INIT
+   JR-ST LINE-A @ LINE-U @ JR:INIT
    JR:NEXT JR:T-OBJ <> if JR:CLOSE exit then
    s" file" JR:FIND-KEY 0= if JR:CLOSE exit then
    JR:TOKEN JR:T-STR <> if JR:CLOSE exit then

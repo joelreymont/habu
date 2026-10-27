@@ -179,7 +179,7 @@ private
 ENUM state starting running shut-down ;ENUM
 1 LAYOUT-BUFFER STATE-BUF state
 
-create JR-ST STORAGE-BYTES allot          \ JR storage for every read of a body
+TYPED-VARIABLE JR-ST JR:cursor            \ JR storage for every read of a body
 LINE-CAP 2 + SPAN-BUFFER: HEAD-BUF        \ the reader's buffer: a header line and its CR LF
 create REPLY-BUF BUF:HDR-BYTES allot      \ a reply's bytes, grown as it is written
 TYPED-VARIABLE INPUT CONTENT-LENGTH:reader
@@ -296,7 +296,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : PARAM ( ptr u8 n ptr u8 n -- JR:reader n )
    {: p:ptr pu:n k:ptr ku:n :}
    pu 0= if E-LSP-PARAMS throw then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ <> if E-LSP-PARAMS throw then
    k ku FIND-KEY 0= if E-LSP-PARAMS throw then
    TOKEN ;
@@ -479,7 +479,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 : NAMED? ( ptr u8 n ptr u8 n -- bool )
    {: m:ptr mu:n name:ptr nu:n :}
-   JR-ST STORAGE-BYTES m mu name nu METHOD? ;
+   JR-ST m mu name nu METHOD? ;
 
 : NOTIFIED ( ptr u8 n ptr u8 n -- )
    {: m:ptr mu:n p:ptr pu:n :}
@@ -511,7 +511,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ Held message K's params, and whether it is a notification of this method.
 : NOTICE? ( n ptr u8 n -- ptr u8 n bool )
    {: k:n name:ptr nu:n :}
-   JR-ST STORAGE-BYTES k HELD$ >MESSAGE MATCH JSON-RPC:message
+   JR-ST k HELD$ >MESSAGE MATCH JSON-RPC:message
       request OF 2drop 2drop ID$ 2drop s" " false ENDOF
       notification OF {: m:ptr mu:n p:ptr pu:n :} p pu m mu name nu NAMED? ENDOF
       success OF 2drop ID$ 2drop s" " false ENDOF
@@ -523,7 +523,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ string's decoded text, in ID-SPAN, and true; else its JSON text and false.
 : ID-KEY ( JSON-RPC:id -- ptr u8 n bool )
    ID$ {: r:ptr ru:n :}
-   JR-ST STORAGE-BYTES r ru INIT
+   JR-ST r ru INIT
    NEXT T-STR = if ID-SPAN DECODE true else 0 false then {: n:n str:bool :}
    JR:CLOSE
    str if ID-SPAN @ SPAN:$ drop n true exit then
@@ -534,7 +534,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : ID-PARAM? ( ptr u8 n ptr u8 n bool -- bool )
    {: p:ptr pu:n k:ptr ku:n str:bool :}
    pu 0= if false exit then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ = if s" id" FIND-KEY else false then
    if
       TOKEN T-STR = if
@@ -563,7 +563,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : URI-SLOT ( ptr u8 n -- n )
    {: p:ptr pu:n :}
    pu 0= if -1 exit then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ =
    if s" textDocument" INTO? else false then
    if s" uri" FIND-KEY else false then
@@ -1057,7 +1057,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : MARKDOWN? ( ptr u8 n -- bool )
    {: p:ptr pu:n :}
    pu 0= if false exit then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ =
    if s" capabilities" INTO? else false then
    if s" textDocument" INTO? else false then
@@ -1098,7 +1098,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : WORKSPACE! ( ptr u8 n -- )
    {: p:ptr pu:n :}
    pu 0= if exit then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ =
    if s" workspaceFolders" FIND-KEY else false then
    if TOKEN T-ARR = else false then
@@ -1106,7 +1106,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
    folders if begin NEXT T-ARR-END <> while FOLDER repeat then
    JR:CLOSE
    folders if exit then
-   JR-ST STORAGE-BYTES p pu INIT
+   JR-ST p pu INIT
    NEXT T-OBJ =
    if s" rootUri" FIND-KEY else false then
    if TOKEN T-STR = else false then
@@ -1179,7 +1179,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : TURN ( -- )
    HELD-NEXT @ {: k:n :}
    1 HELD-NEXT +!
-   JR-ST STORAGE-BYTES k HELD$ >MESSAGE DISPATCH
+   JR-ST k HELD$ >MESSAGE DISPATCH
    HELD? if exit then
    0 HELD-NEXT !
    0 HELD-COUNT !

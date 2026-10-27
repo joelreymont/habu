@@ -38,7 +38,7 @@ using LSP-DEFS
 
 private
 
-create JR-ST JR:STORAGE-BYTES allot      \ JR storage for decoding a line
+TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for decoding a line
 DYNAMIC-BUFFER WORD-B u8                 \ the line's spelling, decoded,
 variable WORD-U
 DYNAMIC-BUFFER FILE-B u8                 \ its declaration's file, or none,
@@ -84,7 +84,7 @@ variable SHOWN-N                         \ and the items written so far
    0 FILE-U !
    0 TARGET-V !
    0 TARGET-END-V !
-   JR-ST JR:STORAGE-BYTES a u JR:INIT
+   JR-ST a u JR:INIT
    JR:NEXT drop
    begin JR:NEXT JR:T-KEY = while MEMBER repeat
    JR:CLOSE ;
