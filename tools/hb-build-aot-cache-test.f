@@ -40,6 +40,8 @@ variable HBT-PAIR-MAP-U
 create HBT-PAIR-EXE-HEX 64 allot
 create HBT-PAIR-MAP-HEX 64 allot
 create HBT-PAIR-GOT-HEX 64 allot
+create HBT-NESTED-OUT FS-PATH-CAP allot
+variable HBT-NESTED-OUT-U
 
 : HBT-BOUND-MAP ( ptr u8 n ptr u8 n -- )
    {: image:ptr imageu:n path:ptr pathu:n :}
@@ -199,11 +201,11 @@ create HBT-PAIR-GOT-HEX 64 allot
 
 \ Model the input range and loader pair owned by an enclosing
 \ NDEF-CACHE:LOAD-WITH-INPUTS. Maker selection returns both even when
-\ publishing the selector fails after discovery. A private root by claim: the
-\ case deletes and damages the maker-support record, which is keyed by engine
-\ only, so in the run's root it would break concurrent rows on that engine.
-: HBT-MAKER-NESTED-INPUTS ( -- )
-   HBT-TMP BUILD-CACHE:ROOT!
+\ publishing the selector fails after discovery. The steps delete and damage
+\ the maker-support record, <out root>/<engine>/img/aot-builder.inputs
+\ (HBB-MAKER-SUPPORT-PATH$), which every build on that engine under the out
+\ root shares, so they run in HBT-MAKER-NESTED-INPUTS's child.
+: HBT-MAKER-NESTED-STEPS ( -- )
    HBB-RESET-OPTIONS
    HBB-MAKER-KEY!
    HBB-MAKER-SUPPORT-PATH$ REMOVE-FILE
@@ -223,8 +225,41 @@ create HBT-PAIR-GOT-HEX 64 allot
    end active HBT-MAKER-OUTER-HOLDS
    HBB-MAKER-SUPPORT-PATH$ REMOVE-TREE
    SOURCE-INPUT:RESET
-   NFILE-INPUTS:CLOSE
-   BUILD-CACHE:RESET ;
+   NFILE-INPUTS:CLOSE ;
+
+
+\ The child's argv after `nested`: the source and the engine. Its environment
+\ names the temp, cache and out roots.
+: HBT-MAKER-NESTED-CHILD ( -- )
+   SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
+   0 SCRIPT-ARGV$ s" nested" STR= 0= if E-TBL-BOUNDS throw then
+   1 SCRIPT-ARGV$ HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-COPY!
+   2 SCRIPT-ARGV$ BF-ENGINE!
+   T-RESET
+   HBT-MAKER-NESTED-STEPS
+   T-REPORT ;
+
+
+\ A fresh process by claim: the out root is resolved once per process from
+\ HABU_OUT, so only a child whose HABU_OUT is HBT-TMP/out puts the damaged
+\ record in a private out root, beside its private cache root HBT-TMP.
+: HBT-MAKER-NESTED-INPUTS ( -- )
+   HBT-TMP s" out" HBT-NESTED-OUT HBT-NESTED-OUT-U HBT-PATH!
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_OUT" >LEN HBT-NESTED-OUT HBT-NESTED-OUT-U @ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   s" tools/hb-build-aot-cache-test.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" nested" >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   BF-ENGINE$ >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outn:n errn:n rc:n :}
+   rc 0<> if HBT-OUT outn type HBT-ERR errn type then
+   rc 0 T= ;
 
 : HBT-BUILD-AOT-WRONG-OBJECT-FAILS ( -- )
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
@@ -433,6 +468,7 @@ variable HBT-PUB-FILES
 \ drive real builds, which resolve names in whatever package scope is open.
 public
 : HBT-AOT-CACHE-MAIN ( -- )
+   SCRIPT-ARGC 0 > if HBT-MAKER-NESTED-CHILD exit then
    T-RESET
    1 TIER:SELECT          \ the product tier of the FILE objects and LOADING
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!

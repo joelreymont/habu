@@ -44,13 +44,17 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-IMAGE-SHADOW-PATH ( -- )
    HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
 
-\ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
-\ shared root, which holds the app-builder family image.
+\ An empty cache leaves HABU_BUILD_CACHE and HABU_OUT inherited: under the gate,
+\ the run's shared roots, whose out root holds the app-builder family image. A
+\ private cache is the out root as well, so its builder images stay private.
 : HBT-IMAGE-ENV ( ptr u8 n ptr u8 n -- )
    {: limit:ptr limitu:n cache:ptr cacheu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   cacheu 0 > if s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+ then
+   cacheu 0 > if
+      s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
+      s" HABU_OUT" >LEN cache cacheu >LEN PROC-ENV+
+   then
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-IMAGE-HB$ >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;

@@ -54,8 +54,10 @@ $2B constant HBB-PLUS
 $7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
 80 constant HBB-REPL-DEPS-HEADER-U
-80 constant HBB-REPL-SUPPORT-HEADER-U
-80 constant HBB-MAKER-SUPPORT-HEADER-U
+\ A support record: the selector key it was written under (64 hex), the
+\ producer key it selects (64 hex), the rows length (u64), then the rows.
+136 constant HBB-REPL-SUPPORT-HEADER-U
+136 constant HBB-MAKER-SUPPORT-HEADER-U
 
 create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
@@ -70,6 +72,7 @@ create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-STAGE-DIR-BUF FS-PATH-CAP allot
 create HBB-STAGE-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-NAME-BUF 128 allot
+create HBB-CACHE-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-AOT-INPUTS-PATH FS-PATH-CAP allot
 create HBB-MAP-SRC FS-PATH-CAP allot
@@ -580,7 +583,7 @@ variable HBB-APP-BUILDER-U
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
    HBB-MAKER-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
-   HBB-MAKER-SUPPORT-KEY s" maker-support"
+   s" aot-builder.inputs"
       HBB-MAKER-SUPPORT-PATH HBB-MAKER-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-MAKER-SUPPORT-CHECK ( -- )
@@ -590,21 +593,18 @@ variable HBB-APP-BUILDER-U
    HBB-MAKER-SUPPORT-PATH$ 0 HBB-MAKER-SUPPORT size READ-ALL size <>
       if E-NUNIT-PROFILE throw then
    0 HBB-MAKER-SUPPORT {: rec:ptr :}
-   rec 8 s" HBMSEL1!" STR= 0= if E-NUNIT-PROFILE throw then
-   rec 72 + LE:U64@ size HBB-MAKER-SUPPORT-HEADER-U - <>
+   rec 64 HBB-MAKER-SUPPORT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
+   rec 128 + LE:U64@ size HBB-MAKER-SUPPORT-HEADER-U - <>
       if E-NUNIT-PROFILE throw then
    rec HBB-MAKER-SUPPORT-HEADER-U +
       size HBB-MAKER-SUPPORT-HEADER-U - NFILE-INPUTS:CHECK
-   rec 8 + HBB-MAKER-KEY-HEX 64 BYTE-COPY ;
+   rec 64 + HBB-MAKER-KEY-HEX 64 BYTE-COPY ;
 
 : HBB-MAKER-SUPPORT-FRESH? ( -- bool )
    HBB-MAKER-SUPPORT-PATH$ FILE? 0= if HBB-FALSE exit then
    [: HBB-MAKER-SUPPORT-CHECK ;] catch {: rc:n :}
    HBB-MAKER-SUPPORT-RELEASE
-   rc 0= if
-      HBB-MAKER-SUPPORT-PATH$ BUILD-CACHE:USED if HBB-TRUE exit then
-      HBB-FALSE exit
-   then
+   rc 0= if HBB-TRUE exit then
    rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
    rc throw ;
 
@@ -612,13 +612,12 @@ variable HBB-APP-BUILDER-U
    NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
    HBB-MAKER-SUPPORT-HEADER-U rowsu + HBB-MAKER-SUPPORT-RESERVE
    0 HBB-MAKER-SUPPORT {: rec:ptr :}
-   s" HBMSEL1!" drop rec 8 BYTE-COPY
-   HBB-MAKER-KEY-HEX rec 8 + 64 BYTE-COPY
-   rowsu rec 72 + LE:U64!
+   HBB-MAKER-SUPPORT-KEY rec 64 BYTE-COPY
+   HBB-MAKER-KEY-HEX rec 64 + 64 BYTE-COPY
+   rowsu rec 128 + LE:U64!
    rows rec HBB-MAKER-SUPPORT-HEADER-U + rowsu BYTE-COPY
    HBB-MAKER-SUPPORT-PATH$ rec HBB-MAKER-SUPPORT-HEADER-U rowsu +
-      ATOMIC-WRITE-FILE
-   s" hb-maker-support-" s" " s" " HBB-MAKER-SUPPORT-PATH$ BUILD-CACHE:PRUNE ;
+      ATOMIC-WRITE-FILE ;
 
 : HBB-MAKER-KEY-IN-ROOT ( -- )
    HBB-MAKER-SUPPORT-SELECT
@@ -968,6 +967,16 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-SRC$ HBB-SRC-ENTRY-HEX HBB-ENTRY-HEX!
    HBB-SRC-ENTRY-HEX HBB-SRC-CLOSURE-HEX 64 BYTE-COPY ;
 
+\ hb-<family>-<key> in the build cache, for a record that is not an image
+\ family under the out root.
+: HBB-CACHE-PATH! ( ptr u8 ptr u8 n ptr u8 ptr n -- )
+   {: key:ptr fam:ptr famu:n dst:ptr up:ptr :}
+   famu 4 + 64 + 128 > if E-BUILD-PATH throw then
+   s" hb-" drop HBB-CACHE-NAME-BUF 3 BYTE-COPY
+   fam HBB-CACHE-NAME-BUF 3 + famu BYTE-COPY
+   s" -" drop HBB-CACHE-NAME-BUF 3 + famu + 1 BYTE-COPY
+   key HBB-CACHE-NAME-BUF 4 + famu + 64 BYTE-COPY
+   BUILD-CACHE:ROOT$ HBB-CACHE-NAME-BUF famu 4 + 64 + dst JOIN-PATH up ! ;
 
 : HBB-AOT-INPUTS$ ( -- ptr u8 n )
    HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U @ ;
@@ -988,7 +997,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-MAKER-SELECTED-ROOT HBB-MAKER-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
    HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX
    HBB-ARTIFACT-KEY-HEX s" build-inputs"
-      HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U KEYED-IMAGE:PATH! ;
+      HBB-AOT-INPUTS-PATH HBB-AOT-INPUTS-U HBB-CACHE-PATH! ;
 
 : HBB-AOT-INPUTS-KEY! ( ptr u8 n -- )
    {: rows:ptr rowsu:n :}
@@ -1337,7 +1346,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-WHITEBOX @ if s" whitebox" else s" product" then CONTENT-KEY:TEXT+
    HBB-ENGINE-SELECT-KEY CONTENT-KEY:FINAL-HEX
    HBB-ENGINE-SELECT-KEY s" engine-selection"
-      HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U KEYED-IMAGE:PATH! ;
+      HBB-ENGINE-SELECT-PATH HBB-ENGINE-SELECT-U HBB-CACHE-PATH! ;
 
 : HBB-ENGINE-ARTIFACT-PATHS ( -- )
    HBB-ARTIFACT-NAME!
@@ -1562,7 +1571,7 @@ defer HBB-REPORT-HOOK ( -- )
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
    HBB-REPL-SELECTED-ROOT HBB-REPL-SELECTED-ROOT-U @ CONTENT-KEY:TEXT+
    HBB-REPL-SUPPORT-KEY CONTENT-KEY:FINAL-HEX
-   HBB-REPL-SUPPORT-KEY s" repl-support"
+   s" app-builder.inputs"
       HBB-REPL-SUPPORT-PATH HBB-REPL-SUPPORT-U KEYED-IMAGE:PATH! ;
 
 : HBB-REPL-FRESH-CHECK ( -- )
@@ -1624,12 +1633,12 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-REPL-SUPPORT-CHECK ( -- )
    HBB-REPL-SUPPORT-PATH$ HBB-INPUTS-READ {: rec:ptr size:n :}
    size HBB-REPL-SUPPORT-HEADER-U <= if E-NUNIT-PROFILE throw then
-   rec 8 s" HBRSEL2!" STR= 0= if E-NUNIT-PROFILE throw then
-   rec 72 + LE:U64@ size HBB-REPL-SUPPORT-HEADER-U - <>
+   rec 64 HBB-REPL-SUPPORT-KEY 64 STR= 0= if E-NUNIT-PROFILE throw then
+   rec 128 + LE:U64@ size HBB-REPL-SUPPORT-HEADER-U - <>
       if E-NUNIT-PROFILE throw then
    rec HBB-REPL-SUPPORT-HEADER-U +
       size HBB-REPL-SUPPORT-HEADER-U - NFILE-INPUTS:CHECK
-   rec 8 + 64 APP-BUILD-IMAGE:CACHED-PATH$
+   rec 64 + 64 APP-BUILD-IMAGE:CACHED-PATH$
       {: image:ptr imageu:n found:bool :}
    found 0= if exit then
    size HBB-REPL-SUPPORT-HEADER-U - {: rowsu:n :}
@@ -1646,8 +1655,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-INPUTS-RELEASE
    rc 0= if
       HBB-REPL-PRODUCER-READY @ 0= if HBB-FALSE exit then
-      HBB-REPL-SUPPORT-PATH$ BUILD-CACHE:USED if HBB-TRUE exit then
-      0 HBB-REPL-PRODUCER-READY ! HBB-FALSE exit
+      HBB-TRUE exit
    then
    rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if HBB-FALSE exit then
    rc throw ;
@@ -1656,14 +1664,13 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-PRODUCER-U @ {: rowsu:n :}
    HBB-REPL-SUPPORT-HEADER-U rowsu + HBB-REPL-SIDECAR-RESERVE
    0 HBB-REPL-SIDECAR {: rec:ptr :}
-   s" HBRSEL2!" drop rec 8 BYTE-COPY
-   APP-BUILD-IMAGE:SELECTED-KEY$ drop rec 8 + 64 BYTE-COPY
-   rowsu rec 72 + LE:U64!
+   HBB-REPL-SUPPORT-KEY rec 64 BYTE-COPY
+   APP-BUILD-IMAGE:SELECTED-KEY$ drop rec 64 + 64 BYTE-COPY
+   rowsu rec 128 + LE:U64!
    0 HBB-REPL-PRODUCER
       rec HBB-REPL-SUPPORT-HEADER-U + rowsu BYTE-COPY
    HBB-REPL-SUPPORT-PATH$ rec HBB-REPL-SUPPORT-HEADER-U rowsu +
-      ATOMIC-WRITE-FILE
-   s" hb-repl-support-" s" " s" " HBB-REPL-SUPPORT-PATH$ BUILD-CACHE:PRUNE ;
+      ATOMIC-WRITE-FILE ;
 
 \ Record the selected builder's make dependencies before its image is chosen.
 \ An edit while that builder runs belongs to the next invocation.

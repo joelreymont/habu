@@ -4,7 +4,7 @@
 \ A row that saves an application image used to compile src/habu/app-image.f in
 \ its child before the subject: about 4.8 s of every such child, measured on one
 \ host. So the saver is compiled once, into a keyed image (test/keyed-image.f)
-\ the rows run instead of the engine: hb-app-image-<key>, the engine with
+\ the rows run instead of the engine: img/app-image, the engine with
 \ src/habu/app-image.f loaded and saved. Its key folds that engine's bytes, the
 \ program the builder is handed and the ordered closure of src/habu/app-image.f.
 \ test/preloaded-engine.f builds the linker image on top of this one.
@@ -53,7 +53,7 @@ variable RESOLVED?
    PROGRAM$ CONTENT-KEY:TEXT+
    s" src/habu/app-image.f" KEYED-IMAGE:CLOSURE+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 \ The builder takes the output image as its only argument.
@@ -62,10 +62,10 @@ variable RESOLVED?
 
 public
 
-\ Build the image unless the keyed artifact is already on disk.
+\ Build the image unless the one on disk was built under its key.
 : ENSURE ( -- )
    RESOLVE
-   FAMILY$ PATH-BYTES ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] OUT-ARG
+   KEY-HEX FAMILY$ ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] OUT-ARG
    KEYED-IMAGE:ENSURE ;
 
 \ The keyed image, to run as an engine.

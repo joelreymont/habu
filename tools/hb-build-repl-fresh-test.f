@@ -8,6 +8,8 @@
 require tools/hb-build-test-lib.f
 require test/app-builder-engine.f
 require src/lib/string.f
+require src/lib/fs-list.f
+require tools/keyed-image.f
 
 package HB-BUILD-CLI
 
@@ -15,10 +17,20 @@ variable HBT-FRESH-DEP-U
 variable HBT-FRESH-ASSET-U
 variable HBT-FRESH-OTHER-U
 variable HBT-FRESH-SHADOW-FILE-U
+variable HBT-FRESH-OUT-U
+variable HBT-FRESH-ENGINE-U
+variable HBT-FRESH-ENGINES
+variable HBT-FRESH-IMG-U
+variable HBT-FRESH-PATH-U
 create HBT-FRESH-DEP-BUF FS-PATH-CAP allot
 create HBT-FRESH-ASSET-BUF FS-PATH-CAP allot
 create HBT-FRESH-OTHER-BUF FS-PATH-CAP allot
 create HBT-FRESH-SHADOW-FILE-BUF FS-PATH-CAP allot
+create HBT-FRESH-OUT-BUF FS-PATH-CAP allot
+create HBT-FRESH-ENGINE-BUF FS-PATH-CAP allot
+create HBT-FRESH-IMG-BUF FS-PATH-CAP allot
+create HBT-FRESH-PATH-BUF FS-PATH-CAP allot
+create HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 create HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U allot
 variable HBT-FRESH-SIZE
 variable HBT-FRESH-SEC
@@ -75,6 +87,9 @@ variable HBT-FRESH-NS
 : HBT-FRESH-CLI-SOURCE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    HBT-TMP ENGINE-CANDIDATE:PATH$ HBT-ARGV-CLI
+   HBT-FRESH-OUT-U @ 0<> if
+      s" HABU_OUT" >LEN HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ >LEN PROC-ENV-SET
+   then
    s" --repl" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -135,32 +150,64 @@ variable HBT-FRESH-NS
    outn drop errn drop
    rc HBB-UNCAUGHT-RC T= ;
 
+\ The one engine directory under the private out root whose img/ holds the
+\ CLI's app-builder record; images the CLI runs write under their own engines.
+: HBT-FRESH-ENGINE+ ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ name nameu
+      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
+   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ s" img/app-builder.inputs"
+      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH!
+   HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U @ EXISTS? 0= if exit then
+   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @
+      HBT-FRESH-ENGINE-BUF HBT-FRESH-ENGINE-U HBT-COPY!
+   1 HBT-FRESH-ENGINES +! ;
+
+: HBT-FRESH-IMG! ( -- )
+   0 HBT-FRESH-ENGINES !
+   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ [: HBT-FRESH-ENGINE+ ;] FS-LIST:EACH
+   HBT-FRESH-ENGINES @ 1 T=
+   HBT-FRESH-ENGINE-BUF HBT-FRESH-ENGINE-U @ s" img"
+      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH! ;
+
+\ A file of the app-builder family under the private img/ directory.
+: HBT-FRESH-IMG$ ( ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n :}
+   HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U @ name nameu
+      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
+   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ ;
+
 \ Damaged support selection and a missing selected image rebuild normally
 \ through the real CLI. The case corrupts the support record and deletes the
-\ selected builder image, which must never be the run's shared one, so it owns
-\ HBT-TMP as its cache root and its two CLI builds pay a cold app-builder build
-\ there by claim.
+\ selected builder image, which must never be the run's shared one, so its CLI
+\ builds own HBT-TMP as their cache root and HBT-TMP/out as their out root, and
+\ the first and last pay a cold app-builder build there by claim.
 : HBT-FRESH-SUPPORT ( -- )
-   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-TMP BUILD-CACHE:ROOT!
-   HBB-REPL-ROOT!
-   HBB-REPL-SUPPORT-SELECT
+   HBT-TMP s" out" HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U HBT-PATH!
    s" malformed selection rebuilds support" T-LABEL
-   HBB-REPL-SUPPORT-PATH$ s" bad" ATOMIC-WRITE-FILE
+   HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" WRITE-ALL
+   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
+   HBT-REPL-OUT 777 HBT-FRESH-RUN
+   HBT-FRESH-IMG!
+   s" app-builder.inputs" HBT-FRESH-IMG$ s" bad" ATOMIC-WRITE-FILE
    HBT-FRESH-OTHER s" : MAIN ( -- ) 778 . cr ;" WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 778 HBT-FRESH-RUN
    s" missing selected image rebuilds support" T-LABEL
-   HBB-REPL-SUPPORT-PATH$ FILE-SIZE HBB-REPL-SUPPORT-HEADER-U > TTRUE
-   HBB-REPL-SUPPORT-PATH$ FS-PATHZ open-rd {: fd:n :}
+   s" app-builder.inputs" HBT-FRESH-IMG$ FILE-SIZE
+      HBB-REPL-SUPPORT-HEADER-U > TTRUE
+   s" app-builder.inputs" HBT-FRESH-IMG$ FS-PATHZ open-rd {: fd:n :}
    fd 0 >= TTRUE
    fd HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U read
       HBB-REPL-SUPPORT-HEADER-U T=
    fd close
-   HBT-FRESH-SUPPORT-HEADER 8 + 64 APP-BUILD-IMAGE:CACHED-PATH$
-      {: image:ptr imageu:n found:bool :}
-   found TTRUE
-   image imageu REMOVE-FILE
+   \ The rewritten record selects the image published under its producer key.
+   s" app-builder.key" HBT-FRESH-IMG$ HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN
+      READ-ALL KEYED-IMAGE:KEY-HEX-LEN T=
+   HBT-FRESH-SUPPORT-HEADER 64 + KEYED-IMAGE:KEY-HEX-LEN
+      HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN T$=
+   s" app-builder" HBT-FRESH-IMG$ REMOVE-FILE
    HBT-FRESH-OTHER s" : MAIN ( -- ) 779 . cr ;" WRITE-ALL
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 779 HBT-FRESH-RUN ;

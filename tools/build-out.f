@@ -5,12 +5,13 @@
 \ relative value resolved against the canonical working directory
 \ (SOURCE-ROOT:CWD$); otherwise it is .out under that directory, so outputs go
 \ with the tree. obj/<key>.hfo holds one compiled file object per file key,
-\ replaced under its own key. Outputs that a later engine must still find, such
-\ as the fixpoint refresh stamp, live directly under <out> (BASE$), since a
-\ refresh replaces the engine that keys <out>/<engine-key>/. No other variable,
-\ root or fallback exists, and a directory that cannot be made throws the
-\ filesystem cause (E-FS-IO with FFI:ERRNO, or E-FS-CAPACITY for a path past
-\ FS-PATH-CAP).
+\ replaced under its own key; img/<family> holds a family's saved image and the
+\ records beside it (tools/keyed-image.f). Outputs that a later engine must
+\ still find, such as the fixpoint refresh stamp, live directly under <out>
+\ (BASE$), since a refresh replaces the engine that keys <out>/<engine-key>/.
+\ No other variable, root or fallback exists, and a directory that cannot be
+\ made throws the filesystem cause (E-FS-IO with FFI:ERRNO, or E-FS-CAPACITY
+\ for a path past FS-PATH-CAP).
 \
 \ STORAGE CLASS. PROCESS-WIDE: the paths are resolved once per process and
 \ cleared before image capture through a one-shot lifecycle hook, so a saved
@@ -31,8 +32,10 @@ private
 create OUT-BUF FS-PATH-CAP allot     variable OUT-U
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create OBJ-BUF FS-PATH-CAP allot     variable OBJ-U
+create IMG-BUF FS-PATH-CAP allot     variable IMG-U
 create NAME-BUF FS-PATH-CAP allot
 create PATH-BUF FS-PATH-CAP allot
+create IMG-PATH-BUF FS-PATH-CAP allot
 variable CLEANUP-LIVE
 
 : CLEAR-SPAN ( ptr u8 n -- )
@@ -43,9 +46,11 @@ variable CLEANUP-LIVE
    OUT-BUF FS-PATH-CAP CLEAR-SPAN
    ROOT-BUF FS-PATH-CAP CLEAR-SPAN
    OBJ-BUF FS-PATH-CAP CLEAR-SPAN
+   IMG-BUF FS-PATH-CAP CLEAR-SPAN
+   IMG-PATH-BUF FS-PATH-CAP CLEAR-SPAN
    NAME-BUF FS-PATH-CAP CLEAR-SPAN
    PATH-BUF FS-PATH-CAP CLEAR-SPAN
-   0 OUT-U ! 0 ROOT-U ! 0 OBJ-U ! 0 CLEANUP-LIVE ! ;
+   0 OUT-U ! 0 ROOT-U ! 0 OBJ-U ! 0 IMG-U ! 0 CLEANUP-LIVE ! ;
 
 : REGISTER-CLEANUP ( -- )
    CLEANUP-LIVE @ 0= if
@@ -97,5 +102,18 @@ public
    s" .hfo" drop NAME-BUF keyu + 4 BYTE-COPY
    OBJ-BUF OBJ-U @ NAME-BUF keyu 4 + PATH-BUF JOIN-PATH
    PATH-BUF swap ;
+
+
+\ The path of a family's image, or of a record named after it, under img/.
+: IMG$ ( ptr u8 n -- ptr u8 n )
+   {: fam:ptr famu:n :}
+   famu 0 <= if E-FS-PATH throw then
+   IMG-U @ 0= if
+      ROOT$ s" img" IMG-BUF JOIN-PATH {: imgu:n :}
+      IMG-BUF imgu MAKE-DIRS
+      imgu IMG-U !
+   then
+   IMG-BUF IMG-U @ fam famu IMG-PATH-BUF JOIN-PATH
+   IMG-PATH-BUF swap ;
 
 ;package

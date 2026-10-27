@@ -13,7 +13,7 @@ require tools/native-file-inputs.f
 package NATIVE-BUILD-IMAGE
 
 8192 constant PROGRAM-CAP
-88 constant RESULT-HEADER-U
+80 constant RESULT-HEADER-U
 create PROGRAM-BUF PROGRAM-CAP allot
 create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create DONOR-BUF 64 allot
@@ -87,29 +87,30 @@ variable SUPPORT-ROWS-U
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ CONTENT-KEY:TEXT+
    ROW-DIGEST CONTENT-KEY:DIGEST+
    KEY-HEX CONTENT-KEY:FINAL-HEX
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
-: ACCEPT-RESULT ( ptr u8 n -- ptr u8 n )
+\ The key the image at this path publishes under, from the result record its
+\ child wrote beside it.
+: ACCEPT-RESULT ( ptr u8 n -- ptr u8 )
    RESULT-OF FILE-SIZE {: size:n :}
    size RESULT-HEADER-U < if E-NUNIT-PROFILE throw then
    size RESULT-RECORD-RESERVE
    RESULT-PATH RESULT-PATH-U @ 0 RESULT-RECORD size READ-ALL size <>
       if E-FS-IO throw then
    0 RESULT-RECORD {: rec:ptr :}
-   rec 8 s" HBNSUP1!" STR= 0= if E-NUNIT-PROFILE throw then
-   rec 72 + LE:U64@ {: rootu:n :}
-   rec 80 + LE:U64@ {: rowsu:n :}
+   rec 64 + LE:U64@ {: rootu:n :}
+   rec 72 + LE:U64@ {: rowsu:n :}
    rootu 0 <= rootu FS-PATH-CAP > or if E-NUNIT-PROFILE throw then
    rootu size RESULT-HEADER-U - > if E-NUNIT-PROFILE throw then
    rowsu size RESULT-HEADER-U rootu + - <> if E-NUNIT-PROFILE throw then
    rec RESULT-HEADER-U + rootu + rowsu NFILE-INPUTS:FORMAT
-   rec 8 + DONOR-BUF 64 BYTE-COPY
+   rec DONOR-BUF 64 BYTE-COPY
    rec RESULT-HEADER-U + ROOT-BUF rootu BYTE-COPY
    rootu ROOT-U !
    rec RESULT-HEADER-U + rootu + rowsu ROWS!
    RESULT-RECORD-RELEASE
    SUPPORT-KEY!
-   PATH-BUF PATH-U @ ;
+   KEY-HEX ;
 
 : OUT-ARG ( ptr u8 n -- )
    2dup >LEN PROC-ARGV+
@@ -136,11 +137,10 @@ public
    rows rowsu NFILE-INPUTS:FORMAT
    key KEY-HEX 64 BYTE-COPY
    rows rowsu ROWS!
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 : REUSE? ( -- bool )
-   PATH$ EXECUTABLE? if PATH$ BUILD-CACHE:USED exit then
-   false ;
+   KEY-HEX FAMILY$ KEYED-IMAGE:FRESH? ;
 
 : BUILD$ ( bool -- ptr u8 n )
    {: quiet:bool :}

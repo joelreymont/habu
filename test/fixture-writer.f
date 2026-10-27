@@ -1,5 +1,5 @@
 \ fixture-writer.f - the native fixture writer as a keyed application image,
-\ settled once per gate run, built on a selected-cache miss and run in place.
+\ settled once per gate run, built on a key miss and run in place.
 \
 \ Every partial-capture fixture runs test/native-fixture-write.f: once to emit
 \ the empty cold host test/cold-engine.f shares, and once for each partial image
@@ -13,8 +13,8 @@
 \ builder, the program the builder is handed, and the ordered require/include
 \ closures of the builder and of the writer. All of them go into the content key
 \ below, so another engine or an edit anywhere in either closure changes the key
-\ and the image is rebuilt; no stale writer runs. test/keyed-image.f names,
-\ builds, publishes and retains the image under that key.
+\ and the image is rebuilt; no stale writer runs. test/keyed-image.f builds and
+\ publishes the image under that key.
 \
 \ PATH$ hands out the keyed image itself, where test/cold-engine.f hands out
 \ copies of its host: the writer is only ever executed, and it writes nothing
@@ -69,7 +69,7 @@ variable RESOLVED?
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then
    KEY!
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 \ tools/app-build.f takes the application source and the output image.
@@ -79,10 +79,10 @@ variable RESOLVED?
 
 public
 
-\ Build the shared writer image unless the keyed artifact is already on disk.
+\ Build the shared writer image unless the one on disk was built under its key.
 : ENSURE ( -- )
    RESOLVE
-   FAMILY$ PATH-BYTES ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] BUILD-ARGS
+   KEY-HEX FAMILY$ ENGINE-CANDIDATE:PATH$ PROGRAM$ ['] BUILD-ARGS
    KEYED-IMAGE:ENSURE ;
 
 \ The keyed image, for a caller to run as `<image> -- output [artifact producer]`

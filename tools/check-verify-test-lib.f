@@ -4592,8 +4592,21 @@ variable WALK-U
 variable TREE-U                         \ this tree's root, with its slash
 variable LINE-AT
 variable LINE-K
+create KEY-PATH FS-PATH-CAP allot
+create STALE-OUT FS-PATH-CAP allot
+variable STALE-OUT-U
+create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
 
 : STALE$ ( -- ptr u8 n ) STALE STALE-U @ ;
+
+\ The key an image was published under: the text of PATH.key.
+: IMAGE-KEY$ ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n :}
+   pathu 4 + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   path KEY-PATH pathu BYTE-COPY
+   s" .key" drop KEY-PATH pathu + 4 BYTE-COPY
+   KEY-PATH pathu 4 + KEY-READ KEYED-IMAGE:KEY-HEX-LEN READ-ALL
+   KEY-READ swap ;
 
 \ The rest of the K-th (from 0) line of TEXT that starts with LEAD, empty for none.
 : LINE-AFTER$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
@@ -4610,15 +4623,19 @@ variable LINE-K
    again ;
 
 \ The source of a driver's word answering a verdict's kind by name.
+: IMAGE-SRC+ ( -- )
+   S\" create CVT-KP FS-PATH-CAP allot\ncreate CVT-KB 64 allot\n: IMAGE. ( -- )\n   ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ {: p:ptr pu:n :}\n   s\" image \" type p pu type cr\n   p CVT-KP pu BYTE-COPY\n   s\" .key\" drop CVT-KP pu + 4 BYTE-COPY\n   CVT-KP pu 4 + CVT-KB 64 READ-ALL {: ku:n :}\n   s\" key \" type CVT-KB ku type cr ;\n" GEN+ ;
+
 : KIND$SRC+ ( -- )
    S\" : KIND$ ( CHECK:verdict -- ptr u8 n )\n   MATCH CHECK:verdict\n      verified OF s\" verified\" ENDOF\n      refused OF s\" refused\" ENDOF\n      engine-provided OF s\" engine-provided\" ENDOF\n      held OF s\" held\" ENDOF\n      incomplete OF {: status :} s\" incomplete\" ENDOF\n      deferred OF s\" deferred\" ENDOF\n   ;MATCH ;\n" GEN+ ;
 
-\ Run the driver PATH on the candidate engine in directory CWD, stdout in OUT and
-\ stderr in ERR: their lengths and the exit code.
-: DRIVE ( ptr u8 n ptr u8 n -- n n n )
-   {: path:ptr pathu:n cwd:ptr cwdu:n :}
+\ Run the driver PATH on the candidate engine in directory CWD with out root
+\ OUT-ROOT, stdout in OUT and stderr in ERR: their lengths and the exit code.
+: DRIVE ( ptr u8 n ptr u8 n ptr u8 n -- n n n )
+   {: path:ptr pathu:n cwd:ptr cwdu:n out:ptr outu:n :}
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" ARG+ path pathu ARG+
+   s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN cwd cwdu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN IMAGE-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N ;
@@ -4654,8 +4671,9 @@ variable LINE-K
 \ The image is re-keyed in one process when a file of its closure changes: a driver
 \ in the stale tree checks once, appends a comment to that tree's
 \ tools/check-verify-child-lib.f, a closure member the save file loads, and
-\ checks again; its two images differ, both keyed entries of the build cache.
-\ Each check pays a build (the row's wall). The driver then deletes that member
+\ checks again; the edit re-keys the family's one image, published under a
+\ private out root so the stale tree never replaces this tree's image. Each
+\ check pays a build (the row's wall). The driver then deletes that member
 \ and asks for the image once more than src/lib/content-key.f has folds: each
 \ walk refuses with the missing member's E-FS-STAT, so a refused key derivation
 \ releases its fold (leaked folds would make the last refusal the pool's own).
@@ -4664,34 +4682,38 @@ variable LINE-K
    ENGINE-CANDIDATE:PATH$ CHECK-VERIFY-IMAGE:CAPABLE? TTRUE
    STALE-TREE
    0 GEN-U !
-   S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\nrequire src/lib/build-cache.f\n" GEN+
+   S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\n" GEN+
    S\" require src/lib/engine-candidate.f\nrequire tools/check-verify-core.f\nrequire tools/check-verify-image.f\nrequire src/lib/content-key.f\npackage CVT-STALE\n" GEN+
-   KIND$SRC+
+   KIND$SRC+ IMAGE-SRC+
    s\" : CHECK ( -- )\n   s\" : CVT-STALE-W ( -- n ) 1 ;\" s\" " GEN+ STALE$ GEN+
    s\" /stale.f\" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
-   s\"    s\" image \" type ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ type cr ;\n" GEN+
+   s\"    IMAGE. ;\n" GEN+
    s\" : REFUSE ( -- )\n   CONTENT-KEY:FOLDS 1+ 0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
    s\"       s\" refused \" type FMT:.INT cr\n   loop ;\npublic\n" GEN+
-   s\" : MAIN ( -- )\n   s\" cache \" type BUILD-CACHE:ROOT$ type cr\n   CHECK\n   s\" " GEN+ STALE$ GEN+
+   s\" : MAIN ( -- )\n   CHECK\n   s\" " GEN+ STALE$ GEN+
    s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
    s\" /tools/check-verify-child-lib.f\" REMOVE-FILE\n   REFUSE ;\n;package\nCVT-STALE:MAIN\n" GEN+
    s" stale-tree/stale-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
-   s" stale-tree/stale-driver.f" AT$ STALE$ DRIVE {: outu:n erru:n rc:n :}
+   s" stale-out" AT$ STALE-OUT STALE-OUT-U COPY!
+   s" stale-tree/stale-driver.f" AT$ STALE$ STALE-OUT STALE-OUT-U @ DRIVE
+      {: outu:n erru:n rc:n :}
    s" image-stale: driver exit" T-LABEL rc 0 T=
    rc 0<> if 0 ERR erru type cr then
    0 OUT outu {: out:ptr outn:n :}
-   out outn s" cache " 0 LINE-AFTER$ {: cache:ptr cacheu:n :}
    out outn s" image " 0 LINE-AFTER$ {: a:ptr au:n :}
    out outn s" image " 1 LINE-AFTER$ {: b:ptr bu:n :}
+   out outn s" key " 0 LINE-AFTER$ {: ka:ptr kau:n :}
+   out outn s" key " 1 LINE-AFTER$ {: kb:ptr kbu:n :}
    s" image-stale: first verdict" T-LABEL out outn s" verdict " 0 LINE-AFTER$ s" verified" T$=
    s" image-stale: second verdict" T-LABEL out outn s" verdict " 1 LINE-AFTER$ s" verified" T$=
-   s" image-stale: a keyed entry of the cache" T-LABEL a au cache cacheu STARTS-WITH? TTRUE
-   s" image-stale: named for the family" T-LABEL
-   a cacheu + au cacheu - s" /hb-check-verify-" STARTS-WITH? TTRUE
-   s" image-stale: the edit re-keys" T-LABEL a au b bu STR= TFALSE
-   s" image-stale: the second entry too" T-LABEL
-   b cacheu + bu cacheu - s" /hb-check-verify-" STARTS-WITH? TTRUE
-   s" image-stale: both executable" T-LABEL a au EXECUTABLE? b bu EXECUTABLE? and TTRUE
+   s" image-stale: under the private out root" T-LABEL
+   a au STALE-OUT STALE-OUT-U @ STARTS-WITH? TTRUE
+   s" image-stale: the family's image" T-LABEL
+   a au s" /img/check-verify" ENDS-WITH? TTRUE
+   s" image-stale: one image for the family" T-LABEL a au b bu T$=
+   s" image-stale: published under a key" T-LABEL kau KEYED-IMAGE:KEY-HEX-LEN T=
+   s" image-stale: the edit re-keys" T-LABEL ka kau kb kbu STR= TFALSE
+   s" image-stale: executable" T-LABEL b bu EXECUTABLE? TTRUE
    CONTENT-KEY:FOLDS 1+ 0 do
       s" image-stale: each walk refuses with the missing member's cause" T-LABEL
       out outn i REFUSED-CODE E-FS-STAT T=
@@ -4723,6 +4745,7 @@ create CWD-TREE FS-PATH-CAP allot
 variable CWD-TREE-U
 create CWD-IMAGE FS-PATH-CAP allot
 variable CWD-IMAGE-U
+create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
 
 \ ROOT/cwd-tree, a tree other than the engine's: symlinks to this tree's src and
 \ tools, so TREE? finds the engine's first row under it.
@@ -4737,21 +4760,23 @@ variable CWD-IMAGE-U
 \ engine, which an image that lost its root at capture would spell as that
 \ directory. Core is loaded nested under this tree (tools/lsp-entry-test.f
 \ NESTED), so its child and image belong to this tree, not the fixture root.
-\ The image is one per engine and closure, whatever tree the check runs from: it
-\ finds its root when it starts.
+\ The image's key is one per engine and closure, whatever tree the check runs
+\ from: it finds its root when it starts. The drivers share this process's out
+\ root, so each finds the image this tree published.
 : IMAGE-CWD ( -- )
    0 GEN-U !
    s\" require src/lib/engine-candidate.f\npackage CVT-CWD\npublic\n: LOAD ( -- ) s\" " GEN+
    SOURCE-ROOT:CWD$ GEN+ s\" \" [: s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
    s\" /tools/check-verify-core.f\" required s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
    s\" /tools/check-verify-image.f\" required ;] SOURCE-ROOT:WITH ;\n;package\nCVT-CWD:LOAD\npackage CVT-CWD\n" GEN+
-   KIND$SRC+
+   KIND$SRC+ IMAGE-SRC+
    s\" public\n: MAIN ( -- )\n   s\" expect \" type ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:ENGINE-FOR$ type s\" /src/habu/prims.f\" type cr\n" GEN+
    s\"    s\" : CVT-D ( n -- ) drop ;\" s\" " GEN+ s" d.f" AT$ GEN+
    s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
-   s\"    s\" image \" type ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ type cr\n   CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
+   s\"    IMAGE. CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
    s" cwd-driver.f" AT$ 0 GEN GEN-U @ WRITE-ALL
-   s" cwd-driver.f" AT$ ROOT$ DRIVE {: outu:n erru:n rc:n :}
+   s" cwd-driver.f" AT$ ROOT$ BUILD-OUT:ROOT$ SOURCE-ROOT:DIRNAME DRIVE
+      {: outu:n erru:n rc:n :}
    s" image-cwd: driver exit" T-LABEL rc 0 T=
    rc 0<> if 0 ERR erru type cr then
    0 OUT outu {: out:ptr outn:n :}
@@ -4761,8 +4786,13 @@ variable CWD-IMAGE-U
    s" image-cwd: the primitive's file is under the engine root" T-LABEL
    use s" file" STRING$ out outn s" expect " 0 LINE-AFTER$ T$=
    out outn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U COPY!
+   s" image-cwd: published under a key" T-LABEL
+   out outn s" key " 0 LINE-AFTER$ {: key:ptr keyu:n :}
+   keyu KEYED-IMAGE:KEY-HEX-LEN T=
+   key CWD-KEY KEYED-IMAGE:KEY-HEX-LEN keyu min BYTE-COPY
    CWD-TREE!
-   s" cwd-driver.f" AT$ CWD-TREE CWD-TREE-U @ DRIVE {: toutu:n terru:n trc:n :}
+   s" cwd-driver.f" AT$ CWD-TREE CWD-TREE-U @
+      BUILD-OUT:ROOT$ SOURCE-ROOT:DIRNAME DRIVE {: toutu:n terru:n trc:n :}
    s" image-cwd: driver exit from another tree" T-LABEL trc 0 T=
    trc 0<> if 0 ERR terru type cr then
    0 OUT toutu {: tout:ptr toutn:n :}
@@ -4770,8 +4800,12 @@ variable CWD-IMAGE-U
    tout toutn s" verdict " 0 LINE-AFTER$ s" verified" T$=
    s" image-cwd: one image from every working directory" T-LABEL
    tout toutn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U @ T$=
+   s" image-cwd: one key from every working directory" T-LABEL
+   tout toutn s" key " 0 LINE-AFTER$ CWD-KEY KEYED-IMAGE:KEY-HEX-LEN T$=
    s" image-cwd: one image from every working directory" T-LABEL
-   CWD-IMAGE CWD-IMAGE-U @ ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ T$= ;
+   CWD-IMAGE CWD-IMAGE-U @ ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ T$=
+   s" image-cwd: this tree's key" T-LABEL
+   CWD-IMAGE CWD-IMAGE-U @ IMAGE-KEY$ CWD-KEY KEYED-IMAGE:KEY-HEX-LEN T$= ;
 
 
 \ ---- case timings ----------------------------------------------------------

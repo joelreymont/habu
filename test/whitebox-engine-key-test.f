@@ -1,8 +1,8 @@
 \ Exercise direct whitebox publication, private-copy execution and reuse.
 \ The unified builder owns source invalidation; native-build-edit-e2e.f covers
 \ changed-source runtime behavior, unloaded files and cached/cold equivalence.
-\ Here direct publication shares the ordinary cache, and build failures leave
-\ no supplier or product.
+\ Here direct publication uses the ordinary out root, and build failures leave
+\ no supplier, work directory or product under a private one.
 \ Run: bin/hb --load test/whitebox-engine-key-test.f
 
 require src/lib/test.f
@@ -13,7 +13,6 @@ require src/lib/fs-list.f
 require src/lib/process-cwd.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/build-cache.f
 require src/lib/engine-candidate.f
 require src/lib/tree-copy.f
 require src/os/script-argv.f
@@ -28,7 +27,9 @@ create HB FS-PATH-CAP allot
 create PREFIX FS-PATH-CAP allot
 create IMAGE FS-PATH-CAP allot
 create TMP FS-PATH-CAP allot
-create CACHE FS-PATH-CAP allot
+create OUT-ROOT FS-PATH-CAP allot
+create DIR FS-PATH-CAP allot
+create IMG-DIR FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create ENG-A DIGEST-LEN allot
@@ -39,7 +40,9 @@ variable HB-U
 variable PREFIX-U
 variable IMAGE-U
 variable TMP-U
-variable CACHE-U
+variable OUT-ROOT-U
+variable DIR-U
+variable IMG-DIR-U
 variable OUT-U
 variable ERR-U
 variable RC
@@ -49,7 +52,9 @@ variable RC
 : PREFIX$ ( -- ptr u8 n ) PREFIX PREFIX-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 : TMP$ ( -- ptr u8 n ) TMP TMP-U @ ;
-: CACHE$ ( -- ptr u8 n ) CACHE CACHE-U @ ;
+: OUT-ROOT$ ( -- ptr u8 n ) OUT-ROOT OUT-ROOT-U @ ;
+: DIR$ ( -- ptr u8 n ) DIR DIR-U @ ;
+: IMG-DIR$ ( -- ptr u8 n ) IMG-DIR IMG-DIR-U @ ;
 
 : ENGINE-DIGEST! ( ptr u8 -- ) {: dst:ptr :}
    SHA ENGINE-CANDIDATE:PATH$ dst SHA256-FILE-IN dup 0<> if throw then drop ;
@@ -65,9 +70,6 @@ variable RC
    {: tmp:ptr tmpu:n :}
    tmp TMP tmpu BYTE-COPY tmpu TMP-U !
    TMP$ s" whitebox" IMAGE JOIN-PATH IMAGE-U !
-   BUILD-CACHE:ROOT$ SOURCE-ROOT:CANONICAL TTRUE
-   {: cache:ptr cacheu:n :}
-   cache CACHE cacheu BYTE-COPY cacheu CACHE-U !
    ENG-A ENGINE-DIGEST! ;
 
 : PREPARE-FAILURES ( -- )
@@ -88,7 +90,6 @@ variable RC
    s" HABU_GATE_COMPILER_IMAGES" >LEN s" " >LEN PROC-ENV+
    s" HABU_GATE_IMAGES" >LEN s"  whitebox-engine " >LEN PROC-ENV+
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : RESULT-RC ( len len outcome -- n ) {: outu:len erru:len oc :}
@@ -119,7 +120,14 @@ variable RC
    OUT OUT-U @ S\" -1\n\n" T$= ;
 
 : NO-SUPPLIER ( ptr u8 n -- )
-   s" hb-whitebox-" STARTS-WITH? TFALSE ;
+   s" whitebox-engine" STARTS-WITH? TFALSE ;
+
+\ The img/ directory of one engine's out root holds no whitebox image, key or
+\ work directory.
+: IMG-CLEAN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   OUT-ROOT$ name nameu DIR JOIN-PATH DIR-U !
+   DIR$ s" img" IMG-DIR JOIN-PATH IMG-DIR-U !
+   IMG-DIR$ EXISTS? if IMG-DIR$ [: NO-SUPPLIER ;] FS-LIST:EACH then ;
 
 : FAILURE-REQUEST$ ( -- ptr u8 n )
    S\" require test/whitebox-engine.f\nrequire src/lib/test.f\nT-RESET\n: REQUEST ( -- ) s\" failed-whitebox\" WHITEBOX-ENGINE:PROVIDE ;\n' REQUEST E-PROC-TIMEOUT TTHROWS\nT-REPORT\n" ;
@@ -131,16 +139,16 @@ variable RC
 
 : ASSERT-NO-PRODUCT ( -- )
    IMAGE$ EXISTS? TFALSE
-   CACHE$ [: NO-SUPPLIER ;] FS-LIST:EACH ;
+   OUT-ROOT$ EXISTS? if OUT-ROOT$ [: IMG-CLEAN ;] FS-LIST:EACH then ;
 
 : FAILURE-CASES ( -- )
    PREPARE-FAILURES
    s" whitebox failure artifacts: " type ROOT$ type cr
-   ROOT$ s" timeout-cache" CACHE JOIN-PATH CACHE-U !
-   CACHE$ MAKE-DIR
+   ROOT$ s" out" OUT-ROOT JOIN-PATH OUT-ROOT-U !
    ROOT$ s" failed-whitebox" IMAGE JOIN-PATH IMAGE-U !
    s" a fresh whitebox build deadline remains a caught timeout" T-LABEL
    ENV
+   s" HABU_OUT" >LEN OUT-ROOT$ >LEN PROC-ENV-SET
    s" HB_BUILD_TIMEOUT_MS" >LEN s" 1" >LEN PROC-ENV-SET
    FAILURE-REQUEST 0 T=
    ASSERT-NO-PRODUCT
@@ -149,6 +157,7 @@ variable RC
    \ Fail in the real support child before unrelated compiler initialization.
    PREFIX$ S\" require src/lib/fs.f\ns\" whitebox-missing-input.f\" FILE-SIZE drop\n" WRITE-ALL
    ENV
+   s" HABU_OUT" >LEN OUT-ROOT$ >LEN PROC-ENV-SET
    FAILURE-REQUEST 67 T=
    ASSERT-NO-PRODUCT ;
 

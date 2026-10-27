@@ -1,11 +1,11 @@
 \ preloaded-engine.f - the engine with the AOT linker loaded, settled once per
-\ gate run, built on a selected-cache miss and run in place across runs.
+\ gate run, built on a key miss and run in place across runs.
 \
 \ A row that links a stripped image used to compile the linker -
 \ tools/aot-build.f and every src/habu/aot-*.f it loads - in each child: about
 \ 7.6 s of every such child, measured on one host. So it is compiled once, into
 \ a keyed image (test/keyed-image.f) the rows run instead of the engine:
-\ LINKER$, hb-linker-<key>, the saver image test/app-image-engine.f builds with
+\ LINKER$, img/linker, the saver image test/app-image-engine.f builds with
 \ tools/aot-build.f loaded on top and saved. Its key folds the saver image's
 \ key - so it moves whenever that one does, and the host is never hashed - the
 \ program, and the ordered closure of tools/aot-build.f.
@@ -87,19 +87,19 @@ variable LINKER-RESOLVED?
    LINKER-PROGRAM$ CONTENT-KEY:TEXT+
    s" tools/aot-build.f" KEYED-IMAGE:CLOSURE+
    LINKER-KEY CONTENT-KEY:FINAL-HEX
-   LINKER-KEY s" linker" LINKER-BUF LINKER-U KEYED-IMAGE:PATH!
+   s" linker" LINKER-BUF LINKER-U KEYED-IMAGE:PATH!
    0 0= LINKER-RESOLVED? ! ;
 
 \ The builder takes the output image as its only argument.
 : OUT-ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-\ The saver image is settled first, whether the linker is on disk or not: it is
-\ the linker's builder, and settling it dates it as used beside the linker.
+\ The saver image is settled first, whether the linker is fresh or not: it is
+\ the linker's builder, and its key is folded into the linker's.
 : LINKER-ENSURE ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    LINKER-RESOLVE
-   s" linker" LINKER-PATH$ host hostu LINKER-PROGRAM$ ['] OUT-ARG
+   LINKER-KEY s" linker" host hostu LINKER-PROGRAM$ ['] OUT-ARG
    KEYED-IMAGE:ENSURE ;
 
 : NULL-IN ( -- fd )

@@ -64,6 +64,7 @@ create BODY 4096 allot
    PROJECT PROJECT-U @ PROC-CMD:CWD!
    \ Exercise a cold image build here, then reuse it for the nested entry.
    s" HABU_BUILD_CACHE" s" cache" PROJECT-PATH PROC-CMD:ENV+
+   s" HABU_OUT" s" out" PROJECT-PATH PROC-CMD:ENV+
    s" --load" PROC-CMD:ARG+
    PROC-CMD:ARG+ ;
 

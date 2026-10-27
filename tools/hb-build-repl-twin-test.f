@@ -121,16 +121,21 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-ROOT s" twin0-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin0-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH! ;
 
-\ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
-\ shared root, which holds the app-builder family image. With aot set the command
-\ runs after test/compiler/aot-mode.f selected tier 1, the tier its products are
-\ built at; without it the products are built at the default tier 0.
+\ An empty cache leaves HABU_BUILD_CACHE and HABU_OUT inherited: under the gate,
+\ the run's shared roots, whose out root holds the app-builder family image. A
+\ private cache is B's out root as well, so B builds that image fresh. With aot
+\ set the command runs after test/compiler/aot-mode.f selected tier 1, the tier
+\ its products are built at; without it the products are built at the default
+\ tier 0.
 : HBT-TWIN-BUILD ( bool ptr u8 n ptr u8 n ptr u8 n -- )
    {: aot:bool tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   cacheu 0 > if s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+ then
+   cacheu 0 > if
+      s" HABU_BUILD_CACHE" >LEN cache cacheu >LEN PROC-ENV+
+      s" HABU_OUT" >LEN cache cacheu >LEN PROC-ENV+
+   then
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+

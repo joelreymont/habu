@@ -3,9 +3,8 @@
 \
 \ hb-build publishes an artifact hb-build-out-<key>, an object <key>.hbo with
 \ its index <key>.idx (src/lib/object-resolve.f), an observed-input manifest
-\ hb-build-inputs-<key>, paired artifact/object maps, a maker-support record,
-\ and a keyed AOT builder image hb-aot-builder-<key>
-\ (tools/aot-builder-image.f). A publish prunes its own family;
+\ hb-build-inputs-<key> and paired artifact/object maps; its builder images
+\ live under the tree's .out, not here. A publish prunes its own family;
 \ a hit dates what it found. So this builds two programs into a private root,
 \ dates their program entries to 2020, past the window, and then
 \ - builds the second program again, which restores its artifact;
@@ -55,18 +54,14 @@ package HB-BUILD-CLI
 12 constant HBR-C-ART
 14 constant HBR-C-OBJ
 16 constant HBR-C-IDX
-17 constant HBR-BUILDER
-18 constant HBR-SUPPORT
-19 constant HBR-A-INPUTS
-20 constant HBR-B-INPUTS
-21 constant HBR-C-INPUTS
-22 constant HBR-SLOTS
+17 constant HBR-A-INPUTS
+18 constant HBR-B-INPUTS
+19 constant HBR-C-INPUTS
+20 constant HBR-SLOTS
 -1 constant HBR-NONE
 
-\ hb-build-out-<key>, hb-aot-builder-<key>, <key>.hbo and <key>.idx use
-\ 64-digit keys.
+\ hb-build-out-<key>, <key>.hbo and <key>.idx use 64-digit keys.
 77 constant HBR-ART-LEN
-79 constant HBR-BUILDER-LEN
 68 constant HBR-OBJ-LEN
 
 create HBR-ROOT-BUF FS-PATH-CAP allot
@@ -137,16 +132,9 @@ variable HBR-STRAY
 : HBR-IDX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .idx" ENDS-WITH? u HBR-OBJ-LEN = and ;
 
-: HBR-BUILDER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" hb-aot-builder-" STARTS-WITH? u HBR-BUILDER-LEN = and ;
-
 : HBR-INPUTS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u s" hb-build-inputs-" STARTS-WITH? u 80 = and ;
-
-: HBR-SUPPORT? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   a u s" hb-maker-support-" STARTS-WITH? u 81 = and ;
 
 : HBR-MAP-SLOT ( n -- n )
    dup HBR-NONE <> if 1+ then ;
@@ -172,8 +160,6 @@ variable HBR-STRAY
    a u HBR-ART? if a u HBR-ART-SLOT @ HBR-TAKE exit then
    a u HBR-OBJ? if a u HBR-OBJ-SLOT @ HBR-TAKE exit then
    a u HBR-IDX? if a u HBR-IDX-SLOT @ HBR-TAKE exit then
-   a u HBR-BUILDER? if a u HBR-BUILDER HBR-TAKE exit then
-   a u HBR-SUPPORT? if a u HBR-SUPPORT HBR-TAKE exit then
    a u HBR-INPUTS? if a u HBR-INPUT-SLOT @ HBR-TAKE exit then
    1 HBR-STRAY +! ;
 
@@ -191,9 +177,7 @@ variable HBR-STRAY
 
 \ Name what a build added to the root: the slots for its artifact, object and
 \ index, HBR-NONE for a kind it must not publish, and how many it publishes.
-\ The first build also records one maker image and its support record.
-\ Another name of either kind is a stray. File objects the maker writes are
-\ counted as neither, so `want` leaves them out. Any other name is a stray.
+\ Any other name is a stray.
 : HBR-RECORD ( n n n n n -- )
    {: art:n obj:n idx:n inputs:n want:n :}
    art HBR-ART-SLOT !
@@ -232,8 +216,7 @@ variable HBR-STRAY
    s" -t" >LEN PROC-ARGV+
    s" 202001010000" >LEN PROC-ARGV+
    HBR-SLOTS 0 ?do
-      i HBR-BUILDER <> i HBR-SUPPORT <> and
-      i HBR-NAME-LEN @ 0 > and if
+      i HBR-NAME-LEN @ 0 > if
          i HBR-SLOT$ HBR-AT$ >LEN PROC-ARGV+
       then
    loop
@@ -245,7 +228,7 @@ variable HBR-STRAY
 : HBR-FIRST-BUILDS ( -- )
    s" ra.f" S\" : MAIN ( -- ) 1 . cr ;\n" HBR-SOURCE!
    s" ra" false HBR-BUILD
-   HBR-A-ART HBR-A-OBJ HBR-A-IDX HBR-A-INPUTS 8 HBR-RECORD
+   HBR-A-ART HBR-A-OBJ HBR-A-IDX HBR-A-INPUTS 6 HBR-RECORD
    s" rb.f" S\" : MAIN ( -- ) 2 . cr ;\n" HBR-SOURCE!
    s" rb" false HBR-BUILD
    HBR-B-ART HBR-B-OBJ HBR-B-IDX HBR-B-INPUTS 6 HBR-RECORD
@@ -305,8 +288,7 @@ public
    HBR-SLOTS-RESET
    HBT-ROOT s" cache" HBR-ROOT-BUF HBR-ROOT-U HBT-PATH!
    HBR-ROOT$ MAKE-DIR
-   \ A private root by claim: HBR-BUILDER? counts the builder entry this root
-   \ publishes, which the run's shared root would already hold.
+   \ A private root by claim: the counts see only this run's builds.
    HBR-ROOT$ BUILD-CACHE:ROOT!
    HBR-FIRST-BUILDS
    HBR-HITS

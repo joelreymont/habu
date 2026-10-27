@@ -1955,10 +1955,6 @@ SUITE event-closure
    tools/event-closure-test.f
 ;SUITE
 
-SUITE keyed-image-reap
-   test/keyed-image-reap-test.f
-;SUITE
-
 SUITE build-cache-retain
    src/lib/build-cache-retain-test.f
 ;SUITE

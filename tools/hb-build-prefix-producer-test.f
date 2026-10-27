@@ -71,7 +71,8 @@ variable RC
    TMP$ MAKE-DIR
    APP$ s" : MAIN ( -- ) FILE-PRODUCER:VALUE . ;" WRITE-ALL ;
 
-\ Each case keys its objects in its own cache under the one prepared tree.
+\ Each case keys its objects and builder images in its own cache and out root
+\ under the one prepared tree.
 : CACHE! ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    ROOT$ name nameu CACHE JOIN-PATH CACHE-U !
@@ -98,6 +99,7 @@ variable RC
    s" app" >LEN PROC-ARGV+
    s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN CACHE$ >LEN PROC-ENV+
+   s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    edit 0<> if s" HABU_PREFIX_TEST_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN ROOT$ >LEN input inputu >LEN

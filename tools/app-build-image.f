@@ -58,7 +58,7 @@ TYPED-VARIABLE BEFORE [ ptr u8 n -- ]
    fold [: FILL-KEY ;] catch {: rc:n :} drop
    rc 0<> if fold CONTENT-KEY:DISCARD rc throw then
    fold KEY-HEX CONTENT-KEY:FINAL-HEX
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
 \ Discover the same support file the selected engine will load, with the
 \ invocation CWD and that engine's fallback root. Restore the caller on error.
@@ -95,7 +95,7 @@ public
    ['] RESOLVE catch {: rc:n :}
    [: 2drop ;] BEFORE !
    rc 0<> if rc throw then
-   FAMILY$ PATH-BYTES BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
+   KEY-HEX FAMILY$ BUILD-FIXPOINT:BF-ENGINE$ PROGRAM$ ['] OUT-ARG timeout
    KEYED-IMAGE:ENSURE-WITH drop
    PATH-BYTES ;
 
@@ -103,17 +103,16 @@ public
    [: 2drop ;] swap PATH-EACH$ ;
 
 \ These two accessors let hb-build reuse a previously observed support closure.
-\ The path is still checked through the same executable and retention rules as
-\ KEYED-IMAGE:ENSURE-WITH; a missing or pruned image asks for rediscovery.
+\ The image is checked by the same KEYED-IMAGE:FRESH? as ENSURE-WITH; a missing
+\ image or one published under another key asks for rediscovery.
 : SELECTED-KEY$ ( -- ptr u8 n )
    KEY-HEX KEYED-IMAGE:KEY-HEX-LEN ;
 
 : CACHED-PATH$ ( ptr u8 n -- ptr u8 n bool )
    {: key:ptr keyu:n :}
    key keyu HEX? 0= if NULL-PTR 0 false exit then
-   key FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
-   PATH-BYTES EXECUTABLE? 0= if NULL-PTR 0 false exit then
-   PATH-BYTES BUILD-CACHE:USED 0= if NULL-PTR 0 false exit then
+   key FAMILY$ KEYED-IMAGE:FRESH? 0= if NULL-PTR 0 false exit then
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
    PATH-BYTES true ;
 
 ;package

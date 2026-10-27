@@ -1,5 +1,5 @@
 \ check-verify-image.f - the saved verifier image tools/check-verify-core.f
-\ runs its child on: hb-check-verify-<key> in the build cache, the engine with
+\ runs its child on: img/check-verify under the out root, the engine with
 \ the verifier and tools/check-verify-child-lib.f loaded at tier 1 and saved by
 \ tools/check-verify-save.f, built once per engine and closure.
 \
@@ -102,7 +102,7 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
    fold [: FILL-KEY ;] catch {: rc:n :} drop
    rc 0<> if fold CONTENT-KEY:DISCARD rc throw then
    fold KEY-HEX CONTENT-KEY:FINAL-HEX
-   KEY-HEX FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
    NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
    rowsu 1 max STAMPS-RESERVE
    rows 0 STAMPS rowsu BYTE-COPY  rowsu STAMPS-U !
@@ -141,13 +141,13 @@ public
    s" src/compiler/native/compiler.f" ENGINE-PROVIDES? ;
 
 \ The image for the engine at this path, built within the timeout (ms) unless
-\ it is in the cache. Take it before staging a child's argv or env: a build
+\ it was published under its key. Take it before staging a child's argv or env: a build
 \ stages its own in the same process-wide tables.
 : PATH$ ( ptr u8 n n -- ptr u8 n )
    {: a:ptr u:n timeout:n :}
    a u ENGINE-BUF ENGINE-U COPY!
    FRESH? 0= if RESOLVE then
-   FAMILY$ PATH-BUF PATH-U @ ENGINE$ PROGRAM$ ['] OUT-ARG timeout
+   KEY-HEX FAMILY$ ENGINE$ PROGRAM$ ['] OUT-ARG timeout
    KEYED-IMAGE:ENSURE-WITH drop
    PATH-BUF PATH-U @ ;
 

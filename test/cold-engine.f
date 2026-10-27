@@ -1,5 +1,5 @@
 \ cold-engine.f - the cold fixture engine, settled once per gate run,
-\ emitted on a selected-cache miss and shared across runs.
+\ emitted on a key miss and shared across runs.
 \
 \ Every partial-capture fixture needs the empty cold host that
 \ test/native-fixture-write.f emits from one output argument. That emission is a
@@ -7,7 +7,7 @@
 \ exactly one thing: that image, whose key covers the engine that builds it and
 \ the ordered require/include closures of its builder and of the writer. The
 \ host's own key is derived from that key, so the artifact is emitted once into
-\ the build cache and every later caller copies it; another engine or a tree
+\ img/cold-engine and every later caller copies it; another engine or a tree
 \ edit anywhere in those closures changes the key and no stale host is reused.
 \
 \ PROVIDE is the whole interface: it names the private path a fixture wants its
@@ -23,8 +23,8 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/build-cache.f
 require src/lib/content-key.f
+require tools/keyed-image.f
 require test/fixture-writer.f
 require test/image-grant.f
 require test/suite-budget.f              \ CHILD-MS, the emission's hang guard
@@ -33,21 +33,16 @@ package COLD-ENGINE
 
 $10000 constant IO-CAP
 75 constant COLD-RC
-64 constant KEY-HEX-LEN
-128 constant NAME-CAP
 
-create KEY-HEX KEY-HEX-LEN allot
-create NAME-BUF NAME-CAP allot
+create KEY-HEX KEYED-IMAGE:KEY-HEX-LEN allot
 create PATH-BUF FS-PATH-CAP allot
 create WORK-BUF FS-PATH-CAP allot
 create TMP-BUF FS-PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-variable NAME-U
 variable PATH-U
 variable WORK-U
-variable WORK-FD
 variable TMP-U
 variable EMIT-RC
 variable RESOLVED?
@@ -68,27 +63,15 @@ variable RESOLVED?
    writer writeru CONTENT-KEY:TEXT+
    KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
-: IMAGE-PREFIX$ ( -- ptr u8 n )
-   s" hb-cold-" ;
-
-: WORK-PREFIX$ ( -- ptr u8 n )
+\ The family name: the image's name under img/, the stem of its work
+\ directories, and the name a gate grants the host under (test/image-grant.f).
+: FAMILY$ ( -- ptr u8 n )
    s" cold-engine" ;
-
-: NAME! ( -- )
-   IMAGE-PREFIX$ {: a:ptr u:n :}
-   u KEY-HEX-LEN + NAME-CAP > if E-FS-CAPACITY throw then
-   a NAME-BUF u BYTE-COPY
-   KEY-HEX NAME-BUF u + KEY-HEX-LEN BYTE-COPY
-   u KEY-HEX-LEN + NAME-U ! ;
-
-: PATH! ( -- )
-   KEY!
-   NAME!
-   BUILD-CACHE:ROOT$ NAME-BUF NAME-U @ PATH-BUF JOIN-PATH PATH-U ! ;
 
 : RESOLVE ( -- )
    RESOLVED? @ 0 <> if exit then
-   PATH!
+   KEY!
+   FAMILY$ PATH-BUF PATH-U KEYED-IMAGE:PATH!
    0 0= RESOLVED? ! ;
 
 : COPY-OUT! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
@@ -97,18 +80,12 @@ variable RESOLVED?
    a dst u BYTE-COPY
    u up ! ;
 
-\ The writer emits into a private directory of its own, so a half-written host
-\ is never visible at the keyed path: only the closing rename publishes it.
-\ It is held until WORK-CLOSE and registered for removal at exit, so a die
-\ before WORK-CLOSE still removes it, and the next build removes it after a
-\ kill (BUILD-CACHE:WORK-OPEN).
+\ The writer emits into a work directory of its own (KEYED-IMAGE:WORK-OPEN),
+\ so a half-written host is never visible at the family's path: only
+\ KEYED-IMAGE:PUBLISH puts it there.
 : WORK-OPEN ( -- )
-   WORK-PREFIX$ BUILD-CACHE:WORK-OPEN FD>N WORK-FD !
-   WORK-BUF WORK-U COPY-OUT!
-   WORK-BYTES s" hb-cold" TMP-BUF JOIN-PATH TMP-U ! ;
-
-: WORK-CLOSE ( -- )
-   WORK-BYTES WORK-FD @ >FD BUILD-CACHE:WORK-CLOSE ;
+   FAMILY$ KEYED-IMAGE:WORK-OPEN WORK-BUF WORK-U COPY-OUT!
+   WORK-BYTES FAMILY$ TMP-BUF JOIN-PATH TMP-U ! ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -140,42 +117,37 @@ variable RESOLVED?
 : PUBLISH ( -- )
    TMP-BYTES EXECUTABLE? 0= if
       s" cold-engine: writer produced no executable host" COLD-RC die then
-   TMP-BYTES PATH-BYTES RENAME-FILE ;
+   KEY-HEX FAMILY$ TMP-BYTES KEYED-IMAGE:PUBLISH ;
 
-\ A second builder racing this one writes the same keyed bytes and the rename
-\ above is atomic, so losing the race costs one discarded emission and nothing
-\ else. The work directory goes whatever the emission did, and a failure keeps
-\ its own code: a throw is caught here, and a die in WRITER-RUN or PUBLISH ends
-\ the process, whose exit registry removes what WORK-OPEN registered. A
-\ published host then prunes its family (BUILD-CACHE:PRUNE), which reports
-\ its own failures and never fails the emission. WORK-PREFIX$ is also the stem
-\ of the cold-engine-<seed>-<attempt> work directories a builder that holds
-\ none made, which pruning takes once they are a day old.
+\ A second builder racing this one writes the same keyed bytes through
+\ KEYED-IMAGE:PUBLISH's atomic replaces, so the race costs one redundant
+\ emission and fails neither. The work directory goes whatever the emission
+\ did, and a failure keeps its own code: a throw is caught here, and a die in
+\ WRITER-RUN or PUBLISH ends the process, whose exit registry removes what
+\ KEYED-IMAGE:WORK-OPEN registered.
 : EMIT ( -- )
    WORK-OPEN
    ['] WRITER-RUN catch EMIT-RC !
    EMIT-RC @ 0 = if ['] PUBLISH catch EMIT-RC ! then
-   WORK-CLOSE
-   EMIT-RC @ 0 <> if EMIT-RC @ throw then
-   IMAGE-PREFIX$ s" " WORK-PREFIX$ PATH-BYTES BUILD-CACHE:PRUNE ;
+   WORK-BYTES KEYED-IMAGE:WORK-CLOSE
+   EMIT-RC @ 0 <> if EMIT-RC @ throw then ;
 
 public
 
 \ Settle the shared writer image and the cold host it emits, each built only
-\ when its keyed artifact is not already on disk. The writer is settled even when
-\ the host is present: every fixture write runs it. Under a gate the host must
-\ be granted (IMAGE-GRANT:CHECK; the family name is the work prefix), and the
-\ gate's cold-engine build row settles both before a row that needs them starts
-\ (test/gate-images.f). A host found on disk is marked in use
-\ (BUILD-CACHE:USED), and one a pruner took meanwhile is emitted again.
+\ when the one on disk was not built under its key. The writer is settled even
+\ when the host is fresh: every fixture write runs it. Under a gate the host
+\ must be granted (IMAGE-GRANT:CHECK under FAMILY$), and the gate's
+\ cold-engine build row settles both before a row that needs them starts
+\ (test/gate-images.f).
 : ENSURE ( -- )
-   WORK-PREFIX$ IMAGE-GRANT:CHECK
+   FAMILY$ IMAGE-GRANT:CHECK
    FIXTURE-WRITER:ENSURE
    RESOLVE
-   PATH-BYTES EXECUTABLE? if PATH-BYTES BUILD-CACHE:USED if exit then then
+   KEY-HEX FAMILY$ KEYED-IMAGE:FRESH? if exit then
    EMIT ;
 
-\ The keyed artifact, for a caller that only wants to name it.
+\ The family's host, for a caller that only wants to name it.
 : PATH$ ( -- ptr u8 n )
    ENSURE
    PATH-BYTES ;

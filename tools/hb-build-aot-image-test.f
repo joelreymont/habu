@@ -13,11 +13,13 @@ create HBT-MAKER-TOOL FS-PATH-CAP allot
 create HBT-MAKER-SHADOW FS-PATH-CAP allot
 create HBT-MAKER-OLD FS-PATH-CAP allot
 create HBT-MAKER-DIRECT-OUT FS-PATH-CAP allot
+create HBT-MAKER-OUT FS-PATH-CAP allot
 variable HBT-MAKER-HB-U
 variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
 variable HBT-MAKER-OLD-U
 variable HBT-MAKER-DIRECT-OUT-U
+variable HBT-MAKER-OUT-U
 create HBT-MAKER-FSHA-CTX SHA256-FILE-CTX-BYTES allot
 create HBT-MAKER-EXE-HEX 64 allot
 create HBT-MAKER-MAP-HEX 64 allot
@@ -38,11 +40,25 @@ create HBT-MAKER-GOT-HEX 64 allot
 : HBT-MAKER-DIRECT-OUT$ ( -- ptr u8 n )
    HBT-MAKER-DIRECT-OUT HBT-MAKER-DIRECT-OUT-U @ ;
 
+\ Every child's out root: the saved maker it selects or builds stays private.
+: HBT-MAKER-OUT$ ( -- ptr u8 n )
+   HBT-MAKER-OUT HBT-MAKER-OUT-U @ ;
+
+\ A child's argv and env so far: the private temp, cache and out roots.
+: HBT-MAKER-ENV ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   s" HABU_OUT" >LEN HBT-MAKER-OUT$ >LEN PROC-ENV+ ;
+
+\ Prints the saved maker image the engine selects, then hit or built.
 : HBT-MAKER-PATH-CHILD ( -- )
    SCRIPT-ARGC 3 <> if E-TBL-BOUNDS throw then
    1 SCRIPT-ARGV$ BUILD-CACHE:ROOT!
    2 SCRIPT-ARGV$ BUILD-FIXPOINT:BF-ENGINE!
-   HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ type cr ;
+   HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ type cr
+   HBB-MAKER-HIT @ 0<> if s" hit" else s" built" then type cr ;
 
 : HBT-MAKER-CHILD-SETUP ( -- )
    SCRIPT-ARGC 4 <> if E-TBL-BOUNDS throw then
@@ -68,8 +84,6 @@ create HBT-MAKER-GOT-HEX 64 allot
 
 : HBT-MAKER-SHADOW-SETUP ( -- )
    SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-MAKER-HB JOIN-PATH HBT-MAKER-HB-U !
-   SOURCE-ROOT:ENGINE$ s" tools/hb-build-aot-image-test.f"
-      HBT-MAKER-TOOL JOIN-PATH HBT-MAKER-TOOL-U !
    HBT-ROOT s" tools" HBT-MAKER-SHADOW JOIN-PATH
       HBT-MAKER-SHADOW-U !
    HBT-MAKER-SHADOW$ MAKE-DIR
@@ -79,44 +93,51 @@ create HBT-MAKER-GOT-HEX 64 allot
       HBT-MAKER-OLD JOIN-PATH HBT-MAKER-OLD-U !
    HBT-MAKER-OLD$ HBT-MAKER-SHADOW$ COPY-FILE-STREAM ;
 
-: HBT-MAKER-CHILD-RUN ( -- n )
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+\ The saved maker a fresh process selects for an engine spelling from a working
+\ directory: the image path's length in HBT-OUT and whether it was a hit.
+: HBT-MAKER-PATH-RUN ( ptr u8 n ptr u8 n -- n bool )
+   {: eng:ptr engu:n cwd:ptr cwdu:n :}
+   HBT-MAKER-ENV
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    HBT-MAKER-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" path" >LEN PROC-ARGV+
    HBT-TMP >LEN PROC-ARGV+
-   HBT-MAKER-HB$ >LEN PROC-ARGV+
-   HBT-MAKER-HB$ >LEN HBT-ROOT >LEN
+   eng engu >LEN PROC-ARGV+
+   HBT-MAKER-HB$ >LEN cwd cwdu >LEN
    HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
       HBT-CAPTURE>N {: outn:n errn:n rc:n :}
    rc 0<> if HBT-ERR errn type then
    rc 0 T= errn 0 T=
-   outn 1 > TTRUE
-   HBT-OUT outn 1- + c@ 10 T=
-   outn 1- ;
+   HBT-OUT outn S\" \nhit\n" ENDS-WITH? if outn 5 - true exit then
+   HBT-OUT outn S\" \nbuilt\n" ENDS-WITH? 0= if
+      HBT-OUT outn type E-BUILD-PATH throw
+   then
+   outn 7 - false ;
 
+\ The family's one image slot under the private out root, executable.
+: HBT-MAKER-SLOT? ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path pathu HBT-MAKER-OUT$ STARTS-WITH? TTRUE
+   path pathu s" /img/aot-builder" ENDS-WITH? TTRUE
+   path pathu EXECUTABLE? TTRUE ;
+
+\ Editing the maker source under the root replaces the slot's image.
 : HBT-MAKER-ROOT-EDIT ( -- )
    HBT-MAKER-SHADOW-SETUP
-   HBT-MAKER-CHILD-RUN {: oldu:n :}
+   HBT-MAKER-HB$ HBT-ROOT HBT-MAKER-PATH-RUN drop {: oldu:n :}
    HBT-OUT oldu HBT-MAKER-OLD HBT-MAKER-OLD-U HBT-COPY!
-   HBT-MAKER-OLD$ EXECUTABLE? TTRUE
+   HBT-MAKER-OLD$ HBT-MAKER-SLOT?
    HBT-MAKER-SHADOW$ S\" \n\\ maker source changed\n" APPEND-FILE
-   HBT-MAKER-CHILD-RUN {: newu:n :}
-   HBT-OUT newu EXECUTABLE? TTRUE
-   HBT-OUT newu HBT-MAKER-OLD$ STR= TFALSE ;
+   HBT-MAKER-HB$ HBT-ROOT HBT-MAKER-PATH-RUN TFALSE {: newu:n :}
+   HBT-OUT newu HBT-MAKER-OLD$ T$=
+   HBT-OUT newu HBT-MAKER-SLOT? ;
 
 : HBT-MAKER-ROOTED-ON ( ptr u8 n -- )
    {: mode:ptr modeu:n :}
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   HBT-MAKER-ENV
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-MAKER-HB$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
@@ -152,6 +173,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 : HBT-MAKER-REPORT-BUILD ( ptr u8 n bool -- )
    {: engine:ptr engineu:n warm:bool :}
    HBT-TMP engine engineu HBT-ARGV-CLI
+   s" HABU_OUT" >LEN HBT-MAKER-OUT$ >LEN PROC-ENV-SET
    s" --report-json" >LEN PROC-ARGV+
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -167,13 +189,9 @@ create HBT-MAKER-GOT-HEX 64 allot
    then ;
 
 : HBT-MAKER-CACHE-PATH ( ptr u8 n -- ptr u8 n )
-   BUILD-FIXPOINT:BF-ENGINE!
-   HBB-SELECT-ENGINE
-   HBB-MAKER-DEFAULT-MS HBB-MAKER-IMAGE$ {: path:ptr pathu:n :}
-   HBB-MAKER-HIT @ 0<> TTRUE
-   path pathu BASENAME s" hb-aot-builder-" STARTS-WITH? TTRUE
-   path pathu EXECUTABLE? TTRUE
-   path pathu ;
+   SOURCE-ROOT:CWD$ HBT-MAKER-PATH-RUN TTRUE {: pathu:n :}
+   HBT-OUT pathu HBT-MAKER-SLOT?
+   HBT-OUT pathu ;
 
 : HBT-MAKER-HASH ( ptr u8 n ptr u8 -- )
    {: path:ptr pathu:n hex:ptr :}
@@ -193,10 +211,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-TMP s" hb-aot-got" HBT-MAKER-DIRECT-OUT JOIN-PATH
       HBT-MAKER-DIRECT-OUT-U !
    HBT-MAKER-DIRECT-OUT$ HBT-REMOVE-FILE?
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
+   HBT-MAKER-ENV
    PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+
    HBT-AOT-SRC >LEN PROC-ARGV+
@@ -225,10 +240,10 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-AOT-OUT HBT-MAKER-EXE-HEX HBT-MAKER-HASH
    HBT-AOT-OUT HBB-MAP-DST!
    HBB-MAP-DST$ HBT-MAKER-MAP-HEX HBT-MAKER-HASH
-   s" bin/hb" HBT-MAKER-CACHE-PATH
-      HBT-MAKER-OLD HBT-MAKER-OLD-U HBT-COPY!
    s" bin/hb" SOURCE-ROOT:CANON-OS 0= if E-BUILD-PATH throw then
       HBT-MAKER-HB HBT-MAKER-HB-U HBT-COPY!
+   s" bin/hb" HBT-MAKER-CACHE-PATH
+      HBT-MAKER-OLD HBT-MAKER-OLD-U HBT-COPY!
    HBT-MAKER-HB$ HBT-MAKER-CACHE-PATH HBT-MAKER-OLD$ T$=
    \ Keep the source fixed and require maker_ran: comparing a restored
    \ artifact would not exercise the absolute spelling's linker path.
@@ -256,9 +271,13 @@ public
    T-RESET
    NULL$ HBT-KEYED!
    HBT-PREPARE
-   \ A private root by claim: the first report build's maker is built cold
+   \ Private roots by claim: every child's cache root is HBT-TMP and its out
+   \ root HBT-TMP/out, so the first report build's maker is built cold
    \ (maker_built), and HBT-MAKER-CACHE-PATH asserts the hit that child left.
    HBT-TMP BUILD-CACHE:ROOT!
+   HBT-TMP s" out" HBT-MAKER-OUT HBT-MAKER-OUT-U HBT-PATH!
+   SOURCE-ROOT:ENGINE$ s" tools/hb-build-aot-image-test.f"
+      HBT-MAKER-TOOL JOIN-PATH HBT-MAKER-TOOL-U !
    BUILD-FIXPOINT:BF-ENGINE-RESET
    HBT-MAKER-USER-BAND
    HBT-MAKER-ROOT-EDIT

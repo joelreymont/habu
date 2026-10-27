@@ -5,8 +5,8 @@ require test/suite-budget.f
 
 package KEYED-IMAGE
 public
-: ENSURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
-   {: fam:ptr famu:n path:ptr pathu:n eng:ptr engu:n prog:ptr progu:n args :}
+: ENSURE ( ptr u8 ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- )
+   {: key:ptr fam:ptr famu:n eng:ptr engu:n prog:ptr progu:n args :}
    fam famu IMAGE-GRANT:CHECK
-   fam famu path pathu eng engu prog progu args SUITE-BUDGET:CHILD-MS ENSURE-WITH drop ;
+   key fam famu eng engu prog progu args SUITE-BUDGET:CHILD-MS ENSURE-WITH drop ;
 ;package
