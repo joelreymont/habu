@@ -2234,12 +2234,13 @@ sections above.
   `require`s is tracked as usual. `test/native-file-frame-e2e.f` measures each line.
 - **A file's top-level run is admitted by its closure or by its trace.** A run
   of the file's own word or of an earlier file's walks the closure it reaches:
-  a definition whose host reason is SAFE, MEMORY, INDIRECT or FIXED, an
-  unchecked one with a checker contract and a primitive with a REACH class are
-  admitted; a seed word with no class is
+  a definition whose host reason is SAFE, MEMORY, INDIRECT, FIXED or REBIND (a
+  compiled `is`, whose stored xt is a declared cell the walk follows), an
+  unchecked one with a checker contract, a primitive with a REACH class and
+  the unset-defer sentinel are admitted; a seed word with no class is
   `reason=run-reaches-kernel-word word=W` (`run-reaches-kernel-data` for seed
   data), a definition with another reason `run-host-cast`, `-unchecked` (no
-  contract), `-foreign`, `-unknown` or `-rebind` (a compiled `is`). A run that
+  contract), `-foreign` or `-unknown`. A run that
   reaches an unchecked body leaves stores no checker saw, so the object judges
   the file's undeclared DATA cells as it does for a file that ran with
   checking off: a code or mapped address there refuses the file. `die` is classed as a

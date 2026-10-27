@@ -753,8 +753,19 @@ private
    rec XREF-NAME$ NDICT:HELPER-TARGET {: entry:n :}
    entry 0<> entry rec XREF-START = and ;
 
+\ Whether seed record ord is the unset-defer sentinel: every defer's cell starts
+\ with the execution token of the global DEFER-UNSET, which the engine finds by
+\ that name (habu2.f C-DEFER-FIND-UNSET) and the capture keeps the same way
+\ (aot-capture.f ACAP-KEEP?). Running it only dies, and the defer cell's DATA
+\ row pins that the cell holds it, so a later `is` misses.
+: DEFER-SENTINEL? ( n -- bool )
+   {: ord:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec XREF-NAME$ s" DEFER-UNSET" STR=  rec XREF-WORDLIST 0=  and ;
+
 \ A seed record's kind: 0 code, 1 data, 2 value, 3 admitted: a primitive with a
-\ REACH class or the engine helper a primitive's lowering branches to.
+\ REACH class, the engine helper a primitive's lowering branches to, or the
+\ unset-defer sentinel.
 : SEED-KIND ( n -- n )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
@@ -764,6 +775,7 @@ private
       flags DKIND:MASK and DKIND:ADDR = or rec NDICT:REC-DEFER-CELL 0<> or if 1 exit then
    ord PRIM-REACH 0<> if 3 exit then
    ord ENGINE-HELPER? if 3 exit then
+   ord DEFER-SENTINEL? if 3 exit then
    0 ;
 
 \ Whether seed record ord is a word TASK names a reader of its user-slot
@@ -786,7 +798,6 @@ private
    reason NHOST:CAST = if s" run-host-cast" exit then
    reason NHOST:UNCHECKED = if s" run-host-unchecked" exit then
    reason NHOST:FOREIGN = if s" run-host-foreign" exit then
-   reason NFILE-REF:HOST-REBIND = if s" run-host-rebind" exit then
    s" run-host-unknown" ;
 
 : H-REF ( n n n -- )
@@ -912,8 +923,8 @@ private
 
 \ A seed record lies below the floor: a seed value is terminal, a classed
 \ primitive or an engine helper is admitted, and any other seed record
-\ refuses, a seed defer's cell among them (the `is` keyword that rebinds
-\ one is a later lane).
+\ refuses, a seed defer's cell among them: the kernel made it, so it stays
+\ kernel data.
 : SEED-REACH ( n -- )
    {: ord:n :}
    ord SEED-KIND {: k:n :}

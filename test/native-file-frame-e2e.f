@@ -290,6 +290,7 @@ variable FILL-POOL
    s" rk-base.f" LOAD+
    s" rk-rev.f" LOAD+
    s" rk-trust.f" LOAD+
+   s" rk-is.f" LOAD+
    s" rebind.f" LOAD+
    s" own-trust.f" LOAD+
    s" parse-ok.f" LOAD+
@@ -754,7 +755,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ update, and an object with updates is not installed. The rk-*.f runs
 \ divide, unclassed, before or after an indirect run, and refuse alike,
 \ trusted RK-TRUST too: a contract admits an unchecked body, not a
-\ division in it. rebind.f's RB-B compiles `is`, which rebinds a defer and refuses.
+\ division in it, and RK-IS's division refuses after its `is`.
+\ rebind.f's RB-B compiles `is`, which rebinds a defer still holding the
+\ unset sentinel: the rebind is a slot row and the file stores.
 \ uhrun.f's top level runs uhd.f's checked definer UH-DEF, and uhinit.f's
 \ runs its own UH-INIT; both call the trusted, unchecked UH-ONE, whose
 \ contract admits it, so both runs store, and the third build edits UH-ONE's
@@ -778,6 +781,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rk-base.f" S\" : RK-BASE ( n n -- n ) / ;\n6 3 RK-BASE constant RK-BASE-K\n" PUT
    s" rk-rev.f" S\" : RK-REV ( n n -- n ) / [: ;] execute ;\n6 3 RK-REV constant RK-REV-K\n" PUT
    s" rk-trust.f" S\" TRUSTED: RK-TRUST ( n n -- n ) / ;\n6 3 RK-TRUST constant RK-TRUST-K\n" PUT
+   s" rk-is.f" S\" defer RK-D ( -- )\n: RK-IS ( n n -- n ) [: ;] is RK-D / ;\n6 3 RK-IS constant RK-IS-K\n" PUT
    s" rebind.f" S\" defer RB-D ( -- )\n: RB-B ( -- ) [: ;] is RB-D ;\nRB-B\n" PUT
    s" ixw.f" S\" : IX-TEN ( -- n ) 10 ;\n" PUT
    s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 3 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT
@@ -1527,10 +1531,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rk-rev.f" s"  reason=" LINE$ s" rk-rev.f reason=run-host-unknown word=RK-REV" T$=
    s" a trusted word's contract does not admit its division" T-LABEL
    s" rk-trust.f" s"  reason=" LINE$ s" rk-trust.f reason=run-host-unknown word=RK-TRUST" T$=
+   s" a compiled is does not admit a later division" T-LABEL
+   s" rk-is.f" s"  reason=" LINE$ s" rk-is.f reason=run-host-unknown word=RK-IS" T$=
    s" rk-ind.f" NO-OBJECT
-   s" a compiled is refuses its file as a rebinding" T-LABEL
-   s" rebind.f" s"  reason=" LINE$ s" rebind.f reason=run-host-rebind word=RB-B" T$=
-   s" rebind.f" NO-OBJECT
+   s" a compiled is on an unset defer stores its file" T-LABEL
+   s" rebind.f" KEY$ STORED
+   s" rebind.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" a seed word run whose trace is the source, a unit fact or a class stores" T-LABEL
    s" parse-ok.f" KEY$ STORED
    s" parse-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=

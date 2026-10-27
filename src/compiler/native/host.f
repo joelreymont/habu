@@ -29,8 +29,9 @@ public
 \ file's closure walk and source observer account for. CAST, UNCHECKED and
 \ FOREIGN: an effect the facts cannot name. UNKNOWN: an op, expansion or literal the
 \ classification does not model, or no facts at all. REBIND: a compiled `is`,
-\ which rebinds a defer rather than running a typed xt. SAFE, MEMORY, INDIRECT
-\ and FIXED are admitted (tools/native-file-reference.f REASON-ADMITTED?), and
+\ which rebinds a defer rather than running a typed xt. SAFE, MEMORY, INDIRECT,
+\ FIXED and REBIND are admitted (tools/native-file-reference.f
+\ REASON-ADMITTED?), and
 \ UNCHECKED when the definition has a checker contract
 \ (tools/native-unit-dependency.f MEMBER-ADMITTED?).
 \ Objects publish these values in section 15: append, never
@@ -326,17 +327,19 @@ public
 
 private
 
-\ The admitted reasons rank SAFE < MEMORY < INDIRECT < FIXED, then UNCHECKED,
-\ which a checker contract admits; every refusing reason ranks above them,
-\ alike, so a cast or an unmodeled op in an unchecked body still refuses.
+\ The admitted reasons rank SAFE < MEMORY < INDIRECT < FIXED < REBIND, then
+\ UNCHECKED, which a checker contract admits; every refusing reason ranks
+\ above them, alike, so a cast or an unmodeled op still refuses after an `is`
+\ or in an unchecked body.
 : RANK ( n -- n )
    {: reason:n :}
    reason SAFE = if 0 exit then
    reason MEMORY = if 1 exit then
    reason INDIRECT = if 2 exit then
    reason FIXED = if 3 exit then
-   reason UNCHECKED = if 4 exit then
-   5 ;
+   reason REBIND = if 4 exit then
+   reason UNCHECKED = if 5 exit then
+   6 ;
 
 public
 

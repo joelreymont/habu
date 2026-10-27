@@ -57,6 +57,12 @@ create LINE LINE-CAP allot  variable LINE-U
    S\" package SLOT-KID\npublic\n: K ( -- n ) 1 ;\n;package\n" ;
 : KID8$ ( -- ptr u8 n )
    S\" package SLOT-KID\npublic\n: K ( -- n ) 1 ;\ncreate KB 8 allot\n;package\n" ;
+: DFR$ ( -- ptr u8 n ) S\" defer HOOK ( -- n )\n" ;
+: INST7$ ( -- ptr u8 n )
+   S\" require dfr.f\n: HOOK-SET ( -- ) [: 7 ;] is HOOK ;\nHOOK-SET\n" ;
+: INST8$ ( -- ptr u8 n )
+   S\" require dfr.f\n: HOOK-SET ( -- ) [: 8 ;] is HOOK ;\nHOOK-SET\n" ;
+: APP6$ ( -- ptr u8 n ) S\" require inst.f\n: MAIN ( -- ) HOOK . ;\n" ;
 
 \ The build of name, the root file, with its cache root under the tree.
 : USE ( ptr u8 n ptr u8 n -- )
@@ -195,6 +201,30 @@ create LINE LINE-CAP allot  variable LINE-U
    s" grown5-hb" BUILT
    s" grown5-hb" S\" same16\n" RAN ;
 
+\ inst.f's HOOK-SET compiles `is` on dfr.f's defer and runs: the defer's cell
+\ is a declared address cell, so the store is a slot row and the quotation it
+\ holds an edge.
+: REBIND-CASE ( -- )
+   s" dfr.f" DFR$ PUT
+   s" inst.f" INST7$ PUT
+   s" app6.f" APP6$ PUT
+   s" app6.f" s" cache6" USE
+   s" cold build stores a file that rebinds an earlier defer" T-LABEL
+   s" cold6-hb" BUILT
+   s" cold6-hb" S\" 7\n" RAN
+   s" cold6-hb" KEEP
+   s" warm build reuses the rebinding file" T-LABEL
+   s" warm6-hb" BUILT
+   S\" files reused 3\n" REUSED
+   s" warm6-hb" S\" 7\n" RAN
+   s" warm product of a rebinding file is the cold one" T-LABEL
+   s" warm6-hb" SAME? TTRUE
+   s" an edited rebinding file recompiles" T-LABEL
+   s" inst.f" INST8$ PUT
+   s" edit6-hb" BUILT
+   S\" files reused 2\n" REUSED
+   s" edit6-hb" S\" 8\n" RAN ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -204,6 +234,7 @@ public
    REGISTRY-CASE
    REFUSAL-CASE
    BOUNDARY-CASE
+   REBIND-CASE
    T-REPORT
    s" native file slots artifacts: " type ROOT$ type cr ;
 ;package
