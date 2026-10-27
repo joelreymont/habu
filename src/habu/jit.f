@@ -545,7 +545,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
 \ cmp rd,rm (cmp rd,#imm12 when the top is a constant in 0..4095) ;
-\ cset rd,cond ; sub rd,xzr,rd  (Forth flag 0/-1)
+\ csetm rd,cond  (Forth flag 0/-1)
 : VCMP-ENTRY ( label ptr n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n cond:n :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK !  LBL FESK2 !  LBL FESK6 !  LBL {: flag :}
@@ -555,7 +555,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
    LVBINIPREP LABEL@ BL,
    13 FESK LABEL@ CBZ,
    13 1 CMPI,  C-NE FESK2 LABEL@ BCOND,
-      11 12 CMP,  11 cond CSET,  11 SP 11 SUB,
+      11 12 CMP,  11 cond CSETM,
       LVFOLDPUT LABEL@ BL,
       lmainlbl B,
    FESK2 LABEL@ LBL,
@@ -565,24 +565,23 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
    FESK6 LABEL@ LBL,
       8 $EB00001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
    flag LBL,
-      8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,
-      8 $CB0003E0 LIT64,  9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      8 $DA9F03E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
 \ LVFUSE ( x14=VS top reg -- x16=b.cond word with imm19 0, or 0 ) : a leaf the
 \ branch keywords (habu2.f CFB-ENTRY, CFBN-ENTRY) call on a register top. When
-\ the last two words emitted are the `cset x14 ; neg x14` that VCMP-ENTRY ends a
-\ compare with, it rewinds CP over them and answers the conditional branch that
-\ takes the cset's condition field: that field holds the inverted condition, so
-\ the branch is taken exactly when the flag would be 0, as cbz on it would be.
+\ the last word emitted is the `csetm x14` that VCMP-ENTRY ends a compare with,
+\ it rewinds CP over it and answers the conditional branch that takes the
+\ csetm's condition field: that field holds the inverted condition, so the
+\ branch is taken exactly when the flag would be 0, as cbz on it would be.
 \ The flags hold until the branch: what the keywords emit in between (spills,
 \ the BEGIN reconcile) is loads, stores and moves.
-\ Fence: no open control-flow entry may record an origin at or above CP-8, and
+\ Fence: no open control-flow entry may record an origin at or above CP-4, and
 \ the last forward branch patched (layout.f FWDTGT-CELL, habu2.f LPAT) may not
 \ land there. `begin` records CP without emitting, and so does `then` when the
 \ arm already holds the recorded layout: a loop top or a join between the
-\ compare and the branch would land in the rewound words. A target at the
+\ compare and the branch would land in the rewound word. A target at the
 \ compare itself is safe: the compare stays.
 \ Clobbers x5, x10-x13; preserves x14 and x30.
 variable LVFUSE
@@ -591,22 +590,20 @@ variable LVFUSE
    LVFUSE LABEL@ LBL,
    LBL LBL LBL {: walk chk no :}
    16 0 MOVZ,
-   12 CP 8 SUBI,                                            \ x12 = CP-8
-   13 DATA FWDTGT-CELL LDR,  13 DBASE 13 ADD,  13 12 CMP,  C-CS no BCOND,   \ a join lands at or above CP-8: fence
+   12 CP 4 SUBI,                                            \ x12 = CP-4
+   13 DATA FWDTGT-CELL LDR,  13 DBASE 13 ADD,  13 12 CMP,  C-CS no BCOND,   \ a join lands at or above CP-4: fence
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,        \ x11 = control-flow depth
    10 10 8 ADDI,                                            \ x10 = entry 0
    walk LBL,
       11 chk CBZ,
-      13 10 0 LDR,  13 12 CMP,  C-CS no BCOND,              \ origin >= CP-8: fence
+      13 10 0 LDR,  13 12 CMP,  C-CS no BCOND,              \ origin >= CP-4: fence
       10 10 CF-REC ADDI,  11 11 1 SUBI,  walk B,
    chk LBL,
-   11 12 0 LDRW,  12 12 4 LDRW,                             \ x11 = [CP-8], x12 = [CP-4]
-   5 $CB0003E0 LIT64,  13 5 14 ORR,  5 14 16 LSLI,  13 13 5 ORR,
-   12 13 CMP,  C-NE no BCOND,                               \ neg x14,x14
+   11 12 0 LDRW,                                            \ x11 = [CP-4]
    5 $FFFF0FFF LIT64,  13 11 5 AND,
-   5 $9A9F07E0 LIT64,  5 5 14 ORR,
-   13 5 CMP,  C-NE no BCOND,                                \ cset x14,<any>
-   CP CP 8 SUBI,
+   5 $DA9F03E0 LIT64,  5 5 14 ORR,
+   13 5 CMP,  C-NE no BCOND,                                \ csetm x14,<any>
+   CP CP 4 SUBI,
    11 11 12 LSRI,  11 11 $F ANDI,
    16 $54000000 LIT64,  16 16 11 ORR,
    no LBL,  RET, ;
@@ -1172,10 +1169,10 @@ variable FESK4
    7 0 MOVN,  11 11 7 EOR, ;
 
 : FU0= ( -- )
-   11 0 CMPI,  11 0 CSET,  11 SP 11 SUB, ;
+   11 0 CMPI,  11 0 CSETM, ;
 
 : FU0< ( -- )
-   11 0 CMPI,  11 11 CSET,  11 SP 11 SUB, ;
+   11 0 CMPI,  11 11 CSETM, ;
 
 : EU2R ( -- )
    9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;   \ base | rd | rm<<16
@@ -1198,16 +1195,16 @@ variable FESK4
 : EUCMP0 ( -- )
    8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
-: EUCSET ( n -- ) {: cond:n :}
-   8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,
+: EUCSETM ( n -- ) {: cond:n :}
+   8 $DA9F03E0 cond 1 xor 12 lshift or LIT64,
    9 8 14 ORR,
    LCEMIT LABEL@ BL, ;
 
 : EU0= ( -- )
-   EUCMP0  0 EUCSET  EUNEG ;
+   EUCMP0  0 EUCSETM ;
 
 : EU0< ( -- )
-   EUCMP0  11 EUCSET  EUNEG ;
+   EUCMP0  11 EUCSETM ;
 
 : EMIT-UNKW ( -- )
    LKWINC LABEL@ LBL,   s" 1+" BYTES,      LKWDEC LABEL@ LBL,   s" 1-" BYTES,

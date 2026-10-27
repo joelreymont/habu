@@ -2607,7 +2607,7 @@ public
 \ shared J-ENDOF can tell a CASE arm from a MATCH variant branch (which pushes a 1
 \ in EM-ADT-MATCH-OF). Dispatch (mirroring the MATCH slimming): compare the peeked
 \ scrutinee against the popped arm value and skip straight to the next arm on a
-\ b.ne, instead of materializing a cset boolean only to test it with a cbz. The
+\ b.ne, instead of materializing a csetm flag only to test it with a cbz. The
 \ cmp sets NZ and the very next emitted word is the branch (C-PUSHCP is
 \ compile-time and emits nothing), so the flags reach the b.ne untouched. LPAT
 \ already patches the b.ne placeholder via its imm19 branch-class path, exactly
@@ -6927,7 +6927,7 @@ variable CFSK2
 \ checkxt makes the word's compile-time refusals first on both paths, before
 \ anything is emitted, rewound or snapshotted (C-CF-ROOM's comment states the
 \ rule). hxtr gets the condition reg in x14 and, from
-\ LVFUSE, the b.cond word that replaced the compare's cset/neg in x16, or 0.
+\ LVFUSE, the b.cond word that replaced the compare's csetm in x16, or 0.
 : CFB-ENTRY ( label ptr n n [ -- ] [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n checkxt hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !

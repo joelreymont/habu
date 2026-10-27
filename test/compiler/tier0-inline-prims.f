@@ -65,6 +65,10 @@ $F84107FE constant LINK-REST         \ ldr x30,[sp],#16
 $FFC003FF constant ADDSP-MASK        \ keeps add sp,sp,#imm12's opcode and registers
 $910003FF constant ADDSP-OP          \ add sp,sp,#imm12
 $FFE00000 constant MOVW-MASK         \ keeps a move-wide word's opcode and shift
+$FFFF0FE0 constant CSETM-MASK        \ keeps csetm xD's opcode, clears cond and Rd
+$DA9F03E0 constant CSETM-OP          \ csetm xD,cond (csinv xD,xzr,xzr,!cond)
+$FFE0FFE0 constant NEG-MASK          \ keeps neg's opcode, clears Rd and Rm
+$CB0003E0 constant NEG-OP            \ neg xD,xM (sub xD,xzr,xM)
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -244,6 +248,11 @@ variable T0-SV
 : T0-LTBIG ( n -- n ) 4096 < if 1 else 2 then ;
 : T0-LTNEG ( n -- n ) -1 < if 1 else 2 then ;
 : T0-LTREG ( n n -- n ) < if 1 else 2 then ;
+
+\ Flags left on the stack: each is one csetm, never a cset and a neg.
+: T0-FLAGEQ ( n n -- bool ) = ;
+: T0-FLAGZEQ ( n -- bool ) 0= ;
+: T0-FLAGZLT ( n -- bool ) 0< ;
 
 \ Mentions of fixed values. A constant and a created word run while their user
 \ compiles and fold into it, as a literal and as a DATA address; a does> word,
@@ -445,6 +454,24 @@ private
    -7 T0-LTNEG 1 T=  -1 T0-LTNEG 2 T=  0 T0-LTNEG 2 T=
    4 5 T0-LTREG 1 T=  5 5 T0-LTREG 2 T=  6 5 T0-LTREG 2 T= ;
 
+: CSETMS ( ptr u8 n -- n ) CSETM-MASK CSETM-OP MASKED-OPS ;
+: NEGS ( ptr u8 n -- n ) NEG-MASK NEG-OP MASKED-OPS ;
+
+\ A flag left on the stack is one csetm and no neg.
+: FLAG-CSETM ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   na nu CSETMS 1 T=
+   na nu NEGS 0 T= ;
+
+: TEST-FLAGS ( -- )
+   s" 0= and 0< leave one csetm" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-FLAGZEQ" FLAG-CSETM
+   s" TIER0-INLINE-PRIMS:T0-FLAGZLT" FLAG-CSETM
+   s" each flag is all ones or zero" T-LABEL
+   3 3 T0-FLAGEQ bool>n -1 T=  3 4 T0-FLAGEQ bool>n 0 T=
+   0 T0-FLAGZEQ bool>n -1 T=  7 T0-FLAGZEQ bool>n 0 T=
+   -5 T0-FLAGZLT bool>n -1 T=  5 T0-FLAGZLT bool>n 0 T= ;
+
 : TEST-FIXED ( -- )
    s" a constant mention folds: no call, and `K =` compares against an immediate" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-KEQ" s" TIER0-INLINE-PRIMS:T0-K" INLINED
@@ -526,6 +553,7 @@ public
    TEST-MEM
    TEST-VALUES
    TEST-CMPI
+   TEST-FLAGS
    TEST-FIXED
    TEST-LOOPS
    TEST-QDUP

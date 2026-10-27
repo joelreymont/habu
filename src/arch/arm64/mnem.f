@@ -65,6 +65,8 @@ using A64ICODE
 
 : CSET, ( n n -- )  ENC-CSET EMITW ;
 
+: CSETM, ( n n -- )  ENC-CSETM EMITW ;
+
 : CSEL, ( n n n n -- )  ENC-CSEL EMITW ;
 
 : LDR, ( n n n -- )  ENC-LDR EMITW ;

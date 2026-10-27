@@ -15,7 +15,7 @@
 \ popped once and its outputs pushed once at `;`, so a join that spilled
 \ would add both. A compare right before a branch fuses into a b.cond
 \ (src/habu/jit.f LVFUSE) unless a join lands after the compare: J-FENCE's
-\ `then` patches the first `if` to land past the compare's cset, so its second
+\ `then` patches the first `if` to land past the compare's csetm, so its second
 \ `if` keeps the flag, while J-FUSED's `then` lands on the compare itself and
 \ both of its `if`s fuse. Every subject also runs and its answer is checked.
 \
