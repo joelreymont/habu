@@ -5093,11 +5093,13 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : CREATED-SIG-BODY ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN-BODY ;
 
-\ def-close ( -- ): the pending definition of the native tier ends, as the
-\ engine's tier-1 `;` ends one (habu2.f DEFWRITE:NATIVE-CLOSE): DEF-TIER-CELL,
-\ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL clear; before
-\ they clear, LASTC-CELL takes the record for a nonzero kind other than
-\ DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are refused.
+\ def-close ( -- ): the pending definition of the native tier ends:
+\ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL
+\ clear; before they clear, LASTC-CELL takes the record for a nonzero kind
+\ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are
+\ refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
+\ clears no locals cell: the Habu loop's `;` clears LOCN-CELL after it
+\ (src/habu/definers.f DEF-CLOSE).
 : DEF-CLOSE-BODY ( -- )
    X64CODE:LBL {: nolast:label :}
    RDX PEND-CELL CELL@,

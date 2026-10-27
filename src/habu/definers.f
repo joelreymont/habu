@@ -63,7 +63,10 @@ variable TOK-BODY-RAW
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
 \ Ending or abandoning a definition also ends the capture's lexical state.
-: DEF-CLOSE ( -- ) def-close BODY-LEX-RESET ;
+\ No local outlives its definition, as habu2.f C-CLEAR-LOCALS ends them on
+\ arm64: x86-64's def-close (kernel-x64.f DEF-CLOSE-BODY) leaves the locals
+\ count, so `;` clears it here. def-abort clears it on both.
+: DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 
 \ The compiler entry, the preflight, the def hook and the checker's
@@ -584,7 +587,10 @@ private
    DEF-DOES-NAME
    DEF-CREATED
    BODYLEN-CELL CELL@ DOESB-CELL CELL!
-   1 CLAUSE-CELL CELL! ;
+   1 CLAUSE-CELL CELL!
+   \ The head's locals end here, as habu2.f J-DOES ends them: the clause
+   \ cannot name one, and a local it declares is captured from an empty scope.
+   0 LOCN-CELL CELL!  0 BODY-DEPTH ! ;
 
 \ The engine reads `does>` as its keyword, with the token's A-Z folded, unless
 \ LFIND finds a word of that spelling that is not immediate, which the body

@@ -194,6 +194,9 @@ create TAB
    PEND-OPAQUE-CELL                   1 cells                 CLAIM PEND-OPAQUE-CELL
    DEF-OCC:PTR-CELL                   1 cells                 CLAIM DEF-OCC:PTR-CELL
    LOCNAMES                           LOC-RECS LOC-REC *      CLAIM LOCNAMES
+   CAPDEPTH-CELL                      1 cells                 CLAIM CAPDEPTH-CELL
+   TOKDEPTH-CELL                      1 cells                 CLAIM TOKDEPTH-CELL
+   LOCDEPTHS                          LOC-RECS cells          CLAIM LOCDEPTHS
    REGALLOC-ABI:VRTAB-OFF             REGALLOC-ABI:VRTAB-BYTES  CLAIM VRTAB
    REGALLOC-ABI:VRITAB-OFF            REGALLOC-ABI:VRTAB-BYTES  CLAIM VRITAB
    REPLH-CELL                         1 cells                 CLAIM REPLH-CELL

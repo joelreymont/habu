@@ -35,12 +35,14 @@ package SNAP
 \ This writer is also loaded by the previous-generation host, whose baked
 \ SRCLOC package predates the owned source cells in layout.f, whose baked
 \ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL and whose baked layout
-\ may predate NDICT-HW-CELL and PROGRAM-FILE-CELL; each must equal layout.f's.
+\ may predate NDICT-HW-CELL, PROGRAM-FILE-CELL and LOCDEPTHS; each must equal
+\ layout.f's.
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
 $3868 constant ENGINE-ARENA-CELL
 $2D60 constant DICT-HW-CELL
 $2DB0 constant PROGRAM-FILE-CELL
+$2DC8 constant LOCDEPTHS
 
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
@@ -256,6 +258,15 @@ PTR-VARIABLE SND-A
       0 SND-PTR BODYBUF-OFF i + + c!
    loop ;
 
+\ No definition is open at a capture (VERIFY-QUIESCENT) and every definition's
+\ end clears LOCN on either loop (habu2.f C-CLEAR-LOCALS, definers.f
+\ DEF-CLOSE), so no local is live. LOCNAMES and LOCDEPTHS still hold the
+\ rows of the last compile that declared locals: a cold compile writes them and
+\ a definition the cache supplies does not, so both tables clear whole.
+: SND-ZERO-LOCALS ( -- )
+   LOCNAMES LOC-RECS LOC-REC * SND-ZERO-BAND
+   LOCDEPTHS LOC-RECS cells SND-ZERO-BAND ;
+
 \ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
 \ and had to be zeroed: stale slots held dangling arena pointers from the build
 \ (proven: two old-USIGS pointers survived there). It is a guarded mapping
@@ -467,6 +478,7 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SND-ZERO-FS-SCRATCH
    SND-ZERO-MEM-SCOPE
    SND-ZERO-BODY-TAIL
+   SND-ZERO-LOCALS
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-ZERO-PROCESS

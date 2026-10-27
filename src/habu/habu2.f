@@ -4399,6 +4399,14 @@ public
    9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
+\ No local outlives its definition. Wherever one ends, published or abandoned,
+\ its locals' count, frame and block depth clear with their token-start marks,
+\ so the next definition starts with none and no image holds them.
+: C-CLEAR-LOCALS ( -- )
+   9 0 MOVZ,
+   9 DATA LOCN-CELL STR,  9 DATA LOCF-CELL STR,  9 DATA CAPDEPTH-CELL STR,
+   9 DATA TOKLOCN-CELL STR,  9 DATA TOKDEPTH-CELL STR, ;
+
 : B-NATIVE-PENDING-OPAQUE ( -- )
    9 DATA PEND-OPAQUE-CELL LDR,  9 G-PUSH ;
 
@@ -4924,6 +4932,7 @@ variable LREPLAYTRAP
       SP SP 16 ADDI,
    noaccept LBL,
    C-CLEAR-TRUSTED-STATE
+   C-CLEAR-LOCALS
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
 
 \ def-close ( -- )
@@ -5462,7 +5471,7 @@ package INTERP-EMIT
    CP 9 0 STR,
    PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
-   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,  12 DATA CAPDEPTH-CELL STR,
    12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
@@ -9930,6 +9939,9 @@ public
    C-PARSE-CREATED-SIG
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    9 1 MOVZ,  9 DATA CLAUSE-CELL STR,
+   \ The head's locals end here, as J-DOES ends them: the clause cannot name
+   \ one, and a local it declares is captured from an empty scope.
+   9 0 MOVZ,  9 DATA LOCN-CELL STR,  9 DATA CAPDEPTH-CELL STR,
    LMAIN LABEL@ B, ;
 
 : CAPTURE-PLAIN-STRING ( -- )
@@ -9952,12 +9964,100 @@ public
    LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
+\ A parsing word owns its next token raw, as tier 0's C-BCHAR and C-BTICK
+\ read it and as the Habu loop captures it (src/habu/definers.f COMPILING?,
+\ src/lib/source-syntax.f PARSING-KEYWORD?). Taking it here, before LMAIN
+\ reads it, keeps an operand that spells `;`, a comment opener or a string
+\ opener data. A source that ends at the keyword dies as tier 0's does. A live
+\ local of the keyword's spelling never gets here: CAPTURE-IMMEDIATE matches
+\ locals first, as COMPILING? asks BODY-LOCAL? before PARSING-KEYWORD?.
+: CAPTURE-OPERAND-ROW ( label n -- ) {: kw:label kwlen:n :}
+   LBL LBL {: skip:label named:label :}
+   0 kw ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 skip CBZ,
+   LTOK LABEL@ BL,  0 named CBNZ,
+      kw kwlen C-DIE-KEYWORD-NAME
+   named LBL,
+   LBCAP LABEL@ BL,
+   LMAIN LABEL@ B,
+   skip LBL, ;
+
+: CAPTURE-OPERAND ( -- )
+   LKWCHAR LABEL@ KWCHAR$ nip CAPTURE-OPERAND-ROW
+   LKWBCHAR LABEL@ BCHAR-LEN CAPTURE-OPERAND-ROW
+   LKWTICK LABEL@ TICK-LEN CAPTURE-OPERAND-ROW
+   LKWBTICK LABEL@ BTICK-LEN CAPTURE-OPERAND-ROW ;
+
+private
+
+\ A block keyword scopes the captured locals as src/habu/definers.f
+\ BODY-BLOCK-STEP scopes x86-64's, over src/lib/source-syntax.f's
+\ BLOCK-OPENER? and BLOCK-CLOSER? sets: an opener raises CAPDEPTH-CELL, `else`
+\ drops the locals declared at the current depth, and a closer drops them and
+\ lowers it. Like BODY-BLOCK-STEP it runs after the local match and only while
+\ a local is live, so a body with no locals compares nothing.
+: CAPTURE-BLOCK ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: done:label opener:label alt:label closer:label scan:label walk:label kept:label :}
+   9 DATA LOCN-CELL LDR,  9 done CBZ,
+   0 LKWIF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWBEGIN LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWDO LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWQDO LABEL@ ADR,  1 3 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWCASE LABEL@ ADR,  1 4 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWOF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWMATCH LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWQUOT LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 opener CBNZ,
+   0 LKWELSE LABEL@ ADR,  1 4 MOVZ,  LKWCMP LABEL@ BL,  0 alt CBNZ,
+   0 LKWTHEN LABEL@ ADR,  1 4 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWUNTIL LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWREPEAT LABEL@ ADR,  1 6 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWAGAIN LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWLOOP LABEL@ ADR,  1 4 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWPLOOP LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWENDOF LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWENDCASE LABEL@ ADR,  1 7 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWSEMIMATCH LABEL@ ADR,  1 6 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   0 LKWSEMIQ LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 closer CBNZ,
+   done B,
+   opener LBL,
+   9 DATA CAPDEPTH-CELL LDR,  9 9 1 ADDI,  9 DATA CAPDEPTH-CELL STR,
+   done B,
+   alt LBL,  12 0 MOVZ,  scan B,                   \ x12: how far the depth falls
+   closer LBL,  12 1 MOVZ,
+   scan LBL,
+   9 DATA CAPDEPTH-CELL LDR,  10 DATA LOCN-CELL LDR,
+   walk LBL,                                       \ drop from the top while declared at depth >= x9
+      10 kept CBZ,
+      11 10 1 SUBI,  11 11 3 LSLI,  5 LOCDEPTHS LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
+      11 11 0 LDR,  11 9 CMP,  C-LT kept BCOND,
+      10 10 1 SUBI,  walk B,
+   kept LBL,
+   10 DATA LOCN-CELL STR,
+   9 9 12 SUB,  9 DATA CAPDEPTH-CELL STR,
+   done LBL, ;
+
+\ Each record C-LBRACE-PARSE-NAMES stored takes the current block depth. It
+\ leaves x6 at the group's first local, as C-LBRACE-BIND-VS reads it: LBCAP's
+\ callers keep state in x5-x8, and LTOK, LKWCMP and C-LBRACE-STORE-ONE leave x6.
+: CAPTURE-LOCAL-DEPTHS ( -- )
+   LBL LBL {: walk:label stored:label :}
+   9 DATA CAPDEPTH-CELL LDR,
+   walk LBL,
+      10 DATA LOCN-CELL LDR,  6 10 CMP,  C-GE stored BCOND,
+      11 6 3 LSLI,  5 LOCDEPTHS LIT64,  11 11 5 ADD,  11 DATA 11 ADD,  9 11 0 STR,
+      6 6 1 ADDI,  walk B,
+   stored LBL, ;
+
+public
+
 \ THE DESIGN SEAL GATES EVERY BODY TOKEN HERE, where tier 1 reads it, with tier
 \ 0's predicate, so a token outside the vocabulary is refused at its own line at
 \ both tiers and nothing is left for the native compiler to refuse. Under the
 \ seal a body token is admitted when it is
-\   1. a local this body declared, matched before any lookup as tier 0 matches
-\      its locals: a sealed `{:` records its names as tier 0's C-LBRACE does;
+\   1. a local this body declared in a block still open, matched before any
+\      lookup as tier 0 matches its locals: `{:` records its names as tier 0's
+\      C-LBRACE does, and CAPTURE-BLOCK ends them with their block;
 \   2. a record LFIND answers and LPOLICYREC admits, which is the record NCOMP
 \      binds: src/compiler/native/dict.f walks the same legs in the same order;
 \   3. on a miss, a used package's record, probed through LFINDUSED (NCOMP's
@@ -9969,16 +10069,16 @@ public
 \      group is refused as tier 0 refuses it. Every other keyword row, `does>`
 \      and the other string forms among them, is refused here before
 \      CAPTURE-DOES or CAPTURE-STRING reads it.
-\ Anything else is refused at LPOLICY. Unsealed, every test below falls through
-\ to the capture this word always did.
+\ Anything else is refused at LPOLICY. Unsealed, locals are matched, scoped and
+\ recorded the same way, as x86-64's src/habu/definers.f COMPILING? does, and
+\ every other test falls through to the plain capture.
 : CAPTURE-IMMEDIATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: done:label execute-now:label parse-does:label probe:label gated:label lookup:label missed:label locals:label passive:label unbound:label :}
+   {: done:label execute-now:label parse-does:label probe:label gated:label unsealed:label missed:label locals:label passive:label unbound:label :}
    LBL LBL LBL
    {: spelling:label no-does:label decided:label :}
-   14 DATA POLICY-NDICT-CELL LDR,  14 lookup CBZ,
    LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LMAIN LABEL@ BCOND,    \ 1: a local is already captured
-   lookup LBL,
+   CAPTURE-BLOCK
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 probe CBZ,
    LPOLICYREC LABEL@ BL,
@@ -10026,7 +10126,7 @@ public
    passive LBL,
    done B,
    probe LBL,
-   14 DATA POLICY-NDICT-CELL LDR,  14 gated CBZ,
+   14 DATA POLICY-NDICT-CELL LDR,  14 unsealed CBZ,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,
    13 missed CBZ,
    LPOLICYREC LABEL@ BL,
@@ -10043,8 +10143,12 @@ public
    LPOLICY LABEL@ B,
    unbound LBL,
    13 0 MOVZ,  gated B,
+   unsealed LBL,                                   \ x13 = 0: a miss, captured as it stands unless it opens a group
+   0 LKWLBRACE LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 locals CBNZ,
+   gated B,
    locals LBL,                                     \ each name up to `:}` is recorded, and still captured for NCOMP
    C-LBRACE-PARSE-NAMES
+   CAPTURE-LOCAL-DEPTHS
    LMAIN LABEL@ B,
    done LBL, ;
 
@@ -10075,6 +10179,7 @@ public
    LBCAP LABEL@ BL,
    CAPTURE-IMMEDIATE
    CAPTURE-STRING
+   CAPTURE-OPERAND
    LMAIN LABEL@ B, ;
 
 ;package
@@ -10260,6 +10365,7 @@ public
       \ everything its last token compiled.
       9 DATA BODYLEN-CELL LDR,  9 DATA TOKBODY-CELL STR,
       9 DATA LOCN-CELL LDR,  9 DATA TOKLOCN-CELL STR,
+      9 DATA CAPDEPTH-CELL LDR,  9 DATA TOKDEPTH-CELL STR,
       9 CP DBASE SUB,  9 DATA TOKCP-CELL STR,
       9 DATA VSP-CELL LDR,  9 DATA TOKVSP-CELL STR,
       9 DATA VRFREE-CELL LDR,  9 DATA TOKVRF-CELL STR,
@@ -10331,7 +10437,7 @@ public
       CP 9 0 STR,
       PROT-EMIT:LCF LABEL@ BL,                           \ the control-flow depth reset below
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
-      12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+      12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,  12 DATA CAPDEPTH-CELL STR,
       12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
       C-CLEAR-TRUSTED-STATE
       C-COLON-MAYBE-SIG
@@ -12390,6 +12496,7 @@ public
    finish LBL,
    EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
+   C-CLEAR-LOCALS
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    LMAIN LABEL@ B, ;
 
@@ -12855,7 +12962,7 @@ public
    9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
    9 DATA LIDX-CELL STR,          \ ...and its cached loop index
    9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
-   9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 DATA PEND-OPAQUE-CELL STR,
    9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
@@ -12865,6 +12972,7 @@ public
    9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
    9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
    9 DATA TRUSTED-CELL STR,
+   C-CLEAR-LOCALS
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
 : EM-RESET-COMPILE-STATE ( -- )
@@ -12977,6 +13085,7 @@ public
          \ The outer definition as the interrupted token began (layout.f TOKBODY-CELL).
          12 DATA TOKBODY-CELL LDR,  12 DATA BODYLEN-CELL STR,
          12 DATA TOKLOCN-CELL LDR,  12 DATA LOCN-CELL STR,
+         12 DATA TOKDEPTH-CELL LDR,  12 DATA CAPDEPTH-CELL STR,
          12 DATA TOKCP-CELL LDR,  CP DBASE 12 ADD,
          12 DATA TOKVSP-CELL LDR,  12 DATA VSP-CELL STR,
          12 DATA TOKVRF-CELL LDR,  12 DATA VRFREE-CELL STR,

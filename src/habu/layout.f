@@ -438,6 +438,17 @@ $3000 constant LOCNAMES
 \ it is stored. checker.f LOC-NAME-W and the LLOCWIDEMSG text state the same 16.
 LOC-REC 8 - constant LOC-NAME-CAP
 64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
+\ Tier 1's arm64 body capture scopes the locals it records by block, as
+\ src/habu/definers.f BODY-BLOCK-STEP does on x86-64 (habu2.f CAPTURE-BLOCK):
+\ CAPDEPTH-CELL is the block depth, LOCDEPTHS the depth each LOCNAMES record
+\ was declared at (one cell per LOC-REC), and TOKDEPTH-CELL the depth as the
+\ current token began, restored with TOKLOCN-CELL's mark. A definition opener
+\ zeroes the depth with LOCN-CELL. They sit in the $2800..$3000 free header
+\ band past PROGRAM-FILE-CELL ($2DB0), swept for a claimant across src lib
+\ tools test bootstrap.
+$2DB8 constant CAPDEPTH-CELL
+$2DC0 constant TOKDEPTH-CELL
+$2DC8 constant LOCDEPTHS        \ mirrored: src/habu/snap-lib.f
 \ --- Friend arena: one contiguous write-protected band
 \ [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch plus
 \ every checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
@@ -1613,13 +1624,16 @@ $27F8 constant CODE-CELL
 \ DATA-START so no compiled source can reach it by allot and DATA-START does not
 \ move.
 $2818 constant EXIT-HOOK-CELL
-\ TOKBODY-CELL .. TOKFRF-CELL: the token-start mark, six cells. Before every
-\ token the interpret loop stores BODYLEN-CELL, LOCN-CELL, CP (as an offset
+\ TOKBODY-CELL .. TOKFRF-CELL and TOKDEPTH-CELL: the token-start mark, seven
+\ cells. Before every token the interpret loop stores BODYLEN-CELL, LOCN-CELL
+\ and its block depth CAPDEPTH-CELL, CP (as an offset
 \ from the region base, like every code position a DATA cell keeps, so no
 \ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
-\ and FRFREE-CELL here (habu2.f EM-COMMENT), and nothing else stores them. A
+\ and FRFREE-CELL here (habu2.f EM-COMMENT). Only a definition's end or abort
+\ also stores two of them: arm64 C-CLEAR-LOCALS zeroes the locals marks
+\ TOKLOCN-CELL and TOKDEPTH-CELL with the locals themselves. A
 \ throw that unwinds an evaluate frame begun inside an open definition leaves
-\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all six
+\ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
 \ back: the text the checker certifies holds no token whose compile the throw
 \ abandoned, a `{:` group refused part way declares none of its names, and the
 \ code and the spill a refused token emitted before its check are gone. A spill
