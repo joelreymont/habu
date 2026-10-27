@@ -792,6 +792,17 @@ here BPL-KW - constant BPL-LEN
 \ and later relocated (EM-SNAPSHOT-REBASE-CALLS).
 \ x9 carries the opcode from entry to the encode; x11 (the callee) is dead once the
 \ displacement is taken, so it doubles as scratch. Clobbers x5, x6, x9, x10, x11.
+
+\ Count a call in FRAME-CELL, through scratch registers a and b: bit 0 says the
+\ body holds a call, bit 1 that it holds a second. That count, saturated at two,
+\ is all the close needs: with one call, a call left as the body's last word is
+\ that call, and turning it into a tail branch leaves no call at all
+\ (EM-COMPILE-TAIL). A cell opened as already having called (the does> clause)
+\ counts its first real call as the second.
+: FRAME-CALL, ( n n -- ) {: a:n b:n :}
+   a DATA FRAME-CELL LDR,  b a 1 ANDI,  b b 1 LSLI,  a a b ORR,  a a 1 ORRI,
+   a DATA FRAME-CELL STR, ;
+
 : EMIT-CEMITBL ( -- )
    LBL LBL LBL {: shared:label rok:label nomark:label :}
    LCEMITB LABEL@ LBL,
@@ -804,7 +815,7 @@ here BPL-KW - constant BPL-LEN
    \ save. Marked here rather than read back out of the emitted words, because
    \ the emitter knows what it emitted and a scan of the body would also have to
    \ decide what the string and address literals inside it are.
-   5 DATA FRAME-CELL LDR,  5 5 1 ORRI,  5 DATA FRAME-CELL STR,
+   5 6 FRAME-CALL,
    9 $94000000 LIT64,                                  \ x9 = BL opcode
    shared LBL,
    10 11 CP SUB,                                       \ x10 = disp = target - CP (signed byte distance)
@@ -3604,7 +3615,7 @@ public
 \ body itself.
 : J-RECURSE ( -- )
    LIDX-CLEAR,                                         \ the call writes x29 when it loops
-   9 DATA FRAME-CELL LDR,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
+   9 10 FRAME-CALL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 : C-SIG-START ( label -- ) {: lmiss:label :}
@@ -3663,10 +3674,12 @@ public
 \ THE WORD FRAME IS DECIDED HERE, NOT AT THE COLON. The JIT is single pass, so
 \ when a body opens nobody knows yet whether it will call anything; the opener
 \ emits the link-register save at the entry and leaves the slot's address in
-\ FRAME-CELL, and every emitter that puts a call in the body ORs bit 0 into that
-\ cell (LCEMITBL for a direct BL, J-RECURSE for its own). So by the time the
-\ body closes, one cell says both where the entry slot is and whether anything
-\ can have destroyed x30.
+\ FRAME-CELL, and every emitter that puts a call in the body counts it in that
+\ cell's low two bits (FRAME-CALL,: LCEMITBL for a direct BL, J-RECURSE for its
+\ own). So by the time the body closes, one cell says both where the entry slot
+\ is and whether anything can have destroyed x30. A tail branch that removed
+\ the body's only call has already rewritten the slot and zeroed the cell
+\ (EM-COMPILE-TAIL).
 \
 \ A body that called gets the matching restore. A body that did not has its
 \ entry slot REWRITTEN to a nop, in place: two instructions execute instead of
@@ -3677,6 +3690,11 @@ public
 \
 \ The nop is written through PROT-EMIT:LSPAN and left for the close at `;` to flush,
 \ which is what LPAT and LBCHAIN do with every other write below CP.
+\ SLOT-NOP, rewrites the entry slot at x9 to a nop; clobbers x0-x2, x11, x30.
+: SLOT-NOP, ( -- )
+   1 9 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
+   11 W-NOP LIT64,  11 9 0 STRW, ;                     \ the entry slot stops framing
+
 : EM-COMPILE-RET ( -- )
    LBL LBL {: leaf:label done:label :}
    11 DATA FRAME-CELL LDR,
@@ -3684,10 +3702,8 @@ public
    10 11 1 ANDI,  10 leaf CBZ,
       9 W-LINKREST LIT64,  LCEMIT LABEL@ BL,           \ ldr x30,[sp],#16
       done B,
-   leaf LBL,                                           \ bit 0 clear, so x11 IS the slot
-      9 11 0 ADDI,
-      1 9 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,
-      11 W-NOP LIT64,  11 9 0 STRW,                    \ the entry slot stops framing
+   leaf LBL,                                           \ no call, so x11 IS the slot
+      9 11 0 ADDI,  SLOT-NOP,
    done LBL,
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
@@ -12386,13 +12402,19 @@ public
 \ lands on the call lands on the epilogue: `add sp,sp,#LOCF` when locals are
 \ open, then the link restore, else the link restore alone. LCEMITB then emits
 \ the B. The BL's call-map bit is cleared first; LCEMITB marks the B's own.
+\ When FRAME-CELL counts one call, the BL is that call (it is the last word and
+\ every BL is counted), so the B leaves the body with none: x30 is never
+\ destroyed, nothing is restored, and the entry slot becomes a nop as a leaf's
+\ does. The epilogue is then the local release alone, or with no locals the B
+\ itself, emitted over the BL's word with CP moved back onto it. FRAME-CELL is
+\ zeroed, so the return an exit chain still needs is emitted without a restore.
 \ With no exit (EXITH-CELL 0) nothing follows the B: control goes to `exact`,
 \ which ends the body with an exact span. An `exit` chain still needs its
 \ return, so the caller emits the normal epilogue after the B for it; J-EXIT
 \ dropped its own locals before it chained. Every other body goes to notail.
 \ Runs after LVSPILL; clobbers x0-x2, x5-x7, x9-x15.
 : EM-COMPILE-TAIL ( label label -- ) {: notail:label exact:label :}
-   LBL LBL {: nolocf:label linked:label :}
+   LBL LBL LBL LBL {: rewrite:label nolocf:label linked:label kept:label :}
    9 DATA FRAME-CELL LDR,  9 9 1 ANDI,  9 notail CBZ,
    10 CP 4 SUBI,  11 10 0 LDRW,                          \ x10 = CP-4, x11 = its word
    9 11 26 LSRI,  9 RELOC-EMIT:BL-OP-HI CMPI,  C-NE notail BCOND,
@@ -12400,15 +12422,24 @@ public
    12 DATA LOCF-CELL LDR,  9 12 12 LSRI,  9 notail CBNZ,
    11 11 38 LSLI,  11 11 36 ASRI,  11 10 11 ADD,         \ x11 = the callee: CP-4 + sext(imm26)*4
    9 4 MOVZ,  SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
+   9 DATA FRAME-CELL LDR,  9 9 2 ANDI,  9 rewrite CBNZ,  \ another call: the frame stays
+   9 DATA LOCF-CELL LDR,  9 rewrite CBNZ,
+      CP 10 0 ADDI,  linked B,                           \ bare leaf: the B takes the BL's word
+   rewrite LBL,
    1 10 0 ADDI,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,   \ a write below CP, flushed at the close
    12 DATA LOCF-CELL LDR,  12 nolocf CBZ,
       13 12 10 LSLI,  9 $910003FF LIT64,  13 13 9 ORR,  13 10 0 STRW,   \ add sp,sp,#LOCF
+      9 DATA FRAME-CELL LDR,  9 9 2 ANDI,  9 linked CBZ,                \ leaf: no link to restore
       9 W-LINKREST LIT64,  LCEMIT LABEL@ BL,                            \ ldr x30,[sp],#16
       linked B,
    nolocf LBL,
       13 W-LINKREST LIT64,  13 10 0 STRW,                               \ ldr x30,[sp],#16
    linked LBL,
    LCEMITB LABEL@ BL,                                    \ b callee
+   9 DATA FRAME-CELL LDR,  10 9 2 ANDI,  10 kept CBNZ,
+      9 9 2 LSRI,  9 9 2 LSLI,  SLOT-NOP,                \ x9 = the entry slot
+      9 0 MOVZ,  9 DATA FRAME-CELL STR,                  \ the frame is gone
+   kept LBL,
    9 DATA EXITH-CELL LDR,  9 exact CBZ, ;
 
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}

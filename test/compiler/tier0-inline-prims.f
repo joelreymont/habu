@@ -15,7 +15,8 @@
 \ A definition whose last word is a call ends in a B to it (habu2.f
 \ EM-COMPILE-SEMI): the link and any local frame are released first, and no
 \ return follows unless an `exit` needs one. A join landing after the call
-\ keeps the BL and the return.
+\ keeps the BL and the return. When that call was the body's only one, the B
+\ leaves no call behind, so the body is a leaf: a nop entry and no restore.
 \
 \ Spans come from the DICTIONARY RECORD (src/habu/xref.f), the same record the
 \ compiler resolves a call against. The decoder's positive control is an
@@ -192,11 +193,19 @@ public
 \ then the bodies that must keep the BL: a call followed by a join, and a
 \ call that ends the arm a join lands after. T0-JOIN's `if` takes its only
 \ cell, so its BL is the last word and only the join target keeps it a call.
-\ T0-DOWN recurses as its last word.
+\ T0-DOWN recurses as its last word. The ...2 bodies make a call before the
+\ tail one, so they keep the frame; T0-DOESTAIL's clause is opened as having
+\ called (its defining word's frame stands), so its one tail call keeps it too.
 : T0-TAIL ( n -- n ) 1+ T0-CALLEE ;
+: T0-TAIL2 ( n -- n ) T0-CALLEE T0-CALLEE ;
 : T0-TAILLOC ( n -- n )
    {: a:n :}
    a 1+ T0-CALLEE ;
+: T0-TAILLOC2 ( n -- n )
+   {: a:n :}
+   a T0-CALLEE T0-CALLEE ;
+: T0-DOESTAIL ( n -- ) create , does> ( -- n ) @ T0-CALLEE ;
+3 T0-DOESTAIL T0-DT
 : T0-TAILIF ( n -- n ) dup 0< if negate then T0-CALLEE ;
 : T0-TAILEX ( n -- n ) dup 0< if exit then T0-CALLEE ;
 : T0-NOTAIL ( n -- n ) T0-CALLEE dup 0< if 1+ then ;
@@ -331,23 +340,40 @@ private
    na nu ca cu BS 0 T=
    na nu RETS 1 T= ;
 
+\ A body whose only call became its tail B: a nop entry and no link restore.
+: TAIL-LEAF ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu ENTRY@ ENTRY-NOP T=
+   na nu WORD-MASK LINK-REST MASKED-OPS 0 T= ;
+
 : TEST-TAIL ( -- )
-   s" a last call is a B after the link restore, with no return" T-LABEL
+   s" an only call that is last is a B, with no frame and no return" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-TAIL" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAIL" TAIL-LEAF
    s" TIER0-INLINE-PRIMS:T0-TAIL" RETS 0 T=
    s" TIER0-INLINE-PRIMS:T0-TAIL" 1 LAST@ NBR:B? TTRUE
-   s" TIER0-INLINE-PRIMS:T0-TAIL" 2 LAST@ LINK-REST T=
-   s" TIER0-INLINE-PRIMS:T0-TAIL" ENTRY@ ENTRY-SAVE T=
-   s" a local frame is released before the link restore" T-LABEL
+   s" a last call after another is a B after the link restore" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" s" TIER0-INLINE-PRIMS:T0-CALLEE" BLS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" s" TIER0-INLINE-PRIMS:T0-CALLEE" BS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" RETS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" 1 LAST@ NBR:B? TTRUE
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" 2 LAST@ LINK-REST T=
+   s" TIER0-INLINE-PRIMS:T0-TAIL2" ENTRY@ ENTRY-SAVE T=
+   s" a local frame is released before the B, and before the link restore" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-TAILLOC" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" TAIL-LEAF
    s" TIER0-INLINE-PRIMS:T0-TAILLOC" RETS 0 T=
-   s" TIER0-INLINE-PRIMS:T0-TAILLOC" 2 LAST@ LINK-REST T=
-   s" TIER0-INLINE-PRIMS:T0-TAILLOC" 3 LAST@ ADDSP-MASK and ADDSP-OP T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC" 2 LAST@ ADDSP-MASK and ADDSP-OP T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC2" RETS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC2" 2 LAST@ LINK-REST T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC2" 3 LAST@ ADDSP-MASK and ADDSP-OP T=
+   s" TIER0-INLINE-PRIMS:T0-TAILLOC2" ENTRY@ ENTRY-SAVE T=
    s" a join that lands before the last call keeps the tail call" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-TAILIF" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILIF" TAIL-LEAF
    s" TIER0-INLINE-PRIMS:T0-TAILIF" RETS 0 T=
    s" an exit beside the tail call keeps a return epilogue" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-TAILEX" TAILS
+   s" TIER0-INLINE-PRIMS:T0-TAILEX" TAIL-LEAF
    s" TIER0-INLINE-PRIMS:T0-TAILEX" RETS 1 T=
    s" a call before a join, or inside the arm a join lands after, stays a BL" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-NOTAIL" s" TIER0-INLINE-PRIMS:T0-CALLEE" KEEPS-CALL
@@ -355,9 +381,13 @@ private
    s" a last recurse is a B to the entry" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-DOWN" s" TIER0-INLINE-PRIMS:T0-DOWN" BLS 0 T=
    s" TIER0-INLINE-PRIMS:T0-DOWN" HOME-JUMPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-DOWN" TAIL-LEAF
    s" the tail-calling bodies answer what the calls answered" T-LABEL
    3 T0-TAIL 8 T=
+   3 T0-TAIL2 12 T=
    3 T0-TAILLOC 8 T=
+   3 T0-TAILLOC2 12 T=
+   T0-DT 6 T=
    -3 T0-TAILIF 6 T=  3 T0-TAILIF 6 T=
    -3 T0-TAILEX -3 T=  3 T0-TAILEX 6 T=
    3 T0-NOTAIL 6 T=  -3 T0-NOTAIL -5 T=
@@ -368,7 +398,7 @@ private
    s" a body that only inlines stays a leaf; one that calls keeps its frame" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-ROT" ENTRY@ ENTRY-NOP T=
    s" TIER0-INLINE-PRIMS:T0-ACA" ENTRY@ ENTRY-NOP T=
-   s" TIER0-INLINE-PRIMS:T0-STORE" ENTRY@ ENTRY-SAVE T= ;
+   s" TIER0-INLINE-PRIMS:T0-CALLER" ENTRY@ ENTRY-SAVE T= ;
 
 : TEST-PULL ( -- )
    s" stack operands are popped into registers once and the result pushed once" T-LABEL
