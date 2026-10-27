@@ -471,11 +471,14 @@ ARM-LOCKS
 
 
 \ What is left of the deadline, as the timed poll takes it: a deadline already
-\ passed asks the question once without waiting.
+\ passed asks the question once without waiting. A part of a millisecond counts
+\ as a whole one, so a poll that answers idle has outlasted the deadline.
 : REMAINING ( n -- ms ) {: deadline:n :}
    deadline mono-ns - {: left:n :}
    left 0 <= if 0 >MS exit then
-   left NS-PER-MS / >MS ;
+   left NS-PER-MS /mod {: part:n whole:n :}
+   part 0 > if whole 1+ >MS exit then
+   whole >MS ;
 
 
 \ When the slice of the wait now beginning ends: at the deadline, or
