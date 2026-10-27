@@ -39,6 +39,13 @@ variable TCF   variable TCOK
 \ on the unsealed engine a checked body binds each one's recorded row. The
 \ TWX- words are checked aliases. tools/bootstrap.sh also runs this file,
 \ unsealed, on the recovery engine hb-stdin, where the same bodies bind.
+\ A constant src/core/checker.f creates without a PRIM: row has none on that
+\ engine's cold prefix (docs/forth.md "A sealed from-source prefix needs
+\ external rows for pre-hook words"): a top-level read of one is an unknown
+\ cell, which `T=` refuses. Each one the suite compares is read once into a
+\ file-owned constant.
+CHECKER-PACKAGE-PRIVATE constant TC-VIS-PRIVATE
+E-CTOR-PROTECTED constant E-TC-PROTECTED
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 : TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
@@ -139,7 +146,7 @@ NEWTYPE zonly<a>
 ;package
 \ package mode continued private after generation ran inside the block.
 s" zpub" s" zonly" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
+TCF @ TFAM-VIS@ TC-VIS-PRIVATE T=
 \ the generated word is globally addressable; qualified sig type resolves.
 : ZMK-YES ( n -- zpub:tres ) ZPUB-TRES:YES ;
 s" GEN-PKG" type cr
@@ -281,13 +288,13 @@ TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
 s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
 \ package reopen rejects, case-insensitively; state rolls back (a later
 \ package still opens cleanly).
-s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
-s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
-s" package Zres" TCE-CATCH E-CTOR-PROTECTED T=
+s" package zres" TCE-CATCH E-TC-PROTECTED T=
+s" package ZRES" TCE-CATCH E-TC-PROTECTED T=
+s" package Zres" TCE-CATCH E-TC-PROTECTED T=
 s" package zok ;package" TCE-CATCH 0 T=
 \ undefine of a generated word rejects before retirement...
-s" undefine ZRES:OK" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine ZRES:OK" TCE-CATCH E-TC-PROTECTED T=
+s" undefine zres:ok" TCE-CATCH E-TC-PROTECTED T=
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
@@ -478,10 +485,10 @@ TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 \ protection: the derived package is closed (reopen/undefine reject), and the
 \ generated words stay callable after the rejected attempts.
-s" package zpt" TCE-CATCH E-CTOR-PROTECTED T=
-s" package ZPT" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine ZPT:MAKE" TCE-CATCH E-CTOR-PROTECTED T=
-s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
+s" package zpt" TCE-CATCH E-TC-PROTECTED T=
+s" package ZPT" TCE-CATCH E-TC-PROTECTED T=
+s" undefine ZPT:MAKE" TCE-CATCH E-TC-PROTECTED T=
+s" undefine zpt:unmake" TCE-CATCH E-TC-PROTECTED T=
 : ZPT-MK2 ( n n -- zpt ) ZPT:MAKE ;
 s" PRODUCT-PROTECTED" type cr
 
