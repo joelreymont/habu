@@ -505,7 +505,7 @@ variable HBB-APP-BUILDER-U
 : HBB-INPUTS-READ ( ptr u8 n -- ptr u8 n )
    {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
-   size 0 <= if E-NUNIT-PROFILE throw then
+   size 0 <= if E-NUNIT-FILE throw then
    size HBB-INPUTS-RESERVE
    path pathu 0 HBB-INPUTS size READ-ALL size <> if E-FS-IO throw then
    0 HBB-INPUTS size ;
@@ -1269,11 +1269,17 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    HBB-ARTIFACT$ HBB-MAP-DST!
    HBB-ARTIFACT-PREFIX$ s" .map" HBB-ARTIFACT-STEM$ HBB-MAP-DST$ BUILD-CACHE:PRUNE ;
 
+\ A maker that exits without writing its inputs record must not hand this build
+\ an earlier build's record, so every maker run removes it first.
+: HBB-MAKER-INPUTS-CLEAR ( -- )
+   HBB-MAKER-INPUTS$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
+
 : HBB-RUN-MAKER ( -- )
    -1 HBB-MAKER-RUN !
    HBB-GOT-NAME$ BF-REMOVE-TMP
    HBB-GOT-NAME$ BF-A$ HBB-MAP-REMOVE?
    HBB-OBJ-NAME$ BF-REMOVE-TMP
+   HBB-MAKER-INPUTS-CLEAR
    HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
 
 : HBB-SUCCESS ( -- )
@@ -1788,6 +1794,7 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-BUILD-REPL ( -- )
    HBB-REPL-ROOT!
    HBB-REPL-FRESH? if HBB-FINISH-REPL-FRESH exit then
+   HBB-MAKER-INPUTS-CLEAR
    HBB-RUN-APP-CMD HBB-FINISH-MAKER
    HBB-REPL-INVALIDATE-DEPS
    HBB-INSTALL-OUT
