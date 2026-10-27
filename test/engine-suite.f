@@ -361,6 +361,23 @@ TFOLD 9 T=
 : T-CHECK-PASSES ( ptr u8 n -- )
    2dup T-LABEL
    CHECK! -1 T= ;
+
+\ A check's results live until its definition publishes, inside the token that
+\ ran it, so the helpers below read them in the word that runs the check.
+\ T-CHECK-RENDERS: the candidate certifies and renders the effect `want`.
+: T-CHECK-RENDERS ( ptr u8 n ptr u8 n -- )
+   {: wa:ptr wu:n :}
+   T-CHECK-PASSES
+   REND-SIG wa wu T$= ;
+
+
+\ T-CHECK-KIND: the candidate is refused, with the diagnostic kind `kind` names.
+: T-CHECK-KIND ( ptr u8 n [ -- bool ] -- )
+   {: kind :}
+   T-CHECK-REJECTS
+   kind execute TTRUE ;
+
+
 variable TC-UEND
 variable TC-NEND
 variable TC-SYMN
@@ -591,8 +608,7 @@ s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 \ REND-SIG contract: a certified word's declared effect renders after CHECK!.
 \ Persisting the signature must retain the verified rows used by the renderer
 \ and lowering certificates. The prop-test round-trip amplifier also checks it.
-s" COK-REND-SIG ( i64 -- i64 ) 1-" T-CHECK-PASSES
-REND-SIG s" i64 -- i64" T$=
+s" COK-REND-SIG ( i64 -- i64 ) 1-" s" i64 -- i64" T-CHECK-RENDERS
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
@@ -787,6 +803,7 @@ LOC-HW-CAP @ LOC-HW-INIT T=
 \ and only the relocation of a marked cell keeps that address true afterwards.
 s" lower-cert arenas restored on their boot buffers" T-LABEL
 ES-CERT-STALE0 @ 0 T=
+: ES-USIGS-STORE ( -- )
 \ normalize first: a restored snapshot boots with a persisted (smaller)
 \ store; one reset guarantees the runtime-sized arena the asserts assume
 USIGS-RESET
@@ -794,18 +811,18 @@ USIGS-P @
 USIGS-CAP-U @
 USIGS-RESET
 USIGS-CAP-U @ T=
-USIGS-P @ T=
+USIGS-P @ = TTRUE
 UEND @ 0 T=
-USIGS @ 0 T=
+USIGS-HEAD @ 0 T=
 USIGS-GROW-CAP @ 0 T=
-USIGS-GROW-NEXT @ 0 T=
+USIGS-GROW-NEXT @ NULL-PTR = TTRUE
 USIGS-INIT-CAP 2 / USIGS-CAP-U !
 USIGS-P @
 USIGS-RESET
 USIGS-P @ = TFALSE
 USIGS-CAP-U @ USIGS-INIT-CAP T=
 UEND @ 0 T=
-USIGS @ 0 T=
+USIGS-HEAD @ 0 T=
 \ the baked store is the smallest grain multiple that holds its content and a
 \ grain of room (checker.f USIGS-PERSIST-CAP): two grains of content persist as
 \ four grains of cap, never a power of two.
@@ -816,9 +833,9 @@ USIGS-CAP-U @ USIGS-GRAIN 4 * T=
 USIGS-RESET
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !
+s" defer T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n )" evaluate-closed
 \ A defer: with the cap shrunk by hand above, a colon body is refused at its
 \ first word, and the case needs only the effect.
-defer T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n )
 s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" T-CHECK-PASSES
 \ growth is geometric: one forced grow at least doubles the old cap
 s" usigs-grow-geometric" T-LABEL
@@ -829,6 +846,8 @@ TG-GROW-CAP @ USIGS-GROW-CAP !
 TG-GROW-NEXT @ USIGS-GROW-NEXT !
 TG-UOFF @ USIGS-USER-OFF !
 TG-UEND @ USIGS-RESTORE-END
+   ;
+ES-USIGS-STORE
 \ snapshot cap policy: the smallest grain multiple >= size, and nothing above
 \ it -- a power-of-two cap baked megabytes of zero padding into every image.
 s" grain-cap floor" T-LABEL
@@ -848,27 +867,30 @@ TG-CPY-SRC TG-CPY-DST 11 ARENA-COPY
 s" arena-copy bytes" T-LABEL
 TG-CPY-DST 11 TG-CPY-SRC 11 T$=
 \ --- the TV group has an honest owned extent through growth and capture.
-TV-SNAP-RESET
-s" tv-arena-cold-cap" T-LABEL
-TV-CAP @ 0 T=
-s" tv-arena-cold-base" T-LABEL
-TVT-P @ NULL-PTR = TTRUE
-TVT drop
-s" tv-arena-first-use" T-LABEL
-TV-CAP @ MAXTV-INIT T=
-s" tv-arena-unbound-map" T-LABEL
-VRC-TV-P @ @ UNBOUND T=
-MAXTV-INIT 1 + TV-ENSURE
-s" tv-arena-grow-geometric" T-LABEL
-TV-CAP @ MAXTV-INIT 2 * T=
-s" tv-arena-plane-stride" T-LABEL
-RVT-P @ TVT-P @ - TV-CAP @ cells T=
-s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
-TV-SNAP-RESET
-s" tv-arena-reset-cap" T-LABEL
-TV-CAP @ 0 T=
-s" tv-arena-reset-base" T-LABEL
-TVT-P @ NULL-PTR = TTRUE
+\ One word: the next top-level token's own check would use the TV group.
+: T-TV-ARENA ( -- )
+   TV-SNAP-RESET
+   s" tv-arena-cold-cap" T-LABEL
+   TV-CAP @ 0 T=
+   s" tv-arena-cold-base" T-LABEL
+   TVT-P @ NULL-PTR = TTRUE
+   TVT drop
+   s" tv-arena-first-use" T-LABEL
+   TV-CAP @ MAXTV-INIT T=
+   s" tv-arena-unbound-map" T-LABEL
+   VRC-TV-P @ @ UNBOUND T=
+   MAXTV-INIT 1 + TV-ENSURE
+   s" tv-arena-grow-geometric" T-LABEL
+   TV-CAP @ MAXTV-INIT 2 * T=
+   s" tv-arena-plane-stride" T-LABEL
+   RVT-P @ TVT-P @ - TV-CAP @ cells T=
+   s" COK-TVGROW ( a -- a ) dup drop dup drop dup drop dup drop dup drop" T-CHECK-PASSES
+   TV-SNAP-RESET
+   s" tv-arena-reset-cap" T-LABEL
+   TV-CAP @ 0 T=
+   s" tv-arena-reset-base" T-LABEL
+   TVT-P @ NULL-PTR = TTRUE ;
+T-TV-ARENA
 : T-PHASE-ID ( img -- img ) ;
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
@@ -918,12 +940,16 @@ s" param-arena-grow" T-LABEL
 PARAM-CAP @ 2 > TTRUE
 s" atom-arena-grow" T-LABEL
 ATOM-CAP @ 2 > TTRUE
-DECOUPLED-ARENA-SNAP-RESET       \ release SPA; reset the other scratch stores
-s" decoupled-arena-restored" T-LABEL
-SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
-PTR-CAP @ MAXPTR-INIT = and
-QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
-PARAM-CAP @ MAXPARAM-INIT =  and  TTRUE
+\ T-DECOUPLED-RESET: release SPA, reset the other scratch stores and read them
+\ back before another token's check can use them.
+: T-DECOUPLED-RESET ( -- )
+   DECOUPLED-ARENA-SNAP-RESET
+   s" decoupled-arena-restored" T-LABEL
+   SPA-P @ NULL-PTR = SPA-CAP @ 0= and SPN @ 0= and
+   PTR-CAP @ MAXPTR-INIT = and
+   QE-CAP @ MAXQE-INIT =  and  ATOM-CAP @ MAXATOM-INIT =  and
+   PARAM-CAP @ MAXPARAM-INIT =  and  TTRUE ;
+T-DECOUPLED-RESET
 \ --- growable registries (CT / VREC / SYMS): crossing each init cap mid-run no
 \ longer dies, a relocating grow preserves lookups (SYMS rehashes its HIDX index),
 \ and a grown store persists into fresh image DATA with its names still resolving
@@ -1348,10 +1374,13 @@ DIAG-BUFFER-OFF  false DIAG-JSON!
 \ render is re-read as source (test/prop-test-core.f ROUNDTRIP re-declares a body
 \ with its rendered effect), and DNI-MK above shows the parser reads it; the AOT
 \ capture carries the verified graph, not this text (CHECKER-ASIG-CAPTURE).
-s" sigless nominal certifies" T-LABEL
-s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
-s" sigless nominal effect renders bare" T-LABEL
-REND-SIG s" n -- frame-idx" T$=
+\ T-SIGLESS-RENDER: a sig-less nominal certifies and renders its effect bare.
+: T-SIGLESS-RENDER ( -- )
+   s" sigless nominal certifies" T-LABEL
+   s" DNI-SIGLESS >frame-idx" CHECK-QUIET-CANDIDATE! -1 T=
+   s" sigless nominal effect renders bare" T-LABEL
+   REND-SIG s" n -- frame-idx" T$= ;
+T-SIGLESS-RENDER
 : T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 \ A callee the later rows name is compiled: a call binds the record the engine's
@@ -1418,15 +1447,15 @@ s" CSP-AFTER ( -- n ) CSPQ:ROW-A" CHECK-QUIET-CANDIDATE! 1 T=
 \ swapping the arity reason for a generic syntax error is caught. The kind
 \ predicates and the test-family registrar TFAM-REG-CELL are checker-internal
 \ words, named here directly: this suite runs on the unsealed engine.
-s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? TTRUE
-s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? TTRUE
+s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
+s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
 \ `ptr` duality: proper `ptr<space,elem>` resolves as a family (incl. nested in
 \ another family's args); over-arity rejects via the arity diagnostic; a bare
 \ `ptr` with no element rejects via the bare-ptr diagnostic; a bare `ptr` inside
 \ another family's args also rejects.
 s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
-s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? TTRUE
-s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-BAREPTR? TTRUE
+s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
+s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" ' SGBAD-BAREPTR? T-CHECK-KIND
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
 \ Uncapped per-param arity (dot habu-tfam-4-remainder): a family with arity > 4
 \ (old PARAM-MAX-ARGS SoA-row cap) parses, checks, persists, instantiates through
@@ -1438,8 +1467,8 @@ s" tfam6r-big" 6 TFAM-REG-CELL
 : COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
-s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? TTRUE
-s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? TTRUE
+s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
+s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" ' SGBAD-ARITY? T-CHECK-KIND
 \ SC-QUOT: a quotation as a family argument (dot habu-tfam-4-remainder). SIG-TYPE
 \ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
 \ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
@@ -1456,9 +1485,9 @@ s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n
 \ data rows is first seen as the stray ',' by SIG-TYPE -> SGBAD-UNKNOWN (the ']'
 \ EXPECT never runs); the extra '--' after a full return clause is the fixture
 \ that genuinely reaches the return-branch s" ]" EXPECT-SIG -> SGBAD-SYNTAX.
-s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? TTRUE
-s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? TTRUE
-s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? TTRUE
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" ' SGBAD-SYNTAX? T-CHECK-KIND
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" ' SGBAD-UNKNOWN? T-CHECK-KIND
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | U -- U -- ],f32> -- ) drop" ' SGBAD-SYNTAX? T-CHECK-KIND
 \ Render acceptance (destruction review): a mismatch diagnostic must render the
 \ full parametric type — all six args of an arity-6 application, and an SC-QUOT
 \ arg's din/dout rows, where a neutral return clause renders as none — never a
@@ -1600,7 +1629,7 @@ DIAG-BUFFER$ s" E-LINEAR-LOCAL" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 \ A qualified name its package declares no type for stays an unknown type in a
 \ typed local, as it is in a signature.
-s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? TTRUE
+s" CBAD-LOCAL-QUAL-UNKNOWN ( n -- ) {: x:ES-OWN:nosuch :}" ' SGBAD-UNKNOWN? T-CHECK-KIND
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
@@ -1733,8 +1762,11 @@ create ES-PZB 64 allot
 : ES-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@  over ES-PZB + c!  1 + repeat drop
    0 ES-PZB u + c!  ES-PZB ;
+\ run-rc has no checker row (src/habu/prims.f UNROWED:): only unchecked source calls it.
+check@ 0 set-check
 s" /usr/bin/true" ES-PATHZ run-rc 0 T=
 s" /usr/bin/false" ES-PATHZ run-rc 1 T=
+set-check
 
 \ filesystem syscalls
 create ES-STB 256 allot
@@ -1779,7 +1811,9 @@ s" link" ES-TMPZ RLB 64 readlink 9 T=
 RLB c@ 65 T=
 s" link" ES-TMPZ unlink 0 T=
 ES-ROOT$ FS-PATHZ rmdir 0 T=
+check@ 0 set-check
 0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE dup 65 swap c! c@ 65 T=
+set-check
 
 \ floats (the f+ prim must be the FLOAT op — it was once shadowed by a
 \ jit fold helper named f+)
@@ -1799,7 +1833,9 @@ TFNEG TTRUE
 s" " nip 0 T=
 
 \ run-rc spawn failure -> -1 (not a hang or garbage status)
+check@ 0 set-check
 s" /nonexistent-habu-x" ES-PATHZ run-rc -1 T=
+set-check
 
 \ snapshot-writer intrinsics are sane
 $340000000 constant ES-LINUX-DATA-VA
@@ -1815,7 +1851,7 @@ $44000000000 constant ES-MACOS-DATA-VA
 dbase@ rbase > TTRUE                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
 dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE                \ region base is PROT-PAGE-MAX-aligned (LPROT protection granularity)
 dbase@ REGION + rbase - BL-REACH < TTRUE             \ whole region within BL's +/-128 MiB of __text
-data-base ES-DATA-VA = TTRUE
+data-base NULL-PTR - ES-DATA-VA = TTRUE
 cp@ dbase@ - 0 > TTRUE
 ndict@ 0 > TTRUE
 
@@ -2009,13 +2045,14 @@ LOWER-CERT-HOOK:INSTALL
 \ retry after rejects: the accepted definition lands on the reclaimed entry
 : ES-CPX-GOOD ( n -- n ) 1 + ;
 6 ES-CPX-GOOD 7 T=
-s" cpx-retry-entry" T-LABEL ' ES-CPX-GOOD ES-CPX-CP @ T=
+CAST: ES-XT>N ( [ n -- n ] -- n )
+s" cpx-retry-entry" T-LABEL ' ES-CPX-GOOD ES-XT>N ES-CPX-CP @ T=
 \ ext-named retry: name bytes land at cp@, entry follows the aligned name
 cp@ ES-CPX-CP !
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 : ES-CPX-EXT-OFF ( -- n ) HB-TARGET-LINUX-X86-64? if 32 else 28 then ;
-s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ ES-CPX-EXT-OFF + T=
+s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-XT>N ES-CPX-CP @ ES-CPX-EXT-OFF + T=
 
 \ Candidate dictionary/hook smoke, folded from the former standalone GE-CAND-SMOKE
 \ candidate launch into this engine-suite run so the batch shares one HABU_UNDER_TEST
@@ -2025,7 +2062,7 @@ s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ ES-CPX-E
 s" smoke-hook-installed" T-LABEL data-base HOOK-CELL + @ 0= TFALSE
 : ES-SMOKE-SQ ( i64 -- i64 ) dup * ;
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
-s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io 0 <> TTRUE
+s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE
 
 \ check@ getter round-trip (dot habu-stdlib-check-hook-fd883aea): check@ reads the
 \ live hook that set-check installed ([x20/DATA + HOOK-CELL]); reinstalling it via
@@ -2782,11 +2819,11 @@ create ES-ALIGN-B 1 allot
 create ES-ALIGN-C 3 allot
 variable ES-ALIGN-V
 s" create: a data field after a byte-sized allot is cell-aligned" T-LABEL
-ES-ALIGN-B CELL 1- and 0 T=
+ES-ALIGN-B NULL-PTR - CELL 1- and 0 T=
 s" create: consecutive byte-sized allots each start on a cell" T-LABEL
-ES-ALIGN-C CELL 1- and 0 T=
+ES-ALIGN-C NULL-PTR - CELL 1- and 0 T=
 s" variable: a variable after byte-sized storage is cell-aligned" T-LABEL
-ES-ALIGN-V CELL 1- and 0 T=
+ES-ALIGN-V NULL-PTR - CELL 1- and 0 T=
 
 \ Typed storage: the layout-buffer definers and the deferred binder `align` the
 \ data pointer before they measure or allot at it, so a layout buffer, a typed
@@ -2808,17 +2845,17 @@ create PAD-DC 1 allot
 2 DC-BIND
 ;package
 s" layout-buffer: a layout buffer after a byte-sized allot is cell-aligned" T-LABEL
-0 ES-ALIGN-TEST:LB CELL 1- and 0 T=
+0 ES-ALIGN-TEST:LB NULL-PTR - CELL 1- and 0 T=
 s" typed-variable: a typed variable after a byte-sized allot is cell-aligned" T-LABEL
-ES-ALIGN-TEST:TV CELL 1- and 0 T=
+ES-ALIGN-TEST:TV NULL-PTR - CELL 1- and 0 T=
 s" defer-layout-buffer: a column bound after a byte-sized allot is cell-aligned" T-LABEL
-0 ES-ALIGN-TEST:DC CELL 1- and 0 T=
+0 ES-ALIGN-TEST:DC NULL-PTR - CELL 1- and 0 T=
 
 \ `align` itself: standard ALIGN, the rounding `create` applies, on request.
 \ An interpreted `s"` allots its bytes, so the label goes down before the align.
 create ES-ALIGN-D 1 allot
 s" align: rounds the data pointer up to a cell" T-LABEL
-align here CELL 1- and 0 T=
+align here NULL-PTR - CELL 1- and 0 T=
 s" align: leaves an aligned data pointer in place" T-LABEL
 align here align here - 0 T=
 

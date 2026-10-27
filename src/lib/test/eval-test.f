@@ -36,11 +36,15 @@ package EVAL-TEST
 
 : EMPTY ( -- )
    s" N refuses a text that leaves no cell" T-LABEL
-   [: s" " TEST-EVAL:N drop ;] 70 TTHROWSQ ;
+   [: s" " TEST-EVAL:N drop ;] 70 TTHROWSQ
+   s" FLAG refuses a text that leaves no cell" T-LABEL
+   [: s" " TEST-EVAL:FLAG drop ;] 70 TTHROWSQ ;
 
 : RESIDUE ( -- )
    s" N refuses a text that leaves two cells" T-LABEL
-   [: s" 1 2" TEST-EVAL:N drop ;] E-EVAL-RESIDUE TTHROWSQ ;
+   [: s" 1 2" TEST-EVAL:N drop ;] E-EVAL-RESIDUE TTHROWSQ
+   s" FLAG refuses a text that leaves two cells" T-LABEL
+   [: s" 1 1 = 1 2 =" TEST-EVAL:FLAG drop ;] E-EVAL-RESIDUE TTHROWSQ ;
 
 : UNFINISHED ( -- )
    s" N refuses a text that ends inside a definition it opened, rc 74" T-LABEL

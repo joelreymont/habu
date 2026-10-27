@@ -664,8 +664,8 @@ variable GE-NEST-J
    GE-SINK-LINE
    s" TRUSTED: GE-SINK-FLOOR ( -- bool ) [: GE-SINK ;] execute-floor ;" GE-SRC-LINE
    s" TRUSTED: GE-NOOP-FLOOR ( -- bool ) [: ;] execute-floor ;" GE-SRC-LINE
-   s" GE-SINK-FLOOR . 5 . depth . cr" GE-SRC-LINE
-   s" GE-NOOP-FLOOR . depth . cr" GE-SRC-LINE
+   s" GE-SINK-FLOOR bool>n . 5 . depth . cr" GE-SRC-LINE
+   s" GE-NOOP-FLOOR bool>n . depth . cr" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    s" hb execute-floor rc" GE-EXPECT-OK
    SB-RESET
@@ -1018,7 +1018,7 @@ package RUNTIME-REGRESSION
    70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
    S\" set-check: invalid checker xt\n" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
    GE-HB-RESET
-   GE-SRC-RESET s" dbase@ $1B0 + @ set-check" GE-SRC-LINE
+   GE-SRC-RESET s" 0 set-check dbase@ $1B0 + @ set-check" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
    S\" set-check: invalid checker xt\n" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
@@ -1099,7 +1099,7 @@ variable GE-CF-BODY-U
    n 0 ?do op opu GE-CF-BODY+ loop
    s" 1 HITS +! " GE-CF-BODY+
    n 0 ?do cl clu GE-CF-BODY+ loop
-   s" ; DEEP HITS @ 1 LV-LEVELS lshift = . cr" GE-CF-BODY+ ;
+   s" ; DEEP HITS @ 1 LV-LEVELS lshift = bool>n . cr" GE-CF-BODY+ ;
 
 : GE-DO-OVERCAP-1 ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: op:ptr opu:n cl:ptr clu:n label:ptr labelu:n :}
@@ -2347,7 +2347,7 @@ variable GE-KIND-N
       s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
    \ GEP2SAY's caught refusal is located on line 1 of the string it evaluates.
    1 GE-END-AT$ s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
-   S\" variable GEP2RUNS\nvariable GEP2AT\nTRUSTED: GEP2GRAB ( -- ) GEP2RUNS @ 1+ GEP2RUNS ! here GEP2AT ! 77 , ; immediate\ns\" GEP2GRAB\" 0 parse-imm"
+   S\" variable GEP2RUNS\nPTR-VARIABLE GEP2AT\nTRUSTED: GEP2GRAB ( -- ) GEP2RUNS @ 1+ GEP2RUNS ! here GEP2AT ! 77 , ; immediate\ns\" GEP2GRAB\" 0 parse-imm"
       s" GEP2GRAB 1 +" s" create GEP2NEXT 99 , GEP2RUN GEP2RUNS @ . GEP2AT @ @ ." tier GE-P2-RUN
    S\" 42\n1\n77\n" s" " s" pass 2 immediate allotting" GE-P2-EXPECT
    S\" TRUSTED: GEP2SEE ( -- ) data-base TXN-ACTIVE-CELL + @ . data-base TXN-BLOB-A-CELL + @ . ; immediate\ns\" GEP2SEE\" 0 parse-imm"
@@ -2415,7 +2415,7 @@ variable GE-KIND-N
    s" 10 4 GEPSUB2 . 10 GEPSUB1 . 10 GEPCALL ." GE-SRC-LINE
    s" 99 4 GEPCOUNT . . 99 4 GEPCOUNT2 . . 99 4 GEPCOUNTW . . 99 3 GEPNEST . ." GE-SRC-LINE
    s" 10 0 0= GEPBR . 10 0 0<> GEPBR ." GE-SRC-LINE
-   s" 41 ' GEPDIV0 catch E-DIV-ZERO = . drop 99 3 GEPPRESS . ." GE-SRC-LINE
+   s" 41 ' GEPDIV0 catch E-DIV-ZERO = bool>n . drop 99 3 GEPPRESS . ." GE-SRC-LINE
    s" 5.0 1.25 GEPFSUB GEFB . 7 1.5 GEPFMIX GEFB . ." GE-SRC-LINE
    s" 3 1.0 P-FLOOP f. 3.0 P-FPRESS f. 99 10 P-DO . ." GE-SRC-LINE
    s" 99 10 0 P-QDO . . 99 10 3 P-QDO . . 99 10 P-PLOOP . . 99 10 P-PLOOPUP . ." GE-SRC-LINE
@@ -2519,7 +2519,7 @@ variable GE-KIND-N
    s" 3 GEFU= . 1 GEFU<> . 3 GEFU< . 3 GEFU> . 3 GEFU<= . 3 GEFU>= ." GE-SRC-LINE
    s" 3 GEFW= . 3 GEFW<> . 3 GEFW< . 3 GEFW> . 3 GEFW<= . 3 GEFW>= ." GE-SRC-LINE
    s" 4 GEFNEST . 3 GEFNESTU ." GE-SRC-LINE
-   s" 3 4 GEFDUP . . 4 3 GEFDUP . ." GE-SRC-LINE
+   s" 3 4 GEFDUP . bool>n . 4 3 GEFDUP . bool>n ." GE-SRC-LINE
    s" 3 4 GEFST GEFV @ . 4 3 GEFST GEFV @ ." GE-SRC-LINE
    s" 3 GEFZU . 3 GEFZLU . 1.0 2.0 GEFF . 2.0 1.0 GEFF ." GE-SRC-LINE
    s" undefine < : < ( n n -- bool ) > ; : GEU ( n n -- n ) < if 1 else 2 then ; 3 4 GEU ." GE-SRC-LINE

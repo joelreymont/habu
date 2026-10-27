@@ -148,19 +148,19 @@ variable ERR-U
    REFUSED-BOTH
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
-   S\" habu: in qpush: at ';]'\nhook: non-certified definition: qpush at ';]'\n"
+   S\" habu: in qpush: at ';]' return stack: the quotation leaves its return row unbalanced expected: actual: n \nhook: non-certified definition: qpush at ';]'\n"
    REFUSED-BOTH
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
-   S\" habu: in qpop: at ';]'\nhook: non-certified definition: qpop at ';]'\n"
+   S\" habu: in qpop: at ';]' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: \nhook: non-certified definition: qpop at ';]'\n"
    REFUSED-BOTH
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
-   S\" habu: in uread: at 'r@'\nhook: non-certified definition: uread at 'r@'\n"
+   S\" habu: in uread: at 'r@' return stack: this reads below the return-stack cells pushed here expected: a actual: a \nhook: non-certified definition: uread at 'r@'\n"
    REFUSED-BOTH
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
-   S\" habu: in upop: at 'r>'\nhook: non-certified definition: upop at 'r>'\n"
+   S\" habu: in upop: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: \nhook: non-certified definition: upop at 'r>'\n"
    REFUSED-BOTH ;
 
 \ ---- still admitted -----------------------------------------------------------

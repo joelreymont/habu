@@ -278,10 +278,16 @@ public
 \ throw out of the text, a read below its floor among them, or a negative
 \ depth.
 variable MEAS-OUT
+\ The check hook, saved while the measurement text runs unchecked: it reads
+\ the guard under CLEAR-MEAS's row, which the interpret row cannot type.
+variable HOOK-SAVE
 : MEAS-PBUF ( -- )
    0 LAST-TRAP !
    s"  PROP-CORE:MEAS-OUT !" P+
-   PBUF PBUF-U @ TEST-EVAL:RC 0= 0= IF  -1 LAST-TRAP !  EXIT  THEN
+   s" check@ 0 set-check PROP-CORE:HOOK-SAVE !" evaluate-closed
+   PBUF PBUF-U @ TEST-EVAL:RC
+   s" PROP-CORE:HOOK-SAVE @ set-check" evaluate-closed
+   0= 0= IF  -1 LAST-TRAP !  EXIT  THEN
    MEAS-OUT @ dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN ;
 private
 : RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
@@ -338,8 +344,7 @@ variable NRI
 private
 variable RSU
 TYPED-VARIABLE RSA ptr u8
-: ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
-   REND-SIG  RSU !  RSA !
+: ROUNDTRIP  ( -- )   \ pre: RSA/RSU hold G's effect, rendered right after its check
    SMARK  0 PBUF-U ! s" : R ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  NRT @ 1+ NRT !  82 NIN @ DOUT @ MEASURE
    ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN
@@ -411,6 +416,7 @@ variable NFC0
    PBUF PBUF-U @ CHK
    VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
+      REND-SIG  RSU !  RSA !                  \ before MEASURE: checking its text resets BROW/DCUR
       PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
       PROP-NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
          s" original: " type  REBUILD-G  DEF.

@@ -254,28 +254,30 @@ opaque execution.
 
 **The problem.** The native depth floor, checked before a certified word's
 body runs, sees how many cells are present, not what they are. `' W execute` below `W`'s arity read below the stack base; `0 0 catch`
-branched to address 0; `s" abc" +` added a pointer to its length; and an
-immediate named in a checked body ran at compile time, leaving an empty body
-under a non-empty certificate.
+branched to address 0; `s" abc" +` added a pointer to its length; `here V !`
+stored an address in a raw cell; and an immediate named in a checked body ran
+at compile time, leaving an empty body under a non-empty certificate.
 
-**A checker row shadows the interpret stack.** `src/core/top-row.f` keeps one
-row and receives one event per top-level token from an engine hook. Per token,
-not per line: top-level tokens resolve as they execute (a line defines a word a
-later line calls, and definers consume tokens), so checking a whole line first
-would need a second parser that diverged from execution order. Live depth is
-the anchor: the row resynchronises to it at every event.
+**The interpret row types top-level code.** The checker keeps a row for each
+evaluator stack base (a closed evaluation has a floor of its own) and receives
+one event per top-level token from an engine hook (`src/core/top-row.f`). Per
+token, not per line: top-level tokens resolve as they execute (a line defines a
+word a later line calls, and definers consume tokens), so checking a whole line
+first would need a second parser that diverged from execution order. Each
+token is judged as the same token in a colon body, storage included: a refusal
+prints the body's diagnostic and throws the checker's rc before the word runs,
+so the stack and every cell are untouched and the failure stays catchable by
+the REPL and `evaluate`.
 
-**Unknown is gray, not poison.** A word with no stored effect (defined under
-`0 set-check`) runs, and the row reseeds with fresh variables of the live
-depth: depth stays enforced, value types are honestly unknown, and checking
-resumes at the next token. `TRUSTED:` and certified words carry stored effects
-and reset nothing, so the trigger is "no stored effect", never trust level.
-A reject fires before the word runs, so the stack is untouched and the
-failure stays catchable by the REPL and `evaluate`.
+**Live depth is the anchor.** Each event loads the saved row at the live depth.
+Cells the row does not know are unknown, and a typed consumer refuses them; the
+row's bottom is the live floor, so a step that reaches below it is refused as a
+body reaching under its declared inputs is. A word with no stored effect
+(defined under `0 set-check`) is refused at top level as in a body.
 
-**No new escape hatch.** `0 set-check` suspends the row's enforcement inside
-its window; nothing else does. By default the row warns; `src/core/top-row.f`
-names the switch that makes the same sites reject.
+**One escape hatch.** `0 set-check` suspends the row inside its window; the
+data cells the window leaves are unknown after it, and its return-stack cells
+cannot be read after it. Nothing else suspends it.
 
 **An xt carries its effect.** `['] W` yields `xt<effect(W)>`, a quotation type
 built from `W`'s certified effect, so `execute`, `catch` and `is` check it by

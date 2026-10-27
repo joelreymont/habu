@@ -1,28 +1,24 @@
-\ top-row.f - the typed top level: a checker row over the interpret stream.
+\ top-row.f - the typed top level: the checker's row over the interpret stream.
 \
 \ The engine emits one event per interpreted token to the installed top-row hook
 \ (habu2.f LTOPHOOK; a WORD event fires before the word runs, C-TOPHOOK-CALL):
 \ ( token-a token-u class flags ). Per token, not per line, because top-level
 \ tokens resolve as they execute: a line may define a word a later token calls.
-\ This file keeps ONE live checker-side row shadowing the interpret data stack,
-\ above the native depth floor (DNAME-MIN-IN, DNAME-INT, DNAME-WIDE), and
-\ diagnoses the value/xt residuals that floor cannot reach: an xt executed or
-\ caught below its target arity, a non-xt handed to execute/catch, and a byte
-\ pointer flowing into a scalar consumer. `depth` is the ground-truth anchor:
-\ every event resyncs row length to live depth, so a sig-less word, a
-\ throw-recovery, or an unmodeled step degrades to honest gray cells (depth
-\ still enforced) instead of a false warning.
+\ The checker keeps the row between events (src/core/checker.f "the interpret
+\ row"), one per evaluator stack base and evaluate level, and judges each event
+\ as a colon body judges the same token: a refused word or tick throws the
+\ checker's rc 70 before the word runs, with the body's diagnostic.
 \
-\ Tier 1, the default, warns `hb: top-row: <token> expected: <e> actual: <a>` on
-\ stderr and leaves rc and execution unchanged; tier 2 is below. Value knowledge
-\ is a coarse family (scalar / byte-pointer / xt / gray) carried from literals,
-\ ticks and the pointer-arithmetic family only; every other word grays its
-\ outputs. A certified word's fixed dout term count comes from the checker's
-\ effect-read export (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N), used
-\ only for the pure-consumer precise pop below, whose din width comes from the
-\ event flags. Per-word din/dout row unification is not built (dot
-\ habu-unify-a-certified-e16b3f8d). This file loads from the checkout at boot.
-\ Rationale: docs/design.md "Typed top level".
+\ `depth` is the anchor: each event fits the row to the live depth less the
+\ cells the event already pushed, so a step the row cannot model leaves unknown
+\ cells, which a typed consumer refuses. A word or tick event loads the row,
+\ steps it and saves it; a literal over a saved row that fits the live depth
+\ pushes its constant cells onto that row, at a cost independent of the row's
+\ depth, and otherwise takes the load, step and save (CHECKER-TOP-PUSH). Inside a
+\ `0 set-check` window the hook steps nothing and forgets its row, so the cells
+\ the window left are unknown; the rows it does not run on keep their cells. The
+\ engine's `evaluate` still widens its row's segment there, so the text it reads
+\ continues the row.
 
 package TOP-ROW
 
@@ -30,240 +26,22 @@ package TOP-ROW
 1 constant TR-EV-NUM     2 constant TR-EV-STR     3 constant TR-EV-CSTR
 4 constant TR-EV-CHAR    5 constant TR-EV-TICK    6 constant TR-EV-WORD
 
-\ ---- value families ----------------------------------------------------------
-0 constant TR-GRAY       \ unknown: unifies with any consumer, never warns
-1 constant TR-SCALAR     \ a value cell (number / char / bool / address int)
-2 constant TR-POINTER    \ a byte / region pointer (s" S\" c" and ptr arithmetic)
-3 constant TR-XT         \ an execution token pushed by ' (tick)
-
-\ ---- flags ABI (LFIND: bit0 found, bit1 DNAME-IMM, bits 8-15 DNAME-MIN-IN) ----
-8 constant TR-MININ-SHIFT
-255 constant TR-MININ-MASK
-
-: TR-FLAGS>XIN ( n -- n )    \ certified-word declared input arity from LFIND flags
-   TR-MININ-SHIFT rshift TR-MININ-MASK and ;
-
-\ ---- persistent row state (var-free; survives the checker's per-check NEW) ----
-\ Cells outside TR-N have no value. Retire them when shrinking the row so an
-\ image never retains families/xt arities from already-consumed stack values.
-256 constant TR-CAP
-create TR-CLS TR-CAP cells allot        \ family per stack cell, index 0 = bottom
-create TR-XIN TR-CAP cells allot        \ ticked-xt declared input arity (TR-XT cells)
-variable TR-N                           \ tracked row depth (cells)
-variable TR-DIRTY                       \ a step left the row unknown: reseed next event
-variable TR-SUSP                        \ inside a 0 set-check window: enforcement suspended
-variable TR-LASTZERO                    \ previous event was the literal 0 (0 set-check latch)
-
-: TR-CLS@ ( n -- n ) cells TR-CLS + @ ;
-: TR-CLS! ( n n -- ) cells TR-CLS + ! ;
-: TR-XIN@ ( n -- n ) cells TR-XIN + @ ;
-: TR-XIN! ( n n -- ) cells TR-XIN + ! ;
-
-: TR-CLAMP ( n -- n )                   \ hold the tracked window inside [0, TR-CAP]
-   dup 0 < if drop 0 exit then
-   dup TR-CAP > if drop TR-CAP exit then ;
-
-: TR-TOP ( -- n )                       \ family of the top cell (GRAY if empty/over-cap)
-   TR-N @ dup 1 < if drop TR-GRAY exit then
-   dup TR-CAP > if drop TR-GRAY exit then
-   1 - TR-CLS@ ;
-
-: TR-TOP-XIN ( -- n )                   \ declared input arity of the top xt cell
-   TR-N @ dup 1 < if drop 0 exit then
-   dup TR-CAP > if drop 0 exit then
-   1 - TR-XIN@ ;
-
-: TR-RESEED ( n -- )                    \ row := n gray cells (honest resync to live depth)
-   TR-CLAMP {: n:n :}
-   TR-N @ n max {: upto:n :}
-   n TR-N !
-   0 begin dup upto < while
-      TR-GRAY over TR-CLS!  0 over TR-XIN!
-      1 +
-   repeat drop
-   0 TR-DIRTY ! ;
-
-: TR-PUSH ( n -- )                      \ push one cell of the given family (gray xin)
-   TR-N @ dup TR-CAP < if
-      swap over TR-CLS!  0 over TR-XIN!  1 + TR-N !
-   else 2drop then ;
-
-: TR-PUSH-XT ( n -- )                   \ push an xt cell carrying its target input arity
-   TR-N @ dup TR-CAP < if
-      TR-XT over TR-CLS!  swap over TR-XIN!  1 + TR-N !
-   else 2drop then ;
-
-: TR-POP ( -- )                         \ drop the top cell (never below base)
-   TR-N @ dup 0 > if
-      1 - dup TR-N !
-      0 over TR-CLS! 0 swap TR-XIN!
-   else drop then ;
-
-\ ---- tier selection: warn (tier 1) vs reject (tier 2) ------------------------
-\ dot habu-typed-top-tier-589c550f (sub-dot 7). By default warnings leave the
-\ rc unchanged; HABU_TOP_TIER=2 selects tier-2 at the warning/reject edge, where
-\ every tier-1 warning
-\ site instead REJECTS pre-execution with a catchable rc-70 throw (TR-REJECT-RC,
-\ the same RC-REJECT the native DNAME-MIN-IN underdepth reject uses). The reject
-\ fires from the WORD event, which the engine emits PRE-BLR (habu2.f
-\ C-TOPHOOK-CALL), so the word never runs, the interpret stack is untouched, and
-\ REPL/evaluate recovery reseeds the row from live depth at the next event. The
-\ 0 set-check window (TR-SUSP) still suspends ALL enforcement - inside
-\ the audited escape window tier-2 degrades to silence, never a reject.
-\ Trusted sites are the raw effect query and dynamic top-row hook install described
-\ below. Retirement: habu-sweep-trusted-out-41e973ce.
-2 constant TR-TIER2                      \ reject pre-execution (rc 70 diagnostic)
-70 constant TR-REJECT-RC                 \ RC-REJECT: catchable, rc 70 uncaught
-: TR-TIER2? ( -- bool )
-   s" HABU_TOP_TIER" GETENV s" 2" CORE-STR= ;
-: TR-REJECT ( -- )                       \ tier-2: reject pre-execution after the diagnostic
-   TR-TIER2? if TR-REJECT-RC throw then ;
-
-\ ---- warning renderer (stderr; rc and execution unchanged at tier 1) ---------
-2 constant TR-FD
-
-: TR-FAM. ( n -- )
-   dup TR-SCALAR  = if drop TR-FD s" n"   write drop exit then
-   dup TR-POINTER = if drop TR-FD s" ptr" write drop exit then
-   dup TR-XT      = if drop TR-FD s" xt"  write drop exit then
-   drop TR-FD s" ?" write drop ;
-
-: TR-WARN ( ptr u8 n n n -- )           \ hb: top-row: <tok> expected: <e> actual: <a>
-   {: a:ptr u:n exp:n act:n :}
-   TR-FD s" hb: top-row: " write drop
-   TR-FD a u write drop
-   TR-FD s"  expected: " write drop  exp TR-FAM.
-   TR-FD s"  actual: " write drop     act TR-FAM.
-   TR-FD S\" \n" write drop
-   TR-REJECT ;
-
-: TR-WARN-UNDER ( ptr u8 n -- )         \ xt executed/caught below its target arity
-   {: a:ptr u:n :}
-   TR-FD s" hb: top-row: " write drop
-   TR-FD a u write drop
-   TR-FD S\" : xt target underflows the interpret stack\n" write drop
-   TR-REJECT ;
-
-\ ---- pointer-arithmetic family propagation -----------------------------------
-\ + / - keep byte-pointer identity so a downstream scalar consumer still sees it.
-\ ptr - ptr is a scalar difference; one ptr operand stays a ptr.
-: TR-ANY-PTR? ( n n -- bool ) TR-POINTER = swap TR-POINTER = or ;
-: TR-BOTH-PTR? ( n n -- bool ) TR-POINTER = swap TR-POINTER = and ;
-
-: TR-ADD-FAM ( n n -- n ) TR-ANY-PTR? if TR-POINTER else TR-SCALAR then ;
-: TR-SUB-FAM ( n n -- n )
-   2dup TR-BOTH-PTR? if 2drop TR-SCALAR exit then
-   TR-ANY-PTR? if TR-POINTER else TR-SCALAR then ;
-
-\ ---- word classifiers (tier-1 targeted residual set) -------------------------
-: TR-XT-CONSUMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" execute" CORE-STR=
-   a u s" catch" CORE-STR= or
-   a u s" run-in-stack" CORE-STR= or ;
-
-: TR-SCALAR-CONSUMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ." CORE-STR=
-   a u s" u." CORE-STR= or ;
-
-: TR-ARITH? ( ptr u8 n -- n )           \ 1 = '+', 2 = '-', 0 = neither
-   {: a:ptr u:n :}
-   a u s" +" CORE-STR= if 1 exit then
-   a u s" -" CORE-STR= if 2 exit then
-   0 ;
-
-\ ---- per-class row transitions -----------------------------------------------
-: TR-LIT-CELLS ( n -- n )               \ cells a literal event pushed before firing
-   dup TR-EV-STR = if drop 2 exit then
-   drop 1 ;
-
-: TR-LIT ( n -- )                       \ push the cell(s) a literal event leaves
-   dup TR-EV-NUM  = if drop TR-SCALAR TR-PUSH exit then
-   dup TR-EV-CHAR = if drop TR-SCALAR TR-PUSH exit then
-   dup TR-EV-CSTR = if drop TR-POINTER TR-PUSH exit then
-   dup TR-EV-STR  = if drop TR-POINTER TR-PUSH TR-SCALAR TR-PUSH exit then
-   drop ;
-
-: TR-XT-STEP ( ptr u8 n n -- ) {: a:ptr u:n live:n :}
-   TR-TOP {: top:n :}
-   top TR-XT = if
-      live 1 - TR-TOP-XIN < if a u TR-WARN-UNDER then
-   else top TR-GRAY <> if
-      a u TR-XT top TR-WARN
-   then then
-   1 TR-DIRTY ! ;                       \ target effect is dynamic: gray-resync next event
-
-: TR-SCALAR-STEP ( ptr u8 n -- ) {: a:ptr u:n :}   \ ( x -- )
-   TR-TOP {: top:n :}
-   top TR-POINTER = top TR-XT = or if a u TR-SCALAR top TR-WARN then
-   TR-POP ;
-
-: TR-ARITH-STEP ( n -- )                \ kind: 1 = '+', 2 = '-' ; ( a b -- c )
-   TR-N @ 2 < if drop 1 TR-DIRTY ! exit then
-   TR-N @ 1 - TR-CLS@ {: t0:n :}        \ top operand
-   TR-N @ 2 - TR-CLS@ {: t1:n :}        \ second operand
-   1 = if t0 t1 TR-ADD-FAM else t0 t1 TR-SUB-FAM then {: r:n :}
-   TR-POP TR-POP r TR-PUSH ;
-
-\ ---- tier-1.5: certified pure-consumer precise pop (checker effect-read API) --
-\ A certified word whose dout row has NO fixed terms (dout empty) consumes exactly
-\ its declared physical din and leaves the tail untouched. Reading that from the
-\ checker's effect-read export API (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N,
-\ dot habu-expose-checker-effect-95e853eb) lets the tracker pop the din precisely and
-\ KEEP the tail's precise families, instead of graying the whole row at the next
-\ event. Same warning gates; better shadow fidelity across pure consumers. Precise
-\ OUTPUT family propagation and row unification are not built; dot
-\ habu-unify-a-certified-e16b3f8d owns them.
-\ EFFECT-QUERY resolves the name as a definition would and refuses where the scope
-\ does: no authority names a package context (inside a package after `0
-\ set-current`), or a used public collides with the tail. The tracker only
-\ observes, so it asks CHECKER-RESOLVE:REFUSES? first: a word it cannot query in
-\ this scope is unmodeled, and TR-WORD grays its outputs.
-: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing no fixed outputs?
-   2dup CHECKER-RESOLVE:REFUSES? if 2drop 0 0= 0= exit then
-   EFFECT-QUERY if EFFECT-DOUT-N 0= else 0 0= 0= then ;
-
-: TR-CERT-STEP ( n -- ) {: din:n :}     \ pop din cells; row stays precise (no dirty resync)
-   0 begin dup din < while TR-POP 1 + repeat drop
-   0 TR-DIRTY ! ;
-
-: TR-WORD ( ptr u8 n n n n -- ) {: a:ptr u:n flg:n live:n lz:n :}
-   TR-TOP TR-GRAY =  lz 0=  and if 1 TR-DIRTY ! exit then  \ fast path: nothing definite to check
-   a u s" set-check" CORE-STR= if
-      lz 0 <> if 1 TR-SUSP ! TR-POP then exit
-   then
-   a u TR-XT-CONSUMER? if a u live TR-XT-STEP exit then
-   a u TR-SCALAR-CONSUMER? if a u TR-SCALAR-STEP exit then
-   a u TR-ARITH? dup 0 <> if TR-ARITH-STEP exit then drop
-   a u TR-CERT-DOUT-EMPTY? if flg TR-FLAGS>XIN TR-CERT-STEP exit then
-   1 TR-DIRTY ! ;                       \ unmodeled word: gray-resync at the next event
-
-\ ---- the installed hook ------------------------------------------------------
-: TR-EVENT ( ptr u8 n n n n n -- ) {: a:ptr u:n cls:n flg:n live:n lz:n :}
-   TR-SUSP @ 0 <> if                    \ 0 set-check window: enforcement off
-      cls TR-EV-WORD = a u s" set-check" CORE-STR= and lz 0= and if
-         live TR-RESEED  0 TR-SUSP !    \ re-arm on a real hook xt: reseed from live depth
-      then
-      exit
-   then
-   cls TR-EV-TICK = if
-      TR-DIRTY @ 0 <>  TR-N @ live 1 - <>  or if live 1 - TR-RESEED then
-      flg TR-FLAGS>XIN TR-PUSH-XT       \ push xt below-synced, carrying target arity
-      exit
-   then
-   cls TR-EV-WORD = if
-      TR-DIRTY @ 0 <>  TR-N @ live <>  or if live TR-RESEED then
-      a u flg live lz TR-WORD
-      exit
-   then
-   cls TR-LIT-CELLS {: pc:n :}          \ literal: value already pushed; resync prior cells
-   TR-DIRTY @ 0 <>  TR-N @ live pc - <>  or if live pc - TR-RESEED then
-   cls TR-LIT ;
+\ The cells an event pushed before it fired.
+: TR-PUSHED ( n -- n ) {: cls:n :}
+   cls TR-EV-WORD = IF 0 EXIT THEN
+   cls TR-EV-STR = IF 2 EXIT THEN
+   1 ;
 
 : TR-HOOK ( ptr u8 n n n -- ) {: a:ptr u:n cls:n flg:n :}
-   depth {: live:n :}
-   TR-LASTZERO @ {: lz:n :}
-   cls TR-EV-NUM = a u s" 0" CORE-STR= and TR-LASTZERO !
-   a u cls flg live lz TR-EVENT ;
+   data-base STACK-ABI:BASE-CELL + @ CHECKER-TOP-SEGMENT
+   check@ 0= IF
+      CHECKER-TOP-FORGET  cls TR-EV-WORD = IF a u CHECKER-TOP-WIDEN THEN  EXIT
+   THEN
+   depth cls TR-PUSHED - {: live:n :}
+   cls TR-EV-WORD <>  cls TR-EV-TICK <>  and IF a u cls live CHECKER-TOP-PUSH EXIT THEN
+   live CHECKER-TOP-LOAD
+   cls TR-EV-WORD = IF a u CHECKER-TOP-WORD ELSE a u CHECKER-TOP-TICK THEN
+   CHECKER-TOP-SAVE ;
 
 \ set-top-check is a guarded-deref trust-boundary prim. TOP-ROW's private row
 \ (src/habu/prims.f) takes a hook of TR-HOOK's shape, so this install is
@@ -271,7 +49,6 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ window is the set-top-check install itself: only TR-HOOK may be installed
 \ (checked-boundary lint UB-TOP-HOOK-ALLOWED? audit row).
 : TR-INSTALL ( -- )
-   0 TR-RESEED  0 TR-SUSP !  0 TR-LASTZERO !
    ['] TR-HOOK set-top-check ;
 
 TR-INSTALL

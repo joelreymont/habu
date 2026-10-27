@@ -1124,14 +1124,14 @@ enum-replay-test:RP-TRY 0 T=
 
 s" rp-live-test:shape" FAMID FID !
 s" rp-copy-test:shape" FAMID VID !
-FID @ TFAM-SUM?           VID @ TFAM-SUM?           T=
-FID @ TFAM-ENUM?          VID @ TFAM-ENUM?          T=
+FID @ TFAM-SUM? bool>n           VID @ TFAM-SUM? bool>n           T=
+FID @ TFAM-ENUM? bool>n          VID @ TFAM-ENUM? bool>n          T=
 FID @ F-VAR-COUNT         VID @ F-VAR-COUNT         T=
 FID @ TFAM-FLD-COUNT@     VID @ TFAM-FLD-COUNT@     T=
 FID @ F-WIDTH             VID @ F-WIDTH             T=
 FID @ TFAM-LAYOUT-POLICY@ VID @ TFAM-LAYOUT-POLICY@ T=
-FID @ F-EQ?               VID @ F-EQ?               T=
-FID @ F-HASH?             VID @ F-HASH?             T=
+FID @ F-EQ? bool>n               VID @ F-EQ? bool>n               T=
+FID @ F-HASH? bool>n             VID @ F-HASH? bool>n             T=
 FID @ F-VAR-START VS0 !
 VID @ F-VAR-START enum-replay-test:VS1 !
 VS0 @ SV-NAME$ enum-replay-test:VS1 @ SV-NAME$ CORE-STR= TTRUE

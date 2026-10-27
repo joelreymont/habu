@@ -51,6 +51,11 @@ using TFAM
 
 package SCANIDX-TEST
 
+\ A scan and the reads of what it left, in one body: checking the next
+\ top-level line runs the checker, which reuses FEP and NORET-CTL.
+: SCX-SCAN-USIGS ( n -- n bool n ) SCAN-USIGS-SYM FEP-HIT? SCX-FEP-MINI ;
+: SCX-SCAN-NORET ( n -- n ) NORET-SCAN-SYM SCX-NORET-FLAGS ;
+
 \ ---------------------------------------------------------------------------
 \ 1. ORDER PINNING. Every one of these answers depends on WHICH record of a
 \    symbol wins. They run through the ordinary load path — a definition, an
@@ -84,23 +89,18 @@ s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ 0 <> TTRUE
 IX @ USIG-NEWEST 1- 0 > TTRUE                  \ the record is at a nonzero offset
 IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
-IX @ SCAN-USIGS-SYM REC-END @ T=             \ absolute completed end, not a span
-FEP-HIT? TTRUE
-SCX-FEP-MINI 3 T=                              \ the scan reports the newest record's arity
+IX @ SCX-SCAN-USIGS 3 T= TTRUE REC-END @ T=   \ arity, hit, absolute completed end
 IX @ SCX-WIRE-NEXT REC-END @ T=               \ owner wire preserves that same end
 
 \ ... and with the newest record a DELETION, the scan reports no record at all
 \ rather than the live one it shadows.
 ' SCX-UNDEF catch TC !  TC @ 0 T=
 SCX-UEND REC-END !
-IX @ SCAN-USIGS-SYM REC-END @ T=              \ deletion still depends on its completed end
-FEP-HIT? TFALSE
+IX @ SCX-SCAN-USIGS drop TFALSE REC-END @ T=  \ deletion still depends on its completed end
 IX @ SCX-WIRE-NEXT REC-END @ T=
 s" SCXA" SCX-SIG-MIN-IN -1 T=
 ' SCX-DEF4 catch TC !   TC @ 0 T=
-IX @ SCAN-USIGS-SYM drop
-FEP-HIT? TTRUE
-SCX-FEP-MINI 3 T=
+IX @ SCX-SCAN-USIGS 3 T= TTRUE drop
 
 \ 1b. control flags: later wins, and a redefinition clears the stale metadata.
 : SCX-CTLDEF ( -- ) s" : SCXT ( n -- n ) 7101 throw ;" evaluate-closed ;
@@ -115,8 +115,7 @@ s" SCXT" CTL-FLAGS CTL-THROW and 0 T=                \ ... and the redefinition 
 s" SCXT" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ NORET-NEWEST 0 <> TTRUE                   \ the differential below is not vacuous
 IX @ NORET-NEWEST  IX @ NORET-NEWEST-LINEAR T=
-IX @ NORET-SCAN-SYM
-SCX-NORET-FLAGS CTL-THROW and 0 T=              \ the scan reports the LATEST entry's flags
+IX @ SCX-SCAN-NORET CTL-THROW and 0 T=              \ the scan reports the LATEST entry's flags
 
 \ 1e. an entry the store cannot key. CHECKER-RECORD-SYM answers 0 for a token it
 \     cannot resolve, and a NORETS entry keyed 0 is indistinguishable from the
@@ -190,9 +189,7 @@ CHECK-CANDIDATE-START
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" SCXA" CHECKER-FIND-ACTIVE-SYM IX !
 IX @ USIG-NEWEST  IX @ USIG-NEWEST-LINEAR T=
-IX @ SCAN-USIGS-SYM drop
-FEP-HIT? TTRUE
-SCX-FEP-MINI 3 T=                                    \ the record below the frame answers
+IX @ SCX-SCAN-USIGS 3 T= TTRUE drop                  \ the record below the frame answers
 s" SCXA" SCX-SIG-MIN-IN 3 T=
 SCX-DIFF-ALL
 
@@ -206,8 +203,7 @@ CHECK-CANDIDATE-START
 0 CHECK-CANDIDATE-DONE drop
 SCX-MARKS-EXACT                                      \ read FIRST: a lookup would rebuild
 s" SCXT" CHECKER-FIND-ACTIVE-SYM IX !
-IX @ NORET-SCAN-SYM
-SCX-NORET-FLAGS CTL-DEAD and 0 T=                     \ the entry below the frame answers
+IX @ SCX-SCAN-NORET CTL-DEAD and 0 T=                     \ the entry below the frame answers
 s" SCXT" CTL-FLAGS CTL-DEAD and 0 T=
 SCX-DIFF-ALL
 

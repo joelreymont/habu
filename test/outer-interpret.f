@@ -430,7 +430,7 @@ variable WANT-RC
 \ reaches the file's catch without running either following token.
 : EVALUATE-NESTED ( -- )
    GE-SRC-RESET
-   s" 1 set-tier TRUSTED: OI-AT-INNER ( -- ) s~ 3 depth .~ evaluate ;" QLINE
+   s" 1 set-tier 0 set-check TRUSTED: OI-AT-INNER ( -- ) s~ 3 depth .~ evaluate ;" QLINE
    s" TRUSTED: OI-AT-OUTER ( -- ) s~ 2 OI-AT-INNER 4 . . . .~ evaluate ;" QLINE
    s" 1 OI-AT-OUTER depth . 5 ." GE-SRC-LINE
    s" oi-evaluate-nested.f" BOTH

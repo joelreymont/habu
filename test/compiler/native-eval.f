@@ -21,14 +21,17 @@ public
 : INNER-DEPTH$ ( -- ptr u8 n ) s" depth 0 T=" ;
 : INNER-RESIDUE$ ( -- ptr u8 n ) s" 1 2" ;
 
-\ W adds two cells, so a text that hands it one reaches one cell under its
-\ floor; SEEN holds W's last sum, so a W that never finished leaves it alone.
+\ W claims one cell and adds two, the lie a trusted body can tell: a checked text
+\ that hands it one is admitted and reaches one cell under its floor at run
+\ time. SEEN holds W's last sum, so a W that never finished leaves it alone.
 \ GETW reaches W through a quotation xt, which has no record a tick could
-\ find, and CLEAN is an empty cleanup for finally.
+\ find, and CLEAN is an empty cleanup for finally. PLUS-XT tells the same lie
+\ for a primitive, whose own row cannot: it types `+` as taking one cell.
 variable SEEN
-: W ( n n -- n ) + dup SEEN ! ;
-: GETW ( -- [ n n -- n ] ) [: W ;] ;
+TRUSTED: W ( n -- n ) + dup SEEN ! ;
+: GETW ( -- [ n -- n ] ) [: W ;] ;
 : CLEAN ( -- [ -- ] ) [: ;] ;
+TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
 : INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
 \ An inner text that ends inside the definition it opened.
@@ -123,7 +126,7 @@ private
    5 [: s" 1 ' NATIVE-EVAL-TEST:W execute" evaluate-closed ;] catch 70 T= ;
 
 : XT-PRIMITIVE ( -- n )
-   5 [: s" 1 ' + execute" evaluate-closed ;] catch 70 T= ;
+   5 [: s" 1 NATIVE-EVAL-TEST:PLUS-XT execute" evaluate-closed ;] catch 70 T= ;
 
 : XT-FINALLY ( -- n )
    5 [: s" 1 ' NATIVE-EVAL-TEST:W NATIVE-EVAL-TEST:CLEAN finally" evaluate-closed ;]
@@ -259,7 +262,7 @@ create ERR IO-CAP allot
 \ The fault is the instruction fetch, a wild jump and no read below the
 \ floor, so it keeps the named bounds exit instead of the underdepth throw.
 : FLOOR-JUMP$ ( -- ptr u8 n )
-   S\" 7 s\" data-base STACK-ABI:BASE-CELL + @ cell - execute\" evaluate-closed" ;
+   S\" 0 set-check 7 s\" data-base STACK-ABI:BASE-CELL + @ cell - execute\" evaluate-closed" ;
 
 : FLOOR-JUMP ( -- )
    s" a jump under a closed text's floor exits STACK-BOUNDS" T-LABEL
@@ -272,7 +275,7 @@ create ERR IO-CAP allot
 \ The same reach outside any closed text: the child's text runs a compiled
 \ word through execute with one cell on the stack it was given.
 : TOP-LEVEL$ ( -- ptr u8 n )
-   s" : NATIVE-EVAL-W ( n n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
+   s" TRUSTED: NATIVE-EVAL-W ( n -- n ) + ; 1 ' NATIVE-EVAL-W execute" ;
 
 : TOP-LEVEL ( -- )
    s" a word reaching below the base outside a closed text throws 70" T-LABEL
@@ -280,11 +283,7 @@ create ERR IO-CAP allot
    PROC-OUTCOME>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the token the interpreter was running" T-LABEL
-   HB-TARGET-LINUX-X86-64? if
-      ERR erru s" hb: top-row: execute: xt target underflows the interpret stack" CONTAINS? TTRUE
-   else
-      ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
-   then
+   ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
    s" and is no stack bounds exit" T-LABEL
    ERR erru s" stack bounds exceeded" CONTAINS? TFALSE ;
 

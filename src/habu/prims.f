@@ -736,17 +736,20 @@ EPRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT EPRIM;
 EPPRIM: EXECUTABLE-BUILD executable-build-enter ECLOSE-PRIVATE
 EPPRIM: EXECUTABLE-BUILD executable-build-leave ECLOSE-PRIVATE
 \ Compiler hook installation is an explicit engine boundary.
-EPRIM: set-check     PE-N PE-IN EPRIM;
+EPRIM: set-check     PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
+EFIXED-ABI!
 EPRIM: discard-check EPRIM;
 ETRUSTED-ONLY!
-EPRIM: set-preflight PE-N PE-IN EPRIM;
+EPRIM: set-preflight PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
-EPRIM: set-top-check PE-N PE-IN EPRIM;
+EFIXED-ABI!
+EPRIM: set-top-check PE-A PE-IN EPRIM;
 ETRUSTED-ONLY!
+EFIXED-ABI!
 \ The top-level tracker's own install (src/core/top-row.f TR-INSTALL): its row
 \ takes a hook of the shape the tracker is called with, where the global row
-\ above takes a raw cell, as set-check and set-preflight do.
+\ above takes any one cell, as set-check and set-preflight do.
 EPPRIM: TOP-ROW set-top-check
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN ECLOSE-PRIVATE
 \ Choosing the compiler belongs to package TIER (src/lib/tier.f), and this row is

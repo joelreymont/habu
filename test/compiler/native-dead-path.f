@@ -54,7 +54,7 @@ private
 
 : ELSE-DEAD-CASE ( -- )
    s" and the dead arm still throws" T-LABEL
-   s" 3 0 ' DPC-DE catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
+   s" 3 0 DPC-DE" TEST-EVAL:RC E-A-EMPTY T= ;
 
 \ A dead SECOND arm, which is the other side of the same rule: the first arm
 \ states the width and the second contributes no edge at all.
@@ -65,7 +65,7 @@ private
    s" a dead second arm joins the same way round" T-LABEL
    MK-DS
    s" 8 0 DPC-DS" TEST-EVAL:N 5 T=
-   s" 8 1 ' DPC-DS catch nip nip" TEST-EVAL:N E-A-BOUNDS T= ;
+   s" 8 1 DPC-DS" TEST-EVAL:RC E-A-BOUNDS T= ;
 
 \ ---- 3. deadness is the word's, not the spelling's ----------------------------
 \ A package that defines its own `throw` binds it for every bare mention inside
@@ -95,7 +95,7 @@ private
    s" DPCY:BOOM" NDICT:SPELL-DEAD? TTRUE
    MK-OWNDEAD
    s" 6 5 DPC-VIA" TEST-EVAL:N 6 T=
-   s" 6 0 ' DPC-VIA catch nip nip" TEST-EVAL:N E-A-EMPTY T= ;
+   s" 6 0 DPC-VIA" TEST-EVAL:RC E-A-EMPTY T= ;
 
 \ ---- 4. what may follow a path that ended, and why nothing here tests it ------
 \ The elaborator refuses any token after a path has ended except the closer of
@@ -139,7 +139,7 @@ private
 : ALL-DEAD-CASE ( -- )
    s" a body whose every path ends compiles, publishes and throws" T-LABEL
    MK-ALLDEAD
-   s" 5 ' DPC-ALLDEAD catch nip" TEST-EVAL:N E-A-EMPTY T= ;
+   s" 5 DPC-ALLDEAD" TEST-EVAL:RC E-A-EMPTY T= ;
 
 \ Two arms, both dead. No edge reaches a join and no path states a width, so the
 \ routine has no return anywhere rather than one nothing branches to - and the
@@ -152,8 +152,8 @@ private
 : BOTH-DEAD-CASE ( -- )
    s" two dead arms leave no return anywhere, and each arm is its own" T-LABEL
    MK-BOTH-DEAD
-   s" 0 ' DPC-BOTHDEAD catch nip" TEST-EVAL:N E-A-EMPTY T=
-   s" 1 ' DPC-BOTHDEAD catch nip" TEST-EVAL:N E-A-BOUNDS T= ;
+   s" 0 DPC-BOTHDEAD" TEST-EVAL:RC E-A-EMPTY T=
+   s" 1 DPC-BOTHDEAD" TEST-EVAL:RC E-A-BOUNDS T= ;
 
 \ THE SHAPE THAT READS LIKE A TAIL CALL. Its one call is the last thing the body
 \ does and the callee takes and leaves exactly what this definition does, which
@@ -209,7 +209,7 @@ private
    s" an all-dead spilling body compiles" T-LABEL
    [: SPILL-DEAD ;] 0 TTHROWSQ
    s" and its terminal trap throws the declared error" T-LABEL
-   s" 0 ' DPC-SPILLDEAD catch nip" TEST-EVAL:N E-A-EMPTY T= ;
+   s" 0 DPC-SPILLDEAD" TEST-EVAL:RC E-A-EMPTY T= ;
 public
 
 : RUN ( -- )

@@ -62,11 +62,11 @@ s" the no-return exit subject was compiled at tier 1" T-LABEL
    1 CHOOSE 1 <> if -2 throw then
    2 CHOOSE 2 <> if -2 throw then ;
 
-: CHECK-TRAP ( n n -- )
-   nip -7191 <> if -2 throw then ;
+: CHECK-TRAP ( n -- )
+   -7191 <> if -2 throw then ;
 
 CHECK-RETURNS
-3 ' CHOOSE catch CHECK-TRAP
+3 ' CHOOSE catch nip CHECK-TRAP
 
 \ The zero-trip and exhausted edges have different frame histories; the trap
 \ consumes neither. The early returning arm must still release its frame.

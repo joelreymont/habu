@@ -10,7 +10,9 @@
 \ the packet names its definition by the checker's fold: a body over two
 \ lines, a tab,
 \ runs of spaces, CR LF, comments, strings, multibyte UTF-8, a signature on its
-\ own line, a definition after others, every packet of an --all-errors run, a
+\ own line, a definition after others, a top-level refusal after a definition,
+\ which names its line alone, and one in a required file, which names that
+\ file and not the subject the run labels, every packet of an --all-errors run, a
 \ bare name a global and a used public share, called and as the target of `[']`
 \ and of `is`, a public word whose private twin moves other cells and a
 \ definition whose inferred effect is not recorded, both at the definition's
@@ -318,6 +320,49 @@ variable RC
    s" later.f" FIXTURE!
    s" " CHECK
    0 s" NOPE-LATE" 7 4 84 93 AT ;
+
+\ Packet 0 of the last run is the run stage's refusal of a top-level `!` in file
+\ PATH: the file and LINE alone, for the run file keeps each subject line on
+\ its own line but its markers shift bytes and columns, and a top step sits in
+\ no definition an origin maps.
+: TOP-AT ( ptr u8 n n -- ) {: path:ptr pathu:n line:n :}
+   GJA-LINE# @ 0 > dup TTRUE 0= IF EXIT THEN
+   0 s" code" s" E-RAW-CELL-PTR" FIELD=
+   0 s" token" s" !" FIELD=
+   0 s" file" path pathu FIELD=
+   0 GJA-LINE$ GJA-PARSE {: root:SPAN:span<u8> :}
+   root s" line" INT-FIELD line T=
+   root s" column" INT-FIELD -1 T=
+   root s" byte_start" INT-FIELD -1 T=
+   root s" byte_end" INT-FIELD -1 T= ;
+
+: TEST-TOP-LINE ( -- )
+   s" a top-level refusal after a definition names its line alone" T-LABEL
+   SB-RESET
+   s" variable V" SB-APPEND LF+
+   s" : F ( -- ) ;" SB-APPEND LF+ LF+ LF+
+   s" here V !" SB-APPEND LF+
+   s" top-line.f" FIXTURE!
+   s" " CHECK
+   FX-PATH$ 5 TOP-AT ;
+
+\ The run stage labels the subject (checker.f DIAG-FILE!), and the label names
+\ that file alone: a top-level refusal in a file the subject requires names the
+\ required file and its own line.
+: TEST-TOP-DEP ( -- )
+   s" a top-level refusal in a required file names that file" T-LABEL
+   SB-RESET
+   s" variable DV" SB-APPEND LF+
+   s" 1 drop" SB-APPEND LF+ LF+ LF+ LF+ LF+
+   s" here DV !" SB-APPEND LF+
+   s" top-dep.f" FIXTURE!
+   DEP!
+   SB-RESET
+   s" require top-dep.f" SB-APPEND LF+
+   s" : F ( -- ) ;" SB-APPEND LF+
+   s" top-subject.f" FIXTURE!
+   s" " CHECK
+   DEP-PATH$ 7 TOP-AT ;
 
 \ SHADE, which package P publishes and the global wordlist defines too, each
 \ by the line DECL, and on line 8 the body BODY of a definition under `using P`.
@@ -1460,6 +1505,8 @@ variable RC
    TEST-PAREN-EMOJI
    TEST-SIGNATURE-LINE
    TEST-LATER
+   TEST-TOP-LINE
+   TEST-TOP-DEP
    TEST-SHADOW
    TEST-TICK-SHADOW
    TEST-IS-SHADOW

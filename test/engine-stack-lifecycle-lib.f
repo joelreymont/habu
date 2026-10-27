@@ -180,14 +180,14 @@ variable ERRLEN
 \ primitive from the interpreter, so the exact slot accounting is ARM-only.
 : PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
-   s" STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
+   s" 0 set-check STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
    CHILD-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
-   s" STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r" REFUSED-RETURN
+   s" 0 set-check STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r" REFUSED-RETURN
    s" whole return transfer needs two live slots" T-LABEL
-   s" 1 data-base RSP-CELL + ! 2r>" REFUSED-RETURN
-   s" empty return-stack read" T-LABEL s" 2r>" REFUSED-RETURN ;
+   s" 0 set-check 1 data-base RSP-CELL + ! 2r>" REFUSED-RETURN
+   s" empty return-stack read" T-LABEL s" 0 set-check 2r>" REFUSED-RETURN ;
 
 \ Tier-1 linear return transfers live in the compiler's value vector. Even
 \ with only one VM return slot free, 2>r/2r> leave RSP unchanged; an unmatched

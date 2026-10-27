@@ -20,22 +20,20 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` belongs to its
   package: only that package's checked bodies call the primitive, at both
   tiers, and a checked caller anywhere else is refused by name. A checked `[']`
-  of it is admitted and refused exactly where that call is. Top-level source is
-  not checked: there `'` yields the xt and a call runs the primitive.
+  of it is admitted and refused exactly where that call is. At top level a call
+  of it is refused as in a body (`E-CAP-TRUSTED`) and `'` yields the xt.
 - Never assert that arbitrary `evaluate` preserves the stack; use typed
   quotations for known callbacks. A checked word evaluates source with
   `evaluate-closed ( ptr u8 n -- )`: the text runs on a guarded data stack of
   its own, must leave nothing and must close every definition it opens
   (measured under **Rules learned by refusal**). The loader and every
   source-generating definer evaluate through it, so a loaded file
-  (**Packages**) and a generated declaration are closed programs too. Two
-  cases stay open:
-  - A text that runs `0 set-check` leaves every later definition unchecked,
-    inside the text and after it.
-  - A text's top-level code is unchecked, so what it computes is untyped: with
-    `variable V` and `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed`
-    stores an address in V that a checked `( -- n )` word then reads as `n`.
-    Only the text's definitions are certified, each against its own signature.
+  (**Packages**) and a generated declaration are closed programs too. A text's
+  top-level code is typed as a body is: with `variable V` and
+  `S$ ( -- ptr u8 n )`, `s" S$ drop V !" evaluate-closed` is `E-RAW-CELL-PTR`
+  at `!` and throws 70 before V changes. One case stays open: a text that runs
+  `0 set-check` leaves every later definition and token unchecked, inside the
+  text and after it.
 - Existing TRUST forms are legacy awaiting removal; mentions below describe
   legacy syntax only.
 
@@ -2272,7 +2270,7 @@ sections above.
   cases are under **Checked code and primitive boundaries**.
 - **`TEST-EVAL` returns a measured value from text.** From
   `src/lib/test.f`, `TEST-EVAL:N ( ptr u8 n -- n )` takes exactly one cell,
-  `TEST-EVAL:FLAG ( ptr u8 n -- bool )` applies `0<>` to it, and
+  `TEST-EVAL:FLAG ( ptr u8 n -- bool )` exactly one flag, and
   `TEST-EVAL:RC ( ptr u8 n -- n )` returns the `evaluate-closed` throw code
   or zero. An empty N text underflows, `1 2` is `E-EVAL-RESIDUE`, `drop 1`
   underflows without touching caller cells, and an unfinished definition is

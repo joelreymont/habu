@@ -10,7 +10,7 @@
 \ for that. The driver resets the retained checker before including this file
 \ and discards the host's address rows after it. The two hook flips run with the
 \ host's top-level tracker still installed: it models `0 set-check` itself
-\ (src/core/top-row.f TR-SUSP) and asks the checker nothing for these tokens.
+\ (src/core/top-row.f TR-HOOK) and steps nothing for these tokens.
 0 set-check
 0 set-top-check
 CORE-PREFIX:FIRST-RECORD seed-ndict!

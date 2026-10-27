@@ -169,7 +169,7 @@ variable CANDIDATE-VERDICT
    s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
-   s" 9 LONG-DICTIONARY-TRUSTED . ." GE-SRC-LINE ;
+   s" check@ 0 set-check 9 LONG-DICTIONARY-TRUSTED . . set-check" GE-SRC-LINE ;
 
 : LONG-DICTIONARY ( -- )
    GE-HB-RESET
@@ -192,7 +192,8 @@ variable CANDIDATE-VERDICT
 \ another. What changed is the only lawful way to OPEN such a wordlist. A
 \ definition's package context has to be either the exact all-zero global tuple
 \ or a live namespace record whose two WIDs are the protected engine cells
-\ (src/habu/xref.f LIVE-PKG); `set-current` to a bare user wordlist is neither -
+\ (src/habu/xref.f LIVE-PKG), with current one of them (src/core/checker.f
+\ CHECKER-RESOLVE:AUTHORITY); `set-current` to a bare user wordlist is neither -
 \ the record cell is zero while get-current is not - so the definition is refused
 \ by CHECKER-PKG-CONTEXT-REJECT. A package is the shape that answers the same
 \ question lawfully, and it isolates for the stronger reason: the wordlist has an
@@ -1170,7 +1171,7 @@ variable CANDIDATE-VERDICT
    \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
    \ state check is reached: an underdepth bare call now fails closed earlier
    \ with `hb: interpret stack underdepth:` (test/underdepth-gate.f).
-   s" 0 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
+   s" NULL-PTR 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    $4C s" structure: no active structure" s" structures reject field outside begin" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" BEGIN-STRUCTURE OUTER" GE-SRC-LINE

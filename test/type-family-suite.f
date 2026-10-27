@@ -185,8 +185,9 @@ AID @ TFAM-ARITY@ 0 T=    PID @ TFAM-ARITY@ 2 T=
 \ 5. duplicate rejection within a package (throws E-TFAM-DUP).
 \    stack before catch: pkg-a pkg-u vis name-a name-u arity kind  (7 cells)
 \ ---------------------------------------------------------------------------
-s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM ' TFAM-DECL catch
-   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
+: TFC1 ( -- ) s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM TFAM-DECL drop ;
+' TFC1 catch
+   TC !  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 6. uppercase / mixed-case rejection at the declaration boundary.
@@ -205,10 +206,12 @@ s" -a"      TF-CANON? TFALSE
 s" a-"      TF-CANON? TFALSE
 s" a--b"    TF-CANON? TFALSE
 s" -"       TF-CANON? TFALSE
-s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM ' TFAM-DECL catch
-   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
-s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
-   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
+: TFC2 ( -- ) s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM TFAM-DECL drop ;
+' TFC2 catch
+   TC !  TC @ E-TFAM-CASE T=
+: TFC3 ( -- ) s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM TFAM-DECL drop ;
+' TFC3 catch
+   TC !  TC @ E-TFAM-CASE T=
 
 \ ---------------------------------------------------------------------------
 \ 7. no hidden-field ('@name') lookup from public signatures.
@@ -234,7 +237,8 @@ NP @ SCHEMA-PARAM? TTRUE    NC @ SCHEMA-CON? TTRUE       NA @ SCHEMA-APP? TTRUE
 1 SCHEMA-PARAM drop   2 SCHEMA-CON drop   3 SCHEMA-PARAM drop               \ >4 nodes -> SCH grew
 SCHEMA-N@ 7 T=                                          \ ids 1..6 created (nil is 0)
 \ malformed tag rejected (tag a b c = 4 cells before catch)
-999 0 0 0 ' SCHEMA-NEW catch   TC ! 2drop 2drop  TC @ E-SCHEMA-BAD T=
+: TFC4 ( -- ) 999 0 0 0 SCHEMA-NEW drop ;
+' TFC4 catch TC !  TC @ E-SCHEMA-BAD T=
 \ malformed paramref (negative index) rejected (1 cell before catch)
 -1 ' SCHEMA-PARAM catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 \ root pool: 5 roots > seed cap 4 -> SCH-ROOT grew
@@ -273,9 +277,12 @@ NP @ SCHEMA-ROOT+ NC @ SCHEMA-ROOT+ drop 2 SCHEMA-ROW NQMUL !
 NQMUL @ SCHEMA-ROW-COUNT@ 2 T=
 NQMUL @ 0 SCHEMA-ROW-ELEM@ NP @ T=   NQMUL @ 1 SCHEMA-ROW-ELEM@ NC @ T=
 \ malformed side = not a live SCH-ROW node: a bare type node, nil (0), or oob rejected.
-NQDIN @ NQDOUT @ NQRIN @ NP @    -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
-NQDIN @ NQDOUT @ NQRIN @ 0       -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
-NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+: TFC5 ( -- ) NQDIN @ NQDOUT @ NQRIN @ NP @    -1 SCHEMA-QUOT drop ;
+' TFC5 catch TC !  TC @ E-SCHEMA-BAD T=
+: TFC6 ( -- ) NQDIN @ NQDOUT @ NQRIN @ 0       -1 SCHEMA-QUOT drop ;
+' TFC6 catch TC !  TC @ E-SCHEMA-BAD T=
+: TFC7 ( -- ) NQDIN @ NQDOUT @ NQRIN @ 99999   -1 SCHEMA-QUOT drop ;
+' TFC7 catch TC !  TC @ E-SCHEMA-BAD T=
 
 \ SC-PTR pointer payload node: child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
@@ -301,7 +308,8 @@ AID @ s" green" 1 0 0 0 SUMV-ADD drop       \ 6 variants > seed cap 4 -> SUMV gr
 FID @ s" ok" SUMV-FIND FOUNDF !  VOK @ T=  FOUNDF @ -1 T=
 PID @ s" ok" SUMV-FIND FOUNDF ! drop  FOUNDF @ -1 T=
 FID @ s" none" SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
-FID @ s" ok" 0 0 0 0 ' SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
+: TFC8 ( -- ) FID @ s" ok" 0 0 0 0 SUMV-ADD drop ;
+' TFC8 catch TC !  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
@@ -331,28 +339,32 @@ PTID @ TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH FOUNDF ! FX @ T= FOUNDF @ -1 T=
 PTID @ TYPE-FIELD:NO-VARIANT -1 TYPE-FIELD:EACH FOUNDF ! drop FOUNDF @ 0 T=
 
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" x" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! 2drop 2drop 2drop 2drop 2drop 2drop
+: TFC9 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" x" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC9 catch TC !
 TC @ E-TFAM-DUP T=
 PFTX @ TF-FIELD:ROLLBACK
 
 \ names are reserved independently of layout, and owner/variant membership is
 \ validated before any row or interned string becomes visible.
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" make" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC10 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" make" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC10 catch TC !
 TC @ E-PF-NAME T=
 PFTX @ TF-FIELD:ROLLBACK
 
 TF-FIELD:OPEN PFTX !
-PFTX @ FID @ PF-NO-VARIANT s" absent" 1 0 1 0 4 4 PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC11 ( -- ) PFTX @ FID @ PF-NO-VARIANT s" absent" 1 0 1 0 4 4 PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC11 catch TC !
 TC @ E-PF-OWNER T=
 PFTX @ TF-FIELD:ROLLBACK
 
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ VOK @ s" wrong-owner" 1 5 1 40 CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC12 ( -- ) PFTX @ PTID @ VOK @ s" wrong-owner" 1 5 1 40 CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC12 catch TC !
 TC @ E-PF-OWNER T=
 PFTX @ TF-FIELD:ROLLBACK
 
@@ -400,7 +412,8 @@ UNAMED @ 0 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" first" T$=
 UNAMED @ 1 SUMV-PAY-FIELD FOUNDF ! PFOUT !
 FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
-UNAMED @ 2 ' SUMV-PAY-ROOT catch TC ! 2drop  TC @ E-TFAM-PAYLOAD T=
+: TFC13 ( -- ) UNAMED @ 2 SUMV-PAY-ROOT drop ;
+' TFC13 catch TC !  TC @ E-TFAM-PAYLOAD T=
 \ A nonempty field count selects named representation. Corrupt bounds reject;
 \ they never make the same family fall back to its legacy SUMV storage.
 UFAM @ TYPE-FIELD:COUNT 1 + 1 TFAM-FLD-RANGE!
@@ -423,8 +436,9 @@ FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 TF-FIELD:OPEN PFTX !
 PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 2 1 2 cells CELL CELL PF-FLAGS-NONE
    TF-FIELD:ADD PFTX !
-PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 3 1 3 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC14 ( -- ) PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 3 1 3 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC14 catch TC !
 TC @ E-TFAM-DUP T=
 PFTX @ TF-FIELD:ROLLBACK
 UNAMED @ TWX-SUMV-PAY-N 2 T=
@@ -483,21 +497,24 @@ ITERM @ T-WIDTH 7 T=
 \ PTR/QUOT shapes, APP family/arity/root/kind/visibility, and a valid APP.
 0 SCHEMA-PARAM SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" bad-param" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC15 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" bad-param" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC15 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 \ PARAM width is defined only for cell-kinded owner parameters. Layout/type
 \ parameters remain fail-closed until field-width instantiation exists.
 0 SCHEMA-PARAM SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ FID @ VOK @ s" type-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC16 ( -- ) PFTX @ FID @ VOK @ s" type-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC16 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 FID @ 0 PK-LAYOUT TFAM-PK!
 TF-FIELD:OPEN PFTX !
-PFTX @ FID @ VOK @ s" layout-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC17 ( -- ) PFTX @ FID @ VOK @ s" layout-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC17 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 FID @ 0 PK-CELL TFAM-PK!
 TF-FIELD:OPEN PFTX !
@@ -519,20 +536,23 @@ PFTX @ TF-FIELD:ROLLBACK
 
 99999 SCHEMA-CON SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" bad-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC18 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" bad-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC18 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 SCH-PTR SCHEMA-N@ 0 0 SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" bad-ptr" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC19 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" bad-ptr" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC19 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 SCH-QUOT 2 0 SCH-QUOT-ROWS SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" bad-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC20 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" bad-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC20 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 \ a SC-QUOT with a valid hasr but sides that are live nodes yet NOT SCH-ROW nodes:
@@ -542,32 +562,37 @@ NP @ SCHEMA-ROOT+ drop   NC @ SCHEMA-ROOT+ drop
 NA @ SCHEMA-ROOT+ drop   NP @ SCHEMA-ROOT+ drop
 SCH-QUOT -1 NQST @ SCH-QUOT-ROWS SCHEMA-NEW SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" nonrow-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC21 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" nonrow-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC21 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 99999 0 0 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" dead-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC22 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" dead-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC22 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 PID @ 0 1 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" arity-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC23 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" arity-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC23 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 PID @ SCHEMA-ROOT-N@ 2 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" range-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC24 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" range-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC24 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 FID @ 1 1 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" private-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC25 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" private-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC25 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 
 CC-N SCHEMA-CON SCHEMA-ROOT+ PFARG !
@@ -575,8 +600,9 @@ CC-N SCHEMA-CON SCHEMA-ROOT+ drop
 PID @ PFARG @ 2 SCHEMA-APP SCHEMA-ROOT+ PFAPP !
 PID @ 0 PK-LAYOUT TFAM-PK!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" kind-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC26 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" kind-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC26 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 PID @ 0 PK-CELL TFAM-PK!
 TF-FIELD:OPEN PFTX !
@@ -588,9 +614,10 @@ PFTX @ TF-FIELD:ROLLBACK
 \ zero. The canonical form remains accepted.
 CLID @ 1 0 SCHEMA-APP SCHEMA-ROOT+ PFBAD !
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" zero-app-start" PFBAD @
+: TFC27 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" zero-app-start" PFBAD @
    20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+   TF-FIELD:ADD drop ;
+' TFC27 catch TC !
 TC @ E-PF-SCHEMA T=  PFTX @ TF-FIELD:ROLLBACK
 CLID @ 0 0 SCHEMA-APP SCHEMA-ROOT+ PFAPP !
 TF-FIELD:OPEN PFTX !
@@ -602,43 +629,50 @@ PFTX @ TF-FIELD:ROLLBACK
 \ reject otherwise-valid rows until their field ABI validators exist.
 PTID @ TL-STACK-CELL-TAG TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC28 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC28 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 PTID @ TL-PACKED-TAG TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" packed-bad" 1 20 1 20 cells 2 cells CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC29 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" packed-bad" 1 20 1 20 cells 2 cells CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC29 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 PTID @ TL-NICHE TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" niche-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC30 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" niche-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC30 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 PTID @ TL-BOXED TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" boxed-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC31 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" boxed-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC31 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 PTID @ TL-CUSTOM TFAM-LAYOUT!
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" custom-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC32 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" custom-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC32 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 PTID @ TL-STACK-CELL-TAG TFAM-LAYOUT!
 
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" flag-bad" 1 20 1 20 cells CELL CELL 1
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC33 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" flag-bad" 1 20 1 20 cells CELL CELL 1
+   TF-FIELD:ADD drop ;
+' TFC33 catch TC !
 TC @ E-PF-FLAGS T=  PFTX @ TF-FIELD:ROLLBACK
 
 TF-FIELD:OPEN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" overlap" 1 0 1 0 CELL CELL PF-FLAGS-NONE
-   ' TF-FIELD:ADD catch TC ! T-PF-DROP
+: TFC34 ( -- ) PFTX @ PTID @ PF-NO-VARIANT s" overlap" 1 0 1 0 CELL CELL PF-FLAGS-NONE
+   TF-FIELD:ADD drop ;
+' TFC34 catch TC !
 TC @ E-PF-LAYOUT T=  PFTX @ TF-FIELD:ROLLBACK
 
 \ Nested commit remains provisional. Outer rollback restores both high-waters;
@@ -664,7 +698,8 @@ PTID @ TYPE-FIELD:NO-VARIANT s" reuse" TYPE-FIELD:FIND FOUNDF ! PFBASE @ T=  FOU
 
 \ Strict LIFO tokens reject stale/non-top commit without corrupting either frame.
 TF-FIELD:OPEN PFOUT !  TF-FIELD:OPEN PFIN !
-PFOUT @ ' TF-FIELD:CLOSE catch TC ! drop  TC @ E-PF-TX T=
+: TFC35 ( -- ) PFOUT @ TF-FIELD:CLOSE ;
+' TFC35 catch TC !  TC @ E-PF-TX T=
 PFIN @ TF-FIELD:ROLLBACK  PFOUT @ TF-FIELD:ROLLBACK
 
 \ ---------------------------------------------------------------------------
@@ -678,14 +713,15 @@ PTID @ TL-BOXED           8 8 8 LAY-ADD drop
 CLID @ TL-CUSTOM          8 8 8 LAY-ADD drop        \ 5 layouts > seed cap 4 -> LAY grew
 FID @ LAY-FIND FOUNDF !  L0 @ T=  FOUNDF @ -1 T=
 CLID @ LAY-FIND FOUNDF !  LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
-FID @ TL-STACK-CELL-TAG 8 8 8 ' LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
+: TFC36 ( -- ) FID @ TL-STACK-CELL-TAG 8 8 8 LAY-ADD drop ;
+' TFC36 catch TC !  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
 \ 12b. Constructor package names escape each hyphen in the package and family
 \ tail, join them with one hyphen, and remain spelled out through the checker's
 \ 255-byte package-name limit.
 \ ---------------------------------------------------------------------------
-variable CPA   variable CPU
+TYPED-VARIABLE CPA ptr u8   variable CPU
 \ top level: bare uppercased tail, no separator.
 s" " s" result" TF-CTOR-PKG$ s" RESULT" T$=
 \ in-package: PKG-TAIL.
@@ -719,7 +755,8 @@ CPU @ 255 T=
 CPA @ c@ char A T=
 CPA @ 253 + c@ char - T=
 CPA @ 254 + c@ char X T=
-CPKG 254 s" x" ' TF-CTOR-PKG$ catch TC ! 2drop 2drop
+: TFC37 ( -- ) CPKG 254 s" x" TF-CTOR-PKG$ 2drop ;
+' TFC37 catch TC !
 TC @ E-PACKAGE-NAME-CAP T=
 
 \ ---------------------------------------------------------------------------
@@ -782,9 +819,11 @@ variable AX  variable AY
 s" pkgx" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AX !
 s" pkgy" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AY !
 \ unqualified resolve from a third package: two publics tie -> throw
-s" pkgz" s" amb" ' TFAM-RESOLVE catch  TC ! 2drop 2drop  TC @ E-TFAM-AMBIG T=
+: TFC38 ( -- ) s" pkgz" s" amb" TFAM-RESOLVE 2drop ;
+' TFC38 catch TC !  TC @ E-TFAM-AMBIG T=
 \ bare cross-package public lookup throws on the same tie
-s" amb" ' TFAM-FIND-PUBLIC catch  TC ! 2drop  TC @ E-TFAM-AMBIG T=
+: TFC53 ( -- ) s" amb" TFAM-FIND-PUBLIC 2drop ;
+' TFC53 catch TC !  TC @ E-TFAM-AMBIG T=
 \ own-package family wins without ambiguity (each resolves to its own amb)
 s" pkgx" s" amb" TFAM-RESOLVE FOUNDF !  AX @ T=  FOUNDF @ -1 T=
 s" pkgy" s" amb" TFAM-RESOLVE FOUNDF !  AY @ T=  FOUNDF @ -1 T=
@@ -1094,7 +1133,8 @@ TFAM-RESET
 TF-FIELD:OPEN NTOK !
 NTOK @ STOK @ > TTRUE                \ token generation did not rewind across reset
 NTOK @ STOK @ = TFALSE                 \ so a completed token can never be reissued
-STOK @ ' TF-FIELD:CLOSE catch TC ! drop  TC @ E-PF-TX T=   \ stale token never aliases the new frame
+: TFC39 ( -- ) STOK @ TF-FIELD:CLOSE ;
+' TFC39 catch TC !  TC @ E-PF-TX T=   \ stale token never aliases the new frame
 NTOK @ TF-FIELD:ROLLBACK
 
 \ ---------------------------------------------------------------------------
@@ -1151,31 +1191,44 @@ package variant-name-test
 
 VALUE-RECORD variant-record payload n END-VALUE-RECORD
 
-s" " ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC40 ( -- ) s" " TYPE-NAME:VARIANT-REQUIRE ;
+' TFC40 catch TC !
 TC @ 7107 T=
-s" Bad" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC41 ( -- ) s" Bad" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC41 catch TC !
 TC @ 7101 T=
-s" n" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC42 ( -- ) s" n" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC42 catch TC !
 TC @ 7110 T=
-s" q" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC43 ( -- ) s" q" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC43 catch TC !
 TC @ 7110 T=
-s" variant-record" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC44 ( -- ) s" variant-record" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC44 catch TC !
 TC @ 7110 T=
-s" field" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC45 ( -- ) s" field" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC45 catch TC !
 TC @ 7110 T=
-s" bool" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC46 ( -- ) s" bool" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC46 catch TC !
 TC @ 7110 T=
-s" space-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC47 ( -- ) s" space-x" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC47 catch TC !
 TC @ 7110 T=
-s" fresh-mask-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC48 ( -- ) s" fresh-mask-x" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC48 catch TC !
 TC @ 7110 T=
-s" if" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC49 ( -- ) s" if" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC49 catch TC !
 TC @ 7110 T=
-s" variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC50 ( -- ) s" variant" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC50 catch TC !
 TC @ 7110 T=
-s" global-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC51 ( -- ) s" global-variant" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC51 catch TC !
 TC @ 7110 T=
-s" local-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+: TFC52 ( -- ) s" local-variant" TYPE-NAME:VARIANT-REQUIRE ;
+' TFC52 catch TC !
 TC @ 7110 T=
 s" foreign-variant" TYPE-NAME:VARIANT-REQUIRE
 s" ready" TYPE-NAME:VARIANT-REQUIRE

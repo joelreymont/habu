@@ -181,6 +181,7 @@ package PROGRAM-DIAGNOSTICS
    BADSIG-WIDE-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
+   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
    s" test/program-diagnostic-export.f" s" habu: in xpu3:" DIAGNOSTIC

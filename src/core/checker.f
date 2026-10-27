@@ -557,6 +557,12 @@ STLA-BOOT STLA-P !   MAXSTALE-INIT STL-CAP !
 
 : STALE>INNER ( n -- n ) PAY cells STLA + @ ;
 
+\ The one stale term the interpret row gives every cell beneath the cells it
+\ knows (TOP-ROW-PAD), minted per top-level load (CHECKER-TOP-LOAD) and marked in
+\ the saved row (EN-STALE EN.B), so a read of such a cell is named apart from a
+\ cell `catch` left stale (STALE-WHY).
+variable TOP-UNKNOWN
+
 \ --- unification trail: TV!/RV! record each speculative var binding here so a
 \ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
 \ of copying the whole TVT/RVT pool. Each entry packs (var-id << 4 | tag).
@@ -954,7 +960,7 @@ defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an 
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
-defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
+defer PKG-LIVE-XT ( -- ptr u8 n bool )                  \ authenticated engine open package name
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (type-family.f header)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (type-family.f header)
 defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
@@ -1011,6 +1017,8 @@ variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 defer PTX-BARRIER-SET-XT ( n -- )
 
 \ A successful scan used only for native call shapes grants no source authority.
+\ Its recovery use stands, as every check's does: the native compiler withholds
+\ the definition the scan checked for it (src/compiler/native/compiler.f RECORD).
 \ The scope and the late publication hook belong to this checker instance. The
 \ private hook is armed after NORETS is available; declaration dispatch still
 \ belongs to the retained source owner before that point.
@@ -1026,9 +1034,7 @@ DEFAULT
 public
 : ENFORCED? ( -- bool ) ABI-DEPTH @ 0 = ;
 : SCAN ( [ -- ] -- n )
-   RECOVERY-USED @ {: recovery:n :}
-   1 ABI-DEPTH +! catch -1 ABI-DEPTH +!
-   recovery RECOVERY-USED ! ;
+   1 ABI-DEPTH +! catch -1 ABI-DEPTH +! ;
 : PUBLISH ( n bool -- ) PUBLISH-XT ;
 
 \ A run may borrow failed declarations for diagnostics, never for executable
@@ -1108,8 +1114,10 @@ CK-USE-SNAP-HEADER CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 
 \ The mirror above records parser state and is rollback-aware. Every check,
 \ the verifier window's included, reads the engine's protected package
-\ record/WIDs/current target through PKG-LIVE-XT: inside the window the checker
-\ overlay drives the engine's scope (CHECKER-OVERLAY).
+\ record/WIDs through PKG-LIVE-XT, which names the open package, and the
+\ current target through CHECKER-RESOLVE:AUTHORITY, which places current in it:
+\ inside the window the checker overlay drives the engine's scope
+\ (CHECKER-OVERLAY).
 \ checker.f loads before layout.f, so the boot provider mirrors its fixed DATA
 \ offsets; xref.f replaces it with full record validation before user source.
 $78 constant CK-PKG-PUB-OFF
@@ -1144,45 +1152,30 @@ $30 constant CK-WIDN-OFF                   \ = layout.f WIDN-CELL (DATA-relative
 variable CHECKER-VERIFY-PKG-DEPTH
 0 CHECKER-VERIFY-PKG-DEPTH !
 
-: CHECKER-PKG-MIRROR ( -- ptr u8 n n bool )
+: CHECKER-PKG-MIRROR ( -- ptr u8 n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
-   mode CHECKER-PACKAGE-NONE = IF
-      CHECKER-PACKAGE-U @ 0= IF s" " mode 0 0= ELSE s" " mode 0 0= 0= THEN
-      EXIT
-   THEN
    mode CHECKER-PACKAGE-PRIVATE <>
    mode CHECKER-PACKAGE-PUBLIC <> and IF
-      s" " mode 0 0= 0= EXIT
+      s" " 0 0= 0= EXIT
    THEN
    CHECKER-PACKAGE-U @ dup 0= swap CHECKER-PACKAGE-CAP >= or IF
-      s" " mode 0 0= 0= EXIT
+      s" " 0 0= 0= EXIT
    THEN
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ mode 0 0= ;
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ 0 0= ;
 
-: CHECKER-PKG-BOOT-LIVE ( -- ptr u8 n n bool )
+\ The boot provider names the open package from the mirror: the engine's
+\ package cells only say whether one is open.
+: CHECKER-PKG-BOOT-LIVE ( -- ptr u8 n bool )
    data-base CK-PKG-REC-OFF + @ {: rec:n :}
    data-base CK-PKG-PUB-OFF + @ {: pub:n :}
    data-base CK-PKG-PRI-OFF + @ {: pri:n :}
-   get-current {: cur:n :}
-   rec 0= pub 0= and pri 0= and cur 0= and IF
-      s" " CHECKER-PACKAGE-NONE 0 0= EXIT
+   rec 0= pub 0= and pri 0= and IF
+      s" " 0 0= EXIT
    THEN
    rec 0= pub 0= or pri 0= or pub pri = or IF
-      s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT
+      s" " 0 0= 0= EXIT
    THEN
-   cur pub = IF
-      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC <> IF
-         s" " CHECKER-PACKAGE-PUBLIC 0 0= 0= EXIT
-      THEN
-      CHECKER-PKG-MIRROR EXIT
-   THEN
-   cur pri = IF
-      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PRIVATE <> IF
-         s" " CHECKER-PACKAGE-PRIVATE 0 0= 0= EXIT
-      THEN
-      CHECKER-PKG-MIRROR EXIT
-   THEN
-   s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
+   CHECKER-PKG-MIRROR ;
 
 : CHECKER-PKG-LIVE-DEFAULT ( -- )
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
@@ -1248,16 +1241,36 @@ $27F8 constant CHECKER-REFUSAL-CELL
 \ AUTHORITY's bool says whether the engine's package record names a package
 \ context: the code is compiled where the engine says it is, and a replay's
 \ package words drive that record through the checker overlay
-\ (CHECKER-OVERLAY). CHECKER-PKG-CONTEXT is the refusing form. src/habu/xref.f
-\ retires AUTHORITY with the other package-context words.
+\ (CHECKER-OVERLAY). PKG-LIVE-XT authenticates the record and names the open
+\ package, the empty name at top level; current then selects the mode, and a
+\ current that is none of the open scope's wordlists is no context. The record
+\ PKG-LIVE-XT accepted holds the package cells' WIDs, so comparing current with
+\ the cells compares it with the record. CHECKER-PKG-CONTEXT is the refusing
+\ form. src/habu/xref.f retires AUTHORITY with the other package-context words.
 package CHECKER-RESOLVE
 public
 : AUTHORITY ( -- ptr u8 n n bool )
-   PKG-LIVE-XT ;
+   PKG-LIVE-XT {: a:ptr u:n ok:bool :}
+   ok 0= IF s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT THEN
+   get-current {: cur:n :}
+   u 0= IF s" " CHECKER-PACKAGE-NONE cur 0= EXIT THEN
+   cur data-base CK-PKG-PUB-OFF + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
+   cur data-base CK-PKG-PRI-OFF + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
+   s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
 ;package
 
+\ A top-level step (CHECKER-TOP-WORD and its kin) is on: the interpret row applies
+\ the type and storage rules a body does, but none a body's own authority
+\ decides. Trusted-only rows apply there, since only a body is refused them, and
+\ a missing package context refuses no top-level name.
+variable TOP-STEP
+
+\ Outside a package context a top step names no package: every name binds as the
+\ engine's top-level find selects it.
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
-   CHECKER-RESOLVE:AUTHORITY 0= IF CHECKER-PKG-CONTEXT-REJECT THEN ;
+   CHECKER-RESOLVE:AUTHORITY IF EXIT THEN
+   TOP-STEP @ 0= IF CHECKER-PKG-CONTEXT-REJECT THEN
+   2drop drop s" " CHECKER-PACKAGE-NONE ;
 
 : CHECKER-AUTH-PACKAGE$ ( -- ptr u8 n )
    CHECKER-PKG-CONTEXT drop ;
@@ -1387,6 +1400,7 @@ NULL-PTR SPA-P !   0 SPA-CAP !
 : P>LOST PAY 4 * cells SPA + 24 + @ ;
 : P-PROOF! PAY 4 * cells SPA + 16 + ! ;
 : P-LOST! PAY 4 * cells SPA + 24 + ! ;
+: P-REST! ( n n -- ) PAY 4 * cells SPA + 8 + ! ;   \ rest node: a fresh push built top-down
 
 : P-COPY ( n n -- n ) {: source:n rest:n :}
    source P>TYPE rest MK-PUSH {: node:n :}
@@ -2268,7 +2282,7 @@ defer FO-INPUT-XT ( n -- bool )
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
 \ bindings acyclic) whose type nesting is small — hundreds at most. A walk that
-\ recurses along a stack row (E-COPY*) descends one level per entry as well,
+\ recurses along a stack row (CK-GRAPH-NODE?) descends one level per entry as well,
 \ and a recorded effect is at most EFFECT-DEPTH-MAX levels deep, so a real walk
 \ stays below TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
 \ descends without bound; the guard trips far below the native stack limit and
@@ -2281,9 +2295,9 @@ $2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native s
 
 \ THE DEEPEST EFFECT A RECORD HOLDS: 4096 levels as TERM-DEPTH counts them, a
 \ row of 4096 plain entries. Recording an effect (E-COPY*) and instantiating it
-\ for a caller (E-INST-FROM) recurse once per level, on the walk's depth budget
-\ and on the 8192-cell data and return stacks (src/habu/stack-abi.f), and
-\ E-INST-FROM holds a data cell for each entry it is down a row. A definition
+\ for a caller (E-INST-FROM) loop along a row and recurse only into a type's
+\ nesting, but walks over a recorded effect such as UIX-NODE-ADD recurse once
+\ per level, on the 8192-cell data and return stacks (src/habu/stack-abi.f). A definition
 \ whose effect is deeper is uncheckable, by name (CHECK-DEPTH-FITS), a stored
 \ signature that deep is refused as a bad one (USIG-ADD-AS), and half of each
 \ bound is left for what the stacks already hold: a definition leaving 10000
@@ -2870,7 +2884,7 @@ variable RAW-EXEC-HIT
 \ A `stale<t>` met a type this token's unify demanded, so the token READ a cell a
 \ caught throw may have overwritten. Latched the same way and named the same way
 \ (CELL-DIAG!), because the answer is also a rule and not a shape mismatch: the
-\ cell has no type left to read.
+\ cell has no type left to read. It holds the stale term read, 0 for none.
 variable STALE-HIT
 
 \ `xt!` IS THE SANCTIONED CODE-CELL MINT, and it is exempt from FENCE-EXEC for
@@ -2931,10 +2945,11 @@ variable XT-DECL
    FENCE-OK ;                                         \ other atoms have no code-cell provenance
 
 : RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var RAW)
-   T-RES TVK-RAW FENCE-WHY
+   T-RES {: t:n :}
+   t TVK-RAW FENCE-WHY
    dup FENCE-PTR  = IF -1 RAW-PTR-HIT ! THEN          \ ptr: a raw cell is never an address
    dup FENCE-EXEC = IF -1 RAW-EXEC-HIT ! THEN         \ quotation: nor a code cell
-   dup FENCE-STALE = IF -1 STALE-HIT ! THEN
+   dup FENCE-STALE = IF t STALE-HIT ! THEN
    0= ;
 
 \ Neither base address addresses a declared element, so nothing READ through one
@@ -2979,7 +2994,7 @@ variable XT-DECL
    t kind FENCE-WHY
    dup FENCE-OK   = IF drop RES-FALSE EXIT THEN
    dup FENCE-EXEC = IF drop -1 RAW-EXEC-HIT ! RES-TRUE EXIT THEN
-   dup FENCE-STALE = IF drop -1 STALE-HIT ! RES-TRUE EXIT THEN
+   dup FENCE-STALE = IF drop t STALE-HIT ! RES-TRUE EXIT THEN
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
@@ -3049,7 +3064,7 @@ variable XT-DECL
    vid TVK@ TVK-CELL = IF
       term T-RES dup ISVAR IF PAY TVK-CELL TVK-RAISE-TO RES-FALSE EXIT THEN
       \ A generic ! or atomic! still reads its one-cell value.
-      dup TAG T-STALE = IF drop -1 STALE-HIT ! RES-TRUE EXIT THEN
+      dup TAG T-STALE = IF STALE-HIT ! RES-TRUE EXIT THEN
       T-WIDTH 1 <> EXIT
    THEN
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN        \ the definer's own introduction form
@@ -3202,8 +3217,10 @@ variable FORALL-INPUT-ROOT
 \ join, where the two lost types have to agree. Nothing else: reaching this last
 \ arm with a stale on either side is a READ of the cell, and it is named rather
 \ than reported as a shape mismatch.
-: STALE-NOTE ( n n -- n n )
-   2dup TAG T-STALE =  swap TAG T-STALE =  or IF -1 STALE-HIT ! THEN ;
+: STALE-NOTE ( n n -- n n ) {: a:n b:n :}
+   a TAG T-STALE = IF a STALE-HIT ! ELSE
+   b TAG T-STALE = IF b STALE-HIT ! THEN THEN
+   a b ;
 
 : FORALL-CEILING-PAIR ( n n -- ) {: got:n want:n :}
    got want PAIR-STRICT ;
@@ -3380,16 +3397,17 @@ variable FV
    FV @ dup 1 + FV ! ;
 
 \ Every var id comes from FRESH, so only cells 0..FV-1 can be bound since
-\ the previous reset. Allocation initializes the cold pool; TRIAL-REST clears
-\ its own FV delta.
-: TV-RESET
-   0 BEGIN dup FV @ < WHILE
+\ the previous reset. Allocation initializes the cold pool; TRIAL-REST and a
+\ top step (TOP-RELEASE) clear their own FV delta.
+: TV-CLEAR-FROM ( n -- )
+   BEGIN dup FV @ < WHILE
      dup cells TVT + 0 swap !
      dup cells RVT + 0 swap !
      dup cells TVK + 0 swap !
      dup cells NSCOPE + 0 swap !
      1 +
    REPEAT drop ;
+: TV-RESET ( -- ) 0 TV-CLEAR-FROM ;
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 \ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
@@ -3403,15 +3421,21 @@ variable INHSET
 variable XROW  variable XRROW  variable XSET  variable XFACT  variable DEADP
 variable DEADERR  PTR-VARIABLE DEADTA  variable DEADTU
 
-: NEW ( -- )
+\ A fresh check's walk state over the term pools as they stand. NEW resets the
+\ pools and id counters first; a top step runs NEW-WALK alone (TOP-GUEST).
+: NEW-WALK ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
-   -1 OK ! 0 UNCK ! 0 SPN ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !  0 STLN !
+   -1 OK ! 0 UNCK ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
-   RIGID-RESET
-   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
+
+: NEW ( -- )
+   TV-RESET 0 FV ! 0 SPN ! 0 QEN ! 0 PTRN !  0 STLN !
+   RIGID-RESET
+   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
+   NEW-WALK ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
 \ ADT variant capture (docs/forth.md "Structures And Enums"): the sum-variant/tag
@@ -3640,6 +3664,13 @@ variable LTC-P
 37 constant MD-C2-ESCAPE     \ a C2 owner or loan survived its scope boundary
 38 constant MD-EFFECT-DEPTH  \ an effect deeper than EFFECT-DEPTH-MAX levels (CHECK-DEPTH-FITS)
 39 constant MD-INPUT-WIDTH   \ an input row wider than EFFECT-MIN-IN-MAX cells (CHECK-DEPTH-FITS)
+40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
+
+\ The reason a read of the stale term t raises: a cell beneath the interpret row's
+\ known cells is unknown, not left stale by a `catch`.
+: STALE-WHY ( n -- n )
+   T-RES TOP-UNKNOWN @ =  TOP-STEP @ 0 <>  and IF MD-TOP-UNKNOWN EXIT THEN
+   MD-STALE-READ ;
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -3688,7 +3719,7 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
 : CELL-DIAG! ( -- )
    SCOPE-HIT @ 1 = IF MD-SCOPE-STORE MDIAG! THEN
    SCOPE-HIT @ 2 = IF MD-SCOPE-KIND MDIAG! THEN
-   STALE-HIT @ IF MD-STALE-READ MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
+   STALE-HIT @ 0 <> IF STALE-HIT @ STALE-WHY MDIAG! THEN    \ a cell with no type left to read answers before any rule about which type it is
    RAW-EXEC-HIT @ IF MD-RAW-EXEC MDIAG! THEN   \ the executable value first: it is the one rule that names a base and a raw cell alike
    RAW-PTR-HIT @ IF MD-RAW-PTR MDIAG! THEN
    BASE-PTR-HIT @ TVK-NULL  = IF MD-NULL-PTR  MDIAG! THEN   \ the base-address refusals name themselves the same way (BASE-BLOCK?),
@@ -7622,6 +7653,7 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 7 constant EN-PARAM
 8 constant EN-FORALL
 9 constant EN-BVAR
+10 constant EN-STALE                \ interpret-row buffers only (CHECKER-TOP-SAVE)
 
 \ Bindings retain identity, authority and chronology; immutable contents share.
 \ NEXT is a positive record-relative cell span; zero is unfinished/terminator.
@@ -7746,8 +7778,41 @@ variable FEP-OFF
 variable CHECKER-REC-SYM
 0 CHECKER-REC-SYM !
 
-variable EC-TV-HW
-variable EC-RV-HW
+\ The written span of EC-TV / EC-RV is [LW, HW); HW 0 means none is written.
+\ The low mark matters for the interpret row: a top step mints variable ids
+\ from the last definition's FV mark, which can sit far above 0.
+variable EC-TV-HW   variable EC-TV-LW
+variable EC-RV-HW   variable EC-RV-LW
+
+\ The interpret row (CHECKER-TOP-SAVE / CHECKER-TOP-LOAD) is copied by the same
+\ node copier as stored effects, but into two process-owned buffers instead of
+\ USIGS, while TOP-COPYING is set. A save writes the write buffer from terms
+\ whose atom and family names still borrow the read buffer, then the two swap.
+\ Capacities are in cells (ARENA-ROWS-ENSURE rows of one cell). A literal
+\ event appends to the read buffer at TOP-READ-END; TOP-ROW-CELLS is the saved
+\ row's cell count, 0 when TOP-ROW-OFF is (CHECKER-TOP-PUSH). TOP-RROW-OFF is the
+\ saved return row, copied beside the data row under the same maps; 0 is none.
+PTR-VARIABLE TOP-READ-P   variable TOP-READ-CAP
+PTR-VARIABLE TOP-WRITE-P  variable TOP-WRITE-CAP
+variable TOP-WRITE-END    variable TOP-ROW-OFF
+variable TOP-READ-END     variable TOP-ROW-CELLS
+variable TOP-RROW-OFF
+variable TOP-ROW-TV       variable TOP-ROW-RV
+variable TOP-COPYING      variable TOP-SCOPE-SEEN
+NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP !
+0 TOP-WRITE-END !  0 TOP-ROW-OFF !  0 TOP-READ-END !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF !
+0 TOP-COPYING !  0 TOP-SCOPE-SEEN !
+
+: E-WBASE ( -- ptr u8 )
+   TOP-COPYING @ IF TOP-WRITE-P @ BYTE-VIEW ELSE USIGS THEN ;
+: E-WEND@ ( -- n ) TOP-COPYING @ IF TOP-WRITE-END @ ELSE UEND @ THEN ;
+: E-WEND! ( n -- ) TOP-COPYING @ IF TOP-WRITE-END ! ELSE UEND ! THEN ;
+: E-WENSURE ( n -- ) {: need:n :}
+   TOP-COPYING @ IF
+      TOP-WRITE-P TOP-WRITE-CAP need CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE
+   ELSE need USIGS-ENSURE THEN ;
+: E-WOFF ( ptr u8 -- n ) E-WBASE - ;
+: E-WPTR ( n -- ptr u8 ) E-WBASE + ;
 
 : E-MAP-CLEAR ( ptr n n -- ) {: p:ptr hw:n :}
    0 begin dup hw < while
@@ -7756,16 +7821,16 @@ variable EC-RV-HW
    repeat drop ;
 
 \ Allocation establishes zero maps; E-COPY-MAPS-RESET clears the dirty span.
-0 EC-TV-HW !   0 EC-RV-HW !
+0 EC-TV-HW !   0 EC-RV-HW !   0 EC-TV-LW !   0 EC-RV-LW !
 \ EI-AK is the same shape and needs the same init: a high-water reset restores
 \ only what was written, so every cell above the mark has to be UNBOUND already.
 EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 
 : E-COPY-MAPS-RESET ( -- )
-   EC-TV 0 EC-TV-HW @ ARENA-CELLS-ZERO
-   EC-RV 0 EC-RV-HW @ ARENA-CELLS-ZERO
-   0 EC-TV-HW !
-   0 EC-RV-HW !
+   EC-TV EC-TV-LW @ EC-TV-HW @ ARENA-CELLS-ZERO
+   EC-RV EC-RV-LW @ EC-RV-HW @ ARENA-CELLS-ZERO
+   0 EC-TV-HW !   0 EC-TV-LW !
+   0 EC-RV-HW !   0 EC-RV-LW !
    0 EC-TVN !
    0 EC-RVN !
    0 EC-AKN ! ;
@@ -7781,6 +7846,7 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    id cells EC-TV + dup @ 0= if
       EC-TVN @ 1+ over !
       EC-TVN @ 1+ EC-TVN !
+      EC-TV-HW @ IF id EC-TV-LW @ min ELSE id THEN EC-TV-LW !
       id 1+ EC-TV-HW @ max EC-TV-HW !
    then @ 1- ;
 
@@ -7788,6 +7854,7 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    id cells EC-RV + dup @ 0= if
       EC-RVN @ 1+ over !
       EC-RVN @ 1+ EC-RVN !
+      EC-RV-HW @ IF id EC-RV-LW @ min ELSE id THEN EC-RV-LW !
       id 1+ EC-RV-HW @ max EC-RV-HW !
    then @ 1- ;
 
@@ -7818,7 +7885,7 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    cells rec E-OFF + ;
 
 : E-ENSURE-NODE ( -- )
-   UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
+   E-WEND@ EFF-NODE + CELL + E-WENSURE ;
 
 : E-NODE-INIT ( n ptr u8 -- ) {: tag:n p :}
    tag p EN.TAG !
@@ -7827,28 +7894,28 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 
 : E-NODE-NEW ( n -- ptr u8 ) {: tag:n :}
    E-ENSURE-NODE
-   USIGS UEND @ + {: p:ptr :}
+   E-WBASE E-WEND@ + {: p:ptr :}
    tag p E-NODE-INIT
-   UEND @ EFF-NODE + UEND !
+   E-WEND@ EFF-NODE + E-WEND!
    p ;
 
 : E-NODE-OFF ( n -- n )
-   E-NODE-NEW E-OFF ;
+   E-NODE-NEW E-WOFF ;
 
 \ E-ARGS-RESERVE ( n -- n ) : reserve a contiguous argc-cell run in USIGS
 \ for a persisted EN-PARAM node's arg offsets (uncapped arity). The run is a byte
 \ offset (E-OFF-relative), stable across USIGS relocation. Children copied after
 \ the reserve allocate past this run, so their offsets never overlap it.
 : E-ARGS-RESERVE ( n -- n ) {: argc:n :}
-   UEND @ argc cells + CELL + USIGS-ENSURE
-   UEND @ dup argc cells + UEND ! ;
+   E-WEND@ argc cells + CELL + E-WENSURE
+   E-WEND@ dup argc cells + E-WEND! ;
 
 : E-COPY-STR ( ptr u8 n ptr u8 -- ) {: a:ptr u:n p:ptr :}
-   UEND @ p EN.A !
+   E-WEND@ p EN.A !
    u p EN.B !
-   UEND @ u + UALIGN CELL + USIGS-ENSURE
-   a USIGS UEND @ + u ARENA-COPY
-   UEND @ u + UALIGN UEND ! ;
+   E-WEND@ u + UALIGN CELL + E-WENSURE
+   a E-WBASE E-WEND@ + u ARENA-COPY
+   E-WEND@ u + UALIGN E-WEND! ;
 
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
@@ -8288,6 +8355,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 \ record index, and this rewind happens mid-record, before the record being built
 \ has an ER.NEXT for a chain walk to follow.
 : E-INTERN ( n -- n ) {: noff:n :}
+   TOP-COPYING @ IF noff EXIT THEN     \ the interpret row is scratch, never interned
    noff 0= IF 0 EXIT THEN
    noff E-KEY-N 0= IF noff EXIT THEN
    UIX-EXACT
@@ -8305,95 +8373,127 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
    x 0= if 0 exit then
    x E-RES TAG case
       T-CON of
-         EN-CON E-NODE-NEW E-OFF >r
-         x E-RES PAY r@ E-PTR EN.A !
+         EN-CON E-NODE-NEW E-WOFF >r
+         x E-RES PAY r@ E-WPTR EN.A !
          r>
       endof
       T-VAR of
-         EN-VAR E-NODE-NEW E-OFF >r
-         x E-RES PAY E-TV-ID r@ E-PTR EN.A !
-         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind for freshening + snapshot
-         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-PTR EN.C !
+         EN-VAR E-NODE-NEW E-WOFF >r
+         x E-RES PAY E-TV-ID r@ E-WPTR EN.A !
+         x E-RES PAY TVK@ r@ E-WPTR EN.B !   \ persist the var kind for freshening + snapshot
+         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-WPTR EN.C !
          r>
       endof
       S-ROW of
-         EN-ROW E-NODE-NEW E-OFF >r
-         x E-RES PAY E-RV-ID r@ E-PTR EN.A !
-         x E-RES PAY E-ROW-KIND r@ E-PTR EN.B !
-         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-PTR EN.C !
+         EN-ROW E-NODE-NEW E-WOFF >r
+         x E-RES PAY E-RV-ID r@ E-WPTR EN.A !
+         x E-RES PAY E-ROW-KIND r@ E-WPTR EN.B !
+         x E-RES PAY NSCOPE@ Q-FLAG>N r@ E-WPTR EN.C !
          r>
       endof
       T-PTR of
-         EN-PTR E-NODE-NEW E-OFF >r
-         x E-RES PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         EN-PTR E-NODE-NEW E-WOFF >r
+         x E-RES PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
          r>
       endof
       S-PUSH of
-         EN-PUSH E-NODE-NEW E-OFF >r
-         x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
-         x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
-         \ This cell's PHYSICAL WIDTH, asked of ROW-TERM-CELLS while the live term
-         \ is still in hand — the same authority ROW-CELLS asks for E-MINI@, at the
-         \ same moment, so the two can never drift. The stored graph cannot answer
-         \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
-         \ family registry's schemas), and the copy keeps a term's identity, not
-         \ its layout registry. A portable graph therefore carries that registry
-         \ and revalidates the claim before publication. Held as width+1 so ZERO
-         \ means "this node was written by something that did not know the question", which is what a
-         \ snapshot taken before this field existed restores (EN.E on a param node
-         \ carries the same pre-3a story). Readers fail closed on it.
-         x E-RES P>TYPE ROW-TERM-CELLS 1 + r@ E-PTR EN.C !
+         \ A row's spine is a loop, so its length costs no depth: only each
+         \ cell's type recurses. Until the tail is copied, a node's EN.B links
+         \ back to the node above it; the walk back then links each node to the
+         \ copy below it and interns the nodes deepest first, the order nested
+         \ copies would, so the store holds the same bytes.
+         0 x E-RES                                   \ ( back cur )
+         BEGIN
+            EN-PUSH E-NODE-NEW E-WOFF >r
+            TOP-SCOPE-SEEN @  0 TOP-SCOPE-SEEN !     \ ( back cur outer ) a scope seen in this cell's type
+            over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
+            TOP-SCOPE-SEEN @ IF                      \ only while TOP-COPYING: the cell is lost
+               EN-STALE E-NODE-OFF r@ E-WPTR EN.A !  -1 r@ E-WPTR EN.D !
+            ELSE TOP-COPYING @ IF over P>LOST r@ E-WPTR EN.D ! THEN THEN
+            TOP-SCOPE-SEEN @ or TOP-SCOPE-SEEN !     \ ( back cur )
+            \ This cell's PHYSICAL WIDTH, asked of ROW-TERM-CELLS while the live term
+            \ is still in hand — the same authority ROW-CELLS asks for E-MINI@, at the
+            \ same moment, so the two can never drift. The stored graph cannot answer
+            \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
+            \ family registry's schemas), and the copy keeps a term's identity, not
+            \ its layout registry. A portable graph therefore carries that registry
+            \ and revalidates the claim before publication. Held as width+1 so ZERO
+            \ means "this node was written by something that did not know the question", which is what a
+            \ snapshot taken before this field existed restores (EN.E on a param node
+            \ carries the same pre-3a story). Readers fail closed on it.
+            dup P>TYPE ROW-TERM-CELLS 1 + r@ E-WPTR EN.C !
+            swap r@ E-WPTR EN.B !                    \ ( cur )
+            P>REST R-RES r> swap                     \ ( off rest )
+            dup TAG S-PUSH =
+         WHILE REPEAT
+         TWALK-DEEPER RECURSE TWALK-SHALLOWER swap   \ ( below off )
+         BEGIN
+            dup E-WPTR EN.B @ rot rot                \ ( back below off )
+            tuck E-WPTR EN.B !                       \ ( back off )
+            over 0 <>
+         WHILE E-INTERN swap REPEAT
+         nip                                         \ the arm's own node: E-INTERN below finishes it
+      endof
+      T-STALE of
+         TOP-COPYING @ 0= IF s" checker: stale type in stored effect" 76 die THEN
+         EN-STALE E-NODE-NEW E-WOFF >r
+         x E-RES STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
+         x E-RES TOP-UNKNOWN @ = IF -1 r@ E-WPTR EN.B ! THEN   \ a cell beneath the known ones
          r>
       endof
-      T-STALE of s" checker: stale type in stored effect" 76 die endof
       T-QUOT of
-         EN-QUOT E-NODE-NEW E-OFF >r
-         x E-RES Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
-         x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
-         x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
-         x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
-         x E-RES Q>XHAS Q-FLAG>N r@ E-PTR EN.E !
-         x E-RES Q>XDEAD Q-FLAG>N r@ E-PTR EN.F !
-         x E-RES Q>XDFIELD r@ E-PTR EN.G !
-         x E-RES Q>XRFIELD r@ E-PTR EN.H !
+         EN-QUOT E-NODE-NEW E-WOFF >r
+         x E-RES Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
+         x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.B !
+         x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
+         x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.D !
+         x E-RES Q>XHAS Q-FLAG>N r@ E-WPTR EN.E !
+         x E-RES Q>XDEAD Q-FLAG>N r@ E-WPTR EN.F !
+         x E-RES Q>XDFIELD r@ E-WPTR EN.G !
+         x E-RES Q>XRFIELD r@ E-WPTR EN.H !
          r>
       endof
       T-FORALL of
-         EN-FORALL E-NODE-NEW E-OFF >r
-         x E-RES F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
-         x E-RES F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
-         x E-RES F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
-         x E-RES F>DOMAIN r@ E-PTR EN.D !
+         EN-FORALL E-NODE-NEW E-WOFF >r
+         x E-RES F>BODY TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.A !
+         x E-RES F>PARENT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.B !
+         x E-RES F>SECOND TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-WPTR EN.C !
+         x E-RES F>DOMAIN r@ E-WPTR EN.D !
          r>
       endof
       T-BVAR of
-         EN-BVAR E-NODE-NEW E-OFF >r
-         x E-RES PAY r@ E-PTR EN.A !
+         EN-BVAR E-NODE-NEW E-WOFF >r
+         x E-RES PAY r@ E-WPTR EN.A !
          r>
       endof
-      T-SCOPE of s" checker: live scope in stored effect" 76 die endof
+      T-SCOPE of
+         \ A live scope cannot outlive its event: the enclosing interpret-row
+         \ cell is saved as a lost stale cell (the S-PUSH arm above).
+         TOP-COPYING @ 0= IF s" checker: live scope in stored effect" 76 die THEN
+         -1 TOP-SCOPE-SEEN !  EN-STALE E-NODE-OFF
+      endof
       T-ATOM of
-         EN-ATOM E-NODE-NEW E-OFF >r
-         x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
-         x E-RES E-AK-SLOT r@ E-PTR EN.C !
+         EN-ATOM E-NODE-NEW E-WOFF >r
+         x E-RES ATOM>A x E-RES ATOM>U r@ E-WPTR E-COPY-STR
+         x E-RES E-AK-SLOT r@ E-WPTR EN.C !
          r>
       endof
       T-PARAM of
-         EN-PARAM E-NODE-NEW E-OFF {: noff:n :}      \ node offset (stable across USIGS grow)
+         EN-PARAM E-NODE-NEW E-WOFF {: noff:n :}      \ node offset (stable across USIGS grow)
          \ The resolved family owns the stored spelling. Source qualifications
          \ are aliases of that identity: retaining CBIND:binding here while
          \ unit export writes binding makes warm replay append duplicate nodes.
-         x E-RES PARAM>FAM REG-EXT-AOT-FAMILY-NAME-XT noff E-PTR E-COPY-STR
+         x E-RES PARAM>FAM REG-EXT-AOT-FAMILY-NAME-XT noff E-WPTR E-COPY-STR
          x E-RES PARAM>ARGC {: argc:n :}
-         argc noff E-PTR EN.C !
-         x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
-         x E-RES PARAM>HID noff E-PTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
+         argc noff E-WPTR EN.C !
+         x E-RES PARAM>FAM noff E-WPTR EN.H !         \ resolved family-id (identity)
+         x E-RES PARAM>HID noff E-WPTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
          argc 0 > IF
             argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
-            run noff E-PTR EN.D !
+            run noff E-WPTR EN.D !
             0 BEGIN dup argc < WHILE                 \ data-stack index (RECURSE-safe)
                x E-RES over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
-               over cells run + E-PTR CELL-VIEW !                                     \ ( i )
+               over cells run + E-WPTR CELL-VIEW !                                     \ ( i )
                1 +
             REPEAT drop
          THEN
@@ -8404,13 +8504,14 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
    E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
-\ TERM-DEPTH ( n -- n ) : how many levels deep E-COPY* goes in term t, the
-\ count EFFECT-DEPTH-MAX bounds. It goes down a level into an entry's type and
-\ the rest of its row, a quotation's rows, a pointer's target, a binder's parts
-\ and a family's arguments, so a row of k plain entries is k levels deep and a
-\ quotation's row starts below the entry holding it. A row is a loop here and
-\ only nesting recurses. Past EFFECT-DEPTH-MAX the walk goes no further down, so
-\ it recurses at most that deep, but a row it entered is counted to its end.
+\ TERM-DEPTH ( n -- n ) : how many levels deep a recursive walk of a recorded
+\ term t (UIX-NODE-ADD) goes, the count EFFECT-DEPTH-MAX bounds. It goes down a
+\ level into an entry's type and the rest of its row, a quotation's rows, a
+\ pointer's target, a binder's parts and a family's arguments, so a row of k
+\ plain entries is k levels deep and a quotation's row starts below the entry
+\ holding it. A row is a loop here and only nesting recurses. Past
+\ EFFECT-DEPTH-MAX the walk goes no further down, so it recurses at most that
+\ deep, but a row it entered is counted to its end.
 variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
 
 : TERM-DEPTH* ( n n -- )
@@ -9876,12 +9977,17 @@ defer E-I-FOREIGN-CON ( n -- n )
 variable UNIT-INST-ON   0 UNIT-INST-ON !
 defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
 
+\ Whether the node at off in pool is a stack row entry; 0 is none.
+: E-INST-PUSH? ( n ptr u8 -- bool ) {: off:n pool:ptr :}
+   off 0= IF RES-FALSE EXIT THEN
+   pool off + EN.TAG @ EN-PUSH = ;
+
 : E-INST-FROM ( n ptr u8 -- n ) {: off:n pool:ptr :}
    off 0= if 0 exit then
    pool off + >r
    r@ EN.TAG @ case
       EN-CON of
-         pool USIGS <> IF
+         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and IF
             UNIT-INST-ON @ IF r@ pool E-I-UNIT-CON ELSE r@ EN.A @ E-I-FOREIGN-CON THEN
          ELSE r@ EN.A @ THEN MK-CON r> drop
       endof
@@ -9906,7 +10012,28 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
          r> drop
       endof
       EN-PTR of r@ EN.A @ pool RECURSE MK-PTR r> drop endof
-      EN-PUSH of r@ EN.A @ pool RECURSE r@ EN.B @ pool RECURSE MK-PUSH r> drop endof
+      EN-PUSH of
+         \ A row's spine is a loop, so its length costs no depth: each entry is
+         \ made with no rest, its type instantiated first as nested calls would,
+         \ and the entry above it is linked to it.
+         r@ EN.A @ pool RECURSE 0 MK-PUSH                  \ ( head )
+         pool TOP-READ-P @ BYTE-VIEW = IF r@ EN.D @ over P-LOST! THEN
+         dup r> EN.B @                                     \ ( head last next )
+         BEGIN dup pool E-INST-PUSH? WHILE
+            pool swap + >r
+            r@ EN.A @ pool RECURSE 0 MK-PUSH               \ ( head last p )
+            pool TOP-READ-P @ BYTE-VIEW = IF r@ EN.D @ over P-LOST! THEN
+            tuck swap P-REST!                              \ ( head p )
+            r> EN.B @                                      \ ( head p next )
+         REPEAT
+         pool RECURSE swap P-REST!                         \ ( head )
+      endof
+      EN-STALE of                                 \ EN.A 0: a cell lost to a live scope; EN.B: TOP-UNKNOWN
+         pool TOP-READ-P @ BYTE-VIEW <> IF s" checker: stale type outside interpret row" 76 die THEN
+         r@ EN.B @ 0 <> IF TOP-UNKNOWN @ ELSE
+            r@ EN.A @ dup 0= IF drop CC-N MK-CON ELSE pool RECURSE THEN MK-STALE
+         THEN r> drop
+      endof
       EN-QUOT of
          r@ EN.A @ pool RECURSE
          r@ EN.B @ pool RECURSE
@@ -9923,13 +10050,13 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       endof
       EN-BVAR of r@ EN.A @ MK-BVAR r> drop endof
       EN-ATOM of
-         pool USIGS <> UNIT-INST-ON @ 0= and
+         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
          if s" checker: unsupported transferred atom" 76 die then
          r@ pool E-I-STR r@ EN.C @
-         pool USIGS = IF E-I-AK THEN
+         pool USIGS = pool TOP-READ-P @ BYTE-VIEW = or IF E-I-AK THEN
          MK-ATOM-K r> drop endof
       EN-PARAM of
-         pool USIGS <> UNIT-INST-ON @ 0= and
+         pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
          if s" checker: unsupported transferred family" 76 die then
          r@ {: np:ptr :}                           \ node ptr (parked value)
          np EN.C @ {: argc:n :}
@@ -11751,7 +11878,7 @@ package CHECKER-RESYNC
 public
 : MIRROR ( -- )
    SLOTS
-   PKG-LIVE-XT {: a:ptr u:n mode:n ok:bool :}
+   CHECKER-RESOLVE:AUTHORITY {: a:ptr u:n mode:n ok:bool :}
    ok 0=  data-base CK-PKG-PUB-OFF + @ 0 <>  and IF EXIT THEN
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF
       CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
@@ -12496,7 +12623,7 @@ package CHECKER-REG
 \ follows, so it cannot drift off the word it is about.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
-   PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN 2drop drop
+   CHECKER-RESOLVE:AUTHORITY 0= IF E-PKG-CONTEXT throw THEN 2drop drop
    RES-FALSE -1 CHECKER-OVERLAY:OPEN-SCOPE
    1 CHECKER-VERIFY-PKG-DEPTH !
    PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
@@ -12766,10 +12893,13 @@ public
 \ scope is its symbol (CK-PENDING-SYM), ahead of the lookup, whose answer is the
 \ word it is about to shadow. The window is a fact the stores state, not a flag
 \ anyone clears: the dictionary count has not moved since the record (`ndict@`),
-\ and the record is still its symbol's newest one. A recovery record cannot open
-\ this window because the native compiler abandons its definition instead of
-\ publishing it. A publication, a truncation, a rollback and `undefine` each end
-\ it. Only a check that runs while the engine holds the definition unpublished
+\ and the record is still its symbol's newest one. A recovery record opens no
+\ window: under a hook the native compiler abandons its definition, which leaves
+\ `ndict@` where it was, so the window would outlive it. A hookless compile
+\ publishes the refused definition under that record and finds it by the
+\ recovery bind, which serves the compile window (NATIVE MULTI-ERROR RECOVERY
+\ below). A publication, a truncation, a rollback and `undefine` each end the
+\ window. Only a check that runs while the engine holds the definition unpublished
 \ opens it (CK-CLOSE!): a check a program runs by hand publishes nothing.
 \
 \ A CANDIDATE SCOPE IS ITS ROWS AHEAD OF THE DICTIONARY. A candidate scope
@@ -12929,15 +13059,19 @@ public
 \ inside a package that holds an owner-private primitive row of that name
 \ (CLOSE-PRIVATE) is that row: the row is the owner's view of the same record,
 \ which the engine holds once, globally (FFI-PTR>CELL inside package FFI).
+\ The engine finds a bare name in the open package whatever current is, so the
+\ binding asks PKG-LIVE-XT for the open package; only a definition needs current
+\ in it, and LIVE-BIND refuses a bare token in one where it is not. A top-level
+\ step after `0 set-current` inside a package binds that package's words.
 : CK-REC-BIND ( ptr u8 n ptr n -- n ) {: a:ptr u:n rec:ptr :}
    rec CK-REC-WID {: wid:n :}
    a u CHECKER-QUALIFIED? IF
       wid 0= IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN   \ NAME:tail with NAME open reaches the global tail
       CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT
    THEN
-   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   PKG-LIVE-XT drop {: pkg:ptr pkgu:n :}
    wid 0= IF
-      mode CHECKER-PACKAGE-NONE <> IF
+      pkgu 0 <> IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
       THEN
@@ -13023,17 +13157,30 @@ variable BIND-SEEDED
 \ declaration under `0 set-check`. So LIVE-BIND sets WALK-REC when its answer
 \ is the record the engine's lookup found, whether or not a symbol names it.
 
-\ NATIVE MULTI-ERROR RECOVERY. The native compiler abandons a refused definition
-\ instead of publishing it, so during a multi-error run the engine's lookup
-\ cannot see the current-run recovery row (RECOVERY-ROW?) of a word a later
-\ definition calls, and on x86-64 every definition is native. Under MULTI-ERR?
-\ a recovery row in a scope the engine searches ahead of the record its lookup
-\ found binds instead, for diagnostics only: the native compiler publishes no
-\ definition that used one (CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?). The order
-\ is the engine's: the open package's private then public wordlist, the
-\ globals, then the used publics in import order. A qualified name asks its
-\ package's public row, and the global row when that package is the open one.
-\ Answers the recovery symbol, or 0 when the lookup's own answer stands.
+\ NATIVE MULTI-ERROR RECOVERY. Under a hook the native compiler abandons a
+\ refused definition instead of publishing it, so during a multi-error run the
+\ engine's lookup cannot see the current-run recovery row (RECOVERY-ROW?) of a word a later
+\ definition calls, and on x86-64 every definition is native. A recovery row is
+\ sound only while a definition body is being checked or compiled: the native
+\ compiler withholds publication of any body, trusted or not, that used one
+\ (CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?), and nothing else is withheld.
+\ Between that check and publication (the compile window, WRITE-WINDOW open)
+\ the compiler asks only about the definition and the words its body names. A
+\ body name binds what the walk bound, so a recovery row there was a use and
+\ withheld the definition before the window opened. The definition's own name
+\ binds its own recovery row, which opens no pending window (CK-CLOSE!): the
+\ row a hookless compile publishes a refused body under (src/compiler/native/
+\ compiler.f DECLARE-HOOKLESS, KEEP-ARITY). A top-level step runs what it
+\ binds, and EXPORT publishes it, at once. So under MULTI-ERR? and only inside
+\ a body's walk (BODY-WALK) or the compile window, a recovery row in a scope
+\ the engine searches ahead of the record its lookup found binds instead;
+\ every other lookup binds the record the engine's lookup found. The order is the engine's: the open package's private
+\ then public wordlist, the globals, then the used publics in import order. A
+\ qualified name asks its package's public row, and the global row when that
+\ package is the open one. Answers the recovery symbol, or 0 when the lookup's
+\ own answer stands.
+variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
+
 : RECOVERY-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    CK-USE-SCAN-N 0 ?DO
       a u i CK-USED-SYM@ RECOVERY-LIVE {: sym:n :}
@@ -13086,7 +13233,7 @@ variable BIND-SEEDED
    0 BIND-SEEDED !
    a u CHECKER-QUALIFIED? 0= IF
       CHECKER-QBAD-TOK @ IF 0 0 EXIT THEN
-      CHECKER-RESOLVE:AUTHORITY 0= IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
+      CHECKER-RESOLVE:AUTHORITY 0= TOP-STEP @ 0= and IF 2drop drop 0 CHECKER-REJECT-RC EXIT THEN
       2drop drop
    THEN
    a u CK-PENDING-SYM {: pending:n :}
@@ -13103,7 +13250,7 @@ variable BIND-SEEDED
    THEN
    a u HORIZON-FIND {: rec:ptr used:ptr used2:ptr flags:n :}
    flags BIND-SCOPE-SEEDED and BIND-SEEDED !
-   MULTI-ERR? IF
+   MULTI-ERR? BODY-WALK @ WRITE-WINDOW @ or 0 <> and IF
       a u rec RECOVERY-BIND {: rsym:n :}
       rsym 0 <> IF rsym 0 EXIT THEN
    THEN
@@ -15111,8 +15258,8 @@ $80 constant CTL-RENDERS
 \ right after a source definition. Two forms carry it:
 \   CTL-CORE-OP    the engine's own word of a spelling within a family the
 \                  rule chooses by spelling: the transport shuffles, the
-\                  return-stack transfers with execute/catch/finally, and the
-\                  zero tests.
+\                  return-stack transfers with execute/catch/finally, the
+\                  zero tests, and `evaluate` (a top-level step, TOP-WORD-STEP).
 \   CTL-INTRINSIC  a five-bit id naming one engine word (the INTRINSIC-* rows
 \                  below), for the rules that dispatch on the word itself.
 \ Both sit inside XFER-FLAG-MASK, so they travel wherever the control flags do:
@@ -16494,7 +16641,7 @@ private
    s" included" CTL-RENDERS NORET-AXIOM
    s" required" CTL-RENDERS NORET-AXIOM
    s" script-required" CTL-RENDERS NORET-AXIOM
-   s" evaluate" CTL-RENDERS NORET-AXIOM
+   s" evaluate" CTL-RENDERS CTL-CORE-OP or NORET-AXIOM
    s" evaluate-closed" CTL-RENDERS NORET-AXIOM
    s" evaluate-range" CTL-RENDERS NORET-AXIOM
    s" parse-name" CTL-PARSES NORET-AXIOM
@@ -17446,14 +17593,6 @@ variable SV-TRAIL
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDMASK @ SV-THDMASK !  THRMASK @ SV-THRMASK !  THSET @ SV-THSET ! ;
 
-: TRIAL-CLEAR-NEW
-   SV-FV @ BEGIN dup FV @ < WHILE
-      0 over cells TVT + !  0 over cells RVT + !
-      0 over cells TVK + !
-      0 over cells NSCOPE + !
-      1 +
-   REPEAT drop ;
-
 : TRIAL-REST-SG
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
@@ -17463,7 +17602,7 @@ variable SV-TRAIL
 
 : TRIAL-REST
    SV-TRAIL @ TRAIL-UNWIND       \ undo speculative binds in both pools
-   TRIAL-CLEAR-NEW               \ new-var backstop (cells never bound via TV!/RV!)
+   SV-FV @ TV-CLEAR-FROM         \ new-var backstop (cells never bound via TV!/RV!)
    SV-FV @ FV !
    SV-SPN @ SPN !  SV-PFN @ CATCH-PF-N !  SV-FACTS @ FACTS !
    SV-QEN @ QEN !  SV-PTRN @ PTRN !  SV-STLN @ STLN !
@@ -17503,7 +17642,7 @@ defer C2-STOW-BORROW-HOOK ( -- )
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
       PE-I @ PE-ACTIVE? IF
          PE-I @ PE-SYM@ sym = IF
-            PE-I @ PE-TRUSTED-ONLY? IF        \ reached only from a CHECKED body -> reject fail-closed
+            PE-I @ PE-TRUSTED-ONLY? TOP-STEP @ 0= and IF   \ reached only from a CHECKED body -> reject fail-closed
                C2-STOW-BORROW-HOOK
                -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
             TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
@@ -17782,7 +17921,7 @@ variable WF-CURROW   variable WF-POS-I
 
 : STORE-STALE-REFUSE? ( n -- bool )
    DCUR @ swap STORE-STALE-TYPE dup 0= IF drop RES-FALSE EXIT THEN
-   MD-STALE-READ C2-REJECT RES-TRUE ;
+   dup STALE-WHY C2-REJECT RES-TRUE ;
 
 : CELL-STORE-TOK ( bool -- ) {: layout:bool :}
    1 STORE-STALE-REFUSE? IF EXIT THEN
@@ -18246,7 +18385,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    parent-node P>TYPE T-RES {: parent-cell:n :}
    parent-node P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
@@ -18307,7 +18446,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    parent-node P>TYPE T-RES {: parent-cell:n :}
    parent-node P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent MUT-VIEW? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 3 PARAM>ARG PE-U8 UNIFY-EXACT 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 1 PARAM>ARG T-RES {: ceiling:n :}
@@ -18358,7 +18497,7 @@ defer SCOPE-EXTERIOR-XT ( n -- bool )
    dup P>TYPE T-RES {: parent-cell:n :}
    P>REST {: rest:n :}
    parent-cell HIDDEN-PARAM? IF parent-cell MK-LOGICAL ELSE parent-cell THEN {: parent:n :}
-   parent TAG T-STALE = IF parent MD-STALE-READ C2-REJECT EXIT THEN
+   parent TAG T-STALE = IF parent parent STALE-WHY C2-REJECT EXIT THEN
    parent RECORDS? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    parent 3 PARAM>ARG {: value:n :}
    value INIT-VALUE-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
@@ -18572,13 +18711,15 @@ defer NAMED-OPERAND-XT ( -- )
 
 \ ---- what a checked call may do with the row its symbol's lookup found --------
 \ Asked once FEP holds that row (FEP-HIT). A trusted-only primitive behind the
-\ symbol refuses the call by name (E-CAP-TRUSTED). Otherwise the row applies
-\ while authority is unenforced or when it is an external declaration, and this
-\ run's recovery fact applies too. Any other row records only the word's ABI (a
-\ build window records one for every prefix word): the primitive rows behind it
-\ decide. With none, a sealed checker refuses the call by name as well, and an
-\ unsealed one (CHECKER-EFFECT-AUTHORITY:SEALED?) applies the row unless it is a
-\ failed declaration's, which serves only its own run (RECOVERY-ROW? above).
+\ symbol refuses the call by name (E-CAP-TRUSTED). This run's recovery fact
+\ applies and is a recovery use under any authority, an unjudged scan's too: the
+\ native compiler withholds the definition that used it. Otherwise the row
+\ applies while authority is unenforced or when it is an external declaration.
+\ Any other row records only the word's ABI (a build window records one for
+\ every prefix word): the primitive rows behind it decide. With none, a sealed
+\ checker refuses the call by name as well, and an unsealed one
+\ (CHECKER-EFFECT-AUTHORITY:SEALED?) applies the row unless it is a failed
+\ declaration's, which serves only its own run (RECOVERY-ROW? above).
 \ OWNED-TICK-REFUSED? asks the same of a tick.
 0 constant CALL-REFUSED
 1 constant CALL-APPLIES
@@ -18586,10 +18727,10 @@ defer NAMED-OPERAND-XT ( -- )
 3 constant CALL-PRIMS
 
 : CALL-AUTHORITY ( n -- n ) {: sym:n :}
-   sym PRIM-TRUSTED-SYM? IF CALL-REFUSED EXIT THEN
+   sym PRIM-TRUSTED-SYM? IF TOP-STEP @ IF CALL-PRIMS ELSE CALL-REFUSED THEN EXIT THEN
+   FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
    CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
-   FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
    sym PRIM-FIRST-IDX 0 <> IF CALL-PRIMS EXIT THEN
    FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
    CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
@@ -18721,9 +18862,8 @@ variable CHECKER-PREFIX-ROLLBACK
    a u BIND-SOURCE-CALL
    CUSING @ 0= TOK-SYM @ SYM-EFFECT-UNRESOLVED? and IF
       TOK-SYM @ PRIM-TRUSTED-SYM? IF
-         C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
-      THEN
-      -1 UNSEEN !  -1 UNCK !  EXIT
+         TOP-STEP @ 0= IF C2-STOW-BORROW  -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT THEN
+      ELSE -1 UNSEEN !  -1 UNCK !  EXIT THEN
    THEN
    \ What the call may do at run time is its symbol's, read before an identity
    \ arm takes the token: `create` leaves through DEFINER-TOK and still carries
@@ -20636,7 +20776,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
    DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
    DCUR @ R-RES P>TYPE T-RES {: t:n :}
-   t TAG T-STALE = IF MD-STALE-READ MDIAG! EXIT THEN   \ the scrutinee is a cell `catch` left stale
+   t TAG T-STALE = IF t STALE-WHY MDIAG! EXIT THEN   \ the scrutinee is a stale or unknown cell
    t LAYOUT-PARAM? 0= IF MD-SCRUT MDIAG! EXIT THEN
    t CELL>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
    t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
@@ -21158,15 +21298,51 @@ variable CPAY-ON
 
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
+\ Where a top step's token sits: the active file's path and the execution bytes
+\ the loader owns for it, which an inner `evaluate` never changes (src/habu/layout.f
+\ SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL, SRCLOC:OWNED-CELL, SRCLOC:OWNEDLEN-CELL).
+\ layout.f loads after this file, so the cells are spelled here as data-base
+\ offsets, private to the hook's package so no program writes them;
+\ src/core/check-hook.f, which reopens the package, reads the path through them.
+package LOWER-CERT-HOOK
+$2800 RESERVED-PTR-U8-CELL SRC-PATH
+$2808 constant SRC-PATHLEN-OFF
+$2D68 RESERVED-PTR-U8-CELL SRC-OWNED
+$2D70 constant SRC-OWNEDLEN-OFF
+public
+
+\ The active file's path; empty when no file is being read.
+: TOP-SITE-PATH$ ( -- ptr u8 n )
+   SRC-PATH @ data-base SRC-PATHLEN-OFF + @ ;
+;package
+
+\ What a refusal with no file names in its packet.
+: DIAG-NO-FILE$ ( -- ptr u8 n ) s" <input>" ;
+
 create DIAGFB PATH-CAP 1 + allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
-: DIAG-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A tool's label names one file, the one the load was reading when the tool set
+\ it; a label set with no file open names the steps that have no file. The
+\ pre-verifier puts the caller's label back after a scan (src/habu/verify-source.f
+\ COMPOSE-FILE-SCAN). DIAGLB holds that file's path, empty for none; a top-level
+\ step in it names the label, and one in any other file names its own path
+\ (render.f TOP-FILE$).
+\ The boot's DIAG-NO-FILE$ is no label.
+variable DIAG-LABELED
+create DIAGLB PATH-CAP allot   variable DIAGLU
+: DIAG-COPY ( ptr u8 n ptr u8 -- n ) {: a:ptr u:n d:ptr :}
    u PATH-CAP > IF s" diag: file path too long" 76 die THEN
-   0 BEGIN dup u < WHILE
-      dup a + c@  over DIAGFB + c!
-      1 +
-   REPEAT drop
-   u DIAGFU ! ;
+   a d u CCOPY  u ;
+: DIAG-FILE-COPY ( ptr u8 n -- )
+   DIAGFB DIAG-COPY DIAGFU ! ;
+: DIAG-FILE! ( ptr u8 n -- )
+   DIAG-FILE-COPY
+   LOWER-CERT-HOOK:TOP-SITE-PATH$ DIAGLB DIAG-COPY DIAGLU !
+   -1 DIAG-LABELED ! ;
+\ Does the label a tool set name the file at path?
+: DIAG-LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   DIAG-LABELED @ 0= IF RES-FALSE EXIT THEN
+   a u DIAGLB DIAGLU @ CORE-STR= ;
 : DIAG-ORIGIN! {: line col byte :}
    line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
 \ The file line, column and byte of the byte p points at in a buffer whose first
@@ -21287,7 +21463,7 @@ REG-PROTECT
    DSRC-POS 0 0= ;
 : NAV-SRC-INSTALL ( -- ) [: DIAG>SRC ;] is NAV-SRC-XT ;
 NAV-SRC-INSTALL
-s" <input>" DIAG-FILE!
+DIAG-NO-FILE$ DIAG-FILE-COPY
 1 1 0 DIAG-ORIGIN!
 
 \ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
@@ -24520,17 +24696,7 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
 \ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
 \ refused before any state is reset, with the refusal the token buffers gave the
 \ maximum cell.
-: CHECK-RESET {: a u :}
-   WRITE-WINDOW-CK
-   a u TORDER-SCAN!
-   BWIN-EPOCH @ 1+ dup 0= IF
-      s" checker: binding window serial overflow" 76 die THEN
-   BWIN-EPOCH !
-   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
-   RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
-   FO-RESET
-   u TOKBUF-ENSURE
-   a TBASE !  u TBLEN !  NEW
+: CHECK-CLEAR ( -- )                  \ the per-check diagnostic and walk state
    WRAP-CLEAR
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
    0 CF-LOOPS !
@@ -24554,7 +24720,20 @@ variable ZSHAPE   \ 0 empty, 1 core 0=, 2 literal zero, 3 zero then core <>, -1 
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
    ASIG-MISS-CLEAR                     \ the queue always describes the pass just run
-   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND !
+   0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
+
+: CHECK-RESET {: a u :}
+   WRITE-WINDOW-CK
+   a u TORDER-SCAN!
+   BWIN-EPOCH @ 1+ dup 0= IF
+      s" checker: binding window serial overflow" 76 die THEN
+   BWIN-EPOCH !
+   a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
+   RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   FO-RESET
+   u TOKBUF-ENSURE
+   a TBASE !  u TBLEN !  NEW
+   CHECK-CLEAR
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
 \ ---- reporting one token to the source-tape observer ---------------------------
@@ -24765,7 +24944,7 @@ RWIN-DEFAULT
       spell su pkg pu CHECKER-RESOLUTION:QUALIFIED-NAMESPACE ord RWIN-NS
          {: pub:n pri:n shape:n :}
       spell su pkg pu name nu CHECKER-RESOLUTION:QUALIFIED-PUBLIC pub shape ord RWIN-CAND
-      PKG-LIVE-XT {: open:ptr ou:n mode:n ok:bool :}
+      CHECKER-RESOLVE:AUTHORITY {: open:ptr ou:n mode:n ok:bool :}
       ok mode CHECKER-PACKAGE-NONE <> and
       open ou pkg pu CORE-STR=CI and IF
          spell su s" " name nu CHECKER-RESOLUTION:GLOBAL 0 0 ord RWIN-CAND
@@ -24773,7 +24952,7 @@ RWIN-DEFAULT
       EXIT
    THEN
    CHECKER-QBAD-TOK @ IF EXIT THEN
-   PKG-LIVE-XT {: pkg:ptr pu:n mode:n ok:bool :}
+   CHECKER-RESOLVE:AUTHORITY {: pkg:ptr pu:n mode:n ok:bool :}
    ok mode CHECKER-PACKAGE-NONE <> and IF
       spell su pkg pu CHECKER-RESOLUTION:OPEN-NAMESPACE ord RWIN-NS
          {: pub:n pri:n shape:n :}
@@ -24958,9 +25137,12 @@ variable CUR-OPEN   variable CUR-PSIG
 \ that refuses the definition, before the checks at `;` and a retry, as a raise
 \ in the walk did; a structure open at the closer is refused first, as the
 \ load's compiler refuses it (CLOSER-REFUSE). A throw out of the walk leaves the
-\ hold off.
+\ hold off. Every definition body's check walks here, and nothing else does, so
+\ BODY-WALK is on for exactly that walk.
 : CHECK-SCAN ( -- )
-   [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !
+   BODY-WALK @ {: walk0:n :}
+   -1 BODY-WALK !
+   [: CHECK-SCAN-WALK ;] catch  0 USING-HOLD !  walk0 BODY-WALK !
    {: rc:n :}
    rc 0 <> IF rc throw THEN
    TORDER-SCAN-UNKNOWN @ IF EXIT THEN
@@ -29738,6 +29920,405 @@ variable RECORD-CTL-MAP-N
    heads BYTE-VIEW SYM-N @ cells ASIG-RELEASE
    NRX-RESET ;                         \ HIDX-RESET ran earlier in this capture
 
+\ ---- the interpret row: saved between top-level events -----------------------
+\ A segment is a saved row and the row's two buffers, keyed by the evaluator
+\ stack base (a closed `evaluate` reads a different floor) and the evaluate
+\ levels ENTRY..LEVEL it spans (the engine's EVALD). Text a running word
+\ evaluates on the same base fires one level deeper, before the word's outputs
+\ exist, so it gets its own segment: the word's step already saved them. A
+\ top-level `evaluate` step widens its segment one level (TOP-WORD-STEP), so the
+\ text it reads continues the row. The live segment sits in TOP-READ-P /
+\ TOP-WRITE-P and their kin; the enclosing segments are parked in TOP-SEG rows,
+\ newest last. EVALD is process-wide, so an event at level lvl means no evaluate
+\ frame deeper than lvl is linked: a segment that entered deeper is dead and is
+\ released (TOP-SEG-PRUNE). A fresh segment enters at the event's level, which
+\ no surviving segment exceeds, so the parked rows and the live one are ordered
+\ by ENTRY and the dead ones are always on top.
+$37D0 constant CK-EVALD-OFF        \ = layout.f EVALD-CELL (DATA-relative); engine owns it
+0 constant TS.BASE   1 constant TS.RP    2 constant TS.RC   3 constant TS.WP
+4 constant TS.WC     5 constant TS.OFF   6 constant TS.TV   7 constant TS.RV
+8 constant TS.ENTRY  9 constant TS.LEVEL  10 constant TS.END  11 constant TS.CELLS
+12 constant TS.ROFF
+13 constant TS-ROW
+PTR-VARIABLE TOP-SEG-P   variable TOP-SEG-CAP   variable TOP-SEG-N
+variable TOP-BASE   variable TOP-ENTRY   variable TOP-LEVEL   variable TOP-LIVE
+NULL-PTR TOP-SEG-P !  0 TOP-SEG-CAP !  0 TOP-SEG-N !  0 TOP-BASE !  0 TOP-LIVE !
+0 TOP-ENTRY !  0 TOP-LEVEL !
+
+: TS-AT ( n n -- ptr n ) {: ix:n fld:n :} TOP-SEG-P ix TS-ROW NAV-CELL fld cells + ;
+package CHECKER-REG                       \ REG-PTR-CELLS is CHECKER-REG's private cast
+public
+: TS-PTR ( n n -- ptr ptr u8 ) TS-AT BYTE-VIEW REG-PTR-CELLS ;
+;package
+
+: TOP-SEG-UNMAP ( n -- ) {: ix:n :}       \ a parked segment's buffers
+   ix TS.RP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.RC TS-AT @ cells ARENA-UNMAP
+   ix TS.WP CHECKER-REG:TS-PTR @ CELL-VIEW ix TS.WC TS-AT @ cells ARENA-UNMAP ;
+
+: TOP-SEG-RELEASE ( -- )                  \ the live segment's buffers and row
+   TOP-READ-P TOP-READ-CAP 1 ARENA-ROWS-RELEASE
+   TOP-WRITE-P TOP-WRITE-CAP 1 ARENA-ROWS-RELEASE
+   0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF ! ;
+
+: TOP-SEG-PARK ( -- )                     \ park the live segment; an empty one goes live
+   TOP-SEG-P TOP-SEG-CAP TOP-SEG-N @ 1 + TS-ROW ARENA-ROWS-ENSURE
+   TOP-SEG-N @ {: ix:n :}
+   TOP-BASE @ ix TS.BASE TS-AT !
+   TOP-ENTRY @ ix TS.ENTRY TS-AT !  TOP-LEVEL @ ix TS.LEVEL TS-AT !
+   TOP-READ-P @ BYTE-VIEW ix TS.RP CHECKER-REG:TS-PTR !   TOP-READ-CAP @ ix TS.RC TS-AT !
+   TOP-WRITE-P @ BYTE-VIEW ix TS.WP CHECKER-REG:TS-PTR !  TOP-WRITE-CAP @ ix TS.WC TS-AT !
+   TOP-ROW-OFF @ ix TS.OFF TS-AT !  TOP-RROW-OFF @ ix TS.ROFF TS-AT !
+   TOP-ROW-TV @ ix TS.TV TS-AT !  TOP-ROW-RV @ ix TS.RV TS-AT !
+   TOP-READ-END @ ix TS.END TS-AT !  TOP-ROW-CELLS @ ix TS.CELLS TS-AT !
+   ix 1 + TOP-SEG-N !
+   NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !
+   NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP !  0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !
+   0 TOP-RROW-OFF ! ;
+
+: TOP-SEG-UNPARK ( n -- ) {: at:n :}      \ drop the live segment and those above at; at goes live
+   TOP-SEG-RELEASE
+   TOP-SEG-N @ at 1 + ?DO i TOP-SEG-UNMAP LOOP
+   at TS.BASE TS-AT @ TOP-BASE !
+   at TS.ENTRY TS-AT @ TOP-ENTRY !  at TS.LEVEL TS-AT @ TOP-LEVEL !
+   at TS.RP CHECKER-REG:TS-PTR @ TOP-READ-P !   at TS.RC TS-AT @ TOP-READ-CAP !
+   at TS.WP CHECKER-REG:TS-PTR @ TOP-WRITE-P !  at TS.WC TS-AT @ TOP-WRITE-CAP !
+   at TS.OFF TS-AT @ TOP-ROW-OFF !  at TS.ROFF TS-AT @ TOP-RROW-OFF !
+   at TS.TV TS-AT @ TOP-ROW-TV !  at TS.RV TS-AT @ TOP-ROW-RV !
+   at TS.END TS-AT @ TOP-READ-END !  at TS.CELLS TS-AT @ TOP-ROW-CELLS !
+   at TOP-SEG-N ! ;
+
+: TOP-SEG-SPANS? ( n n n -- bool ) {: ix:n base:n lvl:n :}
+   ix TS.BASE TS-AT @ base =  ix TS.ENTRY TS-AT @ lvl <= and  lvl ix TS.LEVEL TS-AT @ <= and ;
+
+: TOP-SEG-FIND ( n n -- n ) {: base:n lvl:n :}  \ the newest parked row spanning both, else -1
+   TOP-SEG-N @ BEGIN dup 0 > WHILE
+      1 - dup base lvl TOP-SEG-SPANS? IF EXIT THEN
+   REPEAT drop -1 ;
+
+\ cnt unknown cells over row: each the row's one unknown term (TOP-UNKNOWN),
+\ lost, so a typed consumer refuses them.
+: TOP-ROW-PAD ( n n -- n ) {: row:n cnt:n :}
+   row cnt 0 ?DO TOP-UNKNOWN @ swap MK-PUSH dup -1 swap P-LOST! LOOP ;
+
+\ The top cnt entries of row, in order, over base. CHECKER-TOP-LOAD's row is
+\ fresh from E-INST-FROM, which mints every entry and links it only from the
+\ entry above, so the cnt-th entry is relinked to base in place.
+: TOP-ROW-REBASE ( n n n -- n ) {: row:n cnt:n base:n :}
+   cnt 0= IF base EXIT THEN
+   base  row cnt 1 - ROW-DROP-N R-RES  P-REST!
+   row ;
+
+\ The literal classes CHECKER-TOP-PUSH reads (src/habu/layout.f TOP-EV-*, loaded
+\ after this file).
+1 constant TE-NUM   2 constant TE-STR   3 constant TE-CSTR
+
+: TOP-PUSH ( n -- ) DCUR @ MK-PUSH DCUR ! ;
+
+\ A top step reads its token as the whole scanned text: a refusal pins it at
+\ offset 0, and a parsing word finds nothing after it, since the load parses
+\ that text itself. The per-token setup is DO-TOK1's, on the token the event
+\ stored in TOK-SPELL-A and TOK-SPELL-U; it resolves the token, so it runs inside
+\ the step (TOP-RUN). The row's bottom is the live stack's floor: it is the
+\ step's declared base, so a step that reaches under the live cells is refused
+\ as a body that reaches under its declared inputs is. A step clears the check
+\ state (CHECK-CLEAR) as a body check does: every result a check leaves is
+\ consumed inside the token that ran it, and no later token reads one.
+: TOP-BEGIN ( -- )
+   TOK-SPELL-A @ TOK-SPELL-U @ {: a:ptr u:n :}
+   CHECK-CLEAR
+   BROW @ SGDBASE !
+   u TOKBUF-ENSURE  a TBASE !  u TBLEN !  0 TOK0 !  u TI !  0 TSTART !
+   0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !  0 STALE-HIT !
+   NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
+   a TOK-SPELL-A !  u TOK-SPELL-U !  -1 USING-HOLD !
+   a u TOKFOLD drop
+   a u CAP-FAIL
+   0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
+   TKF TKFU @ s" xt!" CORE-STR= XT-DECL !
+   TKF TKFU @ LAYOUT-XPORT-TOK? IF
+      TKF TKFU @ TOK-CORE-OP?
+   ELSE RES-FALSE THEN LAYOUT-XPORT ! ;
+
+\ Whether the token is the engine's `evaluate`, which widens the segment one
+\ level: the text it reads continues the row, checked or not. The spelling is
+\ tested first, so no other token is bound for it; a checked step needs the
+\ test here, and the window tests it before it steps at all.
+: TOP-WIDEN? ( -- bool )
+   TKF TKFU @ s" evaluate" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   TKF TKFU @ TOK-CORE-OP? dup IF 1 TOP-LEVEL +! THEN ;
+
+\ `evaluate` has no row: the text it reads steps itself, one level deeper on
+\ this segment, so the step takes its string and leaves the rest of the row as
+\ it was.
+: TOP-WORD-STEP ( -- )
+   TOP-BEGIN
+   TOP-WIDEN? IF DCUR @ ROW-DROP-1 ROW-DROP-1 DCUR !  EXIT THEN
+   TKF TKFU @ SPELLED-STEP? 0= IF
+      DCUR @ XE-PD !  RCUR @ XE-PR !
+      TKF TKFU @ DO-TOK
+   THEN ;
+
+\ `' W` pushes W's quotation when W has a row, else an opaque xt, as `['] W`
+\ does in a body. W is the word the load's own find selects.
+: TOP-TICK-STEP ( -- )
+   TOP-BEGIN
+   TKF TKFU @ CHECKER-TOP-SYM {: sym:n hit:bool :}
+   FEP-CLEAR
+   hit IF sym CHECKER-FIND-USIG-SYM drop THEN
+   FEP-HIT? IF FEP @ EFF-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE OPAQUE-XT THEN
+   TOP-PUSH ;
+
+package LOWER-CERT-HOOK
+public
+
+\ The line in the active file of the token the step reads, as the engine's
+\ refusal tail counts a line (1 + the newlines before it), counted in the bytes
+\ the loader owns for the file; false when no file is open or the token lies
+\ outside those bytes, as a token of a string `evaluate` reads does. A step has
+\ a line and no column or byte: a top step sits in no definition, so no
+\ DIAG-ORIGIN maps it, and a tool's run file (tools/check.f) keeps each
+\ subject line on its own line but shifts bytes and columns with its markers.
+: TOP-SITE ( -- n bool )
+   SRC-OWNED @ TOK-SPELL-A @ {: b:ptr t:ptr :}
+   t b - {: at:n :}
+   b NULL-PTR =  at 0 < or  at data-base SRC-OWNEDLEN-OFF + @ >= or IF
+      0 RES-FALSE EXIT
+   THEN
+   b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
+;package
+
+\ The token's verdict as DO-TOK1 and CHECK take it. A refusal renders the
+\ diagnostic the same token gets in a body and throws the checker's rc, so the
+\ word never runs.
+: TOP-JUDGE ( -- )
+   EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN
+   CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN
+   0 RAW-PTR-HIT !  0 BASE-PTR-HIT !  0 RAW-EXEC-HIT !  0 STALE-HIT !  0 SCOPE-HIT !  0 XT-DECL !
+   0 LAYOUT-XPORT !
+   CHECK-NO-BORROW
+   OK @ 0= FAILSET @ 0= and IF -1 FAILSET ! THEN
+   0 USING-HOLD !
+   TOK-SPELL-A @ TOK-SPELL-U @ REFUSAL-STEP
+   CHECK-VERDICT 0 <>  RCOMPILE @ 0=  and IF EXIT THEN
+   DIAG-QUIET @ 0= IF DIAGXT THEN
+   CHECKER-REJECT-RC throw ;
+
+\ A step is a guest in the term pools: an event fires between the tokens of a
+\ declaration whose terms sit in the pools, on the stack and in its variables
+\ (PRIM: ... PRIM;), so the step allocates above the pools' marks, where NEW
+\ would reset them, and releases back to the marks.
+variable TG-FV     variable TG-SPN     variable TG-QEN     variable TG-PTRN
+variable TG-STLN   variable TG-ATOMN   variable TG-PARAMN  variable TG-PSCR
+variable TG-PARG   variable TG-RIGID   variable TG-RGN     variable TG-EXT
+variable TG-GEN
+
+: TOP-GUEST ( -- )
+   FV @ TG-FV !  SPN @ TG-SPN !  QEN @ TG-QEN !  PTRN @ TG-PTRN !  STLN @ TG-STLN !
+   ATOMN @ TG-ATOMN !  PARAMN @ TG-PARAMN !  PARAM-SCR-N @ TG-PSCR !  PARG-N @ TG-PARG !
+   RIGID-N @ TG-RIGID !  RGN-N @ TG-RGN !  EXT-N @ TG-EXT !  GEN-N @ TG-GEN !
+   NEW-WALK ;
+
+: TOP-RELEASE ( -- )
+   TG-FV @ TV-CLEAR-FROM
+   TG-FV @ FV !  TG-SPN @ SPN !  TG-QEN @ QEN !  TG-PTRN @ PTRN !  TG-STLN @ STLN !
+   TG-ATOMN @ ATOMN !  TG-PARAMN @ PARAMN !  TG-PSCR @ PARAM-SCR-N !  TG-PARG @ PARG-N !
+   TG-RIGID @ RIGID-N !  TG-RGN @ RGN-N !  TG-EXT @ EXT-N !  TG-GEN @ GEN-N ! ;
+
+\ The flag is on while the step resolves and steps its token and its verdict is
+\ taken, so the judge resolves the token as the step did; a throw from either (a
+\ scope refusal raises) turns it off too, and releases the step's terms.
+: TOP-RUN ( [ -- ] -- )
+   -1 TOP-STEP !  catch  dup 0= IF drop ['] TOP-JUDGE catch THEN  0 TOP-STEP !
+   {: rc:n :}
+   rc 0 <> IF TOP-RELEASE rc throw THEN ;
+
+\ Release the segments that entered deeper than lvl: the live one while it did,
+\ with the parked row under it going live.
+: TOP-SEG-PRUNE ( n -- ) {: lvl:n :}
+   BEGIN TOP-ENTRY @ lvl >  TOP-LIVE @ 0 <> and WHILE
+      TOP-SEG-N @ 0 > IF TOP-SEG-N @ 1 - TOP-SEG-UNPARK ELSE TOP-SEG-RELEASE  0 TOP-LIVE ! THEN
+   REPEAT ;
+
+\ Select the segment spanning a stack base at the current evaluate level, once
+\ the dead ones are gone: the live one, a parked one (dropping the segments
+\ above it), or a fresh empty one parked over the live one. The selected
+\ segment ends at that level.
+: CHECKER-TOP-SEGMENT ( n -- ) {: base:n :}
+   data-base CK-EVALD-OFF + @ {: lvl:n :}
+   lvl TOP-SEG-PRUNE
+   TOP-LIVE @ 0= IF base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL !  -1 TOP-LIVE !  EXIT THEN
+   TOP-BASE @ base =  TOP-ENTRY @ lvl <= and  lvl TOP-LEVEL @ <= and IF lvl TOP-LEVEL !  EXIT THEN
+   base lvl TOP-SEG-FIND dup 0 >= IF TOP-SEG-UNPARK  lvl TOP-LEVEL !  EXIT THEN drop
+   TOP-SEG-PARK  base TOP-BASE !  lvl TOP-ENTRY !  lvl TOP-LEVEL ! ;
+
+\ An event inside a `0 set-check` window: the live segment's cells are unknown.
+\ The return row empties: only cells pushed after the window can be read.
+: CHECKER-TOP-FORGET ( -- ) 0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF ! ;
+
+\ A word event inside the window steps nothing, but the engine's `evaluate`
+\ still widens the segment.
+: TOP-WINDOW-STEP ( -- ) TOP-BEGIN TOP-WIDEN? drop ;
+
+\ The window binds nothing except an `evaluate` spelling: any other spelling
+\ returns at once, and only that one is stepped to learn whether it is the
+\ engine's word.
+: CHECKER-TOP-WIDEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" evaluate" CORE-STR=CI 0= IF EXIT THEN
+   a TOK-SPELL-A !  u TOK-SPELL-U !  TOP-GUEST  ['] TOP-WINDOW-STEP TOP-RUN  TOP-RELEASE ;
+
+\ Start a step on a live stack of n cells: DCUR is the saved row with the cells
+\ it knows at the top. A longer row loses entries from its top until it fits; a
+\ shorter one is padded beneath with unknown cells. RCUR is the saved return row
+\ over RBROW, the step's return base, so a step that reads below the cells
+\ earlier steps pushed is refused as a body that reads below its own is.
+: CHECKER-TOP-LOAD ( n -- ) {: live:n :}
+   TOP-GUEST  PE-N MK-STALE TOP-UNKNOWN !
+   TOP-ROW-OFF @ 0=  TOP-RROW-OFF @ 0=  and IF BROW @ live TOP-ROW-PAD DCUR ! EXIT THEN
+   TOP-ROW-TV @ TOP-ROW-RV @ E-INST-COUNTS
+   TOP-ROW-OFF @ 0= IF BROW @ live TOP-ROW-PAD DCUR ! ELSE
+      TOP-ROW-OFF @ TOP-READ-P @ BYTE-VIEW E-INST-FROM
+      BEGIN dup ROW-CELLS live > WHILE ROW-DROP-1 REPEAT {: row:n :}
+      row row ROW-TERMS  BROW @ live row ROW-CELLS - TOP-ROW-PAD  TOP-ROW-REBASE DCUR !
+   THEN
+   TOP-RROW-OFF @ 0= IF EXIT THEN
+   TOP-RROW-OFF @ TOP-READ-P @ BYTE-VIEW E-INST-FROM {: rrow:n :}
+   rrow rrow ROW-TERMS RBROW @ TOP-ROW-REBASE RCUR ! ;
+
+\ The read buffer's node at offset off.
+: TOP-READ-AT ( n -- ptr u8 ) TOP-READ-P @ BYTE-VIEW + ;
+
+\ The cells a stored entry fills when a load reads it back: its recorded width,
+\ except a cell lost to a live scope, which comes back as one unknown cell
+\ (E-COPY*'s S-PUSH arm).
+: TOP-PUSH-CELLS ( n -- n ) {: off:n :}
+   off TOP-READ-AT EN.A @ TOP-READ-AT {: ty:ptr :}
+   ty EN.TAG @ EN-STALE =  ty EN.A @ 0=  and IF 1 EXIT THEN
+   off TOP-READ-AT EN.C @ 1 - ;
+
+\ The saved row's cells, counted as a load counts them.
+: TOP-ROW-COUNT ( -- n )
+   0 TOP-ROW-OFF @ BEGIN dup TOP-READ-AT EN.TAG @ EN-PUSH = WHILE
+      dup TOP-PUSH-CELLS rot + swap  TOP-READ-AT EN.B @
+   REPEAT drop ;
+
+\ Keep DCUR and RCUR after a step: copy them into the write buffer under one set
+\ of maps, so a type variable both rows hold stays one, and the write buffer
+\ becomes the read buffer the next load instantiates; release the step's terms.
+: CHECKER-TOP-SAVE ( -- )
+   DCUR @ ROW-TERMS 0=  RCUR @ ROW-TERMS 0=  and IF
+      0 TOP-ROW-OFF !  0 TOP-ROW-CELLS !  0 TOP-RROW-OFF !  TOP-RELEASE EXIT
+   THEN
+   -1 TOP-COPYING !
+   CELL E-WEND!
+   E-COPY-MAPS-RESET
+   DCUR @ ROW-TERMS 0 <> IF DCUR @ E-COPY ELSE 0 THEN {: off:n :}
+   RCUR @ ROW-TERMS 0 <> IF RCUR @ E-COPY ELSE 0 THEN TOP-RROW-OFF !
+   0 TOP-COPYING !
+   TOP-READ-P @ TOP-WRITE-P @ {: old:ptr next:ptr :}
+   TOP-READ-CAP @ TOP-WRITE-CAP @ {: oldcap:n nextcap:n :}
+   next TOP-READ-P !  nextcap TOP-READ-CAP !
+   old TOP-WRITE-P !  oldcap TOP-WRITE-CAP !
+   off TOP-ROW-OFF !  EC-TVN @ TOP-ROW-TV !  EC-RVN @ TOP-ROW-RV !
+   TOP-WRITE-END @ TOP-READ-END !
+   off 0 <> IF TOP-ROW-COUNT ELSE 0 THEN TOP-ROW-CELLS !
+   TOP-RELEASE ;
+
+\ Step the loaded row over one top-level event, or refuse it (TOP-JUDGE). A word
+\ about to run and the name a tick read are judged as a body judges them.
+: CHECKER-TOP-WORD ( ptr u8 n -- )
+   TOK-SPELL-U ! TOK-SPELL-A !  ['] TOP-WORD-STEP TOP-RUN ;
+
+: CHECKER-TOP-TICK ( ptr u8 n -- )
+   TOK-SPELL-U ! TOK-SPELL-A !  ['] TOP-TICK-STEP TOP-RUN ;
+
+\ ---- a literal event: pushed onto the saved row ------------------------------
+\ A literal's cells have constant types, so over a saved row that fits the live
+\ depth its event needs no step: it writes the literal's entries over the row's
+\ top in the read buffer, where the next load reads them as it reads saved ones.
+\ The cost is the change, not the row's depth. Constant types carry no
+\ variables: TOP-ROW-TV and TOP-ROW-RV stand.
+
+\ A zeroed node of tag at the read buffer's used end, by offset: the buffer
+\ grows when full, and an offset survives the move.
+: TOP-READ-NODE ( n -- n ) {: tag:n :}
+   TOP-READ-P TOP-READ-CAP  TOP-READ-END @ EFF-NODE + CELL + 1 - CELL /  1 ARENA-ROWS-ENSURE
+   TOP-READ-END @ {: off:n :}
+   tag off TOP-READ-AT E-NODE-INIT
+   off EFF-NODE + TOP-READ-END !
+   off ;
+
+: TOP-READ-CON ( n -- n ) {: con:n :}
+   EN-CON TOP-READ-NODE {: off:n :}
+   con off TOP-READ-AT EN.A !  off ;
+
+: TOP-READ-PTR-U8 ( -- n )
+   CC-U8 TOP-READ-CON {: inner:n :}
+   EN-PTR TOP-READ-NODE {: off:n :}
+   inner off TOP-READ-AT EN.A !  off ;
+
+\ One cell of the stored type at offset ty over the row's top; its width is held
+\ as width+1, as E-COPY* holds it.
+: TOP-READ-PUSH ( n -- ) {: ty:n :}
+   EN-PUSH TOP-READ-NODE {: off:n :}
+   ty off TOP-READ-AT EN.A !
+   TOP-ROW-OFF @ off TOP-READ-AT EN.B !
+   2 off TOP-READ-AT EN.C !
+   off TOP-ROW-OFF !
+   TOP-ROW-CELLS @ 1 + TOP-ROW-CELLS ! ;
+
+\ Entries leave from the top while the row has more cells than live, as
+\ CHECKER-TOP-LOAD drops them.
+: TOP-READ-FIT ( n -- ) {: live:n :}
+   BEGIN TOP-ROW-CELLS @ live > WHILE
+      TOP-ROW-CELLS @ TOP-ROW-OFF @ TOP-PUSH-CELLS - TOP-ROW-CELLS !
+      TOP-ROW-OFF @ TOP-READ-AT EN.B @ TOP-ROW-OFF !
+   REPEAT ;
+
+\ A literal of class cls: STR pushes ptr u8 and n, CSTR ptr u8, NUM n or r,
+\ CHAR n. TOP-READ-LIT writes them over the saved row; TOP-LIT-STEP pushes them
+\ onto the loaded row.
+: TOP-READ-LIT ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
+   cls TE-NUM = IF
+      a u FLOAT-LITERAL-ADMITTED? nip IF CC-R ELSE CC-N THEN TOP-READ-CON TOP-READ-PUSH EXIT
+   THEN
+   cls TE-STR = cls TE-CSTR = or IF TOP-READ-PTR-U8 TOP-READ-PUSH THEN
+   cls TE-CSTR <> IF CC-N TOP-READ-CON TOP-READ-PUSH THEN ;
+
+: TOP-LIT-STEP ( ptr u8 n n -- ) {: a:ptr u:n cls:n :}
+   cls TE-NUM = IF
+      a u FLOAT-LITERAL-ADMITTED? nip IF PE-R ELSE PE-N THEN TOP-PUSH EXIT
+   THEN
+   cls TE-STR = cls TE-CSTR = or IF PE-PTR-U8 TOP-PUSH THEN
+   cls TE-CSTR <> IF PE-N TOP-PUSH THEN ;
+
+\ A literal over a live stack of n cells. Only a saved row whose fit holds
+\ exactly the live cells takes the literal in place: with no saved row, or one
+\ the fit leaves short (it was short, or a wide entry left), the cells below it
+\ are unknown, and only a load, step and save stores them as padding.
+: CHECKER-TOP-PUSH ( ptr u8 n n n -- ) {: a:ptr u:n cls:n live:n :}
+   live TOP-READ-FIT
+   TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
+   live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
+
+: CHECKER-TOP-DROP ( -- )                 \ every segment and buffer, before a quiesce
+   TOP-SEG-N @ 0 ?DO i TOP-SEG-UNMAP LOOP
+   TOP-SEG-P TOP-SEG-CAP TS-ROW ARENA-ROWS-RELEASE
+   0 TOP-SEG-N !
+   TOP-SEG-RELEASE
+   0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
+
+\ The hook's rows, owned by package TOP-ROW (src/core/top-row.f): its checked
+\ TR-HOOK calls these bare and no other checked scope resolves them, so no
+\ checked word can forge the saved row's types.
+PPRIM: TOP-ROW CHECKER-TOP-SEGMENT PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-FORGET CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-WIDEN PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-LOAD PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-SAVE CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-WORD PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-TICK PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
+PPRIM: TOP-ROW CHECKER-TOP-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
+
 \ ---- the surface a capture keeps ---------------------------------------------
 \ A capture keeps a checker symbol, and every row keyed on it, only when some
 \ spelling can still reach it in the engine it writes. Two reasons are this
@@ -30174,6 +30755,7 @@ public
    NORET-SNAPSHOT-PERSIST ;
 
 : CHECKER-QUIESCE-BEGIN ( -- )
+   CHECKER-TOP-DROP
    NAV-RELEASE
    CHECKER-REG:RECORD-CONTRACT-RELEASE
    EFFECT-XFER-CLEAR

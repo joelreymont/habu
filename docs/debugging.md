@@ -31,10 +31,14 @@ throw ends the load). The other interpret-level diagnostics
 (`hb: interpret-mode layout value: X` and
 its siblings) and the refusals that exit without the compile tail (boot
 source, CLI, uncaught throw, snapshot and AOT families) print no location.
-Neither do the checker's diagnostics: they name the definition and the token
+The checker's refusal in a body names the definition and the token
 (`habu: in g: at '2' expected: n actual: n n`, and a tier-1 undefined word in
-a checked body as `E-UNDEFINED habu: in f: undefined word 'x'`) but no file or line. For
-all of these, search the source for the named definition, or bisect.
+a checked body as `E-UNDEFINED habu: in f: undefined word 'x'`) but no file or
+line. A top-level refusal names the file and line instead
+(`habu: <path>:<line>: at '!' …`), the file alone for a token of a string
+`evaluate` runs, and no place outside a file; a tool's label replaces the
+path of the file it labels. For those that print no location, search the
+source for the named definition, or bisect.
 
 ## Reading an exit status
 
@@ -378,7 +382,7 @@ so the message names the mechanism that caught the fault
   with checking off, or a `TRUSTED:` body that drops more than it declares.
 - `hb: stack bounds exceeded (data|return|loop)` (exit 102): an overflow, a
   jump into a guard page, or a below-base access where no throw entry exists
-  (a task's own stack, a stripped AOT image, the x86-64 engine). Match the
+  (a task's own stack, a stripped AOT image). Match the
   prefix `hb: stack bounds exceeded` unless the stack matters.
 - `hb: stack bounds exceeded (machine)` (exit 102): the OS thread's own stack
   overflowed, typically unbounded recursion; `catch` does not receive it.

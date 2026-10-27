@@ -14,9 +14,9 @@
 \ baked strings are read by nothing and patching one is a no-op: the patched engine
 \ loaded the same source with rc 0 (measured). The refusal is reached instead
 \ through the state its guard actually reads: src/core/checker.f
-\ CHECKER-PKG-BOOT-LIVE answers "no package" when the current wordlist is neither
-\ the open package's public nor its private one, and CHECKER-PKG-CONTEXT-REJECT
-\ names that and throws the reject rc.
+\ CHECKER-RESOLVE:AUTHORITY answers "no package context" when the current
+\ wordlist is neither the open package's public nor its private one, and
+\ CHECKER-PKG-CONTEXT-REJECT names that and throws the reject rc.
 
 require src/lib/errors.f
 require src/lib/string.f

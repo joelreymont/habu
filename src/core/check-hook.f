@@ -37,11 +37,9 @@ $4E constant DUP-RC
 \ This file loads before src/habu/layout.f, so the cells the engine's refusal
 \ tail reads (habu2.f LCOMPILEDIE) and the pending definition's two cells are
 \ spelled here as data-base offsets, as src/core/include.f spells the SRCLOC
-\ pair. layout.f reserves them as SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL,
-\ SRCLOC:INB-CELL, PEND-CELL and PENDTKA-CELL; the cursor, INP-CELL, is
-\ src/core/layout-buffer.f STGT-INP-CELL.
-$2800 RESERVED-PTR-U8-CELL SRC-PATH
-$2808 constant SRC-PATHLEN-OFF
+\ pair. layout.f reserves them as SRCLOC:INB-CELL, PEND-CELL and PENDTKA-CELL;
+\ the cursor, INP-CELL, is src/core/layout-buffer.f STGT-INP-CELL. The path
+\ pair, SRC-PATH and SRC-PATHLEN-OFF, is this package's from src/core/checker.f.
 $2810 RESERVED-PTR-U8-CELL SRC-START
 STGT-INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 $3688 constant PEND-OFF

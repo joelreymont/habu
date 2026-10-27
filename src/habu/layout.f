@@ -683,7 +683,7 @@ $4818 constant WIDS
 ;package
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
-$37D0 constant EVALD-CELL
+$37D0 constant EVALD-CELL        \ mirrored: src/core/checker.f CK-EVALD-OFF
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL

@@ -400,6 +400,8 @@ CELL 4 * constant DIAG-BYTES
 
 \ The refusal line of habu2.f LDPBAD, before and between its two numbers.
 : DPBAD-HEAD$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
+\ habu2.f MINMSG$'s text, which CONTROL,'s floor recovery writes.
+: UNDERDEPTH$ ( -- ptr u8 n ) s" hb: interpret stack underdepth: " ;
 : DPBAD-OF$ ( -- ptr u8 n ) s"  of " ;
 : DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
 : DPBAD-AT$ ( -- ptr u8 n ) s"  at " ;
@@ -2412,12 +2414,21 @@ public
    else
       X64CODE:LBL FLOORREC-ENTRY !
    then
-   X64CODE:LBL {: after-floor:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: after-floor:label msg:label nl:label :}
    after-floor JMP,
+   \ habu2.f LFLOORREC's twin: name the token the interpreter was running
+   \ (TKA/TKL), then throw 70 on the emptied stack.
    FLOORREC-LBL X64CODE:LBL,
    DSP DATA-REG STACK-ABI:BASE-CELL MOV-LOAD,
+   msg UNDERDEPTH$ nip STDERR-WRITE,
+   RSI DATA-REG TKA-CELL MOV-LOAD,
+   RDX DATA-REG TKL-CELL MOV-LOAD,
+   RDI STDERR IMM32,  NR-WRITE SYS,
+   nl 1 STDERR-WRITE,
    RAX 70 IMM32,
    THROW,
+   msg X64CODE:LBL,  UNDERDEPTH$ TEXT,
+   nl X64CODE:LBL,  STR-LF ASM-SINK BUF:APPEND-BYTE
    after-floor X64CODE:LBL,
    s" execute" [: RAX POP,  CALLABLE,  RAX ASM-SINK ENC-CALL-REG ;] PRIM
    s" execute-floor" [: EXECUTE-FLOOR, ;] PRIM

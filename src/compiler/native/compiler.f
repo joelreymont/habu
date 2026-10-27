@@ -155,6 +155,7 @@ align
 0 CWORK-VARIABLE M-DOES-SIG-U n
 0 CWORK-VARIABLE M-DOES-IN n
 0 CWORK-VARIABLE M-DOES-OUT n
+0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
 0 CWORK-VARIABLE M-DOES-GIN n                  \ where the clause's argument row's values end
 0 CWORK-VARIABLE M-DOES-GOUT n                 \ where the clause's result row's values end
 0 CWORK-VARIABLE M-DOES-FUN n                  \ hidden clause function ordinal
@@ -370,6 +371,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    M-DOES @ {: cut:n :}
    M-SRC @ cut 6 - CHECK-PARENT
    TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
    M-SRC @ cut 6 - 0 NFETCH:CAPTURE
    NFEED:DOES-CLAUSE M-DOES-ROW !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
@@ -436,19 +438,19 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   \ Under a recovering reader a definition the checker refused, or one that
-   \ bound a refused declaration's recovery row, is counted and abandoned
-   \ unpublished: E-NCOMP-RECOVERY ends it without a second report.
+   \ Under a recovering reader a definition the checker refused, or any
+   \ definition, trusted or not, whose body or does> clause bound a refused
+   \ declaration's recovery row, is counted and abandoned unpublished:
+   \ E-NCOMP-RECOVERY ends it without a second report.
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
          RECOVERING? if E-NCOMP-RECOVERY throw then
       then
       E-NCOMP-VERDICT throw
-   else
-      RECOVERING? if
-         CHECKER-OWNER:RECOVERY-USED? if E-NCOMP-RECOVERY throw then
-      then
    then then
+   RECOVERING? if
+      CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-NCOMP-RECOVERY throw then
+   then
    TAPE NFEED:RECORD-WINDOW
    before ;
 
@@ -1080,6 +1082,7 @@ INSTALL-FORGET
    DOES-SIG-FIELD @ M-DOES-SIG !
    data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
    0 M-DOES-IN ! 0 M-DOES-OUT !
+   false M-HEAD-RECOVERY !
    NDICT:GLUE-NONE M-DOES-GIN !  NDICT:GLUE-NONE M-DOES-GOUT !
    -1 M-DOES-FUN !
    -1 M-DOES-ROW !

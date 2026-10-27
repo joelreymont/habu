@@ -1579,8 +1579,8 @@ SUITE top-row-hook
    test/top-row-hook-test.f
 ;SUITE
 
-SUITE top-row-warn
-   test/top-row-warn-test.f
+SUITE top-row-storage
+   test/top-row-storage-test.f
 ;SUITE
 
 SUITE xt-effect

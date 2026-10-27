@@ -13,20 +13,9 @@
 \   fit    `['] A execute`  (A's ( n -- n n ) fits the row)         -> CERT (-1)
 \   misfit `['] A execute`  on ( -- n ) (A needs an input, none)    -> REJ  (0)
 \   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
-\ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
-\ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
-\ pins the tier-1 underdepth contract: `' FOO2 execute` warns once and exits
-\ 70. AArch64's compiled `dup` reads below the base and the guard-page handler
-\ reports interpret stack underdepth. x86-64's top-row transfer guard rejects
-\ the xt before that read. Neither reaches a generic data-stack bounds exit.
-\ XE-TIER2 pins
-\ the sub-dot-7 flip: `' FOO2 execute` and `0 0 catch` REJECT pre-execution with a
-\ clean rc-70 diagnostic and no crash (`0 0 catch` no longer reaches the
-\ BLR-into-xt-0 rc-134 crash it hit at tier-1).
 \
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
-\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
-\   test/xt-effect-test.f
+\   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/xt-effect-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -36,7 +25,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f
 require src/lib/test/outcome.f
 require src/lib/engine-candidate.f
 
@@ -44,8 +32,6 @@ package XT-EFFECT-TEST
 
 4096 constant XE-CAP
 10000 constant XE-TIMEOUT-MS
-1 constant XE-WARN-TIER                  \ child default: tier-1 warn
-2 constant XE-REJECT-TIER                \ child HABU_TOP_TIER=2: tier-2 reject
 
 variable XE-ROOT-U
 variable XE-CHILD-U
@@ -79,44 +65,15 @@ create XE-EMPTY 1 allot
      timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ Stage the child tier through HABU_TOP_TIER (pinned explicitly so a tier-2 gate
-\ leg cannot leak into a tier-1 child); inherit the rest of the parent env.
-: XE-SET-TIER ( n -- ) {: tier:n :}
-   PROC-ENV-RESET
-   tier XE-REJECT-TIER =
-      if s" HABU_TOP_TIER" >LEN s" 2" >LEN PROC-ENV+
-      else s" HABU_TOP_TIER" >LEN s" 1" >LEN PROC-ENV+ then
-   PROC-ENV-INHERIT-MISSING ;
-
-\ Write the assembled program (SB$) to the child file and run it via --load with an
-\ explicit env table (RUN-ARGV-ENV-* consults PROC-ENV).
-: XE-RUN-TIER ( ptr u8 n n -- )
-   {: src:ptr srcu:n tier:n :}
+\ Write the assembled program (SB$) to the child file and run it via --load.
+: XE-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
    XE-CHILD src srcu WRITE-ALL
    PROC-ARGV-RESET
-   tier XE-SET-TIER
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
-   XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src srcu XE-STORE! ;
-
-: XE-RUN ( ptr u8 n -- )  XE-WARN-TIER XE-RUN-TIER ;     \ tier-1 (warn / compile-time)
-: XE-RUN2 ( ptr u8 n -- ) XE-REJECT-TIER XE-RUN-TIER ;   \ tier-2 (reject)
-
-\ Non-overlapping count of a needle across the captured stderr buffer.
-variable XE-CNT
-: XE-COUNT ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   0 XE-CNT !
-   v 0= if 0 exit then
-   0 begin dup u v - <= while
-      a over + v  b v  STR= if
-         XE-CNT @ 1 + XE-CNT !  v +
-      else 1 + then
-   repeat drop
-   XE-CNT @ ;
-
-: XE-WARN-COUNT ( -- n ) XE-ERR$ s" hb: top-row: " XE-COUNT ;
 
 : XE-LF ( -- ) 10 SB-APPEND-C ;
 : XE-LINE ( ptr u8 n -- ) SB-APPEND XE-LF ;
@@ -287,38 +244,6 @@ variable XE-CNT
    XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
    XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE ;
 
-\ ---- tier-1 interop + tier-2 pre-arm (top-row tracker, unchanged) ------------
-: XE-EXEC$ ( -- ptr u8 n )               \ ' FOO2 execute on an empty stack
-   SB-RESET
-   s" : FOO2 ( n -- n n ) dup ;" XE-LINE
-   s" ' FOO2 execute" XE-LINE
-   SB$ ;
-
-: XE-CATCH$ ( -- ptr u8 n )              \ 0 0 catch: the pre-armed tier-2 reject fixture
-   SB-RESET
-   s" 0 0 catch" XE-LINE
-   SB$ ;
-
-\ Both hosts refuse the same underdepth. AArch64 observes it at the guard page;
-\ x86-64's top-row transfer guard can refuse before entering compiled FOO2.
-: XE-TIER1 ( -- )
-   s" tier-1: ' FOO2 execute still warns exactly once at underdepth" T-LABEL
-   XE-EXEC$ XE-RUN  XE-WARN-COUNT 1 T=
-   s" tier-1: ' FOO2 execute refuses underdepth (rc 70)" T-LABEL
-   XE-EXITED @ TTRUE  XE-RC @ 70 T=
-   HB-TARGET-LINUX-X86-64? if
-      XE-ERR$ s" hb: top-row: execute: xt target underflows the interpret stack" CONTAINS? TTRUE
-   else
-      XE-ERR$ s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
-   then
-   XE-ERR$ s" stack bounds exceeded" CONTAINS? TFALSE ;
-
-: XE-TIER2 ( -- )                        \ tier-2 (sub-dot 7): the pre-armed pins now REJECT
-   s" tier-2: ' FOO2 execute rejects rc 70 pre-execution (xt underflow)" T-LABEL
-   XE-EXEC$ XE-RUN2  XE-EXITED @ TTRUE  XE-RC @ 70 T=  XE-WARN-COUNT 1 T=
-   s" tier-2: 0 0 catch rejects rc 70 pre-execution (no BLR-into-xt-0 crash)" T-LABEL
-   XE-CATCH$ XE-RUN2  XE-EXITED @ TTRUE  XE-RC @ 70 T=  XE-WARN-COUNT 1 T= ;
-
 : XE-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-xe" HB-TMP-MKDIR {: a:ptr u:n :}
@@ -336,8 +261,6 @@ variable XE-CNT
    XE-VALUES
    XE-USING
    XE-USING-REFUSED
-   XE-TIER1
-   XE-TIER2
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;

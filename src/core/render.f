@@ -539,6 +539,8 @@ LOCSHOW-INSTALL
 
 \ DIAG-PRINT ( -- ) : reject diagnostic, one line to stderr —
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
+\ A top-level step's refusal names its file and line instead (DSITE):
+\   habu: PATH:LINE: at 'TOK' ...
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
 \ only appear when the failing unify was captured (STEP/SUNI).
 : DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -562,6 +564,25 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
+\ The file a top step's refusal names: the label a tool set (checker.f
+\ DIAG-FILE!) while the load read the step's file, or read no file for a step
+\ with none; else the step's own path, empty for no file.
+: TOP-FILE$ ( -- ptr u8 n )
+   LOWER-CERT-HOOK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
+   pa pu DIAG-LABELS? IF DIAGFB DIAGFU @ EXIT THEN
+   pa pu ;
+\ Where a refusal is: a body's definition, or a top step's file and line
+\ (checker.f TOP-SITE). A token outside the file's bytes, read from a string
+\ `evaluate` runs, names the file alone; a step with no file and no label
+\ names no place.
+: DSITE ( -- )
+   TOP-STEP @ 0= IF s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : " DTXT EXIT THEN
+   s" habu: " DTXT
+   TOP-FILE$ {: fa:ptr fu:n :}
+   fu 0= IF EXIT THEN
+   fa fu DTXT
+   LOWER-CERT-HOOK:TOP-SITE IF 58 EMIT1 JNUM ELSE drop THEN
+   s" : " DTXT ;
 : JSTR ( ptr u8 n -- )
    JOPEN DTXT JCLOSE ;
 : JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -619,6 +640,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" E-RAW-CELL-PTR" endof
       MD-RAW-EXEC     of s" E-RAW-CELL-PTR" endof
       MD-STALE-READ   of s" E-STALE-READ" endof
+      MD-TOP-UNKNOWN  of s" E-STALE-READ" endof
       MD-SCOPE-STORE  of s" E-SCOPED-STORAGE" endof
       MD-SCOPE-KIND   of s" E-SCOPE-TYPE" endof
       MD-C2-COPY      of s" E-C2-COPY" endof
@@ -659,6 +681,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" declare_pointer_cell" endof
       MD-RAW-EXEC     of s" declare_xt_cell" endof
       MD-STALE-READ   of s" keep_value_before_catch" endof
+      MD-TOP-UNKNOWN  of s" drop_unknown_cell" endof
       MD-SCOPE-STORE  of s" keep_scoped_value_on_stack" endof
       MD-SCOPE-KIND   of s" fix_scope_parameter" endof
       MD-C2-COPY      of s" move_exclusive_value" endof
@@ -714,6 +737,7 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
       MD-UNDERFLOW    of s" Push the missing inputs before the call, or declare them in the signature; a definition may not consume below its declared inputs." endof
       MD-STALE-READ   of s" `catch` puts the stacks back to the DEPTH it was entered at and never to their contents, so a cell the caught body may have written on a throw path holds an unknown machine word afterwards. Bind the value to a local BEFORE the catch and use the local, or drop the cell. A stale cell may still be moved, dropped, or bound to an untyped local." endof
+      MD-TOP-UNKNOWN  of s" The interpret row knows only the cells pushed while it checks; a cell beneath them was left before checking began or by a `0 set-check` window, so its type is unknown. Push the value with checking on, or drop the cell. An unknown cell may still be moved, dropped, or bound to an untyped local." endof
       MD-SCOPE-STORE  of s" Keep the scoped value on the stack or in a local; ordinary memory has no scope dependency declaration." endof
       MD-SCOPE-KIND   of s" Use a scope parameter only in a declared scope slot; it is neither a value type nor an allocation identity." endof
       MD-C2-COPY      of s" Move the exclusive value once instead of copying it." endof
@@ -753,6 +777,7 @@ variable MDV-I   variable MDV-F
       MD-RAW-FIELD    of s" ptr-field: base is an undeclared raw storage cell, not a declared pointer cell" endof
       MD-RAW-EXEC     of s" raw storage cell: an undeclared cell cannot hold an execution token / a quotation" endof
       MD-STALE-READ   of s" stale cell: this reads a cell `catch` left stale (a throw path of the caught body may have overwritten it)" endof
+      MD-TOP-UNKNOWN  of s" unknown cell: this reads a cell beneath the cells the interpret row knows (left before checking began or by a `0 set-check` window)" endof
       MD-SCOPE-STORE  of s" scoped storage: ordinary memory cannot retain a scope dependency" endof
       MD-SCOPE-KIND   of s" scope parameter: a scope identity cannot stand in for a value type" endof
       MD-C2-COPY      of s" exclusive value copied" endof
@@ -842,16 +867,16 @@ variable MDV-I   variable MDV-F
 \ pinned by the first failure, so a later body reference to the rejected name
 \ cannot relabel the reject as an undefined word.
 : LOCALBAD-PROSE ( -- )
-   LOCALBAD-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
+   LOCALBAD-CODE$ DTXT  s"  " DTXT  DSITE
    LOCALBAD-KIND @ 2 = IF
-     s" : local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
+     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
      s" -byte name; the limit is " DTXT  LOC-NAME-W JNUM  s"  bytes" DTXT EXIT
    THEN
    LOCALBAD-KIND @ 1 = IF
-     s" : local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-CAP JNUM
+     s" local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-CAP JNUM
      s"  locals a definition may bind" DTXT EXIT
    THEN
-   s" : at '" DTXT  FAILTK FAILTU @ DTXT
+   s" at '" DTXT  FAILTK FAILTU @ DTXT
    s" ': a local cannot be bound or referenced inside a quotation, or bound on a dead path" DTXT ;
 
 \ The refusal of a signature type that does not parse: a definition's
@@ -874,21 +899,21 @@ variable MDV-I   variable MDV-F
    s" after '|' write one row variable, the same on both sides, or no '|'" ;
 \ A syntax fault has no line of its own: it reads as a refusal at its token.
 : SGBAD-PROSE ( -- )
-   s" habu: in " DTXT  NMA @ NMU @ DTXT
+   DSITE
    SGBAD-UNKNOWN? IF
-     s" : unknown type '" DTXT  FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
+     s" unknown type '" DTXT  FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
    THEN
    SGBAD-BAREPTR? IF
-     s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+     s" 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
    THEN
    SGBAD-ARITY? IF
-     s" : wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+     s" wrong arity for type family '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    SGBAD-RETURN? IF
-     s" : return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
+     s" return-stack effect in signature '" DTXT  FAILTK FAILTU @ DTXT
      s" '; " DTXT  RCLAUSE-FIX$ DTXT EXIT
    THEN
-   s" : at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
+   s" at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
 
 \ The code, the repair class, the suggestion, the prose, the verdict and the
 \ per-code JSON fields all name the one refusal checker.f's REFUSAL@ chose.
@@ -1055,32 +1080,45 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
    ELSE s" a concrete type" DTXT THEN ;
 : NP-PROSE ( -- )
-   s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
+   s" E-NONPARAMETRIC-EFFECT " DTXT  DSITE
    NPBAD-KIND @ 4 = IF
-     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' is restricted to a base address -- the DATA region, or a pointer computed off NULL-PTR; its declared kind must stay unchanged" DTXT EXIT
    THEN
    NPBAD-KIND @ 5 = IF
-     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' is restricted to the null address; its declared kind must stay unchanged" DTXT EXIT
    THEN
    NPBAD-KIND @ 3 = IF
-     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT
    THEN
    NPBAD-KIND @ 0= IF
-     s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+     s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' is specialized to " DTXT  NP-FAM-REND
      s" ; a declared effect must stay parametric over its quantifier" DTXT EXIT
    THEN
    NPBAD-KIND @ 1 = IF
-     s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
+     s" declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
      s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
      s" ' are unified; each declared quantifier must stay a distinct variable" DTXT EXIT
    THEN
-   s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+   s" declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
    s" ' is minted into " DTXT  NP-FAM-REND
    s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT ;
+\ The return rows `return_stack` names, expected then actual: a quotation
+\ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
+: RS-ROWS ( -- n n )
+   RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
+   SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
+
+\ Why the return row refused (RSBAD), as the prose names it.
+: RS-REASON$ ( -- ptr u8 n )
+   RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EXIT THEN
+   RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EXIT THEN
+   RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EXIT THEN
+   s" return stack: the return row does not balance at exit" ;
+
 \ The rows a refusal captured carry a mismatch or a latched reason; no other
 \ refusal shows them.
 : ROWS-REFUSAL? ( n -- bool )
@@ -1089,32 +1127,32 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : DIAG-PROSE
    REFUSAL@ {: k:n :}
    k RF-IMM = IF
-     IMM-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
+     IMM-CODE$ DTXT  s"  " DTXT  DSITE
+     s" compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
      s" ' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body" DTXT EXIT
    THEN
    k RF-SIG = IF SGBAD-PROSE EXIT THEN
    k RF-NP = IF NP-PROSE EXIT THEN
    k RF-CAP = IF
-     s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : '" DTXT  FAILTK FAILTU @ DTXT
+     s" E-CAP-TRUSTED " DTXT  DSITE
+     s" '" DTXT  FAILTK FAILTU @ DTXT
      s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
    THEN
    k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
    k RF-QUAL = IF
-     s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
+     s" E-BAD-QUALIFIED " DTXT  DSITE
+     s" malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
      s" ' (more than one ':')" DTXT EXIT
    THEN
    k RF-UNDEF = IF
-     s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+     s" E-UNDEFINED " DTXT  DSITE
+     s" undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    k RF-LINLOCAL = IF
-     s" E-LINEAR-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
+     s" E-LINEAR-LOCAL " DTXT  DSITE
+     s" linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
    THEN
-   s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
+   DSITE  s" at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
    k RF-REASON = IF
      s"  " DTXT  MDIAG-REASON$ DTXT
@@ -1122,6 +1160,12 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      MDIAG-COUNTS
    THEN
    k RF-DEAD = IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
+   k RF-RETURN = IF
+     s"  " DTXT  RS-REASON$ DTXT
+     RS-ROWS {: exp:n act:n :}
+     s"  expected: " DTXT  exp DROW
+     s" actual: " DTXT  act DROW EXIT
+   THEN
    k ROWS-REFUSAL? 0= IF EXIT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
@@ -1173,17 +1217,24 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
-\ The return rows `return_stack` names, expected then actual: a quotation
-\ literal's own when its seal refused it (RSBAD 3, 4), else the definition's.
-: RS-ROWS ( -- n n )
-   RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
-   SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
-
+\ A packet's file and position: a top step's as its prose names them (DSITE),
+\ its line alone and no line for a token outside the file's bytes; else the
+\ checked token in its mapped or origin source.
+: DFILE$ ( -- ptr u8 n )
+   TOP-STEP @ 0= IF DIAGFB DIAGFU @ EXIT THEN
+   TOP-FILE$ dup 0 > IF EXIT THEN drop drop
+   DIAG-NO-FILE$ ;
+: DLOC-FIELDS ( -- )
+   TOP-STEP @ IF
+      LOWER-CERT-HOOK:TOP-SITE IF s" line" JKEY  JNUM  44 EMIT1 ELSE drop THEN
+      EXIT
+   THEN
+   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
+   JLOC-FIELDS ;
 \ A field that belongs to one refusal goes only on that refusal's packet: the
 \ flags of a failure the refusal outranks leave their fields behind.
 : DIAG-JSON
    REFUSAL@ {: k:n :}
-   TBASE@ FAILB @ +  TBASE@ FAILE @ +  JLOCATE 0= IF JLOC-ORIGIN THEN
    DCODE REPAIR-CLASS DVERDICT JHEAD
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
@@ -1197,8 +1248,8 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
    THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
-   s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
-   JLOC-FIELDS
+   s" file" JKEY  DFILE$ JSTR  44 EMIT1
+   DLOC-FIELDS
    s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
    SGSEEN @ IF
      s" declared_effect" JKEY

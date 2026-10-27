@@ -4,6 +4,8 @@
 require src/habu/layout.f
 
 : SHADOW-RECOVERY ( n -- n ) 1+ ;
+: TOP-RECOVERY ( n -- n ) 1+ ;
+: EXPORT-RECOVERY ( n -- n ) 1+ ;
 
 package NATIVE-MULTI-RECOVERY
 public
@@ -49,6 +51,60 @@ START
 : SHADOW-GOOD ( -- n ) 17 ;
 : SHADOW-FOLLOW ( n -- n ) SHADOW-RECOVERY ;
 CHECK-SHADOW
+
+\ A trusted body is not judged, but its walk binds a recovery row all the same,
+\ so it is withheld as a checked body is and the load reads on.
+: CHECK-TRUSTED ( -- )
+   FINISH 1 <> if s" native trusted recovery count" 1 die then
+   s" TRUSTED-FOLLOW" get-current search-wl 0<> if s" native trusted dependent published" 1 die then ;
+
+START
+: TRUSTED-BAD ( n -- n ) drop ;
+TRUSTED: TRUSTED-FOLLOW ( n -- n ) TRUSTED-BAD ;
+CHECK-TRUSTED
+
+\ A definer whose head binds a recovery row is withheld, though its does>
+\ clause, checked after the head, binds none.
+: CHECK-DEFINER ( -- )
+   FINISH 1 <> if s" native definer recovery count" 1 die then
+   s" DEFINER-FOLLOW" get-current search-wl 0<> if s" native definer dependent published" 1 die then ;
+
+START
+: DEFINER-BAD ( n -- n ) drop ;
+: DEFINER-FOLLOW ( n -- ) DEFINER-BAD drop create 0 , does> ( -- n ) @ ;
+CHECK-DEFINER
+
+\ A top-level step runs at once, so it is typed against the global word the
+\ engine runs, not the refused definition's recovery row: `c@` on its cell is
+\ refused rather than admitted and run.
+: CHECK-TOP ( -- )
+   [: s" 41 TOP-RECOVERY c@ drop" evaluate-closed ;] catch
+   70 <> if s" native top step bound a recovery row" 1 die then
+   FINISH 1 <> if s" native top recovery count" 1 die then
+   s" TOP-RECOVERY" get-current search-wl 0<> if s" native top refusal published" 1 die then ;
+
+START
+: TOP-RECOVERY ( n -- ptr u8 ) drop ;
+CHECK-TOP
+
+\ EXPORT runs at once too, so it publishes the global it finds under the
+\ refused private definition's name with that global's effect, and a top-level
+\ step using the alias as the refused row's type is refused. The check runs in
+\ the private section, where the refusal would have been published.
+: CHECK-EXPORT ( -- )
+   [: s" 41 EXPORT-RECOVERY c@ drop" evaluate-closed ;] catch
+   70 <> if s" native export bound a recovery row" 1 die then
+   FINISH 1 <> if s" native export recovery count" 1 die then
+   s" EXPORT-RECOVERY" get-current search-wl 0<> if s" native export refusal published" 1 die then ;
+
+START
+private
+: EXPORT-RECOVERY ( n -- ptr u8 ) drop ;
+public
+EXPORT EXPORT-RECOVERY
+private
+CHECK-EXPORT
+public
 
 ;package
 

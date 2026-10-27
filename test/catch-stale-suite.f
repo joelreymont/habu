@@ -102,7 +102,11 @@ create CS-DBUF 8192 allot
 : CS-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this text
    DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
 : CS-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
-: CS-STALE? ( -- ) s\" \"code\":\"E-STALE-READ\"" CS-CODE? ;
+\ A body's stale read is the catch's, never the interpret row's unknown cell
+\ (checker.f STALE-WHY), so its repair keeps the value before the catch.
+: CS-STALE? ( -- )
+   s\" \"code\":\"E-STALE-READ\"" CS-CODE?
+   s\" \"repair_class\":\"keep_value_before_catch\"" CS-CODE? ;
 
 \ ---- the reproducer from the dot ---------------------------------------------
 \ SWAP-THROW returned (address, 17, code) where its signature said (n, ptr u8,

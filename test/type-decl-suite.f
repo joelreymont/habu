@@ -32,6 +32,20 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
    TDTE-U ! TDTE-A !
    [: TDT-EVAL-GO ;] catch ;
 
+\ A check's results live until its definition publishes, inside the token that
+\ ran it, so each probe reads them in the word that runs the check.
+\ TD-MIN-IN: the minimum input depth a certified candidate records.
+: TD-MIN-IN ( ptr u8 n -- n )
+   CHECK-QUIET-CANDIDATE! -1 T=
+   REC-MIN-IN@ ;
+
+
+\ TD-WF-N: the fact rows a candidate with verdict `want` leaves.
+: TD-WF-N ( ptr u8 n n -- n )
+   {: want:n :}
+   CHECK-QUIET-CANDIDATE! want T=
+   WF-N@ ;
+
 \ registry high-water baseline: every rejected declaration must restore it.
 \ Checked through the PRIM-modeled read-only registry queries.
 variable TDB-TFAM   variable TDB-SUMV   variable TDB-SCH
@@ -739,8 +753,7 @@ PRODUCT tdw12
   FIELD f10 n
   FIELD f11 n
 ;PRODUCT
-s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 24 T=
+s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" TD-MIN-IN 24 T=
 PRODUCT tdw34
   FIELD f0 n
   FIELD f1 n
@@ -777,24 +790,18 @@ PRODUCT tdw34
   FIELD f32 n
   FIELD f33 n
 ;PRODUCT
-s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
-s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
-s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 68 T=
+s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" TD-MIN-IN 34 T=
+s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" TD-MIN-IN 34 T=
+s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" TD-MIN-IN 68 T=
 \ Nested quotations retain the surrounding physical floor.
-s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
+s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" TD-MIN-IN 34 T=
 \ A published effect must replay with the same minimum in later checks.
 : TDW34-STORED ( tdw34 -- tdw34 ) ;
-s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
+s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDW34-BAD" CHECKER-FIND-USIG TFALSE
-s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
+s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
 PRODUCT tdw34nest
   FIELD inner tdw34
@@ -802,8 +809,7 @@ PRODUCT tdw34nest
 s" " s" tdw34nest" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-WIDTH@ 34 T=
-s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
-REC-MIN-IN@ 34 T=
+s" TDW34-NEST ( tdw34nest -- tdw34nest )" TD-MIN-IN 34 T=
 TDT-BASE!
 
 \ --- logical width metadata.
@@ -823,10 +829,8 @@ TDF @ TFAM-WIDTH@ 1 T=
 \ facts are per-CHECK scratch: a rejected def may still record rows for tokens
 \ past the reject (never consumed — emitters read facts only for certified
 \ defs); the NEXT check resets the table, so no stale row can leak forward.
-s" WF6 ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
-WF-N@ 1 T=
-s" WF7 ( n -- n )" CHECK-QUIET-CANDIDATE! -1 T=
-WF-N@ 0 T=
+s" WF6 ( tdres<n,n> -- ) ?dup drop drop" 0 TD-WF-N 1 T=
+s" WF7 ( n -- n )" -1 TD-WF-N 0 T=
 \ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.
@@ -1710,11 +1714,19 @@ s" TDTOK2" CHECKER-FIND-USIG TTRUE
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
-\ Hidden-field unification boundaries. Terms survive because no CHECK runs
-\ between construction and the final unification.
+\ Hidden-field unification boundaries. Terms survive because no definition is
+\ checked between construction and the final unification.
 \ ---------------------------------------------------------------------------
 variable TD3F    variable TD3M    variable TD3OK
 variable TD3LOG  variable TD3MLOG
+\ TD3-XPORT-UNIFY unifies a hidden field with a var under whole-bundle transport
+\ mode. Every check's walk reset (NEW-WALK) clears the mode, a top-level token's
+\ step included, so the word sets, unifies and clears in one token. It is defined
+\ before the terms are built: a definition's check (NEW) would reclaim them.
+: TD3-XPORT-UNIFY ( -- bool )
+   1 LAYOUT-XPORT !
+   TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY
+   0 LAYOUT-XPORT ! ;
 
 \ resolve the tdres (width 2) and tdmix (width 4) families declared above.
 s" " s" tdres" TFAM-FIND-IN TD3OK ! TD3F !
@@ -1739,9 +1751,7 @@ TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY TTRUE
 TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 1 MK-HIDDEN  UNIFY TFALSE
 \ hidden never binds a var, even under whole-bundle transport mode.
 TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY TFALSE
-1 LAYOUT-XPORT !
-TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY TFALSE
-0 LAYOUT-XPORT !
+TD3-XPORT-UNIFY TFALSE
 \ hidden never unifies a con.
 TD3LOG @ 0 MK-HIDDEN  CC-N MK-CON  UNIFY TFALSE
 \ a hidden field never unifies its own logical value.

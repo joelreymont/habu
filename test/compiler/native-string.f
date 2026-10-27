@@ -71,7 +71,7 @@ private
    EMPTY
    s" the empty string literal pushes a valid address and zero" T-LABEL
    s" NST-EMPTY nip" TEST-EVAL:N 0 T=
-   s" NST-EMPTY drop 0 >" TEST-EVAL:FLAG TTRUE
+   s" NST-EMPTY drop NULL-PTR - 0 >" TEST-EVAL:FLAG TTRUE
 
    HOSTILE
    s" a body that would re-lex as syntax survives verbatim" T-LABEL
@@ -144,7 +144,7 @@ CAST: N>BYTES ( n -- ptr u8 )
    128 0 ?do 88 reclaimed i + c! loop
    S\" : NST-ROLLBACK ( -- ptr u8 n ) s\q ephemeral\q ;" evaluate-closed
    SAVED-LITERAL @ N>BYTES 9 ROLLBACK-BYTES 9 STR= TTRUE
-   s" NST-ROLLBACK drop" TEST-EVAL:N SAVED-LITERAL @ T= ;
+   s" NST-ROLLBACK drop NULL-PTR -" TEST-EVAL:N SAVED-LITERAL @ T= ;
 
 : WINDOW-CASE ( -- )
    s" lone-body" NSTR:INTERN {: old:n :}

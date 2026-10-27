@@ -142,7 +142,7 @@ private
 
    s" and the machine agrees: running it leaves the cell under it on top" T-LABEL
    s" 99 CAX-B1 CAX-B1-NAME" TEST-EVAL:N 99 T=
-   s" CAX-B1-NAME" TEST-EVAL:N 0 T<>
+   s" CAX-B1-NAME NULL-PTR -" TEST-EVAL:N 0 T<>
 
    s" declaring the address it used to claim is refused at the token" T-LABEL
    [: LOAD-PTR-A ;] REJECT-RC TTHROWSQ

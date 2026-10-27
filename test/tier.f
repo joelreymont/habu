@@ -883,26 +883,30 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 \ the protection band at the abandoned definition -- so the next token was
 \ emitted into a re-protected band and the process died of SIGSEGV (rc 134)
 \ AFTER printing a correct rejection. These run as real processes because the
-\ in-process fork does not reach that boundary.
+\ in-process fork does not reach that boundary. A top-level `catch` of
+\ `evaluate` has no row the checker can follow, so each text saves the checker
+\ (`check@`), turns it off for the top-level `catch`, restores it inside the
+\ evaluated text before the failing definition, and then drops the text's two
+\ cells under `0 set-check` before putting the checker back.
 : TEST-EVAL-RECOVERY ( -- )
    LEGACY? if
       s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
-      S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+      S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
 
       s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
-      S\" s\q : RVU ( -- ) MISSINGW ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+      S\" check@ 0 set-check s\q dup set-check : RVU ( -- ) MISSINGW ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
    then
 
    s" tier 1 recovers from the same rejection" T-LABEL
-   S\" 1 set-tier s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC
+   S\" 1 set-tier check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC
    s" 70" ASSERT-OK
 
    s" the session keeps compiling after the recovery" T-LABEL
-   S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch drop\n: ZKOK ( -- n ) 9 ;\nZKOK . cr\n"
+   S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\n: ZKOK ( -- n ) 9 ;\nZKOK . cr\n"
    EXEC  s" 9" ASSERT-OK
 
    s" three recoveries in a row still leave a usable session" T-LABEL
-   S\" s\q : RA ( n -- n ) dup ;\q ' evaluate catch drop\ns\q : RB ( n -- n ) dup ;\q ' evaluate catch drop\ns\q : RC ( n -- n ) dup ;\q ' evaluate catch drop\n: ZKOK2 ( -- n ) 7 ;\nZKOK2 . cr\n"
+   S\" check@ 0 set-check s\q dup set-check : RA ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\ncheck@ 0 set-check s\q dup set-check : RB ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\ncheck@ 0 set-check s\q dup set-check : RC ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\n: ZKOK2 ( -- n ) 7 ;\nZKOK2 . cr\n"
    EXEC  s" 7" ASSERT-OK
 
    s" the quotation form still recovers" T-LABEL

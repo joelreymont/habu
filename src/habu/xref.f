@@ -221,15 +221,11 @@ variable XREF-NV
 package PKG-AUTH
 private
 
-0 constant MODE-NONE
-1 constant MODE-PRI
-2 constant MODE-PUB
-
-: NAME-OUT ( ptr n n -- ptr u8 n n bool ) {: rec:ptr mode:n :}
+: NAME-OUT ( ptr n -- ptr u8 n bool ) {: rec:ptr :}
    rec XREF-NAME$ dup 0= if
-      2drop s" " MODE-NONE XREF-FALSE exit
+      2drop s" " XREF-FALSE exit
    then
-   mode XREF-TRUE ;
+   XREF-TRUE ;
 
 \ A package record is live only when its address is an exact DREC slot below
 \ ndict@. This rejects stale snapshots, unaligned pointers, and foreign data
@@ -240,44 +236,37 @@ private
    dup DREC mod 0 <> if drop XREF-FALSE exit then
    DREC / ndict@ < ;
 
-\ Return the one authenticated package context. The global context is the exact
-\ all-zero tuple. A package context must name a live namespace record whose two
-\ WIDs equal the protected engine cells; get-current selects its visibility.
-: LIVE-PKG ( n n n n -- ptr u8 n n bool )
-   {: recn:n pub:n pri:n cur:n :}
+\ Return the one authenticated open package: the empty name at top level, the
+\ exact all-zero tuple. A package must name a live namespace record whose two
+\ WIDs equal the protected engine cells. Which of them current is, if either,
+\ is the checker's question (src/core/checker.f CHECKER-RESOLVE:AUTHORITY).
+: LIVE-PKG ( n n n -- ptr u8 n bool )
+   {: recn:n pub:n pri:n :}
    recn 0= if
-      pub 0= pri 0= and cur 0= and if
-         s" " MODE-NONE XREF-TRUE
-      else
-         s" " MODE-NONE XREF-FALSE
-      then
-      exit
+      s" " pub 0= pri 0= and exit
    then
    pub 0= pri 0= or pub pri = or if
-      s" " MODE-NONE XREF-FALSE exit
+      s" " XREF-FALSE exit
    then
    recn REC-LIVE? 0= if
-      s" " MODE-NONE XREF-FALSE exit
+      s" " XREF-FALSE exit
    then
    recn XREF-ADDR>REC
    dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
-      drop s" " MODE-NONE XREF-FALSE exit
+      drop s" " XREF-FALSE exit
    then
    dup XREF-PKG-PUBLIC pub <> if
-      drop s" " MODE-NONE XREF-FALSE exit
+      drop s" " XREF-FALSE exit
    then
    dup XREF-PKG-PRIVATE pri <> if
-      drop s" " MODE-NONE XREF-FALSE exit
+      drop s" " XREF-FALSE exit
    then
-   cur pub = if MODE-PUB NAME-OUT exit then
-   cur pri = if MODE-PRI NAME-OUT exit then
-   drop s" " MODE-NONE XREF-FALSE ;
+   NAME-OUT ;
 
-: LIVE ( -- ptr u8 n n bool )
+: LIVE ( -- ptr u8 n bool )
    data-base PKG-REC-CELL + @
    data-base PKG-PUB-CELL + @
    data-base PKG-PRI-CELL + @
-   get-current
    LIVE-PKG ;
 
 \ The package whose public wordlist wid is: the live namespace row that
@@ -869,9 +858,6 @@ undefine LIVE
 undefine LIVE-PKG
 undefine REC-LIVE?
 undefine NAME-OUT
-undefine MODE-PUB
-undefine MODE-PRI
-undefine MODE-NONE
 private
 get-current prot-wid-add
 public

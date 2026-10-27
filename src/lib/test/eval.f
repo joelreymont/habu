@@ -13,6 +13,7 @@ package TEST-EVAL
 PTR-VARIABLE SRC-A
 variable SRC-U
 variable N-CELL
+TYPED-VARIABLE FLAG-CELL bool
 
 : SRC! ( ptr u8 n -- )
    SRC-U !
@@ -20,13 +21,16 @@ variable N-CELL
 
 public
 
-\ SRC$ and N! are the hooks of N's closed text below, which runs in the
-\ caller's scope and so reaches them only qualified. Callers use N, FLAG, RC.
+\ SRC$, N! and FLAG! are the hooks of the closed texts below, which run in the
+\ caller's scope and so reach them only qualified. Callers use N, FLAG, RC.
 : SRC$ ( -- ptr u8 n )
    SRC-A @ SRC-U @ ;
 
 : N! ( n -- )
    N-CELL ! ;
+
+: FLAG! ( bool -- )
+   FLAG-CELL ! ;
 
 \ The constant text is closed and the caller's text runs inside it under plain
 \ `evaluate`, at the top level where `evaluate` is admitted: the closed floor
@@ -39,8 +43,11 @@ public
    s" TEST-EVAL:SRC$ evaluate TEST-EVAL:N!" evaluate-closed
    N-CELL @ ;
 
+\ FLAG's text leaves the flag itself, which FLAG! takes as N! takes N's cell.
 : FLAG ( ptr u8 n -- bool )
-   N 0<> ;
+   SRC!
+   s" TEST-EVAL:SRC$ evaluate TEST-EVAL:FLAG!" evaluate-closed
+   FLAG-CELL @ ;
 
 \ The text's throw code, 0 when it loaded as a closed program.
 : RC ( ptr u8 n -- n )

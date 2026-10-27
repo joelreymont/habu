@@ -84,7 +84,7 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
    s" E-UNDEFINED: NOSUCH-WORD" PROMPT-AFTER
    s" create RB 3 cells allot  RB @ RB cell+ @ or RB 2 cells + @ or 1000 + 3 * ." STEP
    s" 3000" IN-BUF? TTRUE
-   s" RB RA-SEEN @ = ." STEP
+   s" RB RA-SEEN @ = bool>n ." STEP
    s" -1" IN-BUF? TTRUE
    STOP ;
 

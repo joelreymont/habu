@@ -112,6 +112,10 @@ forth.md: **Stack comments**, **Stack effects**, **Words & factoring**.
 ## 3 What the checker refuses, and what it admits
 
 Refused; every row measured, code from `tools/check.f --json-errors`.
+Top-level code is checked too: each token is judged against the live stack's
+cells as the same token in a colon body, and a refusal prints the body's
+diagnostic before the word runs, and `--load` exits 70 (`evaluate-closed`
+throws 70).
 
 | you write | diagnostic |
 |---|---|
@@ -142,6 +146,8 @@ Refused; every row measured, code from `tools/check.f --json-errors`.
 | a multi-cell value at the prompt | `hb: interpret-mode layout value: NAME` |
 | a bare `using` import a global also names, in a body, at top level or after `'` | `E-USING-SHADOW-GLOBAL`; at top level or after `'` `--load` exits with `ENGINE-ERROR:USING-SHADOW-GLOBAL` |
 | a top-level word, or `'` of one, nothing defined before it, `1.` or `$GG` among them | `E-UNDEFINED-TOP-LEVEL` at the token, before anything runs |
+| at top level, `' F execute` with F's inputs missing, `0 0 catch` | `E-REJECTED` at `execute`, `catch` |
+| at top level, a call of a word defined inside `0 set-check`, or of a private primitive outside its package | `E-CAP-TRUSTED`, as in a body; `'` of either is admitted |
 | `: W ( -- ) ;`, `create`, a new `package`, `wordlist` or `undefine W` while a checker replay is open | `ENGINE-ERROR:OVERLAY-OPEN` |
 | a duplicate tail in one wordlist | `E-DUPLICATE-DEFINITION` |
 | `: USE-INF RG-ONE ;  : T3 USE-INF USE-INF SAME-ID ;` with `RG-ONE ( -- fresh-region-a )`, `SAME-ID ( x x -- )`: two calls of an inferred producer are two regions | `E-RIGID-REGION-MISMATCH` |
@@ -270,7 +276,8 @@ and `u 0 ?do` runs max(u,0); `?do … +loop` skips only equal bounds, so
 evaluates source in a body: the text's `depth` starts at 0, a token reaching
 below it throws a stack underflow and a text that leaves cells throws
 `E-EVAL-RESIDUE`, the caller's cells intact either way. An xt the text runs
-cannot reach them: its reach under the floor underflows too. A text that ends
+cannot reach them: `' F execute` with F's input under the floor is
+`E-REJECTED` at `execute`. A text that ends
 inside a definition it opened is refused as every source is, `hb: source ended
 inside definition: NAME`, and the definition is rolled back (forth.md **Checked code and primitive boundaries** lists the open cases).
 
@@ -337,6 +344,18 @@ PTR-VARIABLE V                \ the declared twin certifies
 
 The declared forms are the `PTR-*` and `TYPED-*` rows of § 4. Such a cell takes
 the address it was declared for and refuses the address *of* one.
+
+Top level obeys the same rule, before the word runs and with the cell left
+unwritten: `variable V  here V !` is `E-RAW-CELL-PTR` at `!` and
+`create T ' dup ,` is `E-MISMATCH` at `,`. A cell pushed inside a `0 set-check`
+window is unknown after it: `check@ 0 set-check here swap set-check PV !` is
+`E-STALE-READ` at `!` even for a `PTR-VARIABLE PV`. A return-stack cell pushed
+inside the window cannot be read after it, because the interpret row has no
+return depth to count it by: `check@ 0 set-check 1 2 2>r set-check 2r>` is
+refused at `2r>`. Admitted at top level:
+`5 V !`, `1 V +!`, `here PV !` with the pointer kept across a `:` definition or
+a `require`, `' X HK !` for `TYPED-VARIABLE HK [ -- ]`, and anything inside a
+`0 set-check` window.
 
 An integer becomes an address or an xt only through a private `CAST:`
 (`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
