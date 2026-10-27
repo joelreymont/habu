@@ -11,13 +11,12 @@ package AOT-ARM
 
 public
 
-\ Write the engine's window coordinates. Tier 0 folds a created word's address
+\ Write the engine's window code base. Tier 0 folds a created word's address
 \ into its user only when the word's entry is at or above B0 (habu2.f
 \ EM-COMPILE-CALL), so a window word calls a pre-window created word, as the
-\ capture requires. `0 0` folds every one; WINDOW-CLOSE writes it, so no
+\ capture requires. `0` folds every one; WINDOW-CLOSE writes it, so no
 \ window's base outlives the window.
-: OPEN ( n n -- ) {: b0:n d0:n :}
-   d0 LIVE AOT-CELLS:D0-CELL + CELL!
+: OPEN ( n -- ) {: b0:n :}
    b0 LIVE AOT-CELLS:B0-CELL + CELL! ;
 
 \ The engine's next wordlist id. It is read here, beside the window's other base
@@ -147,18 +146,18 @@ public
 \ Latch all four spans and bind the payload to this checker owner.
 : WINDOW-OPEN ( -- )
    LATCH-OPEN
-   B0 @ D0 @ OPEN
+   B0 @ OPEN
    SOURCE-OWNER PAYLOAD-ARM ;
 
 : WINDOW-OPEN-PERSISTENT ( -- )
    LATCH-OPEN
-   B0 @ D0 @ OPEN ;
+   B0 @ OPEN ;
 
 \ Where the window's definitions end. The wordlist counter is latched HERE for
 \ the reason above, and never read again at capture time.
 : WINDOW-CLOSE ( -- )
    cp@ B1 ! ndict@ R1 ! HERE-N D1 ! WIDN W1 !
-   0 0 OPEN
+   0 OPEN
    SIG-CLOSE ;
 
 \ The window as aot-capture.f CAPTURE takes it. One reader, so a caller cannot

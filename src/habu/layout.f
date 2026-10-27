@@ -781,7 +781,7 @@ $27C8 constant CLAIMS
 \ and the lowering transaction state ($5000) - swept for a claimant across src lib
 \ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43A8
 \ gap: that run is reserved for widening the protected-WID bitmap, which cannot be
-\ split, and AOT-CELLS:T0-CELL/D0-CELL/B0-CELL already took its top three cells to
+\ split, and AOT-CELLS:T0-CELL/B0-CELL already took two of its top three cells to
 \ keep the rest contiguous. All five sit below $7FF8, the ceiling AOT-WINDOW measured for a
 \ cell a compiled routine names directly (`DATA <off> LDR` is a 12-bit immediate
 \ scaled by eight), which every one of these is: the band bodies read them with
@@ -2369,16 +2369,15 @@ $43A0 constant XT-CELL
 ;package
 
 \ Capture-window cells retain their existing offsets in the engine DATA layout.
-\ AOT-ARM:OPEN writes both coordinates, and WINDOW-CLOSE clears them. Tier 0
-\ reads B0-CELL to keep a mention of a created word made before the window
-\ opened a call (habu2.f EM-COMPILE-CALL); no engine code reads D0-CELL.
+\ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to
+\ keep a mention of a created word made before the window opened a call
+\ (habu2.f EM-COMPILE-CALL). $43B0 is free.
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-CELLS
 public
 $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
-$43B0 constant D0-CELL           \ first address of the open window's DATA span
-$43B8 constant B0-CELL           \ first address of its code span
+$43B8 constant B0-CELL           \ first address of the open window's code span
 ;package
 
 \ --- tier 0's BEGIN-snapshot storage -------------------------------------------

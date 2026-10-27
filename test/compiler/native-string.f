@@ -149,12 +149,11 @@ CAST: N>BYTES ( n -- ptr u8 )
 : WINDOW-CASE ( -- )
    s" lone-body" NSTR:INTERN {: old:n :}
    data-base AOT-CELLS:B0-CELL + @ {: b0:n :}
-   data-base AOT-CELLS:D0-CELL + @ {: d0:n :}
    AOT-ARM:WINDOW-OPEN
    NSTR:WINDOW-OPEN
    s" lone-body" NSTR:INTERN {: fresh:n :}
    s" lone-body" NSTR:INTERN {: again:n :}
-   b0 d0 AOT-ARM:OPEN
+   b0 AOT-ARM:OPEN
    s" a retained compiler copies cached literals into the new AOT window" T-LABEL
    fresh AOT-ARM:D0 @ >= TTRUE
    fresh old T<>

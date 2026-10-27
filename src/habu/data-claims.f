@@ -246,7 +246,6 @@ create TAB
    DECLARED-LOG:ADDR-CELL             1 cells                 CLAIM DECLARED-LOG-ADDR
    APP-ENTRY:XT-CELL                  1 cells                 CLAIM APP-ENTRY-XT-CELL
    AOT-CELLS:T0-CELL                  1 cells                 CLAIM AOT-WINDOW-T0
-   AOT-CELLS:D0-CELL                  1 cells                 CLAIM AOT-WINDOW-D0
    AOT-CELLS:B0-CELL                  1 cells                 CLAIM AOT-WINDOW-B0
    EVAL-TOP-CELL                      PROT:RHI EVAL-TOP-CELL -  CLAIM EVAL-POINTER-BAND
    PROT:RHI                           1 cells                 CLAIM PROT-RHI
