@@ -44,7 +44,6 @@ A-PROBE-OFF 1 + constant A-WORK-BYTES
 4 constant A-INTERRUPTED
 
 PROCESS-SYMBOLS
-FUNCTION: A-OPEN-AT-CALL openat ( n ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: A-READ-CALL read ( n ptr u8 n -- n )
    1 2 WRITES-ARG
 ;FUNCTION
@@ -86,16 +85,9 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    closing 0<> if closing CAUSE! E-FS-IO throw then
    0 CAUSE! ;
 
-: A-OPEN-FAIL ( -- ) FFI:ERRNO CAUSE! E-FS-OPEN throw ;
-: A-STAT-FAIL ( -- ) FFI:ERRNO CAUSE! E-FS-STAT throw ;
-: A-AT-CWD ( -- n )
-   HB-TARGET-MACOS? if -2 else -100 then ;
-\ Darwin: xnu bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h
-\ overrides the generic directory/nofollow bits; x86-64 uses the generic bits.
-: A-DIR-FLAGS ( -- n )
-   HB-TARGET-MACOS? if $100000 $100 or $1000000 or exit then
-   HB-TARGET-LINUX-X86-64? if $10000 $20000 or $80000 or exit then
-   $4000 $8000 or $80000 or ;
+\ O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK|O_NOCTTY, READ-FILE-AT's last
+\ component. Darwin: xnu bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h
+\ overrides the generic nofollow bit; x86-64 uses the generic bits.
 : A-FILE-FLAGS ( -- n )
    HB-TARGET-MACOS? if $100 $1000000 or $4 or $20000 or exit then
    HB-TARGET-LINUX-X86-64? if $20000 $80000 or $800 or $100 or exit then
@@ -142,16 +134,16 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
 
 : A-OPEN-BASE ( ptr u8 ptr u8 -- ) {: path:ptr work:ptr :}
    path c@ FS-SLASH = if
-      A-AT-CWD S\" /\z" drop A-DIR-FLAGS A-OPEN-AT-CALL
+      FS-AT-CWD S\" /\z" drop FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
    else
-      A-AT-CWD S\" .\z" drop A-DIR-FLAGS A-OPEN-AT-CALL
+      FS-AT-CWD S\" .\z" drop FS-OPEN-DIR-FLAGS FS-OPEN-AT-CALL
    then
-   dup 0 < if drop A-OPEN-FAIL then
+   dup 0 < if drop E-FS-OPEN FS-ERRNO-FAIL then
    work A-CUR! ;
 
 : A-OPEN-NEXT ( ptr u8 n ptr u8 n -- ) {: work:ptr parent:n component:ptr flags:n :}
-   parent component flags A-OPEN-AT-CALL
-   dup 0 < if drop A-OPEN-FAIL then
+   parent component flags FS-OPEN-AT-CALL
+   dup 0 < if drop E-FS-OPEN FS-ERRNO-FAIL then
    work A-NEXT!
    work A-CUR-CELL A-CLOSE-SLOT dup 0<> if CAUSE! E-FS-IO throw then drop
    work A-NEXT@ work A-CUR!
@@ -165,7 +157,7 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
       {: at:n :}
       path u at A-COMPONENT-END {: stop:n :}
       0 path stop + c!
-      stop u = file and if A-FILE-FLAGS else A-DIR-FLAGS then {: flags:n :}
+      stop u = file and if A-FILE-FLAGS else FS-OPEN-DIR-FLAGS then {: flags:n :}
       work A-CUR@ dup 0 < if drop parent then {: from:n :}
       work from path at + flags A-OPEN-NEXT
       stop u < if stop 1 + else stop then
@@ -186,8 +178,8 @@ FUNCTION: A-CLOSE-CALL close ( n -- i32 ) ;FUNCTION
    anchor src u work ;
 
 : A-REGULAR ( ptr u8 -- ) {: work:ptr :}
-   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if A-STAT-FAIL then
-   work A-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
+   work A-CUR@ work A-STAT-BUF FSTAT-CALL 0<> if E-FS-STAT FS-ERRNO-FAIL then
+   work A-STAT-BUF FS-LIBC-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
 : A-READ-STEP ( ptr u8 ptr u8 n -- n ) {: work:ptr dst:ptr count:n :}
    begin
@@ -251,6 +243,6 @@ public
    got ;
 : CLOSE ( fd -- )
    0 CAUSE!
-   FD>N A-CLOSE-CALL 0<> if FFI:ERRNO CAUSE! E-FS-IO throw then ;
+   FD>N A-CLOSE-CALL 0<> if E-FS-IO FS-ERRNO-FAIL then ;
 
 ;package

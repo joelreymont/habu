@@ -863,6 +863,87 @@ public
    FMT-LINK-DIR DIR? TTRUE
    FMT-LINK-DIR-FILE FILE? TTRUE ;
 
+create FMT-ROOT-PATH-BUF FS-PATH-CAP allot
+
+\ FMT-TREE with a trailing slash: lstat of `link/` resolves the link.
+: FMT-TREE-SLASH$ ( -- ptr u8 n )
+   FMT-TREE {: a:ptr u:n :}
+   a FMT-ROOT-PATH-BUF u BYTE-COPY
+   FS-SLASH FMT-ROOT-PATH-BUF u + c!
+   FMT-ROOT-PATH-BUF u 1 + ;
+
+: FMT-REMOVE-TREE-SLASH ( -- )
+   FMT-TREE-SLASH$ REMOVE-TREE ;
+
+: FMT-TEST-REMOVE-TREE-SLASHED-LINK ( -- )
+   FMT-LINK-DIR FMT-TREE MAKE-SYMLINK
+   FMT-REMOVE-TREE-SLASH
+   s" REMOVE-TREE of link/ unlinks the link" T-LABEL
+   FMT-TREE SYMLINK? TFALSE
+   s" REMOVE-TREE of link/ keeps the target and its file" T-LABEL
+   FMT-LINK-DIR DIR? TTRUE
+   FMT-LINK-DIR-FILE FILE? TTRUE ;
+
+: FMT-TEST-REMOVE-TREE-DANGLING ( -- )
+   FMT-BROKEN-TARGET FMT-BROKEN-LINK MAKE-SYMLINK
+   FMT-BROKEN-LINK REMOVE-TREE
+   s" REMOVE-TREE unlinks a dangling link root" T-LABEL
+   FMT-BROKEN-LINK SYMLINK? TFALSE
+   FMT-TREE MAKE-DIR
+   FMT-BROKEN-TARGET FMT-TREE-DIR-LINK MAKE-SYMLINK
+   FMT-TREE REMOVE-TREE
+   s" REMOVE-TREE unlinks a dangling link inside the tree" T-LABEL
+   FMT-TREE EXISTS? TFALSE ;
+
+\ kept.txt/x: a root whose parent component is a regular file.
+: FMT-REMOVE-TREE-NOTDIR ( -- )
+   FMT-LINK-DIR-FILE s" x" FMT-ROOT-PATH-BUF JOIN-PATH {: u:n :}
+   FMT-ROOT-PATH-BUF u REMOVE-TREE ;
+
+\ kept.txt/: a regular file spelled as a directory.
+: FMT-REMOVE-FILE-SLASH ( -- )
+   FMT-LINK-DIR-FILE {: a:ptr u:n :}
+   a FMT-ROOT-PATH-BUF u BYTE-COPY
+   FS-SLASH FMT-ROOT-PATH-BUF u + c!
+   FMT-ROOT-PATH-BUF u 1 + REMOVE-TREE ;
+
+: FMT-TEST-REMOVE-TREE-NOTDIR ( -- )
+   [: FMT-REMOVE-TREE-NOTDIR ;] catch FS:ERRNO {: code:n cause:n :}
+   s" REMOVE-TREE of a root under a file throws E-FS-STAT" T-LABEL
+   code E-FS-STAT T=
+   s" FS:ERRNO names ENOTDIR" T-LABEL
+   cause FS:ENOTDIR T=
+   [: FMT-REMOVE-FILE-SLASH ;] catch FS:ERRNO {: fcode:n fcause:n :}
+   s" REMOVE-TREE of file/ throws E-FS-STAT with ENOTDIR" T-LABEL
+   fcode E-FS-STAT T=
+   fcause FS:ENOTDIR T=
+   s" and keeps the file" T-LABEL
+   FMT-LINK-DIR-FILE FILE? TTRUE ;
+
+\ FMT-TREE/d/d/... with level one-byte directories below it.
+: FMT-DEEP$ ( n -- ptr u8 n ) {: level:n :}
+   FMT-TREE {: a:ptr u:n :}
+   a FMT-ROOT-PATH-BUF u BYTE-COPY
+   level 0 ?do
+      FS-SLASH FMT-ROOT-PATH-BUF u i 2 * + + c!
+      100 FMT-ROOT-PATH-BUF u i 2 * + 1 + + c!
+   loop
+   FMT-ROOT-PATH-BUF u level 2 * + ;
+
+\ The descriptor open would hand out next: the lowest one free.
+: FMT-NEXT-FD ( -- n )
+   FMT-ROOT$ FS-OPEN-DIR dup close ;
+
+\ A tree FS-MAX-DEPTH directories deep throws E-FS-DEPTH with every level
+\ above the refusal open. A leaked one would hold the lowest free number.
+: FMT-TEST-REMOVE-TREE-DEPTH-FDS ( -- )
+   FS-MAX-DEPTH FMT-DEEP$ MAKE-DIRS
+   FMT-NEXT-FD {: before:n :}
+   [: FMT-TREE REMOVE-TREE ;] E-FS-DEPTH TTHROWSQ
+   s" a refused REMOVE-TREE closes every descriptor it opened" T-LABEL
+   FMT-NEXT-FD before T=
+   0 FS-MAX-DEPTH ?do i FMT-DEEP$ REMOVE-DIR -1 +loop ;
+
 package FMT-SPECIAL
 
 variable LISTENER
@@ -1412,6 +1493,10 @@ public
    FMT-TEST-REMOVE-TREE
    FMT-SPECIAL:RUN
    FMT-TEST-REMOVE-TREE-SYMLINK-DIR
+   FMT-TEST-REMOVE-TREE-SLASHED-LINK
+   FMT-TEST-REMOVE-TREE-DANGLING
+   FMT-TEST-REMOVE-TREE-NOTDIR
+   FMT-TEST-REMOVE-TREE-DEPTH-FDS
    FMT-TASKS:RUN
    FMT-TEST-CLEANUP
    T-REPORT

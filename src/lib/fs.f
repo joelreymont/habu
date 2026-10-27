@@ -19,8 +19,9 @@
 \ catching an E-FS-* or E-FS-LIST-* throw, since any later primitive, even a
 \ successful one, replaces it, and a nested call replaces the outer call's.
 \ A semantic refusal (path capacity, a malformed path) leaves zero. The
-\ guarantee covers fs.f, fs-list.f and fs-anchored.f; the identity, lock and
-\ mutation helpers do not join it. The throws stay the primary contract.
+\ guarantee covers fs.f, fs-list.f, fs-anchored.f and fs-mutate.f's
+\ REMOVE-TREE and REMOVE-TREE-IN; the identity, lock and other mutation
+\ helpers do not join it. The throws stay the primary contract.
 \
 \ THE WALK visits regular files only, depth-first, in the order the platform
 \ directory stream returns (a caller that needs lexical order sorts); it skips
@@ -415,6 +416,28 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
    FS-PATHZ FS-STAT-BUF lstat64 0 < if FS-FALSE exit then
    FS-TRUE ;
 
+\ fstatat(2): the NUL-terminated name relative to a directory descriptor (or
+\ FS-AT-CWD) into a buffer of FS-STAT-CAP bytes, in libc's struct stat layout,
+\ not lstat64's, so its mode is FS-LIBC-MODE@'s to read. Zero on success, else
+\ -1 with the cause in FFI:ERRNO.
+PROCESS-SYMBOLS
+FUNCTION: FS-STAT-AT-CALL fstatat ( n ptr u8 ptr u8 n -- i32 )
+   2 FS-STAT-CAP WRITES-BYTES
+;FUNCTION
+
+\ AT_SYMLINK_NOFOLLOW, fstatat's flag for the link itself, never its target.
+\ Darwin: xnu bsd/sys/fcntl.h. Linux: include/uapi/linux/fcntl.h, every arch.
+: FS-AT-NOFOLLOW ( -- n )
+   HB-TARGET-MACOS? if $20 else $100 then ;
+
+\ The mode field of libc's struct stat, which FSTAT-CALL and FS-STAT-AT-CALL
+\ write. Global because fs-mutate.f reads the mode FS-STAT-AT-CALL writes, and
+\ FS-STAT-MODE@ reads lstat64's layout, whose mode sits elsewhere on Linux.
+: FS-LIBC-MODE@ ( ptr u8 -- n )
+   HB-TARGET-MACOS? if 4 + FS-U16@ exit then
+   HB-TARGET-LINUX-X86-64? if 24 + FS-U16@ exit then
+   16 + FS-U16@ ;
+
 : FS-TRY-STAT-MODE ( ptr u8 n -- option<n> )   \ SOME stat mode, NONE if missing/unstatable
    FS-TRY-STAT if FS-STAT-MODE@ OPTION:SOME else OPTION:NONE then ;
 
@@ -538,6 +561,11 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 : FS-IO-FAIL ( -- )
    FS-IO-FD @ close E-FS-IO throw ;
 
+\ A FUNCTION: syscall saves no cause of its own: record libc's errno as this
+\ task's FS:ERRNO, then throw the code.
+: FS-ERRNO-FAIL ( n -- )
+   FFI:ERRNO data-base FS-ABI:ERRNO-OFF + ! throw ;
+
 \ Read FS-IO-FD into dst until cap bytes or end of file; the count read. A read
 \ error closes the descriptor and throws E-FS-IO.
 : FS-READ-FILL ( ptr u8 n -- n ) {: dst:ptr cap :}
@@ -568,12 +596,7 @@ create FS-WALK-CTX0 FS-WALK-BYTES allot
 
 package FS
 private
-\ The mode and size fields of libc's struct stat, which FSTAT-CALL writes.
-: LIBC-MODE@ ( ptr u8 -- n )
-   HB-TARGET-MACOS? if 4 + FS-U16@ exit then
-   HB-TARGET-LINUX-X86-64? if 24 + FS-U16@ exit then
-   16 + FS-U16@ ;
-
+\ The size field of libc's struct stat, which FSTAT-CALL writes.
 : LIBC-SIZE@ ( ptr u8 -- n )
    HB-TARGET-MACOS? if 96 + FS-U64@ exit then
    48 + FS-U64@ ;
@@ -598,7 +621,7 @@ public
       E-FS-OPEN throw
    then
    file FS-STAT-BUF FSTAT-CALL 0<> if file FFI:ERRNO FSTAT-FAIL then
-   FS-STAT-BUF LIBC-MODE@ S-IFMT and S-IFREG <> if file 0 FSTAT-FAIL then
+   FS-STAT-BUF FS-LIBC-MODE@ S-IFMT and S-IFREG <> if file 0 FSTAT-FAIL then
    file >FD FS-STAT-BUF LIBC-SIZE@ FS-TRUE ;
 
 \ Read exactly the size OPEN-SIZED gave into dst, which holds at least that
@@ -661,6 +684,31 @@ public
 
 : FS-OPEN-DIR ( ptr u8 n -- n )
    FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then ;
+
+\ openat(2) and unlinkat(2): the NUL-terminated name relative to a directory
+\ descriptor, or to the working directory for FS-AT-CWD. openat answers the
+\ new descriptor, unlinkat zero; either answers -1 with the cause in FFI:ERRNO.
+PROCESS-SYMBOLS
+FUNCTION: FS-OPEN-AT-CALL openat ( n ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: FS-UNLINK-AT-CALL unlinkat ( n ptr u8 n -- i32 ) ;FUNCTION
+
+\ AT_FDCWD, the descriptor that names the working directory.
+: FS-AT-CWD ( -- n )
+   HB-TARGET-MACOS? if -2 else -100 then ;
+
+\ AT_REMOVEDIR, unlinkat's flag to remove an empty directory as rmdir does.
+\ Darwin: xnu bsd/sys/fcntl.h. Linux: include/uapi/linux/fcntl.h, every arch.
+: FS-AT-REMOVEDIR ( -- n )
+   HB-TARGET-MACOS? if $80 else $200 then ;
+
+\ openat's flags for a directory: O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC,
+\ so a symlink in the last component is refused, never followed. Darwin: xnu
+\ bsd/sys/fcntl.h. Linux arm64: arch/arm64 asm/fcntl.h overrides the generic
+\ directory/nofollow bits; x86-64 uses the generic bits.
+: FS-OPEN-DIR-FLAGS ( -- n )
+   HB-TARGET-MACOS? if $100000 $100 or $1000000 or exit then
+   HB-TARGET-LINUX-X86-64? if $10000 $20000 or $80000 or exit then
+   $4000 $8000 or $80000 or ;
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
    FS-DIRENT-RECLEN-OFF BYTE+ FS-U16@ ;

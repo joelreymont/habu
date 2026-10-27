@@ -484,9 +484,9 @@ GT-POOL-ABORT-BARE!
    a u REMOVE-TREE ;
 
 \ One of a slot's directories. A removal that throws - a tree its child left
-\ deeper than FS-PATH-CAP, which REMOVE-TREE refuses - is named with the row,
-\ the path and the code, and the code is the slot's (GT-POOL-OK?): the row
-\ fails and the pool goes on.
+\ deeper than FS-MAX-DEPTH, which REMOVE-TREE refuses with E-FS-DEPTH - is
+\ named with the row, the path and the code, and the code is the slot's
+\ (GT-POOL-OK?): the row fails and the pool goes on.
 : GT-POOL-SCRATCH-REMOVE ( ptr u8 n idx -- ) {: a:ptr u:n idx:idx :}
    a u [: 2dup GT-POOL-TREE-REMOVE ;] catch {: code:n :}
    2drop

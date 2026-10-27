@@ -4,13 +4,17 @@
 \ directory's parent, which fits, loads. FS-PATH-CAP bounds MAKE-DIRS and a
 \ child's cwd, so /bin/mkdir makes the tail past PATH-CAP and /usr/bin/env -C
 \ starts the engine in it, both naming it relative to its parent. Keep the
-\ children's logs, except the tail: no FS-PATH-CAP-bounded walk (the gate
-\ pool's REMOVE-TREE of a slot's HB_TMP) can remove it, so an rm child removes
-\ it before the verdict.
+\ children's logs. REMOVE-TREE then removes the tail, whose paths pass
+\ PATH-CAP, through directory descriptors, and unlinks a link the tail holds to
+\ a directory beside it without following it into the sentinel there. A
+\ failed step is recorded, not fatal, and the cases run under `finally`, so an
+\ rm child removes whatever tail a failure or a throw left: no run leaves a
+\ path past PATH-CAP that nothing can remove by name.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fmt.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
@@ -27,6 +31,7 @@ create ROOT FS-PATH-CAP allot variable ROOT-U
 create ENTRY FS-PATH-CAP allot variable ENTRY-U
 create ENGINE FS-PATH-CAP allot variable ENGINE-U
 create MID FS-PATH-CAP allot variable MID-U
+create SIDE FS-PATH-CAP allot variable SIDE-U
 create PATH FS-PATH-CAP allot
 create OUT IO-CAP allot
 create ERR IO-CAP allot
@@ -38,11 +43,17 @@ variable RC
 : ENTRY$ ( -- ptr u8 n ) ENTRY ENTRY-U @ ;
 : ENGINE$ ( -- ptr u8 n ) ENGINE ENGINE-U @ ;
 : MID$ ( -- ptr u8 n ) MID MID-U @ ;
+: SIDE$ ( -- ptr u8 n ) SIDE SIDE-U @ ;
 
 \ TAIL is three 200-byte segments, MID is ROOT$/deep/TAIL and the long
-\ directory is MID/TAIL: past PATH-CAP for any ROOT$ that leaves MID within it.
+\ directory is MID/TAIL, past PATH-CAP whenever MID fits FS-PATH-CAP. The
+\ removed root TOP$ is MID/<first segment>, and it fits FS-PATH-CAP only for a
+\ ROOT$ of at most ROOT-MAX bytes; SETUP dies naming a longer root and the
+\ bound.
 200 constant SEG-BYTES
 SEG-BYTES 1 + 3 * 1 - constant TAIL-BYTES
+\ 6: the /deep/ after ROOT$; 1: the slash before the first segment.
+FS-PATH-CAP 6 - TAIL-BYTES - 1 - SEG-BYTES - constant ROOT-MAX
 create TAIL TAIL-BYTES allot
 
 : TAIL$ ( -- ptr u8 n ) TAIL TAIL-BYTES ;
@@ -59,13 +70,21 @@ create TAIL TAIL-BYTES allot
    {: tool:ptr toolu:n :}
    MID$ PROC-CMD:CWD!
    tool toolu TIMEOUT-MS >MS PROC-CMD:RUN-RC MATCH result
-      ok OF drop ENDOF
-      err OF drop PROC-CMD:ERR$ type s" deep-cwd: tool failed" 1 die ENDOF
-   ;MATCH ;
+      ok OF drop true ENDOF
+      err OF drop PROC-CMD:ERR$ type false ENDOF
+   ;MATCH {: ran:bool :}
+   s" a helper tool run in MID exits 0" T-LABEL
+   ran TTRUE ;
 
 : SETUP ( -- )
    s" habu-deep-cwd" HB-TMP-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
+   u ROOT-MAX > if
+      SB-RESET s" deep-cwd: root " SB-APPEND ROOT$ SB-APPEND
+      s"  is longer than " SB-APPEND ROOT-MAX FMT:SB-INT
+      s"  bytes, so ROOT/deep/TAIL/<segment> passes FS-PATH-CAP" SB-APPEND
+      SB$ 1 die
+   then
    ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:CANONICAL TTRUE {: e:ptr eu:n :}
    e ENGINE eu BYTE-COPY eu ENGINE-U !
    ROOT$ s" entry.f" ENTRY JOIN-PATH ENTRY-U !
@@ -73,7 +92,9 @@ create TAIL TAIL-BYTES allot
    TAIL!
    ROOT$ s" deep" PATH JOIN-PATH {: pathu:n :}
    PATH pathu TAIL$ MID JOIN-PATH MID-U !
-   MID$ MAKE-DIRS
+   MID$ MAKE-DIRS ;
+
+: MAKE-TAIL ( -- )
    PROC-CMD:RESET
    s" -p" PROC-CMD:ARG+ TAIL$ PROC-CMD:ARG+
    s" /bin/mkdir" IN-MID ;
@@ -115,9 +136,6 @@ create TAIL TAIL-BYTES allot
    s" -C" >LEN PROC-ARGV+ TAIL$ >LEN PROC-ARGV+
    ENGINE-ARGV+
    RUN-CHILD
-   PROC-CMD:RESET
-   s" -r" PROC-CMD:ARG+ TAIL-TOP$ PROC-CMD:ARG+
-   s" /bin/rm" IN-MID
    s" deep.out" s" deep.err" KEEP
    s" a working directory past PATH-CAP exits 74" T-LABEL
    RC @ 74 T=
@@ -126,10 +144,55 @@ create TAIL TAIL-BYTES allot
    s" and names itself on one line" T-LABEL
    ERR ERR-U @ S\" source root: the working directory does not resolve to a searchable directory within PATH-CAP bytes\n" T$= ;
 
+
+\ PATH holds one answer at a time: each caller consumes it before the next.
+: SENTINEL$ ( -- ptr u8 n )
+   SIDE$ s" sentinel" PATH JOIN-PATH {: u:n :}
+   PATH u ;
+
+
+: TOP$ ( -- ptr u8 n )
+   MID$ TAIL-TOP$ PATH JOIN-PATH {: u:n :}
+   PATH u ;
+
+
+\ SIDE is beside the deep tree and holds the sentinel. The link to it sits in
+\ the deepest tail directory, past PATH-CAP, so ln makes it relative to MID.
+: LINK-SIDE ( -- )
+   ROOT$ s" side" SIDE JOIN-PATH SIDE-U !
+   SIDE$ MAKE-DIR
+   SENTINEL$ s" kept" WRITE-ALL
+   TAIL$ s" side" PATH JOIN-PATH {: linku:n :}
+   PROC-CMD:RESET
+   s" -s" PROC-CMD:ARG+ SIDE$ PROC-CMD:ARG+ PATH linku PROC-CMD:ARG+
+   s" /bin/ln" IN-MID ;
+
+
+: REMOVE-TAIL ( -- )
+   LINK-SIDE
+   [: TOP$ REMOVE-TREE ;] catch {: code:n :}
+   s" REMOVE-TREE removes a tree whose paths pass PATH-CAP" T-LABEL
+   code 0 T=
+   code 0= if
+      s" REMOVE-TREE removed it" T-LABEL
+      TOP$ EXISTS? TFALSE
+   then
+   s" and unlinks a link to a directory without following it" T-LABEL
+   SENTINEL$ EXISTS? TTRUE ;
+
+\ Whatever the cases left of the tail, an rm child removes: it runs after a
+\ recorded failure or a throw, and finds nothing after a passing run.
+: CLEAR-TAIL ( -- )
+   TOP$ EXISTS? 0= if exit then
+   PROC-CMD:RESET
+   s" -r" PROC-CMD:ARG+ TAIL-TOP$ PROC-CMD:ARG+
+   s" /bin/rm" IN-MID ;
+
 public
 
 : RUN ( -- )
-   T-RESET SETUP FITS DEEP
+   T-RESET SETUP
+   [: MAKE-TAIL FITS DEEP REMOVE-TAIL ;] [: CLEAR-TAIL ;] finally
    s" deep cwd tree: " type ROOT$ type cr
    T-REPORT ;
 
