@@ -244,7 +244,8 @@ Compile-time code reads earlier files' state through dictionary records and
 owner-exported state. A file whose compile-time code reads earlier data through
 a raw address, a trusted body outside an owner interface, or an untracked
 foreign or system call is compiled on every build, and the build names the
-word.
+word. Reads made inside the kernel are the kernel's and do not make a file
+ordered.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not

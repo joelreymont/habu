@@ -103,9 +103,11 @@ DYNAMIC-BUFFER FRUNS n
 \ Each open definition frame's ordinal and entry here, two cells per depth.
 DYNAMIC-BUFFER DLIMITS n
 \ A closure walk: the epoch stamp of each record it reached, its pending
-\ records, its members, and its digest context and result.
+\ records and beside each whether a kernel member read it as the kernel's
+\ own (VISIT), its members, and its digest context and result.
 DYNAMIC-BUFFER SEEN n
 DYNAMIC-BUFFER WSTACK n
+DYNAMIC-BUFFER WKERNEL bool
 DYNAMIC-BUFFER MEMBERS n
 DYNAMIC-BUFFER HWORK u8
 \ The declared address cells inside one DATA extent, as offsets into it.
@@ -166,6 +168,22 @@ variable USER-BYTES-N
 0 CWORK-VARIABLE MISS-P ptr u8
 0 CWORK-VARIABLE MISS-U n
 0 CWORK-VARIABLE SCAN-OFF n
+\ The kernel is the records made before the checker hook cell was first set
+\ (docs/architecture.md "Kernel"). KERNEL-START is what the session's first
+\ observation saw: 0 none yet, 1 the hook clear, 2 the hook set. A session
+\ whose first observation sees the hook clear and that then sets it, as the
+\ engine build does at src/core/check-hook.f INSTALL, latches KERNEL-END to
+\ the record count where it first sees the hook set (KERNEL-LATCH). So a
+\ session which installs its own checker hook is treated as an engine
+\ build. An application session starts with the hook set and keeps
+\ KERNEL-END 0: no record is kernel there. A kernel member's data reads are
+\ DATA rows like any member's; only its seed reads are its own (KERNEL-OWN?).
+\ A kernel read is still not pinned where a later engine file's top-level
+\ run, which the earlier-write scan refuses, wrote what it reads: a header
+\ cell, or a cell holding code it then runs, whose body the walk does not
+\ follow. Seed definer runs have the same gap.
+0 CWORK-VARIABLE KERNEL-START n
+0 CWORK-VARIABLE KERNEL-END n
 create CELL-BYTES 8 allot
 
 \ The checker owner installs an exact-occurrence query at its publication
@@ -394,6 +412,28 @@ INSTALL-DEFAULT
    WOK @ 0= if exit then
    false WOK ! why FAIL-P ! whyu FAIL-U ! ord FAIL-ORD ! ;
 
+: HOOKED? ( -- bool ) data-base HOOK-CELL + CELL-VIEW @ 0<> ;
+
+\ Observe the checker hook cell for KERNEL-END.
+: KERNEL-LATCH ( -- )
+   KERNEL-END @ 0<> if exit then
+   HOOKED? {: hooked:bool :}
+   KERNEL-START @ 0= if hooked if 2 else 1 then KERNEL-START ! then
+   KERNEL-START @ 1 = hooked and if ndict@ KERNEL-END ! then ;
+
+\ ord is a kernel record: one the session made before KERNEL-END, past the
+\ seed.
+: KERNEL? ( n -- bool )
+   {: ord:n :}
+   ord KERNEL-END @ < ord NFILE-REF:SEED-RECORD? 0= and ;
+
+\ A kernel member's read of ord is the kernel's own when ord is a seed
+\ record: the kernel is built on the seed. A kernel data record or defer
+\ cell is judged as a read from any member is: its DATA row pins its bytes,
+\ so a later file that stores into it or rebinds it misses the consumers.
+: KERNEL-OWN? ( n -- bool )
+   NFILE-REF:SEED-RECORD? ;
+
 : WALK-BEGIN ( bool -- )
    {: capture:bool :}
    ndict@ {: n:n :}
@@ -401,17 +441,27 @@ INSTALL-DEFAULT
    n SEEN-N @ ?do 0 i SEEN ! loop
    n SEEN-N @ max SEEN-N !
    SHA256-CTX-BYTES DIGEST-BYTES + HWORK-RESERVE
-   1 EPOCH +!
+   2 EPOCH +!
    0 WSP ! 0 MEM-N !
    capture WCAPTURE ! true WOK ! ;
 
-: VISIT ( n -- )
-   {: ord:n :}
+\ Push ord, reached from a kernel member when kernel is true. A seed record
+\ a kernel member reads is the kernel's own (KERNEL-OWN?): it is pushed as
+\ the kernel's and the walk records nothing for it (REACH). Its epoch stamp
+\ is EPOCH less one, so another member's read of it still pushes it to be
+\ judged; any other record is stamped EPOCH and pushed once.
+: VISIT ( n bool -- )
+   {: ord:n kernel:bool :}
    ord 0 < ord ndict@ >= or if BAD then
-   ord SEEN @ EPOCH @ = if exit then
-   EPOCH @ ord SEEN !
+   kernel if ord KERNEL-OWN? else false then {: own:bool :}
+   ord SEEN @ {: stamp:n :}
+   stamp EPOCH @ = if exit then
+   own stamp EPOCH @ 1- = and if exit then
+   own if EPOCH @ 1- else EPOCH @ then ord SEEN !
    WSP @ 1+ WSTACK-RESERVE
+   WSP @ 1+ WKERNEL-RESERVE
    ord WSP @ WSTACK !
+   own WSP @ WKERNEL !
    1 WSP +! ;
 
 \ The record ordinal and here bounding a DATA extent read while ord's frame
@@ -807,7 +857,7 @@ private
    target NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
    known 0= if s" executed-closure-unknown" holder FAIL exit then
    1 H-N key keyu H-S addend H-N
-   target VISIT ;
+   target false VISIT ;
 
 \ v lies in the dictionary and code region (AOT-CELL keeps its own test
 \ private, and a host built before an export must still load this file).
@@ -917,10 +967,13 @@ private
 
 : EDGES ( n -- )
    {: ord:n :}
+   ord KERNEL? {: kernel:bool :}
    ord NFILE-REF:RESULT-EDGES 0 ?do
       ord i NFILE-REF:RESULT-EDGE {: kind:n target:n :}
       kind drop
-      target 0 < if s" executed-closure-unknown" ord FAIL else target VISIT then
+      target 0 < if
+         s" executed-closure-unknown" ord FAIL
+      else target kernel VISIT then
    loop ;
 
 \ A seed record lies below the floor: a seed value is terminal, a classed
@@ -956,9 +1009,13 @@ private
 \ does> instance's clause has no result yet; anything else must be a data
 \ record. A slot word TASK:+USER made is a member without its edges: its
 \ digest pins the slot offset it bakes, and its slot's bytes are its file's
-\ (USER-ROWS+).
-: REACH ( n -- )
-   {: ord:n :}
+\ (USER-ROWS+). A kernel definition with a result is a member whatever its
+\ host reason, so a kernel body edit misses its consumers; a seed record it
+\ reads is the kernel's own (own), admitted with no row (KERNEL-OWN?), and
+\ any other record it reaches is judged here as from any member.
+: REACH ( n bool -- )
+   {: ord:n own:bool :}
+   own if exit then
    WTRANS @ if
       ord WROOT @ <> if
          ord NFILE-REF:SEED-RECORD? if ord SEED-REACH else ord QUEUE then exit
@@ -973,7 +1030,9 @@ private
    digest drop
    known if
       ord NFILE-REF:RESULT-REASON drop {: reason:n :}
-      reason ord MEMBER-ADMITTED? 0= if reason REASON-WHY$ ord FAIL exit then
+      ord KERNEL? 0= reason ord MEMBER-ADMITTED? 0= and if
+         reason REASON-WHY$ ord FAIL exit
+      then
       reason NHOST:UNCHECKED = if true WUNCHECKED ! then
       ord MEMBER+
       ord USER? 0= if ord EDGES then exit
@@ -990,10 +1049,10 @@ private
 : WALK ( n bool -- )
    {: root:n capture:bool :}
    capture WALK-BEGIN
-   root VISIT
+   root false VISIT
    begin WSP @ 0 > WOK @ and while
       -1 WSP +!
-      WSP @ WSTACK @ REACH
+      WSP @ WSTACK @ WSP @ WKERNEL @ REACH
    repeat ;
 
 : KEY< ( n n -- bool )
@@ -1654,6 +1713,7 @@ DEFAULT-OUT
 \ is judged cell by cell.
 : CAPTURE-RUN ( n -- )
    {: ord:n :}
+   KERNEL-LATCH
    ndict@ {: n:n :}
    n RMARK-RESERVE
    n RMARK-N @ ?do 0 i RMARK ! loop
@@ -1739,6 +1799,7 @@ variable USER-READ
 \ off marks the file unchecked first (FILE-UNCHECKED?).
 : RUN-BEFORE ( n n n n ptr u8 n -- n bool )
    2drop {: unit:n op:n rec:n entry:n :}
+   KERNEL-LATCH
    unit drop entry drop
    FDEPTH @ 0 > if check@ 0= if 1 F-UNCHECKED FFIELD ! then then
    op SOURCE-EXEC:WORD <> FDEPTH @ 0= or DEPTH @ 0 > or rec 0 < or if
@@ -1813,6 +1874,7 @@ variable USER-READ
 : RUN-AFTER ( n n n -- )
    {: unit:n ticket:n rc:n :}
    unit drop
+   KERNEL-LATCH
    ticket 0= if exit then
    ticket 1- {: run:n :}
    run FRUN-N @ >= if BAD then
@@ -1985,10 +2047,12 @@ variable USER-READ
    FBYTES-RELEASE FFRAMES-RELEASE FRANGES-RELEASE FWHY-RELEASE FSLOTS-RELEASE
    FRUNS-RELEASE
    RES-KEY-RELEASE PRIMITIVE-DATA-RELEASE
-   DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE MEMBERS-RELEASE HWORK-RELEASE
+   DLIMITS-RELEASE SEEN-RELEASE WSTACK-RELEASE WKERNEL-RELEASE MEMBERS-RELEASE
+   HWORK-RELEASE
    PTRS-RELEASE
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
+   0 KERNEL-START ! 0 KERNEL-END !
    USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
    0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 PENDING-XT !
    0 READERS-XT ! 0 CWORK-XT !
