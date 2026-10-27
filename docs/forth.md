@@ -593,7 +593,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   consumes the sum and gives the arm the payload once, which the arm must
   consume: re-mint it or call its destructor.
 - **A package family's generated words are `PKG-FAMILY:tail` with every hyphen
-  in the family name doubled**: an `ENUM read-result` in `package TCP4`
+  in the package and family names doubled**: an `ENUM read-result` in `package TCP4`
   constructs its `data` variant through `TCP4-READ--RESULT:data`; a `STRUCTURE
   captured` in `package PCAP` unmakes through `PCAP-CAPTURED:UNMAKE`.
   `SIGNAL-RESULT:signal` and `SIGNAL:signal` are both `E-UNDEFINED`. Stack
