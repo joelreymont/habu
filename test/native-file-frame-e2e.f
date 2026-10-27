@@ -216,8 +216,10 @@ variable FILL-POOL
    s" after.f" LOAD+
    s" aftpar.f" LOAD+
    s" retire.f" LOAD+
+   S\" check@ 0 set-check\n" IN+
    s" raw.f" LOAD+
    s" poke.f" LOAD+
+   S\" set-check\n" IN+
    s" slot.f" LOAD+
    s" later.f" LOAD+
    s" list.f" LOAD+
@@ -965,10 +967,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" gp.f" S\" require gc1.f\nrequire gc2.f\n" PUT
    s" k1.f" S\" : KA ( -- n ) 2 ;\ns\" KA\" FORGET-DEFS-FROM\n: KX ( -- n ) 3 ;\n" PUT
    s" q1.f" S\" : Q1 ( -- n ) 1 ;\nrequire k1.f\n: Q2 ( -- n ) KX ;\n" PUT
-   \ raw.f's top level stores RAW-TARGET's code address into the plain variable
-   \ RAW-CELL, which declares no xt cell; the tick is a run of the SAFE
-   \ RAW-TARGET.
-   s" raw.f" S\" variable RAW-CELL\n: RAW-TARGET ( -- ) ;\n' RAW-TARGET RAW-CELL !\n" PUT
+   \ raw.f and poke.f run inside the `0 set-check` window the app opens around
+   \ their loads; outside one the interpret row refuses their stores. raw.f's
+   \ top level stores RAW-TARGET's code address into RAW-CELL's undeclared
+   \ create bytes, which the object scans because the file ran unchecked; the
+   \ tick is a run of the SAFE RAW-TARGET.
+   s" raw.f" S\" create RAW-CELL 0 ,\n: RAW-TARGET ( -- ) ;\n' RAW-TARGET RAW-CELL !\n" PUT
    \ poke.f's top level stores BOARD-GO's code address 8 bytes into board.f's
    \ 16-byte BOARD, an earlier cell no address row declares: the update check
    \ refuses it there. board.f loads in poke.f's session, above its image floor.

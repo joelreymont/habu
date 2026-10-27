@@ -360,6 +360,10 @@ variable SLOTW-N
 \ The storage owners' spans while the closing file encodes, base and end.
 DYNAMIC-BUFFER OWNER-SPANS n
 variable OWNER-N
+\ Whether the closing file ran a top-level action with checking off
+\ (NUNIT-DEP:FILE-UNCHECKED?): only then can its undeclared bytes hold an
+\ address no checked store made.
+variable UNCHECKED
 \ Each of the closing file's sites' owning record and that record's DATA
 \ start, two cells per site.
 DYNAMIC-BUFFER SITE-OWNS n
@@ -2895,12 +2899,14 @@ CAST: CELL-OWNERS-FN ( n -- [ [ ptr u8 n -- ] -- ] )
    0 CELL 0 ?do 8 lshift va CELL 1- + i - SEG-BYTE or loop ;
 
 \ The cell window at holds value: a DATA address there that no owner
-\ declares pins its owner, and a code or mapped one refuses the file.
+\ declares pins its owner, and a code or mapped one refuses the file. A
+\ window no declared span overlaps is judged only in a file that ran unchecked.
 : ADMIT-AT ( n n -- )
    {: at:n value:n :}
    value AOT-CELL:DATA-ADDRESS? {: data:bool :}
    value AOT-CELL:TEXT-PTR? value AOT-CELL:MAPPED? or data or 0= if exit then
    at AOT-CELL:NONCELL-WINDOW? if exit then
+   at AOT-CELL:FREE-WINDOW? UNCHECKED @ 0= and if exit then
    at [: LIT-HIT? ;] AOT-CELL:LITERAL-OVERLAP? if exit then
    data if at value PIN else at value DECLINE-CELL then ;
 
@@ -3097,6 +3103,7 @@ CAST: OWNER-CELL-FN ( n -- [ [ ptr u8 -- ] -- ] )
    AOT-ARM:B0 @ checker CELL-OWNERS-FN lit ffi decl
       s" TASK:OWNED-CALLBACK-ROWS" PX s" FFI-CB:SCAN-SPANS" PX
       AOT-CELL:PREPARE-WITH-OWNERS
+   NUNIT-DEP:FILE-UNCHECKED? UNCHECKED !
    0 EVENTS-N @ FO-EVENTS FO @ ?do
       {: base:n :}
       i SEG? if

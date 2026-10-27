@@ -48,9 +48,10 @@ private
 32 constant PRIMITIVE-HEAD
 \ A file frame's cells: its row offset, its first record ordinal, where its
 \ children's record ranges start, where its first ORDERED reason starts, and
-\ its entry here, the pending run count (FRUN-N) when it opened, and the
+\ its entry here, the pending run count (FRUN-N) when it opened, the
 \ wordlist counter where its open segment began: at its open, then after
-\ each child file it loaded.
+\ each child file it loaded, and whether a top-level action ran with checking
+\ off.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
@@ -58,7 +59,8 @@ private
 4 constant F-HERE
 5 constant F-RUNS
 6 constant F-WID
-7 constant FRAME-CELLS
+7 constant F-UNCHECKED
+8 constant FRAME-CELLS
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
@@ -1254,6 +1256,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 : FILE-ORDERED? ( -- bool ) WHYU @ F-WHY FFIELD @ > ;
 
+public
+
+\ Whether a top-level action of the innermost file ran with checking off, so
+\ its undeclared bytes may hold an address no checked store made.
+: FILE-UNCHECKED? ( -- bool ) F-UNCHECKED FFIELD @ 0<> ;
+
+private
+
 \ The definition frame reports its first ORDERED row now; the file frame keeps
 \ its first reason for FILE-REPORT.
 : ORDERED-AT ( ptr u8 n ptr u8 n n -- )
@@ -1674,10 +1684,12 @@ variable USER-READ
 \ SOURCE-EXEC:RUN): a seed code word run at this file's top level, or in a
 \ text a pending run evaluates, is judged by the trace its run leaves, read by
 \ RUN-AFTER. It pushes a pending run, whose ticket is its index plus one; 0
-\ when the run is not judged.
+\ when the run is not judged. Any action while a file is open and checking is
+\ off marks the file unchecked first (FILE-UNCHECKED?).
 : RUN-BEFORE ( n n n n ptr u8 n -- n bool )
    2drop {: unit:n op:n rec:n entry:n :}
    unit drop entry drop
+   FDEPTH @ 0 > if check@ 0= if 1 F-UNCHECKED FFIELD ! then then
    op SOURCE-EXEC:WORD <> FDEPTH @ 0= or DEPTH @ 0 > or rec 0 < or if
       0 false exit
    then
@@ -1771,6 +1783,7 @@ variable USER-READ
    HERE-N base F-HERE + FFRAMES !
    FRUN-N @ base F-RUNS + FFRAMES !
    AOT-ARM:WIDN base F-WID + FFRAMES !
+   0 base F-UNCHECKED + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}

@@ -34,8 +34,10 @@ s" DBASE@" s" -- ptr u8" TRUST
 
 \ A scan span describes the storage producer's cell grid, byte extent, or
 \ allocation start. A start is a point: only windows crossing it are excluded.
-\ Declared spans are gathered once for a FILE admission or final AOT scan;
-\ undeclared CREATE bytes retain the full bytewide scan.
+\ Declared spans are gathered once for a FILE admission or final AOT scan.
+\ Undeclared CREATE bytes overlap no span (FREE-WINDOW?): the final AOT scan
+\ reads them bytewide, and FILE admission reads them only for a file whose top
+\ level ran with checking off.
 0 constant CELL-SPAN
 1 constant BYTE-SPAN
 2 constant ALLOC-START
@@ -236,10 +238,15 @@ variable SITE-HIT
 : RESET ( -- )
    0 SPAN-N !  0 SPAN-CURSOR !  0 SPAN-LAST !  0 SPAN-FLOOR ! ;
 
-\ A complete declared cell still receives the ordinary value check. A shifted
-\ window touching any cell grid, or any window touching byte storage, has no
-\ independent cell value.
-: NONCELL-WINDOW? ( n -- bool ) {: at:n :}
+\ What the span rows hold of the cell window at: no row (an undeclared
+\ CREATE byte), only declared cells each holding it as an aligned whole cell,
+\ or anything else. A complete declared cell still receives the ordinary value
+\ check. A shifted window touching any cell grid, or any window touching byte
+\ storage, has no independent cell value.
+0 constant WINDOW-FREE
+1 constant WINDOW-CELL
+2 constant WINDOW-NONCELL
+: WINDOW-KIND ( n -- n ) {: at:n :}
    at SPAN-LAST @ < if 0 SPAN-CURSOR ! then
    at SPAN-LAST !
    begin
@@ -248,21 +255,29 @@ variable SITE-HIT
    while
       1 SPAN-CURSOR +!
    repeat
-   SPAN-CURSOR @
+   WINDOW-FREE SPAN-CURSOR @
    begin dup SPAN-N @ < while
       dup SPAN-ORDER @ {: row:n :}
-      row SPAN-BASE@ at CELL + >= if drop false exit then
+      row SPAN-BASE@ at CELL + >= if drop exit then
       row SPAN-END@ at > if
-         row SPAN-KIND@ ALLOC-START = if drop true exit then
-         row SPAN-KIND@ BYTE-SPAN = if drop true exit then
+         row SPAN-KIND@ ALLOC-START = if 2drop WINDOW-NONCELL exit then
+         row SPAN-KIND@ BYTE-SPAN = if 2drop WINDOW-NONCELL exit then
          at row SPAN-BASE@ <
          at CELL + row SPAN-END@ > or
          at row SPAN-BASE@ - CELL mod 0<> or if
-            drop true exit
+            2drop WINDOW-NONCELL exit
          then
+         nip WINDOW-CELL swap
       then
       1+
-   repeat drop false ;
+   repeat drop ;
+
+\ Whether the cell window at has no independent cell value.
+: NONCELL-WINDOW? ( n -- bool ) WINDOW-KIND WINDOW-NONCELL = ;
+
+\ Whether no declared span overlaps the cell window at: undeclared CREATE
+\ bytes, which only a write made with checking off can fill with an address.
+: FREE-WINDOW? ( n -- bool ) WINDOW-KIND WINDOW-FREE = ;
 
 \ The caller supplies its target's literal row query. A compiler host must not
 \ ask its own retired pool whether target DATA bytes are literal text.
@@ -395,6 +410,7 @@ EXPORT PREPARE
 EXPORT PREPARE-WITH-OWNERS
 EXPORT RESET
 EXPORT NONCELL-WINDOW?
+EXPORT FREE-WINDOW?
 EXPORT LITERAL-OVERLAP?
 EXPORT MAPPED?
 EXPORT OWNER
