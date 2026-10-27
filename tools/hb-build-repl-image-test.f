@@ -1,11 +1,13 @@
 \ A cold REPL builder reports its own deadline through hb-build, then a saved
 \ builder works from another working directory, a CWD producer shadow forces a
-\ rebuild, and so does the caller's tier.
+\ rebuild, and so does the caller's tier. One program built at tier 0 and at
+\ tier 1 runs, compiles from stdin and saves itself, and the saved image runs.
 \ Run: bin/hb --load tools/hb-build-repl-image-test.f
 
 require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/process-cwd.f
+require src/lib/tier.f
 require test/app-builder-engine.f
 
 package HB-BUILD-CLI
@@ -24,11 +26,14 @@ variable HBT-IMAGE-TIER1
 variable HBT-IMAGE-SIZE
 variable HBT-IMAGE-SEC
 variable HBT-IMAGE-NS
+create HBT-IMAGE-RESAVED-BUF FS-PATH-CAP allot
+variable HBT-IMAGE-RESAVED-U
 
 : HBT-IMAGE-HB$ ( -- ptr u8 n ) HBT-IMAGE-HB-BUF HBT-IMAGE-HB-U @ ;
 : HBT-IMAGE-TOOL$ ( -- ptr u8 n ) HBT-IMAGE-TOOL-BUF HBT-IMAGE-TOOL-U @ ;
 : HBT-IMAGE-SHADOW$ ( -- ptr u8 n ) HBT-IMAGE-SHADOW-BUF HBT-IMAGE-SHADOW-U @ ;
 : HBT-IMAGE-TIER1$ ( -- ptr u8 n ) HBT-IMAGE-TIER1-BUF HBT-IMAGE-TIER1-U @ ;
+: HBT-IMAGE-RESAVED$ ( -- ptr u8 n ) HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U @ ;
 
 : HBT-IMAGE-PATHS ( -- )
    SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-IMAGE-HB-BUF JOIN-PATH HBT-IMAGE-HB-U !
@@ -163,6 +168,69 @@ variable HBT-IMAGE-NS
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
 
+\ Run an image with one stdin script: it exits 0 with nothing on stderr, and
+\ leaves its stdout in HBT-RUN-OUT.
+: HBT-IMAGE-STDIN-RUN ( ptr u8 n ptr u8 n -- n )
+   {: exe:ptr exeu:n in:ptr inu:n :}
+   PROC-ARGV-RESET
+   exe exeu >LEN in inu >LEN
+   HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE HBT-CAPTURE>N {: outu:n errn:n rc:n :}
+   rc 0 <> if HBT-RUN-OUT outu type HBT-RUN-ERR errn type then
+   rc 0 T=
+   errn 0 T=
+   outu ;
+
+
+\ The first run's script: define and run X, then save the session.
+: HBT-IMAGE-SAVE-SCRIPT$ ( -- ptr u8 n )
+   SB-RESET
+   S\" : X ( -- n ) 7 ; X .\ns\q " SB-APPEND
+   HBT-IMAGE-RESAVED$ SB-APPEND
+   S\" \q APP-IMAGE:SAVE\n" SB-APPEND
+   SB$ ;
+
+
+\ Leave in the string builder what an image of the subject loaded at TIER prints
+\ for one stdin script that runs X: MAIN's text, then X's 7.
+: HBT-REPL-TIER-OUT ( n -- )
+   HBT-SUBJECT-OUT
+   S\" 7\n" SB-APPEND ;
+
+
+\ Build HBT-REPL-SRC --repl from a caller at TIER, then select the tier this row
+\ ran at. The image runs MAIN, compiles X from stdin and saves itself; the saved
+\ image runs MAIN again and still knows X. Each run prints exactly the text of
+\ a subject loaded at TIER.
+: HBT-REPL-TIER-IMAGE ( n -- )
+   tier@ {: tier:n prior:n :}
+   tier TIER:SELECT
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   HBT-HBB-BUILD-OUT
+   prior TIER:SELECT
+   HBT-IMAGE-RESAVED$ HBT-REMOVE-FILE?
+   HBT-REPL-OUT HBT-IMAGE-SAVE-SCRIPT$ HBT-IMAGE-STDIN-RUN {: firstu:n :}
+   tier HBT-REPL-TIER-OUT
+   HBT-RUN-OUT firstu SB$ T$=
+   HBT-IMAGE-RESAVED$ S\" X .\n" HBT-IMAGE-STDIN-RUN {: againu:n :}
+   tier HBT-REPL-TIER-OUT
+   HBT-RUN-OUT againu SB$ T$= ;
+
+
+\ A REPL IMAGE OF TIER 0 CODE COMPILES, SAVES ITSELF AND RUNS LIKE ITS TIER 1
+\ TWIN. test/tier0-product-subject.f is built --repl from a tier 1 caller, then
+\ from a tier 0 caller into the same output. Each image and the image it saves
+\ print the subject's text, the tier the subject loaded at - the compiler of
+\ its definitions - and X's 7. The second build's tier line reads 0, so it
+\ rebuilt the tier 1 image and loaded the subject at tier 0.
+: HBT-REPL-TIER-PROGRAM ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   HBT-ROOT s" resaved" HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U HBT-PATH!
+   s" test/tier0-product-subject.f" SOURCE-ROOT:RESOLVE drop
+   HBT-REPL-SRC COPY-FILE-STREAM
+   1 HBT-REPL-TIER-IMAGE
+   0 HBT-REPL-TIER-IMAGE ;
+
 public
 : HBT-REPL-IMAGE-MAIN ( -- )
    T-RESET
@@ -173,6 +241,7 @@ public
    HBT-ROOTED-COLD-WARM
    HBT-ROOTED-PRODUCER-SHADOW
    HBT-ROOTED-TIER
+   HBT-REPL-TIER-PROGRAM
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

@@ -417,6 +417,13 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    HBB-LF SB-APPEND-C
    SB$ ;
 
+\ Leave in the string builder what test/tier0-product-subject.f's MAIN prints
+\ when the program loaded at TIER: the text every tier prints, then the tier.
+: HBT-SUBJECT-OUT ( n -- )
+   SB-RESET
+   S\" 18\n\n5\n\n7\n\n8\n\n0\n\n4\n\n-9081\n\n10\n\n15\n\n10\n\n7\n\n40\n\n3.500000\n\n3\n\n00004444555566667777PPPPTTTTpppp\n00004444555566667777PPPPTTTTpppp\n00004444555566667777\tPPPPTTTTpppp\n00004444555566667777PPPPTTTTpppp\n00004444555566667777\tPPPPTTTTpppp\n00004444555566667777\tPPPPTTTTpppp\n" SB-APPEND
+   0= if S\" 0\n\n" else S\" 1\n\n" then SB-APPEND ;
+
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
