@@ -1961,6 +1961,12 @@ documentation-only edits need no rebuild.
 These edge cases name the refusal at the boundary. The general rules are in the
 sections above.
 
+- **A ticked engine primitive is an opaque xt.** A primitive's effect is its
+  `EPRIM:` row at a call; no row rides its xt, so `['] dup execute` and
+  `['] NULL-PTR execute` are `E-EXEC-OPAQUE-XT`, and `['] NULL-PTR is W`
+  is refused at `is`. A quotation that calls the primitive carries its row:
+  `[: NULL-PTR ;] execute`.
+
 - **`OPAQUE` belongs in a package's field-bearing `STRUCTURE` header.** After
   the first field, it is `header clause after the first field`; twice, `a
   second OPAQUE clause in one declaration`; without fields, `opaque requires a

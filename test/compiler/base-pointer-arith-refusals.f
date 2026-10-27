@@ -580,6 +580,22 @@ create DIAG-BUF 8192 allot
    s" comparing a code cell against the null is refused, and says why" T-LABEL
    s" BPA-HKNULL ( -- bool ) BPA-HK NULL-PTR =" EXEC-REFUSED ;
 
+\ A tick of an engine primitive is an opaque xt: a primitive's effect is its
+\ EPRIM: row at a call, and no row rides its xt. NULL-PTR is a primitive, so
+\ `['] NULL-PTR execute` is refused like `['] dup execute`; a quotation
+\ that calls it carries the row.
+: OPAQUE-REFUSED ( ptr u8 n -- )
+   ARM
+   CHECK-CANDIDATE! 0 T=
+   S\" \"code\":\"E-EXEC-OPAQUE-XT\"" HAS?
+   DISARM ;
+
+: CASE-NULL-TICK ( -- )
+   s" executing a ticked NULL-PTR is refused as an opaque xt" T-LABEL
+   s" BPA-TKN ( -- bool ) ['] NULL-PTR execute 0=" OPAQUE-REFUSED
+   s" and a quotation that calls NULL-PTR certifies" T-LABEL
+   s" BPA-QKN ( -- bool ) [: NULL-PTR ;] execute 0=" CERTIFIES ;
+
 public
 
 \ NULL-PTR is an engine primitive whose effect is its EPRIM: row in
@@ -659,6 +675,7 @@ public
    CASE-XT-DECLARATION
    CASE-DECLARED-XT-CELL
    CASE-NULL-XT-COMPARE
+   CASE-NULL-TICK
    NULL-STILL-CALLABLE
    T-REPORT ;
 
