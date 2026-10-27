@@ -106,6 +106,11 @@
 \ shadow record directly. The reader checks those tags and refuses version 14
 \ before it can interpret the same bytes as shipped record indices.
 \
+\ VERSION 16 widens a compact record's kind byte by one bit, DNAME-REP (bit 4,
+\ src/habu/aot-capture.f). Same sections and widths; a version 15 reader would
+\ refuse the bit as stray metadata, and a version 15 artifact carries no mark,
+\ so every representation cast it holds would compile as a host call.
+\
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
 \ so nothing is re-encoded on the way through; the type registry is one opaque
@@ -173,7 +178,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-15 constant VERSION  \ anonymous shadow routines have tagged references
+16 constant VERSION  \ the kind byte carries DNAME-REP
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 3 constant TARGET-LINUX-X86-64

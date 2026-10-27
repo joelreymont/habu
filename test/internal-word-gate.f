@@ -226,7 +226,10 @@ create EMPTY 1 allot            \ zero-length stdin
    s" int-mark" ASSERT-INTERNAL
    s" 0 0 min-in-mark: arity marking is internal too" T-LABEL
    s" 0 0 min-in-mark" RUN-SUBJECT
-   s" min-in-mark" ASSERT-INTERNAL ;
+   s" min-in-mark" ASSERT-INTERNAL
+   s" 0 rep-mark: representation marking is internal too" T-LABEL
+   s" 0 rep-mark" RUN-SUBJECT
+   s" rep-mark" ASSERT-INTERNAL ;
 
 : SEED-RESET-TICK$ ( -- ptr u8 n )
    SB-RESET

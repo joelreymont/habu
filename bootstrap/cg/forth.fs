@@ -42,12 +42,13 @@ $7FFFFFFF constant CODE-SPAN:MASK
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $FFFFFFFE constant WID:MAX
-17 constant DNAME-FLAG-BITS      \ bits 47-63 above the name length; name reads clear them
+18 constant DNAME-FLAG-BITS      \ bits 46-63 above the name length; name reads clear them
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 $0000800000000000 constant DNAME-ALLOC
 $0001000000000000 constant DNAME-CELL
 $0008000000000000 constant DKIND:ADDR
 $000C000000000000 constant DKIND:CAST
+$0000400000000000 constant DNAME-REP  \ representation cast: MIRROR of src/habu/layout.f
 $000C000000000000 constant DKIND:MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
@@ -2247,6 +2248,14 @@ HB-TARGET-LINUX? [IF]
    C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
 
+\ rep-mark ( n -- ): set DNAME-REP on record n; mirrors src/habu/habu1.f BREPMARK.
+: BREPMARK ( -- )
+   A G-POP
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   2 3 MOVZ,  LPROTREC @ BL,
+   C A 16 LDR,  C C DNAME-REP ORRI,  C A 16 STR,
+   2 5 MOVZ,  LPROTREC @ BL, ;
+
 : BMININMARK ( -- )
    B G-POP  A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
@@ -2478,6 +2487,7 @@ HB-TARGET-LINUX? [IF]
    s" wide-mark" ['] BWIDEMARK FPRIM
    \ These raw dictionary readers are owned as in src/habu/prims.f.
    s" int-mark" ['] BINTMARK PRIM-INT-WID FPRIM-WID
+   s" rep-mark" ['] BREPMARK PRIM-INT-WID FPRIM-WID
    s" min-in-mark" ['] BMININMARK PRIM-OWNED-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM

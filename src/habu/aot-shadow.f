@@ -552,7 +552,7 @@ CELL 2 * constant SH-TRAILER-BYTES
 public
 
 \ The native x86 collector shares the ordinary shadow graph. Its first pass
-\ runs before CAPTURE-NATIVE settles names; the final v15 writer reuses these
+\ runs before CAPTURE-NATIVE settles names; the final artifact writer reuses these
 \ marks after the collector has added any live `;does` companion names.
 : SHADOW-PRE-REACH ( -- )
    0 SH-NATIVE-READY !

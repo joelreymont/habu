@@ -36,7 +36,7 @@ package AOT-CHAIN-SUITE
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-15 constant VERSION
+16 constant VERSION
 22 constant SECTIONS
 64 constant HEX-LEN
 \ An address-row location has 31 offset bits; its high bit selects window DATA.

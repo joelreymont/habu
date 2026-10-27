@@ -1,4 +1,4 @@
-\ Two real native x64 capture windows compose through a verified v15 artifact.
+\ Two real native x64 capture windows compose through a verified artifact.
 \ Run on a native x86-64 engine: bin/hb --load test/aot-native-merge.f
 
 package AOT-NATIVE-MERGE

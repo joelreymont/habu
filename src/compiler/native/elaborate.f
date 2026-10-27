@@ -64,6 +64,24 @@ private
    {: reason:n ix:n :}
    reason VW ix TOK-OFF NHOST:SOURCE-REFUSE ;
 
+\ A bound record's flags name a representation cast: a CAST: record its checker
+\ marked DNAME-REP (src/core/checker.f CHECKER-DEFCAST), a scalar retype this
+\ compiler lowers as the identity. Every other cast stays a host call.
+: REP-FLAGS? ( n -- bool )
+   {: flags:n :}
+   flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0<> and ;
+
+\ The word at tape row ix is bound, on the exact-source path, to a
+\ representation cast's record.
+: REP-CAST? ( n -- bool )
+   {: ix:n :}
+   EXACT-SOURCE @ 0= if false exit then
+   ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if false exit then
+   bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+      CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
+   bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ REP-FLAGS? ;
+
 : TOK-CELLS ( IR-ARENA:view n -- n )
    EXACT-SOURCE @ 0= if 2drop 1 exit then
    TOK-OFF NDICT:MEM-CELLS ;
@@ -2303,8 +2321,10 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    bytes CHECKER-OWNER-ABI:BOUND-CELLS cells = if
       bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
          CHECKER-OWNER-ABI:BOUND-DICT = if
-         bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @
-            DKIND:MASK and DKIND:CAST = if NHOST:CAST ix HOST-REFUSE then
+         bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ {: flags:n :}
+         flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0= and if
+            NHOST:CAST ix HOST-REFUSE
+         then
       then
    then
    CTX BLD r sy ix HIR-WORD:RESOLVE-SITE drop ;
@@ -3931,7 +3951,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    m HIR-MEANING:RENAME HIR-MEANING:EQ if
       r ix WSYM HIR-WORD:HOST-RENAME@ {: kind:n :}
       kind HIR-WORD:HOST-VIEW = if NHOST:MEMORY ix HOST-REFUSE then
-      kind HIR-WORD:HOST-CAST = if NHOST:CAST ix HOST-REFUSE then
+      kind HIR-WORD:HOST-CAST =  ix REP-CAST? 0= and if NHOST:CAST ix HOST-REFUSE then
       exit
    then
    m HIR-MEANING:OP HIR-MEANING:EQ if r ix HOST-OP exit then

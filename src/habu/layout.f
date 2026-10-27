@@ -279,9 +279,9 @@ $FFFFFFFE constant MAX
 \ definer's own.
 \
 \ Claimed band: bits 50-51 of the record flags cell [16], below DNAME-MIN-IN
-\ (52-59) and above DNAME-OWNED (49), DNAME-CELL (48), DNAME-ALLOC (47)
-\ and the name-length field (bits 0-46). Native length reads clear the
-\ DNAME-FLAG-BITS above the length, and the AOT
+\ (52-59) and above DNAME-OWNED (49), DNAME-CELL (48), DNAME-ALLOC (47),
+\ DNAME-REP (46) and the name-length field (bits 0-45). Native length reads
+\ clear the DNAME-FLAG-BITS above the length, and the AOT
 \ seed carries the pair as a byte of its compact record
 \ (src/habu/aot-capture.f) so a stamp survives the round trip exactly as the
 \ min-in byte does.
@@ -302,10 +302,17 @@ $0000800000000000 constant DNAME-ALLOC
 \ DNAME-CELL names the exact one-cell DATA extent made by variable. CREATE
 \ leaves it clear: a created body may allot bytewide storage.
 $0001000000000000 constant DNAME-CELL
-\ The flag bits above the name length in [16], bits 47-63. Every native length
+\ DNAME-REP (bit 46) marks a CAST: record (kind 3 above) whose certified
+\ output mints no pointer and no quotation: a representation cast, a scalar
+\ retype the native compiler lowers as the identity it is. The checker sets it
+\ through rep-mark when CAST-CERTIFY finds no mint; scoped view casts and
+\ LINEAR: records never carry it. Capture carries it in the compact record's
+\ kind byte (src/habu/aot-capture.f) and a native unit object row in its flags.
+$0000400000000000 constant DNAME-REP
+\ The flag bits above the name length in [16], bits 46-63. Every native length
 \ read clears them by this count (LSLI then LSRI), so the next flag carved from
 \ the length is one edit here and none at the readers.
-17 constant DNAME-FLAG-BITS
+18 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
@@ -317,8 +324,8 @@ $0001000000000000 constant DNAME-CELL
 \ checked words are checker-proven and carry no guard. Claimed band: bits
 \ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
 \ and above the definer-kind pair (bits 50-51), DNAME-OWNED (49),
-\ DNAME-CELL (48), DNAME-ALLOC (47) and the name-length field (bits 0-46);
-\ native length reads clear the DNAME-FLAG-BITS above the length.
+\ DNAME-CELL (48), DNAME-ALLOC (47), DNAME-REP (46) and the name-length field
+\ (bits 0-45); native length reads clear the DNAME-FLAG-BITS above the length.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT

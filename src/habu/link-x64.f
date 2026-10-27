@@ -403,7 +403,8 @@ private
    k 12 CREC@ {: w:n :}
    w $FF and 60 lshift
    w 8 rshift $FF and 52 lshift or
-   w 16 rshift $FF and 50 lshift or
+   w 16 rshift $EF and 50 lshift or
+   w 20 rshift 1 and 46 lshift or                \ kind byte bit 4 is DNAME-REP
    k CREC-NAME$ nip or ;
 
 \ A code record enters its routine; a does> companion at the clause.

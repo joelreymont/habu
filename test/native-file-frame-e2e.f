@@ -163,6 +163,17 @@ variable FILL-POOL
    S\" s\" uh=\" type UH-K . cr\ns\" uhi=\" type UHI-K . cr\n" IN+
    s" pnt.f" LOAD+ ;
 
+\ The loads of the CAST-FIXTURES runs, each run that stores followed by the
+\ value it computed.
+\ Kept apart from PROBE for its body text limit (BODYBUF-CAP).
+: CAST-PROBE ( -- )
+   s" cid.f" LOAD+
+   S\" s\" cid=\" type CID-K . cr\n" IN+
+   s" rolecast.f" LOAD+
+   S\" s\" role=\" type ROLE-SEEN . cr\n" IN+
+   s" mint.f" LOAD+
+   s" pb.f" LOAD+ ;
+
 \ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
 \ the cache diagnostics on, so every file frame and object prints its line on
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
@@ -298,6 +309,7 @@ variable FILL-POOL
    s" db-b.f" LOAD+
    s" rebind.f" LOAD+
    s" own-trust.f" LOAD+
+   CAST-PROBE
    s" parse-ok.f" LOAD+
    s" tier-ok.f" LOAD+
    s" fwrite.f" LOAD+
@@ -807,6 +819,33 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ixt.f" S\" variable IXT-V\n: IXT-RUN ( -- ) s\" IX-TEN IXT-V !\" evaluate-closed ;\nIXT-RUN\nIXT-V @ constant IXT-K\n" PUT
    s" ixp.f" S\" require ixw.f\nrequire ixl.f\nrequire ixt.f\n" PUT ;
 
+\ A run that reaches a cast stores when the cast only renames a scalar
+\ representation, and refuses when its output mints a pointer. cid.f's
+\ CID-ROUND casts through its package's NEWTYPE and back; rolecast.f runs the
+\ seed's >LEN and LEN>N at top level. The session prints CID-K and ROLE-SEEN
+\ after each load, and the warm build asserts the values its replays install.
+\ mint.f's MINT-USE casts an integer to a pointer, and pb.f's PB-USE to a
+\ layout whose field holds one: both runs refuse their files.
+: CAST-FIXTURES ( -- )
+   s" cid.f" S\" package FRAME-CID\nNEWTYPE cid\nprivate\nCAST: N>CID ( n -- cid )\nCAST: CID>N ( cid -- n )\npublic\n: CID-ROUND ( n -- n ) N>CID CID>N ;\n;package\n3 FRAME-CID:CID-ROUND constant CID-K\n" PUT
+   s" rolecast.f" S\" 3 >LEN LEN>N constant ROLE-SEEN\n" PUT
+   s" mint.f" S\" package FRAME-MINT\nprivate\nCAST: N>BYTES ( n -- ptr u8 )\npublic\n: MINT-USE ( n -- ptr u8 ) N>BYTES ;\n;package\n0 FRAME-MINT:MINT-USE drop\n" PUT
+   s" pb.f" S\" package FRAME-PB\nprivate\nSTRUCTURE pb FIELD p ptr u8 ;STRUCTURE\nCAST: N>PB ( n -- pb )\npublic\n: PB-USE ( n -- ) N>PB drop ;\n;package\n0 FRAME-PB:PB-USE\n" PUT ;
+
+\ cid.f's and rolecast.f's runs store; mint.f's and pb.f's refuse.
+: CAST-CHECKS ( -- )
+   s" a top-level run through a representation cast stores" T-LABEL
+   s" cid.f" KEY$ STORED
+   s" cid.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
+   s" a top-level run of the seed's representation casts stores" T-LABEL
+   s" rolecast.f" KEY$ STORED
+   s" a run through a cast whose output mints a pointer refuses" T-LABEL
+   s" mint.f" s"  reason=" LINE$ s" mint.f reason=run-host-cast word=MINT-USE" T$=
+   s" mint.f" NO-OBJECT
+   s" a run through a cast into a layout holding a pointer refuses" T-LABEL
+   s" pb.f" s"  reason=" LINE$ s" pb.f reason=run-host-cast word=PB-USE" T$=
+   s" pb.f" NO-OBJECT ;
+
 \ sx.f loads sxm.f, then sxc.f, then compiles against sxc.f. sxm.f's top
 \ level prints sx-mark and appends a byte to sxmark.txt, a run the capture
 \ refuses, so it runs on every build.
@@ -1012,6 +1051,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" fw-def.f" INPUT INPUT-U @ PUT
    s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
    INDIRECT-FIXTURES
+   CAST-FIXTURES
    \ own-trust.f runs its own unchecked OT at top level, which OT's contract
    \ admits.
    s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
@@ -1706,6 +1746,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a warm build installs w.f, whose wordlist no package record owns, as the cold load made it" T-LABEL
    OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
    s" w.f" REUSED
+   s" a warm build replays cid.f's and rolecast.f's representation casts with their values" T-LABEL
+   OUT$ S\" cid=3\n" CONTAINS? TTRUE
+   OUT$ S\" role=3\n" CONTAINS? TTRUE
+   s" cid.f" REUSED s" rolecast.f" REUSED
    s" a warm build installs wlp.f, whose package takes its private wordlist after another wordlist" T-LABEL
    OUT$ S\" wlp=11\n" CONTAINS? TTRUE
    s" wlp.f" REUSED
@@ -2028,6 +2072,7 @@ public
    FLOOR-CHECKS
    FFI-CHECKS
    RUN-CHECKS
+   CAST-CHECKS
    EDGE-CHECKS
    s" lib.f" KEY$ STORED
    s" a cold build runs dv.f and stores its object" T-LABEL

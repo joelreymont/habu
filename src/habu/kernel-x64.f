@@ -3148,6 +3148,15 @@ variable SITE-TRAP-CELL
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
    R8 PROT-RX PROT-REC, ;
 
+\ rep-mark ( n -- ): or DNAME-REP into record n's flags between two LPROTREC
+\ flips, the twin of BREPMARK and of INT-MARK, above.
+: REP-MARK, ( -- )
+   RCX POP,  RCX RECORD-AT,
+   R8 PROT-RW PROT-REC,
+   RAX DNAME-REP IMM64,
+   RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-OR-MR
+   R8 PROT-RX PROT-REC, ;
+
 \ min-in-mark ( n n -- ): or the minimum input depth into DNAME-MIN-IN of record
 \ n's flags, the twin of BMININMARK: only the field's eight bits land.
 : MIN-IN-MARK, ( -- )
@@ -3297,6 +3306,7 @@ public
    s" reloc-maps-clear" [: RSI POP,  RDI POP,  DROP-SITES-LBL CALL, ;] PRIM
    s" xref-retarget" [: RETARGET, ;] PRIM
    s" int-mark" [: INT-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" rep-mark" [: REP-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" min-in-mark" [: MIN-IN-MARK, ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" does-record" [: DOES-RECORD, ;] PRIM ;
 

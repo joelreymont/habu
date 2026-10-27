@@ -699,9 +699,9 @@ variable CUR variable LIMIT variable PREV
    raw CODE-SPAN:BODY 3 and 0<> if REFUSE then
    raw CODE-SPAN:BODY 4 / 2 * raw CODE-SPAN:FULL? if 1+ then ;
 : META>Q ( n -- n ) {: m:n :}
-   m $FFF000F0 and 0<> if REFUSE then
+   m $FFE000F0 and 0<> if REFUSE then
    m 15 and m 8 rshift $FF and 4 lshift or
-   m 16 rshift 15 and 12 lshift or ;
+   m 16 rshift 31 and 12 lshift or ;
 : ZIG ( n -- n ) dup 0< if negate 2 * 1- else 2 * then ;
 : COUNT-CHECK ( n n -- n ) {: count:n max:n :}
    count 0< count max > or if REFUSE then count ;

@@ -7231,7 +7231,7 @@ public
       decoded LBL,
       3 9 8 2 4 7 bad AOT-META:VGET, 3 SP 8 STRW,
       3 9 8 2 4 7 bad AOT-META:VGET,
-      4 3 16 LSRI, 4 bad CBNZ,
+      4 3 17 LSRI, 4 bad CBNZ,
       4 3 $F ANDI, 5 3 4 LSRI, 5 5 $FF ANDI, 5 5 8 LSLI, 4 4 5 ORR,
       5 3 12 LSRI, 5 5 16 LSLI, 4 4 5 ORR, 4 SP 12 STRW,
       loaded LBL,
@@ -7261,6 +7261,7 @@ public
       3 6 16 LSRI,  2 3 3 ANDI,  2 2 50 LSLI,       \ word3 bits 16-17 -> DKIND bits 50-51
       7 7 2 ORR,
       2 3 4 ANDI,  2 2 46 LSLI,  7 7 2 ORR,          \ word3 bit 18 -> DNAME-CELL bit 48
+      2 3 16 ANDI,  2 2 42 LSLI,  7 7 2 ORR,         \ word3 bit 20 -> DNAME-REP bit 46
       3 3 8 ANDI,  3 3 44 LSLI,  7 7 3 ORR,          \ word3 bit 19 -> DNAME-ALLOC bit 47
       7 10 16 STR,
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)

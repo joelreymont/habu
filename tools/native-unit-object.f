@@ -3594,8 +3594,8 @@ private
    18 NUNIT-FILE:SECTION$ namesu ORIGIN-CK ;
 
 \ Install: the hit path. Every engine writer is reached by name through
-\ NEED-XT in this block, the install boundary: REC-WIDE and REC-MIN-IN are
-\ checked through their casts, the rest are TRUSTED: rows.
+\ NEED-XT in this block, the install boundary: REC-WIDE, REC-MIN-IN and REC-REP
+\ are checked through their casts, the rest are TRUSTED: rows.
 
 : NEED-XT ( ptr u8 n -- n ) ENGINE-XT dup 0= if BAD then ;
 
@@ -3603,6 +3603,7 @@ CAST: REC-OPEN-XT ( n -- [ ptr u8 n n n -- ] )
 CAST: REC-NAMESPACE-XT ( n -- [ ptr u8 n bool -- n ] )
 CAST: REC-PROTECT-XT ( n -- [ n -- ] )
 CAST: REC-DEFER-XT ( n -- [ n -- ] )
+CAST: REC-REP-XT ( n -- [ n -- ] )
 CAST: REC-PATCH-XT ( n -- [ n ptr u8 n -- ] )
 CAST: REC-MIN-IN-XT ( n -- [ n n -- ] )
 CAST: REC-WORDLIST-XT ( n -- [ -- n ] )
@@ -3625,6 +3626,8 @@ TRUSTED: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
 : REC-WIDE ( -- ) s" wide-mark" NEED-XT DEF-ACTION-XT execute ;
 \ Record ord and its minimum input arity: or it into DNAME-MIN-IN.
 : REC-MIN-IN ( n n -- ) s" min-in-mark" NEED-XT REC-MIN-IN-XT execute ;
+\ Record ord: set DNAME-REP, the representation cast its checker certified.
+: REC-REP ( n -- ) s" rep-mark" NEED-XT REC-REP-XT execute ;
 \ name and private?: publish a namespace row; its ordinal.
 TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
    s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
@@ -4101,13 +4104,15 @@ TRUSTED: SLOT-STORE ( n n n -- )
    FILE-VIEW FILE-REFS ;
 
 \ A cast row: its record ended as `cast:` ends one, then the facts the cold
-\ registrar latched restored from its flags, as DEF-CAST-FACTS drains them.
-\ The checker row comes with the segment's checker slice.
+\ registrar latched restored from its flags, as DEF-CAST-FACTS drains them, and
+\ the DNAME-REP its cold certification set. The checker row comes with the
+\ segment's checker slice.
 : INSTALL-CAST ( ptr u8 n n n -- )
    {: name:ptr nameu:n wl:n flags:n :}
    name nameu wl DKIND:CAST REC-OPEN
    REC-CAST
-   flags REC-FLAGS ;
+   flags REC-FLAGS
+   flags DNAME-REP and 0<> if ndict@ 1- REC-REP then ;
 
 \ A defer row: its record opened as `defer` opens one and ended as `defer`
 \ ends one, the engine's dispatch body and trailer emitted against the cell

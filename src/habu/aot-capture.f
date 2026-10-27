@@ -340,7 +340,8 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 
 \ --- compact AOT-CREC-ROW records: blob-off-or-package-public u32 + code-len-or-
 \ package-private u32 + name-off u32 + (flags u8 | min-in u8<<8 | dkind u8<<16)
-\ u32 + wid u32. Built from the
+\ u32 + wid u32; the dkind byte holds the DKIND pair in bits 0-1, DNAME-CELL in
+\ bit 2, DNAME-ALLOC in bit 3 and DNAME-REP in bit 4. Built from the
 \ verbatim 48B records; each record's inline name is added to the deduped pool.
 \ EM-AOT-REGISTER-RECS expands each compact record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
@@ -1438,10 +1439,12 @@ $14000000 constant ACAP-GBR-TERM
    v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
    v 20 + ACAP-W32@ 18 rshift 3 and
    v 20 + ACAP-W32@ 16 rshift 1 and 2 lshift or
-   v 20 + ACAP-W32@ 15 rshift 1 and 3 lshift or {: dkind:n :} \ DKIND, CELL, ALLOC
-   \ [16] bits 32-46 hold the length's high bits, and bit 49 is DNAME-OWNED.
-   \ The compact record carries neither; bits 47-48 are allocation geometry.
-   v 20 + ACAP-W32@ $00027FFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+   v 20 + ACAP-W32@ 15 rshift 1 and 3 lshift or
+   v 20 + ACAP-W32@ 14 rshift 1 and 4 lshift or {: dkind:n :} \ DKIND, CELL, ALLOC, REP
+   \ [16] bits 32-45 hold the length's high bits, and bit 49 is DNAME-OWNED.
+   \ The compact record carries neither; bits 47-48 are allocation geometry and
+   \ bit 46 is DNAME-REP.
+   v 20 + ACAP-W32@ $00023FFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
    ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then

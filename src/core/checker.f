@@ -13077,6 +13077,14 @@ variable CK-CLOSED-OFF   0 CK-CLOSED-OFF !     \ its record, offset+1 (USIG-NEWE
 variable CK-PEND-FLOOR   0 CK-PEND-FLOOR !
 variable CK-PEND-IX      0 CK-PEND-IX !
 
+\ CK-LIVE-PEND? : this check is the one the engine runs for the definition it
+\ holds open and unpublished, the record at ndict@: one is pending, and the
+\ check is neither a replay (the verifier window) nor a candidate scope.
+: CK-LIVE-PEND? ( -- bool )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 =
+   CHK-CAND @ 0 = and
+   data-base CK-DEF-PEND-OFF + @ 0 <> and ;
+
 \ The window bridges a definition the engine holds open and unpublished
 \ (CK-DEF-PEND-OFF), so only a check that runs while one is pending opens it:
 \ the compile hook's, and TRUST-DECL's. A check a program runs by hand
@@ -13085,9 +13093,7 @@ variable CK-PEND-IX      0 CK-PEND-IX !
 \ candidate scope's rows pend through the scope's floor instead
 \ (CK-SCOPE-PENDING?).
 : CK-CLOSE! ( n -- ) {: sym:n :}
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
-   CHK-CAND @ 0 <> IF EXIT THEN
-   data-base CK-DEF-PEND-OFF + @ 0= IF EXIT THEN
+   CK-LIVE-PEND? 0= IF EXIT THEN
    sym USIG-NEWEST {: off:n :}
    off 1 - E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
       0 CK-CLOSED-SYM ! EXIT
@@ -25668,10 +25674,12 @@ variable CAST-PATH-N
 \ CAST-CERTIFY : the legality gate, in refusal order, over a declaration
 \ IDENTITY-ROWS has left as one input and one output term. Every clause reads
 \ the parsed rows (SGIN/SGOUT) and throws the named reject; a cast that survives
-\ every clause is legal and its declared row is registered by the caller.
+\ every clause is legal and its declared row is registered by the caller. The
+\ answer is whether its output mints a pointer or a quotation: a cast that
+\ mints none is a representation cast (layout.f DNAME-REP).
 \ Nothing here observes a body. No term here carries a scope: CHECKER-DEFCAST
 \ sends every scoped row to VIEW-CAST-CERTIFY.
-: CAST-CERTIFY ( -- )
+: CAST-CERTIFY ( -- bool )
    SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF E-CAST-CLASS throw THEN
@@ -25686,8 +25694,11 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF E-CAST-OWNER throw THEN
    \ The mint rule comes last for the same reason: a mint that also carries
    \ ownership or forges a foreign family is named by that stronger reject.
-   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? 0= IF EXIT THEN
-   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN ;
+   SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
+   mint IF
+      CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-MINT throw THEN
+   THEN
+   mint ;
 
 \ CAST-SCOPED? : a scope dependency anywhere in the declared rows.
 : CAST-SCOPED? ( -- bool )
@@ -26930,6 +26941,14 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
 \ of here before CHECKER-USIG-CERT-ADD or CHECKER-USIG-CERT-ROWS, and the engine
 \ calls this BEFORE it counts the record into NDICT, so a rejected declaration
 \ leaves no name behind in either the checker's tables or the dictionary.
+\
+\ An unscoped cast whose output mints nothing is a representation cast, and its
+\ pending record, at ndict@, takes DNAME-REP: the native compiler lowers a call
+\ of it as the identity it is. The engine's definers call this with the record
+\ pending (CK-LIVE-PEND?); the source pre-pass (verify-source.f) has none, and
+\ marks nothing. A view cast is no scalar retype and is never marked.
+TRUSTED: MARK-REP ( n -- ) rep-mark ;
+
 : CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su IDENTITY-PARSE
    CAST-SCOPED? IF
@@ -26939,11 +26958,15 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
       sa su na nu CHECKER-USIG-CERT-ROWS
    ELSE
       na nu sa su IDENTITY-ROWS
-      CAST-CERTIFY
+      CAST-CERTIFY {: mint:bool :}
       sa su na nu CHECKER-USIG-CERT-ADD
+      mint 0= CK-LIVE-PEND? and IF ndict@ MARK-REP THEN
    THEN
    CHECKER-REC-SYM @ CK-CLOSE! ;
 
+\ A `linear:` record takes no DNAME-REP: minting or erasing a token is a change
+\ of ownership, never a scalar retype, so its record stays a plain CAST by
+\ polarity, as a scoped view cast's does.
 : CHECKER-LINEAR ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su IDENTITY-PARSE
    na nu sa su IDENTITY-ROWS

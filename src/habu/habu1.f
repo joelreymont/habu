@@ -4336,6 +4336,17 @@ package ENGINE-EMIT
    C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+\ rep-mark ( n -- ): set DNAME-REP on dictionary record n, the CAST: record the
+\ checker certified as a representation cast (src/core/checker.f
+\ CHECKER-DEFCAST). The twin of BINTMARK: the same LPROT bracket, no index
+\ check, monotonic (no clear prim exists).
+: BREPMARK ( -- )
+   A G-POP
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
+   C A 16 LDR,  C C DNAME-REP ORRI,  C A 16 STR,
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+
 \ min-in-mark ( n n -- ): OR the certified minimum input arity ( rec-idx min )
 \ into DNAME-MIN-IN (flags bits 52-59) of dict record rec-idx. Engine half of
 \ the certified-word underdepth gate (dot habu-habu-certified-words-84e84eaf):
@@ -4851,6 +4862,7 @@ package ENGINE-EMIT
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
+   s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM

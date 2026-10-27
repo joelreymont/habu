@@ -553,8 +553,12 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
    \ discard operands, while a genuine word use reaches the ordinary refusal.
    PRIOR-CALLABLE @ 0= if exit then
    PRIOR-CAST @ if
-      NHOST:CAST TAPE MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START
-         NHOST:SOURCE-REFUSE
+      \ A representation cast (DNAME-REP) lowers as the identity; any other
+      \ cast keeps its host call.
+      row CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ DNAME-REP and 0= if
+         NHOST:CAST TAPE MKEY ix NTAPE:SPAN@ IR-SOURCE:SPAN-START
+            NHOST:SOURCE-REFUSE
+      then
       CC BB r sy PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @
          HIR-WORD:DECLARE-BOUND-CAST exit
    then

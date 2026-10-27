@@ -735,6 +735,8 @@ EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ (ENGINE-PRIMS:GLOBAL-INT-WID) so neither name is executable or tickable.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
+EPRIM: rep-mark      PE-N PE-IN EPRIM;
+ETRUSTED-ONLY!                       \ sets DNAME-REP on one live CAST: record
 EPRIM: min-in-mark   PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ records a certified minimum input arity on one
 \ The publisher's reader (src/compiler/native/publish.f MIN-IN-REC) calls it inside NPUB,

@@ -155,7 +155,8 @@ variable IMK-QI
 
 : IMK-PRIM? ( n -- bool )    \ record n is one of the marking prims themselves
    dup s" int-mark" IMK-NAMED? IF drop 0 0= EXIT THEN
-   s" min-in-mark" IMK-NAMED? ;
+   dup s" min-in-mark" IMK-NAMED? IF drop 0 0= EXIT THEN
+   s" rep-mark" IMK-NAMED? ;
 
 : IMK-SEAL-PRIM ( n -- )      \ close the loop: the marking prims are themselves internal
    0 ?do i IMK-PRIM? IF i -1 IMK-MARK THEN loop ;

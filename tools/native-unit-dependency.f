@@ -764,8 +764,9 @@ private
    rec XREF-NAME$ s" DEFER-UNSET" STR=  rec XREF-WORDLIST 0=  and ;
 
 \ A seed record's kind: 0 code, 1 data, 2 value, 3 admitted: a primitive with a
-\ REACH class, the engine helper a primitive's lowering branches to, or the
-\ unset-defer sentinel.
+\ REACH class, the engine helper a primitive's lowering branches to, the
+\ unset-defer sentinel, or a representation cast (DNAME-REP), a scalar retype
+\ that leaves only its operand.
 : SEED-KIND ( n -- n )
    {: ord:n :}
    ord XREF-REC {: rec:ptr :}
@@ -773,6 +774,7 @@ private
    flags DKIND:MASK and DKIND:VAL = if 2 exit then
    flags DNAME-CELL and 0<> flags DNAME-ALLOC and 0<> or
       flags DKIND:MASK and DKIND:ADDR = or rec NDICT:REC-DEFER-CELL 0<> or if 1 exit then
+   flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0<>  and if 3 exit then
    ord PRIM-REACH 0<> if 3 exit then
    ord ENGINE-HELPER? if 3 exit then
    ord DEFER-SENTINEL? if 3 exit then
@@ -922,8 +924,8 @@ private
    loop ;
 
 \ A seed record lies below the floor: a seed value is terminal, a classed
-\ primitive, an engine helper or the unset-defer sentinel is admitted
-\ (SEED-KIND), and any other seed record
+\ primitive, an engine helper, the unset-defer sentinel or a representation
+\ cast is admitted (SEED-KIND), and any other seed record
 \ refuses, a seed defer's cell among them: the kernel made it, so it stays
 \ kernel data.
 : SEED-REACH ( n -- )
