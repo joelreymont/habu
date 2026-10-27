@@ -922,7 +922,8 @@ private
    loop ;
 
 \ A seed record lies below the floor: a seed value is terminal, a classed
-\ primitive or an engine helper is admitted, and any other seed record
+\ primitive, an engine helper or the unset-defer sentinel is admitted
+\ (SEED-KIND), and any other seed record
 \ refuses, a seed defer's cell among them: the kernel made it, so it stays
 \ kernel data.
 : SEED-REACH ( n -- )
@@ -1671,7 +1672,7 @@ DEFAULT-OUT
       then
       1+
    repeat drop
-   WUNCHECKED @ if 1 F-UNCHECKED FFIELD ! then ;
+   WUNCHECKED @ FDEPTH @ 0 > and if 1 F-UNCHECKED FFIELD ! then ;
 
 \ The frame's SCOPE row names what no later build can verify, so refuse: a
 \ package an earlier session made, whose declaration has no key, or a

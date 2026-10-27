@@ -862,8 +862,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ bytes, so raw.f, poke.f, addr.f, upd.f, off.f and own.f each load from a
 \ parent (rawp.f ...) that requires the subject's dependencies checked, then
 \ requires the subject inside a `0 set-check` window: the subject's requires
-\ are no-op edges in its own session, and the window runs no word defined
-\ unchecked (run-host-unchecked). Each parent itself is ordered by its
+\ are no-op edges in its own session. Each parent itself is ordered by its
 \ check@ (run-unaccounted); a window inside the subject would order the
 \ subject the same way, and a dependency loaded at an earlier top level would
 \ order it too (resolution-key-unknown). list.f has no dependency and loads
@@ -1040,8 +1039,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ runs left is gone and they refuse, though here moved before the throw.
    \ The checker refuses a catch of the primitive evaluate's opaque xt, so
    \ ntp.f requires nestthrow.f inside a `0 set-check` window, after ntq.f
-   \ defines the words its runs reach checked (a word defined inside the
-   \ window is refused run-host-unchecked).
+   \ defines the words its runs reach checked.
    s" ntq.f" S\" : NT-Q ( -- ptr u8 n ) s\" 5 throw\" ;\n: NT$ ( -- ptr u8 n ) s\" 8 allot 0 set-tier NT-Q evaluate\" ;\n" PUT
    s" nestthrow.f" S\" require ntq.f\nNT$ ' evaluate catch constant NT-RC 2drop\n1 set-tier\n" PUT
    s" ntp.f" S\" require ntq.f\ncheck@ 0 set-check\nrequire nestthrow.f\nset-check\n" PUT
