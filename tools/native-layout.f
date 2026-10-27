@@ -54,6 +54,7 @@ create SLOTS
    $3858 ,                             0 ,   \ ENGINE-MAIN:REPORT-CELL
    $3860 ,                             0 ,   \ PROVIDED-XT:EVALUATE-RANGE-CELL
    $2D90 ,                             0 ,   \ NSTR-ABI:INTERN-CELL
+   $36C0 ,                             0 ,   \ BPTRAMP-CELL
 here SLOTS - 2 cells / constant ROWS
 
 : SLOT ( ptr n n -- ptr n ) 2 * cells + ;

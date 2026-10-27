@@ -218,7 +218,7 @@ create TAB
    REGALLOC-ABI:FRFREE-CELL           1 cells                 CLAIM FRFREE-CELL
    FWDTGT-CELL                        1 cells                 CLAIM FWDTGT-CELL
    LIDX-CELL                          1 cells                 CLAIM LIDX-CELL
-   BPA-CELL                           1 cells                 CLAIM BPA-CELL
+   BPTRAMP-CELL                       1 cells                 CLAIM BPTRAMP-CELL
    ADDRESS-CELLS:INDEX-CELL           1 cells                 CLAIM ADDRESS-CELLS-INDEX
    BPTAB-OFF                          EVALD-CELL BPTAB-OFF -  CLAIM BPTAB
    EVALD-CELL                         1 cells                 CLAIM EVALD-CELL

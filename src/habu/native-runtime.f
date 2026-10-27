@@ -14,9 +14,10 @@
 \ here for convenience fails the lint rather than growing the binary quietly.
 \ src/lib/vector.f, a row here by choice rather than by closure, has left: nothing in
 \ the closure requires it. The debugger trio (debug-watch.f, stepper.f, debug.f,
-\ over code-bytes.f) is baked as the debugger the REPL offers; a session reaches
-\ it with `using DEBUG` or `DEBUG:` names. src/lib/num-*.f stay, because src/lib/memory.f
-\ states the allocator's own contract in NUM roles and the compiler allocates;
+\ over code-bytes.f) is baked as the debugger the REPL offers, without debug.f's
+\ breakpoints on x86-64; a session reaches it with `using DEBUG` or `DEBUG:`
+\ names. src/lib/num-*.f stay, because src/lib/memory.f states the allocator's
+\ own contract in NUM roles and the compiler allocates;
 \ src/lib/adt/option.f stays, because src/lib/string.f returns option<n>; src/lib/float.f and
 \ src/lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
 \
@@ -149,7 +150,19 @@ s" src/habu/repl.f" required
 s" src/habu/code-bytes.f" required
 s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
-s" src/habu/debug.f" required
+package NATIVE-RUNTIME
+
+\ Breakpoints plant A64 BRK words, and only the ARM64 engine's SIGTRAP handler
+\ (src/habu/habu2.f EMIT-TRAPH) serves them; the x86-64 kernel sends SIGTRAP
+\ to its crash dump (src/habu/boot-x64.f INSTALL-CRASH,). That product bakes
+\ the watch cells and the stepper without them.
+: LOAD-BREAKPOINTS ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" src/habu/debug.f" required ;
+
+' LOAD-BREAKPOINTS
+;package
+execute
 s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required

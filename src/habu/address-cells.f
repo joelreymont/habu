@@ -12,7 +12,7 @@ public
 \ CMFAM starts at $1B0. Task USER storage is USER-BAND, far above at $5300.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
-\ schema. $36C8 is the single unused cell between BPA ($36C0) and the eight
+\ schema. $36C8 is the single unused cell between BPTRAMP ($36C0) and the eight
 \ breakpoint records ($36D0..$37D0), below FFI/task USER and outside JIT arrays.
 \ Existing storage-v1 engines leave it zero, so new source can still use them.
 $36C8 constant INDEX-CELL

@@ -2,11 +2,14 @@
 \ hitting it prints habu-bp: + pc + the stack top, then either resumes (one-shot,
 \ removed) or re-arms (persistent) — the engine's SIGTRAP handler does the work.
 \   ' WORD BP+      one-shot   (fires once, then gone)
-\   ' WORD BP*      persistent (fires every call; emulates the entry prologue)
+\   ' WORD BP*      persistent (fires every call; emulates the entry prologue or
+\                   runs the first instruction out of line, else degrades to
+\                   one-shot when that instruction reads or sets PC)
 \   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
-\ Up to 8 at once. The product bakes it, the stepper and the shared watch cells
-\ after the repl (src/habu/native-runtime.f); the hb-stdin recovery engine still
+\ Up to 8 at once. The ARM64 product bakes it, the stepper and the shared watch
+\ cells after the repl (src/habu/native-runtime.f), and the x86-64 product the
+\ two without it, having no breakpoint handler; the hb-stdin recovery engine still
 \ loads them with `require src/habu/debug.f`.
 \
 \ The three files make one package, DEBUG. Its publics are these commands, the
@@ -63,6 +66,41 @@ private
 \ A code address reaches checked code as a number; CODE-BYTES:AT is the one
 \ bounded view of the bytes there.
 CAST: XT>N ( [ R -- S ] -- n )
+CAST: N>XT ( n -- [ -- ] )
+
+: CODE! ( n n -- ) {: w at :}
+   w  at 4 CODE-BYTES:AT drop  BP-PATCH32 ;
+
+\ ---- trampolines --------------------------------------------------------------
+\ A persistent breakpoint whose first instruction the handler does not emulate
+\ runs that instruction out of line (src/habu/habu2.f C-BP-EMULATE): slot idx
+\ owns the two words at [BPTRAMP-CELL] + idx * 8, the instruction and a `b` back
+\ to the one after it. The block is reserved in the code band once, here at
+\ load, so the branch reaches anywhere in the region (REGION is far inside b's
+\ 128 MB) and nothing is ever freed while a slot points at it: reserving at CP
+\ during BPADD would hand the block to a failed REPL line's CP rollback. Each
+\ word starts as a BRK, so a stray jump traps and a capture's walk over the gap
+\ finds no fall-through into the next definition. xt! declares the cell, so a
+\ snapshot and the product capture move it with the code.
+8 constant TRAMP-BYTES
+$14000000 constant B-OP
+
+: TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
+
+: TRAMP-INSTALL ( -- )
+   cp@ {: base :}
+   base MAXBP TRAMP-BYTES * + cp!
+   MAXBP TRAMP-BYTES * 0 ?do BRK0 base i + CODE! 4 +loop
+   base N>XT data-base BPTRAMP-CELL + xt! ;
+
+TRAMP-INSTALL
+
+\ Slot idx's trampoline for the instruction at `at`: that instruction, then
+\ `b at+4`, whose displacement from the trampoline's second word is at - t.
+: TRAMP! ( n n n -- ) {: instr at idx :}
+   idx TRAMP-BYTES * TRAMP@ + {: t :}
+   instr t CODE!
+   at t - 2 rshift $3FFFFFF and B-OP or  t 4 + CODE! ;
 
 \ A slot is filled while its address field holds a code pointer; an empty slot
 \ holds BP-NULL, whose address reads 0.
@@ -100,6 +138,7 @@ CAST: XT>N ( [ R -- S ] -- n )
    {: idx :}
    at 4 CODE-BYTES:AT drop {: xt:ptr :}
    xt ctrl idx BP-SET-SLOT
+   ctrl 1 and 0<> if  idx BP-SLOT-INSTR @ at idx TRAMP!  then
    BRK0 xt BP-PATCH32 ;
 
 public

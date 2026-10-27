@@ -274,7 +274,7 @@ $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
 $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
-$36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
+$36C0 constant BPTRAMP-CELL \ persistent-breakpoint trampolines (debug.f sets; unread here)
 $36D0 constant BPTAB-OFF   \ BP-MAX slots (addr, saved-instr, hits, ctrl), addr 0 = empty
 8 constant BP-MAX          \ breakpoint slots EMIT-TRAPH scans
 5 constant BP-SLOT-SHIFT   \ a slot is 32 bytes: index << 5
@@ -3287,9 +3287,11 @@ create ZBYTE 0 c,
       12 9 MACOS-MCTX-SP-OFF LDR,  14 9 MACOS-MCTX-LR-OFF LDR,  14 12 0 STR,
    THEN ;
 
-\ LTRAPH: target signal entry. A one-shot
-\ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
-\ the original instruction, clear the bp, sigreturn to re-execute the word.
+\ LTRAPH: target signal entry. A breakpoint in BPTAB: print habu-bp: + pc + the
+\ data-stack top; a one-shot one restores the original instruction, clears the
+\ bp and sigreturns to re-execute the word, a persistent one emulates its entry
+\ instruction and keeps its BRK. This seed never reads [BPTRAMP-CELL]: an entry
+\ it cannot emulate degrades to one-shot.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
 : EMIT-TRAPH ( -- )
    LTRAPH @ LBL,

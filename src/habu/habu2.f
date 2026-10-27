@@ -622,11 +622,51 @@ here BPL-KW - constant BPL-LEN
    THEN
    12 9 MACOS-MCTX-SP-OFF LDR,  14 9 MACOS-MCTX-LR-OFF LDR,  14 12 0 STR, ;
 
+\ The opcode classes of an instruction that reads or sets PC, each as
+\ (word >> shift) [& mask] = value. The breakpoint handler below and LCINLINE
+\ (EMIT-CINLINE) both refuse to run such an instruction away from its address.
+0 ENC-BL 26 rshift               constant CINL-BL-OP     \ bl
+0 ENC-B 26 rshift                constant CINL-B-OP      \ b
+ENC-RET 25 rshift                constant CINL-BR-OP     \ br, blr, ret
+0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP  \ b.cond
+0 0 ENC-CBZ 25 rshift $3F and    constant CINL-CBZ-OP    \ cbz, cbnz, either width
+0 0 ENC-ADR 24 rshift $1F and    constant CINL-ADR-OP    \ adr, adrp
+$1B constant CINL-TBZ-OP         \ tbz, tbnz, either width: bits 30:25 = 011011
+$3B constant CINL-LDRLIT-MASK    \ ldr, ldrsw, prfm (literal), any register file:
+$18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
+
+: C-MCTX-PC<R12 ( -- )
+   HB-TARGET-LINUX? IF 12 9 LINUX-MCTX-PC-OFF STR, exit THEN
+   12 9 MACOS-MCTX-PC-OFF STR, ;
+
+\ Branch to `rel` when x13, the displaced instruction, reads or sets PC: the
+\ PC-relative classes, and blr, whose return address would be the trampoline's.
+\ Clobbers x14, x15.
+: C-BP-PCREL ( label -- ) {: rel:label :}
+   14 13 26 LSRI,  14 14 $1F ANDI,  14 CINL-B-OP CMPI,  C-EQ rel BCOND,   \ b, bl
+   14 13 24 LSRI,  14 CINL-BCOND-OP CMPI,  C-EQ rel BCOND,
+   14 13 25 LSRI,  14 14 $3F ANDI,  14 CINL-CBZ-OP CMPI,  C-EQ rel BCOND,
+   14 CINL-TBZ-OP CMPI,  C-EQ rel BCOND,
+   14 13 24 LSRI,  14 14 $1F ANDI,  14 CINL-ADR-OP CMPI,  C-EQ rel BCOND,
+   14 13 24 LSRI,  15 CINL-LDRLIT-MASK MOVZ,  14 14 15 AND,
+   14 CINL-LDRLIT-OP CMPI,  C-EQ rel BCOND,
+   15 $FFFFFC1F LIT64,  14 13 15 AND,  15 0 ENC-BLR LIT64,  14 15 CMP,  C-EQ rel BCOND, ;
+
+\ Resume at the slot's trampoline: [BPTRAMP-CELL] + index * 8, and the index * 8
+\ is the slot's offset in BPTAB, 32 bytes a slot, shifted right by two.
+: C-BP-TRAMP ( -- )
+   14 8 DATA SUB,  15 BPTAB-OFF LIT64,  14 14 15 SUB,  14 14 2 LSRI,
+   12 DATA BPTRAMP-CELL LDR,  12 12 14 ADD,
+   C-MCTX-PC<R12 ;
+
 \ A persistent breakpoint keeps its BRK planted, so the instruction the BRK
-\ replaced never runs and this handler has to be it. That instruction is a word
-\ ENTRY, so it is one of exactly two things: the link-register save, or the nop
-\ EM-COMPILE-RET left in a leaf's slot. The saved word in the slot says which,
-\ and a nop needs nothing but the step over it.
+\ replaced never runs in place and this handler has to run it. The link-register
+\ save and the nop EM-COMPILE-RET leaves in a leaf's slot are emulated: the save
+\ below, the nop by the step over it. Any other first instruction runs out of
+\ line, in the slot's trampoline debug.f wrote when it planted the BRK: the
+\ instruction, then `b` back to the one after it. Resuming there is exact for
+\ an instruction that means the same at any address. One that reads or sets PC
+\ (C-BP-PCREL) would not, so its breakpoint degrades to one-shot instead.
 \
 \ THE SAVE'S STORE GOES INTO THE SIGNAL FRAME, DELIBERATELY. `str
 \ x30,[sp,#-16]!` writes sixteen bytes below the interrupted sp, and the kernel
@@ -638,15 +678,18 @@ here BPL-KW - constant BPL-LEN
 \ the signal frame is gone. Writing anywhere else is not an option -- that
 \ address IS the slot the epilogue reads.
 : C-BP-EMULATE ( -- )
-   LBL LBL LBL {: framed:label step:label done:label :}
+   LBL LBL LBL LBL {: framed:label step:label oneshot:label done:label :}
    9 SP 24 LDR,                                       \ the interrupted mcontext
    8 SP 40 LDR,  13 8 8 LDR,                          \ the word the BRK replaced
    14 W-LINKSAVE LIT64,  13 14 CMP,  C-EQ framed BCOND,
    14 W-NOP LIT64,  13 14 CMP,  C-EQ step BCOND,
-      \ An entry this handler cannot be: a tier-1 leaf begins with whatever its
-      \ first operation is. Rather than guess, give the word its instruction
-      \ back and resume ON it -- the breakpoint degrades to one-shot, which is a
-      \ visible loss, where emulating the wrong instruction is a wrong stack.
+   oneshot C-BP-PCREL
+      C-BP-TRAMP
+      done B,
+   oneshot LBL,
+      \ Give the word its instruction back and resume ON it: the breakpoint
+      \ degrades to one-shot, a visible loss, where running the instruction at
+      \ the wrong address is a wrong result.
       C-BP-RESTORE-ONESHOT
       done B,
    framed LBL,
@@ -684,9 +727,10 @@ here BPL-KW - constant BPL-LEN
       C-BP-WATCH-ROW  wloop B,
    wdone LBL, ;
 
-\ LTRAPH: target signal entry. A one-shot
-\ breakpoint at [BPA-CELL]: print habu-bp, pc, data-stack, and watch cells;
-\ restore the original instruction, clear the bp, sigreturn to re-execute the word.
+\ LTRAPH: target signal entry. A breakpoint in BPTAB: print habu-bp, pc,
+\ data-stack, and watch cells; a one-shot one restores the original instruction,
+\ clears the bp and sigreturns to re-execute the word, a persistent one runs the
+\ displaced instruction (C-BP-EMULATE) and keeps its BRK.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
 : EMIT-TRAPH ( -- )
    LTRAPH LABEL@ LBL,
@@ -852,17 +896,8 @@ here BPL-KW - constant BPL-LEN
 \ The scan reads the final bytes at compile time instead of a build-side flag
 \ because inlinability is a property of those bytes: while the engine is being
 \ built, a forward external BL is encoded with delta 0 until its label binds
-\ (icode.f BR-EMIT), so a build-side scan would misread it.
-\ Opcode classes, each as (word >> shift) [& mask] = value:
-0 ENC-BL 26 rshift               constant CINL-BL-OP     \ bl
-0 ENC-B 26 rshift                constant CINL-B-OP      \ b
-ENC-RET 25 rshift                constant CINL-BR-OP     \ br, blr, ret
-0 C-EQ ENC-BCOND 24 rshift       constant CINL-BCOND-OP  \ b.cond
-0 0 ENC-CBZ 25 rshift $3F and    constant CINL-CBZ-OP    \ cbz, cbnz, either width
-0 0 ENC-ADR 24 rshift $1F and    constant CINL-ADR-OP    \ adr, adrp
-$1B constant CINL-TBZ-OP         \ tbz, tbnz, either width: bits 30:25 = 011011
-$3B constant CINL-LDRLIT-MASK    \ ldr, ldrsw, prfm (literal), any register file:
-$18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
+\ (icode.f BR-EMIT), so a build-side scan would misread it. The opcode classes
+\ are the CINL-* constants above C-BP-EMULATE.
 : EMIT-CINLINE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: scan:label next:label rel26:label rel19:label rel14:label target:label copy:label cloop:label cdone:label :}

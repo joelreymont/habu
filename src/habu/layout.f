@@ -597,7 +597,9 @@ $36B8 constant FWDTGT-CELL
 \ too. It sits at JIT-QUOT:END, the first cell after the quotation frames;
 \ data-claims.f proves it disjoint.
 $2C40 constant LIDX-CELL
-$36C0 constant BPA-CELL
+\ BPTRAMP-CELL: the code address of the persistent-breakpoint trampolines,
+\ MAXBP two-word slots debug.f reserves in the code band and declares with xt!.
+$36C0 constant BPTRAMP-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL

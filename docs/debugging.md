@@ -92,7 +92,9 @@ and watch table after it executes.
 
 **Breakpoints on compiled words.** `' WORD BP+` is one-shot, `' WORD BP*`
 fires on every call, and `N ' WORD BPN` fires on every call after the first N
-(the supported conditional breakpoint). `BP-` removes, `BP.` lists. A hit
+(the supported conditional breakpoint). `BP-` removes, `BP.` lists.
+Breakpoints exist on the ARM64 engines only: the x86-64 engine has no
+breakpoint handler and bakes DEBUG without them. A hit
 prints `habu-bp:` with the pc and stack top, `habu-bp-lr:` with the address the
 word will return to, then the live data stack and watched cells, and resumes
 the word. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to name

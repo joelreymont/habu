@@ -7,6 +7,11 @@ package STACK-LIFECYCLE-TEST
 : DEBUGGER-LINES ( -- n )
    0 ERRLEN @ 0 ?do ERR i + c@ 10 = if 1+ then loop ;
 
+: DEBUGGER-HITS ( -- n )
+   0 ERRLEN @ 8 - 0 max 0 ?do
+      ERR i + 8 s" habu-bp:" STR= if 1+ then
+   loop ;
+
 : DEBUGGER-VALUES ( -- n )
    0 ERRLEN @ 16 - 0 max 0 ?do
       ERR i + 16 s" 0000000000000011" STR= if 1+ then
@@ -46,6 +51,26 @@ package STACK-LIFECYCLE-TEST
 \ Calling the word twice also proves the breakpoint really is persistent -- the
 \ BRK is still planted for the second call -- which is the whole reason the
 \ handler emulates instead of restoring.
+\ Any other first instruction runs out of line, in the slot's trampoline. A
+\ tier-1 leaf begins with its first operation: TW with `ldur`, which means the
+\ same at any address, so its breakpoint stays persistent and fires on both
+\ calls; T2 with `b` to TW, a tail call that would branch from the wrong
+\ place, so its breakpoint degrades to one-shot and fires once. Both still
+\ return the right values.
+: PERSISTENT-OUT-OF-LINE ( -- )
+   s" persistent breakpoint runs a leaf's first instruction out of line" T-LABEL
+   s" 1 set-tier require src/habu/debug.f package PBP : TW ( n -- n ) dup + ; ' TW DEBUG:BP* : GO ( -- ) 21 TW . 3 TW . ; GO ;package"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 6" CONTAINS? TTRUE
+   DEBUGGER-HITS 2 T=
+   s" persistent breakpoint on a PC-relative first instruction degrades" T-LABEL
+   s" 1 set-tier require src/habu/debug.f package PBP : TW ( n -- n ) dup + ; : T2 ( n -- n ) TW ; ' T2 DEBUG:BP* : GO ( -- ) 21 T2 . 3 T2 . ; GO ;package"
+   CHILD-RC 0 T=
+   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
+   OUT OUTLEN @ s" 6" CONTAINS? TTRUE
+   DEBUGGER-HITS 1 T= ;
+
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" 0 set-tier require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
@@ -58,7 +83,8 @@ package STACK-LIFECYCLE-TEST
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 42" CONTAINS? TTRUE
    OUT OUTLEN @ s" 6" CONTAINS? TTRUE
-   ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE ;
+   ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
+   PERSISTENT-OUT-OF-LINE ;
 
 public
 : DEBUGGER-RUN ( -- ) T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES T-REPORT ;
