@@ -6511,26 +6511,67 @@ variable VDESC  variable DRIFT-FAIL
       nl B,
    nd LBL, ;
 
-: C-LBRACE-CARVE-FRAME ( -- )
-   LBL LBL {: pl pd :}
-   LBL LBL {: p1c:label pjoin:label :}
-   9 DATA P2-CELL LDR,  9 p1c CBZ,                    \ pass 2: width-aware carve
-      EM-P2-CARVE
-      pjoin B,
-   p1c LBL,
-   13 DATA LOCN-CELL LDR,  14 13 6 SUB,
+\ Pass 1 binds the group (x6 = its first local) from the virtual stack's top:
+\ local i, from the last down to the first, takes the top entry while one
+\ exists. A register entry is stored straight into the slot and its register
+\ freed; a constant goes through x16, which is never pooled. Once the virtual
+\ stack is empty the rest pop from memory into x16. Entries deeper than the
+\ group stay virtual. A float anywhere on the virtual stack spills it first,
+\ so every local of that group pops from memory. LVSPILL, LVMOVK and LVDROP
+\ clobber the scratch registers, so the frame holds the group start [sp],
+\ LOCF/8 [sp+8], i [sp+16] and the slot field [sp+24].
+: C-LBRACE-BIND-VS ( -- )
+   LBL LBL LBL LBL {: fl:label fd:label bl:label bd:label :}
+   LBL LBL LBL LBL {: vcon:label vmem:label vx16:label vst:label :}
+   SP SP 32 SUBI,  6 SP 0 STR,
+   5 0 MOVZ,
+   fl LBL,
+      6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE fd BCOND,
+      7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+      5 5 1 ADDI,
+      7 2 CMPI,  C-LT fl BCOND,
+      LVSPILL LABEL@ BL,
+   fd LBL,
+   13 DATA LOCN-CELL LDR,  6 SP 0 LDR,  14 13 6 SUB,
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
    8 $D10003FF LIT64,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,   \ sub sp,sp,#frame
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
-   12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
-   13 DATA LOCN-CELL LDR,  13 13 1 SUBI,
-   pl LBL,
-      13 6 CMP,  C-LT pd BCOND,
-      9 W-POP9 LIT64,  LCEMIT LABEL@ BL,
-      5 12 13 SUB,  5 5 1 SUBI,
-      9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT LABEL@ BL,
-      13 13 1 SUBI,  pl B,
-   pd LBL,
+   12 15 3 LSRI,  12 SP 8 STR,
+   13 DATA LOCN-CELL LDR,  13 13 1 SUBI,  13 SP 16 STR,
+   bl LBL,
+      13 SP 16 LDR,  6 SP 0 LDR,  13 6 CMP,  C-LT bd BCOND,
+      12 SP 8 LDR,  5 12 13 SUB,  5 5 1 SUBI,  5 5 10 LSLI,  5 SP 24 STR,
+      6 DATA VSP-CELL LDR,  6 vmem CBZ,
+      5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+      8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+      7 vcon CBNZ,
+         9 $F90003E0 LIT64,  9 9 11 ORR,  vst B,                \ str xR
+      vcon LBL,
+         14 16 MOVZ,  LVMOVK LABEL@ BL,                         \ movz/movk x16,val
+         vx16 B,
+      vmem LBL,
+         9 W-POPR 16 or LIT64,  LCEMIT LABEL@ BL,               \ ldr x16,[x19,#-8]!
+      vx16 LBL,
+         9 $F90003F0 LIT64,                                     \ str x16
+      vst LBL,
+         5 SP 24 LDR,  9 9 5 ORR,  LCEMIT LABEL@ BL,            \ ,[sp,#slot]
+         LVDROP LABEL@ BL,             \ pop and free the bound entry; none once the VS is empty
+      13 SP 16 LDR,  13 13 1 SUBI,  13 SP 16 STR,
+      bl B,
+   bd LBL,
+   SP SP 32 ADDI, ;
+
+\ `{:` enters without the dispatch spill (CFN-ENTRY): pass 1 binds from the
+\ virtual stack, while the pass-2 carve pops every cell from memory, so it
+\ spills first.
+: C-LBRACE-CARVE-FRAME ( -- )
+   LBL LBL {: p1c:label pjoin:label :}
+   9 DATA P2-CELL LDR,  9 p1c CBZ,                    \ pass 2: width-aware carve
+      LVSPILL LABEL@ BL,
+      EM-P2-CARVE
+      pjoin B,
+   p1c LBL,
+   C-LBRACE-BIND-VS
    pjoin LBL, ;
 
 : C-LBRACE ( -- )
@@ -12241,7 +12282,7 @@ public
    LMAIN LABEL@ LKWJ      1 ['] J-J       CF-ENTRY
    LMAIN LABEL@ LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY
    LMAIN LABEL@ LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY
-   LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY ;
+   LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CFN-ENTRY ;
 
 ;package
 

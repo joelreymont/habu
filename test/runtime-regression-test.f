@@ -2629,6 +2629,38 @@ variable GE-KIND-N
    2 0 do i GE-VJOIN-AT loop
    s" PASS: tier 0 loops reconcile the back edge with the begin frame" type cr ;
 
+\ Tier 0 binds a `{:` group from the virtual stack's top (habu2.f
+\ C-LBRACE-BIND-VS). Each row breaks one boundary: a computed value with its
+\ source still live below it, a group right after a call (empty virtual
+\ stack), more locals than virtual entries, small, negative and wide
+\ constants, entries deeper than the group that must stay live, a float on
+\ the virtual stack (spilled first), a group inside a loop body and one in an
+\ `if` arm. Tier 1 runs the same source and prints the same lines.
+: GE-VBIND-AT ( n -- ) {: tier:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" : GEBCOMP ( n -- n ) dup 7 and {: k:n :} k + ;" GE-SRC-LINE
+   s" : GEBINC ( n -- n ) 1+ ;" GE-SRC-LINE
+   s" : GEBCALL ( n -- n ) GEBINC {: k:n :} k k * ;" GE-SRC-LINE
+   s" : GEBMANY ( n n n -- n ) 1+ {: a:n b:n c:n :} a b - c * ;" GE-SRC-LINE
+   s" : GEBCON ( -- n ) 5 -7 {: a:n b:n :} a b - ;" GE-SRC-LINE
+   s" : GEBBIG ( -- n ) $123456789 -1 {: a:n b:n :} a b + ;" GE-SRC-LINE
+   s" : GEBKEEP ( n n -- n ) over over + {: s:n :} - s * ;" GE-SRC-LINE
+   s" : GEBFLT ( r -- r n ) 0.5 f+ 3 {: x:r k:n :} x k ;" GE-SRC-LINE
+   s" : GEBLOOP ( n -- n ) 0 swap begin swap over + {: s:n :} s swap 1- dup 0= until drop ;" GE-SRC-LINE
+   s" : GEBIF ( n -- n ) dup 0 > if dup 2 * {: d:n :} d + then ;" GE-SRC-LINE
+   s" 13 GEBCOMP . 4 GEBCALL . 2 3 4 GEBMANY . GEBCON . GEBBIG . 7 3 GEBKEEP ." GE-SRC-LINE
+   s" 1.0 GEBFLT . f. 4 GEBLOOP . 3 GEBIF . -3 GEBIF ." GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" locals bind" GE-EXPECT-OK
+   S\" 18\n25\n-5\n12\n4886718344\n40\n3\n1.500000\n10\n9\n-3\n"
+   s" locals bind output" GE-EXPECT-OUT ;
+
+: GE-VBIND ( -- )
+   2 0 do i GE-VBIND-AT loop
+   s" PASS: tier 0 binds locals from the virtual stack" type cr ;
+
 public
 
 : RUN ( -- )
@@ -2668,6 +2700,7 @@ public
    GE-VPULL
    GE-VFUSE
    GE-VJOIN
+   GE-VBIND
    GE-VMEM ;
 
 : TEST ( -- )

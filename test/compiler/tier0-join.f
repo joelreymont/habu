@@ -29,6 +29,16 @@
 \ EM-P2-START), where each read of `k` spills the virtual stack and loads the
 \ local into x9 (EM-P2-LOCREF): its `i` still copies x29 and never reloads.
 \
+\ `{:` binds its locals from the virtual stack's top (habu2.f
+\ C-LBRACE-BIND-VS): a register entry is stored straight into its frame slot,
+\ a constant through x16, and only the locals below the virtual stack pop from
+\ memory, so entries deeper than the group stay in their registers. B-COMP's
+\ computed value is one store and its copy below stays live, B-CON's constant
+\ is one movz and no push, B-DEEP binds one local from a register and pops
+\ the other, and B-LOOP's group inside a loop body leaves the back edge
+\ nothing to push or pop. B-WIDE's wide local takes pass 2, which spills the
+\ virtual stack before it carves.
+\
 \ Spans come from the DICTIONARY RECORD (src/habu/xref.f), as in
 \ test/compiler/tier0-compare-branch.f.
 
@@ -51,6 +61,8 @@ $FFFFFFFF constant RELOAD-MASK  $F940E690 constant RELOAD-OP   \ ldr x16,[x20,#L
 $FFFFFFFF constant IDXLD-MASK   $F940019D constant IDXLD-OP    \ ldr x29,[x12]
 $FFFFFFE0 constant MOVIDX-MASK  $AA1D03E0 constant MOVIDX-OP   \ mov xN,x29
 $FFC003FF constant SPLD-MASK    $F94003E9 constant SPLD-OP     \ ldr x9,[sp,#off]
+$FFC003E0 constant SPST-MASK    $F90003E0 constant SPST-OP     \ str xR,[sp,#off]
+$FF800000 constant MOVZ-MASK    $D2800000 constant MOVZ-OP     \ movz xR,#imm
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -124,6 +136,8 @@ variable MISSING                     \ names the dictionary did not answer for
 : WIDXLDS ( ptr u8 n -- n )  IDXLD-MASK IDXLD-OP WORD-OPS ;
 : WMOVIDXS ( ptr u8 n -- n )  MOVIDX-MASK MOVIDX-OP WORD-OPS ;
 : WSPLDS ( ptr u8 n -- n )  SPLD-MASK SPLD-OP WORD-OPS ;
+: WSPSTS ( ptr u8 n -- n )  SPST-MASK SPST-OP WORD-OPS ;
+: WMOVZS ( ptr u8 n -- n )  MOVZ-MASK MOVZ-OP WORD-OPS ;
 
 public
 
@@ -164,6 +178,18 @@ public
 : L-WIDE ( option<n> n -- n )
    {: o:option<n> k:n :}
    0 k 0 ?do i k * + loop ;
+\ The masked value binds from its register; the copy below it stays live.
+: B-COMP ( n -- n ) dup 7 and {: k:n :} k + ;
+\ The constant binds through x16.
+: B-CON ( -- n ) 5 {: a:n :} a 1+ ;
+\ `b` binds from the register `1+` left, `a` pops from memory.
+: B-DEEP ( n n -- n ) 1+ {: a:n b:n :} a b - ;
+\ The begin record's registers survive the bind for the back edge.
+: B-LOOP ( n -- n ) 0 swap begin swap over + {: s:n :} s swap 1- dup 0= until drop ;
+\ Pass 2: the incremented count is spilled before the carve pops it.
+: B-WIDE ( option<n> n -- n )
+   1+ {: o:option<n> k:n :}
+   k ;
 
 private
 
@@ -218,6 +244,22 @@ private
    s" TIER0-JOIN:L-WIDE" WIDXLDS 0 T=
    s" TIER0-JOIN:L-WIDE" WMOVIDXS 1 T= ;
 
+: TEST-BIND-SHAPE ( -- )
+   s" a locals group binds from the virtual stack, not through memory" T-LABEL
+   s" TIER0-JOIN:B-COMP" WPOPS 1 T=
+   s" TIER0-JOIN:B-COMP" WPUSHES 1 T=
+   s" TIER0-JOIN:B-COMP" WSPSTS 1 T=
+   s" TIER0-JOIN:B-CON" WPOPS 0 T=
+   s" TIER0-JOIN:B-CON" WPUSHES 1 T=
+   s" TIER0-JOIN:B-CON" WSPSTS 1 T=
+   s" TIER0-JOIN:B-CON" WMOVZS 1 T=
+   s" TIER0-JOIN:B-DEEP" WPOPS 2 T=
+   s" TIER0-JOIN:B-DEEP" WPUSHES 1 T=
+   s" TIER0-JOIN:B-DEEP" WSPSTS 2 T=
+   s" TIER0-JOIN:B-LOOP" LOOP-LEN 0 T<>
+   s" TIER0-JOIN:B-LOOP" POPS 0 T=
+   s" TIER0-JOIN:B-LOOP" PUSHES 0 T= ;
+
 : TEST-VALUES ( -- )
    s" every subject answers what its loop computes" T-LABEL
    3 R-EXACT  dup . cr  3 T=
@@ -243,7 +285,12 @@ private
    4 L-CALL  dup . cr  10 T=
    4 L-NOI  dup . cr  4 T=
    3 L-NEST  dup . cr  6 T=
-   5 OPTION:SOME 4 L-WIDE  dup . cr  24 T= ;
+   5 OPTION:SOME 4 L-WIDE  dup . cr  24 T=
+   13 B-COMP  dup . cr  18 T=
+   B-CON  dup . cr  6 T=
+   10 3 B-DEEP  dup . cr  6 T=
+   4 B-LOOP  dup . cr  10 T=
+   5 OPTION:SOME 4 B-WIDE  dup . cr  5 T= ;
 
 public
 
@@ -253,6 +300,7 @@ public
    TEST-SHAPE
    TEST-JOIN-SHAPE
    TEST-INDEX-SHAPE
+   TEST-BIND-SHAPE
    TEST-VALUES
    MISSING @ 0 T=
    T-REPORT ;
