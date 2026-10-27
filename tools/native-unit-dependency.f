@@ -65,8 +65,9 @@ private
 \ run, the source position past its token in the token's buffer, then the
 \ record count, here, the wordlist count, the four kernel cells and the
 \ checker's unit facts before it, whether it opened a child file, the
-\ output bytes the open files held before it (RUN-OUT), and the pending FFI
-\ declaration before it (PENDING).
+\ output bytes the open files held before it (RUN-OUT), the pending FFI
+\ declaration before it (PENDING) and CWORK's layout mark before it
+\ (CWORK-MARK).
 0 constant R-ORD
 1 constant R-END
 2 constant R-N
@@ -77,7 +78,8 @@ private
 10 constant R-CHILD
 11 constant R-OUT
 12 constant R-PENDING
-13 constant RUN-CELLS
+13 constant R-CWORK
+14 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -591,6 +593,8 @@ variable FACTS-XT
 CAST: AS-FACTS ( n -- [ -- n bool ] )
 variable PENDING-XT
 CAST: AS-PENDING ( n -- [ -- n ] )
+variable CWORK-XT
+CAST: AS-MARK ( n -- [ -- n ] )
 variable READERS-XT
 CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
 variable READ-AT
@@ -678,6 +682,13 @@ private
 : PENDING ( -- n )
    PENDING-XT @ 0= if 0 exit then
    PENDING-XT @ AS-PENDING execute ;
+
+\ CWORK's layout mark, CWORK:LAYOUT-MARK: its declared bytes plus its DEFAULT
+\ rows, both only increasing, so any CWORK declaration or DEFAULT changes it.
+\ 0 when the host has no CWORK.
+: CWORK-MARK ( -- n )
+   CWORK-XT @ 0= if 0 exit then
+   CWORK-XT @ AS-MARK execute ;
 
 \ The DATA offset of kernel cell k, the cells NUNIT-OBJECT KCELL names: tier,
 \ build depth, build tier and the optimizing compiler's dispatch.
@@ -1712,6 +1723,7 @@ variable USER-READ
    0 run R-CHILD RFIELD !
    RUN-OUT run R-OUT RFIELD !
    PENDING run R-PENDING RFIELD !
+   CWORK-MARK run R-CWORK RFIELD !
    run 1+ FRUN-N !
    run 1+ false ;
 
@@ -1726,9 +1738,16 @@ variable USER-READ
 \ refuses, so a file aligning with `here data-base - negate 7 and allot`
 \ refuses where `align` stores. A deliberate offset below the floor computed
 \ from `here` is outside this judgment. A run of a TASK watermark reader is
-\ accounted by the watermark its segment records (USER-READ).
+\ accounted by the watermark its segment records (USER-READ). A run that
+\ declared CWORK storage or wrote a CWORK DEFAULT refuses whatever else it
+\ left: compiler working state is never carried, so the file compiles from
+\ source on every build. A run that loaded a child file leaves the child's
+\ CWORK writes to the child's own runs.
 : RUN-JUDGE ( n -- )
    {: run:n :}
+   run R-CHILD RFIELD @ 0=  CWORK-MARK run R-CWORK RFIELD @ <>  and if
+      s" run-writes-cwork" run R-ORD RFIELD @ ORDERED-BY exit
+   then
    SOURCE-EXEC:POSITION {: off:n balanced:bool :}
    balanced drop
    off run R-END RFIELD @ > if exit then
@@ -1772,6 +1791,7 @@ variable USER-READ
    s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
    s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
    s" FFI-DECL:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT PENDING-XT !
+   s" CWORK:LAYOUT-MARK" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT CWORK-XT !
    s" TASK:OWNED-USER-READERS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT READERS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
@@ -1931,7 +1951,7 @@ variable USER-READ
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
    0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 PENDING-XT !
-   0 READERS-XT !
+   0 READERS-XT ! 0 CWORK-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
 
 \ Close the innermost definition frame.

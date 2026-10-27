@@ -2253,7 +2253,11 @@ sections above.
   closes with a declaration open is `ffi-declaration-open`. Otherwise it is
   `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
   file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
-  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A nested run that
+  a top-level `WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A run that
+  declares CWORK storage or writes a CWORK default, and loaded no child file,
+  is `run-writes-cwork word=W` whatever else it left: compiler working state
+  is never carried, so the file compiles on every build
+  (`test/native-file-cwork-e2e.f`). A nested run that
   a caught throw abandoned refuses `run-abandoned word=W`: the catch restores
   HERE and the source position, so the run's trace cannot be judged.
   `test/native-file-frame-e2e.f` measures each line.
