@@ -3,6 +3,8 @@
 1 set-tier
 require src/os/script-argv.f
 require src/lib/executable-build.f
+require src/lib/string.f
+require src/os/env-base.f
 
 package COMPILER-IMAGES-BUILD
 private
@@ -13,6 +15,9 @@ private
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if
       s" compiler-images-build: one output directory is required" 64 die
+   then
+   s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" STR= 0= if
+      s" compiler-images-build: compiler bundle switch missing" 72 die
    then
    ['] LOAD EXECUTABLE-BUILD:WITH
    s" 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-BUNDLE-HOST-CHECK" evaluate-closed ;
