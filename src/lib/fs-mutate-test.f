@@ -8,6 +8,7 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/lib/fs-mutate.f
+require src/lib/fmt.f                               \ the HB_TMP child's uncaught code
 require src/lib/memory.f                            \ the walk contexts the last two rows own
 require src/lib/process-env.f
 require src/lib/test/outcome.f                      \ the HB_TMP child's outcome
@@ -97,6 +98,7 @@ create FMT-PARENT-B-BUF FS-PATH-CAP allot
 create FMT-PARENT-LINK-BUF FS-PATH-CAP allot
 create FMT-PARENT-BOUND-BUF FS-PATH-CAP allot
 create FMT-STAGED-TMP-BUF FS-PATH-CAP allot
+create FMT-REAL-BUF FS-PATHZ-CAP allot
 
 9217 constant FMT-STREAM-LEN
 424242 constant FMT-TMP-SEED
@@ -436,6 +438,30 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 : FMT-ATOMIC-SUFFIX-NO-ROOM ( -- )
    FMT-FULL$ s" x" ATOMIC-WRITE-FILE ;
 
+\ The OS's canonical spelling of an existing path, in FMT-REAL-BUF.
+: FMT-REAL ( ptr u8 n -- ptr u8 n )
+   FS-PATHZ FMT-REAL-BUF FS-PATHZ-CAP realpath {: u:n :}
+   u 0 > TTRUE
+   FMT-REAL-BUF u ;
+
+
+\ A directory whose canonical path is n bytes: the test root's canonical
+\ spelling, then names of `a` with a slash every 201st byte, so no name passes
+\ NAME_MAX, the last byte never a slash. HB_TMP's length is its canonical
+\ spelling's, which only an existing directory has. The first name goes to the
+\ cleanup registry, so FMT-TEST-CLEANUP leaves the root empty.
+: FMT-DEEP-DIR ( n -- ptr u8 n )
+   {: n:n :}
+   FMT-ROOT$ FMT-REAL nip {: r:n :}
+   n r ?do
+      i r - 201 mod 0= i n 1- < and if FS-MUT-SLASH else 97 then
+      FMT-REAL-BUF i + c!
+   loop
+   FMT-REAL-BUF n MAKE-DIRS
+   FMT-REAL-BUF r 201 + CLEANUP-TREE+
+   FMT-REAL-BUF n ;
+
+
 \ A base one byte past the longest MAKE-TEMP-DIR builds in for its prefix,
 \ whatever seed it would draw.
 : FMT-TEMP-BASE-NO-ROOM ( -- )
@@ -731,23 +757,34 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    E-FS-IO TTHROWSQ
    FMT-TEMP-EXHAUST-CLEAN ;
 
-\ ---- an HB_TMP that is not a directory ----------------------------------------
-\ A child bin/hb whose HB_TMP names a path that does not exist calls
-\ HB-TMP-MKDIR. It exits nonzero with one stderr line that names HB_TMP and the
-\ path. The path and the child's program are under this test's root.
+\ ---- the temp roots a child reads from its environment ------------------------
+\ A child bin/hb, because HB_TMP and TMPDIR are read from the process
+\ environment, which a running process does not change for itself. A child
+\ whose HB_TMP cannot hold a temp directory exits nonzero with one stderr line
+\ that names HB_TMP and the value, and the uncaught code. A child whose HB_TMP
+\ and TMPDIR reach a directory through a symlink, as macOS's /tmp is
+\ /private/tmp, makes its temp directories under the canonical spelling. The
+\ paths and the children's programs are under this test's root.
 package FMT-HB-TMP
 private
 
 $1000 constant CAP
 15000 constant TIMEOUT-MS
+10 constant NL
+200 constant LINK-NAME-U                 \ one link level's target, under NAME_MAX
 
 create OUT CAP allot
 create ERR CAP allot
 create MISSING-BUF FS-PATH-CAP allot
 create PROG-BUF FS-PATH-CAP allot
+create CANON-PROG-BUF FS-PATH-CAP allot
+create NOCANON-BUF FS-PATH-CAP allot
+create STEP-BUF FS-PATH-CAP allot
 create WANT-BUF FS-PATH-CAP 64 + allot   \ a reason, a value, the newline
 variable MISSING-U
 variable PROG-U
+variable CANON-PROG-U
+variable NOCANON-U
 variable WANT-U
 
 : MISSING$ ( -- ptr u8 n )
@@ -756,27 +793,63 @@ variable WANT-U
 : PROG$ ( -- ptr u8 n )
    PROG-BUF PROG-U @ ;
 
+: CANON-PROG$ ( -- ptr u8 n )
+   CANON-PROG-BUF CANON-PROG-U @ ;
+
+: NOCANON$ ( -- ptr u8 n )
+   NOCANON-BUF NOCANON-U @ ;
+
 : PATHS! ( -- )
    FMT-ROOT$ s" no-such-hb-tmp" MISSING-BUF JOIN-PATH MISSING-U !
-   FMT-ROOT$ s" hb-tmp-child.f" PROG-BUF JOIN-PATH PROG-U ! ;
+   FMT-ROOT$ s" hb-tmp-child.f" PROG-BUF JOIN-PATH PROG-U !
+   FMT-ROOT$ s" hb-tmp-canon.f" CANON-PROG-BUF JOIN-PATH CANON-PROG-U ! ;
 
 : PROG-SRC$ ( -- ptr u8 n )
    S\" require src/lib/fs-mutate.f\ns\q hb-tmp-child\q HB-TMP-MKDIR 2drop\n0 0 0 die\n" ;
 
-\ One byte past the longest HB_TMP with room for the temp name PROG-SRC$ asks
-\ for, whose prefix is hb-tmp-child. FMT-LONG! refills the buffer, which earlier
-\ rows reuse as a copy destination.
-: LONG$ ( -- ptr u8 n )
-   FMT-LONG!
-   FMT-LONG-BUF s" hb-tmp-child" nip TEMP-DIR-BASE-MAX 1+ ;
+\ Prints the directory HB-TMP-MKDIR makes, then the one TMPDIR-MKDIR makes, a
+\ line each.
+: CANON-PROG-SRC$ ( -- ptr u8 n )
+   S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q HB-TMP-MKDIR LINE\ns\q canon\q TMPDIR-MKDIR LINE\n" ;
 
-\ The child, with HB_TMP the given value and the rest of the environment
-\ inherited.
-: RUN-CHILD ( ptr u8 n -- len len outcome ) {: a:ptr u :}
+\ A directory one byte past the longest HB_TMP with room for the temp name
+\ PROG-SRC$ asks for, whose prefix is hb-tmp-child.
+: LONG$ ( -- ptr u8 n )
+   s" hb-tmp-child" nip TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
+
+\ One level below NOCANON$: a directory of LINK-NAME-U bytes of `a` and a link L
+\ beside it that names it, and NOCANON$ then names L.
+: NOCANON-LEVEL ( -- )
+   NOCANON$ FMT-LONG-BUF LINK-NAME-U STEP-BUF JOIN-PATH {: diru:n :}
+   STEP-BUF diru MAKE-DIR
+   NOCANON$ s" L" STEP-BUF JOIN-PATH {: linku:n :}
+   FMT-LONG-BUF LINK-NAME-U STEP-BUF linku MAKE-SYMLINK
+   STEP-BUF NOCANON-BUF linku BYTE-COPY
+   linku NOCANON-U ! ;
+
+\ A directory spelled `<root>/nc/L/L/...` whose canonical spelling is past
+\ FS-PATH-CAP: stat follows each L, whose expansion stays short, but every
+\ level adds LINK-NAME-U + 1 bytes to the canonical spelling, which realpath
+\ then cannot answer.
+: NOCANON! ( -- )
+   FMT-LONG!
+   FMT-ROOT$ s" nc" NOCANON-BUF JOIN-PATH NOCANON-U !
+   NOCANON$ MAKE-DIR
+   NOCANON$ CLEANUP-TREE+
+   NOCANON$ FMT-REAL nip
+   begin dup FS-PATH-CAP <= while
+      NOCANON-LEVEL LINK-NAME-U 1+ +
+   repeat drop ;
+
+\ The child running this program, with HB_TMP the given value, whatever
+\ PROC-ENV-SET added after CHILD-ENV, and the rest of the environment inherited.
+: CHILD-ENV ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN a u >LEN PROC-ENV-SET
+   s" HB_TMP" >LEN a u >LEN PROC-ENV-SET ;
+
+: CAPTURE ( ptr u8 n -- len len outcome ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
-   PROG$ >LEN PROC-ARGV+
+   prog progu >LEN PROC-ARGV+
    s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
@@ -793,15 +866,45 @@ variable WANT-U
    S\" \n" WANT+
    WANT-BUF WANT-U @ ;
 
-\ A child given this HB_TMP exits nonzero and prints the line for it.
-: REFUSED ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
-   a u RUN-CHILD {: outu:len erru:len oc :}
+\ The line the child prints for an uncaught code, rendered from the name.
+: CODE$ ( n -- ptr u8 n )
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   FMT:SB-INT
+   SB$ ;
+
+\ A child given this HB_TMP exits nonzero and prints the line for it and the
+\ code.
+: REFUSED ( ptr u8 n ptr u8 n n -- ) {: a:ptr u why:ptr whyu code:n :}
+   a u CHILD-ENV PROG$ CAPTURE {: outu:len erru:len oc :}
    oc MATCH outcome
      exited OF 0 T<> ENDOF
      signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
      timeout OF PROG$ OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
-   ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE ;
+   ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE
+   ERR erru LEN>N code CODE$ CONTAINS? TTRUE ;
+
+\ With HB_TMP and TMPDIR both a link to a directory, each line the child prints
+\ is its own realpath. The directories are removed one by one, so the parent's
+\ removal shows the child made nothing else there.
+: CANONICAL ( -- )
+   FMT-PARENT-A MAKE-DIR
+   FMT-PARENT-A FMT-PARENT-LINK MAKE-SYMLINK
+   CANON-PROG$ CANON-PROG-SRC$ WRITE-ALL
+   CANON-PROG$ CLEANUP+
+   FMT-PARENT-LINK CHILD-ENV
+   s" TMPDIR" >LEN FMT-PARENT-LINK >LEN PROC-ENV-SET
+   CANON-PROG$ CAPTURE {: outu:len erru:len oc :}
+   CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   OUT outu LEN>N NL 0 SPLIT-NEXT drop {: hb:ptr hbu:n next:n :}
+   OUT outu LEN>N NL next SPLIT-NEXT 2drop {: td:ptr tdu:n :}
+   hb hbu hb hbu FMT-REAL T$=
+   td tdu td tdu FMT-REAL T$=
+   hb hbu REMOVE-DIR
+   td tdu REMOVE-DIR
+   FMT-PARENT-LINK REMOVE-FILE
+   FMT-PARENT-A REMOVE-DIR ;
 
 public
 
@@ -810,9 +913,15 @@ public
    PROG$ PROG-SRC$ WRITE-ALL
    PROG$ CLEANUP+
    s" a missing HB_TMP is refused by name" T-LABEL
-   MISSING$ s" hb: HB_TMP is not a directory: " REFUSED
+   MISSING$ s" hb: HB_TMP is not a directory: " E-FS-DIR REFUSED
    s" an HB_TMP with no room for the temp name is refused by name" T-LABEL
-   LONG$ s" hb: HB_TMP is too long for a temp directory: " REFUSED ;
+   LONG$ s" hb: HB_TMP is too long for a temp directory: " E-SPAN-CAPACITY
+   REFUSED
+   s" an HB_TMP with no canonical path is refused by name" T-LABEL
+   NOCANON! NOCANON$ s" hb: HB_TMP has no canonical path: " E-FS-IO REFUSED
+   s" an HB_TMP or TMPDIR through a link makes canonical temp directories"
+   T-LABEL
+   CANONICAL ;
 
 ;package
 

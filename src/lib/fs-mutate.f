@@ -43,9 +43,10 @@
 \ is a no-op; a root that cannot be stat'ed for any other reason is E-FS-STAT,
 \ with libc's cause in FS:ERRNO. HB-TMP-MKDIR makes its tree under $HB_TMP
 \ when the process was handed one (the caller reaps it, even after a kill),
-\ else under $TMPDIR or /tmp. CLEANUP-RUN removes registrations newest first, so a parent
-\ registered before its child goes after it. Each registration also arms
-\ CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL, chaining a hook already
+\ else under $TMPDIR or /tmp; HB-TMP-MKDIR and TMPDIR-MKDIR make it under the
+\ root's canonical spelling. CLEANUP-RUN removes registrations newest first,
+\ so a parent registered before its child goes after it. Each registration also
+\ arms CLEANUP-AT-EXIT in the engine's EXIT-HOOK-CELL, chaining a hook already
 \ there to run last, once; a restored or stripped image (docs/architecture.md
 \ "Images") starts with an empty table.
 \
@@ -647,21 +648,43 @@ public
    repeat drop
    E-FS-IO throw ;
 
+\ MAKE-TEMP-DIR makes the directory under the base as given, and the answer
+\ keeps the caller's spelling: a relative base gives a relative answer.
 : MAKE-TEMP-DIR ( ptr u8 n ptr u8 n -- ptr u8 n )
    mono-ns FS-MUT-MAKE-TEMP-DIR-SEED ;
 
+\ realpath of a temp root into this task's PATHZ2 buffer: the canonical
+\ spelling's length, below 0 when realpath refuses the root. MAKE-TEMP-DIR
+\ builds and makes its candidates through SB, FS-MUT-TMP-PATH and FS-PATHZ
+\ only, so the spelling stands through every attempt.
+: FS-MUT-TEMP-REAL ( ptr u8 n -- n )
+   FS-PATHZ FS-MUT-PATHZ2-BUF SPAN:$ drop FS-PATHZ-CAP realpath ;
+
+\ The roots read from the environment are resolved before MAKE-TEMP-DIR gets
+\ them, so every tree TMPDIR-MKDIR and HB-TMP-MKDIR make has a canonical path:
+\ a root reached through a symlink (macOS's /tmp is /private/tmp) would
+\ otherwise give paths that differ from the canonical ones the engine records
+\ for the same files. TEMP-DIR-BASE-MAX bounds the canonical spelling. A TMPDIR
+\ longer than FS-PATH-CAP throws E-FS-PATH from FS-PATHZ; one that realpath
+\ refuses throws E-FS-IO.
 : TMPDIR-MKDIR ( ptr u8 n -- ptr u8 n ) {: prefix:ptr prefixu :}
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
-   prefix prefixu MAKE-TEMP-DIR ;
+   FS-MUT-TEMP-REAL {: real:n :}
+   real 0 < if E-FS-IO throw then
+   FS-MUT-PATHZ2-BUF SPAN:$ drop real prefix prefixu MAKE-TEMP-DIR ;
 
 \ An HB_TMP that cannot hold the temp directory is refused before anything is
 \ made, with one line on fd 2 that names HB_TMP, why, and its value, then a
-\ throw. Without the check the process dies on a bare code that never says
-\ HB_TMP was the cause: a value too long to leave room for the temp name under
-\ it (TEMP-DIR-BASE-MAX) on MAKE-TEMP-DIR's E-SPAN-CAPACITY, or on DIR?'s
-\ E-FS-PATH past FS-PATH-CAP; a value that is not a directory on the E-FS-IO of
-\ a mkdir under a missing parent, which is no collision. The length refusal
-\ keeps MAKE-TEMP-DIR's code and the other throws E-FS-DIR. The line is three
+\ throw. A value past FS-PATH-CAP, or one whose canonical spelling leaves no
+\ room for the temp name under it (TEMP-DIR-BASE-MAX), is too long:
+\ E-SPAN-CAPACITY; without the check the first dies on FS-PATHZ's E-FS-PATH and
+\ the second on MAKE-TEMP-DIR's E-SPAN-CAPACITY, neither naming HB_TMP. A
+\ value that is not a directory throws E-FS-DIR; without the check it dies on
+\ the E-FS-IO of a mkdir under a missing parent, which is no collision. A
+\ directory realpath refuses, as one whose canonical spelling does not fit
+\ PATH_MAX (ENAMETOOLONG on Darwin), has no canonical path: E-FS-IO. The check
+\ answers the canonical spelling, borrowed from this task's PATHZ2 buffer,
+\ which HB-TMP-MKDIR makes the directory under. The line is three
 \ writes, as src/core/include.f names a refused source path, and not one SB$
 \ write as FS-MUT-EXIT-REPORT below: a value of FS-PATH-CAP bytes with the
 \ reason overflows SB-CAP, and SB-APPEND would then throw E-STR-CAPACITY in
@@ -671,14 +694,23 @@ public
    2 a u write drop
    2 S\" \n" write drop ;
 
-: FS-MUT-HB-TMP-CHECK ( ptr u8 n n -- ) {: a:ptr u prefixu :}
-   u prefixu TEMP-DIR-BASE-MAX > if
-      a u s" hb: HB_TMP is too long for a temp directory: " FS-MUT-HB-TMP-REFUSE
-      E-SPAN-CAPACITY throw
+: FS-MUT-HB-TMP-LONG ( ptr u8 n -- ) {: a:ptr u :}
+   a u s" hb: HB_TMP is too long for a temp directory: " FS-MUT-HB-TMP-REFUSE
+   E-SPAN-CAPACITY throw ;
+
+: FS-MUT-HB-TMP-CHECK ( ptr u8 n n -- ptr u8 n ) {: a:ptr u prefixu :}
+   u FS-PATH-CAP > if a u FS-MUT-HB-TMP-LONG then
+   a u DIR? 0= if
+      a u s" hb: HB_TMP is not a directory: " FS-MUT-HB-TMP-REFUSE
+      E-FS-DIR throw
    then
-   a u DIR? if exit then
-   a u s" hb: HB_TMP is not a directory: " FS-MUT-HB-TMP-REFUSE
-   E-FS-DIR throw ;
+   a u FS-MUT-TEMP-REAL {: real:n :}
+   real 0 < if
+      a u s" hb: HB_TMP has no canonical path: " FS-MUT-HB-TMP-REFUSE
+      E-FS-IO throw
+   then
+   real prefixu TEMP-DIR-BASE-MAX > if a u FS-MUT-HB-TMP-LONG then
+   FS-MUT-PATHZ2-BUF SPAN:$ drop real ;
 
 \ The one base resolver for a process that was handed a scratch root. HB_TMP
 \ names a directory the caller owns and will remove; a temp tree made under it
@@ -689,8 +721,7 @@ public
    s" HB_TMP" GETENV dup 0= if
       2drop prefix prefixu TMPDIR-MKDIR exit
    then
-   2dup prefixu FS-MUT-HB-TMP-CHECK
-   prefix prefixu MAKE-TEMP-DIR ;
+   prefixu FS-MUT-HB-TMP-CHECK prefix prefixu MAKE-TEMP-DIR ;
 
 : CLEANUP-RESET ( -- )
    0 FS-MUT-CLEANUP-N ! ;
