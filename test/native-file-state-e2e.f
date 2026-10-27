@@ -41,6 +41,19 @@ create EXPECT 512 allot  variable EXPECT-U
    why whyu EXPECT 512 EXPECT-U BUF-APPEND
    EXPECT EXPECT-U @ ;
 
+\ The diagnostic line of file name's stale replay at segment row seg for
+\ reason why.
+: STALE$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n seg:ptr segu:n why:ptr whyu:n :}
+   0 EXPECT-U !
+   s" native-file: stale path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   s"  segment=" EXPECT 512 EXPECT-U BUF-APPEND
+   seg segu EXPECT 512 EXPECT-U BUF-APPEND
+   s"  reason=" EXPECT 512 EXPECT-U BUF-APPEND
+   why whyu EXPECT 512 EXPECT-U BUF-APPEND
+   EXPECT EXPECT-U @ ;
+
 \ The diagnostic line of file name's refusal for reason why.
 : REFUSED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: name:ptr nameu:n why:ptr whyu:n :}
@@ -179,7 +192,9 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    \ poke.f stores into prefix.f's slot, which no row of its own carries.
    \ cover.f's slot holds downstream.f's new 223, not the 222 its USER row
    \ found when it declared the slot, so installing its 222 would undo the
-   \ edit: it misses.
+   \ edit. Its require of task.f, found loaded, is a load row, so the slot is
+   \ declared in its second segment: that segment is stale and cover.f
+   \ resumes from its source after the require.
    ERR$ s" app.f" REUSED$ CONTAINS? TTRUE
    ERR$ s" prefix.f" REUSED$ CONTAINS? TTRUE
    ERR$ s" unit.f" REUSED$ CONTAINS? TTRUE
@@ -187,7 +202,8 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    ERR$ s" downstream.f" REUSED$ CONTAINS? TFALSE
    ERR$ s" poke.f" REUSED$ CONTAINS? TFALSE
    ERR$ s" poke.f" s" task-slot-updated word=PREFIX-SLOT" REFUSED$ CONTAINS? TTRUE
-   ERR$ s" cover.f" s" task-slots" MISS$ CONTAINS? TTRUE
+   ERR$ s" cover.f" s" 1" s" task-slots" STALE$ CONTAINS? TTRUE
+   ERR$ s" cover.f" s" segment-stale" REFUSED$ CONTAINS? TTRUE
    s" task-warm-hb" EDIT-STATE$ RUN-TASK-STATE
    s" task-fresh-hb" s" fresh-cache" COLD-BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -359,15 +375,18 @@ create COLD-SRC FS-PATH-CAP allot  variable COLD-SRC-U
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    rcold reuse or 0= if s" read-cold-hb" s" read-reuse-hb" SAME-FILE then
    \ The grown first.f leaves the watermark past the one later.f's TASK row
-   \ recorded at its entry: later.f misses before any install and runs, so
-   \ its slot follows both of first.f's. saved.f's row records the value it
-   \ read, so it misses too and reads the moved watermark.
+   \ recorded where its slot's segment opens, after its require of first.f,
+   \ found loaded, which is a load row: that segment is stale and later.f
+   \ resumes from its source after the require, so its slot follows both of
+   \ first.f's. saved.f, one segment, records the value it read in its TASK
+   \ row, so it misses before any install and reads the moved watermark.
    s" a grown earlier reservation misses the later reader" T-LABEL
    GROWN-FIRST
    true NATIVE-FILE-APP:DIAG? !
    s" warm-hb" BUILD dup SUCCESS {: warm:n :}
    false NATIVE-FILE-APP:DIAG? !
-   ERR$ s" later.f" s" task-slots" MISS$ CONTAINS? TTRUE
+   ERR$ s" later.f" s" 1" s" task-slots" STALE$ CONTAINS? TTRUE
+   ERR$ s" later.f" s" segment-stale" REFUSED$ CONTAINS? TTRUE
    ERR$ s" later.f" REUSED$ CONTAINS? TFALSE
    ERR$ s" saved.f" s" task-slots" MISS$ CONTAINS? TTRUE
    warm s" warm-hb" AT S\" 16\n" RUN-READ
