@@ -19,19 +19,11 @@ package NATIVE-BUILD-ENTRY
    PRELOADED? if true exit then
    NATIVE-BUILD:EXPLICIT-TARGET? ;
 
-public
-
-\ The dynamically loaded driver receives this code reference. BUILD's text
-\ runs after this package closes, so it names the word qualified.
-: ORIGIN ( n n -- n ) code-origin ;
-
-private
-
 \ The required driver is loaded inside the protected executable-build scope.
 \ The entry is named in a text because it resolves only after require returns.
 : BUILD ( -- )
    [: s" tools/native-build-core.f" required ;] EXECUTABLE-BUILD:WITH
-   s" ' NATIVE-BUILD-ENTRY:ORIGIN false NATIVE-BUILD:RUN" evaluate-closed ;
+   s" NATIVE-BUILD:RUN" evaluate-closed ;
 
 \ The public command owns the ordinary saved-support selection, source-input
 \ manifest, artifact cache and output installation. Keep the legacy spelling

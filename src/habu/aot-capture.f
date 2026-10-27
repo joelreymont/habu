@@ -2401,8 +2401,8 @@ public
    then
    off ACAP-GRAPH-MAP@ ;
 
-\ The provenance query covers the entire source window, including removed
-\ bodies. The byte copy owns a separate, exact output extent after compaction.
+\ The live bounds cover the entire source window, including removed bodies.
+\ The byte copy owns a separate, exact output extent after compaction.
 : CODE-WINDOW ( -- n n n )
    ACAP-W-B0 @ dup ACAP-GOLDLEN @ + ACAP-GNEWLEN @ ;
 

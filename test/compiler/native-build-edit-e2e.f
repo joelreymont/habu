@@ -873,8 +873,8 @@ variable ENGINE-WHITEBOX
    RACE-CORE$ RACE-A$ COPY-FILE-STREAM
    RACE-CORE$ RACE-B$ COPY-FILE-STREAM
    s" scratch/core-b.f"
-      S\" : RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}\n   BUILD-ARGS!"
-      S\" : RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}\n   s\q support-B\q type cr\n   BUILD-ARGS!"
+      S\" : RUN ( -- )\n   BUILD-ARGS!"
+      S\" : RUN ( -- )\n   s\q support-B\q type cr\n   BUILD-ARGS!"
       PATCH-EMITTER
    s" tools/native-build-support.f"
       S\" 1 set-tier\nrequire tools/native-build-support-deps.f"
@@ -1141,7 +1141,7 @@ variable ENGINE-WHITEBOX
 : WRITER-RECOVERY ( -- )
    s" tools/native-emit.f" AT S\" \nE-FS-PATH throw\n" APPEND-FILE
    s" writer-recovery.f" AT
-   S\" 1 set-tier\nrequire tools/native-build-core.f\npackage WRITER-RECOVERY private\n: ORIGIN ( n n -- n ) code-origin ;\n: DRIVE ( -- n ) 0 SCRIPT-ARGV$ ['] ORIGIN false NATIVE-BUILD:RUN-PATH-RC ;\npublic\n: RUN ( -- )\n   tier@ {: prior:n :}\n   DRIVE E-FS-PATH <> if 76 throw then\n   tier@ prior <> if 76 throw then\n   BUILD-TARGET:IDLE-CK\n   s\" writer recovery: ok\" type cr ;\n;package\nWRITER-RECOVERY:RUN\n"
+   S\" 1 set-tier\nrequire tools/native-build-core.f\npackage WRITER-RECOVERY private\n: DRIVE ( -- n ) 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-PATH-RC ;\npublic\n: RUN ( -- )\n   tier@ {: prior:n :}\n   DRIVE E-FS-PATH <> if 76 throw then\n   tier@ prior <> if 76 throw then\n   BUILD-TARGET:IDLE-CK\n   s\" writer recovery: ok\" type cr ;\n;package\nWRITER-RECOVERY:RUN\n"
       WRITE-ALL
    \ The child needs the original donor dictionary: loading a target rewinds
    \ its source records and installs its compiler before the writer fails.

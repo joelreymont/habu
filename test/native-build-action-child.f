@@ -8,7 +8,6 @@ private
 
 CAST: XT>N ( [ -- ] -- n )
 : HIT ( -- ) ;
-: QUERY ( n n -- n ) drop ;
 
 : SENTINELS ( -- )
    s" /tmp/habu-action-outer" OUTPUT!
@@ -26,7 +25,7 @@ CAST: XT>N ( [ -- ] -- n )
    CLASS-WANTED @ CLASS-WHITEBOX T= ;
 
 : NESTED-PATH ( -- )
-   s" /tmp/habu-action-nested" ['] QUERY false RUN-PATH-RC drop ;
+   s" /tmp/habu-action-nested" RUN-PATH-RC drop ;
 
 : ACTIVE-CASE ( RTARGET:build-action -- )
    drop

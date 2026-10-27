@@ -20,6 +20,7 @@ public
 \ four rows say is that the reader finds it whichever word opened it.
 : NJ-IJ ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do i 3 * j 5 * + + loop loop ;
+tier@ constant NJ-IJ-TIER
 
 : NJ-IJ-DO ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do i 3 * j 5 * + + loop loop ;
@@ -182,6 +183,6 @@ public
 
 T-RESET
 s" the nested loop subject was compiled at tier 1" T-LABEL
-' NJ-FIXTURE:NJ-IJ TEST:XT>N dup 4 + code-origin 1 T=
+NJ-FIXTURE:NJ-IJ-TIER 1 T=
 NJ-TEST:RUN
 T-REPORT

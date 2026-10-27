@@ -53,10 +53,11 @@ CHECK-RETURN
    a MIX 109 = if 1 else
       a MIX 185 = if 2 else -7191 throw then
    then ;
+tier@ constant CHOOSE-TIER
 
 T-RESET
 s" the no-return exit subject was compiled at tier 1" T-LABEL
-' CHOOSE TEST:XT>N dup 4 + code-origin 1 T=
+CHOOSE-TIER 1 T=
 
 : CHECK-RETURNS ( -- )
    1 CHOOSE 1 <> if -2 throw then

@@ -30,7 +30,7 @@ public
    loop
    CUR @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    TBL dst SEC-N ROW-BYTES * BYTE-COPY
-   dst size -1 AOT--OWNED-CAPTURE:MAKE ;
+   dst size AOT--OWNED-CAPTURE:MAKE ;
 
 : EFFECT-TEST-HEADER ( ptr u8 n -- )
    A64ICODE:AOT-SECTION-CAP HDR O-PAYLEN + U64!
@@ -100,17 +100,6 @@ create OUT IO-CAP allot create ERR IO-CAP allot
 
 : EXPECTED$ ( -- ptr u8 n ) 0 EXPECTED BYTE-VIEW EXPECTED-U @ ;
 : POOL$ ( -- ptr u8 n ) AOT-SIG-STR-BUF@ AOT-SIG-STR-LEN @ ;
-
-: WORD-TIER ( ptr u8 n -- )
-   XREF-FIND {: rec:ptr :}
-   rec XREF-FOUND? 0= if 79 throw then
-   rec XREF-START dup rec XREF-LEN + code-origin tier@ T= ;
-
-: SOURCE-TIER ( -- )
-   s" EFFECT-POOL-WINDOW:EFFECT-0000" WORD-TIER
-   s" EFFECT-POOL-WINDOW:EFFECT-05FF" WORD-TIER
-   s" AOT-SIG-PAYLOAD:BUILD" WORD-TIER
-   tier@ 1 = if AOT-ARM:B0 @ AOT-ARM:B1 @ code-origin 1 T= then ;
 
 : CAPTURE ( -- )
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
@@ -283,7 +272,7 @@ private
    s" EFFECT-POOL-TEST:BAD-STAGING" 72 s" aot: encoded sections exceed their byte budget" REJECT ;
 
 : RUN ( -- )
-   SOURCE-TIER CAPTURE SAVE CHECK
+   CAPTURE SAVE CHECK
    AOT-REG-LEN @ 0 > TTRUE
    s" complete real graph pool survives owned source release" T-LABEL
    AOT-FILE:OWN TRANSFER

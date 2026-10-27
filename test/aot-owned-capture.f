@@ -33,15 +33,11 @@ create BEFORE 32 allot
 create AFTER 32 allot
 create SHA-CTX SHA256-CTX-BYTES allot   \ this fixture's digest context
 
-: ORIGIN ( n n -- n ) {: first:n end:n :}
-   first AOT-ARM:B0 @ T= end AOT-ARM:B1 @ T=
-   1 SCRIPT-ARGV$ s" origin-jit" STR= if 0 else 1 then ;
-
-: ORIGIN-CASE ( -- )
+: WINDOW-CASE ( -- )
    AOT-CAPTURE:CODE-WINDOW {: first:n end:n copied:n :}
-   1 SCRIPT-ARGV$ s" origin-size" STR= if copied 4 + else copied then {: bytes:n :}
-   first end bytes [: ORIGIN ;] false AOT-FILE:OWN-WINDOW
-   dup AOT-OWNED:ORIGIN@ 1 T= AOT-OWNED:CLOSE
+   first AOT-ARM:B0 @ T= end AOT-ARM:B1 @ T=
+   1 SCRIPT-ARGV$ s" window-size" STR= if copied 4 + else copied then {: bytes:n :}
+   first end bytes AOT-FILE:OWN-WINDOW AOT-OWNED:CLOSE
    T-REPORT
    s" owned-capture: original window verified" type cr ;
 
@@ -80,7 +76,7 @@ create SHA-CTX SHA256-CTX-BYTES allot   \ this fixture's digest context
    T-RESET
    AOTRT:CLOSURE! AOTRT:CAPTURE
    AOTRT:?XTCELLS AOTRT:?RESTORED AOTRT:SAVE-XTOFFS
-   1 SCRIPT-ARGV$ 7 min s" origin-" STR= if ORIGIN-CASE exit then
+   1 SCRIPT-ARGV$ 6 min s" window" STR= if WINDOW-CASE exit then
    1 SCRIPT-ARGV$ s" overflow" STR= if
       AOT-FILE:OWN AOT-FILE:OWNED-TEST-OVERFLOW AOT-FILE:IMPORT
       s" owned-capture: accepted overflowing section" 79 die

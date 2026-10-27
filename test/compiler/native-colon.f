@@ -45,6 +45,7 @@ private
 
 : ADD3 ( n -- n )
    3 + ;
+tier@ constant ADD3-TIER
 
 : REVIEW-PI ( -- ) ; immediate
 s" REVIEW-PI" 0 parse-imm
@@ -102,7 +103,7 @@ variable MAP-CELL
    7 DK-CALLEE drop 1+ ;
 
 s" the ordinary colon subject was compiled at tier 1" T-LABEL
-' ADD3 TEST:XT>N dup 4 + code-origin 1 T=
+ADD3-TIER 1 T=
 
 : ASK-AMBIGUOUS ( -- )
    s" SHARED" NDICT:CALL-TARGET drop ;

@@ -28,8 +28,6 @@ private
 
 public
 
-: ORIGIN ( n n -- n ) code-origin ;
-
 : SAVE-ROOT ( -- )
    SOURCE-ROOT:ENGINE$ {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -39,7 +37,7 @@ public
 : RUN ( -- )
    RESTORE-ROOT
    \ Target callbacks own their native scopes; the transient writer has none.
-   ['] ORIGIN false NATIVE-BUILD:RUN ;
+   NATIVE-BUILD:RUN ;
 
 ;package
 

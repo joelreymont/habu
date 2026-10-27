@@ -71,12 +71,8 @@ variable REPORT-FD
 : TEXT-REPORT ( -- )   TEXT$ REDIRECT  prof-report  RESTORE ;
 : JSON-REPORT ( -- )   JSON$ REDIRECT  prof-json    RESTORE ;
 
-\ The typed code reference the build driver expects, exactly as
-\ tools/native-build.f hands it over.
-: ORIGIN ( n n -- n ) code-origin ;
-
 : DRIVE-RC ( -- n )
-   ENGINE$ ['] ORIGIN 0 0= 0= NATIVE-BUILD:RUN-PATH-RC ;
+   ENGINE$ NATIVE-BUILD:RUN-PATH-RC ;
 
 public
 : MAIN ( -- )

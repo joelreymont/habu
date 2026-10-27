@@ -11,16 +11,9 @@ public
 STRUCTURE capture
    FIELD bytes ptr u8
    FIELD size n
-   FIELD origin n
 ;STRUCTURE
 
-\ Same refusal as ENGINE-ERROR:IMAGE-CODE-ORIGIN. This module also loads in a
-\ bootstrap host that predates that engine primitive and its named constant.
-100 constant ORIGIN-RC
-: ORIGIN-REFUSE ( ptr u8 n -- ) ORIGIN-RC die ;
-
-: BYTES$ ( capture -- ptr u8 n ) AOT--OWNED-CAPTURE:UNMAKE drop ;
-: ORIGIN@ ( capture -- n ) AOT--OWNED-CAPTURE:UNMAKE nip nip ;
+: BYTES$ ( capture -- ptr u8 n ) AOT--OWNED-CAPTURE:UNMAKE ;
 ;package
 
 package AOT-FILE
@@ -42,34 +35,26 @@ using AOT-WINDOW
    k ROW-LEN@ 0= if exit then
    src k ROW-OFF@ + k SEC-PTR k BASE@ + k ROW-LEN@ BYTE-COPY ;
 
-: OWN-AS ( n -- AOT-OWNED:capture ) {: origin:n :}
+public
+
+: OWN ( -- AOT-OWNED:capture )
    STAGE BUILD-TABLE BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
    0 0 <> ?BUDGET
    ?ADDRESS-ROWS
    PAYLEN @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    dst COPY-OWNED
-   dst size origin AOT--OWNED-CAPTURE:MAKE ;
-
-public
-
-\ Disk reads and ordinary copies supply no evidence about the generating tier.
-: OWN ( -- AOT-OWNED:capture ) -1 OWN-AS ;
+   dst size AOT--OWNED-CAPTURE:MAKE ;
 
 \ Called immediately after the real capture audits, with its frozen live code
-\ bounds and the compactor's exact copied extent. Provenance still covers the
-\ full original window: deleting a JIT body cannot make a mixed window native.
-\ Only the explicit bootstrap entry can carry an unknown origin.
-: OWN-WINDOW ( n n n [ n n -- n ] bool -- AOT-OWNED:capture )
-   {: first:n end:n copied:n query bootstrap:bool :}
+\ bounds and the compactor's exact copied extent.
+: OWN-WINDOW ( n n n -- AOT-OWNED:capture )
+   {: first:n end:n copied:n :}
    first 0 < end first < or if
-      s" aot-owned: invalid live code window" AOT-OWNED:ORIGIN-REFUSE then
+      s" aot-owned: invalid live code window" DIE then
    copied 0 < copied end first - > or copied AOT-BLOB-LEN @ <> or if
-      s" aot-owned: copied code differs from the compacted window extent" AOT-OWNED:ORIGIN-REFUSE then
-   first end query execute {: origin:n :}
-   origin 1 = if 1 OWN-AS exit then
-   origin -1 = bootstrap and if OWN exit then
-   s" aot-owned: captured code lacks native provenance" AOT-OWNED:ORIGIN-REFUSE ;
+      s" aot-owned: copied code differs from the compacted window extent" DIE then
+   OWN ;
 
 : IMPORT ( AOT-OWNED:capture -- )
    AOT-OWNED:BYTES$ {: src:ptr size:n :}

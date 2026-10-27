@@ -20,6 +20,7 @@ public
 \ different number rather than looping for ever.
 : NAG-UP ( n -- n )
    begin dup 5 < if 1 + else exit then again ;
+tier@ constant NAG-UP-TIER
 
 \ Two values carried round a loop that leaves through an `exit`, with a real call
 \ in the body: the call is what makes both of them travel as operands of the back
@@ -154,6 +155,6 @@ public
 
 T-RESET
 s" the unbounded loop subject was compiled at tier 1" T-LABEL
-' NAG-FIXTURE:NAG-UP TEST:XT>N dup 4 + code-origin 1 T=
+NAG-FIXTURE:NAG-UP-TIER 1 T=
 NAG-TEST:RUN
 T-REPORT

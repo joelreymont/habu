@@ -18,10 +18,11 @@ package NATIVE-FIXTURE-WRITE
 create KEY 32 allot
 create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest context
 
+\ The tier the writer above was compiled at.
+tier@ constant WRITER-TIER
+
 : WRITER-NATIVE ( -- )
-   s" NATIVE-EMIT:WRITE" XREF-FIND {: rec:ptr :}
-   rec XREF-FOUND? 0= if 79 throw then
-   rec XREF-START dup rec XREF-LEN + code-origin 1 <> if
+   WRITER-TIER 1 <> if
       s" native-fixture: writer is not optimizing native code" 79 die then ;
 
 : READ-ARTIFACT ( -- )

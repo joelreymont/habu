@@ -58,7 +58,7 @@ create FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this fixture's file-digest conte
 
 
 : RUN ( -- )
-   AOT-ARM:B0 @ AOT-ARM:B1 @ code-origin 1 EQ
+   tier@ 1 EQ
    PRE-R @ PRE-D @ AOT-CAPTURE:PRELUDE-MARK
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
    AOT-IDENT:RESET

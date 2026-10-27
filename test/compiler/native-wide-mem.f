@@ -314,7 +314,7 @@ public
    7 CELL! 99 CELL-SLOT ! CELL-SLOT @ 7 T=
    $AB BYTE! $CD BYTE-SLOT c! BYTE-SLOT c@ $AB T= ;
 ;package
+tier@ 1 T=
 0 set-tier
-' NWM-SHADOW:CHECK TEST:XT>N dup 4 + code-origin 1 T=
 NWM-SHADOW:CHECK
 T-REPORT

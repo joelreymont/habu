@@ -87,16 +87,15 @@ variable SPIN-U
 \ integer constant, and a word that fills the dictionary (the name index goes
 \ first). OI-DUMP prints the
 \ pending definition: its record's name, flags, whether its wordlist is
-\ OI-WANT's and its entry the provenance window's, its body capture, its
-\ signature's length, the trusted and tier cells and the code origin of its
-\ name's bytes. OI-DOES. prints the body capture, DOESB, the created signature
+\ OI-WANT's, its body capture, its signature's length and the trusted and
+\ tier cells. OI-DOES. prints the body capture, DOESB, the created signature
 \ and how far here moved past OI-MARK. OI-SHOW is a neutral immediate that
 \ runs the word in OI-SHOWN, so a body prints its pending definition where it
 \ names OI-SHOW: an exit hook runs only after the input's end refused the
 \ definition and rolled it back. OI-ROOM is the data space left below its
 \ ceiling, and OI-ALIAS gives the last record a second name. OI-ENDED. prints
-\ the cells a definition's end clears or'd together, 0 when all are: PEND, the
-\ provenance window, TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and the definition's tier. OI-DX holds a
+\ the cells a definition's end clears or'd together, 0 when all are: PEND,
+\ TSIG, TCSIG, DOESB, CLAUSE, TRUSTED and the definition's tier. OI-DX holds a
 \ private does> definer whose clause name is longer than DNAME-INL bytes, and
 \ OI-DX. prints whether the record above its public export is that export's
 \ clause, and the clause's name. OI-DH holds a private definer and, in its
@@ -136,10 +135,8 @@ variable SPIN-U
    s" : OI-B. ( bool -- ) if 1 else 0 then . ;" GE-SRC-LINE
    s" : OI-CELL@ ( n -- n ) data-base + @ ;" GE-SRC-LINE
    s" : OI-PEND ( -- ptr n ) PEND-CELL OI-CELL@ XREF-ADDR>REC ;" GE-SRC-LINE
-   s" TRUSTED: OI-ORIGIN ( ptr u8 -- n ) dup 1 + code-origin ;" GE-SRC-LINE
    s" : OI-REC. ( ptr n -- ) {: r:ptr :} r XREF-NAME$ type cr r XREF-FLAGS ." GE-SRC+
-   s"  r XREF-WORDLIST OI-WANT @ = OI-B. r XREF-START TIER-PROV:OPEN-CELL OI-CELL@ = OI-B." GE-SRC+
-   s"  r XREF-NAME-A OI-ORIGIN . ;" GE-SRC-LINE
+   s"  r XREF-WORDLIST OI-WANT @ = OI-B. ;" GE-SRC-LINE
    s" : OI-BODY. ( -- ) data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL OI-CELL@ type cr ;" GE-SRC-LINE
    s" : OI-STATE. ( -- ) TSIG-U-CELL OI-CELL@ . TRUSTED-CELL OI-CELL@ . NCOMP-DISPATCH:DEF-TIER-CELL OI-CELL@ . ;" GE-SRC-LINE
    s" : OI-DUMP ( -- ) OI-PEND OI-REC. OI-BODY. OI-STATE. ;" GE-SRC-LINE
@@ -156,7 +153,7 @@ variable SPIN-U
    s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
    s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
    s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
-   s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TIER-PROV:OPEN-CELL OI-OR@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
+   s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
    s"   TCSIG-A-CELL OI-OR@ TCSIG-U-CELL OI-OR@ DOESB-CELL OI-OR@ CLAUSE-CELL OI-OR@ TRUSTED-CELL OI-OR@" GE-SRC-LINE
    s"   NCOMP-DISPATCH:DEF-TIER-CELL OI-OR@ . ;" GE-SRC-LINE
    s" TYPED-VARIABLE OI-SHOWN [ -- ]" GE-SRC-LINE
@@ -1386,20 +1383,20 @@ variable WANT-RC
 
 \ The current wordlist takes a bare name. A comment is not captured, blanks
 \ between tokens collapse to one space, and the signature is the inside of the
-\ parentheses; an inline name has no code origin.
+\ parentheses.
 : PENDING-BARE ( -- )
    s" get-current" S\" : OI-FOO ( n -- n ) ( a comment ) dup  1\n+ OI-SHOW" s" oi-pending-bare.f" PENDING
-   S\" OI-FOO\n6\n1\n1\n-1\nOI-FOO ( n -- n ) dup 1 + OI-SHOW \n8\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" OI-FOO\n6\n1\nOI-FOO ( n -- n ) dup 1 + OI-SHOW \n8\n0\n1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-FOO at " S\" oi-pending-bare.f:3\n" DIED-AT ;
 
 \ A prelude package's public wordlist takes its qualified tail. The long name
-\ is copied to CP and marked native; `trusted:` sets the trusted cell, and its
+\ is copied to CP; `trusted:` sets the trusted cell, and its
 \ signature need not be a whole token.
 : PENDING-QUALIFIED ( -- )
    s" package OI-PKG public get-current ;package"
    s" TRUSTED: OI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop OI-SHOW"
    s" oi-pending-qualified.f" PENDING
-   S\" A-LONG-DEFINITION-NAME\n2305843009213693974\n1\n1\n1\nOI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop OI-SHOW \n13\n1\n1\n"
+   S\" A-LONG-DEFINITION-NAME\n2305843009213693974\n1\nOI-PKG:A-LONG-DEFINITION-NAME (n -- ptr u8 n) drop OI-SHOW \n13\n1\n1\n"
    CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-PKG:A-LONG-DEFINITION-NAME at "
    S\" oi-pending-qualified.f:3\n" DIED-AT ;
@@ -1409,7 +1406,7 @@ variable WANT-RC
 \ follow it.
 : PENDING-NEW-NAMESPACE ( -- )
    s" WIDN-CELL OI-CELL@" s" : OI-NEWNS:OI-BAR ( n -- n ) OI-SHOW" s" oi-pending-namespace.f" PENDING
-   S\" OI-BAR\n6\n1\n1\n-1\nOI-NEWNS:OI-BAR ( n -- n ) OI-SHOW \n8\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" OI-BAR\n6\n1\nOI-NEWNS:OI-BAR ( n -- n ) OI-SHOW \n8\n0\n1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-NEWNS:OI-BAR at "
    S\" oi-pending-namespace.f:3\n" DIED-AT
    s" WIDN-CELL OI-CELL@" s" : OI-NEWNS:OI-BAR ( n -- n" s" oi-pending-signature.f" PENDING
@@ -1420,10 +1417,10 @@ variable WANT-RC
 \ A colon at either edge leaves the name bare.
 : PENDING-EDGE-COLONS ( -- )
    s" get-current" s" : :OI-EDGE OI-SHOW" s" oi-pending-leading.f" PENDING
-   S\" :OI-EDGE\n8\n1\n1\n-1\n:OI-EDGE OI-SHOW \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" :OI-EDGE\n8\n1\n:OI-EDGE OI-SHOW \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: :OI-EDGE at " S\" oi-pending-leading.f:3\n" DIED-AT
    s" get-current" s" kernel: OI-EDGE: dup OI-SHOW" s" oi-pending-trailing.f" PENDING
-   S\" OI-EDGE:\n8\n1\n1\n-1\nOI-EDGE: dup OI-SHOW \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" OI-EDGE:\n8\n1\nOI-EDGE: dup OI-SHOW \n0\n0\n1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-EDGE: at " S\" oi-pending-trailing.f:3\n" DIED-AT ;
 
 \ CP to the start of a code unit (PROT-PAGE-MAX), so what the case compiles
@@ -1591,7 +1588,7 @@ variable WANT-RC
    s" get-current"
    S\" : OI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup OI-SHOW"
    s" oi-body-strings.f" PENDING
-   S\" OI-STR\n6\n1\n1\n-1\nOI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup OI-SHOW \n4\n0\n1\n"
+   S\" OI-STR\n6\n1\nOI-STR ( -- ) S\q a  ( b ) \\ c\q c\q ;\q .\q e\nf\q s\\\q \\q\\x41\\\q\q C\\\q \\n\q .\\\q g\\\\\q dup OI-SHOW \n4\n0\n1\n"
    CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-STR at " S\" oi-body-strings.f:3\n" DIED-AT ;
 
@@ -1599,7 +1596,7 @@ variable WANT-RC
 \ does not end it.
 : BODY-QUOTATION ( -- )
    s" get-current" S\" : OI-Q ( -- ) [: s\q ;] ( x\q type ;] execute OI-SHOW" s" oi-body-quotation.f" PENDING
-   S\" OI-Q\n4\n1\n1\n-1\nOI-Q ( -- ) [: s\q ;] ( x\q type ;] execute OI-SHOW \n4\n0\n1\n" CASE$ GE-EXPECT-OUT
+   S\" OI-Q\n4\n1\nOI-Q ( -- ) [: s\q ;] ( x\q type ;] execute OI-SHOW \n4\n0\n1\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-Q at " S\" oi-body-quotation.f:3\n" DIED-AT ;
 
 \ `[:` outside a definition is no keyword of either loop: no word has the name.
@@ -1831,12 +1828,12 @@ variable WANT-RC
 \ `;` compiles the body the loop captured and ends the definition, a body over
 \ two lines, a `trusted:` one, one in a package's public wordlist and a
 \ `does>` definer alike: each word runs, and after each `;` the cells the end
-\ clears are 0. The code is native: `;` closed the provenance window with 1.
+\ clears are 0. `;` leaves the tier at 1.
 : SEMI ( -- )
    GE-SRC-RESET
    s" 1 set-tier : OI-X ( n -- n )" GE-SRC-LINE
    s"   1 + ;" GE-SRC-LINE
-   s" 41 OI-X . OI-ENDED. ' OI-X OI-XT>N dup 1 + code-origin ." GE-SRC-LINE
+   s" 41 OI-X . OI-ENDED. tier@ ." GE-SRC-LINE
    s" trusted: OI-T ( -- n ) 5 ; OI-T . OI-ENDED." GE-SRC-LINE
    s" package OI-P public : OI-Y ( -- n ) 3 ; ;package OI-P:OI-Y ." GE-SRC-LINE
    s" : OI-DEF ( n -- ) create , does> ( -- n ) @ ; OI-ENDED. 7 OI-DEF OI-K OI-K ." GE-SRC-LINE
@@ -2004,10 +2001,10 @@ variable WANT-RC
    s" oi-cast-qualified.f" LINE-CASE
    CASE$ GE-EXPECT-OK
    S\" 4\n5\n" CASE$ GE-EXPECT-OUT
-   s" 1 set-tier cast: A-LONG-CAST-NAME-PAST-INLINE ( n -- n ) 6 A-LONG-CAST-NAME-PAST-INLINE . ndict@ 1- XREF-REC XREF-NAME-A OI-ORIGIN ."
+   s" 1 set-tier cast: A-LONG-CAST-NAME-PAST-INLINE ( n -- n ) 6 A-LONG-CAST-NAME-PAST-INLINE ."
    s" oi-cast-long-name.f" LINE-CASE
    CASE$ GE-EXPECT-OK
-   S\" 6\n1\n" CASE$ GE-EXPECT-OUT ;
+   S\" 6\n" CASE$ GE-EXPECT-OUT ;
 
 \ A cast in a package's private section mints a pointer, the checked word
 \ after it calls it, and it is no public word.

@@ -7,10 +7,8 @@ require tools/native-build-core.f
 package NATIVE-BUILD-DISPATCH-CHILD
 private
 
-: ORIGIN ( n n -- n ) code-origin ;
-
 : DRIVE ( -- n )
-   0 SCRIPT-ARGV$ ['] ORIGIN false NATIVE-BUILD:RUN-PATH-RC ;
+   0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-PATH-RC ;
 
 public
 : RUN ( -- )

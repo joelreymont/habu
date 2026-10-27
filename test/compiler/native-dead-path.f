@@ -30,7 +30,7 @@ private
    s" a one-armed if whose arm throws compiles, and its live path returns" T-LABEL
    MK-JT
    s" the dead-path subject was compiled at tier 1" T-LABEL
-   s" ' DPC-JT TEST:XT>N dup 4 + code-origin" TEST-EVAL:N 1 T=
+   tier@ 1 T=
    s" 1 2 DPC-JT" TEST-EVAL:N 1 T=
    s" 9 4 DPC-JT" TEST-EVAL:N 9 T= ;
 

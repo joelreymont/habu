@@ -1364,7 +1364,7 @@ variable SEALED-NAMES-U
    BUNDLE-PATH BUNDLE-PATH-U @ OUTPUT! ;
 
 : OWN-CAPTURE ( -- AOT-OWNED:capture )
-   AOT-CAPTURE:CODE-WINDOW [: code-origin ;] false AOT-FILE:OWN-WINDOW ;
+   AOT-CAPTURE:CODE-WINDOW AOT-FILE:OWN-WINDOW ;
 
 : WRITE-BUNDLE-CAPTURE ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: writer :}
@@ -1430,8 +1430,9 @@ variable SEALED-NAMES-U
    white sealed plan count ;
 
 \ The engine build owns its tier: a restored support image starts at tier 0,
-\ and a capture refuses code without native provenance. The build scope's
-\ cleanup restores the caller's tier.
+\ so the target sources start at tier 1. A source that sets its own tier keeps
+\ it, as in any product, and nothing refuses tier 0 bodies in the engine. The
+\ build scope's cleanup restores the caller's tier.
 : AT-TIER-1 ( R [ R -- S ] -- S )
    1 TIER:SELECT execute ;
 
@@ -1454,8 +1455,7 @@ variable SEALED-NAMES-U
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
-: IMAGE-CAPTURE ( [ n n -- n ] bool -- AOT-OWNED:capture )
-   {: query bootstrap:bool :}
+: IMAGE-CAPTURE ( -- AOT-OWNED:capture )
    SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
@@ -1468,7 +1468,7 @@ variable SEALED-NAMES-U
    \ An x86-64 map row reads the placement the held writer makes, so its rows
    \ are paired with the shadow here and built once the image is written.
    X64-TARGET? if NAMES-X64-PLAN else BUILD-NAMES then
-   AOT-CAPTURE:CODE-WINDOW query bootstrap AOT-FILE:OWN-WINDOW ;
+   AOT-CAPTURE:CODE-WINDOW AOT-FILE:OWN-WINDOW ;
 
 : IMAGE-INSTALL ( -- )
    X64-TARGET? if BUILD-NAMES then
@@ -1477,7 +1477,7 @@ variable SEALED-NAMES-U
    PROMOTE
    WRITE-NAMES ;
 
-: IMAGE-FINISH ( [ n n -- n ] bool -- )
+: IMAGE-FINISH ( -- )
    ['] IMAGE-CAPTURE TARGET-SCOPE
    EMIT-TEMP
    IMAGE-INSTALL ;
@@ -1485,9 +1485,6 @@ variable SEALED-NAMES-U
 \ A failed load reaches its policy close without passing IMAGE-CAPTURE.
 : CLEANUP-SOURCE ( -- )
    [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] TARGET-SCOPE ;
-
-TYPED-VARIABLE READY-QUERY [ n n -- n ]
-variable READY-BOOTSTRAP
 
 : FILE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1504,7 +1501,7 @@ variable READY-BOOTSTRAP
    RETAIN-HOST-PRODUCERS ;
 
 : FILE-FINISH ( -- )
-   READY-QUERY @ READY-BOOTSTRAP @ 0<> IMAGE-FINISH
+   IMAGE-FINISH
    BUILD-INPUTS-U @ 0 > if
       BUILD-INPUTS-PATH @ BUILD-INPUTS-PATH-U @
          0 BUILD-INPUTS BUILD-INPUTS-U @ ATOMIC-WRITE-FILE
@@ -1560,23 +1557,21 @@ public
 \ an unconditional exit_group, so `include tools/native-build.f` has no code
 \ path back to its caller. tools/build-profile.f prints the profiler's report
 \ after the build and is that driver.
-: RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
-   {: out:ptr outu:n query bootstrap:bool :}
+: RUN-PATH-RC ( ptr u8 n -- n )
+   {: out:ptr outu:n :}
    BUILD-TARGET:IDLE-CK
    ['] SOURCE-NOOP ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY!
    out outu OUTPUT!
-   query READY-QUERY !
-   bootstrap READY-BOOTSTRAP !
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
 
 \ RUN-PATH-RC with the image written by `writer` instead of the source writer's
 \ WRITE-C2. The x86-64 fixture writer (test/native-fixture-native.f) merges a
 \ partial artifact into the runtime capture this way.
-: RUN-PATH-WRITER-RC ( ptr u8 n [ n n -- n ] bool [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
-   {: out:ptr outu:n query bootstrap:bool writer :}
+: RUN-PATH-WRITER-RC ( ptr u8 n [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
+   {: out:ptr outu:n writer :}
    writer WRITER-OVERRIDE !
    -1 WRITER-OVERRIDE? !
-   out outu query bootstrap RUN-PATH-RC
+   out outu RUN-PATH-RC
    0 WRITER-OVERRIDE? ! ;
 
 \ The exit status of a finished build, for every driver that ends the process
@@ -1595,9 +1590,9 @@ public
    s" native-build OK: " type OUTPUT$ type
    s"  (" type CLASS-WANTED$ type s" )" type cr ;
 
-: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+: RUN ( -- )
    BUILD-ARGS!
-   0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
+   0 SCRIPT-ARGV$ RUN-PATH-RC {: rc:n :}
    rc 0= if REPORT-CLASS then
    s" " rc EXIT-RC die ;
 

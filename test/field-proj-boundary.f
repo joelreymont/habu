@@ -56,7 +56,6 @@ create ERR IO-CAP allot
    s" src/habu/code-span.f" ARG
    s" test/field-proj-boundary-prepare.f" ARG
    native if s" test/compiler/aot-mode.f" ARG then
-   prefix if s" test/field-proj-native-owner.f" ARG then
    WHITEBOX-CHILD:ENV! ;
 
 \ The native case compiles the window's whole core prefix through the

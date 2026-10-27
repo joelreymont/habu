@@ -36,7 +36,7 @@ public
    loop
    CUR @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    TBL dst SEC-N ROW-BYTES * BYTE-COPY
-   dst size -1 AOT--OWNED-CAPTURE:MAKE ;
+   dst size AOT--OWNED-CAPTURE:MAKE ;
 ;package
 
 package AOT-ADDRESS-CELLS-TEST

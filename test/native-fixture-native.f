@@ -14,8 +14,6 @@ variable HOST-N
 TYPED-VARIABLE OUT-P ptr u8
 variable OUT-U
 
-: ORIGIN ( n n -- n ) code-origin ;
-
 : PRODUCER! ( -- )
    FSHA-CTX 2 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if
       s" native-fixture: cannot hash producer" BUILD-RC die then ;
@@ -47,7 +45,7 @@ public
 : FIXTURE ( -- )
    SCRIPT-ARGC 1 <> SCRIPT-ARGC 3 <> and if
       s" native-fixture: expected output [artifact producer]" BUILD-RC die then
-   0 SCRIPT-ARGV$ ['] ORIGIN false ['] WRITER RUN-PATH-WRITER-RC {: rc:n :}
+   0 SCRIPT-ARGV$ ['] WRITER RUN-PATH-WRITER-RC {: rc:n :}
    s" " rc EXIT-RC die ;
 
 ;package

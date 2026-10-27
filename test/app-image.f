@@ -109,12 +109,11 @@ variable PROBE-SOURCE-U
    S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n;package\n" PROBE+
    PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ ATOMIC-WRITE-FILE ;
 
-\ Start cold: every instruction published by the image support load must carry
-\ native origin, including its dependencies. The selected tier alone cannot
-\ prove that code emitted before the selection was native. The build child
-\ loads that support cold, so it reports both before its subject loads.
+\ Start cold: the image support selects tier 1 before it requires its
+\ dependencies. The build child loads that support cold and reports the tier in
+\ force after it, before its subject loads.
 : BUILD-SOURCE$ ( -- ptr u8 n )
-   S\" variable IMAGE-LOAD-START cp@ IMAGE-LOAD-START !\nrequire src/habu/app-image.f\nIMAGE-LOAD-START @ cp@ code-origin . cr tier@ . cr\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+   S\" require src/habu/app-image.f\ntier@ . cr\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 : BUILD ( -- )
    WRITE-REQUIRE-PROBE
@@ -127,7 +126,7 @@ variable PROBE-SOURCE-U
    BUILD-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN SUITE-BUDGET:CHILD-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
-   OUT swap S\" 1\n\n1\n\n" T$=
+   OUT swap S\" 1\n\n" T$=
    IMAGE$ EXECUTABLE? TTRUE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
@@ -222,28 +221,27 @@ variable PROBE-SOURCE-U
    MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE ;
 
 \ One package of a loop, a string literal, a quotation and a create...does>
-\ definer, then the code origin of its SHOW.
+\ definer, then the tier it was compiled at.
 : TIER-PACKAGE+ ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    s" package " SB-APPEND name nameu SB-APPEND
    S\" \npublic\n: LOOPS ( -- ) 4 0 ?do i . loop ;\n: TEXT ( -- ) s\q saved text\q type cr ;\n" SB-APPEND
    S\" : TRIPLE ( n -- n ) [: 3 * ;] execute ;\n: KONST ( n -- ) create , does> ( -- n ) @ 1 + ;\n41 KONST ANSWER\n" SB-APPEND
-   S\" : SHOW ( -- ) LOOPS TEXT 5 TRIPLE . ANSWER . ;\n;package\n' " SB-APPEND
-   name nameu SB-APPEND S\" :SHOW TIER-PROBE:XT>N dup 4 + code-origin . cr\n" SB-APPEND ;
+   S\" : SHOW ( -- ) LOOPS TEXT 5 TRIPLE . ANSWER . ;\n;package\n" SB-APPEND
+   S\" tier@ . cr\n" SB-APPEND ;
 
 \ A restored image compiles at tier 0; x86-64 has tier 1 only. The same words
 \ at tier 1 are the reference the saved image must reproduce.
 : TIER-ZERO-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
-   S\" package TIER-PROBE\npublic\nCAST: XT>N ( [ -- ] -- n )\n;package\n" SB-APPEND
    s" TIER-ZERO-IMAGE" TIER-PACKAGE+
    S\" 1 set-tier\n" SB-APPEND
    s" TIER-ONE-IMAGE" TIER-PACKAGE+
    S\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
    SB$ ;
 
-: TIER-ZERO-ORIGIN$ ( -- ptr u8 n )
+: TIER-ZERO-TIERS$ ( -- ptr u8 n )
    HB-TARGET-LINUX-X86-64? if S\" 1\n\n1\n\n" else S\" 0\n\n1\n\n" then ;
 
 : CHECK-TIER-ZERO ( -- )
@@ -253,7 +251,7 @@ variable PROBE-SOURCE-U
    TIER-ZERO$ >LEN PROC-ARGV+
    WHITEBOX-CHILD:ENV!
    IMAGE$ TIER-ZERO-SOURCE$ RUN-INPUT CLEAN
-   OUT swap TIER-ZERO-ORIGIN$ T$=
+   OUT swap TIER-ZERO-TIERS$ T$=
    PROC-ARGV-ENV-RESET
    WHITEBOX-CHILD:ENV!
    TIER-ZERO$ S\" TIER-ZERO-IMAGE:SHOW cr TIER-ONE-IMAGE:SHOW cr\n" RUN-INPUT CLEAN

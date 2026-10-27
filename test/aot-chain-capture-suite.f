@@ -223,15 +223,12 @@ create ART-BUF FS-PATH-CAP allot    variable ART-U
    s" overflow" RUN-OWNED-CAPTURE
    $4B ROW-RC
    s" scalars runs past the payload" ERR-SAID?
-   s" origin-native" RUN-OWNED-CAPTURE
+   s" window" RUN-OWNED-CAPTURE
    0 ROW-RC
    s" owned-capture: original window verified" SAID?
-   s" origin-size" RUN-OWNED-CAPTURE
-   100 ROW-RC
+   s" window-size" RUN-OWNED-CAPTURE
+   $4B ROW-RC
    s" copied code differs from the compacted window extent" ERR-SAID?
-   s" origin-jit" RUN-OWNED-CAPTURE
-   100 ROW-RC
-   s" captured code lacks native provenance" ERR-SAID?
    s" adrp" RUN-COMPACT-REFUSAL $4A ROW-RC
    s" page-relative or literal-pool instruction unsupported" ERR-SAID?
    s" literal" RUN-COMPACT-REFUSAL $4A ROW-RC

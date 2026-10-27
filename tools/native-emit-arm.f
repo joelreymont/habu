@@ -119,18 +119,20 @@ private
 : REAL-RECORD-CODE-OFF ( -- n ) C2-WID s" WITH-RECORD" PACKAGE-CODE-OFF ;
 : REAL-FIELD-CODE-OFF ( -- n ) C2-WID s" WITH-FIELD" PACKAGE-CODE-OFF ;
 
+\ The engine build compiles its capture at tier 1 (NATIVE-BUILD's TARGET-SCOPE),
+\ so the seed marks the captured payload native.
+1 constant NATIVE-ORIGIN
+
 public
 
 : WRITE ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
-   dup AOT-OWNED:ORIGIN@ {: origin:n :}
    AOT-FILE:IMPORT
    host count NATIVE-LAYOUT:TRANSLATE-ROWS
    0 0= STDIN? !
-   NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
+   NULL$ NATIVE-ORIGIN ENGINE-EMIT:FORTH-ORIGIN
    SIGN-ID:ENGINE$ path size DRV-EMIT-IMAGE ;
 
 : WRITE-C2 ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
-   dup AOT-OWNED:ORIGIN@ {: origin:n :}
    AOT-FILE:IMPORT
    AOT-RUNTIME:COMPLETE? 0= if
       s" native-emit: C2 entries require complete runtime" 74 die
@@ -144,7 +146,7 @@ public
    REAL-FIELD-CODE-OFF {: field:n :}
    host count NATIVE-LAYOUT:TRANSLATE-ROWS
    0 0= STDIN? !
-   NULL$ origin read mut loan init records record field ENGINE-EMIT:FORTH-C2-ORIGIN
+   NULL$ NATIVE-ORIGIN read mut loan init records record field ENGINE-EMIT:FORTH-C2-ORIGIN
    s" hb" path size DRV-EMIT-IMAGE ;
 
 ;package

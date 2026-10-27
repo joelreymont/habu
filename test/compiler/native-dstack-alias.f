@@ -36,6 +36,7 @@ create PRESS-BYTE 1 allot
 \ is 200.
 : POKED ( -- )
    SEVEN 200 BASE c! abs ANS! ;
+tier@ constant POKED-TIER
 
 \ The same body with the store removed, so the case can show the store is what
 \ moves the answer rather than the shape of the body.
@@ -112,6 +113,6 @@ public
 
 T-RESET
 s" the aliasing subject was compiled at tier 1" T-LABEL
-' DKA:POKED TEST:XT>N dup 4 + code-origin 1 T=
+DKA:POKED-TIER 1 T=
 NDSA-TEST:RUN
 T-REPORT
