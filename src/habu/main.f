@@ -169,14 +169,21 @@ variable USED
    SOURCE-ARENA-CAP map-anon 0 <> if drop CANNOT-MAP then ARENA !
    0 USED ! ;
 
+\ The program file's argv string, 0 off the plain route: PROGRAM-FILE-CELL
+\ (src/habu/layout.f), which src/core/include.f derives the program from.
+: PROGRAM-ARG ( -- ptr ptr u8 )
+   data-base PROGRAM-FILE-CELL + 0 ptr-field ;
+
 \ The stream for files [first, end); raw says whether the first is read raw.
+\ A raw `--build` payload carries its `provided` row, the program none.
 : STREAM ( ptr ptr u8 n n bool -- ptr u8 n ) {: argv:ptr first:n end:n raw:bool :}
    START-STREAM
    end first ?do
       i first > if NL 1 APPEND then
       argv i ARG
       i first = raw and if
-         2dup s" provided" ROW FILE
+         PROGRAM-ARG @ 0= if 2dup s" provided" ROW then
+         FILE
       else
          s" script-required" ROW
       then
@@ -252,7 +259,7 @@ public
    r MATCH route
       load OF false ENDOF
       build OF true ENDOF
-      plain OF true ENDOF
+      plain OF argv first ARG drop PROGRAM-ARG ! true ENDOF
    ;MATCH {: raw:bool :}
    argv first end raw STREAM RUN-TEXT ;
 

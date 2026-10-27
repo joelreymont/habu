@@ -1964,6 +1964,7 @@ public
    multi LBL,
    C-SOURCE-FIND-SEP
    SRC-FPLAIN LABEL@ LBL,
+   C-SOURCE-ARGV1  12 DATA PROGRAM-FILE-CELL STR,          \ argv[1] is the program (src/core/include.f PROGRAM-INIT)
    LCOLDPFX LABEL@ BL,
    16 0 MOVZ,                                              \ plain `hb prog.f`: the program, read raw
    SRC-FREADY LABEL@ LBL, ;
@@ -1990,16 +1991,20 @@ public
 \ right after that mode's cold-prefix call - the same entry-mode-bit shape
 \ LCOLDPFX/LCOLDPFXB already use for their own seal decision. The only other
 \ write to x16 in the startup path is inside the cold prefix itself, which
-\ always runs before these three stores.
+\ always runs before these three stores. The `--build` payload carries its
+\ `provided` row; the program carries none, since PROGRAM-FILE-CELL, set only
+\ on the plain route, holds it and src/core/include.f derives it from there.
 : C-SOURCE-APPEND-ARG ( -- )
-   LBL LBL {: raw:label done:label :}
+   LBL LBL LBL {: raw:label bare:label done:label :}
    16 raw CBZ,
       C-SOURCE-ARGV14
       LAPPREQ LABEL@ BL,
       done B,
    raw LBL,
+      5 DATA PROGRAM-FILE-CELL LDR,  5 bare CBNZ,
       C-SOURCE-ARGV14
       LAPPPROV LABEL@ BL,
+   bare LBL,
       C-SOURCE-ARGV14
       LSRCRD LABEL@ BL,
    done LBL,

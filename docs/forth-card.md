@@ -424,14 +424,17 @@ forth.md: **Errors**, **Integer arithmetic**.
 
 - `require src/lib/string.f` loads once per image, keyed by canonical path;
   `include` replays. `s" path" required` / `included` are the string forms. A
-  path resolves against the root that resolved the requiring file (the
-  `--load` entry's directory for the entry), then the working directory, then
-  the engine's source root (the working directory when it is a Habu tree, else
-  the tree above the running `bin/hb`), so `require src/lib/…` names the tree
-  root. A file found through the working directory keeps that root for its own
-  requires: an overlay copy of one tree file, required by a tree file, loads
-  beside the tree's copy and dies on the duplicate. Every file requires its
-  **own** dependencies.
+  path resolves against the root that resolved the requiring file (for an
+  entry, the `--load` entry's or `hb prog.f` program's own directory, or a
+  stdin session's working directory), then the engine's source root
+  (the working directory when it is a Habu tree, else the tree above the
+  running `bin/hb`), then the working directory, so `require src/lib/…` names
+  the tree root and a working-directory copy of a Habu library never loads in
+  place of one a loaded file requires (a stdin session's own requires are the
+  working directory's: it is their root). A file found through the working directory keeps that root for
+  its own requires. An entry below its tree requires the tree's files
+  relative to itself (`../src/…`): a tree-relative name Habu also has loads
+  Habu's file. Every file requires its **own** dependencies.
 - A loaded file is a closed program: its top level starts at `depth` 0, a
   token reaching its loader's cells throws a stack underflow, a file that ends
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a

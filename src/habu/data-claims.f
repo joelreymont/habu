@@ -205,6 +205,7 @@ create TAB
    ARGC-CELL                          1 cells                 CLAIM ARGC-CELL
    ARGV-CELL                          1 cells                 CLAIM ARGV-CELL
    ENVP-CELL                          1 cells                 CLAIM ENVP-CELL
+   PROGRAM-FILE-CELL                  1 cells                 CLAIM PROGRAM-FILE-CELL
    PEND-CELL                          1 cells                 CLAIM PEND-CELL
    TKA-CELL                           1 cells                 CLAIM TKA-CELL
    TKL-CELL                           1 cells                 CLAIM TKL-CELL

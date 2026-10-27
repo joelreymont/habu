@@ -12,13 +12,17 @@
 \   engine's first boot row), else the tree two levels above the executable
 \   when that is one, else the working directory; the executable is found by
 \   its absolute path, through a symlink and by a relative path;
-\ - a relative dependency searches its owner, the working directory, then the
-\   root; a relative --load entry is relative to the working directory only; a
-\   library no root holds is refused by name, with no fallback;
+\ - a relative dependency searches its owner, the root, then the working
+\   directory, so neither a library in the working directory nor one in the
+\   entry directory stands in for the root's in a loaded file's requires; a program run as `hb prog.f`
+\   owns its top-level requires from its own canonical directory, also when
+\   started through a renamed symlink, and a require of itself is a no-op; a
+\   relative --load entry is relative to the working directory only; a library
+\   no root holds is refused by name, with no fallback;
 \ - only the root's own copy matches a frozen engine row, wherever the search
-\   reaches it: an app's own file, a working-directory file and a file beside
-\   an executable whose directory is not a tree, each with an engine file's
-\   name, stay theirs, the root's files reached through its parent or
+\   reaches it: an app's own file and a file beside an executable whose
+\   directory is not a tree, each with an engine file's name, stay theirs, the
+\   root's files reached through its parent or
 \   through a symlinked working directory are the engine's, a `..` spelling
 \   that only looks like the root is not, and a frozen row with no file under
 \   the root still answers;
@@ -184,13 +188,19 @@ variable RC
 
 : WD-APP ( -- )
    SB-RESET
-   s" require src/lib/memory.f" LINE
+   s" require src/lib/fs-list.f" LINE
    s" package SOURCE-ROOT-EXE-WD" LINE
    S\" : YN ( bool -- ) if s\q yes\q else s\q no\q then type cr ;" LINE
-   s" : RUN ( -- )" LINE
-   s"    SOURCE-ROOT-EXE-SHADOW:MARK 2 = YN" LINE
-   S\"    s\q src/lib/memory.f\q ENGINE-PROVIDES? YN ;" LINE
-   s" RUN" LINE
+   s" FS-LIST:DT-DIR 4 = FS:ENOENT 2 = and YN" LINE
+   s" ;package" LINE ;
+
+\ A package that names itself as it loads, standing in for a library file.
+: DECOY ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   SB-RESET
+   s" package " SB-APPEND name nameu LINE
+   S\" : HELLO ( -- ) s\q " SB-APPEND name nameu SB-APPEND S\" \q type cr ;" LINE
+   s" HELLO" LINE
    s" ;package" LINE ;
 
 : CD-FILE ( -- )
@@ -239,10 +249,18 @@ variable RC
    s" app/src/lib" A$ MAKE-DIRS
    s" test/source-root-exe-app.f" s" app/app.f" A$ FS-MUT-COPY-CAP COPY-FILE
    s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/errors.f" SB$ TEXT
-   s" wd-app" A$ MAKE-DIR
+   s" wd-app/src/lib" A$ MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/fs.f" SB$ TEXT
    s" shadow/src/lib" A$ MAKE-DIRS
-   s" SOURCE-ROOT-EXE-SHADOW" 2 MARKER s" shadow/src/lib/memory.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-WD-DECOY" DECOY s" shadow/src/lib/fs-list.f" SB$ TEXT
+   \ A program behind a link of another name requires the file beside it, then
+   \ itself.
+   s" real" A$ MAKE-DIR
+   s" real/x.f" S\" require y.f\nrequire x.f\ns\q x\q type cr\n" TEXT
+   s" real/y.f" S\" s\q y\q type cr\n" TEXT
+   s" links" A$ MAKE-DIR
+   s" real/x.f" B$ s" links/tool" A$ MAKE-SYMLINK
    s" other/nested" A$ MAKE-DIRS
    s" other/src/lib" A$ MAKE-DIRS
    s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/src/lib/errors.f" SB$ TEXT
@@ -449,13 +467,26 @@ variable RC
    s" tree/bin/hb" HB-AT$ FOREIGN$ TIMEOUT-MS RUN-ARGS
    S\" test: ok\n" 0 EXPECT ;
 
+\ The entry lacks src/lib/fs-list.f, which the working directory holds, and
+\ holds src/lib/fs.f, which the root's fs-list.f requires: each decoy would
+\ print its package name, and leave FS-LIST or FS undefined.
 : WD ( -- )
-   s" a working-directory file with an engine file's name stays its own" T-LABEL
+   s" a library comes from the root, not the working or the entry directory" T-LABEL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" wd-app/wd.f" A$ >LEN PROC-ARGV+
    s" tree/bin/hb" HB-AT$ s" shadow" A$ TIMEOUT-MS RUN-ARGS
-   S\" yes\nno\n" 0 EXPECT ;
+   S\" yes\n" 0 EXPECT
+   s" so does one for a program file, whose own directory is its first root" T-LABEL
+   PROC-ARGV-RESET
+   s" wd-app/wd.f" A$ >LEN PROC-ARGV+
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   S\" yes\n" 0 EXPECT
+   s" a program behind a renamed symlink loads once, from its own directory" T-LABEL
+   PROC-ARGV-RESET
+   s" links/tool" A$ >LEN PROC-ARGV+
+   s" tree/bin/hb" HB-AT$ s" shadow" A$ NULL$ TIMEOUT-MS RUN-EXE
+   S\" y\nx\n" 0 EXPECT ;
 
 : ENTRY ( -- )
    s" a relative --load entry is relative to the working directory only" T-LABEL

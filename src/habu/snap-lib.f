@@ -35,11 +35,12 @@ package SNAP
 \ This writer is also loaded by the previous-generation host, whose baked
 \ SRCLOC package predates the owned source cells in layout.f, whose baked
 \ ENGINE-MAIN package predates ENGINE-MAIN:ARENA-CELL and whose baked layout
-\ may predate NDICT-HW-CELL; each must equal layout.f's.
+\ may predate NDICT-HW-CELL and PROGRAM-FILE-CELL; each must equal layout.f's.
 $2D68 constant OWNED-SOURCE-CELL
 $2D70 constant OWNED-SOURCE-SIZE-CELL
 $3868 constant ENGINE-ARENA-CELL
 $2D60 constant DICT-HW-CELL
+$2DB0 constant PROGRAM-FILE-CELL
 
 create OUTPUT FS-PATH-CAP allot
 variable OUTPUT-U
@@ -270,6 +271,7 @@ PTR-VARIABLE SND-A
    STACK-ABI:LOOP-BASE-CELL SND-ZERO-CELL
    ARGC-CELL SND-ZERO-CELL    ARGV-CELL SND-ZERO-CELL
    ENVP-CELL SND-ZERO-CELL    SNAP-CELL SND-ZERO-CELL
+   PROGRAM-FILE-CELL SND-ZERO-CELL
    HND-CELL SND-ZERO-CELL     PEND-CELL SND-ZERO-CELL
    PKG-PUB-CELL SND-ZERO-CELL PKG-PRI-CELL SND-ZERO-CELL
    PKG-PARENT-CELL SND-ZERO-CELL PKG-REC-CELL SND-ZERO-CELL

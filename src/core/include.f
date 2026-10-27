@@ -186,7 +186,7 @@ create ENGINE-BUF PATH-BYTES allot
 variable ENGINE-U
 variable ENGINE-READ
 \ The stack PUSHPATH fills: a mapped copy of each saved current path and its
-\ length, 0 for the working directory.
+\ length, 0 for the top-level root.
 8 constant PATH-DEPTH
 PATH-DEPTH PTR-U8-TABLE SLOT-A
 create SLOT-U PATH-DEPTH cells allot
@@ -198,7 +198,7 @@ variable SLOT-N
 : CURRENT! ( ptr u8 n -- )
    CURRENT-U ! CURRENT-A ! ;
 
-\ The current path as set, null for the working directory, which a scope saves
+\ The current path as set, null for the top-level root, which a scope saves
 \ and restores: CURRENT$ would hand back CWD-BUF, which no top-level path may
 \ hold (RESET clears it, and CD and POPPATH release the path they replace).
 : CURRENT@ ( -- ptr u8 n )
@@ -272,9 +272,56 @@ public
 : CWD$ ( -- ptr u8 n ) CWD-INIT CWD-BUF CWD-U @ ;
 
 
+private
+
+: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u
+   begin dup 1 > while
+      1- dup a + c@ 47 = if exit then
+   repeat ;
+
+
+\ The program file `hb prog.f` runs: argv[1]'s string, which the launcher
+\ leaves in PROGRAM-FILE-CELL only on that route (src/habu/habu2.f SRC-FPLAIN,
+\ src/habu/main.f RUN). Its canonical path, resolved against the process's
+\ working directory, which no Habu word changes, is derived on the first
+\ question that needs it, as ENGINE$ is: its directory is the top-level root
+\ (CURRENT$) and the resolver counts it as loaded (PROGRAM?), so no stream row
+\ names it and no registry row holds it: a row appended on first use would
+\ vanish under the rollback of a failed require or a discovery pass. With the cell clear nothing is derived; RESET forgets
+\ the path, and a captured image starts with the cell clear. Deriving writes
+\ only PROGRAM-BUF, so the caller's scratch survives.
+PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
+create PROGRAM-BUF PATH-BYTES allot
+variable PROGRAM-U
+
+: PROGRAM-INIT ( -- )
+   PROGRAM-U @ 0= 0= if exit then
+   PROGRAM-ARG @ {: a:ptr :}
+   a 0= if exit then
+   a PROGRAM-BUF PATH-BYTES realpath {: n:n :}
+   n 0 <= if
+      s" source root: the program file does not resolve within PATH-CAP bytes"
+      INCLUDE-IO-RC die
+   then
+   n PROGRAM-U ! ;
+
+\ Whether a canonical path is the program file. A fresh discovery registry
+\ (REQUIRE-SNAPSHOT) hides it, as it hides every row recorded before it.
+: PROGRAM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   REQUIRE-BASE @ 0= 0= if INCLUDE-FALSE exit then
+   PROGRAM-INIT
+   PROGRAM-U @ 0= if INCLUDE-FALSE exit then
+   a u PROGRAM-BUF PROGRAM-U @ CORE-STR= ;
+
+public
+
+\ The top-level root: the program file's directory, else the working directory.
 : CURRENT$ ( -- ptr u8 n )
    CURRENT-U @ 0 > if CURRENT-PTR CURRENT-U @ exit then
-   CWD$ ;
+   PROGRAM-INIT
+   PROGRAM-U @ 0= if CWD$ exit then
+   PROGRAM-BUF PROGRAM-BUF PROGRAM-U @ PARENT-U ;
 
 private
 
@@ -297,13 +344,6 @@ private
       a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
    then
    CWD$ a u JOIN! ;
-
-
-: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u
-   begin dup 1 > while
-      1- dup a + c@ 47 = if exit then
-   repeat ;
 
 
 : NORMAL-ROOM ( n n -- ) {: limit:n :}
@@ -585,7 +625,7 @@ public
    LINE-BLANK? if CURRENT$ type cr exit then
    parse-name CD-PATH ;
 
-\ PUSHPATH saves the current path; a null slot is the working directory.
+\ PUSHPATH saves the current path; a null slot is the top-level root.
 : PUSHPATH ( -- )
    s" PUSHPATH: only at top level" TOP-ONLY
    SLOT-N @ PATH-DEPTH >= if
@@ -630,10 +670,11 @@ public
    ZBUF WORK-BYTES CLEAR-BYTES
    REQUEST-BUF WORK-BYTES CLEAR-BYTES
    ENGINE-BUF PATH-BYTES CLEAR-BYTES
+   PROGRAM-BUF PATH-BYTES CLEAR-BYTES
    0 REQUEST-U !
    0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
    0 JOIN-U ! 0 OWNER-U !
-   0 ENGINE-U ! 0 ENGINE-READ ! ;
+   0 ENGINE-U ! 0 ENGINE-READ ! 0 PROGRAM-U ! ;
 
 ;package
 
@@ -1022,12 +1063,18 @@ public
 package SOURCE-ROOT
 private
 
+\ Whether a canonical path is loaded: the program file or a registry row.
+: LOADED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PROGRAM? if INCLUDE-TRUE exit then
+   a u REQUIRE-KNOWN? ;
+
 \ The engine's own source root: the working directory when it carries the
 \ engine's first row; else the executable's tree when that does (`%`, two
 \ levels above the executable, <tree>/bin/hb, as SwiftForth places it); else
-\ the working directory. The working directory comes first because it is
-\ searched before the root and only the root's physical copy of a row is
-\ frozen: with `%` first, a copied tree there would load as application source.
+\ the working directory. The working directory comes first because a stdin
+\ session's top-level requires search it before the root, and only the root's
+\ physical copy of a row is frozen: with `%` first, a copied tree there would
+\ load as application source.
 \ A build's fresh registry holds no row, so nothing is a tree and the rows it
 \ records are relative to the working directory whatever host builds them.
 \ The root is derived on the first question that needs it, from the
@@ -1169,35 +1216,39 @@ private
    {: first:n :}
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
-   2dup REQUIRE-KNOWN? {: known:bool :}
+   2dup LOADED? {: known:bool :}
    known 0= if
       ENGINE$ REQUEST$ first BOOT-CANDIDATE
    else known then
    dup exists or ;
 
-\ A relative request's roots in order, each once: its owner, the working
-\ directory, then the engine root. The first root whose candidate stops the
-\ search answers; when none does, the owner's answer names the missing file.
-\ The working directory stays ahead of the engine root: nested checking copies
-\ subject text into a temporary child loader and relies on finding files there.
+\ A relative request's roots in order, each once: its owner, the engine root,
+\ then the working directory. The first root whose candidate stops the search
+\ answers; when none does, the owner's answer names the missing file. So a
+\ library the owner lacks is the engine's whatever the working directory holds,
+\ and the working directory answers only what neither holds: an application's
+\ entry below its tree, run from the tree, requires the tree's files by their
+\ tree-relative names.
 : SEARCH-ROOTS ( n -- ptr u8 n bool )
    {: first:n :}
    CURRENT$ first CANDIDATE if exit then drop 2drop
-   CWD$ CURRENT$ CORE-STR= 0= if
-      CWD$ first CANDIDATE if exit then drop 2drop
-   then
-   ENGINE$ CURRENT$ CORE-STR= ENGINE$ CWD$ CORE-STR= or 0= if
+   ENGINE$ CURRENT$ CORE-STR= 0= if
       ENGINE$ first CANDIDATE if exit then drop 2drop
+   then
+   CWD$ CURRENT$ CORE-STR= CWD$ ENGINE$ CORE-STR= or 0= if
+      CWD$ first CANDIDATE if exit then drop 2drop
    then
    CURRENT$ first CANDIDATE drop ;
 
-\ The root a load of an absolute path opens: a root it lies below, else its
-\ directory. A missing file's directory need not be a root at all (missing, a
-\ file, unsearchable), so its load keeps the current root and INCLUDE-OPEN names
-\ the file, as ENTRY-RESOLVE does for an entry.
+\ The root a load of an absolute path opens: the first root it lies below, in
+\ SEARCH-ROOTS order, else its directory. A missing file's directory need not
+\ be a root at all (missing, a file, unsearchable), so its load keeps the
+\ current root and INCLUDE-OPEN names the file, as ENTRY-RESOLVE does for an
+\ entry.
 : ABS-OWNER ( ptr u8 n bool -- )
    {: a:ptr u:n exists:bool :}
    a u CURRENT$ BELOW? if CURRENT$ OWNER! exit then
+   a u ENGINE$ BELOW? if ENGINE$ OWNER! exit then
    a u CWD$ BELOW? if CWD$ OWNER! exit then
    exists 0= if CURRENT$ OWNER! exit then
    a u DIRNAME OWNER! ;
@@ -1209,7 +1260,7 @@ private
    REQUEST-BUF c@ $2F = if
       REQUEST$ CANONICAL {: exists:bool :}
       2dup exists ABS-OWNER
-      2dup REQUIRE-KNOWN? {: known:bool :}
+      2dup LOADED? {: known:bool :}
       known 0= if
          ENGINE$ REQUEST$ first BOOT-CANDIDATE
       else known then

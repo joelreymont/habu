@@ -558,6 +558,11 @@ $2D38 constant RSAVROWS-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+\ PROGRAM-FILE-CELL: argv[1]'s string once the launcher (habu2.f SRC-FPLAIN,
+\ main.f RUN) runs it as the program file, else 0; src/core/include.f reads it.
+\ It takes $2DB0, the first cell after TASK-CHAIN-CELL, swept for a claimant
+\ across src tools test bootstrap maki docs.
+$2DB0 constant PROGRAM-FILE-CELL
 $3688 constant PEND-CELL
 \ A definition whose capture ran a parsing immediate has construction inputs
 \ outside BODYBUF. The native cache reads this only through the running engine's

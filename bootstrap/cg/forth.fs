@@ -268,6 +268,7 @@ $3668 constant RRECP-CELL  \ runtime addr of the REPL recovery entry (EMIT-MAIN 
 $3670 constant ARGC-CELL   \ dyld main(argc,argv,envp): x0-x2, captured at entry
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+$2DB0 constant PROGRAM-FILE-CELL  \ argv[1] on the plain route; mirrors src/habu/layout.f
 $3688 constant PEND-CELL   \ pending dict record ptr (0 = interpret mode; was x25)
 $3690 constant TKA-CELL    \ current token addr (was x23)
 $3698 constant TKL-CELL    \ current token len  (was x24)
@@ -4010,6 +4011,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-PROVIDE-FILES
    C-SOURCE-FIND-SEP
    SRC-FPLAIN @ LBL,
+   C-SOURCE-ARGV1  12 DATA PROGRAM-FILE-CELL STR,  \ argv[1] is the program (src/habu/habu2.f)
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-PROVIDE-FILES
@@ -4019,9 +4021,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
    12 12 5 ADD,  12 12 0 LDR, ;
 
+\ src/habu/habu2.f C-SOURCE-APPEND-ARG: the program carries no `provided` row.
 : C-SOURCE-APPEND-ARG ( -- )
+   LBL {: bare :}
+   5 DATA PROGRAM-FILE-CELL LDR,  5 bare CBNZ,
    C-SOURCE-ARGV14
    C-SOURCE-APPEND-PROVIDED
+   bare LBL,
    C-SOURCE-ARGV14
    LSRCRD @ BL,
    14 14 1 ADDI, ;

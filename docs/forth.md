@@ -229,17 +229,23 @@ public
   definition spans a load. Fix a file that leaves cells or a definition; never
   loosen the loader. `hb prog.f` and a program on stdin are not loaded files
   and keep their top-level stack.
-- **Source roots.** A named `--load` entry's directory is the primary source
-  root. Relative dependencies search that root, then the invocation working
-  directory, then the engine's source root, each root once. The engine's source
-  root is the working directory when it is a Habu tree, else the tree above the
-  engine's executable (found through symlinks) when that is one, else the
-  working directory; so an installed `hb` runs from any directory, and inside a
-  checkout the checkout is the root. No variable or word sets it. The working
-  directory is searched before the engine root, so a working directory that is
-  not a tree must not hold copies of engine files: loading its copy beside the
-  engine's is a duplicate definition. A relative `--load` entry is relative to
-  the working directory alone; a dependency keeps the root that resolved it for
+- **Source roots.** Relative dependencies search the root of the file that
+  requires them, then the engine's source root, then the invocation working
+  directory, each root once. A named `--load` entry's root is its directory; a
+  program run as `hb prog.f` has its own canonical directory, also when started
+  through a symlink of another name, and is recorded as loaded, so its require
+  of itself is a no-op; a stdin session has the working directory. The
+  engine's source root is the working directory when it is a
+  Habu tree, else the tree above the engine's executable (found through
+  symlinks) when that is one, else the working directory; so an installed `hb`
+  runs from any directory, and inside a checkout the checkout is the root. No
+  variable or word sets it. Habu's libraries always load Habu's files and an
+  application's files load its own: the working directory answers only what
+  neither root holds, such as a tree-relative require in an application entry
+  below its tree, run from the tree. That entry's tree-relative require of a
+  path Habu also has loads Habu's file, so an entry below its tree requires
+  the tree's files relative to itself (`../src/model.f`). A relative `--load`
+  entry or program file is relative to the working directory alone; a dependency keeps the root that resolved it for
   its own loads; absolute paths bypass the search; the process working
   directory never changes. So `/work/app/main.f` can require `src/model.f`,
   and that file `src/math.f`. Nested loads, file sizes and the loads a file
