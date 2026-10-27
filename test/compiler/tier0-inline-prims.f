@@ -234,6 +234,12 @@ variable T0-SV
 : T0-DOONE ( -- n ) 0 0 0 do 1+ loop ;
 : T0-LOOPTHROW ( -- n ) 0 5 0 ?do i 3 = if 77 throw then i + loop ;
 
+\ The call spills the virtual stack inside the loop, so `+` pulls both cells
+\ again. The loop head recorded x9 for its one slot: the first pull is held
+\ off it and the second takes it (jit.f NEED-ALLOC,), so the back edge needs no
+\ copy, and the `dup`s share their registers: no movs.
+: T0-PULLHOME ( n -- n ) 1+ begin dup T0-CALLEE + dup 100 > until ;
+
 \ Arithmetic on cells the caller left on the data stack, one subject per entry
 \ that pulls: binary, binary with an immediate, unary, shuffle, float.
 : T0-SUB2 ( n n -- n ) - 3 * 1+ ;
@@ -579,7 +585,10 @@ private
    10 T0-LOOPEXIT 21 T=  5 T0-LOOPEXIT 10 T=
    10 T0-LOOPLOC 45 T=
    T0-DOONE 1 T=
-   [: T0-LOOPTHROW drop ;] 77 TTHROWSQ ;
+   [: T0-LOOPTHROW drop ;] 77 TTHROWSQ
+   s" a pull after a call in a loop lands in its slot's register" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-PULLHOME" MOV-MASK MOV-OP MASKED-OPS 0 T=
+   3 T0-PULLHOME 108 T= ;
 
 \ The named word holds no call to the dividing primitive and sdivs times.
 : DIVIDES ( ptr u8 n ptr u8 n n -- ) {: na:ptr nu:n pa:ptr pu:n sdivs:n :}

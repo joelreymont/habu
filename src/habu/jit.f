@@ -312,31 +312,6 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    fr LBL,  14 11 0 ADDI,
    fd LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-\ LVNEED ( x5=need -- x13=ok ) : pull data-stack cells beneath the VS until it
-\ holds need (1 or 2) entries. A pull claims a pool register, emits the runtime
-\ pop into it and records it as entry 0 (tag 0: bits in an integer register),
-\ shifting the at most one entry already there up. Each entry is complete
-\ before the next allocation, so an exhausted pool returns 0 with the VS a
-\ valid representation that the caller's fallback spills. Clobbers x5-x9, x14.
-: EMIT-VNEED ( -- )
-   LVNEED LABEL@ LBL,
-   LBL LBL LBL LBL {: nl nput nok nd :}
-   SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
-   nl LBL,
-      6 DATA VSP-CELL LDR,  5 SP 8 LDR,  6 5 CMP,  C-GE nok BCOND,
-      LVRALLOC LABEL@ BL,  13 0 MOVZ,  14 nd CBZ,               \ no reg -> 0
-      8 W-POPR LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,          \ ldr xR,[x19,#-8]!
-      6 DATA VSP-CELL LDR,  6 nput CBZ,
-         7 DATA VTAG-OFF ADDI,  8 7 0 LDRB,  8 7 1 STRB,        \ entry 0 -> entry 1
-         7 DATA VVAL-OFF ADDI,  8 7 0 LDR,  8 7 8 STR,
-      nput LBL,
-      7 DATA VTAG-OFF ADDI,  8 0 MOVZ,  8 7 0 STRB,
-      7 DATA VVAL-OFF ADDI,  14 7 0 STR,
-      6 6 1 ADDI,  6 DATA VSP-CELL STR,
-      nl B,
-   nok LBL,  13 1 MOVZ,
-   nd LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
-
 \ Two tag-0 entries with one val share that register: a copy (LVCOPY) pushes
 \ the register it copies, the first write to a shared register goes to a fresh
 \ one (LVDEST), and only the last holder frees it (LVDROP, LVNIPX, LFFORCEK).
@@ -1056,6 +1031,69 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
 : EMIT-VFPOP ( -- )
    LVFPOP LABEL@ LBL,
    SNAP-DROP,  FRAME-LOAD,  RET, ;
+
+\ x14 := a pool register for the pull whose final VS index is x5, or 0. The
+\ innermost snapshot frame names the register its join expects in each slot:
+\ a free one for slot x5 is claimed, so a value pulled after a spill inside a
+\ loop or an `if` lands where the back edge or THEN needs it. Otherwise the
+\ pool is searched with the frame's lower slots held back for the pulls still
+\ to come; at most one slot is held back, so the search cannot exhaust the
+\ pool. A frame entry that matches no VS entry only steers the choice.
+\ Clobbers x5-x14.
+: NEED-ALLOC, ( -- )
+   LBL LBL LBL LBL {: plain mask ml md :}  LBL LBL LBL {: mlim mnx done :}
+   6 DATA JIT-SNAP:SP-CELL LDR,  6 plain CBZ,
+   6 6 1 SUBI,  FRAME-LOAD,                                    \ x13 k, x12 p0, x14 p1
+   5 13 CMP,  C-GE mask BCOND,
+   FRAME-BYTE,  6 7 $80 ANDI,  6 mask CBNZ,                    \ x7 = slot x5's x-reg
+   LVBIT LABEL@ BL,
+   6 DATA VRFREE-CELL LDR,  9 6 8 AND,  9 mask CBZ,
+   6 6 8 EOR,  6 DATA VRFREE-CELL STR,  14 7 0 ADDI,  done B,
+   mask LBL,                                                  \ x11 := slots below min(x5,k)
+   9 13 0 ADDI,  5 13 CMP,  C-GE mlim BCOND,  9 5 0 ADDI,
+   mlim LBL,  11 0 MOVZ,  5 0 MOVZ,
+   ml LBL,
+      5 9 CMP,  C-GE md BCOND,
+      FRAME-BYTE,  6 7 $80 ANDI,  6 mnx CBNZ,
+      LVBIT LABEL@ BL,  11 11 8 ORR,
+   mnx LBL,  5 5 1 ADDI,  ml B,
+   md LBL,
+   6 DATA VRFREE-CELL LDR,  11 11 6 AND,  6 6 11 EOR,  6 DATA VRFREE-CELL STR,
+   LVRALLOC LABEL@ BL,
+   6 DATA VRFREE-CELL LDR,  6 6 11 ORR,  6 DATA VRFREE-CELL STR,
+   done B,
+   plain LBL,  LVRALLOC LABEL@ BL,
+   done LBL, ;
+
+\ LVNEED ( x5=need -- x13=ok ) : pull data-stack cells beneath the VS until it
+\ holds need (1 or 2) entries. A pull claims a pool register (NEED-ALLOC,),
+\ emits the runtime pop into it and records it as entry 0 (tag 0: bits in an
+\ integer register), shifting the at most one entry already there up. Each
+\ entry is complete before the next allocation, so an exhausted pool returns 0
+\ with the VS a valid representation that the caller's fallback spills.
+\ Clobbers x5-x9, x14.
+: EMIT-VNEED ( -- )
+   LVNEED LABEL@ LBL,
+   LBL LBL LBL LBL {: nl nput nok nd :}
+   SP SP 48 SUBI,  30 SP 0 STR,  5 SP 8 STR,
+   10 SP 16 STR,  11 SP 24 STR,  12 SP 32 STR,
+   nl LBL,
+      6 DATA VSP-CELL LDR,  5 SP 8 LDR,  6 5 CMP,  C-GE nok BCOND,
+      5 5 6 SUB,  5 5 1 SUBI,  NEED-ALLOC,                      \ final index need-VSP-1
+      13 0 MOVZ,  14 nd CBZ,                                    \ no reg -> 0
+      8 W-POPR LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,          \ ldr xR,[x19,#-8]!
+      6 DATA VSP-CELL LDR,  6 nput CBZ,
+         7 DATA VTAG-OFF ADDI,  8 7 0 LDRB,  8 7 1 STRB,        \ entry 0 -> entry 1
+         7 DATA VVAL-OFF ADDI,  8 7 0 LDR,  8 7 8 STR,
+      nput LBL,
+      7 DATA VTAG-OFF ADDI,  8 0 MOVZ,  8 7 0 STRB,
+      7 DATA VVAL-OFF ADDI,  14 7 0 STR,
+      6 6 1 ADDI,  6 DATA VSP-CELL STR,
+      nl B,
+   nok LBL,  13 1 MOVZ,
+   nd LBL,
+   10 SP 16 LDR,  11 SP 24 LDR,  12 SP 32 LDR,
+   30 SP 0 LDR,  SP SP 48 ADDI,  RET, ;
 
 \ LVSETF ( x13=k x12=p0 x14=p1 -- ) : the VS := the frame, and each free mask
 \ := its pool minus the frame's registers. Emits nothing; clobbers x5-x11, x15.
