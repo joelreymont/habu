@@ -50,7 +50,7 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-IMAGE-ENV ( ptr u8 n ptr u8 n -- )
    {: limit:ptr limitu:n root:ptr rootu:n :}
    PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" TMPDIR" >LEN HBT-TMP >LEN PROC-ENV+
    rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-IMAGE-HB$ >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+

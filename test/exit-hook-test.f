@@ -5,7 +5,7 @@
 \ the child left on disk. The exits of a stripped image's MAIN run in
 \ test/stripped-image.f, on the application it already builds
 \ (test/exit-hook-subject.f). The children take the directory as argument 0
-\ rather than making their own under HB_TMP, so a case that fails leaves its
+\ rather than making their own under TMPDIR, so a case that fails leaves its
 \ evidence inside the root this fixture removes.
 \ A child script resolves `require src/lib/fs-mutate.f` against the working
 \ directory, which is the checkout (test/app-image.f spawns the same way).
@@ -49,7 +49,7 @@ variable TREE-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" exit-hook" HB-TMP-MKDIR {: path:ptr pathu :}
+   s" exit-hook" TMPDIR-MKDIR {: path:ptr pathu :}
    path ROOT-BUF pathu BYTE-COPY pathu ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 
@@ -77,7 +77,7 @@ variable TREE-U
    ERR erru want wantu CONTAINS? ;
 
 \ The child runs on the engine under test with the case's directory as its one
-\ application argument, and with this process's environment, so HB_TMP and the
+\ application argument, and with this process's environment, so TMPDIR and the
 \ working directory are the ones the suite itself runs with. Capture gives the
 \ child no stdin, so the script's own exit is what the case measures.
 : RUN-CHILD ( -- n n n )

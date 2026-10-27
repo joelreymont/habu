@@ -1,6 +1,6 @@
 \ aot-wid-build.f - build a protected-WID partial native image.
 \
-\ Run as `bin/hb --load test/aot-wid-build.f` with HB_TMP pointing at a private
+\ Run as `bin/hb --load test/aot-wid-build.f` with TMPDIR pointing at a private
 \ directory; on success it writes an `hb-pwid` engine into that directory. The
 \ default variant carries the REPL and two packages of this fixture's own,
 \ one protected. Its cold boot restores one protected wordlist the ordinary
@@ -40,7 +40,7 @@
 \                      inside the window, and the host's own protected WIDs - all
 \                      of which sit below the window - do not travel.
 \   HABU_AOT_REWRITE=1 take no capture: run the writer again over the window.aot
-\                      and hb-cold an earlier build left in HB_TMP, replacing its
+\                      and hb-cold an earlier build left in TMPDIR, replacing its
 \                      hb-pwid with one carrying the forge the knobs below ask
 \                      for. A forge changes only the writer's patch, never the
 \                      window, so a suite forging one window several ways
@@ -116,9 +116,9 @@ variable WINDOW-ENDED
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 
 : PATHS ( -- )
-   s" HB_TMP" GETENV {: a:ptr u:n :}
+   s" TMPDIR" GETENV {: a:ptr u:n :}
    u 0= u FS-PATH-CAP > or if
-      s" aot-wid-build: HB_TMP must name a private directory" BUILD-RC die then
+      s" aot-wid-build: TMPDIR must name a private directory" BUILD-RC die then
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ s" hb-cold" COLD-BUF JOIN-PATH COLD-U !
    ROOT$ s" window.aot" ART-BUF JOIN-PATH ART-U !
@@ -127,7 +127,7 @@ variable WINDOW-ENDED
 : DRV-PATH$ ( -- ptr u8 n )
    DRV-PATH-BUF DRV-PATH-U @ ;
 
-: DRV-PATH! ( -- )                 \ <HB_TMP>/pwid-driver.f
+: DRV-PATH! ( -- )                 \ <TMPDIR>/pwid-driver.f
    ROOT$ s" pwid-driver.f" DRV-PATH-BUF JOIN-PATH DRV-PATH-U ! ;
 
 : DRV-RESET ( -- )
@@ -566,7 +566,7 @@ variable WINDOW-ENDED
 \ and never the earlier write left in place.
 : REWRITE-SETUP ( -- )
    ART$ EXISTS? COLD$ EXECUTABLE? and 0= if
-      s" aot-wid-build: rewrite found no earlier capture in HB_TMP" BUILD-RC die then
+      s" aot-wid-build: rewrite found no earlier capture in TMPDIR" BUILD-RC die then
    IMAGE$ EXISTS? if IMAGE$ REMOVE-FILE then ;
 
 public

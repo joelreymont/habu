@@ -181,16 +181,16 @@ answers from the dictionary: `SNAP-HEAP-OWNER:DUMP` maps heap offsets to owner
 words, `SNAP-HEAP-OWNER:CODE-MAP` maps code offsets to words.
 
 It has to run inside a process that has the source under investigation loaded.
-A snapshot build leaves that process's two inputs in `HB_TMP`: the native
+A snapshot build leaves that process's two inputs in `TMPDIR`: the native
 engine `hb-native` and the snapshot source `hb-snap-src`, whose last line calls
 `APP-IMAGE:SAVE`. Run that engine on the same source with the dump in place of
 the save:
 
 ```sh
-HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
+TMPDIR=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap
 { grep -v 'APP-IMAGE:SAVE' <private-root>/hb-snap-src
   printf '%s\n' 'require tools/snap-heap-owner.f' 'SNAP-HEAP-OWNER:DUMP'
-} | HB_TMP=<private-root> <private-root>/hb-native > owners.txt
+} | TMPDIR=<private-root> <private-root>/hb-native > owners.txt
 ```
 
 Pair the heap map against the offsets `cmp -l` reports between two images
@@ -292,11 +292,11 @@ Instrumenting `src/core/checker.f` changes what `test/bootstrap-wide-memory.fs`
 measures, so `tools/bootstrap.sh` then stops in its first gate and never
 reaches the stage0 run. Instrumented runs must therefore skip the launcher and
 build the seed directly. The seed is exactly the file `tools/bootstrap.sh`
-writes to `$HB_TMP/stage2-src`, used as written: its boot-hide prologue is
+writes to `$TMPDIR/stage2-src`, used as written: its boot-hide prologue is
 load-bearing (below). Build and boot it with:
 
     HABU_TARGET=<target> gforth -e 'require test/nf.fs s" <seed>" slurp-file s" <out>" FORTH-BUILD-EXE bye'
-    HB_TMP=<dir> <out> -- <dir>
+    TMPDIR=<dir> <out> -- <dir>
 
 A boot that reaches `stage2: cannot open source` (exit 74) got through the whole
 prefix; that message is success for this purpose. Copy `bootstrap/` and

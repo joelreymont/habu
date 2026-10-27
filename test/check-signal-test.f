@@ -4,7 +4,7 @@
 \     bin/hb --load test/check-signal-test.f
 \
 \ THE SUBJECT is tools/check.f checking test/check-signal-subject.f, started
-\ here as a child with a private HB_TMP. check.f's run stage runs the subject in
+\ here as a child with a private TMPDIR. check.f's run stage runs the subject in
 \ a child of its own, and the subject starts a sleeper and reports. The test
 \ signals check.f the moment the report is in, so the signal lands while check.f
 \ waits on its child; or it gives check.f a deadline the subject's wait on its
@@ -21,7 +21,7 @@
 \     not what it spawned: the sleeper leads a group of its own. Asserted by the
 \     same pipe, which the sleeper holds.
 \  3. SCRATCH LEFT. check.f's temporary directory, holding the run stage's
-\     run.f, is made under HB_TMP. Asserted: HB_TMP is empty once check.f has
+\     run.f, is made under TMPDIR. Asserted: TMPDIR is empty once check.f has
 \     ended.
 \  4. A STATUS THAT HIDES THE SIGNAL. A check.f that cleans up and then exits
 \     with a status tells its caller the check finished. Asserted: its wait
@@ -135,7 +135,7 @@ PROC-NO-FD FEED-WR !
 
 \ ---- the scratch ------------------------------------------------------------
 
-\ TMP, under this test's runner root, is the HB_TMP check.f is handed, so what
+\ TMP, under this test's runner root, is the TMPDIR check.f is handed, so what
 \ check.f leaves is whatever TMP holds; its output sits beside it.
 : PATHS! ( -- )
    GT-ROOT s" tmp" TMP JOIN-PATH TMP-U !
@@ -239,7 +239,7 @@ PROC-NO-FD FEED-WR !
 \ The watch is opened while check.f is alive: macOS cannot register a process
 \ that has already exited.
 : CHECK-SPAWN ( n -- ) {: in:n :}
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    OPEN-LOG {: log:n :}
    ENGINE-CANDIDATE:PATH$ >LEN in >FD log >FD log >FD PROC-SPAWN-ARGV-ENV-IO

@@ -34,7 +34,7 @@ create ROOT-BUF FS-PATH-CAP allot   variable ROOT-U
 \ One tree per run, registered for cleanup, so "the artifact exists" is a statement
 \ about the capture that just ran and never about a leftover.
 : SETUP ( -- )
-   s" habu-aot-chain" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-chain" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 

@@ -356,7 +356,7 @@ create TEXT CAP allot                  variable TEXT-U
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" native-hookless-reject" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" native-hookless-reject" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" tmp" TMP TMP-U ROOT-PATH! TMP$ MAKE-DIRS
@@ -374,7 +374,7 @@ create TEXT CAP allot                  variable TEXT-U
 : ARGV+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : ENV! ( -- )
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_WHITEBOX_IMAGE" >LEN NULL$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 

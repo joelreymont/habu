@@ -160,7 +160,7 @@ variable GPT-ROOT-SAVE-U
    0 0= 0= ;
 
 \ The child inherits this process's environment, so the root its GT-START
-\ makes lies under the HB_TMP this run was given.
+\ makes lies under the TMPDIR this run was given.
 : GPT-MODE-CAPTURE ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -485,7 +485,7 @@ variable GPT-FC-DONE-U
    base baseu name nameu dst JOIN-PATH up ! ;
 
 : GPT-FC-PATHS! ( -- )
-   s" hb-fork-cleanup" HB-TMP-MKDIR GPT-FC-EV!
+   s" hb-fork-cleanup" TMPDIR-MKDIR GPT-FC-EV!
    GPT-FC-EV$ s" parent" GPT-FC-PARENT GPT-FC-PARENT-U GPT-FC-SUB!
    GPT-FC-PARENT$ s" keep" GPT-FC-PARENT-FILE GPT-FC-PARENT-FILE-U GPT-FC-SUB!
    GPT-FC-EV$ s" child" GPT-FC-CHILD GPT-FC-CHILD-U GPT-FC-SUB!
@@ -677,10 +677,10 @@ variable GPT-RF-VIC-PID
    GT-CLEANUP ;
 
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH (gate-pool.f GT-POOL-CHILD-TMP!).
-\ Each spawned child is given a directory of its own as HB_TMP, so the tree it
-\ makes the ordinary way - src/lib/fs-mutate.f HB-TMP-MKDIR - lands inside it, and
-\ the pool removes that directory when the slot retires. The killed child is
-\ the case nothing else covers: it never reaches a cleanup of its own, so
+\ Each spawned child is given a directory of its own as TMPDIR, so the tree it
+\ makes the ordinary way - src/lib/fs-mutate.f TMPDIR-MKDIR - lands inside it,
+\ and the pool removes that directory when the slot retires. The killed child
+\ is the case nothing else covers: it never reaches a cleanup of its own, so
 \ before this the tree it made outlived every run.
 \
 \ Each child prints the path it made; the slot's capture is how the parent
@@ -690,10 +690,10 @@ variable GPT-RF-VIC-PID
 1000 constant GPT-CT-HANG-MS
 
 : GPT-CT-GREEN-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" TMPDIR-MKDIR type cr ;\nW\n" ;
 
 : GPT-CT-HANG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" HB-TMP-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" TMPDIR-MKDIR type cr begin 0 0= 0= until ;\nW\n" ;
 
 : GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}
@@ -702,9 +702,9 @@ variable GPT-RF-VIC-PID
    then
    a u ;
 
-\ The environment is inherited first, HB_TMP and all: the pool's own row has to
+\ The environment is inherited first, TMPDIR and all: the pool's own row has to
 \ REPLACE an inherited one, not queue up behind it, or the child resolves the
-\ caller's HB_TMP and makes its tree outside the slot's directory. A row the
+\ caller's TMPDIR and makes its tree outside the slot's directory. A row the
 \ caller set to a value of its own is the opposite case and stays; that one is
 \ checked where it is needed, test/nf-path-test.f (a 97-byte root reaches the
 \ build unchanged).
@@ -740,7 +740,7 @@ variable GPT-RF-VIC-PID
    GT-CLEANUP ;
 
 \ A SCRATCH THAT WILL NOT GO FAILS ITS ROW, NOT THE POOL (gate-pool.f
-\ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its HB_TMP that
+\ GT-POOL-CHILD-TMP-REMOVE). A row can leave a tree under its TMPDIR that
 \ REMOVE-TREE cannot take apart: a directory the row locked, holding an entry,
 \ refuses that entry's unlink with EACCES and the removal throws E-FS-IO. The
 \ refusal is named with the row, the path and the code, the row is red, and the

@@ -7621,7 +7621,7 @@ public
    WAS-B READY
    WS-B READY
    LSP-DEFS:DEFS-PREPARE
-   s" habu-lsp-test" HB-TMP-MKDIR N>BLEN DIR-B REPLACE
+   s" habu-lsp-test" TMPDIR-MKDIR N>BLEN DIR-B REPLACE
    T-RESET ;
 
 : TEST-COMPLETION ( -- )

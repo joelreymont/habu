@@ -2,7 +2,7 @@
 \ Run: bin/hb --load tools/check-verify-test.f
 \
 \ The operation is called here directly, as a language server calls it, and the
-\ command line is run as a child. Fixtures are files under a fresh HB_TMP
+\ command line is run as a child. Fixtures are files under a fresh TMPDIR
 \ directory; the subject's bytes are handed over in memory. What can go wrong,
 \ and the case that sees it:
 \
@@ -543,7 +543,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" \\ the same bytes at two paths\n" ;
 
 : FIXTURES ( -- )
-   s" cvt" HB-TMP-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
+   s" cvt" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL drop ROOT ROOT-U COPY!
    s" dep.f" DEP$SRC FIXTURE
    s" bad-dep.f" BAD-DEP$SRC FIXTURE
    s" open-dep.f" OPEN-DEP$SRC FIXTURE

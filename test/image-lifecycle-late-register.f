@@ -37,7 +37,7 @@ variable IMAGE-U
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" image-lifecycle-late" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" image-lifecycle-late" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" late-hook" IMAGE-BUF JOIN-PATH IMAGE-U ! ;

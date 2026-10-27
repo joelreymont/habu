@@ -59,7 +59,7 @@ public
 : TEST-WAVE-CURSOR ( -- )
    T-RESET
    CLEANUP-RESET
-   s" hb-ref-wave-cursor" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   s" hb-ref-wave-cursor" TMPDIR-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" a.f" BATCH-CURSOR-A JOIN-PATH BATCH-CURSOR-A-U !
    root rootu s" b.f" BATCH-CURSOR-B JOIN-PATH BATCH-CURSOR-B-U !

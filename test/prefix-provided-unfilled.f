@@ -58,7 +58,7 @@ variable RC
    RUNTIME$ AT-A SRC past + SRC-U @ past - APPEND-FILE ;
 
 : SETUP ( -- )
-   s" prefix-provided-unfilled" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" prefix-provided-unfilled" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    WRITE-RUNTIME ;

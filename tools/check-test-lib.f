@@ -289,7 +289,7 @@ variable START-NS
    >LEN PROC-ARGV+ ;
 
 \ The check.f child runs with this process's environment: its scratch root
-\ (CHK-MAKE-TEMP) goes under the HB_TMP this run was handed.
+\ (CHK-MAKE-TEMP) goes under the TMPDIR this run was handed.
 : CHECK-CAPTURE ( -- n n n )
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -415,10 +415,9 @@ variable START-NS
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
    PROC-ENV-RESET
+   \ The checker's scratch resolves through TMPDIR-MKDIR, so the test-owned
+   \ root must be the child's TMPDIR, or an inherited pool slot takes it.
    s" TMPDIR" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
-   \ The checker's scratch resolves through HB-TMP-MKDIR, so the test-owned
-   \ root must be the child's HB_TMP too, or an inherited pool slot takes it.
-   s" HB_TMP" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
    CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
@@ -445,7 +444,7 @@ variable START-NS
 
 \ ---- the run stage's environment --------------------------------------------
 \ The tool's run stage spawns the checked program, and a program that resolves
-\ an executable through $PATH or writes under $HB_TMP needs the environment the
+\ an executable through $PATH or writes under $TMPDIR needs the environment the
 \ tool itself was given. A host may export no PATH, so a row that only read PATH
 \ could not tell a run stage that passes the environment from one that drops
 \ it. This row therefore gives the child tool an environment of its own - one
@@ -1089,7 +1088,7 @@ variable LONG-J
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-test" HB-TMP-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
+   s" habu-check-test" TMPDIR-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" bad.f" BAD-PATH JOIN-PATH BAD-U !
    ROOT$ s" direct-source.f" DIRECT-PATH JOIN-PATH DIRECT-U !
@@ -2155,7 +2154,7 @@ variable LONG-J
 \ Every buffer that holds the source grows to it, so a source past a megabyte
 \ passes through a file, through standard input and through SOURCE, and the
 \ engine loads the run file that holds it behind the prefix, with the origin
-\ marks. Each child gets a scratch root of its own as HB_TMP, and however it
+\ marks. Each child gets a scratch root of its own as TMPDIR, and however it
 \ ends - a verdict, a refusal or a die - it must leave that root empty.
 
 $180000 constant BIG-SOURCE-LEN
@@ -2180,7 +2179,7 @@ variable SIZED-U
 
 : SCRATCH-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN SCRATCH$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN SCRATCH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 1 constant MODE-JSON                     \ check.f --json-errors
@@ -6455,12 +6454,12 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
 : LC-RO-TMP$ ( -- ptr u8 n )
    s" ro-tmp" LC-IN-ROOT ;
 
-\ An HB_TMP check.f may not write in: its scratch directory cannot be made
+\ A TMPDIR check.f may not write in: its scratch directory cannot be made
 \ there (E-FS-IO).
 : LC-RO-TMP-RUN ( ptr u8 n -- )
    {: label:ptr labelu:n :}
    PROC-ENV-RESET
-   s" HB_TMP" >LEN LC-RO-TMP$ >LEN PROC-ENV-SET
+   s" TMPDIR" >LEN LC-RO-TMP$ >LEN PROC-ENV-SET
    LC-ROOT$ LC-ENV-CAPTURE E-FS-IO label labelu LC-SCRATCH-EXPECT ;
 
 : LC-RO-TMP-CASE ( -- )
@@ -6469,7 +6468,7 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    CHECK-ARGV-START
    s" --json-errors" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --json-errors's read-only HB_TMP" LC-RO-TMP-RUN ;
+   s" load-context: --json-errors's read-only TMPDIR" LC-RO-TMP-RUN ;
 
 \ /bin/sh sets the file mode mask to 0222, then becomes the engine ($0) with
 \ the arguments CHECK-ARGV-START begins.

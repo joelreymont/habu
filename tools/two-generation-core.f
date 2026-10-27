@@ -108,15 +108,8 @@ variable TG-COL-NAME
 : TG-TOOL$ ( -- ptr u8 n ) s" tools/native-build.f" ;
 : TG-PROBE$ ( -- ptr u8 n ) s" tools/two-generation-probe.f" ;
 
-: TG-TEMP-DIR ( -- ptr u8 n )
-   s" HB_TMP" GETENV dup 0<> if
-      s" hb-generations" MAKE-TEMP-DIR
-   else
-      2drop s" hb-generations" HB-TMP-MKDIR
-   then ;
-
 : TG-MKDIRS ( -- )
-   TG-TEMP-DIR {: a:ptr u:n :}
+   s" hb-generations" TMPDIR-MKDIR {: a:ptr u:n :}
    a TG-ROOT u BYTE-COPY u TG-ROOT-U !
    s" two-gen: products " type TG-DIR$ type cr ;
 

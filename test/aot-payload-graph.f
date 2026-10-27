@@ -40,7 +40,7 @@ variable SUBJECT-U
 \ product. So every child runs on the engine test/whitebox-child.f names, in the
 \ temp root this file already owns.
 : SETUP ( -- )
-   s" habu-payload-graph" HB-TMP-MKDIR {: path:ptr u:n :}
+   s" habu-payload-graph" TMPDIR-MKDIR {: path:ptr u:n :}
    path u CLEANUP-TREE+
    path u s" metadata.aot" ART JOIN-PATH ART-U !
    path u s" hb-partial" IMAGE JOIN-PATH IMAGE-U !

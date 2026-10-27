@@ -95,7 +95,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X NULL-PTR - . cr\n" ;
 
-\ A and D share HB_TMP and the run's out root; B gets its own HB_TMP and out root.
+\ A and D share TMPDIR and the run's out root; B gets its own TMPDIR and out root.
 \ B's output name is longer than A's and D's. These are the tier 1 round's names;
 \ HBT-TWIN-TIER0-NAMES gives the tier 0 round its own outputs.
 : HBT-TWIN-PREPARE ( -- )
@@ -113,7 +113,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-CTX HBT-TWIN-CTX$ WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
 
-\ The tier 0 round's three outputs. B keeps its HB_TMP and out root: the
+\ The tier 0 round's three outputs. B keeps its TMPDIR and out root: the
 \ builder image there does not depend on the tier (the tier reaches the maker
 \ on its stdin), so the tier 1 round already built it cold.
 : HBT-TWIN-TIER0-NAMES ( -- )
@@ -131,7 +131,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    {: aot:bool tmp:ptr tmpu:n root:ptr rootu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
    rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+

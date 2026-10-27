@@ -38,6 +38,7 @@ require src/lib/process-env.f
 
 79 constant DDC-E-USAGE
 75 constant DDC-E-CHAIN
+76 constant DDC-E-SEED
 1 constant DDC-DIVERGENT-RC
 $400000 constant DDC-BIN-CAP           \ per-artifact read buffer (bin/hb ~165 KB)
 64 constant DDC-HEX-CAP                 \ SHA256>HEX writes 32 bytes x 2 = 64 chars
@@ -106,11 +107,11 @@ variable DDC-B-U
 
 \ ---- audit orchestration (manual; runs the gforth chain + native refresh) ----
 
-create DDC-GF-ROOT FS-PATH-CAP allot         \ gforth chain HB_TMP root
+create DDC-GF-ROOT FS-PATH-CAP allot         \ gforth chain TMPDIR root
 variable DDC-GF-ROOT-U
-create DDC-RF-ROOT FS-PATH-CAP allot          \ native-refresh HB_TMP + out root
+create DDC-RF-ROOT FS-PATH-CAP allot          \ native-refresh TMPDIR + out root
 variable DDC-RF-ROOT-U
-create DDC-STDIN FS-PATH-CAP allot            \ raw gforth seed: <gf-root>/hb-stdin
+create DDC-STDIN FS-PATH-CAP allot            \ raw gforth seed, as the bootstrap names it
 variable DDC-STDIN-U
 create DDC-FXP FS-PATH-CAP allot              \ gforth-chain fixpoint: <rf-root>/hb-ddc-fixpoint
 variable DDC-FXP-U
@@ -120,10 +121,37 @@ variable DDC-FXP-U
 : DDC-GF-ROOT$ ( -- ptr u8 n ) DDC-GF-ROOT DDC-GF-ROOT-U @ ;
 : DDC-RF-ROOT$ ( -- ptr u8 n ) DDC-RF-ROOT DDC-RF-ROOT-U @ ;
 
-\ raw gforth seed path under the gforth HB_TMP root
+\ The raw gforth seed DDC-SEED! read from the bootstrap's stdout.
 : DDC-STDIN$ ( -- ptr u8 n )
-   DDC-GF-ROOT$ s" hb-stdin" DDC-STDIN JOIN-PATH DDC-STDIN-U !
    DDC-STDIN DDC-STDIN-U @ ;
+
+\ tools/bootstrap.sh CHECK_ONLY makes its seed in a directory of its own under
+\ TMPDIR and ends with one stdout line that starts with this and names it.
+: DDC-SEED-PREFIX$ ( -- ptr u8 n ) s" bootstrap check OK: " ;
+
+: DDC-SEED-MISSING ( -- )
+   s" ddc: tools/bootstrap.sh printed no `" type DDC-SEED-PREFIX$ type
+   s" <seed>` line" type cr
+   DDC-E-SEED throw ;
+
+\ The seed path from the line of the bootstrap's stdout that starts with
+\ DDC-SEED-PREFIX$, into DDC-STDIN. Output with no such line, or one whose
+\ path is empty or longer than FS-PATH-CAP, names no seed: DDC-E-SEED.
+: DDC-SEED! ( ptr u8 n -- ) {: out:ptr outu:n :}
+   DDC-SEED-PREFIX$ nip {: pu:n :}
+   0 begin dup outu <= while
+      {: start:n :}
+      out outu 10 start SPLIT-NEXT {: line:ptr lineu:n next:n valid:bool :}
+      valid line lineu DDC-SEED-PREFIX$ STARTS-WITH? and if
+         lineu pu - {: seedu:n :}
+         seedu 0= seedu FS-PATH-CAP > or if DDC-SEED-MISSING then
+         line pu + DDC-STDIN seedu BYTE-COPY
+         seedu DDC-STDIN-U !
+         exit
+      then
+      next
+   repeat drop
+   DDC-SEED-MISSING ;
 
 \ gforth-chain fixpoint path under the native-refresh root
 : DDC-FXP$ ( -- ptr u8 n )
@@ -143,19 +171,21 @@ variable DDC-FXP-U
    DDC-ERR errl LEN>N type cr
    DDC-E-CHAIN throw ;
 
-\ Run tools/bootstrap.sh CHECK_ONLY into the gforth HB_TMP root; it emits hb-stdin
-\ there and never touches the checkout's bin/hb, so the native reference stays intact.
+\ Run tools/bootstrap.sh CHECK_ONLY with the gforth root as its TMPDIR; it makes
+\ hb-stdin in a directory of its own under that root, names it on stdout
+\ (DDC-SEED!), and never touches the checkout's bin/hb, so the native reference
+\ stays intact.
 : DDC-RUN-GFORTH ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HABU_ALLOW_BOOTSTRAP" >LEN s" 1" >LEN PROC-ENV+
    s" HABU_BOOTSTRAP_CHECK_ONLY" >LEN s" 1" >LEN PROC-ENV+
-   s" HB_TMP" >LEN DDC-GF-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN DDC-GF-ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" tools/bootstrap.sh" >LEN
    DDC-OUT DDC-CAP-OUT >LEN  DDC-ERR DDC-CAP-OUT >LEN
    DDC-CHAIN-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
+     ok  OF PCAP-CAPTURED:UNMAKE drop LEN>N DDC-OUT swap DDC-SEED! ENDOF
      err OF PCAP-FAILED:UNMAKE {: outl:len errl:len rc:rc :}
              s" gforth CHECK_ONLY" errl rc DDC-CHAIN-FAIL ENDOF
    ;MATCH ;
@@ -186,7 +216,7 @@ variable DDC-FXP-U
    PROC-ARGV-RESET
    PROC-ENV-RESET
    DDC-REFRESH-ARGV+
-   s" HB_TMP" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN DDC-RF-ROOT$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN DDC-FXP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -200,8 +230,8 @@ variable DDC-FXP-U
 
 : DDC-VERIFY ( -- n )
    DDC-REQUIRE-BOOTSTRAP
-   s" habu-ddc-gf" HB-TMP-MKDIR DDC-GF-ROOT!
-   s" habu-ddc-rf" HB-TMP-MKDIR DDC-RF-ROOT!
+   s" habu-ddc-gf" TMPDIR-MKDIR DDC-GF-ROOT!
+   s" habu-ddc-rf" TMPDIR-MKDIR DDC-RF-ROOT!
    DDC-RUN-GFORTH
    DDC-RUN-REFRESH
    DDC-FXP$ s" bin/hb" DDC-LOAD

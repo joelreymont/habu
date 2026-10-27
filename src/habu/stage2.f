@@ -1,8 +1,10 @@
 \ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
-\ compiler's own source from HB_TMP/stage2-src, compiles it with the ported engine
-\ builder (ENGINE-EMIT:FORTH), wraps it in the target executable (BUILD-IMAGE), and writes the
-\ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
-\ asserts stage2 is byte-identical to the previous native stage for the same source.
+\ compiler's own source from <root>/stage2-src, compiles it with the ported
+\ engine builder (ENGINE-EMIT:FORTH), wraps it in the target executable
+\ (BUILD-IMAGE), and writes the unsigned stage2 binary to <root>/stage2-got. The
+\ root is the script argument when one is given, else TMPDIR, else /tmp. The
+\ native build-fixpoint driver asserts stage2 is byte-identical to the previous
+\ native stage for the same source.
 \
 \ The driver is a package like its sibling src/habu/stdin.f, and it has to be:
 \ its source buffer cells used to be the global names SBUF/SLEN, and `SLEN` is
@@ -24,9 +26,9 @@ s" PATH-BUF" s" -- ptr u8" TRUST
    PATH-CAP > IF s" stage2: path exceeds buffer" 74 die THEN ;
 
 : ROOT ( -- ptr u8 n )
-   s" HB_TMP" GETENV dup 0 > IF EXIT THEN
-   drop drop
    SCRIPT-ARGC 0 > IF 0 SCRIPT-ARGV$ EXIT THEN
+   s" TMPDIR" GETENV dup 0 > IF EXIT THEN
+   drop drop
    s" /tmp" ;
 
 : PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}

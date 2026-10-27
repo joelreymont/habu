@@ -11,7 +11,7 @@ package BUILD-FIXPOINT
    {: output:ptr outputu:n src:ptr srcu:n :}
    FIXTURE-WRITER:PATH$ {: writer:ptr writeru:n :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN BFT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" BFT-ARG+
    output outputu BFT-ARG+

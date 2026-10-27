@@ -1,10 +1,10 @@
 \ chain-run.f - the checked generation-chain driver.
 \
 \ Run from a source snapshot with:
-\   bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 HB_TMP
+\   bin/hb --load tools/chain-run-build.f -- host gen1 gen2 gen3 TMPDIR
 \
 \ The host is explicit and every child inherits only the caller's environment
-\ plus the private HB_TMP and the engine override, which names the engine that
+\ plus the private TMPDIR and the engine override, which names the engine that
 \ runs that build.  The host builds the first generation, the first builds the
 \ second, and the second builds a third only when the first two differ.  The
 \ result is a real exit status: a failed build or a non-fixpoint throws or dies
@@ -39,7 +39,7 @@ variable CMP-LEFT
 
 : NEED-ARGS ( -- )
    SCRIPT-ARGC 5 <> if
-      s" chain-run: host gen1 gen2 gen3 HB_TMP required" 64 die
+      s" chain-run: host gen1 gen2 gen3 TMPDIR required" 64 die
    then ;
 
 \ A native build that failed, by its exit status; its stderr names the step.
@@ -58,7 +58,7 @@ variable CMP-LEFT
    s" tools/native-build.f" CMD:ARG+
    s" --" CMD:ARG+
    out outu CMD:ARG+
-   s" HB_TMP" tmp tmpu CMD:ENV+
+   s" TMPDIR" tmp tmpu CMD:ENV+
    s" HABU_UNDER_TEST" host hostu CMD:ENV+
    s" HABU_FIXPOINT_ENGINE" host hostu CMD:ENV+
    host hostu 1800000 >MS CMD:RUN-RC MATCH result

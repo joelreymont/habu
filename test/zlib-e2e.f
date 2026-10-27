@@ -66,7 +66,7 @@ variable RC
 public
 : MAIN ( -- )
    T-RESET
-   s" zlib" HB-TMP-MKDIR {: root:ptr size:n :}
+   s" zlib" TMPDIR-MKDIR {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
    BUILD NATIVE-RUN
    s" zlib artifact: " type ROOT$ type cr

@@ -50,7 +50,7 @@ variable RC
    ROOT$ a u dst JOIN-PATH up ! ;
 
 : SETUP ( -- )
-   s" product-host-identity" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" product-host-identity" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" tree" TREE TREE-U ROOT-PATH!
    s" variant" VARIANT-ROOT VARIANT-ROOT-U ROOT-PATH!
@@ -107,7 +107,7 @@ variable RC
 : ARGV+ ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : ENV! ( -- )
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_WHITEBOX_IMAGE" >LEN NULL$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 

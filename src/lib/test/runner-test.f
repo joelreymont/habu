@@ -11,7 +11,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/process-env.f                \ a child run with an HB_TMP of its own
+require src/lib/process-env.f                \ a child run with a TMPDIR of its own
 require src/lib/fmt.f
 require src/lib/test/runner.f
 
@@ -126,7 +126,7 @@ variable GTT-OFI
 : GTT-ROOM-PREFIX$ ( -- ptr u8 n )
    s" long-root" ;
 
-\ A child that starts a root under the HB_TMP it is given, then joins and
+\ A child that starts a root under the TMPDIR it is given, then joins and
 \ writes the longest name GT-PATH takes there; room-ok says both went.
 : GTT-ROOM-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -472,35 +472,35 @@ variable GTT-OFI
    repeat
    GTT-TMP-PATH n 2dup MAKE-DIRS ;
 
-\ room.f run by bin/hb with tmp as its HB_TMP and the rest of the environment
+\ room.f run by bin/hb with tmp as its TMPDIR and the rest of the environment
 \ inherited.
 : GTT-RUN-ROOM ( ptr u8 n -- ) {: tmp:ptr tmpu:n :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV-SET
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET
    PROC-ENV-INHERIT-MISSING
    GTT-ROOM$ >LEN PROC-ARGV+
    s" bin/hb" >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    GTT-HB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME GT-STORE-RUN ;
 
-\ The refusal's detail line up to the limit, for an HB_TMP of n bytes and a
+\ The refusal's detail line up to the limit, for a TMPDIR of n bytes and a
 \ limit of max.
 : GTT-ROOM-DETAIL$ ( n n -- ptr u8 n ) {: n:n max:n :}
    SB-RESET
-   s" runner: HB_TMP is " SB-APPEND n FMT:SB-INT
+   s" runner: TMPDIR is " SB-APPEND n FMT:SB-INT
    s"  bytes; at most " SB-APPEND max FMT:SB-INT
    SB$ ;
 
-\ Both sides of the longest HB_TMP GT-START takes: at that length the root
+\ Both sides of the longest TMPDIR GT-START takes: at that length the root
 \ and a GT-NAME-MAX name fit, and one byte longer it is refused once, by name,
 \ with the report's exit.
 : GTT-TEST-ROOM ( -- )
-   GTT-ROOM-PREFIX$ nip GT-HB-TMP-MAX {: max:n :}
+   GTT-ROOM-PREFIX$ nip GT-TMPDIR-MAX {: max:n :}
    max GTT-TMP-DIR GTT-RUN-ROOM
    GT-RC@ 0 T=
    GT-OUT$ s" room-ok" CONTAINS? TTRUE
    max 1+ GTT-TMP-DIR GTT-RUN-ROOM
    GT-RC@ GT-EX-FAIL T=
-   GT-OUT$ s" FAIL: HB_TMP leaves the test root no room" CONTAINS? TTRUE
+   GT-OUT$ s" FAIL: TMPDIR leaves the test root no room" CONTAINS? TTRUE
    GT-OUT$ max 1+ max GTT-ROOM-DETAIL$ CONTAINS? TTRUE
    GT-OUT$ s" room-ok" CONTAINS? TFALSE ;
 

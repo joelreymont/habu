@@ -7,10 +7,10 @@ require ../bootstrap/cg/forth.fs
 \ Scratch paths. These were four fixed /tmp names, so two lanes running the
 \ gforth-hosted checks at the same time overwrote each other's binary and each
 \ other's captured stdout — the harness would then compare one lane's output
-\ against the other lane's build. The directory is HB_TMP when the
-\ caller sets it, as tools/bootstrap.sh does, so the periodic check keeps its artifacts in
-\ the scratch dir it already owns; otherwise /tmp with this process's pid
-\ appended, which is what a bare `gforth test/bootstrap-wide-memory.fs` gets.
+\ against the other lane's build. The directory is TMPDIR, or /tmp when TMPDIR is
+\ unset or empty, and each name has this process's pid appended: TMPDIR may be
+\ the shared one every process sees (macOS sets it per user), so a set TMPDIR
+\ does not mean a private directory.
 128 constant NF-PATH-CAP
 
 create NF-BIN NF-PATH-CAP allot   variable NF-BIN-U
@@ -27,15 +27,14 @@ NF-PATH-CAP 4 * 2 + constant NF-ARG-CAP
 NF-ARG-CAP 3 * NF-REPL-SYNTAX-CAP + constant NF-CMD-CAP
 create NF-CMD NF-CMD-CAP allot    variable NF-CMD-U
 
-: NF-HB-TMP ( -- a u )  s" HB_TMP" getenv ;
+: NF-TMPDIR ( -- a u )  s" TMPDIR" getenv ;
 
 : NF-ROOT ( -- a u )
-   NF-HB-TMP dup 0> if exit then  2drop  s" /tmp" ;
+   NF-TMPDIR dup 0> if exit then  2drop  s" /tmp" ;
 
-\ Digits of this process's pid, or nothing when HB_TMP already names a private
-\ directory. The pictured-numeric buffer is transient, so callers copy at once.
+\ Digits of this process's pid. The pictured-numeric buffer is transient, so
+\ callers copy at once.
 : NF-SUFFIX ( -- a u )
-   NF-HB-TMP nip 0> if s" " exit then
    getpid s>d <# #s [char] - hold #> ;
 
 : NF-APPEND ( buf uv a u -- )
@@ -70,7 +69,7 @@ NF-RPL NF-RPL-U s" nf-repl" NF-BUILD
 
 \ Append one complete shell argument. The command contains only fixture-owned
 \ paths; quoting each as one argument keeps whitespace and shell punctuation in
-\ HB_TMP from changing argv or the surrounding redirections.
+\ TMPDIR from changing argv or the surrounding redirections.
 : NF-ARG, ( a u -- )
    s" '" NF-CMD,
    bounds ?do

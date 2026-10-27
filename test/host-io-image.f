@@ -69,7 +69,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" host-io-image-test" HB-TMP-MKDIR {: path:ptr size:n :}
+   s" host-io-image-test" TMPDIR-MKDIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !

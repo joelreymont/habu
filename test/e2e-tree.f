@@ -48,9 +48,9 @@ public
    SOURCE-ROOT:CWD$ rel relu TARGET JOIN-PATH TARGET-U !
    TARGET TARGET-U @ rel relu AT-A COPY-FILE-STREAM ;
 
-\ The tree named n under HB_TMP, with src and tools linked and test/ made.
+\ The tree named n under TMPDIR, with src and tools linked and test/ made.
 : TREE ( ptr u8 n -- )
-   HB-TMP-MKDIR {: a:ptr u:n :}
+   TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" src" LINK s" tools" LINK
    s" test" AT-A MAKE-DIRS ;

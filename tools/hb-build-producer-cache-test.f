@@ -80,7 +80,7 @@ variable RC
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-producer-cache" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-producer-cache" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ TREE-COPY:BUILD-SOURCES
@@ -108,7 +108,7 @@ variable RC
    APP$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    OUT$ >LEN PROC-ARGV+
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    \ Mask a parent override: the invoking absolute engine is the CLI default.
    s" HABU_FIXPOINT_ENGINE" >LEN s" " >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
@@ -123,7 +123,7 @@ variable RC
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-producer-race-test.f" >LEN PROC-ARGV+
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN ROOT$ >LEN
@@ -182,7 +182,7 @@ variable RC
    APP$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    OUT$ >LEN PROC-ARGV+
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HB$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING

@@ -3,7 +3,7 @@
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
 \
-\ initdb makes a trust-authentication cluster under HB_TMP and this process
+\ initdb makes a trust-authentication cluster under TMPDIR and this process
 \ starts postgres on it, listening on a Unix-domain socket only
 \ (listen_addresses=''), so rows running beside each other have no TCP port to
 \ collide on. The case files - the script arguments, or else src/lib/pg-test.f and
@@ -58,12 +58,13 @@
 \ wait for initdb, or send it SIGTERM (it then ends its step and removes
 \ <root>/data), then remove them.
 \
-\ THE SOCKET DIRECTORY IS NOT UNDER HB_TMP. sun_path holds 104 bytes on macOS
-\ and 108 on Linux, and a pool slot's HB_TMP takes about 100 of them: a socket
-\ there makes postgres refuse to start with `Unix-domain socket path ... is too
-\ long (maximum 103 bytes)`. Under the gate pool the socket is in HB_SOCK_TMP,
-\ the short directory the pool made for this row and removes with it
-\ (test/gate-pool.f). Run on its own, this process makes one under TMPDIR, as
+\ UNDER THE POOL THE SOCKET DIRECTORY IS NOT UNDER TMPDIR. sun_path holds 104
+\ bytes on macOS and 108 on Linux, and a pool slot's TMPDIR takes about 100 of
+\ them: a socket there makes postgres refuse to start with `Unix-domain socket
+\ path ... is too long (maximum 103 bytes)`. Under the gate pool the socket is
+\ in HB_SOCK_TMP, the short directory the pool made for this row and removes
+\ with it (test/gate-pool.f). Run on its own, with no HB_SOCK_TMP, this process
+\ makes the socket directory under its TMPDIR beside the cluster's, as
 \ src/lib/fs-mutate-test.f FMT-ROOT! does for its socket.
 \
 \ initdb and postgres on PATH are a gate requirement on every host
@@ -185,7 +186,7 @@ DEFAULT-CASE-MS CASE-MS !
 \ reuses, so each is copied out before the other is made. The pool's socket
 \ directory is the pool's to remove.
 : MAKE-DIRS ( -- )
-   s" habu-pg" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-pg" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    s" HB_SOCK_TMP" GETENV dup 0 > if

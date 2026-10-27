@@ -3,7 +3,7 @@
 \     bin/hb --load test/gate-signal-test.f
 \
 \ THE SUBJECT is the gate itself. test/gate-signal-root.f is test/run.f's own
-\ adapter on a one-row registry, started here as a child with a private HB_TMP.
+\ adapter on a one-row registry, started here as a child with a private TMPDIR.
 \ Its row (test/gate-signal-row.f) runs a second engine, and that one starts a
 \ burst of writers, each a process group of its own that writes under the
 \ row's scratch and then sleeps 20 s. The test signals the root the moment both
@@ -29,7 +29,7 @@
 \  5. SCRATCH IN USE. A tree removed while a process that can still write into
 \     it lives comes back: every writer here makes its directory with
 \     `mkdir -p` and then a file in it.
-\     Asserted: the root's HB_TMP is empty when the root has ended and still
+\     Asserted: the root's TMPDIR is empty when the root has ended and still
 \     empty once every process is gone.
 \  6. A STATUS THAT HIDES THE SIGNAL. A root that cleans up and then exits 0,
 \     or 1 like a red run, tells its caller the run finished.
@@ -149,7 +149,7 @@ PROC-NO-FD ROOT-WATCH !
 
 \ ---- the scratch ------------------------------------------------------------
 
-\ TMP, under this test's runner root, is the HB_TMP a root is handed, so what
+\ TMP, under this test's runner root, is the TMPDIR a root is handed, so what
 \ a root leaves is whatever TMP holds; the root's own output sits beside it.
 : PATHS! ( -- )
    GT-ROOT s" tmp" TMP JOIN-PATH TMP-U !
@@ -393,7 +393,7 @@ variable STAT-PATH-U
 : ROOT-START ( -- )
    OPEN-PIPE
    ROOT-ARGV {: exe:ptr exeu:n :}
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    REPORT-ENV
    PROC-ENV-INHERIT-MISSING
    OPEN-NULL OPEN-LOG {: in:n log:n :}

@@ -538,7 +538,7 @@ private
 \ verifier's, the engine's - ends the process without unwinding to
 \ CHK-TEMP-CLEAN, which forgets the root once it has removed it.
 : CHK-MAKE-TEMP ( -- )
-   s" habu-check" HB-TMP-MKDIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
+   s" habu-check" TMPDIR-MKDIR SOURCE-ROOT:CANON-OS 0= if E-FS-IO throw then
    CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
    CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
@@ -1517,7 +1517,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    CHK-DEADLINE @ dup 0= if drop CHK-DEADLINE-MS then >MS ;
 
 \ The checked program runs with check.f's own environment: PATH for a TOOL
-\ lookup, HOME and HB_TMP for a scratch tree. An env-less spawn hands it a
+\ lookup, HOME and TMPDIR for a scratch tree. An env-less spawn hands it a
 \ one-NULL envp, and a program that resolves an executable through $PATH then
 \ fails in the run stage while `--load` of the same file passes.
 \
@@ -2010,7 +2010,7 @@ private
 \ engine selection the resolver refused (src/lib/engine-candidate.f: a path that
 \ names no executable, E-FS-OPEN, or one the file system refuses, E-FS-PATH),
 \ which CHK-ENGINE$ records where a child starts, as that, and any other, such
-\ as a scratch directory HB_TMP will not hold, by its code. The option is read
+\ as a scratch directory TMPDIR will not hold, by its code. The option is read
 \ from the command line: a run whose cleanup failed clears the session's.
 : CHK-MAIN-UNCAUGHT ( n -- n )
    {: rc:n :}

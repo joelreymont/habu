@@ -77,16 +77,16 @@ On spark, from a tree whose `bin/hb` is the candidate
 
 ```sh
 bin/hb --load test/run.f                                          # gate
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
+HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
   $HOST --load tools/native-build.f -- $OUT                       # rebuild
-HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed>  # chain
+TMPDIR=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed>  # chain
 ```
 
 If an engine is too old to build current `master`, recover through Gforth
 ([docs/bootstrap.md](docs/bootstrap.md)) and rebuild from that:
 
 ```sh
-HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=linux-aarch64 HB_TMP=$TMP \
+HABU_ALLOW_BOOTSTRAP=1 HABU_TARGET=linux-aarch64 TMPDIR=$TMP \
   GFORTH=$(command -v gforth) tools/bootstrap.sh
 ```
 

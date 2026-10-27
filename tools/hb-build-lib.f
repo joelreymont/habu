@@ -387,29 +387,17 @@ variable HBB-APP-BUILDER-U
    HBB-SRC$ FILE? 0= if s" hb-build: no such source" HBB-NOINPUT-RC die then
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
-\ A caller's HB_TMP has to be usable before HB-TMP-MKDIR builds under it: a
-\ plain file there is a caller mistake and dies loudly, a missing directory is
-\ made. Which base a tree lands in is HB-TMP-MKDIR's answer, not this word's.
-: HBB-CHECK-ENV-TMP ( -- )
-   s" HB_TMP" GETENV dup 0= if 2drop exit then
-   2dup EXISTS? if
-      2dup DIR? 0= if s" hb-build: HB_TMP is not a directory" HBB-USAGE-RC die then
-   else
-      2dup MAKE-DIR
-   then
-   2drop ;
-
 \ Every build gets a private directory. The engine's build mode writes fixed
-\ names into the HB_TMP it is handed (src/habu/aot-lib.f `hb-aot-got`,
-\ `hb-aot-obj`; tools/app-build.f `hb-build-got`), so two builds sharing one
-\ HB_TMP - every hb-build the gate pool runs at once - read each other's
-\ artifacts: one saw its image vanish (E-BUILD-PATH), another ran a stranger's
-\ application. A caller's HB_TMP is the base the private directory goes under.
+\ names into the TMPDIR it is handed (src/habu/aot-common.f `hb-aot-got`,
+\ `hb-aot-obj`), so two builds sharing one TMPDIR - every hb-build the gate
+\ pool runs at once - read each other's artifacts: one saw its image vanish
+\ (E-BUILD-PATH), another ran a stranger's application. A caller's TMPDIR is
+\ the base the private directory goes under; TMPDIR-MKDIR refuses one that is
+\ missing or not a directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    CLEANUP-RESET
-   HBB-CHECK-ENV-TMP
-   s" hb-build-native" HB-TMP-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
+   s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 \ The out root is made before any maker runs, so a root that cannot be made
 \ fails the build up front as a path error rather than midway as a file error.
@@ -872,7 +860,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    backup 0<> if backup throw then
    stage 0<> if stage throw then ;
 
-\ The engine the child wrote under HB_TMP may be on another filesystem; it is
+\ The engine the child wrote under TMPDIR may be on another filesystem; it is
 \ copied.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}

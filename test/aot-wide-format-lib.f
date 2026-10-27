@@ -5,7 +5,7 @@
 \ package AOT-WIDE-FORMAT and runs the probes it owns.
 \
 \ Each probe spawns test/aot-wid-build.f in a child process with one HABU_AOT_*
-\ mode and a private HB_TMP. The mode compiles its fixture inside a capture window
+\ mode and a private TMPDIR. The mode compiles its fixture inside a capture window
 \ taken by the real AOT-CAPTURE:CAPTURE entry point, and the builder reads its
 \ own capture tables and DIES unless the capture holds what the mode is for; the
 \ lines a row matches are printed only on the far side of those refusals.
@@ -53,7 +53,7 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
 \ One tree per build, each registered for cleanup, so "the image exists" is a
 \ statement about the build that just ran and never about a leftover.
 : SETUP ( -- )
-   s" habu-aot-wide" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wide" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HB-BUF JOIN-PATH HB-U ! ;
@@ -63,11 +63,11 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    s" --load" >LEN PROC-ARGV+
    s" test/aot-wid-build.f" >LEN PROC-ARGV+ ;
 
-\ The builder's environment: HB_TMP names this row's tree, and each knob a probe
+\ The builder's environment: TMPDIR names this row's tree, and each knob a probe
 \ adds selects a mode or a forge (test/aot-wid-build.f lists them).
 : BUILD-OPEN ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+ ;
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+ ;
 
 : KNOB+ ( ptr u8 n ptr u8 n -- ) {: k:ptr ku:n v:ptr vu:n :}
    k ku >LEN v vu >LEN PROC-ENV+ ;

@@ -114,7 +114,7 @@ variable TPU
 
 : TMP-PATH ( ptr u8 n -- ptr u8 n )
    TPU ! TPS!
-   s" HB_TMP" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
+   s" TMPDIR" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
    TPU @ TMP-PATH-CHECK
    TPQ @ 0 ?do TPP@ i ZBYTE@ TPB i ZBYTE! loop
    $2F TPB TPQ @ ZBYTE!

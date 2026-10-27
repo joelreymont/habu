@@ -2,7 +2,7 @@
 \ tok-imm? follows the primary name binding and ignores used publics.
 \ Runtime CREATE dispatches through the captured handler. A defining word
 \ calls it with an existing user stack and source; the call must return with
-\ that stack intact. The emitted ELFs remain in HB_TMP as hb-x64-kernel-token,
+\ that stack intact. The emitted ELFs remain in TMPDIR as hb-x64-kernel-token,
 \ -tok-imm and -create.
 require test/x86-64-boot-harness.f
 require src/os/linux-x86-64/target-layout.f

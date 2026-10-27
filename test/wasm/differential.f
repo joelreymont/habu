@@ -175,7 +175,7 @@ public
 
 \ ---- the rows --------------------------------------------------------------------
 : SETUP ( -- )
-   s" wasm-differential" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" wasm-differential" TMPDIR-MKDIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm differential: sources and modules in " type  DIR u type cr ;
 

@@ -1,11 +1,11 @@
 \ tmp-path-test.f - TMP-PATH holds a PATH-CAP path and no length wraps past it.
 \
-\ TMP-PATH (src/os/env-base.f) answers HB_TMP, a slash and the caller's name in
+\ TMP-PATH (src/os/env-base.f) answers TMPDIR, a slash and the caller's name in
 \ one buffer of PATH-CAP bytes, and ends the process with exit 76 when they do
 \ not fit. It can fail four ways: an exact fill refused, one byte too many
 \ admitted, a negative length taken as room, and a length whose sum with the
 \ root wraps back into range. The refusal is a die, so each case is a child
-\ engine (test/tmp-path-child.f) whose HB_TMP is this test's own directory.
+\ engine (test/tmp-path-child.f) whose TMPDIR is this test's own directory.
 \
 \ Run: bin/hb --load test/tmp-path-test.f
 
@@ -35,14 +35,14 @@ create ERR IO-CAP allot
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-tmp-path" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-tmp-path" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+ ;
 
 : RUN ( ptr u8 n -- n n n ) {: case:ptr caseu:n :}   \ outu erru rc
    ENGINE-CANDIDATE:PATH$ {: engine:ptr engineu:n :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/tmp-path-child.f" >LEN PROC-ARGV+

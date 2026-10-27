@@ -143,7 +143,7 @@ CAST: CONTRACT-XT ( n -- [ n -- ptr u8 n bool ] )
    a ART u BYTE-COPY
    u ART-U !
    ART 6 cells + CELL-VIEW @ SERIAL MARK-SERIAL @ - T=
-   s" checker-unit-codec-e2e" HB-TMP-MKDIR {: root:ptr len:n :}
+   s" checker-unit-codec-e2e" TMPDIR-MKDIR {: root:ptr len:n :}
    root ROOT len BYTE-COPY len ROOT-U !
    ROOT$ s" unit-nbr.checker-unit" PATH JOIN-PATH
    PATH swap ART ART-U @ WRITE-ALL ;

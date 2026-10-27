@@ -12,7 +12,7 @@
 \ engine is emitted by the same BF-EMIT-ENGINE the build calls twice.
 \
 \ Run:  bin/hb --load tools/aot-chain-bake.f -- <artifact> <producer-engine>
-\ Leaves <HB_TMP>/hb-chain and prints `aot-chain-bake: hb-chain ready`.
+\ Leaves <TMPDIR>/hb-chain and prints `aot-chain-bake: hb-chain ready`.
 
 require src/lib/errors.f
 require src/lib/string.f

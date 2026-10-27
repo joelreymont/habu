@@ -52,7 +52,7 @@ variable IMAGE-U
    GE-HB-RESET
    linker linkeru GE-ARGV+
    s" --" GE-ARG+ src srcu GE-ARG+ s" 0" GE-ARG+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    linker linkeru maker makeru TIMEOUT-MS GE-RUN-STDIN
    s" preloaded runtime build" GE-EXPECT-OK
    IMAGE$ EXECUTABLE? 0= if s" preloaded runtime image missing" GE-FAIL then ;

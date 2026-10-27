@@ -37,7 +37,7 @@
 \                  got (tools/pkg-wid-probe.f) and probes that one.
 \
 \ How it is proven: test/aot-wid-build.f is spawned in a child process with a
-\ private HB_TMP; it builds a throwaway `hb-pwid` engine whose capture window
+\ private TMPDIR; it builds a throwaway `hb-pwid` engine whose capture window
 \ holds two packages of the fixture's own - one sealed with `prot-wid-add`, one
 \ left open - and checks the capture's contract against the live band while it is
 \ still there to check. This suite then probes hb-pwid on the real batch paths,
@@ -183,7 +183,7 @@ create COLD-DST FS-PATH-CAP allot
 
 : SETUP ( -- )
    CLEANUP-RESET
-   s" habu-aot-wid" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U !
@@ -198,7 +198,7 @@ create COLD-DST FS-PATH-CAP allot
 \ Each refusal build gets its own tree, so "no engine appeared" is a statement
 \ about that build and not about a leftover from the good one.
 : REFUSE-SETUP ( -- )
-   s" habu-aot-wid-refuse" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid-refuse" TMPDIR-MKDIR {: a:ptr u:n :}
    a REFUSE-BUF u BYTE-COPY  u REFUSE-U !
    REFUSE-ROOT$ CLEANUP-TREE+
    REFUSE-ROOT$ s" hb-pwid" REFUSE-HB-BUF JOIN-PATH REFUSE-HB-U ! ;
@@ -206,7 +206,7 @@ create COLD-DST FS-PATH-CAP allot
 \ Same rule for the boot-gate build: its own tree, so the engine a probe boots
 \ can only be the one that build wrote.
 : GATE-SETUP ( -- )
-   s" habu-aot-wid-gate" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-wid-gate" TMPDIR-MKDIR {: a:ptr u:n :}
    a GATE-BUF u BYTE-COPY  u GATE-U !
    GATE-ROOT$ CLEANUP-TREE+
    GATE-ROOT$ s" hb-pwid" GATE-HB-BUF JOIN-PATH GATE-HB-U ! ;
@@ -218,7 +218,7 @@ create NUM-BUF 32 allot   variable NUM-U
    a NUM-BUF u BYTE-COPY  u NUM-U ! ;
 : NUM$ ( -- ptr u8 n ) NUM-BUF NUM-U @ ;
 
-\ --- spawn the variant builder as a child with a private HB_TMP ---
+\ --- spawn the variant builder as a child with a private TMPDIR ---
 : BUILDER-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -237,7 +237,7 @@ create NUM-BUF 32 allot   variable NUM-U
 
 : BUILD-VARIANT ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
 \ A refusal build: the named knob carries a value the capture must reject.
@@ -245,7 +245,7 @@ create NUM-BUF 32 allot   variable NUM-U
    REFUSE-SETUP
    v NUM$!
    PROC-ENV-RESET
-   s" HB_TMP" >LEN REFUSE-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN REFUSE-ROOT$ >LEN PROC-ENV+
    k ku >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
@@ -253,7 +253,7 @@ create NUM-BUF 32 allot   variable NUM-U
 : BUILD-GATE ( -- )
    GATE-SETUP
    PROC-ENV-RESET
-   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN GATE-ROOT$ >LEN PROC-ENV+
    s" HABU_AOT_GATE" >LEN  s" 1" >LEN PROC-ENV+
    RUN-BUILDER ;
 
@@ -265,7 +265,7 @@ create NUM-BUF 32 allot   variable NUM-U
 : REWRITE-GATE-FORGED ( ptr u8 n n -- ) {: k:ptr ku:n v:n :}
    v NUM$!
    PROC-ENV-RESET
-   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN GATE-ROOT$ >LEN PROC-ENV+
    s" HABU_AOT_REWRITE" >LEN  s" 1" >LEN PROC-ENV+
    k ku >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
@@ -646,7 +646,7 @@ variable SOURCE-WID                  \ the ordinal the capture gave AWBGATE, as 
    GATE-SETUP
    v NUM$!
    PROC-ENV-RESET
-   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN GATE-ROOT$ >LEN PROC-ENV+
    s" HABU_AOT_GATE" >LEN  s" 1" >LEN PROC-ENV+
    s" HABU_AOT_WID_NARROW" >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;

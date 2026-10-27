@@ -253,7 +253,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-hb-build" HB-TMP-MKDIR {: a:ptr u :}
+   s" habu-hb-build" TMPDIR-MKDIR {: a:ptr u :}
    a u HBT-ROOT-BUF HBT-ROOT-U HBT-COPY!
    HBT-ROOT CLEANUP-TREE+
    HBT-ROOT s" hbtmp" HBT-TMP-BUF HBT-TMP-U HBT-PATH!
@@ -337,7 +337,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
    {: tmp:ptr tmpu:n eng:ptr engu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
    engu 0 > if
       s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+
    then
@@ -358,7 +358,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 
 : HBT-TIMEOUT-ENV ( ptr u8 n -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" TMPDIR" >LEN HBT-TMP >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-AOT-OUT >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN 2swap >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
@@ -438,12 +438,12 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 \ child, the maker, the object store and the install; for a REPL build the
 \ app-build child and the install), without the library load a CLI spawn
 \ pays before it reads argv. What the CLI wraps around them does not
-\ run here: HBB-PREPARE-TMP's private directory (the children's HB_TMP is
+\ run here: HBB-PREPARE-TMP's private directory (the children's TMPDIR is
 \ HBT-TMP), HBB-BUILD-CLI's exit mapping and HBB-CLEANUP. A refusal ends the
 \ row in a die, the child's diagnostic on stderr: a lint refusal in
 \ HBB-FINISH-TOOL's, a maker refusal in HBB-FINISH-MAKER's. A row spawns the
 \ CLI only where the CLI is the subject: its options (CLI-REPORT), a
-\ missing HB_TMP made and a lint refusal passed through (HBT-BUILD-MISSING-TMP),
+\ missing TMPDIR refused and a lint refusal passed through (HBT-BUILD-MISSING-TMP),
 \ the cache path error's exit and JSON bytes (tools/hb-build-cli-errors-test.f),
 \ a maker refusal passed through (below) and the maker deadline and its
 \ override (the timeout rows).

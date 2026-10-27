@@ -40,7 +40,7 @@ TASK:SEMAPHORE ZIP-START
 : FAIL-PATH$ ( -- ptr u8 n ) s" gone/edit.zip" PATH$ ;
 
 : SETUP ( -- )
-   s" habu-zip" HB-TMP-MKDIR {: dir:ptr len:n :}
+   s" habu-zip" TMPDIR-MKDIR {: dir:ptr len:n :}
    dir BASE len BYTE-COPY len BASE-LEN !
    BASE$ CLEANUP-TREE+ INPUT$ ORIGINAL$ WRITE-ALL
    OTHER$ ORIGINAL$ WRITE-ALL ;

@@ -64,12 +64,7 @@ if [[ "$PROBE_RC" -ne 0 || ( "$PROBE_OUT" != $'1 \n' && "$PROBE_OUT" != "1 " ) ]
   exit 69
 fi
 
-if [[ -n "${HB_TMP:-}" ]]; then
-  T="$HB_TMP"
-  mkdir -p "$T"
-else
-  T="$(mktemp -d "${TMPDIR:-/tmp}/habu-gforth.XXXXXX")"
-fi
+T="$(mktemp -d "${TMPDIR:-/tmp}/habu-gforth.XXXXXX")"
 
 # The compiler's load order after the checker core. Up to lower-cert-seal.f it
 # is the engine prefix's own order (bootstrap/cg/forth.fs PFX-LOAD-CORE-FILES):
@@ -498,7 +493,7 @@ emit_src "$T/stage2-src" src/habu/stage2.f stage0
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 emit_src "$T/stage2-src" src/habu/stage2.f native
 
-env HB_TMP="$T" "$T/hb-stage0" -- "$T"
+env TMPDIR="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stage"
 chmod +x "$T/hb-stage"
@@ -506,7 +501,7 @@ chmod +x "$T/hb-stage"
 found=0
 for gen in 1 2 3 4; do
   rm -f "$T/stage2-got"
-  env HB_TMP="$T" "$T/hb-stage" -- "$T"
+  env TMPDIR="$T" "$T/hb-stage" -- "$T"
   test -f "$T/stage2-got"
   if cmp -s "$T/hb-stage" "$T/stage2-got"; then
     found=1
@@ -523,12 +518,12 @@ fi
 
 emit_src "$T/stage2-src" src/habu/stdin.f
 rm -f "$T/stage2-got" "$T/hb-stdin-got"
-env HB_TMP="$T" "$T/hb-stage" -- "$T"
+env TMPDIR="$T" "$T/hb-stage" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stdin-mk"
 chmod +x "$T/hb-stdin-mk"
 
-env HB_TMP="$T" "$T/hb-stdin-mk"
+env TMPDIR="$T" "$T/hb-stdin-mk"
 test -f "$T/hb-stdin-got"
 mv "$T/hb-stdin-got" "$T/hb-stdin"
 chmod +x "$T/hb-stdin"
@@ -565,7 +560,7 @@ restore_hb_on_failure() {
 }
 trap restore_hb_on_failure EXIT
 mv "$T/hb-stdin" bin/hb
-env HB_TMP="$T/native" bin/hb --load \
+env TMPDIR="$T/native" bin/hb --load \
   src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
   src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force

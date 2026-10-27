@@ -152,7 +152,7 @@ variable RC
 public
 : RUN ( -- )
    T-RESET
-   s" xml-owner-e2e" HB-TMP-MKDIR {: root:ptr size:n :}
+   s" xml-owner-e2e" TMPDIR-MKDIR {: root:ptr size:n :}
    root ROOT size BYTE-COPY size ROOT-U !
    SOURCE-RUN REFUSALS BUILD NATIVE-RUN
    UTF8-ARTIFACT true UTF16-ARTIFACT false UTF16-ARTIFACT

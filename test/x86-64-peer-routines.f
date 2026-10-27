@@ -5,7 +5,7 @@
 \ definition - declare, select, fixpoint, emit at the image's own
 \ address, retire - and the routine is wrapped in test/x86-64-peer-harness.f's
 \ checking entry with the answers its definition must give. Each fixture writes
-\ one positive image into $HB_TMP/x64-routines, and each compare fixture one per
+\ one positive image into $TMPDIR/x64-routines, and each compare fixture one per
 \ relation; diff also writes a negative harness image whose first case expects
 \ a wrong answer. The manifest lists each file with its expected status;
 \ test/x86-64-peer-image-fixture.f names the peer images.

@@ -132,7 +132,7 @@ variable HBT-INST-FILES
 
 \ A PAIR PUBLICATION THAT FAILS LEAVES -o AND ITS MAP AS THEY WERE. An AOT
 \ install publishes the maker's executable and map together (HBB-PAIR-RUN).
-\ The maker's output is planted under HB_TMP: without its map the install
+\ The maker's output is planted under TMPDIR: without its map the install
 \ refuses before anything moves, unreadable it cannot be copied, and a
 \ directory at -o refuses the executable's rename after the new map was
 \ staged. A sibling left behind is an extra file beside -o and its map.
@@ -636,6 +636,24 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
    HBB-ERR-BUF erru s" expected: i64" CONTAINS? TTRUE
    HBB-ERR-BUF erru s" actual: bool" CONTAINS? TTRUE ;
 
+\ The line TMPDIR-MKDIR prints for a TMPDIR that is no directory.
+: HBT-NOT-DIR-LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" hb: TMPDIR is not a directory: " SB-APPEND
+   a u SB-APPEND
+   S\" \n" SB-APPEND
+   SB$ ;
+
+\ The line hb prints for a throw nothing caught.
+: HBT-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET
+   s" hb: uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ ;
+
+\ A missing TMPDIR is refused by name before the build starts, and nothing is
+\ made: not the directory, not the image. With a usable TMPDIR the same program
+\ reaches the lint child, whose refusal the CLI passes through.
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
    HBT-NEW-TMP HBT-ARGV-BASE-TMP
@@ -643,8 +661,16 @@ create HBT-LOUD-SRC-BUF FS-PATH-CAP allot
    HBT-RUN-HB-BUILD 0 T<>
    {: outu erru :}
    HBT-OUT outu HBT-EMPTY$ T$=
-   HBT-ERR erru s" E-AOT-UNSUPPORTED" CONTAINS? TTRUE
-   HBT-NEW-TMP DIR? TTRUE
+   HBT-ERR erru HBT-NEW-TMP HBT-NOT-DIR-LINE$ CONTAINS? TTRUE
+   HBT-ERR erru E-FS-DIR HBT-UNCAUGHT$ CONTAINS? TTRUE
+   HBT-NEW-TMP EXISTS? TFALSE
+   HBT-BAD-OUT EXISTS? TFALSE
+   HBT-ARGV-BASE
+   HBT-ADD-BAD
+   HBT-RUN-HB-BUILD 0 T<>
+   {: lintoutu linterru :}
+   HBT-OUT lintoutu HBT-EMPTY$ T$=
+   HBT-ERR linterru s" E-AOT-UNSUPPORTED" CONTAINS? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
 
 \ Public so the driver below runs it with the package CLOSED: the subtests

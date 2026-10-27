@@ -161,7 +161,7 @@ create LOGTXT CAP allot
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-boot-census" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-boot-census" TMPDIR-MKDIR {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+

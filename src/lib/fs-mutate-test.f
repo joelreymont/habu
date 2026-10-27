@@ -8,9 +8,9 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/span.f
 require src/lib/fs-mutate.f
-require src/lib/fmt.f                               \ the HB_TMP child's uncaught code
+require src/lib/fmt.f                               \ the TMPDIR child's uncaught code
 require src/lib/process-env.f
-require src/lib/test/outcome.f                      \ the HB_TMP child's outcome
+require src/lib/test/outcome.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
 
@@ -220,15 +220,15 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
 : FMT-TEMP-BASE ( -- ptr u8 n )
    FMT-ROOT$ ;
 
-\ Not HB-TMP-MKDIR: REMOVE-SPECIAL-TREE binds a real Unix socket under this
-\ root, at <root>/remove-tree/root.txt, and sun_path holds 107 bytes on Linux
-\ and 103 on macOS. A pool slot HB_TMP is 97 bytes on its own (measured: the
-\ listener never binds, WAIT-LISTENER throws E-FS-IO). Under a gate pool the
-\ root is the slot's HB_SOCK_TMP, the short directory the pool makes for a
-\ child's sockets under TMPDIR and removes when the slot retires or is killed
+\ HB_SOCK_TMP before TMPDIR: REMOVE-SPECIAL-TREE binds a real Unix socket under
+\ this root, at <root>/remove-tree/root.txt, and sun_path holds 107 bytes on
+\ Linux and 103 on macOS. A pool slot's TMPDIR is 97 bytes on its own
+\ (measured: the listener never binds, WAIT-LISTENER throws E-FS-IO). Under a
+\ gate pool the root is the slot's HB_SOCK_TMP, the short directory the pool
+\ makes for a child's sockets and removes when the slot retires or is killed
 \ (test/gate-pool.f GT-POOL-CHILD-SOCK!), so a row the pool kills leaves no
 \ root behind; the socket path there is about 100 bytes under macOS's default
-\ TMPDIR. Run on its own, the root takes the short base TMPDIR, then /tmp.
+\ TMPDIR. Run on its own, the root goes under TMPDIR, then /tmp.
 \ Either way FMT-PREPARE registers it as a tree, so a run that throws before
 \ FMT-TEST-CLEANUP still loses the root at exit with whatever is left in it.
 : FMT-ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u :}
@@ -424,7 +424,7 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 
 \ A directory whose canonical path is n bytes: the test root's canonical
 \ spelling, then names of `a` with a slash every 201st byte, so no name passes
-\ NAME_MAX, the last byte never a slash. HB_TMP's length is its canonical
+\ NAME_MAX, the last byte never a slash. TMPDIR's length is its canonical
 \ spelling's, which only an existing directory has. The first name goes to the
 \ cleanup registry, so FMT-TEST-CLEANUP leaves the root empty.
 : FMT-DEEP-DIR ( n -- ptr u8 n )
@@ -688,7 +688,7 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
 : FMT-TEST-TEMPS ( -- )
    FMT-TEMP-BASE s" one" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
    FMT-TEMP-BASE s" two" MAKE-TEMP-DIR 2dup DIR? TTRUE CLEANUP-DIR+
-   s" habu-fs-mut" HB-TMP-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
+   s" habu-fs-mut" TMPDIR-MKDIR 2dup DIR? TTRUE CLEANUP-DIR+ ;
 
 : FMT-TEST-TEMP-COLLISION ( -- )
    FMT-TEMP-BASE s" collide" FMT-TMP-SEED 0 FS-MUT-BUILD-TEMP-TRY
@@ -735,14 +735,14 @@ FS-PATH-CAP SPAN-BUFFER: FMT-LINK-READ-BUF     \ READ-LINK's destination is a sp
    FMT-TEMP-EXHAUST-CLEAN ;
 
 \ ---- the temp roots a child reads from its environment ------------------------
-\ A child bin/hb, because HB_TMP and TMPDIR are read from the process
-\ environment, which a running process does not change for itself. A child
-\ whose HB_TMP cannot hold a temp directory exits nonzero with one stderr line
-\ that names HB_TMP and the value, and the uncaught code. A child whose HB_TMP
-\ and TMPDIR reach a directory through a symlink, as macOS's /tmp is
-\ /private/tmp, makes its temp directories under the canonical spelling. The
+\ A child bin/hb, because TMPDIR is read from the process environment, which a
+\ running process does not change for itself. A child whose TMPDIR cannot hold
+\ a temp directory exits nonzero with one stderr line that names TMPDIR and the
+\ value, and the uncaught code. A child whose TMPDIR reaches a directory
+\ through a symlink, as macOS's /tmp is /private/tmp, makes its temp
+\ directory under the canonical spelling. The
 \ paths and the children's programs are under this test's root.
-package FMT-HB-TMP
+package FMT-TMPDIR
 private
 
 $1000 constant CAP
@@ -777,22 +777,21 @@ variable WANT-U
    NOCANON-BUF NOCANON-U @ ;
 
 : PATHS! ( -- )
-   FMT-ROOT$ s" no-such-hb-tmp" MISSING-BUF JOIN-PATH MISSING-U !
-   FMT-ROOT$ s" hb-tmp-child.f" PROG-BUF JOIN-PATH PROG-U !
-   FMT-ROOT$ s" hb-tmp-canon.f" CANON-PROG-BUF JOIN-PATH CANON-PROG-U ! ;
+   FMT-ROOT$ s" no-such-tmpdir" MISSING-BUF JOIN-PATH MISSING-U !
+   FMT-ROOT$ s" tmpdir-child.f" PROG-BUF JOIN-PATH PROG-U !
+   FMT-ROOT$ s" tmpdir-canon.f" CANON-PROG-BUF JOIN-PATH CANON-PROG-U ! ;
 
 : PROG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\ns\q hb-tmp-child\q HB-TMP-MKDIR 2drop\n0 0 0 die\n" ;
+   S\" require src/lib/fs-mutate.f\ns\q tmpdir-child\q TMPDIR-MKDIR 2drop\n0 0 0 die\n" ;
 
-\ Prints the directory HB-TMP-MKDIR makes, then the one TMPDIR-MKDIR makes, a
-\ line each.
+\ Prints the directory TMPDIR-MKDIR makes and a newline.
 : CANON-PROG-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q HB-TMP-MKDIR LINE\ns\q canon\q TMPDIR-MKDIR LINE\n" ;
+   S\" require src/lib/fs-mutate.f\n: LINE ( ptr u8 n -- ) {: a:ptr u :} 1 a u write drop 1 S\\\q \\n\q write drop ;\ns\q canon\q TMPDIR-MKDIR LINE\n" ;
 
-\ A directory one byte past the longest HB_TMP with room for the temp name
-\ PROG-SRC$ asks for, whose prefix is hb-tmp-child.
+\ A directory one byte past the longest TMPDIR with room for the temp name
+\ PROG-SRC$ asks for, whose prefix is tmpdir-child.
 : LONG$ ( -- ptr u8 n )
-   s" hb-tmp-child" nip TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
+   s" tmpdir-child" nip TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
 
 \ One level below NOCANON$: a directory of LINK-NAME-U bytes of `a` and a link L
 \ beside it that names it, and NOCANON$ then names L.
@@ -818,11 +817,11 @@ variable WANT-U
       NOCANON-LEVEL LINK-NAME-U 1+ +
    repeat drop ;
 
-\ The child running this program, with HB_TMP the given value, whatever
+\ The child running this program, with TMPDIR the given value, whatever
 \ PROC-ENV-SET added after CHILD-ENV, and the rest of the environment inherited.
 : CHILD-ENV ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN a u >LEN PROC-ENV-SET ;
+   s" TMPDIR" >LEN a u >LEN PROC-ENV-SET ;
 
 : CAPTURE ( ptr u8 n -- len len outcome ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
@@ -850,7 +849,7 @@ variable WANT-U
    FMT:SB-INT
    SB$ ;
 
-\ A child given this HB_TMP exits nonzero and prints the line for it and the
+\ A child given this TMPDIR exits nonzero and prints the line for it and the
 \ code.
 : REFUSED ( ptr u8 n ptr u8 n n -- ) {: a:ptr u why:ptr whyu code:n :}
    a u CHILD-ENV PROG$ CAPTURE {: outu:len erru:len oc :}
@@ -862,23 +861,19 @@ variable WANT-U
    ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE
    ERR erru LEN>N code CODE$ CONTAINS? TTRUE ;
 
-\ With HB_TMP and TMPDIR both a link to a directory, each line the child prints
-\ is its own realpath. The directories are removed one by one, so the parent's
-\ removal shows the child made nothing else there.
+\ With TMPDIR a link to a directory, the line the child prints is its own
+\ realpath. The directory is removed by name, so the parent's removal shows the
+\ child made nothing else there.
 : CANONICAL ( -- )
    FMT-PARENT-A MAKE-DIR
    FMT-PARENT-A FMT-PARENT-LINK MAKE-SYMLINK
    CANON-PROG$ CANON-PROG-SRC$ WRITE-ALL
    CANON-PROG$ CLEANUP+
    FMT-PARENT-LINK CHILD-ENV
-   s" TMPDIR" >LEN FMT-PARENT-LINK >LEN PROC-ENV-SET
    CANON-PROG$ CAPTURE {: outu:len erru:len oc :}
    CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   OUT outu LEN>N NL 0 SPLIT-NEXT drop {: hb:ptr hbu:n next:n :}
-   OUT outu LEN>N NL next SPLIT-NEXT 2drop {: td:ptr tdu:n :}
-   hb hbu hb hbu FMT-REAL T$=
+   OUT outu LEN>N NL 0 SPLIT-NEXT 2drop {: td:ptr tdu:n :}
    td tdu td tdu FMT-REAL T$=
-   hb hbu REMOVE-DIR
    td tdu REMOVE-DIR
    FMT-PARENT-LINK REMOVE-FILE
    FMT-PARENT-A REMOVE-DIR ;
@@ -889,15 +884,14 @@ public
    PATHS!
    PROG$ PROG-SRC$ WRITE-ALL
    PROG$ CLEANUP+
-   s" a missing HB_TMP is refused by name" T-LABEL
-   MISSING$ s" hb: HB_TMP is not a directory: " E-FS-DIR REFUSED
-   s" an HB_TMP with no room for the temp name is refused by name" T-LABEL
-   LONG$ s" hb: HB_TMP is too long for a temp directory: " E-SPAN-CAPACITY
+   s" a missing TMPDIR is refused by name" T-LABEL
+   MISSING$ s" hb: TMPDIR is not a directory: " E-FS-DIR REFUSED
+   s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
+   LONG$ s" hb: TMPDIR is too long for a temp directory: " E-SPAN-CAPACITY
    REFUSED
-   s" an HB_TMP with no canonical path is refused by name" T-LABEL
-   NOCANON! NOCANON$ s" hb: HB_TMP has no canonical path: " E-FS-IO REFUSED
-   s" an HB_TMP or TMPDIR through a link makes canonical temp directories"
-   T-LABEL
+   s" a TMPDIR with no canonical path is refused by name" T-LABEL
+   NOCANON! NOCANON$ s" hb: TMPDIR has no canonical path: " E-FS-IO REFUSED
+   s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;
 
 ;package
@@ -1708,7 +1702,7 @@ public
    FMT-TEST-TEMP-COLLISION
    FMT-TEST-TEMP-SLASH
    FMT-TEST-TEMP-EXHAUST
-   FMT-HB-TMP:RUN
+   FMT-TMPDIR:RUN
    FMT-TEST-SYMLINK
    FMT-TEST-BROKEN-SYMLINK
    [: FMT-REMOVE-MISSING ;] E-FS-IO TTHROWSQ

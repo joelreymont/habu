@@ -106,7 +106,7 @@ TYPED-VARIABLE ACRT-ERR-A ptr u8
 
 : ACRT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-aot-report" HB-TMP-MKDIR 2dup CLEANUP-TREE+
+   s" habu-aot-report" TMPDIR-MKDIR 2dup CLEANUP-TREE+
    {: root:ptr rootu:n :}
    root rootu s" small.bin" ACRT-SMALL-PATH JOIN-PATH ACRT-SMALL-U !
    root rootu s" boundary.bin" ACRT-BOUNDARY-PATH JOIN-PATH ACRT-BOUNDARY-U !

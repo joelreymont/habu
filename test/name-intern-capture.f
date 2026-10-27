@@ -24,7 +24,7 @@ FS-PATH-CAP BUFFER: SECOND-BUF variable SECOND-U
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" name-intern-capture" HB-TMP-MKDIR {: path:ptr size:n :}
+   s" name-intern-capture" TMPDIR-MKDIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !

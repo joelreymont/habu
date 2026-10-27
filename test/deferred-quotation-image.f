@@ -19,7 +19,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 
 : PREPARE ( -- )
-   s" deferred-quotation-image" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" deferred-quotation-image" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" first" FIRST-BUF JOIN-PATH FIRST-U !

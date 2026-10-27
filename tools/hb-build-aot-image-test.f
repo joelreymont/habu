@@ -48,7 +48,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 : HBT-MAKER-ENV ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN HBT-TMP >LEN PROC-ENV+
+   s" TMPDIR" >LEN HBT-TMP >LEN PROC-ENV+
    s" HABU_OUT" >LEN HBT-MAKER-OUT$ >LEN PROC-ENV+ ;
 
 \ Prints the saved maker image the engine selects, then hit or built.

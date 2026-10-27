@@ -37,7 +37,7 @@ DYNAMIC-BUFFER MAP-TEXT u8
    ROOT-IMAGE$ GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ s" 0" GE-ARG+
    s" --donor" GE-ARG+ ROOT-IMAGE$ GE-ARG+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    ROOT-IMAGE$
    S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
    SUITE-BUDGET:CHILD-MS GE-RUN-STDIN

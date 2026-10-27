@@ -114,7 +114,7 @@ variable ENGINE-WHITEBOX
 
 : PREPARE ( -- )
    0 OVERLAY-U !
-   s" native-build-edit-e2e" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" native-build-edit-e2e" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ TREE-COPY:BUILD-SOURCES
    s" bin" AT MAKE-DIR
@@ -365,7 +365,7 @@ variable ENGINE-WHITEBOX
    s" scratch" TMP TMP-U PATH!
    CACHE$ MAKE-DIRS
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_UNDER_TEST" >LEN HOST$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HOST$ >LEN PROC-ENV+

@@ -49,7 +49,7 @@ variable ROOT-U
    u ROOT-U ! ;
 
 : SETUP-ROOT ( -- )
-   s" habu-snapshot-writer" HB-TMP-MKDIR ROOT!
+   s" habu-snapshot-writer" TMPDIR-MKDIR ROOT!
    ROOT CLEANUP-TREE+ ;
 
 create PATH-BUF FS-PATH-CAP allot
@@ -728,7 +728,7 @@ variable FIRST-EXTENT  variable FIRST-G  variable FIRST-S
 \ Where a grid stream ends against the boundary moves with every byte before
 \ it, the engine's and the image's own output path, which the save keeps in
 \ DATA (src/habu/snap-lib.f SNAP:OUTPUT): the hole image's ended on it at a
-\ 685-byte gate HB_TMP. No one image can promise a pad, so the case owns two.
+\ 685-byte gate TMPDIR. No one image can promise a pad, so the case owns two.
 \ test/snapshot-writer-pad.f is the hole fixture and a little more, saved to
 \ the same path, so its stream ends after the hole image's by far less than
 \ any alignment, and the two cannot both end on a boundary. Each one that has

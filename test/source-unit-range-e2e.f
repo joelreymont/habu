@@ -363,7 +363,7 @@ TRUSTED: CHECK-ABSENT ( -- )
 
 TRUSTED: RUN ( -- )
    T-RESET
-   s" source-unit-range" HB-TMP-MKDIR {: dir:ptr size:n :}
+   s" source-unit-range" TMPDIR-MKDIR {: dir:ptr size:n :}
    dir ROOT size BYTE-COPY size ROOT-U !
    FILES
    1 DIRECT-MODE ! CHECK-DIRECT

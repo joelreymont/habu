@@ -1,7 +1,7 @@
 \ Build the current source with a saved same-machine donor whose SNAP-RELOC
 \ address-cell header precedes this tree's header. The ordinary native suite
 \ uses a matching-layout host, so it cannot exercise this transition.
-\ Run: HB_TMP=build <old-hb> --load test/native-layout-transition.f -- <old-hb>
+\ Run: TMPDIR=build <old-hb> --load test/native-layout-transition.f -- <old-hb>
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f

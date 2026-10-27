@@ -114,7 +114,7 @@ public
 : MAIN ( -- )
    T-RESET
    s" 53,000 checked definitions cross 65,536 total records and survive REPL save" T-LABEL
-   s" habu-dictionary-capacity" HB-TMP-MKDIR {: a:ptr size:n :}
+   s" habu-dictionary-capacity" TMPDIR-MKDIR {: a:ptr size:n :}
    a ROOT size BYTE-COPY size ROOT-U !
    WRITE-SOURCE
    BUILD

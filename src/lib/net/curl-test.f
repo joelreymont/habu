@@ -934,7 +934,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 : MAKE-ROOT ( -- )
-   s" habu-curl" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-curl" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY
    u ROOT-U !
    s" hello.txt" FILE-BUF UNDER-ROOT FILE-U !
@@ -1105,10 +1105,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
 
 
 : HEADER-TRANSCRIPT ( -- )
-   s" HB_TMP" GETENV {: root:ptr rootu:n :}
-   rootu 0= if exit then
-   root rootu s" curl-headers-transcript.txt" TRANSCRIPT-PATH JOIN-PATH
-      {: pathu:n :}
+   s" curl-headers-transcript.txt" TRANSCRIPT-PATH UNDER-ROOT {: pathu:n :}
    SB-RESET
    S\" result=response status=200 body-len=2\nheaders:\n" SB-APPEND
    HEADER-BUF HEADER-LEN @ SB-APPEND

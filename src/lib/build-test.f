@@ -86,7 +86,7 @@ create BT-BIG-TEXT BT-BIG-CAP allot
    BT-BIG-BAD-SRC-BUF BT-BIG-BAD-SRC-U @ ;
 
 : BT-ROOT! ( -- )
-   s" habu-build" HB-TMP-MKDIR {: a:ptr u :}
+   s" habu-build" TMPDIR-MKDIR {: a:ptr u :}
    a u BT-ROOT-BUF BT-ROOT-U BT-COPY! ;
 
 : BT-PATHS! ( -- )
@@ -119,7 +119,7 @@ create BT-BIG-TEXT BT-BIG-CAP allot
 \ The artifact-writing command embeds its output path one `c,` per byte, up
 \ to seven bytes of source per path byte, so its buffer is sized by the path
 \ capacity and not by the shared string builder: the scratch root lives under
-\ HB_TMP, and the gate pool's 98-byte HB_TMP overflowed SB-CAP (E-STR-CAPACITY)
+\ TMPDIR, and the gate pool's 98-byte TMPDIR overflowed SB-CAP (E-STR-CAPACITY)
 \ where a 94-byte one fit. The 256 covers the script's fixed text.
 FS-PATH-CAP 7 * 256 + constant BT-SCRIPT-CAP
 create BT-SCRIPT-BUF BT-SCRIPT-CAP allot

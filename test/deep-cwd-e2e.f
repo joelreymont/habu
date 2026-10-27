@@ -77,7 +77,7 @@ create TAIL TAIL-BYTES allot
    ran TTRUE ;
 
 : SETUP ( -- )
-   s" habu-deep-cwd" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-deep-cwd" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    u ROOT-MAX > if
       SB-RESET s" deep-cwd: root " SB-APPEND ROOT$ SB-APPEND

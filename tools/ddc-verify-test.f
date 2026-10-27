@@ -4,7 +4,8 @@
 \ tools/ddc-verify.f tools/ddc-verify-test.f
 \
 \ Covers DDC-LOAD/DDC-SAME?/DDC-FIRST-DIFF/DDC-REPORT on synthetic artifact
-\ files and the DDC-STDIN$/DDC-FXP$ scratch-path plumbing. The full DDC-VERIFY
+\ files, the seed path read from the bootstrap's stdout (DDC-SEED!) and the
+\ DDC-FXP$ scratch path. The full DDC-VERIFY
 \ orchestration (runs the gforth+refresh chain) is an explicit manual audit, not
 \ exercised here.
 
@@ -39,7 +40,7 @@ variable B-U
    a ROOT-BUF u BYTE-COPY  u ROOT-U ! ;
 
 : PREPARE ( -- )
-   s" habu-ddc-test" HB-TMP-MKDIR ROOT!
+   s" habu-ddc-test" TMPDIR-MKDIR ROOT!
    s" a.bin" A-PATH A-U PATH!
    s" b.bin" B-PATH B-U PATH! ;
 
@@ -74,15 +75,22 @@ variable B-U
    s" length first offset" T-LABEL
    DDC-FIRST-DIFF 5 T= ;         \ shorter length is the first mismatch offset
 
-\ The gforth seed and the native-refresh fixpoint hang off their scratch roots at
-\ fixed leaf names; these joins are what the audit env/argv are built from.
+\ The gforth seed is wherever the bootstrap's stdout line names it, among the
+\ other lines it prints; the native-refresh fixpoint hangs off its scratch root
+\ at a fixed leaf name. These are what the audit env/argv are built from.
 : TEST-PATHS ( -- )
-   s" /tmp/ddc-gf-root" DDC-GF-ROOT!
+   S\" checking\nbootstrap check OK: /tmp/ddc-gf-root/habu-gforth.x1/hb-stdin\n"
+   DDC-SEED!
    s" seed path" T-LABEL
-   DDC-STDIN$ s" /tmp/ddc-gf-root/hb-stdin" STR= TTRUE
+   DDC-STDIN$ s" /tmp/ddc-gf-root/habu-gforth.x1/hb-stdin" STR= TTRUE
    s" /tmp/ddc-rf-root" DDC-RF-ROOT!
    s" fixpoint path" T-LABEL
    DDC-FXP$ s" /tmp/ddc-rf-root/hb-ddc-fixpoint" STR= TTRUE ;
+
+\ A bootstrap stdout with no seed line names no seed.
+: TEST-SEED-MISSING ( -- )
+   s" seed line missing" T-LABEL
+   [: S\" checking\nbootstrap check failed\n" DDC-SEED! ;] DDC-E-SEED TTHROWSQ ;
 
 \ HABU_ALLOW_BOOTSTRAP=1 is the audit gate; without it DDC-REQUIRE-BOOTSTRAP must
 \ fail closed with DDC-E-USAGE. Assert the outcome against the actual env so the
@@ -100,6 +108,7 @@ variable B-U
    TEST-ONE-BYTE-DIFF
    TEST-LENGTH-DIFF
    TEST-PATHS
+   TEST-SEED-MISSING
    TEST-REQUIRE-BOOTSTRAP
    ROOT$ REMOVE-TREE
    T-REPORT

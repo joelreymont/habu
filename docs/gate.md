@@ -25,14 +25,14 @@ Tests of behavior baked into the engine run on a product candidate built from
 a private copy of the matching tree with a ready native engine as host:
 
 ```sh
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
+HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
   $HOST --load tools/native-build.f -- $OUT
 ```
 
 Copy that candidate and its matching `hb.map` into the private tree's `bin/`
 as regular files, not symlinks, and run the tests from that tree: the focused
-tests, and the registry when the rule above calls for it. Keep `HB_TMP`
-outside the checkout, under `TMPDIR` or another external scratch directory.
+tests, and the registry when the rule above calls for it. Keep its `TMPDIR`
+outside the checkout.
 
 ```sh
 bin/hb --load test/run.f </dev/null
@@ -66,7 +66,7 @@ boot the candidate's prefix cold before the registry. This source-built route
 is ARM-only; Intel captures its checked prefix through `tools/native-build.f`:
 
 ```sh
-HB_TMP=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
+TMPDIR=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
 ```
 
 It ends `aot-wid-build: hb-pwid ready`. `bin/hb --load test/cold-naming-test.f`
@@ -125,9 +125,10 @@ exact pair.
 
 The run removes its temporary root whether it is green or red, so the printed
 tail is what a finished red run leaves. To keep a run's trees, give it its own
-`HB_TMP`: every maker goes under it when it is set, and under `TMPDIR` or
-`/tmp` when it is not. Every gate run gets its own `HB_TMP` root. Keep
-`HB_TMP` short: nothing refuses a long one up front (`GT-ROOM-CHECK` checks
+`TMPDIR`, the one scratch root: every maker goes under it, and a missing or
+non-directory `TMPDIR` is refused by name (`TMPDIR-MKDIR`, src/lib/fs-mutate.f).
+Every gate run gets its own `TMPDIR` root. Keep it short: nothing refuses a
+long one up front (`GT-ROOM-CHECK` checks
 only the root's own room), and the deepest row path under it must still fit
 Habu's path capacity.
 

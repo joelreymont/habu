@@ -1,4 +1,4 @@
-\ nf-path-test.f - complete HB_TMP paths through the Gforth native fixture.
+\ nf-path-test.f - complete TMPDIR paths through the Gforth native fixture.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -67,12 +67,12 @@ create ERR CAP allot
    OVERFLOW-ROOT ROOT-U @ 1 + OVERFLOW-ROOT-U PAD-X
    OVERFLOW-ROOT-U OVERFLOW-U ! ;
 
-\ The one fixture root in the tree that is not HB-TMP-MKDIR's answer. LONG-ROOT!
-\ pads this root to exactly LONG-ROOT-U bytes, so a base of that length or more
-\ cannot produce the path at all, and under the pool HB_TMP is the slot
-\ directory - <suite root>/pool-<pid>-<seq>-tmp, 97 bytes measured - which makes
-\ SETUP throw E-FS-CAPACITY before the first build. TMPDIR, then /tmp, is the
-\ shortest base a run can offer; CLEANUP-TREE+ below removes the tree.
+\ LONG-ROOT! pads this root to exactly LONG-ROOT-U bytes, so a base of that
+\ length or more cannot produce the path at all. Under the pool TMPDIR is the
+\ slot directory - <suite root>/pool-<pid>-<seq>-tmp, 97 bytes measured - which
+\ makes SETUP throw E-FS-CAPACITY before the first build, so this test runs on
+\ its own (docs/gate.md), where TMPDIR, then /tmp, is the shortest base a run
+\ can offer; CLEANUP-TREE+ below removes the tree.
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-nf-path" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -88,7 +88,7 @@ create ERR CAP allot
 
 : GF-ENV ( ptr u8 n -- ) {: root:ptr rootu:n :}
    PROC-ENV-RESET
-   s" HB_TMP" >LEN root rootu >LEN PROC-ENV+
+   s" TMPDIR" >LEN root rootu >LEN PROC-ENV+
    s" HABU_TARGET" >LEN TARGET$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 

@@ -59,7 +59,7 @@ variable RC
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-prefix-producer" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-prefix-producer" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ TREE-COPY:BUILD-SOURCES
@@ -97,7 +97,7 @@ variable RC
    s" --" >LEN PROC-ARGV+
    s" app.f" >LEN PROC-ARGV+
    s" app" >LEN PROC-ARGV+
-   s" HB_TMP" >LEN TMP$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    edit 0<> if s" HABU_PREFIX_TEST_EDIT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING

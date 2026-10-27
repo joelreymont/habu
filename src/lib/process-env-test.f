@@ -22,7 +22,7 @@ $2 constant PET-ENOENT
 $258 constant PET-BIG-N                  \ variables the big-environment child must inherit
 $9 constant PET-BIG-PREFIX-U             \ "HABU_BIG_"
 $C constant PET-BIG-NAME-U               \ prefix plus three digits
-3 constant PET-MIN-ENV-N                 \ PATH, HOME, HB_TMP: the overflow child's whole envp
+3 constant PET-MIN-ENV-N                 \ PATH, HOME, TMPDIR: the overflow child's whole envp
 
 create PET-BIG-NAME PET-BIG-NAME-U allot
 create PET-OUT PET-CAP allot
@@ -492,7 +492,7 @@ public
    PET-RESET
    s" PATH" PET-PASS-ENV
    s" HOME" PET-PASS-ENV
-   s" HB_TMP" PET-PASS-ENV ;
+   s" TMPDIR" PET-PASS-ENV ;
 
 : PET-CEILING-LINE$ ( -- ptr u8 n )
    SB-RESET

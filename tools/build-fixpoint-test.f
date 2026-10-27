@@ -36,7 +36,7 @@ variable BFT-ART-B-U
 : BFT-ARGV-ENV+ ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
    s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+ ;
 
@@ -151,7 +151,7 @@ variable BFT-ART-B-U
 
 : BFT-CLEAN-ARGV ( -- )
    PROC-ARGV-RESET PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
+   s" TMPDIR" >LEN BFT-STALE-TMP >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN BFT-ENG-B >LEN PROC-ENV+
    BFT-ARGV-LOAD-LIBS
    s" cleanup-driver.f" BFT-ARG+ ;
@@ -283,7 +283,7 @@ variable BFT-BIN-FILES
 \ Pre-fix BF-CLI was never called, so the verb was silently dropped - the loaded
 \ stdin engine read its program from the closed stdin, hit EOF, and exited 0
 \ having built nothing (rc 0, empty output). The tail self-dispatch must now run
-\ the verb; a non-directory HB_TMP makes the install fail fast and die loudly,
+\ the verb; a non-directory TMPDIR makes the install fail fast and die loudly,
 \ so a build verb can no longer exit 0 having done nothing. Base (unfixed
 \ source): rc 0, empty stderr -> both direction assertions fail.
 : BFT-TEST-NO-MAIN-DISPATCHES ( -- )
@@ -518,7 +518,7 @@ TYPED-VARIABLE SRC-A ptr u8
 : RUN-COLD-SOURCE ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN BFT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    BFT-SOURCE-HOST$ >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
    BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS

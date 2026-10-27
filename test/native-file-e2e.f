@@ -1,5 +1,5 @@
 \ native-file-e2e.f - what the native FILE end-to-end rows share: sources
-\ written under one HB_TMP root, a child run with its stdout, stderr and exit
+\ written under one TMPDIR root, a child run with its stdout, stderr and exit
 \ code kept, and the pass assert that prints both streams on a nonzero code.
 
 require src/lib/test.f
@@ -40,9 +40,9 @@ public
    outu OUT-U ! outu 0<> if out outu OUT-ROOM outu BYTE-COPY then
    erru ERR-U ! erru 0<> if err erru ERR-ROOM erru BYTE-COPY then ;
 
-\ The root named n under HB_TMP.
+\ The root named n under TMPDIR.
 : TREE ( ptr u8 n -- )
-   HB-TMP-MKDIR {: a:ptr u:n :}
+   TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U ! ;
 
 : AT ( ptr u8 n -- ptr u8 n )

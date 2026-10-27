@@ -13,7 +13,7 @@ variable ES-CERT-STALE0
 LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
 
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
-require src/lib/fs-mutate.f            \ HB-TMP-MKDIR - the filesystem block's private root
+require src/lib/fs-mutate.f            \ TMPDIR-MKDIR - the filesystem block's private root
 require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
 require src/lib/test.f
 
@@ -1783,7 +1783,7 @@ create RLB 64 allot
 create ES-TARGETZ
    65 c, 71 c, 69 c, 78 c, 84 c, 83 c, 46 c, 109 c, 100 c, 0 c,
 create DIRBASE 8 allot
-\ The directory and the link are made inside a fresh root under HB_TMP: two
+\ The directory and the link are made inside a fresh root under TMPDIR: two
 \ gates share one machine, and a fixed /tmp name let one run's mkdir meet the
 \ other's directory (EEXIST) or its rmdir remove it mid-test.
 create ES-ROOT FS-PATH-CAP allot
@@ -1807,7 +1807,7 @@ DFD @ 0 >= TTRUE
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > TTRUE
 DFD @ close
-s" engine-suite" HB-TMP-MKDIR ES-ROOT!
+s" engine-suite" TMPDIR-MKDIR ES-ROOT!
 s" dir" ES-TMPZ 493 mkdir 0 T=
 s" dir" ES-TMPZ ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = TTRUE

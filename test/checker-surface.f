@@ -192,7 +192,7 @@ create IMAGE-BUF FS-PATH-CAP allot  variable IMAGE-U
 
 : SAVE-APP ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
-   s" checker-surface" HB-TMP-MKDIR {: path:ptr size:n :}
+   s" checker-surface" TMPDIR-MKDIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT-BUF ROOT-U @ CLEANUP-TREE+
    ROOT-BUF ROOT-U @ s" app" IMAGE-BUF JOIN-PATH IMAGE-U !

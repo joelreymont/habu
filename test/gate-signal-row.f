@@ -3,7 +3,7 @@
 \ With no script argument this is the ROW: it reports its pid and runs the LEAF,
 \ this file again with `leaf` as its one argument. The leaf starts the HELPER,
 \ reports its pid and starts BURST-N writers one after another. Each writer is a
-\ /bin/sh that makes a file under HB_TMP and becomes `sleep`, so it holds the
+\ /bin/sh that makes a file under TMPDIR and becomes `sleep`, so it holds the
 \ row's scratch and outlives everything above it unless something ends it.
 \ Every spawn here makes a process group of its own, which is the shape a row
 \ has while it builds an engine: two spawns deep and, for the length of the
@@ -58,7 +58,7 @@ variable HELPER
 \ The writer lives 20 s: longer than the test waits for it to be ended, and
 \ short enough that a run which fails to end it still leaves nothing behind.
 : WRITER$ ( -- ptr u8 n )
-   s\" mkdir -p \"$HB_TMP/use\" && : > \"$HB_TMP/use/$$\" && exec sleep 20" ;
+   s\" mkdir -p \"$TMPDIR/use\" && : > \"$TMPDIR/use/$$\" && exec sleep 20" ;
 
 : START-WRITER ( n -- ) {: i:n :}
    PROC-ARGV-ENV-RESET
@@ -72,7 +72,7 @@ variable HELPER
 \ writes to reaches its end when the helper has exited: a zombie, since nothing
 \ reaps it.
 : HELPER$ ( -- ptr u8 n )
-   s\" { mkdir -p \"$HB_TMP/use\" && : > \"$HB_TMP/use/$$\" && exec sleep 20; } >/dev/null & exit" ;
+   s\" { mkdir -p \"$TMPDIR/use\" && : > \"$TMPDIR/use/$$\" && exec sleep 20; } >/dev/null & exit" ;
 
 : START-HELPER ( -- )
    PIPE-PAIR {: r:fd w:fd :}

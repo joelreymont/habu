@@ -9,7 +9,7 @@
 \ member read from the wrong offset, register or stack slot fails its case.
 
 : FFI-T-SA-LIBRARY ( -- )
-   s" habu-ffi-struct" HB-TMP-MKDIR {: dir:ptr diru :}
+   s" habu-ffi-struct" TMPDIR-MKDIR {: dir:ptr diru :}
    dir diru CLEANUP-TREE+
    dir diru STRUCT-FIXTURE:BUILD FFI-DECL:SELECT-LIBRARY ;
 FFI-T-SA-LIBRARY

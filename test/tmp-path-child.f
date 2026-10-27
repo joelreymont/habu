@@ -1,6 +1,6 @@
 \ tmp-path-child.f - one TMP-PATH call, for test/tmp-path-test.f.
 \
-\ Run: HB_TMP=<root> bin/hb --load test/tmp-path-child.f -- <case>
+\ Run: TMPDIR=<root> bin/hb --load test/tmp-path-child.f -- <case>
 \ Types the path TMP-PATH answers, or dies as TMP-PATH does. The case is the
 \ name's length: `exact` fills PATH-CAP with the root and its slash, `over` is
 \ one byte more, `negative` is -1 and `huge` is the maximum cell.
@@ -18,7 +18,7 @@ create NAME PATH-CAP allot
    PATH-CAP 0 ?do LOWER-A NAME i + c! loop ;
 
 : ROOM ( -- n )
-   PATH-CAP s" HB_TMP" GETENV nip - 1 - ;
+   PATH-CAP s" TMPDIR" GETENV nip - 1 - ;
 
 : NAME-U ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" exact" STR= if ROOM exit then

@@ -586,7 +586,7 @@ $2710 constant PARK-MS            \ far past every stop bound
 
 
 : MAKE-STATIC ( -- )
-   s" http-test" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" http-test" TMPDIR-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
    a u ROOT-BUF SPAN:COPY
    u ROOT-U !
@@ -1111,7 +1111,7 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
 
 
 : SAVE-STDERR ( -- )
-   s" http-stderr" HB-TMP-MKDIR {: dir:ptr dirlen:n :}
+   s" http-stderr" TMPDIR-MKDIR {: dir:ptr dirlen:n :}
    dir dirlen CLEANUP-TREE+
    dir dirlen s" stderr.txt" ERR-PATH-BUF JOIN-PATH ERR-PATH-U !
    STDERR-FD F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
@@ -2364,7 +2364,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
 
 
 : NEW-TREE ( -- )
-   s" http-static" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" http-static" TMPDIR-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
    a u TREE-BUF SPAN:COPY
    u TREE-U ! ;

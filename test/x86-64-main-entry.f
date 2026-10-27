@@ -1,6 +1,6 @@
 \ A real x86-64 boot with both captured entry cells must enter Habu MAIN.
 \ MAIN invokes the saved application and then reads one byte of stdin; entering
-\ APP directly prints only its first line. Both emitted ELFs remain in HB_TMP
+\ APP directly prints only its first line. Both emitted ELFs remain in TMPDIR
 \ as hb-x64-main-entry and hb-x64-app-entry for direct replay.
 require src/habu/boot-x64.f
 require src/arch/x86-64/rt.f

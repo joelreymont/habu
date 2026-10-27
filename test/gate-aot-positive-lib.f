@@ -281,8 +281,8 @@ variable SELF-SRC-U
    SB$ ;
 
 \ Drive the compatibility maker with the application as argv[0], the JSON flag
-\ as argv[1], and HB_TMP as the image's directory. Hand it the script above on
-\ stdin. A build that reaches the end writes its image to HB_TMP/hb-aot-got,
+\ as argv[1], and TMPDIR as the image's directory. Hand it the script above on
+\ stdin. A build that reaches the end writes its image to TMPDIR/hb-aot-got,
 \ which is the name GB-OUT$ carries in these cases;
 \ the stale one goes first, so "an image exists" and "none was emitted" are both
 \ statements about THIS run. The maker runs seconds of CPU, so its deadline is
@@ -292,7 +292,7 @@ variable SELF-SRC-U
    GE-HB-RESET
    GE-HB$ GE-ARGV+
    s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    GE-HB$ SELF-STDIN$ SUITE-BUDGET:CHILD-MS GE-RUN-STDIN ;
 
 \ The relocation math the direct-branch capability adds: two adjacent synthetic

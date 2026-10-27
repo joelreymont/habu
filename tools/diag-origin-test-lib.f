@@ -100,7 +100,7 @@ create DGT-ERR DGT-BUF-CAP allot
 
 : DGT-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-diag-origin" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-diag-origin" TMPDIR-MKDIR {: a:ptr u:n :}
    a u DGT-ROOT-BUF DGT-ROOT-U DGT-COPY!
    DGT-ROOT CLEANUP-DIR+ ;
 
@@ -116,7 +116,7 @@ create DGT-ERR DGT-BUF-CAP allot
 
 \ A tool on the input, its standard output captured into the given buffer. The
 \ tool runs with this process's environment, so tools/check.f makes its scratch
-\ root under the HB_TMP this run was handed.
+\ root under the TMPDIR this run was handed.
 : DGT-RUN ( ptr u8 n ptr u8 n -- len len outcome )
    {: tool:ptr toolu:n out:ptr outcap:n :}
    PROC-ARGV-RESET

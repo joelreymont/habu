@@ -8,11 +8,11 @@
 \ macOS. A row's stdout and stderr go to capture files; its red line keeps the
 \ tail of each.
 \
-\ A SPAWNED ROW gets its own scratch directory as HB_TMP, which the pool
+\ A SPAWNED ROW gets its own scratch directory as TMPDIR, which the pool
 \ removes when the slot retires, whatever the row left in it; a scratch that
-\ will not go turns the row red. A row whose caller set HB_TMP itself owns that
+\ will not go turns the row red. A row whose caller set TMPDIR itself owns that
 \ directory. It also gets a short directory for Unix-domain sockets as
-\ HB_SOCK_TMP, under one socket root per pool session in TMPDIR.
+\ HB_SOCK_TMP, under one socket root per pool session.
 \
 \ A ROW ENDS WITH ITS WHOLE TREE. At its deadline (kind=TIMEOUT-UNDER-LOAD), at
 \ its CPU budget (GT-POOL-CPU-BUDGET!, kind=CPU-BUDGET) or when the run ends,
@@ -503,7 +503,7 @@ GT-POOL-ABORT-BARE!
    idx GT-POOL-SOCK$ idx GT-POOL-SCRATCH-REMOVE ;
 
 \ THE SOCKET ROOT. Every spawned child's socket directory (GT-POOL-CHILD-SOCK!)
-\ is made inside one directory under TMPDIR per pool session, which goes in
+\ is made inside one directory per pool session, which goes in
 \ the cleanup registry once (src/lib/fs-mutate.f CLEANUP-TREE+). One entry a row
 \ would keep hundreds in the registry, which holds each entry until a
 \ CLEANUP-RUN, since a gate starts hundreds of rows. So a process that
@@ -513,6 +513,11 @@ GT-POOL-ABORT-BARE!
 \ made again if a GT-CLEANUP removed it. GT-POOL-RESET removes the one before:
 \ no live slot's directory is in it by then, and a GT-START since may have
 \ reset its entry away. A SIGKILL of this process leaves it.
+\
+\ A pool that a pool spawned has a row directory of about 100 bytes as its
+\ TMPDIR, too long to hold a socket, and the short HB_SOCK_TMP its own pool
+\ gave it: its root goes under that. A pool nobody spawned has no HB_SOCK_TMP,
+\ and its root goes under TMPDIR.
 variable GT-POOL-SOCK-ROOT-U
 0 GT-POOL-SOCK-ROOT-U !
 
@@ -523,9 +528,14 @@ variable GT-POOL-SOCK-ROOT-U
    GT-POOL-SOCK-ROOT$ GT-POOL-TREE-REMOVE
    0 GT-POOL-SOCK-ROOT-U ! ;
 
+: GT-POOL-SOCK-ROOT-NEW ( -- ptr u8 n )
+   s" HB_SOCK_TMP" GETENV {: base:ptr baseu:n :}
+   baseu 0= if s" hb-sock" TMPDIR-MKDIR exit then
+   base baseu s" hb-sock" MAKE-TEMP-DIR ;
+
 : GT-POOL-SOCK-ROOT-MAKE ( -- )
    GT-POOL-SOCK-ROOT-U @ 0 > if GT-POOL-SOCK-ROOT$ EXISTS? if exit then then
-   s" hb-sock" TMPDIR-MKDIR {: a:ptr u:n :}
+   GT-POOL-SOCK-ROOT-NEW {: a:ptr u:n :}
    a GT-POOL-SOCK-ROOT-BUF u BYTE-COPY
    u GT-POOL-SOCK-ROOT-U !
    GT-POOL-SOCK-ROOT$ CLEANUP-TREE+ ;
@@ -582,10 +592,10 @@ false GT-POOL-CAUGHT !
    w close ;
 
 \ A slot killed here is never reaped, so it never retires: its directories go
-\ here, after the kill. HB_TMP is under the root a signalled run removes
-\ anyway; the socket directory is not. Every root that catches SIGTERM is asked
-\ before any slot is killed, so their graces run together and beside the
-\ other slots' kills.
+\ here, after the kill. Its TMPDIR is under the root a signalled run
+\ removes anyway; the socket directory is not. Every root that catches SIGTERM
+\ is asked before any slot is killed, so their graces run together and beside
+\ the other slots' kills.
 : GT-POOL-KILL-ALL ( -- )
    GT-POOL-MAX 0 ?do
       i >IDX GT-POOL-DONE@ 0= if i >IDX GT-POOL-ASK-END then
@@ -956,8 +966,6 @@ false GT-POOL-CATCHING !
    idx GT-POOL-ERR-PATH-U-PTR ;
 
 : GT-POOL-FALLBACK-BASE$ ( -- ptr u8 n )
-   s" HB_TMP" GETENV dup 0 > if exit then
-   2drop
    s" TMPDIR" GETENV dup 0 > if exit then
    2drop s" /tmp" ;
 
@@ -968,7 +976,7 @@ false GT-POOL-CATCHING !
    GT-POOL-NAME$ ;
 
 \ Suite-less pool users get one process-unique capture directory so parallel
-\ runs sharing HB_TMP/TMPDIR cannot clobber each other's capture files.
+\ runs sharing TMPDIR cannot clobber each other's capture files.
 : GT-POOL-FALLBACK-ROOT$ ( -- ptr u8 n )
    GT-POOL-FALLBACK-U @ 0 > if
       GT-POOL-FALLBACK-BUF GT-POOL-FALLBACK-U @ exit
@@ -1024,41 +1032,43 @@ false GT-POOL-CATCHING !
    idx 1 GT-POOL-CAPTURE-FD! ;
 
 \ THE POOL OWNS ITS SPAWNED CHILDREN'S SCRATCH. Each gets a directory of its
-\ own beside its capture files, named HB_TMP in its environment, and the PARENT
-\ removes it when the slot retires. A child the pool killed - a timeout, a
-\ group kill - never reaches its own CLEANUP-RUN, so its temp trees survived it
-\ and nothing ever removed them; under HB_TMP they now go with the directory,
-\ and so does anything its own children left. PROC-ENV-SET, not PROC-ENV+,
-\ because the caller has already inherited its environment into the table and
-\ an inherited HB_TMP has to be replaced rather than shadowed.
+\ own beside its capture files, named TMPDIR in its environment, and the
+\ PARENT removes it when the slot retires. A child the pool killed - a timeout,
+\ a group kill - never reaches its own CLEANUP-RUN, so its temp trees survived
+\ it and nothing ever removed them; under TMPDIR they now go with the
+\ directory, and so does anything its own children or the tools it ran left.
+\ PROC-ENV-SET, not PROC-ENV+, because the caller has already inherited its
+\ environment into the table and an inherited TMPDIR has to be replaced rather
+\ than shadowed.
 \
 \ Forked slots never call this: a forked worker shares the parent's image, gets
 \ no environment of its own, and must not be handed a directory whose removal
 \ would touch the parent's tree.
 \
-\ An HB_TMP row already in the caller's table is one of two things: the copy
+\ A TMPDIR row already in the caller's table is one of two things: the copy
 \ PROC-ENV-INHERIT-MISSING took from this process's own environment, which is
 \ the pool's to replace, or a value the caller chose for its child - a scratch
 \ root the caller owns and reaps (test/nf-path-test.f hands each build a root
 \ of a chosen length and byte content) - which stays, and then the slot gets no
-\ directory at all.
-: GT-POOL-ENV-HB-TMP-OWN? ( -- bool )
-   s" HB_TMP=" {: k:ptr ku:n :}
-   s" HB_TMP" >LEN PROC-ENV-NAME-IDX {: i:n :}
+\ directory at all. A set TMPDIR is no private root by itself: macOS hands every
+\ process the same per-user one, which this process's own copy names.
+: GT-POOL-ENV-TMPDIR-OWN? ( -- bool )
+   s" TMPDIR=" {: k:ptr ku:n :}
+   s" TMPDIR" >LEN PROC-ENV-NAME-IDX {: i:n :}
    i 0 < if false exit then
    i >IDX PROC-ENV-SLOT @ {: z:ptr :}
    z ku BYTE+ z ZLEN ku -
-   s" HB_TMP" GETENV STR= 0= ;
+   s" TMPDIR" GETENV STR= 0= ;
 
 \ EACH SPAWNED CHILD ALSO GETS A SHORT DIRECTORY FOR ITS SOCKETS. A
 \ Unix-domain socket's path has to fit sun_path - 104 bytes on macOS, 108 on
-\ Linux - and a gate row's HB_TMP is about 100 bytes long already, longer
-\ again for each pool that runs under a pool. So the pool also makes each
-\ spawned child a directory named by its capture sequence number in the
-\ session's socket root under TMPDIR, which no pool changes and which is as
-\ short at every level, and names it HB_SOCK_TMP in the child's environment
+\ Linux - and a gate row's TMPDIR is about 100 bytes long already, longer again
+\ for each pool that runs under a pool. So the pool also makes each spawned
+\ child a directory named by its capture sequence number in the session's
+\ socket root (GT-POOL-SOCK-ROOT-MAKE), which is short at every level, and
+\ names it HB_SOCK_TMP in the child's environment
 \ (test/db/pg-cluster.f puts its server's socket there). It goes with the
-\ scratch. Every spawned slot gets one, whoever owns its HB_TMP: the value
+\ scratch. Every spawned slot gets one, whoever owns its TMPDIR: the value
 \ inherited in its place would name this process's own, which a sibling may
 \ be using. Under macOS's default TMPDIR a PostgreSQL socket path there is
 \ about 90 bytes.
@@ -1071,12 +1081,12 @@ false GT-POOL-CATCHING !
 
 : GT-POOL-CHILD-TMP! ( idx -- ) {: idx:idx :}
    idx GT-POOL-CHILD-SOCK!
-   GT-POOL-ENV-HB-TMP-OWN? if 0 idx GT-POOL-TMP-PATH-U-PTR ! exit then
+   GT-POOL-ENV-TMPDIR-OWN? if 0 idx GT-POOL-TMP-PATH-U-PTR ! exit then
    GT-POOL-CAPTURE-ROOT$
    idx GT-POOL-SEQ-PTR @ s" -tmp" GT-POOL-CAPTURE-NAME
    idx GT-POOL-TMP-PATH-BUF JOIN-PATH idx GT-POOL-TMP-PATH-U-PTR !
    idx GT-POOL-TMP$ MAKE-DIRS
-   s" HB_TMP" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
+   s" TMPDIR" >LEN idx GT-POOL-TMP$ >LEN PROC-ENV-SET ;
 
 \ The one place a slot leaves the live set, whatever its outcome was: a reap
 \ (exited or signaled) or a timeout the pool killed. The child's scratch goes

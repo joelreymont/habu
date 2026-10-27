@@ -30,7 +30,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : PATH ( ptr u8 n -- ptr u8 n )
    ROOT$ 2swap PATH-BUF JOIN-PATH PATH-BUF swap ;
 : SETUP ( -- )
-   s" habu-fs-cause" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-fs-cause" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
    256 0 do [char] x LONG-NAME i + c! loop
    s" file" PATH s" a" WRITE-ALL

@@ -396,7 +396,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    DIR DIR-U @ na nu dst JOIN-PATH ;
 
 : ARTIFACT! ( -- )
-   s" habu-aot-shadow-capture" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-aot-shadow-capture" TMPDIR-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
    a DIR u BYTE-COPY  u DIR-U !
    s" shadow.aot" ART IN-DIR ART-U !
@@ -446,7 +446,7 @@ variable RC
    m mu >LEN PROC-ARGV+ ;
 
 \ The child inherits this process's environment, so the artifact it makes
-\ lies under the HB_TMP this run was given.
+\ lies under the TMPDIR this run was given.
 : RUN-CHILD ( -- )
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
    s" bin/hb" >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-MS >MS

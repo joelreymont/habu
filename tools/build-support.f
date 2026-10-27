@@ -124,7 +124,7 @@ variable BF-ENGINE-U
 
 : BF-TMP$ ( -- ptr u8 n )
    BF-TMP-U @ 0 > if BF-TMP-OVERRIDE$ exit then
-   s" HB_TMP" GETENV dup 0= if drop drop s" /tmp" then ;
+   s" TMPDIR" GETENV dup 0= if drop drop s" /tmp" then ;
 
 : BF-TMP> ( ptr u8 n ptr u8 -- n )
    {: name:ptr nameu dst:ptr :}
@@ -161,7 +161,7 @@ variable BF-ENGINE-U
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
+   s" TMPDIR" >LEN BF-TMP$ >LEN PROC-ENV+ ;
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    {: path:ptr pathu:n :}

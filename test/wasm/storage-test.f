@@ -30,7 +30,7 @@ FS-PATH-CAP BUFFER: FILE
 variable FILE-U
 
 : SETUP ( -- )
-   s" wasm-storage" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" wasm-storage" TMPDIR-MKDIR {: a:ptr u:n :}
    a DIR u BYTE-COPY  u DIR-U !
    s" wasm storage: modules and output in " type  DIR u type cr ;
 

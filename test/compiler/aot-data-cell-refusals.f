@@ -36,7 +36,7 @@ variable IMAGE-U
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE IMAGE-U @ ;
 
-\ HB_TMP is the gate root, so AOT-OUT's image lands at this path if one is ever
+\ TMPDIR is the gate root, so AOT-OUT's image lands at this path if one is ever
 \ emitted. Every case below must refuse before that.
 : PREPARE ( -- )
    s" aot-data-cell-refusals" GT-START
@@ -64,7 +64,7 @@ variable IMAGE-U
    GE-HB-RESET
    linker linkeru GE-ARGV+
    s" --" GE-ARG+ SUBJECT$ GE-ARG+ json jsonu GE-ARG+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    linker linkeru in inu TIMEOUT-MS GE-RUN-STDIN ;
 
 : BUILD ( ptr u8 n -- ) {: in:ptr inu:n :}

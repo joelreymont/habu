@@ -39,7 +39,7 @@ HABU_BOOTSTRAP_CHECK_ONLY=1 HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/
 Build a private native product from the current tree with a trusted native host:
 
 ```sh
-HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST HB_TMP=$TMP \
+HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
   "$HOST" --load tools/native-build.f -- "$OUT"
 ```
 

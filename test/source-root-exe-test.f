@@ -5,7 +5,7 @@
 \ (src/core/include.f SOURCE-ROOT:ENGINE$), with no environment variable. Each
 \ case runs a fresh child of a copy of the engine under test
 \ (src/lib/engine-candidate.f), placed in the layout the case needs, with an
-\ environment of HB_TMP alone when this run has one, so the scratch a child
+\ environment of TMPDIR alone when this run has one, so the scratch a child
 \ makes lies under it; the native build also has its own cache. Each case
 \ checks what the child prints:
 \ - the root is the working directory when it is a Habu tree (it holds the
@@ -218,7 +218,7 @@ variable RC
 
 : PREP ( -- )
    CLEANUP-RESET
-   s" habu-source-root-exe" HB-TMP-MKDIR CANONICAL TTRUE TOP TOP-U COPY!
+   s" habu-source-root-exe" TMPDIR-MKDIR CANONICAL TTRUE TOP TOP-U COPY!
    TOP$ CLEANUP-TREE+
    CWD$ GATE GATE-U COPY!
    ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE HB HB-U COPY!
@@ -286,14 +286,14 @@ variable RC
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- ) PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
-\ The child's environment is HB_TMP alone, when this run has one: the
+\ The child's environment is TMPDIR alone, when this run has one: the
 \ scratch a child makes lies under it, and no variable can lead the child
 \ to a root.
 : CHILD-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" GETENV {: tmp:ptr tmpu:n :}
+   s" TMPDIR" GETENV {: tmp:ptr tmpu:n :}
    tmpu 0= if exit then
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV-SET ;
+   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV-SET ;
 
 \ The engine at exe in cwd, with the argv the caller staged and CHILD-ENV.
 : RUN-ARGS ( ptr u8 n ptr u8 n n -- )

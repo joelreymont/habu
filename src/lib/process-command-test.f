@@ -161,7 +161,7 @@ create PCMDT-REL FS-PATH-CAP allot   variable PCMDT-REL-U
 
 : PCMDT-CWD ( -- )
    CLEANUP-RESET
-   s" hb-cmd-cwd" HB-TMP-MKDIR {: d:ptr du :}
+   s" hb-cmd-cwd" TMPDIR-MKDIR {: d:ptr du :}
    d du CLEANUP-TREE+
    du FS-PATH-CAP <= TTRUE
    du FS-PATH-CAP > if CLEANUP-RUN exit then

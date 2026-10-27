@@ -63,7 +63,7 @@ DYNAMIC-BUFFER AFTER u8
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 
 : SETUP ( -- )
-   s" wasm-data" HB-TMP-MKDIR {: dir:ptr u:n :}
+   s" wasm-data" TMPDIR-MKDIR {: dir:ptr u:n :}
    dir DIR u BYTE-COPY
    DIR u s" data-region.wasm" MOD JOIN-PATH MOD-U !
    DIR u s" before.bin" BEFORE-PATH JOIN-PATH BEFORE-PATH-U !

@@ -75,7 +75,7 @@ From the repository root on a supported ARM64 host:
     HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
 
 The launcher targets the host's OS unless HABU_TARGET is set, builds private
-stages under HB_TMP (or a new temporary directory), runs recovery checks and
+stages in a new directory under TMPDIR, runs recovery checks and
 installs bin/hb. That source-only engine can build the native product; it is
 not itself the product the native suite qualifies.
 
@@ -88,7 +88,7 @@ cat > "$TMP/native-preload.f" <<'EOF'
 require src/compiler/native/compiler.f
 NCOMP:INSTALL
 EOF
-HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" HB_TMP="$TMP" \
+HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" TMPDIR="$TMP" \
   "$HOST" --load "$TMP/native-preload.f" tools/native-build.f -- "$OUT"
 ```
 
@@ -101,11 +101,11 @@ refuses with `E-UNDEFINED`. Stage a fresh checker-bearing whitebox host once
 through the same compiler preload, then build the product on that host:
 
 ```sh
-HABU_WHITEBOX_IMAGE=1 HB_TMP="$TMP" \
+HABU_WHITEBOX_IMAGE=1 TMPDIR="$TMP" \
   HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" \
   "$HOST" --load "$TMP/native-preload.f" tools/native-build.f \
   -- "$TMP/hb-whitebox" whitebox
-HB_TMP="$TMP" \
+TMPDIR="$TMP" \
   "$TMP/hb-whitebox" --load tools/hb-build.f -- --engine -o "$OUT"
 ```
 
@@ -137,7 +137,7 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/habu-bootstrap-check.XXXXXX")
 HABU_ALLOW_BOOTSTRAP=1 \
 HABU_BOOTSTRAP_CHECK_ONLY=1 \
 GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" \
-HB_TMP="$tmp" \
+TMPDIR="$tmp" \
 tools/bootstrap.sh
 ```
 
@@ -152,8 +152,8 @@ privately and leaves the installed engine alone; with no argument the
 checkout's bin/hb is generation zero, and `--same-host` builds twice with one
 host to check repeatability:
 
-    HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- <seed-engine>
-    HB_TMP=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
+    TMPDIR=$TMP bin/hb --load tools/two-generation-build.f -- <seed-engine>
+    TMPDIR=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
 
 Use an external scratch directory for `$TMP`, as described in
 [gate.md](gate.md).
@@ -292,7 +292,7 @@ them. Renaming leaves running engines on their old file.
 
 For a hot edit/check loop, build a warm snapshot engine with
 `bin/hb --load tools/build-fixpoint-refresh.f -- snap`: it writes
-`$HB_TMP/hb-new`, a snapshot image that boots warm with the checker, stdlib
+`$TMPDIR/hb-new`, a snapshot image that boots warm with the checker, stdlib
 prefix and REPL. `hb-new` is a local dev artifact: it is never installed as
 `bin/hb`, never used as a gate or candidate launcher, and must be rebuilt after
 source changes.

@@ -47,7 +47,7 @@ create ERR CAP allot  variable ERR-U
 : MAKER ( ptr u8 n -- n ) {: source:ptr sourceu:n :}
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG source sourceu AT ARG s" 0" ARG s" 1" ARG
    maker makeru >LEN
@@ -113,7 +113,7 @@ public
 : MAIN ( -- )
    T-RESET
    s" created body grid in source, cached and stripped image" T-LABEL
-   s" cell-body-image" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" cell-body-image" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    PREPARE
    s" cold-hb" FULL-BUILD SUCCESS

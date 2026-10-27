@@ -135,7 +135,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
 
 : PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-repair-packet" HB-TMP-MKDIR {: a:ptr u :}
+   s" habu-repair-packet" TMPDIR-MKDIR {: a:ptr u :}
    a u ROOT-BUF ROOT-U COPY!
    ROOT CLEANUP-TREE+ ;
 
@@ -149,7 +149,7 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    SRC a u SOURCE$ WRITE-ALL ;
 
 \ The tool runs with this process's environment, so tools/check.f makes its
-\ scratch root under the HB_TMP this run was handed.
+\ scratch root under the TMPDIR this run was handed.
 : HB-CAPTURE ( -- len len outcome )
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING

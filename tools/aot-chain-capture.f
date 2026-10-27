@@ -59,7 +59,7 @@
 \ it is the build's capture host, which carries the same prefix with no artifact
 \ declared (tools/build-fixpoint.f BF-KEEP-HOST), and the build runs exactly this
 \ command line in it (BF-PREPARE-CAPTURE-ARGV), from the repository root:
-\   $HB_TMP/hb-host --load tools/aot-chain-capture.f -- <artifact>
+\   $TMPDIR/hb-host --load tools/aot-chain-capture.f -- <artifact>
 \ It prints one `name=value` line per census field and exits 0, or refuses with
 \ exit 74 and a named diagnostic — its own, or one of src/habu/aot-capture.f's.
 \ test/aot-chain-capture-suite.f runs it under bin/hb for that refusal, which is

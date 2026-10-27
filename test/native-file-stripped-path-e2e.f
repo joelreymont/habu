@@ -18,7 +18,7 @@ package NATIVE-FILE-STRIPPED-PATH-TEST
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    PROC-ARGV-ENV-RESET
    s" HABU_OUT" >LEN cache cacheu AT >LEN PROC-ENV+
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   s" TMPDIR" >LEN ROOT$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" ARG s" app.f" AT ARG s" 0" ARG s" 1" ARG
    maker makeru AOT-BUILDER-ENGINE:STDIN$ CAPTURE ;

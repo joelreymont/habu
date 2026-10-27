@@ -1,6 +1,6 @@
 \ runner.f - checked process-fixture helpers for native test scripts.
 \
-\ GT-START makes a cleanup-tracked temporary root under HB_TMP. GT-RUN runs a
+\ GT-START makes a cleanup-tracked temporary root under TMPDIR. GT-RUN runs a
 \ prepared argv capture into bounded stdout and stderr buffers (output past
 \ them throws E-PROC-TRUNCATED, never a silent cut) and records whether it
 \ exited, was signalled or timed out. GT-FAIL+ records a named failure so a
@@ -37,7 +37,7 @@ require src/lib/fmt.f                        \ FMT:.INT - one-line number text, 
 5000 constant GT-HEARTBEAT-MS
 10 constant GT-LF
 \ The longest name GT-PATH joins. GT-START keeps that much room below the root
-\ it makes, so whether a row's name joins never depends on how long HB_TMP is.
+\ it makes, so whether a row's name joins never depends on how long TMPDIR is.
 64 constant GT-NAME-MAX
 
 create GT-ROOT-BUF FS-PATH-CAP allot
@@ -175,7 +175,7 @@ variable GT-TAIL-U
    PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
 
 \ A test's child: path with the argv the caller staged. The child inherits this
-\ process's environment, so the scratch it makes lies under the HB_TMP this run
+\ process's environment, so the scratch it makes lies under the TMPDIR this run
 \ was given.
 : GT-RUN ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
@@ -554,22 +554,23 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    GT-REPORT-FAILS
    s" test-runner: failures" GT-EX-FAIL die ;
 
-\ The longest HB_TMP GT-START takes for a root prefix of n bytes: the root
-\ HB-TMP-MKDIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
-: GT-HB-TMP-MAX ( n -- n )
+\ The longest TMPDIR GT-START takes for a root prefix of n bytes: the root
+\ TMPDIR-MKDIR makes under it, a slash and a GT-NAME-MAX name fit FS-PATH-CAP.
+: GT-TMPDIR-MAX ( n -- n )
    TEMP-DIR-BASE-MAX 1- GT-NAME-MAX - ;
 
-\ An HB_TMP longer than that is refused once, here, before anything is made: a
+\ A TMPDIR longer than that is refused once, here, before anything is made: a
 \ named failure with its length and the limit, then the report's exit. A row's
 \ own deeper paths are not checked here: the deepest, streaming-sha256's deep
 \ file (tools/sha256-file-test.f), must still fit FS-PATH-CAP (src/lib/fs.f
-\ FS-PATHZ-INTO), so a gate HB_TMP must be short enough to leave it room.
+\ FS-PATHZ-INTO), so a gate TMPDIR must be short enough to leave it room. An
+\ empty TMPDIR counts as the /tmp TMPDIR-MKDIR then uses.
 : GT-ROOM-CHECK ( n -- ) {: prefixu:n :}
-   s" HB_TMP" GETENV nip {: tmpu:n :}
-   prefixu GT-HB-TMP-MAX {: max:n :}
+   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then nip {: tmpu:n :}
+   prefixu GT-TMPDIR-MAX {: max:n :}
    tmpu max <= if exit then
-   s" HB_TMP leaves the test root no room" GT-FAIL+
-   s" runner: HB_TMP is " type tmpu FMT:.INT
+   s" TMPDIR leaves the test root no room" GT-FAIL+
+   s" runner: TMPDIR is " type tmpu FMT:.INT
    s"  bytes; at most " type max FMT:.INT
    s"  leave the root and a " type GT-NAME-MAX FMT:.INT
    s" -byte name within FS-PATH-CAP " type FS-PATH-CAP FMT:.INT
@@ -581,5 +582,5 @@ create GT-CAP-PATH FS-PATH-CAP allot     \ a file's path while GT-CAP-FILE opens
    CLEANUP-RESET
    0 GT-ROOT-U !
    prefixu GT-ROOM-CHECK
-   prefix prefixu HB-TMP-MKDIR GT-COPY-ROOT!
+   prefix prefixu TMPDIR-MKDIR GT-COPY-ROOT!
    GT-ROOT CLEANUP-TREE+ ;

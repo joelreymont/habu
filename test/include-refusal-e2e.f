@@ -55,7 +55,7 @@ variable RC
    PATH u ;
 
 : SETUP ( -- )
-   s" habu-include-refusal" HB-TMP-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
+   s" habu-include-refusal" TMPDIR-MKDIR CANONICAL TTRUE {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    s" cases" AT MAKE-DIR
    s" plain.f" AT s" \ a file, not a directory" WRITE-ALL ;

@@ -117,7 +117,7 @@ public
    s" abc" drop ROW 64 + 3 BYTE-COPY
    s" xy" drop ROW 67 + 2 BYTE-COPY
    [: ROW 69 NFILE-INPUTS:FORMAT ;] E-NUNIT-FILE TTHROWSQ
-   s" native-input-content" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   s" native-input-content" TMPDIR-MKDIR {: root:ptr rootu:n :}
    root rootu s" source.f" SOURCE-PATH JOIN-PATH SOURCE-U !
    SOURCE$ s" : A 1 ;" WRITE-ALL
    NFILE-INPUTS:RESET

@@ -691,7 +691,7 @@ variable PTT-CANCEL-MARK-U
 
 : PTT-CANCEL-PRE ( -- )
    CLEANUP-RESET
-   s" cmd-cancel" HB-TMP-MKDIR {: root:ptr rootu:n :}
+   s" cmd-cancel" TMPDIR-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-TREE+
    root rootu s" spawned" PTT-CANCEL-MARK JOIN-PATH PTT-CANCEL-MARK-U !
    PTT-CANCEL-OPEN PTT-CANCEL-SIGNAL

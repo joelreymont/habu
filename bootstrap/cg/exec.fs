@@ -40,7 +40,7 @@ s" cg: unsafe shell path" exception constant E-CMD-PATH
 
 : CG-TMP-PATH {: a u :}
    0 CG-TMP# !
-   s" HB_TMP" getenv dup 0= if 2drop s" /tmp" then PS+
+   s" TMPDIR" getenv dup 0= if 2drop s" /tmp" then PS+
    CG-TMP# @ 0> if
       CG-TMP$ CG-TMP# @ 1- + c@ [char] / <> if [char] / P+ then
    then

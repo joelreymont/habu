@@ -111,7 +111,7 @@ DYNAMIC-BUFFER MODULE u8
 
 \ The module, read back; its data section, last, ends with the image.
 : LINKED ( -- )
-   s" link-capture" HB-TMP-MKDIR  s" link-capture.wasm"  PATH JOIN-PATH PATH-U !
+   s" link-capture" TMPDIR-MKDIR  s" link-capture.wasm"  PATH JOIN-PATH PATH-U !
    s" LINK-CAPTURE-WINDOW:MAIN" PATH PATH-U @ WASMLINK:LINK
    PATH PATH-U @ FILE-SIZE {: u:n :}
    u MODULE-RESERVE

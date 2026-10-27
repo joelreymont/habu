@@ -38,7 +38,7 @@
 \     exists, so it is a member like any other; the walk's macOS limit for a
 \     spawn blocked in the kernel remains (src/lib/process-tree.f).
 \  4. A SOCKET PATH PAST sun_path. postgres refuses a socket path over 103
-\     bytes on macOS, and every pool level nests HB_TMP deeper.
+\     bytes on macOS, and every pool level nests TMPDIR deeper.
 \     Asserted: this row runs two pools deep - the gate's and this file's -
 \     and its server starts and reports.
 \  5. DIRECTORIES THAT OUTLIVE A SIGKILL. Nothing in the row runs after its

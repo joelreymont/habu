@@ -59,7 +59,7 @@ variable RC
    S\" s\q boot relocation: ok\q type cr ;\n;package\nBOOT-RELOCATION-CHILD:RUN\n" ENTRY+ ;
 
 : SETUP ( -- )
-   s" habu-boot-relocation" HB-TMP-MKDIR {: a:ptr u:n :}
+   s" habu-boot-relocation" TMPDIR-MKDIR {: a:ptr u:n :}
    a ROOT u BYTE-COPY u ROOT-U !
    ROOT$ s" tree" TREE JOIN-PATH TREE-U !
    s" bin" PATH! PATH PATH-U @ MAKE-DIRS
