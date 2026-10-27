@@ -14,7 +14,7 @@ $100 constant GJA-LINE-MAX
 create GJA-IN GJA-IN-CAP allot
 create GJA-SRC GJA-SRC-CAP allot
 create GJA-PATH GJA-PATH-CAP allot
-create GJA-JR JR:STORAGE-BYTES allot
+TYPED-VARIABLE GJA-JR JR:cursor
 create GJA-STR-BUF GJA-IN-CAP allot
 create GJA-CLASS-BUF GJA-IN-CAP allot
 GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ptr u8   \ one line start per captured line
@@ -168,7 +168,7 @@ variable GJA-DIRECT
    GJA-FD @ close ;
 
 : GJA-OPEN ( SPAN:span<u8> -- JR:reader )
-   SPAN:$ GJA-JR JR:STORAGE-BYTES 2swap JR:INIT JR:NEXT drop ;
+   SPAN:$ GJA-JR -rot JR:INIT JR:NEXT drop ;
 
 \ Turn the current token into its borrowed source value, including quotes for
 \ strings. A container is walked to its close; a scalar keeps the cursor.
@@ -181,7 +181,7 @@ variable GJA-DIRECT
 
 : GJA-PARSE ( ptr u8 n -- SPAN:span<u8> )
    {: a:ptr u:n :}
-   GJA-JR JR:STORAGE-BYTES a u JR:INIT JR:NEXT drop
+   GJA-JR a u JR:INIT JR:NEXT drop
    JR:SKIP-VALUE JR:NEXT JR:T-END <> if E-JR-TRAILING throw then JR:CLOSE
    a u SPAN:MAKE ;
 

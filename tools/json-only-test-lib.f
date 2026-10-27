@@ -191,22 +191,21 @@ variable JOT-ERR-A
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 
-\ An object-shaped row with a malformed tail must not pass the filter. Reader
-\ depth is a capacity refusal and cannot be treated as prose.
+\ An object row nested 65 deep, one past the reader's inline levels, is JSON:
+\ depth refuses no valid row.
 : JOT-DEEP$ ( -- ptr u8 n )
    SB-RESET
-   65 0 ?do 91 SB-APPEND-C loop
+   123 SB-APPEND-C JOT-DQ s" a" SB-APPEND JOT-DQ 58 SB-APPEND-C
+   64 0 ?do 91 SB-APPEND-C loop
    s" 0" SB-APPEND
-   65 0 ?do 93 SB-APPEND-C loop
+   64 0 ?do 93 SB-APPEND-C loop
+   125 SB-APPEND-C
    JOT-LF SB$ ;
 
-: JOT-DEEP-RUN ( -- )
-   JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
-   JOT-DEEP$ JSON-ONLY-FILTER ;
-
 : JOT-DEEP-CASE ( -- )
-   [: JOT-DEEP-RUN ;] E-JR-DEPTH TTHROWSQ
-   JSON-ONLY-BUFFERS-OFF ;
+   JOT-DEEP$ JOT-RUN-CORE {: outu:n erru:n :}
+   JOT-OUT outu JOT-DEEP$ T$=
+   JOT-ERR erru JOT-EMPTY$ T$= ;
 
 \ The buffers are the caller's and cannot grow, so a buffered filter refuses
 \ what does not fit by name. A line goes in with its line feed or not at all:

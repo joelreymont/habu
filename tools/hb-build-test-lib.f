@@ -513,8 +513,7 @@ create HBT-LITC-SRC-BUF FS-PATH-CAP allot
 : HBT-REMOVE-ARTIFACT ( -- )
    HBB-ARTIFACT$ HBT-REMOVE-FILE? ;
 
-align
-create READER-STATE JR:STORAGE-BYTES allot
+TYPED-VARIABLE READER-STATE JR:cursor
 
 : REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
    JR:TOKEN JR:T-STR T=
@@ -523,7 +522,7 @@ create READER-STATE JR:STORAGE-BYTES allot
 
 : CHECK-REPORT ( ptr u8 n n n n n n -- )
    {: a:ptr u:n artifact:n object:n maker:n built:n ran:n :}
-   READER-STATE JR:STORAGE-BYTES a u JR:INIT
+   READER-STATE a u JR:INIT
    JR:NEXT JR:T-OBJ T=
    s" schema" JR:FIND-KEY TTRUE
    s" hb-build-report" REPORT-STRING=

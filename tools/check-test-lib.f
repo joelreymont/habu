@@ -3521,7 +3521,6 @@ TYPED-VARIABLE CT-ROW SPAN:span<u8>
 
 : ESC-ROOT ( n -- SPAN:span<u8> )
    CAP-ERR swap CT-TRY dup 0= if drop CT-ROW @ exit then
-   dup E-JR-DEPTH = if throw then
    s" the JSON packet parses" T-LABEL 0 T= CT-NONE ;
 
 : ESC-STR= ( SPAN:span<u8> ptr u8 n ptr u8 n -- )

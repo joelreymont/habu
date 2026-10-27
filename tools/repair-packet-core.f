@@ -19,7 +19,7 @@ $8000 constant RP-OUT-CAP
 create RP-PATH RP-PATH-CAP allot
 create RP-OUT RP-OUT-CAP allot
 create RP-TEXT RP-IN-CAP allot
-create RP-READER JR:STORAGE-BYTES allot
+TYPED-VARIABLE RP-READER JR:cursor
 TYPED-VARIABLE RP-W JSON-WRITE:writer
 TYPED-VARIABLE RP-SOURCE ptr u8
 TYPED-VARIABLE RP-ROW ptr u8
@@ -102,7 +102,7 @@ variable RP-ROW-OBJECT
 
 : RP-FIND ( ptr u8 n -- JR:reader bool )
    {: key:ptr ku:n :}
-   RP-READER JR:STORAGE-BYTES RP-ROW$ JR:INIT
+   RP-READER RP-ROW$ JR:INIT
    JR:NEXT drop
    key ku JR:FIND-KEY ;
 
@@ -129,7 +129,7 @@ variable RP-ROW-OBJECT
    RP-CODE$ DIAG-CODE:REFUSAL? ;
 
 : RP-VALIDATE ( -- )
-   RP-READER JR:STORAGE-BYTES RP-ROW$ JR:INIT
+   RP-READER RP-ROW$ JR:INIT
    JR:NEXT {: kind:n :}
    begin JR:NEXT dup JR:T-END <> while drop repeat drop
    JR:CLOSE

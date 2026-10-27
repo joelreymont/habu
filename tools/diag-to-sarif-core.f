@@ -35,7 +35,7 @@ create SARIF-TEXT-BUF SARIF-TEXT-CAP allot
 create SARIF-ONE 1 allot
 create SARIF-QUOTE SARIF-QUOTE-CAP allot
 create SARIF-DECODE SARIF-IN-CAP allot
-create SARIF-READER JR:STORAGE-BYTES allot
+TYPED-VARIABLE SARIF-READER JR:cursor
 TYPED-VARIABLE SARIF-W JSON-WRITE:writer
 
 variable SARIF-IN-LEN
@@ -126,7 +126,7 @@ variable SARIF-RESULT-N
 
 : SARIF-GET ( ptr u8 n -- JR:reader bool )
    {: key:ptr ku:n :}
-   SARIF-READER JR:STORAGE-BYTES SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
+   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
    JR:NEXT drop
    key ku JR:FIND-KEY ;
 
@@ -448,16 +448,22 @@ variable SARIF-RESULT-N
    SARIF-TRUE ;
 
 : SARIF-PARSE-RAW ( -- )
-   SARIF-READER JR:STORAGE-BYTES SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
+   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
    JR:NEXT {: kind:n :}
    begin JR:NEXT dup JR:T-END <> while drop repeat drop
    JR:CLOSE
    kind JR:T-OBJ = SARIF-ROW-OBJECT ! ;
 
+\ JR's codes for text that is not JSON; any other code, such as a refused
+\ growth of the reader's nesting stack, is not the row's fault and is thrown.
+: SARIF-SYNTAX? ( n -- bool )
+   {: code:n :}
+   code E-JR-COMMA >= code E-JR-MALFORMED <= and ;
+
 : SARIF-PARSE-LINE ( -- )
    [: SARIF-PARSE-RAW ;] catch
    dup 0<> if
-      dup E-JR-DEPTH = if throw then
+      dup SARIF-SYNTAX? 0= if throw then
       s" diag-to-sarif: invalid JSON" SARIF-E-DATA SARIF-FAIL
    then drop
    SARIF-ROW-OBJECT @ 0= if
