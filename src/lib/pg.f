@@ -282,6 +282,8 @@ FUNCTION: LIB-NTUPLES PQntuples ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-NFIELDS PQnfields ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-FNAME PQfname ( ptr u8 n -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-FTYPE PQftype ( ptr u8 n -- u32 ) ;FUNCTION
+FUNCTION: LIB-FTABLE PQftable ( ptr u8 n -- u32 ) ;FUNCTION
+FUNCTION: LIB-FTABLECOL PQftablecol ( ptr u8 n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETVALUE PQgetvalue ( ptr u8 n n -- ptr u8 ) ;FUNCTION
 FUNCTION: LIB-GETISNULL PQgetisnull ( ptr u8 n n -- i32 ) ;FUNCTION
 FUNCTION: LIB-GETLENGTH PQgetlength ( ptr u8 n n -- i32 ) ;FUNCTION
@@ -1521,6 +1523,16 @@ public
 \ The column's type OID, as pg_type numbers it.
 : OID ( result col -- u32 )
    COLUMN-AT LIB-FTYPE ;
+
+
+\ The OID of the column's source table; 0 unless it is a plain table column.
+: TABLE ( result col -- u32 )
+   COLUMN-AT LIB-FTABLE ;
+
+
+\ The column's attnum in its TABLE; 0 unless it is a plain table column.
+: TABLE-COL ( result col -- n )
+   COLUMN-AT LIB-FTABLECOL ;
 
 
 \ The span is libpq's own bytes inside the result and stays valid until CLEAR.

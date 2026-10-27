@@ -467,6 +467,48 @@ TYPED-VARIABLE HELD-ID n
    c ;
 
 
+\ ---- column origin --------------------------------------------------------
+: ORIGIN-SQL$ ( -- ptr u8 n )
+   s" select id as key, label, length(label) as len from pqt" ;
+
+
+: SCALAR ( PG:connection ptr u8 n -- n ) {: c sql:ptr su:n :}
+   c sql su EXEC {: r :}
+   r 0 >ROW 0 >COL INT {: v:n :}
+   r CLEAR
+   v ;
+
+
+: ATTNUM ( PG:connection ptr u8 n -- n ) {: c name:ptr nu:n :}
+   c PARAMS
+   c name nu TEXT+
+   c s" select attnum from pg_attribute where attrelid = 'pqt'::regclass and attname = $1"
+   SCALAR ;
+
+
+\ An aliased and a plain table column name pqt and their attnums; an expression
+\ names no table.
+: ORIGIN-CHECK ( PG:result n n n -- ) {: r tab:n id-num:n label-num:n :}
+   r 0 >COL TABLE tab T=
+   r 0 >COL TABLE-COL id-num T=
+   r 1 >COL TABLE tab T=
+   r 1 >COL TABLE-COL label-num T=
+   r 2 >COL TABLE 0 T=
+   r 2 >COL TABLE-COL 0 T=
+   r CLEAR ;
+
+
+: ORIGIN-CASES ( PG:connection -- PG:connection ) {: c :}
+   c s" select 'pqt'::regclass::oid::int8" SCALAR {: tab:n :}
+   c s" id" ATTNUM {: id-num:n :}
+   c s" label" ATTNUM {: label-num:n :}
+   s" a result column names its source table and attnum, 0 for an expression" T-LABEL
+   c ORIGIN-SQL$ EXEC tab id-num label-num ORIGIN-CHECK
+   s" a described statement names the same column origins" T-LABEL
+   c ORIGIN-SQL$ DESCRIBE tab id-num label-num ORIGIN-CHECK
+   c ;
+
+
 \ ---- wait deadlines -------------------------------------------------------
 200 constant BOUND-MS
 2000 constant ROOMY-MS
@@ -1377,6 +1419,7 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    LONG-MESSAGE-CASES
    PREPARED-CASES
    DESCRIBE-CASES
+   ORIGIN-CASES
    ROLLBACK-CASES
    COMMIT-CASES
    LEFT-BODY-CASES
