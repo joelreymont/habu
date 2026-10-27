@@ -1447,8 +1447,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
 \ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
 \ states its own offset. Below it, $600..$690 is GENIO-ABI, AOT-SPAN and
-\ SIGNAL-ABI, $690 is NCOMP-DISPATCH:RECOVER-CELL, $698..$6D0 is free,
-\ $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF and $7D0..$7E0 is FRAME-CELL
+\ SIGNAL-ABI, $690 is NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 is LVS-OFF,
+\ $6A8..$6D0 is free, $6D0..$750 is LVF-OFF, $750..$7D0 is LVQ-OFF and $7D0..$7E0 is FRAME-CELL
 \ and QFRAME-CELL.
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
@@ -1463,6 +1463,10 @@ $580 constant LVH-OFF
 \ loops at both tiers.
 $6D0 constant LVF-OFF
 $750 constant LVQ-OFF      \ `?do` entry-branch offset per DO level; 0 for `do`
+\ LVS-OFF: one byte per DO level, the JIT-SNAP frame index that level's `do` or
+\ `?do` took, written when the level opens and read by `leave` to reconcile to
+\ it without popping the frames above. LV-LEVELS bytes.
+$698 constant LVS-OFF
 \ LVH, LVF and LVQ hold one cell per level up to GENIO-ABI ($600), LVQ-OFF
 \ ($750) and FRAME-CELL ($7D0): a definition nests at most this many `do`/`?do`
 \ levels.
@@ -2401,7 +2405,7 @@ $43B8 constant B0-CELL           \ first address of the open window's code span
 \ depth raised.
 package JIT-SNAP
 public
-\ One frame per open IF, BEGIN or WHILE entry, pushed after C-CF-ROOM admits
+\ One frame per open IF, BEGIN, WHILE or DO entry, pushed after C-CF-ROOM admits
 \ the entry (`else` pops one and pushes one), so SP-CELL <= the CF depth <=
 \ CFSTK-DEPTH-MAX and no push needs a check.
 CFSTK-DEPTH-MAX constant FRAMES

@@ -139,6 +139,7 @@ create TAB
    GENIO-ABI:OUT-CELL                 GENIO-ABI:END GENIO-ABI:OUT-CELL -  CLAIM GENIO-ABI
    AOT-CELLS:SPAN-TABLE-CELL          3 cells                 CLAIM AOT-SPAN
    SIGNAL-ABI:STUB-CELL               3 cells                 CLAIM SIGNAL-ABI
+   LVS-OFF                            LV-LEVELS               CLAIM LVS-LEVELS
    LVF-OFF                            LV-LEVELS cells         CLAIM LVF-LEVELS
    LVQ-OFF                            LV-LEVELS cells         CLAIM LVQ-LEVELS
    FRAME-CELL                         1 cells                 CLAIM FRAME-CELL

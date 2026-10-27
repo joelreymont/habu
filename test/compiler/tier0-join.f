@@ -22,8 +22,12 @@
 \ Inside a `do`/`?do` loop tier 0 keeps the innermost index in x29 (habu2.f
 \ J-FRAME, J-I): `i` copies x29 into a pool register, and only a call or a
 \ control-flow edge makes the compiler reload it from the memory frame, which
-\ stays current because `loop` and `+loop` store every step. L-TOP's `i` is a
-\ copy alone, L-CALL's reloads once after the call, L-NOI's `loop` reloads the
+\ stays current because `loop` and `+loop` store every step. A reload, `i`'s
+\ (LIDX-RELOAD?,) or the step's (LIDX-LOAD?,), addresses the frame through x16
+\ (C-LOOP-TOP,) and then issues `ldr x29,[x16]`, the one instruction that
+\ writes the cache from memory; every `loop` addresses its frame through x16 to
+\ step it, so the address sequence alone does not mark a reload. L-TOP's `i` is
+\ a copy alone, L-CALL's reloads once after the call, L-NOI's `loop` reloads the
 \ index it steps after the call, and L-NEST's outer `i` reloads after the
 \ inner loop closes. L-WIDE's wide local sends it through pass 2 (habu2.f
 \ EM-P2-START), where each read of `k` spills the virtual stack and loads the
@@ -57,8 +61,7 @@ $FFE0FFFF constant MOV16-MASK   $AA0003F0 constant MOV16-OP    \ mov x16,xN
 $FFFFFFE0 constant FROM16-MASK  $AA1003E0 constant FROM16-OP   \ mov xN,x16
 $FF000010 constant BCOND-MASK   $54000000 constant BCOND-OP    \ b.cond
 $FF000000 constant CBZ-MASK     $B4000000 constant CBZ-OP      \ cbz xR
-$FFFFFFFF constant RELOAD-MASK  $F940E690 constant RELOAD-OP   \ ldr x16,[x20,#LOOPSP-CELL]
-$FFFFFFFF constant IDXLD-MASK   $F940019D constant IDXLD-OP    \ ldr x29,[x12]
+$FFFFFFFF constant RELOAD-MASK  $F940021D constant RELOAD-OP   \ ldr x29,[x16]
 $FFFFFFE0 constant MOVIDX-MASK  $AA1D03E0 constant MOVIDX-OP   \ mov xN,x29
 $FFC003FF constant SPLD-MASK    $F94003E9 constant SPLD-OP     \ ldr x9,[sp,#off]
 $FFC003E0 constant SPST-MASK    $F90003E0 constant SPST-OP     \ str xR,[sp,#off]
@@ -133,7 +136,6 @@ variable MISSING                     \ names the dictionary did not answer for
 : WFROM16S ( ptr u8 n -- n )  FROM16-MASK FROM16-OP WORD-OPS ;
 : WBCONDS ( ptr u8 n -- n )  BCOND-MASK BCOND-OP WORD-OPS ;
 : WRELOADS ( ptr u8 n -- n )  RELOAD-MASK RELOAD-OP WORD-OPS ;
-: WIDXLDS ( ptr u8 n -- n )  IDXLD-MASK IDXLD-OP WORD-OPS ;
 : WMOVIDXS ( ptr u8 n -- n )  MOVIDX-MASK MOVIDX-OP WORD-OPS ;
 : WSPLDS ( ptr u8 n -- n )  SPLD-MASK SPLD-OP WORD-OPS ;
 : WSPSTS ( ptr u8 n -- n )  SPST-MASK SPST-OP WORD-OPS ;
@@ -229,19 +231,14 @@ private
 : TEST-INDEX-SHAPE ( -- )
    s" a loop index stays in x29 until a call or a join" T-LABEL
    s" TIER0-JOIN:L-TOP" WRELOADS 0 T=
-   s" TIER0-JOIN:L-TOP" WIDXLDS 0 T=
    s" TIER0-JOIN:L-TOP" WMOVIDXS 1 T=
    s" TIER0-JOIN:L-CALL" WRELOADS 1 T=
-   s" TIER0-JOIN:L-CALL" WIDXLDS 0 T=
    s" TIER0-JOIN:L-CALL" WMOVIDXS 1 T=
-   s" TIER0-JOIN:L-NOI" WRELOADS 0 T=
-   s" TIER0-JOIN:L-NOI" WIDXLDS 1 T=
+   s" TIER0-JOIN:L-NOI" WRELOADS 1 T=
    s" TIER0-JOIN:L-NEST" WRELOADS 1 T=
-   s" TIER0-JOIN:L-NEST" WIDXLDS 0 T=
    s" TIER0-JOIN:L-NEST" WMOVIDXS 2 T=
    s" TIER0-JOIN:L-WIDE" WSPLDS 2 T=
    s" TIER0-JOIN:L-WIDE" WRELOADS 0 T=
-   s" TIER0-JOIN:L-WIDE" WIDXLDS 0 T=
    s" TIER0-JOIN:L-WIDE" WMOVIDXS 1 T= ;
 
 : TEST-BIND-SHAPE ( -- )

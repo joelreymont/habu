@@ -2658,9 +2658,10 @@ public
       cloop B,
    done LBL, ;
 
-\ Tier 0 keeps the VS in registers across joins: `begin`, `if` and `while`
-\ snapshot it into registers (LVSNAP), and the back edges, `then` and
-\ `repeat`'s exit reconcile to that snapshot (LVRECON, LVSETF). A back edge
+\ Tier 0 keeps the VS in registers across joins: `begin`, `if`, `while`, `do`
+\ and `?do` snapshot it into registers (LVSNAP), and the back edges, `then`,
+\ `repeat`'s exit and `leave` reconcile to that snapshot (LVRECON, LVRECONAT,
+\ LVSETF). A back edge
 \ branches on x17 — never a VS register, so the reconcile can't clobber the
 \ flag — or on the flags of a compare LVFUSE fused into the branch.
 : J-BEGIN ( -- )  C-CF-ROOM  LVSNAP LABEL@ BL,  CFK-BEGIN C-PUSHCP ;
@@ -2722,12 +2723,9 @@ public
 : W-ADDX-LSL3 ( n n n -- n ) {: rd RN RM :}                           \ add rd,rn,rm,lsl#3
    $8B000000  RM 16 lshift or  3 10 lshift or  RN 5 lshift or  rd or ;
 
-\ LOOP-FRAME-ADDR, : x12 = the frame at [LOOPSP-1] (or at LOOPSP for a push),
-\ from x11 holding the index. The pair it replaced was `add x12,x12,#$600` and
-\ `add x12,x12,x20`, the old in-header band; the base is a header cell now, so
-\ this loads it instead. x13 is the scratch rather than x11 because J-FRAME
-\ still needs the index in x11 to bump the depth afterwards, and x13 is dead at
-\ this point in every one of the seven families that emit it.
+\ LOOP-FRAME-ADDR, : x12 += the loop frame band's base, x13 scratch: the frame
+\ address from x12 holding its byte offset. The base is a header cell, so this
+\ loads it. `j` emits it after the dispatch spill, where x11-x13 hold no value.
 : LOOP-FRAME-ADDR, ( -- )
    13 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
    12 12 13 W-ADDX C-EMITW ;
@@ -2742,11 +2740,20 @@ public
 \ may be reached from code that wrote x29), `unloop`, a definition start and
 \ a refused token's rollback clear it. While it is clear, `i`, `loop` and
 \ `+loop` load x29 from the frame first.
-: J-FRAME ( -- )                                \ pop limit/start, push a loop frame
-   3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
-   4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
-   4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW
-   LIDX 9 ENC-MOV C-EMITW ;                     \ mov x29,x9: the index starts cached
+\ The loop rows below emit code while the virtual stack keeps values in pool
+\ registers, so their scratch is x0, x1, x16 and x17: x0 and x1 are free scratch
+\ in emitted row code because no pool value lives in them and a call clobbers
+\ them; x16 and x17 are never pooled.
+\ J-FRAME : push the loop frame (index x29, limit x17); x29 is its index cache.
+: J-FRAME ( -- )
+   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
+   0 16 4 ENC-LSLI C-EMITW                           \ lsl x0,x16,#4
+   1 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW      \ ldr x1,[x20,#LOOP-BASE]
+   0 0 1 W-ADDX C-EMITW                              \ add x0,x0,x1
+   LIDX 0 0 W-STRX C-EMITW                           \ str x29,[x0]
+   17 0 8 W-STRX C-EMITW                             \ str x17,[x0,#8]
+   16 16 1 ENC-ADDI C-EMITW                          \ add x16,x16,#1
+   16 20 LOOPSP-CELL W-STRX C-EMITW ;                \ str x16,[x20,#LOOPSP]
 
 \ LIDX-SET, : the code emitted next may read the index from x29. Clobbers x9.
 : LIDX-SET, ( -- )  9 1 MOVZ,  9 DATA LIDX-CELL STR, ;
@@ -2754,16 +2761,59 @@ public
 \ LIDX-CLEAR, : the code emitted next reloads the index first. Clobbers x9.
 : LIDX-CLEAR, ( -- )  9 0 MOVZ,  9 DATA LIDX-CELL STR, ;
 
+\ C-VS-TOP>REG, : move the VS top into register rd, outside the pools, and drop
+\ it: a register entry by a mov, an integer constant by its movz chain, a float
+\ entry or an empty VS through a spill and a pop. x0 and x1 are free scratch in
+\ emitted row code because no pool value lives in them and a call clobbers them.
+: C-VS-TOP>REG, ( n -- )
+   {: rd:n :}
+   LBL LBL LBL {: con:label mem:label done:label :}
+   6 DATA VSP-CELL LDR,  6 mem CBZ,
+   5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,     \ x11 = val
+   7 1 CMPI,  C-EQ con BCOND,
+   7 mem CBNZ,                                                    \ tags 2 and 3
+      8 W-MOVRR rd or LIT64,  7 11 16 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ mov rd,xR
+      LVDROP LABEL@ BL,  done B,
+   con LBL,
+      14 rd MOVZ,  LVMOVK LABEL@ BL,                              \ movz/movk rd,val
+      LVDROP LABEL@ BL,  done B,
+   mem LBL,
+      LVSPILL LABEL@ BL,
+      W-POPR rd or C-EMITW                                        \ ldr rd,[x19,#-8]!
+   done LBL, ;
+
+\ C-LOOP-TOP, : x16 := the innermost loop frame's address, x17 scratch. x16 and
+\ x17 are never pooled, so no virtual stack value moves.
+: C-LOOP-TOP, ( -- )
+   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
+   16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
+   16 16 4 ENC-LSLI C-EMITW                          \ lsl x16,x16,#4
+   17 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW     \ ldr x17,[x20,#LOOP-BASE]
+   16 16 17 W-ADDX C-EMITW ;                         \ add x16,x16,x17
+
+\ C-LOOP-POP, : pop one loop frame through x16, the shared tail of `unloop`,
+\ `loop` and `+loop`.
+: C-LOOP-POP, ( -- )
+   16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
+   16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
+   16 20 LOOPSP-CELL W-STRX C-EMITW ;                \ str x16,[x20,#LOOPSP]
+
 \ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
 \ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
 \ handlers built on it. The loop keyword dispatch rows reopen this package
 \ further down so they resolve the handlers bare.
 package LOOP-EMIT
 
+\ LVROOM refuses an opener while every level is in use, before `do` or `?do`
+\ takes a snapshot frame or LVOPEN writes a level. Clobbers x9 and x12.
+: LVROOM ( -- )
+   9 DATA LVD-CELL LDR,
+   12 LV-LEVELS MOVZ,  9 12 CMP,
+   C-GE LCFCAP LABEL@ BCOND, ;           \ (TKA/TKL hold the `do`/`?do` token)
+
 : LVOPEN ( -- )                                 \ open a LEAVE-chain level: LVH[LVD]=LVQ[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
-   12 LV-LEVELS MOVZ,  9 12 CMP,         \ all levels in use: refuse, write none
-   C-GE LCFCAP LABEL@ BCOND,             \ (TKA/TKL hold the `do`/`?do` token)
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
    10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
@@ -2772,10 +2822,11 @@ package LOOP-EMIT
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
-\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF/LVQ level arrays) is
-\ the loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
+\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF/LVQ/LVS level arrays)
+\ is the loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
 \ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
-\ one; LVQ holds a `?do`'s entry branch, 0 for `do`, for its `+loop` to rewrite.
+\ one; LVQ holds a `?do`'s entry branch, 0 for `do`, for its `+loop` to rewrite,
+\ and LVS the index of the level's snapshot frame, which `leave` reconciles to.
 \ LCFPOP's orphan guard covers only the CF stack, so it does not see this
 \ stack at all: a loop-family word with no open `do` indexed level -1, and
 \ LVH-OFF's cell -1 IS LVD-CELL itself (they are adjacent, $578/$580). `loop`
@@ -2807,52 +2858,78 @@ package LOOP-EMIT
    11 CP DBASE SUB,  11 10 0 STR,
    LCEMIT LABEL@ BL, ;
 
+\ The opening `do` and `?do` share: refuse first, then take the start into x29
+\ and the limit into x17, snapshot the rest of the VS as the loop layout L
+\ (LVSNAP: its forces write pool registers and x16 only), push the loop frame,
+\ open the level and record L's snapshot frame index in LVS. The body, the
+\ back edge, `?do`'s skip and every `leave` meet in L.
+: C-DO-OPEN ( -- )
+   C-CF-ROOM  LVROOM
+   LIDX C-VS-TOP>REG,  17 C-VS-TOP>REG,
+   LVSNAP LABEL@ BL,
+   J-FRAME  LVOPEN
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVS[LVD-1] := the snapshot depth - 1
+   10 9 LVS-OFF ADDI,  10 DATA 10 ADD,
+   11 DATA JIT-SNAP:SP-CELL LDR,  11 11 1 SUBI,  11 10 0 STRB, ;
+
 : J-DO ( -- )
-   C-CF-ROOM  J-FRAME  LVOPEN  CFK-DO C-PUSHCP  LIDX-SET, ;
+   C-DO-OPEN  CFK-DO C-PUSHCP  LIDX-SET, ;
 
 \ `?do` enters only where its closer lets the first turn run. It emits `loop`'s
 \ test, start < limit, so a limit at or below the start takes no turn, and
 \ records the branch in LVQ: `+loop` steps by a per-turn value that may count
 \ down, so the `+loop` closing this level rewrites it to skip equal bounds only.
 : J-?DO ( -- )                                  \ DO, but skip the loop unless start < limit
-   C-CF-ROOM  J-FRAME  LVOPEN
-   $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
+   C-DO-OPEN
+   LIDX 17 ENC-CMP C-EMITW               \ cmp x29,x17
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,     \ LVQ[LVD-1] := the entry branch's offset
    10 9 3 LSLI,  10 10 LVQ-OFF ADDI,  10 DATA 10 ADD,
    11 CP DBASE SUB,  11 10 0 STR,
    $5400004B C-EMITW                     \ b.lt +8 (over the skip placeholder)
-   LVLEAVE
+   LVLEAVE                               \ the skip leaves in L: the VS is the snapshot
    CFK-DO C-PUSHCP  LIDX-SET, ;
 
-: J-LEAVE ( -- )  LVLEAVE ;
+\ `leave` reconciles to its level's snapshot frame, L, popping neither it nor a
+\ frame above it, and branches to the loop's exit, which arrives in L. The code
+\ after it is dead until the next closer, which reconciles from VS = L.
+: J-LEAVE ( -- )
+   LVREQUIRE
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,
+   10 9 LVS-OFF ADDI,  10 DATA 10 ADD,  6 10 0 LDRB,
+   LVRECONAT LABEL@ BL,
+   LVLEAVE ;
 
 : J-UNLOOP ( -- )                               \ pop one loop frame, no branch
-   4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW
+   C-LOOP-POP,
    LIDX-CLEAR, ;                         \ x29 holds the popped loop's index
 
 : J-LOOPEND ( -- )                              \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
-   4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW
+   C-LOOP-POP,
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
    LBCHAIN LABEL@ BL, ;
 
-\ LIDX-LOAD?, : x29 := the index at [x12], the frame, unless LIDX-CELL says
+\ LIDX-LOAD?, : x29 := the index at [x16], the frame, unless LIDX-CELL says
 \ x29 holds it. Clobbers x9.
 : LIDX-LOAD?, ( -- )
    LBL {: kept:label :}
    9 DATA LIDX-CELL LDR,  9 kept CBNZ,
-      LIDX 12 0 ENC-LDR C-EMITW          \ ldr x29,[x12]
+      LIDX 16 0 ENC-LDR C-EMITW          \ ldr x29,[x16]
    kept LBL, ;
 
+\ `loop` and `+loop` reconcile the VS to L before the step: the reconcile is
+\ flag-neutral and touches neither x0 nor x17, and nothing sits between the
+\ compare and its branch.
 : J-LOOP ( -- )
    0 CFK-DO C-CF-AT                      \ no open DO entry: reject before emitting or popping
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
+   LVRECON LABEL@ BL,                    \ VS -> L; pops the DO snapshot frame
+   C-LOOP-TOP,
    LIDX-LOAD?,
-   10 12 8 ENC-LDR C-EMITW               \ ldr x10,[x12,#8]   limit
+   17 16 8 ENC-LDR C-EMITW               \ ldr x17,[x16,#8]   limit
    LIDX LIDX 1 ENC-ADDI C-EMITW          \ add x29,x29,#1
-   LIDX 12 0 ENC-STR C-EMITW             \ str x29,[x12]
-   LIDX 10 ENC-CMP C-EMITW               \ cmp x29,x10
+   LIDX 16 0 ENC-STR C-EMITW             \ str x29,[x16]
+   LIDX 17 ENC-CMP C-EMITW               \ cmp x29,x17
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000B LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,
@@ -2867,18 +2944,21 @@ package LOOP-EMIT
    1 DBASE 9 ADD,  2 4 MOVZ,  PROT-EMIT:LSPAN LABEL@ BL,   \ a write below CP
    10 DBASE 9 ADD,  11 $54000041 LIT64,  11 10 0 STRW,  \ b.ne +8: skip equal bounds only
    plain LBL,
-   W-POP9 C-EMITW                        \ step -> x9
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
+   \ x0 and x1 are free scratch in emitted row code because no pool value
+   \ lives in them and a call clobbers them.
+   0 C-VS-TOP>REG,                       \ step -> x0
+   LVRECON LABEL@ BL,                    \ VS -> L; pops the DO snapshot frame
+   C-LOOP-TOP,
    LIDX-LOAD?,                           \ x29 = index
-   10 12 8 ENC-LDR C-EMITW               \ ldr x10,[x12,#8]   limit
-   15 LIDX 10 ENC-SUB C-EMITW            \ sub x15,x29,x10    old
-   LIDX LIDX 9 ENC-ADD C-EMITW           \ add x29,x29,x9
-   LIDX 12 0 ENC-STR C-EMITW             \ str x29,[x12]
-   16 LIDX 10 ENC-SUB C-EMITW            \ sub x16,x29,x10    new
-   $CA1001F0 C-EMITW                     \ eor x16,x15,x16   old xor new
-   $CA0901EF C-EMITW                     \ eor x15,x15,x9    old xor step
-   $8A1001EF C-EMITW                     \ and x15,x15,x16   directed boundary crossing
-   $F10001FF C-EMITW                     \ cmp x15,#0
+   17 16 8 ENC-LDR C-EMITW               \ ldr x17,[x16,#8]   limit
+   1 LIDX 17 ENC-SUB C-EMITW             \ sub x1,x29,x17     old
+   LIDX LIDX 0 ENC-ADD C-EMITW           \ add x29,x29,x0
+   LIDX 16 0 ENC-STR C-EMITW             \ str x29,[x16]
+   17 LIDX 17 ENC-SUB C-EMITW            \ sub x17,x29,x17    new
+   17 1 17 ENC-EOR C-EMITW               \ eor x17,x1,x17     old xor new
+   1 1 0 ENC-EOR C-EMITW                 \ eor x1,x1,x0       old xor step
+   1 1 17 ENC-AND C-EMITW                \ and x1,x1,x17      directed boundary crossing
+   1 0 ENC-CMPI C-EMITW                  \ cmp x1,#0
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,       \ b.ge loop-top
@@ -2892,11 +2972,7 @@ package LOOP-EMIT
 : LIDX-RELOAD?, ( -- )
    LBL {: kept:label :}
    9 DATA LIDX-CELL LDR,  9 kept CBNZ,
-      16 20 LOOPSP-CELL W-LDRX C-EMITW                  \ ldr x16,[x20,#LOOPSP]
-      16 16 1 ENC-SUBI C-EMITW                          \ sub x16,x16,#1
-      16 16 4 ENC-LSLI C-EMITW                          \ lsl x16,x16,#4
-      17 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW     \ ldr x17,[x20,#LOOP-BASE]
-      16 16 17 W-ADDX C-EMITW                           \ add x16,x16,x17
+      C-LOOP-TOP,
       LIDX 16 0 W-LDRX C-EMITW                          \ ldr x29,[x16]
       LIDX-SET,
    kept LBL, ;
@@ -12427,18 +12503,18 @@ package LOOP-EMIT
 public
 
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
-   LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY
-   LMAIN LABEL@ LKWLOOP   4 ['] J-LOOP   CF-ENTRY
+   LMAIN LABEL@ LKWDO     2 ['] J-DO     CFN-ENTRY
+   LMAIN LABEL@ LKWLOOP   4 ['] J-LOOP   CFN-ENTRY
    LMAIN LABEL@ LKWI      1 ['] J-I      CFN-ENTRY
    LMAIN LABEL@ LKWTOR    2 ['] J-TOR    CF-ENTRY
    LMAIN LABEL@ LKWRFROM  2 ['] J-RFROM  CF-ENTRY
    LMAIN LABEL@ LKWRFET   2 ['] J-RFETCH CF-ENTRY
    LMAIN LABEL@ LKWEXIT   4 ['] J-EXIT    CF-ENTRY
    LMAIN LABEL@ LKWREC    7 ['] J-RECURSE CF-ENTRY
-   LMAIN LABEL@ LKWQDO    3 ['] J-?DO     CF-ENTRY
-   LMAIN LABEL@ LKWPLOOP  5 ['] J-+LOOP   CF-ENTRY
+   LMAIN LABEL@ LKWQDO    3 ['] J-?DO     CFN-ENTRY
+   LMAIN LABEL@ LKWPLOOP  5 ['] J-+LOOP   CFN-ENTRY
    LMAIN LABEL@ LKWJ      1 ['] J-J       CF-ENTRY
-   LMAIN LABEL@ LKWLEAVE  5 ['] J-LEAVE   CF-ENTRY
+   LMAIN LABEL@ LKWLEAVE  5 ['] J-LEAVE   CFN-ENTRY
    LMAIN LABEL@ LKWUNLOOP 6 ['] J-UNLOOP  CF-ENTRY
    LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CFN-ENTRY ;
 
@@ -14226,7 +14302,7 @@ package LABELS
    LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
    LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
-   LBL LVSNAP !  LBL LVRECON !  LBL LVFPOP !  LBL LVSETF !  LBL LVRESNAP !  LBL LVFUSE ! ;
+   LBL LVSNAP !  LBL LVRECON !  LBL LVRECONAT !  LBL LVFPOP !  LBL LVSETF !  LBL LVRESNAP !  LBL LVFUSE ! ;
 
 : OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !

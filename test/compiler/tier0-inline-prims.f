@@ -204,6 +204,19 @@ variable T0-SV
    a b c k begin >r rot r> 1- dup 0= until drop ;
 : T0-QROT ( n n n -- n n n ) [: rot ;] execute ;
 
+\ Counted loops carry the virtual stack: what sits on it at `do` stays in
+\ registers through the body, `leave`, a call, a local, `unloop exit` and a
+\ throw, so the accumulator is pulled once at entry and pushed once at the end.
+: T0-LOOPSUM ( n -- n ) 0 swap 0 ?do i + loop ;
+: T0-LOOPLEAVE ( n -- n ) 0 swap 0 ?do i 5 = if leave then i + loop ;
+: T0-LOOPDOWN ( -- n ) 0 0 10 ?do i + -1 +loop ;
+: T0-LOOPNEST ( -- n ) 0 3 0 ?do 3 0 ?do i j * + loop loop ;
+: T0-LOOPCALL ( n -- n ) 0 swap 0 ?do i T0-CALLEE + loop ;
+: T0-LOOPEXIT ( n -- n ) 0 swap 0 ?do i 7 = if unloop exit then i + loop ;
+: T0-LOOPLOC ( n -- n ) 0 swap 0 ?do i {: k:n :} k + loop ;
+: T0-DOONE ( -- n ) 0 0 0 do 1+ loop ;
+: T0-LOOPTHROW ( -- n ) 0 5 0 ?do i 3 = if 77 throw then i + loop ;
+
 \ Arithmetic on cells the caller left on the data stack, one subject per entry
 \ that pulls: binary, binary with an immediate, unary, shuffle, float.
 : T0-SUB2 ( n n -- n ) - 3 * 1+ ;
@@ -462,6 +475,26 @@ private
    [: 41 ;] is T0-DEF  T0-DEFGET 41 T=
    [: 43 ;] is T0-DEF  T0-DEFGET 43 T= ;
 
+\ STACK-PUSH and STACK-POP counts pin the carry; the values pin every exit.
+: TEST-LOOPS ( -- )
+   s" a counted loop carries the virtual stack through its body" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-LOOPSUM" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-LOOPSUM" STACK-POP STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-LOOPLEAVE" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-LOOPLEAVE" STACK-POP STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-LOOPDOWN" STACK-PUSH STACK-OPS 1 T=
+   s" TIER0-INLINE-PRIMS:T0-LOOPDOWN" STACK-POP STACK-OPS 0 T=
+   s" carried loops answer through leave, nesting, calls, locals, exit and throw" T-LABEL
+   10 T0-LOOPSUM 45 T=  0 T0-LOOPSUM 0 T=
+   10 T0-LOOPLEAVE 10 T=  3 T0-LOOPLEAVE 3 T=
+   T0-LOOPDOWN 55 T=
+   T0-LOOPNEST 9 T=
+   10 T0-LOOPCALL 90 T=
+   10 T0-LOOPEXIT 21 T=  5 T0-LOOPEXIT 10 T=
+   10 T0-LOOPLOC 45 T=
+   T0-DOONE 1 T=
+   [: T0-LOOPTHROW drop ;] 77 TTHROWSQ ;
+
 \ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
 \ compiled last, with checking suspended for the rest of this file.
 0 set-check
@@ -494,6 +527,7 @@ public
    TEST-VALUES
    TEST-CMPI
    TEST-FIXED
+   TEST-LOOPS
    TEST-QDUP
    MISSING @ 0 T=
    T-REPORT ;

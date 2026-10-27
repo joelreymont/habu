@@ -792,7 +792,7 @@ variable FESK5
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
-variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF  variable LVRESNAP
+variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable LVSETF  variable LVRESNAP
 
 \ The depth cell and the frame area live in JIT-SNAP (src/habu/layout.f), an
 \ appended band above DATA-START's old edge. They used to be $358 and $360; both
@@ -868,10 +868,13 @@ variable LVSNAP  variable LVRECON  variable LVFPOP  variable LVSETF  variable LV
    spush LBL,                               \ frame = (k, p0, p1); 24 B stride
    EMIT-SNAP-PUSH-FRAME ;
 
-\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT) or THEN. Pop the top frame
-\ (k slots, a register byte each: bit 7 = a d-reg) and emit a parallel copy
-\ that moves the VS into it, so values stay in the registers their opener
-\ recorded. With m the smaller depth, VS entry j belongs in slot k-m+j:
+\ LVRECON ( -- ) : back edge (UNTIL/AGAIN/REPEAT/LOOP/+LOOP) or THEN. Pop the
+\ top frame and fall into LVRECONAT on it.
+\ LVRECONAT ( x6=frame index -- ) : `leave`, and LVRECON's body. Load that frame
+\ (k slots, a register byte each: bit 7 = a d-reg), leave the snapshot stack as
+\ it is, and emit a parallel copy that moves the VS into the frame, so values
+\ stay in the registers their opener recorded. With m the smaller depth, VS
+\ entry j belongs in slot k-m+j:
 \   A  VS deeper than the frame: push its bottom entries (as LVSPILL does).
 \   B  move each register entry into its slot once no other entry reads that
 \      slot; a pass that moves nothing breaks a cycle through x16.
@@ -909,12 +912,18 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
    6 rb 6 LSRI,  6 6 2 ANDI,  8 5 VTAG-AT,  6 8 0 STRB,
    6 rb $7F ANDI,  8 5 VVAL-AT,  6 8 0 STR, ;
 
+\ SNAP-DROP, : x6 := the snapshot depth less one, stored back: the top frame's
+\ index. FRAME-LOAD, : x13 = k, x12 = p0, x14 = p1 of frame x6; x7 x8 scratch.
+: SNAP-DROP, ( -- )
+   6 DATA JIT-SNAP:SP-CELL LDR,  6 6 1 SUBI,  6 DATA JIT-SNAP:SP-CELL STR, ;
+
+: FRAME-LOAD, ( -- )
+   SNAP-FRAME,  13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;
+
 \ LVFPOP ( -- x13=k x12=p0 x14=p1 ) : pop the top frame. Clobbers x6-x8.
 : EMIT-VFPOP ( -- )
    LVFPOP LABEL@ LBL,
-   6 DATA JIT-SNAP:SP-CELL LDR,  6 6 1 SUBI,  6 DATA JIT-SNAP:SP-CELL STR,
-   SNAP-FRAME,
-   13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR,  RET, ;
+   SNAP-DROP,  FRAME-LOAD,  RET, ;
 
 \ LVSETF ( x13=k x12=p0 x14=p1 -- ) : the VS := the frame, and each free mask
 \ := its pool minus the frame's registers. Emits nothing; clobbers x5-x11, x15.
@@ -1065,8 +1074,10 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
 
 : EMIT-VRECON ( -- )
    LVRECON LABEL@ LBL,
+   SNAP-DROP,
+   LVRECONAT LABEL@ LBL,
    SP SP 80 SUBI,  30 SP 0 STR,
-   LVFPOP LABEL@ BL,
+   FRAME-LOAD,
    13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
    RECON-PUSH,
    6 DATA VSP-CELL LDR,  13 SP 8 LDR,  13 13 6 SUB,  13 SP 40 STR,   \ k-m
