@@ -6939,7 +6939,9 @@ variable CFSK2
 \ REGISTER top branches directly on it and snapshots the VS below it (LVSNAP),
 \ the frame the closers reconcile to; con or empty falls back to the spill +
 \ pop path and an empty frame. The flag's register stays claimed across
-\ LVSNAP, so no constant it forces lands there before the cbz reads it.
+\ LVSNAP, so no constant it forces lands there before the cbz reads it: when
+\ LVDROP freed it, it is claimed back around LVSNAP; when another entry
+\ shares it, it was never freed.
 \ checkxt makes the word's compile-time refusals first on both paths, before
 \ anything is emitted, rewound or snapshotted (C-CF-ROOM's comment states the
 \ rule). hxtr gets the condition reg in x14 and, from
@@ -6956,12 +6958,16 @@ variable CFSK2
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
    LVFUSE LABEL@ BL,
    SP SP 16 SUBI,  16 SP 0 STR,  14 SP 8 STR,
-   LVDROP LABEL@ BL,
-   7 14 0 ADDI,  LVBIT LABEL@ BL,
-   6 DATA VRFREE-CELL LDR,  6 6 8 EOR,  6 DATA VRFREE-CELL STR,
-   LVSNAP LABEL@ BL,
-   14 SP 8 LDR,  7 14 0 ADDI,  LVBIT LABEL@ BL,
-   6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   LBL LBL {: kept:label snapped:label :}
+   LVDROP LABEL@ BL,  12 kept CBZ,
+      7 14 0 ADDI,  LVBIT LABEL@ BL,
+      6 DATA VRFREE-CELL LDR,  6 6 8 EOR,  6 DATA VRFREE-CELL STR,
+      LVSNAP LABEL@ BL,
+      14 SP 8 LDR,  7 14 0 ADDI,  LVBIT LABEL@ BL,
+      6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+      snapped B,
+   kept LBL,  LVSNAP LABEL@ BL,
+   snapped LBL,
    16 SP 0 LDR,  14 SP 8 LDR,  SP SP 16 ADDI,
    hxtr execute
    lmainlbl B,
@@ -14332,6 +14338,7 @@ package LABELS
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
    LBL LVRALLOC !  LBL LVBIT !  LBL LVRINIT !  LBL LVMOVK !  LBL LVFORCEK !  LBL LVBINPREP !  LBL LVBINIPREP !  LBL LVPUSHR !  LBL LVNEED !
+   LBL LVSHARED? !  LBL LVDEST !
    LBL LVPUSHF !  LBL LFRALLOC !  LBL LFFORCEK !  LBL LFBINPREP !
    LBL LKWFPLUS !  LBL LKWFMINUS !  LBL LKWFSTAR !  LBL LKWFSLASH !
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !

@@ -159,6 +159,8 @@ variable RX  variable RACC
    a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lvshared?" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lvdest" LINT-STR=CI if 0 12 CL-ADD 14 CL-ADD exit then
    a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}

@@ -18,7 +18,7 @@ variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
-variable LVNEED
+variable LVNEED  variable LVSHARED?  variable LVDEST
  0 XDS  8 ENC-STRPOST  constant W-PUSHR   \ str xR,[x19],#8  (or with R)
  0 XDS -8 ENC-LDRPRE   constant W-POPR    \ ldr xR,[x19,#-8]!
  0 XDS  8 ENC-STRDPOST constant W-FPUSHR  \ str dR,[x19],#8  — tag 2 = FLOAT reg
@@ -337,8 +337,44 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    nok LBL,  13 1 MOVZ,
    nd LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ Two tag-0 entries with one val share that register: a copy (LVCOPY) pushes
+\ the register it copies, the first write to a shared register goes to a fresh
+\ one (LVDEST), and only the last holder frees it (LVDROP, LVNIPX, LFFORCEK).
+\ LVSHARED? ( x5=k -- x13=shared ) : 1 when another tag-0 entry holds tag-0
+\ entry k's register, else 0. Clobbers x6-x8, x10.
+: EMIT-VSHARED ( -- )
+   LVSHARED? LABEL@ LBL,
+   LBL LBL {: sl sd :}
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  10 8 0 LDR,
+   13 0 MOVZ,  6 DATA VSP-CELL LDR,
+   sl LBL,
+      6 sd CBZ,  6 6 1 SUBI,
+      6 5 CMP,  C-EQ sl BCOND,
+      7 6 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 sl CBNZ,
+      8 6 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDR,
+      8 10 CMP,  C-NE sl BCOND,
+   13 1 MOVZ,
+   sd LBL,  RET, ;
+
+\ LVDEST ( x5=k -- x14=dest | 0, x12=src ) : where a write to tag-0 entry k
+\ goes, beside the register it reads. An exclusive register is both; entry k
+\ leaves a shared one to its other holders for a fresh register. An exhausted
+\ pool returns 0 with nothing mutated. Keeps x5; clobbers x6-x8, x10, x13.
+: EMIT-VDEST ( -- )
+   LVDEST LABEL@ LBL,
+   LBL LBL {: own dd :}
+   SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
+   LVSHARED? LABEL@ BL,  13 own CBZ,
+      LVRALLOC LABEL@ BL,  14 dd CBZ,
+      5 SP 8 LDR,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 STR,
+      dd B,
+   own LBL,  14 12 0 ADDI,
+   dd LBL,  5 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 \ LVBINPREP ( -- x13=mode ) : 0 fall-through; 1 fold (x11=a x12=b, VS untouched);
-\ 2 registers ready (x14=rd result slot, x15=rm; rm freed; VSP already --).
+\ 2 registers ready (x14=rd result slot, x12=rn, x15=rm; rm freed unless
+\ shared; VSP already --).
 : C-VBIN-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
 ;
@@ -352,16 +388,23 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    7 7 8 AND,  7 1 CMPI,  C-EQ bfold BCOND, ;
 
 : C-VBIN-REG-PATH ( label label -- ) {: bno:label bdone:label :}
+   LBL LBL {: kept undo :}
    \ register path: force deep then top
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVFORCEK LABEL@ BL,  14 bno CBZ,
-   14 SP 8 STR,
    6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVFORCEK LABEL@ BL,  14 bno CBZ,
-   15 14 0 ADDI,  14 SP 8 LDR,
-   \ free rm's bit; VSP--  (entry[VSP-2] already = reg rd via force-in-place)
-   7 15 0 ADDI,  LVBIT LABEL@ BL,
-   6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   15 14 0 ADDI,
+   \ free rm's bit unless shared, VSP--, then the destination: a freed rm is
+   \ the natural one
+   LVSHARED? LABEL@ BL,  13 kept CBNZ,
+      7 15 0 ADDI,  LVBIT LABEL@ BL,
+      6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   kept LBL,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
-   13 2 MOVZ,  bdone B, ;
+   5 6 1 SUBI,  LVDEST LABEL@ BL,  14 undo CBZ,
+   13 2 MOVZ,  bdone B,
+   \ An exhausted pool means rm was kept, so restoring VSP restores the VS.
+   undo LBL,
+   6 DATA VSP-CELL LDR,  6 6 1 ADDI,  6 DATA VSP-CELL STR,  bno B, ;
 
 : C-VBIN-FOLD-PATH ( label -- ) {: bdone:label :}
    6 DATA VSP-CELL LDR,
@@ -385,7 +428,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 
 \ LVBINIPREP ( x10=imm-max -- x13=mode ) : LVBINPREP plus mode 3 for top
 \ nonnegative constant no greater than imm-max.
-\ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
+\ mode 3: x14=rd and x12=rn for the deep operand, x15=imm12, VSP already --.
 \ This routine is a PROBE ONLY: it decides mode 3 or nothing. Every other
 \ outcome unwinds this frame and tail-branches into the single LVBINPREP body,
 \ whose RET returns straight to our caller — so modes 0/1/2 have exactly one
@@ -395,7 +438,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 \ all three. The probe first completes the pulls LVNEED makes, so the VS may
 \ already hold pulled registers when it classifies; past them it mutates nothing
 \ before it commits (the imm12 goes to this frame's scratch slot). Every failure,
-\ an exhausted pool in LVNEED or LVFORCEK included, leaves the VS a valid
+\ an exhausted pool in LVNEED or LVDEST included, leaves the VS a valid
 \ representation that the mode 0 fallback spills.
 package ENGINE-EMIT
 
@@ -411,7 +454,7 @@ package ENGINE-EMIT
    12 SP 8 STR,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
    8 b2 CBNZ,
-   LVFORCEK LABEL@ BL,  14 bno CBZ,
+   LVDEST LABEL@ BL,  14 b2 CBZ,
    15 SP 8 LDR,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
    13 3 MOVZ,  bdone B, ;
@@ -461,7 +504,7 @@ variable FESK2
       lmainlbl B,
    FESK2 LABEL@ LBL,
       emitxt execute
-      9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
@@ -488,7 +531,7 @@ package ENGINE-EMIT
       lmainlbl B,
    FESK6 LABEL@ LBL,
       emitxt execute
-      9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
@@ -500,9 +543,11 @@ package ENGINE-EMIT
 \ 1..DIV-IMM-MAX, tested before LVBINIPREP runs, so a zero literal, a negative
 \ or wider literal and a register divisor all keep the call and its
 \ ARITH-ABI:E-DIV-ZERO test. That test also keeps LVBINIPREP away from mode 2,
-\ which commits the forced registers, so the modes reached are 0 (fall
-\ through), 1 (fold) and 3 (x14 the dividend, x15 the divisor). MIN-N -1 never
-\ reaches the row: -1 is out of range.
+\ which commits the forced registers: the probe gives up only on an exhausted
+\ pool, on which LVBINPREP cannot force the constant either. So the modes
+\ reached are 0 (fall through), 1 (fold) and 3 (x14 the quotient's register,
+\ x12 the dividend's, x15 the divisor). MIN-N -1 never reaches the row: -1 is
+\ out of range.
 65535 constant DIV-IMM-MAX            \ one movz
 $D2800010 constant W-MOVZ16           \ movz x16,#imm (or with imm<<5)
 $9AD00C00 constant W-SDIV16           \ sdiv xd,xn,x16 (or with d, n<<5)
@@ -545,16 +590,16 @@ $9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
 : EDIVK ( -- )
    8 W-MOVZ16 LIT64,  7 15 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
-\ movz x16,#imm ; sdiv xd,xd,x16
+\ movz x16,#imm ; sdiv xd,xn,x16
 : EI/ ( -- )
    EDIVK
-   8 W-SDIV16 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+   8 W-SDIV16 LIT64,  9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
-\ movz x16,#imm ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd
+\ movz x16,#imm ; sdiv x17,xn,x16 ; msub xd,x17,x16,xn
 : EIMOD ( -- )
    EDIVK
-   8 W-SDIV16 17 or LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   8 W-MSUB1716 LIT64,  9 8 14 ORR,  7 14 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+   8 W-SDIV16 17 or LIT64,  7 12 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   8 W-MSUB1716 LIT64,  9 8 14 ORR,  7 12 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
 : FLSH ( -- )
    11 11 12 LSLV, ;
@@ -587,7 +632,7 @@ $9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
    8 $9AC02400 LIT64, ;
 
 : EI2N ( -- )
-   9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+   9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
 : EI+ ( -- )
    8 $91000000 LIT64,  EI2N ;
@@ -596,12 +641,12 @@ $9B108220 constant W-MSUB1716         \ msub xd,x17,x16,xa (or with d, a<<10)
    8 $D1000000 LIT64,  EI2N ;
 
 : EILSH ( -- )
-   8 $D3400000 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   8 $D3400000 LIT64,  9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,
    8 64 MOVZ,  8 8 15 SUB,  8 8 63 ANDI,  8 8 16 LSLI,  9 9 8 ORR,
    8 63 MOVZ,  8 8 15 SUB,  8 8 10 LSLI,  9 9 8 ORR,  LCEMIT LABEL@ BL, ;
 
 : EIRSH ( -- )
-   8 $D340FC00 LIT64,  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,
+   8 $D340FC00 LIT64,  9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,
    7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
 ;package
@@ -625,19 +670,20 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
       lmainlbl B,
    FESK2 LABEL@ LBL,
    13 3 CMPI,  C-NE FESK6 LABEL@ BCOND,
-      8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      8 $F100001F LIT64,  7 12 5 LSLI,  9 8 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
       flag B,
    FESK6 LABEL@ LBL,
-      8 $EB00001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+      8 $EB00001F LIT64,  7 12 5 LSLI,  9 8 7 ORR,  7 15 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
    flag LBL,
       8 $DA9F03E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL,
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
-\ LVFUSE ( x14=VS top reg -- x16=b.cond word with imm19 0, or 0 ) : a leaf the
-\ branch keywords (habu2.f CFB-ENTRY, CFBN-ENTRY) call on a register top. When
-\ the last word emitted is the `csetm x14` that VCMP-ENTRY ends a compare with,
-\ it rewinds CP over it and answers the conditional branch that takes the
+\ LVFUSE ( x5=k x14=VS top reg -- x16=b.cond word with imm19 0, or 0 ) : the
+\ branch keywords (habu2.f CFB-ENTRY, CFBN-ENTRY) call it on register top k.
+\ When no other entry shares k's register (LVSHARED?: that holder reads the
+\ flag after the branch) and the last word emitted is the `csetm x14` that
+\ VCMP-ENTRY ends a compare with, it rewinds CP over it and answers the conditional branch that takes the
 \ csetm's condition field: that field holds the inverted condition, so the
 \ branch is taken exactly when the flag would be 0, as cbz on it would be.
 \ The flags hold until the branch: what the keywords emit in between (spills,
@@ -648,13 +694,17 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
 \ arm already holds the recorded layout: a loop top or a join between the
 \ compare and the branch would land in the rewound word. A target at the
 \ compare itself is safe: the compare stays.
-\ Clobbers x5, x10-x13; preserves x14 and x30.
+\ Clobbers x5-x8, x10-x13; preserves x14.
 variable LVFUSE
 
 : EMIT-VFUSE ( -- )
    LVFUSE LABEL@ LBL,
    LBL LBL LBL {: walk chk no :}
    16 0 MOVZ,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LVSHARED? LABEL@ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   13 no CBNZ,                                              \ a shared flag is read again: keep its csetm
    12 CP 4 SUBI,                                            \ x12 = CP-4
    13 DATA FWDTGT-CELL LDR,  13 DBASE 13 ADD,  13 12 CMP,  C-CS no BCOND,   \ a join lands at or above CP-4: fence
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,        \ x11 = control-flow depth
@@ -680,26 +730,30 @@ variable LVFUSE
 variable LVDROP  variable LVSWAPX  variable LVNIPX  variable LVCOPY
 $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
-\ LVDROP ( -- x13=ok ) : drop ANY top entry (reg -> free, con -> forget); no code
+\ LVDROP ( -- x13=ok x12=freed ) : drop ANY top entry (reg -> free unless
+\ shared, con -> forget); no code. x12 = 1 when a register went back to its pool.
 : EMIT-VDROP ( -- )
    LVDROP LABEL@ LBL,
-   LBL LBL {: no fr :}
+   LBL LBL LBL {: no fr kept :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   13 0 MOVZ,
+   13 0 MOVZ,  12 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 no CBZ,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    LBL {: dfr :}
    7 2 CMPI,  C-EQ dfr BCOND,
    7 fr CBNZ,
+      LVSHARED? LABEL@ BL,  13 kept CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
       7 11 0 ADDI,  LVBIT LABEL@ BL,
       6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+      12 1 MOVZ,
+   kept LBL,
       6 DATA VSP-CELL LDR,  fr B,
    dfr LBL,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
       7 11 8 SUBI,  8 1 MOVZ,  8 8 7 LSLV,
       6 DATA FRFREE-CELL LDR,  6 6 8 ORR,  6 DATA FRFREE-CELL STR,
-      6 DATA VSP-CELL LDR,
+      12 1 MOVZ,  6 DATA VSP-CELL LDR,
    fr LBL,
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
    no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
@@ -719,10 +773,11 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    13 1 MOVZ,
    no LBL,  RET, ;
 
-\ LVNIPX ( -- x13=ok ) : remove the DEEP entry (free if reg), keep top; no code
+\ LVNIPX ( -- x13=ok ) : remove the DEEP entry (free if an unshared reg), keep
+\ top; no code
 : EMIT-VNIPX ( -- )
    LVNIPX LABEL@ LBL,
-   LBL LBL {: no fr :}
+   LBL LBL LBL {: no fr kept :}
    SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT no BCOND,
@@ -730,9 +785,11 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    LBL {: nfr :}
    7 2 CMPI,  C-EQ nfr BCOND,
    7 fr CBNZ,
+      LVSHARED? LABEL@ BL,  13 kept CBNZ,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
       7 11 0 ADDI,  LVBIT LABEL@ BL,
       6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   kept LBL,
       6 DATA VSP-CELL LDR,  fr B,
    nfr LBL,
       8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
@@ -749,11 +806,12 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    6 6 1 SUBI,  6 DATA VSP-CELL STR,  13 1 MOVZ,
    no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-\ LVCOPY ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
+\ LVCOPY ( x5=k -- x13=ok ) : push a copy of entry k; no code (a constant, or
+\ the register it shares with entry k)
 : EMIT-VCOPY ( -- )
    LVCOPY LABEL@ LBL,
    LBL LBL LBL {: no isreg done :}
-   SP SP 32 SUBI,  30 SP 0 STR,
+   SP SP 16 SUBI,  30 SP 0 STR,
    13 0 MOVZ,
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
@@ -765,12 +823,10 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    isf3 LBL,
       LVPUSHF LABEL@ BL,  13 1 MOVZ,  done B,
    isreg LBL,
-      11 SP 8 STR,  LVRALLOC LABEL@ BL,  14 no CBZ,  11 SP 8 LDR,
-      8 W-MOVRR LIT64,  9 8 14 ORR,  7 11 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
-      LVPUSHR LABEL@ BL,
+      14 11 0 ADDI,  LVPUSHR LABEL@ BL,
       13 1 MOVZ,  done B,
    no LBL,
-   done LBL,  30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+   done LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ ---- FLOAT ops on the VS: tag 2 = live in a d-register, tag 3 = FLOAT
 \ constant (double bits, unmaterialized — LNUM's x2 flag marks float parses
@@ -783,7 +839,8 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
 \ LFFORCEK ( x5=k -- x14=dreg | 0 ) : force entry k into a d-reg, in place.
 \ tag 2 -> already there; tag 1 (a con holding double BITS) -> materialize via
-\ movz/movk x16 + fmov dN,x16; tag 0 (bits in an x-reg) -> fmov dN,xJ, freeing xJ.
+\ movz/movk x16 + fmov dN,x16; tag 0 (bits in an x-reg) -> fmov dN,xJ, freeing xJ
+\ unless another entry shares it.
 \ Each returns 0, nothing mutated, when no d-reg is free.
 : EMIT-FFORCEK ( -- )
    LFFORCEK LABEL@ LBL,
@@ -808,8 +865,11 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    LFRALLOC LABEL@ BL,  14 ffd CBZ,
    11 SP 16 LDR,  14 SP 24 STR,
    8 $9E670000 LIT64,  9 8 14 ORR,  7 11 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,   \ fmov dN, xJ
+   LBL {: fkept :}
+   5 SP 8 LDR,  LVSHARED? LABEL@ BL,  13 fkept CBNZ,
    7 11 0 ADDI,  LVBIT LABEL@ BL,                            \ free the x-reg
    6 DATA VRFREE-CELL LDR,  6 6 8 ORR,  6 DATA VRFREE-CELL STR,
+   fkept LBL,
    14 SP 24 LDR,  5 SP 8 LDR,
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  8 2 MOVZ,  8 7 0 STRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 STR,
@@ -875,18 +935,28 @@ variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable
 
 \ LVSNAP ( -- ) : BEGIN, IF, WHILE. VSP<=SNAP-SLOTS: force every VS entry into a
 \ register (movz chains for cons emitted HERE, before the join) and push (k, packed regs —
-\ a byte per slot, bottom-up) on the snapshot stack. Deep VS or a failed
-\ force: spill-all and push (0,0) — that loop runs memory-resident as before.
+\ a byte per slot, bottom-up) on the snapshot stack. A frame holds distinct
+\ registers, so a register entry that shares its register gets a fresh one and
+\ a mov. Deep VS or a failed force: spill-all and push (0,0) — that loop runs
+\ memory-resident as before.
 : EMIT-SNAP-FORCE-LOOP ( label label label -- ) {: fl:label fd:label fail:label :}
    5 0 MOVZ,
    fl LBL,                                  \ force entry x5 (Lvforcek saves x5)
       6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE fd BCOND,
-      LBL {: fif :}  LBL {: fgo :}
+      LBL {: fif :}  LBL {: fgo :}  LBL {: fnx :}
       7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
       7 3 CMPI,  C-EQ fif BCOND,
       LVFORCEK LABEL@ BL,  14 fail CBZ,  fgo B,
       fif LBL,  LFFORCEK LABEL@ BL,  14 fail CBZ,
-      fgo LBL,  5 5 1 ADDI,  fl B, ;
+      fgo LBL,
+      7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,  7 fnx CBNZ,
+      LVSHARED? LABEL@ BL,  13 fnx CBZ,
+         5 SP 8 STR,
+         8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 LDR,
+         LVRALLOC LABEL@ BL,  14 fail CBZ,
+         8 W-MOVRR LIT64,  9 8 14 ORR,  7 11 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
+         5 SP 8 LDR,  8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 STR,
+      fnx LBL,  5 5 1 ADDI,  fl B, ;
 
 : EMIT-SNAP-PACK-LOOP ( label label label label -- ) {: pl:label pd:label plo:label pnx:label :}
    12 0 MOVZ,  10 0 MOVZ,  11 0 MOVZ,
@@ -949,7 +1019,7 @@ variable LVSNAP  variable LVRECON  variable LVRECONAT  variable LVFPOP  variable
 \ loads and stores only: a fused `until`'s b.cond reads the flags after it.
 \ Compile-time state lives in the 80-byte frame: 0 lr, 8 k, 16 p0, 24 p1,
 \ 32 entry or slot index, 40 k-m (A: the pushed count), 48 progress,
-\ 56 the blocked slot's byte, 64 its holder's index + 1 (0: none blocked).
+\ 56 the blocked slot's byte, 64 1 when a slot is blocked (0: none).
 $9E670000 constant W-FMOVDX     \ fmov dR, xN  (| rd | rn<<5)
 $9E660000 constant W-FMOVXD     \ fmov xR, dN
 $1E604000 constant W-FMOVDD     \ fmov dR, dN
@@ -1074,11 +1144,12 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
 
 \ Phase B: passes over the entries until every register entry is in its slot.
 \ An entry whose slot another entry still reads waits; a pass that moves
-\ nothing saves the first waiting slot in x16, and that slot's one reader
-\ (registers are owned exclusively) reads x16 instead. The broken cycle is a
+\ nothing saves the first waiting slot in x16, and every entry reading that
+\ slot (entries may share a register) reads x16 instead. The broken cycle is a
 \ chain, so it drains before another pass can stall.
 : RECON-COPY, ( -- )
    LBL LBL LBL LBL {: bpass bl bend bdone :}  LBL LBL {: bblk bnext :}
+   LBL LBL {: rl rnx :}
    bpass LBL,
       5 0 MOVZ,  5 SP 32 STR,  5 SP 48 STR,  5 SP 64 STR,
    bl LBL,
@@ -1093,15 +1164,20 @@ $1E604000 constant W-FMOVDD     \ fmov dR, dN
       bnext B,
    bblk LBL,
       6 SP 64 LDR,  6 bnext CBNZ,
-      5 5 1 ADDI,  5 SP 64 STR,  15 SP 56 STR,
+      6 1 MOVZ,  6 SP 64 STR,  15 SP 56 STR,
    bnext LBL,
       5 SP 32 LDR,  5 5 1 ADDI,  5 SP 32 STR,  bl B,
    bend LBL,
       6 SP 64 LDR,  6 bdone CBZ,                       \ nothing waits: done
       6 SP 48 LDR,  6 bpass CBNZ,
       13 SP 56 LDR,  15 16 MOVZ,  RECON-MOVE,          \ x16 <- the slot
-      5 SP 64 LDR,  5 5 1 SUBI,  15 VS-SET-REG,        \ its reader reads x16
-      bpass B,
+      5 0 MOVZ,                                        \ its readers read x16
+      rl LBL,
+         6 DATA VSP-CELL LDR,  5 6 CMP,  C-GE bpass BCOND,
+         rnx RECON-SRC,
+         11 13 CMP,  C-NE rnx BCOND,
+         15 VS-SET-REG,
+      rnx LBL,  5 5 1 ADDI,  rl B,
    bdone LBL, ;
 
 \ Phase C: each constant entry into its slot; a d slot through x16.
@@ -1197,10 +1273,10 @@ variable LKWCFETCH  variable LKWCELLS  variable LKWCELLP  variable LKWPFIELD
 variable FESK4
 
 \ vun-entry: unary op on the VS top. Tag 1 (integer constant) folds at JIT time
-\ (no code); tag 0 (integer register) gets an in-place op (rd = rs, entry
-\ unchanged); tags 2 and 3 (float register, float constant) fall through to the
-\ prim. An empty VS first pulls the operand off the data stack (LVNEED); an
-\ exhausted pool falls through.
+\ (no code); tag 0 (integer register) gets one op into LVDEST's register (in
+\ place unless the register is shared); tags 2 and 3 (float register, float
+\ constant) fall through to the prim. An empty VS first pulls the operand off
+\ the data stack (LVNEED); an exhausted pool falls through.
 : VUN-ENTRY ( label ptr n n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n foldxt emitxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL FESK4 !  LBL FESK2 !
@@ -1216,7 +1292,7 @@ variable FESK4
       11 8 0 STR,
       lmainlbl B,
    FESK2 LABEL@ LBL,
-      14 11 0 ADDI,
+      LVDEST LABEL@ BL,  14 FESK4 LABEL@ CBZ,
       emitxt execute
       lmainlbl B,
    FESK4 LABEL@ LBL, ;
@@ -1240,10 +1316,10 @@ variable FESK4
    11 0 CMPI,  11 11 CSETM, ;
 
 : EU2R ( -- )
-   9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;   \ base | rd | rm<<16
+   9 8 14 ORR,  7 12 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;   \ base | rd | rm<<16
 
 : EU2N ( -- )
-   9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;    \ base | rd | rn<<5
+   9 8 14 ORR,  7 12 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;    \ base | rd | rn<<5
 
 : EU1+ ( -- )
    8 $91000400 LIT64,  EU2N ;
@@ -1258,7 +1334,7 @@ variable FESK4
    8 $AA2003E0 LIT64,  EU2R ;
 
 : EUCMP0 ( -- )
-   8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
+   8 $F100001F LIT64,  7 12 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
 : EUCSETM ( n -- ) {: cond:n :}
    8 $DA9F03E0 cond 1 xor 12 lshift or LIT64,
@@ -1280,7 +1356,7 @@ variable FESK4
 \ so one instruction on the operand registers is the whole word; `!` and the
 \ other stores keep their guarded bodies (habu1.f PROT-GUARD:CALL).
 
-\ vload-entry: a load from the VS top address, in place (rd = rn, result tag 0).
+\ vload-entry: a load from the VS top address into LVDEST's register (result tag 0).
 \ A constant address (tag 1) is forced into a register first, so the load is a
 \ runtime instruction: memory is never read at compile time. Tags 2 and 3, an
 \ empty pull or an exhausted pool fall through to the primitive.
@@ -1294,6 +1370,7 @@ variable FESK4
    7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
    7 2 CMPI,  C-GE FESK4 LABEL@ BCOND,
    LVFORCEK LABEL@ BL,  14 FESK4 LABEL@ CBZ,
+   LVDEST LABEL@ BL,  14 FESK4 LABEL@ CBZ,
    8 base LIT64,  EU2N
    lmainlbl B,
    FESK4 LABEL@ LBL, ;
@@ -1328,7 +1405,7 @@ package ENGINE-EMIT
 
 : EMIT-JIT ( -- )
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
-   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
+   EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VNEED  EMIT-VSHARED  EMIT-VDEST  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VFPOP  EMIT-VSETF  EMIT-VRECON  EMIT-VRESNAP  EMIT-VFUSE ;
 
 ;package

@@ -72,6 +72,8 @@ $FFE0FFE0 constant NEG-MASK          \ keeps neg's opcode, clears Rd and Rm
 $CB0003E0 constant NEG-OP            \ neg xD,xM (sub xD,xzr,xM)
 $FFE0FC00 constant SDIV-MASK         \ keeps sdiv's opcode, clears its registers
 $9AC00C00 constant SDIV-OP           \ sdiv xd,xn,xm
+$FFE0FFE0 constant MOV-MASK          \ keeps mov's opcode, clears Rd and Rm
+$AA0003E0 constant MOV-OP            \ mov xD,xM (orr xD,xzr,xM)
 
 \ CODE-BYTES:AT is the bounded view between an engine code address and a
 \ readable pointer; this file adds none of its own.
@@ -299,6 +301,18 @@ defer T0-DEF ( -- n )
 : T0-MOD0 ( n -- n ) 0 mod ;
 : T0-DIVK ( -- n ) 1000 256 / ;
 : T0-DIVK0 ( -- n ) 1 0 / ;
+
+\ Copies share a register (jit.f LVCOPY): `dup` and `over` emit no mov, and a
+\ write to a shared register goes to a fresh one (LVDEST). A loop head keeps
+\ its frame's registers distinct, so it splits a pair still shared there.
+: T0-DUPINC ( n -- n n ) dup 1+ ;
+: T0-OVERADD ( n n -- n n ) over + ;
+: T0-DUPLT ( n -- n bool ) dup 5 < ;
+: T0-DUPDUP ( n -- n ) dup dup + + ;
+: T0-DUPIF ( bool -- bool n ) dup if 1 else 2 then ;
+: T0-DUPCALL ( n -- n n ) dup T0-CALLEE ;
+: T0-DUPFADD ( r -- r ) dup f+ ;
+: T0-DUPLOOP ( n -- n ) dup begin 1- dup 0= until drop ;
 
 private
 
@@ -595,6 +609,30 @@ private
    [: 5 T0-MOD0 drop ;] E-DIV-ZERO TTHROWSQ
    [: T0-DIVK0 drop ;] E-DIV-ZERO TTHROWSQ ;
 
+: MOVS ( ptr u8 n -- n ) MOV-MASK MOV-OP MASKED-OPS ;
+
+: TEST-SHARE ( -- )
+   s" a copy shares its register; a write to a shared one goes to a fresh one" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DUPINC" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-OVERADD" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPLT" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPDUP" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPIF" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPCALL" MOVS 0 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPCALL" STACK-PUSH STACK-OPS 2 T=
+   s" TIER0-INLINE-PRIMS:T0-DUPFADD" MOVS 0 T=
+   s" a pair still shared at a loop head is split once, before the loop" T-LABEL
+   s" TIER0-INLINE-PRIMS:T0-DUPLOOP" MOVS 1 T=
+   s" each copy keeps its value when the other is written" T-LABEL
+   3 T0-DUPINC 4 T= 3 T=
+   3 4 T0-OVERADD 7 T= 3 T=
+   3 T0-DUPLT TTRUE 3 T=  7 T0-DUPLT TFALSE 7 T=
+   5 T0-DUPDUP 15 T=
+   0 0= T0-DUPIF 1 T= TTRUE  1 0= T0-DUPIF 2 T= TFALSE
+   3 T0-DUPCALL 6 T= 3 T=
+   1.5 T0-DUPFADD 3.0 f= TTRUE
+   3 T0-DUPLOOP 3 T= ;
+
 \ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
 \ compiled last, with checking suspended for the rest of this file.
 0 set-check
@@ -630,6 +668,7 @@ public
    TEST-FIXED
    TEST-LOOPS
    TEST-DIVIDE
+   TEST-SHARE
    TEST-QDUP
    MISSING @ 0 T=
    T-REPORT ;
