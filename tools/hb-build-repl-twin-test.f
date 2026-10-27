@@ -48,7 +48,8 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
 
 \ The build creates X and nothing after it, so X is the record LASTC-CELL names
 \ when the image is written. The clause cannot be part of the program: the build
-\ compiles at tier 1, which refuses a definition that is only a `does>`.
+\ compiles at tier 1 (HBT-TWIN-BUILD), which refuses a definition that is only
+\ a `does>`.
 : HBT-TWIN-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" : LOAD-CHILD ( -- ) s\" " SB-APPEND
@@ -110,7 +111,8 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    HBT-TWIN-SRC HBT-TWIN-SRC$ WRITE-ALL ;
 
 \ An empty cache leaves HABU_BUILD_CACHE inherited: under the gate, the run's
-\ shared root, which holds the app-builder family image.
+\ shared root, which holds the app-builder family image. The command runs after
+\ test/compiler/aot-mode.f selected tier 1, the tier its products are built at.
 : HBT-TWIN-BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: tmp:ptr tmpu:n cache:ptr cacheu:n out:ptr outu:n :}
    PROC-ARGV-RESET
@@ -120,6 +122,7 @@ create HBT-TWIN-OUT-D-BUF FS-PATH-CAP allot
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+
+   s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" --repl" >LEN PROC-ARGV+

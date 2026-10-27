@@ -319,7 +319,11 @@ variable STALE-N
    COMPILED 0 T= ;
 
 \ tools/hb-build.f on the candidate engine, as BUILD-APP: dir/app.f into
-\ dir/app-hb as a REPL build, in the cache root.
+\ dir/app-hb as a REPL build, in the cache root. It runs at tier 1
+\ (test/compiler/aot-mode.f): hb-build builds at its caller's tier, and only a
+\ tier 1 product compiles through the file objects the prune case dates.
+\ The tool library loads first, at the default tier, so only the product
+\ compiles at tier 1.
 : HB-BUILD ( ptr u8 n -- n )
    {: dir:ptr diru:n :}
    NATIVE-FILE-APP:BUILDER$ 2drop
@@ -327,7 +331,8 @@ variable STALE-N
    s" HABU_BUILD_CACHE" >LEN CACHE-PATH CACHE-U @ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
+   s" --load" ARG s" tools/hb-build-lib.f" ARG s" test/compiler/aot-mode.f" ARG
+   s" tools/hb-build.f" ARG s" --" ARG
    s" --repl" ARG dir diru s" app.f" IN ARG
    s" -o" ARG dir diru s" app-hb" IN ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;

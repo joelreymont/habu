@@ -1,6 +1,6 @@
 \ A cold REPL builder reports its own deadline through hb-build, then a saved
-\ builder works from another working directory and a CWD producer shadow
-\ forces a rebuild.
+\ builder works from another working directory, a CWD producer shadow forces a
+\ rebuild, and so does the caller's tier.
 \ Run: bin/hb --load tools/hb-build-repl-image-test.f
 
 require tools/hb-build-test-lib.f
@@ -14,10 +14,13 @@ create HBT-IMAGE-HB-BUF FS-PATH-CAP allot
 create HBT-IMAGE-TOOL-BUF FS-PATH-CAP allot
 create HBT-IMAGE-SHADOW-BUF FS-PATH-CAP allot
 create HBT-IMAGE-SOURCE-BUF FS-PATH-CAP allot
+create HBT-IMAGE-TIER1-BUF FS-PATH-CAP allot
 variable HBT-IMAGE-HB-U
 variable HBT-IMAGE-TOOL-U
 variable HBT-IMAGE-SHADOW-U
 variable HBT-IMAGE-SOURCE-U
+variable HBT-IMAGE-TIER1-U
+variable HBT-IMAGE-TIER1
 variable HBT-IMAGE-SIZE
 variable HBT-IMAGE-SEC
 variable HBT-IMAGE-NS
@@ -25,10 +28,13 @@ variable HBT-IMAGE-NS
 : HBT-IMAGE-HB$ ( -- ptr u8 n ) HBT-IMAGE-HB-BUF HBT-IMAGE-HB-U @ ;
 : HBT-IMAGE-TOOL$ ( -- ptr u8 n ) HBT-IMAGE-TOOL-BUF HBT-IMAGE-TOOL-U @ ;
 : HBT-IMAGE-SHADOW$ ( -- ptr u8 n ) HBT-IMAGE-SHADOW-BUF HBT-IMAGE-SHADOW-U @ ;
+: HBT-IMAGE-TIER1$ ( -- ptr u8 n ) HBT-IMAGE-TIER1-BUF HBT-IMAGE-TIER1-U @ ;
 
 : HBT-IMAGE-PATHS ( -- )
    SOURCE-ROOT:ENGINE$ s" bin/hb" HBT-IMAGE-HB-BUF JOIN-PATH HBT-IMAGE-HB-U !
-   SOURCE-ROOT:ENGINE$ s" tools/hb-build.f" HBT-IMAGE-TOOL-BUF JOIN-PATH HBT-IMAGE-TOOL-U ! ;
+   SOURCE-ROOT:ENGINE$ s" tools/hb-build.f" HBT-IMAGE-TOOL-BUF JOIN-PATH HBT-IMAGE-TOOL-U !
+   SOURCE-ROOT:ENGINE$ s" test/compiler/aot-mode.f"
+      HBT-IMAGE-TIER1-BUF JOIN-PATH HBT-IMAGE-TIER1-U ! ;
 
 : HBT-IMAGE-SHADOW-PATH ( -- )
    HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
@@ -44,9 +50,12 @@ variable HBT-IMAGE-NS
    s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
+\ The command runs at the CLI's default tier, or after test/compiler/aot-mode.f
+\ selected tier 1 while HBT-IMAGE-TIER1 is set.
 : HBT-IMAGE-ARGS ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
+   HBT-IMAGE-TIER1 @ if HBT-IMAGE-TIER1$ >LEN PROC-ARGV+ then
    HBT-IMAGE-TOOL$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    s" --repl" >LEN PROC-ARGV+ ;
@@ -142,6 +151,18 @@ variable HBT-IMAGE-NS
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
 
+\ The sidecar records the tier the application compiled at. The last build ran
+\ at the CLI's default tier, 0 on ARM64, so the same build from a tier 1 caller
+\ is not up to date. x86-64 has tier 1 only.
+: HBT-ROOTED-TIER ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   HBT-ROOTED-MARK
+   -1 HBT-IMAGE-TIER1 !
+   HBT-TMP HBT-ROOTED-BUILD
+   0 HBT-IMAGE-TIER1 !
+   HBT-ROOTED-SAME? TFALSE
+   HBT-ROOTED-RUN ;
+
 public
 : HBT-REPL-IMAGE-MAIN ( -- )
    T-RESET
@@ -151,6 +172,7 @@ public
    HBT-COLD-REPL-TIMEOUT-TEXT
    HBT-ROOTED-COLD-WARM
    HBT-ROOTED-PRODUCER-SHADOW
+   HBT-ROOTED-TIER
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

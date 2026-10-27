@@ -6,6 +6,7 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
+require src/lib/tier.f
 require test/linker-builder-engine.f
 
 package HB-BUILD-CLI
@@ -433,6 +434,7 @@ variable HBT-PUB-FILES
 public
 : HBT-AOT-CACHE-MAIN ( -- )
    T-RESET
+   1 TIER:SELECT          \ the product tier of the FILE objects and LOADING
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-LINKER HBT-ENGINE!
    HBT-PREPARE

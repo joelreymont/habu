@@ -75,8 +75,11 @@ public
    s" app-hb" AT s" " CAPTURE ;
 
 \ tools/hb-build.f on the candidate engine: root/app.f into root/app-hb as a
-\ REPL build with the ambient build cache. HABU_FIXPOINT_ENGINE names
-\ the same engine, so the builder image hb-build spawns
+\ REPL build with the ambient build cache. It runs at tier 1
+\ (test/compiler/aot-mode.f): hb-build builds at its caller's tier, and only a
+\ tier 1 product compiles through file objects. The tool library loads first,
+\ at the default tier, so only the product compiles at tier 1.
+\ HABU_FIXPOINT_ENGINE names the same engine, so the builder image hb-build spawns
 \ (tools/app-build-image.f, BUILD-FIXPOINT:BF-ENGINE$) comes from it and
 \ never from the bin/hb fallback.
 : BUILD-APP ( -- n )
@@ -84,7 +87,8 @@ public
    PROC-ARGV-ENV-RESET
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
+   s" --load" ARG s" tools/hb-build-lib.f" ARG s" test/compiler/aot-mode.f" ARG
+   s" tools/hb-build.f" ARG s" --" ARG
    s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 

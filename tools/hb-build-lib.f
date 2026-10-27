@@ -53,7 +53,7 @@ $2B constant HBB-PLUS
 600000 constant HBB-MAKER-DEFAULT-MS
 $7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
-72 constant HBB-REPL-DEPS-HEADER-U
+80 constant HBB-REPL-DEPS-HEADER-U
 80 constant HBB-REPL-SUPPORT-HEADER-U
 80 constant HBB-MAKER-SUPPORT-HEADER-U
 
@@ -653,6 +653,24 @@ variable HBB-APP-BUILDER-U
    HBB-JSON @ if s" 1" exit then
    s" 0" ;
 
+\ THE PRODUCT TIER IS THE CALLER'S. A maker child is a saved image, which starts
+\ at tier 0, so its first stdin line selects this process's tier for the
+\ application it loads; x86-64 has tier 1 only. Each maker's stdin is one of
+\ two complete literals chosen by the tier. The tier joins the artifact key,
+\ the observed-inputs index and the REPL sidecar, so products of the two tiers
+\ never share a cache entry.
+: HBB-TIER ( -- n )
+   HB-TARGET-LINUX-X86-64? if 1 exit then
+   tier@ ;
+
+: HBB-AOT-STDIN$ ( -- ptr u8 n )
+   HBB-TIER 0= if S\" 0 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" exit then
+   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" ;
+
+: HBB-APP-STDIN$ ( -- ptr u8 n )
+   HBB-TIER 0= if S\" 0 set-tier\nAPP-BUILD:RUN-SAVED\n" exit then
+   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED\n" ;
+
 : HBB-RUN-MAKER-ARGS ( -- )
    HBB-CMD-RESET
    s" HABU_AOT_INPUTS" >LEN HBB-MAKER-INPUTS$ >LEN PROC-ENV-SET
@@ -728,7 +746,7 @@ variable HBB-APP-BUILDER-U
    rc 0<> if rc throw then
    HBB-RUN-MAKER-ARGS
    HBB-AOT-BUILDER-A @ HBB-AOT-BUILDER-U @ >LEN
-   S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" >LEN
+   HBB-AOT-STDIN$ >LEN
    [: HBB-OUT-ROOM ;]
    [: HBB-ERR-ROOM ;]
    HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
@@ -963,6 +981,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    s" hb-build-actual-inputs-v1" CONTENT-KEY:TEXT+
    HBB-SRC-ENTRY-HEX 64 CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
+   s" tier-0" HBB-TIER 0= HBB-OPTION-TEXT+
    HBB-SRC$ CONTENT-KEY:TEXT+
    BF-ENGINE$ CONTENT-KEY:TEXT+
    SOURCE-ROOT:CWD$ CONTENT-KEY:TEXT+
@@ -1026,6 +1045,7 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    s" hb-build-artifact-cache-v3" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
+   s" tier-0" HBB-TIER 0= HBB-OPTION-TEXT+
    HBB-SRC-CLOSURE-HEX 64 CONTENT-KEY:TEXT+
    HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
@@ -1557,7 +1577,7 @@ defer HBB-REPORT-HOOK ( -- )
 : HBB-REPL-FRESH-CHECK ( -- )
    HBB-REPL-DEPS$ HBB-INPUTS-READ {: bytes:ptr size:n :}
    size HBB-REPL-DEPS-HEADER-U < if E-NUNIT-PROFILE throw then
-   bytes 8 s" HBRDEPS3" STR= 0= if E-NUNIT-PROFILE throw then
+   bytes 8 s" HBRDEPS4" STR= 0= if E-NUNIT-PROFILE throw then
    bytes 8 + LE:U64@ {: srcu:n :}
    bytes 16 + LE:U64@ {: engu:n :}
    bytes 24 + LE:U64@ {: outu:n :}
@@ -1569,8 +1589,9 @@ defer HBB-REPORT-HOOK ( -- )
    srcu engu + outu + rootu + size HBB-REPL-DEPS-HEADER-U - >= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U + srcu HBB-SRC$ STR= 0= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U srcu + + engu BF-ENGINE$ STR= 0= if E-NUNIT-PROFILE throw then
+   bytes 40 + LE:U64@ HBB-TIER <> if E-NUNIT-PROFILE throw then
    ['] HBB-REPL-ENGINE-DIGEST! catch 0<> if E-NUNIT-PROFILE throw then
-   bytes 40 + 32 HBB-REPL-ENGINE-DIGEST 32 STR= 0=
+   bytes 48 + 32 HBB-REPL-ENGINE-DIGEST 32 STR= 0=
       if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U srcu + engu + + outu HBB-OUT$ STR= 0= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U srcu + engu + outu + + rootu
@@ -1706,7 +1727,7 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-SRC$ >LEN PROC-ARGV+
    HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
    HBB-APP-BUILDER-A @ HBB-APP-BUILDER-U @ >LEN
-   S\" 1 set-tier\nAPP-BUILD:RUN-SAVED\n" >LEN
+   HBB-APP-STDIN$ >LEN
    [: HBB-OUT-ROOM ;]
    [: HBB-ERR-ROOM ;]
    HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
@@ -1722,12 +1743,13 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-REPL-DEPS-HEADER-U srcu + engu + outu + rootu + rowsu + {: size:n :}
    size HBB-REPL-SIDECAR-RESERVE
    0 HBB-REPL-SIDECAR {: dst:ptr :}
-   s" HBRDEPS3" drop dst 8 BYTE-COPY
+   s" HBRDEPS4" drop dst 8 BYTE-COPY
    srcu dst 8 + LE:U64!
    engu dst 16 + LE:U64!
    outu dst 24 + LE:U64!
    rootu dst 32 + LE:U64!
-   HBB-REPL-ENGINE-DIGEST dst 40 + 32 BYTE-COPY
+   HBB-TIER dst 40 + LE:U64!
+   HBB-REPL-ENGINE-DIGEST dst 48 + 32 BYTE-COPY
    src dst HBB-REPL-DEPS-HEADER-U + srcu BYTE-COPY
    eng dst HBB-REPL-DEPS-HEADER-U srcu + + engu BYTE-COPY
    out dst HBB-REPL-DEPS-HEADER-U srcu + engu + + outu BYTE-COPY

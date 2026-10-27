@@ -2,7 +2,8 @@
 \ groups that build and run a program - the object producer, the native call
 \ sites, and one program whose packages carry the division refusal, the
 \ stripped span definer with its foreign calls, the empty does> clause and a
-\ multi-page DATA payload - and the program the keyed linker image refuses.
+\ multi-page DATA payload - a program built at each tier, and the program the
+\ keyed linker image refuses.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
@@ -11,6 +12,7 @@ require tools/image-size-lib.f          \ this fixture measures image bytes dire
 require test/linker-builder-engine.f
 require src/lib/string.f
 require src/lib/codegen.f
+require src/lib/tier.f
 
 using BUILD-FIXPOINT                     \ the build tmp root
 
@@ -168,6 +170,44 @@ package HB-BUILD-CLI
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
+\ THE PRODUCT TIER IS THE CALLER'S. hb-build hands its own `tier@` to the maker,
+\ whose application load compiles at it, and folds the tier into the artifact
+\ key and the observed-inputs index. The program's top level records the tier
+\ it ran at, so each image's last line names the tier that compiled it. A tier
+\ 1 build of the source a tier 0 build left in the cache is a miss whose maker
+\ runs, and both images print the same first line; a repeated tier 0 build is
+\ an artifact hit. x86-64 has tier 1 only.
+: HBT-TIER-SRC$ ( -- ptr u8 n )
+   S\" variable BUILT\ntier@ BUILT !\n: MAIN ( -- ) 6 7 * . cr BUILT @ . cr ;\n" ;
+
+\ Build HBT-AOT-SRC from a caller at TIER, then select the tier this row ran at.
+: HBT-TIER-BUILD ( n -- )
+   tier@ {: tier:n prior:n :}
+   tier TIER:SELECT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   prior TIER:SELECT ;
+
+: BUILD-AOT-TIERS ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   HBT-AOT-SRC HBT-TIER-SRC$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   0 HBT-TIER-BUILD
+   HBB-MAKER-RUN @ 0<> TTRUE
+   HBT-AOT-OUT S\" 42\n\n0\n\n" HBT-RUN-IMAGE-OUT
+   1 HBT-TIER-BUILD
+   HBB-ARTIFACT-HIT @ 0= TTRUE
+   HBB-MAKER-RUN @ 0<> TTRUE
+   HBT-AOT-OUT S\" 42\n\n1\n\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   0 HBT-TIER-BUILD
+   HBB-ARTIFACT-HIT @ 0<> TTRUE
+   HBB-MAKER-RUN @ 0= TTRUE
+   HBT-AOT-OUT S\" 42\n\n0\n\n" HBT-RUN-IMAGE-OUT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+
 \ A program requiring a module of the linker's lib closure that the engine does
 \ not bake, and calling a word of it.
 : HBT-REQUIRED-SRC$ ( -- ptr u8 n )
@@ -249,11 +289,13 @@ package HB-BUILD-CLI
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
+   1 TIER:SELECT          \ the product tier the LOADING programs hold
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
    BUILD-AOT-POSITIVES
+   BUILD-AOT-TIERS
    KEYED-PRE-WINDOW
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

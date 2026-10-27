@@ -20,7 +20,11 @@ create NAMES NAMES-CAP allot
 : ENV-EMPTY ( ptr u8 n -- )
    >LEN s" " >LEN PROC-ENV+ ;
 
-\ BUILD-APP's REPL build, its cache root selected by XDG_CACHE_HOME alone.
+\ BUILD-APP's REPL build, its cache root selected by XDG_CACHE_HOME alone. It
+\ runs at tier 1 (test/compiler/aot-mode.f): hb-build builds at its caller's
+\ tier, and only a tier 1 product compiles through file objects.
+\ The tool library loads first, at the default tier, so only the product
+\ compiles at tier 1.
 : BUILD ( -- n )
    PROC-ARGV-ENV-RESET
    s" HABU_BUILD_CACHE" ENV-EMPTY
@@ -29,7 +33,8 @@ create NAMES NAMES-CAP allot
    s" TMPDIR" ENV-EMPTY
    s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build.f" ARG s" --" ARG
+   s" --load" ARG s" tools/hb-build-lib.f" ARG s" test/compiler/aot-mode.f" ARG
+   s" tools/hb-build.f" ARG s" --" ARG
    s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
    ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
