@@ -12,8 +12,7 @@ public
 
 \ Every definition compiled after this call uses the selected compiler: 0 the
 \ tier-0 JIT, 1 the tier-1 IR pipeline (src/habu/layout.f
-\ NCOMP-DISPATCH:TIER-CELL). Any other value exits 70; x86-64 selects 1 only,
-\ and tier 0 inside EXECUTABLE-BUILD:WITH throws 70.
+\ NCOMP-DISPATCH:TIER-CELL). Any other value exits 70; x86-64 selects 1 only.
 : SELECT ( n -- )
    set-tier ;
 

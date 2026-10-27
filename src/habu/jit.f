@@ -4,8 +4,8 @@
 \ Load after prof.fs, before habu2.f.
 \ This is tier 0, a second ARM64 codegen beside the platform codegen (tier 1).
 \ `--load` and the REPL use it because tier 1 compiles a trivial definition far
-\ slower (tools/compile-floor.f); an executable build selects tier 1 for all it
-\ captures (src/lib/executable-build.f), so no image contains tier-0 code.
+\ slower (tools/compile-floor.f). An executable build compiles at its caller's
+\ tier (src/lib/executable-build.f).
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 require src/arch/arm64/icode.f
 using A64ASM

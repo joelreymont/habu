@@ -1221,35 +1221,22 @@ variable OR-DIR-U  variable OR-PATH-U  variable OR-IMAGE-U
    OR-DIR-REMOVE ;
 
 : TEST-BUILD-SCOPE ( -- )
-   s" build scope selects native and restores the incoming tier through nested scopes" T-LABEL
+   s" build scope keeps the caller's tier through nested scopes" T-LABEL
    S\" require src/lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 1\n1\n0\n" else S\" 1\n1\n1\n" then STR= TTRUE
+   LEGACY? if S\" 0\n0\n0\n" else S\" 1\n1\n1\n" then STR= TTRUE
    s" build scope preserves higher-order inputs and outputs" T-LABEL
    S\" require src/lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
    LEGACY? if S\" 49\n49\n0\n" else S\" 49\n49\n1\n" then STR= TTRUE
-   LEGACY? if
-      s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
-      S\" require src/lib/executable-build.f\nrequire src/lib/tier.f\n: BS-BAD ( -- ) 0 TIER:SELECT ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
-      0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
-      ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
-   then
-   s" arbitrary throws preserve their code and the outer tier" T-LABEL
-   S\" 1 set-tier require src/lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
-   0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
-   s" evaluated source publishes native code inside the scope" T-LABEL
+   s" the scope restores a tier its body selected, through throws too" T-LABEL
+   S\" require src/lib/executable-build.f require src/lib/tier.f\n: BS-SEL ( -- ) [: 1 TIER:SELECT ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- ) [: 1 TIER:SELECT 79 throw ;] EXECUTABLE-BUILD:WITH ; BS-SEL tier@ . ' BS-RUN catch . tier@ . \n" EXEC
+   0 ASSERT-RC OUT$
+   LEGACY? if S\" 0\n79\n0\n" else S\" 1\n79\n1\n" then STR= TTRUE
+   s" evaluated source inside the scope compiles at the caller's tier" T-LABEL
    S\" CAST: XT>N ( [ R -- S ] -- n )\nrequire src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE XT>N dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 1\n61\n0\n" else S\" 1\n61\n1\n" then STR= TTRUE
-   LEGACY? if
-      s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
-      \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
-      \ the saved guard error after the lookups, preserving its rejection code.
-      S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= bool>n . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
-      REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
-      ERR$ S\" hb: executable build requires native tier 1\n" CONTAINS? TTRUE
-   then
+   LEGACY? if S\" 0\n61\n0\n" else S\" 1\n61\n1\n" then STR= TTRUE
    s" raw stores cannot erase retained provenance" T-LABEL
    s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" raw stores cannot disable the executable scope" T-LABEL

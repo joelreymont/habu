@@ -7,15 +7,13 @@
 \ loaded, the selected action refuses an unavailable writer before the full
 \ compiler window loads; an x86-64 window's writer is loaded before that window,
 \ so a build for it writes an x86-64 ELF from either host. The entry's accepted
-\ path, the closure compiling under the native build guard, is every gate's
+\ path, the closure compiling in the executable-build scope, is every gate's
 \ whitebox engine build (test/whitebox-engine.f runs this entry with
-\ `whitebox`). The saved route's runtime guard is exercised below with a
-\ source that stops at tier selection.
+\ `whitebox`).
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -36,19 +34,6 @@ variable FOREIGN-ROOT-U
 create FOREIGN-OUT FS-PATH-CAP allot
 variable FOREIGN-OUT-U
 create CONTENT 64 allot
-create GUARD-ROOT FS-PATH-CAP allot
-variable GUARD-ROOT-U
-create GUARD-PATH FS-PATH-CAP allot
-create GUARD-ENTRY FS-PATH-CAP allot
-variable GUARD-ENTRY-U
-
-: GUARD-ROOT$ ( -- ptr u8 n ) GUARD-ROOT GUARD-ROOT-U @ ;
-
-: GUARD-AT ( ptr u8 n -- ptr u8 n )
-   GUARD-ROOT$ 2swap GUARD-PATH JOIN-PATH GUARD-PATH swap ;
-
-: GUARD-ENTRY$ ( -- ptr u8 n ) GUARD-ENTRY GUARD-ENTRY-U @ ;
-
 : FOREIGN-OUT$ ( -- ptr u8 n ) FOREIGN-OUT FOREIGN-OUT-U @ ;
 
 : FOREIGN-OUT! ( ptr u8 n -- ) {: name:ptr size:n :}
@@ -205,59 +190,6 @@ variable GUARD-ENTRY-U
    RC @ 0 T=
    OUT OUT-U @ s" native-build-action: ok" CONTAINS? TTRUE ;
 
-\ The saved support image has no live build scope after APP-IMAGE:SAVE.
-\ Its ordinary RUN must open one before the target source can select tier 0.
-\ This invocation changes only the first source the real driver includes after
-\ its host rewind, then stops before a full target engine can compile.
-: GUARD-SETUP ( -- )
-   s" native-build-guard" HB-TMP-MKDIR {: root:ptr u:n :}
-   root GUARD-ROOT u BYTE-COPY u GUARD-ROOT-U !
-   s" native-build guard artifacts: " type GUARD-ROOT$ type cr
-   s" src/habu" GUARD-AT MAKE-DIRS
-   s" src/habu/window-rewind.f" GUARD-AT
-      S\" 0 set-tier\ns\" native-build guard escaped\" type cr\ns\" native-build guard stop\" 77 die\n"
-      WRITE-ALL
-   s" tools/native-build.f" SOURCE-ROOT:RESOLVE drop
-      {: entry:ptr entryu:n :}
-   entry GUARD-ENTRY entryu BYTE-COPY entryu GUARD-ENTRY-U ! ;
-
-: GUARD-DRIVE ( -- )
-   PROC-ARGV-ENV-RESET
-   s" HABU_BUILD_CACHE" >LEN s" cache" GUARD-AT >LEN PROC-ENV+
-   s" HB_TMP" >LEN GUARD-ROOT$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG GUARD-ENTRY$ ARG s" --" ARG
-   s" stopped-hb" GUARD-AT ARG
-   ENGINE-CANDIDATE:PATH$ >LEN GUARD-ROOT$ >LEN
-      OUT CAP >LEN ERR CAP >LEN 180000 >MS
-      PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
-      MATCH result
-         ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-            outu erru 0 ENDOF
-         err OF PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
-            outu erru rc RC>N ENDOF
-      ;MATCH
-      {: outu:len erru:len rc:n :}
-   outu LEN>N OUT-U ! erru LEN>N ERR-U ! rc RC ! ;
-
-: GUARD-REFUSED ( ptr u8 n -- ) {: selected:ptr selectedu:n :}
-   RC @ 74 <> if OUT OUT-U @ type ERR ERR-U @ type then
-   RC @ 74 T=
-   OUT OUT-U @ selected selectedu CONTAINS? TTRUE
-   ERR ERR-U @ s" executable build requires native tier 1" CONTAINS? TTRUE
-   OUT OUT-U @ s" native-build guard escaped" CONTAINS? TFALSE ;
-
-: GUARD-CASE ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" native-build guard: x86-64 has no tier 0" type cr
-      exit
-   then
-   GUARD-SETUP
-   s" the saved build refuses tier 0 on its first cold target source" T-LABEL
-   GUARD-DRIVE s" native-build: support image built" GUARD-REFUSED
-   s" and the retained image refuses it on a cache hit" T-LABEL
-   GUARD-DRIVE s" native-build: support image hit" GUARD-REFUSED ;
-
 : ABI-TARGET$ ( -- ptr u8 n )
    HB-TARGET-MACOS? if s" linux-aarch64" exit then
    s" macos-aarch64" ;
@@ -307,7 +239,6 @@ variable GUARD-ENTRY-U
    FOREIGN-WINDOW-CASE
    BAD-HOST-CASE
    ACTION-CASE
-   GUARD-CASE
    FOREIGN-ABI-CASE
    T-REPORT ;
 

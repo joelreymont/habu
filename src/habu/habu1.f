@@ -4129,6 +4129,31 @@ public
 : BDISCARDCHECK ( -- )
    10 0 MOVZ,  10 DATA SUSP-HOOK-CELL STR,  10 DATA SUSP-PREFLIGHT-CELL STR, ;
 
+\ executable-build-enter ( -- ) and executable-build-leave ( -- ): the build
+\ scope. The outermost enter saves the caller's tier and the matching leave
+\ restores it, so a tier selected inside the scope ends with it. The scope
+\ never selects a tier itself: what it compiles uses the caller's.
+: BBUILDENTER ( -- )
+   LBL {: nested:label :}
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 nested CBNZ,
+   10 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
+   nested LBL,
+   9 9 1 ADDI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR, ;
+
+: BBUILDLEAVE ( -- )
+   LBL {: done:label :}
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 done CBZ,
+   9 9 1 SUBI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
+   9 done CBNZ,
+   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL LDR,
+   10 DATA NCOMP-DISPATCH:TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
+   done LBL, ;
+
+: BCODEORIGIN ( -- )
+   10 G-POP  9 G-POP  CODE-ORIGIN:QUERY,  9 G-PUSH ;
+
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
 \ 0 = tier 0, the legacy JIT; 1 = tier 1, the IR pipeline behind
 \ NCOMP-DISPATCH:XT-CELL. See layout.f NCOMP-DISPATCH:TIER-CELL for the rule.
@@ -4144,54 +4169,13 @@ public
 \ whole point of the cell is that the choice is deliberate. One unsigned compare
 \ rejects every value above 1 and, because a negative is an enormous unsigned,
 \ every negative too.
-\ Refuse tier0 through the normal throw path so the scoped build wrapper can
-\ run its cleanup after an include/evaluate/immediate abort.
-: EXECUTABLE-JIT-REFUSE ( -- )
-   LBL LBL {: msg:label done:label :}
-   S\" hb: executable build requires native tier 1\n" {: ma:ptr mu:n :}
-   0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
-   9 70 MOVZ,  9 G-PUSH  BTHROW
-   done B,
-   msg LBL,  ma mu BYTES,
-   done LBL, ;
-
-: EXECUTABLE-JIT-GUARD ( -- )
-   LBL {: allowed:label :}
-   10 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  10 allowed CBZ,
-   EXECUTABLE-JIT-REFUSE
-   allowed LBL, ;
-
-: BBUILDENTER ( -- )
-   LBL {: nested:label :}
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 nested CBNZ,
-   10 DATA NCOMP-DISPATCH:TIER-CELL LDR,
-   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
-   nested LBL,
-   9 9 1 ADDI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
-   9 1 MOVZ,  9 DATA NCOMP-DISPATCH:TIER-CELL STR, ;
-
-: BBUILDLEAVE ( -- )
-   LBL {: done:label :}
-   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 done CBZ,
-   9 9 1 SUBI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
-   9 done CBNZ,
-   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL LDR,
-   10 DATA NCOMP-DISPATCH:TIER-CELL STR,
-   9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
-   done LBL, ;
-
-: BCODEORIGIN ( -- )
-   10 G-POP  9 G-POP  CODE-ORIGIN:QUERY,  9 G-PUSH ;
-
 : BSETTIER ( -- )
-   LBL LBL LBL LBL {: bad:label done:label msg:label native:label :}
+   LBL LBL LBL {: bad:label done:label msg:label :}
    S\" set-tier: tier must be 0 or 1\n" {: ma:ptr mu:n :}
    A G-POP                               \ x9 = requested tier
    9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
-   9 native CBNZ,  EXECUTABLE-JIT-GUARD
-   native LBL,
-      A DATA NCOMP-DISPATCH:TIER-CELL STR,
-      done B,
+   A DATA NCOMP-DISPATCH:TIER-CELL STR,
+   done B,
    bad LBL,
       0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,

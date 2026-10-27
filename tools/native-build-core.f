@@ -1004,7 +1004,7 @@ variable BUILD-INPUTS-PATH-U
       NDEF-CACHE:WITH-QUIET ;
 
 \ The owned capture is already frozen. Only this uncaptured writer selects
-\ the host JIT; a caller-owned outer native scope still refuses that selection.
+\ the host JIT; it restores the caller's tier when it returns or throws.
 variable WRITER-TIER
 : LOAD-SOURCE-WRITER ( -- )
    tier@ WRITER-TIER !
@@ -1429,8 +1429,19 @@ variable SEALED-NAMES-U
    WRITE-NAMES
    white sealed plan count ;
 
+\ The engine build owns its tier: a restored support image starts at tier 0,
+\ and a capture refuses code without native provenance. The build scope's
+\ cleanup restores the caller's tier.
+: AT-TIER-1 ( R [ R -- S ] -- S )
+   1 TIER:SELECT execute ;
+
+
+: TARGET-SCOPE ( R [ R -- S ] -- S )
+   ['] AT-TIER-1 EXECUTABLE-BUILD:WITH ;
+
+
 : BUNDLE-FINISH ( -- )
-   ['] BUNDLE-CAPTURE EXECUTABLE-BUILD:WITH
+   ['] BUNDLE-CAPTURE TARGET-SCOPE
    {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
    white sealed plan count ['] BUNDLE-WRITE catch {: rc:n :}
    2drop drop drop
@@ -1467,13 +1478,13 @@ variable SEALED-NAMES-U
    WRITE-NAMES ;
 
 : IMAGE-FINISH ( [ n n -- n ] bool -- )
-   ['] IMAGE-CAPTURE EXECUTABLE-BUILD:WITH
+   ['] IMAGE-CAPTURE TARGET-SCOPE
    EMIT-TEMP
    IMAGE-INSTALL ;
 
 \ A failed load reaches its policy close without passing IMAGE-CAPTURE.
 : CLEANUP-SOURCE ( -- )
-   [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] EXECUTABLE-BUILD:WITH ;
+   [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] TARGET-SCOPE ;
 
 TYPED-VARIABLE READY-QUERY [ n n -- n ]
 variable READY-BOOTSTRAP
@@ -1509,8 +1520,8 @@ variable READY-BOOTSTRAP
    \ The load owns WINDOW-OPEN through WINDOW-CLOSE. Cache session setup and
    \ reset outside it only bind loader state; finish audits and owns the window.
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      [: ['] FILE-PREPARE EXECUTABLE-BUILD:WITH ;]
-      [: ['] FILE-LOAD EXECUTABLE-BUILD:WITH ;] ['] FILE-FINISH
+      [: ['] FILE-PREPARE TARGET-SCOPE ;]
+      [: ['] FILE-LOAD TARGET-SCOPE ;] ['] FILE-FINISH
       BUILD-CORE:WITH {: rc:n :}
    RESTORE-HOST-UNIT
    CLEANUP-SOURCE
@@ -1531,8 +1542,8 @@ public
    dir BUNDLE-DIR !
    diru BUNDLE-DIR-U !
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      [: ['] BUNDLE-PREPARE EXECUTABLE-BUILD:WITH ;]
-      [: ['] FILE-LOAD EXECUTABLE-BUILD:WITH ;] ['] BUNDLE-FINISH
+      [: ['] BUNDLE-PREPARE TARGET-SCOPE ;]
+      [: ['] FILE-LOAD TARGET-SCOPE ;] ['] BUNDLE-FINISH
       ['] BUILD-CORE:WITH WITH-TARGET-ROOT {: rc:n :}
    RESTORE-HOST-UNIT
    rc 0<> if rc throw then ;

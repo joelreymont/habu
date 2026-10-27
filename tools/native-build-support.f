@@ -8,7 +8,7 @@ private
 create SAVED-ROOT FS-PATH-CAP allot
 variable SAVED-ROOT-U
 
-\ Compile the ordinary driver under the same guard as the source entry.
+\ Compile the ordinary driver inside a build scope, as the source entry does.
 : LOAD ( -- )
    s" tools/native-build-core.f" required ;
 

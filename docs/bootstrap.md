@@ -80,8 +80,8 @@ installs bin/hb. That source-only engine can build the native product; it is
 not itself the product the native suite qualifies.
 
 For a source-only recovery host, load and install the source compiler before
-the native driver's initial `1 set-tier`. With `HOST` naming that host and
-`TMP` outside the checkout, build from the target tree:
+the native driver's first target scope selects tier 1. With `HOST` naming
+that host and `TMP` outside the checkout, build from the target tree:
 
 ```sh
 cat > "$TMP/native-preload.f" <<'EOF'

@@ -1279,10 +1279,11 @@ $3818 constant CALLBACK-ENTRY-CELL
 \       Every `--load` and the REPL. It is the value a fresh DATA page starts
 \       at, so an engine that selects nothing runs the JIT.
 \   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
-\       Selected deliberately with `1 set-tier` by the paths that construct an
-\       executable -- an executable carries only optimised code.
+\       Selected deliberately with `1 set-tier`. An executable build compiles
+\       at its caller's tier; the engine build selects tier 1 for its target,
+\       whose capture requires native code.
 \
-\ Tier 1 must be selected BEFORE the first definition on such a path is
+\ Tier 1 must be selected BEFORE the first definition on a tier-1 path is
 \ evaluated: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN when it meets a body the
 \ JIT compiled, so a tier-1 build has to be a fresh load and never an image laid
 \ over a tier-0-loaded prefix. Selecting it at the top of the path, ahead of any
@@ -1294,8 +1295,8 @@ $3818 constant CALLBACK-ENTRY-CELL
 $370 constant TIER-CELL
 \ Latched at the colon; an immediate may only select the NEXT definition.
 $388 constant DEF-TIER-CELL
-\ The outer executable-build scope saves the ordinary selection once. Nested
-\ scopes keep tier 1 until the outer finally restores it.
+\ The outer executable-build scope saves the caller's selection once and
+\ restores it when it closes; nested scopes only count depth.
 $390 constant BUILD-DEPTH-CELL
 $398 constant BUILD-TIER-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler

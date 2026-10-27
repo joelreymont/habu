@@ -1,6 +1,5 @@
 \ hb-build-aot-cache-test.f - checked fixture for tools/hb-build-lib.f: the
-\ AOT groups about the object cache and its keys - the tier refusal, a stored
-\ object's hit, a call through an EXPORT alias, the engine and producer keys, a
+\ AOT groups about the object cache and its keys - a stored object's hit, a call through an EXPORT alias, the engine and producer keys, a
 \ wrong object and a cache hit's failed publication.
 \ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-aot-cache-test.f
@@ -49,16 +48,6 @@ create HBT-PAIR-GOT-HEX 64 allot
    HBT-MAP-HEX 64 SB-APPEND
    10 SB-APPEND-C
    path pathu SB$ WRITE-ALL ;
-
-: HBT-AOT-JIT-REJECT ( -- )
-   HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
-   HBT-REPL-BAD-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
-   rc 70 T=
-   HB-TARGET-LINUX-X86-64? if
-      HBB-ERR-BUF erru s" set-tier: x86-64 runs tier 1 only" CONTAINS? TTRUE
-   else
-      HBB-ERR-BUF erru s" executable build requires native tier 1" CONTAINS? TTRUE
-   then ;
 
 : HBT-AOT-SOURCE-KEY! ( -- )
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
@@ -449,7 +438,6 @@ public
    HBT-PREPARE
    HBT-PUB-PREPARE
    HBT-PUB-PAIR-RENAME-FAILS
-   HBT-AOT-JIT-REJECT
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-MAKER-NESTED-INPUTS

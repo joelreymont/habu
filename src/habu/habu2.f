@@ -3272,7 +3272,6 @@ public
       LOAD
       done B,
    jit LBL,
-      EXECUTABLE-JIT-GUARD
       9 CP 0 ADDI,  9 DATA FRAME-CELL STR,         \ the entry slot, no call seen yet
       9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,       \ str x30,[sp,#-16]!
    done LBL, ;
@@ -13893,12 +13892,10 @@ public
 \ A body token reopens the code window when a way out of the loop closed it
 \ under the pending head (EM-INTERPRET-COLON): every emission goes through
 \ LCEMIT, whose PROT-EMIT:LGROW needs only some code band open, and a write
-\ below CP declares its own span. The guard comes first, so its throw leaves
-\ the window as the way out left it.
+\ below CP declares its own span.
 : EM-COMPILE-LEGACY ( -- )
    LBL LBL LBL {: lnotsemi:label open:label call:label :}
    LCOMPILE LABEL@ LBL,
-   EXECUTABLE-JIT-GUARD
    9 DATA PROT:WINDOW LDR,  9 open CBNZ,
       1 CP 4 ADDI,  PROT-EMIT:LOPEN LABEL@ BL,          \ region -> RW: the head goes on
    open LBL,

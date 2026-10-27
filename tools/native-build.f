@@ -1,5 +1,5 @@
 \ Compatibility command for the engine target in tools/hb-build.f.
-\ Ordinary uncaptured orchestration stays at the caller's tier.
+\ Orchestration stays at the caller's tier; the driver selects its target's.
 \ An earlier --load entry can alter the donor compiler or install a backend.
 \ Such a process keeps its live source-loaded driver and its exact state.
 package NATIVE-BUILD-ENTRY
@@ -11,7 +11,6 @@ REQUIRE-REG:COUNT REQUIRE-BOOT-LIMIT 1+ > constant PRELOADED?
 require tools/native-build-args.f
 NATIVE-BUILD:BUILD-ARGS!
 require src/lib/executable-build.f
-require src/lib/tier.f
 
 package NATIVE-BUILD-ENTRY
 
@@ -19,12 +18,6 @@ package NATIVE-BUILD-ENTRY
 : SOURCE-ENTRY? ( -- bool )
    PRELOADED? if true exit then
    NATIVE-BUILD:EXPLICIT-TARGET? ;
-
-\ The source driver needs a native ORIGIN callback before its target rewind.
-: SELECT-TIER ( -- )
-   SOURCE-ENTRY? if 1 TIER:SELECT then ;
-
-SELECT-TIER
 
 public
 
