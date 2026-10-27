@@ -1,46 +1,55 @@
-\ json-read.f - checked zero-allocation JSON pull/cursor parser.
+\ json-read.f - checked JSON pull/cursor parser.
 \
 \ STORAGE CLASS. CALLER-OWNED, so this module is safe from any number of
-\ tasks. The reader holds no module state at all: the caller allots
-\ JR:STORAGE-BYTES and owns both that storage and the source span, so two
-\ tasks parsing two documents share nothing.
+\ tasks. The reader holds no module state at all: the caller declares a
+\ JR:cursor record (`TYPED-VARIABLE X JR:cursor`, `n TYPED-BUFFER XS
+\ JR:cursor` or `FIELD rd JR:cursor`) and owns both that record and the source
+\ span, so two tasks parsing two documents share nothing. Typed storage is
+\ zero-filled, and a zero-filled record owns nothing.
 \
-\ The parser is a cursor over the caller's source buffer and fixed storage. INIT
+\ The parser is a cursor over the caller's source buffer and record. INIT
 \ returns a linear reader; every operation threads that reader and CLOSE consumes
-\ it. No allocation or process-global parser state is involved. Structural
-\ well-formedness (RFC 8259: strict, no comments, no trailing commas, no single
-\ quotes, string escapes, and Unicode scalar encoding) is validated as the cursor
-\ advances; number and value decode happen on demand. Every failure is a named
-\ throw in the -3900..-3999 JSON-reader block. A throw from an advance leaves
-\ the reader failed: every later NEXT, SKIP-VALUE, VALUE-SPAN$, FIND-KEY or
-\ FINISH that would move the cursor throws that first code again. Accessor
-\ refusals (INT, FLOAT, STR, STR-EQ?) and wrong-phase E-JR-STATE refusals leave
-\ the reader usable.
+\ it. No valid document is refused for its depth, and no caller sizes storage:
+\ the record keeps the container stack one bit per open container, 64 levels
+\ inline, so a document nested at most 64 deep parses with no allocation and no
+\ process-global state. Past 64 levels the record owns one mapping the reader
+\ grows by doubling; a failed growth is MEM's E-MEM-MAP or E-MEM-SIZE, recorded
+\ as the reader's failure. CLOSE, FINISH and the first advance failure release
+\ that mapping. A caller whose own throw abandons a live reader leaves the
+\ mapping in the record: the next reader on that record reuses it and its CLOSE
+\ releases it, and DISPOSE, which is idempotent, releases it at the record's
+\ end of life. A static record that is only ever re-INITed needs no DISPOSE.
 \
-\ The parser lives in `package JR`. External callers use the qualified public API
-\ (JR:INIT, JR:CLOSE, JR:FINISH, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$,
-\ JR:INT, JR:FLOAT, JR:STR, JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the
-\ qualified token kinds (JR:T-OBJ .. JR:T-END). Callers allocate
-\ JR:STORAGE-BYTES at a cell-aligned address and keep both storage and source
-\ live and exclusive until CLOSE or FINISH. The byte constants, the reader's
-\ LINEAR: mint and erase, cursor state, and scan/decode helpers -
+\ Structural well-formedness (RFC 8259: strict, no comments, no trailing commas,
+\ no single quotes, string escapes, and Unicode scalar encoding) is validated as
+\ the cursor advances; number and value decode happen on demand. Every failure
+\ is a named throw in the -3900..-3999 JSON-reader block, apart from a failed
+\ growth. A throw from an advance leaves the reader failed: every later NEXT,
+\ SKIP-VALUE, VALUE-SPAN$, FIND-KEY or FINISH that would move the cursor throws
+\ that first code again. Accessor refusals (INT, FLOAT, STR, STR-EQ?) and
+\ wrong-phase E-JR-STATE refusals leave the reader usable.
+\
+\ The parser lives in `package JR`. External callers use the record type
+\ JR:cursor, the qualified public API (JR:INIT, JR:CLOSE, JR:FINISH,
+\ JR:DISPOSE, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:VALUE-SPAN$, JR:INT, JR:FLOAT,
+\ JR:STR, JR:STR-EQ?, JR:SKIP-VALUE, JR:FIND-KEY) and the qualified token kinds
+\ (JR:T-OBJ .. JR:T-END). Callers keep both record and source live and
+\ exclusive until CLOSE or FINISH. The record's fields, the byte constants, the
+\ reader's LINEAR: mint and erase, cursor state, and scan/decode helpers -
 \ including the bounds-checked source reader AT - are package-private and sealed
 \ after the module is assembled.
 \
-\ INIT refuses null or misaligned storage (E-STORAGE), too little (E-CAPACITY),
-\ and a negative source length or a null source with bytes (E-SOURCE) before it
-\ mints the reader. The checker cannot prove the extent, lifetime or exclusivity
-\ of host storage; those stay the caller's promise. FINISH reads the rest of the
-\ document from wherever the cursor stands, so a caller that took only the
-\ members it needs still learns the document is well formed. SPAN$ borrows the
-\ raw lexeme, escapes encoded; STR decodes into non-null caller storage (a
-\ negative or short capacity is E-JR-STATE). VALUE-SPAN$ on an opener answers
-\ the source bytes through the matching close and moves past the value.
-\ FIND-KEY searches only the current object, skipping each unmatched value, and
-\ stops at its close; it and STR-EQ? compare decoded bytes without a buffer, so
-\ key length is not bounded by reader storage. Nesting past MAX-DEPTH (64) open
-\ containers is E-JR-DEPTH: a capacity failure of the fixed storage, not a
-\ malformed document.
+\ INIT refuses a negative source length or a null source with bytes (E-SOURCE)
+\ before it mints the reader. The checker cannot prove the lifetime or
+\ exclusivity of the record and the source; those stay the caller's promise.
+\ FINISH reads the rest of the document from wherever the cursor stands, so a
+\ caller that took only the members it needs still learns the document is well
+\ formed. SPAN$ borrows the raw lexeme, escapes encoded; STR decodes into
+\ non-null caller storage (a negative or short capacity is E-JR-STATE).
+\ VALUE-SPAN$ on an opener answers the source bytes through the matching close
+\ and moves past the value. FIND-KEY searches only the current object, skipping
+\ each unmatched value, and stops at its close; it and STR-EQ? compare decoded
+\ bytes without a buffer, so key length is not bounded by reader storage.
 \
 \ Cursor state machine (STATE): a value token drives one transition each.
 \  ST-VALUE   value required (doc start / after ':' / after ',' in an array)
@@ -53,21 +62,22 @@
 \ container closes are emitted as T-OBJ-END / T-ARR-END.
 
 require src/lib/errors.f
+require src/lib/memory.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/float.f
 require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF (switchover wave A)
 
-\ JSON reader: -3900..-3999, minted here beside the package its last three codes
-\ belong to (docs/forth-card.md § 6). The E-JR-* codes stay global names, as
-\ callers spell them.
+\ JSON reader: -3900..-3999, minted here beside the package its last code
+\ (JR:E-SOURCE) belongs to (docs/forth-card.md § 6). The E-JR-* codes stay
+\ global names, as callers spell them.
 -3900 constant E-JR-FIRST
 -3999 constant E-JR-LAST
 -3900 constant E-JR-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
 -3901 constant E-JR-STRING      \ unterminated string or unescaped control byte in a string
 -3902 constant E-JR-ESCAPE      \ invalid backslash or \uXXXX escape sequence
 -3903 constant E-JR-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
--3904 constant E-JR-DEPTH       \ container nesting exceeds MAX-DEPTH
 -3905 constant E-JR-TRAILING    \ non-whitespace after the top-level value
 -3906 constant E-JR-NUMBER      \ malformed number token or integer overflow
 -3907 constant E-JR-EOF         \ input ended while a value/container/key was expected
@@ -80,11 +90,38 @@ package JR
 
 public
 
--3912 constant E-CAPACITY    \ caller storage is smaller than JR:STORAGE-BYTES
--3913 constant E-STORAGE     \ caller storage is null or not cell-aligned
 -3914 constant E-SOURCE      \ source length is negative or a positive length has a null source
 
 DEFLINEAR JR:reader
+
+\ The reader's whole state. src..fail are the cursor and decode registers;
+\ kinds is the container stack's first 64 levels, bit i set when level i is an
+\ object; more is the mapping holding the rest, more-cells cells of it, and
+\ more-cells 0 means the record owns no mapping.
+STRUCTURE cursor OPAQUE DERIVE addr
+   FIELD src ptr u8
+   FIELD src-len n
+   FIELD pos n
+   FIELD depth n
+   FIELD state n
+   FIELD kind n
+   FIELD tok-at n
+   FIELD tok-len n
+   FIELD dst ptr u8
+   FIELD dst-cap n
+   FIELD out n
+   FIELD in n
+   FIELD esc n
+   FIELD hi n
+   FIELD lo n
+   FIELD num-at n
+   FIELD mode n
+   FIELD matched n
+   FIELD fail n
+   FIELD kinds n
+   FIELD more ptr u8
+   FIELD more-cells n
+;STRUCTURE
 
 private
 
@@ -172,74 +209,38 @@ private
 4 constant ST-SEP
 5 constant ST-DONE
 
-1 constant CTX-OBJ
-2 constant CTX-ARR
-64 constant MAX-DEPTH
-
 0 constant UMODE-WRITE
 1 constant UMODE-MATCH
 
-19 constant STATE-CELLS
-STATE-CELLS cells constant CTX-OFF
-
-0 constant SRC-IDX
-1 cells constant SRC-U-OFF
-2 cells constant POS-OFF
-3 cells constant DEPTH-OFF
-4 cells constant STATE-OFF
-5 cells constant KIND-OFF
-6 cells constant TOK-AT-OFF
-7 cells constant TOK-LEN-OFF
-8 constant UP-IDX
-9 cells constant UCAP-OFF
-10 cells constant UO-OFF
-11 cells constant UI-OFF
-12 cells constant UE-OFF
-13 cells constant HI-OFF
-14 cells constant LO-OFF
-15 cells constant NI-OFF
-16 cells constant UMODE-OFF
-17 cells constant UMATCH-OFF
-18 cells constant FAIL-OFF     \ the first advance failure's code; 0 while sound
-
-\ The container stack is one CELL per open container, not one byte: the whole
-\ storage block is a cell block (`ptr n`), so a byte-packed stack would need the
-\ block read back as `ptr u8` at a cell address, which the pointee rule refuses.
-CTX-OFF MAX-DEPTH cells + constant STORAGE-SIZE
-
-public
-
-: STORAGE-BYTES ( -- n )
-   STORAGE-SIZE ;
-
-private
+64 constant WORD-BITS        \ container levels per stack word
+512 constant FIRST-MORE      \ cells in the first mapping: 32768 more levels
 
 \ ---- reader token ---------------------------------------------------------
-\ A JR:reader is the caller's cell storage under a linear token. These private
-\ rows are its only mint and erase, so outside JR a reader comes only from INIT
-\ and ends only at CLOSE.
+\ A JR:reader is the caller's record under a linear token. A linear token's
+\ payload is a scalar con, so the record crosses as raw cells only through this
+\ private cast pair, and these private rows are its only mint and erase: outside
+\ JR a reader comes only from INIT and ends only at CLOSE.
+CAST: >CELLS ( ptr cursor -- ptr n )
+CAST: >CURSOR ( ptr n -- ptr cursor )
 LINEAR: MINT-READER ( ptr n -- JR:reader )
 LINEAR: ERASE-READER ( JR:reader -- ptr n )
 
-\ Keep the token live while exposing its cell state.
-: READER>STATE ( JR:reader -- JR:reader ptr n )
-   ERASE-READER dup MINT-READER swap ;
+\ Keep the token live while exposing its record.
+: READER>STATE ( JR:reader -- JR:reader ptr cursor )
+   ERASE-READER dup MINT-READER swap >CURSOR ;
 
-: CTX-SLOT ( ptr n n -- ptr n )   \ ( state depth -- cell address of that stack slot )
-   cells CTX-OFF + + ;
-
-: INIT-STATE ( ptr n ptr u8 n -- ) {: state:ptr source:ptr len:n :}
-   source state SRC-IDX ptr-field !
-   len state SRC-U-OFF + !
-   0 state POS-OFF + !
-   0 state DEPTH-OFF + !
-   ST-VALUE state STATE-OFF + !
-   T-END state KIND-OFF + !
-   0 state TOK-AT-OFF + !
-   0 state TOK-LEN-OFF + !
-   UMODE-WRITE state UMODE-OFF + !
-   1 state UMATCH-OFF + !
-   0 state FAIL-OFF + ! ;
+: INIT-STATE ( ptr cursor ptr u8 n -- ) {: state:ptr source:ptr len:n :}
+   source state CURSOR-SRC !
+   len state CURSOR-SRC-LEN !
+   0 state CURSOR-POS !
+   0 state CURSOR-DEPTH !
+   ST-VALUE state CURSOR-STATE !
+   T-END state CURSOR-KIND !
+   0 state CURSOR-TOK-AT !
+   0 state CURSOR-TOK-LEN !
+   UMODE-WRITE state CURSOR-MODE !
+   1 state CURSOR-MATCHED !
+   0 state CURSOR-FAIL ! ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -248,45 +249,86 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    TRUE 0= ;
 
 \ ---- source cursor --------------------------------------------------------
-: IN-BOUNDS? ( ptr n n -- bool ) {: state:ptr idx:n :}
-   idx 0 >= idx state SRC-U-OFF + @ < and ;
+: IN-BOUNDS? ( ptr cursor n -- bool ) {: state:ptr idx:n :}
+   idx 0 >= idx state CURSOR-SRC-LEN @ < and ;
 
-: AT ( ptr n n -- n ) {: state:ptr idx:n :}
+: AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
    state idx IN-BOUNDS? 0= if E-JR-BOUNDS throw then
-   state SRC-IDX ptr-field @ idx + c@ ;
+   state CURSOR-SRC @ idx + c@ ;
 
-: EOF? ( ptr n -- bool ) {: state:ptr :}
-   state POS-OFF + @ state SRC-U-OFF + @ >= ;
+: EOF? ( ptr cursor -- bool ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-SRC-LEN @ >= ;
 
-: PEEK ( ptr n -- n ) {: state:ptr :}
-   state state POS-OFF + @ AT ;
+: PEEK ( ptr cursor -- n ) {: state:ptr :}
+   state state CURSOR-POS @ AT ;
 
-: ADVANCE ( ptr n -- ) {: state:ptr :}
-   state POS-OFF + dup @ 1+ swap ! ;
+: ADVANCE ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-POS dup @ 1+ swap ! ;
+
+\ ---- container stack storage ----------------------------------------------
+\ The mapping as the span it is: more-cells is the ownership token, nonzero
+\ exactly while the record owns a mapping of that many cells at more.
+: MORE-SPAN ( ptr cursor -- SPAN:span<u8> ) {: state:ptr :}
+   state CURSOR-MORE @ state CURSOR-MORE-CELLS @ cells SPAN:MAKE ;
+
+: MORE-RELEASE ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-MORE-CELLS @ 0= if exit then
+   state MORE-SPAN {: old :}
+   NULL-PTR state CURSOR-MORE !
+   0 state CURSOR-MORE-CELLS !
+   old MEM:FREE-SPAN ;
+
+\ Make stack word w (w >= 1 lives in cell w-1 of the mapping) exist. Levels
+\ are pushed one at a time, so one doubling always covers w. The old words are
+\ copied before the new mapping is installed, and the old one is released last.
+: MORE-ENSURE ( ptr cursor n -- ) {: state:ptr w:n :}
+   w state CURSOR-MORE-CELLS @ <= if exit then
+   state CURSOR-MORE-CELLS @ {: have:n :}
+   have 0= if FIRST-MORE else have 2 * then {: want:n :}
+   want cells MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: grown :}
+   state MORE-SPAN {: old :}
+   old SPAN:$ grown SPAN:COPY
+   grown SPAN:$ drop state CURSOR-MORE !
+   want state CURSOR-MORE-CELLS !
+   have 0<> if old MEM:FREE-SPAN then ;
+
+\ The cell holding container level's stack word. The level's word exists: it
+\ is below the depth, or PUSH ensured it.
+: KIND-WORD ( ptr cursor n -- ptr n ) {: state:ptr level:n :}
+   level WORD-BITS / {: w:n :}
+   w 0= if state CURSOR-KINDS exit then
+   state CURSOR-MORE @ w 1- cells + CELL-VIEW ;
+
+\ After the first advance failure released the mapping, nothing may read the
+\ stack: every path that would throws the failure again first.
+: REQUIRE-SOUND ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-FAIL @ {: failed:n :}
+   failed 0<> if failed throw then ;
 
 public
 
-: INIT ( ptr n n ptr u8 n -- JR:reader )
-   {: storage:ptr cap:n source:ptr len:n :}
-   storage 0= if E-STORAGE throw then
-   storage NULL-PTR - CELL 1- and 0 <> if E-STORAGE throw then
-   cap STORAGE-BYTES < if E-CAPACITY throw then
+: INIT ( ptr cursor ptr u8 n -- JR:reader )
+   {: state:ptr source:ptr len:n :}
    len 0 < if E-SOURCE throw then
    len 0 > source 0= and if E-SOURCE throw then
-   storage source len INIT-STATE
-   storage MINT-READER ;
+   state source len INIT-STATE
+   state >CELLS MINT-READER ;
 
-\ CLOSE consumes the token but never frees caller-owned storage.
+\ CLOSE consumes the token and releases the record's mapping.
 : CLOSE ( JR:reader -- )
-   ERASE-READER drop ;
+   ERASE-READER >CURSOR MORE-RELEASE ;
+
+\ Release what a record owns after a caller's throw abandoned its live reader.
+: DISPOSE ( ptr cursor -- )
+   MORE-RELEASE ;
 
 : TOKEN ( JR:reader -- JR:reader n )
-   READER>STATE KIND-OFF + @ ;
+   READER>STATE CURSOR-KIND @ ;
 
 : SPAN$ ( JR:reader -- JR:reader ptr u8 n )
    READER>STATE {: state:ptr :}
-   state SRC-IDX ptr-field @ state TOK-AT-OFF + @ +
-   state TOK-LEN-OFF + @ ;
+   state CURSOR-SRC @ state CURSOR-TOK-AT @ +
+   state CURSOR-TOK-LEN @ ;
 
 private
 
@@ -294,32 +336,41 @@ private
 : WS? ( n -- bool )
    dup SP = over TAB = or over LF = or swap CR = or ;
 
-: SKIP-WS ( ptr n -- ) {: state:ptr :}
+: SKIP-WS ( ptr cursor -- ) {: state:ptr :}
    begin
-      state POS-OFF + @ state SRC-U-OFF + @ < if
-         state SRC-IDX ptr-field @ state POS-OFF + @ + c@ WS?
+      state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
+         state CURSOR-SRC @ state CURSOR-POS @ + c@ WS?
       else
          FALSE
       then
    while
-      state POS-OFF + dup @ 1+ swap !
+      state CURSOR-POS dup @ 1+ swap !
    repeat ;
 
 \ ---- container stack ------------------------------------------------------
-: PUSH ( ptr n n -- ) {: state:ptr kind:n :}
-   state DEPTH-OFF + @ MAX-DEPTH >= if E-JR-DEPTH throw then
-   kind state state DEPTH-OFF + @ CTX-SLOT !
-   state DEPTH-OFF + dup @ 1+ swap ! ;
+\ One bit per level: set for an object, clear for an array.
+: LEVEL-MASK ( n -- n )
+   WORD-BITS mod 1 swap lshift ;
 
-: POP ( ptr n -- ) {: state:ptr :}
-   state DEPTH-OFF + dup @ 1- swap ! ;
+: PUSH ( ptr cursor bool -- ) {: state:ptr obj:bool :}
+   state CURSOR-DEPTH @ {: level:n :}
+   state level WORD-BITS / MORE-ENSURE
+   state level KIND-WORD {: word:ptr :}
+   level LEVEL-MASK {: mask:n :}
+   obj if word @ mask or else word @ mask invert and then word !
+   level 1+ state CURSOR-DEPTH ! ;
 
-: CUR-CTX ( ptr n -- n ) {: state:ptr :}
-   state state DEPTH-OFF + @ 1- CTX-SLOT @ ;
+: POP ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-DEPTH dup @ 1- swap ! ;
 
-: AFTER-VALUE ( ptr n -- ) {: state:ptr :}
-   state DEPTH-OFF + @ 0= if ST-DONE else ST-SEP then
-   state STATE-OFF + ! ;
+\ Whether the innermost open container is an object.
+: IN-OBJECT? ( ptr cursor -- bool ) {: state:ptr :}
+   state CURSOR-DEPTH @ 1- {: level:n :}
+   state level KIND-WORD @ level LEVEL-MASK and 0<> ;
+
+: AFTER-VALUE ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-DEPTH @ 0= if ST-DONE else ST-SEP then
+   state CURSOR-STATE ! ;
 
 \ ---- string token scanning ------------------------------------------------
 \ The value of this hex digit byte; any other byte is a malformed escape.
@@ -327,14 +378,14 @@ private
    dup STR-HEX-DIGIT? 0= if E-JR-ESCAPE throw then
    STR-HEX-DIGIT-VALUE ;
 
-: SCAN-HEX ( ptr n n -- n ) {: state:ptr value:n :}
+: SCAN-HEX ( ptr cursor n -- n ) {: state:ptr value:n :}
    state EOF? if E-JR-ESCAPE throw then
    value HEX-BASE *
    state PEEK HEX-DIGIT
    +
    state ADVANCE ;
 
-: SCAN-HEX4 ( ptr n -- n ) {: state:ptr :}
+: SCAN-HEX4 ( ptr cursor -- n ) {: state:ptr :}
    state 0 SCAN-HEX
    state swap SCAN-HEX
    state swap SCAN-HEX
@@ -344,7 +395,7 @@ private
    dup DQ = over BACKSLASH = or over SLASH = or over CH-B = or
    over CH-F = or over CH-N = or over CH-R = or swap CH-T = or ;
 
-: SCAN-SURROGATE ( ptr n n -- ) {: state:ptr hi:n :}
+: SCAN-SURROGATE ( ptr cursor n -- ) {: state:ptr hi:n :}
    hi SUR-LO >= if E-JR-SURROGATE throw then
    state EOF? if E-JR-SURROGATE throw then
    state PEEK BACKSLASH <> if E-JR-SURROGATE throw then
@@ -355,7 +406,7 @@ private
    state SCAN-HEX4 {: lo:n :}
    lo SUR-LO < lo SUR-END >= or if E-JR-SURROGATE throw then ;
 
-: SCAN-ESC ( ptr n -- ) {: state:ptr :}
+: SCAN-ESC ( ptr cursor -- ) {: state:ptr :}
    state ADVANCE
    state EOF? if E-JR-ESCAPE throw then
    state PEEK dup SIMPLE-ESC? if drop state ADVANCE exit then
@@ -366,24 +417,24 @@ private
    cp SUR-END >= if exit then
    state cp SCAN-SURROGATE ;
 
-: REQUIRE-UTF-BYTES ( ptr n n -- ) {: state:ptr count:n :}
-   state POS-OFF + @ count + state SRC-U-OFF + @ > if E-JR-STRING throw then ;
+: REQUIRE-UTF-BYTES ( ptr cursor n -- ) {: state:ptr count:n :}
+   state CURSOR-POS @ count + state CURSOR-SRC-LEN @ > if E-JR-STRING throw then ;
 
 : CONT? ( n -- bool )
    $C0 and UTF-CONT = ;
 
-: UTF-BYTE ( ptr n n -- n ) {: state:ptr off:n :}
-   state state POS-OFF + @ off + AT ;
+: UTF-BYTE ( ptr cursor n -- n ) {: state:ptr off:n :}
+   state state CURSOR-POS @ off + AT ;
 
-: ADVANCE-N ( ptr n n -- ) {: state:ptr count:n :}
-   state POS-OFF + dup @ count + swap ! ;
+: ADVANCE-N ( ptr cursor n -- ) {: state:ptr count:n :}
+   state CURSOR-POS dup @ count + swap ! ;
 
-: SCAN-UTF2 ( ptr n -- ) {: state:ptr :}
+: SCAN-UTF2 ( ptr cursor -- ) {: state:ptr :}
    state 2 REQUIRE-UTF-BYTES
    state 1 UTF-BYTE CONT? 0= if E-JR-STRING throw then
    state 2 ADVANCE-N ;
 
-: SCAN-UTF3 ( ptr n n -- ) {: state:ptr lead:n :}
+: SCAN-UTF3 ( ptr cursor n -- ) {: state:ptr lead:n :}
    state 3 REQUIRE-UTF-BYTES
    state 1 UTF-BYTE {: second:n :}
    second CONT? 0= state 2 UTF-BYTE CONT? 0= or if E-JR-STRING throw then
@@ -391,7 +442,7 @@ private
    lead UTF-SUR-LEAD = second UTF-SUR-MAX > and if E-JR-STRING throw then
    state 3 ADVANCE-N ;
 
-: SCAN-UTF4 ( ptr n n -- ) {: state:ptr lead:n :}
+: SCAN-UTF4 ( ptr cursor n -- ) {: state:ptr lead:n :}
    state 4 REQUIRE-UTF-BYTES
    state 1 UTF-BYTE {: second:n :}
    second CONT? 0= state 2 UTF-BYTE CONT? 0= or
@@ -400,22 +451,22 @@ private
    lead UTF-MAX-LEAD = second UTF-MAX-SECOND > and if E-JR-STRING throw then
    state 4 ADVANCE-N ;
 
-: SCAN-UTF8 ( ptr n n -- ) {: state:ptr lead:n :}
+: SCAN-UTF8 ( ptr cursor n -- ) {: state:ptr lead:n :}
    lead UTF2-MIN >= lead UTF2-END < and if state SCAN-UTF2 exit then
    lead UTF2-END >= lead UTF3-END < and if state lead SCAN-UTF3 exit then
    lead UTF3-END >= lead UTF4-END < and if state lead SCAN-UTF4 exit then
    E-JR-STRING throw ;
 
-: SCAN-STRING ( ptr n -- ) {: state:ptr :}
+: SCAN-STRING ( ptr cursor -- ) {: state:ptr :}
    state ADVANCE
-   state POS-OFF + @ state TOK-AT-OFF + !
+   state CURSOR-POS @ state CURSOR-TOK-AT !
    begin
       state EOF? if E-JR-STRING throw then
       state PEEK
       dup DQ = if
          drop
-         state POS-OFF + @ state TOK-AT-OFF + @ -
-         state TOK-LEN-OFF + !
+         state CURSOR-POS @ state CURSOR-TOK-AT @ -
+         state CURSOR-TOK-LEN !
          state ADVANCE exit
       then
       dup BACKSLASH = if
@@ -435,171 +486,171 @@ private
    dup EXP-LOWER = if drop TRUE exit then
    EXP-UPPER = ;
 
-: SCAN-NUMBER ( ptr n -- ) {: state:ptr :}
-   state POS-OFF + @ state TOK-AT-OFF + !
+: SCAN-NUMBER ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-TOK-AT !
    begin
-      state POS-OFF + @ state SRC-U-OFF + @ < if
-         state SRC-IDX ptr-field @ state POS-OFF + @ + c@ NUM-CHAR?
+      state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
+         state CURSOR-SRC @ state CURSOR-POS @ + c@ NUM-CHAR?
       else
          FALSE
       then
    while
-      state POS-OFF + dup @ 1+ swap !
+      state CURSOR-POS dup @ 1+ swap !
    repeat
-   state POS-OFF + @ state TOK-AT-OFF + @ -
-   state TOK-LEN-OFF + ! ;
+   state CURSOR-POS @ state CURSOR-TOK-AT @ -
+   state CURSOR-TOK-LEN ! ;
 
-: NV-DIGIT? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state NI-OFF + @ u >= if FALSE exit then
-   a state NI-OFF + @ + c@ STR-DIGIT? ;
+: NV-DIGIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
+   state CURSOR-NUM-AT @ u >= if FALSE exit then
+   a state CURSOR-NUM-AT @ + c@ STR-DIGIT? ;
 
-: NV-SKIP-DIGITS ( ptr n ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
+: NV-SKIP-DIGITS ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
    0 begin state a u NV-DIGIT? while
-      state NI-OFF + dup @ 1+ swap !
+      state CURSOR-NUM-AT dup @ 1+ swap !
       1+
    repeat ;
 
-: NV-INT? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
+: NV-INT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    state a u NV-DIGIT? 0= if FALSE exit then
-   a state NI-OFF + @ + c@ ZERO = if
-      state NI-OFF + dup @ 1+ swap !
+   a state CURSOR-NUM-AT @ + c@ ZERO = if
+      state CURSOR-NUM-AT dup @ 1+ swap !
       state a u NV-DIGIT? if FALSE exit then
       TRUE exit
    then
    state a u NV-SKIP-DIGITS drop TRUE ;
 
-: NV-FRAC? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state NI-OFF + @ u >= if TRUE exit then
-   a state NI-OFF + @ + c@ DOT <> if TRUE exit then
-   T-FLOAT state KIND-OFF + !
-   state NI-OFF + dup @ 1+ swap !
+: NV-FRAC? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
+   state CURSOR-NUM-AT @ u >= if TRUE exit then
+   a state CURSOR-NUM-AT @ + c@ DOT <> if TRUE exit then
+   T-FLOAT state CURSOR-KIND !
+   state CURSOR-NUM-AT dup @ 1+ swap !
    state a u NV-SKIP-DIGITS 0= if FALSE exit then
    TRUE ;
 
-: NV-EXP? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state NI-OFF + @ u >= if TRUE exit then
-   a state NI-OFF + @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if TRUE exit then
-   T-FLOAT state KIND-OFF + !
-   state NI-OFF + dup @ 1+ swap !
-   state NI-OFF + @ u < if
-      a state NI-OFF + @ + c@ dup PLUS = swap MINUS = or if
-         state NI-OFF + dup @ 1+ swap !
+: NV-EXP? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
+   state CURSOR-NUM-AT @ u >= if TRUE exit then
+   a state CURSOR-NUM-AT @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if TRUE exit then
+   T-FLOAT state CURSOR-KIND !
+   state CURSOR-NUM-AT dup @ 1+ swap !
+   state CURSOR-NUM-AT @ u < if
+      a state CURSOR-NUM-AT @ + c@ dup PLUS = swap MINUS = or if
+         state CURSOR-NUM-AT dup @ 1+ swap !
       then
    then
    state a u NV-SKIP-DIGITS 0= if FALSE exit then
    TRUE ;
 
-: JSON-NUMBER? ( ptr n ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
+: JSON-NUMBER? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
    u 0= if FALSE exit then
-   0 state NI-OFF + !
-   a state NI-OFF + @ + c@ MINUS = if
-      state NI-OFF + dup @ 1+ swap !
+   0 state CURSOR-NUM-AT !
+   a state CURSOR-NUM-AT @ + c@ MINUS = if
+      state CURSOR-NUM-AT dup @ 1+ swap !
    then
    state a u NV-INT? 0= if FALSE exit then
    state a u NV-FRAC? 0= if FALSE exit then
    state a u NV-EXP? 0= if FALSE exit then
-   state NI-OFF + @ u = ;
+   state CURSOR-NUM-AT @ u = ;
 
-: RAW-SPAN$ ( ptr n -- ptr u8 n ) {: state:ptr :}
-   state SRC-IDX ptr-field @ state TOK-AT-OFF + @ +
-   state TOK-LEN-OFF + @ ;
+: RAW-SPAN$ ( ptr cursor -- ptr u8 n ) {: state:ptr :}
+   state CURSOR-SRC @ state CURSOR-TOK-AT @ +
+   state CURSOR-TOK-LEN @ ;
 
 \ ---- literal tokens -------------------------------------------------------
-: MATCH-LIT? ( ptr n ptr u8 n -- bool ) {: state:ptr la:ptr lu:n :}
-   state POS-OFF + @ lu + state SRC-U-OFF + @ > if FALSE exit then
+: MATCH-LIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr la:ptr lu:n :}
+   state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if FALSE exit then
    0 begin dup lu < while
       dup la + c@
-      over state SRC-IDX ptr-field @ state POS-OFF + @ + + c@ <> if
+      over state CURSOR-SRC @ state CURSOR-POS @ + + c@ <> if
          drop FALSE exit
       then
       1+
    repeat drop TRUE ;
 
-: READ-LIT ( ptr n ptr u8 n n -- n ) {: state:ptr la:ptr lu:n kind:n :}
+: READ-LIT ( ptr cursor ptr u8 n n -- n ) {: state:ptr la:ptr lu:n kind:n :}
    state la lu MATCH-LIT? 0= if E-JR-MALFORMED throw then
-   state POS-OFF + @ state TOK-AT-OFF + !
-   lu state TOK-LEN-OFF + !
-   kind state KIND-OFF + !
-   state POS-OFF + dup @ lu + swap !
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   lu state CURSOR-TOK-LEN !
+   kind state CURSOR-KIND !
+   state CURSOR-POS dup @ lu + swap !
    state AFTER-VALUE
    kind ;
 
-: READ-TRUE ( ptr n -- n )
+: READ-TRUE ( ptr cursor -- n )
    s" true" T-TRUE READ-LIT ;
 
-: READ-FALSE ( ptr n -- n )
+: READ-FALSE ( ptr cursor -- n )
    s" false" T-FALSE READ-LIT ;
 
-: READ-NULL ( ptr n -- n )
+: READ-NULL ( ptr cursor -- n )
    s" null" T-NULL READ-LIT ;
 
 \ ---- value readers --------------------------------------------------------
-: OPEN-OBJ ( ptr n -- n ) {: state:ptr :}
-   state POS-OFF + @ state TOK-AT-OFF + !
-   1 state TOK-LEN-OFF + !
-   T-OBJ state KIND-OFF + !
-   state POS-OFF + dup @ 1+ swap !
-   state CTX-OBJ PUSH
-   ST-KEY state STATE-OFF + !
+: OPEN-OBJ ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   1 state CURSOR-TOK-LEN !
+   T-OBJ state CURSOR-KIND !
+   state CURSOR-POS dup @ 1+ swap !
+   state TRUE PUSH
+   ST-KEY state CURSOR-STATE !
    T-OBJ ;
 
-: OPEN-ARR ( ptr n -- n ) {: state:ptr :}
-   state POS-OFF + @ state TOK-AT-OFF + !
-   1 state TOK-LEN-OFF + !
-   T-ARR state KIND-OFF + !
-   state POS-OFF + dup @ 1+ swap !
-   state CTX-ARR PUSH
-   ST-ELEM state STATE-OFF + !
+: OPEN-ARR ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   1 state CURSOR-TOK-LEN !
+   T-ARR state CURSOR-KIND !
+   state CURSOR-POS dup @ 1+ swap !
+   state FALSE PUSH
+   ST-ELEM state CURSOR-STATE !
    T-ARR ;
 
-: CLOSE-OBJ ( ptr n -- n ) {: state:ptr :}
-   state POS-OFF + @ state TOK-AT-OFF + !
-   1 state TOK-LEN-OFF + !
-   T-OBJ-END state KIND-OFF + !
-   state POS-OFF + dup @ 1+ swap !
+: CLOSE-OBJ ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   1 state CURSOR-TOK-LEN !
+   T-OBJ-END state CURSOR-KIND !
+   state CURSOR-POS dup @ 1+ swap !
    state POP
    state AFTER-VALUE
    T-OBJ-END ;
 
-: CLOSE-ARR ( ptr n -- n ) {: state:ptr :}
-   state POS-OFF + @ state TOK-AT-OFF + !
-   1 state TOK-LEN-OFF + !
-   T-ARR-END state KIND-OFF + !
-   state POS-OFF + dup @ 1+ swap !
+: CLOSE-ARR ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   1 state CURSOR-TOK-LEN !
+   T-ARR-END state CURSOR-KIND !
+   state CURSOR-POS dup @ 1+ swap !
    state POP
    state AFTER-VALUE
    T-ARR-END ;
 
-: READ-STRING ( ptr n -- n ) {: state:ptr :}
+: READ-STRING ( ptr cursor -- n ) {: state:ptr :}
    state SCAN-STRING
-   T-STR state KIND-OFF + !
+   T-STR state CURSOR-KIND !
    state AFTER-VALUE
    T-STR ;
 
-: READ-KEY ( ptr n -- n ) {: state:ptr :}
+: READ-KEY ( ptr cursor -- n ) {: state:ptr :}
    state SCAN-STRING
-   T-KEY state KIND-OFF + !
+   T-KEY state CURSOR-KIND !
    state SKIP-WS
-   state POS-OFF + @ state SRC-U-OFF + @ >= if E-JR-COLON throw then
-   state SRC-IDX ptr-field @ state POS-OFF + @ + c@ COLON <> if
+   state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if E-JR-COLON throw then
+   state CURSOR-SRC @ state CURSOR-POS @ + c@ COLON <> if
       E-JR-COLON throw
    then
-   state POS-OFF + dup @ 1+ swap !
-   ST-VALUE state STATE-OFF + !
+   state CURSOR-POS dup @ 1+ swap !
+   ST-VALUE state CURSOR-STATE !
    T-KEY ;
 
-: READ-NUMBER ( ptr n -- n ) {: state:ptr :}
+: READ-NUMBER ( ptr cursor -- n ) {: state:ptr :}
    state SCAN-NUMBER
-   state KIND-OFF + @ {: prior:n :}
-   T-INT state KIND-OFF + !
+   state CURSOR-KIND @ {: prior:n :}
+   T-INT state CURSOR-KIND !
    state state RAW-SPAN$ JSON-NUMBER? 0= if
-      prior state KIND-OFF + !
+      prior state CURSOR-KIND !
       E-JR-NUMBER throw
    then
    state AFTER-VALUE
-   state KIND-OFF + @ ;
+   state CURSOR-KIND @ ;
 
-: READ-VALUE ( ptr n n -- n ) {: state:ptr c:n :}
+: READ-VALUE ( ptr cursor n -- n ) {: state:ptr c:n :}
    c LBRACE = if state OPEN-OBJ exit then
    c LBRACK = if state OPEN-ARR exit then
    c DQ = if state READ-STRING exit then
@@ -611,56 +662,56 @@ private
    E-JR-MALFORMED throw ;
 
 \ ---- state dispatch -------------------------------------------------------
-: DO-ELEM ( ptr n n -- n ) {: state:ptr c:n :}
+: DO-ELEM ( ptr cursor n -- n ) {: state:ptr c:n :}
    c RBRACK = if state CLOSE-ARR exit then
    state c READ-VALUE ;
 
-: DO-KEY ( ptr n n -- n ) {: state:ptr c:n :}
+: DO-KEY ( ptr cursor n -- n ) {: state:ptr c:n :}
    c RBRACE = if state CLOSE-OBJ exit then
    c DQ = if state READ-KEY exit then
    E-JR-MALFORMED throw ;
 
-: DO-MEMBER ( ptr n n -- n ) {: state:ptr c:n :}
+: DO-MEMBER ( ptr cursor n -- n ) {: state:ptr c:n :}
    c DQ = if state READ-KEY exit then
    E-JR-MALFORMED throw ;
 
-: DO-SEP ( ptr n n -- n ) {: state:ptr c:n :}
+: DO-SEP ( ptr cursor n -- n ) {: state:ptr c:n :}
    c COMMA = if
-      state POS-OFF + dup @ 1+ swap !
-      state CUR-CTX CTX-OBJ = if ST-MEMBER else ST-VALUE then
-      state STATE-OFF + !
+      state CURSOR-POS dup @ 1+ swap !
+      state IN-OBJECT? if ST-MEMBER else ST-VALUE then
+      state CURSOR-STATE !
       RETRY exit
    then
-   c RBRACE = state CUR-CTX CTX-OBJ = and if
+   c RBRACE = state IN-OBJECT? and if
       state CLOSE-OBJ exit
    then
-   c RBRACK = state CUR-CTX CTX-ARR = and if
+   c RBRACK = state IN-OBJECT? 0= and if
       state CLOSE-ARR exit
    then
    E-JR-COMMA throw ;
 
-: PUBLISH-END ( ptr n -- n ) {: state:ptr :}
-   T-END state KIND-OFF + !
-   state POS-OFF + @ state TOK-AT-OFF + !
-   0 state TOK-LEN-OFF + !
+: PUBLISH-END ( ptr cursor -- n ) {: state:ptr :}
+   T-END state CURSOR-KIND !
+   state CURSOR-POS @ state CURSOR-TOK-AT !
+   0 state CURSOR-TOK-LEN !
    T-END ;
 
-: STEP ( ptr n -- n ) {: state:ptr :}
+: STEP ( ptr cursor -- n ) {: state:ptr :}
    state SKIP-WS
-   state POS-OFF + @ state SRC-U-OFF + @ >= if
-      state STATE-OFF + @ ST-DONE = if state PUBLISH-END exit then
+   state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if
+      state CURSOR-STATE @ ST-DONE = if state PUBLISH-END exit then
      E-JR-EOF throw
    then
-   state SRC-IDX ptr-field @ state POS-OFF + @ + c@ {: c:n :}
-   state STATE-OFF + @ ST-DONE = if E-JR-TRAILING throw then
-   state STATE-OFF + @ ST-VALUE = if state c READ-VALUE exit then
-   state STATE-OFF + @ ST-ELEM = if state c DO-ELEM exit then
-   state STATE-OFF + @ ST-KEY = if state c DO-KEY exit then
-   state STATE-OFF + @ ST-MEMBER = if state c DO-MEMBER exit then
+   state CURSOR-SRC @ state CURSOR-POS @ + c@ {: c:n :}
+   state CURSOR-STATE @ ST-DONE = if E-JR-TRAILING throw then
+   state CURSOR-STATE @ ST-VALUE = if state c READ-VALUE exit then
+   state CURSOR-STATE @ ST-ELEM = if state c DO-ELEM exit then
+   state CURSOR-STATE @ ST-KEY = if state c DO-KEY exit then
+   state CURSOR-STATE @ ST-MEMBER = if state c DO-MEMBER exit then
    state c DO-SEP ;
 
 \ The token lands in the slot under the state, so catch sees a preserving row.
-: STEP-SLOT ( n ptr n -- n ptr n ) {: state:ptr :}
+: STEP-SLOT ( n ptr cursor -- n ptr cursor ) {: state:ptr :}
    drop
    begin state STEP dup RETRY = while drop repeat
    state ;
@@ -668,13 +719,14 @@ private
 \ Every advance comes through here. A failed STEP may leave the cursor past the
 \ text it rejected while STATE still describes the text before it, so the code
 \ is stored and every later advance throws it again: a reader never parses on
-\ from a failure as if the rejected text had been valid.
-: NEXT-INNER ( ptr n -- n ) {: state:ptr :}
-   state FAIL-OFF + @ {: failed:n :}
-   failed 0<> if failed throw then
+\ from a failure as if the rejected text had been valid. The failure also
+\ releases the stack mapping, which REQUIRE-SOUND keeps anything from reading.
+: NEXT-INNER ( ptr cursor -- n ) {: state:ptr :}
+   state REQUIRE-SOUND
    0 state [: STEP-SLOT ;] catch nip {: token code:n :}
    code 0= if token exit then
-   code state FAIL-OFF + !
+   state MORE-RELEASE
+   code state CURSOR-FAIL !
    code throw ;
 
 public
@@ -693,15 +745,15 @@ public
 private
 
 \ ---- number value decode --------------------------------------------------
-: INT-INNER ( ptr n -- n ) {: state:ptr :}
-   state KIND-OFF + @ T-INT <> if E-JR-STATE throw then
+: INT-INNER ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-KIND @ T-INT <> if E-JR-STATE throw then
    state RAW-SPAN$ STR>NUMBER? MATCH option
      none OF E-JR-NUMBER throw ENDOF
      some OF ENDOF
    ;MATCH ;
 
-: FLOAT-INNER ( ptr n -- r ) {: state:ptr :}
-   state KIND-OFF + @ dup T-INT = swap T-FLOAT = or 0= if E-JR-STATE throw then
+: FLOAT-INNER ( ptr cursor -- r ) {: state:ptr :}
+   state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if E-JR-STATE throw then
    state RAW-SPAN$ STR>FLOAT MATCH option
      none OF E-JR-NUMBER throw ENDOF
      some OF ENDOF
@@ -718,47 +770,47 @@ public
 private
 
 \ ---- string value decode (unescape into caller buffer) --------------------
-: SPAN-AT ( ptr n n -- n ) {: state:ptr idx:n :}
-   state state TOK-AT-OFF + @ idx + AT ;
+: SPAN-AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
+   state state CURSOR-TOK-AT @ idx + AT ;
 
-: UNESC-CHAR ( ptr n -- n ) {: state:ptr :}
-   state state UI-OFF + @ SPAN-AT ;
+: UNESC-CHAR ( ptr cursor -- n ) {: state:ptr :}
+   state state CURSOR-IN @ SPAN-AT ;
 
-: WRITE-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
-   state UO-OFF + @ state UCAP-OFF + @ >= if E-JR-STATE throw then
-   byte state UP-IDX ptr-field @ state UO-OFF + @ + c! ;
+: WRITE-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
+   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JR-STATE throw then
+   byte state CURSOR-DST @ state CURSOR-OUT @ + c! ;
 
-: MATCH-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
-   state UMATCH-OFF + @ 0= if exit then
-   state UO-OFF + @ state UCAP-OFF + @ >= if
-      0 state UMATCH-OFF + ! exit
+: MATCH-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
+   state CURSOR-MATCHED @ 0= if exit then
+   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if
+      0 state CURSOR-MATCHED ! exit
    then
-   state UP-IDX ptr-field @ state UO-OFF + @ + c@ byte <> if
-      0 state UMATCH-OFF + !
+   state CURSOR-DST @ state CURSOR-OUT @ + c@ byte <> if
+      0 state CURSOR-MATCHED !
    then ;
 
-: EMIT-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
-   state UMODE-OFF + @ UMODE-MATCH = if
+: EMIT-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
+   state CURSOR-MODE @ UMODE-MATCH = if
       state byte MATCH-BYTE
    else
       state byte WRITE-BYTE
    then
-   state UO-OFF + dup @ 1+ swap ! ;
+   state CURSOR-OUT dup @ 1+ swap ! ;
 
-: HEX-NEXT ( ptr n n -- n ) {: state:ptr value:n :}
+: HEX-NEXT ( ptr cursor n -- n ) {: state:ptr value:n :}
    value HEX-BASE *
-   state state UI-OFF + @ SPAN-AT HEX-DIGIT
+   state state CURSOR-IN @ SPAN-AT HEX-DIGIT
    +
-   state UI-OFF + dup @ 1+ swap ! ;
+   state CURSOR-IN dup @ 1+ swap ! ;
 
-: READ-HEX4 ( ptr n -- n ) {: state:ptr :}
-   state UI-OFF + @ 4 + state TOK-LEN-OFF + @ > if E-JR-ESCAPE throw then
+: READ-HEX4 ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-IN @ 4 + state CURSOR-TOK-LEN @ > if E-JR-ESCAPE throw then
    state 0 HEX-NEXT
    state swap HEX-NEXT
    state swap HEX-NEXT
    state swap HEX-NEXT ;
 
-: EMIT-UTF8 ( ptr n n -- ) {: state:ptr cp:n :}
+: EMIT-UTF8 ( ptr cursor n -- ) {: state:ptr cp:n :}
    cp UTF1-MAX < if state cp EMIT-BYTE exit then
    cp UTF2-MAX < if
       state cp 6 rshift UTF2-LEAD or EMIT-BYTE
@@ -774,28 +826,28 @@ private
    state cp 6 rshift UTF-MASK and UTF-CONT or EMIT-BYTE
    state cp UTF-MASK and UTF-CONT or EMIT-BYTE ;
 
-: UNI ( ptr n -- ) {: state:ptr :}
-   state READ-HEX4 state HI-OFF + !
-   state HI-OFF + @ SUR-HI < if
-      state state HI-OFF + @ EMIT-UTF8 exit
+: UNI ( ptr cursor -- ) {: state:ptr :}
+   state READ-HEX4 state CURSOR-HI !
+   state CURSOR-HI @ SUR-HI < if
+      state state CURSOR-HI @ EMIT-UTF8 exit
    then
-   state HI-OFF + @ SUR-END >= if
-      state state HI-OFF + @ EMIT-UTF8 exit
+   state CURSOR-HI @ SUR-END >= if
+      state state CURSOR-HI @ EMIT-UTF8 exit
    then
-   state HI-OFF + @ SUR-LO >= if E-JR-SURROGATE throw then
-   state UI-OFF + @ 2 + state TOK-LEN-OFF + @ > if E-JR-SURROGATE throw then
-   state state UI-OFF + @ SPAN-AT BACKSLASH <> if E-JR-SURROGATE throw then
-   state state UI-OFF + @ 1+ SPAN-AT CH-U <> if E-JR-SURROGATE throw then
-   state UI-OFF + dup @ 2 + swap !
-   state READ-HEX4 state LO-OFF + !
-   state LO-OFF + @ SUR-LO < if E-JR-SURROGATE throw then
-   state LO-OFF + @ SUR-END >= if E-JR-SURROGATE throw then
+   state CURSOR-HI @ SUR-LO >= if E-JR-SURROGATE throw then
+   state CURSOR-IN @ 2 + state CURSOR-TOK-LEN @ > if E-JR-SURROGATE throw then
+   state state CURSOR-IN @ SPAN-AT BACKSLASH <> if E-JR-SURROGATE throw then
+   state state CURSOR-IN @ 1+ SPAN-AT CH-U <> if E-JR-SURROGATE throw then
+   state CURSOR-IN dup @ 2 + swap !
+   state READ-HEX4 state CURSOR-LO !
+   state CURSOR-LO @ SUR-LO < if E-JR-SURROGATE throw then
+   state CURSOR-LO @ SUR-END >= if E-JR-SURROGATE throw then
    state SUR-BASE
-   state HI-OFF + @ SUR-HI - SUR-SHIFT lshift +
-   state LO-OFF + @ SUR-LO - +
+   state CURSOR-HI @ SUR-HI - SUR-SHIFT lshift +
+   state CURSOR-LO @ SUR-LO - +
    EMIT-UTF8 ;
 
-: ESC-BYTE ( ptr n n -- ) {: state:ptr esc:n :}
+: ESC-BYTE ( ptr cursor n -- ) {: state:ptr esc:n :}
    esc DQ = if state DQ EMIT-BYTE exit then
    esc BACKSLASH = if state BACKSLASH EMIT-BYTE exit then
    esc SLASH = if state SLASH EMIT-BYTE exit then
@@ -806,44 +858,44 @@ private
    esc CH-T = if state TAB EMIT-BYTE exit then
    E-JR-ESCAPE throw ;
 
-: UNESC-STEP ( ptr n -- ) {: state:ptr :}
+: UNESC-STEP ( ptr cursor -- ) {: state:ptr :}
    state UNESC-CHAR BACKSLASH <> if
       state state UNESC-CHAR EMIT-BYTE
-      state UI-OFF + dup @ 1+ swap ! exit
+      state CURSOR-IN dup @ 1+ swap ! exit
    then
-   state UI-OFF + @ 1+ state TOK-LEN-OFF + @ >= if E-JR-ESCAPE throw then
-   state state UI-OFF + @ 1+ SPAN-AT state UE-OFF + !
-   state UI-OFF + dup @ 2 + swap !
-   state UE-OFF + @ CH-U = if state UNI exit then
-   state state UE-OFF + @ ESC-BYTE ;
+   state CURSOR-IN @ 1+ state CURSOR-TOK-LEN @ >= if E-JR-ESCAPE throw then
+   state state CURSOR-IN @ 1+ SPAN-AT state CURSOR-ESC !
+   state CURSOR-IN dup @ 2 + swap !
+   state CURSOR-ESC @ CH-U = if state UNI exit then
+   state state CURSOR-ESC @ ESC-BYTE ;
 
-: UNESC-RESET ( ptr n ptr u8 n n -- ) {: state:ptr dst:ptr cap:n mode:n :}
-   dst state UP-IDX ptr-field !
-   cap state UCAP-OFF + !
-   0 state UI-OFF + !
-   0 state UO-OFF + !
-   mode state UMODE-OFF + !
-   1 state UMATCH-OFF + ! ;
+: UNESC-RESET ( ptr cursor ptr u8 n n -- ) {: state:ptr dst:ptr cap:n mode:n :}
+   dst state CURSOR-DST !
+   cap state CURSOR-DST-CAP !
+   0 state CURSOR-IN !
+   0 state CURSOR-OUT !
+   mode state CURSOR-MODE !
+   1 state CURSOR-MATCHED ! ;
 
-: UNESC-ALL ( ptr n -- ) {: state:ptr :}
-   begin state UI-OFF + @ state TOK-LEN-OFF + @ < while
+: UNESC-ALL ( ptr cursor -- ) {: state:ptr :}
+   begin state CURSOR-IN @ state CURSOR-TOK-LEN @ < while
       state UNESC-STEP
    repeat ;
 
-: STR-INNER ( ptr n ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
-   state KIND-OFF + @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
+: STR-INNER ( ptr cursor ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
+   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
    dst 0= cap 0 < or if E-JR-STATE throw then
    state dst cap UMODE-WRITE UNESC-RESET
    state UNESC-ALL
-   state UO-OFF + @ ;
+   state CURSOR-OUT @ ;
 
-: MATCH-INNER ( ptr n ptr u8 n -- bool )
+: MATCH-INNER ( ptr cursor ptr u8 n -- bool )
    {: state:ptr key:ptr len:n :}
-   state KIND-OFF + @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
+   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
    state key len UMODE-MATCH UNESC-RESET
    state UNESC-ALL
-   state UMATCH-OFF + @ 0= 0=
-   state UO-OFF + @ len = and ;
+   state CURSOR-MATCHED @ 0= 0=
+   state CURSOR-OUT @ len = and ;
 
 public
 
@@ -867,9 +919,9 @@ private
 : VALUE-TOKEN? ( n -- bool )
    dup SCALAR? swap OPENER? or ;
 
-: SKIP-INNER ( ptr n -- ) {: state:ptr :}
-   state KIND-OFF + @ SCALAR? if exit then
-   state KIND-OFF + @ OPENER? 0= if E-JR-STATE throw then
+: SKIP-INNER ( ptr cursor -- ) {: state:ptr :}
+   state CURSOR-KIND @ SCALAR? if exit then
+   state CURSOR-KIND @ OPENER? 0= if E-JR-STATE throw then
    1 begin dup 0 > while
       state NEXT-INNER
       dup OPENER? if drop 1+ else
@@ -884,16 +936,17 @@ private
    len 0 < if E-JR-STATE throw then
    len 0 > key 0= and if E-JR-STATE throw then ;
 
-: FIND-ANCHOR ( ptr n -- n ) {: state:ptr :}
-   state DEPTH-OFF + @ dup 0 <= if E-JR-STATE throw then
-   state CUR-CTX CTX-OBJ <> if E-JR-STATE throw then
-   state STATE-OFF + @ FIND-PHASE? 0= if E-JR-STATE throw then ;
+: FIND-ANCHOR ( ptr cursor -- n ) {: state:ptr :}
+   state CURSOR-DEPTH @ dup 0 <= if E-JR-STATE throw then
+   state IN-OBJECT? 0= if E-JR-STATE throw then
+   state CURSOR-STATE @ FIND-PHASE? 0= if E-JR-STATE throw then ;
 
-: REQUIRE-KEY-DEPTH ( ptr n n -- ) {: state:ptr depth:n :}
-   state DEPTH-OFF + @ depth <> if E-JR-STATE throw then ;
+: REQUIRE-KEY-DEPTH ( ptr cursor n -- ) {: state:ptr depth:n :}
+   state CURSOR-DEPTH @ depth <> if E-JR-STATE throw then ;
 
-: FIND-INNER ( ptr n ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
+: FIND-INNER ( ptr cursor ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
    key len REQUIRE-KEY-SPAN
+   state REQUIRE-SOUND
    state FIND-ANCHOR {: depth:n :}
    begin
       state NEXT-INNER {: token:n :}
@@ -909,7 +962,7 @@ private
       found if TRUE exit then
       state SKIP-INNER
       state depth REQUIRE-KEY-DEPTH
-      state STATE-OFF + @ ST-SEP <> if E-JR-STATE throw then
+      state CURSOR-STATE @ ST-SEP <> if E-JR-STATE throw then
    again ;
 
 public
@@ -917,12 +970,16 @@ public
 : SKIP-VALUE ( JR:reader -- JR:reader )
    READER>STATE SKIP-INNER ;
 
-: VALUE-SPAN-INNER ( ptr n -- ptr u8 n ) {: state:ptr :}
-   state KIND-OFF + @ OPENER? 0= if E-JR-STATE throw then
-   state TOK-AT-OFF + @ {: start:n :}
+private
+
+: VALUE-SPAN-INNER ( ptr cursor -- ptr u8 n ) {: state:ptr :}
+   state CURSOR-KIND @ OPENER? 0= if E-JR-STATE throw then
+   state CURSOR-TOK-AT @ {: start:n :}
    state SKIP-INNER
-   state SRC-IDX ptr-field @ start +
-   state POS-OFF + @ start - ;
+   state CURSOR-SRC @ start +
+   state CURSOR-POS @ start - ;
+
+public
 
 : VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
    READER>STATE VALUE-SPAN-INNER ;

@@ -16,20 +16,9 @@ package JSON-READ-TEST
 private
 
 256 constant JRT-CAP
-$4A525443414E4152 constant JRT-CANARY
 create JRT-BUF JRT-CAP allot
-create JRT-STATE-A-BEFORE JRT-CANARY ,
-create JRT-STATE-A JR:STORAGE-BYTES allot
-create JRT-STATE-A-AFTER JRT-CANARY ,
-create JRT-STATE-B JR:STORAGE-BYTES allot
-create JRT-STATE-B-AFTER JRT-CANARY ,
-\ Two storage blocks, each behind a one-byte allot. `create` rounds its data
-\ field up to a cell, so INIT accepts both; an engine that did not round could
-\ not place both on a cell (STORAGE-BYTES is a whole number of cells).
-create JRT-ODD-PAD-A 1 allot
-create JRT-ODD-A JR:STORAGE-BYTES allot
-create JRT-ODD-PAD-B 1 allot
-create JRT-ODD-B JR:STORAGE-BYTES allot
+TYPED-VARIABLE JRT-A JR:cursor
+TYPED-VARIABLE JRT-B JR:cursor
 create JRT-SUBJECT-OUT $400 allot
 create JRT-SUBJECT-ERR $400 allot
 
@@ -38,17 +27,16 @@ JRT-CAP BUFFER: JRT-WRITE-BUF
 TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
 
 : JRT-OPEN-A ( ptr u8 n -- JR:reader )
-   JRT-STATE-A JR:STORAGE-BYTES 2swap JR:INIT ;
+   {: source:ptr len:n :}
+   JRT-A source len JR:INIT ;
 
 : JRT-OPEN-B ( ptr u8 n -- JR:reader )
-   JRT-STATE-B JR:STORAGE-BYTES 2swap JR:INIT ;
+   {: source:ptr len:n :}
+   JRT-B source len JR:INIT ;
 
 \ The null address the reader must refuse, taken from the core's declared null
 \ slot: a `create`d cell read back through `ptr-field` is an undeclared raw
 \ storage cell and the checker refuses the pointer it publishes.
-: JRT-ZERO-PTR ( -- ptr n )
-   NULL-PTR ;
-
 : JRT-ZERO-U8 ( -- ptr u8 )
    NULL-PTR ;
 
@@ -66,6 +54,7 @@ TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
 91 constant JRT-LBRACK
 93 constant JRT-RBRACK
 107 constant JRT-K
+120 constant JRT-X
 
 : JRT-NEAR ( r r -- bool )
    f- fabs 0.000001 f< ;
@@ -226,15 +215,38 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-RBRACE SB-APPEND-C JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
    SB$ ;
 
-: JRT-DEEP$ ( n -- ptr u8 n ) {: depth:n :}       \ depth '[' then depth ']'
-   SB-RESET
-   depth 0 ?do JRT-LBRACK SB-APPEND-C loop
-   depth 0 ?do JRT-RBRACK SB-APPEND-C loop
-   SB$ ;
+\ Deep documents outgrow SB, so they are built in their own buffer: 40000
+\ levels of '[' and ']' fill it.
+80000 constant JRT-DEEP-CAP
+create JRT-DEEP-BUF JRT-DEEP-CAP allot
 
-: JRT-OPENS$ ( n -- ptr u8 n ) {: depth:n :}      \ depth '[' only (overflow probe)
+: JRT-FILL ( n n n -- ) {: at:n count:n byte:n :}
+   count 0 ?do byte JRT-DEEP-BUF at i + + c! loop ;
+
+: JRT-DEEP$ ( n -- ptr u8 n ) {: depth:n :}       \ depth '[' then depth ']'
+   0 depth JRT-LBRACK JRT-FILL
+   depth depth JRT-RBRACK JRT-FILL
+   JRT-DEEP-BUF depth 2 * ;
+
+: JRT-OPENS$ ( n -- ptr u8 n ) {: depth:n :}      \ depth '[' only
+   0 depth JRT-LBRACK JRT-FILL
+   JRT-DEEP-BUF depth ;
+
+: JRT-DEEP-BAD$ ( n -- ptr u8 n ) {: depth:n :}   \ depth '[' then a bare x
+   0 depth JRT-LBRACK JRT-FILL
+   depth 1 JRT-X JRT-FILL
+   JRT-DEEP-BUF depth 1+ ;
+
+\ depth objects, each but the innermost holding only "a"; the innermost holds
+\ "x":1,"y":7.
+: JRT-NEST-OBJ$ ( n -- ptr u8 n ) {: depth:n :}
    SB-RESET
-   depth 0 ?do JRT-LBRACK SB-APPEND-C loop
+   depth 1- 0 ?do JRT-LBRACE SB-APPEND-C s" a" JRT-QKEY loop
+   JRT-LBRACE SB-APPEND-C
+   s" x" JRT-QKEY s" 1" SB-APPEND JRT-COMMA SB-APPEND-C
+   s" y" JRT-QKEY s" 7" SB-APPEND
+   JRT-RBRACE SB-APPEND-C
+   depth 1- 0 ?do JRT-RBRACE SB-APPEND-C loop
    SB$ ;
 
 \ ---- positive: scalars ----------------------------------------------------
@@ -359,11 +371,6 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    depth 0 ?do JR:NEXT JR:T-ARR T= loop
    depth 0 ?do JR:NEXT JR:T-ARR-END T= loop
    JR:NEXT JR:T-END T= ;
-
-: JRT-TEST-DEEP ( -- )
-   64 JRT-DEEP$ JRT-OPEN-A
-   64 JRT-DRAIN-ARR
-   JR:CLOSE ;
 
 : JRT-TEST-END-SPAN ( -- )
    s" 1  " {: source:ptr len:n :}
@@ -611,34 +618,113 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JR:NEXT JR:T-END T=
    JR:CLOSE ;
 
-: JRT-BAD-CAPACITY ( -- )
-   JRT-STATE-A JR:STORAGE-BYTES 1- s" 0" JR:INIT JR:CLOSE ;
+: JRT-DEEP-CASE ( n -- ) {: depth:n :}
+   depth JRT-DEEP$ JRT-OPEN-A
+   depth JRT-DRAIN-ARR
+   JR:CLOSE ;
 
-: JRT-BAD-NULL-STORAGE ( -- )
-   JRT-ZERO-PTR JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+\ The reader's first stack mapping is 4096 bytes. Freeing one and mapping the
+\ same size again lands at the same address only when nothing took the hole,
+\ so a body that leaves its mapping owned moves the second probe elsewhere.
+\ This relies on the kernel's first-fit reuse of a freed mapping, as
+\ src/lib/byte-buffer-test.f BUFT-DISPOSE-RELEASES does.
+4096 constant JRT-MORE-BYTES
 
-: JRT-BAD-MISALIGNED-STORAGE ( -- )
-   JRT-STATE-A 1+ JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+: JRT-PROBE ( -- SPAN:span<u8> )
+   JRT-MORE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
 
-: JRT-CREATE-AFTER-BYTES ( -- )
-   JRT-ODD-A JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE
-   JRT-ODD-B JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+: JRT-RELEASES ( [ -- ] -- )
+   JRT-PROBE {: hole :}
+   hole SPAN:$ drop {: at:ptr :}
+   hole MEM:FREE-SPAN
+   execute
+   JRT-PROBE {: again :}
+   again SPAN:$ drop at = TTRUE
+   again MEM:FREE-SPAN ;
+
+\ Each case checks its own release, so a CLOSE that leaks fails the case that
+\ leaked rather than hiding in a mapping a later case reuses.
+: JRT-DEEP-EDGES ( -- )
+   64 JRT-DEEP-CASE
+   65 JRT-DEEP-CASE
+   128 JRT-DEEP-CASE
+   129 JRT-DEEP-CASE ;
+
+: JRT-DEEP-10000 ( -- )
+   10000 JRT-DEEP-CASE ;
+
+\ 40000 levels fill the inline stack word and 624 mapped ones, past the first
+\ mapping's 512 cells, so the stack doubles once and frees the first mapping.
+: JRT-DEEP-40000 ( -- )
+   40000 JRT-DEEP-CASE ;
+
+\ FIND-KEY anchors on and skips inside an object 70 deep, where its level and
+\ the separator before "y" are read from the grown stack.
+: JRT-TEST-DEEP-FIND ( -- )
+   70 JRT-NEST-OBJ$ JRT-OPEN-A
+   69 0 ?do JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-KEY T= loop
+   JR:NEXT JR:T-OBJ T=
+   s" y" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T= JR:INT 7 T=
+   JR:FINISH ;
+
+\ The failure at depth 100 releases the grown stack; the next advance throws
+\ the same code without reading it.
+: JRT-DEEP-MALFORMED ( -- )
+   100 JRT-DEEP-BAD$ JRT-OPEN-A
+   100 0 ?do JR:NEXT JR:T-ARR T= loop
+   JRT-CATCH-BAD
+   JR:NEXT drop JR:CLOSE ;
+
+: JRT-DEEP-MALFORMED-THROWS ( -- )
+   [: JRT-DEEP-MALFORMED ;] E-JR-MALFORMED TTHROWSQ ;
+
+77 constant JRT-CALLER-CODE
+
+: JRT-CALLER-FAIL ( JR:reader -- JR:reader )
+   JRT-TRUE if JRT-CALLER-CODE throw then ;
+
+\ The caller's own throw abandons a live reader 100 deep, so record A keeps
+\ its grown stack.
+: JRT-ABANDON ( -- )
+   100 JRT-OPENS$ JRT-OPEN-A
+   100 0 ?do JR:NEXT JR:T-ARR T= loop
+   JRT-CALLER-FAIL
+   JR:CLOSE ;
+
+: JRT-ABANDON-THROWS ( -- )
+   [: JRT-ABANDON ;] JRT-CALLER-CODE TTHROWSQ ;
+
+: JRT-ABANDON-DISPOSE ( -- )
+   JRT-ABANDON-THROWS
+   JRT-A JR:DISPOSE
+   JRT-A JR:DISPOSE ;
+
+: JRT-ABANDON-REINIT ( -- )
+   JRT-ABANDON-THROWS
+   65 JRT-DEEP-CASE ;
+
+: JRT-TEST-DEEP ( -- )
+   s" nesting at and past the inline stack parses" T-LABEL
+   [: JRT-DEEP-EDGES ;] JRT-RELEASES
+   s" 10000 levels parse and CLOSE releases the stack" T-LABEL
+   [: JRT-DEEP-10000 ;] JRT-RELEASES
+   s" 40000 levels double the stack and CLOSE releases it" T-LABEL
+   [: JRT-DEEP-40000 ;] JRT-RELEASES
+   s" FIND-KEY works 70 objects deep and FINISH releases the stack" T-LABEL
+   [: JRT-TEST-DEEP-FIND ;] JRT-RELEASES
+   s" a failure 100 deep releases the stack" T-LABEL
+   [: JRT-DEEP-MALFORMED-THROWS ;] JRT-RELEASES
+   s" DISPOSE releases what a caller's throw abandoned" T-LABEL
+   [: JRT-ABANDON-DISPOSE ;] JRT-RELEASES
+   s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
+   [: JRT-ABANDON-REINIT ;] JRT-RELEASES ;
 
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
-   JRT-STATE-A JR:STORAGE-BYTES s" 0" drop -1 JR:INIT JR:CLOSE ;
+   JRT-A s" 0" drop -1 JR:INIT JR:CLOSE ;
 
 : JRT-BAD-NULL-SOURCE ( -- )
-   JRT-STATE-A JR:STORAGE-BYTES JRT-ZERO-U8 1 JR:INIT JR:CLOSE ;
-
-: JRT-TEST-STORAGE-EXTENT ( -- )
-   JRT-CANARY JRT-STATE-A-BEFORE @ T=
-   JRT-CANARY JRT-STATE-A-AFTER @ T=
-   JRT-CANARY JRT-STATE-B-AFTER @ T=
-   s" 0" JRT-OPEN-A JR:NEXT drop JR:CLOSE
-   JRT-CANARY JRT-STATE-A-BEFORE @ T=
-   JRT-CANARY JRT-STATE-A-AFTER @ T=
-   JRT-STATE-B JR:STORAGE-BYTES CELL + s" 0" JR:INIT JR:NEXT drop JR:CLOSE
-   JRT-CANARY JRT-STATE-B-AFTER @ T= ;
+   JRT-A JRT-ZERO-U8 1 JR:INIT JR:CLOSE ;
 
 : JRT-TEST-SEALED ( -- )
    s" package JR : FORGE ( ptr n -- JR:reader ) MINT-READER ; ;package"
@@ -655,26 +741,16 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    s" JRT-BAD-CELLS ( JR:reader -- JR:reader ptr n ) JR:READER>CELLS" JRT-REJECTED ;
 
 : JRT-TEST-OWNERSHIP ( -- )
-   s" short storage is rejected before mint" T-LABEL
-   [: JRT-BAD-CAPACITY ;] JR:E-CAPACITY TTHROWSQ
-   s" null storage is rejected before mint" T-LABEL
-   [: JRT-BAD-NULL-STORAGE ;] JR:E-STORAGE TTHROWSQ
-   s" misaligned storage is rejected before mint" T-LABEL
-   [: JRT-BAD-MISALIGNED-STORAGE ;] JR:E-STORAGE TTHROWSQ
    s" negative source length is rejected before mint" T-LABEL
    [: JRT-BAD-NEGATIVE-SOURCE ;] JR:E-SOURCE TTHROWSQ
    s" null nonempty source is rejected before mint" T-LABEL
    [: JRT-BAD-NULL-SOURCE ;] JR:E-SOURCE TTHROWSQ
    s" null empty source remains a valid empty reader" T-LABEL
-   JRT-STATE-A JR:STORAGE-BYTES JRT-ZERO-U8 0 JR:INIT JR:CLOSE
-   s" create ... allot storage after byte-sized data is cell-aligned" T-LABEL
-   JRT-CREATE-AFTER-BYTES
+   JRT-A JRT-ZERO-U8 0 JR:INIT JR:CLOSE
    s" raw representation and state helpers stay private" T-LABEL
    JRT-TEST-PRIVATE-STATE
    s" the package cannot be reopened to reach private representation words" T-LABEL
    JRT-TEST-SEALED
-   s" exact and oversized capacity stay inside caller storage" T-LABEL
-   JRT-TEST-STORAGE-EXTENT
    s" linear reader cannot be duplicated" T-LABEL
    s" JRT-BAD-DUP ( JR:reader -- JR:reader JR:reader ) dup" JRT-REJECTED
    s" linear reader cannot be discarded" T-LABEL
@@ -709,11 +785,6 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
 : JRT-BAD-SURROGATE-PAIR ( -- )
    JRT-BADPAIR-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
-
-: JRT-BAD-DEPTH ( -- )
-   65 JRT-OPENS$ JRT-OPEN-A
-   65 0 ?do JR:NEXT drop loop
-   JR:CLOSE ;
 
 : JRT-BAD-UTF8-OVERLONG ( -- )
    JRT-UTF8-OVERLONG$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
@@ -782,7 +853,6 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    [: JRT-BAD-UTF8-TRUNC ;] E-JR-STRING TTHROWSQ
    [: JRT-BAD-UTF8-SUR ;] E-JR-STRING TTHROWSQ
    [: JRT-BAD-UTF8-HIGH ;] E-JR-STRING TTHROWSQ
-   [: JRT-BAD-DEPTH ;] E-JR-DEPTH TTHROWSQ
    [: JRT-BAD-BAREWORD ;] E-JR-MALFORMED TTHROWSQ
    [: JRT-BAD-TRAILING-COMMA ;] E-JR-MALFORMED TTHROWSQ
    [: JRT-BAD-COLON ;] E-JR-COLON TTHROWSQ
