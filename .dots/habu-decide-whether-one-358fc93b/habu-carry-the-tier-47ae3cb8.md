@@ -1,6 +1,6 @@
 ---
 title: Carry the tier 0 virtual stack across do loops
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-27T19:48:51.150516+02:00"

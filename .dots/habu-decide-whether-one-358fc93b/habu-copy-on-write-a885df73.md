@@ -1,6 +1,6 @@
 ---
 title: Keep tier 0 locals in registers
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-10-26T11:18:06.207865+02:00"
