@@ -49,7 +49,8 @@ variable TEST-READ-FAULT
 ;package
 
 \ White-box helpers: reopens HTTP so the count of connections its listener has
-\ taken (TAKEN) and its job queue's room plus one (QUEUED), which no public word
+\ taken (TAKEN), its job queue's room plus one (QUEUED) and the slack a stop
+\ allows past the parks it waits out (STOP-MARGIN-MS), which no public word
 \ answers, are visible here. QUEUED follows JOB-SLOTS, so the full-queue case
 \ still leaves the listener holding one more if the queue grows. The
 \ definitions land in HTTP-TEST, so HTTP's public surface gains nothing for
@@ -58,6 +59,18 @@ package HTTP
 : HTTP-TEST:TAKEN ( -- n )
    ACCEPTED-COUNT atomic@ ;
 : HTTP-TEST:QUEUED ( -- n ) JOB-SLOTS 1+ ;
+: HTTP-TEST:STOP-MARGIN-MS ( -- n ) STOP-MARGIN-MS ;
+\ Whether the first worker's slot holds a connection: the one-worker server
+\ sets it just before READ-REQUEST starts that connection's deadline.
+: HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
+;package
+
+\ White-box helpers: reopens AIO so this file can hold the facility its loop
+\ task takes to deliver a completion, which stalls every parked waiter's wake
+\ the way a loaded host stalls a worker, while bytes still reach the socket.
+package AIO
+: HTTP-TEST:LOOP-HOLD ( -- ) AIO-LOCK TASK:GET ;
+: HTTP-TEST:LOOP-FREE ( -- ) AIO-LOCK TASK:RELEASE ;
 ;package
 
 package HTTP-TEST
@@ -1736,6 +1749,29 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    quiet TCP4:CLOSE DROP-TCP-STATUS ;
 
 
+$C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resumes
+
+\ Bytes that arrived before the deadline are served, however late the worker
+\ reads them. The worker takes the connection, which starts its deadline, and
+\ parks for readiness; the AIO loop is then held, the whole request is sent,
+\ and the loop is freed only once IDLE-MS has passed, so the worker reads a
+\ complete request after its deadline. IDLE-CASE and BODY-TIMEOUT-CASES are the
+\ control: a request that has not arrived by its deadline gets no answer.
+: STALLED-WORKER-CASE ( -- )
+   [: HTTP-TEST:SERVING? 0= ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test IDLE-AWAIT" TEST-WAIT:POLL
+   RAW-OPEN {: stalled:TCP4:connection :}
+   [: HTTP-TEST:SERVING? ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test SERVING-AWAIT" TEST-WAIT:POLL
+   HTTP-TEST:LOOP-HOLD
+   stalled s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-SEND
+   IDLE-MS STALL-MARGIN-MS + >MS TASK:SLEEP
+   HTTP-TEST:LOOP-FREE
+   s" a request that arrived before its deadline is served after it" T-LABEL
+   stalled S\" {\qservice\q:\qhttp-test\q}" RAW-COLLECT TTRUE
+   stalled TCP4:CLOSE DROP-TCP-STATUS ;
+
+
 \ A HEAD answer carries the head a GET would carry, and no body after it.
 : HEAD-CASE ( -- )
    s\" HEAD /index.html HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
@@ -2000,12 +2036,12 @@ create CHUNK-BUF CHUNK-BYTES allot
 TASK:MIN-STACK TASK:TASK SENDER-TASK
 
 
-\ Writes until a write fails: the reset a close sends a peer whose bytes are
-\ still unread.
-: KEEP-SENDING ( -- )
+\ Writes the bytes over and over until a write fails: the reset a close sends
+\ a peer whose bytes are still unread.
+: KEEP-SENDING ( ptr u8 n -- ) {: bytes:ptr len:n :}
    0 SENDER-CONN @ {: conn:TCP4:connection :}
    begin
-      conn CHUNK-BUF CHUNK-BYTES TCP4:TRANSFER-BYTES TCP4:WRITE
+      conn bytes len TCP4:TRANSFER-BYTES TCP4:WRITE
       MATCH TCP4:status
          ok OF ENDOF
          failed OF drop exit ENDOF
@@ -2034,7 +2070,7 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    conn REQ$ RAW-SEND
    conn RAW-DRAIN
    s" HTTP/1.1 200 OK" BEGINS? TTRUE
-   [: KEEP-SENDING ;] SENDER-TASK TASK:ACTIVATE
+   [: CHUNK-BUF CHUNK-BYTES KEEP-SENDING ;] SENDER-TASK TASK:ACTIVATE
    SEND-ON-MS >MS TASK:SLEEP
    HTTP:STOP
    s" the lingering worker ended itself" T-LABEL
@@ -2042,6 +2078,72 @@ TASK:MIN-STACK TASK:TASK SENDER-TASK
    SENDER-TASK TASK-AWAIT
    SENDER-TASK TASK:KILL
    conn TCP4:CLOSE DROP-TCP-STATUS ;
+
+
+$1B58 constant FLOOD-EXTENSION    \ a chunk line's extension: most of the input window
+\ The flooded server's deadline: long enough for the receive buffer to grow
+\ past what parses within STOP-MARGIN-MS (measured: without FILL's stop
+\ check, the second flood read on for 0.3 to 0.4 s past the stop; with a
+\ 100 ms deadline, under 0.1 s).
+$3E8 constant FLOOD-IDLE-MS
+\ The parse of one full receive buffer, what the worker may still read past its
+\ deadline: macOS autotunes one to at most 4 MiB, and this framing parses at
+\ about 2 MB/s (measured: read by 0.1 to 0.3 s past this deadline).
+$BB8 constant FLOOD-MARGIN-MS
+$14 constant FLOOD-LATE-MS        \ how far past the second flood's deadline the stop is raised
+variable FLOOD-ENDED              \ mono-ns once the flooding peer's write has failed
+TASK:MIN-STACK TASK:TASK FLOOD-TASK
+
+
+\ Waits until the flooding peer has ended, which the worker's close does; past
+\ the flooded deadline and FLOOD-MARGIN-MS the wait names itself and throws
+\ E-PROC-TIMEOUT.
+: FLOOD-AWAIT ( n -- ) {: began:n :}
+   FLOOD-TASK [: dup TASK:DONE? ;]
+   began FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test FLOOD-AWAIT" TEST-WAIT:POLL
+   drop ;
+
+
+\ Opens a connection and floods it: a chunked head, then FLOOD-TASK writing
+\ chunk lines faster than the worker reads, each carrying FLOOD-EXTENSION bytes
+\ of extension and one byte of data, so neither the body cap nor the window ends
+\ the request. Answers the connection and when it was opened.
+: FLOOD ( -- TCP4:connection n )
+   RAW-OPEN {: conn:TCP4:connection :}
+   mono-ns {: began:n :}
+   conn 0 SENDER-CONN !
+   conn s\" POST /api/echo HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" RAW-SEND
+   [: REQ$ KEEP-SENDING mono-ns FLOOD-ENDED ! ;] FLOOD-TASK TASK:ACTIVATE
+   conn began ;
+
+
+\ A peer that keeps sending past the deadline is read no further than what had
+\ arrived when the worker first found the deadline passed: the worker closes
+\ the connection once it has read that, which resets the peer's writes. A stop
+\ raised while a second flooded worker reads past its deadline, still short of
+\ what had arrived by it, ends that work at its next read: the peer is reset
+\ after the stop and within STOP-MARGIN-MS of it, and the stop kills nothing.
+: FLOOD-CASE ( -- )
+   LOOPBACK 0 ONE-WORKER FLOOD-IDLE-MS HTTP:START
+   REQ-RESET
+   s" 1;" REQ+
+   [char] a FLOOD-EXTENSION REQ-FILL
+   s\" \r\nx\r\n" REQ+
+   FLOOD {: first:TCP4:connection began:n :}
+   s" the flooded worker closes once it has read what arrived by its deadline" T-LABEL
+   began FLOOD-AWAIT
+   first TCP4:CLOSE DROP-TCP-STATUS
+   FLOOD {: second:TCP4:connection opened:n :}
+   opened FLOOD-IDLE-MS FLOOD-LATE-MS + NS-PER-MS * + mono-ns - NS-PER-MS / 0 max >MS TASK:SLEEP
+   mono-ns {: raised:n :}
+   HTTP:STOP
+   s" a stop ends the flooded worker's late reading within the stop margin" T-LABEL
+   HTTP:KILLED-TASKS 0 T=
+   FLOOD-TASK TASK-AWAIT
+   FLOOD-ENDED @ raised > TTRUE
+   FLOOD-ENDED @ raised - HTTP-TEST:STOP-MARGIN-MS NS-PER-MS * < TTRUE
+   FLOOD-TASK TASK:KILL
+   second TCP4:CLOSE DROP-TCP-STATUS ;
 
 
 \ Every activated worker runs its exit hooks before the failed START throws.
@@ -2274,6 +2376,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    CLOSE-CASE
    HEAD-CASE
    IDLE-CASE
+   STALLED-WORKER-CASE
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
@@ -2292,6 +2395,7 @@ $3E8 constant DRAIN-MS            \ how long a stop waits for the ring to drain
    IDLE-STOP-CASE
    FULL-QUEUE-CASE
    SENDING-PEER-CASE
+   FLOOD-CASE
    ERROR-HOOK-CASE
    SETUP-REFUSAL-CASE
    THROWING-HOOK-CASE

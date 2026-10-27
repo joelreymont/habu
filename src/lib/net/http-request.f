@@ -11,7 +11,10 @@
 \ the AIO loop
 \ (TCP4's READABLE-WITHIN? is an AIO:POLL and an AIO:AWAIT, src/lib/aio.f),
 \ which parks the task and not its thread until the peer speaks or that
-\ deadline passes.
+\ deadline passes. Each deadline - START's, then a configured body timeout's
+\ own once the head is valid - admits past it only the bytes the socket holds
+\ when a read first finds it passed, however late that read comes, and nothing
+\ once a stop is raised (FILL).
 require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -109,18 +112,43 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ ---- reading ----------------------------------------------------------------
 
+variable STOPPING                   \ raised by STOP (src/lib/net/http.f)
+
+public
+
+\ True once a stop has been asked for, which is when a handler that took its
+\ connection over is to end the protocol it speaks there and return, and when a
+\ read past its request's deadline ends that request (FILL).
+: STOPPING? ( -- bool )
+   STOPPING atomic@ 0 <> ;
+
+private
+
+
 : DEADLINE-AT ( n -- n ) {: ms:n :}
    mono-ns {: now:n :}
    ms MEM-MAX-N now - NS-PER-MS / > if MEM-MAX-N exit then
    now ms NS-PER-MS * + ;
 
 
+-1 constant UNTAKEN                 \ the late budget before a read finds the deadline passed
+
+\ A slot's next deadline, ms from now, with no late budget taken against it.
+: READ-DEADLINE ( n n -- n ) {: idx:n ms:n :}
+   UNTAKEN idx LATE-LEFT!
+   ms DEADLINE-AT ;
+
+
 \ What is left of the request's deadline, as the timed poll takes it: a
-\ deadline already passed asks the question once without waiting.
+\ deadline already passed asks the question once without waiting. A part of a
+\ millisecond counts as a whole one, so a poll that answers idle has outlasted
+\ the deadline.
 : REMAINING ( n -- ms ) {: deadline:n :}
    deadline mono-ns - {: left:n :}
    left 0 <= if 0 >MS exit then
-   left NS-PER-MS / >MS ;
+   left NS-PER-MS /mod {: part:n whole:n :}
+   part 0 > if whole 1+ >MS exit then
+   whole >MS ;
 
 
 \ Parks the task in poll(2) until the peer speaks or the deadline passes.
@@ -132,6 +160,14 @@ CAST: BLEN>N ( NUM:byte-len -- n )
       idle OF false ENDOF
       failed OF drop true ENDOF
    ;MATCH ;
+
+
+\ Counts a transfer into the window, and off the late budget once one is taken.
+: TOOK ( n n -- ) {: got:n idx:n :}
+   idx IN-U@ got + idx IN-U!
+   idx LATE-LEFT@ {: left:n :}
+   left UNTAKEN = if exit then
+   left got - idx LATE-LEFT! ;
 
 
 \ Consumed bytes are dropped, but the head the handler still reads is not: the
@@ -146,20 +182,45 @@ CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : READ-INTO ( TCP4:connection n -- fill-outcome ) {: conn:TCP4:connection idx:n :}
-   conn idx IN-BUF idx IN-U@ SPAN:SKIP SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
+   IN-CAP idx IN-U@ - {: room:n :}
+   idx LATE-LEFT@ {: left:n :}
+   left UNTAKEN = if room else room left min then {: want:n :}
+   conn idx IN-BUF idx IN-U@ want SPAN:SUB SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
-      data OF BLEN>N idx IN-U@ + idx IN-U! construct fill-outcome filled ENDOF
+      data OF BLEN>N idx TOOK construct fill-outcome filled ENDOF
       closed OF drop construct fill-outcome ended ENDOF
       failed OF drop construct fill-outcome broken ENDOF
    ;MATCH ;
 
 
+\ The late budget against the deadline the slot's reads run to: the bytes the
+\ socket holds (FIONREAD) when a read first finds that deadline passed, taken
+\ once. False when the socket cannot say.
+: TAKE-BUDGET ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
+   idx LATE-LEFT@ UNTAKEN <> if true exit then
+   conn TCP4:UNREAD
+   MATCH TCP4:queue-result
+      queued OF BLEN>N idx LATE-LEFT! true ENDOF
+      failed OF drop false ENDOF
+   ;MATCH ;
+
+
 \ One transfer into the slot's window. The caller proves there is room for it.
+\ Before the deadline a fill waits for the peer. Past it, WAIT-READABLE asks
+\ once without waiting, and the first fill to find it passed takes the bytes
+\ then queued as the late budget against that deadline: every later fill reads
+\ at most what is left of it, so a peer still sending is read no further than
+\ what its socket held at that first look. The request is late once nothing is
+\ readable, the budget is spent or a stop is raised, so a stop ends late work
+\ at the next fill, past the parse of at most one window (IN-CAP).
 : FILL ( TCP4:connection n n -- fill-outcome ) {: conn:TCP4:connection idx:n deadline:n :}
    idx IN-U@ IN-CAP >= if E-CAPACITY throw then
-   mono-ns deadline >= if construct fill-outcome late exit then
    conn deadline WAIT-READABLE 0= if construct fill-outcome late exit then
-   mono-ns deadline >= if construct fill-outcome late exit then
+   mono-ns deadline >= if
+      STOPPING? if construct fill-outcome late exit then
+      conn idx TAKE-BUDGET 0= if construct fill-outcome broken exit then
+      idx LATE-LEFT@ 0= if construct fill-outcome late exit then
+   then
    conn idx READ-INTO ;
 
 

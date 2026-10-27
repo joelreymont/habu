@@ -118,6 +118,7 @@ MAX-WORKERS TYPED-BUFFER FILE-OWNED n
 MAX-WORKERS TYPED-BUFFER SEG-U n          \ bytes of decoded segment text
 MAX-WORKERS TYPED-BUFFER ID-U n           \ bytes of the current request id
 MAX-WORKERS TYPED-BUFFER SEQ n            \ requests this worker has answered
+MAX-WORKERS TYPED-BUFFER LATE-LEFT n      \ bytes a request may still read past its deadline
 
 MAX-WORKERS MAX-HEADERS * constant HEADER-ROWS
 HEADER-ROWS TYPED-BUFFER HEADER-NAME-AT n
@@ -315,6 +316,8 @@ private
 : ID-U@ ( n -- n )        BOUNDED ID-U @ ;
 : ID-U! ( n n -- )        BOUNDED ID-U ! ;
 : BODY-LEN@ ( n -- n )    BOUNDED BODY-LEN @ ;
+: LATE-LEFT@ ( n -- n )   BOUNDED LATE-LEFT @ ;
+: LATE-LEFT! ( n n -- )   BOUNDED LATE-LEFT ! ;
 : BODY-PTR@ ( n -- ptr u8 ) BOUNDED BODY-PTR @ ;
 
 

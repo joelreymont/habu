@@ -13,8 +13,12 @@
 \   failed starts.
 \ - With BODY-TIMEOUT zero, START's deadline covers a request's head and body.
 \   A positive one starts a fresh absolute deadline once the head and Host are
-\   valid. Progress renews neither. A request past its deadline gets no answer:
-\   its connection is closed plainly, so a peer still sending reads a reset.
+\   valid. Progress renews neither. Past each deadline - START's, then a
+\   positive body timeout's own - the worker reads only the bytes the socket
+\   holds when its first read finds that deadline passed, however late that
+\   read comes, and nothing once a stop is raised. A request those bytes leave
+\   incomplete gets no answer: its connection is closed plainly, so a peer
+\   still sending reads a reset.
 \ - Every refusal half-closes and reads for LINGER-MS before it closes, so a
 \   peer mid-upload still receives the answer.
 \ - A start hook that throws fails START once every started worker has run its
@@ -100,7 +104,6 @@ WORKER-7 7 WORKER-TCB !
 variable LISTENER-CELL
 variable BOUND-PORT
 variable BOUND-ADDRESS
-variable STOPPING
 variable WORKER-COUNT
 variable RUNNING
 variable IDLE-MS
@@ -114,12 +117,6 @@ variable ACCEPTED-COUNT           \ connections the listener has taken since STA
 
 
 public
-
-\ True once a stop has been asked for, which is when a handler that took its
-\ connection over is to end the protocol it speaks there and return.
-: STOPPING? ( -- bool )
-   STOPPING atomic@ 0 <> ;
-
 
 \ The longest a taker may park before it reads STOPPING? again: the listener's
 \ own park, so a stop waits a taker out as it waits out the listener.
@@ -222,7 +219,7 @@ private
 \ raised while the connection is quiet before a request's first byte closes it.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n ms:n :}
-   ms DEADLINE-AT {: deadline:n :}
+   idx ms READ-DEADLINE {: deadline:n :}
    idx SLOT-RESET
    idx COMPACT
    idx IN-U@ 0= if
@@ -239,7 +236,7 @@ private
    route ROUTE-BODY-CAP {: cap:n :}
    BODY-TIMEOUT-MS @ {: body-ms:n :}
    body-ms 0 > if
-      conn idx body-ms DEADLINE-AT cap READ-BODY exit
+      conn idx idx body-ms READ-DEADLINE cap READ-BODY exit
    then
    conn idx deadline cap READ-BODY ;
 
@@ -666,12 +663,15 @@ variable EXIT-HOOK-N
 
 \ How long a stop waits for the tasks to end themselves: the longest park any
 \ of them can be in when the flag rises, plus the scheduling slack. The
-\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request is
-\ bounded by that request's own deadlines (IDLE-MS plus BODY-TIMEOUT-MS,
-\ SERVE-ONE into
-\ src/lib/net/http-request.f WAIT-READABLE) and after it by LINGER-MS in
-\ LINGER-CLOSE. A worker whose handler took its connection over waits out its
-\ taker and then lingers. The taker reads STOPPING? within STOP-WAIT-MS. The
+\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request
+\ parks at most until that request's own deadlines (IDLE-MS plus
+\ BODY-TIMEOUT-MS, SERVE-ONE into src/lib/net/http-request.f WAIT-READABLE)
+\ and after it for LINGER-MS in LINGER-CLOSE. Past its deadline it never parks,
+\ and its first read after the flag ends the request (src/lib/net/http-request.f
+\ FILL), so what remains is the parse of one input window, which
+\ STOP-MARGIN-MS covers (http-test.f FLOOD-CASE). A worker whose handler took
+\ its connection over waits out its taker and then lingers. The taker reads
+\ STOPPING? within STOP-WAIT-MS. The
 \ stop cuts short every write on its connection - the one in hand when the
 \ flag rises, every frame after it and the goodbye written once the taker has
 \ read the flag - and they share one RELEASE-MS per slot (src/lib/net/ws.f
