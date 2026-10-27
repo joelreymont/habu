@@ -3754,6 +3754,7 @@ private
    s" cp@" [: CP-REG PUSH, ;] PRIM
    s" dbase@" [: DBASE-REG PUSH, ;] PRIM
    s" data-base" [: DATA-REG PUSH, ;] PRIM
+   s" NULL-PTR" [: RAX RAX ASM-SINK ENC-XOR-RR  RAX PUSH, ;] PRIM
    s" native-unit-cut-cell" [:
       RAX DATA-REG NATIVE-OBS-EXT:CAPTURE-INVALIDATE MEM-OFF ASM-SINK ENC-LEA
       RAX PUSH, ;] PRIM

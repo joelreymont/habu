@@ -978,8 +978,7 @@ $47E0 constant HEAP-START-CELL
 \ BOOT-LAYOUT:HEAP-START-CELL that reads free in the source is NOT: src/habu/
 \ stack-abi.f already owns $47E8..$4810, and USER-BAND (from $5300 up to
 \ MEM-ABI:START) is what src/lib/task.f `+USER` hands out. This band ends at
-\ $660 and leaves the word-frame lane's $7D0/$7D8 and the $3800 null cell
-\ untouched. Every cell is below $7FF8 -- the ceiling for a cell a compiled
+\ $660 and leaves the word-frame lane's $7D0/$7D8 untouched. Every cell is below $7FF8 -- the ceiling for a cell a compiled
 \ routine names directly as `DATA <off> LDR`, which the funnel's first
 \ instruction is -- and below DATA-START, so no compiled source can reach it
 \ and DATA-START does not move.
@@ -1146,55 +1145,14 @@ public
 HIDX-SLOTS 3 * 4 / constant LOAD-MAX
 ;package
 $37F8 constant SNAP-CELL
-\ NULL-PTR-CELL-OFF: the engine's one permanently zero cell. Checked code cannot
-\ name a raw address, so it reads a pointer's NUMBER only by subtracting a null
-\ pointer, and src/core/pointer-storage.f NULL-PTR reads that zero from here
-\ through POINTER-STORAGE:NULL-PTR-CELL.
-\
-\ WHY IT IS A HEADER OFFSET AND NOT A `create`d BODY. It used to be one, in the
-\ DP heap, so every mention compiled an absolute movz/movk chain to a heap
-\ address. A stripped AOT image restores only the program's own DATA span, so the
-\ linker refused the chain by name ("aot: address refers to data outside the
-\ restored span", aot-closure.f DATA-ADDRESS!) and nothing whose closure reached
-\ NULL-PTR could be linked -- which, since CDIGEST:NATIVE-SLOT? is on the path of
-\ every checked wide fetch, was every such program. From the DATA base the
-\ mention is `x20 + $3800`, which carries no address chain to refuse, and a
-\ stripped image's fresh MAP_ANON DATA reads the same zero the engine does.
-\
-\ WHERE IT HAD TO GO: the next cell of the enumerated single-cell run that ends
-\ at SNAP-CELL ($37F8), below the FFI argument buffers that open at $3A00. Swept
-\ for a claimant across src lib tools test maki bootstrap, and BOTH kinds of
-\ claim were checked, not only `$XXXX constant` lines: $40C8, the cell the
-\ protected-WID comment below still calls free gap, is in fact
-\ FFI:FFI-REG-LEN-BUF-OFF, and from $43A0 up sit APP-ENTRY:XT-CELL, the AOT
-\ window and the evaluator-pointer band; the task rows are USER-BAND, above the
-\ transaction.
-\ Below DATA-START like every cell here, so the DP heap cannot reach it and the
-\ snapshot carries it; the anonymous DATA mapping every boot starts from reads
-\ zero everywhere, which is the whole of what this cell needs.
-\
-\ PROTECTION IS ADDRESS-CELLS:LOCK-CELL'S, no more and no less: a reserved header
-\ cell is below DATA-START, so allot/,/c, cannot reach it, but a store to a
-\ computed address can -- LOCK-CELL is written exactly that way, by atomic-cas,
-\ on purpose. The words that turn an offset into this cell are sealed:
-\ POINTER-STORAGE:DATA-CELL and POINTER-STORAGE:NULL-PTR-CELL have no checker
-\ row, so the seal marks each DNAME-INT and no checked source can compile a
-\ mention of either; test/internal-word-gate.f pins that. The definer built on
-\ DATA-CELL is not: the public RESERVED-PTR-U8-CELL
-\ takes any offset, so `$3800 RESERVED-PTR-U8-CELL N` reaches this cell from
-\ checked source, and dot habu-close-the-reserved-66521a8e tracks closing that
-\ door. pointer-storage.f spells this offset again as NULL-PTR-OFF, which must
-\ stay equal to it.
-$3800 constant NULL-PTR-CELL-OFF
-
 \ ENGINE-MAIN:XT-CELL is the DATA cell a seeded x86-64 boot calls the engine's
 \ MAIN through (docs/xcomp.md "Build and bootstrap"). It is a separate cell
 \ from APP-ENTRY:XT-CELL because that one also switches the argv and stdin
 \ conventions to a saved application's. CHECKER-REG:SEAL installs the captured
 \ MAIN there; only the x86-64 boot reads it, and an ARM64 boot, which reaches
-\ the kernel's own source and REPL routes, never does. It takes the next cell of
-\ the run NULL-PTR-CELL-OFF ends, swept for a claimant up to the FFI buffers at
-\ $3A00 the way that cell was, and a fresh DATA mapping reads it zero until set.
+\ the kernel's own source and REPL routes, never does. It sits in the
+\ single-cell run above SNAP-CELL ($37F8), swept for a claimant up to the FFI
+\ buffers at $3A00, and a fresh DATA mapping reads it zero until set.
 package ENGINE-MAIN
 public
 $3808 constant XT-CELL

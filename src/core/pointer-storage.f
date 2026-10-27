@@ -6,38 +6,21 @@
 \ read a call, a branch and a frame. An empty clause declares the effect and
 \ nothing else, and the engine answers by leaving the word the body and the
 \ DKIND:ADDR stamp `create` gave it (habu2.f DOES-REC:ELIDE-EMPTY), so a read
-\ costs the one load a bare cell costs. test/does-empty-clause.f pins it.
+\ costs the one load a bare cell costs.
 : PTR-VARIABLE ( -- )
    create 0 , does> ( -- ptr ptr a ) ;
 
-\ Typed reset code needs a null value without pretending numeric zero inhabits
-\ every pointer family. It lives in a reserved DATA header cell, not a `create`d
-\ body whose absolute address chain the stripped AOT linker refuses;
-\ src/habu/layout.f NULL-PTR-CELL-OFF reserves the offset, says why, and is the
-\ value this copy spells.
-\
-\ THE ONE ENGINE-LAYOUT AXIOM is the private cast below: that the DATA cell at a
-\ reserved offset holds a byte pointer is a fact of the engine layout, which the
-\ checker cannot derive, so an integer offset becomes a `ptr ptr u8` cell there
-\ and nowhere else. Its two callers, DATA-CELL and NULL-PTR-CELL, are public
-\ colon words with no checker row, so the seal (internal-mark.f
-\ IMK-CLASSIFY-PUB) marks each DNAME-INT, and checked source reaches the axiom
-\ only through NULL-PTR and the RESERVED-PTR-U8-CELL definer below.
-\ NULL-PTR-CELL spells its offset as an immediate because NULL-PTR is on the
-\ canonical-slot path (digest.f NATIVE-SLOT?), where an argument would cost it
-\ a stack round trip.
-$3800 constant NULL-PTR-OFF
+\ The DATA cell at an offset the engine layout reserves, declared as a cell that
+\ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
+\ from an address to a pointer cell, so no cast stands behind this word. It is
+\ a public colon word with no checker row, so the seal (internal-mark.f
+\ IMK-CLASSIFY-PUB) marks it DNAME-INT, and checked source reaches it only
+\ through the RESERVED-PTR-U8-CELL definer below. The null, NULL-PTR, is an
+\ engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
-private
-CAST: DATA-PTR-U8-CELL ( ptr n -- ptr ptr u8 )     \ the DATA cell at a reserved offset holds a byte pointer
 public
-: DATA-CELL ( n -- ptr ptr u8 ) data-base + DATA-PTR-U8-CELL ;
-: NULL-PTR-CELL ( -- ptr ptr u8 ) data-base NULL-PTR-OFF + DATA-PTR-U8-CELL ;
+: DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
 ;package
-\ cell-effects.f restates this effect, kinded; that row is the one that answers.
-\ The field of a declared pointer cell leaves its pointee free, so the one null
-\ cell serves every pointer family.
-: NULL-PTR ( -- ptr a ) POINTER-STORAGE:NULL-PTR-CELL 0 ptr-field @ ;
 
 \ Persistence is explicit: scratch pointer slots use PTR-VARIABLE and never join
 \ the relocation table; only a slot whose value must survive an image/capture uses
@@ -93,7 +76,8 @@ public
 \ `off`, declared as a `ptr ptr u8` the way the table definers above declare
 \ theirs. The offset lives in the created body and goes through
 \ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked and
-\ the private cast stays the only door from an offset to a pointer cell.
+\ `ptr-field` is the one door from an offset to a pointer cell; there is no
+\ cast.
 \
 \ THIS DEFINER IS THE TWO-ROW RULE'S OWN EXAMPLE. It has both rows, so the seal
 \ leaves the name alone; POINTER-STORAGE:DATA-CELL, in this same file and

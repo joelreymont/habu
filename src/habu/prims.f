@@ -98,6 +98,7 @@ public
 20 constant A-QUOT-OUT
 21 constant A-C2-INVOKE
 22 constant A-BASE           \ the pending pointee binds only a base address's own pointee: a distance row's base operand
+23 constant A-NULL           \ NULL-kind the pending pointee: the null, a pointer to no element, permissive inside a pointee
 
 private
 
@@ -198,6 +199,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 : PE-PTR-PTR-B   A-VAR-B CODE, A-PTR CODE, A-PTR CODE, ;
 : PE-PTR-A-RAW   A-VAR-A CODE, A-RAW CODE, A-PTR CODE, ;
 : PE-PTR-A-DBASE A-VAR-A CODE, A-DBASE CODE, A-PTR CODE, ;
+: PE-PTR-A-NULL  A-VAR-A CODE, A-NULL CODE, A-PTR CODE, ;
 : PE-PTR-A-OFF   A-VAR-A CODE, A-OFF CODE, A-PTR CODE, ;
 : PE-PTR-B-BASE  A-VAR-B CODE, A-BASE CODE, A-PTR CODE, ;
 : PE-Q           A-QUOT CODE, ;
@@ -1025,6 +1027,16 @@ EPRIM: DRAIN-PRETRUST EPRIM;   \ dot habu-engine-pre-trust-77410827: drains the 
 \ habu-fence-a-base-c6c1d71d). A cell of the region that really holds an address
 \ is reached with `ptr-field`, the declared door, exactly as before.
 EPRIM: data-base      PE-PTR-A-DBASE PE-OUT EPRIM;
+\ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
+\ nothing. Its value is zero, so the body pushes zero and reads no memory.
+\ TVK-NULL keeps every honest use: storing a null into a declared pointer cell,
+\ comparing one, subtracting one, testing it with 0= - each binds the pointee
+\ INSIDE a `ptr`, where the kind is permissive, and each means this one literal
+\ address. What it refuses is a value read THROUGH it: `NULL-PTR + @` taken as
+\ a nominal identity or as an address certified and forged one. That pointee arm
+\ is the whole difference from `data-base`, whose TVK-DBASE reaches an arbitrary
+\ DATA word and is fenced at every depth (dot habu-fence-a-base-c6c1d71d).
+EPRIM: NULL-PTR       PE-PTR-A-NULL PE-OUT EPRIM; REACH stack
 \ Resolve the capture observer slot from the running kernel. Older retained
 \ engines lack this name and explicit export declines before arming a capture.
 EPRIM: native-unit-cut-cell PE-PTR-A PE-OUT EPRIM;

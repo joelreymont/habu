@@ -241,10 +241,10 @@ create EMPTY 1 allot            \ zero-length stdin
 : SEED-RESET-SEARCH$ ( -- ptr u8 n )
    S\" s\" seed-ndict!\" 0 search-wl 0<> bool>n . cr" ;
 
-\ DATA-CELL and NULL-PTR-CELL are sealed publics of POINTER-STORAGE with no
-\ checker row: neither qualified spelling resolves outside the engine, at top
-\ level or in a checked body. A tick of a missing name is the same E-UNDEFINED,
-\ so it is not asserted.
+\ DATA-CELL is a sealed public of POINTER-STORAGE with no checker row: its
+\ qualified spelling resolves outside the engine neither at top level nor in a
+\ checked body. A tick of a missing name is the same E-UNDEFINED, so it is not
+\ asserted.
 : DATA-CELL-QUAL$ ( -- ptr u8 n )
    SB-RESET
    s" NULL-PTR $3800 POINTER-STORAGE:DATA-CELL !" SB-APPEND LF
@@ -256,17 +256,6 @@ create EMPTY 1 allot            \ zero-length stdin
    s" IWG-NULL-MUTATE" SB-APPEND LF
    SB$ ;
 
-: NULL-CELL-QUAL$ ( -- ptr u8 n )
-   SB-RESET
-   s" NULL-PTR POINTER-STORAGE:NULL-PTR-CELL !" SB-APPEND LF
-   SB$ ;
-
-: NULL-CELL-FIXED-MUTATE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : IWG-NULL-CELL-MUTATE ( -- ) NULL-PTR POINTER-STORAGE:NULL-PTR-CELL ! ;" SB-APPEND LF
-   s" IWG-NULL-CELL-MUTATE" SB-APPEND LF
-   SB$ ;
-
 : SEALED-CELL-CASES ( -- )
    s" a qualified DATA-CELL store finds no record" T-LABEL
    DATA-CELL-QUAL$ RUN-SUBJECT
@@ -274,12 +263,6 @@ create EMPTY 1 allot            \ zero-length stdin
    s" checked source cannot compile a DATA-CELL store" T-LABEL
    DATA-CELL-FIXED-MUTATE$ RUN-SUBJECT
    s" POINTER-STORAGE:DATA-CELL" ASSERT-UNDEF
-   s" a qualified NULL-PTR-CELL store finds no record" T-LABEL
-   NULL-CELL-QUAL$ RUN-SUBJECT
-   s" POINTER-STORAGE:NULL-PTR-CELL" ASSERT-UNDEF
-   s" checked source cannot compile a NULL-PTR-CELL store" T-LABEL
-   NULL-CELL-FIXED-MUTATE$ RUN-SUBJECT
-   s" POINTER-STORAGE:NULL-PTR-CELL" ASSERT-UNDEF
    s" a compiled cell store respects the engine's protected span" T-LABEL
    s" TRUSTED: IWG-BAND-STORE ( -- ) 1 data-base FRIEND-ARENA + ! ; IWG-BAND-STORE" RUN-SUBJECT
    EXITED @ TTRUE

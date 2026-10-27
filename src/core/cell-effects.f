@@ -8,7 +8,8 @@ s" CHECKER-STORAGE-PREPARE" s" --" TRUST
 \ src/core/util.f's public constants. util.f loads before the checker, so a
 \ from-source prefix boot gives them no effect of their own and a checked body
 \ that names one is E-UNDEFINED there (test/cold-naming-test.f). Rows rather
-\ than TRUST declarations, for the reason NULL-PTR's is one.
+\ than TRUST declarations, so each effect is stated by the checker's own
+\ constructors with no trusted seam behind it.
 PRIM: PATH-CAP PE-N PE-OUT PRIM;
 PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
@@ -19,20 +20,6 @@ s" PTR-U8-TABLE" s" n --" TRUST
 s" PERSISTED-PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" RESERVED-PTR-U8-CELL" s" n --" TRUST
-\ NULL-PTR is the language's null: a pointer of any pointee, and the address OF
-\ nothing. `src/core/pointer-storage.f` defines it, and this file loads after
-\ it, so THIS row is the record that answers - which is what lets the pointee
-\ carry the base-address kind the definition's own signature cannot spell (dot
-\ habu-fence-a-base-c6c1d71d). TVK-NULL keeps every honest use: storing a null
-\ into a declared pointer cell, comparing one, subtracting one, testing it with
-\ 0= - each binds the pointee INSIDE a `ptr`, where the kind is permissive, and
-\ each means this one literal address. What it refuses is a value read THROUGH
-\ it: `NULL-PTR + @` taken as a nominal identity or as an address certified and
-\ forged one. That pointee arm is the whole difference from `data-base`, whose
-\ TVK-DBASE reaches an arbitrary DATA word and is fenced at every depth. A row
-\ rather than a TRUST declaration, so the effect is stated once, by the checker's
-\ own constructors, and one trusted seam fewer stands behind the null.
-PRIM: NULL-PTR PE-PTR-A-NULL PE-OUT PRIM;
 s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
 \ These variable accessors are emitted before checking starts. Their concrete

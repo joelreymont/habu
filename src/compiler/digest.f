@@ -67,9 +67,8 @@ public
 
 \ ---- whole runs of slots -----------------------------------------------------
 \ A RUN'S ALIGNMENT IS ONE QUESTION, NOT ONE PER SLOT. SLOT! and SLOT@ each ask
-\ NATIVE-SLOT? about their own address, and that asks NULL-PTR, which calls
-\ NULL-PTR-CELL, which calls data-base, to re-derive a process constant before
-\ the eight-byte test. A caller copying or clearing a run pays that chain per
+\ NATIVE-SLOT? about their own address: a call, a subtraction of NULL-PTR and
+\ the eight-byte test. A caller copying or clearing a run would pay that test per
 \ cell, and the run's addresses advance by SLOT-BYTES, so a run whose first slot
 \ is a native cell has every slot a native cell. These two words ask once and
 \ then move cells, and fall back to the two words above - one slot at a time,

@@ -1042,6 +1042,7 @@ variable BAND-IX
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- )  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BNULLPTR ( -- )  31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
 \ cp!/ndict! are the FORGET code-emit sinks (native: habu1.f BCPSET/BNDSET).
 \ Both PROT-GUARD the address the sink redirects a write to, so a post-seal
 \ value landing in either sealed band fails closed at the sink. Legit FORGET
@@ -2461,6 +2462,7 @@ HB-TARGET-LINUX? [IF]
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
+   s" NULL-PTR" ['] BNULLPTR FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM-L
    \ The product engine's seed rewind (habu1.f BSEEDNDICTSET) has no floor to

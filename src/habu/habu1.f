@@ -1395,6 +1395,7 @@ variable SZA-I
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BNULLPTR ( -- ) 31 G-PUSH ;   \ ( -- 0 ) the null: register 31 as a store source is xzr
 : BNUNITCUTCELL ( -- )
    9 NATIVE-OBS-EXT:CAPTURE-INVALIDATE MOVZ,
    9 DATA 9 ADD,  9 G-PUSH ;
@@ -4836,6 +4837,7 @@ package ENGINE-EMIT
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
+   s" NULL-PTR" ['] BNULLPTR FPRIM-L
    s" native-unit-cut-cell" ['] BNUNITCUTCELL FPRIM-L
    s" native-origin-cell" ['] BNATIVEORIGINCELL FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L

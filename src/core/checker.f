@@ -10653,7 +10653,7 @@ variable PE-EFF-ID
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
 \ Base-kinds a prototype var, for the two BASE-ADDRESS rows -- `NULL-PTR`
-\ (src/core/cell-effects.f) and `data-base` (src/habu/prims.f), the only
+\ and `data-base` (both src/habu/prims.f), the only
 \ pointers in the language that are not the address OF a declared element. The
 \ null keeps its pointee arm so a stored, compared or subtracted null still
 \ certifies; the DATA base is fenced at every depth. E-COPY reads the kind at
@@ -10803,6 +10803,7 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-PTR      = IF PE-SPEC-POP PE-PTR  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-RAW      = IF PE-SPEC-POP PE-RAW! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-DBASE    = IF PE-SPEC-POP PE-DBASE! PE-SPEC-PUSH EXIT THEN
+   code PRIM-SPEC:A-NULL     = IF PE-SPEC-POP PE-NULL!  PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-OFF      = IF PE-SPEC-POP PE-OFF!   PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-BASE     = IF PE-SPEC-POP PE-BASE-ONLY! PE-SPEC-PUSH EXIT THEN
    code PRIM-SPEC:A-QUOT     = IF PE-Q EXIT THEN

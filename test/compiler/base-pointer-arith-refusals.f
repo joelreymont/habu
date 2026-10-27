@@ -582,11 +582,11 @@ create DIAG-BUF 8192 allot
 
 public
 
-\ NULL-PTR is registered by a PRIM: row in src/core/cell-effects.f rather than a
-\ TRUST declaration. The seal-time internal-word marking pass keeps a
-\ checker-known name callable, so this executed definition -- ordinary test
-\ source, loaded long after the seal -- is the proof that it stayed one, and not
-\ only that the checker can quote its effect.
+\ NULL-PTR is an engine primitive whose effect is its EPRIM: row in
+\ src/habu/prims.f rather than a TRUST declaration. The seal-time internal-word
+\ marking pass keeps a checker-known name callable, so this executed
+\ definition -- ordinary test source, loaded long after the seal -- is the proof
+\ that it stayed one, and not only that the checker can quote its effect.
 : NULL-STILL-CALLABLE ( -- )
    s" NULL-PTR is still callable from ordinary source after the seal" T-LABEL
    NULL-PTR BPA-SLOT !
