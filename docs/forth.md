@@ -1887,7 +1887,7 @@ documentation-only edits need no rebuild.
   and a row a foreign call reads as an aligned C object needs no alignment word
   of its own. `allot`, `c,` and `,` never realign: storage carved after
   byte-sized data is misaligned unless `align` precedes it, and a cell-typed
-  reader refuses it (`E-STORAGE`).
+  reader refuses it.
 - **`CELL-BODY` names complete cells in a created body.** After `create` and
   the final `,` or `allot`, `n CELL-BODY` records exactly `n` cells in that
   live word's body. The body must be cell-aligned, `n` must be positive and

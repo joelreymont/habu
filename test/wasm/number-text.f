@@ -10,7 +10,7 @@ require src/lib/ieee754.f
 package WNUM
 private
 
-create READER-SPACE 1024 allot
+TYPED-VARIABLE READER-SPACE JR:cursor
 
 : PARSED? ( ptr u8 n -- bool )
    STR>FLOAT MATCH option
@@ -35,7 +35,7 @@ create READER-SPACE 1024 allot
    SB-RESET $7FF0000000000000 IEEE754:BITS>F64 16 FMT:SB-SCI ;
 
 : JSON-NUMBER ( -- )
-   READER-SPACE 1024 s" -2.5e-3" JR:INIT
+   READER-SPACE s" -2.5e-3" JR:INIT
    JR:NEXT drop
    JR:FLOAT {: value:r :}
    SB-RESET value 4 FMT:SB-SCI SB$ type cr

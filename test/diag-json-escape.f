@@ -20,7 +20,7 @@ package DIAG-JSON-ESCAPE
 variable BYTE
 variable POS
 variable COUNT
-create READER-STORAGE JR:STORAGE-BYTES allot
+TYPED-VARIABLE READER-STORAGE JR:cursor
 
 \ The byte sits inside the token n<c>--, so an escape that swallowed or split a
 \ neighbour would not decode back to it.
@@ -48,7 +48,7 @@ create READER-STORAGE JR:STORAGE-BYTES allot
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
 : TOKEN-FIELD ( ptr u8 n -- )
-   READER-STORAGE JR:STORAGE-BYTES 2swap JR:INIT JR:NEXT drop
+   READER-STORAGE -rot JR:INIT JR:NEXT drop
    s" token" JR:FIND-KEY 0= if JR:CLOSE s" packet has no token field" FAIL then
    JR:TOKEN JR:T-STR <> if JR:CLOSE s" packet token field is not a string" FAIL then
    SB-RESET  s" n" SB-APPEND  BYTE @ SB-APPEND-C  s" --" SB-APPEND
@@ -64,7 +64,7 @@ create READER-STORAGE JR:STORAGE-BYTES allot
 
 : ROW ( ptr u8 n bool -- )
    {: a:ptr u:n first:bool :}
-   READER-STORAGE JR:STORAGE-BYTES a u JR:INIT JR:NEXT JR:T-OBJ <> if
+   READER-STORAGE a u JR:INIT JR:NEXT JR:T-OBJ <> if
       JR:CLOSE s" packet stream has a non-object" FAIL
    then
    JR:SKIP-VALUE JR:NEXT JR:T-END <> if JR:CLOSE E-JR-TRAILING throw then

@@ -59,8 +59,7 @@ create OVERLAY FS-PATH-CAP allot    variable OVERLAY-U
 create RACE-A FS-PATH-CAP allot     variable RACE-A-U
 create RACE-B FS-PATH-CAP allot     variable RACE-B-U
 create RACE-CORE FS-PATH-CAP allot  variable RACE-CORE-U
-align
-create ENGINE-JSON-STATE JR:STORAGE-BYTES allot
+TYPED-VARIABLE ENGINE-JSON-STATE JR:cursor
 create BASE-ROLES 192 allot
 create WARM-ROLES 192 allot
 create EARLY-ROLES 192 allot
@@ -916,7 +915,7 @@ variable ENGINE-WHITEBOX
    0 T=
    OUTPUT$ EXECUTABLE? TTRUE
    ERR-U @ 0 T=
-   ENGINE-JSON-STATE JR:STORAGE-BYTES OUT$ JR:INIT
+   ENGINE-JSON-STATE OUT$ JR:INIT
    JR:NEXT JR:T-OBJ T=
    s" schema" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-STR T=
